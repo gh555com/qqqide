@@ -36,23 +36,23 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .tab .tab-del:hover{opacity:1;color:var(--red)}
 #tab-new{padding:1px 6px;font-size:16px;line-height:1;cursor:pointer;border:1px solid var(--border-color);border-radius:3px;background:var(--bg);color:var(--base01);flex-shrink:0}
 #tab-new:hover{color:var(--text-primary);background:var(--base3)}
-#messages{overflow-y:auto;padding:12px;scrollbar-width:thin;min-height:0}
+#messages{overflow-y:auto;overflow-x:hidden;padding:12px;scrollbar-width:thin;min-height:0}
 #messages::-webkit-scrollbar{width:6px}
 #messages::-webkit-scrollbar-thumb{background:var(--base01);border-radius:3px}
 .msg{margin-bottom:10px;line-height:1.5}
-.msg-user{background:var(--card-bg);border-radius:8px;padding:8px 12px}
-.msg-ai{padding:8px 0;word-break:break-word}
+.msg-user{background:var(--card-bg);border-radius:8px;padding:8px 12px;overflow-x:hidden;overflow-wrap:break-word;word-break:break-word}
+.msg-ai{padding:8px 0;word-break:break-word;overflow-x:hidden}
 .msg-ai h1,.msg-ai h2,.msg-ai h3{margin:8px 0 4px;line-height:1.3}
 .msg-ai h1{font-size:1.25em}.msg-ai h2{font-size:1.12em}.msg-ai h3{font-size:1.05em}
 .msg-ai p{margin:4px 0}
 .msg-ai ul,.msg-ai ol{margin:4px 0 4px 20px}
 .msg-ai li{margin:2px 0}
-.msg-ai code{background:var(--card-bg);color:var(--text-primary);padding:1px 4px;border-radius:3px;font-family:ui-monospace,Consolas,monospace;font-size:.9em;border:1px solid var(--border-color)}
+.msg-ai code{background:var(--card-bg);color:var(--text-primary);padding:1px 4px;border-radius:3px;font-family:ui-monospace,Consolas,monospace;font-size:.9em;border:1px solid var(--border-color);word-break:break-all;overflow-wrap:break-word}
 .msg-ai table{border-collapse:collapse;width:100%;margin:6px 0;font-size:12px}
 .msg-ai th,.msg-ai td{border:1px solid var(--border-color);padding:4px 8px;text-align:left}
 .msg-ai th{background:var(--card-bg);font-weight:600}
 .msg-ai tr:nth-child(even){background:var(--background-color)}
-.msg-ai pre{background:var(--card-bg);color:var(--text-primary);padding:8px 10px;border-radius:4px;overflow-x:auto;margin:6px 0;white-space:pre-wrap;word-break:break-all;border:1px solid var(--border-color)}
+.msg-ai pre{background:var(--card-bg);color:var(--text-primary);padding:8px 10px;border-radius:4px;overflow-x:hidden;margin:6px 0;white-space:pre-wrap;word-break:break-all;border:1px solid var(--border-color)}
 .msg-ai pre code{background:none;padding:0;color:inherit}
 .msg-ai blockquote{border-left:3px solid var(--border-color);padding-left:10px;margin:4px 0;opacity:.85}
 .msg-ai hr{border:none;border-top:1px solid var(--border-color);margin:8px 0}
@@ -477,11 +477,7 @@ function renderMarkdown(src) {
   // Links
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
   // Tables (must run before lists to avoid confusing | with list markers)
-  s = s.replace(/(?:
-|^)(\|.+\|)
-\|[-:\s|]+\|
-((?:\|.+\|
-?)*)/g, function(_, header, rows) {
+  s = s.replace(/(?:\n|^)(\|.+\|)\n\|[-:\s|]+\|\n((?:\|.+\|\n?)*)/g, function(_, header, rows) {
     if (!header || rows === undefined) return _;
     const ths = header.split('|').filter(function(c) { return c.trim(); }).map(function(c) { return '<th>' + c.trim() + '</th>'; }).join('');
     const trs = rows.split('\n').filter(function(r) { return r.trim(); }).map(function(r) {
@@ -1185,7 +1181,19 @@ function rebuildMessagesFromConversation() {
       var el = document.createElement('div');
       el.className = 'msg msg-user';
       var content = typeof msg.content === 'string' ? msg.content : '';
-      el.innerHTML = '<div class="msg-header">You</div>' + renderMarkdown(content);
+      // Strip injected rules blocks (global.txt / project.txt) from display
+      var rulesRefs = [];
+      var gRe = /\[GLOBAL RULES[\s\S]*?\[END GLOBAL RULES\]/g;
+      var pRe = /\[PROJECT RULES[\s\S]*?\[END PROJECT RULES\]/g;
+      if (gRe.test(content)) { rulesRefs.push('📄 global.txt'); content = content.replace(gRe, ''); }
+      if (pRe.test(content)) { rulesRefs.push('📄 project.txt'); content = content.replace(pRe, ''); }
+      // Clean up --- separators left from rules injection
+      content = content.replace(/^\s*---\s*\n?/gm, '').trim();
+      var displayContent = content;
+      if (rulesRefs.length > 0) {
+        displayContent = content + '\n' + rulesRefs.join(' ') + '\n\n';
+      }
+      el.innerHTML = '<div class="msg-header">You</div>' + renderMarkdown(displayContent);
       frag.appendChild(el);
     } else if (msg.role === 'assistant') {
       var el2 = document.createElement('div');
@@ -1249,7 +1257,7 @@ document.getElementById('rules-edit').onclick = async function() {
         // 1) global.txt — app-root level, opens in middle group
         var appRoot = await bridge.app.root();
         var appRootClean = appRoot.replace(/\\/g, '/').replace(/\/$/, '');
-        var globalPath = appRootClean + '/global.txt';
+        var globalPath = appRootClean + '/userData/global.txt';
         var globalExists = await bridge.fs.exists(globalPath);
         if (!globalExists) {
             await bridge.fs.write(globalPath, '# qqq AI Global Rules\n# Write rules here that apply to ALL projects.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) — AI remembers them from conversation history.\n');
@@ -1364,7 +1372,7 @@ async function sendMessage() {
   }
 
   // 构建用户消息显示（含图片缩略图）
-  var userMsgEl = addMessageEl('user', text + (chipPaths.length ? '\n' + chipPaths.map(function(p) { return '\u{1F4CE} ' + p; }).join('\n') : ''));
+  var userMsgEl = addMessageEl('user', text);
   if (pendingImages.length > 0) {
     var imgRow = document.createElement('div');
     imgRow.style.cssText = 'margin-top:6px;';
@@ -1460,15 +1468,32 @@ async function sendMessage() {
 }
 
 // ---- Contenteditable helpers ----
+// getInputText — keep chip order, replace chips with \u201cpath\u201d
 function getInputText() {
-  // Extract plain text from contenteditable, ignoring chip elements
-  let text = '';
-  $input.childNodes.forEach(n => {
+  var text = '';
+  var nodes = $input.childNodes;
+  for (var i = 0; i < nodes.length; i++) {
+    var n = nodes[i];
     if (n.nodeType === 3) { text += n.textContent; }
     else if (n.nodeName === 'BR') { text += '\n'; }
-    else if (n.classList && n.classList.contains('file-chip')) { /* skip chips */ }
+    else if (n.classList && n.classList.contains('file-chip')) {
+      text += '\u201c' + (n.dataset.path || '') + '\u201d';
+    }
     else { text += n.textContent; }
-  });
+  }
+  return text;
+}
+// getInputPlainText — pure text, skip chips (for AI content building)
+function getInputPlainText() {
+  var text = '';
+  var nodes = $input.childNodes;
+  for (var i = 0; i < nodes.length; i++) {
+    var n = nodes[i];
+    if (n.nodeType === 3) { text += n.textContent; }
+    else if (n.nodeName === 'BR') { text += '\n'; }
+    else if (n.classList && n.classList.contains('file-chip')) { /* skip */ }
+    else { text += n.textContent; }
+  }
   return text;
 }
 

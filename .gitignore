@@ -57,6 +57,7 @@ do/
 # 敏感配置（含 secrets/token）
 .qqq-rules.txt
 qide-shell.py
+global.txt
 
 # 临时脚本
 _push_*

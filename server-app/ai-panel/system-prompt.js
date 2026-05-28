@@ -134,7 +134,7 @@ if (typeof module !== 'undefined' && module.exports) {
 // 规则注入 — 两套规则，首轮合并注入一次，后续不重复消耗 token
 // ============================================================================
 
-// global.txt — 全局规则，所有 IDE 窗口共享（{appRoot}/global.txt）
+// global.txt — 全局规则，所有 IDE 窗口共享（{appRoot}/userData/global.txt）
 window.qqqRulesContent = '';
 
 window.loadQqqRules = async function () {
@@ -142,7 +142,7 @@ window.loadQqqRules = async function () {
         var bridge = parent.qqqBridge;
         if (bridge && bridge.app && bridge.app.root) {
             var root = await bridge.app.root();
-            var rulesPath = root.replace(/\\/g, '/').replace(/\/$/, '') + '/global.txt';
+            var rulesPath = root.replace(/\\/g, '/').replace(/\/$/, '') + '/userData/global.txt';
             var text = await bridge.fs.read(rulesPath);
             if (text && text.trim()) {
                 window.qqqRulesContent = '[GLOBAL RULES — Permanent rules set by the user. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END GLOBAL RULES]';

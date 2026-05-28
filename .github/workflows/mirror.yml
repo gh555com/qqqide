@@ -1,0 +1,29 @@
+name: Mirror to Gitee and Jihulab
+
+on:
+  push:
+    branches:
+      - qq
+      - main
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to Jihulab
+        run: |
+          git remote add jihulab https://29492511:${{ secrets.JIHULAB_TOKEN }}@jihulab.com/29492511/qqq-IDE.git
+          git push jihulab --all --force
+          git push jihulab --tags --force
+
+      - name: Push to Gitee
+        run: |
+          git remote add gitee https://gh555_com:${{ secrets.GITEE_TOKEN }}@gitee.com/gh555_com/qqq-IDE.git
+          git push gitee --all --force
+          git push gitee --tags --force
