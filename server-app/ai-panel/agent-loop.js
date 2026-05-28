@@ -158,6 +158,9 @@ var AgentLoop = (function () {
         // 推入用户消息（纯文本 — DeepSeek 只看得懂 text）
         var finalContent = (userContent || '') + visionText;
 
+        // 归档：保存用户输入供 generateFloorTxt 写入
+        self._lastUserInput = { text: userContent || '', vision: visionText || '' };
+
         // rules injection (first floor only; AI remembers from history)
         if (self.conversation.length === 0) {
             var rulesParts = [];
@@ -227,7 +230,7 @@ var AgentLoop = (function () {
                 }
 
                 if (response.type === 'message') {
-                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ms: Date.now() - _hStart, reasoning: response.reasoning_content || '' });
+                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '' });
                     var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
                     if (response.reasoning_content) assistantMsg.reasoning_content = response.reasoning_content;
                     self.conversation.push(assistantMsg);
@@ -280,7 +283,7 @@ var AgentLoop = (function () {
                     onError: onError, tier: tier, noTools: true
                 });
                 if (finalResp && finalResp.content) {
-                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '' });
+                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '' });
                     if (finalResp._ttfbMs !== undefined) {
                         self._floorTiming.networkMs += finalResp._ttfbMs;
                         self._floorTiming.workMs += finalResp._streamMs;
@@ -821,6 +824,10 @@ var AgentLoop = (function () {
     AgentLoop.prototype._summarizeHouses = async function (token) {
         var self = this;
         if (!self._houses || self._houses.length === 0) return;
+        var timeoutCtrl = new AbortController();
+        var tid = setTimeout(function () { timeoutCtrl.abort(); }, 8000);
+        // 合并两个信号：超时 或 用户中止
+        var combined = self.abortController ? AbortSignal.any([timeoutCtrl.signal, self.abortController.signal]) : timeoutCtrl.signal;
         try {
             var lines = [];
             for (var hi = 0; hi < self._houses.length; hi++) {
@@ -845,7 +852,7 @@ var AgentLoop = (function () {
                     max_tokens: 1024,
                     temperature: 0.1
                 }),
-                signal: self.abortController ? self.abortController.signal : undefined
+                signal: combined
             });
             if (!resp.ok) {
                 self._log('[summarize] API ' + resp.status + ': ' + (await resp.text()).slice(0, 100));
@@ -867,6 +874,8 @@ var AgentLoop = (function () {
             self._log('[summarize] matched ' + matchedCount + '/' + self._houses.length + ' houses');
         } catch (e) {
             self._log('[summarize] ERROR: ' + (e.message || e));
+        } finally {
+            clearTimeout(tid);
         }
     };
 

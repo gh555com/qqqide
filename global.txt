@@ -1,0 +1,4 @@
+# qqq AI Global Rules
+# Write rules here that apply to ALL projects.
+# They will be injected at the start of every new conversation.
+# Rules are only sent once (first turn) — AI remembers them from conversation history.

@@ -195,7 +195,8 @@ const GATEWAY_URL = 'https://gh555.com/api/v3/ai/chat';
 // State
 var streaming = false;
 var _sending = false;  // atomic guard: 防止 Enter 连按重复发送
-var attachedFiles = []; // [{path, content}]
+var _renderPending = false;
+var _scrollPending = false;
 
 // DOM
 const $messages = document.getElementById('messages');
@@ -445,16 +446,11 @@ function scrollToBottom(force) {
   }
 }
 
-var _userScrolledUp = false;
 function _userAtBottom() {
   var threshold = 60; // px tolerance
   return $messages.scrollHeight - $messages.scrollTop - $messages.clientHeight < threshold;
 }
 
-// 用户手动滚动时，判断是否在底部
-$messages.addEventListener('scroll', function() {
-  _userScrolledUp = !_userAtBottom();
-});
 
 function addMessageEl(role, content) {
   const div = document.createElement('div');
@@ -595,6 +591,7 @@ async function loadQuestData(id) {
     agent._floorCostWge = 0;
     agent._houses = data.houses || [];
     agent._houseIndex = data.houseIndex || 0;
+    agent._lastApiPromptTokens = data.lastApiPromptTokens || 0;
   } else {
     console.log('[quests] no saved data for', id, '- starting fresh');
     agent.conversation = [];
@@ -603,6 +600,7 @@ async function loadQuestData(id) {
     agent._floorCostWge = 0;
     agent._houses = [];
     agent._houseIndex = 0;
+    agent._lastApiPromptTokens = 0;
   }
   rebuildMessagesFromConversation();
   updateCostDisplay();
@@ -620,7 +618,8 @@ async function saveQuestData() {
     ctx: agent._ctx,
     totalCostGe: agent.totalCostGe,
     houses: agent._houses,
-    houseIndex: agent._houseIndex
+    houseIndex: agent._houseIndex,
+    lastApiPromptTokens: agent._lastApiPromptTokens || 0
   });
   // generate floor txt after house summaries are ready
   if (agent._housesPromise) {
@@ -666,6 +665,25 @@ async function generateFloorTxt() {
       var roomsLines = [];
       var now = new Date();
       var ts = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0') + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+
+      // ── 用户输入 ──
+      var ui = agent._lastUserInput;
+      if (ui) {
+        var userText = (ui.text || '').trim();
+        var visionText = (ui.vision || '').trim();
+        if (userText) {
+          roomsLines.push('══════ USER ══════');
+          roomsLines.push(userText);
+          roomsLines.push('');
+        }
+        if (visionText) {
+          roomsLines.push('══════ VISION ══════');
+          roomsLines.push(visionText);
+          roomsLines.push('');
+        }
+      }
+
+      // ── HOUSEs ──
       for (var hi = 0; hi < houses.length; hi++) {
         var h = houses[hi];
         roomsLines.push('━━━━━━━━━━ HOUSE ' + h.index + ' — ' + ts + ' ━━━━━━━━━━');
@@ -680,10 +698,27 @@ async function generateFloorTxt() {
             }
           }
         }
-        if (h.type === 'final') roomsLines.push('  (final answer)');
+        if (h.type === 'final') {
+          if (h.answer) {
+            roomsLines.push('  ANSWER (' + h.answer.length + ' chars):');
+            roomsLines.push(h.answer);
+          } else {
+            roomsLines.push('  (final answer)');
+          }
+        }
         roomsLines.push('');
       }
+
+      // ── Floor stats ──
+      var timing = agent._floorTiming;
+      if (timing) {
+        roomsLines.push('── floor ' + floorNum + ' stats ──');
+        roomsLines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms, work: ' + (timing.workMs ? timing.workMs.toFixed(0) : '0') + 'ms, cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge');
+      }
+
       await bridge.fs.write(dir + 'rooms.txt', roomsLines.join('\n'));
+
+      // ── thinking.txt ──
       var thinkingLines = [];
       for (var hj = 0; hj < houses.length; hj++) {
         var hh = houses[hj];
@@ -696,13 +731,58 @@ async function generateFloorTxt() {
       if (thinkingLines.length > 0) {
         await bridge.fs.write(dir + 'thinking.txt', thinkingLines.join('\n'));
       }
+
+      // ── chat.txt (full narrative: user + houses with reasoning + rooms + answer) ──
+      var chatLines = [];
+      if (ui) {
+        var uText = (ui.text || '').trim();
+        var vText = (ui.vision || '').trim();
+        if (uText) {
+          chatLines.push('══════════ USER ══════════');
+          chatLines.push(uText);
+          chatLines.push('');
+        }
+        if (vText) {
+          chatLines.push('══════════ VISION ══════════');
+          chatLines.push(vText);
+          chatLines.push('');
+        }
+      }
+      for (var hci = 0; hci < houses.length; hci++) {
+        var hc = houses[hci];
+        chatLines.push('━━ HOUSE ' + hc.index + ' — ' + ts + ' [' + hc.ms + 'ms] ━━');
+        if (hc.reasoning) {
+          chatLines.push(hc.reasoning);
+          chatLines.push('');
+        }
+        if (hc.tools && hc.tools.length > 0) {
+          for (var tci = 0; tci < hc.tools.length; tci++) {
+            var tc = hc.tools[tci];
+            chatLines.push('  ── ROOM ' + hc.index + '.' + (tci + 1) + '  ' + tc.name + '(' + tc.args + ') ──');
+            if (hc.toolResults && hc.toolResults[tci]) {
+              chatLines.push('  ' + hc.toolResults[tci]);
+            }
+          }
+          chatLines.push('');
+        }
+        if (hc.type === 'final') {
+          chatLines.push('  ANSWER:');
+          chatLines.push(hc.answer || '');
+          chatLines.push('');
+        }
+      }
+      if (timing) {
+        chatLines.push('── floor ' + floorNum + ' stats ──');
+        chatLines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms, work: ' + (timing.workMs ? timing.workMs.toFixed(0) : '0') + 'ms, cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge');
+      }
+      await bridge.fs.write(dir + 'chat.txt', chatLines.join('\n'));
+
       console.log('[quests] floor txt generated: ' + dir);
     }
   } catch (e) {
     console.warn('[quests] generateFloorTxt failed:', e);
   }
 }
-
 async function switchQuest(id) {
   if (id === questActiveId) return;
   await saveQuestData();
@@ -773,20 +853,51 @@ var CTX_MAX_TOKENS = 1000000; // DeepSeek v4 1M 上下文窗口
 function estimateTokens() {
   var total = 0;
   var conv = agent.conversation;
-  var CHAR_PER_TOKEN = 3.0; // 混合中英文/代码 更准确的均值
+  var CHAR_PER_TOKEN = 3.0;
   for (var i = 0; i < conv.length; i++) {
     var c = conv[i].content;
     if (typeof c === 'string') total += c.length / CHAR_PER_TOKEN;
-    // tool_calls JSON（AI 做工具调用时不进 content，单独计）
     if (conv[i].tool_calls && Array.isArray(conv[i].tool_calls)) {
       try { total += JSON.stringify(conv[i].tool_calls).length / CHAR_PER_TOKEN; } catch (_) {}
     }
     total += 10; // role overhead
   }
-  // 系统提示词 + 动态上下文（narrative/facts/floorSummaries/treasures 逐轮膨胀）
+  // 系统提示词
   if (typeof SYSTEM_PROMPT !== 'undefined') total += SYSTEM_PROMPT.length / CHAR_PER_TOKEN;
+  // 工具定义 schema（每次 API 调用都带）
+  if (typeof TOOL_DEFINITIONS !== 'undefined') {
+    try { total += JSON.stringify(TOOL_DEFINITIONS).length / CHAR_PER_TOKEN; } catch (_) {}
+  }
+  // 动态上下文 — 镜像 _buildDynamicContext 的输出（只计实际发送的量）
   if (agent._ctx) {
-    try { total += JSON.stringify(agent._ctx).length / CHAR_PER_TOKEN; } catch (_) {}
+    var ctx = agent._ctx;
+    var dynText = '';
+    if (ctx.narrative) {
+      dynText += '[DYNAMIC CONTEXT]\nCONVERSATION CONTEXT (compressed history):\n' + ctx.narrative;
+    }
+    if (ctx.facts && ctx.facts.length > 0) {
+      // _buildDynamicContext 用 _retrieveRelevantFacts 取 top 10；无 query 时取最后 10 条近似
+      var facts = ctx.facts.slice(-10);
+      dynText += '\n\nRELEVANT FACTS FROM EARLIER (' + facts.length + '/' + ctx.facts.length + ' total):\n';
+      for (var fi = 0; fi < facts.length; fi++) {
+        dynText += '- [' + (facts[fi].type || '') + '] ' + (facts[fi].content || '') + '\n';
+      }
+    }
+    if (ctx.floorSummaries && ctx.floorSummaries.length > 0) {
+      var summaries = ctx.floorSummaries.slice(-15);
+      dynText += '\n\nFLOOR CHECKPOINTS:\n';
+      for (var si = 0; si < summaries.length; si++) {
+        dynText += '📌 ' + (summaries[si].summary || '') + '\n';
+      }
+    }
+    if (ctx.treasures && ctx.treasures.length > 0) {
+      var treasures = ctx.treasures.slice(-10);
+      dynText += '\n\nKEY DISCOVERIES:\n';
+      for (var ti = 0; ti < treasures.length; ti++) {
+        dynText += '💎 ' + (treasures[ti].content || '') + '\n';
+      }
+    }
+    total += dynText.length / CHAR_PER_TOKEN;
   }
   return Math.round(total);
 }
@@ -838,6 +949,7 @@ $timingNetBar.addEventListener('mouseleave', function() {
 
 function rebuildMessagesFromConversation() {
   $messages.innerHTML = '';
+  var frag = document.createDocumentFragment();
   var conv = agent.conversation;
   for (var i = 0; i < conv.length; i++) {
     var msg = conv[i];
@@ -847,15 +959,16 @@ function rebuildMessagesFromConversation() {
       el.className = 'msg msg-user';
       var content = typeof msg.content === 'string' ? msg.content : '';
       el.innerHTML = '<div class="msg-header">You</div>' + renderMarkdown(content);
-      $messages.appendChild(el);
+      frag.appendChild(el);
     } else if (msg.role === 'assistant') {
       var el2 = document.createElement('div');
       el2.className = 'msg msg-ai';
       var content2 = typeof msg.content === 'string' ? msg.content : '';
       el2.innerHTML = renderMarkdown(content2);
-      $messages.appendChild(el2);
+      frag.appendChild(el2);
     }
   }
+  $messages.appendChild(frag);
   scrollToBottom(true);
 }
 
@@ -896,7 +1009,6 @@ document.getElementById('tab-new').onclick = createNewQuest;
 })();
 
 // Rules edit button — opens global.txt (middle group) + project.txt (right group) in IDE
-var _rootDirCache = null;
 var _rulesBtnBusy = false;
 document.getElementById('rules-edit').onclick = async function() {
     if (_rulesBtnBusy) return;
@@ -915,16 +1027,10 @@ document.getElementById('rules-edit').onclick = async function() {
         }
         parent.postMessage({ type: 'qqq-file-open', path: globalPath }, '*');
 
-        // 2) project.txt — project-root level, opens in right group
-        if (!_rootDirCache) {
-            try {
-                if (questStore && typeof questStore.getProjectRoot === 'function') {
-                    _rootDirCache = questStore.getProjectRoot();
-                }
-            } catch (_) {}
-        }
-        if (_rootDirCache) {
-            var projRootClean = _rootDirCache.replace(/\\/g, '/').replace(/\/$/, '');
+        // 2) project.txt — project-root level, opens in right group（每次都实时查，不用缓存）
+        var projRoot = questStore.getProjectRoot();
+        if (projRoot) {
+            var projRootClean = projRoot.replace(/\\/g, '/').replace(/\/$/, '');
             var projDir = projRootClean + '/qqq/quests/alphal/rule';
             var projPath = projDir + '/project.txt';
             var projExists = await bridge.fs.exists(projPath);
@@ -933,12 +1039,14 @@ document.getElementById('rules-edit').onclick = async function() {
                 await bridge.fs.write(projPath, '# qqq AI Project Rules\n# Write rules here that apply ONLY to this project.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) — AI remembers them from conversation history.\n');
             }
             parent.postMessage({ type: 'qqq-file-open-right', path: projPath }, '*');
+        } else {
+            console.log('[rules] no project root, skipping project.txt');
         }
 
         // reload rules after user edits
         setTimeout(function() {
             loadQqqRules();
-            loadProjectRules(_rootDirCache);
+            loadProjectRules(projRoot);
         }, 3000);
     } catch(e) {
         console.log('[rules] edit error:', e);
@@ -969,7 +1077,7 @@ async function sendMessage() {
 
   // Build user content with attached file chips (read actual content)
   var userContent = text;
-  var allPaths = chipPaths.concat(attachedFiles.map(function(f) { return f.path; }));
+  var allPaths = chipPaths;
   if (allPaths.length > 0) {
     var contentParts = [];
     for (var pi = 0; pi < allPaths.length; pi++) {
@@ -1022,7 +1130,6 @@ async function sendMessage() {
       } catch(e) { contentParts.push('[Attached: ' + p + ']\n(error: ' + e.message + ')'); }
     }
     userContent = text + (contentParts.length ? '\n\n' + contentParts.join('\n\n') : '');
-    attachedFiles = [];
   }
 
   // 构建用户消息显示（含图片缩略图）
@@ -1069,8 +1176,20 @@ async function sendMessage() {
       token: token,
       onToken: function(chunk) {
         aiDiv._text = (aiDiv._text || '') + chunk;
-        aiDiv.innerHTML = renderMarkdown(aiDiv._text);
-        scrollToBottom();
+        if (!_renderPending) {
+          _renderPending = true;
+          requestAnimationFrame(function() {
+            aiDiv.innerHTML = renderMarkdown(aiDiv._text);
+            _renderPending = false;
+          });
+        }
+        if (!_scrollPending) {
+          _scrollPending = true;
+          requestAnimationFrame(function() {
+            $messages.scrollTop = $messages.scrollHeight;
+            _scrollPending = false;
+          });
+        }
       },
       onReasoning: function(chunk) {
         reasoningText += chunk;
