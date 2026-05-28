@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>qqq-shell - offline</title>
+<style>
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: #fdf6e3; color: #586e75;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .box {
+    text-align: center;
+    max-width: 540px;
+    padding: 32px;
+    background: #eee8d5;
+    border: 1px solid #93a1a1;
+    border-radius: 4px;
+  }
+  h1 { color: #073642; margin: 0 0 16px; font-weight: 500; font-size: 20px; }
+  p  { margin: 8px 0; font-size: 14px; line-height: 1.6; }
+  .url { color: #268bd2; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; word-break: break-all; }
+  .reason { color: #cb4b16; font-size: 12px; margin-top: 4px; }
+  .row { margin-top: 20px; display: flex; justify-content: center; gap: 8px; }
+  button {
+    padding: 8px 24px;
+    background: #268bd2; color: #fdf6e3;
+    border: 0; border-radius: 3px; cursor: pointer; font-size: 14px;
+  }
+  button:hover { background: #2aa198; }
+  button[disabled] { opacity: 0.5; cursor: default; }
+  button.secondary { background: transparent; color: #586e75; border: 1px solid #93a1a1; }
+  .small { color: #93a1a1; font-size: 12px; margin-top: 24px; }
+  .countdown { color: #859900; font-weight: 600; }
+  .status { margin-top: 12px; min-height: 18px; font-size: 12px; color: #859900; }
+  .status.err { color: #dc322f; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>qqq-shell offline</h1>
+  <p>无法连接服务器，可能网络中断或服务器未就绪。</p>
+  <p class="url" id="url"></p>
+  <p class="reason" id="reason"></p>
+  <p>将在 <span class="countdown" id="cd">10</span> 秒后自动重试…</p>
+  <div class="row">
+    <button id="btn-retry">立即重试</button>
+    <button class="secondary" id="btn-pause">暂停自动重试</button>
+  </div>
+  <p class="status" id="status"></p>
+  <p class="small">壳保持便携模式。所有数据仅写入应用目录。</p>
+</div>
+<script>
+  (function () {
+    const params = new URLSearchParams(location.search);
+    document.getElementById('url').textContent = params.get('url') || '';
+    const reason = params.get('reason') || '';
+    if (reason) {
+      document.getElementById('reason').textContent = '原因：' + reason;
+    }
+
+    const cdEl = document.getElementById('cd');
+    const statusEl = document.getElementById('status');
+    const btnRetry = document.getElementById('btn-retry');
+    const btnPause = document.getElementById('btn-pause');
+
+    let countdown = 10;
+    let timer = null;
+    let paused = false;
+    let busy = false;
+
+    function setStatus(msg, isErr) {
+      statusEl.textContent = msg || '';
+      statusEl.className = 'status' + (isErr ? ' err' : '');
+    }
+
+    async function tryRetry() {
+      if (busy) { return; }
+      busy = true;
+      btnRetry.disabled = true;
+      setStatus('正在重试…', false);
+      try {
+        if (window.qqq && window.qqq.boot && typeof window.qqq.boot.retry === 'function') {
+          const ok = await window.qqq.boot.retry();
+          if (!ok) {
+            setStatus('仍无法连接，将继续等待…', true);
+            countdown = 10;
+          }
+        } else {
+          // best-effort: just reload
+          location.reload();
+        }
+      } catch (e) {
+        setStatus('重试失败：' + (e && e.message), true);
+        countdown = 10;
+      } finally {
+        busy = false;
+        btnRetry.disabled = false;
+      }
+    }
+
+    function tick() {
+      if (paused) { return; }
+      countdown -= 1;
+      if (countdown <= 0) {
+        countdown = 10;
+        cdEl.textContent = countdown;
+        tryRetry();
+        return;
+      }
+      cdEl.textContent = countdown;
+    }
+    timer = setInterval(tick, 1000);
+
+    btnRetry.addEventListener('click', () => { countdown = 10; cdEl.textContent = countdown; tryRetry(); });
+    btnPause.addEventListener('click', () => {
+      paused = !paused;
+      btnPause.textContent = paused ? '继续自动重试' : '暂停自动重试';
+      setStatus(paused ? '已暂停' : '', false);
+    });
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Roam</title>
+<style>
+:root {
+	--base03: #002b36; --base02: #073642; --base01: #777777; --base00: #7a7874;
+	--base0: #7a7874; --base1: #a8a6a2; --base2: #eee8d5; --base3: #fdf6e3;
+	--yellow: #b58900; --orange: #cb4b16; --red: #dc322f; --magenta: #d33682;
+	--violet: #6c71c4; --blue: #e8a030; --cyan: #2aa198; --green: #859900;
+	--bg-color: var(--base3); --bg-highlight: var(--base2);
+	--text-primary: var(--base00); --text-secondary: var(--base01); --text-dim: var(--base1);
+	--border-color: var(--base2); --border-strong: var(--base1);
+	--selection-bg: #e8a090; --selection-text: #000000;
+	--button-primary: var(--blue); --button-text: var(--base3);
+	--sidebar-resizer-width: 8px; --sz-area-width: 96px; --icon-area-width: 24px; --icon-subtle: #c0bab0;
+	--gold-accent: #DEC987; --gold-accent-hover: #d4c079; --gold-accent-bg: rgb(223, 202, 136);
+	--gold-hover-bg: #ddca88; --tooltip-bg: rgb(35, 30, 0); --tooltip-text: var(--base2); --pin-hover-bg: #d3d1c4;
+}
+[data-theme="dark"] {
+	--base03: #fdf6e3; --base02: #eee8d5; --base01: #93a1a1; --base00: #c8c4b8;
+	--base0: #a8a49c; --base1: #6a6660; --base2: #2a2a2a; --base3: #1e1e1e;
+	--yellow: #d4a017; --orange: #e07020; --red: #ff4444; --magenta: #c06080;
+	--violet: #a08060; --blue: #d4a017; --cyan: #5abfb5; --green: #8fbc5a;
+	--bg-color: #1e1e1e; --bg-highlight: #2a2a2a;
+	--text-primary: #d4d0c8; --text-secondary: #a8a49c; --text-dim: #6a6660;
+	--border-color: #333333; --border-strong: #555555;
+	--selection-bg: #5a3a2a; --selection-text: #f0e8d8;
+	--button-primary: #d4a017; --button-text: #1e1e1e; --icon-subtle: #5a5650;
+	--gold-accent: #5a4d2a; --gold-accent-hover: #6a5a30; --gold-accent-bg: #4a3d20;
+	--gold-hover-bg: #3a3520; --tooltip-bg: #2a2520; --tooltip-text: #d4d0c8; --pin-hover-bg: #3a3a3a;
+}
+* { box-sizing: border-box; forced-color-adjust: none; scrollbar-width: none; }
+*::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+html, body { font-family: Tahoma; font-size: 13px; margin: 0; padding: 0; height: 100%; width: 100%; background-color: var(--bg-color); color: var(--text-primary); }
+body { display: flex; flex-direction: column; border: none; overflow: hidden; user-select: none; -webkit-user-select: none; }
+input, textarea { -webkit-user-select: text; user-select: text; }
+::selection { background: rgb(255, 211, 2) !important; color: black !important; }
+.container { display: flex; flex: 1; width: 100%; max-width: 100%; background-color: var(--bg-color); position: relative; }
+.sidebar { width: 160px; background-color: var(--bg-color); display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; position: fixed; left: 0; top: 0; bottom: 60px; z-index: 20; transition: width 0.2s ease; }
+.sidebar-resizer { width: var(--sidebar-resizer-width); background-color: var(--base2); position: fixed; left: 160px; top: 0; bottom: 60px; z-index: 30; cursor: ew-resize; transition: background-color 0.2s, width 0.2s; border: none; }
+.sidebar-resizer:hover { background-color: var(--base1); width: calc(var(--sidebar-resizer-width) * 1.5); }
+.sidebar-resizer.active { background-color: var(--base00); width: calc(var(--sidebar-resizer-width) * 1.5); }
+.sidebar-header { padding: 0; height: 51px; background-color: var(--gold-accent); color: var(--text-primary); display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.sidebar-header:hover { background-color: var(--gold-accent-hover); }
+.sidebar-header .close-icon { font-size: 24px; line-height: 1; }
+.nav-item { padding: 8px 10px; border: none; background: none; width: 100%; text-align: left; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; display: block; font-family: Tahoma; font-size: 13px; }
+.nav-item:hover { background-color: var(--bg-highlight); }
+.nav-item.active { background-color: var(--base1); color: var(--base3); }
+.qq-iq-section { padding: 0; margin: 0; border: none; overflow-y: scroll; flex: 1; min-height: 0; scrollbar-width: none; }
+.qq-item { padding: 3px 10px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; width: 100%; box-sizing: border-box; display: flex; align-items: center; }
+.qq-item .qq-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qq-dir { padding: 0; position: relative; }
+.qq-dir .qq-text { padding: 3px 10px; transition: background-color 0.1s; }
+.qq-dir .qq-text:hover { background-color: var(--bg-highlight); }
+.qq-file { padding-left: 18px; }
+.qq-file:hover { background-color: var(--bg-highlight); }
+.qq-dir .pin-icon { flex-shrink: 0; padding: 3px 10px; cursor: pointer; color: var(--icon-subtle); display: flex; align-items: center; }
+.qq-dir .pin-icon:hover { background-color: var(--gold-accent-bg); }
+.divider { border: none; border-top: 1px solid var(--border-color); margin: 4px 0; }
+.pin-move-group { display: flex; flex-direction: column; margin-left: 4px; font-size: 9px; line-height: 1; opacity: 0.5; }
+.pin-move-group:hover { opacity: 1; }
+.pin-move-btn { cursor: pointer; padding: 0 2px; }
+.ky-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; overflow-x: hidden; position: absolute; left: 168px; right: 0; top: 0; bottom: 60px; transition: left 0.2s ease; background-color: var(--bg-color); padding: 0; margin: 0; border: none; min-height: 0; }
+.recent-section { padding: 0; background-color: var(--bg-color); position: static; z-index: 1; border: none; flex-shrink: 0; }
+.recent-list { display: flex; flex-direction: column; gap: 0; }
+.recent-item { padding: 2px 8px; background-color: var(--bg-highlight); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; margin: 0; line-height: 1.2; display: flex; align-items: center; cursor: pointer; position: relative; }
+.recent-item:hover { background-color: var(--gold-hover-bg); }
+.delete-button { margin-right: 6px; padding: 0 4px; color: var(--text-dim); cursor: pointer; opacity: 0.6; }
+.recent-item:hover .delete-button { opacity: 1; }
+.delete-button:hover { opacity: 1; color: var(--red); }
+.recent-item > span:not(.delete-button):not(.pin-move-btn) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.address-bar { padding: 0; background-color: var(--bg-color); position: relative; z-index: 1; flex-shrink: 0; border: none; }
+.address-bar-wrapper { display: flex; align-items: stretch; gap: 0; padding: 0; background-color: var(--bg-color); }
+.address-bar-inner { flex: 1; position: relative; min-width: 0; height: 26px; margin-left: -1px; }
+.address-display { position: absolute; top: 0; left: 0; width: 100%; height: 100%; padding: 5px 5px 5px 8px; background-color: var(--bg-color); color: var(--text-primary); border: 1px solid var(--border-strong); border-radius: 3px; box-sizing: border-box; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; display: flex; align-items: center; z-index: 5; }
+.address-display.editing { font-style: italic; }
+.path-sep { font-weight: bold; padding: 0 0.5em; color: var(--orange); }
+.address-input { width: 100%; padding: 5px 24px 5px 8px; border: 1px solid var(--border-strong); border-radius: 3px; background-color: var(--bg-color); color: var(--text-primary); box-sizing: border-box; position: relative; z-index: 10; font-family: Tahoma; font-size: 13px; }
+.address-input:not(:focus) { color: transparent !important; background-color: transparent !important; border-color: transparent !important; }
+.address-input:focus { background-color: var(--bg-color) !important; }
+.address-copy-btn { position: absolute; right: 0; top: 0; width: 24px; height: 100%; cursor: pointer; color: var(--icon-subtle); z-index: 100; background: transparent; display: flex; align-items: center; justify-content: center; padding: 0 4px; box-sizing: border-box; }
+.address-copy-btn::before { content: ''; position: absolute; top: 2px; right: 2px; bottom: 2px; left: 0; background-color: var(--bg-color); z-index: -1; }
+.address-copy-btn svg { width: 14px; height: 14px; flex-shrink: 0; }
+.address-copy-btn:hover svg { fill: var(--icon-subtle); }
+.scm-btn-group { display: flex; align-items: stretch; gap: 0; flex-shrink: 0; }
+.scm-btn { width: 33px; height: 100%; min-height: 26px; border: 1px solid var(--border-strong); border-right: none; margin: 0 !important; background-color: var(--bg-color); color: var(--text-primary); font-size: 14px; font-weight: bold; cursor: pointer; position: relative; display: flex; align-items: center; justify-content: center; padding: 0 0 0 3px; transition: background-color 0.15s; }
+#szModeGroup > .scm-btn:first-child { width: 43px; border-left: none; padding: 0 0 0 10px; }
+#sortByGroup > .scm-btn:last-child { border-right: none; }
+#filesOnTopBtn { border-right: none; }
+.scm-btn:hover { background-color: var(--gold-accent-bg); }
+.scm-btn.active { background-color: var(--gold-accent-bg); color: var(--text-primary); }
+.scm-btn .scm-check { position: absolute; right: 2px; bottom: 0px; width: 8px; height: 8px; display: none; }
+.scm-btn.active .scm-check { display: block; }
+.open-btn { padding: 0 6px; height: 100%; min-height: 26px; border: 1px solid var(--border-strong); border-right: none; margin: 0 !important; background-color: var(--bg-color); color: var(--text-primary); font-size: 12px; cursor: pointer; transition: background-color 0.15s; }
+.open-btn:hover { background-color: var(--gold-accent-bg); }
+.filter-input-wrapper { position: relative; width: 71px; flex-shrink: 0; }
+.filter-input { width: 100%; height: 100%; min-height: 26px; padding: 4px 6px; border: 1px solid var(--border-strong); border-left: none; border-right: none; background-color: var(--bg-color); color: var(--text-primary); font-size: 12px; box-sizing: border-box; }
+.filter-input::placeholder { color: var(--text-dim); font-style: italic; }
+.file-list-wrapper { flex: 1; position: relative; overflow: hidden; min-height: 0; display: flex; flex-direction: column; }
+.file-list-container { flex: 1; overflow: auto; overflow-x: hidden; padding: 0 0 24px 0; margin: 0; min-height: 0; }
+.custom-scrollbar-outer { position: absolute; right: 0; top: 0; bottom: 0; width: 12px; z-index: 1000; pointer-events: none; background: var(--base2); }
+.custom-scrollbar-thumb { position: absolute; right: 1; width: 2px; background: #000 !important; border-radius: 0; opacity: 0.6; cursor: pointer; pointer-events: auto; forced-color-adjust: none !important; }
+.scroll-hint { position: absolute; right: 2px; font-size: 9px; color: #333; pointer-events: none; user-select: none; z-index: 1001; }
+.scroll-hint-top { top: 2px; }
+.scroll-hint-bottom { bottom: 2px; }
+.file-item { padding: 0; border-radius: 0; display: flex; align-items: center; margin: 0; min-height: 20px; line-height: 1.2; cursor: pointer; position: relative; overflow: hidden; }
+.file-item.js-hover { background-color: var(--bg-highlight) !important; }
+.file-item.selected { background-color: var(--selection-bg) !important; color: var(--selection-text); }
+.file-item.selected .sz-area, .file-item.selected .file-select-area, .file-item.selected .folder-name-area, .file-item.selected .file-name-area { background-color: transparent !important; color: var(--selection-text); }
+.sz-area { width: var(--sz-area-width); height: 100%; min-height: 20px; font-size: 12px; color: var(--text-dim); text-align: right; padding: 3px 0 0 0; line-height: 1.2; flex-shrink: 0; white-space: pre; cursor: pointer; z-index: 10; position: relative; display: inline-block; user-select: none; }
+.file-select-area { display: flex; align-items: center; padding: 2px 4px 2px 8px; cursor: pointer; flex-shrink: 0; height: 100%; }
+.folder-name-area { flex: 1; padding: 2px 8px 2px 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 100%; }
+.file-name-area { flex: 1; padding: 2px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 100%; }
+.file-icon { margin-right: 0; font-size: 16px; }
+.file-item[data-type="file"] .file-icon { position: relative; top: -1px; }
+.footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px; background-color: var(--bg-color); border-top: 1px solid var(--border-strong); display: flex; justify-content: space-between; align-items: center; z-index: 10; box-shadow: 0 -2px 5px rgba(0,0,0,0.05); gap: 10px; }
+.filename-input-container { flex: 1; margin-right: 10px; position: relative; }
+.pin-container { margin-right: 37px; cursor: pointer; transform: translateX(12px) translateY(-1px); }
+.pin-box { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 5px 23px; border-radius: 20px; background-color: var(--bg-highlight); transition: background-color 0.2s; width: 96px; color: var(--text-primary); }
+.pin-box:hover { background-color: var(--pin-hover-bg); }
+.pin-box.pinned { background-color: var(--gold-accent-bg); color: var(--text-primary); }
+.pin-text { font-size: 16px; font-weight: 500; min-width: 40px; display: inline-block; text-align: center; }
+.pin-checkbox { font-size: 15px; font-family: monospace; min-width: 20px; display: inline-block; text-align: center; }
+.filename-input { width: 100%; padding: 5px 5px 5px 6px; border: 1px solid var(--border-strong); border-radius: 3px; background-color: var(--bg-color); color: var(--text-primary); font-family: Tahoma; font-size: 13px; }
+.button { padding: 6px 12px; border: none; border-radius: 3px; cursor: pointer; }
+.save-button { background-color: var(--gold-accent-bg); color: var(--text-primary); }
+.cancel-button { background-color: var(--bg-highlight); color: var(--text-primary); margin-left: 5px; }
+.context-menu { position: fixed; background-color: var(--bg-color); border: 1px solid var(--border-strong); box-shadow: 2px 2px 5px rgba(0,0,0,0.2); z-index: 9999; padding: 4px 0; min-width: 150px; display: none; flex-direction: column; }
+.context-menu-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; cursor: pointer; white-space: nowrap; color: var(--text-primary); }
+.context-menu-item:hover { background-color: var(--bg-highlight); }
+.context-menu-shortcut { color: var(--text-dim); margin-left: 20px; }
+.paste-tip { position: absolute; bottom: -22px; left: 0; background: #e6ee9c; color: #424242; padding: 2px 8px; border-radius: 3px; font-size: 12px; white-space: nowrap; z-index: 100; border: 1px solid #dce775; opacity: 0; pointer-events: none; }
+.paste-tip.show { opacity: 1; }
+.history-dropdown { display: none; position: absolute; top: 100%; left: 0; width: 199px; background-color: var(--bg-color); border: 1px solid var(--border-strong); border-top: none; max-height: 200px; overflow-y: auto; z-index: 100; }
+#addressHistoryDropdown { width: 100%; }
+.history-dropdown-item { padding: 4px 8px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.history-dropdown-item:hover { background-color: var(--bg-highlight); }
+.dropdown-item-tooltip { position: fixed; pointer-events: none; background: var(--tooltip-bg); color: var(--tooltip-text); padding: 4px 10px; border-radius: 4px; font-size: 13px; z-index: 9999; display: none; border: 1px solid var(--border-strong); }
+</style>
+<script>
+(function() {
+	var isDark = false;
+	try { isDark = parent.document.documentElement.getAttribute('data-theme') === 'dark'; } catch(e) {}
+	var lightSchemes = [
+		{ name: 'Coral', bg: '#e8d0c0', text: '#000000', weight: 30 },
+		{ name: 'Warm Apricot', bg: '#e8d0b0', text: '#000000', weight: 30 },
+		{ name: 'Bean Paste', bg: '#e7e4c2', text: '#000000', weight: 30 },
+		{ name: 'Vivid Red', bg: '#cb4b16', text: '#fdf6e3', weight: 10 }
+	];
+	var darkSchemes = [
+		{ name: 'Ember', bg: '#5a3a2a', text: '#f0e8d8', weight: 30 },
+		{ name: 'Bronze', bg: '#4a3520', text: '#e8d8c0', weight: 30 },
+		{ name: 'Olive Night', bg: '#3a3a20', text: '#d8d0b0', weight: 30 },
+		{ name: 'Dark Flame', bg: '#6a2a10', text: '#fdf6e3', weight: 10 }
+	];
+	var schemes = isDark ? darkSchemes : lightSchemes;
+	var totalWeight = schemes.reduce(function(s, x) { return s + x.weight; }, 0);
+	var rand = Math.random() * totalWeight, cumulative = 0, selected = schemes[0];
+	for (var i = 0; i < schemes.length; i++) {
+		cumulative += schemes[i].weight;
+		if (rand < cumulative) { selected = schemes[i]; break; }
+	}
+	document.documentElement.style.setProperty('--selection-bg', selected.bg);
+	document.documentElement.style.setProperty('--selection-text', selected.text);
+})();
+</script>
+</head>
+<body>
+<div class="container">
+	<div class="sidebar" id="sidebar">
+		<div class="sidebar-header" id="sidebarHeader">
+			<span class="close-icon">✕</span>
+		</div>
+		<div class="qq-iq-section" id="driveList"></div>
+	</div>
+	<div class="sidebar-resizer" id="sidebarResizer"></div>
+	<div class="ky-content" id="kyContent">
+		<div class="recent-section">
+			<div class="recent-list" id="recentList"></div>
+		</div>
+		<div class="address-bar">
+			<div class="address-bar-wrapper">
+				<div class="scm-btn-group" id="szModeGroup">
+					<button class="scm-btn active" data-mode="size">S<svg class="scm-check" viewBox="0 0 10 10"><polyline points="1,5 4,8 9,2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+					<button class="scm-btn" data-mode="ctime">C<svg class="scm-check" viewBox="0 0 10 10"><polyline points="1,5 4,8 9,2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+					<button class="scm-btn" data-mode="mtime">M<svg class="scm-check" viewBox="0 0 10 10"><polyline points="1,5 4,8 9,2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+				</div>
+				<div class="address-bar-inner" id="addressBarInner">
+					<div id="addressDisplay" class="address-display"></div>
+					<input type="text" id="addressInput" class="address-input" value="">
+					<div id="addressCopyBtn" class="address-copy-btn">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+					</div>
+					<div id="addressPasteTip" class="paste-tip">Pasted</div>
+					<div id="addressHistoryDropdown" class="history-dropdown"></div>
+				</div>
+				<div class="filter-input-wrapper">
+					<input type="text" id="fileFilterInput" class="filter-input" placeholder="">
+				</div>
+				<button class="open-btn" id="openFolderBtn">open</button>
+				<div class="scm-btn-group" id="sortByGroup">
+					<button class="scm-btn active" data-sort="name">N<svg class="scm-check" viewBox="0 0 10 10"><polyline points="1,5 4,8 9,2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+					<button class="scm-btn" data-sort="size">S<svg class="scm-check" viewBox="0 0 10 10"><polyline points="1,5 4,8 9,2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+					<button class="scm-btn" data-sort="ctime">C<svg class="scm-check" viewBox="0 0 10 10"><polyline points="1,5 4,8 9,2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+					<button class="scm-btn" data-sort="mtime">M<svg class="scm-check" viewBox="0 0 10 10"><polyline points="1,5 4,8 9,2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+				</div>
+				<button class="scm-btn" id="filesOnTopBtn">
+					<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h4l1.5 1.5H14v6H2V3z"/><polyline points="5,12 8,15 11,12"/><line x1="8" y1="11" x2="8" y2="15"/></svg>
+					<svg class="scm-check" viewBox="0 0 10 10"><polyline points="1,5 4,8 9,2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+				</button>
+			</div>
+		</div>
+		<div class="file-list-wrapper" id="fileListWrapper">
+			<div class="file-list-container" id="fileList"></div>
+			<div class="custom-scrollbar-outer" id="customScrollbar">
+				<span class="scroll-hint scroll-hint-top">1</span>
+				<div class="custom-scrollbar-thumb" id="customScrollbarThumb"></div>
+				<span class="scroll-hint scroll-hint-bottom">2</span>
+			</div>
+		</div>
+		<div class="footer">
+			<div id="pinButton" class="pin-container">
+				<div class="pin-box" id="pinBox">
+					<span class="pin-text">Pin</span>
+					<span class="pin-checkbox" id="pinCheckbox">□</span>
+				</div>
+			</div>
+			<div class="filename-input-container">
+				<input type="text" id="filenameInput" class="filename-input">
+			</div>
+			<div style="display: flex; gap: 15px;">
+				<button class="button save-button" id="btnNewFile">
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/></svg>
+				</button>
+				<button class="button cancel-button" id="btnNewFolder">
+					<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V20A2,2 0 0,0 4,22H20A2,2 0 0,0 22,20V8L16,2H10M13,9V3.5L18.5,9H13Z"/></svg>
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
+<div id="itemContextMenu" class="context-menu">
+	<div class="context-menu-item" data-action="code"><span>code</span><span class="context-menu-shortcut">= "q"</span></div>
+	<div class="context-menu-item" data-action="open"><span>open</span><span class="context-menu-shortcut">= "w"</span></div>
+	<div class="context-menu-item" data-action="delete"><span>delete</span><span class="context-menu-shortcut">= "d"</span></div>
+	<div class="context-menu-item" data-action="rename"><span>rename</span><span class="context-menu-shortcut">= "e"</span></div>
+	<div class="context-menu-item" data-action="copyPath"><span>copy path</span><span class="context-menu-shortcut">= "z"</span></div>
+</div>
+<div id="globalTooltip" class="dropdown-item-tooltip"></div>
+<script>
+(function() {
+'use strict';
+
+// ---- RPC helper: call parent bridge methods via postMessage ----
+let _rpcId = 0;
+const _rpcPending = {};
+function rpc(method, params) {
+	return new Promise((ok, fail) => {
+		const id = 'q2-' + (++_rpcId);
+		_rpcPending[id] = { ok, fail };
+		parent.postMessage({ type: 'qqq-rpc', qood: 'q2', method, id, params }, '*');
+		setTimeout(() => { if (_rpcPending[id]) { delete _rpcPending[id]; fail(new Error('RPC timeout')); } }, 15000);
+	});
+}
+window.addEventListener('message', function(e) {
+	if (!e.data) return;
+	if (e.data.type === 'qqq-rpc-reply' && _rpcPending[e.data.id]) {
+		const p = _rpcPending[e.data.id];
+		delete _rpcPending[e.data.id];
+		if (e.data.error) p.fail(new Error(e.data.error.message));
+		else p.ok(e.data.result);
+		return;
+	}
+    // 主题同步（来自父窗口 qqq-theme.js 唯一真理配色机器）
+    if (e.data && e.data.type === 'qqq-theme-change') {
+      if (e.data.dark) document.documentElement.setAttribute('data-theme', 'dark');
+      else document.documentElement.removeAttribute('data-theme');
+    }
+});
+
+// RPC-based bridge proxy
+// Single args pass directly; multi-args use { __spread: true, args: [...] }
+var bridge = {
+	fs: {
+		list: (p) => rpc('fs.list', p),
+		read: (p) => rpc('fs.read', p),
+		write: (p, c) => rpc('fs.write', { __spread: true, args: [p, c] }),
+		mkdir: (p) => rpc('fs.mkdir', p),
+		remove: (p) => rpc('fs.remove', p),
+		rename: (o, n) => rpc('fs.rename', { __spread: true, args: [o, n] }),
+	},
+	clipboard: {
+		writeText: (s) => rpc('clipboard.writeText', s),
+	},
+	shell: {
+		openPath: (p) => rpc('shell.openPath', p),
+	}
+};
+
+// 初始主题同步
+(function(){
+  try {
+    if (parent && parent.qqqTheme) {
+      if (parent.qqqTheme.isDark()) document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      var t = parent.document.documentElement.getAttribute('data-theme');
+      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  } catch(e) { parent.postMessage({ type: 'qqq-theme-request' }, '*'); }
+})();
+
+var currentPath = '';
+var selectedItems = [];
+var sortBy = 'name';
+var szMode = 'size';
+var filesOnTop = false;
+var isPinned = false;
+var sidebarW = 160;
+
+// ---- Utility ----
+function pathJoin(a, b) {
+	if (!a) return b;
+	var sep = a.includes('\\') ? '\\' : '/';
+	if (a.endsWith('/') || a.endsWith('\\')) return a + b;
+	return a + sep + b;
+}
+function baseName(p) {
+	var parts = p.replace(/[\\/]+$/, '').split(/[\\/]/);
+	return parts[parts.length - 1] || p;
+}
+function formatSize(bytes) {
+	if (bytes == null || bytes < 0) return '';
+	if (bytes < 1024) return bytes + ' B';
+	if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' K';
+	if (bytes < 1024*1024*1024) return (bytes/1024/1024).toFixed(1) + ' M';
+	return (bytes/1024/1024/1024).toFixed(2) + ' G';
+}
+
+// ---- Address bar ----
+var addressInput = document.getElementById('addressInput');
+var addressDisplay = document.getElementById('addressDisplay');
+
+function updateAddressDisplay(p) {
+	if (!addressDisplay) return;
+	var parts = p.split(/[\\/]/).filter(Boolean);
+	addressDisplay.innerHTML = parts.map(function(s) { return '<span>' + escHtml(s) + '</span>'; }).join('<span class="path-sep">›</span>');
+}
+function escHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+addressInput.addEventListener('keydown', function(e) {
+	if (e.key === 'Enter') {
+		e.preventDefault();
+		var p = addressInput.value.trim();
+		if (p) navigateTo(p);
+		addressInput.blur();
+	}
+});
+
+// ---- Copy path button ----
+document.getElementById('addressCopyBtn').addEventListener('click', function() {
+	if (currentPath) bridge.clipboard.writeText(currentPath).catch(() => {
+		if (navigator.clipboard) navigator.clipboard.writeText(currentPath).catch(() => {});
+	});
+});
+
+// ---- Navigate ----
+function navigateTo(p) {
+	currentPath = p;
+	addressInput.value = p;
+	updateAddressDisplay(p);
+	loadFileList(p);
+	recordDirHistory(p);
+}
+
+// ---- Load file list ----
+async function loadFileList(p) {
+	var fileList = document.getElementById('fileList');
+	fileList.innerHTML = '';
+	selectedItems = [];
+	try {
+		var entries = await bridge.fs.list(p);
+		entries.sort(function(a, b) {
+			if (filesOnTop) {
+				if (!a.isDir && b.isDir) return -1;
+				if (a.isDir && !b.isDir) return 1;
+			} else {
+				if (a.isDir && !b.isDir) return -1;
+				if (!a.isDir && b.isDir) return 1;
+			}
+			switch (sortBy) {
+				case 'size': return (b.size||0) - (a.size||0);
+				case 'ctime': return (b.ctime||0) - (a.ctime||0);
+				case 'mtime': return (b.mtime||0) - (a.mtime||0);
+				default: return String(a.name).localeCompare(String(b.name));
+			}
+		});
+		for (var i = 0; i < entries.length; i++) {
+			fileList.appendChild(buildFileItem(entries[i], pathJoin(p, entries[i].name)));
+		}
+		updateScrollbar();
+	} catch(err) {
+		fileList.innerHTML = '<div style="padding:20px;color:var(--red);">' + escHtml(String(err)) + '</div>';
+	}
+}
+
+function buildFileItem(entry, fullPath) {
+	var item = document.createElement('div');
+	item.className = 'file-item';
+	item.dataset.path = fullPath;
+	item.dataset.type = entry.isDir ? 'folder' : 'file';
+	item.dataset.name = entry.name;
+
+	// sz area (size/date)
+	var sz = document.createElement('div');
+	sz.className = 'sz-area';
+	if (szMode === 'size' && !entry.isDir) sz.textContent = formatSize(entry.size);
+	else if (szMode === 'ctime' && entry.ctime) sz.textContent = new Date(entry.ctime).toLocaleDateString();
+	else if (szMode === 'mtime' && entry.mtime) sz.textContent = new Date(entry.mtime).toLocaleDateString();
+	item.appendChild(sz);
+
+	if (entry.isDir) {
+		var selectArea = document.createElement('div');
+		selectArea.className = 'file-select-area';
+		var icon = document.createElement('span');
+		icon.className = 'file-icon';
+		icon.textContent = '📁';
+		selectArea.appendChild(icon);
+		item.appendChild(selectArea);
+		var nameArea = document.createElement('div');
+		nameArea.className = 'folder-name-area';
+		nameArea.textContent = entry.name;
+		item.appendChild(nameArea);
+	} else {
+		var nameArea2 = document.createElement('div');
+		nameArea2.className = 'file-name-area';
+		var icon2 = document.createElement('span');
+		icon2.className = 'file-icon';
+		icon2.textContent = '📄';
+		nameArea2.appendChild(icon2);
+		var nameSpan = document.createElement('span');
+		nameSpan.textContent = ' ' + entry.name;
+		nameArea2.appendChild(nameSpan);
+		item.appendChild(nameArea2);
+	}
+
+	// Hover
+	item.addEventListener('mouseenter', function() { item.classList.add('js-hover'); });
+	item.addEventListener('mouseleave', function() { item.classList.remove('js-hover'); });
+
+	// Click
+	item.addEventListener('click', function(e) {
+		if (entry.isDir) {
+			navigateTo(fullPath);
+		} else {
+			// Open file in editor tab
+			parent.postMessage({ type: 'qqq-file-open', path: fullPath }, '*');
+			recordFileHistory(fullPath);
+		}
+	});
+
+	// Context menu
+	item.addEventListener('contextmenu', function(e) {
+		e.preventDefault();
+		showContextMenu(e.clientX, e.clientY, fullPath, entry);
+	});
+
+	return item;
+}
+
+// ---- Context menu ----
+var ctxMenu = document.getElementById('itemContextMenu');
+var ctxTarget = null;
+var ctxEntry = null;
+
+function showContextMenu(x, y, path, entry) {
+	ctxTarget = path;
+	ctxEntry = entry;
+	ctxMenu.style.display = 'flex';
+	ctxMenu.style.left = x + 'px';
+	ctxMenu.style.top = y + 'px';
+}
+
+document.addEventListener('click', function() { ctxMenu.style.display = 'none'; });
+
+ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
+	el.addEventListener('click', function() {
+		var action = el.dataset.action;
+		if (!ctxTarget) return;
+		switch (action) {
+			case 'code':
+				parent.postMessage({ type: 'qqq-file-open', path: ctxTarget }, '*');
+				break;
+			case 'open':
+				if (ctxEntry && ctxEntry.isDir) navigateTo(ctxTarget);
+				else parent.postMessage({ type: 'qqq-file-open', path: ctxTarget }, '*');
+				break;
+			case 'delete':
+				if (confirm('Delete ' + baseName(ctxTarget) + '?')) {
+					bridge.fs.remove(ctxTarget).then(function() { loadFileList(currentPath); });
+				}
+				break;
+			case 'rename':
+				var newName = prompt('Rename to:', baseName(ctxTarget));
+				if (newName && newName !== baseName(ctxTarget)) {
+					var dir = ctxTarget.substring(0, ctxTarget.length - baseName(ctxTarget).length);
+					bridge.fs.rename(ctxTarget, pathJoin(dir, newName)).then(function() { loadFileList(currentPath); });
+				}
+				break;
+			case 'copyPath':
+				bridge.clipboard.writeText(ctxTarget).catch(() => {
+					if (navigator.clipboard) navigator.clipboard.writeText(ctxTarget).catch(() => {});
+				});
+				break;
+		}
+		ctxMenu.style.display = 'none';
+	});
+});
+
+// ---- Sort buttons ----
+document.querySelectorAll('#sortByGroup .scm-btn').forEach(function(btn) {
+	btn.addEventListener('click', function() {
+		document.querySelectorAll('#sortByGroup .scm-btn').forEach(function(b) { b.classList.remove('active'); });
+		btn.classList.add('active');
+		sortBy = btn.dataset.sort;
+		if (currentPath) loadFileList(currentPath);
+	});
+});
+
+// ---- SZ mode buttons ----
+document.querySelectorAll('#szModeGroup .scm-btn').forEach(function(btn) {
+	btn.addEventListener('click', function() {
+		document.querySelectorAll('#szModeGroup .scm-btn').forEach(function(b) { b.classList.remove('active'); });
+		btn.classList.add('active');
+		szMode = btn.dataset.mode;
+		if (currentPath) loadFileList(currentPath);
+	});
+});
+
+// ---- Files on top toggle ----
+document.getElementById('filesOnTopBtn').addEventListener('click', function() {
+	filesOnTop = !filesOnTop;
+	this.classList.toggle('active', filesOnTop);
+	if (currentPath) loadFileList(currentPath);
+});
+
+// ---- Filter ----
+var filterInput = document.getElementById('fileFilterInput');
+filterInput.addEventListener('input', function() {
+	var val = filterInput.value.toLowerCase();
+	var items = document.querySelectorAll('#fileList .file-item');
+	items.forEach(function(item) {
+		var name = (item.dataset.name || '').toLowerCase();
+		item.style.display = (!val || name.includes(val)) ? '' : 'none';
+	});
+});
+
+// ---- Sidebar drives ----
+var _driveList = [];
+var _drivePollingTimer = null;
+
+async function loadDrives() {
+	var driveList = document.getElementById('driveList');
+	driveList.innerHTML = '';
+	try {
+		_driveList = await rpc('fs.drives');
+	} catch(e) {
+		_driveList = [];
+	}
+	if (_driveList.length === 0) _driveList = ['C:\\'];
+
+	// Create drive buttons
+	for (var i = 0; i < _driveList.length; i++) {
+		(function(d) {
+			var letter = d.charAt(0);
+			var btn = document.createElement('button');
+			btn.className = 'nav-item';
+			btn.id = 'drive-' + letter + '-btn';
+			btn.textContent = letter + ':\\ ';
+			btn.title = d;
+			btn.addEventListener('click', function() { navigateTo(d); });
+			driveList.appendChild(btn);
+		})(_driveList[i]);
+	}
+
+	// Desktop entry
+	var deskBtn = document.createElement('button');
+	deskBtn.className = 'nav-item';
+	deskBtn.id = 'drive-DESKTOP-btn';
+	deskBtn.textContent = 'Desktop';
+	deskBtn.addEventListener('click', function() {
+		rpc('boot.getInfo').then(function(info) {
+			var home = (info && info.homedir) || 'C:\\Users\\Default';
+			navigateTo(home + '\\Desktop');
+		}).catch(function() {});
+	});
+	driveList.appendChild(deskBtn);
+
+	// Recycle Bin entry
+	var recycleBtn = document.createElement('button');
+	recycleBtn.className = 'nav-item';
+	recycleBtn.id = 'drive-RECYCLE-btn';
+	recycleBtn.textContent = 'Recycle Bin';
+	recycleBtn.title = 'Recycle Bin';
+	driveList.appendChild(recycleBtn);
+
+	// Fetch disk free info
+	// (a) 立即触发一次（rpc forwarder 修了后立刻生效；200ms 让 iframe 先挂载完）
+	setTimeout(updateDriveDisplay, 200);
+	// (b) 30s 轮询
+	if (_drivePollingTimer) clearInterval(_drivePollingTimer);
+	_drivePollingTimer = setInterval(updateDriveDisplay, 30000);
+}
+
+async function updateDriveDisplay() {
+	try {
+		var info = await rpc('fs.diskFree', _driveList);
+		for (var i = 0; i < _driveList.length; i++) {
+			var letter = _driveList[i].charAt(0);
+			var btn = document.getElementById('drive-' + letter + '-btn');
+			if (!btn) continue;
+			var data = info[letter];
+			if (!data) { btn.textContent = letter + ':\\ '; continue; }
+			var freeGB = (data.free / (1024*1024*1024)).toFixed(1);
+			var totalGB = (data.total / (1024*1024*1024)).toFixed(1);
+			var pct = data.total > 0 ? (data.free / data.total) : 1;
+			btn.textContent = letter + ':\\ ' + freeGB + ' GB';
+			// Red warning if free < 1% or < 2GB
+			if (pct < 0.01 || data.free < 2*1024*1024*1024) {
+				btn.style.color = 'var(--red)';
+			} else {
+				btn.style.color = '';
+			}
+		}
+		// Desktop used
+		var deskBtn = document.getElementById('drive-DESKTOP-btn');
+		if (deskBtn && info['DESKTOP']) {
+			var usedMB = (info['DESKTOP'].used / (1024*1024)).toFixed(0);
+			deskBtn.textContent = 'Desktop  ' + usedMB + ' MB';
+		}
+		// Recycle Bin
+		var recycleBtn = document.getElementById('drive-RECYCLE-btn');
+		if (recycleBtn && info['RECYCLE'] && info['RECYCLE'].used > 0) {
+			var rMB = (info['RECYCLE'].used / (1024*1024)).toFixed(0);
+			recycleBtn.textContent = 'Recycle Bin  ' + rMB + ' MB';
+		}
+	} catch(e) { console.warn('[q2-roam] updateDriveDisplay:', e); }
+}
+
+// ---- QQ区 (qqiq) — recently accessed files/folders ----
+var QQ_IQ_INITIAL = 33;
+var QQ_IQ_MAX = 100;
+var _qqiqExpanded = false;
+var QQIQ_STORAGE_KEY = 'qqq-roam-qqiq';
+
+function loadQqiqConfig() {
+	try {
+		var raw = localStorage.getItem(QQIQ_STORAGE_KEY);
+		if (raw) return JSON.parse(raw);
+	} catch(e) {}
+	return { qqiq: [], pinnedDirs: [] };
+}
+function saveQqiqConfig(config) {
+	try { localStorage.setItem(QQIQ_STORAGE_KEY, JSON.stringify(config)); } catch(e) {}
+}
+
+function _qqiqKey(p) {
+	return (p || '').toLowerCase().replace(/[\\/]+$/, '').replace(/\//g, '\\');
+}
+
+function _insertToqqiqTop(iq, itemPath, itemType, pinnedDirs) {
+	if (!itemPath) return iq;
+	var key = _qqiqKey(itemPath);
+	// If dir and already in pinnedDirs, skip
+	if (itemType === 'dir' && Array.isArray(pinnedDirs)) {
+		if (pinnedDirs.some(function(d) { return _qqiqKey(d) === key; })) return iq;
+	}
+	var filtered = iq.filter(function(item) { return _qqiqKey(item.path) !== key; });
+	filtered.unshift({ path: itemPath, type: itemType });
+	return filtered.slice(0, QQ_IQ_MAX);
+}
+
+function recordDirHistory(dirPath) {
+	if (!dirPath) return;
+	var config = loadQqiqConfig();
+	var key = _qqiqKey(dirPath);
+	if ((config.pinnedDirs || []).some(function(d) { return _qqiqKey(d) === key; })) return;
+	config.qqiq = _insertToqqiqTop(config.qqiq || [], dirPath, 'dir', config.pinnedDirs);
+	saveQqiqConfig(config);
+	renderQqiqSection();
+}
+
+function recordFileHistory(filePath) {
+	if (!filePath) return;
+	var config = loadQqiqConfig();
+	var dirPath = filePath.replace(/[\\/][^\\/]+$/, '');
+	var dirKey = _qqiqKey(dirPath);
+	var fileKey = _qqiqKey(filePath);
+	// Remove old records
+	var iq = (config.qqiq || []).filter(function(item) {
+		var k = _qqiqKey(item.path);
+		return k !== dirKey && k !== fileKey;
+	});
+	// Insert dir first (if not pinned), then file
+	var pinnedKeys = (config.pinnedDirs || []).map(_qqiqKey);
+	if (pinnedKeys.indexOf(dirKey) === -1) {
+		iq.unshift({ path: dirPath, type: 'dir' });
+	}
+	iq.unshift({ path: filePath, type: 'file' });
+	config.qqiq = iq.slice(0, QQ_IQ_MAX);
+	saveQqiqConfig(config);
+	renderQqiqSection();
+}
+
+function pinDirectory(dirPath) {
+	var config = loadQqiqConfig();
+	var key = _qqiqKey(dirPath);
+	var pinned = (config.pinnedDirs || []).filter(function(d) { return _qqiqKey(d) !== key; });
+	var iq = (config.qqiq || []).filter(function(item) { return _qqiqKey(item.path) !== key; });
+	pinned.push(dirPath);
+	// Overflow: max 6 pinned, oldest returns to qqiq
+	while (pinned.length > 6) {
+		var removed = pinned.shift();
+		iq = _insertToqqiqTop(iq, removed, 'dir');
+	}
+	config.pinnedDirs = pinned;
+	config.qqiq = iq;
+	saveQqiqConfig(config);
+	renderQqiqSection();
+	renderPinnedDirs();
+}
+
+function unpinDirectory(dirPath) {
+	var config = loadQqiqConfig();
+	var key = _qqiqKey(dirPath);
+	config.pinnedDirs = (config.pinnedDirs || []).filter(function(d) { return _qqiqKey(d) !== key; });
+	config.qqiq = _insertToqqiqTop(config.qqiq || [], dirPath, 'dir');
+	saveQqiqConfig(config);
+	renderQqiqSection();
+	renderPinnedDirs();
+}
+
+function movePinnedDir(dirPath, direction) {
+	var config = loadQqiqConfig();
+	var key = _qqiqKey(dirPath);
+	var pinned = config.pinnedDirs || [];
+	var idx = -1;
+	for (var i = 0; i < pinned.length; i++) { if (_qqiqKey(pinned[i]) === key) { idx = i; break; } }
+	if (idx === -1) return;
+	var target = direction === 'up' ? idx - 1 : idx + 1;
+	if (target < 0 || target >= pinned.length) return;
+	var tmp = pinned[idx]; pinned[idx] = pinned[target]; pinned[target] = tmp;
+	config.pinnedDirs = pinned;
+	saveQqiqConfig(config);
+	renderPinnedDirs();
+}
+
+function renderQqiqSection() {
+	var driveList = document.getElementById('driveList');
+	// Remove old divider and qq section
+	var oldDiv = driveList.querySelector('.divider');
+	if (oldDiv) oldDiv.remove();
+	var oldSec = driveList.querySelector('.qq-iq-section');
+	if (oldSec) oldSec.remove();
+
+	var config = loadQqiqConfig();
+	var qqiq = (config.qqiq || []);
+	var pinnedKeys = (config.pinnedDirs || []).map(_qqiqKey);
+	// Filter: exclude pinned dirs
+	qqiq = qqiq.filter(function(item) {
+		return !(item.type === 'dir' && pinnedKeys.indexOf(_qqiqKey(item.path)) !== -1);
+	});
+	if (qqiq.length === 0) return;
+
+	var limit = _qqiqExpanded ? QQ_IQ_MAX : QQ_IQ_INITIAL;
+	var displayed = qqiq.slice(0, limit);
+
+	// Divider
+	var divEl = document.createElement('div');
+	divEl.className = 'divider';
+	driveList.appendChild(divEl);
+
+	// QQ section
+	var sec = document.createElement('div');
+	sec.className = 'qq-iq-section';
+	for (var i = 0; i < displayed.length; i++) {
+		sec.appendChild(buildQqiqItem(displayed[i]));
+	}
+	// Wheel to expand
+	sec.addEventListener('wheel', function(e) {
+		if (!_qqiqExpanded && qqiq.length > QQ_IQ_INITIAL) {
+			_qqiqExpanded = true;
+			renderQqiqSection();
+		}
+	});
+	driveList.appendChild(sec);
+}
+
+function buildQqiqItem(item) {
+	var el = document.createElement('div');
+	el.className = 'qq-item ' + (item.type === 'file' ? 'qq-file' : 'qq-dir');
+	if (item.type === 'file') {
+		var fileName = item.path.replace(/^.*[\\/]/, '');
+		var text = document.createElement('span');
+		text.className = 'qq-text';
+		text.textContent = fileName;
+		text.title = item.path;
+		el.appendChild(text);
+		el.addEventListener('click', function() {
+			parent.postMessage({ type: 'qqq-file-open', path: item.path }, '*');
+			recordFileHistory(item.path);
+			renderQqiqSection();
+		});
+	} else {
+		var text2 = document.createElement('span');
+		text2.className = 'qq-text';
+		text2.textContent = item.path;
+		text2.title = item.path;
+		el.appendChild(text2);
+		// Pin icon (arrow ↗)
+		var pin = document.createElement('span');
+		pin.className = 'pin-icon';
+		pin.innerHTML = '<svg viewBox="0 0 20 20" width="14" height="14"><path d="M5 17 L15 5 M15 5 L5 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+		pin.title = 'Pin to recent';
+		pin.addEventListener('click', function(e) {
+			e.stopPropagation();
+			pinDirectory(item.path);
+		});
+		el.appendChild(pin);
+		text2.addEventListener('click', function() {
+			navigateTo(item.path);
+		});
+	}
+	return el;
+}
+
+function renderPinnedDirs() {
+	var recentList = document.getElementById('recentList');
+	recentList.innerHTML = '';
+	var config = loadQqiqConfig();
+	var pinned = config.pinnedDirs || [];
+	for (var i = 0; i < pinned.length; i++) {
+		(function(dir, idx) {
+			var el = document.createElement('div');
+			el.className = 'recent-item';
+			// Delete button
+			var del = document.createElement('span');
+			del.className = 'delete-button';
+			del.textContent = '\u00d7';
+			del.addEventListener('click', function(e) { e.stopPropagation(); unpinDirectory(dir); });
+			el.appendChild(del);
+			// Path text
+			var sp = document.createElement('span');
+			sp.textContent = dir;
+			sp.title = dir;
+			el.appendChild(sp);
+			// Move buttons
+			var moveGrp = document.createElement('span');
+			moveGrp.className = 'pin-move-group';
+			var upBtn = document.createElement('span');
+			upBtn.className = 'pin-move-btn';
+			upBtn.textContent = '\u25B2';
+			upBtn.addEventListener('click', function(e) { e.stopPropagation(); movePinnedDir(dir, 'up'); });
+			var dnBtn = document.createElement('span');
+			dnBtn.className = 'pin-move-btn';
+			dnBtn.textContent = '\u25BC';
+			dnBtn.addEventListener('click', function(e) { e.stopPropagation(); movePinnedDir(dir, 'down'); });
+			moveGrp.appendChild(upBtn);
+			moveGrp.appendChild(dnBtn);
+			el.appendChild(moveGrp);
+			// Click to navigate
+			el.addEventListener('click', function() { navigateTo(dir); });
+			recentList.appendChild(el);
+		})(pinned[i], i);
+	}
+}
+
+// ---- Sidebar resizer ----
+(function() {
+	var resizer = document.getElementById('sidebarResizer');
+	var sidebar = document.getElementById('sidebar');
+	var content = document.getElementById('kyContent');
+	var dragging = false, startX = 0, startW = 0;
+	resizer.addEventListener('mousedown', function(e) {
+		e.preventDefault();
+		dragging = true; startX = e.clientX; startW = sidebarW;
+		resizer.classList.add('active');
+		document.addEventListener('mousemove', onMove);
+		document.addEventListener('mouseup', onUp);
+	});
+	function onMove(e) {
+		if (!dragging) return;
+		var delta = e.clientX - startX;
+		sidebarW = Math.max(60, Math.min(400, startW + delta));
+		sidebar.style.width = sidebarW + 'px';
+		resizer.style.left = sidebarW + 'px';
+		content.style.left = (sidebarW + 8) + 'px';
+	}
+	function onUp() {
+		dragging = false;
+		resizer.classList.remove('active');
+		document.removeEventListener('mousemove', onMove);
+		document.removeEventListener('mouseup', onUp);
+	}
+})();
+
+// ---- Scrollbar ----
+function updateScrollbar() {
+	var container = document.getElementById('fileList');
+	var thumb = document.getElementById('customScrollbarThumb');
+	if (!container || !thumb) return;
+	var ratio = container.clientHeight / (container.scrollHeight || 1);
+	if (ratio >= 1) { thumb.style.display = 'none'; return; }
+	thumb.style.display = '';
+	thumb.style.height = Math.max(20, ratio * container.clientHeight) + 'px';
+	thumb.style.top = (container.scrollTop / container.scrollHeight * container.clientHeight) + 'px';
+}
+
+document.getElementById('fileList').addEventListener('scroll', updateScrollbar);
+
+// ---- New file / New folder ----
+document.getElementById('btnNewFile').addEventListener('click', function() {
+	var name = document.getElementById('filenameInput').value.trim();
+	if (!name) { alert('Enter a filename'); return; }
+	bridge.fs.write(pathJoin(currentPath, name), '').then(function() {
+		document.getElementById('filenameInput').value = '';
+		loadFileList(currentPath);
+	});
+});
+
+document.getElementById('btnNewFolder').addEventListener('click', function() {
+	var name = document.getElementById('filenameInput').value.trim();
+	if (!name) { alert('Enter a folder name'); return; }
+	bridge.fs.mkdir(pathJoin(currentPath, name)).then(function() {
+		document.getElementById('filenameInput').value = '';
+		loadFileList(currentPath);
+	});
+});
+
+// ---- Pin toggle ----
+document.getElementById('pinButton').addEventListener('click', function() {
+	isPinned = !isPinned;
+	var box = document.getElementById('pinBox');
+	var cb = document.getElementById('pinCheckbox');
+	box.classList.toggle('pinned', isPinned);
+	cb.textContent = isPinned ? '✓' : '□';
+});
+
+// ---- Sidebar header (close/go up) ----
+document.getElementById('sidebarHeader').addEventListener('click', function() {
+	if (!currentPath) return;
+	var parts = currentPath.replace(/[\\/]+$/, '').split(/[\\/]/);
+	if (parts.length > 1) {
+		parts.pop();
+		var parentDir = parts.join(currentPath.includes('\\') ? '\\' : '/');
+		if (currentPath.includes('\\') && parentDir.length === 2) parentDir += '\\';
+		navigateTo(parentDir);
+	}
+});
+
+// ---- Boot ----
+(async function boot() {
+	var bootInfo = {};
+	try { bootInfo = parent.qqqBootInfo || {}; } catch(e) {}
+	if (!bootInfo.cwd) {
+		try { bootInfo = await rpc('boot.getInfo'); } catch(e) {}
+	}
+	var root = bootInfo.cwd || bootInfo.workingDir || '.';
+	await loadDrives();
+	renderQqiqSection();
+	renderPinnedDirs();
+	navigateTo(root);
+
+	// ---- KeyHook iframe adapter (unified Roam shortcut routing) ----
+	// Attach as scope='iframe:roam' so window-side dispatcher matches Q/W/Space/1/2/Tab
+	try {
+		if (parent && parent.qqqKeyHookAdapter && parent.qqqKeyHookAdapter.attach) {
+			parent.qqqKeyHookAdapter.attach({ scope: 'iframe:roam', swallow: true });
+		}
+	} catch(e) { console.warn('[q2-roam] keyhook adapter attach failed:', e); }
+
+	// ---- Listen for parent → iframe cmd dispatch ----
+	window.addEventListener('message', function(e) {
+		if (!e.data || e.data.type !== 'qqq-roam-cmd') return;
+		var cmd = e.data.cmd;
+		// Best-effort: dispatch as window event so feature handlers below can react.
+		document.dispatchEvent(new CustomEvent('qqq-roam-cmd', { detail: { cmd: cmd } }));
+	});
+})();
+
+})();
+</script>
+</body>
+</html>

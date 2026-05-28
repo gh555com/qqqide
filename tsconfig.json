@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "shell-out",
+    "rootDir": "shell",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "declaration": false,
+    "noImplicitAny": false,
+    "lib": ["ES2020", "DOM"]
+  },
+  "include": ["shell/**/*.ts"]
+}

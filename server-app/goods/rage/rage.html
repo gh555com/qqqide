@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+/* 配色：精确照抄 qqq-theme.js / q2.html */
+:root {
+    --base03: #002b36; --base02: #073642; --base01: #777777; --base00: #7a7874;
+    --base0: #7a7874; --base1: #a8a6a2; --base2: #eee8d5; --base3: #fdf6e3;
+    --yellow: #b58900; --orange: #cb4b16; --red: #dc322f; --magenta: #d33682;
+    --violet: #6c71c4; --blue: #e8a030; --cyan: #2aa198; --green: #859900;
+    --primary-color: var(--yellow); --background-color: var(--base3);
+    --card-bg: var(--base2); --text-primary: var(--base00); --border-color: #d3c6aa;
+}
+[data-theme="dark"] {
+    --base03: #fdf6e3; --base02: #eee8d5; --base01: #93a1a1; --base00: #c8c4b8;
+    --base0: #a8a49c; --base1: #6a6660; --base2: #2a2a2a; --base3: #1e1e1e;
+    --yellow: #d4a017; --orange: #e07020; --red: #ff4444; --magenta: #c06080;
+    --violet: #a08060; --blue: #d4a017; --cyan: #5abfb5; --green: #8fbc5a;
+    --primary-color: var(--yellow); --background-color: #1e1e1e;
+    --card-bg: #2a2a2a; --text-primary: #d4d0c8; --border-color: #333333;
+}
+html { forced-color-adjust: none !important; }
+* { box-sizing: border-box; }
+body {
+    margin: 0; padding: 0; font-family: Tahoma, sans-serif; font-size: 13px;
+    background: var(--background-color); color: var(--text-primary); overflow: hidden;
+    user-select: none; -webkit-user-select: none;
+}
+.main-wrapper { height: 100vh; width: 100%; position: relative; overflow: hidden; background: var(--background-color) !important; display: flex; flex-direction: column; }
+.main-content { flex: 1; display: flex; flex-direction: column; overflow-x: hidden; overflow-y: auto; padding: 0 4px; scrollbar-width: none; }
+.main-content::-webkit-scrollbar { display: none; }
+.captain-grid { display: grid; gap: 8px; margin-bottom: 0; flex-shrink: 0; }
+.cmd-btn { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 4px; padding: 0 10px; height: 38px; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: 0.2s; position: relative; overflow: hidden; font-size: 14px; color: var(--text-primary); white-space: nowrap; box-sizing: border-box; }
+.cmd-btn:hover { border-color: var(--primary-color); transform: translateX(2px); }
+#savorCard:hover, #videoCard:hover { transform: none; }
+.cmd-btn .btn-group { display: flex; gap: 4px; flex-shrink: 0; z-index: 10; align-items: center; }
+.cmd-btn .text-content { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; font-family: Tahoma, sans-serif; font-size: 14px; }
+.icon-loop { width: 14px; height: 14px; background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzU0NTQ1NCI+PHBhdGggZD0iTTEyIDRWMUw4IDVsNCA0VjZjMy4zMSAwIDYgMi42OSA2IDYgMCAxLjAxLS4yNSAxLjk3LS43IDIuOGwxLjQ2IDEuNDZBNy45MyA3LjkzIDAgMCAwIDIwIDEyYzAtNC40Mi0zLjU4LTgtOC04em0wIDE0Yy0zLjMxIDAtNi0yLjY5LTYtNiAwLTEuMDEuMjUtMS45Ny43LTIuOEw1LjI0IDcuNzRBNy45MyA3LjkzIDAgMCAwIDQgMTJjMCA0LjQyIDMuNTggOCA4IDh2M2w0LTQtNC00djN6Ii8+PC9zdmc+') no-repeat center; display: inline-block; vertical-align: middle; position: relative; top: -1px; }
+.icon-loop.spinning { animation: spin 2s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.icon-stop { width: 14px; height: 14px; background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzU0NTQ1NCI+PHJlY3QgeD0iNCIgeT0iNCIgd2lkdGg9IjE2IiBoZWlnaHQ9IjE2IiByeD0iMiIvPjwvc3ZnPg==') no-repeat center; display: inline-block; vertical-align: middle; position: relative; top: -1px; }
+.icon-play { width: 14px; height: 14px; background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzQ0NDQ0NCI+PHBhdGggZD0iTTggNXYxNGwxMS03eiIvPjwvc3ZnPg==') no-repeat center; display: inline-block; vertical-align: middle; position: relative; top: -1px; }
+.icon-pen { width: 14px; height: 14px; background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzU0NTQ1NCI+PHBhdGggZD0iTTMgMTcuMjVWMjFoMy43NWwxMS4wNi0xMS4wNi0zLjc1LTMuNzVMMyAxNy4yNXpNMjAuNzEgNy4wNGMuMzktLjM5LjM5LTEuMDIgMC0xLjQxbC0yLjM0LTIuMzRjLS4zOS0uMzktMS4wMi0uMzktMS40MSAwbC0xLjgzIDEuODMgMy43NSAzLjc1IDEuODMtMS44M3oiLz48L3N2Zz4=') no-repeat center; display: inline-block; vertical-align: middle; position: relative; top: -1px; }
+.icon-ufo { width: 14px; height: 14px; background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzU0NTQ1NCI+PHBhdGggZD0iTTEyIDJDMi40OCAyIDEyIDIuNDggMTIgOCAxMiAxMy41MiA3LjUyIDIyIDEyIDIyYzQuNDggMCA5LjUyLTguNDggMTAtMTQgMC01LjUyLTkuNTItMTAtMTAtMTB6bTAgMThjLTMuMzEgMC02LTIuNjktNi02IDAtMy4zMSAyLjY5LTYgNi02czYgMi42OSA2IDYtMi42OSA2LTYgNnoiLz48cGF0aCBkPSJNMjEgMTNoLTRjLS41NSAwLTEgLjQ1LTEgMXMuNDUgMSAxIDFoNGMuNTUgMCAxLS40NSAxLTFzLS40NS0xLTEtMXpNNyAxM0gzYy0uNTUgMC0xIC40NS0xIDFzLjQ1IDEgMSAxaDRjLjU1IDAgMS0uNDUgMS0xcy0uNDUtMS0xLTF6TTEyIDhjLTMuMzEgMC02IDIuNjktNiA2IDAgMy4zMSAyLjY5IDYgNiA2czYtMi42OSA2LTYtMi42LTMuMzEgMC02IDIuNjktNiA2IDAgMy4zMSAyLjY5IDYgNiA2czYtMi42OSA2LTYtMi42OS02LTYtNnoiIG9wYWNpdHk9Ii4zIi8+PC9zdmc+') no-repeat center; display: inline-block; vertical-align: middle; position: relative; top: -1px; }
+.icon-all-settings { width: 14px; height: 14px; background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzU0NTQ1NCI+PHBhdGggZD0iTTE5LjE0IDEyLjk0Yy4wNC0uMy4wNi0uNjEuMDYtLjk0IDAtLjMyLS4wMi0uNjQtLjA3LS45NGwyLjAzLTEuNThjLjE4LS4xNC4yMy0uNDEuMTItLjYxbC0xLjkyLTMuMzJjLS4xMi0uMjItLjM3LS4yOS0uNTktLjIybC0yLjM5Ljk2Yy0uNS0uMzgtMS4wMy0uNy0xLjYyLS45NGwtLjM2LTIuNTRjLS4wNC0uMjQtLjI0LS40MS0uNDgtLjQxaC0zLjg0Yy0uMjQgMC0uNDMuMTctLjQ3LjQxbC0uMzYgMi41NGMtLjU5LjI0LTEuMTMuNTctMS42Mi45NGwtMi4zOS0uOTZjLS4yMi0uMDgtLjQ3IDAtLjU5LjIybC0xLjkyIDMuMzJjLS4xMi4yLS4wNy40Ny4xMi42MWwyLjAzIDEuNThjLS4wNS4zLS4wOS42My0uMDkuOTRzLjAyLjY0LjA3Ljk0bC0yLjAzIDEuNThjLS4xOC4xNC0uMjMuNDEtLjEyLjYxbDEuOTIgMy4zMmMuMTIuMjIuMzcuMjkuNTkuMjJsMi4zOS0uOTZjLjUuMzggMS4wMy43IDEuNjIuOTRsLjM2IDIuNTRjLjA1LjI0LjI0LjQxLjQ4LjQxaDMuODRjLjI0IDAgLjQ0LS4xNy40Ny0uNDFsLjM2LTIuNTRjLjU5LS4yNCAxLjEzLS41NiAxLjYyLS45NGwyLjM5Ljk2Yy4yMi4wOC40NyAwIC41OS0uMjJsMS45Mi0zLjMyYy4xMi0uMjIuMDctLjQ3LS4xMi0uNjFsLTIuMDEtMS41OHpNMTIgMTUuNmMtMS45OCAwLTMuNi0xLjYyLTMuNi0zLjZzMS42Mi0zLjYgMy42LTMuNiAzLjYgMS42MiAzLjYgMy42LTEuNjIgMy42LTMuNiAzLjZ6Ii8+PC9zdmc+') no-repeat center; display: inline-block; vertical-align: middle; position: relative; top: -1px; }
+#settingsCard:hover { transform: none; }
+.aq-phone { font-size: 13px; color: #545454; font-family: Verdana, sans-serif; font-weight: bold; vertical-align: middle; display: inline-block; opacity: 0; margin-right: 4px; }
+.aq-btn-wrap { display: inline-flex; gap: 4px; margin-left: 18px; vertical-align: middle; pointer-events: auto; }
+.aq-btn { pointer-events: auto; }
+.icon-aq-upload, .icon-aq-download, .icon-aq-gift { width: 16px; height: 16px; display: inline-block; vertical-align: middle; }
+#btnAqGift { color: #8b6914; }
+[data-theme="dark"] #btnAqGift { color: #c9a84c; }
+#settingsCard .icon-all-settings { position: relative; top: 1px; }
+[data-theme="dark"] .aq-phone { color: #999; }
+[data-theme="dark"] .icon-loop, [data-theme="dark"] .icon-stop, [data-theme="dark"] .icon-play,
+[data-theme="dark"] .icon-pen, [data-theme="dark"] .icon-ufo, [data-theme="dark"] .icon-all-settings { filter: invert(0.75); }
+.weave-inline-btns { display: inline-flex; gap: 5px; margin-left: 2px; vertical-align: middle; position: relative; top: -1px; visibility: hidden; pointer-events: none; opacity: 0; }
+.weave-inline-btns.visible { visibility: visible; pointer-events: auto; opacity: 1; }
+.weave-mini-btn { pointer-events: auto; padding-top: 3px; }
+#weaveCard:hover { transform: none; }
+#weaveCard > .text-content { position: relative; top: 1px; overflow: visible; }
+.icon-weave-remove { width: 14px; height: 14px; display: inline-block; vertical-align: middle; position: relative; top: -1px; }
+.icon-weave-remove svg { width: 14px; height: 14px; }
+#cleanFreakIcon { width: 14px; height: 14px; display: inline-block; vertical-align: middle; position: relative; top: -1px; }
+#cleanFreakIcon svg { width: 14px; height: 14px; }
+.spacer-25 { display: inline-block; width: 25px; height: 1px; vertical-align: middle; }
+.spacer-75 { display: inline-block; width: 75px; height: 1px; vertical-align: middle; }
+#videoCard { height: 48px; overflow: visible; }
+[data-cmd="qqq.weave"] { height: 49px !important; }
+[data-cmd="qqq.q2"] { height: 41px !important; }
+.input-box-wrapper { position: relative; width: 156px; height: 30px; flex-shrink: 0; margin-left: -7px; }
+.inline-input {
+    background: var(--base2); color: var(--text-primary);
+    border: 1px solid var(--border-color); border-radius: 2px;
+    padding: 2px 36px 2px 6px; font-size: 14px; height: 30px; width: 100%;
+    outline: none; box-sizing: border-box; font-family: Tahoma, sans-serif;
+}
+.inline-input::selection { background: #FFD302; color: #000; }
+.inline-input:focus { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color); }
+.inline-input::placeholder { color: rgba(0,0,0,0.5); font-size: 14px; }
+[data-theme="dark"] .inline-input::selection { background: #6a5a10; color: #f0e8d8; }
+[data-theme="dark"] .inline-input::placeholder { color: rgba(255,255,255,0.25); }
+#btnVideoStart { position: absolute; right: -2px; top: 50%; transform: translateY(calc(-50% + 2px)); background: transparent; border: none; cursor: pointer; padding: 2px; display: flex; align-items: center; justify-content: center; z-index: 11; opacity: 0.7; }
+#btnVideoStart:hover { opacity: 1; }
+#btnVideoStart .icon-play { background-size: contain; width: 25px; height: 25px; }
+.error-tip { position: absolute; top: 110%; left: 0; background: #f8d7da; color: #721c24; padding: 4px 10px; border-radius: 4px; font-size: 13px; white-space: nowrap; display: none; z-index: 100; border: 1px solid #f5c6cb; }
+[data-theme="dark"] .error-tip { background: #4a2020; color: #f0a0a0; border-color: #6a3030; }
+.paste-tip { position: absolute; top: 110%; left: 0; background: #e6ee9c; color: #424242; padding: 4px 10px; border-radius: 4px; font-size: 13px; white-space: nowrap; display: none; z-index: 100; border: 1px solid #dce775; }
+[data-theme="dark"] .paste-tip { background: #3a3a20; color: #c8c880; border-color: #4a4a30; }
+.history-container { flex: 1; min-height: 200px; position: relative; display: flex; flex-direction: column; overflow: hidden; margin-top: -9px; }
+.history-list { flex: 1; overflow-x: hidden; overflow-y: auto; padding: 4px 0; scrollbar-width: none; overscroll-behavior: contain; }
+.history-list::-webkit-scrollbar { display: none; }
+.history-item { background: var(--base3); border: 1px solid var(--border-color); border-radius: 4px; padding: 8px; margin-bottom: 8px; transition: 0.2s; cursor: pointer; color: #8e8e8e; margin-right: 2px; position: relative; overflow: hidden; }
+.history-item:hover { border-color: var(--red); border-style: dashed; color: var(--text-primary); }
+.search-container { margin: 3px 0 0 0; flex-shrink: 0; position: relative; }
+.search-input { width: 100%; background: var(--base2); border: 1px solid var(--border-color); border-radius: 4px; padding: 7.5px 10px; font-family: Tahoma, sans-serif; font-size: 13px; color: var(--text-primary); outline: none; box-sizing: border-box; position: relative; top: 4px; }
+.search-input::selection { background: #FFD302; color: #000; }
+.search-input::placeholder { color: rgba(0,0,0,0.18); }
+[data-theme="dark"] .search-input::selection { background: #6a5a10; color: #f0e8d8; }
+[data-theme="dark"] .search-input::placeholder { color: rgba(255,255,255,0.2); }
+.search-input:focus { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color); }
+.item-preview { font-size: 13px; font-family: Tahoma, sans-serif; white-space: pre-wrap; word-break: break-all; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; }
+.action-mini-btn { padding: 2px 6px; font-size: 13px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--base3); cursor: pointer; color: var(--text-primary); font-family: Tahoma, sans-serif; line-height: 1.2; }
+.action-mini-btn:hover { background: var(--primary-color); color: #1e1e1e; }
+.empty-hint { text-align: center; padding: 20px; opacity: 0.5; }
+.footer-hint { display: block; width: 100%; text-align: center; padding: 19px 0 9px 0; font-size: 9px; opacity: 0.5; cursor: pointer; }
+.scrollbar-outer { position: absolute; right: 0; top: 0; width: 6px; height: 100%; z-index: 1000; pointer-events: none; }
+.scrollbar-outer-thumb { position: absolute; right: 1px; width: 4px; background: var(--text-primary) !important; border-radius: 3px; opacity: 1; cursor: pointer; pointer-events: auto; }
+.scrollbar-inner { position: absolute; right: 0; top: 0; width: 6px; height: 100%; z-index: 10; pointer-events: none; }
+.scrollbar-inner-thumb { position: absolute; right: 1px; width: 4px; background: var(--red) !important; border-radius: 3px; opacity: 0.5; cursor: pointer; pointer-events: auto; }
+.history-dropdown { display: none; position: absolute; border: 1px solid var(--primary-color); background-color: var(--base2); z-index: 1000; width: 100%; box-sizing: border-box; max-height: 150px; overflow-y: auto; border-radius: 4px; }
+.history-dropdown-item { padding: 6px 10px; cursor: pointer; font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.history-dropdown-item:hover { background: var(--primary-color); color: #1e1e1e; }
+[data-theme="dark"] .history-dropdown { background-color: var(--base3); }
+[data-theme="dark"] .history-dropdown-item:hover { color: #1e1e1e; }
+#cleanFreakIcon { display: inline-block; width: 14px; height: 14px; vertical-align: middle; }
+.history-item:active { border-color: var(--green) !important; transition: none; }
+</style>
+</head>
+<body>
+<div class="main-wrapper">
+    <div class="main-content" id="mainContent">
+        <div class="captain-grid">
+            <div class="cmd-btn" id="savorCard">
+                <div class="btn-group">
+                    <button class="action-mini-btn" id="btnSavorLoop" title="Infinite Loop"><span class="icon-loop"></span></button>
+                    <button class="action-mini-btn" id="btnSavorStop" title="Stop"><span class="icon-stop"></span></button>
+                </div>
+                <div class="text-content">
+                    <span id="ms-label">Savor moments for yourself</span>
+                    <span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span>
+                    <span id="ms-stats"></span>
+                </div>
+            </div>
+            <div class="cmd-btn" data-cmd="qqq.q1">
+                <div class="text-content">
+                    &nbsp;Paste <span class="spacer-25"></span> <span class="icon-pen"></span> <span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span> ("Ctrl+V" or "F2") <span class="spacer-25"></span><span id="paste-stats"></span>
+                </div>
+            </div>
+            <div class="cmd-btn" id="videoCard">
+                <div class="btn-group">
+                    <div class="input-box-wrapper">
+                        <input type="text" class="inline-input" id="videoInput" placeholder=" Video Url" spellcheck="false">
+                        <button id="btnVideoStart"><span class="icon-play"></span></button>
+                        <div class="error-tip" id="urlErrorTip">Invalid URL</div>
+                        <div class="paste-tip" id="videoPasteTip">Pasted</div>
+                        <div id="videoHistoryDropdown" class="history-dropdown"></div>
+                    </div>
+                </div>
+                <span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span>
+                <div class="text-content">
+                    <span id="video-stats"></span>
+                </div>
+            </div>
+            <div class="cmd-btn" data-cmd="qqq.q2">
+                <div class="text-content">
+                    <span class="icon-ufo"></span> <span class="spacer-25"></span> Roam <span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span> ("Tab" or "F6") <span class="spacer-25"></span><span id="roam-stats"></span>
+                </div>
+            </div>
+            <div class="cmd-btn" id="weaveCard" data-cmd="qqq.weave">
+                <div class="text-content">
+                    &nbsp;Weave <span class="weave-inline-btns"><button class="action-mini-btn weave-mini-btn" id="btnCycleCleanFreak" title="Cycle Clean Freak Mode"><span id="cleanFreakIcon"></span></button><button class="action-mini-btn weave-mini-btn" id="btnWeaveWithRemove" title="Weave + Remove"><span class="icon-weave-remove"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" shape-rendering="crispEdges"><path d="M3 -2L12 7L21 -2" stroke="#333" stroke-width="2.5" fill="none"/><path d="M3 25L12 16L21 25" stroke="#333" stroke-width="2.5" fill="none"/></svg></span></button></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span id="weave-stats"></span>
+                </div>
+            </div>
+            <div class="cmd-btn" data-cmd="qqq.exportDoc">
+                <div class="text-content">
+                    &nbsp;export doc <span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span id="exportDoc-stats"></span>
+                </div>
+            </div>
+            <div class="cmd-btn" data-cmd="qqq.pure">
+                <div class="text-content">
+                    &nbsp;Pure <span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span id="pure-stats"></span>
+                </div>
+            </div>
+            <div class="cmd-btn" data-cmd="qqq.exportZip">
+                <div class="text-content">
+                    &nbsp;export Zip <span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span id="exportZip-stats"></span>
+                </div>
+            </div>
+            <div class="cmd-btn" data-cmd="qqq.allSettings" id="settingsCard">
+                <div class="text-content"><span id="aq-phone" class="aq-phone">9999</span><span class="icon-all-settings"></span><span class="aq-btn-wrap" id="aqBtnGroup"><button class="action-mini-btn aq-btn" id="btnAqUpload" title="Upload to Cloud"><span class="icon-aq-upload"></span></button><button class="action-mini-btn aq-btn" id="btnAqDownload" title="Download from Cloud"><span class="icon-aq-download"></span></button></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><span class="spacer-75"></span><button class="action-mini-btn aq-btn" id="btnAqGift" title="Treasure"><span class="icon-aq-gift"></span></button><span class="spacer-75"></span><span id="allSettings-stats"></span>
+                </div>
+            </div>
+        </div>
+        <div class="search-container">
+            <input type="text" class="search-input" id="searchBox" placeholder="find" spellcheck="false"><span class="spacer-75"><span class="spacer-75"></span><span id="clipboard-stats"></span>
+            <div id="searchHistoryDropdown" class="history-dropdown"></div>
+        </div>
+        <div class="history-container" id="historyContainer">
+            <div class="history-list" id="historyList">
+                <div class="empty-hint">Clipboard history will appear here</div>
+            </div>
+            <div class="scrollbar-inner" id="innerScrollbar"><div class="scrollbar-inner-thumb" id="innerThumb"></div></div>
+        </div>
+        <div class="footer-hint" id="ghHealthLink">GH HEALTH</div>
+    </div>
+    <div class="scrollbar-outer" id="outerScrollbar"><div class="scrollbar-outer-thumb" id="outerThumb"></div></div>
+    <div id="tooltip"></div>
+</div>
+<script>
+(function() {
+    // ---- RPC helper: call parent bridge methods via postMessage ----
+    let _rpcId = 0;
+    const _rpcPending = {};
+    function rpc(method, params) {
+        return new Promise((ok, fail) => {
+            const id = 'q4-' + (++_rpcId);
+            _rpcPending[id] = { ok, fail };
+            parent.postMessage({ type: 'qqq-rpc', qood: 'q4', method, id, params }, '*');
+            setTimeout(() => { if (_rpcPending[id]) { delete _rpcPending[id]; fail(new Error('RPC timeout')); } }, 10000);
+        });
+    }
+    window.addEventListener('message', function(e) {
+        if (!e.data) return;
+        // RPC reply
+        if (e.data.type === 'qqq-rpc-reply' && _rpcPending[e.data.id]) {
+            const p = _rpcPending[e.data.id];
+            delete _rpcPending[e.data.id];
+            if (e.data.error) p.fail(new Error(e.data.error.message));
+            else p.ok(e.data.result);
+            return;
+        }
+        // 主题同步（来自父窗口 qqq-theme.js 唯一真理配色机器）
+        if (e.data && e.data.type === 'qqq-theme-change') {
+            if (e.data.dark) document.documentElement.setAttribute('data-theme', 'dark');
+            else document.documentElement.removeAttribute('data-theme');
+        }
+    });
+
+    // 初始主题同步
+    (function(){
+        try {
+            if (parent && parent.qqqTheme) {
+                if (parent.qqqTheme.isDark()) document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                var t = parent.document.documentElement.getAttribute('data-theme');
+                if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        } catch(e) { parent.postMessage({ type: 'qqq-theme-request' }, '*'); }
+    })();
+
+    // Card click -> postMessage to parent
+    document.querySelectorAll('.cmd-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var cmd = btn.dataset.cmd || btn.id;
+            if (cmd) parent.postMessage({ type: 'qqq-command', cmd: cmd }, '*');
+        });
+    });
+
+    // ---- Clipboard history polling ----
+    let clipHistory = [];
+    let lastClipText = '';
+    const historyList = document.getElementById('historyList');
+    const searchBox = document.getElementById('searchBox');
+
+    function renderHistory(filter) {
+        const items = filter
+            ? clipHistory.filter(h => {
+                const keywords = filter.toLowerCase().split(/\s+/).filter(Boolean);
+                return keywords.every(kw => h.text.toLowerCase().includes(kw));
+              })
+            : clipHistory;
+        if (!items.length) {
+            historyList.innerHTML = '<div class="empty-hint">Clipboard history will appear here</div>';
+            return;
+        }
+        historyList.innerHTML = items.map((h, i) =>
+            '<div class="history-item" data-idx="' + i + '"><div class="item-preview">' +
+            escapeHtml(h.text.substring(0, 500)) + '</div></div>'
+        ).join('');
+    }
+
+    function escapeHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    async function pollClipboard() {
+        try {
+            const text = await rpc('clipboard.readText');
+            if (text && text !== lastClipText) {
+                lastClipText = text;
+                clipHistory.unshift({ text, time: Date.now() });
+                if (clipHistory.length > 100) clipHistory.pop();
+                renderHistory(searchBox ? searchBox.value : '');
+            }
+        } catch(e) { /* ignore */ }
+    }
+    setInterval(pollClipboard, 800);
+
+    if (searchBox) {
+        searchBox.addEventListener('input', function() { renderHistory(searchBox.value); });
+    }
+
+    // Click history item -> write to clipboard + visual feedback
+    historyList.addEventListener('click', function(e) {
+        const item = e.target.closest('.history-item');
+        if (!item) return;
+        const idx = parseInt(item.dataset.idx);
+        if (clipHistory[idx]) {
+            rpc('clipboard.writeText', clipHistory[idx].text).catch(() => {});
+            item.style.borderColor = 'var(--green)';
+            setTimeout(function() { item.style.borderColor = ''; }, 400);
+        }
+    });
+
+    // ---- Audio controls ----
+    var btnLoop = document.getElementById('btnSavorLoop');
+    var btnStop = document.getElementById('btnSavorStop');
+    var loopIcon = btnLoop ? btnLoop.querySelector('.icon-loop') : null;
+
+    if (btnLoop) {
+        btnLoop.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (loopIcon) loopIcon.classList.add('spinning');
+            rpc('audio.play', { __spread: true, args: ['', { loop: true }] }).catch(() => {});
+        });
+    }
+    if (btnStop) {
+        btnStop.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (loopIcon) loopIcon.classList.remove('spinning');
+            rpc('audio.stop').catch(() => {});
+        });
+    }
+
+    // ---- Video input ----
+    var vi = document.getElementById('videoInput');
+    var vs = document.getElementById('btnVideoStart');
+    if (vi && vs) {
+        vs.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (vi.value.trim()) parent.postMessage({ type: 'qqq-command', cmd: 'qqq.videoStart', url: vi.value.trim() }, '*');
+        });
+        vi.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && vi.value.trim()) parent.postMessage({ type: 'qqq-command', cmd: 'qqq.videoStart', url: vi.value.trim() }, '*');
+        });
+        vi.addEventListener('click', function(e) { e.stopPropagation(); });
+    }
+
+    // ---- Weave hover show inline buttons ----
+    var weaveCard = document.getElementById('weaveCard');
+    var weaveInlineBtns = weaveCard ? weaveCard.querySelector('.weave-inline-btns') : null;
+    if (weaveCard && weaveInlineBtns) {
+        weaveCard.addEventListener('mouseenter', function() { weaveInlineBtns.classList.add('visible'); });
+        weaveCard.addEventListener('mouseleave', function() { weaveInlineBtns.classList.remove('visible'); });
+        // Weave inline sub-buttons: prevent card click, send specific commands
+        var btnCleanFreak = document.getElementById('btnCycleCleanFreak');
+        var btnWeaveRemove = document.getElementById('btnWeaveWithRemove');
+        if (btnCleanFreak) {
+            btnCleanFreak.addEventListener('click', function(e) {
+                e.stopPropagation();
+                parent.postMessage({ type: 'qqq-command', cmd: 'qqq.weave.cleanFreak' }, '*');
+            });
+        }
+        if (btnWeaveRemove) {
+            btnWeaveRemove.addEventListener('click', function(e) {
+                e.stopPropagation();
+                parent.postMessage({ type: 'qqq-command', cmd: 'qqq.weave.remove' }, '*');
+            });
+        }
+    }
+
+    // ---- Settings sub-buttons ----
+    var btnAqUpload = document.getElementById('btnAqUpload');
+    var btnAqDownload = document.getElementById('btnAqDownload');
+    var btnAqGift = document.getElementById('btnAqGift');
+    if (btnAqUpload) {
+        btnAqUpload.addEventListener('click', function(e) {
+            e.stopPropagation();
+            parent.postMessage({ type: 'qqq-command', cmd: 'qqq.cloud.upload' }, '*');
+        });
+    }
+    if (btnAqDownload) {
+        btnAqDownload.addEventListener('click', function(e) {
+            e.stopPropagation();
+            parent.postMessage({ type: 'qqq-command', cmd: 'qqq.cloud.download' }, '*');
+        });
+    }
+    if (btnAqGift) {
+        btnAqGift.addEventListener('click', function(e) {
+            e.stopPropagation();
+            parent.postMessage({ type: 'qqq-command', cmd: 'qqq.gift' }, '*');
+        });
+    }
+
+    // ---- Video URL history dropdown ----
+    var videoHistory = [];
+    var videoDropdown = document.getElementById('videoHistoryDropdown');
+    var videoInput = document.getElementById('videoInput');
+    if (videoInput && videoDropdown) {
+        videoInput.addEventListener('focus', function() {
+            if (videoHistory.length) {
+                videoDropdown.innerHTML = videoHistory.map(function(u) {
+                    return '<div class="history-dropdown-item">' + escapeHtml(u) + '</div>';
+                }).join('');
+                videoDropdown.style.display = 'block';
+            }
+        });
+        videoInput.addEventListener('blur', function() {
+            setTimeout(function() { videoDropdown.style.display = 'none'; }, 200);
+        });
+        videoDropdown.addEventListener('click', function(e) {
+            var item = e.target.closest('.history-dropdown-item');
+            if (item && videoInput) {
+                videoInput.value = item.textContent;
+                videoDropdown.style.display = 'none';
+            }
+        });
+        // Persist video URL on play
+        var origVideoStart = document.getElementById('btnVideoStart');
+        if (origVideoStart) {
+            var origClick = origVideoStart.onclick;
+            origVideoStart.addEventListener('click', function(e) {
+                var url = videoInput.value.trim();
+                if (url && videoHistory.indexOf(url) === -1) {
+                    videoHistory.unshift(url);
+                    if (videoHistory.length > 20) videoHistory.pop();
+                }
+            });
+        }
+    }
+})();
+</script>
+</body>
+</html>

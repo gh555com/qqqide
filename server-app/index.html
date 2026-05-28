@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' qqq-asset: 'unsafe-inline' data:; script-src 'self' qqq-asset: 'unsafe-inline' 'unsafe-eval'; style-src 'self' qqq-asset: 'unsafe-inline'; img-src 'self' qqq-asset: data: blob:; font-src 'self' qqq-asset: data:; connect-src 'self' qqq-asset: http: https:; worker-src 'self' qqq-asset: blob:; frame-src 'self' qqq-asset: http: https: data:">
+<title>qqq</title>
+<script src="core/qqq-theme.js"></script>
+<script src="core/qqq-qoast.js"></script>
+<link rel="stylesheet" href="core/shell.css">
+</head>
+<body>
+
+<div class="qqq-shell">
+
+  <!-- ======== Menu Area (top, full width) ======== -->
+  <div class="qqq-menu-area">
+    <div class="qqq-menu-row qqq-menu-row-1">
+      <div class="qqq-menubar" id="qqq-menubar"></div>
+      <div id="qqq-ai-viewport"></div>
+      <div class="qqq-spacer"></div>
+      <button class="qqq-zoom-btn" id="qqq-zoom-out" title="缩小 UI（Ctrl+-）">&#x2212;</button>
+      <button class="qqq-zoom-btn" id="qqq-zoom-in" title="放大 UI（Ctrl+=）">&#x002B;</button>
+      <button class="qqq-theme-toggle" id="qqq-theme-toggle" title="切换亮色/暗色">&#x263C;</button>
+      <div class="qqq-window-controls">
+        <button class="qqq-wc-btn" id="qqq-wc-min" title="最小化">&#x2014;</button>
+        <button class="qqq-wc-btn" id="qqq-wc-max" title="最大化">&#x25A1;</button>
+        <button class="qqq-wc-btn qqq-wc-close" id="qqq-wc-close" title="关闭">&#x2715;</button>
+      </div>
+    </div>
+    <div class="qqq-menu-row qqq-menu-row-2">
+      <div class="qqq-toolbar" id="qqq-toolbar">
+        <span class="qqq-toolbar-brand">qqq</span>
+        <span class="qqq-goods-bar" id="qqq-goods-bar"></span>
+        <span class="qqq-spacer"></span>
+        <button class="qqq-update-btn" id="qqq-update-btn" title="检查更新" style="display:none">&#x21BB;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======== Middle Area (A + X + AI) ======== -->
+  <div class="qqq-middle">
+    <!-- A Zone: gaea panel (q4 sidebar) -->
+    <div class="qqq-a-zone" id="qqq-a-zone"></div>
+
+    <!-- Sash: A | X -->
+    <div class="qqq-sash qqq-sash-v" data-sash="a-right"></div>
+
+    <!-- X Zone: tab groups (upper) + output (lower) -->
+    <div class="qqq-x-zone" id="qqq-x-zone">
+      <div class="qqq-x-upper" id="qqq-x-upper">
+        <!-- tab groups injected dynamically by tab-manager.js -->
+      </div>
+      <div class="qqq-sash qqq-sash-h qqq-hidden" data-sash="output-top" id="qqq-sash-output"></div>
+      <div class="qqq-x-output qqq-hidden" id="qqq-x-output">
+        <div class="qqq-output-header">
+          <span class="qqq-output-title">Output</span>
+          <span class="qqq-spacer"></span>
+          <button class="qqq-output-close" id="qqq-output-close" title="Hide output">&#x2715;</button>
+        </div>
+        <div class="qqq-output-body" id="qqq-output-body"></div>
+      </div>
+    </div>
+
+    <!-- AI Zone: fixed 389px -->
+    <div class="qqq-ai-zone" id="qqq-ai-zone"></div>
+  </div>
+
+  <!-- ======== Status Area (bottom, full width) ======== -->
+  <div class="qqq-status-area">
+    <div class="qqq-status-row">
+      <span class="qqq-status-item" id="qqq-status-version">v?</span>
+      <span class="qqq-status-item" id="qqq-status-engine">engine ?</span>
+      <span class="qqq-spacer"></span>
+      <span class="qqq-status-item" id="qqq-status-clock"></span>
+    </div>
+  </div>
+
+  <!-- Resize grip (bottom-right triangle) -->
+  <div class="qqq-resize-grip" id="qqq-resize-grip"></div>
+
+</div>
+
+<script src="core/ipc-bridge.js"></script>
+<script src="core/state-sdk.js"></script>
+<script src="core/menu-schema.js"></script>
+<script src="core/sash.js"></script>
+<script src="core/tab-manager.js"></script>
+<script src="core/gaea-host.js"></script>
+<script src="goods/_shim.js"></script>
+<script src="goods/file-explorer/file-explorer.js"></script>
+<script src="ai-panel/ai-panel.js"></script>
+<!-- key-hook MUST load before editor.js / shell.js so they can register handlers -->
+<script src="core/key-hook.js"></script>
+<script src="core/editor.js"></script>
+<script src="goods/rage/services/codelens.js"></script>
+<script src="goods/rage/services/decoration.js"></script>
+<script src="goods/rage/services/paste.js"></script>
+<script src="goods/rage/services/viewzone.js"></script>
+<script src="goods/rage/services/video.js"></script>
+<script src="core/ai-viewport.js"></script>
+<script src="goods/paste-image/paste-image.js"></script>
+<script src="goods/navigator/navigator.js"></script>
+<script src="goods/wysiwyg/wysiwyg.js"></script>
+<script src="goods/rage/rage.js"></script>
+<script src="core/update-ui.js"></script>
+<script src="core/shell.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('./service-worker.js').catch(() => {});
+  }
+</script>
+</body>
+</html>

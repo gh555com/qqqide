@@ -1,0 +1,142 @@
+// ============================================================================
+// service-worker.js
+// PWA strategy:
+//   - index.html / navigation : network-first(2s), fallback cache, last-resort 503
+//   - core/* qoods/* assets   : stale-while-revalidate
+//   - health                  : network-only (no cache)
+//   - qqq-asset://*           : passthrough (electron handles it)
+// Cache version bumps on each shell.css/js change.
+// ============================================================================
+
+const CACHE_NAME = 'qqq-shell-v2';
+const PRECACHE_URLS = [
+  './',
+  './index.html',
+  './core/shell.css',
+  './core/shell.js',
+  './core/ipc-bridge.js',
+  './core/menu-schema.js',
+  './core/editor.js',
+  './goods/file-explorer/file-explorer.js',
+];
+
+// ----------------------------------------------------------------------------
+// Install: precache critical shell. Failures must NOT block install.
+// ----------------------------------------------------------------------------
+self.addEventListener('install', evt => {
+  evt.waitUntil((async () => {
+    try {
+      const cache = await caches.open(CACHE_NAME);
+      // Use individual put() so a single 404 doesn't fail the whole batch.
+      await Promise.all(PRECACHE_URLS.map(async url => {
+        try {
+          const res = await fetch(url, { cache: 'no-cache' });
+          if (res && res.ok) { await cache.put(url, res.clone()); }
+        } catch (_) { /* ignore single asset miss */ }
+      }));
+    } catch (_) { /* ignore */ }
+    await self.skipWaiting();
+  })());
+});
+
+// ----------------------------------------------------------------------------
+// Activate: clean old cache versions, claim clients.
+// ----------------------------------------------------------------------------
+self.addEventListener('activate', evt => {
+  evt.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)));
+    await self.clients.claim();
+  })());
+});
+
+// ----------------------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------------------
+function isHealth(url) { return url.pathname.endsWith('/health'); }
+function isHTML(req) {
+  return req.mode === 'navigate' || (req.headers.get('accept') || '').includes('text/html');
+}
+function isAssetScheme(url) {
+  // Skip our custom electron-served scheme entirely.
+  return url.protocol === 'qqq-asset:' || url.protocol === 'devtools:' || url.protocol === 'chrome:';
+}
+function timeout(ms) {
+  return new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
+}
+
+// network-first with timeout, write-through cache.
+async function networkFirst(req, ms) {
+  const cache = await caches.open(CACHE_NAME);
+  try {
+    const res = await Promise.race([fetch(req), timeout(ms)]);
+    if (res && res.ok) {
+      try { await cache.put(req, res.clone()); } catch (_) {}
+    }
+    return res;
+  } catch (_) {
+    const cached = await cache.match(req) || await cache.match('./index.html') || await cache.match('./');
+    if (cached) { return cached; }
+    return new Response(
+      '<!doctype html><meta charset=utf-8><title>offline</title>' +
+      '<style>body{background:#fdf6e3;color:#586e75;font-family:sans-serif;padding:40px;text-align:center}</style>' +
+      '<h2>qqq-shell · offline</h2><p>无可用缓存。请稍后再试。</p>',
+      { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    );
+  }
+}
+
+// stale-while-revalidate for static.
+async function staleWhileRevalidate(req) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(req);
+  const fetched = fetch(req).then(res => {
+    if (res && res.ok) {
+      try { cache.put(req, res.clone()); } catch (_) {}
+    }
+    return res;
+  }).catch(() => cached);
+  return cached || fetched;
+}
+
+// ----------------------------------------------------------------------------
+// Fetch routing
+// ----------------------------------------------------------------------------
+self.addEventListener('fetch', evt => {
+  const req = evt.request;
+  if (req.method !== 'GET') { return; }
+  let url;
+  try { url = new URL(req.url); } catch (_) { return; }
+
+  // Skip schemes we shouldn't touch.
+  if (isAssetScheme(url)) { return; }
+  // health: never cache.
+  if (isHealth(url)) { return; }
+
+  if (isHTML(req)) {
+    evt.respondWith(networkFirst(req, 2500));
+    return;
+  }
+
+  // Same-origin static -> SWR.
+  if (url.origin === self.location.origin) {
+    evt.respondWith(staleWhileRevalidate(req));
+    return;
+  }
+  // Cross-origin (e.g. CDN font) -> cache-first best-effort.
+  evt.respondWith(staleWhileRevalidate(req));
+});
+
+// ----------------------------------------------------------------------------
+// Message: allow page to trigger skipWaiting / clear-cache from devtools.
+// ----------------------------------------------------------------------------
+self.addEventListener('message', evt => {
+  const data = evt.data || {};
+  if (data.type === 'skipWaiting') { self.skipWaiting(); }
+  if (data.type === 'clearCache') {
+    evt.waitUntil((async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.map(k => caches.delete(k)));
+    })());
+  }
+});

@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "bindings": [
+    {
+      "id": "tools.toggleDevTools",
+      "accel": "F12",
+      "scope": "window"
+    },
+    {
+      "id": "tools.toggleDevTools",
+      "accel": "Ctrl+Shift+I",
+      "scope": "window"
+    },
+    {
+      "id": "zoom.in",
+      "accel": "Ctrl+=",
+      "scope": "window"
+    },
+    {
+      "id": "zoom.in",
+      "accel": "Ctrl++",
+      "scope": "window"
+    },
+    {
+      "id": "zoom.out",
+      "accel": "Ctrl+-",
+      "scope": "window"
+    },
+    {
+      "id": "zoom.reset",
+      "accel": "Ctrl+0",
+      "scope": "window"
+    },
+    {
+      "id": "editor.splitRight",
+      "accel": "Ctrl+\\",
+      "scope": "window"
+    },
+    {
+      "id": "window.activateRoam",
+      "accel": "Tab",
+      "scope": "window",
+      "when": "noEditing"
+    },
+    {
+      "id": "window.activateRoam",
+      "accel": "Space+Q",
+      "scope": "global"
+    },
+    {
+      "id": "roam.openInIde",
+      "accel": "Q",
+      "scope": "iframe:roam",
+      "when": "noEditing && itemSelected"
+    },
+    {
+      "id": "roam.openMedia",
+      "accel": "W",
+      "scope": "iframe:roam",
+      "when": "noEditing && itemSelected"
+    },
+    {
+      "id": "roam.requestSize",
+      "accel": "Space",
+      "scope": "iframe:roam",
+      "when": "noEditing && itemSelected"
+    },
+    {
+      "id": "roam.scrollTop",
+      "accel": "1",
+      "scope": "iframe:roam",
+      "when": "noEditing"
+    },
+    {
+      "id": "roam.scrollBottom",
+      "accel": "2",
+      "scope": "iframe:roam",
+      "when": "noEditing"
+    }
+  ]
+}

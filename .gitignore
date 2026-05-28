@@ -1,0 +1,63 @@
+node_modules/
+shell-out/
+dist-pack/
+userData/
+cache/
+temp/
+logs/
+crashDumps/
+*.log
+.DS_Store
+Thumbs.db
+config.json
+
+# Python 缓存
+engines/__pycache__/
+
+# Rust 编译产物
+ghrun/target/
+
+# Electron 构建缓存
+shell-build/_cache/
+shell-build/*.zip
+
+# 截图与临时文件
+*.png
+*.jpg
+*.jpeg
+*.gif
+
+# 标记文件
+nul
+health
+q1
+_quit_marker
+zoom.json.migrated
+
+# 根目录死文件（唯一真理源在 server-app/）
+/index.html
+/service-worker.js
+
+# IDE 本地配置
+.qoder/
+
+# 服务端运行时
+server-app/runtime/
+
+# 根目录禁止存在，唯一真理源：server-app/X/
+/core/
+/ai-panel/
+/qoods/
+/goods/
+
+# 私有数据（不公开）
+qqq/
+do/
+
+# 敏感配置（含 secrets/token）
+.qqq-rules.txt
+qide-shell.py
+
+# 临时脚本
+_push_*
+push_*.txt

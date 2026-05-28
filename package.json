@@ -1,0 +1,100 @@
+{
+  "name": "qqq-shell-v2",
+  "version": "0.0.1",
+  "description": "QQQ Shell v2 - portable Electron host that loads remote UI 100% from server. Win7+ compatible, zero C-drive write.",
+  "private": true,
+  "main": "shell-out/main.js",
+  "scripts": {
+    "build": "node shell-build/esbuild.config.js",
+    "build:watch": "node shell-build/esbuild.config.js --watch",
+    "start": "npm run build && electron .",
+    "start:offline": "npm run build && electron . --offline",
+    "dev:server": "node shell-build/dev-server.js",
+    "dev:shell": "npm run build && electron . --dev",
+    "dev": "node shell-build/dev-launch.js",
+    "pack:win-x64": "npm run build && node shell-build/pack.js --target=win-x64",
+    "pack:win-arm64": "npm run build && node shell-build/pack.js --target=win-arm64",
+    "pack:linux-x64": "npm run build && node shell-build/pack.js --target=linux-x64",
+    "pack:linux-arm64": "npm run build && node shell-build/pack.js --target=linux-arm64",
+    "pack:mac-x64": "npm run build && node shell-build/pack.js --target=mac-x64",
+    "pack:mac-arm64": "npm run build && node shell-build/pack.js --target=mac-arm64",
+    "pack:all": "npm run pack:win-x64 && npm run pack:win-arm64 && npm run pack:linux-x64 && npm run pack:linux-arm64 && npm run pack:mac-x64 && npm run pack:mac-arm64",
+    "deploy": "node shell-build/deploy.js",
+    "deploy:dry": "node shell-build/deploy.js --dry-run"
+  },
+  "dependencies": {
+    "monaco-editor": "0.34.1",
+    "sql.js": "^1.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "16.18.68",
+    "electron": "22.3.27",
+    "electron-builder": "^23.6.0",
+    "esbuild": "0.19.12",
+    "typescript": "5.0.4"
+  },
+  "_packagingDeps": {
+    "_comment": "Install only when packaging: npm i -D electron-builder@23.6.0",
+    "electron-builder": "23.6.0"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "build": {
+    "appId": "com.qqq.shell",
+    "productName": "qqq-shell",
+    "asar": false,
+    "compression": "store",
+    "directories": {
+      "output": "dist-pack"
+    },
+    "files": [
+      "shell-out/**",
+      "shell/boot-fallback.html",
+      "engines/**",
+      "node_modules/monaco-editor/min/**",
+      "node_modules/sql.js/**",
+      "node_modules/sql.js/**",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "shell/icon.ico"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    }
+  },
+  "_qqqShellNotes": {
+    "electronLock": "22.3.27 is the LAST Electron version supporting Windows 7. NEVER UPGRADE.",
+    "monacoLock": "0.34.1 is the last monaco-editor that runs on Chromium 108 (Electron 22).",
+    "portable": "All user data goes to ./userData, ./cache, ./logs in app dir. Zero C-drive writes."
+  }
+}

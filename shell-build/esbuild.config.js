@@ -1,0 +1,46 @@
+// ============================================================================
+// esbuild.config.js - bundle shell/*.ts -> shell-out/*.js for electron main.
+// CommonJS output, target node16 (electron 22 ships node 16.17).
+// ============================================================================
+
+const esbuild = require('esbuild');
+const path = require('path');
+const fs = require('fs');
+
+const ROOT = path.resolve(__dirname, '..');
+const SRC = path.join(ROOT, 'shell');
+const OUT = path.join(ROOT, 'shell-out');
+
+const isWatch = process.argv.includes('--watch');
+
+const entries = [
+  path.join(SRC, 'main.ts'),
+  path.join(SRC, 'preload.ts'),
+];
+
+const baseOpts = {
+  bundle: true,
+  platform: 'node',
+  target: 'node16',
+  format: 'cjs',
+  outdir: OUT,
+  outExtension: { '.js': '.js' },
+  sourcemap: true,
+  external: ['electron', 'sql.js'],
+  logLevel: 'info',
+};
+
+async function build() {
+  fs.mkdirSync(OUT, { recursive: true });
+
+  if (isWatch) {
+    const ctx = await esbuild.context({ ...baseOpts, entryPoints: entries });
+    await ctx.watch();
+    console.log('[esbuild] watching shell/...');
+  } else {
+    await esbuild.build({ ...baseOpts, entryPoints: entries });
+    console.log('[esbuild] built ->', OUT);
+  }
+}
+
+build().catch(e => { console.error(e); process.exit(1); });

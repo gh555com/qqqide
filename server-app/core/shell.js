@@ -1,0 +1,688 @@
+// ============================================================================
+// shell.js - QQQ Shell v2 - NEW layout bootstrap
+// Layout: Menu(top) | A-zone + X-zone + AI-zone (middle) | Status(bottom)
+// ============================================================================
+(function () {
+  'use strict';
+
+  const bridge = window.qqqBridge;
+  const ROOT = document.documentElement;
+  const MIN = 123;
+  const AI_W = 389;
+  const SASH_W = 6;
+
+  // ---- Layout state (persisted via StateStore, not localStorage) ----
+  const STATE_NS = 'qqq.shell';
+  const STATE_KEY = 'layout_v2';
+  let layoutState = {
+    aZoneW: 220,
+    outputH: 200,
+    outputVisible: false,
+  };
+
+  async function loadState() {
+    // 1) try StateStore first
+    try {
+      if (bridge && bridge.state && bridge.state.get) {
+        const v = await bridge.state.get(STATE_NS, STATE_KEY);
+        if (v && typeof v === 'object') {
+          if (typeof v.aZoneW === 'number') layoutState.aZoneW = v.aZoneW;
+          if (typeof v.outputH === 'number') layoutState.outputH = v.outputH;
+          if (typeof v.outputVisible === 'boolean') layoutState.outputVisible = v.outputVisible;
+        }
+      }
+    } catch (_) { /* fall through to defaults */ }
+    // 2) migration: if StateStore had no value, try old localStorage key
+    const _stillDefault = layoutState.aZoneW === 220 && layoutState.outputH === 200 && !layoutState.outputVisible;
+    if (_stillDefault) {
+      try {
+        const raw = localStorage.getItem('qqq-layout-v2');
+        if (raw) {
+          const old = JSON.parse(raw);
+          if (typeof old.aZoneW === 'number') layoutState.aZoneW = old.aZoneW;
+          if (typeof old.outputH === 'number') layoutState.outputH = old.outputH;
+          if (typeof old.outputVisible === 'boolean') layoutState.outputVisible = old.outputVisible;
+          // one-time migrate: push to StateStore, remove localStorage
+          try { localStorage.removeItem('qqq-layout-v2'); } catch (_) { }
+          try { if (bridge && bridge.state && bridge.state.set) bridge.state.set(STATE_NS, STATE_KEY, layoutState); } catch (_) { }
+        }
+      } catch (_) { }
+    }
+    layoutState.aZoneW = Math.max(MIN, layoutState.aZoneW || 220);
+    layoutState.outputH = Math.max(MIN, layoutState.outputH || 200);
+  }
+
+  function persistState() {
+    // Authoritative: StateStore (debounced, atomic, cloud=true via qqq.shell).
+    try {
+      if (bridge && bridge.state && bridge.state.set) {
+        bridge.state.set(STATE_NS, STATE_KEY, {
+          aZoneW: layoutState.aZoneW,
+          outputH: layoutState.outputH,
+          outputVisible: layoutState.outputVisible,
+        }).catch(() => { });
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  // ---- CSS variable helpers ----
+  function applyLayout() {
+    const aEl = document.getElementById('qqq-a-zone');
+    if (aEl && !aEl.classList.contains('qqq-collapsed')) {
+      aEl.style.flexBasis = layoutState.aZoneW + 'px';
+      aEl.style.width = layoutState.aZoneW + 'px';
+    }
+    const oEl = document.getElementById('qqq-x-output');
+    if (oEl) {
+      oEl.style.flexBasis = layoutState.outputH + 'px';
+      oEl.style.height = layoutState.outputH + 'px';
+    }
+  }
+
+  // ---- Window resize: proportional scaling, frozen min panels stay frozen ----
+  let _prevWinW = 0;
+  let _prevWinH = 0;
+
+  function onWindowResize() {
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    if (_prevWinW === 0) { _prevWinW = winW; _prevWinH = winH; }
+
+    const aEl = document.getElementById('qqq-a-zone');
+    if (aEl && !aEl.classList.contains('qqq-collapsed')) {
+      const oldA = layoutState.aZoneW;
+      // available middle width = win - AI - sash
+      const oldAvail = _prevWinW - AI_W - SASH_W;
+      const newAvail = winW - AI_W - SASH_W;
+      if (oldAvail > 0 && newAvail > 0) {
+        if (oldA <= MIN) {
+          // frozen at min, keep at min
+          layoutState.aZoneW = MIN;
+        } else {
+          const ratio = oldA / oldAvail;
+          layoutState.aZoneW = Math.max(MIN, Math.round(ratio * newAvail));
+        }
+      }
+    }
+
+    // output height proportional
+    const xEl = document.getElementById('qqq-x-zone');
+    if (xEl && layoutState.outputVisible) {
+      const oldXH = _prevWinH - 60 - 24; // approx menu + status
+      const newXH = winH - 60 - 24;
+      if (oldXH > 0 && newXH > 0) {
+        const oldO = layoutState.outputH;
+        if (oldO <= MIN) {
+          layoutState.outputH = MIN;
+        } else {
+          const ratio = oldO / oldXH;
+          layoutState.outputH = Math.max(MIN, Math.round(ratio * newXH));
+        }
+      }
+    }
+
+    _prevWinW = winW;
+    _prevWinH = winH;
+    applyLayout();
+  }
+
+  // ---- Window controls ----
+  function bootWindowControls() {
+    const $min = document.getElementById('qqq-wc-min');
+    const $max = document.getElementById('qqq-wc-max');
+    const $close = document.getElementById('qqq-wc-close');
+    if ($min) $min.addEventListener('click', () => bridge.window.minimize());
+    if ($max) $max.addEventListener('click', async () => {
+      const isMax = await bridge.window.isMaximized();
+      if (isMax) bridge.window.unmaximize(); else bridge.window.maximize();
+    });
+    if ($close) $close.addEventListener('click', () => bridge.window.close());
+  }
+
+  // ---- Theme toggle (委托唯一真理配色机器) ----
+  function bootThemeToggle() {
+    const $btn = document.getElementById('qqq-theme-toggle');
+    if (!$btn) return;
+    const T = window.qqqTheme;
+    function syncBtn(dark) {
+      $btn.textContent = dark ? '\u263C' : '\u263D';
+      $btn.title = dark ? '切换到亮色' : '切换到暗色';
+    }
+    syncBtn(T.isDark());
+    T.onChange(syncBtn);
+    $btn.addEventListener('click', () => T.apply(!T.isDark()));
+  }
+
+  // ---- AI Viewport (titlebar row 1) ----
+  function bootAiViewport() {
+    const host = document.getElementById('qqq-ai-viewport');
+    if (!host || !window.qqqAiViewport) return;
+    window.qqqAiViewport.build(host);
+  }
+
+  // ---- Menubar labels (clickable, opens HTML dropdown of sub items) ----
+  let _activeMenubarPopup = null;
+  function closeMenubarPopup() {
+    if (_activeMenubarPopup) { try { _activeMenubarPopup.remove(); } catch (_) { } _activeMenubarPopup = null; }
+  }
+  function openMenubarPopup(anchorEl, item) {
+    closeMenubarPopup();
+    if (!item.sub || item.sub.length === 0) return;
+    const rect = anchorEl.getBoundingClientRect();
+    const pop = document.createElement('div');
+    pop.className = 'qqq-menubar-popup';
+    pop.style.cssText =
+      'position:fixed; z-index:99999; ' +
+      'left:' + rect.left + 'px; top:' + rect.bottom + 'px; ' +
+      'min-width:180px; background:var(--card-bg); ' +
+      'border:1px solid var(--border-color); border-radius:3px; ' +
+      'box-shadow:0 4px 16px rgba(0,0,0,.18); padding:4px 0;';
+    for (const s of item.sub) {
+      if (s.type === 'separator') {
+        const sep = document.createElement('div');
+        sep.style.cssText = 'height:1px; margin:4px 8px; background:var(--border-color);';
+        pop.appendChild(sep);
+        continue;
+      }
+      const row = document.createElement('div');
+      row.style.cssText =
+        'display:flex; align-items:center; padding:5px 14px; ' +
+        'cursor:pointer; font-size:12px; color:var(--text-primary); ' +
+        'white-space:nowrap; user-select:none;';
+      const lab = document.createElement('span');
+      lab.textContent = s.label || '';
+      lab.style.cssText = 'flex:1 1 auto;';
+      row.appendChild(lab);
+      if (s.accel) {
+        const acc = document.createElement('span');
+        acc.textContent = s.accel;
+        acc.style.cssText = 'margin-left:24px; color:var(--base1); font-size:11px;';
+        row.appendChild(acc);
+      }
+      row.addEventListener('mouseenter', () => { row.style.background = 'var(--background-color)'; });
+      row.addEventListener('mouseleave', () => { row.style.background = ''; });
+      row.addEventListener('click', (e) => {
+        e.stopPropagation();
+        closeMenubarPopup();
+        if (s.cmd) {
+          handleMenuCmd(s.cmd);
+        } else if (s.role === 'quit') {
+          bridge.window.close();
+        }
+      });
+      pop.appendChild(row);
+    }
+    document.body.appendChild(pop);
+    _activeMenubarPopup = pop;
+  }
+  function handleMenuCmd(cmd) {
+    if (cmd === 'tools.toggleDevTools') {
+      if (bridge.window && bridge.window.toggleDevTools) { bridge.window.toggleDevTools(); }
+      return;
+    }
+    if (cmd === 'help.about') {
+      bridge.dialog.message({ type: 'info', title: '关于 qqq', message: 'qqq-shell v2', detail: '便携 / Win7+ / 100% 服务器热更' });
+      return;
+    }
+    if (cmd === 'file.new' || cmd === 'file.open') {
+      window.dispatchEvent(new CustomEvent('qqq-menu-cmd', { detail: { cmd } }));
+      return;
+    }
+    if (cmd === 'file.newWindow') {
+      if (bridge.window && bridge.window.new) {
+        bridge.window.new().then(function (r) {
+          if (r && !r.ok) { console.warn('[shell] new window failed'); }
+        });
+      }
+      return;
+    }
+    // ---- Zoom (also reachable via Ctrl+= / Ctrl+- / Ctrl+0 via key-hook) ----
+    if (cmd === 'zoom.in') { bridge.zoom && bridge.zoom.adjust(0.05); return; }
+    if (cmd === 'zoom.out') { bridge.zoom && bridge.zoom.adjust(-0.05); return; }
+    if (cmd === 'zoom.reset') { bridge.zoom && bridge.zoom.set(0.85); return; }
+    // ---- Editor split right (Ctrl+\) ----
+    if (cmd === 'editor.splitRight') {
+      if (!window.qqqTabs) return;
+      const groups = window.qqqTabs.getGroups();
+      let activeFilePath = null;
+      for (let i = groups.length - 1; i >= 0; i--) {
+        const g = groups[i];
+        if (g.type !== 'file') continue;
+        const t = g.tabs.find(x => x.id === g.activeTabId);
+        if (t && t.filePath) { activeFilePath = t.filePath; break; }
+      }
+      if (activeFilePath) {
+        console.log('[shell] split right:', activeFilePath);
+        window.qqqTabs.openFileInRightGroup(activeFilePath);
+      }
+      return;
+    }
+    // ---- Roam window activation (Tab / Space+Q global) ----
+    if (cmd === 'window.activateRoam') {
+      // Focus the q2-roam iframe if present
+      const it = document.querySelector('iframe[src*="q2-roam"]');
+      if (it && it.contentWindow) {
+        try { it.contentWindow.focus(); } catch (e) { }
+      }
+      return;
+    }
+    // ---- Roam in-iframe commands: forward back into the iframe ----
+    if (cmd === 'roam.openInIde' || cmd === 'roam.openMedia' ||
+      cmd === 'roam.requestSize' || cmd === 'roam.scrollTop' ||
+      cmd === 'roam.scrollBottom') {
+      const it = document.querySelector('iframe[src*="q2-roam"]');
+      if (it && it.contentWindow) {
+        try { it.contentWindow.postMessage({ type: 'qqq-roam-cmd', cmd }, '*'); } catch (e) { }
+      }
+      return;
+    }
+    console.log('[menu] unhandled cmd:', cmd);
+  }
+  function renderMenubarLabels(schema) {
+    const $bar = document.getElementById('qqq-menubar');
+    if (!$bar || !schema) return;
+    $bar.innerHTML = '';
+    for (const item of schema.items || []) {
+      const span = document.createElement('span');
+      span.className = 'qqq-menubar-label';
+      span.textContent = item.label || '';
+      span.style.cssText =
+        'padding:0 10px; cursor:pointer; color:var(--text-primary); ' +
+        'user-select:none; height:100%; display:inline-flex; align-items:center;';
+      span.addEventListener('mouseenter', () => { span.style.background = 'rgba(128,128,128,0.10)'; });
+      span.addEventListener('mouseleave', () => { span.style.background = ''; });
+      span.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // toggle: if popup already open for THIS label, close; else open
+        if (_activeMenubarPopup && _activeMenubarPopup._anchor === span) {
+          closeMenubarPopup();
+        } else {
+          openMenubarPopup(span, item);
+          if (_activeMenubarPopup) _activeMenubarPopup._anchor = span;
+        }
+      });
+      $bar.appendChild(span);
+    }
+    // global click to close
+    document.addEventListener('mousedown', (e) => {
+      if (!_activeMenubarPopup) return;
+      if (_activeMenubarPopup.contains(e.target)) return;
+      if (e.target.closest && e.target.closest('.qqq-menubar-label')) return;
+      closeMenubarPopup();
+    });
+  }
+
+  async function bootMenu() {
+    const schema = window.qqqDefaultMenuSchema;
+    if (!schema) return;
+    try { await bridge.menu.set(schema); } catch (e) { console.warn('[shell] menu.set failed', e); }
+    renderMenubarLabels(schema);
+    bridge.menu.onFired(cmd => {
+      console.log('[menu fired native]', cmd);
+      handleMenuCmd(cmd);
+    });
+  }
+
+  // ---- Zoom +/- buttons (step 0.05) ----
+  function bootZoomButtons() {
+    const $in = document.getElementById('qqq-zoom-in');
+    const $out = document.getElementById('qqq-zoom-out');
+    if (!bridge.zoom) return;
+    if ($in) $in.addEventListener('click', async () => {
+      const f = await bridge.zoom.adjust(0.05);
+      console.log('[zoom] →', f);
+    });
+    if ($out) $out.addEventListener('click', async () => {
+      const f = await bridge.zoom.adjust(-0.05);
+      console.log('[zoom] →', f);
+    });
+  }
+
+  // ---- Statusbar ----
+  function bootStatusbar(boot) {
+    const $ver = document.getElementById('qqq-status-version');
+    const $eng = document.getElementById('qqq-status-engine');
+    const $clk = document.getElementById('qqq-status-clock');
+    if ($ver) $ver.textContent = 'v' + (boot.version || '?');
+    if ($eng) $eng.textContent = 'engine: ' + (boot.engineAlive ? 'on' : 'off');
+    if ($clk) {
+      const tick = () => {
+        const d = new Date();
+        $clk.textContent =
+          String(d.getHours()).padStart(2, '0') + ':' +
+          String(d.getMinutes()).padStart(2, '0') + ':' +
+          String(d.getSeconds()).padStart(2, '0');
+      };
+      tick();
+      setInterval(tick, 1000);
+    }
+  }
+
+  // ---- A Zone (gaea host) ----
+  function bootAZone() {
+    const host = document.getElementById('qqq-a-zone');
+    if (!host) return;
+    if (window.qqqGaea) {
+      window.qqqGaea.build(host);
+    } else {
+      host.innerHTML = '<div style="padding:12px; color:var(--base1); font-size:12px;">gaea host loading...</div>';
+    }
+  }
+
+  // ---- Tab Manager (X zone upper) ----
+  function bootTabManager() {
+    const xUpper = document.getElementById('qqq-x-upper');
+    if (!xUpper || !window.qqqTabs) return;
+    window.qqqTabs.init(xUpper);
+    // Roam tab is now provided by rage goods (via gaea-host tabs protocol).
+  }
+
+  // ---- AI Zone ----
+  function bootAiZone() {
+    const host = document.getElementById('qqq-ai-zone');
+    if (!host || !window.qqqAiPanel) return;
+    window.qqqAiPanel.build(host);
+  }
+
+  // ---- Output panel ----
+  function bootOutputPanel() {
+    const outEl = document.getElementById('qqq-x-output');
+    const sashEl = document.getElementById('qqq-sash-output');
+    const closeBtn = document.getElementById('qqq-output-close');
+
+    if (!layoutState.outputVisible && outEl) {
+      outEl.classList.add('qqq-hidden');
+      if (sashEl) sashEl.classList.add('qqq-hidden');
+    }
+
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        hideOutput();
+      });
+    }
+  }
+
+  function showOutput() {
+    const outEl = document.getElementById('qqq-x-output');
+    const sashEl = document.getElementById('qqq-sash-output');
+    if (outEl) {
+      outEl.classList.remove('qqq-hidden');
+      outEl.style.flexBasis = layoutState.outputH + 'px';
+      outEl.style.height = layoutState.outputH + 'px';
+    }
+    if (sashEl) sashEl.classList.remove('qqq-hidden');
+    layoutState.outputVisible = true;
+    persistState();
+  }
+
+  function hideOutput() {
+    const outEl = document.getElementById('qqq-x-output');
+    const sashEl = document.getElementById('qqq-sash-output');
+    if (outEl) outEl.classList.add('qqq-hidden');
+    if (sashEl) sashEl.classList.add('qqq-hidden');
+    layoutState.outputVisible = false;
+    persistState();
+  }
+
+  // ---- Sashes ----
+  function bootSashes() {
+    // A-zone | X-zone sash
+    const aSash = document.querySelector('[data-sash="a-right"]');
+    const aEl = document.getElementById('qqq-a-zone');
+    const xEl = document.getElementById('qqq-x-zone');
+    if (aSash && aEl && xEl) {
+      window.qqqSash.bindV(aSash,
+        [{
+          getW: () => aEl.offsetWidth,
+          setW: w => { layoutState.aZoneW = w; aEl.style.flexBasis = w + 'px'; aEl.style.width = w + 'px'; },
+          min: MIN,
+        }],
+        [{
+          getW: () => xEl.offsetWidth,
+          setW: w => { /* X zone is flex:1, auto-adjusts */ },
+          min: MIN,
+        }]
+      );
+    }
+
+    // Output sash (horizontal)
+    const oSash = document.getElementById('qqq-sash-output');
+    const xUpper = document.getElementById('qqq-x-upper');
+    const oEl = document.getElementById('qqq-x-output');
+    if (oSash && xUpper && oEl) {
+      window.qqqSash.bindH(oSash,
+        [{
+          getH: () => xUpper.offsetHeight,
+          setH: h => { /* upper auto-adjusts */ },
+          min: MIN,
+        }],
+        [{
+          getH: () => oEl.offsetHeight,
+          setH: h => { layoutState.outputH = h; oEl.style.flexBasis = h + 'px'; oEl.style.height = h + 'px'; },
+          min: MIN,
+        }]
+      );
+    }
+  }
+
+  // ---- Resize grip ----
+  function bootResizeGrip() {
+    const grip = document.getElementById('qqq-resize-grip');
+    if (!grip || !bridge || !bridge.window) return;
+
+    // In Electron, resize grip is handled via -webkit-app-region or IPC
+    // For custom frame, we handle via IPC startResize if available
+    // Otherwise it's just a visual indicator (Electron handles nwse-resize via the window frame)
+  }
+
+  // ---- Editor integration: open file from file explorer ----
+  function hookFileExplorerToTabs() {
+    // Listen for file-open events from file explorer
+    // The file explorer dispatches 'qqq-file-open' custom event
+    document.addEventListener('qqq-file-open', (e) => {
+      const filePath = e.detail && e.detail.path;
+      if (!filePath) return;
+
+      // Open in tab manager
+      const tab = window.qqqTabs.openFile(filePath, {
+        onRender: (pane, tabObj) => {
+          // Use Monaco editor to render file
+          if (window.qqqEditor) {
+            pane.style.cssText = 'position:relative; width:100%; height:100%;';
+            const editorMount = document.createElement('div');
+            editorMount.style.cssText = 'position:absolute; inset:0;';
+            pane.appendChild(editorMount);
+            // Read and display file
+            bridge.fs.read(filePath).then(content => {
+              window.qqqEditor.openInPane(editorMount, filePath, content);
+            }).catch(err => {
+              pane.textContent = 'Error: ' + (err && err.message);
+            });
+          }
+        }
+      });
+    });
+
+    // Listen for qqq-file-open-in-pane (from tab-manager right-click -> open in right group)
+    document.addEventListener('qqq-file-open-in-pane', (e) => {
+      const filePath = e.detail && e.detail.path;
+      const pane = e.detail && e.detail.pane;
+      if (!filePath || !pane) return;
+      if (window.qqqEditor) {
+        pane.style.cssText = 'position:relative; width:100%; height:100%;';
+        const editorMount = document.createElement('div');
+        editorMount.style.cssText = 'position:absolute; inset:0;';
+        pane.appendChild(editorMount);
+        bridge.fs.read(filePath).then(content => {
+          window.qqqEditor.openInPane(editorMount, filePath, content);
+        }).catch(err => {
+          pane.textContent = 'Error: ' + (err && err.message);
+        });
+      }
+    });
+
+    // ---- Keyboard: Ctrl+\ split → now handled by unified key-hook (see bootKeyHook) ----
+    // (hard-coded keydown removed; binding lives in core/key-bindings.json under id 'editor.splitRight')
+  }
+
+  // ---- Unified postMessage RPC forwarder for all qood iframes ----
+  function bootRpcForwarder() {
+    window.addEventListener('message', async (e) => {
+      if (!e.data) return;
+
+      // Handle qqq-file-open from iframes (q2-roam, etc.)
+      if (e.data.type === 'qqq-file-open' && e.data.path) {
+        document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: e.data.path } }));
+        return;
+      }
+
+      // Handle qqq-file-open-right from iframes → opens file in right editor group
+      if (e.data.type === 'qqq-file-open-right' && e.data.path && window.qqqTabs && window.qqqTabs.openFileInRightGroup) {
+        window.qqqTabs.openFileInRightGroup(e.data.path);
+        return;
+      }
+
+      // Handle qqq-command from iframes (q4-sidebar, etc.)
+      if (e.data.type === 'qqq-command' && e.data.cmd) {
+        document.dispatchEvent(new CustomEvent('qqq-command', { detail: { cmd: e.data.cmd, url: e.data.url } }));
+        return;
+      }
+
+      // Handle generic RPC: iframe calls bridge methods
+      // params 默认整体当成单一参数（数组也是单一参数，修掉 diskFree 当前 bug）
+      // 显式 spread: 传 { __spread: true, args: [...] } 才解构
+      if (e.data.type === 'qqq-rpc') {
+        const { method, params, id } = e.data;
+        try {
+          const parts = method.split('.');
+          let fn = bridge;
+          for (const k of parts) fn = fn[k];
+          let result;
+          if (params && typeof params === 'object' && params.__spread === true && Array.isArray(params.args)) {
+            result = await fn.apply(null, params.args);
+          } else if (params === undefined) {
+            result = await fn.call(null);
+          } else {
+            result = await fn.call(null, params);
+          }
+          if (e.source) e.source.postMessage({ type: 'qqq-rpc-reply', id, result, error: null }, '*');
+        } catch (err) {
+          if (e.source) e.source.postMessage({ type: 'qqq-rpc-reply', id, result: null, error: { message: String(err) } }, '*');
+        }
+      }
+    });
+  }
+
+  // ---- Boot info ----
+  function fillBootInfo(boot) {
+    console.log('[qqq-shell] boot info:', {
+      platform: boot.platform,
+      arch: boot.arch,
+      version: boot.version,
+      engineAlive: boot.engineAlive,
+      electron: !!window.qqqIsElectron,
+    });
+  }
+
+  // ---- KeyHookService bootstrap ----
+  // - Loads core/key-bindings.json
+  // - Initializes window.qqqKeyHook with the binding list
+  // - Routes any unhandled binding (no explicit on() handler) into handleMenuCmd
+  async function bootKeyHook() {
+    if (!window.qqqKeyHook) {
+      console.warn('[keyhook] window.qqqKeyHook missing — script not loaded?');
+      return;
+    }
+    let bindings = [];
+    try {
+      const res = await fetch('core/key-bindings.json', { cache: 'no-store' });
+      bindings = await res.json();
+      if (!Array.isArray(bindings)) bindings = [];
+    } catch (e) {
+      console.warn('[keyhook] failed to load key-bindings.json:', e && e.message);
+    }
+    try {
+      window.qqqKeyHook.init(bindings);
+    } catch (e) {
+      console.warn('[keyhook] init failed:', e && e.message);
+      return;
+    }
+    // Catch-all: every binding emits a DOM event when no explicit handler is wired.
+    document.addEventListener('qqq-key-cmd', (e) => {
+      const id = e.detail && e.detail.id;
+      if (!id) return;
+      handleMenuCmd(id);
+    });
+    console.log('[keyhook] ready, bindings=' + bindings.length);
+  }
+
+  // ---- Main ----
+  async function main() {
+    await loadState();
+    applyLayout();
+
+    _prevWinW = window.innerWidth;
+    _prevWinH = window.innerHeight;
+    window.addEventListener('resize', onWindowResize);
+
+    bootWindowControls();
+    bootThemeToggle();
+    bootZoomButtons();
+    bootAiViewport();
+
+    // Unified RPC forwarder MUST be registered before any iframe loads
+    bootRpcForwarder();
+
+    // Tab manager MUST init before A Zone (gaea-host may create tabs)
+    bootTabManager();
+
+    // A Zone (gaea-host processes pending goods, may add tabs)
+    bootAZone();
+
+    // AI Zone
+    bootAiZone();
+
+    // Output panel
+    bootOutputPanel();
+
+    // Sashes
+    bootSashes();
+
+    // Menu
+    await bootMenu();
+
+    // Boot info
+    let boot;
+    try { boot = await bridge.boot.getInfo(); }
+    catch (e) { boot = { version: '?', engineAlive: false, platform: 'browser', arch: 'na' }; }
+    // Expose boot info for iframes (q2-roam, etc.)
+    window.qqqBootInfo = boot;
+    bootStatusbar(boot);
+    fillBootInfo(boot);
+
+    // Resize grip
+    bootResizeGrip();
+
+    // Hook file explorer -> tabs
+    hookFileExplorerToTabs();
+
+    // KeyHook (loads bindings + globalShortcut + window/iframe dispatchers)
+    await bootKeyHook();
+
+    // Expose layout API for sash persistence
+    window.qqqLayout = {
+      persist: persistState,
+      showOutput: showOutput,
+      hideOutput: hideOutput,
+      getState: () => layoutState,
+    };
+
+    console.log('[qqq-shell] ready (new layout)');
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', main);
+  } else {
+    main();
+  }
+})();

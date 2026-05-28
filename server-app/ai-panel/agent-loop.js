@@ -1,0 +1,878 @@
+// ============================================================================
+// agent-loop.js — 核心 Agentic 循环
+// 从 q3/ai/src/agent.js 移植，适配 Shell v2
+//
+// 流程：
+//   1. 构建请求体（含工具定义 + 完整 SYSTEM_PROMPT）
+//   2. SSE 流式解析：区分 content / tool_calls / billing
+//   3. 若响应含 tool_calls → 并行执行工具 → 结果推入对话 → 回到步骤 1
+//   4. 若响应含 content → 展示给用户，结束
+//   5. 最多 200 次迭代，超限强制要求最终回答
+//
+// 回调：
+//   onToken(content)       — 流式文本增量
+//   onReasoning(reasoning) — 思考过程增量
+//   onToolCall(call)       — 工具调用开始
+//   onToolResult(name, result, truncated) — 工具结果
+//   onDone(content)        — 最终完成
+//   onError(message)       — 错误
+// ============================================================================
+
+// ---- 依赖：由 index.html 中的 <script> 标签加载顺序保证 ----
+// system-prompt.js  → GATEWAY_URL, SYSTEM_PROMPT, TRIVIAL_REGEX, CHAT_REGEX, TIER_FLASH, TIER_PRO
+// tools.js          → TOOL_DEFINITIONS, TOOL_CATEGORY, executeTool, getTools
+
+var AgentLoop = (function () {
+    'use strict';
+
+    // ---- FloorSummaryStripper: 流式剥离 <floor_summary> 标签 ----
+    function FloorSummaryStripper(onToken) {
+        this.onToken = onToken;
+        this.raw = '';
+        this.emitted = 0;
+        this._OPEN = '<floor_summary';
+        this._CLOSE = '</floor_summary>';
+    }
+    FloorSummaryStripper.prototype.push = function (chunk) {
+        if (!chunk) return;
+        this.raw += chunk;
+        var openIdx = this.raw.indexOf(this._OPEN);
+        var safeUpTo;
+        if (openIdx >= 0) {
+            safeUpTo = openIdx;
+        } else {
+            safeUpTo = Math.max(this.emitted, this.raw.length - this._OPEN.length);
+        }
+        if (safeUpTo > this.emitted) {
+            var piece = this.raw.slice(this.emitted, safeUpTo);
+            if (this.onToken) this.onToken(piece);
+            this.emitted = safeUpTo;
+        }
+    };
+    FloorSummaryStripper.prototype.finalize = function () {
+        var openIdx = this.raw.indexOf(this._OPEN);
+        if (openIdx < 0 && this.emitted < this.raw.length) {
+            var piece = this.raw.slice(this.emitted);
+            if (this.onToken) this.onToken(piece);
+            this.emitted = this.raw.length;
+        }
+        var summary = '', lang = '';
+        var m = this.raw.match(/<floor_summary([^>]*)>([\s\S]*?)(?:<\/floor_summary>|$)/);
+        if (m) {
+            summary = (m[2] || '').trim();
+            var langMatch = m[1].match(/lang=["']([^"']+)["']/);
+            if (langMatch) lang = langMatch[1];
+        }
+        var cleanContent = this.raw.replace(/\s*<floor_summary[^>]*>[\s\S]*?(?:<\/floor_summary>|$)\s*$/, '').trim();
+        return { cleanContent: cleanContent, summary: summary, lang: lang };
+    };
+
+    // ---- AgentLoop 构造函数 ----
+    function AgentLoop(opts) {
+        this.conversation = [];        // [{role, content, tool_calls?, tool_call_id?}]
+        this.abortController = null;
+        this._log = opts.log || function () { };
+        this.log = this._log;          // alias for context engine
+        // 上下文引擎
+        this._compressing = false;
+        this._ctx = { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
+        // 计费
+        this._floorCostWge = 0;
+        this.totalCostGe = 0;
+        this._lastCostDisplay = '0';
+        // 视觉缓存: MD5(base64) → {description, ge_cost}
+        this._visionCache = new Map();
+        this._visionCostWge = 0;
+        // 计费 flush
+        this._floorId = '';
+        this._currentFloorSummary = '';
+        this._currentFloorSummaryLang = '';
+        // 楼层内 house 追踪
+        this._houses = [];
+        this._houseIndex = 0;
+    }
+
+    // ---- 中止 ----
+    AgentLoop.prototype.abort = function () {
+        if (this.abortController) {
+            this.abortController.abort();
+            this.abortController = null;
+        }
+    };
+
+    // ---- 清空对话 ----
+    AgentLoop.prototype.clearConversation = function () {
+        this.conversation = [];
+        this._compressing = false;
+        this._ctx = { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
+        this._visionCache.clear();
+        this._houses = [];
+        this._houseIndex = 0;
+    };
+
+    // ---- 主入口 ----
+    AgentLoop.prototype.send = async function (userContent, opts) {
+        var self = this;
+        opts = opts || {};
+        var onToken = opts.onToken || function () { };
+        var onReasoning = opts.onReasoning || function () { };
+        var onToolCall = opts.onToolCall || function () { };
+        var onToolResult = opts.onToolResult || function () { };
+        var onDone = opts.onDone || function () { };
+        var onError = opts.onError || function () { };
+        var onCost = opts.onCost || function () { };
+        var token = opts.token || '';
+        var images = opts.images; // [{id, base64}]
+
+        if (!token) { onError('No token'); return null; }
+
+        // 重置本轮计费 + 生成 floor_id（同一轮内所有 gateway 调用共享）
+        self._floorCostWge = 0;
+        self._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        self._currentFloorSummary = '';
+        self._floorTiming = { networkMs: 0, workMs: 0 };
+        self._currentFloorSummaryLang = '';
+
+        // ═══ 视觉预分析：阿里眼睛(Qwen VL) → 文本 → DeepSeek大脑 ═══
+        var visionText = '';
+        var _visionStart = performance.now();
+        if (images && images.length > 0) {
+            self._log('🔍 vision: analyzing ' + images.length + ' image(s)...');
+            var visionResults = await self._analyzeImages(images, token);
+            if (visionResults.length > 0) {
+                var parts = [];
+                for (var vi = 0; vi < visionResults.length; vi++) {
+                    parts.push('[图#' + visionResults[vi].id + ' 视觉分析]:\n' + visionResults[vi].description);
+                }
+                visionText = '\n\n━━━ VISION ANALYSIS RESULTS (already completed, DO NOT call analyze_image again) ━━━\n' + parts.join('\n\n') + '\n━━━ END VISION RESULTS ━━━';
+            }
+            // 视觉计费计入本轮
+            if (self._visionCostWge > 0) {
+                self._floorCostWge += self._visionCostWge;
+                self._log('💰 vision cost: ' + (self._visionCostWge / 10000).toFixed(4) + ' ge');
+                self._visionCostWge = 0;
+            }
+        }
+        if (_visionStart) self._floorTiming.workMs += performance.now() - _visionStart;
+
+        // 推入用户消息（纯文本 — DeepSeek 只看得懂 text）
+        var finalContent = (userContent || '') + visionText;
+
+        // rules injection (first floor only; AI remembers from history)
+        if (self.conversation.length === 0) {
+            var rulesParts = [];
+            if (typeof qqqRulesContent !== 'undefined' && qqqRulesContent) {
+                rulesParts.push(qqqRulesContent);
+            }
+            if (typeof qqqProjectRulesContent !== 'undefined' && qqqProjectRulesContent) {
+                rulesParts.push(qqqProjectRulesContent);
+            }
+            if (rulesParts.length > 0) {
+                finalContent = rulesParts.join('\n\n---\n\n') + '\n\n---\n\n' + finalContent;
+                self._log('[rules] injected (' + rulesParts.length + ' parts)');
+            }
+        }
+
+        self._ctx.totalFloors++;
+        var userMsg = { role: 'user', content: finalContent, _floor: self._ctx.totalFloors };
+        self.conversation.push(userMsg);
+        self._compressing = true;
+        try {
+            await self._compressContext();  // 上下文压缩（阻塞，必须拿到 q 才继续）
+        } finally {
+            self._compressing = false;
+        }
+        self._log('→ user: ' + (userContent || '').slice(0, 80) + (images ? ' +' + images.length + ' images' : '') + (visionText ? ' [vision done]' : ''));
+
+        // 判断是否琐碎/闲聊 → 禁用工具；但有图片时始终 PRO
+        var trimmed = userContent.trim();
+        var hasImages = images && images.length > 0;
+        var isTrivial = !hasImages && typeof TRIVIAL_REGEX !== 'undefined' ? TRIVIAL_REGEX.test(trimmed) : false;
+        var isChat = !hasImages && !isTrivial && typeof CHAT_REGEX !== 'undefined' ? CHAT_REGEX.test(trimmed) : false;
+        var tier = (hasImages || !isTrivial && !isChat) ? TIER_PRO : TIER_FLASH;
+        var forceNoTools = !hasImages && (isTrivial || isChat);
+        self._log('◆ ' + tier.label + ' (trivial=' + isTrivial + ', chat=' + isChat + ', noTools=' + forceNoTools + ')');
+
+        var maxIterations = forceNoTools ? 1 : 200;
+        var conversationSnapshot = self.conversation.length;
+        self._houses = [];
+        self._houseIndex = 0;
+
+        try {
+            while (maxIterations-- > 0) {
+                self._houseIndex++;
+                var _hStart = Date.now();
+                var response = await self._callGateway(self.conversation, {
+                    token: token,
+                    onToken: onToken,
+                    onReasoning: onReasoning,
+                    onError: onError,
+                    tier: tier,
+                    noTools: forceNoTools
+                });
+
+                if (!response) {
+                    // 错误已由 _callGateway 的 onError 处理
+                    self.conversation.length = conversationSnapshot;
+                    return null;
+                }
+                // accumulate timing from gateway call
+                if (response._ttfbMs !== undefined) {
+                    self._floorTiming.networkMs += response._ttfbMs;
+                    self._floorTiming.workMs += response._streamMs;
+                }
+                // API 精确上下文 token 计数（DeepSeek usage.prompt_tokens）
+                if (response._usage && response._usage.prompt_tokens) {
+                    self._lastApiPromptTokens = response._usage.prompt_tokens;
+                }
+
+                if (response.type === 'message') {
+                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ms: Date.now() - _hStart, reasoning: response.reasoning_content || '' });
+                    var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
+                    if (response.reasoning_content) assistantMsg.reasoning_content = response.reasoning_content;
+                    self.conversation.push(assistantMsg);
+                    self._extractFloorMarkers(response.content);
+                    // 计费 + flush（写入账本）
+                    self._flushBilling(token);
+                    var costGe = self._floorCostWge / 10000;
+                    self.totalCostGe += costGe;
+                    self._lastCostDisplay = costGe < 0.001 ? '<0.001' : costGe.toFixed(4);
+                    onCost(self._lastCostDisplay, self.totalCostGe);
+                    self._housesPromise = self._summarizeHouses(token).catch(function () { });
+                    onDone(response.content, self._floorTiming);
+                    return response.content;
+                }
+
+                if (response.type === 'tool_calls') {
+                    var _tools = response.tool_calls.map(function (tc) { return { name: tc.function.name, args: tc.function.arguments }; });
+                    self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], summary: '', ms: Date.now() - _hStart, reasoning: response.reasoning_content || '' });
+                    var assistantToolMsg = {
+                        role: 'assistant', content: '',
+                        tool_calls: response.tool_calls,
+                        _floor: self._ctx.totalFloors
+                    };
+                    if (response.reasoning_content) assistantToolMsg.reasoning_content = response.reasoning_content;
+                    self.conversation.push(assistantToolMsg);
+
+                    // 通知 UI 有工具调用
+                    for (var tc = 0; tc < response.tool_calls.length; tc++) {
+                        onToolCall(response.tool_calls[tc]);
+                    }
+
+                    // 并行执行工具
+                    var _toolStart = performance.now();
+                    await self._executeToolCallsParallel(response.tool_calls, onToolResult);
+                    self._floorTiming.workMs += performance.now() - _toolStart;
+                    continue;
+                }
+
+                break;
+            }
+
+            // 迭代耗尽 → 强制最终回答
+            if (maxIterations <= 0) {
+                self._houseIndex++;
+                var _hFinalStart = Date.now();
+                self._log('⚠ max iterations (200) reached, forcing final answer');
+                self.conversation.push({ role: 'user', content: '[System: You have used all available tool calls. Now give your final answer based on what you have gathered so far. Be concise.]', _floor: self._ctx.totalFloors });
+                var finalResp = await self._callGateway(self.conversation, {
+                    token: token, onToken: onToken, onReasoning: onReasoning,
+                    onError: onError, tier: tier, noTools: true
+                });
+                if (finalResp && finalResp.content) {
+                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '' });
+                    if (finalResp._ttfbMs !== undefined) {
+                        self._floorTiming.networkMs += finalResp._ttfbMs;
+                        self._floorTiming.workMs += finalResp._streamMs;
+                    }
+                    self.conversation.push({ role: 'assistant', content: finalResp.content, _floor: self._ctx.totalFloors });
+                    self._extractFloorMarkers(finalResp.content);
+                    var finalCostGe = self._floorCostWge / 10000;
+                    self.totalCostGe += finalCostGe;
+                    self._lastCostDisplay = finalCostGe < 0.001 ? '<0.001' : finalCostGe.toFixed(4);
+                    onCost(self._lastCostDisplay, self.totalCostGe);
+                    self._flushBilling(token);
+                    self._housesPromise = self._summarizeHouses(token).catch(function () { });
+                    onDone(finalResp.content, self._floorTiming);
+                    return finalResp.content;
+                }
+            }
+            return null;
+        } catch (err) {
+            self._log('✗ agent error: ' + (err.message || err));
+            onError(err.message || String(err));
+            return null;
+        }
+    };
+
+    // ═══ 视觉预分析：阿里眼睛(Qwen VL) → 文本 ═══
+    // 并行分析所有图片，MD5 缓存
+    // 返回 [{id, description, cached}] — 失败图片静默跳过
+    AgentLoop.prototype._analyzeImages = async function (images, token) {
+        var self = this;
+        var results = [];
+
+        var analyzeOne = async function (img) {
+            var hash = self._simpleHash(img.base64);
+            var cached = self._visionCache.get(hash);
+            if (cached) {
+                self._log('  ✓ vision #' + img.id + ' cached (' + hash.slice(0, 8) + ')');
+                return { id: img.id, description: cached.description, cached: true };
+            }
+            try {
+                var desc = await self._callVision(img.base64, token);
+                if (desc) {
+                    self._visionCache.set(hash, { description: desc, ts: Date.now() });
+                }
+                return { id: img.id, description: desc, cached: false };
+            } catch (err) {
+                self._log('  ✗ vision #' + img.id + ' failed: ' + (err.message || err));
+                return { id: img.id, description: null, cached: false };
+            }
+        };
+
+        var allResults = await Promise.all(images.map(function (img) { return analyzeOne(img); }));
+        for (var i = 0; i < allResults.length; i++) {
+            var r = allResults[i];
+            if (r.description) {
+                results.push({ id: r.id, description: r.description, cached: r.cached });
+            } else {
+                self._log('  ⚠ vision #' + r.id + ' skipped (no description)');
+            }
+        }
+        return results;
+    };
+
+    // ---- 调用 /api/v3/ai/vision（异步：提交 → SSE 推送，绕开 CF 100s 代理超时）----
+    AgentLoop.prototype._callVision = async function (base64, token) {
+        var self = this;
+        var MAX_SUBMIT_RETRIES = 2;
+
+        // ═══ Step 1: 提交任务（带重试） ═══
+        var taskId = null;
+        for (var retry = 0; retry <= MAX_SUBMIT_RETRIES; retry++) {
+            try {
+                var resp = await fetch(VISION_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify({ image: base64 }),
+                    signal: self.abortController ? self.abortController.signal : undefined
+                });
+
+                if (resp.ok) {
+                    var data = await resp.json();
+                    // Redis 缓存命中 → 直接返回，跳过 SSE
+                    if (data.status === 'done') {
+                        if (data.ge_cost) { self._visionCostWge += data.ge_cost; }
+                        self._log('  ✓ vision done (cached)');
+                        return data.description || '[Vision returned empty description]';
+                    }
+                    if (data.task_id) {
+                        taskId = data.task_id;
+                        self._log('  vision task: ' + taskId.slice(0, 12) + '...');
+                        break;
+                    }
+                    self._log('  vision: no task_id in response');
+                    return null;
+                }
+
+                // 可重试的状态码
+                if ((resp.status === 429 || resp.status === 502 || resp.status === 503) && retry < MAX_SUBMIT_RETRIES) {
+                    var waitMs = resp.status === 429 ? 3000 : 2000 * Math.pow(2, retry);
+                    self._log('  vision submit retry #' + (retry + 1) + ' in ' + waitMs + 'ms (HTTP ' + resp.status + ')');
+                    await new Promise(function (r) { setTimeout(r, waitMs); });
+                    continue;
+                }
+
+                if (resp.status === 413) { self._log('  vision skipped: image too large'); return null; }
+                // 429 重试耗尽 → qoast 弹窗
+                if (resp.status === 429) { try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('视觉分析请求过于频繁，已跳过部分图片', { type: 'warning' }); } catch (_) { } }
+                self._log('  vision submit HTTP ' + resp.status + ': ' + (await resp.text().catch(function () { return ''; })).slice(0, 100));
+                return null;
+            } catch (err) {
+                if (err.name === 'AbortError') throw err;
+                if (retry < MAX_SUBMIT_RETRIES) {
+                    var waitMs2 = 2000 * Math.pow(2, retry);
+                    self._log('  vision submit retry #' + (retry + 1) + ' in ' + waitMs2 + 'ms (' + (err.message || err) + ')');
+                    await new Promise(function (r) { setTimeout(r, waitMs2); });
+                    continue;
+                }
+                self._log('  vision submit failed: ' + (err.message || err));
+                return null;
+            }
+        }
+
+        if (!taskId) return null;
+
+        // ═══ Step 2: SSE 推送（替代轮询） ═══
+        var streamUrl = VISION_URL + '/' + taskId + '/stream';
+        try {
+            var streamResp = await fetch(streamUrl, {
+                headers: { 'Authorization': 'Bearer ' + token },
+                signal: self.abortController ? self.abortController.signal : undefined
+            });
+            if (!streamResp.ok) {
+                if (streamResp.status === 404) { self._log('  vision task expired'); return null; }
+                self._log('  vision stream HTTP ' + streamResp.status);
+                return null;
+            }
+
+            var reader = streamResp.body.getReader();
+            var decoder = new TextDecoder();
+            var textBuf = '';
+            var sseStart = Date.now();
+            var MAX_SSE_WAIT = 120000;
+
+            while (Date.now() - sseStart < MAX_SSE_WAIT) {
+                var chunk = await reader.read();
+                if (chunk.done) break;
+                textBuf += decoder.decode(chunk.value, { stream: true });
+
+                // 解析 SSE lines
+                var lines = textBuf.split('\n');
+                textBuf = lines.pop();
+                var eventData = '';
+                for (var li = 0; li < lines.length; li++) {
+                    var line = lines[li];
+                    if (line.startsWith('data: ')) {
+                        eventData = line.slice(6);
+                    } else if (line === '' && eventData) {
+                        try {
+                            var evt = JSON.parse(eventData);
+                            if (evt.status === 'done') {
+                                if (evt.ge_cost) { self._visionCostWge += evt.ge_cost; }
+                                var elapsedSse = ((Date.now() - sseStart) / 1000).toFixed(1);
+                                self._log('  ✓ vision done (SSE) in ' + elapsedSse + 's');
+                                reader.cancel();
+                                return evt.description || '[Vision returned empty description]';
+                            }
+                            if (evt.status === 'error') {
+                                self._log('  ✗ vision error: ' + (evt.error || 'unknown'));
+                                reader.cancel();
+                                return null;
+                            }
+                        } catch (_) { }
+                        eventData = '';
+                    }
+                }
+            }
+            reader.cancel();
+            self._log('  ✗ vision SSE timeout');
+            return null;
+        } catch (err) {
+            if (err.name === 'AbortError') throw err;
+            self._log('  ✗ vision SSE error: ' + (err.message || err));
+            return null;
+        }
+    };
+
+    // ---- 简易 hash（视觉缓存 key）----
+    AgentLoop.prototype._simpleHash = function (str) {
+        var h = 0;
+        for (var i = 0; i < str.length; i++) {
+            h = ((h << 5) - h) + str.charCodeAt(i);
+            h |= 0;
+        }
+        return (h >>> 0).toString(16);
+    };
+
+    // ---- 网关调用 ----
+    AgentLoop.prototype._callGateway = async function (messages, opts) {
+        var self = this;
+        var token = opts.token;
+        var onToken = opts.onToken;
+        var onReasoning = opts.onReasoning;
+        var onError = opts.onError;
+        var tier = opts.tier || TIER_PRO;
+        var noTools = opts.noTools || false;
+
+        self.abortController = new AbortController();
+
+        // 注入动态上下文（叙事摘要 + 相关事实）
+        var apiMessages = messages;
+        // 提取最后一轮用户查询用于相关事实检索
+        var lastUserQuery = '';
+        for (var qi = messages.length - 1; qi >= 0; qi--) {
+            var _qmsg = messages[qi];
+            if (!_qmsg) continue;
+            if (_qmsg.role === 'user') {
+                lastUserQuery = typeof _qmsg.content === 'string' ? _qmsg.content : '';
+                break;
+            }
+        }
+        var dynamicCtx = self._buildDynamicContext(lastUserQuery);
+        if (dynamicCtx) {
+            apiMessages = messages.slice();
+            var lastIdx = apiMessages.length - 1;
+            if (lastIdx >= 0 && apiMessages[lastIdx] && apiMessages[lastIdx].role === 'user') {
+                var origContent = apiMessages[lastIdx].content;
+                apiMessages[lastIdx] = { role: 'user', content: origContent + '\n\n' + dynamicCtx };
+            }
+        }
+
+        var body = {
+            messages: [{ role: 'system', content: SYSTEM_PROMPT },].concat(apiMessages),
+            stream: true,
+            stream_options: { include_usage: true },
+            max_tokens: tier.maxTokens || 32768,
+            floor_id: self._floorId
+        };
+
+        if (!noTools && typeof getTools === 'function') {
+            body.tools = getTools();
+        }
+        if (tier.thinking) body.thinking = tier.thinking;
+        if (tier.effort) body.reasoning_effort = tier.effort;
+
+        var MAX_RETRIES = 3;
+        var _ttfbAccum = 0;
+        for (var retry = 0; retry <= MAX_RETRIES; retry++) {
+            try {
+                var _fetchStart = performance.now();
+                var resp = await fetch(GATEWAY_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify(body),
+                    signal: self.abortController.signal
+                });
+
+                var _ttfbMs = performance.now() - _fetchStart;
+                _ttfbAccum += _ttfbMs;
+                if (!resp.ok) {
+                    var text = await resp.text();
+                    // 502/503 瞬时故障 → 指数退避重试
+                    if ((resp.status === 502 || resp.status === 503) && retry < MAX_RETRIES) {
+                        var waitMsGw = 2000 * Math.pow(2, retry);
+                        self._log('  gateway ' + resp.status + ' retry #' + (retry + 1) + ' in ' + waitMsGw + 'ms');
+                        await new Promise(function (r) { setTimeout(r, waitMsGw); });
+                        continue;
+                    }
+                    self._log('✗ gateway ' + resp.status + ': ' + text.slice(0, 200));
+                    var friendly = resp.status === 401 ? '认证失败，请检查 Token'
+                        : resp.status === 402 ? 'ge 余额不足，请充值'
+                            : resp.status === 429 ? '请求过于频繁，请稍后再试'
+                                : resp.status === 502 ? '服务器暂时不可达 (502)'
+                                    : resp.status === 503 ? '服务器暂时不可达 (503)'
+                                        : 'Server error (' + resp.status + ')';
+                    // qoast 唯一真理弹窗（iframe 内 → 父窗口 qqqQoast）
+                    try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show(friendly, { type: resp.status === 429 ? 'warning' : 'error' }); } catch (_) { }
+                    onError(friendly);
+                    return null;
+                }
+
+                self._log('✓ gateway ' + resp.status + ' streaming...');
+                self._consecutiveFetchErrors = 0;
+                var _result = await self._parseSSE(resp.body, onToken, onReasoning);
+                if (_result) {
+                    _result._ttfbMs = _ttfbAccum;
+                    _result._streamMs = _result._streamMs || 0;
+                }
+                return _result;
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    self._log('■ aborted');
+                    return null;
+                }
+                // 网络错误可重试
+                if (retry < MAX_RETRIES) {
+                    var waitMsF = 2000 * Math.pow(2, retry);
+                    self._log('  fetch error retry #' + (retry + 1) + ' in ' + waitMsF + 'ms: ' + (err.message || err));
+                    await new Promise(function (r) { setTimeout(r, waitMsF); });
+                    continue;
+                }
+                self._log('✗ fetch error: ' + (err.message || err));
+                // auto-recovery: 2 consecutive fetch errors -> hard reload iframe to reset HTTP/2 connections
+                self._consecutiveFetchErrors = (self._consecutiveFetchErrors || 0) + 1;
+                if (self._consecutiveFetchErrors >= 2) {
+                    self._log('⚠ ' + self._consecutiveFetchErrors + ' consecutive fetch errors, reloading iframe to reset HTTP/2...');
+                    onError('网络连接异常，正在刷新面板...');
+                    setTimeout(function () { window.location.reload(); }, 800);
+                } else {
+                    onError(err.message || 'Network error');
+                }
+                return null;
+            }
+        } // retry loop
+    };
+
+    // ---- SSE 解析 ----
+    AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
+        var streamStart = performance.now();
+        var reader = body.getReader();
+        var decoder = new TextDecoder();
+        var buffer = '';
+        var reasoningContent = '';
+        var toolCalls = [];
+        var firstTokenSeen = false;
+        var stripper = new FloorSummaryStripper(onToken);
+        var _usage = null; // DeepSeek 精确 token 计数
+
+        while (true) {
+            var readResult = await reader.read();
+            if (readResult.done) break;
+            buffer += decoder.decode(readResult.value, { stream: true });
+            var lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i];
+                if (!line || line.slice(0, 6) !== 'data: ') continue;
+                var data = line.slice(6);
+                if (data === '[DONE]') continue; // don't break — billing/usage event may follow
+                try {
+                    var chunk = JSON.parse(data);
+                    if (chunk.type === 'billing') {
+                        self._floorCostWge += chunk.ge_cost || 0;
+                        continue;
+                    }
+
+                    // DeepSeek 流尾 usage（include_usage:true）— 精确上下文 token 数
+                    if (chunk.usage && chunk.usage.prompt_tokens) {
+                        _usage = chunk.usage;
+                        continue;
+                    }
+
+                    var delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
+                    if (!delta) continue;
+
+                    if (delta.reasoning_content) {
+                        reasoningContent += delta.reasoning_content;
+                        onReasoning(delta.reasoning_content);
+                    }
+                    if (delta.content) {
+                        stripper.push(delta.content);
+                    }
+                    if (delta.tool_calls) {
+                        for (var ti = 0; ti < delta.tool_calls.length; ti++) {
+                            var tc = delta.tool_calls[ti];
+                            if (tc.index !== undefined) {
+                                if (!toolCalls[tc.index]) {
+                                    toolCalls[tc.index] = { id: tc.id, type: 'function', function: { name: '', arguments: '' } };
+                                }
+                                if (tc.id) toolCalls[tc.index].id = tc.id;
+                                if (tc.function && tc.function.name) toolCalls[tc.index].function.name += tc.function.name;
+                                if (tc.function && tc.function.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
+                            }
+                        }
+                    }
+                } catch (_) { }
+            }
+        }
+
+        var finalized = stripper.finalize();
+        if (finalized.summary) {
+            self._currentFloorSummary = finalized.summary;
+            if (finalized.lang) self._currentFloorSummaryLang = finalized.lang;
+        }
+
+        var _streamMs = performance.now() - streamStart;
+        if (toolCalls.length > 0) {
+            return { type: 'tool_calls', tool_calls: toolCalls.filter(Boolean), reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage };
+        }
+        if (finalized.cleanContent) {
+            return { type: 'message', content: finalized.cleanContent, reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage };
+        }
+        return _usage ? { _usage: _usage } : null;
+    };
+
+    // ---- 并行工具执行 ----
+    AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, onToolResult) {
+        var self = this;
+        var prepared = [];
+
+        for (var i = 0; i < toolCalls.length; i++) {
+            var call = toolCalls[i];
+            var toolArgs;
+            try { toolArgs = JSON.parse(call.function.arguments); } catch (_) { toolArgs = {}; }
+            prepared.push({ call: call, name: call.function.name, args: toolArgs });
+        }
+
+        if (prepared.length === 0) return;
+
+        // 分层执行：同文件 READ 可并行，WRITE/EFFECT 串行
+        var layers = self._buildExecutionLayers(prepared);
+        self._log('  ║ parallel engine: ' + prepared.length + ' tools → ' + layers.length + ' layer(s)');
+
+        for (var li = 0; li < layers.length; li++) {
+            var layer = layers[li];
+            var promises = layer.items.map(async function (item) {
+                var toolStart = Date.now();
+                var result;
+                try {
+                    result = await executeTool(item.name, item.args);
+                } catch (err) {
+                    result = 'Tool error: ' + (err.message || err);
+                }
+                var toolMs = Date.now() - toolStart;
+                var resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+                self._log('← ' + item.name + ' (' + toolMs + 'ms): ' + resultStr.slice(0, 120));
+                if (onToolResult) {
+                    var truncated = resultStr.length > 2000;
+                    onToolResult(item.name, truncated ? resultStr.slice(0, 2000) + '\n... (truncated)' : resultStr, truncated);
+                }
+                var trimmed = resultStr.length > 8000
+                    ? resultStr.slice(0, 8000) + '\n... (' + resultStr.length + ' chars, truncated)'
+                    : resultStr;
+                return { call: item.call, content: trimmed, rawContent: resultStr };
+            });
+            var results = await Promise.all(promises);
+            // 把全长结果写进当前 house（供 rooms.txt 归档）
+            var lastHouse = self._houses[self._houses.length - 1];
+            if (lastHouse && lastHouse.type === 'tools') {
+                lastHouse.toolResults = results.map(function (r) { return r.rawContent; });
+            }
+            for (var ri = 0; ri < results.length; ri++) {
+                self.conversation.push({
+                    role: 'tool',
+                    tool_call_id: results[ri].call.id,
+                    content: results[ri].content,
+                    _rawContent: results[ri].rawContent,
+                    _floor: self._ctx.totalFloors
+                });
+            }
+        }
+    };
+
+    // ---- 执行分层：将工具调用按文件冲突分组 ----
+    AgentLoop.prototype._buildExecutionLayers = function (calls) {
+        var layers = [];
+        for (var i = 0; i < calls.length; i++) {
+            var call = calls[i];
+            var cat = (typeof TOOL_CATEGORY !== 'undefined' ? TOOL_CATEGORY[call.name] : null) || 'EFFECT';
+            var targetPath = call.args.path || call.args.file_path || '';
+            if (call.name === 'run_command') targetPath = '__cmd__' + (call.args.command || '').slice(0, 50);
+            var placed = false;
+            for (var li = layers.length - 1; li >= 0; li--) {
+                if (this._canPlaceInLayer(layers[li], call.name, cat, targetPath)) {
+                    layers[li].items.push(call);
+                    layers[li].fileMap[targetPath] = this._mergeAccess(layers[li].fileMap[targetPath], cat);
+                    placed = true;
+                    break;
+                }
+            }
+            if (!placed) {
+                var fm = {};
+                fm[targetPath] = cat;
+                layers.push({ items: [call], fileMap: fm });
+            }
+        }
+        return layers;
+    };
+
+    AgentLoop.prototype._canPlaceInLayer = function (layer, toolName, cat, targetPath) {
+        var existing = layer.fileMap[targetPath];
+        if (!existing) {
+            if (cat === 'EFFECT') {
+                var effectCount = 0;
+                for (var i = 0; i < layer.items.length; i++) {
+                    var itemCat = (typeof TOOL_CATEGORY !== 'undefined' ? TOOL_CATEGORY[layer.items[i].name] : null) || 'EFFECT';
+                    if (itemCat === 'EFFECT') effectCount++;
+                }
+                if (toolName === 'run_command' && effectCount >= 2) return false;
+            }
+            return true;
+        }
+        if (existing === 'READ' && cat === 'READ') return true;
+        return false;
+    };
+
+    AgentLoop.prototype._mergeAccess = function (existing, incoming) {
+        if (!existing) return incoming;
+        if (existing === 'WRITE' || incoming === 'WRITE') return 'WRITE';
+        if (existing === 'EFFECT' || incoming === 'EFFECT') return 'EFFECT';
+        return 'READ';
+    };
+
+
+    // ═══ 计费 flush：聚合本轮所有 gateway 调用费用 → 发送到服务端入账 ═══
+    AgentLoop.prototype._flushBilling = function (token) {
+        var self = this;
+        if (!self._floorId || self._floorCostWge <= 0) return;
+        try {
+            var summary = (self._currentFloorSummary || '').trim().slice(0, 222);
+            if (!summary) {
+                // 降级：用最后一条用户消息
+                for (var fi = self.conversation.length - 1; fi >= 0; fi--) {
+                    if (self.conversation[fi].role === 'user') {
+                        summary = (typeof self.conversation[fi].content === 'string' ? self.conversation[fi].content : '').replace(/\s+/g, ' ').trim().slice(0, 200);
+                        break;
+                    }
+                }
+            }
+            var lang = self._currentFloorSummaryLang || 'en';
+            fetch(BILLING_FLUSH_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({ floor_id: self._floorId, summary: summary, lang: lang })
+            }).catch(function () { });
+        } catch (_) { }
+    };
+
+    // ═══ 楼层结束后，轻量 AI 调用为每个 house 生成一句话总结 ═══
+    AgentLoop.prototype._summarizeHouses = async function (token) {
+        var self = this;
+        if (!self._houses || self._houses.length === 0) return;
+        try {
+            var lines = [];
+            for (var hi = 0; hi < self._houses.length; hi++) {
+                var h = self._houses[hi];
+                if (h.type === 'final') {
+                    lines.push('house ' + h.index + ': final answer, ' + h.ms + 'ms');
+                } else {
+                    var toolNames = h.tools.map(function (t) { return t.name; }).join(', ');
+                    lines.push('house ' + h.index + ': tools=[' + toolNames + '], ' + h.ms + 'ms');
+                }
+            }
+            var prompt = 'Summarize each step in ONE sentence (in user language). EACH summary MUST be ≤ 88 characters (≈ 15 English words). Be extremely concise. Output format: `N. summary`. Steps:\n' + lines.join('\n') + '\n\nSummaries (≤88 chars each):';
+            var resp = await fetch(GATEWAY_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({
+                    messages: [
+                        { role: 'system', content: 'You are a summarizer. Output ONLY numbered lines like "1. summary". No explanation.' },
+                        { role: 'user', content: prompt }
+                    ],
+                    stream: false,
+                    max_tokens: 1024,
+                    temperature: 0.1
+                }),
+                signal: self.abortController ? self.abortController.signal : undefined
+            });
+            if (!resp.ok) {
+                self._log('[summarize] API ' + resp.status + ': ' + (await resp.text()).slice(0, 100));
+                return;
+            }
+            var data = await resp.json();
+            var text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+            self._log('[summarize] got ' + text.length + ' chars: ' + text.slice(0, 120));
+            var re = /(\d+)\.\s*(.+)/g;
+            var match;
+            var matchedCount = 0;
+            while ((match = re.exec(text)) !== null) {
+                var idx = parseInt(match[1], 10);
+                var summary = match[2].trim().slice(0, 88);
+                for (var hj = 0; hj < self._houses.length; hj++) {
+                    if (self._houses[hj].index === idx) { self._houses[hj].summary = summary; matchedCount++; break; }
+                }
+            }
+            self._log('[summarize] matched ' + matchedCount + '/' + self._houses.length + ' houses');
+        } catch (e) {
+            self._log('[summarize] ERROR: ' + (e.message || e));
+        }
+    };
+
+    return AgentLoop;
+})();
+
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = { AgentLoop };
+}

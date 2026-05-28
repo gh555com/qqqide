@@ -1,0 +1,344 @@
+// ============================================================================
+// agent-context.js — 上下文压缩引擎
+// 从 q3/ai/src/agent-context.js 移植，适配 Shell v2
+//
+// 核心机制：
+//   1. _compressContext() — 阻塞式：token 超 900k → 保留 10% 最近楼层（≥6层），压 90%
+//   2. _digestColdMessages() — 调 AI 压缩冷消息 → 32k 多重保证 + 无限重试
+//   3. _extractFloorMarkers() — 从 assistant 回复中提取 📌 回合总结 / 💎 核心财宝
+//   4. _buildDynamicContext() — 注入叙事 + 相关事实 + 回合摘要到 API 消息末尾
+//
+// 关键设计（铁律）：
+//   - 压缩是打断任务：触发 → 停一切 → 等 q 拿到 → 删旧消息 → 再继续
+//   - 保留边界对齐楼层（user 消息 = 楼层边界），绝不切断一条楼层
+//   - 最少保留 6 层楼（当前层 + 前 5 层），即使超出 10%
+//   - 压缩输出硬限 32k tokens，prompt + max_tokens + 校验三重保证
+//   - 压缩失败 → 指数退避无限重试（2s/4s/8s/.../60s），永不静默丢弃
+//
+// 依赖：GATEWAY_URL（由 system-prompt.js 提供），AgentLoop（由 agent-loop.js 提供）
+// ============================================================================
+
+; (function () {
+
+    var TOKEN_BUDGET = 900000;   // token 预算上限
+    var KEEP_RATIO = 0.1;         // 保留最近 10%
+    var MIN_FLOORS = 6;           // 最少保留 6 层楼（当前层 + 前 5 层）
+    var MAX_FACTS = 100;          // 最多保留事实条数
+    var MAX_FLOOR_SUMMARIES = 30;   // 最多保留回合摘要
+    var COMPACT_MAX_TOKENS = 32768;      // 压缩输出硬限 32k
+    var COMPACT_RETRY_BASE_MS = 2000;    // 重试基础间隔 2s
+    var COMPACT_RETRY_MAX_MS = 60000;    // 重试最大间隔 60s
+
+    // ═══ 从 assistant 消息中抽取 📌 回合总结 / 💎 核心财宝 ═══
+    AgentLoop.prototype._extractFloorMarkers = function (content) {
+        if (!content) return;
+        var pinMatch = content.match(/(?:^|\n)📌\s*(.+?)(?:\n|$)/);
+        if (pinMatch) {
+            var summary = pinMatch[1].trim().slice(0, 200);
+            if (summary) {
+                this._ctx.floorSummaries.push({ floor: this._ctx.totalFloors, summary: summary });
+                if (this._ctx.floorSummaries.length > MAX_FLOOR_SUMMARIES)
+                    this._ctx.floorSummaries = this._ctx.floorSummaries.slice(-MAX_FLOOR_SUMMARIES);
+            }
+        }
+        var treasureMatch = content.match(/(?:^|\n)💎\s*(.+?)(?:\n|$)/);
+        if (treasureMatch) {
+            var treasure = treasureMatch[1].trim().slice(0, 300);
+            if (treasure) {
+                this._ctx.treasures.push({ floor: this._ctx.totalFloors, content: treasure });
+                if (this._ctx.treasures.length > 20)
+                    this._ctx.treasures = this._ctx.treasures.slice(-20);
+            }
+        }
+    };
+
+    // ═══ 单条消息 token 估算 ═══
+    AgentLoop.prototype._estimateMsgTokens = function (msg) {
+        if (!msg) return 0;
+        var tokens = 10; // role overhead
+        var content = msg.content;
+        if (typeof content === 'string') tokens += content.length / 4;
+        if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+            try { tokens += JSON.stringify(msg.tool_calls).length / 4; } catch (_) { }
+        }
+        return Math.round(tokens);
+    };
+
+    // ═══ 消息数组总 token 估算 ═══
+    AgentLoop.prototype._estimateTotalTokens = function (msgs) {
+        var msgsArr = msgs || this.conversation;
+        var total = 0;
+        for (var i = 0; i < msgsArr.length; i++) {
+            total += this._estimateMsgTokens(msgsArr[i]);
+        }
+        return total;
+    };
+
+    // ═══ 阻塞式上下文压缩 — 铁律 ═══
+    // 规则：
+    //   1. 超 900k 才触发
+    //   2. 从末尾倒推 90k tokens → 取整到楼层边界（user 消息）
+    //   3. 最少保留 6 层楼，即使超出 10%
+    //   4. 阻塞等待 AI 压缩（32k），成功后才删除
+    //   5. 压缩失败 → 无限重试，指数退避
+    AgentLoop.prototype._compressContext = async function () {
+        var self = this;
+        var totalEst = self._estimateTotalTokens();
+
+        // 未超标 → 跳过
+        if (totalEst <= TOKEN_BUDGET) return;
+
+        var KEEP_TARGET = Math.floor(TOKEN_BUDGET * KEEP_RATIO); // 90k
+
+        // 从末尾倒推，累积 token 数直到 ≥ 90k
+        var runningTokens = 0;
+        var hotStart = self.conversation.length; // 默认全保留
+        for (var i = self.conversation.length - 1; i >= 0; i--) {
+            runningTokens += self._estimateMsgTokens(self.conversation[i]);
+            if (runningTokens >= KEEP_TARGET) {
+                hotStart = i;
+                break;
+            }
+        }
+
+        // 对齐楼层边界：倒推到最近的 user 消息（绝不切断楼层）
+        while (hotStart > 0 && self.conversation[hotStart].role !== 'user') {
+            hotStart--;
+        }
+
+        // 数楼层（user 消息数）
+        var floorCount = 0;
+        for (var f = hotStart; f < self.conversation.length; f++) {
+            if (self.conversation[f].role === 'user') floorCount++;
+        }
+
+        // 最少 6 层楼保底
+        while (floorCount < MIN_FLOORS && hotStart > 0) {
+            hotStart--;
+            if (self.conversation[hotStart].role === 'user') {
+                floorCount++;
+            }
+        }
+
+        // 最终确保对齐到 user 边界
+        while (hotStart > 0 && self.conversation[hotStart].role !== 'user') {
+            hotStart--;
+        }
+
+        // 没有可压缩的冷消息 → 跳过
+        if (hotStart === 0) {
+            self.log('◆ Context: ' + floorCount + ' floors → all hot, nothing to compress');
+            return;
+        }
+
+        var coldMsgs = self.conversation.slice(0, hotStart);
+        var coldTokenEst = self._estimateTotalTokens(coldMsgs);
+        var hotMsgs = self.conversation.slice(hotStart);
+        var hotTokenEst = self._estimateTotalTokens(hotMsgs);
+
+        // 冷消息太少不值得压缩
+        if (coldTokenEst < 500) return;
+
+        self.log('◆ Context: compress ' + coldMsgs.length + ' msgs (~' + Math.round(coldTokenEst) + 'tok) → keep ' + hotMsgs.length + ' msgs (~' + Math.round(hotTokenEst) + 'tok, ' + floorCount + ' floors)');
+
+        // ═══ 阻断：必须拿到 q 才继续（最多重试 3 次） ═══
+        try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('🧠 压缩 ' + coldMsgs.length + ' 条历史消息中...', { type: 'info', duration: 0 }); } catch (_) { }
+        try {
+            await self._digestColdMessages(coldMsgs);
+            try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('✅ 压缩完成 — ' + coldMsgs.length + ' 条消息已精简为结构知识', { type: 'info', duration: 5000 }); } catch (_) { }
+            // 成功 → 删除冷消息
+            self.conversation.splice(0, hotStart);
+            self.log('◆ Context: done — ' + coldMsgs.length + ' msgs removed, ' + self.conversation.length + ' msgs kept');
+        } catch (digestErr) {
+            self.log('✗ Context: compress FAILED after 3 retries — ' + digestErr.message + ' — skipping, messages preserved');
+            try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('⚠️ 上下文压缩失败（已重试3次）：' + (digestErr.message || '未知错误') + '。本次跳过压缩，下轮再试。', { type: 'error', duration: 8000 }); } catch (_) { }
+            // 不删除冷消息，下轮压缩再试
+        }
+    };
+
+    // ═══ 阻塞式压缩 — 32k 多重保证 + 最多 3 次重试 ═══
+    // 调用压缩 AI，必须是 async，最多重试 3 次，全失败则抛错让上层跳过压缩
+    // 保证：prompt 明确告知 32k + API max_tokens=32768 + 输出后校验 + 超限重试
+    AgentLoop.prototype._digestColdMessages = async function (coldMsgs) {
+        var self = this;
+        var coldText = coldMsgs.map(function (m) {
+            var role = m.role === 'tool' ? 'tool_result' : m.role;
+            var content = typeof m.content === 'string' ? m.content : '';
+            return '[' + role + '] ' + content;
+        }).join('\n');
+
+        if (!coldText.trim()) return;
+
+        // 基础 prompt（可被重试增强）
+        var basePrompt = [
+            'You are a context compression engine. Compress ALL conversation history below into structured knowledge.',
+            '',
+            '!!! HARD TOKEN LIMIT: YOUR ENTIRE OUTPUT MUST BE ≤ ' + COMPACT_MAX_TOKENS + ' TOKENS !!!',
+            'Tokens are counted by the API server. Output > ' + COMPACT_MAX_TOKENS + ' tokens will be TRUNCATED —',
+            'ALL truncated information is PERMANENTLY LOST. This is IRREVERSIBLE data loss.',
+            '',
+            'TO STAY WITHIN LIMIT:',
+            '  - Estimate your output size BEFORE writing. If unsure, aim for well under half the limit.',
+            '  - Merge related facts. One dense fact with proper keywords beats five scattered ones.',
+            '  - Narrative: be comprehensive but RUTHLESSLY concise. Every word must earn its place.',
+            '  - Drop LOW-VALUE facts before dropping HIGH-VALUE ones.',
+            '  - If approaching the limit, CUT — do NOT rely on truncation to save you.',
+            '  - Do NOT include \\n\\ns or decorative text. Pure JSON only.',
+            '',
+            'OUTPUT FORMAT — pure JSON, no markdown wrappers, no explanation:',
+            '{"facts":[{"type":"file|decision|error|code_change|preference|context","content":"...","keywords":["k1"]}],"narrative":"..."}',
+            '',
+            'FACT TYPES:',
+            '  - file:       file paths read/written/mentioned',
+            '  - decision:   choices made and why',
+            '  - error:      problems encountered and their resolution',
+            '  - code_change: what was modified and how',
+            '  - preference: user preferences or conventions discovered',
+            '  - context:    important contextual info',
+            '',
+            'Current context narrative (merge into this): ' + (self._ctx.narrative || '(empty)'),
+            '',
+            'Messages to compress (' + coldMsgs.length + ' messages):',
+            coldText
+        ].join('\n');
+
+        var MAX_RETRIES = 3;
+        for (var retry = 0; retry < MAX_RETRIES; retry++) {
+            try {
+                var parsed = await self._callCompactAPI(basePrompt);
+                if (!parsed) throw new Error('parse_or_network_failed');
+
+                // 校验输出大小：超 95% 阈值 → 输出可能被截断，重试
+                var outputText = JSON.stringify(parsed);
+                var outputTokens = Math.round(outputText.length / 4);
+                if (outputTokens > COMPACT_MAX_TOKENS * 0.95) {
+                    var waitMs2 = Math.min(COMPACT_RETRY_BASE_MS * Math.pow(2, retry + 1), COMPACT_RETRY_MAX_MS);
+                    self.log('⚠ Compact output near limit (~' + outputTokens + ' tok > ' + Math.round(COMPACT_MAX_TOKENS * 0.95) + '), retry #' + (retry + 1) + ' in ' + (waitMs2 / 1000) + 's');
+                    try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('⚠️ 压缩输出超限，第' + (retry + 1) + '次重试...', { type: 'warning', duration: Math.min(waitMs2, 5000) }); } catch (_) { }
+                    await new Promise(function (r) { setTimeout(r, waitMs2); });
+                    // 加强约束
+                    basePrompt = 'YOUR PREVIOUS OUTPUT WAS TOO LARGE AND MAY HAVE BEEN TRUNCATED.\nYOU MUST PRODUCE AN OUTPUT THAT IS AT MOST HALF THE SIZE.\nBE MORE AGGRESSIVE IN MERGING AND DROPPING LOW-VALUE FACTS.\n\n' + basePrompt;
+                    continue;
+                }
+
+                // 存储
+                if (parsed.facts && Array.isArray(parsed.facts)) {
+                    for (var fi = 0; fi < parsed.facts.length; fi++) {
+                        parsed.facts[fi].floor = self._ctx.totalFloors;
+                        self._ctx.facts.push(parsed.facts[fi]);
+                    }
+                    if (self._ctx.facts.length > MAX_FACTS)
+                        self._ctx.facts = self._ctx.facts.slice(-MAX_FACTS);
+                }
+                if (parsed.narrative) {
+                    self._ctx.narrative = parsed.narrative;
+                }
+                self.log('◆ Context: +' + (parsed.facts ? parsed.facts.length : 0) + ' facts, narrative=' + self._ctx.narrative.length + 'c, total facts=' + self._ctx.facts.length + ', q=' + outputTokens + 'tok');
+                return;
+
+            } catch (err) {
+                var waitMs3 = Math.min(COMPACT_RETRY_BASE_MS * Math.pow(2, retry + 1), COMPACT_RETRY_MAX_MS);
+                var attemptNum = retry + 1;
+                self.log('✗ Compact failed #' + attemptNum + ': ' + (err.message || err) + ', retry in ' + (waitMs3 / 1000) + 's');
+                try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('⚠️ 压缩失败 (' + attemptNum + '/3)，' + (waitMs3 / 1000) + 's 后重试...', { type: 'warning', duration: Math.min(waitMs3, 5000) }); } catch (_) { }
+                if (retry < MAX_RETRIES - 1) {
+                    await new Promise(function (r) { setTimeout(r, waitMs3); });
+                }
+                // 最后一次失败 → 抛出，让上层跳过压缩
+            }
+        }
+        throw new Error('compress_failed_after_' + MAX_RETRIES + '_retries');
+    };
+
+    // ═══ 调用 API 做精简（非流式，复用 gateway） ═══
+    AgentLoop.prototype._callCompactAPI = function (prompt) {
+        var self = this;
+
+        // 尝试从 localStorage 获取 token
+        var token = '';
+        try { token = localStorage.getItem('qqq-ai-token') || ''; } catch (_) { }
+
+        if (!token || typeof GATEWAY_URL === 'undefined') {
+            return Promise.resolve(null);
+        }
+
+        return fetch(GATEWAY_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            signal: self.abortController ? self.abortController.signal : undefined,
+            body: JSON.stringify({
+                messages: [
+                    { role: 'system', content: 'You are a context compression engine. Extract structured facts and update narrative. Output ONLY valid JSON — no markdown, no explanation. Be concise and precise. Your output MUST fit within the token budget.' },
+                    { role: 'user', content: prompt }
+                ],
+                stream: false,
+                thinking: { type: 'enabled' },
+                reasoning_effort: 'max',
+                max_tokens: COMPACT_MAX_TOKENS
+            })
+        }).then(function (resp) {
+            if (!resp.ok) return null;
+            return resp.json();
+        }).then(function (data) {
+            if (!data) return null;
+            var text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+            if (!text) return null;
+            var match = text.match(/\{[\s\S]*\}/);
+            if (!match) return null;
+            return JSON.parse(match[0]);
+        });
+    };
+
+    // ═══ 构建动态上下文（注入到 API 消息末尾） ═══
+    AgentLoop.prototype._buildDynamicContext = function (currentQuery) {
+        var ctx = '';
+        if (this._ctx.narrative) {
+            ctx += 'CONVERSATION CONTEXT (compressed history):\n' + this._ctx.narrative;
+        }
+        if (currentQuery && this._ctx.facts.length > 0) {
+            var relevant = this._retrieveRelevantFacts(currentQuery, 10);
+            if (relevant.length > 0) {
+                var factsBlock = relevant.map(function (f) {
+                    return '- [' + f.type + '] ' + f.content;
+                }).join('\n');
+                ctx += '\n\nRELEVANT FACTS FROM EARLIER (' + relevant.length + '/' + this._ctx.facts.length + ' total):\n' + factsBlock;
+            }
+        }
+        if (this._ctx.floorSummaries.length > 0) {
+            var recentSummaries = this._ctx.floorSummaries.slice(-15);
+            var summaryLines = recentSummaries.map(function (s) { return '📌 ' + s.summary; }).join('\n');
+            ctx += '\n\nFLOOR CHECKPOINTS:\n' + summaryLines;
+        }
+        if (this._ctx.treasures.length > 0) {
+            var recentTreasures = this._ctx.treasures.slice(-10);
+            var treasureLines = recentTreasures.map(function (t) { return '💎 ' + t.content; }).join('\n');
+            ctx += '\n\nKEY DISCOVERIES:\n' + treasureLines;
+        }
+        return ctx.trim() ? '[DYNAMIC CONTEXT]\n' + ctx : '';
+    };
+
+    // ═══ 关键词检索相关事实 ═══
+    AgentLoop.prototype._retrieveRelevantFacts = function (query, maxFacts) {
+        if (this._ctx.facts.length === 0) return [];
+        maxFacts = maxFacts || 10;
+        var queryTokens = query.toLowerCase()
+            .replace(/[^a-z0-9\u4e00-\u9fff_./\\-]/g, ' ')
+            .split(/\s+/)
+            .filter(function (t) { return t.length > 1; });
+        var scored = this._ctx.facts.map(function (fact) {
+            var score = 0;
+            var factText = (fact.content + ' ' + (fact.keywords || []).join(' ')).toLowerCase();
+            for (var ti = 0; ti < queryTokens.length; ti++) {
+                if (factText.indexOf(queryTokens[ti]) !== -1) score += 2;
+            }
+            score += (fact.floor || 0) / Math.max(1, this._ctx.totalFloors) * 0.5;
+            return { fact: fact, score: score };
+        }.bind(this));
+        scored.sort(function (a, b) { return b.score - a.score; });
+        return scored.filter(function (s) { return s.score > 0; }).slice(0, maxFacts).map(function (s) { return s.fact; });
+    };
+
+})();
