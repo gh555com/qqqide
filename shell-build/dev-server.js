@@ -14,9 +14,9 @@
 // ============================================================================
 
 const http = require('http');
-const fs   = require('fs');
+const fs = require('fs');
 const path = require('path');
-const url  = require('url');
+const url = require('url');
 
 const args = process.argv.slice(2);
 const getArg = name => {
@@ -31,25 +31,25 @@ const MOUNT = '/qqq-app';
 
 const MIME = {
     '.html': 'text/html; charset=utf-8',
-    '.htm':  'text/html; charset=utf-8',
-    '.js':   'application/javascript; charset=utf-8',
-    '.mjs':  'application/javascript; charset=utf-8',
-    '.css':  'text/css; charset=utf-8',
+    '.htm': 'text/html; charset=utf-8',
+    '.js': 'application/javascript; charset=utf-8',
+    '.mjs': 'application/javascript; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
     '.json': 'application/json; charset=utf-8',
-    '.svg':  'image/svg+xml',
-    '.png':  'image/png',
-    '.jpg':  'image/jpeg',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
     '.jpeg': 'image/jpeg',
-    '.gif':  'image/gif',
+    '.gif': 'image/gif',
     '.webp': 'image/webp',
-    '.ico':  'image/x-icon',
+    '.ico': 'image/x-icon',
     '.woff': 'font/woff',
-    '.woff2':'font/woff2',
-    '.ttf':  'font/ttf',
-    '.otf':  'font/otf',
-    '.map':  'application/json; charset=utf-8',
+    '.woff2': 'font/woff2',
+    '.ttf': 'font/ttf',
+    '.otf': 'font/otf',
+    '.map': 'application/json; charset=utf-8',
     '.wasm': 'application/wasm',
-    '.txt':  'text/plain; charset=utf-8',
+    '.txt': 'text/plain; charset=utf-8',
 };
 
 function send(res, status, headers, body) {
@@ -88,6 +88,11 @@ const server = http.createServer((req, res) => {
     // Mount root: redirect / to /qqq-app/
     if (reqPath === '/' || reqPath === '') {
         return send(res, 302, { Location: MOUNT + '/' });
+    }
+
+    // Redirect /qqq-app (no trailing slash) → /qqq-app/ so relative URLs resolve correctly
+    if (reqPath === MOUNT) {
+        return send(res, 301, { Location: MOUNT + '/' });
     }
 
     // Health endpoint (consumed by shell main.ts healthCheck())
