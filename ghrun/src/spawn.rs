@@ -13,7 +13,7 @@
 
 use serde::Deserialize;
 use serde_json;
-use std::io::Read;
+use std::io::{BufRead, Read};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
