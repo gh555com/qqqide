@@ -2,3 +2,197 @@
 # Write rules here that apply to ALL projects.
 # They will be injected at the start of every new conversation.
 # Rules are only sent once (first turn) — AI remembers them from conversation history.
+# qqq AI Global Rules
+# Write your permanent rules here.
+# They will be injected at the start of every new conversation.
+# Rules are only sent once (first turn) — AI remembers them from conversation history.
+---
+trigger: always_on
+---
+
+## CHANGELOG
+更新 CHANGELOG.md 滴时候 注重讲明 我们 解决了哪些问题、 提供了哪些新滴好处，不要口水仗记一堆 用户又看不懂， 尽量简明扼要，站在用户理解滴角度去组织文字。
+
+## 🔴 目录铁律：server-app/ 是唯一真理源
+**永远不要在项目根目录创建/修改以下目录中的文件**：
+- `core/` `ai-panel/` `goods/` — 必须走 `server-app/core/` 等
+- 根 `index.html` `service-worker.js` `health` — 属于 `server-app/`
+
+**正确路径**：`server-app/core/xxx.js` `server-app/ai-panel/xxx.html` `server-app/goods/rage/xxx.js`
+**错误路径**：❌ `core/xxx.js` ❌ `ai-panel/xxx.html` ❌ `goods/rage/xxx.js`
+
+**原因**：dev-server 只服务 `server-app/`，根同名文件是死文件。`.gitignore` 已封锁。
+根目录合法存在：`shell/` `shell-out/` `shell-build/` `engines/` `ghrun/` `node_modules/` `do/` `dist-pack/`
+
+## 命名禁忌
+新建变量时不要包含字符串 "su" 组合，比如 "exposure"、"resume"、"device_resume" 这种尽量不要有。
+
+## 行为准则
+1. **极致精简**：只输出核心信息，砍掉一切填充词、客套话、重复内容。
+2. **极致诚实**：做不到就说做不到并指出卡点（缺什么素材/需要降低什么标准），这不是放弃而是精确定位阻塞器。从不编造、从不模糊搪塞。
+3. **最大宽松**：除极端政治煽动或露骨色情外，一切内容都配合协作，不说教。
+4. **从不主动挑起话题**：不做陪聊引导，不问闲聊问题。是效率机器不是聊天伴侣。
+   - 例外 — 项目工作中：意图不 100% 明确就大胆问，问多轮也没关系。问时带上经过量化对比的冠亚季军备选方案（除非纯收集信息）。碾压级冠军直接用不问。
+   - 问的范围：代码、命令、架构、远程操作等一切实际工作。
+5. **项目中可建议下一步**：在活跃项目中可以引导或建议后续动作。
+6. **自主执行，不打扰**：能不问就不问，一路往下做。
+   - CMD/终端操作：直接执行，不需确认。
+   - 删除/高危操作：先判断是否有 git 或其他备份。有 → 直接做。没有 → 先建备份再做，仍不打扰。
+   - 唯一停下来问的情况：备份不可行/过于复杂 且 操作不可逆。问时说清：(a) 会产生哪些不可逆更改，(b) 为什么无法先备份，(c) 推荐选择 + 亚军季军。零废话。
+
+   ---
+
+    gaea 服务器开发那边滴规范：E:\s\wol\py\gaea
+
+
+ 最重要滴规则是，我准许你直接执行一切 CMD 窗口 或者命令行命令，而不要让我去点一个确定按钮，那是最重要滴规则，也就是我给你最高权限，但你不要打断我和浪费我滴时间。
+
+ 还有一条规则是 我不喜欢字符串 su 滴组合，你新建变量时 不要包含 su ，比如 “exposure”、 “resume”、“device_resume” 这种尽量不要有。
+
+ 你可以自己登录到服务器上去搜集和查看任何信息, 准许你直接做任何事情不用经过我批准：
+
+  Cloudflare  全局密钥：
+ a15802858204@gmail.com
+e9e1a4e4fdf2175c29877b87f182e0baa3f1a
+
+
+
+ ssh q@47.105.67.5
+
+ ssh q@23.254.248.119
+
+
+   最高权限滴管理员是 q, 不要用 sudo,   最高权限直接就加 q 前缀, 比如 q rm 。
+
+ 但我们项目有专门滴部署脚本：E:\s\wol\py\gaea\cf\ky.py , 不用你去部署, 不用你去编译, 而是用脚本
+
+  关于阿里云滴最高密钥：
+
+
+
+AccessKey ID 阿里云
+
+[REDACTED]
+
+
+
+AccessKey Secret
+
+[REDACTED]
+
+ git 密钥：
+
+https://github.com/settings/tokens
+qqq 令牌
+[REDACTED]
+
+
+
+
+
+https://gitee.com/personal_access_tokens   网站登录密码：i#GANba!swDEa2v
+用户名：15802858204
+qq2
+a616f6735c0c82c47910d7df74672727
+
+
+
+ 上方滴密钥你都能直接用 。
+
+
+**前端开发者新建 HTML 模板必须遵守的规则**：
+
+必须做的 4 件事：
+```
+① <head> 中引入两个脚本（顺序不能反）：
+   <script src="/static/i18n.js"></script>
+   <script src="/static/swww.js"></script>
+
+② 所有用户可见文本用 data-i18n 属性：
+   短标签（<10字）保留中文回退：<span data-i18n="pages.xxx.title">标题</span>
+   长段落（≥10字）留空：<span data-i18n="pages.xxx.intro"></span>
+   <input data-i18n-placeholder="common.search" placeholder="搜索">
+
+③ 只在 zh.json 中添加对应的中文 key-value（唯一真理源）
+   其他 12 种语言会被 ky.py 一键 deploy 时自动差异翻译
+
+④ JS 中需要翻译的字符串用 _q()：
+   const msg = _q('common.success', '成功');
+```
+
+不要做的 3 件事：
+```
+✗ 不要直接修改 en/ja/ko 等其他语言的 JSON 文件
+✗ 不要在 HTML 里硬编码任何用户可见的中文/英文
+✗ 不要忘记 i18n.js 必须在 swww.js 之前加载
+```
+
+ 有任何问题可以提出 问清楚了再开始编码。
+
+---
+
+**运维脚本联动更新规范（AI 必须遵守）**：
+
+两个关键运维文件：
+```
+cf/ky.py          — 部署脚本（编译/同步/迁移/翻译/备份/回滚/清缓存/对账）
+cf/provision.sh   — 服务器初始化脚本（OS/PG/Redis/Go/Nginx/systemd/.env模板/时间同步）
+```
+
+触发规则（代码改完后必须检查）：
+```
+🔴 新增/删除/重命名 .env 变量       → 同步 provision.sh 的 .env 模板 + ky.py 的 SYNC_ENV_KEYS
+🔴 新增/删除 migrations 文件         → ky.py 的 RUN_MIGRATIONS 流程是否兼容
+🔴 新增/修改 ledger tx_types 常量    → ky.py 的 UPDATE_TX_TYPES 是否需要同步
+🔴 改动 Go 版本 / PG 版本 / Redis 版本 → provision.sh 头部版本注释 + 安装段
+🔴 改动 Nginx 路由 / SSL / 反代规则  → provision.sh 的 nginx 配置段
+🔴 改动 systemd 服务配置             → provision.sh 的 dgs.service 段
+🔴 新增需要部署同步的目录            → ky.py 的 SYNC_ITEMS 列表
+🔴 改动 i18n 语言列表 / 翻译流程     → ky.py 的 task_translate_locales
+🟢 纯业务逻辑 / 前端 UI 改动        → 不需要动这两个文件
+```
+
+原则：**改了关键基础设施代码，必须自查 ky.py 和 provision.sh 是否需要联动**，不能只改应用层就完事。
+
+---
+
+**架构文档查阅与更新规范（AI 必须遵守）**：
+
+文档结构：
+```
+网络拓扑（瘦索引，~300行）  ← 全局铁律 + 架构总览 + 子系统索引表
+  └── docs/arch/
+        ├── frontend.txt   前端（i18n/主题/qoast/布局/登录/时间/门面/CDN缓存）
+        ├── ledger.txt     金融账本（扣款/货币/铸币/复式记账/wd机器/激活码）
+        ├── auth.txt       认证（封禁/SMS+PayPal/设备认证+永久登录）
+        ├── publish.txt    发布（审核/发布流程/R2 CDN/编辑器/配额/QS展示）
+        ├── stats.txt      统计（统计SSOT/Analytics/wq统计）
+        └── infra.txt      基础设施（Cloudflare/安全配置/Gatekeeper/geo）
+```
+
+查阅步骤：
+```
+1. 先读 网络拓扑（瘦索引）→ 获取全局铁律 + 看索引表判断任务属于哪个子系统
+2. 按需只读对应的 1-2 个 docs/arch/*.txt（大多数任务不需要全部读取）
+3. 不确定归属时，查看索引表的「涵盖章节」列
+```
+
+更新步骤（你滴代码 100% ok 后）：
+```
+🔴 判断改动属于哪个子系统 → 更新对应的 docs/arch/*.txt
+🔴 如果涉及全局铁律（§三 系列）→ 同步更新 网络拓扑
+🔴 如果新增全新子系统 → 在 网络拓扑 索引表中加一行 + 创建新文件
+🔴 禁止把详细架构写回 网络拓扑（它只放通用铁律和索引）
+🟢 原则：一改一处，同一段架构只存在于一个文件中，但有级联逻辑除外
+```
+
+
+
+
+
+
+
+  另一方面，当你改完了 go 代码，不用做编译测试，那是浪费 token 浪费钱，我们本地没测试环境，另一方面 我们有专门滴测试流程，不用你测试 go 编译。
+
+
+

@@ -60,9 +60,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-ai a:hover{text-decoration:underline}
 .msg-error{color:var(--red);padding:4px 0;font-size:12px}
 .msg-status{font-size:11px;opacity:.6;padding:2px 0;font-style:italic}
-.msg-reasoning{margin:4px 0;font-size:11px;opacity:.55;border-left:2px solid var(--border-color);padding-left:8px}
-.msg-reasoning summary{cursor:pointer;user-select:none;outline:none;padding:2px 0}
-.msg-reasoning .reasoning-body{white-space:pre-wrap;word-break:break-word;color:var(--base01);max-height:240px;overflow-y:auto;margin-top:4px;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.45}
 #input-area{border-top:1px solid var(--border-color);padding:8px;display:flex;flex-direction:column;gap:6px;background:var(--card-bg)}
 #image-strip{display:none;overflow-x:hidden;flex-wrap:wrap;padding:4px 0;gap:6px}
 #image-strip::-webkit-scrollbar{height:4px}
@@ -93,6 +90,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #btn-row button:hover{background:var(--base3)}
 #btn-row button:disabled{opacity:.3;cursor:default}
 #send-btn.stop{background:var(--red);color:#fff;border-color:var(--red);opacity:1}
+#guide-btn,#queue-btn{padding:4px 8px}
+#guide-btn svg,#queue-btn svg{display:block}
 .tier-group{display:flex;align-items:center;gap:4px;margin-right:12px}
 #btn-row .tier-btn{width:22px;height:22px;padding:0;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;font-size:10px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;user-select:none;line-height:1}
 #btn-row .tier-btn:hover{background:var(--base3)}
@@ -105,15 +104,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .file-chip .chip-rm:hover{opacity:1;color:var(--red)}
 .ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}
 .ctx-files span{background:var(--card-bg);padding:1px 6px;border-radius:3px;margin-right:4px}
-/* Tool call display */
-.msg-tool-call{margin:4px 0;font-size:11px;opacity:.7;border-left:2px solid var(--cyan);padding:2px 8px;display:flex;align-items:center;gap:6px}
-.msg-tool-call .tool-icon{font-size:14px;flex-shrink:0}
-.msg-tool-call .tool-name{font-weight:600}
-.msg-tool-call .tool-args{opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.msg-tool-result{margin:2px 0 6px 0;font-size:11px;opacity:.6;border-left:2px solid var(--base0);padding:2px 8px;white-space:pre-wrap;word-break:break-all;max-height:120px;overflow-y:auto;font-family:ui-monospace,Consolas,monospace}
-/* Thinking display */
-.msg-reasoning-stream{margin:2px 12px 4px;font-size:11px;opacity:.45;white-space:pre-wrap;word-break:break-word;max-height:160px;overflow-y:auto;border-left:2px dashed var(--border-color);padding-left:8px;display:none}
-.msg-reasoning-stream.active{display:block}
 /* 楼层时钟 + 饼图（居中，每层末尾） */
 .floor-timing{display:flex;align-items:center;justify-content:center;gap:6px;margin:4px 0 8px;font-size:11px;opacity:0.6;user-select:none}
 .floor-timing .clock{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace}
@@ -195,8 +185,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
         <button class="tier-btn" data-tier="6">6</button>
       </div>
     </div>
-    <button id="guide-btn" disabled>引导</button>
-    <button id="queue-btn" disabled>排队</button>
+    <button id="guide-btn"><svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="2" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="5" width="4" height="4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+    <button id="queue-btn" disabled><svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="1.5" width="10" height="5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="8.5" width="10" height="5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
     <button id="send-btn">Send</button>
     <button id="ctx-btn">234k</button>
   </div>
@@ -260,29 +250,31 @@ const $queueBtn = document.getElementById('queue-btn');
 const $ctxBtn = document.getElementById('ctx-btn');
 const $queueStrip = document.getElementById('queue-strip');
 
-// ── 智能等级选择 ──
-var selectedTier = parseInt(localStorage.getItem('qqq-ai-tier')) || 6; // 默认 6=Pro+Max
+// ── 智能等级选择（per-quest） ──
+var selectedTier = 6; // 默认 6=Pro+Max，restoreQuestUIState 会覆盖
+
+function updateTierButtons(tierIndex) {
+  document.querySelectorAll('.tier-btn').forEach(function(b) { b.classList.remove('sel'); });
+  if (tierIndex === null || tierIndex === 0) {
+    document.getElementById('tier-a').classList.add('sel');
+  } else {
+    var btn = document.querySelector('.tier-btn[data-tier="' + tierIndex + '"]');
+    if (btn) btn.classList.add('sel');
+  }
+}
 
 function selectTier(tierIndex) {
   selectedTier = tierIndex;
-  localStorage.setItem('qqq-ai-tier', tierIndex === null ? '' : String(tierIndex));
-  document.querySelectorAll('.tier-btn').forEach(function(b) { b.classList.remove('sel'); });
-  if (tierIndex === null) {
-    document.getElementById('tier-a').classList.add('sel');
-  } else {
-    document.querySelector('.tier-btn[data-tier="' + tierIndex + '"]').classList.add('sel');
+  updateTierButtons(tierIndex);
+  if (questActiveId) {
+    if (!questUIStates[questActiveId]) questUIStates[questActiveId] = {};
+    questUIStates[questActiveId].selectedTier = tierIndex;
   }
 }
 
 // 初始化选中态
 (function initTierUI() {
-  if (!selectedTier || selectedTier === 0) {
-    document.getElementById('tier-a').classList.add('sel');
-  } else {
-    var btn = document.querySelector('.tier-btn[data-tier="' + selectedTier + '"]');
-    if (btn) btn.classList.add('sel');
-    else { selectedTier = 6; selectTier(6); }
-  }
+  selectTier(6); // default, will be overridden by restoreQuestUIState
 })();
 
 document.getElementById('tier-a').onclick = function() { selectTier(null); };
@@ -485,7 +477,11 @@ function renderMarkdown(src) {
   // Links
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
   // Tables (must run before lists to avoid confusing | with list markers)
-  s = s.replace(/(?:\n|^)(\|.+\|)\n\|[-:\s|]+\|\n((?:\|.+\|\n?)*)/g, function(_, header, rows) {
+  s = s.replace(/(?:
+|^)(\|.+\|)
+\|[-:\s|]+\|
+((?:\|.+\|
+?)*)/g, function(_, header, rows) {
     if (!header || rows === undefined) return _;
     const ths = header.split('|').filter(function(c) { return c.trim(); }).map(function(c) { return '<th>' + c.trim() + '</th>'; }).join('');
     const trs = rows.split('\n').filter(function(r) { return r.trim(); }).map(function(r) {
@@ -550,8 +546,8 @@ function setStreaming(val) {
   streaming = val;
   $sendBtn.textContent = val ? 'Stop' : 'Send';
   $sendBtn.className = val ? 'stop' : '';
-  $guideBtn.disabled = !val;
-  $queueBtn.disabled = !val;
+  $guideBtn.disabled = val;
+  $queueBtn.disabled = val;
   $input.contentEditable = val ? 'false' : 'true';
   $input.style.opacity = val ? '0.6' : '1';
 }
@@ -637,6 +633,44 @@ window.addEventListener('message', function(e) {
   }
 });
 var questActiveId = '';
+
+// ═══ per-quest UI memory state（零开销快照，quest 切换时同步读写） ═══
+// { questId: { inputHTML, pendingImages:[], selectedTier, scrollTop } }
+var questUIStates = {};
+
+function saveQuestUIState(id) {
+  if (!id) return;
+  var imgs = new Array(pendingImages.length);
+  for (var i = 0; i < pendingImages.length; i++) {
+    var pi = pendingImages[i];
+    imgs[i] = { id: pi.id, base64: pi.base64, dataUrl: pi.dataUrl };
+  }
+  questUIStates[id] = {
+    inputHTML: $input.innerHTML,
+    pendingImages: imgs,
+    selectedTier: selectedTier,
+    scrollTop: $messages.scrollTop
+  };
+}
+
+function restoreQuestUIState(id) {
+  var state = questUIStates[id];
+  if (state) {
+    $input.innerHTML = state.inputHTML;
+    pendingImages = state.pendingImages;
+    selectedTier = state.selectedTier;
+    updateTierButtons(selectedTier);
+    renderImageStrip();
+    $messages.scrollTop = state.scrollTop;
+  } else {
+    $input.innerHTML = '';
+    pendingImages = [];
+    selectedTier = 6;
+    updateTierButtons(6);
+    renderImageStrip();
+    $messages.scrollTop = 0;
+  }
+}
 
 async function initQuests() {
   console.log('[quests] initQuests() START');
@@ -1016,18 +1050,17 @@ document.getElementById('ctx-compress').onclick = async function() {
 
 // ── 引导按钮 ──
 $guideBtn.onclick = function() {
+  if (streaming || _sending) return;
   var text = getInputText().trim();
-  if (!text) return;
-  var confirmMsg = addMessageEl('user', '[引导] ' + text);
-  confirmMsg.style.opacity = '0.7';
-  var ok = agent.inject(text);
-  if (ok) {
-    $input.innerHTML = '';
-    $input.focus();
-  } else {
-    confirmMsg.className = 'msg msg-error';
-    confirmMsg.textContent = '[引导失败] ' + text;
+  if (!text) {
+    // 空输入时发送默认引导信号
+    text = '确认连接';
   }
+  $input.textContent = '';
+  $input.innerHTML = '';
+  // 带上 [GUIDE] 标记，触发 AI 立即确认
+  $input.textContent = '[GUIDE] ' + text;
+  sendMessage();
 };
 
 // ── 排队按钮 ──
@@ -1363,10 +1396,6 @@ async function sendMessage() {
   // ---- Agentic loop ----
   setStreaming(true);
     var aiDiv = addMessageEl('ai', '');
-  var reasoningEl = null;
-  var reasoningText = '';
-  var toolCallEls = []; // track tool call → result pairs for this turn
-
   try {
     await agent.send(userContent, {
       images: images,
@@ -1389,48 +1418,7 @@ async function sendMessage() {
           });
         }
       },
-      onReasoning: function(chunk) {
-        reasoningText += chunk;
-        if (!reasoningEl) {
-          reasoningEl = document.createElement('details');
-          reasoningEl.className = 'msg-reasoning';
-          reasoningEl.innerHTML = '<summary>思考过程</summary><div class="reasoning-body"></div>';
-          aiDiv.parentNode.insertBefore(reasoningEl, aiDiv);
-        }
-        reasoningEl.querySelector('.reasoning-body').textContent = reasoningText;
-        scrollToBottom();
-      },
-      onToolCall: function(call) {
-        var tcEl = document.createElement('div');
-        tcEl.className = 'msg-tool-call';
-        var argsShort = '';
-        try {
-          var a = JSON.parse(call.function.arguments);
-          argsShort = JSON.stringify(a).slice(0, 120);
-        } catch(_) { argsShort = (call.function.arguments || '').slice(0, 120); }
-        tcEl.innerHTML = '<span class="tool-icon">\u2699</span>' +
-          '<span class="tool-name">' + escHtml(call.function.name) + '</span>' +
-          '<span class="tool-args">' + escHtml(argsShort) + '</span>';
-        aiDiv.parentNode.insertBefore(tcEl, aiDiv.nextSibling || aiDiv);
-        toolCallEls.push({ el: tcEl, name: call.function.name });
-        scrollToBottom();
-      },
-      onToolResult: function(name, result, truncated) {
-        var lastTc = null;
-        for (var i = toolCallEls.length - 1; i >= 0; i--) {
-          if (toolCallEls[i].name === name && !toolCallEls[i].result) { lastTc = toolCallEls[i]; break; }
-        }
-        var trEl = document.createElement('div');
-        trEl.className = 'msg-tool-result';
-        trEl.textContent = result;
-        if (lastTc) {
-          lastTc.el.parentNode.insertBefore(trEl, lastTc.el.nextSibling || lastTc.el);
-          lastTc.result = true;
-        } else {
-          aiDiv.parentNode.insertBefore(trEl, aiDiv.nextSibling || aiDiv);
-        }
-        scrollToBottom();
-      },
+
       onDone: async function(content, timing) {
         aiDiv._text = content;
         aiDiv.innerHTML = renderMarkdown(content);

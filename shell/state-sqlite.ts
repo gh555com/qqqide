@@ -383,14 +383,18 @@ export class StateStore extends EventEmitter {
         if (sc.form === 'log' && !Array.isArray(value)) {
             throw new Error(`state.setNow on log form requires an array; ns=${ns} key=${key}`);
         }
-        // Cancel debounce, save immediately
-        const id = ns + '\x00' + key;
-        const t = this._debouncers.get(id);
-        if (t) { clearTimeout(t); this._debouncers.delete(id); }
+        // ★ Flush ALL pending debounced writes first (from other keys), then write this key
+        // This ensures atomic: one export includes all pending writes + this setNow write
+        const ids = Array.from(this._debouncers.keys());
+        for (const id of ids) {
+            const t = this._debouncers.get(id);
+            if (t) { clearTimeout(t); this._debouncers.delete(id); }
+            this._dirtySet.delete(id);
+        }
         this._writeKey(ns, key, sc, value);
-        this._dirtySet.delete(id);
-        // ★ setNow = immediate export (flush any pending batch first)
-        this._doSaveDb();
+        this._dirtySet.delete(ns + '\x00' + key);
+        // ★ setNow = immediate export, but async to not block event loop
+        await this._doSaveDb();
         if (sc.cloud && this.onCloudDirty) { try { this.onCloudDirty(ns, key); } catch { /* ignore */ } }
     }
 
@@ -502,7 +506,8 @@ export class StateStore extends EventEmitter {
         }, 50);
     }
 
-    private _doSaveDb(): void {
+    // ★ async export — yields to event loop during file I/O, avoids blocking main process
+    private async _doSaveDb(): Promise<void> {
         if (!this._readyOk || !this._db) return;
         this._saveDbPending = false;
         if (this._saveDbTimer) { clearTimeout(this._saveDbTimer); this._saveDbTimer = null; }
@@ -512,6 +517,33 @@ export class StateStore extends EventEmitter {
             // Atomic write: tmp + rename
             const tmp = this.dbPath + '.tmp.' + Date.now();
             // 确保父目录存在（兜底：构造函数中已创建，但可能被外部删除）
+            try { fs.mkdirSync(path.dirname(this.dbPath), { recursive: true }); } catch { /* ignore */ }
+            await fs.promises.writeFile(tmp, buf as any);
+            try {
+                await fs.promises.rename(tmp, this.dbPath);
+            } catch (e: any) {
+                if (e && (e.code === 'EEXIST' || e.code === 'EPERM' || e.code === 'EACCES')) {
+                    try { await fs.promises.unlink(this.dbPath); } catch { /* ignore */ }
+                    await fs.promises.rename(tmp, this.dbPath);
+                } else {
+                    try { await fs.promises.unlink(tmp); } catch { /* ignore */ }
+                    throw e;
+                }
+            }
+        } catch (e) {
+            console.warn('[state-sqlite] _doSaveDb failed:', e);
+        }
+    }
+
+    /** Synchronous flush for crash/shutdown — must not use async I/O */
+    private _doSaveDbSync(): void {
+        if (!this._readyOk || !this._db) return;
+        this._saveDbPending = false;
+        if (this._saveDbTimer) { clearTimeout(this._saveDbTimer); this._saveDbTimer = null; }
+        try {
+            const data = this._db.export();
+            const buf = Buffer.from(data);
+            const tmp = this.dbPath + '.tmp.' + Date.now();
             try { fs.mkdirSync(path.dirname(this.dbPath), { recursive: true }); } catch { /* ignore */ }
             fs.writeFileSync(tmp, buf as any);
             try {
@@ -541,7 +573,7 @@ export class StateStore extends EventEmitter {
             if (t) { clearTimeout(t); this._debouncers.delete(id); }
             this._dirtySet.delete(id);
         }
-        this._doSaveDb();
+        await this._doSaveDb();
     }
 
     /** Synchronous flush for crash/shutdown. */
@@ -554,7 +586,7 @@ export class StateStore extends EventEmitter {
         }
         this._dirtySet.clear();
         this._memCache.clear();
-        this._doSaveDb();
+        this._doSaveDbSync();
     }
 
     async flushOne(ns: string, key: string): Promise<void> {
@@ -563,7 +595,7 @@ export class StateStore extends EventEmitter {
         if (t) { clearTimeout(t); this._debouncers.delete(id); }
         this._dirtySet.delete(id);
         this._memCache.delete(id);
-        this._doSaveDb();
+        await this._doSaveDb();
     }
 
     // ----- schema helpers -----------------------------------------------------

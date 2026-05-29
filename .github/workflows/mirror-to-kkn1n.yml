@@ -1,0 +1,19 @@
+name: Mirror to kkn1n/qqq-IDE
+
+on:
+  push:
+    branches: [qq, main]
+
+jobs:
+  mirror:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to kkn1n/qqq-IDE
+        run: |
+          git remote add mirror https://x-access-token:${{ secrets.QQQ_TOKEN }}@github.com/kkn1n/qqq-IDE.git
+          git push mirror --all
+          git push mirror --tags

@@ -301,6 +301,17 @@
     });
   }
 
+  // ---- Global theme sync (register once, affects all Monaco editors) ----
+  let _themeSyncDone = false;
+  function hookThemeSync(monaco) {
+    if (_themeSyncDone) return;
+    if (!window.qqqTheme) return;
+    _themeSyncDone = true;
+    window.qqqTheme.onChange(function (dark) {
+      monaco.editor.setTheme(dark ? 'solarized-dark' : 'solarized-light');
+    });
+  }
+
   // ---------------- Editor build ----------------
   async function build(host) {
     mountEl = host;
@@ -328,12 +339,8 @@
       });
       _monacoRef = monaco;
       _editorRef = ed;
-      // 主题切换时同步 Monaco
-      if (window.qqqTheme) {
-        window.qqqTheme.onChange(function (dark) {
-          monaco.editor.setTheme(dark ? 'solarized-dark' : 'solarized-light');
-        });
-      }
+      // 主题切换时同步 Monaco（全局注册一次）
+      hookThemeSync(monaco);
 
       // Ctrl+S
       ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => save());
@@ -463,6 +470,7 @@
     try {
       const monaco = await loadMonaco();
       if (window.qqqTheme) { window.qqqTheme.defineMonacoThemes(monaco); }
+      hookThemeSync(monaco);
       configureMonacoTypescript(monaco);
       const lang = langOf(filePath);
       const ed = monaco.editor.create(host, {
