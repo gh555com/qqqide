@@ -473,7 +473,6 @@ function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promis
 // ---------------------------------------------------------------------------
 
 export class QzSpawn {
-    private _ghrunSkip = false; // cached: ghrun does not support "spawn" subcommand yet
 
     constructor(private appRoot: string) {}
 
@@ -518,14 +517,13 @@ export class QzSpawn {
             };
         }
 
-        // Tier 1: ghrun (skip if known unsupported)
-        const ghrun = this._ghrunSkip ? null : resolveGhrunBin(this.appRoot);
+        // Tier 1: ghrun (Rust, tree-kill watchdog)
+        const ghrun = resolveGhrunBin(this.appRoot);
         if (ghrun) {
             try {
                 const r = await ghrunTier(brief, this.appRoot, ghrun);
                 if (r.killReason !== 'spawn-error') { return r; }
-                this._ghrunSkip = true;
-                console.warn('[qz] ghrun spawn-error (will skip ghrun tier hereafter), falling back to runner:', r.stderr.slice(0, 200));
+                console.warn('[qz] ghrun spawn-error, falling back to runner:', r.stderr.slice(0, 200));
             } catch (e: any) {
                 console.warn('[qz] ghrun threw, falling back to runner:', e && e.message);
             }

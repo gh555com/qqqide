@@ -115,10 +115,26 @@
       if (e.data.action === 'show') {
         var tt2 = _ensurePieTT();
         tt2.innerHTML = e.data.html || '';
-        var fr = frame.getBoundingClientRect();
-        tt2.style.left = (fr.left + (e.data.clientX || 0) + 14) + 'px';
-        tt2.style.top = (fr.top + (e.data.clientY || 0) - 10) + 'px';
+        tt2.style.transform = '';
         tt2.style.display = 'flex';
+        var fr = frame.getBoundingClientRect();
+        var cx = fr.left + (e.data.clientX || 0);
+        var cy = fr.top + (e.data.clientY || 0) - 10;
+        // 默认居中于光标
+        tt2.style.left = cx + 'px';
+        tt2.style.top = cy + 'px';
+        tt2.style.transform = 'translateX(-50%)';
+        // 检测右溢出 → 翻到光标左侧
+        var rect = tt2.getBoundingClientRect();
+        if (rect.right > window.innerWidth - 2) {
+          tt2.style.transform = '';
+          tt2.style.left = (cx - 10) + 'px';
+          // 再次检测左溢出 → 贴左边界
+          var rect2 = tt2.getBoundingClientRect();
+          if (rect2.left < 2) {
+            tt2.style.left = '2px';
+          }
+        }
       }
     });
 

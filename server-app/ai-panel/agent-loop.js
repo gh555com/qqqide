@@ -495,14 +495,18 @@ var AgentLoop = (function () {
         } // stream retry loop
     };
 
-    // ---- 简易 hash（视觉缓存 key）----
+    // ---- 简易 hash（视觉缓存 key，64bit 防碰撞）----
     AgentLoop.prototype._simpleHash = function (str) {
-        var h = 0;
+        var h1 = 0, h2 = 0;
         for (var i = 0; i < str.length; i++) {
-            h = ((h << 5) - h) + str.charCodeAt(i);
-            h |= 0;
+            h1 = ((h1 << 5) - h1) + str.charCodeAt(i);
+            h1 |= 0;
+            if (i % 2 === 0) {
+                h2 = ((h2 << 5) - h2) + str.charCodeAt(i);
+                h2 |= 0;
+            }
         }
-        return (h >>> 0).toString(16);
+        return (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
     };
 
     // ---- 网关调用 ----

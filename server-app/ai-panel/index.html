@@ -101,7 +101,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .file-chip .chip-name{overflow:hidden;text-overflow:ellipsis}
 .file-chip .chip-rm{cursor:pointer;opacity:.5;font-size:14px;line-height:1;flex-shrink:0;padding:0 1px}
 .file-chip .chip-rm:hover{opacity:1;color:var(--red)}
-.table-wrap{position:relative;overflow-x:hidden;margin:6px 0;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg)}.table-wrap:hover .table-view-btn{opacity:1}.table-view-btn{display:inline-block;cursor:pointer;font-size:11px;color:var(--blue);padding:4px 8px;opacity:0.6;user-select:none;border-bottom:1px solid var(--border-color);width:100%}.table-view-btn:hover{opacity:1;background:var(--base3)}.table-inner{overflow-x:hidden;padding:4px 8px}.table-inner table{width:100%;font-size:11px}.table-inner th,.table-inner td{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}
+.table-wrap{position:relative;overflow-x:auto;margin:6px 0;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg)}.table-wrap:hover .table-view-btn{opacity:1;transition:opacity 0.1s 0s}.table-view-btn{position:absolute;top:4px;right:4px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-size:14px;color:#fff;padding:8px 16px;opacity:0;user-select:none;border-radius:6px;background:var(--yellow,#b58900);z-index:5;box-shadow:0 2px 8px rgba(0,0,0,0.3);pointer-events:auto;transition:opacity 0.1s 2s}.table-view-btn:hover{background:var(--orange,#cb4b16)}.table-inner{overflow-x:auto;padding:8px 10px}.table-inner table{width:auto;min-width:100%;font-size:12px}.table-inner th,.table-inner td{padding:4px 8px;text-align:left;white-space:nowrap}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}
 .ctx-files span{background:var(--card-bg);padding:1px 6px;border-radius:3px;margin-right:4px}
 /* 排队信封 */
 #queue-strip{display:flex;flex-wrap:wrap;gap:4px;padding:0 0 4px}
@@ -499,13 +499,12 @@ function renderMarkdown(src) {
       const tds = r.split('|').filter(function(c) { return c.trim(); }).map(function(c) { return '<td>' + c.trim() + '</td>'; }).join('');
       return '<tr>' + tds + '</tr>';
     }).join('');
-    // Wrap table with view button to prevent horizontal scrollbar
-    var colCount = (ths.match(/<th>/g) || []).length;
     var rawTable = '<table><thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table>';
     var tblId = window._tableStore.length;
     window._tableStore.push(rawTable);
+    // 悬浮按钮：hover 时右上角出现，易点击，底色黄醒目
     return '<div class="table-wrap">' +
-      '<span class="table-view-btn" onclick="viewTable(' + tblId + ')" title="在全窗口查看表格">⊞ 查看表格 (' + colCount + '列)</span>' +
+      '<span class="table-view-btn" onclick="viewTable(' + tblId + ')">⊞ 展开</span>' +
       '<div class="table-inner">' + rawTable + '</div></div>';
   });
   // Lists
@@ -534,6 +533,8 @@ function viewTable(id) {
     parent.postMessage({ type: 'qqq-ai-overlay', action: 'open-table', html: html }, '*');
   }
 }
+// Expose globally — onclick in HTML needs global scope
+window.viewTable = viewTable;
 
 function formatBytes(n) {
   if (!n || n < 0) return '0 B';
@@ -599,16 +600,6 @@ function doStreamRender() {
   aiDiv._lastParaEl.innerHTML = renderMarkdown(aiDiv._buf || '');
 
   aiDiv._dirty = false;
-
-  // If new content arrived during render, schedule next tick
-
-  if (aiDiv._dirty) {
-
-    aiDiv._renderScheduled = true;
-
-    setTimeout(doStreamRender, 1000);
-
-  }
 
 }
 
@@ -1221,6 +1212,7 @@ var _floorTimerId = null;
 var _floorStartPerf = 0;
 var _floorCurrentTiming = null;
 var _activeAiDiv = null;  // 当前正在流式输出的 AI 豆腐块
+var _lastPieTiming = null;  // 饼图缓存：跳过无变化重绘
 
 function fmtTime(ms) { var s = Math.round(ms / 1000); return Math.floor(s / 60) + 'm:' + (s % 60) + 's'; }
 
@@ -1235,6 +1227,13 @@ function _hidePieTooltip() {
 }
 
 function drawPie(canvas, timing) {
+  // 跳过无变化重绘（计时器每秒触发但数据未必更新）
+  if (_lastPieTiming && timing &&
+      _lastPieTiming.networkMs === timing.networkMs &&
+      _lastPieTiming.deepseekMs === timing.deepseekMs &&
+      _lastPieTiming.toolMs === timing.toolMs &&
+      _lastPieTiming.waitMs === timing.waitMs) return;
+  _lastPieTiming = timing ? { networkMs: timing.networkMs, deepseekMs: timing.deepseekMs, toolMs: timing.toolMs, waitMs: timing.waitMs } : null;
   var ctx = canvas.getContext('2d');
   var w = canvas.width, h = canvas.height;
   ctx.clearRect(0, 0, w, h);
@@ -1683,7 +1682,10 @@ async function sendMessage() {
         aiDiv._lastParaEl = null;
         aiDiv._renderedCount = 0;
         aiDiv._dirty = false;
-        aiDiv._contentWrap.innerHTML = renderMarkdown(content);
+        // 流式阶段已逐段渲染到 DOM。只在代码块含空行时需要全量重建修正
+        if (/```[\s\S]*?\n\n[\s\S]*?```/.test(content)) {
+          aiDiv._contentWrap.innerHTML = renderMarkdown(content);
+        }
         if (window._tableStore && window._tableStore.length > 50) {
           window._tableStore = window._tableStore.slice(-30);
         }
