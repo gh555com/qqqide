@@ -22,10 +22,10 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html{forced-color-adjust:none!important}
 body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text-primary);background:var(--background-color);height:100vh;display:grid;grid-template-rows:auto auto 1fr auto;overflow:hidden}
-#top-bar{padding:6px 10px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:8px;font-size:11px;flex-wrap:wrap;overflow-x:hidden}
+#top-bar{padding:4px 8px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:5px;font-size:11px;flex-wrap:nowrap;overflow-x:hidden}
 #top-bar .label{opacity:.7}
-#top-bar input{flex:1;padding:2px 6px;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:3px;font-size:11px}
-#top-bar button{padding:2px 8px;cursor:pointer;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);font-size:11px}
+#top-bar input{flex:1;padding:1px 4px;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:3px;font-size:10px;min-width:80px}
+#top-bar button{padding:1px 6px;cursor:pointer;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);font-size:10px;white-space:nowrap;flex-shrink:0}
 #tab-bar{display:flex;align-items:center;gap:2px;padding:2px 6px;border-bottom:1px solid var(--border-color);background:var(--card-bg);overflow-x:hidden}
 #tab-bar::-webkit-scrollbar{display:none}
 #tabs{display:flex;gap:2px;flex:1;min-width:0;overflow:hidden}
@@ -82,18 +82,18 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #input{flex:1;min-width:0;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:150px;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;outline:none}
 #input:focus{outline:1px solid var(--blue)}
 #input:empty::before{content:attr(data-placeholder);color:var(--base01);opacity:.5;pointer-events:none}
-#btn-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;overflow-x:hidden}
-#btn-row button{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;height:30px}
+#btn-row{display:flex;gap:4px;align-items:center;flex-wrap:nowrap;overflow-x:hidden}
+#btn-row button{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;height:30px;white-space:nowrap;flex-shrink:0}
 #btn-row button:hover{background:var(--base3)}
 #btn-row button:disabled{opacity:.3;cursor:default}
 #send-btn.stop{background:var(--red);color:#fff;border-color:var(--red);opacity:1}
-#guide-btn,#queue-btn{padding:4px 8px}
+#guide-btn,#queue-btn{padding:4px 6px}
 #guide-btn svg,#queue-btn svg{display:block}
-.tier-group{display:flex;align-items:center;gap:4px;margin-right:12px}
-#btn-row .tier-btn{width:22px;height:22px;padding:0;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;font-size:10px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;user-select:none;line-height:1}
+.tier-group{display:flex;align-items:center;gap:3px;margin-right:8px}
+#btn-row .tier-btn{width:30px;height:30px;padding:0;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;user-select:none;line-height:1;flex-shrink:0}
 #btn-row .tier-btn:hover{background:var(--base3)}
 #btn-row .tier-btn.sel{background:var(--red);color:#000;font-weight:800;font-size:13px}
-.tier-bar{display:flex;gap:1px}
+.tier-bar{display:flex;gap:2px}
 .file-chip{display:inline-flex;align-items:center;gap:3px;background:var(--base3);border:1px solid var(--border-color);border-radius:3px;padding:1px 6px;margin:0 2px;font-size:11px;color:var(--text-primary);vertical-align:middle;cursor:default;white-space:nowrap;user-select:none;-webkit-user-select:none;max-width:200px}
 .file-chip .chip-icon{font-size:10px;flex-shrink:0}
 .file-chip .chip-name{overflow:hidden;text-overflow:ellipsis}
@@ -462,11 +462,7 @@ function renderMarkdown(src) {
   // Links
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
   // Tables (must run before lists to avoid confusing | with list markers)
-  s = s.replace(/(?:
-|^)(\|.+\|)
-\|[-:\s|]+\|
-((?:\|.+\|
-?)*)/g, function(_, header, rows) {
+  s = s.replace(/(?:\n|^)(\|.+\|)\n\|[-:\s|]+\|\n((?:\|.+\|\n?)*)/g, function(_, header, rows) {
     if (!header || rows === undefined) return _;
     const ths = header.split('|').filter(function(c) { return c.trim(); }).map(function(c) { return '<th>' + c.trim() + '</th>'; }).join('');
     const trs = rows.split('\n').filter(function(r) { return r.trim(); }).map(function(r) {
