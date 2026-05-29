@@ -43,15 +43,49 @@ pub struct Ctx {
 impl Ctx {
     pub fn detect() -> Self {
         let qdir = Self::infer_qdir();
-        let f = qdir.join("f");
+
+        // Auto-detect layout:
+        //   qqq-shell-v2:  userData/ + cache/ + logs/ at QDIR root
+        //   q3 legacy:     f/user-data/ + f/cache/ + f/logs/
+        let is_shell_v2 = qdir.join("userData").is_dir()
+            || qdir.join("cache").is_dir();
+
+        let (f, user_data, extensions, components, goods, tmp, cache, logs) =
+            if is_shell_v2 {
+                // qqq-shell-v2: flat layout, everything at QDIR level
+                (
+                    qdir.clone(),
+                    qdir.join("userData"),
+                    qdir.join("userData").join("extensions"),
+                    qdir.join("userData").join("components"),
+                    qdir.join("userData").join("goods"),
+                    qdir.join("temp"),
+                    qdir.join("cache"),
+                    qdir.join("logs"),
+                )
+            } else {
+                // q3 legacy: everything under f/ (VS Code portable data)
+                let f = qdir.join("f");
+                (
+                    f.clone(),
+                    f.join("user-data"),
+                    f.join("extensions"),
+                    f.join("components"),
+                    f.join("goods"),
+                    f.join("tmp"),
+                    f.join("cache"),
+                    f.join("logs"),
+                )
+            };
+
         Ctx {
-            user_data:  f.join("user-data"),
-            extensions: f.join("extensions"),
-            components: f.join("components"),
-            goods:      f.join("goods"),
-            tmp:        f.join("tmp"),
-            cache:      f.join("cache"),
-            logs:       f.join("logs"),
+            user_data,
+            extensions,
+            components,
+            goods,
+            tmp,
+            cache,
+            logs,
             f,
             qdir,
         }

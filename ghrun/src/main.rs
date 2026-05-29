@@ -16,6 +16,7 @@ mod ensure;
 mod install;
 mod lsp_daemon;
 mod manifest;
+mod spawn;
 
 use ctx::Ctx;
 
@@ -67,6 +68,20 @@ enum Cmd {
         /// Component name: ffmpeg, python, lsp/gopls, lsp/clangd, etc.
         name: String,
     },
+
+    /// Spawn a one-shot subprocess with deadline watchdog (stdin JSON RPC)
+    /// Protocol matches qz-spawn.ts ghrunTier + engines/runner.py
+    Spawn {
+        /// Always pass this flag (reserved, protocol compat)
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Print QDIR root path (for debugging / env detection)
+    Root,
+
+    /// Health check — verify ghrun is functional (for CI / startup probe)
+    Doctor,
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +101,9 @@ fn main() {
         Cmd::Info => cmd_info(&ctx),
         Cmd::LspDaemon => lsp_daemon::run(&ctx),
         Cmd::Which { name } => cmd_which(&ctx, &name),
+        Cmd::Spawn { .. } => spawn::run(),
+        Cmd::Root => cmd_root(&ctx),
+        Cmd::Doctor => cmd_doctor(&ctx),
     };
 
     if let Err(e) = result {
@@ -174,4 +192,28 @@ fn chrono_now() -> String {
     let secs = SystemTime::now().duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs()).unwrap_or(0);
     format!("unix={}", secs)
+}
+
+fn cmd_root(ctx: &Ctx) -> Result<(), String> {
+    let exe = std::env::current_exe().unwrap_or_default();
+    println!("{}", serde_json::json!({
+        "event": "root",
+        "qdir": ctx.qdir.to_string_lossy(),
+        "ghrun": exe.to_string_lossy(),
+    }));
+    Ok(())
+}
+
+fn cmd_doctor(ctx: &Ctx) -> Result<(), String> {
+    let exe = std::env::current_exe().unwrap_or_default();
+    println!("{}", serde_json::json!({
+        "event": "doctor",
+        "status": "ok",
+        "qdir": ctx.qdir.to_string_lossy(),
+        "ghrun": exe.to_string_lossy(),
+        "platform": std::env::consts::OS,
+        "arch": std::env::consts::ARCH,
+        "version": env!("CARGO_PKG_VERSION"),
+    }));
+    Ok(())
 }
