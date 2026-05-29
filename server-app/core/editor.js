@@ -278,7 +278,21 @@
                 // generic editor worker: vs/base/worker/workerMain.js (min build)
                 workerUrl = baseUrl + '/base/worker/workerMain.js';
               }
+              // ★ Override importScripts → sync XHR so Workers can load qqq-asset: custom protocol.
+              // importScripts() does NOT support custom Electron protocols (only fetch/XHR do),
+              // which causes Worker creation to fail → Monaco falls back to main thread →
+              // "define is not a function" + "Duplicate module" crashes the UI.
               var boot = [
+                'var __o=self.importScripts;',
+                'self.importScripts=function(){',
+                '  for(var i=0;i<arguments.length;i++){',
+                '    var u=arguments[i];',
+                '    var x=new XMLHttpRequest();',
+                '    x.open("GET",u,false);',
+                '    try{x.send()}catch(e){__o.call(self,u);continue}',
+                '    (1,eval)(x.responseText);',
+                '  }',
+                '};',
                 'importScripts("' + baseUrl + '/loader.js");',
                 'require.config({ paths: { vs: "' + baseUrl + '" } });',
                 '(function(){ var d=self.define; self.define=undefined;',

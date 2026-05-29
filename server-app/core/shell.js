@@ -424,6 +424,110 @@
     persistState();
   }
 
+  // ---- AI Overlay (full-window, breaks out of iframe) ----
+  function bootAiOverlay() {
+    // Create overlay at document.body level (outside any iframe)
+    var overlay = document.createElement('div');
+    overlay.id = 'qqq-ai-overlay';
+    overlay.style.cssText =
+      'display:none; position:fixed; inset:0; z-index:99999; ' +
+      'background:rgba(0,0,0,0.88); cursor:default;';
+
+    var closeBtn = document.createElement('div');
+    closeBtn.id = 'qqq-ai-overlay-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.style.cssText =
+      'position:fixed; top:16px; right:24px; z-index:100001; ' +
+      'cursor:pointer; font-size:40px; color:#fff; opacity:0.7; ' +
+      'user-select:none; line-height:1; font-weight:200;';
+    closeBtn.title = 'Close (Esc)';
+
+    var contentEl = document.createElement('div');
+    contentEl.id = 'qqq-ai-overlay-content';
+    contentEl.style.cssText =
+      'position:absolute; inset:0; display:flex; align-items:center; ' +
+      'justify-content:center; padding:48px;';
+
+    overlay.appendChild(closeBtn);
+    overlay.appendChild(contentEl);
+    document.body.appendChild(overlay);
+
+    function close() {
+      overlay.style.display = 'none';
+      contentEl.innerHTML = '';
+    }
+
+    closeBtn.addEventListener('click', close);
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) close();
+    });
+
+    // Keyboard: Escape to close
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape' && overlay.style.display !== 'none') {
+        close();
+      }
+    });
+
+    // Listen for messages from AI iframe
+    window.addEventListener('message', function(e) {
+      if (!e.data || e.data.type !== 'qqq-ai-overlay') return;
+
+      if (e.data.action === 'close') { close(); return; }
+
+      if (e.data.action === 'open-image') {
+        contentEl.innerHTML = '';
+        var img = document.createElement('img');
+        img.src = e.data.src;
+        img.style.cssText =
+          'max-width:90vw; max-height:85vh; object-fit:contain; ' +
+          'border-radius:6px; box-shadow:0 4px 32px rgba(0,0,0,0.4);';
+        contentEl.appendChild(img);
+        overlay.style.display = 'block';
+      }
+
+      if (e.data.action === 'open-table') {
+        contentEl.innerHTML = '';
+        var wrapper = document.createElement('div');
+        wrapper.style.cssText =
+          'max-width:95vw; max-height:85vh; overflow:auto; ' +
+          'background:var(--card-bg,#2a2a2a); color:var(--text-primary,#d4d0c8); ' +
+          'border-radius:8px; padding:20px; ' +
+          'box-shadow:0 4px 32px rgba(0,0,0,0.4);';
+        wrapper.innerHTML = e.data.html;
+        // Fix table styles inside overlay
+        var tables = wrapper.querySelectorAll('table');
+        for (var ti = 0; ti < tables.length; ti++) {
+          var t = tables[ti];
+          t.style.cssText =
+            'border-collapse:collapse; width:auto; font-size:13px;';
+        }
+        var cells = wrapper.querySelectorAll('th,td');
+        for (var ci = 0; ci < cells.length; ci++) {
+          cells[ci].style.cssText =
+            'border:1px solid var(--border-color,#333); padding:6px 12px; text-align:left;';
+        }
+        var ths = wrapper.querySelectorAll('th');
+        for (var hi = 0; hi < ths.length; hi++) {
+          ths[hi].style.background = 'var(--card-bg,#1e1e1e)';
+        }
+        contentEl.appendChild(wrapper);
+        overlay.style.display = 'block';
+      }
+    });
+
+    // Theme sync for overlay inner elements
+    if (window.qqqTheme && window.qqqTheme.onChange) {
+      window.qqqTheme.onChange(function(dark) {
+        var wrapper = contentEl.querySelector('div');
+        if (wrapper) {
+          wrapper.style.background = dark ? '#2a2a2a' : '#eee8d5';
+          wrapper.style.color = dark ? '#d4d0c8' : '#7a7874';
+        }
+      });
+    }
+  }
+
   // ---- Sashes ----
   function bootSashes() {
     // A-zone | X-zone sash
@@ -643,6 +747,8 @@
     // AI Zone
     bootAiZone();
 
+    // AI Overlay (must be after AI zone to catch iframe messages)
+    bootAiOverlay();
     // Output panel
     bootOutputPanel();
 

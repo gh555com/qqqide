@@ -22,13 +22,13 @@
 *{margin:0;padding:0;box-sizing:border-box}
 html{forced-color-adjust:none!important}
 body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text-primary);background:var(--background-color);height:100vh;display:grid;grid-template-rows:auto auto 1fr auto;overflow:hidden}
-#top-bar{padding:6px 10px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:8px;font-size:11px}
+#top-bar{padding:6px 10px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:8px;font-size:11px;flex-wrap:wrap;overflow-x:hidden}
 #top-bar .label{opacity:.7}
 #top-bar input{flex:1;padding:2px 6px;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:3px;font-size:11px}
 #top-bar button{padding:2px 8px;cursor:pointer;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);font-size:11px}
-#tab-bar{display:flex;align-items:center;gap:2px;padding:2px 6px;border-bottom:1px solid var(--border-color);background:var(--card-bg);overflow-x:auto;scrollbar-width:none}
+#tab-bar{display:flex;align-items:center;gap:2px;padding:2px 6px;border-bottom:1px solid var(--border-color);background:var(--card-bg);overflow-x:hidden}
 #tab-bar::-webkit-scrollbar{display:none}
-#tabs{display:flex;gap:2px;flex:1;min-width:0}
+#tabs{display:flex;gap:2px;flex:1;min-width:0;overflow:hidden}
 .tab{display:flex;align-items:center;gap:4px;padding:3px 8px;font-size:11px;border:1px solid var(--border-color);border-radius:3px 3px 0 0;background:var(--bg);cursor:pointer;white-space:nowrap;max-width:160px;user-select:none}
 .tab.active{background:var(--base3);border-bottom-color:var(--base3);font-weight:600}
 .tab .tab-title{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
@@ -60,6 +60,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-ai a:hover{text-decoration:underline}
 .msg-error{color:var(--red);padding:4px 0;font-size:12px}
 .msg-status{font-size:11px;opacity:.6;padding:2px 0;font-style:italic}
+/* 楼层时钟 + 饼图（嵌在豆腐块内部底部，每个楼层私有） */
+.msg-ai-clock{display:flex;align-items:center;gap:8px;padding:8px 0 0;user-select:none}
+.msg-ai-clock .clock{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;font-size:48px;font-weight:700;color:var(--text-primary);opacity:0.85}
+.msg-ai-clock canvas{width:70px;height:70px;border-radius:50%}
 #input-area{border-top:1px solid var(--border-color);padding:8px;display:flex;flex-direction:column;gap:6px;background:var(--card-bg)}
 #image-strip{display:none;overflow-x:hidden;flex-wrap:wrap;padding:4px 0;gap:6px}
 #image-strip::-webkit-scrollbar{height:4px}
@@ -74,18 +78,11 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-img-wrap img{max-height:120px;border-radius:4px;margin:0}
 .msg-img-badge{position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.75);color:#fff;font-size:10px;font-weight:bold;padding:2px 6px;border-radius:3px;cursor:pointer;user-select:none;z-index:1}
 .msg-img-badge:hover{background:var(--green)}
-#lightbox{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);z-index:9999;cursor:grab;overflow-x:hidden}
-#lightbox.active{display:block}
-#lightbox.dragging{cursor:grabbing}
-#lightbox-img{position:absolute;transform-origin:0 0;border-radius:6px;user-select:none;-webkit-user-drag:none;max-width:90vw;max-height:90vh;object-fit:contain}
-#lightbox-actions{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:10px;z-index:10001}
-#lightbox-actions button{background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.3);border-radius:4px;padding:6px 14px;font-size:12px;cursor:pointer;backdrop-filter:blur(4px)}
-#lightbox-actions button:hover{background:rgba(255,255,255,0.3)}
 #input-row{display:flex;gap:6px;overflow:hidden}
 #input{flex:1;min-width:0;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:150px;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;outline:none}
 #input:focus{outline:1px solid var(--blue)}
 #input:empty::before{content:attr(data-placeholder);color:var(--base01);opacity:.5;pointer-events:none}
-#btn-row{display:flex;gap:6px;align-items:center}
+#btn-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;overflow-x:hidden}
 #btn-row button{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;height:30px}
 #btn-row button:hover{background:var(--base3)}
 #btn-row button:disabled{opacity:.3;cursor:default}
@@ -102,12 +99,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .file-chip .chip-name{overflow:hidden;text-overflow:ellipsis}
 .file-chip .chip-rm{cursor:pointer;opacity:.5;font-size:14px;line-height:1;flex-shrink:0;padding:0 1px}
 .file-chip .chip-rm:hover{opacity:1;color:var(--red)}
-.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}
+.table-wrap{position:relative;overflow-x:hidden;margin:6px 0;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg)}.table-wrap:hover .table-view-btn{opacity:1}.table-view-btn{display:inline-block;cursor:pointer;font-size:11px;color:var(--blue);padding:4px 8px;opacity:0.6;user-select:none;border-bottom:1px solid var(--border-color);width:100%}.table-view-btn:hover{opacity:1;background:var(--base3)}.table-inner{overflow-x:hidden;padding:4px 8px}.table-inner table{width:100%;font-size:11px}.table-inner th,.table-inner td{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}
 .ctx-files span{background:var(--card-bg);padding:1px 6px;border-radius:3px;margin-right:4px}
-/* 楼层时钟 + 饼图（居中，每层末尾） */
-.floor-timing{display:flex;align-items:center;justify-content:center;gap:6px;margin:4px 0 8px;font-size:11px;opacity:0.6;user-select:none}
-.floor-timing .clock{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace}
-.floor-timing canvas{width:14px;height:14px;border-radius:50%}
 /* 排队信封 */
 #queue-strip{display:flex;flex-wrap:wrap;gap:4px;padding:0 0 4px}
 .queue-card{background:var(--card-bg);border:1px solid var(--border-color);border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:none}
@@ -191,14 +184,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
     <button id="ctx-btn">234k</button>
   </div>
 </div>
-<!-- Lightbox -->
-<div id="lightbox">
-  <img id="lightbox-img" src="">
-  <div id="lightbox-actions">
-    <button id="lb-copy">复制位图</button>
-  </div>
-</div>
-
 <!-- 上下文压缩确认面板 -->
 <div id="ctx-panel" style="display:none">
   <div class="ctx-panel-overlay"></div>
@@ -477,14 +462,25 @@ function renderMarkdown(src) {
   // Links
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
   // Tables (must run before lists to avoid confusing | with list markers)
-  s = s.replace(/(?:\n|^)(\|.+\|)\n\|[-:\s|]+\|\n((?:\|.+\|\n?)*)/g, function(_, header, rows) {
+  s = s.replace(/(?:
+|^)(\|.+\|)
+\|[-:\s|]+\|
+((?:\|.+\|
+?)*)/g, function(_, header, rows) {
     if (!header || rows === undefined) return _;
     const ths = header.split('|').filter(function(c) { return c.trim(); }).map(function(c) { return '<th>' + c.trim() + '</th>'; }).join('');
     const trs = rows.split('\n').filter(function(r) { return r.trim(); }).map(function(r) {
       const tds = r.split('|').filter(function(c) { return c.trim(); }).map(function(c) { return '<td>' + c.trim() + '</td>'; }).join('');
       return '<tr>' + tds + '</tr>';
     }).join('');
-    return '<table><thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table>';
+    // Wrap table with view button to prevent horizontal scrollbar
+    var colCount = (ths.match(/<th>/g) || []).length;
+    var rawTable = '<table><thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table>';
+    var tblId = window._tableStore.length;
+    window._tableStore.push(rawTable);
+    return '<div class="table-wrap">' +
+      '<span class="table-view-btn" onclick="viewTable(' + tblId + ')" title="在全窗口查看表格">⊞ 查看表格 (' + colCount + '列)</span>' +
+      '<div class="table-inner">' + rawTable + '</div></div>';
   });
   // Lists
   s = s.replace(/^[*\-+] (.+)$/gm, '<li>$1</li>');
@@ -501,6 +497,16 @@ function renderMarkdown(src) {
 }
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ═══ Table store (for full-window table viewer) ═══
+window._tableStore = [];
+
+function viewTable(id) {
+  var html = window._tableStore[id];
+  if (html && parent) {
+    parent.postMessage({ type: 'qqq-ai-overlay', action: 'open-table', html: html }, '*');
+  }
 }
 
 function formatBytes(n) {
@@ -704,6 +710,8 @@ async function loadQuestData(id) {
     agent._houseIndex = data.houseIndex || 0;
     agent._lastApiPromptTokens = data.lastApiPromptTokens || 0;
     agent._lastUserInput = data.lastUserInput || null;
+    agent._floorTimings = data.floorTimings || [];
+    agent._serverDrift = data.serverDrift || 0;  // ★ 服务器时钟漂移（从 Date header 校准，防变速齿轮）
   } else {
     console.log('[quests] no saved data for', id, '- starting fresh');
     agent.conversation = [];
@@ -714,6 +722,8 @@ async function loadQuestData(id) {
     agent._houseIndex = 0;
     agent._lastApiPromptTokens = 0;
     agent._lastUserInput = null;
+    agent._floorTimings = [];
+    agent._serverDrift = 0;  // ★ 新聊天，重置服务器漂移
   }
   rebuildMessagesFromConversation();
   updateCostDisplay();
@@ -734,7 +744,9 @@ async function saveQuestData() {
     houseIndex: agent._houseIndex,
     lastApiPromptTokens: agent._lastApiPromptTokens || 0,
     floorCostWge: agent._floorCostWge,
-    lastUserInput: agent._lastUserInput
+    lastUserInput: agent._lastUserInput,
+    floorTimings: agent._floorTimings || [],
+    serverDrift: agent._serverDrift || 0  // ★ 持久化时钟漂移，重启后无需重新校准
   });
   // generate floor txt after house summaries are ready
   if (agent._housesPromise) {
@@ -930,6 +942,7 @@ async function createNewQuest() {
   agent._houses = [];
   agent._houseIndex = 0;
   agent._lastApiPromptTokens = 0;
+  agent._serverDrift = 0;  // ★ 新聊天，重置服务器漂移
   $messages.innerHTML = '';
   pendingImages = [];
   selectedTier = 6;
@@ -1118,18 +1131,11 @@ $queueBtn.onclick = function() {
   $input.focus();
 };
 
-// ── 楼层时钟 + 饼图 ──
-var _activeClocks = [];
-function startFloorClock(wrap, agent) {
-  var clockEl = wrap.querySelector('.clock');
-  var canvas = wrap.querySelector('canvas');
-  if (!clockEl || !canvas) return;
-  _activeClocks.push({ wrap: wrap, clock: clockEl, canvas: canvas, agent: agent, dead: false });
-  // 旧楼层停止更新但保留显示
-  for (var i = 0; i < _activeClocks.length - 1; i++) {
-    _activeClocks[i].dead = true;
-  }
-}
+// ── 楼层时钟 + 饼图（嵌在豆腐块内部，每个楼层私有，1m:43s 格式）──
+var _floorTimerId = null;
+var _floorStartPerf = 0;
+var _floorCurrentTiming = null;
+var _activeAiDiv = null;  // 当前正在流式输出的 AI 豆腐块
 
 function drawPie(canvas, timing) {
   var ctx = canvas.getContext('2d');
@@ -1139,7 +1145,7 @@ function drawPie(canvas, timing) {
   var d = timing.deepseekMs || 0;
   var t = timing.toolMs || 0;
   var total = n + d + t;
-  if (total <= 0) { ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(w/2, h/2, w/2-2, 0, Math.PI*2); ctx.fill(); return; }
+  if (total <= 0) { ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(w/2, h/2, w/2-3, 0, Math.PI*2); ctx.fill(); return; }
   var parts = [
     { val: d, color: '#859900' },
     { val: n, color: '#cb4b16' },
@@ -1150,47 +1156,84 @@ function drawPie(canvas, timing) {
     var slice = (parts[i].val / total) * Math.PI * 2;
     ctx.beginPath();
     ctx.moveTo(w/2, h/2);
-    ctx.arc(w/2, h/2, w/2-2, start, start + slice);
+    ctx.arc(w/2, h/2, w/2-3, start, start + slice);
     ctx.fillStyle = parts[i].color;
     ctx.fill();
     start += slice;
   }
 }
 
-// 每秒刷新活跃时钟
-setInterval(function() {
-  // 清理已死的时钟条目 + 检查是否有活的
-  var hasLive = false;
-  for (var i = _activeClocks.length - 1; i >= 0; i--) {
-    if (_activeClocks[i].dead) { _activeClocks.splice(i, 1); continue; }
-    hasLive = true;
-    var c = _activeClocks[i];
-    var elapsed = performance.now() - c.agent._floorTiming.floorStartPerf;
+function _initClockBlock(aiDiv) {
+  var block = document.createElement('div');
+  block.className = 'msg-ai-clock';
+  block.innerHTML = '<span class="clock">0m:00s</span><canvas width="140" height="140"></canvas>';
+  aiDiv.appendChild(block);
+  aiDiv._clockBlock = block;
+  aiDiv._clockSpan = block.querySelector('.clock');
+  aiDiv._clockCanvas = block.querySelector('canvas');
+}
+
+function startFloorTimer(aiDiv) {
+  _activeAiDiv = aiDiv;
+  _floorStartPerf = performance.now();
+  _floorCurrentTiming = null;
+  _initClockBlock(aiDiv);
+  var clock = aiDiv._clockSpan;
+  var canvas = aiDiv._clockCanvas;
+  clock.textContent = '0m:00s';
+  drawPie(canvas, { networkMs: 0, deepseekMs: 0, toolMs: 0 });
+  _floorTimerId = setInterval(function() {
+    var elapsed = performance.now() - _floorStartPerf;
     var totalS = Math.floor(elapsed / 1000);
     var min = Math.floor(totalS / 60);
     var sec = totalS % 60;
-    c.clock.textContent = min + ':' + (sec < 10 ? '0' : '') + sec;
-    drawPie(c.canvas, c.agent._floorTiming);
-  }
-  if (!hasLive) return;
-}, 1000);
+    clock.textContent = min + 'm:' + (sec < 10 ? '0' : '') + sec + 's';
+    var t = _floorCurrentTiming || { networkMs: 0, deepseekMs: 0, toolMs: elapsed };
+    drawPie(canvas, t);
+  }, 1000);
+}
 
-// 每 5s 服务端时钟校准
-setInterval(async function() {
-  var GATEWAY = 'https://gh555.com/v1/chat/completions';
-  try {
-    var resp = await fetch(GATEWAY, { method: 'HEAD' });
-    var date = resp.headers.get('Date');
-    if (date) {
-      agent._serverDrift = new Date(date).getTime() - Date.now();
-    }
-  } catch(_) {}
-}, 5000);
+function stopFloorTimer(timing) {
+  if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
+  _floorCurrentTiming = timing;
+  var elapsed = performance.now() - _floorStartPerf;
+  var totalS = Math.floor(elapsed / 1000);
+  var min = Math.floor(totalS / 60);
+  var sec = totalS % 60;
+  var aiDiv = _activeAiDiv;
+  if (aiDiv && aiDiv._clockSpan && aiDiv._clockCanvas) {
+    aiDiv._clockSpan.textContent = min + 'm:' + (sec < 10 ? '0' : '') + sec + 's';
+    drawPie(aiDiv._clockCanvas, timing);
+  }
+  _activeAiDiv = null;
+  // Save floor timing to quest data
+  var durationMs = Math.round(elapsed);
+  var record = {
+    floorIndex: agent._ctx.totalFloors,
+    durationMs: durationMs,
+    networkMs: timing.networkMs || 0,
+    deepseekMs: timing.deepseekMs || 0,
+    toolMs: timing.toolMs || 0,
+    finishedAt: new Date().toISOString()
+  };
+  agent._floorTimings = agent._floorTimings || [];
+  agent._floorTimings.push(record);
+}
 
 function rebuildMessagesFromConversation() {
   $messages.innerHTML = '';
   var frag = document.createDocumentFragment();
   var conv = agent.conversation;
+
+  // ★ Build floor→timing map so each floor's tofu block owns its 1:1 stopped clock + pie
+  var floorTimingMap = {};
+  var timings = agent._floorTimings || [];
+  for (var ti = 0; ti < timings.length; ti++) {
+    floorTimingMap[timings[ti].floorIndex] = timings[ti];
+  }
+
+  var _pieEls = [];  // collect canvas+timing pairs for pie rendering after DOM attach
+
   for (var i = 0; i < conv.length; i++) {
     var msg = conv[i];
     if (!msg) continue;
@@ -1216,11 +1259,33 @@ function rebuildMessagesFromConversation() {
       var el2 = document.createElement('div');
       el2.className = 'msg msg-ai';
       var content2 = typeof msg.content === 'string' ? msg.content : '';
-      el2.innerHTML = renderMarkdown(content2);
+      el2.innerHTML = '<div>' + renderMarkdown(content2) + '</div>';  // content wrapper
       frag.appendChild(el2);
+
+      // ★ Stopped clock INSIDE the tofu block: only on last message of each floor
+      var floor = msg._floor;
+      var nextMsg = conv[i + 1];
+      var isFloorEnd = !nextMsg || nextMsg._floor !== floor;
+      if (isFloorEnd && floorTimingMap[floor]) {
+        var t = floorTimingMap[floor];
+        var totalS = Math.floor((t.durationMs || 0) / 1000);
+        var min = Math.floor(totalS / 60);
+        var sec = totalS % 60;
+        var clockBlock = document.createElement('div');
+        clockBlock.className = 'msg-ai-clock';
+        clockBlock.innerHTML = '<span class="clock">' + min + 'm:' + (sec < 10 ? '0' : '') + sec + 's</span><canvas width="140" height="140"></canvas>';
+        el2.appendChild(clockBlock);
+        _pieEls.push({ canvas: clockBlock.querySelector('canvas'), timing: t });
+      }
     }
   }
   $messages.appendChild(frag);
+
+  // ★ Draw all pie charts (must happen after DOM insertion so canvas has layout)
+  for (var pi = 0; pi < _pieEls.length; pi++) {
+    drawPie(_pieEls[pi].canvas, _pieEls[pi].timing);
+  }
+
   scrollToBottom(true);
 }
 
@@ -1420,7 +1485,12 @@ async function sendMessage() {
 
   // ---- Agentic loop ----
   setStreaming(true);
-    var aiDiv = addMessageEl('ai', '');
+  var aiDiv = addMessageEl('ai', '');
+  // ★ 内容层与钟表层分离：内容层接收流式输出，钟表层嵌在底部不被覆盖
+  var contentWrap = document.createElement('div');
+  aiDiv.appendChild(contentWrap);
+  aiDiv._contentWrap = contentWrap;
+  startFloorTimer(aiDiv);
   try {
     await agent.send(userContent, {
       images: images,
@@ -1431,7 +1501,7 @@ async function sendMessage() {
         if (!_renderPending) {
           _renderPending = true;
           requestAnimationFrame(function() {
-            aiDiv.innerHTML = renderMarkdown(aiDiv._text);
+            aiDiv._contentWrap.innerHTML = renderMarkdown(aiDiv._text);
             _renderPending = false;
           });
         }
@@ -1446,15 +1516,8 @@ async function sendMessage() {
 
       onDone: async function(content, timing) {
         aiDiv._text = content;
-        aiDiv.innerHTML = renderMarkdown(content);
-        // 注入楼层时钟 + 饼图
-        if (timing && (timing.networkMs > 0 || timing.deepseekMs > 0 || timing.toolMs > 0)) {
-          var clockWrap = document.createElement('div');
-          clockWrap.className = 'floor-timing';
-          clockWrap.innerHTML = '<span class="clock">0:00</span><canvas width="28" height="28"></canvas>';
-          aiDiv.parentNode.insertBefore(clockWrap, aiDiv.nextSibling);
-          startFloorClock(clockWrap, agent);
-        }
+        aiDiv._contentWrap.innerHTML = renderMarkdown(content);
+        stopFloorTimer(timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 });
         scrollToBottom();
         await saveQuestData();
         await autoRenameQuest();
@@ -1582,107 +1645,22 @@ document.addEventListener('qqq-ai-attach', function(e) {
   }
 });
 
-// ═══ Lightbox（缩放 / 拖拽 / 双击重置） ═══
-var lightbox = document.getElementById('lightbox');
-var lightboxImg = document.getElementById('lightbox-img');
-var lightboxBase64 = null;
-var lbScale = 1, lbX = 0, lbY = 0;
-var lbNatW = 0, lbNatH = 0;
-var lbDrag = false, lbDragStartX = 0, lbDragStartY = 0, lbDragOriginX = 0, lbDragOriginY = 0;
-var lbDidDrag = false;
-
-function lbApply() {
-  lightboxImg.style.transform = 'translate(' + lbX + 'px,' + lbY + 'px) scale(' + lbScale + ')';
-}
-
-function lbFitCenter() {
-  var vw = lightbox.clientWidth, vh = lightbox.clientHeight;
-  var pad = 40;
-  var fitScale = Math.min((vw - pad * 2) / lbNatW, (vh - pad * 2) / lbNatH, 1);
-  lbScale = fitScale;
-  lbX = (vw - lbNatW * lbScale) / 2;
-  lbY = (vh - lbNatH * lbScale) / 2;
-  lbApply();
-}
-
+// ═══ Full-window overlay (via parent.postMessage, breaks out of iframe) ═══
 function openLightbox(src, base64) {
-  lightboxBase64 = base64 || src.split(',')[1] || null;
-  lightboxImg.onload = function() {
-    lbNatW = lightboxImg.naturalWidth;
-    lbNatH = lightboxImg.naturalHeight;
-    lbFitCenter();
-  };
-  lightboxImg.src = src;
-  lightbox.classList.add('active');
+  if (parent) {
+    parent.postMessage({ type: 'qqq-ai-overlay', action: 'open-image', src: src, base64: base64 || null }, '*');
+  }
 }
 
 function closeLightbox() {
-  lightbox.classList.remove('active');
-  lightbox.classList.remove('dragging');
-  lightboxBase64 = null;
-  lbDrag = false;
+  if (parent) {
+    parent.postMessage({ type: 'qqq-ai-overlay', action: 'close' }, '*');
+  }
 }
 
-lightbox.addEventListener('wheel', function(e) {
-  e.preventDefault();
-  var factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-  var newScale = Math.min(Math.max(lbScale * factor, 0.05), 30);
-  lbX = e.clientX - (e.clientX - lbX) * (newScale / lbScale);
-  lbY = e.clientY - (e.clientY - lbY) * (newScale / lbScale);
-  lbScale = newScale;
-  lbApply();
-}, { passive: false });
-
-lightbox.addEventListener('mousedown', function(e) {
-  if (e.target.tagName === 'BUTTON') return;
-  lbDrag = true;
-  lbDidDrag = false;
-  lbDragStartX = e.clientX; lbDragStartY = e.clientY;
-  lbDragOriginX = lbX; lbDragOriginY = lbY;
-  lightbox.classList.add('dragging');
-});
-window.addEventListener('mousemove', function(e) {
-  if (!lbDrag) return;
-  lbX = lbDragOriginX + (e.clientX - lbDragStartX);
-  lbY = lbDragOriginY + (e.clientY - lbDragStartY);
-  if (Math.abs(e.clientX - lbDragStartX) > 3 || Math.abs(e.clientY - lbDragStartY) > 3) lbDidDrag = true;
-  lbApply();
-});
-window.addEventListener('mouseup', function() {
-  if (lbDrag) { lbDrag = false; lightbox.classList.remove('dragging'); }
-});
-
-lightboxImg.addEventListener('dblclick', function(e) {
-  e.stopPropagation();
-  lbFitCenter();
-});
-
-lightbox.addEventListener('click', function(e) {
-  if (lbDidDrag) { lbDidDrag = false; return; }
-  if (e.target === lightbox) closeLightbox();
-});
-
+// Escape key handled by parent overlay; also listen locally as fallback
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeLightbox();
-});
-
-document.getElementById('lb-copy').addEventListener('click', function() {
-  if (!lightboxBase64) return;
-  try {
-    var bridge = parent.qqqBridge;
-    if (bridge && bridge.qz && bridge.qz.copyImage) {
-      bridge.qz.copyImage(lightboxBase64);
-    } else {
-      // Fallback: copy to clipboard via navigator
-      var byteString = atob(lightboxBase64);
-      var ab = new ArrayBuffer(byteString.length);
-      var ia = new Uint8Array(ab);
-      for (var i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-      var blob = new Blob([ab], { type: 'image/png' });
-      var item = new ClipboardItem({ 'image/png': blob });
-      navigator.clipboard.write([item]).catch(function() {});
-    }
-  } catch(_) {}
+  if (e.key === 'Escape') { closeLightbox(); }
 });
 
 })();
