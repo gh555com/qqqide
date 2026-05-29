@@ -1,0 +1,337 @@
+{
+    "common": {
+        "close": "닫기",
+        "confirm": "확인",
+        "cancel": "취소",
+        "search": "검색",
+        "copy": "복사",
+        "delete": "삭제",
+        "save": "저장",
+        "retry": "다시 시도",
+        "error": "오류",
+        "ok": "확인",
+        "yes": "예",
+        "no": "아니요",
+        "loading": "로딩 중...",
+        "copied": "복사됨",
+        "failed": "실패",
+        "more": "더보기",
+        "back": "뒤로",
+        "next": "다음",
+        "open": "열기",
+        "edit": "편집",
+        "rename": "이름 바꾸기",
+        "download": "다운로드",
+        "refresh": "새로 고침",
+        "preview": "미리 보기",
+        "unknown": "알 수 없음",
+        "enabled": "사용함",
+        "disabled": "사용 안 함",
+        "on": "켜짐",
+        "off": "꺼짐",
+        "seconds": "초",
+        "minutes": "분",
+        "hours": "시간",
+        "bytes": "바이트",
+        "kb": "KB",
+        "mb": "MB",
+        "gb": "GB"
+    },
+    "shell": {
+        "title": "qqq",
+        "menu": {
+            "file": "파일",
+            "fileNew": "새로 만들기",
+            "fileOpen": "열기",
+            "fileNewWindow": "새 창 열기",
+            "fileExit": "종료",
+            "tools": "도구",
+            "devTools": "개발자 도구"
+        },
+        "window": {
+            "minimize": "최소화",
+            "maximize": "최대화",
+            "restore": "복원",
+            "close": "닫기"
+        },
+        "zoom": {
+            "in": "UI 확대 (Ctrl+=)",
+            "out": "UI 축소 (Ctrl+-)",
+            "reset": "줌 초기화"
+        },
+        "theme": {
+            "toggle": "밝은 모드/어두운 모드 전환",
+            "switchToLight": "밝은 모드로 전환",
+            "switchToDark": "어두운 모드로 전환"
+        },
+        "status": {
+            "version": "버전",
+            "engineOn": "엔진 온라인",
+            "engineOff": "엔진 오프라인"
+        },
+        "output": {
+            "title": "출력",
+            "hide": "출력 숨기기"
+        },
+        "update": {
+            "check": "업데이트 확인"
+        },
+        "overlay": {
+            "copy": "클립보드에 복사",
+            "copied": "복사됨",
+            "copyFailed": "복사 실패",
+            "zoomIn": "확대",
+            "zoomOut": "축소",
+            "close": "닫기 (Esc)"
+        },
+        "about": {
+            "title": "qqq 정보",
+            "version": "qqq-shell v2",
+            "desc": "포터블 / Win7+ / 서버 핫 업데이트"
+        },
+        "dev": "개발 모드",
+        "gaeaHostLoading": "gaea 호스트 로딩 중..."
+    },
+    "editor": {
+        "tabs": {
+            "close": "탭 닫기",
+            "closeOthers": "다른 탭 닫기",
+            "closeRight": "오른쪽 탭 닫기",
+            "closeAll": "모두 닫기",
+            "closeSaved": "저장된 탭 닫기",
+            "revealInExplorer": "파일 탐색기에서 표시",
+            "copyPath": "경로 복사",
+            "copyRelativePath": "상대 경로 복사",
+            "splitRight": "오른쪽으로 분할",
+            "splitDown": "아래로 분할"
+        },
+        "contextMenu": {
+            "cut": "잘라내기",
+            "copy": "복사",
+            "paste": "붙여넣기",
+            "selectAll": "전체 선택",
+            "undo": "실행 취소",
+            "redo": "다시 실행"
+        },
+        "unsaved": "저장되지 않음",
+        "saved": "저장됨",
+        "saving": "저장 중...",
+        "saveFailed": "저장 실패",
+        "fileTooLarge": "파일이 너무 큼",
+        "binaryFile": "바이너리 파일, 편집 불가",
+        "line": "행",
+        "col": "열",
+        "spaces": "공백",
+        "indent": "들여쓰기",
+        "encoding": "인코딩",
+        "eol": "줄 바꿈",
+        "language": "언어",
+        "readOnly": "읽기 전용",
+        "codelens": {
+            "openFile": "파일 열기",
+            "openFolder": "폴더 열기",
+            "copyPath": "경로 복사",
+            "copyImage": "이미지 바이너리 복사"
+        }
+    },
+    "ai": {
+        "title": "AI",
+        "send": "보내기",
+        "stop": "중지",
+        "guide": "가이드",
+        "queue": "대기열",
+        "context": "컨텍스트",
+        "compress": "압축",
+        "level": {
+            "a": "보수적",
+            "1": "낮음",
+            "2": "중간",
+            "3": "스마트",
+            "4": "강력",
+            "5": "극한",
+            "6": "Pro Max"
+        },
+        "floor": "층",
+        "house": "집",
+        "room": "방",
+        "ttfb": "네트워크 대기 시간",
+        "work": "작업 시간",
+        "total": "총계",
+        "tokens": "Token 소모량",
+        "confirmConnect": "연결 확인",
+        "thinking": "생각 중...",
+        "streaming": "생성 중...",
+        "tools": {
+            "readFile": "파일 읽기",
+            "editFile": "파일 편집",
+            "createFile": "파일 생성",
+            "deleteFile": "파일 삭제",
+            "writeFile": "파일 쓰기",
+            "searchText": "텍스트 검색",
+            "findFiles": "파일 찾기",
+            "listFiles": "파일 목록",
+            "getDiagnostics": "진단 정보 가져오기",
+            "runCommand": "명령 실행",
+            "fetchWebpage": "웹페이지 가져오기",
+            "getVision": "비주얼 컨텍스트 가져오기"
+        },
+        "output": {
+            "empty": "입력 대기 중...",
+            "compressInProgress": "압축 중...",
+            "compressDone": "압축 완료",
+            "tokenLimit": "Token 제한 도달"
+        },
+        "rules": {
+            "title": "프로젝트 규칙",
+            "edit": "규칙 편집",
+            "empty": "규칙 없음",
+            "globalRule": "전역 규칙 (.qqq-rules.txt)",
+            "projectRule": "프로젝트 규칙 (project.txt)"
+        },
+        "quest": {
+            "switch": "프로젝트 전환",
+            "newQuest": "새 대화",
+            "history": "기록",
+            "noHistory": "기록 없음",
+            "saveFailed": "저장 실패"
+        },
+        "lock": {
+            "locked": "프로젝트가 다른 창에서 열려 있습니다",
+            "stale": "잠금 만료",
+            "heartbeat": "하트비트"
+        }
+    },
+    "goods": {
+        "bar": {
+            "title": "기능 전환"
+        },
+        "fileExplorer": {
+            "title": "파일 탐색기",
+            "openFile": "파일 열기",
+            "openInIde": "IDE에서 열기",
+            "refresh": "디렉터리 새로 고침",
+            "parentDir": "상위 디렉터리",
+            "name": "이름",
+            "size": "크기",
+            "modified": "수정 날짜",
+            "type": "유형",
+            "folder": "폴더",
+            "file": "파일",
+            "empty": "빈 디렉터리",
+            "loading": "로딩 중...",
+            "loadFailed": "로드 실패",
+            "noAccess": "접근 권한 없음"
+        },
+        "navigator": {
+            "title": "탐색",
+            "explorer": "탐색기",
+            "search": "파일 검색",
+            "openEditors": "열린 편집기",
+            "outline": "개요",
+            "timeline": "타임라인"
+        },
+        "pasteImage": {
+            "title": "이미지 붙여넣기",
+            "pasteHint": "Ctrl+V로 이미지 붙여넣기",
+            "pasting": "붙여넣는 중...",
+            "pasteOk": "이미지 붙여넣기 완료",
+            "pasteFailed": "붙여넣기 실패",
+            "noImage": "클립보드에 이미지가 없습니다"
+        },
+        "wysiwyg": {
+            "title": "WYSIWYG",
+            "bold": "굵게",
+            "italic": "기울임꼴",
+            "underline": "밑줄",
+            "strikethrough": "취소선",
+            "heading": "제목",
+            "paragraph": "단락",
+            "list": "목록",
+            "orderedList": "번호 매기기 목록",
+            "quote": "인용구",
+            "code": "코드",
+            "link": "링크",
+            "image": "이미지",
+            "table": "표",
+            "horizontalRule": "구분선",
+            "clearFormat": "서식 지우기",
+            "undo": "실행 취소",
+            "redo": "다시 실행"
+        },
+        "rage": {
+            "title": "클립보드",
+            "clip": {
+                "title": "클립보드 기록",
+                "empty": "잘라낸 내용 없음",
+                "search": "클립보드 검색...",
+                "pin": "고정",
+                "unpin": "고정 해제",
+                "delete": "삭제",
+                "clearAll": "모두 지우기",
+                "count": "{n}개 항목",
+                "text": "텍스트",
+                "image": "이미지",
+                "html": "서식 있는 텍스트",
+                "link": "링크",
+                "file": "파일",
+                "unknown": "알 수 없는 유형"
+            },
+            "captain": {
+                "paste": "붙여넣기",
+                "roam": "로밍",
+                "video": "비디오",
+                "weave": "위빙",
+                "exportDoc": "문서 내보내기",
+                "pure": "순수",
+                "exportZip": "압축 파일로 내보내기",
+                "audio": "오디오"
+            },
+            "search": {
+                "hint": "다중 키워드 AND 검색",
+                "noResults": "일치하는 결과 없음"
+            }
+        }
+    },
+    "dialog": {
+        "about": {
+            "title": "qqq 정보",
+            "message": "qqq-shell v2",
+            "detail": "포터블 / Win7+ / 서버 핫 업데이트"
+        },
+        "confirmDelete": {
+            "title": "삭제 확인",
+            "message": "정말 삭제하시겠습니까? 이 작업은 취소할 수 없습니다."
+        },
+        "unsaved": {
+            "title": "저장되지 않은 변경 사항",
+            "message": "저장되지 않은 변경 사항이 있습니다. 저장 후 닫으시겠습니까?",
+            "save": "저장",
+            "discard": "저장 안 함",
+            "cancel": "취소"
+        }
+    },
+    "shortcuts": {
+        "ctrlS": "저장",
+        "ctrlZ": "실행 취소",
+        "ctrlShiftZ": "다시 실행",
+        "ctrlX": "잘라내기",
+        "ctrlC": "복사",
+        "ctrlV": "붙여넣기",
+        "ctrlA": "전체 선택",
+        "ctrlF": "찾기",
+        "ctrlH": "바꾸기",
+        "ctrlN": "새 파일",
+        "ctrlO": "파일 열기",
+        "ctrlW": "탭 닫기",
+        "ctrlShiftE": "파일 탐색기 표시",
+        "ctrlShiftF": "파일 검색",
+        "ctrlBackslash": "오른쪽으로 분할",
+        "ctrlPlus": "확대",
+        "ctrlMinus": "축소",
+        "ctrl0": "줌 초기화",
+        "f12": "개발자 도구",
+        "f1": "명령 팔레트",
+        "altLeft": "뒤로",
+        "altRight": "앞으로"
+    }
+}

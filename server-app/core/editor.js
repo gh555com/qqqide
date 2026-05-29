@@ -247,13 +247,15 @@
   }
 
   // ---------------- Monaco loader ----------------
+  var _monacoLoadPromise = null;
   function loadMonaco() {
-    return new Promise((resolve, reject) => {
-      if (window.monaco) { return resolve(window.monaco); }
+    if (_monacoLoadPromise) return _monacoLoadPromise;
+    _monacoLoadPromise = new Promise((resolve, reject) => {
+      if (window.monaco) { _monacoLoadPromise = null; return resolve(window.monaco); }
 
       // Configure AMD loader paths
       const baseUrl = isElectron ? 'qqq-asset://monaco/vs' : null;
-      if (!baseUrl) { return reject(new Error('monaco unavailable in browser dev')); }
+      if (!baseUrl) { _monacoLoadPromise = null; return reject(new Error('monaco unavailable in browser dev')); }
 
       // Load loader.js
       const s = document.createElement('script');
@@ -282,6 +284,8 @@
               // importScripts() does NOT support custom Electron protocols (only fetch/XHR do),
               // which causes Worker creation to fail → Monaco falls back to main thread →
               // "define is not a function" + "Duplicate module" crashes the UI.
+              // Also override fetch to resolve relative URLs (NLS files etc.) against baseUrl,
+              // because relative paths fail inside blob: workers.
               var boot = [
                 'var __o=self.importScripts;',
                 'self.importScripts=function(){',
@@ -292,6 +296,17 @@
                 '    try{x.send()}catch(e){__o.call(self,u);continue}',
                 '    (1,eval)(x.responseText);',
                 '  }',
+                '};',
+                'var __f=self.fetch;',
+                'self.fetch=function(u,o){',
+                '  if(typeof u==="string"){',
+                '    try{',
+                '      if(u.startsWith("./")||u.startsWith("../")){',
+                '        u=new URL(u,"' + baseUrl + '/").href;',
+                '      }',
+                '    }catch(e){}',
+                '  }',
+                '  return __f.call(self,u,o);',
                 '};',
                 'importScripts("' + baseUrl + '/loader.js");',
                 'require.config({ paths: { vs: "' + baseUrl + '" } });',
@@ -313,6 +328,7 @@
       s.onerror = () => reject(new Error('failed to load monaco loader.js'));
       document.head.appendChild(s);
     });
+    return _monacoLoadPromise;
   }
 
   // ---- Global theme sync (register once, affects all Monaco editors) ----
@@ -348,7 +364,9 @@
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         renderWhitespace: 'selection',
-        wordWrap: 'off',
+        overviewRulerLanes: 0,
+        wordWrap: 'on',
+        wrappingStrategy: 'advanced',
         tabSize: 4,
       });
       _monacoRef = monaco;
@@ -497,7 +515,9 @@
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         renderWhitespace: 'selection',
-        wordWrap: 'off',
+        overviewRulerLanes: 0,
+        wordWrap: 'on',
+        wrappingStrategy: 'advanced',
         tabSize: 4,
       });
 

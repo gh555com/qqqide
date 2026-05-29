@@ -1,0 +1,337 @@
+{
+    "common": {
+        "close": "關閉",
+        "confirm": "確定",
+        "cancel": "取消",
+        "search": "搜尋",
+        "copy": "複製",
+        "delete": "刪除",
+        "save": "儲存",
+        "retry": "重試",
+        "error": "錯誤",
+        "ok": "好",
+        "yes": "是",
+        "no": "否",
+        "loading": "載入中...",
+        "copied": "已複製",
+        "failed": "失敗",
+        "more": "更多",
+        "back": "返回",
+        "next": "下一個",
+        "open": "開啟",
+        "edit": "編輯",
+        "rename": "重新命名",
+        "download": "下載",
+        "refresh": "重新整理",
+        "preview": "預覽",
+        "unknown": "未知",
+        "enabled": "已啟用",
+        "disabled": "已停用",
+        "on": "開",
+        "off": "關",
+        "seconds": "秒",
+        "minutes": "分鐘",
+        "hours": "小時",
+        "bytes": "位元組",
+        "kb": "KB",
+        "mb": "MB",
+        "gb": "GB"
+    },
+    "shell": {
+        "title": "qqq",
+        "menu": {
+            "file": "檔案",
+            "fileNew": "新增",
+            "fileOpen": "開啟",
+            "fileNewWindow": "開新視窗",
+            "fileExit": "結束",
+            "tools": "工具",
+            "devTools": "開發者工具"
+        },
+        "window": {
+            "minimize": "最小化",
+            "maximize": "最大化",
+            "restore": "還原",
+            "close": "關閉"
+        },
+        "zoom": {
+            "in": "放大 UI（Ctrl+=）",
+            "out": "縮小 UI（Ctrl+-）",
+            "reset": "重置縮放"
+        },
+        "theme": {
+            "toggle": "切換亮色/暗色",
+            "switchToLight": "切換至亮色",
+            "switchToDark": "切換至暗色"
+        },
+        "status": {
+            "version": "版本",
+            "engineOn": "引擎線上",
+            "engineOff": "引擎離線"
+        },
+        "output": {
+            "title": "輸出",
+            "hide": "隱藏輸出"
+        },
+        "update": {
+            "check": "檢查更新"
+        },
+        "overlay": {
+            "copy": "複製到剪貼簿",
+            "copied": "已複製",
+            "copyFailed": "複製失敗",
+            "zoomIn": "放大",
+            "zoomOut": "縮小",
+            "close": "關閉 (Esc)"
+        },
+        "about": {
+            "title": "關於 qqq",
+            "version": "qqq-shell v2",
+            "desc": "免安裝 / Win7+ / 伺服器熱更新"
+        },
+        "dev": "開發模式",
+        "gaeaHostLoading": "gaea host 載入中..."
+    },
+    "editor": {
+        "tabs": {
+            "close": "關閉分頁",
+            "closeOthers": "關閉其他分頁",
+            "closeRight": "關閉右側分頁",
+            "closeAll": "關閉所有分頁",
+            "closeSaved": "關閉已儲存的分頁",
+            "revealInExplorer": "在檔案總管中顯示",
+            "copyPath": "複製路徑",
+            "copyRelativePath": "複製相對路徑",
+            "splitRight": "向右分割",
+            "splitDown": "向下分割"
+        },
+        "contextMenu": {
+            "cut": "剪下",
+            "copy": "複製",
+            "paste": "貼上",
+            "selectAll": "全選",
+            "undo": "復原",
+            "redo": "重做"
+        },
+        "unsaved": "未儲存",
+        "saved": "已儲存",
+        "saving": "儲存中...",
+        "saveFailed": "儲存失敗",
+        "fileTooLarge": "檔案過大",
+        "binaryFile": "二進位檔案，無法編輯",
+        "line": "行",
+        "col": "列",
+        "spaces": "空格",
+        "indent": "縮排",
+        "encoding": "編碼",
+        "eol": "行尾",
+        "language": "語言",
+        "readOnly": "唯讀",
+        "codelens": {
+            "openFile": "開啟檔案",
+            "openFolder": "開啟資料夾",
+            "copyPath": "複製路徑",
+            "copyImage": "複製圖片二進位資料"
+        }
+    },
+    "ai": {
+        "title": "AI",
+        "send": "傳送",
+        "stop": "停止",
+        "guide": "引導",
+        "queue": "排隊中",
+        "context": "上下文",
+        "compress": "壓縮",
+        "level": {
+            "a": "保守",
+            "1": "輕度",
+            "2": "中等",
+            "3": "智慧",
+            "4": "強力",
+            "5": "極限",
+            "6": "Pro Max"
+        },
+        "floor": "樓層",
+        "house": "房子",
+        "room": "房間",
+        "ttfb": "網路等待",
+        "work": "工作時間",
+        "total": "總計",
+        "tokens": "Token 消耗量",
+        "confirmConnect": "確認連線",
+        "thinking": "思考中...",
+        "streaming": "生成中...",
+        "tools": {
+            "readFile": "讀取檔案",
+            "editFile": "編輯檔案",
+            "createFile": "建立檔案",
+            "deleteFile": "刪除檔案",
+            "writeFile": "寫入檔案",
+            "searchText": "搜尋文字",
+            "findFiles": "尋找檔案",
+            "listFiles": "列出檔案",
+            "getDiagnostics": "取得診斷資訊",
+            "runCommand": "執行命令",
+            "fetchWebpage": "擷取網頁",
+            "getVision": "取得視覺上下文"
+        },
+        "output": {
+            "empty": "等待輸入...",
+            "compressInProgress": "壓縮中...",
+            "compressDone": "壓縮完成",
+            "tokenLimit": "達到 Token 上限"
+        },
+        "rules": {
+            "title": "專案規則",
+            "edit": "編輯規則",
+            "empty": "尚無規則",
+            "globalRule": "全域規則 (.qqq-rules.txt)",
+            "projectRule": "專案規則 (project.txt)"
+        },
+        "quest": {
+            "switch": "切換專案",
+            "newQuest": "新增對話",
+            "history": "歷史記錄",
+            "noHistory": "尚無歷史記錄",
+            "saveFailed": "儲存失敗"
+        },
+        "lock": {
+            "locked": "專案已被其他視窗開啟",
+            "stale": "鎖定已過期",
+            "heartbeat": "心跳檢測"
+        }
+    },
+    "goods": {
+        "bar": {
+            "title": "功能切換"
+        },
+        "fileExplorer": {
+            "title": "檔案總管",
+            "openFile": "開啟檔案",
+            "openInIde": "在 IDE 中開啟",
+            "refresh": "重新整理目錄",
+            "parentDir": "上層目錄",
+            "name": "名稱",
+            "size": "大小",
+            "modified": "修改時間",
+            "type": "類型",
+            "folder": "資料夾",
+            "file": "檔案",
+            "empty": "空目錄",
+            "loading": "載入中...",
+            "loadFailed": "載入失敗",
+            "noAccess": "無存取權限"
+        },
+        "navigator": {
+            "title": "導覽",
+            "explorer": "資源管理器",
+            "search": "搜尋檔案",
+            "openEditors": "已開啟的編輯器",
+            "outline": "大綱",
+            "timeline": "時間軸"
+        },
+        "pasteImage": {
+            "title": "貼上圖片",
+            "pasteHint": "按 Ctrl+V 貼上圖片",
+            "pasting": "貼上中...",
+            "pasteOk": "圖片已貼上",
+            "pasteFailed": "貼上失敗",
+            "noImage": "剪貼簿中沒有圖片"
+        },
+        "wysiwyg": {
+            "title": "所見即所得",
+            "bold": "粗體",
+            "italic": "斜體",
+            "underline": "底線",
+            "strikethrough": "刪除線",
+            "heading": "標題",
+            "paragraph": "段落",
+            "list": "清單",
+            "orderedList": "有序清單",
+            "quote": "引用",
+            "code": "程式碼",
+            "link": "連結",
+            "image": "圖片",
+            "table": "表格",
+            "horizontalRule": "分隔線",
+            "clearFormat": "清除格式",
+            "undo": "復原",
+            "redo": "重做"
+        },
+        "rage": {
+            "title": "剪貼簿",
+            "clip": {
+                "title": "剪貼簿歷史",
+                "empty": "尚無剪貼內容",
+                "search": "搜尋剪貼簿...",
+                "pin": "釘選",
+                "unpin": "取消釘選",
+                "delete": "刪除",
+                "clearAll": "全部清空",
+                "count": "{n} 筆",
+                "text": "文字",
+                "image": "圖片",
+                "html": "富文字",
+                "link": "連結",
+                "file": "檔案",
+                "unknown": "未知類型"
+            },
+            "captain": {
+                "paste": "貼上",
+                "roam": "漫遊",
+                "video": "影片",
+                "weave": "編織",
+                "exportDoc": "匯出文件",
+                "pure": "純淨模式",
+                "exportZip": "匯出壓縮檔",
+                "audio": "音訊"
+            },
+            "search": {
+                "hint": "多關鍵字 AND 搜尋",
+                "noResults": "無符合結果"
+            }
+        }
+    },
+    "dialog": {
+        "about": {
+            "title": "關於 qqq",
+            "message": "qqq-shell v2",
+            "detail": "免安裝 / Win7+ / 伺服器熱更新"
+        },
+        "confirmDelete": {
+            "title": "確認刪除",
+            "message": "確定要刪除嗎？此動作無法復原。"
+        },
+        "unsaved": {
+            "title": "未儲存的變更",
+            "message": "有未儲存的變更，是否儲存後關閉？",
+            "save": "儲存",
+            "discard": "放棄",
+            "cancel": "取消"
+        }
+    },
+    "shortcuts": {
+        "ctrlS": "儲存",
+        "ctrlZ": "復原",
+        "ctrlShiftZ": "重做",
+        "ctrlX": "剪下",
+        "ctrlC": "複製",
+        "ctrlV": "貼上",
+        "ctrlA": "全選",
+        "ctrlF": "尋找",
+        "ctrlH": "取代",
+        "ctrlN": "新增檔案",
+        "ctrlO": "開啟檔案",
+        "ctrlW": "關閉分頁",
+        "ctrlShiftE": "顯示檔案總管",
+        "ctrlShiftF": "搜尋檔案",
+        "ctrlBackslash": "向右分割",
+        "ctrlPlus": "放大",
+        "ctrlMinus": "縮小",
+        "ctrl0": "重置縮放",
+        "f12": "開發者工具",
+        "f1": "命令面板",
+        "altLeft": "後退",
+        "altRight": "前進"
+    }
+}

@@ -20,11 +20,11 @@
   --violet:#a08060;--blue:#d4a017;--cyan:#5abfb5;--green:#8fbc5a;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-html{forced-color-adjust:none!important}
-body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text-primary);background:var(--background-color);height:100vh;display:grid;grid-template-rows:auto auto 1fr auto;overflow:hidden}
+html{forced-color-adjust:none!important;width:100%}
+body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text-primary);background:var(--background-color);width:100%;height:100vh;display:grid;grid-template-columns:100%;grid-template-rows:auto auto 1fr auto;overflow:hidden}
 #top-bar{padding:4px 8px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:5px;font-size:11px;flex-wrap:nowrap;overflow-x:hidden}
 #top-bar .label{opacity:.7}
-#top-bar input{flex:1;padding:1px 4px;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:3px;font-size:10px;min-width:80px}
+#top-bar input{width:22px;flex:none;padding:1px 4px;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:3px;font-size:10px}
 #top-bar button{padding:1px 6px;cursor:pointer;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);font-size:10px;white-space:nowrap;flex-shrink:0}
 #tab-bar{display:flex;align-items:center;gap:2px;padding:2px 6px;border-bottom:1px solid var(--border-color);background:var(--card-bg);overflow-x:hidden}
 #tab-bar::-webkit-scrollbar{display:none}
@@ -62,8 +62,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-status{font-size:11px;opacity:.6;padding:2px 0;font-style:italic}
 /* 楼层时钟 + 饼图（嵌在豆腐块内部底部，每个楼层私有） */
 .msg-ai-clock{display:flex;align-items:center;gap:8px;padding:8px 0 0;user-select:none}
-.msg-ai-clock .clock{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;font-size:48px;font-weight:700;color:var(--text-primary);opacity:0.85}
-.msg-ai-clock canvas{width:70px;height:70px;border-radius:50%}
+.msg-ai-clock .clock{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;font-size:48px;font-weight:700;color:#000}
+.msg-ai-clock canvas{width:52px;height:52px;border-radius:50%}
 #input-area{border-top:1px solid var(--border-color);padding:8px;display:flex;flex-direction:column;gap:6px;background:var(--card-bg)}
 #image-strip{display:none;overflow-x:hidden;flex-wrap:wrap;padding:4px 0;gap:6px}
 #image-strip::-webkit-scrollbar{height:4px}
@@ -82,17 +82,19 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #input{flex:1;min-width:0;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:150px;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;outline:none}
 #input:focus{outline:1px solid var(--blue)}
 #input:empty::before{content:attr(data-placeholder);color:var(--base01);opacity:.5;pointer-events:none}
-#btn-row{display:flex;gap:4px;align-items:center;flex-wrap:nowrap;overflow-x:hidden}
-#btn-row button{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;cursor:pointer;font-size:12px;height:30px;white-space:nowrap;flex-shrink:0}
+#btn-row{display:flex;gap:3px;align-items:center;flex-wrap:nowrap;overflow-x:hidden}
+#btn-row button{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:3px 7px;cursor:pointer;font-size:10px;height:25px;white-space:nowrap;flex-shrink:0}
 #btn-row button:hover{background:var(--base3)}
 #btn-row button:disabled{opacity:.3;cursor:default}
 #send-btn.stop{background:var(--red);color:#fff;border-color:var(--red);opacity:1}
-#guide-btn,#queue-btn{padding:4px 6px}
-#guide-btn svg,#queue-btn svg{display:block}
-.tier-group{display:flex;align-items:center;gap:3px;margin-right:8px}
-#btn-row .tier-btn{width:30px;height:30px;padding:0;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;user-select:none;line-height:1;flex-shrink:0}
+#guide-btn,#queue-btn{padding:3px 5px}
+#ctx-btn{position:relative;overflow:hidden;min-width:53px;color:#fff;text-shadow:0 1px 1px rgba(0,0,0,0.3);border-color:transparent;background:linear-gradient(to right,transparent var(--ctx-pct),rgba(0,0,0,0.25) var(--ctx-pct)),linear-gradient(to right,#7d967d,#c28888)}
+#ctx-btn:hover{background:linear-gradient(to right,transparent var(--ctx-pct),rgba(0,0,0,0.15) var(--ctx-pct)),linear-gradient(to right,#7d967d,#c28888)}
+#guide-btn svg,#queue-btn svg{display:block;width:11px;height:11px}
+.tier-group{display:flex;align-items:center;gap:2px;margin-right:7px}
+#btn-row .tier-btn{width:25px;height:25px;padding:0;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;font-size:10px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;user-select:none;line-height:1;flex-shrink:0}
 #btn-row .tier-btn:hover{background:var(--base3)}
-#btn-row .tier-btn.sel{background:var(--red);color:#000;font-weight:800;font-size:13px}
+#btn-row .tier-btn.sel{background:var(--red);color:#fff;font-weight:800;font-size:12px}
 .tier-bar{display:flex;gap:2px}
 .file-chip{display:inline-flex;align-items:center;gap:3px;background:var(--base3);border:1px solid var(--border-color);border-radius:3px;padding:1px 6px;margin:0 2px;font-size:11px;color:var(--text-primary);vertical-align:middle;cursor:default;white-space:nowrap;user-select:none;-webkit-user-select:none;max-width:200px}
 .file-chip .chip-icon{font-size:10px;flex-shrink:0}
@@ -121,7 +123,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .ctx-panel-actions button{padding:6px 18px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer}
 #ctx-compress{background:var(--yellow);color:#fff;border-color:var(--yellow)}
 #ctx-cancel{background:var(--card-bg)}
+/* pie hover tooltip */
+#clock-tooltip{display:none;position:fixed;z-index:99999;pointer-events:none;padding:8px 16px;background:rgba(0,0,0,0.85);color:#fff;font-size:22px;font-family:ui-monospace,monospace;border-radius:8px;white-space:nowrap;flex-direction:row;align-items:center}
 </style>
+<div id="clock-tooltip"></div>
 <script>
 // 主题同步：从父窗口 qqq-theme.js 唯一真理配色机器继承
 (function(){
@@ -178,8 +183,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
         <button class="tier-btn" data-tier="6">6</button>
       </div>
     </div>
-    <button id="guide-btn"><svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="2" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="5" y="5" width="4" height="4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
-    <button id="queue-btn" disabled><svg width="14" height="14" viewBox="0 0 14 14"><rect x="2" y="1.5" width="10" height="5" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="2" y="8.5" width="10" height="5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg></button>
+    <button id="guide-btn"><svg width="14" height="14" viewBox="0 0 14 14"><rect x="2.5" y="2.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><rect x="5.5" y="5.5" width="3" height="3" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/></svg></button>
+    <button id="queue-btn" disabled><svg width="14" height="14" viewBox="0 0 14 14"><rect x="2.5" y="1.5" width="9" height="4" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><line x1="2.5" y1="7.5" x2="11.5" y2="7.5" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><rect x="2.5" y="9.5" width="9" height="4" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/></svg></button>
     <button id="send-btn">Send</button>
     <button id="ctx-btn">234k</button>
   </div>
@@ -519,6 +524,68 @@ function scrollToBottom(force) {
   }
 }
 
+
+
+
+
+// doStreamRender: 1fps event-driven incremental render (no polling, no full-text accumulation)
+
+function doStreamRender() {
+
+  var aiDiv = _activeAiDiv;
+
+  if (!aiDiv || !aiDiv._dirty) { aiDiv._renderScheduled = false; return; }
+
+  aiDiv._renderScheduled = false;
+
+  var rendered = aiDiv._renderedCount || 0;
+
+  var paras = aiDiv._paras || [];
+
+  // Render completed paragraphs (once, then release string for GC)
+
+  while (rendered < paras.length) {
+
+    var pEl = document.createElement('div');
+
+    pEl.innerHTML = renderMarkdown(paras[rendered]);
+
+    aiDiv._contentWrap.appendChild(pEl);
+
+    paras[rendered] = null;  // release for GC
+
+    rendered++;
+
+  }
+
+  aiDiv._renderedCount = rendered;
+
+  // Last (in-progress) paragraph: re-render in dedicated slot
+
+  if (!aiDiv._lastParaEl) {
+
+    aiDiv._lastParaEl = document.createElement('div');
+
+    aiDiv._contentWrap.appendChild(aiDiv._lastParaEl);
+
+  }
+
+  aiDiv._lastParaEl.innerHTML = renderMarkdown(aiDiv._buf || '');
+
+  aiDiv._dirty = false;
+
+  // If new content arrived during render, schedule next tick
+
+  if (aiDiv._dirty) {
+
+    aiDiv._renderScheduled = true;
+
+    setTimeout(doStreamRender, 1000);
+
+  }
+
+}
+
 function _userAtBottom() {
   var threshold = 60; // px tolerance
   return $messages.scrollHeight - $messages.scrollTop - $messages.clientHeight < threshold;
@@ -544,10 +611,6 @@ function setStreaming(val) {
   streaming = val;
   $sendBtn.textContent = val ? 'Stop' : 'Send';
   $sendBtn.className = val ? 'stop' : '';
-  $guideBtn.disabled = val;
-  $queueBtn.disabled = val;
-  $input.contentEditable = val ? 'false' : 'true';
-  $input.style.opacity = val ? '0.6' : '1';
 }
 
 // ---- Agent Loop ----
@@ -1049,7 +1112,8 @@ function estimateTokens() {
 function updateCtxBtn() {
   var used = agent._lastApiPromptTokens || estimateTokens();
   var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
-  $ctxBtn.textContent = Math.round(used/1000) + 'k(' + pct + '%)';
+  $ctxBtn.textContent = Math.round(used/1000) + 'k';
+  $ctxBtn.style.setProperty('--ctx-pct', pct + '%');
 }
 $ctxBtn.onclick = function() {
   document.getElementById('ctx-panel').style.display = 'flex';
@@ -1072,15 +1136,14 @@ document.getElementById('ctx-compress').onclick = async function() {
 
 // ── 引导按钮 ──
 $guideBtn.onclick = function() {
-  if (streaming || _sending) return;
+  if (_sending) return;
+  if (streaming) stopStream();
   var text = getInputText().trim();
   if (!text) {
-    // 空输入时发送默认引导信号
     text = '确认连接';
   }
   $input.textContent = '';
   $input.innerHTML = '';
-  // 带上 [GUIDE] 标记，触发 AI 立即确认
   $input.textContent = '[GUIDE] ' + text;
   sendMessage();
 };
@@ -1133,6 +1196,7 @@ var _floorStartPerf = 0;
 var _floorCurrentTiming = null;
 var _activeAiDiv = null;  // 当前正在流式输出的 AI 豆腐块
 
+function fmtTime(ms) { var s = Math.round(ms / 1000); return Math.floor(s / 60) + 'm:' + (s % 60) + 's'; }
 function drawPie(canvas, timing) {
   var ctx = canvas.getContext('2d');
   var w = canvas.width, h = canvas.height;
@@ -1140,33 +1204,69 @@ function drawPie(canvas, timing) {
   var n = timing.networkMs || 0;
   var d = timing.deepseekMs || 0;
   var t = timing.toolMs || 0;
-  var total = n + d + t;
-  if (total <= 0) { ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(w/2, h/2, w/2-3, 0, Math.PI*2); ctx.fill(); return; }
+  var w2 = timing.waitMs || 0;
+  var total = n + d + t + w2;
+  if (total <= 0) { ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(w/2, h/2, w/2-3, 0, Math.PI*2); ctx.fill(); canvas._segments = null; return; }
   var parts = [
-    { val: d, color: '#859900' },
-    { val: n, color: '#cb4b16' },
-    { val: t, color: '#b58900' }
+    { val: d, color: '#859900', label: 'DeepSeek', key: 'deepseek' },
+    { val: n, color: '#cb4b16', label: 'Network', key: 'network' },
+    { val: t, color: '#b58900', label: 'Tool',    key: 'tool' },
+    { val: w2, color: '#888',   label: 'Wait',    key: 'wait' }
   ];
   var start = -Math.PI / 2;
+  var segments = [];
   for (var i = 0; i < parts.length; i++) {
+    if (parts[i].val <= 0) continue;
     var slice = (parts[i].val / total) * Math.PI * 2;
     ctx.beginPath();
     ctx.moveTo(w/2, h/2);
     ctx.arc(w/2, h/2, w/2-3, start, start + slice);
     ctx.fillStyle = parts[i].color;
     ctx.fill();
+    segments.push({ startAngle: start, endAngle: start + slice, label: parts[i].label, ms: parts[i].val, color: parts[i].color });
     start += slice;
   }
+  canvas._segments = segments;
+  canvas._total = total;
 }
 
 function _initClockBlock(aiDiv) {
   var block = document.createElement('div');
   block.className = 'msg-ai-clock';
-  block.innerHTML = '<span class="clock">0m:00s</span><canvas width="140" height="140"></canvas>';
+  block.innerHTML = '<span class="clock">0m:0s</span><canvas width="140" height="140"></canvas>';
   aiDiv.appendChild(block);
   aiDiv._clockBlock = block;
   aiDiv._clockSpan = block.querySelector('.clock');
   aiDiv._clockCanvas = block.querySelector('canvas');
+  // pie hover: show all 3 colored circles + times
+  var canvas = aiDiv._clockCanvas;
+  var tt = document.getElementById('clock-tooltip');
+  canvas.addEventListener('mousemove', function(e) {
+    if (!canvas._segments || !canvas._total) { tt.style.display = 'none'; return; }
+    var parts = [
+      { key: 'network',  color: '#cb4b16', label: 'Net' },
+      { key: 'tool',     color: '#b58900', label: 'Tool' },
+      { key: 'deepseek', color: '#859900', label: 'DS' },
+      { key: 'wait',     color: '#888',    label: 'Wait' }
+    ];
+    var segs = canvas._segments;
+    var map = {};
+    for (var si = 0; si < segs.length; si++) { map[segs[si].key] = segs[si]; }
+    var html = '';
+    for (var pi = 0; pi < parts.length; pi++) {
+      var p = parts[pi];
+      var s = map[p.key];
+      var ms = s ? s.ms : 0;
+      html += '<span style="display:inline-flex;align-items:center;gap:8px;margin-right:16px">'
+        + '<svg width="20" height="20" style="flex-shrink:0"><circle cx="10" cy="10" r="9" fill="' + p.color + '"/></svg>'
+        + '<span style="color:#fff">' + fmtTime(ms) + '</span></span>';
+    }
+    tt.innerHTML = html;
+    tt.style.display = 'flex';
+    tt.style.left = (e.clientX + 14) + 'px';
+    tt.style.top = (e.clientY - 10) + 'px';
+  });
+  canvas.addEventListener('mouseleave', function() { tt.style.display = 'none'; });
 }
 
 function startFloorTimer(aiDiv) {
@@ -1176,16 +1276,21 @@ function startFloorTimer(aiDiv) {
   _initClockBlock(aiDiv);
   var clock = aiDiv._clockSpan;
   var canvas = aiDiv._clockCanvas;
-  clock.textContent = '0m:00s';
+  clock.textContent = '0m:0s';
   drawPie(canvas, { networkMs: 0, deepseekMs: 0, toolMs: 0 });
   _floorTimerId = setInterval(function() {
     var elapsed = performance.now() - _floorStartPerf;
     var totalS = Math.floor(elapsed / 1000);
     var min = Math.floor(totalS / 60);
     var sec = totalS % 60;
-    clock.textContent = min + 'm:' + (sec < 10 ? '0' : '') + sec + 's';
-    var t = _floorCurrentTiming || { networkMs: 0, deepseekMs: 0, toolMs: elapsed };
-    drawPie(canvas, t);
+    clock.textContent = min + 'm:' + sec + 's';
+    var at = agent._floorTiming;
+    var n = (at && at.networkMs) || 0;
+    var d = (at && at.deepseekMs) || 0;
+    var t = (at && at.toolMs) || 0;
+    var accounted = n + d + t;
+    var wait = Math.max(0, elapsed - accounted);
+    drawPie(canvas, { networkMs: n, deepseekMs: d, toolMs: t, waitMs: wait });
   }, 1000);
 }
 
@@ -1198,8 +1303,11 @@ function stopFloorTimer(timing) {
   var sec = totalS % 60;
   var aiDiv = _activeAiDiv;
   if (aiDiv && aiDiv._clockSpan && aiDiv._clockCanvas) {
-    aiDiv._clockSpan.textContent = min + 'm:' + (sec < 10 ? '0' : '') + sec + 's';
-    drawPie(aiDiv._clockCanvas, timing);
+    aiDiv._clockSpan.textContent = min + 'm:' + sec + 's';
+    var tm = timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 };
+    var accounted = (tm.networkMs || 0) + (tm.deepseekMs || 0) + (tm.toolMs || 0);
+    tm.waitMs = Math.max(0, elapsed - accounted);
+    drawPie(aiDiv._clockCanvas, tm);
   }
   _activeAiDiv = null;
   // Save floor timing to quest data
@@ -1269,7 +1377,7 @@ function rebuildMessagesFromConversation() {
         var sec = totalS % 60;
         var clockBlock = document.createElement('div');
         clockBlock.className = 'msg-ai-clock';
-        clockBlock.innerHTML = '<span class="clock">' + min + 'm:' + (sec < 10 ? '0' : '') + sec + 's</span><canvas width="140" height="140"></canvas>';
+        clockBlock.innerHTML = '<span class="clock">' + min + 'm:' + sec + 's</span><canvas width="140" height="140"></canvas>';
         el2.appendChild(clockBlock);
         _pieEls.push({ canvas: clockBlock.querySelector('canvas'), timing: t });
       }
@@ -1277,9 +1385,32 @@ function rebuildMessagesFromConversation() {
   }
   $messages.appendChild(frag);
 
-  // ★ Draw all pie charts (must happen after DOM insertion so canvas has layout)
+  // Draw all pie charts (must happen after DOM insertion so canvas has layout)
   for (var pi = 0; pi < _pieEls.length; pi++) {
-    drawPie(_pieEls[pi].canvas, _pieEls[pi].timing);
+    var pc = _pieEls[pi].canvas;
+    drawPie(pc, _pieEls[pi].timing);
+    var pc_tt = document.getElementById('clock-tooltip');
+    if (!pc._hasTooltip) {
+      pc._hasTooltip = true;
+      pc.addEventListener('mousemove', function(e) {
+        if (!this._segments || !this._total) { pc_tt.style.display = 'none'; return; }
+        var parts = [{key:'network',color:'#cb4b16',label:'Net'},{key:'tool',color:'#b58900',label:'Tool'},{key:'deepseek',color:'#859900',label:'DS'}];
+        var segs = this._segments, map = {};
+        for (var si = 0; si < segs.length; si++) { map[segs[si].key] = segs[si]; }
+        var html = '';
+        for (var pj = 0; pj < parts.length; pj++) {
+          var pp = parts[pj], ss = map[pp.key], ms = ss ? ss.ms : 0;
+          html += '<span style="display:inline-flex;align-items:center;gap:4px;margin-right:8px">'
+            + '<svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="4.5" fill="' + pp.color + '"/></svg>'
+            + '<span style="color:#fff">' + fmtTime(ms) + '</span></span>';
+        }
+        pc_tt.innerHTML = html;
+        pc_tt.style.display = 'flex';
+        pc_tt.style.left = (e.clientX + 14) + 'px';
+        pc_tt.style.top = (e.clientY - 10) + 'px';
+      });
+      pc.addEventListener('mouseleave', function() { pc_tt.style.display = 'none'; });
+    }
   }
 
   scrollToBottom(true);
@@ -1374,6 +1505,7 @@ document.getElementById('rules-edit').onclick = async function() {
 function stopStream() {
   if (agent._compressing) return;  // 压缩期间不响应中止
   try { agent.abort(); } catch(_) {}
+  if (_activeAiDiv) _activeAiDiv._renderScheduled = false;
   _sending = false;
   setStreaming(false);
 }
@@ -1493,13 +1625,18 @@ async function sendMessage() {
       token: token,
       tier: selectedTier ? TIER_LIST[selectedTier] : null,
       onToken: function(chunk) {
-        aiDiv._text = (aiDiv._text || '') + chunk;
-        if (!_renderPending) {
-          _renderPending = true;
-          requestAnimationFrame(function() {
-            aiDiv._contentWrap.innerHTML = renderMarkdown(aiDiv._text);
-            _renderPending = false;
-          });
+        // Paragraph buffer: never accumulate full _text. Only chunk-level split.
+        aiDiv._buf = (aiDiv._buf || '') + chunk;
+        var parts = aiDiv._buf.split('\n\n');
+        aiDiv._paras = aiDiv._paras || [];
+        for (var pi = 0; pi < parts.length - 1; pi++) {
+          aiDiv._paras.push(parts[pi]);
+        }
+        aiDiv._buf = parts[parts.length - 1];
+        aiDiv._dirty = true;
+        if (!aiDiv._renderScheduled) {
+          aiDiv._renderScheduled = true;
+          setTimeout(doStreamRender, 1000);
         }
         if (!_scrollPending) {
           _scrollPending = true;
@@ -1511,14 +1648,21 @@ async function sendMessage() {
       },
 
       onDone: async function(content, timing) {
-        aiDiv._text = content;
+        aiDiv._renderScheduled = false;
+        aiDiv._paras = null;
+        aiDiv._buf = null;
+        aiDiv._lastParaEl = null;
+        aiDiv._renderedCount = 0;
+        aiDiv._dirty = false;
         aiDiv._contentWrap.innerHTML = renderMarkdown(content);
+        if (window._tableStore && window._tableStore.length > 50) {
+          window._tableStore = window._tableStore.slice(-30);
+        }
         stopFloorTimer(timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 });
         scrollToBottom();
         await saveQuestData();
         await autoRenameQuest();
         updateCtxBtn();
-        // 自动消费排队
         if (_queue.length > 0) {
           var next = _queue.shift();
           renderQueueStrip();
@@ -1526,6 +1670,7 @@ async function sendMessage() {
           setTimeout(function() { sendMessage(); }, 200);
         }
       },
+
       onCost: async function(cost, total) {
         $costLabel.textContent = cost + ' / ' + total.toFixed(4) + ' ge';
       },

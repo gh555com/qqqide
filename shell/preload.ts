@@ -59,6 +59,11 @@ const QQQ = {
         get: () => ipcRenderer.invoke('qqq:zoom:get'),
         set: (factor: number) => ipcRenderer.invoke('qqq:zoom:set', factor),
         adjust: (delta: number) => ipcRenderer.invoke('qqq:zoom:adjust', delta),
+        onChanged: (cb: (factor: number) => void) => {
+            const handler = (_e: any, factor: number) => cb(factor);
+            ipcRenderer.on('qqq:zoom:changed', handler);
+            return () => ipcRenderer.removeListener('qqq:zoom:changed', handler);
+        },
     },
 
     // ---- native menu (server-pushed JSON schema -> Electron Menu) ----

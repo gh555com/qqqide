@@ -1,0 +1,337 @@
+{
+    "common": {
+        "close": "Fechar",
+        "confirm": "Confirmar",
+        "cancel": "Cancelar",
+        "search": "Pesquisar",
+        "copy": "Copiar",
+        "delete": "Excluir",
+        "save": "Salvar",
+        "retry": "Tentar novamente",
+        "error": "Erro",
+        "ok": "OK",
+        "yes": "Sim",
+        "no": "Não",
+        "loading": "Carregando...",
+        "copied": "Copiado",
+        "failed": "Falhou",
+        "more": "Mais",
+        "back": "Voltar",
+        "next": "Próximo",
+        "open": "Abrir",
+        "edit": "Editar",
+        "rename": "Renomear",
+        "download": "Baixar",
+        "refresh": "Atualizar",
+        "preview": "Visualizar",
+        "unknown": "Desconhecido",
+        "enabled": "Ativado",
+        "disabled": "Desativado",
+        "on": "Ligado",
+        "off": "Desligado",
+        "seconds": "segundos",
+        "minutes": "minutos",
+        "hours": "horas",
+        "bytes": "bytes",
+        "kb": "KB",
+        "mb": "MB",
+        "gb": "GB"
+    },
+    "shell": {
+        "title": "qqq",
+        "menu": {
+            "file": "Arquivo",
+            "fileNew": "Novo",
+            "fileOpen": "Abrir",
+            "fileNewWindow": "Nova janela",
+            "fileExit": "Sair",
+            "tools": "Ferramentas",
+            "devTools": "Ferramentas do desenvolvedor"
+        },
+        "window": {
+            "minimize": "Minimizar",
+            "maximize": "Maximizar",
+            "restore": "Restaurar",
+            "close": "Fechar"
+        },
+        "zoom": {
+            "in": "Aumentar zoom da UI (Ctrl+=)",
+            "out": "Diminuir zoom da UI (Ctrl+-)",
+            "reset": "Redefinir zoom"
+        },
+        "theme": {
+            "toggle": "Alternar tema claro/escuro",
+            "switchToLight": "Mudar para tema claro",
+            "switchToDark": "Mudar para tema escuro"
+        },
+        "status": {
+            "version": "Versão",
+            "engineOn": "Engine online",
+            "engineOff": "Engine offline"
+        },
+        "output": {
+            "title": "Saída",
+            "hide": "Ocultar saída"
+        },
+        "update": {
+            "check": "Verificar atualizações"
+        },
+        "overlay": {
+            "copy": "Copiar para a área de transferência",
+            "copied": "Copiado",
+            "copyFailed": "Falha ao copiar",
+            "zoomIn": "Aumentar zoom",
+            "zoomOut": "Diminuir zoom",
+            "close": "Fechar (Esc)"
+        },
+        "about": {
+            "title": "Sobre o qqq",
+            "version": "qqq-shell v2",
+            "desc": "Portátil / Win7+ / Atualização dinâmica no servidor"
+        },
+        "dev": "Modo de desenvolvimento",
+        "gaeaHostLoading": "Carregando host gaea..."
+    },
+    "editor": {
+        "tabs": {
+            "close": "Fechar aba",
+            "closeOthers": "Fechar outras",
+            "closeRight": "Fechar à direita",
+            "closeAll": "Fechar todas",
+            "closeSaved": "Fechar salvas",
+            "revealInExplorer": "Mostrar no explorador de arquivos",
+            "copyPath": "Copiar caminho",
+            "copyRelativePath": "Copiar caminho relativo",
+            "splitRight": "Dividir à direita",
+            "splitDown": "Dividir abaixo"
+        },
+        "contextMenu": {
+            "cut": "Recortar",
+            "copy": "Copiar",
+            "paste": "Colar",
+            "selectAll": "Selecionar tudo",
+            "undo": "Desfazer",
+            "redo": "Refazer"
+        },
+        "unsaved": "Não salvo",
+        "saved": "Salvo",
+        "saving": "Salvando...",
+        "saveFailed": "Falha ao salvar",
+        "fileTooLarge": "Arquivo muito grande",
+        "binaryFile": "Arquivo binário, não editável",
+        "line": "Linha",
+        "col": "Coluna",
+        "spaces": "Espaços",
+        "indent": "Indentação",
+        "encoding": "Codificação",
+        "eol": "Fim de linha",
+        "language": "Idioma",
+        "readOnly": "Somente leitura",
+        "codelens": {
+            "openFile": "Abrir arquivo",
+            "openFolder": "Abrir pasta",
+            "copyPath": "Copiar caminho",
+            "copyImage": "Copiar binário da imagem"
+        }
+    },
+    "ai": {
+        "title": "IA",
+        "send": "Enviar",
+        "stop": "Parar",
+        "guide": "Guia",
+        "queue": "Na fila",
+        "context": "Contexto",
+        "compress": "Comprimir",
+        "level": {
+            "a": "Conservador",
+            "1": "Leve",
+            "2": "Moderado",
+            "3": "Inteligente",
+            "4": "Forte",
+            "5": "Extremo",
+            "6": "Pro Max"
+        },
+        "floor": "Andar",
+        "house": "Casa",
+        "room": "Sala",
+        "ttfb": "Espera de rede",
+        "work": "Tempo de processamento",
+        "total": "Total",
+        "tokens": "Consumo de Tokens",
+        "confirmConnect": "Confirmar conexão",
+        "thinking": "Pensando...",
+        "streaming": "Gerando...",
+        "tools": {
+            "readFile": "Ler arquivo",
+            "editFile": "Editar arquivo",
+            "createFile": "Criar arquivo",
+            "deleteFile": "Excluir arquivo",
+            "writeFile": "Gravar arquivo",
+            "searchText": "Pesquisar texto",
+            "findFiles": "Localizar arquivos",
+            "listFiles": "Listar arquivos",
+            "getDiagnostics": "Obter diagnósticos",
+            "runCommand": "Executar comando",
+            "fetchWebpage": "Capturar página web",
+            "getVision": "Obter contexto visual"
+        },
+        "output": {
+            "empty": "Aguardando entrada...",
+            "compressInProgress": "Comprimindo...",
+            "compressDone": "Compressão concluída",
+            "tokenLimit": "Limite de Tokens atingido"
+        },
+        "rules": {
+            "title": "Regras do projeto",
+            "edit": "Editar regras",
+            "empty": "Nenhuma regra definida",
+            "globalRule": "Regra global (.qqq-rules.txt)",
+            "projectRule": "Regra do projeto (project.txt)"
+        },
+        "quest": {
+            "switch": "Trocar projeto",
+            "newQuest": "Nova conversa",
+            "history": "Histórico",
+            "noHistory": "Sem histórico",
+            "saveFailed": "Falha ao salvar"
+        },
+        "lock": {
+            "locked": "Projeto já aberto em outra janela",
+            "stale": "Bloqueio expirado",
+            "heartbeat": "Keep-alive"
+        }
+    },
+    "goods": {
+        "bar": {
+            "title": "Alternar funcionalidades"
+        },
+        "fileExplorer": {
+            "title": "Explorador de arquivos",
+            "openFile": "Abrir arquivo",
+            "openInIde": "Abrir na IDE",
+            "refresh": "Atualizar diretório",
+            "parentDir": "Diretório pai",
+            "name": "Nome",
+            "size": "Tamanho",
+            "modified": "Data de modificação",
+            "type": "Tipo",
+            "folder": "Pasta",
+            "file": "Arquivo",
+            "empty": "Diretório vazio",
+            "loading": "Carregando...",
+            "loadFailed": "Falha ao carregar",
+            "noAccess": "Sem permissão de acesso"
+        },
+        "navigator": {
+            "title": "Navegação",
+            "explorer": "Explorador",
+            "search": "Pesquisar arquivos",
+            "openEditors": "Editores abertos",
+            "outline": "Estrutura",
+            "timeline": "Linha do tempo"
+        },
+        "pasteImage": {
+            "title": "Colar imagem",
+            "pasteHint": "Ctrl+V para colar imagem",
+            "pasting": "Colando...",
+            "pasteOk": "Imagem colada",
+            "pasteFailed": "Falha ao colar",
+            "noImage": "Nenhuma imagem na área de transferência"
+        },
+        "wysiwyg": {
+            "title": "WYSIWYG",
+            "bold": "Negrito",
+            "italic": "Itálico",
+            "underline": "Sublinhado",
+            "strikethrough": "Tachado",
+            "heading": "Título",
+            "paragraph": "Parágrafo",
+            "list": "Lista",
+            "orderedList": "Lista ordenada",
+            "quote": "Citação",
+            "code": "Código",
+            "link": "Link",
+            "image": "Imagem",
+            "table": "Tabela",
+            "horizontalRule": "Linha horizontal",
+            "clearFormat": "Limpar formatação",
+            "undo": "Desfazer",
+            "redo": "Refazer"
+        },
+        "rage": {
+            "title": "Área de transferência",
+            "clip": {
+                "title": "Histórico da área de transferência",
+                "empty": "Nenhum conteúdo copiado",
+                "search": "Pesquisar na área de transferência...",
+                "pin": "Fixar",
+                "unpin": "Desfixar",
+                "delete": "Excluir",
+                "clearAll": "Limpar tudo",
+                "count": "{n} itens",
+                "text": "Texto",
+                "image": "Imagem",
+                "html": "Rich Text",
+                "link": "Link",
+                "file": "Arquivo",
+                "unknown": "Tipo desconhecido"
+            },
+            "captain": {
+                "paste": "Colar",
+                "roam": "Navegar",
+                "video": "Vídeo",
+                "weave": "Tecelagem",
+                "exportDoc": "Exportar documento",
+                "pure": "Puro",
+                "exportZip": "Exportar ZIP",
+                "audio": "Áudio"
+            },
+            "search": {
+                "hint": "Pesquisa AND com múltiplas palavras-chave",
+                "noResults": "Nenhum resultado encontrado"
+            }
+        }
+    },
+    "dialog": {
+        "about": {
+            "title": "Sobre o qqq",
+            "message": "qqq-shell v2",
+            "detail": "Portátil / Win7+ / Atualização dinâmica no servidor"
+        },
+        "confirmDelete": {
+            "title": "Confirmar exclusão",
+            "message": "Tem certeza que deseja excluir? Esta ação não pode ser desfeita."
+        },
+        "unsaved": {
+            "title": "Alterações não salvas",
+            "message": "Há alterações não salvas. Deseja salvar antes de fechar?",
+            "save": "Salvar",
+            "discard": "Descartar",
+            "cancel": "Cancelar"
+        }
+    },
+    "shortcuts": {
+        "ctrlS": "Salvar",
+        "ctrlZ": "Desfazer",
+        "ctrlShiftZ": "Refazer",
+        "ctrlX": "Recortar",
+        "ctrlC": "Copiar",
+        "ctrlV": "Colar",
+        "ctrlA": "Selecionar tudo",
+        "ctrlF": "Localizar",
+        "ctrlH": "Substituir",
+        "ctrlN": "Novo arquivo",
+        "ctrlO": "Abrir arquivo",
+        "ctrlW": "Fechar aba",
+        "ctrlShiftE": "Mostrar explorador de arquivos",
+        "ctrlShiftF": "Pesquisar arquivos",
+        "ctrlBackslash": "Dividir à direita",
+        "ctrlPlus": "Aumentar zoom",
+        "ctrlMinus": "Diminuir zoom",
+        "ctrl0": "Redefinir zoom",
+        "f12": "Ferramentas do desenvolvedor",
+        "f1": "Paleta de comandos",
+        "altLeft": "Voltar",
+        "altRight": "Avançar"
+    }
+}

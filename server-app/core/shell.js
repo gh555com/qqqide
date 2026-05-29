@@ -146,10 +146,12 @@
     const T = window.qqqTheme;
     function syncBtn(dark) {
       $btn.textContent = dark ? '\u263C' : '\u263D';
-      $btn.title = dark ? '切换到亮色' : '切换到暗色';
+      $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮色') : window._i('shell.theme.switchToDark', '切换到暗色');
     }
     syncBtn(T.isDark());
-    T.onChange(syncBtn);
+    T.onChange(function (dark) {
+      $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮色') : window._i('shell.theme.switchToDark', '切换到暗色');
+    });
     $btn.addEventListener('click', () => T.apply(!T.isDark()));
   }
 
@@ -221,7 +223,7 @@
       return;
     }
     if (cmd === 'help.about') {
-      bridge.dialog.message({ type: 'info', title: '关于 qqq', message: 'qqq-shell v2', detail: '便携 / Win7+ / 100% 服务器热更' });
+      bridge.dialog.message({ type: 'info', title: window._i('shell.about.title', '关于 qqq'), message: window._i('shell.about.version', 'qqq-shell v2'), detail: window._i('shell.about.desc', '便携 / Win7+ / 服务器热更') });
       return;
     }
     if (cmd === 'file.new' || cmd === 'file.open') {
@@ -324,18 +326,31 @@
   }
 
   // ---- Zoom +/- buttons (step 0.05) ----
+  function applyZoomCompensation(f) {
+    ROOT.style.setProperty('--ai-zone-w', (AI_W / f) + 'px');
+    const $label = document.getElementById('qqq-zoom-label');
+    if ($label) $label.textContent = f.toFixed(2);
+  }
   function bootZoomButtons() {
     const $in = document.getElementById('qqq-zoom-in');
     const $out = document.getElementById('qqq-zoom-out');
     if (!bridge.zoom) return;
     if ($in) $in.addEventListener('click', async () => {
       const f = await bridge.zoom.adjust(0.05);
-      console.log('[zoom] →', f);
+      applyZoomCompensation(f);
     });
     if ($out) $out.addEventListener('click', async () => {
       const f = await bridge.zoom.adjust(-0.05);
-      console.log('[zoom] →', f);
+      applyZoomCompensation(f);
     });
+    // Listen for zoom changes from keyboard shortcuts (main process)
+    if (bridge.zoom.onChanged) {
+      bridge.zoom.onChanged(function (f) {
+        applyZoomCompensation(f);
+      });
+    }
+    // Initial compensation on boot
+    bridge.zoom.get().then(applyZoomCompensation);
   }
 
   // ---- Statusbar ----
@@ -365,7 +380,7 @@
     if (window.qqqGaea) {
       window.qqqGaea.build(host);
     } else {
-      host.innerHTML = '<div style="padding:12px; color:var(--base1); font-size:12px;">gaea host loading...</div>';
+      host.innerHTML = '<div style="padding:12px; color:var(--base1); font-size:12px;">' + window._i('shell.gaeaHostLoading', 'gaea host 加载中...') + '</div>';
     }
   }
 
@@ -426,86 +441,173 @@
 
   // ---- AI Overlay (full-window, breaks out of iframe) ----
   function bootAiOverlay() {
-    // Create overlay at document.body level (outside any iframe)
     var overlay = document.createElement('div');
     overlay.id = 'qqq-ai-overlay';
     overlay.style.cssText =
       'display:none; position:fixed; inset:0; z-index:99999; ' +
       'background:rgba(0,0,0,0.88); cursor:default;';
 
-    var closeBtn = document.createElement('div');
-    closeBtn.id = 'qqq-ai-overlay-close';
-    closeBtn.textContent = '\u00d7';
-    closeBtn.style.cssText =
-      'position:fixed; top:16px; right:24px; z-index:100001; ' +
-      'cursor:pointer; font-size:40px; color:#fff; opacity:0.7; ' +
-      'user-select:none; line-height:1; font-weight:200;';
-    closeBtn.title = 'Close (Esc)';
-
     var contentEl = document.createElement('div');
     contentEl.id = 'qqq-ai-overlay-content';
     contentEl.style.cssText =
-      'position:absolute; inset:0; display:flex; align-items:center; ' +
-      'justify-content:center; padding:48px;';
+      'position:absolute; top:0; left:0; right:0; bottom:64px; display:flex; align-items:center; ' +
+      'justify-content:center; padding:32px; overflow:hidden;';
 
-    overlay.appendChild(closeBtn);
+    // Bottom toolbar
+    var toolbar = document.createElement('div');
+    toolbar.id = 'qqq-ai-overlay-toolbar';
+    toolbar.style.cssText =
+      'position:absolute; bottom:0; left:0; right:0; height:64px; display:flex; ' +
+      'align-items:center; justify-content:center; gap:16px; ' +
+      'background:rgba(0,0,0,0.5); border-top:1px solid rgba(255,255,255,0.1);';
+
+    function tbBtn(text, title, styles) {
+      var b = document.createElement('button');
+      b.textContent = text;
+      b.title = title || '';
+      b.style.cssText = 'padding:8px 18px; border:1px solid rgba(255,255,255,0.25); border-radius:6px; ' +
+        'background:rgba(255,255,255,0.1); color:#fff; cursor:pointer; font-size:14px; ' +
+        'user-select:none; line-height:1; ' + (styles || '');
+      return b;
+    }
+
+    var zoomScale = 1.0;
+    function applyZoom() {
+      var inner = contentEl.querySelector('img') || contentEl.querySelector('div');
+      if (inner) {
+        inner.style.transform = 'scale(' + zoomScale + ')';
+        inner.style.transition = 'transform 0.15s ease';
+      }
+    }
+
+    // Copy button
+    var copyBtn = tbBtn('', '复制到剪贴板');
+    copyBtn.setAttribute('data-i18n', 'shell.overlay.copy');
+    copyBtn.textContent = '\uD83D\uDCCB \u590D\u5236';
+    function doCopy(text) {
+      var ok = false;
+      // Try modern clipboard API first
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          copyBtn.textContent = '\u2705 ' + window._i('shell.overlay.copied', '已复制');
+          setTimeout(function () { copyBtn.textContent = '\uD83D\uDCCB ' + window._i('shell.overlay.copy', '复制'); }, 1500);
+        }).catch(function () { fallbackCopy(text); });
+      } else {
+        fallbackCopy(text);
+      }
+      function fallbackCopy(t) {
+        // execCommand fallback
+        var ta = document.createElement('textarea');
+        ta.value = t;
+        ta.style.cssText = 'position:fixed;left:-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); ok = true; } catch (ex) { }
+        document.body.removeChild(ta);
+        copyBtn.textContent = ok ? '\u2705 ' + window._i('shell.overlay.copied', '已复制') : '\u274C ' + window._i('shell.overlay.copyFailed', '失败');
+        setTimeout(function () { copyBtn.textContent = '\uD83D\uDCCB ' + window._i('shell.overlay.copy', '复制'); }, 1500);
+      }
+    }
+    copyBtn.addEventListener('click', function () {
+      var img = contentEl.querySelector('img');
+      if (img) { doCopy(img.src); return; }
+      var div = contentEl.querySelector('div');
+      if (div) { doCopy(div.innerText || div.textContent); }
+    });
+
+    // Zoom out
+    var zoomOutBtn = tbBtn('−', window._i('shell.overlay.zoomOut', '缩小'), 'font-size:20px; font-weight:bold; padding:8px 14px;');
+    zoomOutBtn.addEventListener('click', function () {
+      zoomScale = Math.max(0.25, zoomScale * 0.8);
+      applyZoom();
+    });
+
+    // Zoom in
+    var zoomInBtn = tbBtn('+', window._i('shell.overlay.zoomIn', '放大'), 'font-size:20px; font-weight:bold; padding:8px 14px;');
+    zoomInBtn.addEventListener('click', function () {
+      zoomScale = Math.min(5.0, zoomScale * 1.25);
+      applyZoom();
+    });
+
+    // Close (extra large)
+    var closeBtn = tbBtn('✕', window._i('shell.overlay.close', '关闭 (Esc)'), 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
+      'background:rgba(220,50,47,0.5); border-color:rgba(220,50,47,0.7);');
+    closeBtn.addEventListener('click', close);
+
+    toolbar.appendChild(copyBtn);
+    toolbar.appendChild(zoomOutBtn);
+    toolbar.appendChild(zoomInBtn);
+    toolbar.appendChild(closeBtn);
+
     overlay.appendChild(contentEl);
+    overlay.appendChild(toolbar);
     document.body.appendChild(overlay);
 
     function close() {
       overlay.style.display = 'none';
       contentEl.innerHTML = '';
+      zoomScale = 1.0;
     }
 
-    closeBtn.addEventListener('click', close);
-    overlay.addEventListener('click', function(e) {
+    overlay.addEventListener('click', function (e) {
       if (e.target === overlay) close();
     });
 
-    // Keyboard: Escape to close
-    document.addEventListener('keydown', function(e) {
+    document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && overlay.style.display !== 'none') {
         close();
       }
     });
 
-    // Listen for messages from AI iframe
-    window.addEventListener('message', function(e) {
-      if (!e.data || e.data.type !== 'qqq-ai-overlay') return;
+    // Mouse wheel zoom
+    overlay.addEventListener('wheel', function (e) {
+      if (overlay.style.display === 'none') return;
+      e.preventDefault();
+      if (e.deltaY < 0) {
+        zoomScale = Math.min(5.0, zoomScale * 1.15);
+      } else {
+        zoomScale = Math.max(0.25, zoomScale * 0.87);
+      }
+      applyZoom();
+    }, { passive: false });
 
+    // Listen for messages from AI iframe
+    window.addEventListener('message', function (e) {
+      if (!e.data || e.data.type !== 'qqq-ai-overlay') return;
       if (e.data.action === 'close') { close(); return; }
 
       if (e.data.action === 'open-image') {
         contentEl.innerHTML = '';
+        zoomScale = 1.0;
         var img = document.createElement('img');
         img.src = e.data.src;
         img.style.cssText =
-          'max-width:90vw; max-height:85vh; object-fit:contain; ' +
-          'border-radius:6px; box-shadow:0 4px 32px rgba(0,0,0,0.4);';
+          'max-width:90vw; max-height:calc(100vh - 120px); object-fit:contain; ' +
+          'border-radius:6px; box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
+          'transform:scale(1); transition:transform 0.15s ease;';
         contentEl.appendChild(img);
         overlay.style.display = 'block';
       }
 
       if (e.data.action === 'open-table') {
         contentEl.innerHTML = '';
+        zoomScale = 1.0;
         var wrapper = document.createElement('div');
         wrapper.style.cssText =
-          'max-width:95vw; max-height:85vh; overflow:auto; ' +
+          'max-width:95vw; max-height:calc(100vh - 120px); overflow:auto; ' +
           'background:var(--card-bg,#2a2a2a); color:var(--text-primary,#d4d0c8); ' +
           'border-radius:8px; padding:20px; ' +
-          'box-shadow:0 4px 32px rgba(0,0,0,0.4);';
+          'box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
+          'transform:scale(1); transition:transform 0.15s ease;';
         wrapper.innerHTML = e.data.html;
-        // Fix table styles inside overlay
         var tables = wrapper.querySelectorAll('table');
         for (var ti = 0; ti < tables.length; ti++) {
           var t = tables[ti];
-          t.style.cssText =
-            'border-collapse:collapse; width:auto; font-size:13px;';
+          t.style.cssText = 'border-collapse:collapse; width:auto; font-size:13px;';
         }
         var cells = wrapper.querySelectorAll('th,td');
         for (var ci = 0; ci < cells.length; ci++) {
-          cells[ci].style.cssText =
-            'border:1px solid var(--border-color,#333); padding:6px 12px; text-align:left;';
+          cells[ci].style.cssText = 'border:1px solid var(--border-color,#333); padding:6px 12px; text-align:left;';
         }
         var ths = wrapper.querySelectorAll('th');
         for (var hi = 0; hi < ths.length; hi++) {
@@ -516,9 +618,9 @@
       }
     });
 
-    // Theme sync for overlay inner elements
+    // Theme sync
     if (window.qqqTheme && window.qqqTheme.onChange) {
-      window.qqqTheme.onChange(function(dark) {
+      window.qqqTheme.onChange(function (dark) {
         var wrapper = contentEl.querySelector('div');
         if (wrapper) {
           wrapper.style.background = dark ? '#2a2a2a' : '#eee8d5';

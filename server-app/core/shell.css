@@ -6,9 +6,12 @@
 /* ★ 配色变量由 qqq-theme.js（唯一真理配色机器）注入，此处不定义任何颜色变量。 */
 
 /* ---- Reset ---- */
-html, body {
-  margin: 0; padding: 0;
-  width: 100%; height: 100%;
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background: var(--background-color);
   color: var(--text-primary);
@@ -30,8 +33,13 @@ html, body {
 }
 
 /* ---- Utility ---- */
-.qqq-hidden { display: none !important; }
-.qqq-spacer { flex: 1 1 auto; }
+.qqq-hidden {
+  display: none !important;
+}
+
+.qqq-spacer {
+  flex: 1 1 auto;
+}
 
 /* ============================================================================
    Menu Area (top)
@@ -44,20 +52,24 @@ html, body {
   border-bottom: 1px solid var(--border-color);
   -webkit-app-region: drag;
 }
+
 .qqq-menu-row {
   flex: 0 0 var(--menu-row-h);
   display: flex;
   align-items: center;
   min-height: var(--menu-row-h);
 }
+
 .qqq-menu-row-1 {
   background: var(--card-bg);
 }
+
 .qqq-menu-row-2 {
   background: var(--background-color);
   padding: 0 8px;
   border-top: 1px solid var(--border-color);
 }
+
 .qqq-menubar {
   display: flex;
   align-items: center;
@@ -65,19 +77,31 @@ html, body {
   padding-left: 8px;
   -webkit-app-region: no-drag;
 }
+
 .qqq-toolbar {
-  display: flex; align-items: center; height: 100%; gap: 2px;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  gap: 2px;
   -webkit-app-region: no-drag;
 }
+
 .qqq-toolbar-brand {
-  font-weight: 600; color: var(--primary-color); margin-right: 8px;
+  font-weight: 600;
+  color: var(--primary-color);
+  margin-right: 8px;
 }
+
 .qqq-goods-bar {
-  display: flex; align-items: center; gap: 2px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
+
 .qqq-goods-btn {
   -webkit-app-region: no-drag;
 }
+
 .qqq-goods-btn:hover {
   background: var(--background-color) !important;
   opacity: 0.85;
@@ -85,42 +109,91 @@ html, body {
 
 /* Window controls */
 .qqq-window-controls {
-  display: flex; height: 100%;
+  display: flex;
+  height: 100%;
   -webkit-app-region: no-drag;
 }
+
 .qqq-wc-btn {
-  width: 46px; height: var(--menu-row-h);
-  border: 0; background: transparent;
-  color: var(--text-primary); font-size: 12px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
+  width: 46px;
+  height: var(--menu-row-h);
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.qqq-wc-btn:hover { background: rgba(128,128,128,0.15); }
-.qqq-wc-close:hover { background: var(--red); color: #fff; }
+
+.qqq-wc-btn:hover {
+  background: rgba(128, 128, 128, 0.15);
+}
+
+.qqq-wc-close:hover {
+  background: var(--red);
+  color: #fff;
+}
 
 /* Theme toggle */
 .qqq-theme-toggle {
   -webkit-app-region: no-drag;
-  border: 0; background: transparent;
+  border: 0;
+  background: transparent;
   color: var(--text-primary);
-  font-size: 15px; cursor: pointer;
-  width: 32px; height: var(--menu-row-h);
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 4px; margin-right: 4px;
+  font-size: 15px;
+  cursor: pointer;
+  width: 32px;
+  height: var(--menu-row-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  margin-right: 4px;
 }
-.qqq-theme-toggle:hover { background: rgba(128,128,128,0.15); }
+
+.qqq-theme-toggle:hover {
+  background: rgba(128, 128, 128, 0.15);
+}
 
 /* Zoom +/- buttons (UI scale, step 0.05, range 0.5-2.0) */
 .qqq-zoom-btn {
   -webkit-app-region: no-drag;
-  border: 0; background: transparent;
+  border: 0;
+  background: transparent;
   color: var(--text-primary);
-  font-size: 14px; font-weight: bold; cursor: pointer;
-  width: 26px; height: var(--menu-row-h);
-  display: flex; align-items: center; justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  width: 26px;
+  height: var(--menu-row-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 4px;
   margin-right: 2px;
 }
-.qqq-zoom-btn:hover { background: rgba(128,128,128,0.15); }
+
+.qqq-zoom-btn:hover {
+  background: rgba(128, 128, 128, 0.15);
+}
+
+/* Zoom factor label (non-interactive, monospace) */
+.qqq-zoom-label {
+  -webkit-app-region: no-drag;
+  font-size: 11px;
+  font-family: ui-monospace, monospace;
+  color: var(--text-primary);
+  opacity: 0.7;
+  width: 34px;
+  text-align: center;
+  height: var(--menu-row-h);
+  line-height: var(--menu-row-h);
+  user-select: none;
+  pointer-events: none;
+  margin-right: 2px;
+}
 
 /* ============================================================================
    Middle Area: A Zone | sash | X Zone | AI Zone
@@ -141,10 +214,10 @@ html, body {
   overflow: hidden;
   height: 100%;
   background: var(--card-bg);
-  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
 }
+
 .qqq-a-zone.qqq-collapsed {
   flex-basis: 0 !important;
   width: 0 !important;
@@ -183,6 +256,7 @@ html, body {
   border-top: 1px solid var(--border-color);
   background: var(--card-bg);
 }
+
 .qqq-output-header {
   flex: 0 0 28px;
   display: flex;
@@ -192,14 +266,27 @@ html, body {
   border-bottom: 1px solid var(--border-color);
   font-size: 12px;
 }
+
 .qqq-output-title {
-  font-weight: 600; color: var(--text-primary);
+  font-weight: 600;
+  color: var(--text-primary);
 }
+
 .qqq-output-close {
-  border: 0; background: transparent; color: var(--base1);
-  cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 3px;
+  border: 0;
+  background: transparent;
+  color: var(--base1);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 3px;
 }
-.qqq-output-close:hover { background: rgba(128,128,128,0.2); color: var(--text-primary); }
+
+.qqq-output-close:hover {
+  background: rgba(128, 128, 128, 0.2);
+  color: var(--text-primary);
+}
+
 .qqq-output-body {
   flex: 1 1 auto;
   overflow: auto;
@@ -229,27 +316,75 @@ html, body {
   width: var(--sash-w);
   height: 100%;
   cursor: ew-resize;
-  background: var(--sash-bg);
+  background: transparent;
   position: relative;
   z-index: 5;
   transition: background-color 80ms ease;
 }
+
+.qqq-sash-v::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2px;
+  width: 0.5px;
+  background: var(--sash-bg);
+}
+
 /* Horizontal sash (ns-resize) */
 .qqq-sash-h {
   flex: 0 0 var(--sash-w);
   height: var(--sash-w);
   width: 100%;
   cursor: ns-resize;
-  background: var(--sash-bg);
+  background: transparent;
   position: relative;
   z-index: 5;
   transition: background-color 80ms ease;
 }
-.qqq-sash-v:hover, .qqq-sash-h:hover { background: var(--sash-bg-hover); }
-.qqq-sash-v.qqq-sash-dragging, .qqq-sash-h.qqq-sash-dragging { background: var(--sash-bg-active); }
-.qqq-sash-v.qqq-sash-saturated, .qqq-sash-h.qqq-sash-saturated,
+
+.qqq-sash-h::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 2px;
+  height: 0.5px;
+  background: var(--sash-bg);
+}
+
+.qqq-sash-v:hover,
+.qqq-sash-h:hover {
+  background: var(--sash-bg-hover);
+}
+
+.qqq-sash-v:hover::after,
+.qqq-sash-h:hover::after {
+  display: none;
+}
+
+.qqq-sash-v.qqq-sash-dragging,
+.qqq-sash-h.qqq-sash-dragging {
+  background: var(--sash-bg-active);
+}
+
+.qqq-sash-v.qqq-sash-dragging::after,
+.qqq-sash-h.qqq-sash-dragging::after {
+  display: none;
+}
+
+.qqq-sash-v.qqq-sash-saturated,
+.qqq-sash-h.qqq-sash-saturated,
 .qqq-sash-v.qqq-sash-saturated.qqq-sash-dragging,
-.qqq-sash-h.qqq-sash-saturated.qqq-sash-dragging { background: var(--sash-saturated); }
+.qqq-sash-h.qqq-sash-saturated.qqq-sash-dragging {
+  background: var(--sash-saturated);
+}
+
+.qqq-sash-v.qqq-sash-saturated::after,
+.qqq-sash-h.qqq-sash-saturated::after {
+  display: none;
+}
 
 /* ============================================================================
    Tab Group
@@ -262,10 +397,12 @@ html, body {
   height: 100%;
   background: var(--background-color);
 }
+
 .qqq-tab-group:first-child {
   border-left: none;
 }
-.qqq-tab-group + .qqq-sash-v + .qqq-tab-group,
+
+.qqq-tab-group+.qqq-sash-v+.qqq-tab-group,
 .qqq-tab-group:not(:first-child) {
   border-left: none;
 }
@@ -282,7 +419,10 @@ html, body {
   border-bottom: 1px solid var(--border-color);
   scrollbar-width: none;
 }
-.qqq-tab-bar::-webkit-scrollbar { display: none; }
+
+.qqq-tab-bar::-webkit-scrollbar {
+  display: none;
+}
 
 /* Tab button */
 .qqq-tab-btn {
@@ -305,27 +445,39 @@ html, body {
   text-overflow: ellipsis;
   transition: background 80ms, color 80ms;
 }
+
 .qqq-tab-btn:hover {
   background: var(--background-color);
   color: var(--text-primary);
 }
+
 .qqq-tab-btn.qqq-tab-active {
   color: var(--text-primary);
   border-bottom-color: var(--primary-color);
   background: var(--background-color);
 }
+
 .qqq-tab-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px; height: 16px;
-  border: none; background: transparent;
-  color: var(--base1); font-size: 12px;
-  border-radius: 3px; cursor: pointer;
+  width: 16px;
+  height: 16px;
+  border: none;
+  background: transparent;
+  color: var(--base1);
+  font-size: 12px;
+  border-radius: 3px;
+  cursor: pointer;
   flex-shrink: 0;
   margin-left: auto;
 }
-.qqq-tab-close:hover { background: rgba(128,128,128,0.25); color: var(--red); }
+
+.qqq-tab-close:hover {
+  background: rgba(128, 128, 128, 0.25);
+  color: var(--red);
+}
+
 .qqq-tab-name {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -338,12 +490,29 @@ html, body {
   position: relative;
   background: var(--background-color);
 }
+
+/* Monaco overview ruler — 消空气墙：禁 overview ruler，scrollbar 贴合右边界 */
+.monaco-editor .overviewRuler {
+  display: none !important;
+}
+
+/* 分组间 sash 更窄（4px），居中分割线，减少空气墙 */
+.qqq-sash-v[data-sash="tab-group"] {
+  flex: 0 0 4px;
+  width: 4px;
+}
+.qqq-sash-v[data-sash="tab-group"]::after {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 .qqq-tab-pane {
   position: absolute;
   inset: 0;
   overflow: auto;
   display: none;
 }
+
 .qqq-tab-pane.qqq-tab-pane-active {
   display: block;
 }
@@ -356,6 +525,7 @@ html, body {
   display: flex;
   flex-direction: column;
 }
+
 .qqq-status-row {
   flex: 0 0 var(--status-row-h);
   display: flex;
@@ -366,15 +536,20 @@ html, body {
   font-size: 12px;
   border-top: 1px solid var(--border-color);
 }
-.qqq-status-item { margin-right: 16px; }
+
+.qqq-status-item {
+  margin-right: 16px;
+}
 
 /* ============================================================================
    Resize Grip (bottom-right)
    ============================================================================ */
 .qqq-resize-grip {
   position: fixed;
-  bottom: 0; right: 0;
-  width: 16px; height: 16px;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
   cursor: nwse-resize;
   z-index: 999;
   -webkit-app-region: no-drag;
@@ -382,56 +557,135 @@ html, body {
   opacity: 0.5;
   transition: opacity 120ms;
 }
-.qqq-resize-grip:hover { opacity: 1; }
+
+.qqq-resize-grip:hover {
+  opacity: 1;
+}
 
 /* ============================================================================
    AI Viewport (titlebar row-1) - preserved from old layout
    ============================================================================ */
 .aiv-container {
-  display: flex; align-items: center; gap: 6px; height: 100%;
-  padding: 0 8px; overflow-x: auto; overflow-y: hidden;
-  -webkit-app-region: no-drag; scrollbar-width: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  padding: 0 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-app-region: no-drag;
+  scrollbar-width: none;
 }
-.aiv-container::-webkit-scrollbar { display: none; }
+
+.aiv-container::-webkit-scrollbar {
+  display: none;
+}
+
 .aiv-block {
-  display: inline-flex; align-items: center; gap: 3px;
-  height: 22px; padding: 0 8px; border-radius: 3px; font-size: 11px;
-  white-space: nowrap; cursor: pointer; flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 3px;
+  font-size: 11px;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
   transition: border-color 100ms, background 100ms;
 }
-.aiv-block-empty { border: 1px dashed var(--base1); color: var(--base1); }
-.aiv-block-empty:hover { border-color: var(--primary-color); color: var(--primary-color); }
-.aiv-block-filled { border: 1px solid var(--border-color); color: var(--text-primary); background: var(--background-color); }
-.aiv-block-filled:hover { border-color: var(--primary-color); }
-.aiv-block-active { border-color: var(--primary-color) !important; border-style: dashed !important; background: var(--card-bg); }
-.aiv-block-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
-.aiv-block-plus { font-size: 14px; font-weight: 600; line-height: 1; }
-.aiv-block-rm { font-size: 14px; font-weight: 700; margin-left: 4px; color: var(--base1); line-height: 1; padding: 0 2px; border-radius: 2px; }
-.aiv-block-rm:hover { color: var(--red); background: rgba(220,50,47,0.1); }
-.aiv-dd-row:hover { background: var(--background-color) !important; }
+
+.aiv-block-empty {
+  border: 1px dashed var(--base1);
+  color: var(--base1);
+}
+
+.aiv-block-empty:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.aiv-block-filled {
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  background: var(--background-color);
+}
+
+.aiv-block-filled:hover {
+  border-color: var(--primary-color);
+}
+
+.aiv-block-active {
+  border-color: var(--primary-color) !important;
+  border-style: dashed !important;
+  background: var(--card-bg);
+}
+
+.aiv-block-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aiv-block-plus {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.aiv-block-rm {
+  font-size: 14px;
+  font-weight: 700;
+  margin-left: 4px;
+  color: var(--base1);
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.aiv-block-rm:hover {
+  color: var(--red);
+  background: rgba(220, 50, 47, 0.1);
+}
+
+.aiv-dd-row:hover {
+  background: var(--background-color) !important;
+}
 
 /* ============================================================================
    A Zone: gaea panel cards (q4-style)
    ============================================================================ */
 .gaea-panel-header {
   flex: 0 0 28px;
-  display: flex; align-items: center;
+  display: flex;
+  align-items: center;
   padding: 0 10px;
   border-bottom: 1px solid var(--border-color);
   background: var(--background-color);
   font-size: 12px;
 }
-.gaea-panel-title { font-weight: 600; color: var(--primary-color); }
+
+.gaea-panel-title {
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
 .gaea-panel-body {
   flex: 1 1 auto;
-  overflow-y: auto; overflow-x: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: none;
   padding: 4px 0;
 }
-.gaea-panel-body::-webkit-scrollbar { display: none; }
+
+.gaea-panel-body::-webkit-scrollbar {
+  display: none;
+}
 
 .gaea-card {
-  display: flex; align-items: center; gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 6px 10px;
   cursor: pointer;
   color: var(--text-primary);
@@ -440,58 +694,121 @@ html, body {
   transition: background 80ms;
   flex-wrap: wrap;
 }
-.gaea-card:hover { background: var(--background-color); }
-.gaea-card-icon { font-size: 14px; flex-shrink: 0; width: 20px; text-align: center; }
-.gaea-card-text { flex: 1 1 auto; display: flex; align-items: center; gap: 6px; }
-.gaea-card-label { white-space: nowrap; }
-.gaea-card-hint { font-size: 10px; color: var(--base1); white-space: nowrap; }
-.gaea-card-stats { font-size: 10px; color: var(--base1); margin-left: auto; white-space: nowrap; }
-.gaea-card-input-wrap {
-  flex-basis: 100%; display: flex; gap: 4px;
-  margin-top: 4px; padding-left: 28px;
+
+.gaea-card:hover {
+  background: var(--background-color);
 }
+
+.gaea-card-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.gaea-card-text {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gaea-card-label {
+  white-space: nowrap;
+}
+
+.gaea-card-hint {
+  font-size: 10px;
+  color: var(--base1);
+  white-space: nowrap;
+}
+
+.gaea-card-stats {
+  font-size: 10px;
+  color: var(--base1);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.gaea-card-input-wrap {
+  flex-basis: 100%;
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  padding-left: 28px;
+}
+
 .gaea-card-input {
   flex: 1 1 auto;
   padding: 3px 6px;
-  background: var(--background-color); color: var(--text-primary);
-  border: 1px solid var(--border-color); border-radius: 2px;
-  font-size: 11px; outline: none;
+  background: var(--background-color);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  font-size: 11px;
+  outline: none;
 }
-.gaea-card-input:focus { border-color: var(--primary-color); }
+
+.gaea-card-input:focus {
+  border-color: var(--primary-color);
+}
+
 .gaea-card-go {
-  padding: 3px 8px; background: transparent; border: 1px solid var(--border-color);
-  color: var(--text-primary); cursor: pointer; border-radius: 2px; font-size: 11px;
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 2px;
+  font-size: 11px;
 }
-.gaea-card-go:hover { background: var(--background-color); }
+
+.gaea-card-go:hover {
+  background: var(--background-color);
+}
 
 .gaea-search-wrap {
   flex: 0 0 32px;
-  display: flex; align-items: center;
+  display: flex;
+  align-items: center;
   padding: 0 8px;
   border-top: 1px solid var(--border-color);
   background: var(--background-color);
 }
+
 .gaea-search-input {
-  width: 100%; padding: 4px 6px;
-  background: var(--card-bg); color: var(--text-primary);
-  border: 1px solid var(--border-color); border-radius: 2px;
-  font-size: 11px; outline: none;
+  width: 100%;
+  padding: 4px 6px;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  font-size: 11px;
+  outline: none;
 }
-.gaea-search-input:focus { border-color: var(--primary-color); }
+
+.gaea-search-input:focus {
+  border-color: var(--primary-color);
+}
 
 /* ============================================================================
    Drag overlay (blocks pointer events during sash drag)
    ============================================================================ */
 .qqq-drag-overlay {
-  position: fixed; inset: 0; z-index: 9999;
-  cursor: inherit; background: transparent;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  cursor: inherit;
+  background: transparent;
 }
 
 /* ============================================================================
    q1 ViewZone 相框 + ContentWidget 图标框 (qqq-viewzone.js)
    ============================================================================ */
 .qqq-vz-frame {
-  display: flex; align-items: center; justify-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: var(--base2);
   border: 1px solid var(--border-color);
   border-radius: 6px;
@@ -500,14 +817,20 @@ html, body {
   overflow: hidden;
   box-sizing: border-box;
 }
+
 .qqq-vz-frame img,
 .qqq-vz-frame video {
-  max-width: 100%; max-height: 100%;
-  display: block; border-radius: 4px;
+  max-width: 100%;
+  max-height: 100%;
+  display: block;
+  border-radius: 4px;
 }
+
 .qqq-vz-frame audio {
-  width: 100%; display: block;
+  width: 100%;
+  display: block;
 }
+
 .qqq-vz-frame .qqq-vz-fail {
   padding: 12px;
   font: 12px ui-monospace, Consolas, monospace;
@@ -516,9 +839,13 @@ html, body {
 
 /* 图标框 (ContentWidget inline icon) */
 .qqq-icon-frame {
-  display: inline-flex; align-items: center; gap: 4px;
-  height: 18px; vertical-align: middle;
-  padding: 0 6px; border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  vertical-align: middle;
+  padding: 0 6px;
+  border-radius: 4px;
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   font: 11px ui-monospace, Consolas, monospace;
@@ -526,13 +853,20 @@ html, body {
   pointer-events: none;
   max-width: 280px;
 }
+
 .qqq-icon-frame img {
-  width: 16px; height: 16px; object-fit: cover;
-  border-radius: 2px; flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 2px;
+  flex: 0 0 16px;
 }
+
 .qqq-icon-frame .qqq-icon-name {
   color: var(--text-secondary);
   max-width: 200px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   flex: 0 1 auto;
 }

@@ -1,0 +1,337 @@
+{
+    "common": {
+        "close": "إغلاق",
+        "confirm": "تأكيد",
+        "cancel": "إلغاء",
+        "search": "بحث",
+        "copy": "نسخ",
+        "delete": "حذف",
+        "save": "حفظ",
+        "retry": "إعادة المحاولة",
+        "error": "خطأ",
+        "ok": "موافق",
+        "yes": "نعم",
+        "no": "لا",
+        "loading": "جارٍ التحميل...",
+        "copied": "تم النسخ",
+        "failed": "فشل",
+        "more": "المزيد",
+        "back": "رجوع",
+        "next": "التالي",
+        "open": "فتح",
+        "edit": "تحرير",
+        "rename": "إعادة تسمية",
+        "download": "تنزيل",
+        "refresh": "تحديث",
+        "preview": "معاينة",
+        "unknown": "غير معروف",
+        "enabled": "مفعّل",
+        "disabled": "معطّل",
+        "on": "تشغيل",
+        "off": "إيقاف",
+        "seconds": "ثوانٍ",
+        "minutes": "دقائق",
+        "hours": "ساعات",
+        "bytes": "بايت",
+        "kb": "كيلوبايت",
+        "mb": "ميغابايت",
+        "gb": "غيغابايت"
+    },
+    "shell": {
+        "title": "qqq",
+        "menu": {
+            "file": "ملف",
+            "fileNew": "جديد",
+            "fileOpen": "فتح",
+            "fileNewWindow": "نافذة جديدة",
+            "fileExit": "خروج",
+            "tools": "أدوات",
+            "devTools": "أدوات المطورين"
+        },
+        "window": {
+            "minimize": "تصغير",
+            "maximize": "تكبير",
+            "restore": "استعادة",
+            "close": "إغلاق"
+        },
+        "zoom": {
+            "in": "تكبير الواجهة (Ctrl+=)",
+            "out": "تصغير الواجهة (Ctrl+-)",
+            "reset": "إعادة تعيين التكبير"
+        },
+        "theme": {
+            "toggle": "تبديل الوضع الفاتح/الداكن",
+            "switchToLight": "التبديل إلى الوضع الفاتح",
+            "switchToDark": "التبديل إلى الوضع الداكن"
+        },
+        "status": {
+            "version": "الإصدار",
+            "engineOn": "المحرك متصل",
+            "engineOff": "المحرك غير متصل"
+        },
+        "output": {
+            "title": "المخرجات",
+            "hide": "إخفاء المخرجات"
+        },
+        "update": {
+            "check": "التحقق من التحديثات"
+        },
+        "overlay": {
+            "copy": "نسخ إلى الحافظة",
+            "copied": "تم النسخ",
+            "copyFailed": "فشل النسخ",
+            "zoomIn": "تكبير",
+            "zoomOut": "تصغير",
+            "close": "إغلاق (Esc)"
+        },
+        "about": {
+            "title": "حول qqq",
+            "version": "qqq-shell v2",
+            "desc": "محمول / Win7+ / تحديث فوري للخادم"
+        },
+        "dev": "وضع التطوير",
+        "gaeaHostLoading": "جارٍ تحميل مضيف gaea..."
+    },
+    "editor": {
+        "tabs": {
+            "close": "إغلاق التبويب",
+            "closeOthers": "إغلاق الأخرى",
+            "closeRight": "إغلاق التبويبات على اليمين",
+            "closeAll": "إغلاق الكل",
+            "closeSaved": "إغلاق المحفوظة",
+            "revealInExplorer": "إظهار في مستكشف الملفات",
+            "copyPath": "نسخ المسار",
+            "copyRelativePath": "نسخ المسار النسبي",
+            "splitRight": "تقسيم لليمين",
+            "splitDown": "تقسيم للأسفل"
+        },
+        "contextMenu": {
+            "cut": "قص",
+            "copy": "نسخ",
+            "paste": "لصق",
+            "selectAll": "تحديد الكل",
+            "undo": "تراجع",
+            "redo": "إعادة"
+        },
+        "unsaved": "غير محفوظ",
+        "saved": "محفوظ",
+        "saving": "جارٍ الحفظ...",
+        "saveFailed": "فشل الحفظ",
+        "fileTooLarge": "الملف كبير جداً",
+        "binaryFile": "ملف ثنائي، لا يمكن تحريره",
+        "line": "سطر",
+        "col": "عمود",
+        "spaces": "مسافات",
+        "indent": "المسافة البادئة",
+        "encoding": "الترميز",
+        "eol": "نهاية السطر",
+        "language": "اللغة",
+        "readOnly": "للقراءة فقط",
+        "codelens": {
+            "openFile": "فتح ملف",
+            "openFolder": "فتح مجلد",
+            "copyPath": "نسخ المسار",
+            "copyImage": "نسخ بيانات الصورة الثنائية"
+        }
+    },
+    "ai": {
+        "title": "الذكاء الاصطناعي",
+        "send": "إرسال",
+        "stop": "إيقاف",
+        "guide": "توجيه",
+        "queue": "في الانتظار",
+        "context": "السياق",
+        "compress": "ضغط",
+        "level": {
+            "a": "محافظ",
+            "1": "خفيف",
+            "2": "متوسط",
+            "3": "ذكي",
+            "4": "قوي",
+            "5": "متطرف",
+            "6": "Pro Max"
+        },
+        "floor": "طابق",
+        "house": "منزل",
+        "room": "غرفة",
+        "ttfb": "انتظار الشبكة",
+        "work": "وقت العمل",
+        "total": "الإجمالي",
+        "tokens": "استهلاك الرموز (Tokens)",
+        "confirmConnect": "تأكيد الاتصال",
+        "thinking": "جارٍ التفكير...",
+        "streaming": "جارٍ التوليد...",
+        "tools": {
+            "readFile": "قراءة ملف",
+            "editFile": "تحرير ملف",
+            "createFile": "إنشاء ملف",
+            "deleteFile": "حذف ملف",
+            "writeFile": "كتابة ملف",
+            "searchText": "بحث في النص",
+            "findFiles": "البحث عن ملفات",
+            "listFiles": "سرد الملفات",
+            "getDiagnostics": "الحصول على التشخيصات",
+            "runCommand": "تشغيل أمر",
+            "fetchWebpage": "جلب صفحة ويب",
+            "getVision": "الحصول على السياق البصري"
+        },
+        "output": {
+            "empty": "بانتظار الإدخال...",
+            "compressInProgress": "جارٍ الضغط...",
+            "compressDone": "اكتمل الضغط",
+            "tokenLimit": "تم الوصول إلى الحد الأقصى للرموز"
+        },
+        "rules": {
+            "title": "قواعد المشروع",
+            "edit": "تحرير القواعد",
+            "empty": "لا توجد قواعد حالياً",
+            "globalRule": "القاعدة العامة (.qqq-rules.txt)",
+            "projectRule": "قاعدة المشروع (project.txt)"
+        },
+        "quest": {
+            "switch": "تبديل المشروع",
+            "newQuest": "محادثة جديدة",
+            "history": "السجل",
+            "noHistory": "لا يوجد سجل",
+            "saveFailed": "فشل الحفظ"
+        },
+        "lock": {
+            "locked": "المشروع مفتوح في نافذة أخرى",
+            "stale": "انتهت صلاحية القفل",
+            "heartbeat": "نبض القلب"
+        }
+    },
+    "goods": {
+        "bar": {
+            "title": "تبديل الوظائف"
+        },
+        "fileExplorer": {
+            "title": "مستكشف الملفات",
+            "openFile": "فتح ملف",
+            "openInIde": "فتح في بيئة التطوير",
+            "refresh": "تحديث الدليل",
+            "parentDir": "الدليل الأصلي",
+            "name": "الاسم",
+            "size": "الحجم",
+            "modified": "تاريخ التعديل",
+            "type": "النوع",
+            "folder": "مجلد",
+            "file": "ملف",
+            "empty": "دليل فارغ",
+            "loading": "جارٍ التحميل...",
+            "loadFailed": "فشل التحميل",
+            "noAccess": "لا يوجد إذن للوصول"
+        },
+        "navigator": {
+            "title": "التنقل",
+            "explorer": "المستكشف",
+            "search": "بحث عن ملفات",
+            "openEditors": "المحررات المفتوحة",
+            "outline": "المخطط",
+            "timeline": "الخط الزمني"
+        },
+        "pasteImage": {
+            "title": "لصق صورة",
+            "pasteHint": "Ctrl+V للصق الصورة",
+            "pasting": "جارٍ اللصق...",
+            "pasteOk": "تم لصق الصورة",
+            "pasteFailed": "فشل اللصق",
+            "noImage": "لا توجد صور في الحافظة"
+        },
+        "wysiwyg": {
+            "title": "ما تراه هو ما تحصل عليه",
+            "bold": "عريض",
+            "italic": "مائل",
+            "underline": "تسطير",
+            "strikethrough": "يتوسطه خط",
+            "heading": "عنوان",
+            "paragraph": "فقرة",
+            "list": "قائمة",
+            "orderedList": "قائمة مرقمة",
+            "quote": "اقتباس",
+            "code": "كود",
+            "link": "رابط",
+            "image": "صورة",
+            "table": "جدول",
+            "horizontalRule": "خط فاصل",
+            "clearFormat": "مسح التنسيق",
+            "undo": "تراجع",
+            "redo": "إعادة"
+        },
+        "rage": {
+            "title": "الحافظة",
+            "clip": {
+                "title": "سجل الحافظة",
+                "empty": "لا يوجد محتوى مقصوص",
+                "search": "بحث في الحافظة...",
+                "pin": "تثبيت",
+                "unpin": "إلغاء التثبيت",
+                "delete": "حذف",
+                "clearAll": "مسح الكل",
+                "count": "{n} عنصر",
+                "text": "نص",
+                "image": "صورة",
+                "html": "نص منسق",
+                "link": "رابط",
+                "file": "ملف",
+                "unknown": "نوع غير معروف"
+            },
+            "captain": {
+                "paste": "لصق",
+                "roam": "تجوال",
+                "video": "فيديو",
+                "weave": "نسج",
+                "exportDoc": "تصدير المستند",
+                "pure": "نقي",
+                "exportZip": "تصدير كأرشيف مضغوط",
+                "audio": "صوت"
+            },
+            "search": {
+                "hint": "بحث متعدد الكلمات المفتاحية (AND)",
+                "noResults": "لا توجد نتائج مطابقة"
+            }
+        }
+    },
+    "dialog": {
+        "about": {
+            "title": "حول qqq",
+            "message": "qqq-shell v2",
+            "detail": "محمول / Win7+ / تحديث فوري للخادم"
+        },
+        "confirmDelete": {
+            "title": "تأكيد الحذف",
+            "message": "هل أنت متأكد من الحذف؟ لا يمكن التراجع عن هذا الإجراء."
+        },
+        "unsaved": {
+            "title": "تغييرات غير محفوظة",
+            "message": "توجد تغييرات غير محفوظة، هل تريد الحفظ قبل الإغلاق؟",
+            "save": "حفظ",
+            "discard": "تجاهل",
+            "cancel": "إلغاء"
+        }
+    },
+    "shortcuts": {
+        "ctrlS": "حفظ",
+        "ctrlZ": "تراجع",
+        "ctrlShiftZ": "إعادة",
+        "ctrlX": "قص",
+        "ctrlC": "نسخ",
+        "ctrlV": "لصق",
+        "ctrlA": "تحديد الكل",
+        "ctrlF": "بحث",
+        "ctrlH": "استبدال",
+        "ctrlN": "ملف جديد",
+        "ctrlO": "فتح ملف",
+        "ctrlW": "إغلاق التبويب",
+        "ctrlShiftE": "إظهار مستكشف الملفات",
+        "ctrlShiftF": "بحث عن ملفات",
+        "ctrlBackslash": "تقسيم لليمين",
+        "ctrlPlus": "تكبير",
+        "ctrlMinus": "تصغير",
+        "ctrl0": "إعادة تعيين التكبير",
+        "f12": "أدوات المطورين",
+        "f1": "لوحة الأوامر",
+        "altLeft": "رجوع",
+        "altRight": "تقدم"
+    }
+}

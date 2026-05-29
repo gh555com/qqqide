@@ -27,16 +27,16 @@
   // ==========================================================================
   const SOLARIZED_LIGHT = Object.freeze({
     base03: '#002b36', base02: '#073642', base01: '#777777', base00: '#7a7874',
-    base0:  '#7a7874', base1:  '#a8a6a2', base2:  '#eee8d5', base3:  '#fdf6e3',
-    yellow: '#b58900', orange: '#cb4b16', red:    '#dc322f', magenta:'#d33682',
-    violet: '#6c71c4', blue:   '#e8a030', cyan:   '#2aa198', green:  '#859900',
+    base0: '#7a7874', base1: '#a8a6a2', base2: '#eee8d5', base3: '#fdf6e3',
+    yellow: '#b58900', orange: '#cb4b16', red: '#dc322f', magenta: '#d33682',
+    violet: '#6c71c4', blue: '#e8a030', cyan: '#2aa198', green: '#859900',
   });
 
   const SOLARIZED_DARK = Object.freeze({
     base03: '#fdf6e3', base02: '#eee8d5', base01: '#93a1a1', base00: '#c8c4b8',
-    base0:  '#a8a49c', base1:  '#6a6660', base2:  '#2a2a2a', base3:  '#1e1e1e',
-    yellow: '#d4a017', orange: '#e07020', red:    '#ff4444', magenta:'#c06080',
-    violet: '#a08060', blue:   '#d4a017', cyan:   '#5abfb5', green:  '#8fbc5a',
+    base0: '#a8a49c', base1: '#6a6660', base2: '#2a2a2a', base3: '#1e1e1e',
+    yellow: '#d4a017', orange: '#e07020', red: '#ff4444', magenta: '#c06080',
+    violet: '#a08060', blue: '#d4a017', cyan: '#5abfb5', green: '#8fbc5a',
   });
 
   // ==========================================================================
@@ -46,59 +46,59 @@
     return {
       // 基础色盘（组件可直接引用）
       '--base03': p.base03, '--base02': p.base02, '--base01': p.base01,
-      '--base00': p.base00, '--base0':  p.base0,  '--base1':  p.base1,
-      '--base2':  p.base2,  '--base3':  p.base3,
-      '--yellow': p.yellow, '--orange': p.orange, '--red':    p.red,
-      '--magenta':p.magenta,'--violet': p.violet, '--blue':   p.blue,
-      '--cyan':   p.cyan,   '--green':  p.green,
+      '--base00': p.base00, '--base0': p.base0, '--base1': p.base1,
+      '--base2': p.base2, '--base3': p.base3,
+      '--yellow': p.yellow, '--orange': p.orange, '--red': p.red,
+      '--magenta': p.magenta, '--violet': p.violet, '--blue': p.blue,
+      '--cyan': p.cyan, '--green': p.green,
 
       // 语义角色（一切组件只应引用这些）
-      '--background-color': dark ? '#1e1e1e'     : p.base3,
-      '--card-bg':          dark ? '#2a2a2a'     : p.base2,
-      '--text-primary':     dark ? '#d4d0c8'     : p.base00,
-      '--text-secondary':   dark ? '#a8a49c'     : p.base01,
-      '--text-dim':         dark ? '#6a6660'     : p.base1,
-      '--border-color':     dark ? '#333333'     : '#d3c6aa',
-      '--border-strong':    dark ? '#555555'     : p.base1,
-      '--primary-color':    p.yellow,
+      '--background-color': dark ? '#1e1e1e' : p.base3,
+      '--card-bg': dark ? '#2a2a2a' : p.base2,
+      '--text-primary': dark ? '#d4d0c8' : p.base00,
+      '--text-secondary': dark ? '#a8a49c' : p.base01,
+      '--text-dim': dark ? '#6a6660' : p.base1,
+      '--border-color': dark ? '#333333' : '#d3c6aa',
+      '--border-strong': dark ? '#555555' : p.base1,
+      '--primary-color': p.yellow,
 
       // 选择
-      '--selection-bg':   dark ? '#5a3a2a'     : '#e8a090',
-      '--selection-text': dark ? '#f0e8d8'     : '#000000',
+      '--selection-bg': dark ? '#5a3a2a' : '#e8a090',
+      '--selection-text': dark ? '#f0e8d8' : '#000000',
 
       // 按钮
       '--button-primary': p.blue,
-      '--button-text':    dark ? '#1e1e1e'     : p.base3,
+      '--button-text': dark ? '#1e1e1e' : p.base3,
 
       // Sash 拖拽条
-      '--sash-bg':        dark ? '#333333'     : p.base3,
-      '--sash-bg-hover':  dark ? '#6a6660'     : p.base1,
-      '--sash-bg-active': dark ? '#93a1a1'     : p.base01,
+      '--sash-bg': dark ? '#333333' : '#d3c6aa',
+      '--sash-bg-hover': dark ? '#6a6660' : p.base1,
+      '--sash-bg-active': dark ? '#93a1a1' : p.base01,
       '--sash-saturated': p.red,
 
       // 图标
-      '--icon-subtle':    dark ? '#5a5650'     : '#c0bab0',
+      '--icon-subtle': dark ? '#5a5650' : '#c0bab0',
 
       // 金饰（q2 兼容）
-      '--gold-accent':        dark ? '#5a4d2a' : '#DEC987',
-      '--gold-accent-hover':  dark ? '#6a5a30' : '#d4c079',
-      '--gold-accent-bg':     dark ? '#4a3d20' : 'rgb(223,202,136)',
-      '--gold-hover-bg':      dark ? '#3a3520' : '#ddca88',
-      '--pin-hover-bg':       dark ? '#3a3a3a' : '#d3d1c4',
+      '--gold-accent': dark ? '#5a4d2a' : '#DEC987',
+      '--gold-accent-hover': dark ? '#6a5a30' : '#d4c079',
+      '--gold-accent-bg': dark ? '#4a3d20' : 'rgb(223,202,136)',
+      '--gold-hover-bg': dark ? '#3a3520' : '#ddca88',
+      '--pin-hover-bg': dark ? '#3a3a3a' : '#d3d1c4',
 
       // tooltip
-      '--tooltip-bg':   dark ? '#2a2520'       : 'rgb(35,30,0)',
-      '--tooltip-text': dark ? '#d4d0c8'       : p.base2,
+      '--tooltip-bg': dark ? '#2a2520' : 'rgb(35,30,0)',
+      '--tooltip-text': dark ? '#d4d0c8' : p.base2,
 
       // 布局（JS 可变）
-      '--a-zone-w':    '220px',
-      '--ai-zone-w':   '389px',
-      '--output-h':    '200px',
-      '--menu-row-h':  '30px',
-      '--status-row-h':'24px',
-      '--panel-min':   '123px',
-      '--sash-w':      '6px',
-      '--tab-bar-h':   '30px',
+      '--a-zone-w': '220px',
+      '--ai-zone-w': '389px',
+      '--output-h': '200px',
+      '--menu-row-h': '30px',
+      '--status-row-h': '24px',
+      '--panel-min': '123px',
+      '--sash-w': '6px',
+      '--tab-bar-h': '30px',
     };
   }
 
@@ -158,7 +158,7 @@
   const _listeners = [];
 
   function _persist() {
-    try { localStorage.setItem(STORE_KEY, _dark ? 'dark' : 'light'); } catch (_) {}
+    try { localStorage.setItem(STORE_KEY, _dark ? 'dark' : 'light'); } catch (_) { }
   }
 
   function _load() {
@@ -304,7 +304,7 @@
           type: 'qqq-theme-change',
           dark: _dark,
         }, '*');
-      } catch (_) {}
+      } catch (_) { }
     }
   }
 

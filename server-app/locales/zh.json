@@ -1,0 +1,337 @@
+{
+    "common": {
+        "close": "关闭",
+        "confirm": "确定",
+        "cancel": "取消",
+        "search": "搜索",
+        "copy": "复制",
+        "delete": "删除",
+        "save": "保存",
+        "retry": "重试",
+        "error": "错误",
+        "ok": "好",
+        "yes": "是",
+        "no": "否",
+        "loading": "加载中...",
+        "copied": "已复制",
+        "failed": "失败",
+        "more": "更多",
+        "back": "返回",
+        "next": "下一个",
+        "open": "打开",
+        "edit": "编辑",
+        "rename": "重命名",
+        "download": "下载",
+        "refresh": "刷新",
+        "preview": "预览",
+        "unknown": "未知",
+        "enabled": "已启用",
+        "disabled": "已禁用",
+        "on": "开",
+        "off": "关",
+        "seconds": "秒",
+        "minutes": "分钟",
+        "hours": "小时",
+        "bytes": "字节",
+        "kb": "KB",
+        "mb": "MB",
+        "gb": "GB"
+    },
+    "shell": {
+        "title": "qqq",
+        "menu": {
+            "file": "文件",
+            "fileNew": "新建",
+            "fileOpen": "打开",
+            "fileNewWindow": "开新窗口",
+            "fileExit": "退出",
+            "tools": "工具",
+            "devTools": "开发者工具"
+        },
+        "window": {
+            "minimize": "最小化",
+            "maximize": "最大化",
+            "restore": "还原",
+            "close": "关闭"
+        },
+        "zoom": {
+            "in": "放大 UI（Ctrl+=）",
+            "out": "缩小 UI（Ctrl+-）",
+            "reset": "重置缩放"
+        },
+        "theme": {
+            "toggle": "切换亮色/暗色",
+            "switchToLight": "切换到亮色",
+            "switchToDark": "切换到暗色"
+        },
+        "status": {
+            "version": "版本",
+            "engineOn": "引擎在线",
+            "engineOff": "引擎离线"
+        },
+        "output": {
+            "title": "输出",
+            "hide": "隐藏输出"
+        },
+        "update": {
+            "check": "检查更新"
+        },
+        "overlay": {
+            "copy": "复制到剪贴板",
+            "copied": "已复制",
+            "copyFailed": "复制失败",
+            "zoomIn": "放大",
+            "zoomOut": "缩小",
+            "close": "关闭 (Esc)"
+        },
+        "about": {
+            "title": "关于 qqq",
+            "version": "qqq-shell v2",
+            "desc": "便携 / Win7+ / 服务器热更"
+        },
+        "dev": "开发模式",
+        "gaeaHostLoading": "gaea host 加载中..."
+    },
+    "editor": {
+        "tabs": {
+            "close": "关闭标签",
+            "closeOthers": "关闭其他",
+            "closeRight": "关闭右侧",
+            "closeAll": "关闭所有",
+            "closeSaved": "关闭已保存",
+            "revealInExplorer": "在文件浏览器中显示",
+            "copyPath": "复制路径",
+            "copyRelativePath": "复制相对路径",
+            "splitRight": "向右拆分",
+            "splitDown": "向下拆分"
+        },
+        "contextMenu": {
+            "cut": "剪切",
+            "copy": "复制",
+            "paste": "粘贴",
+            "selectAll": "全选",
+            "undo": "撤销",
+            "redo": "重做"
+        },
+        "unsaved": "未保存",
+        "saved": "已保存",
+        "saving": "保存中...",
+        "saveFailed": "保存失败",
+        "fileTooLarge": "文件太大",
+        "binaryFile": "二进制文件，无法编辑",
+        "line": "行",
+        "col": "列",
+        "spaces": "空格",
+        "indent": "缩进",
+        "encoding": "编码",
+        "eol": "行尾",
+        "language": "语言",
+        "readOnly": "只读",
+        "codelens": {
+            "openFile": "打开文件",
+            "openFolder": "打开文件夹",
+            "copyPath": "复制路径",
+            "copyImage": "复制图片二进制"
+        }
+    },
+    "ai": {
+        "title": "AI",
+        "send": "发送",
+        "stop": "停止",
+        "guide": "引导",
+        "queue": "排队",
+        "context": "上下文",
+        "compress": "压缩",
+        "level": {
+            "a": "保守",
+            "1": "轻度",
+            "2": "中等",
+            "3": "智能",
+            "4": "强力",
+            "5": "极限",
+            "6": "Pro Max"
+        },
+        "floor": "楼层",
+        "house": "房子",
+        "room": "房间",
+        "ttfb": "网络等待",
+        "work": "工作时间",
+        "total": "总计",
+        "tokens": "Token 消耗",
+        "confirmConnect": "确认连接",
+        "thinking": "思考中...",
+        "streaming": "生成中...",
+        "tools": {
+            "readFile": "读取文件",
+            "editFile": "编辑文件",
+            "createFile": "创建文件",
+            "deleteFile": "删除文件",
+            "writeFile": "写入文件",
+            "searchText": "搜索文本",
+            "findFiles": "查找文件",
+            "listFiles": "列出文件",
+            "getDiagnostics": "获取诊断",
+            "runCommand": "运行命令",
+            "fetchWebpage": "抓取网页",
+            "getVision": "获取视觉上下文"
+        },
+        "output": {
+            "empty": "等待输入...",
+            "compressInProgress": "压缩中...",
+            "compressDone": "压缩完成",
+            "tokenLimit": "达到 Token 上限"
+        },
+        "rules": {
+            "title": "项目规则",
+            "edit": "编辑规则",
+            "empty": "暂无规则",
+            "globalRule": "全局规则 (.qqq-rules.txt)",
+            "projectRule": "项目规则 (project.txt)"
+        },
+        "quest": {
+            "switch": "切换项目",
+            "newQuest": "新建对话",
+            "history": "历史记录",
+            "noHistory": "暂无历史",
+            "saveFailed": "保存失败"
+        },
+        "lock": {
+            "locked": "项目已被其他窗口打开",
+            "stale": "锁已过期",
+            "heartbeat": "心跳"
+        }
+    },
+    "goods": {
+        "bar": {
+            "title": "功能切换"
+        },
+        "fileExplorer": {
+            "title": "文件浏览器",
+            "openFile": "打开文件",
+            "openInIde": "在 IDE 中打开",
+            "refresh": "刷新目录",
+            "parentDir": "上级目录",
+            "name": "名称",
+            "size": "大小",
+            "modified": "修改时间",
+            "type": "类型",
+            "folder": "文件夹",
+            "file": "文件",
+            "empty": "空目录",
+            "loading": "加载中...",
+            "loadFailed": "加载失败",
+            "noAccess": "无访问权限"
+        },
+        "navigator": {
+            "title": "导航",
+            "explorer": "资源管理器",
+            "search": "搜索文件",
+            "openEditors": "打开的编辑器",
+            "outline": "大纲",
+            "timeline": "时间线"
+        },
+        "pasteImage": {
+            "title": "粘贴图片",
+            "pasteHint": "Ctrl+V 粘贴图片",
+            "pasting": "粘贴中...",
+            "pasteOk": "图片已粘贴",
+            "pasteFailed": "粘贴失败",
+            "noImage": "剪贴板中没有图片"
+        },
+        "wysiwyg": {
+            "title": "所见即所得",
+            "bold": "粗体",
+            "italic": "斜体",
+            "underline": "下划线",
+            "strikethrough": "删除线",
+            "heading": "标题",
+            "paragraph": "段落",
+            "list": "列表",
+            "orderedList": "有序列表",
+            "quote": "引用",
+            "code": "代码",
+            "link": "链接",
+            "image": "图片",
+            "table": "表格",
+            "horizontalRule": "分割线",
+            "clearFormat": "清除格式",
+            "undo": "撤销",
+            "redo": "重做"
+        },
+        "rage": {
+            "title": "剪切板",
+            "clip": {
+                "title": "剪切板历史",
+                "empty": "暂无剪切内容",
+                "search": "搜索剪切板...",
+                "pin": "固定",
+                "unpin": "取消固定",
+                "delete": "删除",
+                "clearAll": "清空全部",
+                "count": "{n} 条",
+                "text": "文本",
+                "image": "图片",
+                "html": "富文本",
+                "link": "链接",
+                "file": "文件",
+                "unknown": "未知类型"
+            },
+            "captain": {
+                "paste": "粘贴",
+                "roam": "漫游",
+                "video": "视频",
+                "weave": "编织",
+                "exportDoc": "导出文档",
+                "pure": "纯净",
+                "exportZip": "导出压缩包",
+                "audio": "音频"
+            },
+            "search": {
+                "hint": "多关键词 AND 搜索",
+                "noResults": "无匹配结果"
+            }
+        }
+    },
+    "dialog": {
+        "about": {
+            "title": "关于 qqq",
+            "message": "qqq-shell v2",
+            "detail": "便携 / Win7+ / 服务器热更"
+        },
+        "confirmDelete": {
+            "title": "确认删除",
+            "message": "确定要删除吗？此操作不可撤销。"
+        },
+        "unsaved": {
+            "title": "未保存的更改",
+            "message": "有未保存的更改，是否保存后关闭？",
+            "save": "保存",
+            "discard": "放弃",
+            "cancel": "取消"
+        }
+    },
+    "shortcuts": {
+        "ctrlS": "保存",
+        "ctrlZ": "撤销",
+        "ctrlShiftZ": "重做",
+        "ctrlX": "剪切",
+        "ctrlC": "复制",
+        "ctrlV": "粘贴",
+        "ctrlA": "全选",
+        "ctrlF": "查找",
+        "ctrlH": "替换",
+        "ctrlN": "新建文件",
+        "ctrlO": "打开文件",
+        "ctrlW": "关闭标签",
+        "ctrlShiftE": "显示文件浏览器",
+        "ctrlShiftF": "搜索文件",
+        "ctrlBackslash": "向右拆分",
+        "ctrlPlus": "放大",
+        "ctrlMinus": "缩小",
+        "ctrl0": "重置缩放",
+        "f12": "开发者工具",
+        "f1": "命令面板",
+        "altLeft": "后退",
+        "altRight": "前进"
+    }
+}

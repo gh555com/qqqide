@@ -1,0 +1,337 @@
+{
+    "common": {
+        "close": "बंद करें",
+        "confirm": "पुष्टि करें",
+        "cancel": "रद्द करें",
+        "search": "खोजें",
+        "copy": "कॉपी करें",
+        "delete": "हटाएं",
+        "save": "सहेजें",
+        "retry": "पुनः प्रयास करें",
+        "error": "त्रुटि",
+        "ok": "ठीक है",
+        "yes": "हाँ",
+        "no": "नहीं",
+        "loading": "लोड हो रहा है...",
+        "copied": "कॉपी किया गया",
+        "failed": "विफल",
+        "more": "अधिक",
+        "back": "वापस",
+        "next": "अगला",
+        "open": "खोलें",
+        "edit": "संपादित करें",
+        "rename": "नाम बदलें",
+        "download": "डाउनलोड करें",
+        "refresh": "रीफ्रेश करें",
+        "preview": "पूर्वावलोकन",
+        "unknown": "अज्ञात",
+        "enabled": "सक्षम",
+        "disabled": "अक्षम",
+        "on": "चालू",
+        "off": "बंद",
+        "seconds": "सेकंड",
+        "minutes": "मिनट",
+        "hours": "घंटे",
+        "bytes": "बाइट्स",
+        "kb": "KB",
+        "mb": "MB",
+        "gb": "GB"
+    },
+    "shell": {
+        "title": "qqq",
+        "menu": {
+            "file": "फ़ाइल",
+            "fileNew": "नया बनाएं",
+            "fileOpen": "खोलें",
+            "fileNewWindow": "नई विंडो खोलें",
+            "fileExit": "बाहर निकलें",
+            "tools": "उपकरण",
+            "devTools": "डेवलपर टूल्स"
+        },
+        "window": {
+            "minimize": "छोटा करें",
+            "maximize": "बड़ा करें",
+            "restore": "पुनर्स्थापित करें",
+            "close": "बंद करें"
+        },
+        "zoom": {
+            "in": "UI ज़ूम इन (Ctrl+=)",
+            "out": "UI ज़ूम आउट (Ctrl+-)",
+            "reset": "ज़ूम रीसेट करें"
+        },
+        "theme": {
+            "toggle": "लाइट/डार्क थीम बदलें",
+            "switchToLight": "लाइट थीम पर जाएं",
+            "switchToDark": "डार्क थीम पर जाएं"
+        },
+        "status": {
+            "version": "संस्करण",
+            "engineOn": "इंजन ऑनलाइन",
+            "engineOff": "इंजन ऑफ़लाइन"
+        },
+        "output": {
+            "title": "आउटपुट",
+            "hide": "आउटपुट छिपाएं"
+        },
+        "update": {
+            "check": "अपडेट की जांच करें"
+        },
+        "overlay": {
+            "copy": "क्लिपबोर्ड पर कॉपी करें",
+            "copied": "कॉपी किया गया",
+            "copyFailed": "कॉपी विफल",
+            "zoomIn": "ज़ूम इन",
+            "zoomOut": "ज़ूम आउट",
+            "close": "बंद करें (Esc)"
+        },
+        "about": {
+            "title": "qqq के बारे में",
+            "version": "qqq-shell v2",
+            "desc": "पोर्टेबल / Win7+ / सर्वर हॉट अपडेट"
+        },
+        "dev": "डेवलपमेंट मोड",
+        "gaeaHostLoading": "gaea host लोड हो रहा है..."
+    },
+    "editor": {
+        "tabs": {
+            "close": "टैब बंद करें",
+            "closeOthers": "अन्य टैब बंद करें",
+            "closeRight": "दाईं ओर के टैब बंद करें",
+            "closeAll": "सभी टैब बंद करें",
+            "closeSaved": "सहेजे गए टैब बंद करें",
+            "revealInExplorer": "फ़ाइल एक्सप्लोरर में दिखाएं",
+            "copyPath": "पथ कॉपी करें",
+            "copyRelativePath": "सापेक्ष पथ कॉपी करें",
+            "splitRight": "दाईं ओर विभाजित करें",
+            "splitDown": "नीचे विभाजित करें"
+        },
+        "contextMenu": {
+            "cut": "कट करें",
+            "copy": "कॉपी करें",
+            "paste": "पेस्ट करें",
+            "selectAll": "सभी चुनें",
+            "undo": "पूर्ववत करें",
+            "redo": "फिर से करें"
+        },
+        "unsaved": "न सहेजा गया",
+        "saved": "सहेजा गया",
+        "saving": "सहेजा जा रहा है...",
+        "saveFailed": "सहेजना विफल",
+        "fileTooLarge": "फ़ाइल बहुत बड़ी है",
+        "binaryFile": "बाइनरी फ़ाइल, संपादन संभव नहीं",
+        "line": "पंक्ति",
+        "col": "स्तंभ",
+        "spaces": "स्पेस",
+        "indent": "इंडेंट",
+        "encoding": "एन्कोडिंग",
+        "eol": "लाइन एंडिंग",
+        "language": "भाषा",
+        "readOnly": "केवल पढ़ने योग्य",
+        "codelens": {
+            "openFile": "फ़ाइल खोलें",
+            "openFolder": "फ़ोल्डर खोलें",
+            "copyPath": "पथ कॉपी करें",
+            "copyImage": "इमेज बाइनरी कॉपी करें"
+        }
+    },
+    "ai": {
+        "title": "AI",
+        "send": "भेजें",
+        "stop": "रोकें",
+        "guide": "गाइड",
+        "queue": "कतार",
+        "context": "संदर्भ",
+        "compress": "संपीड़ित करें",
+        "level": {
+            "a": "रूढ़िवादी",
+            "1": "हल्का",
+            "2": "मध्यम",
+            "3": "स्मार्ट",
+            "4": "शक्तिशाली",
+            "5": "चरम",
+            "6": "Pro Max"
+        },
+        "floor": "मंजिल",
+        "house": "घर",
+        "room": "कमरा",
+        "ttfb": "नेटवर्क प्रतीक्षा",
+        "work": "कार्य समय",
+        "total": "कुल",
+        "tokens": "Token खपत",
+        "confirmConnect": "कनेक्शन की पुष्टि करें",
+        "thinking": "सोच रहा है...",
+        "streaming": "जनरेट हो रहा है...",
+        "tools": {
+            "readFile": "फ़ाइल पढ़ें",
+            "editFile": "फ़ाइल संपादित करें",
+            "createFile": "फ़ाइल बनाएं",
+            "deleteFile": "फ़ाइल हटाएं",
+            "writeFile": "फ़ाइल लिखें",
+            "searchText": "टेक्स्ट खोजें",
+            "findFiles": "फ़ाइलें ढूंढें",
+            "listFiles": "फ़ाइलों की सूची बनाएं",
+            "getDiagnostics": "डायग्नोस्टिक्स प्राप्त करें",
+            "runCommand": "कमांड चलाएं",
+            "fetchWebpage": "वेबपेज लाएं",
+            "getVision": "विज़ुअल कॉन्टेक्स्ट प्राप्त करें"
+        },
+        "output": {
+            "empty": "इनपुट की प्रतीक्षा...",
+            "compressInProgress": "संपीड़न जारी...",
+            "compressDone": "संपीड़न पूर्ण",
+            "tokenLimit": "Token सीमा पहुंच गई"
+        },
+        "rules": {
+            "title": "प्रोजेक्ट नियम",
+            "edit": "नियम संपादित करें",
+            "empty": "कोई नियम नहीं",
+            "globalRule": "वैश्विक नियम (.qqq-rules.txt)",
+            "projectRule": "प्रोजेक्ट नियम (project.txt)"
+        },
+        "quest": {
+            "switch": "प्रोजेक्ट बदलें",
+            "newQuest": "नई चैट",
+            "history": "इतिहास",
+            "noHistory": "कोई इतिहास नहीं",
+            "saveFailed": "सहेजना विफल"
+        },
+        "lock": {
+            "locked": "प्रोजेक्ट किसी अन्य विंडो द्वारा खोला गया है",
+            "stale": "लॉक समाप्त हो गया",
+            "heartbeat": "हार्टबीट"
+        }
+    },
+    "goods": {
+        "bar": {
+            "title": "फ़ीचर स्विच"
+        },
+        "fileExplorer": {
+            "title": "फ़ाइल एक्सप्लोरर",
+            "openFile": "फ़ाइल खोलें",
+            "openInIde": "IDE में खोलें",
+            "refresh": "डायरेक्टरी रीफ्रेश करें",
+            "parentDir": "पैरेंट डायरेक्टरी",
+            "name": "नाम",
+            "size": "आकार",
+            "modified": "संशोधित तिथि",
+            "type": "प्रकार",
+            "folder": "फ़ोल्डर",
+            "file": "फ़ाइल",
+            "empty": "खाली डायरेक्टरी",
+            "loading": "लोड हो रहा है...",
+            "loadFailed": "लोड विफल",
+            "noAccess": "पहुंच अनुमति नहीं"
+        },
+        "navigator": {
+            "title": "नेविगेशन",
+            "explorer": "एक्सप्लोरर",
+            "search": "फ़ाइल खोजें",
+            "openEditors": "खुले एडिटर",
+            "outline": "आउटलाइन",
+            "timeline": "टाइमलाइन"
+        },
+        "pasteImage": {
+            "title": "इमेज पेस्ट करें",
+            "pasteHint": "इमेज पेस्ट करने के लिए Ctrl+V दबाएं",
+            "pasting": "पेस्ट हो रहा है...",
+            "pasteOk": "इमेज पेस्ट हो गई",
+            "pasteFailed": "पेस्ट विफल",
+            "noImage": "क्लिपबोर्ड में कोई इमेज नहीं"
+        },
+        "wysiwyg": {
+            "title": "WYSIWYG",
+            "bold": "बोल्ड",
+            "italic": "इटैलिक",
+            "underline": "अंडरलाइन",
+            "strikethrough": "स्ट्राइकथ्रू",
+            "heading": "शीर्षक",
+            "paragraph": "पैराग्राफ",
+            "list": "सूची",
+            "orderedList": "क्रमबद्ध सूची",
+            "quote": "उद्धरण",
+            "code": "कोड",
+            "link": "लिंक",
+            "image": "इमेज",
+            "table": "टेबल",
+            "horizontalRule": "विभाजक रेखा",
+            "clearFormat": "फ़ॉर्मेट साफ़ करें",
+            "undo": "पूर्ववत करें",
+            "redo": "फिर से करें"
+        },
+        "rage": {
+            "title": "क्लिपबोर्ड",
+            "clip": {
+                "title": "क्लिपबोर्ड इतिहास",
+                "empty": "कोई क्लिप सामग्री नहीं",
+                "search": "क्लिपबोर्ड खोजें...",
+                "pin": "पिन करें",
+                "unpin": "पिन हटाएं",
+                "delete": "हटाएं",
+                "clearAll": "सभी साफ़ करें",
+                "count": "{n} आइटम",
+                "text": "टेक्स्ट",
+                "image": "इमेज",
+                "html": "रिच टेक्स्ट",
+                "link": "लिंक",
+                "file": "फ़ाइल",
+                "unknown": "अज्ञात प्रकार"
+            },
+            "captain": {
+                "paste": "पेस्ट",
+                "roam": "रोम",
+                "video": "वीडियो",
+                "weave": "वीव",
+                "exportDoc": "दस्तावेज़ निर्यात करें",
+                "pure": "शुद्ध",
+                "exportZip": "ZIP निर्यात करें",
+                "audio": "ऑडियो"
+            },
+            "search": {
+                "hint": "एकाधिक कीवर्ड AND खोज",
+                "noResults": "कोई मिलान परिणाम नहीं"
+            }
+        }
+    },
+    "dialog": {
+        "about": {
+            "title": "qqq के बारे में",
+            "message": "qqq-shell v2",
+            "detail": "पोर्टेबल / Win7+ / सर्वर हॉट अपडेट"
+        },
+        "confirmDelete": {
+            "title": "हटाने की पुष्टि",
+            "message": "क्या आप वाकई हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।"
+        },
+        "unsaved": {
+            "title": "न सहेजे गए परिवर्तन",
+            "message": "कुछ परिवर्तन न सहेजे गए हैं। क्या आप उन्हें सहेजकर बंद करना चाहते हैं?",
+            "save": "सहेजें",
+            "discard": "त्यागें",
+            "cancel": "रद्द करें"
+        }
+    },
+    "shortcuts": {
+        "ctrlS": "सहेजें",
+        "ctrlZ": "पूर्ववत करें",
+        "ctrlShiftZ": "फिर से करें",
+        "ctrlX": "कट करें",
+        "ctrlC": "कॉपी करें",
+        "ctrlV": "पेस्ट करें",
+        "ctrlA": "सभी चुनें",
+        "ctrlF": "खोजें",
+        "ctrlH": "प्रतिस्थापित करें",
+        "ctrlN": "नई फ़ाइल",
+        "ctrlO": "फ़ाइल खोलें",
+        "ctrlW": "टैब बंद करें",
+        "ctrlShiftE": "फ़ाइल एक्सप्लोरर दिखाएं",
+        "ctrlShiftF": "फ़ाइल खोजें",
+        "ctrlBackslash": "दाईं ओर विभाजित करें",
+        "ctrlPlus": "ज़ूम इन",
+        "ctrlMinus": "ज़ूम आउट",
+        "ctrl0": "ज़ूम रीसेट करें",
+        "f12": "डेवलपर टूल्स",
+        "f1": "कमांड पैलेट",
+        "altLeft": "पीछे जाएं",
+        "altRight": "आगे जाएं"
+    }
+}

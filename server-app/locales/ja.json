@@ -1,0 +1,337 @@
+{
+    "common": {
+        "close": "閉じる",
+        "confirm": "確認",
+        "cancel": "キャンセル",
+        "search": "検索",
+        "copy": "コピー",
+        "delete": "削除",
+        "save": "保存",
+        "retry": "再試行",
+        "error": "エラー",
+        "ok": "OK",
+        "yes": "はい",
+        "no": "いいえ",
+        "loading": "読み込み中...",
+        "copied": "コピーしました",
+        "failed": "失敗",
+        "more": "その他",
+        "back": "戻る",
+        "next": "次へ",
+        "open": "開く",
+        "edit": "編集",
+        "rename": "名前の変更",
+        "download": "ダウンロード",
+        "refresh": "更新",
+        "preview": "プレビュー",
+        "unknown": "不明",
+        "enabled": "有効",
+        "disabled": "無効",
+        "on": "オン",
+        "off": "オフ",
+        "seconds": "秒",
+        "minutes": "分",
+        "hours": "時間",
+        "bytes": "バイト",
+        "kb": "KB",
+        "mb": "MB",
+        "gb": "GB"
+    },
+    "shell": {
+        "title": "qqq",
+        "menu": {
+            "file": "ファイル",
+            "fileNew": "新規作成",
+            "fileOpen": "開く",
+            "fileNewWindow": "新しいウィンドウを開く",
+            "fileExit": "終了",
+            "tools": "ツール",
+            "devTools": "開発者ツール"
+        },
+        "window": {
+            "minimize": "最小化",
+            "maximize": "最大化",
+            "restore": "元に戻す",
+            "close": "閉じる"
+        },
+        "zoom": {
+            "in": "UIを拡大 (Ctrl+=)",
+            "out": "UIを縮小 (Ctrl+-)",
+            "reset": "ズームをリセット"
+        },
+        "theme": {
+            "toggle": "ライト/ダークテーマの切り替え",
+            "switchToLight": "ライトテーマに切り替え",
+            "switchToDark": "ダークテーマに切り替え"
+        },
+        "status": {
+            "version": "バージョン",
+            "engineOn": "エンジンオンライン",
+            "engineOff": "エンジンオフライン"
+        },
+        "output": {
+            "title": "出力",
+            "hide": "出力を隠す"
+        },
+        "update": {
+            "check": "更新を確認"
+        },
+        "overlay": {
+            "copy": "クリップボードにコピー",
+            "copied": "コピーしました",
+            "copyFailed": "コピーに失敗しました",
+            "zoomIn": "拡大",
+            "zoomOut": "縮小",
+            "close": "閉じる (Esc)"
+        },
+        "about": {
+            "title": "qqq について",
+            "version": "qqq-shell v2",
+            "desc": "ポータブル / Win7+ / サーバーホットアップデート"
+        },
+        "dev": "開発モード",
+        "gaeaHostLoading": "gaea host 読み込み中..."
+    },
+    "editor": {
+        "tabs": {
+            "close": "タブを閉じる",
+            "closeOthers": "他のタブを閉じる",
+            "closeRight": "右側のタブを閉じる",
+            "closeAll": "すべて閉じる",
+            "closeSaved": "保存済みのタブを閉じる",
+            "revealInExplorer": "エクスプローラーで表示",
+            "copyPath": "パスをコピー",
+            "copyRelativePath": "相対パスをコピー",
+            "splitRight": "右に分割",
+            "splitDown": "下に分割"
+        },
+        "contextMenu": {
+            "cut": "切り取り",
+            "copy": "コピー",
+            "paste": "貼り付け",
+            "selectAll": "すべて選択",
+            "undo": "元に戻す",
+            "redo": "やり直し"
+        },
+        "unsaved": "未保存",
+        "saved": "保存済み",
+        "saving": "保存中...",
+        "saveFailed": "保存に失敗しました",
+        "fileTooLarge": "ファイルが大きすぎます",
+        "binaryFile": "バイナリファイルのため編集できません",
+        "line": "行",
+        "col": "列",
+        "spaces": "スペース",
+        "indent": "インデント",
+        "encoding": "エンコーディング",
+        "eol": "改行コード",
+        "language": "言語",
+        "readOnly": "読み取り専用",
+        "codelens": {
+            "openFile": "ファイルを開く",
+            "openFolder": "フォルダーを開く",
+            "copyPath": "パスをコピー",
+            "copyImage": "画像バイナリをコピー"
+        }
+    },
+    "ai": {
+        "title": "AI",
+        "send": "送信",
+        "stop": "停止",
+        "guide": "ガイド",
+        "queue": "キュー",
+        "context": "コンテキスト",
+        "compress": "圧縮",
+        "level": {
+            "a": "保守的",
+            "1": "軽度",
+            "2": "中程度",
+            "3": "スマート",
+            "4": "強力",
+            "5": "極限",
+            "6": "Pro Max"
+        },
+        "floor": "階層",
+        "house": "ハウス",
+        "room": "ルーム",
+        "ttfb": "ネットワーク待機時間",
+        "work": "処理時間",
+        "total": "合計",
+        "tokens": "Token 消費量",
+        "confirmConnect": "接続を確認",
+        "thinking": "思考中...",
+        "streaming": "生成中...",
+        "tools": {
+            "readFile": "ファイルを読み込む",
+            "editFile": "ファイルを編集",
+            "createFile": "ファイルを作成",
+            "deleteFile": "ファイルを削除",
+            "writeFile": "ファイルに書き込む",
+            "searchText": "テキストを検索",
+            "findFiles": "ファイルを探す",
+            "listFiles": "ファイル一覧を取得",
+            "getDiagnostics": "診断情報を取得",
+            "runCommand": "コマンドを実行",
+            "fetchWebpage": "ウェブページを取得",
+            "getVision": "視覚コンテキストを取得"
+        },
+        "output": {
+            "empty": "入力待ち...",
+            "compressInProgress": "圧縮中...",
+            "compressDone": "圧縮完了",
+            "tokenLimit": "Token 上限に達しました"
+        },
+        "rules": {
+            "title": "プロジェクトルール",
+            "edit": "ルールを編集",
+            "empty": "ルールなし",
+            "globalRule": "グローバルルール (.qqq-rules.txt)",
+            "projectRule": "プロジェクトルール (project.txt)"
+        },
+        "quest": {
+            "switch": "プロジェクトを切り替え",
+            "newQuest": "新しい会話",
+            "history": "履歴",
+            "noHistory": "履歴なし",
+            "saveFailed": "保存に失敗しました"
+        },
+        "lock": {
+            "locked": "プロジェクトは他のウィンドウで開かれています",
+            "stale": "ロックの有効期限が切れました",
+            "heartbeat": "ハートビート"
+        }
+    },
+    "goods": {
+        "bar": {
+            "title": "機能切り替え"
+        },
+        "fileExplorer": {
+            "title": "ファイルエクスプローラー",
+            "openFile": "ファイルを開く",
+            "openInIde": "IDEで開く",
+            "refresh": "ディレクトリを更新",
+            "parentDir": "親ディレクトリ",
+            "name": "名前",
+            "size": "サイズ",
+            "modified": "更新日時",
+            "type": "種類",
+            "folder": "フォルダー",
+            "file": "ファイル",
+            "empty": "空のディレクトリ",
+            "loading": "読み込み中...",
+            "loadFailed": "読み込みに失敗しました",
+            "noAccess": "アクセス権限がありません"
+        },
+        "navigator": {
+            "title": "ナビゲーター",
+            "explorer": "エクスプローラー",
+            "search": "ファイル検索",
+            "openEditors": "開いているエディター",
+            "outline": "アウトライン",
+            "timeline": "タイムライン"
+        },
+        "pasteImage": {
+            "title": "画像を貼り付け",
+            "pasteHint": "Ctrl+V で画像を貼り付け",
+            "pasting": "貼り付け中...",
+            "pasteOk": "画像を貼り付けました",
+            "pasteFailed": "貼り付けに失敗しました",
+            "noImage": "クリップボードに画像がありません"
+        },
+        "wysiwyg": {
+            "title": "WYSIWYG",
+            "bold": "太字",
+            "italic": "斜体",
+            "underline": "下線",
+            "strikethrough": "取り消し線",
+            "heading": "見出し",
+            "paragraph": "段落",
+            "list": "リスト",
+            "orderedList": "番号付きリスト",
+            "quote": "引用",
+            "code": "コード",
+            "link": "リンク",
+            "image": "画像",
+            "table": "表",
+            "horizontalRule": "水平線",
+            "clearFormat": "書式をクリア",
+            "undo": "元に戻す",
+            "redo": "やり直し"
+        },
+        "rage": {
+            "title": "クリップボード",
+            "clip": {
+                "title": "クリップボード履歴",
+                "empty": "クリップ内容なし",
+                "search": "クリップボードを検索...",
+                "pin": "固定",
+                "unpin": "固定解除",
+                "delete": "削除",
+                "clearAll": "すべてクリア",
+                "count": "{n} 件",
+                "text": "テキスト",
+                "image": "画像",
+                "html": "リッチテキスト",
+                "link": "リンク",
+                "file": "ファイル",
+                "unknown": "不明なタイプ"
+            },
+            "captain": {
+                "paste": "貼り付け",
+                "roam": "ローミング",
+                "video": "動画",
+                "weave": "編成",
+                "exportDoc": "ドキュメントをエクスポート",
+                "pure": "プレーン",
+                "exportZip": "ZIPアーカイブをエクスポート",
+                "audio": "音声"
+            },
+            "search": {
+                "hint": "複数キーワード AND 検索",
+                "noResults": "一致する結果はありません"
+            }
+        }
+    },
+    "dialog": {
+        "about": {
+            "title": "qqq について",
+            "message": "qqq-shell v2",
+            "detail": "ポータブル / Win7+ / サーバーホットアップデート"
+        },
+        "confirmDelete": {
+            "title": "削除の確認",
+            "message": "本当に削除しますか？この操作は元に戻せません。"
+        },
+        "unsaved": {
+            "title": "未保存の変更",
+            "message": "未保存の変更があります。保存して閉じますか？",
+            "save": "保存",
+            "discard": "破棄",
+            "cancel": "キャンセル"
+        }
+    },
+    "shortcuts": {
+        "ctrlS": "保存",
+        "ctrlZ": "元に戻す",
+        "ctrlShiftZ": "やり直し",
+        "ctrlX": "切り取り",
+        "ctrlC": "コピー",
+        "ctrlV": "貼り付け",
+        "ctrlA": "すべて選択",
+        "ctrlF": "検索",
+        "ctrlH": "置換",
+        "ctrlN": "新規ファイル",
+        "ctrlO": "ファイルを開く",
+        "ctrlW": "タブを閉じる",
+        "ctrlShiftE": "ファイルエクスプローラーを表示",
+        "ctrlShiftF": "ファイルを検索",
+        "ctrlBackslash": "右に分割",
+        "ctrlPlus": "拡大",
+        "ctrlMinus": "縮小",
+        "ctrl0": "ズームをリセット",
+        "f12": "開発者ツール",
+        "f1": "コマンドパレット",
+        "altLeft": "戻る",
+        "altRight": "進む"
+    }
+}

@@ -1,0 +1,337 @@
+{
+    "common": {
+        "close": "Đóng",
+        "confirm": "Xác nhận",
+        "cancel": "Hủy",
+        "search": "Tìm kiếm",
+        "copy": "Sao chép",
+        "delete": "Xóa",
+        "save": "Lưu",
+        "retry": "Thử lại",
+        "error": "Lỗi",
+        "ok": "OK",
+        "yes": "Có",
+        "no": "Không",
+        "loading": "Đang tải...",
+        "copied": "Đã sao chép",
+        "failed": "Thất bại",
+        "more": "Thêm",
+        "back": "Quay lại",
+        "next": "Tiếp theo",
+        "open": "Mở",
+        "edit": "Chỉnh sửa",
+        "rename": "Đổi tên",
+        "download": "Tải xuống",
+        "refresh": "Làm mới",
+        "preview": "Xem trước",
+        "unknown": "Không xác định",
+        "enabled": "Đã bật",
+        "disabled": "Đã tắt",
+        "on": "Bật",
+        "off": "Tắt",
+        "seconds": "giây",
+        "minutes": "phút",
+        "hours": "giờ",
+        "bytes": "byte",
+        "kb": "KB",
+        "mb": "MB",
+        "gb": "GB"
+    },
+    "shell": {
+        "title": "qqq",
+        "menu": {
+            "file": "Tệp",
+            "fileNew": "Mới",
+            "fileOpen": "Mở",
+            "fileNewWindow": "Mở cửa sổ mới",
+            "fileExit": "Thoát",
+            "tools": "Công cụ",
+            "devTools": "Công cụ dành cho nhà phát triển"
+        },
+        "window": {
+            "minimize": "Thu nhỏ",
+            "maximize": "Phóng to",
+            "restore": "Khôi phục",
+            "close": "Đóng"
+        },
+        "zoom": {
+            "in": "Phóng to giao diện (Ctrl+=)",
+            "out": "Thu nhỏ giao diện (Ctrl+-)",
+            "reset": "Đặt lại tỷ lệ phóng to"
+        },
+        "theme": {
+            "toggle": "Chuyển đổi sáng/tối",
+            "switchToLight": "Chuyển sang chế độ sáng",
+            "switchToDark": "Chuyển sang chế độ tối"
+        },
+        "status": {
+            "version": "Phiên bản",
+            "engineOn": "Engine trực tuyến",
+            "engineOff": "Engine ngoại tuyến"
+        },
+        "output": {
+            "title": "Đầu ra",
+            "hide": "Ẩn đầu ra"
+        },
+        "update": {
+            "check": "Kiểm tra cập nhật"
+        },
+        "overlay": {
+            "copy": "Sao chép vào clipboard",
+            "copied": "Đã sao chép",
+            "copyFailed": "Sao chép thất bại",
+            "zoomIn": "Phóng to",
+            "zoomOut": "Thu nhỏ",
+            "close": "Đóng (Esc)"
+        },
+        "about": {
+            "title": "Giới thiệu về qqq",
+            "version": "qqq-shell v2",
+            "desc": "Di động / Win7+ / Cập nhật nóng từ máy chủ"
+        },
+        "dev": "Chế độ phát triển",
+        "gaeaHostLoading": "Đang tải gaea host..."
+    },
+    "editor": {
+        "tabs": {
+            "close": "Đóng tab",
+            "closeOthers": "Đóng các tab khác",
+            "closeRight": "Đóng các tab bên phải",
+            "closeAll": "Đóng tất cả",
+            "closeSaved": "Đóng các tab đã lưu",
+            "revealInExplorer": "Hiển thị trong trình duyệt tệp",
+            "copyPath": "Sao chép đường dẫn",
+            "copyRelativePath": "Sao chép đường dẫn tương đối",
+            "splitRight": "Chia đôi sang phải",
+            "splitDown": "Chia đôi xuống dưới"
+        },
+        "contextMenu": {
+            "cut": "Cắt",
+            "copy": "Sao chép",
+            "paste": "Dán",
+            "selectAll": "Chọn tất cả",
+            "undo": "Hoàn tác",
+            "redo": "Làm lại"
+        },
+        "unsaved": "Chưa lưu",
+        "saved": "Đã lưu",
+        "saving": "Đang lưu...",
+        "saveFailed": "Lưu thất bại",
+        "fileTooLarge": "Tệp quá lớn",
+        "binaryFile": "Tệp nhị phân, không thể chỉnh sửa",
+        "line": "Dòng",
+        "col": "Cột",
+        "spaces": "Khoảng trắng",
+        "indent": "Thụt lề",
+        "encoding": "Mã hóa",
+        "eol": "Cuối dòng",
+        "language": "Ngôn ngữ",
+        "readOnly": "Chỉ đọc",
+        "codelens": {
+            "openFile": "Mở tệp",
+            "openFolder": "Mở thư mục",
+            "copyPath": "Sao chép đường dẫn",
+            "copyImage": "Sao chép dữ liệu nhị phân ảnh"
+        }
+    },
+    "ai": {
+        "title": "AI",
+        "send": "Gửi",
+        "stop": "Dừng",
+        "guide": "Hướng dẫn",
+        "queue": "Xếp hàng",
+        "context": "Ngữ cảnh",
+        "compress": "Nén",
+        "level": {
+            "a": "Thận trọng",
+            "1": "Nhẹ",
+            "2": "Trung bình",
+            "3": "Thông minh",
+            "4": "Mạnh mẽ",
+            "5": "Cực hạn",
+            "6": "Pro Max"
+        },
+        "floor": "Tầng",
+        "house": "Nhà",
+        "room": "Phòng",
+        "ttfb": "Chờ mạng",
+        "work": "Thời gian xử lý",
+        "total": "Tổng cộng",
+        "tokens": "Token đã dùng",
+        "confirmConnect": "Xác nhận kết nối",
+        "thinking": "Đang suy nghĩ...",
+        "streaming": "Đang tạo...",
+        "tools": {
+            "readFile": "Đọc tệp",
+            "editFile": "Chỉnh sửa tệp",
+            "createFile": "Tạo tệp",
+            "deleteFile": "Xóa tệp",
+            "writeFile": "Ghi tệp",
+            "searchText": "Tìm kiếm văn bản",
+            "findFiles": "Tìm tệp",
+            "listFiles": "Liệt kê tệp",
+            "getDiagnostics": "Lấy chẩn đoán",
+            "runCommand": "Chạy lệnh",
+            "fetchWebpage": "Truy xuất trang web",
+            "getVision": "Lấy ngữ cảnh hình ảnh"
+        },
+        "output": {
+            "empty": "Đang chờ nhập liệu...",
+            "compressInProgress": "Đang nén...",
+            "compressDone": "Nén hoàn tất",
+            "tokenLimit": "Đạt giới hạn Token"
+        },
+        "rules": {
+            "title": "Quy tắc dự án",
+            "edit": "Chỉnh sửa quy tắc",
+            "empty": "Chưa có quy tắc",
+            "globalRule": "Quy tắc toàn cục (.qqq-rules.txt)",
+            "projectRule": "Quy tắc dự án (project.txt)"
+        },
+        "quest": {
+            "switch": "Chuyển dự án",
+            "newQuest": "Tạo hội thoại mới",
+            "history": "Lịch sử",
+            "noHistory": "Chưa có lịch sử",
+            "saveFailed": "Lưu thất bại"
+        },
+        "lock": {
+            "locked": "Dự án đã được mở bởi cửa sổ khác",
+            "stale": "Khóa đã hết hạn",
+            "heartbeat": "Nhịp tim"
+        }
+    },
+    "goods": {
+        "bar": {
+            "title": "Chuyển đổi chức năng"
+        },
+        "fileExplorer": {
+            "title": "Trình duyệt tệp",
+            "openFile": "Mở tệp",
+            "openInIde": "Mở trong IDE",
+            "refresh": "Làm mới thư mục",
+            "parentDir": "Thư mục cha",
+            "name": "Tên",
+            "size": "Kích thước",
+            "modified": "Thời gian sửa đổi",
+            "type": "Loại",
+            "folder": "Thư mục",
+            "file": "Tệp",
+            "empty": "Thư mục trống",
+            "loading": "Đang tải...",
+            "loadFailed": "Tải thất bại",
+            "noAccess": "Không có quyền truy cập"
+        },
+        "navigator": {
+            "title": "Điều hướng",
+            "explorer": "Trình khám phá",
+            "search": "Tìm kiếm tệp",
+            "openEditors": "Trình soạn thảo đang mở",
+            "outline": "Đề cương",
+            "timeline": "Dòng thời gian"
+        },
+        "pasteImage": {
+            "title": "Dán ảnh",
+            "pasteHint": "Ctrl+V để dán ảnh",
+            "pasting": "Đang dán...",
+            "pasteOk": "Ảnh đã được dán",
+            "pasteFailed": "Dán thất bại",
+            "noImage": "Không có ảnh trong clipboard"
+        },
+        "wysiwyg": {
+            "title": "Soạn thảo trực quan (WYSIWYG)",
+            "bold": "In đậm",
+            "italic": "In nghiêng",
+            "underline": "Gạch chân",
+            "strikethrough": "Gạch ngang",
+            "heading": "Tiêu đề",
+            "paragraph": "Đoạn văn",
+            "list": "Danh sách",
+            "orderedList": "Danh sách có thứ tự",
+            "quote": "Trích dẫn",
+            "code": "Mã",
+            "link": "Liên kết",
+            "image": "Ảnh",
+            "table": "Bảng",
+            "horizontalRule": "Đường phân cách",
+            "clearFormat": "Xóa định dạng",
+            "undo": "Hoàn tác",
+            "redo": "Làm lại"
+        },
+        "rage": {
+            "title": "Clipboard",
+            "clip": {
+                "title": "Lịch sử Clipboard",
+                "empty": "Chưa có nội dung cắt/dán",
+                "search": "Tìm kiếm clipboard...",
+                "pin": "Ghim",
+                "unpin": "Bỏ ghim",
+                "delete": "Xóa",
+                "clearAll": "Xóa tất cả",
+                "count": "{n} mục",
+                "text": "Văn bản",
+                "image": "Ảnh",
+                "html": "Văn bản giàu định dạng",
+                "link": "Liên kết",
+                "file": "Tệp",
+                "unknown": "Loại không xác định"
+            },
+            "captain": {
+                "paste": "Dán",
+                "roam": "Lang thang",
+                "video": "Video",
+                "weave": "Kết hợp",
+                "exportDoc": "Xuất tài liệu",
+                "pure": "Thuần túy",
+                "exportZip": "Xuất file nén ZIP",
+                "audio": "Âm thanh"
+            },
+            "search": {
+                "hint": "Tìm kiếm AND với nhiều từ khóa",
+                "noResults": "Không tìm thấy kết quả phù hợp"
+            }
+        }
+    },
+    "dialog": {
+        "about": {
+            "title": "Giới thiệu về qqq",
+            "message": "qqq-shell v2",
+            "detail": "Di động / Win7+ / Cập nhật nóng từ máy chủ"
+        },
+        "confirmDelete": {
+            "title": "Xác nhận xóa",
+            "message": "Bạn có chắc chắn muốn xóa không? Hành động này không thể hoàn tác."
+        },
+        "unsaved": {
+            "title": "Thay đổi chưa lưu",
+            "message": "Có thay đổi chưa được lưu, bạn có muốn lưu trước khi đóng không?",
+            "save": "Lưu",
+            "discard": "Hủy bỏ",
+            "cancel": "Hủy"
+        }
+    },
+    "shortcuts": {
+        "ctrlS": "Lưu",
+        "ctrlZ": "Hoàn tác",
+        "ctrlShiftZ": "Làm lại",
+        "ctrlX": "Cắt",
+        "ctrlC": "Sao chép",
+        "ctrlV": "Dán",
+        "ctrlA": "Chọn tất cả",
+        "ctrlF": "Tìm kiếm",
+        "ctrlH": "Thay thế",
+        "ctrlN": "Tạo tệp mới",
+        "ctrlO": "Mở tệp",
+        "ctrlW": "Đóng tab",
+        "ctrlShiftE": "Hiển thị trình duyệt tệp",
+        "ctrlShiftF": "Tìm kiếm tệp",
+        "ctrlBackslash": "Chia đôi sang phải",
+        "ctrlPlus": "Phóng to",
+        "ctrlMinus": "Thu nhỏ",
+        "ctrl0": "Đặt lại tỷ lệ phóng to",
+        "f12": "Công cụ dành cho nhà phát triển",
+        "f1": "Bảng lệnh",
+        "altLeft": "Quay lại",
+        "altRight": "Tiến tới"
+    }
+}

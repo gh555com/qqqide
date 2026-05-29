@@ -5,6 +5,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' qqq-asset: 'unsafe-inline' data:; script-src 'self' qqq-asset: 'unsafe-inline' 'unsafe-eval'; style-src 'self' qqq-asset: 'unsafe-inline'; img-src 'self' qqq-asset: data: blob:; font-src 'self' qqq-asset: data:; connect-src 'self' qqq-asset: http: https:; worker-src 'self' qqq-asset: blob:; frame-src 'self' qqq-asset: http: https: data:">
 <title>qqq</title>
 <script src="core/qqq-theme.js"></script>
+<script src="core/i18n.js"></script>
 <script src="core/qqq-qoast.js"></script>
 <link rel="stylesheet" href="core/shell.css">
 </head>
@@ -18,13 +19,14 @@
       <div class="qqq-menubar" id="qqq-menubar"></div>
       <div id="qqq-ai-viewport"></div>
       <div class="qqq-spacer"></div>
-      <button class="qqq-zoom-btn" id="qqq-zoom-out" title="缩小 UI（Ctrl+-）">&#x2212;</button>
-      <button class="qqq-zoom-btn" id="qqq-zoom-in" title="放大 UI（Ctrl+=）">&#x002B;</button>
-      <button class="qqq-theme-toggle" id="qqq-theme-toggle" title="切换亮色/暗色">&#x263C;</button>
+      <button class="qqq-zoom-btn" id="qqq-zoom-out" data-i18n-title="shell.zoom.out" title="缩小 UI（Ctrl+-）">&#x2212;</button>
+      <button class="qqq-zoom-btn" id="qqq-zoom-in" data-i18n-title="shell.zoom.in" title="放大 UI（Ctrl+=）">&#x002B;</button>
+      <span class="qqq-zoom-label" id="qqq-zoom-label">0.85</span>
+      <button class="qqq-theme-toggle" id="qqq-theme-toggle" data-i18n-title="shell.theme.toggle" title="切换亮色/暗色">&#x263C;</button>
       <div class="qqq-window-controls">
-        <button class="qqq-wc-btn" id="qqq-wc-min" title="最小化">&#x2014;</button>
-        <button class="qqq-wc-btn" id="qqq-wc-max" title="最大化">&#x25A1;</button>
-        <button class="qqq-wc-btn qqq-wc-close" id="qqq-wc-close" title="关闭">&#x2715;</button>
+        <button class="qqq-wc-btn" id="qqq-wc-min" data-i18n-title="shell.window.minimize" title="最小化">&#x2014;</button>
+        <button class="qqq-wc-btn" id="qqq-wc-max" data-i18n-title="shell.window.maximize" title="最大化">&#x25A1;</button>
+        <button class="qqq-wc-btn qqq-wc-close" id="qqq-wc-close" data-i18n-title="shell.window.close" title="关闭">&#x2715;</button>
       </div>
     </div>
     <div class="qqq-menu-row qqq-menu-row-2">
@@ -32,7 +34,7 @@
         <span class="qqq-toolbar-brand">qqq</span>
         <span class="qqq-goods-bar" id="qqq-goods-bar"></span>
         <span class="qqq-spacer"></span>
-        <button class="qqq-update-btn" id="qqq-update-btn" title="检查更新" style="display:none">&#x21BB;</button>
+        <button class="qqq-update-btn" id="qqq-update-btn" data-i18n-title="shell.update.check" title="检查更新" style="display:none">&#x21BB;</button>
       </div>
     </div>
   </div>
@@ -53,9 +55,9 @@
       <div class="qqq-sash qqq-sash-h qqq-hidden" data-sash="output-top" id="qqq-sash-output"></div>
       <div class="qqq-x-output qqq-hidden" id="qqq-x-output">
         <div class="qqq-output-header">
-          <span class="qqq-output-title">Output</span>
+          <span class="qqq-output-title" data-i18n="shell.output.title">输出</span>
           <span class="qqq-spacer"></span>
-          <button class="qqq-output-close" id="qqq-output-close" title="Hide output">&#x2715;</button>
+          <button class="qqq-output-close" id="qqq-output-close" data-i18n-title="shell.output.hide" title="隐藏输出">&#x2715;</button>
         </div>
         <div class="qqq-output-body" id="qqq-output-body"></div>
       </div>

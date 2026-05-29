@@ -214,6 +214,53 @@ export class StateStore extends EventEmitter {
         } catch { /* ignore */ }
     }
 
+
+    // ----- sql.js helpers (compatible with all versions) --------------------
+
+    /** Execute SELECT via step()+getAsObject(), compatible with sql.js >=1.4 */
+    private _stmtAll(sql: string, params?: any[]): any[] {
+        if (!this._db) return [];
+        const stmt = this._db.prepare(sql);
+        try {
+            if (params && params.length) { stmt.bind(params); }
+            const rows: any[] = [];
+            while (stmt.step()) {
+                rows.push(stmt.getAsObject());
+            }
+            return rows;
+        } finally {
+            stmt.free();
+        }
+    }
+
+    /** Get single row via step()+getAsObject(), compatible with sql.js >=1.4 */
+    private _stmtGet(sql: string, params: any[]): any | null {
+        if (!this._db) return null;
+        const stmt = this._db.prepare(sql);
+        try {
+            stmt.bind(params);
+            if (stmt.step()) {
+                return stmt.getAsObject();
+            }
+            return null;
+        } finally {
+            stmt.free();
+        }
+    }
+
+    /** Run DML via step()+getRowsModified(), compatible with sql.js >=1.4 */
+    private _stmtRun(sql: string, params: any[]): { changes: number } {
+        if (!this._db) return { changes: 0 };
+        const stmt = this._db.prepare(sql);
+        try {
+            stmt.bind(params);
+            stmt.step();
+            return { changes: this._db.getRowsModified() };
+        } finally {
+            stmt.free();
+        }
+    }
+
     // ----- schema registry ----------------------------------------------------
 
     private _loadSchemas(): void {
@@ -225,7 +272,7 @@ export class StateStore extends EventEmitter {
                 cloud INTEGER DEFAULT 0,
                 quota_bytes INTEGER
             )`);
-            const rows = this._db.prepare('SELECT * FROM registry').all();
+            const rows = this._stmtAll('SELECT * FROM registry');
             for (const r of rows) {
                 this.schemas.set(r.ns, {
                     v: r.v,
@@ -264,14 +311,14 @@ export class StateStore extends EventEmitter {
         try {
             if (params && params.length) {
                 if (query.trim().toUpperCase().startsWith('SELECT')) {
-                    return this._db.prepare(query).all(params);
+                    return this._stmtAll(query, params);
                 }
                 this._db.run(query, params);
                 this._scheduleSaveDb();
                 return { changes: this._db.getRowsModified() };
             }
             if (query.trim().toUpperCase().startsWith('SELECT')) {
-                return this._db.prepare(query).all([]);
+                return this._stmtAll(query);
             }
             this._db.run(query);
             this._scheduleSaveDb();
@@ -351,7 +398,7 @@ export class StateStore extends EventEmitter {
         const cached = this._memCache.get(cid);
         if (cached !== undefined) return cached;
         try {
-            const row = this._db.prepare('SELECT value FROM state WHERE ns=? AND key=?').get([ns, key]);
+            const row = this._stmtGet('SELECT value FROM state WHERE ns=? AND key=?', [ns, key]);
             if (!row || row.value === null || row.value === undefined) {
                 const sc = this.schemas.get(ns)!;
                 return sc.form === 'log' ? [] : null;
@@ -425,7 +472,7 @@ export class StateStore extends EventEmitter {
             this._dirtySet.delete(id);
             this._memCache.delete(id); // ★ clear cache
 
-            const info = this._db.prepare('DELETE FROM state WHERE ns=? AND key=?').run([ns, key]);
+            const info = this._stmtRun('DELETE FROM state WHERE ns=? AND key=?', [ns, key]);
             const any = info.changes > 0;
             if (any) {
                 this.emit('changed', { ns, key, value: null, deleted: true });
@@ -443,7 +490,7 @@ export class StateStore extends EventEmitter {
         await this._ensureReady();
         this._requireSchema(ns);
         try {
-            const rows = this._db.prepare('SELECT key FROM state WHERE ns=?').all([ns]);
+            const rows = this._stmtAll('SELECT key FROM state WHERE ns=?', [ns]);
             return rows.map((r: any) => r.key);
         } catch (e) {
             return [];

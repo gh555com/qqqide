@@ -102,6 +102,19 @@ function resolveGhrunBin(appRoot?: string): string | null {
     return null;
 }
 
+function findWindowsPython(): string | null {
+    // Windows: try 'py' launcher first (Windows 10+), then common paths
+    const tries = ['py', 'py.exe', 'python', 'python.exe', 'python3', 'python3.exe'];
+    const pathDirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+    for (const cmd of tries) {
+        for (const dir of pathDirs) {
+            const full = path.join(dir, cmd);
+            try { if (fs.statSync(full).isFile()) return cmd; } catch { /* skip */ }
+        }
+    }
+    return 'python'; // fallback, let spawn fail with clear error
+}
+
 function resolveRunner(appRoot: string): { script: string; python: string } | null {
     const candidates = [
         path.join(appRoot, 'engines', 'runner.py'),
@@ -110,8 +123,8 @@ function resolveRunner(appRoot: string): { script: string; python: string } | nu
     for (const p of candidates) {
         if (fs.existsSync(p)) {
             const py = process.env.QQQ_PYTHON
-                || (process.platform === 'win32' ? 'python' : 'python3');
-            return { script: p, python: py };
+                || (process.platform === 'win32' ? findWindowsPython() : 'python3');
+            return { script: p, python: py || 'python' };
         }
     }
     return null;
@@ -460,6 +473,8 @@ function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promis
 // ---------------------------------------------------------------------------
 
 export class QzSpawn {
+    private _ghrunSkip = false; // cached: ghrun does not support "spawn" subcommand yet
+
     constructor(private appRoot: string) {}
 
     /** Probe ghrun availability (synchronous file check). */
@@ -503,13 +518,14 @@ export class QzSpawn {
             };
         }
 
-        // Tier 1: ghrun (when env is set AND binary exists)
-        const ghrun = resolveGhrunBin(this.appRoot);
+        // Tier 1: ghrun (skip if known unsupported)
+        const ghrun = this._ghrunSkip ? null : resolveGhrunBin(this.appRoot);
         if (ghrun) {
             try {
                 const r = await ghrunTier(brief, this.appRoot, ghrun);
                 if (r.killReason !== 'spawn-error') { return r; }
-                console.warn('[qz] ghrun spawn-error, falling back to runner:', r.stderr.slice(0, 200));
+                this._ghrunSkip = true;
+                console.warn('[qz] ghrun spawn-error (will skip ghrun tier hereafter), falling back to runner:', r.stderr.slice(0, 200));
             } catch (e: any) {
                 console.warn('[qz] ghrun threw, falling back to runner:', e && e.message);
             }

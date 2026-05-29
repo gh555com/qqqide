@@ -418,66 +418,81 @@ var AgentLoop = (function () {
 
         if (!taskId) return null;
 
-        // ═══ Step 2: SSE 推送（替代轮询） ═══
+        // Step 2: SSE push (retry once on 404)
         var streamUrl = VISION_URL + '/' + taskId + '/stream';
-        try {
-            var streamResp = await fetch(streamUrl, {
-                headers: { 'Authorization': 'Bearer ' + token },
-                signal: self.abortController ? self.abortController.signal : undefined
-            });
-            if (!streamResp.ok) {
-                if (streamResp.status === 404) { self._log('  vision task expired'); return null; }
-                self._log('  vision stream HTTP ' + streamResp.status);
-                return null;
-            }
+        var MAX_STREAM_RETRIES = 1;
+        for (var streamRetry = 0; streamRetry <= MAX_STREAM_RETRIES; streamRetry++) {
+            try {
+                var streamResp = await fetch(streamUrl, {
+                    headers: { 'Authorization': 'Bearer ' + token },
+                    signal: self.abortController ? self.abortController.signal : undefined
+                });
+                if (!streamResp.ok) {
+                    if (streamResp.status === 404) {
+                        if (streamRetry < MAX_STREAM_RETRIES) {
+                            self._log('  vision stream 404, retry in 1s...');
+                            await new Promise(function (r) { setTimeout(r, 1000); });
+                            continue;
+                        }
+                        self._log('  vision task expired'); return null;
+                    }
+                    self._log('  vision stream HTTP ' + streamResp.status);
+                    return null;
+                }
 
-            var reader = streamResp.body.getReader();
-            var decoder = new TextDecoder();
-            var textBuf = '';
-            var sseStart = Date.now();
-            var MAX_SSE_WAIT = 120000;
+                var reader = streamResp.body.getReader();
+                var decoder = new TextDecoder();
+                var textBuf = '';
+                var sseStart = Date.now();
+                var MAX_SSE_WAIT = 120000;
 
-            while (Date.now() - sseStart < MAX_SSE_WAIT) {
-                var chunk = await reader.read();
-                if (chunk.done) break;
-                textBuf += decoder.decode(chunk.value, { stream: true });
+                while (Date.now() - sseStart < MAX_SSE_WAIT) {
+                    var chunk = await reader.read();
+                    if (chunk.done) break;
+                    textBuf += decoder.decode(chunk.value, { stream: true });
 
-                // 解析 SSE lines
-                var lines = textBuf.split('\n');
-                textBuf = lines.pop();
-                var eventData = '';
-                for (var li = 0; li < lines.length; li++) {
-                    var line = lines[li];
-                    if (line.startsWith('data: ')) {
-                        eventData = line.slice(6);
-                    } else if (line === '' && eventData) {
-                        try {
-                            var evt = JSON.parse(eventData);
-                            if (evt.status === 'done') {
-                                if (evt.ge_cost) { self._visionCostWge += evt.ge_cost; }
-                                var elapsedSse = ((Date.now() - sseStart) / 1000).toFixed(1);
-                                self._log('  ✓ vision done (SSE) in ' + elapsedSse + 's');
-                                reader.cancel();
-                                return evt.description || '[Vision returned empty description]';
-                            }
-                            if (evt.status === 'error') {
-                                self._log('  ✗ vision error: ' + (evt.error || 'unknown'));
-                                reader.cancel();
-                                return null;
-                            }
-                        } catch (_) { }
-                        eventData = '';
+                    // 解析 SSE lines
+                    var lines = textBuf.split('\n');
+                    textBuf = lines.pop();
+                    var eventData = '';
+                    for (var li = 0; li < lines.length; li++) {
+                        var line = lines[li];
+                        if (line.startsWith('data: ')) {
+                            eventData = line.slice(6);
+                        } else if (line === '' && eventData) {
+                            try {
+                                var evt = JSON.parse(eventData);
+                                if (evt.status === 'done') {
+                                    if (evt.ge_cost) { self._visionCostWge += evt.ge_cost; }
+                                    var elapsedSse = ((Date.now() - sseStart) / 1000).toFixed(1);
+                                    self._log('  ✓ vision done (SSE) in ' + elapsedSse + 's');
+                                    reader.cancel();
+                                    return evt.description || '[Vision returned empty description]';
+                                }
+                                if (evt.status === 'error') {
+                                    self._log('  ✗ vision error: ' + (evt.error || 'unknown'));
+                                    reader.cancel();
+                                    return null;
+                                }
+                            } catch (_) { }
+                            eventData = '';
+                        }
                     }
                 }
+                reader.cancel();
+                self._log('  ✗ vision SSE timeout');
+                return null;
+            } catch (err) {
+                if (err.name === 'AbortError') throw err;
+                if (streamRetry < MAX_STREAM_RETRIES) {
+                    self._log('  vision SSE error, retry in 1s: ' + (err.message || err));
+                    await new Promise(function (r) { setTimeout(r, 1000); });
+                    continue;
+                }
+                self._log('  ✗ vision SSE error: ' + (err.message || err));
+                return null;
             }
-            reader.cancel();
-            self._log('  ✗ vision SSE timeout');
-            return null;
-        } catch (err) {
-            if (err.name === 'AbortError') throw err;
-            self._log('  ✗ vision SSE error: ' + (err.message || err));
-            return null;
-        }
+        } // stream retry loop
     };
 
     // ---- 简易 hash（视觉缓存 key）----

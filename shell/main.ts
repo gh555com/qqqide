@@ -327,16 +327,19 @@ function createWindow(): BrowserWindow {
             zoomFactor = Math.min(2.0, +(zoomFactor + 0.05).toFixed(2));
             win.webContents.setZoomFactor(zoomFactor);
             saveZoom();
+            try { win.webContents.send('qqq:zoom:changed', zoomFactor); } catch { /* ignore */ }
         } else if (k === '-' || k === '_') {
             ev.preventDefault();
             zoomFactor = Math.max(0.5, +(zoomFactor - 0.05).toFixed(2));
             win.webContents.setZoomFactor(zoomFactor);
             saveZoom();
+            try { win.webContents.send('qqq:zoom:changed', zoomFactor); } catch { /* ignore */ }
         } else if (k === '0') {
             ev.preventDefault();
             zoomFactor = 1.0;
             win.webContents.setZoomFactor(zoomFactor);
             saveZoom();
+            try { win.webContents.send('qqq:zoom:changed', zoomFactor); } catch { /* ignore */ }
         }
     });
 
@@ -843,6 +846,11 @@ function registerIpc(): void {
         if (engineHost.isAlive()) {
             try { return await engineHost.invoke('fs.list', { path: p }); } catch { /* fall through */ }
         }
+        // guard: reject non-directory paths gracefully
+        try {
+            const st = await fs.promises.stat(p);
+            if (!st.isDirectory()) { return []; }
+        } catch { return []; }
         const entries = await fs.promises.readdir(p, { withFileTypes: true });
         const result: any[] = [];
         for (const e of entries) {
@@ -979,6 +987,7 @@ function registerIpc(): void {
         zoomFactor = f;
         if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.webContents.setZoomFactor(f); }
         saveZoom();
+        if (mainWindow && !mainWindow.isDestroyed()) { try { mainWindow.webContents.send('qqq:zoom:changed', f); } catch { /* ignore */ } }
         return f;
     });
     ipcMain.handle('qqq:zoom:adjust', (_e, delta: number) => {
@@ -986,6 +995,7 @@ function registerIpc(): void {
         zoomFactor = next;
         if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.webContents.setZoomFactor(next); }
         saveZoom();
+        if (mainWindow && !mainWindow.isDestroyed()) { try { mainWindow.webContents.send('qqq:zoom:changed', next); } catch { /* ignore */ } }
         return next;
     });
 

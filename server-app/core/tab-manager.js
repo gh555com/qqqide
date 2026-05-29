@@ -63,6 +63,9 @@
     const s = document.createElement('div');
     s.className = 'qqq-sash qqq-sash-v';
     s.setAttribute('data-sash', 'tab-group');
+    // 比外部 sash 更窄（4px vs 6px），减少分组间空气墙
+    s.style.flex = '0 0 4px';
+    s.style.width = '4px';
     return s;
   }
 
