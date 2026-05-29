@@ -162,6 +162,87 @@
     window.qqqAiViewport.build(host);
   }
 
+  // ---- Language Switcher ----
+  var _langPopup = null;
+  var LANG_LABELS = {
+    'zh': '中', 'zh-tw': '繁', 'en': 'EN', 'ja': '日', 'de': 'DE',
+    'ko': '한', 'ru': 'RU', 'ar': 'ar', 'es': 'ES', 'fr': 'FR',
+    'pt-BR': 'BR', 'hi': 'hi', 'vi': 'VI'
+  };
+
+  function closeLangPopup() {
+    if (_langPopup) { try { _langPopup.remove(); } catch (_) { } _langPopup = null; }
+  }
+
+  function openLangPopup(anchor) {
+    closeLangPopup();
+    var rect = anchor.getBoundingClientRect();
+    var pop = document.createElement('div');
+    pop.className = 'qqq-lang-popup';
+    pop.style.cssText = 'left:' + rect.left + 'px; top:' + (rect.bottom + 4) + 'px;';
+
+    var cur = window.i18n ? window.i18n.getLang() : 'zh';
+    var langs = window.i18n ? window.i18n.getSupportedLangs() : ['zh', 'en'];
+    for (var i = 0; i < langs.length; i++) {
+      var lc = langs[i];
+      var row = document.createElement('div');
+      row.className = 'qqq-lang-popup-item' + (lc === cur ? ' qqq-lang-active' : '');
+      var name = window.i18n ? window.i18n.getLangName(lc) : lc;
+      row.textContent = name;
+      row.addEventListener('click', (function (lang) {
+        return function (e) {
+          e.stopPropagation();
+          closeLangPopup();
+          if (window.i18n) window.i18n.setLang(lang);
+          updateLangBtn();
+        };
+      })(lc));
+      pop.appendChild(row);
+    }
+
+    document.body.appendChild(pop);
+    _langPopup = pop;
+
+    document.addEventListener('mousedown', function onDoc(e) {
+      if (!_langPopup) { document.removeEventListener('mousedown', onDoc); return; }
+      if (_langPopup.contains(e.target)) return;
+      if (e.target === anchor) return;
+      closeLangPopup();
+      document.removeEventListener('mousedown', onDoc);
+    });
+  }
+
+  function updateLangBtn() {
+    var btn = document.getElementById('qqq-lang-btn');
+    if (!btn) return;
+    var lang = window.i18n ? window.i18n.getLang() : 'zh';
+    btn.textContent = LANG_LABELS[lang] || lang;
+  }
+
+  function bootLangSwitcher() {
+    var btn = document.getElementById('qqq-lang-btn');
+    if (!btn) return;
+
+    // Wait for i18n to init, then update label
+    var tryUpdate = function () {
+      if (window.i18n && window.i18n.getLang()) {
+        updateLangBtn();
+      } else {
+        setTimeout(tryUpdate, 100);
+      }
+    };
+    tryUpdate();
+
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (_langPopup) { closeLangPopup(); return; }
+      openLangPopup(btn);
+    });
+
+    // Listen for lang change events (set by i18n.setLang)
+    window.addEventListener('qqq-lang-change', updateLangBtn);
+  }
+
   // ---- Menubar labels (clickable, opens HTML dropdown of sub items) ----
   let _activeMenubarPopup = null;
   function closeMenubarPopup() {
@@ -192,7 +273,7 @@
         'cursor:pointer; font-size:12px; color:var(--text-primary); ' +
         'white-space:nowrap; user-select:none;';
       const lab = document.createElement('span');
-      lab.textContent = s.label || '';
+      lab.textContent = (s.i18n && window._i) ? window._i(s.i18n, s.label) : (s.label || '');
       lab.style.cssText = 'flex:1 1 auto;';
       row.appendChild(lab);
       if (s.accel) {
@@ -287,7 +368,7 @@
     for (const item of schema.items || []) {
       const span = document.createElement('span');
       span.className = 'qqq-menubar-label';
-      span.textContent = item.label || '';
+      span.textContent = (item.i18n && window._i) ? window._i(item.i18n, item.label) : (item.label || '');
       span.style.cssText =
         'padding:0 10px; cursor:pointer; color:var(--text-primary); ' +
         'user-select:none; height:100%; display:inline-flex; align-items:center;';
@@ -319,6 +400,7 @@
     if (!schema) return;
     try { await bridge.menu.set(schema); } catch (e) { console.warn('[shell] menu.set failed', e); }
     renderMenubarLabels(schema);
+    window.addEventListener('qqq-lang-change', function () { renderMenubarLabels(schema); });
     bridge.menu.onFired(cmd => {
       console.log('[menu fired native]', cmd);
       handleMenuCmd(cmd);
@@ -481,7 +563,7 @@
     }
 
     // Copy button
-    var copyBtn = tbBtn('', '复制到剪贴板');
+    var copyBtn = tbBtn('', window._i('shell.overlay.copyToClipboard', '复制到剪贴板'));
     copyBtn.setAttribute('data-i18n', 'shell.overlay.copy');
     copyBtn.textContent = '\uD83D\uDCCB \u590D\u5236';
     function doCopy(text) {
@@ -836,6 +918,7 @@
     bootThemeToggle();
     bootZoomButtons();
     bootAiViewport();
+    bootLangSwitcher();
 
     // Unified RPC forwarder MUST be registered before any iframe loads
     bootRpcForwarder();

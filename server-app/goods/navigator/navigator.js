@@ -22,7 +22,7 @@
     const list = getRecent().filter(x => x !== p);
     list.unshift(p);
     if (list.length > MAX_RECENT) { list.length = MAX_RECENT; }
-    try { localStorage.setItem(KEY_RECENT, JSON.stringify(list)); } catch {}
+    try { localStorage.setItem(KEY_RECENT, JSON.stringify(list)); } catch { }
   }
 
   // Hook file-open events so navigator records files automatically.
@@ -51,7 +51,7 @@
       'box-shadow:0 8px 30px rgba(0,0,0,.25); overflow:hidden;';
     input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = '输入路径片段，Enter 打开 / Esc 关闭';
+    input.placeholder = '键入路径片段，Enter 打开 / Esc 关闭';
     input.style.cssText =
       'width:100%; box-sizing:border-box; padding:10px 12px; ' +
       'border:0; border-bottom:1px solid var(--border-color); ' +
@@ -111,7 +111,7 @@
       e.preventDefault(); return;
     }
     if (e.key === 'ArrowDown') { activeIdx = Math.min(items.length - 1, activeIdx + 1); refresh(); e.preventDefault(); return; }
-    if (e.key === 'ArrowUp')   { activeIdx = Math.max(0, activeIdx - 1); refresh(); e.preventDefault(); return; }
+    if (e.key === 'ArrowUp') { activeIdx = Math.max(0, activeIdx - 1); refresh(); e.preventDefault(); return; }
   }
 
   function show() {

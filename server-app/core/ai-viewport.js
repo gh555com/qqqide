@@ -334,12 +334,12 @@
     rmBtn.className = 'aiv-block-rm';
     if (idx === 0) {
       // 主文件夹不可删除
-      rmBtn.title = '主文件夹（不可移除）';
+      rmBtn.title = window._i('shell.viewport.mainFolder', '主文件夹（不可移除）');
       rmBtn.style.opacity = '0.3';
       rmBtn.style.cursor = 'not-allowed';
     } else {
       rmBtn.textContent = '−';
-      rmBtn.title = '移除此项目';
+      rmBtn.title = window._i('shell.viewport.removeProject', '移除此项目');
       rmBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         const ok = await confirmRemove(proj);
@@ -364,7 +364,7 @@
   function createAddBlock() {
     const block = document.createElement('div');
     block.className = 'aiv-block aiv-block-empty';
-    block.title = '添加项目文件夹到 AI 视口';
+    block.title = window._i('shell.viewport.addProject', '添加项目文件夹到 AI 视口');
 
     const plus = document.createElement('span');
     plus.className = 'aiv-block-plus';
@@ -375,7 +375,7 @@
     block.addEventListener('click', async () => {
       const result = await bridge.dialog.open({
         properties: ['openDirectory'],
-        title: '选择要添加到 AI 视口的文件夹',
+        title: window._i('shell.viewport.selectFolder', '选择要添加到 AI 视口的文件夹'),
       });
       if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
         addProject(result.filePaths[0]);

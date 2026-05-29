@@ -169,7 +169,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   <div id="image-strip"></div>
   <div id="queue-strip"></div>
   <div id="input-row">
-    <div id="input" contenteditable="plaintext-only" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-placeholder="Ask qqq AI... (Ctrl+V 粘贴图片)"></div>
+    <div id="input" contenteditable="plaintext-only" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-placeholder="Ask qqq AI... (Ctrl+V 粘贴图片)" data-i18n-placeholder-attr="ai.inputPlaceholder"></div>
   </div>
   <div id="btn-row">
     <div class="tier-group">
@@ -194,19 +194,19 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   <div class="ctx-panel-overlay"></div>
   <div class="ctx-panel-box">
     <div class="ctx-panel-body">
-      <p>你可以选择压缩上下文</p>
-      <p><strong>唯一好处：</strong>从下次对话开始降低费用。</p>
-      <p><strong>代价：</strong>最近六层楼之前滴对话会被压缩而丢失细节，AI 只会记住其中摘要。最近六层楼会被完整保存。</p>
-      <p>如果一直不手动压缩？</p>
+      <p data-i18n="ai.ctx.title">你可以选择压缩上下文</p>
+      <p><strong data-i18n="ai.ctx.benefit">唯一好处：</strong><span data-i18n="ai.ctx.benefitText">从下次对话开始降低费用。</span></p>
+      <p><strong data-i18n="ai.ctx.cost">代价：</strong><span data-i18n="ai.ctx.costText">最近六层楼之前滴对话会被压缩而丢失细节，AI 只会记住其中摘要。最近六层楼会被完整保存。</span></p>
+      <p data-i18n="ai.ctx.whatIf">如果一直不手动压缩？</p>
       <ol>
-        <li>qqq IDE 用最优策略自动压缩，通常好于手动压缩。</li>
-        <li>无论如何（压缩与否、谁来压缩）都既不会导致 AI 记忆撑爆，也不会导致 AI 记忆丢失。</li>
-        <li>更适合复杂滴编程任务，AI 将会有极限长度滴记忆空间。</li>
+        <li data-i18n="ai.ctx.auto">qqq IDE 用最优策略自动压缩，通常好于手动压缩。</li>
+        <li data-i18n="ai.ctx.noLoss">无论如何（压缩与否、谁来压缩）都既不会导致 AI 记忆撑爆，也不会导致 AI 记忆丢失。</li>
+        <li data-i18n="ai.ctx.complex">更适合复杂滴编程任务，AI 将会有极限长度滴记忆空间。</li>
       </ol>
     </div>
     <div class="ctx-panel-actions">
-      <button id="ctx-compress">压缩</button>
-      <button id="ctx-cancel">取消</button>
+      <button id="ctx-compress" data-i18n="ai.ctx.compress">压缩</button>
+      <button id="ctx-cancel" data-i18n="ai.ctx.cancel">取消</button>
     </div>
   </div>
 </div>

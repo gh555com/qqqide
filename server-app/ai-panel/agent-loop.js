@@ -159,7 +159,7 @@ var AgentLoop = (function () {
         // 推入用户消息（纯文本 — DeepSeek 只看得懂 text）
         var finalContent = (userContent || '') + visionText;
 
-        // 归档：保存用户输入供 generateFloorTxt 写入
+        // 归档：保存用户键入供 generateFloorTxt 写入
         self._lastUserInput = { text: userContent || '', vision: visionText || '' };
 
         // rules injection (first floor only; AI remembers from history)

@@ -264,19 +264,19 @@
 
     // Row 1: open in adjacent group
     if (isFirstFileGroup) {
-      addRow('在右侧再开', () => { openFileInRightGroup(tab.filePath); });
+      addRow(window._i('shell.tab.openRight', '在右侧再开'), () => { openFileInRightGroup(tab.filePath); });
     } else if (isSecondFileGroup) {
-      addRow('在左侧再开', () => { openFileInLeftGroup(tab.filePath); });
+      addRow(window._i('shell.tab.openLeft', '在左侧再开'), () => { openFileInLeftGroup(tab.filePath); });
     }
 
     // Row 2: close others
     if (grp.tabs.length > 1) {
-      addRow('关闭其他', () => { closeOthersInGroup(grp, tab.id); });
+      addRow(window._i('shell.tab.closeOthers', '关闭其他'), () => { closeOthersInGroup(grp, tab.id); });
     }
 
     // Row 3: close all
     if (grp.tabs.length > 0) {
-      addRow('关闭所有', () => { closeAllInGroup(grp); });
+      addRow(window._i('shell.tab.closeAll', '关闭所有'), () => { closeAllInGroup(grp); });
     }
 
     document.body.appendChild(pop);

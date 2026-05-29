@@ -157,6 +157,59 @@ body {
   background: rgba(128, 128, 128, 0.15);
 }
 
+/* Language switcher */
+.qqq-lang-btn {
+  -webkit-app-region: no-drag;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 11px;
+  font-weight: bold;
+  cursor: pointer;
+  width: 28px;
+  height: var(--menu-row-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  margin-right: 2px;
+}
+
+.qqq-lang-btn:hover {
+  background: rgba(128, 128, 128, 0.15);
+}
+
+.qqq-lang-popup {
+  position: fixed;
+  z-index: 99999;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.22);
+  padding: 4px 0;
+  min-width: 140px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.qqq-lang-popup-item {
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.qqq-lang-popup-item:hover {
+  background: var(--background-color);
+}
+
+.qqq-lang-popup-item.qqq-lang-active {
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
 /* Zoom +/- buttons (UI scale, step 0.05, range 0.5-2.0) */
 .qqq-zoom-btn {
   -webkit-app-region: no-drag;
@@ -501,6 +554,7 @@ body {
   flex: 0 0 4px;
   width: 4px;
 }
+
 .qqq-sash-v[data-sash="tab-group"]::after {
   left: 50%;
   transform: translateX(-50%);

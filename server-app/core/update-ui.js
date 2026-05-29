@@ -31,19 +31,19 @@
                 const result = await bridge.update.apply();
                 if (result && result.success) {
                     btn.textContent = '\u2713';
-                    btn.title = '已更新到 ' + result.version + '，即将重载...';
+                    btn.title = window.i18n.t('shell.update.updatedTo', { version: result.version }) || ('已更新到 ' + result.version + '，即将重载...');
                     setTimeout(() => {
                         if (bridge.window) bridge.window.close();
                         // Electron will restart via tray or user
                     }, 1500);
                 } else {
                     btn.textContent = '\u2717';
-                    btn.title = (result && result.error) || '更新失败';
+                    btn.title = (result && result.error) || window._i('shell.update.failed', '更新失败');
                     setTimeout(() => { btn.textContent = '\u21BB'; btn.disabled = false; }, 3000);
                 }
             } catch (e) {
                 btn.textContent = '\u2717';
-                btn.title = '更新失败: ' + (e.message || e);
+                btn.title = window._i('shell.update.failedWith', '更新失败') + ': ' + (e.message || e);
                 setTimeout(() => { btn.textContent = '\u21BB'; btn.disabled = false; }, 3000);
             }
         });
@@ -63,7 +63,7 @@
             if (result && result.needUpdate) {
                 btn.style.display = '';
                 btn.style.color = 'var(--yellow)'; // solarized yellow
-                btn.title = '新版本 ' + result.latestVersion + ' 可用 (当前 ' + result.currentVersion + ')';
+                btn.title = window.i18n.t('shell.update.newVersion', { latest: result.latestVersion, current: result.currentVersion }) || ('新版本 ' + result.latestVersion + ' 可用 (当前 ' + result.currentVersion + ')');
             } else {
                 btn.style.display = 'none';
             }

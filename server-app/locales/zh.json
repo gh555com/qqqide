@@ -64,14 +64,17 @@
             "switchToLight": "切换到亮色",
             "switchToDark": "切换到暗色"
         },
+        "lang": {
+            "switch": "切换语言"
+        },
         "status": {
             "version": "版本",
             "engineOn": "引擎在线",
             "engineOff": "引擎离线"
         },
         "output": {
-            "title": "输出",
-            "hide": "隐藏输出"
+            "title": "产出",
+            "hide": "隐藏产出"
         },
         "update": {
             "check": "检查更新"
@@ -176,7 +179,7 @@
             "getVision": "获取视觉上下文"
         },
         "output": {
-            "empty": "等待输入...",
+            "empty": "等待键入...",
             "compressInProgress": "压缩中...",
             "compressDone": "压缩完成",
             "tokenLimit": "达到 Token 上限"

@@ -842,14 +842,19 @@ function registerIpc(): void {
         await fs.promises.writeFile(p, content);
         return true;
     });
-    ipcMain.handle('qqq:fs:list', async (_e, p: string) => {
+    ipcMain.handle('qqq:fs:list', async (_e, p: string, callerStack?: string) => {
+        console.log('[fs:list]', p);
         if (engineHost.isAlive()) {
             try { return await engineHost.invoke('fs.list', { path: p }); } catch { /* fall through */ }
         }
         // guard: reject non-directory paths gracefully
         try {
             const st = await fs.promises.stat(p);
-            if (!st.isDirectory()) { return []; }
+            if (!st.isDirectory()) {
+                console.warn('[fs:list] NOT_DIR:', p);
+                if (callerStack) { console.warn('[fs:list] CALLER_STACK:\n' + callerStack); }
+                return [];
+            }
         } catch { return []; }
         const entries = await fs.promises.readdir(p, { withFileTypes: true });
         const result: any[] = [];

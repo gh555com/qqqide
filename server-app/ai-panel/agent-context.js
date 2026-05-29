@@ -12,7 +12,7 @@
 //   - 压缩是打断任务：触发 → 停一切 → 等 q 拿到 → 删旧消息 → 再继续
 //   - 保留边界对齐楼层（user 消息 = 楼层边界），绝不切断一条楼层
 //   - 最少保留 6 层楼（当前层 + 前 5 层），即使超出 10%
-//   - 压缩输出硬限 32k tokens，prompt + max_tokens + 校验三重保证
+//   - 压缩产出硬限 32k tokens，prompt + max_tokens + 校验三重保证
 //   - 压缩失败 → 指数退避无限重试（2s/4s/8s/.../60s），永不静默丢弃
 //
 // 依赖：GATEWAY_URL（由 system-prompt.js 提供），AgentLoop（由 agent-loop.js 提供）
@@ -25,7 +25,7 @@
     var MIN_FLOORS = 6;           // 最少保留 6 层楼（当前层 + 前 5 层）
     var MAX_FACTS = 100;          // 最多保留事实条数
     var MAX_FLOOR_SUMMARIES = 30;   // 最多保留回合摘要
-    var COMPACT_MAX_TOKENS = 32768;      // 压缩输出硬限 32k
+    var COMPACT_MAX_TOKENS = 32768;      // 压缩产出硬限 32k
     var COMPACT_RETRY_BASE_MS = 2000;    // 重试基础间隔 2s
     var COMPACT_RETRY_MAX_MS = 60000;    // 重试最大间隔 60s
 
@@ -158,7 +158,7 @@
 
     // ═══ 阻塞式压缩 — 32k 多重保证 + 最多 3 次重试 ═══
     // 调用压缩 AI，必须是 async，最多重试 3 次，全失败则抛错让上层跳过压缩
-    // 保证：prompt 明确告知 32k + API max_tokens=32768 + 输出后校验 + 超限重试
+    // 保证：prompt 明确告知 32k + API max_tokens=32768 + 产出后校验 + 超限重试
     AgentLoop.prototype._digestColdMessages = async function (coldMsgs) {
         var self = this;
         var coldText = coldMsgs.map(function (m) {
@@ -214,13 +214,13 @@
                 }
                 var parsed = result.parsed;
 
-                // 校验输出大小：超 95% 阈值 → 输出可能被截断，重试
+                // 校验产出大小：超 95% 阈值 → 产出可能被截断，重试
                 var outputText = JSON.stringify(parsed);
                 var outputTokens = Math.round(outputText.length / 4);
                 if (outputTokens > COMPACT_MAX_TOKENS * 0.95) {
                     var waitMs2 = Math.min(COMPACT_RETRY_BASE_MS * Math.pow(2, retry + 1), COMPACT_RETRY_MAX_MS);
                     self.log('⚠ Compact output near limit (~' + outputTokens + ' tok > ' + Math.round(COMPACT_MAX_TOKENS * 0.95) + '), retry #' + (retry + 1) + ' in ' + (waitMs2 / 1000) + 's');
-                    try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('⚠️ 压缩输出超限，第' + (retry + 1) + '次重试...', { type: 'warning', duration: Math.min(waitMs2, 5000) }); } catch (_) { }
+                    try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('⚠️ 压缩产出超限，第' + (retry + 1) + '次重试...', { type: 'warning', duration: Math.min(waitMs2, 5000) }); } catch (_) { }
                     await new Promise(function (r) { setTimeout(r, waitMs2); });
                     // 加强约束
                     basePrompt = 'YOUR PREVIOUS OUTPUT WAS TOO LARGE AND MAY HAVE BEEN TRUNCATED.\nYOU MUST PRODUCE AN OUTPUT THAT IS AT MOST HALF THE SIZE.\nBE MORE AGGRESSIVE IN MERGING AND DROPPING LOW-VALUE FACTS.\n\n' + basePrompt;
