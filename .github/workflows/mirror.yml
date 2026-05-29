@@ -18,7 +18,7 @@ jobs:
 
       - name: Push to Jihulab
         run: |
-          git remote add jihulab https://gh555:${{ secrets.JIHULAB_TOKEN }}@jihulab.com/gh555/qqq-IDE.git
+          git remote add jihulab https://29492511:${{ secrets.JIHULAB_TOKEN }}@jihulab.com/gh555/qqq-IDE.git
           git push jihulab --all --force
           git push jihulab --tags --force
 
