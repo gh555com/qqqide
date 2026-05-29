@@ -26,6 +26,8 @@
   const groups = [];          // [{ idx, type, el, barEl, contentEl, tabs[], activeTabId }]
   let _nextTabId = 1;
   let _activeTabMenu = null; // track open right-click context menu
+  let _groupRatios = null;    // null=flex equal; {ratios:[0.3,0.7]} for proportional restore on resize
+  let _resizeTimer = null;
 
   // ---- DOM builders ----
   function createGroupEl(type) {
@@ -63,9 +65,6 @@
     const s = document.createElement('div');
     s.className = 'qqq-sash qqq-sash-v';
     s.setAttribute('data-sash', 'tab-group');
-    // 比外部 sash 更窄（4px vs 6px），减少分组间空气墙
-    s.style.flex = '0 0 4px';
-    s.style.width = '4px';
     return s;
   }
 
@@ -271,12 +270,12 @@
 
     // Row 2: close others
     if (grp.tabs.length > 1) {
-      addRow(window._i('shell.tab.closeOthers', '关闭其他'), () => { closeOthersInGroup(grp, tab.id); });
+      addRow(window._i('editor.tabs.closeOthers', '关闭其他'), () => { closeOthersInGroup(grp, tab.id); });
     }
 
     // Row 3: close all
     if (grp.tabs.length > 0) {
-      addRow(window._i('shell.tab.closeAll', '关闭所有'), () => { closeAllInGroup(grp); });
+      addRow(window._i('editor.tabs.closeAll', '关闭所有'), () => { closeAllInGroup(grp); });
     }
 
     document.body.appendChild(pop);
@@ -339,7 +338,8 @@
     groups.splice(idx, 1);
     reindexGroups();
 
-    // reset flex on remaining groups
+    // reset flex on remaining groups + clear stale ratios
+    _groupRatios = null;
     groups.forEach(g => { g.el.style.flex = '1 1 0'; });
     rebindAllSashes();
   }
@@ -364,7 +364,7 @@
         const g = groups[j];
         leftPanels.push({
           getW: () => g.el.offsetWidth,
-          setW: w => { g.el.style.flex = '0 0 ' + w + 'px'; },
+          setW: w => { g.el.style.flex = '0 0 ' + w + 'px'; _saveGroupRatios(); },
           min: MIN_W,
         });
       }
@@ -373,12 +373,53 @@
         const g = groups[j];
         rightPanels.push({
           getW: () => g.el.offsetWidth,
-          setW: w => { g.el.style.flex = '0 0 ' + w + 'px'; },
+          setW: w => { g.el.style.flex = '0 0 ' + w + 'px'; _saveGroupRatios(); },
           min: MIN_W,
         });
       }
       window.qqqSash.bindV(fresh, leftPanels, rightPanels);
     }
+  }
+
+  // Save group width ratios for proportional restore on window resize
+  function _saveGroupRatios() {
+    if (groups.length < 2) { _groupRatios = null; return; }
+    const totalW = groups.reduce((s, g) => s + g.el.offsetWidth, 0);
+    if (totalW <= 0) { _groupRatios = null; return; }
+    _groupRatios = { ratios: groups.map(g => g.el.offsetWidth / totalW) };
+  }
+
+  // On window resize, restore group proportions if they were manually adjusted
+  function _onGroupResize() {
+    if (_resizeTimer) clearTimeout(_resizeTimer);
+    _resizeTimer = setTimeout(() => {
+      _resizeTimer = null;
+      if (!hostEl || groups.length < 2) return;
+      if (!_groupRatios || !_groupRatios.ratios || _groupRatios.ratios.length !== groups.length) {
+        // No custom ratios → reset to equal flex
+        groups.forEach(g => { g.el.style.flex = '1 1 0'; });
+        return;
+      }
+      // Calculate available width (host width minus sashes)
+      const hostW = hostEl.offsetWidth;
+      let sashTotal = 0;
+      for (let i = 1; i < groups.length; i++) {
+        const sash = groups[i]._sashEl;
+        if (sash) sashTotal += sash.offsetWidth;
+      }
+      const availW = hostW - sashTotal;
+      if (availW <= 0) return;
+      // Assign each group, give last group the remainder to avoid rounding gaps
+      let usedW = 0;
+      const lastIdx = groups.length - 1;
+      for (let idx = 0; idx < lastIdx; idx++) {
+        const w = Math.max(MIN_W, Math.round(_groupRatios.ratios[idx] * availW));
+        groups[idx].el.style.flex = '0 0 ' + w + 'px';
+        usedW += w;
+      }
+      const lastW = Math.max(MIN_W, availW - usedW);
+      groups[lastIdx].el.style.flex = '0 0 ' + lastW + 'px';
+    }, 50);
   }
 
   function reindexGroups() {
@@ -689,6 +730,11 @@
   function init(host) {
     hostEl = host;
     hostEl.innerHTML = '';
+    // Listen for host resize (covers window resize + A-zone sash drag)
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => _onGroupResize()).observe(hostEl);
+    }
+    window.addEventListener('resize', _onGroupResize);
     // gaea group is always created on init
     addGroup('gaea');
     // Restore previously open file tabs

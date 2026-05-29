@@ -15,9 +15,9 @@
           { label: '新建', i18n: 'shell.menu.fileNew', accel: 'CmdOrCtrl+N', cmd: 'file.new' },
           { label: '打开', i18n: 'shell.menu.fileOpen', accel: 'CmdOrCtrl+O', cmd: 'file.open' },
           { type: 'separator' },
-          { label: '开新窗口', i18n: 'shell.menu.newWindow', cmd: 'file.newWindow' },
+          { label: '开新窗口', i18n: 'shell.menu.fileNewWindow', cmd: 'file.newWindow' },
           { type: 'separator' },
-          { label: '退出', i18n: 'shell.menu.quit', role: 'quit' },
+          { label: '退出', i18n: 'shell.menu.fileExit', role: 'quit' },
         ],
       },
       {

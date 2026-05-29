@@ -64,6 +64,9 @@
             "switchToLight": "切換至亮色",
             "switchToDark": "切換至暗色"
         },
+        "lang": {
+            "switch": "切換語言"
+        },
         "status": {
             "version": "版本",
             "engineOn": "引擎線上",
@@ -74,7 +77,11 @@
             "hide": "隱藏輸出"
         },
         "update": {
-            "check": "檢查更新"
+            "check": "檢查更新",
+            "updatedTo": "已更新至 {version}，即將重新載入...",
+            "failed": "更新失敗",
+            "failedWith": "更新失敗",
+            "newVersion": "有新版本 {latest} 可供使用（目前為 {current}）"
         },
         "overlay": {
             "copy": "複製到剪貼簿",
@@ -88,6 +95,16 @@
             "title": "關於 qqq",
             "version": "qqq-shell v2",
             "desc": "免安裝 / Win7+ / 伺服器熱更新"
+        },
+        "tab": {
+            "openRight": "在右側開啟新分頁",
+            "openLeft": "在左側開啟新分頁"
+        },
+        "viewport": {
+            "mainFolder": "主要資料夾（不可移除）",
+            "removeProject": "移除此專案",
+            "addProject": "將專案資料夾新增至 AI 視窗",
+            "selectFolder": "選擇要新增至 AI 視窗的資料夾"
         },
         "dev": "開發模式",
         "gaeaHostLoading": "gaea host 載入中..."
@@ -142,6 +159,21 @@
         "queue": "排隊中",
         "context": "上下文",
         "compress": "壓縮",
+        "ctx": {
+            "title": "您可以選擇壓縮上下文",
+            "benefit": "唯一好處：",
+            "benefitText": "從下次對話開始降低費用。",
+            "cost": "代價：",
+            "costText": "較早的對話內容會被壓縮而遺失細節，AI 僅會保留摘要。最近的六層對話將完整保存。",
+            "whatIf": "如果一直不手動壓縮？",
+            "auto": "qqq IDE 會以最佳策略自動壓縮，效果通常優於手動壓縮。",
+            "noLoss": "無論是否壓縮或由誰壓縮，都不會導致 AI 記憶溢位或遺失。",
+            "complex": "更適合複雜的程式設計任務，AI 將擁有有限長度的記憶空間。",
+            "compress": "壓縮",
+            "cancel": "取消"
+        },
+        "inputPlaceholder": "詢問 qqq AI... (Ctrl+V 貼上圖片)",
+        "embedImage": "嵌入",
         "level": {
             "a": "保守",
             "1": "輕度",
@@ -228,7 +260,10 @@
             "search": "搜尋檔案",
             "openEditors": "已開啟的編輯器",
             "outline": "大綱",
-            "timeline": "時間軸"
+            "timeline": "時間軸",
+            "inputPlaceholder": "輸入路徑片段，按 Enter 開啟 / Esc 關閉",
+            "noRecent": "尚無最近檔案，請先在檔案樹中開啟幾個檔案",
+            "noMatch": "無相符項目"
         },
         "pasteImage": {
             "title": "貼上圖片",
@@ -236,6 +271,8 @@
             "pasting": "貼上中...",
             "pasteOk": "圖片已貼上",
             "pasteFailed": "貼上失敗",
+            "saveFailed": "貼上圖片儲存失敗",
+            "saved": "已將圖片儲存至",
             "noImage": "剪貼簿中沒有圖片"
         },
         "wysiwyg": {

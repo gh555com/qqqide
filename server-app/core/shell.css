@@ -549,15 +549,31 @@ body {
   display: none !important;
 }
 
-/* 分组间 sash 更窄（4px），居中分割线，减少空气墙 */
+/* 分组间 sash — 4px 宽，背景色匹配分组，::after 居中做唯一分割线 */
 .qqq-sash-v[data-sash="tab-group"] {
   flex: 0 0 4px;
   width: 4px;
+  background: var(--background-color);
+  cursor: ew-resize;
+  position: relative;
+  z-index: 5;
 }
-
 .qqq-sash-v[data-sash="tab-group"]::after {
   left: 50%;
   transform: translateX(-50%);
+}
+.qqq-sash-v[data-sash="tab-group"]:hover {
+  background: var(--sash-bg-hover);
+}
+
+/* A|X sash — 左右色匹配 A 区/X 区背景，消双线只剩 ::after */
+.qqq-sash-v[data-sash="a-right"] {
+  background: linear-gradient(to right,
+    var(--card-bg) 0px, var(--card-bg) 2px,
+    var(--background-color) 2px, var(--background-color) 100%);
+}
+.qqq-sash-v[data-sash="a-right"]:hover {
+  background: var(--sash-bg-hover);
 }
 
 .qqq-tab-pane {

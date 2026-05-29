@@ -64,6 +64,9 @@
             "switchToLight": "Passer au thème clair",
             "switchToDark": "Passer au thème sombre"
         },
+        "lang": {
+            "switch": "Changer de langue"
+        },
         "status": {
             "version": "Version",
             "engineOn": "Moteur en ligne",
@@ -74,7 +77,11 @@
             "hide": "Masquer la sortie"
         },
         "update": {
-            "check": "Vérifier les mises à jour"
+            "check": "Vérifier les mises à jour",
+            "updatedTo": "Mis à jour vers {version}, rechargement imminent...",
+            "failed": "Échec de la mise à jour",
+            "failedWith": "Échec de la mise à jour",
+            "newVersion": "Nouvelle version {latest} disponible (actuelle {current})"
         },
         "overlay": {
             "copy": "Copier dans le presse-papiers",
@@ -88,6 +95,16 @@
             "title": "À propos de qqq",
             "version": "qqq-shell v2",
             "desc": "Portable / Win7+ / Mise à jour serveur à chaud"
+        },
+        "tab": {
+            "openRight": "Ouvrir à droite",
+            "openLeft": "Ouvrir à gauche"
+        },
+        "viewport": {
+            "mainFolder": "Dossier principal (non supprimable)",
+            "removeProject": "Supprimer ce projet",
+            "addProject": "Ajouter le dossier du projet à la vue IA",
+            "selectFolder": "Sélectionner le dossier à ajouter à la vue IA"
         },
         "dev": "Mode développeur",
         "gaeaHostLoading": "Chargement de gaea host..."
@@ -142,6 +159,21 @@
         "queue": "File d'attente",
         "context": "Contexte",
         "compress": "Compresser",
+        "ctx": {
+            "title": "Vous pouvez choisir de compresser le contexte",
+            "benefit": "Seul avantage :",
+            "benefitText": "Réduction des coûts à partir de la prochaine conversation.",
+            "cost": "Coût :",
+            "costText": "Les conversations antérieures aux six derniers niveaux seront compressées et perdront leurs détails ; l'IA ne conservera que leur résumé. Les six derniers niveaux seront intégralement conservés.",
+            "whatIf": "Que se passe-t-il si je ne compresse jamais manuellement ?",
+            "auto": "qqq IDE compresse automatiquement avec la stratégie optimale, généralement mieux que la compression manuelle.",
+            "noLoss": "Dans tous les cas (avec ou sans compression, quel que soit l'auteur), cela ne saturera ni ne fera perdre la mémoire de l'IA.",
+            "complex": "Plus adapté aux tâches de programmation complexes, où l'IA disposera d'un espace mémoire de longueur limitée.",
+            "compress": "Compresser",
+            "cancel": "Annuler"
+        },
+        "inputPlaceholder": "Demander à qqq AI... (Ctrl+V pour coller une image)",
+        "embedImage": "Intégrer",
         "level": {
             "a": "Conservateur",
             "1": "Léger",
@@ -228,7 +260,10 @@
             "search": "Rechercher des fichiers",
             "openEditors": "Éditeurs ouverts",
             "outline": "Plan",
-            "timeline": "Chronologie"
+            "timeline": "Chronologie",
+            "inputPlaceholder": "Saisissez un fragment de chemin, Entrée pour ouvrir / Échap pour fermer",
+            "noRecent": "Aucun fichier récent. Ouvrez d'abord quelques fichiers dans l'arborescence.",
+            "noMatch": "Aucun résultat correspondant"
         },
         "pasteImage": {
             "title": "Coller l'image",
@@ -236,6 +271,8 @@
             "pasting": "Collage en cours...",
             "pasteOk": "Image collée",
             "pasteFailed": "Échec du collage",
+            "saveFailed": "Échec de l'enregistrement de l'image collée",
+            "saved": "Image enregistrée dans",
             "noImage": "Aucune image dans le presse-papiers"
         },
         "wysiwyg": {

@@ -563,7 +563,7 @@
     }
 
     // Copy button
-    var copyBtn = tbBtn('', window._i('shell.overlay.copyToClipboard', '复制到剪贴板'));
+    var copyBtn = tbBtn('', window._i('shell.overlay.copy', '复制到剪贴板'));
     copyBtn.setAttribute('data-i18n', 'shell.overlay.copy');
     copyBtn.textContent = '\uD83D\uDCCB \u590D\u5236';
     function doCopy(text) {

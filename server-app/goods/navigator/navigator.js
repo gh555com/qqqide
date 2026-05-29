@@ -51,7 +51,7 @@
       'box-shadow:0 8px 30px rgba(0,0,0,.25); overflow:hidden;';
     input = document.createElement('input');
     input.type = 'text';
-    input.placeholder = '键入路径片段，Enter 打开 / Esc 关闭';
+    input.placeholder = window._i('goods.navigator.inputPlaceholder', '键入路径片段，Enter 打开 / Esc 关闭');
     input.style.cssText =
       'width:100%; box-sizing:border-box; padding:10px 12px; ' +
       'border:0; border-bottom:1px solid var(--border-color); ' +
@@ -87,7 +87,7 @@
     if (items.length === 0) {
       const empty = document.createElement('div');
       empty.style.cssText = 'padding:14px; color:var(--base1); font-size:12px;';
-      empty.textContent = recent.length === 0 ? '尚无最近文件，先在文件树中打开几个文件' : '无匹配项';
+      empty.textContent = recent.length === 0 ? window._i('goods.navigator.noRecent', '尚无最近文件，先在文件树中打开几个文件') : window._i('goods.navigator.noMatch', '无匹配项');
       listEl.appendChild(empty);
       return;
     }

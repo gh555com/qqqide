@@ -64,6 +64,9 @@
             "switchToLight": "Chuyển sang chế độ sáng",
             "switchToDark": "Chuyển sang chế độ tối"
         },
+        "lang": {
+            "switch": "Chuyển ngôn ngữ"
+        },
         "status": {
             "version": "Phiên bản",
             "engineOn": "Engine trực tuyến",
@@ -74,7 +77,11 @@
             "hide": "Ẩn đầu ra"
         },
         "update": {
-            "check": "Kiểm tra cập nhật"
+            "check": "Kiểm tra cập nhật",
+            "updatedTo": "Đã cập nhật lên {version}, đang tải lại...",
+            "failed": "Cập nhật thất bại",
+            "failedWith": "Cập nhật thất bại",
+            "newVersion": "Có phiên bản mới {latest} (hiện tại {current})"
         },
         "overlay": {
             "copy": "Sao chép vào clipboard",
@@ -88,6 +95,16 @@
             "title": "Giới thiệu về qqq",
             "version": "qqq-shell v2",
             "desc": "Di động / Win7+ / Cập nhật nóng từ máy chủ"
+        },
+        "tab": {
+            "openRight": "Mở thêm bên phải",
+            "openLeft": "Mở thêm bên trái"
+        },
+        "viewport": {
+            "mainFolder": "Thư mục chính (không thể xóa)",
+            "removeProject": "Xóa dự án này",
+            "addProject": "Thêm thư mục dự án vào khung nhìn AI",
+            "selectFolder": "Chọn thư mục để thêm vào khung nhìn AI"
         },
         "dev": "Chế độ phát triển",
         "gaeaHostLoading": "Đang tải gaea host..."
@@ -142,6 +159,21 @@
         "queue": "Xếp hàng",
         "context": "Ngữ cảnh",
         "compress": "Nén",
+        "ctx": {
+            "title": "Bạn có thể chọn nén ngữ cảnh",
+            "benefit": "Lợi ích duy nhất:",
+            "benefitText": "Giảm chi phí bắt đầu từ cuộc hội thoại tiếp theo.",
+            "cost": "Chi phí:",
+            "costText": "Các cuộc hội thoại trước sáu tầng gần nhất sẽ bị nén và mất chi tiết, AI chỉ ghi nhớ phần tóm tắt. Sáu tầng gần nhất sẽ được lưu đầy đủ.",
+            "whatIf": "Nếu không bao giờ nén thủ công?",
+            "auto": "qqq IDE tự động nén bằng chiến lược tối ưu, thường tốt hơn nén thủ công.",
+            "noLoss": "Dù thế nào (có nén hay không, ai thực hiện nén) cũng sẽ không làm tràn bộ nhớ AI hoặc gây mất dữ liệu bộ nhớ AI.",
+            "complex": "Phù hợp hơn cho các tác vụ lập trình phức tạp, AI sẽ có không gian bộ nhớ với độ dài giới hạn.",
+            "compress": "Nén",
+            "cancel": "Hủy"
+        },
+        "inputPlaceholder": "Hỏi qqq AI... (Ctrl+V để dán ảnh)",
+        "embedImage": "Nhúng",
         "level": {
             "a": "Thận trọng",
             "1": "Nhẹ",
@@ -228,7 +260,10 @@
             "search": "Tìm kiếm tệp",
             "openEditors": "Trình soạn thảo đang mở",
             "outline": "Đề cương",
-            "timeline": "Dòng thời gian"
+            "timeline": "Dòng thời gian",
+            "inputPlaceholder": "Nhập đoạn đường dẫn, Enter để mở / Esc để đóng",
+            "noRecent": "Chưa có tệp gần đây, hãy mở một vài tệp trong cây thư mục trước",
+            "noMatch": "Không tìm thấy kết quả phù hợp"
         },
         "pasteImage": {
             "title": "Dán ảnh",
@@ -236,6 +271,8 @@
             "pasting": "Đang dán...",
             "pasteOk": "Ảnh đã được dán",
             "pasteFailed": "Dán thất bại",
+            "saveFailed": "Lưu ảnh dán thất bại",
+            "saved": "Đã lưu ảnh vào",
             "noImage": "Không có ảnh trong clipboard"
         },
         "wysiwyg": {

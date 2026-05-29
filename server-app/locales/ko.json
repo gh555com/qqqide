@@ -64,6 +64,9 @@
             "switchToLight": "밝은 모드로 전환",
             "switchToDark": "어두운 모드로 전환"
         },
+        "lang": {
+            "switch": "언어 전환"
+        },
         "status": {
             "version": "버전",
             "engineOn": "엔진 온라인",
@@ -74,7 +77,11 @@
             "hide": "출력 숨기기"
         },
         "update": {
-            "check": "업데이트 확인"
+            "check": "업데이트 확인",
+            "updatedTo": "{version}(으)로 업데이트됨, 곧 다시 로드됩니다...",
+            "failed": "업데이트 실패",
+            "failedWith": "업데이트 실패",
+            "newVersion": "새 버전 {latest} 사용 가능 (현재 {current})"
         },
         "overlay": {
             "copy": "클립보드에 복사",
@@ -88,6 +95,16 @@
             "title": "qqq 정보",
             "version": "qqq-shell v2",
             "desc": "포터블 / Win7+ / 서버 핫 업데이트"
+        },
+        "tab": {
+            "openRight": "오른쪽에 새 탭 열기",
+            "openLeft": "왼쪽에 새 탭 열기"
+        },
+        "viewport": {
+            "mainFolder": "메인 폴더 (제거 불가)",
+            "removeProject": "이 프로젝트 제거",
+            "addProject": "프로젝트 폴더를 AI 뷰포트에 추가",
+            "selectFolder": "AI 뷰포트에 추가할 폴더 선택"
         },
         "dev": "개발 모드",
         "gaeaHostLoading": "gaea 호스트 로딩 중..."
@@ -142,6 +159,21 @@
         "queue": "대기열",
         "context": "컨텍스트",
         "compress": "압축",
+        "ctx": {
+            "title": "컨텍스트 압축을 선택할 수 있습니다",
+            "benefit": "유일한 이점:",
+            "benefitText": "다음 대화부터 비용이 절감됩니다.",
+            "cost": "비용:",
+            "costText": "최근 6단계 이전의 대화는 압축되어 세부 정보가 손실되며, AI는 요약만 기억합니다. 최근 6단계는 완전히 보존됩니다.",
+            "whatIf": "수동 압축을 계속하지 않으면 어떻게 되나요?",
+            "auto": "qqq IDE는 최적의 전략으로 자동으로 압축하며, 일반적으로 수동 압축보다 우수합니다.",
+            "noLoss": "압축 여부나 주체에 관계없이 AI 메모리가 초과되거나 손실되지 않습니다.",
+            "complex": "복잡한 프로그래밍 작업에 더 적합하며, AI는 제한된 길이의 메모리 공간을 갖게 됩니다.",
+            "compress": "압축",
+            "cancel": "취소"
+        },
+        "inputPlaceholder": "qqq AI에게 질문... (Ctrl+V로 이미지 붙여넣기)",
+        "embedImage": "삽입",
         "level": {
             "a": "보수적",
             "1": "낮음",
@@ -228,7 +260,10 @@
             "search": "파일 검색",
             "openEditors": "열린 편집기",
             "outline": "개요",
-            "timeline": "타임라인"
+            "timeline": "타임라인",
+            "inputPlaceholder": "경로 입력, Enter로 열기 / Esc로 닫기",
+            "noRecent": "최근 파일이 없습니다. 파일 트리에서 몇 개의 파일을 먼저 열어보세요.",
+            "noMatch": "일치하는 항목 없음"
         },
         "pasteImage": {
             "title": "이미지 붙여넣기",
@@ -236,6 +271,8 @@
             "pasting": "붙여넣는 중...",
             "pasteOk": "이미지 붙여넣기 완료",
             "pasteFailed": "붙여넣기 실패",
+            "saveFailed": "붙여넣기 이미지 저장 실패",
+            "saved": "이미지 저장 완료: ",
             "noImage": "클립보드에 이미지가 없습니다"
         },
         "wysiwyg": {

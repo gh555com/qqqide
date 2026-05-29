@@ -90,6 +90,38 @@
     mount.appendChild(bar);
     mount.appendChild(frame);
 
+    // ── Pie tooltip: rendered in parent body to break out of iframe/IDE clipping ──
+    let _pieTT = null;
+    function _ensurePieTT() {
+      if (_pieTT) return _pieTT;
+      _pieTT = document.createElement('div');
+      _pieTT.id = 'qqq-pie-tooltip';
+      _pieTT.style.cssText =
+        'display:none; position:fixed; z-index:999999; pointer-events:none; ' +
+        'padding:8px 16px; background:rgba(0,0,0,0.85); color:#fff; font-size:22px; ' +
+        'font-family:ui-monospace,monospace; border-radius:8px; white-space:nowrap; ' +
+        'flex-direction:row; align-items:center;';
+      document.body.appendChild(_pieTT);
+      return _pieTT;
+    }
+    window.addEventListener('message', function(e) {
+      if (!e.data || e.data.type !== 'qqq-pie-tooltip') return;
+      if (!frame || e.source !== frame.contentWindow) return;
+      if (e.data.action === 'hide') {
+        var tt = _pieTT;
+        if (tt) tt.style.display = 'none';
+        return;
+      }
+      if (e.data.action === 'show') {
+        var tt2 = _ensurePieTT();
+        tt2.innerHTML = e.data.html || '';
+        var fr = frame.getBoundingClientRect();
+        tt2.style.left = (fr.left + (e.data.clientX || 0) + 14) + 'px';
+        tt2.style.top = (fr.top + (e.data.clientY || 0) - 10) + 'px';
+        tt2.style.display = 'flex';
+      }
+    });
+
     setUrl(defaultUrl());
   }
 

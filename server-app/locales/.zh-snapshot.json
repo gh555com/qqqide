@@ -64,6 +64,9 @@
             "switchToLight": "切换到亮色",
             "switchToDark": "切换到暗色"
         },
+        "lang": {
+            "switch": "切换语言"
+        },
         "status": {
             "version": "版本",
             "engineOn": "引擎在线",
@@ -74,7 +77,11 @@
             "hide": "隐藏产出"
         },
         "update": {
-            "check": "检查更新"
+            "check": "检查更新",
+            "updatedTo": "已更新到 {version}，即将重载...",
+            "failed": "更新失败",
+            "failedWith": "更新失败",
+            "newVersion": "新版本 {latest} 可用 (当前 {current})"
         },
         "overlay": {
             "copy": "复制到剪贴板",
@@ -88,6 +95,16 @@
             "title": "关于 qqq",
             "version": "qqq-shell v2",
             "desc": "便携 / Win7+ / 服务器热更"
+        },
+        "tab": {
+            "openRight": "在右侧再开",
+            "openLeft": "在左侧再开"
+        },
+        "viewport": {
+            "mainFolder": "主文件夹（不可移除）",
+            "removeProject": "移除此项目",
+            "addProject": "添加项目文件夹到 AI 视口",
+            "selectFolder": "选择要添加到 AI 视口的文件夹"
         },
         "dev": "开发模式",
         "gaeaHostLoading": "gaea host 加载中..."
@@ -142,6 +159,21 @@
         "queue": "排队",
         "context": "上下文",
         "compress": "压缩",
+        "ctx": {
+            "title": "你可以选择压缩上下文",
+            "benefit": "唯一好处：",
+            "benefitText": "从下次对话开始降低费用。",
+            "cost": "代价：",
+            "costText": "最近六层楼之前滴对话会被压缩而丢失细节，AI 只会记住其中摘要。最近六层楼会被完整保存。",
+            "whatIf": "如果一直不手动压缩？",
+            "auto": "qqq IDE 用最优策略自动压缩，通常好于手动压缩。",
+            "noLoss": "无论如何（压缩与否、谁来压缩）都既不会导致 AI 记忆撑爆，也不会导致 AI 记忆丢失。",
+            "complex": "更适合复杂滴编程任务，AI 将会有极限长度滴记忆空间。",
+            "compress": "压缩",
+            "cancel": "取消"
+        },
+        "inputPlaceholder": "Ask qqq AI... (Ctrl+V 粘贴图片)",
+        "embedImage": "嵌入",
         "level": {
             "a": "保守",
             "1": "轻度",
@@ -228,7 +260,10 @@
             "search": "搜索文件",
             "openEditors": "打开的编辑器",
             "outline": "大纲",
-            "timeline": "时间线"
+            "timeline": "时间线",
+            "inputPlaceholder": "键入路径片段，Enter 打开 / Esc 关闭",
+            "noRecent": "尚无最近文件，先在文件树中打开几个文件",
+            "noMatch": "无匹配项"
         },
         "pasteImage": {
             "title": "粘贴图片",
@@ -236,6 +271,8 @@
             "pasting": "粘贴中...",
             "pasteOk": "图片已粘贴",
             "pasteFailed": "粘贴失败",
+            "saveFailed": "粘贴图片保存失败",
+            "saved": "已保存图片到",
             "noImage": "剪贴板中没有图片"
         },
         "wysiwyg": {

@@ -14,7 +14,7 @@
   function tsName() {
     const d = new Date();
     const pad = n => String(n).padStart(2, '0');
-    return 'paste_' + d.getFullYear() + pad(d.getMonth()+1) + pad(d.getDate()) +
+    return 'paste_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) +
       '_' + pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + '.png';
   }
 
@@ -81,7 +81,7 @@
     try { target = await saveImageBytes(activeFile || '', u8); }
     catch (e) {
       console.warn('[paste-image] save failed:', e);
-      Q.window.showErrorMessage('粘贴图片保存失败：' + (e && e.message));
+      Q.window.showErrorMessage(window._i('goods.pasteImage.saveFailed', '粘贴图片保存失败') + '：' + (e && e.message));
       return;
     }
     Q.emit('paste-image.saved', target);
@@ -91,7 +91,7 @@
       const rel = target.name; // assume same dir as active file
       editor.insertAtCursor('![](' + rel + ')');
     } else {
-      Q.window.showInformationMessage('已保存图片到 ' + target.path);
+      Q.window.showInformationMessage(window._i('goods.pasteImage.saved', '已保存图片到') + ' ' + target.path);
     }
   }
 

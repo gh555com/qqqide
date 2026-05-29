@@ -64,6 +64,9 @@
             "switchToLight": "Zu hellem Design wechseln",
             "switchToDark": "Zu dunklem Design wechseln"
         },
+        "lang": {
+            "switch": "Sprache wechseln"
+        },
         "status": {
             "version": "Version",
             "engineOn": "Engine online",
@@ -74,7 +77,11 @@
             "hide": "Ausgabe ausblenden"
         },
         "update": {
-            "check": "Nach Updates suchen"
+            "check": "Nach Updates suchen",
+            "updatedTo": "Auf {version} aktualisiert, Neuladen steht bevor...",
+            "failed": "Aktualisierung fehlgeschlagen",
+            "failedWith": "Aktualisierung fehlgeschlagen",
+            "newVersion": "Neue Version {latest} verfügbar (aktuell {current})"
         },
         "overlay": {
             "copy": "In Zwischenablage kopieren",
@@ -88,6 +95,16 @@
             "title": "Über qqq",
             "version": "qqq-shell v2",
             "desc": "Portable / Win7+ / Server-Hot-Update"
+        },
+        "tab": {
+            "openRight": "Rechts daneben öffnen",
+            "openLeft": "Links daneben öffnen"
+        },
+        "viewport": {
+            "mainFolder": "Hauptordner (kann nicht entfernt werden)",
+            "removeProject": "Dieses Projekt entfernen",
+            "addProject": "Projektordner zur AI-Ansicht hinzufügen",
+            "selectFolder": "Ordner auswählen, der zur AI-Ansicht hinzugefügt werden soll"
         },
         "dev": "Entwicklermodus",
         "gaeaHostLoading": "gaea host wird geladen..."
@@ -142,6 +159,21 @@
         "queue": "Warteschlange",
         "context": "Kontext",
         "compress": "Komprimieren",
+        "ctx": {
+            "title": "Sie können den Kontext komprimieren",
+            "benefit": "Einziger Vorteil:",
+            "benefitText": "Reduzierte Kosten ab der nächsten Konversation.",
+            "cost": "Kosten:",
+            "costText": "Konversationen, die älter als die letzten sechs Ebenen sind, werden komprimiert, wobei Details verloren gehen; die AI behält nur Zusammenfassungen. Die letzten sechs Ebenen bleiben vollständig erhalten.",
+            "whatIf": "Was passiert, wenn ich nie manuell komprimiere?",
+            "auto": "qqq IDE komprimiert automatisch mit der optimalen Strategie, was in der Regel besser ist als eine manuelle Komprimierung.",
+            "noLoss": "Unabhängig davon, ob und wie komprimiert wird, führt dies weder zu einer Überlastung noch zu einem Verlust des AI-Gedächtnisses.",
+            "complex": "Geeigneter für komplexe Programmieraufgaben, da die AI über einen begrenzten Speicherplatz verfügt.",
+            "compress": "Komprimieren",
+            "cancel": "Abbrechen"
+        },
+        "inputPlaceholder": "Fragen Sie qqq AI... (Strg+V zum Einfügen von Bildern)",
+        "embedImage": "Einbetten",
         "level": {
             "a": "Konservativ",
             "1": "Leicht",
@@ -228,7 +260,10 @@
             "search": "Dateien suchen",
             "openEditors": "Geöffnete Editoren",
             "outline": "Gliederung",
-            "timeline": "Zeitachse"
+            "timeline": "Zeitachse",
+            "inputPlaceholder": "Pfadsegment eingeben, Enter zum Öffnen / Esc zum Schließen",
+            "noRecent": "Noch keine kürzlich verwendeten Dateien. Öffnen Sie zunächst einige Dateien im Dateibaum.",
+            "noMatch": "Keine Übereinstimmungen"
         },
         "pasteImage": {
             "title": "Bild einfügen",
@@ -236,6 +271,8 @@
             "pasting": "Wird eingefügt...",
             "pasteOk": "Bild eingefügt",
             "pasteFailed": "Einfügen fehlgeschlagen",
+            "saveFailed": "Speichern des eingefügten Bildes fehlgeschlagen",
+            "saved": "Bild gespeichert unter",
             "noImage": "Kein Bild in der Zwischenablage"
         },
         "wysiwyg": {

@@ -64,6 +64,9 @@
             "switchToLight": "ライトテーマに切り替え",
             "switchToDark": "ダークテーマに切り替え"
         },
+        "lang": {
+            "switch": "言語を切り替え"
+        },
         "status": {
             "version": "バージョン",
             "engineOn": "エンジンオンライン",
@@ -74,7 +77,11 @@
             "hide": "出力を隠す"
         },
         "update": {
-            "check": "更新を確認"
+            "check": "更新を確認",
+            "updatedTo": "{version} に更新されました。まもなく再読み込みします...",
+            "failed": "更新に失敗しました",
+            "failedWith": "更新に失敗しました",
+            "newVersion": "新しいバージョン {latest} が利用可能です (現在: {current})"
         },
         "overlay": {
             "copy": "クリップボードにコピー",
@@ -88,6 +95,16 @@
             "title": "qqq について",
             "version": "qqq-shell v2",
             "desc": "ポータブル / Win7+ / サーバーホットアップデート"
+        },
+        "tab": {
+            "openRight": "右側に新規タブを開く",
+            "openLeft": "左側に新規タブを開く"
+        },
+        "viewport": {
+            "mainFolder": "メインフォルダ（削除不可）",
+            "removeProject": "このプロジェクトを削除",
+            "addProject": "プロジェクトフォルダを AI ビューポートに追加",
+            "selectFolder": "AI ビューポートに追加するフォルダを選択"
         },
         "dev": "開発モード",
         "gaeaHostLoading": "gaea host 読み込み中..."
@@ -142,6 +159,21 @@
         "queue": "キュー",
         "context": "コンテキスト",
         "compress": "圧縮",
+        "ctx": {
+            "title": "コンテキストを圧縮することを選択できます",
+            "benefit": "唯一の利点：",
+            "benefitText": "次回の対話からコストが削減されます。",
+            "cost": "コスト：",
+            "costText": "直近6レベルより前の会話の詳細は圧縮により失われ、AI はその要約のみを保持します。直近6レベルは完全に保存されます。",
+            "whatIf": "手動で圧縮し続けなかった場合は？",
+            "auto": "qqq IDE は最適な戦略で自動的に圧縮を行い、通常は手動圧縮よりも優れています。",
+            "noLoss": "圧縮の有無や実行主体に関わらず、AI のメモリが溢れたり、記憶が失われたりすることはありません。",
+            "complex": "複雑なプログラミングタスクに最適で、AI は限界までの長さの記憶空間を持つことになります。",
+            "compress": "圧縮",
+            "cancel": "キャンセル"
+        },
+        "inputPlaceholder": "qqq AI に質問... (Ctrl+V で画像を貼り付け)",
+        "embedImage": "埋め込み",
         "level": {
             "a": "保守的",
             "1": "軽度",
@@ -228,7 +260,10 @@
             "search": "ファイル検索",
             "openEditors": "開いているエディター",
             "outline": "アウトライン",
-            "timeline": "タイムライン"
+            "timeline": "タイムライン",
+            "inputPlaceholder": "パスの一部を入力し、Enter で開く / Esc で閉じる",
+            "noRecent": "最近のファイルはありません。まずファイルツリーでいくつかのファイルを開いてください",
+            "noMatch": "一致する項目がありません"
         },
         "pasteImage": {
             "title": "画像を貼り付け",
@@ -236,6 +271,8 @@
             "pasting": "貼り付け中...",
             "pasteOk": "画像を貼り付けました",
             "pasteFailed": "貼り付けに失敗しました",
+            "saveFailed": "貼り付けた画像の保存に失敗しました",
+            "saved": "画像を保存しました：",
             "noImage": "クリップボードに画像がありません"
         },
         "wysiwyg": {

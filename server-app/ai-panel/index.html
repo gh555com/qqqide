@@ -148,6 +148,31 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'qqq-theme-change') sync(e.data.dark);
   });
+
+  // i18n sync: translate from parent window
+  function translateUi() {
+    try {
+      if (parent && parent.window && parent.window.i18n) {
+        parent.window.i18n.updateDom(document);
+        // Custom placeholder attr for contenteditable (not <input>)
+        var els = document.querySelectorAll('[data-i18n-placeholder-attr]');
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i];
+          var key = el.getAttribute('data-i18n-placeholder-attr');
+          if (key) el.setAttribute('data-placeholder', parent.window.i18n.t(key));
+        }
+      }
+    } catch(_) {}
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', translateUi);
+  } else {
+    translateUi();
+  }
+  // Re-translate on language change
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'qqq-lang-change') translateUi();
+  });
 })();
 </script>
 </head>
@@ -379,7 +404,7 @@ function renderImageStrip() {
     wrap.appendChild(del);
     var embed = document.createElement('button');
     embed.className = 'img-thumb-embed';
-    embed.textContent = '嵌入';
+    embed.textContent = (parent && parent._i) ? parent._i('ai.embedImage', '嵌入') : '嵌入';
     embed.onclick = function() {
       $input.focus();
       document.execCommand('insertText', false, '[图#' + img.id + ']');
@@ -467,7 +492,11 @@ function renderMarkdown(src) {
   // Links
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
   // Tables (must run before lists to avoid confusing | with list markers)
-  s = s.replace(/(?:\n|^)(\|.+\|)\n\|[-:\s|]+\|\n((?:\|.+\|\n?)*)/g, function(_, header, rows) {
+  s = s.replace(/(?:
+|^)(\|.+\|)
+\|[-:\s|]+\|
+((?:\|.+\|
+?)*)/g, function(_, header, rows) {
     if (!header || rows === undefined) return _;
     const ths = header.split('|').filter(function(c) { return c.trim(); }).map(function(c) { return '<th>' + c.trim() + '</th>'; }).join('');
     const trs = rows.split('\n').filter(function(r) { return r.trim(); }).map(function(r) {
@@ -534,7 +563,8 @@ function doStreamRender() {
 
   var aiDiv = _activeAiDiv;
 
-  if (!aiDiv || !aiDiv._dirty) { aiDiv._renderScheduled = false; return; }
+  if (!aiDiv) { return; }
+  if (!aiDiv._dirty) { aiDiv._renderScheduled = false; return; }
 
   aiDiv._renderScheduled = false;
 
@@ -1197,6 +1227,17 @@ var _floorCurrentTiming = null;
 var _activeAiDiv = null;  // 当前正在流式输出的 AI 豆腐块
 
 function fmtTime(ms) { var s = Math.round(ms / 1000); return Math.floor(s / 60) + 'm:' + (s % 60) + 's'; }
+
+// ── pie tooltip via parent window (break out of iframe clipping) ──
+function _showPieTooltip(html, cx, cy) {
+  if (!parent) return;
+  parent.postMessage({ type: 'qqq-pie-tooltip', action: 'show', html: html, clientX: cx, clientY: cy }, '*');
+}
+function _hidePieTooltip() {
+  if (!parent) return;
+  parent.postMessage({ type: 'qqq-pie-tooltip', action: 'hide' }, '*');
+}
+
 function drawPie(canvas, timing) {
   var ctx = canvas.getContext('2d');
   var w = canvas.width, h = canvas.height;
@@ -1238,11 +1279,10 @@ function _initClockBlock(aiDiv) {
   aiDiv._clockBlock = block;
   aiDiv._clockSpan = block.querySelector('.clock');
   aiDiv._clockCanvas = block.querySelector('canvas');
-  // pie hover: show all 3 colored circles + times
+  // pie hover: postMessage to parent window (break out of iframe clip)
   var canvas = aiDiv._clockCanvas;
-  var tt = document.getElementById('clock-tooltip');
   canvas.addEventListener('mousemove', function(e) {
-    if (!canvas._segments || !canvas._total) { tt.style.display = 'none'; return; }
+    if (!canvas._segments || !canvas._total) { _hidePieTooltip(); return; }
     var parts = [
       { key: 'network',  color: '#cb4b16', label: 'Net' },
       { key: 'tool',     color: '#b58900', label: 'Tool' },
@@ -1261,12 +1301,9 @@ function _initClockBlock(aiDiv) {
         + '<svg width="20" height="20" style="flex-shrink:0"><circle cx="10" cy="10" r="9" fill="' + p.color + '"/></svg>'
         + '<span style="color:#fff">' + fmtTime(ms) + '</span></span>';
     }
-    tt.innerHTML = html;
-    tt.style.display = 'flex';
-    tt.style.left = (e.clientX + 14) + 'px';
-    tt.style.top = (e.clientY - 10) + 'px';
+    _showPieTooltip(html, e.clientX, e.clientY);
   });
-  canvas.addEventListener('mouseleave', function() { tt.style.display = 'none'; });
+  canvas.addEventListener('mouseleave', function() { _hidePieTooltip(); });
 }
 
 function startFloorTimer(aiDiv) {
@@ -1389,11 +1426,10 @@ function rebuildMessagesFromConversation() {
   for (var pi = 0; pi < _pieEls.length; pi++) {
     var pc = _pieEls[pi].canvas;
     drawPie(pc, _pieEls[pi].timing);
-    var pc_tt = document.getElementById('clock-tooltip');
     if (!pc._hasTooltip) {
       pc._hasTooltip = true;
       pc.addEventListener('mousemove', function(e) {
-        if (!this._segments || !this._total) { pc_tt.style.display = 'none'; return; }
+        if (!this._segments || !this._total) { _hidePieTooltip(); return; }
         var parts = [{key:'network',color:'#cb4b16',label:'Net'},{key:'tool',color:'#b58900',label:'Tool'},{key:'deepseek',color:'#859900',label:'DS'}];
         var segs = this._segments, map = {};
         for (var si = 0; si < segs.length; si++) { map[segs[si].key] = segs[si]; }
@@ -1404,12 +1440,9 @@ function rebuildMessagesFromConversation() {
             + '<svg width="10" height="10" style="flex-shrink:0"><circle cx="5" cy="5" r="4.5" fill="' + pp.color + '"/></svg>'
             + '<span style="color:#fff">' + fmtTime(ms) + '</span></span>';
         }
-        pc_tt.innerHTML = html;
-        pc_tt.style.display = 'flex';
-        pc_tt.style.left = (e.clientX + 14) + 'px';
-        pc_tt.style.top = (e.clientY - 10) + 'px';
+        _showPieTooltip(html, e.clientX, e.clientY);
       });
-      pc.addEventListener('mouseleave', function() { pc_tt.style.display = 'none'; });
+      pc.addEventListener('mouseleave', function() { _hidePieTooltip(); });
     }
   }
 
