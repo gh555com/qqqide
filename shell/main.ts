@@ -831,6 +831,8 @@ function registerIpc(): void {
         return true;
     });
     ipcMain.handle('qqq:fs:write', async (_e, p: string, content: any) => {
+        // Auto-mkdir parent dir (zero-risk pure benefit, prevents ENOENT for .lock etc.)
+        try { await fs.promises.mkdir(path.dirname(p), { recursive: true }); } catch { /* ignore */ }
         if (engineHost.isAlive()) {
             try { return await engineHost.invoke('fs.write', { path: p, content }); } catch { /* fall through */ }
         }

@@ -67,46 +67,55 @@
     }
   }
 
-  // ---- persist (qgs global SQLite — survives restarts & multi-window) ----
-  var STORAGE_NS = 'qqq.ai_viewport';
-  var _qgsState = null;
-  function _getQgsState() {
-    if (_qgsState) return _qgsState;
+  // ---- persist (localStorage — fast sync; qgs backup on unload) ----
+  var STORAGE_KEY = 'qqq-ai-viewport-projects';
+  var _shellHandle = null;  // cached — NEVER call qgs.ns() more than once
+
+  function _getShellHandle() {
+    if (_shellHandle) return _shellHandle;
     if (window.qgs && typeof window.qgs.ns === 'function') {
-      _qgsState = window.qgs.ns(STORAGE_NS);
+      _shellHandle = window.qgs.ns('qqq.shell', { v: 1, form: 'doc' });
     }
-    return _qgsState;
+    return _shellHandle;
   }
-  async function loadProjects() {
+
+  function loadProjects() {
     // 新窗口（?fresh=1）：强制清空，零项目
     if (window.location.search.indexOf('fresh=1') !== -1) {
       projects = [];
       return;
     }
-    // 优先从 qgs 全局 SQLite 加载
-    var s = _getQgsState();
-    if (s) {
-      try {
-        var data = await s.get('projects');
-        if (data && Array.isArray(data)) { projects = data; return; }
-      } catch (_) { }
-    }
-    // fallback: localStorage
+    // 优先从 qgs 全局 SQLite 加载（跨重启）
     try {
-      var raw = localStorage.getItem('qqq-ai-viewport-projects');
-      if (raw) { projects = JSON.parse(raw); }
+      var s = _getShellHandle();
+      if (s) {
+        s.get('ai_viewport_projects').then(function (data) {
+          if (data && Array.isArray(data) && data.length > 0) {
+            projects = data;
+            render();
+            window.dispatchEvent(new CustomEvent('qqq-ai-viewport-changed', { detail: { projects } }));
+          }
+        }).catch(function () { });
+      }
+    } catch (_) { }
+    // 同步回退：localStorage
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) { var parsed = JSON.parse(raw); if (parsed.length > 0) projects = parsed; }
     } catch (_) { }
   }
-  async function saveProjects() {
-    // 写入 qgs 全局 SQLite（跨窗口、跨重启）
-    var s = _getQgsState();
-    if (s) {
-      try { await s.setNow('projects', projects); } catch (_) { }
-    }
-    // 同时写 localStorage 作为 fallback
-    try { localStorage.setItem('qqq-ai-viewport-projects', JSON.stringify(projects)); } catch (_) { }
+  function saveProjects() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (_) { }
   }
-
+  // 窗口关闭前写入 qgs 全局快照（跨重启恢复）
+  window.addEventListener('beforeunload', function () {
+    try {
+      if (projects.length > 0) {
+        var s = _getShellHandle();
+        if (s) s.setNow('ai_viewport_projects', projects).catch(function () { });
+      }
+    } catch (_) { }
+  });
   // ---- close active dropdown ----
   function closeDropdown() {
     closeAllSubmenus();
@@ -419,10 +428,10 @@
     return projects.length > 0 ? projects[0] : null;
   }
 
-  async function build(host) {
+  function build(host) {
     container = host;
     container.className = 'aiv-container';
-    await loadProjects();
+    loadProjects();
     render();
     // close dropdown when clicking outside
     document.addEventListener('mousedown', (e) => {

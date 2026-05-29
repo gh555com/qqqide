@@ -69,6 +69,11 @@
     _scache.delete(_cacheKey(ns, key));
   }
 
+  // Module-level register dedup: multiple closures for same ns share ONE register IPC
+  var _nsReg = {};       // ns()     — keyed by nsName
+  var _qgReg = {};       // qg()     — keyed by rootDir + '\x00' + nsName
+  var _projReg = {};     // project() — keyed by dbPath + '\x00' + nsName
+
   function _ensureGlobalChgListener() {
     if (_globalChgUnsub) return;
     var b = _bridge();
@@ -88,7 +93,16 @@
     async function _ensureRegistered() {
       if (_registered) { return; }
       if (_registerPromise) { return _registerPromise; }
-      _registerPromise = (async () => {
+      // Cross-closure dedup: share ONE register IPC across all handles for this ns
+      var existing = _nsReg[nsName];
+      if (existing) {
+        if (existing.done) { _registered = true; return; }
+        _registerPromise = existing.promise.catch(function () { });
+        await _registerPromise;
+        _registered = true;
+        return;
+      }
+      var promise = (async () => {
         const b = _bridge();
         if (!b || !schema) { _registered = true; return; }
         try {
@@ -98,7 +112,10 @@
         }
         _registered = true;
       })();
-      return _registerPromise;
+      _nsReg[nsName] = { promise: promise, done: false };
+      _registerPromise = promise;
+      await promise;
+      _nsReg[nsName].done = true;
     }
 
     return {
@@ -235,7 +252,15 @@
     async function _ensureRegistered() {
       if (_registered) { return; }
       if (_registerPromise) { return _registerPromise; }
-      _registerPromise = (async () => {
+      var existing = _qgReg[_cacheNs];
+      if (existing) {
+        if (existing.done) { _registered = true; return; }
+        _registerPromise = existing.promise.catch(function () { });
+        await _registerPromise;
+        _registered = true;
+        return;
+      }
+      var promise = (async () => {
         const b = _bridge();
         if (!b || !b.qg) { _registered = true; return; }
         try { await b.qg.register(rootDir, nsName, schema); } catch (e) {
@@ -243,7 +268,10 @@
         }
         _registered = true;
       })();
-      return _registerPromise;
+      _qgReg[_cacheNs] = { promise: promise, done: false };
+      _registerPromise = promise;
+      await promise;
+      _qgReg[_cacheNs].done = true;
     }
 
     return {
@@ -339,7 +367,15 @@
     async function _ensureRegistered() {
       if (_registered) { return; }
       if (_registerPromise) { return _registerPromise; }
-      _registerPromise = (async () => {
+      var existing = _projReg[_cacheNs];
+      if (existing) {
+        if (existing.done) { _registered = true; return; }
+        _registerPromise = existing.promise.catch(function () { });
+        await _registerPromise;
+        _registered = true;
+        return;
+      }
+      var promise = (async () => {
         const b = _bridge();
         if (!b || !b.project) { _registered = true; return; }
         try { await b.project.register(dbPath, nsName, schema); } catch (e) {
@@ -347,7 +383,10 @@
         }
         _registered = true;
       })();
-      return _registerPromise;
+      _projReg[_cacheNs] = { promise: promise, done: false };
+      _registerPromise = promise;
+      await promise;
+      _projReg[_cacheNs].done = true;
     }
 
     return {

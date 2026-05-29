@@ -310,6 +310,8 @@ export class StateStore extends EventEmitter {
             if (existing.form !== schema.form) {
                 throw new Error(`state.register: ns "${ns}" form mismatch (existing=${existing.form}, new=${schema.form})`);
             }
+            // Already registered with matching form — no-op (avoid IPC noise & redundant DB write)
+            return;
         }
         this.schemas.set(ns, schema);
         this._persistSchema(ns, schema);
@@ -509,6 +511,8 @@ export class StateStore extends EventEmitter {
             const buf = Buffer.from(data);
             // Atomic write: tmp + rename
             const tmp = this.dbPath + '.tmp.' + Date.now();
+            // 确保父目录存在（兜底：构造函数中已创建，但可能被外部删除）
+            try { fs.mkdirSync(path.dirname(this.dbPath), { recursive: true }); } catch { /* ignore */ }
             fs.writeFileSync(tmp, buf as any);
             try {
                 fs.renameSync(tmp, this.dbPath);

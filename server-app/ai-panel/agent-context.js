@@ -205,8 +205,14 @@
         var MAX_RETRIES = 3;
         for (var retry = 0; retry < MAX_RETRIES; retry++) {
             try {
-                var parsed = await self._callCompactAPI(basePrompt);
-                if (!parsed) throw new Error('parse_or_network_failed');
+                var result = await self._callCompactAPI(basePrompt);
+                if (!result || !result.parsed) throw new Error('parse_or_network_failed');
+                // accumulate compression timing: networkWait(ttfb) -> red, deepseek processing(rest) -> green
+                if (result.ttfbMs > 0 && self._floorTiming) {
+                    self._floorTiming.networkMs += result.ttfbMs;
+                    self._floorTiming.deepseekMs += result.totalMs - result.ttfbMs;
+                }
+                var parsed = result.parsed;
 
                 // 校验输出大小：超 95% 阈值 → 输出可能被截断，重试
                 var outputText = JSON.stringify(parsed);
@@ -251,48 +257,55 @@
     };
 
     // ═══ 调用 API 做精简（非流式，复用 gateway） ═══
-    AgentLoop.prototype._callCompactAPI = function (prompt) {
+    AgentLoop.prototype._callCompactAPI = async function (prompt) {
         var self = this;
+        var _fetchStart = performance.now();
 
-        // 尝试从 localStorage 获取 token
         var token = '';
         try { token = localStorage.getItem('qqq-ai-token') || ''; } catch (_) { }
 
         if (!token || typeof GATEWAY_URL === 'undefined') {
-            return Promise.resolve(null);
+            return { parsed: null, ttfbMs: 0, totalMs: 0 };
         }
 
-        return fetch(GATEWAY_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + token
-            },
-            signal: self.abortController ? self.abortController.signal : undefined,
-            body: JSON.stringify({
-                messages: [
-                    { role: 'system', content: 'You are a context compression engine. Extract structured facts and update narrative. Output ONLY valid JSON — no markdown, no explanation. Be concise and precise. Your output MUST fit within the token budget.' },
-                    { role: 'user', content: prompt }
-                ],
-                stream: false,
-                thinking: { type: 'enabled' },
-                reasoning_effort: 'max',
-                max_tokens: COMPACT_MAX_TOKENS
-            })
-        }).then(function (resp) {
-            if (!resp.ok) return null;
-            return resp.json();
-        }).then(function (data) {
-            if (!data) return null;
-            var text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-            if (!text) return null;
-            var match = text.match(/\{[\s\S]*\}/);
-            if (!match) return null;
-            return JSON.parse(match[0]);
-        });
-    };
+        try {
+            var resp = await fetch(GATEWAY_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                signal: self.abortController ? self.abortController.signal : undefined,
+                body: JSON.stringify({
+                    messages: [
+                        { role: 'system', content: 'You are a context compression engine. Extract structured facts and update narrative. Output ONLY valid JSON \u2014 no markdown, no explanation. Be concise and precise. Your output MUST fit within the token budget.' },
+                        { role: 'user', content: prompt }
+                    ],
+                    stream: false,
+                    thinking: { type: 'enabled' },
+                    reasoning_effort: 'max',
+                    max_tokens: COMPACT_MAX_TOKENS
+                })
+            });
 
-    // ═══ 构建动态上下文（注入到 API 消息末尾） ═══
+            var _ttfbMs = performance.now() - _fetchStart;
+            if (!resp.ok) return { parsed: null, ttfbMs: _ttfbMs, totalMs: _ttfbMs };
+
+            var data = await resp.json();
+            var _totalMs = performance.now() - _fetchStart;
+            if (!data) return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+
+            var text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+            if (!text) return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+
+            var match = text.match(/\{[\s\S]*\}/);
+            if (!match) return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+
+            return { parsed: JSON.parse(match[0]), ttfbMs: _ttfbMs, totalMs: _totalMs };
+        } catch (err) {
+            return { parsed: null, ttfbMs: performance.now() - _fetchStart, totalMs: performance.now() - _fetchStart };
+        }
+    };// ═══ 构建动态上下文（注入到 API 消息末尾） ═══
     AgentLoop.prototype._buildDynamicContext = function (currentQuery) {
         var ctx = '';
         if (this._ctx.narrative) {

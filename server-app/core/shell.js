@@ -485,6 +485,7 @@
 
       // Open in tab manager
       const tab = window.qqqTabs.openFile(filePath, {
+        preview: e.detail.preview,
         onRender: (pane, tabObj) => {
           // Use Monaco editor to render file
           if (window.qqqEditor) {

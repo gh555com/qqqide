@@ -25,6 +25,7 @@
   let hostEl = null;          // #qqq-x-upper
   const groups = [];          // [{ idx, type, el, barEl, contentEl, tabs[], activeTabId }]
   let _nextTabId = 1;
+  let _activeTabMenu = null; // track open right-click context menu
 
   // ---- DOM builders ----
   function createGroupEl(type) {
@@ -74,6 +75,7 @@
     const nameSpan = document.createElement('span');
     nameSpan.className = 'qqq-tab-name';
     nameSpan.textContent = tab.title;
+    nameSpan.style.fontStyle = tab.preview ? 'italic' : 'normal';
     btn.appendChild(nameSpan);
 
     // close button (not on gaea-fixed tabs unless explicitly closable)
@@ -93,13 +95,12 @@
       activateTab(grp, tab.id);
     });
 
-    // Right-click context menu: open in right-most file group
+    // Right-click context menu: only for file groups (not gaea)
     if (tab.filePath) {
       btn.addEventListener('contextmenu', e => {
         e.preventDefault();
         e.stopPropagation();
-        console.log('[tab-manager] contextmenu on tab:', tab.filePath, 'groups:', groups.length, 'fileGroups:', groups.filter(g => g.type === 'file').length);
-        openFileInRightGroup(tab.filePath);
+        showTabContextMenu(e, grp, tab);
       });
     }
 
@@ -155,6 +156,145 @@
       const newIdx = Math.min(idx, grp.tabs.length - 1);
       activateTab(grp, grp.tabs[newIdx].id);
     }
+  }
+
+  // ---- Close others / close all ----
+  function closeOthersInGroup(grp, keepTabId) {
+    const tabsToClose = grp.tabs.filter(t => t.id !== keepTabId);
+    for (const t of tabsToClose) {
+      if (grp.tabs.find(x => x.id === t.id)) closeTabById(grp, t.id);
+    }
+  }
+
+  function closeAllInGroup(grp) {
+    const tabsToClose = [...grp.tabs];
+    for (const t of tabsToClose) {
+      if (grp.tabs.find(x => x.id === t.id)) closeTabById(grp, t.id);
+    }
+  }
+
+  // ---- Tab dirty state (asterisk) ----
+  function findFileTabByFilePath(filePath) {
+    for (const grp of groups) {
+      if (grp.type !== 'file') continue;
+      const t = grp.tabs.find(t => t.filePath === filePath);
+      if (t) return { grp, tab: t };
+    }
+    return null;
+  }
+
+  function updateTabBtnTitle(tab) {
+    // find all tab buttons for this tab across all groups (same filePath)
+    for (const grp of groups) {
+      if (grp.type !== 'file') continue;
+      for (const t of grp.tabs) {
+        if (t.filePath !== tab.filePath) continue;
+        const btn = grp.barEl.querySelector(`[data-tab-id="${t.id}"]`);
+        if (!btn) continue;
+        const nameSpan = btn.querySelector('.qqq-tab-name');
+        if (!nameSpan) continue;
+        const baseName = t.filePath.split(/[/\\]/).pop() || t.title;
+        nameSpan.textContent = t.dirty ? '* ' + baseName : baseName;
+        nameSpan.style.fontStyle = t.preview ? 'italic' : 'normal';
+      }
+    }
+  }
+
+  function setTabDirty(filePath, dirty) {
+    for (const grp of groups) {
+      if (grp.type !== 'file') continue;
+      for (const t of grp.tabs) {
+        if (t.filePath !== filePath) continue;
+        t.dirty = dirty;
+        // First edit → pin the preview tab (exits preview mode)
+        if (dirty && t.preview) {
+          t.preview = false;
+        }
+      }
+    }
+    // Update title display
+    for (const grp of groups) {
+      if (grp.type !== 'file') continue;
+      for (const t of grp.tabs) {
+        if (t.filePath !== filePath) continue;
+        updateTabBtnTitle(t);
+      }
+    }
+  }
+
+  // ---- Context menu for file tabs ----
+  function closeTabMenu() {
+    if (_activeTabMenu) { try { _activeTabMenu.remove(); } catch (_) { } _activeTabMenu = null; }
+  }
+
+  function showTabContextMenu(e, grp, tab) {
+    closeTabMenu();
+    const fileGroups = groups.filter(g => g.type === 'file');
+    const isFirstFileGroup = fileGroups.length > 0 && grp === fileGroups[0];
+    const isSecondFileGroup = fileGroups.length > 1 && grp === fileGroups[fileGroups.length - 1];
+
+    const pop = document.createElement('div');
+    pop.className = 'qqq-tab-context-menu';
+    pop.style.cssText =
+      'position:fixed; z-index:99999; ' +
+      'left:' + e.clientX + 'px; top:' + e.clientY + 'px; ' +
+      'min-width:140px; background:var(--card-bg); ' +
+      'border:1px solid var(--border-color); border-radius:3px; ' +
+      'box-shadow:0 4px 16px rgba(0,0,0,.18); padding:4px 0;';
+
+    function addRow(label, onClick) {
+      const row = document.createElement('div');
+      row.style.cssText =
+        'display:flex; align-items:center; padding:5px 14px; ' +
+        'cursor:pointer; font-size:12px; color:var(--text-primary); ' +
+        'white-space:nowrap; user-select:none;';
+      row.textContent = label;
+      row.addEventListener('mouseenter', () => { row.style.background = 'var(--background-color)'; });
+      row.addEventListener('mouseleave', () => { row.style.background = ''; });
+      row.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        closeTabMenu();
+        onClick();
+      });
+      pop.appendChild(row);
+    }
+
+    // Row 1: open in adjacent group
+    if (isFirstFileGroup) {
+      addRow('在右侧再开', () => { openFileInRightGroup(tab.filePath); });
+    } else if (isSecondFileGroup) {
+      addRow('在左侧再开', () => { openFileInLeftGroup(tab.filePath); });
+    }
+
+    // Row 2: close others
+    if (grp.tabs.length > 1) {
+      addRow('关闭其他', () => { closeOthersInGroup(grp, tab.id); });
+    }
+
+    // Row 3: close all
+    if (grp.tabs.length > 0) {
+      addRow('关闭所有', () => { closeAllInGroup(grp); });
+    }
+
+    document.body.appendChild(pop);
+    _activeTabMenu = pop;
+
+    // global click to close
+    setTimeout(() => {
+      document.addEventListener('mousedown', _onDocMouseDownForTabMenu, { once: true });
+    }, 0);
+  }
+
+  function _onDocMouseDownForTabMenu(e) {
+    if (!_activeTabMenu) return;
+    if (_activeTabMenu.contains(e.target)) {
+      // re-register for next click
+      setTimeout(() => {
+        document.addEventListener('mousedown', _onDocMouseDownForTabMenu, { once: true });
+      }, 0);
+      return;
+    }
+    closeTabMenu();
   }
 
   // ---- Add/remove groups ----
@@ -284,6 +424,36 @@
     return tab;
   }
 
+  // ---- Public: replace preview tab content (switches file in-place) ----
+  function replaceFileInTab(grp, tab, filePath, opts) {
+    const fileName = filePath.split(/[/\\]/).pop() || filePath;
+
+    // Clean old pane content
+    if (tab.paneEl) { tab.paneEl.innerHTML = ''; }
+
+    // Update tab identity
+    tab.filePath = filePath;
+    tab.title = fileName;
+    tab.dirty = false;
+    tab.preview = true;
+
+    // Refresh button title (italic for preview) + dataset for context menu
+    updateTabBtnTitle(tab);
+    const btn = grp.barEl.querySelector(`[data-tab-id="${tab.id}"]`);
+    if (btn) btn.dataset.filePath = filePath;
+
+    activateTab(grp, tab.id);
+
+    // Re-render content
+    if (opts && opts.onRender) {
+      try { opts.onRender(tab.paneEl, tab); }
+      catch (e) { if (tab.paneEl) tab.paneEl.textContent = 'render error: ' + (e && e.message); }
+    }
+
+    persistOpenTabs();
+    return tab;
+  }
+
   // ---- Public: open file in file group ----
   function openFile(filePath, opts) {
     const fileName = filePath.split(/[/\\]/).pop() || filePath;
@@ -305,6 +475,13 @@
     }
     if (!fileGrp) return null; // max groups reached
 
+    // Preview mode: reuse existing preview tab if any (not yet pinned)
+    const previewTab = fileGrp.tabs.find(t => t.preview);
+    if (previewTab) {
+      return replaceFileInTab(fileGrp, previewTab, filePath, opts);
+    }
+
+    // No preview tab — create new one (preview mode)
     const tabId = _nextTabId++;
     const tab = {
       id: tabId,
@@ -313,22 +490,21 @@
       closable: true,
       onActivate: null,
       onClose: null,
+      preview: (opts && typeof opts.preview === 'boolean') ? opts.preview : true,
+      dirty: false,
     };
 
     const btn = createTabBtn(tab, fileGrp);
+    btn.dataset.filePath = filePath;
     fileGrp.barEl.appendChild(btn);
 
     const pane = createTabPane(tab);
     fileGrp.contentEl.appendChild(pane);
-
-    // The actual content (Monaco editor) will be rendered by the caller
-    // via tab.paneEl reference
     tab.paneEl = pane;
 
     fileGrp.tabs.push(tab);
     activateTab(fileGrp, tabId);
 
-    // fire open event
     if (opts && opts.onRender) {
       try { opts.onRender(pane, tab); }
       catch (e) { pane.textContent = 'render error: ' + (e && e.message); }
@@ -348,17 +524,13 @@
   function openFileInRightGroup(filePath) {
     const fileName = filePath.split(/[/\\]/).pop() || filePath;
     const fileGroups = groups.filter(g => g.type === 'file');
-    console.log('[tab-manager] openFileInRightGroup:', filePath, 'fileGroups.length:', fileGroups.length, 'MAX_GROUPS:', MAX_GROUPS);
 
     // Find or create the right-most file group
     let targetGrp;
     if (fileGroups.length >= 2) {
       targetGrp = fileGroups[fileGroups.length - 1]; // use the last file group
-      console.log('[tab-manager] reusing existing right group');
     } else {
-      // Need to create another file group
       targetGrp = addGroup('file');
-      console.log('[tab-manager] addGroup result:', targetGrp ? 'OK' : 'NULL', 'groups now:', groups.length);
     }
     if (!targetGrp) return null;
 
@@ -369,18 +541,76 @@
       return existing;
     }
 
+    // Preview mode: reuse existing preview tab
+    const previewTab = targetGrp.tabs.find(t => t.preview);
+    if (previewTab) {
+      if (previewTab.paneEl) previewTab.paneEl.innerHTML = '';
+      previewTab.filePath = filePath;
+      previewTab.title = fileName;
+      previewTab.dirty = false;
+      previewTab.preview = true;
+      updateTabBtnTitle(previewTab);
+      const btn = targetGrp.barEl.querySelector(`[data-tab-id="${previewTab.id}"]`);
+      if (btn) btn.dataset.filePath = filePath;
+      activateTab(targetGrp, previewTab.id);
+      document.dispatchEvent(new CustomEvent('qqq-file-open-in-pane', { detail: { path: filePath, pane: previewTab.paneEl } }));
+      persistOpenTabs();
+      return previewTab;
+    }
+
     const tabId = _nextTabId++;
-    const tab = { id: tabId, title: fileName, filePath: filePath, closable: true, onActivate: null, onClose: null };
+    const tab = { id: tabId, title: fileName, filePath: filePath, closable: true, onActivate: null, onClose: null, preview: true, dirty: false };
     const btn = createTabBtn(tab, targetGrp);
+    btn.dataset.filePath = filePath;
     targetGrp.barEl.appendChild(btn);
     const pane = createTabPane(tab);
     targetGrp.contentEl.appendChild(pane);
     tab.paneEl = pane;
     targetGrp.tabs.push(tab);
     activateTab(targetGrp, tabId);
-
-    // fire open event for editor
     document.dispatchEvent(new CustomEvent('qqq-file-open-in-pane', { detail: { path: filePath, pane: pane } }));
+    persistOpenTabs();
+    return tab;
+  }
+
+  // ---- Public: open file in left (first) file group ----
+  function openFileInLeftGroup(filePath) {
+    const fileName = filePath.split(/[/\\]/).pop() || filePath;
+    const fileGroups = groups.filter(g => g.type === 'file');
+    if (fileGroups.length === 0) return openFile(filePath);
+    const targetGrp = fileGroups[0];
+    const existing = targetGrp.tabs.find(t => t.filePath === filePath);
+    if (existing) { activateTab(targetGrp, existing.id); return existing; }
+
+    // Preview mode: reuse existing preview tab
+    const previewTab = targetGrp.tabs.find(t => t.preview);
+    if (previewTab) {
+      if (previewTab.paneEl) previewTab.paneEl.innerHTML = '';
+      previewTab.filePath = filePath;
+      previewTab.title = fileName;
+      previewTab.dirty = false;
+      previewTab.preview = true;
+      updateTabBtnTitle(previewTab);
+      const btn = targetGrp.barEl.querySelector(`[data-tab-id="${previewTab.id}"]`);
+      if (btn) btn.dataset.filePath = filePath;
+      activateTab(targetGrp, previewTab.id);
+      document.dispatchEvent(new CustomEvent('qqq-file-open-in-pane', { detail: { path: filePath, pane: previewTab.paneEl } }));
+      persistOpenTabs();
+      return previewTab;
+    }
+
+    const tabId = _nextTabId++;
+    const tab = { id: tabId, title: fileName, filePath: filePath, closable: true, onActivate: null, onClose: null, preview: true, dirty: false };
+    const btn = createTabBtn(tab, targetGrp);
+    btn.dataset.filePath = filePath;
+    targetGrp.barEl.appendChild(btn);
+    const pane = createTabPane(tab);
+    targetGrp.contentEl.appendChild(pane);
+    tab.paneEl = pane;
+    targetGrp.tabs.push(tab);
+    activateTab(targetGrp, tabId);
+    document.dispatchEvent(new CustomEvent('qqq-file-open-in-pane', { detail: { path: filePath, pane: pane } }));
+    persistOpenTabs();
     return tab;
   }
 
@@ -395,11 +625,27 @@
   const TAB_STATE_NS = 'qqq.shell';
   const TAB_STATE_KEY = 'open_tabs';
   let _restored = false;
+  let _tabStateHandle = null;   // cached handle — NEVER call qgs.simple() more than once
+  let _persistTimer = null;     // trailing debounce (250ms)
+
+  function _tabState() {
+    if (_tabStateHandle) return _tabStateHandle;
+    if (!window.qgs || !window.qgs.simple) return null;
+    _tabStateHandle = window.qgs.simple(TAB_STATE_NS);
+    return _tabStateHandle;
+  }
 
   function persistOpenTabs() {
     if (!_restored) return;
-    if (!window.qgs || !window.qgs.simple) return;
-    const state = window.qgs.simple(TAB_STATE_NS);
+    // Trailing debounce: collapse rapid calls (restore 17 tabs → 1 write)
+    if (_persistTimer) clearTimeout(_persistTimer);
+    _persistTimer = setTimeout(_doPersistOpenTabs, 250);
+  }
+
+  function _doPersistOpenTabs() {
+    _persistTimer = null;
+    const state = _tabState();
+    if (!state) return;
     const tabs = [];
     for (const grp of groups) {
       if (grp.type !== 'file') continue;
@@ -409,27 +655,28 @@
             path: t.filePath,
             groupIdx: grp.idx,
             active: t.id === grp.activeTabId,
+            preview: !!t.preview,
           });
         }
       }
     }
     if (tabs.length === 0) {
-      state.del(TAB_STATE_KEY).catch(() => {});
+      state.del(TAB_STATE_KEY).catch(() => { });
     } else {
-      state.set(TAB_STATE_KEY, tabs).catch(() => {});
+      state.set(TAB_STATE_KEY, tabs).catch(() => { });
     }
   }
 
   async function restoreOpenTabs() {
     _restored = true;
-    if (!window.qgs || !window.qgs.simple) return;
+    const state = _tabState();
+    if (!state) return;
     try {
-      const state = window.qgs.simple(TAB_STATE_NS);
       const tabs = await state.get(TAB_STATE_KEY);
       if (!Array.isArray(tabs) || tabs.length === 0) return;
       for (const t of tabs) {
         if (t.path) {
-          document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: t.path, groupIdx: t.groupIdx } }));
+          document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: t.path, groupIdx: t.groupIdx, preview: !!t.preview } }));
         }
       }
     } catch (e) { /* ignore */ }
@@ -447,20 +694,20 @@
 
   // Hook: save after every tab change
   const _origOpenFile = openFile;
-  openFile = function(filePath, opts) {
+  openFile = function (filePath, opts) {
     const result = _origOpenFile(filePath, opts);
     persistOpenTabs();
     return result;
   };
 
   const _origActivateTab = activateTab;
-  activateTab = function(grp, tabId) {
+  activateTab = function (grp, tabId) {
     _origActivateTab(grp, tabId);
     persistOpenTabs();
   };
 
   const _origCloseTabById = closeTabById;
-  closeTabById = function(grp, tabId) {
+  closeTabById = function (grp, tabId) {
     _origCloseTabById(grp, tabId);
     persistOpenTabs();
   };
@@ -470,15 +717,24 @@
   function getActiveGroup() { return groups[groups.length - 1] || null; }
   function getGaeaGroup() { return groups.find(g => g.type === 'gaea') || null; }
 
+  // ---- Listen for tab dirty events from editor ----
+  document.addEventListener('qqq-tab-dirty', e => {
+    const path = e.detail && e.detail.path;
+    const dirty = e.detail && e.detail.dirty;
+    if (path) setTabDirty(path, dirty);
+  });
+
   window.qqqTabs = {
     init,
     addGaeaTab,
     openFile,
     openFileInRightGroup,
+    openFileInLeftGroup,
     splitRight,
     closeTab,
     getGroups,
     getActiveGroup,
     getGaeaGroup,
+    setTabDirty,
   };
 })();

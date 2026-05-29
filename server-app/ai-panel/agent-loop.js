@@ -130,7 +130,8 @@ var AgentLoop = (function () {
         self._floorCostWge = 0;
         self._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
         self._currentFloorSummary = '';
-        self._floorTiming = { networkMs: 0, workMs: 0 };
+        self._floorTiming = { networkMs: 0, deepseekMs: 0, toolMs: 0, floorStartPerf: performance.now() };
+        self._floorStartServerMs = Date.now() + (self._serverDrift || 0);
         self._currentFloorSummaryLang = '';
 
         // ═══ 视觉预分析：阿里眼睛(Qwen VL) → 文本 → DeepSeek大脑 ═══
@@ -153,7 +154,7 @@ var AgentLoop = (function () {
                 self._visionCostWge = 0;
             }
         }
-        if (_visionStart) self._floorTiming.workMs += performance.now() - _visionStart;
+        if (_visionStart) self._floorTiming.deepseekMs += performance.now() - _visionStart;
 
         // 推入用户消息（纯文本 — DeepSeek 只看得懂 text）
         var finalContent = (userContent || '') + visionText;
@@ -187,14 +188,21 @@ var AgentLoop = (function () {
         }
         self._log('→ user: ' + (userContent || '').slice(0, 80) + (images ? ' +' + images.length + ' images' : '') + (visionText ? ' [vision done]' : ''));
 
-        // 判断是否琐碎/闲聊 → 禁用工具；但有图片时始终 PRO
+        // 智能等级：优先手动选择，否则自动判断
         var trimmed = userContent.trim();
         var hasImages = images && images.length > 0;
-        var isTrivial = !hasImages && typeof TRIVIAL_REGEX !== 'undefined' ? TRIVIAL_REGEX.test(trimmed) : false;
-        var isChat = !hasImages && !isTrivial && typeof CHAT_REGEX !== 'undefined' ? CHAT_REGEX.test(trimmed) : false;
-        var tier = (hasImages || !isTrivial && !isChat) ? TIER_PRO : TIER_FLASH;
-        var forceNoTools = !hasImages && (isTrivial || isChat);
-        self._log('◆ ' + tier.label + ' (trivial=' + isTrivial + ', chat=' + isChat + ', noTools=' + forceNoTools + ')');
+        var tier, forceNoTools;
+        if (opts.tier) {
+            tier = opts.tier;
+            forceNoTools = false;
+            self._log('◆ ' + tier.label + ' (manual)');
+        } else {
+            var isTrivial = !hasImages && typeof TRIVIAL_REGEX !== 'undefined' ? TRIVIAL_REGEX.test(trimmed) : false;
+            var isChat = !hasImages && !isTrivial && typeof CHAT_REGEX !== 'undefined' ? CHAT_REGEX.test(trimmed) : false;
+            tier = (hasImages || !isTrivial && !isChat) ? TIER_PRO : TIER_FLASH;
+            forceNoTools = !hasImages && (isTrivial || isChat);
+            self._log('◆ ' + tier.label + ' (auto: trivial=' + isTrivial + ', chat=' + isChat + ', noTools=' + forceNoTools + ')');
+        }
 
         var maxIterations = forceNoTools ? 1 : 200;
         var conversationSnapshot = self.conversation.length;
@@ -222,7 +230,7 @@ var AgentLoop = (function () {
                 // accumulate timing from gateway call
                 if (response._ttfbMs !== undefined) {
                     self._floorTiming.networkMs += response._ttfbMs;
-                    self._floorTiming.workMs += response._streamMs;
+                    self._floorTiming.deepseekMs += response._streamMs;
                 }
                 // API 精确上下文 token 计数（DeepSeek usage.prompt_tokens）
                 if (response._usage && response._usage.prompt_tokens) {
@@ -265,7 +273,7 @@ var AgentLoop = (function () {
                     // 并行执行工具
                     var _toolStart = performance.now();
                     await self._executeToolCallsParallel(response.tool_calls, onToolResult);
-                    self._floorTiming.workMs += performance.now() - _toolStart;
+                    self._floorTiming.toolMs += performance.now() - _toolStart;
                     continue;
                 }
 
@@ -286,7 +294,7 @@ var AgentLoop = (function () {
                     self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '' });
                     if (finalResp._ttfbMs !== undefined) {
                         self._floorTiming.networkMs += finalResp._ttfbMs;
-                        self._floorTiming.workMs += finalResp._streamMs;
+                        self._floorTiming.deepseekMs += finalResp._streamMs;
                     }
                     self.conversation.push({ role: 'assistant', content: finalResp.content, _floor: self._ctx.totalFloors });
                     self._extractFloorMarkers(finalResp.content);
@@ -569,6 +577,10 @@ var AgentLoop = (function () {
                     return null;
                 }
 
+                var _serverDateHdr = resp.headers.get('Date');
+                if (_serverDateHdr) {
+                    self._serverDrift = new Date(_serverDateHdr).getTime() - Date.now();
+                }
                 self._log('✓ gateway ' + resp.status + ' streaming...');
                 self._consecutiveFetchErrors = 0;
                 var _result = await self._parseSSE(resp.body, onToken, onReasoning);
@@ -682,6 +694,14 @@ var AgentLoop = (function () {
             return { type: 'message', content: finalized.cleanContent, reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage };
         }
         return _usage ? { _usage: _usage } : null;
+    };
+
+    // ---- timing getters (for UI clock + pie) ----
+    AgentLoop.prototype.getFloorTiming = function () {
+        return this._floorTiming;
+    };
+    AgentLoop.prototype.getServerDrift = function () {
+        return this._serverDrift;
     };
 
     // ---- 并行工具执行 ----
@@ -877,6 +897,14 @@ var AgentLoop = (function () {
         } finally {
             clearTimeout(tid);
         }
+    };
+
+    // ---- 引导注入：将引导消息插入对话（不触发 API 调用） ----
+    AgentLoop.prototype.inject = function (message) {
+        if (!this.conversation) return false;
+        this.conversation.push({ role: 'user', content: message, _injected: true, _floor: this._ctx.totalFloors });
+        this._log('→ injected: ' + message.slice(0, 60));
+        return true;
     };
 
     return AgentLoop;

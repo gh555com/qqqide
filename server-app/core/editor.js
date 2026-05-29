@@ -89,14 +89,14 @@
 
   // Map file extension -> monaco language id
   const LANG_BY_EXT = {
-    '.js':'javascript','.mjs':'javascript','.ts':'typescript','.tsx':'typescript','.jsx':'javascript',
-    '.json':'json','.md':'markdown','.markdown':'markdown',
-    '.py':'python','.rs':'rust','.go':'go','.java':'java','.cpp':'cpp','.c':'c','.h':'cpp',
-    '.html':'html','.htm':'html','.css':'css','.scss':'scss','.less':'less',
-    '.xml':'xml','.yml':'yaml','.yaml':'yaml','.toml':'plaintext','.ini':'ini',
-    '.sh':'shell','.bash':'shell','.bat':'bat','.ps1':'powershell',
-    '.sql':'sql','.lua':'lua','.r':'r','.rb':'ruby','.php':'php','.swift':'swift',
-    '.kt':'kotlin','.dart':'dart','.vue':'html',
+    '.js': 'javascript', '.mjs': 'javascript', '.ts': 'typescript', '.tsx': 'typescript', '.jsx': 'javascript',
+    '.json': 'json', '.md': 'markdown', '.markdown': 'markdown',
+    '.py': 'python', '.rs': 'rust', '.go': 'go', '.java': 'java', '.cpp': 'cpp', '.c': 'c', '.h': 'cpp',
+    '.html': 'html', '.htm': 'html', '.css': 'css', '.scss': 'scss', '.less': 'less',
+    '.xml': 'xml', '.yml': 'yaml', '.yaml': 'yaml', '.toml': 'plaintext', '.ini': 'ini',
+    '.sh': 'shell', '.bash': 'shell', '.bat': 'bat', '.ps1': 'powershell',
+    '.sql': 'sql', '.lua': 'lua', '.r': 'r', '.rb': 'ruby', '.php': 'php', '.swift': 'swift',
+    '.kt': 'kotlin', '.dart': 'dart', '.vue': 'html',
   };
   function langOf(file) {
     if (!file) return 'plaintext';
@@ -173,9 +173,9 @@
           severity: severity,
           message: d.message || '',
           startLineNumber: (d.range && d.range.start ? d.range.start.line : 0) + 1,
-          startColumn:    (d.range && d.range.start ? d.range.start.character : 0) + 1,
-          endLineNumber:  (d.range && d.range.end   ? d.range.end.line   : 0) + 1,
-          endColumn:      (d.range && d.range.end   ? d.range.end.character : 0) + 1,
+          startColumn: (d.range && d.range.start ? d.range.start.character : 0) + 1,
+          endLineNumber: (d.range && d.range.end ? d.range.end.line : 0) + 1,
+          endColumn: (d.range && d.range.end ? d.range.end.character : 0) + 1,
           source: 'qzlsp',
         };
       });
@@ -330,7 +330,7 @@
       _editorRef = ed;
       // 主题切换时同步 Monaco
       if (window.qqqTheme) {
-        window.qqqTheme.onChange(function(dark) {
+        window.qqqTheme.onChange(function (dark) {
           monaco.editor.setTheme(dark ? 'solarized-dark' : 'solarized-light');
         });
       }
@@ -339,6 +339,10 @@
       ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => save());
       ed.onDidChangeModelContent(function (e) {
         dirty = true; updateTitle();
+        // dispatch for tab-manager if currentFile is set
+        if (currentFile) {
+          document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: currentFile, dirty: true } }));
+        }
         if (!lspLang || !currentFile) return;
         lspVersion++;
         var version = lspVersion;
@@ -349,7 +353,7 @@
           if (ch.range) {
             item.range = {
               start: { line: ch.range.startLineNumber - 1, character: ch.range.startColumn - 1 },
-              end:   { line: ch.range.endLineNumber - 1,   character: ch.range.endColumn - 1 }
+              end: { line: ch.range.endLineNumber - 1, character: ch.range.endColumn - 1 }
             };
           }
           changes.push(item);
@@ -363,6 +367,16 @@
             console.warn('[editor] LSP changeDocument failed:', ex && ex.message);
           }
         }, LSP_DEBOUNCE_MS);
+      });
+      // Auto-save on blur
+      ed.onDidBlurEditorWidget(() => {
+        if (dirty && currentFile) {
+          save().then(ok => {
+            if (ok && currentFile) {
+              document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: currentFile, dirty: false } }));
+            }
+          });
+        }
       });
       // q1 三件套 attach (no-op if module not yet loaded; will retry)
       attachQ1(ed);
@@ -469,10 +483,39 @@
       if (!_monacoRef) _monacoRef = monaco;
       if (!_editorRef) _editorRef = ed;
 
-      // Ctrl+S saves this file
+      // ---- Dirty state tracking per pane ----
+      let _paneDirty = false;
+
+      function _markDirty() {
+        if (!_paneDirty) { _paneDirty = true; _dispatchDirty(true); }
+      }
+      function _markClean() {
+        if (_paneDirty) { _paneDirty = false; _dispatchDirty(false); }
+      }
+      function _dispatchDirty(d) {
+        document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: d } }));
+      }
+
+      ed.onDidChangeModelContent(() => { _markDirty(); });
+
+      // ---- Auto-save on editor blur ----
+      ed.onDidBlurEditorWidget(async () => {
+        if (_paneDirty && filePath) {
+          try {
+            await bridge.fs.write(filePath, ed.getValue());
+            _markClean();
+            console.log('[editor] auto-saved on blur:', filePath);
+          } catch (err) {
+            console.error('[editor] auto-save failed:', filePath, err && err.message);
+          }
+        }
+      });
+
+      // ---- Ctrl+S ----
       ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
         try {
-          await bridge.fs.write(filePath, ed.getValue());
+          var val = ed.getValue(); console.log('[editor] saving: ' + filePath + ' (' + val.length + ' chars)'); await bridge.fs.write(filePath, val);
+          _markClean();
           console.log('[editor] saved:', filePath);
         } catch (e) {
           console.error('[editor] save failed:', e);
@@ -496,6 +539,20 @@
       ta.style.cssText = 'width:100%; height:100%; box-sizing:border-box; border:0; outline:0; padding:12px; font-family:ui-monospace,Consolas,Menlo,monospace; font-size:13px; resize:none; background:var(--background-color); color:var(--text-primary);';
       ta.value = content == null ? '' : String(content);
       host.appendChild(ta);
+      // fallback: dirty tracking + blur auto-save
+      let _fbDirty = false;
+      ta.addEventListener('input', () => {
+        if (!_fbDirty) { _fbDirty = true; document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: true } })); }
+      });
+      ta.addEventListener('blur', async () => {
+        if (_fbDirty && filePath) {
+          try {
+            await bridge.fs.write(filePath, ta.value);
+            _fbDirty = false;
+            document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: false } }));
+          } catch (err) { /* ignore */ }
+        }
+      });
       return null;
     }
   }

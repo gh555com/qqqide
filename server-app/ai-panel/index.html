@@ -88,10 +88,16 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #input{flex:1;min-width:0;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:150px;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;outline:none}
 #input:focus{outline:1px solid var(--blue)}
 #input:empty::before{content:attr(data-placeholder);color:var(--base01);opacity:.5;pointer-events:none}
-#send-btn{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:0 14px;cursor:pointer;font-size:13px;height:36px}
-#send-btn:hover{background:var(--base3)}
-#send-btn:disabled{opacity:.4;cursor:default}
-#send-btn.stop{background:var(--red);color:#fff;border-color:var(--red);opacity:1;cursor:pointer}
+#btn-row{display:flex;gap:6px;align-items:center}
+#btn-row button{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:4px 12px;cursor:pointer;font-size:12px;height:30px}
+#btn-row button:hover{background:var(--base3)}
+#btn-row button:disabled{opacity:.3;cursor:default}
+#send-btn.stop{background:var(--red);color:#fff;border-color:var(--red);opacity:1}
+.tier-group{display:flex;align-items:center;gap:4px;margin-right:12px}
+#btn-row .tier-btn{width:22px;height:22px;padding:0;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;font-size:10px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;user-select:none;line-height:1}
+#btn-row .tier-btn:hover{background:var(--base3)}
+#btn-row .tier-btn.sel{background:var(--red);color:#000;font-weight:800;font-size:13px}
+.tier-bar{display:flex;gap:1px}
 .file-chip{display:inline-flex;align-items:center;gap:3px;background:var(--base3);border:1px solid var(--border-color);border-radius:3px;padding:1px 6px;margin:0 2px;font-size:11px;color:var(--text-primary);vertical-align:middle;cursor:default;white-space:nowrap;user-select:none;-webkit-user-select:none;max-width:200px}
 .file-chip .chip-icon{font-size:10px;flex-shrink:0}
 .file-chip .chip-name{overflow:hidden;text-overflow:ellipsis}
@@ -108,19 +114,30 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 /* Thinking display */
 .msg-reasoning-stream{margin:2px 12px 4px;font-size:11px;opacity:.45;white-space:pre-wrap;word-break:break-word;max-height:160px;overflow-y:auto;border-left:2px dashed var(--border-color);padding-left:8px;display:none}
 .msg-reasoning-stream.active{display:block}
-/* 上下文血条 */
-#ctx-bar{position:fixed;bottom:0;left:0;height:4px;width:0%;min-width:0;z-index:9998;transition:width 0.3s ease}
-#ctx-bar-info{display:none;position:fixed;bottom:6px;background:rgba(0,0,0,0.85);color:#fff;font-size:11px;padding:2px 8px;border-radius:3px;z-index:9999;pointer-events:none;left:50%;transform:translateX(-50%)}
-/* 时间血条 */
-#timing-work-bar{position:fixed;bottom:13px;left:0;height:5px;width:0%;min-width:0;z-index:9997;transition:width 0.3s ease;background:#859900}
-#timing-net-bar{position:fixed;bottom:6px;left:0;height:5px;width:0%;min-width:0;z-index:9997;transition:width 0.3s ease;background:#cb4b16}
-#timing-work-info,#timing-net-info{display:none;position:fixed;background:rgba(0,0,0,0.85);color:#fff;font-size:11px;padding:2px 8px;border-radius:3px;z-index:9999;pointer-events:none;left:50%;transform:translateX(-50%)}
-#timing-work-info{bottom:20px}
-#timing-net-info{bottom:20px}
-/* 时间印章 */
-.msg-timing-stamp{font-size:10px;opacity:0.45;margin:2px 12px 6px;text-align:right;cursor:default;transition:opacity 0.2s}
-.msg-timing-stamp:hover{opacity:0.8}
-.msg-timing-stamp-tip{display:none;background:rgba(0,0,0,0.9);color:#fff;font-size:11px;padding:3px 8px;border-radius:4px;white-space:nowrap}
+/* 楼层时钟 + 饼图（居中，每层末尾） */
+.floor-timing{display:flex;align-items:center;justify-content:center;gap:6px;margin:4px 0 8px;font-size:11px;opacity:0.6;user-select:none}
+.floor-timing .clock{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace}
+.floor-timing canvas{width:14px;height:14px;border-radius:50%}
+/* 排队信封 */
+#queue-strip{display:flex;flex-wrap:wrap;gap:4px;padding:0 0 4px}
+.queue-card{background:var(--card-bg);border:1px solid var(--border-color);border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:none}
+.queue-card:hover{background:var(--base3)}
+.queue-card-expanded{max-width:none;white-space:normal;cursor:default}
+.queue-card textarea{width:100%;min-height:60px;font-size:12px;padding:4px;border:1px solid var(--border-color);border-radius:3px;background:var(--background-color);color:var(--text-primary);resize:vertical}
+.queue-card .qcard-actions{display:flex;gap:4px;margin-top:4px;justify-content:flex-end}
+.queue-card .qcard-actions button{padding:2px 8px;font-size:11px;border:1px solid var(--border-color);border-radius:3px;cursor:pointer}
+/* 上下文压缩面板 */
+#ctx-panel{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center}
+.ctx-panel-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.5)}
+.ctx-panel-box{position:relative;background:var(--card-bg);border:1px solid var(--border-color);border-radius:8px;padding:20px;max-width:420px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.3)}
+.ctx-panel-body{font-size:13px;line-height:1.6}
+.ctx-panel-body p{margin:0 0 8px}
+.ctx-panel-body ol{margin:4px 0 8px 20px}
+.ctx-panel-body li{margin:2px 0}
+.ctx-panel-actions{display:flex;gap:24px;justify-content:flex-end;margin-top:16px}
+.ctx-panel-actions button{padding:6px 18px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;cursor:pointer}
+#ctx-compress{background:var(--yellow);color:#fff;border-color:var(--yellow)}
+#ctx-cancel{background:var(--card-bg)}
 </style>
 <script>
 // 主题同步：从父窗口 qqq-theme.js 唯一真理配色机器继承
@@ -162,9 +179,26 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 <div id="messages"></div>
 <div id="input-area">
   <div id="image-strip"></div>
+  <div id="queue-strip"></div>
   <div id="input-row">
-    <div id="input" contenteditable="plaintext-only" data-placeholder="Ask qqq AI... (Ctrl+V 粘贴图片)"></div>
+    <div id="input" contenteditable="plaintext-only" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-placeholder="Ask qqq AI... (Ctrl+V 粘贴图片)"></div>
+  </div>
+  <div id="btn-row">
+    <div class="tier-group">
+      <button class="tier-btn tier-a" id="tier-a">A</button>
+      <div class="tier-bar">
+        <button class="tier-btn" data-tier="1">1</button>
+        <button class="tier-btn" data-tier="2">2</button>
+        <button class="tier-btn" data-tier="3">3</button>
+        <button class="tier-btn" data-tier="4">4</button>
+        <button class="tier-btn" data-tier="5">5</button>
+        <button class="tier-btn" data-tier="6">6</button>
+      </div>
+    </div>
+    <button id="guide-btn" disabled>引导</button>
+    <button id="queue-btn" disabled>排队</button>
     <button id="send-btn">Send</button>
+    <button id="ctx-btn">234k</button>
   </div>
 </div>
 <!-- Lightbox -->
@@ -174,12 +208,28 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
     <button id="lb-copy">复制位图</button>
   </div>
 </div>
-<div id="timing-work-bar"></div>
-<div id="timing-work-info"></div>
-<div id="timing-net-bar"></div>
-<div id="timing-net-info"></div>
-<div id="ctx-bar"></div>
-<div id="ctx-bar-info"></div>
+
+<!-- 上下文压缩确认面板 -->
+<div id="ctx-panel" style="display:none">
+  <div class="ctx-panel-overlay"></div>
+  <div class="ctx-panel-box">
+    <div class="ctx-panel-body">
+      <p>你可以选择压缩上下文</p>
+      <p><strong>唯一好处：</strong>从下次对话开始降低费用。</p>
+      <p><strong>代价：</strong>最近六层楼之前滴对话会被压缩而丢失细节，AI 只会记住其中摘要。最近六层楼会被完整保存。</p>
+      <p>如果一直不手动压缩？</p>
+      <ol>
+        <li>qqq IDE 用最优策略自动压缩，通常好于手动压缩。</li>
+        <li>无论如何（压缩与否、谁来压缩）都既不会导致 AI 记忆撑爆，也不会导致 AI 记忆丢失。</li>
+        <li>更适合复杂滴编程任务，AI 将会有极限长度滴记忆空间。</li>
+      </ol>
+    </div>
+    <div class="ctx-panel-actions">
+      <button id="ctx-compress">压缩</button>
+      <button id="ctx-cancel">取消</button>
+    </div>
+  </div>
+</div>
 
 <script src="system-prompt.js"></script>
 <script src="tools.js"></script>
@@ -205,12 +255,40 @@ const $sendBtn = document.getElementById('send-btn');
 const $tokenInput = document.getElementById('token-input');
 const $tokenSave = document.getElementById('token-save');
 const $costLabel = document.getElementById('cost-label');
-const $ctxBar = document.getElementById('ctx-bar');
-const $ctxBarInfo = document.getElementById('ctx-bar-info');
-const $timingWorkBar = document.getElementById('timing-work-bar');
-const $timingNetBar = document.getElementById('timing-net-bar');
-const $timingWorkInfo = document.getElementById('timing-work-info');
-const $timingNetInfo = document.getElementById('timing-net-info');
+const $guideBtn = document.getElementById('guide-btn');
+const $queueBtn = document.getElementById('queue-btn');
+const $ctxBtn = document.getElementById('ctx-btn');
+const $queueStrip = document.getElementById('queue-strip');
+
+// ── 智能等级选择 ──
+var selectedTier = parseInt(localStorage.getItem('qqq-ai-tier')) || 6; // 默认 6=Pro+Max
+
+function selectTier(tierIndex) {
+  selectedTier = tierIndex;
+  localStorage.setItem('qqq-ai-tier', tierIndex === null ? '' : String(tierIndex));
+  document.querySelectorAll('.tier-btn').forEach(function(b) { b.classList.remove('sel'); });
+  if (tierIndex === null) {
+    document.getElementById('tier-a').classList.add('sel');
+  } else {
+    document.querySelector('.tier-btn[data-tier="' + tierIndex + '"]').classList.add('sel');
+  }
+}
+
+// 初始化选中态
+(function initTierUI() {
+  if (!selectedTier || selectedTier === 0) {
+    document.getElementById('tier-a').classList.add('sel');
+  } else {
+    var btn = document.querySelector('.tier-btn[data-tier="' + selectedTier + '"]');
+    if (btn) btn.classList.add('sel');
+    else { selectedTier = 6; selectTier(6); }
+  }
+})();
+
+document.getElementById('tier-a').onclick = function() { selectTier(null); };
+document.querySelectorAll('.tier-btn[data-tier]').forEach(function(btn) {
+  btn.onclick = function() { selectTier(parseInt(btn.dataset.tier)); };
+});
 
 // Token management
 function getToken() { return localStorage.getItem('qqq-ai-token') || ''; }
@@ -408,6 +486,7 @@ function renderMarkdown(src) {
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
   // Tables (must run before lists to avoid confusing | with list markers)
   s = s.replace(/(?:\n|^)(\|.+\|)\n\|[-:\s|]+\|\n((?:\|.+\|\n?)*)/g, function(_, header, rows) {
+    if (!header || rows === undefined) return _;
     const ths = header.split('|').filter(function(c) { return c.trim(); }).map(function(c) { return '<th>' + c.trim() + '</th>'; }).join('');
     const trs = rows.split('\n').filter(function(r) { return r.trim(); }).map(function(r) {
       const tds = r.split('|').filter(function(c) { return c.trim(); }).map(function(c) { return '<td>' + c.trim() + '</td>'; }).join('');
@@ -471,6 +550,8 @@ function setStreaming(val) {
   streaming = val;
   $sendBtn.textContent = val ? 'Stop' : 'Send';
   $sendBtn.className = val ? 'stop' : '';
+  $guideBtn.disabled = !val;
+  $queueBtn.disabled = !val;
   $input.contentEditable = val ? 'false' : 'true';
   $input.style.opacity = val ? '0.6' : '1';
 }
@@ -520,12 +601,12 @@ async function bindMainProject() {
   } catch (_) { /* lock 不存在，正常流程 */ }
   // 释放旧锁（切换主文件夹时）
   await _releaseLock();
-  // 写入新锁
+  // 写入新锁（qqq:fs:write 已内置 auto-mkdir，不再需要显式 mkdir）
+  var lockContent = JSON.stringify({ pid: 0, atime: Date.now() });
   try {
-    await window.parent.qqqBridge.fs.mkdir(root + '/qqq');
-  } catch (_) {}
-  await window.parent.qqqBridge.fs.write(lockPath, JSON.stringify({ pid: 0, atime: Date.now() }));
-  _currentLockPath = lockPath;
+    await window.parent.qqqBridge.fs.write(lockPath, lockContent);
+    _currentLockPath = lockPath;
+  } catch (_) { /* 锁写失败非致命 */ }
   // 启动心跳
   _lockHeartbeatId = setInterval(async function () {
     try { await window.parent.qqqBridge.fs.write(lockPath, JSON.stringify({ pid: 0, atime: Date.now() })); } catch (_) {}
@@ -604,7 +685,7 @@ async function loadQuestData(id) {
   }
   rebuildMessagesFromConversation();
   updateCostDisplay();
-  updateCtxBar();
+  updateCtxBtn();
 }
 
 async function saveQuestData() {
@@ -713,7 +794,8 @@ async function generateFloorTxt() {
       var timing = agent._floorTiming;
       if (timing) {
         roomsLines.push('── floor ' + floorNum + ' stats ──');
-        roomsLines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms, work: ' + (timing.workMs ? timing.workMs.toFixed(0) : '0') + 'ms, cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge');
+        var totalWork = (timing.deepseekMs || 0) + (timing.toolMs || 0);
+        roomsLines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms, deepseek: ' + (timing.deepseekMs ? timing.deepseekMs.toFixed(0) : '0') + 'ms, tool: ' + (timing.toolMs ? timing.toolMs.toFixed(0) : '0') + 'ms, cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge');
       }
 
       await bridge.fs.write(dir + 'rooms.txt', roomsLines.join('\n'));
@@ -773,7 +855,8 @@ async function generateFloorTxt() {
       }
       if (timing) {
         chatLines.push('── floor ' + floorNum + ' stats ──');
-        chatLines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms, work: ' + (timing.workMs ? timing.workMs.toFixed(0) : '0') + 'ms, cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge');
+        var totalWork2 = (timing.deepseekMs || 0) + (timing.toolMs || 0);
+        chatLines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms, deepseek: ' + (timing.deepseekMs ? timing.deepseekMs.toFixed(0) : '0') + 'ms, tool: ' + (timing.toolMs ? timing.toolMs.toFixed(0) : '0') + 'ms, cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge');
       }
       await bridge.fs.write(dir + 'chat.txt', chatLines.join('\n'));
 
@@ -808,7 +891,7 @@ async function createNewQuest() {
   pendingImages = [];
   renderImageStrip();
   updateCostDisplay();
-  updateCtxBar();
+  updateCtxBtn();
   renderTabs();
 }
 
@@ -902,50 +985,161 @@ function estimateTokens() {
   return Math.round(total);
 }
 
-function fmtMs(ms) { return ms >= 1000 ? (ms/1000).toFixed(2) + 's' : Math.round(ms) + 'ms'; }
-function updateTimingBars(timing) {
-  if (!timing) { $timingWorkBar.style.width = '0%'; $timingNetBar.style.width = '0%'; return; }
-  var total = timing.networkMs + timing.workMs;
-  if (total <= 0) { $timingWorkBar.style.width = '0%'; $timingNetBar.style.width = '0%'; return; }
-  var workPct = (timing.workMs / total * 100).toFixed(1);
-  var netPct = (timing.networkMs / total * 100).toFixed(1);
-  $timingWorkBar.style.width = workPct + '%';
-  $timingNetBar.style.width = netPct + '%';
-  $timingWorkInfo.textContent = '🔧 ' + fmtMs(timing.workMs) + ' (' + workPct + '%)';
-  $timingNetInfo.textContent = '🌐 ' + fmtMs(timing.networkMs) + ' (' + netPct + '%)';
-}
-function updateCtxBar() {
-  // 优先用 DeepSeek API 精确 prompt_tokens，无数据时回退估算
+
+
+
+
+// ── 上下文按钮 ──
+function updateCtxBtn() {
   var used = agent._lastApiPromptTokens || estimateTokens();
   var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
-  $ctxBar.style.width = pct + '%';
-  // 颜色：>80% 红，>50% 黄，其他绿
-  var s = getComputedStyle(document.documentElement);
-  if (pct > 80) $ctxBar.style.background = s.getPropertyValue('--red').trim();
-  else if (pct > 50) $ctxBar.style.background = s.getPropertyValue('--yellow').trim();
-  else $ctxBar.style.background = s.getPropertyValue('--green').trim();
-  // tooltip
-  $ctxBarInfo.textContent = pct + '% (~' + Math.round(used / 1000) + 'K / ' + Math.round(CTX_MAX_TOKENS / 1000) + 'K tokens)';
+  $ctxBtn.textContent = Math.round(used/1000) + 'k(' + pct + '%)';
+}
+$ctxBtn.onclick = function() {
+  document.getElementById('ctx-panel').style.display = 'flex';
+};
+document.getElementById('ctx-cancel').onclick = function() {
+  document.getElementById('ctx-panel').style.display = 'none';
+};
+document.getElementById('ctx-compress').onclick = async function() {
+  document.getElementById('ctx-panel').style.display = 'none';
+  var msg = addMessageEl('status', '正在压缩上下文...');
+  try {
+    await agent._compressContext();
+    msg.textContent = '上下文压缩完成';
+    updateCtxBtn();
+  } catch(e) {
+    msg.textContent = '压缩失败: ' + (e.message || e);
+    msg.className = 'msg msg-error';
+  }
+};
+
+// ── 引导按钮 ──
+$guideBtn.onclick = function() {
+  var text = getInputText().trim();
+  if (!text) return;
+  var confirmMsg = addMessageEl('user', '[引导] ' + text);
+  confirmMsg.style.opacity = '0.7';
+  var ok = agent.inject(text);
+  if (ok) {
+    $input.innerHTML = '';
+    $input.focus();
+  } else {
+    confirmMsg.className = 'msg msg-error';
+    confirmMsg.textContent = '[引导失败] ' + text;
+  }
+};
+
+// ── 排队按钮 ──
+var _queue = [];
+function renderQueueStrip() {
+  $queueStrip.innerHTML = '';
+  for (var i = 0; i < _queue.length; i++) {
+    (function(q, idx) {
+      var card = document.createElement('div');
+      card.className = 'queue-card';
+      card.textContent = q.text.slice(0, 60) + (q.text.length > 60 ? '...' : '');
+      card.title = '点击编辑';
+      card.onclick = function() {
+        if (card.classList.contains('queue-card-expanded')) return;
+        card.classList.add('queue-card-expanded');
+        card.innerHTML = '';
+        var ta = document.createElement('textarea');
+        ta.value = q.text;
+        card.appendChild(ta);
+        var actions = document.createElement('div');
+        actions.className = 'qcard-actions';
+        var modBtn = document.createElement('button');
+        modBtn.textContent = '修改';
+        modBtn.onclick = function(e) { e.stopPropagation(); q.text = ta.value; renderQueueStrip(); };
+        var delBtn = document.createElement('button');
+        delBtn.textContent = '删除';
+        delBtn.onclick = function(e) { e.stopPropagation(); _queue.splice(idx, 1); renderQueueStrip(); };
+        actions.appendChild(modBtn);
+        actions.appendChild(delBtn);
+        card.appendChild(actions);
+      };
+      $queueStrip.appendChild(card);
+    })(_queue[i], i);
+  }
+}
+$queueBtn.onclick = function() {
+  var text = getInputText().trim();
+  if (!text) return;
+  _queue.push({ id: 'q_' + Date.now(), text: text });
+  renderQueueStrip();
+  $input.innerHTML = '';
+  $input.focus();
+};
+
+// ── 楼层时钟 + 饼图 ──
+var _activeClocks = [];
+function startFloorClock(wrap, agent) {
+  var clockEl = wrap.querySelector('.clock');
+  var canvas = wrap.querySelector('canvas');
+  if (!clockEl || !canvas) return;
+  _activeClocks.push({ wrap: wrap, clock: clockEl, canvas: canvas, agent: agent, dead: false });
+  // 旧楼层停止更新但保留显示
+  for (var i = 0; i < _activeClocks.length - 1; i++) {
+    _activeClocks[i].dead = true;
+  }
 }
 
-// Hover: show info
-$ctxBar.addEventListener('mouseenter', function() { $ctxBarInfo.style.display = 'block'; });
-$ctxBar.addEventListener('mouseleave', function() { $ctxBarInfo.style.display = 'none'; });
-// timing bar hover
-$timingWorkBar.addEventListener('mouseenter', function() {
-  var w = parseFloat($timingWorkBar.style.width) || 0;
-  if (w > 0) { $timingWorkInfo.style.display = 'block'; $timingNetInfo.style.display = 'block'; }
-});
-$timingWorkBar.addEventListener('mouseleave', function() {
-  $timingWorkInfo.style.display = 'none'; $timingNetInfo.style.display = 'none';
-});
-$timingNetBar.addEventListener('mouseenter', function() {
-  var w = parseFloat($timingNetBar.style.width) || 0;
-  if (w > 0) { $timingWorkInfo.style.display = 'block'; $timingNetInfo.style.display = 'block'; }
-});
-$timingNetBar.addEventListener('mouseleave', function() {
-  $timingWorkInfo.style.display = 'none'; $timingNetInfo.style.display = 'none';
-});
+function drawPie(canvas, timing) {
+  var ctx = canvas.getContext('2d');
+  var w = canvas.width, h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  var n = timing.networkMs || 0;
+  var d = timing.deepseekMs || 0;
+  var t = timing.toolMs || 0;
+  var total = n + d + t;
+  if (total <= 0) { ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(w/2, h/2, w/2-2, 0, Math.PI*2); ctx.fill(); return; }
+  var parts = [
+    { val: d, color: '#859900' },
+    { val: n, color: '#cb4b16' },
+    { val: t, color: '#b58900' }
+  ];
+  var start = -Math.PI / 2;
+  for (var i = 0; i < parts.length; i++) {
+    var slice = (parts[i].val / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(w/2, h/2);
+    ctx.arc(w/2, h/2, w/2-2, start, start + slice);
+    ctx.fillStyle = parts[i].color;
+    ctx.fill();
+    start += slice;
+  }
+}
+
+// 每秒刷新活跃时钟
+setInterval(function() {
+  // 清理已死的时钟条目 + 检查是否有活的
+  var hasLive = false;
+  for (var i = _activeClocks.length - 1; i >= 0; i--) {
+    if (_activeClocks[i].dead) { _activeClocks.splice(i, 1); continue; }
+    hasLive = true;
+    var c = _activeClocks[i];
+    var elapsed = performance.now() - c.agent._floorTiming.floorStartPerf;
+    var totalS = Math.floor(elapsed / 1000);
+    var min = Math.floor(totalS / 60);
+    var sec = totalS % 60;
+    c.clock.textContent = min + ':' + (sec < 10 ? '0' : '') + sec;
+    drawPie(c.canvas, c.agent._floorTiming);
+  }
+  if (!hasLive) return;
+}, 1000);
+
+// 每 5s 服务端时钟校准
+setInterval(async function() {
+  var GATEWAY = 'https://gh555.com/v1/chat/completions';
+  try {
+    var resp = await fetch(GATEWAY, { method: 'HEAD' });
+    var date = resp.headers.get('Date');
+    if (date) {
+      agent._serverDrift = new Date(date).getTime() - Date.now();
+    }
+  } catch(_) {}
+}, 5000);
 
 function rebuildMessagesFromConversation() {
   $messages.innerHTML = '';
@@ -1005,7 +1199,9 @@ document.getElementById('tab-new').onclick = createNewQuest;
     await bindMainProject();
     await initQuests();
     // load project rules after project root is known
-    loadProjectRules(questStore.getProjectRoot());
+    if (typeof loadProjectRules === 'function') {
+            loadProjectRules(questStore.getProjectRoot());
+    }
 })();
 
 // Rules edit button — opens global.txt (middle group) + project.txt (right group) in IDE
@@ -1046,8 +1242,10 @@ document.getElementById('rules-edit').onclick = async function() {
         // reload rules after user edits
         setTimeout(function() {
             loadQqqRules();
-            loadProjectRules(projRoot);
-        }, 3000);
+            if (typeof loadProjectRules === 'function') {
+                loadProjectRules(projRoot);
+            }
+            }, 3000);
     } catch(e) {
         console.log('[rules] edit error:', e);
     }
@@ -1164,8 +1362,7 @@ async function sendMessage() {
 
   // ---- Agentic loop ----
   setStreaming(true);
-  updateTimingBars(null); // reset bars for new turn
-  var aiDiv = addMessageEl('ai', '');
+    var aiDiv = addMessageEl('ai', '');
   var reasoningEl = null;
   var reasoningText = '';
   var toolCallEls = []; // track tool call → result pairs for this turn
@@ -1174,6 +1371,7 @@ async function sendMessage() {
     await agent.send(userContent, {
       images: images,
       token: token,
+      tier: selectedTier ? TIER_LIST[selectedTier] : null,
       onToken: function(chunk) {
         aiDiv._text = (aiDiv._text || '') + chunk;
         if (!_renderPending) {
@@ -1236,20 +1434,25 @@ async function sendMessage() {
       onDone: async function(content, timing) {
         aiDiv._text = content;
         aiDiv.innerHTML = renderMarkdown(content);
-        // timing stamp at end of this turn
-        if (timing && (timing.networkMs > 0 || timing.workMs > 0)) {
-          var stamp = document.createElement('div');
-          stamp.className = 'msg-timing-stamp';
-          var total = timing.networkMs + timing.workMs;
-          stamp.textContent = '⏱ ' + fmtMs(total) + ' (net ' + fmtMs(timing.networkMs) + ' / work ' + fmtMs(timing.workMs) + ')';
-          stamp.title = '🌐 ' + fmtMs(timing.networkMs) + ' + 🔧 ' + fmtMs(timing.workMs) + ' = ' + fmtMs(total);
-          aiDiv.parentNode.insertBefore(stamp, aiDiv.nextSibling);
-          updateTimingBars(timing);
+        // 注入楼层时钟 + 饼图
+        if (timing && (timing.networkMs > 0 || timing.deepseekMs > 0 || timing.toolMs > 0)) {
+          var clockWrap = document.createElement('div');
+          clockWrap.className = 'floor-timing';
+          clockWrap.innerHTML = '<span class="clock">0:00</span><canvas width="28" height="28"></canvas>';
+          aiDiv.parentNode.insertBefore(clockWrap, aiDiv.nextSibling);
+          startFloorClock(clockWrap, agent);
         }
         scrollToBottom();
         await saveQuestData();
         await autoRenameQuest();
-        updateCtxBar();
+        updateCtxBtn();
+        // 自动消费排队
+        if (_queue.length > 0) {
+          var next = _queue.shift();
+          renderQueueStrip();
+          $input.textContent = next.text;
+          setTimeout(function() { sendMessage(); }, 200);
+        }
       },
       onCost: async function(cost, total) {
         $costLabel.textContent = cost + ' / ' + total.toFixed(4) + ' ge';
