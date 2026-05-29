@@ -699,10 +699,11 @@ async function loadQuestData(id) {
     agent.conversation = data.conversation || [];
     agent._ctx = data.ctx || { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
     agent.totalCostGe = data.totalCostGe || 0;
-    agent._floorCostWge = 0;
+    agent._floorCostWge = data.floorCostWge || 0;
     agent._houses = data.houses || [];
     agent._houseIndex = data.houseIndex || 0;
     agent._lastApiPromptTokens = data.lastApiPromptTokens || 0;
+    agent._lastUserInput = data.lastUserInput || null;
   } else {
     console.log('[quests] no saved data for', id, '- starting fresh');
     agent.conversation = [];
@@ -712,6 +713,7 @@ async function loadQuestData(id) {
     agent._houses = [];
     agent._houseIndex = 0;
     agent._lastApiPromptTokens = 0;
+    agent._lastUserInput = null;
   }
   rebuildMessagesFromConversation();
   updateCostDisplay();
@@ -730,7 +732,9 @@ async function saveQuestData() {
     totalCostGe: agent.totalCostGe,
     houses: agent._houses,
     houseIndex: agent._houseIndex,
-    lastApiPromptTokens: agent._lastApiPromptTokens || 0
+    lastApiPromptTokens: agent._lastApiPromptTokens || 0,
+    floorCostWge: agent._floorCostWge,
+    lastUserInput: agent._lastUserInput
   });
   // generate floor txt after house summaries are ready
   if (agent._housesPromise) {
@@ -898,10 +902,13 @@ async function generateFloorTxt() {
 }
 async function switchQuest(id) {
   if (id === questActiveId) return;
+  if (streaming) stopStream();  // 中止当前流的请求
+  saveQuestUIState(questActiveId);  // 同步，瞬时
   await saveQuestData();
   questActiveId = id;
   await questStore.setActiveId(id);
   await loadQuestData(id);
+  restoreQuestUIState(id);  // 同步，瞬时
   await renderTabs();
   // Auto-rename if needed
   var quests = await questStore.list();
@@ -910,6 +917,8 @@ async function switchQuest(id) {
 }
 
 async function createNewQuest() {
+  if (streaming) stopStream();
+  saveQuestUIState(questActiveId);
   await saveQuestData();
   questActiveId = await questStore.create('');
   await questStore.setActiveId(questActiveId);
@@ -917,8 +926,14 @@ async function createNewQuest() {
   agent._ctx = { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
   agent.totalCostGe = 0;
   agent._floorCostWge = 0;
+  agent._lastUserInput = null;
+  agent._houses = [];
+  agent._houseIndex = 0;
+  agent._lastApiPromptTokens = 0;
   $messages.innerHTML = '';
   pendingImages = [];
+  selectedTier = 6;
+  updateTierButtons(6);
   renderImageStrip();
   updateCostDisplay();
   updateCtxBtn();
@@ -929,11 +944,13 @@ async function deleteQuest(id) {
   var quests = await questStore.list();
   if (quests.length <= 1) { await createNewQuest(); return; }
   await questStore.deleteQuest(id);
+  delete questUIStates[id];  // clean up UI state for deleted quest
   if (questActiveId === id) {
     quests = await questStore.list();
     questActiveId = quests[0].id;
     await questStore.setActiveId(questActiveId);
     await loadQuestData(questActiveId);
+    restoreQuestUIState(questActiveId);
   }
   await renderTabs();
 }
