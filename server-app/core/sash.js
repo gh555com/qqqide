@@ -16,10 +16,9 @@
   const MIN = 123;
 
   // ---- helpers ----
-  function overlay(cursor) {
+  function overlay() {
     const o = document.createElement('div');
     o.className = 'qqq-drag-overlay';
-    o.style.cursor = cursor;
     document.body.appendChild(o);
     return o;
   }
@@ -39,7 +38,7 @@
       const rSnap = rightPanels.map(p => ({ w: p.getW(), min: p.min || MIN }));
 
       sashEl.classList.add('qqq-sash-dragging');
-      const ov = overlay('ew-resize');
+      const ov = overlay();
 
       const onMove = ev => {
         let dx = ev.clientX - startX;
@@ -102,7 +101,7 @@
       const bSnap = bottomPanels.map(p => ({ h: p.getH(), min: p.min || MIN }));
 
       sashEl.classList.add('qqq-sash-dragging');
-      const ov = overlay('ns-resize');
+      const ov = overlay();
 
       const onMove = ev => {
         let dy = ev.clientY - startY;

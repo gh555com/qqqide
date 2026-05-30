@@ -522,7 +522,14 @@ export class QzSpawn {
         if (ghrun) {
             try {
                 const r = await ghrunTier(brief, this.appRoot, ghrun);
-                if (r.killReason !== 'spawn-error') { return r; }
+                if (r.killReason !== 'spawn-error') {
+                    if (r.killReason) {
+                        console.warn('[qz] ghrun killed:', brief.cmd, 'reason:', r.killReason, r.durationMs + 'ms');
+                    } else {
+                        console.log('[qz] ghrun OK:', brief.cmd, r.durationMs + 'ms');
+                    }
+                    return r;
+                }
                 console.warn('[qz] ghrun spawn-error, falling back to runner:', r.stderr.slice(0, 200));
             } catch (e: any) {
                 console.warn('[qz] ghrun threw, falling back to runner:', e && e.message);

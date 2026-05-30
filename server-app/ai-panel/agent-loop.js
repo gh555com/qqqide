@@ -130,7 +130,7 @@ var AgentLoop = (function () {
         self._floorCostWge = 0;
         self._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
         self._currentFloorSummary = '';
-        self._floorTiming = { networkMs: 0, deepseekMs: 0, toolMs: 0, floorStartPerf: performance.now() };
+        self._floorTiming = { networkMs: 0, deepseekMs: 0, floorStartPerf: performance.now() };
         self._floorStartServerMs = Date.now() + (self._serverDrift || 0);
         self._currentFloorSummaryLang = '';
 
@@ -273,7 +273,6 @@ var AgentLoop = (function () {
                     // 并行执行工具
                     var _toolStart = performance.now();
                     await self._executeToolCallsParallel(response.tool_calls, onToolResult);
-                    self._floorTiming.toolMs += performance.now() - _toolStart;
                     continue;
                 }
 

@@ -271,52 +271,58 @@
             typescript: 'tsWorker', javascript: 'tsWorker',
             json: 'jsonWorker', html: 'htmlWorker', css: 'cssWorker',
           };
+
+          // Pre-fetch all worker scripts in the MAIN THREAD (sync XHR is reliable here).
+          // Then inline them into blob URLs — zero network requests from the worker.
+          // This eliminates the sync-XHR-from-worker problem that caused
+          // "Could not create web worker(s)" and "define is not a function".
+          function _syncFetchText(url) {
+            var x = new XMLHttpRequest();
+            x.open('GET', url, false);  // sync — OK in main thread
+            try { x.send(); return x.responseText; }
+            catch (e) { return null; }
+          }
+
+          var _loaderJs = _syncFetchText(baseUrl + '/loader.js');
+          if (!_loaderJs) { return reject(new Error('monaco: failed to fetch loader.js')); }
+
+          var _workerBlobCache = {};
+          function _getWorkerBlobUrl(workerPath) {
+            if (_workerBlobCache[workerPath]) return _workerBlobCache[workerPath];
+            var workerCode = _syncFetchText(baseUrl + '/' + workerPath);
+            if (!workerCode) return null;
+
+            // Inline AMD loader + worker script into a single blob.
+            // Clear define/module before eval-ing the bundled worker
+            // (prevents AMD from interfering with the self-contained min build).
+            var fullCode = [
+              _loaderJs,
+              "require.config({ paths: { vs: '" + baseUrl + "' } });",
+              "(function(){",
+              "var __d=self.define,__m=self.module;",
+              "self.define=undefined;self.module=undefined;",
+              workerCode,
+              "self.define=__d;self.module=__m;",
+              "})();",
+            ].join('\n');
+
+            var blob = new Blob([fullCode], { type: 'application/javascript' });
+            var url = URL.createObjectURL(blob);
+            _workerBlobCache[workerPath] = url;
+            return url;
+          }
+
+          // ★ Use getWorkerUrl (not getWorker). Monaco creates the Worker itself
+          // using new Worker(url). The blob URL already contains everything needed.
           window.MonacoEnvironment = {
-            getWorker: function (workerId, label) {
-              var workerUrl;
+            getWorkerUrl: function (workerId, label) {
+              var workerPath;
               if (label && _langWorker[label]) {
-                workerUrl = baseUrl + '/language/' + label + '/' + _langWorker[label] + '.js';
+                workerPath = 'language/' + label + '/' + _langWorker[label] + '.js';
               } else {
-                // generic editor worker: vs/base/worker/workerMain.js (min build)
-                workerUrl = baseUrl + '/base/worker/workerMain.js';
+                workerPath = 'base/worker/workerMain.js';
               }
-              // ★ Override importScripts → sync XHR so Workers can load qqq-asset: custom protocol.
-              // importScripts() does NOT support custom Electron protocols (only fetch/XHR do),
-              // which causes Worker creation to fail → Monaco falls back to main thread →
-              // "define is not a function" + "Duplicate module" crashes the UI.
-              // Also override fetch to resolve relative URLs (NLS files etc.) against baseUrl,
-              // because relative paths fail inside blob: workers.
-              var boot = [
-                'var __o=self.importScripts;',
-                'self.importScripts=function(){',
-                '  for(var i=0;i<arguments.length;i++){',
-                '    var u=arguments[i];',
-                '    var x=new XMLHttpRequest();',
-                '    x.open("GET",u,false);',
-                '    try{x.send()}catch(e){__o.call(self,u);continue}',
-                '    (1,eval)(x.responseText);',
-                '  }',
-                '};',
-                'var __f=self.fetch;',
-                'self.fetch=function(u,o){',
-                '  if(typeof u==="string"){',
-                '    try{',
-                '      if(u.startsWith("./")||u.startsWith("../")){',
-                '        u=new URL(u,"' + baseUrl + '/").href;',
-                '      }',
-                '    }catch(e){}',
-                '  }',
-                '  return __f.call(self,u,o);',
-                '};',
-                'importScripts("' + baseUrl + '/loader.js");',
-                'require.config({ paths: { vs: "' + baseUrl + '" } });',
-                '(function(){ var d=self.define; self.define=undefined;',
-                '  var m=self.module; self.module=undefined;',
-                '  importScripts("' + workerUrl + '");',
-                '  self.define=d; self.module=m; })();',
-              ].join('\n');
-              var blob = new Blob([boot], { type: 'application/javascript' });
-              return new Worker(URL.createObjectURL(blob));
+              return _getWorkerBlobUrl(workerPath);
             },
           };
           // eslint-disable-next-line no-undef

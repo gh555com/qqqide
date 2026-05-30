@@ -84,7 +84,7 @@
         'height:22px; padding:0 10px; margin:0 1px; border:1px solid var(--border-color); border-radius:3px;' +
         'background:' + (id === _activeId ? 'var(--primary-color)' : 'transparent') + ';' +
         'color:' + (id === _activeId ? '#1e1e1e' : 'var(--text-primary)') + ';' +
-        'cursor:pointer; font-size:12px; white-space:nowrap; line-height:20px;' +
+        'font-size:12px; white-space:nowrap; line-height:20px;' +
         'transition: background 0.15s;';
       btn.addEventListener('click', () => show(id));
       _tabBarEl.appendChild(btn);

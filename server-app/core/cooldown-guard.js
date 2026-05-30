@@ -13,7 +13,7 @@
  * 升级只改这一处，全站所有按钮自动生效。
  */
 (function () {
-    var CD_DEFAULT = 1800;
+    var CD_DEFAULT = 800;
     var _cdMap = new WeakMap();
 
     // ── 冷却 CSS ──

@@ -146,11 +146,11 @@
     const T = window.qqqTheme;
     function syncBtn(dark) {
       $btn.textContent = dark ? '\u263C' : '\u263D';
-      $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮色') : window._i('shell.theme.switchToDark', '切换到暗色');
+      $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮�?) : window._i('shell.theme.switchToDark', '切换到暗�?);
     }
     syncBtn(T.isDark());
     T.onChange(function (dark) {
-      $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮色') : window._i('shell.theme.switchToDark', '切换到暗色');
+      $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮�?) : window._i('shell.theme.switchToDark', '切换到暗�?);
     });
     $btn.addEventListener('click', () => T.apply(!T.isDark()));
   }
@@ -165,8 +165,8 @@
   // ---- Language Switcher ----
   var _langPopup = null;
   var LANG_LABELS = {
-    'zh': '中', 'zh-tw': '繁', 'en': 'EN', 'ja': '日', 'de': 'DE',
-    'ko': '한', 'ru': 'RU', 'ar': 'ar', 'es': 'ES', 'fr': 'FR',
+    'zh': '�?, 'zh-tw': '�?, 'en': 'EN', 'ja': '�?, 'de': 'DE',
+    'ko': '�?, 'ru': 'RU', 'ar': 'ar', 'es': 'ES', 'fr': 'FR',
     'pt-BR': 'BR', 'hi': 'hi', 'vi': 'VI'
   };
 
@@ -270,7 +270,7 @@
       const row = document.createElement('div');
       row.style.cssText =
         'display:flex; align-items:center; padding:5px 14px; ' +
-        'cursor:pointer; font-size:12px; color:var(--text-primary); ' +
+        'font-size:12px; color:var(--text-primary); ' +
         'white-space:nowrap; user-select:none;';
       const lab = document.createElement('span');
       lab.textContent = (s.i18n && window._i) ? window._i(s.i18n, s.label) : (s.label || '');
@@ -304,7 +304,7 @@
       return;
     }
     if (cmd === 'help.about') {
-      bridge.dialog.message({ type: 'info', title: window._i('shell.about.title', '关于 qqq'), message: window._i('shell.about.version', 'qqq-shell v2'), detail: window._i('shell.about.desc', '便携 / Win7+ / 服务器热更') });
+      bridge.dialog.message({ type: 'info', title: window._i('shell.about.title', '关于 qqq'), message: window._i('shell.about.version', 'qqq-shell v2'), detail: window._i('shell.about.desc', '便携 / Win7+ / 服务器热�?) });
       return;
     }
     if (cmd === 'file.new' || cmd === 'file.open') {
@@ -370,7 +370,7 @@
       span.className = 'qqq-menubar-label';
       span.textContent = (item.i18n && window._i) ? window._i(item.i18n, item.label) : (item.label || '');
       span.style.cssText =
-        'padding:0 10px; cursor:pointer; color:var(--text-primary); ' +
+        'padding:0 10px; color:var(--text-primary); ' +
         'user-select:none; height:100%; display:inline-flex; align-items:center;';
       span.addEventListener('mouseenter', () => { span.style.background = 'rgba(128,128,128,0.10)'; });
       span.addEventListener('mouseleave', () => { span.style.background = ''; });
@@ -462,7 +462,7 @@
     if (window.qqqGaea) {
       window.qqqGaea.build(host);
     } else {
-      host.innerHTML = '<div style="padding:12px; color:var(--base1); font-size:12px;">' + window._i('shell.gaeaHostLoading', 'gaea host 加载中...') + '</div>';
+      host.innerHTML = '<div style="padding:12px; color:var(--base1); font-size:12px;">' + window._i('shell.gaeaHostLoading', 'gaea host 加载�?..') + '</div>';
     }
   }
 
@@ -527,15 +527,16 @@
     overlay.id = 'qqq-ai-overlay';
     overlay.style.cssText =
       'display:none; position:fixed; inset:0; z-index:99999; ' +
-      'background:rgba(0,0,0,0.88); cursor:default;';
+      'background:rgba(0,0,0,0.88);';
 
-    // ── 主题化滚动条（注入 style） ──
+    // ── 主题化滚动条（注�?style�?──
     var _scrollStyle = document.createElement('style');
     _scrollStyle.textContent =
       '#qqq-ai-overlay-content ::-webkit-scrollbar{width:8px;height:8px}' +
       '#qqq-ai-overlay-content ::-webkit-scrollbar-track{background:rgba(255,255,255,0.05)}' +
       '#qqq-ai-overlay-content ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:4px}' +
-      '#qqq-ai-overlay-content ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.35)}';
+      '#qqq-ai-overlay-content ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.35)}' +
+      '#qqq-ai-overlay-content>div::-webkit-scrollbar{display:none}';
     document.head.appendChild(_scrollStyle);
 
     var contentEl = document.createElement('div');
@@ -557,21 +558,25 @@
       b.textContent = text;
       b.title = title || '';
       b.style.cssText = 'padding:8px 18px; border:1px solid rgba(255,255,255,0.25); border-radius:6px; ' +
-        'background:rgba(255,255,255,0.1); color:#fff; cursor:pointer; font-size:14px; ' +
+        'background:rgba(255,255,255,0.1); color:#fff; font-size:14px; ' +
         'user-select:none; line-height:1; ' + (styles || '');
       return b;
     }
 
     var zoomScale = 1.0;
-    // 拖拽偏移（图片用）
-    var _dragX = 0, _dragY = 0;
+    // 拖拽偏移（图片用�?    var _dragX = 0, _dragY = 0;
     function applyZoom() {
-      var inner = contentEl.querySelector('img') || contentEl.querySelector('div');
-      if (!inner) return;
-      var tx = inner._dragState ? inner._dragState.getImgX() : _dragX;
-      var ty = inner._dragState ? inner._dragState.getImgY() : _dragY;
-      inner.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + zoomScale + ')';
-      inner.style.transition = 'transform 0.15s ease';
+      var img = contentEl.querySelector('img');
+      if (img) {
+        img.style.transform = 'translate(' + _dragX + 'px,' + _dragY + 'px) scale(' + zoomScale + ')';
+        img.style.transition = 'transform 0.15s ease';
+        return;
+      }
+      var div = contentEl.querySelector('div');
+      if (div) {
+        // 表格�?zoom（影响布局/scroll尺寸），不用 transform（不影响scroll�?        div.style.zoom = zoomScale;
+        div.style.transition = 'zoom 0.15s ease';
+      }
     }
 
     // Copy button
@@ -583,7 +588,7 @@
       // Try modern clipboard API first
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(function () {
-          copyBtn.textContent = '\u2705 ' + window._i('shell.overlay.copied', '已复制');
+          copyBtn.textContent = '\u2705 ' + window._i('shell.overlay.copied', '已复�?);
           setTimeout(function () { copyBtn.textContent = '\uD83D\uDCCB ' + window._i('shell.overlay.copy', '复制'); }, 1500);
         }).catch(function () { fallbackCopy(text); });
       } else {
@@ -598,7 +603,7 @@
         ta.select();
         try { document.execCommand('copy'); ok = true; } catch (ex) { }
         document.body.removeChild(ta);
-        copyBtn.textContent = ok ? '\u2705 ' + window._i('shell.overlay.copied', '已复制') : '\u274C ' + window._i('shell.overlay.copyFailed', '失败');
+        copyBtn.textContent = ok ? '\u2705 ' + window._i('shell.overlay.copied', '已复�?) : '\u274C ' + window._i('shell.overlay.copyFailed', '失败');
         setTimeout(function () { copyBtn.textContent = '\uD83D\uDCCB ' + window._i('shell.overlay.copy', '复制'); }, 1500);
       }
     }
@@ -609,22 +614,24 @@
       if (div) { doCopy(div.innerText || div.textContent); }
     });
 
-    // Zoom out
-    var zoomOutBtn = tbBtn('−', window._i('shell.overlay.zoomOut', '缩小'), 'font-size:20px; font-weight:bold; padding:8px 14px;');
+    // Zoom out（跳过冷却护盾，准许快速连按）
+    var zoomOutBtn = tbBtn('�?, window._i('shell.overlay.zoomOut', '缩小'), 'font-size:20px; font-weight:bold; padding:8px 14px;');
+    zoomOutBtn.setAttribute('data-no-cd', '');
     zoomOutBtn.addEventListener('click', function () {
       zoomScale = Math.max(0.25, zoomScale * 0.8);
       applyZoom();
     });
 
-    // Zoom in
+    // Zoom in（跳过冷却护盾，准许快速连按）
     var zoomInBtn = tbBtn('+', window._i('shell.overlay.zoomIn', '放大'), 'font-size:20px; font-weight:bold; padding:8px 14px;');
+    zoomInBtn.setAttribute('data-no-cd', '');
     zoomInBtn.addEventListener('click', function () {
       zoomScale = Math.min(5.0, zoomScale * 1.25);
       applyZoom();
     });
 
     // Close (extra large)
-    var closeBtn = tbBtn('✕', window._i('shell.overlay.close', '关闭 (Esc)'), 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
+    var closeBtn = tbBtn('�?, window._i('shell.overlay.close', '关闭 (Esc)'), 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
       'background:rgba(220,50,47,0.5); border-color:rgba(220,50,47,0.7);');
     closeBtn.addEventListener('click', close);
 
@@ -639,7 +646,9 @@
 
     function close() {
       overlay.style.display = 'none';
+      dpad.style.display = 'none';
       contentEl.innerHTML = '';
+      contentEl.style.overflow = '';
       zoomScale = 1.0;
       _dragX = 0; _dragY = 0;
     }
@@ -654,17 +663,58 @@
       }
     });
 
-    // Mouse wheel zoom
-    overlay.addEventListener('wheel', function (e) {
+    // Mouse wheel zoom（统一图片和表格，滚轮=缩放�?    overlay.addEventListener('wheel', function (e) {
       if (overlay.style.display === 'none') return;
-      e.preventDefault();
-      if (e.deltaY < 0) {
-        zoomScale = Math.min(5.0, zoomScale * 1.15);
-      } else {
-        zoomScale = Math.max(0.25, zoomScale * 0.87);
-      }
+      e.preventDefault(); e.stopPropagation();
+      if (e.deltaY < 0) { zoomScale = Math.min(5.0, zoomScale * 1.15); }
+      else { zoomScale = Math.max(0.25, zoomScale * 0.87); }
       applyZoom();
-    }, { passive: false });
+    }, { passive: false, capture: true });
+
+    // ── 十字方向键（Game Boy 风格，独立控件，移动画布�?──
+    var dpad = document.createElement('div');
+    dpad.style.cssText =
+      'display:none; position:fixed; right:14px; bottom:78px; z-index:100000; ' +
+      'width:96px; height:96px; user-select:none;';
+    var BS = 32; // button size
+    function _crossBtn(sym, top, left) {
+      var b = document.createElement('button');
+      b.textContent = sym; b.setAttribute('data-no-cd','');
+      b.style.cssText = 'position:absolute; width:' + BS + 'px; height:' + BS + 'px; padding:0; font-size:16px; line-height:1; ' +
+        'border:1px solid rgba(255,255,255,0.35); border-radius:4px; background:rgba(0,0,0,0.55); ' +
+        'color:#ccc; display:flex; align-items:center; justify-content:center;';
+      b.style.top = top + 'px'; b.style.left = left + 'px';
+      return b;
+    }
+    var btnUp = _crossBtn('�?, 0, BS);
+    var btnLeft = _crossBtn('◀', BS, 0);
+    var btnCenter = _crossBtn('�?, BS, BS);
+    var btnRight = _crossBtn('�?, BS, BS*2);
+    var btnDown = _crossBtn('�?, BS*2, BS);
+    btnCenter.title = '重置位置';
+    btnCenter.style.background = 'rgba(255,255,255,0.12)';
+    btnCenter.style.borderColor = 'rgba(255,255,255,0.25)';
+    function _nudge(dx, dy) {
+      var step = 80;
+      var img = contentEl.querySelector('img');
+      if (img) { _dragX -= dx * step; _dragY -= dy * step; applyZoom(); return; }
+      var w = contentEl.querySelector('div');
+      if (w) { w.scrollLeft += dx * step; w.scrollTop += dy * step; }
+    }
+    function _resetView() {
+      _dragX = 0; _dragY = 0; zoomScale = 1.0;
+      var w = contentEl.querySelector('div');
+      if (w) { w.scrollLeft = 0; w.scrollTop = 0; }
+      applyZoom();
+    }
+    btnUp.addEventListener('mousedown', function(e) { e.preventDefault(); _nudge(0, -1); });
+    btnDown.addEventListener('mousedown', function(e) { e.preventDefault(); _nudge(0, 1); });
+    btnLeft.addEventListener('mousedown', function(e) { e.preventDefault(); _nudge(-1, 0); });
+    btnRight.addEventListener('mousedown', function(e) { e.preventDefault(); _nudge(1, 0); });
+    btnCenter.addEventListener('mousedown', function(e) { e.preventDefault(); _resetView(); });
+    dpad.appendChild(btnUp); dpad.appendChild(btnLeft); dpad.appendChild(btnCenter);
+    dpad.appendChild(btnRight); dpad.appendChild(btnDown);
+    overlay.appendChild(dpad);
 
     // Listen for messages from AI iframe
     window.addEventListener('message', function (e) {
@@ -673,55 +723,70 @@
 
       if (e.data.action === 'open-image') {
         contentEl.innerHTML = '';
+        contentEl.style.overflow = 'visible';
         zoomScale = 1.0;
-        // ── 智能尺寸：目标 2x，不超过视口 ──
+        _dragX = 0; _dragY = 0;
+        // ── 智能尺寸：目�?2x，不超过视口 ──
         var img = new Image();
         img.onload = function() {
           var nw = img.naturalWidth, nh = img.naturalHeight;
           var maxW = window.innerWidth * 0.9, maxH = window.innerHeight - 120;
           var targetW = Math.min(nw * 2, maxW);
           var targetH = Math.min(nh * 2, maxH);
-          // 等比缩放：取两个方向中限制更紧的
           var scale = Math.min(targetW / nw, targetH / nh, 2.0);
           var finalW = Math.round(nw * scale), finalH = Math.round(nh * scale);
           img.style.cssText =
             'width:' + finalW + 'px; height:' + finalH + 'px; ' +
-            'object-fit:contain; border-radius:6px; box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
-            'display:block; position:relative; cursor:grab;';
+            'object-fit:contain; box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
+            'display:block; user-select:none;';
           contentEl.appendChild(img);
           // ── 拖拽平移 ──
-          var dragging = false, startX = 0, startY = 0;
-          _dragX = 0; _dragY = 0;
-          img.addEventListener('mousedown', function(ev) {
+          var dragging = false, sx = 0, sy = 0;
+          function onMD(ev) {
             if (ev.button !== 0) return;
-            dragging = true; startX = ev.clientX; startY = ev.clientY;
-            img.style.cursor = 'grabbing';
+            dragging = true; sx = ev.clientX; sy = ev.clientY;
             ev.preventDefault();
-          });
-          window.addEventListener('mousemove', function(ev) {
+          }
+          function onMM(ev) {
             if (!dragging) return;
-            _dragX += ev.clientX - startX; _dragY += ev.clientY - startY;
-            startX = ev.clientX; startY = ev.clientY;
+            _dragX += ev.clientX - sx; _dragY += ev.clientY - sy;
+            sx = ev.clientX; sy = ev.clientY;
             img.style.transform = 'translate(' + _dragX + 'px,' + _dragY + 'px) scale(' + zoomScale + ')';
-          });
-          window.addEventListener('mouseup', function() {
-            if (dragging) { dragging = false; img.style.cursor = 'grab'; }
-          });
+          }
+          function onMU() {
+            dragging = false;
+          }
+          img.addEventListener('mousedown', onMD);
+          window.addEventListener('mousemove', onMM);
+          window.addEventListener('mouseup', onMU);
+          // ── 关闭时清�?──
+          var _origClose = close;
+          close = function() {
+            window.removeEventListener('mousemove', onMM);
+            window.removeEventListener('mouseup', onMU);
+            contentEl.style.overflow = '';
+            close = _origClose;
+            _origClose();
+          };
         };
         img.src = e.data.src;
         overlay.style.display = 'block';
+        dpad.style.display = 'block';
       }
 
       if (e.data.action === 'open-table') {
         contentEl.innerHTML = '';
+        contentEl.style.overflow = '';
         zoomScale = 1.0;
         var wrapper = document.createElement('div');
         wrapper.style.cssText =
           'max-width:95vw; max-height:calc(100vh - 120px); overflow:auto; ' +
+          'scrollbar-width:none; ' +
           'background:var(--card-bg,#2a2a2a); color:var(--text-primary,#d4d0c8); ' +
-          'border-radius:8px; padding:20px; ' +
+          'border-radius:8px; padding:20px; user-select:text; ' +
           'box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
-          'transform:scale(1); transition:transform 0.15s ease;';
+          'zoom:1; transition:zoom 0.15s ease; ' +
+          'overscroll-behavior:contain;';
         wrapper.innerHTML = e.data.html;
         var tables = wrapper.querySelectorAll('table');
         for (var ti = 0; ti < tables.length; ti++) {
@@ -737,7 +802,15 @@
           ths[hi].style.background = 'var(--card-bg,#1e1e1e)';
         }
         contentEl.appendChild(wrapper);
+        // 拦截表格滚轮 �?改为缩放
+        wrapper.addEventListener('wheel', function(we) {
+          we.preventDefault(); we.stopPropagation();
+          if (we.deltaY < 0) { zoomScale = Math.min(5.0, zoomScale * 1.15); }
+          else { zoomScale = Math.max(0.25, zoomScale * 0.87); }
+          applyZoom();
+        }, { passive: false });
         overlay.style.display = 'block';
+        dpad.style.display = 'block';
       }
     });
 
@@ -851,7 +924,7 @@
       }
     });
 
-    // ---- Keyboard: Ctrl+\ split → now handled by unified key-hook (see bootKeyHook) ----
+    // ---- Keyboard: Ctrl+\ split �?now handled by unified key-hook (see bootKeyHook) ----
     // (hard-coded keydown removed; binding lives in core/key-bindings.json under id 'editor.splitRight')
   }
 
@@ -866,7 +939,7 @@
         return;
       }
 
-      // Handle qqq-file-open-right from iframes → opens file in right editor group
+      // Handle qqq-file-open-right from iframes �?opens file in right editor group
       if (e.data.type === 'qqq-file-open-right' && e.data.path && window.qqqTabs && window.qqqTabs.openFileInRightGroup) {
         window.qqqTabs.openFileInRightGroup(e.data.path);
         return;
@@ -879,9 +952,7 @@
       }
 
       // Handle generic RPC: iframe calls bridge methods
-      // params 默认整体当成单一参数（数组也是单一参数，修掉 diskFree 当前 bug）
-      // 显式 spread: 传 { __spread: true, args: [...] } 才解构
-      if (e.data.type === 'qqq-rpc') {
+      // params 默认整体当成单一参数（数组也是单一参数，修�?diskFree 当前 bug�?      // 显式 spread: �?{ __spread: true, args: [...] } 才解�?      if (e.data.type === 'qqq-rpc') {
         const { method, params, id } = e.data;
         try {
           const parts = method.split('.');
@@ -920,7 +991,7 @@
   // - Routes any unhandled binding (no explicit on() handler) into handleMenuCmd
   async function bootKeyHook() {
     if (!window.qqqKeyHook) {
-      console.warn('[keyhook] window.qqqKeyHook missing — script not loaded?');
+      console.warn('[keyhook] window.qqqKeyHook missing �?script not loaded?');
       return;
     }
     let bindings = [];
