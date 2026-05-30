@@ -342,9 +342,9 @@ var AgentLoop = (function () {
             }
         };
 
-        var allResults = await Promise.all(images.map(function (img) { return analyzeOne(img); }));
-        for (var i = 0; i < allResults.length; i++) {
-            var r = allResults[i];
+        // serial: avoid Chromium 108 HTTP/2 multiplex race on ERR_HTTP2_PROTOCOL_ERROR
+        for (var i = 0; i < images.length; i++) {
+            var r = await analyzeOne(images[i]);
             if (r.description) {
                 results.push({ id: r.id, description: r.description, cached: r.cached });
             } else {
@@ -557,7 +557,7 @@ var AgentLoop = (function () {
         if (tier.thinking) body.thinking = tier.thinking;
         if (tier.effort) body.reasoning_effort = tier.effort;
 
-        var MAX_RETRIES = 3;
+        var MAX_RETRIES = 1;
         var _ttfbAccum = 0;
         for (var retry = 0; retry <= MAX_RETRIES; retry++) {
             try {
@@ -576,9 +576,8 @@ var AgentLoop = (function () {
                 _ttfbAccum += _ttfbMs;
                 if (!resp.ok) {
                     var text = await resp.text();
-                    // 502/503 瞬时故障 → 指数退避重试
                     if ((resp.status === 502 || resp.status === 503) && retry < MAX_RETRIES) {
-                        var waitMsGw = 2000 * Math.pow(2, retry);
+                        var waitMsGw = 2000;
                         self._log('  gateway ' + resp.status + ' retry #' + (retry + 1) + ' in ' + waitMsGw + 'ms');
                         await new Promise(function (r) { setTimeout(r, waitMsGw); });
                         continue;
@@ -590,7 +589,6 @@ var AgentLoop = (function () {
                                 : resp.status === 502 ? '服务器暂时不可达 (502)'
                                     : resp.status === 503 ? '服务器暂时不可达 (503)'
                                         : 'Server error (' + resp.status + ')';
-                    // qoast 唯一真理弹窗（iframe 内 → 父窗口 qqqQoast）
                     try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show(friendly, { type: resp.status === 429 ? 'warning' : 'error' }); } catch (_) { }
                     onError(friendly);
                     return null;
@@ -613,27 +611,28 @@ var AgentLoop = (function () {
                     self._log('■ aborted');
                     return null;
                 }
-                // 网络错误可重试
+                var msg = err.message || '';
+                // HTTP/2 protocol death -> 0 retry, immediate iframe reload
+                if (msg.indexOf('ERR_HTTP2') >= 0 || msg.indexOf('ERR_CONNECTION_CLOSED') >= 0) {
+                    self._log('⚠ HTTP/2 dead, reloading…');
+                    onError('连接中断，正在恢复…');
+                    setTimeout(function () { window.location.reload(); }, 300);
+                    return null;
+                }
                 if (retry < MAX_RETRIES) {
-                    var waitMsF = 2000 * Math.pow(2, retry);
-                    self._log('  fetch error retry #' + (retry + 1) + ' in ' + waitMsF + 'ms: ' + (err.message || err));
+                    var waitMsF = 2000;
+                    self._log('  fetch error retry #' + (retry + 1) + ' in ' + waitMsF + 'ms: ' + msg);
                     await new Promise(function (r) { setTimeout(r, waitMsF); });
                     continue;
                 }
-                self._log('✗ fetch error: ' + (err.message || err));
-                // auto-recovery: 2 consecutive fetch errors -> hard reload iframe to reset HTTP/2 connections
-                self._consecutiveFetchErrors = (self._consecutiveFetchErrors || 0) + 1;
-                if (self._consecutiveFetchErrors >= 2) {
-                    self._log('⚠ ' + self._consecutiveFetchErrors + ' consecutive fetch errors, reloading iframe to reset HTTP/2...');
-                    onError('网络连接异常，正在刷新面板...');
-                    setTimeout(function () { window.location.reload(); }, 800);
-                } else {
-                    onError(err.message || 'Network error');
-                }
+                self._log('✗ fetch exhausted: ' + msg);
+                onError('网络异常，正在重连…');
+                setTimeout(function () { window.location.reload(); }, 800);
                 return null;
             }
         } // retry loop
     };
+
 
     // ---- SSE 解析 ----
     AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {

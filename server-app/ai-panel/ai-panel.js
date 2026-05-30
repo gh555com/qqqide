@@ -119,20 +119,19 @@
         tt2.style.display = 'flex';
         var fr = frame.getBoundingClientRect();
         var cx = fr.left + (e.data.clientX || 0);
-        var cy = fr.top + (e.data.clientY || 0) - 10;
-        // 默认居中于光标
+        var cy = fr.top + (e.data.clientY || 0) - 6;
+        // 锚点 = 光标左上，上移 6px，避免遮光标和左边时间
+        tt2.style.transform = '';
         tt2.style.left = cx + 'px';
         tt2.style.top = cy + 'px';
-        tt2.style.transform = 'translateX(-50%)';
         // 检测右溢出 → 翻到光标左侧
         var rect = tt2.getBoundingClientRect();
-        if (rect.right > window.innerWidth - 2) {
-          tt2.style.transform = '';
-          tt2.style.left = (cx - 10) + 'px';
+        if (rect.right > window.innerWidth - 6) {
+          tt2.style.left = (cx - rect.width - 6) + 'px';
           // 再次检测左溢出 → 贴左边界
           var rect2 = tt2.getBoundingClientRect();
-          if (rect2.left < 2) {
-            tt2.style.left = '2px';
+          if (rect2.left < 6) {
+            tt2.style.left = '6px';
           }
         }
       }

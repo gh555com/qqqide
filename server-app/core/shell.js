@@ -529,6 +529,15 @@
       'display:none; position:fixed; inset:0; z-index:99999; ' +
       'background:rgba(0,0,0,0.88); cursor:default;';
 
+    // ── 主题化滚动条（注入 style） ──
+    var _scrollStyle = document.createElement('style');
+    _scrollStyle.textContent =
+      '#qqq-ai-overlay-content ::-webkit-scrollbar{width:8px;height:8px}' +
+      '#qqq-ai-overlay-content ::-webkit-scrollbar-track{background:rgba(255,255,255,0.05)}' +
+      '#qqq-ai-overlay-content ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:4px}' +
+      '#qqq-ai-overlay-content ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.35)}';
+    document.head.appendChild(_scrollStyle);
+
     var contentEl = document.createElement('div');
     contentEl.id = 'qqq-ai-overlay-content';
     contentEl.style.cssText =
@@ -554,12 +563,15 @@
     }
 
     var zoomScale = 1.0;
+    // 拖拽偏移（图片用）
+    var _dragX = 0, _dragY = 0;
     function applyZoom() {
       var inner = contentEl.querySelector('img') || contentEl.querySelector('div');
-      if (inner) {
-        inner.style.transform = 'scale(' + zoomScale + ')';
-        inner.style.transition = 'transform 0.15s ease';
-      }
+      if (!inner) return;
+      var tx = inner._dragState ? inner._dragState.getImgX() : _dragX;
+      var ty = inner._dragState ? inner._dragState.getImgY() : _dragY;
+      inner.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + zoomScale + ')';
+      inner.style.transition = 'transform 0.15s ease';
     }
 
     // Copy button
@@ -629,6 +641,7 @@
       overlay.style.display = 'none';
       contentEl.innerHTML = '';
       zoomScale = 1.0;
+      _dragX = 0; _dragY = 0;
     }
 
     overlay.addEventListener('click', function (e) {
@@ -661,13 +674,41 @@
       if (e.data.action === 'open-image') {
         contentEl.innerHTML = '';
         zoomScale = 1.0;
-        var img = document.createElement('img');
+        // ── 智能尺寸：目标 2x，不超过视口 ──
+        var img = new Image();
+        img.onload = function() {
+          var nw = img.naturalWidth, nh = img.naturalHeight;
+          var maxW = window.innerWidth * 0.9, maxH = window.innerHeight - 120;
+          var targetW = Math.min(nw * 2, maxW);
+          var targetH = Math.min(nh * 2, maxH);
+          // 等比缩放：取两个方向中限制更紧的
+          var scale = Math.min(targetW / nw, targetH / nh, 2.0);
+          var finalW = Math.round(nw * scale), finalH = Math.round(nh * scale);
+          img.style.cssText =
+            'width:' + finalW + 'px; height:' + finalH + 'px; ' +
+            'object-fit:contain; border-radius:6px; box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
+            'display:block; position:relative; cursor:grab;';
+          contentEl.appendChild(img);
+          // ── 拖拽平移 ──
+          var dragging = false, startX = 0, startY = 0;
+          _dragX = 0; _dragY = 0;
+          img.addEventListener('mousedown', function(ev) {
+            if (ev.button !== 0) return;
+            dragging = true; startX = ev.clientX; startY = ev.clientY;
+            img.style.cursor = 'grabbing';
+            ev.preventDefault();
+          });
+          window.addEventListener('mousemove', function(ev) {
+            if (!dragging) return;
+            _dragX += ev.clientX - startX; _dragY += ev.clientY - startY;
+            startX = ev.clientX; startY = ev.clientY;
+            img.style.transform = 'translate(' + _dragX + 'px,' + _dragY + 'px) scale(' + zoomScale + ')';
+          });
+          window.addEventListener('mouseup', function() {
+            if (dragging) { dragging = false; img.style.cursor = 'grab'; }
+          });
+        };
         img.src = e.data.src;
-        img.style.cssText =
-          'max-width:90vw; max-height:calc(100vh - 120px); object-fit:contain; ' +
-          'border-radius:6px; box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
-          'transform:scale(1); transition:transform 0.15s ease;';
-        contentEl.appendChild(img);
         overlay.style.display = 'block';
       }
 
