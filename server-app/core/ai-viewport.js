@@ -24,7 +24,11 @@
   // ---- module-level close timer (shared by dropdown + all submenus) ----
   let _closeTimer = null;
   let _activeBlockEl = null;
+  let _hoverTimer = null;
+  function cancelHover() { if (_hoverTimer) { clearTimeout(_hoverTimer); _hoverTimer = null; } }
+  let _dirCache = new Map(); // per-dropdown cache: key=dirPath, value=entries[]
   function scheduleClose() {
+    cancelHover();
     if (_closeTimer) return; // already scheduled
     _closeTimer = setTimeout(() => {
       _closeTimer = null;
@@ -54,13 +58,17 @@
     return a + (a.includes('\\') ? '\\' : '/') + b;
   }
 
+  var SKIP_DIRS = ['node_modules', '.git', 'logs', 'cache', 'temp', 'crashDumps', '.qoder', '.github'];
+
   async function listDir(p) {
+    if (_dirCache.has(p)) return _dirCache.get(p);
     try {
       const entries = await bridge.fs.list(p);
       entries.sort((x, y) => {
-        if (!!x.isDir !== !!y.isDir) return x.isDir ? -1 : 1;
-        return String(x.name).localeCompare(String(y.name));
+        if (x.isDir !== y.isDir) return x.isDir ? -1 : 1;
+        return x.name < y.name ? -1 : x.name > y.name ? 1 : 0;
       });
+      _dirCache.set(p, entries);
       return entries;
     } catch (e) {
       return [];
@@ -119,6 +127,7 @@
   // ---- close active dropdown ----
   function closeDropdown() {
     closeAllSubmenus();
+    _dirCache.clear();
     if (activeDropdown) {
       activeDropdown.remove();
       activeDropdown = null;
@@ -222,6 +231,8 @@
       return;
     }
     for (const ent of entries) {
+      // Skip known-heavy directories to prevent OOM from hover-triggered listing
+      if (ent.isDir && SKIP_DIRS.indexOf(ent.name) !== -1) continue;
       const row = document.createElement('div');
       row.className = 'aiv-dd-row';
       row.style.cssText =
@@ -249,10 +260,14 @@
           closeSubmenuTree(parentEl._childSub);
           parentEl._childSub = null;
         }
-        // if dir, expand submenu to the right
+        // if dir, expand submenu to the right (150ms debounce via shared _hoverTimer)
         if (ent.isDir) {
-          const sub = openSubmenu(row, pathJoin(dirPath, ent.name));
-          parentEl._childSub = sub;
+          cancelHover();
+          _hoverTimer = setTimeout(() => {
+            _hoverTimer = null;
+            const sub = openSubmenu(row, pathJoin(dirPath, ent.name));
+            parentEl._childSub = sub;
+          }, 150);
         }
       });
       row.addEventListener('mouseleave', () => {
@@ -353,10 +368,12 @@
     block.appendChild(name);
     block.appendChild(rmBtn);
 
-    // hover → dropdown
+    // hover → dropdown (150ms debounce: skip flicker when mouse zips across blocks)
     block.addEventListener('mouseenter', () => {
-      showDropdown(block, proj);
+      cancelHover();
+      _hoverTimer = setTimeout(() => { _hoverTimer = null; showDropdown(block, proj); }, 150);
     });
+    block.addEventListener('mouseleave', () => { cancelHover(); });
 
     return block;
   }

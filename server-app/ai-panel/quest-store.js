@@ -20,6 +20,7 @@ var QuestStore = (function () {
     var _qgs = null;
     var _rootDir = null;
     var _bridgeCalled = 0;
+    var _requireProject = false;  // 要求必须绑定主项目才允许写入
 
     function _bridge() {
         _bridgeCalled++;
@@ -148,6 +149,19 @@ var QuestStore = (function () {
         return _rootDir;
     };
 
+    // ═══ 底层守卫：要求绑定主项目才允许写入 ───
+    QuestStore.prototype.requireProjectForWrites = function (req) {
+        _requireProject = !!req;
+    };
+
+    function _guardWrite(op) {
+        if (_requireProject && !_rootDir) {
+            console.warn('[quest-store] BLOCKED ' + op + ': no main project bound');
+            return true;  // blocked
+        }
+        return false;
+    }
+
     QuestStore.prototype._ensureIndex = async function () {
         if (!this._migrated) {
             await _migrateIfNeeded();
@@ -172,12 +186,14 @@ var QuestStore = (function () {
     };
 
     QuestStore.prototype.setActiveId = async function (id) {
+        if (_guardWrite('setActiveId')) return;
         await _set(ACTIVE_KEY, id);
     };
 
     // ═══ CRUD ═══
 
     QuestStore.prototype.create = async function (title) {
+        if (_guardWrite('create')) return null;
         await this._ensureIndex();
         var id = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         var entry = {
@@ -192,6 +208,7 @@ var QuestStore = (function () {
     };
 
     QuestStore.prototype.deleteQuest = async function (id) {
+        if (_guardWrite('deleteQuest')) return;
         await this._ensureIndex();
         this._index = this._index.filter(function (s) { return s.id !== id; });
         await this._saveIndex();
@@ -204,6 +221,7 @@ var QuestStore = (function () {
     };
 
     QuestStore.prototype.rename = async function (id, title) {
+        if (_guardWrite('rename')) return false;
         await this._ensureIndex();
         var entry = this._index.find(function (s) { return s.id === id; });
         if (entry) {
@@ -215,6 +233,7 @@ var QuestStore = (function () {
     };
 
     QuestStore.prototype.touch = async function (id) {
+        if (_guardWrite('touch')) return;
         await this._ensureIndex();
         var entry = this._index.find(function (s) { return s.id === id; });
         if (entry) {
@@ -226,6 +245,7 @@ var QuestStore = (function () {
     // ═══ Save / Load ═══
 
     QuestStore.prototype.save = async function (id, data) {
+        if (_guardWrite('save')) return;
         data.savedAt = Date.now();
         await _setNow(QUEST_NS + '.' + id, data);
     };

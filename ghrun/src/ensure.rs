@@ -27,7 +27,7 @@ macro_rules! ev {
 
 /// `ghrun ensure <name>` — idempotent, safe to call multiple times.
 pub fn ensure_component(ctx: &Ctx, name: &str) -> Result<(), String> {
-    let manifest = find_component(name)
+    let manifest = find_component(name, Some(&ctx.qdir))
         .ok_or_else(|| format!("unknown component: {}", name))?;
 
     let platform = current_platform();

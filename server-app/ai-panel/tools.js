@@ -242,6 +242,15 @@ async function executeTool(name, args) {
 async function executeReadFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
+
+    // ★ 优先走主进程 (1 IPC, 消除大文件序列化开销)
+    if (bridge.ai && bridge.ai.read_file) {
+        try {
+            return await bridge.ai.read_file({ path: args.path, start_line: args.start_line, end_line: args.end_line });
+        } catch (_) { /* fallback */ }
+    }
+
+    // ---- fallback: renderer ----
     try {
         var content = await bridge.fs.read(args.path);
         // CRLF→LF normalize
@@ -331,6 +340,14 @@ async function executeEditFile(args) {
     if (!bridge) return 'Error: bridge not available';
     if (!args.edits || args.edits.length === 0) return 'Error: no edits provided.';
 
+    // ★ 优先走主进程 (1 IPC, 替代 read+write 2 IPC)
+    if (bridge.ai && bridge.ai.edit_file) {
+        try {
+            return await bridge.ai.edit_file({ path: args.path, edits: args.edits });
+        } catch (_) { /* fallback */ }
+    }
+
+    // ---- fallback: renderer ----
     try {
         var content = await bridge.fs.read(args.path);
         content = content.replace(/\r\n/g, '\n');
@@ -397,6 +414,15 @@ async function executeEditFile(args) {
 async function executeWriteFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
+
+    // ★ 优先走主进程 (1 IPC)
+    if (bridge.ai && bridge.ai.write_file) {
+        try {
+            return await bridge.ai.write_file({ path: args.path, content: args.content });
+        } catch (_) { /* fallback */ }
+    }
+
+    // ---- fallback: renderer ----
     try {
         try { await bridge.fs.mkdir(args.path.replace(/[/\\][^/\\]+$/, '')); } catch (_) { }
         await bridge.fs.write(args.path, args.content);
@@ -410,7 +436,7 @@ async function executeWriteFile(args) {
 // search_text — 递归正则搜索
 // ============================================================
 
-var SKIP_DIRS = ['node_modules', '.git', 'dist', 'backup', '__pycache__', '.venv', 'vendor', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target'];
+var SKIP_DIRS = ['node_modules', '.git', 'dist', 'backup', '__pycache__', '.venv', 'vendor', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs', 'cache', 'temp', 'crashDumps'];
 var SKIP_EXTS = ['.exe', '.dll', '.so', '.dylib', '.bin', '.png', '.jpg', '.jpeg', '.gif', '.mp3', '.mp4', '.zip', '.tar', '.gz', '.xz', '.woff', '.woff2', '.ttf', '.eot', '.ico', '.vsix', '.lock', '.wasm'];
 
 async function executeSearchText(args) {
@@ -434,6 +460,15 @@ async function executeSearchText(args) {
     }
 
     var maxResults = args.max_results || 30;
+
+    // * 优先走主进程 (1 IPC, 消除 renderer IPC 洪水)
+    if (bridge.ai && bridge.ai.search_text) {
+        try {
+            return await bridge.ai.search_text({ query: args.query, paths: searchDirs, maxResults: maxResults });
+        } catch (_) { /* fallback */ }
+    }
+
+    // ---- fallback: renderer walk (legacy) ----
     var regex;
     try {
         regex = new RegExp(args.query, 'i');
@@ -460,8 +495,9 @@ async function executeSearchText(args) {
                 var extMatch = ent.name.match(/\.([a-z0-9]+)$/i);
                 var ext = extMatch ? '.' + extMatch[1].toLowerCase() : '';
                 if (SKIP_EXTS.indexOf(ext) !== -1) continue;
-                if (!ent.size || ent.size > MAX_FILE_SIZE) continue;
                 try {
+                    var st = await bridge.fs.stat(full);
+                    if (!st || st.size > MAX_FILE_SIZE) continue;
                     var content = await bridge.fs.read(full);
                     var lines = content.split('\n');
                     for (var li = 0; li < lines.length && matches.length < maxResults; li++) {
@@ -490,6 +526,14 @@ async function executeListFiles(args) {
     if (!bridge) return 'Error: bridge not available';
     try {
         if (args.recursive) {
+            // * 优先走主进程 (1 IPC, 消除 renderer IPC 洪水)
+            if (bridge.ai && bridge.ai.list_files) {
+                try {
+                    return await bridge.ai.list_files({ path: args.path, maxResults: 200 });
+                } catch (_) { /* fallback */ }
+            }
+
+            // ---- fallback: renderer walk (legacy) ----
             var entries = [];
             async function walk(dir, prefix) {
                 var items;
@@ -498,7 +542,7 @@ async function executeListFiles(args) {
                 for (var i = 0; i < items.length; i++) {
                     if (entries.length >= 200) return;
                     var item = items[i];
-                    if (item.name.startsWith('.') || item.name === 'node_modules') continue;
+                    if (item.name.startsWith('.') || item.name === 'node_modules' || SKIP_DIRS.indexOf(item.name) !== -1) continue;
                     var rel = prefix ? prefix + '/' + item.name : item.name;
                     entries.push(rel + (item.isDir ? '/' : ''));
                     if (item.isDir) await walk(dir.replace(/\\/g, '/').replace(/\/$/, '') + '/' + item.name, rel);
@@ -534,7 +578,7 @@ async function executeGetVisionContext() {
                 if (bridge) {
                     var items = await bridge.fs.list(f.path);
                     var top = items
-                        .filter(function (it) { return !it.name.startsWith('.') && it.name !== 'node_modules'; })
+                        .filter(function (it) { return !it.name.startsWith('.') && it.name !== 'node_modules' && SKIP_DIRS.indexOf(it.name) === -1; })
                         .slice(0, 30)
                         .map(function (it) { return '  ' + (it.isDir ? '\u{1F4C1}' : '  ') + ' ' + it.name; });
                     lines.push.apply(lines, top);
@@ -554,6 +598,15 @@ async function executeGetVisionContext() {
 async function executeCreateFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
+
+    // ★ 优先走主进程 (1 IPC)
+    if (bridge.ai && bridge.ai.create_file) {
+        try {
+            return await bridge.ai.create_file({ path: args.path, content: args.content });
+        } catch (_) { /* fallback */ }
+    }
+
+    // ---- fallback: renderer ----
     try {
         var exists = await bridge.fs.exists(args.path);
         if (exists) return 'Error: file already exists: ' + args.path + '. Use edit_file to modify existing files.';
@@ -594,11 +647,13 @@ async function executeRunCommand(args) {
         }
         // Use qz spawn (ghrun → runner.py → node fallback)
         console.log('[qz] run_command:', JSON.stringify({ cmd: cmd, args: cmdArgs, cwd: args.cwd || '', shell: useShell }));
+        // 无硬截止（timeout=0），仅 stall 守护：5 分钟无输出 = 死锁
         var result = await bridge.qz.spawn({
             cmd: cmd,
             args: cmdArgs,
             cwd: args.cwd || '',
-            timeout: 30000,
+            timeout: 0,
+            stallMs: 300000,
             shell: useShell
         });
         console.log('[qz] run_command result:', JSON.stringify({ exitCode: result.exitCode, tier: result.tier, durationMs: result.durationMs, stdoutLen: (result.stdout || '').length, stderrLen: (result.stderr || '').length }));
@@ -621,6 +676,15 @@ async function executeRunCommand(args) {
 async function executeDeleteFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
+
+    // ★ 优先走主进程 (1 IPC)
+    if (bridge.ai && bridge.ai.delete_file) {
+        try {
+            return await bridge.ai.delete_file({ path: args.path });
+        } catch (_) { /* fallback */ }
+    }
+
+    // ---- fallback: renderer ----
     try {
         var exists = await bridge.fs.exists(args.path);
         if (!exists) return 'Error: file not found: ' + args.path;
@@ -663,6 +727,15 @@ async function executeFindFiles(args) {
     if (searchDirs.length === 0) return 'Error: no search path specified.';
 
     var maxResults = args.max_results || 50;
+
+    // * 优先走主进程 (1 IPC, 消除 renderer IPC 洪水)
+    if (bridge.ai && bridge.ai.find_files) {
+        try {
+            return await bridge.ai.find_files({ pattern: args.pattern, paths: searchDirs, maxResults: maxResults });
+        } catch (_) { /* fallback */ }
+    }
+
+    // ---- fallback: renderer walk (legacy) ----
     var regex = globToRegex(args.pattern);
     var matches = [];
 
@@ -674,7 +747,7 @@ async function executeFindFiles(args) {
         for (var i = 0; i < entries.length && matches.length < maxResults; i++) {
             var ent = entries[i];
             if (ent.name.startsWith('.')) continue;
-            if (ent.isDir && (ent.name === 'node_modules' || ent.name === '.git')) continue;
+            if (ent.isDir && (ent.name === 'node_modules' || ent.name === '.git' || SKIP_DIRS.indexOf(ent.name) !== -1)) continue;
             var full = dir.replace(/\\/g, '/').replace(/\/$/, '') + '/' + ent.name;
             var rel = baseDir ? full.slice(baseDir.length + 1) : full;
             if (regex.test(ent.name) || regex.test(rel)) {

@@ -611,12 +611,18 @@ var AgentLoop = (function () {
                     return null;
                 }
                 var msg = err.message || '';
-                // HTTP/2 protocol death -> 0 retry, immediate iframe reload
-                if (msg.indexOf('ERR_HTTP2') >= 0 || msg.indexOf('ERR_CONNECTION_CLOSED') >= 0) {
-                    self._log('⚠ HTTP/2 dead, reloading…');
-                    onError('连接中断，正在恢复…');
-                    setTimeout(function () { window.location.reload(); }, 300);
-                    return null;
+                if (msg.indexOf("ERR_HTTP2") >= 0 || msg.indexOf("ERR_CONNECTION_CLOSED") >= 0) {
+                // HTTP/2 protocol death — ceiling hit: Chromium 108 limitation.
+                // Each occurrence = one reason-why-we-need-scheme-A.
+                self._http2Ceilings = (self._http2Ceilings || 0) + 1;
+                console.warn('[qz-ceiling] HTTP/2 death #' + self._http2Ceilings + ', reloading iframe');
+                if (self._http2Ceilings >= 3) {
+                    console.error('[qz-ceiling] ceiling breached ' + self._http2Ceilings + ' times this session — consider switching to scheme A (main-process proxy)');
+                }
+                self._log('⚠ HTTP/2 dead, reloading…');
+                onError('连接中断，正在恢复…');
+                setTimeout(function () { window.location.reload(); }, 300);
+                return null;
                 }
                 if (retry < MAX_RETRIES) {
                     var waitMsF = 2000;
@@ -863,8 +869,13 @@ var AgentLoop = (function () {
         if (!self._houses || self._houses.length === 0) return;
         var timeoutCtrl = new AbortController();
         var tid = setTimeout(function () { timeoutCtrl.abort(); }, 8000);
-        // 合并两个信号：超时 或 用户中止
-        var combined = self.abortController ? AbortSignal.any([timeoutCtrl.signal, self.abortController.signal]) : timeoutCtrl.signal;
+        // 合并两个信号：超时 或 用户中止（Chrome 108 无 AbortSignal.any，手动合并）
+        var combined = timeoutCtrl.signal;
+        if (self.abortController) {
+            var userAborted = false;
+            self.abortController.signal.addEventListener('abort', function () { userAborted = true; timeoutCtrl.abort(); });
+            if (self.abortController.signal.aborted) { return; }
+        }
         try {
             var lines = [];
             for (var hi = 0; hi < self._houses.length; hi++) {
@@ -918,7 +929,6 @@ var AgentLoop = (function () {
 
     // ---- 引导注入：将引导消息插入对话（不触发 API 调用） ----
     AgentLoop.prototype.inject = function (message) {
-        if (!this.conversation) return false;
         this.conversation.push({ role: 'user', content: message, _injected: true, _floor: this._ctx.totalFloors });
         this._log('→ injected: ' + message.slice(0, 60));
         return true;

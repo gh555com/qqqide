@@ -53,6 +53,21 @@ enum Cmd {
     /// Upgrade all installed components to latest versions
     Upgrade,
 
+    /// Upgrade shell-out/ from remote (download + verify + atomic swap + restart Electron)
+    UpgradeShell {
+        /// URL to shell-out.tar.xz
+        url: String,
+        /// Expected SHA-256 hex
+        #[arg(long)]
+        sha256: Option<String>,
+        /// Path to the shell-out directory to replace
+        #[arg(long)]
+        target: String,
+        /// Path to electron.exe to restart
+        #[arg(long)]
+        electron: String,
+    },
+
     /// List installed components and goods
     List,
 
@@ -97,6 +112,7 @@ fn main() {
         Cmd::Ensure { components } => cmd_ensure(&ctx, &components),
         Cmd::Install { url } => cmd_install(&ctx, &url),
         Cmd::Upgrade => cmd_upgrade(&ctx),
+        Cmd::UpgradeShell { url, sha256, target, electron } => cmd_upgrade_shell(&ctx, &url, &sha256, &target, &electron),
         Cmd::List => { install::list_goods(&ctx); Ok(()) },
         Cmd::Info => cmd_info(&ctx),
         Cmd::LspDaemon => lsp_daemon::run(&ctx),
@@ -154,6 +170,156 @@ fn cmd_upgrade(ctx: &Ctx) -> Result<(), String> {
     Ok(())
 }
 
+fn cmd_upgrade_shell(ctx: &Ctx, url: &str, sha256: &Option<String>, target: &str, electron: &str) -> Result<(), String> {
+    use std::process::Command;
+
+    let target_dir = PathBuf::from(target);
+    if !target_dir.exists() {
+        return Err(format!("target directory not found: {}", target));
+    }
+
+    let staging = ctx.tmp.join("shell-upgrade");
+    let _ = fs::remove_dir_all(&staging);
+    fs::create_dir_all(&staging).map_err(|e| e.to_string())?;
+
+    let archive_path = staging.join("shell-out.tar.xz");
+
+    // 1) Download
+    println!("{}", ev!("event" => "download_start", "url" => url));
+    let resp = reqwest::blocking::get(url)
+        .map_err(|e| format!("download failed: {}", e))?;
+    let total = resp.content_length();
+    let bytes = resp.bytes().map_err(|e| format!("download read failed: {}", e))?;
+    let downloaded = bytes.len() as u64;
+    fs::write(&archive_path, &bytes).map_err(|e| e.to_string())?;
+    println!("{}", ev!("event" => "download_done", "size" => downloaded));
+
+    // 2) Verify SHA-256
+    if let Some(expected) = sha256 {
+        if !expected.is_empty() {
+            let actual = sha256_file(&archive_path)?;
+            if !actual.eq_ignore_ascii_case(expected) {
+                return Err(format!("SHA-256 mismatch: expected {}, got {}", expected, actual));
+            }
+            println!("{}", ev!("event" => "verify_ok", "sha256" => actual));
+        }
+    }
+
+    // 3) Extract to staging/extracted
+    let extract_dir = staging.join("extracted");
+    fs::create_dir_all(&extract_dir).map_err(|e| e.to_string())?;
+    extract_tar_xz(&archive_path, &extract_dir)?;
+    println!("{}", ev!("event" => "extract_done"));
+
+    // 4) Signal ready — parent (Electron main process) should now quit
+    println!("{}", ev!("event" => "ready_to_swap", "staging" => extract_dir.to_string_lossy().to_string()));
+
+    // 5) Wait for parent process (Electron) to exit
+    // On Windows, we watch the electron.exe process
+    let electron_path = PathBuf::from(electron);
+    if electron_path.exists() {
+        let electron_name = electron_path.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "electron.exe".to_string());
+        println!("{}", ev!("event" => "waiting_for_exit", "process" => electron_name));
+        // Poll until electron.exe is gone (max 30s)
+        for _ in 0..60 {
+            let running = is_process_running(&electron_name);
+            if !running { break; }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    } else {
+        // Fallback: wait 2s for parent to die
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+
+    // 6) Atomic swap
+    let backup = target_dir.with_extension("old");
+    let _ = fs::remove_dir_all(&backup);
+    fs::rename(&target_dir, &backup).map_err(|e| format!("backup failed: {}", e))?;
+    // Copy extracted contents into target
+    copy_dir_recursive(&extract_dir, &target_dir)?;
+    let _ = fs::remove_dir_all(&backup);
+    let _ = fs::remove_dir_all(&staging);
+    println!("{}", ev!("event" => "swap_done"));
+
+    // 7) Restart Electron
+    if electron_path.exists() {
+        println!("{}", ev!("event" => "restarting"));
+        Command::new(&electron_path)
+            .arg(".")
+            .spawn()
+            .map_err(|e| format!("restart failed: {}", e))?;
+    }
+
+    println!("{}", ev!("event" => "upgrade_shell_done"));
+    Ok(())
+}
+
+fn sha256_file(path: &PathBuf) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 { break; }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn extract_tar_xz(archive: &PathBuf, dest: &PathBuf) -> Result<(), String> {
+    let file = fs::File::open(archive).map_err(|e| e.to_string())?;
+    let xz = xz2::read::XzDecoder::new(file);
+    let mut archive = tar::Archive::new(xz);
+    archive.unpack(dest).map_err(|e| format!("extract failed: {}", e))?;
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &PathBuf, dst: &PathBuf) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+    for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let ty = entry.file_type().map_err(|e| e.to_string())?;
+        let name = entry.file_name();
+        let dst_path = dst.join(&name);
+        if ty.is_dir() {
+            copy_dir_recursive(&entry.path(), &dst_path)?;
+        } else {
+            fs::copy(entry.path(), &dst_path).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn is_process_running(name: &str) -> bool {
+    use std::process::Command;
+    let output = Command::new("tasklist")
+        .args(["/FI", &format!("IMAGENAME eq {}", name)])
+        .output();
+    match output {
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            stdout.contains(name)
+        }
+        Err(_) => false,
+    }
+}
+
+#[cfg(not(windows))]
+fn is_process_running(name: &str) -> bool {
+    use std::process::Command;
+    let output = Command::new("pgrep")
+        .arg(name)
+        .output();
+    match output {
+        Ok(o) => o.status.success(),
+        Err(_) => false,
+    }
+}
+
 fn cmd_info(ctx: &Ctx) -> Result<(), String> {
     println!("{}", serde_json::json!({
         "event":      "info",
@@ -168,7 +334,7 @@ fn cmd_info(ctx: &Ctx) -> Result<(), String> {
 }
 
 fn cmd_which(ctx: &Ctx, name: &str) -> Result<(), String> {
-    let (dir_name, bin_name) = manifest::find_bin(name)
+    let (dir_name, bin_name) = manifest::find_bin(name, Some(&ctx.qdir))
         .ok_or_else(|| format!("component '{}' not found in manifest", name))?;
     let dir = ctx.component_dir(&dir_name);
     let full_path = dir.join(&bin_name);

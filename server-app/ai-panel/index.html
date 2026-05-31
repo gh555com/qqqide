@@ -26,20 +26,25 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #top-bar .label{opacity:.7}
 #top-bar input{width:22px;flex:none;padding:1px 4px;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:3px;font-size:10px}
 #top-bar button{padding:1px 6px;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);font-size:10px;white-space:nowrap;flex-shrink:0}
-#tab-bar{display:flex;align-items:center;gap:2px;padding:2px 6px;border-bottom:1px solid var(--border-color);background:var(--card-bg);overflow-x:hidden}
-#tab-bar::-webkit-scrollbar{display:none}
-#tabs{display:flex;gap:2px;flex:1;min-width:0;overflow:hidden}
-.tab{display:flex;align-items:center;gap:4px;padding:3px 8px;font-size:11px;border:1px solid var(--border-color);border-radius:3px 3px 0 0;background:var(--bg);white-space:nowrap;max-width:160px;user-select:none}
-.tab.active{background:var(--base3);border-bottom-color:var(--base3);font-weight:600}
-.tab .tab-title{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
-.tab .tab-del{opacity:.4;font-size:14px;line-height:1;padding:0 1px;}
-.tab .tab-del:hover{opacity:1;color:var(--red)}
-#tab-new{padding:1px 6px;font-size:16px;line-height:1;border:1px solid var(--border-color);border-radius:3px;background:var(--bg);color:var(--base01);flex-shrink:0}
-#tab-new:hover{color:var(--text-primary);background:var(--base3)}
+/* q2/q3 导航行 */
+#nav-row{display:flex;align-items:center;gap:6px;padding:3px 8px;border-bottom:1px solid var(--border-color);background:var(--card-bg)}
+.nav-tofu{display:flex;align-items:center;gap:4px;padding:3px 10px;border:1px solid var(--border-color);border-radius:4px;font-size:11px;white-space:nowrap;user-select:none;position:relative;background:var(--background-color)}
+.nav-tofu:hover{background:var(--base3)}
+.nav-tofu-label{font-weight:700;color:var(--primary-color);font-size:12px}
+.nav-tofu-text{overflow:hidden;text-overflow:ellipsis;max-width:200px;color:var(--text-primary)}
+.nav-tofu-arrow{font-size:9px;color:var(--base01)}
+.nav-drop{position:absolute;top:100%;left:0;z-index:9999;min-width:220px;max-height:260px;overflow-y:auto;background:var(--card-bg);border:1px solid var(--border-color);border-radius:4px;box-shadow:0 4px 16px rgba(0,0,0,0.18);display:none}
+.nav-drop.show{display:block}
+.nav-drop-item{padding:5px 12px;font-size:11px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-drop-item:hover{background:var(--background-color)}
+.nav-drop-item.active{font-weight:700;color:var(--primary-color)}
+/* 灯泡勾选框 */
+.bulb{display:inline-block;width:14px;height:14px;border-radius:50%;border:1px solid var(--border-color);background:var(--background-color);flex-shrink:0;margin-left:4px}
+.bulb.on{background:var(--red);border-color:var(--red);box-shadow:0 0 6px var(--red)}
 #messages{overflow-y:auto;overflow-x:hidden;padding:12px;scrollbar-width:thin;min-height:0}
 #messages::-webkit-scrollbar{width:6px}
 #messages::-webkit-scrollbar-thumb{background:var(--base01);border-radius:3px}
-.msg{margin-bottom:10px;line-height:1.5}
+.msg{margin-bottom:10px;line-height:1.5;content-visibility:auto;contain-intrinsic-size:auto 80px}
 .msg-user{background:var(--card-bg);border-radius:8px;padding:8px 12px;overflow-x:hidden;overflow-wrap:break-word;word-break:break-word}
 .msg-ai{padding:8px 0;word-break:break-word;overflow-x:hidden}
 .msg-ai h1,.msg-ai h2,.msg-ai h3{margin:8px 0 4px;line-height:1.3}
@@ -62,8 +67,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-status{font-size:11px;opacity:.6;padding:2px 0;font-style:italic}
 /* 楼层时钟 + 饼图（嵌在豆腐块内部底部，每个楼层私有） */
 .msg-ai-clock{display:flex;align-items:center;gap:8px;padding:8px 0 0;user-select:none}
-.msg-ai-clock .clock{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;font-size:48px;font-weight:700;color:#000}
-.msg-ai-clock canvas{width:52px;height:52px;border-radius:50%}
+.msg-ai-clock .clock{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;font-weight:700;color:#000;line-height:1}
+.msg-ai-clock .clock-min{font-size:48px}
+.msg-ai-clock .clock-sec{font-size:24px}
+.msg-ai-clock canvas{width:42px;height:42px;border-radius:50%}
 #input-area{border-top:1px solid var(--border-color);padding:8px;display:flex;flex-direction:column;gap:6px;background:var(--card-bg)}
 #image-strip{display:none;overflow-x:hidden;flex-wrap:wrap;padding:4px 0;gap:6px}
 #image-strip::-webkit-scrollbar{height:4px}
@@ -79,7 +86,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-img-badge{position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.75);color:#fff;font-size:10px;font-weight:bold;padding:2px 6px;border-radius:3px;user-select:none;z-index:1}
 .msg-img-badge:hover{background:var(--green)}
 #input-row{display:flex;gap:6px;overflow:hidden}
-#input{flex:1;min-width:0;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:150px;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;outline:none}
+#input{flex:1;min-width:0;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:150px;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;outline:none;scrollbar-width:thin;scrollbar-color:var(--base01) transparent}#input::-webkit-scrollbar{width:3px}#input::-webkit-scrollbar-track{background:transparent;border:none}#input::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}#input::-webkit-scrollbar-button{display:none}#input::-webkit-scrollbar-corner{background:transparent}
 #input:focus{outline:1px solid var(--blue)}
 #input:empty::before{content:attr(data-placeholder);color:var(--base01);opacity:.5;pointer-events:none}
 #btn-row{display:flex;gap:3px;align-items:center;flex-wrap:nowrap;overflow-x:hidden}
@@ -111,7 +118,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .queue-card textarea{width:100%;min-height:60px;font-size:12px;padding:4px;border:1px solid var(--border-color);border-radius:3px;background:var(--background-color);color:var(--text-primary);resize:vertical}
 .queue-card .qcard-actions{display:flex;gap:4px;margin-top:4px;justify-content:flex-end}
 .queue-card .qcard-actions button{padding:2px 8px;font-size:11px;border:1px solid var(--border-color);border-radius:3px;}
-/* 上下文压缩面�?*/
+/* 上下文压缩面板 */
 #ctx-panel{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center}
 .ctx-panel-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.5)}
 .ctx-panel-box{position:relative;background:var(--card-bg);border:1px solid var(--border-color);border-radius:8px;padding:20px;max-width:420px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.3)}
@@ -128,7 +135,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 </style>
 <div id="clock-tooltip"></div>
 <script>
-// 主题同步：从父窗�?qqq-theme.js 唯一真理配色机器继承
+// 主题同步：从父窗口 qqq-theme.js 唯一真理配色机器继承
 (function(){
   'use strict';
   const D = document.documentElement;
@@ -177,19 +184,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 </script>
 </head>
 <body>
-<div id="top-bar">
-  <span class="label">Token:</span>
-  <input type="password" id="token-input" placeholder="Bearer token for gh555.com">
-  <button id="token-save">Save</button>
-  <span class="label" style="margin-left:8px">Cost:</span>
-  <span id="cost-label">0 ge</span>
-  <button id="rules-edit" title="Edit global AI rules" style="margin-left:auto">Rules</button>
-</div>
-<div id="tab-bar">
-  <div id="tabs"></div>
-  <button id="tab-new" title="New Quest">+</button>
-</div>
-<div id="messages"></div>
+undefined
 <div id="input-area">
   <div id="image-strip"></div>
   <div id="queue-strip"></div>
@@ -214,19 +209,19 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
     <button id="ctx-btn">234k</button>
   </div>
 </div>
-<!-- 上下文压缩确认面�?-->
+<!-- 上下文压缩确认面板 -->
 <div id="ctx-panel" style="display:none">
   <div class="ctx-panel-overlay"></div>
   <div class="ctx-panel-box">
     <div class="ctx-panel-body">
-      <p data-i18n="ai.ctx.title">你可以选择压缩上下�?/p>
-      <p><strong data-i18n="ai.ctx.benefit">唯一好处�?/strong><span data-i18n="ai.ctx.benefitText">从下次对话开始降低费用�?/span></p>
-      <p><strong data-i18n="ai.ctx.cost">代价�?/strong><span data-i18n="ai.ctx.costText">最近六层楼之前滴对话会被压缩而丢失细节，AI 只会记住其中摘要。最近六层楼会被完整保存�?/span></p>
-      <p data-i18n="ai.ctx.whatIf">如果一直不手动压缩�?/p>
+      <p data-i18n="ai.ctx.title">你可以选择压缩上下文</p>
+      <p><strong data-i18n="ai.ctx.benefit">唯一好处：</strong><span data-i18n="ai.ctx.benefitText">从下次对话开始降低费用。</span></p>
+      <p><strong data-i18n="ai.ctx.cost">代价：</strong><span data-i18n="ai.ctx.costText">最近六层楼之前滴对话会被压缩而丢失细节，AI 只会记住其中摘要。最近六层楼会被完整保存。</span></p>
+      <p data-i18n="ai.ctx.whatIf">如果一直不手动压缩？</p>
       <ol>
-        <li data-i18n="ai.ctx.auto">qqq IDE 用最优策略自动压缩，通常好于手动压缩�?/li>
-        <li data-i18n="ai.ctx.noLoss">无论如何（压缩与否、谁来压缩）都既不会导致 AI 记忆撑爆，也不会导致 AI 记忆丢失�?/li>
-        <li data-i18n="ai.ctx.complex">更适合复杂滴编程任务，AI 将会有极限长度滴记忆空间�?/li>
+        <li data-i18n="ai.ctx.auto">qqq IDE 用最优策略自动压缩，通常好于手动压缩。</li>
+        <li data-i18n="ai.ctx.noLoss">无论如何（压缩与否、谁来压缩）都既不会导致 AI 记忆撑爆，也不会导致 AI 记忆丢失。</li>
+        <li data-i18n="ai.ctx.complex">更适合复杂滴编程任务，AI 将会有极限长度滴记忆空间。</li>
       </ol>
     </div>
     <div class="ctx-panel-actions">
@@ -249,7 +244,8 @@ const GATEWAY_URL = 'https://gh555.com/api/v3/ai/chat';
 
 // State
 var streaming = false;
-var _sending = false;  // atomic guard: 防止 Enter 连按重复发�?var _renderPending = false;
+var _sending = false;  // atomic guard: 防止 Enter 连按重复发送
+var _renderPending = false;
 var _scrollPending = false;
 
 // DOM
@@ -264,8 +260,127 @@ const $queueBtn = document.getElementById('queue-btn');
 const $ctxBtn = document.getElementById('ctx-btn');
 const $queueStrip = document.getElementById('queue-strip');
 
-// ── 智能等级选择（per-quest�?──
-var selectedTier = 6; // 默认 6=Pro+Max，restoreQuestUIState 会覆�?
+// ── 排队按钮状态：有文字+非流式+非发送中 才启用 ──
+function updateQueueBtn() {
+  var hasText = getInputText().trim().length > 0;
+  $queueBtn.disabled = !hasText || streaming || _sending;
+}
+
+// ── 无主文件夹引导蒙版 ──
+var _onboardingActive = false;
+function _hasMainProject() {
+  try {
+    return !!(parent && parent.qqqAiViewport && parent.qqqAiViewport.getMainProject());
+  } catch(_) { return false; }
+}
+function _showOnboarding() {
+  if (_onboardingActive) return;
+  _onboardingActive = true;
+  var pdoc, pbody;
+  try { pdoc = parent.document; pbody = pdoc.body; } catch(_) { _onboardingActive = false; return; }
+  var plusBtn = pdoc.querySelector('.aiv-block-empty');
+  if (!plusBtn) {
+    // AI 视口可能尚未渲染（极端情况），延迟重试一次
+    _onboardingActive = false;
+    setTimeout(function() { _showOnboarding(); }, 500);
+    return;
+  }
+  var rect = plusBtn.getBoundingClientRect();
+  // 确保按钮可见
+  if (rect.width === 0 || rect.height === 0) { _onboardingActive = false; return; }
+
+  // 注入 pulse 动画
+  if (!pdoc.getElementById('qqq-onboarding-style')) {
+    var style = pdoc.createElement('style');
+    style.id = 'qqq-onboarding-style';
+    style.textContent = '@keyframes qqq-ob-pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.8);}50%{box-shadow:0 0 0 12px rgba(255,255,255,0);}}';
+    pdoc.head.appendChild(style);
+  }
+
+  var holeX = rect.left - 8;
+  var holeY = rect.top - 4;
+  var holeW = rect.width + 16;
+  var holeH = rect.height + 10;
+  var s = 'position:fixed;z-index:999998;pointer-events:auto;background:rgba(0,0,0,0.65);';
+
+  var ov = pdoc.createElement('div');
+  ov.id = 'qqq-onboarding-overlay';
+
+  function addCover(l, t, w, h) {
+    var d = pdoc.createElement('div');
+    d.style.cssText = s + 'left:' + l + ';top:' + t + ';width:' + w + ';height:' + h + ';';
+    ov.appendChild(d);
+  }
+  addCover('0', '0', '100vw', holeY + 'px');
+  addCover('0', (holeY + holeH) + 'px', '100vw', 'calc(100vh - ' + (holeY + holeH) + 'px)');
+  addCover('0', holeY + 'px', holeX + 'px', holeH + 'px');
+  addCover((holeX + holeW) + 'px', holeY + 'px', 'calc(100vw - ' + (holeX + holeW) + 'px)', holeH + 'px');
+
+  // 脉冲光环
+  var ring = pdoc.createElement('div');
+  ring.style.cssText = 'position:fixed;left:' + holeX + 'px;top:' + holeY + 'px;width:' + holeW + 'px;height:' + holeH + 'px;border:2px solid #fff;border-radius:6px;z-index:999999;pointer-events:none;animation:qqq-ob-pulse 1.5s ease-in-out infinite;';
+  ov.appendChild(ring);
+
+  // 箭头 + 文字
+  var arrowBox = pdoc.createElement('div');
+  arrowBox.style.cssText = 'position:fixed;left:' + Math.max(10, rect.left - 60) + 'px;top:' + (holeY + holeH + 14) + 'px;z-index:999999;pointer-events:none;text-align:center;';
+  arrowBox.innerHTML = '<svg width="36" height="18" style="display:block;margin:0 auto"><polygon points="18,18 0,0 36,0" fill="#fff"/></svg>'
+    + '<div style="background:#fff;color:#111;padding:12px 22px;border-radius:8px;font-size:15px;font-weight:600;white-space:nowrap;box-shadow:0 4px 24px rgba(0,0,0,.6);" data-i18n="ai.onboarding.selectFolder">请先选择一个主文件夹！</div>';
+  ov.appendChild(arrowBox);
+
+  pbody.appendChild(ov);
+  // i18n
+  try { if (parent.window && parent.window.i18n) parent.window.i18n.updateDom(ov); } catch(_) {}
+
+  // 点击 + 号时通过蒙版穿透（不关闭蒙版，+ 号自带 click handler）
+  ov.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+  ov.addEventListener('click', function(e) {
+    var target = e.target;
+    if (target === ov || target.style.background.indexOf('rgba') !== -1) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  });
+}
+function _hideOnboarding() {
+  _onboardingActive = false;
+  try {
+    var ov = parent.document.getElementById('qqq-onboarding-overlay');
+    if (ov) ov.remove();
+  } catch(_) {}
+}
+
+// ═══ 统一守卫管线：新增按钮无需关心 onboarding，自动拦截 ═══
+// ① 所有鼠标点击 → 在 #input-area 或 #top-bar 内的按钮自动被拦截
+document.addEventListener('mousedown', function(e) {
+  if (_hasMainProject() || _onboardingActive) return;
+  var el = e.target;
+  if (el.closest('#input-area') || el.closest('#top-bar')) {
+    _showOnboarding();
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+}, true);
+// ② Enter 键发送
+document.addEventListener('keydown', function(e) {
+  if (_hasMainProject() || _onboardingActive) return;
+  if (e.key === 'Enter' && !e.shiftKey && e.target.closest('#input')) {
+    _showOnboarding();
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+}, true);
+// ③ 粘贴拦截
+$input.addEventListener('paste', function(e) {
+  if (!_hasMainProject() && !_onboardingActive) {
+    _showOnboarding();
+    e.stopImmediatePropagation();
+    e.preventDefault();
+  }
+}, true);
+
+// ── 智能等级选择（per-quest）──
+var selectedTier = 6; // 默认 6=Pro+Max，restoreQuestUIState 会覆盖
 function updateTierButtons(tierIndex) {
   document.querySelectorAll('.tier-btn').forEach(function(b) { b.classList.remove('sel'); });
   if (tierIndex === null || tierIndex === 0) {
@@ -285,7 +400,8 @@ function selectTier(tierIndex) {
   }
 }
 
-// 初始化选中�?(function initTierUI() {
+// 初始化选中态
+(function initTierUI() {
   selectTier(6); // default, will be overridden by restoreQuestUIState
 })();
 
@@ -297,10 +413,10 @@ document.querySelectorAll('.tier-btn[data-tier]').forEach(function(btn) {
 // Token management
 function getToken() { return localStorage.getItem('qqq-ai-token') || ''; }
 function saveToken(t) { localStorage.setItem('qqq-ai-token', t); }
-$tokenInput.value = getToken() ? '•••••••�? : '';
+$tokenInput.value = getToken() ? '••••••••' : '';
 $tokenSave.onclick = function() {
   const v = $tokenInput.value.trim();
-  if (v && v !== '•••••••�?) { saveToken(v); $tokenInput.value = '•••••••�?; }
+  if (v && v !== '••••••••') { saveToken(v); $tokenInput.value = '••••••••'; }
 };
 
 // Auto-resize not needed for contenteditable (it auto-grows)
@@ -312,13 +428,19 @@ $input.addEventListener('keydown', function(e) {
     sendMessage();
   }
 });
-// ══�?字符�?Undo/Redo（从 q3/ai 移植，适配 contenteditable�?══�?(function initCharUndo(input) {
+// ══ 字符级 Undo/Redo（从 q3/ai 移植，适配 contenteditable）══
+(function initCharUndo(input) {
   var state = { history: [input.innerHTML || ''], index: 0, isProgrammatic: false };
   input.addEventListener('input', function() {
-    if (state.isProgrammatic) { state.isProgrammatic = false; return; }
+    var isProg = state.isProgrammatic;
+    if (isProg) { state.isProgrammatic = false; }
     var v = input.innerHTML;
-    if (state.index < state.history.length - 1) state.history = state.history.slice(0, state.index + 1);
-    if (v !== state.history[state.history.length - 1]) { state.history.push(v); state.index = state.history.length - 1; }
+    if (!isProg) {
+      if (state.index < state.history.length - 1) state.history = state.history.slice(0, state.index + 1);
+      if (v !== state.history[state.history.length - 1]) { state.history.push(v); state.index = state.history.length - 1; }
+    }
+    // 用已缓存的 v 判断而非再调 getInputText() 遍历 DOM
+    $queueBtn.disabled = !v.trim() || streaming || _sending;
   });
   input.addEventListener('keydown', function(e) {
     if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
@@ -357,7 +479,8 @@ $input.addEventListener('keydown', function(e) {
   });
 })($input);
 
-// ══�?多图管理 ══�?var pendingImages = []; // [{id, base64, dataUrl}]
+// ══ 多图管理 ══
+var pendingImages = []; // [{id, base64, dataUrl}]
 var MAX_IMAGES = 20;
 
 function addImage(dataUrl, base64) {
@@ -402,15 +525,17 @@ function renderImageStrip() {
     embed.textContent = (parent && parent._i) ? parent._i('ai.embedImage', '嵌入') : '嵌入';
     embed.onclick = function() {
       $input.focus();
-      document.execCommand('insertText', false, '[�?' + img.id + ']');
+      document.execCommand('insertText', false, '[img:' + img.id + ']');
     };
     wrap.appendChild(embed);
     strip.appendChild(wrap);
   });
 }
 
-// 粘贴图片�? 2MB 自动压缩�?2048px 宽）/ 纯文本粘�?$input.addEventListener('paste', function(e) {
-  // 纯文本粘贴：如果有文本，先获取纯文本再处理图�?  var plainText = '';
+// 粘贴图片（> 2MB 自动压缩至 2048px 宽）/ 纯文本粘贴
+$input.addEventListener('paste', function(e) {
+  // 纯文本粘贴：如果有文本，先获取纯文本再处理图片
+  var plainText = '';
   try {
     plainText = (e.clipboardData || window.clipboardData).getData('text/plain');
   } catch(_) {}
@@ -455,7 +580,8 @@ function renderImageStrip() {
   }
 });
 $sendBtn.onclick = function() {
-  if (agent._compressing) return;  // 压缩期间禁用一切操�?  if (streaming) { stopStream(); } else { sendMessage(); }
+  if (agent._compressing) return;  // 压缩期间禁用一切操作
+  if (streaming) { stopStream(); } else { sendMessage(); }
 };
 
 // Markdown renderer (lightweight)
@@ -496,7 +622,7 @@ function renderMarkdown(src) {
     window._tableStore.push(rawTable);
     // 悬浮按钮：hover 时右上角出现，易点击，底色黄醒目
     return '<div class="table-wrap">' +
-      '<span class="table-view-btn" onclick="viewTable(' + tblId + ')">�?展开</span>' +
+      '<span class="table-view-btn" onclick="viewTable(' + tblId + ')">▶ 展开</span>' +
       '<div class="table-inner">' + rawTable + '</div></div>';
   });
   // Lists
@@ -516,7 +642,8 @@ function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ══�?Table store (for full-window table viewer) ══�?window._tableStore = [];
+// ═══ Table store (for full-window table viewer) ═══
+window._tableStore = [];
 
 function viewTable(id) {
   var html = window._tableStore[id];
@@ -524,7 +651,7 @@ function viewTable(id) {
     parent.postMessage({ type: 'qqq-ai-overlay', action: 'open-table', html: html }, '*');
   }
 }
-// Expose globally �?onclick in HTML needs global scope
+// Expose globally — onclick in HTML needs global scope
 window.viewTable = viewTable;
 
 function formatBytes(n) {
@@ -619,6 +746,7 @@ function setStreaming(val) {
   streaming = val;
   $sendBtn.textContent = val ? 'Stop' : 'Send';
   $sendBtn.className = val ? 'stop' : '';
+  updateQueueBtn();
 }
 
 // ---- Agent Loop ----
@@ -626,13 +754,14 @@ var agent = new AgentLoop({ log: function(msg) { console.log('[ai-agent]', msg);
 
 // ---- Quest Management ----
 var questStore = new QuestStore();
+questStore.requireProjectForWrites(true);  // 底层守卫：无主项目禁止一切写入
 
 // 项目文件锁：防止同一主文件夹被多个窗口打开
 var _currentLockPath = null;
 var _lockHeartbeatId = null;
-var LOCK_STALE_MS = 60000;  // 锁超�?60s 未刷新视为僵尸锁
-var LOCK_HEARTBEAT_MS = 30000;  // �?30s 刷新一�?
-// 绑定主文件夹 �?项目级持久化 + 文件锁防双开
+var LOCK_STALE_MS = 60000;  // 锁超时 60s 未刷新视为僵尸锁
+var LOCK_HEARTBEAT_MS = 30000;  // 每 30s 刷新一次
+// 绑定主文件夹 — 项目级持久化 + 文件锁防双开
 async function bindMainProject() {
   if (!window.parent || !window.parent.qqqAiViewport) return;
   var main = window.parent.qqqAiViewport.getMainProject();
@@ -642,11 +771,13 @@ async function bindMainProject() {
   }
   var root = main.path.replace(/\\/g, '/').replace(/\/$/, '');
   var lockPath = root + '/qqq/.lock';
-  // 如果 lockPath 没变，不需要重新锁�?  if (_currentLockPath === lockPath) {
+  // 如果 lockPath 没变，不需要重新锁
+  if (_currentLockPath === lockPath) {
     console.log('[quests] bindMainProject: already locked ' + root);
     return;
   }
-  // 检查是否已被其他窗口锁�?  try {
+  // 检查是否已被其他窗口锁定
+  try {
     var statInfo = await window.parent.qqqBridge.fs.stat(lockPath);
     if (statInfo) {
       var lockRaw = await window.parent.qqqBridge.fs.read(lockPath);
@@ -654,19 +785,21 @@ async function bindMainProject() {
       var age = Date.now() - (lockData.atime || 0);
       if (age < LOCK_STALE_MS) {
         console.warn('[quests] bindMainProject BLOCKED: project locked by another window (age=' + (age/1000).toFixed(1) + 's)');
-        addMessageEl('error', '⚠️ 该项目已被另一�?QQQ 窗口打开，无法重复绑定�?);
+        addMessageEl('error', '⚠️ 该项目已被另一个 QQQ 窗口打开，无法重复绑定。');
         return;
       }
       console.log('[quests] bindMainProject: stale lock cleared (age=' + (age/1000).toFixed(1) + 's)');
       try { await window.parent.qqqBridge.fs.remove(lockPath); } catch (_) {}
     }
   } catch (_) { /* lock 不存在，正常流程 */ }
-  // 释放旧锁（切换主文件夹时�?  await _releaseLock();
-  // 写入新锁（qqq:fs:write 已内�?auto-mkdir，不再需要显�?mkdir�?  var lockContent = JSON.stringify({ pid: 0, atime: Date.now() });
+  // 释放旧锁（切换主文件夹时
+  await _releaseLock();
+  // 写入新锁（qqq:fs:write 已内置 auto-mkdir，不再需要显式 mkdir）
+  var lockContent = JSON.stringify({ pid: 0, atime: Date.now() });
   try {
     await window.parent.qqqBridge.fs.write(lockPath, lockContent);
     _currentLockPath = lockPath;
-  } catch (_) { /* 锁写失败非致�?*/ }
+  } catch (_) { /* 锁写失败非致命 */ }
   // 启动心跳
   _lockHeartbeatId = setInterval(async function () {
     try { await window.parent.qqqBridge.fs.write(lockPath, JSON.stringify({ pid: 0, atime: Date.now() })); } catch (_) {}
@@ -690,15 +823,16 @@ window.addEventListener('beforeunload', function () {
   }
 });
 
-// 监听视口变化：主文件夹改变时重新绑定
+// 监听视口变化：主文件夹改变时重新绑定 + 自动关闭引导蒙版
 window.addEventListener('message', function(e) {
   if (e.data && e.data.type === 'qqq-ai-viewport-changed') {
     bindMainProject();
+    if (_hasMainProject()) _hideOnboarding();
   }
 });
 var questActiveId = '';
 
-// ══�?per-quest UI memory state（零开销快照，quest 切换时同步读写） ══�?// { questId: { inputHTML, pendingImages:[], selectedTier, scrollTop } }
+// ═══ per-quest UI memory state（零开销快照，quest 切换时同步读写） ═══// { questId: { inputHTML, pendingImages:[], selectedTier, scrollTop } }
 var questUIStates = {};
 
 function saveQuestUIState(id) {
@@ -725,6 +859,7 @@ function restoreQuestUIState(id) {
     updateTierButtons(selectedTier);
     renderImageStrip();
     $messages.scrollTop = state.scrollTop;
+    updateQueueBtn();
   } else {
     $input.innerHTML = '';
     pendingImages = [];
@@ -732,6 +867,7 @@ function restoreQuestUIState(id) {
     updateTierButtons(6);
     renderImageStrip();
     $messages.scrollTop = 0;
+    updateQueueBtn();
   }
 }
 
@@ -741,8 +877,12 @@ async function initQuests() {
   console.log('[quests] list() returned', quests.length, 'quests:', quests.map(function(s){return s.id+':'+s.title;}).join(', '));
   if (quests.length === 0) {
     questActiveId = await questStore.create('');
-    console.log('[quests] no existing quests, created:', questActiveId);
-    await questStore.setActiveId(questActiveId);
+    if (questActiveId) {
+      console.log('[quests] no existing quests, created:', questActiveId);
+      await questStore.setActiveId(questActiveId);
+    } else {
+      console.log('[quests] no existing quests, create blocked (no main project)');
+    }
   } else {
     questActiveId = await questStore.getActiveId();
     console.log('[quests] stored activeId:', questActiveId);
@@ -752,8 +892,10 @@ async function initQuests() {
       await questStore.setActiveId(questActiveId);
     }
   }
-  console.log('[quests] loading data for:', questActiveId);
-  await loadQuestData(questActiveId);
+  if (questActiveId) {
+    console.log('[quests] loading data for:', questActiveId);
+    await loadQuestData(questActiveId);
+  }
   await renderTabs();
   console.log('[quests] initQuests() DONE, active:', questActiveId);
 }
@@ -772,7 +914,8 @@ async function loadQuestData(id) {
     agent._lastApiPromptTokens = data.lastApiPromptTokens || 0;
     agent._lastUserInput = data.lastUserInput || null;
     agent._floorTimings = data.floorTimings || [];
-    agent._serverDrift = data.serverDrift || 0;  // �?服务器时钟漂移（�?Date header 校准，防变速齿轮）
+    agent._serverDrift = data.serverDrift || 0;  // +/- 服务器时钟漂移（通过 Date header 校准，防变速齿轮）
+    _queue = data.queue || [];
   } else {
     console.log('[quests] no saved data for', id, '- starting fresh');
     agent.conversation = [];
@@ -784,7 +927,10 @@ async function loadQuestData(id) {
     agent._lastApiPromptTokens = 0;
     agent._lastUserInput = null;
     agent._floorTimings = [];
-    agent._serverDrift = 0;  // �?新聊天，重置服务器漂�?  }
+    agent._serverDrift = 0;  // 新聊天，重置服务器漂移
+    _queue = [];
+  }
+  renderQueueStrip();
   rebuildMessagesFromConversation();
   updateCostDisplay();
   updateCtxBtn();
@@ -795,19 +941,26 @@ async function saveQuestData() {
   if (!id) return;
   var msgCount = agent.conversation ? agent.conversation.length : 0;
   console.log('[quests] saveQuestData(' + id + '), conversation has ' + msgCount + ' messages');
-  await questStore.touch(id);
-  await questStore.save(id, {
-    conversation: agent.conversation,
-    ctx: agent._ctx,
-    totalCostGe: agent.totalCostGe,
-    houses: agent._houses,
-    houseIndex: agent._houseIndex,
-    lastApiPromptTokens: agent._lastApiPromptTokens || 0,
-    floorCostWge: agent._floorCostWge,
-    lastUserInput: agent._lastUserInput,
-    floorTimings: agent._floorTimings || [],
-    serverDrift: agent._serverDrift || 0  // �?持久化时钟漂移，重启后无需重新校准
-  });
+  // snapshot conversation 防并发截断：agent.abort() 会回退 conversation.length，
+  // 若 JSON.stringify 异步执行时恰好被截断，数据丢失。slice() 生成独立副本。
+  var convSnapshot = agent.conversation ? agent.conversation.slice() : [];
+  // touch + save 并行（不同 key，互不依赖）
+  await Promise.all([
+    questStore.touch(id),
+    questStore.save(id, {
+      conversation: convSnapshot,
+      ctx: agent._ctx,
+      totalCostGe: agent.totalCostGe,
+      houses: agent._houses,
+      houseIndex: agent._houseIndex,
+      lastApiPromptTokens: agent._lastApiPromptTokens || 0,
+      floorCostWge: agent._floorCostWge,
+      lastUserInput: agent._lastUserInput,
+      floorTimings: agent._floorTimings || [],
+      serverDrift: agent._serverDrift || 0,
+      queue: _queue
+    })
+  ]);
   // generate floor txt after house summaries are ready
   if (agent._housesPromise) {
     try { await agent._housesPromise; } catch (_) { }
@@ -815,7 +968,8 @@ async function saveQuestData() {
   generateFloorTxt().catch(function(){});
 }
 
-// ══�?楼层 txt 归档：rooms.txt + thinking.txt ══�?async function generateFloorTxt() {
+// ═══ 楼层 txt 归档：rooms.txt + thinking.txt ═══
+async function generateFloorTxt() {
   var root = questStore.getProjectRoot();
   if (!root) return;
   var houses = agent._houses;
@@ -872,7 +1026,7 @@ async function saveQuestData() {
       // ── HOUSEs ──
       for (var hi = 0; hi < houses.length; hi++) {
         var h = houses[hi];
-        roomsLines.push('━━━━━━━━━━ HOUSE ' + h.index + ' �?' + ts + ' ━━━━━━━━━━');
+        roomsLines.push('━━━━━━━━━━ HOUSE ' + h.index + ' —— ' + ts + ' ━━━━━━━━━━');
         roomsLines.push((h.summary || '(no summary)') + '  [' + h.ms + 'ms]');
         if (h.tools && h.tools.length > 0) {
           for (var ti = 0; ti < h.tools.length; ti++) {
@@ -910,7 +1064,7 @@ async function saveQuestData() {
       for (var hj = 0; hj < houses.length; hj++) {
         var hh = houses[hj];
         if (hh.reasoning) {
-          thinkingLines.push('━━━━━━━━━━ HOUSE ' + hh.index + ' �?' + ts + ' ━━━━━━━━━━');
+          thinkingLines.push('━━━━━━━━━━ HOUSE ' + hh.index + ' —— ' + ts + ' ━━━━━━━━━━');
           thinkingLines.push(hh.reasoning);
           thinkingLines.push('');
         }
@@ -937,7 +1091,7 @@ async function saveQuestData() {
       }
       for (var hci = 0; hci < houses.length; hci++) {
         var hc = houses[hci];
-        chatLines.push('━━ HOUSE ' + hc.index + ' �?' + ts + ' [' + hc.ms + 'ms] ━━');
+        chatLines.push('━━ HOUSE ' + hc.index + ' —— ' + ts + ' [' + hc.ms + 'ms] ━━');
         if (hc.reasoning) {
           chatLines.push(hc.reasoning);
           chatLines.push('');
@@ -971,18 +1125,40 @@ async function saveQuestData() {
     console.warn('[quests] generateFloorTxt failed:', e);
   }
 }
+var _switching = false;  // 互斥锁：防止快速双击 tab 导致并发切任务
 async function switchQuest(id) {
   if (id === questActiveId) return;
-  if (streaming) stopStream();  // 中止当前流的请求
-  saveQuestUIState(questActiveId);  // 同步，瞬�?  await saveQuestData();
-  questActiveId = id;
-  await questStore.setActiveId(id);
-  await loadQuestData(id);
-  restoreQuestUIState(id);  // 同步，瞬�?  await renderTabs();
-  // Auto-rename if needed
-  var quests = await questStore.list();
-  var entry = quests.find(function(s) { return s.id === id; });
-  if (entry && entry.title === '') await autoRenameQuest();
+  if (_switching) return;  // 上一次切换未完成，忽略
+  _switching = true;
+  try {
+    // 保存正在流式输出的 AI 部分内容，防止切换丢回复
+    if (streaming && _activeAiDiv) {
+      var partial = _extractPartialAiText();
+      if (partial) {
+        agent.conversation.push({
+          role: 'assistant',
+          content: partial,
+          _floor: agent._ctx.totalFloors,
+          _truncated: true
+        });
+      }
+      // 停止楼层计时器，释放 _activeAiDiv 引用防止内存泄漏
+      if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
+      _activeAiDiv = null;
+    }
+    if (streaming) stopStream();  // 中止当前流的请求
+    saveQuestUIState(questActiveId);  // 同步，瞬
+    await saveQuestData();
+    questActiveId = id;
+    await questStore.setActiveId(id);
+    await loadQuestData(id);
+    restoreQuestUIState(id);  // 同步，瞬
+    await renderTabs();
+    // Auto-rename if needed
+    var quests = await questStore.list();
+    var entry = quests.find(function(s) { return s.id === id; });
+    if (entry && entry.title === '') await autoRenameQuest();
+  } finally { _switching = false; }
 }
 
 async function createNewQuest() {
@@ -999,7 +1175,10 @@ async function createNewQuest() {
   agent._houses = [];
   agent._houseIndex = 0;
   agent._lastApiPromptTokens = 0;
-  agent._serverDrift = 0;  // �?新聊天，重置服务器漂�?  $messages.innerHTML = '';
+  agent._serverDrift = 0;  // 新聊天，重置服务器漂移
+  _queue = [];
+  renderQueueStrip();
+  $messages.innerHTML = '';
   pendingImages = [];
   selectedTier = 6;
   updateTierButtons(6);
@@ -1046,7 +1225,8 @@ function updateCostDisplay() {
   $costLabel.textContent = (total < 0.001 ? '<0.001' : total.toFixed(4)) + ' ge';
 }
 
-// 上下文血�?var CTX_MAX_TOKENS = 1000000; // DeepSeek v4 1M 上下文窗�?
+// 上下文血量
+var CTX_MAX_TOKENS = 1000000; // DeepSeek v4 1M 上下文窗口
 function estimateTokens() {
   var total = 0;
   var conv = agent.conversation;
@@ -1059,11 +1239,13 @@ function estimateTokens() {
     }
     total += 10; // role overhead
   }
-  // 系统提示�?  if (typeof SYSTEM_PROMPT !== 'undefined') total += SYSTEM_PROMPT.length / CHAR_PER_TOKEN;
-  // 工具定义 schema（每�?API 调用都带�?  if (typeof TOOL_DEFINITIONS !== 'undefined') {
+  // 系统提示词
+  if (typeof SYSTEM_PROMPT !== 'undefined') total += SYSTEM_PROMPT.length / CHAR_PER_TOKEN;
+  // 工具定义 schema（每次 API 调用都带
+  if (typeof TOOL_DEFINITIONS !== 'undefined') {
     try { total += JSON.stringify(TOOL_DEFINITIONS).length / CHAR_PER_TOKEN; } catch (_) {}
   }
-  // 动态上下文 �?镜像 _buildDynamicContext 的输出（只计实际发送的量）
+  // 动态上下文 — 镜像 _buildDynamicContext 的输出（只计实际发送的量）
   if (agent._ctx) {
     var ctx = agent._ctx;
     var dynText = '';
@@ -1071,7 +1253,8 @@ function estimateTokens() {
       dynText += '[DYNAMIC CONTEXT]\nCONVERSATION CONTEXT (compressed history):\n' + ctx.narrative;
     }
     if (ctx.facts && ctx.facts.length > 0) {
-      // _buildDynamicContext �?_retrieveRelevantFacts �?top 10；无 query 时取最�?10 条近�?      var facts = ctx.facts.slice(-10);
+      // _buildDynamicContext 调用 _retrieveRelevantFacts 取 top 10；无 query 时取最近 10 条近况
+      var facts = ctx.facts.slice(-10);
       dynText += '\n\nRELEVANT FACTS FROM EARLIER (' + facts.length + '/' + ctx.facts.length + ' total):\n';
       for (var fi = 0; fi < facts.length; fi++) {
         dynText += '- [' + (facts[fi].type || '') + '] ' + (facts[fi].content || '') + '\n';
@@ -1100,7 +1283,7 @@ function estimateTokens() {
 
 
 
-// ── 上下文按�?──
+// ── 上下文按钮 ──
 function updateCtxBtn() {
   var used = agent._lastApiPromptTokens || estimateTokens();
   var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
@@ -1115,10 +1298,10 @@ document.getElementById('ctx-cancel').onclick = function() {
 };
 document.getElementById('ctx-compress').onclick = async function() {
   document.getElementById('ctx-panel').style.display = 'none';
-  var msg = addMessageEl('status', '正在压缩上下�?..');
+  var msg = addMessageEl('status', '正在压缩上下文...');
   try {
     await agent._compressContext();
-    msg.textContent = '上下文压缩完�?;
+    msg.textContent = '上下文压缩完成';
     updateCtxBtn();
   } catch(e) {
     msg.textContent = '压缩失败: ' + (e.message || e);
@@ -1126,18 +1309,31 @@ document.getElementById('ctx-compress').onclick = async function() {
   }
 };
 
-// ── 引导按钮 ──
+// ── 引导按钮：零成本注入对话上下文（不调API，不烧钱）──
 $guideBtn.onclick = function() {
-  if (_sending) return;
+  if (_sending || agent._compressing) return;
   if (streaming) stopStream();
   var text = getInputText().trim();
   if (!text) {
     text = '确认连接';
   }
-  $input.textContent = '';
+  var fullText = '[GUIDE] ' + text;
   $input.innerHTML = '';
-  $input.textContent = '[GUIDE] ' + text;
-  sendMessage();
+  $input.focus();
+  // 零成本注入：直接插入对话上下文，不触发 API 调用
+  agent.inject(fullText);
+  // 用户消息气泡
+  var userEl = addMessageEl('user', text);
+  userEl.style.opacity = '0.75';
+  // 状态提示
+  var statusEl = document.createElement('div');
+  statusEl.className = 'msg msg-status';
+  statusEl.textContent = '📌 引导已注入 · AI 下次回复可见';
+  $messages.appendChild(statusEl);
+  scrollToBottom(true);
+  // 持久化
+  saveQuestData().catch(function(){});
+  updateQueueBtn();
 };
 
 // ── 排队按钮 ──
@@ -1161,10 +1357,10 @@ function renderQueueStrip() {
         actions.className = 'qcard-actions';
         var modBtn = document.createElement('button');
         modBtn.textContent = '修改';
-        modBtn.onclick = function(e) { e.stopPropagation(); q.text = ta.value; renderQueueStrip(); };
+        modBtn.onclick = function(e) { e.stopPropagation(); q.text = ta.value; renderQueueStrip(); saveQuestData().catch(function(){}); };
         var delBtn = document.createElement('button');
         delBtn.textContent = '删除';
-        delBtn.onclick = function(e) { e.stopPropagation(); _queue.splice(idx, 1); renderQueueStrip(); };
+        delBtn.onclick = function(e) { e.stopPropagation(); _queue.splice(idx, 1); renderQueueStrip(); saveQuestData().catch(function(){}); };
         actions.appendChild(modBtn);
         actions.appendChild(delBtn);
         card.appendChild(actions);
@@ -1180,13 +1376,16 @@ $queueBtn.onclick = function() {
   renderQueueStrip();
   $input.innerHTML = '';
   $input.focus();
+  updateQueueBtn();
+  saveQuestData().catch(function(){});
 };
 
 // ── 楼层时钟 + 饼图（嵌在豆腐块内部，每个楼层私有，1m:43s 格式）──
 var _floorTimerId = null;
 var _floorStartPerf = 0;
 var _floorCurrentTiming = null;
-var _activeAiDiv = null;  // 当前正在流式输出�?AI 豆腐�?var _lastPieTiming = null;  // 饼图缓存：跳过无变化重绘
+var _activeAiDiv = null;  // 当前正在流式输出的 AI 豆腐块
+var _lastPieTiming = null;  // 饼图缓存：跳过无变化重绘
 
 
 // ── pie tooltip via parent window (break out of iframe clipping) ──
@@ -1200,7 +1399,8 @@ function _hidePieTooltip() {
 }
 
 function drawPie(canvas, timing) {
-  // 跳过无变化重绘（计时器每秒触发但数据未必更新�?  if (_lastPieTiming && timing &&
+  // 跳过无变化重绘（计时器每秒触发但数据未必更新
+  if (_lastPieTiming && timing &&
       _lastPieTiming.networkMs === timing.networkMs &&
       _lastPieTiming.deepseekMs === timing.deepseekMs &&
       _lastPieTiming.toolMs === timing.toolMs) return;
@@ -1218,7 +1418,7 @@ function drawPie(canvas, timing) {
   var parts = [
     { val: d, color: '#859900', label: 'DeepSeek', key: 'deepseek' },
     { val: n, color: '#cb4b16', label: 'Network', key: 'network' },
-    { val: t, color: '#b58900', label: 'Tool',    key: 'tool' }
+    { val: t, color: '#e6b800', label: 'Tool',    key: 'tool' }
   ];
   var start = -Math.PI / 2;
   var segments = [];
@@ -1240,10 +1440,11 @@ function drawPie(canvas, timing) {
 function _initClockBlock(aiDiv) {
   var block = document.createElement('div');
   block.className = 'msg-ai-clock';
-  block.innerHTML = '<span class="clock">0m:0s</span><canvas width="140" height="140"></canvas>';
+  block.innerHTML = '<span class="clock"><span class="clock-min">0m</span><span class="clock-sec">:0s</span></span><canvas width="112" height="112"></canvas>';
   aiDiv.appendChild(block);
   aiDiv._clockBlock = block;
-  aiDiv._clockSpan = block.querySelector('.clock');
+  aiDiv._clockMin = block.querySelector('.clock-min');
+  aiDiv._clockSec = block.querySelector('.clock-sec');
   aiDiv._clockCanvas = block.querySelector('canvas');
   // pie hover: postMessage to parent window (break out of iframe clip)
   var canvas = aiDiv._clockCanvas;
@@ -1251,7 +1452,7 @@ function _initClockBlock(aiDiv) {
     if (!canvas._segments || !canvas._total) { _hidePieTooltip(); return; }
     var parts = [
       { key: 'network',  color: '#cb4b16', label: 'Net' },
-      { key: 'tool',     color: '#b58900', label: 'Tool' },
+      { key: 'tool',     color: '#e6b800', label: 'Tool' },
       { key: 'deepseek', color: '#859900', label: 'DS' }
     ];
     var segs = canvas._segments;
@@ -1272,25 +1473,41 @@ function _initClockBlock(aiDiv) {
 }
 
 function startFloorTimer(aiDiv) {
-  stopFloorTimer();
   _activeAiDiv = aiDiv;
   _floorStartPerf = performance.now();
   _floorCurrentTiming = null;
   _initClockBlock(aiDiv);
-  var clock = aiDiv._clockSpan;
+  var clockMin = aiDiv._clockMin;
+  var clockSec = aiDiv._clockSec;
   var canvas = aiDiv._clockCanvas;
-  clock.textContent = '0m:0s';
-  drawPie(canvas, { networkMs: 0, deepseekMs: 0, toolMs: 0 });
+  clockMin.textContent = '0m';
+  clockSec.textContent = ':0s';
+  // 饼图初始隐藏，等数据到再显示
+  canvas.style.visibility = 'hidden';
+  var _pieShown = false;
+  var _lastN = 0, _lastD = 0, _lastT = 0;
+  var COLORS = { deepseek: '#859900', tool: '#e6b800', network: '#cb4b16' };
   _floorTimerId = setInterval(function() {
     var elapsed = performance.now() - _floorStartPerf;
     var totalS = Math.floor(elapsed / 1000);
     var min = Math.floor(totalS / 60);
     var sec = totalS % 60;
-    clock.textContent = min + 'm:' + sec + 's';
+    clockMin.textContent = min + 'm';
+    clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
     var at = agent._floorTiming;
     var n = (at && at.networkMs) || 0;
     var d = (at && at.deepseekMs) || 0;
     var t = (at && at.toolMs) || 0;
+    // 数据到了 → 显示饼图
+    if (!_pieShown && (n > 0 || d > 0 || t > 0)) { _pieShown = true; canvas.style.visibility = 'visible'; }
+    if (!_pieShown) return;
+    var color = COLORS.deepseek;
+    if (t > _lastT) color = COLORS.tool;
+    else if (d > _lastD) color = COLORS.deepseek;
+    else if (n > _lastN) color = COLORS.network;
+    _lastN = n; _lastD = d; _lastT = t;
+    clockMin.style.color = color;
+    clockSec.style.color = color;
     drawPie(canvas, { networkMs: n, deepseekMs: d, toolMs: t, totalMs: elapsed });
   }, 1000);
 }
@@ -1303,11 +1520,16 @@ function stopFloorTimer(timing) {
   var min = Math.floor(totalS / 60);
   var sec = totalS % 60;
   var aiDiv = _activeAiDiv;
-  if (aiDiv && aiDiv._clockSpan && aiDiv._clockCanvas) {
-    aiDiv._clockSpan.textContent = min + 'm:' + sec + 's';
+  // 停止态颜色：亮色=纯黑，暗色=纯白
+  var stopColor = document.documentElement.getAttribute('data-theme') === 'dark' ? '#fff' : '#000';
+  if (aiDiv && aiDiv._clockMin && aiDiv._clockCanvas) {
+    aiDiv._clockMin.textContent = min + 'm';
+    aiDiv._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
+    aiDiv._clockMin.style.color = stopColor;
+    aiDiv._clockSec.style.color = stopColor;
     var tm = timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 };
     tm.totalMs = elapsed;
-    drawPie(aiDiv._clockCanvas, tm);
+    if (elapsed > 0) { aiDiv._clockCanvas.style.visibility = 'visible'; drawPie(aiDiv._clockCanvas, tm); }
   }
   _activeAiDiv = null;
   // Save floor timing to quest data
@@ -1322,6 +1544,7 @@ function stopFloorTimer(timing) {
   };
   agent._floorTimings = agent._floorTimings || [];
   agent._floorTimings.push(record);
+  updateFloorTofu();
 }
 
 function rebuildMessagesFromConversation() {
@@ -1329,7 +1552,7 @@ function rebuildMessagesFromConversation() {
   var frag = document.createDocumentFragment();
   var conv = agent.conversation;
 
-  // �?Build floor→timing map so each floor's tofu block owns its 1:1 stopped clock + pie
+  // ① Build floor→timing map so each floor's tofu block owns its 1:1 stopped clock + pie
   var floorTimingMap = {};
   var timings = agent._floorTimings || [];
   for (var ti = 0; ti < timings.length; ti++) {
@@ -1344,6 +1567,7 @@ function rebuildMessagesFromConversation() {
     if (msg.role === 'user') {
       var el = document.createElement('div');
       el.className = 'msg msg-user';
+      el._floor = msg._floor;
       var content = typeof msg.content === 'string' ? msg.content : '';
       // Strip injected rules blocks (global.txt / project.txt) from display
       var rulesRefs = [];
@@ -1353,20 +1577,32 @@ function rebuildMessagesFromConversation() {
       if (pRe.test(content)) { rulesRefs.push('📄 project.txt'); content = content.replace(pRe, ''); }
       // Clean up --- separators left from rules injection
       content = content.replace(/^\s*---\s*\n?/gm, '').trim();
+      // Strip [GUIDE] prefix from injected guide messages
+      var isGuide = msg._injected && /^\[GUIDE\]/.test(content);
+      if (isGuide) {
+        content = content.replace(/^\[GUIDE\]\s*/, '');
+        rulesRefs.push('📌 引导');
+      }
       var displayContent = content;
       if (rulesRefs.length > 0) {
         displayContent = content + '\n' + rulesRefs.join(' ') + '\n\n';
       }
       el.innerHTML = '<div class="msg-header">You</div>' + renderMarkdown(displayContent);
+      // 引导消息降低视觉权重
+      if (isGuide) el.style.opacity = '0.75';
       frag.appendChild(el);
     } else if (msg.role === 'assistant') {
       var el2 = document.createElement('div');
       el2.className = 'msg msg-ai';
       var content2 = typeof msg.content === 'string' ? msg.content : '';
-      el2.innerHTML = '<div>' + renderMarkdown(content2) + '</div>';  // content wrapper
+      var truncatedNote = '';
+      if (msg._truncated) {
+        truncatedNote = '<div class="msg-status" style="color:var(--orange);margin-top:4px">⚠ 此回复被中断（切换任务时流式输出未完成）</div>';
+      }
+      el2.innerHTML = '<div>' + renderMarkdown(content2) + '</div>' + truncatedNote;
       frag.appendChild(el2);
 
-      // �?Stopped clock INSIDE the tofu block: only on last message of each floor
+      // ② Stopped clock INSIDE the tofu block: only on last message of each floor
       var floor = msg._floor;
       var nextMsg = conv[i + 1];
       var isFloorEnd = !nextMsg || nextMsg._floor !== floor;
@@ -1377,7 +1613,7 @@ function rebuildMessagesFromConversation() {
         var sec = totalS % 60;
         var clockBlock = document.createElement('div');
         clockBlock.className = 'msg-ai-clock';
-        clockBlock.innerHTML = '<span class="clock">' + min + 'm:' + sec + 's</span><canvas width="140" height="140"></canvas>';
+        clockBlock.innerHTML = '<span class="clock"><span class="clock-min">' + min + 'm</span><span class="clock-sec">:' + (sec < 10 ? '0' : '') + sec + 's</span></span><canvas width="112" height="112"></canvas>';
         el2.appendChild(clockBlock);
         _pieEls.push({ canvas: clockBlock.querySelector('canvas'), timing: t });
       }
@@ -1394,7 +1630,7 @@ function rebuildMessagesFromConversation() {
       pc._hasTooltip = true;
       pc.addEventListener('mousemove', function(e) {
         if (!this._segments || !this._total) { _hidePieTooltip(); return; }
-        var parts = [{key:'network',color:'#cb4b16',label:'Net'},{key:'tool',color:'#b58900',label:'Tool'},{key:'deepseek',color:'#859900',label:'DS'}];
+        var parts = [{key:'network',color:'#cb4b16',label:'Net'},{key:'tool',color:'#e6b800',label:'Tool'},{key:'deepseek',color:'#859900',label:'DS'}];
         var segs = this._segments, map = {};
         for (var si = 0; si < segs.length; si++) { map[segs[si].key] = segs[si]; }
         var html = '';
@@ -1413,33 +1649,115 @@ function rebuildMessagesFromConversation() {
   scrollToBottom(true);
 }
 
-async function renderTabs() {
-  var tabsEl = document.getElementById('tabs');
-  tabsEl.innerHTML = '';
+// ── q2 行：Quest 豆腐块 + 下拉 ──
+var _questDrop = null;
+function closeQuestDrop() { if (_questDrop) { _questDrop.remove(); _questDrop = null; } }
+async function openQuestDrop() {
+  closeQuestDrop();
   var quests = await questStore.list();
+  var tofu = document.getElementById('quest-tofu');
+  var drop = document.createElement('div');
+  drop.className = 'nav-drop show';
+  drop.style.left = tofu.offsetLeft + 'px';
+  drop.style.top = (tofu.offsetTop + tofu.offsetHeight + 2) + 'px';
   for (var i = 0; i < quests.length; i++) {
     (function(s) {
-    var tab = document.createElement('div');
-    tab.className = 'tab' + (s.id === questActiveId ? ' active' : '');
-    tab.title = s.title || 'Untitled';
-    var titleSpan = document.createElement('span');
-    titleSpan.className = 'tab-title';
-    titleSpan.textContent = s.title || 'Untitled';
-    tab.appendChild(titleSpan);
-    if (quests.length > 1) {
-      var delBtn = document.createElement('span');
-      delBtn.className = 'tab-del';
-      delBtn.textContent = '\u00d7';
-      delBtn.onclick = function(e) { e.stopPropagation(); deleteQuest(s.id); };
-      tab.appendChild(delBtn);
-    }
-    tab.onclick = function() { switchQuest(s.id); };
-    tabsEl.appendChild(tab);
+      var item = document.createElement('div');
+      item.className = 'nav-drop-item' + (s.id === questActiveId ? ' active' : '');
+      item.textContent = s.title || 'Untitled';
+      item.onclick = function(e) { e.stopPropagation(); closeQuestDrop(); switchQuest(s.id); };
+      drop.appendChild(item);
     })(quests[i]);
   }
+  // + 新建
+  var addItem = document.createElement('div');
+  addItem.className = 'nav-drop-item';
+  addItem.textContent = '+ 新建 Quest';
+  addItem.style.color = 'var(--primary-color)';
+  addItem.onclick = function(e) { e.stopPropagation(); closeQuestDrop(); createNewQuest(); };
+  drop.appendChild(addItem);
+  document.body.appendChild(drop);
+  _questDrop = drop;
 }
+async function updateQuestTofu() {
+  var quests = await questStore.list();
+  var entry = quests.find(function(q) { return q.id === questActiveId; });
+  var label = entry ? (entry.title || 'Untitled') : '─';
+  document.getElementById('quest-tofu-text').textContent = label;
+}
+document.getElementById('quest-tofu').addEventListener('click', function(e) {
+  e.stopPropagation();
+  if (_questDrop) { closeQuestDrop(); return; }
+  openQuestDrop();
+});
 
-document.getElementById('tab-new').onclick = createNewQuest;
+// ── q3 行：Floor 豆腐块 + 下拉 ──
+var _floorDrop = null;
+function closeFloorDrop() { if (_floorDrop) { _floorDrop.remove(); _floorDrop = null; } }
+function openFloorDrop() {
+  closeFloorDrop();
+  var floors = agent._floorTimings || [];
+  if (floors.length === 0) return;
+  var tofu = document.getElementById('floor-tofu');
+  var drop = document.createElement('div');
+  drop.className = 'nav-drop show';
+  drop.style.left = tofu.offsetLeft + 'px';
+  drop.style.top = (tofu.offsetTop + tofu.offsetHeight + 2) + 'px';
+  for (var i = floors.length - 1; i >= 0; i--) {
+    (function(f) {
+      var item = document.createElement('div');
+      item.className = 'nav-drop-item';
+      var label = 'Floor ' + f.floorIndex;
+      if (f.durationMs) { label += ' (' + Math.round(f.durationMs / 1000) + 's)'; }
+      item.textContent = label;
+      item.onclick = function(e) {
+        e.stopPropagation(); closeFloorDrop();
+        // 滚动到对应楼层
+        var msgs = document.querySelectorAll('.msg');
+        for (var mi = 0; mi < msgs.length; mi++) {
+          if (msgs[mi]._floor === f.floorIndex && msgs[mi].classList.contains('msg-user')) {
+            msgs[mi].scrollIntoView({ behavior: 'smooth', block: 'start' });
+            break;
+          }
+        }
+      };
+      drop.appendChild(item);
+    })(floors[i]);
+  }
+  document.body.appendChild(drop);
+  _floorDrop = drop;
+}
+function updateFloorTofu() {
+  var currentFloor = agent._ctx.totalFloors;
+  var label = currentFloor > 0 ? ('Floor ' + currentFloor) : '─';
+  document.getElementById('floor-tofu-text').textContent = label;
+}
+document.getElementById('floor-tofu').addEventListener('click', function(e) {
+  e.stopPropagation();
+  if (_floorDrop) { closeFloorDrop(); return; }
+  openFloorDrop();
+});
+
+// 全局点击关闭下拉
+document.addEventListener('click', function() { closeQuestDrop(); closeFloorDrop(); });
+
+// ── 灯泡：外嵌 AI 面板 ──
+var _bulb1 = document.getElementById('bulb-1');
+var _bulb2 = document.getElementById('bulb-2');
+var _bulbs = [false, false];
+_bulb1.addEventListener('click', function() {
+  _bulbs[0] = !_bulbs[0];
+  _bulb1.classList.toggle('on', _bulbs[0]);
+  parent.postMessage({ type: 'qqq-external-panel', action: _bulbs[0] ? 'open' : 'close', index: 0 }, '*');
+});
+_bulb2.addEventListener('click', function() {
+  _bulbs[1] = !_bulbs[1];
+  _bulb2.classList.toggle('on', _bulbs[1]);
+  parent.postMessage({ type: 'qqq-external-panel', action: _bulbs[1] ? 'open' : 'close', index: 1 }, '*');
+});
+
+// 兼容旧 renderTabs（切换 quest 后更新豆腐块+楼层）
+async function renderTabs() { await updateQuestTofu(); updateFloorTofu(); }
 
 (async function() {
     loadQqqRules();
@@ -1451,7 +1769,7 @@ document.getElementById('tab-new').onclick = createNewQuest;
     }
 })();
 
-// Rules edit button �?opens global.txt (middle group) + project.txt (right group) in IDE
+// Rules edit button — opens global.txt (middle group) + project.txt (right group) in IDE
 var _rulesBtnBusy = false;
 document.getElementById('rules-edit').onclick = async function() {
     if (_rulesBtnBusy) return;
@@ -1460,17 +1778,18 @@ document.getElementById('rules-edit').onclick = async function() {
         var bridge = parent.qqqBridge;
         if (!bridge) { console.log('[rules] bridge unavailable'); _rulesBtnBusy = false; return; }
 
-        // 1) global.txt �?app-root level, opens in middle group
+        // 1) global.txt — app-root level, opens in middle group
         var appRoot = await bridge.app.root();
         var appRootClean = appRoot.replace(/\\/g, '/').replace(/\/$/, '');
         var globalPath = appRootClean + '/userData/global.txt';
         var globalExists = await bridge.fs.exists(globalPath);
         if (!globalExists) {
-            await bridge.fs.write(globalPath, '# qqq AI Global Rules\n# Write rules here that apply to ALL projects.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) �?AI remembers them from conversation history.\n');
+            await bridge.fs.write(globalPath, '# qqq AI Global Rules\n# Write rules here that apply to ALL projects.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) — AI remembers them from conversation history.\n');
         }
         parent.postMessage({ type: 'qqq-file-open', path: globalPath }, '*');
 
-        // 2) project.txt �?project-root level, opens in right group（每次都实时查，不用缓存�?        var projRoot = questStore.getProjectRoot();
+        // 2) project.txt — project-root level, opens in right group（每次都实时查，不用缓存）
+        var projRoot = questStore.getProjectRoot();
         if (projRoot) {
             var projRootClean = projRoot.replace(/\\/g, '/').replace(/\/$/, '');
             var projDir = projRootClean + '/qqq/quests/alphal/rule';
@@ -1478,7 +1797,7 @@ document.getElementById('rules-edit').onclick = async function() {
             var projExists = await bridge.fs.exists(projPath);
             if (!projExists) {
                 try { await bridge.fs.mkdir(projDir, { recursive: true }); } catch (_) {}
-                await bridge.fs.write(projPath, '# qqq AI Project Rules\n# Write rules here that apply ONLY to this project.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) �?AI remembers them from conversation history.\n');
+                await bridge.fs.write(projPath, '# qqq AI Project Rules\n# Write rules here that apply ONLY to this project.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) — AI remembers them from conversation history.\n');
             }
             parent.postMessage({ type: 'qqq-file-open-right', path: projPath }, '*');
         } else {
@@ -1498,8 +1817,24 @@ document.getElementById('rules-edit').onclick = async function() {
     _rulesBtnBusy = false;
 };
 
+// 提取正在流式输出的 AI 部分文本（用于 quest 切换时保存，防止丢失）
+// 直接用 _fullText 全量原文，避免 _paras 被 GC null 化后丢失已渲染段落
+function _extractPartialAiText() {
+  if (!_activeAiDiv) return '';
+  if (_activeAiDiv._fullText) return _activeAiDiv._fullText.trim();
+  // 回退：如果 _fullText 不存在，从 _paras + _buf 重建
+  var parts = [];
+  var paras = _activeAiDiv._paras || [];
+  for (var i = 0; i < paras.length; i++) {
+    if (paras[i] != null) parts.push(paras[i]);
+  }
+  if (_activeAiDiv._buf) parts.push(_activeAiDiv._buf);
+  return parts.join('\n\n').trim();
+}
+
 function stopStream() {
-  if (agent._compressing) return;  // 压缩期间不响应中�?  try { agent.abort(); } catch(_) {}
+  if (agent._compressing) return;  // 压缩期间不响应中
+  try { agent.abort(); } catch(_) {}
   if (_activeAiDiv) _activeAiDiv._renderScheduled = false;
   _sending = false;
   setStreaming(false);
@@ -1507,15 +1842,19 @@ function stopStream() {
 
 async function sendMessage() {
   if (_sending) return;  // 原子锁：阻止重复调用
+  if (!_hasMainProject()) { _showOnboarding(); return; }
   _sending = true;
+  updateQueueBtn();
   var text = getInputText().trim();
   var chipPaths = getInputChipPaths();
-  if (!text && chipPaths.length === 0) { _sending = false; return; }
-  if (streaming) { _sending = false; return; }
+  if (!text && chipPaths.length === 0) { _sending = false; updateQueueBtn(); return; }
+  if (streaming) { _sending = false; updateQueueBtn(); return; }
 
   var token = getToken();
   if (!token) {
-    addMessageEl('error', '请先在顶部输�?Token 并点�?Save');
+    addMessageEl('error', '请先在顶部输入 Token 并点击 Save');
+    _sending = false;
+    updateQueueBtn();
     return;
   }
 
@@ -1578,6 +1917,7 @@ async function sendMessage() {
 
   // 构建用户消息显示（含图片缩略图）
   var userMsgEl = addMessageEl('user', text);
+  userMsgEl._floor = agent._ctx.totalFloors;
   if (pendingImages.length > 0) {
     var imgRow = document.createElement('div');
     imgRow.style.cssText = 'margin-top:6px;';
@@ -1601,6 +1941,8 @@ async function sendMessage() {
   // 收集图片数据
   var images = pendingImages.length > 0 ? pendingImages.map(function(img) { return { id: img.id, base64: img.base64 }; }) : null;
 
+  // 在清空输入框前保存 UI 状态，防止流式中切换 quest 丢输入
+  saveQuestUIState(questActiveId);
   $input.innerHTML = '';
   pendingImages = [];
   renderImageStrip();
@@ -1609,7 +1951,8 @@ async function sendMessage() {
   // ---- Agentic loop ----
   setStreaming(true);
   var aiDiv = addMessageEl('ai', '');
-  // �?内容层与钟表层分离：内容层接收流式输出，钟表层嵌在底部不被覆�?  var contentWrap = document.createElement('div');
+  // ③ 内容层与钟表层分离：内容层接收流式输出，钟表层嵌在底部不被覆盖
+  var contentWrap = document.createElement('div');
   aiDiv.appendChild(contentWrap);
   aiDiv._contentWrap = contentWrap;
   startFloorTimer(aiDiv);
@@ -1621,6 +1964,7 @@ async function sendMessage() {
       onToken: function(chunk) {
         // Paragraph buffer: never accumulate full _text. Only chunk-level split.
         aiDiv._buf = (aiDiv._buf || '') + chunk;
+        aiDiv._fullText = (aiDiv._fullText || '') + chunk;  // 完整原文，用于切换 quest 时保存
         var parts = aiDiv._buf.split('\n\n');
         aiDiv._paras = aiDiv._paras || [];
         for (var pi = 0; pi < parts.length - 1; pi++) {
@@ -1645,10 +1989,12 @@ async function sendMessage() {
         aiDiv._renderScheduled = false;
         aiDiv._paras = null;
         aiDiv._buf = null;
+        aiDiv._fullText = null;
         aiDiv._lastParaEl = null;
         aiDiv._renderedCount = 0;
         aiDiv._dirty = false;
-        // 流式阶段已逐段渲染�?DOM。只在代码块含空行时需要全量重建修�?        if (/```[\s\S]*?\n\n[\s\S]*?```/.test(content)) {
+        // 流式阶段已逐段渲染完 DOM。只在代码块含空行时需要全量重建
+        if (/```[\s\S]*?\n\n[\s\S]*?```/.test(content)) {
           aiDiv._contentWrap.innerHTML = renderMarkdown(content);
         }
         if (window._tableStore && window._tableStore.length > 50) {
@@ -1662,6 +2008,7 @@ async function sendMessage() {
         if (_queue.length > 0) {
           var next = _queue.shift();
           renderQueueStrip();
+          saveQuestData().catch(function(){});
           $input.textContent = next.text;
           setTimeout(function() { sendMessage(); }, 200);
         }
@@ -1674,20 +2021,36 @@ async function sendMessage() {
         addMessageEl('error', msg);
         stopFloorTimer();
         setStreaming(false);
+        _continueQueue();
       }
     });
   } catch (err) {
     if (err && err.name !== 'AbortError') {
       addMessageEl('error', err.message || 'Unknown error');
+      _continueQueue();
     }
   } finally {
+    // 确保即使 abort 也能清理流式状态
+    if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
+    if (_activeAiDiv) { _activeAiDiv._renderScheduled = false; _activeAiDiv = null; }
     _sending = false;
     setStreaming(false);
   }
 }
 
+// 队列错误恢复：发送失败不阻塞后续排队消息
+function _continueQueue() {
+  if (_queue.length === 0) return;
+  var next = _queue.shift();
+  renderQueueStrip();
+  saveQuestData().catch(function(){});
+  $input.textContent = next.text;
+  // 错误恢复用更长延迟，避免网络抖动时快速耗尽队列
+  setTimeout(function() { sendMessage(); }, 1000);
+}
+
 // ---- Contenteditable helpers ----
-// getInputText �?keep chip order, replace chips with \u201cpath\u201d
+// getInputText — keep chip order, replace chips with \u201cpath\u201d
 function getInputText() {
   var text = '';
   var nodes = $input.childNodes;
@@ -1702,7 +2065,7 @@ function getInputText() {
   }
   return text;
 }
-// getInputPlainText �?pure text, skip chips (for AI content building)
+// getInputPlainText — pure text, skip chips (for AI content building)
 function getInputPlainText() {
   var text = '';
   var nodes = $input.childNodes;
@@ -1770,6 +2133,7 @@ window.qqqAiAttach = insertChipAtCursor;
 // Listen for file attachment from parent (AI viewport via postMessage)
 window.addEventListener('message', function(e) {
   if (e.data && e.data.type === 'qqq-ai-attach') {
+    if (!_hasMainProject()) { _showOnboarding(); return; }
     const path = e.data.path;
     if (path) {
       insertChipAtCursor(path);
@@ -1784,7 +2148,8 @@ document.addEventListener('qqq-ai-attach', function(e) {
   }
 });
 
-// ══�?Full-window overlay (via parent.postMessage, breaks out of iframe) ══�?function openLightbox(src, base64) {
+// ═══ Full-window overlay (via parent.postMessage, breaks out of iframe) ═══
+function openLightbox(src, base64) {
   if (parent) {
     parent.postMessage({ type: 'qqq-ai-overlay', action: 'open-image', src: src, base64: base64 || null }, '*');
   }
@@ -1798,7 +2163,10 @@ function closeLightbox() {
 
 // Escape key handled by parent overlay; also listen locally as fallback
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') { closeLightbox(); }
+  if (e.key === 'Escape') {
+    if (_onboardingActive) { _hideOnboarding(); return; }
+    closeLightbox();
+  }
 });
 
 })();

@@ -89,7 +89,8 @@
             "copyFailed": "复制失败",
             "zoomIn": "放大",
             "zoomOut": "缩小",
-            "close": "关闭 (Esc)"
+            "close": "关闭 (Esc)",
+            "resetPosition": "重置位置"
         },
         "about": {
             "title": "关于 qqq",
@@ -231,6 +232,9 @@
             "locked": "项目已被其他窗口打开",
             "stale": "锁已过期",
             "heartbeat": "心跳"
+        },
+        "onboarding": {
+            "selectFolder": "请先选择一个主文件夹！"
         }
     },
     "goods": {

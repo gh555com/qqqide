@@ -125,6 +125,15 @@
       }
     });
 
+    // ── 外嵌 AI 面板：灯泡开关 → IPC 通知主进程 ──
+    window.addEventListener('message', function (e) {
+      if (!e.data || e.data.type !== 'qqq-external-panel') return;
+      if (!frame || e.source !== frame.contentWindow) return;
+      if (window.qqqBridge && window.qqqBridge.aiPanel) {
+        window.qqqBridge.aiPanel.toggleExternal(e.data.index, e.data.action === 'open');
+      }
+    });
+
     setUrl(defaultUrl());
   }
 

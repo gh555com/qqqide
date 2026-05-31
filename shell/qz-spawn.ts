@@ -138,8 +138,8 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
     return new Promise<SpawnResult>((resolve) => {
         const start = Date.now();
         const args = brief.args || [];
-        const timeoutMs = brief.timeout && brief.timeout > 0 ? brief.timeout : 60_000;
-        const stallMs = brief.stallMs && brief.stallMs > 0 ? brief.stallMs : 0;
+        const timeoutMs = brief.timeout != null ? brief.timeout : 60_000;
+        const stallMs = brief.stallMs != null ? brief.stallMs : 0;
         const capture = brief.captureOutput !== false;
         const inheritEnv = brief.inheritEnv !== false;
         const useShell = brief.shell === true;
@@ -194,11 +194,15 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
             proc.stderr.on('data', (d: string) => { stderr += d; lastIOAt = Date.now(); });
         }
 
-        const deadlineTimer = setTimeout(() => {
-            killed = true;
-            killReason = 'deadline';
-            killTree();
-        }, timeoutMs);
+        // deadline timer：timeoutMs=0 表示无硬截止，仅靠 stall 守护
+        let deadlineTimer: NodeJS.Timeout | null = null;
+        if (timeoutMs > 0) {
+            deadlineTimer = setTimeout(() => {
+                killed = true;
+                killReason = 'deadline';
+                killTree();
+            }, timeoutMs);
+        }
 
         let stallTimer: NodeJS.Timeout | null = null;
         if (stallMs > 0) {
@@ -216,7 +220,7 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
         }
 
         const cleanup = () => {
-            clearTimeout(deadlineTimer);
+            if (deadlineTimer) { clearTimeout(deadlineTimer); }
             if (stallTimer) { clearTimeout(stallTimer); }
         };
 
@@ -260,9 +264,9 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
 function runnerTier(brief: SpawnBrief, appRoot: string, resolved: { script: string; python: string }): Promise<SpawnResult> {
     return new Promise<SpawnResult>((resolve) => {
         const start = Date.now();
-        const timeoutMs = brief.timeout && brief.timeout > 0 ? brief.timeout : 60_000;
-        // Outer guard = 5s + inner deadline (so the wrapper itself never hangs).
-        const guardMs = timeoutMs + 5_000;
+        const timeoutMs = brief.timeout != null ? brief.timeout : 60_000;
+        // Outer guard = 5s + inner deadline (only if timeout > 0)
+        const guardMs = timeoutMs > 0 ? timeoutMs + 5_000 : 86400000;
 
         let proc: ChildProcess;
         try {
@@ -382,8 +386,8 @@ function runnerTier(brief: SpawnBrief, appRoot: string, resolved: { script: stri
 function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promise<SpawnResult> {
     return new Promise<SpawnResult>((resolve) => {
         const start = Date.now();
-        const timeoutMs = brief.timeout && brief.timeout > 0 ? brief.timeout : 60_000;
-        const guardMs = timeoutMs + 5_000;
+        const timeoutMs = brief.timeout != null ? brief.timeout : 60_000;
+        const guardMs = timeoutMs > 0 ? timeoutMs + 5_000 : 86400000;
 
         const payload = JSON.stringify({
             cmd: brief.cmd,

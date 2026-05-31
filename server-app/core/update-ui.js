@@ -28,13 +28,26 @@
             btn.disabled = true;
             btn.textContent = '...';
             try {
+                // 优先壳层更新（需重启），其次载荷更新（热更）
+                if (bridge.update.upgradeShell && btn.dataset.mode === 'shell') {
+                    const result = await bridge.update.upgradeShell();
+                    if (result && result.success) {
+                        btn.textContent = '\u2713';
+                        btn.title = '壳层已更新，正在重启...';
+                        // ghrun 会自动替换 shell-out/ 并重启 Electron
+                    } else {
+                        btn.textContent = '\u2717';
+                        btn.title = (result && result.error) || '壳层更新失败';
+                        setTimeout(() => { btn.textContent = '\u21BB'; btn.disabled = false; }, 3000);
+                    }
+                    return;
+                }
                 const result = await bridge.update.apply();
                 if (result && result.success) {
                     btn.textContent = '\u2713';
                     btn.title = window.i18n.t('shell.update.updatedTo', { version: result.version }) || ('已更新到 ' + result.version + '，即将重载...');
                     setTimeout(() => {
                         if (bridge.window) bridge.window.close();
-                        // Electron will restart via tray or user
                     }, 1500);
                 } else {
                     btn.textContent = '\u2717';
@@ -60,9 +73,18 @@
             const btn = getBtn();
             if (!btn) return;
 
+            // 壳层更新优先
+            if (result && result.needShellUpdate) {
+                btn.style.display = '';
+                btn.style.color = 'var(--red)';
+                btn.dataset.mode = 'shell';
+                btn.title = '壳层新版本 ' + (result.latestShellVersion || '?') + ' 可用（将重启 IDE）';
+                return;
+            }
+            btn.dataset.mode = '';
             if (result && result.needUpdate) {
                 btn.style.display = '';
-                btn.style.color = 'var(--yellow)'; // solarized yellow
+                btn.style.color = 'var(--yellow)';
                 btn.title = window.i18n.t('shell.update.newVersion', { latest: result.latestVersion, current: result.currentVersion }) || ('新版本 ' + result.latestVersion + ' 可用 (当前 ' + result.currentVersion + ')');
             } else {
                 btn.style.display = 'none';

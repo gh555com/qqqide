@@ -146,11 +146,11 @@
     const T = window.qqqTheme;
     function syncBtn(dark) {
       $btn.textContent = dark ? '\u263C' : '\u263D';
-      $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮�?) : window._i('shell.theme.switchToDark', '切换到暗�?);
+      $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮色') : window._i('shell.theme.switchToDark', '切换到暗色');
     }
     syncBtn(T.isDark());
     T.onChange(function (dark) {
-      $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮�?) : window._i('shell.theme.switchToDark', '切换到暗�?);
+      $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮色') : window._i('shell.theme.switchToDark', '切换到暗色');
     });
     $btn.addEventListener('click', () => T.apply(!T.isDark()));
   }
@@ -165,8 +165,8 @@
   // ---- Language Switcher ----
   var _langPopup = null;
   var LANG_LABELS = {
-    'zh': '�?, 'zh-tw': '�?, 'en': 'EN', 'ja': '�?, 'de': 'DE',
-    'ko': '�?, 'ru': 'RU', 'ar': 'ar', 'es': 'ES', 'fr': 'FR',
+    'zh': '中', 'zh-tw': '繁', 'en': 'EN', 'ja': '日', 'de': 'DE',
+    'ko': '한', 'ru': 'RU', 'ar': 'ar', 'es': 'ES', 'fr': 'FR',
     'pt-BR': 'BR', 'hi': 'hi', 'vi': 'VI'
   };
 
@@ -304,7 +304,7 @@
       return;
     }
     if (cmd === 'help.about') {
-      bridge.dialog.message({ type: 'info', title: window._i('shell.about.title', '关于 qqq'), message: window._i('shell.about.version', 'qqq-shell v2'), detail: window._i('shell.about.desc', '便携 / Win7+ / 服务器热�?) });
+      bridge.dialog.message({ type: 'info', title: window._i('shell.about.title', '关于 qqq'), message: window._i('shell.about.version', 'qqq-shell v2'), detail: window._i('shell.about.desc', '便携 / Win7+ / 服务器热更') });
       return;
     }
     if (cmd === 'file.new' || cmd === 'file.open') {
@@ -462,7 +462,7 @@
     if (window.qqqGaea) {
       window.qqqGaea.build(host);
     } else {
-      host.innerHTML = '<div style="padding:12px; color:var(--base1); font-size:12px;">' + window._i('shell.gaeaHostLoading', 'gaea host 加载�?..') + '</div>';
+      host.innerHTML = '<div style="padding:12px; color:var(--base1); font-size:12px;">' + window._i('shell.gaeaHostLoading', 'gaea host 加载中....') + '</div>';
     }
   }
 
@@ -564,7 +564,8 @@
     }
 
     var zoomScale = 1.0;
-    // 拖拽偏移（图片用�?    var _dragX = 0, _dragY = 0;
+    // 拖拽偏移（图片用）
+    var _dragX = 0, _dragY = 0;
     function applyZoom() {
       var img = contentEl.querySelector('img');
       if (img) {
@@ -574,8 +575,10 @@
       }
       var div = contentEl.querySelector('div');
       if (div) {
-        // 表格�?zoom（影响布局/scroll尺寸），不用 transform（不影响scroll�?        div.style.zoom = zoomScale;
-        div.style.transition = 'zoom 0.15s ease';
+        // 表格用 transform scale（保持原始长宽比不重绘），scroll 由 D-pad 折算
+        div.style.transform = 'scale(' + zoomScale + ')';
+        div.style.transformOrigin = 'top left';
+        div.style.transition = 'transform 0.15s ease';
       }
     }
 
@@ -588,7 +591,7 @@
       // Try modern clipboard API first
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(function () {
-          copyBtn.textContent = '\u2705 ' + window._i('shell.overlay.copied', '已复�?);
+          copyBtn.textContent = '\u2705 ' + window._i('shell.overlay.copied', '已复制');
           setTimeout(function () { copyBtn.textContent = '\uD83D\uDCCB ' + window._i('shell.overlay.copy', '复制'); }, 1500);
         }).catch(function () { fallbackCopy(text); });
       } else {
@@ -603,7 +606,7 @@
         ta.select();
         try { document.execCommand('copy'); ok = true; } catch (ex) { }
         document.body.removeChild(ta);
-        copyBtn.textContent = ok ? '\u2705 ' + window._i('shell.overlay.copied', '已复�?) : '\u274C ' + window._i('shell.overlay.copyFailed', '失败');
+        copyBtn.textContent = ok ? '\u2705 ' + window._i('shell.overlay.copied', '已复制') : '\u274C ' + window._i('shell.overlay.copyFailed', '失败');
         setTimeout(function () { copyBtn.textContent = '\uD83D\uDCCB ' + window._i('shell.overlay.copy', '复制'); }, 1500);
       }
     }
@@ -615,7 +618,7 @@
     });
 
     // Zoom out（跳过冷却护盾，准许快速连按）
-    var zoomOutBtn = tbBtn('�?, window._i('shell.overlay.zoomOut', '缩小'), 'font-size:20px; font-weight:bold; padding:8px 14px;');
+    var zoomOutBtn = tbBtn('−', window._i('shell.overlay.zoomOut', '缩小'), 'font-size:20px; font-weight:bold; padding:8px 14px;');
     zoomOutBtn.setAttribute('data-no-cd', '');
     zoomOutBtn.addEventListener('click', function () {
       zoomScale = Math.max(0.25, zoomScale * 0.8);
@@ -631,7 +634,7 @@
     });
 
     // Close (extra large)
-    var closeBtn = tbBtn('�?, window._i('shell.overlay.close', '关闭 (Esc)'), 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
+    var closeBtn = tbBtn('\u2715', window._i('shell.overlay.close', '关闭 (Esc)'), 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
       'background:rgba(220,50,47,0.5); border-color:rgba(220,50,47,0.7);');
     closeBtn.addEventListener('click', close);
 
@@ -663,7 +666,8 @@
       }
     });
 
-    // Mouse wheel zoom（统一图片和表格，滚轮=缩放�?    overlay.addEventListener('wheel', function (e) {
+    // Mouse wheel zoom（统一图片和表格，滚轮=缩放）
+    overlay.addEventListener('wheel', function (e) {
       if (overlay.style.display === 'none') return;
       e.preventDefault(); e.stopPropagation();
       if (e.deltaY < 0) { zoomScale = Math.min(5.0, zoomScale * 1.15); }
@@ -671,7 +675,7 @@
       applyZoom();
     }, { passive: false, capture: true });
 
-    // ── 十字方向键（Game Boy 风格，独立控件，移动画布�?──
+    // ── 十字方向键（Game Boy 风格，独立控件，移动画布）──
     var dpad = document.createElement('div');
     dpad.style.cssText =
       'display:none; position:fixed; right:14px; bottom:78px; z-index:100000; ' +
@@ -686,25 +690,32 @@
       b.style.top = top + 'px'; b.style.left = left + 'px';
       return b;
     }
-    var btnUp = _crossBtn('�?, 0, BS);
+    var btnUp = _crossBtn('▲', 0, BS);
     var btnLeft = _crossBtn('◀', BS, 0);
-    var btnCenter = _crossBtn('�?, BS, BS);
-    var btnRight = _crossBtn('�?, BS, BS*2);
-    var btnDown = _crossBtn('�?, BS*2, BS);
-    btnCenter.title = '重置位置';
+    var btnCenter = _crossBtn('\u2302', BS, BS);
+    var btnRight = _crossBtn('▶', BS, BS*2);
+    var btnDown = _crossBtn('▼', BS*2, BS);
+    btnCenter.title = window._i('shell.overlay.resetPosition', '重置位置');
     btnCenter.style.background = 'rgba(255,255,255,0.12)';
     btnCenter.style.borderColor = 'rgba(255,255,255,0.25)';
+    var _initZoom = 1.0;
     function _nudge(dx, dy) {
       var step = 80;
       var img = contentEl.querySelector('img');
       if (img) { _dragX -= dx * step; _dragY -= dy * step; applyZoom(); return; }
       var w = contentEl.querySelector('div');
-      if (w) { w.scrollLeft += dx * step; w.scrollTop += dy * step; }
+      if (w) {
+        // transform scale 让视觉变大但 scroll 不变，需折算
+        var s = zoomScale || 1;
+        w.scrollLeft += dx * step / s;
+        w.scrollTop += dy * step / s;
+      }
     }
     function _resetView() {
-      _dragX = 0; _dragY = 0; zoomScale = 1.0;
+      _dragX = 0; _dragY = 0;
       var w = contentEl.querySelector('div');
-      if (w) { w.scrollLeft = 0; w.scrollTop = 0; }
+      if (w) { w.scrollLeft = 0; w.scrollTop = 0; zoomScale = _initZoom; }
+      else { zoomScale = 1.0; }
       applyZoom();
     }
     btnUp.addEventListener('mousedown', function(e) { e.preventDefault(); _nudge(0, -1); });
@@ -780,13 +791,12 @@
         zoomScale = 1.0;
         var wrapper = document.createElement('div');
         wrapper.style.cssText =
-          'max-width:95vw; max-height:calc(100vh - 120px); overflow:auto; ' +
-          'scrollbar-width:none; ' +
+          'overflow:auto; scrollbar-width:none; ' +
           'background:var(--card-bg,#2a2a2a); color:var(--text-primary,#d4d0c8); ' +
           'border-radius:8px; padding:20px; user-select:text; ' +
           'box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
-          'zoom:1; transition:zoom 0.15s ease; ' +
-          'overscroll-behavior:contain;';
+          'transform:scale(1); transform-origin:top left; ' +
+          'transition:transform 0.15s ease; overscroll-behavior:contain;';
         wrapper.innerHTML = e.data.html;
         var tables = wrapper.querySelectorAll('table');
         for (var ti = 0; ti < tables.length; ti++) {
@@ -802,7 +812,13 @@
           ths[hi].style.background = 'var(--card-bg,#1e1e1e)';
         }
         contentEl.appendChild(wrapper);
-        // 拦截表格滚轮 �?改为缩放
+        // 计算初始缩放：表自然尺寸 vs 视口
+        var natW = wrapper.scrollWidth, natH = wrapper.scrollHeight;
+        var maxW = window.innerWidth * 0.9, maxH = window.innerHeight - 120;
+        _initZoom = Math.min(1, maxW / Math.max(1, natW), maxH / Math.max(1, natH));
+        zoomScale = _initZoom;
+        applyZoom();
+        // 拦截表格滚轮 → 改为缩放
         wrapper.addEventListener('wheel', function(we) {
           we.preventDefault(); we.stopPropagation();
           if (we.deltaY < 0) { zoomScale = Math.min(5.0, zoomScale * 1.15); }
@@ -952,7 +968,8 @@
       }
 
       // Handle generic RPC: iframe calls bridge methods
-      // params 默认整体当成单一参数（数组也是单一参数，修�?diskFree 当前 bug�?      // 显式 spread: �?{ __spread: true, args: [...] } 才解�?      if (e.data.type === 'qqq-rpc') {
+      // params 默认整体当成单一参数（数组也是单一参数，修�?diskFree 当前 bug�?      // 显式 spread: �?{ __spread: true, args: [...] } 才解包）
+      if (e.data.type === 'qqq-rpc') {
         const { method, params, id } = e.data;
         try {
           const parts = method.split('.');
@@ -991,7 +1008,7 @@
   // - Routes any unhandled binding (no explicit on() handler) into handleMenuCmd
   async function bootKeyHook() {
     if (!window.qqqKeyHook) {
-      console.warn('[keyhook] window.qqqKeyHook missing �?script not loaded?');
+      console.warn('[keyhook] window.qqqKeyHook missing — script not loaded?');
       return;
     }
     let bindings = [];

@@ -815,9 +815,6 @@ function registerIpc(): void {
 
     // ---- fs (use engine if alive, else native fallback) ----
     ipcMain.handle('qqq:fs:read', async (_e, p: string) => {
-        if (engineHost.isAlive()) {
-            try { return await engineHost.invoke('fs.read', { path: p }); } catch { /* fall through */ }
-        }
         return fs.promises.readFile(p, 'utf8');
     });
     // Read file as base64 for binary content (images for AI vision, etc.)
@@ -836,17 +833,11 @@ function registerIpc(): void {
     ipcMain.handle('qqq:fs:write', async (_e, p: string, content: any) => {
         // Auto-mkdir parent dir (zero-risk pure benefit, prevents ENOENT for .lock etc.)
         try { await fs.promises.mkdir(path.dirname(p), { recursive: true }); } catch { /* ignore */ }
-        if (engineHost.isAlive()) {
-            try { return await engineHost.invoke('fs.write', { path: p, content }); } catch { /* fall through */ }
-        }
         await fs.promises.writeFile(p, content);
         return true;
     });
     ipcMain.handle('qqq:fs:list', async (_e, p: string, callerStack?: string) => {
         console.log('[fs:list]', p);
-        if (engineHost.isAlive()) {
-            try { return await engineHost.invoke('fs.list', { path: p }); } catch { /* fall through */ }
-        }
         // guard: reject non-directory paths gracefully
         try {
             const st = await fs.promises.stat(p);
@@ -857,16 +848,11 @@ function registerIpc(): void {
             }
         } catch { return []; }
         const entries = await fs.promises.readdir(p, { withFileTypes: true });
-        const result: any[] = [];
+        const result: string[] = [];
+        const MAX = 500;
         for (const e of entries) {
-            const item: any = { name: e.name, isDir: e.isDirectory() };
-            try {
-                const s = await fs.promises.stat(path.join(p, e.name));
-                item.size = s.size;
-                item.mtime = s.mtimeMs;
-                item.ctime = s.birthtimeMs;
-            } catch { /* ignore stat failures */ }
-            result.push(item);
+            if (result.length >= MAX) break;
+            result.push(e.isDirectory() ? e.name + '/' : e.name);
         }
         return result;
     });
@@ -891,6 +877,362 @@ function registerIpc(): void {
         await fs.promises.rename(oldP, newP);
         return true;
     });
+
+    // ============================================================
+    // AI 工具 — 主进程递归搜索 (消除 renderer IPC 洪水 + 超时防卡死)
+    // ============================================================
+    const AI_SKIP_DIRS = ['node_modules', '.git', 'dist', 'backup', '__pycache__', '.venv', 'vendor', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs', 'cache', 'temp', 'crashDumps'];
+    const AI_SKIP_EXTS = ['.exe', '.dll', '.so', '.dylib', '.bin', '.png', '.jpg', '.jpeg', '.gif', '.mp3', '.mp4', '.zip', '.tar', '.gz', '.xz', '.woff', '.woff2', '.ttf', '.eot', '.ico', '.vsix', '.lock', '.wasm'];
+    const AI_MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB in main process (no IPC serialization)
+
+    function aiGlobToRegex(pattern: string): RegExp {
+        const esc = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+        return new RegExp('^' + esc + '$', 'i');
+    }
+
+    function aiTimeout(ms: number, partial: string): Promise<string> {
+        return new Promise(resolve => { setTimeout(() => resolve((partial || '') + '\n[TIMEOUT]'), ms); });
+    }
+
+    // search_text — 正则递归搜索
+    ipcMain.handle('qqq:ai:search_text', async (_e, args: { query: string; paths?: string[]; path?: string; maxResults?: number; timeoutMs?: number }) => {
+        const query = args.query;
+        const searchPaths: string[] = args.paths || (args.path ? [args.path] : []);
+        const maxResults = args.maxResults || 30;
+        const timeoutMs = args.timeoutMs || 30000;
+        if (searchPaths.length === 0) return 'Error: no search paths';
+
+        let regex: RegExp;
+        try { regex = new RegExp(query, 'i'); }
+        catch { regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); }
+
+        const matches: string[] = [];
+
+        const doSearch = async (): Promise<string> => {
+            async function walk(dir: string, depth: number): Promise<void> {
+                if (depth > 8 || matches.length >= maxResults) return;
+                let entries: fs.Dirent[];
+                try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); }
+                catch { return; }
+                for (const ent of entries) {
+                    if (matches.length >= maxResults) break;
+                    if (ent.name.startsWith('.') && ent.isDirectory()) continue;
+                    if (ent.isDirectory() && AI_SKIP_DIRS.includes(ent.name)) continue;
+                    const full = path.join(dir, ent.name);
+                    if (ent.isDirectory()) {
+                        await walk(full, depth + 1);
+                    } else {
+                        const extMatch = ent.name.match(/\.([a-z0-9]+)$/i);
+                        const ext = extMatch ? '.' + extMatch[1].toLowerCase() : '';
+                        if (AI_SKIP_EXTS.includes(ext)) continue;
+                        try {
+                            const st = await fs.promises.stat(full);
+                            if (!st || st.size > AI_MAX_FILE_SIZE) continue;
+                            const content = await fs.promises.readFile(full, 'utf8');
+                            const lines = content.split('\n');
+                            for (let li = 0; li < lines.length && matches.length < maxResults; li++) {
+                                if (regex.test(lines[li])) {
+                                    matches.push(full + ':' + (li + 1) + ':' + lines[li].trim().slice(0, 200));
+                                }
+                            }
+                        } catch { /* skip unreadable */ }
+                    }
+                }
+            }
+            for (const d of searchPaths) {
+                if (matches.length >= maxResults) break;
+                await walk(d, 0);
+            }
+            return matches.length > 0 ? matches.join('\n') : 'No matches found.';
+        };
+
+        return Promise.race([doSearch(), aiTimeout(timeoutMs, matches.length > 0 ? matches.join('\n') : '')]);
+    });
+
+    // find_files — glob 文件名递归搜索
+    ipcMain.handle('qqq:ai:find_files', async (_e, args: { pattern: string; paths?: string[]; path?: string; maxResults?: number; timeoutMs?: number }) => {
+        const pattern = args.pattern;
+        const searchPaths: string[] = args.paths || (args.path ? [args.path] : []);
+        const maxResults = args.maxResults || 50;
+        const timeoutMs = args.timeoutMs || 15000;
+        if (!pattern || searchPaths.length === 0) return 'Error: missing pattern or paths';
+
+        const regex = aiGlobToRegex(pattern);
+        const baseDirs = searchPaths.map(p => p.replace(/\\/g, '/').replace(/\/$/, ''));
+        const matches: string[] = [];
+
+        const doSearch = async (): Promise<string> => {
+            async function walk(dir: string, depth: number, baseDir: string): Promise<void> {
+                if (depth > 8 || matches.length >= maxResults) return;
+                let entries: fs.Dirent[];
+                try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); }
+                catch { return; }
+                for (const ent of entries) {
+                    if (matches.length >= maxResults) break;
+                    if (ent.name.startsWith('.')) continue;
+                    if (ent.isDirectory() && AI_SKIP_DIRS.includes(ent.name)) continue;
+                    const full = path.join(dir, ent.name);
+                    const rel = baseDir ? full.replace(/\\/g, '/').slice(baseDir.length + 1) : full;
+                    if (regex.test(ent.name) || regex.test(rel)) {
+                        matches.push(full + (ent.isDirectory() ? '/' : ''));
+                    }
+                    if (ent.isDirectory()) await walk(full, depth + 1, baseDir);
+                }
+            }
+            for (let d = 0; d < searchPaths.length && matches.length < maxResults; d++) {
+                await walk(searchPaths[d], 0, baseDirs[d]);
+            }
+            return matches.length > 0 ? matches.join('\n') : 'No files found.';
+        };
+
+        return Promise.race([doSearch(), aiTimeout(timeoutMs, matches.length > 0 ? matches.join('\n') : '')]);
+    });
+
+    // list_files — 递归列目录
+    ipcMain.handle('qqq:ai:list_files', async (_e, args: { path: string; maxResults?: number; timeoutMs?: number }) => {
+        const searchPath = args.path;
+        const maxResults = args.maxResults || 200;
+        const timeoutMs = args.timeoutMs || 15000;
+        if (!searchPath) return 'Error: missing path';
+
+        const matches: string[] = [];
+
+        const doSearch = async (): Promise<string> => {
+            async function walk(dir: string, depth: number): Promise<void> {
+                if (depth > 8 || matches.length >= maxResults) return;
+                let entries: fs.Dirent[];
+                try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); }
+                catch { return; }
+                for (const ent of entries) {
+                    if (matches.length >= maxResults) break;
+                    if (ent.name.startsWith('.')) continue;
+                    if (ent.isDirectory() && AI_SKIP_DIRS.includes(ent.name)) continue;
+                    const full = path.join(dir, ent.name);
+                    matches.push(full + (ent.isDirectory() ? '/' : ''));
+                    if (ent.isDirectory()) await walk(full, depth + 1);
+                }
+            }
+            await walk(searchPath, 0);
+            return matches.length > 0 ? matches.join('\n') : 'No files found.';
+        };
+
+        return Promise.race([doSearch(), aiTimeout(timeoutMs, matches.length > 0 ? matches.join('\n') : '')]);
+    });
+
+    // read_file — 读文件 + 行切片 (1 IPC, 消除大文件序列化开销)
+    // ==== qwr 机器 — 全局唯一真理写机器 ====
+    const _qw = new Map<string, Promise<any>>();
+    const _sn: Record<string, { mtimeMs: number; size: number }> = {};
+    let _ac = 0;
+    let _co = false;
+    const _cw: Array<() => void> = [];
+    const _ww: Array<() => void> = [];
+    async function _qe(p: string, fn: () => Promise<any>): Promise<any> {
+        const prev = _qw.get(p) || Promise.resolve();
+        const next = prev.then(() => _qg(p, fn));
+        _qw.set(p, next);
+        next.finally(() => { if (_qw.get(p) === next) _qw.delete(p); });
+        return next;
+    }
+    async function _qg(_p: string, fn: () => Promise<any>): Promise<any> {
+        if (_co) await new Promise<void>(r => { _cw.push(r); });
+        _ac++;
+        try { return await fn(); }
+        finally {
+            _ac--;
+            if (_ww.length && _ac === 0) { const w = _ww.splice(0); w.forEach(r => r()); }
+        }
+    }
+    async function _qgc(fn: () => Promise<any>): Promise<any> {
+        _co = true;
+        if (_ac > 0) await new Promise<void>(r => { _ww.push(r); });
+        try { return await fn(); }
+        finally {
+            _co = false;
+            for (const k of Object.keys(_sn)) delete _sn[k];
+            if (_cw.length) { const w = _cw.splice(0); w.forEach(r => r()); }
+        }
+    }
+    ipcMain.handle('qqq:ai:read_file', async (_e, args: { path: string; start_line?: number; end_line?: number }) => {
+        const startLine = args.start_line || 1;
+        const endLine = args.end_line || 0;
+        try {
+            const st = await fs.promises.stat(args.path);
+            _sn[args.path] = { mtimeMs: st.mtimeMs, size: st.size };
+            if (st.size > 50 * 1024 * 1024) return `Error: file too large (${(st.size / 1024 / 1024).toFixed(1)} MB, max 50 MB). Use start_line/end_line to paginate.`;
+            let content = await fs.promises.readFile(args.path, 'utf8');
+            content = content.replace(/\r\n/g, '\n');
+            const lines = content.split('\n');
+            const total = lines.length;
+            const start = Math.max(0, startLine - 1);
+            const end = endLine ? Math.min(total, endLine) : Math.min(total, start + 500);
+            const slice = lines.slice(start, end).join('\n');
+            if (total <= 500 && !args.start_line) return content;
+            return `File has ${total} lines. Showing L${start + 1}-${end}:\n${slice}`;
+        } catch (err: any) {
+            return 'Error reading file: ' + (err.message || err);
+        }
+    });
+
+    // edit_file helpers
+    function aiNormalizeWhitespace(text: string): string {
+        return text.replace(/[^\S\n]+/g, ' ').replace(/ +$/gm, '').replace(/^ +/gm, (m: string) => m.length > 0 ? ' ' : '');
+    }
+    function aiFindMatch(content: string, find: string): { start: number; end: number; matchLevel: number } | null {
+        const idx1 = content.indexOf(find);
+        if (idx1 !== -1) return { start: idx1, end: idx1 + find.length, matchLevel: 1 };
+        if (content.indexOf('\r\n') !== -1) {
+            const normContent = content.replace(/\r\n/g, '\n');
+            const normFind = find.replace(/\r\n/g, '\n');
+            if (normContent !== content || normFind !== find) {
+                const idx1b = normContent.indexOf(normFind);
+                if (idx1b !== -1) {
+                    let origPos = 0;
+                    for (let np = 0; np < idx1b; np++, origPos++) {
+                        if (content[origPos] === '\r' && content[origPos + 1] === '\n') origPos++;
+                    }
+                    const origStart = origPos;
+                    for (let np = idx1b; np < idx1b + normFind.length; np++, origPos++) {
+                        if (content[origPos] === '\r' && content[origPos + 1] === '\n') origPos++;
+                    }
+                    return { start: origStart, end: origPos, matchLevel: 1 };
+                }
+            }
+        }
+        const nf = aiNormalizeWhitespace(find);
+        const nc = aiNormalizeWhitespace(content);
+        const idx2 = nc.indexOf(nf);
+        if (idx2 !== -1) {
+            const normBefore = nc.slice(0, idx2);
+            const normAfter = nc.slice(0, idx2 + nf.length);
+            const startLine2 = (normBefore.match(/\n/g) || []).length;
+            const endLine2 = (normAfter.match(/\n/g) || []).length;
+            const lines2 = content.split('\n');
+            const oStart2 = lines2.slice(0, startLine2).join('\n').length + (startLine2 > 0 ? 1 : 0);
+            const oEnd2 = lines2.slice(0, endLine2 + 1).join('\n').length;
+            return { start: oStart2, end: oEnd2, matchLevel: 2 };
+        }
+        const findLines = find.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        if (findLines.length >= 2) {
+            const contentLines = content.split('\n');
+            for (let i = 0; i <= contentLines.length - findLines.length; i++) {
+                let match = true;
+                for (let j = 0; j < findLines.length; j++) {
+                    if (contentLines[i + j].trim() !== findLines[j]) { match = false; break; }
+                }
+                if (match) {
+                    const soff = contentLines.slice(0, i).join('\n').length + (i > 0 ? 1 : 0);
+                    const eoff = contentLines.slice(0, i + findLines.length).join('\n').length;
+                    return { start: soff, end: eoff, matchLevel: 3 };
+                }
+            }
+        }
+        return null;
+    }
+
+    // edit_file — 精准编辑 (三级降级匹配 + 原子性, 1 IPC 替代 read+write)
+    ipcMain.handle('qqq:ai:edit_file', async (_e, args: { path: string; edits: Array<{ find: string; replace: string; replace_all?: boolean }> }) => {
+        return _qe(args.path, async () => {
+            const edits = args.edits;
+            if (!edits || edits.length === 0) return 'Error: no edits provided.';
+            try {
+                let content = await fs.promises.readFile(args.path, 'utf8');
+                content = content.replace(/\r\n/g, '\n');
+                const results: string[] = [];
+                let totalApplied = 0;
+                const matchPlan: Array<{ edit: typeof edits[0]; match: { start: number; end: number; matchLevel: number }; index: number }> = [];
+                for (let i = 0; i < edits.length; i++) {
+                    const edit = edits[i];
+                    const m = aiFindMatch(content, edit.find);
+                    if (!m) {
+                        const firstLine = edit.find.split('\n')[0].trim();
+                        const lines = content.split('\n');
+                        let hint = '';
+                        for (let li = 0; li < lines.length; li++) {
+                            if (lines[li].indexOf(firstLine) !== -1) {
+                                hint = `\nNearest match at line ${li + 1}:\n${lines.slice(Math.max(0, li - 1), li + 4).join('\n')}`;
+                                break;
+                            }
+                        }
+                        return `Error: edit #${i + 1} match failed — text not found in ${args.path.split(/[\\/]/).pop()}.${hint}`;
+                    }
+                    matchPlan.push({ edit, match: m, index: i });
+                }
+                for (let pi = 0; pi < matchPlan.length; pi++) {
+                    const plan = matchPlan[pi];
+                    const ed = plan.edit;
+                    if (ed.replace_all) {
+                        const count = content.split(ed.find).length - 1;
+                        content = content.split(ed.find).join(ed.replace);
+                        results.push(`#${pi + 1}: all (${count}x, L${plan.match.matchLevel})`);
+                        totalApplied += count;
+                    } else {
+                        const m2 = aiFindMatch(content, ed.find);
+                        if (m2) {
+                            content = content.slice(0, m2.start) + ed.replace + content.slice(m2.end);
+                            results.push(`L${m2.matchLevel}`);
+                            totalApplied++;
+                        } else {
+                            results.push('skip(moved)');
+                        }
+                    }
+                }
+                try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
+                await fs.promises.writeFile(args.path, content);
+                try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
+                const matchInfo = results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1)
+                    ? ' (whitespace-tolerant match used)' : '';
+                return `\u2713 ${totalApplied} edit(s) applied to ${args.path.split(/[\\/]/).pop()}${matchInfo}`;
+            } catch (err: any) {
+                return 'Error editing file: ' + (err.message || err);
+            }
+        });
+    });
+
+    // create_file — 新建文件 (1 IPC)
+    ipcMain.handle('qqq:ai:create_file', async (_e, args: { path: string; content: string }) => {
+        return _qe(args.path, async () => {
+            try {
+                try { await fs.promises.access(args.path); return `Error: file already exists: ${args.path}. Use edit_file to modify existing files.`; } catch { /* doesn't exist, proceed */ }
+                try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
+                await fs.promises.writeFile(args.path, args.content);
+                try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
+                return `File created: ${args.path} (${args.content.length} chars)`;
+            } catch (err: any) {
+                return 'Error creating file: ' + (err.message || err);
+            }
+        });
+    });
+
+    // delete_file — 删除文件 (1 IPC)
+    ipcMain.handle('qqq:ai:delete_file', async (_e, args: { path: string }) => {
+        return _qe(args.path, async () => {
+            try {
+                try { await fs.promises.access(args.path); } catch { return `Error: file not found: ${args.path}`; }
+                await fs.promises.unlink(args.path);
+                delete _sn[args.path];
+                return `Deleted: ${args.path}`;
+            } catch (err: any) {
+                return 'Error deleting file: ' + (err.message || err);
+            }
+        });
+    });
+
+    // write_file — 全量覆写 (1 IPC)
+    ipcMain.handle('qqq:ai:write_file', async (_e, args: { path: string; content: string }) => {
+        return _qe(args.path, async () => {
+            try {
+                const snap = _sn[args.path];
+                if (snap) { try { const st = await fs.promises.stat(args.path); if (st.mtimeMs !== snap.mtimeMs || st.size !== snap.size) return 'Error: file has been modified externally since last read. Please re-read the file and try again.'; } catch (_) { } }
+                try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
+                await fs.promises.writeFile(args.path, args.content);
+                return `File written: ${args.path} (${args.content.length} chars)`;
+            } catch (err: any) {
+                return 'Error writing file: ' + (err.message || err);
+            }
+        });
+    });
+
     ipcMain.handle('qqq:fs:drives', async () => {
         const drives: string[] = [];
         if (process.platform === 'win32') {
@@ -1014,7 +1356,7 @@ function registerIpc(): void {
     ipcMain.handle('qqq:engine:invoke', async (_e, method: string, params: any) => {
         // Special case: 'spawn' command - route to unified qz subsystem
         if (method === 'spawn' && params && params.cmd) {
-            return qzSpawn.spawn(params as SpawnBrief);
+            return _qgc(async () => qzSpawn.spawn(params as SpawnBrief));
         }
         return engineHost.invoke(method, params);
     });
@@ -1023,13 +1365,13 @@ function registerIpc(): void {
     // ---- ghrun (process spawning via qz subsystem) ----
     ipcMain.handle('qqq:ghrun:exec', async (_e, cmd: string, args: string[], opts?: any) => {
         // Single funnel: always go through qzSpawn (ghrun → runner → node)
-        return qzSpawn.spawn({ cmd, args, ...(opts || {}) });
+        return _qgc(async () => qzSpawn.spawn({ cmd, args, ...(opts || {}) }));
     });
     ipcMain.handle('qqq:ghrun:isAlive', () => qzSpawn.ghrunAlive());
 
     // ---- qz unified spawn (canonical entry; ghrun/engine helpers delegate here) ----
     ipcMain.handle('qqq:qz:spawn', async (_e, brief: SpawnBrief) => {
-        return qzSpawn.spawn(brief || ({} as SpawnBrief));
+        return _qgc(async () => qzSpawn.spawn(brief || ({} as SpawnBrief)));
     });
     ipcMain.handle('qqq:qz:which', async (_e, cmd: string) => qzSpawn.which(cmd));
     ipcMain.handle('qqq:qz:ghrunAlive', () => qzSpawn.ghrunAlive());
@@ -1276,6 +1618,52 @@ function registerIpc(): void {
 
     // ---- monaco ----
     monacoHost.register();
+
+    // ---- 外嵌 AI 面板 ----
+    const _externalPanels: (BrowserWindow | null)[] = [null, null];
+    ipcMain.handle('qqq:ai-panel:toggle-external', async (_e, index: number, open: boolean) => {
+        if (index < 0 || index > 1) return false;
+        if (open) {
+            if (_externalPanels[index] && !_externalPanels[index]!.isDestroyed()) return true;
+            const mw = mainWindow;
+            if (!mw || mw.isDestroyed()) return false;
+            const mwBounds = mw.getBounds();
+            const aiW = 389;
+            const preloadPath = path.join(__dirname, 'preload.js');
+            const extWin = new BrowserWindow({
+                width: aiW, height: mwBounds.height,
+                x: mwBounds.x + mwBounds.width + (index * aiW),
+                y: mwBounds.y,
+                frame: false,
+                backgroundColor: '#1e1e1e',
+                title: 'qqq AI ' + (index + 1),
+                webPreferences: {
+                    preload: preloadPath,
+                    contextIsolation: true,
+                    nodeIntegration: false,
+                    sandbox: false,
+                    webSecurity: false,
+                },
+            });
+            extWin.removeMenu();
+            extWin.loadURL(bootConfig.url + 'ai-panel/index.html?external=' + index).catch(() => { });
+            const syncExt = () => {
+                if (extWin.isDestroyed()) return;
+                const b = mw.getBounds();
+                extWin.setBounds({ x: b.x + b.width + (index * aiW), y: b.y, width: aiW, height: b.height });
+            };
+            mw.on('move', syncExt);
+            mw.on('resize', syncExt);
+            extWin.on('closed', () => { _externalPanels[index] = null; });
+            _externalPanels[index] = extWin;
+            return true;
+        } else {
+            const extWin = _externalPanels[index];
+            if (extWin && !extWin.isDestroyed()) { extWin.close(); }
+            _externalPanels[index] = null;
+            return true;
+        }
+    });
 }
 
 // ----------------------------------------------------------------------------

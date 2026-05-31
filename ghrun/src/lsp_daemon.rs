@@ -46,7 +46,8 @@ pub fn port_for(name: &str) -> u16 {
 pub fn run(ctx: &Ctx) -> Result<(), String> {
     let mut handles: Vec<LspHandle> = Vec::new();
 
-    for comp in manifest::builtin_components() {
+    let all_components = manifest::all_components(Some(&ctx.qdir));
+    for comp in &all_components {
         if !comp.name.starts_with("lsp/") {
             continue;
         }
@@ -55,7 +56,7 @@ pub fn run(ctx: &Ctx) -> Result<(), String> {
             continue;
         }
 
-        let (dir_name, bin_name) = match manifest::find_bin(&comp.name) {
+        let (dir_name, bin_name) = match manifest::find_bin(&comp.name, Some(&ctx.qdir)) {
             Some(v) => v,
             None => {
                 eprintln!("[lsp-daemon] skip {}: no manifest entry", comp.name);

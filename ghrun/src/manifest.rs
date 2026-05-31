@@ -1,9 +1,15 @@
 // manifest.rs — component and goods manifest definitions.
-// For MVP: manifests are hardcoded here.
-// Future: fetched from https://cdn.gh555.com/ghrun/manifest.json and cached locally.
+//
+// Resolution order (first wins):
+//   1. <QDIR>/userData/manifest.json   (user override, survives upgrades)
+//   2. <QDIR>/engines/manifest.json     (shipped with ghrun, updated by CI)
+//   3. Hardcoded builtin fallback       (compiled into binary, always available)
+//
+// To change download URLs, edit engines/manifest.json — no recompile needed.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -33,7 +39,7 @@ pub struct ComponentManifest {
 // Hardcoded component registry (MVP)
 // ---------------------------------------------------------------------------
 
-/// Detect current platform key: "win32-x64" | "linux-x64" | "darwin-x64" | "darwin-arm64"
+/// Detect current platform key.
 pub fn current_platform() -> &'static str {
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]   { "win32-x64"    }
     #[cfg(all(target_os = "linux",   target_arch = "x86_64"))]   { "linux-x64"    }
@@ -46,6 +52,76 @@ pub fn current_platform() -> &'static str {
         all(target_os = "macos",   target_arch = "aarch64"),
     )))] { "unknown" }
 }
+
+// ---------------------------------------------------------------------------
+// External manifest loading (JSON files, no recompile needed)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ManifestFile {
+    #[serde(default)]
+    _comment: String,
+    #[serde(default)]
+    _version: u32,
+    components: Vec<ComponentManifest>,
+}
+
+/// Try to load manifest from a JSON file.
+fn load_manifest_json(path: &std::path::Path) -> Option<Vec<ComponentManifest>> {
+    let data = std::fs::read_to_string(path).ok()?;
+    let mf: ManifestFile = serde_json::from_str(&data).ok()?;
+    if mf.components.is_empty() {
+        None
+    } else {
+        Some(mf.components)
+    }
+}
+
+/// Try to load external manifest from known search paths.
+fn load_external_manifest(qdir: Option<&PathBuf>) -> Option<Vec<ComponentManifest>> {
+    // Path 1: user override — <QDIR>/userData/manifest.json
+    if let Some(qd) = qdir {
+        let user_manifest = qd.join("userData").join("manifest.json");
+        if let Some(cmps) = load_manifest_json(&user_manifest) {
+            eprintln!("[manifest] loaded user manifest: {}", user_manifest.display());
+            return Some(cmps);
+        }
+    }
+
+    // Path 2: shipped manifest — next to ghrun.exe (engines/ directory)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            let shipped = exe_dir.join("manifest.json");
+            if let Some(cmps) = load_manifest_json(&shipped) {
+                eprintln!("[manifest] loaded shipped manifest: {}", shipped.display());
+                return Some(cmps);
+            }
+        }
+    }
+
+    None
+}
+
+// ---------------------------------------------------------------------------
+// Unified component lookup — tries external JSON first, then hardcoded
+// ---------------------------------------------------------------------------
+
+/// Get all components, preferring external manifest over hardcoded.
+pub fn all_components(qdir: Option<&PathBuf>) -> Vec<ComponentManifest> {
+    if let Some(ext) = load_external_manifest(qdir) {
+        return ext;
+    }
+    builtin_components()
+}
+
+/// Look up a component by name (with optional QDIR for external manifest).
+pub fn find_component_in(all_components: &[ComponentManifest], name: &str) -> Option<ComponentManifest> {
+    all_components.iter().find(|c| c.name == name).cloned()
+}
+
+// ---------------------------------------------------------------------------
+// Hardcoded fallback (runs if no JSON manifest found)
+// ---------------------------------------------------------------------------
 
 pub fn builtin_components() -> Vec<ComponentManifest> {
     vec![
@@ -333,15 +409,17 @@ pub fn builtin_components() -> Vec<ComponentManifest> {
 /// Returns (directory_name, binary_name).
 /// "lsp/gopls" → ("lsp_gopls", "gopls.exe")
 /// "ffmpeg"    → ("ffmpeg",    "ffmpeg.exe")
-pub fn find_bin(name: &str) -> Option<(String, String)> {
+pub fn find_bin(name: &str, qdir: Option<&PathBuf>) -> Option<(String, String)> {
     let dir_name = name.replace('/', "_");
-    let manifest = find_component(name)?;
+    let manifest = find_component(name, qdir)?;
     let platform = current_platform();
     let entry = manifest.platforms.get(platform)?;
     let bin = entry.bin.as_ref()?;
     Some((dir_name, bin.clone()))
 }
 
-pub fn find_component(name: &str) -> Option<ComponentManifest> {
-    builtin_components().into_iter().find(|c| c.name == name)
+/// Look up a component manifest by name. Tries external JSON first.
+pub fn find_component(name: &str, qdir: Option<&PathBuf>) -> Option<ComponentManifest> {
+    let all = all_components(qdir);
+    find_component_in(&all, name)
 }

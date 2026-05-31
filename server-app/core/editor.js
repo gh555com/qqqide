@@ -265,20 +265,31 @@
           // configure require
           // eslint-disable-next-line no-undef
           require.config({ paths: { vs: baseUrl } });
-          // monaco workers: load via importScripts from blob worker
-          // to bypass custom-protocol Worker() restrictions in Electron
+          // ── Monaco worker bootstrap for Electron custom protocol ──
+          // Problem: native importScripts can't load qqq-asset:// URLs from
+          // blob Workers. The AMD loader's fallback uses eval() which loses
+          // access to `define` (global scope mismatch).
+          //
+          // Fix:
+          //   0. Save native importScripts before AMD loader overrides it
+          //   1. Inline AMD loader + worker module into a blob URL
+          //   2. Force define/require onto self after loader init
+          //   3. Override importScripts with Function()-based version
+          //      (Function() always runs in global scope → sees self.define)
+          //
+          // Language workers (tsWorker.js, jsonWorker.js, etc.) are
+          // self-contained AMD modules — they only need the AMD loader
+          // and their own code. Generic worker (workerMain.js) has many
+          // dependencies; our importScripts override loads them on demand.
+
           var _langWorker = {
             typescript: 'tsWorker', javascript: 'tsWorker',
             json: 'jsonWorker', html: 'htmlWorker', css: 'cssWorker',
           };
 
-          // Pre-fetch all worker scripts in the MAIN THREAD (sync XHR is reliable here).
-          // Then inline them into blob URLs — zero network requests from the worker.
-          // This eliminates the sync-XHR-from-worker problem that caused
-          // "Could not create web worker(s)" and "define is not a function".
           function _syncFetchText(url) {
             var x = new XMLHttpRequest();
-            x.open('GET', url, false);  // sync — OK in main thread
+            x.open('GET', url, false);
             try { x.send(); return x.responseText; }
             catch (e) { return null; }
           }
@@ -292,19 +303,40 @@
             var workerCode = _syncFetchText(baseUrl + '/' + workerPath);
             if (!workerCode) return null;
 
-            // Inline AMD loader + worker script into a single blob.
-            // Clear define/module before eval-ing the bundled worker
-            // (prevents AMD from interfering with the self-contained min build).
-            var fullCode = [
+            // Assemble blob payload — execution order inside the Worker:
+            var parts = [
+              // (0) Save native importScripts before AMD loader touches it
+              "var __nativeImportScripts = (typeof self!=='undefined' && self.importScripts) ? self.importScripts.bind(self) : null;",
+              // (1) AMD loader
               _loaderJs,
+              // (2) configure paths so the AMD loader knows where to find modules
               "require.config({ paths: { vs: '" + baseUrl + "' } });",
-              "(function(){",
-              "var __d=self.define,__m=self.module;",
-              "self.define=undefined;self.module=undefined;",
+              // (3) force define/require onto self (belt-and-suspenders)
+              "if (typeof self!=='undefined') {" +
+                "if (typeof define==='function') self.define=define;" +
+                "if (typeof require==='function') self.require=require;" +
+              "}",
+              // (4) robust importScripts — try native, then fall back to
+              //     sync XHR + Function() which runs in global scope
+              "if (typeof self!=='undefined') {" +
+                "self.importScripts = function(url) {" +
+                  // Try native first (works for same-origin URLs)
+                  "if (__nativeImportScripts) {" +
+                    "try { __nativeImportScripts(url); return; } catch(e) {}" +
+                  "}" +
+                  // Fallback: sync XHR + Function (global scope → sees self.define)
+                  "var xhr = new XMLHttpRequest();" +
+                  "xhr.open('GET', url, false);" +
+                  "try { xhr.send(); } catch(e2) { throw new Error('importScripts: '+url+' — '+e2.message); }" +
+                  "if (xhr.status < 200 || xhr.status >= 400) throw new Error('importScripts: HTTP '+xhr.status+' '+url);" +
+                  "(new Function(xhr.responseText)).call(self);" +
+                "};" +
+              "}",
+              // (5) worker module (self-contained AMD define)
               workerCode,
-              "self.define=__d;self.module=__m;",
-              "})();",
-            ].join('\n');
+            ];
+
+            var fullCode = parts.join('\n');
 
             var blob = new Blob([fullCode], { type: 'application/javascript' });
             var url = URL.createObjectURL(blob);
@@ -312,17 +344,25 @@
             return url;
           }
 
-          // ★ Use getWorkerUrl (not getWorker). Monaco creates the Worker itself
-          // using new Worker(url). The blob URL already contains everything needed.
+          // ★ getWorker — returns blob Worker with inlined AMD loader + module
           window.MonacoEnvironment = {
-            getWorkerUrl: function (workerId, label) {
+            getWorker: function (workerId, label) {
               var workerPath;
               if (label && _langWorker[label]) {
                 workerPath = 'language/' + label + '/' + _langWorker[label] + '.js';
               } else {
                 workerPath = 'base/worker/workerMain.js';
               }
-              return _getWorkerBlobUrl(workerPath);
+              var blobUrl = _getWorkerBlobUrl(workerPath);
+              if (!blobUrl) {
+                console.warn('[editor] failed to create blob worker for ' + label);
+                // Return a worker that won't crash — use workerMain as last resort
+                var fb = _getWorkerBlobUrl('base/worker/workerMain.js');
+                if (fb) return new Worker(fb);
+                // Ultimate fallback — let Monaco's own fallback handle it
+                throw new Error('Cannot create Monaco worker: ' + label);
+              }
+              return new Worker(blobUrl);
             },
           };
           // eslint-disable-next-line no-undef

@@ -18,7 +18,16 @@ const QQQ = {
         readBase64: (p: string) => ipcRenderer.invoke('qqq:fs:readBase64', p),
         write: (p: string, content: string | Buffer) => ipcRenderer.invoke('qqq:fs:write', p, content),
         writeBase64: (p: string, base64: string) => ipcRenderer.invoke('qqq:fs:writeBase64', p, base64),
-        list: (p: string) => ipcRenderer.invoke('qqq:fs:list', p, new Error('fs.list caller').stack),
+        list: async (p: string) => {
+            const result: string[] = await ipcRenderer.invoke('qqq:fs:list', p, new Error('fs.list caller').stack);
+            if (Array.isArray(result) && result.length > 0 && typeof result[0] === 'string') {
+                return result.map((s: string) => ({
+                    name: s.endsWith('/') ? s.slice(0, -1) : s,
+                    isDir: s.endsWith('/')
+                }));
+            }
+            return result;
+        },
         stat: (p: string) => ipcRenderer.invoke('qqq:fs:stat', p),
         exists: (p: string) => ipcRenderer.invoke('qqq:fs:exists', p),
         mkdir: (p: string) => ipcRenderer.invoke('qqq:fs:mkdir', p),
@@ -104,6 +113,11 @@ const QQQ = {
         openPath: (p: string) => ipcRenderer.invoke('qqq:shell:openPath', p),
     },
 
+    // ---- 外嵌 AI 面板 ----
+    aiPanel: {
+        toggleExternal: (index: number, open: boolean) => ipcRenderer.invoke('qqq:ai-panel:toggle-external', index, open),
+    },
+
     // ---- clipboard ----
     clipboard: {
         readText: () => ipcRenderer.invoke('qqq:clipboard:readText'),
@@ -146,6 +160,14 @@ const QQQ = {
     // ---- ai (one-shot AI calls for hover, inline completions, etc.) ----
     ai: {
         hover: (context: string) => ipcRenderer.invoke('qqq:ai:hover', context),
+        search_text: (args: { query: string; paths?: string[]; path?: string; maxResults?: number; timeoutMs?: number }) => ipcRenderer.invoke('qqq:ai:search_text', args),
+        find_files: (args: { pattern: string; paths?: string[]; path?: string; maxResults?: number; timeoutMs?: number }) => ipcRenderer.invoke('qqq:ai:find_files', args),
+        list_files: (args: { path: string; maxResults?: number; timeoutMs?: number }) => ipcRenderer.invoke('qqq:ai:list_files', args),
+        read_file: (args: { path: string; start_line?: number; end_line?: number }) => ipcRenderer.invoke('qqq:ai:read_file', args),
+        edit_file: (args: { path: string; edits: Array<{ find: string; replace: string; replace_all?: boolean }> }) => ipcRenderer.invoke('qqq:ai:edit_file', args),
+        create_file: (args: { path: string; content: string }) => ipcRenderer.invoke('qqq:ai:create_file', args),
+        delete_file: (args: { path: string }) => ipcRenderer.invoke('qqq:ai:delete_file', args),
+        write_file: (args: { path: string; content: string }) => ipcRenderer.invoke('qqq:ai:write_file', args),
     },
 
     // ---- cache (KV + bucketed file cache rooted at portable.cache) ----
@@ -265,6 +287,7 @@ const QQQ = {
         apply: () => ipcRenderer.invoke('qqq:update:apply'),
         state: () => ipcRenderer.invoke('qqq:update:state'),
         abort: () => ipcRenderer.invoke('qqq:update:abort'),
+        upgradeShell: () => ipcRenderer.invoke('qqq:update:upgrade-shell'),
     },
 
     // ---- boot info (read once on startup) ----
