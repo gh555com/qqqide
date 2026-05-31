@@ -27,8 +27,8 @@ var QuestStore = (function () {
         if (_qgs) return _qgs;
         // 项目级 SQLite（优先）—— 有 rootDir 就用项目级持久化，数据落 {rootDir}/qqq/quests/alphal/quest.sq3
         if (_rootDir && window && window.parent && window.parent.qgs && typeof window.parent.qgs.project === 'function') {
-            _qgs = window.parent.qgs.project(_rootDir + '/qqq/quests/alphal/quest.sq3', NS, { v: 1, form: 'doc' });
-            if (_bridgeCalled <= 3) console.log('[quest-store] bridge OK via parent.qgs.project(dbPath=' + _rootDir + '/qqq/quests/alphal/quest.sq3)');
+            _qgs = window.parent.qgs.project(_rootDir + '/qqq/alphal/quest.sq3', NS, { v: 1, form: 'doc' });
+            if (_bridgeCalled <= 3) console.log('[quest-store] bridge OK via parent.qgs.project(dbPath=' + _rootDir + '/qqq/alphal/quest.sq3)');
             return _qgs;
         }
         // 父窗口的 qgs（state-sdk.js 注入的唯一真理入口）—— 全局模式

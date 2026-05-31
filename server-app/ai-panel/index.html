@@ -236,6 +236,7 @@ undefined
 <script src="agent-loop.js"></script>
 <script src="agent-context.js"></script>
 <script src="quest-store.js"></script>
+<script src="only-store.js"></script>
 <script>
 (function(){
 'use strict';
@@ -770,7 +771,7 @@ async function bindMainProject() {
     return;
   }
   var root = main.path.replace(/\\/g, '/').replace(/\/$/, '');
-  var lockPath = root + '/qqq/.lock';
+  var lockPath = root + '/qqq/alphal/.lock';
   // 如果 lockPath 没变，不需要重新锁
   if (_currentLockPath === lockPath) {
     console.log('[quests] bindMainProject: already locked ' + root);
@@ -804,7 +805,35 @@ async function bindMainProject() {
   _lockHeartbeatId = setInterval(async function () {
     try { await window.parent.qqqBridge.fs.write(lockPath, JSON.stringify({ pid: 0, atime: Date.now() })); } catch (_) {}
   }, LOCK_HEARTBEAT_MS);
+  // 迁移旧目录结构 qqq/quests/alphal/ → qqq/alphal/
+  try {
+    var oldAlphal = root + '/qqq/quests/alphal';
+    var newAlphal = root + '/qqq/alphal';
+    var oldStat = await window.parent.qqqBridge.fs.stat(oldAlphal);
+    var newStat = await window.parent.qqqBridge.fs.stat(newAlphal);
+    if (oldStat && !newStat) {
+      console.log('[quests] migrating alphal: ' + oldAlphal + ' → ' + newAlphal);
+      await window.parent.qqqBridge.fs.mkdir(newAlphal);
+      // 移动 quest.sq3, device.id, rule/, outbox/
+      var entries = await window.parent.qqqBridge.fs.list(oldAlphal);
+      for (var ei = 0; ei < entries.length; ei++) {
+        var entryName = entries[ei].name;
+        var oldPath = oldAlphal + '/' + entryName;
+        var newPath = newAlphal + '/' + entryName;
+        try { await window.parent.qqqBridge.fs.rename(oldPath, newPath); } catch (_) {}
+      }
+      console.log('[quests] migration done');
+    }
+  } catch (_) { /* 迁移非致命 */ }
+
   questStore.setProjectRoot(main.path);
+  // 初始化唯一真理配置机器
+  onlyStore.init(main.path);
+  // 恢复 per-quest UI 状态（输入框草稿、图片、等级、滚动位置）
+  var savedStates = onlyStore.get('ai.uiStates');
+  if (savedStates && typeof savedStates === 'object') {
+    questUIStates = savedStates;
+  }
   console.log('[quests] bindMainProject: locked ' + root);
 }
 
@@ -816,8 +845,13 @@ async function _releaseLock() {
   }
 }
 
-// 窗口关闭时释放锁
+// 窗口关闭时释放锁 + 刷盘唯一真理配置
 window.addEventListener('beforeunload', function () {
+  // 保存当前 UI 状态到 only.sq3
+  if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+    saveQuestUIState(questActiveId);
+    onlyStore.flush();
+  }
   if (_currentLockPath && window.parent && window.parent.qqqBridge) {
     try { window.parent.qqqBridge.fs.remove(_currentLockPath); } catch (_) {}
   }
@@ -828,6 +862,10 @@ window.addEventListener('message', function(e) {
   if (e.data && e.data.type === 'qqq-ai-viewport-changed') {
     bindMainProject();
     if (_hasMainProject()) _hideOnboarding();
+  }
+  // 主题变更 → 同步到 only.sq3（per-project 主题记忆）
+  if (e.data && e.data.type === 'qqq-theme-change' && typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+    onlyStore.set('theme', e.data.dark ? 'dark' : 'light');
   }
 });
 var questActiveId = '';
@@ -848,6 +886,10 @@ function saveQuestUIState(id) {
     selectedTier: selectedTier,
     scrollTop: $messages.scrollTop
   };
+  // 唯一真理：持久化到 only.sq3，刷新不丢
+  if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+    onlyStore.set('ai.uiStates', questUIStates);
+  }
 }
 
 function restoreQuestUIState(id) {
@@ -1149,9 +1191,13 @@ async function switchQuest(id) {
     if (streaming) stopStream();  // 中止当前流的请求
     saveQuestUIState(questActiveId);  // 同步，瞬
     await saveQuestData();
-    questActiveId = id;
-    await questStore.setActiveId(id);
-    await loadQuestData(id);
+  questActiveId = id;
+  await questStore.setActiveId(id);
+  // 同步到唯一真理配置（下次打开项目直接恢复此 quest）
+  if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+    onlyStore.set('ai.activeQuestId', id);
+  }
+  await loadQuestData(id);
     restoreQuestUIState(id);  // 同步，瞬
     await renderTabs();
     // Auto-rename if needed
@@ -1987,16 +2033,17 @@ async function sendMessage() {
 
       onDone: async function(content, timing) {
         aiDiv._renderScheduled = false;
+        // 始终全量重建——防止 doStreamRender 的 1s 定时器还未触发
+        // 导致尾段 token 丢失（纯文本消息被截断的根因）
+        if (aiDiv._contentWrap) {
+          aiDiv._contentWrap.innerHTML = renderMarkdown(content);
+        }
         aiDiv._paras = null;
         aiDiv._buf = null;
         aiDiv._fullText = null;
         aiDiv._lastParaEl = null;
         aiDiv._renderedCount = 0;
         aiDiv._dirty = false;
-        // 流式阶段已逐段渲染完 DOM。只在代码块含空行时需要全量重建
-        if (/```[\s\S]*?\n\n[\s\S]*?```/.test(content)) {
-          aiDiv._contentWrap.innerHTML = renderMarkdown(content);
-        }
         if (window._tableStore && window._tableStore.length > 50) {
           window._tableStore = window._tableStore.slice(-30);
         }
