@@ -90,6 +90,9 @@ var AgentLoop = (function () {
         // 楼层内 house 追踪
         this._houses = [];
         this._houseIndex = 0;
+        // 持久化 rules 注入（永不压缩，版本追踪）
+        this._persistentCount = 0;
+        this._rulesVersion = '';
     }
 
     // ---- 中止 ----
@@ -104,10 +107,43 @@ var AgentLoop = (function () {
     AgentLoop.prototype.clearConversation = function () {
         this.conversation = [];
         this._compressing = false;
-        this._ctx = { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
+        this._ctx = { narrative: "", facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
         this._visionCache.clear();
         this._houses = [];
         this._houseIndex = 0;
+        this._persistentCount = 0;
+        this._rulesVersion = "";
+    };
+
+    // ═══ 持久化 rules 刷新（版本追踪：只有源文件变化才重建） ═══
+    AgentLoop.prototype._refreshRules = async function () {
+        var self = this;
+        // 每次从磁盘重读 rules 文件，确保外部更新能热替换到哨兵
+        if (typeof loadQqqRules === "function") { await loadQqqRules(); }
+        if (typeof loadProjectRules === "function" && typeof questStore !== "undefined" && questStore.getProjectRoot) {
+            await loadProjectRules(questStore.getProjectRoot());
+        }
+        if (typeof buildVisionContext === "function") { buildVisionContext(); }
+        var parts = [];
+        // SYSTEM_PROMPT 只发送一次，打入哨兵永久存在（重启窗口后从 SQLite 恢复）
+        if (typeof SYSTEM_PROMPT !== "undefined" && SYSTEM_PROMPT) {
+            parts.push(SYSTEM_PROMPT);
+        }
+        if (typeof qqqVisionContext !== "undefined" && qqqVisionContext) {
+            parts.push(qqqVisionContext);
+        }
+        if (typeof qqqRulesContent !== "undefined" && qqqRulesContent) {
+            parts.push(qqqRulesContent);
+        }
+        if (typeof qqqProjectRulesContent !== "undefined" && qqqProjectRulesContent) {
+            parts.push(qqqProjectRulesContent);
+        }
+        if (parts.length === 0) return "";
+        var prefix = parts.join('\n\n---\n\n');
+        var hash = self._simpleHash(prefix);
+        if (hash === self._rulesVersion && self._persistentCount > 0) return "";
+        self._rulesVersion = hash;
+        return prefix;
     };
 
     // ---- 主入口 ----
@@ -162,19 +198,16 @@ var AgentLoop = (function () {
         // 归档：保存用户键入供 generateFloorTxt 写入
         self._lastUserInput = { text: userContent || '', vision: visionText || '' };
 
-        // rules injection (first floor only; AI remembers from history)
-        if (self.conversation.length === 0) {
-            var rulesParts = [];
-            if (typeof qqqRulesContent !== 'undefined' && qqqRulesContent) {
-                rulesParts.push(qqqRulesContent);
+        // ═══ 持久化 rules 注入（版本追踪，永不压缩） ═══
+        var rulesPrefix = await self._refreshRules();
+        if (rulesPrefix) {
+            if (self._persistentCount > 0 && self.conversation.length > 0) {
+                self.conversation[0] = { role: "user", content: rulesPrefix, _persistent: true };
+            } else if (self._persistentCount === 0) {
+                self.conversation.unshift({ role: "user", content: rulesPrefix, _persistent: true });
+                self._persistentCount = 1;
             }
-            if (typeof qqqProjectRulesContent !== 'undefined' && qqqProjectRulesContent) {
-                rulesParts.push(qqqProjectRulesContent);
-            }
-            if (rulesParts.length > 0) {
-                finalContent = rulesParts.join('\n\n---\n\n') + '\n\n---\n\n' + finalContent;
-                self._log('[rules] injected (' + rulesParts.length + ' parts)');
-            }
+            self._log("[rules] persistent injected (" + rulesPrefix.length + " chars, v=" + self._rulesVersion.slice(0, 8) + ")");
         }
 
         self._ctx.totalFloors++;
@@ -543,7 +576,7 @@ var AgentLoop = (function () {
         }
 
         var body = {
-            messages: [{ role: 'system', content: SYSTEM_PROMPT },].concat(apiMessages),
+            messages: apiMessages,
             stream: true,
             stream_options: { include_usage: true },
             max_tokens: tier.maxTokens || 32768,
@@ -612,17 +645,17 @@ var AgentLoop = (function () {
                 }
                 var msg = err.message || '';
                 if (msg.indexOf("ERR_HTTP2") >= 0 || msg.indexOf("ERR_CONNECTION_CLOSED") >= 0) {
-                // HTTP/2 protocol death — ceiling hit: Chromium 108 limitation.
-                // Each occurrence = one reason-why-we-need-scheme-A.
-                self._http2Ceilings = (self._http2Ceilings || 0) + 1;
-                console.warn('[qz-ceiling] HTTP/2 death #' + self._http2Ceilings + ', reloading iframe');
-                if (self._http2Ceilings >= 3) {
-                    console.error('[qz-ceiling] ceiling breached ' + self._http2Ceilings + ' times this session — consider switching to scheme A (main-process proxy)');
-                }
-                self._log('⚠ HTTP/2 dead, reloading…');
-                onError('连接中断，正在恢复…');
-                setTimeout(function () { window.location.reload(); }, 300);
-                return null;
+                    // HTTP/2 protocol death — ceiling hit: Chromium 108 limitation.
+                    // Each occurrence = one reason-why-we-need-scheme-A.
+                    self._http2Ceilings = (self._http2Ceilings || 0) + 1;
+                    console.warn('[qz-ceiling] HTTP/2 death #' + self._http2Ceilings + ', reloading iframe');
+                    if (self._http2Ceilings >= 3) {
+                        console.error('[qz-ceiling] ceiling breached ' + self._http2Ceilings + ' times this session — consider switching to scheme A (main-process proxy)');
+                    }
+                    self._log('⚠ HTTP/2 dead, reloading…');
+                    onError('连接中断，正在恢复…');
+                    setTimeout(function () { window.location.reload(); }, 300);
+                    return null;
                 }
                 if (retry < MAX_RETRIES) {
                     var waitMsF = 2000;

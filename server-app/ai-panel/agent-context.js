@@ -85,14 +85,12 @@
         var self = this;
         var totalEst = self._estimateTotalTokens();
 
-        // 未超标 → 跳过
         if (totalEst <= TOKEN_BUDGET) return;
 
-        var KEEP_TARGET = Math.floor(TOKEN_BUDGET * KEEP_RATIO); // 90k
+        var KEEP_TARGET = Math.floor(TOKEN_BUDGET * KEEP_RATIO);
 
-        // 从末尾倒推，累积 token 数直到 ≥ 90k
         var runningTokens = 0;
-        var hotStart = self.conversation.length; // 默认全保留
+        var hotStart = self.conversation.length;
         for (var i = self.conversation.length - 1; i >= 0; i--) {
             runningTokens += self._estimateMsgTokens(self.conversation[i]);
             if (runningTokens >= KEEP_TARGET) {
@@ -101,33 +99,30 @@
             }
         }
 
-        // 对齐楼层边界：倒推到最近的 user 消息（绝不切断楼层）
-        while (hotStart > 0 && self.conversation[hotStart].role !== 'user') {
+        if (hotStart < self._persistentCount) hotStart = self._persistentCount;
+
+        while (hotStart > self._persistentCount && self.conversation[hotStart].role !== 'user') {
             hotStart--;
         }
 
-        // 数楼层（user 消息数）
         var floorCount = 0;
         for (var f = hotStart; f < self.conversation.length; f++) {
-            if (self.conversation[f].role === 'user') floorCount++;
+            if (self.conversation[f].role === 'user' && !self.conversation[f]._persistent) floorCount++;
         }
 
-        // 最少 6 层楼保底
-        while (floorCount < MIN_FLOORS && hotStart > 0) {
+        while (floorCount < MIN_FLOORS && hotStart > self._persistentCount) {
             hotStart--;
-            if (self.conversation[hotStart].role === 'user') {
+            if (self.conversation[hotStart].role === 'user' && !self.conversation[hotStart]._persistent) {
                 floorCount++;
             }
         }
 
-        // 最终确保对齐到 user 边界
-        while (hotStart > 0 && self.conversation[hotStart].role !== 'user') {
+        while (hotStart > self._persistentCount && self.conversation[hotStart].role !== 'user') {
             hotStart--;
         }
 
-        // 没有可压缩的冷消息 → 跳过
-        if (hotStart === 0) {
-            self.log('◆ Context: ' + floorCount + ' floors → all hot, nothing to compress');
+        if (hotStart <= self._persistentCount) {
+            self.log('\u25C6 Context: ' + floorCount + ' floors \u2192 all hot, nothing to compress');
             return;
         }
 
@@ -136,23 +131,19 @@
         var hotMsgs = self.conversation.slice(hotStart);
         var hotTokenEst = self._estimateTotalTokens(hotMsgs);
 
-        // 冷消息太少不值得压缩
         if (coldTokenEst < 500) return;
 
-        self.log('◆ Context: compress ' + coldMsgs.length + ' msgs (~' + Math.round(coldTokenEst) + 'tok) → keep ' + hotMsgs.length + ' msgs (~' + Math.round(hotTokenEst) + 'tok, ' + floorCount + ' floors)');
+        self.log('\u25C6 Context: compress ' + coldMsgs.length + ' msgs (~' + Math.round(coldTokenEst) + 'tok) \u2192 keep ' + hotMsgs.length + ' msgs (~' + Math.round(hotTokenEst) + 'tok, ' + floorCount + ' floors)');
 
-        // ═══ 阻断：必须拿到 q 才继续（最多重试 3 次） ═══
-        try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('🧠 压缩 ' + coldMsgs.length + ' 条历史消息中...', { type: 'info', duration: 0 }); } catch (_) { }
+        try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('\uD83E\uDDE0 压缩 ' + coldMsgs.length + ' 条历史消息中...', { type: 'info', duration: 0 }); } catch (_) { }
         try {
             await self._digestColdMessages(coldMsgs);
-            try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('✅ 压缩完成 — ' + coldMsgs.length + ' 条消息已精简为结构知识', { type: 'info', duration: 5000 }); } catch (_) { }
-            // 成功 → 删除冷消息
-            self.conversation.splice(0, hotStart);
-            self.log('◆ Context: done — ' + coldMsgs.length + ' msgs removed, ' + self.conversation.length + ' msgs kept');
+            try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('\u2705 压缩完成 — ' + coldMsgs.length + ' 条消息已精简为结构知识', { type: 'info', duration: 5000 }); } catch (_) { }
+            self.conversation.splice(self._persistentCount, hotStart - self._persistentCount);
+            self.log('\u25C6 Context: done — ' + coldMsgs.length + ' msgs removed, ' + self.conversation.length + ' msgs kept');
         } catch (digestErr) {
-            self.log('✗ Context: compress FAILED after 3 retries — ' + digestErr.message + ' — skipping, messages preserved');
-            try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('⚠️ 上下文压缩失败（已重试3次）：' + (digestErr.message || '未知错误') + '。本次跳过压缩，下轮再试。', { type: 'error', duration: 8000 }); } catch (_) { }
-            // 不删除冷消息，下轮压缩再试
+            self.log('\u2717 Context: compress FAILED after 3 retries — ' + digestErr.message + ' — skipping, messages preserved');
+            try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('\u26A0\uFE0F 上下文压缩失败（已重试3次）：' + (digestErr.message || '未知错误') + '。本次跳过压缩，下轮再试。', { type: 'error', duration: 8000 }); } catch (_) { }
         }
     };
 

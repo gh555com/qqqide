@@ -555,6 +555,10 @@ function registerAssetProtocol(): void {
     const roots: Record<string, string> = {
         // monaco-editor min build
         monaco: path.join(portable.root, 'node_modules', 'monaco-editor', 'min'),
+        // monaco individual dependency files (ESM→AMD converted by convert_monaco_esm.py)
+        monaco_deps: path.join(portable.root, 'cache', 'monaco-deps'),
+        // modified worker files (workerMain.js with self.define exposed)
+        worker_wrapper: path.join(portable.root, 'cache', 'worker-wrapper'),
         // shell-bundled static files (e.g. boot-fallback)
         shell: path.join(portable.root, 'shell'),
     };
@@ -583,6 +587,13 @@ function registerAssetProtocol(): void {
             // Prevent directory traversal: resolve and ensure under root.
             const resolved = path.normalize(path.join(root, subPath));
             if (!resolved.startsWith(root)) { return callback({ error: -10 /* ACCESS_DENIED */ }); }
+            // Monaco: if file not in min build, try deps (individual ESM→AMD files)
+            if (resource === 'monaco' && !fs.existsSync(resolved) && roots['monaco_deps']) {
+                const fallback = path.normalize(path.join(roots['monaco_deps'], subPath));
+                if (fallback.startsWith(roots['monaco_deps']) && fs.existsSync(fallback)) {
+                    return callback({ path: fallback });
+                }
+            }
             callback({ path: resolved });
         } catch (e) {
             console.warn('[qqq-asset] bad url:', request.url, e);
@@ -592,48 +603,6 @@ function registerAssetProtocol(): void {
 }
 
 // ----------------------------------------------------------------------------
-// Node.js spawn fallback (when ghrun engine is not available)
-// Spawns a process and collects stdout/stderr, returns exit code.
-// ----------------------------------------------------------------------------
-function nodeSpawnFallback(params: { cmd: string; args?: string[]; timeout?: number; cwd?: string }): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-    return new Promise((resolve) => {
-        const args = params.args || [];
-        const timeoutMs = params.timeout || 60000;
-        let stdout = '';
-        let stderr = '';
-        let killed = false;
-
-        const proc = cpSpawn(params.cmd, args, {
-            cwd: params.cwd || portable.root,
-            windowsHide: true,
-            shell: true,
-            env: { ...process.env },
-        });
-
-        proc.stdout.setEncoding('utf8');
-        proc.stderr.setEncoding('utf8');
-        proc.stdout.on('data', (d: string) => { stdout += d; });
-        proc.stderr.on('data', (d: string) => { stderr += d; });
-
-        const timer = setTimeout(() => {
-            killed = true;
-            try { proc.kill(); } catch { /* ignore */ }
-            resolve({ exitCode: -1, stdout, stderr: stderr + '\n[TIMEOUT after ' + timeoutMs + 'ms]' });
-        }, timeoutMs);
-
-        proc.on('exit', (code) => {
-            if (killed) return;
-            clearTimeout(timer);
-            resolve({ exitCode: code ?? -1, stdout, stderr });
-        });
-        proc.on('error', (err) => {
-            if (killed) return;
-            clearTimeout(timer);
-            resolve({ exitCode: -1, stdout, stderr: stderr + '\n' + (err.message || String(err)) });
-        });
-    });
-}
-
 // ----------------------------------------------------------------------------
 // Disk-free batch: ports kp.py:get_disk_free_batch via engines/kp_bridge.py
 // + 30s memoize on JS side; fallback to Node statfsSync when Python missing.
@@ -1364,7 +1333,7 @@ function registerIpc(): void {
 
     // ---- ghrun (process spawning via qz subsystem) ----
     ipcMain.handle('qqq:ghrun:exec', async (_e, cmd: string, args: string[], opts?: any) => {
-        // Single funnel: always go through qzSpawn (ghrun → runner → node)
+        // Single funnel: always go through qzSpawn (ghrun → node)
         return _qgc(async () => qzSpawn.spawn({ cmd, args, ...(opts || {}) }));
     });
     ipcMain.handle('qqq:ghrun:isAlive', () => qzSpawn.ghrunAlive());
@@ -1375,7 +1344,7 @@ function registerIpc(): void {
     });
     ipcMain.handle('qqq:qz:which', async (_e, cmd: string) => qzSpawn.which(cmd));
     ipcMain.handle('qqq:qz:ghrunAlive', () => qzSpawn.ghrunAlive());
-    ipcMain.handle('qqq:qz:runnerAlive', () => qzSpawn.runnerAlive());
+    ipcMain.handle('qqq:qz:runnerAlive', () => false); // runner.py retired, ghrun absorbed all capabilities
 
     // ---- lsp (language intelligence — spawns gopls/pyright/clangd/rust-analyzer) ----
     ipcMain.handle('qqq:lsp:startLanguage', async (_e, lang: string, rootUri: string) => {
@@ -1619,7 +1588,7 @@ function registerIpc(): void {
     // ---- monaco ----
     monacoHost.register();
 
-    // ---- 外嵌 AI 面板 ----
+    // ---- 外嵌 AI 面板（index 0=左边, index 1=右边） ----
     const _externalPanels: (BrowserWindow | null)[] = [null, null];
     ipcMain.handle('qqq:ai-panel:toggle-external', async (_e, index: number, open: boolean) => {
         if (index < 0 || index > 1) return false;
@@ -1630,13 +1599,15 @@ function registerIpc(): void {
             const mwBounds = mw.getBounds();
             const aiW = 389;
             const preloadPath = path.join(__dirname, 'preload.js');
+            // index 0 → 左边，index 1 → 右边
+            const xPos = index === 0 ? mwBounds.x - aiW : mwBounds.x + mwBounds.width;
             const extWin = new BrowserWindow({
                 width: aiW, height: mwBounds.height,
-                x: mwBounds.x + mwBounds.width + (index * aiW),
+                x: xPos,
                 y: mwBounds.y,
                 frame: false,
                 backgroundColor: '#1e1e1e',
-                title: 'qqq AI ' + (index + 1),
+                title: 'qqq AI ' + (index === 0 ? 'L' : 'R'),
                 webPreferences: {
                     preload: preloadPath,
                     contextIsolation: true,
@@ -1650,11 +1621,16 @@ function registerIpc(): void {
             const syncExt = () => {
                 if (extWin.isDestroyed()) return;
                 const b = mw.getBounds();
-                extWin.setBounds({ x: b.x + b.width + (index * aiW), y: b.y, width: aiW, height: b.height });
+                const sx = index === 0 ? b.x - aiW : b.x + b.width;
+                extWin.setBounds({ x: sx, y: b.y, width: aiW, height: b.height });
             };
             mw.on('move', syncExt);
             mw.on('resize', syncExt);
-            extWin.on('closed', () => { _externalPanels[index] = null; });
+            extWin.on('closed', () => {
+                _externalPanels[index] = null;
+                mw.removeListener('move', syncExt);
+                mw.removeListener('resize', syncExt);
+            });
             _externalPanels[index] = extWin;
             return true;
         } else {

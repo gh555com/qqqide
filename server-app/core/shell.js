@@ -683,7 +683,7 @@
     var BS = 32; // button size
     function _crossBtn(sym, top, left) {
       var b = document.createElement('button');
-      b.textContent = sym; b.setAttribute('data-no-cd','');
+      b.textContent = sym; b.setAttribute('data-no-cd', '');
       b.style.cssText = 'position:absolute; width:' + BS + 'px; height:' + BS + 'px; padding:0; font-size:16px; line-height:1; ' +
         'border:1px solid rgba(255,255,255,0.35); border-radius:4px; background:rgba(0,0,0,0.55); ' +
         'color:#ccc; display:flex; align-items:center; justify-content:center;';
@@ -693,8 +693,8 @@
     var btnUp = _crossBtn('▲', 0, BS);
     var btnLeft = _crossBtn('◀', BS, 0);
     var btnCenter = _crossBtn('\u2302', BS, BS);
-    var btnRight = _crossBtn('▶', BS, BS*2);
-    var btnDown = _crossBtn('▼', BS*2, BS);
+    var btnRight = _crossBtn('▶', BS, BS * 2);
+    var btnDown = _crossBtn('▼', BS * 2, BS);
     btnCenter.title = window._i('shell.overlay.resetPosition', '重置位置');
     btnCenter.style.background = 'rgba(255,255,255,0.12)';
     btnCenter.style.borderColor = 'rgba(255,255,255,0.25)';
@@ -718,11 +718,11 @@
       else { zoomScale = 1.0; }
       applyZoom();
     }
-    btnUp.addEventListener('mousedown', function(e) { e.preventDefault(); _nudge(0, -1); });
-    btnDown.addEventListener('mousedown', function(e) { e.preventDefault(); _nudge(0, 1); });
-    btnLeft.addEventListener('mousedown', function(e) { e.preventDefault(); _nudge(-1, 0); });
-    btnRight.addEventListener('mousedown', function(e) { e.preventDefault(); _nudge(1, 0); });
-    btnCenter.addEventListener('mousedown', function(e) { e.preventDefault(); _resetView(); });
+    btnUp.addEventListener('mousedown', function (e) { e.preventDefault(); _nudge(0, -1); });
+    btnDown.addEventListener('mousedown', function (e) { e.preventDefault(); _nudge(0, 1); });
+    btnLeft.addEventListener('mousedown', function (e) { e.preventDefault(); _nudge(-1, 0); });
+    btnRight.addEventListener('mousedown', function (e) { e.preventDefault(); _nudge(1, 0); });
+    btnCenter.addEventListener('mousedown', function (e) { e.preventDefault(); _resetView(); });
     dpad.appendChild(btnUp); dpad.appendChild(btnLeft); dpad.appendChild(btnCenter);
     dpad.appendChild(btnRight); dpad.appendChild(btnDown);
     overlay.appendChild(dpad);
@@ -739,7 +739,7 @@
         _dragX = 0; _dragY = 0;
         // ── 智能尺寸：目�?2x，不超过视口 ──
         var img = new Image();
-        img.onload = function() {
+        img.onload = function () {
           var nw = img.naturalWidth, nh = img.naturalHeight;
           var maxW = window.innerWidth * 0.9, maxH = window.innerHeight - 120;
           var targetW = Math.min(nw * 2, maxW);
@@ -772,7 +772,7 @@
           window.addEventListener('mouseup', onMU);
           // ── 关闭时清�?──
           var _origClose = close;
-          close = function() {
+          close = function () {
             window.removeEventListener('mousemove', onMM);
             window.removeEventListener('mouseup', onMU);
             contentEl.style.overflow = '';
@@ -819,7 +819,7 @@
         zoomScale = _initZoom;
         applyZoom();
         // 拦截表格滚轮 → 改为缩放
-        wrapper.addEventListener('wheel', function(we) {
+        wrapper.addEventListener('wheel', function (we) {
           we.preventDefault(); we.stopPropagation();
           if (we.deltaY < 0) { zoomScale = Math.min(5.0, zoomScale * 1.15); }
           else { zoomScale = Math.max(0.25, zoomScale * 0.87); }
@@ -891,6 +891,26 @@
     // In Electron, resize grip is handled via -webkit-app-region or IPC
     // For custom frame, we handle via IPC startResize if available
     // Otherwise it's just a visual indicator (Electron handles nwse-resize via the window frame)
+  }
+
+  // ---- 外嵌面板灯泡 ----
+  function bootBulbs() {
+    var d1 = document.getElementById('qqq-bulb-1');
+    var d2 = document.getElementById('qqq-bulb-2');
+    if (!d1 || !d2) return;
+    var bulbs = [false, false];
+    function toggle(idx) {
+      bulbs[idx] = !bulbs[idx];
+      var dot = idx === 0 ? d1 : d2;
+      dot.classList.toggle('on', bulbs[idx]);
+      try {
+        if (bridge && bridge.aiPanel && bridge.aiPanel.toggleExternal) {
+          bridge.aiPanel.toggleExternal(idx, bulbs[idx]);
+        }
+      } catch (_) { }
+    }
+    d1.addEventListener('click', function () { toggle(0); });
+    d2.addEventListener('click', function () { toggle(1); });
   }
 
   // ---- Editor integration: open file from file explorer ----
@@ -1083,6 +1103,9 @@
 
     // Resize grip
     bootResizeGrip();
+
+    // 外嵌面板灯泡
+    bootBulbs();
 
     // Hook file explorer -> tabs
     hookFileExplorerToTabs();

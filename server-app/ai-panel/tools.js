@@ -10,6 +10,22 @@ function getBridge() {
 }
 
 // ============================================================
+// ★ Output caps — single source of truth for AI-facing limits
+//
+// Two-tier architecture:
+//   SAFETY NET  (ghrun/qz-spawn): 65536 — prevents memory blowup, never active
+//   AI FACING  (here):           defined below — what DeepSeek sees & interacts with
+//
+// To change the AI-facing limit: edit ONLY these constants.
+// The safety-net values in ghrun/qz-spawn are deliberately much higher
+// and should NEVER need adjustment.
+// ============================================================
+var OUTPUT_CAP_DEFAULT = 8000;   // normal per-response limit
+var OUTPUT_CAP_MAX = 65536;  // ceiling when DeepSeek requests maxOutput
+var OUTPUT_CAP_FETCH = 8000;   // web fetch text extraction limit
+var OUTPUT_CAP_FETCH_ERR = 500;   // web fetch error message limit
+
+// ============================================================
 // 工具定义（OpenAI function calling format）
 // ============================================================
 
@@ -115,12 +131,13 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'run_command',
-            description: 'Run a shell command. Returns stdout+stderr. Timeout 30s.',
+            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default. When you need full output (e.g. large file listings, long logs), pass maxOutput to request up to ' + OUTPUT_CAP_MAX + '. Stall guard: 5min no output = killed. Use cwd to set working directory.',
             parameters: {
                 type: 'object',
                 properties: {
                     command: { type: 'string', description: 'Command to execute' },
-                    cwd: { type: 'string', description: 'Working directory (optional)' }
+                    cwd: { type: 'string', description: 'Working directory (optional)' },
+                    maxOutput: { type: 'number', description: 'Override output char limit (default ' + OUTPUT_CAP_DEFAULT + ', max ' + OUTPUT_CAP_MAX + '). Use only when certain you need the full output.' }
                 },
                 required: ['command']
             }
@@ -569,10 +586,16 @@ async function executeGetVisionContext() {
         var vps = parent.qqqAiViewport.getProjects();
         if (vps.length === 0) return 'No project folders in vision context.';
 
+        var main = parent.qqqAiViewport.getMainProject();
         var lines = ['=== qqq Vision ==='];
         for (var i = 0; i < vps.length; i++) {
             var f = vps[i];
-            lines.push('\u{1F4C1} ' + f.name + ' (' + f.path + ')');
+            var isMain = main && f.path === main.path;
+            if (isMain) {
+                lines.push('📁 ' + f.name + ' (' + f.path + ') ← 主文件夹（当前项目/我们项目）');
+            } else {
+                lines.push('📁 ' + f.name + ' (' + f.path + ')');
+            }
             try {
                 var bridge = getBridge();
                 if (bridge) {
@@ -641,11 +664,14 @@ async function executeRunCommand(args) {
                 return s;
             });
         }
-        // On Windows, built-in commands like echo/dir need shell
-        if (typeof process !== 'undefined' && process.platform === 'win32') {
+        // On Windows, built-in commands (dir/type/echo etc.) are wrapped
+        // transparently by qz-spawn.ts; here we just detect platform for shell mode.
+        var isWin = (typeof navigator !== 'undefined' && /Win/.test(navigator.platform || ''))
+            || (typeof process !== 'undefined' && process.platform === 'win32');
+        if (isWin) {
             useShell = true;
         }
-        // Use qz spawn (ghrun → runner.py → node fallback)
+        // Use qz spawn (ghrun → node fallback)
         console.log('[qz] run_command:', JSON.stringify({ cmd: cmd, args: cmdArgs, cwd: args.cwd || '', shell: useShell }));
         // 无硬截止（timeout=0），仅 stall 守护：5 分钟无输出 = 死锁
         var result = await bridge.qz.spawn({
@@ -657,12 +683,14 @@ async function executeRunCommand(args) {
             shell: useShell
         });
         console.log('[qz] run_command result:', JSON.stringify({ exitCode: result.exitCode, tier: result.tier, durationMs: result.durationMs, stdoutLen: (result.stdout || '').length, stderrLen: (result.stderr || '').length }));
+        // AI-facing output cap (single source: OUTPUT_CAP_DEFAULT / OUTPUT_CAP_MAX)
+        var cap = Math.min(args.maxOutput || OUTPUT_CAP_DEFAULT, OUTPUT_CAP_MAX);
         if (result.exitCode === 0) {
             var out = (result.stdout || '') + (result.stderr || '');
-            return out.length > 8000 ? out.slice(0, 8000) + '\n... (truncated)' : (out || '(no output)');
+            return out.length > cap ? out.slice(0, cap) + '\n... (truncated at ' + cap + ' chars)' : (out || '(no output)');
         } else {
             var errOut = (result.stdout || '') + (result.stderr || '');
-            return 'Command failed (exit ' + result.exitCode + '):\n' + errOut.slice(0, 8000);
+            return 'Command failed (exit ' + result.exitCode + '):\n' + (errOut.length > cap ? errOut.slice(0, cap) + '\n... (truncated at ' + cap + ' chars)' : errOut);
         }
     } catch (err) {
         return 'Error running command: ' + (err.message || err);
@@ -820,7 +848,7 @@ async function executeFetchWebpage(args) {
             shell: true
         });
         if (result.exitCode !== 0) {
-            return 'Fetch error: exit ' + result.exitCode + ' — ' + (result.stderr || result.stdout || '').slice(0, 500);
+            return 'Fetch error: exit ' + result.exitCode + ' — ' + (result.stderr || result.stdout || '').slice(0, OUTPUT_CAP_FETCH_ERR);
         }
         var html = result.stdout || '';
         if (!html.trim()) return '(empty response)';
@@ -830,7 +858,7 @@ async function executeFetchWebpage(args) {
             .replace(/<[^>]+>/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
-        return text.length > 8000 ? text.slice(0, 8000) + '\n... (truncated)' : text;
+        return text.length > OUTPUT_CAP_FETCH ? text.slice(0, OUTPUT_CAP_FETCH) + '\n... (truncated)' : text;
     } catch (err) {
         return 'Fetch error: ' + (err.message || err);
     }

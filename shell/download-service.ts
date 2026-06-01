@@ -23,7 +23,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { URL } from 'url';
-
+ 
 export interface DownloadOpts {
   url: string;
   dir?: string;          // output directory; default portable.cache/downloads
@@ -43,7 +43,9 @@ export interface DownloadEntry {
   sha256Ok: boolean;
 }
 
-type ProgressSender = (entry: DownloadEntry) => void;
+type ProgressSender = (entry: Down loa
+
+dEntry) => void;
 
 export class DownloadService {
   private _cacheDir: string;
@@ -247,7 +249,7 @@ export class DownloadService {
             // If resuming, we need to hash the already-downloaded portion too
             const h = hasher;  // narrow: TS can't narrow `let` inside nested closure
             try {
-              const existing = fs.readFileSync(entry.filePath);
+              const existing = fs.readFileSync(entry.fi2lePath);
               h.update(existing);
             } catch { /* ignore */ }
           }

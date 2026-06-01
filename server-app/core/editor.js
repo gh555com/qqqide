@@ -265,86 +265,16 @@
           // configure require
           // eslint-disable-next-line no-undef
           require.config({ paths: { vs: baseUrl } });
-          // ── Monaco worker bootstrap for Electron custom protocol ──
-          // Problem: native importScripts can't load qqq-asset:// URLs from
-          // blob Workers. The AMD loader's fallback uses eval() which loses
-          // access to `define` (global scope mismatch).
-          //
-          // Fix:
-          //   0. Save native importScripts before AMD loader overrides it
-          //   1. Inline AMD loader + worker module into a blob URL
-          //   2. Force define/require onto self after loader init
-          //   3. Override importScripts with Function()-based version
-          //      (Function() always runs in global scope → sees self.define)
-          //
-          // Language workers (tsWorker.js, jsonWorker.js, etc.) are
-          // self-contained AMD modules — they only need the AMD loader
-          // and their own code. Generic worker (workerMain.js) has many
-          // dependencies; our importScripts override loads them on demand.
-
+          // ── Monaco workers: direct qqq-asset:// URL ──
+          // Each worker (workerMain.js, tsWorker.js etc.) is self-contained
+          // with its own AMD loader. Individual dependency files that the
+          // worker's AMD loader needs are served from cache/monaco-deps/vs/
+          // (converted from esm by convert_monaco_esm.py) via protocol fallback.
           var _langWorker = {
             typescript: 'tsWorker', javascript: 'tsWorker',
             json: 'jsonWorker', html: 'htmlWorker', css: 'cssWorker',
           };
 
-          function _syncFetchText(url) {
-            var x = new XMLHttpRequest();
-            x.open('GET', url, false);
-            try { x.send(); return x.responseText; }
-            catch (e) { return null; }
-          }
-
-          var _loaderJs = _syncFetchText(baseUrl + '/loader.js');
-          if (!_loaderJs) { return reject(new Error('monaco: failed to fetch loader.js')); }
-
-          var _workerBlobCache = {};
-          function _getWorkerBlobUrl(workerPath) {
-            if (_workerBlobCache[workerPath]) return _workerBlobCache[workerPath];
-            var workerCode = _syncFetchText(baseUrl + '/' + workerPath);
-            if (!workerCode) return null;
-
-            // Assemble blob payload — execution order inside the Worker:
-            var parts = [
-              // (0) Save native importScripts before AMD loader touches it
-              "var __nativeImportScripts = (typeof self!=='undefined' && self.importScripts) ? self.importScripts.bind(self) : null;",
-              // (1) AMD loader
-              _loaderJs,
-              // (2) configure paths so the AMD loader knows where to find modules
-              "require.config({ paths: { vs: '" + baseUrl + "' } });",
-              // (3) force define/require onto self (belt-and-suspenders)
-              "if (typeof self!=='undefined') {" +
-                "if (typeof define==='function') self.define=define;" +
-                "if (typeof require==='function') self.require=require;" +
-              "}",
-              // (4) robust importScripts — try native, then fall back to
-              //     sync XHR + Function() which runs in global scope
-              "if (typeof self!=='undefined') {" +
-                "self.importScripts = function(url) {" +
-                  // Try native first (works for same-origin URLs)
-                  "if (__nativeImportScripts) {" +
-                    "try { __nativeImportScripts(url); return; } catch(e) {}" +
-                  "}" +
-                  // Fallback: sync XHR + Function (global scope → sees self.define)
-                  "var xhr = new XMLHttpRequest();" +
-                  "xhr.open('GET', url, false);" +
-                  "try { xhr.send(); } catch(e2) { throw new Error('importScripts: '+url+' — '+e2.message); }" +
-                  "if (xhr.status < 200 || xhr.status >= 400) throw new Error('importScripts: HTTP '+xhr.status+' '+url);" +
-                  "(new Function(xhr.responseText)).call(self);" +
-                "};" +
-              "}",
-              // (5) worker module (self-contained AMD define)
-              workerCode,
-            ];
-
-            var fullCode = parts.join('\n');
-
-            var blob = new Blob([fullCode], { type: 'application/javascript' });
-            var url = URL.createObjectURL(blob);
-            _workerBlobCache[workerPath] = url;
-            return url;
-          }
-
-          // ★ getWorker — returns blob Worker with inlined AMD loader + module
           window.MonacoEnvironment = {
             getWorker: function (workerId, label) {
               var workerPath;
@@ -353,16 +283,29 @@
               } else {
                 workerPath = 'base/worker/workerMain.js';
               }
-              var blobUrl = _getWorkerBlobUrl(workerPath);
-              if (!blobUrl) {
-                console.warn('[editor] failed to create blob worker for ' + label);
-                // Return a worker that won't crash — use workerMain as last resort
-                var fb = _getWorkerBlobUrl('base/worker/workerMain.js');
-                if (fb) return new Worker(fb);
-                // Ultimate fallback — let Monaco's own fallback handle it
-                throw new Error('Cannot create Monaco worker: ' + label);
+              var workerUrl = baseUrl + '/' + workerPath;
+              var isBaseWorker = (workerPath === 'base/worker/workerMain.js');
+
+              // base worker: load directly so self.location is qqq-asset:// (importScripts works)
+              if (isBaseWorker) {
+                var w = new Worker(workerUrl);
+                console.log('[monaco-worker] direct: ' + workerId + '/' + label);
+                return w;
               }
-              return new Worker(blobUrl);
+
+              // language worker: modified workerMain.js already has self.define=Y built-in.
+              // No loader.js needed — just importScripts workerMain (sets self.define + self.onmessage),
+              // then tsWorker.js whose bare define() uses self.define to register into same AMD.
+              var wmUrl = 'qqq-asset://worker_wrapper/vs/base/worker/workerMain.js';
+              console.log('[monaco-worker] importScripts for: ' + workerId + '/' + label);
+              var wrapperCode = [
+                "importScripts('" + wmUrl + "');",
+                "importScripts('" + workerUrl + "');",
+              ].join('\n');
+              var blob = new Blob([wrapperCode], { type: 'application/javascript' });
+              var w = new Worker(URL.createObjectURL(blob));
+              console.log('[monaco-worker] importScripts: ' + workerId + '/' + label + ' size=' + wrapperCode.length + 'b');
+              return w;
             },
           };
           // eslint-disable-next-line no-undef

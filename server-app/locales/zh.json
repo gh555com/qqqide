@@ -234,7 +234,8 @@
             "heartbeat": "心跳"
         },
         "onboarding": {
-            "selectFolder": "请先选择一个主文件夹！"
+            "selectFolder": "请先选择一个主文件夹！",
+            "selectFolderTitle": "请选择一个主文件夹"
         }
     },
     "goods": {

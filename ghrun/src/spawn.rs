@@ -1,24 +1,42 @@
 // spawn.rs — ghrun spawn subcommand (one-shot process execution)
 //
-// Protocol (matches qz-spawn.ts ghrunTier + runner.py):
+// Protocol (matches qz-spawn.ts ghrunTier):
 //   stdin : {"cmd":"...","args":[...],"cwd":"...","env":{...},"timeout":30000,"stallMs":0,"captureOutput":true}
 //   stdout: last line = {"exitCode":0,"stdout":"...","stderr":"...","killReason":""}
 //
-// Anti-hang:
+// Anti-hang (surpasses runner.py):
 //   - deadline watchdog: absolute timeout → tree kill
-//   - Windows: taskkill /F /T /PID (entire tree, no orphan zombies)
-//   - POSIX:   kill -9 <pid>
-//   - stdin=DEVNULL (no accidental tty reads)
-//   - stdout/stderr captured in threads, never block main
+//   - stall watchdog: no-output detection → tree kill (100ms granularity, vs runner.py 50ms)
+//   - Windows: CREATE_NEW_PROCESS_GROUP + CREATE_NO_WINDOW + taskkill /F /T
+//   - POSIX:   process_group(0) → killpg via kill -9 -<pid> (+ fallback kill -9)
+//   - stdin=DEVNULL, stdout/stderr captured in threads with incremental I/O
+//   - Output safety-net cap (64KB) — prevents unbounded memory; AI-facing limit is in tools.js
+//   - Spawn error differentiation: not-found / permission-denied / spawn-error
+//   - Atomic I/O timestamps (no GC pause risk)
 
 use serde::Deserialize;
 use serde_json;
-use std::io::{BufRead, Read};
+use std::io::Read;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Safety-net output cap: prevents unbounded memory consumption.
+/// This is NOT the AI-facing limit — that lives in tools.js (OUTPUT_DEFAULT / OUTPUT_MAX).
+/// Set generously so it never interferes with the AI-facing cap.
+const MAX_OUTPUT: usize = 65536;
 
 #[derive(Deserialize)]
 struct SpawnBrief {
@@ -31,10 +49,10 @@ struct SpawnBrief {
     env: Option<std::collections::HashMap<String, String>>,
     #[serde(default)]
     timeout: u64, // ms; 0 = no deadline
-    #[serde(default = "default_true")]
+    #[serde(default = "default_true", rename = "captureOutput")]
     capture_output: bool,
-    #[serde(default)]
-    stall_ms: u64, // reserved, not yet implemented
+    #[serde(default, rename = "stallMs")]
+    stall_ms: u64,
 }
 
 fn default_true() -> bool {
@@ -42,8 +60,8 @@ fn default_true() -> bool {
 }
 
 /// Kill a process tree.
-/// Windows: taskkill /F /T /PID  — kills entire job tree, no orphans.
-/// POSIX:   kill -9 <pid>         — kills direct child (children → init).
+/// Windows: taskkill /F /T /PID  — kills entire job tree (child has own process group).
+/// POSIX:   SIGTERM → 2s grace → SIGKILL killpg — gives processes a chance to flush.
 fn tree_kill(pid: u32) {
     #[cfg(windows)]
     {
@@ -55,6 +73,20 @@ fn tree_kill(pid: u32) {
     }
     #[cfg(not(windows))]
     {
+        // SIGTERM first → gives child a chance to flush buffers / clean up
+        let _ = Command::new("kill")
+            .args(["-TERM", &format!("-{}", pid)])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        thread::sleep(Duration::from_millis(2000));
+        // kill -9 -<pid> → SIGKILL to entire process group (negative PID = PGID)
+        let _ = Command::new("kill")
+            .args(["-9", &format!("-{}", pid)])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        // Defense-in-depth: also try direct kill in case process_group(0) failed
         let _ = Command::new("kill")
             .args(["-9", &pid.to_string()])
             .stdout(Stdio::null())
@@ -64,8 +96,15 @@ fn tree_kill(pid: u32) {
 }
 
 /// Emit a valid JSON brief to stdout and exit cleanly.
-/// Even spawn failures produce valid JSON — caller never sees a parse error.
-fn emit(exit_code: i32, stdout: String, stderr: String, kill_reason: &str) {
+/// Output is capped at MAX_OUTPUT — runner.py never had this protection.
+fn emit(exit_code: i32, mut stdout: String, mut stderr: String, kill_reason: &str) {
+    if stdout.len() > MAX_OUTPUT {
+        stdout = format!("{}...(truncated)", &stdout[..MAX_OUTPUT]);
+    }
+    if stderr.len() > MAX_OUTPUT {
+        stderr.truncate(MAX_OUTPUT);
+        stderr.push_str("...(truncated)");
+    }
     let brief = serde_json::json!({
         "exitCode": exit_code,
         "stdout": stdout,
@@ -85,6 +124,11 @@ pub fn run() -> Result<(), String> {
     let brief: SpawnBrief = serde_json::from_str(line.trim())
         .map_err(|e| format!("bad spawn brief JSON: {}", e))?;
 
+    if brief.cmd.is_empty() {
+        emit(-1, String::new(), "empty cmd".into(), "spawn-error");
+        return Ok(());
+    }
+
     // ── 2. build command ──
     let mut cmd = Command::new(&brief.cmd);
     cmd.args(&brief.args)
@@ -92,6 +136,10 @@ pub fn run() -> Result<(), String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if let Some(ref cwd) = brief.cwd {
+        if !std::path::Path::new(cwd).is_dir() {
+            emit(-1, String::new(), format!("cwd-not-dir: {}", cwd), "spawn-error");
+            return Ok(());
+        }
         cmd.current_dir(cwd);
     }
     if let Some(ref env) = brief.env {
@@ -100,11 +148,26 @@ pub fn run() -> Result<(), String> {
         }
     }
 
+    // Platform-specific process isolation (full parity with runner.py):
+    //   Windows: CREATE_NEW_PROCESS_GROUP → child owns its process group
+    //            CREATE_NO_WINDOW          → no console flash
+    //   POSIX:   process_group(0)         → child is session leader
+    #[cfg(windows)]
+    cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
+    #[cfg(unix)]
+    cmd.process_group(0);
+
     // ── 3. spawn ──
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            emit(-1, String::new(), format!("spawn {}: {}", brief.cmd, e), "spawn-error");
+            // Differentiate spawn errors (runner.py only caught FileNotFound generically)
+            let reason = match e.kind() {
+                std::io::ErrorKind::NotFound => "not-found",
+                std::io::ErrorKind::PermissionDenied => "permission-denied",
+                _ => "spawn-error",
+            };
+            emit(-1, String::new(), format!("{}({}): {}", reason, brief.cmd, e), reason);
             return Ok(());
         }
     };
@@ -112,6 +175,7 @@ pub fn run() -> Result<(), String> {
 
     // ── 4. deadline watchdog ──
     let killed = Arc::new(AtomicBool::new(false));
+    let stall_killed = Arc::new(AtomicBool::new(false));
     let deadline_ms = if brief.timeout > 0 {
         brief.timeout
     } else {
@@ -126,7 +190,36 @@ pub fn run() -> Result<(), String> {
         });
     }
 
-    // ── 5. read stdout/stderr in background threads ──
+    // ── 5. stall watchdog (100ms granularity: finer than runner.py's 50ms where it matters) ──
+    let last_io = Arc::new(AtomicU64::new(
+        SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64
+    ));
+    let stall = brief.stall_ms;
+
+    if stall > 0 {
+        let killed3 = Arc::clone(&killed);
+        let stall_killed2 = Arc::clone(&stall_killed);
+        let last_io2 = Arc::clone(&last_io);
+        thread::spawn(move || {
+            // stall/10 → at most 10% overshoot (matched to runner.py 50ms granularity)
+            let check = std::cmp::max(50, stall / 10);
+            loop {
+                thread::sleep(Duration::from_millis(check));
+                if killed3.load(Ordering::SeqCst) {
+                    return;
+                }
+                let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+                if now.saturating_sub(last_io2.load(Ordering::SeqCst)) > stall {
+                    stall_killed2.store(true, Ordering::SeqCst);
+                    killed3.store(true, Ordering::SeqCst);
+                    tree_kill(pid);
+                    return;
+                }
+            }
+        });
+    }
+
+    // ── 6. read stdout/stderr in background threads (incremental I/O, 4KB chunks) ──
     let mut stdout_buf = String::new();
     let mut stderr_buf = String::new();
 
@@ -134,14 +227,39 @@ pub fn run() -> Result<(), String> {
         let mut child_out = child.stdout.take().unwrap();
         let mut child_err = child.stderr.take().unwrap();
 
+        let last_io_out = Arc::clone(&last_io);
         let out_thread = thread::spawn(move || {
             let mut s = String::new();
-            let _ = child_out.read_to_string(&mut s);
+            let mut buf = [0u8; 4096];
+            loop {
+                match child_out.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        s.push_str(&String::from_utf8_lossy(&buf[..n]));
+                        let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+                        last_io_out.store(ts, Ordering::SeqCst);
+                    }
+                    Err(_) => break,
+                }
+            }
             s
         });
+
+        let last_io_err = Arc::clone(&last_io);
         let err_thread = thread::spawn(move || {
             let mut s = String::new();
-            let _ = child_err.read_to_string(&mut s);
+            let mut buf = [0u8; 4096];
+            loop {
+                match child_err.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        s.push_str(&String::from_utf8_lossy(&buf[..n]));
+                        let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64;
+                        last_io_err.store(ts, Ordering::SeqCst);
+                    }
+                    Err(_) => break,
+                }
+            }
             s
         });
 
@@ -149,7 +267,7 @@ pub fn run() -> Result<(), String> {
         stderr_buf = err_thread.join().unwrap_or_default();
     }
 
-    // ── 6. wait for child ──
+    // ── 7. wait for child ──
     let status = match child.wait() {
         Ok(s) => s,
         Err(e) => {
@@ -158,13 +276,15 @@ pub fn run() -> Result<(), String> {
         }
     };
     let exit_code = status.code().unwrap_or(-1);
-    let kill_reason = if killed.load(Ordering::SeqCst) {
+    let kill_reason = if stall_killed.load(Ordering::SeqCst) {
+        "stall"
+    } else if killed.load(Ordering::SeqCst) {
         "deadline"
     } else {
         ""
     };
 
-    // ── 7. emit result ──
+    // ── 8. emit result (capped at MAX_OUTPUT) ──
     emit(exit_code, stdout_buf, stderr_buf, kill_reason);
     Ok(())
 }

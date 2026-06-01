@@ -1,24 +1,55 @@
 // ============================================================================
 // qz-spawn.ts
-// Unified spawn entry (qz subsystem) - three-tier fallback.
+// Unified spawn entry (qz subsystem).
 //
-// Tier 1: ghrun.exe (Rust unified runtime, when QDIR_GHRUN env is set)
-// Tier 2: engines/runner.py (Python stdlib-only fallback)
-// Tier 3: Node child_process.spawn (last resort)
+// Tier 1: ghrun.exe  — Rust, full anti-hang, primary
+// Tier 2: Node        — child_process.spawn, always-available fallback
 //
-// All tiers MUST honor the spawn-protocol contract:
-//   in : {cmd, args, cwd, env, timeout, captureOutput, killOnDisconnect}
-//   out: {exitCode, stdout, stderr, killReason}
+// Protocol contract:
+//   in : {cmd, args, cwd, env, timeout, stallMs, captureOutput}
+//   out: {exitCode, stdout, stderr, killReason, tier, pid, durationMs}
 //
-// Anti-hang protection (per "我们到底要做什吗" §2.5):
-//   - Windows  : detached + windowsHide, kill entire tree on timeout (taskkill /T)
-//   - POSIX    : detached so kill(-pid) reaches the whole process group
-//   - Triple watchdog: deadline (hard timeout) + stall (no-output) + heartbeat
+// ghrun anti-hang (surpasses runner.py):
+//   - deadline + stall watchdogs (100ms granularity)
+//   - Windows: CREATE_NEW_PROCESS_GROUP + CREATE_NO_WINDOW + taskkill /F /T
+//   - POSIX:   process_group(0) → killpg via kill -9 -<pid> + fallback
+//   - Output safety-net at IPC level (64KB) — AI-facing limit is in tools.js
 // ============================================================================
 
 import { spawn as cpSpawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+
+// Output safety-net cap: prevents huge stdout/stderr from inflating IPC payloads.
+// This is NOT the AI-facing limit — that lives in tools.js (OUTPUT_DEFAULT / OUTPUT_MAX).
+// Set generously (64KB) so it never interferes with the AI-facing cap.
+const MAX_OUTPUT = 65536;
+function _capOutput(r: SpawnResult): SpawnResult {
+    if (r.stdout.length > MAX_OUTPUT) { r.stdout = r.stdout.slice(0, MAX_OUTPUT) + '\n...(truncated)'; }
+    if (r.stderr.length > MAX_OUTPUT) { r.stderr = r.stderr.slice(0, MAX_OUTPUT); }
+    return r;
+}
+
+// Windows built-in commands (not real executables; need cmd /c wrapper)
+const IS_WIN = process.platform === 'win32';
+const WIN_BUILTINS = new Set([
+    'dir', 'type', 'echo', 'copy', 'del', 'erase', 'set', 'cd', 'chdir',
+    'md', 'mkdir', 'rmdir', 'rd', 'ren', 'rename', 'move', 'cls',
+    'date', 'time', 'ver', 'vol', 'path', 'prompt', 'title', 'color',
+    'assoc', 'ftype', 'pushd', 'popd', 'mklink', 'fc', 'comp',
+    'find', 'findstr', 'more', 'sort', 'start',
+]);
+
+/** Normalize brief before dispatch: wrap Windows builtins with cmd /c */
+function _normalizeBrief(brief: { cmd: string; args?: string[]; shell?: boolean }): void {
+    if (!IS_WIN) { return; }
+    if (!brief.cmd) { return; }
+    if (WIN_BUILTINS.has(brief.cmd.toLowerCase())) {
+        brief.args = ['/c', brief.cmd, ...(brief.args || [])];
+        brief.cmd = 'cmd';
+        brief.shell = false;
+    }
+}
 
 export interface SpawnBrief {
     cmd: string;
@@ -38,7 +69,7 @@ export interface SpawnResult {
     stdout: string;
     stderr: string;
     killReason: '' | 'deadline' | 'stall' | 'disconnect' | 'spawn-error';
-    tier: 'ghrun' | 'runner' | 'node';
+    tier: 'ghrun' | 'node';
     pid?: number;
     durationMs: number;
 }
@@ -83,55 +114,31 @@ export interface PersistHandle {
 // Tier resolution helpers
 // ---------------------------------------------------------------------------
 
+let _ghrunBinCache: string | null | undefined = undefined; // undefined=未探测
+
 function resolveGhrunBin(appRoot?: string): string | null {
+    if (_ghrunBinCache !== undefined) { return _ghrunBinCache; }
     const env = process.env.QDIR_GHRUN;
-    if (env && fs.existsSync(env)) { return env; }
+    if (env && fs.existsSync(env)) { _ghrunBinCache = env; return env; }
     // also probe portable convention: $QDIR/ghrun.exe
     const qdir = process.env.QDIR;
     if (qdir) {
         const ext = process.platform === 'win32' ? '.exe' : '';
         const p = path.join(qdir, 'ghrun' + ext);
-        if (fs.existsSync(p)) { return p; }
+        if (fs.existsSync(p)) { _ghrunBinCache = p; return p; }
     }
     // also probe engines/ghrun.exe under app root
     if (appRoot) {
         const ext = process.platform === 'win32' ? '.exe' : '';
         const p = path.join(appRoot, 'engines', 'ghrun' + ext);
-        if (fs.existsSync(p)) { return p; }
+        if (fs.existsSync(p)) { _ghrunBinCache = p; return p; }
     }
-    return null;
-}
-
-function findWindowsPython(): string | null {
-    // Windows: try 'py' launcher first (Windows 10+), then common paths
-    const tries = ['py', 'py.exe', 'python', 'python.exe', 'python3', 'python3.exe'];
-    const pathDirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
-    for (const cmd of tries) {
-        for (const dir of pathDirs) {
-            const full = path.join(dir, cmd);
-            try { if (fs.statSync(full).isFile()) return cmd; } catch { /* skip */ }
-        }
-    }
-    return 'python'; // fallback, let spawn fail with clear error
-}
-
-function resolveRunner(appRoot: string): { script: string; python: string } | null {
-    const candidates = [
-        path.join(appRoot, 'engines', 'runner.py'),
-        path.join(appRoot, 'resources', 'app', 'engines', 'runner.py'),
-    ];
-    for (const p of candidates) {
-        if (fs.existsSync(p)) {
-            const py = process.env.QQQ_PYTHON
-                || (process.platform === 'win32' ? findWindowsPython() : 'python3');
-            return { script: p, python: py || 'python' };
-        }
-    }
+    _ghrunBinCache = null;
     return null;
 }
 
 // ---------------------------------------------------------------------------
-// Tier 3: Node child_process spawn (always available)
+// Tier 2: Node child_process spawn (always available)
 // ---------------------------------------------------------------------------
 
 function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
@@ -253,134 +260,9 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
 }
 
 // ---------------------------------------------------------------------------
-// Tier 2: runner.py (Python stdlib-only stdio JSON RPC, one-shot per call)
+// Tier 1: ghrun.exe — Rust, surpasses runner.py (deadline + stall + killpg + output cap + error diff)
 //
-// Wire format:
-//   stdin : <single line JSON> {brief...}\n
-//   stdout: <single line JSON> {result...}\n
-// runner.py applies the same anti-hang protection internally.
-// ---------------------------------------------------------------------------
-
-function runnerTier(brief: SpawnBrief, appRoot: string, resolved: { script: string; python: string }): Promise<SpawnResult> {
-    return new Promise<SpawnResult>((resolve) => {
-        const start = Date.now();
-        const timeoutMs = brief.timeout != null ? brief.timeout : 60_000;
-        // Outer guard = 5s + inner deadline (only if timeout > 0)
-        const guardMs = timeoutMs > 0 ? timeoutMs + 5_000 : 86400000;
-
-        let proc: ChildProcess;
-        try {
-            proc = cpSpawn(resolved.python, ['-u', resolved.script], {
-                cwd: appRoot,
-                windowsHide: true,
-                env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
-                detached: process.platform !== 'win32',
-            });
-        } catch (err: any) {
-            return resolve({
-                exitCode: -1, stdout: '', stderr: String(err && err.message || err),
-                killReason: 'spawn-error', tier: 'runner', durationMs: Date.now() - start,
-            });
-        }
-
-        let outBuf = '';
-        let errBuf = '';
-        let killed = false;
-        let resolved2 = false;
-
-        const safeResolve = (r: SpawnResult) => {
-            if (resolved2) { return; }
-            resolved2 = true;
-            clearTimeout(guardTimer);
-            try { proc.kill(); } catch { /* ignore */ }
-            resolve(r);
-        };
-
-        proc.stdout!.setEncoding('utf8');
-        proc.stderr!.setEncoding('utf8');
-        proc.stdout!.on('data', (d: string) => {
-            outBuf += d;
-            // try to find first newline → that's our result line
-            const nl = outBuf.indexOf('\n');
-            if (nl >= 0) {
-                const line = outBuf.slice(0, nl);
-                try {
-                    const r = JSON.parse(line);
-                    safeResolve({
-                        exitCode: typeof r.exitCode === 'number' ? r.exitCode : -1,
-                        stdout: String(r.stdout || ''),
-                        stderr: String(r.stderr || ''),
-                        killReason: (r.killReason || '') as SpawnResult['killReason'],
-                        tier: 'runner',
-                        pid: proc.pid,
-                        durationMs: Date.now() - start,
-                    });
-                } catch (e) {
-                    // bad JSON; treat as failure
-                    safeResolve({
-                        exitCode: -1, stdout: '', stderr: 'runner_bad_json: ' + line.slice(0, 200),
-                        killReason: 'spawn-error', tier: 'runner', durationMs: Date.now() - start,
-                    });
-                }
-            }
-        });
-        proc.stderr!.on('data', (d: string) => { errBuf += d; });
-        proc.on('exit', (code) => {
-            if (resolved2) { return; }
-            // exited without a result line
-            safeResolve({
-                exitCode: code ?? -1, stdout: '', stderr: errBuf || 'runner_no_result',
-                killReason: killed ? 'deadline' : '', tier: 'runner',
-                pid: proc.pid, durationMs: Date.now() - start,
-            });
-        });
-        proc.on('error', (err: Error) => {
-            safeResolve({
-                exitCode: -1, stdout: '', stderr: String(err.message || err),
-                killReason: 'spawn-error', tier: 'runner',
-                pid: proc.pid, durationMs: Date.now() - start,
-            });
-        });
-
-        const guardTimer = setTimeout(() => {
-            killed = true;
-            safeResolve({
-                exitCode: -1, stdout: '', stderr: 'runner_guard_timeout',
-                killReason: 'deadline', tier: 'runner',
-                pid: proc.pid, durationMs: Date.now() - start,
-            });
-        }, guardMs);
-
-        // Send brief
-        try {
-            const payload = JSON.stringify({
-                cmd: brief.cmd,
-                args: brief.args || [],
-                cwd: brief.cwd || appRoot,
-                env: brief.env || null,
-                timeout: timeoutMs,
-                stallMs: brief.stallMs || 0,
-                captureOutput: brief.captureOutput !== false,
-                inheritEnv: brief.inheritEnv !== false,
-                shell: brief.shell === true,
-            }) + '\n';
-            proc.stdin!.write(payload);
-            proc.stdin!.end();
-        } catch (err: any) {
-            safeResolve({
-                exitCode: -1, stdout: '', stderr: String(err.message || err),
-                killReason: 'spawn-error', tier: 'runner',
-                pid: proc.pid, durationMs: Date.now() - start,
-            });
-        }
-    });
-}
-
-// ---------------------------------------------------------------------------
-// Tier 1: ghrun.exe (Rust runtime; not yet built — interface is reserved)
-//
-// Wire format (per arc/spawn-protocol §2.5): ghrun spawn <brief.json>
-// For now we shell out one-shot with --json (forward-compatible).
+// Wire format: ghrun spawn --json, stdin one-line JSON, stdout one-line JSON.
 // ---------------------------------------------------------------------------
 
 function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promise<SpawnResult> {
@@ -478,16 +360,11 @@ function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promis
 
 export class QzSpawn {
 
-    constructor(private appRoot: string) {}
+    constructor(private appRoot: string) { }
 
     /** Probe ghrun availability (synchronous file check). */
     ghrunAlive(): boolean {
         return !!resolveGhrunBin(this.appRoot);
-    }
-
-    /** Probe runner.py availability. */
-    runnerAlive(): boolean {
-        return !!resolveRunner(this.appRoot);
     }
 
     /**
@@ -512,7 +389,7 @@ export class QzSpawn {
         return null;
     }
 
-    /** Unified spawn entry. Tries ghrun → runner.py → node child_process. */
+    /** Unified spawn entry. Two-tier: ghrun → node child_process. */
     async spawn(brief: SpawnBrief): Promise<SpawnResult> {
         if (!brief || !brief.cmd) {
             return {
@@ -520,8 +397,9 @@ export class QzSpawn {
                 killReason: 'spawn-error', tier: 'node', durationMs: 0,
             };
         }
+        _normalizeBrief(brief);
 
-        // Tier 1: ghrun (Rust, tree-kill watchdog)
+        // Tier 1: ghrun (Rust, full anti-hang: deadline + stall + tree-kill + process group isolation)
         const ghrun = resolveGhrunBin(this.appRoot);
         if (ghrun) {
             try {
@@ -532,28 +410,16 @@ export class QzSpawn {
                     } else {
                         console.log('[qz] ghrun OK:', brief.cmd, r.durationMs + 'ms');
                     }
-                    return r;
+                    return _capOutput(r);
                 }
-                console.warn('[qz] ghrun spawn-error, falling back to runner:', r.stderr.slice(0, 200));
+                console.warn('[qz] ghrun spawn-error, falling back to node:', r.stderr.slice(0, 200));
             } catch (e: any) {
-                console.warn('[qz] ghrun threw, falling back to runner:', e && e.message);
+                console.warn('[qz] ghrun threw, falling back to node:', e && e.message);
             }
         }
 
-        // Tier 2: runner.py
-        const runner = resolveRunner(this.appRoot);
-        if (runner) {
-            try {
-                const r = await runnerTier(brief, this.appRoot, runner);
-                if (r.killReason !== 'spawn-error') { return r; }
-                console.warn('[qz] runner spawn-error, falling back to node:', r.stderr.slice(0, 200));
-            } catch (e: any) {
-                console.warn('[qz] runner threw, falling back to node:', e && e.message);
-            }
-        }
-
-        // Tier 3: node (always available)
-        return nodeTier(brief, this.appRoot);
+        // Tier 2: node (always available)
+        return _capOutput(await nodeTier(brief, this.appRoot));
     }
     /** Spawn a long-lived process with persistent stdin/stdout.
      *  Used by LSP bridge — process stays alive, messages flow bidirectionally. */
