@@ -136,6 +136,7 @@ var QuestStore = (function () {
         this._index = null; // lazy init
         this._migrated = false;
         this._nextQuestId = null; // lazy init: 自增 quest 编号
+        this._onChangeCbs = []; // 跨窗口通知回调
     }
 
     // ═══ 设置项目根目录 → 切换到项目级 SQLite 持久化 ═══
@@ -160,6 +161,19 @@ var QuestStore = (function () {
     QuestStore.prototype.requireProjectForWrites = function (req) {
         _requireProject = !!req;
     };
+
+    // ═══ 跨窗口通知 ═══
+    QuestStore.prototype.onChange = function (cb) {
+        this._onChangeCbs.push(cb);
+    };
+    function _notify(store, type, questId, extra) {
+        if (!store._onChangeCbs.length) return;
+        var payload = { type: type, questId: questId };
+        if (extra) Object.assign(payload, extra);
+        for (var i = 0; i < store._onChangeCbs.length; i++) {
+            try { store._onChangeCbs[i](payload); } catch (_) {}
+        }
+    }
 
     function _guardWrite(op) {
         if (_requireProject && !_rootDir) {
@@ -274,6 +288,7 @@ var QuestStore = (function () {
         await this._ensureIndex();
         this._index.push(entry);
         await this._saveIndex();
+        _notify(this, 'quest-created', id);
         return id;
     };
 
@@ -283,6 +298,7 @@ var QuestStore = (function () {
         this._index = this._index.filter(function (s) { return s.id !== id; });
         await this._saveIndex();
         await _del(QUEST_NS + '.' + id);
+        _notify(this, 'quest-deleted', id);
     };
 
     QuestStore.prototype.list = async function () {
@@ -299,6 +315,7 @@ var QuestStore = (function () {
             entry.title = title;
             if (typeof numericId === 'number') entry.numericId = numericId;
             await this._saveIndex();
+            _notify(this, 'quest-renamed', id, { title: title });
             return true;
         }
         return false;
@@ -312,6 +329,47 @@ var QuestStore = (function () {
             entry.lastActiveAt = Date.now();
             await this._saveIndex();
         }
+    };
+
+    // ═══ Quest 所有权（防多窗口串味） ═══
+
+    // claimOwner: 尝试声明所有权。若无人持有或已过期(>30s)，成功。否则返回当前持有者。
+    QuestStore.prototype.claimOwner = async function (questId, windowId) {
+        if (_guardWrite('claimOwner')) return { claimed: false, currentOwner: null };
+        var existing = await _get(QUEST_NS + '.' + questId);
+        var oldOwner = (existing && existing._owner) || null;
+        if (oldOwner && oldOwner.windowId && oldOwner.windowId !== windowId) {
+            var age = Date.now() - (oldOwner.claimedAt || 0);
+            if (age < 30000) {
+                return { claimed: false, currentOwner: oldOwner.windowId };
+            }
+            // 过期，允许接管
+        }
+        var ownerData = { windowId: windowId, claimedAt: Date.now() };
+        if (!existing) existing = {};
+        existing._owner = ownerData;
+        await _setNow(QUEST_NS + '.' + questId, existing);
+        return { claimed: true, currentOwner: null };
+    };
+
+    // releaseOwner: 释放所有权。返回被释放的 owner（如有）。
+    QuestStore.prototype.releaseOwner = async function (questId) {
+        if (_guardWrite('releaseOwner')) return null;
+        var existing = await _get(QUEST_NS + '.' + questId);
+        if (!existing || !existing._owner) return null;
+        var oldOwner = existing._owner;
+        delete existing._owner;
+        await _setNow(QUEST_NS + '.' + questId, existing);
+        return oldOwner;
+    };
+
+    // getOwner: 读取当前所有权（不修改）。返回 { windowId, claimedAt } 或 null。
+    QuestStore.prototype.getOwner = async function (questId) {
+        var existing = await _get(QUEST_NS + '.' + questId);
+        if (!existing || !existing._owner) return null;
+        var age = Date.now() - (existing._owner.claimedAt || 0);
+        if (age > 30000) return null; // 过期视为无主
+        return existing._owner;
     };
 
     // ═══ Save / Load ═══
@@ -328,6 +386,7 @@ var QuestStore = (function () {
             }
         }
         await _setNow(QUEST_NS + '.' + id, data);
+        _notify(this, 'quest-saved', id, { floorNum: data.ctx ? data.ctx.totalFloors : undefined });
     };
 
     QuestStore.prototype.load = async function (id) {
@@ -340,6 +399,7 @@ var QuestStore = (function () {
         if (_guardWrite('saveFloor')) return;
         data.savedAt = Date.now();
         await _setNow(FLOOR_NS + '.' + questId + '.' + floorNum, data);
+        _notify(this, 'floor-saved', questId, { floorNum: floorNum });
     };
 
     QuestStore.prototype.loadFloor = async function (questId, floorNum) {

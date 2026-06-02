@@ -277,39 +277,32 @@
 
           window.MonacoEnvironment = {
             getWorker: function (workerId, label) {
-              var workerPath;
-              if (label && _langWorker[label]) {
-                workerPath = 'language/' + label + '/' + _langWorker[label] + '.js';
+              // Language workers: use ESM module worker (handles model sync internally).
+              // Base workers: AMD min build (workerMain.js).
+              var isLang = label && _langWorker[label];
+              var workerUrl, workerOpts;
+              if (isLang) {
+                workerUrl = 'qqq-asset://monaco-esm/vs/language/typescript/ts.worker.js';
+                workerOpts = { type: 'module' };
               } else {
-                workerPath = 'base/worker/workerMain.js';
+                workerUrl = 'qqq-asset://monaco/vs/base/worker/workerMain.js';
+                workerOpts = undefined;
               }
-              var workerUrl = baseUrl + '/' + workerPath;
-              var isBaseWorker = (workerPath === 'base/worker/workerMain.js');
-
-              // base worker: load directly so self.location is qqq-asset:// (importScripts works)
-              if (isBaseWorker) {
-                var w = new Worker(workerUrl);
-                console.log('[monaco-worker] direct: ' + workerId + '/' + label);
-                return w;
-              }
-
-              // language worker: modified workerMain.js already has self.define=Y built-in.
-              // No loader.js needed — just importScripts workerMain (sets self.define + self.onmessage),
-              // then tsWorker.js whose bare define() uses self.define to register into same AMD.
-              var wmUrl = 'qqq-asset://worker_wrapper/vs/base/worker/workerMain.js';
-              console.log('[monaco-worker] importScripts for: ' + workerId + '/' + label);
-              var wrapperCode = [
-                "importScripts('" + wmUrl + "');",
-                "importScripts('" + workerUrl + "');",
-              ].join('\n');
-              var blob = new Blob([wrapperCode], { type: 'application/javascript' });
-              var w = new Worker(URL.createObjectURL(blob));
-              console.log('[monaco-worker] importScripts: ' + workerId + '/' + label + ' size=' + wrapperCode.length + 'b');
-              return w;
+              console.log('[monaco-worker] ' + (isLang ? 'lang' : 'base') + ': ' + workerId + '/' + label);
+              return new Worker(workerUrl, workerOpts);
             },
           };
           // eslint-disable-next-line no-undef
           require(['vs/editor/editor.main'], () => {
+            // Eager model sync: models MUST be synced before loadForeignModule creates the TS service.
+            var tsd = window.monaco.languages.typescript.typescriptDefaults;
+            tsd._eagerModelSync = true;
+            tsd.setEagerModelSync(true);
+            console.log('[monaco] typescript eagerModelSync:', tsd.getEagerModelSync());
+            var jsd = window.monaco.languages.typescript.javascriptDefaults;
+            jsd._eagerModelSync = true;
+            jsd.setEagerModelSync(true);
+            console.log('[monaco] javascript eagerModelSync:', jsd.getEagerModelSync());
             resolve(window.monaco);
           }, reject);
         } catch (e) { reject(e); }

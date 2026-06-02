@@ -2181,7 +2181,7 @@ async function sendMessage() {
 
   // 构建用户消息显示（含图片缩略图）
   var userMsgEl = addMessageEl('user', text);
-  userMsgEl._floor = agent ? agent._ctx.totalFloors : 0;
+  userMsgEl._floor = agent._ctx.totalFloors;
   if (pendingImages.length > 0) {
     var imgRow = document.createElement('div');
     imgRow.style.cssText = 'margin-top:6px;';

@@ -23,7 +23,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { URL } from 'url';
- 
+
 export interface DownloadOpts {
   url: string;
   dir?: string;          // output directory; default portable.cache/downloads
@@ -32,7 +32,8 @@ export interface DownloadOpts {
   headers?: Record<string, string>;
 }
 
-export interface DownloadEntry {
+export interface DownloadE
+ntry {
   id: string;
   url: string;
   filePath: string;
@@ -41,11 +42,9 @@ export interface DownloadEntry {
   done: boolean;
   error: string | null;
   sha256Ok: boolean;
-}
+}  
 
-type ProgressSender = (entry: Down loa
-
-dEntry) => void;
+type ProgressSender = (entry: DownloadEntry) => void;
 
 export class DownloadService {
   private _cacheDir: string;
@@ -112,7 +111,7 @@ export class DownloadService {
     this._active.delete(id);
     return true;
   }
-
+ 
   list(): DownloadEntry[] {
     return Array.from(this._active.values()).map(a => a.entry);
   }

@@ -132,6 +132,8 @@ protocol.registerSchemesAsPrivileged([
 // Window
 // ----------------------------------------------------------------------------
 let mainWindow: BrowserWindow | null = null;
+// 外嵌 AI 面板（僚机窗口，skipTaskbar → 非独立顶层窗口，不出现任务栏/Alt+Tab）
+const _externalPanels: (BrowserWindow | null)[] = [null, null];
 const engineHost = new EngineHost(portable.root);
 const audioEngine = new AudioEngine(portable.root);
 const monacoHost = new MonacoHost();
@@ -283,7 +285,13 @@ function createWindow(): BrowserWindow {
     win.on('closed', () => {
         if (boundsSaveTimer) { clearTimeout(boundsSaveTimer); boundsSaveTimer = null; }
         try { lspBridge.removeTarget(win.webContents); } catch { /* ignore */ }
-        if (win === mainWindow) { mainWindow = null; }
+        if (win === mainWindow) {
+            // 关主窗口时清理所有僚机
+            for (const extWin of _externalPanels) {
+                if (extWin && !extWin.isDestroyed()) { try { extWin.close(); } catch { /* ignore */ } }
+            }
+            mainWindow = null;
+        }
     });
 
     // Persist window bounds on resize/move (debounced 500ms).
@@ -555,6 +563,8 @@ function registerAssetProtocol(): void {
     const roots: Record<string, string> = {
         // monaco-editor min build
         monaco: path.join(portable.root, 'node_modules', 'monaco-editor', 'min'),
+        // monaco-editor ESM build (for module workers)
+        'monaco-esm': path.join(portable.root, 'node_modules', 'monaco-editor', 'esm'),
         // monaco individual dependency files (ESM→AMD converted by convert_monaco_esm.py)
         monaco_deps: path.join(portable.root, 'cache', 'monaco-deps'),
         // modified worker files (workerMain.js with self.define exposed)
@@ -1588,8 +1598,7 @@ function registerIpc(): void {
     // ---- monaco ----
     monacoHost.register();
 
-    // ---- 外嵌 AI 面板（index 0=左边, index 1=右边） ----
-    const _externalPanels: (BrowserWindow | null)[] = [null, null];
+    // ---- 外嵌 AI 面板（index 0=左边, index 1=右边，skipTaskbar 不出现任务栏/Alt+Tab） ----
     ipcMain.handle('qqq:ai-panel:toggle-external', async (_e, index: number, open: boolean) => {
         if (index < 0 || index > 1) return false;
         if (open) {
@@ -1605,6 +1614,7 @@ function registerIpc(): void {
                 width: aiW, height: mwBounds.height,
                 x: xPos,
                 y: mwBounds.y,
+                skipTaskbar: true,     // 隐藏任务栏图标
                 frame: false,
                 backgroundColor: '#1e1e1e',
                 title: 'qqq AI ' + (index === 0 ? 'L' : 'R'),
@@ -1626,10 +1636,26 @@ function registerIpc(): void {
             };
             mw.on('move', syncExt);
             mw.on('resize', syncExt);
+            // 主窗口 最小化/还原 → 僚机跟随
+            const onMinimize = () => { if (!extWin.isDestroyed()) extWin.minimize(); };
+            const onRestore = () => {
+                if (!extWin.isDestroyed()) extWin.restore();
+                if (mw && !mw.isDestroyed()) mw.focus();
+            };
+            const onHide = () => { if (!extWin.isDestroyed()) extWin.hide(); };
+            const onShow = () => { if (!extWin.isDestroyed()) extWin.show(); };
+            mw.on('minimize', onMinimize);
+            mw.on('restore', onRestore);
+            mw.on('hide', onHide);
+            mw.on('show', onShow);
             extWin.on('closed', () => {
                 _externalPanels[index] = null;
                 mw.removeListener('move', syncExt);
                 mw.removeListener('resize', syncExt);
+                mw.removeListener('minimize', onMinimize);
+                mw.removeListener('restore', onRestore);
+                mw.removeListener('hide', onHide);
+                mw.removeListener('show', onShow);
             });
             _externalPanels[index] = extWin;
             return true;
