@@ -132,7 +132,9 @@ protocol.registerSchemesAsPrivileged([
 // Window
 // ----------------------------------------------------------------------------
 let mainWindow: BrowserWindow | null = null;
-// 外嵌 AI 面板（僚机窗口，skipTaskbar → 非独立顶层窗口，不出现任务栏/Alt+Tab）
+// 外嵌 AI 面板（僚机窗口）
+// 架构铁律：不可拖动(movable:false)、不可调大小(resizable:false)、与主窗口同z-order
+// 防外部篡改：监听 move/resize 事件，一旦偏离预期位置立即弹回（SSE 级实时）
 const _externalPanels: (BrowserWindow | null)[] = [null, null];
 const engineHost = new EngineHost(portable.root);
 const audioEngine = new AudioEngine(portable.root);
@@ -567,6 +569,8 @@ function registerAssetProtocol(): void {
         'monaco-esm': path.join(portable.root, 'node_modules', 'monaco-editor', 'esm'),
         // monaco individual dependency files (ESM→AMD converted by convert_monaco_esm.py)
         monaco_deps: path.join(portable.root, 'cache', 'monaco-deps'),
+        // TypeScript compiler (for custom language service, bypasses broken Monaco TS worker)
+        ts: path.join(portable.root, 'node_modules', 'typescript', 'lib'),
         // modified worker files (workerMain.js with self.define exposed)
         worker_wrapper: path.join(portable.root, 'cache', 'worker-wrapper'),
         // shell-bundled static files (e.g. boot-fallback)
@@ -1598,7 +1602,7 @@ function registerIpc(): void {
     // ---- monaco ----
     monacoHost.register();
 
-    // ---- 外嵌 AI 面板（index 0=左边, index 1=右边，skipTaskbar 不出现任务栏/Alt+Tab） ----
+    // ---- 外嵌 AI 面板（终极僚机架构：不可拖动、同层级、防外部篡改、实时跟随） ----
     ipcMain.handle('qqq:ai-panel:toggle-external', async (_e, index: number, open: boolean) => {
         if (index < 0 || index > 1) return false;
         if (open) {
@@ -1610,12 +1614,24 @@ function registerIpc(): void {
             const preloadPath = path.join(__dirname, 'preload.js');
             // index 0 → 左边，index 1 → 右边
             const xPos = index === 0 ? mwBounds.x - aiW : mwBounds.x + mwBounds.width;
+
+            // 计算僚机期望位置（纯函数，供同步和弹回逻辑共用）
+            const expectedBounds = () => {
+                const b = mw.getBounds();
+                const sx = index === 0 ? b.x - aiW : b.x + b.width;
+                return { x: sx, y: b.y, width: aiW, height: b.height };
+            };
+
             const extWin = new BrowserWindow({
                 width: aiW, height: mwBounds.height,
                 x: xPos,
                 y: mwBounds.y,
-                skipTaskbar: true,     // 隐藏任务栏图标
+                skipTaskbar: true,       // 不出现任务栏
                 frame: false,
+                movable: false,           // ★ 禁止拖动
+                resizable: false,         // ★ 禁止调整大小
+                focusable: true,
+                show: false,              // 等位置就绪后再显示
                 backgroundColor: '#1e1e1e',
                 title: 'qqq AI ' + (index === 0 ? 'L' : 'R'),
                 webPreferences: {
@@ -1628,35 +1644,97 @@ function registerIpc(): void {
             });
             extWin.removeMenu();
             extWin.loadURL(bootConfig.url + 'ai-panel/index.html?external=' + index).catch(() => { });
+
+            // ── 实时同步引擎 ──
+            let _syncing = false;  // 防重入
             const syncExt = () => {
-                if (extWin.isDestroyed()) return;
-                const b = mw.getBounds();
-                const sx = index === 0 ? b.x - aiW : b.x + b.width;
-                extWin.setBounds({ x: sx, y: b.y, width: aiW, height: b.height });
+                if (extWin.isDestroyed() || mw.isDestroyed()) return;
+                if (_syncing) return;
+                _syncing = true;
+                try {
+                    const eb = expectedBounds();
+                    extWin.setBounds(eb);
+                } finally { _syncing = false; }
             };
+
+            // 主窗口 move/resize → 僚机跟随（落地确认）
             mw.on('move', syncExt);
             mw.on('resize', syncExt);
-            // 主窗口 最小化/还原 → 僚机跟随
+            // will-move/will-resize: 拖动中高频触发 → rAF 节流（最多每帧一次）
+            let _rafPending = false;
+            const syncExtRaf = () => {
+                if (_rafPending) return;
+                _rafPending = true;
+                requestAnimationFrame(() => {
+                    _rafPending = false;
+                    syncExt();
+                });
+            };
+            mw.on('will-move' as any, syncExtRaf);
+            mw.on('will-resize' as any, syncExtRaf);
+
+            // ★ z-order 绑定：主窗口聚焦 → 僚机提到同层
+            const onFocus = () => {
+                if (extWin.isDestroyed()) return;
+                extWin.showInactive();  // 显示但不抢焦点
+                extWin.moveTop();       // 拉到主窗口同层
+            };
+            mw.on('focus', onFocus);
+
+            // 点击僚机 → 自动聚焦主窗口（保持协同感）
+            extWin.on('focus', () => {
+                if (!mw.isDestroyed() && !mw.isFocused()) {
+                    mw.focus();
+                }
+            });
+
+            // ★ 防外部篡改：僚机被移动/改大小 → 立即弹回（SSE 级实时监听）
+            const snapBack = () => {
+                if (extWin.isDestroyed() || mw.isDestroyed()) return;
+                const cur = extWin.getBounds();
+                const exp = expectedBounds();
+                // 容忍 1px 误差（HiDPI 浮点取整）
+                if (Math.abs(cur.x - exp.x) > 1 || Math.abs(cur.y - exp.y) > 1 ||
+                    Math.abs(cur.width - exp.width) > 1 || Math.abs(cur.height - exp.height) > 1) {
+                    extWin.setBounds(exp);
+                }
+            };
+            extWin.on('move', snapBack);
+            extWin.on('resize', snapBack);
+
+            // 主窗口 最小化/还原/隐藏/显示 → 僚机跟随
             const onMinimize = () => { if (!extWin.isDestroyed()) extWin.minimize(); };
             const onRestore = () => {
                 if (!extWin.isDestroyed()) extWin.restore();
-                if (mw && !mw.isDestroyed()) mw.focus();
+                if (!mw.isDestroyed()) mw.focus();
             };
             const onHide = () => { if (!extWin.isDestroyed()) extWin.hide(); };
-            const onShow = () => { if (!extWin.isDestroyed()) extWin.show(); };
+            const onShow = () => {
+                if (!extWin.isDestroyed()) extWin.showInactive();
+                syncExt();
+            };
             mw.on('minimize', onMinimize);
             mw.on('restore', onRestore);
             mw.on('hide', onHide);
             mw.on('show', onShow);
+
+            // ── 清理 ──
             extWin.on('closed', () => {
                 _externalPanels[index] = null;
                 mw.removeListener('move', syncExt);
                 mw.removeListener('resize', syncExt);
+                mw.removeListener('will-move' as any, syncExtRaf);
+                mw.removeListener('will-resize' as any, syncExtRaf);
+                mw.removeListener('focus', onFocus);
                 mw.removeListener('minimize', onMinimize);
                 mw.removeListener('restore', onRestore);
                 mw.removeListener('hide', onHide);
                 mw.removeListener('show', onShow);
             });
+
+            // 就位后显示
+            syncExt();
+            extWin.showInactive();
             _externalPanels[index] = extWin;
             return true;
         } else {

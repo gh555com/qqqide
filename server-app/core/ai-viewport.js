@@ -101,7 +101,7 @@
           if (data && Array.isArray(data) && data.length > 0) {
             projects = data;
             render();
-            window.dispatchEvent(new CustomEvent('qqq-ai-viewport-changed', { detail: { projects } }));
+            _notifyChanged();
           }
         }).catch(function () { });
       }
@@ -419,6 +419,20 @@
     }
   }
 
+  // ---- notify: CustomEvent (same window) + postMessage (AI iframe) ----
+  function _notifyChanged() {
+    var detail = { projects: projects };
+    // 同窗口订阅者（file-explorer 等）
+    window.dispatchEvent(new CustomEvent('qqq-ai-viewport-changed', { detail: detail }));
+    // AI iframe（跨 frame 通信必须用 postMessage）
+    var aiFrame = document.querySelector('#qqq-ai-zone iframe');
+    if (aiFrame && aiFrame.contentWindow) {
+      try {
+        aiFrame.contentWindow.postMessage({ type: 'qqq-ai-viewport-changed', projects: projects }, '*');
+      } catch (_) { }
+    }
+  }
+
   // ---- public API ----
   function addProject(folderPath) {
     const name = basename(folderPath);
@@ -427,8 +441,7 @@
     projects.push({ path: folderPath, name: name });
     saveProjects();
     render();
-    // notify file explorer to rebuild
-    window.dispatchEvent(new CustomEvent('qqq-ai-viewport-changed', { detail: { projects } }));
+    _notifyChanged();
   }
 
   function removeProject(idx) {
@@ -436,7 +449,7 @@
     projects.splice(idx, 1);
     saveProjects();
     render();
-    window.dispatchEvent(new CustomEvent('qqq-ai-viewport-changed', { detail: { projects } }));
+    _notifyChanged();
   }
 
   function getProjects() { return projects.slice(); }

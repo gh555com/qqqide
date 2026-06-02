@@ -130,7 +130,18 @@ var onlyStore = (function () {
   // ═══ PUBLIC API ═══
 
   function init(rootDir) {
-    if (!rootDir || typeof rootDir !== 'string') return;
+    // 支持 reset：传入 null/false 清空所有状态
+    if (!rootDir || typeof rootDir !== 'string') {
+      _rootDir = null;
+      _qgs = null;
+      _cache = {};
+      _dirty = {};
+      _initDone = false;
+      _flushFirstDirty = 0;
+      if (_flushTimer) { clearTimeout(_flushTimer); _flushTimer = null; }
+      console.log('[only-store] init reset (no rootDir)');
+      return;
+    }
     _rootDir = rootDir.replace(/\\/g, '/').replace(/\/$/, '');
     _qgs = null;
     _cache = {};

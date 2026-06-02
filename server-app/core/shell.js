@@ -523,6 +523,19 @@
 
   // ---- AI Overlay (full-window, breaks out of iframe) ----
   function bootAiOverlay() {
+    // 全局唯一 overlay ID（用于跨窗口协调：同时最多一个悬浮预览）
+    var _overlayId = 'ov_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    var _ovChannel = null;
+    try { _ovChannel = new BroadcastChannel('qqq-overlay-sync'); } catch (_) {}
+    if (_ovChannel) {
+      _ovChannel.onmessage = function (e) {
+        if (e.data && e.data.type === 'qqq-overlay-open' && e.data.id !== _overlayId) {
+          // 其他窗口打开了 overlay → 关闭自己的
+          close();
+        }
+      };
+    }
+
     var overlay = document.createElement('div');
     overlay.id = 'qqq-ai-overlay';
     overlay.style.cssText =
@@ -577,7 +590,7 @@
       if (div) {
         // 表格用 transform scale（保持原始长宽比不重绘），scroll 由 D-pad 折算
         div.style.transform = 'scale(' + zoomScale + ')';
-        div.style.transformOrigin = 'top left';
+        div.style.transformOrigin = 'center center';
         div.style.transition = 'transform 0.15s ease';
       }
     }
@@ -732,6 +745,11 @@
       if (!e.data || e.data.type !== 'qqq-ai-overlay') return;
       if (e.data.action === 'close') { close(); return; }
 
+      // 跨窗口协调：广播自己的 overlay ID，其他窗口收到后自动关闭
+      if (_ovChannel) {
+        _ovChannel.postMessage({ type: 'qqq-overlay-open', id: _overlayId });
+      }
+
       if (e.data.action === 'open-image') {
         contentEl.innerHTML = '';
         contentEl.style.overflow = 'visible';
@@ -795,8 +813,9 @@
           'background:var(--card-bg,#2a2a2a); color:var(--text-primary,#d4d0c8); ' +
           'border-radius:8px; padding:20px; user-select:text; ' +
           'box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
-          'transform:scale(1); transform-origin:top left; ' +
-          'transition:transform 0.15s ease; overscroll-behavior:contain;';
+          'max-width:90vw; max-height:calc(100vh - 200px); ' +
+          'transform:scale(1); transform-origin:center center; ' +
+          'transition:transform 0.15s ease; overscroll-behavior:contain;'
         wrapper.innerHTML = e.data.html;
         var tables = wrapper.querySelectorAll('table');
         for (var ti = 0; ti < tables.length; ti++) {
@@ -817,6 +836,9 @@
         var maxW = window.innerWidth * 0.9, maxH = window.innerHeight - 120;
         _initZoom = Math.min(1, maxW / Math.max(1, natW), maxH / Math.max(1, natH));
         zoomScale = _initZoom;
+        applyZoom();
+        // 表格自动放大两档（等效点击两次 + 按钮）
+        zoomScale = Math.min(5.0, zoomScale * 1.25 * 1.25);
         applyZoom();
         // 拦截表格滚轮 → 改为缩放
         wrapper.addEventListener('wheel', function (we) {
@@ -933,7 +955,8 @@
             pane.appendChild(editorMount);
             // Read and display file
             bridge.fs.read(filePath).then(content => {
-              window.qqqEditor.openInPane(editorMount, filePath, content);
+          var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
+          window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts);
             }).catch(err => {
               pane.textContent = 'Error: ' + (err && err.message);
             });
@@ -953,7 +976,8 @@
         editorMount.style.cssText = 'position:absolute; inset:0;';
         pane.appendChild(editorMount);
         bridge.fs.read(filePath).then(content => {
-          window.qqqEditor.openInPane(editorMount, filePath, content);
+          var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
+          window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts);
         }).catch(err => {
           pane.textContent = 'Error: ' + (err && err.message);
         });
@@ -975,9 +999,16 @@
         return;
       }
 
-      // Handle qqq-file-open-right from iframes �?opens file in right editor group
+      // Handle qqq-file-open-right from iframes — opens file in right editor group
       if (e.data.type === 'qqq-file-open-right' && e.data.path && window.qqqTabs && window.qqqTabs.openFileInRightGroup) {
+        if (e.data.readOnly) { window._nextPaneOpts = { readOnly: true }; }
         window.qqqTabs.openFileInRightGroup(e.data.path);
+        return;
+      }
+
+      // Handle qqq-editor-refresh from iframes — live-update already-open editor content (chat.txt, etc.)
+      if (e.data.type === 'qqq-editor-refresh' && e.data.path && window.qqqEditor && window.qqqEditor.refreshLiveContent) {
+        window.qqqEditor.refreshLiveContent(e.data.path, e.data.content);
         return;
       }
 

@@ -7,9 +7,9 @@ var c = fs.readFileSync(p, 'utf8');
 var old = "userMsgEl._floor = agent._ctx.totalFloors;";
 var nw = "userMsgEl._floor = agent ? agent._ctx.totalFloors : 0;";
 if (c.indexOf(old) >= 0) {
-  c = c.replace(old, nw);
-  fs.writeFileSync(p, c, 'utf8');
-  console.log('Fixed agent._ctx guard');
+    c = c.replace(old, nw);
+    fs.writeFileSync(p, c, 'utf8');
+    console.log('Fixed agent._ctx guard');
 } else {
-  console.log('Pattern not found');
+    console.log('Pattern not found');
 }

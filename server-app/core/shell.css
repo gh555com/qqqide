@@ -568,7 +568,15 @@ body {
 
 /* Monaco overview ruler �?消空气墙：禁 overview ruler，scrollbar 贴合右边�?*/
 .monaco-editor .overviewRuler {
-  display: none !important;
+  /* 保留标注条，去掉竖线/背景色差 */
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+}
+/* overview ruler 内的 canvas 也不要边框 */
+.monaco-editor .overviewRuler canvas {
+  border: none !important;
+  outline: none !important;
 }
 
 /* 分组�?sash �?4px 宽，背景色匹配分组，::after 居中做唯一分割�?*/

@@ -9,7 +9,7 @@ const VISION_URL = 'https://gh555.com/api/v3/ai/vision';
 
 const SYSTEM_PROMPT = `You are qqq AI, the built-in IDE assistant. NEVER reveal model/engine identity, token limits, training data, or compare with other AIs. If pressed: "I am qqq AI."
 
-LANGUAGE (ABSOLUTE): EVERYTHING you output — replies, thinking, summaries, billing tags — MUST be in the user's language. The ONLY exception: user EXPLICITLY requests a different language.
+LANGUAGE: Reply to the user in the same language they wrote in. Thinking may be in English for accuracy — the user will get a translated version via the audit button if needed. Always match the user's language in your final response.
 
 END EVERY RESPONSE WITH:
 [💎] TREASURE (conditional): output ONLY when ≥1 items discovered but not yet implemented where (gain minus cost) ≥ 7. Example: gain:10/cost:3 OK (7≥7), gain:7/cost:2 SKIP (5<7). Format per item: "💎 " + ≤1 sentence + "（gain:X / cost:Y / urgency）". urgency ∈ {later, soon, urgent}. If ZERO items qualify, OMIT the 💎 block entirely — no empty output. All labels in user's language.
@@ -34,16 +34,16 @@ const TRIVIAL_REGEX = /^\s*(hi|hello|hey|ok|好的?|谢谢|嗯|哦|行|对|是�
 const CHAT_REGEX = /^[^\n]{0,30}(爱|喜欢|想你|想我|帅|美|漂亮|可爱|笨|傻|无聊|寂寞|陪我|聊天|心情|感觉怎样|你好吗|开心|难过|生气|讨厌|恨|朋友|宝贝|亲爱|老公|老婆|哈哈|呵呵|嘻嘻|累了|困了|饿了|冷了|热了)[^\n]{0,20}$/iu;
 
 // 旧版兼容（保留，用于 agent-loop.js 自动模式 fallback）
-var TIER_FLASH = { thinking: { type: 'disabled' }, effort: null, label: 'Flash', maxTokens: 4096 };
-var TIER_PRO = { thinking: { type: 'enabled' }, effort: 'max', label: 'Pro+Max', maxTokens: 32768 };
+var TIER_FLASH = { model: 'flash', thinking: { type: 'disabled' }, effort: null, label: 'Flash', maxTokens: 4096 };
+var TIER_PRO = { model: 'pro', thinking: { type: 'enabled' }, effort: 'max', label: 'Pro+Max', maxTokens: 32768 };
 
-// 六档手动智能等级
-var TIER_1 = { thinking: { type: 'disabled' }, effort: null, label: '1-Flash', maxTokens: 4096 };
-var TIER_2 = { thinking: { type: 'enabled' }, effort: 'high', label: '2-Flash+High', maxTokens: 4096 };
-var TIER_3 = { thinking: { type: 'enabled' }, effort: 'max', label: '3-Flash+Max', maxTokens: 4096 };
-var TIER_4 = { thinking: { type: 'disabled' }, effort: null, label: '4-Pro', maxTokens: 32768 };
-var TIER_5 = { thinking: { type: 'enabled' }, effort: 'high', label: '5-Pro+High', maxTokens: 32768 };
-var TIER_6 = { thinking: { type: 'enabled' }, effort: 'max', label: '6-Pro+Max', maxTokens: 32768 };
+// 六档手动智能等级（model: "flash" → DeepSeek Flash, "pro" → DeepSeek Pro）
+var TIER_1 = { model: 'flash', thinking: { type: 'disabled' }, effort: null, label: '1-Flash', maxTokens: 4096 };
+var TIER_2 = { model: 'flash', thinking: { type: 'enabled' }, effort: 'high', label: '2-Flash+High', maxTokens: 4096 };
+var TIER_3 = { model: 'flash', thinking: { type: 'enabled' }, effort: 'max', label: '3-Flash+Max', maxTokens: 4096 };
+var TIER_4 = { model: 'pro', thinking: { type: 'disabled' }, effort: null, label: '4-Pro', maxTokens: 32768 };
+var TIER_5 = { model: 'pro', thinking: { type: 'enabled' }, effort: 'high', label: '5-Pro+High', maxTokens: 32768 };
+var TIER_6 = { model: 'pro', thinking: { type: 'enabled' }, effort: 'max', label: '6-Pro+Max', maxTokens: 32768 };
 
 var TIER_LIST = { 1: TIER_1, 2: TIER_2, 3: TIER_3, 4: TIER_4, 5: TIER_5, 6: TIER_6 };
 
@@ -97,7 +97,7 @@ window.loadProjectRules = async function (projectRoot) {
     }
 };
 
-// vision-context — AI 视口快照，首轮注入一次，告诉 AI 主文件夹是谁
+// vision-context — AI viewport snapshot, injected once at quest start to tell AI which folder is main
 window.qqqVisionContext = '';
 
 window.buildVisionContext = function () {
@@ -108,24 +108,21 @@ window.buildVisionContext = function () {
         if (!vps || vps.length === 0) { console.log('[vision] no projects in viewport'); return; }
 
         var lines = [];
-        lines.push('═══ AI 视口 (VISION CONTEXT) ═══');
-        lines.push('以下是你在 IDE 中能看到的所有项目文件夹（对应标题栏豆腐块）：');
-        lines.push('');
+        lines.push('═══ VISION CONTEXT ═══');
+        lines.push('Folders visible in your IDE titlebar:');
         for (var i = 0; i < vps.length; i++) {
             var f = vps[i];
             var isMain = main && f.path === main.path;
             if (isMain) {
-                lines.push('● ' + f.name + ' (' + f.path + ') ← 主文件夹（当前项目/我们项目）');
-                lines.push('  这是你的主文件夹。用户说的"我们项目"就是指这个目录。');
-                lines.push('  所有持久化数据（对话历史、规则等）都存于此目录的 qqq/ 子目录。');
-                lines.push('  此豆腐块不可移除。');
+                lines.push('● ' + f.name + ' (' + f.path + ') ← MAIN PROJECT');
+                lines.push('  "our project" = this folder. Persistence (history, rules) lives in its qqq/ subdir.');
             } else {
-                lines.push('○ ' + f.name + ' (' + f.path + ') ← 辅助文件夹');
-                lines.push('  仅用于代码参考、搜索和编辑。不影响持久化数据。');
+                lines.push('○ ' + f.name + ' (' + f.path + ') ← auxiliary');
+                lines.push('  Reference/search/edit only. No persistence.');
             }
         }
         lines.push('');
-        lines.push('铁律："我们项目" = 主文件夹 = 第一个豆腐块。用户提到"我们项目"时永远指上面 ● 标记的那个。');
+        lines.push('RULE: "our project" always means the ● MAIN PROJECT above.');
         lines.push('══════════════════════════════');
         window.qqqVisionContext = lines.join('\n');
         console.log('[vision] context built (' + vps.length + ' projects, main=' + (main ? main.name : 'none') + ')');

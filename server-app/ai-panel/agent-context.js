@@ -298,7 +298,7 @@
         }
     };// ═══ 构建动态上下文（注入到 API 消息末尾） ═══
     AgentLoop.prototype._buildDynamicContext = function (currentQuery) {
-        var ctx = '';
+        var ctx = '[DYNAMIC CONTEXT]\n';
         if (this._ctx.narrative) {
             ctx += 'CONVERSATION CONTEXT (compressed history):\n' + this._ctx.narrative;
         }
@@ -321,7 +321,7 @@
             var treasureLines = recentTreasures.map(function (t) { return '💎 ' + t.content; }).join('\n');
             ctx += '\n\nKEY DISCOVERIES:\n' + treasureLines;
         }
-        return ctx.trim() ? '[DYNAMIC CONTEXT]\n' + ctx : '';
+        return ctx.trim() ? ctx : '';
     };
 
     // ═══ 关键词检索相关事实 ═══

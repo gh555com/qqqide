@@ -91,6 +91,8 @@ export class StateStore extends EventEmitter {
     private _saveDbTimer: NodeJS.Timeout | null = null;
     // ★ in-memory read cache (avoids append() re-reading from DB each time)
     private _memCache: Map<string, any> = new Map();
+    // ★ 全局数据库标记：用于阻止 quest 相关 namespace 误写入全局 state.db
+    private _isGlobal: boolean = false;
 
     /** Hook for state-cloud.ts */
     public onCloudDirty: ((ns: string, key: string) => void) | null = null;
@@ -112,12 +114,14 @@ export class StateStore extends EventEmitter {
             try { fs.mkdirSync(dbDir, { recursive: true }); } catch { /* ignore */ }
             this.dbPath = dbPath;
             this.outboxDir = path.join(dbDir, 'outbox');
+            this._isGlobal = false;
         } else {
             // Global: db in userData/state/
             const stateDir = path.join(userDataDir, 'state');
             try { fs.mkdirSync(stateDir, { recursive: true }); } catch { /* ignore */ }
             this.dbPath = path.join(stateDir, 'state.db');
             this.outboxDir = path.join(stateDir, 'outbox');
+            this._isGlobal = true;
         }
         try { fs.mkdirSync(this.outboxDir, { recursive: true }); } catch { /* ignore */ }
         this.deviceId = this._loadOrCreateDeviceId(path.dirname(this.outboxDir));
@@ -352,6 +356,20 @@ export class StateStore extends EventEmitter {
         if (typeof schema.v !== 'number' || schema.v < 1) {
             throw new Error('state.register: schema.v must be >=1');
         }
+
+        // 🔴 铁律：全局 state.db 禁止注册 quest/AI 相关 namespace
+        // quest 数据仅允许存在于项目级 quest.sq3/only.sq3
+        if (this._isGlobal) {
+            const FORBIDDEN_NS = ['qqq.ai', 'qqq.only', 'qqq.quest'];
+            if (FORBIDDEN_NS.includes(ns) || ns.startsWith('qqq.ai.') || ns.startsWith('qqq.quest.')) {
+                throw new Error(
+                    `state.register: ns "${ns}" is FORBIDDEN in global state.db. ` +
+                    `Quest/AI data MUST use project-level SQLite (quest.sq3/only.sq3). ` +
+                    `Refusing to register.`
+                );
+            }
+        }
+
         const existing = this.schemas.get(ns);
         if (existing) {
             if (existing.form !== schema.form) {

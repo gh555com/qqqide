@@ -654,11 +654,7 @@ function renderMarkdown(src) {
   // Links
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
   // Tables (must run before lists to avoid confusing | with list markers)
-    s = s.replace(/(?:
-|^)(\|.+\|)
-\|[-:\s|]+\|
-((?:\|.+\|
-?)*)/g, function(_, header, rows) {
+    s = s.replace(/(?:\n|^)(\|.+\|)\n\|[-:\s|]+\|\n((?:\|.+\|\n?)*)/g, function(_, header, rows) {
     if (!header || rows === undefined) return _;
     const ths = header.split('|').filter(function(c) { return c.trim(); }).map(function(c) { return '<th>' + c.trim() + '</th>'; }).join('');
     const trs = rows.split('\n').filter(function(r) { return r.trim(); }).map(function(r) {
@@ -1383,15 +1379,6 @@ async function createNewQuest() {
     _broadcast('owner-released', questActiveId);
   }
   questActiveId = '';
-  agent.conversation = [];
-  agent._ctx = { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
-  agent.totalCostGe = 0;
-  agent._floorCostWge = 0;
-  agent._lastUserInput = null;
-  agent._houses = [];
-  agent._houseIndex = 0;
-  agent._lastApiPromptTokens = 0;
-  agent._serverDrift = 0;
   _queue = [];
   renderQueueStrip();
   $messages.innerHTML = '';
@@ -2181,7 +2168,7 @@ async function sendMessage() {
 
   // 构建用户消息显示（含图片缩略图）
   var userMsgEl = addMessageEl('user', text);
-  userMsgEl._floor = agent._ctx.totalFloors;
+  userMsgEl._floor = agent ? agent._ctx.totalFloors : 0;
   if (pendingImages.length > 0) {
     var imgRow = document.createElement('div');
     imgRow.style.cssText = 'margin-top:6px;';

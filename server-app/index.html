@@ -12,6 +12,35 @@
 </head>
 <body>
 
+<!-- 控制台捕获：拦截一切 console 输出 → 环形缓冲区（必须在所有脚本之前） -->
+<script>
+(function() {
+  'use strict';
+  var MAX = 5000;
+  var _buf = [];
+  var _orig = {};
+  ['log','warn','error','info','debug'].forEach(function(m) {
+    _orig[m] = console[m];
+    console[m] = function() {
+      var args = Array.prototype.slice.call(arguments);
+      var ts = new Date().toISOString().slice(11,23);
+      var line = ts + ' [' + m.toUpperCase() + ']';
+      for (var i = 0; i < args.length; i++) {
+        try {
+          if (typeof args[i] === 'object') line += ' ' + JSON.stringify(args[i]);
+          else line += ' ' + String(args[i]);
+        } catch(_) { line += ' [unserializable]'; }
+      }
+      _buf.push(line);
+      if (_buf.length > MAX) _buf.shift();
+      _orig[m].apply(console, arguments);
+    };
+  });
+  window.__qqq_console_text = function() { return _buf.join('\n'); };
+  window.__qqq_console_clear = function() { _buf.length = 0; };
+})();
+</script>
+
 <div class="qqq-shell">
 
   <!-- ======== Menu Area (top, full width) ======== -->
@@ -99,6 +128,8 @@
 <script src="ai-panel/ai-panel.js"></script>
 <!-- key-hook MUST load before editor.js / shell.js so they can register handlers -->
 <script src="core/key-hook.js"></script>
+<!-- ts-service: custom TypeScript language service (bypasses broken Monaco TS worker) -->
+<script src="core/ts-service.js"></script>
 <script src="core/editor.js"></script>
 <script src="goods/rage/services/codelens.js"></script>
 <script src="goods/rage/services/decoration.js"></script>
@@ -116,6 +147,121 @@
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./service-worker.js').catch(() => {});
   }
+</script>
+
+<!-- 控制台悬浮按钮（右下角，顶层窗口可见） -->
+<style>
+#qqq-console-btns {
+  position: fixed; bottom: 16px; right: 16px;
+  display: flex; gap: 6px; z-index: 999999;
+  opacity: 0.35; transition: opacity 0.15s;
+}
+#qqq-console-btns:hover { opacity: 1; }
+#qqq-console-btns button {
+  padding: 5px 12px; border: 1px solid var(--border-color, #888);
+  border-radius: 4px; background: var(--card-bg, #333);
+  color: var(--text-primary, #ccc); font-size: 11px;
+  cursor: pointer; white-space: nowrap;
+  font-family: ui-monospace, monospace;
+}
+#qqq-console-btns button:hover { background: var(--base2, #444); }
+#qqq-console-btns button:active { opacity: 0.8; }
+#qqq-console-toast {
+  position: fixed; bottom: 52px; right: 16px;
+  padding: 6px 14px; border-radius: 4px;
+  background: rgba(0,0,0,0.85); color: #fff;
+  font-size: 12px; z-index: 999999;
+  pointer-events: none; opacity: 0;
+  transition: opacity 0.2s;
+}
+</style>
+<div id="qqq-console-btns">
+  <button id="qqq-console-copy" title="复制全部控制台输出">📋 复制</button>
+  <button id="qqq-console-save" title="另存为 .log 文件">💾 另存为</button>
+</div>
+<div id="qqq-console-toast"></div>
+<script>
+(function() {
+  'use strict';
+  if (parent !== window) {
+    var _btns = document.getElementById('qqq-console-btns');
+    if (_btns) _btns.style.display = 'none';
+    return;
+  }
+  var $copy = document.getElementById('qqq-console-copy');
+  var $save = document.getElementById('qqq-console-save');
+  var $toast = document.getElementById('qqq-console-toast');
+  var _toastTimer = null;
+  function toast(msg) {
+    $toast.textContent = msg;
+    $toast.style.opacity = '1';
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(function() { $toast.style.opacity = '0'; }, 1800);
+  }
+  $copy.onclick = function() {
+    var text = window.__qqq_console_text ? window.__qqq_console_text() : '';
+    if (!text) { toast('控制台暂无输出'); return; }
+    var b = window.qqqBridge;
+    if (b && b.clipboard && b.clipboard.writeText) {
+      b.clipboard.writeText(text).then(function() { toast('已复制 ' + text.split('\\n').length + ' 行'); });
+    } else {
+      navigator.clipboard.writeText(text).then(function() { toast('已复制'); }).catch(function() { toast('复制失败'); });
+    }
+  };
+  $save.onclick = function() {
+    var text = window.__qqq_console_text ? window.__qqq_console_text() : '';
+    if (!text) { toast('控制台暂无输出'); return; }
+    var b = window.qqqBridge;
+    if (b && b.dialog && b.dialog.save) {
+      b.dialog.save({
+        title: '另存为',
+        defaultPath: 'console_' + new Date().toISOString().slice(0,10) + '.log',
+        filters: [{ name: 'Log Files', extensions: ['log','txt'] }]
+      }).then(function(r) {
+        if (!r.canceled && r.filePath) {
+          return b.fs.write(r.filePath, text);
+        }
+      }).then(function() { toast('已保存'); }).catch(function(e) { toast('保存失败: ' + (e.message||e)); });
+    } else {
+      var blob = new Blob([text], { type: 'text/plain' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'console_' + new Date().toISOString().slice(0,10) + '.log';
+      a.click();
+      toast('已下载');
+    }
+  };
+})();
+</script>
+
+<!-- 僚机 bridge 代理：主窗口 shell 直接处理（不依赖 AI 面板 iframe 是否打开） -->
+<script>
+(function() {
+  'use strict';
+  if (parent !== window) return;
+  if (window.location.search.indexOf('external=') !== -1) return;
+  try {
+    var _bc2 = new BroadcastChannel('qqq-ai-host-bridge');
+    _bc2.onmessage = function(e) {
+      var d = e.data;
+      if (!d || !d._bridgeProxyRequest) return;
+      var bridge = window.qqqBridge;
+      if (!bridge) { _reply2(d._seq, null, 'bridge unavailable'); return; }
+      var method = d._method, args = d._args || [];
+      try {
+        var parts = method.split('.'), obj = bridge;
+        for (var i = 0; i < parts.length; i++) { obj = obj[parts[i]]; if (!obj) throw new Error('method not found: ' + method); }
+        var result = obj.apply(bridge, args);
+        if (result && typeof result.then === 'function') {
+          result.then(function(v) { _reply2(d._seq, v, null); }, function(e) { _reply2(d._seq, null, e.message || String(e)); });
+        } else { _reply2(d._seq, result, null); }
+      } catch (e) { _reply2(d._seq, null, e.message || String(e)); }
+    };
+    function _reply2(seq, result, error) {
+      try { _bc2.postMessage({ _bridgeProxyResponse: true, _seq: seq, _result: result, _error: error }); } catch (_) {}
+    }
+  } catch (_) {}
+})();
 </script>
 </body>
 </html>

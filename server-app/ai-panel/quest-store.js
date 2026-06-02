@@ -30,34 +30,28 @@ var QuestStore = (function () {
     function _bridge() {
         _bridgeCalled++;
         if (_qgs) return _qgs;
-        // 项目级 SQLite（优先）—— 有 rootDir 就用项目级持久化，数据落 {rootDir}/qqq/alphal/quest.sq3
-        if (_rootDir && window && window.parent && window.parent.qgs && typeof window.parent.qgs.project === 'function') {
+
+        // 铁律：绑定主项目后才允许任何持久化操作。无 rootDir → 直接拒绝。
+        if (!_rootDir) {
+            if (_bridgeCalled <= 3) console.log('[quest-store] bridge BLOCKED: no rootDir (project not bound)');
+            return null;
+        }
+
+        // 项目级 SQLite（唯一路径）—— 数据落 {rootDir}/qqq/alphal/quest.sq3
+        if (window && window.parent && window.parent.qgs && typeof window.parent.qgs.project === 'function') {
             _qgs = window.parent.qgs.project(_rootDir + '/qqq/alphal/quest.sq3', NS, { v: 1, form: 'doc' });
             if (_bridgeCalled <= 3) console.log('[quest-store] bridge OK via parent.qgs.project(dbPath=' + _rootDir + '/qqq/alphal/quest.sq3)');
             return _qgs;
         }
-        // 父窗口的 qgs（state-sdk.js 注入的唯一真理入口）—— 全局模式
-        if (typeof window !== 'undefined' && window.parent) {
-            try {
-                if (window.parent.qgs && typeof window.parent.qgs.ns === 'function') {
-                    _qgs = window.parent.qgs.ns(NS, { v: 1, form: 'doc' });
-                    if (_bridgeCalled <= 3) console.log('[quest-store] bridge OK via parent.qgs.ns');
-                    return _qgs;
-                }
-                if (window.parent.qqqState && typeof window.parent.qqqState.ns === 'function') {
-                    _qgs = window.parent.qqqState.ns(NS, { v: 1, form: 'doc' });
-                    if (_bridgeCalled <= 3) console.log('[quest-store] bridge OK via parent.qqqState.ns');
-                    return _qgs;
-                }
-            } catch (_) { }
-        }
-        // 本窗口的 qgs（iframe 自己加载了 state-sdk.js）
-        if (typeof window !== 'undefined' && window.qgs && typeof window.qgs.ns === 'function') {
-            _qgs = window.qgs.ns(NS, { v: 1, form: 'doc' });
-            if (_bridgeCalled <= 3) console.log('[quest-store] bridge OK via self.qgs.ns');
+
+        // 回退：本窗口的 qgs.project（独立僚机/无 parent）
+        if (typeof window !== 'undefined' && window.qgs && typeof window.qgs.project === 'function') {
+            _qgs = window.qgs.project(_rootDir + '/qqq/alphal/quest.sq3', NS, { v: 1, form: 'doc' });
+            if (_bridgeCalled <= 3) console.log('[quest-store] bridge OK via self.qgs.project');
             return _qgs;
         }
-        if (_bridgeCalled <= 3) console.log('[quest-store] bridge FAIL: no qgs available, parent.qgs:', !!(window.parent && window.parent.qgs), 'self.qgs:', !!window.qgs);
+
+        if (_bridgeCalled <= 3) console.log('[quest-store] bridge FAIL: no project() API, parent.qgs:', !!(window.parent && window.parent.qgs), 'self.qgs:', !!window.qgs);
         return null;
     }
 
@@ -377,13 +371,16 @@ var QuestStore = (function () {
     // 保存 quest 级元数据（ctx, cost, timings — 不含 floor 数据）
     QuestStore.prototype.save = async function (id, data) {
         if (_guardWrite('save')) return;
-        data.savedAt = Date.now();
-        // 保留 __nextFloorId 计数器（由 getNextFloorId 写入，不可被 save 覆盖）
-        if (typeof data[COUNTER_FLOOR_FIELD] !== 'number') {
-            var existing = await _get(QUEST_NS + '.' + id);
-            if (existing && typeof existing[COUNTER_FLOOR_FIELD] === 'number') {
-                data[COUNTER_FLOOR_FIELD] = existing[COUNTER_FLOOR_FIELD];
-            }
+    data.savedAt = Date.now();
+    // 保留 __nextFloorId 计数器 + _owner（分别由 getNextFloorId / claimOwner 写入，不可被 save 覆盖）
+    var existing = await _get(QUEST_NS + "." + id);
+    if (existing) {
+      if (typeof data[COUNTER_FLOOR_FIELD] !== "number" && typeof existing[COUNTER_FLOOR_FIELD] === "number") {
+        data[COUNTER_FLOOR_FIELD] = existing[COUNTER_FLOOR_FIELD];
+      }
+      if (existing._owner && !data._owner) {
+        data._owner = existing._owner;
+      }
         }
         await _setNow(QUEST_NS + '.' + id, data);
         _notify(this, 'quest-saved', id, { floorNum: data.ctx ? data.ctx.totalFloors : undefined });

@@ -262,48 +262,36 @@
       s.src = baseUrl + '/loader.js';
       s.onload = () => {
         try {
-          // configure require
           // eslint-disable-next-line no-undef
           require.config({ paths: { vs: baseUrl } });
-          // ── Monaco workers: direct qqq-asset:// URL ──
-          // Each worker (workerMain.js, tsWorker.js etc.) is self-contained
-          // with its own AMD loader. Individual dependency files that the
-          // worker's AMD loader needs are served from cache/monaco-deps/vs/
-          // (converted from esm by convert_monaco_esm.py) via protocol fallback.
-          var _langWorker = {
-            typescript: 'tsWorker', javascript: 'tsWorker',
-            json: 'jsonWorker', html: 'htmlWorker', css: 'cssWorker',
-          };
 
+          // All workers: use workerMain.js.
+          // TS/JS: Monaco's built-in TS worker will fail (known Electron bug),
+          // but failing fast is better than a dummy worker that hangs.
+          // Our custom ts-service.js handles TS/JS IntelliSense independently.
           window.MonacoEnvironment = {
             getWorker: function (workerId, label) {
-              // Language workers: use ESM module worker (handles model sync internally).
-              // Base workers: AMD min build (workerMain.js).
-              var isLang = label && _langWorker[label];
-              var workerUrl, workerOpts;
-              if (isLang) {
-                workerUrl = 'qqq-asset://monaco-esm/vs/language/typescript/ts.worker.js';
-                workerOpts = { type: 'module' };
-              } else {
-                workerUrl = 'qqq-asset://monaco/vs/base/worker/workerMain.js';
-                workerOpts = undefined;
-              }
-              console.log('[monaco-worker] ' + (isLang ? 'lang' : 'base') + ': ' + workerId + '/' + label);
-              return new Worker(workerUrl, workerOpts);
+              var workerUrl = 'qqq-asset://monaco/vs/base/worker/workerMain.js';
+              console.log('[monaco-worker] ' + (label || 'base') + ': ' + workerId + '/' + (label || 'editor'));
+              return new Worker(workerUrl);
             },
           };
+
           // eslint-disable-next-line no-undef
           require(['vs/editor/editor.main'], () => {
-            // Eager model sync: models MUST be synced before loadForeignModule creates the TS service.
-            var tsd = window.monaco.languages.typescript.typescriptDefaults;
-            tsd._eagerModelSync = true;
-            tsd.setEagerModelSync(true);
-            console.log('[monaco] typescript eagerModelSync:', tsd.getEagerModelSync());
-            var jsd = window.monaco.languages.typescript.javascriptDefaults;
-            jsd._eagerModelSync = true;
-            jsd.setEagerModelSync(true);
-            console.log('[monaco] javascript eagerModelSync:', jsd.getEagerModelSync());
-            resolve(window.monaco);
+            var monaco = window.monaco;
+
+            // Keep Monaco's built-in TS diagnostics enabled.
+            // The plain-path URI fix (in openInPane) should let the TS worker
+            // find source files properly in Electron.
+            // If this works, we don't need the custom ts-service fallback.
+
+            // ── Bootstrap custom TS/JS IntelliSense (fallback, optional) ──
+            // Disabled for now — using Monaco's built-in TS with plain-path URIs.
+            // bootCustomTsService(monaco);
+
+            console.log('[monaco] ready');
+            resolve(monaco);
           }, reject);
         } catch (e) { reject(e); }
       };
@@ -324,6 +312,113 @@
     });
   }
 
+  // ── Custom TS/JS providers (replaces Monaco's broken built-in TS worker) ──
+  // Called ONCE from the Monaco load callback — guaranteed to run regardless
+  // of whether build() or openInPane() is used.
+  var _tsBootDone = false;
+
+  function bootCustomTsService(monaco) {
+    if (_tsBootDone) return;
+    _tsBootDone = true;
+
+    var tsService = window.qqqTsService;
+    if (!tsService) {
+      console.warn('[editor] qqqTsService not available, TS features disabled');
+      return;
+    }
+
+    // ── Hover Provider ──
+    var hoverProvider = {
+      provideHover: function (model, position) {
+        if (!tsService.isReady()) return null;
+        return tsService.getHover(model, position);
+      },
+    };
+    monaco.languages.registerHoverProvider('typescript', hoverProvider);
+    monaco.languages.registerHoverProvider('javascript', hoverProvider);
+    monaco.languages.registerHoverProvider('typescriptreact', hoverProvider);
+    monaco.languages.registerHoverProvider('javascriptreact', hoverProvider);
+
+    // ── Completion Provider ──
+    var tsTriggerChars = ['.', '"', "'", '`', '/', '@', '<', '#', ' '];
+    var completionProvider = {
+      triggerCharacters: tsTriggerChars,
+      provideCompletionItems: function (model, position) {
+        if (!tsService.isReady()) return { suggestions: [] };
+        var items = tsService.getCompletions(model, position);
+        return { suggestions: items };
+      },
+    };
+    monaco.languages.registerCompletionItemProvider('typescript', completionProvider);
+    monaco.languages.registerCompletionItemProvider('javascript', completionProvider);
+    monaco.languages.registerCompletionItemProvider('typescriptreact', completionProvider);
+    monaco.languages.registerCompletionItemProvider('javascriptreact', completionProvider);
+
+    // ── Diagnostics ──
+    var _diagTimers = {};
+
+    function updateDiagnostics(model) {
+      if (!model || !tsService || !tsService.isReady()) return;
+      var lang = model.getLanguageId();
+      if (lang !== 'typescript' && lang !== 'javascript' &&
+          lang !== 'typescriptreact' && lang !== 'javascriptreact') return;
+      try {
+        var diags = tsService.getDiagnostics(model);
+        monaco.editor.setModelMarkers(model, 'ts-service', diags);
+      } catch (e) {
+        console.warn('[editor] ts diagnostics update failed:', e && e.message);
+      }
+    }
+
+    function scheduleDiagnostics(model) {
+      var uri = model.uri.toString();
+      if (_diagTimers[uri]) clearTimeout(_diagTimers[uri]);
+      _diagTimers[uri] = setTimeout(function () {
+        delete _diagTimers[uri];
+        updateDiagnostics(model);
+      }, 300);
+    }
+
+    monaco.editor.onDidCreateModel(function (model) {
+      scheduleDiagnostics(model);
+      model.onDidChangeContent(function () { scheduleDiagnostics(model); });
+      model.onWillDispose(function () {
+        var u = model.uri.toString();
+        if (_diagTimers[u]) { clearTimeout(_diagTimers[u]); delete _diagTimers[u]; }
+      });
+    });
+
+    var existingModels = monaco.editor.getModels();
+    for (var i = 0; i < existingModels.length; i++) {
+      (function (model) {
+        scheduleDiagnostics(model);
+        model.onDidChangeContent(function () { scheduleDiagnostics(model); });
+        model.onWillDispose(function () {
+          var u = model.uri.toString();
+          if (_diagTimers[u]) { clearTimeout(_diagTimers[u]); delete _diagTimers[u]; }
+        });
+      })(existingModels[i]);
+    }
+
+    // ── Start loading TypeScript (async) ──
+    tsService.init(function () {
+      if (tsService.isReady()) {
+        console.log('[editor] ts-service ready, refreshing all TS/JS models');
+        var allModels = monaco.editor.getModels();
+        for (var j = 0; j < allModels.length; j++) {
+          var m = allModels[j];
+          var lang = m.getLanguageId();
+          if (lang === 'typescript' || lang === 'javascript' ||
+              lang === 'typescriptreact' || lang === 'javascriptreact') {
+            scheduleDiagnostics(m);
+          }
+        }
+      }
+    });
+
+    console.log('[editor] custom TS/JS providers registered');
+  }
+
   // ---------------- Editor build ----------------
   async function build(host) {
     mountEl = host;
@@ -332,7 +427,7 @@
       // 注册唯一真理配色机器的 Monaco 主题
       if (window.qqqTheme) { window.qqqTheme.defineMonacoThemes(monaco); }
 
-      // 配置 Monaco TypeScript Worker（全局单例，幂等）
+      // 配置 Monaco TypeScript 编译选项（会同步到 ts-service）
       configureMonacoTypescript(monaco);
 
       const theme = (window.qqqTheme && window.qqqTheme.getMonacoTheme()) || 'vs';
@@ -346,7 +441,7 @@
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         renderWhitespace: 'selection',
-        overviewRulerLanes: 0,
+        overviewRulerLanes: 3,
         wordWrap: 'on',
         wrappingStrategy: 'advanced',
         tabSize: 4,
@@ -478,26 +573,43 @@
 
   let _monacoRef = null;   // raw monaco namespace
   let _editorRef = null;   // raw monaco IStandaloneCodeEditor
+  let _paneFiles = {};      // editor dom node → filePath (reverse lookup for dispose cleanup)
+  let _paneEditors = {};    // filePath → editor instance (for live refresh)
 
   // ---- openInPane: create a Monaco editor inside a tab pane for a specific file ----
-  async function openInPane(host, filePath, content) {
+  async function openInPane(host, filePath, content, opts) {
     try {
       const monaco = await loadMonaco();
       if (window.qqqTheme) { window.qqqTheme.defineMonacoThemes(monaco); }
       hookThemeSync(monaco);
       configureMonacoTypescript(monaco);
       const lang = langOf(filePath);
+
+      // Use plain file path as URI so Monaco's TS worker can resolve it.
+      // inmemory:// URIs cause "Could not find source file" in Electron.
+      // file:// scheme also fails because TS path normalization strips it.
+      var plainPath = filePath.replace(/\\/g, '/');
+      var fileUri = monaco.Uri.parse(plainPath);
+      var model = monaco.editor.getModel(fileUri);
+      if (!model) {
+        model = monaco.editor.createModel(content == null ? '' : String(content), lang, fileUri);
+      } else {
+        // Reuse existing model: update language + content
+        monaco.editor.setModelLanguage(model, lang);
+        model.setValue(content == null ? '' : String(content));
+      }
+
       const ed = monaco.editor.create(host, {
-        value: content == null ? '' : String(content),
-        language: lang,
+        model: model,
         theme: (window.qqqTheme && window.qqqTheme.getMonacoTheme()) || 'vs',
         automaticLayout: true,
+        readOnly: (opts && opts.readOnly) || false,
         fontSize: 13,
         fontFamily: 'ui-monospace, Consolas, Menlo, monospace',
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         renderWhitespace: 'selection',
-        overviewRulerLanes: 0,
+        overviewRulerLanes: 3,
         wordWrap: 'on',
         wrappingStrategy: 'advanced',
         tabSize: 4,
@@ -520,11 +632,11 @@
         document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: d } }));
       }
 
-      ed.onDidChangeModelContent(() => { _markDirty(); });
+      ed.onDidChangeModelContent(function() { if (!ed._isRefreshing) _markDirty(); });
 
       // ---- Auto-save on editor blur ----
-      ed.onDidBlurEditorWidget(async () => {
-        if (_paneDirty && filePath) {
+      ed.onDidBlurEditorWidget(async function() {
+        if (_paneDirty && filePath && !(opts && opts.readOnly)) {
           try {
             await bridge.fs.write(filePath, ed.getValue());
             _markClean();
@@ -555,6 +667,13 @@
       // q1 三件套 attach for this pane editor
       attachQ1(ed, () => filePath);
 
+      // track pane editor for live refresh (chat.txt etc.)
+      _paneEditors[filePath] = ed;
+      _paneFiles[host] = filePath;
+      ed.onDidDispose(function() {
+        delete _paneEditors[filePath];
+        delete _paneFiles[host];
+      });
       return ed;
     } catch (e) {
       console.warn('[editor] openInPane fallback:', e && e.message);
@@ -581,6 +700,23 @@
     }
   }
 
+
+  // ---- refreshLiveContent: update an already-open pane editor with new content (for live chat.txt) ----
+  function refreshLiveContent(filePath, content) {
+    var ed = _paneEditors[filePath];
+    if (!ed) return false;
+    try {
+      ed._isRefreshing = true;
+      ed.setValue(content == null ? '' : String(content));
+      ed._isRefreshing = false;
+      return true;
+    } catch (e) {
+      console.warn('[editor] refreshLiveContent failed:', e && e.message);
+      ed._isRefreshing = false;
+      return false;
+    }
+  }
+
   window.qqqEditor = {
     build,
     open,
@@ -592,5 +728,6 @@
     insertAtCursor(text) { if (editor && editor.insertAtCursor) { editor.insertAtCursor(text); } },
     getMonaco() { return _monacoRef; },
     getEditorInstance() { return _editorRef; },
+    refreshLiveContent,
   };
 })();

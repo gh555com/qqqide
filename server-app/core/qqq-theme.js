@@ -220,6 +220,13 @@
     // 通知 iframe（AI 面板）
     _notifyIframes();
 
+    // 通知独立窗口（僚机等非 iframe 窗口）通过 BroadcastChannel
+    try {
+      var bc = new BroadcastChannel('qqq-theme-sync');
+      bc.postMessage({ type: 'qqq-theme-change', dark: _dark });
+      bc.close();
+    } catch (_) {}
+
     // 通知订阅者
     if (wasDark !== _dark) {
       for (const fn of _listeners) {
@@ -256,6 +263,7 @@
           'editorCursor.foreground': '#586E75',
           'editor.selectionBackground': '#E8A090',
           'editor.inactiveSelectionBackground': '#E8C8B8',
+          'editorOverviewRuler.border': '#00000000',
         },
         rules: MONACO_LIGHT_RULES,
       });
@@ -270,6 +278,7 @@
           'editorCursor.foreground': '#c8c4b8',
           'editor.selectionBackground': '#5a3a2a',
           'editor.inactiveSelectionBackground': '#4a3020',
+          'editorOverviewRuler.border': '#00000000',
         },
         rules: MONACO_DARK_RULES,
       });

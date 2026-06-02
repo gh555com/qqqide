@@ -32,9 +32,8 @@ export interface DownloadOpts {
   headers?: Record<string, string>;
 }
 
-export interface DownloadE
-ntry {
-  id: string;
+export interface DownloadEntry {
+  id: string; 
   url: string;
   filePath: string;
   totalBytes: number;

@@ -80,6 +80,7 @@ var AgentLoop = (function () {
         this._floorCostWge = 0;
         this.totalCostGe = 0;
         this._lastCostDisplay = '0';
+        this._lastApiPromptTokens = 0;  // 初始化清零，避免残留旧 quest 数值
         // 视觉缓存: MD5(base64) → {description, ge_cost}
         this._visionCache = new Map();
         this._visionCostWge = 0;
@@ -93,6 +94,10 @@ var AgentLoop = (function () {
         // 持久化 rules 注入（永不压缩，版本追踪）
         this._persistentCount = 0;
         this._rulesVersion = '';
+        // 引导注入（不中断楼层，立即让 AI 回复确认）
+        this._guidePending = false;
+        this._guideMessage = '';
+        this._abortedByGuide = false;
     }
 
     // ---- 中止 ----
@@ -171,11 +176,12 @@ var AgentLoop = (function () {
         self._currentFloorSummaryLang = '';
 
         // ═══ 视觉预分析：阿里眼睛(Qwen VL) → 文本 → DeepSeek大脑 ═══
+        // 将用户问题一并发送，让阿里针对实际问题做定向识别
         var visionText = '';
         var _visionStart = performance.now();
         if (images && images.length > 0) {
             self._log('🔍 vision: analyzing ' + images.length + ' image(s)...');
-            var visionResults = await self._analyzeImages(images, token);
+            var visionResults = await self._analyzeImages(images, token, userContent);
             if (visionResults.length > 0) {
                 var parts = [];
                 for (var vi = 0; vi < visionResults.length; vi++) {
@@ -244,6 +250,59 @@ var AgentLoop = (function () {
 
         try {
             while (maxIterations-- > 0) {
+                // ═══ 引导确认回合：不中断楼层，立即让 AI 回复确认 ═══
+                if (self._guidePending && self._guideMessage) {
+                    self._guidePending = false;
+                    self._abortedByGuide = false;
+                    var _guideText = self._guideMessage;
+                    self._guideMessage = '';
+                    maxIterations++; // 确认回合不消耗迭代配额
+                    var _ackStart = Date.now();
+
+                    self._log('⚡ guide ack round: ' + _guideText.slice(0, 60));
+
+                    // 构建确认指令 — 追加到 conversation 末尾（精简版，节省 tokens）
+                    var _ackPrompt = '[GUIDE_ACK] 紧急补充：' + _guideText + '\n' +
+                        '只回复 "✅ 已收到引导：[一句话概述]"，不用工具，不输出其他。';
+
+                    self.conversation.push({ role: 'user', content: _ackPrompt, _guideAck: true, _floor: self._ctx.totalFloors });
+
+                    var _ackResp = await self._callGateway(self.conversation, {
+                        token: token,
+                        onToken: onToken,
+                        onReasoning: onReasoning,
+                        onError: onError,
+                        tier: TIER_FLASH,
+                        noTools: true
+                    });
+
+                    // 确认回合被再次引导中断 → pop ack prompt，让新引导接管
+                    if (_ackResp && _ackResp._abortedForGuide) {
+                        self.conversation.pop();
+                        self._log('⚠ guide ack: aborted by newer guide');
+                        continue;
+                    }
+
+                    if (_ackResp && _ackResp.content) {
+                        // 移除确认指令（user 消息），只保留 AI 确认回复，避免硬指令污染后续对话
+                        self.conversation.pop(); // pop _ackPrompt
+                        self.conversation.push({ role: 'assistant', content: _ackResp.content, _guideAck: true, _floor: self._ctx.totalFloors });
+                        // 归档：确认回合写入 houses（all.txt 可见）
+                        self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], summary: '', ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString() });
+                        self._log('✅ guide ack: ' + _ackResp.content.slice(0, 80));
+                    } else if (_ackResp && _ackResp.type === 'tool_calls') {
+                        // AI 不听话，仍返回工具调用 → 移除 ack prompt，不污染对话
+                        self.conversation.pop();
+                        self._log('⚠ guide ack: AI returned tool_calls despite noTools, ignored');
+                    } else {
+                        // 网络错误或其他异常 → 移除 ack prompt
+                        self.conversation.pop();
+                        self._log('⚠ guide ack: no valid response, skipped');
+                    }
+                    // 确认回合结束 → 继续正常 while 循环
+                    continue;
+                }
+
                 self._houseIndex++;
                 var _hStart = Date.now();
                 var response = await self._callGateway(self.conversation, {
@@ -260,6 +319,10 @@ var AgentLoop = (function () {
                     self.conversation.length = conversationSnapshot;
                     return null;
                 }
+                // 引导中断 → 继续循环（上面 _guidePending 检测会触发确认回合）
+                if (response._abortedForGuide) {
+                    continue;
+                }
                 // accumulate timing from gateway call
                 if (response._ttfbMs !== undefined) {
                     self._floorTiming.networkMs += response._ttfbMs;
@@ -271,7 +334,7 @@ var AgentLoop = (function () {
                 }
 
                 if (response.type === 'message') {
-                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '' });
+                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '' });
                     var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
                     if (response.reasoning_content) assistantMsg.reasoning_content = response.reasoning_content;
                     self.conversation.push(assistantMsg);
@@ -289,7 +352,7 @@ var AgentLoop = (function () {
 
                 if (response.type === 'tool_calls') {
                     var _tools = response.tool_calls.map(function (tc) { return { name: tc.function.name, args: tc.function.arguments }; });
-                    self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], summary: '', ms: Date.now() - _hStart, reasoning: response.reasoning_content || '' });
+                    self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '' });
                     var assistantToolMsg = {
                         role: 'assistant', content: '',
                         tool_calls: response.tool_calls,
@@ -323,7 +386,7 @@ var AgentLoop = (function () {
                     onError: onError, tier: tier, noTools: true
                 });
                 if (finalResp && finalResp.content) {
-                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '' });
+                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ts: new Date().toISOString(), ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '' });
                     if (finalResp._ttfbMs !== undefined) {
                         self._floorTiming.networkMs += finalResp._ttfbMs;
                         self._floorTiming.deepseekMs += finalResp._streamMs;
@@ -351,9 +414,19 @@ var AgentLoop = (function () {
     // ═══ 视觉预分析：阿里眼睛(Qwen VL) → 文本 ═══
     // 并行分析所有图片，MD5 缓存
     // 返回 [{id, description, cached}] — 失败图片静默跳过
-    AgentLoop.prototype._analyzeImages = async function (images, token) {
+    AgentLoop.prototype._analyzeImages = async function (images, token, userContent) {
         var self = this;
         var results = [];
+
+        // 构造视觉 prompt：把用户问题原文带上，让阿里做针对性识别
+        var visionPrompt = '';
+        if (userContent && typeof userContent === 'string' && userContent.trim()) {
+            visionPrompt = 'The user is asking the following question about this image. ' +
+                'Focus your analysis specifically on what the user is asking about. ' +
+                'Ignore unrelated text/details — only describe what matters for answering the question.\n\n' +
+                'USER QUESTION:\n' + userContent.trim() + '\n\n' +
+                'Now describe this image with respect to the question above:';
+        }
 
         var analyzeOne = async function (img) {
             var hash = self._simpleHash(img.base64);
@@ -363,7 +436,7 @@ var AgentLoop = (function () {
                 return { id: img.id, description: cached.description, cached: true };
             }
             try {
-                var desc = await self._callVision(img.base64, token);
+                var desc = await self._callVision(img.base64, token, visionPrompt);
                 if (desc) {
                     self._visionCache.set(hash, { description: desc, ts: Date.now() });
                 }
@@ -387,7 +460,7 @@ var AgentLoop = (function () {
     };
 
     // ---- 调用 /api/v3/ai/vision（异步：提交 → SSE 推送，绕开 CF 100s 代理超时）----
-    AgentLoop.prototype._callVision = async function (base64, token) {
+    AgentLoop.prototype._callVision = async function (base64, token, prompt) {
         var self = this;
         var MAX_SUBMIT_RETRIES = 2;
 
@@ -395,13 +468,17 @@ var AgentLoop = (function () {
         var taskId = null;
         for (var retry = 0; retry <= MAX_SUBMIT_RETRIES; retry++) {
             try {
+                var reqBody = { image: base64 };
+                if (prompt && typeof prompt === 'string' && prompt.trim()) {
+                    reqBody.prompt = prompt.trim();
+                }
                 var resp = await fetch(VISION_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': 'Bearer ' + token
                     },
-                    body: JSON.stringify({ image: base64 }),
+                    body: JSON.stringify(reqBody),
                     signal: self.abortController ? self.abortController.signal : undefined
                 });
 
@@ -575,7 +652,9 @@ var AgentLoop = (function () {
             }
         }
 
+        // 语言检测已移至 a1 审计按钮（后翻译方案），此处不再强制注入语言指令
         var body = {
+            model: tier.model || 'pro',
             messages: apiMessages,
             stream: true,
             stream_options: { include_usage: true },
@@ -641,6 +720,10 @@ var AgentLoop = (function () {
             } catch (err) {
                 if (err.name === 'AbortError') {
                     self._log('■ aborted');
+                    if (self._guidePending) {
+                        self._abortedByGuide = true;
+                        return { _abortedForGuide: true };
+                    }
                     return null;
                 }
                 var msg = err.message || '';
@@ -805,6 +888,7 @@ var AgentLoop = (function () {
             var lastHouse = self._houses[self._houses.length - 1];
             if (lastHouse && lastHouse.type === 'tools') {
                 lastHouse.toolResults = results.map(function (r) { return r.rawContent; });
+                lastHouse._lines = null;  // 使 UI 端 _buildHouseLines 缓存失效
             }
             for (var ri = 0; ri < results.length; ri++) {
                 self.conversation.push({
@@ -960,10 +1044,24 @@ var AgentLoop = (function () {
         }
     };
 
-    // ---- 引导注入：将引导消息插入对话（不触发 API 调用） ----
+    // ---- 引导注入（旧）：将引导消息插入对话（不触发 API 调用） ----
     AgentLoop.prototype.inject = function (message) {
         this.conversation.push({ role: 'user', content: message, _injected: true, _floor: this._ctx.totalFloors });
         this._log('→ injected: ' + message.slice(0, 60));
+        return true;
+    };
+
+    // ---- 引导注入（新）：立即中断当前 house，让 AI 回复确认 ----
+    // 如果 send() 正在执行 → abort 当前流 + 设置 _guidePending，确认回合在 while 循环中自动触发
+    // 如果 send() 未执行 → 降级为普通 inject（等下次 Send）
+    AgentLoop.prototype.injectGuide = function (message) {
+        this._log('⚡ injectGuide: ' + message.slice(0, 60));
+        this._guideMessage = message;
+        this._guidePending = true;
+        // 立即 abort 当前流（如果有），触发 _abortedByGuide 分支
+        if (this.abortController) {
+            this.abort();
+        }
         return true;
     };
 
