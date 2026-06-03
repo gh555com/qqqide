@@ -136,6 +136,9 @@ let mainWindow: BrowserWindow | null = null;
 // 架构铁律：不可拖动(movable:false)、不可调大小(resizable:false)、与主窗口同z-order
 // 防外部篡改：监听 move/resize 事件，一旦偏离预期位置立即弹回（SSE 级实时）
 const _externalPanels: (BrowserWindow | null)[] = [null, null];
+// 窗口↔项目 双向映射（用于主文件夹锁：同一文件夹只能在一个窗口作为主文件夹）
+const _windowProjectMap = new Map<number, string>();   // windowId → projectRoot
+const _projectWindowMap = new Map<string, number>();   // projectRoot → windowId
 const engineHost = new EngineHost(portable.root);
 const audioEngine = new AudioEngine(portable.root);
 const monacoHost = new MonacoHost();
@@ -287,6 +290,12 @@ function createWindow(): BrowserWindow {
     win.on('closed', () => {
         if (boundsSaveTimer) { clearTimeout(boundsSaveTimer); boundsSaveTimer = null; }
         try { lspBridge.removeTarget(win.webContents); } catch { /* ignore */ }
+        // 清理窗口↔项目映射
+        const ownedProject = _windowProjectMap.get(win.id);
+        if (ownedProject) {
+            _windowProjectMap.delete(win.id);
+            _projectWindowMap.delete(ownedProject);
+        }
         if (win === mainWindow) {
             // 关主窗口时清理所有僚机
             for (const extWin of _externalPanels) {
@@ -1296,18 +1305,81 @@ function registerIpc(): void {
             wc.openDevTools({ mode: 'detach' });
         }
     });
-    // 开新窗口（无项目绑定，空 AI 视口）
-    ipcMain.handle('qqq:window:new', async () => {
+    // 开新窗口（可选绑定主文件夹，否则空 AI 视口）
+    // 主文件夹锁：若 folderPath 已被其他窗口作为主文件夹，拒绝创建并聚焦已有窗口
+    ipcMain.handle('qqq:window:new', async (_e, folderPath?: string) => {
+        if (folderPath && typeof folderPath === 'string') {
+            const normalized = folderPath.replace(/\\/g, '/').replace(/\/$/, '');
+            // 第一层：内存映射查重（最快，零 I/O）
+            const existingWinId = _projectWindowMap.get(normalized);
+            if (existingWinId != null) {
+                const existingWin = BrowserWindow.fromId(existingWinId);
+                if (existingWin && !existingWin.isDestroyed()) {
+                    if (existingWin.isMinimized()) existingWin.restore();
+                    existingWin.focus();
+                    return { ok: false, locked: true, existingWindowId: existingWinId };
+                }
+                // 窗口已销毁但映射残留，清理
+                _projectWindowMap.delete(normalized);
+                _windowProjectMap.delete(existingWinId);
+            }
+            // 第二层：检查磁盘锁文件（防御内存映射不一致的极端情况）
+            const lockPath = normalized + '/qqq/alphal/.lock';
+            try {
+                const lockRaw = fs.readFileSync(lockPath, 'utf-8');
+                const lockData = JSON.parse(lockRaw);
+                const age = Date.now() - (lockData.atime || 0);
+                if (age < 60000) {
+                    // 锁有效但内存映射中无记录 → 可能存在另一个 qqq 进程或映射丢失
+                    // 保守策略：拒绝创建，但不聚焦（不知道窗口）
+                    return { ok: false, locked: true, existingWindowId: null };
+                }
+                // 僵尸锁：删除
+                try { fs.unlinkSync(lockPath); } catch (_) {}
+            } catch (_) { /* 锁文件不存在，正常 */ }
+        }
         const newWin = createWindow();
+        let url = bootConfig.url + '?fresh=1';
+        if (folderPath && typeof folderPath === 'string') {
+            url += '&folder=' + encodeURIComponent(folderPath);
+        }
         const ok = await new Promise<boolean>(resolve => {
             let settled = false;
             const onFinish = () => { if (!settled) { settled = true; resolve(true); } };
             const onFail = () => { if (!settled) { settled = true; resolve(false); } };
             newWin.webContents.on('did-finish-load', onFinish);
             newWin.webContents.on('did-fail-load', onFail);
-            newWin.loadURL(bootConfig.url + '?fresh=1').catch(() => resolve(false));
+            newWin.loadURL(url).catch(() => resolve(false));
         });
         return { ok, id: newWin.id };
+    });
+
+    // 渲染层成功绑定主文件夹后注册映射（用于窗口间主文件夹锁）
+    ipcMain.handle('qqq:window:claimProject', (_e, projectRoot: string) => {
+        const win = BrowserWindow.fromWebContents(_e.sender);
+        if (!win) return false;
+        const normalized = projectRoot.replace(/\\/g, '/').replace(/\/$/, '');
+        // 清理旧映射（同一窗口切换项目）
+        const oldProject = _windowProjectMap.get(win.id);
+        if (oldProject && oldProject !== normalized) {
+            _projectWindowMap.delete(oldProject);
+        }
+        _windowProjectMap.set(win.id, normalized);
+        _projectWindowMap.set(normalized, win.id);
+        return true;
+    });
+
+    // 渲染层释放主文件夹绑定（窗口关闭或切换项目时）
+    ipcMain.handle('qqq:window:releaseProject', (_e, projectRoot: string) => {
+        const win = BrowserWindow.fromWebContents(_e.sender);
+        if (!win) return false;
+        const normalized = projectRoot.replace(/\\/g, '/').replace(/\/$/, '');
+        const currentProject = _windowProjectMap.get(win.id);
+        if (currentProject === normalized) {
+            _windowProjectMap.delete(win.id);
+            _projectWindowMap.delete(normalized);
+        }
+        return true;
     });
 
     // ---- zoom IPC ----

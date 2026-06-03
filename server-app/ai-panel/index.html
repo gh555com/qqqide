@@ -79,7 +79,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-ai hr{border:none;border-top:1px solid var(--border-color);margin:8px 0}
 .msg-ai a{color:var(--blue);text-decoration:none}
 .msg-ai a:hover{text-decoration:underline}
-.msg-error{color:var(--red);padding:4px 0;font-size:12px}
+.msg-error{color:var(--red);padding:8px 12px;font-size:12px;background:rgba(220,50,47,0.06);border:1px solid rgba(220,50,47,0.15);border-radius:6px;margin:6px 0;line-height:1.6}
 .msg-status{font-size:11px;opacity:.6;padding:2px 0;font-style:italic}
 /* 楼层时钟 + 饼图（嵌在豆腐块内部底部，每个楼层私有） */
 .msg-ai-clock{display:flex;align-items:center;gap:8px;padding:8px 0 0;user-select:none}
@@ -242,8 +242,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   });
 })();
 </script>
-</body>
-</html>
 </head>
 <body>
 <div id="top-bar">
@@ -1230,6 +1228,7 @@ function addMessageEl(role, content) {
   if (role === 'ai') {
     div.innerHTML = renderMarkdown(content);
   } else if (role === 'error') {
+    div.style.whiteSpace = 'pre-wrap';
     div.textContent = content;
   } else {
     return addUserMessageEl(content);
@@ -1379,6 +1378,12 @@ async function bindMainProject() {
       } else {
         console.warn('[quests] bindMainProject BLOCKED: project locked (age=' + (lockResult.age/1000).toFixed(1) + 's)');
         addMessageEl('error', '⚠️ 该项目已被另一个 QQQ 窗口打开，无法重复绑定。');
+        // 通知父窗口从视口移除该项目
+        if (window.parent) {
+          try {
+            window.parent.postMessage({ type: 'qqq-ai-viewport-remove-project', path: root }, '*');
+          } catch (_) { }
+        }
         onlyStore.init(null);
         return;
       }
@@ -1389,6 +1394,15 @@ async function bindMainProject() {
     }
   }
   questStore.setProjectRoot(root);
+
+  // 向主进程注册窗口↔项目映射（仅当成功持有锁时；僚机/standalone 不注册）
+  if (lockResult.ok) {
+    try {
+      if (!isStandalone && window.parent && window.parent.qqqBridge && window.parent.qqqBridge.window) {
+        window.parent.qqqBridge.window.claimProject(root).catch(function () { });
+      }
+    } catch (_) { }
+  }
 
   // 迁移旧目录 qqq/quests/alphal/ → qqq/alphal/（锁已获取，安全操作）
   try {
@@ -1459,7 +1473,7 @@ window.addEventListener('beforeunload', function () {
   }
   // 释放当前 quest 所有权（fire-and-forget，不阻塞页面关闭）
   if (questActiveId) {
-    try { questStore.releaseOwner(questActiveId).catch(function(){}); } catch(_) {}
+    try { questStore.releaseOwner(questActiveId, _windowId).catch(function(){}); } catch(_) {}
   }
   if (_syncChannel) {
     try { _syncChannel.close(); } catch(_) {}
@@ -1901,11 +1915,42 @@ async function switchQuest(id) {
   } finally { _switching = false; }
 }
 
-// ── 生成 quest/floor 名称：q{n}.{用户问题截断} 或 f{n}.{用户问题截断} ──
+// ── 生成 quest/floor 文件夹名：q{n}.{安全化文本} 或 f{n}.{安全化文本} ──
+// 用户消息前 100 字节，经过五层安全处理，保证任何语言/符号全部安全
 function _makeName(prefix, num, text) {
-  // 截断用户问题（限制长度，保留多语言文字），清理文件系统非法字符
-  var sanitized = text.replace(/[\\/:*?"<>|]/g, '_').replace(/\s+/g, ' ').trim().slice(0, 72);
-  return prefix + num + (sanitized ? '.' + sanitized : '');
+  var MAX_BYTES = 100;
+  if (!text) return prefix + num;
+
+  // ① 字节截断：UTF-8 编码 → 截前 MAX_BYTES 字节 → 解码（自动丢弃不完整末字符）
+  var bytes = new TextEncoder().encode(text);
+  var truncated = bytes.slice(0, MAX_BYTES);
+  var decoded = new TextDecoder().decode(truncated);
+
+  // ② 字符安全化：替换一切非安全字符为下划线
+  //    保留：字母、数字、中文、日文、韩文、阿拉伯文、泰文、西里尔文等所有 Unicode 文字
+  //    保留：空格、连字符、下划线、点号（中间位置）
+  //    替换：控制字符、Windows 非法字符、emoji 修饰符、不可见字符
+  var sanitized = decoded
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, '')  // 控制字符 → 删除
+    .replace(/[\\/:*?"<>|]/g, '_')            // Windows 非法字符 → _
+    .replace(/[\u200B-\u200D\uFEFF\u200E\u200F]/gu, '') // 零宽字符 → 删除
+    .replace(/\s+/g, ' ')                      // 合并连续空白
+    .trim();
+
+  // ③ 首尾安全：去除首尾点号（Windows 自动去除，会导致同名）
+  sanitized = sanitized.replace(/^\.+/, '').replace(/\.+$/, '');
+
+  // ④ 保留名保护：CON/PRN/AUX/NUL/COM1-9/LPT1-9 → 加前缀 _
+  var upper = sanitized.toUpperCase();
+  var RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/;
+  if (RESERVED.test(upper) || RESERVED.test(upper.replace(/\..*/, ''))) {
+    sanitized = '_' + sanitized;
+  }
+
+  // ⑤ 空名保护：若 sanitize 后为空，只用数字
+  if (!sanitized) return prefix + num;
+
+  return prefix + num + '.' + sanitized;
 }
 // ── 创建 quest 文件夹（含嵌套 floor 目录）──
 async function _ensureQuestDir(root, qName, fName) {
@@ -1930,9 +1975,13 @@ async function createNewQuest() {
   await saveQuestData();
   // 释放旧 quest 所有权
   if (questActiveId) {
-    try { await questStore.releaseOwner(questActiveId); } catch(_) {}
+    try { await questStore.releaseOwner(questActiveId, _windowId); } catch(_) {}
     _broadcast('owner-released', questActiveId);
   }
+  // 退出只读模式（从其他窗口拥有的 quest 切出时恢复输入）
+  _readonlyQuest = false;
+  _readonlyOwner = null;
+  setInputReadonly(false);
   questActiveId = '';
   _queue = [];
   renderQueueStrip();
@@ -1953,7 +2002,7 @@ async function deleteQuest(id) {
   await questStore.deleteQuest(id);
   delete questUIStates[id];
   // 释放所有权
-  try { await questStore.releaseOwner(id); } catch(_) {}
+  try { await questStore.releaseOwner(id, _windowId); } catch(_) {}
   _broadcast('owner-released', id);
   // ═══ 清理 agent pool（abort + delete） ═══
   if (agentPool[id]) {
@@ -2185,6 +2234,36 @@ function _debounceSaveQueue() {
   }, 500);
 }
 
+// 触发队列发送：从当前 agent 队列取第一条 → 填入输入框 → 发送
+// 如果输入框有用户正在编辑的内容 → 暂停队列保护用户输入
+function _triggerQueueSend() {
+  var _q = _queue;
+  if (!_q || _q.length === 0) { renderQueueStrip(); return; }
+  // 保护：输入框有用户正在编辑的内容（非纯空白） → 自动暂停
+  // 用 innerText 判断更准确（排除不可见 <br> 等标签噪音）
+  var inputText = ($input.innerText || '').trim();
+  if (inputText) {
+    _queuePaused = true;
+    renderQueueStrip();
+    return;
+  }
+  var _totalBefore = _q.length;
+  var next = _q.shift();
+  var _remaining = _q.length;
+  renderQueueStrip();
+  _debounceSaveQueue();
+  // 恢复富文本（保留 file chips 等 HTML 结构）
+  $input.innerHTML = next.html || next.text;
+  // 队列状态提示
+  var _qStatus = document.createElement('div');
+  _qStatus.className = 'msg msg-status';
+  _qStatus.style.color = 'var(--blue)';
+  _qStatus.textContent = '📮 排队发送中 (' + (_remaining + 1) + '/' + _totalBefore + ')';
+  $messages.appendChild(_qStatus);
+  scrollToBottom(true);
+  setTimeout(function() { sendMessage(); }, 300);
+}
+
 function renderQueueStrip() {
   $queueStrip.innerHTML = '';
   if (_queue.length === 0) { $queueStrip.style.display = 'none'; return; }
@@ -2211,6 +2290,10 @@ function renderQueueStrip() {
     e.stopPropagation();
     _queuePaused = !_queuePaused;
     renderQueueStrip();
+    // 从暂停恢复 + 队列非空 + AI 空闲 → 立即触发消费
+    if (!_queuePaused && _queue.length > 0 && !streaming && !_sending) {
+      _triggerQueueSend();
+    }
   };
   header.appendChild(pauseBtn);
 
@@ -3899,29 +3982,8 @@ async function sendMessage() {
         if (_activeAgent === _capturedAgent) {
           updateCtxBtn();
           // ═══ 排队自动消费：AI 回复完 → 自动发送队列下一条 ═══
-          var _q = _capturedAgent._queue;
-          if (!_queuePaused && _q && _q.length > 0) {
-            // 保护：输入框有用户正在编辑的内容 → 暂停自动消费
-            if (getInputText().trim()) {
-              _queuePaused = true;
-              renderQueueStrip();
-            } else {
-              var _totalBefore = _q.length;
-              var next = _q.shift();
-              var _remaining = _q.length;
-              renderQueueStrip();
-              _debounceSaveQueue();
-              // 恢复富文本（保留 file chips 等 HTML 结构）
-              $input.innerHTML = next.html || next.text;
-              // 队列状态提示
-              var _qStatus = document.createElement('div');
-              _qStatus.className = 'msg msg-status';
-              _qStatus.style.color = 'var(--blue)';
-              _qStatus.textContent = '📮 排队发送中 (' + (_remaining + 1) + '/' + _totalBefore + ')';
-              $messages.appendChild(_qStatus);
-              scrollToBottom(true);
-              setTimeout(function() { sendMessage(); }, 300);
-            }
+          if (!_queuePaused) {
+            _triggerQueueSend();
           } else {
             renderQueueStrip(); // 更新底部状态（队列为空或已暂停）
           }
@@ -3940,7 +4002,24 @@ async function sendMessage() {
       },
       onError: function(msg) {
         if (_activeAgent === _capturedAgent) {
-          addMessageEl('error', msg);
+          // 错误消息支持换行（\n → <br>）
+          var _errDiv = addMessageEl('error', msg);
+          // 如果错误建议刷新，添加可点击的刷新按钮
+          if (msg.indexOf('刷新') >= 0) {
+            var _actRow = document.createElement('div');
+            _actRow.style.cssText = 'margin-top:8px;display:flex;gap:8px;';
+            var _refreshBtn = document.createElement('button');
+            _refreshBtn.textContent = '🔄 刷新面板';
+            _refreshBtn.style.cssText = 'padding:4px 14px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;';
+            _refreshBtn.onclick = function() { window.location.reload(); };
+            var _dismissBtn = document.createElement('button');
+            _dismissBtn.textContent = '我知道了';
+            _dismissBtn.style.cssText = 'padding:4px 14px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;';
+            _dismissBtn.onclick = function() { _actRow.remove(); };
+            _actRow.appendChild(_refreshBtn);
+            _actRow.appendChild(_dismissBtn);
+            _errDiv.appendChild(_actRow);
+          }
           _stopAllTxtStream();
           stopFloorTimer();
           setStreaming(false);
@@ -3986,14 +4065,8 @@ async function sendMessage() {
 
 // 队列错误恢复：发送失败不阻塞后续排队消息
 function _continueQueue() {
-  if (_queuePaused || _queue.length === 0) return;
-  var next = _queue.shift();
-  renderQueueStrip();
-  saveQuestData().catch(function(){});
-  // 恢复富文本
-  $input.innerHTML = next.html || next.text;
-  // 错误恢复用更长延迟，避免网络抖动时快速耗尽队列
-  setTimeout(function() { sendMessage(); }, 1000);
+  if (_queuePaused) return;
+  _triggerQueueSend();
 }
 
 // ---- Contenteditable helpers ----
@@ -4111,55 +4184,15 @@ document.addEventListener('keydown', function(e) {
   }
 });
 
-})();
-</script>
-</body>
-</html>
-.detail.path) {
-    insertChipAtCursor(e.detail.path);
-  }
-});
-
-// ═══ Full-window overlay (via parent.postMessage / BroadcastChannel) ═══
-function openLightbox(src, base64) {
-  _postToHost({ type: 'qqq-ai-overlay', action: 'open-image', src: src, base64: base64 || null });
-}
-
-function closeLightbox() {
-  _postToHost({ type: 'qqq-ai-overlay', action: 'close' });
-}
-
-// Escape key handled by parent overlay; also listen locally as fallback
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') {
-    closeLightbox();
-  }
-});
-
-})();
-</script>
-</body>
-</html>
-lso listen for CustomEvent on document (in case dispatched in same page)
-document.addEventListener('qqq-ai-attach', function(e) {
-  if (e.detail && e.detail.path) {
-    insertChipAtCursor(e.detail.path);
-  }
-});
-
-// ═══ Full-window overlay (via parent.postMessage / BroadcastChannel) ═══
-function openLightbox(src, base64) {
-  _postToHost({ type: 'qqq-ai-overlay', action: 'open-image', src: src, base64: base64 || null });
-}
-
-function closeLightbox() {
-  _postToHost({ type: 'qqq-ai-overlay', action: 'close' });
-}
-
-// Escape key handled by parent overlay; also listen locally as fallback
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') {
-    closeLightbox();
+// 窗口关闭时释放主进程项目映射
+window.addEventListener('beforeunload', function() {
+  var root = questStore.getProjectRoot();
+  if (root) {
+    try {
+      if (window.parent && window.parent.qqqBridge && window.parent.qqqBridge.window) {
+        window.parent.qqqBridge.window.releaseProject(root).catch(function () { });
+      }
+    } catch (_) { }
   }
 });
 

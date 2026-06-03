@@ -4,8 +4,12 @@
 // 菜单栏 row-1 的横向豆腐块容器。每个豆腐块 = AI 能看到的一个项目文件夹。
 // - 空态：虚线框 + "+"
 // - 有项目：实线框 + 📁图标 + 文件夹名 + "−"
-// - hover：展开该文件夹的目录树下拉（级联子目录向右展开）
+// - hover 项目块：展开该文件夹的目录树下拉（级联子目录向右展开）
+// - hover "+" 块：展开最近 20 个主文件夹下拉（qgs global 持久化）
 // - 单击目录树中任意项：附加到 AI 对话
+// - 单击最近文件夹：在当前窗口添加（空窗口→主文件夹，有主文件夹→辅文件夹）
+//
+// 持久化层级: global(recent_folders) → project(editor tabs) → quest → floor → house → room
 //
 // API: window.qqqAiViewport = { build, addProject, removeProject, getProjects, getMainProject }
 // ============================================================================
@@ -87,10 +91,93 @@
     return _shellHandle;
   }
 
+  // ---- recent folders (global, max 20, qgs persisted) ----
+  var RECENT_KEY = 'recent_folders';
+  var MAX_RECENT = 20;
+  var _recentFolders = []; // [{path, name, atime}]
+
+  function _loadRecents() {
+    try {
+      var s = _getShellHandle();
+      if (s) {
+        s.get(RECENT_KEY).then(function (data) {
+          if (data && Array.isArray(data)) {
+            _recentFolders = data.slice(0, MAX_RECENT);
+          }
+        }).catch(function () { });
+      }
+    } catch (_) { }
+  }
+
+  function _saveRecents() {
+    try {
+      var s = _getShellHandle();
+      if (s) s.set(RECENT_KEY, _recentFolders).catch(function () { });
+    } catch (_) { }
+  }
+
+  function _bumpRecent(folderPath) {
+    var name = basename(folderPath);
+    var now = Date.now();
+    // 移除旧条目（若有）
+    _recentFolders = _recentFolders.filter(function (f) { return f.path !== folderPath; });
+    // 插入到最前
+    _recentFolders.unshift({ path: folderPath, name: name, atime: now });
+    // 截断到 MAX_RECENT
+    if (_recentFolders.length > MAX_RECENT) _recentFolders.length = MAX_RECENT;
+    _saveRecents();
+  }
+
+  // 异步校验主文件夹锁：若该项目已被其他窗口锁定，从视口移除
+  // 仅在 ?folder= 新窗口场景使用，作为主进程锁检查的兜底
+  function _verifyFolderLock(folderPath) {
+    var lockPath = folderPath.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/.lock';
+    // 延迟 2s 再检查，避开本窗口 bindMainProject 的锁写入
+    setTimeout(function () {
+      bridge.fs.stat(lockPath).then(function (statInfo) {
+        if (!statInfo) return; // 锁文件不存在，安全
+        return bridge.fs.read(lockPath).then(function (raw) {
+          try {
+            var data = JSON.parse(raw);
+            var age = Date.now() - (data.atime || 0);
+            // 锁有效且年龄 > 3s（避免误判本窗口刚写入的锁）→ 从视口移除
+            if (age > 3000 && age < 60000) {
+              console.warn('[ai-viewport] stale lock detected for ' + folderPath + ' (age=' + (age/1000).toFixed(1) + 's), removing from viewport');
+              var idx = -1;
+              for (var i = 0; i < projects.length; i++) {
+                if (projects[i].path === folderPath) { idx = i; break; }
+              }
+              if (idx >= 0) {
+                projects.splice(idx, 1);
+                saveProjects();
+                render();
+                _notifyChanged();
+              }
+            }
+          } catch (_) { }
+        });
+      }).catch(function () { /* 锁文件不存在 */ });
+    }, 2000);
+  }
+
   function loadProjects() {
     // 新窗口（?fresh=1）：强制清空，零项目
     if (window.location.search.indexOf('fresh=1') !== -1) {
       projects = [];
+      // 若有 ?folder= 参数，自动添加为主文件夹
+      var m = window.location.search.match(/[?&]folder=([^&]+)/);
+      if (m) {
+        try {
+          var folderPath = decodeURIComponent(m[1]);
+          if (folderPath) {
+            // 先添加到 projects（同步，保证 UI 即时响应），然后异步校验锁
+            projects.push({ path: folderPath, name: basename(folderPath) });
+            _bumpRecent(folderPath);
+            // 异步校验：若主文件夹被其他窗口锁定，立即移除
+            _verifyFolderLock(folderPath);
+          }
+        } catch (_) { }
+      }
       return;
     }
     // 优先从 qgs 全局 SQLite 加载（跨重启）
@@ -389,7 +476,10 @@
 
     block.appendChild(plus);
 
-    block.addEventListener('click', async () => {
+    // click → 原生对话框选择新文件夹
+    block.addEventListener('click', async (e) => {
+      // 若下拉已打开，不重复弹对话框（用户可能在选最近文件夹）
+      if (activeDropdown && activeDropdown.classList.contains('aiv-recent-dropdown')) return;
       const result = await bridge.dialog.open({
         properties: ['openDirectory'],
         title: window._i('shell.viewport.selectFolder', '选择要添加到 AI 视口的文件夹'),
@@ -399,7 +489,97 @@
       }
     });
 
+    // hover → 150ms 后展示最近 20 个主文件夹下拉
+    block.addEventListener('mouseenter', () => {
+      cancelHover();
+      _hoverTimer = setTimeout(() => { _hoverTimer = null; _showRecentDropdown(block); }, 150);
+    });
+    block.addEventListener('mouseleave', () => { cancelHover(); });
+
     return block;
+  }
+
+  // ---- recent folders dropdown (hover "+" block) ----
+  function _showRecentDropdown(blockEl) {
+    closeDropdown();
+    cancelClose();
+    _activeBlockEl = blockEl;
+    blockEl.classList.add('aiv-block-active');
+
+    var rect = blockEl.getBoundingClientRect();
+    var topPx = rect.bottom;
+    var maxH = Math.max(200, window.innerHeight - topPx - 8);
+
+    var dd = document.createElement('div');
+    dd.className = 'aiv-dropdown aiv-recent-dropdown';
+    dd.style.cssText =
+      'position:fixed; z-index:99999; ' +
+      'left:' + rect.left + 'px; top:' + topPx + 'px; ' +
+      'min-width:280px; max-width:420px; height:' + maxH + 'px; overflow-y:auto; overflow-x:hidden; ' +
+      'background:var(--card-bg); border:1px dashed var(--border-color); ' +
+      'border-radius:3px; box-shadow:0 4px 16px rgba(0,0,0,.18); padding:4px 0;';
+
+    // 标题行
+    var titleRow = document.createElement('div');
+    titleRow.style.cssText = 'padding:6px 12px; font-size:11px; color:var(--text-muted); border-bottom:1px solid var(--border-color); margin-bottom:2px;';
+    titleRow.textContent = window._i ? window._i('shell.viewport.recentFolders', '最近打开的主文件夹') : '最近打开的主文件夹';
+    dd.appendChild(titleRow);
+
+    if (_recentFolders.length === 0) {
+      var emptyRow = document.createElement('div');
+      emptyRow.style.cssText = 'padding:10px 12px; font-size:12px; color:var(--text-muted); font-style:italic;';
+      emptyRow.textContent = window._i ? window._i('shell.viewport.noRecent', '暂无最近记录，点击 + 选择文件夹') : '暂无最近记录，点击 + 选择文件夹';
+      dd.appendChild(emptyRow);
+    } else {
+      _recentFolders.forEach(function (f) {
+        var row = document.createElement('div');
+        row.className = 'aiv-row aiv-recent-row';
+        row.style.cssText = 'padding:7px 12px; cursor:default; font-size:12px; display:flex; align-items:center; gap:6px;';
+
+        var icon = document.createElement('span');
+        icon.textContent = '📁';
+        icon.style.cssText = 'font-size:11px; flex-shrink:0;';
+
+        var nameSpan = document.createElement('span');
+        nameSpan.style.cssText = 'font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:160px;';
+        nameSpan.textContent = truncName(f.name, 24);
+
+        var pathSpan = document.createElement('span');
+        pathSpan.style.cssText = 'color:var(--text-muted); font-size:10px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1;';
+        pathSpan.textContent = f.path;
+        pathSpan.title = f.path;
+
+        row.appendChild(icon);
+        row.appendChild(nameSpan);
+        row.appendChild(pathSpan);
+
+        row.addEventListener('mouseenter', function () {
+          row.style.background = 'var(--hover-bg)';
+        });
+        row.addEventListener('mouseleave', function () {
+          row.style.background = '';
+        });
+        row.addEventListener('mousedown', function (e) {
+          e.stopPropagation();
+          e.preventDefault();
+          closeDropdown();
+          blockEl.classList.remove('aiv-block-active');
+          _bumpRecent(f.path);
+          // 在当前窗口添加：空窗口→主文件夹，有主文件夹→辅文件夹
+          addProject(f.path);
+        });
+
+        dd.appendChild(row);
+      });
+    }
+
+    document.body.appendChild(dd);
+    activeDropdown = dd;
+
+    blockEl.addEventListener('mouseleave', scheduleClose);
+    blockEl.addEventListener('mouseenter', cancelClose);
+    dd.addEventListener('mouseleave', scheduleClose);
+    dd.addEventListener('mouseenter', cancelClose);
   }
 
   async function confirmRemove(proj) {
@@ -438,10 +618,44 @@
     const name = basename(folderPath);
     // no duplicates
     if (projects.some(p => p.path === folderPath)) return;
+    // 当视口为空时（即将成为主文件夹），异步校验锁
+    if (projects.length === 0) {
+      _verifyFolderLockBeforeAdd(folderPath, name);
+    } else {
+      _doAddProject(folderPath, name);
+    }
+  }
+
+  function _doAddProject(folderPath, name) {
     projects.push({ path: folderPath, name: name });
+    _bumpRecent(folderPath);
     saveProjects();
     render();
     _notifyChanged();
+  }
+
+  // 空视口添加主文件夹前的锁预检
+  function _verifyFolderLockBeforeAdd(folderPath, name) {
+    var lockPath = folderPath.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/.lock';
+    bridge.fs.stat(lockPath).then(function (statInfo) {
+      if (!statInfo) { _doAddProject(folderPath, name); return; }
+      return bridge.fs.read(lockPath).then(function (raw) {
+        try {
+          var data = JSON.parse(raw);
+          var age = Date.now() - (data.atime || 0);
+          if (age < 60000) {
+            // 锁有效 → 拒绝添加
+            console.warn('[ai-viewport] lock pre-check failed for ' + folderPath + ' (age=' + (age/1000).toFixed(1) + 's)');
+            if (window.qqqQoast) {
+              window.qqqQoast.show('⚠️ 该项目已在另一个 QQQ 窗口中作为主文件夹打开', { duration: 6000, type: 'warn' });
+            }
+            return;
+          }
+          // 僵尸锁 → 允许添加
+          _doAddProject(folderPath, name);
+        } catch (_) { _doAddProject(folderPath, name); }
+      });
+    }).catch(function () { _doAddProject(folderPath, name); });
   }
 
   function removeProject(idx) {
@@ -461,6 +675,7 @@
   function build(host) {
     container = host;
     container.className = 'aiv-container';
+    _loadRecents();
     loadProjects();
     render();
     // close dropdown when clicking outside
@@ -474,6 +689,24 @@
       document.querySelectorAll('.aiv-block-active').forEach(el => el.classList.remove('aiv-block-active'));
     });
   }
+
+  // 监听 AI 面板发来的锁冲突通知：从视口移除被锁的项目
+  window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'qqq-ai-viewport-remove-project' && e.data.path) {
+      var p = e.data.path;
+      var idx = -1;
+      for (var i = 0; i < projects.length; i++) {
+        if (projects[i].path === p) { idx = i; break; }
+      }
+      if (idx >= 0) {
+        console.warn('[ai-viewport] lock conflict: removing project ' + p);
+        projects.splice(idx, 1);
+        saveProjects();
+        render();
+        _notifyChanged();
+      }
+    }
+  });
 
   window.qqqAiViewport = { build, addProject, removeProject, getProjects, getMainProject };
 })();

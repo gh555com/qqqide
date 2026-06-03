@@ -185,11 +185,64 @@ var QuestStore = (function () {
         if (this._index === null) {
             var raw = await _get(INDEX_KEY);
             this._index = (raw && Array.isArray(raw)) ? raw : [];
+            // 自愈：扫描数据库中的 quest 数据，将被意外丢失的 quest 补回 index
+            await this._healOrphanQuests();
+        }
+    };
+
+    // 扫描数据库中的 quest.{id} 键，补回 index 中缺失的 quest
+    QuestStore.prototype._healOrphanQuests = async function () {
+        if (!this._index) return;
+        var indexIds = {};
+        for (var i = 0; i < this._index.length; i++) {
+            indexIds[this._index[i].id] = true;
+        }
+        var healed = false;
+        // 通过扫描已知的 quest ID 范围来发现孤儿（最多尝试 100 个）
+        for (var n = 1; n <= 100; n++) {
+            var qid = 'q' + n;
+            if (indexIds[qid]) continue; // 已在 index 中
+            try {
+                var qData = await _get(QUEST_NS + '.' + qid);
+                if (qData && typeof qData === 'object') {
+                    // 发现孤儿 quest，从数据中恢复标题和创建时间
+                    var title = '';
+                    var createdAt = Date.now();
+                    // 尝试从 floor 数据推导标题
+                    try {
+                        var f1 = await _get(FLOOR_NS + '.' + qid + '.1');
+                        if (f1 && f1.question) {
+                            title = f1.question.slice(0, 80);
+                        }
+                    } catch (_) {}
+                    console.log('[quest-store] heal: recovered orphan quest ' + qid + ' (' + title.slice(0, 40) + ')');
+                    this._index.push({
+                        id: qid,
+                        numericId: n,
+                        title: title,
+                        createdAt: createdAt,
+                        lastActiveAt: createdAt
+                    });
+                    healed = true;
+                }
+            } catch (_) {}
+        }
+        if (healed) {
+            await this._saveIndex();
         }
     };
 
     QuestStore.prototype._saveIndex = async function () {
-        await _setNow(INDEX_KEY, this._index);
+        try {
+            await _setNow(INDEX_KEY, this._index);
+            console.log('[quest-store] _saveIndex OK (' + this._index.length + ' quests)');
+        } catch (e) {
+            console.error('[quest-store] _saveIndex FAILED, retrying with set:', e);
+            // 回退到 _set（带重试）
+            try { await _set(INDEX_KEY, this._index); } catch (e2) {
+                console.error('[quest-store] _saveIndex retry also FAILED:', e2);
+            }
+        }
     };
 
     // ═══ 自增 ID 计数器 ═══
@@ -346,12 +399,14 @@ var QuestStore = (function () {
         return { claimed: true, currentOwner: null };
     };
 
-    // releaseOwner: 释放所有权。返回被释放的 owner（如有）。
-    QuestStore.prototype.releaseOwner = async function (questId) {
+    // releaseOwner: 释放所有权。可选 windowId 参数；若提供则仅当匹配时才释放。
+    QuestStore.prototype.releaseOwner = async function (questId, windowId) {
         if (_guardWrite('releaseOwner')) return null;
         var existing = await _get(QUEST_NS + '.' + questId);
         if (!existing || !existing._owner) return null;
         var oldOwner = existing._owner;
+        // 若指定 windowId，仅释放匹配的锁；防止僚机误释放主窗口的 quest 所有权
+        if (windowId && oldOwner.windowId !== windowId) return null;
         delete existing._owner;
         await _setNow(QUEST_NS + '.' + questId, existing);
         return oldOwner;

@@ -105,7 +105,9 @@
             "mainFolder": "主文件夹（不可移除）",
             "removeProject": "移除此项目",
             "addProject": "添加项目文件夹到 AI 视口",
-            "selectFolder": "选择要添加到 AI 视口的文件夹"
+            "selectFolder": "选择要添加到 AI 视口的文件夹",
+            "recentFolders": "最近打开的主文件夹",
+            "noRecent": "暂无最近记录，点击 + 选择文件夹"
         },
         "dev": "开发模式",
         "gaeaHostLoading": "gaea host 加载中..."

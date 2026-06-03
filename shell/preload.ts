@@ -60,7 +60,9 @@ const QQQ = {
         isMaximized: () => ipcRenderer.invoke('qqq:window:isMaximized'),
         setTitle: (s: string) => ipcRenderer.invoke('qqq:window:setTitle', s),
         toggleDevTools: () => ipcRenderer.invoke('qqq:window:toggleDevTools'),
-        new: () => ipcRenderer.invoke('qqq:window:new'),
+        new: (folderPath?: string) => ipcRenderer.invoke('qqq:window:new', folderPath),
+        claimProject: (projectRoot: string) => ipcRenderer.invoke('qqq:window:claimProject', projectRoot),
+        releaseProject: (projectRoot: string) => ipcRenderer.invoke('qqq:window:releaseProject', projectRoot),
     },
 
     // ---- zoom (UI scale) ----

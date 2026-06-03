@@ -713,6 +713,8 @@
 
   async function restoreOpenTabs() {
     _restored = true;
+    // 新窗口（?fresh=1）：X 区空，不继承任何 editor tab
+    if (window.location.search.indexOf('fresh=1') !== -1) return;
     const state = _tabState();
     if (!state) return;
     try {

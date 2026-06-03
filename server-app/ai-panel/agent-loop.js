@@ -316,7 +316,7 @@ var AgentLoop = (function () {
 
                 if (!response) {
                     // 错误已由 _callGateway 的 onError 处理
-                    self.conversation.length = conversationSnapshot;
+                    // 不回滚 conversation — 保留已执行的 tool call 结果，用户可重试
                     return null;
                 }
                 // 引导中断 → 继续循环（上面 _guidePending 检测会触发确认回合）
@@ -372,7 +372,12 @@ var AgentLoop = (function () {
                     continue;
                 }
 
-                break;
+                // 未知响应类型 → 不中断，给用户一个可读的结束
+                self._log('⚠ unexpected response type: ' + (response && response.type));
+                var _fallbackMsg = '⚠ AI 返回了意外的响应类型，但对话上下文已保留。你可以继续提问或重试。';
+                self.conversation.push({ role: 'assistant', content: _fallbackMsg, _floor: self._ctx.totalFloors });
+                onDone(_fallbackMsg, self._floorTiming);
+                return _fallbackMsg;
             }
 
             // 迭代耗尽 → 强制最终回答
@@ -402,7 +407,13 @@ var AgentLoop = (function () {
                     onDone(finalResp.content, self._floorTiming);
                     return finalResp.content;
                 }
+                // 强制回答也失败 → 优雅降级，不丢上下文
+                var _exhaustedMsg = '⚠ 已达到最大工具调用次数 (200)，但 AI 未能生成最终回答。对话上下文已保留，你可以继续提问。';
+                self.conversation.push({ role: 'assistant', content: _exhaustedMsg, _floor: self._ctx.totalFloors });
+                onDone(_exhaustedMsg, self._floorTiming);
+                return _exhaustedMsg;
             }
+            // 不应到达这里，但兜底
             return null;
         } catch (err) {
             self._log('✗ agent error: ' + (err.message || err));
@@ -728,16 +739,15 @@ var AgentLoop = (function () {
                 }
                 var msg = err.message || '';
                 if (msg.indexOf("ERR_HTTP2") >= 0 || msg.indexOf("ERR_CONNECTION_CLOSED") >= 0) {
-                    // HTTP/2 protocol death — ceiling hit: Chromium 108 limitation.
-                    // Each occurrence = one reason-why-we-need-scheme-A.
+                    // HTTP/2 协议死透 — Chromium 108 已知限制，必须刷新才能恢复
                     self._http2Ceilings = (self._http2Ceilings || 0) + 1;
-                    console.warn('[qz-ceiling] HTTP/2 death #' + self._http2Ceilings + ', reloading iframe');
-                    if (self._http2Ceilings >= 3) {
-                        console.error('[qz-ceiling] ceiling breached ' + self._http2Ceilings + ' times this session — consider switching to scheme A (main-process proxy)');
+                    var _n = self._http2Ceilings;
+                    if (_n >= 5) {
+                        onError('HTTP/2 连接已断开 ' + _n + ' 次，正在自动刷新面板恢复…');
+                        setTimeout(function () { window.location.reload(); }, 800);
+                    } else {
+                        onError('⚠️ HTTP/2 连接断开（第 ' + _n + ' 次）。这是 Chromium 108 已知限制，需刷新面板恢复。\n\n✅ 对话上下文已保留 · 刷新后继续\n🔧 建议：Ctrl+R 刷新 AI 面板');
                     }
-                    self._log('⚠ HTTP/2 dead, reloading…');
-                    onError('连接中断，正在恢复…');
-                    setTimeout(function () { window.location.reload(); }, 300);
                     return null;
                 }
                 if (retry < MAX_RETRIES) {
@@ -747,8 +757,7 @@ var AgentLoop = (function () {
                     continue;
                 }
                 self._log('✗ fetch exhausted: ' + msg);
-                onError('网络异常，正在重连…');
-                setTimeout(function () { window.location.reload(); }, 800);
+                onError('⚠️ 网络请求失败（已重试）。\n\n✅ 对话上下文已保留\n🔧 请检查网络后重新发送消息');
                 return null;
             }
         } // retry loop
