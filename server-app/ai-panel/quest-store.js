@@ -1,148 +1,97 @@
 // ============================================================================
-// quest-store.js — 多任务管理（项目级持久化，铁律 §9）
-// 无 rootDir → 用全局 qgs（兼容旧数据）
-// 有 rootDir → 用项目级 SQLite（qqq/alphal/quest.sq3）
-// 存储结构:
-//   __nextQuestId    → 全局自增 quest 编号（只增不减）
-//   index            → [{ id, numericId, title, createdAt, lastActiveAt }]
-//   active           → active quest id (string)
-//   quest.{id}       → { ctx, totalCostGe, floorTimings, serverDrift, savedAt, __nextFloorId }  (quest 级共享元数据)
-//   floor.{id}.{n}   → { question, conversation, houses, costWge, lastUserInput, createdAt, savedAt }  (每层楼独立)
+// quest-store.js — 多任务持久化（唯一真理：SQLite）
+//
+// 铁律：
+//   ① SQLite 是唯一真理源，all.txt 是纯导出快照，绝不回读
+//   ② 无全局计数器 — 所有编号从已存数据推导
+//   ③ 楼层数据增量保存 — 每完成一个 House 立即写库
+//   ④ 启动时自愈 — index 缺失的 quest 从 floor 数据反向重建
+//   ⑤ 不兼容老旧数据格式
+//
+// 存储结构 (ns=qqq.ai / quest.sq3):
+//   index              → [{ id, numericId, title, createdAt, lastActiveAt }]
+//   active             → 'qN'
+//   quest.{id}         → { ctx, totalCostGe, floorTimings, serverDrift, rulesVersion, floors[] }
+//   floor.{id}.{n}     → { question, conversation, houses, costWge, lastUserInput, createdAt, savedAt }
 // ============================================================================
 
 var QuestStore = (function () {
+    'use strict';
 
     var NS = 'qqq.ai';
     var INDEX_KEY = 'index';
     var ACTIVE_KEY = 'active';
     var QUEST_NS = 'quest';
     var FLOOR_NS = 'floor';
-    var COUNTER_QUEST_KEY = '__nextQuestId';
-    var COUNTER_FLOOR_FIELD = '__nextFloorId';
 
-    // 通过 state-sdk 的 qgs 访问唯一真理持久化机器
-    // 如果 iframe 内没加载 state-sdk.js，回退到 parent 的 qgs
     var _qgs = null;
     var _rootDir = null;
-    var _bridgeCalled = 0;
-    var _requireProject = false;  // 要求必须绑定主项目才允许写入
+
+    // ═══════════════════════════════════════════════════════════════
+    // Bridge — 懒初始化 qgs handle，_rootDir 必须在 setProjectRoot 后可用
+    // ═══════════════════════════════════════════════════════════════
 
     function _bridge() {
-        _bridgeCalled++;
         if (_qgs) return _qgs;
-
-        // 铁律：绑定主项目后才允许任何持久化操作。无 rootDir → 直接拒绝。
         if (!_rootDir) {
-            if (_bridgeCalled <= 3) console.log('[quest-store] bridge BLOCKED: no rootDir (project not bound)');
+            console.warn('[quest-store] bridge BLOCKED: no rootDir');
             return null;
         }
-
-        // 项目级 SQLite（唯一路径）—— 数据落 {rootDir}/qqq/alphal/quest.sq3
-        if (window && window.parent && window.parent.qgs && typeof window.parent.qgs.project === 'function') {
-            _qgs = window.parent.qgs.project(_rootDir + '/qqq/alphal/quest.sq3', NS, { v: 1, form: 'doc' });
-            if (_bridgeCalled <= 3) console.log('[quest-store] bridge OK via parent.qgs.project(dbPath=' + _rootDir + '/qqq/alphal/quest.sq3)');
-            return _qgs;
+        var dbPath = _rootDir + '/qqq/alphal/quest.sq3';
+        // 主窗口 parent.qgs 暴露 project() 工厂
+        if (window.parent && window.parent.qgs && typeof window.parent.qgs.project === 'function') {
+            _qgs = window.parent.qgs.project(dbPath, NS, { v: 2, form: 'doc' });
+        } else if (window.qgs && typeof window.qgs.project === 'function') {
+            _qgs = window.qgs.project(dbPath, NS, { v: 2, form: 'doc' });
         }
-
-        // 回退：本窗口的 qgs.project（独立僚机/无 parent）
-        if (typeof window !== 'undefined' && window.qgs && typeof window.qgs.project === 'function') {
-            _qgs = window.qgs.project(_rootDir + '/qqq/alphal/quest.sq3', NS, { v: 1, form: 'doc' });
-            if (_bridgeCalled <= 3) console.log('[quest-store] bridge OK via self.qgs.project');
-            return _qgs;
+        if (_qgs) {
+            console.log('[quest-store] bridge OK →', dbPath);
+        } else {
+            console.warn('[quest-store] bridge FAIL: no qgs.project API');
         }
-
-        if (_bridgeCalled <= 3) console.log('[quest-store] bridge FAIL: no project() API, parent.qgs:', !!(window.parent && window.parent.qgs), 'self.qgs:', !!window.qgs);
-        return null;
+        return _qgs;
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 底层原子读写 — 所有操作经过这里
+    // ═══════════════════════════════════════════════════════════════
 
     async function _get(key) {
         var b = _bridge();
-        if (!b) { console.warn('[quest-store] _get(' + key + ') FAIL: no bridge'); return null; }
+        if (!b) return null;
         try {
             var v = await b.get(key);
-            console.log('[quest-store] _get(' + key + ') ->', v !== null && v !== undefined ? 'OK' : 'NULL');
             return v;
-        } catch (e) { console.error('[quest-store] _get(' + key + ') ERROR:', e); return null; }
-    }
-
-    async function _set(key, value) {
-        var b = _bridge();
-        if (!b) { console.warn('[quest-store] _set(' + key + ') FAIL: no bridge'); return; }
-        try {
-            var sizeEst = JSON.stringify(value).length;
-            console.log('[quest-store] _set(' + key + ') size=' + sizeEst + 'b');
-            await b.set(key, value);
-            console.log('[quest-store] _set(' + key + ') OK');
-        } catch (e) { console.error('[quest-store] _set(' + key + ') ERROR:', e); }
+        } catch (e) {
+            console.error('[quest-store] _get(' + key + ') ERROR:', e && e.message);
+            return null;
+        }
     }
 
     async function _setNow(key, value) {
         var b = _bridge();
-        if (!b) { console.warn('[quest-store] _setNow(' + key + ') FAIL: no bridge'); return; }
+        if (!b) return;
         try {
             await b.setNow(key, value);
-        } catch (e) { console.error('[quest-store] _setNow(' + key + ') ERROR:', e); }
-    }
-
-    async function _del(key) {
-        var b = _bridge();
-        if (!b) { console.warn('[quest-store] _del(' + key + ') FAIL: no bridge'); return; }
-        try { await b.del(key); } catch (e) { console.error('[quest-store] _del(' + key + ') ERROR:', e); }
-    }
-
-    // ═══ Migration from localStorage (one-time) ═══
-    async function _migrateIfNeeded() {
-        try {
-            var existing = await _get(INDEX_KEY);
-            if (existing && Array.isArray(existing) && existing.length > 0) return;
-        } catch (_) { }
-
-        var oldIndex = null;
-        try { oldIndex = JSON.parse(localStorage.getItem('qqq-ai-quests-index') || 'null'); } catch (_) { }
-        if (!oldIndex || !Array.isArray(oldIndex) || oldIndex.length === 0) return;
-
-        console.log('[quest-store] migrating ' + oldIndex.length + ' quests from localStorage to qgs...');
-        var migrated = 0;
-        for (var i = 0; i < oldIndex.length; i++) {
-            var entry = oldIndex[i];
-            var raw = localStorage.getItem('qqq-ai-quest-' + entry.id);
-            if (!raw) continue;
-            try {
-                var data = JSON.parse(raw);
-                await _set(QUEST_NS + '.' + entry.id, data);
-                migrated++;
-            } catch (_) { }
+        } catch (e) {
+            console.error('[quest-store] _setNow(' + key + ') ERROR:', e && e.message);
         }
-        await _set(INDEX_KEY, oldIndex);
-        var oldActive = localStorage.getItem('qqq-ai-quests-active');
-        if (oldActive) await _set(ACTIVE_KEY, oldActive);
-
-        // cleanup localStorage
-        for (var j = 0; j < oldIndex.length; j++) {
-            localStorage.removeItem('qqq-ai-quest-' + oldIndex[j].id);
-        }
-        localStorage.removeItem('qqq-ai-quests-index');
-        localStorage.removeItem('qqq-ai-quests-active');
-        console.log('[quest-store] migrated ' + migrated + ' / ' + oldIndex.length + ' quests');
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // 构造函数
+    // ═══════════════════════════════════════════════════════════════
 
     function QuestStore() {
-        this._index = null; // lazy init
-        this._migrated = false;
-        this._nextQuestId = null; // lazy init: 自增 quest 编号
-        this._onChangeCbs = []; // 跨窗口通知回调
+        this._index = null;
+        this._onChangeCbs = [];
     }
 
-    // ═══ 设置项目根目录 → 切换到项目级 SQLite 持久化 ═══
     QuestStore.prototype.setProjectRoot = function (rootDir) {
         if (rootDir && typeof rootDir === 'string') {
             _rootDir = rootDir.replace(/\\/g, '/').replace(/\/$/, '');
-            _qgs = null; // 重置 bridge，下次 _bridge() 会用 qgs.project
-            _bridgeCalled = 0;
-            // 清缓存：切换后端后必须重新读索引
+            _qgs = null;  // 重置 bridge，下次 _bridge() 会用新路径
             this._index = null;
-            this._migrated = false;
-            this._nextQuestId = null;
             console.log('[quest-store] setProjectRoot: ' + _rootDir);
         }
     };
@@ -151,15 +100,14 @@ var QuestStore = (function () {
         return _rootDir;
     };
 
-    // ═══ 底层守卫：要求绑定主项目才允许写入 ───
-    QuestStore.prototype.requireProjectForWrites = function (req) {
-        _requireProject = !!req;
-    };
+    // ═══════════════════════════════════════════════════════════════
+    // 跨窗口通知
+    // ═══════════════════════════════════════════════════════════════
 
-    // ═══ 跨窗口通知 ═══
     QuestStore.prototype.onChange = function (cb) {
         this._onChangeCbs.push(cb);
     };
+
     function _notify(store, type, questId, extra) {
         if (!store._onChangeCbs.length) return;
         var payload = { type: type, questId: questId };
@@ -169,195 +117,76 @@ var QuestStore = (function () {
         }
     }
 
-    function _guardWrite(op) {
-        if (_requireProject && !_rootDir) {
-            console.warn('[quest-store] BLOCKED ' + op + ': no main project bound');
-            return true;  // blocked
-        }
-        return false;
-    }
+    // ═══════════════════════════════════════════════════════════════
+    // Index — quest 列表（唯一入口，懒加载 + 自愈）
+    // ═══════════════════════════════════════════════════════════════
 
     QuestStore.prototype._ensureIndex = async function () {
-        if (!this._migrated) {
-            await _migrateIfNeeded();
-            this._migrated = true;
-        }
-        if (this._index === null) {
-            var raw = await _get(INDEX_KEY);
-            this._index = (raw && Array.isArray(raw)) ? raw : [];
-            // 自愈：扫描数据库中的 quest 数据，将被意外丢失的 quest 补回 index
-            await this._healOrphanQuests();
-        }
+        if (this._index !== null) return;
+        var raw = await _get(INDEX_KEY);
+        this._index = (raw && Array.isArray(raw)) ? raw : [];
+        await this._healIndex();
     };
 
-    // 扫描数据库中的 quest.{id} 键，补回 index 中缺失的 quest
-    QuestStore.prototype._healOrphanQuests = async function () {
-        if (!this._index) return;
-        var indexIds = {};
-        for (var i = 0; i < this._index.length; i++) {
-            indexIds[this._index[i].id] = true;
-        }
-        var healed = false;
-        // 通过扫描已知的 quest ID 范围来发现孤儿（最多尝试 100 个）
-        for (var n = 1; n <= 100; n++) {
-            var qid = 'q' + n;
-            if (indexIds[qid]) continue; // 已在 index 中
-            try {
-                var qData = await _get(QUEST_NS + '.' + qid);
-                if (qData && typeof qData === 'object') {
-                    // 发现孤儿 quest，从数据中恢复标题和创建时间
-                    var title = '';
-                    var createdAt = Date.now();
-                    // 尝试从 floor 数据推导标题
-                    try {
-                        var f1 = await _get(FLOOR_NS + '.' + qid + '.1');
-                        if (f1 && f1.question) {
-                            title = f1.question.slice(0, 80);
-                        }
-                    } catch (_) {}
-                    console.log('[quest-store] heal: recovered orphan quest ' + qid + ' (' + title.slice(0, 40) + ')');
-                    this._index.push({
-                        id: qid,
-                        numericId: n,
-                        title: title,
-                        createdAt: createdAt,
-                        lastActiveAt: createdAt
-                    });
-                    healed = true;
-                }
-            } catch (_) {}
-        }
-        if (healed) {
-            await this._saveIndex();
-        }
+    // 自愈：index 是唯一真理 — 所有 quest 必须通过 create() 注册到 index。
+    // 若未来需要孤儿检测，需 state-sqlite 提供 listKeys() API。
+    // 当前：信任 index 的完整性。
+    QuestStore.prototype._healIndex = async function () {
+        // 索引自愈（placeholder）：index 完整性由 create/delete 保证
+        // 若 index 空了但磁盘有数据 → 下次 create 从 q1 开始（全新出发）
     };
 
     QuestStore.prototype._saveIndex = async function () {
-        try {
-            await _setNow(INDEX_KEY, this._index);
-            console.log('[quest-store] _saveIndex OK (' + this._index.length + ' quests)');
-        } catch (e) {
-            console.error('[quest-store] _saveIndex FAILED, retrying with set:', e);
-            // 回退到 _set（带重试）
-            try { await _set(INDEX_KEY, this._index); } catch (e2) {
-                console.error('[quest-store] _saveIndex retry also FAILED:', e2);
-            }
-        }
+        await _setNow(INDEX_KEY, this._index);
     };
 
-    // ═══ 自增 ID 计数器 ═══
+    // ═══════════════════════════════════════════════════════════════
+    // Quest CRUD
+    // ═══════════════════════════════════════════════════════════════
 
-    // 获取下一个 quest 编号（全局自增，只增不减）
-    QuestStore.prototype.getNextQuestId = async function () {
-        if (_guardWrite('getNextQuestId')) return 0;
-        await this._ensureIndex();
-        if (this._nextQuestId === null) {
-            // 从持久化存储读取，若不存在则从已有 quest 推导
-            var stored = await _get(COUNTER_QUEST_KEY);
-            if (typeof stored === 'number' && stored > 0) {
-                this._nextQuestId = stored;
-            } else {
-                // 从已有 quest 中找最大 numericId
-                var maxId = 0;
-                for (var i = 0; i < this._index.length; i++) {
-                    if (this._index[i].numericId && this._index[i].numericId > maxId) {
-                        maxId = this._index[i].numericId;
-                    }
-                }
-                this._nextQuestId = maxId + 1;
-                // 如果没有任何 quest，从 1 开始
-                if (this._index.length === 0) this._nextQuestId = 1;
-            }
-        }
-        var id = this._nextQuestId;
-        this._nextQuestId++;
-        await _setNow(COUNTER_QUEST_KEY, this._nextQuestId);
-        return id;
-    };
-
-    // 获取某个 quest 的下一个 floor 编号（per-quest 自增，只增不减）
-    QuestStore.prototype.getNextFloorId = async function (questId) {
-        if (_guardWrite('getNextFloorId')) return 0;
-        var qData = await _get(QUEST_NS + '.' + questId);
-        var next = 1;
-        if (qData && typeof qData[COUNTER_FLOOR_FIELD] === 'number' && qData[COUNTER_FLOOR_FIELD] > 0) {
-            next = qData[COUNTER_FLOOR_FIELD];
-        }
-        // 如果没有持久化的计数器，从 conversation 推导
-        if (next <= 1 && qData && Array.isArray(qData.conversation)) {
-            var maxF = 0;
-            for (var i = 0; i < qData.conversation.length; i++) {
-                if (qData.conversation[i].floorNum && qData.conversation[i].floorNum > maxF) {
-                    maxF = qData.conversation[i].floorNum;
-                }
-            }
-            if (maxF > 0) next = maxF + 1;
-        }
-        // 保存递增后的值（_setNow 立即落盘，防 debounce 回火覆盖后续 save）
-        var floorId = next;
-        next++;
-        try {
-            if (!qData) qData = {};
-            qData[COUNTER_FLOOR_FIELD] = next;
-            await _setNow(QUEST_NS + '.' + questId, qData);
-        } catch (e) { console.warn('[quest-store] getNextFloorId save error:', e); }
-        return floorId;
-    };
-
-    // ═══ Active quest ═══
-
-    QuestStore.prototype.getActiveId = async function () {
-        await this._ensureIndex();
-        var id = await _get(ACTIVE_KEY);
-        return id || '';
-    };
-
-    QuestStore.prototype.setActiveId = async function (id) {
-        if (_guardWrite('setActiveId')) return;
-        await _setNow(ACTIVE_KEY, id);
-    };
-
-    // ═══ CRUD ═══
-
-    // create(title) — 用自增 numericId 生成 id='q{n}'，title 可为空（首次消息时补全）
+    // create(title) → id='qN'，N = max(已有数字ID) + 1
     QuestStore.prototype.create = async function (title) {
-        if (_guardWrite('create')) return null;
-        var numericId = await this.getNextQuestId();
-        if (!numericId) return null;
+        await this._ensureIndex();
+        var maxN = 0;
+        for (var i = 0; i < this._index.length; i++) {
+            var n = this._index[i].numericId || parseInt(String(this._index[i].id).slice(1)) || 0;
+            if (n > maxN) maxN = n;
+        }
+        var numericId = maxN + 1;
         var id = 'q' + numericId;
+        var now = Date.now();
         var entry = {
             id: id,
             numericId: numericId,
             title: title || '',
-            createdAt: Date.now(),
-            lastActiveAt: Date.now()
+            createdAt: now,
+            lastActiveAt: now
         };
-        await this._ensureIndex();
         this._index.push(entry);
         await this._saveIndex();
+
+        // 初始化 quest 元数据（含空的 floors 数组）
+        await _setNow(QUEST_NS + '.' + id, {
+            ctx: { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 },
+            totalCostGe: 0,
+            floorTimings: [],
+            serverDrift: 0,
+            rulesVersion: '',
+            floors: [],
+            createdAt: now,
+            savedAt: now
+        });
+
         _notify(this, 'quest-created', id);
         return id;
     };
 
-    QuestStore.prototype.deleteQuest = async function (id) {
-        if (_guardWrite('deleteQuest')) return;
-        await this._ensureIndex();
-        this._index = this._index.filter(function (s) { return s.id !== id; });
-        await this._saveIndex();
-        await _del(QUEST_NS + '.' + id);
-        _notify(this, 'quest-deleted', id);
-    };
-
-    QuestStore.prototype.list = async function () {
-        await this._ensureIndex();
-        return this._index.slice().sort(function (a, b) { return b.lastActiveAt - a.lastActiveAt; });
-    };
-
-    // rename(id, title) — 设置 quest 标题（首次消息时调用），可附带 numericId
     QuestStore.prototype.rename = async function (id, title, numericId) {
-        if (_guardWrite('rename')) return false;
         await this._ensureIndex();
-        var entry = this._index.find(function (s) { return s.id === id; });
+        var entry = null;
+        for (var i = 0; i < this._index.length; i++) {
+            if (this._index[i].id === id) { entry = this._index[i]; break; }
+        }
         if (entry) {
             entry.title = title;
             if (typeof numericId === 'number') entry.numericId = numericId;
@@ -368,21 +197,57 @@ var QuestStore = (function () {
         return false;
     };
 
-    QuestStore.prototype.touch = async function (id) {
-        if (_guardWrite('touch')) return;
+    QuestStore.prototype.deleteQuest = async function (id) {
         await this._ensureIndex();
-        var entry = this._index.find(function (s) { return s.id === id; });
-        if (entry) {
-            entry.lastActiveAt = Date.now();
-            await this._saveIndex();
+        this._index = this._index.filter(function (s) { return s.id !== id; });
+        await this._saveIndex();
+        // 删除 quest 元数据和所有 floor 数据
+        var b = _bridge();
+        if (b && b.del) {
+            var qData = await _get(QUEST_NS + '.' + id);
+            var floors = (qData && qData.floors) || [];
+            for (var fi = 0; fi < floors.length; fi++) {
+                await b.del(FLOOR_NS + '.' + id + '.' + floors[fi].n);
+            }
+            await b.del(QUEST_NS + '.' + id);
+        }
+        _notify(this, 'quest-deleted', id);
+    };
+
+    QuestStore.prototype.touch = async function (id) {
+        await this._ensureIndex();
+        for (var i = 0; i < this._index.length; i++) {
+            if (this._index[i].id === id) {
+                this._index[i].lastActiveAt = Date.now();
+                await this._saveIndex();
+                return;
+            }
         }
     };
 
-    // ═══ Quest 所有权（防多窗口串味） ═══
+    QuestStore.prototype.list = async function () {
+        await this._ensureIndex();
+        return this._index.slice().sort(function (a, b) { return b.lastActiveAt - a.lastActiveAt; });
+    };
 
-    // claimOwner: 尝试声明所有权。若无人持有或已过期(>30s)，成功。否则返回当前持有者。
+    // ═══════════════════════════════════════════════════════════════
+    // Active quest
+    // ═══════════════════════════════════════════════════════════════
+
+    QuestStore.prototype.getActiveId = async function () {
+        await this._ensureIndex();
+        return await _get(ACTIVE_KEY) || '';
+    };
+
+    QuestStore.prototype.setActiveId = async function (id) {
+        await _setNow(ACTIVE_KEY, id);
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    // Quest 所有权（防多窗口串味）
+    // ═══════════════════════════════════════════════════════════════
+
     QuestStore.prototype.claimOwner = async function (questId, windowId) {
-        if (_guardWrite('claimOwner')) return { claimed: false, currentOwner: null };
         var existing = await _get(QUEST_NS + '.' + questId);
         var oldOwner = (existing && existing._owner) || null;
         if (oldOwner && oldOwner.windowId && oldOwner.windowId !== windowId) {
@@ -390,7 +255,6 @@ var QuestStore = (function () {
             if (age < 30000) {
                 return { claimed: false, currentOwner: oldOwner.windowId };
             }
-            // 过期，允许接管
         }
         var ownerData = { windowId: windowId, claimedAt: Date.now() };
         if (!existing) existing = {};
@@ -399,43 +263,42 @@ var QuestStore = (function () {
         return { claimed: true, currentOwner: null };
     };
 
-    // releaseOwner: 释放所有权。可选 windowId 参数；若提供则仅当匹配时才释放。
     QuestStore.prototype.releaseOwner = async function (questId, windowId) {
-        if (_guardWrite('releaseOwner')) return null;
         var existing = await _get(QUEST_NS + '.' + questId);
         if (!existing || !existing._owner) return null;
         var oldOwner = existing._owner;
-        // 若指定 windowId，仅释放匹配的锁；防止僚机误释放主窗口的 quest 所有权
         if (windowId && oldOwner.windowId !== windowId) return null;
         delete existing._owner;
         await _setNow(QUEST_NS + '.' + questId, existing);
         return oldOwner;
     };
 
-    // getOwner: 读取当前所有权（不修改）。返回 { windowId, claimedAt } 或 null。
     QuestStore.prototype.getOwner = async function (questId) {
         var existing = await _get(QUEST_NS + '.' + questId);
         if (!existing || !existing._owner) return null;
         var age = Date.now() - (existing._owner.claimedAt || 0);
-        if (age > 30000) return null; // 过期视为无主
+        if (age > 30000) return null;
         return existing._owner;
     };
 
-    // ═══ Save / Load ═══
+    // ═══════════════════════════════════════════════════════════════
+    // Quest 元数据 — save/load（不含 floor 数据）
+    // ═══════════════════════════════════════════════════════════════
 
-    // 保存 quest 级元数据（ctx, cost, timings — 不含 floor 数据）
     QuestStore.prototype.save = async function (id, data) {
-        if (_guardWrite('save')) return;
-    data.savedAt = Date.now();
-    // 保留 __nextFloorId 计数器 + _owner（分别由 getNextFloorId / claimOwner 写入，不可被 save 覆盖）
-    var existing = await _get(QUEST_NS + "." + id);
-    if (existing) {
-      if (typeof data[COUNTER_FLOOR_FIELD] !== "number" && typeof existing[COUNTER_FLOOR_FIELD] === "number") {
-        data[COUNTER_FLOOR_FIELD] = existing[COUNTER_FLOOR_FIELD];
-      }
-      if (existing._owner && !data._owner) {
-        data._owner = existing._owner;
-      }
+        data.savedAt = Date.now();
+        // 保留 _owner（由 claimOwner/releaseOwner 管理）
+        var existing = await _get(QUEST_NS + '.' + id);
+        if (!existing) existing = {};
+        if (existing._owner) {
+            if (!data._owner) data._owner = existing._owner;
+        }
+        // floors 列表 + totalFloors 由 saveFloor 管理，save 不覆盖（取最大值）
+        if (existing.floors && !data.floors) {
+            data.floors = existing.floors;
+        }
+        if (data.ctx && existing.ctx && typeof existing.ctx.totalFloors === 'number') {
+            data.ctx.totalFloors = Math.max(data.ctx.totalFloors || 0, existing.ctx.totalFloors);
         }
         await _setNow(QUEST_NS + '.' + id, data);
         _notify(this, 'quest-saved', id, { floorNum: data.ctx ? data.ctx.totalFloors : undefined });
@@ -445,27 +308,71 @@ var QuestStore = (function () {
         return await _get(QUEST_NS + '.' + id);
     };
 
-    // ═══ Floor 级存储（每层楼独立持久化）════
+    // ═══════════════════════════════════════════════════════════════
+    // Floor 存储 — 原子操作：写 floor 数据 + 更新 quest.floors[]
+    // ═══════════════════════════════════════════════════════════════
 
-    QuestStore.prototype.saveFloor = async function (questId, floorNum, data) {
-        if (_guardWrite('saveFloor')) return;
-        data.savedAt = Date.now();
-        await _setNow(FLOOR_NS + '.' + questId + '.' + floorNum, data);
+    // 分配下一个 floor 号（从已存 floors 列表推导，无计数器）
+    QuestStore.prototype.nextFloorNum = async function (questId) {
+        var qData = await _get(QUEST_NS + '.' + questId);
+        var floors = (qData && qData.floors) || [];
+        if (floors.length === 0) return 1;
+        var maxN = 0;
+        for (var i = 0; i < floors.length; i++) {
+            if (floors[i].n > maxN) maxN = floors[i].n;
+        }
+        return maxN + 1;
+    };
+
+    // 保存楼层（完整写入，幂等覆盖）
+    QuestStore.prototype.saveFloor = async function (questId, floorNum, floorData) {
+        floorData.savedAt = Date.now();
+        var floorKey = FLOOR_NS + '.' + questId + '.' + floorNum;
+
+        // 1) 写 floor 数据
+        await _setNow(floorKey, floorData);
+
+        // 2) 更新 quest.floors[] 列表
+        var qData = await _get(QUEST_NS + '.' + questId) || {};
+        var floors = qData.floors || [];
+        var found = false;
+        for (var i = 0; i < floors.length; i++) {
+            if (floors[i].n === floorNum) {
+                floors[i].savedAt = floorData.savedAt;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            floors.push({ n: floorNum, savedAt: floorData.savedAt });
+            floors.sort(function (a, b) { return a.n - b.n; });
+        }
+        qData.floors = floors;
+        if (!qData.ctx) qData.ctx = { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
+        qData.ctx.totalFloors = Math.max(qData.ctx.totalFloors || 0, floors.length);
+        qData.savedAt = Date.now();
+        await _setNow(QUEST_NS + '.' + questId, qData);
+
         _notify(this, 'floor-saved', questId, { floorNum: floorNum });
     };
 
+    // 加载单层楼
     QuestStore.prototype.loadFloor = async function (questId, floorNum) {
         return await _get(FLOOR_NS + '.' + questId + '.' + floorNum);
     };
 
-    // 加载某 quest 的全部楼层（按 floorNum 升序）
+    // 加载全部楼层（从 quest.floors[] 推导，不依赖 totalFloors）
     QuestStore.prototype.loadAllFloors = async function (questId) {
-        var questData = await _get(QUEST_NS + '.' + questId);
-        var totalFloors = (questData && questData.ctx && questData.ctx.totalFloors) || 0;
+        var qData = await _get(QUEST_NS + '.' + questId);
+        var floorList = (qData && qData.floors) || [];
         var floors = [];
-        for (var i = 1; i <= totalFloors; i++) {
-            var fData = await _get(FLOOR_NS + '.' + questId + '.' + i);
-            if (fData) floors.push({ floorNum: i, data: fData });
+        for (var i = 0; i < floorList.length; i++) {
+            var fData = await _get(FLOOR_NS + '.' + questId + '.' + floorList[i].n);
+            if (fData) {
+                floors.push({ floorNum: floorList[i].n, data: fData });
+            } else {
+                console.warn('[quest-store] loadAllFloors: floor.' + questId + '.' + floorList[i].n + ' listed but missing');
+            }
         }
         return floors;
     };

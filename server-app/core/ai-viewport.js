@@ -236,28 +236,51 @@
   }
 
   // ---- attach to AI: dispatch event + postMessage to AI iframe ----
-  function attachToAi(filePath) {
-    console.log('[ai-viewport] attachToAi called with →', filePath);
-    closeDropdown();
-    // Direct cross-frame call (same origin, most reliable)
-    const aiFrame = document.querySelector('#qqq-ai-zone iframe');
-    if (!aiFrame || !aiFrame.contentWindow) {
-      console.warn('[ai-viewport] no AI iframe found');
-      return;
-    }
-    if (typeof aiFrame.contentWindow.qqqAiAttach === 'function') {
-      try {
-        aiFrame.contentWindow.qqqAiAttach(filePath);
-        console.log('[ai-viewport] qqqAiAttach OK →', filePath);
-      } catch (e) {
-        console.warn('[ai-viewport] qqqAiAttach threw:', e);
-      }
-    } else {
-      // Fallback: postMessage
-      aiFrame.contentWindow.postMessage({ type: 'qqq-ai-attach', path: filePath }, '*');
-      console.log('[ai-viewport] postMessage fallback →', filePath);
-    }
+  // ── AI 面板目标路由（自动跟焦）──
+// -1=左僚机  0=主窗口(默认)  1=右僚机
+window.__qqq_aiTarget = 0;
+
+function _sendToWingman(filePath, index) {
+  const sb = window.qqqBridge && window.qqqBridge.sync;
+  if (sb) {
+    sb.broadcast('host-message', {
+      type: 'qqq-ai-attach',
+      path: filePath,
+      _targetWingman: index
+    });
   }
+}
+
+function attachToAi(filePath) {
+  console.log('[ai-viewport] attachToAi →', filePath, 'target=', window.__qqq_aiTarget);
+  closeDropdown();
+
+  const target = window.__qqq_aiTarget || 0;
+
+  // ── 僚机目标：走 IPC sync ──
+  if (target === -1 || target === 1) {
+    _sendToWingman(filePath, target);
+    return;
+  }
+
+  // ── 主窗口：直接发给 AI iframe ──
+  const aiFrame = document.querySelector('#qqq-ai-zone iframe');
+  if (!aiFrame || !aiFrame.contentWindow) {
+    console.warn('[ai-viewport] no AI iframe found');
+    return;
+  }
+  if (typeof aiFrame.contentWindow.qqqAiAttach === 'function') {
+    try {
+      aiFrame.contentWindow.qqqAiAttach(filePath);
+      console.log('[ai-viewport] qqqAiAttach OK →', filePath);
+    } catch (e) {
+      console.warn('[ai-viewport] qqqAiAttach threw:', e);
+    }
+  } else {
+    aiFrame.contentWindow.postMessage({ type: 'qqq-ai-attach', path: filePath }, '*');
+    console.log('[ai-viewport] postMessage fallback →', filePath);
+  }
+}
 
   // ---- render: directory tree dropdown ----
   function showDropdown(blockEl, project) {
@@ -362,12 +385,10 @@
       });
 
       // mousedown — fires earlier than click, more reliable across nested popups.
-      // capture: true ensures we always see it before any descendant.
       const onAttach = (e) => {
         e.stopPropagation();
         e.preventDefault();
         const fullPath = pathJoin(dirPath, ent.name);
-        console.log('[ai-viewport] row mousedown →', fullPath, '(isDir=' + ent.isDir + ')');
         attachToAi(fullPath);
       };
       row.addEventListener('mousedown', onAttach);
@@ -478,8 +499,9 @@
 
     // click → 原生对话框选择新文件夹
     block.addEventListener('click', async (e) => {
-      // 若下拉已打开，不重复弹对话框（用户可能在选最近文件夹）
-      if (activeDropdown && activeDropdown.classList.contains('aiv-recent-dropdown')) return;
+      // 先关闭可能已打开的下拉（最近文件夹等），再弹出原生对话框
+      closeDropdown();
+      if (_activeBlockEl) { _activeBlockEl.classList.remove('aiv-block-active'); _activeBlockEl = null; }
       const result = await bridge.dialog.open({
         properties: ['openDirectory'],
         title: window._i('shell.viewport.selectFolder', '选择要添加到 AI 视口的文件夹'),
@@ -688,6 +710,31 @@
       closeDropdown();
       document.querySelectorAll('.aiv-block-active').forEach(el => el.classList.remove('aiv-block-active'));
     });
+
+    // ── AI 面板目标指示器 ──
+    var targetEl = document.createElement('span');
+    targetEl.className = 'aiv-target-indicator';
+    targetEl.title = '点击切换文件附加目标';
+    targetEl.style.cssText =
+      'font-size:11px; padding:2px 8px; margin-left:4px; cursor:pointer; ' +
+      'border:1px solid var(--border-color); border-radius:3px; user-select:none; ' +
+      'white-space:nowrap; opacity:0.85;';
+    var labels = { '-1': '🎯 左僚机', '0': '🎯 主窗口', '1': '🎯 右僚机' };
+    targetEl.textContent = labels['0'];
+    targetEl.addEventListener('click', function(e) {
+      e.stopPropagation();
+      // 循环切换：主→左→右→主
+      var cur = window.__qqq_aiTarget || 0;
+      var next = cur === 0 ? -1 : cur === -1 ? 1 : 0;
+      window.__qqq_aiTarget = next;
+      targetEl.textContent = labels[String(next)];
+    });
+    container.appendChild(targetEl);
+    // 暴露更新函数供外部 focus 消息调用
+    window.__qqq_updateAiTarget = function(newTarget) {
+      window.__qqq_aiTarget = newTarget;
+      targetEl.textContent = labels[String(newTarget)] || labels['0'];
+    };
   }
 
   // 监听 AI 面板发来的锁冲突通知：从视口移除被锁的项目

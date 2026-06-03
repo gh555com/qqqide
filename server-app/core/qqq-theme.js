@@ -220,11 +220,11 @@
     // 通知 iframe（AI 面板）
     _notifyIframes();
 
-    // 通知独立窗口（僚机等非 iframe 窗口）通过 BroadcastChannel
+    // 通知独立窗口（僚机等非 iframe 窗口）通过 IPC sync
     try {
-      var bc = new BroadcastChannel('qqq-theme-sync');
-      bc.postMessage({ type: 'qqq-theme-change', dark: _dark });
-      bc.close();
+      if (window.qqqBridge && window.qqqBridge.sync) {
+        window.qqqBridge.sync.broadcast('theme', { dark: _dark });
+      }
     } catch (_) {}
 
     // 通知订阅者

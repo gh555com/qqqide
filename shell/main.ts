@@ -134,7 +134,7 @@ protocol.registerSchemesAsPrivileged([
 let mainWindow: BrowserWindow | null = null;
 // 外嵌 AI 面板（僚机窗口）
 // 架构铁律：不可拖动(movable:false)、不可调大小(resizable:false)、与主窗口同z-order
-// 防外部篡改：监听 move/resize 事件，一旦偏离预期位置立即弹回（SSE 级实时）
+// 不可拖动+不可调大小本身已防篡改，无需 snapBack 弹回（避免抢焦点）
 const _externalPanels: (BrowserWindow | null)[] = [null, null];
 // 窗口↔项目 双向映射（用于主文件夹锁：同一文件夹只能在一个窗口作为主文件夹）
 const _windowProjectMap = new Map<number, string>();   // windowId → projectRoot
@@ -298,9 +298,11 @@ function createWindow(): BrowserWindow {
         }
         if (win === mainWindow) {
             // 关主窗口时清理所有僚机
+            _allowExtClose = true;
             for (const extWin of _externalPanels) {
                 if (extWin && !extWin.isDestroyed()) { try { extWin.close(); } catch { /* ignore */ } }
             }
+            _allowExtClose = false;
             mainWindow = null;
         }
     });
@@ -365,6 +367,7 @@ function createWindow(): BrowserWindow {
     // Dev mode: DevTools open (detached), no cache, F5 reload, Ctrl+Shift+I devtools toggle
     if (isDevFlag) {
         win.webContents.openDevTools({ mode: 'detach' });
+        injectDevToolsConsoleButtons(win.webContents);
         win.webContents.session.clearCache().catch(() => { });
         win.webContents.on('before-input-event', (ev, input) => {
             if (input.type !== 'keyDown') { return; }
@@ -378,6 +381,7 @@ function createWindow(): BrowserWindow {
                     win.webContents.closeDevTools();
                 } else {
                     win.webContents.openDevTools({ mode: 'detach' });
+                    injectDevToolsConsoleButtons(win.webContents);
                 }
             }
         });
@@ -1303,6 +1307,7 @@ function registerIpc(): void {
             wc.closeDevTools();
         } else {
             wc.openDevTools({ mode: 'detach' });
+            injectDevToolsConsoleButtons(wc);
         }
     });
     // 开新窗口（可选绑定主文件夹，否则空 AI 视口）
@@ -1674,20 +1679,28 @@ function registerIpc(): void {
     // ---- monaco ----
     monacoHost.register();
 
-    // ---- 外嵌 AI 面板（终极僚机架构：不可拖动、同层级、防外部篡改、实时跟随） ----
+    // ---- 外嵌 AI 面板（僚机：不可拖动、同层级、实时跟随、可独立聚焦、仅主窗口可控关闭） ----
+    // 僚机关闭许可标志（仅 before-quit / mainWindow.closed 设为 true）
+    let _allowExtClose = false;
+    
     ipcMain.handle('qqq:ai-panel:toggle-external', async (_e, index: number, open: boolean) => {
         if (index < 0 || index > 1) return false;
+        const mw = mainWindow;
+        if (!mw || mw.isDestroyed()) return false;
+
         if (open) {
-            if (_externalPanels[index] && !_externalPanels[index]!.isDestroyed()) return true;
-            const mw = mainWindow;
-            if (!mw || mw.isDestroyed()) return false;
+            // 已存在且未销毁 → 直接显示
+            const existing = _externalPanels[index];
+            if (existing && !existing.isDestroyed()) {
+                if (!existing.isVisible()) { existing.showInactive(); syncExtWin(index); }
+                return true;
+            }
+            
             const mwBounds = mw.getBounds();
             const aiW = 389;
             const preloadPath = path.join(__dirname, 'preload.js');
-            // index 0 → 左边，index 1 → 右边
             const xPos = index === 0 ? mwBounds.x - aiW : mwBounds.x + mwBounds.width;
 
-            // 计算僚机期望位置（纯函数，供同步和弹回逻辑共用）
             const expectedBounds = () => {
                 const b = mw.getBounds();
                 const sx = index === 0 ? b.x - aiW : b.x + b.width;
@@ -1698,12 +1711,12 @@ function registerIpc(): void {
                 width: aiW, height: mwBounds.height,
                 x: xPos,
                 y: mwBounds.y,
-                skipTaskbar: true,       // 不出现任务栏
+                skipTaskbar: true,
                 frame: false,
-                movable: false,           // ★ 禁止拖动
-                resizable: false,         // ★ 禁止调整大小
+                movable: false,
+                resizable: false,
                 focusable: true,
-                show: false,              // 等位置就绪后再显示
+                show: false,
                 backgroundColor: '#1e1e1e',
                 title: 'qqq AI ' + (index === 0 ? 'L' : 'R'),
                 webPreferences: {
@@ -1715,66 +1728,41 @@ function registerIpc(): void {
                 },
             });
             extWin.removeMenu();
+            
+            // ★ 禁止独立关闭僚机（Alt+F4 / 系统菜单均拦截）
+            extWin.on('close', (e) => {
+                if (!_allowExtClose) {
+                    e.preventDefault();
+                    // 改为隐藏（与红色灯泡关闭行为一致）
+                    extWin.hide();
+                    return;
+                }
+            });
+
             extWin.loadURL(bootConfig.url + 'ai-panel/index.html?external=' + index).catch(() => { });
 
             // ── 实时同步引擎 ──
-            let _syncing = false;  // 防重入
-            const syncExt = () => {
-                if (extWin.isDestroyed() || mw.isDestroyed()) return;
-                if (_syncing) return;
-                _syncing = true;
-                try {
-                    const eb = expectedBounds();
-                    extWin.setBounds(eb);
-                } finally { _syncing = false; }
-            };
+            const syncExt = () => syncExtWin(index);
 
-            // 主窗口 move/resize → 僚机跟随（落地确认）
             mw.on('move', syncExt);
             mw.on('resize', syncExt);
-            // will-move/will-resize: 拖动中高频触发 → rAF 节流（最多每帧一次）
             let _rafPending = false;
             const syncExtRaf = () => {
                 if (_rafPending) return;
                 _rafPending = true;
-                requestAnimationFrame(() => {
-                    _rafPending = false;
-                    syncExt();
-                });
+                requestAnimationFrame(() => { _rafPending = false; syncExt(); });
             };
             mw.on('will-move' as any, syncExtRaf);
             mw.on('will-resize' as any, syncExtRaf);
 
-            // ★ z-order 绑定：主窗口聚焦 → 僚机提到同层
             const onFocus = () => {
                 if (extWin.isDestroyed()) return;
-                extWin.showInactive();  // 显示但不抢焦点
-                extWin.moveTop();       // 拉到主窗口同层
+                if (extWin.isFocused()) return;
+                extWin.showInactive();
+                extWin.moveTop();
             };
             mw.on('focus', onFocus);
 
-            // 点击僚机 → 自动聚焦主窗口（保持协同感）
-            extWin.on('focus', () => {
-                if (!mw.isDestroyed() && !mw.isFocused()) {
-                    mw.focus();
-                }
-            });
-
-            // ★ 防外部篡改：僚机被移动/改大小 → 立即弹回（SSE 级实时监听）
-            const snapBack = () => {
-                if (extWin.isDestroyed() || mw.isDestroyed()) return;
-                const cur = extWin.getBounds();
-                const exp = expectedBounds();
-                // 容忍 1px 误差（HiDPI 浮点取整）
-                if (Math.abs(cur.x - exp.x) > 1 || Math.abs(cur.y - exp.y) > 1 ||
-                    Math.abs(cur.width - exp.width) > 1 || Math.abs(cur.height - exp.height) > 1) {
-                    extWin.setBounds(exp);
-                }
-            };
-            extWin.on('move', snapBack);
-            extWin.on('resize', snapBack);
-
-            // 主窗口 最小化/还原/隐藏/显示 → 僚机跟随
             const onMinimize = () => { if (!extWin.isDestroyed()) extWin.minimize(); };
             const onRestore = () => {
                 if (!extWin.isDestroyed()) extWin.restore();
@@ -1790,30 +1778,72 @@ function registerIpc(): void {
             mw.on('hide', onHide);
             mw.on('show', onShow);
 
-            // ── 清理 ──
             extWin.on('closed', () => {
                 _externalPanels[index] = null;
-                mw.removeListener('move', syncExt);
-                mw.removeListener('resize', syncExt);
-                mw.removeListener('will-move' as any, syncExtRaf);
-                mw.removeListener('will-resize' as any, syncExtRaf);
-                mw.removeListener('focus', onFocus);
-                mw.removeListener('minimize', onMinimize);
-                mw.removeListener('restore', onRestore);
-                mw.removeListener('hide', onHide);
-                mw.removeListener('show', onShow);
+                if (!mw.isDestroyed()) {
+                    mw.removeListener('move', syncExt);
+                    mw.removeListener('resize', syncExt);
+                    mw.removeListener('will-move' as any, syncExtRaf);
+                    mw.removeListener('will-resize' as any, syncExtRaf);
+                    mw.removeListener('focus', onFocus);
+                    mw.removeListener('minimize', onMinimize);
+                    mw.removeListener('restore', onRestore);
+                    mw.removeListener('hide', onHide);
+                    mw.removeListener('show', onShow);
+                }
             });
 
-            // 就位后显示
             syncExt();
             extWin.showInactive();
             _externalPanels[index] = extWin;
             return true;
         } else {
+            // 红色灯泡关闭 → 隐藏僚机（不销毁，保留内部状态）
             const extWin = _externalPanels[index];
-            if (extWin && !extWin.isDestroyed()) { extWin.close(); }
-            _externalPanels[index] = null;
+            if (extWin && !extWin.isDestroyed()) {
+                extWin.hide();
+            }
             return true;
+        }
+    });
+    
+    // 僚机位置同步（提取为独立函数，供 toggle 和外部调用）
+    function syncExtWin(index: number): void {
+        const extWin = _externalPanels[index];
+        const mw = mainWindow;
+        if (!extWin || extWin.isDestroyed() || !mw || mw.isDestroyed()) return;
+        if (!extWin.isVisible()) return;  // 隐藏中的僚机不强制同步位置
+        const aiW = 389;
+        const b = mw.getBounds();
+        const x = index === 0 ? b.x - aiW : b.x + b.width;
+        extWin.setBounds({ x, y: b.y, width: aiW, height: b.height });
+    }
+
+    // ═══ 跨窗口同步 IPC（替代 BroadcastChannel）═══
+    // 项目路径存储（僚机初始化用）
+    let _currentProjectPath: string | null = null;
+
+    ipcMain.handle('qqq:sync:get-project-path', () => _currentProjectPath);
+
+    ipcMain.handle('qqq:sync:set-project-path', (e, p: string) => {
+        // 仅主窗口有权推送项目路径（僚机跟随主窗口，不跟随新建窗口）
+        const senderWin = BrowserWindow.fromWebContents(e.sender);
+        if (senderWin !== mainWindow) return;
+        _currentProjectPath = p;
+        // 推送给僚机窗口（仅 external panels，不影响其他独立窗口）
+        for (const extWin of _externalPanels) {
+            if (extWin && !extWin.isDestroyed()) {
+                try { extWin.webContents.send('qqq:sync:message', 'project-path', { path: p }); } catch { /* ignore */ }
+            }
+        }
+    });
+
+    // 通用消息广播：renderer → main → 其他 renderer
+    ipcMain.handle('qqq:sync:broadcast', (e, channel: string, data: any) => {
+        const senderWC = e.sender;
+        for (const win of BrowserWindow.getAllWindows()) {
+            if (win.isDestroyed() || win.webContents === senderWC) continue;
+            try { win.webContents.send('qqq:sync:message', channel, data); } catch { /* ignore */ }
         }
     });
 }
@@ -1883,6 +1913,14 @@ function _flushStateSync(reason: string): void {
 }
 app.on('before-quit', async (e) => {
     if (_flushedOnce) { return; }
+    // ★ 先同步关闭所有僚机窗口，防止孤儿窗口残留
+    _allowExtClose = true;
+    for (const extWin of _externalPanels) {
+        if (extWin && !extWin.isDestroyed()) {
+            try { extWin.close(); } catch { /* ignore */ }
+        }
+    }
+    _allowExtClose = false;
     // Async flush takes priority; if it stalls, the sync path still runs at exit.
     try {
         e.preventDefault();
@@ -1894,8 +1932,8 @@ app.on('before-quit', async (e) => {
         app.exit(0);
     }
 });
-process.on('SIGINT', () => { _flushStateSync('SIGINT'); try { app.quit(); } catch { process.exit(0); } });
-process.on('SIGTERM', () => { _flushStateSync('SIGTERM'); try { app.quit(); } catch { process.exit(0); } });
+process.on('SIGINT', () => { _allowExtClose = true; for (const extWin of _externalPanels) { if (extWin && !extWin.isDestroyed()) { try { extWin.close(); } catch { /* ignore */ } } } _allowExtClose = false; _flushStateSync('SIGINT'); try { app.quit(); } catch { process.exit(0); } });
+process.on('SIGTERM', () => { _allowExtClose = true; for (const extWin of _externalPanels) { if (extWin && !extWin.isDestroyed()) { try { extWin.close(); } catch { /* ignore */ } } } _allowExtClose = false; _flushStateSync('SIGTERM'); try { app.quit(); } catch { process.exit(0); } });
 process.on('uncaughtException', (err) => {
     console.error('[uncaughtException]', err);
     _flushStateSync('uncaughtException');
@@ -1909,6 +1947,113 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
     console.warn('[unhandledRejection]', reason);
 });
+
+// ═══ DevTools Console 悬浮按钮注入（复制 / 另存为） ═══
+function injectDevToolsConsoleButtons(wc: Electron.WebContents): void {
+    // 等待 DevTools 加载完成后注入
+    const tryInject = () => {
+        const dwc = (wc as any).devToolsWebContents;
+        if (!dwc) { return; }
+        dwc.executeJavaScript(`
+(function() {
+  if (window.__qqq_dt_btns_installed) return;
+  window.__qqq_dt_btns_installed = true;
+
+  var style = document.createElement('style');
+  style.textContent = [
+    '#qqq-dt-btns { position:fixed; bottom:12px; right:12px; display:flex; gap:6px; z-index:999999; opacity:0.3; transition:opacity 0.15s; }',
+    '#qqq-dt-btns:hover { opacity:1; }',
+    '#qqq-dt-btns button { padding:4px 10px; border:1px solid #888; border-radius:3px; background:#2a2a2a; color:#ccc; font-size:11px; cursor:pointer; white-space:nowrap; font-family:ui-monospace,monospace; }',
+    '#qqq-dt-btns button:hover { background:#3a3a3a; border-color:#ccc; }',
+    '#qqq-dt-toast { position:fixed; bottom:44px; right:12px; padding:4px 10px; border-radius:3px; background:rgba(0,0,0,0.85); color:#fff; font-size:11px; z-index:999999; pointer-events:none; opacity:0; transition:opacity 0.2s; font-family:ui-monospace,monospace; }'
+  ].join('\\n');
+  document.head.appendChild(style);
+
+  var btns = document.createElement('div');
+  btns.id = 'qqq-dt-btns';
+  btns.innerHTML = '<button id="qqq-dt-copy">\u{1F4CB} \u590D\u5236</button><button id="qqq-dt-save">\u{1F4BE} \u53E6\u5B58\u4E3A</button>';
+
+  var toast = document.createElement('div');
+  toast.id = 'qqq-dt-toast';
+
+  var _toastTimer = 0;
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastTimer = setTimeout(function() { toast.style.opacity = '0'; }, 1800);
+  }
+
+  // 从 Console 面板提取全部文本
+  function getConsoleText() {
+    var parts = [];
+    // 尝试常见的 DevTools Console DOM 选择器
+    var msgs = document.querySelectorAll('.console-message-text, .console-message, .source-code, [class*="console"] [class*="text"], [class*="console"] [class*="message"]');
+    if (msgs.length === 0) {
+      // 回退：取整个 body 可见文本（粗糙但有结果）
+      var body = document.body;
+      if (body) { parts.push(body.innerText); }
+    } else {
+      for (var i = 0; i < msgs.length; i++) {
+        var t = (msgs[i].textContent || '').trim();
+        if (t) parts.push(t);
+      }
+    }
+    return parts.join('\\n');
+  }
+
+  // 仅在 Console 面板可见时显示按钮
+  function updateVisibility() {
+    var consolePanel = document.querySelector('.console-view, [aria-label="Console"], [class*="console"]');
+    btns.style.display = consolePanel ? '' : 'none';
+  }
+
+  document.getElementById('qqq-dt-copy').onclick = function() {
+    var text = getConsoleText();
+    if (!text) { showToast('\u63A7\u5236\u53F0\u6682\u65E0\u8F93\u51FA'); return; }
+    navigator.clipboard.writeText(text).then(function() {
+      showToast('\u5DF2\u590D\u5236 ' + text.split('\\n').length + ' \u884C');
+    }).catch(function() { showToast('\u590D\u5236\u5931\u8D25'); });
+  };
+
+  document.getElementById('qqq-dt-save').onclick = function() {
+    var text = getConsoleText();
+    if (!text) { showToast('\u63A7\u5236\u53F0\u6682\u65E0\u8F93\u51FA'); return; }
+    var blob = new Blob([text], { type: 'text/plain' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'console_' + new Date().toISOString().slice(0,10) + '.log';
+    a.click();
+    showToast('\u5DF2\u4E0B\u8F7D');
+  };
+
+  document.body.appendChild(btns);
+  document.body.appendChild(toast);
+
+  // 监听面板切换（Console 可见时才显示按钮）
+  updateVisibility();
+  var observer = new MutationObserver(updateVisibility);
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
+})();
+`).catch(() => { /* DevTools may not be ready yet */ });
+    };
+
+    // 立即尝试（DevTools 可能已打开），否则轮询等待
+    if ((wc as any).devToolsWebContents) {
+        tryInject();
+        return;
+    }
+    let attempts = 0;
+    const pollTimer = setInterval(() => {
+        attempts++;
+        if ((wc as any).devToolsWebContents) {
+            clearInterval(pollTimer);
+            tryInject();
+        } else if (attempts >= 30) {
+            clearInterval(pollTimer);
+        }
+    }, 500);
+}
 
 app.on('window-all-closed', () => {
     try { globalShortcut.unregisterAll(); } catch { /* ignore */ }

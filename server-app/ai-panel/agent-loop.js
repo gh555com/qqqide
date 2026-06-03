@@ -130,12 +130,13 @@ var AgentLoop = (function () {
         }
         if (typeof buildVisionContext === "function") { buildVisionContext(); }
         var parts = [];
+        // Vision context FIRST — concrete project path anchors AI before any abstract rules or historical paths appear
+        if (typeof qqqVisionContext !== "undefined" && qqqVisionContext) {
+            parts.push(qqqVisionContext);
+        }
         // SYSTEM_PROMPT 只发送一次，打入哨兵永久存在（重启窗口后从 SQLite 恢复）
         if (typeof SYSTEM_PROMPT !== "undefined" && SYSTEM_PROMPT) {
             parts.push(SYSTEM_PROMPT);
-        }
-        if (typeof qqqVisionContext !== "undefined" && qqqVisionContext) {
-            parts.push(qqqVisionContext);
         }
         if (typeof qqqRulesContent !== "undefined" && qqqRulesContent) {
             parts.push(qqqRulesContent);
@@ -171,8 +172,8 @@ var AgentLoop = (function () {
         self._floorCostWge = 0;
         self._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
         self._currentFloorSummary = '';
-        self._floorTiming = { networkMs: 0, deepseekMs: 0, floorStartPerf: performance.now() };
-        self._floorStartServerMs = Date.now() + (self._serverDrift || 0);
+        self._floorTiming = { networkMs: 0, deepseekMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (self._serverDrift || 0) };
+        self._floorStartServerMs = self._floorTiming.floorStartServerMs;  // 兼容旧引用
         self._currentFloorSummaryLang = '';
 
         // ═══ 视觉预分析：阿里眼睛(Qwen VL) → 文本 → DeepSeek大脑 ═══
@@ -337,7 +338,13 @@ var AgentLoop = (function () {
                     self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '' });
                     var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
                     if (response.reasoning_content) assistantMsg.reasoning_content = response.reasoning_content;
-                    self.conversation.push(assistantMsg);
+                    // 替换之前因切换 quest 而保存的截断消息，避免重复
+                    var _lastConv = self.conversation[self.conversation.length - 1];
+                    if (_lastConv && _lastConv._truncated && _lastConv._floor === self._ctx.totalFloors) {
+                        self.conversation[self.conversation.length - 1] = assistantMsg;
+                    } else {
+                        self.conversation.push(assistantMsg);
+                    }
                     self._extractFloorMarkers(response.content);
                     // 计费 + flush（写入账本）
                     self._flushBilling(token);
@@ -440,7 +447,7 @@ var AgentLoop = (function () {
         }
 
         var analyzeOne = async function (img) {
-            var hash = self._simpleHash(img.base64);
+            var hash = self._simpleHash(img.base64 + '|' + (visionPrompt || ''));
             var cached = self._visionCache.get(hash);
             if (cached) {
                 self._log('  ✓ vision #' + img.id + ' cached (' + hash.slice(0, 8) + ')');

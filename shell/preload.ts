@@ -120,6 +120,23 @@ const QQQ = {
         toggleExternal: (index: number, open: boolean) => ipcRenderer.invoke('qqq:ai-panel:toggle-external', index, open),
     },
 
+    // ---- 跨窗口同步 IPC（替代 BroadcastChannel，终极架构 §C）----
+    sync: {
+        // 广播消息到所有其他窗口（主进程中转）。静默吞错——广播是 best-effort。
+        broadcast: (channel: string, data: any) => ipcRenderer.invoke('qqq:sync:broadcast', channel, data).catch(() => {}),
+        // 订阅来自其他窗口的消息。返回 unsubscribe 函数。
+        onMessage: (cb: (channel: string, data: any) => void) => {
+            const handler = (_e: any, channel: string, data: any) => {
+                try { cb(channel, data); } catch (err) { console.warn('[sync.onMessage]', err); }
+            };
+            ipcRenderer.on('qqq:sync:message', handler);
+            return () => { ipcRenderer.removeListener('qqq:sync:message', handler); };
+        },
+        // 获取/设置项目路径（僚机初始化用）
+        getProjectPath: () => ipcRenderer.invoke('qqq:sync:get-project-path'),
+        setProjectPath: (p: string) => ipcRenderer.invoke('qqq:sync:set-project-path', p).catch(() => {}),
+    },
+
     // ---- clipboard ----
     clipboard: {
         readText: () => ipcRenderer.invoke('qqq:clipboard:readText'),

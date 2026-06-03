@@ -576,27 +576,49 @@ export class StateStore extends EventEmitter {
         if (!this._readyOk || !this._db) return;
         this._saveDbPending = false;
         if (this._saveDbTimer) { clearTimeout(this._saveDbTimer); this._saveDbTimer = null; }
+        const tmp = this.dbPath + '.tmp.' + Date.now();
         try {
             const data = this._db.export();
             const buf = Buffer.from(data);
-            // Atomic write: tmp + rename
-            const tmp = this.dbPath + '.tmp.' + Date.now();
             // 确保父目录存在（兜底：构造函数中已创建，但可能被外部删除）
             try { fs.mkdirSync(path.dirname(this.dbPath), { recursive: true }); } catch { /* ignore */ }
             await fs.promises.writeFile(tmp, buf as any);
-            try {
-                await fs.promises.rename(tmp, this.dbPath);
-            } catch (e: any) {
-                if (e && (e.code === 'EEXIST' || e.code === 'EPERM' || e.code === 'EACCES')) {
-                    try { await fs.promises.unlink(this.dbPath); } catch { /* ignore */ }
-                    await fs.promises.rename(tmp, this.dbPath);
-                } else {
-                    try { await fs.promises.unlink(tmp); } catch { /* ignore */ }
-                    throw e;
-                }
-            }
+            // 原子 rename，含重试（Windows 上可能因瞬时文件锁失败）
+            await this._atomicRename(tmp, this.dbPath);
         } catch (e) {
             console.warn('[state-sqlite] _doSaveDb failed:', e);
+        } finally {
+            // 无论如何清理 tmp 文件，防止堆积
+            try { await fs.promises.unlink(tmp); } catch { /* ignore */ }
+        }
+    }
+
+    /** 原子 rename，带重试和降级策略 */
+    private async _atomicRename(tmp: string, dest: string): Promise<void> {
+        for (let attempt = 0; attempt < 5; attempt++) {
+            try {
+                await fs.promises.rename(tmp, dest);
+                return; // 成功
+            } catch (e: any) {
+                if (e && (e.code === 'EEXIST' || e.code === 'EPERM' || e.code === 'EACCES')) {
+                    // 尝试先删除目标文件再重试
+                    try { await fs.promises.unlink(dest); } catch { /* ignore */ }
+                    if (attempt < 4) {
+                        // 指数退避: 50ms, 150ms, 350ms, 750ms
+                        await new Promise(r => setTimeout(r, 50 * Math.pow(2, attempt) + Math.random() * 50));
+                        continue;
+                    }
+                    // 最后一次尝试：直接覆盖写入
+                    try {
+                        const data = await fs.promises.readFile(tmp);
+                        await fs.promises.writeFile(dest, data);
+                        return;
+                    } catch (e2) {
+                        throw new Error('atomicRename all strategies failed: ' + (e2 && (e2 as any).message));
+                    }
+                }
+                throw e; // 非可恢复错误，直接抛
+            }
         }
     }
 
@@ -605,25 +627,35 @@ export class StateStore extends EventEmitter {
         if (!this._readyOk || !this._db) return;
         this._saveDbPending = false;
         if (this._saveDbTimer) { clearTimeout(this._saveDbTimer); this._saveDbTimer = null; }
+        const tmp = this.dbPath + '.tmp.' + Date.now();
         try {
             const data = this._db.export();
             const buf = Buffer.from(data);
-            const tmp = this.dbPath + '.tmp.' + Date.now();
             try { fs.mkdirSync(path.dirname(this.dbPath), { recursive: true }); } catch { /* ignore */ }
             fs.writeFileSync(tmp, buf as any);
-            try {
-                fs.renameSync(tmp, this.dbPath);
-            } catch (e: any) {
-                if (e && (e.code === 'EEXIST' || e.code === 'EPERM' || e.code === 'EACCES')) {
-                    try { fs.unlinkSync(this.dbPath); } catch { /* ignore */ }
+            // 同步原子 rename，含降级策略
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
                     fs.renameSync(tmp, this.dbPath);
-                } else {
-                    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+                    return;
+                } catch (e: any) {
+                    if (e && (e.code === 'EEXIST' || e.code === 'EPERM' || e.code === 'EACCES')) {
+                        try { fs.unlinkSync(this.dbPath); } catch { /* ignore */ }
+                        if (attempt >= 2) {
+                            // 降级：直接覆盖写入
+                            const data = fs.readFileSync(tmp);
+                            fs.writeFileSync(this.dbPath, data);
+                            return;
+                        }
+                        continue;
+                    }
                     throw e;
                 }
             }
         } catch (e) {
             console.warn('[state-sqlite] _doSaveDb failed:', e);
+        } finally {
+            try { fs.unlinkSync(tmp); } catch { /* ignore */ }
         }
     }
 

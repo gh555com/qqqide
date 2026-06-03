@@ -525,16 +525,18 @@
   function bootAiOverlay() {
     // 全局唯一 overlay ID（用于跨窗口协调：同时最多一个悬浮预览）
     var _overlayId = 'ov_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-    var _ovChannel = null;
-    try { _ovChannel = new BroadcastChannel('qqq-overlay-sync'); } catch (_) {}
-    if (_ovChannel) {
-      _ovChannel.onmessage = function (e) {
-        if (e.data && e.data.type === 'qqq-overlay-open' && e.data.id !== _overlayId) {
-          // 其他窗口打开了 overlay → 关闭自己的
-          close();
-        }
-      };
-    }
+    // IPC sync 替代 BroadcastChannel：跨窗口 overlay 协调
+    var _ovUnsub = null;
+    try {
+      if (window.qqqBridge && window.qqqBridge.sync) {
+        _ovUnsub = window.qqqBridge.sync.onMessage(function(channel, data) {
+          if (channel === 'overlay-open' && data && data.id !== _overlayId) {
+            // 其他窗口打开了 overlay → 关闭自己的
+            close();
+          }
+        });
+      }
+    } catch (_) {}
 
     var overlay = document.createElement('div');
     overlay.id = 'qqq-ai-overlay';
@@ -577,7 +579,7 @@
     }
 
     var zoomScale = 1.0;
-    // 拖拽偏移（图片用）
+    // 拖拽偏移（图片和表格共用 translate）
     var _dragX = 0, _dragY = 0;
     function applyZoom() {
       var img = contentEl.querySelector('img');
@@ -588,8 +590,7 @@
       }
       var div = contentEl.querySelector('div');
       if (div) {
-        // 表格用 transform scale（保持原始长宽比不重绘），scroll 由 D-pad 折算
-        div.style.transform = 'scale(' + zoomScale + ')';
+        div.style.transform = 'translate(' + _dragX + 'px,' + _dragY + 'px) scale(' + zoomScale + ')';
         div.style.transformOrigin = 'center center';
         div.style.transition = 'transform 0.15s ease';
       }
@@ -661,6 +662,7 @@
     document.body.appendChild(overlay);
 
     function close() {
+      _stopRepeat();
       overlay.style.display = 'none';
       dpad.style.display = 'none';
       contentEl.innerHTML = '';
@@ -714,27 +716,39 @@
     var _initZoom = 1.0;
     function _nudge(dx, dy) {
       var step = 80;
-      var img = contentEl.querySelector('img');
-      if (img) { _dragX -= dx * step; _dragY -= dy * step; applyZoom(); return; }
-      var w = contentEl.querySelector('div');
-      if (w) {
-        // transform scale 让视觉变大但 scroll 不变，需折算
-        var s = zoomScale || 1;
-        w.scrollLeft += dx * step / s;
-        w.scrollTop += dy * step / s;
-      }
+      var s = zoomScale || 1;
+      // 图片和表格统一用 _dragX/_dragY + translate，scrollLeft 在 transform scale 下无效
+      _dragX -= dx * step / s;
+      _dragY -= dy * step / s;
+      applyZoom();
     }
     function _resetView() {
       _dragX = 0; _dragY = 0;
       var w = contentEl.querySelector('div');
-      if (w) { w.scrollLeft = 0; w.scrollTop = 0; zoomScale = _initZoom; }
+      if (w) { zoomScale = _initZoom; }
       else { zoomScale = 1.0; }
       applyZoom();
     }
-    btnUp.addEventListener('mousedown', function (e) { e.preventDefault(); _nudge(0, -1); });
-    btnDown.addEventListener('mousedown', function (e) { e.preventDefault(); _nudge(0, 1); });
-    btnLeft.addEventListener('mousedown', function (e) { e.preventDefault(); _nudge(-1, 0); });
-    btnRight.addEventListener('mousedown', function (e) { e.preventDefault(); _nudge(1, 0); });
+    // ── 按住连点：mousedown 启动定时器，mouseup/mouseleave 停止 ──
+    var _repeatTimer = 0, _repeatDelay = 150, _repeatInterval = 50;
+    function _startRepeat(dx, dy) {
+      _nudge(dx, dy);
+      _repeatTimer = setTimeout(function () {
+        _repeatTimer = setInterval(function () { _nudge(dx, dy); }, _repeatInterval);
+      }, _repeatDelay);
+    }
+    function _stopRepeat() {
+      if (_repeatTimer) { clearTimeout(_repeatTimer); clearInterval(_repeatTimer); _repeatTimer = 0; }
+    }
+    function _bindDpadBtn(btn, dx, dy) {
+      btn.addEventListener('mousedown', function (e) { e.preventDefault(); _startRepeat(dx, dy); });
+      btn.addEventListener('mouseup', function (e) { e.preventDefault(); _stopRepeat(); });
+      btn.addEventListener('mouseleave', function (e) { _stopRepeat(); });
+    }
+    _bindDpadBtn(btnUp, 0, -1);
+    _bindDpadBtn(btnDown, 0, 1);
+    _bindDpadBtn(btnLeft, -1, 0);
+    _bindDpadBtn(btnRight, 1, 0);
     btnCenter.addEventListener('mousedown', function (e) { e.preventDefault(); _resetView(); });
     dpad.appendChild(btnUp); dpad.appendChild(btnLeft); dpad.appendChild(btnCenter);
     dpad.appendChild(btnRight); dpad.appendChild(btnDown);
@@ -746,9 +760,11 @@
       if (e.data.action === 'close') { close(); return; }
 
       // 跨窗口协调：广播自己的 overlay ID，其他窗口收到后自动关闭
-      if (_ovChannel) {
-        _ovChannel.postMessage({ type: 'qqq-overlay-open', id: _overlayId });
-      }
+      try {
+        if (window.qqqBridge && window.qqqBridge.sync) {
+          window.qqqBridge.sync.broadcast('overlay-open', { id: _overlayId });
+        }
+      } catch (_) {}
 
       if (e.data.action === 'open-image') {
         contentEl.innerHTML = '';
@@ -767,23 +783,32 @@
           img.style.cssText =
             'width:' + finalW + 'px; height:' + finalH + 'px; ' +
             'object-fit:contain; box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
-            'display:block; user-select:none;';
+            'display:block; user-select:none; will-change:transform;';
           contentEl.appendChild(img);
           // ── 拖拽平移 ──
-          var dragging = false, sx = 0, sy = 0;
+          var dragging = false, sx = 0, sy = 0, _raf = 0, _pending = false;
           function onMD(ev) {
             if (ev.button !== 0) return;
             dragging = true; sx = ev.clientX; sy = ev.clientY;
+            img.style.transition = 'none';
             ev.preventDefault();
           }
           function onMM(ev) {
             if (!dragging) return;
             _dragX += ev.clientX - sx; _dragY += ev.clientY - sy;
             sx = ev.clientX; sy = ev.clientY;
-            img.style.transform = 'translate(' + _dragX + 'px,' + _dragY + 'px) scale(' + zoomScale + ')';
+            if (!_pending) {
+              _pending = true;
+              _raf = requestAnimationFrame(function () {
+                _pending = false;
+                img.style.transform = 'translate(' + _dragX + 'px,' + _dragY + 'px) scale(' + zoomScale + ')';
+              });
+            }
           }
           function onMU() {
             dragging = false;
+            if (_raf) { cancelAnimationFrame(_raf); _raf = 0; _pending = false; }
+            img.style.transition = '';
           }
           img.addEventListener('mousedown', onMD);
           window.addEventListener('mousemove', onMM);
@@ -807,6 +832,7 @@
         contentEl.innerHTML = '';
         contentEl.style.overflow = '';
         zoomScale = 1.0;
+        _dragX = 0; _dragY = 0;
         var wrapper = document.createElement('div');
         wrapper.style.cssText =
           'overflow:auto; scrollbar-width:none; ' +
