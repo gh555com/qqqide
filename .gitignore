@@ -27,6 +27,15 @@ shell-build/*.zip
 *.jpeg
 *.gif
 
+# temp dispatch / CI log files
+tmp_dispatch.json
+ci_log*.txt
+ci_log*.zip
+_qqq-app.tar.gz
+
+# Python one-liner temp files (accidental commits)
+import sys*
+
 # 标记文件
 nul
 health
