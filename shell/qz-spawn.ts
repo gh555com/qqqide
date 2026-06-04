@@ -16,7 +16,7 @@
 //   - Output safety-net at IPC level (64KB) — AI-facing limit is in tools.js
 // ============================================================================
 
-import { spawn as cpSpawn, ChildProcess } from 'child_process';
+import { spawn as cpSpawn, execSync, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -40,8 +40,7 @@ function _startMemGuard(pid: number, killFn: () => void, limit: number): NodeJS.
     if (!pid || limit <= 0) return null;
     const interval = setInterval(() => {
         try {
-            const { execSync } = require('child_process');
-            // Sum WorkingSetSize of pid + all descendants via WMI
+            // Sum WorkingSetSize of pid + all descendants via WMI (server-side filter, fast)
             const out = execSync(
                 `powershell -NoProfile -Command "$sum=0; Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId=${pid} OR ParentProcessId=${pid}' -ErrorAction SilentlyContinue | ForEach-Object { $sum+=$_.WorkingSetSize }; $sum"`,
                 { windowsHide: true, timeout: 5000, encoding: 'utf8' }
@@ -351,7 +350,18 @@ function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promis
             done = true;
             clearTimeout(guard);
             if (memGuardInterval) { clearInterval(memGuardInterval); }
-            try { proc.kill(); } catch { /* ignore */ }
+            // Tree-kill ghrun + child on forced termination (mem-guard/deadline)
+            if (r.killReason) {
+                try {
+                    if (process.platform === 'win32') {
+                        cpSpawn('taskkill', ['/F', '/T', '/PID', String(proc.pid)], { windowsHide: true });
+                    } else {
+                        try { process.kill(-proc.pid!, 'SIGKILL'); } catch { proc.kill('SIGKILL'); }
+                    }
+                } catch { /* ignore */ }
+            } else {
+                try { proc.kill(); } catch { /* ignore */ }
+            }
             resolve(r);
         };
 
