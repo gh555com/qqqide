@@ -104,11 +104,7 @@ var AgentLoop = (function () {
 
         // 清理残留的空 [💎] 行（过渡期兼容）
         cleanContent = cleanContent.replace(/^\[💎\]\s*(?:暂无待办|暂无|无|None|N\/A|暂无发现|暂无财宝|暂无建议)\s*[。.]?\s*$/gm, '');
-        cleanContent = cleanContent.replace(/
-{3,}/g, '
-
-').replace(/^
-+/, '');
+        cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '');
 
         return { cleanContent: cleanContent, envelope: envelope, summary: summary, lang: lang };
     };
