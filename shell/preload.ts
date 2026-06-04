@@ -123,7 +123,7 @@ const QQQ = {
     // ---- 跨窗口同步 IPC（替代 BroadcastChannel，终极架构 §C）----
     sync: {
         // 广播消息到所有其他窗口（主进程中转）。静默吞错——广播是 best-effort。
-        broadcast: (channel: string, data: any) => ipcRenderer.invoke('qqqide:sync:broadcast', channel, data).catch(() => {}),
+        broadcast: (channel: string, data: any) => ipcRenderer.invoke('qqqide:sync:broadcast', channel, data).catch(() => { }),
         // 订阅来自其他窗口的消息。返回 unsubscribe 函数。
         onMessage: (cb: (channel: string, data: any) => void) => {
             const handler = (_e: any, channel: string, data: any) => {
@@ -134,7 +134,7 @@ const QQQ = {
         },
         // 获取/设置项目路径（僚机初始化用）
         getProjectPath: () => ipcRenderer.invoke('qqqide:sync:get-project-path'),
-        setProjectPath: (p: string) => ipcRenderer.invoke('qqqide:sync:set-project-path', p).catch(() => {}),
+        setProjectPath: (p: string) => ipcRenderer.invoke('qqqide:sync:set-project-path', p).catch(() => { }),
         // 获取主窗口当前主题（僚机初始化用）
         getTheme: () => ipcRenderer.invoke('qqqide:sync:get-theme'),
     },
@@ -319,4 +319,4 @@ const QQQ = {
     },
 };
 
-contextBridge.exposeInMainWorld('qqq', QQQ);
+contextBridge.exposeInMainWorld('qqqideBridge', QQQ);

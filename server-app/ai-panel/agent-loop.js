@@ -104,7 +104,11 @@ var AgentLoop = (function () {
 
         // 清理残留的空 [💎] 行（过渡期兼容）
         cleanContent = cleanContent.replace(/^\[💎\]\s*(?:暂无待办|暂无|无|None|N\/A|暂无发现|暂无财宝|暂无建议)\s*[。.]?\s*$/gm, '');
-        cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '');
+        cleanContent = cleanContent.replace(/
+{3,}/g, '
+
+').replace(/^
++/, '');
 
         return { cleanContent: cleanContent, envelope: envelope, summary: summary, lang: lang };
     };
@@ -974,6 +978,7 @@ var AgentLoop = (function () {
 
     // ---- SSE 解析 ----
     AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
+        var self = this;
         var streamStart = performance.now();
         var reader = body.getReader();
         var decoder = new TextDecoder();

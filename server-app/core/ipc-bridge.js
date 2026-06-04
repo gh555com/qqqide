@@ -1,13 +1,14 @@
 // ============================================================================
 // ipc-bridge.js
-// Renderer-side wrapper around window.qqqide.* exposed by preload.
+// Renderer-side wrapper around window.qqqideBridge.* exposed by preload.
 // Provides safe defaults for non-Electron environments (browser dev mode).
 // ============================================================================
 
 (function () {
   'use strict';
 
-  const isElectron = typeof window !== 'undefined' && !!window.qqqide;
+  // ★ preload.ts exposes as window.qqqideBridge (contextBridge key)
+  const isElectron = typeof window !== 'undefined' && typeof window.qqqideBridge === 'object' && !!window.qqqideBridge;
 
   // Browser-mode stub so the page can be developed in a normal browser
   const stub = {
@@ -26,13 +27,13 @@
       message: () => Promise.resolve({ response: 0 }),
     },
     window: {
-      minimize: () => {}, maximize: () => {}, unmaximize: () => {},
+      minimize: () => { }, maximize: () => { }, unmaximize: () => { },
       close: () => window.close(), isMaximized: () => Promise.resolve(false),
       setTitle: s => { document.title = s; },
     },
     menu: {
       set: () => Promise.resolve(true),
-      onFired: () => () => {},
+      onFired: () => () => { },
     },
     monaco: {
       create: () => Promise.resolve(0),
@@ -76,6 +77,11 @@
     },
   };
 
-  window.qqqideBridge = isElectron ? window.qqqide : stub;
+  // ★ Trick: preload exposeInMainWorld 的 key 是 'qqqideBridge'，
+  //    但在 contextIsolation 下 window.qqqideBridge 指向 preload 注入的真实桥，
+  //    而这里赋值会覆盖它。所以我们在 isElectron 时保留 window.qqqideBridge 不动。
+  if (!isElectron) {
+    window.qqqideBridge = stub;
+  }
   window.qqqIsElectron = isElectron;
 })();

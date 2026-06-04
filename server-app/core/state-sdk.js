@@ -20,9 +20,7 @@
   'use strict';
 
   function _bridge() {
-    return (typeof window !== 'undefined' && window.qqqideBridge && window.qqqideBridge.state)
-      || (typeof window !== 'undefined' && window.qqqide && window.qqqide.state)
-      || null;
+    return (typeof window !== 'undefined' && window.qqqideBridge && window.qqqideBridge.state) || null;
   }
 
   // Browser-dev fallback (in-memory; lost on reload — fine for goods authors).

@@ -4,7 +4,7 @@
 // Loads monaco-editor from qqqide-asset://monaco/vs/loader.js (provided by shell)
 // and exposes window.qqqEditor:
 //   open(file)   - load a file into the active editor
-//   save()       - save current editor content via window.qqqide.fs.write
+//   save()       - save current editor content via window.qqqideBridge.fs.write
 //   getValue()   - current text
 //
 // In browser dev (no shell), exposes a textarea fallback.
@@ -129,7 +129,7 @@
   };
 
   function needsLsp(langId) {
-    if (!window.qqqide || !window.qqqide.lsp) return false;
+    if (!window.qqqideBridge || !window.qqqideBridge.lsp) return false;
     if (MONACO_NATIVE_LANGS.has(langId)) return false;
     return !!LSP_LANG_MAP[langId];
   }
@@ -140,8 +140,8 @@
     try {
       var slash = file.replace(/\\/g, '/');
       var rootUri = 'file:///' + slash.substring(0, slash.lastIndexOf('/'));
-      await window.qqqide.lsp.startLanguage(bridgeLang, rootUri);
-      await window.qqqide.lsp.openDocument(file, text);
+      await window.qqqideBridge.lsp.startLanguage(bridgeLang, rootUri);
+      await window.qqqideBridge.lsp.openDocument(file, text);
       lspVersion = 1;
       lspLang = bridgeLang;
     } catch (e) {
@@ -150,8 +150,8 @@
   }
 
   function wireLspDiagnostics() {
-    if (!window.qqqide || !window.qqqide.lsp) return;
-    window.qqqide.lsp.onDiagnostics(function (msg) {
+    if (!window.qqqideBridge || !window.qqqideBridge.lsp) return;
+    window.qqqideBridge.lsp.onDiagnostics(function (msg) {
       if (!msg || !msg.uri) return;
       var filePath = msg.uri.replace(/^file:\/\/\//, '').replace(/^file:\/\//, '');
       if (currentFile !== filePath) return;
@@ -184,7 +184,7 @@
   }
 
   function wireLspHover() {
-    if (!window.qqqide || !window.qqqide.lsp) return;
+    if (!window.qqqideBridge || !window.qqqideBridge.lsp) return;
     var monaco = window.monaco;
     if (!monaco) return;
     for (var langId in LSP_LANG_MAP) {
@@ -193,7 +193,7 @@
         provideHover: async function (model, position) {
           if (!currentFile || lspLang !== bridgeLang) return null;
           try {
-            var result = await window.qqqide.lsp.hover(
+            var result = await window.qqqideBridge.lsp.hover(
               currentFile, position.lineNumber - 1, position.column - 1
             );
             if (!result || !result.contents) return null;
@@ -361,7 +361,7 @@
       if (!model || !tsService || !tsService.isReady()) return;
       var lang = model.getLanguageId();
       if (lang !== 'typescript' && lang !== 'javascript' &&
-          lang !== 'typescriptreact' && lang !== 'javascriptreact') return;
+        lang !== 'typescriptreact' && lang !== 'javascriptreact') return;
       try {
         var diags = tsService.getDiagnostics(model);
         monaco.editor.setModelMarkers(model, 'ts-service', diags);
@@ -409,7 +409,7 @@
           var m = allModels[j];
           var lang = m.getLanguageId();
           if (lang === 'typescript' || lang === 'javascript' ||
-              lang === 'typescriptreact' || lang === 'javascriptreact') {
+            lang === 'typescriptreact' || lang === 'javascriptreact') {
             scheduleDiagnostics(m);
           }
         }
@@ -478,7 +478,7 @@
         lspDebounce = setTimeout(function () {
           lspDebounce = null;
           try {
-            window.qqqide.lsp.changeDocument(currentFile, changes, version);
+            window.qqqideBridge.lsp.changeDocument(currentFile, changes, version);
           } catch (ex) {
             console.warn('[editor] LSP changeDocument failed:', ex && ex.message);
           }
@@ -532,7 +532,7 @@
       const text = await bridge.fs.read(file);
       // Close previous LSP document
       if (lspLang && currentFile) {
-        try { window.qqqide.lsp.closeDocument(currentFile); } catch (e) { /* ignore */ }
+        try { window.qqqideBridge.lsp.closeDocument(currentFile); } catch (e) { /* ignore */ }
       }
       currentFile = file;
       editor.setValue(text, langOf(file));
@@ -632,10 +632,10 @@
         document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: d } }));
       }
 
-      ed.onDidChangeModelContent(function() { if (!ed._isRefreshing) _markDirty(); });
+      ed.onDidChangeModelContent(function () { if (!ed._isRefreshing) _markDirty(); });
 
       // ---- Auto-save on editor blur ----
-      ed.onDidBlurEditorWidget(async function() {
+      ed.onDidBlurEditorWidget(async function () {
         if (_paneDirty && filePath && !(opts && opts.readOnly)) {
           try {
             await bridge.fs.write(filePath, ed.getValue());
@@ -670,7 +670,7 @@
       // track pane editor for live refresh (chat.txt etc.)
       _paneEditors[filePath] = ed;
       _paneFiles[host] = filePath;
-      ed.onDidDispose(function() {
+      ed.onDidDispose(function () {
         delete _paneEditors[filePath];
         delete _paneFiles[host];
       });

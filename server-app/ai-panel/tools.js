@@ -22,7 +22,7 @@ function getBridge() {
 //   fetch 相关常量仅在 web fetch 场景使用，独立于 ContentGateway
 // ============================================================
 var OUTPUT_CAP_DEFAULT = (typeof ContentGateway !== 'undefined' ? ContentGateway.OUTPUT_CAP_DEFAULT : 8000);
-var OUTPUT_CAP_MAX     = (typeof ContentGateway !== 'undefined' ? ContentGateway.OUTPUT_CAP_MAX : 65536);
+var OUTPUT_CAP_MAX = (typeof ContentGateway !== 'undefined' ? ContentGateway.OUTPUT_CAP_MAX : 65536);
 var OUTPUT_CAP_FETCH = 8000;     // web fetch text extraction limit (fetch 专用)
 var OUTPUT_CAP_FETCH_ERR = 500;  // web fetch error message limit (fetch 专用)
 
@@ -51,7 +51,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'edit_file',
-            description: 'Edit a file with one or more search-and-replace operations. All edits applied atomically (all succeed or none). 3-tier whitespace-tolerant matching. No confirmation needed. Single IPC to main process.'
+            description: 'Edit a file with one or more search-and-replace operations. All edits applied atomically (all succeed or none). 3-tier whitespace-tolerant matching. No confirmation needed. Single IPC to main process.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -111,7 +111,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'list_files',
-            description: 'List files in a directory. Flat or recursive. 200-item cap for recursive. Memory-safe, 10x faster than shell.'
+            description: 'List files in a directory. Flat or recursive. 200-item cap for recursive. Memory-safe, 10x faster than shell.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -134,7 +134,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'create_file',
-            description: 'Create a new file with given content. Auto-creates parent directories. Fails if file already exists (use edit_file to modify). Single IPC.'
+            description: 'Create a new file with given content. Auto-creates parent directories. Fails if file already exists (use edit_file to modify). Single IPC.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -166,7 +166,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'delete_file',
-            description: 'Delete a file. Fails if file does not exist (safe — won\'t silently succeed on typos). Single IPC.'
+            description: 'Delete a file. Fails if file does not exist (safe — won\'t silently succeed on typos). Single IPC.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -180,7 +180,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'find_files',
-            description: 'Search for files by name pattern (glob like *.js, config/*.json). Memory-safe, 10x faster than shell. Returns matching file paths. Default 50 max results.'
+            description: 'Search for files by name pattern (glob like *.js, config/*.json). Memory-safe, 10x faster than shell. Returns matching file paths. Default 50 max results.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -196,7 +196,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'fetch_webpage',
-            description: 'Fetch and extract text content from a URL. CORS-bypass via curl backend, 15s timeout. Strips HTML tags, returns plain text ≤8000 chars.'
+            description: 'Fetch and extract text content from a URL. CORS-bypass via curl backend, 15s timeout. Strips HTML tags, returns plain text ≤8000 chars.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -210,7 +210,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'get_diagnostics',
-            description: 'Get LSP/compiler diagnostics (errors, warnings, hints) for a file or all open files. Returns the same red/yellow squiggles you see in the IDE. Max 100 markers returned.'
+            description: 'Get LSP/compiler diagnostics (errors, warnings, hints) for a file or all open files. Returns the same red/yellow squiggles you see in the IDE. Max 100 markers returned.',
             parameters: {
                 type: 'object',
                 properties: {

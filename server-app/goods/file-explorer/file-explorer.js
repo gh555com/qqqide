@@ -1,7 +1,7 @@
 // ============================================================================
 // file-explorer.js - QOODS file explorer
 //
-// Sidebar tree view backed by window.qqqide.fs.list().
+// Sidebar tree view backed by window.qqqideBridge.fs.list().
 // Click file -> qqqEditor.open(path)
 // Lazy expand directories on click.
 // ============================================================================
