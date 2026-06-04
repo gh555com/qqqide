@@ -89,7 +89,7 @@
             "copyFailed": "复制失败",
             "zoomIn": "放大",
             "zoomOut": "缩小",
-            "close": "关闭 (Esc)",
+            "close": "关闭 (Esc 或右键)",
             "resetPosition": "重置位置"
         },
         "about": {

@@ -33,6 +33,14 @@ const baseOpts = {
 async function build() {
   fs.mkdirSync(OUT, { recursive: true });
 
+  // Copy bootstrap.js (plain JS, not bundled — needs independent require('./main.js'))
+  var bootstrapSrc = path.join(SRC, 'bootstrap.js');
+  var bootstrapDst = path.join(OUT, 'bootstrap.js');
+  if (fs.existsSync(bootstrapSrc)) {
+    fs.copyFileSync(bootstrapSrc, bootstrapDst);
+    console.log('[esbuild] copied bootstrap.js ->', OUT);
+  }
+
   if (isWatch) {
     const ctx = await esbuild.context({ ...baseOpts, entryPoints: entries });
     await ctx.watch();

@@ -1,0 +1,5 @@
+11_0_window-there: ['a.py', 'q.py']
+11_1_she-go-there: ['a.py', 'desired', 'q.py']
+1_0_kopy-a: ['a.py', 'assets', 'miniaudio_nonblocking_v15.py', 'q.py', '__pycache__']
+1_1_gyre: ['a.py', 'assets', 'miniaudio_nonblocking_v15.py', 'q.py', '__pycache__']
+2_1_≤‚ ‘¡¨Ω”: ['a.py', 'q.py', '__pycache__']

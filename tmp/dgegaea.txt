@@ -1,0 +1,20 @@
+.env
+.qoder
+1
+2
+f
+holw
+ky.py
+logs
+nul
+python-3.8.10-embed-amd64.zip
+qqq要求.2
+resource
+scripts
+src
+venv
+__pycache__
+新 UI
+最新工作要求
+画图风格
+简介

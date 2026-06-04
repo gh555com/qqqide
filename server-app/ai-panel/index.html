@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>qqq AI</title>
+<title>qqq IDE</title>
 <style>
 /* 配色变量由父窗口 qqq-theme.js 注入；独立运行时使用 fallback */
 :root {
@@ -61,7 +61,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #messages::-webkit-scrollbar{width:6px}
 #messages::-webkit-scrollbar-thumb{background:var(--base01);border-radius:3px}
 .msg{margin-bottom:10px;line-height:1.5}
-.msg-user{background:var(--card-bg);border-radius:8px;padding:8px 12px;overflow-x:hidden;overflow-wrap:break-word;word-break:break-word}
+.msg-user{background:#f8e0e8;border-radius:8px;padding:8px 12px;overflow-x:hidden;overflow-wrap:break-word;word-break:break-word}
+.msg-guide{background:#f0d0dc}
 .msg-ai{padding:8px 0;word-break:break-word;overflow-x:hidden}
 .msg-ai h1,.msg-ai h2,.msg-ai h3{margin:8px 0 4px;line-height:1.3}
 .msg-ai h1{font-size:1.25em}.msg-ai h2{font-size:1.12em}.msg-ai h3{font-size:1.05em}
@@ -69,7 +70,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-ai ul,.msg-ai ol{margin:4px 0 4px 20px}
 .msg-ai li{margin:2px 0}
 .msg-ai code{background:var(--card-bg);color:var(--text-primary);padding:1px 4px;border-radius:3px;font-family:ui-monospace,Consolas,monospace;font-size:.9em;border:1px solid var(--border-color);word-break:break-all;overflow-wrap:break-word}
-.msg-ai table{border-collapse:collapse;width:100%;margin:6px 0;font-size:12px}
+.msg-ai table{border-collapse:collapse;width:100%;margin:6px 0;font-size:13px}
 .msg-ai th,.msg-ai td{border:1px solid var(--border-color);padding:4px 8px;text-align:left}
 .msg-ai th{background:var(--card-bg);font-weight:600}
 .msg-ai tr:nth-child(even){background:var(--background-color)}
@@ -91,14 +92,14 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-a1{display:flex;flex-direction:column;gap:4px;padding:8px 10px;margin:4px 0 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--card-bg);user-select:none;cursor:pointer}
 .msg-a1:hover{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
 /* A1 统一配色：高对比度粗体，亮主题近黑 / 暗主题近白 */
-.msg-a1-label{font-family:ui-monospace,monospace;font-weight:700;font-size:12px;color:var(--text-primary);line-height:1}
+.msg-a1-label{font-family:ui-monospace,monospace;font-weight:normal;font-size:12px;color:var(--text-primary);line-height:1}
 .msg-a1-num{font-family:ui-monospace,monospace;font-weight:700;font-size:24px;color:var(--text-primary);line-height:1}
 .msg-a1-sp{font-family:ui-monospace,monospace;font-size:12px;color:var(--text-primary);line-height:1;white-space:pre}
 .msg-a1-r1{display:flex;align-items:baseline;flex-wrap:wrap}
 .msg-a1-r2{display:flex;align-items:baseline;flex-wrap:wrap}
 .msg-a1-r2 .msg-a1-num{font-size:18px}
 /* ── 数字增长炫彩动画 ── */
-@keyframes a1-rainbow{0%{transform:scale(1);color:#ff4444;text-shadow:0 0 8px #ff4444}16%{transform:scale(1.6);color:#ff8800;text-shadow:0 0 20px #ff8800}33%{transform:scale(1.3);color:#ffdd00;text-shadow:0 0 18px #ffdd00}50%{transform:scale(1.5);color:#44dd44;text-shadow:0 0 22px #44dd44}66%{transform:scale(1.2);color:#4488ff;text-shadow:0 0 16px #4488ff}83%{transform:scale(1.45);color:#cc44ff;text-shadow:0 0 20px #cc44ff}100%{transform:scale(1);color:var(--text-primary);text-shadow:0 0 0 transparent}}
+@keyframes a1-rainbow{0%{transform:scale(1);color:#ff4444;text-shadow:0 0 8px #ff4444}16%{transform:scale(1.6);color:#ff8800;text-shadow:0 0 20px #ff8800}33%{transform:scale(1.3);color:#ffdd00;text-shadow:0 0 18px #ffdd00}50%{transform:scale(1.5);color:#44dd44;text-shadow:0 0 22px #44dd44}66%{transform:scale(1.35);color:#cc44ff;text-shadow:0 0 18px #cc44ff}83%{transform:scale(1.2);color:#ff6eb4;text-shadow:0 0 14px #ff6eb4}100%{transform:scale(1);color:var(--text-primary);text-shadow:0 0 0 transparent}}
 .msg-a1-num-pop{animation:a1-rainbow 1s ease-out;display:inline-block}
 .msg-a1-r3-wrap{display:flex;align-items:stretch;gap:8px;margin-top:2px;font-size:18px}
 .msg-a1-audit-btn{font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:var(--text-primary);border:1px solid var(--border-color);border-radius:3px;padding:4px 24px;cursor:pointer;line-height:1.4;min-width:80px;background:var(--base3)}
@@ -142,7 +143,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .file-chip .chip-name{overflow:hidden;text-overflow:ellipsis}
 .file-chip .chip-rm{opacity:.5;font-size:14px;line-height:1;flex-shrink:0;padding:0 1px}
 .file-chip .chip-rm:hover{opacity:1;color:var(--red)}
-.table-wrap{position:relative;overflow-x:auto;margin:6px 0;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg)}.table-wrap:hover .table-view-btn{opacity:1;transition:opacity 0.1s 0s}.table-view-btn{position:absolute;top:4px;right:4px;display:inline-flex;align-items:center;gap:4px;font-size:14px;color:#fff;padding:8px 16px;opacity:0;user-select:none;border-radius:6px;background:var(--yellow,#b58900);z-index:5;box-shadow:0 2px 8px rgba(0,0,0,0.3);pointer-events:auto;transition:opacity 0.1s 2s}.table-view-btn:hover{background:var(--orange,#cb4b16)}.table-inner{overflow-x:auto;padding:8px 10px}.table-inner table{width:auto;min-width:100%;font-size:12px}.table-inner th,.table-inner td{padding:4px 8px;text-align:left;white-space:nowrap}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}
+.table-wrap{position:relative;overflow-x:auto;margin:6px 0;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg)}.table-wrap:hover .table-view-btn{opacity:1;transition:opacity 0.1s 0s}.table-view-btn{position:absolute;top:4px;right:4px;display:inline-flex;align-items:center;gap:4px;font-size:14px;color:#fff;padding:8px 16px;opacity:0;user-select:none;border-radius:6px;background:var(--yellow,#b58900);z-index:5;box-shadow:0 2px 8px rgba(0,0,0,0.3);pointer-events:auto;transition:opacity 0.1s 2s}.table-view-btn:hover{background:var(--orange,#cb4b16)}.table-inner{overflow-x:auto;padding:8px 10px}.table-inner table{width:auto;min-width:100%;font-size:13px}.table-inner th,.table-inner td{padding:4px 8px;text-align:left;white-space:nowrap}.table-wrap>pre{border:none;margin:0;border-radius:0;background:transparent}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}.ctx-files{font-size:11px;opacity:.7;padding:4px 0;border-bottom:1px solid var(--border-color)}
 .ctx-files span{background:var(--card-bg);padding:1px 6px;border-radius:3px;margin-right:4px}
 /* 排队信封 */
 #queue-strip{display:block;padding:0 0 4px;border-bottom:1px solid var(--border-color);margin-bottom:4px}
@@ -208,6 +209,14 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
       sync(parent.document.documentElement.getAttribute('data-theme') === 'dark');
     }
   } catch(_) {}
+  // 独立窗口（僚机）：通过 IPC 从主窗口拉取当前主题
+  if (typeof _isStandalone !== 'undefined' && _isStandalone && window.qqqBridge && window.qqqBridge.sync) {
+    try {
+      window.qqqBridge.sync.getTheme().then(function(dark) {
+        if (typeof dark === 'boolean') sync(dark);
+      }).catch(function(){});
+    } catch(_) {}
+  }
   // 始终监听 postMessage
   window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'qqq-theme-change') sync(e.data.dark);
@@ -327,6 +336,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   </div>
 </div>
 
+<script src="content-gateway.js"></script>
 <script src="system-prompt.js"></script>
 <script src="tools.js"></script>
 <script src="agent-loop.js"></script>
@@ -959,7 +969,15 @@ function renderMarkdown(src) {
   const codeBlocks = [];
   let s = _src.replace(/```(\w*)\n?([\s\S]*?)```/g, function(_, lang, code) {
     const idx = codeBlocks.length;
-    codeBlocks.push('<pre><code class="lang-' + (lang||'') + '">' + escHtml(code) + '</code></pre>');
+    var rawCode = escHtml(code);
+    var codeHtml = '<pre><code class="lang-' + (lang||'') + '">' + rawCode + '</code></pre>';
+    var codeId = window._tableStore.length;
+    window._tableStore.push(codeHtml);
+    codeBlocks.push(
+      '<div class="table-wrap">' +
+      '<span class="table-view-btn" onclick="viewTable(' + codeId + ')">▶ 展开</span>' +
+      codeHtml + '</div>'
+    );
     return '\x00CB' + idx + '\x00';
   });
   s = escHtml(s);
@@ -1245,6 +1263,8 @@ async function _handleSyncMessage(msg) {
 // ═══ Agent Pool: one AgentLoop per quest, simultaneous multi-quest work ═══
 var agentPool = {};       // { questId: AgentLoop }
 var _activeAgent = null;  // current visible quest's agent
+var _capturedAgent = null;   // captured ref for async callbacks (autoSave, onDone)
+var _capturedQuestId = '';   // captured quest id for async callbacks
 
 // Backward-compatible 'agent' getter/setter — all existing agent.xxx redirects to _activeAgent
 Object.defineProperty(window, 'agent', {
@@ -1564,12 +1584,21 @@ async function initQuests() {
     questActiveId = '';
     console.log('[quests] no existing quests, waiting for first message');
   } else {
-    questActiveId = await questStore.getActiveId();
-    console.log('[quests] stored activeId:', questActiveId);
-    if (!questActiveId || !quests.find(function(s) { return s.id === questActiveId; })) {
-      questActiveId = quests[0].id;
-      console.log('[quests] activeId invalid, fallback to first:', questActiveId);
+    // ★ 三级恢复：per-window (only.sq3) → project global (quest.sq3) → first quest
+    var _perWindowKey = 'ai.window.' + _windowId + '.activeQuestId';
+    var _fromOnly = onlyStore.isInited() ? onlyStore.get(_perWindowKey) : null;
+    if (_fromOnly && quests.find(function(s) { return s.id === _fromOnly; })) {
+      questActiveId = _fromOnly;
+      console.log('[quests] restored from only.sq3 per-window:', questActiveId);
       await questStore.setActiveId(questActiveId);
+    } else {
+      questActiveId = await questStore.getActiveId();
+      console.log('[quests] stored activeId (quest.sq3):', questActiveId);
+      if (!questActiveId || !quests.find(function(s) { return s.id === questActiveId; })) {
+        questActiveId = quests[0].id;
+        console.log('[quests] activeId invalid, fallback to first:', questActiveId);
+        await questStore.setActiveId(questActiveId);
+      }
     }
   }
   if (questActiveId) {
@@ -1592,19 +1621,46 @@ async function initQuests() {
 
 // ═══ 构建 floorMetaMap（供 rebuildMessagesFromConversation 使用） ═══
 function _buildFloorMetaMap(questId, allFloors, questEntry) {
-  if (!questEntry) {
-    // 同步获取可能不可用，允许传入 null
-  }
   var root = questStore.getProjectRoot();
   var map = {};
+  // 缓存 quest 目录名，避免每层楼重复搜索
+  var _cachedQuestDir = null;
   for (var fi = 0; fi < allFloors.length; fi++) {
     var fData = allFloors[fi].data;
     var fNum = allFloors[fi].floorNum;
-    var qTitle = (questEntry && questEntry.title && questEntry.title !== 'New Chat') ? questEntry.title : questId;
-    var qDirName = _makeName('q', questEntry && questEntry.numericId ? questEntry.numericId : 0, qTitle);
-    var userQ = fData.question || '';
-    var fDirName = _makeName('f', fNum, userQ);
-    var allTxtPath = root ? root + '/qqq/quests/' + qDirName + '/' + fDirName + '/all.txt' : '';
+    // 优先使用存储的精确路径（v2）
+    var allTxtPath = fData.allTxtPath || '';
+    if (!allTxtPath && root) {
+      // 回退：先尝试磁盘搜索 quest 目录
+      if (!_cachedQuestDir) {
+        var questsDir = root + '/qqq/quests/';
+        var prefix = questId + '.';
+        if (typeof _listDirCached === 'function') {
+          try {
+            var entries = _listDirCached(questsDir);
+            if (entries) {
+              for (var ei = 0; ei < entries.length; ei++) {
+                if (entries[ei].startsWith(prefix)) {
+                  _cachedQuestDir = entries[ei];
+                  break;
+                }
+              }
+            }
+          } catch (_) {}
+        }
+      }
+      if (_cachedQuestDir) {
+        var fDirName = _makeName('f', fNum, fData.question || '');
+        allTxtPath = root + '/qqq/quests/' + _cachedQuestDir + '/' + fDirName + '/all.txt';
+      } else {
+        // 最后回退：重建路径（可能不准）
+        var qTitle = (questEntry && questEntry.title && questEntry.title !== 'New Chat') ? questEntry.title : questId;
+        var qDirName = _makeName('q', questEntry && questEntry.numericId ? questEntry.numericId : 0, qTitle);
+        var userQ = fData.question || '';
+        var fDirName2 = _makeName('f', fNum, userQ);
+        allTxtPath = root + '/qqq/quests/' + qDirName + '/' + fDirName2 + '/all.txt';
+      }
+    }
     map[fNum] = {
       questId: questId,
       allTxtPath: allTxtPath,
@@ -1632,13 +1688,7 @@ async function loadQuestData(id) {
   }
   console.log('[quests] loaded ' + agent.conversation.length + ' messages from ' + allFloors.length + ' floors');
 
-  // ═══ 重建 DOM：将所有已加载的楼层渲染到消息区 ═══
-  // 构建 floorMetaMap 以恢复 A1 文件链接块（az 区）
-  var _quests = await questStore.list();
-  var _qEntry = _quests.find(function(q) { return q.id === id; }) || null;
-  var _floorMetaMap = _buildFloorMetaMap(id, allFloors, _qEntry);
-  rebuildMessagesFromConversation(_floorMetaMap);
-
+  // ═══ 先恢复 agent 元数据（rebuildMessagesFromConversation 依赖 _floorTimings） ═══
   if (data) {
     agent._ctx = data.ctx || { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
     agent.totalCostGe = data.totalCostGe || 0;
@@ -1657,6 +1707,13 @@ async function loadQuestData(id) {
     agent._serverDrift = 0;
     _queue = [];
   }
+
+  // ═══ 重建 DOM：将所有已加载的楼层渲染到消息区 ═══
+  // 构建 floorMetaMap 以恢复 A1 文件链接块（az 区）
+  var _quests = await questStore.list();
+  var _qEntry = _quests.find(function(q) { return q.id === id; }) || null;
+  var _floorMetaMap = _buildFloorMetaMap(id, allFloors, _qEntry);
+  rebuildMessagesFromConversation(_floorMetaMap);
 undefined
   
   // ═══ 若 agent 仍在后台流式输出 → 重建流式 UI 占位 ═══
@@ -1680,6 +1737,7 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
       houses: (ag._houses || []).slice(),
       costWge: ag._floorCostWge,
       lastUserInput: ag._lastUserInput,
+      allTxtPath: ag._currentAllTxtPath || _allTxtPath || '',
       createdAt: Date.now()
     };
     await questStore.saveFloor(questId, floorNum, floorPayload);
@@ -1723,14 +1781,22 @@ async function generateFloorTxt() {
   var floorNum = agent._ctx.totalFloors;
   var questId = questActiveId;
   if (!questId) return;
-  var quests = await questStore.list();
-  var questEntry = quests.find(function(q) { return q.id === questId; }) || null;
-  var rawQTitle = (questEntry && questEntry.title && questEntry.title !== 'New Chat') ? questEntry.title : questId;
-  var qDirName = _makeName('q', questEntry && questEntry.numericId ? questEntry.numericId : 0, rawQTitle);
-  var ui = agent._lastUserInput;
-  var uiText = (ui && ui.text) ? ui.text.replace(/\n/g, ' ').trim() : '';
-  var fDirName = _makeName('f', floorNum, uiText || '');
-  var dir = root + '/qqq/quests/' + qDirName + '/' + fDirName + '/';
+
+  // 优先使用已存储的精确路径（与流式写入一致），回退到旧行为
+  var allTxtPath = agent._currentAllTxtPath || _allTxtPath || '';
+  var dir = '';
+  if (allTxtPath) {
+    dir = allTxtPath.replace(/\/all\.txt$/, '/');
+  } else {
+    var quests = await questStore.list();
+    var questEntry = quests.find(function(q) { return q.id === questId; }) || null;
+    var rawQTitle = (questEntry && questEntry.title && questEntry.title !== 'New Chat') ? questEntry.title : questId;
+    var qDirName = _makeName('q', questEntry && questEntry.numericId ? questEntry.numericId : 0, rawQTitle);
+    var ui = agent._lastUserInput;
+    var uiText = (ui && ui.text) ? ui.text.replace(/\n/g, ' ').trim() : '';
+    var fDirName = _makeName('f', floorNum, uiText || '');
+    dir = root + '/qqq/quests/' + qDirName + '/' + fDirName + '/';
+  }
   try {
     if (!(window.parent && window.parent.qqqBridge && window.parent.qqqBridge.fs)) return;
     var bridge = window.parent.qqqBridge;
@@ -1822,7 +1888,10 @@ async function generateFloorTxt() {
       lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  deepseek: ' + (timing.deepseekMs ? timing.deepseekMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.toolMs ? timing.toolMs.toFixed(0) : '0') + 'ms  cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge');
     }
 
-    await bridge.fs.write(dir + 'all.txt', lines.join('\n'));
+    // 写入前检查总大小（唯一真理守卫 4MB）
+    if (!_guardAllTxtSize(lines)) return;
+    var _txtContent = lines.join('\n');
+    await bridge.fs.write(dir + 'all.txt', _txtContent);
     console.log('[quests] floor txt: ' + dir + 'all.txt (' + lines.length + ' lines)');
     // 若用户正打开此文件，刷新编辑器到最终版
     if (_allTxtOpenInEditor) {
@@ -1848,13 +1917,30 @@ async function _appendToSearchQuest(questId, floorNum) {
     if (!floorData) return;
     var questMeta = await questStore.load(questId);
 
-    // 构建 quest 目录路径
-    var quests = await questStore.list();
-    var qEntry = quests.find(function(q) { return q.id === questId; });
-    var qTitle = (qEntry && qEntry.title) || questId;
-    var qNum = (qEntry && qEntry.numericId) || 0;
-    var qDirName = _makeName('q', qNum, qTitle);
-    var questDir = root + '/qqq/quests/' + qDirName + '/';
+    // 解析 quest 目录路径：优先从 floor 数据推导，回退到磁盘搜索
+    var questDir = '';
+    if (floorData.allTxtPath) {
+      // 从 all.txt 路径反推：.../quests/q{n}.xxx/f{n}.xxx/all.txt → .../quests/q{n}.xxx/
+      var parts = floorData.allTxtPath.replace(/\\/g, '/').split('/');
+      var questIdx = parts.indexOf('quests');
+      if (questIdx >= 0 && questIdx + 1 < parts.length) {
+        questDir = parts.slice(0, questIdx + 2).join('/') + '/';
+      }
+    }
+    if (!questDir) {
+      // 回退：磁盘搜索以 questId 为前缀的目录
+      var questsDir = root + '/qqq/quests/';
+      try {
+        var entries = await bridge.fs.list(questsDir);
+        for (var ei = 0; ei < entries.length; ei++) {
+          if (entries[ei].name.startsWith(questId + '.') && entries[ei].isDir) {
+            questDir = questsDir + entries[ei].name + '/';
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+    if (!questDir) return;  // 无法解析目录，静默跳过
     var searchPath = questDir + 'search_quest.txt';
 
     // 提取时间戳
@@ -1958,6 +2044,7 @@ async function switchQuest(id) {
       _activeAgent._floorTimerId = _floorTimerId;
       _activeAgent._floorStartPerf = _floorStartPerf;
       _activeAgent._floorCurrentTiming = _floorCurrentTiming;
+      _activeAgent._allTxtPath = _allTxtPath;  // 保存当前 all.txt 路径
       _activeAiDiv = null;
 
       saveQuestUIState(questActiveId);  // 同步，瞬
@@ -1968,9 +2055,10 @@ async function switchQuest(id) {
 
     questActiveId = id;
     await questStore.setActiveId(id);
-    // 同步到唯一真理配置（下次打开项目直接恢复此 quest）
+    // ★ 同步到唯一真理配置（per-window + global，下次打开直接恢复）
     if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
       onlyStore.set('ai.activeQuestId', id);
+      onlyStore.set('ai.window.' + _windowId + '.activeQuestId', id);
     }
 
     // ═══ 交换 active agent（不 abort 旧 agent） ═══
@@ -1980,6 +2068,7 @@ async function switchQuest(id) {
     _floorTimerId = _activeAgent._floorTimerId || null;
     _floorStartPerf = _activeAgent._floorStartPerf || 0;
     _floorCurrentTiming = _activeAgent._floorCurrentTiming || null;
+    _allTxtPath = _activeAgent._allTxtPath || '';  // 恢复 all.txt 路径
 
     await loadQuestData(id);
     restoreQuestUIState(id);  // 同步，瞬
@@ -2616,16 +2705,24 @@ function _initClockBlock(aiDiv) {
   canvas.addEventListener('mouseleave', function() { _hidePieTooltip(); });
 }
 
-function startFloorTimer(aiDiv) {
+function startFloorTimer(aiDiv, resume) {
   _activeAiDiv = aiDiv;
-  _floorStartPerf = performance.now();
+  // 恢复模式：保留已保存的 _floorStartPerf（切换 quest 后重新挂载时钟）
+  if (!resume || !_floorStartPerf) {
+    _floorStartPerf = performance.now();
+  }
   _floorCurrentTiming = null;
   _initClockBlock(aiDiv);
   var clockMin = aiDiv._clockMin;
   var clockSec = aiDiv._clockSec;
   var canvas = aiDiv._clockCanvas;
-  clockMin.textContent = '0m';
-  clockSec.textContent = ':0s';
+  // 恢复模式：显示已流逝时间而非从零开始
+  var elapsed = performance.now() - _floorStartPerf;
+  var totalS = Math.floor(elapsed / 1000);
+  var min = Math.floor(totalS / 60);
+  var sec = totalS % 60;
+  clockMin.textContent = min + 'm';
+  clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
   // 绿色起步：楼层一开始就在工作，不等数据到才变色
   var COLORS = { deepseek: '#859900', tool: '#e6b800', network: '#cb4b16' };
   clockMin.style.color = COLORS.deepseek;
@@ -2722,7 +2819,7 @@ function rebuildMessagesFromConversation(floorMetaMap) {
       var el = renderUserMessageEl(msg.content);
       el._floor = msg._floor;
       var isGuide = msg._injected && /^\[GUIDE\]/.test(msg.content || '');
-      if (isGuide) el.style.opacity = '0.75';
+      if (isGuide) { el.style.opacity = '0.75'; el.classList.add('msg-guide'); }
       frag.appendChild(el);
       // 超长用户消息：可滚动容器
       var _displayLen = (getUserDisplayContent(msg.content)).length;
@@ -2943,7 +3040,7 @@ async function updateQuestTofu() {
   var el = document.getElementById('quest-tofu-text');
   if (el) el.textContent = label;
   // 同步窗口标题
-  var title = 'qqq AI';
+  var title = 'qqq IDE';
   if (entry && entry.title) title = entry.title + ' — qqq AI';
   else if (entry) title = 'q' + (entry.numericId || '?') + ' — qqq AI';
   try { document.title = title; } catch (_) {}
@@ -3136,7 +3233,13 @@ function _reattachStreamingUI(floorNum) {
   // 同时更新全局引用和 agent 私有引用
   _activeAiDiv = aiDiv;
   _activeAgent._activeAiDiv = aiDiv;
-  startFloorTimer(aiDiv);
+  startFloorTimer(aiDiv, true);  // resume: 保留原有 _floorStartPerf
+  // 重新挂载 A1 block（如果 all.txt 流仍在后台运行）
+  if (_allTxtPath && _allTxtA1Block) {
+    var _a1Block = _initA1Block(aiDiv, _allTxtPath, questActiveId, floorNum);
+    // 保持 _allTxtA1Block 引用更新，让后台 timer 找到新的 DOM
+    _allTxtA1Block = _a1Block;
+  }
   scrollToBottom(true);
 }
 
@@ -3183,6 +3286,7 @@ function _buildFloorHeaderLines(agent, floorNum, userInput, visionInput, timing)
 }
 
 // 构建单个 HOUSE 块（结果缓存到 h._lines，仅首次构建）
+// 注意：toolResults 已由 agent-loop.js 经 ContentGateway 处理，此处直接信任数据
 function _buildHouseLines(h) {
   if (h._lines) return h._lines;
   var lines = [];
@@ -3247,17 +3351,46 @@ async function _appendToFile(path, text) {
   }
 }
 
+// ═══ 唯一真理 all.txt 大小守卫（4MB） ═══
+var _ALL_TXT_MAX_MB = 4;
+var _allTxtBlocked = false;      // 本 floor 已触发拦截 → 后续写入全部跳过
+var _allTxtBlockedQoastTs = 0;   // qoast 节流时间戳
+
+function _guardAllTxtSize(lines) {
+  if (_allTxtBlocked) return false;  // 已拦截，不再重复计算
+  var content = lines.join('\n');
+  var sizeBytes = new Blob([content]).size;
+  var sizeMB = sizeBytes / (1024 * 1024);
+  if (sizeMB <= _ALL_TXT_MAX_MB) return true;
+
+  // 超限：标记拦截 + 日志 + qoast（30s 节流）
+  _allTxtBlocked = true;
+  console.error('[all-txt] BLOCKED: ' + sizeMB.toFixed(1) + 'MB exceeds ' + _ALL_TXT_MAX_MB + 'MB limit — archive paused this floor');
+  var now = Date.now();
+  if (now - _allTxtBlockedQoastTs > 30000) {
+    _allTxtBlockedQoastTs = now;
+    try { if (parent && parent.qqqQoast) parent.qqqQoast.show(
+      '⚠️ all.txt ' + sizeMB.toFixed(1) + 'MB 超过 ' + _ALL_TXT_MAX_MB + 'MB 上限，归档已暂停（SQLite 完好）',
+      { type: 'error', duration: 8000 }
+    ); } catch(_) {}
+  }
+  return false;
+}
+
 // Safe write with external-edit conflict guard
 async function _safeWriteAllTxt(path, lines, lastMtime) {
   var bridge = window.parent && window.parent.qqqBridge;
   if (!bridge) return false;
+  // 唯一真理大小守卫（4MB）
+  if (!_guardAllTxtSize(lines)) return false;
   try {
+    var content = lines.join('\n');
     var stat = await bridge.fs.stat(path).catch(function() { return null; });
     if (lastMtime > 0 && stat && stat.mtimeMs && Math.abs(stat.mtimeMs - lastMtime) > 100) {
       console.warn('[all-txt] externally modified, skipping write');
       return false;
     }
-    await bridge.fs.write(path, lines.join('\n'));
+    await bridge.fs.write(path, content);
     return true;
   } catch (e) {
     console.warn('[all-txt] write failed:', e && e.message);
@@ -3295,8 +3428,9 @@ function _getPreferredAuditLang() {
 }
 
 // ═══ A1 豆腐块（3行：Floor.House.Room / File.Row / 审计） ═══
-// 统一高对比度色，英文标签 12px，数字 24px，全角空格分隔
-var A1_SP = '\u3000'; // 全角空格，不会被吞噬
+// 统一高对比度色，英文标签 12px，数字 24px
+var A1_SP = '\u00A0'; // 列间分隔：普通不换行空格
+var A1_INNER_SP = '\u2009'; // 同列标签-数字间：窄空格（区别于列间分隔）
 
 function _a1Label(text) {
   var s = document.createElement('span'); s.className = 'msg-a1-label'; s.textContent = text; return s;
@@ -3306,6 +3440,9 @@ function _a1Num(text) {
 }
 function _a1Sp() {
   var s = document.createElement('span'); s.className = 'msg-a1-sp'; s.textContent = A1_SP; return s;
+}
+function _a1InnerSp() {
+  var s = document.createElement('span'); s.className = 'msg-a1-sp'; s.textContent = A1_INNER_SP; return s;
 }
 
 function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
@@ -3324,9 +3461,9 @@ function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
   block._r1h = _a1Label('House'); block._r1hn = _a1Num('0');
   block._r1r = _a1Label('Room'); block._r1rn = _a1Num('0');
   block._r1sz = _a1Num('0');
-  r1.appendChild(block._r1f); r1.appendChild(block._r1fn); r1.appendChild(_a1Sp());
-  r1.appendChild(block._r1h); r1.appendChild(block._r1hn); r1.appendChild(_a1Sp());
-  r1.appendChild(block._r1r); r1.appendChild(block._r1rn); r1.appendChild(_a1Sp());
+  r1.appendChild(block._r1f); r1.appendChild(_a1InnerSp()); r1.appendChild(block._r1fn); r1.appendChild(_a1Sp());
+  r1.appendChild(block._r1h); r1.appendChild(_a1InnerSp()); r1.appendChild(block._r1hn); r1.appendChild(_a1Sp());
+  r1.appendChild(block._r1r); r1.appendChild(_a1InnerSp()); r1.appendChild(block._r1rn); r1.appendChild(_a1Sp()); r1.appendChild(_a1Sp());
   r1.appendChild(block._r1sz);
   block._r1 = r1;
 
@@ -3405,6 +3542,7 @@ function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
 // 单层楼 all.txt < 500KB，全量写入足够快。
 function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, visionContent) {
   _stopAllTxtStream();
+  _allTxtBlocked = false;  // 新 floor 重置拦截标记
   var lastWriteMs = 0;
   var lastHouseCount = 0;
   var lastRoomCount = 0;
@@ -4019,8 +4157,8 @@ async function sendMessage() {
     return;
   }
   // ═══ 捕获当前 quest/agent，防止切换 quest 后回调写错数据 ═══
-  var _capturedQuestId = questActiveId;
-  var _capturedAgent = _activeAgent;
+  _capturedQuestId = questActiveId;
+  _capturedAgent = _activeAgent;
   var _capturedFloorStartPerf = _floorStartPerf;
   updateQueueBtn();
   var text = getInputText().trim();
@@ -4190,6 +4328,9 @@ async function sendMessage() {
   }
   var _allTxtPathLocal = _allTxtDirLocal ? _allTxtDirLocal + 'all.txt' : '';
   _allTxtPath = _allTxtPathLocal;
+  // 存储到 agent，供 saveQuestData 写入 floor payload，确保重建时路径一致
+  agent._currentAllTxtPath = _allTxtPathLocal;
+  agent._allTxtPath = _allTxtPathLocal;
   var _bridge = window.parent && window.parent.qqqBridge;
   if (_bridge && _allTxtDirLocal) {
     try { await _bridge.fs.mkdir(_allTxtDirLocal); } catch (_) {}

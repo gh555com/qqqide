@@ -1,0 +1,5 @@
+11_0_window-there/q.py: 1041 bytes
+11_1_she-go-there/q.py: 1038 bytes
+1_0_kopy-a/q.py: 36762 bytes
+1_1_gyre/q.py: 896 bytes
+2_1_≤‚ ‘¡¨Ω”/q.py: 8785 bytes

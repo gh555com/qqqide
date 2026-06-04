@@ -27,6 +27,7 @@ const getArg = name => {
 const PORT = parseInt(getArg('port') || process.env.PORT || '8080', 10);
 const HOST = getArg('host') || process.env.HOST || '127.0.0.1';
 const ROOT = path.resolve(__dirname, '..', 'server-app');
+const SHELL_OUT = path.resolve(__dirname, '..', 'shell-out');
 const MOUNT = '/qqq-app';
 
 const MIME = {
@@ -61,9 +62,10 @@ function send(res, status, headers, body) {
     if (body) { res.end(body); } else { res.end(); }
 }
 
-function serveFile(res, filePath) {
+function serveFile(res, filePath, onNotFound) {
     fs.stat(filePath, (err, st) => {
         if (err || !st.isFile()) {
+            if (onNotFound) { onNotFound(); return; }
             return send(res, 404, { 'Content-Type': 'text/plain' }, 'not found: ' + filePath);
         }
         const ext = path.extname(filePath).toLowerCase();
@@ -116,7 +118,17 @@ const server = http.createServer((req, res) => {
         return send(res, 403, { 'Content-Type': 'text/plain' }, 'forbidden');
     }
 
-    serveFile(res, resolved);
+    serveFile(res, resolved, function() {
+      // Fallback: .map files may live in shell-out/ (e.g. preload.js.map)
+      if (rel.endsWith('.map')) {
+        var fallback = path.normalize(path.join(SHELL_OUT, rel));
+        if (fallback.startsWith(SHELL_OUT)) {
+          serveFile(res, fallback);
+          return;
+        }
+      }
+      send(res, 404, { 'Content-Type': 'text/plain' }, 'not found');
+    });
 });
 
 server.on('error', err => {

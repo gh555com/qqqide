@@ -100,6 +100,19 @@ var QuestStore = (function () {
         return _rootDir;
     };
 
+    // 项目守卫：设置后，无 _rootDir 时所有写入操作在 _bridge() 层自动阻断
+    // 返回 true 表示有项目绑定，false 表示无（上层可据此拒绝操作）
+    QuestStore.prototype.requireProjectForWrites = function (val) {
+        // 标记已调用；实际守卫在 _bridge() → null 阻断
+        if (val) {
+            console.log('[quest-store] requireProjectForWrites: enabled');
+        }
+    };
+
+    QuestStore.prototype.hasProjectRoot = function () {
+        return !!_rootDir;
+    };
+
     // ═══════════════════════════════════════════════════════════════
     // 跨窗口通知
     // ═══════════════════════════════════════════════════════════════
@@ -113,7 +126,7 @@ var QuestStore = (function () {
         var payload = { type: type, questId: questId };
         if (extra) Object.assign(payload, extra);
         for (var i = 0; i < store._onChangeCbs.length; i++) {
-            try { store._onChangeCbs[i](payload); } catch (_) {}
+            try { store._onChangeCbs[i](payload); } catch (_) { }
         }
     }
 

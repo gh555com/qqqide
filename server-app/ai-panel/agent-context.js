@@ -25,7 +25,8 @@
     var MIN_FLOORS = 6;           // 最少保留 6 层楼（当前层 + 前 5 层）
     var MAX_FACTS = 100;          // 最多保留事实条数
     var MAX_FLOOR_SUMMARIES = 30;   // 最多保留回合摘要
-    var COMPACT_MAX_TOKENS = 32768;      // 压缩产出硬限 32k
+    // 压缩产出硬限 — 唯一真理在 ContentGateway.COMPACT_MAX_TOKENS（content-gateway.js）
+    var COMPACT_MAX_TOKENS = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPACT_MAX_TOKENS : 32768);
     var COMPACT_RETRY_BASE_MS = 2000;    // 重试基础间隔 2s
     var COMPACT_RETRY_MAX_MS = 60000;    // 重试最大间隔 60s
 
@@ -318,7 +319,14 @@
         }
         if (this._ctx.treasures.length > 0) {
             var recentTreasures = this._ctx.treasures.slice(-10);
-            var treasureLines = recentTreasures.map(function (t) { return '💎 ' + t.content; }).join('\n');
+            var treasureLines = recentTreasures.map(function (t) {
+                var line = '💎 ' + t.content;
+                // 结构化数据：附加 gain/cost/urgency（对 AI 自身决策有用）
+                if (t.gain !== undefined && t.cost !== undefined) {
+                    line += '（gain:' + t.gain + ' / cost:' + t.cost + ' / ' + (t.urgency || 'later') + '）';
+                }
+                return line;
+            }).join('\n');
             ctx += '\n\nKEY DISCOVERIES:\n' + treasureLines;
         }
         return ctx.trim() ? ctx : '';

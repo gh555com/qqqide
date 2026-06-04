@@ -456,10 +456,10 @@ function attachToAi(filePath) {
     const rmBtn = document.createElement('span');
     rmBtn.className = 'aiv-block-rm';
     if (idx === 0) {
-      // 主文件夹不可删除
+      // 主文件夹不可删除，显示 ★ 标记
+      rmBtn.textContent = '★';
       rmBtn.title = window._i('shell.viewport.mainFolder', '主文件夹（不可移除）');
-      rmBtn.style.opacity = '0.3';
-      rmBtn.style.cursor = 'not-allowed';
+      rmBtn.style.cssText = 'color:var(--yellow,#b58900);font-size:14px;cursor:default;font-weight:bold;';
     } else {
       rmBtn.textContent = '−';
       rmBtn.title = window._i('shell.viewport.removeProject', '移除此项目');
@@ -682,6 +682,11 @@ function attachToAi(filePath) {
 
   function removeProject(idx) {
     if (idx < 0 || idx >= projects.length) return;
+    // 主文件夹（索引 0）不可删除
+    if (idx === 0) {
+      console.warn('[ai-viewport] cannot remove main project');
+      return;
+    }
     projects.splice(idx, 1);
     saveProjects();
     render();

@@ -97,17 +97,17 @@ async function manualAssemble() {
     for (const a of apps) {
       const macAsar = path.join(unpacked, a, 'Contents', 'Resources', 'default_app.asar');
       if (fs.existsSync(macAsar)) { fs.rmSync(macAsar); }
-      if (a !== 'qqq-shell.app') {
-        fs.renameSync(path.join(unpacked, a), path.join(unpacked, 'qqq-shell.app'));
+      if (a !== 'qqqide.app') {
+        fs.renameSync(path.join(unpacked, a), path.join(unpacked, 'qqqide.app'));
       }
     }
   } else if (target.startsWith('win-')) {
     const src = path.join(unpacked, 'electron.exe');
-    const dst = path.join(unpacked, 'qqq-shell.exe');
+    const dst = path.join(unpacked, 'qqqide.exe');
     if (fs.existsSync(src)) { fs.renameSync(src, dst); }
   } else if (target.startsWith('linux-')) {
     const src = path.join(unpacked, 'electron');
-    const dst = path.join(unpacked, 'qqq-shell');
+    const dst = path.join(unpacked, 'qqqide');
     if (fs.existsSync(src)) { fs.renameSync(src, dst); }
   }
 
@@ -165,11 +165,11 @@ function appResourcesDir(unpacked) {
 function isUnpackedComplete(unpacked) {
   // a complete unpacked tree has the electron binary at the root
   if (target.startsWith('win-')) {
-    return fs.existsSync(path.join(unpacked, 'qqq-shell.exe')) ||
+    return fs.existsSync(path.join(unpacked, 'qqqide.exe')) ||
            fs.existsSync(path.join(unpacked, 'electron.exe'));
   }
   if (target.startsWith('linux-')) {
-    return fs.existsSync(path.join(unpacked, 'qqq-shell')) ||
+    return fs.existsSync(path.join(unpacked, 'qqqide')) ||
            fs.existsSync(path.join(unpacked, 'electron'));
   }
   if (target.startsWith('mac-')) {
@@ -279,24 +279,24 @@ async function repairUnpacked(unpacked) {
     }
   }
 
-  // rename binary to qqq-shell
+  // rename binary to qqqide
   if (target.startsWith('win-')) {
     const src = path.join(unpacked, 'electron.exe');
-    const dst = path.join(unpacked, 'qqq-shell.exe');
-    if (fs.existsSync(src)) { fs.renameSync(src, dst); console.log('[pack] renamed electron.exe -> qqq-shell.exe'); }
+    const dst = path.join(unpacked, 'qqqide.exe');
+    if (fs.existsSync(src)) { fs.renameSync(src, dst); console.log('[pack] renamed electron.exe -> qqqide.exe'); }
   } else if (target.startsWith('linux-')) {
     const src = path.join(unpacked, 'electron');
-    const dst = path.join(unpacked, 'qqq-shell');
-    if (fs.existsSync(src)) { fs.renameSync(src, dst); console.log('[pack] renamed electron -> qqq-shell'); }
+    const dst = path.join(unpacked, 'qqqide');
+    if (fs.existsSync(src)) { fs.renameSync(src, dst); console.log('[pack] renamed electron -> qqqide'); }
   } else if (target.startsWith('mac-')) {
-    // electron prebuilt mac comes as Electron.app; rename to qqq-shell.app
+    // electron prebuilt mac comes as Electron.app; rename to qqqide.app
     const apps = fs.readdirSync(unpacked).filter(n => n.endsWith('.app'));
     for (const a of apps) {
-      if (a === 'qqq-shell.app') { continue; }
+      if (a === 'qqqide.app') { continue; }
       const src = path.join(unpacked, a);
-      const dst = path.join(unpacked, 'qqq-shell.app');
+      const dst = path.join(unpacked, 'qqqide.app');
       fs.renameSync(src, dst);
-      console.log('[pack] renamed', a, '-> qqq-shell.app');
+      console.log('[pack] renamed', a, '-> qqqide.app');
     }
   }
 
@@ -314,7 +314,7 @@ async function repairUnpacked(unpacked) {
 // 4) compress
 function packDir(unpacked) {
   const distRoot = path.join(ROOT, 'dist-pack');
-  const outName = `qqq-shell-${target}${cfg.tarExt}`;
+  const outName = `qqqide-${target}${cfg.tarExt}`;
   const out = path.join(distRoot, outName);
   if (fs.existsSync(out)) { fs.rmSync(out); }
   console.log('[pack] zipping', path.basename(unpacked), '->', out);
@@ -353,6 +353,7 @@ function packDir(unpacked) {
   }
   packDir(unpacked);
   console.log('[pack] done. output -> dist-pack/');
+  console.log('[pack] win-unpacked/ kept as ready-to-run s environment (same as zip)');
 })().catch(err => {
   console.error('[pack] failed:', err);
   process.exit(1);

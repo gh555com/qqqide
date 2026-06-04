@@ -135,6 +135,8 @@ const QQQ = {
         // 获取/设置项目路径（僚机初始化用）
         getProjectPath: () => ipcRenderer.invoke('qqq:sync:get-project-path'),
         setProjectPath: (p: string) => ipcRenderer.invoke('qqq:sync:set-project-path', p).catch(() => {}),
+        // 获取主窗口当前主题（僚机初始化用）
+        getTheme: () => ipcRenderer.invoke('qqq:sync:get-theme'),
     },
 
     // ---- clipboard ----

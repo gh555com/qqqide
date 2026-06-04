@@ -17,6 +17,34 @@ const cp   = require('child_process');
 const ROOT = path.resolve(__dirname, '..');
 const PORT = process.env.PORT || '8090';
 
+// ★ 启动前清端口：杀掉占用 PORT 的进程（残留 node/electron 实例）
+function killPortHolder(port) {
+    try {
+        if (process.platform === 'win32') {
+            const { execSync } = require('child_process');
+            const out = execSync('netstat -ano | findstr :' + port, { encoding: 'utf8', timeout: 3000 });
+            const lines = out.split(/\r?\n/).filter(function(l) { return l.includes('LISTENING'); });
+            const pids = [];
+            const seen = {};
+            for (var i = 0; i < lines.length; i++) {
+                var parts = lines[i].trim().split(/\s+/);
+                var pid = parts[parts.length - 1];
+                if (pid && /^\d+$/.test(pid) && !seen[pid]) { seen[pid] = true; pids.push(pid); }
+            }
+            for (var j = 0; j < pids.length; j++) {
+                try {
+                    console.log('[dev-launch] killing port ' + port + ' holder pid=' + pids[j]);
+                    execSync('taskkill /PID ' + pids[j] + ' /F /T', { timeout: 3000 });
+                } catch (_) {}
+            }
+        } else {
+            const { execSync } = require('child_process');
+            try { execSync('lsof -ti:' + port + ' | xargs -r kill -9', { timeout: 3000 }); } catch (_) {}
+        }
+    } catch (_) {}
+}
+killPortHolder(PORT);
+
 const children = [];
 let shuttingDown = false;
 

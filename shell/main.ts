@@ -21,7 +21,7 @@ import { EngineHost } from './engines';
 import { AudioEngine } from './audio-engine';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 import { MonacoHost } from './monaco-host';
-import { spawn as cpSpawn, ChildProcess } from 'child_process';
+import { spawn as cpSpawn, spawnSync, ChildProcess } from 'child_process';
 import { QzSpawn, SpawnBrief } from './qz-spawn';
 import { LspBridge } from './lsp-bridge';
 import { CacheStore } from './cache-store';
@@ -97,6 +97,137 @@ const isOfflineFlag = process.argv.includes('--offline');
 const isDevFlag = process.argv.includes('--dev') || process.env.QQQ_DEV === '1';
 
 // ----------------------------------------------------------------------------
+// Shell hot-update: download shell-out.tar.xz from remote, stage for bootstrap
+// ----------------------------------------------------------------------------
+const SHELL_UPDATE_URL = 'shell-out.tar.gz';  // relative to bootConfig.url
+
+async function _checkAndDownloadShellUpdate(): Promise<boolean> {
+    // Skip in dev mode — dev uses esbuild watch
+    if (isDevFlag || isOfflineFlag) return false;
+
+    const shellOutDir = path.join(__dirname); // shell-out/
+    const stagingDir = path.join(portable.cache, 'staging', 'shell-out-next');
+        const tarPath = path.join(portable.cache, 'staging', 'shell-out.tar.gz');
+
+    try {
+        // Build the full update URL
+        const baseUrl = bootConfig.url.endsWith('/') ? bootConfig.url : bootConfig.url + '/';
+        const updateUrl = baseUrl + SHELL_UPDATE_URL;
+
+        // Check if remote file exists (HEAD request or just try downloading)
+        const lib = updateUrl.startsWith('https') ? https : http;
+
+        // Fetch version.json first to get latest shell version
+        let latestVersion = '';
+        try {
+            const versionUrl = baseUrl + 'version.json';
+            const vResp = await new Promise<{ status: number; data: string }>((resolve, reject) => {
+                const req = lib.get(versionUrl, { timeout: 5000 }, (res) => {
+                    let data = '';
+                    res.setEncoding('utf8');
+                    res.on('data', (c: string) => data += c);
+                    res.on('end', () => resolve({ status: res.statusCode || 0, data }));
+                });
+                req.on('error', reject);
+                req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+            });
+            if (vResp.status === 200) {
+                const v = JSON.parse(vResp.data);
+                latestVersion = v.shell_version || v.version || '';
+            }
+        } catch { /* version check is optional */ }
+
+        // Compare with local version (stored in cache/shell-version)
+        const localVersionPath = path.join(portable.cache, 'shell-version');
+        let localVersion = '';
+        try {
+            if (fs.existsSync(localVersionPath)) {
+                localVersion = fs.readFileSync(localVersionPath, 'utf8').trim();
+            }
+        } catch {}
+
+        if (latestVersion && localVersion === latestVersion) {
+            return false; // Already up to date
+        }
+
+        // Download shell-out.tar.xz
+        console.log('[shell-update] downloading', updateUrl);
+        try { fs.mkdirSync(path.dirname(tarPath), { recursive: true }); } catch {}
+
+        const downloadOk = await new Promise<boolean>((resolve) => {
+            const req = lib.get(updateUrl, { timeout: 30000 }, (res) => {
+                if (res.statusCode !== 200) {
+                    // Follow redirect
+                    if (res.statusCode === 301 || res.statusCode === 302) {
+                        const loc = res.headers.location;
+                        if (loc) {
+                            // Simple redirect follow
+                            const lib2 = loc.startsWith('https') ? https : http;
+                            const req2 = lib2.get(loc, { timeout: 30000 }, (res2) => {
+                                if (res2.statusCode !== 200) { resolve(false); return; }
+                                const file = fs.createWriteStream(tarPath);
+                                res2.pipe(file);
+                                file.on('finish', () => resolve(true));
+                                file.on('error', () => resolve(false));
+                            });
+                            req2.on('error', () => resolve(false));
+                            req2.on('timeout', () => { req2.destroy(); resolve(false); });
+                            return;
+                        }
+                    }
+                    resolve(false);
+                    return;
+                }
+                const file = fs.createWriteStream(tarPath);
+                res.pipe(file);
+                file.on('finish', () => resolve(true));
+                file.on('error', () => resolve(false));
+            });
+            req.on('error', () => resolve(false));
+            req.on('timeout', () => { req.destroy(); resolve(false); });
+        });
+
+        if (!downloadOk) {
+            console.log('[shell-update] download failed or not available');
+            return false;
+        }
+
+        // Extract to staging
+        console.log('[shell-update] extracting to', stagingDir);
+        try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch {}
+        try { fs.mkdirSync(stagingDir, { recursive: true }); } catch {}
+
+        const extractResult = spawnSync('tar', ['-xzf', tarPath, '-C', stagingDir], {
+            stdio: 'pipe',
+            timeout: 15000,
+        });
+
+        if (extractResult.status !== 0) {
+            console.log('[shell-update] extract failed, status:', extractResult.status);
+            try { fs.rmSync(tarPath); } catch {}
+            return false;
+        }
+
+        // Cleanup tar
+        try { fs.unlinkSync(tarPath); } catch {}
+
+        // Save version
+        if (latestVersion) {
+            try {
+                fs.mkdirSync(path.dirname(localVersionPath), { recursive: true });
+                fs.writeFileSync(localVersionPath, latestVersion, 'utf8');
+            } catch {}
+        }
+
+        console.log('[shell-update] staged for next restart:', stagingDir);
+        return true;
+    } catch (e: any) {
+        console.log('[shell-update] error:', e.message || e);
+        return false;
+    }
+}
+
+// ----------------------------------------------------------------------------
 // Health check: fetches <url>/health with timeout, no exception escapes.
 // ----------------------------------------------------------------------------
 function healthCheck(urlStr: string, timeoutMs: number): Promise<boolean> {
@@ -136,6 +267,8 @@ let mainWindow: BrowserWindow | null = null;
 // 架构铁律：不可拖动(movable:false)、不可调大小(resizable:false)、与主窗口同z-order
 // 不可拖动+不可调大小本身已防篡改，无需 snapBack 弹回（避免抢焦点）
 const _externalPanels: (BrowserWindow | null)[] = [null, null];
+// 僚机关闭许可标志（仅 before-quit / window-all-closed / SIGINT / SIGTERM 设为 true）
+let _allowExtClose = false;
 // 窗口↔项目 双向映射（用于主文件夹锁：同一文件夹只能在一个窗口作为主文件夹）
 const _windowProjectMap = new Map<number, string>();   // windowId → projectRoot
 const _projectWindowMap = new Map<string, number>();   // projectRoot → windowId
@@ -184,7 +317,7 @@ function registerShellState(): void {
 }
 // Forward stateStore changes to renderer (preload exposes onChange).
 stateStore.on('changed', (msg: any) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
         try { mainWindow.webContents.send('qqq:state:changed', msg); } catch { /* ignore */ }
     }
 });
@@ -268,7 +401,7 @@ function createWindow(): BrowserWindow {
         show: false,
         frame: false,
         backgroundColor: '#fdf6e3', // solarized base3
-        title: 'qqq-shell',
+        title: 'qqq IDE',
         webPreferences: {
             preload: preloadPath,
             contextIsolation: true,
@@ -277,8 +410,8 @@ function createWindow(): BrowserWindow {
             webSecurity: false, // allow cross-origin fetch (AI panel → gh555.com)
             // explicit: never share node features into renderer
             additionalArguments: [
-                `--qqq-app-root=${portable.root}`,
-                `--qqq-version=${APP_VERSION}`,
+                `--qqqide-root=${portable.root}`,
+                `--qqqide-version=${APP_VERSION}`,
             ],
         },
     });
@@ -416,7 +549,7 @@ async function loadStaticFallback(reason: string): Promise<void> {
             return;
         }
     }
-    await mainWindow.loadURL('data:text/html,<h1>qqq-shell offline</h1>');
+    await mainWindow.loadURL('data:text/html,<h1>qqq IDE offline</h1>');
 }
 
 async function loadRemoteWithCacheGuard(): Promise<boolean> {
@@ -455,6 +588,14 @@ async function loadRemoteWithCacheGuard(): Promise<boolean> {
 }
 
 async function boot(): Promise<void> {
+    // Check for shell-code hot-update (non-blocking, downloads in background)
+    _checkAndDownloadShellUpdate().then(updated => {
+        if (updated) {
+            console.log('[boot] shell update staged — will apply on next restart');
+            // TODO: show a subtle notification to user via IPC
+        }
+    }).catch(() => {});
+
     mainWindow = createWindow();
     const healthy = await healthCheck(bootConfig.url, bootConfig.healthTimeoutMs);
     if (healthy) {
@@ -584,8 +725,6 @@ function registerAssetProtocol(): void {
         monaco_deps: path.join(portable.root, 'cache', 'monaco-deps'),
         // TypeScript compiler (for custom language service, bypasses broken Monaco TS worker)
         ts: path.join(portable.root, 'node_modules', 'typescript', 'lib'),
-        // modified worker files (workerMain.js with self.define exposed)
-        worker_wrapper: path.join(portable.root, 'cache', 'worker-wrapper'),
         // shell-bundled static files (e.g. boot-fallback)
         shell: path.join(portable.root, 'shell'),
     };
@@ -864,9 +1003,14 @@ function registerIpc(): void {
         return true;
     });
     ipcMain.handle('qqq:fs:remove', async (_e, p: string) => {
-        const s = await fs.promises.stat(p);
-        if (s.isDirectory()) await fs.promises.rm(p, { recursive: true, force: true });
-        else await fs.promises.unlink(p);
+        try {
+            const s = await fs.promises.stat(p);
+            if (s.isDirectory()) await fs.promises.rm(p, { recursive: true, force: true });
+            else await fs.promises.unlink(p);
+        } catch (e: any) {
+            // ENOENT: 文件已不存在，移除目的已达，不报错
+            if (e && e.code !== 'ENOENT') throw e;
+        }
         return true;
     });
     ipcMain.handle('qqq:fs:rename', async (_e, oldP: string, newP: string) => {
@@ -1680,8 +1824,6 @@ function registerIpc(): void {
     monacoHost.register();
 
     // ---- 外嵌 AI 面板（僚机：不可拖动、同层级、实时跟随、可独立聚焦、仅主窗口可控关闭） ----
-    // 僚机关闭许可标志（仅 before-quit / mainWindow.closed 设为 true）
-    let _allowExtClose = false;
     
     ipcMain.handle('qqq:ai-panel:toggle-external', async (_e, index: number, open: boolean) => {
         if (index < 0 || index > 1) return false;
@@ -1825,6 +1967,16 @@ function registerIpc(): void {
 
     ipcMain.handle('qqq:sync:get-project-path', () => _currentProjectPath);
 
+    // 主题同步：僚机启动时获取主窗口当前主题
+    ipcMain.handle('qqq:sync:get-theme', () => {
+        try {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                return mainWindow.webContents.executeJavaScript('document.documentElement.getAttribute("data-theme") === "dark"');
+            }
+        } catch (_) { }
+        return false;
+    });
+
     ipcMain.handle('qqq:sync:set-project-path', (e, p: string) => {
         // 仅主窗口有权推送项目路径（僚机跟随主窗口，不跟随新建窗口）
         const senderWin = BrowserWindow.fromWebContents(e.sender);
@@ -1832,7 +1984,7 @@ function registerIpc(): void {
         _currentProjectPath = p;
         // 推送给僚机窗口（仅 external panels，不影响其他独立窗口）
         for (const extWin of _externalPanels) {
-            if (extWin && !extWin.isDestroyed()) {
+            if (extWin && !extWin.isDestroyed() && !extWin.webContents.isDestroyed()) {
                 try { extWin.webContents.send('qqq:sync:message', 'project-path', { path: p }); } catch { /* ignore */ }
             }
         }
@@ -1843,6 +1995,7 @@ function registerIpc(): void {
         const senderWC = e.sender;
         for (const win of BrowserWindow.getAllWindows()) {
             if (win.isDestroyed() || win.webContents === senderWC) continue;
+            if (win.webContents.isDestroyed()) continue;
             try { win.webContents.send('qqq:sync:message', channel, data); } catch { /* ignore */ }
         }
     });
@@ -2055,11 +2208,35 @@ function injectDevToolsConsoleButtons(wc: Electron.WebContents): void {
     }, 500);
 }
 
+// 全局兜底：防止已销毁窗口的回调导致 crash
+process.on('uncaughtException', (err) => {
+    if (err && err.message === 'Object has been destroyed') {
+        console.warn('[main] uncaughtException (Object destroyed) suppressed');
+        return;
+    }
+    console.error('[main] uncaughtException:', err && err.message, err && err.stack);
+});
+
+// 全局兜底：关闭主窗口时强制清理所有僚机
 app.on('window-all-closed', () => {
+    _allowExtClose = true;
+    for (const extWin of _externalPanels) {
+        if (extWin && !extWin.isDestroyed()) { try { extWin.close(); } catch { /* ignore */ } }
+    }
+    _allowExtClose = false;
     try { globalShortcut.unregisterAll(); } catch { /* ignore */ }
     engineHost.stop();
     audioEngine.stop();
     if (process.platform !== 'darwin') { app.quit(); }
+});
+
+// 主窗口关闭前确保僚机也被关闭
+app.on('before-quit', () => {
+    _allowExtClose = true;
+    for (const extWin of _externalPanels) {
+        if (extWin && !extWin.isDestroyed()) { try { extWin.close(); } catch { /* ignore */ } }
+    }
+    _allowExtClose = false;
 });
 
 app.on('activate', () => {

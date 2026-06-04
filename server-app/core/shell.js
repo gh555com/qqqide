@@ -588,11 +588,21 @@
         img.style.transition = 'transform 0.15s ease';
         return;
       }
-      var div = contentEl.querySelector('div');
-      if (div) {
-        div.style.transform = 'translate(' + _dragX + 'px,' + _dragY + 'px) scale(' + zoomScale + ')';
-        div.style.transformOrigin = 'center center';
-        div.style.transition = 'transform 0.15s ease';
+      // 表格：wrapper 在 clipBox 内，用 zoom 缩放（保持文字清晰可选），translate 平移
+      var wrapper = contentEl.querySelector('.qqq-overlay-table-wrapper');
+      if (!wrapper) {
+        // 回退：可能是旧版本无 class 的 div
+        var div = contentEl.querySelector('div > div');
+        if (div && !div.querySelector('img')) wrapper = div;
+      }
+      if (!wrapper) {
+        var div = contentEl.querySelector('div');
+        if (div && !div.querySelector('img') && !div.classList.contains('qqq-overlay-table-wrapper')) wrapper = div;
+      }
+      if (wrapper) {
+        wrapper.style.zoom = zoomScale;
+        wrapper.style.transform = 'translate(' + _dragX + 'px,' + _dragY + 'px)';
+        wrapper.style.transition = 'transform 0.15s ease, zoom 0.15s ease';
       }
     }
 
@@ -625,10 +635,16 @@
       }
     }
     copyBtn.addEventListener('click', function () {
+      // Copy selected text first, fallback to all text
+      var sel = window.getSelection();
+      if (sel && sel.toString().trim()) {
+        doCopy(sel.toString());
+        return;
+      }
       var img = contentEl.querySelector('img');
       if (img) { doCopy(img.src); return; }
-      var div = contentEl.querySelector('div');
-      if (div) { doCopy(div.innerText || div.textContent); }
+      var wrapper = contentEl.querySelector('.qqq-overlay-table-wrapper') || contentEl.querySelector('div');
+      if (wrapper) { doCopy(wrapper.innerText || wrapper.textContent); }
     });
 
     // Zoom out（跳过冷却护盾，准许快速连按）
@@ -648,9 +664,15 @@
     });
 
     // Close (extra large)
-    var closeBtn = tbBtn('\u2715', window._i('shell.overlay.close', '关闭 (Esc)'), 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
+    var closeBtn = tbBtn('\u2715', window._i('shell.overlay.close', 'Close (Esc or Right-click)'), 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
       'background:rgba(220,50,47,0.5); border-color:rgba(220,50,47,0.7);');
     closeBtn.addEventListener('click', close);
+
+    // 右键关闭
+    overlay.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      close();
+    });
 
     toolbar.appendChild(copyBtn);
     toolbar.appendChild(zoomOutBtn);
@@ -662,7 +684,7 @@
     document.body.appendChild(overlay);
 
     function close() {
-      _stopRepeat();
+      try { _stopRepeat(); } catch (_) { }
       overlay.style.display = 'none';
       dpad.style.display = 'none';
       contentEl.innerHTML = '';
@@ -724,7 +746,7 @@
     }
     function _resetView() {
       _dragX = 0; _dragY = 0;
-      var w = contentEl.querySelector('div');
+      var w = contentEl.querySelector('.qqq-overlay-table-wrapper') || contentEl.querySelector('img');
       if (w) { zoomScale = _initZoom; }
       else { zoomScale = 1.0; }
       applyZoom();
@@ -767,10 +789,14 @@
       } catch (_) {}
 
       if (e.data.action === 'open-image') {
+        // 强制清理上一轮残留状态
+        _stopRepeat();
+        overlay.style.display = 'none';
         contentEl.innerHTML = '';
-        contentEl.style.overflow = 'visible';
+        contentEl.style.overflow = '';
         zoomScale = 1.0;
         _dragX = 0; _dragY = 0;
+        contentEl.style.overflow = 'visible';
         // ── 智能尺寸：目�?2x，不超过视口 ──
         var img = new Image();
         img.onload = function () {
@@ -829,24 +855,37 @@
       }
 
       if (e.data.action === 'open-table') {
+        // 强制清理上一轮残留状态
+        _stopRepeat();
+        overlay.style.display = 'none';
         contentEl.innerHTML = '';
-        contentEl.style.overflow = '';
+        contentEl.style.overflow = 'hidden';  // 裁剪溢出，不产生滚动条
         zoomScale = 1.0;
         _dragX = 0; _dragY = 0;
+
+        // 外层容器：固定 viewport 大小，裁剪溢出，保证 D-pad 平移可见
+        var clipBox = document.createElement('div');
+        clipBox.style.cssText =
+          'width:90vw; height:calc(100vh - 200px); overflow:hidden; ' +
+          'display:flex; align-items:center; justify-content:center;';
+
+        // 内层：自然尺寸，不做 max 约束，zoom 不触发 reflow
         var wrapper = document.createElement('div');
+        wrapper.className = 'qqq-overlay-table-wrapper';
         wrapper.style.cssText =
-          'overflow:auto; scrollbar-width:none; ' +
           'background:var(--card-bg,#2a2a2a); color:var(--text-primary,#d4d0c8); ' +
           'border-radius:8px; padding:20px; user-select:text; ' +
           'box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
-          'max-width:90vw; max-height:calc(100vh - 200px); ' +
-          'transform:scale(1); transform-origin:center center; ' +
-          'transition:transform 0.15s ease; overscroll-behavior:contain;'
+          'transform-origin:center center; ' +
+          'transition:transform 0.15s ease; display:inline-block;';
         wrapper.innerHTML = e.data.html;
+
+        // 表格样式（不设 width:auto 约束，保留原始列宽）
         var tables = wrapper.querySelectorAll('table');
         for (var ti = 0; ti < tables.length; ti++) {
           var t = tables[ti];
-          t.style.cssText = 'border-collapse:collapse; width:auto; font-size:13px;';
+          t.style.borderCollapse = 'collapse';
+          t.style.fontSize = '13px';
         }
         var cells = wrapper.querySelectorAll('th,td');
         for (var ci = 0; ci < cells.length; ci++) {
@@ -856,23 +895,29 @@
         for (var hi = 0; hi < ths.length; hi++) {
           ths[hi].style.background = 'var(--card-bg,#1e1e1e)';
         }
-        contentEl.appendChild(wrapper);
-        // 计算初始缩放：表自然尺寸 vs 视口
+
+        clipBox.appendChild(wrapper);
+        contentEl.appendChild(clipBox);
+
+        // 获取自然尺寸（不受 max 约束的原始大小）
         var natW = wrapper.scrollWidth, natH = wrapper.scrollHeight;
-        var maxW = window.innerWidth * 0.9, maxH = window.innerHeight - 120;
-        _initZoom = Math.min(1, maxW / Math.max(1, natW), maxH / Math.max(1, natH));
+        var viewW = window.innerWidth * 0.9, viewH = window.innerHeight - 200;
+        // 初始缩放：如果表大于视口则缩小以适配
+        _initZoom = Math.min(1, viewW / Math.max(1, natW), viewH / Math.max(1, natH));
         zoomScale = _initZoom;
         applyZoom();
-        // 表格自动放大两档（等效点击两次 + 按钮）
+        // 自动放大两档，方便阅读
         zoomScale = Math.min(5.0, zoomScale * 1.25 * 1.25);
         applyZoom();
-        // 拦截表格滚轮 → 改为缩放
-        wrapper.addEventListener('wheel', function (we) {
+
+        // 拦截滚轮 → 缩放（非平移，保持比例）
+        clipBox.addEventListener('wheel', function (we) {
           we.preventDefault(); we.stopPropagation();
           if (we.deltaY < 0) { zoomScale = Math.min(5.0, zoomScale * 1.15); }
           else { zoomScale = Math.max(0.25, zoomScale * 0.87); }
           applyZoom();
         }, { passive: false });
+
         overlay.style.display = 'block';
         dpad.style.display = 'block';
       }
@@ -881,7 +926,7 @@
     // Theme sync
     if (window.qqqTheme && window.qqqTheme.onChange) {
       window.qqqTheme.onChange(function (dark) {
-        var wrapper = contentEl.querySelector('div');
+        var wrapper = contentEl.querySelector('div > div') || contentEl.querySelector('div');
         if (wrapper) {
           wrapper.style.background = dark ? '#2a2a2a' : '#eee8d5';
           wrapper.style.color = dark ? '#d4d0c8' : '#7a7874';
@@ -1070,7 +1115,7 @@
 
   // ---- Boot info ----
   function fillBootInfo(boot) {
-    console.log('[qqq-shell] boot info:', {
+    console.log('[qqqide] boot info:', {
       platform: boot.platform,
       arch: boot.arch,
       version: boot.version,
@@ -1178,7 +1223,7 @@
       getState: () => layoutState,
     };
 
-    console.log('[qqq-shell] ready (new layout)');
+    console.log('[qqqide] ready (new layout)');
   }
 
   if (document.readyState === 'loading') {

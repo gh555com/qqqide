@@ -1,9 +1,9 @@
 {
-  "name": "qqq-shell-v2",
+  "name": "qqqide",
   "version": "0.0.1",
-  "description": "QQQ Shell v2 - portable Electron host that loads remote UI 100% from server. Win7+ compatible, zero C-drive write.",
+  "description": "qqq IDE — portable AI-powered IDE. Win7+ compatible, zero C-drive write.",
   "private": true,
-  "main": "shell-out/main.js",
+  "main": "shell-out/bootstrap.js",
   "scripts": {
     "build": "node shell-build/esbuild.config.js",
     "build:watch": "node shell-build/esbuild.config.js --watch",
@@ -41,8 +41,8 @@
     "node": ">=16"
   },
   "build": {
-    "appId": "com.qqq.shell",
-    "productName": "qqq-shell",
+    "appId": "com.qqqide.app",
+    "productName": "qqqide",
     "asar": false,
     "compression": "store",
     "directories": {
@@ -92,7 +92,7 @@
       ]
     }
   },
-  "_qqqShellNotes": {
+  "_qqqideNotes": {
     "electronLock": "22.3.27 is the LAST Electron version supporting Windows 7. NEVER UPGRADE.",
     "monacoLock": "0.34.1 is the last monaco-editor that runs on Chromium 108 (Electron 22).",
     "portable": "All user data goes to ./userData, ./cache, ./logs in app dir. Zero C-drive writes."

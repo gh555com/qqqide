@@ -16,14 +16,15 @@ function getBridge() {
 //   SAFETY NET  (ghrun/qz-spawn): 65536 — prevents memory blowup, never active
 //   AI FACING  (here):           defined below — what DeepSeek sees & interacts with
 //
-// To change the AI-facing limit: edit ONLY these constants.
-// The safety-net values in ghrun/qz-spawn are deliberately much higher
-// and should NEVER need adjustment.
 // ============================================================
-var OUTPUT_CAP_DEFAULT = 8000;   // normal per-response limit
-var OUTPUT_CAP_MAX = 65536;  // ceiling when DeepSeek requests maxOutput
-var OUTPUT_CAP_FETCH = 8000;   // web fetch text extraction limit
-var OUTPUT_CAP_FETCH_ERR = 500;   // web fetch error message limit
+// ★ AI-facing output caps — 唯一真理在 ContentGateway（content-gateway.js）
+//   此处为兼容旧引用的别名；所有新代码应直接使用 ContentGateway.OUTPUT_CAP_*
+//   fetch 相关常量仅在 web fetch 场景使用，独立于 ContentGateway
+// ============================================================
+var OUTPUT_CAP_DEFAULT = (typeof ContentGateway !== 'undefined' ? ContentGateway.OUTPUT_CAP_DEFAULT : 8000);
+var OUTPUT_CAP_MAX     = (typeof ContentGateway !== 'undefined' ? ContentGateway.OUTPUT_CAP_MAX : 65536);
+var OUTPUT_CAP_FETCH = 8000;     // web fetch text extraction limit (fetch 专用)
+var OUTPUT_CAP_FETCH_ERR = 500;  // web fetch error message limit (fetch 专用)
 
 // ============================================================
 // 工具定义（OpenAI function calling format）
@@ -263,13 +264,18 @@ async function executeReadFile(args) {
     // ★ 优先走主进程 (1 IPC, 消除大文件序列化开销)
     if (bridge.ai && bridge.ai.read_file) {
         try {
-            return await bridge.ai.read_file({ path: args.path, start_line: args.start_line, end_line: args.end_line });
+            var result = await bridge.ai.read_file({ path: args.path, start_line: args.start_line, end_line: args.end_line });
+            // 主进程路径也做二进制检测（委托 ContentGateway 唯一真理）
+            return _guardBinaryResult(result);
         } catch (_) { /* fallback */ }
     }
 
     // ---- fallback: renderer ----
     try {
         var content = await bridge.fs.read(args.path);
+        // 二进制检测（委托 ContentGateway）
+        var binCheck = _checkBinary(content);
+        if (binCheck) return binCheck;
         // CRLF→LF normalize
         content = content.replace(/\r\n/g, '\n');
         var lines = content.split('\n');
@@ -282,6 +288,25 @@ async function executeReadFile(args) {
     } catch (err) {
         return 'Error reading file: ' + (err.message || err);
     }
+}
+
+// 二进制检测 — 委托 ContentGateway 唯一真理实现
+function _checkBinary(content) {
+    if (!content || content.length === 0) return '';
+    var isBinary = (typeof ContentGateway !== 'undefined' && ContentGateway.detectBinary)
+        ? ContentGateway.detectBinary(content)
+        : false;
+    if (isBinary) {
+        return '[BINARY FILE] This file appears to be binary (' + content.length + ' bytes). Use run_command with appropriate tools to inspect binary files.';
+    }
+    return '';
+}
+
+function _guardBinaryResult(result) {
+    if (typeof result !== 'string') return result;
+    var check = _checkBinary(result);
+    if (check) return check;
+    return result;
 }
 
 // ============================================================
@@ -454,7 +479,7 @@ async function executeWriteFile(args) {
 // ============================================================
 
 var SKIP_DIRS = ['node_modules', '.git', 'dist', 'backup', '__pycache__', '.venv', 'vendor', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs', 'cache', 'temp', 'crashDumps'];
-var SKIP_EXTS = ['.exe', '.dll', '.so', '.dylib', '.bin', '.png', '.jpg', '.jpeg', '.gif', '.mp3', '.mp4', '.zip', '.tar', '.gz', '.xz', '.woff', '.woff2', '.ttf', '.eot', '.ico', '.vsix', '.lock', '.wasm'];
+var SKIP_EXTS = ['.exe', '.dll', '.so', '.dylib', '.bin', '.pyd', '.pyc', '.pyo', '.class', '.o', '.obj', '.lib', '.a', '.sys', '.drv', '.ocx', '.scr', '.cab', '.msi', '.msc', '.cpl', '.lnk', '.dat', '.pak', '.res', '.resources', '.rom', '.elf', '.ko', '.mod', '.dex', '.jar', '.war', '.ear', '.apk', '.ipa', '.iso', '.img', '.dmg', '.pkg', '.deb', '.rpm', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp', '.svgz', '.mp3', '.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.zip', '.tar', '.gz', '.xz', '.bz2', '.7z', '.rar', '.woff', '.woff2', '.ttf', '.eot', '.ico', '.icns', '.vsix', '.lock', '.wasm', '.map', '.tsbuildinfo', '.sq3', '.db', '.sqlite', '.sqlite3', '.sdb']; // 排除所有已知二进制/压缩/编译/数据库格式
 
 async function executeSearchText(args) {
     var bridge = getBridge();
@@ -584,30 +609,31 @@ async function executeGetVisionContext() {
     try {
         if (!parent.qqqAiViewport) return 'No vision context available.';
         var vps = parent.qqqAiViewport.getProjects();
-        if (vps.length === 0) return 'No project folders in vision context.';
 
-        var main = parent.qqqAiViewport.getMainProject();
-        var lines = ['=== qqq Vision ==='];
+        var panelRoot = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
+        if (panelRoot) { panelRoot = panelRoot.replace(/\\/g, '/').replace(/\/$/, ''); }
+
+        if (vps.length === 0 && !panelRoot) return 'No project folders in vision context.';
+
+        var lines = ['=== Project Folders ==='];
+        var mainFound = false;
         for (var i = 0; i < vps.length; i++) {
             var f = vps[i];
-            var isMain = main && f.path === main.path;
+            var fPath = (f.path || '').replace(/\\/g, '/').replace(/\/$/, '');
+            var isMain = panelRoot ? fPath === panelRoot : (i === 0);
+            if (isMain) mainFound = true;
             if (isMain) {
-                lines.push('📁 ' + f.name + ' (' + f.path + ') ← 主文件夹（当前项目/我们项目）');
+                lines.push('⭐ ' + f.name + ' (' + f.path + ') ← MAIN PROJECT (default)');
             } else {
-                lines.push('📁 ' + f.name + ' (' + f.path + ')');
+                lines.push('   ' + f.name + ' (' + f.path + ') ← auxiliary');
             }
-            try {
-                var bridge = getBridge();
-                if (bridge) {
-                    var items = await bridge.fs.list(f.path);
-                    var top = items
-                        .filter(function (it) { return !it.name.startsWith('.') && it.name !== 'node_modules' && SKIP_DIRS.indexOf(it.name) === -1; })
-                        .slice(0, 30)
-                        .map(function (it) { return '  ' + (it.isDir ? '\u{1F4C1}' : '  ') + ' ' + it.name; });
-                    lines.push.apply(lines, top);
-                }
-            } catch (_) { }
         }
+        if (!mainFound && panelRoot) {
+            var name = panelRoot.split('/').pop() || panelRoot;
+            lines.unshift('⭐ ' + name + ' (' + panelRoot + ') ← MAIN PROJECT (default)');
+        }
+        lines.push('');
+        lines.push('Default to main project; user may specify any project.');
         return lines.join('\n');
     } catch (err) {
         return 'Error: ' + (err.message || err);

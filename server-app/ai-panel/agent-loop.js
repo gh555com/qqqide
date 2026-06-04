@@ -25,23 +25,37 @@
 var AgentLoop = (function () {
     'use strict';
 
-    // ---- FloorSummaryStripper: 流式剥离 <floor_summary> 标签 ----
-    function FloorSummaryStripper(onToken) {
+    // ═══ EnvelopeStripper: 流式剥离 ___qqq_env___ 信封 + <floor_summary> 回退 ═══
+    // "硬约束桥" — 代码强行剥离并校验结构化信封，不靠 prompt 自觉
+    function EnvelopeStripper(onToken) {
         this.onToken = onToken;
         this.raw = '';
         this.emitted = 0;
-        this._OPEN = '<floor_summary';
-        this._CLOSE = '</floor_summary>';
+        // 主线：信封格式
+        this._ENV_OPEN = '___qqq_env___';
+        this._ENV_CLOSE = '___end___';
+        // 回退：旧 <floor_summary> 标签（过渡期兼容）
+        this._FALL_OPEN = '<floor_summary';
+        this._FALL_CLOSE = '</floor_summary>';
     }
-    FloorSummaryStripper.prototype.push = function (chunk) {
+    EnvelopeStripper.prototype._firstBlockStart = function () {
+        var envIdx = this.raw.indexOf(this._ENV_OPEN);
+        var fallIdx = this.raw.indexOf(this._FALL_OPEN);
+        if (envIdx === -1) return fallIdx;
+        if (fallIdx === -1) return envIdx;
+        return Math.min(envIdx, fallIdx);
+    };
+    EnvelopeStripper.prototype.push = function (chunk) {
         if (!chunk) return;
         this.raw += chunk;
-        var openIdx = this.raw.indexOf(this._OPEN);
+        var blockStart = this._firstBlockStart();
         var safeUpTo;
-        if (openIdx >= 0) {
-            safeUpTo = openIdx;
+        if (blockStart >= 0) {
+            safeUpTo = blockStart;
         } else {
-            safeUpTo = Math.max(this.emitted, this.raw.length - this._OPEN.length);
+            // 留最后 N 字符防截断（取最长标记长度）
+            var margin = Math.max(this._ENV_OPEN.length, this._FALL_OPEN.length);
+            safeUpTo = Math.max(this.emitted, this.raw.length - margin);
         }
         if (safeUpTo > this.emitted) {
             var piece = this.raw.slice(this.emitted, safeUpTo);
@@ -49,22 +63,50 @@ var AgentLoop = (function () {
             this.emitted = safeUpTo;
         }
     };
-    FloorSummaryStripper.prototype.finalize = function () {
-        var openIdx = this.raw.indexOf(this._OPEN);
-        if (openIdx < 0 && this.emitted < this.raw.length) {
+    EnvelopeStripper.prototype.finalize = function () {
+        // 发射残留安全内容
+        var blockStart = this._firstBlockStart();
+        if (blockStart < 0 && this.emitted < this.raw.length) {
             var piece = this.raw.slice(this.emitted);
             if (this.onToken) this.onToken(piece);
             this.emitted = this.raw.length;
         }
+
+        // 尝试解析信封 JSON
+        var envelope = null;
+        var envMatch = this.raw.match(/___qqq_env___\s*\n?(\{[\s\S]*?\})\s*\n?___end___/);
+        if (envMatch) {
+            try {
+                envelope = JSON.parse(envMatch[1]);
+            } catch (_) { /* malformed JSON, fall through */ }
+        }
+
+        // 回退：解析旧 <floor_summary>
         var summary = '', lang = '';
-        var m = this.raw.match(/<floor_summary([^>]*)>([\s\S]*?)(?:<\/floor_summary>|$)/);
-        if (m) {
-            summary = (m[2] || '').trim();
-            var langMatch = m[1].match(/lang=["']([^"']+)["']/);
+        var fallMatch = this.raw.match(/<floor_summary([^>]*)>([\s\S]*?)(?:<\/floor_summary>|$)/);
+        if (fallMatch) {
+            summary = (fallMatch[2] || '').trim();
+            var langMatch = fallMatch[1].match(/lang=["']([^"']+)["']/);
             if (langMatch) lang = langMatch[1];
         }
-        var cleanContent = this.raw.replace(/\s*<floor_summary[^>]*>[\s\S]*?(?:<\/floor_summary>|$)\s*$/, '').trim();
-        return { cleanContent: cleanContent, summary: summary, lang: lang };
+
+        // 信封优先：envelope.floor_summary 覆盖旧格式
+        if (envelope && envelope.floor_summary) {
+            summary = envelope.floor_summary;
+            lang = '';  // 信封无 lang 属性
+        }
+
+        // 清理：移除信封块 + 旧 floor_summary 标签
+        var cleanContent = this.raw
+            .replace(/\s*___qqq_env___[\s\S]*?___end___\s*$/, '')
+            .replace(/\s*<floor_summary[^>]*>[\s\S]*?(?:<\/floor_summary>|$)\s*$/, '')
+            .trim();
+
+        // 清理残留的空 [💎] 行（过渡期兼容）
+        cleanContent = cleanContent.replace(/^\[💎\]\s*(?:暂无待办|暂无|无|None|N\/A|暂无发现|暂无财宝|暂无建议)\s*[。.]?\s*$/gm, '');
+        cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '');
+
+        return { cleanContent: cleanContent, envelope: envelope, summary: summary, lang: lang };
     };
 
     // ---- AgentLoop 构造函数 ----
@@ -108,6 +150,37 @@ var AgentLoop = (function () {
         }
     };
 
+    // ═══ 无进展计数器（硬约束：防止 AI 反复无意义搜索） ═══
+    AgentLoop.prototype._resetStallCounter = function () {
+        this._stallCount = 0;
+        this._stallWarned = false;
+    };
+    AgentLoop.prototype._checkStall = function (toolResults) {
+        var self = this;
+        if (!toolResults || toolResults.length === 0) return false;
+        // 判断是否全部无进展：search_text 返回 No matches / find_files 空 / list_files 空 / 错误
+        var allNoProgress = toolResults.every(function (r) {
+            var s = typeof r === 'string' ? r : '';
+            return s.startsWith('No matches found') || s.startsWith('Error') || s === '' || s.startsWith('Tool error');
+        });
+        if (allNoProgress) {
+            self._stallCount++;
+        } else {
+            self._stallCount = 0;
+            self._stallWarned = false;
+        }
+        // 5 次无进展 → 警告注入
+        if (self._stallCount >= 5 && !self._stallWarned) {
+            self._stallWarned = true;
+            return 'warn';
+        }
+        // 8 次无进展 → 强制终止
+        if (self._stallCount >= 8) {
+            return 'force';
+        }
+        return false;
+    };
+
     // ---- 清空对话 ----
     AgentLoop.prototype.clearConversation = function () {
         this.conversation = [];
@@ -118,6 +191,29 @@ var AgentLoop = (function () {
         this._houseIndex = 0;
         this._persistentCount = 0;
         this._rulesVersion = "";
+    };
+
+    // ---- 结构化信封注入：校验 JSON → 上下文引擎 -------
+    AgentLoop.prototype._injectEnvelope = function (envelope) {
+        if (!envelope || typeof envelope !== 'object') return;
+        // treasures: 数组校验
+        if (Array.isArray(envelope.treasures)) {
+            for (var i = 0; i < envelope.treasures.length; i++) {
+                var t = envelope.treasures[i];
+                if (!t || typeof t.text !== 'string' || !t.text.trim()) continue;
+                var gain = Number(t.gain) || 0;
+                var cost = Number(t.cost) || 0;
+                var urgency = (t.urgency === 'urgent' || t.urgency === 'soon' || t.urgency === 'later') ? t.urgency : 'later';
+                var text = t.text.trim().slice(0, 300);
+                // 只收入 ROI ≥ 7 的（兜底校验，即使 AI 不听话）
+                if ((gain - cost) >= 7) {
+                    this._ctx.treasures.push({ floor: this._ctx.totalFloors, content: text, gain: gain, cost: cost, urgency: urgency });
+                }
+            }
+            if (this._ctx.treasures.length > 20) {
+                this._ctx.treasures = this._ctx.treasures.slice(-20);
+            }
+        }
     };
 
     // ═══ 持久化 rules 刷新（版本追踪：只有源文件变化才重建） ═══
@@ -143,6 +239,16 @@ var AgentLoop = (function () {
         }
         if (typeof qqqProjectRulesContent !== "undefined" && qqqProjectRulesContent) {
             parts.push(qqqProjectRulesContent);
+        }
+        // ═══ TRAILING REMINDER — reinforce main project after all rules ═══
+        var panelRoot = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
+        if (panelRoot) {
+            panelRoot = panelRoot.replace(/\\/g, '/').replace(/\/$/, '');
+            var reminder = '\n\n═══ DEFAULT WORKING DIRECTORY ═══\n' +
+                'Main project: ' + panelRoot + '\n' +
+                'When the user does not specify a project, all file operations default to this directory.\n' +
+                '═══════════════════';
+            parts.push(reminder);
         }
         if (parts.length === 0) return "";
         var prefix = parts.join('\n\n---\n\n');
@@ -248,6 +354,7 @@ var AgentLoop = (function () {
         var conversationSnapshot = self.conversation.length;
         self._houses = [];
         self._houseIndex = 0;
+        self._resetStallCounter();
 
         try {
             while (maxIterations-- > 0) {
@@ -316,6 +423,29 @@ var AgentLoop = (function () {
                 });
 
                 if (!response) {
+                    // 502/503 自动修复：重新从数据库加载对话，丢弃可能损坏的内存状态
+                    if ((self._lastGatewayError === 502 || self._lastGatewayError === 503) && !opts._repairAttempted) {
+                        self._lastGatewayError = 0;
+                        if (typeof questActiveId !== 'undefined' && questActiveId && typeof loadQuestData === 'function') {
+                            self._log('⛔ 502/503 detected, reloading conversation from DB...');
+                            try {
+                                // 撤销本次 totalFloors++（已由外层执行），避免修复后重复计数
+                                self._ctx.totalFloors = Math.max(0, self._ctx.totalFloors - 1);
+                                await loadQuestData(questActiveId);
+                                // 重新追加用户消息（loadQuestData 已重置 conversation）
+                                self._ctx.totalFloors++;
+                                self.conversation.push(userMsg);
+                                self._log('→ repair: conversation reloaded, retrying...');
+                                // 重置 stall 计数器
+                                self._resetStallCounter();
+                                // 重试：递归一次，带 _repairAttempted 标志防止无限循环
+                                var repairOpts = Object.assign({}, opts, { _repairAttempted: true });
+                                return await self.send(userContent, repairOpts);
+                            } catch (repairErr) {
+                                self._log('✗ repair failed: ' + (repairErr.message || repairErr));
+                            }
+                        }
+                    }
                     // 错误已由 _callGateway 的 onError 处理
                     // 不回滚 conversation — 保留已执行的 tool call 结果，用户可重试
                     return null;
@@ -345,7 +475,10 @@ var AgentLoop = (function () {
                     } else {
                         self.conversation.push(assistantMsg);
                     }
-                    self._extractFloorMarkers(response.content);
+                    // 信封已注入结构化数据，仅无信封时回退 regex 提取
+                    if (!response._envelope) {
+                        self._extractFloorMarkers(response.content);
+                    }
                     // 计费 + flush（写入账本）
                     self._flushBilling(token);
                     var costGe = self._floorCostWge / 10000;
@@ -376,6 +509,20 @@ var AgentLoop = (function () {
                     // 并行执行工具
                     var _toolStart = performance.now();
                     await self._executeToolCallsParallel(response.tool_calls, onToolResult);
+
+                    // ═══ 无进展检测 ═══
+                    var lastHouse = self._houses[self._houses.length - 1];
+                    var lastResults = lastHouse && lastHouse.toolResults ? lastHouse.toolResults : [];
+                    var stall = self._checkStall(lastResults);
+                    if (stall === 'warn') {
+                        self._log('⚠ stall detected: ' + self._stallCount + ' consecutive no-progress calls, injecting warning');
+                        self.conversation.push({ role: 'user', content: '[System: You have made ' + self._stallCount + ' consecutive tool calls with no useful results. Pivot your approach or give your best answer with what you have. Do NOT repeat the same search.]', _stallWarning: true, _floor: self._ctx.totalFloors });
+                    } else if (stall === 'force') {
+                        self._log('⛔ stall force: ' + self._stallCount + ' consecutive no-progress calls, forcing final answer');
+                        self.conversation.push({ role: 'user', content: '[System: You have made ' + self._stallCount + ' consecutive tool calls with no useful results. Stop using tools now and give your final answer based on what you have gathered so far. Be concise.]', _stallForce: true, _floor: self._ctx.totalFloors });
+                        // 强制 noTools 下一轮
+                        forceNoTools = true;
+                    }
                     continue;
                 }
 
@@ -404,7 +551,9 @@ var AgentLoop = (function () {
                         self._floorTiming.deepseekMs += finalResp._streamMs;
                     }
                     self.conversation.push({ role: 'assistant', content: finalResp.content, _floor: self._ctx.totalFloors });
-                    self._extractFloorMarkers(finalResp.content);
+                    if (!finalResp._envelope) {
+                        self._extractFloorMarkers(finalResp.content);
+                    }
                     var finalCostGe = self._floorCostWge / 10000;
                     self.totalCostGe += finalCostGe;
                     self._lastCostDisplay = finalCostGe < 0.001 ? '<0.001' : finalCostGe.toFixed(4);
@@ -676,7 +825,7 @@ var AgentLoop = (function () {
             messages: apiMessages,
             stream: true,
             stream_options: { include_usage: true },
-            max_tokens: tier.maxTokens || 32768,
+            max_tokens: tier.maxTokens || (typeof ContentGateway !== 'undefined' ? ContentGateway.MAX_RESPONSE_TOKENS : 393216),
             floor_id: self._floorId
         };
 
@@ -719,6 +868,10 @@ var AgentLoop = (function () {
                                     : resp.status === 503 ? '服务器暂时不可达 (503)'
                                         : 'Server error (' + resp.status + ')';
                     try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show(friendly, { type: resp.status === 429 ? 'warning' : 'error' }); } catch (_) { }
+                    // 标记 502/503，供上层 send 函数触发对话修复
+                    if (resp.status === 502 || resp.status === 503) {
+                        self._lastGatewayError = resp.status;
+                    }
                     onError(friendly);
                     return null;
                 }
@@ -780,8 +933,9 @@ var AgentLoop = (function () {
         var reasoningContent = '';
         var toolCalls = [];
         var firstTokenSeen = false;
-        var stripper = new FloorSummaryStripper(onToken);
-        var _usage = null; // DeepSeek 精确 token 计数
+        var stripper = new EnvelopeStripper(onToken);
+        var _usage = null;
+        var _finishReason = '';
 
         while (true) {
             var readResult = await reader.read();
@@ -808,7 +962,12 @@ var AgentLoop = (function () {
                         continue;
                     }
 
-                    var delta = chunk.choices && chunk.choices[0] && chunk.choices[0].delta;
+                    var choice0 = chunk.choices && chunk.choices[0];
+                    // 捕获 finish_reason（最后一帧才有）
+                    if (choice0 && choice0.finish_reason) {
+                        _finishReason = choice0.finish_reason;
+                    }
+                    var delta = choice0 && choice0.delta;
                     if (!delta) continue;
 
                     if (delta.reasoning_content) {
@@ -841,12 +1000,26 @@ var AgentLoop = (function () {
             if (finalized.lang) self._currentFloorSummaryLang = finalized.lang;
         }
 
+        // 结构化信封数据注入上下文引擎
+        if (finalized.envelope) {
+            self._injectEnvelope(finalized.envelope);
+        }
+
         var _streamMs = performance.now() - streamStart;
         if (toolCalls.length > 0) {
             return { type: 'tool_calls', tool_calls: toolCalls.filter(Boolean), reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage };
         }
         if (finalized.cleanContent) {
-            return { type: 'message', content: finalized.cleanContent, reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage };
+            // 检测 max_tokens 截断
+            var content = finalized.cleanContent;
+            if (_finishReason === 'length' && content.length > 100) {
+                var lastChar = content[content.length - 1];
+                var abruptEnd = !/[。！？.!?\n)\]]/.test(lastChar);
+                if (abruptEnd) {
+                    content += '\n\n⚠️ 回复因 token 上限被截断。可回复"继续"获取完整内容。';
+                }
+            }
+            return { type: 'message', content: content, reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage, _finishReason: _finishReason, _envelope: finalized.envelope };
         }
         return _usage ? { _usage: _usage } : null;
     };
@@ -894,16 +1067,22 @@ var AgentLoop = (function () {
                     var truncated = resultStr.length > 2000;
                     onToolResult(item.name, truncated ? resultStr.slice(0, 2000) + '\n... (truncated)' : resultStr, truncated);
                 }
-                var trimmed = resultStr.length > 8000
-                    ? resultStr.slice(0, 8000) + '\n... (' + resultStr.length + ' chars, truncated)'
+                var _aiCap = (typeof ContentGateway !== 'undefined' ? ContentGateway.OUTPUT_CAP_DEFAULT : 8000);
+                var trimmed = resultStr.length > _aiCap
+                    ? resultStr.slice(0, _aiCap) + '\n... (' + resultStr.length + ' chars, truncated)'
                     : resultStr;
                 return { call: item.call, content: trimmed, rawContent: resultStr };
             });
             var results = await Promise.all(promises);
-            // 把全长结果写进当前 house（供 rooms.txt 归档）
+            // 所有工具结果经内容安全网关处理后才进入存储/UI（单一真理入口）
             var lastHouse = self._houses[self._houses.length - 1];
             if (lastHouse && lastHouse.type === 'tools') {
-                lastHouse.toolResults = results.map(function (r) { return r.rawContent; });
+                lastHouse.toolResults = results.map(function (r) {
+                    var gated = (typeof ContentGateway !== 'undefined' && ContentGateway.process)
+                        ? ContentGateway.process(r.rawContent)
+                        : { safe: r.rawContent || '' };
+                    return gated.safe;
+                });
                 lastHouse._lines = null;  // 使 UI 端 _buildHouseLines 缓存失效
             }
             for (var ri = 0; ri < results.length; ri++) {

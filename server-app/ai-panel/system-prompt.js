@@ -15,9 +15,17 @@ CONFLICT: When project rules and global rules contradict each other, project rul
 
 LANGUAGE: Reply to the user in the same language they wrote in. Thinking may be in English for accuracy — the user will get a translated version via the audit button if needed. Always match the user's language in your final response.
 
-END EVERY RESPONSE WITH:
-[💎] TREASURE (conditional): output ONLY when ≥1 items discovered but not yet implemented where (gain minus cost) ≥ 7. Example: gain:10/cost:3 OK (7≥7), gain:7/cost:2 SKIP (5<7). Format per item: "💎 " + ≤1 sentence + "（gain:X / cost:Y / urgency）". urgency ∈ {later, soon, urgent}. If ZERO items qualify, OMIT the 💎 block entirely — no empty output. All labels in user's language.
-<floor_summary>one-sentence factual summary ≤200 chars</floor_summary> (MANDATORY, hidden from UI, in user's language, no credentials)
+END EVERY RESPONSE WITH a machine-readable envelope. The envelope is stripped by the IDE before the user sees your reply.
+
+ENVELOPE (MANDATORY — append after your reply, separated by a blank line):
+___qqq_env___
+{"treasures":[],"floor_summary":"事实摘要"}
+___end___
+
+RULES:
+- treasures: array of {text, gain, cost, urgency} for unimplemented improvements where (gain-cost)≥7. urgency: "later"|"soon"|"urgent". 0 items → empty array []. All labels in user's language.
+- floor_summary: one-sentence factual summary ≤200 chars, no credentials, user's language.
+- Markers ___qqq_env___ and ___end___ on their own lines. JSON after ___qqq_env___ (same line OK).
 
 PRINCIPLES:
 - BREVITY: strip filler. "Friday" not "Today is Friday." Save on delivery; spend on analysis.
@@ -27,7 +35,7 @@ PRINCIPLES:
 - LOOP: same fix ≥2 failures → PIVOT (different approach) or ESCALATE (state blocker + constraint to relax).
 - [GUIDE] messages: reply immediately, zero tools, 1-2 sentences max.
 
-CAPABILITIES: read_file, edit_file (whitespace-tolerant search-replace), create_file, delete_file, search_text (regex), find_files (glob), list_files, run_command. Main folder = first titlebar block, holds qqq/quests/quest.sq3. Other folders = auxiliary.
+CAPABILITIES: read_file, edit_file (whitespace-tolerant search-replace), create_file, delete_file, search_text (regex), find_files (glob), list_files, run_command. Your project folders are listed in the VISION CONTEXT above. The ⭐ project is the default — use it when the user doesn't specify a project. Other folders can also be modified if the user asks or the task requires.
 
 LIMITATIONS: no LSP (go-to-definition, find-references, diagnostics). No direct vision — images are pre-analyzed, read their descriptions.
 
@@ -37,17 +45,22 @@ TOOL RULES: always edit_file for modifications; create_file only for new files. 
 const TRIVIAL_REGEX = /^\s*(hi|hello|hey|ok|好的?|谢谢|嗯|哦|行|对|是的?|no|yes|yeah|thx|thanks|bye|再见|晚安|早|\p{Emoji_Presentation}{1,3})\s*[!！.。~？?]*\s*$/iu;
 const CHAT_REGEX = /^[^\n]{0,30}(爱|喜欢|想你|想我|帅|美|漂亮|可爱|笨|傻|无聊|寂寞|陪我|聊天|心情|感觉怎样|你好吗|开心|难过|生气|讨厌|恨|朋友|宝贝|亲爱|老公|老婆|哈哈|呵呵|嘻嘻|累了|困了|饿了|冷了|热了)[^\n]{0,20}$/iu;
 
+// ═══ AI 回答 max_tokens — 唯一真理在 ContentGateway.MAX_RESPONSE_TOKENS（content-gateway.js） ═══
+// DeepSeek V4 原生支持 384K 输出，我们不设人为限制。Flash/Pro 一视同仁。
+var _MRT = (typeof ContentGateway !== 'undefined' ? ContentGateway.MAX_RESPONSE_TOKENS : 524288);
+
 // 旧版兼容（保留，用于 agent-loop.js 自动模式 fallback）
-var TIER_FLASH = { model: 'flash', thinking: { type: 'disabled' }, effort: null, label: 'Flash', maxTokens: 4096 };
-var TIER_PRO = { model: 'pro', thinking: { type: 'enabled' }, effort: 'max', label: 'Pro+Max', maxTokens: 32768 };
+var TIER_FLASH = { model: 'flash', thinking: { type: 'disabled' }, effort: null, label: 'Flash', maxTokens: _MRT };
+var TIER_PRO   = { model: 'pro',   thinking: { type: 'enabled' },  effort: 'max', label: 'Pro+Max', maxTokens: _MRT };
 
 // 六档手动智能等级（model: "flash" → DeepSeek Flash, "pro" → DeepSeek Pro）
-var TIER_1 = { model: 'flash', thinking: { type: 'disabled' }, effort: null, label: '1-Flash', maxTokens: 4096 };
-var TIER_2 = { model: 'flash', thinking: { type: 'enabled' }, effort: 'high', label: '2-Flash+High', maxTokens: 4096 };
-var TIER_3 = { model: 'flash', thinking: { type: 'enabled' }, effort: 'max', label: '3-Flash+Max', maxTokens: 4096 };
-var TIER_4 = { model: 'pro', thinking: { type: 'disabled' }, effort: null, label: '4-Pro', maxTokens: 32768 };
-var TIER_5 = { model: 'pro', thinking: { type: 'enabled' }, effort: 'high', label: '5-Pro+High', maxTokens: 32768 };
-var TIER_6 = { model: 'pro', thinking: { type: 'enabled' }, effort: 'max', label: '6-Pro+Max', maxTokens: 32768 };
+// maxTokens 全部统一为 _MRT，Flash 和 Pro 输出上限不区分
+var TIER_1 = { model: 'flash', thinking: { type: 'disabled' }, effort: null,  label: '1-Flash',       maxTokens: _MRT };
+var TIER_2 = { model: 'flash', thinking: { type: 'enabled' },  effort: 'high', label: '2-Flash+High',  maxTokens: _MRT };
+var TIER_3 = { model: 'flash', thinking: { type: 'enabled' },  effort: 'max',  label: '3-Flash+Max',   maxTokens: _MRT };
+var TIER_4 = { model: 'pro',   thinking: { type: 'disabled' }, effort: null,  label: '4-Pro',         maxTokens: _MRT };
+var TIER_5 = { model: 'pro',   thinking: { type: 'enabled' },  effort: 'high', label: '5-Pro+High',    maxTokens: _MRT };
+var TIER_6 = { model: 'pro',   thinking: { type: 'enabled' },  effort: 'max',  label: '6-Pro+Max',     maxTokens: _MRT };
 
 var TIER_LIST = { 1: TIER_1, 2: TIER_2, 3: TIER_3, 4: TIER_4, 5: TIER_5, 6: TIER_6 };
 
@@ -91,6 +104,9 @@ window.loadProjectRules = async function (projectRoot) {
         var bridge = parent.qqqBridge;
         if (!bridge) { console.log('[rules] bridge unavailable, skipping project.txt'); return; }
         var projPath = projectRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/rule/project.txt';
+        // 先检查文件是否存在，避免 IPC 层打印 ENOENT 错误
+        var stat = await bridge.fs.stat(projPath).catch(function() { return null; });
+        if (!stat) { console.log('[rules] no project.txt (file not found)'); return; }
         var text = await bridge.fs.read(projPath);
         if (text && text.trim()) {
             window.qqqProjectRulesContent = '[PROJECT RULES — Rules specific to this project. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction about this project. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END PROJECT RULES]';
@@ -107,30 +123,47 @@ window.qqqVisionContext = '';
 window.buildVisionContext = function () {
     try {
         if (!parent.qqqAiViewport) { console.log('[vision] no parent.qqqAiViewport'); return; }
-        var main = parent.qqqAiViewport.getMainProject();
         var vps = parent.qqqAiViewport.getProjects();
-        if (!vps || vps.length === 0) { console.log('[vision] no projects in viewport'); return; }
+
+        var panelRoot = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
+        if (panelRoot) { panelRoot = panelRoot.replace(/\\/g, '/').replace(/\/$/, ''); }
+
+        if ((!vps || vps.length === 0) && !panelRoot) {
+            console.log('[vision] no projects and no panelRoot');
+            return;
+        }
 
         var lines = [];
-        lines.push('═══ VISION CONTEXT ═══');
-        lines.push('Folders visible in your IDE titlebar:');
-        for (var i = 0; i < vps.length; i++) {
-            var f = vps[i];
-            var isMain = main && f.path === main.path;
-            if (isMain) {
-                lines.push('● ' + f.name + ' (' + f.path + ') ← MAIN PROJECT');
-                lines.push('  "our project" = this folder. Persistence (history, rules) lives in its qqq/ subdir.');
-            } else {
-                lines.push('○ ' + f.name + ' (' + f.path + ') ← auxiliary');
-                lines.push('  Reference/search/edit only. No persistence.');
+        lines.push('═══ PROJECT FOLDERS ═══');
+
+        var foundPanel = false;
+        if (vps && vps.length > 0) {
+            for (var i = 0; i < vps.length; i++) {
+                var f = vps[i];
+                var fPath = (f.path || '').replace(/\\/g, '/').replace(/\/$/, '');
+                var isMain = panelRoot && fPath === panelRoot;
+                if (isMain) foundPanel = true;
+                if (isMain) {
+                    lines.push('⭐ ' + f.name + '  →  ' + f.path + '  ← MAIN PROJECT (default)');
+                } else {
+                    lines.push('   ' + f.name + '  →  ' + f.path + '  ← auxiliary');
+                }
             }
         }
+        if (!foundPanel && panelRoot) {
+            var name = panelRoot.split('/').pop() || panelRoot;
+            lines.splice(0, 0, '⭐ ' + name + '  →  ' + panelRoot + '  ← MAIN PROJECT (default)');
+        }
+
         lines.push('');
-        lines.push('PRECEDENCE: The ● MAIN PROJECT path above is the default for ALL file operations.');
-        lines.push('Subsequent rules may mention other paths — those are historical context, not the current workspace.');
-        lines.push('══════════════════════════════');
+        lines.push('Rules:');
+        lines.push('• If the user does NOT specify a project, default to the ⭐ MAIN PROJECT.');
+        lines.push('• You MAY operate on auxiliary projects if the user asks or the task requires cross-project work.');
+        lines.push('• Conversation persistence (quest/history) lives in the MAIN PROJECT\'s qqq/ subdirectory.');
+        lines.push('══════════════════');
+
         window.qqqVisionContext = lines.join('\n');
-        console.log('[vision] context built (' + vps.length + ' projects, main=' + (main ? main.name : 'none') + ')');
+        console.log('[vision] context built (' + (vps ? vps.length : 0) + ' projects, panelRoot=' + (panelRoot || 'none') + ')');
     } catch (e) {
         console.log('[vision] build error: ' + (e && e.message));
     }
