@@ -10,6 +10,9 @@
 // stderr is for human-readable debug info only.
 
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
+use std::fs;
+use std::io::Read;
 
 mod ctx;
 mod ensure;
