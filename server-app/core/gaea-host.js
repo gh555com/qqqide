@@ -264,7 +264,7 @@ undefined
   function syncTheme(dark) {
     instances.forEach((inst) => {
       if (inst.iframe && inst.iframe.contentWindow) {
-        inst.iframe.contentWindow.postMessage({ type: 'qqq-theme-change', dark }, '*');
+        inst.iframe.contentWindow.postMessage({ type: 'qqqide-theme-change', dark }, '*');
       }
     });
   }

@@ -962,7 +962,9 @@ var AgentLoop = (function () {
                     await new Promise(function (r) { setTimeout(r, waitMsF); });
                     continue;
                 }
-                self._log('✗ fetch exhausted: ' + msg);
+                self._log('✗ fetch exhausted: ' + msg + ' url=' + GATEWAY_URL);
+                // ★ 诊断：记录调用栈，帮助定位谁在成功后还调了 _callGateway
+                try { console.trace('[qqq-net-err] _callGateway fetch exhausted'); } catch (_) { }
                 onError('⚠️ 网络请求失败（已重试）。\n\n✅ 对话上下文已保留\n🔧 请检查网络后重新发送消息');
                 return null;
             }

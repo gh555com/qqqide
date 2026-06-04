@@ -1,5 +1,5 @@
 // ============================================================================
-// qqq-theme.js — 唯一真理配色机器
+// qqqide-theme.js — 唯一真理配色机器
 //
 // 铁律：
 //   1. 整个 IDE 的一切配色，必须经由此机器。任何组件不得私自定义颜色。
@@ -153,7 +153,7 @@
   // §4 状态
   // ==========================================================================
   const ROOT = document.documentElement;
-  const STORE_KEY = 'qqq-theme';
+  const STORE_KEY = 'qqqide-theme';
   let _dark = false;
   const _listeners = [];
 
@@ -173,10 +173,10 @@
   function _ensureStyleEl() {
     if (_styleEl) return _styleEl;
     // 防止重复加载
-    _styleEl = document.getElementById('qqq-theme-vars');
+    _styleEl = document.getElementById('qqqide-theme-vars');
     if (_styleEl) return _styleEl;
     _styleEl = document.createElement('style');
-    _styleEl.id = 'qqq-theme-vars';
+    _styleEl.id = 'qqqide-theme-vars';
     document.head.appendChild(_styleEl);
     return _styleEl;
   }
@@ -191,7 +191,7 @@
     const darkVars = Object.entries(D).map(([k, v]) => `${k}:${v};`).join('');
 
     el.textContent = [
-      '/* qqq-theme — 唯一真理配色机器 */',
+      '/* qqqide-theme — 唯一真理配色机器 */',
       'html{forced-color-adjust:none!important}',
       '@media (forced-colors:active){html,body,*{forced-color-adjust:none!important}}',
       `:root{${lightVars}}`,
@@ -283,7 +283,7 @@
         rules: MONACO_DARK_RULES,
       });
     } catch (e) {
-      console.warn('[qqq-theme] defineMonacoThemes failed:', e && e.message);
+      console.warn('[qqqide-theme] defineMonacoThemes failed:', e && e.message);
     }
   }
 
@@ -310,7 +310,7 @@
     for (const f of frames) {
       try {
         f.contentWindow && f.contentWindow.postMessage({
-          type: 'qqq-theme-change',
+          type: 'qqqide-theme-change',
           dark: _dark,
         }, '*');
       } catch (_) { }
@@ -319,11 +319,11 @@
 
   // 监听来自 iframe 的请求（iframe onload 时请求初始主题）
   window.addEventListener('message', (e) => {
-    if (e.data && e.data.type === 'qqq-theme-request') {
+    if (e.data && e.data.type === 'qqqide-theme-request') {
       // iframe 请求初始主题，回复当前状态
       const src = e.source;
       if (src && src.postMessage) {
-        src.postMessage({ type: 'qqq-theme-change', dark: _dark }, '*');
+        src.postMessage({ type: 'qqqide-theme-change', dark: _dark }, '*');
       }
     }
   });

@@ -19,7 +19,7 @@
 //   window.qqqideKeyHook.fire(id)                 // programmatic trigger
 //
 // Iframe-side helper:
-//   window.qqqKeyHookAdapter.attach({roam: true})
+//   window.qqqideKeyHookAdapter.attach({roam: true})
 //     - call from inside the iframe document; it captures keydown,
 //       computes the accel, and posts to parent.
 // ============================================================================
@@ -330,5 +330,5 @@
     init, on, set, unbind, fire, list, context,
     canonAccel, normalizeAccel,
   };
-  window.qqqKeyHookAdapter = adapter;
+  window.qqqideKeyHookAdapter = adapter;
 })();

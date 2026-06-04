@@ -1,5 +1,5 @@
 // ============================================================================
-// qqq-qoast.js — 唯一真理 qoast 弹窗机器
+// qqqide-qoast.js — 唯一真理 qoast 弹窗机器
 // 升级 qoast 能力只需改本文件一处。一切通知必须走这里，禁止私造弹窗。
 //
 // API:
@@ -17,22 +17,22 @@
   var container = null;
 
   function ensreContainer() {
-    var c = document.getElementById('qqq-qoast-container');
+    var c = document.getElementById('qqqide-qoast-container');
     if (c) { container = c; return; }
     container = document.createElement('div');
-    container.id = 'qqq-qoast-container';
+    container.id = 'qqqide-qoast-container';
     if (document.body) { document.body.appendChild(container); }
     else { document.addEventListener('DOMContentLoaded', function () { document.body.appendChild(container); }); }
   }
 
   var styleOnce = false;
   function injectStyle() {
-    if (styleOnce || document.getElementById('qqq-qoast-style')) return;
+    if (styleOnce || document.getElementById('qqqide-qoast-style')) return;
     styleOnce = true;
     var s = document.createElement('style');
-    s.id = 'qqq-qoast-style';
+    s.id = 'qqqide-qoast-style';
     s.textContent = [
-      '#qqq-qoast-container { position:fixed; top:44px; right:12px; z-index:99999; display:flex; flex-direction:column; gap:6px; pointer-events:none; }',
+      '#qqqide-qoast-container { position:fixed; top:44px; right:12px; z-index:99999; display:flex; flex-direction:column; gap:6px; pointer-events:none; }',
       '.qqoast {',
       '  pointer-events:auto; padding:8px 12px; border-radius:4px; font-size:12px; line-height:1.4;',
       '  min-width:200px; max-width:380px;',

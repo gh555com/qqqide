@@ -1425,7 +1425,7 @@ function registerIpc(): void {
                 }
             }
         } catch (e) {
-            console.warn('[qqq:dialog:open] asset-root auto-extend failed:', e);
+            console.warn('[qqqide:dialog:open] asset-root auto-extend failed:', e);
         }
         return result;
     });

@@ -975,8 +975,8 @@ document.getElementById('sidebarHeader').addEventListener('click', function() {
 	// ---- KeyHook iframe adapter (unified Roam shortcut routing) ----
 	// Attach as scope='iframe:roam' so window-side dispatcher matches Q/W/Space/1/2/Tab
 	try {
-		if (parent && parent.qqqKeyHookAdapter && parent.qqqKeyHookAdapter.attach) {
-			parent.qqqKeyHookAdapter.attach({ scope: 'iframe:roam', swallow: true });
+		if (parent && parent.qqqideKeyHookAdapter && parent.qqqideKeyHookAdapter.attach) {
+			parent.qqqideKeyHookAdapter.attach({ scope: 'iframe:roam', swallow: true });
 		}
 	} catch(e) { console.warn('[q2-roam] keyhook adapter attach failed:', e); }
 

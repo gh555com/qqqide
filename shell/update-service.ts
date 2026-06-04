@@ -10,9 +10,9 @@
 //   { lastCheck: number, lastVersion: string, lastApplied: string }
 //
 // IPC in main.ts:
-//   qqq:update:check  → { latestVersion, needUpdate }
-//   qqq:update:apply  → { success, version }
-//   qqq:update:state  → { lastCheck, currentVersion, ... }
+//   qqqide:update:check  → { latestVersion, needUpdate }
+//   qqqide:update:apply  → { success, version }
+//   qqqide:update:state  → { lastCheck, currentVersion, ... }
 // ============================================================================
 
 import * as http from 'http';

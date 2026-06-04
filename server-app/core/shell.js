@@ -53,7 +53,7 @@
   }
 
   function persistState() {
-    // Authoritative: StateStore (debounced, atomic, cloud=true via qqq.shell).
+    // Authoritative: StateStore (debounced, atomic, cloud=true via qqqide).
     try {
       if (bridge && bridge.state && bridge.state.set) {
         bridge.state.set(STATE_NS, STATE_KEY, {

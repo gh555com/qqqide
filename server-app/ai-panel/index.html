@@ -219,7 +219,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   }
   // 始终监听 postMessage
   window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'qqq-theme-change') sync(e.data.dark);
+    if (e.data && e.data.type === 'qqqide-theme-change') sync(e.data.dark);
   });
   // 独立窗口（僚机）：通过 IPC sync 接收主题变更
   try {
@@ -1518,7 +1518,7 @@ window.addEventListener('message', function(e) {
     bindMainProject();
   }
   // 主题变更 → 同步到 only.sq3（per-project 主题记忆）
-  if (e.data && e.data.type === 'qqq-theme-change' && typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+  if (e.data && e.data.type === 'qqqide-theme-change' && typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
     onlyStore.set('theme', e.data.dark ? 'dark' : 'light');
   }
 });
@@ -4392,6 +4392,8 @@ async function sendMessage() {
 
       onDone: async function(content, timing) {
         _stopAutoSave();  // 流式结束，停止增量保存
+        // ★ 标记本层已完成，防止后续 onError 误伤（重复 stopFloorTimer 致饼图变黄）
+        if (aiDiv) aiDiv._floorCompleted = true;
         aiDiv._renderScheduled = false;
         // 若原 aiDiv 因 quest 切换被销毁，回退到该 agent 私有的 _activeAiDiv
         var _targetDiv2 = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
@@ -4464,6 +4466,14 @@ async function sendMessage() {
       onError: function(msg) {
         _stopAutoSave();  // 流式出错，停止增量保存
         if (_activeAgent === _capturedAgent) {
+          // ★ 若本层已成功完成（onDone 已调用），跳过 onError 的破坏性清理
+          //    避免重复调用 stopFloorTimer() 导致饼图变黄、计时丢失
+          if (aiDiv && aiDiv._floorCompleted) {
+            console.log('[onError] floor already completed, skipping destructive cleanup');
+            setStreaming(false);
+            _continueQueue();
+            return;
+          }
           // 错误消息支持换行（\n → <br>）
           var _errDiv = addMessageEl('error', msg);
           // 如果错误建议刷新，添加可点击的刷新按钮
