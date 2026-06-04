@@ -8,7 +8,7 @@
 (function () {
   'use strict';
 
-  const bridge = window.qqqBridge;
+  const bridge = window.qqqideBridge;
 
   // The qqq path delimiter regex: /\ content \/
   const PATH_REGEX = /\/\\\s*([\s\S]*?)\s*\\\//gi;

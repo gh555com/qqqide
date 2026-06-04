@@ -3,7 +3,7 @@
 // 升级 qoast 能力只需改本文件一处。一切通知必须走这里，禁止私造弹窗。
 //
 // API:
-//   qqqQoast.show(message, [opts])
+//   qqqideQoast.show(message, [opts])
 //     opts.duration — 自动关闭毫秒 (默认 9000，0 = 不自动关)
 //     opts.type     — 'error'|'warning'|'success'|'info' (默认 'info')
 //     opts.action   — { label:'按钮文字', onClick:fn }
@@ -72,7 +72,7 @@
     setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 260);
   };
 
-  window.qqqQoast = {
+  window.qqqideQoast = {
     show: function (message, opts) {
       opts = opts || {};
       var duration = typeof opts.duration === 'number' ? opts.duration : DEFAULT_DURATION;

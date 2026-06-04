@@ -31,7 +31,7 @@ function _capOutput(r: SpawnResult): SpawnResult {
 }
 
 // ── System-level hard limits (defense-in-depth against runaway commands) ──
-const SYSTEM_MAX_TIMEOUT = 600_000;  // 10 min — no command runs longer than this
+const SYSTEM_MAX_TIMEOUT = 1_800_000;  // 30 min — no command runs longer than this
 const MEM_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;  // 2GB — kill if child exceeds this
 
 /** Memory guard: polls process tree every 5s, kills if total WorkingSetSize > limit. */
@@ -143,10 +143,10 @@ let _ghrunBinCache: string | null | undefined = undefined; // undefined=未探�
 
 function resolveGhrunBin(appRoot?: string): string | null {
     if (_ghrunBinCache !== undefined) { return _ghrunBinCache; }
-    const env = process.env.QDIR_GHRUN;
+    const env = process.env.QQQIDE_QDIR_GHRUN;
     if (env && fs.existsSync(env)) { _ghrunBinCache = env; return env; }
-    // also probe portable convention: $QDIR/ghrun.exe
-    const qdir = process.env.QDIR;
+    // also probe portable convention: $QQQIDE_QDIR/ghrun.exe
+    const qdir = process.env.QQQIDE_QDIR;
     if (qdir) {
         const ext = process.platform === 'win32' ? '.exe' : '';
         const p = path.join(qdir, 'ghrun' + ext);

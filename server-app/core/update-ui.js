@@ -6,7 +6,7 @@
 (function () {
     'use strict';
 
-    const bridge = window.qqqBridge;
+    const bridge = window.qqqideBridge;
     if (!bridge || !bridge.update) {
         console.warn('[update-ui] bridge.update unavailable');
         return;

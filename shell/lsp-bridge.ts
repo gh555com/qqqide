@@ -8,7 +8,7 @@
 //
 // ghrun `which` resolves binary paths; qz-spawn persist manages lifecycle.
 // One LSP server instance per language (not per file).
-// Diagnostics flow to renderer via webContents.send('qqq:lsp:diagnostics',...).
+// Diagnostics flow to renderer via webContents.send('qqqide:lsp:diagnostics',...).
 // ============================================================================
 
 import { WebContents } from 'electron';
@@ -371,7 +371,7 @@ export class LspBridge {
         // Push cached diagnostics to newly added target
         for (const [uri, diagnostics] of this.diagnosticsCache) {
             if (!wc.isDestroyed()) {
-                wc.send('qqq:lsp:diagnostics', { uri, diagnostics });
+                wc.send('qqqide:lsp:diagnostics', { uri, diagnostics });
             }
         }
     }
@@ -426,9 +426,9 @@ export class LspBridge {
     }
 
     private findGhrun(): string | null {
-        const env = process.env.QDIR_GHRUN;
+        const env = process.env.QQQIDE_QDIR_GHRUN;
         if (env && fs.existsSync(env)) return env;
-        const qdir = process.env.QDIR;
+        const qdir = process.env.QQQIDE_QDIR;
         if (qdir) {
             const ext = process.platform === 'win32' ? '.exe' : '';
             const p = path.join(qdir, 'ghrun' + ext);
@@ -486,7 +486,7 @@ export class LspBridge {
         if (!binPath) {
             binPath = this.resolveGhrunWhich(cfg.component);
             if (!binPath) {
-                const qdir = process.env.QDIR;
+                const qdir = process.env.QQQIDE_QDIR;
                 if (qdir) {
                     const dirName = cfg.component.replace('/', '_');
                     const ext = process.platform === 'win32' ? '.exe' : '';
@@ -621,7 +621,7 @@ export class LspBridge {
         this.diagnosticsCache.set(uri, diagnostics);
         for (const wc of this.targets) {
             if (!wc.isDestroyed()) {
-                wc.send('qqq:lsp:diagnostics', { uri, diagnostics });
+                wc.send('qqqide:lsp:diagnostics', { uri, diagnostics });
             }
         }
     }

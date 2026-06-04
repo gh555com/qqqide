@@ -35,7 +35,7 @@ PRINCIPLES:
 - LOOP: same fix ≥2 failures → PIVOT (different approach) or ESCALATE (state blocker + constraint to relax).
 - [GUIDE] messages: reply immediately, zero tools, 1-2 sentences max.
 
-CAPABILITIES: read_file, edit_file (whitespace-tolerant search-replace), create_file, delete_file, search_text (regex), find_files (glob), list_files, run_command. Your project folders are listed in the VISION CONTEXT above. The ⭐ project is the default — use it when the user doesn't specify a project. Other folders can also be modified if the user asks or the task requires.
+CAPABILITIES: read_file, edit_file (whitespace-tolerant search-replace), create_file, delete_file, search_text (regex), search_content (multi-keyword OR), find_files (glob), list_files, run_command, fetch_webpage, get_diagnostics. Your project folders are listed in the VISION CONTEXT above. The ⭐ project is the default — use it when the user doesn't specify a project. Other folders can also be modified if the user asks or the task requires.
 
 LIMITATIONS: no LSP (go-to-definition, find-references, diagnostics). No direct vision — images are pre-analyzed, read their descriptions.
 
@@ -43,6 +43,7 @@ TOOL RULES: always edit_file for modifications; create_file only for new files. 
 
 🔴 FILE SEARCH PRIORITY (MANDATORY):
 - search_text → searching code/content by regex (supports | for OR patterns). Memory-safe, 10x faster than shell.
+- search_content → searching for multiple literal keywords at once (OR-combined, auto-escaped). Use this when you have a list of terms to find (e.g. ["foo", "bar", "baz"]).
 - find_files → finding files by glob name pattern (*.js, config/*.json).
 - list_files → listing directory contents.
 - run_command → ONLY when the above tools CANNOT do the job. Never use run_command for file content search.
@@ -81,17 +82,17 @@ if (typeof module !== 'undefined' && module.exports) {
 // ============================================================================
 
 // global.txt — 全局规则，所有 IDE 窗口共享（{appRoot}/userData/global.txt）
-window.qqqRulesContent = '';
+window.qqqideRulesContent = '';
 
-window.loadQqqRules = async function () {
+window.loadQqqideRules = async function () {
     try {
-        var bridge = parent.qqqBridge;
+        var bridge = parent.qqqideBridge;
         if (bridge && bridge.app && bridge.app.root) {
             var root = await bridge.app.root();
             var rulesPath = root.replace(/\\/g, '/').replace(/\/$/, '') + '/userData/global.txt';
             var text = await bridge.fs.read(rulesPath);
             if (text && text.trim()) {
-                window.qqqRulesContent = '[GLOBAL RULES — Permanent rules set by the user. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END GLOBAL RULES]';
+                window.qqqideRulesContent = '[GLOBAL RULES — Permanent rules set by the user. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END GLOBAL RULES]';
                 console.log('[rules] global loaded: ' + text.length + ' chars');
             }
         } else {
@@ -103,12 +104,12 @@ window.loadQqqRules = async function () {
 };
 
 // project.txt — 项目规则，仅当前项目生效（{projectRoot}/qqq/alphal/rule/project.txt）
-window.qqqProjectRulesContent = '';
+window.qqqideProjectRulesContent = '';
 
-window.loadProjectRules = async function (projectRoot) {
+window.loadQqqideProjectRules = async function (projectRoot) {
     try {
         if (!projectRoot) return;
-        var bridge = parent.qqqBridge;
+        var bridge = parent.qqqideBridge;
         if (!bridge) { console.log('[rules] bridge unavailable, skipping project.txt'); return; }
         var projPath = projectRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/rule/project.txt';
         // 先检查文件是否存在，避免 IPC 层打印 ENOENT 错误
@@ -116,7 +117,7 @@ window.loadProjectRules = async function (projectRoot) {
         if (!stat) { console.log('[rules] no project.txt (file not found)'); return; }
         var text = await bridge.fs.read(projPath);
         if (text && text.trim()) {
-            window.qqqProjectRulesContent = '[PROJECT RULES — Rules specific to this project. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction about this project. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END PROJECT RULES]';
+            window.qqqideProjectRulesContent = '[PROJECT RULES — Rules specific to this project. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction about this project. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END PROJECT RULES]';
             console.log('[rules] project loaded: ' + text.length + ' chars');
         }
     } catch (e) {
@@ -125,12 +126,12 @@ window.loadProjectRules = async function (projectRoot) {
 };
 
 // vision-context — AI viewport snapshot, injected once at quest start to tell AI which folder is main
-window.qqqVisionContext = '';
+window.qqqideVisionContext = '';
 
-window.buildVisionContext = function () {
+window.buildQqqideVisionContext = function () {
     try {
-        if (!parent.qqqAiViewport) { console.log('[vision] no parent.qqqAiViewport'); return; }
-        var vps = parent.qqqAiViewport.getProjects();
+        if (!parent.qqqideViewport) { console.log('[vision] no parent.qqqideViewport'); return; }
+        var vps = parent.qqqideViewport.getProjects();
 
         var panelRoot = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
         if (panelRoot) { panelRoot = panelRoot.replace(/\\/g, '/').replace(/\/$/, ''); }
@@ -169,7 +170,7 @@ window.buildVisionContext = function () {
         lines.push('• Conversation persistence (quest/history) lives in the MAIN PROJECT\'s qqq/ subdirectory.');
         lines.push('══════════════════');
 
-        window.qqqVisionContext = lines.join('\n');
+        window.qqqideVisionContext = lines.join('\n');
         console.log('[vision] context built (' + (vps ? vps.length : 0) + ' projects, panelRoot=' + (panelRoot || 'none') + ')');
     } catch (e) {
         console.log('[vision] build error: ' + (e && e.message));

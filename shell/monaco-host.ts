@@ -16,23 +16,23 @@ export class MonacoHost {
     private instances = new Map<number, MonacoHandle>();
 
     register(): void {
-        ipcMain.handle('qqq:monaco:create', (_e, _opts) => {
+        ipcMain.handle('qqqide:monaco:create', (_e, _opts) => {
             const h: MonacoHandle = { id: this.nextId++, file: null };
             this.instances.set(h.id, h);
             return h.id;
         });
-        ipcMain.handle('qqq:monaco:open', (_e, id: number, file: string) => {
+        ipcMain.handle('qqqide:monaco:open', (_e, id: number, file: string) => {
             const h = this.instances.get(id);
             if (!h) { return false; }
             h.file = file;
             // Day 3: actually open file in monaco
             return true;
         });
-        ipcMain.handle('qqq:monaco:save', (_e, id: number) => {
+        ipcMain.handle('qqqide:monaco:save', (_e, id: number) => {
             const h = this.instances.get(id);
             return !!h;
         });
-        ipcMain.handle('qqq:monaco:dispose', (_e, id: number) => {
+        ipcMain.handle('qqqide:monaco:dispose', (_e, id: number) => {
             return this.instances.delete(id);
         });
     }

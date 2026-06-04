@@ -13,15 +13,15 @@
 //   - set()/setNow()/del() write-through (cache + bridge)
 //   - onChange auto-invalidates cache entries
 //
-// Falls back to in-memory mocks when running in a plain browser (no qqqBridge).
+// Falls back to in-memory mocks when running in a plain browser (no qqqideBridge).
 // ============================================================================
 
 (function () {
   'use strict';
 
   function _bridge() {
-    return (typeof window !== 'undefined' && window.qqqBridge && window.qqqBridge.state)
-      || (typeof window !== 'undefined' && window.qqq && window.qqq.state)
+    return (typeof window !== 'undefined' && window.qqqideBridge && window.qqqideBridge.state)
+      || (typeof window !== 'undefined' && window.qqqide && window.qqqide.state)
       || null;
   }
 

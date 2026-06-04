@@ -1,12 +1,12 @@
 // ============================================================================
 // tools.js — AI 工具定义 + 执行引擎
 // 从 q3/ai/src/tools.js 移植，适配 Shell v2 Electron 环境
-// 工具通过 parent.qqqBridge 访问文件系统/命令行
+// 工具通过 parent.qqqideBridge 访问文件系统/命令行
 // ============================================================================
 
 // ---- 获取 bridge（iframe 内通过 parent 访问）----
 function getBridge() {
-    try { return parent.qqqBridge; } catch (_) { return null; }
+    try { return parent.qqqideBridge; } catch (_) { return null; }
 }
 
 // ============================================================
@@ -35,7 +35,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'read_file',
-            description: 'Read file contents. For large files (>500 lines), use start_line/end_line to paginate.',
+            description: 'Read file contents. Fast single-IPC, memory-safe. For large files (>500 lines), use start_line/end_line to paginate.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -51,7 +51,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'edit_file',
-            description: 'Edit a file with one or more search-and-replace operations. All edits are applied atomically (all succeed or none applied). Supports whitespace-tolerant matching as fallback. No confirmation needed.',
+            description: 'Edit a file with one or more search-and-replace operations. All edits applied atomically (all succeed or none). 3-tier whitespace-tolerant matching. No confirmation needed. Single IPC to main process.'
             parameters: {
                 type: 'object',
                 properties: {
@@ -93,8 +93,24 @@ var TOOL_DEFINITIONS = [
     {
         type: 'function',
         function: {
+            name: 'search_content',
+            description: 'Multi-keyword OR search. Takes an array of literal strings, auto-escapes them, and searches all at once. 10x faster and memory-safe vs shell. Use this when you need to find any of several keywords (e.g. ["qqqideBridge", "QQQIDE_URL", "qqqShell"]).',
+            parameters: {
+                type: 'object',
+                properties: {
+                    keywords: { type: 'array', items: { type: 'string' }, description: 'Array of literal keywords to search for (OR-combined)' },
+                    path: { type: 'string', description: 'Directory to search in (optional)' },
+                    max_results: { type: 'number', description: 'Max results to return (default 30)' }
+                },
+                required: ['keywords']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
             name: 'list_files',
-            description: 'List files in a directory',
+            description: 'List files in a directory. Flat or recursive. 200-item cap for recursive. Memory-safe, 10x faster than shell.'
             parameters: {
                 type: 'object',
                 properties: {
@@ -117,7 +133,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'create_file',
-            description: 'Create a new file with the given content. Auto-creates parent directories. Fails if the file already exists.',
+            description: 'Create a new file with given content. Auto-creates parent directories. Fails if file already exists (use edit_file to modify). Single IPC.'
             parameters: {
                 type: 'object',
                 properties: {
@@ -132,7 +148,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'run_command',
-            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default. When you need full output (e.g. large file listings, long logs), pass maxOutput to request up to ' + OUTPUT_CAP_MAX + '. Default timeout 5min, max 10min. Stall guard: 5min no output = killed. Use cwd to set working directory. PREFER search_text/find_files for code search — they are 10x faster and memory-safe.',
+            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default. When you need full output (e.g. large file listings, long logs), pass maxOutput to request up to ' + OUTPUT_CAP_MAX + '. Hard timeout 30min, stall guard 5min. Use cwd to set working directory. ⚠️ PREFER search_text/search_content/find_files for code search — they are 10x faster and memory-safe. Only use run_command when dedicated tools CANNOT do the job.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -148,7 +164,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'delete_file',
-            description: 'Delete a file. Fails if file does not exist.',
+            description: 'Delete a file. Fails if file does not exist (safe — won\'t silently succeed on typos). Single IPC.'
             parameters: {
                 type: 'object',
                 properties: {
@@ -162,7 +178,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'find_files',
-            description: 'Search for files by name pattern (glob like *.js, config/*.json). Returns matching file paths.',
+            description: 'Search for files by name pattern (glob like *.js, config/*.json). Memory-safe, 10x faster than shell. Returns matching file paths. Default 50 max results.'
             parameters: {
                 type: 'object',
                 properties: {
@@ -178,7 +194,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'fetch_webpage',
-            description: 'Fetch and extract text content from a URL.',
+            description: 'Fetch and extract text content from a URL. CORS-bypass via curl backend, 15s timeout. Strips HTML tags, returns plain text ≤8000 chars.'
             parameters: {
                 type: 'object',
                 properties: {
@@ -192,7 +208,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'get_diagnostics',
-            description: 'Get LSP/compiler diagnostics (errors, warnings, hints) for a file or all open files. Returns the same markers you see in the IDE as red/yellow squiggles.',
+            description: 'Get LSP/compiler diagnostics (errors, warnings, hints) for a file or all open files. Returns the same red/yellow squiggles you see in the IDE. Max 100 markers returned.'
             parameters: {
                 type: 'object',
                 properties: {
@@ -224,7 +240,7 @@ var TOOL_DEFINITIONS = [
 // ============================================================
 
 var TOOL_CATEGORY = {
-    read_file: 'READ', search_text: 'READ', list_files: 'READ',
+    read_file: 'READ', search_text: 'READ', search_content: 'READ', list_files: 'READ',
     find_files: 'READ', get_vision_context: 'READ', fetch_webpage: 'READ',
     get_diagnostics: 'READ',
     edit_file: 'WRITE', create_file: 'WRITE', delete_file: 'WRITE', write_file: 'WRITE',
@@ -240,6 +256,7 @@ async function executeTool(name, args) {
         case 'read_file': return executeReadFile(args);
         case 'edit_file': return executeEditFile(args);
         case 'search_text': return executeSearchText(args);
+        case 'search_content': return executeSearchContent(args);
         case 'list_files': return executeListFiles(args);
         case 'get_vision_context': return executeGetVisionContext();
         case 'create_file': return executeCreateFile(args);
@@ -491,8 +508,8 @@ async function executeSearchText(args) {
     } else {
         // Use vision context folders
         try {
-            if (parent.qqqAiViewport) {
-                var vps = parent.qqqAiViewport.getProjects();
+            if (parent.qqqideViewport) {
+                var vps = parent.qqqideViewport.getProjects();
                 searchDirs = vps.map(function (p) { return p.path; });
             }
         } catch (_) { }
@@ -560,6 +577,39 @@ async function executeSearchText(args) {
 }
 
 // ============================================================
+// search_content — multi-keyword OR search (literal strings, auto-escaped)
+// ============================================================
+
+async function executeSearchContent(args) {
+    var bridge = getBridge();
+    if (!bridge) return 'Error: bridge not available';
+    if (!args.keywords || args.keywords.length === 0) return 'Error: no keywords provided.';
+
+    // Escape each keyword for regex and join with |
+    var escapeRegex = function (s) {
+        return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    };
+    var pattern = args.keywords.map(escapeRegex).join('|');
+    var maxResults = args.max_results || 30;
+
+    // Route through search_text (main process, efficient)
+    if (bridge.ai && bridge.ai.search_text) {
+        try {
+            return await bridge.ai.search_text({
+                query: pattern,
+                path: args.path || undefined,
+                maxResults: maxResults
+            });
+        } catch (err) {
+            return 'search_content error: ' + (err && err.message || err);
+        }
+    }
+
+    // Fallback: use executeSearchText directly
+    return await executeSearchText({ query: pattern, path: args.path, max_results: maxResults });
+}
+
+// ============================================================
 // list_files
 // ============================================================
 
@@ -607,8 +657,8 @@ async function executeListFiles(args) {
 
 async function executeGetVisionContext() {
     try {
-        if (!parent.qqqAiViewport) return 'No vision context available.';
-        var vps = parent.qqqAiViewport.getProjects();
+        if (!parent.qqqideViewport) return 'No vision context available.';
+        var vps = parent.qqqideViewport.getProjects();
 
         var panelRoot = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
         if (panelRoot) { panelRoot = panelRoot.replace(/\\/g, '/').replace(/\/$/, ''); }
@@ -699,8 +749,8 @@ async function executeRunCommand(args) {
         }
         // Use qz spawn (ghrun → node fallback)
         console.log('[qz] run_command:', JSON.stringify({ cmd: cmd, args: cmdArgs, cwd: args.cwd || '', shell: useShell }));
-        // A5: default timeout 5min, max 10min — AI can extend via maxOutput hint
-        var effectiveTimeout = args.maxOutput && args.maxOutput > OUTPUT_CAP_DEFAULT ? 600000 : 300000;
+        // All commands capped at 30min by qz-spawn SYSTEM_MAX_TIMEOUT
+        var effectiveTimeout = 1800000;  // 30 min (same as system cap)
         var result = await bridge.qz.spawn({
             cmd: cmd,
             args: cmdArgs,
@@ -773,8 +823,8 @@ async function executeFindFiles(args) {
         searchDirs = [args.path];
     } else {
         try {
-            if (parent.qqqAiViewport) {
-                var vps = parent.qqqAiViewport.getProjects();
+            if (parent.qqqideViewport) {
+                var vps = parent.qqqideViewport.getProjects();
                 searchDirs = vps.map(function (p) { return p.path; });
             }
         } catch (_) { }

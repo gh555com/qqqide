@@ -150,6 +150,48 @@ var AgentLoop = (function () {
         }
     };
 
+    // ═══ 修复断裂的 tool_calls（启动自愈） ═══
+    // DeepSeek 要求 assistant tool_calls 后必须紧跟 tool 消息。
+    // 扫描 conversation，砍掉孤立的 assistant tool_calls（后面缺 tool 配对），
+    // 以及孤立的 tool 消息（前面缺 assistant tool_calls）。
+    AgentLoop.prototype._repairOrphanedToolCalls = function () {
+        var self = this;
+        var conv = self.conversation;
+        if (!conv || conv.length === 0) return;
+        var removedTotal = 0;
+        // 多轮扫描直到干净（修复一处可能暴露上一处问题）
+        for (var pass = 0; pass < 5; pass++) {
+            var cutAt = -1;
+            // 从前往后扫：找 assistant tool_calls，验后面的 tool 数量
+            for (var i = 0; i < conv.length; i++) {
+                var msg = conv[i];
+                if (msg && msg.role === 'assistant' && msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
+                    var expected = msg.tool_calls.length;
+                    var actual = 0;
+                    var toolSeqEnd = i + 1;
+                    for (var j = i + 1; j < conv.length; j++) {
+                        if (conv[j] && conv[j].role === 'tool') { actual++; toolSeqEnd = j + 1; }
+                        else break;
+                    }
+                    if (actual < expected) {
+                        // 残缺：移除 assistant + 后面跟的 tool 消息（若有）
+                        var removeCount = toolSeqEnd - i;
+                        conv.splice(i, removeCount);
+                        removedTotal += removeCount;
+                        cutAt = i;  // 从修复位置继续扫描
+                        break;
+                    }
+                    // 完整 → 跳过整个 tool 序列
+                    i = toolSeqEnd - 1;
+                }
+            }
+            if (cutAt < 0) break;  // 本轮无修复，干净
+        }
+        if (removedTotal > 0) {
+            self._log('🔧 repaired: removed ' + removedTotal + ' orphaned msgs (broken tool_calls/tool pairs)');
+        }
+    };
+
     // ═══ 无进展计数器（硬约束：防止 AI 反复无意义搜索） ═══
     AgentLoop.prototype._resetStallCounter = function () {
         this._stallCount = 0;
@@ -220,25 +262,25 @@ var AgentLoop = (function () {
     AgentLoop.prototype._refreshRules = async function () {
         var self = this;
         // 每次从磁盘重读 rules 文件，确保外部更新能热替换到哨兵
-        if (typeof loadQqqRules === "function") { await loadQqqRules(); }
-        if (typeof loadProjectRules === "function" && typeof questStore !== "undefined" && questStore.getProjectRoot) {
-            await loadProjectRules(questStore.getProjectRoot());
+        if (typeof loadQqqideRules === "function") { await loadQqqideRules(); }
+        if (typeof loadQqqideProjectRules === "function" && typeof questStore !== "undefined" && questStore.getProjectRoot) {
+            await loadQqqideProjectRules(questStore.getProjectRoot());
         }
-        if (typeof buildVisionContext === "function") { buildVisionContext(); }
+        if (typeof buildQqqideVisionContext === "function") { buildQqqideVisionContext(); }
         var parts = [];
         // Vision context FIRST — concrete project path anchors AI before any abstract rules or historical paths appear
-        if (typeof qqqVisionContext !== "undefined" && qqqVisionContext) {
-            parts.push(qqqVisionContext);
+        if (typeof qqqideVisionContext !== "undefined" && qqqideVisionContext) {
+            parts.push(qqqideVisionContext);
         }
         // SYSTEM_PROMPT 只发送一次，打入哨兵永久存在（重启窗口后从 SQLite 恢复）
         if (typeof SYSTEM_PROMPT !== "undefined" && SYSTEM_PROMPT) {
             parts.push(SYSTEM_PROMPT);
         }
-        if (typeof qqqRulesContent !== "undefined" && qqqRulesContent) {
-            parts.push(qqqRulesContent);
+        if (typeof qqqideRulesContent !== "undefined" && qqqideRulesContent) {
+            parts.push(qqqideRulesContent);
         }
-        if (typeof qqqProjectRulesContent !== "undefined" && qqqProjectRulesContent) {
-            parts.push(qqqProjectRulesContent);
+        if (typeof qqqideProjectRulesContent !== "undefined" && qqqideProjectRulesContent) {
+            parts.push(qqqideProjectRulesContent);
         }
         // ═══ TRAILING REMINDER — reinforce main project after all rules ═══
         var panelRoot = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
@@ -423,28 +465,15 @@ var AgentLoop = (function () {
                 });
 
                 if (!response) {
-                    // 502/503 自动修复：重新从数据库加载对话，丢弃可能损坏的内存状态
+                    // 502/503 自动修复：轻量砍掉断裂的 tool_calls，继续当前循环重试
                     if ((self._lastGatewayError === 502 || self._lastGatewayError === 503) && !opts._repairAttempted) {
                         self._lastGatewayError = 0;
-                        if (typeof questActiveId !== 'undefined' && questActiveId && typeof loadQuestData === 'function') {
-                            self._log('⛔ 502/503 detected, reloading conversation from DB...');
-                            try {
-                                // 撤销本次 totalFloors++（已由外层执行），避免修复后重复计数
-                                self._ctx.totalFloors = Math.max(0, self._ctx.totalFloors - 1);
-                                await loadQuestData(questActiveId);
-                                // 重新追加用户消息（loadQuestData 已重置 conversation）
-                                self._ctx.totalFloors++;
-                                self.conversation.push(userMsg);
-                                self._log('→ repair: conversation reloaded, retrying...');
-                                // 重置 stall 计数器
-                                self._resetStallCounter();
-                                // 重试：递归一次，带 _repairAttempted 标志防止无限循环
-                                var repairOpts = Object.assign({}, opts, { _repairAttempted: true });
-                                return await self.send(userContent, repairOpts);
-                            } catch (repairErr) {
-                                self._log('✗ repair failed: ' + (repairErr.message || repairErr));
-                            }
-                        }
+                        self._repairOrphanedToolCalls();
+                        self._resetStallCounter();
+                        opts._repairAttempted = true;  // 防止无限循环
+                        maxIterations++;  // 不消耗迭代配额
+                        self._log('→ repair: orphaned tool_calls stripped, retrying...');
+                        continue;
                     }
                     // 错误已由 _callGateway 的 onError 处理
                     // 不回滚 conversation — 保留已执行的 tool call 结果，用户可重试
@@ -499,16 +528,33 @@ var AgentLoop = (function () {
                         _floor: self._ctx.totalFloors
                     };
                     if (response.reasoning_content) assistantToolMsg.reasoning_content = response.reasoning_content;
-                    self.conversation.push(assistantToolMsg);
 
-                    // 通知 UI 有工具调用
+                    // 通知 UI 有工具调用（不等工具执行完，实时反馈）
                     for (var tc = 0; tc < response.tool_calls.length; tc++) {
                         onToolCall(response.tool_calls[tc]);
                     }
 
-                    // 并行执行工具
+                    // 并行执行工具 → 收集全部结果
                     var _toolStart = performance.now();
-                    await self._executeToolCallsParallel(response.tool_calls, onToolResult);
+                    var _execResult = await self._executeToolCallsParallel(response.tool_calls, assistantToolMsg, onToolResult);
+
+                    // ★ 原子推入 conversation：assistant tool_calls + 全部 tool 结果，无缝隙
+                    //    防止 auto-save 在中间捕获断裂状态导致 DeepSeek 校验失败
+                    if (_execResult && _execResult.assistantMsg) {
+                        self.conversation.push(_execResult.assistantMsg);
+                    }
+                    if (_execResult && _execResult.allResults) {
+                        for (var ri2 = 0; ri2 < _execResult.allResults.length; ri2++) {
+                            var r2 = _execResult.allResults[ri2];
+                            self.conversation.push({
+                                role: 'tool',
+                                tool_call_id: r2.call.id,
+                                content: r2.content,
+                                _rawContent: r2.rawContent,
+                                _floor: self._ctx.totalFloors
+                            });
+                        }
+                    }
 
                     // ═══ 无进展检测 ═══
                     var lastHouse = self._houses[self._houses.length - 1];
@@ -676,7 +722,7 @@ var AgentLoop = (function () {
 
                 if (resp.status === 413) { self._log('  vision skipped: image too large'); return null; }
                 // 429 重试耗尽 → qoast 弹窗
-                if (resp.status === 429) { try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('视觉分析请求过于频繁，已跳过部分图片', { type: 'warning' }); } catch (_) { } }
+                if (resp.status === 429) { try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('视觉分析请求过于频繁，已跳过部分图片', { type: 'warning' }); } catch (_) { } }
                 self._log('  vision submit HTTP ' + resp.status + ': ' + (await resp.text().catch(function () { return ''; })).slice(0, 100));
                 return null;
             } catch (err) {
@@ -825,7 +871,7 @@ var AgentLoop = (function () {
             messages: apiMessages,
             stream: true,
             stream_options: { include_usage: true },
-            max_tokens: tier.maxTokens || (typeof ContentGateway !== 'undefined' ? ContentGateway.MAX_RESPONSE_TOKENS : 393216),
+            max_tokens: tier.maxTokens || ContentGateway.MAX_RESPONSE_TOKENS,
             floor_id: self._floorId
         };
 
@@ -867,7 +913,7 @@ var AgentLoop = (function () {
                                 : resp.status === 502 ? '服务器暂时不可达 (502)'
                                     : resp.status === 503 ? '服务器暂时不可达 (503)'
                                         : 'Server error (' + resp.status + ')';
-                    try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show(friendly, { type: resp.status === 429 ? 'warning' : 'error' }); } catch (_) { }
+                    try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(friendly, { type: resp.status === 429 ? 'warning' : 'error' }); } catch (_) { }
                     // 标记 502/503，供上层 send 函数触发对话修复
                     if (resp.status === 502 || resp.status === 503) {
                         self._lastGatewayError = resp.status;
@@ -1033,7 +1079,9 @@ var AgentLoop = (function () {
     };
 
     // ---- 并行工具执行 ----
-    AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, onToolResult) {
+    // 返回 { allResults, assistantMsg }，由调用方原子推入 conversation
+    // 避免 auto-save 在 tool_calls 与 tool 结果之间捕获断裂状态（DeepSeek 校验：tool_calls 后必须紧跟 tool 消息）
+    AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assistantMsg, onToolResult) {
         var self = this;
         var prepared = [];
 
@@ -1044,12 +1092,13 @@ var AgentLoop = (function () {
             prepared.push({ call: call, name: call.function.name, args: toolArgs });
         }
 
-        if (prepared.length === 0) return;
+        if (prepared.length === 0) return { allResults: [], assistantMsg: assistantMsg };
 
         // 分层执行：同文件 READ 可并行，WRITE/EFFECT 串行
         var layers = self._buildExecutionLayers(prepared);
         self._log('  ║ parallel engine: ' + prepared.length + ' tools → ' + layers.length + ' layer(s)');
 
+        var allResults = [];
         for (var li = 0; li < layers.length; li++) {
             var layer = layers[li];
             var promises = layer.items.map(async function (item) {
@@ -1086,15 +1135,10 @@ var AgentLoop = (function () {
                 lastHouse._lines = null;  // 使 UI 端 _buildHouseLines 缓存失效
             }
             for (var ri = 0; ri < results.length; ri++) {
-                self.conversation.push({
-                    role: 'tool',
-                    tool_call_id: results[ri].call.id,
-                    content: results[ri].content,
-                    _rawContent: results[ri].rawContent,
-                    _floor: self._ctx.totalFloors
-                });
+                allResults.push(results[ri]);
             }
         }
+        return { allResults: allResults, assistantMsg: assistantMsg };
     };
 
     // ---- 执行分层：将工具调用按文件冲突分组 ----

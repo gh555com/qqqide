@@ -11,13 +11,13 @@
 //
 // 持久化层级: global(recent_folders) → project(editor tabs) → quest → floor → house → room
 //
-// API: window.qqqAiViewport = { build, addProject, removeProject, getProjects, getMainProject }
+// API: window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject }
 // ============================================================================
 
 (function () {
   'use strict';
 
-  const bridge = window.qqqBridge;
+  const bridge = window.qqqideBridge;
 
   // ---- state ----
   let projects = []; // [{path, name}]
@@ -86,7 +86,7 @@
   function _getShellHandle() {
     if (_shellHandle) return _shellHandle;
     if (window.qgs && typeof window.qgs.ns === 'function') {
-      _shellHandle = window.qgs.ns('qqq.shell', { v: 1, form: 'doc' });
+      _shellHandle = window.qgs.ns('qqqide', { v: 1, form: 'doc' });
     }
     return _shellHandle;
   }
@@ -241,7 +241,7 @@
 window.__qqq_aiTarget = 0;
 
 function _sendToWingman(filePath, index) {
-  const sb = window.qqqBridge && window.qqqBridge.sync;
+  const sb = window.qqqideBridge && window.qqqideBridge.sync;
   if (sb) {
     sb.broadcast('host-message', {
       type: 'qqq-ai-attach',
@@ -269,12 +269,12 @@ function attachToAi(filePath) {
     console.warn('[ai-viewport] no AI iframe found');
     return;
   }
-  if (typeof aiFrame.contentWindow.qqqAiAttach === 'function') {
+  if (typeof aiFrame.contentWindow.qqqideAiAttach === 'function') {
     try {
-      aiFrame.contentWindow.qqqAiAttach(filePath);
-      console.log('[ai-viewport] qqqAiAttach OK →', filePath);
+      aiFrame.contentWindow.qqqideAiAttach(filePath);
+      console.log('[ai-viewport] qqqideAiAttach OK →', filePath);
     } catch (e) {
-      console.warn('[ai-viewport] qqqAiAttach threw:', e);
+      console.warn('[ai-viewport] qqqideAiAttach threw:', e);
     }
   } else {
     aiFrame.contentWindow.postMessage({ type: 'qqq-ai-attach', path: filePath }, '*');
@@ -668,8 +668,8 @@ function attachToAi(filePath) {
           if (age < 60000) {
             // 锁有效 → 拒绝添加
             console.warn('[ai-viewport] lock pre-check failed for ' + folderPath + ' (age=' + (age/1000).toFixed(1) + 's)');
-            if (window.qqqQoast) {
-              window.qqqQoast.show('⚠️ 该项目已在另一个 QQQ 窗口中作为主文件夹打开', { duration: 6000, type: 'warn' });
+            if (window.qqqideQoast) {
+              window.qqqideQoast.show('⚠️ 该项目已在另一个 QQQ 窗口中作为主文件夹打开', { duration: 6000, type: 'warn' });
             }
             return;
           }
@@ -760,5 +760,5 @@ function attachToAi(filePath) {
     }
   });
 
-  window.qqqAiViewport = { build, addProject, removeProject, getProjects, getMainProject };
+  window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject };
 })();

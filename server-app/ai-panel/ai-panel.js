@@ -129,13 +129,13 @@
     window.addEventListener('message', function (e) {
       if (!e.data || e.data.type !== 'qqq-external-panel') return;
       if (!frame || e.source !== frame.contentWindow) return;
-      if (window.qqqBridge && window.qqqBridge.aiPanel) {
-        window.qqqBridge.aiPanel.toggleExternal(e.data.index, e.data.action === 'open');
+      if (window.qqqideBridge && window.qqqideBridge.aiPanel) {
+        window.qqqideBridge.aiPanel.toggleExternal(e.data.index, e.data.action === 'open');
       }
     });
 
     setUrl(defaultUrl());
   }
 
-  window.qqqAiPanel = { build: build, setUrl: setUrl, reload: reload };
+  window.qqqidePanel = { build: build, setUrl: setUrl, reload: reload };
 })();

@@ -1,13 +1,13 @@
 // ============================================================================
 // ipc-bridge.js
-// Renderer-side wrapper around window.qqq.* exposed by preload.
+// Renderer-side wrapper around window.qqqide.* exposed by preload.
 // Provides safe defaults for non-Electron environments (browser dev mode).
 // ============================================================================
 
 (function () {
   'use strict';
 
-  const isElectron = typeof window !== 'undefined' && !!window.qqq;
+  const isElectron = typeof window !== 'undefined' && !!window.qqqide;
 
   // Browser-mode stub so the page can be developed in a normal browser
   const stub = {
@@ -76,6 +76,6 @@
     },
   };
 
-  window.qqqBridge = isElectron ? window.qqq : stub;
+  window.qqqideBridge = isElectron ? window.qqqide : stub;
   window.qqqIsElectron = isElectron;
 })();

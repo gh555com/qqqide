@@ -26,7 +26,7 @@
 (function () {
   'use strict';
 
-  const bridge = window.qqqBridge;
+  const bridge = window.qqqideBridge;
   const goods = new Map();       // id -> def (full manifest)
   const instances = new Map();   // id -> { iframe?, el?, destroy?, services:Map, tabs:Map }
   let _activeId = null;
@@ -268,8 +268,8 @@ undefined
       }
     });
   }
-  if (window.qqqTheme && window.qqqTheme.onChange) {
-    window.qqqTheme.onChange(dark => syncTheme(dark));
+  if (window.qqqideTheme && window.qqqideTheme.onChange) {
+    window.qqqideTheme.onChange(dark => syncTheme(dark));
   }
 
   // ---- Command routing (captain cards → cross-zone actions) ----

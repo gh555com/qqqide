@@ -1,7 +1,7 @@
 // ============================================================================
 // file-explorer.js - QOODS file explorer
 //
-// Sidebar tree view backed by window.qqq.fs.list().
+// Sidebar tree view backed by window.qqqide.fs.list().
 // Click file -> qqqEditor.open(path)
 // Lazy expand directories on click.
 // ============================================================================
@@ -9,7 +9,7 @@
 (function () {
   'use strict';
 
-  const bridge = window.qqqBridge;
+  const bridge = window.qqqideBridge;
 
   // root = working dir of shell (set later via boot info)
   let root = null;

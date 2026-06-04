@@ -84,7 +84,7 @@ function loadBootConfig(): BootConfig {
         }
     }
     // (2) env override (qz can set this) - beats config.json
-    if (process.env.QQQ_URL) { cfg.url = process.env.QQQ_URL; }
+    if (process.env.QQQIDE_URL) { cfg.url = process.env.QQQIDE_URL; }
     // (3) CLI override --url=... - highest precedence
     for (const arg of process.argv.slice(1)) {
         if (arg.startsWith('--url=')) { cfg.url = arg.slice(6); }
@@ -94,7 +94,7 @@ function loadBootConfig(): BootConfig {
 
 const bootConfig = loadBootConfig();
 const isOfflineFlag = process.argv.includes('--offline');
-const isDevFlag = process.argv.includes('--dev') || process.env.QQQ_DEV === '1';
+const isDevFlag = process.argv.includes('--dev') || process.env.QQQIDE_DEV === '1';
 
 // ----------------------------------------------------------------------------
 // Shell hot-update: download shell-out.tar.xz from remote, stage for bootstrap
@@ -252,11 +252,11 @@ function healthCheck(urlStr: string, timeoutMs: number): Promise<boolean> {
 }
 
 // Register custom protocol BEFORE app is ready so renderer can use it.
-// `qqq-asset://<resource>/<path>` maps to local files bundled with the shell.
+// `qqqide-asset://<resource>/<path>` maps to local files bundled with the shell.
 //   resource = "monaco" -> node_modules/monaco-editor/min/<path>
 //   resource = "shell"  -> shell/<path>
 protocol.registerSchemesAsPrivileged([
-    { scheme: 'qqq-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    { scheme: 'qqqide-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 
 // ----------------------------------------------------------------------------
@@ -293,7 +293,7 @@ const updateService = new UpdateService(portable.root, APP_VERSION);
 // We register these before any IPC handler fires so renderer can read them.
 function registerShellState(): void {
     try {
-        stateStore.register('qqq.shell', {
+        stateStore.register('qqqide', {
             v: 1, form: 'doc', cloud: true,
             // merger: prefer remote scalars; for asset_roots merge as union of arrays
             merger: (local: any, remote: any, ctx) => {
@@ -318,7 +318,7 @@ function registerShellState(): void {
 // Forward stateStore changes to renderer (preload exposes onChange).
 stateStore.on('changed', (msg: any) => {
     if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
-        try { mainWindow.webContents.send('qqq:state:changed', msg); } catch { /* ignore */ }
+        try { mainWindow.webContents.send('qqqide:state:changed', msg); } catch { /* ignore */ }
     }
 });
 
@@ -326,13 +326,13 @@ stateStore.on('changed', (msg: any) => {
 // Stored alongside config.json so qz/portable VM snapshots carry it.
 // Module scope so IPC handlers below can read/write it.
 // MIGRATION: legacy zoom.json (now read-only). Authoritative source is
-// stateStore key 'qqq.shell/zoom' (doc, cloud=true). On boot we prefer that;
+// stateStore key 'qqqide/zoom' (doc, cloud=true). On boot we prefer that;
 // if missing we one-time import from legacy zoom.json and rename it .migrated.
 const zoomFile = path.join(portable.root, 'zoom.json');
 let zoomFactor = 0.85; // default 15% smaller than 100%
 async function _restoreWindowBounds(win: BrowserWindow): Promise<void> {
     try {
-        const v = await stateStore.get('qqq.shell', 'window_bounds');
+        const v = await stateStore.get('qqqide', 'window_bounds');
         if (!v) { return; }
         if (v.maximized) {
             win.maximize();
@@ -368,7 +368,7 @@ function _loadZoomBoot(): void {
 _loadZoomBoot();
 async function _hydrateZoomFromState(): Promise<void> {
     try {
-        const v = await stateStore.get('qqq.shell', 'zoom');
+        const v = await stateStore.get('qqqide', 'zoom');
         if (v && typeof v.factor === 'number' && v.factor >= 0.5 && v.factor <= 2.0) {
             zoomFactor = v.factor;
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -376,7 +376,7 @@ async function _hydrateZoomFromState(): Promise<void> {
             }
         } else {
             // first run after migration: write the boot-loaded legacy value into state
-            await stateStore.setNow('qqq.shell', 'zoom', { factor: zoomFactor });
+            await stateStore.setNow('qqqide', 'zoom', { factor: zoomFactor });
             // rename legacy file to .migrated so we never reread it
             try {
                 if (fs.existsSync(zoomFile)) { fs.renameSync(zoomFile, zoomFile + '.migrated'); }
@@ -388,10 +388,12 @@ async function _hydrateZoomFromState(): Promise<void> {
 }
 const saveZoom = () => {
     // Authoritative write: through StateStore (debounced, atomic, cloud-eligible).
-    try { stateStore.set('qqq.shell', 'zoom', { factor: zoomFactor }); } catch { /* ignore */ }
+    try { stateStore.set('qqqide', 'zoom', { factor: zoomFactor }); } catch { /* ignore */ }
 };
 
 function createWindow(): BrowserWindow {
+    // 新窗口创建 → 恢复正常保护模式（僚机关闭应改为隐藏而非销毁）
+    _allowExtClose = false;
     const preloadPath = path.join(__dirname, 'preload.js');
     const win = new BrowserWindow({
         width: 1400,
@@ -430,12 +432,14 @@ function createWindow(): BrowserWindow {
             _projectWindowMap.delete(ownedProject);
         }
         if (win === mainWindow) {
-            // 关主窗口时清理所有僚机
+            // 关主窗口时清理所有僚机 + 引擎（第一道防线，before-quit 兜底）
             _allowExtClose = true;
             for (const extWin of _externalPanels) {
                 if (extWin && !extWin.isDestroyed()) { try { extWin.close(); } catch { /* ignore */ } }
             }
-            _allowExtClose = false;
+            // 不要在这里重置 _allowExtClose，让 before-quit 也能关闭僚机
+            try { engineHost.stop(); } catch { /* ignore */ }
+            try { audioEngine.stop(); } catch { /* ignore */ }
             mainWindow = null;
         }
     });
@@ -443,9 +447,11 @@ function createWindow(): BrowserWindow {
     // Persist window bounds on resize/move (debounced 500ms).
     let boundsSaveTimer: NodeJS.Timeout | null = null;
     const saveBounds = () => {
-        if (win.isDestroyed() || win.isMinimized() || win.isMaximized()) { return; }
-        const b = win.getBounds();
-        try { stateStore.set('qqq.shell', 'window_bounds', { x: b.x, y: b.y, w: b.width, h: b.height, maximized: false }); } catch { /* ignore */ }
+        try {
+            if (win.isDestroyed() || win.isMinimized() || win.isMaximized()) { return; }
+            const b = win.getBounds();
+            stateStore.set('qqqide', 'window_bounds', { x: b.x, y: b.y, w: b.width, h: b.height, maximized: false }).catch(() => {});
+        } catch { /* ignore */ }
     };
     const debouncedSaveBounds = () => {
         if (boundsSaveTimer) { clearTimeout(boundsSaveTimer); }
@@ -454,13 +460,13 @@ function createWindow(): BrowserWindow {
     win.on('resize', debouncedSaveBounds);
     win.on('move', debouncedSaveBounds);
     // Save maximized state (no debounce needed — it's a single event).
-    win.on('maximize', () => { try { stateStore.set('qqq.shell', 'window_bounds', { maximized: true }); } catch { /* ignore */ } });
-    win.on('unmaximize', () => { saveBounds(); });
+    win.on('maximize', () => { try { stateStore.set('qqqide', 'window_bounds', { maximized: true }).catch(() => {}); } catch { /* ignore */ } });
+    win.on('unmaximize', () => { try { saveBounds(); } catch { /* ignore */ } });
 
     // Wire download progress → renderer
     downloadService.setProgressSender((entry) => {
         if (win && !win.isDestroyed()) {
-            try { win.webContents.send('qqq:download:progress', entry); } catch { /* ignore */ }
+            try { win.webContents.send('qqqide:download:progress', entry); } catch { /* ignore */ }
         }
     });
 
@@ -481,19 +487,19 @@ function createWindow(): BrowserWindow {
             zoomFactor = Math.min(2.0, +(zoomFactor + 0.05).toFixed(2));
             win.webContents.setZoomFactor(zoomFactor);
             saveZoom();
-            try { win.webContents.send('qqq:zoom:changed', zoomFactor); } catch { /* ignore */ }
+            try { win.webContents.send('qqqide:zoom:changed', zoomFactor); } catch { /* ignore */ }
         } else if (k === '-' || k === '_') {
             ev.preventDefault();
             zoomFactor = Math.max(0.5, +(zoomFactor - 0.05).toFixed(2));
             win.webContents.setZoomFactor(zoomFactor);
             saveZoom();
-            try { win.webContents.send('qqq:zoom:changed', zoomFactor); } catch { /* ignore */ }
+            try { win.webContents.send('qqqide:zoom:changed', zoomFactor); } catch { /* ignore */ }
         } else if (k === '0') {
             ev.preventDefault();
             zoomFactor = 1.0;
             win.webContents.setZoomFactor(zoomFactor);
             saveZoom();
-            try { win.webContents.send('qqq:zoom:changed', zoomFactor); } catch { /* ignore */ }
+            try { win.webContents.send('qqqide:zoom:changed', zoomFactor); } catch { /* ignore */ }
         }
     });
 
@@ -616,7 +622,7 @@ async function boot(): Promise<void> {
 
 // ----------------------------------------------------------------------------
 // Asset protocol: serve shell-bundled assets (monaco etc) to the renderer.
-// Plus `qqq-asset://file/<encoded-abs-path>` for arbitrary local files,
+// Plus `qqqide-asset://file/<encoded-abs-path>` for arbitrary local files,
 // whitelisted to: portable.cache, user home (workspace), and explicit allow-list.
 // ----------------------------------------------------------------------------
 // Asset file allow-list: built-in roots + runtime workspace roots (persisted).
@@ -647,7 +653,7 @@ function loadAssetRoots(): void {
 
 async function _hydrateAssetRootsFromState(): Promise<void> {
     try {
-        const v = await stateStore.get('qqq.shell', 'asset_roots');
+        const v = await stateStore.get('qqqide', 'asset_roots');
         if (Array.isArray(v) && v.length > 0) {
             for (const r of v) {
                 if (typeof r === 'string' && r) {
@@ -658,7 +664,7 @@ async function _hydrateAssetRootsFromState(): Promise<void> {
         } else {
             // first run after migration: write boot-loaded legacy list into state
             const arr = Array.from(_assetFileWorkspaceRoots);
-            await stateStore.setNow('qqq.shell', 'asset_roots', arr);
+            await stateStore.setNow('qqqide', 'asset_roots', arr);
             try {
                 if (fs.existsSync(_assetRootsStorePath)) {
                     fs.renameSync(_assetRootsStorePath, _assetRootsStorePath + '.migrated');
@@ -675,7 +681,7 @@ function persistAssetRoots(): void {
     // multi-window concurrency uses the lock + merge-on-save logic.
     try {
         const arr = Array.from(_assetFileWorkspaceRoots);
-        stateStore.set('qqq.shell', 'asset_roots', arr);
+        stateStore.set('qqqide', 'asset_roots', arr);
     } catch (e) {
         console.warn('[asset-roots] persist failed:', e);
     }
@@ -719,6 +725,8 @@ function registerAssetProtocol(): void {
     const roots: Record<string, string> = {
         // monaco-editor min build
         monaco: path.join(portable.root, 'node_modules', 'monaco-editor', 'min'),
+        // monaco-editor min-maps (source maps for DevTools)
+        'monaco-maps': path.join(portable.root, 'node_modules', 'monaco-editor', 'min-maps'),
         // monaco-editor ESM build (for module workers)
         'monaco-esm': path.join(portable.root, 'node_modules', 'monaco-editor', 'esm'),
         // monaco individual dependency files (ESM→AMD converted by convert_monaco_esm.py)
@@ -728,7 +736,7 @@ function registerAssetProtocol(): void {
         // shell-bundled static files (e.g. boot-fallback)
         shell: path.join(portable.root, 'shell'),
     };
-    protocol.registerFileProtocol('qqq-asset', (request, callback) => {
+    protocol.registerFileProtocol('qqqide-asset', (request, callback) => {
         try {
             const url = new URL(request.url);
             const resource = url.hostname;          // 'monaco' / 'shell' / 'file'
@@ -741,7 +749,7 @@ function registerAssetProtocol(): void {
                 // On Windows allow both 'C:/...' and '/C:/...'
                 abs = path.normalize(abs);
                 if (!path.isAbsolute(abs) || !isPathAllowed(abs)) {
-                    console.warn('[qqq-asset/file] denied:', abs);
+                    console.warn('[qqqide-asset/file] denied:', abs);
                     return callback({ error: -10 /* ACCESS_DENIED */ });
                 }
                 if (!fs.existsSync(abs)) { return callback({ error: -6 /* FILE_NOT_FOUND */ }); }
@@ -760,9 +768,16 @@ function registerAssetProtocol(): void {
                     return callback({ path: fallback });
                 }
             }
+            // Monaco: source maps live in min-maps/ (sibling of min/), not min/min-maps/
+            if (resource === 'monaco' && !fs.existsSync(resolved) && roots['monaco-maps']) {
+                const mapsFallback = path.normalize(path.join(roots['monaco-maps'], subPath));
+                if (mapsFallback.startsWith(roots['monaco-maps']) && fs.existsSync(mapsFallback)) {
+                    return callback({ path: mapsFallback });
+                }
+            }
             callback({ path: resolved });
         } catch (e) {
-            console.warn('[qqq-asset] bad url:', request.url, e);
+            console.warn('[qqqide-asset] bad url:', request.url, e);
             callback({ error: -2 /* FAILED */ });
         }
     });
@@ -893,7 +908,7 @@ function registerGlobalKey(accel: string, id: string): boolean {
     try {
         const ok = globalShortcut.register(accel, () => {
             if (mainWindow && !mainWindow.isDestroyed()) {
-                try { mainWindow.webContents.send('qqq:key:global', { id, accel }); }
+                try { mainWindow.webContents.send('qqqide:key:global', { id, accel }); }
                 catch { /* ignore */ }
             }
         });
@@ -910,9 +925,9 @@ function registerGlobalKey(accel: string, id: string): boolean {
 // ----------------------------------------------------------------------------
 function registerIpc(): void {
     // ---- boot info ----
-    ipcMain.handle('qqq:app:root', () => portable.root);
+    ipcMain.handle('qqqide:app:root', () => portable.root);
 
-    ipcMain.handle('qqq:boot:info', () => ({
+    ipcMain.handle('qqqide:boot:info', () => ({
         url: bootConfig.url,
         version: APP_VERSION,
         platform: process.platform,
@@ -928,7 +943,7 @@ function registerIpc(): void {
     }));
 
     // ---- boot retry (used by boot-fallback.html and renderer) ----
-    ipcMain.handle('qqq:boot:retry', async () => {
+    ipcMain.handle('qqqide:boot:retry', async () => {
         if (!mainWindow) { return false; }
         const healthy = await healthCheck(bootConfig.url, bootConfig.healthTimeoutMs);
         if (healthy) {
@@ -944,20 +959,20 @@ function registerIpc(): void {
         return true;
     });
 
-    ipcMain.handle('qqq:boot:probe', async () => {
+    ipcMain.handle('qqqide:boot:probe', async () => {
         return healthCheck(bootConfig.url, Math.min(bootConfig.healthTimeoutMs, 2000));
     });
 
     // ---- fs (use engine if alive, else native fallback) ----
-    ipcMain.handle('qqq:fs:read', async (_e, p: string) => {
+    ipcMain.handle('qqqide:fs:read', async (_e, p: string) => {
         return fs.promises.readFile(p, 'utf8');
     });
     // Read file as base64 for binary content (images for AI vision, etc.)
-    ipcMain.handle('qqq:fs:readBase64', async (_e, p: string) => {
+    ipcMain.handle('qqqide:fs:readBase64', async (_e, p: string) => {
         const buf = await fs.promises.readFile(p);
         return buf.toString('base64');
     });
-    ipcMain.handle('qqq:fs:writeBase64', async (_e, p: string, base64: string) => {
+    ipcMain.handle('qqqide:fs:writeBase64', async (_e, p: string, base64: string) => {
         // Binary write: decode base64 → Buffer → write atomically.
         // Auto-mkdir parent dir for paste/cache scenarios.
         try { await fs.promises.mkdir(path.dirname(p), { recursive: true }); } catch { /* ignore */ }
@@ -965,13 +980,13 @@ function registerIpc(): void {
         await fs.promises.writeFile(p, buf as any);
         return true;
     });
-    ipcMain.handle('qqq:fs:write', async (_e, p: string, content: any) => {
+    ipcMain.handle('qqqide:fs:write', async (_e, p: string, content: any) => {
         // Auto-mkdir parent dir (zero-risk pure benefit, prevents ENOENT for .lock etc.)
         try { await fs.promises.mkdir(path.dirname(p), { recursive: true }); } catch { /* ignore */ }
         await fs.promises.writeFile(p, content);
         return true;
     });
-    ipcMain.handle('qqq:fs:list', async (_e, p: string, callerStack?: string) => {
+    ipcMain.handle('qqqide:fs:list', async (_e, p: string, callerStack?: string) => {
         console.log('[fs:list]', p);
         // guard: reject non-directory paths gracefully
         try {
@@ -991,18 +1006,18 @@ function registerIpc(): void {
         }
         return result;
     });
-    ipcMain.handle('qqq:fs:stat', async (_e, p: string) => {
+    ipcMain.handle('qqqide:fs:stat', async (_e, p: string) => {
         try {
             const s = await fs.promises.stat(p);
             return { size: s.size, mtimeMs: s.mtimeMs, isDir: s.isDirectory(), isFile: s.isFile() };
         } catch { return null; }
     });
-    ipcMain.handle('qqq:fs:exists', async (_e, p: string) => fs.existsSync(p));
-    ipcMain.handle('qqq:fs:mkdir', async (_e, p: string) => {
+    ipcMain.handle('qqqide:fs:exists', async (_e, p: string) => fs.existsSync(p));
+    ipcMain.handle('qqqide:fs:mkdir', async (_e, p: string) => {
         await fs.promises.mkdir(p, { recursive: true });
         return true;
     });
-    ipcMain.handle('qqq:fs:remove', async (_e, p: string) => {
+    ipcMain.handle('qqqide:fs:remove', async (_e, p: string) => {
         try {
             const s = await fs.promises.stat(p);
             if (s.isDirectory()) await fs.promises.rm(p, { recursive: true, force: true });
@@ -1013,7 +1028,7 @@ function registerIpc(): void {
         }
         return true;
     });
-    ipcMain.handle('qqq:fs:rename', async (_e, oldP: string, newP: string) => {
+    ipcMain.handle('qqqide:fs:rename', async (_e, oldP: string, newP: string) => {
         await fs.promises.rename(oldP, newP);
         return true;
     });
@@ -1035,7 +1050,7 @@ function registerIpc(): void {
     }
 
     // search_text — 正则递归搜索
-    ipcMain.handle('qqq:ai:search_text', async (_e, args: { query: string; paths?: string[]; path?: string; maxResults?: number; timeoutMs?: number }) => {
+    ipcMain.handle('qqqide:ai:search_text', async (_e, args: { query: string; paths?: string[]; path?: string; maxResults?: number; timeoutMs?: number }) => {
         const query = args.query;
         const searchPaths: string[] = args.paths || (args.path ? [args.path] : []);
         const maxResults = args.maxResults || 30;
@@ -1090,7 +1105,7 @@ function registerIpc(): void {
     });
 
     // find_files — glob 文件名递归搜索
-    ipcMain.handle('qqq:ai:find_files', async (_e, args: { pattern: string; paths?: string[]; path?: string; maxResults?: number; timeoutMs?: number }) => {
+    ipcMain.handle('qqqide:ai:find_files', async (_e, args: { pattern: string; paths?: string[]; path?: string; maxResults?: number; timeoutMs?: number }) => {
         const pattern = args.pattern;
         const searchPaths: string[] = args.paths || (args.path ? [args.path] : []);
         const maxResults = args.maxResults || 50;
@@ -1129,7 +1144,7 @@ function registerIpc(): void {
     });
 
     // list_files — 递归列目录
-    ipcMain.handle('qqq:ai:list_files', async (_e, args: { path: string; maxResults?: number; timeoutMs?: number }) => {
+    ipcMain.handle('qqqide:ai:list_files', async (_e, args: { path: string; maxResults?: number; timeoutMs?: number }) => {
         const searchPath = args.path;
         const maxResults = args.maxResults || 200;
         const timeoutMs = args.timeoutMs || 15000;
@@ -1193,7 +1208,7 @@ function registerIpc(): void {
             if (_cw.length) { const w = _cw.splice(0); w.forEach(r => r()); }
         }
     }
-    ipcMain.handle('qqq:ai:read_file', async (_e, args: { path: string; start_line?: number; end_line?: number }) => {
+    ipcMain.handle('qqqide:ai:read_file', async (_e, args: { path: string; start_line?: number; end_line?: number }) => {
         const startLine = args.start_line || 1;
         const endLine = args.end_line || 0;
         try {
@@ -1271,7 +1286,7 @@ function registerIpc(): void {
     }
 
     // edit_file — 精准编辑 (三级降级匹配 + 原子性, 1 IPC 替代 read+write)
-    ipcMain.handle('qqq:ai:edit_file', async (_e, args: { path: string; edits: Array<{ find: string; replace: string; replace_all?: boolean }> }) => {
+    ipcMain.handle('qqqide:ai:edit_file', async (_e, args: { path: string; edits: Array<{ find: string; replace: string; replace_all?: boolean }> }) => {
         return _qe(args.path, async () => {
             const edits = args.edits;
             if (!edits || edits.length === 0) return 'Error: no edits provided.';
@@ -1330,7 +1345,7 @@ function registerIpc(): void {
     });
 
     // create_file — 新建文件 (1 IPC)
-    ipcMain.handle('qqq:ai:create_file', async (_e, args: { path: string; content: string }) => {
+    ipcMain.handle('qqqide:ai:create_file', async (_e, args: { path: string; content: string }) => {
         return _qe(args.path, async () => {
             try {
                 try { await fs.promises.access(args.path); return `Error: file already exists: ${args.path}. Use edit_file to modify existing files.`; } catch { /* doesn't exist, proceed */ }
@@ -1345,7 +1360,7 @@ function registerIpc(): void {
     });
 
     // delete_file — 删除文件 (1 IPC)
-    ipcMain.handle('qqq:ai:delete_file', async (_e, args: { path: string }) => {
+    ipcMain.handle('qqqide:ai:delete_file', async (_e, args: { path: string }) => {
         return _qe(args.path, async () => {
             try {
                 try { await fs.promises.access(args.path); } catch { return `Error: file not found: ${args.path}`; }
@@ -1359,7 +1374,7 @@ function registerIpc(): void {
     });
 
     // write_file — 全量覆写 (1 IPC)
-    ipcMain.handle('qqq:ai:write_file', async (_e, args: { path: string; content: string }) => {
+    ipcMain.handle('qqqide:ai:write_file', async (_e, args: { path: string; content: string }) => {
         return _qe(args.path, async () => {
             try {
                 const snap = _sn[args.path];
@@ -1373,7 +1388,7 @@ function registerIpc(): void {
         });
     });
 
-    ipcMain.handle('qqq:fs:drives', async () => {
+    ipcMain.handle('qqqide:fs:drives', async () => {
         const drives: string[] = [];
         if (process.platform === 'win32') {
             for (let i = 65; i <= 90; i++) {
@@ -1386,16 +1401,16 @@ function registerIpc(): void {
         }
         return drives;
     });
-    ipcMain.handle('qqq:fs:diskFree', async (_e, drives: string[]) => {
+    ipcMain.handle('qqqide:fs:diskFree', async (_e, drives: string[]) => {
         return await diskFreeBatch(drives);
     });
 
     // ---- dialogs ----
-    ipcMain.handle('qqq:dialog:open', async (_e, opts) => {
+    ipcMain.handle('qqqide:dialog:open', async (_e, opts) => {
         if (!mainWindow) { return null; }
         const result = await dialog.showOpenDialog(mainWindow, opts || {});
         // Auto-extend asset-file whitelist for any selected directory (or
-        // parent dir of selected files), so qqq-asset://file/ can serve them.
+        // parent dir of selected files), so qqqide-asset://file/ can serve them.
         try {
             const wantsDir = !!(opts && Array.isArray(opts.properties) && opts.properties.indexOf('openDirectory') !== -1);
             if (result && Array.isArray(result.filePaths)) {
@@ -1414,19 +1429,19 @@ function registerIpc(): void {
         }
         return result;
     });
-    ipcMain.handle('qqq:dialog:save', async (_e, opts) => {
+    ipcMain.handle('qqqide:dialog:save', async (_e, opts) => {
         if (!mainWindow) { return null; }
         return dialog.showSaveDialog(mainWindow, opts || {});
     });
-    ipcMain.handle('qqq:dialog:message', async (_e, opts) => {
+    ipcMain.handle('qqqide:dialog:message', async (_e, opts) => {
         if (!mainWindow) { return null; }
         return dialog.showMessageBox(mainWindow, opts || {});
     });
 
     // ---- asset-roots: programmatic API for renderer ----
-    ipcMain.handle('qqq:assetRoots:add', async (_e, absDir: string) => addAssetRoot(absDir));
-    ipcMain.handle('qqq:assetRoots:list', async () => Array.from(_assetFileWorkspaceRoots));
-    ipcMain.handle('qqq:assetRoots:remove', async (_e, absDir: string) => {
+    ipcMain.handle('qqqide:assetRoots:add', async (_e, absDir: string) => addAssetRoot(absDir));
+    ipcMain.handle('qqqide:assetRoots:list', async () => Array.from(_assetFileWorkspaceRoots));
+    ipcMain.handle('qqqide:assetRoots:remove', async (_e, absDir: string) => {
         if (!absDir) { return false; }
         const ok = _assetFileWorkspaceRoots.delete(path.normalize(absDir));
         if (ok) { persistAssetRoots(); }
@@ -1434,16 +1449,16 @@ function registerIpc(): void {
     });
 
     // ---- window ----
-    ipcMain.handle('qqq:window:minimize', (e) => { BrowserWindow.fromWebContents(e.sender)?.minimize(); });
-    ipcMain.handle('qqq:window:maximize', (e) => { BrowserWindow.fromWebContents(e.sender)?.maximize(); });
-    ipcMain.handle('qqq:window:unmaximize', (e) => { BrowserWindow.fromWebContents(e.sender)?.unmaximize(); });
-    ipcMain.handle('qqq:window:close', (e) => {
+    ipcMain.handle('qqqide:window:minimize', (e) => { BrowserWindow.fromWebContents(e.sender)?.minimize(); });
+    ipcMain.handle('qqqide:window:maximize', (e) => { BrowserWindow.fromWebContents(e.sender)?.maximize(); });
+    ipcMain.handle('qqqide:window:unmaximize', (e) => { BrowserWindow.fromWebContents(e.sender)?.unmaximize(); });
+    ipcMain.handle('qqqide:window:close', (e) => {
         const win = BrowserWindow.fromWebContents(e.sender);
         if (win && !win.isDestroyed()) { win.close(); }
     });
-    ipcMain.handle('qqq:window:isMaximized', (e) => BrowserWindow.fromWebContents(e.sender)?.isMaximized() ?? false);
-    ipcMain.handle('qqq:window:setTitle', (e, s: string) => { BrowserWindow.fromWebContents(e.sender)?.setTitle(String(s)); });
-    ipcMain.handle('qqq:window:toggleDevTools', (e) => {
+    ipcMain.handle('qqqide:window:isMaximized', (e) => BrowserWindow.fromWebContents(e.sender)?.isMaximized() ?? false);
+    ipcMain.handle('qqqide:window:setTitle', (e, s: string) => { BrowserWindow.fromWebContents(e.sender)?.setTitle(String(s)); });
+    ipcMain.handle('qqqide:window:toggleDevTools', (e) => {
         const win = BrowserWindow.fromWebContents(e.sender);
         if (!win || win.isDestroyed()) { return; }
         const wc = win.webContents;
@@ -1456,7 +1471,7 @@ function registerIpc(): void {
     });
     // 开新窗口（可选绑定主文件夹，否则空 AI 视口）
     // 主文件夹锁：若 folderPath 已被其他窗口作为主文件夹，拒绝创建并聚焦已有窗口
-    ipcMain.handle('qqq:window:new', async (_e, folderPath?: string) => {
+    ipcMain.handle('qqqide:window:new', async (_e, folderPath?: string) => {
         if (folderPath && typeof folderPath === 'string') {
             const normalized = folderPath.replace(/\\/g, '/').replace(/\/$/, '');
             // 第一层：内存映射查重（最快，零 I/O）
@@ -1504,7 +1519,7 @@ function registerIpc(): void {
     });
 
     // 渲染层成功绑定主文件夹后注册映射（用于窗口间主文件夹锁）
-    ipcMain.handle('qqq:window:claimProject', (_e, projectRoot: string) => {
+    ipcMain.handle('qqqide:window:claimProject', (_e, projectRoot: string) => {
         const win = BrowserWindow.fromWebContents(_e.sender);
         if (!win) return false;
         const normalized = projectRoot.replace(/\\/g, '/').replace(/\/$/, '');
@@ -1519,7 +1534,7 @@ function registerIpc(): void {
     });
 
     // 渲染层释放主文件夹绑定（窗口关闭或切换项目时）
-    ipcMain.handle('qqq:window:releaseProject', (_e, projectRoot: string) => {
+    ipcMain.handle('qqqide:window:releaseProject', (_e, projectRoot: string) => {
         const win = BrowserWindow.fromWebContents(_e.sender);
         if (!win) return false;
         const normalized = projectRoot.replace(/\\/g, '/').replace(/\/$/, '');
@@ -1532,81 +1547,81 @@ function registerIpc(): void {
     });
 
     // ---- zoom IPC ----
-    ipcMain.handle('qqq:zoom:get', () => zoomFactor);
-    ipcMain.handle('qqq:zoom:set', (_e, factor: number) => {
+    ipcMain.handle('qqqide:zoom:get', () => zoomFactor);
+    ipcMain.handle('qqqide:zoom:set', (_e, factor: number) => {
         const f = Math.max(0.5, Math.min(2.0, +Number(factor).toFixed(2)));
         zoomFactor = f;
         if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.webContents.setZoomFactor(f); }
         saveZoom();
-        if (mainWindow && !mainWindow.isDestroyed()) { try { mainWindow.webContents.send('qqq:zoom:changed', f); } catch { /* ignore */ } }
+        if (mainWindow && !mainWindow.isDestroyed()) { try { mainWindow.webContents.send('qqqide:zoom:changed', f); } catch { /* ignore */ } }
         return f;
     });
-    ipcMain.handle('qqq:zoom:adjust', (_e, delta: number) => {
+    ipcMain.handle('qqqide:zoom:adjust', (_e, delta: number) => {
         const next = Math.max(0.5, Math.min(2.0, +(zoomFactor + Number(delta)).toFixed(2)));
         zoomFactor = next;
         if (mainWindow && !mainWindow.isDestroyed()) { mainWindow.webContents.setZoomFactor(next); }
         saveZoom();
-        if (mainWindow && !mainWindow.isDestroyed()) { try { mainWindow.webContents.send('qqq:zoom:changed', next); } catch { /* ignore */ } }
+        if (mainWindow && !mainWindow.isDestroyed()) { try { mainWindow.webContents.send('qqqide:zoom:changed', next); } catch { /* ignore */ } }
         return next;
     });
 
     // ---- menu ----
-    ipcMain.handle('qqq:menu:set', (_e, schema: MenuSchema | null) => {
+    ipcMain.handle('qqqide:menu:set', (_e, schema: MenuSchema | null) => {
         applyMenuSchema(schema, mainWindow);
         return true;
     });
 
     // ---- engine generic ----
-    ipcMain.handle('qqq:engine:invoke', async (_e, method: string, params: any) => {
+    ipcMain.handle('qqqide:engine:invoke', async (_e, method: string, params: any) => {
         // Special case: 'spawn' command - route to unified qz subsystem
         if (method === 'spawn' && params && params.cmd) {
             return _qgc(async () => qzSpawn.spawn(params as SpawnBrief));
         }
         return engineHost.invoke(method, params);
     });
-    ipcMain.handle('qqq:engine:isAlive', () => engineHost.isAlive());
+    ipcMain.handle('qqqide:engine:isAlive', () => engineHost.isAlive());
 
     // ---- ghrun (process spawning via qz subsystem) ----
-    ipcMain.handle('qqq:ghrun:exec', async (_e, cmd: string, args: string[], opts?: any) => {
+    ipcMain.handle('qqqide:ghrun:exec', async (_e, cmd: string, args: string[], opts?: any) => {
         // Single funnel: always go through qzSpawn (ghrun → node)
         return _qgc(async () => qzSpawn.spawn({ cmd, args, ...(opts || {}) }));
     });
-    ipcMain.handle('qqq:ghrun:isAlive', () => qzSpawn.ghrunAlive());
+    ipcMain.handle('qqqide:ghrun:isAlive', () => qzSpawn.ghrunAlive());
 
     // ---- qz unified spawn (canonical entry; ghrun/engine helpers delegate here) ----
-    ipcMain.handle('qqq:qz:spawn', async (_e, brief: SpawnBrief) => {
+    ipcMain.handle('qqqide:qz:spawn', async (_e, brief: SpawnBrief) => {
         return _qgc(async () => qzSpawn.spawn(brief || ({} as SpawnBrief)));
     });
-    ipcMain.handle('qqq:qz:which', async (_e, cmd: string) => qzSpawn.which(cmd));
-    ipcMain.handle('qqq:qz:ghrunAlive', () => qzSpawn.ghrunAlive());
-    ipcMain.handle('qqq:qz:runnerAlive', () => false); // runner.py retired, ghrun absorbed all capabilities
+    ipcMain.handle('qqqide:qz:which', async (_e, cmd: string) => qzSpawn.which(cmd));
+    ipcMain.handle('qqqide:qz:ghrunAlive', () => qzSpawn.ghrunAlive());
+    ipcMain.handle('qqqide:qz:runnerAlive', () => false); // runner.py retired, ghrun absorbed all capabilities
 
     // ---- lsp (language intelligence — spawns gopls/pyright/clangd/rust-analyzer) ----
-    ipcMain.handle('qqq:lsp:startLanguage', async (_e, lang: string, rootUri: string) => {
+    ipcMain.handle('qqqide:lsp:startLanguage', async (_e, lang: string, rootUri: string) => {
         return lspBridge.startLanguage(lang, rootUri);
     });
-    ipcMain.handle('qqq:lsp:stopLanguage', async (_e, lang: string) => {
+    ipcMain.handle('qqqide:lsp:stopLanguage', async (_e, lang: string) => {
         await lspBridge.stopLanguage(lang);
     });
-    ipcMain.handle('qqq:lsp:openDocument', async (_e, filePath: string, text: string) => {
+    ipcMain.handle('qqqide:lsp:openDocument', async (_e, filePath: string, text: string) => {
         return lspBridge.openDocument(filePath, text);
     });
-    ipcMain.handle('qqq:lsp:changeDocument', async (_e, filePath: string, changes: any[], version: number) => {
+    ipcMain.handle('qqqide:lsp:changeDocument', async (_e, filePath: string, changes: any[], version: number) => {
         await lspBridge.changeDocument(filePath, changes, version);
     });
-    ipcMain.handle('qqq:lsp:closeDocument', async (_e, filePath: string) => {
+    ipcMain.handle('qqqide:lsp:closeDocument', async (_e, filePath: string) => {
         await lspBridge.closeDocument(filePath);
     });
-    ipcMain.handle('qqq:lsp:getDiagnostics', async (_e, uri: string) => {
+    ipcMain.handle('qqqide:lsp:getDiagnostics', async (_e, uri: string) => {
         return lspBridge.getDiagnostics(uri);
     });
-    ipcMain.handle('qqq:lsp:activeLanguages', () => lspBridge.activeLanguages());
-    ipcMain.handle('qqq:lsp:hover', async (_e, filePath: string, line: number, character: number) => {
+    ipcMain.handle('qqqide:lsp:activeLanguages', () => lspBridge.activeLanguages());
+    ipcMain.handle('qqqide:lsp:hover', async (_e, filePath: string, line: number, character: number) => {
         return lspBridge.hover(filePath, line, character);
     });
 
     // ---- ai hover — one-shot explanation for code symbols ----
-    ipcMain.handle('qqq:ai:hover', async (_e, context: string) => {
+    ipcMain.handle('qqqide:ai:hover', async (_e, context: string) => {
         const token = process.env.QQQ_AI_TOKEN || '';
         if (!token || !context) return null;
         try {
@@ -1630,15 +1645,15 @@ function registerIpc(): void {
     });
 
     // ---- cache (KV + bucketed file cache rooted at portable.cache) ----
-    ipcMain.handle('qqq:cache:get', async (_e, key: string) => cacheStore.get(key));
-    ipcMain.handle('qqq:cache:put', async (_e, key: string, value: any, opts?: any) => cacheStore.put(key, value, opts));
-    ipcMain.handle('qqq:cache:has', async (_e, key: string) => cacheStore.has(key));
-    ipcMain.handle('qqq:cache:delete', async (_e, key: string) => cacheStore.del(key));
-    ipcMain.handle('qqq:cache:path', async (_e, key: string) => cacheStore.path(key));
-    ipcMain.handle('qqq:cache:bucketPath', async (_e, sig: string, ext?: string) => cacheStore.bucketPath(sig, ext));
+    ipcMain.handle('qqqide:cache:get', async (_e, key: string) => cacheStore.get(key));
+    ipcMain.handle('qqqide:cache:put', async (_e, key: string, value: any, opts?: any) => cacheStore.put(key, value, opts));
+    ipcMain.handle('qqqide:cache:has', async (_e, key: string) => cacheStore.has(key));
+    ipcMain.handle('qqqide:cache:delete', async (_e, key: string) => cacheStore.del(key));
+    ipcMain.handle('qqqide:cache:path', async (_e, key: string) => cacheStore.path(key));
+    ipcMain.handle('qqqide:cache:bucketPath', async (_e, sig: string, ext?: string) => cacheStore.bucketPath(sig, ext));
 
     // ---- state (唯一真理持久化机器: doc / blob / log via shell/state-store.ts) ----
-    ipcMain.handle('qqq:state:register', async (_e, ns: string, schema: NsSchema) => {
+    ipcMain.handle('qqqide:state:register', async (_e, ns: string, schema: NsSchema) => {
         // Renderers can NOT pass functions through IPC, so merger/migrators are stripped.
         // For complex merging, schemas must be registered main-side (see registerShellState).
         const safeSchema: NsSchema = {
@@ -1649,19 +1664,19 @@ function registerIpc(): void {
         stateStore.register(ns, safeSchema);
         return true;
     });
-    ipcMain.handle('qqq:state:get', async (_e, ns: string, key: string) => stateStore.get(ns, key));
-    ipcMain.handle('qqq:state:set', async (_e, ns: string, key: string, v: any) => { await stateStore.set(ns, key, v); return true; });
-    ipcMain.handle('qqq:state:setNow', async (_e, ns: string, key: string, v: any) => { await stateStore.setNow(ns, key, v); return true; });
-    ipcMain.handle('qqq:state:append', async (_e, ns: string, key: string, ev: any) => { await stateStore.append(ns, key, ev); return true; });
-    ipcMain.handle('qqq:state:del', async (_e, ns: string, key: string) => stateStore.del(ns, key));
-    ipcMain.handle('qqq:state:list', async (_e, ns: string) => stateStore.list(ns));
-    ipcMain.handle('qqq:state:flush', async () => { await stateStore.flush(); return true; });
-    ipcMain.handle('qqq:state:flushOne', async (_e, ns: string, key: string) => { await stateStore.flushOne(ns, key); return true; });
-    ipcMain.handle('qqq:state:stats', () => stateStore.stats());
-    ipcMain.handle('qqq:state:cloud:pull', async () => stateCloud.pull());
-    ipcMain.handle('qqq:state:cloud:push', async () => stateCloud.push());
-    ipcMain.handle('qqq:state:cloud:sync', async () => stateCloud.sync());
-    ipcMain.handle('qqq:state:sql', async (_e, query: string, params?: any[]) => stateStore.sql(query, params));
+    ipcMain.handle('qqqide:state:get', async (_e, ns: string, key: string) => stateStore.get(ns, key));
+    ipcMain.handle('qqqide:state:set', async (_e, ns: string, key: string, v: any) => { await stateStore.set(ns, key, v); return true; });
+    ipcMain.handle('qqqide:state:setNow', async (_e, ns: string, key: string, v: any) => { await stateStore.setNow(ns, key, v); return true; });
+    ipcMain.handle('qqqide:state:append', async (_e, ns: string, key: string, ev: any) => { await stateStore.append(ns, key, ev); return true; });
+    ipcMain.handle('qqqide:state:del', async (_e, ns: string, key: string) => stateStore.del(ns, key));
+    ipcMain.handle('qqqide:state:list', async (_e, ns: string) => stateStore.list(ns));
+    ipcMain.handle('qqqide:state:flush', async () => { await stateStore.flush(); return true; });
+    ipcMain.handle('qqqide:state:flushOne', async (_e, ns: string, key: string) => { await stateStore.flushOne(ns, key); return true; });
+    ipcMain.handle('qqqide:state:stats', () => stateStore.stats());
+    ipcMain.handle('qqqide:state:cloud:pull', async () => stateCloud.pull());
+    ipcMain.handle('qqqide:state:cloud:push', async () => stateCloud.push());
+    ipcMain.handle('qqqide:state:cloud:sync', async () => stateCloud.sync());
+    ipcMain.handle('qqqide:state:sql', async (_e, query: string, params?: any[]) => stateStore.sql(query, params));
 
     // ---- project-level StateStore (per-project quest.sq3) ----
     function _getProjectStateStore(dbPath: string): StateStore {
@@ -1671,14 +1686,14 @@ function registerIpc(): void {
             // Forward change events to renderer
             inst.on('changed', (msg: any) => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
-                    try { mainWindow.webContents.send('qqq:state:project:changed', { ...msg, dbPath }); } catch { /* ignore */ }
+                    try { mainWindow.webContents.send('qqqide:state:project:changed', { ...msg, dbPath }); } catch { /* ignore */ }
                 }
             });
             _projectStateStores.set(dbPath, inst);
         }
         return inst;
     }
-    ipcMain.handle('qqq:state:project:register', async (_e, dbPath: string, ns: string, schema: any) => {
+    ipcMain.handle('qqqide:state:project:register', async (_e, dbPath: string, ns: string, schema: any) => {
         const safeSchema: NsSchema = {
             v: schema.v, form: schema.form,
             quotaBytes: schema.quotaBytes, cloud: false,
@@ -1687,15 +1702,15 @@ function registerIpc(): void {
         _getProjectStateStore(dbPath).register(ns, safeSchema);
         return true;
     });
-    ipcMain.handle('qqq:state:project:get', async (_e, dbPath: string, ns: string, key: string) => _getProjectStateStore(dbPath).get(ns, key));
-    ipcMain.handle('qqq:state:project:set', async (_e, dbPath: string, ns: string, key: string, v: any) => { await _getProjectStateStore(dbPath).set(ns, key, v); return true; });
-    ipcMain.handle('qqq:state:project:setNow', async (_e, dbPath: string, ns: string, key: string, v: any) => { await _getProjectStateStore(dbPath).setNow(ns, key, v); return true; });
-    ipcMain.handle('qqq:state:project:append', async (_e, dbPath: string, ns: string, key: string, ev: any) => { await _getProjectStateStore(dbPath).append(ns, key, ev); return true; });
-    ipcMain.handle('qqq:state:project:del', async (_e, dbPath: string, ns: string, key: string) => _getProjectStateStore(dbPath).del(ns, key));
-    ipcMain.handle('qqq:state:project:list', async (_e, dbPath: string, ns: string) => _getProjectStateStore(dbPath).list(ns));
-    ipcMain.handle('qqq:state:project:flush', async (_e, dbPath: string) => { await _getProjectStateStore(dbPath).flush(); return true; });
-    ipcMain.handle('qqq:state:project:flushOne', async (_e, dbPath: string, ns: string, key: string) => { await _getProjectStateStore(dbPath).flushOne(ns, key); return true; });
-    ipcMain.handle('qqq:state:project:stats', async (_e, dbPath: string) => _getProjectStateStore(dbPath).stats());
+    ipcMain.handle('qqqide:state:project:get', async (_e, dbPath: string, ns: string, key: string) => _getProjectStateStore(dbPath).get(ns, key));
+    ipcMain.handle('qqqide:state:project:set', async (_e, dbPath: string, ns: string, key: string, v: any) => { await _getProjectStateStore(dbPath).set(ns, key, v); return true; });
+    ipcMain.handle('qqqide:state:project:setNow', async (_e, dbPath: string, ns: string, key: string, v: any) => { await _getProjectStateStore(dbPath).setNow(ns, key, v); return true; });
+    ipcMain.handle('qqqide:state:project:append', async (_e, dbPath: string, ns: string, key: string, ev: any) => { await _getProjectStateStore(dbPath).append(ns, key, ev); return true; });
+    ipcMain.handle('qqqide:state:project:del', async (_e, dbPath: string, ns: string, key: string) => _getProjectStateStore(dbPath).del(ns, key));
+    ipcMain.handle('qqqide:state:project:list', async (_e, dbPath: string, ns: string) => _getProjectStateStore(dbPath).list(ns));
+    ipcMain.handle('qqqide:state:project:flush', async (_e, dbPath: string) => { await _getProjectStateStore(dbPath).flush(); return true; });
+    ipcMain.handle('qqqide:state:project:flushOne', async (_e, dbPath: string, ns: string, key: string) => { await _getProjectStateStore(dbPath).flushOne(ns, key); return true; });
+    ipcMain.handle('qqqide:state:project:stats', async (_e, dbPath: string) => _getProjectStateStore(dbPath).stats());
 
     // ---- qg (FS project-level state, per-project .qqq/qg/ instances) ----
     function _getQg(rootDir: string): Qg {
@@ -1705,53 +1720,53 @@ function registerIpc(): void {
             // Forward qg change events to renderer
             inst.on('changed', (msg: any) => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
-                    try { mainWindow.webContents.send('qqq:qg:changed', { ...msg, rootDir }); } catch { /* ignore */ }
+                    try { mainWindow.webContents.send('qqqide:qg:changed', { ...msg, rootDir }); } catch { /* ignore */ }
                 }
             });
             _qgInstances.set(rootDir, inst);
         }
         return inst;
     }
-    ipcMain.handle('qqq:qg:register', async (_e, rootDir: string, ns: string, schema: any) => {
+    ipcMain.handle('qqqide:qg:register', async (_e, rootDir: string, ns: string, schema: any) => {
         const safeSchema = { v: schema.v, form: schema.form, cloud: false };
         _getQg(rootDir).register(ns, safeSchema);
         return true;
     });
-    ipcMain.handle('qqq:qg:get', async (_e, rootDir: string, ns: string, key: string) => _getQg(rootDir).get(ns, key));
-    ipcMain.handle('qqq:qg:set', async (_e, rootDir: string, ns: string, key: string, v: any) => { const qg = _getQg(rootDir); await qg.set(ns, key, v); return true; });
-    ipcMain.handle('qqq:qg:setNow', async (_e, rootDir: string, ns: string, key: string, v: any) => { const qg = _getQg(rootDir); await qg.setNow(ns, key, v); return true; });
-    ipcMain.handle('qqq:qg:append', async (_e, rootDir: string, ns: string, key: string, ev: any) => { const qg = _getQg(rootDir); await qg.append(ns, key, ev); return true; });
-    ipcMain.handle('qqq:qg:del', async (_e, rootDir: string, ns: string, key: string) => _getQg(rootDir).del(ns, key));
-    ipcMain.handle('qqq:qg:list', async (_e, rootDir: string, ns: string) => _getQg(rootDir).list(ns));
-    ipcMain.handle('qqq:qg:flush', async (_e, rootDir: string) => { const qg = _getQg(rootDir); await qg.flush(); return true; });
-    ipcMain.handle('qqq:qg:stats', async (_e, rootDir: string) => _getQg(rootDir).stats());
-    ipcMain.handle('qqq:qg:flushOne', async (_e, rootDir: string, ns: string, key: string) => { await _getQg(rootDir).flushOne(ns, key); return true; });
+    ipcMain.handle('qqqide:qg:get', async (_e, rootDir: string, ns: string, key: string) => _getQg(rootDir).get(ns, key));
+    ipcMain.handle('qqqide:qg:set', async (_e, rootDir: string, ns: string, key: string, v: any) => { const qg = _getQg(rootDir); await qg.set(ns, key, v); return true; });
+    ipcMain.handle('qqqide:qg:setNow', async (_e, rootDir: string, ns: string, key: string, v: any) => { const qg = _getQg(rootDir); await qg.setNow(ns, key, v); return true; });
+    ipcMain.handle('qqqide:qg:append', async (_e, rootDir: string, ns: string, key: string, ev: any) => { const qg = _getQg(rootDir); await qg.append(ns, key, ev); return true; });
+    ipcMain.handle('qqqide:qg:del', async (_e, rootDir: string, ns: string, key: string) => _getQg(rootDir).del(ns, key));
+    ipcMain.handle('qqqide:qg:list', async (_e, rootDir: string, ns: string) => _getQg(rootDir).list(ns));
+    ipcMain.handle('qqqide:qg:flush', async (_e, rootDir: string) => { const qg = _getQg(rootDir); await qg.flush(); return true; });
+    ipcMain.handle('qqqide:qg:stats', async (_e, rootDir: string) => _getQg(rootDir).stats());
+    ipcMain.handle('qqqide:qg:flushOne', async (_e, rootDir: string, ns: string, key: string) => { await _getQg(rootDir).flushOne(ns, key); return true; });
 
     // ---- hash (xxh64 fast + sha256 strong, with mtime cache) ----
-    ipcMain.handle('qqq:hash:file', async (_e, p: string, mode?: 'fast' | 'strong' | 'both') => hashService.hashFile(p, mode || 'fast'));
-    ipcMain.handle('qqq:hash:buffer', async (_e, b64: string, mode?: 'fast' | 'strong' | 'both') => hashService.hashBuffer(Buffer.from(b64, 'base64'), mode || 'fast'));
+    ipcMain.handle('qqqide:hash:file', async (_e, p: string, mode?: 'fast' | 'strong' | 'both') => hashService.hashFile(p, mode || 'fast'));
+    ipcMain.handle('qqqide:hash:buffer', async (_e, b64: string, mode?: 'fast' | 'strong' | 'both') => hashService.hashBuffer(Buffer.from(b64, 'base64'), mode || 'fast'));
 
     // ---- media (ffmpeg-backed thumbnail / transcode / probe via qzSpawn) ----
-    ipcMain.handle('qqq:media:thumb', async (_e, opts: any) => mediaService.thumb(opts || {}));
-    ipcMain.handle('qqq:media:transcode', async (_e, opts: any) => mediaService.transcode(opts || {}));
-    ipcMain.handle('qqq:media:probe', async (_e, src: string) => mediaService.probe(src));
-    ipcMain.handle('qqq:media:ffmpegPath', () => mediaService.ffmpegPath());
+    ipcMain.handle('qqqide:media:thumb', async (_e, opts: any) => mediaService.thumb(opts || {}));
+    ipcMain.handle('qqqide:media:transcode', async (_e, opts: any) => mediaService.transcode(opts || {}));
+    ipcMain.handle('qqqide:media:probe', async (_e, src: string) => mediaService.probe(src));
+    ipcMain.handle('qqqide:media:ffmpegPath', () => mediaService.ffmpegPath());
 
     // ---- key (global shortcut registration; per-window/iframe handled in renderer) ----
-    ipcMain.handle('qqq:key:registerGlobal', async (_e, accel: string, id: string) => {
+    ipcMain.handle('qqqide:key:registerGlobal', async (_e, accel: string, id: string) => {
         return registerGlobalKey(accel, id);
     });
-    ipcMain.handle('qqq:key:unregisterGlobal', async (_e, accel: string) => {
+    ipcMain.handle('qqqide:key:unregisterGlobal', async (_e, accel: string) => {
         try { require('electron').globalShortcut.unregister(accel); } catch { /* ignore */ }
         return true;
     });
-    ipcMain.handle('qqq:key:unregisterAllGlobal', async () => {
+    ipcMain.handle('qqqide:key:unregisterAllGlobal', async () => {
         try { require('electron').globalShortcut.unregisterAll(); } catch { /* ignore */ }
         return true;
     });
 
     // ---- audio (route to miniaudio_v16.py via miniaudio_bridge.py) ----
-    ipcMain.handle('qqq:audio:play', async (_e, file: string, opts?: any) => {
+    ipcMain.handle('qqqide:audio:play', async (_e, file: string, opts?: any) => {
         try {
             const action = (opts && opts.sfx) ? 'play_sfx' : 'play_music';
             return await audioEngine.invoke(action, { path: file, ...(opts || {}) });
@@ -1760,7 +1775,7 @@ function registerIpc(): void {
             return { ok: false, error: String(e && e.message) };
         }
     });
-    ipcMain.handle('qqq:audio:stop', async (_e, scope?: string) => {
+    ipcMain.handle('qqqide:audio:stop', async (_e, scope?: string) => {
         try {
             const action = scope === 'music' ? 'stop_music' : 'stop_all';
             return await audioEngine.invoke(action, {});
@@ -1768,54 +1783,54 @@ function registerIpc(): void {
             return { ok: false, error: String(e && e.message) };
         }
     });
-    ipcMain.handle('qqq:audio:invoke', async (_e, action: string, params: any) => {
+    ipcMain.handle('qqqide:audio:invoke', async (_e, action: string, params: any) => {
         return audioEngine.invoke(action, params || {});
     });
-    ipcMain.handle('qqq:audio:isAlive', () => audioEngine.isAlive());
+    ipcMain.handle('qqqide:audio:isAlive', () => audioEngine.isAlive());
 
     // ---- system shell ----
-    ipcMain.handle('qqq:shell:openExternal', (_e, url: string) => electronShell.openExternal(url));
-    ipcMain.handle('qqq:shell:openPath', (_e, p: string) => electronShell.openPath(p));
+    ipcMain.handle('qqqide:shell:openExternal', (_e, url: string) => electronShell.openExternal(url));
+    ipcMain.handle('qqqide:shell:openPath', (_e, p: string) => electronShell.openPath(p));
 
     // ---- download (SmartHttpDownloader) ----
     // Progress events are sent via webContents; forwarder wired in createWindow.
-    ipcMain.handle('qqq:download:start', async (_e, opts: DownloadOpts) => {
+    ipcMain.handle('qqqide:download:start', async (_e, opts: DownloadOpts) => {
         return downloadService.start(opts || ({} as DownloadOpts));
     });
-    ipcMain.handle('qqq:download:cancel', async (_e, id: string) => {
+    ipcMain.handle('qqqide:download:cancel', async (_e, id: string) => {
         return downloadService.cancel(id);
     });
-    ipcMain.handle('qqq:download:list', async () => {
+    ipcMain.handle('qqqide:download:list', async () => {
         return downloadService.list();
     });
 
     // ---- clipboard ----
-    ipcMain.handle('qqq:clipboard:readText', () => {
+    ipcMain.handle('qqqide:clipboard:readText', () => {
         return require('electron').clipboard.readText();
     });
-    ipcMain.handle('qqq:clipboard:writeText', (_e: any, s: string) => {
+    ipcMain.handle('qqqide:clipboard:writeText', (_e: any, s: string) => {
         require('electron').clipboard.writeText(s);
     });
-    ipcMain.handle('qqq:clipboard:readImage', () => {
+    ipcMain.handle('qqqide:clipboard:readImage', () => {
         const img = require('electron').clipboard.readImage();
         if (img.isEmpty()) return null;
         return img.toPNG().toString('base64');
     });
-    ipcMain.handle('qqq:clipboard:hasImage', () => {
+    ipcMain.handle('qqqide:clipboard:hasImage', () => {
         return !require('electron').clipboard.readImage().isEmpty();
     });
 
     // ---- update (hot reload: pull server-app.tar.xz from gh555.com) ----
-    ipcMain.handle('qqq:update:check', async () => {
+    ipcMain.handle('qqqide:update:check', async () => {
         return updateService.check();
     });
-    ipcMain.handle('qqq:update:apply', async () => {
+    ipcMain.handle('qqqide:update:apply', async () => {
         return updateService.apply();
     });
-    ipcMain.handle('qqq:update:state', async () => {
+    ipcMain.handle('qqqide:update:state', async () => {
         return updateService.getState();
     });
-    ipcMain.handle('qqq:update:abort', async () => {
+    ipcMain.handle('qqqide:update:abort', async () => {
         updateService.abort();
         return true;
     });
@@ -1825,7 +1840,7 @@ function registerIpc(): void {
 
     // ---- 外嵌 AI 面板（僚机：不可拖动、同层级、实时跟随、可独立聚焦、仅主窗口可控关闭） ----
     
-    ipcMain.handle('qqq:ai-panel:toggle-external', async (_e, index: number, open: boolean) => {
+    ipcMain.handle('qqqide:ai-panel:toggle-external', async (_e, index: number, open: boolean) => {
         if (index < 0 || index > 1) return false;
         const mw = mainWindow;
         if (!mw || mw.isDestroyed()) return false;
@@ -1884,7 +1899,7 @@ function registerIpc(): void {
             extWin.loadURL(bootConfig.url + 'ai-panel/index.html?external=' + index).catch(() => { });
 
             // ── 实时同步引擎 ──
-            const syncExt = () => syncExtWin(index);
+            const syncExt = () => { try { syncExtWin(index); } catch { /* ignore */ } };
 
             mw.on('move', syncExt);
             mw.on('resize', syncExt);
@@ -1892,28 +1907,34 @@ function registerIpc(): void {
             const syncExtRaf = () => {
                 if (_rafPending) return;
                 _rafPending = true;
-                requestAnimationFrame(() => { _rafPending = false; syncExt(); });
+                requestAnimationFrame(() => { _rafPending = false; try { syncExt(); } catch { /* ignore */ } });
             };
             mw.on('will-move' as any, syncExtRaf);
             mw.on('will-resize' as any, syncExtRaf);
 
             const onFocus = () => {
-                if (extWin.isDestroyed()) return;
-                if (extWin.isFocused()) return;
-                extWin.showInactive();
-                extWin.moveTop();
+                try {
+                    if (extWin.isDestroyed()) return;
+                    if (extWin.isFocused()) return;
+                    extWin.showInactive();
+                    extWin.moveTop();
+                } catch { /* ignore */ }
             };
             mw.on('focus', onFocus);
 
-            const onMinimize = () => { if (!extWin.isDestroyed()) extWin.minimize(); };
+            const onMinimize = () => { try { if (!extWin.isDestroyed()) extWin.minimize(); } catch { /* ignore */ } };
             const onRestore = () => {
-                if (!extWin.isDestroyed()) extWin.restore();
-                if (!mw.isDestroyed()) mw.focus();
+                try {
+                    if (!extWin.isDestroyed()) extWin.restore();
+                    if (!mw.isDestroyed()) mw.focus();
+                } catch { /* ignore */ }
             };
-            const onHide = () => { if (!extWin.isDestroyed()) extWin.hide(); };
+            const onHide = () => { try { if (!extWin.isDestroyed()) extWin.hide(); } catch { /* ignore */ } };
             const onShow = () => {
-                if (!extWin.isDestroyed()) extWin.showInactive();
-                syncExt();
+                try {
+                    if (!extWin.isDestroyed()) extWin.showInactive();
+                    syncExt();
+                } catch { /* ignore */ }
             };
             mw.on('minimize', onMinimize);
             mw.on('restore', onRestore);
@@ -1951,24 +1972,28 @@ function registerIpc(): void {
     
     // 僚机位置同步（提取为独立函数，供 toggle 和外部调用）
     function syncExtWin(index: number): void {
-        const extWin = _externalPanels[index];
-        const mw = mainWindow;
-        if (!extWin || extWin.isDestroyed() || !mw || mw.isDestroyed()) return;
-        if (!extWin.isVisible()) return;  // 隐藏中的僚机不强制同步位置
-        const aiW = 389;
-        const b = mw.getBounds();
-        const x = index === 0 ? b.x - aiW : b.x + b.width;
-        extWin.setBounds({ x, y: b.y, width: aiW, height: b.height });
+        try {
+            const extWin = _externalPanels[index];
+            const mw = mainWindow;
+            if (!extWin || extWin.isDestroyed() || !mw || mw.isDestroyed()) return;
+            if (!extWin.isVisible()) return;  // 隐藏中的僚机不强制同步位置
+            const aiW = 389;
+            const b = mw.getBounds();
+            const x = index === 0 ? b.x - aiW : b.x + b.width;
+            extWin.setBounds({ x, y: b.y, width: aiW, height: b.height });
+        } catch {
+            // 窗口可能在检查和操作之间被销毁（TOCTOU 竞态），安全吞掉
+        }
     }
 
     // ═══ 跨窗口同步 IPC（替代 BroadcastChannel）═══
     // 项目路径存储（僚机初始化用）
     let _currentProjectPath: string | null = null;
 
-    ipcMain.handle('qqq:sync:get-project-path', () => _currentProjectPath);
+    ipcMain.handle('qqqide:sync:get-project-path', () => _currentProjectPath);
 
     // 主题同步：僚机启动时获取主窗口当前主题
-    ipcMain.handle('qqq:sync:get-theme', () => {
+    ipcMain.handle('qqqide:sync:get-theme', () => {
         try {
             if (mainWindow && !mainWindow.isDestroyed()) {
                 return mainWindow.webContents.executeJavaScript('document.documentElement.getAttribute("data-theme") === "dark"');
@@ -1977,7 +2002,7 @@ function registerIpc(): void {
         return false;
     });
 
-    ipcMain.handle('qqq:sync:set-project-path', (e, p: string) => {
+    ipcMain.handle('qqqide:sync:set-project-path', (e, p: string) => {
         // 仅主窗口有权推送项目路径（僚机跟随主窗口，不跟随新建窗口）
         const senderWin = BrowserWindow.fromWebContents(e.sender);
         if (senderWin !== mainWindow) return;
@@ -1985,18 +2010,18 @@ function registerIpc(): void {
         // 推送给僚机窗口（仅 external panels，不影响其他独立窗口）
         for (const extWin of _externalPanels) {
             if (extWin && !extWin.isDestroyed() && !extWin.webContents.isDestroyed()) {
-                try { extWin.webContents.send('qqq:sync:message', 'project-path', { path: p }); } catch { /* ignore */ }
+                try { extWin.webContents.send('qqqide:sync:message', 'project-path', { path: p }); } catch { /* ignore */ }
             }
         }
     });
 
     // 通用消息广播：renderer → main → 其他 renderer
-    ipcMain.handle('qqq:sync:broadcast', (e, channel: string, data: any) => {
+    ipcMain.handle('qqqide:sync:broadcast', (e, channel: string, data: any) => {
         const senderWC = e.sender;
         for (const win of BrowserWindow.getAllWindows()) {
             if (win.isDestroyed() || win.webContents === senderWC) continue;
             if (win.webContents.isDestroyed()) continue;
-            try { win.webContents.send('qqq:sync:message', channel, data); } catch { /* ignore */ }
+            try { win.webContents.send('qqqide:sync:message', channel, data); } catch { /* ignore */ }
         }
     });
 }
@@ -2064,30 +2089,53 @@ function _flushStateSync(reason: string): void {
         console.warn('[state] flushSync failed:', e);
     }
 }
+// ═══ 唯一退出路径：before-quit 统一清理所有资源 ═══
+// 铁律：所有退出路径（窗口关闭/SIGINT/SIGTERM/托盘退出）最终汇聚于此
 app.on('before-quit', async (e) => {
-    if (_flushedOnce) { return; }
-    // ★ 先同步关闭所有僚机窗口，防止孤儿窗口残留
+    // ★ 始终阻止默认退出 — 我们必须确保清理完成后再 app.exit(0)
+    e.preventDefault();
+
+    // ① 关闭所有僚机窗口（防止孤儿窗口残留）
     _allowExtClose = true;
     for (const extWin of _externalPanels) {
         if (extWin && !extWin.isDestroyed()) {
             try { extWin.close(); } catch { /* ignore */ }
         }
     }
-    _allowExtClose = false;
-    // Async flush takes priority; if it stalls, the sync path still runs at exit.
-    try {
-        e.preventDefault();
-        await stateStore.flush();
-    } catch (err) {
-        console.warn('[state] async flush before-quit failed:', err);
-    } finally {
+
+    // ② 停止引擎子进程（q_win_x64.exe / ghrun.exe 等）
+    //    必须在 state flush 之前，因为引擎可能持有 SQLite 连接
+    try { engineHost.stop(); } catch { /* ignore */ }
+    try { audioEngine.stop(); } catch { /* ignore */ }
+    try { globalShortcut.unregisterAll(); } catch { /* ignore */ }
+
+    // ③ 异步刷盘（优先），超时后走同步兜底
+    //    跳过条件：如果是 SIGINT/SIGTERM 已同步刷过，_flushedOnce 为 true
+    //    但仍需 app.exit(0) 确保退出（SIGINT/SIGTERM 路径不会自动退出）
+    if (!_flushedOnce) {
+        try {
+            await stateStore.flush();
+        } catch (err) {
+            console.warn('[state] async flush before-quit failed:', err);
+        }
         _flushStateSync('before-quit');
-        app.exit(0);
     }
+
+    // ④ 硬退出：确保进程不留残影
+    //     无论 _flushedOnce 状态如何，必须调用 app.exit(0)
+    //     因为 e.preventDefault() 阻止了默认退出
+    app.exit(0);
 });
-process.on('SIGINT', () => { _allowExtClose = true; for (const extWin of _externalPanels) { if (extWin && !extWin.isDestroyed()) { try { extWin.close(); } catch { /* ignore */ } } } _allowExtClose = false; _flushStateSync('SIGINT'); try { app.quit(); } catch { process.exit(0); } });
-process.on('SIGTERM', () => { _allowExtClose = true; for (const extWin of _externalPanels) { if (extWin && !extWin.isDestroyed()) { try { extWin.close(); } catch { /* ignore */ } } } _allowExtClose = false; _flushStateSync('SIGTERM'); try { app.quit(); } catch { process.exit(0); } });
+// SIGINT/SIGTERM: 同步刷盘后触发退出（汇聚到 before-quit 兜底）
+process.on('SIGINT', () => { _flushStateSync('SIGINT'); try { app.quit(); } catch { process.exit(0); } });
+process.on('SIGTERM', () => { _flushStateSync('SIGTERM'); try { app.quit(); } catch { process.exit(0); } });
+// ═══ 全局异常兜底：刷盘 + 抑制已销毁窗口错误 ═══
 process.on('uncaughtException', (err) => {
+    // 已销毁窗口的异步回调抛错 → 安全吞掉（Electron 常态）
+    if (err && err.message === 'Object has been destroyed') {
+        console.warn('[main] uncaughtException (Object destroyed) suppressed');
+        return;
+    }
     console.error('[uncaughtException]', err);
     _flushStateSync('uncaughtException');
     // Also drop a crash log alongside other logs.
@@ -2114,11 +2162,11 @@ function injectDevToolsConsoleButtons(wc: Electron.WebContents): void {
 
   var style = document.createElement('style');
   style.textContent = [
-    '#qqq-dt-btns { position:fixed; bottom:12px; right:12px; display:flex; gap:6px; z-index:999999; opacity:0.3; transition:opacity 0.15s; }',
-    '#qqq-dt-btns:hover { opacity:1; }',
-    '#qqq-dt-btns button { padding:4px 10px; border:1px solid #888; border-radius:3px; background:#2a2a2a; color:#ccc; font-size:11px; cursor:pointer; white-space:nowrap; font-family:ui-monospace,monospace; }',
-    '#qqq-dt-btns button:hover { background:#3a3a3a; border-color:#ccc; }',
-    '#qqq-dt-toast { position:fixed; bottom:44px; right:12px; padding:4px 10px; border-radius:3px; background:rgba(0,0,0,0.85); color:#fff; font-size:11px; z-index:999999; pointer-events:none; opacity:0; transition:opacity 0.2s; font-family:ui-monospace,monospace; }'
+    '#qqqide-dt-btns { position:fixed; bottom:12px; right:12px; display:flex; gap:6px; z-index:999999; opacity:0.3; transition:opacity 0.15s; }',
+    '#qqqide-dt-btns:hover { opacity:1; }',
+    '#qqqide-dt-btns button { padding:4px 10px; border:1px solid #888; border-radius:3px; background:#2a2a2a; color:#ccc; font-size:11px; cursor:pointer; white-space:nowrap; font-family:ui-monospace,monospace; }',
+    '#qqqide-dt-btns button:hover { background:#3a3a3a; border-color:#ccc; }',
+    '#qqqide-dt-toast { position:fixed; bottom:44px; right:12px; padding:4px 10px; border-radius:3px; background:rgba(0,0,0,0.85); color:#fff; font-size:11px; z-index:999999; pointer-events:none; opacity:0; transition:opacity 0.2s; font-family:ui-monospace,monospace; }'
   ].join('\\n');
   document.head.appendChild(style);
 
@@ -2161,7 +2209,8 @@ function injectDevToolsConsoleButtons(wc: Electron.WebContents): void {
     btns.style.display = consolePanel ? '' : 'none';
   }
 
-  document.getElementById('qqq-dt-copy').onclick = function() {
+  var copyBtn = document.getElementById('qqq-dt-copy');
+  if (copyBtn) copyBtn.onclick = function() {
     var text = getConsoleText();
     if (!text) { showToast('\u63A7\u5236\u53F0\u6682\u65E0\u8F93\u51FA'); return; }
     navigator.clipboard.writeText(text).then(function() {
@@ -2169,7 +2218,8 @@ function injectDevToolsConsoleButtons(wc: Electron.WebContents): void {
     }).catch(function() { showToast('\u590D\u5236\u5931\u8D25'); });
   };
 
-  document.getElementById('qqq-dt-save').onclick = function() {
+  var saveBtn = document.getElementById('qqq-dt-save');
+  if (saveBtn) saveBtn.onclick = function() {
     var text = getConsoleText();
     if (!text) { showToast('\u63A7\u5236\u53F0\u6682\u65E0\u8F93\u51FA'); return; }
     var blob = new Blob([text], { type: 'text/plain' });
@@ -2208,35 +2258,11 @@ function injectDevToolsConsoleButtons(wc: Electron.WebContents): void {
     }, 500);
 }
 
-// 全局兜底：防止已销毁窗口的回调导致 crash
-process.on('uncaughtException', (err) => {
-    if (err && err.message === 'Object has been destroyed') {
-        console.warn('[main] uncaughtException (Object destroyed) suppressed');
-        return;
-    }
-    console.error('[main] uncaughtException:', err && err.message, err && err.stack);
-});
 
-// 全局兜底：关闭主窗口时强制清理所有僚机
+
+// ═══ 所有窗口关闭 → 触发退出（汇聚到 before-quit 统一清理）═══
 app.on('window-all-closed', () => {
-    _allowExtClose = true;
-    for (const extWin of _externalPanels) {
-        if (extWin && !extWin.isDestroyed()) { try { extWin.close(); } catch { /* ignore */ } }
-    }
-    _allowExtClose = false;
-    try { globalShortcut.unregisterAll(); } catch { /* ignore */ }
-    engineHost.stop();
-    audioEngine.stop();
     if (process.platform !== 'darwin') { app.quit(); }
-});
-
-// 主窗口关闭前确保僚机也被关闭
-app.on('before-quit', () => {
-    _allowExtClose = true;
-    for (const extWin of _externalPanels) {
-        if (extWin && !extWin.isDestroyed()) { try { extWin.close(); } catch { /* ignore */ } }
-    }
-    _allowExtClose = false;
 });
 
 app.on('activate', () => {

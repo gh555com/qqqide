@@ -231,8 +231,8 @@ body {
     // 初始主题同步
     (function(){
         try {
-            if (parent && parent.qqqTheme) {
-                if (parent.qqqTheme.isDark()) document.documentElement.setAttribute('data-theme', 'dark');
+            if (parent && parent.qqqideTheme) {
+                if (parent.qqqideTheme.isDark()) document.documentElement.setAttribute('data-theme', 'dark');
             } else {
                 var t = parent.document.documentElement.getAttribute('data-theme');
                 if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');

@@ -4,7 +4,7 @@
 //   - index.html / navigation : network-first(2s), fallback cache, last-resort 503
 //   - core/* qoods/* assets   : stale-while-revalidate
 //   - health                  : network-only (no cache)
-//   - qqq-asset://*           : passthrough (electron handles it)
+//   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ============================================================================
 
@@ -59,7 +59,7 @@ function isHTML(req) {
 }
 function isAssetScheme(url) {
   // Skip our custom electron-served scheme entirely.
-  return url.protocol === 'qqq-asset:' || url.protocol === 'devtools:' || url.protocol === 'chrome:';
+  return url.protocol === 'qqqide-asset:' || url.protocol === 'devtools:' || url.protocol === 'chrome:';
 }
 function timeout(ms) {
   return new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));

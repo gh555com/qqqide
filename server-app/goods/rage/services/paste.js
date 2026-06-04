@@ -14,7 +14,7 @@
 (function () {
   'use strict';
 
-  const bridge = window.qqqBridge;
+  const bridge = window.qqqideBridge;
   const _editorDisposables = new WeakMap(); // editor -> [dispose...]
 
   const mimeToExt = {

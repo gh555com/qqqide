@@ -16,7 +16,7 @@
 
 use serde::Deserialize;
 use serde_json;
-use std::io::Read;
+use std::io::{Read, BufRead};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -259,7 +259,7 @@ pub fn run() -> Result<(), String> {
                     std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
                 );
                 if ret != 0 {
-                    let child_handle = child.raw_handle() as isize;
+                    let child_handle = child.as_raw_handle() as isize;
                     AssignProcessToJobObject(job, child_handle);
                     Some(JobHandle(job))
                 } else {

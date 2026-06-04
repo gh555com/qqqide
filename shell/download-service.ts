@@ -4,7 +4,7 @@
 // HTTP/HTTPS download with:
 //   - Range-based resume (If-Range + 206 Partial Content)
 //   - SHA-256 optional verification
-//   - Progress events via webContents.send('qqq:download:progress', ...)
+//   - Progress events via webContents.send('qqqide:download:progress', ...)
 //   - Cancellation via AbortController token
 //   - Output to portable.cache/downloads/ by default; dir overridable per-start.
 //

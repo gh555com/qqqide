@@ -89,7 +89,7 @@
             "copyFailed": "Copy Failed",
             "zoomIn": "Zoom In",
             "zoomOut": "Zoom Out",
-            "close": "Close (Esc)"
+            "close": "Close (Esc or cursor right-click)"
         },
         "about": {
             "title": "About qqq",

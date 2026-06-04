@@ -5,14 +5,14 @@
 (function () {
   'use strict';
 
-  const bridge = window.qqqBridge;
+  const bridge = window.qqqideBridge;
   const ROOT = document.documentElement;
   const MIN = 123;
   const AI_W = 389;
   const SASH_W = 6;
 
   // ---- Layout state (persisted via StateStore, not localStorage) ----
-  const STATE_NS = 'qqq.shell';
+  const STATE_NS = 'qqqide';
   const STATE_KEY = 'layout_v2';
   let layoutState = {
     aZoneW: 220,
@@ -143,7 +143,7 @@
   function bootThemeToggle() {
     const $btn = document.getElementById('qqq-theme-toggle');
     if (!$btn) return;
-    const T = window.qqqTheme;
+    const T = window.qqqideTheme;
     function syncBtn(dark) {
       $btn.textContent = dark ? '\u263C' : '\u263D';
       $btn.title = dark ? window._i('shell.theme.switchToLight', '切换到亮色') : window._i('shell.theme.switchToDark', '切换到暗色');
@@ -158,8 +158,8 @@
   // ---- AI Viewport (titlebar row 1) ----
   function bootAiViewport() {
     const host = document.getElementById('qqq-ai-viewport');
-    if (!host || !window.qqqAiViewport) return;
-    window.qqqAiViewport.build(host);
+    if (!host || !window.qqqideViewport) return;
+    window.qqqideViewport.build(host);
   }
 
   // ---- Language Switcher ----
@@ -477,8 +477,8 @@
   // ---- AI Zone ----
   function bootAiZone() {
     const host = document.getElementById('qqq-ai-zone');
-    if (!host || !window.qqqAiPanel) return;
-    window.qqqAiPanel.build(host);
+    if (!host || !window.qqqidePanel) return;
+    window.qqqidePanel.build(host);
   }
 
   // ---- Output panel ----
@@ -528,8 +528,8 @@
     // IPC sync 替代 BroadcastChannel：跨窗口 overlay 协调
     var _ovUnsub = null;
     try {
-      if (window.qqqBridge && window.qqqBridge.sync) {
-        _ovUnsub = window.qqqBridge.sync.onMessage(function(channel, data) {
+      if (window.qqqideBridge && window.qqqideBridge.sync) {
+        _ovUnsub = window.qqqideBridge.sync.onMessage(function(channel, data) {
           if (channel === 'overlay-open' && data && data.id !== _overlayId) {
             // 其他窗口打开了 overlay → 关闭自己的
             close();
@@ -539,7 +539,7 @@
     } catch (_) {}
 
     var overlay = document.createElement('div');
-    overlay.id = 'qqq-ai-overlay';
+    overlay.id = 'qqqide-overlay';
     overlay.style.cssText =
       'display:none; position:fixed; inset:0; z-index:99999; ' +
       'background:rgba(0,0,0,0.88);';
@@ -547,11 +547,11 @@
     // ── 主题化滚动条（注�?style�?──
     var _scrollStyle = document.createElement('style');
     _scrollStyle.textContent =
-      '#qqq-ai-overlay-content ::-webkit-scrollbar{width:8px;height:8px}' +
-      '#qqq-ai-overlay-content ::-webkit-scrollbar-track{background:rgba(255,255,255,0.05)}' +
-      '#qqq-ai-overlay-content ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:4px}' +
-      '#qqq-ai-overlay-content ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.35)}' +
-      '#qqq-ai-overlay-content>div::-webkit-scrollbar{display:none}';
+      '#qqqide-overlay-content ::-webkit-scrollbar{width:8px;height:8px}' +
+      '#qqqide-overlay-content ::-webkit-scrollbar-track{background:rgba(255,255,255,0.05)}' +
+      '#qqqide-overlay-content ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:4px}' +
+      '#qqqide-overlay-content ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.35)}' +
+      '#qqqide-overlay-content>div::-webkit-scrollbar{display:none}';
     document.head.appendChild(_scrollStyle);
 
     var contentEl = document.createElement('div');
@@ -584,11 +584,11 @@
     function applyZoom() {
       var img = contentEl.querySelector('img');
       if (img) {
-        img.style.transform = 'translate(' + _dragX + 'px,' + _dragY + 'px) scale(' + zoomScale + ')';
+        img.style.transform = 'scale(' + zoomScale + ') translate(' + _dragX + 'px,' + _dragY + 'px)';
         img.style.transition = 'transform 0.15s ease';
         return;
       }
-      // 表格：wrapper 在 clipBox 内，用 zoom 缩放（保持文字清晰可选），translate 平移
+      // 表格：wrapper 在 clipBox 内，统一采用 scale+translate（禁止 reflow，保持原始比例与换行）
       var wrapper = contentEl.querySelector('.qqq-overlay-table-wrapper');
       if (!wrapper) {
         // 回退：可能是旧版本无 class 的 div
@@ -600,9 +600,8 @@
         if (div && !div.querySelector('img') && !div.classList.contains('qqq-overlay-table-wrapper')) wrapper = div;
       }
       if (wrapper) {
-        wrapper.style.zoom = zoomScale;
-        wrapper.style.transform = 'translate(' + _dragX + 'px,' + _dragY + 'px)';
-        wrapper.style.transition = 'transform 0.15s ease, zoom 0.15s ease';
+        wrapper.style.transform = 'scale(' + zoomScale + ') translate(' + _dragX + 'px,' + _dragY + 'px)';
+        wrapper.style.transition = 'transform 0.15s ease';
       }
     }
 
@@ -664,7 +663,7 @@
     });
 
     // Close (extra large)
-    var closeBtn = tbBtn('\u2715', window._i('shell.overlay.close', 'Close (Esc or Right-click)'), 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
+    var closeBtn = tbBtn('\u2715', window._i('shell.overlay.close', 'Close (Esc or cursor right-click)'), 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
       'background:rgba(220,50,47,0.5); border-color:rgba(220,50,47,0.7);');
     closeBtn.addEventListener('click', close);
 
@@ -692,6 +691,7 @@
       zoomScale = 1.0;
       _dragX = 0; _dragY = 0;
     }
+    var _baseClose = close;  // 保存原始 close，用于恢复
 
     overlay.addEventListener('click', function (e) {
       if (e.target === overlay) close();
@@ -778,18 +778,19 @@
 
     // Listen for messages from AI iframe
     window.addEventListener('message', function (e) {
-      if (!e.data || e.data.type !== 'qqq-ai-overlay') return;
+      if (!e.data || e.data.type !== 'qqqide-overlay') return;
       if (e.data.action === 'close') { close(); return; }
 
       // 跨窗口协调：广播自己的 overlay ID，其他窗口收到后自动关闭
       try {
-        if (window.qqqBridge && window.qqqBridge.sync) {
-          window.qqqBridge.sync.broadcast('overlay-open', { id: _overlayId });
+        if (window.qqqideBridge && window.qqqideBridge.sync) {
+          window.qqqideBridge.sync.broadcast('overlay-open', { id: _overlayId });
         }
       } catch (_) {}
 
       if (e.data.action === 'open-image') {
-        // 强制清理上一轮残留状态
+        // 强制清理上一轮残留状态（含 close 函数恢复）
+        close = _baseClose;
         _stopRepeat();
         overlay.style.display = 'none';
         contentEl.innerHTML = '';
@@ -821,13 +822,14 @@
           }
           function onMM(ev) {
             if (!dragging) return;
-            _dragX += ev.clientX - sx; _dragY += ev.clientY - sy;
+            var s = zoomScale || 1;
+            _dragX += (ev.clientX - sx) / s; _dragY += (ev.clientY - sy) / s;
             sx = ev.clientX; sy = ev.clientY;
             if (!_pending) {
               _pending = true;
               _raf = requestAnimationFrame(function () {
                 _pending = false;
-                img.style.transform = 'translate(' + _dragX + 'px,' + _dragY + 'px) scale(' + zoomScale + ')';
+                img.style.transform = 'scale(' + zoomScale + ') translate(' + _dragX + 'px,' + _dragY + 'px)';
               });
             }
           }
@@ -855,7 +857,8 @@
       }
 
       if (e.data.action === 'open-table') {
-        // 强制清理上一轮残留状态
+        // 强制清理上一轮残留状态（含 close 函数恢复）
+        close = _baseClose;
         _stopRepeat();
         overlay.style.display = 'none';
         contentEl.innerHTML = '';
@@ -869,7 +872,7 @@
           'width:90vw; height:calc(100vh - 200px); overflow:hidden; ' +
           'display:flex; align-items:center; justify-content:center;';
 
-        // 内层：自然尺寸，不做 max 约束，zoom 不触发 reflow
+        // 内层：自然尺寸，不做 max 约束，transform scale 不触发 reflow
         var wrapper = document.createElement('div');
         wrapper.className = 'qqq-overlay-table-wrapper';
         wrapper.style.cssText =
@@ -880,16 +883,23 @@
           'transition:transform 0.15s ease; display:inline-block;';
         wrapper.innerHTML = e.data.html;
 
-        // 表格样式（不设 width:auto 约束，保留原始列宽）
+        // 表格样式：匹配 AI 面板原始渲染 (nowrap+auto宽)，再冻结列宽
         var tables = wrapper.querySelectorAll('table');
         for (var ti = 0; ti < tables.length; ti++) {
           var t = tables[ti];
           t.style.borderCollapse = 'collapse';
           t.style.fontSize = '13px';
+          t.style.tableLayout = 'auto';  // 先自动计算列宽
+          t.style.width = 'auto';
         }
         var cells = wrapper.querySelectorAll('th,td');
         for (var ci = 0; ci < cells.length; ci++) {
-          cells[ci].style.cssText = 'border:1px solid var(--border-color,#333); padding:6px 12px; text-align:left;';
+          var c = cells[ci];
+          // 保留原始 style，只追加必要样式（同 AI 面板的 nowrap 规则）
+          c.style.border = '1px solid var(--border-color,#333)';
+          if (!c.style.padding) c.style.padding = '4px 8px';
+          if (!c.style.textAlign || c.style.textAlign === '') c.style.textAlign = 'left';
+          c.style.whiteSpace = 'nowrap';  // 与 AI 面板 table-inner 保持一致
         }
         var ths = wrapper.querySelectorAll('th');
         for (var hi = 0; hi < ths.length; hi++) {
@@ -899,16 +909,50 @@
         clipBox.appendChild(wrapper);
         contentEl.appendChild(clipBox);
 
+        // 先让浏览器计算布局（overlay 仍 hidden 但需 display≠none 才能测量）
+        // 使用 visibility:hidden 避免闪烁，同步测量后立即恢复
+        overlay.style.visibility = 'hidden';
+        overlay.style.display = 'block';
+
+        // 冻结列宽：先测量自然宽度，再用 table-layout:fixed + 绝对列宽锁定比例
+        var tables2 = wrapper.querySelectorAll('table');
+        for (var t2i = 0; t2i < tables2.length; t2i++) {
+          var tb = tables2[t2i];
+          // 获取第一行所有单元格的渲染宽度
+          var firstRow = tb.querySelector('tr');
+          if (firstRow) {
+            var colWidths = [];
+            var rowCells = firstRow.children;
+            for (var rci = 0; rci < rowCells.length; rci++) {
+              colWidths.push(rowCells[rci].offsetWidth);
+            }
+            // 设置 table-layout:fixed + <colgroup> 锁定每列宽度
+            tb.style.tableLayout = 'fixed';
+            tb.style.width = 'auto';
+            var colgroup = document.createElement('colgroup');
+            for (var cwi = 0; cwi < colWidths.length; cwi++) {
+              var col = document.createElement('col');
+              col.style.width = colWidths[cwi] + 'px';
+              colgroup.appendChild(col);
+            }
+            if (tb.firstChild) {
+              tb.insertBefore(colgroup, tb.firstChild);
+            } else {
+              tb.appendChild(colgroup);
+            }
+          }
+        }
+
         // 获取自然尺寸（不受 max 约束的原始大小）
         var natW = wrapper.scrollWidth, natH = wrapper.scrollHeight;
         var viewW = window.innerWidth * 0.9, viewH = window.innerHeight - 200;
-        // 初始缩放：如果表大于视口则缩小以适配
+        // 初始缩放：只缩小以适配，不自动放大（保持原始比例）
         _initZoom = Math.min(1, viewW / Math.max(1, natW), viewH / Math.max(1, natH));
         zoomScale = _initZoom;
         applyZoom();
-        // 自动放大两档，方便阅读
-        zoomScale = Math.min(5.0, zoomScale * 1.25 * 1.25);
-        applyZoom();
+
+        // 恢复可见性
+        overlay.style.visibility = '';
 
         // 拦截滚轮 → 缩放（非平移，保持比例）
         clipBox.addEventListener('wheel', function (we) {
@@ -918,14 +962,13 @@
           applyZoom();
         }, { passive: false });
 
-        overlay.style.display = 'block';
         dpad.style.display = 'block';
       }
     });
 
     // Theme sync
-    if (window.qqqTheme && window.qqqTheme.onChange) {
-      window.qqqTheme.onChange(function (dark) {
+    if (window.qqqideTheme && window.qqqideTheme.onChange) {
+      window.qqqideTheme.onChange(function (dark) {
         var wrapper = contentEl.querySelector('div > div') || contentEl.querySelector('div');
         if (wrapper) {
           wrapper.style.background = dark ? '#2a2a2a' : '#eee8d5';
@@ -942,7 +985,7 @@
     const aEl = document.getElementById('qqq-a-zone');
     const xEl = document.getElementById('qqq-x-zone');
     if (aSash && aEl && xEl) {
-      window.qqqSash.bindV(aSash,
+      window.qqqideSash.bindV(aSash,
         [{
           getW: () => aEl.offsetWidth,
           setW: w => { layoutState.aZoneW = w; aEl.style.flexBasis = w + 'px'; aEl.style.width = w + 'px'; },
@@ -961,7 +1004,7 @@
     const xUpper = document.getElementById('qqq-x-upper');
     const oEl = document.getElementById('qqq-x-output');
     if (oSash && xUpper && oEl) {
-      window.qqqSash.bindH(oSash,
+      window.qqqideSash.bindH(oSash,
         [{
           getH: () => xUpper.offsetHeight,
           setH: h => { /* upper auto-adjusts */ },
@@ -1126,11 +1169,11 @@
 
   // ---- KeyHookService bootstrap ----
   // - Loads core/key-bindings.json
-  // - Initializes window.qqqKeyHook with the binding list
+  // - Initializes window.qqqideKeyHook with the binding list
   // - Routes any unhandled binding (no explicit on() handler) into handleMenuCmd
   async function bootKeyHook() {
-    if (!window.qqqKeyHook) {
-      console.warn('[keyhook] window.qqqKeyHook missing — script not loaded?');
+    if (!window.qqqideKeyHook) {
+      console.warn('[keyhook] window.qqqideKeyHook missing — script not loaded?');
       return;
     }
     let bindings = [];
@@ -1142,7 +1185,7 @@
       console.warn('[keyhook] failed to load key-bindings.json:', e && e.message);
     }
     try {
-      window.qqqKeyHook.init(bindings);
+      window.qqqideKeyHook.init(bindings);
     } catch (e) {
       console.warn('[keyhook] init failed:', e && e.message);
       return;

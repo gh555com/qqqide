@@ -377,7 +377,7 @@
           min: MIN_W,
         });
       }
-      window.qqqSash.bindV(fresh, leftPanels, rightPanels);
+      window.qqqideSash.bindV(fresh, leftPanels, rightPanels);
     }
   }
 
@@ -666,7 +666,7 @@
   }
 
   // ---- Persistence: save/restore open file tabs ----
-  const TAB_STATE_NS = 'qqq.shell';
+  const TAB_STATE_NS = 'qqqide';
   const TAB_STATE_KEY = 'open_tabs';
   let _restored = false;
   let _tabStateHandle = null;   // cached handle — NEVER call qgs.simple() more than once

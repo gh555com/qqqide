@@ -9,7 +9,7 @@
 //   Host reads from Monaco editor models (getValue, getModel, etc.)
 //   Providers registered via monaco.languages.registerXxxProvider
 //
-// Dependencies: window.ts (typescript 5.x, loaded from qqq-asset://ts/typescript.js)
+// Dependencies: window.ts (typescript 5.x, loaded from qqqide-asset://ts/typescript.js)
 // ============================================================================
 (function () {
   'use strict';
@@ -24,7 +24,7 @@
 
     _tsLoadPromise = new Promise(function (resolve, reject) {
       var script = document.createElement('script');
-      script.src = 'qqq-asset://ts/typescript.js';
+      script.src = 'qqqide-asset://ts/typescript.js';
       script.onload = function () {
         if (window.ts) {
           _tsReady = true;
@@ -96,7 +96,7 @@
   // Resolve the default TypeScript lib files (lib.es2020.d.ts etc.)
   // We serve them from the same ts resource root.
   function getDefaultLibPath(ts, libName) {
-    var base = 'qqq-asset://ts/';
+    var base = 'qqqide-asset://ts/';
     // libName like 'lib.es2020.d.ts' — already includes 'lib.' prefix
     return base + libName;
   }
@@ -234,7 +234,7 @@
       var pending = opts.lib.length;
       var libContents = {};
       opts.lib.forEach(function (libName) {
-        var url = 'qqq-asset://ts/' + libName;
+        var url = 'qqqide-asset://ts/' + libName;
         fetchLibFile(url, function (content) {
           if (content) {
             libContents[url] = content;
@@ -248,7 +248,7 @@
       });
     } else {
       // Load default lib
-      var url = 'qqq-asset://ts/' + defaultLib;
+      var url = 'qqqide-asset://ts/' + defaultLib;
       fetchLibFile(url, function (content) {
         if (content) {
           _libCache['/' + defaultLib] = content;

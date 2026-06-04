@@ -9,18 +9,18 @@
 //   5. 性能至上：零依赖，同步注入，单次 CSS 变量批量设置。
 //
 // API:
-//   window.qqqTheme.PALETTE          — 当前调色板（只读）
-//   window.qqqTheme.isDark()         — 当前是否暗色
-//   window.qqqTheme.apply(dark)      — 切换主题（唯一入口）
-//   window.qqqTheme.onChange(fn)     — 订阅主题变更
-//   window.qqqTheme.getMonacoTheme() — 返回 'solarized-light'|'solarized-dark'
-//   window.qqqTheme.defineMonacoThemes(monaco) — 向 Monaco 注册两个主题
-//   window.qqqTheme.injectTo(iframeDoc) — 向 iframe 注入 CSS 变量
+//   window.qqqideTheme.PALETTE          — 当前调色板（只读）
+//   window.qqqideTheme.isDark()         — 当前是否暗色
+//   window.qqqideTheme.apply(dark)      — 切换主题（唯一入口）
+//   window.qqqideTheme.onChange(fn)     — 订阅主题变更
+//   window.qqqideTheme.getMonacoTheme() — 返回 'solarized-light'|'solarized-dark'
+//   window.qqqideTheme.defineMonacoThemes(monaco) — 向 Monaco 注册两个主题
+//   window.qqqideTheme.injectTo(iframeDoc) — 向 iframe 注入 CSS 变量
 // ============================================================================
 
 (function () {
   'use strict';
-  if (window.qqqTheme) return; // 幂等：已初始化则跳过
+  if (window.qqqideTheme) return; // 幂等：已初始化则跳过
 
   // ==========================================================================
   // §1 配色盘 — 精确照抄 q2.html
@@ -222,8 +222,8 @@
 
     // 通知独立窗口（僚机等非 iframe 窗口）通过 IPC sync
     try {
-      if (window.qqqBridge && window.qqqBridge.sync) {
-        window.qqqBridge.sync.broadcast('theme', { dark: _dark });
+      if (window.qqqideBridge && window.qqqideBridge.sync) {
+        window.qqqideBridge.sync.broadcast('theme', { dark: _dark });
       }
     } catch (_) {}
 
@@ -350,7 +350,7 @@
   // ==========================================================================
   // §8 公开 API
   // ==========================================================================
-  window.qqqTheme = Object.freeze({
+  window.qqqideTheme = Object.freeze({
     get PALETTE() { return getCurrentPalette(); },
     isDark,
     apply,

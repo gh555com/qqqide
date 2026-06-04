@@ -19,7 +19,7 @@
     var BINARY_SAMPLE_LEN = 4000;     // 二进制检测采样长度
     var OUTPUT_CAP_DEFAULT = 8000;    // AI 视野默认上限（单次工具结果 AI 最多看到这些字符）
     var OUTPUT_CAP_MAX = 65536;       // AI 视野最大上限（AI 传 maxOutput 时可突破到）
-    var MAX_RESPONSE_TOKENS = 393216; // AI 回答最大 tokens（DeepSeek 上限 384K = 393216，对齐服务端校验）
+    var MAX_RESPONSE_TOKENS = 393216; // AI 回答最大 tokens（DeepSeek 上限 393216，唯一真理在此）
     var COMPACT_MAX_TOKENS = 32768;   // 上下文压缩产出硬限 32K
 
     // ═══ 二进制检测 ═══

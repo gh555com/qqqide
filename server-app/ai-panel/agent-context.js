@@ -136,15 +136,15 @@
 
         self.log('\u25C6 Context: compress ' + coldMsgs.length + ' msgs (~' + Math.round(coldTokenEst) + 'tok) \u2192 keep ' + hotMsgs.length + ' msgs (~' + Math.round(hotTokenEst) + 'tok, ' + floorCount + ' floors)');
 
-        try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('\uD83E\uDDE0 压缩 ' + coldMsgs.length + ' 条历史消息中...', { type: 'info', duration: 0 }); } catch (_) { }
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('\uD83E\uDDE0 压缩 ' + coldMsgs.length + ' 条历史消息中...', { type: 'info', duration: 0 }); } catch (_) { }
         try {
             await self._digestColdMessages(coldMsgs);
-            try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('\u2705 压缩完成 — ' + coldMsgs.length + ' 条消息已精简为结构知识', { type: 'info', duration: 5000 }); } catch (_) { }
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('\u2705 压缩完成 — ' + coldMsgs.length + ' 条消息已精简为结构知识', { type: 'info', duration: 5000 }); } catch (_) { }
             self.conversation.splice(self._persistentCount, hotStart - self._persistentCount);
             self.log('\u25C6 Context: done — ' + coldMsgs.length + ' msgs removed, ' + self.conversation.length + ' msgs kept');
         } catch (digestErr) {
             self.log('\u2717 Context: compress FAILED after 3 retries — ' + digestErr.message + ' — skipping, messages preserved');
-            try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('\u26A0\uFE0F 上下文压缩失败（已重试3次）：' + (digestErr.message || '未知错误') + '。本次跳过压缩，下轮再试。', { type: 'error', duration: 8000 }); } catch (_) { }
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('\u26A0\uFE0F 上下文压缩失败（已重试3次）：' + (digestErr.message || '未知错误') + '。本次跳过压缩，下轮再试。', { type: 'error', duration: 8000 }); } catch (_) { }
         }
     };
 
@@ -212,7 +212,7 @@
                 if (outputTokens > COMPACT_MAX_TOKENS * 0.95) {
                     var waitMs2 = Math.min(COMPACT_RETRY_BASE_MS * Math.pow(2, retry + 1), COMPACT_RETRY_MAX_MS);
                     self.log('⚠ Compact output near limit (~' + outputTokens + ' tok > ' + Math.round(COMPACT_MAX_TOKENS * 0.95) + '), retry #' + (retry + 1) + ' in ' + (waitMs2 / 1000) + 's');
-                    try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('⚠️ 压缩产出超限，第' + (retry + 1) + '次重试...', { type: 'warning', duration: Math.min(waitMs2, 5000) }); } catch (_) { }
+                    try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('⚠️ 压缩产出超限，第' + (retry + 1) + '次重试...', { type: 'warning', duration: Math.min(waitMs2, 5000) }); } catch (_) { }
                     await new Promise(function (r) { setTimeout(r, waitMs2); });
                     // 加强约束
                     basePrompt = 'YOUR PREVIOUS OUTPUT WAS TOO LARGE AND MAY HAVE BEEN TRUNCATED.\nYOU MUST PRODUCE AN OUTPUT THAT IS AT MOST HALF THE SIZE.\nBE MORE AGGRESSIVE IN MERGING AND DROPPING LOW-VALUE FACTS.\n\n' + basePrompt;
@@ -238,7 +238,7 @@
                 var waitMs3 = Math.min(COMPACT_RETRY_BASE_MS * Math.pow(2, retry + 1), COMPACT_RETRY_MAX_MS);
                 var attemptNum = retry + 1;
                 self.log('✗ Compact failed #' + attemptNum + ': ' + (err.message || err) + ', retry in ' + (waitMs3 / 1000) + 's');
-                try { if (window.parent && window.parent.qqqQoast) window.parent.qqqQoast.show('⚠️ 压缩失败 (' + attemptNum + '/3)，' + (waitMs3 / 1000) + 's 后重试...', { type: 'warning', duration: Math.min(waitMs3, 5000) }); } catch (_) { }
+                try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('⚠️ 压缩失败 (' + attemptNum + '/3)，' + (waitMs3 / 1000) + 's 后重试...', { type: 'warning', duration: Math.min(waitMs3, 5000) }); } catch (_) { }
                 if (retry < MAX_RETRIES - 1) {
                     await new Promise(function (r) { setTimeout(r, waitMs3); });
                 }

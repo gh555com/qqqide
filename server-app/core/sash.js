@@ -1,7 +1,7 @@
 // ============================================================================
 // sash.js - QQQ Shell v2 sash engine with cascading compression
 //
-// API: window.qqqSash = { bindV, bindH }
+// API: window.qqqideSash = { bindV, bindH }
 //
 // bindV(sashEl, leftFn, rightFn, opts):
 //   leftFn()  -> { el, getW, setW, min }   (can return array for cascade)
@@ -149,5 +149,5 @@
     });
   }
 
-  window.qqqSash = { bindV, bindH, MIN };
+  window.qqqideSash = { bindV, bindH, MIN };
 })();

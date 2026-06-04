@@ -10,13 +10,13 @@
 //      the active focus element's "editing" state via the `noEditing` guard.
 //
 // Public API:
-//   window.qqqKeyHook.init(bindings)           // load JSON bindings
-//   window.qqqKeyHook.on(id, handler)          // register command handler
-//   window.qqqKeyHook.set(id, accel, scope)    // dynamic rebind
-//   window.qqqKeyHook.unbind(id)               // remove a binding
-//   window.qqqKeyHook.list()                   // dump current map
-//   window.qqqKeyHook.context(name, on)        // toggle "when" context flags
-//   window.qqqKeyHook.fire(id)                 // programmatic trigger
+//   window.qqqideKeyHook.init(bindings)           // load JSON bindings
+//   window.qqqideKeyHook.on(id, handler)          // register command handler
+//   window.qqqideKeyHook.set(id, accel, scope)    // dynamic rebind
+//   window.qqqideKeyHook.unbind(id)               // remove a binding
+//   window.qqqideKeyHook.list()                   // dump current map
+//   window.qqqideKeyHook.context(name, on)        // toggle "when" context flags
+//   window.qqqideKeyHook.fire(id)                 // programmatic trigger
 //
 // Iframe-side helper:
 //   window.qqqKeyHookAdapter.attach({roam: true})
@@ -27,7 +27,7 @@
 (function () {
   'use strict';
 
-  const bridge = (typeof window !== 'undefined' && window.qqqBridge) || null;
+  const bridge = (typeof window !== 'undefined' && window.qqqideBridge) || null;
 
   // ---- accel canonicalization ---------------------------------------------
   // Build a stable canonical string from a KeyboardEvent. e.g.
@@ -326,7 +326,7 @@
     }
   };
 
-  window.qqqKeyHook = {
+  window.qqqideKeyHook = {
     init, on, set, unbind, fire, list, context,
     canonAccel, normalizeAccel,
   };

@@ -1,6 +1,6 @@
 // ============================================================================
 // cache-store.ts
-// Two-tier portable cache rooted at $QDIR/cache (or portable.cache):
+// Two-tier portable cache rooted at $QQQIDE_QDIR/cache (or portable.cache):
 //   - KV  : cache/kv/<safekey>.json
 //   - file: cache/h/<aa>/<aabbcc...><ext>     (bucketed by content sig)
 //

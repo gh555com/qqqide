@@ -15,6 +15,7 @@ use std::fs;
 use std::io::Read;
 
 mod ctx;
+#[macro_use]
 mod ensure;
 mod install;
 mod lsp_daemon;

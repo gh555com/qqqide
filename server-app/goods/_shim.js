@@ -14,7 +14,7 @@
 (function () {
   'use strict';
 
-  const bridge = window.qqqBridge;
+  const bridge = window.qqqideBridge;
 
   // ---- commands registry ----
   const COMMANDS = new Map();

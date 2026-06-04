@@ -82,8 +82,8 @@
       btnRetry.disabled = true;
       setStatus('正在重试…', false);
       try {
-        if (window.qqq && window.qqq.boot && typeof window.qqq.boot.retry === 'function') {
-          const ok = await window.qqq.boot.retry();
+        if (window.qqqide && window.qqqide.boot && typeof window.qqqide.boot.retry === 'function') {
+          const ok = await window.qqqide.boot.retry();
           if (!ok) {
             setStatus('仍无法连接，将继续等待…', true);
             countdown = 10;

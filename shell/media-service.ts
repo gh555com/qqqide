@@ -5,7 +5,7 @@
 //
 // ffmpeg resolution order:
 //   1. process.env.QQQ_FFMPEG  (explicit override)
-//   2. $QDIR/components/ffmpeg/ffmpeg(.exe)
+//   2. $QQQIDE_QDIR/components/ffmpeg/ffmpeg(.exe)
 //   3. <appRoot>/engines/ffmpeg/ffmpeg(.exe)
 //   4. system PATH (qz.which('ffmpeg'))
 //
@@ -72,7 +72,7 @@ export class MediaService {
         const envKey = name === 'ffmpeg' ? 'QQQ_FFMPEG' : 'QQQ_FFPROBE';
         const overrideEnv = process.env[envKey];
         if (overrideEnv && fs.existsSync(overrideEnv)) { return overrideEnv; }
-        const qdir = process.env.QDIR;
+        const qdir = process.env.QQQIDE_QDIR;
         const tries: string[] = [];
         if (qdir) { tries.push(path.join(qdir, 'components', 'ffmpeg', name + ext)); }
         tries.push(path.join(this.appRoot, 'engines', 'ffmpeg', name + ext));

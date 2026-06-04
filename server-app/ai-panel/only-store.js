@@ -213,8 +213,8 @@ var onlyStore = (function () {
 
   function _fsBridge() {
     try {
-      if (window.parent && window.parent.qqqBridge) return window.parent.qqqBridge;
-      if (window.qqqBridge) return window.qqqBridge;
+      if (window.parent && window.parent.qqqideBridge) return window.parent.qqqideBridge;
+      if (window.qqqideBridge) return window.qqqideBridge;
     } catch (_) { }
     return null;
   }

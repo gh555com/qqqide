@@ -203,16 +203,16 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   }
   // 初始同步
   try {
-    if (parent && parent.qqqTheme) {
-      sync(parent.qqqTheme.isDark());
+    if (parent && parent.qqqideTheme) {
+      sync(parent.qqqideTheme.isDark());
     } else if (parent) {
       sync(parent.document.documentElement.getAttribute('data-theme') === 'dark');
     }
   } catch(_) {}
   // 独立窗口（僚机）：通过 IPC 从主窗口拉取当前主题
-  if (typeof _isStandalone !== 'undefined' && _isStandalone && window.qqqBridge && window.qqqBridge.sync) {
+  if (typeof _isStandalone !== 'undefined' && _isStandalone && window.qqqideBridge && window.qqqideBridge.sync) {
     try {
-      window.qqqBridge.sync.getTheme().then(function(dark) {
+      window.qqqideBridge.sync.getTheme().then(function(dark) {
         if (typeof dark === 'boolean') sync(dark);
       }).catch(function(){});
     } catch(_) {}
@@ -224,8 +224,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   // 独立窗口（僚机）：通过 IPC sync 接收主题变更
   try {
     var _themeUnsub = null;
-    if (window.qqqBridge && window.qqqBridge.sync) {
-      _themeUnsub = window.qqqBridge.sync.onMessage(function(channel, data) {
+    if (window.qqqideBridge && window.qqqideBridge.sync) {
+      _themeUnsub = window.qqqideBridge.sync.onMessage(function(channel, data) {
         if (channel === 'theme' && data && typeof data.dark === 'boolean') sync(data.dark);
       });
       // 保存句柄供 beforeunload 清理
@@ -415,31 +415,31 @@ function _postToHost(msg) {
   }
 }
 
-// 获取 sync bridge（僚机用 window.qqqBridge.sync，iframe 用 parent.qqqBridge.sync）
+// 获取 sync bridge（僚机用 window.qqqideBridge.sync，iframe 用 parent.qqqideBridge.sync）
 function _getSyncBridge() {
   // 僚机/独立窗口：自身有 preload
-  if (typeof window !== 'undefined' && window.qqqBridge && window.qqqBridge.sync) {
-    return window.qqqBridge.sync;
+  if (typeof window !== 'undefined' && window.qqqideBridge && window.qqqideBridge.sync) {
+    return window.qqqideBridge.sync;
   }
-  // iframe：通过 parent 访问主窗口的 qqqBridge
+  // iframe：通过 parent 访问主窗口的 qqqideBridge
   try {
-    if (parent && parent.qqqBridge && parent.qqqBridge.sync) {
-      return parent.qqqBridge.sync;
+    if (parent && parent.qqqideBridge && parent.qqqideBridge.sync) {
+      return parent.qqqideBridge.sync;
     }
   } catch (_) {}
   return null;
 }
 
-// 获取可用的 bridge（僚机直连自身 qqqBridge，iframe 用 parent.qqqBridge）
+// 获取可用的 bridge（僚机直连自身 qqqideBridge，iframe 用 parent.qqqideBridge）
 function _getBridge() {
   if (_isStandalone) {
-    // 僚机自身有 preload 暴露的 window.qqqBridge，直接用（零代理）
-    if (typeof window !== 'undefined' && window.qqqBridge && window.qqqBridge.fs) {
-      return window.qqqBridge;
+    // 僚机自身有 preload 暴露的 window.qqqideBridge，直接用（零代理）
+    if (typeof window !== 'undefined' && window.qqqideBridge && window.qqqideBridge.fs) {
+      return window.qqqideBridge;
     }
     return null;
   }
-  return parent.qqqBridge;
+  return parent.qqqideBridge;
 }
 
 // DOM
@@ -662,7 +662,7 @@ function updateQueueBtn() {
 var _selectingProject = false;
 function _hasMainProject() {
   try {
-    if (parent && parent.qqqAiViewport && parent.qqqAiViewport.getMainProject()) return true;
+    if (parent && parent.qqqideViewport && parent.qqqideViewport.getMainProject()) return true;
   } catch(_) {}
   return !!_standaloneRoot;
 }
@@ -675,7 +675,7 @@ async function _triggerSelectMainProject() {
       console.log('[rules] standalone window — waiting for project path via IPC...');
       return;
     }
-    var bridge = parent && parent.qqqBridge;
+    var bridge = parent && parent.qqqideBridge;
     if (!bridge) return;
     var title = '请选择一个主文件夹';
     try { if (parent.window && parent.window._i) title = parent.window._i('ai.onboarding.selectFolderTitle', title); } catch(_) {}
@@ -684,8 +684,8 @@ async function _triggerSelectMainProject() {
       title: title
     });
     if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
-      if (parent.qqqAiViewport && parent.qqqAiViewport.addProject) {
-        parent.qqqAiViewport.addProject(result.filePaths[0]);
+      if (parent.qqqideViewport && parent.qqqideViewport.addProject) {
+        parent.qqqideViewport.addProject(result.filePaths[0]);
       }
     }
   } catch(_) {
@@ -729,7 +729,7 @@ $input.addEventListener('paste', function(e) {
 
 // ── 递归复制 alphal 目录（copy+delete 代替 rename，避免文件锁）──
 async function _copyAlphalDir(srcDir, dstDir) {
-  var entries = await window.parent.qqqBridge.fs.list(srcDir);
+  var entries = await window.parent.qqqideBridge.fs.list(srcDir);
   for (var i = 0; i < entries.length; i++) {
     var name = entries[i].name;
     var isDir = entries[i].isDir;
@@ -737,13 +737,13 @@ async function _copyAlphalDir(srcDir, dstDir) {
     var dstPath = dstDir + '/' + name;
     try {
       if (isDir) {
-        await window.parent.qqqBridge.fs.mkdir(dstPath);
+        await window.parent.qqqideBridge.fs.mkdir(dstPath);
         await _copyAlphalDir(srcPath, dstPath);
-        await window.parent.qqqBridge.fs.remove(srcPath);
+        await window.parent.qqqideBridge.fs.remove(srcPath);
       } else {
-        var content = await window.parent.qqqBridge.fs.read(srcPath);
-        await window.parent.qqqBridge.fs.write(dstPath, content);
-        await window.parent.qqqBridge.fs.remove(srcPath);
+        var content = await window.parent.qqqideBridge.fs.read(srcPath);
+        await window.parent.qqqideBridge.fs.write(dstPath, content);
+        await window.parent.qqqideBridge.fs.remove(srcPath);
       }
     } catch (e) {
       console.warn('[quests] copy fail for ' + name, e);
@@ -1036,7 +1036,7 @@ window._tableStore = [];
 function viewTable(id) {
   var html = window._tableStore[id];
   if (html) {
-    _postToHost({ type: 'qqq-ai-overlay', action: 'open-table', html: html });
+    _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: html });
   }
 }
 // Expose globally — onclick in HTML needs global scope
@@ -1301,8 +1301,8 @@ async function bindMainProject() {
   var isStandalone = false;
 
   // 主面板：从父窗口 AI 视口获取主文件夹
-  if (window.parent && window.parent.qqqAiViewport) {
-    var main = window.parent.qqqAiViewport.getMainProject();
+  if (window.parent && window.parent.qqqideViewport) {
+    var main = window.parent.qqqideViewport.getMainProject();
     if (!main || !main.path) {
       console.log('[quests] bindMainProject: no main project yet');
       return;
@@ -1312,7 +1312,7 @@ async function bindMainProject() {
     // 僚机/独立窗口：从 IPC sync 收到项目路径
     root = _standaloneRoot.replace(/\\/g, '/').replace(/\/$/, '');
     isStandalone = true;
-    _isStandalone = true;  // 启用独立窗口模式（IPC sync + 自身 qqqBridge）
+    _isStandalone = true;  // 启用独立窗口模式（IPC sync + 自身 qqqideBridge）
     console.log('[quests] bindMainProject: standalone mode, root=' + root);
   } else {
     return;
@@ -1350,8 +1350,8 @@ async function bindMainProject() {
   // 向主进程注册窗口↔项目映射（仅当成功持有锁时；僚机/standalone 不注册）
   if (lockResult.ok) {
     try {
-      if (!isStandalone && window.parent && window.parent.qqqBridge && window.parent.qqqBridge.window) {
-        window.parent.qqqBridge.window.claimProject(root).catch(function () { });
+      if (!isStandalone && window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.window) {
+        window.parent.qqqideBridge.window.claimProject(root).catch(function () { });
       }
     } catch (_) { }
   }
@@ -1360,13 +1360,13 @@ async function bindMainProject() {
   try {
     var oldAlphal = root + '/qqq/quests/alphal';
     var newAlphal = root + '/qqq/alphal';
-    var oldStat = await window.parent.qqqBridge.fs.stat(oldAlphal);
-    var newStat = await window.parent.qqqBridge.fs.stat(newAlphal);
+    var oldStat = await window.parent.qqqideBridge.fs.stat(oldAlphal);
+    var newStat = await window.parent.qqqideBridge.fs.stat(newAlphal);
     if (oldStat && !newStat) {
       console.log('[quests] migrating alphal: ' + oldAlphal + ' → ' + newAlphal);
-      await window.parent.qqqBridge.fs.mkdir(newAlphal);
+      await window.parent.qqqideBridge.fs.mkdir(newAlphal);
       await _copyAlphalDir(oldAlphal, newAlphal);
-      try { await window.parent.qqqBridge.fs.remove(oldAlphal); } catch(_) {}
+      try { await window.parent.qqqideBridge.fs.remove(oldAlphal); } catch(_) {}
       console.log('[quests] migration done');
     }
   } catch (e) {
@@ -1376,12 +1376,12 @@ async function bindMainProject() {
   if (!_questsInited) {
     _questsInited = true;
     await initQuests();
-    if (typeof loadProjectRules === 'function') {
-      loadProjectRules(questStore.getProjectRoot());
+    if (typeof loadQqqideProjectRules === 'function') {
+      loadQqqideProjectRules(questStore.getProjectRoot());
     }
     // 重建 AI 视口快照，告诉 AI 当前主文件夹是谁
-    if (typeof buildVisionContext === 'function') {
-      buildVisionContext();
+    if (typeof buildQqqideVisionContext === 'function') {
+      buildQqqideVisionContext();
     }
   }
   // 恢复 per-quest UI 状态（输入框草稿、图片、等级、滚动位置）
@@ -1688,6 +1688,11 @@ async function loadQuestData(id) {
   }
   console.log('[quests] loaded ' + agent.conversation.length + ' messages from ' + allFloors.length + ' floors');
 
+  // ═══ 修复断裂的 tool_calls（旧会话可能因 auto-save 竞态残留孤立的 tool_calls） ═══
+  if (agent._repairOrphanedToolCalls) {
+    agent._repairOrphanedToolCalls();
+  }
+
   // ═══ 先恢复 agent 元数据（rebuildMessagesFromConversation 依赖 _floorTimings） ═══
   if (data) {
     agent._ctx = data.ctx || { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
@@ -1798,8 +1803,8 @@ async function generateFloorTxt() {
     dir = root + '/qqq/quests/' + qDirName + '/' + fDirName + '/';
   }
   try {
-    if (!(window.parent && window.parent.qqqBridge && window.parent.qqqBridge.fs)) return;
-    var bridge = window.parent.qqqBridge;
+    if (!(window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.fs)) return;
+    var bridge = window.parent.qqqideBridge;
     await bridge.fs.mkdir(dir);
     var now = new Date();
     var pad = function(n) { return String(n).padStart(2, '0'); };
@@ -1908,7 +1913,7 @@ async function _appendToSearchQuest(questId, floorNum) {
   if (!questId || !floorNum) return;
   var root = questStore.getProjectRoot();
   if (!root) return;
-  var bridge = window.parent && window.parent.qqqBridge;
+  var bridge = window.parent && window.parent.qqqideBridge;
   if (!bridge) return;
 
   try {
@@ -2123,7 +2128,7 @@ function _makeName(prefix, num, text) {
 }
 // ── 创建 quest 文件夹（含嵌套 floor 目录）──
 async function _ensureQuestDir(root, qName, fName) {
-  var bridge = window.parent && window.parent.qqqBridge;
+  var bridge = window.parent && window.parent.qqqideBridge;
   if (!bridge || !bridge.fs) return;
   var qDir = root + '/qqq/quests/' + qName;
   var fDir = qDir + '/' + fName + '/';
@@ -2222,7 +2227,7 @@ function _fetchBalanceIfNeeded(force) {
   }
   var token = getToken();
   if (!token) return;
-  fetch('https://gh555.com/api/v3/wallet/balance', {
+  fetch('https://gh555.com/api/wallet/balance', {
     headers: { 'Authorization': 'Bearer ' + token }
   }).then(function(r) { return r.json(); })
     .then(function(data) {
@@ -2335,6 +2340,20 @@ document.getElementById('ctx-compress').onclick = async function() {
     msg.className = 'msg msg-error';
   }
 };
+// ctx-panel 点击蒙版关闭 + Escape 关闭
+document.querySelector('#ctx-panel .ctx-panel-overlay').onclick = function() {
+  document.getElementById('ctx-panel').style.display = 'none';
+};
+var _origKeydown = document.onkeydown;
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var ctxPanel = document.getElementById('ctx-panel');
+    if (ctxPanel && ctxPanel.style.display === 'flex') {
+      ctxPanel.style.display = 'none';
+      e.stopPropagation();
+    }
+  }
+});
 
 // ── 引导按钮：最快速度将紧急信息硬塞给正在工作的 AI，不中断楼层 ──
 $guideBtn.onclick = function() {
@@ -2897,7 +2916,7 @@ function rebuildMessagesFromConversation(floorMetaMap) {
           var _rCount = _countRooms(_meta.houses);
           _updateA1Row1(_a1Block, floor, _hCount, _rCount);
           // async fetch file size
-          var _bridge2 = window.parent && window.parent.qqqBridge;
+          var _bridge2 = window.parent && window.parent.qqqideBridge;
           if (_bridge2) {
             _bridge2.fs.stat(_meta.allTxtPath).then(function(st) {
               if (st && st.size) _updateA1Row1(_a1Block, floor, _hCount, _rCount, st.size);
@@ -3119,9 +3138,9 @@ document.addEventListener('click', function() { closeQuestDrop(); closeFloorDrop
 async function renderTabs() { await updateQuestTofu(); updateFloorTofu(); }
 
 (async function() {
-    loadQqqRules();
+    loadQqqideRules();
     await bindMainProject();
-    // initQuests() + loadProjectRules + buildVisionContext 已由 bindMainProject 内部调用，此处不再重复
+    // initQuests() + loadQqqideProjectRules + buildQqqideVisionContext 已由 bindMainProject 内部调用，此处不再重复
 })();
 
 // Rules edit button — opens global.txt (middle group) + project.txt (right group) in IDE
@@ -3161,12 +3180,12 @@ document.getElementById('rules-edit').onclick = async function() {
 
         // reload rules after user edits
         setTimeout(function() {
-            loadQqqRules();
-            if (typeof loadProjectRules === 'function') {
-                loadProjectRules(projRoot);
+            loadQqqideRules();
+            if (typeof loadQqqideProjectRules === 'function') {
+                loadQqqideProjectRules(projRoot);
             }
-            if (typeof buildVisionContext === 'function') {
-                buildVisionContext();
+            if (typeof buildQqqideVisionContext === 'function') {
+                buildQqqideVisionContext();
             }
             }, 3000);
     } catch(e) {
@@ -3336,7 +3355,7 @@ function _buildFloorStatsLines(timing, floorNum, agent) {
 
 // 向后追加文本到文件
 async function _appendToFile(path, text) {
-  var bridge = window.parent && window.parent.qqqBridge;
+  var bridge = window.parent && window.parent.qqqideBridge;
   if (!bridge) return false;
   try {
     // 读取现有内容，追加后写回（因为 fs.write 是全量覆盖）
@@ -3369,7 +3388,7 @@ function _guardAllTxtSize(lines) {
   var now = Date.now();
   if (now - _allTxtBlockedQoastTs > 30000) {
     _allTxtBlockedQoastTs = now;
-    try { if (parent && parent.qqqQoast) parent.qqqQoast.show(
+    try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show(
       '⚠️ all.txt ' + sizeMB.toFixed(1) + 'MB 超过 ' + _ALL_TXT_MAX_MB + 'MB 上限，归档已暂停（SQLite 完好）',
       { type: 'error', duration: 8000 }
     ); } catch(_) {}
@@ -3379,7 +3398,7 @@ function _guardAllTxtSize(lines) {
 
 // Safe write with external-edit conflict guard
 async function _safeWriteAllTxt(path, lines, lastMtime) {
-  var bridge = window.parent && window.parent.qqqBridge;
+  var bridge = window.parent && window.parent.qqqideBridge;
   if (!bridge) return false;
   // 唯一真理大小守卫（4MB）
   if (!_guardAllTxtSize(lines)) return false;
@@ -3580,7 +3599,7 @@ function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, vis
         if (ok) {
           _updateA1Size(a1, floorNum, hCount, rCount, allTxtPath);
           if (_allTxtOpenInEditor) {
-            var bridge2 = window.parent && window.parent.qqqBridge;
+            var bridge2 = window.parent && window.parent.qqqideBridge;
             if (bridge2) {
               bridge2.fs.read(allTxtPath).then(function(content) {
                 _postToHost({ type: 'qqq-editor-refresh', path: allTxtPath, content: content });
@@ -3596,7 +3615,7 @@ function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, vis
 
 // 更新 a1 第一行的文件大小显示
 function _updateA1Size(a1, floorNum, hCount, rCount, allTxtPath) {
-  var b2 = window.parent && window.parent.qqqBridge;
+  var b2 = window.parent && window.parent.qqqideBridge;
   if (!b2 || !a1 || !a1._r1fn) return;
   b2.fs.stat(allTxtPath).then(function(st) {
     if (st && st.size) {
@@ -3609,7 +3628,7 @@ function _updateA1Size(a1, floorNum, hCount, rCount, allTxtPath) {
 async function _finalizeAllTxt(aiDiv, allTxtPath, agent, floorNum, timing) {
   _stopAllTxtStream();
   if (!allTxtPath) return;
-  var bridge = window.parent && window.parent.qqqBridge;
+  var bridge = window.parent && window.parent.qqqideBridge;
   if (!bridge) return;
   try {
     // 追加 floor stats
@@ -3922,7 +3941,7 @@ async function _onAuditClick(block) {
 
     // 写盘
     var chatPath = block._path.replace(/all\.txt$/, 'chat.txt');
-    var bridge = window.parent && window.parent.qqqBridge;
+    var bridge = window.parent && window.parent.qqqideBridge;
     if (bridge) {
       await bridge.fs.write(chatPath, chatContent);
       console.log('[audit] chat.txt written: ' + chatPath + ' (' + chatContent.length + ' chars)');
@@ -3955,7 +3974,7 @@ async function _onTranslateClick(block) {
     var lang = block._auditLang || 'zh';
     var chatPath = block._path.replace(/all\.txt$/, 'chat.txt');
     var translatedPath = chatPath.replace(/\.txt$/, '.' + lang + '.txt');
-    var bridge = window.parent && window.parent.qqqBridge;
+    var bridge = window.parent && window.parent.qqqideBridge;
     if (!bridge) { _translateBusy = false; if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
 
     // 读当前 chat.txt（若不存在则先生成）
@@ -4331,7 +4350,7 @@ async function sendMessage() {
   // 存储到 agent，供 saveQuestData 写入 floor payload，确保重建时路径一致
   agent._currentAllTxtPath = _allTxtPathLocal;
   agent._allTxtPath = _allTxtPathLocal;
-  var _bridge = window.parent && window.parent.qqqBridge;
+  var _bridge = window.parent && window.parent.qqqideBridge;
   if (_bridge && _allTxtDirLocal) {
     try { await _bridge.fs.mkdir(_allTxtDirLocal); } catch (_) {}
   }
@@ -4592,7 +4611,7 @@ function insertChipAtCursor(filePath) {
 }
 
 // Expose for direct cross-frame access (same origin)
-window.qqqAiAttach = insertChipAtCursor;
+window.qqqideAiAttach = insertChipAtCursor;
 
 // Listen for file attachment from parent (AI viewport via postMessage)
 window.addEventListener('message', function(e) {
@@ -4643,11 +4662,11 @@ $input.addEventListener('focus', function() {
 
 // ═══ Full-window overlay (via parent.postMessage / IPC sync) ═══
 function openLightbox(src, base64) {
-  _postToHost({ type: 'qqq-ai-overlay', action: 'open-image', src: src, base64: base64 || null });
+  _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: src, base64: base64 || null });
 }
 
 function closeLightbox() {
-  _postToHost({ type: 'qqq-ai-overlay', action: 'close' });
+  _postToHost({ type: 'qqqide-overlay', action: 'close' });
 }
 
 // Escape key handled by parent overlay; also listen locally as fallback
@@ -4662,8 +4681,8 @@ window.addEventListener('beforeunload', function() {
   var root = questStore.getProjectRoot();
   if (root) {
     try {
-      if (window.parent && window.parent.qqqBridge && window.parent.qqqBridge.window) {
-        window.parent.qqqBridge.window.releaseProject(root).catch(function () { });
+      if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.window) {
+        window.parent.qqqideBridge.window.releaseProject(root).catch(function () { });
       }
     } catch (_) { }
   }

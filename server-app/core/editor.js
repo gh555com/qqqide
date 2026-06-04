@@ -1,10 +1,10 @@
 // ============================================================================
 // editor.js - Monaco editor wrapper for qqq-shell v2
 //
-// Loads monaco-editor from qqq-asset://monaco/vs/loader.js (provided by shell)
+// Loads monaco-editor from qqqide-asset://monaco/vs/loader.js (provided by shell)
 // and exposes window.qqqEditor:
 //   open(file)   - load a file into the active editor
-//   save()       - save current editor content via window.qqq.fs.write
+//   save()       - save current editor content via window.qqqide.fs.write
 //   getValue()   - current text
 //
 // In browser dev (no shell), exposes a textarea fallback.
@@ -14,7 +14,7 @@
   'use strict';
 
   const isElectron = !!window.qqqIsElectron;
-  const bridge = window.qqqBridge;
+  const bridge = window.qqqideBridge;
 
   // ── qzlsp §10 Plan A: 配置 TypeScript Worker 编译选项 ──
   // Monaco 内置 TS Worker 默认 moduleResolution=Classic 且无 @types/node，
@@ -129,7 +129,7 @@
   };
 
   function needsLsp(langId) {
-    if (!window.qqq || !window.qqq.lsp) return false;
+    if (!window.qqqide || !window.qqqide.lsp) return false;
     if (MONACO_NATIVE_LANGS.has(langId)) return false;
     return !!LSP_LANG_MAP[langId];
   }
@@ -140,8 +140,8 @@
     try {
       var slash = file.replace(/\\/g, '/');
       var rootUri = 'file:///' + slash.substring(0, slash.lastIndexOf('/'));
-      await window.qqq.lsp.startLanguage(bridgeLang, rootUri);
-      await window.qqq.lsp.openDocument(file, text);
+      await window.qqqide.lsp.startLanguage(bridgeLang, rootUri);
+      await window.qqqide.lsp.openDocument(file, text);
       lspVersion = 1;
       lspLang = bridgeLang;
     } catch (e) {
@@ -150,8 +150,8 @@
   }
 
   function wireLspDiagnostics() {
-    if (!window.qqq || !window.qqq.lsp) return;
-    window.qqq.lsp.onDiagnostics(function (msg) {
+    if (!window.qqqide || !window.qqqide.lsp) return;
+    window.qqqide.lsp.onDiagnostics(function (msg) {
       if (!msg || !msg.uri) return;
       var filePath = msg.uri.replace(/^file:\/\/\//, '').replace(/^file:\/\//, '');
       if (currentFile !== filePath) return;
@@ -184,7 +184,7 @@
   }
 
   function wireLspHover() {
-    if (!window.qqq || !window.qqq.lsp) return;
+    if (!window.qqqide || !window.qqqide.lsp) return;
     var monaco = window.monaco;
     if (!monaco) return;
     for (var langId in LSP_LANG_MAP) {
@@ -193,7 +193,7 @@
         provideHover: async function (model, position) {
           if (!currentFile || lspLang !== bridgeLang) return null;
           try {
-            var result = await window.qqq.lsp.hover(
+            var result = await window.qqqide.lsp.hover(
               currentFile, position.lineNumber - 1, position.column - 1
             );
             if (!result || !result.contents) return null;
@@ -254,7 +254,7 @@
       if (window.monaco) { _monacoLoadPromise = null; return resolve(window.monaco); }
 
       // Configure AMD loader paths
-      const baseUrl = isElectron ? 'qqq-asset://monaco/vs' : null;
+      const baseUrl = isElectron ? 'qqqide-asset://monaco/vs' : null;
       if (!baseUrl) { _monacoLoadPromise = null; return reject(new Error('monaco unavailable in browser dev')); }
 
       // Load loader.js
@@ -271,7 +271,7 @@
           // Our custom ts-service.js handles TS/JS IntelliSense independently.
           window.MonacoEnvironment = {
             getWorker: function (workerId, label) {
-              var workerUrl = 'qqq-asset://monaco/vs/base/worker/workerMain.js';
+              var workerUrl = 'qqqide-asset://monaco/vs/base/worker/workerMain.js';
               console.log('[monaco-worker] ' + (label || 'base') + ': ' + workerId + '/' + (label || 'editor'));
               return new Worker(workerUrl);
             },
@@ -305,9 +305,9 @@
   let _themeSyncDone = false;
   function hookThemeSync(monaco) {
     if (_themeSyncDone) return;
-    if (!window.qqqTheme) return;
+    if (!window.qqqideTheme) return;
     _themeSyncDone = true;
-    window.qqqTheme.onChange(function (dark) {
+    window.qqqideTheme.onChange(function (dark) {
       monaco.editor.setTheme(dark ? 'solarized-dark' : 'solarized-light');
     });
   }
@@ -425,12 +425,12 @@
     try {
       const monaco = await loadMonaco();
       // 注册唯一真理配色机器的 Monaco 主题
-      if (window.qqqTheme) { window.qqqTheme.defineMonacoThemes(monaco); }
+      if (window.qqqideTheme) { window.qqqideTheme.defineMonacoThemes(monaco); }
 
       // 配置 Monaco TypeScript 编译选项（会同步到 ts-service）
       configureMonacoTypescript(monaco);
 
-      const theme = (window.qqqTheme && window.qqqTheme.getMonacoTheme()) || 'vs';
+      const theme = (window.qqqideTheme && window.qqqideTheme.getMonacoTheme()) || 'vs';
       const ed = monaco.editor.create(host, {
         value: '',
         language: 'plaintext',
@@ -478,7 +478,7 @@
         lspDebounce = setTimeout(function () {
           lspDebounce = null;
           try {
-            window.qqq.lsp.changeDocument(currentFile, changes, version);
+            window.qqqide.lsp.changeDocument(currentFile, changes, version);
           } catch (ex) {
             console.warn('[editor] LSP changeDocument failed:', ex && ex.message);
           }
@@ -532,7 +532,7 @@
       const text = await bridge.fs.read(file);
       // Close previous LSP document
       if (lspLang && currentFile) {
-        try { window.qqq.lsp.closeDocument(currentFile); } catch (e) { /* ignore */ }
+        try { window.qqqide.lsp.closeDocument(currentFile); } catch (e) { /* ignore */ }
       }
       currentFile = file;
       editor.setValue(text, langOf(file));
@@ -580,7 +580,7 @@
   async function openInPane(host, filePath, content, opts) {
     try {
       const monaco = await loadMonaco();
-      if (window.qqqTheme) { window.qqqTheme.defineMonacoThemes(monaco); }
+      if (window.qqqideTheme) { window.qqqideTheme.defineMonacoThemes(monaco); }
       hookThemeSync(monaco);
       configureMonacoTypescript(monaco);
       const lang = langOf(filePath);
@@ -601,7 +601,7 @@
 
       const ed = monaco.editor.create(host, {
         model: model,
-        theme: (window.qqqTheme && window.qqqTheme.getMonacoTheme()) || 'vs',
+        theme: (window.qqqideTheme && window.qqqideTheme.getMonacoTheme()) || 'vs',
         automaticLayout: true,
         readOnly: (opts && opts.readOnly) || false,
         fontSize: 13,

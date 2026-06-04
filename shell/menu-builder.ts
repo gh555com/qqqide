@@ -1,7 +1,7 @@
 // ============================================================================
 // menu-builder.ts
 // Receives a JSON menu schema from the renderer, builds a native Electron Menu.
-// Click events fire back through IPC channel 'qqq:menu:fired' with cmd id.
+// Click events fire back through IPC channel 'qqqide:menu:fired' with cmd id.
 // ============================================================================
 
 import { Menu, MenuItemConstructorOptions, BrowserWindow } from 'electron';
@@ -11,7 +11,7 @@ export interface MenuSchemaItem {
     role?: string;        // electron role: 'minimize', 'close', 'cut', etc.
     type?: 'normal' | 'separator' | 'submenu' | 'checkbox' | 'radio';
     accel?: string;       // accelerator like 'Ctrl+N'
-    cmd?: string;         // command id, sent back via 'qqq:menu:fired'
+    cmd?: string;         // command id, sent back via 'qqqide:menu:fired'
     enabled?: boolean;
     checked?: boolean;
     sub?: MenuSchemaItem[];
@@ -38,7 +38,7 @@ function toElectronTemplate(items: MenuSchemaItem[], win: BrowserWindow | null):
             const cmd = it.cmd;
             out.click = () => {
                 if (win && !win.isDestroyed()) {
-                    win.webContents.send('qqq:menu:fired', cmd);
+                    win.webContents.send('qqqide:menu:fired', cmd);
                 }
             };
         }

@@ -9,7 +9,7 @@
 (function () {
   'use strict';
 
-  const bridge = window.qqqBridge;
+  const bridge = window.qqqideBridge;
 
   // URL patterns recognized as downloadable video
   const VIDEO_URL_PATTERNS = [

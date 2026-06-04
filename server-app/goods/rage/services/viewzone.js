@@ -6,7 +6,7 @@
 //   - inline token      → ContentWidget (图标框): 16x16 thumbnail + filename
 //
 // Thumbnails via bridge.media.thumb({src, w, h}) → cached by content hash.
-// Local files served through qqq-asset://file/<encoded-abs-path>.
+// Local files served through qqqide-asset://file/<encoded-abs-path>.
 //
 // Multi-editor: each call to attach(ed) creates an isolated controller.
 // ============================================================================
@@ -14,7 +14,7 @@
 (function () {
   'use strict';
 
-  const bridge = window.qqqBridge;
+  const bridge = window.qqqideBridge;
   const PATH_REGEX = /\/\\\s*([\s\S]*?)\s*\\\//g;
   const IMAGE_EXT = new Set(['.png','.jpg','.jpeg','.gif','.bmp','.webp','.svg','.ico','.avif']);
   const VIDEO_EXT = new Set(['.mp4','.mkv','.avi','.mov','.webm','.m4v','.ts','.mpg']);
@@ -30,11 +30,11 @@
   function isMedia(e) { return isImg(e) || isVid(e) || isAud(e); }
 
   function fileToAssetUrl(absPath) {
-    // qqq-asset://file/<encoded-abs-path>
+    // qqqide-asset://file/<encoded-abs-path>
     // Normalize to forward slashes; preserve the drive letter; encode each segment.
     let p = String(absPath).replace(/\\/g, '/');
     // encodeURI keeps '/' but encodes spaces / non-ascii
-    return 'qqq-asset://file/' + encodeURI(p);
+    return 'qqqide-asset://file/' + encodeURI(p);
   }
 
   function resolveAbsPath(rawPath, currentFile) {
