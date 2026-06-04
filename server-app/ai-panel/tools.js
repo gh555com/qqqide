@@ -78,7 +78,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'search_text',
-            description: 'Search for text across workspace files using regex pattern',
+            description: 'Search for text across workspace files using regex pattern. 10x faster and memory-safe vs shell commands. Supports | for OR (e.g. "foo|bar|baz"). Use this instead of run_command for any code search.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -132,7 +132,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'run_command',
-            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default. When you need full output (e.g. large file listings, long logs), pass maxOutput to request up to ' + OUTPUT_CAP_MAX + '. Stall guard: 5min no output = killed. Use cwd to set working directory.',
+            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default. When you need full output (e.g. large file listings, long logs), pass maxOutput to request up to ' + OUTPUT_CAP_MAX + '. Default timeout 5min, max 10min. Stall guard: 5min no output = killed. Use cwd to set working directory. PREFER search_text/find_files for code search — they are 10x faster and memory-safe.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -699,12 +699,13 @@ async function executeRunCommand(args) {
         }
         // Use qz spawn (ghrun → node fallback)
         console.log('[qz] run_command:', JSON.stringify({ cmd: cmd, args: cmdArgs, cwd: args.cwd || '', shell: useShell }));
-        // 无硬截止（timeout=0），仅 stall 守护：5 分钟无输出 = 死锁
+        // A5: default timeout 5min, max 10min — AI can extend via maxOutput hint
+        var effectiveTimeout = args.maxOutput && args.maxOutput > OUTPUT_CAP_DEFAULT ? 600000 : 300000;
         var result = await bridge.qz.spawn({
             cmd: cmd,
             args: cmdArgs,
             cwd: args.cwd || '',
-            timeout: 0,
+            timeout: effectiveTimeout,
             stallMs: 300000,
             shell: useShell
         });

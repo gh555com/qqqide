@@ -39,7 +39,14 @@ CAPABILITIES: read_file, edit_file (whitespace-tolerant search-replace), create_
 
 LIMITATIONS: no LSP (go-to-definition, find-references, diagnostics). No direct vision — images are pre-analyzed, read their descriptions.
 
-TOOL RULES: always edit_file for modifications; create_file only for new files. 2 failed searches → read the file. Each result ≤8000 chars. 8 calls without progress → synthesize what you have.`;
+TOOL RULES: always edit_file for modifications; create_file only for new files. 2 failed searches → read the file. Each result ≤8000 chars. 8 calls without progress → synthesize what you have.
+
+🔴 FILE SEARCH PRIORITY (MANDATORY):
+- search_text → searching code/content by regex (supports | for OR patterns). Memory-safe, 10x faster than shell.
+- find_files → finding files by glob name pattern (*.js, config/*.json).
+- list_files → listing directory contents.
+- run_command → ONLY when the above tools CANNOT do the job. Never use run_command for file content search.
+Violating this rule causes 40GB+ memory explosions and system crashes.`;
 
 // 单通道架构：正则判断是否琐碎/闲聊，决定是否启用工具
 const TRIVIAL_REGEX = /^\s*(hi|hello|hey|ok|好的?|谢谢|嗯|哦|行|对|是的?|no|yes|yeah|thx|thanks|bye|再见|晚安|早|\p{Emoji_Presentation}{1,3})\s*[!！.。~？?]*\s*$/iu;
@@ -47,7 +54,7 @@ const CHAT_REGEX = /^[^\n]{0,30}(爱|喜欢|想你|想我|帅|美|漂亮|可爱|
 
 // ═══ AI 回答 max_tokens — 唯一真理在 ContentGateway.MAX_RESPONSE_TOKENS（content-gateway.js） ═══
 // DeepSeek V4 原生支持 384K 输出，我们不设人为限制。Flash/Pro 一视同仁。
-var _MRT = (typeof ContentGateway !== 'undefined' ? ContentGateway.MAX_RESPONSE_TOKENS : 524288);
+var _MRT = ContentGateway.MAX_RESPONSE_TOKENS; // 唯一真理在 content-gateway.js
 
 // 旧版兼容（保留，用于 agent-loop.js 自动模式 fallback）
 var TIER_FLASH = { model: 'flash', thinking: { type: 'disabled' }, effort: null, label: 'Flash', maxTokens: _MRT };

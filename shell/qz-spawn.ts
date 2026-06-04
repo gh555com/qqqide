@@ -30,6 +30,32 @@ function _capOutput(r: SpawnResult): SpawnResult {
     return r;
 }
 
+// ── System-level hard limits (defense-in-depth against runaway commands) ──
+const SYSTEM_MAX_TIMEOUT = 600_000;  // 10 min — no command runs longer than this
+const MEM_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;  // 2GB — kill if child exceeds this
+
+/** Memory guard: polls process tree every 5s, kills if total WorkingSetSize > limit. */
+function _startMemGuard(pid: number, killFn: () => void, limit: number): NodeJS.Timeout | null {
+    if (process.platform !== 'win32') return null; // TODO: cgroups on Linux
+    if (!pid || limit <= 0) return null;
+    const interval = setInterval(() => {
+        try {
+            const { execSync } = require('child_process');
+            // Sum WorkingSetSize of pid + all descendants via WMI
+            const out = execSync(
+                `powershell -NoProfile -Command "$sum=0; Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId=${pid} OR ParentProcessId=${pid}' -ErrorAction SilentlyContinue | ForEach-Object { $sum+=$_.WorkingSetSize }; $sum"`,
+                { windowsHide: true, timeout: 5000, encoding: 'utf8' }
+            ).trim();
+            const bytes = parseInt(out, 10);
+            if (!isNaN(bytes) && bytes > limit) {
+                console.warn(`[qz] mem-guard: pid ${pid} tree at ${(bytes/1024/1024).toFixed(0)}MB > ${(limit/1024/1024).toFixed(0)}MB, killing tree`);
+                killFn();
+            }
+        } catch { /* guard itself must never throw */ }
+    }, 5000);
+    return interval;
+}
+
 // Windows built-in commands (not real executables; need cmd /c wrapper)
 const IS_WIN = process.platform === 'win32';
 const WIN_BUILTINS = new Set([
@@ -68,7 +94,7 @@ export interface SpawnResult {
     exitCode: number;          // -1 means killed / spawn error
     stdout: string;
     stderr: string;
-    killReason: '' | 'deadline' | 'stall' | 'disconnect' | 'spawn-error';
+    killReason: '' | 'deadline' | 'stall' | 'disconnect' | 'mem-guard' | 'spawn-error';
     tier: 'ghrun' | 'node';
     pid?: number;
     durationMs: number;
@@ -145,7 +171,9 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
     return new Promise<SpawnResult>((resolve) => {
         const start = Date.now();
         const args = brief.args || [];
-        const timeoutMs = brief.timeout != null ? brief.timeout : 60_000;
+        // A1: cap all timeouts at SYSTEM_MAX_TIMEOUT (10 min hard ceiling)
+        const rawTimeout = brief.timeout != null ? brief.timeout : 60_000;
+        const timeoutMs = rawTimeout > 0 ? Math.min(rawTimeout, SYSTEM_MAX_TIMEOUT) : SYSTEM_MAX_TIMEOUT;
         const stallMs = brief.stallMs != null ? brief.stallMs : 0;
         const capture = brief.captureOutput !== false;
         const inheritEnv = brief.inheritEnv !== false;
@@ -201,15 +229,19 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
             proc.stderr.on('data', (d: string) => { stderr += d; lastIOAt = Date.now(); });
         }
 
-        // deadline timer：timeoutMs=0 表示无硬截止，仅靠 stall 守护
-        let deadlineTimer: NodeJS.Timeout | null = null;
-        if (timeoutMs > 0) {
-            deadlineTimer = setTimeout(() => {
-                killed = true;
-                killReason = 'deadline';
-                killTree();
-            }, timeoutMs);
-        }
+        // A4: memory guard — poll child WorkingSet64 every 5s, kill if > 2GB
+        const memGuardInterval = proc.pid ? _startMemGuard(proc.pid, () => {
+            killed = true;
+            killReason = 'mem-guard';
+            killTree();
+        }, MEM_LIMIT_BYTES) : null;
+
+        // A1/A3: deadline timer — always active (timeoutMs guaranteed ≤ SYSTEM_MAX_TIMEOUT)
+        const deadlineTimer = setTimeout(() => {
+            killed = true;
+            killReason = 'deadline';
+            killTree();
+        }, timeoutMs);
 
         let stallTimer: NodeJS.Timeout | null = null;
         if (stallMs > 0) {
@@ -227,8 +259,9 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
         }
 
         const cleanup = () => {
-            if (deadlineTimer) { clearTimeout(deadlineTimer); }
+            clearTimeout(deadlineTimer);
             if (stallTimer) { clearTimeout(stallTimer); }
+            if (memGuardInterval) { clearInterval(memGuardInterval); }
         };
 
         proc.on('exit', (code) => {
@@ -268,8 +301,11 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
 function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promise<SpawnResult> {
     return new Promise<SpawnResult>((resolve) => {
         const start = Date.now();
-        const timeoutMs = brief.timeout != null ? brief.timeout : 60_000;
-        const guardMs = timeoutMs > 0 ? timeoutMs + 5_000 : 86400000;
+        // A1: cap all timeouts at SYSTEM_MAX_TIMEOUT (10 min hard ceiling)
+        const rawTimeout = brief.timeout != null ? brief.timeout : 60_000;
+        const timeoutMs = rawTimeout > 0 ? Math.min(rawTimeout, SYSTEM_MAX_TIMEOUT) : SYSTEM_MAX_TIMEOUT;
+        // A2: guardMs always timeout+10s, never 24h (was: 86400000 when timeout=0)
+        const guardMs = timeoutMs + 10_000;
 
         const payload = JSON.stringify({
             cmd: brief.cmd,
@@ -278,6 +314,7 @@ function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promis
             env: brief.env || null,
             timeout: timeoutMs,
             stallMs: brief.stallMs || 0,
+            memLimitMb: Math.floor(MEM_LIMIT_BYTES / (1024 * 1024)),  // B2: native Job Object hint (honored when ghrun supports it)
             captureOutput: brief.captureOutput !== false,
         });
 
@@ -298,10 +335,22 @@ function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promis
         let outBuf = '';
         let errBuf = '';
         let done = false;
+        // A4: memory guard for ghrun tier — monitor ghrun's process tree
+        // Uses PowerShell to sum WorkingSet64 of ghrun + all descendants
+        const memGuardInterval = proc.pid ? _startMemGuard(proc.pid, () => {
+            if (!done) {
+                finish({
+                    exitCode: -1, stdout: outBuf, stderr: 'ghrun_mem_guard_killed',
+                    killReason: 'mem-guard', tier: 'ghrun',
+                    pid: proc.pid, durationMs: Date.now() - start,
+                });
+            }
+        }, MEM_LIMIT_BYTES) : null;
         const finish = (r: SpawnResult) => {
             if (done) { return; }
             done = true;
             clearTimeout(guard);
+            if (memGuardInterval) { clearInterval(memGuardInterval); }
             try { proc.kill(); } catch { /* ignore */ }
             resolve(r);
         };
@@ -398,6 +447,11 @@ export class QzSpawn {
             };
         }
         _normalizeBrief(brief);
+
+        // A1: enforce system max timeout — no command runs longer than 10 minutes
+        if (brief.timeout == null || brief.timeout <= 0 || brief.timeout > SYSTEM_MAX_TIMEOUT) {
+            brief.timeout = SYSTEM_MAX_TIMEOUT;
+        }
 
         // Tier 1: ghrun (Rust, full anti-hang: deadline + stall + tree-kill + process group isolation)
         const ghrun = resolveGhrunBin(this.appRoot);

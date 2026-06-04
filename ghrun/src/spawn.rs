@@ -24,7 +24,17 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[cfg(windows)]
-use std::os::windows::process::CommandExt;
+use std::os::windows::{process::CommandExt, io::AsRawHandle};
+#[cfg(windows)]
+struct JobHandle(isize);
+#[cfg(windows)]
+impl Drop for JobHandle {
+    fn drop(&mut self) {
+        if self.0 != 0 {
+            unsafe { CloseHandle(self.0); }
+        }
+    }
+}
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
 
@@ -37,6 +47,59 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// This is NOT the AI-facing limit — that lives in tools.js (OUTPUT_DEFAULT / OUTPUT_MAX).
 /// Set generously so it never interferes with the AI-facing cap.
 const MAX_OUTPUT: usize = 65536;
+
+// ── Windows Job Object FFI (B2: per-process memory limit) ──
+#[cfg(windows)]
+extern "system" {
+    fn CreateJobObjectW(
+        lpJobAttributes: *mut std::ffi::c_void,
+        lpName: *const u16,
+    ) -> isize;
+    fn SetInformationJobObject(
+        hJob: isize,
+        JobObjectInfoClass: i32,
+        lpJobObjectInfo: *const std::ffi::c_void,
+        cbJobObjectInfoLength: u32,
+    ) -> i32;
+    fn AssignProcessToJobObject(hJob: isize, hProcess: isize) -> i32;
+    fn CloseHandle(hObject: isize) -> i32;
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct JOBOBJECT_BASIC_LIMIT_INFORMATION {
+    PerProcessUserTimeLimit: i64,
+    PerJobUserTimeLimit: i64,
+    LimitFlags: u32,
+    MinimumWorkingSetSize: usize,
+    MaximumWorkingSetSize: usize,
+    ActiveProcessLimit: u32,
+    Affinity: usize,
+    PriorityClass: u32,
+    SchedulingClass: u32,
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct IO_COUNTERS {
+    ReadOperationCount: u64,
+    WriteOperationCount: u64,
+    OtherOperationCount: u64,
+    ReadTransferCount: u64,
+    WriteTransferCount: u64,
+    OtherTransferCount: u64,
+}
+
+#[cfg(windows)]
+#[repr(C)]
+struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
+    basic_limit_information: JOBOBJECT_BASIC_LIMIT_INFORMATION,
+    io_info: IO_COUNTERS,
+    process_memory_limit: usize,
+    job_memory_limit: usize,
+    peak_process_memory_used: usize,
+    peak_job_memory_used: usize,
+}
 
 #[derive(Deserialize)]
 struct SpawnBrief {
@@ -53,6 +116,8 @@ struct SpawnBrief {
     capture_output: bool,
     #[serde(default, rename = "stallMs")]
     stall_ms: u64,
+    #[serde(default, rename = "memLimitMb")]
+    mem_limit_mb: u64, // 0 = no limit; >0 = assign child to a Windows Job Object with this RSS cap
 }
 
 fn default_true() -> bool {
@@ -172,6 +237,44 @@ pub fn run() -> Result<(), String> {
         }
     };
     let pid = child.id();
+
+    // ── 3.5 Windows Job Object — enforce per-process memory limit (B2) ──
+    #[cfg(windows)]
+    let _job_handle: Option<JobHandle> = if brief.mem_limit_mb > 0 {
+        unsafe {
+            let job_name: Vec<u16> = format!("ghrun_job_{}", pid)
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect();
+            let job = CreateJobObjectW(std::ptr::null_mut(), job_name.as_ptr());
+            if job != 0 {
+                let mem_bytes = (brief.mem_limit_mb as usize) * 1024 * 1024;
+                let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                info.basic_limit_information.LimitFlags = 0x0000_0100; // JOB_OBJECT_LIMIT_PROCESS_MEMORY
+                info.process_memory_limit = mem_bytes;
+                let ret = SetInformationJobObject(
+                    job,
+                    9, // JobObjectExtendedLimitInformation
+                    &info as *const _ as *const std::ffi::c_void,
+                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                );
+                if ret != 0 {
+                    let child_handle = child.raw_handle() as isize;
+                    AssignProcessToJobObject(job, child_handle);
+                    Some(JobHandle(job))
+                } else {
+                    CloseHandle(job);
+                    None
+                }
+            } else {
+                None
+            }
+        }
+    } else {
+        None
+    };
+    #[cfg(not(windows))]
+    let _job_handle: Option<()> = None;
 
     // ── 4. deadline watchdog ──
     let killed = Arc::new(AtomicBool::new(false));
