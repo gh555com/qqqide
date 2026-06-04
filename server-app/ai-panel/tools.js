@@ -94,13 +94,14 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'search_content',
-            description: 'Multi-keyword OR search. Takes an array of literal strings, auto-escapes them, and searches all at once. 10x faster and memory-safe vs shell. Use this when you need to find any of several keywords (e.g. ["qqqideBridge", "QQQIDE_URL", "qqqShell"]).',
+            description: 'Multi-keyword OR search. Takes an array of literal strings, auto-escapes them, and searches all at once. Case-insensitive by default; set case_sensitive=true for exact-case matching. 10x faster and memory-safe vs shell. Use this when you need to find any of several keywords (e.g. ["qqqideBridge", "QQQIDE_URL", "qqqShell"]).',
             parameters: {
                 type: 'object',
                 properties: {
                     keywords: { type: 'array', items: { type: 'string' }, description: 'Array of literal keywords to search for (OR-combined)' },
                     path: { type: 'string', description: 'Directory to search in (optional)' },
-                    max_results: { type: 'number', description: 'Max results to return (default 30)' }
+                    max_results: { type: 'number', description: 'Max results to return (default 30)' },
+                    case_sensitive: { type: 'boolean', description: 'Enable case-sensitive matching (default false = case-insensitive)' }
                 },
                 required: ['keywords']
             }
@@ -154,7 +155,8 @@ var TOOL_DEFINITIONS = [
                 properties: {
                     command: { type: 'string', description: 'Command to execute' },
                     cwd: { type: 'string', description: 'Working directory (optional)' },
-                    maxOutput: { type: 'number', description: 'Override output char limit (default ' + OUTPUT_CAP_DEFAULT + ', max ' + OUTPUT_CAP_MAX + '). Use only when certain you need the full output.' }
+                    maxOutput: { type: 'number', description: 'Override output char limit (default ' + OUTPUT_CAP_DEFAULT + ', max ' + OUTPUT_CAP_MAX + '). Use only when certain you need the full output.' },
+                    reason: { type: 'string', description: 'Optional: briefly explain why dedicated tools (search_text/search_content/find_files) cannot do this job. Used only for audit logging.' }
                 },
                 required: ['command']
             }
@@ -529,10 +531,11 @@ async function executeSearchText(args) {
 
     // ---- fallback: renderer walk (legacy) ----
     var regex;
+    var reFlags = args.case_sensitive ? '' : 'i';
     try {
-        regex = new RegExp(args.query, 'i');
+        regex = new RegExp(args.query, reFlags);
     } catch (_) {
-        regex = new RegExp(args.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+        regex = new RegExp(args.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), reFlags);
     }
 
     var MAX_FILE_SIZE = 2 * 1024 * 1024;
@@ -591,22 +594,23 @@ async function executeSearchContent(args) {
     };
     var pattern = args.keywords.map(escapeRegex).join('|');
     var maxResults = args.max_results || 30;
+    var caseSensitive = args.case_sensitive === true;
 
-    // Route through search_text (main process, efficient)
-    if (bridge.ai && bridge.ai.search_text) {
-        try {
-            return await bridge.ai.search_text({
-                query: pattern,
-                path: args.path || undefined,
-                maxResults: maxResults
-            });
-        } catch (err) {
-            return 'search_content error: ' + (err && err.message || err);
-        }
+    // When case-sensitive, skip IPC (main.ts always adds /i flag) and use renderer fallback
+    if (caseSensitive || !(bridge.ai && bridge.ai.search_text)) {
+        return await executeSearchText({ query: pattern, path: args.path, max_results: maxResults, case_sensitive: caseSensitive });
     }
 
-    // Fallback: use executeSearchText directly
-    return await executeSearchText({ query: pattern, path: args.path, max_results: maxResults });
+    // Fast path: IPC to main process (case-insensitive only)
+    try {
+        return await bridge.ai.search_text({
+            query: pattern,
+            path: args.path || undefined,
+            maxResults: maxResults
+        });
+    } catch (err) {
+        return 'search_content error: ' + (err && err.message || err);
+    }
 }
 
 // ============================================================
@@ -748,7 +752,7 @@ async function executeRunCommand(args) {
             useShell = true;
         }
         // Use qz spawn (ghrun → node fallback)
-        console.log('[qz] run_command:', JSON.stringify({ cmd: cmd, args: cmdArgs, cwd: args.cwd || '', shell: useShell }));
+        console.log('[qz] run_command:', JSON.stringify({ cmd: cmd, args: cmdArgs, cwd: args.cwd || '', shell: useShell, reason: args.reason || '' }));
         // All commands capped at 30min by qz-spawn SYSTEM_MAX_TIMEOUT
         var effectiveTimeout = 1800000;  // 30 min (same as system cap)
         var result = await bridge.qz.spawn({
