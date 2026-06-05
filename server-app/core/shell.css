@@ -686,8 +686,8 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  height: 22px;
-  padding: 0 8px;
+  height: 24px;
+  padding: 1px 8px;
   border-radius: 3px;
   font-size: 11px;
   white-space: nowrap;
@@ -725,6 +725,7 @@ body {
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-size: 12px;
 }
 
 .aiv-block-plus {

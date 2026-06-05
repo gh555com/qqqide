@@ -906,6 +906,27 @@
           ths[hi].style.background = 'var(--card-bg,#1e1e1e)';
         }
 
+        // 代码块：去除边框，匹配 AI 面板 renderMarkdown 样式（无豆腐块横线）
+        var pres = wrapper.querySelectorAll('pre');
+        for (var pi = 0; pi < pres.length; pi++) {
+          var p = pres[pi];
+          p.style.border = 'none';
+          p.style.margin = '0';
+          p.style.borderRadius = '0';
+          p.style.background = 'transparent';
+          p.style.whiteSpace = 'pre-wrap';
+          p.style.wordBreak = 'break-all';
+          p.style.overflowX = 'hidden';
+        }
+        var codes = wrapper.querySelectorAll('code');
+        for (var ci2 = 0; ci2 < codes.length; ci2++) {
+          var cd = codes[ci2];
+          cd.style.border = 'none';
+          cd.style.background = 'none';
+          cd.style.padding = '0';
+          cd.style.color = 'inherit';
+        }
+
         clipBox.appendChild(wrapper);
         contentEl.appendChild(clipBox);
 
@@ -946,9 +967,9 @@
         // 获取自然尺寸（不受 max 约束的原始大小）
         var natW = wrapper.scrollWidth, natH = wrapper.scrollHeight;
         var viewW = window.innerWidth * 0.9, viewH = window.innerHeight - 200;
-        // 初始缩放：只缩小以适配，不自动放大（保持原始比例）
+        // 初始缩放：自动适配后放大2级（等助于点两次 + 按钮），便于预览
         _initZoom = Math.min(1, viewW / Math.max(1, natW), viewH / Math.max(1, natH));
-        zoomScale = _initZoom;
+        zoomScale = Math.min(5.0, _initZoom * 1.5625);
         applyZoom();
 
         // 恢复可见性

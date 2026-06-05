@@ -50,15 +50,19 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-drop{position:absolute;top:100%;left:0;width:100%;z-index:9999;max-height:400px;overflow-y:auto;background:var(--card-bg);border:none;border-radius:0;box-shadow:0 4px 12px rgba(0,0,0,0.22);display:none}
 .quest-drop.show{display:block}
 /* 下拉首行：1/3 + 加号 | 2/3 搜索框 */
-.quest-drop-head{display:flex;align-items:stretch;border-bottom:1px solid var(--border-color);position:sticky;top:0;background:var(--card-bg);z-index:1}
+.quest-drop-head{display:flex;align-items:stretch;border-bottom:1px solid var(--border-color);position:sticky;top:0;background:var(--card-bg);z-index:2}
 .quest-drop-add{flex:0 0 33.333%;display:flex;align-items:center;justify-content:center;padding:8px 0;font-size:24px;font-weight:700;color:var(--primary-color);cursor:default;border-right:1px solid var(--border-color);user-select:none}
 .quest-drop-add:hover{background:var(--background-color)}
 .quest-drop-search{flex:1;padding:8px 12px;border:none;background:var(--card-bg);color:var(--text-primary);font-size:18px;outline:none}
 .quest-drop-search::placeholder{color:var(--base01);opacity:.6}
 /* 下拉条目 */
-.quest-drop-item{padding:8px 12px;font-size:18px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:default}
+.quest-drop-item{padding:6px 12px;font-size:16px;color:var(--text-primary);white-space:normal;overflow:hidden;text-overflow:ellipsis;cursor:default;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.3;max-height:calc(1.3em * 2 + 12px)}
 .quest-drop-item:hover{background:var(--background-color)}
 .quest-drop-item.active{font-weight:700;color:var(--primary-color)}
+/* 下拉列表体：独立滚动，头部粘滞 */
+.quest-drop-body{max-height:calc(100vh - 280px);overflow-y:auto;scrollbar-width:thin}
+.quest-drop-body::-webkit-scrollbar{width:4px}
+.quest-drop-body::-webkit-scrollbar-thumb{background:var(--base01);border-radius:2px}
 /* q3 floor 导航行已删除（card-pool 架构）*/
 #messages{overflow-y:auto;overflow-x:hidden;padding:12px;scrollbar-width:thin;min-height:0;position:relative}
 #messages::-webkit-scrollbar{width:5px}
@@ -80,7 +84,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-ai th{background:var(--card-bg);font-weight:600}
 .msg-ai tr:nth-child(even){background:var(--background-color)}
 .msg-ai pre{background:var(--card-bg);color:var(--text-primary);padding:8px 10px;border-radius:4px;overflow-x:hidden;margin:6px 0;white-space:pre-wrap;word-break:break-all;border:1px solid var(--border-color)}
-.msg-ai pre code{background:none;padding:0;color:inherit}
+.msg-ai pre code{background:none;padding:0;color:inherit;border:none}
 .msg-ai blockquote{border-left:3px solid var(--border-color);padding-left:10px;margin:4px 0;opacity:.85}
 .msg-ai hr{border:none;border-top:1px solid var(--border-color);margin:8px 0}
 .msg-ai a{color:var(--blue);text-decoration:none}
@@ -922,6 +926,15 @@ $input.addEventListener('paste', function(e) {
   }
 }, true);
 
+// copy 拦截：复制时用 getInputText() 替代 DOM textContent，chip 路径不丢失
+$input.addEventListener('copy', function(e) {
+  var plain = getInputText();
+  if (plain) {
+    e.clipboardData.setData('text/plain', plain);
+    e.preventDefault();
+  }
+});
+
 // ── 递归复制 alphal 目录（copy+delete 代替 rename，避免文件锁）──
 async function _copyAlphalDir(srcDir, dstDir) {
   var entries = await window.parent.qqqideBridge.fs.list(srcDir);
@@ -997,14 +1010,70 @@ $input.addEventListener('keydown', function(e) {
 });
 // ══ 字符级 Undo/Redo（从 q3/ai 移植，适配 contenteditable）══
 (function initCharUndo(input) {
-  var state = { history: [input.innerHTML || ''], index: 0, isProgrammatic: false };
+  // 扁平 childNodes 遍历（编辑框只有 text + chip span，无需 TreeWalker）
+  function _walkTextNodes(el, fn) {
+    for (var i = 0; i < el.childNodes.length; i++) {
+      var c = el.childNodes[i];
+      if (c.nodeType === 3) { if (fn(c) === true) return; }
+      else if (c.nodeType === 1) {
+        for (var j = 0; j < c.childNodes.length; j++) {
+          var cc = c.childNodes[j];
+          if (cc.nodeType === 3 && fn(cc) === true) return;
+        }
+      }
+    }
+  }
+  function _cursorOffset(el) {
+    var sel = window.getSelection();
+    if (sel.rangeCount === 0) return 0;
+    var r = sel.getRangeAt(0);
+    if (!el.contains(r.startContainer)) return 0;
+    var off = 0, found = false;
+    _walkTextNodes(el, function(n) {
+      if (n === r.startContainer) { off += r.startOffset; found = true; return true; }
+      off += n.textContent.length;
+    });
+    return found ? off : 0;
+  }
+  function _setCursor(el, targetOff) {
+    var cur = 0, done = false;
+    _walkTextNodes(el, function(n) {
+      var len = n.textContent.length;
+      if (cur + len >= targetOff) {
+        var r = document.createRange();
+        r.setStart(n, targetOff - cur);
+        r.collapse(true);
+        var s = window.getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+        done = true;
+        return true;
+      }
+      cur += len;
+    });
+    if (!done) {
+      var r = document.createRange();
+      r.selectNodeContents(el);
+      r.collapse(false);
+      var s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+    }
+  }
+  var _initialHtml = input.innerHTML || '';
+  var state = { history: [{ html: _initialHtml, off: 0 }], index: 0, isProgrammatic: false };
   input.addEventListener('input', function() {
     var isProg = state.isProgrammatic;
     if (isProg) { state.isProgrammatic = false; }
     var v = input.innerHTML;
     if (!isProg) {
       if (state.index < state.history.length - 1) state.history = state.history.slice(0, state.index + 1);
-      if (v !== state.history[state.history.length - 1]) { state.history.push(v); state.index = state.history.length - 1; }
+      var last = state.history[state.history.length - 1];
+      if (v !== last.html) {
+        var off = _cursorOffset(input);
+        state.history.push({ html: v, off: off });
+        state.index = state.history.length - 1;
+      }
     }
     // 用已缓存的 v 判断而非再调 getInputText() 遍历 DOM
     updateQueueBtn();
@@ -1015,14 +1084,9 @@ $input.addEventListener('keydown', function(e) {
       if (state.index > 0) {
         state.index--;
         state.isProgrammatic = true;
-        input.innerHTML = state.history[state.index];
-        // Restore cursor to end
-        var range = document.createRange();
-        range.selectNodeContents(input);
-        range.collapse(false);
-        var sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
+        var entry = state.history[state.index];
+        input.innerHTML = entry.html;
+        _setCursor(input, entry.off);
         input.dispatchEvent(new Event('input', { bubbles: true }));
       }
       return;
@@ -1032,13 +1096,9 @@ $input.addEventListener('keydown', function(e) {
       if (state.index < state.history.length - 1) {
         state.index++;
         state.isProgrammatic = true;
-        input.innerHTML = state.history[state.index];
-        var range = document.createRange();
-        range.selectNodeContents(input);
-        range.collapse(false);
-        var sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
+        var entry = state.history[state.index];
+        input.innerHTML = entry.html;
+        _setCursor(input, entry.off);
         input.dispatchEvent(new Event('input', { bubbles: true }));
       }
       return;
@@ -1046,7 +1106,7 @@ $input.addEventListener('keydown', function(e) {
   });
   // 外部可调用：消息发出后截断历史，防止回退到已发送内容
   input._resetUndo = function() {
-    state.history = [input.innerHTML || ''];
+    state.history = [{ html: input.innerHTML || '', off: 0 }];
     state.index = 0;
   };
 })($input);
@@ -2191,7 +2251,7 @@ async function _appendToSearchQuest(questId, floorNum) {
     }
 
     // 标记行，用于去重检测
-    var marker = '════ floor ' + floorNum + ' ════';
+    var marker = '═════ Floor ' + floorNum + ' ═════';
 
     // 读已有内容（若存在），检查是否已写过本层楼
     var existing = '';
@@ -2212,8 +2272,8 @@ async function _appendToSearchQuest(questId, floorNum) {
     var lines = [];
     if (existing) lines.push('');  // 与上一楼层间隔一行
     lines.push(marker + '   ' + ts(floorTs));
-    lines.push('Q: ' + (floorData.question || ''));
-    lines.push('A: ' + (answer || '(no answer)'));
+    lines.push('■ Q: ' + (floorData.question || ''));
+    lines.push('■ A: ' + (answer || '(no answer)'));
     
     // ═══ az 区文本化（每层楼私有 A1 + 时钟数据） ═══
     var _azLines = _buildAzText(floorNum, floorData, questMeta);
@@ -2682,6 +2742,7 @@ $guideBtn.onclick = function() {
     var statusEl = document.createElement('div');
     statusEl.className = 'msg msg-status';
     statusEl.style.color = 'var(--blue)';
+    statusEl.className = 'msg msg-status guide-status';
     statusEl.textContent = '⚡ 引导已发送 · AI 将立即回复确认...';
     $messages.appendChild(statusEl);
     scrollToBottom(true);
@@ -2691,10 +2752,11 @@ $guideBtn.onclick = function() {
     // ═══ AI 没在工作 → 降级为普通 inject（等下次 Send 时 AI 看到） ═══
     agent.inject('[GUIDE] ' + text);
     var statusEl2 = document.createElement('div');
-    statusEl2.className = 'msg msg-status';
+    statusEl2.className = 'msg msg-status guide-status';
     statusEl2.textContent = '📌 引导已注入 · AI 下次回复可见';
     $messages.appendChild(statusEl2);
     scrollToBottom(true);
+    // 下次 AI 回复后自动清除（sendMessage 入口处移除所有 guide-status）
   }
   saveQuestData().catch(function(){});
   updateQueueBtn();
@@ -3122,18 +3184,29 @@ function stopFloorTimer(timing) {
 var _questDrop = null;
 var _questDropTimer = null;
 var _questSearchText = '';
+var _questDropLimit = 20;  // 下拉列表默认显示条数（滚动可扩展到 40→60）
 function closeQuestDrop() {
   if (_questDrop) { _questDrop.remove(); _questDrop = null; }
   _questSearchText = '';
+  _questDropLimit = 20;  // 重置限制
 }
-// 智能匹配：空格=AND，宽松子串匹配
+// 智能匹配：空格=AND，单 token=字符级模糊子序列
 function _matchQuest(query, title) {
   if (!query) return true;
   var tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return true;
   var lower = title.toLowerCase();
   for (var i = 0; i < tokens.length; i++) {
-    if (lower.indexOf(tokens[i]) === -1) return false;
+    var t = tokens[i];
+    // 字符级子序列匹配：t 的每个字符必须按顺序出现在 lower 中
+    var pos = 0;
+    var matched = true;
+    for (var ci = 0; ci < t.length; ci++) {
+      pos = lower.indexOf(t[ci], pos);
+      if (pos === -1) { matched = false; break; }
+      pos++;
+    }
+    if (!matched) return false;
   }
   return true;
 }
@@ -3148,12 +3221,13 @@ async function renderQuestDrop() {
         return _matchQuest(query, displayName);
       })
     : allQuests;
+  var displayCount = Math.min(filtered.length, _questDropLimit);
   // 重建列表体（保留头部搜索行）
   var oldBody = _questDrop.querySelector('.quest-drop-body');
   if (oldBody) oldBody.remove();
   var body = document.createElement('div');
   body.className = 'quest-drop-body';
-  for (var i = 0; i < filtered.length; i++) {
+  for (var i = 0; i < displayCount; i++) {
     (function(s) {
       var item = document.createElement('div');
       item.className = 'quest-drop-item' + (s.id === questActiveId ? ' active' : '');
@@ -3162,6 +3236,13 @@ async function renderQuestDrop() {
       body.appendChild(item);
     })(filtered[i]);
   }
+  if (displayCount < filtered.length) {
+    var more = document.createElement('div');
+    more.className = 'quest-drop-item';
+    more.style.cssText = 'color:var(--base01);font-style:italic;text-align:center;pointer-events:none';
+    more.textContent = '… 还有 ' + (filtered.length - displayCount) + ' 条 …';
+    body.appendChild(more);
+  }
   if (filtered.length === 0) {
     var empty = document.createElement('div');
     empty.className = 'quest-drop-item';
@@ -3169,10 +3250,29 @@ async function renderQuestDrop() {
     empty.textContent = query ? '(无匹配)' : '(空)';
     body.appendChild(empty);
   }
+  // 滚动扩展：有滚动条 → 滚到底触发；无滚动条 → 任意滚动触发
+  var _hasScrollbar = body.scrollHeight > body.clientHeight + 2;
+  body.addEventListener('wheel', function(e) {
+    if (_questDropLimit >= 60) return;  // 已达极限
+    if (_hasScrollbar) {
+      // 有滚动条：必须滚到底才扩容
+      if (body.scrollTop + body.clientHeight >= body.scrollHeight - 4) {
+        if (_questDropLimit < 40) _questDropLimit = 40;
+        else _questDropLimit = 60;
+        renderQuestDrop();
+      }
+    } else {
+      // 无滚动条：任意滚轮方向立即扩容
+      if (_questDropLimit < 40) _questDropLimit = 40;
+      else _questDropLimit = 60;
+      renderQuestDrop();
+    }
+  });
   _questDrop.appendChild(body);
 }
 async function openQuestDrop() {
   closeQuestDrop();
+  _questDropLimit = 20;  // 每次打开重置限制
   var tofu = document.getElementById('quest-tofu');
   if (!tofu) return;
   var bar = document.getElementById('quest-bar');
@@ -4176,6 +4276,9 @@ async function sendMessage() {
   if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
   _checkTokenReset();  // 检测用户切换 → 清零窗口消耗
   _sending = true;
+  // 清除引导状态提示（已过期）
+  var _guideStatuses = document.querySelectorAll('.guide-status');
+  for (var _gsi = 0; _gsi < _guideStatuses.length; _gsi++) { _guideStatuses[_gsi].remove(); }
   // ═══ 所有权守卫：实时检查 + 只读标志 ═══
   if (questActiveId) {
     try {

@@ -38,7 +38,7 @@
       _closeTimer = null;
       closeDropdown();
       if (_activeBlockEl) { _activeBlockEl.classList.remove('aiv-block-active'); _activeBlockEl = null; }
-    }, 2000);
+    }, 500);
   }
   function cancelClose() {
     if (_closeTimer) { clearTimeout(_closeTimer); _closeTimer = null; }
@@ -347,7 +347,7 @@ function attachToAi(filePath) {
       row.className = 'aiv-dd-row';
       row.style.cssText =
         'display:flex; align-items:center; padding:3px 10px; cursor:pointer; ' +
-        'font-size:12px; color:var(--text-primary); white-space:nowrap; position:relative;';
+        'font-size:14px; color:var(--text-primary); white-space:nowrap; position:relative;';
       const icon = document.createElement('span');
       icon.textContent = fileIconFor(ent.name, ent.isDir);
       icon.style.cssText = 'margin-right:6px; font-size:11px;';
@@ -556,7 +556,7 @@ function attachToAi(filePath) {
       _recentFolders.forEach(function (f) {
         var row = document.createElement('div');
         row.className = 'aiv-row aiv-recent-row';
-        row.style.cssText = 'padding:7px 12px; cursor:default; font-size:12px; display:flex; align-items:center; gap:6px;';
+        row.style.cssText = 'padding:7px 12px; cursor:default; font-size:14px; display:flex; align-items:center; gap:6px;';
 
         var icon = document.createElement('span');
         icon.textContent = '📁';
