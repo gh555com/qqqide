@@ -21,6 +21,9 @@
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{forced-color-adjust:none!important;width:100%}
+/* ── 选中高亮：固定 #ffd302（金），暗主题同色 ── */
+::selection{background:#ffd302;color:#000}
+[data-theme="dark"] ::selection{background:#ffd302;color:#000}
 body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text-primary);background:var(--background-color);width:100%;height:100vh;display:grid;grid-template-columns:100%;grid-template-rows:auto auto 1fr auto;overflow:hidden}
 #top-bar{padding:4px 8px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:5px;font-size:11px;flex-wrap:nowrap;overflow-x:hidden}
 #top-bar .label{opacity:.7}
@@ -173,6 +176,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .queue-card .qcard-actions{display:flex;gap:4px;justify-content:flex-end}
 .queue-card .qcard-actions button{padding:2px 10px;font-size:11px;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);color:var(--text-primary);cursor:pointer}
 .queue-card .qcard-actions button:hover{background:var(--base3)}
+.queue-card .qcard-badges{display:inline-flex;gap:3px;margin-left:6px;vertical-align:middle;font-size:10px}
+.queue-card .qcard-badge{display:inline-flex;align-items:center;gap:1px;background:var(--base2);border:1px solid var(--border-color);border-radius:2px;padding:0px 4px;white-space:nowrap;flex-shrink:0}
 .queue-footer{font-size:10px;color:var(--base01);padding:2px 4px 0;font-style:italic;user-select:none}
 /* 上下文压缩面板 */
 #ctx-panel{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center}
@@ -191,7 +196,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-long::-webkit-scrollbar{width:6px}
 .msg-long::-webkit-scrollbar-thumb{background:var(--base01);border-radius:3px}
 /* ── 滚动条标记叠层 + 刻度数字 ── */
-#scroll-mark-layer{position:absolute;right:0;top:12px;bottom:12px;width:5px;pointer-events:none;z-index:20}
+#scroll-mark-layer{position:absolute;right:0;top:12px;bottom:12px;width:5px;pointer-events:auto;z-index:22}
 #scroll-mark-layer .sml-mark{position:absolute;left:0;right:0;height:2px;border-radius:1px;opacity:0.9}
 #scroll-mark-top,#scroll-mark-bottom{position:absolute;right:2px;font-family:ui-monospace,monospace;font-size:9px;color:#000;text-align:center;z-index:22;pointer-events:none;line-height:1;width:5px}
 [data-theme="dark"] #scroll-mark-top,[data-theme="dark"] #scroll-mark-bottom{color:#fff}
@@ -204,10 +209,13 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #search-bar .search-nav{font-size:11px;color:var(--base01);white-space:nowrap}
 #search-bar button{padding:2px 8px;font-size:11px;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);color:var(--text-primary);cursor:pointer}
 #search-bar button:hover{background:var(--base3)}
-.search-mark{background:#ffeb3b;color:#000;border-radius:2px;padding:0 1px}
-.search-mark-active{background:#ff9800;color:#fff}
+.search-mark{background:#ff6b00;color:#fff;border-radius:2px;padding:0 1px}
+.search-mark-active{background:#ffd302;color:#000}
+[data-theme="dark"] .search-mark{background:#ff9e40;color:#000}
+[data-theme="dark"] .search-mark-active{background:#ffd302;color:#000}
 /* ── 选中同词高亮（VS Code 风格）── */
-.sel-match{background:rgba(255,152,0,0.25);border-radius:2px;padding:0 1px}
+.sel-match{background:rgba(255,107,0,0.4);border-radius:2px;padding:0 1px;outline:1px solid rgba(255,107,0,0.6)}
+[data-theme="dark"] .sel-match{background:rgba(255,158,64,0.4);outline:1px solid rgba(255,158,64,0.6)}
 /* pie hover tooltip */
 #clock-tooltip{display:none;position:fixed;z-index:99999;pointer-events:none;padding:8px 16px;background:rgba(0,0,0,0.85);color:#fff;font-size:22px;font-family:ui-monospace,monospace;border-radius:8px;white-space:nowrap;flex-direction:row;align-items:center}
 /* 引导确认消息样式 */
@@ -306,8 +314,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 </div>
 <!-- q3 floor 导航行已删除（card-pool 架构不需要翻页）-->
 <div id="messages-wrap">
-<div id="messages">
 <div id="scroll-mark-layer"></div>
+<div id="messages">
 <div id="search-bar">
   <input id="search-input" type="text" placeholder="搜索对话... (↑↓ 跳转 · Esc 关闭)">
   <span class="search-nav" id="search-nav"></span>
@@ -408,8 +416,6 @@ var _windowId = (function() {
 var _syncUnsub = null;
 var _projectPathUnsub = null;
 var _standaloneRoot = null;
-var _readonlyQuest = false;
-var _readonlyOwner = null;
 function _broadcast(type, questId, extra) {
   var sb = _getSyncBridge();
   if (!sb) return;
@@ -527,17 +533,6 @@ const $guideBtn = document.getElementById('guide-btn');
 const $queueBtn = document.getElementById('queue-btn');
 const $ctxBtn = document.getElementById('ctx-btn');
 const $queueStrip = document.getElementById('queue-strip');
-var _readonlyBannerEl = (function() {
-  var el = document.createElement('div');
-  el.style.cssText = 'display:none; padding:6px 12px; background:#fbbf24; color:#000; font-size:12px; font-weight:600; text-align:center;';
-  el.textContent = '此 quest 正运行在另一窗口 — 只读';
-  var inputParent = document.getElementById('input');
-  if (inputParent && inputParent.parentElement) {
-    inputParent.parentElement.insertBefore(el, inputParent);
-  }
-  return el;
-})();
-window._readonlyBannerEl = _readonlyBannerEl;
 
 // 引导按钮 tooltip（i18n 支持，语言切换时同步更新）
 (function() {
@@ -833,25 +828,28 @@ window._readonlyBannerEl = _readonlyBannerEl;
     }
   }
 
-  // 双击 → 选中整个词 → 高亮
-  document.addEventListener('dblclick', function (e) {
-    var sel = window.getSelection();
-    var text = (sel && sel.toString() || '').trim();
-    if (text && text.length >= 2 && !text.match(/\s/)) {
-      setTimeout(function () { _highlightSelection(text); }, 50);
-    }
+  // 选中文本（拖选/shift+click）→ 全卡片同词高亮
+  document.addEventListener('mouseup', function (e) {
+    // 点击已有高亮标记时不触发
+    if (e.target.closest('.sel-match') || e.target.closest('.search-mark')) return;
+    setTimeout(function () {
+      var sel = window.getSelection();
+      var text = (sel && sel.toString() || '').trim();
+      if (text && text.length >= 2 && text !== _selText) {
+        _highlightSelection(text);
+      }
+    }, 100);
   });
 
-  // 单击空白处 → 清除
+  // 单击空白处 → 清除（仅当没有选中文本时）
   document.addEventListener('mousedown', function (e) {
     if (_selMarks.length === 0) return;
-    // 延迟检查：如果点击后选中文本变了，说明用户在选新词
     setTimeout(function () {
       var sel = window.getSelection();
       var newText = (sel && sel.toString() || '').trim();
-      if (newText && newText !== _selText) return;  // 用户选了新词，不清理
-      if (!newText) _clearSelMarks();  // 点空白处 → 清理
-    }, 100);
+      if (!newText || newText === _selText) return;  // 同词或没选 → 保留
+      _clearSelMarks();  // 选了别的东西 → 清理旧高亮
+    }, 150);
   });
 
   // Escape 清除
@@ -940,12 +938,19 @@ $input.addEventListener('paste', function(e) {
   }
 }, true);
 
-// copy 拦截：复制时用 getInputText() 替代 DOM textContent，chip 路径不丢失
+// copy 拦截：全选时用 getInputText() 替代 DOM textContent，chip 路径不丢失；
+// 部分选中时不干预，走浏览器原生复制。
 $input.addEventListener('copy', function(e) {
-  var plain = getInputText();
-  if (plain) {
-    e.clipboardData.setData('text/plain', plain);
-    e.preventDefault();
+  var sel = window.getSelection();
+  var selText = sel && sel.toString() ? sel.toString() : '';
+  var fullPlain = getInputPlainText();
+  // 仅当「全选」（选中文本 ≈ 全文）或「无选中」时，才用带路径版本覆盖
+  if (!selText || selText.replace(/\s/g, '') === fullPlain.replace(/\s/g, '')) {
+    var plain = getInputText();
+    if (plain) {
+      e.clipboardData.setData('text/plain', plain);
+      e.preventDefault();
+    }
   }
 });
 
@@ -1464,29 +1469,6 @@ function setStreaming(val) {
   updateQueueBtn();
 }
 
-// ═══ 只读模式 UI：旁观窗口输入框灰掉 ═══
-function setInputReadonly(readonly, ownerWindowId) {
-  _readonlyQuest = readonly;
-  _readonlyOwner = ownerWindowId || null;
-  if (readonly) {
-    $input.contentEditable = 'false';
-    $input.style.opacity = '0.5';
-    var placeText = 'Quest 正运行在 窗口 ' + (ownerWindowId || '?') + ' — 只读';
-    $input.setAttribute('data-placeholder', placeText);
-    $sendBtn.disabled = true;
-    $sendBtn.textContent = '只读';
-    $sendBtn.className = 'readonly';
-    if (window._readonlyBannerEl) window._readonlyBannerEl.style.display = 'block';
-  } else {
-    $input.contentEditable = 'true';
-    $input.style.opacity = '';
-    $input.setAttribute('data-placeholder', 'Type your message...');
-    $sendBtn.disabled = false;
-    setStreaming(streaming);
-    if (window._readonlyBannerEl) window._readonlyBannerEl.style.display = 'none';
-  }
-}
-
 // ═══ 跨窗口同步消息处理 ═══
 async function _handleSyncMessage(msg) {
   if (!msg || msg.windowId === _windowId) return;
@@ -1516,23 +1498,19 @@ async function _handleSyncMessage(msg) {
           agent._ctx.totalFloors = Math.max(agent._ctx.totalFloors, msg.floorNum);
         }
         if (msg.questId === questActiveId) {
-          if (_readonlyQuest) {
-            // 只读僚机：刷新 Card（从 SQLite 重载数据）
-            await cardPool.refreshCard(msg.questId);
-          }
           updateCostDisplay();
           updateCtxBtn();
         }
         break;
       case 'owner-claimed':
+        // 另一面板抢走了我们正在看的 quest → 自动卸载，跳回空白
         if (msg.questId === questActiveId && msg.windowId !== _windowId) {
-          setInputReadonly(true, msg.windowId);
+          console.log('[quests] quest ' + msg.questId + ' claimed by ' + msg.windowId + ', unloading locally');
+          _unloadQuest();
         }
         break;
       case 'owner-released':
-        if (msg.questId === questActiveId) {
-          setInputReadonly(false);
-        }
+        // 另一面板释放了 quest — 不做任何事（我们不自动加载）
         break;
     }
   } catch (e) {
@@ -1911,11 +1889,26 @@ async function initQuests() {
     // ★ 恢复 agent 全量状态（conversation + metadata）
     await _restoreAgentFromStore(questActiveId, _activeAgent);
     restoreQuestUIState(questActiveId);
+    renderQueueStrip();
+    // ★ 声明所有权（防止其他面板加载同一 quest）
+    try {
+      var _initClaim = await questStore.claimOwner(questActiveId, _windowId);
+      if (_initClaim.claimed) {
+        _broadcast('owner-claimed', questActiveId);
+      } else if (_initClaim.currentOwner && _initClaim.currentOwner !== _windowId) {
+        // 已被其他面板持有 → 卸载，跳转焦点
+        console.log('[quests] init: quest ' + questActiveId + ' already owned by ' + _initClaim.currentOwner + ', unloading');
+        _broadcast('focus-request', questActiveId, { targetWindow: _initClaim.currentOwner });
+        _unloadQuest();
+      }
+    } catch(_) {}
     updateCostDisplay();
     updateCtxBtn();
   } else {
     // 无活跃 quest：清零上下文显示，避免残留硬编码值或旧 quest 数据
     _activeAgent = null;
+    _queueFallback = [];
+    renderQueueStrip();
     updateCostDisplay();
     updateCtxBtn();
   }
@@ -2388,11 +2381,8 @@ async function switchQuest(id) {
         return;
       }
     }
-    _readonlyQuest = false;
-    _readonlyOwner = null;
-    setInputReadonly(false);
 
-    // ═══ 保存旧 quest UI 状态（不 abort 后台流！） ═══
+    // ═══ 保存旧 quest UI 状态 + 释放所有权 ═══
     if (questActiveId) {
       // 停止当前楼层计时器
       if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
@@ -2403,6 +2393,9 @@ async function switchQuest(id) {
         await _saveAgentQuestData(questActiveId, _activeAgent, _activeAgent._floorStartIdx);
       }
       _activeAiDiv = null;
+      // 释放旧 quest 所有权（让其他面板可以打开）
+      try { await questStore.releaseOwner(questActiveId, _windowId); } catch(_) {}
+      _broadcast('owner-released', questActiveId);
     }
 
     // ═══ Card Pool 切换（纯 CSS 显隐，零 DOM 销毁） ═══
@@ -2445,6 +2438,7 @@ async function switchQuest(id) {
     _allTxtPath = _activeAgent._allTxtPath || '';
 
     restoreQuestUIState(id);
+    renderQueueStrip();
     updateCostDisplay();
     updateCtxBtn();
     await renderTabs();
@@ -2522,12 +2516,16 @@ async function createNewQuest() {
   if (questActiveId) {
     cardPool.removeCard(questActiveId);
   }
-  // 退出只读模式
-  _readonlyQuest = false;
-  _readonlyOwner = null;
-  setInputReadonly(false);
+  _unloadQuest();
+}
+
+// 卸载当前 quest（清空 UI，不释放所有权——由调用方决定）
+function _unloadQuest() {
+  // 停止楼层计时器
+  if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
+  _activeAiDiv = null;
   questActiveId = '';
-  _queue = [];
+  _queueFallback = [];
   renderQueueStrip();
   pendingImages = [];
   selectedTier = 6;
@@ -2806,6 +2804,11 @@ function _triggerQueueSend() {
   var _remaining = _q.length;
   renderQueueStrip();
   _debounceSaveQueue();
+  // 恢复该排队项的截图数据（防止串号：不同排队项各自持有自己的截图）
+  pendingImages = (next.pendingImages && next.pendingImages.length > 0)
+    ? next.pendingImages.map(function(img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl }; })
+    : [];
+  renderImageStrip();
   // 恢复富文本（保留 file chips 等 HTML 结构）
   $input.innerHTML = next.html || next.text;
   // 队列状态提示（发送完成后由 _continueQueue 移除）
@@ -2872,12 +2875,40 @@ function renderQueueStrip() {
       var card = document.createElement('div');
       card.className = 'queue-card';
       var preview = q.text.slice(0, 80) + (q.text.length > 80 ? '...' : '');
-      card.textContent = (idx + 1) + '. ' + preview;
+      // 构建附件徽章
+      var badgesHtml = '';
+      var imgCount = (q.pendingImages && q.pendingImages.length) || 0;
+      var fileCount = 0;
+      // 从 html 中统计 file-chip 数量
+      if (q.html) {
+        var tmpDiv = document.createElement('div');
+        tmpDiv.innerHTML = q.html;
+        fileCount = tmpDiv.querySelectorAll('.file-chip').length;
+        tmpDiv = null;
+      }
+      if (imgCount > 0) badgesHtml += '<span class="qcard-badge">📷' + imgCount + '</span>';
+      if (fileCount > 0) badgesHtml += '<span class="qcard-badge">📎' + fileCount + '</span>';
+      card.innerHTML = '<span>' + (idx + 1) + '. ' + escHtml(preview) + '</span>' + (badgesHtml ? '<span class="qcard-badges">' + badgesHtml + '</span>' : '');
       card.title = '点击编辑或删除';
       card.onclick = function() {
         if (card.classList.contains('queue-card-expanded')) return;
         card.classList.add('queue-card-expanded');
-        card.innerHTML = '';
+        // 保留附件徽章（只清空内容区，在 textarea 上方显示附件摘要）
+        var attachmentInfo = '';
+        var _imgCount = (q.pendingImages && q.pendingImages.length) || 0;
+        var _fileCount = 0;
+        if (q.html) {
+          var tmpDiv2 = document.createElement('div');
+          tmpDiv2.innerHTML = q.html;
+          _fileCount = tmpDiv2.querySelectorAll('.file-chip').length;
+          tmpDiv2 = null;
+        }
+        if (_imgCount > 0 || _fileCount > 0) {
+          attachmentInfo = '<div style="font-size:10px;color:var(--base01);margin-bottom:4px">📎 附件：' +
+            (_imgCount > 0 ? ' 📷×' + _imgCount : '') +
+            (_fileCount > 0 ? ' 📄×' + _fileCount : '') + '</div>';
+        }
+        card.innerHTML = attachmentInfo;
         var ta = document.createElement('textarea');
         ta.value = q.text;
         card.appendChild(ta);
@@ -2889,7 +2920,7 @@ function renderQueueStrip() {
         modBtn.onclick = function(e) {
           e.stopPropagation();
           q.text = ta.value;
-          q.html = ta.value; // 纯文本编辑，html 同步
+          q.html = ta.value; // 纯文本编辑，html 同步（pendingImages 保留不动）
           renderQueueStrip();
           _debounceSaveQueue();
         };
@@ -2944,7 +2975,9 @@ $queueBtn.onclick = function() {
   var text = getInputText().trim();
   var html = $input.innerHTML;
   if (!text) return;
-  _queue.push({ id: 'q_' + Date.now(), text: text, html: html, ts: Date.now() });
+  // 快照当前截图数据（防止被后续排队项覆盖）
+  var imgSnapshot = pendingImages.length > 0 ? pendingImages.map(function(img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl }; }) : null;
+  _queue.push({ id: 'q_' + Date.now(), text: text, html: html, ts: Date.now(), pendingImages: imgSnapshot });
   renderQueueStrip();
   $input.innerHTML = '';
   $input._resetUndo();
@@ -4286,39 +4319,22 @@ async function sendMessage() {
   // 清除引导状态提示（已过期）
   var _guideStatuses = document.querySelectorAll('.guide-status');
   for (var _gsi = 0; _gsi < _guideStatuses.length; _gsi++) { _guideStatuses[_gsi].remove(); }
-  // ═══ 所有权守卫：实时检查 + 只读标志 ═══
+  // ═══ 所有权守卫：被抢走 → 跳转焦点 ═══
   if (questActiveId) {
     try {
       var _owner = await questStore.getOwner(questActiveId);
       if (_owner && _owner.windowId !== _windowId) {
-        _readonlyQuest = true;
-        _readonlyOwner = _owner.windowId;
-        setInputReadonly(true, _owner.windowId);
-        addMessageEl('error', '此 quest 正运行在另一窗口（' + (_owner.windowId || '?') + '），不可发送消息。切换到拥有者窗口编辑。');
+        // 另一面板持有此 quest → 跳转焦点，放弃发送
+        _broadcast('focus-request', questActiveId, { targetWindow: _owner.windowId });
         _sending = false;
         updateQueueBtn();
         return;
       }
-      // 确认自己是 owner（防止其他窗口偷偷抢走）
-      if (!_owner && !_readonlyQuest) {
-        var _claimResult = await questStore.claimOwner(questActiveId, _windowId);
-        if (!_claimResult.claimed && _claimResult.currentOwner && _claimResult.currentOwner !== _windowId) {
-          _readonlyQuest = true;
-          _readonlyOwner = _claimResult.currentOwner;
-          setInputReadonly(true, _claimResult.currentOwner);
-          addMessageEl('error', '此 quest 已被窗口 ' + (_claimResult.currentOwner || '?') + ' 抢占，不可发送。');
-          _sending = false;
-          updateQueueBtn();
-          return;
-        }
+      // 无人持有 → 声明所有权（兜底：正常由 switchQuest 已声明，此处防竞态）
+      if (!_owner) {
+        await questStore.claimOwner(questActiveId, _windowId);
       }
-    } catch (_) { /* 所有权检查失败不阻塞发送，降级使用本地状态 */ }
-  }
-  if (_readonlyQuest) {
-    addMessageEl('error', '此 quest 正运行在另一窗口，不可发送消息。切换到拥有者窗口编辑。');
-    _sending = false;
-    updateQueueBtn();
-    return;
+    } catch (_) { /* 所有权检查失败不阻塞发送 */ }
   }
   // ═══ 捕获当前 quest/agent，防止切换 quest 后回调写错数据 ═══
   _capturedQuestId = questActiveId;
@@ -4499,6 +4515,7 @@ async function sendMessage() {
   startFloorTimer(aiDiv);
   _startAllTxtStream(aiDiv, _allTxtPathLocal, _capturedAgent, floorNum, text, '');
   _startAutoSave();  // 流式过程中每15秒增量写库
+  scrollToBottom(true);  // 确保 az 区（A1+时钟+成本）可见
   try {
     await agent.send(userContent, {
       images: images,
@@ -4550,9 +4567,7 @@ async function sendMessage() {
           aiDiv._renderedCount = 0;
           aiDiv._dirty = false;
         }
-        if (window._tableStore && window._tableStore.length > 50) {
-          window._tableStore = window._tableStore.slice(-30);
-        }
+        // _tableStore 不再截断：截断会导致旧 DOM 的 onclick 索引失效，表格展开按钮无反应
         
         var _divDetached = !(aiDiv && aiDiv.isConnected);
         
@@ -4695,6 +4710,8 @@ function _continueQueue() {
   var _qs = document.getElementById('queue-sending-status');
   if (_qs) _qs.remove();
   if (_queuePaused) return;
+  // 守卫：只能继续当前活跃 agent 的队列（防止切换 quest 后串台）
+  if (_activeAgent !== _capturedAgent) return;
   _triggerQueueSend();
 }
 
@@ -4774,16 +4791,35 @@ function insertChipAtCursor(filePath) {
   chip.querySelector('.chip-rm').addEventListener('click', function() { chip.remove(); });
   chip.title = filePath;
 
+  function _focusEnd() {
+    var r = document.createRange();
+    r.selectNodeContents($input);
+    r.collapse(false);
+    var s = window.getSelection();
+    s.removeAllRanges();
+    s.addRange(r);
+  }
+  // chip 后自动插一个空格 + 把光标推到空格后，激活编辑态让光标可见
+  function _placeChip(range, chip) {
+    range.deleteContents();
+    range.insertNode(chip);
+    // 在 chip 右侧插入一个空格
+    var sp = document.createTextNode(' ');
+    range.setStartAfter(chip);
+    range.setEndAfter(chip);
+    range.insertNode(sp);
+    // 光标放到空格后面
+    range.setStartAfter(sp);
+    range.setEndAfter(sp);
+  }
+
   // 优先用当前选区，否则用上次记住的光标位置
   $input.focus();
   var sel = window.getSelection();
   if (sel.rangeCount > 0 && $input.contains(sel.anchorNode)) {
     // 光标在 $input 内 → 直接插
     var range = sel.getRangeAt(0);
-    range.deleteContents();
-    range.insertNode(chip);
-    range.setStartAfter(chip);
-    range.setEndAfter(chip);
+    _placeChip(range, chip);
     sel.removeAllRanges();
     sel.addRange(range);
   } else if (_lastInputSelection && _lastInputSelection.range) {
@@ -4792,18 +4828,19 @@ function insertChipAtCursor(filePath) {
     var sel2 = window.getSelection();
     if (sel2.rangeCount > 0 && $input.contains(sel2.anchorNode)) {
       var range2 = sel2.getRangeAt(0);
-      range2.deleteContents();
-      range2.insertNode(chip);
-      range2.setStartAfter(chip);
-      range2.setEndAfter(chip);
+      _placeChip(range2, chip);
       sel2.removeAllRanges();
       sel2.addRange(range2);
     } else {
       $input.appendChild(chip);
+      $input.appendChild(document.createTextNode(' '));
+      _focusEnd();
     }
   } else {
     // 无任何光标记录 → 末尾附加
     $input.appendChild(chip);
+    $input.appendChild(document.createTextNode(' '));
+    _focusEnd();
   }
   _saveInputSelection();
 }
@@ -4837,6 +4874,8 @@ document.addEventListener('qqq-ai-attach', function(e) {
   sb.onMessage(function(channel, data) {
     if (channel !== 'host-message' || !data) return;
     if (data.type === 'qqq-ai-attach' && data.path) {
+      // 只接受发给当前僚机的（_targetWingman 匹配）
+      if (data._targetWingman !== _wingmanIndex) return;
       insertChipAtCursor(data.path);
     }
   });

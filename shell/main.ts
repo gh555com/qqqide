@@ -435,7 +435,7 @@ function createWindow(): BrowserWindow {
             // 关主窗口时清理所有僚机 + 引擎（第一道防线，before-quit 兜底）
             _allowExtClose = true;
             for (const extWin of _externalPanels) {
-                if (extWin && !extWin.isDestroyed()) { try { extWin.close(); } catch { /* ignore */ } }
+                if (extWin && !extWin.isDestroyed()) { try { extWin.destroy(); } catch { /* ignore */ } }
             }
             // 不要在这里重置 _allowExtClose，让 before-quit 也能关闭僚机
             try { engineHost.stop(); } catch { /* ignore */ }
@@ -2095,11 +2095,11 @@ app.on('before-quit', async (e) => {
     // ★ 始终阻止默认退出 — 我们必须确保清理完成后再 app.exit(0)
     e.preventDefault();
 
-    // ① 关闭所有僚机窗口（防止孤儿窗口残留）
+    // ① 强制销毁所有僚机窗口（防止孤儿窗口残留）
     _allowExtClose = true;
     for (const extWin of _externalPanels) {
         if (extWin && !extWin.isDestroyed()) {
-            try { extWin.close(); } catch { /* ignore */ }
+            try { extWin.destroy(); } catch { /* ignore */ }
         }
     }
 
@@ -2125,6 +2125,8 @@ app.on('before-quit', async (e) => {
     //     无论 _flushedOnce 状态如何，必须调用 app.exit(0)
     //     因为 e.preventDefault() 阻止了默认退出
     app.exit(0);
+    // ⑤ 终极保险：3 秒后仍未退出 → 强制杀进程
+    setTimeout(() => { process.exit(0); }, 3000);
 });
 // SIGINT/SIGTERM: 同步刷盘后触发退出（汇聚到 before-quit 兜底）
 process.on('SIGINT', () => { _flushStateSync('SIGINT'); try { app.quit(); } catch { process.exit(0); } });

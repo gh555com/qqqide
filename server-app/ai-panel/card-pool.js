@@ -533,19 +533,28 @@ var CardPool = (function () {
     layer.innerHTML = '';
 
     var container = this._container;  // #messages
-    var totalH = container.scrollHeight - 24;  // 减去 padding
+    var totalH = container.scrollHeight - 24;  // 总内容高度（减去 padding）
     if (totalH <= 0) return;
 
+    // 当前滚动偏移
+    var scrollTop = container.scrollTop;
+    // 可视高度
+    var viewH = container.clientHeight - 24;
+
     for (var i = 0; i < positions.length; i++) {
-      // offsetTop 是相对于 #messages 的偏移
-      var pct = (positions[i].offsetTop / totalH) * 100;
+      // 匹配元素在内容中的绝对偏移（相对于 #messages 内容区顶部）
+      var absTop = positions[i].offsetTop;
+      // 在视口中的相对位置 = (absTop - scrollTop) / totalH，再映射到 mark 层
+      // 但 marks 应该标记在内容中的固定位置，不随滚动移动
+      // 用绝对位置 / 总高度
+      var pct = (absTop / totalH) * 100;
       if (pct < 0) pct = 0;
       if (pct > 100) pct = 100;
       var mark = document.createElement('div');
       mark.className = 'sml-mark';
       mark.style.cssText =
         'top:' + pct + '%; ' +
-        'background:' + (positions[i].active ? '#ffeb3b' : '#5abfb5') + ';';
+        'background:' + (positions[i].active ? '#ffd302' : '#ff6b00') + ';';
       mark.title = positions[i].label || '';
       mark.style.pointerEvents = 'auto';
       mark.style.cursor = 'default';

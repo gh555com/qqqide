@@ -749,8 +749,35 @@ body {
   background: rgba(220, 50, 47, 0.1);
 }
 
-.aiv-dd-row:hover {
-  background: var(--background-color) !important;
+/* ── AI 视口下拉：浅色主题用纯白底 + 清晰灰边框 ── */
+.aiv-dropdown,
+.aiv-submenu {
+  background: #fafaf8 !important;
+  border-color: #c8c8c0 !important;
+}
+[data-theme="dark"] .aiv-dropdown,
+[data-theme="dark"] .aiv-submenu {
+  background: var(--card-bg) !important;
+  border-color: var(--border-color) !important;
+}
+/* ── 撞色 hover：浅色黑底白字 / 深色白底黑字 ── */
+.aiv-dd-row:hover, .aiv-recent-row:hover {
+  background: #000 !important;
+  color: #fff !important;
+}
+[data-theme="dark"] .aiv-dd-row:hover,
+[data-theme="dark"] .aiv-recent-row:hover {
+  background: #fff !important;
+  color: #000 !important;
+}
+/* ── 面包屑：与 hover 同款撞色，路径清晰可见 ── */
+.aiv-breadcrumb {
+  background: #000 !important;
+  color: #fff !important;
+}
+[data-theme="dark"] .aiv-breadcrumb {
+  background: #fff !important;
+  color: #000 !important;
 }
 
 /* ============================================================================

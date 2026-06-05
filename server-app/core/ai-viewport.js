@@ -222,7 +222,10 @@
   }
 
   function closeAllSubmenus() {
-    activeSubmenus.forEach(s => { try { s.remove(); } catch (_) { } });
+    activeSubmenus.forEach(s => {
+      if (s._parentRow) { s._parentRow.classList.remove('aiv-breadcrumb'); s._parentRow = null; }
+      try { s.remove(); } catch (_) { }
+    });
     activeSubmenus = [];
   }
 
@@ -230,6 +233,7 @@
   function closeSubmenuTree(sub) {
     if (!sub) return;
     if (sub._childSub) { closeSubmenuTree(sub._childSub); sub._childSub = null; }
+    if (sub._parentRow) { sub._parentRow.classList.remove('aiv-breadcrumb'); sub._parentRow = null; }
     const idx = activeSubmenus.indexOf(sub);
     if (idx !== -1) activeSubmenus.splice(idx, 1);
     try { sub.remove(); } catch (_) { }
@@ -346,8 +350,8 @@ function attachToAi(filePath) {
       const row = document.createElement('div');
       row.className = 'aiv-dd-row';
       row.style.cssText =
-        'display:flex; align-items:center; padding:3px 10px; cursor:pointer; ' +
-        'font-size:14px; color:var(--text-primary); white-space:nowrap; position:relative;';
+        'display:flex; align-items:center; padding:4px 10px; cursor:pointer; ' +
+        'font-size:14px; font-weight:600; color:var(--text-primary); white-space:nowrap; position:relative;';
       const icon = document.createElement('span');
       icon.textContent = fileIconFor(ent.name, ent.isDir);
       icon.style.cssText = 'margin-right:6px; font-size:11px;';
@@ -364,7 +368,6 @@ function attachToAi(filePath) {
       }
 
       row.addEventListener('mouseenter', () => {
-        row.style.background = 'var(--background-color)';
         // Only close the CHILD submenu of this parent, not the parent itself
         if (parentEl._childSub) {
           closeSubmenuTree(parentEl._childSub);
@@ -379,9 +382,6 @@ function attachToAi(filePath) {
             parentEl._childSub = sub;
           }, 150);
         }
-      });
-      row.addEventListener('mouseleave', () => {
-        row.style.background = '';
       });
 
       // mousedown — fires earlier than click, more reliable across nested popups.
@@ -414,6 +414,10 @@ function attachToAi(filePath) {
       'border-radius:3px; box-shadow:0 4px 12px rgba(0,0,0,.15); padding:4px 0;';
     sub.style.left = rect.right + 'px';
     sub.style.top = topPx + 'px';
+
+    // breadcrumb: mark the parent row so the path stays highlighted
+    rowEl.classList.add('aiv-breadcrumb');
+    sub._parentRow = rowEl;
 
     // Submenus also participate in the shared close timer
     sub.addEventListener('mouseenter', cancelClose);
@@ -556,7 +560,7 @@ function attachToAi(filePath) {
       _recentFolders.forEach(function (f) {
         var row = document.createElement('div');
         row.className = 'aiv-row aiv-recent-row';
-        row.style.cssText = 'padding:7px 12px; cursor:default; font-size:14px; display:flex; align-items:center; gap:6px;';
+        row.style.cssText = 'padding:8px 12px; cursor:default; font-size:14px; font-weight:600; display:flex; align-items:center; gap:6px;';
 
         var icon = document.createElement('span');
         icon.textContent = '📁';
@@ -575,12 +579,6 @@ function attachToAi(filePath) {
         row.appendChild(nameSpan);
         row.appendChild(pathSpan);
 
-        row.addEventListener('mouseenter', function () {
-          row.style.background = 'var(--hover-bg)';
-        });
-        row.addEventListener('mouseleave', function () {
-          row.style.background = '';
-        });
         row.addEventListener('mousedown', function (e) {
           e.stopPropagation();
           e.preventDefault();
@@ -716,29 +714,9 @@ function attachToAi(filePath) {
       document.querySelectorAll('.aiv-block-active').forEach(el => el.classList.remove('aiv-block-active'));
     });
 
-    // ── AI 面板目标指示器 ──
-    var targetEl = document.createElement('span');
-    targetEl.className = 'aiv-target-indicator';
-    targetEl.title = '点击切换文件附加目标';
-    targetEl.style.cssText =
-      'font-size:11px; padding:2px 8px; margin-left:4px; cursor:pointer; ' +
-      'border:1px solid var(--border-color); border-radius:3px; user-select:none; ' +
-      'white-space:nowrap; opacity:0.85;';
-    var labels = { '-1': '🎯 左僚机', '0': '🎯 主窗口', '1': '🎯 右僚机' };
-    targetEl.textContent = labels['0'];
-    targetEl.addEventListener('click', function(e) {
-      e.stopPropagation();
-      // 循环切换：主→左→右→主
-      var cur = window.__qqq_aiTarget || 0;
-      var next = cur === 0 ? -1 : cur === -1 ? 1 : 0;
-      window.__qqq_aiTarget = next;
-      targetEl.textContent = labels[String(next)];
-    });
-    container.appendChild(targetEl);
-    // 暴露更新函数供外部 focus 消息调用
+    // 暴露更新函数供外部 focus 消息调用（由 shell/index.html 的 message 监听器调用）
     window.__qqq_updateAiTarget = function(newTarget) {
       window.__qqq_aiTarget = newTarget;
-      targetEl.textContent = labels[String(newTarget)] || labels['0'];
     };
   }
 

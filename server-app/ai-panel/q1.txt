@@ -2293,9 +2293,7 @@ async function sendMessage() {
         aiDiv._lastParaEl = null;
         aiDiv._renderedCount = 0;
         aiDiv._dirty = false;
-        if (window._tableStore && window._tableStore.length > 50) {
-          window._tableStore = window._tableStore.slice(-30);
-        }
+        // _tableStore 不再截断：截断会导致旧 DOM 的 onclick 索引失效，表格展开按钮无反应
         if (_activeAgent === _capturedAgent) {
           stopFloorTimer(timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 });
           scrollToBottom();

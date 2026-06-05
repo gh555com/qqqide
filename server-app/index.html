@@ -163,6 +163,10 @@
   if (window.qqqideBridge && window.qqqideBridge.sync) {
     window.qqqideBridge.sync.onMessage(function(channel, data) {
       if (channel === 'host-message' && data) {
+        // qqq-ai-attach 带 _targetWingman：只转发给目标匹配的消息
+        if (data.type === 'qqq-ai-attach') {
+          if (data._targetWingman !== 0 && data._targetWingman !== undefined) return;
+        }
         try { window.postMessage(data, '*'); } catch(_) {}
       }
     });
