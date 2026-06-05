@@ -2740,9 +2740,10 @@ function _triggerQueueSend() {
   _debounceSaveQueue();
   // 恢复富文本（保留 file chips 等 HTML 结构）
   $input.innerHTML = next.html || next.text;
-  // 队列状态提示
+  // 队列状态提示（发送完成后由 _continueQueue 移除）
   var _qStatus = document.createElement('div');
   _qStatus.className = 'msg msg-status';
+  _qStatus.id = 'queue-sending-status';
   _qStatus.style.color = 'var(--blue)';
   _qStatus.textContent = '📮 排队发送中 (' + (_remaining + 1) + '/' + _totalBefore + ')';
   $messages.appendChild(_qStatus);
@@ -4580,6 +4581,9 @@ async function sendMessage() {
 
 // 队列错误恢复：发送失败不阻塞后续排队消息
 function _continueQueue() {
+  // 清除排队状态提示
+  var _qs = document.getElementById('queue-sending-status');
+  if (_qs) _qs.remove();
   if (_queuePaused) return;
   _triggerQueueSend();
 }
