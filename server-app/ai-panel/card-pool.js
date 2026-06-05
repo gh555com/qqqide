@@ -1,0 +1,613 @@
+// ============================================================================
+// card-pool.js — 终极 Card Queue 架构
+//
+// 铁律:
+//   ① 一张 quest = 一张 Card（完整 DOM 子树），创建后永不 innerHTML 清空
+//   ② 切换 quest = 纯 CSS display 显隐，零 DOM 销毁
+//   ③ 每张 Card 最多持有 FLOOR_CAP_CAPPED + FLOOR_CAP_BUILDING 层楼 DOM
+//   ④ 超限 → 最老楼层 DOM remove() 彻底删除（conversation JSON 保留于内存）
+//   ⑤ Card Pool 上限 CARD_POOL_MAX，LRU 驱逐
+//   ⑥ A1 块始终在电子钟上方（固定创建顺序）
+// ============================================================================
+
+var CardPool = (function () {
+  'use strict';
+
+  // ═══ 配置常量（唯一真理源） ═══
+  var FLOOR_CAP_CAPPED = 16;     // 最多显示已封顶楼层数
+  var FLOOR_CAP_BUILDING = 1;   // 最多显示在建楼层数（0 或 1）
+  var CARD_POOL_MAX = 10;       // Card Pool 上限
+
+  // ═══ 构造函数 ═══
+  function CardPool(containerEl, options) {
+    this._container = containerEl;  // #messages 元素
+    this._cards = {};               // { questId: Card }
+    this._lru = [];                 // 访问顺序（尾部=最新）
+    this._activeId = null;          // 当前活跃 questId
+    this._options = options || {};
+
+    // 公开常量
+    this.FLOOR_CAP_CAPPED = FLOOR_CAP_CAPPED;
+    this.FLOOR_CAP_BUILDING = FLOOR_CAP_BUILDING;
+    this.CARD_POOL_MAX = CARD_POOL_MAX;
+  }
+
+  // ═══ Card 对象 ═══
+  // card = {
+  //   id: questId,
+  //   dom: <div class="card">,        ← 在 #messages 内的容器
+  //   floors: [F1_data, F2_data, ...], ← 全量 JSON（从 SQLite 加载后保留）
+  //   totalFloors: N,
+  //   buildingFloor: floorNum|null,    ← 当前在建的楼层号
+  //   floorDOM: Map<floorNum, DOM>,    ← 当前持有 DOM 的楼层
+  //   _userScrolledUp: false,
+  //   _scrollTop: 0,
+  // }
+
+  function Card(id) {
+    this.id = id;
+    this.dom = null;           // 在首次 getOrCreate 时创建
+    this.floors = [];          // [{ floorNum, question, houses, costWge, allTxtPath, ... }]
+    this.totalFloors = 0;
+    this.buildingFloor = null;
+    this.floorDOM = {};        // { floorNum: { userEl, aiEl, a1El, clockEl } }
+    this._userScrolledUp = false;
+    this._scrollTop = 0;
+    this._floorMetaMap = {};   // { floorNum: { allTxtPath, houses, costWge } }
+  }
+
+  Card.prototype._initDOM = function () {
+    if (this.dom) return;
+    this.dom = document.createElement('div');
+    this.dom.className = 'card';
+    this.dom.setAttribute('data-quest', this.id);
+    this.dom.style.cssText = 'display:none; width:100%;';
+    // 内部内容容器
+    this._contentWrap = document.createElement('div');
+    this._contentWrap.className = 'card-content';
+    this.dom.appendChild(this._contentWrap);
+  };
+
+  // 获取或创建 Card
+  CardPool.prototype.getOrCreate = function (questId) {
+    if (this._cards[questId]) {
+      this._touchLRU(questId);
+      return this._cards[questId];
+    }
+    // 检查上限
+    while (this._lru.length >= CARD_POOL_MAX) {
+      var evictId = this._lru[0];
+      this._evict(evictId);
+    }
+    var card = new Card(questId);
+    card._initDOM();
+    this._container.appendChild(card.dom);
+    this._cards[questId] = card;
+    this._lru.push(questId);
+    return card;
+  };
+
+  // ═══ LRU 管理 ═══
+  CardPool.prototype._touchLRU = function (questId) {
+    var idx = this._lru.indexOf(questId);
+    if (idx >= 0) {
+      this._lru.splice(idx, 1);
+      this._lru.push(questId);
+    }
+  };
+
+  // ═══ 驱逐 Card ═══
+  CardPool.prototype._evict = function (questId) {
+    var card = this._cards[questId];
+    if (!card) return;
+    console.log('[card-pool] evicting card:', questId);
+
+    // abort 该 quest 的 agent（如果还在跑）
+    if (typeof window.agentPool !== 'undefined' && window.agentPool[questId]) {
+      try { window.agentPool[questId].abort(); } catch (_) {}
+      delete window.agentPool[questId];
+    }
+
+    // 移除 DOM
+    if (card.dom && card.dom.parentNode) {
+      card.dom.parentNode.removeChild(card.dom);
+    }
+
+    // 清理
+    card.dom = null;
+    card.floorDOM = {};
+    card._floorMetaMap = {};
+    card.floors = [];
+
+    delete this._cards[questId];
+    var idx = this._lru.indexOf(questId);
+    if (idx >= 0) this._lru.splice(idx, 1);
+  };
+
+  // ═══ 切换到指定 quest ═══
+  CardPool.prototype.switchTo = async function (questId) {
+    var qs = window.questStore;
+    console.log('[card-pool] switchTo called: ' + questId + ' (current active: ' + (this._activeId || 'null') + ')');
+    if (questId === this._activeId) { console.log('[card-pool] switchTo SKIP: already active'); return; }
+
+    // 保存旧 card 滚动位置
+    if (this._activeId && this._cards[this._activeId]) {
+      var oldCard = this._cards[this._activeId];
+      oldCard._userScrolledUp = oldCard._userScrolledUp || false;
+      oldCard._scrollTop = oldCard.dom.parentNode ? oldCard.dom.parentNode.scrollTop : 0;
+    }
+
+    // 隐藏旧 card
+    if (this._activeId && this._cards[this._activeId] && this._cards[this._activeId].dom) {
+      this._cards[this._activeId].dom.style.display = 'none';
+    }
+
+    // 获取或创建目标 card
+    var card = this.getOrCreate(questId);
+
+    // 如果 card 是首次创建（totalFloors === 0 且未尝试过加载），从 questStore 加载
+    console.log('[card-pool] switchTo check: totalFloors=' + card.totalFloors + ' questStore=' + (typeof qs));
+    if (card.totalFloors === 0 && qs) {
+      await this._loadCardData(card);
+    } else if (card.totalFloors === -1) {
+      console.warn('[card-pool] card ' + questId + ' previously failed to load, skipping');
+    } else {
+      console.warn('[card-pool] switchTo NOT loading: totalFloors=' + card.totalFloors + ' questStore=' + (typeof qs));
+    }
+
+    // 显示目标 card
+    card.dom.style.display = 'block';
+    this._activeId = questId;
+
+    // 恢复滚动位置
+    var container = card.dom.parentNode;
+    if (container) {
+      container.scrollTop = card._scrollTop || 0;
+    }
+
+    return card;
+  };
+
+  // ═══ 从 questStore 加载 Card 数据 ═══
+  CardPool.prototype._loadCardData = async function (card) {
+    var qs = window.questStore;
+    console.log('[card-pool] _loadCardData called for', card.id, 'questStore type:', typeof qs);
+    if (!qs) { console.warn('[card-pool] questStore unavailable, aborting load'); return; }
+    try {
+      var allFloors = await qs.loadAllFloors(card.id);
+      var questMeta = await qs.load(card.id);
+      var quests = await qs.list();
+      var qEntry = quests.find(function (q) { return q.id === card.id; }) || null;
+
+      card.floors = allFloors || [];
+      card.totalFloors = card.floors.length;
+      card.buildingFloor = null;  // 初次加载时无在建楼
+
+      // 构建 floorMetaMap
+      var root = qs ? qs.getProjectRoot() : null;
+      for (var fi = 0; fi < card.floors.length; fi++) {
+        var fData = card.floors[fi].data;
+        var fNum = card.floors[fi].floorNum;
+        card._floorMetaMap[fNum] = {
+          questId: card.id,
+          allTxtPath: fData.allTxtPath || '',
+          houses: fData.houses || [],
+          costWge: fData.costWge || 0
+        };
+      }
+
+      // 提取 quest 级 timings（用于停止态时钟渲染）
+      var questTimings = (questMeta && questMeta.floorTimings) || [];
+
+      // 构建视口 DOM：最近 FLOOR_CAP_CAPPED 层
+      var startIdx = Math.max(0, card.totalFloors - FLOOR_CAP_CAPPED);
+      console.log('[card-pool] building DOM for floors ' + startIdx + ' to ' + (card.totalFloors - 1) + ' (total ' + card.totalFloors + ')');
+      for (var i = startIdx; i < card.totalFloors; i++) {
+        try {
+          this._buildFloorDOM(card, card.floors[i], false, questTimings);
+        } catch (e) {
+          console.error('[card-pool] _buildFloorDOM failed for floor ' + card.floors[i].floorNum + ':', e && (e.message || e));
+        }
+      }
+
+      console.log('[card-pool] loaded card ' + card.id + ': ' + card.totalFloors + ' floors, ' +
+        Object.keys(card.floorDOM).length + ' DOM nodes');
+    } catch (e) {
+      console.error('[card-pool] loadCardData FAILED for ' + card.id + ':', e && (e.message || e));
+      // 防御：标记 card 为已尝试加载，避免 switchTo 死循环重试
+      card.totalFloors = -1;
+    }
+  };
+
+  // ═══ 构建单层楼的 DOM（插入 card._contentWrap） ═══
+  // isBuilding: 是否在建楼层（在建楼层需要额外的 streaming 标记）
+  CardPool.prototype._buildFloorDOM = function (card, floorEntry, isBuilding, questTimings) {
+    var fData = floorEntry.data;
+    var fNum = floorEntry.floorNum;
+    if (card.floorDOM[fNum]) return;  // 已存在
+    questTimings = questTimings || [];
+
+    var frag = document.createDocumentFragment();
+
+    // ① 渲染用户消息
+    var userEl = null;
+    if (fData.question) {
+      userEl = document.createElement('div');
+      userEl.className = 'msg msg-user';
+      userEl._floor = fNum;
+      // 使用外部 renderMarkdown 和 getUserDisplayContent
+      var getUDC = window.getUserDisplayContent;
+      var rm = window.renderMarkdown;
+      var displayContent = typeof getUDC === 'function'
+        ? getUDC(fData.question)
+        : fData.question;
+      userEl.innerHTML = typeof rm === 'function'
+        ? rm(displayContent)
+        : displayContent.replace(/</g, '&lt;');
+      frag.appendChild(userEl);
+    }
+
+    // ② 渲染 AI 回复
+    var aiEl = document.createElement('div');
+    aiEl.className = 'msg msg-ai';
+    aiEl._floor = fNum;
+    aiEl._contentWrap = document.createElement('div');
+
+    // 从 conversation 提取 AI 回复文本（最后一个 assistant 消息）
+    var conv = fData.conversation || [];
+    var aiText = '';
+    for (var ci = conv.length - 1; ci >= 0; ci--) {
+      if (conv[ci].role === 'assistant' && typeof conv[ci].content === 'string') {
+        aiText = conv[ci].content;
+        break;
+      }
+    }
+    var rm2 = window.renderMarkdown;
+    aiEl._contentWrap.innerHTML = typeof rm2 === 'function'
+      ? rm2(aiText)
+      : aiText.replace(/</g, '&lt;');
+    aiEl.appendChild(aiEl._contentWrap);
+    aiEl._fullText = aiText;
+
+    // ③ 创建 A1 豆腐块（必须在电子钟之前）
+    var meta = card._floorMetaMap[fNum];
+    var a1El = null;
+    var _a1Path = (meta && meta.allTxtPath) || '';
+    var _initA1 = window._initA1Block;
+    var _updA1 = window._updateA1Row1;
+    var _cntR = window._countRooms;
+    if (typeof _initA1 === 'function') {
+      a1El = _initA1(aiEl, _a1Path, card.id, fNum);
+      if (a1El) {
+        var hCount = meta && meta.houses ? meta.houses.length : 0;
+        var rCount = typeof _cntR === 'function' ? _cntR(meta ? meta.houses : []) : 0;
+        if (typeof _updA1 === 'function') {
+          _updA1(a1El, fNum, hCount, rCount);
+        }
+        // A1 行2: 文件变更统计（从持久化 floor 数据恢复）
+        var _fs = fData.fileStats;
+        if (_fs && a1El._r2a) {
+          a1El._r2a.textContent = 'FILE ' + (_fs.fileCount || 0);
+          a1El._r2b.textContent = '   ROW +' + (_fs.added || 0) + ' -' + (_fs.deleted || 0);
+        }
+        var bridge2 = window.parent && window.parent.qqqideBridge;
+        if (bridge2 && _a1Path) {
+          bridge2.fs.stat(_a1Path).then(function (st) {
+            if (st && st.size && typeof _updA1 === 'function') {
+              _updA1(a1El, fNum, hCount, rCount, st.size);
+            }
+          }).catch(function () { });
+        }
+      }
+    }
+
+    // ④ 创建电子钟+饼图（必须在 A1 之后）
+    var _initClk = window._initClockBlock;
+    if (typeof _initClk === 'function') {
+      _initClk(aiEl);
+    }
+
+    // ⑤ 如果是已封顶楼层，绘制停止态时钟（使用 quest 级 timings，非全局 agent）
+    var timing = null;
+    for (var ti = 0; ti < questTimings.length; ti++) {
+      if (questTimings[ti].floorIndex === fNum) { timing = questTimings[ti]; break; }
+    }
+    if (timing && aiEl._clockMin && aiEl._clockCanvas) {
+      var totalS = Math.floor((timing.durationMs || 0) / 1000);
+      var min = Math.floor(totalS / 60);
+      var sec = totalS % 60;
+      var stopColor = document.documentElement.getAttribute('data-theme') === 'dark' ? '#fff' : '#000';
+      aiEl._clockMin.textContent = min + 'm';
+      aiEl._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
+      aiEl._clockMin.style.color = stopColor;
+      aiEl._clockSec.style.color = stopColor;
+      var _dp = window.drawPie;
+      if (typeof _dp === 'function') {
+        _dp(aiEl._clockCanvas, {
+          networkMs: timing.networkMs || 0,
+          deepseekMs: timing.deepseekMs || 0,
+          toolMs: timing.toolMs || 0,
+          totalMs: timing.durationMs || 0
+        });
+      }
+      aiEl._clockCanvas.style.visibility = 'visible';
+    }
+
+    // ⑥ 恢复历史楼层成本显示
+    if (fData.costWge && aiEl._clockCost) {
+      var ge = (fData.costWge / 10000).toFixed(4);
+      aiEl._clockCost.textContent = ge + ' ge';
+      aiEl._clockCost.style.display = 'inline';
+    }
+
+    if (isBuilding) {
+      aiEl.classList.add('card-building');
+    }
+
+    frag.appendChild(aiEl);
+
+    // 存储 floor DOM 引用
+    card.floorDOM[fNum] = { userEl: userEl, aiEl: aiEl, a1El: a1El, clockEl: aiEl._clockBlock };
+    card._contentWrap.appendChild(frag);
+  };
+
+  // ═══ 在建楼：创建 AI div（A1 + 时钟），插入活跃 Card ═══
+  // 返回 aiEl 供 startFloorTimer / agent.send 使用
+  // 注意：用户消息由外部 addUserMessageEl 创建，此处不重复
+  CardPool.prototype.startBuildingFloor = function (questId, floorNum, allTxtPath) {
+    var card = this._cards[questId];
+    if (!card) return null;
+
+    // 若已有在建楼，先封顶
+    if (card.buildingFloor !== null) {
+      this._capFloor(card, card.buildingFloor);
+    }
+
+    card.totalFloors = Math.max(card.totalFloors, floorNum);
+    card.buildingFloor = floorNum;
+
+    // 创建在建楼层 AI div
+    var aiEl = document.createElement('div');
+    aiEl.className = 'msg msg-ai card-building';
+    aiEl._floor = floorNum;
+    aiEl._contentWrap = document.createElement('div');
+    aiEl._contentWrap.innerHTML = '<div class="msg-status">⏳ AI 正在思考中...</div>';
+    aiEl.appendChild(aiEl._contentWrap);
+    aiEl._fullText = '';
+    aiEl._buf = '';
+    aiEl._paras = [];
+    aiEl._dirty = false;
+    aiEl._renderScheduled = false;
+    aiEl._renderedCount = 0;
+    aiEl._lastParaEl = null;
+
+    // A1 块（必须在电子钟之前）
+    var _initA1b = window._initA1Block;
+    var _updA1b = window._updateA1Row1;
+    if (allTxtPath && typeof _initA1b === 'function') {
+      var a1El = _initA1b(aiEl, allTxtPath, questId, floorNum);
+      if (a1El && typeof _updA1b === 'function') {
+        _updA1b(a1El, floorNum, 0, 0);
+      }
+    }
+
+    // 时钟（在建态）
+    var _initClkB = window._initClockBlock;
+    if (typeof _initClkB === 'function') {
+      _initClkB(aiEl);
+    }
+
+    // 插入 Card 内容区
+    card._contentWrap.appendChild(aiEl);
+    card.floorDOM[floorNum] = card.floorDOM[floorNum] || {};
+    card.floorDOM[floorNum].aiEl = aiEl;
+    card.floorDOM[floorNum].clockEl = aiEl._clockBlock;
+
+    // 6+1 裁剪
+    this._trimCapped(card);
+
+    return aiEl;
+  };
+
+  // ═══ 封顶在建楼（onDone 时调用） ═══
+  CardPool.prototype.completeBuildingFloor = function (questId, floorNum) {
+    var card = this._cards[questId];
+    if (!card) return;
+    // 若 buildingFloor 匹配，封顶
+    if (card.buildingFloor === floorNum) {
+      var dom = card.floorDOM[floorNum];
+      if (dom && dom.aiEl) {
+        dom.aiEl.classList.remove('card-building');
+      }
+      card.buildingFloor = null;
+    }
+    this._trimCapped(card);
+  };
+
+  // ═══ 封顶在建楼 ═══
+  CardPool.prototype._capFloor = function (card, floorNum) {
+    var dom = card.floorDOM[floorNum];
+    if (!dom || !dom.aiEl) return;
+    dom.aiEl.classList.remove('card-building');
+    card.buildingFloor = null;
+    this._trimCapped(card);
+  };
+
+  // ═══ 裁剪：保留最近 FLOOR_CAP_CAPPED 层已封顶楼层 ═══
+  CardPool.prototype._trimCapped = function (card) {
+    var cappedFloors = [];
+    for (var fn in card.floorDOM) {
+      if (card.floorDOM.hasOwnProperty(fn)) {
+        var fNum = parseInt(fn, 10);
+        if (fNum !== card.buildingFloor) {
+          cappedFloors.push(fNum);
+        }
+      }
+    }
+    cappedFloors.sort(function (a, b) { return a - b; });
+
+    while (cappedFloors.length > FLOOR_CAP_CAPPED) {
+      var oldest = cappedFloors.shift();
+      var dom = card.floorDOM[oldest];
+      if (dom) {
+        if (dom.userEl && dom.userEl.parentNode) dom.userEl.parentNode.removeChild(dom.userEl);
+        if (dom.aiEl && dom.aiEl.parentNode) dom.aiEl.parentNode.removeChild(dom.aiEl);
+        delete card.floorDOM[oldest];
+      }
+      console.log('[card-pool] trimmed floor ' + oldest + ' from card ' + card.id);
+    }
+  };
+
+  // ═══ 获取活跃 Card ═══
+  CardPool.prototype.getActive = function () {
+    return this._activeId ? this._cards[this._activeId] : null;
+  };
+
+  // ═══ 获取指定 Card ═══
+  CardPool.prototype.getCard = function (questId) {
+    return this._cards[questId] || null;
+  };
+
+  // ═══ 删除 quest 对应的 Card ═══
+  CardPool.prototype.removeCard = function (questId) {
+    if (this._activeId === questId) this._activeId = null;
+    this._evict(questId);
+  };
+
+  // ═══ 在当前活跃 Card 上滚动到底 ═══
+  CardPool.prototype.scrollActiveToBottom = function (force) {
+    var card = this.getActive();
+    if (!card || !card.dom) return;
+    if (force || !card._userScrolledUp) {
+      var container = card.dom.parentNode;
+      if (!container) return;
+      // 直接设 scrollTop = scrollHeight（精确滚到底，不用 scrollIntoView 避免方向错误）
+      container.scrollTop = container.scrollHeight;
+    }
+  };
+
+  // ═══ 用户滚动跟踪（scroll 事件，比 wheel 更可靠） ═══
+  CardPool.prototype.onUserScroll = function (e) {
+    var card = this.getActive();
+    if (!card) return;
+    var container = card.dom.parentNode;
+    if (!container) return;
+    var atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 4;
+    if (atBottom) {
+      // 用户在底部 → 恢复自动滚动
+      card._userScrolledUp = false;
+    }
+  };
+
+  // ═══ 用户手动上滚标记（wheel 事件，deltaY<0 时立即标记；下滚等到底部才恢复） ═══
+  CardPool.prototype.onUserWheel = function (e) {
+    var card = this.getActive();
+    if (!card) return;
+    if (e.deltaY < 0) {
+      // 用户向上滚 → 立即停止自动滚动
+      card._userScrolledUp = true;
+    }
+    // 下滚不立即恢复，等 scroll 事件检测到底部
+  };
+
+  // ═══ 获取 Card 内楼层 DOM ═══
+  CardPool.prototype.getFloorDOM = function (questId, floorNum) {
+    var card = this._cards[questId];
+    if (!card) return null;
+    return card.floorDOM[floorNum] || null;
+  };
+
+  // ═══ 更新 Card 的 floorMetaMap ═══
+  CardPool.prototype.updateFloorMeta = function (questId, floorNum, meta) {
+    var card = this._cards[questId];
+    if (!card) return;
+    card._floorMetaMap[floorNum] = meta;
+  };
+
+  // ═══════════════════════════════════════════════════════════
+  // 滚动条标记叠层（全局 #scroll-mark-layer，覆盖在滚动条滑轨上）
+  // ═══════════════════════════════════════════════════════════
+  CardPool.prototype.showMarks = function (questId, positions) {
+    var layer = document.getElementById('scroll-mark-layer');
+    if (!layer) return;
+    layer.innerHTML = '';
+
+    var container = this._container;  // #messages
+    var totalH = container.scrollHeight - 24;  // 减去 padding
+    if (totalH <= 0) return;
+
+    for (var i = 0; i < positions.length; i++) {
+      // offsetTop 是相对于 #messages 的偏移
+      var pct = (positions[i].offsetTop / totalH) * 100;
+      if (pct < 0) pct = 0;
+      if (pct > 100) pct = 100;
+      var mark = document.createElement('div');
+      mark.className = 'sml-mark';
+      mark.style.cssText =
+        'top:' + pct + '%; ' +
+        'background:' + (positions[i].active ? '#ffeb3b' : '#5abfb5') + ';';
+      mark.title = positions[i].label || '';
+      mark.style.pointerEvents = 'auto';
+      mark.style.cursor = 'default';
+      mark.onclick = (function (pos) {
+        return function () {
+          if (pos.el) pos.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        };
+      })(positions[i]);
+      layer.appendChild(mark);
+    }
+  };
+
+  CardPool.prototype.hideMarks = function (questId) {
+    var layer = document.getElementById('scroll-mark-layer');
+    if (layer) layer.innerHTML = '';
+  };
+
+  // ═══ 保存当前活跃 Card 的 UI 状态 ═══
+  CardPool.prototype.saveActiveUIState = function () {
+    var card = this.getActive();
+    if (!card) return;
+    card._userScrolledUp = card._userScrolledUp || false;
+    var container = card.dom.parentNode;
+    if (container) card._scrollTop = container.scrollTop;
+  };
+
+  // ═══ 刷新 Card（从 SQLite 重载数据 + 重建 DOM，用于僚机只读同步） ═══
+  CardPool.prototype.refreshCard = async function (questId) {
+    var card = this._cards[questId];
+    if (!card) {
+      // Card 不存在 → 创建（首次僚机同步）
+      card = this.getOrCreate(questId);
+      await this._loadCardData(card);
+      return;
+    }
+    // 清空现有 DOM（仅清除内容，保留 card 容器和 mark layer）
+    if (card._contentWrap) {
+      card._contentWrap.innerHTML = '';
+    }
+    card.floorDOM = {};
+    card._floorMetaMap = {};
+    card.floors = [];
+    card.totalFloors = 0;
+    card.buildingFloor = null;
+    // 重新加载
+    await this._loadCardData(card);
+  };
+
+  // ═══ 公开常量读取 ═══
+  CardPool.prototype.getCapConstants = function () {
+    return {
+      capped: FLOOR_CAP_CAPPED,
+      building: FLOOR_CAP_BUILDING,
+      poolMax: CARD_POOL_MAX
+    };
+  };
+
+  // ═══ 暴露到全局 ═══
+  window.CardPool = CardPool;
+
+  console.log('[card-pool] ready — capped=' + FLOOR_CAP_CAPPED +
+    ' building=' + FLOOR_CAP_BUILDING + ' pool=' + CARD_POOL_MAX);
+
+  return CardPool;
+})();

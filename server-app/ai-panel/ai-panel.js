@@ -134,6 +134,17 @@
       }
     });
 
+    // ── 聚焦请求：其他面板触发本窗口获得焦点 ──
+    window.addEventListener('message', function (e) {
+      if (!e.data || e.data.type !== 'qqq-focus-window') return;
+      if (!frame || e.source !== frame.contentWindow) return;
+      if (window.qqqideBridge && window.qqqideBridge.window && window.qqqideBridge.window.focus) {
+        window.qqqideBridge.window.focus();
+      }
+    });
+
+// ── 面板焦点已改为 q2 豆腐块金色背景（index.html 内 _setPanelFocus）──
+
     setUrl(defaultUrl());
   }
 

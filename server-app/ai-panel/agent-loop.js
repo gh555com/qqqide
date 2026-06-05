@@ -928,6 +928,7 @@ var AgentLoop = (function () {
                 }
                 self._log('✓ gateway ' + resp.status + ' streaming...');
                 self._consecutiveFetchErrors = 0;
+                self._http2Ceilings = 0;
                 var _result = await self._parseSSE(resp.body, onToken, onReasoning);
                 if (_result) {
                     _result._ttfbMs = _ttfbAccum;
@@ -944,8 +945,22 @@ var AgentLoop = (function () {
                     return null;
                 }
                 var msg = err.message || '';
-                if (msg.indexOf("ERR_HTTP2") >= 0 || msg.indexOf("ERR_CONNECTION_CLOSED") >= 0) {
-                    // HTTP/2 协议死透 — Chromium 108 已知限制，必须刷新才能恢复
+                // HTTP/2 协议检测：JS 层 fetch() 对 ERR_HTTP2_* 只报 "Failed to fetch"
+                // net::ERR_HTTP2_PROTOCOL_ERROR 仅 DevTools 可见，JS Error.message 拿不到
+                var _isHttp2Like = msg.indexOf("ERR_HTTP2") >= 0
+                    || msg.indexOf("ERR_CONNECTION_CLOSED") >= 0
+                    || msg === 'Failed to fetch';
+
+                if (retry < MAX_RETRIES) {
+                    var waitMsF = 2000;
+                    self._log('  fetch error retry #' + (retry + 1) + ' in ' + waitMsF + 'ms: ' + msg);
+                    await new Promise(function (r) { setTimeout(r, waitMsF); });
+                    continue;
+                }
+
+                // 重试已耗尽 — 判断是否为 HTTP/2 协议死透（Chromium 108 已知限制）
+                if (_isHttp2Like) {
+                    self._consecutiveFetchErrors = (self._consecutiveFetchErrors || 0) + 1;
                     self._http2Ceilings = (self._http2Ceilings || 0) + 1;
                     var _n = self._http2Ceilings;
                     if (_n >= 5) {
@@ -954,14 +969,10 @@ var AgentLoop = (function () {
                     } else {
                         onError('⚠️ HTTP/2 连接断开（第 ' + _n + ' 次）。这是 Chromium 108 已知限制，需刷新面板恢复。\n\n✅ 对话上下文已保留 · 刷新后继续\n🔧 建议：Ctrl+R 刷新 AI 面板');
                     }
+                    self._log('✗ fetch exhausted (http2-death #' + _n + '): ' + msg + ' url=' + GATEWAY_URL);
                     return null;
                 }
-                if (retry < MAX_RETRIES) {
-                    var waitMsF = 2000;
-                    self._log('  fetch error retry #' + (retry + 1) + ' in ' + waitMsF + 'ms: ' + msg);
-                    await new Promise(function (r) { setTimeout(r, waitMsF); });
-                    continue;
-                }
+
                 self._log('✗ fetch exhausted: ' + msg + ' url=' + GATEWAY_URL);
                 // ★ 诊断：记录调用栈，帮助定位谁在成功后还调了 _callGateway
                 try { console.trace('[qqq-net-err] _callGateway fetch exhausted'); } catch (_) { }
