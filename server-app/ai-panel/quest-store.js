@@ -68,6 +68,27 @@ var QuestStore = (function () {
         }
     }
 
+    // ★ 绕过 state-sdk 5s 缓存：直接从底层 bridge 读取（用于所有权等需跨面板立即一致的操作）
+    async function _getRaw(key) {
+        if (!_rootDir) return null;
+        try {
+            var bridge = null;
+            if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.state) {
+                bridge = window.parent.qqqideBridge.state;
+            } else if (typeof window !== 'undefined' && window.qqqideBridge && window.qqqideBridge.state) {
+                bridge = window.qqqideBridge.state;
+            }
+            if (bridge && bridge.project && bridge.project.get) {
+                var dbPath = _rootDir + '/qqq/alphal/quest.sq3';
+                return await bridge.project.get(dbPath, NS, key);
+            }
+        } catch (e) {
+            console.error('[quest-store] _getRaw(' + key + ') ERROR:', e && e.message);
+        }
+        // 降级：走缓存版本
+        return await _get(key);
+    }
+
     async function _setNow(key, value) {
         var b = _bridge();
         if (!b) return;
@@ -90,9 +111,14 @@ var QuestStore = (function () {
     QuestStore.prototype.setProjectRoot = function (rootDir) {
         if (rootDir && typeof rootDir === 'string') {
             _rootDir = rootDir.replace(/\\/g, '/').replace(/\/$/, '');
-            _qgs = null;  // 重置 bridge，下次 _bridge() 会用新路径
+            _qgs = null;
             this._index = null;
             console.log('[quest-store] setProjectRoot: ' + _rootDir);
+        } else if (rootDir === null) {
+            // ★ workspace 拆卸时清空
+            _rootDir = null;
+            _qgs = null;
+            this._index = null;
         }
     };
 
@@ -119,6 +145,11 @@ var QuestStore = (function () {
 
     QuestStore.prototype.onChange = function (cb) {
         this._onChangeCbs.push(cb);
+    };
+
+    // ★ workspace 切换时清空所有回调
+    QuestStore.prototype.clearOnChange = function () {
+        this._onChangeCbs = [];
     };
 
     function _notify(store, type, questId, extra) {
@@ -261,7 +292,8 @@ var QuestStore = (function () {
     // ═══════════════════════════════════════════════════════════════
 
     QuestStore.prototype.claimOwner = async function (questId, windowId) {
-        var existing = await _get(QUEST_NS + '.' + questId);
+        // ★ 绕过 5s 缓存：直接从底层 bridge 读取，确保跨面板立即一致
+        var existing = await _getRaw(QUEST_NS + '.' + questId);
         var oldOwner = (existing && existing._owner) || null;
         if (oldOwner && oldOwner.windowId && oldOwner.windowId !== windowId) {
             var age = Date.now() - (oldOwner.claimedAt || 0);
@@ -277,7 +309,8 @@ var QuestStore = (function () {
     };
 
     QuestStore.prototype.releaseOwner = async function (questId, windowId) {
-        var existing = await _get(QUEST_NS + '.' + questId);
+        // ★ 绕过 5s 缓存
+        var existing = await _getRaw(QUEST_NS + '.' + questId);
         if (!existing || !existing._owner) return null;
         var oldOwner = existing._owner;
         if (windowId && oldOwner.windowId !== windowId) return null;
@@ -287,7 +320,8 @@ var QuestStore = (function () {
     };
 
     QuestStore.prototype.getOwner = async function (questId) {
-        var existing = await _get(QUEST_NS + '.' + questId);
+        // ★ 绕过 5s 缓存：直接从底层 bridge 读取，确保跨面板立即一致
+        var existing = await _getRaw(QUEST_NS + '.' + questId);
         if (!existing || !existing._owner) return null;
         var age = Date.now() - (existing._owner.claimedAt || 0);
         if (age > 30000) return null;

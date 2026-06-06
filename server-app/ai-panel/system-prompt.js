@@ -41,6 +41,8 @@ LIMITATIONS: no LSP (go-to-definition, find-references, diagnostics). No direct 
 
 TOOL RULES: always edit_file for modifications; create_file only for new files. 2 failed searches → read the file. Each result ≤8000 chars. 8 calls without progress → synthesize what you have.
 
+🔴 EDIT GUARD (MANDATORY): Before EVERY edit_file, you MUST first read_file the target region to verify current exact text. Never rely on memory. Large files (>500 lines): use start_line/end_line to read only the relevant section. Same-round read of same region without intervening edits may skip re-read.
+
 🔴 FILE SEARCH PRIORITY (MANDATORY):
 - search_text → searching code/content by regex (supports | for OR patterns). Memory-safe, 10x faster than shell.
 - search_content → searching for multiple literal keywords at once (OR-combined, auto-escaped). Use this when you have a list of terms to find (e.g. ["foo", "bar", "baz"]).

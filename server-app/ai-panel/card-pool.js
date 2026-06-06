@@ -269,7 +269,13 @@ var CardPool = (function () {
     aiEl.appendChild(aiEl._contentWrap);
     aiEl._fullText = aiText;
 
-    // ③ 创建 A1 豆腐块（必须在电子钟之前）
+    // ③ 创建电子钟+饼图（先于 A1，让 _initA1Block 的 insertBefore 找到 clockBlock）
+    var _initClk = window._initClockBlock;
+    if (typeof _initClk === 'function') {
+      _initClk(aiEl);
+    }
+
+    // ④ 创建 A1 豆腐块（clockBlock 已存在，insertBefore 精准插入时钟上方）
     var meta = card._floorMetaMap[fNum];
     var a1El = null;
     var _a1Path = (meta && meta.allTxtPath) || '';
@@ -284,7 +290,6 @@ var CardPool = (function () {
         if (typeof _updA1 === 'function') {
           _updA1(a1El, fNum, hCount, rCount);
         }
-        // A1 行2: 文件变更统计（从持久化 floor 数据恢复）
         var _fs = fData.fileStats;
         if (_fs && a1El._r2a) {
           a1El._r2a.textContent = 'FILE ' + (_fs.fileCount || 0);
@@ -301,12 +306,6 @@ var CardPool = (function () {
       }
     }
 
-    // ④ 创建电子钟+饼图（必须在 A1 之后）
-    var _initClk = window._initClockBlock;
-    if (typeof _initClk === 'function') {
-      _initClk(aiEl);
-    }
-
     // ⑤ 如果是已封顶楼层，绘制停止态时钟（使用 quest 级 timings，非全局 agent）
     var timing = null;
     for (var ti = 0; ti < questTimings.length; ti++) {
@@ -316,11 +315,9 @@ var CardPool = (function () {
       var totalS = Math.floor((timing.durationMs || 0) / 1000);
       var min = Math.floor(totalS / 60);
       var sec = totalS % 60;
-      var stopColor = document.documentElement.getAttribute('data-theme') === 'dark' ? '#fff' : '#000';
+      aiEl._clockBlock.className = 'msg-ai-clock';
       aiEl._clockMin.textContent = min + 'm';
       aiEl._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
-      aiEl._clockMin.style.color = stopColor;
-      aiEl._clockSec.style.color = stopColor;
       var _dp = window.drawPie;
       if (typeof _dp === 'function') {
         _dp(aiEl._clockCanvas, {
@@ -355,8 +352,13 @@ var CardPool = (function () {
   // 返回 aiEl 供 startFloorTimer / agent.send 使用
   // 注意：用户消息由外部 addUserMessageEl 创建，此处不重复
   CardPool.prototype.startBuildingFloor = function (questId, floorNum, allTxtPath) {
-    var card = this._cards[questId];
-    if (!card) return null;
+    // ★ 兜底：若 card 不存在（新建 quest 首次发消息），自动创建
+    var card = this.getOrCreate(questId);
+    if (!this._activeId) {
+      // 新 quest 尚无活跃 card → 显示它
+      this._activeId = questId;
+      card.dom.style.display = 'block';
+    }
 
     // 若已有在建楼，先封顶
     if (card.buildingFloor !== null) {
@@ -472,6 +474,30 @@ var CardPool = (function () {
   CardPool.prototype.removeCard = function (questId) {
     if (this._activeId === questId) this._activeId = null;
     this._evict(questId);
+  };
+
+  // ═══ 销毁整个 Card Pool（切换 workspace 时用） ═══
+  CardPool.prototype.destroy = function () {
+    // 1. 中止所有运行中的 agent
+    if (typeof window.agentPool !== 'undefined') {
+      var apIds = Object.keys(window.agentPool);
+      for (var i = 0; i < apIds.length; i++) {
+        try { window.agentPool[apIds[i]].abort(); } catch (_) {}
+      }
+    }
+    // 2. 移除所有 card DOM
+    var cardIds = Object.keys(this._cards);
+    for (var j = 0; j < cardIds.length; j++) {
+      var card = this._cards[cardIds[j]];
+      if (card.dom && card.dom.parentNode) {
+        card.dom.parentNode.removeChild(card.dom);
+      }
+    }
+    // 3. 清空内部状态
+    this._cards = {};
+    this._lru = [];
+    this._activeId = null;
+    console.log('[card-pool] destroyed — ' + cardIds.length + ' cards removed');
   };
 
   // ═══ 在当前活跃 Card 上滚动到底 ═══

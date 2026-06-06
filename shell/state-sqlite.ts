@@ -156,6 +156,9 @@ export class StateStore extends EventEmitter {
                 this._db = new this._SQL.Database();
             }
 
+            // ★ 清理残留 .tmp 文件（原子写入失败/进程崩溃的遗孤）
+            this._cleanStaleTmp();
+
             // Create schema
             this._db.run(`CREATE TABLE IF NOT EXISTS state (
                 ns TEXT NOT NULL,
@@ -188,6 +191,51 @@ export class StateStore extends EventEmitter {
         if (!this._readyOk || !this._db) {
             this._init().catch(() => { });
         }
+    }
+
+    // ★ 启动时恢复/清理残留 .tmp 文件（进程崩溃遗孤 → 恢复而非丢弃）
+    private _cleanStaleTmp(): void {
+        const dir = path.dirname(this.dbPath);
+        const mainDb = this.dbPath;
+        const mainExists = fs.existsSync(mainDb);
+        const mainMtime = mainExists ? fs.statSync(mainDb).mtimeMs : 0;
+        try {
+            const files = fs.readdirSync(dir);
+            const prefix = path.basename(mainDb);
+            for (const f of files) {
+                if (!f.includes('.tmp.')) continue;
+                if (!f.startsWith(prefix)) continue;  // 只处理同名 db 的 tmp
+                const fullPath = path.join(dir, f);
+                const tmpMtime = fs.statSync(fullPath).mtimeMs;
+                if (!mainExists || tmpMtime > mainMtime) {
+                    // tmp 比主 db 新（或主 db 不存在）→ 恢复！
+                    console.log('[state-sqlite] recovering from tmp:', fullPath, '→', mainDb);
+                    try { fs.renameSync(fullPath, mainDb); } catch {
+                        // rename 失败（跨设备？）→ 拷贝
+                        try { fs.copyFileSync(fullPath, mainDb); fs.unlinkSync(fullPath); } catch { /* ignore */ }
+                    }
+                } else {
+                    // 主 db 更新或等新 → tmp 是垃圾
+                    try { fs.unlinkSync(fullPath); } catch { /* ignore */ }
+                }
+            }
+        } catch { /* ignore */ }
+        // outbox tmp 恢复
+        try {
+            const outboxFiles = fs.readdirSync(this.outboxDir);
+            for (const f of outboxFiles) {
+                if (!f.includes('.tmp.')) continue;
+                const fullPath = path.join(this.outboxDir, f);
+                // 目标文件名 = 去掉 .tmp.{timestamp}
+                const targetName = f.replace(/\.tmp\.\d+$/, '');
+                const targetPath = path.join(this.outboxDir, targetName);
+                if (!fs.existsSync(targetPath)) {
+                    try { fs.renameSync(fullPath, targetPath); } catch { /* ignore */ }
+                } else {
+                    try { fs.unlinkSync(fullPath); } catch { /* ignore */ }
+                }
+            }
+        } catch { /* ignore */ }
     }
 
     // ----- device id ----------------------------------------------------------
@@ -593,33 +641,23 @@ export class StateStore extends EventEmitter {
         }
     }
 
-    /** 原子 rename，带重试和降级策略 */
+    /** 原子 rename，带重试和降级策略。绝不先删后改（防崩溃丢数据）。 */
     private async _atomicRename(tmp: string, dest: string): Promise<void> {
-        for (let attempt = 0; attempt < 5; attempt++) {
-            try {
-                await fs.promises.rename(tmp, dest);
-                return; // 成功
-            } catch (e: any) {
-                if (e && (e.code === 'EEXIST' || e.code === 'EPERM' || e.code === 'EACCES')) {
-                    // 尝试先删除目标文件再重试
-                    try { await fs.promises.unlink(dest); } catch { /* ignore */ }
-                    if (attempt < 4) {
-                        // 指数退避: 50ms, 150ms, 350ms, 750ms
-                        await new Promise(r => setTimeout(r, 50 * Math.pow(2, attempt) + Math.random() * 50));
-                        continue;
-                    }
-                    // 最后一次尝试：直接覆盖写入
-                    try {
-                        const data = await fs.promises.readFile(tmp);
-                        await fs.promises.writeFile(dest, data);
-                        return;
-                    } catch (e2) {
-                        throw new Error('atomicRename all strategies failed: ' + (e2 && (e2 as any).message));
-                    }
-                }
-                throw e; // 非可恢复错误，直接抛
+        // 第 1 次：直接 rename（Linux/macOS 原子替换；现代 Windows 也支持）
+        try {
+            await fs.promises.rename(tmp, dest);
+            return;
+        } catch (e: any) {
+            // 非 EEXIST/EPERM/EACCES → 不可恢复，抛出
+            if (!e || (e.code !== 'EEXIST' && e.code !== 'EPERM' && e.code !== 'EACCES')) {
+                throw e;
             }
         }
+        // Windows 文件锁/防病毒 → 降级为 copy+unlink（无先删后改的丢数据窗口）
+        const data = await fs.promises.readFile(tmp);
+        await fs.promises.writeFile(dest, data);
+        // writeFile 成功后 dest 已有完整数据，安全删除 tmp
+        try { await fs.promises.unlink(tmp); } catch { /* ignore */ }
     }
 
     /** Synchronous flush for crash/shutdown — must not use async I/O */
@@ -633,22 +671,16 @@ export class StateStore extends EventEmitter {
             const buf = Buffer.from(data);
             try { fs.mkdirSync(path.dirname(this.dbPath), { recursive: true }); } catch { /* ignore */ }
             fs.writeFileSync(tmp, buf as any);
-            // 同步原子 rename，含降级策略
-            for (let attempt = 0; attempt < 3; attempt++) {
-                try {
-                    fs.renameSync(tmp, this.dbPath);
-                    return;
-                } catch (e: any) {
-                    if (e && (e.code === 'EEXIST' || e.code === 'EPERM' || e.code === 'EACCES')) {
-                        try { fs.unlinkSync(this.dbPath); } catch { /* ignore */ }
-                        if (attempt >= 2) {
-                            // 降级：直接覆盖写入
-                            const data = fs.readFileSync(tmp);
-                            fs.writeFileSync(this.dbPath, data);
-                            return;
-                        }
-                        continue;
-                    }
+            // 原子 rename（绝不先删后改，防崩溃丢数据）
+            try {
+                fs.renameSync(tmp, this.dbPath);
+            } catch (e: any) {
+                if (e && (e.code === 'EEXIST' || e.code === 'EPERM' || e.code === 'EACCES')) {
+                    // 降级：copy + unlink（无先删后改的丢数据窗口）
+                    const data = fs.readFileSync(tmp);
+                    fs.writeFileSync(this.dbPath, data);
+                    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+                } else {
                     throw e;
                 }
             }
@@ -706,20 +738,28 @@ export class StateStore extends EventEmitter {
     // ----- outbox (cloud sync queue; state-cloud.ts drains it) ----------------
 
     private _queueOutbox(ns: string, key: string, value: any, deleted: boolean): void {
+        let tmp = '';
         try {
             this.outboxSeq += 1;
             const seq = String(this.outboxSeq).padStart(12, '0');
             const f = path.join(this.outboxDir, seq + '.json');
             const payload = { seq, ns, key, ts: Date.now(), deleted, value: deleted ? null : value };
-            // Atomic write
-            const tmp = f + '.tmp.' + Date.now();
+            tmp = f + '.tmp.' + Date.now();
             fs.writeFileSync(tmp, JSON.stringify(payload));
-            try { fs.renameSync(tmp, f); } catch {
-                try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
+            try {
                 fs.renameSync(tmp, f);
+            } catch {
+                // ★ 降级 copy+unlink，绝不先删目标文件
+                try {
+                    const data = fs.readFileSync(tmp);
+                    fs.writeFileSync(f, data);
+                } catch { /* ignore */ }
             }
         } catch (e) {
             console.warn('[state-sqlite] _queueOutbox failed:', e);
+        } finally {
+            // 兜底清理：rename 成功后 tmp 已不存在（unlink 静默失败）
+            if (tmp) { try { fs.unlinkSync(tmp); } catch { /* ignore */ } }
         }
     }
 

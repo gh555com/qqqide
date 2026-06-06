@@ -857,133 +857,127 @@
       }
 
       if (e.data.action === 'open-table') {
-        // 强制清理上一轮残留状态（含 close 函数恢复）
-        close = _baseClose;
-        _stopRepeat();
-        overlay.style.display = 'none';
-        contentEl.innerHTML = '';
-        contentEl.style.overflow = 'hidden';  // 裁剪溢出，不产生滚动条
-        zoomScale = 1.0;
-        _dragX = 0; _dragY = 0;
+        try {
+          // 强制清理上一轮残留状态（含 close 函数恢复）
+          close = _baseClose;
+          _stopRepeat();
+          overlay.style.display = 'none';
+          contentEl.innerHTML = '';
+          contentEl.style.overflow = 'hidden';
+          zoomScale = 1.0;
+          _dragX = 0; _dragY = 0;
 
-        // 外层容器：固定 viewport 大小，裁剪溢出，保证 D-pad 平移可见
-        var clipBox = document.createElement('div');
-        clipBox.style.cssText =
-          'width:90vw; height:calc(100vh - 200px); overflow:hidden; ' +
-          'display:flex; align-items:center; justify-content:center;';
+          var clipBox = document.createElement('div');
+          clipBox.style.cssText =
+            'width:90vw; height:calc(100vh - 200px); overflow:hidden; ' +
+            'display:flex; align-items:center; justify-content:center;';
 
-        // 内层：自然尺寸，不做 max 约束，transform scale 不触发 reflow
-        var wrapper = document.createElement('div');
-        wrapper.className = 'qqq-overlay-table-wrapper';
-        wrapper.style.cssText =
-          'background:var(--card-bg,#2a2a2a); color:var(--text-primary,#d4d0c8); ' +
-          'border-radius:8px; padding:20px; user-select:text; ' +
-          'box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
-          'transform-origin:center center; ' +
-          'transition:transform 0.15s ease; display:inline-block;';
-        wrapper.innerHTML = e.data.html;
+          var wrapper = document.createElement('div');
+          wrapper.className = 'qqq-overlay-table-wrapper';
+          wrapper.style.cssText =
+            'background:var(--card-bg,#2a2a2a); color:var(--text-primary,#d4d0c8); ' +
+            'border-radius:8px; padding:20px; user-select:text; ' +
+            'box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
+            'transform-origin:center center; ' +
+            'transition:transform 0.15s ease; display:inline-block;';
+          wrapper.innerHTML = e.data.html;
 
-        // 表格样式：匹配 AI 面板原始渲染 (nowrap+auto宽)，再冻结列宽
-        var tables = wrapper.querySelectorAll('table');
-        for (var ti = 0; ti < tables.length; ti++) {
-          var t = tables[ti];
-          t.style.borderCollapse = 'collapse';
-          t.style.fontSize = '13px';
-          t.style.tableLayout = 'auto';  // 先自动计算列宽
-          t.style.width = 'auto';
-        }
-        var cells = wrapper.querySelectorAll('th,td');
-        for (var ci = 0; ci < cells.length; ci++) {
-          var c = cells[ci];
-          // 保留原始 style，只追加必要样式（同 AI 面板的 nowrap 规则）
-          c.style.border = '1px solid var(--border-color,#333)';
-          if (!c.style.padding) c.style.padding = '4px 8px';
-          if (!c.style.textAlign || c.style.textAlign === '') c.style.textAlign = 'left';
-          c.style.whiteSpace = 'nowrap';  // 与 AI 面板 table-inner 保持一致
-        }
-        var ths = wrapper.querySelectorAll('th');
-        for (var hi = 0; hi < ths.length; hi++) {
-          ths[hi].style.background = 'var(--card-bg,#1e1e1e)';
-        }
+          var tables = wrapper.querySelectorAll('table');
+          for (var ti = 0; ti < tables.length; ti++) {
+            var t = tables[ti];
+            t.style.borderCollapse = 'collapse';
+            t.style.fontSize = '13px';
+            t.style.tableLayout = 'auto';
+            t.style.width = 'auto';
+          }
+          var cells = wrapper.querySelectorAll('th,td');
+          for (var ci = 0; ci < cells.length; ci++) {
+            var c = cells[ci];
+            c.style.border = '1px solid var(--border-color,#333)';
+            if (!c.style.padding) c.style.padding = '4px 8px';
+            if (!c.style.textAlign || c.style.textAlign === '') c.style.textAlign = 'left';
+            c.style.whiteSpace = 'nowrap';
+          }
+          var ths = wrapper.querySelectorAll('th');
+          for (var hi = 0; hi < ths.length; hi++) {
+            ths[hi].style.background = 'var(--card-bg,#1e1e1e)';
+          }
 
-        // 代码块：去除边框，匹配 AI 面板 renderMarkdown 样式（无豆腐块横线）
-        var pres = wrapper.querySelectorAll('pre');
-        for (var pi = 0; pi < pres.length; pi++) {
-          var p = pres[pi];
-          p.style.border = 'none';
-          p.style.margin = '0';
-          p.style.borderRadius = '0';
-          p.style.background = 'transparent';
-          p.style.whiteSpace = 'pre-wrap';
-          p.style.wordBreak = 'break-all';
-          p.style.overflowX = 'hidden';
-        }
-        var codes = wrapper.querySelectorAll('code');
-        for (var ci2 = 0; ci2 < codes.length; ci2++) {
-          var cd = codes[ci2];
-          cd.style.border = 'none';
-          cd.style.background = 'none';
-          cd.style.padding = '0';
-          cd.style.color = 'inherit';
-        }
+          var pres = wrapper.querySelectorAll('pre');
+          for (var pi = 0; pi < pres.length; pi++) {
+            var p = pres[pi];
+            p.style.border = 'none';
+            p.style.margin = '0';
+            p.style.borderRadius = '0';
+            p.style.background = 'transparent';
+            p.style.whiteSpace = 'pre-wrap';
+            p.style.wordBreak = 'break-all';
+            p.style.overflowX = 'hidden';
+          }
+          var codes = wrapper.querySelectorAll('code');
+          for (var ci2 = 0; ci2 < codes.length; ci2++) {
+            var cd = codes[ci2];
+            cd.style.border = 'none';
+            cd.style.background = 'none';
+            cd.style.padding = '0';
+            cd.style.color = 'inherit';
+          }
 
-        clipBox.appendChild(wrapper);
-        contentEl.appendChild(clipBox);
+          clipBox.appendChild(wrapper);
+          contentEl.appendChild(clipBox);
 
-        // 先让浏览器计算布局（overlay 仍 hidden 但需 display≠none 才能测量）
-        // 使用 visibility:hidden 避免闪烁，同步测量后立即恢复
-        overlay.style.visibility = 'hidden';
-        overlay.style.display = 'block';
+          overlay.style.visibility = 'hidden';
+          overlay.style.display = 'block';
 
-        // 冻结列宽：先测量自然宽度，再用 table-layout:fixed + 绝对列宽锁定比例
-        var tables2 = wrapper.querySelectorAll('table');
-        for (var t2i = 0; t2i < tables2.length; t2i++) {
-          var tb = tables2[t2i];
-          // 获取第一行所有单元格的渲染宽度
-          var firstRow = tb.querySelector('tr');
-          if (firstRow) {
-            var colWidths = [];
-            var rowCells = firstRow.children;
-            for (var rci = 0; rci < rowCells.length; rci++) {
-              colWidths.push(rowCells[rci].offsetWidth);
-            }
-            // 设置 table-layout:fixed + <colgroup> 锁定每列宽度
-            tb.style.tableLayout = 'fixed';
-            tb.style.width = 'auto';
-            var colgroup = document.createElement('colgroup');
-            for (var cwi = 0; cwi < colWidths.length; cwi++) {
-              var col = document.createElement('col');
-              col.style.width = colWidths[cwi] + 'px';
-              colgroup.appendChild(col);
-            }
-            if (tb.firstChild) {
-              tb.insertBefore(colgroup, tb.firstChild);
-            } else {
-              tb.appendChild(colgroup);
+          var tables2 = wrapper.querySelectorAll('table');
+          for (var t2i = 0; t2i < tables2.length; t2i++) {
+            var tb = tables2[t2i];
+            var firstRow = tb.querySelector('tr');
+            if (firstRow) {
+              var colWidths = [];
+              var rowCells = firstRow.children;
+              for (var rci = 0; rci < rowCells.length; rci++) {
+                colWidths.push(rowCells[rci].offsetWidth);
+              }
+              tb.style.tableLayout = 'fixed';
+              tb.style.width = 'auto';
+              var colgroup = document.createElement('colgroup');
+              for (var cwi = 0; cwi < colWidths.length; cwi++) {
+                var col = document.createElement('col');
+                col.style.width = colWidths[cwi] + 'px';
+                colgroup.appendChild(col);
+              }
+              if (tb.firstChild) {
+                tb.insertBefore(colgroup, tb.firstChild);
+              } else {
+                tb.appendChild(colgroup);
+              }
             }
           }
-        }
 
-        // 获取自然尺寸（不受 max 约束的原始大小）
-        var natW = wrapper.scrollWidth, natH = wrapper.scrollHeight;
-        var viewW = window.innerWidth * 0.9, viewH = window.innerHeight - 200;
-        // 初始缩放：自动适配后放大2级（等助于点两次 + 按钮），便于预览
-        _initZoom = Math.min(1, viewW / Math.max(1, natW), viewH / Math.max(1, natH));
-        zoomScale = Math.min(5.0, _initZoom * 1.5625);
-        applyZoom();
-
-        // 恢复可见性
-        overlay.style.visibility = '';
-
-        // 拦截滚轮 → 缩放（非平移，保持比例）
-        clipBox.addEventListener('wheel', function (we) {
-          we.preventDefault(); we.stopPropagation();
-          if (we.deltaY < 0) { zoomScale = Math.min(5.0, zoomScale * 1.15); }
-          else { zoomScale = Math.max(0.25, zoomScale * 0.87); }
+          var natW = wrapper.scrollWidth, natH = wrapper.scrollHeight;
+          var viewW = window.innerWidth * 0.9, viewH = window.innerHeight - 200;
+          _initZoom = Math.min(1, viewW / Math.max(1, natW), viewH / Math.max(1, natH));
+          zoomScale = Math.min(5.0, _initZoom * 1.5625);
           applyZoom();
-        }, { passive: false });
 
-        dpad.style.display = 'block';
+          overlay.style.visibility = '';
+
+          clipBox.addEventListener('wheel', function (we) {
+            we.preventDefault(); we.stopPropagation();
+            if (we.deltaY < 0) { zoomScale = Math.min(5.0, zoomScale * 1.15); }
+            else { zoomScale = Math.max(0.25, zoomScale * 0.87); }
+            applyZoom();
+          }, { passive: false });
+
+          dpad.style.display = 'block';
+        } catch (_) {
+          // 出错时强制复位，避免 overlay 残留 invisible 阻挡 UI
+          overlay.style.display = 'none';
+          overlay.style.visibility = '';
+          contentEl.innerHTML = '';
+          dpad.style.display = 'none';
+        }
       }
     });
 

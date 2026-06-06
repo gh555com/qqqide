@@ -92,7 +92,7 @@ function safeName(s: string): string {
     return v;
 }
 
-/** Atomic write: tmp file then rename over target. Windows-safe. */
+/** Atomic write: tmp file then rename over target. 绝不先删后改（防崩溃丢数据）。 */
 async function atomicWrite(absPath: string, data: Buffer | string): Promise<void> {
     const dir = path.dirname(absPath);
     await fs.promises.mkdir(dir, { recursive: true });
@@ -103,8 +103,14 @@ async function atomicWrite(absPath: string, data: Buffer | string): Promise<void
         await fs.promises.rename(tmp, absPath);
     } catch (e: any) {
         if (e && (e.code === 'EEXIST' || e.code === 'EPERM' || e.code === 'EACCES')) {
-            try { await fs.promises.unlink(absPath); } catch { /* ignore */ }
-            await fs.promises.rename(tmp, absPath);
+            // ★ 降级为 copy+unlink，绝不先删后改
+            try {
+                const data = await fs.promises.readFile(tmp);
+                await fs.promises.writeFile(absPath, data);
+            } catch (e2) {
+                try { await fs.promises.unlink(tmp); } catch { /* ignore */ }
+                throw e2;
+            }
         } else {
             try { await fs.promises.unlink(tmp); } catch { /* ignore */ }
             throw e;
@@ -122,8 +128,14 @@ function atomicWriteSync(absPath: string, data: Buffer | string): void {
         fs.renameSync(tmp, absPath);
     } catch (e: any) {
         if (e && (e.code === 'EEXIST' || e.code === 'EPERM' || e.code === 'EACCES')) {
-            try { fs.unlinkSync(absPath); } catch { /* ignore */ }
-            fs.renameSync(tmp, absPath);
+            // ★ 降级为 copy+unlink，绝不先删后改
+            try {
+                const data = fs.readFileSync(tmp);
+                fs.writeFileSync(absPath, data);
+            } catch (e2) {
+                try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+                throw e2;
+            }
         } else {
             try { fs.unlinkSync(tmp); } catch { /* ignore */ }
             throw e;

@@ -38,6 +38,7 @@ import { UpdateService } from './update-service';
 // Force-disable Windows High Contrast / Forced Colors at the renderer level.
 // CSS forced-color-adjust alone is insufficient; Chromium needs explicit opt-out.
 // ----------------------------------------------------------------------------
+app.disableHardwareAcceleration(); // 关闭 GPU 进程，省 ~40MB 内存（纯文字 IDE 无副作用）
 app.commandLine.appendSwitch('forced-colors', 'none');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('disable-features', 'ForcedColors,AutoDarkMode');
@@ -433,11 +434,22 @@ function createWindow(): BrowserWindow {
         }
         if (win === mainWindow) {
             // 关主窗口时清理所有僚机 + 引擎（第一道防线，before-quit 兜底）
+            console.log('[main] close handler: destroying wingmen. _externalPanels:', _externalPanels.map(w => w ? 'alive' : 'null'));
             _allowExtClose = true;
             for (const extWin of _externalPanels) {
-                if (extWin && !extWin.isDestroyed()) { try { extWin.destroy(); } catch { /* ignore */ } }
+                if (extWin && !extWin.isDestroyed()) {
+                    console.log('[main] destroying wingman...');
+                    try { extWin.destroy(); console.log('[main] wingman destroyed'); } catch (e) { console.log('[main] wingman destroy error:', e); }
+                }
             }
-            // 不要在这里重置 _allowExtClose，让 before-quit 也能关闭僚机
+            // 兜底：销毁一切残留窗口
+            try {
+                const all = BrowserWindow.getAllWindows();
+                console.log('[main] BrowserWindow.getAllWindows().length:', all.length);
+                all.forEach(w => {
+                    if (!w.isDestroyed() && w !== win) { try { w.destroy(); console.log('[main] extra window destroyed'); } catch { /* ignore */ } }
+                });
+            } catch { /* ignore */ }
             try { engineHost.stop(); } catch { /* ignore */ }
             try { audioEngine.stop(); } catch { /* ignore */ }
             mainWindow = null;
@@ -2095,13 +2107,20 @@ app.on('before-quit', async (e) => {
     // ★ 始终阻止默认退出 — 我们必须确保清理完成后再 app.exit(0)
     e.preventDefault();
 
-    // ① 强制销毁所有僚机窗口（防止孤儿窗口残留）
+    // ① 强制销毁所有窗口（防止孤儿残留）
     _allowExtClose = true;
+    // 先销毁已知僚机
     for (const extWin of _externalPanels) {
         if (extWin && !extWin.isDestroyed()) {
             try { extWin.destroy(); } catch { /* ignore */ }
         }
     }
+    // 再兜底：销毁一切残留 BrowserWindow
+    try {
+        BrowserWindow.getAllWindows().forEach(w => {
+            if (!w.isDestroyed()) { try { w.destroy(); } catch { /* ignore */ } }
+        });
+    } catch { /* ignore */ }
 
     // ② 停止引擎子进程（q_win_x64.exe / ghrun.exe 等）
     //    必须在 state flush 之前，因为引擎可能持有 SQLite 连接
@@ -2121,12 +2140,10 @@ app.on('before-quit', async (e) => {
         _flushStateSync('before-quit');
     }
 
-    // ④ 硬退出：确保进程不留残影
-    //     无论 _flushedOnce 状态如何，必须调用 app.exit(0)
-    //     因为 e.preventDefault() 阻止了默认退出
+    // ④ 硬退出：双保险
     app.exit(0);
-    // ⑤ 终极保险：3 秒后仍未退出 → 强制杀进程
-    setTimeout(() => { process.exit(0); }, 3000);
+    // process.exit() 兜底：500ms 后仍未退出 → 强制杀
+    setTimeout(() => { process.exit(0); }, 500);
 });
 // SIGINT/SIGTERM: 同步刷盘后触发退出（汇聚到 before-quit 兜底）
 process.on('SIGINT', () => { _flushStateSync('SIGINT'); try { app.quit(); } catch { process.exit(0); } });

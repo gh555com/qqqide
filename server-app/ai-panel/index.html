@@ -41,14 +41,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-tofu-focused .quest-tofu-text{color:#000!important}
 [data-theme="dark"] .quest-tofu-focused{background:#e8a030!important;color:#000!important}
 [data-theme="dark"] .quest-tofu-focused .quest-tofu-text{color:#000!important}
-/* q2x 行：第二行 — + 号 + 搜索框 */
-#quest-q2x{display:flex;align-items:stretch;border-bottom:1px solid var(--border-color);background:var(--card-bg)}
-.quest-q2x-add{flex:0 0 33.333%;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;color:var(--primary-color);cursor:default;user-select:none;padding:6px 0;border-right:1px solid var(--border-color)}
-.quest-q2x-add:hover{background:var(--background-color)}
-.quest-q2x-search{flex:1;padding:6px 12px;border:none;background:var(--card-bg);color:var(--text-primary);font-size:16px;outline:none}
-.quest-q2x-search::placeholder{color:var(--base01);opacity:.6}
-/* 已选 quest 时 q2x 行隐藏 */
-#quest-q2x.hidden{display:none}
+/* q2x 行已删除（统一走 dropdown hover，单一真理源）*/
 /* quest 下拉 — 与豆腐块齐宽、无缝隙 */
 .quest-drop{position:absolute;top:100%;left:0;width:100%;z-index:9999;max-height:400px;overflow-y:auto;background:var(--card-bg);border:none;border-radius:0;box-shadow:0 4px 12px rgba(0,0,0,0.22);display:none}
 .quest-drop.show{display:block}
@@ -57,6 +50,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-drop-add{flex:0 0 33.333%;display:flex;align-items:center;justify-content:center;padding:8px 0;font-size:24px;font-weight:700;color:var(--primary-color);cursor:default;border-right:1px solid var(--border-color);user-select:none}
 .quest-drop-add:hover{background:var(--background-color)}
 .quest-drop-search{flex:1;padding:8px 12px;border:none;background:var(--card-bg);color:var(--text-primary);font-size:18px;outline:none}
+.quest-drop-search:focus{background:var(--background-color)}
 .quest-drop-search::placeholder{color:var(--base01);opacity:.6}
 /* 下拉条目 */
 .quest-drop-item{padding:6px 12px;font-size:16px;color:var(--text-primary);white-space:normal;overflow:hidden;text-overflow:ellipsis;cursor:default;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.3;max-height:calc(1.3em * 2 + 12px)}
@@ -98,6 +92,11 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 /* 楼层时钟 + 饼图（嵌在豆腐块内部底部，每个楼层私有） */
 .msg-ai-clock{display:flex;align-items:center;gap:8px;padding:8px 0 0;user-select:none}
 .msg-ai-clock .clock{font-variant-numeric:tabular-nums;font-family:ui-monospace,monospace;font-weight:700;color:#000;line-height:1;flex-shrink:0}
+[data-theme="dark"] .msg-ai-clock .clock{color:#fff}
+/* 流式态动态颜色：AI思考=绿 / 工具执行=黄 / 网络=红 */
+.msg-ai-clock.clock-ai .clock{color:#859900!important}
+.msg-ai-clock.clock-tool .clock{color:#e6b800!important}
+.msg-ai-clock.clock-network .clock{color:#cb4b16!important}
 .msg-ai-clock .clock-min{font-size:48px}
 .msg-ai-clock .clock-sec{font-size:24px}
 .msg-ai-clock canvas{width:42px;height:42px;border-radius:50%;flex-shrink:0}
@@ -139,9 +138,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-img-badge{position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.75);color:#fff;font-size:10px;font-weight:bold;padding:2px 6px;border-radius:3px;user-select:none;z-index:1}
 .msg-img-badge:hover{background:var(--green)}
 #input-row{display:flex;gap:6px;overflow:hidden}
-#input{flex:1;min-width:0;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:150px;overflow-y:auto;overflow-x:hidden;white-space:pre-wrap;word-break:break-word;overflow-wrap:break-word;outline:none;scrollbar-width:thin;scrollbar-color:var(--base01) transparent}#input::-webkit-scrollbar{width:3px}#input::-webkit-scrollbar-track{background:transparent;border:none}#input::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}#input::-webkit-scrollbar-button{display:none}#input::-webkit-scrollbar-corner{background:transparent}
-#input:focus{outline:1px solid var(--blue)}
-#input:empty::before{content:attr(data-placeholder);color:var(--base01);opacity:.5;pointer-events:none}
+#input{flex:1;min-width:0;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:150px;overflow-y:auto;overflow-x:hidden;resize:none;outline:none;scrollbar-width:thin;scrollbar-color:var(--base01) transparent;line-height:1.5}#input::-webkit-scrollbar{width:3px}#input::-webkit-scrollbar-track{background:transparent;border:none}#input::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}#input::-webkit-scrollbar-button{display:none}#input::-webkit-scrollbar-corner{background:transparent}
+#input:focus{outline:1px solid var(--blue);height:333px;max-height:none}
+#input::placeholder{color:var(--base01);opacity:.5}
 #btn-row{display:flex;gap:3px;align-items:center;flex-wrap:nowrap;overflow-x:hidden}
 #btn-row button{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:3px 7px;font-size:10px;height:25px;white-space:nowrap;flex-shrink:0}
 #btn-row button:hover{background:var(--base3)}
@@ -302,17 +301,13 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   <div style="flex:1"></div>
 </div>
 <div id="quest-bar">
-  <!-- 第一行：招牌行 — quest 名称 或 "~ New quest ~" -->
+  <!-- 第一行：招牌行 -->
   <div class="quest-tofu" id="quest-tofu">
     <span class="quest-tofu-text" id="quest-tofu-text">─</span>
   </div>
-  <!-- 第二行：q2x 行 — 加号 + 搜索 -->
-  <div class="quest-q2x" id="quest-q2x">
-    <span class="quest-q2x-add" id="quest-q2x-add">+</span>
-    <input class="quest-q2x-search" id="quest-q2x-search" placeholder="筛选...">
-  </div>
+  <!-- q2x 行已删除：统一走 dropdown 头行（hover q2 才出现） -->
 </div>
-<!-- q3 floor 导航行已删除（card-pool 架构不需要翻页）-->
+<!-- q3 floor 导航行已删除 -->
 <div id="messages-wrap">
 <div id="scroll-mark-layer"></div>
 <div id="messages">
@@ -331,7 +326,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   <div id="image-strip"></div>
   <div id="queue-strip"></div>
   <div id="input-row">
-    <div id="input" contenteditable="plaintext-only" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" data-placeholder="Ask qqq AI... (Ctrl+V 粘贴图片)" data-i18n-placeholder-attr="ai.inputPlaceholder"></div>
+    <textarea id="input" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" placeholder="Ask qqq AI... (Ctrl+V 粘贴图片)" data-i18n-placeholder-attr="ai.inputPlaceholder" rows="1"></textarea>
   </div>
   <div id="btn-row">
     <div class="tier-group">
@@ -416,13 +411,21 @@ var _windowId = (function() {
 var _syncUnsub = null;
 var _projectPathUnsub = null;
 var _standaloneRoot = null;
+var _workspaceRoot = null;  // ★ 当前工作空间（主文件夹路径）
+
+// ★ workspace-scoped sync channel name
+function _syncChannel() {
+  // 用项目路径生成唯一频道名，替换非字母数字为 _（IPC 安全）
+  var s = (_workspaceRoot || '').replace(/[^a-zA-Z0-9]/g, '_');
+  return 'qqq-sync:' + s;
+}
+
 function _broadcast(type, questId, extra) {
   var sb = _getSyncBridge();
-  if (!sb) return;
+  if (!sb || !_workspaceRoot) return;
   var msg = { type: type, questId: questId, windowId: _windowId };
   if (extra) Object.assign(msg, extra);
-  // 频道名 = 'quest-sync'（IPC 中转到其他窗口）
-  try { sb.broadcast('quest-sync', msg); } catch (_) {}
+  try { sb.broadcast(_syncChannel(), msg); } catch (_) {}
 }
 
 // ═══ 僚机桥接（IPC sync） ═══
@@ -447,9 +450,9 @@ function _setPanelFocus(on) {
     var panel = _wingmanIndex != null ? _wingmanIndex : 0;
     if (_isStandalone) {
       var sb = _getSyncBridge();
-      if (sb) { sb.broadcast('host-message', { type: 'qqq-panel-focused', panel: panel }); }
+      if (sb) { sb.broadcast('host-message', { type: 'qqq-ai-panel-focused', panel: panel }); }
     } else {
-      try { parent.postMessage({ type: 'qqq-panel-focused', panel: 0 }, '*'); } catch(_) {}
+      try { parent.postMessage({ type: 'qqq-ai-panel-focused', panel: 0 }, '*'); } catch(_) {}
     }
   }
 }
@@ -471,7 +474,7 @@ var _fwSeq = 0;
 function _postToHost(msg) {
   msg._fwId = 'fw' + (++_fwSeq) + '_' + Date.now().toString(36);
   if (_isStandalone) {
-    // 僚机 → IPC → 主进程 → 主窗口 → postMessage → shell.js
+    // 僚机/独立窗口：自身无 shell.js，所有消息走 IPC → 主窗口 shell.js 处理
     var syncBridge = _getSyncBridge();
     if (syncBridge) {
       try { syncBridge.broadcast('host-message', msg); } catch (_) {}
@@ -865,7 +868,7 @@ const $queueStrip = document.getElementById('queue-strip');
 
 // ── 排队按钮状态：有文字即可排队（不管 AI 是否在工作）──
 function updateQueueBtn() {
-  var hasText = getInputText().trim().length > 0;
+  var hasText = $input.value.trim().length > 0;
   $queueBtn.disabled = !hasText;
 }
 
@@ -938,22 +941,6 @@ $input.addEventListener('paste', function(e) {
   }
 }, true);
 
-// copy 拦截：全选时用 getInputText() 替代 DOM textContent，chip 路径不丢失；
-// 部分选中时不干预，走浏览器原生复制。
-$input.addEventListener('copy', function(e) {
-  var sel = window.getSelection();
-  var selText = sel && sel.toString() ? sel.toString() : '';
-  var fullPlain = getInputPlainText();
-  // 仅当「全选」（选中文本 ≈ 全文）或「无选中」时，才用带路径版本覆盖
-  if (!selText || selText.replace(/\s/g, '') === fullPlain.replace(/\s/g, '')) {
-    var plain = getInputText();
-    if (plain) {
-      e.clipboardData.setData('text/plain', plain);
-      e.preventDefault();
-    }
-  }
-});
-
 // ── 递归复制 alphal 目录（copy+delete 代替 rename，避免文件锁）──
 async function _copyAlphalDir(srcDir, dstDir) {
   var entries = await window.parent.qqqideBridge.fs.list(srcDir);
@@ -1024,77 +1011,34 @@ if ($tokenSave) $tokenSave.onclick = function() {
 $input.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
+    if (_sending) return;
+    if (_activeAgent && _activeAgent._compressing) return;
     sendMessage();
   }
 });
-// ══ 字符级 Undo/Redo（从 q3/ai 移植，适配 contenteditable）══
+// ══ 字符级 Undo/Redo（textarea 版：纯 value 快照，零 DOM 开销）══
 (function initCharUndo(input) {
-  // 扁平 childNodes 遍历（编辑框只有 text + chip span，无需 TreeWalker）
-  function _walkTextNodes(el, fn) {
-    for (var i = 0; i < el.childNodes.length; i++) {
-      var c = el.childNodes[i];
-      if (c.nodeType === 3) { if (fn(c) === true) return; }
-      else if (c.nodeType === 1) {
-        for (var j = 0; j < c.childNodes.length; j++) {
-          var cc = c.childNodes[j];
-          if (cc.nodeType === 3 && fn(cc) === true) return;
-        }
-      }
-    }
-  }
-  function _cursorOffset(el) {
-    var sel = window.getSelection();
-    if (sel.rangeCount === 0) return 0;
-    var r = sel.getRangeAt(0);
-    if (!el.contains(r.startContainer)) return 0;
-    var off = 0, found = false;
-    _walkTextNodes(el, function(n) {
-      if (n === r.startContainer) { off += r.startOffset; found = true; return true; }
-      off += n.textContent.length;
-    });
-    return found ? off : 0;
-  }
-  function _setCursor(el, targetOff) {
-    var cur = 0, done = false;
-    _walkTextNodes(el, function(n) {
-      var len = n.textContent.length;
-      if (cur + len >= targetOff) {
-        var r = document.createRange();
-        r.setStart(n, targetOff - cur);
-        r.collapse(true);
-        var s = window.getSelection();
-        s.removeAllRanges();
-        s.addRange(r);
-        done = true;
-        return true;
-      }
-      cur += len;
-    });
-    if (!done) {
-      var r = document.createRange();
-      r.selectNodeContents(el);
-      r.collapse(false);
-      var s = window.getSelection();
-      s.removeAllRanges();
-      s.addRange(r);
-    }
-  }
-  var _initialHtml = input.innerHTML || '';
-  var state = { history: [{ html: _initialHtml, off: 0 }], index: 0, isProgrammatic: false };
+  var _initialVal = input.value || '';
+  var state = { history: [{ val: _initialVal, pos: 0 }], index: 0, isProgrammatic: false };
+  var _HISTORY_CEIL = 10000;  // 单条超此长度不记历史
+  var _HISTORY_MAX = 200;
   input.addEventListener('input', function() {
     var isProg = state.isProgrammatic;
     if (isProg) { state.isProgrammatic = false; }
-    var v = input.innerHTML;
+    var v = input.value;
     if (!isProg) {
       if (state.index < state.history.length - 1) state.history = state.history.slice(0, state.index + 1);
       var last = state.history[state.history.length - 1];
-      if (v !== last.html) {
-        var off = _cursorOffset(input);
-        state.history.push({ html: v, off: off });
+      if (v !== last.val && v.length <= _HISTORY_CEIL) {
+        state.history.push({ val: v, pos: input.selectionStart });
         state.index = state.history.length - 1;
+        if (state.history.length > _HISTORY_MAX) {
+          var _drop = Math.floor(_HISTORY_MAX / 2);
+          state.history = state.history.slice(_drop);
+          state.index -= _drop;
+        }
       }
     }
-    // 用已缓存的 v 判断而非再调 getInputText() 遍历 DOM
     updateQueueBtn();
   });
   input.addEventListener('keydown', function(e) {
@@ -1104,8 +1048,8 @@ $input.addEventListener('keydown', function(e) {
         state.index--;
         state.isProgrammatic = true;
         var entry = state.history[state.index];
-        input.innerHTML = entry.html;
-        _setCursor(input, entry.off);
+        input.value = entry.val;
+        input.setSelectionRange(entry.pos, entry.pos);
         input.dispatchEvent(new Event('input', { bubbles: true }));
       }
       return;
@@ -1116,8 +1060,8 @@ $input.addEventListener('keydown', function(e) {
         state.index++;
         state.isProgrammatic = true;
         var entry = state.history[state.index];
-        input.innerHTML = entry.html;
-        _setCursor(input, entry.off);
+        input.value = entry.val;
+        input.setSelectionRange(entry.pos, entry.pos);
         input.dispatchEvent(new Event('input', { bubbles: true }));
       }
       return;
@@ -1125,7 +1069,7 @@ $input.addEventListener('keydown', function(e) {
   });
   // 外部可调用：消息发出后截断历史，防止回退到已发送内容
   input._resetUndo = function() {
-    state.history = [{ html: input.innerHTML || '', off: 0 }];
+    state.history = [{ val: input.value || '', pos: 0 }];
     state.index = 0;
   };
 })($input);
@@ -1231,7 +1175,7 @@ $input.addEventListener('paste', function(e) {
   }
 });
 $sendBtn.onclick = function() {
-  if (agent._compressing) return;  // 压缩期间禁用一切操作
+  if (!_activeAgent || _activeAgent._compressing) return;  // 无 agent 或压缩中 → 不响应
   if (streaming) { stopStream(); } else { sendMessage(); }
 };
 
@@ -1334,7 +1278,25 @@ function _formatSizeCompact(bytes) {
 }
 
 function scrollToBottom(force) {
-  cardPool.scrollActiveToBottom(force);
+  if (cardPool) cardPool.scrollActiveToBottom(force);
+}
+
+// ★ 延迟滚到底：等 DOM 布局完成后再滚（用于打开 quest 时）
+function _scrollToBottomDeferred(force) {
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      scrollToBottom(force);
+    });
+  });
+}
+
+// ★ 延迟恢复滚动位置：等 DOM 布局完成后再设（用于窗口重启时）
+function _restoreScrollDeferred(scrollTop) {
+  requestAnimationFrame(function() {
+    requestAnimationFrame(function() {
+      $messages.scrollTop = scrollTop;
+    });
+  });
 }
 
 
@@ -1435,10 +1397,15 @@ function addUserMessageEl(content) {
 
 // ═══ 消息 DOM 插入辅助：优先插入活跃 Card 内容区 ═══
 function _appendToCard(el) {
-  if (cardPool) {
-    var card = cardPool.getActive();
+  if (cardPool && questActiveId) {
+    var card = cardPool.getOrCreate(questActiveId);
     if (card && card._contentWrap) {
       card._contentWrap.appendChild(el);
+      // 若 card 尚未显示（新创建 quest 首次消息），自动显示
+      if (card.dom && card.dom.style.display === 'none') {
+        card.dom.style.display = 'block';
+        cardPool._activeId = questActiveId;
+      }
       return;
     }
   }
@@ -1556,157 +1523,234 @@ var questStore = new QuestStore();
 window.questStore = questStore;  // 暴露到全局，供 card-pool.js 等外部模块访问
 questStore.requireProjectForWrites(true);  // 底层守卫：无主项目禁止一切写入
 
-// 绑定主文件夹 — 项目级持久化 + 文件锁（委托 onlyStore 唯一真理机器）
-async function bindMainProject() {
-  // ★ 防重入：已绑定则直接返回（initProjectSync 可能并发触发多次）
-  if (_questsInited) return;
-  
-  var root = null;
-  var isStandalone = false;
+// ═══ 工作空间 — 绑定主文件夹 ═══
+// 铁律：一个窗口同一时刻只有一个工作空间（一个主文件夹）
+//       切换工作空间 = 旧空间全量销毁 → 新空间全量初始化
+//       IPC 频道名带 workspace hash，不同主文件夹物理隔离
 
-  // 主面板：从父窗口 AI 视口获取主文件夹
-  if (window.parent && window.parent.qqqideViewport) {
-    var main = window.parent.qqqideViewport.getMainProject();
-    if (!main || !main.path) {
-      console.log('[quests] bindMainProject: no main project yet');
-      return;
+// 拆解旧工作空间
+function _teardownWorkspace() {
+  if (!_workspaceRoot) return;
+  console.log('[workspace] tearing down: ' + _workspaceRoot);
+  // 1. 保存当前 quest UI 状态
+  saveQuestUIState(questActiveId);
+  // 2. 停止楼层计时器
+  if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
+  // 3. 释放当前 quest 所有权
+  if (questActiveId) {
+    try { questStore.releaseOwner(questActiveId, _windowId).catch(function(){}); } catch(_) {}
+    _broadcast('owner-released', questActiveId);
+  }
+  // 4. 销毁 Card Pool（清 DOM + 清 agent pool）
+  if (cardPool && typeof cardPool.destroy === 'function') {
+    cardPool.destroy();
+    cardPool = null;
+    window.cardPool = null;
+  }
+  // 5. 清空 agent pool
+  if (typeof agentPool !== 'undefined') {
+    var apKeys = Object.keys(agentPool);
+    for (var k = 0; k < apKeys.length; k++) {
+      try { agentPool[apKeys[k]].abort(); } catch(_) {}
+      delete agentPool[apKeys[k]];
     }
-    root = main.path.replace(/\\/g, '/').replace(/\/$/, '');
-  } else if (_standaloneRoot) {
-    // 僚机/独立窗口：从 IPC sync 收到项目路径
-    root = _standaloneRoot.replace(/\\/g, '/').replace(/\/$/, '');
-    isStandalone = true;
-    _isStandalone = true;  // 启用独立窗口模式（IPC sync + 自身 qqqideBridge）
-    console.log('[quests] bindMainProject: standalone mode, root=' + root);
-  } else {
-    return;
+  }
+  // 6. 重置 UI 状态
+  _activeAgent = null;
+  _activeAiDiv = null;
+  questActiveId = '';
+  _queueFallback = [];
+  pendingImages = [];
+  questUIStates = {};
+  _allTxtPath = '';
+  // 7. 清理 IPC 订阅
+  if (_syncUnsub) { try { _syncUnsub(); } catch(_) {} _syncUnsub = null; }
+  if (_projectPathUnsub) { try { _projectPathUnsub(); } catch(_) {} _projectPathUnsub = null; }
+  // 8. 重置 onlyStore
+  if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+    onlyStore.flush();
+    onlyStore.init(null);
+  }
+  // 9. 清理 questStore
+  questStore.clearOnChange();
+  questStore.setProjectRoot(null);
+  // 10. 重置标记
+  _workspaceRoot = null;
+  _questsInited = false;
+  _standaloneRoot = null;
+  // 11. 清空 DOM 残留（card pool 已移除所有 card，此处只清可能落在 card 外的元素）
+  // ★ 注意：#messages 内还有 #search-bar，不能 innerHTML 全清
+  //     只清除卡在 card 之外的直接子元素（排除 #search-bar 和 card div）
+  var children = $messages.children;
+  for (var ci = children.length - 1; ci >= 0; ci--) {
+    var child = children[ci];
+    // 保留 search-bar 和 card 容器
+    if (child.id === 'search-bar') continue;
+    if (child.className && child.className.indexOf('card') === 0) continue;
+    child.remove();
+  }
+  $input.value = '';
+  $input._resetUndo();
+  renderImageStrip();
+  renderQueueStrip();
+  updateCostDisplay();
+  updateCtxBtn();
+  renderTabs();
+}
+
+// 初始化工作空间
+async function _initWorkspace(root, isStandalone) {
+  console.log('[workspace] initializing: ' + root + (isStandalone ? ' (standalone)' : ''));
+  _workspaceRoot = root;
+  if (isStandalone) {
+    _isStandalone = true;
+    _standaloneRoot = root;
   }
 
-  // 委托 onlyStore 管理项目锁（O_EXCL 语义，心跳，释放全自动）
-  // 先拿锁，再设置 rootDir —— 防止锁失败后 rootDir 已污染导致串台
+  // 委托 onlyStore 管理项目锁
   onlyStore.init(root);
   var lockResult = await onlyStore.claimLock();
   if (!lockResult.ok) {
     if (lockResult.error === 'locked') {
       if (isStandalone) {
-        // 僚机窗口：主窗口已持有锁，跳过锁竞争，直接绑定（共享读写）
-        console.warn('[quests] bindMainProject: standalone sharing lock (age=' + (lockResult.age/1000).toFixed(1) + 's)');
+        console.warn('[workspace] standalone sharing lock (age=' + (lockResult.age/1000).toFixed(1) + 's)');
       } else {
-        console.warn('[quests] bindMainProject BLOCKED: project locked (age=' + (lockResult.age/1000).toFixed(1) + 's)');
+        console.warn('[workspace] BLOCKED: project locked (age=' + (lockResult.age/1000).toFixed(1) + 's)');
         addMessageEl('error', '⚠️ 该项目已被另一个 QQQ 窗口打开，无法重复绑定。');
-        // 通知父窗口从视口移除该项目
         if (window.parent) {
-          try {
-            window.parent.postMessage({ type: 'qqq-ai-viewport-remove-project', path: root }, '*');
-          } catch (_) { }
+          try { window.parent.postMessage({ type: 'qqq-ai-viewport-remove-project', path: root }, '*'); } catch(_) {}
         }
         onlyStore.init(null);
+        _workspaceRoot = null;
         return;
       }
     } else {
-      // 其他锁错误
       onlyStore.init(null);
+      _workspaceRoot = null;
       return;
     }
   }
+
   questStore.setProjectRoot(root);
 
-  // ═══ 初始化 Card Pool ═══
-  if (!cardPool && typeof CardPool !== 'undefined') {
+  // ═══ Card Pool：每次 workspace 初始化都重建 ═══
+  if (typeof CardPool !== 'undefined') {
     cardPool = new CardPool($messages);
     window.cardPool = cardPool;
-    console.log('[card-pool] initialized — root=' + root + ' caps=' + cardPool.FLOOR_CAP_CAPPED + '+' + cardPool.FLOOR_CAP_BUILDING + ' pool=' + cardPool.CARD_POOL_MAX);
-  } else if (!cardPool) {
+    console.log('[card-pool] initialized — caps=' + cardPool.FLOOR_CAP_CAPPED + '+' + cardPool.FLOOR_CAP_BUILDING + ' pool=' + cardPool.CARD_POOL_MAX);
+  } else {
     console.error('[card-pool] CardPool undefined — card-pool.js failed to load!');
   }
 
-  // 向主进程注册窗口↔项目映射（仅当成功持有锁时；僚机/standalone 不注册）
-  if (lockResult.ok) {
-    try {
-      if (!isStandalone && window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.window) {
-        window.parent.qqqideBridge.window.claimProject(root).catch(function () { });
-      }
-    } catch (_) { }
+  // 向主进程注册窗口↔项目映射
+  if (lockResult.ok && !isStandalone && window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.window) {
+    try { window.parent.qqqideBridge.window.claimProject(root).catch(function(){}); } catch(_) {}
   }
 
-  // 迁移旧目录 qqq/quests/alphal/ → qqq/alphal/（锁已获取，安全操作）
+  // 迁移旧目录
   try {
-    var oldAlphal = root + '/qqq/quests/alphal';
-    var newAlphal = root + '/qqq/alphal';
-    var oldStat = await window.parent.qqqideBridge.fs.stat(oldAlphal);
-    var newStat = await window.parent.qqqideBridge.fs.stat(newAlphal);
-    if (oldStat && !newStat) {
-      console.log('[quests] migrating alphal: ' + oldAlphal + ' → ' + newAlphal);
-      await window.parent.qqqideBridge.fs.mkdir(newAlphal);
-      await _copyAlphalDir(oldAlphal, newAlphal);
-      try { await window.parent.qqqideBridge.fs.remove(oldAlphal); } catch(_) {}
-      console.log('[quests] migration done');
+    var bridge = _getBridge();
+    if (bridge) {
+      var oldAlphal = root + '/qqq/quests/alphal';
+      var newAlphal = root + '/qqq/alphal';
+      var oldStat = await bridge.fs.stat(oldAlphal);
+      var newStat = await bridge.fs.stat(newAlphal);
+      if (oldStat && !newStat) {
+        console.log('[workspace] migrating alphal: ' + oldAlphal + ' → ' + newAlphal);
+        await bridge.fs.mkdir(newAlphal);
+        await _copyAlphalDir(oldAlphal, newAlphal);
+        try { await bridge.fs.remove(oldAlphal); } catch(_) {}
+      }
     }
-  } catch (e) {
-    console.warn('[quests] migration error', e);
-  }
-  // 首次绑定项目后初始化 quest 列表
-  if (!_questsInited) {
-    _questsInited = true;
-    await initQuests();
-    if (typeof loadQqqideProjectRules === 'function') {
-      loadQqqideProjectRules(questStore.getProjectRoot());
-    }
-    // 重建 AI 视口快照，告诉 AI 当前主文件夹是谁
-    if (typeof buildQqqideVisionContext === 'function') {
-      buildQqqideVisionContext();
-    }
-  }
-  // 恢复 per-quest UI 状态（输入框草稿、图片、等级、滚动位置）
+  } catch(e) { console.warn('[workspace] migration error', e); }
+
+  // ★ 恢复 per-quest UI 状态
   var savedStates = onlyStore.get('ai.uiStates');
   if (savedStates && typeof savedStates === 'object') {
     questUIStates = savedStates;
   }
-  // ═══ 初始化跨窗口同步总线（IPC sync）═══
+
+  // 初始化 quest 列表
+  _questsInited = true;
+  await initQuests();
+  if (typeof loadQqqideProjectRules === 'function') {
+    loadQqqideProjectRules(questStore.getProjectRoot());
+  }
+  if (typeof buildQqqideVisionContext === 'function') {
+    buildQqqideVisionContext();
+  }
+
+  // ═══ IPC sync：workspace-scoped channel ═══
   try {
     var sb = _getSyncBridge();
     if (sb) {
-      // 清理旧订阅
       if (_syncUnsub) { _syncUnsub(); _syncUnsub = null; }
-      // 订阅来自其他窗口的 quest 同步消息
+      var ch = _syncChannel();
       _syncUnsub = sb.onMessage(function(channel, data) {
-        if (channel === 'quest-sync') { _handleSyncMessage(data); }
+        if (channel === ch) { _handleSyncMessage(data); }
       });
-      console.log('[quests] IPC sync subscribed: quest-sync');
+      console.log('[workspace] IPC sync subscribed: ' + ch);
       questStore.onChange(function(payload) {
         _broadcast(payload.type, payload.questId, { floorNum: payload.floorNum, title: payload.title });
       });
     }
-  } catch(e) { console.warn('[quests] IPC sync unavailable:', e); }
+  } catch(e) { console.warn('[workspace] IPC sync unavailable:', e); }
 
-  console.log('[quests] bindMainProject: bound ' + root);
-  // 向僚机广播项目路径 + 监听 ping
+  console.log('[workspace] bound: ' + root);
+
+  // 向僚机广播项目路径
   try {
     var sb2 = _getSyncBridge();
     if (sb2) {
-      // 清理旧订阅
       if (_projectPathUnsub) { _projectPathUnsub(); _projectPathUnsub = null; }
-      // 响应僚机的项目路径请求
       _projectPathUnsub = sb2.onMessage(function(channel, data) {
         if (channel === 'project-path-request') {
           sb2.setProjectPath(root);
-          console.log('[quests] replied project path to wingman: ' + root);
+          console.log('[workspace] replied project path to wingman: ' + root);
         }
       });
-      // 主动广播当前项目路径
       sb2.setProjectPath(root);
-      console.log('[quests] broadcast project path via IPC: ' + root);
+      console.log('[workspace] broadcast project path via IPC: ' + root);
     }
-  } catch(e) { console.warn('[quests] project-path sync failed:', e); }
+  } catch(e) { console.warn('[workspace] project-path sync failed:', e); }
 }
 
-// 窗口关闭时刷盘唯一真理配置 + 释放锁（onlyStore 自动处理）
+// 入口：每次视口变化时调用，自动判断是首次绑定还是切换
+async function bindMainProject() {
+  var root = null;
+  var isStandalone = false;
+
+  if (window.parent && window.parent.qqqideViewport) {
+    var main = window.parent.qqqideViewport.getMainProject();
+    if (!main || !main.path) {
+      console.log('[workspace] bindMainProject: no main project yet');
+      return;
+    }
+    root = main.path.replace(/\\/g, '/').replace(/\/$/, '');
+  } else if (_standaloneRoot) {
+    root = _standaloneRoot.replace(/\\/g, '/').replace(/\/$/, '');
+    isStandalone = true;
+  } else {
+    return;
+  }
+
+  // 同一 workspace → 跳过
+  if (root === _workspaceRoot) {
+    console.log('[workspace] bindMainProject: already bound to ' + root);
+    return;
+  }
+
+  // 不同 workspace → 先拆后建
+  _teardownWorkspace();
+  await _initWorkspace(root, isStandalone);
+}
+
+// 窗口关闭时刷盘 + 拆卸工作空间
 window.addEventListener('beforeunload', function () {
   if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
     saveQuestUIState(questActiveId);
     onlyStore.flush();
   }
-  // 释放当前 quest 所有权（fire-and-forget，不阻塞页面关闭）
   if (questActiveId) {
     try { questStore.releaseOwner(questActiveId, _windowId).catch(function(){}); } catch(_) {}
   }
@@ -1722,64 +1766,55 @@ window.addEventListener('beforeunload', function () {
 
 // Standalone wingman: listen for project path via IPC sync
 (function initProjectSync() {
-  // 只对顶层窗口（僚机）启用；iframe 由父窗口 AI 视口提供主项目
   if (parent !== window) return;
-  // 如果已经拿到项目路径，不再重复监听
-  if (_standaloneRoot) return;
-  console.log('[quests] standalone mode: listening for project path via IPC...');
+  console.log('[workspace] standalone mode: listening for project path via IPC...');
   
   var _bound = false;
+  var _currentRoot = null;
   var sb = _getSyncBridge();
   if (!sb) {
-    console.warn('[quests] IPC sync unavailable — retrying in 2s');
+    console.warn('[workspace] IPC sync unavailable — retrying in 2s');
     setTimeout(initProjectSync, 2000);
     return;
   }
   
+  function _onProjectPath(p) {
+    if (!p) return;
+    var root = p.replace(/\\/g, '/').replace(/\/$/, '');
+    // ★ 支持 workspace 切换：root 变了 → 重新绑定
+    if (root === _currentRoot) return;
+    _bound = true;
+    _currentRoot = root;
+    _standaloneRoot = root;
+    console.log('[workspace] wingman switching to: ' + root);
+    bindMainProject().catch(function(e) { console.warn('[workspace] bindMainProject failed:', e && e.message); });
+  }
+  
   // 订阅 project-path 推送
   var _unsub = sb.onMessage(function(channel, data) {
-    if (_bound) return;
     if (channel === 'project-path' && data && data.path) {
-      console.log('[quests] received project path via IPC: ' + data.path);
-      _bound = true;
-      _standaloneRoot = data.path;
-      if (_unsub) { try { _unsub(); } catch(_) {} }
-      bindMainProject().catch(function(e) { console.warn('[quests] bindMainProject failed:', e && e.message); });
+      _onProjectPath(data.path);
     }
   });
   
-  // 主动获取当前项目路径（主窗口可能已经设置）
+  // 主动获取当前项目路径
   sb.getProjectPath().then(function(p) {
-    if (_bound || !p) return;
-    console.log('[quests] got project path from main process: ' + p);
-    _bound = true;
-    _standaloneRoot = p;
-    if (_unsub) { try { _unsub(); } catch(_) {} }
-    bindMainProject().catch(function(e) { console.warn('[quests] bindMainProject failed:', e && e.message); });
+    if (p) _onProjectPath(p);
   }).catch(function() {});
   
-  // 保底轮询：前 10 次密集重试，之后每 5s 慢速
+  // 保底轮询
   var _pingAttempts = 0;
   function _sendPing() {
-    if (_bound) return;
-    _pingAttempts++;
-    console.log('[quests] ping for project path (attempt ' + _pingAttempts + ')');
-    // 发送 ping 请求
+    if (_bound && _currentRoot) { _pingAttempts++; if (_pingAttempts > 20) return; }
+    if (!_bound) _pingAttempts++;
     var sb2 = _getSyncBridge();
     if (sb2) {
       try { sb2.broadcast('project-path-request', {}); } catch(_) {}
-      // 同时再试 getProjectPath
       sb2.getProjectPath().then(function(p) {
-        if (_bound || !p) return;
-        _bound = true;
-        _standaloneRoot = p;
-        if (_unsub) { try { _unsub(); } catch(_) {} }
-        bindMainProject().catch(function(e) { console.warn('[quests] bindMainProject failed:', e && e.message); });
+        if (p) _onProjectPath(p);
       }).catch(function() {});
     }
-    var delay = _pingAttempts < 10
-      ? 500 + _pingAttempts * 200
-      : 5000;
+    var delay = _pingAttempts < 10 ? 500 + _pingAttempts * 200 : 5000;
     setTimeout(_sendPing, delay);
   }
   setTimeout(_sendPing, 300);
@@ -1800,7 +1835,7 @@ bindMainProject();
 var questActiveId = '';
 var _questsInited = false;
 
-// ═══ per-quest UI memory state（零开销快照，quest 切换时同步读写） ═══// { questId: { inputHTML, pendingImages:[], selectedTier, scrollTop } }
+// ═══ per-quest UI memory state（零开销快照，quest 切换时同步读写） ═══
 var questUIStates = {};
 
 function saveQuestUIState(id) {
@@ -1811,12 +1846,12 @@ function saveQuestUIState(id) {
     imgs[i] = { id: pi.id, base64: pi.base64, dataUrl: pi.dataUrl };
   }
   questUIStates[id] = {
-    inputHTML: $input.innerHTML,
+    inputValue: $input.value,
+    inputCaret: $input.selectionStart,
     pendingImages: imgs,
     selectedTier: selectedTier,
     scrollTop: $messages.scrollTop
   };
-  // 唯一真理：持久化到 only.sq3，刷新不丢
   if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
     onlyStore.set('ai.uiStates', questUIStates);
   }
@@ -1825,22 +1860,23 @@ function saveQuestUIState(id) {
 function restoreQuestUIState(id) {
   var state = questUIStates[id];
   if (state) {
-    $input.innerHTML = state.inputHTML;
+    $input.value = state.inputValue || '';
     $input._resetUndo();
-    pendingImages = state.pendingImages;
+    pendingImages = state.pendingImages || [];
     selectedTier = state.selectedTier;
     updateTierButtons(selectedTier);
     renderImageStrip();
-    $messages.scrollTop = state.scrollTop;
     updateQueueBtn();
+    if (typeof state.inputCaret === 'number') {
+      $input.setSelectionRange(state.inputCaret, state.inputCaret);
+    }
   } else {
-    $input.innerHTML = '';
+    $input.value = '';
     $input._resetUndo();
     pendingImages = [];
     selectedTier = 6;
     updateTierButtons(6);
     renderImageStrip();
-    $messages.scrollTop = 0;
     updateQueueBtn();
   }
 }
@@ -1889,6 +1925,13 @@ async function initQuests() {
     // ★ 恢复 agent 全量状态（conversation + metadata）
     await _restoreAgentFromStore(questActiveId, _activeAgent);
     restoreQuestUIState(questActiveId);
+    // ★ 延迟恢复滚动位置（等 DOM 布局完成后）
+    var _savedState = questUIStates[questActiveId];
+    if (_savedState && typeof _savedState.scrollTop === 'number') {
+      _restoreScrollDeferred(_savedState.scrollTop);
+    } else {
+      _scrollToBottomDeferred(true);
+    }
     renderQueueStrip();
     // ★ 声明所有权（防止其他面板加载同一 quest）
     try {
@@ -2357,6 +2400,8 @@ async function switchQuest(id) {
     // ═══ 所有权检查：已被其他面板持有 → 跳转焦点 ═══
     var owner = await questStore.getOwner(id);
     if (owner && owner.windowId !== _windowId) {
+      // 清除本面板焦点状态（防止双金色 tofu）
+      _setPanelFocus(false);
       // 通知拥有者面板获得焦点
       _broadcast('focus-request', id, { targetWindow: owner.windowId });
       // 显示提示
@@ -2375,7 +2420,8 @@ async function switchQuest(id) {
       if (claimResult.claimed) {
         _broadcast('owner-claimed', id);
       } else if (claimResult.currentOwner && claimResult.currentOwner !== _windowId) {
-        // 竞态：刚被别人抢走
+        // 竞态：刚被别人抢走 → 清除本面板焦点，跳转
+        _setPanelFocus(false);
         _broadcast('focus-request', id, { targetWindow: claimResult.currentOwner });
         _switching = false;
         return;
@@ -2442,6 +2488,8 @@ async function switchQuest(id) {
     updateCostDisplay();
     updateCtxBtn();
     await renderTabs();
+    // ★ 打开 quest → 滚到底（最新楼层最新消息）
+    _scrollToBottomDeferred(true);
   } finally { _switching = false; }
 }
 
@@ -2521,9 +2569,17 @@ async function createNewQuest() {
 
 // 卸载当前 quest（清空 UI，不释放所有权——由调用方决定）
 function _unloadQuest() {
+  var unloadId = questActiveId;
   // 停止楼层计时器
   if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
   _activeAiDiv = null;
+  // ═══ 隐藏旧 Card（防止 DOM 残留造成"两面板显示同一 quest"假象） ═══
+  if (unloadId && cardPool) {
+    var oldCard = cardPool.getCard(unloadId);
+    if (oldCard && oldCard.dom) {
+      oldCard.dom.style.display = 'none';
+    }
+  }
   questActiveId = '';
   _queueFallback = [];
   renderQueueStrip();
@@ -2730,10 +2786,10 @@ $guideBtn.onclick = function() {
     addMessageEl('error', '请先发送一条消息创建对话');
     return;
   }
-  if (agent._compressing) return;
+  if (_activeAgent._compressing) return;
   var text = getInputText().trim();
   if (!text) return;
-  $input.innerHTML = '';
+  $input.value = '';
   $input._resetUndo();
   $input.focus();
 
@@ -2742,16 +2798,21 @@ $guideBtn.onclick = function() {
   userEl.style.opacity = '0.75';
 
   if (_sending || streaming) {
-    // ═══ AI 正在工作中 → 立即注入 + abort 当前 house + AI 确认回合 ═══
-    // 在当前 AI 回复块中插入引导标注（嵌入流水，位于 az 区上方）
+    // ═══ AI 正在工作中 → 立即注入 + abort 当前 house ═══
     if (_activeAiDiv && _activeAiDiv._contentWrap) {
+      // ① 引导信息本身（嵌入流水，在 AI 回答前半与后半之间）
+      var guideBlock = document.createElement('div');
+      guideBlock.className = 'msg-guide-ack';
+      guideBlock.style.cssText = 'margin:8px 0;padding:8px 12px;background:rgba(255,107,0,0.08);border-left:3px solid #ff6b00;border-radius:4px;';
+      guideBlock.innerHTML = '<div style="font-size:11px;font-weight:700;color:#ff6b00;margin-bottom:4px;">⚡ 引导信息</div><div style="font-size:13px;">' + escHtml(text) + '</div>';
+      _activeAiDiv._contentWrap.appendChild(guideBlock);
+      // ② 请等待标记
       var marker = document.createElement('div');
       marker.className = 'msg-status guide-marker';
-      marker.style.cssText = 'color:var(--blue);font-weight:600;padding:8px 0;border-top:1px dashed var(--border-color);margin-top:4px;';
+      marker.style.cssText = 'color:var(--blue);font-weight:600;padding:8px 0;';
       marker.textContent = '⚡ 请等待 AI 确认引导...';
       _activeAiDiv._contentWrap.appendChild(marker);
     }
-    // 立即注入：abort 当前流 → 下一个 house = 确认回合
     agent.injectGuide(text);
   } else {
     // ═══ AI 没在工作 → 降级为普通 inject（等下次 Send 时 AI 看到） ═══
@@ -2792,8 +2853,7 @@ function _triggerQueueSend() {
   var _q = _queue;
   if (!_q || _q.length === 0) { renderQueueStrip(); return; }
   // 保护：输入框有用户正在编辑的内容（非纯空白） → 自动暂停
-  // 用 innerText 判断更准确（排除不可见 <br> 等标签噪音）
-  var inputText = ($input.innerText || '').trim();
+  var inputText = ($input.value || '').trim();
   if (inputText) {
     _queuePaused = true;
     renderQueueStrip();
@@ -2809,8 +2869,8 @@ function _triggerQueueSend() {
     ? next.pendingImages.map(function(img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl }; })
     : [];
   renderImageStrip();
-  // 恢复富文本（保留 file chips 等 HTML 结构）
-  $input.innerHTML = next.html || next.text;
+  // 恢复纯文本（textarea 版：.text 是 getInputText() 产出）
+  $input.value = next.text || next.html || '';
   // 队列状态提示（发送完成后由 _continueQueue 移除）
   var _qStatus = document.createElement('div');
   _qStatus.className = 'msg msg-status';
@@ -2973,13 +3033,12 @@ $queueBtn.onclick = function() {
     return;
   }
   var text = getInputText().trim();
-  var html = $input.innerHTML;
   if (!text) return;
   // 快照当前截图数据（防止被后续排队项覆盖）
   var imgSnapshot = pendingImages.length > 0 ? pendingImages.map(function(img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl }; }) : null;
-  _queue.push({ id: 'q_' + Date.now(), text: text, html: html, ts: Date.now(), pendingImages: imgSnapshot });
+  _queue.push({ id: 'q_' + Date.now(), text: text, ts: Date.now(), pendingImages: imgSnapshot });
   renderQueueStrip();
-  $input.innerHTML = '';
+  $input.value = '';
   $input._resetUndo();
   $input.focus();
   _debounceSaveQueue();
@@ -3145,9 +3204,7 @@ function startFloorTimer(aiDiv, resume) {
   clockMin.textContent = min + 'm';
   clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
   // 绿色起步：楼层一开始就在工作，不等数据到才变色
-  var COLORS = { deepseek: '#859900', tool: '#e6b800', network: '#cb4b16' };
-  clockMin.style.color = COLORS.deepseek;
-  clockSec.style.color = COLORS.deepseek;
+  aiDiv._clockBlock.className = 'msg-ai-clock clock-ai';
   // 饼图初始隐藏，等数据到再显示
   canvas.style.visibility = 'hidden';
   // 成本初始显示 0.0000（等 onCost 实时更新）
@@ -3171,13 +3228,12 @@ function startFloorTimer(aiDiv, resume) {
     // 数据到了 → 显示饼图
     if (!_pieShown && (n > 0 || d > 0 || t > 0)) { _pieShown = true; canvas.style.visibility = 'visible'; }
     if (!_pieShown) return;  // 数据未到时保持初始绿色，不切换颜色
-    var color = COLORS.deepseek;
-    if (t > _lastT) color = COLORS.tool;
-    else if (d > _lastD) color = COLORS.deepseek;
-    else if (n > _lastN) color = COLORS.network;
+    var state = 'ai';
+    if (t > _lastT) state = 'tool';
+    else if (d > _lastD) state = 'ai';
+    else if (n > _lastN) state = 'network';
     _lastN = n; _lastD = d; _lastT = t;
-    clockMin.style.color = color;
-    clockSec.style.color = color;
+    aiDiv._clockBlock.className = 'msg-ai-clock clock-' + state;
     drawPie(canvas, { networkMs: n, deepseekMs: d, toolMs: t, totalMs: elapsed });
   }, 1000);
 }
@@ -3190,13 +3246,13 @@ function stopFloorTimer(timing) {
   var min = Math.floor(totalS / 60);
   var sec = totalS % 60;
   var aiDiv = _activeAiDiv;
-  // 停止态颜色：亮色=纯黑，暗色=纯白
-  var stopColor = document.documentElement.getAttribute('data-theme') === 'dark' ? '#fff' : '#000';
+  // 停止态：去掉流式 class，回归主题默认色
+  if (aiDiv && aiDiv._clockBlock) {
+    aiDiv._clockBlock.className = 'msg-ai-clock';
+  }
   if (aiDiv && aiDiv._clockMin && aiDiv._clockCanvas) {
     aiDiv._clockMin.textContent = min + 'm';
     aiDiv._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
-    aiDiv._clockMin.style.color = stopColor;
-    aiDiv._clockSec.style.color = stopColor;
     var tm = timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 };
     tm.totalMs = elapsed;
     if (elapsed > 0) { aiDiv._clockCanvas.style.visibility = 'visible'; drawPie(aiDiv._clockCanvas, tm); }
@@ -3311,68 +3367,54 @@ async function renderQuestDrop() {
 }
 async function openQuestDrop() {
   closeQuestDrop();
-  _questDropLimit = 20;  // 每次打开重置限制
+  _questDropLimit = 20;
   var tofu = document.getElementById('quest-tofu');
   if (!tofu) return;
   var bar = document.getElementById('quest-bar');
   var drop = document.createElement('div');
   drop.className = 'quest-drop show';
-  // q2x 行可见（无 quest）→ 不创建头部，避免重复 [+] 和搜索框
-  var q2xVisible = !questActiveId;
-  if (!q2xVisible) {
-    var head = document.createElement('div');
-    head.className = 'quest-drop-head';
-    var addBtn = document.createElement('div');
-    addBtn.className = 'quest-drop-add';
-    addBtn.textContent = '+';
-    addBtn.title = '新建 Quest';
-    addBtn.onclick = function(e) { e.stopPropagation(); closeQuestDrop(); createNewQuest(); };
-    head.appendChild(addBtn);
-    var search = document.createElement('input');
-    search.className = 'quest-drop-search';
-    search.placeholder = '筛选...';
-    search.value = _questSearchText;
-    search.oninput = function() {
-      _questSearchText = search.value;
-      var q2xSearch = document.getElementById('quest-q2x-search');
-      if (q2xSearch) q2xSearch.value = search.value;
-      renderQuestDrop();
-    };
-    head.appendChild(search);
-    drop.appendChild(head);
-  }
-  // 附加到 quest-bar 内
+  // 头部：1/3 + | 2/3 搜索（统一真理源，所有面板一致）
+  var head = document.createElement('div');
+  head.className = 'quest-drop-head';
+  var addBtn = document.createElement('div');
+  addBtn.className = 'quest-drop-add';
+  addBtn.textContent = '+';
+  addBtn.title = '新建 Quest';
+  addBtn.onclick = function(e) { e.stopPropagation(); closeQuestDrop(); createNewQuest(); };
+  head.appendChild(addBtn);
+  var search = document.createElement('input');
+  search.className = 'quest-drop-search';
+  search.placeholder = '筛选...';
+  search.value = _questSearchText;
+  search.oninput = function() {
+    _questSearchText = search.value;
+    renderQuestDrop();
+  };
+  head.appendChild(search);
+  drop.appendChild(head);
   bar.appendChild(drop);
   _questDrop = drop;
-  // 下拉自身 hover 保持展开，click 阻断防全局关闭
   drop.addEventListener('mouseenter', function() { clearTimeout(_questDropTimer); });
   drop.addEventListener('mouseleave', function() {
     _questDropTimer = setTimeout(closeQuestDrop, 120);
   });
   drop.addEventListener('click', function(e) { e.stopPropagation(); });
-  // 渲染列表
   await renderQuestDrop();
-  // 聚焦搜索框（仅当头部存在时）
-  if (!q2xVisible) { setTimeout(function() { search.focus(); }, 50); }
+  setTimeout(function() { search.focus(); }, 50);
 }
-// 更新豆腐块（两行制）：
-//   第一行 = 有 quest → q{n}.{title} / 无 quest → "~ New quest ~"
-//   第二行 q2x = 始终存在，有 quest 时隐藏
+// 更新豆腐块：有 quest → q{n}.{title} / 无 quest → "~ New quest ~"
+// q2x 行已删除，统一走 dropdown hover，单一真理源
 async function updateQuestTofu() {
   var el = document.getElementById('quest-tofu-text');
-  var q2x = document.getElementById('quest-q2x');
   var quests = await questStore.list();
   var entry = quests.find(function(q) { return q.id === questActiveId; });
   if (entry) {
     el.textContent = 'q' + (entry.numericId || '?') + '.' + (entry.title || '');
     el.parentElement.classList.remove('quest-tofu-new');
-    if (q2x) q2x.classList.add('hidden');
   } else {
     el.textContent = '~ New quest ~';
     el.parentElement.classList.add('quest-tofu-new');
-    if (q2x) q2x.classList.remove('hidden');
   }
-  // 同步窗口标题
   var title = 'qqq IDE';
   if (entry && entry.title) title = entry.title + ' — qqq AI';
   else if (entry) title = 'q' + (entry.numericId || '?') + ' — qqq AI';
@@ -3382,43 +3424,23 @@ async function updateQuestTofu() {
     if (b && b.window && b.window.setTitle) b.window.setTitle(title);
   } catch (_) {}
 }
-// hover 展开/收起（第一行 + 第二行 q2x 均触发）
-function _bindQuestHover(el) {
-  if (!el) return;
-  el.addEventListener('mouseenter', function() {
-    clearTimeout(_questDropTimer);
-    if (!_questDrop) openQuestDrop();
-  });
-  el.addEventListener('mouseleave', function() {
-    _questDropTimer = setTimeout(closeQuestDrop, 120);
-  });
-}
-_bindQuestHover(document.getElementById('quest-tofu'));
-_bindQuestHover(document.getElementById('quest-q2x'));
-
-// q2x [+] 按钮 → 新建 quest
-var _q2xAdd = document.getElementById('quest-q2x-add');
-if (_q2xAdd) {
-  _q2xAdd.onclick = function(e) { e.stopPropagation(); closeQuestDrop(); createNewQuest(); };
-}
-// q2x 搜索框 → 同步 _questSearchText
-var _q2xSearch = document.getElementById('quest-q2x-search');
-if (_q2xSearch) {
-  _q2xSearch.oninput = function() {
-    _questSearchText = _q2xSearch.value;
-    if (!_questDrop) openQuestDrop();
-    else renderQuestDrop();
-  };
-  _q2xSearch.onfocus = function() {
-    if (!_questDrop) openQuestDrop();
-  };
-  _q2xSearch.onclick = function(e) { e.stopPropagation(); };
-}
+// hover 展开/收起（仅第一行触发，q2x 行已删除）
+(function() {
+  var tofu = document.getElementById('quest-tofu');
+  if (tofu) {
+    tofu.addEventListener('mouseenter', function() {
+      clearTimeout(_questDropTimer);
+      if (!_questDrop) openQuestDrop();
+    });
+    tofu.addEventListener('mouseleave', function() {
+      _questDropTimer = setTimeout(closeQuestDrop, 120);
+    });
+  }
+})();
 
 // q3 floor 导航行已删除（card-pool 架构不需要翻页）
 
 // 全局点击关闭下拉
-// 注意：closeFloorDrop 已随 q3 行一起删除
 document.addEventListener('click', function() { closeQuestDrop(); });
 
 // 兼容旧 renderTabs（切换 quest 后更新豆腐块）
@@ -3486,8 +3508,8 @@ document.getElementById('rules-edit').onclick = async function() {
 // _extractPartialAiText 已删除（Card Pool 架构：DOM 永不销毁，无需截断保存）
 
 function stopStream() {
-  if (agent._compressing) return;  // 压缩期间不响应中
-  try { agent.abort(); } catch(_) {}
+  if (!_activeAgent || _activeAgent._compressing) return;  // 压缩期间不响应中
+  try { _activeAgent.abort(); } catch(_) {}
   if (_activeAiDiv) _activeAiDiv._renderScheduled = false;
   _sending = false;
   setStreaming(false);
@@ -3763,8 +3785,7 @@ function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
   if (clockBlock) {
     aiDiv.insertBefore(block, clockBlock);
   } else {
-    // 防御：clockBlock 不存在（不应发生，但回退到在末尾前插入）
-    console.warn('[a1] clockBlock missing, appending A1 (order may be wrong)');
+    // clockBlock 尚未创建（流式路径：startBuildingFloor 先于 startFloorTimer），append 后 clock 会排在 A1 下方
     aiDiv.appendChild(block);
   }
 
@@ -4325,6 +4346,7 @@ async function sendMessage() {
       var _owner = await questStore.getOwner(questActiveId);
       if (_owner && _owner.windowId !== _windowId) {
         // 另一面板持有此 quest → 跳转焦点，放弃发送
+        _setPanelFocus(false);
         _broadcast('focus-request', questActiveId, { targetWindow: _owner.windowId });
         _sending = false;
         updateQueueBtn();
@@ -4439,7 +4461,7 @@ async function sendMessage() {
 
   // 在清空输入框前保存 UI 状态，防止流式中切换 quest 丢输入
   saveQuestUIState(questActiveId);
-  $input.innerHTML = '';
+  $input.value = '';
   $input._resetUndo();
   pendingImages = [];
   renderImageStrip();
@@ -4511,6 +4533,7 @@ async function sendMessage() {
   }
   // ═══ Card Pool：创建在建楼 AI div（A1 + 时钟 + 6+1 裁剪） ═══
   var aiDiv = cardPool.startBuildingFloor(questActiveId, floorNum, _allTxtPathLocal);
+  if (!aiDiv) { _sending = false; updateQueueBtn(); return; }  // 兜底：Card Pool 初始化失败
   aiDiv._allTxtPath = _allTxtPathLocal;
   startFloorTimer(aiDiv);
   _startAllTxtStream(aiDiv, _allTxtPathLocal, _capturedAgent, floorNum, text, '');
@@ -4592,7 +4615,7 @@ async function sendMessage() {
         await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._floorStartIdx);
         
         // ═══ Card Pool：封顶在建楼 + 6+1 裁剪 ═══
-        cardPool.completeBuildingFloor(_capturedQuestId, floorNum);
+        if (cardPool) cardPool.completeBuildingFloor(_capturedQuestId, floorNum);
         
         // Card Pool 架构：DOM 永不脱离，无需 _rebuildUIForQuest
         // _divDetached 条件已失效（Card DOM 不会被 remove）
@@ -4679,17 +4702,17 @@ async function sendMessage() {
     if (_activeAgent === _capturedAgent) {
       if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
       if (_activeAiDiv) {
-        // 中断/异常时，时钟应落到停止态（黑色），避免残留绿色
+        // 中断/异常时，时钟应落到停止态，去掉流式 class 回归主题色
         var _elapsed = performance.now() - _floorStartPerf;
         var _totalS = Math.floor(_elapsed / 1000);
         var _min = Math.floor(_totalS / 60);
         var _sec = _totalS % 60;
-        var _stopColor = document.documentElement.getAttribute('data-theme') === 'dark' ? '#fff' : '#000';
+        if (_activeAiDiv._clockBlock) {
+          _activeAiDiv._clockBlock.className = 'msg-ai-clock';
+        }
         if (_activeAiDiv._clockMin) {
           _activeAiDiv._clockMin.textContent = _min + 'm';
           _activeAiDiv._clockSec.textContent = ':' + (_sec < 10 ? '0' : '') + _sec + 's';
-          _activeAiDiv._clockMin.style.color = _stopColor;
-          _activeAiDiv._clockSec.style.color = _stopColor;
         }
         _activeAiDiv._renderScheduled = false;
         _activeAiDiv = null;
@@ -4715,134 +4738,51 @@ function _continueQueue() {
   _triggerQueueSend();
 }
 
-// ---- Contenteditable helpers ----
-// getInputText — keep chip order, replace chips with \u201cpath\u201d
+// ---- textarea helpers ----
 function getInputText() {
-  var text = '';
-  var nodes = $input.childNodes;
-  for (var i = 0; i < nodes.length; i++) {
-    var n = nodes[i];
-    if (n.nodeType === 3) { text += n.textContent; }
-    else if (n.nodeName === 'BR') { text += '\n'; }
-    else if (n.classList && n.classList.contains('file-chip')) {
-      text += '\u201c' + (n.dataset.path || '') + '\u201d';
-    }
-    else { text += n.textContent; }
-  }
-  return text;
+  return $input.value;
 }
-// getInputPlainText — pure text, skip chips (for AI content building)
 function getInputPlainText() {
-  var text = '';
-  var nodes = $input.childNodes;
-  for (var i = 0; i < nodes.length; i++) {
-    var n = nodes[i];
-    if (n.nodeType === 3) { text += n.textContent; }
-    else if (n.nodeName === 'BR') { text += '\n'; }
-    else if (n.classList && n.classList.contains('file-chip')) { /* skip */ }
-    else { text += n.textContent; }
-  }
-  return text;
+  return $input.value;
 }
-
+// 从文本中提取 "path" 格式的路径（兼容未来 "path:line x~y"）
 function getInputChipPaths() {
-  const paths = [];
-  $input.querySelectorAll('.file-chip').forEach(chip => {
-    if (chip.dataset.path) paths.push(chip.dataset.path);
-  });
+  var paths = [];
+  var re = /\u201c([^\u201d]+)\u201d/g;
+  var m;
+  while ((m = re.exec($input.value)) !== null) {
+    paths.push(m[1]);
+  }
   return paths;
 }
 
-function chipBasename(p) {
-  const parts = p.replace(/\\/g, '/').split('/').filter(Boolean);
-  return parts[parts.length - 1] || p;
-}
-
 // ═══ 记住 $input 内最后光标位置（用于焦点面板文件附加） ═══
-var _lastInputSelection = null;
-$input.addEventListener('keyup', function() { _saveInputSelection(); });
-$input.addEventListener('mouseup', function() { _saveInputSelection(); });
-$input.addEventListener('focus', function() { if (_lastInputSelection) _restoreInputSelection(); });
-function _saveInputSelection() {
-  var sel = window.getSelection();
-  if (sel.rangeCount > 0 && $input.contains(sel.anchorNode)) {
-    _lastInputSelection = { range: sel.getRangeAt(0).cloneRange() };
+var _lastInputCaret = 0;
+$input.addEventListener('keyup', function() { _lastInputCaret = $input.selectionStart; });
+$input.addEventListener('mouseup', function() { _lastInputCaret = $input.selectionStart; });
+$input.addEventListener('focus', function() {
+  if (_lastInputCaret > 0 && $input.selectionStart === 0 && $input.selectionEnd === 0) {
+    $input.setSelectionRange(_lastInputCaret, _lastInputCaret);
   }
-}
-function _restoreInputSelection() {
-  if (!_lastInputSelection) return;
-  try {
-    var sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(_lastInputSelection.range.cloneRange());
-  } catch(_) {}
-}
+});
 
 function insertChipAtCursor(filePath) {
-  const chip = document.createElement('span');
-  chip.className = 'file-chip';
-  chip.contentEditable = 'false';
-  chip.dataset.path = filePath;
-  const isDir = !filePath.match(/\.[a-zA-Z0-9]+$/);
-  chip.innerHTML =
-    '<span class="chip-icon">' + (isDir ? '📁' : '📄') + '</span>' +
-    '<span class="chip-name">' + escHtml(chipBasename(filePath)) + '</span>' +
-    '<span class="chip-rm">×</span>';
-  chip.querySelector('.chip-rm').addEventListener('click', function() { chip.remove(); });
-  chip.title = filePath;
-
-  function _focusEnd() {
-    var r = document.createRange();
-    r.selectNodeContents($input);
-    r.collapse(false);
-    var s = window.getSelection();
-    s.removeAllRanges();
-    s.addRange(r);
-  }
-  // chip 后自动插一个空格 + 把光标推到空格后，激活编辑态让光标可见
-  function _placeChip(range, chip) {
-    range.deleteContents();
-    range.insertNode(chip);
-    // 在 chip 右侧插入一个空格
-    var sp = document.createTextNode(' ');
-    range.setStartAfter(chip);
-    range.setEndAfter(chip);
-    range.insertNode(sp);
-    // 光标放到空格后面
-    range.setStartAfter(sp);
-    range.setEndAfter(sp);
-  }
-
-  // 优先用当前选区，否则用上次记住的光标位置
+  var isDir = !filePath.match(/\.[a-zA-Z0-9]+$/);
+  var tag = '\u201c' + filePath + '\u201d ';
   $input.focus();
-  var sel = window.getSelection();
-  if (sel.rangeCount > 0 && $input.contains(sel.anchorNode)) {
-    // 光标在 $input 内 → 直接插
-    var range = sel.getRangeAt(0);
-    _placeChip(range, chip);
-    sel.removeAllRanges();
-    sel.addRange(range);
-  } else if (_lastInputSelection && _lastInputSelection.range) {
-    // 光标在别处 → 恢复到上次位置再插
-    _restoreInputSelection();
-    var sel2 = window.getSelection();
-    if (sel2.rangeCount > 0 && $input.contains(sel2.anchorNode)) {
-      var range2 = sel2.getRangeAt(0);
-      _placeChip(range2, chip);
-      sel2.removeAllRanges();
-      sel2.addRange(range2);
-    } else {
-      $input.appendChild(chip);
-      $input.appendChild(document.createTextNode(' '));
-      _focusEnd();
-    }
-  } else {
-    // 无任何光标记录 → 末尾附加
-    $input.appendChild(chip);
-    $input.appendChild(document.createTextNode(' '));
-    _focusEnd();
+  var start = $input.selectionStart;
+  var end = $input.selectionEnd;
+  // 若有记忆位置且当前光标在开头（刚获得焦点），用记忆位置
+  if (_lastInputCaret > 0 && start === 0 && end === 0) {
+    start = _lastInputCaret;
+    end = _lastInputCaret;
   }
-  _saveInputSelection();
+  var before = $input.value.substring(0, start);
+  var after = $input.value.substring(end);
+  $input.value = before + tag + after;
+  var newPos = start + tag.length;
+  $input.setSelectionRange(newPos, newPos);
+  _lastInputCaret = newPos;
 }
 
 // Expose for direct cross-frame access (same origin)
