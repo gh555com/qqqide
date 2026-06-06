@@ -62,6 +62,7 @@ server-app/runtime/
 # 私有数据（不公开）
 qqq/
 do/
+op/
 
 # 敏感配置（含 secrets/token）
 .qqq-rules.txt
