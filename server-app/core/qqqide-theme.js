@@ -220,13 +220,6 @@
     // 通知 iframe（AI 面板）
     _notifyIframes();
 
-    // 通知独立窗口（僚机等非 iframe 窗口）通过 IPC sync
-    try {
-      if (window.qqqideBridge && window.qqqideBridge.sync) {
-        window.qqqideBridge.sync.broadcast('theme', { dark: _dark });
-      }
-    } catch (_) {}
-
     // 通知订阅者
     if (wasDark !== _dark) {
       for (const fn of _listeners) {

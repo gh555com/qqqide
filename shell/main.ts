@@ -264,12 +264,6 @@ protocol.registerSchemesAsPrivileged([
 // Window
 // ----------------------------------------------------------------------------
 let mainWindow: BrowserWindow | null = null;
-// 外嵌 AI 面板（僚机窗口）
-// 架构铁律：不可拖动(movable:false)、不可调大小(resizable:false)、与主窗口同z-order
-// 不可拖动+不可调大小本身已防篡改，无需 snapBack 弹回（避免抢焦点）
-const _externalPanels: (BrowserWindow | null)[] = [null, null];
-// 僚机关闭许可标志（仅 before-quit / window-all-closed / SIGINT / SIGTERM 设为 true）
-let _allowExtClose = false;
 // 窗口↔项目 双向映射（用于主文件夹锁：同一文件夹只能在一个窗口作为主文件夹）
 const _windowProjectMap = new Map<number, string>();   // windowId → projectRoot
 const _projectWindowMap = new Map<string, number>();   // projectRoot → windowId
@@ -393,8 +387,6 @@ const saveZoom = () => {
 };
 
 function createWindow(): BrowserWindow {
-    // 新窗口创建 → 恢复正常保护模式（僚机关闭应改为隐藏而非销毁）
-    _allowExtClose = false;
     const preloadPath = path.join(__dirname, 'preload.js');
     const win = new BrowserWindow({
         width: 1400,
@@ -433,21 +425,11 @@ function createWindow(): BrowserWindow {
             _projectWindowMap.delete(ownedProject);
         }
         if (win === mainWindow) {
-            // 关主窗口时清理所有僚机 + 引擎（第一道防线，before-quit 兜底）
-            console.log('[main] close handler: destroying wingmen. _externalPanels:', _externalPanels.map(w => w ? 'alive' : 'null'));
-            _allowExtClose = true;
-            for (const extWin of _externalPanels) {
-                if (extWin && !extWin.isDestroyed()) {
-                    console.log('[main] destroying wingman...');
-                    try { extWin.destroy(); console.log('[main] wingman destroyed'); } catch (e) { console.log('[main] wingman destroy error:', e); }
-                }
-            }
-            // 兜底：销毁一切残留窗口
+            // 关主窗口时兜底销毁一切残留窗口
             try {
                 const all = BrowserWindow.getAllWindows();
-                console.log('[main] BrowserWindow.getAllWindows().length:', all.length);
                 all.forEach(w => {
-                    if (!w.isDestroyed() && w !== win) { try { w.destroy(); console.log('[main] extra window destroyed'); } catch { /* ignore */ } }
+                    if (!w.isDestroyed() && w !== win) { try { w.destroy(); } catch { /* ignore */ } }
                 });
             } catch { /* ignore */ }
             try { engineHost.stop(); } catch { /* ignore */ }
@@ -1847,164 +1829,24 @@ function registerIpc(): void {
         return true;
     });
 
+    // ---- 窗口尺寸弹性伸缩（左右 AI 面板开关时用） ----
+    ipcMain.handle('qqqide:window:adjust-bounds', async (e, deltaLeft: number, deltaRight: number) => {
+        const win = BrowserWindow.fromWebContents(e.sender);
+        if (!win || win.isDestroyed()) return;
+        const b = win.getBounds();
+        const newX = b.x - deltaLeft;
+        const newW = b.width + deltaLeft + deltaRight;
+        win.setBounds({ x: newX, y: b.y, width: newW, height: b.height });
+    });
+
     // ---- monaco ----
     monacoHost.register();
 
-    // ---- 外嵌 AI 面板（僚机：不可拖动、同层级、实时跟随、可独立聚焦、仅主窗口可控关闭） ----
-    
-    ipcMain.handle('qqqide:ai-panel:toggle-external', async (_e, index: number, open: boolean) => {
-        if (index < 0 || index > 1) return false;
-        const mw = mainWindow;
-        if (!mw || mw.isDestroyed()) return false;
-
-        if (open) {
-            // 已存在且未销毁 → 直接显示
-            const existing = _externalPanels[index];
-            if (existing && !existing.isDestroyed()) {
-                if (!existing.isVisible()) { existing.showInactive(); syncExtWin(index); }
-                return true;
-            }
-            
-            const mwBounds = mw.getBounds();
-            const aiW = 389;
-            const preloadPath = path.join(__dirname, 'preload.js');
-            const xPos = index === 0 ? mwBounds.x - aiW : mwBounds.x + mwBounds.width;
-
-            const expectedBounds = () => {
-                const b = mw.getBounds();
-                const sx = index === 0 ? b.x - aiW : b.x + b.width;
-                return { x: sx, y: b.y, width: aiW, height: b.height };
-            };
-
-            const extWin = new BrowserWindow({
-                width: aiW, height: mwBounds.height,
-                x: xPos,
-                y: mwBounds.y,
-                skipTaskbar: true,
-                frame: false,
-                movable: false,
-                resizable: false,
-                focusable: true,
-                show: false,
-                backgroundColor: '#1e1e1e',
-                title: 'qqq AI ' + (index === 0 ? 'L' : 'R'),
-                webPreferences: {
-                    preload: preloadPath,
-                    contextIsolation: true,
-                    nodeIntegration: false,
-                    sandbox: false,
-                    webSecurity: false,
-                },
-            });
-            extWin.removeMenu();
-            
-            // ★ 禁止独立关闭僚机（Alt+F4 / 系统菜单均拦截）
-            extWin.on('close', (e) => {
-                if (!_allowExtClose) {
-                    e.preventDefault();
-                    // 改为隐藏（与红色灯泡关闭行为一致）
-                    extWin.hide();
-                    return;
-                }
-            });
-
-            extWin.loadURL(bootConfig.url + 'ai-panel/index.html?external=' + index).catch(() => { });
-
-            // ── 实时同步引擎 ──
-            const syncExt = () => { try { syncExtWin(index); } catch { /* ignore */ } };
-
-            mw.on('move', syncExt);
-            mw.on('resize', syncExt);
-            let _rafPending = false;
-            const syncExtRaf = () => {
-                if (_rafPending) return;
-                _rafPending = true;
-                requestAnimationFrame(() => { _rafPending = false; try { syncExt(); } catch { /* ignore */ } });
-            };
-            mw.on('will-move' as any, syncExtRaf);
-            mw.on('will-resize' as any, syncExtRaf);
-
-            const onFocus = () => {
-                try {
-                    if (extWin.isDestroyed()) return;
-                    if (extWin.isFocused()) return;
-                    extWin.showInactive();
-                    extWin.moveTop();
-                } catch { /* ignore */ }
-            };
-            mw.on('focus', onFocus);
-
-            const onMinimize = () => { try { if (!extWin.isDestroyed()) extWin.minimize(); } catch { /* ignore */ } };
-            const onRestore = () => {
-                try {
-                    if (!extWin.isDestroyed()) extWin.restore();
-                    if (!mw.isDestroyed()) mw.focus();
-                } catch { /* ignore */ }
-            };
-            const onHide = () => { try { if (!extWin.isDestroyed()) extWin.hide(); } catch { /* ignore */ } };
-            const onShow = () => {
-                try {
-                    if (!extWin.isDestroyed()) extWin.showInactive();
-                    syncExt();
-                } catch { /* ignore */ }
-            };
-            mw.on('minimize', onMinimize);
-            mw.on('restore', onRestore);
-            mw.on('hide', onHide);
-            mw.on('show', onShow);
-
-            extWin.on('closed', () => {
-                _externalPanels[index] = null;
-                if (!mw.isDestroyed()) {
-                    mw.removeListener('move', syncExt);
-                    mw.removeListener('resize', syncExt);
-                    mw.removeListener('will-move' as any, syncExtRaf);
-                    mw.removeListener('will-resize' as any, syncExtRaf);
-                    mw.removeListener('focus', onFocus);
-                    mw.removeListener('minimize', onMinimize);
-                    mw.removeListener('restore', onRestore);
-                    mw.removeListener('hide', onHide);
-                    mw.removeListener('show', onShow);
-                }
-            });
-
-            syncExt();
-            extWin.showInactive();
-            _externalPanels[index] = extWin;
-            return true;
-        } else {
-            // 红色灯泡关闭 → 隐藏僚机（不销毁，保留内部状态）
-            const extWin = _externalPanels[index];
-            if (extWin && !extWin.isDestroyed()) {
-                extWin.hide();
-            }
-            return true;
-        }
-    });
-    
-    // 僚机位置同步（提取为独立函数，供 toggle 和外部调用）
-    function syncExtWin(index: number): void {
-        try {
-            const extWin = _externalPanels[index];
-            const mw = mainWindow;
-            if (!extWin || extWin.isDestroyed() || !mw || mw.isDestroyed()) return;
-            if (!extWin.isVisible()) return;  // 隐藏中的僚机不强制同步位置
-            const aiW = 389;
-            const b = mw.getBounds();
-            const x = index === 0 ? b.x - aiW : b.x + b.width;
-            extWin.setBounds({ x, y: b.y, width: aiW, height: b.height });
-        } catch {
-            // 窗口可能在检查和操作之间被销毁（TOCTOU 竞态），安全吞掉
-        }
-    }
-
-    // ═══ 跨窗口同步 IPC（替代 BroadcastChannel）═══
-    // 项目路径存储（僚机初始化用）
+    // ═══ 跨窗口同步 IPC ═══
     let _currentProjectPath: string | null = null;
 
     ipcMain.handle('qqqide:sync:get-project-path', () => _currentProjectPath);
 
-    // 主题同步：僚机启动时获取主窗口当前主题
     ipcMain.handle('qqqide:sync:get-theme', () => {
         try {
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2015,16 +1857,9 @@ function registerIpc(): void {
     });
 
     ipcMain.handle('qqqide:sync:set-project-path', (e, p: string) => {
-        // 仅主窗口有权推送项目路径（僚机跟随主窗口，不跟随新建窗口）
         const senderWin = BrowserWindow.fromWebContents(e.sender);
         if (senderWin !== mainWindow) return;
         _currentProjectPath = p;
-        // 推送给僚机窗口（仅 external panels，不影响其他独立窗口）
-        for (const extWin of _externalPanels) {
-            if (extWin && !extWin.isDestroyed() && !extWin.webContents.isDestroyed()) {
-                try { extWin.webContents.send('qqqide:sync:message', 'project-path', { path: p }); } catch { /* ignore */ }
-            }
-        }
     });
 
     // 通用消息广播：renderer → main → 其他 renderer
@@ -2108,14 +1943,6 @@ app.on('before-quit', async (e) => {
     e.preventDefault();
 
     // ① 强制销毁所有窗口（防止孤儿残留）
-    _allowExtClose = true;
-    // 先销毁已知僚机
-    for (const extWin of _externalPanels) {
-        if (extWin && !extWin.isDestroyed()) {
-            try { extWin.destroy(); } catch { /* ignore */ }
-        }
-    }
-    // 再兜底：销毁一切残留 BrowserWindow
     try {
         BrowserWindow.getAllWindows().forEach(w => {
             if (!w.isDestroyed()) { try { w.destroy(); } catch { /* ignore */ } }

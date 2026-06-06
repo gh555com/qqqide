@@ -881,12 +881,13 @@ var AgentLoop = (function () {
         if (tier.thinking) body.thinking = tier.thinking;
         if (tier.effort) body.reasoning_effort = tier.effort;
 
-        var MAX_RETRIES = 1;
+        var MAX_RETRIES = 2;
         var _ttfbAccum = 0;
+        var _fetchUrl = GATEWAY_URL;  // ★ HTTP/2 重试时可换连接
         for (var retry = 0; retry <= MAX_RETRIES; retry++) {
             try {
                 var _fetchStart = performance.now();
-                var resp = await fetch(GATEWAY_URL, {
+                var resp = await fetch(_fetchUrl, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -954,6 +955,11 @@ var AgentLoop = (function () {
                 if (retry < MAX_RETRIES) {
                     var waitMsF = 2000;
                     self._log('  fetch error retry #' + (retry + 1) + ' in ' + waitMsF + 'ms: ' + msg);
+                    // ★ HTTP/2 错误：强换连接（URL 加随机参数破连接复用）
+                    if (_isHttp2Like) {
+                        _fetchUrl = GATEWAY_URL + '?_h2r=' + Date.now() + Math.random().toString(36).slice(2, 6);
+                        self._log('  switching to fresh connection: ' + _fetchUrl);
+                    }
                     await new Promise(function (r) { setTimeout(r, waitMsF); });
                     continue;
                 }

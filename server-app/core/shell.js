@@ -476,9 +476,116 @@
 
   // ---- AI Zone ----
   function bootAiZone() {
-    const host = document.getElementById('qqq-ai-zone');
-    if (!host || !window.qqqidePanel) return;
-    window.qqqidePanel.build(host);
+    // ★ 中面板始终加载；左右面板按需加载（灯泡触发）
+    var centerHost = document.getElementById('qqq-ai-zone');
+    if (centerHost && window.qqqidePanel) {
+      window.qqqidePanel.build(centerHost, 1);
+    }
+  }
+
+  // ---- 红色灯泡：左右翼开关 + 窗口伸缩（中间块不动） ----
+  var _bulbState = { left: false, right: false };
+
+  function bootBulbs() {
+    var d1 = document.getElementById('qqq-bulb-1');
+    var d2 = document.getElementById('qqq-bulb-2');
+    if (!d1 || !d2) return;
+
+    try {
+      var saved = localStorage.getItem('qqq-ai-bulbs');
+      if (saved) { var p = JSON.parse(saved); _bulbState.left = !!p.left; _bulbState.right = !!p.right; }
+    } catch (_) { }
+
+    var _main = document.getElementById('qqq-main');
+
+    function _applyWings() {
+      var leftOn = _bulbState.left;
+      var rightOn = _bulbState.right;
+      console.log('[wings] _applyWings left=' + leftOn + ' right=' + rightOn + ' main=', !!_main);
+
+      // ★ 中间块 left/right → 屏幕位置不变
+      if (_main) {
+        _main.style.left = leftOn ? AI_W + 'px' : '0';
+        _main.style.right = rightOn ? AI_W + 'px' : '0';
+        console.log('[wings] _main left=' + _main.style.left + ' right=' + _main.style.right);
+      } else {
+        console.warn('[wings] _main NOT FOUND!');
+      }
+
+      // 左翼
+      var wl = document.getElementById('qqq-wing-left');
+      console.log('[wings] left wing el=', !!wl, ' width=', wl ? wl.style.width : '?');
+      if (wl) {
+        wl.style.width = leftOn ? AI_W + 'px' : '0';
+        console.log('[wings] left wing width set to ' + wl.style.width + ' hasIframe=' + !!wl.querySelector('iframe'));
+        if (leftOn && !wl.querySelector('iframe') && window.qqqidePanel) {
+          window.qqqidePanel.build(wl, 0);
+          console.log('[wings] left wing iframe created');
+        }
+        if (!leftOn) {
+          var ifl = wl.querySelector('iframe');
+          if (ifl) { ifl.src = 'about:blank'; setTimeout(function() { if (ifl.parentNode) ifl.parentNode.removeChild(ifl); }, 100); }
+          wl.innerHTML = '';
+        }
+      } else {
+        console.warn('[wings] LEFT WING ELEMENT MISSING!');
+      }
+
+      // 右翼
+      var wr = document.getElementById('qqq-wing-right');
+      console.log('[wings] right wing el=', !!wr, ' width=', wr ? wr.style.width : '?');
+      if (wr) {
+        wr.style.width = rightOn ? AI_W + 'px' : '0';
+        console.log('[wings] right wing width set to ' + wr.style.width + ' hasIframe=' + !!wr.querySelector('iframe'));
+        if (rightOn && !wr.querySelector('iframe') && window.qqqidePanel) {
+          window.qqqidePanel.build(wr, 2);
+          console.log('[wings] right wing iframe created');
+        }
+        if (!rightOn) {
+          var ifr = wr.querySelector('iframe');
+          if (ifr) { ifr.src = 'about:blank'; setTimeout(function() { if (ifr.parentNode) ifr.parentNode.removeChild(ifr); }, 100); }
+          wr.innerHTML = '';
+        }
+      } else {
+        console.warn('[wings] RIGHT WING ELEMENT MISSING!');
+      }
+    }
+
+    function _toggle(index) {
+      console.log('[wings] _toggle index=' + index + ' current state left=' + _bulbState.left + ' right=' + _bulbState.right);
+      if (index === 0) _bulbState.left = !_bulbState.left;
+      else _bulbState.right = !_bulbState.right;
+      console.log('[wings] _toggle new state left=' + _bulbState.left + ' right=' + _bulbState.right);
+
+      var dot = index === 0 ? d1 : d2;
+      dot.classList.toggle('on', index === 0 ? _bulbState.left : _bulbState.right);
+
+      // 窗口伸缩
+      var deltaLeft = 0, deltaRight = 0;
+      if (index === 0) deltaLeft = _bulbState.left ? AI_W : -AI_W;
+      else deltaRight = _bulbState.right ? AI_W : -AI_W;
+      console.log('[wings] adjustBounds deltaLeft=' + deltaLeft + ' deltaRight=' + deltaRight + ' bridge.window=' + !!(bridge && bridge.window) + ' adjustBounds=' + !!(bridge && bridge.window && bridge.window.adjustBounds));
+      try {
+        if (bridge && bridge.window && bridge.window.adjustBounds) {
+          bridge.window.adjustBounds(deltaLeft, deltaRight);
+          console.log('[wings] adjustBounds called');
+        }
+      } catch (e) { console.warn('[wings] adjustBounds error:', e); }
+
+      _applyWings();
+      try { localStorage.setItem('qqq-ai-bulbs', JSON.stringify(_bulbState)); } catch (_) { }
+    }
+
+    d1.addEventListener('click', function () { _toggle(0); });
+    d2.addEventListener('click', function () { _toggle(1); });
+
+    // 初始恢复
+    if (_bulbState.left) d1.classList.add('on');
+    if (_bulbState.right) d2.classList.add('on');
+    _applyWings();
+
+    // 初始恢复仅设 CSS，不调窗口尺寸（防重启累加）
+    // 窗口尺寸由 Electron 原生记忆 + 用户灯泡手动 toggle 控制
   }
 
   // ---- Output panel ----
@@ -529,19 +636,19 @@
     var _ovUnsub = null;
     try {
       if (window.qqqideBridge && window.qqqideBridge.sync) {
-        _ovUnsub = window.qqqideBridge.sync.onMessage(function(channel, data) {
+        _ovUnsub = window.qqqideBridge.sync.onMessage(function (channel, data) {
           if (channel === 'overlay-open' && data && data.id !== _overlayId) {
             // 其他窗口打开了 overlay → 关闭自己的
             close();
           }
         });
       }
-    } catch (_) {}
+    } catch (_) { }
 
     var overlay = document.createElement('div');
     overlay.id = 'qqqide-overlay';
     overlay.style.cssText =
-      'display:none; position:fixed; inset:0; z-index:99999; ' +
+      'display:none; position:absolute; inset:0; z-index:99999; ' +
       'background:rgba(0,0,0,0.88);';
 
     // ── 主题化滚动条（注�?style�?──
@@ -680,7 +787,9 @@
 
     overlay.appendChild(contentEl);
     overlay.appendChild(toolbar);
-    document.body.appendChild(overlay);
+    // ★ 挂到 #qqq-main，遮罩仅覆盖中间区域，左右翼不受影响
+    var _main = document.getElementById('qqq-main');
+    (_main || document.body).appendChild(overlay);
 
     function close() {
       try { _stopRepeat(); } catch (_) { }
@@ -786,7 +895,7 @@
         if (window.qqqideBridge && window.qqqideBridge.sync) {
           window.qqqideBridge.sync.broadcast('overlay-open', { id: _overlayId });
         }
-      } catch (_) {}
+      } catch (_) { }
 
       if (e.data.action === 'open-image') {
         // 强制清理上一轮残留状态（含 close 函数恢复）
@@ -1044,26 +1153,6 @@
     // Otherwise it's just a visual indicator (Electron handles nwse-resize via the window frame)
   }
 
-  // ---- 外嵌面板灯泡 ----
-  function bootBulbs() {
-    var d1 = document.getElementById('qqq-bulb-1');
-    var d2 = document.getElementById('qqq-bulb-2');
-    if (!d1 || !d2) return;
-    var bulbs = [false, false];
-    function toggle(idx) {
-      bulbs[idx] = !bulbs[idx];
-      var dot = idx === 0 ? d1 : d2;
-      dot.classList.toggle('on', bulbs[idx]);
-      try {
-        if (bridge && bridge.aiPanel && bridge.aiPanel.toggleExternal) {
-          bridge.aiPanel.toggleExternal(idx, bulbs[idx]);
-        }
-      } catch (_) { }
-    }
-    d1.addEventListener('click', function () { toggle(0); });
-    d2.addEventListener('click', function () { toggle(1); });
-  }
-
   // ---- Editor integration: open file from file explorer ----
   function hookFileExplorerToTabs() {
     // Listen for file-open events from file explorer
@@ -1084,8 +1173,8 @@
             pane.appendChild(editorMount);
             // Read and display file
             bridge.fs.read(filePath).then(content => {
-          var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
-          window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts);
+              var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
+              window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts);
             }).catch(err => {
               pane.textContent = 'Error: ' + (err && err.message);
             });
@@ -1241,6 +1330,9 @@
     // AI Zone
     bootAiZone();
 
+    // 灯泡开关（左右 AI 面板 + 窗口弹性伸缩）
+    bootBulbs();
+
     // AI Overlay (must be after AI zone to catch iframe messages)
     bootAiOverlay();
     // Output panel
@@ -1263,9 +1355,6 @@
 
     // Resize grip
     bootResizeGrip();
-
-    // 外嵌面板灯泡
-    bootBulbs();
 
     // Hook file explorer -> tabs
     hookFileExplorerToTabs();

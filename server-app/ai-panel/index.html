@@ -24,7 +24,7 @@ html{forced-color-adjust:none!important;width:100%}
 /* ── 选中高亮：固定 #ffd302（金），暗主题同色 ── */
 ::selection{background:#ffd302;color:#000}
 [data-theme="dark"] ::selection{background:#ffd302;color:#000}
-body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text-primary);background:var(--background-color);width:100%;height:100vh;display:grid;grid-template-columns:100%;grid-template-rows:auto auto 1fr auto;overflow:hidden}
+body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text-primary);background:var(--background-color);width:100%;height:100vh;display:grid;grid-template-columns:100%;grid-template-rows:auto auto 1fr auto;overflow-x:hidden}
 #top-bar{padding:4px 8px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:5px;font-size:11px;flex-wrap:nowrap;overflow-x:hidden}
 #top-bar .label{opacity:.7}
 #top-bar input{width:22px;flex:none;padding:1px 4px;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:3px;font-size:10px}
@@ -240,29 +240,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
       sync(parent.document.documentElement.getAttribute('data-theme') === 'dark');
     }
   } catch(_) {}
-  // 独立窗口（僚机）：通过 IPC 从主窗口拉取当前主题
-  if (typeof _isStandalone !== 'undefined' && _isStandalone && window.qqqideBridge && window.qqqideBridge.sync) {
-    try {
-      window.qqqideBridge.sync.getTheme().then(function(dark) {
-        if (typeof dark === 'boolean') sync(dark);
-      }).catch(function(){});
-    } catch(_) {}
-  }
   // 始终监听 postMessage
   window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'qqqide-theme-change') sync(e.data.dark);
   });
-  // 独立窗口（僚机）：通过 IPC sync 接收主题变更
-  try {
-    var _themeUnsub = null;
-    if (window.qqqideBridge && window.qqqideBridge.sync) {
-      _themeUnsub = window.qqqideBridge.sync.onMessage(function(channel, data) {
-        if (channel === 'theme' && data && typeof data.dark === 'boolean') sync(data.dark);
-      });
-      // 保存句柄供 beforeunload 清理
-      window._themeUnsub = _themeUnsub;
-    }
-  } catch (_) {}
 
   // i18n sync: translate from parent window
   function translateUi() {
@@ -407,17 +388,31 @@ var _windowId = (function() {
   try { sessionStorage.setItem('qqq-ai-window-id', id); } catch(_) {}
   return id;
 })();
-// IPC sync 订阅句柄（用于 beforeunload 清理）
+
+// ★ 面板 ID：从 URL ?panel=0(左) ?panel=1(中) ?panel=2(右)，默认 1(中)
+var _panelId = (function() {
+  try {
+    var m = location.search.match(/panel=(\d)/);
+    if (m) { var v = parseInt(m[1], 10); if (v >= 0 && v <= 2) return v; }
+  } catch(_) {}
+  return 1;
+})();
+
+var _workspaceRoot = null;  // 当前工作空间（主文件夹路径）
 var _syncUnsub = null;
 var _projectPathUnsub = null;
-var _standaloneRoot = null;
-var _workspaceRoot = null;  // ★ 当前工作空间（主文件夹路径）
 
-// ★ workspace-scoped sync channel name
+// ★ workspace-scoped sync channel
 function _syncChannel() {
-  // 用项目路径生成唯一频道名，替换非字母数字为 _（IPC 安全）
   var s = (_workspaceRoot || '').replace(/[^a-zA-Z0-9]/g, '_');
   return 'qqq-sync:' + s;
+}
+
+function _getSyncBridge() {
+  try {
+    if (parent && parent.qqqideBridge && parent.qqqideBridge.sync) return parent.qqqideBridge.sync;
+  } catch (_) {}
+  return null;
 }
 
 function _broadcast(type, questId, extra) {
@@ -428,8 +423,6 @@ function _broadcast(type, questId, extra) {
   try { sb.broadcast(_syncChannel(), msg); } catch (_) {}
 }
 
-// ═══ 僚机桥接（IPC sync） ═══
-var _isStandalone = false;
 var _panelFocused = false;  // 当前面板是否获得焦点（金光边框 + 快捷键激活）
 
 // ═══ 焦点边框：通知父窗口添加/移除金光 ═══
@@ -447,67 +440,23 @@ function _setPanelFocus(on) {
   }
   // 广播焦点状态给父窗口（AI 视口用于文件附加目标）
   if (on) {
-    var panel = _wingmanIndex != null ? _wingmanIndex : 0;
-    if (_isStandalone) {
-      var sb = _getSyncBridge();
-      if (sb) { sb.broadcast('host-message', { type: 'qqq-ai-panel-focused', panel: panel }); }
-    } else {
-      try { parent.postMessage({ type: 'qqq-ai-panel-focused', panel: 0 }, '*'); } catch(_) {}
-    }
+    try { parent.postMessage({ type: 'qqq-ai-panel-focused', panel: _panelId }, '*'); } catch(_) {}
   }
 }
 // 点击/按键 → 获得焦点
 window.addEventListener('focus', function() { _setPanelFocus(true); });
 window.addEventListener('blur', function() { _setPanelFocus(false); });
 document.addEventListener('mousedown', function() { _setPanelFocus(true); });
-// 僚机索引：从 URL ?external=0(左,-1) 或 ?external=1(右,1) 读取
-var _wingmanIndex = (function() {
-  try {
-    var m = location.search.match(/external=(\d)/);
-    if (m) { var v = parseInt(m[1], 10); return v === 0 ? -1 : v === 1 ? 1 : null; }
-  } catch(_) {}
-  return null;
-})();
 
-// 通用 postMessage：iframe 用 parent.postMessage，僚机用 IPC sync
+// 通用 postMessage
 var _fwSeq = 0;
 function _postToHost(msg) {
   msg._fwId = 'fw' + (++_fwSeq) + '_' + Date.now().toString(36);
-  if (_isStandalone) {
-    // 僚机/独立窗口：自身无 shell.js，所有消息走 IPC → 主窗口 shell.js 处理
-    var syncBridge = _getSyncBridge();
-    if (syncBridge) {
-      try { syncBridge.broadcast('host-message', msg); } catch (_) {}
-    }
-  } else {
-    try { parent.postMessage(msg, '*'); } catch (_) {}
-  }
+  try { parent.postMessage(msg, '*'); } catch (_) {}
 }
 
-// 获取 sync bridge（僚机用 window.qqqideBridge.sync，iframe 用 parent.qqqideBridge.sync）
-function _getSyncBridge() {
-  // 僚机/独立窗口：自身有 preload
-  if (typeof window !== 'undefined' && window.qqqideBridge && window.qqqideBridge.sync) {
-    return window.qqqideBridge.sync;
-  }
-  // iframe：通过 parent 访问主窗口的 qqqideBridge
-  try {
-    if (parent && parent.qqqideBridge && parent.qqqideBridge.sync) {
-      return parent.qqqideBridge.sync;
-    }
-  } catch (_) {}
-  return null;
-}
-
-// 获取可用的 bridge（僚机直连自身 qqqideBridge，iframe 用 parent.qqqideBridge）
+// 获取可用的 bridge
 function _getBridge() {
-  if (_isStandalone) {
-    // 僚机自身有 preload 暴露的 window.qqqideBridge，直接用（零代理）
-    if (typeof window !== 'undefined' && window.qqqideBridge && window.qqqideBridge.fs) {
-      return window.qqqideBridge;
-    }
-    return null;
-  }
   return parent.qqqideBridge;
 }
 
@@ -878,15 +827,14 @@ function _hasMainProject() {
   try {
     if (parent && parent.qqqideViewport && parent.qqqideViewport.getMainProject()) return true;
   } catch(_) {}
-  return !!_standaloneRoot;
+  return !!_workspaceRoot;
 }
 async function _triggerSelectMainProject() {
   if (_selectingProject) return;
   _selectingProject = true;
   try {
-    // 僚机/独立窗口：不弹文件夹选择（项目路径由 IPC sync 提供）
     if (parent === window) {
-      console.log('[rules] standalone window — waiting for project path via IPC...');
+      console.log('[rules] standalone window — waiting for project path...');
       return;
     }
     var bridge = parent && parent.qqqideBridge;
@@ -909,10 +857,8 @@ async function _triggerSelectMainProject() {
 }
 
 // ═══ 统一守卫管线：无主项目时直接弹文件夹选择 ═══
-// 注意：僚机/独立窗口（parent === window）不触发文件夹选择，项目由 IPC sync 提供
 // ① 所有鼠标点击 → 在 #input-area 或 #top-bar 内直接触发
 document.addEventListener('mousedown', function(e) {
-  if (parent === window) return;  // 僚机：放行一切交互
   if (_hasMainProject() || _selectingProject) return;
   var el = e.target;
   if (el.closest('#input-area') || el.closest('#top-bar')) {
@@ -923,7 +869,6 @@ document.addEventListener('mousedown', function(e) {
 }, true);
 // ② Enter 键发送
 document.addEventListener('keydown', function(e) {
-  if (parent === window) return;  // 僚机：放行一切交互
   if (_hasMainProject() || _selectingProject) return;
   if (e.key === 'Enter' && !e.shiftKey && e.target.closest('#input')) {
     _triggerSelectMainProject();
@@ -933,7 +878,6 @@ document.addEventListener('keydown', function(e) {
 }, true);
 // ③ 粘贴拦截
 $input.addEventListener('paste', function(e) {
-  if (parent === window) return;  // 僚机：放行一切交互
   if (!_hasMainProject() && !_selectingProject) {
     _triggerSelectMainProject();
     e.stopImmediatePropagation();
@@ -1281,13 +1225,19 @@ function scrollToBottom(force) {
   if (cardPool) cardPool.scrollActiveToBottom(force);
 }
 
-// ★ 延迟滚到底：等 DOM 布局完成后再滚（用于打开 quest 时）
+// ★ 延迟滚到底：三重 rAF + 零延迟 setTimeout 兜底，确保 DOM 全部布局完成
 function _scrollToBottomDeferred(force) {
-  requestAnimationFrame(function() {
+  function _do() {
     requestAnimationFrame(function() {
-      scrollToBottom(force);
+      requestAnimationFrame(function() {
+        scrollToBottom(force);
+        // 兜底：再等 50ms（大图/A1块渲染慢的场景）
+        setTimeout(function() { scrollToBottom(force); }, 50);
+      });
     });
-  });
+  }
+  // 首帧先等 painting 完成
+  requestAnimationFrame(_do);
 }
 
 // ★ 延迟恢复滚动位置：等 DOM 布局完成后再设（用于窗口重启时）
@@ -1295,6 +1245,7 @@ function _restoreScrollDeferred(scrollTop) {
   requestAnimationFrame(function() {
     requestAnimationFrame(function() {
       $messages.scrollTop = scrollTop;
+      setTimeout(function() { $messages.scrollTop = scrollTop; }, 50);
     });
   });
 }
@@ -1439,17 +1390,16 @@ function setStreaming(val) {
 // ═══ 跨窗口同步消息处理 ═══
 async function _handleSyncMessage(msg) {
   if (!msg || msg.windowId === _windowId) return;
-  // focus-request 始终处理（僚机空白状态也需要）
+  // focus-request：焦点跳转
   if (msg.type === 'focus-request') {
     if (msg.targetWindow === _windowId) {
       console.log('[quests] focus-request received, focusing window');
-      if (_isStandalone) { window.focus(); }
-      else { _postToHost({ type: 'qqq-focus-window' }); }
+      _postToHost({ type: 'qqq-focus-window' });
       _setPanelFocus(true);
     }
     return;
   }
-  // quest 列表变更：始终更新 tofu（僚机 q2x 需要感知 quest 增删）
+  // quest 列表变更
   if (msg.type === 'quest-created' || msg.type === 'quest-deleted' || msg.type === 'quest-renamed') {
     questStore._index = null;
     await updateQuestTofu();
@@ -1577,7 +1527,6 @@ function _teardownWorkspace() {
   // 10. 重置标记
   _workspaceRoot = null;
   _questsInited = false;
-  _standaloneRoot = null;
   // 11. 清空 DOM 残留（card pool 已移除所有 card，此处只清可能落在 card 外的元素）
   // ★ 注意：#messages 内还有 #search-bar，不能 innerHTML 全清
   //     只清除卡在 card 之外的直接子元素（排除 #search-bar 和 card div）
@@ -1599,32 +1548,20 @@ function _teardownWorkspace() {
 }
 
 // 初始化工作空间
-async function _initWorkspace(root, isStandalone) {
-  console.log('[workspace] initializing: ' + root + (isStandalone ? ' (standalone)' : ''));
+async function _initWorkspace(root) {
+  console.log('[workspace] initializing: ' + root);
   _workspaceRoot = root;
-  if (isStandalone) {
-    _isStandalone = true;
-    _standaloneRoot = root;
-  }
 
-  // 委托 onlyStore 管理项目锁
+  // ★ 只有中面板（panelId=1）申请项目锁；左右翼共享
   onlyStore.init(root);
-  var lockResult = await onlyStore.claimLock();
-  if (!lockResult.ok) {
-    if (lockResult.error === 'locked') {
-      if (isStandalone) {
-        console.warn('[workspace] standalone sharing lock (age=' + (lockResult.age/1000).toFixed(1) + 's)');
-      } else {
-        console.warn('[workspace] BLOCKED: project locked (age=' + (lockResult.age/1000).toFixed(1) + 's)');
-        addMessageEl('error', '⚠️ 该项目已被另一个 QQQ 窗口打开，无法重复绑定。');
-        if (window.parent) {
-          try { window.parent.postMessage({ type: 'qqq-ai-viewport-remove-project', path: root }, '*'); } catch(_) {}
-        }
-        onlyStore.init(null);
-        _workspaceRoot = null;
-        return;
+  if (_panelId === 1) {
+    var lockResult = await onlyStore.claimLock();
+    if (!lockResult.ok) {
+      console.warn('[workspace] BLOCKED: project locked (age=' + (lockResult.age/1000).toFixed(1) + 's)');
+      addMessageEl('error', '⚠️ 该项目已被另一个 QQQ 窗口打开，无法重复绑定。');
+      if (window.parent) {
+        try { window.parent.postMessage({ type: 'qqq-ai-viewport-remove-project', path: root }, '*'); } catch(_) {}
       }
-    } else {
       onlyStore.init(null);
       _workspaceRoot = null;
       return;
@@ -1642,8 +1579,8 @@ async function _initWorkspace(root, isStandalone) {
     console.error('[card-pool] CardPool undefined — card-pool.js failed to load!');
   }
 
-  // 向主进程注册窗口↔项目映射
-  if (lockResult.ok && !isStandalone && window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.window) {
+  // 向主进程注册窗口↔项目映射（仅中面板有锁结果）
+  if (lockResult && lockResult.ok && window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.window) {
     try { window.parent.qqqideBridge.window.claimProject(root).catch(function(){}); } catch(_) {}
   }
 
@@ -1664,8 +1601,8 @@ async function _initWorkspace(root, isStandalone) {
     }
   } catch(e) { console.warn('[workspace] migration error', e); }
 
-  // ★ 恢复 per-quest UI 状态
-  var savedStates = onlyStore.get('ai.uiStates');
+  // ★ 三面板独立快照：从 ai.uiStates.{panelId} 恢复
+  var savedStates = onlyStore.get('ai.uiStates.' + _panelId);
   if (savedStates && typeof savedStates === 'object') {
     questUIStates = savedStates;
   }
@@ -1680,7 +1617,7 @@ async function _initWorkspace(root, isStandalone) {
     buildQqqideVisionContext();
   }
 
-  // ═══ IPC sync：workspace-scoped channel ═══
+  // ★ IPC sync：workspace-scoped channel
   try {
     var sb = _getSyncBridge();
     if (sb) {
@@ -1697,28 +1634,11 @@ async function _initWorkspace(root, isStandalone) {
   } catch(e) { console.warn('[workspace] IPC sync unavailable:', e); }
 
   console.log('[workspace] bound: ' + root);
-
-  // 向僚机广播项目路径
-  try {
-    var sb2 = _getSyncBridge();
-    if (sb2) {
-      if (_projectPathUnsub) { _projectPathUnsub(); _projectPathUnsub = null; }
-      _projectPathUnsub = sb2.onMessage(function(channel, data) {
-        if (channel === 'project-path-request') {
-          sb2.setProjectPath(root);
-          console.log('[workspace] replied project path to wingman: ' + root);
-        }
-      });
-      sb2.setProjectPath(root);
-      console.log('[workspace] broadcast project path via IPC: ' + root);
-    }
-  } catch(e) { console.warn('[workspace] project-path sync failed:', e); }
 }
 
 // 入口：每次视口变化时调用，自动判断是首次绑定还是切换
 async function bindMainProject() {
   var root = null;
-  var isStandalone = false;
 
   if (window.parent && window.parent.qqqideViewport) {
     var main = window.parent.qqqideViewport.getMainProject();
@@ -1727,9 +1647,6 @@ async function bindMainProject() {
       return;
     }
     root = main.path.replace(/\\/g, '/').replace(/\/$/, '');
-  } else if (_standaloneRoot) {
-    root = _standaloneRoot.replace(/\\/g, '/').replace(/\/$/, '');
-    isStandalone = true;
   } else {
     return;
   }
@@ -1742,7 +1659,7 @@ async function bindMainProject() {
 
   // 不同 workspace → 先拆后建
   _teardownWorkspace();
-  await _initWorkspace(root, isStandalone);
+  await _initWorkspace(root);
 }
 
 // 窗口关闭时刷盘 + 拆卸工作空间
@@ -1754,71 +1671,8 @@ window.addEventListener('beforeunload', function () {
   if (questActiveId) {
     try { questStore.releaseOwner(questActiveId, _windowId).catch(function(){}); } catch(_) {}
   }
-  // 清理 IPC sync 订阅
-  if (_syncUnsub) { try { _syncUnsub(); } catch(_) {} _syncUnsub = null; }
-  if (_projectPathUnsub) { try { _projectPathUnsub(); } catch(_) {} _projectPathUnsub = null; }
-  // 清理 IPC 主题订阅
-  if (window._themeUnsub) {
-    try { window._themeUnsub(); } catch(_) {}
-    window._themeUnsub = null;
-  }
-});
 
-// Standalone wingman: listen for project path via IPC sync
-(function initProjectSync() {
-  if (parent !== window) return;
-  console.log('[workspace] standalone mode: listening for project path via IPC...');
-  
-  var _bound = false;
-  var _currentRoot = null;
-  var sb = _getSyncBridge();
-  if (!sb) {
-    console.warn('[workspace] IPC sync unavailable — retrying in 2s');
-    setTimeout(initProjectSync, 2000);
-    return;
-  }
-  
-  function _onProjectPath(p) {
-    if (!p) return;
-    var root = p.replace(/\\/g, '/').replace(/\/$/, '');
-    // ★ 支持 workspace 切换：root 变了 → 重新绑定
-    if (root === _currentRoot) return;
-    _bound = true;
-    _currentRoot = root;
-    _standaloneRoot = root;
-    console.log('[workspace] wingman switching to: ' + root);
-    bindMainProject().catch(function(e) { console.warn('[workspace] bindMainProject failed:', e && e.message); });
-  }
-  
-  // 订阅 project-path 推送
-  var _unsub = sb.onMessage(function(channel, data) {
-    if (channel === 'project-path' && data && data.path) {
-      _onProjectPath(data.path);
-    }
-  });
-  
-  // 主动获取当前项目路径
-  sb.getProjectPath().then(function(p) {
-    if (p) _onProjectPath(p);
-  }).catch(function() {});
-  
-  // 保底轮询
-  var _pingAttempts = 0;
-  function _sendPing() {
-    if (_bound && _currentRoot) { _pingAttempts++; if (_pingAttempts > 20) return; }
-    if (!_bound) _pingAttempts++;
-    var sb2 = _getSyncBridge();
-    if (sb2) {
-      try { sb2.broadcast('project-path-request', {}); } catch(_) {}
-      sb2.getProjectPath().then(function(p) {
-        if (p) _onProjectPath(p);
-      }).catch(function() {});
-    }
-    var delay = _pingAttempts < 10 ? 500 + _pingAttempts * 200 : 5000;
-    setTimeout(_sendPing, delay);
-  }
-  setTimeout(_sendPing, 300);
-})();
+});
 
 // 监听视口变化：主文件夹改变时重新绑定
 window.addEventListener('message', function(e) {
@@ -1852,8 +1706,9 @@ function saveQuestUIState(id) {
     selectedTier: selectedTier,
     scrollTop: $messages.scrollTop
   };
+  // ★ 三面板独立快照：左/中/右各自保存到 ai.uiStates.{panelId}
   if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
-    onlyStore.set('ai.uiStates', questUIStates);
+    onlyStore.set('ai.uiStates.' + _panelId, questUIStates);
   }
 }
 
@@ -1910,12 +1765,12 @@ async function initQuests() {
       }
     }
   }
-  // ═══ 僚机/新窗口：不加载任何 quest，空白起点 ═══
-  var _isWingman = (_wingmanIndex != null);
-  if (_isWingman) {
-    console.log('[quests] wingman detected — starting as new AI窗口');
+  // ★ 侧面板（左/右）启动时不加载 quest，空白起点
+  if (_panelId !== 1) {
     questActiveId = '';
     _activeAgent = null;
+    _queueFallback = [];
+    renderQueueStrip();
     updateCostDisplay();
     updateCtxBtn();
   } else if (questActiveId) {
@@ -2324,7 +2179,7 @@ async function _appendToSearchQuest(questId, floorNum) {
     lines.push(marker + '   ' + ts(floorTs));
     lines.push('■ Q: ' + (floorData.question || ''));
     lines.push('■ A: ' + (answer || '(no answer)'));
-    
+
     // ═══ az 区文本化（每层楼私有 A1 + 时钟数据） ═══
     var _azLines = _buildAzText(floorNum, floorData, questMeta);
     for (var _azi = 0; _azi < _azLines.length; _azi++) {
@@ -2736,7 +2591,7 @@ function estimateTokens() {
 
 // ── 上下文按钮 ──
 function updateCtxBtn() {
-  // 防御：agent 为 null 时（新建 quest 后、僚机初始化未完成等）显示占位符
+  // 防御：agent 为 null 时显示占位符
   if (!_activeAgent || !_activeAgent.conversation) {
     $ctxBtn.textContent = '--';
     $ctxBtn.style.setProperty('--ctx-pct', '0%');
@@ -3084,28 +2939,10 @@ function _stopAutoSave() {
   if (_autoSaveTimer) { clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
 }
 
-// ── pie tooltip (iframe → parent; 僚机 → 本地渲染，无需跨窗口) ──
 function _showPieTooltip(html, cx, cy) {
-  if (_isStandalone) {
-    // 僚机独立窗口：fixed 定位 + translate 居中（与主窗口行为一致）
-    var tt = document.getElementById('clock-tooltip');
-    if (tt) {
-      tt.innerHTML = html;
-      tt.style.display = 'flex';
-      tt.style.left = cx + 'px';
-      tt.style.top = (cy + 60) + 'px';
-      tt.style.transform = 'translate(-50%, -50%)';
-    }
-    return;
-  }
   _postToHost({ type: 'qqq-pie-tooltip', action: 'show', html: html, clientX: cx, clientY: cy });
 }
 function _hidePieTooltip() {
-  if (_isStandalone) {
-    var tt = document.getElementById('clock-tooltip');
-    if (tt) tt.style.display = 'none';
-    return;
-  }
   _postToHost({ type: 'qqq-pie-tooltip', action: 'hide' });
 }
 
@@ -4591,9 +4428,9 @@ async function sendMessage() {
           aiDiv._dirty = false;
         }
         // _tableStore 不再截断：截断会导致旧 DOM 的 onclick 索引失效，表格展开按钮无反应
-        
+
         var _divDetached = !(aiDiv && aiDiv.isConnected);
-        
+
         if (_activeAgent === _capturedAgent) {
           stopFloorTimer(timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 });
           scrollToBottom();
@@ -4610,20 +4447,20 @@ async function sendMessage() {
             finishedAt: new Date().toISOString()
           });
         }
-        
+
         // 始终保存数据（确保后台完成的 agent 数据也不丢）
         await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._floorStartIdx);
-        
+
         // ═══ Card Pool：封顶在建楼 + 6+1 裁剪 ═══
         if (cardPool) cardPool.completeBuildingFloor(_capturedQuestId, floorNum);
-        
+
         // Card Pool 架构：DOM 永不脱离，无需 _rebuildUIForQuest
         // _divDetached 条件已失效（Card DOM 不会被 remove）
         if (_activeAgent === _capturedAgent && _divDetached) {
           // 罕见回退：Card Pool 未初始化时 div 确实脱离
           console.warn('[onDone] div detached but card pool not available, skipping rebuild');
         }
-        
+
         // ═══ 完成 all.txt：追加 floor stats + 停止流 ═══
         var _ftxtPath = (_targetDiv2 && _targetDiv2._allTxtPath) || _allTxtPath;
         await _finalizeAllTxt(_targetDiv2 || aiDiv, _ftxtPath, _capturedAgent, floorNum, timing);
@@ -4806,21 +4643,6 @@ document.addEventListener('qqq-ai-attach', function(e) {
   }
 });
 
-// ═══ 僚机接收主窗口发来的文件附加（IPC sync host-message） ═══
-(function initWingmanAttachListener() {
-  if (_wingmanIndex == null) return;
-  var sb = _getSyncBridge();
-  if (!sb) { setTimeout(initWingmanAttachListener, 500); return; }
-  sb.onMessage(function(channel, data) {
-    if (channel !== 'host-message' || !data) return;
-    if (data.type === 'qqq-ai-attach' && data.path) {
-      // 只接受发给当前僚机的（_targetWingman 匹配）
-      if (data._targetWingman !== _wingmanIndex) return;
-      insertChipAtCursor(data.path);
-    }
-  });
-})();
-
 // ═══ 面板快捷键：仅焦点在面板且不在编辑框时生效 ═══
 document.addEventListener('keydown', function(e) {
   if (!_panelFocused) return;
@@ -4869,15 +4691,7 @@ document.addEventListener('keydown', function(e) {
 
 // ═══ 自动跟焦：输入框获得焦点时广播活跃面板 ═══
 $input.addEventListener('focus', function() {
-  var panel = _wingmanIndex != null ? _wingmanIndex : 0;  // 僚机=-1/1, 主窗口=0
-  if (_isStandalone) {
-    // 僚机：通过 IPC sync 广播
-    var sb = _getSyncBridge();
-    if (sb) { sb.broadcast('host-message', { type: 'qqq-ai-panel-focused', panel: panel }); }
-  } else {
-    // 主窗口 iframe：通过 parent.postMessage
-    try { parent.postMessage({ type: 'qqq-ai-panel-focused', panel: 0 }, '*'); } catch(_) {}
-  }
+  try { parent.postMessage({ type: 'qqq-ai-panel-focused', panel: 0 }, '*'); } catch(_) {}
 });
 
 // ═══ Full-window overlay (via parent.postMessage / IPC sync) ═══

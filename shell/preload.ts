@@ -63,6 +63,7 @@ const QQQ = {
         new: (folderPath?: string) => ipcRenderer.invoke('qqqide:window:new', folderPath),
         claimProject: (projectRoot: string) => ipcRenderer.invoke('qqqide:window:claimProject', projectRoot),
         releaseProject: (projectRoot: string) => ipcRenderer.invoke('qqqide:window:releaseProject', projectRoot),
+        adjustBounds: (deltaLeft: number, deltaRight: number) => ipcRenderer.invoke('qqqide:window:adjust-bounds', deltaLeft, deltaRight),
     },
 
     // ---- zoom (UI scale) ----
@@ -115,11 +116,6 @@ const QQQ = {
         openPath: (p: string) => ipcRenderer.invoke('qqqide:shell:openPath', p),
     },
 
-    // ---- 外嵌 AI 面板 ----
-    aiPanel: {
-        toggleExternal: (index: number, open: boolean) => ipcRenderer.invoke('qqqide:ai-panel:toggle-external', index, open),
-    },
-
     // ---- 跨窗口同步 IPC（替代 BroadcastChannel，终极架构 §C）----
     sync: {
         // 广播消息到所有其他窗口（主进程中转）。静默吞错——广播是 best-effort。
@@ -132,10 +128,8 @@ const QQQ = {
             ipcRenderer.on('qqqide:sync:message', handler);
             return () => { ipcRenderer.removeListener('qqqide:sync:message', handler); };
         },
-        // 获取/设置项目路径（僚机初始化用）
         getProjectPath: () => ipcRenderer.invoke('qqqide:sync:get-project-path'),
         setProjectPath: (p: string) => ipcRenderer.invoke('qqqide:sync:set-project-path', p).catch(() => { }),
-        // 获取主窗口当前主题（僚机初始化用）
         getTheme: () => ipcRenderer.invoke('qqqide:sync:get-theme'),
     },
 

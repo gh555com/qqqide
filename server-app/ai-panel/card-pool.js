@@ -607,11 +607,10 @@ var CardPool = (function () {
     if (container) card._scrollTop = container.scrollTop;
   };
 
-  // ═══ 刷新 Card（从 SQLite 重载数据 + 重建 DOM，用于僚机只读同步） ═══
+  // ═══ 刷新 Card（从 SQLite 重载数据 + 重建 DOM） ═══
   CardPool.prototype.refreshCard = async function (questId) {
     var card = this._cards[questId];
     if (!card) {
-      // Card 不存在 → 创建（首次僚机同步）
       card = this.getOrCreate(questId);
       await this._loadCardData(card);
       return;

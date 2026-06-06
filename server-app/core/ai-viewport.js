@@ -240,34 +240,9 @@
   }
 
   // ---- attach to AI: dispatch event + postMessage to AI iframe ----
-  // ── AI 面板目标路由（自动跟焦）──
-// -1=左僚机  0=主窗口(默认)  1=右僚机
-window.__qqq_aiTarget = 0;
-
-function _sendToWingman(filePath, index) {
-  const sb = window.qqqideBridge && window.qqqideBridge.sync;
-  if (sb) {
-    sb.broadcast('host-message', {
-      type: 'qqq-ai-attach',
-      path: filePath,
-      _targetWingman: index
-    });
-  }
-}
-
 function attachToAi(filePath) {
-  console.log('[ai-viewport] attachToAi →', filePath, 'target=', window.__qqq_aiTarget);
+  console.log('[ai-viewport] attachToAi →', filePath);
   closeDropdown();
-
-  const target = window.__qqq_aiTarget || 0;
-
-  // ── 僚机目标：走 IPC sync ──
-  if (target === -1 || target === 1) {
-    _sendToWingman(filePath, target);
-    return;
-  }
-
-  // ── 主窗口：直接发给 AI iframe ──
   const aiFrame = document.querySelector('#qqq-ai-zone iframe');
   if (!aiFrame || !aiFrame.contentWindow) {
     console.warn('[ai-viewport] no AI iframe found');
@@ -714,10 +689,7 @@ function attachToAi(filePath) {
       document.querySelectorAll('.aiv-block-active').forEach(el => el.classList.remove('aiv-block-active'));
     });
 
-    // 暴露更新函数供外部 focus 消息调用（由 shell/index.html 的 message 监听器调用）
-    window.__qqq_updateAiTarget = function(newTarget) {
-      window.__qqq_aiTarget = newTarget;
-    };
+
   }
 
   // 监听 AI 面板发来的锁冲突通知：从视口移除被锁的项目
@@ -737,6 +709,25 @@ function attachToAi(filePath) {
       }
     }
   });
+
+  // ★ 焦点面板路由：文件附加到当前金色 q2 的 AI 面板
+  window.__qqq_aiTarget = 1;  // 默认中面板
+  window.__qqq_updateAiTarget = function(n) {
+    if (typeof n === 'number' && n >= 0 && n <= 2) window.__qqq_aiTarget = n;
+  };
+
+  function attachToAi(fullPath) {
+    var target = window.__qqq_aiTarget || 1;
+    var zoneId = target === 0 ? 'qqq-wing-left' : target === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
+    var zone = document.getElementById(zoneId);
+    var iframe = zone ? zone.querySelector('iframe') : null;
+    if (iframe && iframe.contentWindow && iframe.contentWindow.qqqideAiAttach) {
+      iframe.contentWindow.qqqideAiAttach(fullPath);
+    } else {
+      // fallback：postMessage
+      try { iframe.contentWindow.postMessage({ type: 'qqq-ai-attach', path: fullPath }, '*'); } catch (_) {}
+    }
+  }
 
   window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject };
 })();

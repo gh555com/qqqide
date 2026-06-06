@@ -43,77 +43,79 @@
 
 <div class="qqq-shell">
 
-  <!-- ======== Menu Area (top, full width) ======== -->
-  <div class="qqq-menu-area">
-    <div class="qqq-menu-row qqq-menu-row-1">
-      <div class="qqq-menubar" id="qqq-menubar"></div>
-      <div id="qqq-ai-viewport"></div>
-      <div class="qqq-spacer"></div>
-      <button class="qqq-zoom-btn" id="qqq-zoom-out" data-i18n-title="shell.zoom.out" title="缩小 UI（Ctrl+-）">&#x2212;</button>
-      <button class="qqq-zoom-btn" id="qqq-zoom-in" data-i18n-title="shell.zoom.in" title="放大 UI（Ctrl+=）">&#x002B;</button>
-      <span class="qqq-zoom-label" id="qqq-zoom-label">0.85</span>
-      <button class="qqq-lang-btn" id="qqq-lang-btn" data-i18n-title="shell.lang.switch" title="切换语言">中</button>
-      <button class="qqq-theme-toggle" id="qqq-theme-toggle" data-i18n-title="shell.theme.toggle" title="切换亮色/暗色">&#x263C;</button>
-      <div class="qqq-window-controls">
-        <button class="qqq-wc-btn" id="qqq-wc-min" data-i18n-title="shell.window.minimize" title="最小化">&#x2014;</button>
-        <button class="qqq-wc-btn" id="qqq-wc-max" data-i18n-title="shell.window.maximize" title="最大化">&#x25A1;</button>
-        <button class="qqq-wc-btn qqq-wc-close" id="qqq-wc-close" data-i18n-title="shell.window.close" title="关闭">&#x2715;</button>
-      </div>
-    </div>
-    <div class="qqq-menu-row qqq-menu-row-2">
-      <div class="qqq-toolbar" id="qqq-toolbar" style="flex:1">
-        <span class="qqq-toolbar-brand">qqq</span>
-        <span class="qqq-goods-bar" id="qqq-goods-bar"></span>
-        <span class="qqq-spacer"></span>
-        <button class="qqq-update-btn" id="qqq-update-btn" data-i18n-title="shell.update.check" title="检查更新" style="display:none">&#x21BB;</button>
-      </div>
-      <span class="qqq-bulb" id="qqq-bulbs">
-        <span class="qqq-bulb-dot" id="qqq-bulb-1" title="外嵌面板 1"></span>
-        <span class="qqq-bulb-dot" id="qqq-bulb-2" title="外嵌面板 2"></span>
-      </span>
-    </div>
-  </div>
+  <!-- ★ 左翼（贴在中间块左侧，全高，无菜单无状态栏）-->
+  <div class="qqq-wing" id="qqq-wing-left" style="left:0"></div>
 
-  <!-- ======== Middle Area (A + X + AI) ======== -->
-  <div class="qqq-middle">
-    <!-- A Zone: gaea panel (q4 sidebar) -->
-    <div class="qqq-a-zone" id="qqq-a-zone"></div>
+  <!-- ★ 右翼（贴在中间块右侧，全高，无菜单无状态栏）-->
+  <div class="qqq-wing" id="qqq-wing-right" style="right:0"></div>
 
-    <!-- Sash: A | X -->
-    <div class="qqq-sash qqq-sash-v" data-sash="a-right"></div>
+  <!-- ★ 中间块（锁死：菜单+中区+状态栏，永不移不缩）-->
+  <div class="qqq-main" id="qqq-main">
 
-    <!-- X Zone: tab groups (upper) + output (lower) -->
-    <div class="qqq-x-zone" id="qqq-x-zone">
-      <div class="qqq-x-upper" id="qqq-x-upper">
-        <!-- tab groups injected dynamically by tab-manager.js -->
-      </div>
-      <div class="qqq-sash qqq-sash-h qqq-hidden" data-sash="output-top" id="qqq-sash-output"></div>
-      <div class="qqq-x-output qqq-hidden" id="qqq-x-output">
-        <div class="qqq-output-header">
-          <span class="qqq-output-title" data-i18n="shell.output.title">产出</span>
-          <span class="qqq-spacer"></span>
-          <button class="qqq-output-close" id="qqq-output-close" data-i18n-title="shell.output.hide" title="隐藏产出">&#x2715;</button>
+    <!-- Menu -->
+    <div class="qqq-menu-area">
+      <div class="qqq-menu-row qqq-menu-row-1">
+        <div class="qqq-menubar" id="qqq-menubar"></div>
+        <div id="qqq-ai-viewport"></div>
+        <div class="qqq-spacer"></div>
+        <button class="qqq-zoom-btn" id="qqq-zoom-out" data-i18n-title="shell.zoom.out" title="缩小 UI（Ctrl+-）">&#x2212;</button>
+        <button class="qqq-zoom-btn" id="qqq-zoom-in" data-i18n-title="shell.zoom.in" title="放大 UI（Ctrl+=）">&#x002B;</button>
+        <span class="qqq-zoom-label" id="qqq-zoom-label">0.85</span>
+        <button class="qqq-lang-btn" id="qqq-lang-btn" data-i18n-title="shell.lang.switch" title="切换语言">中</button>
+        <button class="qqq-theme-toggle" id="qqq-theme-toggle" data-i18n-title="shell.theme.toggle" title="切换亮色/暗色">&#x263C;</button>
+        <div class="qqq-window-controls">
+          <button class="qqq-wc-btn" id="qqq-wc-min" data-i18n-title="shell.window.minimize" title="最小化">&#x2014;</button>
+          <button class="qqq-wc-btn" id="qqq-wc-max" data-i18n-title="shell.window.maximize" title="最大化">&#x25A1;</button>
+          <button class="qqq-wc-btn qqq-wc-close" id="qqq-wc-close" data-i18n-title="shell.window.close" title="关闭">&#x2715;</button>
         </div>
-        <div class="qqq-output-body" id="qqq-output-body"></div>
+      </div>
+      <div class="qqq-menu-row qqq-menu-row-2">
+        <div class="qqq-toolbar" id="qqq-toolbar" style="flex:1">
+          <span class="qqq-toolbar-brand">qqq</span>
+          <span class="qqq-goods-bar" id="qqq-goods-bar"></span>
+          <span class="qqq-spacer"></span>
+          <button class="qqq-update-btn" id="qqq-update-btn" data-i18n-title="shell.update.check" title="检查更新" style="display:none">&#x21BB;</button>
+        </div>
+        <span class="qqq-bulb" id="qqq-bulbs">
+          <span class="qqq-bulb-dot" id="qqq-bulb-1" title="左 AI 面板"></span>
+          <span class="qqq-bulb-dot" id="qqq-bulb-2" title="右 AI 面板"></span>
+        </span>
       </div>
     </div>
 
-    <!-- AI Zone: fixed 389px -->
-    <div class="qqq-ai-zone" id="qqq-ai-zone"></div>
-  </div>
-
-  <!-- ======== Status Area (bottom, full width) ======== -->
-  <div class="qqq-status-area">
-    <div class="qqq-status-row">
-      <span class="qqq-status-item" id="qqq-status-version">v?</span>
-      <span class="qqq-status-item" id="qqq-status-engine">engine ?</span>
-      <span class="qqq-spacer"></span>
-      <span class="qqq-status-item" id="qqq-status-clock"></span>
+    <!-- Middle (A + X + 中AI) -->
+    <div class="qqq-middle" id="qqq-middle">
+      <div class="qqq-a-zone" id="qqq-a-zone"></div>
+      <div class="qqq-sash qqq-sash-v" data-sash="a-right"></div>
+      <div class="qqq-x-zone" id="qqq-x-zone">
+        <div class="qqq-x-upper" id="qqq-x-upper"></div>
+        <div class="qqq-sash qqq-sash-h qqq-hidden" data-sash="output-top" id="qqq-sash-output"></div>
+        <div class="qqq-x-output qqq-hidden" id="qqq-x-output">
+          <div class="qqq-output-header">
+            <span class="qqq-output-title" data-i18n="shell.output.title">产出</span>
+            <span class="qqq-spacer"></span>
+            <button class="qqq-output-close" id="qqq-output-close" data-i18n-title="shell.output.hide" title="隐藏产出">&#x2715;</button>
+          </div>
+          <div class="qqq-output-body" id="qqq-output-body"></div>
+        </div>
+      </div>
+      <div class="qqq-ai-zone" id="qqq-ai-zone"></div>
     </div>
-  </div>
 
-  <!-- Resize grip (bottom-right triangle) -->
-  <div class="qqq-resize-grip" id="qqq-resize-grip"></div>
+    <!-- Status -->
+    <div class="qqq-status-area">
+      <div class="qqq-status-row">
+        <span class="qqq-status-item" id="qqq-status-version">v?</span>
+        <span class="qqq-status-item" id="qqq-status-engine">engine ?</span>
+        <span class="qqq-spacer"></span>
+        <span class="qqq-status-item" id="qqq-status-clock"></span>
+      </div>
+    </div>
+
+    <!-- Resize grip -->
+    <div class="qqq-resize-grip" id="qqq-resize-grip"></div>
+
+  </div><!-- /qqq-main -->
 
 </div>
 
@@ -149,30 +151,12 @@
   }
 </script>
 
-<!-- 僚机 bridge 代理：主窗口 shell 直接处理（不依赖 AI 面板 iframe 是否打开） -->
+
+<!-- AI 面板焦点同步：iframe postMessage → 视口文件附加目标 -->
 <script>
 (function() {
   'use strict';
-  // 仅主窗口（非僚机、非 iframe）运行
   if (parent !== window) return;
-  if (window.location.search.indexOf('external=') !== -1) return;
-
-  // ═══ IPC sync → postMessage 桥接 ═══
-  // 僚机通过 IPC 发送 host-message → 主进程 → 本窗口 → postMessage → shell.js
-  // 这样 shell.js 无需任何改动即可接收僚机的 UI 指令（文件打开、overlay 等）
-  if (window.qqqideBridge && window.qqqideBridge.sync) {
-    window.qqqideBridge.sync.onMessage(function(channel, data) {
-      if (channel === 'host-message' && data) {
-        // qqq-ai-attach 带 _targetWingman：只转发给目标匹配的消息
-        if (data.type === 'qqq-ai-attach') {
-          if (data._targetWingman !== 0 && data._targetWingman !== undefined) return;
-        }
-        try { window.postMessage(data, '*'); } catch(_) {}
-      }
-    });
-  }
-
-  // ═══ AI 面板自动跟焦：合 IPC 转发 + iframe postMessage 更新视口目标指示器 ═══
   window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'qqq-ai-panel-focused' && typeof e.data.panel === 'number') {
       if (window.__qqq_updateAiTarget) {
