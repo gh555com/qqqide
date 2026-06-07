@@ -335,7 +335,7 @@
         if (t && t.filePath) { activeFilePath = t.filePath; break; }
       }
       if (activeFilePath) {
-        console.log('[shell] split right:', activeFilePath);
+        // [silent] split right
         window.qqqTabs.openFileInRightGroup(activeFilePath);
       }
       return;
@@ -359,7 +359,7 @@
       }
       return;
     }
-    console.log('[menu] unhandled cmd:', cmd);
+          // [silent] menu unhandled cmd
   }
   function renderMenubarLabels(schema) {
     const $bar = document.getElementById('qqq-menubar');
@@ -402,7 +402,7 @@
     renderMenubarLabels(schema);
     window.addEventListener('qqq-lang-change', function () { renderMenubarLabels(schema); });
     bridge.menu.onFired(cmd => {
-      console.log('[menu fired native]', cmd);
+      // [silent] menu fired native
       handleMenuCmd(cmd);
     });
   }
@@ -440,15 +440,115 @@
     const $ver = document.getElementById('qqq-status-version');
     const $eng = document.getElementById('qqq-status-engine');
     const $clk = document.getElementById('qqq-status-clock');
+    const $freeInd = document.getElementById('qqq-status-free');
+    const $freeBadge = document.getElementById('qqq-status-free-badge');
+    const $freeCd = document.getElementById('qqq-status-free-cd');
     if ($ver) $ver.textContent = 'v' + (boot.version || '?');
     if ($eng) $eng.textContent = 'engine: ' + (boot.engineAlive ? 'on' : 'off');
+
+    // ═══ 单调时钟锚点（变速齿轮免疫） ═══
+    var _timeAnchor = null; // { perfNow: performance.now(), utcMs: number }
+    var _calTimer = null;
+
+    // 从公共时间 API 获取 UTC 时间（不请求我们服务器）
+    function calibrateFromPublicTime() {
+      // 用 worldtimeapi.org 获取 UTC unixtime
+      fetch('https://worldtimeapi.org/api/ip', { cache: 'no-cache' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data && data.unixtime) {
+            _timeAnchor = {
+              perfNow: performance.now(),
+              utcMs: data.unixtime * 1000 // unixtime 已是 UTC 秒
+            };
+          }
+        })
+        .catch(function() { /* 静默降级，沿用旧锚点 */ });
+    }
+
+    // 从单调锚点推算当前 UTC 毫秒
+    function getCalibratedUtcMs() {
+      if (_timeAnchor && _timeAnchor.perfNow && _timeAnchor.utcMs) {
+        return _timeAnchor.utcMs + (performance.now() - _timeAnchor.perfNow);
+      }
+      return Date.now(); // 降级：未校准前用本地时间
+    }
+
+    // 判断是否在免费时段
+    function isFreeWindow(utcMs) {
+      var d = new Date(utcMs);
+      var day = d.getUTCDay();
+      if (day === 0) return true; // 周日全天
+      var h = d.getUTCHours();
+      return h < 2 || (h >= 12 && h < 14);
+    }
+
+    // 下次免费开始/结束时间（UTC ms）
+    function nextFreeBoundary(utcMs) {
+      var d = new Date(utcMs);
+      var day = d.getUTCDay();
+      var h = d.getUTCHours();
+      if (isFreeWindow(utcMs)) {
+        if (day === 0) { d.setUTCHours(0,0,0,0); d.setUTCDate(d.getUTCDate()+1); return d.getTime(); }
+        if (h < 2) { d.setUTCHours(2,0,0,0); return d.getTime(); }
+        d.setUTCHours(14,0,0,0); return d.getTime();
+      }
+      if (h < 12) { d.setUTCHours(12,0,0,0); return d.getTime(); }
+      d.setUTCHours(0,0,0,0); d.setUTCDate(d.getUTCDate()+1); return d.getTime();
+    }
+
+    function fmtCountdown(ms) {
+      if (ms <= 0) return '';
+      var s = Math.ceil(ms/1000);
+      var h = Math.floor(s/3600), m = Math.floor((s%3600)/60);
+      s = s % 60;
+      if (h>0) return h+'h'+(m>0?' '+m+'m':'');
+      if (m>0) return m+'m'+(s>0?' '+s+'s':'');
+      return s+'s';
+    }
+
+    function updateFreeIndicator() {
+      if (!$freeInd || !$freeBadge) return;
+      var utcMs = getCalibratedUtcMs();
+      var free = isFreeWindow(utcMs);
+      var boundary = nextFreeBoundary(utcMs);
+      var remaining = boundary - utcMs;
+      var t = window._i || function(k,d) { return d; };
+
+      if (free) {
+        $freeInd.style.display = 'inline-flex';
+        if (remaining < 300000) {
+          $freeBadge.textContent = t('shell.free.ending', '⚠ 免费将结束');
+          $freeBadge.className = 'qqq-free-badge qqq-free-ending';
+        } else {
+          $freeBadge.textContent = t('shell.free.active', '🆓 免费中');
+          $freeBadge.className = 'qqq-free-badge qqq-free-on';
+        }
+        if ($freeCd) $freeCd.textContent = ' ' + fmtCountdown(remaining);
+      } else if (remaining > 0 && remaining < 43200000) {
+        $freeInd.style.display = 'inline-flex';
+        $freeBadge.textContent = t('shell.free.soonPrefix', '⏳ ') + fmtCountdown(remaining);
+        $freeBadge.className = 'qqq-free-badge qqq-free-soon';
+        if ($freeCd) $freeCd.textContent = '';
+      } else {
+        $freeInd.style.display = 'none';
+      }
+    }
+
     if ($clk) {
-      const tick = () => {
-        const d = new Date();
+      // 首次校准
+      calibrateFromPublicTime();
+      // 每 1 分钟重新校准（请求 worldtimeapi.org，与 gh555.com 无关）
+      setInterval(calibrateFromPublicTime, 60000);
+
+      var tick = function() {
+        var utcMs = getCalibratedUtcMs();
+        var d = new Date(utcMs);
         $clk.textContent =
-          String(d.getHours()).padStart(2, '0') + ':' +
-          String(d.getMinutes()).padStart(2, '0') + ':' +
-          String(d.getSeconds()).padStart(2, '0');
+          String(d.getHours()).padStart(2,'0') + ':' +
+          String(d.getMinutes()).padStart(2,'0') + ':' +
+          String(d.getSeconds()).padStart(2,'0');
+        updateFreeIndicator();
       };
       tick();
       setInterval(tick, 1000);
@@ -501,50 +601,42 @@
     function _applyWings() {
       var leftOn = _bulbState.left;
       var rightOn = _bulbState.right;
-      console.log('[wings] _applyWings left=' + leftOn + ' right=' + rightOn + ' main=', !!_main);
+      // [silent] _applyWings
 
       // ★ 中间块 left/right → 屏幕位置不变
       if (_main) {
         _main.style.left = leftOn ? AI_W + 'px' : '0';
         _main.style.right = rightOn ? AI_W + 'px' : '0';
-        console.log('[wings] _main left=' + _main.style.left + ' right=' + _main.style.right);
+        // [silent] _main
       } else {
         console.warn('[wings] _main NOT FOUND!');
       }
 
       // 左翼
       var wl = document.getElementById('qqq-wing-left');
-      console.log('[wings] left wing el=', !!wl, ' width=', wl ? wl.style.width : '?');
+      // [silent] left wing el
       if (wl) {
         wl.style.width = leftOn ? AI_W + 'px' : '0';
-        console.log('[wings] left wing width set to ' + wl.style.width + ' hasIframe=' + !!wl.querySelector('iframe'));
+        // ★ 首次打开时创建 iframe，之后永不销毁（切换 workspace 走内部 _teardownWorkspace）
+        //    翼板关闭 = 纯 CSS 隐藏（width:0），像素管道全切断，无 GPU 开销
         if (leftOn && !wl.querySelector('iframe') && window.qqqidePanel) {
           window.qqqidePanel.build(wl, 0);
-          console.log('[wings] left wing iframe created');
+          // [silent] left wing iframe created
         }
-        if (!leftOn) {
-          var ifl = wl.querySelector('iframe');
-          if (ifl) { ifl.src = 'about:blank'; setTimeout(function() { if (ifl.parentNode) ifl.parentNode.removeChild(ifl); }, 100); }
-          wl.innerHTML = '';
-        }
+        // 不再销毁 iframe —— 卡片池（每面板 10 张轮转卡）不因翼板开关而清空
       } else {
         console.warn('[wings] LEFT WING ELEMENT MISSING!');
       }
 
       // 右翼
       var wr = document.getElementById('qqq-wing-right');
-      console.log('[wings] right wing el=', !!wr, ' width=', wr ? wr.style.width : '?');
+      // [silent] right wing el
       if (wr) {
         wr.style.width = rightOn ? AI_W + 'px' : '0';
-        console.log('[wings] right wing width set to ' + wr.style.width + ' hasIframe=' + !!wr.querySelector('iframe'));
+        // ★ 首次打开时创建 iframe，之后永不销毁
         if (rightOn && !wr.querySelector('iframe') && window.qqqidePanel) {
           window.qqqidePanel.build(wr, 2);
-          console.log('[wings] right wing iframe created');
-        }
-        if (!rightOn) {
-          var ifr = wr.querySelector('iframe');
-          if (ifr) { ifr.src = 'about:blank'; setTimeout(function() { if (ifr.parentNode) ifr.parentNode.removeChild(ifr); }, 100); }
-          wr.innerHTML = '';
+          // [silent] right wing iframe created
         }
       } else {
         console.warn('[wings] RIGHT WING ELEMENT MISSING!');
@@ -552,10 +644,10 @@
     }
 
     function _toggle(index) {
-      console.log('[wings] _toggle index=' + index + ' current state left=' + _bulbState.left + ' right=' + _bulbState.right);
+      // [silent] _toggle
       if (index === 0) _bulbState.left = !_bulbState.left;
       else _bulbState.right = !_bulbState.right;
-      console.log('[wings] _toggle new state left=' + _bulbState.left + ' right=' + _bulbState.right);
+      // [silent] _toggle new state
 
       var dot = index === 0 ? d1 : d2;
       dot.classList.toggle('on', index === 0 ? _bulbState.left : _bulbState.right);
@@ -564,11 +656,11 @@
       var deltaLeft = 0, deltaRight = 0;
       if (index === 0) deltaLeft = _bulbState.left ? AI_W : -AI_W;
       else deltaRight = _bulbState.right ? AI_W : -AI_W;
-      console.log('[wings] adjustBounds deltaLeft=' + deltaLeft + ' deltaRight=' + deltaRight + ' bridge.window=' + !!(bridge && bridge.window) + ' adjustBounds=' + !!(bridge && bridge.window && bridge.window.adjustBounds));
+      // [silent] adjustBounds
       try {
         if (bridge && bridge.window && bridge.window.adjustBounds) {
           bridge.window.adjustBounds(deltaLeft, deltaRight);
-          console.log('[wings] adjustBounds called');
+          // [silent] adjustBounds called
         }
       } catch (e) { console.warn('[wings] adjustBounds error:', e); }
 
@@ -824,7 +916,7 @@
     // ── 十字方向键（Game Boy 风格，独立控件，移动画布）──
     var dpad = document.createElement('div');
     dpad.style.cssText =
-      'display:none; position:fixed; right:14px; bottom:78px; z-index:100000; ' +
+      'display:none; position:absolute; right:14px; bottom:78px; z-index:100000; ' +
       'width:96px; height:96px; user-select:none;';
     var BS = 32; // button size
     function _crossBtn(sym, top, left) {
@@ -1176,9 +1268,26 @@
         const editorMount = document.createElement('div');
         editorMount.style.cssText = 'position:absolute; inset:0;';
         pane.appendChild(editorMount);
+        var _search = window._nextSearch; window._nextSearch = null;
         bridge.fs.read(filePath).then(content => {
           var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
-          window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts);
+          window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts).then(function(ed) {
+            if (_search && ed && ed.getAction) {
+              setTimeout(function() {
+                try {
+                  ed.getAction('actions.find').run();
+                  setTimeout(function() {
+                    var fi = document.querySelector('.monaco-editor .find-widget .find-part .monaco-inputbox input');
+                    if (fi) {
+                      var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                      nativeSetter.call(fi, _search);
+                      fi.dispatchEvent(new Event('input', { bubbles: true }));
+                    }
+                  }, 120);
+                } catch(_) {}
+              }, 250);
+            }
+          });
         }).catch(err => {
           pane.textContent = 'Error: ' + (err && err.message);
         });
@@ -1203,6 +1312,7 @@
       // Handle qqq-file-open-right from iframes — opens file in right editor group
       if (e.data.type === 'qqq-file-open-right' && e.data.path && window.qqqTabs && window.qqqTabs.openFileInRightGroup) {
         if (e.data.readOnly) { window._nextPaneOpts = { readOnly: true }; }
+        if (e.data.search) { window._nextSearch = e.data.search; }
         window.qqqTabs.openFileInRightGroup(e.data.path);
         return;
       }
@@ -1245,13 +1355,8 @@
 
   // ---- Boot info ----
   function fillBootInfo(boot) {
-    console.log('[qqqide] boot info:', {
-      platform: boot.platform,
-      arch: boot.arch,
-      version: boot.version,
-      engineAlive: boot.engineAlive,
-      electron: !!window.qqqIsElectron,
-    });
+    // [silent] boot info: {
+    //   platform: boot.platform, ... });
   }
 
   // ---- KeyHookService bootstrap ----
@@ -1283,7 +1388,7 @@
       if (!id) return;
       handleMenuCmd(id);
     });
-    console.log('[keyhook] ready, bindings=' + bindings.length);
+    // [silent] keyhook ready
   }
 
   // ---- Main ----
@@ -1353,7 +1458,7 @@
       getState: () => layoutState,
     };
 
-    console.log('[qqqide] ready (new layout)');
+    // [silent] qqqide ready
   }
 
   if (document.readyState === 'loading') {

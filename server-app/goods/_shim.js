@@ -127,5 +127,5 @@
     bridge: bridge,
   };
 
-  console.log('[goods] shim ready');
+  // [silent] goods shim ready
 })();

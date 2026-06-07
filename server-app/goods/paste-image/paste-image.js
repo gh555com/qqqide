@@ -101,5 +101,5 @@
     Q.window.showInformationMessage('请使用 Ctrl+V 粘贴图片');
   });
 
-  console.log('[paste-image] ready');
+  // [silent] paste-image ready
 })();

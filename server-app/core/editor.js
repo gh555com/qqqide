@@ -272,7 +272,7 @@
           window.MonacoEnvironment = {
             getWorker: function (workerId, label) {
               var workerUrl = 'qqqide-asset://monaco/vs/base/worker/workerMain.js';
-              console.log('[monaco-worker] ' + (label || 'base') + ': ' + workerId + '/' + (label || 'editor'));
+              // [silent] monaco-worker
               return new Worker(workerUrl);
             },
           };
@@ -290,7 +290,7 @@
             // Disabled for now — using Monaco's built-in TS with plain-path URIs.
             // bootCustomTsService(monaco);
 
-            console.log('[monaco] ready');
+            // [silent] monaco ready
             resolve(monaco);
           }, reject);
         } catch (e) { reject(e); }
@@ -403,7 +403,7 @@
     // ── Start loading TypeScript (async) ──
     tsService.init(function () {
       if (tsService.isReady()) {
-        console.log('[editor] ts-service ready, refreshing all TS/JS models');
+        // [silent] editor ts-service ready
         var allModels = monaco.editor.getModels();
         for (var j = 0; j < allModels.length; j++) {
           var m = allModels[j];
@@ -416,7 +416,7 @@
       }
     });
 
-    console.log('[editor] custom TS/JS providers registered');
+    // [silent] editor TS/JS providers registered
   }
 
   // ---------------- Editor build ----------------
@@ -640,7 +640,7 @@
           try {
             await bridge.fs.write(filePath, ed.getValue());
             _markClean();
-            console.log('[editor] auto-saved on blur:', filePath);
+            // [silent] auto-saved on blur
           } catch (err) {
             console.error('[editor] auto-save failed:', filePath, err && err.message);
           }
@@ -650,9 +650,9 @@
       // ---- Ctrl+S ----
       ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
         try {
-          var val = ed.getValue(); console.log('[editor] saving: ' + filePath + ' (' + val.length + ' chars)'); await bridge.fs.write(filePath, val);
+          var val = ed.getValue(); /* silent save */ await bridge.fs.write(filePath, val);
           _markClean();
-          console.log('[editor] saved:', filePath);
+          // [silent] saved
         } catch (e) {
           console.error('[editor] save failed:', e);
         }

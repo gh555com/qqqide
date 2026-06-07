@@ -192,7 +192,7 @@
     });
     _disposables.push(d1, d2);
     setTimeout(localUpdate, 30);
-    console.log('[qqq-decoration] attached');
+    // [silent] qqq-decoration attached
     return {
       refresh: localUpdate,
       dispose() {

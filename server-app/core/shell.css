@@ -663,6 +663,46 @@ body {
   margin-right: 16px;
 }
 
+/* ── 免费时段指示器（状态栏内） ── */
+.qqq-status-free {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-weight: 700; font-size: 11px; white-space: nowrap;
+  margin-right: 16px;
+}
+.qqq-free-badge {
+  padding: 1px 6px; border-radius: 3px; letter-spacing: .3px;
+  transition: all .2s;
+}
+.qqq-free-badge.qqq-free-on {
+  background: #0a0; color: #fff;
+  border: 1.5px solid #0f0;
+  box-shadow: 0 0 8px #0f0, 0 0 18px #0f0;
+  animation: qqqFreePulse .8s ease-in-out infinite alternate, qqqFreeRainbow 2s linear infinite;
+}
+.qqq-free-badge.qqq-free-ending {
+  background: #e8a030; color: #000;
+  border: 1.5px solid #ff0;
+  box-shadow: 0 0 12px #e8a030, 0 0 24px #e8a030;
+  animation: qqqFreePulse .3s ease-in-out infinite alternate;
+}
+.qqq-free-badge.qqq-free-soon {
+  background: #555; color: #ccc;
+  border: 1px solid #777;
+  box-shadow: 0 0 4px #666;
+  animation: qqqFreePulse 2s ease-in-out infinite alternate;
+}
+.qqq-free-cd {
+  color: inherit; font-family: ui-monospace, monospace; font-size: 10px; opacity: .85;
+}
+@keyframes qqqFreePulse { from { transform: scale(1); } to { transform: scale(1.06); } }
+@keyframes qqqFreeRainbow {
+  0%  { border-color: #0f0; box-shadow: 0 0 8px #0f0, 0 0 18px #0f0; }
+  25% { border-color: #ff0; box-shadow: 0 0 8px #ff0, 0 0 18px #ff0; }
+  50% { border-color: #0ff; box-shadow: 0 0 8px #0ff, 0 0 18px #0ff; }
+  75% { border-color: #f0f; box-shadow: 0 0 8px #f0f, 0 0 18px #f0f; }
+  100%{ border-color: #0f0; box-shadow: 0 0 8px #0f0, 0 0 18px #0f0; }
+}
+
 /* ============================================================================
    Resize Grip (bottom-right)
    ============================================================================ */
@@ -1038,4 +1078,18 @@ body {
   border: 1px solid var(--border-color);
   word-break: break-all;
   overflow-wrap: break-word;
+}
+.qqq-overlay-table-wrapper .msg-ai pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  border: none;
+}
+.qqq-overlay-table-wrapper .msg-ai ul,
+.qqq-overlay-table-wrapper .msg-ai ol {
+  margin: 4px 0 4px 20px;
+  padding: 0;
+}
+.qqq-overlay-table-wrapper .msg-ai li {
+  margin: 2px 0;
 }

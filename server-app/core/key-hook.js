@@ -236,7 +236,7 @@
       }
     }
 
-    console.log('[key-hook] init: ' + arr.length + ' bindings');
+    // [silent] key-hook init
   }
 
   function on(id, handler) {

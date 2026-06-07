@@ -96,13 +96,13 @@ window.loadQqqideRules = async function () {
             var text = await bridge.fs.read(rulesPath);
             if (text && text.trim()) {
                 window.qqqideRulesContent = '[GLOBAL RULES — Permanent rules set by the user. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END GLOBAL RULES]';
-                console.log('[rules] global loaded: ' + text.length + ' chars');
+                // [silent] global rules loaded
             }
         } else {
-            console.log('[rules] bridge unavailable, skipping global.txt');
+            // [silent] bridge unavailable, skipping global.txt
         }
     } catch (e) {
-        console.log('[rules] no global.txt or read error: ' + (e && e.message));
+        // [silent] no global.txt
     }
 };
 
@@ -113,18 +113,18 @@ window.loadQqqideProjectRules = async function (projectRoot) {
     try {
         if (!projectRoot) return;
         var bridge = parent.qqqideBridge;
-        if (!bridge) { console.log('[rules] bridge unavailable, skipping project.txt'); return; }
+        if (!bridge) { /* silent */ return; }
         var projPath = projectRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/rule/project.txt';
         // 先检查文件是否存在，避免 IPC 层打印 ENOENT 错误
         var stat = await bridge.fs.stat(projPath).catch(function() { return null; });
-        if (!stat) { console.log('[rules] no project.txt (file not found)'); return; }
+        if (!stat) { /* silent */ return; }
         var text = await bridge.fs.read(projPath);
         if (text && text.trim()) {
             window.qqqideProjectRulesContent = '[PROJECT RULES — Rules specific to this project. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction about this project. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END PROJECT RULES]';
-            console.log('[rules] project loaded: ' + text.length + ' chars');
+            // [silent] project rules loaded
         }
     } catch (e) {
-        console.log('[rules] no project.txt or read error: ' + (e && e.message));
+        // [silent] no project.txt
     }
 };
 
@@ -133,14 +133,14 @@ window.qqqideVisionContext = '';
 
 window.buildQqqideVisionContext = function () {
     try {
-        if (!parent.qqqideViewport) { console.log('[vision] no parent.qqqideViewport'); return; }
+        if (!parent.qqqideViewport) { return; }
         var vps = parent.qqqideViewport.getProjects();
 
         var panelRoot = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
         if (panelRoot) { panelRoot = panelRoot.replace(/\\/g, '/').replace(/\/$/, ''); }
 
         if ((!vps || vps.length === 0) && !panelRoot) {
-            console.log('[vision] no projects and no panelRoot');
+            // [silent] vision no projects
             return;
         }
 
@@ -174,8 +174,8 @@ window.buildQqqideVisionContext = function () {
         lines.push('══════════════════');
 
         window.qqqideVisionContext = lines.join('\n');
-        console.log('[vision] context built (' + (vps ? vps.length : 0) + ' projects, panelRoot=' + (panelRoot || 'none') + ')');
+        // [silent] vision context built
     } catch (e) {
-        console.log('[vision] build error: ' + (e && e.message));
+        console.warn('[vision] build error: ' + (e && e.message));
     }
 };

@@ -100,7 +100,7 @@ var CardPool = (function () {
   CardPool.prototype._evict = function (questId) {
     var card = this._cards[questId];
     if (!card) return;
-    console.log('[card-pool] evicting card:', questId);
+    // [silent] evicting card
 
     // abort 该 quest 的 agent（如果还在跑）
     if (typeof window.agentPool !== 'undefined' && window.agentPool[questId]) {
@@ -127,8 +127,8 @@ var CardPool = (function () {
   // ═══ 切换到指定 quest ═══
   CardPool.prototype.switchTo = async function (questId) {
     var qs = window.questStore;
-    console.log('[card-pool] switchTo called: ' + questId + ' (current active: ' + (this._activeId || 'null') + ')');
-    if (questId === this._activeId) { console.log('[card-pool] switchTo SKIP: already active'); return; }
+    // [silent] switchTo called
+    if (questId === this._activeId) { /* silent: already active */ return; }
 
     // 保存旧 card 滚动位置
     if (this._activeId && this._cards[this._activeId]) {
@@ -146,7 +146,7 @@ var CardPool = (function () {
     var card = this.getOrCreate(questId);
 
     // 如果 card 是首次创建（totalFloors === 0 且未尝试过加载），从 questStore 加载
-    console.log('[card-pool] switchTo check: totalFloors=' + card.totalFloors + ' questStore=' + (typeof qs));
+    // [silent] switchTo check
     if (card.totalFloors === 0 && qs) {
       await this._loadCardData(card);
     } else if (card.totalFloors === -1) {
@@ -171,7 +171,7 @@ var CardPool = (function () {
   // ═══ 从 questStore 加载 Card 数据 ═══
   CardPool.prototype._loadCardData = async function (card) {
     var qs = window.questStore;
-    console.log('[card-pool] _loadCardData called for', card.id, 'questStore type:', typeof qs);
+    // [silent] _loadCardData called
     if (!qs) { console.warn('[card-pool] questStore unavailable, aborting load'); return; }
     try {
       var allFloors = await qs.loadAllFloors(card.id);
@@ -201,7 +201,7 @@ var CardPool = (function () {
 
       // 构建视口 DOM：最近 FLOOR_CAP_CAPPED 层
       var startIdx = Math.max(0, card.totalFloors - FLOOR_CAP_CAPPED);
-      console.log('[card-pool] building DOM for floors ' + startIdx + ' to ' + (card.totalFloors - 1) + ' (total ' + card.totalFloors + ')');
+      // [silent] building DOM for floors
       for (var i = startIdx; i < card.totalFloors; i++) {
         try {
           this._buildFloorDOM(card, card.floors[i], false, questTimings);
@@ -210,8 +210,7 @@ var CardPool = (function () {
         }
       }
 
-      console.log('[card-pool] loaded card ' + card.id + ': ' + card.totalFloors + ' floors, ' +
-        Object.keys(card.floorDOM).length + ' DOM nodes');
+      // [silent] loaded card
     } catch (e) {
       console.error('[card-pool] loadCardData FAILED for ' + card.id + ':', e && (e.message || e));
       // 防御：标记 card 为已尝试加载，避免 switchTo 死循环重试
@@ -456,7 +455,7 @@ var CardPool = (function () {
         if (dom.aiEl && dom.aiEl.parentNode) dom.aiEl.parentNode.removeChild(dom.aiEl);
         delete card.floorDOM[oldest];
       }
-      console.log('[card-pool] trimmed floor ' + oldest + ' from card ' + card.id);
+      // [silent] trimmed floor
     }
   };
 
@@ -497,7 +496,7 @@ var CardPool = (function () {
     this._cards = {};
     this._lru = [];
     this._activeId = null;
-    console.log('[card-pool] destroyed — ' + cardIds.length + ' cards removed');
+    // [silent] destroyed
   };
 
   // ═══ 在当前活跃 Card 上滚动到底 ═══
@@ -640,8 +639,7 @@ var CardPool = (function () {
   // ═══ 暴露到全局 ═══
   window.CardPool = CardPool;
 
-  console.log('[card-pool] ready — capped=' + FLOOR_CAP_CAPPED +
-    ' building=' + FLOOR_CAP_BUILDING + ' pool=' + CARD_POOL_MAX);
+  // [silent] card-pool ready
 
   return CardPool;
 })();

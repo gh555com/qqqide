@@ -779,7 +779,7 @@ async function executeRunCommand(args) {
             useShell = true;
         }
         // Use qz spawn (ghrun → node fallback)
-        console.log('[qz] run_command:', JSON.stringify({ cmd: cmd, args: cmdArgs, cwd: args.cwd || '', shell: useShell, reason: args.reason || '' }));
+        // [silent] run_command
         // All commands capped at 30min by qz-spawn SYSTEM_MAX_TIMEOUT
         var effectiveTimeout = 1800000;  // 30 min (same as system cap)
         var result = await bridge.qz.spawn({
@@ -790,7 +790,7 @@ async function executeRunCommand(args) {
             stallMs: 300000,
             shell: useShell
         });
-        console.log('[qz] run_command result:', JSON.stringify({ exitCode: result.exitCode, tier: result.tier, durationMs: result.durationMs, stdoutLen: (result.stdout || '').length, stderrLen: (result.stderr || '').length }));
+        // [silent] run_command result
         // AI-facing output cap (single source: OUTPUT_CAP_DEFAULT / OUTPUT_CAP_MAX)
         var cap = Math.min(args.maxOutput || OUTPUT_CAP_DEFAULT, OUTPUT_CAP_MAX);
         if (result.exitCode === 0) {

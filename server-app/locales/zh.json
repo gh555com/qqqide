@@ -110,7 +110,12 @@
             "noRecent": "暂无最近记录，点击 + 选择文件夹"
         },
         "dev": "开发模式",
-        "gaeaHostLoading": "gaea host 加载中..."
+        "gaeaHostLoading": "gaea host 加载中...",
+        "free": {
+            "active": "🆓 免费中",
+            "ending": "⚠ 免费将结束",
+            "soonPrefix": "⏳ "
+        }
     },
     "editor": {
         "tabs": {
@@ -176,6 +181,7 @@
             "cancel": "取消"
         },
         "inputPlaceholder": "Ask qqq AI... (Ctrl+V 粘贴图片)",
+        "inputLimitWarn": "输入已达上限 58KB，无法继续键入",
         "embedImage": "嵌入",
         "level": {
             "a": "保守",

@@ -165,7 +165,7 @@
           const target = isAudioExt(ext) ? 'mp3' : 'mp4';
           const out = await bridge.media.transcode({ src: absPath, format: target });
           if (out && out.path) {
-            console.log('[qqq-codelens] transcoded ->', out.path);
+            // [silent] qqq-codelens transcoded
             navigator.clipboard.writeText(out.path).catch(() => {});
           }
         } catch (e) { console.warn('[qqq-codelens] transcode:', e); }
@@ -246,7 +246,7 @@
     });
 
     _disposables.push(provider);
-    console.log('[qqq-codelens] registered');
+    // [silent] qqq-codelens registered
     return { dispose: () => provider.dispose() };
   }
 

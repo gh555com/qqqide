@@ -86,7 +86,7 @@
     // Attempt hash dedupe + reuse from cache/h/paste/<sig>.ext bucket
     const dedupe = await hashDedupedPath(ab, ext);
     if (dedupe && dedupe.exists) {
-      console.log('[qqq-paste] cache HIT:', dedupe.cachePath);
+      // [silent] paste cache HIT
       return dedupe.cachePath;
     }
     const base64 = (dedupe && dedupe.base64) || arrayBufferToBase64(ab);
@@ -201,7 +201,7 @@
     domNode.addEventListener('paste', handler, true);
     const dispose = () => { try { domNode.removeEventListener('paste', handler, true); } catch {} };
     _editorDisposables.set(ed, [{ dispose }]);
-    console.log('[qqq-paste] attached');
+    // [silent] qqq-paste attached
     return { dispose };
   }
 

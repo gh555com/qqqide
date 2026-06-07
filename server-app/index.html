@@ -109,6 +109,10 @@
         <span class="qqq-status-item" id="qqq-status-engine">engine ?</span>
         <span class="qqq-spacer"></span>
         <span class="qqq-status-item" id="qqq-status-clock"></span>
+        <span class="qqq-status-item qqq-status-free" id="qqq-status-free" style="display:none">
+          <span class="qqq-free-badge" id="qqq-status-free-badge"></span>
+          <span class="qqq-free-cd" id="qqq-status-free-cd"></span>
+        </span>
       </div>
     </div>
 
@@ -152,7 +156,7 @@
 </script>
 
 
-<!-- AI 面板焦点同步：iframe postMessage → 视口文件附加目标 -->
+<!-- AI 面板焦点同步：iframe postMessage → 视口文件附加目标 + 互斥焦点 + 翼板自动打开 -->
 <script>
 (function() {
   'use strict';
@@ -163,6 +167,24 @@
         window.__qqq_updateAiTarget(e.data.panel);
       } else {
         window.__qqq_aiTarget = e.data.panel;
+      }
+      // ★ 互斥焦点：通知所有其他 AI 面板失去焦点
+      var allIframes = document.querySelectorAll('iframe');
+      for (var i = 0; i < allIframes.length; i++) {
+        var iframe = allIframes[i];
+        if (iframe.contentWindow && e.source !== iframe.contentWindow) {
+          try {
+            iframe.contentWindow.postMessage({ type: 'qqq-ai-panel-defocus' }, '*');
+          } catch (_) {}
+        }
+      }
+    }
+    // ★ 翼板自动打开：当 quest 已被侧面板持有时，自动打开对应翼板
+    if (e.data && e.data.type === 'qqq-open-wing' && typeof e.data.panel === 'number') {
+      var dotId = e.data.panel === 0 ? 'qqq-bulb-1' : 'qqq-bulb-2';
+      var dot = document.getElementById(dotId);
+      if (dot && !dot.classList.contains('on')) {
+        dot.click();
       }
     }
   });

@@ -582,6 +582,11 @@
     const existing = targetGrp.tabs.find(t => t.filePath === filePath);
     if (existing) {
       activateTab(targetGrp, existing.id);
+      // ★ 文件已打开：直接触发 editor 搜索（如果有 _nextSearch）
+      if (window._nextSearch) {
+        var s = window._nextSearch; window._nextSearch = null;
+        setTimeout(function() { _triggerEditorFind(s); }, 150);
+      }
       return existing;
     }
 
@@ -615,6 +620,24 @@
     document.dispatchEvent(new CustomEvent('qqq-file-open-in-pane', { detail: { path: filePath, pane: pane } }));
     persistOpenTabs();
     return tab;
+  }
+
+  // ★ 在活跃 editor 中触发查找
+  function _triggerEditorFind(searchText) {
+    if (!searchText) return;
+    var ed = window.qqqEditor && window.qqqEditor.getEditorInstance();
+    if (!ed || !ed.getAction) return;
+    try {
+      ed.getAction('actions.find').run();
+      setTimeout(function() {
+        var fi = document.querySelector('.monaco-editor .find-widget .find-part .monaco-inputbox input');
+        if (fi) {
+          var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+          nativeSetter.call(fi, searchText);
+          fi.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }, 100);
+    } catch(_) {}
   }
 
   // ---- Public: open file in left (first) file group ----

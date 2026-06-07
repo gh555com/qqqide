@@ -46,7 +46,7 @@ var QuestStore = (function () {
             _qgs = window.qgs.project(dbPath, NS, { v: 2, form: 'doc' });
         }
         if (_qgs) {
-            console.log('[quest-store] bridge OK →', dbPath);
+            // [silent] bridge OK
         } else {
             console.warn('[quest-store] bridge FAIL: no qgs.project API');
         }
@@ -93,7 +93,7 @@ var QuestStore = (function () {
             _rootDir = rootDir.replace(/\\/g, '/').replace(/\/$/, '');
             _qgs = null;
             this._index = null;
-            console.log('[quest-store] setProjectRoot: ' + _rootDir);
+            // [silent] setProjectRoot
         } else if (rootDir === null) {
             // ★ workspace 拆卸时清空
             _rootDir = null;
@@ -111,7 +111,7 @@ var QuestStore = (function () {
     QuestStore.prototype.requireProjectForWrites = function (val) {
         // 标记已调用；实际守卫在 _bridge() → null 阻断
         if (val) {
-            console.log('[quest-store] requireProjectForWrites: enabled');
+            // [silent] requireProjectForWrites
         }
     };
 
@@ -166,7 +166,7 @@ var QuestStore = (function () {
                 }
                 if (maxN > 0) {
                     await b.setNow('quest_id_counter', maxN);
-                    console.log('[quest-store] seeded quest_id_counter →', maxN);
+                    // [silent] seeded quest_id_counter
                 }
             }
         } catch (e) {

@@ -48,7 +48,7 @@ var onlyStore = (function () {
     try {
       if (window.parent && window.parent.qgs && typeof window.parent.qgs.project === 'function') {
         _qgs = window.parent.qgs.project(_rootDir + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
-        console.log('[only-store] bridge OK: ' + _rootDir + '/qqq/alphal/only.sq3');
+        // [silent] bridge OK
         return _qgs;
       }
     } catch (e) { console.warn('[only-store] bridge error:', e); }
@@ -72,7 +72,7 @@ var onlyStore = (function () {
         } catch (_) { }
       }
       _initDone = true;
-      console.log('[only-store] loaded ' + Object.keys(_cache).length + ' keys from disk');
+      // [silent] loaded keys from disk
     } catch (e) { console.warn('[only-store] _loadAll error:', e); }
   }
 
@@ -106,7 +106,7 @@ var onlyStore = (function () {
       _dirty = {};
       _flushFirstDirty = 0;
       if (_onFlushCb) { try { _onFlushCb(dirtyKeys); } catch (_) { } }
-      console.log('[only-store] flushed ' + dirtyKeys.length + ' keys');
+      // [silent] flushed keys
     } catch (e) { console.warn('[only-store] flush error:', e); }
     _flushing = false;
   }
@@ -139,7 +139,7 @@ var onlyStore = (function () {
       _initDone = false;
       _flushFirstDirty = 0;
       if (_flushTimer) { clearTimeout(_flushTimer); _flushTimer = null; }
-      console.log('[only-store] init reset (no rootDir)');
+      // [silent] init reset
       return;
     }
     _rootDir = rootDir.replace(/\\/g, '/').replace(/\/$/, '');
@@ -155,7 +155,7 @@ var onlyStore = (function () {
     if (typeof window !== 'undefined') {
       window.addEventListener('beforeunload', _onBeforeUnload);
     }
-    console.log('[only-store] init with root: ' + _rootDir);
+    // [silent] init with root
   }
 
   function get(key, fallback) {
@@ -257,7 +257,7 @@ var onlyStore = (function () {
       _lockTimer = setInterval(async function () {
         try { await fsb.fs.write(_lockPath, JSON.stringify({ pid: 0, atime: Date.now() })); } catch (_) { }
       }, LOCK_HEARTBEAT_MS);
-      console.log('[only-store] lock claimed: ' + _lockPath);
+      // [silent] lock claimed
       return { ok: true };
     } catch (_) {
       return { ok: false, error: 'write failed' };
@@ -271,7 +271,7 @@ var onlyStore = (function () {
       if (fsb) {
         try { await fsb.fs.remove(_lockPath); } catch (_) { }
       }
-      console.log('[only-store] lock released: ' + _lockPath);
+      // [silent] lock released
       _lockPath = null;
     }
   }

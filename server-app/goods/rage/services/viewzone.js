@@ -319,7 +319,7 @@
     const ed = window.qqqEditor && window.qqqEditor.getEditorInstance();
     if (!ed) { setTimeout(init, 400); return; }
     attach(ed);
-    console.log('[qqq-viewzone] init (primary editor)');
+    // [silent] qqq-viewzone init
   }
 
   window.qqqViewZone = { attach, init };

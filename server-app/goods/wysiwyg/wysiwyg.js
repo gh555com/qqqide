@@ -136,5 +136,5 @@
   });
   Q.commands.register('wysiwyg.refresh', () => { lastRendered = ''; renderNow(); });
 
-  console.log('[wysiwyg] ready');
+  // [silent] wysiwyg ready
 })();

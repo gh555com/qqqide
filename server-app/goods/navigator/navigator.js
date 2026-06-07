@@ -139,5 +139,5 @@
   Q.commands.register('navigator.show', show);
   Q.commands.register('navigator.hide', hide);
 
-  console.log('[navigator] ready (Ctrl+P)');
+  // [silent] navigator ready
 })();

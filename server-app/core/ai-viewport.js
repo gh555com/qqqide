@@ -219,6 +219,7 @@
       activeDropdown.remove();
       activeDropdown = null;
     }
+    _setAiIframesPointerEvents('');  // 恢复 iframe 鼠标事件
   }
 
   function closeAllSubmenus() {
@@ -227,6 +228,19 @@
       try { s.remove(); } catch (_) { }
     });
     activeSubmenus = [];
+  }
+
+  // ★ 防止下拉/子菜单被 AI iframe 遮挡（iframe 在某些平台有隐式最高 z-order）
+  function _setAiIframesPointerEvents(val) {
+    var zones = ['qqq-wing-left', 'qqq-ai-zone', 'qqq-wing-right'];
+    for (var i = 0; i < zones.length; i++) {
+      var zone = document.getElementById(zones[i]);
+      if (!zone) continue;
+      var iframe = zone.querySelector('iframe');
+      if (iframe) {
+        iframe.style.pointerEvents = val;
+      }
+    }
   }
 
   // Close a submenu and all its descendant submenus
@@ -239,25 +253,34 @@
     try { sub.remove(); } catch (_) { }
   }
 
-  // ---- attach to AI: dispatch event + postMessage to AI iframe ----
+  // ---- attach to AI: 路由到当前焦点面板（金色 q2 的面板）----
 function attachToAi(filePath) {
-  console.log('[ai-viewport] attachToAi →', filePath);
+  // [silent] attachToAi →
   closeDropdown();
-  const aiFrame = document.querySelector('#qqq-ai-zone iframe');
+  // ★ 读取焦点面板目标（由 AI 面板 postMessage 更新）
+  var target = window.__qqq_aiTarget || 1;
+  var zoneId = target === 0 ? 'qqq-wing-left' : target === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
+  var zone = document.getElementById(zoneId);
+  var aiFrame = zone ? zone.querySelector('iframe') : null;
   if (!aiFrame || !aiFrame.contentWindow) {
-    console.warn('[ai-viewport] no AI iframe found');
-    return;
+    console.warn('[ai-viewport] no AI iframe found for target=' + target + ' zone=' + zoneId);
+    // fallback 到中面板
+    aiFrame = document.querySelector('#qqq-ai-zone iframe');
+    if (!aiFrame || !aiFrame.contentWindow) {
+      console.warn('[ai-viewport] no AI iframe found at all');
+      return;
+    }
   }
   if (typeof aiFrame.contentWindow.qqqideAiAttach === 'function') {
     try {
       aiFrame.contentWindow.qqqideAiAttach(filePath);
-      console.log('[ai-viewport] qqqideAiAttach OK →', filePath);
+      // [silent] qqqideAiAttach OK
     } catch (e) {
       console.warn('[ai-viewport] qqqideAiAttach threw:', e);
     }
   } else {
     aiFrame.contentWindow.postMessage({ type: 'qqq-ai-attach', path: filePath }, '*');
-    console.log('[ai-viewport] postMessage fallback →', filePath);
+    // [silent] postMessage fallback
   }
 }
 
@@ -282,6 +305,8 @@ function attachToAi(filePath) {
 
     // wrap the block + dropdown in a visual dashed frame
     blockEl.classList.add('aiv-block-active');
+    // ★ 屏蔽所有 AI iframe 鼠标事件，防止下拉被 iframe 遮挡导致点击穿透
+    _setAiIframesPointerEvents('none');
 
     loadDirInto(dd, project.path);
     document.body.appendChild(dd);
@@ -599,12 +624,17 @@ function attachToAi(filePath) {
     var detail = { projects: projects };
     // 同窗口订阅者（file-explorer 等）
     window.dispatchEvent(new CustomEvent('qqq-ai-viewport-changed', { detail: detail }));
-    // AI iframe（跨 frame 通信必须用 postMessage）
-    var aiFrame = document.querySelector('#qqq-ai-zone iframe');
-    if (aiFrame && aiFrame.contentWindow) {
-      try {
-        aiFrame.contentWindow.postMessage({ type: 'qqq-ai-viewport-changed', projects: projects }, '*');
-      } catch (_) { }
+    // AI iframe（跨 frame 通信必须用 postMessage）—— 广播到左/中/右所有面板
+    var zones = ['qqq-wing-left', 'qqq-ai-zone', 'qqq-wing-right'];
+    for (var i = 0; i < zones.length; i++) {
+      var zone = document.getElementById(zones[i]);
+      if (!zone) continue;
+      var aiFrame = zone.querySelector('iframe');
+      if (aiFrame && aiFrame.contentWindow) {
+        try {
+          aiFrame.contentWindow.postMessage({ type: 'qqq-ai-viewport-changed', projects: projects }, '*');
+        } catch (_) { }
+      }
     }
   }
 
@@ -688,7 +718,10 @@ function attachToAi(filePath) {
       closeDropdown();
       document.querySelectorAll('.aiv-block-active').forEach(el => el.classList.remove('aiv-block-active'));
     });
-
+    // 窗口缩放/翼板开关时关闭下拉（fixed 定位不会自动跟随）
+    window.addEventListener('resize', function() {
+      if (activeDropdown) closeDropdown();
+    });
 
   }
 
@@ -715,19 +748,7 @@ function attachToAi(filePath) {
   window.__qqq_updateAiTarget = function(n) {
     if (typeof n === 'number' && n >= 0 && n <= 2) window.__qqq_aiTarget = n;
   };
-
-  function attachToAi(fullPath) {
-    var target = window.__qqq_aiTarget || 1;
-    var zoneId = target === 0 ? 'qqq-wing-left' : target === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
-    var zone = document.getElementById(zoneId);
-    var iframe = zone ? zone.querySelector('iframe') : null;
-    if (iframe && iframe.contentWindow && iframe.contentWindow.qqqideAiAttach) {
-      iframe.contentWindow.qqqideAiAttach(fullPath);
-    } else {
-      // fallback：postMessage
-      try { iframe.contentWindow.postMessage({ type: 'qqq-ai-attach', path: fullPath }, '*'); } catch (_) {}
-    }
-  }
+  // （attachToAi 在模块顶部统一定义，此处不再重复）
 
   window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject };
 })();

@@ -83,7 +83,5 @@
         COMPACT_MAX_TOKENS: COMPACT_MAX_TOKENS
     };
 
-    console.log('[content-gateway] ready — MAX_STORAGE_CHARS=' + MAX_STORAGE_CHARS +
-        ' OUTPUT_CAP=' + OUTPUT_CAP_DEFAULT + '/' + OUTPUT_CAP_MAX +
-        ' MAX_RESPONSE_TOKENS=' + MAX_RESPONSE_TOKENS + ' COMPACT_MAX_TOKENS=' + COMPACT_MAX_TOKENS);
+    // [silent] content-gateway ready
 })();

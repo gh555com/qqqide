@@ -106,6 +106,14 @@ var AgentLoop = (function () {
         cleanContent = cleanContent.replace(/^\[💎\]\s*(?:暂无待办|暂无|无|None|N\/A|暂无发现|暂无财宝|暂无建议)\s*[。.]?\s*$/gm, '');
         cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '');
 
+        // ★ 剥离可能泄漏的原生 XML tool-call 块（模型偶发在 content 中输出 invoke 语法）
+        cleanContent = cleanContent.replace(/<invoke\s[\s\S]*?<\/invoke>/g, '');
+        cleanContent = cleanContent.replace(/<parameter\s[^>]*\/>/g, '');
+        cleanContent = cleanContent.replace(/<\/?qqq_tool_calls>/g, '');
+        cleanContent = cleanContent.replace(/<\/?_tool_calls>/g, '');
+        // 去除因上述清理产生的连续空行
+        cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '').trim();
+
         return { cleanContent: cleanContent, envelope: envelope, summary: summary, lang: lang };
     };
 
@@ -311,6 +319,7 @@ var AgentLoop = (function () {
         var onDone = opts.onDone || function () { };
         var onError = opts.onError || function () { };
         var onCost = opts.onCost || function () { };
+        var onGuideAckDone = opts.onGuideAckDone || function () { };
         var token = opts.token || '';
         var images = opts.images; // [{id, base64}]
 
@@ -450,6 +459,7 @@ var AgentLoop = (function () {
                         self._log('⚠ guide ack: no valid response, skipped');
                     }
                     // 确认回合结束 → 继续正常 while 循环
+                    onGuideAckDone();
                     continue;
                 }
 
@@ -926,6 +936,11 @@ var AgentLoop = (function () {
                 var _serverDateHdr = resp.headers.get('Date');
                 if (_serverDateHdr) {
                     self._serverDrift = new Date(_serverDateHdr).getTime() - Date.now();
+                    // 单调时钟锚点：performance.now() 不受系统时间/变速齿轮影响
+                    window._serverTimeAnchor = {
+                        perfNow: performance.now(),
+                        serverTimeMs: new Date(_serverDateHdr).getTime()
+                    };
                 }
                 self._log('✓ gateway ' + resp.status + ' streaming...');
                 self._consecutiveFetchErrors = 0;

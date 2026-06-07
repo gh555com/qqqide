@@ -159,7 +159,7 @@
     });
 
     _disposables.push(provider);
-    console.log('[qqq-video] registered');
+    // [silent] qqq-video registered
   }
 
   function dispose() {

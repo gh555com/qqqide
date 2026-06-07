@@ -28,7 +28,7 @@
       script.onload = function () {
         if (window.ts) {
           _tsReady = true;
-          console.log('[ts-service] TypeScript ' + window.ts.version + ' loaded');
+          // [silent] TypeScript loaded
           resolve(window.ts);
         } else {
           reject(new Error('ts not on window after script load'));
@@ -268,7 +268,7 @@
       preloadDefaultLibs(ts, function () {
         _host = createHost(ts);
         _service = ts.createLanguageService(_host);
-        console.log('[ts-service] LanguageService created');
+        // [silent] LanguageService created
         callback(_service);
       });
     }).catch(function (err) {
@@ -487,5 +487,5 @@
     closeDocument: closeDocument,
   };
 
-  console.log('[ts-service] module loaded');
+    // [silent] ts-service module loaded
 })();

@@ -122,6 +122,6 @@
       uses: [],
     });
 
-    console.log('[rage] registered');
+    // [silent] rage registered
   }
 })();
