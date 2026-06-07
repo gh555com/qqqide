@@ -1207,7 +1207,8 @@ function renderMarkdown(src) {
   // Links
   s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
   // Tables (must run before lists to avoid confusing | with list markers)
-    s = s.replace(/(?:\n|^)(\|.+\|)\n\|[-:\s|]+\|\n((?:\|.+\|\n?)*)/g, function(_, header, rows) {
+  // ★ 防护：用 \x0a 代替 \n，防止 search_replace 工具将正则中的 \n 断裂成真换行
+    s = s.replace(/(?:\x0a|^)(\|.+\|)\x0a\|[-:\s|]+\|\x0a((?:\|.+\|\x0a?)*)/g, function(_, header, rows) {
     if (!header || rows === undefined) return _;
     // slice(1,-1) 去掉首尾 | 产生的空串，保留中间空列（filter 会吞掉空表头）
     const ths = header.split('|').slice(1, -1).map(function(c) { return '<th>' + c.trim() + '</th>'; }).join('');
@@ -1780,9 +1781,10 @@ async function initQuests() {
       // [silent] stored activeId from quest.sq3
       if (!questActiveId || !quests.find(function(s) { return s.id === questActiveId; })) {
         if (quests.length > 0) {
-      questActiveId = quests[0].id;
-        // [silent] activeId invalid, fallback to first
-        await questStore.setActiveId(questActiveId);
+          questActiveId = quests[0].id;
+          // [silent] activeId invalid, fallback to first
+          await questStore.setActiveId(questActiveId);
+        }
       }
     } else {
       // 侧面板无快照 → 空白起点
@@ -2525,9 +2527,8 @@ async function deleteQuest(id) {
     await cardPool.switchTo(questActiveId);
     await _restoreAgentFromStore(questActiveId, _activeAgent);
     restoreQuestUIState(questActiveId);
-    } else {
-      _unloadQuest();
-    }
+  } else {
+    _unloadQuest();
   }
   await renderTabs();
 }

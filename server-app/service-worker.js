@@ -8,7 +8,7 @@
 // Cache version bumps on each shell.css/js change.
 // ============================================================================
 
-const CACHE_NAME = 'qqq-shell-v2';
+const CACHE_NAME = 'qqq-shell-v4';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -71,7 +71,7 @@ async function networkFirst(req, ms) {
   try {
     const res = await Promise.race([fetch(req), timeout(ms)]);
     if (res && res.ok) {
-      try { await cache.put(req, res.clone()); } catch (_) {}
+      try { await cache.put(req, res.clone()); } catch (_) { }
     }
     return res;
   } catch (_) {
@@ -92,7 +92,7 @@ async function staleWhileRevalidate(req) {
   const cached = await cache.match(req);
   const fetched = fetch(req).then(res => {
     if (res && res.ok) {
-      try { cache.put(req, res.clone()); } catch (_) {}
+      try { cache.put(req, res.clone()); } catch (_) { }
     }
     return res;
   }).catch(() => cached);

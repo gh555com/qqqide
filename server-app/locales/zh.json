@@ -244,7 +244,8 @@
         "onboarding": {
             "selectFolder": "请先选择一个主文件夹！",
             "selectFolderTitle": "请选择一个主文件夹"
-        }
+        },
+        "guideBtnTooltip": "立即用当下消息引导 AI 而不起新楼层！"
     },
     "goods": {
         "bar": {
@@ -383,8 +384,5 @@
         "f1": "命令面板",
         "altLeft": "后退",
         "altRight": "前进"
-    },
-    "ai": {
-        "guideBtnTooltip": "立即用当下消息引导 AI 而不起新楼层！"
     }
 }
