@@ -35,6 +35,29 @@ var OUTPUT_CAP_DEFAULT = (typeof ContentGateway !== 'undefined' ? ContentGateway
 var OUTPUT_CAP_MAX = (typeof ContentGateway !== 'undefined' ? ContentGateway.OUTPUT_CAP_MAX : 65536);
 var OUTPUT_CAP_FETCH = 8000;     // web fetch text extraction limit (fetch 专用)
 var OUTPUT_CAP_FETCH_ERR = 500;  // web fetch error message limit (fetch 专用)
+var FILE_LINE_WARN = 1500;       // warn AI when edited/created file exceeds this threshold
+
+// ---- 文件行数警告：写操作成功后检查文件行数，超限追加提醒 ----
+async function _checkFileSizeWarn(result, filePath) {
+    if (!result || result.indexOf('Error') === 0) return result;
+    try {
+        var bridge = getBridge();
+        if (!bridge) return result;
+        var content;
+        if (bridge.ai && bridge.ai.read_file) {
+            content = await bridge.ai.read_file({ path: filePath, start_line: 1, end_line: 99999 });
+        } else {
+            content = await bridge.fs.read(filePath);
+        }
+        if (typeof content === 'string') {
+            var lineCount = content.split('\n').length;
+            if (lineCount > FILE_LINE_WARN) {
+                result += '\n\n\u26a0\ufe0f FILE SIZE WARNING: This file now has ' + lineCount + ' lines (project limit: ' + FILE_LINE_WARN + '). Suggest splitting into smaller modules.';
+            }
+        }
+    } catch (_) { }
+    return result;
+}
 
 // ============================================================
 // 工具定义（OpenAI function calling format）
@@ -427,7 +450,7 @@ async function executeEditFile(args) {
         try {
             var _r = await bridge.ai.edit_file({ path: args.path, edits: args.edits });
             if (_r && _r.indexOf('Error') !== 0) _notifyFileModified(args.path);
-            return _r;
+            return await _checkFileSizeWarn(_r, args.path);
         } catch (_) { /* fallback */ }
     }
 
@@ -486,7 +509,7 @@ async function executeEditFile(args) {
 
         var matchInfo = results.some(function (r) { return r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1; })
             ? ' (whitespace-tolerant match used)' : '';
-        return '\u2713 ' + totalApplied + ' edit(s) applied to ' + (args.path.split(/[\\/]/).pop()) + matchInfo;
+        return await _checkFileSizeWarn('\u2713 ' + totalApplied + ' edit(s) applied to ' + (args.path.split(/[\\/]/).pop()) + matchInfo, args.path);
     } catch (err) {
         return 'Error editing file: ' + (err.message || err);
     }
@@ -510,7 +533,7 @@ async function executeWriteFile(args) {
         try {
             var _wr = await bridge.ai.write_file({ path: args.path, content: args.content });
             if (_wr && _wr.indexOf('Error') !== 0) _notifyFileModified(args.path);
-            return _wr;
+            return await _checkFileSizeWarn(_wr, args.path);
         } catch (_) { /* fallback */ }
     }
 
@@ -519,7 +542,7 @@ async function executeWriteFile(args) {
         try { await bridge.fs.mkdir(args.path.replace(/[/\\][^/\\]+$/, '')); } catch (_) { }
         await bridge.fs.write(args.path, args.content);
         _notifyFileModified(args.path);
-        return 'File written: ' + args.path + ' (' + args.content.length + ' chars)';
+        return await _checkFileSizeWarn('File written: ' + args.path + ' (' + args.content.length + ' chars)', args.path);
     } catch (err) {
         return 'Error writing file: ' + (err.message || err);
     }
@@ -750,7 +773,7 @@ async function executeCreateFile(args) {
         try {
             var _cr = await bridge.ai.create_file({ path: args.path, content: args.content });
             if (_cr && _cr.indexOf('Error') !== 0) _notifyFileModified(args.path);
-            return _cr;
+            return await _checkFileSizeWarn(_cr, args.path);
         } catch (_) { /* fallback */ }
     }
 
@@ -761,7 +784,7 @@ async function executeCreateFile(args) {
         try { await bridge.fs.mkdir(args.path.replace(/[/\\][^/\\]+$/, '')); } catch (_) { }
         await bridge.fs.write(args.path, args.content);
         _notifyFileModified(args.path);
-        return 'File created: ' + args.path + ' (' + args.content.length + ' chars)';
+        return await _checkFileSizeWarn('File created: ' + args.path + ' (' + args.content.length + ' chars)', args.path);
     } catch (err) {
         return 'Error creating file: ' + (err.message || err);
     }
