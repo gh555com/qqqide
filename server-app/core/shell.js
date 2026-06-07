@@ -359,7 +359,7 @@
       }
       return;
     }
-          // [silent] menu unhandled cmd
+    // [silent] menu unhandled cmd
   }
   function renderMenubarLabels(schema) {
     const $bar = document.getElementById('qqq-menubar');
@@ -476,8 +476,8 @@
 
       // 主：Cloudflare trace（全球 CDN，含中国）→ 解析 ts=Unix秒
       fetch('https://www.cloudflare.com/cdn-cgi/trace', { cache: 'no-cache' })
-        .then(function(r) { return r.text(); })
-        .then(function(text) {
+        .then(function (r) { return r.text(); })
+        .then(function (text) {
           var m = text.match(/^ts=([\d.]+)/m);
           if (m) {
             _timeAnchor = {
@@ -489,11 +489,11 @@
           }
           throw new Error('no ts');
         })
-        .catch(function() {
+        .catch(function () {
           // 备：timeapi.io（JSON，CORS 友好）
           return fetch('https://timeapi.io/api/Time/current/zone?timeZone=UTC', { cache: 'no-cache' })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
               if (data && data.dateTime) {
                 var dt = data.dateTime;
                 if (!/[Zz+\-]\d{2}:\d{2}$/.test(dt) && !/[Zz]$/.test(dt)) dt += 'Z';
@@ -505,7 +505,7 @@
               }
             });
         })
-        .catch(function() { /* 两次都失败，沿用旧锚点 */ });
+        .catch(function () { /* 两次都失败，沿用旧锚点 */ });
     }
 
     // 从单调锚点推算当前 UTC 毫秒
@@ -531,12 +531,12 @@
       var day = d.getUTCDay();
       var h = d.getUTCHours();
       if (isFreeWindow(utcMs)) {
-        if (day === 0) { d.setUTCHours(0,0,0,0); d.setUTCDate(d.getUTCDate()+1); return d.getTime(); }
-        if (h < 2) { d.setUTCHours(2,0,0,0); return d.getTime(); }
-        d.setUTCHours(14,0,0,0); return d.getTime();
+        if (day === 0) { d.setUTCHours(0, 0, 0, 0); d.setUTCDate(d.getUTCDate() + 1); return d.getTime(); }
+        if (h < 2) { d.setUTCHours(2, 0, 0, 0); return d.getTime(); }
+        d.setUTCHours(14, 0, 0, 0); return d.getTime();
       }
-      if (h < 12) { d.setUTCHours(12,0,0,0); return d.getTime(); }
-      d.setUTCHours(0,0,0,0); d.setUTCDate(d.getUTCDate()+1); return d.getTime();
+      if (h < 12) { d.setUTCHours(12, 0, 0, 0); return d.getTime(); }
+      d.setUTCHours(0, 0, 0, 0); d.setUTCDate(d.getUTCDate() + 1); return d.getTime();
     }
 
     function fmtHMS(ms) {
@@ -545,7 +545,7 @@
       var h = Math.floor(s / 3600);
       var m = Math.floor((s % 3600) / 60);
       s = s % 60;
-      return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+      return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
     }
 
     function updateFreeIndicator() {
@@ -554,7 +554,7 @@
       var free = isFreeWindow(utcMs);
       var boundary = nextFreeBoundary(utcMs);
       var remaining = boundary - utcMs;
-      var t = window._i || function(k,d) { return d; };
+      var t = window._i || function (k, d) { return d; };
 
       if (free) {
         $freeInd.style.display = 'inline-flex';
@@ -580,14 +580,14 @@
       // 每 1 分钟重新校准（请求 worldtimeapi.org，与 gh555.com 无关）
       setInterval(calibrateFromPublicTime, 60000);
 
-      var tick = function() {
+      var tick = function () {
         pollSseAnchor(); // 每秒检查是否有新的 SSE 时间（最高优先级）
         var utcMs = getCalibratedUtcMs();
         var d = new Date(utcMs);
         $clk.textContent =
-          String(d.getHours()).padStart(2,'0') + ':' +
-          String(d.getMinutes()).padStart(2,'0') + ':' +
-          String(d.getSeconds()).padStart(2,'0');
+          String(d.getHours()).padStart(2, '0') + ':' +
+          String(d.getMinutes()).padStart(2, '0') + ':' +
+          String(d.getSeconds()).padStart(2, '0');
         updateFreeIndicator();
       };
       tick();
@@ -688,6 +688,11 @@
       if (index === 0) _bulbState.left = !_bulbState.left;
       else _bulbState.right = !_bulbState.right;
       // [silent] _toggle new state
+
+      // ★ 翼板切换会导致布局变化，关闭 AI 视口下拉（防止 fixed 定位漂移到 0,0）
+      if (window.qqqideViewport && window.qqqideViewport.closeDropdown) {
+        window.qqqideViewport.closeDropdown();
+      }
 
       var dot = index === 0 ? d1 : d2;
       dot.classList.toggle('on', index === 0 ? _bulbState.left : _bulbState.right);
@@ -1311,12 +1316,12 @@
         var _search = window._nextSearch; window._nextSearch = null;
         bridge.fs.read(filePath).then(content => {
           var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
-          window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts).then(function(ed) {
+          window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts).then(function (ed) {
             if (_search && ed && ed.getAction) {
-              setTimeout(function() {
+              setTimeout(function () {
                 try {
                   ed.getAction('actions.find').run();
-                  setTimeout(function() {
+                  setTimeout(function () {
                     var fi = document.querySelector('.monaco-editor .find-widget .find-part .monaco-inputbox input');
                     if (fi) {
                       var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
@@ -1324,7 +1329,7 @@
                       fi.dispatchEvent(new Event('input', { bubbles: true }));
                     }
                   }, 120);
-                } catch(_) {}
+                } catch (_) { }
               }, 250);
             }
           });

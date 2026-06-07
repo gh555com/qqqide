@@ -156,6 +156,33 @@
 </script>
 
 
+<!-- ★ Quest 所有权同步注册表（父窗口级内存对象，零 TTL 零异步） -->
+<script>
+(function() {
+  'use strict';
+  if (parent !== window) return;
+  // questId → panelId (0/1/2)。所有面板共享同一父窗口，同步读写无竞态。
+  window.__qqq_questOwners = {};
+  // 注册：面板 claim 一个 quest 时调用
+  window.__qqq_claimQuest = function(questId, panelId) {
+    if (!questId || typeof questId !== 'string') return;
+    window.__qqq_questOwners[questId] = panelId;
+  };
+  // 释放：面板 release 一个 quest 时调用
+  window.__qqq_releaseQuest = function(questId, panelId) {
+    if (!questId || typeof questId !== 'string') return;
+    if (window.__qqq_questOwners[questId] === panelId) {
+      delete window.__qqq_questOwners[questId];
+    }
+  };
+  // 查询：返回 panelId 或 undefined
+  window.__qqq_getQuestOwner = function(questId) {
+    if (!questId || typeof questId !== 'string') return undefined;
+    return window.__qqq_questOwners[questId];
+  };
+})();
+</script>
+
 <!-- AI 面板焦点同步：iframe postMessage → 视口文件附加目标 + 互斥焦点 + 翼板自动打开 -->
 <script>
 (function() {

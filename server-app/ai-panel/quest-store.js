@@ -290,7 +290,8 @@ var QuestStore = (function () {
         var oldOwner = (existing && existing._owner) || null;
         if (oldOwner && oldOwner.windowId && oldOwner.windowId !== windowId) {
             var age = Date.now() - (oldOwner.claimedAt || 0);
-            if (age < 30000) {
+            // ★ TTL 24h（纯崩溃恢复兜底；正常去重由父窗口同步注册表保障）
+            if (age < 86400000) {
                 return { claimed: false, currentOwner: oldOwner.windowId };
             }
         }
@@ -319,7 +320,8 @@ var QuestStore = (function () {
         var existing = await _get(QUEST_NS + '.' + questId);
         if (!existing || !existing._owner) return null;
         var age = Date.now() - (existing._owner.claimedAt || 0);
-        if (age > 30000) return null;
+        // ★ TTL 24h（纯崩溃恢复兜底）
+        if (age > 86400000) return null;
         return existing._owner;
     };
 
