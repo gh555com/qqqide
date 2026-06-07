@@ -1,0 +1,509 @@
+'use strict';
+
+// ═══ 跨窗口同步消息处理 ═══
+function _broadcastOwnerCheck(questId) {
+    return new Promise(function (resolve) {
+        var timeout = setTimeout(function () { resolve(null); }, 250);
+        var _tmpUnsub = null;
+        try {
+            var sb = _getSyncBridge();
+            if (sb) {
+                var ch = _syncChannel();
+                _tmpUnsub = sb.onMessage(function (channel, data) {
+                    if (channel !== ch) return;
+                    if (data && data.type === 'owner-confirm' && data.questId === questId && data.ownerWindow) {
+                        clearTimeout(timeout);
+                        if (_tmpUnsub) { try { _tmpUnsub(); } catch (_) { } }
+                        resolve({ windowId: data.ownerWindow });
+                    }
+                });
+            }
+        } catch (_) { }
+        _broadcast('owner-check', questId);
+    });
+}
+
+async function _handleSyncMessage(msg) {
+    if (!msg || msg.windowId === _windowId) return;
+    // focus-request：焦点跳转
+    if (msg.type === 'focus-request') {
+        if (msg.targetWindow === _windowId) {
+            // [silent] focus-request received
+            _postToHost({ type: 'qqq-focus-window' });
+            _setPanelFocus(true);
+        }
+        return;
+    }
+    // quest 列表变更
+    if (msg.type === 'quest-created' || msg.type === 'quest-deleted' || msg.type === 'quest-renamed') {
+        questStore._index = null;
+        await updateQuestTofu();
+        return;
+    }
+    if (_isDraft(questActiveId)) return;
+    // [silent] sync recv
+    try {
+        switch (msg.type) {
+            case 'quest-saved':
+            case 'floor-saved':
+                if (msg.questId === questActiveId && typeof msg.floorNum === 'number' && agent && agent._ctx) {
+                    agent._ctx.totalFloors = Math.max(agent._ctx.totalFloors, msg.floorNum);
+                }
+                if (msg.questId === questActiveId) {
+                    updateCostDisplay();
+                    updateCtxBtn();
+                }
+                break;
+            case 'owner-check':
+                if (msg.questId === questActiveId) {
+                    _broadcast('owner-confirm', questActiveId, { ownerWindow: _windowId });
+                }
+                break;
+            case 'owner-confirm':
+                break;
+            case 'owner-claimed':
+                // 另一面板抢走了我们正在看的 quest → 自动卸载，跳回空白
+                if (msg.questId === questActiveId && msg.windowId !== _windowId) {
+                    // [silent] quest claimed by other panel, unloading
+                    _unloadQuest();
+                }
+                break;
+            case 'owner-released':
+                // 另一面板释放了 quest — 不做任何事（我们不自动加载）
+                break;
+        }
+    } catch (e) {
+        console.warn('[quests] _handleSyncMessage error:', e && e.message);
+    }
+}
+
+// ═══ Agent Pool: one AgentLoop per quest, simultaneous multi-quest work ═══
+var agentPool = {};       // { questId: AgentLoop }
+window.agentPool = agentPool;  // 暴露给 card-pool.js 驱逐时使用
+var _activeAgent = null;  // current visible quest's agent
+var _capturedAgent = null;   // captured ref for async callbacks (autoSave, onDone)
+var _capturedQuestId = '';   // captured quest id for async callbacks
+
+// ═══ Card Pool: 终极 Card Queue 架构 ═══
+var cardPool = null;  // 在 bindMainProject 中初始化（需要 #messages DOM 就绪）
+window.cardPool = null;  // 会在 bindMainProject 中同步更新
+
+// Backward-compatible 'agent' getter/setter — all existing agent.xxx redirects to _activeAgent
+Object.defineProperty(window, 'agent', {
+    get: function () { return _activeAgent; },
+    set: function (v) { _activeAgent = v; },
+    enumerable: true, configurable: true
+});
+
+function _getOrCreateAgent(questId) {
+    if (!agentPool[questId]) {
+        var ag = new AgentLoop({ log: function (msg) { /* agent-loop: only critical */ if (msg.indexOf('\u2717') >= 0 || msg.indexOf('\u26d4') >= 0 || msg.indexOf('\u26a0') >= 0 && msg.indexOf('\u26a0 guide ack:') < 0) console.warn('[ai-agent:' + questId + ']', msg); } });
+        ag._activeAiDiv = null;
+        ag._floorTimerId = null;
+        ag._floorStartPerf = 0;
+        ag._floorCurrentTiming = null;
+        ag._streaming = false;
+        ag._sending = false;
+        ag._queue = [];
+        agentPool[questId] = ag;
+    }
+    return agentPool[questId];
+}
+
+// ---- Quest Management ----
+var questStore = new QuestStore();
+window.questStore = questStore;  // 暴露到全局，供 card-pool.js 等外部模块访问
+questStore.requireProjectForWrites(true);  // 底层守卫：无主项目禁止一切写入
+
+// ═══ 工作空间 — 绑定主文件夹 ═══
+// 铁律：一个窗口一个主文件夹，终身不变。要换主文件夹只能开新窗口。
+//       因此不存在 workspace 切换，只有首次绑定（应用重启时）。
+//       iframe 永不销毁（翼板开关 = width 显隐），所以每面板仅绑定一次。
+
+// 初始化工作空间
+async function _initWorkspace(root) {
+    // [silent] workspace init
+    _workspaceRoot = root;
+
+    // ★ 只有中面板（panelId=1）申请项目锁；左右翼共享
+    onlyStore.init(root);
+    // ★ 从 onlyStore 恢复或持久化 _windowId（唯一真理源，跨 iframe 重建不变）
+    var _onlyWindowKey = 'ai.panel.' + _panelId + '.windowId';
+    try {
+        var _persistedWid = await onlyStore.getAsync(_onlyWindowKey);
+        if (_persistedWid && typeof _persistedWid === 'string') {
+            _windowId = _persistedWid;
+            // [silent] restored _windowId
+        } else {
+            onlyStore.set(_onlyWindowKey, _windowId);
+            // [silent] persisted _windowId
+        }
+    } catch (e) { console.warn('[workspace] _windowId restore error:', e); }
+    if (_panelId === 1) {
+        var lockResult = await onlyStore.claimLock();
+        if (!lockResult.ok) {
+            console.warn('[workspace] BLOCKED: project locked (age=' + (lockResult.age / 1000).toFixed(1) + 's)');
+            addMessageEl('error', '\u26a0\ufe0f 该项目已被另一个 QQQ 窗口打开，无法重复绑定。');
+            if (window.parent) {
+                try { window.parent.postMessage({ type: 'qqq-ai-viewport-remove-project', path: root }, '*'); } catch (_) { }
+            }
+            onlyStore.init(null);
+            _workspaceRoot = null;
+            return;
+        }
+        // 向主进程注册窗口↔项目映射（仅中面板）
+        if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.window) {
+            try { window.parent.qqqideBridge.window.claimProject(root).catch(function () { }); } catch (_) { }
+        }
+    }
+
+    questStore.setProjectRoot(root);
+
+    // ═══ Card Pool：首次绑定时创建（唯一一次） ═══
+    if (typeof CardPool !== 'undefined') {
+        cardPool = new CardPool($messages);
+        window.cardPool = cardPool;
+    } else {
+        console.error('[card-pool] CardPool undefined — card-pool.js failed to load!');
+    }
+
+    // 迁移旧目录
+    try {
+        var bridge = _getBridge();
+        if (bridge) {
+            var oldAlphal = root + '/qqq/quests/alphal';
+            var newAlphal = root + '/qqq/alphal';
+            var oldStat = await bridge.fs.stat(oldAlphal);
+            var newStat = await bridge.fs.stat(newAlphal);
+            if (oldStat && !newStat) {
+                // [silent] migrating alphal
+                await bridge.fs.mkdir(newAlphal);
+                await _copyAlphalDir(oldAlphal, newAlphal);
+                try { await bridge.fs.remove(oldAlphal); } catch (_) { }
+            }
+        }
+    } catch (e) { console.warn('[workspace] migration error', e); }
+
+    // ★ 三面板独立快照：从 ai.uiStates.{panelId} 恢复（异步读，首次绕过缓存）
+    var savedStates = onlyStore.isInited() ? await onlyStore.getAsync('ai.uiStates.' + _panelId) : null;
+    if (savedStates && typeof savedStates === 'object') {
+        questUIStates = savedStates;
+        // [silent] restored questUIStates
+    }
+
+    // 初始化 quest 列表
+    _questsInited = true;
+    await initQuests();
+    if (typeof loadQqqideProjectRules === 'function') {
+        loadQqqideProjectRules(questStore.getProjectRoot());
+    }
+    if (typeof buildQqqideVisionContext === 'function') {
+        buildQqqideVisionContext();
+    }
+
+    // ★ IPC sync：workspace-scoped channel
+    try {
+        var sb = _getSyncBridge();
+        if (sb) {
+            if (_syncUnsub) { _syncUnsub(); _syncUnsub = null; }
+            var ch = _syncChannel();
+            _syncUnsub = sb.onMessage(function (channel, data) {
+                if (channel === ch) { _handleSyncMessage(data); }
+            });
+            // [silent] IPC sync subscribed
+            questStore.onChange(function (payload) {
+                _broadcast(payload.type, payload.questId, { floorNum: payload.floorNum, title: payload.title });
+            });
+        }
+    } catch (e) { console.warn('[workspace] IPC sync unavailable:', e); }
+
+    // [silent] workspace bound
+}
+
+// 入口：绑定主文件夹（仅首次，终身一次）
+async function bindMainProject() {
+    // 已绑定 → 跳过（同窗口不可切换主文件夹）
+    if (_workspaceRoot) return;
+
+    var root = null;
+    if (window.parent && window.parent.qqqideViewport) {
+        var main = window.parent.qqqideViewport.getMainProject();
+        if (!main || !main.path) {
+            // [silent] bindMainProject: no main project yet
+            return;
+        }
+        root = main.path.replace(/\\/g, '/').replace(/\/$/, '');
+    } else {
+        return;
+    }
+
+    await _initWorkspace(root);
+}
+
+// 窗口关闭时刷盘（翼板关闭只是隐藏不触发；只有窗口真正关闭才触发）
+// ownership 不释放（翼板关闭事实不变）；应用关闭由 30s 超时自然过期
+window.addEventListener('beforeunload', function () {
+    if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+        saveQuestUIState(questActiveId);
+        onlyStore.flush();
+    }
+    // ★ 不再 releaseOwner：翼板开关不改面板归属
+});
+
+// 监听视口变化：主文件夹改变时重新绑定
+window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'qqq-ai-viewport-changed') {
+        bindMainProject();
+    }
+    // 主题变更 → 同步到 only.sq3（per-project 主题记忆）
+    if (e.data && e.data.type === 'qqqide-theme-change' && typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+        onlyStore.set('theme', e.data.dark ? 'dark' : 'light');
+    }
+});
+
+var _draftId = '_draft_p' + _panelId;
+var questActiveId = _draftId;
+var _questsInited = false;
+function _isDraft(id) { return typeof id === 'string' && id.indexOf('_draft_') === 0; }
+
+// ═══ per-quest UI memory state（零开销快照，quest 切换时同步读写） ═══
+var questUIStates = {};
+
+function saveQuestUIState(id) {
+    if (!id) return;
+    var imgs = new Array(pendingImages.length);
+    for (var i = 0; i < pendingImages.length; i++) {
+        var pi = pendingImages[i];
+        imgs[i] = { id: pi.id, base64: pi.base64, dataUrl: pi.dataUrl };
+    }
+    questUIStates[id] = {
+        inputValue: $input.value,
+        inputCaret: $input.selectionStart,
+        pendingImages: imgs,
+        selectedTier: selectedTier,
+        scrollTop: $messages.scrollTop
+    };
+    // ★ 三面板独立快照：左/中/右各自保存到 ai.uiStates.{panelId}
+    if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+        onlyStore.set('ai.uiStates.' + _panelId, questUIStates);
+    }
+}
+
+function restoreQuestUIState(id) {
+    var state = questUIStates[id];
+    if (state) {
+        $input.value = state.inputValue || '';
+        $input._resetUndo();
+        pendingImages = state.pendingImages || [];
+        selectedTier = state.selectedTier;
+        updateTierButtons(selectedTier);
+        renderImageStrip();
+        updateQueueBtn();
+        if (typeof state.inputCaret === 'number') {
+            $input.setSelectionRange(state.inputCaret, state.inputCaret);
+        }
+    } else {
+        $input.value = '';
+        $input._resetUndo();
+        pendingImages = [];
+        selectedTier = 6;
+        updateTierButtons(6);
+        renderImageStrip();
+        updateQueueBtn();
+    }
+}
+
+async function initQuests() {
+    if (!_hasMainProject()) {
+        // [silent] initQuests SKIP: no main project
+        return;
+    }
+    // [silent] initQuests START
+    var quests = await questStore.list();
+    // [silent] list returned
+    if (quests.length === 0) {
+        questActiveId = _draftId;
+    } else {
+        // ★ 三级恢复：per-window 快照 → project global → first quest
+        //   侧面板仅从自己的快照恢复，不抢全局 active quest
+        var _perWindowKey = 'ai.window.' + _windowId + '.activeQuestId';
+        var _fromOnly = onlyStore.isInited() ? await onlyStore.getAsync(_perWindowKey) : null;
+        if (_fromOnly && quests.find(function (s) { return s.id === _fromOnly; })) {
+            questActiveId = _fromOnly;
+            // [silent] restored from per-window snapshot
+            // 仅中面板更新全局 active（侧面板不污染全局状态）
+            if (_panelId === 1) await questStore.setActiveId(questActiveId);
+        } else if (_panelId === 1) {
+            // 中面板无快照 → 回退到全局 active quest
+            questActiveId = await questStore.getActiveId();
+            // [silent] stored activeId from quest.sq3
+            if (!questActiveId || !quests.find(function (s) { return s.id === questActiveId; })) {
+                if (quests.length > 0) {
+                    questActiveId = quests[0].id;
+                    // [silent] activeId invalid, fallback to first
+                    await questStore.setActiveId(questActiveId);
+                }
+            }
+        } else {
+            // 侧面板无快照 → 空白起点
+            questActiveId = _draftId;
+        }
+    }
+
+    if (questActiveId && !_isDraft(questActiveId)) {
+        // ★ 同步去重：在加载数据前检查父注册表，避免白加载后再卸载
+        var _initSyncOwner = _parentGetQuestOwner(questActiveId);
+        if (_initSyncOwner !== undefined && _initSyncOwner !== _panelId) {
+            // 已被其他面板持有 → 自动打开那个翼板 + 跳回草稿
+            if (_initSyncOwner === 0 || _initSyncOwner === 2) {
+                try { parent.postMessage({ type: 'qqq-open-wing', panel: _initSyncOwner }, '*'); } catch (_) { }
+            }
+            questActiveId = _draftId;
+        }
+    }
+
+    if (questActiveId) {
+        // [silent] loading data for quest
+        _activeAgent = _getOrCreateAgent(questActiveId);
+        await cardPool.switchTo(questActiveId);
+        // ★ 恢复 agent 全量状态（conversation + metadata）
+        await _restoreAgentFromStore(questActiveId, _activeAgent);
+        restoreQuestUIState(questActiveId);
+        // ★ 延迟恢复滚动位置（等 DOM 布局完成后）
+        var _savedState = questUIStates[questActiveId];
+        if (_savedState && typeof _savedState.scrollTop === 'number') {
+            _restoreScrollDeferred(_savedState.scrollTop);
+        } else {
+            _scrollToBottomDeferred(true);
+        }
+        renderQueueStrip();
+        // ★ 声明所有权（防止其他面板加载同一 quest）
+        try {
+            var _initClaim = await questStore.claimOwner(questActiveId, _windowId);
+            if (_initClaim.claimed) {
+                _parentClaimQuest(questActiveId);  // ★ 同步注册到父窗口
+                _broadcast('owner-claimed', questActiveId);
+            } else if (_initClaim.currentOwner && _initClaim.currentOwner !== _windowId) {
+                // 已被其他面板持有 → 卸载，跳转焦点
+                // [silent] quest already owned by other panel, unloading
+                _broadcast('focus-request', questActiveId, { targetWindow: _initClaim.currentOwner });
+                // ★ 自动打开拥有者所在的翼板
+                var _initOwnerPanelId = parseInt(_initClaim.currentOwner.split('_p')[1]);
+                if (_initOwnerPanelId === 0 || _initOwnerPanelId === 2) {
+                    try { parent.postMessage({ type: 'qqq-open-wing', panel: _initOwnerPanelId }, '*'); } catch (_) { }
+                }
+                _unloadQuest();
+            }
+        } catch (_) { }
+        updateCostDisplay();
+        updateCtxBtn();
+    } else {
+        // 无活跃 quest：清零上下文显示，避免残留硬编码值或旧 quest 数据
+        _activeAgent = null;
+        _queueFallback = [];
+        renderQueueStrip();
+        updateCostDisplay();
+        updateCtxBtn();
+    }
+    await renderTabs();
+    // [silent] initQuests DONE
+}
+
+// ═══ 从 houses 数组计算文件变更统计（持久化到 floorPayload.fileStats） ═══
+function _computeFileStats(houses) {
+    houses = houses || [];
+    var fileSet = {};
+    var added = 0;
+    var deleted = 0;
+    for (var hi = 0; hi < houses.length; hi++) {
+        var tools = houses[hi].tools || [];
+        for (var ti = 0; ti < tools.length; ti++) {
+            var t = tools[ti];
+            var path = '';
+            if (typeof t.args === 'string') {
+                try { var p = JSON.parse(t.args); path = p.path || p.filePath || ''; } catch (_) { }
+            } else if (t.args && typeof t.args === 'object') {
+                path = t.args.path || t.args.filePath || '';
+            }
+            if (t.name === 'write_file' || t.name === 'create_file') {
+                if (path) fileSet[path] = true;
+                var content = '';
+                if (typeof t.args === 'string') {
+                    try { var pp = JSON.parse(t.args); content = pp.content || ''; } catch (_) { }
+                } else if (t.args && t.args.content) {
+                    content = t.args.content;
+                }
+                if (content) added += (content.match(/\n/g) || []).length + 1;
+            } else if (t.name === 'edit_file') {
+                if (path) fileSet[path] = true;
+                var edits = [];
+                if (typeof t.args === 'string') {
+                    try { var ep = JSON.parse(t.args); edits = ep.edits || []; } catch (_) { }
+                } else if (t.args && t.args.edits) {
+                    edits = t.args.edits;
+                }
+                for (var ei = 0; ei < edits.length; ei++) {
+                    var findLines = (edits[ei].find || '').split('\n').length;
+                    var replaceLines = (edits[ei].replace || '').split('\n').length;
+                    added += replaceLines;
+                    deleted += findLines;
+                }
+            } else if (t.name === 'delete_file') {
+                if (path) fileSet[path] = true;
+            }
+        }
+    }
+    return { fileCount: Object.keys(fileSet).length, added: added, deleted: deleted };
+}
+
+async function _saveAgentQuestData(questId, ag, floorStartIdx) {
+    if (!questId || !ag) return;
+    var floorNum = ag._ctx.totalFloors;
+    // [silent] saveQuestData
+
+    // ═══ 1) 先写 floor 数据（原子操作：写 floor + 更新 quest.floors[]） ═══
+    if (typeof floorStartIdx === 'number' && floorNum > 0) {
+        var fullConv = ag.conversation ? ag.conversation.slice() : [];
+        var floorConv = fullConv.slice(floorStartIdx);
+        var floorPayload = {
+            question: (ag._lastUserInput && ag._lastUserInput.text) || '',
+            conversation: floorConv,
+            houses: (ag._houses || []).slice(),
+            costWge: ag._floorCostWge,
+            floorFree: ag._floorFree || false,
+            lastUserInput: ag._lastUserInput,
+            allTxtPath: ag._currentAllTxtPath || _allTxtPath || '',
+            fileStats: _computeFileStats(ag._houses),
+            createdAt: Date.now()
+        };
+        await questStore.saveFloor(questId, floorNum, floorPayload);
+    }
+
+    // ═══ 2) 再写 quest 级元数据（save 内部保留 saveFloor 已写的 floors[]） ═══
+    var metaPayload = {
+        ctx: ag._ctx,
+        totalCostGe: ag.totalCostGe,
+        lastApiPromptTokens: ag._lastApiPromptTokens || 0,
+        floorTimings: ag._floorTimings || [],
+        serverDrift: ag._serverDrift || 0,
+        queue: ag._queue || [],
+        rulesVersion: ag._rulesVersion || '',
+        persistentCount: ag._persistentCount || 0
+    };
+    await questStore.touch(questId);
+    await questStore.save(questId, metaPayload);
+
+    // generate floor txt ONLY for active quest (not background agents)
+    if (ag._housesPromise) {
+        try { await ag._housesPromise; } catch (_) { }
+    }
+    if (ag === _activeAgent && questId === questActiveId) {
+        await generateFloorTxt().catch(function () { });
+        // 追加到 quest 级 search_quest.txt（全文检索用：时间线 + Q + A）
+        _appendToSearchQuest(questId, floorNum).catch(function () { });
+    }
+}
+
+async function saveQuestData(floorStartIdx) {
+    return _saveAgentQuestData(questActiveId, _activeAgent, floorStartIdx);
+}

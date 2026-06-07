@@ -1,0 +1,365 @@
+'use strict';
+// \u2550\u2550\u2550 panel-clock.js \u2550\u2550\u2550
+// Floor timer, pie chart, autoSave, quest dropdown, tofu, boot
+
+var _floorTimerId = null;
+var _floorStartPerf = 0;
+var _floorCurrentTiming = null;
+var _activeAiDiv = null;
+var _lastPieTiming = null;
+var _autoSaveTimer = null;
+
+var _AUTOSAVE_INTERVAL = 15000;
+var _lastAutoSaveLen = 0;
+function _startAutoSave() {
+    _stopAutoSave();
+    _lastAutoSaveLen = 0;
+    _autoSaveTimer = setInterval(function () {
+        if (!_capturedAgent || !_capturedQuestId) return;
+        var floorNum = _capturedAgent._ctx.totalFloors;
+        if (floorNum <= 0) return;
+        var floorStartIdx = _capturedAgent._floorStartIdx;
+        if (typeof floorStartIdx !== 'number') return;
+        var fullConv = _capturedAgent.conversation ? _capturedAgent.conversation.slice() : [];
+        var convLen = fullConv.length;
+        if (convLen <= _lastAutoSaveLen) return;
+        _lastAutoSaveLen = convLen;
+        var floorConv = fullConv.slice(floorStartIdx);
+        questStore.saveFloor(_capturedQuestId, floorNum, {
+            question: (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '',
+            conversation: floorConv,
+            houses: (_capturedAgent._houses || []).slice(),
+            costWge: _capturedAgent._floorCostWge,
+            lastUserInput: _capturedAgent._lastUserInput,
+            createdAt: Date.now()
+        }).catch(function () { });
+    }, _AUTOSAVE_INTERVAL);
+}
+function _stopAutoSave() {
+    if (_autoSaveTimer) { clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
+}
+
+function _showPieTooltip(html, cx, cy) {
+    _postToHost({ type: 'qqq-pie-tooltip', action: 'show', html: html, clientX: cx, clientY: cy });
+}
+function _hidePieTooltip() {
+    _postToHost({ type: 'qqq-pie-tooltip', action: 'hide' });
+}
+
+function drawPie(canvas, timing) {
+    if (_lastPieTiming && timing &&
+        _lastPieTiming.networkMs === timing.networkMs &&
+        _lastPieTiming.deepseekMs === timing.deepseekMs &&
+        _lastPieTiming.toolMs === timing.toolMs) return;
+    _lastPieTiming = timing ? { networkMs: timing.networkMs, deepseekMs: timing.deepseekMs, toolMs: timing.toolMs } : null;
+    var ctx = canvas.getContext('2d');
+    var w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    var n = timing.networkMs || 0;
+    var d = timing.deepseekMs || 0;
+    var t = timing.toolMs || 0;
+    var total = timing.totalMs || (n + d + t);
+    if (total <= 0) { ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(w / 2, h / 2, w / 2 - 3, 0, Math.PI * 2); ctx.fill(); canvas._segments = null; return; }
+    t = Math.max(0, total - n - d);
+    var parts = [
+        { val: d, color: '#859900', label: 'AI', key: 'deepseek' },
+        { val: n, color: '#cb4b16', label: 'Network', key: 'network' },
+        { val: t, color: '#e6b800', label: 'Tool', key: 'tool' }
+    ];
+    var start = -Math.PI / 2;
+    var segments = [];
+    for (var i = 0; i < parts.length; i++) {
+        if (parts[i].val <= 0) continue;
+        var slice = (parts[i].val / total) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(w / 2, h / 2);
+        ctx.arc(w / 2, h / 2, w / 2 - 3, start, start + slice);
+        ctx.fillStyle = parts[i].color;
+        ctx.fill();
+        segments.push({ startAngle: start, endAngle: start + slice, label: parts[i].label, key: parts[i].key, ms: parts[i].val, color: parts[i].color });
+        start += slice;
+    }
+    canvas._segments = segments;
+    canvas._total = total;
+}
+
+function _initClockBlock(aiDiv) {
+    if (aiDiv._clockBlock) return;
+    var block = document.createElement('div');
+    block.className = 'msg-ai-clock';
+    block.innerHTML = '<span class="clock"><span class="clock-min">0m</span><span class="clock-sec">:0s</span></span><canvas width="112" height="112"></canvas><span class="clock-cost" style="display:none;font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:var(--text-primary);margin-left:auto">0.0000 ge</span>';
+    aiDiv.appendChild(block);
+    aiDiv._clockBlock = block;
+    aiDiv._clockMin = block.querySelector('.clock-min');
+    aiDiv._clockSec = block.querySelector('.clock-sec');
+    aiDiv._clockCanvas = block.querySelector('canvas');
+    aiDiv._clockCost = block.querySelector('.clock-cost');
+    var canvas = aiDiv._clockCanvas;
+    canvas.addEventListener('mousemove', function (e) {
+        if (!canvas._segments || !canvas._total) { _hidePieTooltip(); return; }
+        var parts = [
+            { key: 'network', color: '#cb4b16', label: 'Net' },
+            { key: 'tool', color: '#e6b800', label: 'Tool' },
+            { key: 'deepseek', color: '#859900', label: 'AI' }
+        ];
+        var segs = canvas._segments;
+        var map = {};
+        for (var si = 0; si < segs.length; si++) { map[segs[si].key] = segs[si]; }
+        var html = '';
+        for (var pi = 0; pi < parts.length; pi++) {
+            var p = parts[pi];
+            var s = map[p.key];
+            var ms = s ? s.ms : 0;
+            html += '<span style="display:inline-flex;align-items:center;gap:8px;margin-right:16px">'
+                + '<svg width="20" height="20" style="flex-shrink:0"><circle cx="10" cy="10" r="9" fill="' + p.color + '"/></svg>'
+                + '<span style="color:#fff">' + Math.round(ms / 1000) + 's</span></span>';
+        }
+        _showPieTooltip(html, e.clientX, e.clientY);
+    });
+    canvas.addEventListener('mouseleave', function () { _hidePieTooltip(); });
+}
+
+function startFloorTimer(aiDiv, resume) {
+    _activeAiDiv = aiDiv;
+    if (!resume || !_floorStartPerf) {
+        _floorStartPerf = performance.now();
+    }
+    _floorCurrentTiming = null;
+    _initClockBlock(aiDiv);
+    var clockMin = aiDiv._clockMin;
+    var clockSec = aiDiv._clockSec;
+    var canvas = aiDiv._clockCanvas;
+    var elapsed = performance.now() - _floorStartPerf;
+    var totalS = Math.floor(elapsed / 1000);
+    var min = Math.floor(totalS / 60);
+    var sec = totalS % 60;
+    clockMin.textContent = min + 'm';
+    clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
+    aiDiv._clockBlock.className = 'msg-ai-clock clock-ai';
+    canvas.style.visibility = 'hidden';
+    if (aiDiv._clockCost) {
+        aiDiv._clockCost.textContent = '0.0000 ge';
+        aiDiv._clockCost.style.display = 'inline';
+    }
+    var _pieShown = false;
+    var _lastN = 0, _lastD = 0, _lastT = 0;
+    _floorTimerId = setInterval(function () {
+        var elapsed = performance.now() - _floorStartPerf;
+        var totalS = Math.floor(elapsed / 1000);
+        var min = Math.floor(totalS / 60);
+        var sec = totalS % 60;
+        clockMin.textContent = min + 'm';
+        clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
+        var at = agent._floorTiming;
+        var n = (at && at.networkMs) || 0;
+        var d = (at && at.deepseekMs) || 0;
+        var t = (at && at.toolMs) || 0;
+        if (!_pieShown && (n > 0 || d > 0 || t > 0)) { _pieShown = true; canvas.style.visibility = 'visible'; }
+        if (!_pieShown) return;
+        var state = 'ai';
+        if (t > _lastT) state = 'tool';
+        else if (d > _lastD) state = 'ai';
+        else if (n > _lastN) state = 'network';
+        _lastN = n; _lastD = d; _lastT = t;
+        aiDiv._clockBlock.className = 'msg-ai-clock clock-' + state;
+        drawPie(canvas, { networkMs: n, deepseekMs: d, toolMs: t, totalMs: elapsed });
+    }, 1000);
+}
+
+function stopFloorTimer(timing) {
+    if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
+    _floorCurrentTiming = timing;
+    var elapsed = performance.now() - _floorStartPerf;
+    var totalS = Math.floor(elapsed / 1000);
+    var min = Math.floor(totalS / 60);
+    var sec = totalS % 60;
+    var aiDiv = _activeAiDiv;
+    if (aiDiv && aiDiv._clockBlock) {
+        aiDiv._clockBlock.className = 'msg-ai-clock';
+    }
+    if (aiDiv && aiDiv._clockMin && aiDiv._clockCanvas) {
+        aiDiv._clockMin.textContent = min + 'm';
+        aiDiv._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
+        var tm = timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 };
+        tm.totalMs = elapsed;
+        if (elapsed > 0) { aiDiv._clockCanvas.style.visibility = 'visible'; drawPie(aiDiv._clockCanvas, tm); }
+    }
+    _activeAiDiv = null;
+    var durationMs = Math.round(elapsed);
+    var record = {
+        floorIndex: agent._ctx.totalFloors,
+        durationMs: durationMs,
+        networkMs: (timing && timing.networkMs) || 0,
+        deepseekMs: (timing && timing.deepseekMs) || 0,
+        toolMs: (timing && timing.toolMs) || 0,
+        finishedAt: new Date().toISOString()
+    };
+    agent._floorTimings = agent._floorTimings || [];
+    agent._floorTimings.push(record);
+}
+
+// \u2500\u2500 Quest \u8c46\u8150\u5757 + hover \u4e0b\u62c9 \u2500\u2500
+var _questDrop = null;
+var _questDropTimer = null;
+var _questSearchText = '';
+var _questDropLimit = 20;
+function closeQuestDrop() {
+    if (_questDrop) { _questDrop.remove(); _questDrop = null; }
+    _questSearchText = '';
+    _questDropLimit = 20;
+}
+function _matchQuest(query, title) {
+    if (!query) return true;
+    var tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return true;
+    var lower = title.toLowerCase();
+    for (var i = 0; i < tokens.length; i++) {
+        var t = tokens[i];
+        var pos = 0;
+        var matched = true;
+        for (var ci = 0; ci < t.length; ci++) {
+            pos = lower.indexOf(t[ci], pos);
+            if (pos === -1) { matched = false; break; }
+            pos++;
+        }
+        if (!matched) return false;
+    }
+    return true;
+}
+async function renderQuestDrop() {
+    if (!_questDrop) return;
+    var allQuests = await questStore.list();
+    var query = _questSearchText;
+    var filtered = query
+        ? allQuests.filter(function (q) {
+            var displayName = 'q' + (q.numericId || '?') + '.' + (q.title || '');
+            return _matchQuest(query, displayName);
+        })
+        : allQuests;
+    var displayCount = Math.min(filtered.length, _questDropLimit);
+    var oldBody = _questDrop.querySelector('.quest-drop-body');
+    if (oldBody) oldBody.remove();
+    var body = document.createElement('div');
+    body.className = 'quest-drop-body';
+    for (var i = 0; i < displayCount; i++) {
+        (function (s) {
+            var item = document.createElement('div');
+            item.className = 'quest-drop-item' + (s.id === questActiveId ? ' active' : '');
+            item.textContent = 'q' + (s.numericId || '?') + '.' + (s.title || '');
+            item.onclick = function (e) { e.stopPropagation(); closeQuestDrop(); switchQuest(s.id); };
+            body.appendChild(item);
+        })(filtered[i]);
+    }
+    if (displayCount < filtered.length) {
+        var more = document.createElement('div');
+        more.className = 'quest-drop-item';
+        more.style.cssText = 'color:var(--base01);font-style:italic;text-align:center;pointer-events:none';
+        more.textContent = '\u2026 \u8fd8\u6709 ' + (filtered.length - displayCount) + ' \u6761 \u2026';
+        body.appendChild(more);
+    }
+    if (filtered.length === 0) {
+        var empty = document.createElement('div');
+        empty.className = 'quest-drop-item';
+        empty.style.cssText = 'color:var(--base01);font-style:italic';
+        empty.textContent = query ? '(\u65e0\u5339\u914d)' : '(\u7a7a)';
+        body.appendChild(empty);
+    }
+    _questDrop.appendChild(body);
+    _questDrop._hasScrollbar = _questDrop.scrollHeight > _questDrop.clientHeight + 2;
+}
+async function openQuestDrop() {
+    closeQuestDrop();
+    _questDropLimit = 20;
+    var tofu = document.getElementById('quest-tofu');
+    if (!tofu) return;
+    var bar = document.getElementById('quest-bar');
+    var drop = document.createElement('div');
+    drop.className = 'quest-drop show';
+    var head = document.createElement('div');
+    head.className = 'quest-drop-head';
+    var addBtn = document.createElement('div');
+    addBtn.className = 'quest-drop-add';
+    addBtn.textContent = '+';
+    addBtn.title = '\u65b0\u5efa Quest';
+    addBtn.onclick = function (e) { e.stopPropagation(); closeQuestDrop(); createNewQuest(); };
+    head.appendChild(addBtn);
+    var search = document.createElement('input');
+    search.className = 'quest-drop-search';
+    search.placeholder = '\u7b5b\u9009...';
+    search.value = _questSearchText;
+    search.oninput = function () {
+        _questSearchText = search.value;
+        renderQuestDrop();
+    };
+    head.appendChild(search);
+    drop.appendChild(head);
+    bar.appendChild(drop);
+    _questDrop = drop;
+    drop.addEventListener('mouseenter', function () { clearTimeout(_questDropTimer); });
+    drop.addEventListener('mouseleave', function () {
+        _questDropTimer = setTimeout(closeQuestDrop, 120);
+    });
+    drop.addEventListener('click', function (e) { e.stopPropagation(); });
+    drop.addEventListener('wheel', function (e) {
+        if (_questDropLimit >= 60) return;
+        if (drop._hasScrollbar) {
+            if (drop.scrollTop + drop.clientHeight >= drop.scrollHeight - 4) {
+                if (_questDropLimit < 40) _questDropLimit = 40;
+                else _questDropLimit = 60;
+                renderQuestDrop();
+            }
+        } else {
+            if (_questDropLimit < 40) _questDropLimit = 40;
+            else _questDropLimit = 60;
+            renderQuestDrop();
+        }
+    });
+    await renderQuestDrop();
+}
+async function updateQuestTofu() {
+    var el = document.getElementById('quest-tofu-text');
+    var quests = await questStore.list();
+    var entry = quests.find(function (q) { return q.id === questActiveId; });
+    if (entry) {
+        el.textContent = 'q' + (entry.numericId || '?') + '.' + (entry.title || '');
+        el.parentElement.classList.remove('quest-tofu-new');
+    } else {
+        el.textContent = '~ New quest ~';
+        el.parentElement.classList.add('quest-tofu-new');
+    }
+    var title = 'qqq IDE';
+    var root = questStore.getProjectRoot();
+    if (root) {
+        var parts = root.replace(/\\/g, '/').split('/');
+        var folderName = parts[parts.length - 1] || parts[parts.length - 2] || root;
+        title = folderName;
+    }
+    try { document.title = title; } catch (_) { }
+    try {
+        var b = _getBridge();
+        if (b && b.window && b.window.setTitle) b.window.setTitle(title);
+    } catch (_) { }
+}
+// hover \u5c55\u5f00/\u6536\u8d77
+(function () {
+    var tofu = document.getElementById('quest-tofu');
+    if (tofu) {
+        tofu.addEventListener('mouseenter', function () {
+            clearTimeout(_questDropTimer);
+            if (!_questDrop) openQuestDrop();
+        });
+        tofu.addEventListener('mouseleave', function () {
+            _questDropTimer = setTimeout(closeQuestDrop, 120);
+        });
+    }
+})();
+
+document.addEventListener('click', function () { closeQuestDrop(); });
+
+async function renderTabs() { await updateQuestTofu(); }
+
+// \u2550\u2550\u2550 Boot sequence \u2550\u2550\u2550
+(async function () {
+    loadQqqideRules();
+    await bindMainProject();
+})();

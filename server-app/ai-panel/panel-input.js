@@ -1,0 +1,354 @@
+'use strict';
+
+// ── 排队按钮状态：有文字即可排队（不管 AI 是否在工作）──
+function updateQueueBtn() {
+    var hasText = $input.value.trim().length > 0;
+    $queueBtn.disabled = !hasText;
+}
+
+// ── 无主文件夹时直接弹文件夹选择 ──
+var _selectingProject = false;
+function _hasMainProject() {
+    try {
+        if (parent && parent.qqqideViewport && parent.qqqideViewport.getMainProject()) return true;
+    } catch (_) { }
+    return !!_workspaceRoot;
+}
+async function _triggerSelectMainProject() {
+    if (_selectingProject) return;
+    _selectingProject = true;
+    try {
+        if (parent === window) {
+            // [silent] rules standalone window
+            return;
+        }
+        var bridge = parent && parent.qqqideBridge;
+        if (!bridge) return;
+        var title = '请选择一个主文件夹';
+        try { if (parent.window && parent.window._i) title = parent.window._i('ai.onboarding.selectFolderTitle', title); } catch (_) { }
+        var result = await bridge.dialog.open({
+            properties: ['openDirectory'],
+            title: title
+        });
+        if (result && !result.canceled && result.filePaths && result.filePaths.length > 0) {
+            if (parent.qqqideViewport && parent.qqqideViewport.addProject) {
+                parent.qqqideViewport.addProject(result.filePaths[0]);
+            }
+        }
+    } catch (_) {
+    } finally {
+        _selectingProject = false;
+    }
+}
+
+// ═══ 统一守卫管线：无主项目时直接弹文件夹选择 ═══
+// ① 所有鼠标点击 → 在 #input-area 或 #top-bar 内直接触发
+document.addEventListener('mousedown', function (e) {
+    if (_hasMainProject() || _selectingProject) return;
+    var el = e.target;
+    if (el.closest('#input-area') || el.closest('#top-bar')) {
+        _triggerSelectMainProject();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+    }
+}, true);
+// ② Enter 键发送
+document.addEventListener('keydown', function (e) {
+    if (_hasMainProject() || _selectingProject) return;
+    if (e.key === 'Enter' && !e.shiftKey && e.target.closest('#input')) {
+        _triggerSelectMainProject();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+    }
+}, true);
+// ③ 粘贴拦截
+$input.addEventListener('paste', function (e) {
+    if (!_hasMainProject() && !_selectingProject) {
+        _triggerSelectMainProject();
+        e.stopImmediatePropagation();
+        e.preventDefault();
+    }
+}, true);
+
+// ── 递归复制 alphal 目录（copy+delete 代替 rename，避免文件锁）──
+async function _copyAlphalDir(srcDir, dstDir) {
+    var entries = await window.parent.qqqideBridge.fs.list(srcDir);
+    for (var i = 0; i < entries.length; i++) {
+        var name = entries[i].name;
+        var isDir = entries[i].isDir;
+        var srcPath = srcDir + '/' + name;
+        var dstPath = dstDir + '/' + name;
+        try {
+            if (isDir) {
+                await window.parent.qqqideBridge.fs.mkdir(dstPath);
+                await _copyAlphalDir(srcPath, dstPath);
+                await window.parent.qqqideBridge.fs.remove(srcPath);
+            } else {
+                var content = await window.parent.qqqideBridge.fs.read(srcPath);
+                await window.parent.qqqideBridge.fs.write(dstPath, content);
+                await window.parent.qqqideBridge.fs.remove(srcPath);
+            }
+        } catch (e) {
+            console.warn('[quests] copy fail for ' + name, e);
+        }
+    }
+}
+
+// ── 智能等级选择（per-quest）──
+var selectedTier = 6; // 默认 6=Pro+Max，restoreQuestUIState 会覆盖
+function updateTierButtons(tierIndex) {
+    document.querySelectorAll('.tier-btn').forEach(function (b) { b.classList.remove('sel'); });
+    if (tierIndex === null || tierIndex === 0) {
+        document.getElementById('tier-a').classList.add('sel');
+    } else {
+        var btn = document.querySelector('.tier-btn[data-tier="' + tierIndex + '"]');
+        if (btn) btn.classList.add('sel');
+    }
+}
+
+function selectTier(tierIndex) {
+    selectedTier = tierIndex;
+    updateTierButtons(tierIndex);
+    if (questActiveId) {
+        if (!questUIStates[questActiveId]) questUIStates[questActiveId] = {};
+        questUIStates[questActiveId].selectedTier = tierIndex;
+    }
+}
+
+// 初始化选中态
+(function initTierUI() {
+    selectTier(6); // default, will be overridden by restoreQuestUIState
+})();
+
+document.getElementById('tier-a').onclick = function () { selectTier(null); };
+document.querySelectorAll('.tier-btn[data-tier]').forEach(function (btn) {
+    btn.onclick = function () { selectTier(parseInt(btn.dataset.tier)); };
+});
+
+// Token management
+function getToken() { return localStorage.getItem('qqq-ai-token') || ''; }
+function saveToken(t) { localStorage.setItem('qqq-ai-token', t); }
+if ($tokenInput) $tokenInput.value = getToken() ? '••••••••' : '';
+if ($tokenSave) $tokenSave.onclick = function () {
+    if ($tokenInput) {
+        const v = $tokenInput.value.trim();
+        if (v && v !== '••••••••') { saveToken(v); $tokenInput.value = '••••••••'; }
+    }
+};
+
+// ── 编辑框自适应高度：始终比内容多一行，上限 333px ──
+var _inputLineHeight = 0;
+var _inputMaxHeight = 333;
+function autoResizeInput() {
+    var el = $input;
+    if (!_inputLineHeight) {
+        _inputLineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
+    }
+    // 空输入 → 恢复默认两行高，无滚动条
+    if (!el.value) {
+        el.style.height = '';
+        el.style.overflowY = 'hidden';
+        return;
+    }
+    // 长文本（≥5000 字）：跳过 height='auto' 重排，直接用 scrollHeight（天然准确，避免卡顿）
+    // 短文本：先 'auto' 再读 scrollHeight，确保删文字后能缩回
+    if (el.value.length < 5000) {
+        el.style.height = 'auto';
+    }
+    var sh = el.scrollHeight;
+    var newH = sh + _inputLineHeight;
+    if (newH >= _inputMaxHeight) {
+        el.style.height = _inputMaxHeight + 'px';
+        el.style.overflowY = 'auto';
+    } else {
+        el.style.height = newH + 'px';
+        el.style.overflowY = 'hidden';
+    }
+}
+$input.addEventListener('input', autoResizeInput);
+// 兜底：程序改 value 时不触发 input 事件，劫持 value setter 自动调 autoResize
+(function () {
+    var _origValueDesc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    if (_origValueDesc && _origValueDesc.set) {
+        var _origSet = _origValueDesc.set;
+        Object.defineProperty($input, 'value', {
+            get: function () { return _origValueDesc.get.call(this); },
+            set: function (v) { _origSet.call(this, v); autoResizeInput(); },
+            configurable: true, enumerable: true
+        });
+    }
+})();
+// 窗口大小变化或主题切换可能导致行高变化，重新计算
+window.addEventListener('resize', function () { _inputLineHeight = 0; autoResizeInput(); });
+
+// Enter to send
+$input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (_sending) return;
+        if (_activeAgent && _activeAgent._compressing) return;
+        sendMessage();
+    }
+});
+// ══ 字符级 Undo/Redo（textarea 版：纯 value 快照，零 DOM 开销）══
+(function initCharUndo(input) {
+    var _initialVal = input.value || '';
+    var state = { history: [{ val: _initialVal, pos: 0 }], index: 0, isProgrammatic: false };
+    var _HISTORY_CEIL = 10000;  // 单条超此长度不记历史
+    var _HISTORY_MAX = 200;
+    input.addEventListener('input', function () {
+        var isProg = state.isProgrammatic;
+        if (isProg) { state.isProgrammatic = false; }
+        var v = input.value;
+        if (!isProg) {
+            if (state.index < state.history.length - 1) state.history = state.history.slice(0, state.index + 1);
+            var last = state.history[state.history.length - 1];
+            if (v !== last.val && v.length <= _HISTORY_CEIL) {
+                state.history.push({ val: v, pos: input.selectionStart });
+                state.index = state.history.length - 1;
+                if (state.history.length > _HISTORY_MAX) {
+                    var _drop = Math.floor(_HISTORY_MAX / 2);
+                    state.history = state.history.slice(_drop);
+                    state.index -= _drop;
+                }
+            }
+        }
+        updateQueueBtn();
+    });
+    input.addEventListener('keydown', function (e) {
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
+            e.preventDefault(); e.stopPropagation();
+            if (state.index > 0) {
+                state.index--;
+                state.isProgrammatic = true;
+                var entry = state.history[state.index];
+                input.value = entry.val;
+                input.setSelectionRange(entry.pos, entry.pos);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            return;
+        }
+        if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
+            e.preventDefault(); e.stopPropagation();
+            if (state.index < state.history.length - 1) {
+                state.index++;
+                state.isProgrammatic = true;
+                var entry = state.history[state.index];
+                input.value = entry.val;
+                input.setSelectionRange(entry.pos, entry.pos);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            return;
+        }
+    });
+    // 外部可调用：消息发出后截断历史，防止回退到已发送内容
+    input._resetUndo = function () {
+        state.history = [{ val: input.value || '', pos: 0 }];
+        state.index = 0;
+    };
+})($input);
+
+// ══ 多图管理 ══
+var pendingImages = []; // [{id, base64, dataUrl}]
+var MAX_IMAGES = 20;
+
+function addImage(dataUrl, base64) {
+    if (pendingImages.length >= MAX_IMAGES) return;
+    var id = pendingImages.length + 1;
+    pendingImages.push({ id: id, base64: base64, dataUrl: dataUrl });
+    renderImageStrip();
+}
+
+function removeImage(idx) {
+    pendingImages.splice(idx, 1);
+    pendingImages.forEach(function (img, i) { img.id = i + 1; });
+    renderImageStrip();
+}
+
+function renderImageStrip() {
+    var strip = document.getElementById('image-strip');
+    strip.innerHTML = '';
+    if (pendingImages.length === 0) {
+        strip.style.display = 'none';
+        return;
+    }
+    strip.style.display = 'flex';
+    pendingImages.forEach(function (img, idx) {
+        var wrap = document.createElement('div');
+        wrap.className = 'img-thumb-wrap';
+        var imgEl = document.createElement('img');
+        imgEl.src = img.dataUrl;
+        wrap.appendChild(imgEl);
+        var num = document.createElement('span');
+        num.className = 'img-thumb-num';
+        num.textContent = '#' + img.id;
+        num.onclick = function (e) { e.stopPropagation(); openLightbox(img.dataUrl, img.base64); };
+        wrap.appendChild(num);
+        var del = document.createElement('button');
+        del.className = 'img-thumb-del';
+        del.textContent = '\u00d7';
+        del.onclick = function () { removeImage(idx); };
+        wrap.appendChild(del);
+        var embed = document.createElement('button');
+        embed.className = 'img-thumb-embed';
+        embed.textContent = (parent && parent._i) ? parent._i('ai.embedImage', '嵌入') : '嵌入';
+        embed.onclick = function () {
+            $input.focus();
+            document.execCommand('insertText', false, '[img:' + img.id + ']');
+        };
+        wrap.appendChild(embed);
+        strip.appendChild(wrap);
+    });
+}
+
+// 粘贴图片（> 2MB 自动压缩至 2048px 宽）/ 纯文本粘贴
+$input.addEventListener('paste', function (e) {
+    // 纯文本粘贴：如果有文本，先获取纯文本再处理图片
+    var plainText = '';
+    try {
+        plainText = (e.clipboardData || window.clipboardData).getData('text/plain');
+    } catch (_) { }
+
+    // 检查是否有图片
+    var hasImage = false;
+    var items = (e.clipboardData || e.originalEvent.clipboardData).items;
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        if (item.type.indexOf('image/') === 0) {
+            hasImage = true;
+            e.preventDefault();
+            var file = item.getAsFile();
+            var reader = new FileReader();
+            reader.onload = function (ev) {
+                var dataUrl = ev.target.result;
+                if (file.size > 2 * 1024 * 1024) {
+                    var img = new Image();
+                    img.onload = function () {
+                        var MAX_W = 2048;
+                        var scale = img.width > MAX_W ? MAX_W / img.width : 1;
+                        var canvas = document.createElement('canvas');
+                        canvas.width = Math.round(img.width * scale);
+                        canvas.height = Math.round(img.height * scale);
+                        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                        var compressed = canvas.toDataURL('image/jpeg', 0.85);
+                        addImage(compressed, compressed.split(',')[1]);
+                    };
+                    img.src = dataUrl;
+                } else {
+                    addImage(dataUrl, dataUrl.split(',')[1]);
+                }
+            };
+            reader.readAsDataURL(file);
+            break;
+        }
+    }
+    // 无图片粘贴：强制纯文本（阻止富文本）
+    if (!hasImage && plainText) {
+        e.preventDefault();
+        document.execCommand('insertText', false, plainText);
+    }
+});
+$sendBtn.onclick = function () {
+    if (!_activeAgent || _activeAgent._compressing) return;  // 无 agent 或压缩中 → 不响应
+    if (streaming) { stopStream(); } else { sendMessage(); }
+};

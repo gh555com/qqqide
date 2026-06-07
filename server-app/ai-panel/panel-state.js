@@ -1,0 +1,157 @@
+'use strict';
+
+// GATEWAY_URL 由 system-prompt.js 全局声明（先于本文件加载），此处不再重复
+
+// ═══ 前向声明：被早期文件（panel-input.js）在加载时引用 ═══
+// 真正的初始化在 panel-quest.js，var 重复声明安全无冲突
+var questActiveId;
+var questUIStates = {};
+
+// State
+var _streamingFallback = false;
+var _sendingFallback = false;
+Object.defineProperty(window, 'streaming', {
+    get: function () { return _activeAgent ? _activeAgent._streaming : _streamingFallback; },
+    set: function (v) { if (_activeAgent) _activeAgent._streaming = v; else _streamingFallback = v; },
+    enumerable: true, configurable: true
+});
+Object.defineProperty(window, '_sending', {
+    get: function () { return _activeAgent ? _activeAgent._sending : _sendingFallback; },
+    set: function (v) { if (_activeAgent) _activeAgent._sending = v; else _sendingFallback = v; },
+    enumerable: true, configurable: true
+});
+var _renderPending = false;
+var _scrollPending = false;
+
+// ★ 面板 ID：从 URL ?panel=0(左) ?panel=1(中) ?panel=2(右)，默认 1(中)
+var _panelId = (function () {
+    try {
+        var m = location.search.match(/panel=(\d)/);
+        if (m) { var v = parseInt(m[1], 10); if (v >= 0 && v <= 2) return v; }
+    } catch (_) { }
+    return 1;
+})();
+
+// ═══ 跨窗口同步：窗口身份 + 通知总线 ═══
+// ★ _windowId 持久化到 onlyStore（ai.panel.{panelId}.windowId），iframe 销毁重建不变
+//   初始化阶段用临时 ID（onlyStore 就绪前不会用到 _windowId）
+var _windowId = 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + '_p' + _panelId;
+// _windowId 在 _initWorkspace 中从 onlyStore 恢复真实值（见 _restoreWindowId）
+
+var _workspaceRoot = null;  // 当前工作空间（主文件夹路径）
+var _syncUnsub = null;
+
+// ★ workspace-scoped sync channel
+function _syncChannel() {
+    var s = (_workspaceRoot || '').replace(/[^a-zA-Z0-9]/g, '_');
+    return 'qqq-sync:' + s;
+}
+
+function _getSyncBridge() {
+    try {
+        if (parent && parent.qqqideBridge && parent.qqqideBridge.sync) return parent.qqqideBridge.sync;
+    } catch (_) { }
+    return null;
+}
+
+function _broadcast(type, questId, extra) {
+    var sb = _getSyncBridge();
+    if (!sb || !_workspaceRoot) return;
+    var msg = { type: type, questId: questId, windowId: _windowId };
+    if (extra) Object.assign(msg, extra);
+    try { sb.broadcast(_syncChannel(), msg); } catch (_) { }
+}
+
+// ═══ 父窗口 quest 所有权注册表（同步、零 TTL、不依赖 IPC/store） ═══
+function _parentClaimQuest(questId) {
+    try { if (parent && parent.__qqq_claimQuest) parent.__qqq_claimQuest(questId, _panelId); } catch (_) { }
+}
+function _parentReleaseQuest(questId) {
+    try { if (parent && parent.__qqq_releaseQuest) parent.__qqq_releaseQuest(questId, _panelId); } catch (_) { }
+}
+// 同步查询：返回 panelId (0/1/2) 或 undefined
+function _parentGetQuestOwner(questId) {
+    try { if (parent && parent.__qqq_getQuestOwner) return parent.__qqq_getQuestOwner(questId); } catch (_) { }
+    return undefined;
+}
+
+var _panelFocused = false;  // 当前面板是否获得焦点（金光边框 + 快捷键激活）
+
+// ═══ 焦点边框：通知父窗口添加/移除金光 ═══
+function _setPanelFocus(on) {
+    if (_panelFocused === on) return;
+    _panelFocused = on;
+    // 焦点视觉：q2 豆腐块背景变金色
+    var tofu = document.getElementById('quest-tofu');
+    if (tofu) {
+        if (on) {
+            tofu.classList.add('quest-tofu-focused');
+        } else {
+            tofu.classList.remove('quest-tofu-focused');
+        }
+    }
+    // 广播焦点状态给父窗口（AI 视口用于文件附加目标）
+    if (on) {
+        try { parent.postMessage({ type: 'qqq-ai-panel-focused', panel: _panelId }, '*'); } catch (_) { }
+    }
+}
+// 点击/按键 → 获得焦点
+window.addEventListener('focus', function () { _setPanelFocus(true); });
+window.addEventListener('blur', function () { _setPanelFocus(false); });
+document.addEventListener('mousedown', function () { _setPanelFocus(true); });
+// ★ 互斥焦点：收到父窗口 defocus 通知时撤除金色边框
+window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'qqq-ai-panel-defocus') {
+        _setPanelFocus(false);
+    }
+});
+
+// 通用 postMessage
+var _fwSeq = 0;
+function _postToHost(msg) {
+    msg._fwId = 'fw' + (++_fwSeq) + '_' + Date.now().toString(36);
+    try { parent.postMessage(msg, '*'); } catch (_) { }
+}
+
+// 获取可用的 bridge
+function _getBridge() {
+    return parent.qqqideBridge;
+}
+
+// DOM
+const $messages = document.getElementById('messages');
+// ═══ Card Pool 滚动追踪（用户手动上滚 → 停止自动滚动） ═══
+// ═══ 滚动追踪：wheel 方向 + scroll 底部检测 ═══
+$messages.addEventListener('wheel', function (e) {
+    if (cardPool) cardPool.onUserWheel(e);
+});
+$messages.addEventListener('scroll', function () {
+    if (cardPool) cardPool.onUserScroll();
+});
+
+const $input = document.getElementById('input');
+const $sendBtn = document.getElementById('send-btn');
+const $tokenInput = document.getElementById('token-input');
+const $tokenSave = document.getElementById('token-save');
+const $costLabel = document.getElementById('cost-label');
+const $balLabel = document.getElementById('bal-label');
+var _windowTotalCostGe = 0;       // 窗口生命周期总消耗（切换用户清零）
+var _lastTokenForCost = '';       // 用于检测 token 切换
+var _balanceFetchTimer = null;
+var _balanceCache = null;         // { balance_ge: string, ts: number }
+const $guideBtn = document.getElementById('guide-btn');
+const $queueBtn = document.getElementById('queue-btn');
+const $ctxBtn = document.getElementById('ctx-btn');
+const $queueStrip = document.getElementById('queue-strip');
+// 引导按钮 tooltip（i18n 支持，语言切换时同步更新）
+(function () {
+    var _tipFallback = '立即用当下消息引导 AI 而不起新楼层！';
+    function _setGuideTip() {
+        try { if (parent.window && parent.window._i) $guideBtn.title = parent.window._i('ai.guideBtnTooltip', _tipFallback); }
+        catch (_) { $guideBtn.title = _tipFallback; }
+    }
+    _setGuideTip();
+    window.addEventListener('message', function (e) {
+        if (e.data && e.data.type === 'qqq-lang-change') _setGuideTip();
+    });
+})();
