@@ -2760,16 +2760,41 @@ $guideBtn.onclick = function() {
   if (_sending || streaming) {
     // ═══ AI 正在工作中 → 立即注入 + abort 当前 house ═══
     if (_activeAiDiv && _activeAiDiv._contentWrap) {
-      // ★ 清空 aborted 流的残余（buffer + DOM），防止与引导确认内容混合产生 XML 乱码
+      // ★ 先强制渲染当前 _buf 中滞留内容 → 固化为 DOM 段落（保留 AI 前半回复）
+      if (_activeAiDiv._buf && _activeAiDiv._buf.trim()) {
+        var _cleanBuf = _activeAiDiv._buf
+          .replace(/<invoke\s[\s\S]*?<\/invoke>/g, '')
+          .replace(/<parameter\s[^>]*\/>/g, '')
+          .replace(/<\/?_tool_calls>/g, '')
+          .replace(/<\/?qqq_tool_calls>/g, '');
+        if (_cleanBuf.trim()) {
+          var _stashPara = document.createElement('div');
+          _stashPara.className = 'stream-para';
+          _stashPara.innerHTML = renderMarkdown(_cleanBuf);
+          _activeAiDiv._contentWrap.appendChild(_stashPara);
+        }
+      }
+      // ★ 保留已渲染的 stream-para 段落（AI 前半回复），剥离 XML 残片并改类名防 onDone 误删
+      var _existingParas = _activeAiDiv._contentWrap.querySelectorAll('.stream-para');
+      for (var _ep = 0; _ep < _existingParas.length; _ep++) {
+        var _epEl = _existingParas[_ep];
+        if (_epEl.innerHTML) {
+          _epEl.innerHTML = _epEl.innerHTML
+            .replace(/&lt;invoke\s[\s\S]*?&lt;\/invoke&gt;/g, '')
+            .replace(/&lt;parameter\s[^&]*\/&gt;/g, '')
+            .replace(/&lt;\/?_tool_calls&gt;/g, '')
+            .replace(/&lt;\/?qqq_tool_calls&gt;/g, '');
+        }
+        _epEl.classList.remove('stream-para');
+        _epEl.classList.add('stream-para-keep');
+      }
+      // ★ 清空 buffer（让 guide ack 从干净 slate 开始），但保留 DOM 中的前半回复
       _activeAiDiv._buf = '';
       _activeAiDiv._fullText = '';
       _activeAiDiv._paras = [];
       _activeAiDiv._dirty = false;
       _activeAiDiv._renderedCount = 0;
       if (_activeAiDiv._lastParaEl) { _activeAiDiv._lastParaEl.remove(); _activeAiDiv._lastParaEl = null; }
-      // 移除 aborted 流已渲染的 stream-para DOM 节点
-      var _oldParas = _activeAiDiv._contentWrap.querySelectorAll('.stream-para');
-      for (var _op = _oldParas.length - 1; _op >= 0; _op--) { _oldParas[_op].remove(); }
       // ★ 启动引导模式：接下来 guide ack 产生的段落不加 stream-para 类，不会被 onDone 清除
       _activeAiDiv._guideMode = true;
       // ① 引导信息本身（嵌入流水，在 AI 回答前半与后半之间）
@@ -2802,6 +2827,7 @@ $guideBtn.onclick = function() {
 // ── 排队按钮：任何时候都可添加，AI 回复完自动发送下一条 ──
 var _queueFallback = [];
 var _queuePaused = false; // 暂停自动消费
+var _queueBusy = false;   // 防重入：排队发送进行中
 var _queueSaveTimer = null; // debounce 保存（500ms）
 var QUEUE_MAX = 50; // 队列最大长度
 Object.defineProperty(window, '_queue', {
@@ -2822,6 +2848,8 @@ function _debounceSaveQueue() {
 // 触发队列发送：从当前 agent 队列取第一条 → 填入输入框 → 发送
 // 如果输入框有用户正在编辑的内容 → 暂停队列保护用户输入
 function _triggerQueueSend() {
+  // ★ 防重入：若已有排队发送进行中（已设 input 值等待 sendMessage），直接返回
+  if (_queueBusy) return;
   var _q = _queue;
   if (!_q || _q.length === 0) { renderQueueStrip(); return; }
   // 保护：输入框有用户正在编辑的内容（非纯空白） → 自动暂停
@@ -2851,6 +2879,7 @@ function _triggerQueueSend() {
   _qStatus.textContent = '📮 排队发送中 (' + (_remaining + 1) + '/' + _totalBefore + ')';
   $messages.appendChild(_qStatus);
   scrollToBottom(true);
+  _queueBusy = true;
   setTimeout(function() { sendMessage(); }, 300);
 }
 
@@ -4665,9 +4694,8 @@ async function sendMessage() {
           // ★ 若本层已成功完成（onDone 已调用），跳过 onError 的破坏性清理
           //    避免重复调用 stopFloorTimer() 导致饼图变黄、计时丢失
           if (aiDiv && aiDiv._floorCompleted) {
-            // [silent] onError floor already completed
+            // ★ onDone 已负责触发排队，此处仅清理流式状态，不再重复调用 _continueQueue
             setStreaming(false);
-            _continueQueue();
             return;
           }
           // 错误消息支持换行（\n → <br>）
@@ -4725,6 +4753,7 @@ async function sendMessage() {
     }
     _capturedAgent._sending = false;
     _capturedAgent._streaming = false;
+    _queueBusy = false;  // 排队锁释放
     // 同步全局状态（如果 captured agent 仍是 active agent）
     if (_activeAgent === _capturedAgent) {
       setStreaming(false);
