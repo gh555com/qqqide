@@ -9,6 +9,16 @@ function getBridge() {
     try { return parent.qqqideBridge; } catch (_) { return null; }
 }
 
+// ---- 跨面板写通知：写成功后登记到父窗口环形缓冲区 ----
+function _notifyFileModified(filePath) {
+    try {
+        var p = window.parent || window;
+        if (p.__qqq_fileModified && typeof _panelId !== 'undefined') {
+            p.__qqq_fileModified(filePath, _panelId);
+        }
+    } catch (_) { }
+}
+
 // ============================================================
 // ★ Output caps — single source of truth for AI-facing limits
 //
@@ -283,7 +293,7 @@ async function executeReadFile(args) {
     // ★ 路径合理性校验：防止 AI 将中文文本当作文件路径
     var _p = args.path || '';
     if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]|^[A-Za-z]:$/.test(_p.trim())) {
-      return 'Error: invalid path "' + _p + '" — does not appear to be a valid file path. Provide an absolute path (e.g. E:\\project\\file.js).';
+        return 'Error: invalid path "' + _p + '" — does not appear to be a valid file path. Provide an absolute path (e.g. E:\\project\\file.js).';
     }
 
     // ★ 优先走主进程 (1 IPC, 消除大文件序列化开销)
@@ -409,13 +419,15 @@ async function executeEditFile(args) {
 
     var _p = args.path || '';
     if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
-      return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+        return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
 
     // ★ 优先走主进程 (1 IPC, 替代 read+write 2 IPC)
     if (bridge.ai && bridge.ai.edit_file) {
         try {
-            return await bridge.ai.edit_file({ path: args.path, edits: args.edits });
+            var _r = await bridge.ai.edit_file({ path: args.path, edits: args.edits });
+            if (_r && _r.indexOf('Error') !== 0) _notifyFileModified(args.path);
+            return _r;
         } catch (_) { /* fallback */ }
     }
 
@@ -470,6 +482,7 @@ async function executeEditFile(args) {
         // Phase 3: 写入
         try { await bridge.fs.mkdir(args.path.replace(/[/\\][^/\\]+$/, '')); } catch (_) { }
         await bridge.fs.write(args.path, content);
+        _notifyFileModified(args.path);
 
         var matchInfo = results.some(function (r) { return r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1; })
             ? ' (whitespace-tolerant match used)' : '';
@@ -489,13 +502,15 @@ async function executeWriteFile(args) {
 
     var _p = args.path || '';
     if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
-      return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+        return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
 
     // ★ 优先走主进程 (1 IPC)
     if (bridge.ai && bridge.ai.write_file) {
         try {
-            return await bridge.ai.write_file({ path: args.path, content: args.content });
+            var _wr = await bridge.ai.write_file({ path: args.path, content: args.content });
+            if (_wr && _wr.indexOf('Error') !== 0) _notifyFileModified(args.path);
+            return _wr;
         } catch (_) { /* fallback */ }
     }
 
@@ -503,6 +518,7 @@ async function executeWriteFile(args) {
     try {
         try { await bridge.fs.mkdir(args.path.replace(/[/\\][^/\\]+$/, '')); } catch (_) { }
         await bridge.fs.write(args.path, args.content);
+        _notifyFileModified(args.path);
         return 'File written: ' + args.path + ' (' + args.content.length + ' chars)';
     } catch (err) {
         return 'Error writing file: ' + (err.message || err);
@@ -639,7 +655,7 @@ async function executeListFiles(args) {
 
     var _p = args.path || '';
     if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
-      return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+        return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
 
     try {
@@ -726,13 +742,15 @@ async function executeCreateFile(args) {
 
     var _p = args.path || '';
     if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
-      return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+        return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
 
     // ★ 优先走主进程 (1 IPC)
     if (bridge.ai && bridge.ai.create_file) {
         try {
-            return await bridge.ai.create_file({ path: args.path, content: args.content });
+            var _cr = await bridge.ai.create_file({ path: args.path, content: args.content });
+            if (_cr && _cr.indexOf('Error') !== 0) _notifyFileModified(args.path);
+            return _cr;
         } catch (_) { /* fallback */ }
     }
 
@@ -742,6 +760,7 @@ async function executeCreateFile(args) {
         if (exists) return 'Error: file already exists: ' + args.path + '. Use edit_file to modify existing files.';
         try { await bridge.fs.mkdir(args.path.replace(/[/\\][^/\\]+$/, '')); } catch (_) { }
         await bridge.fs.write(args.path, args.content);
+        _notifyFileModified(args.path);
         return 'File created: ' + args.path + ' (' + args.content.length + ' chars)';
     } catch (err) {
         return 'Error creating file: ' + (err.message || err);
@@ -815,7 +834,7 @@ async function executeDeleteFile(args) {
 
     var _p = args.path || '';
     if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
-      return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+        return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
 
     // ★ 优先走主进程 (1 IPC)

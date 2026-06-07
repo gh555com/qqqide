@@ -285,7 +285,7 @@ var QuestStore = (function () {
     QuestStore.prototype.claimOwner = async function (questId, windowId) {
         // ★ 先 invalidate 缓存，确保读最新所有权
         var b = _bridge();
-        if (b && b.flushOne) { try { await b.flushOne(QUEST_NS + '.' + questId); } catch (_) {} }
+        if (b && b.flushOne) { try { await b.flushOne(QUEST_NS + '.' + questId); } catch (_) { } }
         var existing = await _get(QUEST_NS + '.' + questId);
         var oldOwner = (existing && existing._owner) || null;
         if (oldOwner && oldOwner.windowId && oldOwner.windowId !== windowId) {
@@ -304,7 +304,7 @@ var QuestStore = (function () {
 
     QuestStore.prototype.releaseOwner = async function (questId, windowId) {
         var b = _bridge();
-        if (b && b.flushOne) { try { await b.flushOne(QUEST_NS + '.' + questId); } catch (_) {} }
+        if (b && b.flushOne) { try { await b.flushOne(QUEST_NS + '.' + questId); } catch (_) { } }
         var existing = await _get(QUEST_NS + '.' + questId);
         if (!existing || !existing._owner) return null;
         var oldOwner = existing._owner;
@@ -316,7 +316,7 @@ var QuestStore = (function () {
 
     QuestStore.prototype.getOwner = async function (questId) {
         var b = _bridge();
-        if (b && b.flushOne) { try { await b.flushOne(QUEST_NS + '.' + questId); } catch (_) {} }
+        if (b && b.flushOne) { try { await b.flushOne(QUEST_NS + '.' + questId); } catch (_) { } }
         var existing = await _get(QUEST_NS + '.' + questId);
         if (!existing || !existing._owner) return null;
         var age = Date.now() - (existing._owner.claimedAt || 0);

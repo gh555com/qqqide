@@ -183,6 +183,32 @@
 })();
 </script>
 
+<!-- ★ 跨面板文件修改广播（防止 AI 基于过期内容生成无效 edit） -->
+<script>
+(function() {
+  'use strict';
+  if (parent !== window) return;
+  var MAX = 200; // 环形缓冲区上限
+  var _log = []; // [{path, panel, ts}]
+  // 面板写文件成功后调用：记录谁在什么时候改了什么
+  window.__qqq_fileModified = function(path, panelId) {
+    if (!path) return;
+    _log.push({ path: path, panel: panelId, ts: Date.now() });
+    if (_log.length > MAX) _log = _log.slice(-100);
+  };
+  // 查询：返回 since 时间戳之后、被其他面板修改过的文件路径列表
+  window.__qqq_getStaleFiles = function(myPanelId, sinceTs) {
+    var paths = {};
+    for (var i = _log.length - 1; i >= 0; i--) {
+      var e = _log[i];
+      if (e.ts < sinceTs) break;
+      if (e.panel !== myPanelId) paths[e.path] = true;
+    }
+    return Object.keys(paths);
+  };
+})();
+</script>
+
 <!-- AI 面板焦点同步：iframe postMessage → 视口文件附加目标 + 互斥焦点 + 翼板自动打开 -->
 <script>
 (function() {

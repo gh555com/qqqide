@@ -104,7 +104,7 @@ var AgentLoop = (function () {
 
         // 清理残留的空 [💎] 行（过渡期兼容）
         cleanContent = cleanContent.replace(/^\[💎\]\s*(?:暂无待办|暂无|无|None|N\/A|暂无发现|暂无财宝|暂无建议)\s*[。.]?\s*$/gm, '');
-        cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '');
+        cleanContent = cleanContent.replace(/\x0a{3,}/g, '\x0a\x0a').replace(/^\x0a+/, '');
 
         // ★ 剥离可能泄漏的原生 XML tool-call 块（模型偶发在 content 中输出 invoke 语法）
         cleanContent = cleanContent.replace(/<invoke\s[\s\S]*?<\/invoke>/g, '');
@@ -112,7 +112,7 @@ var AgentLoop = (function () {
         cleanContent = cleanContent.replace(/<\/?qqq_tool_calls>/g, '');
         cleanContent = cleanContent.replace(/<\/?_tool_calls>/g, '');
         // 去除因上述清理产生的连续空行
-        cleanContent = cleanContent.replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '').trim();
+        cleanContent = cleanContent.replace(/\x0a{3,}/g, '\x0a\x0a').replace(/^\x0a+/, '').trim();
 
         return { cleanContent: cleanContent, envelope: envelope, summary: summary, lang: lang };
     };
@@ -465,6 +465,21 @@ var AgentLoop = (function () {
                 }
 
                 self._houseIndex++;
+                // ★ 跨面板写冲突预警：检查上一轮 AI 调用以来是否有其他面板修改了文件
+                if (self._lastCallTs && typeof _panelId !== 'undefined') {
+                    try {
+                        var _p = window.parent || window;
+                        if (_p.__qqq_getStaleFiles) {
+                            var _stale = _p.__qqq_getStaleFiles(_panelId, self._lastCallTs);
+                            if (_stale.length > 0) {
+                                var _warn = '[System: ⚠️ The following files were modified by another panel since your last read. Re-read before editing: ' + _stale.join(', ') + ']';
+                                self.conversation.push({ role: 'user', content: _warn, _system: true, _floor: self._ctx.totalFloors });
+                                self._log('  ║ injected stale-files warning: ' + _stale.length + ' file(s)');
+                            }
+                        }
+                    } catch (_) { }
+                }
+                self._lastCallTs = Date.now();
                 var _hStart = Date.now();
                 var response = await self._callGateway(self.conversation, {
                     token: token,
@@ -948,7 +963,7 @@ var AgentLoop = (function () {
                         if (window.parent && window.parent !== window) {
                             window.parent._sseTimeAnchor = anchor;
                         }
-                    } catch(_) {}
+                    } catch (_) { }
                 }
                 self._log('✓ gateway ' + resp.status + ' streaming...');
                 self._consecutiveFetchErrors = 0;
