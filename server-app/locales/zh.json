@@ -112,9 +112,9 @@
         "dev": "开发模式",
         "gaeaHostLoading": "gaea host 加载中...",
         "free": {
-            "active": "🆓 免费中",
-            "ending": "⚠ 免费将结束",
-            "soonPrefix": "⏳ "
+            "active": "💎 免费中",
+            "ending": "🎈免费将结束",
+            "soonPrefix": "🤍距离下次免费"
         }
     },
     "editor": {

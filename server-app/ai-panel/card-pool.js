@@ -332,8 +332,14 @@ var CardPool = (function () {
     // ⑥ 恢复历史楼层成本显示
     if (fData.costWge && aiEl._clockCost) {
       var ge = (fData.costWge / 10000).toFixed(4);
-      aiEl._clockCost.textContent = ge + ' ge';
+      var isFree = fData.floorFree === true;
+      aiEl._clockCost.textContent = ge + ' ge' + (isFree ? ' Free' : '');
       aiEl._clockCost.style.display = 'inline';
+      if (isFree) {
+        aiEl._clockCost.style.color = '#859900';
+      } else {
+        aiEl._clockCost.style.color = '';
+      }
     }
 
     if (isBuilding) {
@@ -577,15 +583,24 @@ var CardPool = (function () {
       if (pct > 100) pct = 100;
       var mark = document.createElement('div');
       mark.className = 'sml-mark';
+      var c = positions[i].active ? '#ffd302' : '#ff6b00';
       mark.style.cssText =
         'top:' + pct + '%; ' +
-        'background:' + (positions[i].active ? '#ffd302' : '#ff6b00') + ';';
+        'background:' + c + '; ' +
+        'color:' + c + ';';
       mark.title = positions[i].label || '';
       mark.style.pointerEvents = 'auto';
       mark.style.cursor = 'default';
       mark.onclick = (function (pos) {
         return function () {
-          if (pos.el) pos.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          if (pos._range) {
+            var rc = pos._range.startContainer;
+            if (rc && rc.nodeType === 3 && rc.parentElement) {
+              rc.parentElement.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+          } else if (pos.el) {
+            pos.el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }
         };
       })(positions[i]);
       layer.appendChild(mark);

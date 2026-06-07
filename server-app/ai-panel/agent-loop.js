@@ -327,6 +327,7 @@ var AgentLoop = (function () {
 
         // 重置本轮计费 + 生成 floor_id（同一轮内所有 gateway 调用共享）
         self._floorCostWge = 0;
+        self._floorFree = false;
         self._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
         self._currentFloorSummary = '';
         self._floorTiming = { networkMs: 0, deepseekMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (self._serverDrift || 0) };
@@ -523,7 +524,7 @@ var AgentLoop = (function () {
                     var costGe = self._floorCostWge / 10000;
                     self.totalCostGe += costGe;
                     self._lastCostDisplay = costGe < 0.001 ? '<0.001' : costGe.toFixed(4);
-                    onCost(self._lastCostDisplay, self.totalCostGe);
+                    onCost(self._lastCostDisplay, self.totalCostGe, self._floorFree);
                     self._housesPromise = self._summarizeHouses(token).catch(function () { });
                     onDone(response.content, self._floorTiming);
                     return response.content;
@@ -613,7 +614,7 @@ var AgentLoop = (function () {
                     var finalCostGe = self._floorCostWge / 10000;
                     self.totalCostGe += finalCostGe;
                     self._lastCostDisplay = finalCostGe < 0.001 ? '<0.001' : finalCostGe.toFixed(4);
-                    onCost(self._lastCostDisplay, self.totalCostGe);
+                    onCost(self._lastCostDisplay, self.totalCostGe, self._floorFree);
                     self._flushBilling(token);
                     self._housesPromise = self._summarizeHouses(token).catch(function () { });
                     onDone(finalResp.content, self._floorTiming);
@@ -937,10 +938,17 @@ var AgentLoop = (function () {
                 if (_serverDateHdr) {
                     self._serverDrift = new Date(_serverDateHdr).getTime() - Date.now();
                     // 单调时钟锚点：performance.now() 不受系统时间/变速齿轮影响
-                    window._serverTimeAnchor = {
+                    var anchor = {
                         perfNow: performance.now(),
-                        serverTimeMs: new Date(_serverDateHdr).getTime()
+                        utcMs: new Date(_serverDateHdr).getTime()
                     };
+                    window._serverTimeAnchor = anchor;
+                    // 推送父窗口（shell 状态栏），作为最高优先级时间源
+                    try {
+                        if (window.parent && window.parent !== window) {
+                            window.parent._sseTimeAnchor = anchor;
+                        }
+                    } catch(_) {}
                 }
                 self._log('✓ gateway ' + resp.status + ' streaming...');
                 self._consecutiveFetchErrors = 0;
@@ -1034,6 +1042,7 @@ var AgentLoop = (function () {
                     var chunk = JSON.parse(data);
                     if (chunk.type === 'billing') {
                         self._floorCostWge += chunk.ge_cost || 0;
+                        if (chunk.free_window) self._floorFree = true;
                         continue;
                     }
 

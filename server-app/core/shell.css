@@ -670,7 +670,10 @@ body {
   margin-right: 16px;
 }
 .qqq-free-badge {
-  padding: 1px 6px; border-radius: 3px; letter-spacing: .3px;
+  padding: 2px 8px; border-radius: 4px;
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .3px;
   transition: all .2s;
 }
 .qqq-free-badge.qqq-free-on {

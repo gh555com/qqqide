@@ -255,32 +255,31 @@
 
   // ---- attach to AI: 路由到当前焦点面板（金色 q2 的面板）----
 function attachToAi(filePath) {
-  // [silent] attachToAi →
-  closeDropdown();
   // ★ 读取焦点面板目标（由 AI 面板 postMessage 更新）
   var target = window.__qqq_aiTarget || 1;
   var zoneId = target === 0 ? 'qqq-wing-left' : target === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
+  console.log('[ai-viewport] attachToAi target=' + target + ' zone=' + zoneId + ' file=' + filePath);
+  closeDropdown();
   var zone = document.getElementById(zoneId);
   var aiFrame = zone ? zone.querySelector('iframe') : null;
   if (!aiFrame || !aiFrame.contentWindow) {
-    console.warn('[ai-viewport] no AI iframe found for target=' + target + ' zone=' + zoneId);
-    // fallback 到中面板
+    console.warn('[ai-viewport] no AI iframe for target=' + target + ', falling back to center');
     aiFrame = document.querySelector('#qqq-ai-zone iframe');
     if (!aiFrame || !aiFrame.contentWindow) {
-      console.warn('[ai-viewport] no AI iframe found at all');
+      console.warn('[ai-viewport] no AI iframe at all');
       return;
     }
   }
   if (typeof aiFrame.contentWindow.qqqideAiAttach === 'function') {
     try {
       aiFrame.contentWindow.qqqideAiAttach(filePath);
-      // [silent] qqqideAiAttach OK
+      console.log('[ai-viewport] qqqideAiAttach OK, panel=' + target);
     } catch (e) {
-      console.warn('[ai-viewport] qqqideAiAttach threw:', e);
+      console.warn('[ai-viewport] qqqideAiAttach error:', e);
     }
   } else {
     aiFrame.contentWindow.postMessage({ type: 'qqq-ai-attach', path: filePath }, '*');
-    // [silent] postMessage fallback
+    console.log('[ai-viewport] postMessage fallback, panel=' + target);
   }
 }
 
@@ -288,6 +287,8 @@ function attachToAi(filePath) {
   function showDropdown(blockEl, project) {
     closeDropdown();
     cancelClose();
+    // 兜底：block 可能已被 render() 重建而脱离 DOM，getBoundingClientRect 会返回全零
+    if (!blockEl.isConnected) return;
     _activeBlockEl = blockEl;
 
     const rect = blockEl.getBoundingClientRect();
@@ -529,6 +530,7 @@ function attachToAi(filePath) {
   function _showRecentDropdown(blockEl) {
     closeDropdown();
     cancelClose();
+    if (!blockEl.isConnected) return;
     _activeBlockEl = blockEl;
     blockEl.classList.add('aiv-block-active');
 

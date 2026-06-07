@@ -1441,28 +1441,6 @@ function setStreaming(val) {
 }
 
 // ═══ 跨窗口同步消息处理 ═══
-function _broadcastOwnerCheck(questId) {
-  return new Promise(function(resolve) {
-    var timeout = setTimeout(function() { resolve(null); }, 250);
-    var _tmpUnsub = null;
-    try {
-      var sb = _getSyncBridge();
-      if (sb) {
-        var ch = _syncChannel();
-        _tmpUnsub = sb.onMessage(function(channel, data) {
-          if (channel !== ch) return;
-          if (data && data.type === 'owner-confirm' && data.questId === questId && data.ownerWindow) {
-            clearTimeout(timeout);
-            if (_tmpUnsub) { try { _tmpUnsub(); } catch(_) {} }
-            resolve({ windowId: data.ownerWindow });
-          }
-        });
-      }
-    } catch(_) {}
-    _broadcast('owner-check', questId);
-  });
-}
-
 async function _handleSyncMessage(msg) {
   if (!msg || msg.windowId === _windowId) return;
   // focus-request：焦点跳转
@@ -1480,7 +1458,7 @@ async function _handleSyncMessage(msg) {
     await updateQuestTofu();
     return;
   }
-  if (_isDraft(questActiveId)) return;
+  if (!questActiveId) return;
   // [silent] sync recv
   try {
     switch (msg.type) {
@@ -1493,13 +1471,6 @@ async function _handleSyncMessage(msg) {
           updateCostDisplay();
           updateCtxBtn();
         }
-        break;
-      case 'owner-check':
-        if (msg.questId === questActiveId) {
-          _broadcast('owner-confirm', questActiveId, { ownerWindow: _windowId });
-        }
-        break;
-      case 'owner-confirm':
         break;
       case 'owner-claimed':
         // 另一面板抢走了我们正在看的 quest → 自动卸载，跳回空白
@@ -1702,10 +1673,8 @@ window.addEventListener('message', function(e) {
 });
 bindMainProject();
 
-var _draftId = '_draft_p' + _panelId;
-var questActiveId = _draftId;
+var questActiveId = '';
 var _questsInited = false;
-function _isDraft(id) { return typeof id === 'string' && id.indexOf('_draft_') === 0; }
 
 // ═══ per-quest UI memory state（零开销快照，quest 切换时同步读写） ═══
 var questUIStates = {};
@@ -1763,7 +1732,8 @@ async function initQuests() {
   var quests = await questStore.list();
   // [silent] list returned
   if (quests.length === 0) {
-    questActiveId = _draftId;
+    questActiveId = '';
+    // [silent] no existing quests
   } else {
     // ★ 三级恢复：per-window 快照 → project global → first quest
     //   侧面板仅从自己的快照恢复，不抢全局 active quest
@@ -1779,14 +1749,14 @@ async function initQuests() {
       questActiveId = await questStore.getActiveId();
       // [silent] stored activeId from quest.sq3
       if (!questActiveId || !quests.find(function(s) { return s.id === questActiveId; })) {
-        if (quests.length > 0) {
-      questActiveId = quests[0].id;
+        questActiveId = quests[0].id;
         // [silent] activeId invalid, fallback to first
         await questStore.setActiveId(questActiveId);
       }
     } else {
       // 侧面板无快照 → 空白起点
-      questActiveId = _draftId;
+      questActiveId = '';
+      // [silent] side panel no snapshot, blank start
     }
   }
 
@@ -2277,9 +2247,6 @@ async function switchQuest(id) {
   try {
     // ═══ 所有权检查：已被其他面板持有 → 跳转焦点 ═══
     var owner = await questStore.getOwner(id);
-    if (!owner) {
-      owner = await _broadcastOwnerCheck(id);
-    }
     if (owner && owner.windowId !== _windowId) {
       // 清除本面板焦点状态（防止双金色 tofu）
       _setPanelFocus(false);
@@ -2326,10 +2293,8 @@ async function switchQuest(id) {
       }
       _activeAiDiv = null;
       // 释放旧 quest 所有权（让其他面板可以打开）
-      if (!_isDraft(questActiveId)) {
-        try { await questStore.releaseOwner(questActiveId, _windowId); } catch(_) {}
-        _broadcast('owner-released', questActiveId);
-      }
+      try { await questStore.releaseOwner(questActiveId, _windowId); } catch(_) {}
+      _broadcast('owner-released', questActiveId);
     }
 
     // ═══ Card Pool 切换（纯 CSS 显隐，零 DOM 销毁） ═══
@@ -2445,9 +2410,9 @@ async function createNewQuest() {
   // 不立即创建 quest —— 等用户发送第一条消息时再创建并命名
   if (streaming) stopStream();
   saveQuestUIState(questActiveId);
-  if (!_isDraft(questActiveId)) await saveQuestData();
-  // 释放旧 quest 所有权（草稿不参与）
-  if (questActiveId && !_isDraft(questActiveId)) {
+  await saveQuestData();
+  // 释放旧 quest 所有权
+  if (questActiveId) {
     try { await questStore.releaseOwner(questActiveId, _windowId); } catch(_) {}
     _broadcast('owner-released', questActiveId);
   }
@@ -2473,7 +2438,7 @@ function _unloadQuest() {
       oldCard.dom.style.display = 'none';
     }
   }
-  questActiveId = _draftId;
+  questActiveId = '';
   // 清空队列（fallback + 旧 agent 内存队列）
   _queueFallback = [];
   if (unloadId && agentPool[unloadId]) {
@@ -2525,9 +2490,6 @@ async function deleteQuest(id) {
     await cardPool.switchTo(questActiveId);
     await _restoreAgentFromStore(questActiveId, _activeAgent);
     restoreQuestUIState(questActiveId);
-    } else {
-      _unloadQuest();
-    }
   }
   await renderTabs();
 }
@@ -4396,7 +4358,7 @@ async function sendMessage() {
   $input.focus();
 
   // 若尚无 active quest（无主文件夹或新建窗口），在此创建并命名
-  if (_isDraft(questActiveId)) {
+  if (!questActiveId) {
     var qId = await questStore.create('');
     if (!qId) { _sending = false; updateQueueBtn(); return; }
     questActiveId = qId;
