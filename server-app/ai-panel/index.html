@@ -138,8 +138,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-img-badge{position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.75);color:#fff;font-size:10px;font-weight:bold;padding:2px 6px;border-radius:3px;user-select:none;z-index:1}
 .msg-img-badge:hover{background:var(--green)}
 #input-row{display:flex;gap:6px;overflow:hidden}
-#input{flex:1;min-width:0;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:150px;overflow-y:auto;overflow-x:hidden;resize:none;outline:none;scrollbar-width:thin;scrollbar-color:var(--base01) transparent;line-height:1.5}#input::-webkit-scrollbar{width:3px}#input::-webkit-scrollbar-track{background:transparent;border:none}#input::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}#input::-webkit-scrollbar-button{display:none}#input::-webkit-scrollbar-corner{background:transparent}
-#input:focus{outline:1px solid var(--blue);height:333px;max-height:none}
+#input{flex:1;min-width:0;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:333px;overflow-y:hidden;overflow-x:hidden;resize:none;outline:none;scrollbar-width:thin;scrollbar-color:var(--base01) transparent;line-height:1.5}#input::-webkit-scrollbar{width:3px}#input::-webkit-scrollbar-track{background:transparent;border:none}#input::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}#input::-webkit-scrollbar-button{display:none}#input::-webkit-scrollbar-corner{background:transparent}
+#input:focus{outline:1px solid var(--blue)}
+#input-limit-warn{display:none;background:var(--red);color:#fff;font-size:13px;font-weight:700;padding:8px 12px;border-radius:4px;text-align:center;animation:_warnPulse .6s infinite alternate}@keyframes _warnPulse{from{opacity:1}to{opacity:.7}}
+#input-limit-warn.show{display:block}
 #input::placeholder{color:var(--base01);opacity:.5}
 #btn-row{display:flex;gap:3px;align-items:center;flex-wrap:nowrap;overflow-x:hidden}
 #btn-row button{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:3px 7px;font-size:10px;height:25px;white-space:nowrap;flex-shrink:0}
@@ -306,6 +308,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 <div id="input-area">
   <div id="image-strip"></div>
   <div id="queue-strip"></div>
+  <div id="input-limit-warn" data-i18n="ai.inputLimitWarn">输入已达上限 58KB，无法继续键入</div>
   <div id="input-row">
     <textarea id="input" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" placeholder="Ask qqq AI... (Ctrl+V 粘贴图片)" data-i18n-placeholder-attr="ai.inputPlaceholder" rows="1"></textarea>
   </div>
@@ -381,14 +384,6 @@ Object.defineProperty(window, '_sending', {
 var _renderPending = false;
 var _scrollPending = false;
 
-// ═══ 跨窗口同步：窗口身份 + 通知总线 ═══
-var _windowId = (function() {
-  try { var s = sessionStorage.getItem('qqq-ai-window-id'); if (s) return s; } catch(_) {}
-  var id = 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  try { sessionStorage.setItem('qqq-ai-window-id', id); } catch(_) {}
-  return id;
-})();
-
 // ★ 面板 ID：从 URL ?panel=0(左) ?panel=1(中) ?panel=2(右)，默认 1(中)
 var _panelId = (function() {
   try {
@@ -398,9 +393,18 @@ var _panelId = (function() {
   return 1;
 })();
 
+// ═══ 跨窗口同步：窗口身份 + 通知总线 ═══
+// ★ 每个面板独立 sessionStorage key，确保同窗口三面板有不同 _windowId
+var _windowId = (function() {
+  var key = 'qqq-ai-window-id-p' + _panelId;
+  try { var s = sessionStorage.getItem(key); if (s) return s; } catch(_) {}
+  var id = 'w' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + '_p' + _panelId;
+  try { sessionStorage.setItem(key, id); } catch(_) {}
+  return id;
+})();
+
 var _workspaceRoot = null;  // 当前工作空间（主文件夹路径）
 var _syncUnsub = null;
-var _projectPathUnsub = null;
 
 // ★ workspace-scoped sync channel
 function _syncChannel() {
@@ -949,7 +953,50 @@ if ($tokenSave) $tokenSave.onclick = function() {
   if (v && v !== '••••••••') { saveToken(v); $tokenInput.value = '••••••••'; } }
 };
 
-// Auto-resize not needed for contenteditable (it auto-grows)
+// ── 编辑框自适应高度：始终比内容多一行，上限 333px ──
+var _inputLineHeight = 0;
+var _inputMaxHeight = 333;
+function autoResizeInput() {
+  var el = $input;
+  if (!_inputLineHeight) {
+    _inputLineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
+  }
+  // 空输入 → 恢复 min-height 一行高，无滚动条
+  if (!el.value) {
+    el.style.height = '';
+    el.style.overflowY = 'hidden';
+    return;
+  }
+  // 长文本（≥5000 字）：跳过 height='auto' 重排，直接用 scrollHeight（天然准确，避免卡顿）
+  // 短文本：先 'auto' 再读 scrollHeight，确保删文字后能缩回
+  if (el.value.length < 5000) {
+    el.style.height = 'auto';
+  }
+  var sh = el.scrollHeight;
+  var newH = sh + _inputLineHeight;
+  if (newH >= _inputMaxHeight) {
+    el.style.height = _inputMaxHeight + 'px';
+    el.style.overflowY = 'auto';
+  } else {
+    el.style.height = newH + 'px';
+    el.style.overflowY = 'hidden';
+  }
+}
+$input.addEventListener('input', autoResizeInput);
+// 兜底：程序改 value 时不触发 input 事件，劫持 value setter 自动调 autoResize
+(function() {
+  var _origValueDesc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+  if (_origValueDesc && _origValueDesc.set) {
+    var _origSet = _origValueDesc.set;
+    Object.defineProperty($input, 'value', {
+      get: function() { return _origValueDesc.get.call(this); },
+      set: function(v) { _origSet.call(this, v); autoResizeInput(); },
+      configurable: true, enumerable: true
+    });
+  }
+})();
+// 窗口大小变化或主题切换可能导致行高变化，重新计算
+window.addEventListener('resize', function() { _inputLineHeight = 0; autoResizeInput(); });
 
 // Enter to send
 $input.addEventListener('keydown', function(e) {
@@ -1196,9 +1243,12 @@ function escHtml(s) {
 window._tableStore = [];
 
 function viewTable(id) {
+  // ★ 取实际渲染的 DOM 节点（含 CSS 类名），保证展开前�?�模一�?�
   var html = window._tableStore[id];
   if (html) {
-    _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: html });
+    // 用 class="msg-ai" 包裹，让父窗口 overlay 能复用 AI 面板 CSS
+    var wrapped = '<div class="msg-ai">' + html + '</div>';
+    _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: wrapped });
   }
 }
 // Expose globally — onclick in HTML needs global scope
@@ -1322,7 +1372,7 @@ function getUserDisplayContent(content) {
 }
 
 // ═══ 超长消息标记：添加可滚动容器（不截断不遮罩，内容完整可搜索可全选） ═══
-var MSG_LONG = { user: 3000, ai: 10000 };
+var MSG_LONG = { user: Infinity, ai: 10000 };
 function _markLongMsg(el, role, rawText) {
   var limit = MSG_LONG[role] || 10000;
   if (rawText.length > limit) el.classList.add('msg-long');
@@ -1601,10 +1651,11 @@ async function _initWorkspace(root) {
     }
   } catch(e) { console.warn('[workspace] migration error', e); }
 
-  // ★ 三面板独立快照：从 ai.uiStates.{panelId} 恢复
-  var savedStates = onlyStore.get('ai.uiStates.' + _panelId);
+  // ★ 三面板独立快照：从 ai.uiStates.{panelId} 恢复（异步读，首次绕过缓存）
+  var savedStates = onlyStore.isInited() ? await onlyStore.getAsync('ai.uiStates.' + _panelId) : null;
   if (savedStates && typeof savedStates === 'object') {
     questUIStates = savedStates;
+    console.log('[workspace] restored questUIStates for panel ' + _panelId + ': ' + Object.keys(questUIStates).length + ' quests');
   }
 
   // 初始化 quest 列表
@@ -1748,14 +1799,17 @@ async function initQuests() {
     questActiveId = '';
     console.log('[quests] no existing quests, waiting for first message');
   } else {
-    // ★ 三级恢复：per-window (only.sq3) → project global (quest.sq3) → first quest
+    // ★ 三级恢复：per-window 快照 → project global → first quest
+    //   侧面板仅从自己的快照恢复，不抢全局 active quest
     var _perWindowKey = 'ai.window.' + _windowId + '.activeQuestId';
-    var _fromOnly = onlyStore.isInited() ? onlyStore.get(_perWindowKey) : null;
+    var _fromOnly = onlyStore.isInited() ? await onlyStore.getAsync(_perWindowKey) : null;
     if (_fromOnly && quests.find(function(s) { return s.id === _fromOnly; })) {
       questActiveId = _fromOnly;
-      console.log('[quests] restored from only.sq3 per-window:', questActiveId);
-      await questStore.setActiveId(questActiveId);
-    } else {
+      console.log('[quests] restored from per-window snapshot:', questActiveId);
+      // 仅中面板更新全局 active（侧面板不污染全局状态）
+      if (_panelId === 1) await questStore.setActiveId(questActiveId);
+    } else if (_panelId === 1) {
+      // 中面板无快照 → 回退到全局 active quest
       questActiveId = await questStore.getActiveId();
       console.log('[quests] stored activeId (quest.sq3):', questActiveId);
       if (!questActiveId || !quests.find(function(s) { return s.id === questActiveId; })) {
@@ -1763,17 +1817,14 @@ async function initQuests() {
         console.log('[quests] activeId invalid, fallback to first:', questActiveId);
         await questStore.setActiveId(questActiveId);
       }
+    } else {
+      // 侧面板无快照 → 空白起点
+      questActiveId = '';
+      console.log('[quests] side panel (' + _panelId + ') no snapshot, blank start');
     }
   }
-  // ★ 侧面板（左/右）启动时不加载 quest，空白起点
-  if (_panelId !== 1) {
-    questActiveId = '';
-    _activeAgent = null;
-    _queueFallback = [];
-    renderQueueStrip();
-    updateCostDisplay();
-    updateCtxBtn();
-  } else if (questActiveId) {
+
+  if (questActiveId) {
     console.log('[quests] loading data for:', questActiveId);
     _activeAgent = _getOrCreateAgent(questActiveId);
     await cardPool.switchTo(questActiveId);
@@ -2303,11 +2354,14 @@ async function switchQuest(id) {
     await cardPool.switchTo(id);
 
     questActiveId = id;
-    await questStore.setActiveId(id);
-    // ★ 同步到唯一真理配置
+    // ★ 仅中面板更新全局 active quest（侧面板不污染全局状态）
+    if (_panelId === 1) {
+      await questStore.setActiveId(id);
+    }
+    // ★ 同步到唯一真理配置（per-window 快照始终写入）
     if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
-      onlyStore.set('ai.activeQuestId', id);
       onlyStore.set('ai.window.' + _windowId + '.activeQuestId', id);
+      if (_panelId === 1) onlyStore.set('ai.activeQuestId', id);
     }
 
     // ═══ 交换 active agent ═══
@@ -2465,7 +2519,7 @@ async function deleteQuest(id) {
   if (questActiveId === id) {
     quests = await questStore.list();
     questActiveId = quests[0].id;
-    await questStore.setActiveId(questActiveId);
+    if (_panelId === 1) await questStore.setActiveId(questActiveId);
     _activeAgent = _getOrCreateAgent(questActiveId);
     await cardPool.switchTo(questActiveId);
     await _restoreAgentFromStore(questActiveId, _activeAgent);
@@ -4310,7 +4364,7 @@ async function sendMessage() {
     if (!qId) { _sending = false; updateQueueBtn(); return; }
     questActiveId = qId;
     _activeAgent = _getOrCreateAgent(questActiveId);
-    await questStore.setActiveId(questActiveId);
+    if (_panelId === 1) await questStore.setActiveId(questActiveId);
     // 声明所有权
     await questStore.claimOwner(questActiveId, _windowId);
     _broadcast('owner-claimed', questActiveId);
@@ -4582,10 +4636,10 @@ function getInputText() {
 function getInputPlainText() {
   return $input.value;
 }
-// 从文本中提取 "path" 格式的路径（兼容未来 "path:line x~y"）
+// 提取 📎"file" 或 📁"dir" 格式的路径（图标前缀隔离中文引号）
 function getInputChipPaths() {
   var paths = [];
-  var re = /\u201c([^\u201d]+)\u201d/g;
+  var re = /[📎📁]\u201c([^\u201d]+)\u201d/g;
   var m;
   while ((m = re.exec($input.value)) !== null) {
     paths.push(m[1]);
@@ -4605,7 +4659,8 @@ $input.addEventListener('focus', function() {
 
 function insertChipAtCursor(filePath) {
   var isDir = !filePath.match(/\.[a-zA-Z0-9]+$/);
-  var tag = '\u201c' + filePath + '\u201d ';
+  var icon = isDir ? '📁' : '📎';
+  var tag = icon + '\u201c' + filePath + '\u201d ';
   $input.focus();
   var start = $input.selectionStart;
   var end = $input.selectionEnd;
@@ -4691,7 +4746,7 @@ document.addEventListener('keydown', function(e) {
 
 // ═══ 自动跟焦：输入框获得焦点时广播活跃面板 ═══
 $input.addEventListener('focus', function() {
-  try { parent.postMessage({ type: 'qqq-ai-panel-focused', panel: 0 }, '*'); } catch(_) {}
+  try { parent.postMessage({ type: 'qqq-ai-panel-focused', panel: _panelId }, '*'); } catch(_) {}
 });
 
 // ═══ Full-window overlay (via parent.postMessage / IPC sync) ═══

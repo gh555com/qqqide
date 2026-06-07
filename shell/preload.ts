@@ -231,6 +231,7 @@ const QQQ = {
             flush: (dbPath: string) => ipcRenderer.invoke('qqqide:state:project:flush', dbPath),
             flushOne: (dbPath: string, ns: string, key: string) => ipcRenderer.invoke('qqqide:state:project:flushOne', dbPath, ns, key),
             stats: (dbPath: string) => ipcRenderer.invoke('qqqide:state:project:stats', dbPath),
+            atomicIncr: (dbPath: string, ns: string, key: string) => ipcRenderer.invoke('qqqide:state:project:atomicIncr', dbPath, ns, key),
             onChange: (dbPath: string, cb: (msg: { dbPath: string; ns: string; key: string; value: any; deleted: boolean }) => void) => {
                 const handler = (_e: any, msg: any) => { if (msg && msg.dbPath === dbPath) { try { cb(msg); } catch (err) { console.warn('[state.project.onChange]', err); } } };
                 ipcRenderer.on('qqqide:state:project:changed', handler);

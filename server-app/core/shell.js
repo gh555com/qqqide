@@ -1012,25 +1012,8 @@
             ths[hi].style.background = 'var(--card-bg,#1e1e1e)';
           }
 
-          var pres = wrapper.querySelectorAll('pre');
-          for (var pi = 0; pi < pres.length; pi++) {
-            var p = pres[pi];
-            p.style.border = 'none';
-            p.style.margin = '0';
-            p.style.borderRadius = '0';
-            p.style.background = 'transparent';
-            p.style.whiteSpace = 'pre-wrap';
-            p.style.wordBreak = 'break-all';
-            p.style.overflowX = 'hidden';
-          }
-          var codes = wrapper.querySelectorAll('code');
-          for (var ci2 = 0; ci2 < codes.length; ci2++) {
-            var cd = codes[ci2];
-            cd.style.border = 'none';
-            cd.style.background = 'none';
-            cd.style.padding = '0';
-            cd.style.color = 'inherit';
-          }
+          // ★ 表�?�块展开：原样保留 AI 面板渲染结果，不覆盖样式
+          // pre/code 保持原 CSS class（如 .lang-xxx），不强制改写换行/断字
 
           clipBox.appendChild(wrapper);
           contentEl.appendChild(clipBox);

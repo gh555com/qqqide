@@ -280,6 +280,12 @@ async function executeReadFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
+    // ★ 路径合理性校验：防止 AI 将中文文本当作文件路径
+    var _p = args.path || '';
+    if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]|^[A-Za-z]:$/.test(_p.trim())) {
+      return 'Error: invalid path "' + _p + '" — does not appear to be a valid file path. Provide an absolute path (e.g. E:\\project\\file.js).';
+    }
+
     // ★ 优先走主进程 (1 IPC, 消除大文件序列化开销)
     if (bridge.ai && bridge.ai.read_file) {
         try {
@@ -401,6 +407,11 @@ async function executeEditFile(args) {
     if (!bridge) return 'Error: bridge not available';
     if (!args.edits || args.edits.length === 0) return 'Error: no edits provided.';
 
+    var _p = args.path || '';
+    if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
+      return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+    }
+
     // ★ 优先走主进程 (1 IPC, 替代 read+write 2 IPC)
     if (bridge.ai && bridge.ai.edit_file) {
         try {
@@ -475,6 +486,11 @@ async function executeEditFile(args) {
 async function executeWriteFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
+
+    var _p = args.path || '';
+    if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
+      return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+    }
 
     // ★ 优先走主进程 (1 IPC)
     if (bridge.ai && bridge.ai.write_file) {
@@ -620,6 +636,12 @@ async function executeSearchContent(args) {
 async function executeListFiles(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
+
+    var _p = args.path || '';
+    if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
+      return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+    }
+
     try {
         if (args.recursive) {
             // * 优先走主进程 (1 IPC, 消除 renderer IPC 洪水)
@@ -701,6 +723,11 @@ async function executeGetVisionContext() {
 async function executeCreateFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
+
+    var _p = args.path || '';
+    if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
+      return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+    }
 
     // ★ 优先走主进程 (1 IPC)
     if (bridge.ai && bridge.ai.create_file) {
@@ -785,6 +812,11 @@ async function executeRunCommand(args) {
 async function executeDeleteFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
+
+    var _p = args.path || '';
+    if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
+      return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+    }
 
     // ★ 优先走主进程 (1 IPC)
     if (bridge.ai && bridge.ai.delete_file) {

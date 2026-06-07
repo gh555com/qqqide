@@ -1705,6 +1705,7 @@ function registerIpc(): void {
     ipcMain.handle('qqqide:state:project:flush', async (_e, dbPath: string) => { await _getProjectStateStore(dbPath).flush(); return true; });
     ipcMain.handle('qqqide:state:project:flushOne', async (_e, dbPath: string, ns: string, key: string) => { await _getProjectStateStore(dbPath).flushOne(ns, key); return true; });
     ipcMain.handle('qqqide:state:project:stats', async (_e, dbPath: string) => _getProjectStateStore(dbPath).stats());
+    ipcMain.handle('qqqide:state:project:atomicIncr', async (_e, dbPath: string, ns: string, key: string) => _getProjectStateStore(dbPath).atomicIncr(ns, key));
 
     // ---- qg (FS project-level state, per-project .qqq/qg/ instances) ----
     function _getQg(rootDir: string): Qg {
@@ -1862,12 +1863,11 @@ function registerIpc(): void {
         _currentProjectPath = p;
     });
 
-    // 通用消息广播：renderer → main → 其他 renderer
+    // 通用消息广播：renderer → main → 所有 renderer（含发送者，由接收端 _windowId 过滤同源）
     ipcMain.handle('qqqide:sync:broadcast', (e, channel: string, data: any) => {
         const senderWC = e.sender;
         for (const win of BrowserWindow.getAllWindows()) {
-            if (win.isDestroyed() || win.webContents === senderWC) continue;
-            if (win.webContents.isDestroyed()) continue;
+            if (win.isDestroyed() || win.webContents.isDestroyed()) continue;
             try { win.webContents.send('qqqide:sync:message', channel, data); } catch { /* ignore */ }
         }
     });

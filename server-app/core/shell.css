@@ -1015,3 +1015,27 @@ body {
   white-space: nowrap;
   flex: 0 1 auto;
 }
+
+/* ★ 悬浮展开�?�代码块/表格渲染 — 与 AI 面板外观一致 */
+.qqq-overlay-table-wrapper .msg-ai pre {
+  background: var(--card-bg);
+  color: var(--text-primary);
+  padding: 8px 10px;
+  border-radius: 4px;
+  overflow-x: hidden;
+  margin: 6px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid var(--border-color);
+}
+.qqq-overlay-table-wrapper .msg-ai code {
+  background: var(--card-bg);
+  color: var(--text-primary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: .9em;
+  border: 1px solid var(--border-color);
+  word-break: break-all;
+  overflow-wrap: break-word;
+}

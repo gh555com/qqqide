@@ -190,6 +190,7 @@
 
       flushOne: async (key) => {
         const b = _bridge();
+        _cacheDel(nsName, key);  // invalidate renderer cache before flush
         if (b && b.flushOne) { return b.flushOne(nsName, key); }
         return true;
       },
@@ -327,6 +328,7 @@
       flushOne: async (key) => {
         await _ensureRegistered();
         const b = _bridge();
+        _cacheDel(_cacheNs, key);  // invalidate renderer cache before flush
         if (b && b.qg && b.qg.flushOne) { return b.qg.flushOne(rootDir, nsName, key); }
         return true;
       },
@@ -442,8 +444,24 @@
       flushOne: async (key) => {
         await _ensureRegistered();
         const b = _bridge();
+        _cacheDel(_cacheNs, key);  // invalidate renderer cache before flush
         if (b && b.project && b.project.flushOne) { return b.project.flushOne(dbPath, nsName, key); }
         return true;
+      },
+      // ★ 原子自增：SQLite 层面保证，零竞态。返回递增后的值。
+      atomicIncr: async (key) => {
+        await _ensureRegistered();
+        var b = _bridge();
+        if (b && b.project && b.project.atomicIncr) {
+          var v = await b.project.atomicIncr(dbPath, nsName, key);
+          _cacheSet(_cacheNs, key, v);
+          return v;
+        }
+        // 降级：内存自增（非原子，仅 browser-dev fallback）
+        var cur = _memGet(_cacheNs, key) || 0;
+        cur = (typeof cur === 'number' ? cur : 0) + 1;
+        _memSet(_cacheNs, key, cur);
+        return cur;
       },
       onChange: (cb) => {
         const b = _bridge();

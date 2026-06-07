@@ -171,6 +171,18 @@ var onlyStore = (function () {
     return fallback !== undefined ? fallback : null;
   }
 
+  // ★ 异步读：用于初始化时动态 key（ai.uiStates.N / ai.window.*）首次加载
+  //   不依赖 _initDone，直接走 DB 读（_bridge() 就绪即可）
+  function getAsync(key) {
+    if (key in _cache) return Promise.resolve(_cache[key]);
+    var _b = _bridge();
+    if (!_b) return Promise.resolve(null);
+    return _b.get(key).then(function(v) {
+      if (v !== null && v !== undefined) { _cache[key] = v; return v; }
+      return null;
+    }).catch(function() { return null; });
+  }
+
   function set(key, value) {
     _cache[key] = value;
     _dirty[key] = true;
@@ -278,6 +290,7 @@ var onlyStore = (function () {
   return {
     init: init,
     get: get,
+    getAsync: getAsync,
     set: set,
     setNow: setNow,
     flush: flush,

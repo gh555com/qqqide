@@ -3,16 +3,17 @@
 //
 // 铁律：
 //   ① SQLite 是唯一真理源，all.txt 是纯导出快照，绝不回读
-//   ② 无全局计数器 — 所有编号从已存数据推导
+//   ② quest/floor ID 由 atomicIncr 原子分配，零竞态，绝不回退
 //   ③ 楼层数据增量保存 — 每完成一个 House 立即写库
-//   ④ 启动时自愈 — index 缺失的 quest 从 floor 数据反向重建
-//   ⑤ 不兼容老旧数据格式
+//   ④ 计数器自愈 — 首次启动自动从 index 推导种子值
 //
 // 存储结构 (ns=qqq.ai / quest.sq3):
 //   index              → [{ id, numericId, title, createdAt, lastActiveAt }]
 //   active             → 'qN'
 //   quest.{id}         → { ctx, totalCostGe, floorTimings, serverDrift, rulesVersion, floors[] }
 //   floor.{id}.{n}     → { question, conversation, houses, costWge, lastUserInput, createdAt, savedAt }
+//   quest_id_counter   → 原子自增 quest 编号
+//   floor_counter.{id} → 原子自增 floor 编号（每 quest 独立）
 // ============================================================================
 
 var QuestStore = (function () {
@@ -66,27 +67,6 @@ var QuestStore = (function () {
             console.error('[quest-store] _get(' + key + ') ERROR:', e && e.message);
             return null;
         }
-    }
-
-    // ★ 绕过 state-sdk 5s 缓存：直接从底层 bridge 读取（用于所有权等需跨面板立即一致的操作）
-    async function _getRaw(key) {
-        if (!_rootDir) return null;
-        try {
-            var bridge = null;
-            if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.state) {
-                bridge = window.parent.qqqideBridge.state;
-            } else if (typeof window !== 'undefined' && window.qqqideBridge && window.qqqideBridge.state) {
-                bridge = window.qqqideBridge.state;
-            }
-            if (bridge && bridge.project && bridge.project.get) {
-                var dbPath = _rootDir + '/qqq/alphal/quest.sq3';
-                return await bridge.project.get(dbPath, NS, key);
-            }
-        } catch (e) {
-            console.error('[quest-store] _getRaw(' + key + ') ERROR:', e && e.message);
-        }
-        // 降级：走缓存版本
-        return await _get(key);
     }
 
     async function _setNow(key, value) {
@@ -172,12 +152,26 @@ var QuestStore = (function () {
         await this._healIndex();
     };
 
-    // 自愈：index 是唯一真理 — 所有 quest 必须通过 create() 注册到 index。
-    // 若未来需要孤儿检测，需 state-sqlite 提供 listKeys() API。
-    // 当前：信任 index 的完整性。
+    // ★ 计数器自愈：若 quest_id_counter 未初始化，从 index 推最大 ID 种子
     QuestStore.prototype._healIndex = async function () {
-        // 索引自愈（placeholder）：index 完整性由 create/delete 保证
-        // 若 index 空了但磁盘有数据 → 下次 create 从 q1 开始（全新出发）
+        var b = _bridge();
+        if (!b) return;
+        try {
+            var cur = await b.get('quest_id_counter');
+            if (!cur || !(typeof cur === 'number' && cur > 0)) {
+                var maxN = 0;
+                for (var i = 0; i < this._index.length; i++) {
+                    var n = this._index[i].numericId || 0;
+                    if (n > maxN) maxN = n;
+                }
+                if (maxN > 0) {
+                    await b.setNow('quest_id_counter', maxN);
+                    console.log('[quest-store] seeded quest_id_counter →', maxN);
+                }
+            }
+        } catch (e) {
+            console.warn('[quest-store] _healIndex seed failed:', e && e.message);
+        }
     };
 
     QuestStore.prototype._saveIndex = async function () {
@@ -188,15 +182,12 @@ var QuestStore = (function () {
     // Quest CRUD
     // ═══════════════════════════════════════════════════════════════
 
-    // create(title) → id='qN'，N = max(已有数字ID) + 1
+    // create(title) → id='qN'，N 由 SQLite atomicIncr 原子分配，零竞态
     QuestStore.prototype.create = async function (title) {
         await this._ensureIndex();
-        var maxN = 0;
-        for (var i = 0; i < this._index.length; i++) {
-            var n = this._index[i].numericId || parseInt(String(this._index[i].id).slice(1)) || 0;
-            if (n > maxN) maxN = n;
-        }
-        var numericId = maxN + 1;
+        var b = _bridge();
+        if (!b) throw new Error('quest-store: no bridge');
+        var numericId = await b.atomicIncr('quest_id_counter');
         var id = 'q' + numericId;
         var now = Date.now();
         var entry = {
@@ -292,8 +283,10 @@ var QuestStore = (function () {
     // ═══════════════════════════════════════════════════════════════
 
     QuestStore.prototype.claimOwner = async function (questId, windowId) {
-        // ★ 绕过 5s 缓存：直接从底层 bridge 读取，确保跨面板立即一致
-        var existing = await _getRaw(QUEST_NS + '.' + questId);
+        // ★ 先 invalidate 缓存，确保读最新所有权
+        var b = _bridge();
+        if (b && b.flushOne) { try { await b.flushOne(QUEST_NS + '.' + questId); } catch (_) {} }
+        var existing = await _get(QUEST_NS + '.' + questId);
         var oldOwner = (existing && existing._owner) || null;
         if (oldOwner && oldOwner.windowId && oldOwner.windowId !== windowId) {
             var age = Date.now() - (oldOwner.claimedAt || 0);
@@ -309,8 +302,9 @@ var QuestStore = (function () {
     };
 
     QuestStore.prototype.releaseOwner = async function (questId, windowId) {
-        // ★ 绕过 5s 缓存
-        var existing = await _getRaw(QUEST_NS + '.' + questId);
+        var b = _bridge();
+        if (b && b.flushOne) { try { await b.flushOne(QUEST_NS + '.' + questId); } catch (_) {} }
+        var existing = await _get(QUEST_NS + '.' + questId);
         if (!existing || !existing._owner) return null;
         var oldOwner = existing._owner;
         if (windowId && oldOwner.windowId !== windowId) return null;
@@ -320,8 +314,9 @@ var QuestStore = (function () {
     };
 
     QuestStore.prototype.getOwner = async function (questId) {
-        // ★ 绕过 5s 缓存：直接从底层 bridge 读取，确保跨面板立即一致
-        var existing = await _getRaw(QUEST_NS + '.' + questId);
+        var b = _bridge();
+        if (b && b.flushOne) { try { await b.flushOne(QUEST_NS + '.' + questId); } catch (_) {} }
+        var existing = await _get(QUEST_NS + '.' + questId);
         if (!existing || !existing._owner) return null;
         var age = Date.now() - (existing._owner.claimedAt || 0);
         if (age > 30000) return null;
@@ -359,16 +354,11 @@ var QuestStore = (function () {
     // Floor 存储 — 原子操作：写 floor 数据 + 更新 quest.floors[]
     // ═══════════════════════════════════════════════════════════════
 
-    // 分配下一个 floor 号（从已存 floors 列表推导，无计数器）
+    // 分配下一个 floor 号（原子自增，每 quest 独立计数器）
     QuestStore.prototype.nextFloorNum = async function (questId) {
-        var qData = await _get(QUEST_NS + '.' + questId);
-        var floors = (qData && qData.floors) || [];
-        if (floors.length === 0) return 1;
-        var maxN = 0;
-        for (var i = 0; i < floors.length; i++) {
-            if (floors[i].n > maxN) maxN = floors[i].n;
-        }
-        return maxN + 1;
+        var b = _bridge();
+        if (!b) throw new Error('quest-store: no bridge');
+        return await b.atomicIncr('floor_counter.' + questId);
     };
 
     // 保存楼层（完整写入，幂等覆盖）

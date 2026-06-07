@@ -727,6 +727,40 @@ export class StateStore extends EventEmitter {
         await this._doSaveDb();
     }
 
+    /** Atomically increment a counter key and return the NEW value.
+     *  Zero-race: all IPC calls serialize in the main process, and SQLite
+     *  operations are synchronous within that single thread. */
+    async atomicIncr(ns: string, key: string): Promise<number> {
+        await this._ensureReady();
+        const sc = this._requireSchema(ns);
+        if (sc.form !== 'doc') throw new Error(`atomicIncr only valid for form=doc; ns=${ns}`);
+        // Read current value, default 0, increment, write back immediately
+        let cur = 0;
+        try {
+            const row = this._stmtGet('SELECT value FROM state WHERE ns=? AND key=?', [ns, key]);
+            if (row && row.value !== null && row.value !== undefined) {
+                cur = parseInt(row.value, 10) || 0;
+            }
+        } catch { /* ignore */ }
+        const next = cur + 1;
+        // Write immediately (no debounce — counter must be durable right away)
+        const encoded = this._encode(sc.form, next);
+        const meta = JSON.stringify({ v: sc.v, ts: Date.now(), deviceId: this.deviceId, form: sc.form });
+        this._db.run(
+            `INSERT OR REPLACE INTO state (ns, key, value, meta, updated_at) VALUES (?,?,?,?,?)`,
+            [ns, key, encoded, meta, Date.now()]
+        );
+        // Update memory cache
+        this._memCache.set(ns + '\x00' + key, next);
+        // Force immediate export (counter must survive crash)
+        await this._doSaveDb();
+        if (sc.cloud && this.onCloudDirty) { try { this.onCloudDirty(ns, key); } catch { /* ignore */ } }
+        // Also queue outbox if cloud
+        if (sc.cloud) { this._queueOutbox(ns, key, next, false); }
+        this.emit('changed', { ns, key, value: next, deleted: false });
+        return next;
+    }
+
     // ----- schema helpers -----------------------------------------------------
 
     private _requireSchema(ns: string): NsSchema {
