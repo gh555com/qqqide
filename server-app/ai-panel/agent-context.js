@@ -5,8 +5,7 @@
 // 核心机制：
 //   1. _compressContext() — 阻塞式：token 超 900k → 保留 10% 最近楼层（≥6层），压 90%
 //   2. _digestColdMessages() — 调 AI 压缩冷消息 → 32k 多重保证 + 无限重试
-//   3. _extractFloorMarkers() — 从 assistant 回复中提取 📌 回合总结 / 💎 核心财宝
-//   4. _buildDynamicContext() — 注入叙事 + 相关事实 + 回合摘要到 API 消息末尾
+//   3. _buildDynamicContext() — 注入叙事 + 相关事实 + 摘要到 API 消息末尾
 //
 // 关键设计（铁律）：
 //   - 压缩是打断任务：触发 → 停一切 → 等 q 拿到 → 删旧消息 → 再继续
@@ -24,34 +23,10 @@
     var KEEP_RATIO = 0.1;         // 保留最近 10%
     var MIN_FLOORS = 6;           // 最少保留 6 层楼（当前层 + 前 5 层）
     var MAX_FACTS = 100;          // 最多保留事实条数
-    var MAX_FLOOR_SUMMARIES = 30;   // 最多保留回合摘要
     // 压缩产出硬限 — 唯一真理在 ContentGateway.COMPACT_MAX_TOKENS（content-gateway.js）
     var COMPACT_MAX_TOKENS = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPACT_MAX_TOKENS : 32768);
     var COMPACT_RETRY_BASE_MS = 2000;    // 重试基础间隔 2s
     var COMPACT_RETRY_MAX_MS = 60000;    // 重试最大间隔 60s
-
-    // ═══ 从 assistant 消息中抽取 📌 回合总结 / 💎 核心财宝 ═══
-    AgentLoop.prototype._extractFloorMarkers = function (content) {
-        if (!content) return;
-        var pinMatch = content.match(/(?:^|\n)📌\s*(.+?)(?:\n|$)/);
-        if (pinMatch) {
-            var summary = pinMatch[1].trim().slice(0, 200);
-            if (summary) {
-                this._ctx.floorSummaries.push({ floor: this._ctx.totalFloors, summary: summary });
-                if (this._ctx.floorSummaries.length > MAX_FLOOR_SUMMARIES)
-                    this._ctx.floorSummaries = this._ctx.floorSummaries.slice(-MAX_FLOOR_SUMMARIES);
-            }
-        }
-        var treasureMatch = content.match(/(?:^|\n)💎\s*(.+?)(?:\n|$)/);
-        if (treasureMatch) {
-            var treasure = treasureMatch[1].trim().slice(0, 300);
-            if (treasure) {
-                this._ctx.treasures.push({ floor: this._ctx.totalFloors, content: treasure });
-                if (this._ctx.treasures.length > 20)
-                    this._ctx.treasures = this._ctx.treasures.slice(-20);
-            }
-        }
-    };
 
     // ═══ 单条消息 token 估算 ═══
     AgentLoop.prototype._estimateMsgTokens = function (msg) {
@@ -276,7 +251,8 @@
                     stream: false,
                     thinking: { type: 'enabled' },
                     reasoning_effort: 'max',
-                    max_tokens: COMPACT_MAX_TOKENS
+                    max_tokens: COMPACT_MAX_TOKENS,
+                    floor_id: self._floorId || ''
                 })
             });
 
@@ -312,22 +288,11 @@
                 ctx += '\n\nRELEVANT FACTS FROM EARLIER (' + relevant.length + '/' + this._ctx.facts.length + ' total):\n' + factsBlock;
             }
         }
-        if (this._ctx.floorSummaries.length > 0) {
-            var recentSummaries = this._ctx.floorSummaries.slice(-15);
-            var summaryLines = recentSummaries.map(function (s) { return '📌 ' + s.summary; }).join('\n');
-            ctx += '\n\nFLOOR CHECKPOINTS:\n' + summaryLines;
-        }
         if (this._ctx.treasures.length > 0) {
-            var recentTreasures = this._ctx.treasures.slice(-10);
-            var treasureLines = recentTreasures.map(function (t) {
-                var line = '💎 ' + t.content;
-                // 结构化数据：附加 gain/cost/urgency（对 AI 自身决策有用）
-                if (t.gain !== undefined && t.cost !== undefined) {
-                    line += '（gain:' + t.gain + ' / cost:' + t.cost + ' / ' + (t.urgency || 'later') + '）';
-                }
-                return line;
+            var recent = this._ctx.treasures.slice(-8);
+            ctx += '\n\nKEY DISCOVERIES:\n' + recent.map(function(t) {
+                return '💎 ' + t.content + ' [' + (t.urgency || 'later') + ']';
             }).join('\n');
-            ctx += '\n\nKEY DISCOVERIES:\n' + treasureLines;
         }
         return ctx.trim() ? ctx : '';
     };

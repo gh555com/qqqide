@@ -73,11 +73,27 @@ function _showFloorIndicatorBriefly() {
   }, 2000);
 }
 
-// ★ 仅用户主动操作才浮现：滚轮 + 1/2/q/w 键；程序化滚动不触发
+// ★ 仅用户主动快速滚动时才浮现豆腐块；慢速逐行滚（阅读态）不弹
+var _wheelBurstTimer = null;
+var _wheelBurstCount = 0;
+var _WHEEL_BURST_THRESHOLD = 3;   // 300ms 内 ≥3 次滚轮事件 = 快速滚动
+var _WHEEL_BURST_WINDOW = 300;
 $messages.addEventListener('wheel', function () {
-  _showFloorIndicatorBriefly();
+  _wheelBurstCount++;
+  if (_wheelBurstCount >= _WHEEL_BURST_THRESHOLD) {
+    _showFloorIndicatorBriefly();
+  }
+  if (_wheelBurstTimer) clearTimeout(_wheelBurstTimer);
+  _wheelBurstTimer = setTimeout(function () {
+    _wheelBurstCount = 0;
+    _wheelBurstTimer = null;
+  }, _WHEEL_BURST_WINDOW);
 });
+// ★ 1/2/q/w 键：仅在非编辑框内触发（避免在输入框中键入时误弹）
 document.addEventListener('keydown', function (e) {
+  var tag = document.activeElement ? document.activeElement.tagName : '';
+  var isInput = tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement.isContentEditable;
+  if (isInput) return;
   var k = e.key;
   if (k === '1' || k === '2' || k === 'q' || k === 'w') {
     _showFloorIndicatorBriefly();

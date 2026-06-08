@@ -202,7 +202,7 @@ var QuestStore = (function () {
 
         // 初始化 quest 元数据（含空的 floors 数组）
         await _setNow(QUEST_NS + '.' + id, {
-            ctx: { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 },
+            ctx: { narrative: '', facts: [], treasures: [], totalFloors: 0 },
             totalCostGe: 0,
             floorTimings: [],
             serverDrift: 0,
@@ -387,7 +387,7 @@ var QuestStore = (function () {
             floors.sort(function (a, b) { return a.n - b.n; });
         }
         qData.floors = floors;
-        if (!qData.ctx) qData.ctx = { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
+        if (!qData.ctx) qData.ctx = { narrative: '', facts: [], treasures: [], totalFloors: 0 };
         qData.ctx.totalFloors = Math.max(qData.ctx.totalFloors || 0, floors.length);
         qData.savedAt = Date.now();
         await _setNow(QUEST_NS + '.' + questId, qData);

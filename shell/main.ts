@@ -1241,7 +1241,7 @@ function registerIpc(): void {
     }
 
     ipcMain.handle('qqqide:search:query', async (_e, opts: SearchOpts) => {
-        const { query, searchPath, isRegex, caseSensitive, wholeWord, includePattern, excludePattern, contextLines = 0, maxResults = 5000, timeoutMs = 60000, respectGitignore = true } = opts;
+        const { query, searchPath, isRegex, caseSensitive, wholeWord, includePattern, excludePattern, contextLines = 0, maxResults = 5000, timeoutMs = 60000, respectGitignore = false } = opts;
         if (!query || !searchPath) return { error: 'missing query or searchPath', results: [], total: 0 };
 
         const startTime = Date.now();

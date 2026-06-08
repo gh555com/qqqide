@@ -259,6 +259,45 @@ function _a1InnerSp() {
     var s = document.createElement('span'); s.className = 'msg-a1-sp'; s.textContent = A1_INNER_SP; return s;
 }
 
+// ═══ A2 treasure block: per-floor treasures from AI envelope ═══
+function _initTreasureBlock(aiDiv) {
+    if (aiDiv._treasureBlock) return aiDiv._treasureBlock;
+    var block = document.createElement('div');
+    block.className = 'msg-a2';
+    // insert before A1 (or append to aiDiv if no A1 yet)
+    var a1 = aiDiv._a1Block;
+    if (a1) {
+        aiDiv.insertBefore(block, a1);
+    } else {
+        aiDiv.appendChild(block);
+    }
+    aiDiv._treasureBlock = block;
+    return block;
+}
+
+// ═══ 渲染 treasures 到 A3 block ═══
+function _renderTreasures(block, treasures) {
+    if (!block || !treasures || !treasures.length) {
+        if (block) block.classList.remove('has-treasures');
+        return;
+    }
+    block.innerHTML = '';
+    for (var i = 0; i < treasures.length; i++) {
+        var t = treasures[i];
+        var item = document.createElement('div');
+        item.className = 'msg-a2-item';
+        var badge = document.createElement('span');
+        badge.className = 'msg-a2-badge ' + (t.urgency || 'later');
+        badge.textContent = t.urgency === 'urgent' ? '!!' : (t.urgency === 'soon' ? '>>' : '..');
+        var text = document.createElement('span');
+        text.textContent = t.text || '';
+        item.appendChild(badge);
+        item.appendChild(text);
+        block.appendChild(item);
+    }
+    block.classList.add('has-treasures');
+}
+
 function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
     if (aiDiv._a1Block) return aiDiv._a1Block;
     var block = document.createElement('div');
@@ -773,7 +812,8 @@ async function _translateViaAI(text, targetLang, isIncremental) {
             max_tokens: Math.min(Math.ceil(text.length * 1.5) + 200, 32000),
             temperature: 0.1,
             thinking: { type: 'disabled' },
-            stream: false
+            stream: false,
+            floor_id: (typeof _capturedAgent !== 'undefined' && _capturedAgent._floorId) || ''
         })
     });
 

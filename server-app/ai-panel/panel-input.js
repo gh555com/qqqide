@@ -136,7 +136,7 @@ if ($tokenSave) $tokenSave.onclick = function () {
     }
 };
 
-// ── 编辑框自适应高度：始终比内容多一行，上限 333px ──
+// ── 编辑框自适应高度：始终比内容多一行（最少两行），上限 333px ──
 var _inputLineHeight = 0;
 var _inputMaxHeight = 333;
 function autoResizeInput() {
@@ -144,17 +144,16 @@ function autoResizeInput() {
     if (!_inputLineHeight) {
         _inputLineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
     }
-    // 空输入 → 恢复默认两行高，无滚动条
+    // 空输入 → 恢复默认两行高
     if (!el.value) {
+        el.rows = 2;
         el.style.height = '';
         el.style.overflowY = 'hidden';
         return;
     }
-    // 长文本（≥5000 字）：跳过 height='auto' 重排，直接用 scrollHeight（天然准确，避免卡顿）
-    // 短文本：先 'auto' 再读 scrollHeight，确保删文字后能缩回
-    if (el.value.length < 5000) {
-        el.style.height = 'auto';
-    }
+    // 强制 rows=1 再 auto，让 scrollHeight = 真实内容高度（不被 rows 地板抬高）
+    el.rows = 1;
+    el.style.height = 'auto';
     var sh = el.scrollHeight;
     var newH = sh + _inputLineHeight;
     if (newH >= _inputMaxHeight) {

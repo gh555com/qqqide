@@ -250,7 +250,7 @@ async function renderQuestDrop() {
             line.className = 'quest-drop-line';
             var prefix = document.createElement('span');
             prefix.className = 'quest-drop-prefix';
-            prefix.textContent = 'q' + (s.numericId || '?') + '.';
+            prefix.textContent = 'q' + (s.numericId || '?') + '. ';
             var title = document.createElement('span');
             title.className = 'quest-drop-title';
             title.textContent = s.title || '';
@@ -332,7 +332,7 @@ async function updateQuestTofu() {
     var quests = await questStore.list();
     var entry = quests.find(function (q) { return q.id === questActiveId; });
     if (entry) {
-        el.textContent = 'q' + (entry.numericId || '?') + '.' + (entry.title || '');
+        el.textContent = 'q' + (entry.numericId || '?') + '. ' + (entry.title || '');
         el.parentElement.classList.remove('quest-tofu-new');
     } else {
         el.textContent = '~ New quest ~';

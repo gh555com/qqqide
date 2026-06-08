@@ -125,7 +125,7 @@ var AgentLoop = (function () {
         this.log = this._log;          // alias for context engine
         // 上下文引擎
         this._compressing = false;
-        this._ctx = { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
+        this._ctx = { narrative: '', facts: [], treasures: [], totalFloors: 0 };
         // 计费
         this._floorCostWge = 0;
         this.totalCostGe = 0;
@@ -137,7 +137,7 @@ var AgentLoop = (function () {
         // 计费 flush
         this._floorId = '';
         this._currentFloorSummary = '';
-        this._currentFloorSummaryLang = '';
+        this._floorTreasures = [];
         // 楼层内 house 追踪
         this._houses = [];
         this._houseIndex = 0;
@@ -235,7 +235,7 @@ var AgentLoop = (function () {
     AgentLoop.prototype.clearConversation = function () {
         this.conversation = [];
         this._compressing = false;
-        this._ctx = { narrative: "", facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
+        this._ctx = { narrative: "", facts: [], treasures: [], totalFloors: 0 };
         this._visionCache.clear();
         this._houses = [];
         this._houseIndex = 0;
@@ -243,26 +243,34 @@ var AgentLoop = (function () {
         this._rulesVersion = "";
     };
 
-    // ---- 结构化信封注入：校验 JSON → 上下文引擎 -------
+    // ---- 结构化信封注入：校验 → A3渲染 + 上下文注入（去重，每条只写一次）-------
     AgentLoop.prototype._injectEnvelope = function (envelope) {
         if (!envelope || typeof envelope !== 'object') return;
-        // treasures: 数组校验
-        if (Array.isArray(envelope.treasures)) {
-            for (var i = 0; i < envelope.treasures.length; i++) {
-                var t = envelope.treasures[i];
-                if (!t || typeof t.text !== 'string' || !t.text.trim()) continue;
-                var gain = Number(t.gain) || 0;
-                var cost = Number(t.cost) || 0;
-                var urgency = (t.urgency === 'urgent' || t.urgency === 'soon' || t.urgency === 'later') ? t.urgency : 'later';
-                var text = t.text.trim().slice(0, 300);
-                // 只收入 ROI ≥ 7 的（兜底校验，即使 AI 不听话）
-                if ((gain - cost) >= 7) {
-                    this._ctx.treasures.push({ floor: this._ctx.totalFloors, content: text, gain: gain, cost: cost, urgency: urgency });
+        if (!Array.isArray(envelope.treasures)) return;
+        this._injectedTreasureKeys = this._injectedTreasureKeys || {};
+        var validated = [];
+        for (var i = 0; i < envelope.treasures.length; i++) {
+            var t = envelope.treasures[i];
+            if (!t || typeof t.text !== 'string' || !t.text.trim()) continue;
+            var gain = Number(t.gain) || 0;
+            var cost = Number(t.cost) || 0;
+            var urgency = (t.urgency === 'urgent' || t.urgency === 'soon' || t.urgency === 'later') ? t.urgency : 'later';
+            var text = t.text.trim().slice(0, 300);
+            if ((gain - cost) >= 7) {
+                validated.push({ text: text, urgency: urgency });
+                // 去重后注入上下文（每条 treasure 全局只写一次）
+                var key = text.slice(0, 80);
+                if (!this._injectedTreasureKeys[key]) {
+                    this._injectedTreasureKeys[key] = true;
+                    this._ctx.treasures.push({ floor: this._ctx.totalFloors, content: text, urgency: urgency });
+                    if (this._ctx.treasures.length > 30) this._ctx.treasures = this._ctx.treasures.slice(-30);
                 }
             }
-            if (this._ctx.treasures.length > 20) {
-                this._ctx.treasures = this._ctx.treasures.slice(-20);
-            }
+        }
+        this._floorTreasures = validated;
+        var aiDiv = this._activeAiDiv;
+        if (aiDiv && aiDiv._treasureBlock && typeof _renderTreasures === 'function') {
+            _renderTreasures(aiDiv._treasureBlock, validated);
         }
     };
 
@@ -329,11 +337,11 @@ var AgentLoop = (function () {
         self._floorCostWge = 0;
         self._floorFree = false;
         self._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-        self._currentFloorSummary = '';
+        self._currentFloorSummary = (userContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+        self._floorTreasures = [];
         self._floorTiming = { networkMs: 0, deepseekMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (self._serverDrift || 0) };
         self._floorStartServerMs = self._floorTiming.floorStartServerMs;  // 兼容旧引用
-        self._currentFloorSummaryLang = '';
-
+        
         // ═══ 视觉预分析：阿里眼睛(Qwen VL) → 文本 → DeepSeek大脑 ═══
         // 将用户问题一并发送，让阿里针对实际问题做定向识别
         var visionText = '';
@@ -530,17 +538,12 @@ var AgentLoop = (function () {
                     } else {
                         self.conversation.push(assistantMsg);
                     }
-                    // 信封已注入结构化数据，仅无信封时回退 regex 提取
-                    if (!response._envelope) {
-                        self._extractFloorMarkers(response.content);
-                    }
                     // 计费 + flush（写入账本）
                     self._flushBilling(token);
                     var costGe = self._floorCostWge / 10000;
                     self.totalCostGe += costGe;
                     self._lastCostDisplay = costGe < 0.001 ? '<0.001' : costGe.toFixed(4);
                     onCost(self._lastCostDisplay, self.totalCostGe, self._floorFree);
-                    self._housesPromise = self._summarizeHouses(token).catch(function () { });
                     onDone(response.content, self._floorTiming);
                     return response.content;
                 }
@@ -623,15 +626,11 @@ var AgentLoop = (function () {
                         self._floorTiming.deepseekMs += finalResp._streamMs;
                     }
                     self.conversation.push({ role: 'assistant', content: finalResp.content, _floor: self._ctx.totalFloors });
-                    if (!finalResp._envelope) {
-                        self._extractFloorMarkers(finalResp.content);
-                    }
                     var finalCostGe = self._floorCostWge / 10000;
                     self.totalCostGe += finalCostGe;
                     self._lastCostDisplay = finalCostGe < 0.001 ? '<0.001' : finalCostGe.toFixed(4);
                     onCost(self._lastCostDisplay, self.totalCostGe, self._floorFree);
                     self._flushBilling(token);
-                    self._housesPromise = self._summarizeHouses(token).catch(function () { });
                     onDone(finalResp.content, self._floorTiming);
                     return finalResp.content;
                 }
@@ -710,6 +709,9 @@ var AgentLoop = (function () {
                 var reqBody = { image: base64 };
                 if (prompt && typeof prompt === 'string' && prompt.trim()) {
                     reqBody.prompt = prompt.trim();
+                }
+                if (self._floorId) {
+                    reqBody.floor_id = self._floorId;
                 }
                 var resp = await fetch(VISION_URL, {
                     method: 'POST',
@@ -1100,10 +1102,6 @@ var AgentLoop = (function () {
         }
 
         var finalized = stripper.finalize();
-        if (finalized.summary) {
-            self._currentFloorSummary = finalized.summary;
-            if (finalized.lang) self._currentFloorSummaryLang = finalized.lang;
-        }
 
         // 结构化信封数据注入上下文引擎
         if (finalized.envelope) {
@@ -1266,80 +1264,15 @@ var AgentLoop = (function () {
                     }
                 }
             }
-            var lang = self._currentFloorSummaryLang || 'en';
             fetch(BILLING_FLUSH_URL, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer ' + token
                 },
-                body: JSON.stringify({ floor_id: self._floorId, summary: summary, lang: lang })
+                body: JSON.stringify({ floor_id: self._floorId, summary: summary })
             }).catch(function () { });
         } catch (_) { }
-    };
-
-    // ═══ 楼层结束后，轻量 AI 调用为每个 house 生成一句话总结 ═══
-    AgentLoop.prototype._summarizeHouses = async function (token) {
-        var self = this;
-        if (!self._houses || self._houses.length === 0) return;
-        var timeoutCtrl = new AbortController();
-        var tid = setTimeout(function () { timeoutCtrl.abort(); }, 8000);
-        // 合并两个信号：超时 或 用户中止（Chrome 108 无 AbortSignal.any，手动合并）
-        var combined = timeoutCtrl.signal;
-        if (self.abortController) {
-            var userAborted = false;
-            self.abortController.signal.addEventListener('abort', function () { userAborted = true; timeoutCtrl.abort(); });
-            if (self.abortController.signal.aborted) { return; }
-        }
-        try {
-            var lines = [];
-            for (var hi = 0; hi < self._houses.length; hi++) {
-                var h = self._houses[hi];
-                if (h.type === 'final') {
-                    lines.push('house ' + h.index + ': final answer, ' + h.ms + 'ms');
-                } else {
-                    var toolNames = h.tools.map(function (t) { return t.name; }).join(', ');
-                    lines.push('house ' + h.index + ': tools=[' + toolNames + '], ' + h.ms + 'ms');
-                }
-            }
-            var prompt = 'Summarize each step in ONE sentence (in user language). EACH summary MUST be ≤ 88 characters (≈ 15 English words). Be extremely concise. Output format: `N. summary`. Steps:\n' + lines.join('\n') + '\n\nSummaries (≤88 chars each):';
-            var resp = await fetch(GATEWAY_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                body: JSON.stringify({
-                    messages: [
-                        { role: 'system', content: 'You are a summarizer. Output ONLY numbered lines like "1. summary". No explanation.' },
-                        { role: 'user', content: prompt }
-                    ],
-                    stream: false,
-                    max_tokens: 1024,
-                    temperature: 0.1
-                }),
-                signal: combined
-            });
-            if (!resp.ok) {
-                self._log('[summarize] API ' + resp.status + ': ' + (await resp.text()).slice(0, 100));
-                return;
-            }
-            var data = await resp.json();
-            var text = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
-            self._log('[summarize] got ' + text.length + ' chars: ' + text.slice(0, 120));
-            var re = /(\d+)\.\s*(.+)/g;
-            var match;
-            var matchedCount = 0;
-            while ((match = re.exec(text)) !== null) {
-                var idx = parseInt(match[1], 10);
-                var summary = match[2].trim().slice(0, 88);
-                for (var hj = 0; hj < self._houses.length; hj++) {
-                    if (self._houses[hj].index === idx) { self._houses[hj].summary = summary; matchedCount++; break; }
-                }
-            }
-            self._log('[summarize] matched ' + matchedCount + '/' + self._houses.length + ' houses');
-        } catch (e) {
-            self._log('[summarize] ERROR: ' + (e.message || e));
-        } finally {
-            clearTimeout(tid);
-        }
     };
 
     // ---- 引导注入（旧）：将引导消息插入对话（不触发 API 调用） ----

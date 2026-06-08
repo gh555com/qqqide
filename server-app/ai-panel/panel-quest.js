@@ -475,6 +475,7 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
             allTxtPath: ag._allTxtPath || '',
             fileStats: _computeFileStats(ag._houses),
             clockTiming: ag._lastFloorTimingRecord || null,
+            treasures: ag._floorTreasures || [],
             createdAt: Date.now()
         };
         await questStore.saveFloor(questId, floorNum, floorPayload);
@@ -495,9 +496,6 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
     await questStore.save(questId, metaPayload);
 
     // generate floor txt ONLY for active quest (not background agents)
-    if (ag._housesPromise) {
-        try { await ag._housesPromise; } catch (_) { }
-    }
     if (ag === _activeAgent && questId === questActiveId) {
         await generateFloorTxt().catch(function () { });
         // 追加到 quest 级 search_quest.txt（全文检索用：时间线 + Q + A）

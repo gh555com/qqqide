@@ -306,7 +306,7 @@ async function _restoreAgentFromStore(questId, ag) {
 
         // 恢复 metadata
         if (data) {
-            ag._ctx = data.ctx || { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
+            ag._ctx = data.ctx || { narrative: '', facts: [], treasures: [], totalFloors: 0 };
             ag.totalCostGe = data.totalCostGe || 0;
             ag._lastApiPromptTokens = data.lastApiPromptTokens || 0;
             ag._floorTimings = data.floorTimings || [];
@@ -315,7 +315,7 @@ async function _restoreAgentFromStore(questId, ag) {
             ag._rulesVersion = data.rulesVersion || '';
             ag._persistentCount = data.persistentCount || 0;
         } else {
-            ag._ctx = { narrative: '', facts: [], floorSummaries: [], treasures: [], totalFloors: 0 };
+            ag._ctx = { narrative: '', facts: [], treasures: [], totalFloors: 0 };
             ag.totalCostGe = 0;
             ag._lastApiPromptTokens = 0;
             ag._floorTimings = [];

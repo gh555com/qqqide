@@ -19,12 +19,11 @@ END EVERY RESPONSE WITH a machine-readable envelope. The envelope is stripped by
 
 ENVELOPE (MANDATORY — append after your reply, separated by a blank line):
 ___qqq_env___
-{"treasures":[],"floor_summary":"事实摘要"}
+{"treasures":[]}
 ___end___
 
 RULES:
 - treasures: array of {text, gain, cost, urgency} for unimplemented improvements where (gain-cost)≥7. urgency: "later"|"soon"|"urgent". 0 items → empty array []. All labels in user's language.
-- floor_summary: one-sentence factual summary ≤200 chars, no credentials, user's language.
 - Markers ___qqq_env___ and ___end___ on their own lines. JSON after ___qqq_env___ (same line OK).
 
 PRINCIPLES:

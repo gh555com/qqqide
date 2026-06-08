@@ -556,6 +556,8 @@ window.addEventListener('beforeunload', function () {
 });
 
 // \u2550\u2550\u2550 \u66b4\u9732\u7ed9 card-pool.js \u8de8\u6a21\u5757\u8bbf\u95ee \u2550\u2550\u2550
+window._initTreasureBlock = _initTreasureBlock;
+window._renderTreasures = _renderTreasures;
 window._initA1Block = _initA1Block;
 window._initClockBlock = _initClockBlock;
 window.renderMarkdown = renderMarkdown;

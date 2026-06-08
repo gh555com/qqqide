@@ -267,13 +267,24 @@ var CardPool = (function () {
     aiEl.appendChild(aiEl._contentWrap);
     aiEl._fullText = aiText;
 
-    // ③ 创建电子钟+饼图（先于 A1，让 _initA1Block 的 insertBefore 找到 clockBlock）
+    // ③ 创建电子钟+饼图
     var _initClk = window._initClockBlock;
     if (typeof _initClk === 'function') {
       _initClk(aiEl);
     }
 
-    // ④ 创建 A1 豆腐块（clockBlock 已存在，insertBefore 精准插入时钟上方）
+    // ④ 创建 A2 treasure block（在 A1 上方）
+    var _initA3 = window._initTreasureBlock;
+    var _renderTr = window._renderTreasures;
+    if (typeof _initA3 === 'function') {
+      _initA3(aiEl);
+      // 恢复历史 treasures
+      if (typeof _renderTr === 'function' && fData.treasures && fData.treasures.length) {
+        _renderTr(aiEl._treasureBlock, fData.treasures);
+      }
+    }
+
+    // ⑤ 创建 A1 豆腐块（clockBlock 已存在，insertBefore 精准插入时钟上方）
     var meta = card._floorMetaMap[fNum];
     var a1El = null;
     var _a1Path = (meta && meta.allTxtPath) || '';
@@ -392,6 +403,12 @@ var CardPool = (function () {
     aiEl._renderScheduled = false;
     aiEl._renderedCount = 0;
     aiEl._lastParaEl = null;
+
+    // A2 treasure block（在 A1 上方）
+    var _initA3b = window._initTreasureBlock;
+    if (typeof _initA3b === 'function') {
+      _initA3b(aiEl);
+    }
 
     // A1 块（必须在电子钟之前）
     var _initA1b = window._initA1Block;

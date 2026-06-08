@@ -284,7 +284,7 @@ function estimateTokens() {
     if (!_activeAgent) return 0;
     var conv = agent.conversation;
     var ctx = agent._ctx;
-    var ctxHash = ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0) + '|' + (ctx.floorSummaries ? ctx.floorSummaries.length : 0)) : '';
+    var ctxHash = ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '';
     if (_estCache.convLen === conv.length && _estCache.ctxHash === ctxHash && _estCache.val > 0) {
         return _estCache.val;
     }
@@ -314,19 +314,11 @@ function estimateTokens() {
                 dynText += '- [' + (facts[fi].type || '') + '] ' + (facts[fi].content || '') + '\n';
             }
         }
-        if (ctx.floorSummaries && ctx.floorSummaries.length > 0) {
-            var summaries = ctx.floorSummaries.slice(-15);
-            dynText += '\n\nFLOOR CHECKPOINTS:\n';
-            for (var si = 0; si < summaries.length; si++) {
-                dynText += '\ud83d\udccc ' + (summaries[si].summary || '') + '\n';
-            }
-        }
         if (ctx.treasures && ctx.treasures.length > 0) {
-            var treasures = ctx.treasures.slice(-10);
-            dynText += '\n\nKEY DISCOVERIES:\n';
-            for (var ti = 0; ti < treasures.length; ti++) {
-                dynText += '\ud83d\udc8e ' + (treasures[ti].content || '') + '\n';
-            }
+            var recentT = ctx.treasures.slice(-8);
+            dynText += '\n\nKEY DISCOVERIES:\n' + recentT.map(function(t) {
+                return '💎 ' + (t.content || '') + ' [' + (t.urgency || 'later') + ']';
+            }).join('\n');
         }
         total += dynText.length / CHAR_PER_TOKEN;
     }

@@ -117,8 +117,8 @@ input, textarea { -webkit-user-select: text; user-select: text; }
     <div class="search-row">
       <span class="scope-label">范围</span>
       <input type="text" class="scope-input" id="scope-input" placeholder="搜索路径（点击放大镜自动填入）" spellcheck="false">
-      <label class="gitignore-toggle" id="lbl-gitignore" title="取消勾选可搜索 .gitignore 中排除的文件（如 qqq/）">
-        <input type="checkbox" id="chk-gitignore" checked> 尊重 .gitignore
+      <label class="gitignore-toggle" id="lbl-gitignore" title="勾选后跳过 .gitignore 中排除的文件（如 qqq/、node_modules）">
+        <input type="checkbox" id="chk-gitignore"> 尊重 .gitignore
       </label>
     </div>
     <div class="search-row">
@@ -178,7 +178,7 @@ var _searchTimer = null;
 var _lastQuery = '';
 var _lastResults = null; // raw results from backend
 var _searching = false;
-var _respectGitignore = true;
+var _respectGitignore = false;
 
 // ---- Toggle buttons ----
 function toggleBtn(btn, stateKey) {
