@@ -461,6 +461,22 @@
     name.className = 'aiv-block-name';
     name.textContent = truncName(proj.name);
 
+    // ★ 放大镜搜索按钮 — 点击打开 X 区搜索标签并自动填入此文件夹
+    const searchBtn = document.createElement('span');
+    searchBtn.className = 'aiv-block-search';
+    searchBtn.textContent = '🔍';
+    searchBtn.title = window._i ? window._i('shell.viewport.searchFolder', '搜索此文件夹') : '搜索此文件夹';
+    searchBtn.style.cssText = 'cursor:pointer;font-size:12px;padding:0 4px;margin-left:2px;border-radius:3px;opacity:0.6;transition:opacity 0.15s;';
+    searchBtn.addEventListener('mouseenter', function () { searchBtn.style.opacity = '1'; });
+    searchBtn.addEventListener('mouseleave', function () { searchBtn.style.opacity = '0.6'; });
+    searchBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      // 打开搜索标签并设置搜索范围
+      if (window.qqqideOpenSearch) {
+        window.qqqideOpenSearch(proj.path);
+      }
+    });
+
     const rmBtn = document.createElement('span');
     rmBtn.className = 'aiv-block-rm';
     if (idx === 0) {
@@ -482,6 +498,7 @@
 
     block.appendChild(icon);
     block.appendChild(name);
+    block.appendChild(searchBtn);
     block.appendChild(rmBtn);
 
     // hover → dropdown (150ms debounce: skip flicker when mouse zips across blocks)

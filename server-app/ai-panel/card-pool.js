@@ -398,8 +398,12 @@ var CardPool = (function () {
     var _updA1b = window._updateA1Row1;
     if (allTxtPath && typeof _initA1b === 'function') {
       var a1El = _initA1b(aiEl, allTxtPath, questId, floorNum);
-      if (a1El && typeof _updA1b === 'function') {
-        _updA1b(a1El, floorNum, 0, 0);
+      if (a1El) {
+        if (typeof _updA1b === 'function') { _updA1b(a1El, floorNum, 0, 0); }
+        // ★ 新楼层所有计数归零，防上一楼层残影
+        if (a1El._r1sz) a1El._r1sz.textContent = '0';
+        if (a1El._r2a) a1El._r2a.textContent = 'FILE 0';
+        if (a1El._r2b) a1El._r2b.textContent = '   ROW +0 -0';
       }
     }
 

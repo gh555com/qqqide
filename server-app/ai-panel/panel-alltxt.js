@@ -55,10 +55,8 @@ function stopStream() {
     setStreaming(false);
 }
 
-// \u2550\u2550\u2550 All.txt streaming (per-floor) \u2550\u2550\u2550
-// _allTxtPath / _allTxtPollTimer / _allTxtA1Block 已移入 agent（ag._allTxtPath 等）
-var _allTxtLiveTimer = null;
-var _allTxtOpenInEditor = false;
+// ═══ All.txt streaming (per-floor) ═══
+var _allTxtPollTimer = null;
 function _countRooms(houses) {
     if (!houses) return 0;
     var n = 0;
@@ -339,11 +337,10 @@ function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
     block.onclick = function (e) {
         if (e.target === r3 || r3.contains(e.target)) return;
         _postToHost({ type: 'qqq-file-open-right', path: allTxtPath, readOnly: true, search: 'ROOM' });
-        _allTxtOpenInEditor = true;
+        aiDiv._allTxtOpenInEditor = true;
     };
 
     aiDiv._a1Block = block;
-    _allTxtA1Block = block;
     return block;
 }
 
@@ -360,7 +357,7 @@ function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, vis
         var hCount = agent._houses.length;
         var rCount = _countRooms(agent._houses);
 
-        var a1 = aiDiv._a1Block || _allTxtA1Block;
+        var a1 = aiDiv._a1Block;
         if (a1 && a1._r1fn) {
             _updateA1Row1(a1, floorNum, hCount, rCount);
         }
@@ -383,7 +380,7 @@ function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, vis
             _safeWriteAllTxt(allTxtPath, allLines, 0).then(function (ok) {
                 if (ok) {
                     _updateA1Size(a1, floorNum, hCount, rCount, allTxtPath);
-                    if (_allTxtOpenInEditor) {
+                    if (aiDiv._allTxtOpenInEditor) {
                         var bridge2 = window.parent && window.parent.qqqideBridge;
                         if (bridge2) {
                             bridge2.fs.read(allTxtPath).then(function (content) {
@@ -424,7 +421,7 @@ async function _finalizeAllTxt(aiDiv, allTxtPath, agent, floorNum, timing) {
             var rCount = _countRooms(agent._houses);
             _updateA1Row1(a1, floorNum, hCount, rCount, st.size);
         }
-        if (_allTxtOpenInEditor) {
+        if (aiDiv._allTxtOpenInEditor) {
             var content = await bridge.fs.read(allTxtPath).catch(function () { return ''; });
             parent.postMessage({ type: 'qqq-editor-refresh', path: allTxtPath, content: content }, '*');
         }
@@ -435,14 +432,6 @@ async function _finalizeAllTxt(aiDiv, allTxtPath, agent, floorNum, timing) {
 
 function _stopAllTxtStream() {
     if (_allTxtPollTimer) { clearInterval(_allTxtPollTimer); _allTxtPollTimer = null; }
-    _allTxtA1Block = null;
-    _allTxtPath = null;
-    _stopAllTxtLive();
-}
-
-function _stopAllTxtLive() {
-    if (_allTxtLiveTimer) { clearInterval(_allTxtLiveTimer); _allTxtLiveTimer = null; }
-    _allTxtOpenInEditor = false;
 }
 
 // \u2550\u2550\u2550 A1 \u6570\u5b57\u589e\u957f\u70ab\u5f69\u52a8\u753b \u2550\u2550\u2550
@@ -478,7 +467,7 @@ function _updateA1Row2(block, agent, force) {
         cache = { files: {}, added: 0, deleted: 0, lastTs: 0 };
         _fileStatsCache[cacheKey] = cache;
     }
-    if (!force && now - cache.lastTs < 5000 && cache._seenHouses >= houses.length) return;
+    if (!force && now - cache.lastTs < 5000 && cache._seenHouses >= houses.length && houses.length > 0) return;
     cache.lastTs = now;
     cache._seenHouses = houses.length;
     var fs = _computeFileStats(houses);

@@ -198,8 +198,6 @@ async function sendMessage() {
         _allTxtDirLocal = _projectRoot + '/qqq/quests/' + (typeof qDirName2 !== 'undefined' ? qDirName2 : '') + '/' + (typeof fDirName2 !== 'undefined' ? fDirName2 : '') + '/';
     }
     var _allTxtPathLocal = _allTxtDirLocal ? _allTxtDirLocal + 'all.txt' : '';
-    _allTxtPath = _allTxtPathLocal;
-    agent._currentAllTxtPath = _allTxtPathLocal;
     agent._allTxtPath = _allTxtPathLocal;
     var _bridge = window.parent && window.parent.qqqideBridge;
     if (_bridge && _allTxtDirLocal) {
@@ -208,6 +206,8 @@ async function sendMessage() {
     var aiDiv = cardPool.startBuildingFloor(_capturedQuestId, floorNum, _allTxtPathLocal);
     if (!aiDiv) { _sending = false; updateQueueBtn(); return; }
     aiDiv._allTxtPath = _allTxtPathLocal;
+    // ★ 新楼层开始，清空 agent._houses 防止 _updateA1Row2 读到上一楼层残影
+    _capturedAgent._houses = [];
     startFloorTimer(aiDiv, _capturedAgent);
     _startAllTxtStream(aiDiv, _allTxtPathLocal, _capturedAgent, floorNum, text, '');
     _startAutoSave();
@@ -304,7 +304,7 @@ async function sendMessage() {
                     console.warn('[onDone] div detached but card pool not available, skipping rebuild');
                 }
 
-                var _ftxtPath = (_targetDiv2 && _targetDiv2._allTxtPath) || _allTxtPath;
+                var _ftxtPath = (_targetDiv2 && _targetDiv2._allTxtPath) || _capturedAgent._allTxtPath || '';
                 await _finalizeAllTxt(_targetDiv2 || aiDiv, _ftxtPath, _capturedAgent, floorNum, timing);
                 if (_activeAgent === _capturedAgent) {
                     updateCtxBtn();

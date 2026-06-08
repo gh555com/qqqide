@@ -172,6 +172,12 @@ const QQQ = {
         },
     },
 
+    // ---- search (高性能项目搜索引擎) ----
+    search: {
+        query: (opts: { query: string; searchPath: string; isRegex?: boolean; caseSensitive?: boolean; wholeWord?: boolean; includePattern?: string; excludePattern?: string; contextLines?: number; maxResults?: number; timeoutMs?: number }) => ipcRenderer.invoke('qqqide:search:query', opts),
+        replace: (opts: { replacements: Array<{ file: string; line: number; col: number; matchLen: number; replacement: string }> }) => ipcRenderer.invoke('qqqide:search:replace', opts),
+    },
+
     // ---- ai (one-shot AI calls for hover, inline completions, etc.) ----
     ai: {
         hover: (context: string) => ipcRenderer.invoke('qqqide:ai:hover', context),

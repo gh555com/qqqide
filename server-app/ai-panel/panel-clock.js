@@ -246,7 +246,17 @@ async function renderQuestDrop() {
         (function (s) {
             var item = document.createElement('div');
             item.className = 'quest-drop-item' + (s.id === questActiveId ? ' active' : '');
-            item.textContent = 'q' + (s.numericId || '?') + '.' + (s.title || '');
+            var line = document.createElement('span');
+            line.className = 'quest-drop-line';
+            var prefix = document.createElement('span');
+            prefix.className = 'quest-drop-prefix';
+            prefix.textContent = 'q' + (s.numericId || '?') + '.';
+            var title = document.createElement('span');
+            title.className = 'quest-drop-title';
+            title.textContent = s.title || '';
+            line.appendChild(prefix);
+            line.appendChild(title);
+            item.appendChild(line);
             item.onclick = function (e) { e.stopPropagation(); closeQuestDrop(); switchQuest(s.id); };
             body.appendChild(item);
         })(filtered[i]);

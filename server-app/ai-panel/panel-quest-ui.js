@@ -95,7 +95,6 @@ async function switchQuest(id) {
                 _activeAgent._activeAiDiv = bDOM.aiEl;
             }
         }
-        _allTxtPath = _activeAgent._currentAllTxtPath || _activeAgent._allTxtPath || '';
 
         restoreQuestUIState(id);
         renderQueueStrip();

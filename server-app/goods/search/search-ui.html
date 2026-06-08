@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Search</title>
+<style>
+:root {
+  --base03: #002b36; --base02: #073642; --base01: #777777; --base00: #7a7874;
+  --base0: #7a7874; --base1: #a8a6a2; --base2: #eee8d5; --base3: #fdf6e3;
+  --yellow: #b58900; --orange: #cb4b16; --red: #dc322f; --magenta: #d33682;
+  --violet: #6c71c4; --blue: #e8a030; --cyan: #2aa198; --green: #859900;
+  --bg-color: var(--base3); --bg-highlight: var(--base2);
+  --text-primary: var(--base00); --text-secondary: var(--base01); --text-dim: var(--base1);
+  --border-color: var(--base2); --border-strong: var(--base1);
+  --match-bg: #fff3a0; --match-text: #000; --match-active-bg: #ffb020;
+}
+[data-theme="dark"] {
+  --base03: #fdf6e3; --base02: #eee8d5; --base01: #93a1a1; --base00: #c8c4b8;
+  --base0: #a8a49c; --base1: #6a6660; --base2: #2a2a2a; --base3: #1e1e1e;
+  --yellow: #d4a017; --orange: #e07020; --red: #ff4444; --magenta: #c06080;
+  --violet: #a08060; --blue: #d4a017; --cyan: #5abfb5; --green: #8fbc5a;
+  --bg-color: #1e1e1e; --bg-highlight: #2a2a2a;
+  --text-primary: #d4d0c8; --text-secondary: #a8a49c; --text-dim: #6a6660;
+  --border-color: #333333; --border-strong: #555555;
+  --match-bg: #5a4a10; --match-text: #ffe070; --match-active-bg: #7a6020;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; forced-color-adjust: none; }
+html, body { font-family: Tahoma, sans-serif; font-size: 13px; height: 100%; width: 100%; background: var(--bg-color); color: var(--text-primary); overflow: hidden; }
+::selection { background: rgb(255,211,2) !important; color: black !important; }
+input, textarea { -webkit-user-select: text; user-select: text; }
+
+.search-container { display: flex; flex-direction: column; height: 100%; }
+
+/* ---- toolbar ---- */
+.search-toolbar { padding: 8px 12px; border-bottom: 1px solid var(--border-color); flex-shrink: 0; }
+.search-row { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+.search-row:last-child { margin-bottom: 0; }
+.search-input { flex: 1; height: 26px; padding: 2px 8px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--bg-highlight); color: var(--text-primary); font-size: 13px; font-family: Consolas, monospace; outline: none; }
+.search-input:focus { border-color: var(--blue); }
+.search-input.error { border-color: var(--red); }
+.toggle-btn { width: 26px; height: 26px; border: 1px solid var(--border-color); border-radius: 3px; background: transparent; color: var(--text-dim); font-size: 12px; font-weight: bold; line-height: 26px; text-align: center; cursor: pointer; flex-shrink: 0; }
+.toggle-btn:hover { background: var(--bg-highlight); color: var(--text-primary); }
+.toggle-btn.active { background: var(--blue); color: #1e1e1e; border-color: var(--blue); }
+.scope-input { flex: 1; height: 24px; padding: 2px 6px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--bg-highlight); color: var(--text-secondary); font-size: 11px; font-family: Consolas, monospace; outline: none; }
+.scope-input:focus { border-color: var(--blue); }
+.scope-label { font-size: 11px; color: var(--text-dim); white-space: nowrap; min-width: 32px; }
+.replace-input { flex: 1; height: 26px; padding: 2px 8px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--bg-highlight); color: var(--text-primary); font-size: 13px; font-family: Consolas, monospace; outline: none; }
+.replace-input:focus { border-color: var(--blue); }
+.action-btn { height: 26px; padding: 0 10px; border: 1px solid var(--border-color); border-radius: 3px; background: transparent; color: var(--text-primary); font-size: 11px; cursor: pointer; white-space: nowrap; }
+.action-btn:hover { background: var(--bg-highlight); }
+.action-btn.primary { background: var(--blue); color: #1e1e1e; border-color: var(--blue); }
+.action-btn.primary:hover { opacity: 0.9; }
+
+/* ---- status bar ---- */
+.search-status { padding: 4px 12px; border-bottom: 1px solid var(--border-color); font-size: 11px; color: var(--text-dim); flex-shrink: 0; display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.search-status .count { color: var(--text-primary); font-weight: bold; }
+.search-status .elapsed { color: var(--text-dim); }
+
+/* ---- results area ---- */
+.search-results { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 4px 0; }
+.search-results::-webkit-scrollbar { width: 6px; }
+.search-results::-webkit-scrollbar-thumb { background: var(--base1); border-radius: 3px; }
+
+/* file group */
+.file-group { margin-bottom: 2px; }
+.file-header { display: flex; align-items: center; padding: 4px 12px; cursor: pointer; font-size: 12px; gap: 6px; position: sticky; top: 0; background: var(--bg-color); z-index: 2; }
+.file-header:hover { background: var(--bg-highlight); }
+.file-header .arrow { width: 12px; font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
+.file-header .fname { font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-header .fpath { color: var(--text-dim); font-size: 11px; margin-left: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.file-header .fcount { color: var(--text-dim); font-size: 11px; flex-shrink: 0; }
+
+/* match line */
+.match-line { display: flex; align-items: baseline; padding: 2px 12px 2px 30px; cursor: pointer; font-family: Consolas, 'Courier New', monospace; font-size: 12px; line-height: 1.5; min-height: 20px; }
+.match-line:hover { background: var(--bg-highlight); }
+.match-line .ln { width: 42px; text-align: right; color: var(--text-dim); margin-right: 8px; flex-shrink: 0; font-size: 11px; }
+.match-line .content { white-space: pre; overflow: hidden; text-overflow: ellipsis; flex: 1; }
+.match-line .content .hl { background: var(--match-bg); color: var(--match-text); border-radius: 1px; padding: 0 1px; }
+.context-line { padding: 1px 12px 1px 30px; font-family: Consolas, 'Courier New', monospace; font-size: 11px; color: var(--text-dim); line-height: 1.4; }
+.context-line .ln { width: 42px; text-align: right; display: inline-block; margin-right: 8px; }
+.context-line .content { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+
+/* collapsed */
+.file-group.collapsed .match-line,
+.file-group.collapsed .context-line { display: none; }
+.file-group.collapsed .arrow { transform: rotate(-90deg); }
+
+/* empty state */
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); gap: 8px; }
+.empty-state .icon { font-size: 48px; opacity: 0.3; }
+.empty-state .hint { font-size: 13px; }
+
+/* replace preview */
+.match-line.replacing .content .hl { text-decoration: line-through; opacity: 0.6; }
+.match-line .replace-text { background: var(--green); color: #fff; border-radius: 1px; padding: 0 1px; margin-left: 2px; font-style: italic; }
+</style>
+</head>
+<body>
+<div class="search-container">
+  <!-- Toolbar -->
+  <div class="search-toolbar">
+    <!-- Row 1: Search input + toggles -->
+    <div class="search-row">
+      <input type="text" class="search-input" id="search-query" placeholder="搜索..." autofocus spellcheck="false">
+      <button class="toggle-btn" id="btn-regex" title="正则表达式 (Alt+R)">.*</button>
+      <button class="toggle-btn" id="btn-case" title="区分大小写 (Alt+C)">Aa</button>
+      <button class="toggle-btn" id="btn-word" title="全字匹配 (Alt+W)">ab</button>
+    </div>
+    <!-- Row 2: Replace input -->
+    <div class="search-row" id="replace-row">
+      <input type="text" class="replace-input" id="replace-input" placeholder="替换..." spellcheck="false">
+      <button class="action-btn" id="btn-replace-all" title="全部替换">全部替换</button>
+    </div>
+    <!-- Row 3: Scope + filters -->
+    <div class="search-row">
+      <span class="scope-label">范围</span>
+      <input type="text" class="scope-input" id="scope-input" placeholder="搜索路径（点击放大镜自动填入）" spellcheck="false">
+    </div>
+    <div class="search-row">
+      <span class="scope-label">包含</span>
+      <input type="text" class="scope-input" id="include-input" placeholder="*.ts, *.js, src/**" spellcheck="false">
+      <span class="scope-label" style="margin-left:8px">排除</span>
+      <input type="text" class="scope-input" id="exclude-input" placeholder="*.min.js, dist/**" spellcheck="false">
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div class="search-status" id="status-bar">
+    <span id="status-text">输入搜索内容开始</span>
+  </div>
+
+  <!-- Results -->
+  <div class="search-results" id="results-container">
+    <div class="empty-state" id="empty-state">
+      <span class="icon">🔍</span>
+      <span class="hint">输入关键字开始搜索</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+'use strict';
+
+// ---- Bridge ----
+var bridge = window.parent && window.parent.qqqideBridge;
+if (!bridge) {
+  // Retry after a short delay (iframe may not have parent bridge immediately)
+  setTimeout(function() { bridge = window.parent && window.parent.qqqideBridge; }, 200);
+}
+
+// ---- DOM refs ----
+var $query = document.getElementById('search-query');
+var $replace = document.getElementById('replace-input');
+var $scope = document.getElementById('scope-input');
+var $include = document.getElementById('include-input');
+var $exclude = document.getElementById('exclude-input');
+var $btnRegex = document.getElementById('btn-regex');
+var $btnCase = document.getElementById('btn-case');
+var $btnWord = document.getElementById('btn-word');
+var $btnReplaceAll = document.getElementById('btn-replace-all');
+var $statusBar = document.getElementById('status-bar');
+var $statusText = document.getElementById('status-text');
+var $results = document.getElementById('results-container');
+var $empty = document.getElementById('empty-state');
+
+// ---- State ----
+var _isRegex = false;
+var _caseSensitive = false;
+var _wholeWord = false;
+var _searchTimer = null;
+var _lastQuery = '';
+var _lastResults = null; // raw results from backend
+var _searching = false;
+
+// ---- Toggle buttons ----
+function toggleBtn(btn, stateKey) {
+  return function() {
+    if (stateKey === 'regex') _isRegex = !_isRegex;
+    if (stateKey === 'case') _caseSensitive = !_caseSensitive;
+    if (stateKey === 'word') _wholeWord = !_wholeWord;
+    btn.classList.toggle('active', stateKey === 'regex' ? _isRegex : stateKey === 'case' ? _caseSensitive : _wholeWord);
+    triggerSearch();
+  };
+}
+$btnRegex.addEventListener('click', toggleBtn($btnRegex, 'regex'));
+$btnCase.addEventListener('click', toggleBtn($btnCase, 'case'));
+$btnWord.addEventListener('click', toggleBtn($btnWord, 'word'));
+
+// ---- Keyboard shortcuts ----
+document.addEventListener('keydown', function(e) {
+  if (e.altKey && e.key === 'r') { e.preventDefault(); $btnRegex.click(); }
+  if (e.altKey && e.key === 'c') { e.preventDefault(); $btnCase.click(); }
+  if (e.altKey && e.key === 'w') { e.preventDefault(); $btnWord.click(); }
+  // Ctrl+Shift+F focuses search input
+  if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') { e.preventDefault(); $query.focus(); $query.select(); }
+  // Escape clears
+  if (e.key === 'Escape') { $query.value = ''; triggerSearch(); }
+});
+
+// ---- Search trigger (debounced) ----
+function triggerSearch() {
+  if (_searchTimer) clearTimeout(_searchTimer);
+  _searchTimer = setTimeout(doSearch, 200);
+}
+
+$query.addEventListener('input', triggerSearch);
+$include.addEventListener('input', triggerSearch);
+$exclude.addEventListener('input', triggerSearch);
+$scope.addEventListener('input', triggerSearch);
+$query.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { if (_searchTimer) clearTimeout(_searchTimer); doSearch(); }
+});
+
+// ---- Main search ----
+async function doSearch() {
+  var query = $query.value;
+  if (!query) {
+    clearResults();
+    $statusText.textContent = '输入搜索内容开始';
+    return;
+  }
+
+  var searchPath = $scope.value.trim();
+  if (!searchPath) {
+    // Try to get main project from parent
+    try {
+      var vp = window.parent && window.parent.qqqideViewport;
+      if (vp) {
+        var main = vp.getMainProject();
+        if (main) { searchPath = main.path; $scope.value = searchPath; }
+      }
+    } catch(_) {}
+  }
+  if (!searchPath) {
+    $statusText.textContent = '⚠️ 请指定搜索范围（点击视口放大镜或手动输入路径）';
+    return;
+  }
+
+  // Validate regex
+  if (_isRegex) {
+    try { new RegExp(query); $query.classList.remove('error'); }
+    catch(e) { $query.classList.add('error'); $statusText.textContent = '⚠️ 无效正则: ' + e.message; return; }
+  } else {
+    $query.classList.remove('error');
+  }
+
+  _searching = true;
+  $statusText.textContent = '🔍 搜索中...';
+
+  try {
+    if (!bridge) bridge = window.parent && window.parent.qqqideBridge;
+    if (!bridge || !bridge.search) {
+      $statusText.textContent = '⚠️ 搜索引擎未就绪';
+      return;
+    }
+
+    var result = await bridge.search.query({
+      query: query,
+      searchPath: searchPath,
+      isRegex: _isRegex,
+      caseSensitive: _caseSensitive,
+      wholeWord: _wholeWord,
+      includePattern: $include.value.trim() || undefined,
+      excludePattern: $exclude.value.trim() || undefined,
+      contextLines: 1,
+      maxResults: 5000,
+      timeoutMs: 30000,
+    });
+
+    if (result.error) {
+      $statusText.textContent = '⚠️ ' + result.error;
+      clearResults();
+      return;
+    }
+
+    _lastResults = result;
+    _lastQuery = query;
+    renderResults(result);
+    var statusMsg = '<span class="count">' + result.total + ' 个匹配</span>';
+    statusMsg += ' · ' + countFiles(result.results) + ' 个文件';
+    statusMsg += ' <span class="elapsed">(' + result.elapsed + 'ms / ' + result.filesScanned + ' 文件扫描)</span>';
+    if (result.truncated) statusMsg += ' · <span style="color:var(--orange)">结果已截断</span>';
+    $statusBar.innerHTML = statusMsg;
+
+  } catch(err) {
+    $statusText.textContent = '⚠️ 搜索出错: ' + (err.message || err);
+  } finally {
+    _searching = false;
+  }
+}
+
+function countFiles(results) {
+  var seen = new Set();
+  for (var i = 0; i < results.length; i++) seen.add(results[i].file);
+  return seen.size;
+}
+
+// ---- Render results ----
+function clearResults() {
+  $results.innerHTML = '';
+  $empty.style.display = '';
+  $results.appendChild($empty);
+  _lastResults = null;
+}
+
+function renderResults(data) {
+  $results.innerHTML = '';
+  $empty.style.display = 'none';
+  if (!data.results || data.results.length === 0) {
+    $empty.querySelector('.hint').textContent = '无匹配结果';
+    $empty.style.display = '';
+    $results.appendChild($empty);
+    return;
+  }
+
+  // Group by file
+  var groups = new Map();
+  for (var i = 0; i < data.results.length; i++) {
+    var r = data.results[i];
+    if (!groups.has(r.file)) groups.set(r.file, []);
+    groups.get(r.file).push(r);
+  }
+
+  // Deduplicate match lines (same file+line shown once with first match)
+  groups.forEach(function(matches, file) {
+    var seen = new Set();
+    var deduped = [];
+    for (var j = 0; j < matches.length; j++) {
+      var key = matches[j].line;
+      if (!seen.has(key)) { seen.add(key); deduped.push(matches[j]); }
+    }
+    groups.set(file, deduped);
+  });
+
+  // Use document fragment for performance
+  var frag = document.createDocumentFragment();
+  groups.forEach(function(matches, filePath) {
+    var groupEl = document.createElement('div');
+    groupEl.className = 'file-group';
+
+    // File header
+    var header = document.createElement('div');
+    header.className = 'file-header';
+    var arrow = document.createElement('span');
+    arrow.className = 'arrow';
+    arrow.textContent = '▼';
+    var fname = document.createElement('span');
+    fname.className = 'fname';
+    fname.textContent = baseName(filePath);
+    var fpath = document.createElement('span');
+    fpath.className = 'fpath';
+    fpath.textContent = dirName(filePath);
+    fpath.title = filePath;
+    var fcount = document.createElement('span');
+    fcount.className = 'fcount';
+    fcount.textContent = matches.length + ' 匹配';
+    header.appendChild(arrow);
+    header.appendChild(fname);
+    header.appendChild(fpath);
+    header.appendChild(fcount);
+    header.addEventListener('click', function() {
+      groupEl.classList.toggle('collapsed');
+    });
+    groupEl.appendChild(header);
+
+    // Match lines
+    for (var k = 0; k < matches.length; k++) {
+      var match = matches[k];
+      // Context before
+      if (match.before) {
+        for (var b = 0; b < match.before.length; b++) {
+          var ctxB = document.createElement('div');
+          ctxB.className = 'context-line';
+          ctxB.innerHTML = '<span class="ln">' + (match.line - match.before.length + b) + '</span><span class="content">' + escHtml(match.before[b]) + '</span>';
+          groupEl.appendChild(ctxB);
+        }
+      }
+      // Match line
+      var lineEl = document.createElement('div');
+      lineEl.className = 'match-line';
+      lineEl.dataset.file = filePath;
+      lineEl.dataset.line = match.line;
+      lineEl.dataset.col = match.col;
+      var lnSpan = '<span class="ln">' + match.line + '</span>';
+      var contentSpan = '<span class="content">' + highlightMatch(match.text, _lastQuery, _isRegex, _caseSensitive, _wholeWord) + '</span>';
+      lineEl.innerHTML = lnSpan + contentSpan;
+      lineEl.addEventListener('click', (function(f, l, c) {
+        return function() { openFile(f, l, c); };
+      })(filePath, match.line, match.col));
+      groupEl.appendChild(lineEl);
+      // Context after
+      if (match.after) {
+        for (var a = 0; a < match.after.length; a++) {
+          var ctxA = document.createElement('div');
+          ctxA.className = 'context-line';
+          ctxA.innerHTML = '<span class="ln">' + (match.line + 1 + a) + '</span><span class="content">' + escHtml(match.after[a]) + '</span>';
+          groupEl.appendChild(ctxA);
+        }
+      }
+    }
+    frag.appendChild(groupEl);
+  });
+  $results.appendChild(frag);
+}
+
+function highlightMatch(text, query, isRegex, caseSensitive, wholeWord) {
+  var escaped = escHtml(text);
+  try {
+    var pattern = isRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (wholeWord) pattern = '\\b' + pattern + '\\b';
+    var flags = caseSensitive ? 'g' : 'gi';
+    var re = new RegExp(pattern, flags);
+    // We need to highlight on the escaped HTML — tricky. Do it on raw text, then rebuild.
+    var parts = [];
+    var lastIdx = 0;
+    var m;
+    re.lastIndex = 0;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > lastIdx) parts.push(escHtml(text.slice(lastIdx, m.index)));
+      parts.push('<span class="hl">' + escHtml(m[0]) + '</span>');
+      lastIdx = m.index + m[0].length;
+      if (m[0].length === 0) { re.lastIndex++; }
+    }
+    if (lastIdx < text.length) parts.push(escHtml(text.slice(lastIdx)));
+    return parts.join('');
+  } catch(_) {
+    return escaped;
+  }
+}
+
+function escHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function baseName(p) {
+  var parts = p.replace(/\\/g, '/').split('/');
+  return parts[parts.length - 1] || p;
+}
+
+function dirName(p) {
+  var norm = p.replace(/\\/g, '/');
+  var idx = norm.lastIndexOf('/');
+  return idx > 0 ? norm.slice(0, idx) : '';
+}
+
+// ---- Open file in editor ----
+function openFile(filePath, line, col) {
+  try {
+    if (window.parent && window.parent.qqqTabs && window.parent.qqqTabs.openFile) {
+      window.parent.qqqTabs.openFile(filePath, null, null, { line: line, col: col });
+    } else {
+      // Fallback: dispatch event
+      window.parent.document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: filePath, line: line, col: col } }));
+    }
+  } catch(_) {}
+}
+
+// ---- Replace All ----
+$btnReplaceAll.addEventListener('click', async function() {
+  if (!_lastResults || !_lastResults.results || _lastResults.results.length === 0) return;
+  var replaceText = $replace.value;
+  if (replaceText === undefined) return;
+
+  if (!bridge) bridge = window.parent && window.parent.qqqideBridge;
+  if (!bridge || !bridge.search) return;
+
+  // Build replacements
+  var query = _lastQuery;
+  var pattern = _isRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (_wholeWord) pattern = '\\b' + pattern + '\\b';
+  var flags = _caseSensitive ? 'g' : 'gi';
+  var re;
+  try { re = new RegExp(pattern, flags); } catch(_) { return; }
+
+  var replacements = [];
+  for (var i = 0; i < _lastResults.results.length; i++) {
+    var r = _lastResults.results[i];
+    // Find all matches on this line to build replacement entries
+    re.lastIndex = 0;
+    var m;
+    while ((m = re.exec(r.text)) !== null) {
+      replacements.push({
+        file: r.file,
+        line: r.line,
+        col: m.index + 1,
+        matchLen: m[0].length,
+        replacement: _isRegex ? r.text.slice(m.index, m.index + m[0].length).replace(re, replaceText) : replaceText,
+      });
+      if (m[0].length === 0) break;
+    }
+  }
+
+  if (replacements.length === 0) return;
+
+  $statusText.textContent = '🔄 替换中... (' + replacements.length + ' 处)';
+  try {
+    var result = await bridge.search.replace({ replacements: replacements });
+    $statusText.textContent = '✅ 已替换 ' + result.replaced + ' 处';
+    // Re-search to refresh
+    setTimeout(doSearch, 500);
+  } catch(err) {
+    $statusText.textContent = '⚠️ 替换出错: ' + (err.message || err);
+  }
+});
+
+// ---- Theme sync ----
+function syncTheme() {
+  try {
+    var parentTheme = window.parent.document.documentElement.getAttribute('data-theme');
+    if (parentTheme) document.documentElement.setAttribute('data-theme', parentTheme);
+  } catch(_) {}
+}
+syncTheme();
+window.addEventListener('message', function(e) {
+  if (e.data && e.data.type === 'qqqide-theme-change') {
+    var t = e.data.theme || e.data.dark;
+    if (t !== undefined) document.documentElement.setAttribute('data-theme', t ? 'dark' : '');
+    else syncTheme();
+  }
+  // Scope auto-fill from external trigger
+  if (e.data && e.data.type === 'qqqide-search-set-scope') {
+    $scope.value = e.data.path || '';
+    // Auto-trigger search if query already has content
+    if ($query.value) triggerSearch();
+    $query.focus();
+  }
+});
+
+// ---- Init: try to get default scope from viewport ----
+setTimeout(function() {
+  try {
+    var vp = window.parent && window.parent.qqqideViewport;
+    if (vp && !$scope.value) {
+      var main = vp.getMainProject();
+      if (main) $scope.value = main.path;
+    }
+  } catch(_) {}
+  syncTheme();
+}, 100);
+
+})();
+</script>
+</body>
+</html>

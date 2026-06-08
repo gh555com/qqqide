@@ -472,7 +472,7 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
             costWge: ag._floorCostWge,
             floorFree: ag._floorFree || false,
             lastUserInput: ag._lastUserInput,
-            allTxtPath: ag._currentAllTxtPath || _allTxtPath || '',
+            allTxtPath: ag._allTxtPath || '',
             fileStats: _computeFileStats(ag._houses),
             clockTiming: ag._lastFloorTimingRecord || null,
             createdAt: Date.now()

@@ -10,8 +10,8 @@ async function generateFloorTxt() {
     var questId = questActiveId;
     if (!questId) return;
 
-    // 优先使用已存储的精确路径（与流式写入一致），回退到旧行为
-    var allTxtPath = agent._currentAllTxtPath || _allTxtPath || '';
+    // 优先使用已存储的精确路径（与流式写入一致）
+    var allTxtPath = agent._allTxtPath || '';
     var dir = '';
     if (allTxtPath) {
         dir = allTxtPath.replace(/\/all\.txt$/, '/');
@@ -116,7 +116,7 @@ async function generateFloorTxt() {
             lines.push('\u2550\u2550\u2550\u2550 floor ' + floorNum + ' stats \u2550\u2550\u2550\u2550');
             lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.deepseekMs ? timing.deepseekMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.toolMs ? timing.toolMs.toFixed(0) : '0') + 'ms  cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge');
             // az 区文本化
-            var _floorDataForAz = { houses: houses, allTxtPath: _allTxtPath, costWge: agent._floorCostWge, floorFree: agent._floorFree || false };
+            var _floorDataForAz = { houses: houses, allTxtPath: agent._allTxtPath || '', costWge: agent._floorCostWge, floorFree: agent._floorFree || false };
             var _questMetaForAz = { floorTimings: agent._floorTimings || [] };
             var _azLines2 = _buildAzText(floorNum, _floorDataForAz, _questMetaForAz);
             for (var _azi2 = 0; _azi2 < _azLines2.length; _azi2++) {
@@ -129,11 +129,6 @@ async function generateFloorTxt() {
         var _txtContent = lines.join('\n');
         await bridge.fs.write(dir + 'all.txt', _txtContent);
         // [silent] floor txt written
-        // 若用户正打开此文件，刷新编辑器到最终版
-        if (_allTxtOpenInEditor) {
-            var _finalContent = lines.join('\n');
-            _postToHost({ type: 'qqq-editor-refresh', path: dir + 'all.txt', content: _finalContent });
-        }
     } catch (e) {
         console.warn('[quests] generateFloorTxt failed:', e);
     }

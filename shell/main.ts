@@ -108,7 +108,7 @@ async function _checkAndDownloadShellUpdate(): Promise<boolean> {
 
     const shellOutDir = path.join(__dirname); // shell-out/
     const stagingDir = path.join(portable.cache, 'staging', 'shell-out-next');
-        const tarPath = path.join(portable.cache, 'staging', 'shell-out.tar.gz');
+    const tarPath = path.join(portable.cache, 'staging', 'shell-out.tar.gz');
 
     try {
         // Build the full update URL
@@ -145,7 +145,7 @@ async function _checkAndDownloadShellUpdate(): Promise<boolean> {
             if (fs.existsSync(localVersionPath)) {
                 localVersion = fs.readFileSync(localVersionPath, 'utf8').trim();
             }
-        } catch {}
+        } catch { }
 
         if (latestVersion && localVersion === latestVersion) {
             return false; // Already up to date
@@ -153,7 +153,7 @@ async function _checkAndDownloadShellUpdate(): Promise<boolean> {
 
         // Download shell-out.tar.xz
         console.log('[shell-update] downloading', updateUrl);
-        try { fs.mkdirSync(path.dirname(tarPath), { recursive: true }); } catch {}
+        try { fs.mkdirSync(path.dirname(tarPath), { recursive: true }); } catch { }
 
         const downloadOk = await new Promise<boolean>((resolve) => {
             const req = lib.get(updateUrl, { timeout: 30000 }, (res) => {
@@ -195,8 +195,8 @@ async function _checkAndDownloadShellUpdate(): Promise<boolean> {
 
         // Extract to staging
         console.log('[shell-update] extracting to', stagingDir);
-        try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch {}
-        try { fs.mkdirSync(stagingDir, { recursive: true }); } catch {}
+        try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
+        try { fs.mkdirSync(stagingDir, { recursive: true }); } catch { }
 
         const extractResult = spawnSync('tar', ['-xzf', tarPath, '-C', stagingDir], {
             stdio: 'pipe',
@@ -205,19 +205,19 @@ async function _checkAndDownloadShellUpdate(): Promise<boolean> {
 
         if (extractResult.status !== 0) {
             console.log('[shell-update] extract failed, status:', extractResult.status);
-            try { fs.rmSync(tarPath); } catch {}
+            try { fs.rmSync(tarPath); } catch { }
             return false;
         }
 
         // Cleanup tar
-        try { fs.unlinkSync(tarPath); } catch {}
+        try { fs.unlinkSync(tarPath); } catch { }
 
         // Save version
         if (latestVersion) {
             try {
                 fs.mkdirSync(path.dirname(localVersionPath), { recursive: true });
                 fs.writeFileSync(localVersionPath, latestVersion, 'utf8');
-            } catch {}
+            } catch { }
         }
 
         console.log('[shell-update] staged for next restart:', stagingDir);
@@ -444,7 +444,7 @@ function createWindow(): BrowserWindow {
         try {
             if (win.isDestroyed() || win.isMinimized() || win.isMaximized()) { return; }
             const b = win.getBounds();
-            stateStore.set('qqqide', 'window_bounds', { x: b.x, y: b.y, w: b.width, h: b.height, maximized: false }).catch(() => {});
+            stateStore.set('qqqide', 'window_bounds', { x: b.x, y: b.y, w: b.width, h: b.height, maximized: false }).catch(() => { });
         } catch { /* ignore */ }
     };
     const debouncedSaveBounds = () => {
@@ -454,7 +454,7 @@ function createWindow(): BrowserWindow {
     win.on('resize', debouncedSaveBounds);
     win.on('move', debouncedSaveBounds);
     // Save maximized state (no debounce needed — it's a single event).
-    win.on('maximize', () => { try { stateStore.set('qqqide', 'window_bounds', { maximized: true }).catch(() => {}); } catch { /* ignore */ } });
+    win.on('maximize', () => { try { stateStore.set('qqqide', 'window_bounds', { maximized: true }).catch(() => { }); } catch { /* ignore */ } });
     win.on('unmaximize', () => { try { saveBounds(); } catch { /* ignore */ } });
 
     // Wire download progress → renderer
@@ -594,7 +594,7 @@ async function boot(): Promise<void> {
             console.log('[boot] shell update staged — will apply on next restart');
             // TODO: show a subtle notification to user via IPC
         }
-    }).catch(() => {});
+    }).catch(() => { });
 
     mainWindow = createWindow();
     const healthy = await healthCheck(bootConfig.url, bootConfig.healthTimeoutMs);
@@ -1168,6 +1168,247 @@ function registerIpc(): void {
         return Promise.race([doSearch(), aiTimeout(timeoutMs, matches.length > 0 ? matches.join('\n') : '')]);
     });
 
+    // ============================================================
+    // qqqide:search — 高性能项目搜索引擎（碾压 VS Code 搜索）
+    // 特性: 并行文件读取 + .gitignore + 上下文行 + 流式返回 + 替换
+    // ============================================================
+    const SEARCH_SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'backup', '__pycache__', '.venv', 'vendor', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs', '.hg', '.svn', '.DS_Store', 'bower_components', '.idea', '.vs']);
+    const SEARCH_BINARY_EXTS = new Set(['.exe', '.dll', '.so', '.dylib', '.bin', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.mp3', '.mp4', '.avi', '.mkv', '.mov', '.wav', '.flac', '.ogg', '.zip', '.tar', '.gz', '.xz', '.bz2', '.7z', '.rar', '.woff', '.woff2', '.ttf', '.eot', '.pdf', '.psd', '.ai', '.sketch', '.vsix', '.wasm', '.class', '.o', '.obj', '.pyc', '.pyo', '.sqlite', '.db', '.mdb']);
+    const SEARCH_MAX_FILE = 5 * 1024 * 1024; // 5MB per file
+    const SEARCH_CONCURRENCY = 16; // parallel file reads
+
+    // Parse .gitignore-like file into test function
+    function parseIgnoreFile(content: string): (rel: string, isDir: boolean) => boolean {
+        const rules: Array<{ pattern: RegExp; negate: boolean; dirOnly: boolean }> = [];
+        for (const raw of content.split('\n')) {
+            let line = raw.trim();
+            if (!line || line.startsWith('#')) continue;
+            let negate = false;
+            if (line.startsWith('!')) { negate = true; line = line.slice(1); }
+            const dirOnly = line.endsWith('/');
+            if (dirOnly) line = line.slice(0, -1);
+            // Convert glob to regex
+            let re = line.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+                .replace(/\*\*/g, '{{GLOBSTAR}}')
+                .replace(/\*/g, '[^/]*')
+                .replace(/\?/g, '[^/]')
+                .replace(/\{\{GLOBSTAR\}\}/g, '.*');
+            if (!re.startsWith('/') && !re.startsWith('.*')) re = '(^|.*/?)' + re;
+            else if (re.startsWith('/')) re = '^' + re.slice(1);
+            rules.push({ pattern: new RegExp(re + '(/|$)'), negate, dirOnly });
+        }
+        return (rel: string, isDir: boolean) => {
+            let ignored = false;
+            for (const r of rules) {
+                if (r.dirOnly && !isDir) continue;
+                if (r.pattern.test(rel)) ignored = !r.negate;
+            }
+            return ignored;
+        };
+    }
+
+    // Glob pattern to regex
+    function globToRegex(pattern: string): RegExp {
+        const re = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&')
+            .replace(/\*\*/g, '{{GLOBSTAR}}')
+            .replace(/\*/g, '[^/\\\\]*')
+            .replace(/\?/g, '[^/\\\\]')
+            .replace(/\{\{GLOBSTAR\}\}/g, '.*');
+        return new RegExp('^' + re + '$', 'i');
+    }
+
+    interface SearchOpts {
+        query: string;
+        searchPath: string;
+        isRegex?: boolean;
+        caseSensitive?: boolean;
+        wholeWord?: boolean;
+        includePattern?: string; // glob, e.g. "*.ts,*.js"
+        excludePattern?: string; // glob, e.g. "*.min.js,dist/**"
+        contextLines?: number;   // lines before/after match
+        maxResults?: number;
+        timeoutMs?: number;
+    }
+
+    interface SearchMatch {
+        file: string;
+        line: number;
+        col: number;
+        text: string;
+        before?: string[];
+        after?: string[];
+    }
+
+    ipcMain.handle('qqqide:search:query', async (_e, opts: SearchOpts) => {
+        const { query, searchPath, isRegex, caseSensitive, wholeWord, includePattern, excludePattern, contextLines = 0, maxResults = 5000, timeoutMs = 60000 } = opts;
+        if (!query || !searchPath) return { error: 'missing query or searchPath', results: [], total: 0 };
+
+        const startTime = Date.now();
+
+        // Build search regex
+        let pattern: string;
+        if (isRegex) {
+            pattern = query;
+        } else {
+            pattern = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+        if (wholeWord) pattern = '\\b' + pattern + '\\b';
+        let regex: RegExp;
+        try { regex = new RegExp(pattern, caseSensitive ? 'g' : 'gi'); }
+        catch { return { error: 'invalid regex: ' + query, results: [], total: 0 }; }
+
+        // Build include/exclude matchers
+        const includeMatchers: RegExp[] = [];
+        const excludeMatchers: RegExp[] = [];
+        if (includePattern) {
+            for (const p of includePattern.split(',').map(s => s.trim()).filter(Boolean)) {
+                try { includeMatchers.push(globToRegex(p)); } catch { }
+            }
+        }
+        if (excludePattern) {
+            for (const p of excludePattern.split(',').map(s => s.trim()).filter(Boolean)) {
+                try { excludeMatchers.push(globToRegex(p)); } catch { }
+            }
+        }
+
+        // Load .gitignore from root
+        let gitignoreTest: ((rel: string, isDir: boolean) => boolean) | null = null;
+        try {
+            const gi = await fs.promises.readFile(path.join(searchPath, '.gitignore'), 'utf8');
+            gitignoreTest = parseIgnoreFile(gi);
+        } catch { }
+
+        const results: SearchMatch[] = [];
+        let totalMatches = 0;
+        let aborted = false;
+
+        // Collect all files first (fast parallel readdir), then search in parallel
+        const filePaths: string[] = [];
+        const rootNorm = searchPath.replace(/\\/g, '/').replace(/\/$/, '');
+
+        async function collectFiles(dir: string, depth: number): Promise<void> {
+            if (aborted || depth > 20) return;
+            let entries: fs.Dirent[];
+            try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); }
+            catch { return; }
+            const subdirs: string[] = [];
+            for (const ent of entries) {
+                if (aborted) return;
+                const full = path.join(dir, ent.name);
+                const rel = full.replace(/\\/g, '/').slice(rootNorm.length + 1);
+                if (ent.isDirectory()) {
+                    if (ent.name.startsWith('.') && SEARCH_SKIP_DIRS.has(ent.name)) continue;
+                    if (SEARCH_SKIP_DIRS.has(ent.name)) continue;
+                    if (gitignoreTest && gitignoreTest(rel, true)) continue;
+                    if (excludeMatchers.some(m => m.test(rel) || m.test(rel + '/'))) continue;
+                    subdirs.push(full);
+                } else {
+                    const ext = path.extname(ent.name).toLowerCase();
+                    if (SEARCH_BINARY_EXTS.has(ext)) continue;
+                    if (gitignoreTest && gitignoreTest(rel, false)) continue;
+                    if (includeMatchers.length > 0 && !includeMatchers.some(m => m.test(ent.name) || m.test(rel))) continue;
+                    if (excludeMatchers.some(m => m.test(ent.name) || m.test(rel))) continue;
+                    filePaths.push(full);
+                }
+            }
+            // Parallel subdirectory descent
+            await Promise.all(subdirs.map(d => collectFiles(d, depth + 1)));
+        }
+
+        await collectFiles(searchPath, 0);
+
+        // Parallel file search with concurrency limit
+        let fileIdx = 0;
+        async function worker(): Promise<void> {
+            while (!aborted) {
+                const idx = fileIdx++;
+                if (idx >= filePaths.length) return;
+                if (totalMatches >= maxResults) { aborted = true; return; }
+                if (Date.now() - startTime > timeoutMs) { aborted = true; return; }
+
+                const filePath = filePaths[idx];
+                try {
+                    const stat = await fs.promises.stat(filePath);
+                    if (stat.size > SEARCH_MAX_FILE) continue;
+                    const content = await fs.promises.readFile(filePath, 'utf8');
+                    const lines = content.split('\n');
+                    for (let li = 0; li < lines.length; li++) {
+                        if (totalMatches >= maxResults) break;
+                        regex.lastIndex = 0;
+                        const m = regex.exec(lines[li]);
+                        if (m) {
+                            totalMatches++;
+                            const match: SearchMatch = {
+                                file: filePath,
+                                line: li + 1,
+                                col: m.index + 1,
+                                text: lines[li],
+                            };
+                            if (contextLines > 0) {
+                                match.before = lines.slice(Math.max(0, li - contextLines), li);
+                                match.after = lines.slice(li + 1, li + 1 + contextLines);
+                            }
+                            results.push(match);
+                            // Check for more matches on same line
+                            while (totalMatches < maxResults) {
+                                const m2 = regex.exec(lines[li]);
+                                if (!m2) break;
+                                totalMatches++;
+                                results.push({ file: filePath, line: li + 1, col: m2.index + 1, text: lines[li] });
+                            }
+                        }
+                    }
+                } catch { /* skip unreadable */ }
+            }
+        }
+
+        const workers: Promise<void>[] = [];
+        for (let i = 0; i < SEARCH_CONCURRENCY; i++) workers.push(worker());
+        await Promise.all(workers);
+
+        return {
+            results,
+            total: totalMatches,
+            filesScanned: filePaths.length,
+            elapsed: Date.now() - startTime,
+            truncated: totalMatches >= maxResults,
+        };
+    });
+
+    // qqqide:search:replace — 批量替换
+    ipcMain.handle('qqqide:search:replace', async (_e, opts: { replacements: Array<{ file: string; line: number; col: number; matchLen: number; replacement: string }> }) => {
+        const { replacements } = opts;
+        if (!replacements || replacements.length === 0) return { replaced: 0 };
+
+        // Group by file
+        const byFile = new Map<string, typeof replacements>();
+        for (const r of replacements) {
+            const arr = byFile.get(r.file) || [];
+            arr.push(r);
+            byFile.set(r.file, arr);
+        }
+
+        let replaced = 0;
+        for (const [filePath, edits] of byFile) {
+            try {
+                const content = await fs.promises.readFile(filePath, 'utf8');
+                const lines = content.split('\n');
+                // Apply edits in reverse order to preserve positions
+                const sorted = edits.slice().sort((a, b) => b.line - a.line || b.col - a.col);
+                for (const edit of sorted) {
+                    const li = edit.line - 1;
+                    if (li < 0 || li >= lines.length) continue;
+                    const before = lines[li].slice(0, edit.col - 1);
+                    const after = lines[li].slice(edit.col - 1 + edit.matchLen);
+                    lines[li] = before + edit.replacement + after;
+                    replaced++;
+                }
+                await fs.promises.writeFile(filePath, lines.join('\n'), 'utf8');
+            } catch { /* skip errors */ }
+        }
+        return { replaced };
+    });
+
     // read_file — 读文件 + 行切片 (1 IPC, 消除大文件序列化开销)
     // ==== qwr 机器 — 全局唯一真理写机器 ====
     const _qw = new Map<string, Promise<any>>();
@@ -1493,7 +1734,7 @@ function registerIpc(): void {
                     return { ok: false, locked: true, existingWindowId: null };
                 }
                 // 僵尸锁：删除
-                try { fs.unlinkSync(lockPath); } catch (_) {}
+                try { fs.unlinkSync(lockPath); } catch (_) { }
             } catch (_) { /* 锁文件不存在，正常 */ }
         }
         const newWin = createWindow();
