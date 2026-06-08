@@ -36,8 +36,10 @@ body {
 /* ---- 中间固定块 —— 菜单+中区+状态栏（left/right 随 wings 调整，内部永不变） ---- */
 .qqq-main {
   position: absolute;
-  top: 0; bottom: 0;
-  left: 0; right: 0;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -48,7 +50,8 @@ body {
 /* ---- 左右翼 —— 全高 iframe，无菜单无状态栏 ---- */
 .qqq-wing {
   position: absolute;
-  top: 0; bottom: 0;
+  top: 0;
+  bottom: 0;
   width: 0;
   overflow: hidden;
   z-index: 5;
@@ -57,7 +60,12 @@ body {
   transition: none;
   contain: layout style;
 }
-.qqq-wing iframe { width: 100%; height: 100%; border: 0; }
+
+.qqq-wing iframe {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
 
 /* ---- Utility ---- */
 .qqq-hidden {
@@ -598,6 +606,7 @@ body {
   outline: none !important;
   background: transparent !important;
 }
+
 /* overview ruler 内的 canvas 也不要边框 */
 .monaco-editor .overviewRuler canvas {
   border: none !important;
@@ -670,45 +679,90 @@ body {
 
 /* ── 免费时段指示器（状态栏内） ── */
 .qqq-status-free {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-weight: 700; font-size: 11px; white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 11px;
+  white-space: nowrap;
   margin-right: 16px;
 }
+
 .qqq-free-badge {
-  padding: 2px 8px; border-radius: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
   font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
   font-variant-numeric: tabular-nums;
   letter-spacing: .3px;
   transition: all .2s;
 }
+
 .qqq-free-badge.qqq-free-on {
-  background: #0a0; color: #fff;
+  background: #0a0;
+  color: #fff;
   border: 1.5px solid #0f0;
   box-shadow: 0 0 8px #0f0, 0 0 18px #0f0;
   animation: qqqFreePulse .8s ease-in-out infinite alternate, qqqFreeRainbow 2s linear infinite;
 }
+
 .qqq-free-badge.qqq-free-ending {
-  background: #e8a030; color: #000;
+  background: #e8a030;
+  color: #000;
   border: 1.5px solid #ff0;
   box-shadow: 0 0 12px #e8a030, 0 0 24px #e8a030;
   animation: qqqFreePulse .3s ease-in-out infinite alternate;
 }
+
 .qqq-free-badge.qqq-free-soon {
-  background: #555; color: #ccc;
+  background: #555;
+  color: #ccc;
   border: 1px solid #777;
   box-shadow: 0 0 4px #666;
   animation: qqqFreePulse 2s ease-in-out infinite alternate;
 }
+
 .qqq-free-cd {
-  color: inherit; font-family: ui-monospace, monospace; font-size: 10px; opacity: .85;
+  color: inherit;
+  font-family: ui-monospace, monospace;
+  font-size: 10px;
+  opacity: .85;
 }
-@keyframes qqqFreePulse { from { transform: scale(1); } to { transform: scale(1.06); } }
+
+@keyframes qqqFreePulse {
+  from {
+    transform: scale(1);
+  }
+
+  to {
+    transform: scale(1.06);
+  }
+}
+
 @keyframes qqqFreeRainbow {
-  0%  { border-color: #0f0; box-shadow: 0 0 8px #0f0, 0 0 18px #0f0; }
-  25% { border-color: #ff0; box-shadow: 0 0 8px #ff0, 0 0 18px #ff0; }
-  50% { border-color: #0ff; box-shadow: 0 0 8px #0ff, 0 0 18px #0ff; }
-  75% { border-color: #f0f; box-shadow: 0 0 8px #f0f, 0 0 18px #f0f; }
-  100%{ border-color: #0f0; box-shadow: 0 0 8px #0f0, 0 0 18px #0f0; }
+  0% {
+    border-color: #0f0;
+    box-shadow: 0 0 8px #0f0, 0 0 18px #0f0;
+  }
+
+  25% {
+    border-color: #ff0;
+    box-shadow: 0 0 8px #ff0, 0 0 18px #ff0;
+  }
+
+  50% {
+    border-color: #0ff;
+    box-shadow: 0 0 8px #0ff, 0 0 18px #0ff;
+  }
+
+  75% {
+    border-color: #f0f;
+    box-shadow: 0 0 8px #f0f, 0 0 18px #f0f;
+  }
+
+  100% {
+    border-color: #0f0;
+    box-shadow: 0 0 8px #0f0, 0 0 18px #0f0;
+  }
 }
 
 /* ============================================================================
@@ -823,26 +877,32 @@ body {
   background: #fafaf8 !important;
   border-color: #c8c8c0 !important;
 }
+
 [data-theme="dark"] .aiv-dropdown,
 [data-theme="dark"] .aiv-submenu {
   background: var(--card-bg) !important;
   border-color: var(--border-color) !important;
 }
+
 /* ── 撞色 hover：浅色黑底白字 / 深色白底黑字 ── */
-.aiv-dd-row:hover, .aiv-recent-row:hover {
+.aiv-dd-row:hover,
+.aiv-recent-row:hover {
   background: #000 !important;
   color: #fff !important;
 }
+
 [data-theme="dark"] .aiv-dd-row:hover,
 [data-theme="dark"] .aiv-recent-row:hover {
   background: #fff !important;
   color: #000 !important;
 }
+
 /* ── 面包屑：与 hover 同款撞色，路径清晰可见 ── */
 .aiv-breadcrumb {
   background: #000 !important;
   color: #fff !important;
 }
+
 [data-theme="dark"] .aiv-breadcrumb {
   background: #fff !important;
   color: #000 !important;
@@ -1076,6 +1136,7 @@ body {
   word-break: break-all;
   border: 1px solid var(--border-color);
 }
+
 .qqq-overlay-table-wrapper .msg-ai code {
   background: var(--card-bg);
   color: var(--text-primary);
@@ -1087,34 +1148,78 @@ body {
   word-break: break-all;
   overflow-wrap: break-word;
 }
+
 .qqq-overlay-table-wrapper .msg-ai pre code {
   background: none;
   padding: 0;
   color: inherit;
   border: none;
 }
+
 .qqq-overlay-table-wrapper .msg-ai ul,
 .qqq-overlay-table-wrapper .msg-ai ol {
   margin: 4px 0 4px 20px;
   padding: 0;
 }
+
 .qqq-overlay-table-wrapper .msg-ai li {
   margin: 2px 0;
 }
 
 /* ═══ Monaco find-widget 搜索框配色覆写（仅改搜索框控件，不动 editor 正文区） ═══ */
-/* 选中文字 */
+
+/* 搜索框整体容器 → 跟随 solarized 主题 */
+.monaco-editor .find-widget {
+  background-color: var(--card-bg) !important;
+  border-color: var(--border-color) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* 输入框背景/文字 */
+.monaco-editor .find-widget .monaco-inputbox {
+  background-color: var(--background-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+.monaco-editor .find-widget .monaco-inputbox input {
+  background-color: var(--background-color) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 选中文字背景色 → 金色（不要蓝色） */
 .monaco-editor .find-widget .monaco-inputbox input::selection {
   background-color: #ffd302 !important;
   color: #000 !important;
 }
+
 /* 焦点边框 → Solarized yellow（替代默认蓝色） */
 .monaco-editor .find-widget .monaco-inputbox.synthetic-focus,
-.monaco-editor .find-widget .monaco-inputbox.focused {
+.monaco-editor .find-widget .monaco-inputbox.focused,
+.monaco-editor .find-widget .monaco-inputbox:focus-within {
   border-color: var(--yellow) !important;
   box-shadow: 0 0 0 1px var(--yellow) !important;
 }
+
 .monaco-editor .find-widget .monaco-inputbox input:focus-visible,
 .monaco-editor .find-widget .monaco-inputbox input:focus {
+  outline: none !important;
   outline-color: var(--yellow) !important;
+}
+
+/* 匹配计数文字 */
+.monaco-editor .find-widget .matchesCount {
+  color: var(--text-secondary) !important;
+}
+
+/* 按钮配色 */
+.monaco-editor .find-widget .button {
+  color: var(--text-primary) !important;
+}
+
+.monaco-editor .find-widget .button:hover {
+  background-color: var(--gold-accent) !important;
+}
+
+.monaco-editor .find-widget .button.checked {
+  border-color: var(--yellow) !important;
 }

@@ -26,36 +26,39 @@ function _updateFloorIndicator() {
       bestFloor = el._floor;
     }
   }
-  if (bestFloor !== null && bestFloor !== undefined) {
-    var timingStr = '';
-    var dom = card.floorDOM[bestFloor];
-    if (dom && dom.aiEl) {
-      var minEl = dom.aiEl._clockMin;
-      var secEl = dom.aiEl._clockSec;
-      if (minEl && secEl) {
-        var mt = (minEl.textContent || '').replace(/m.*$/, '');
-        var st = (secEl.textContent || '').replace(/^[^\d]*/, '').replace(/s.*$/, '');
-        if (mt || st) timingStr = ' ● ' + (mt || '0') + 'm:' + (st || '0') + 's';
-      }
-    }
-    // ★ 楼层时间戳（从 agent._floorTimings 查找）
-    var tsStr = '';
-    var ag = typeof _activeAgent !== 'undefined' ? _activeAgent : null;
-    if (ag && ag._floorTimings) {
-      for (var ti = ag._floorTimings.length - 1; ti >= 0; ti--) {
-        var ft = ag._floorTimings[ti];
-        if (ft.floorIndex === bestFloor && ft.finishedAt) {
-          var startMs = ft.durationMs ? new Date(ft.finishedAt).getTime() - ft.durationMs : new Date(ft.finishedAt).getTime();
-          var d = new Date(startMs);
-          var pad = function(n) { return (n < 10 ? '0' : '') + n; };
-          tsStr = ' ● ' + d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' +
-                  pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-          break;
-        }
-      }
-    }
-    _floorIndicatorEl.querySelector('.floor-ind-tofu').innerHTML = 'F<span style="font-weight:bold;font-size:14px">' + escHtml(String(bestFloor)) + '</span>' + escHtml(tsStr + timingStr);
+  // ★ 楼层必须 ≥1（无 F0）；无效楼层直接隐藏指示器
+  if (typeof bestFloor !== 'number' || bestFloor < 1) {
+    _floorIndicatorEl.classList.remove('visible');
+    return;
   }
+  var timingStr = '';
+  var dom = card.floorDOM[bestFloor];
+  if (dom && dom.aiEl) {
+    var minEl = dom.aiEl._clockMin;
+    var secEl = dom.aiEl._clockSec;
+    if (minEl && secEl) {
+      var mt = (minEl.textContent || '').replace(/m.*$/, '');
+      var st = (secEl.textContent || '').replace(/^[^\d]*/, '').replace(/s.*$/, '');
+      if (mt || st) timingStr = ' ● ' + (mt || '0') + 'm:' + (st || '0') + 's';
+    }
+  }
+  // ★ 楼层时间戳（从 agent._floorTimings 查找）
+  var tsStr = '';
+  var ag = typeof _activeAgent !== 'undefined' ? _activeAgent : null;
+  if (ag && ag._floorTimings) {
+    for (var ti = ag._floorTimings.length - 1; ti >= 0; ti--) {
+      var ft = ag._floorTimings[ti];
+      if (ft.floorIndex === bestFloor && ft.finishedAt) {
+        var startMs = ft.durationMs ? new Date(ft.finishedAt).getTime() - ft.durationMs : new Date(ft.finishedAt).getTime();
+        var d = new Date(startMs);
+        var pad = function(n) { return (n < 10 ? '0' : '') + n; };
+        tsStr = ' ● ' + d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' +
+                pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+        break;
+      }
+    }
+  }
+  _floorIndicatorEl.querySelector('.floor-ind-tofu').innerHTML = '<span style="font-weight:bold;font-size:14px">F' + escHtml(String(bestFloor)) + '</span>' + escHtml(tsStr + timingStr);
 }
 
 function _showFloorIndicatorBriefly() {
@@ -70,11 +73,13 @@ function _showFloorIndicatorBriefly() {
   }, 2000);
 }
 
-// 监听滚动 + 滚轮 → 显示指示器
-$messages.addEventListener('scroll', function () {
-  _updateFloorIndicator();
-  _showFloorIndicatorBriefly();
-});
+// ★ 仅用户主动操作才浮现：滚轮 + 1/2/q/w 键；程序化滚动不触发
 $messages.addEventListener('wheel', function () {
   _showFloorIndicatorBriefly();
+});
+document.addEventListener('keydown', function (e) {
+  var k = e.key;
+  if (k === '1' || k === '2' || k === 'q' || k === 'w') {
+    _showFloorIndicatorBriefly();
+  }
 });

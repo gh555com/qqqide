@@ -50,6 +50,8 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .action-btn:hover { background: var(--bg-highlight); }
 .action-btn.primary { background: var(--blue); color: #1e1e1e; border-color: var(--blue); }
 .action-btn.primary:hover { opacity: 0.9; }
+.gitignore-toggle { font-size: 11px; color: var(--text-dim); cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 3px; margin-left: 8px; }
+.gitignore-toggle input { cursor: pointer; }
 
 /* ---- status bar ---- */
 .search-status { padding: 4px 12px; border-bottom: 1px solid var(--border-color); font-size: 11px; color: var(--text-dim); flex-shrink: 0; display: flex; align-items: center; gap: 8px; min-height: 22px; }
@@ -115,6 +117,9 @@ input, textarea { -webkit-user-select: text; user-select: text; }
     <div class="search-row">
       <span class="scope-label">范围</span>
       <input type="text" class="scope-input" id="scope-input" placeholder="搜索路径（点击放大镜自动填入）" spellcheck="false">
+      <label class="gitignore-toggle" id="lbl-gitignore" title="取消勾选可搜索 .gitignore 中排除的文件（如 qqq/）">
+        <input type="checkbox" id="chk-gitignore" checked> 尊重 .gitignore
+      </label>
     </div>
     <div class="search-row">
       <span class="scope-label">包含</span>
@@ -159,6 +164,7 @@ var $btnRegex = document.getElementById('btn-regex');
 var $btnCase = document.getElementById('btn-case');
 var $btnWord = document.getElementById('btn-word');
 var $btnReplaceAll = document.getElementById('btn-replace-all');
+var $chkGitignore = document.getElementById('chk-gitignore');
 var $statusBar = document.getElementById('status-bar');
 var $statusText = document.getElementById('status-text');
 var $results = document.getElementById('results-container');
@@ -172,6 +178,7 @@ var _searchTimer = null;
 var _lastQuery = '';
 var _lastResults = null; // raw results from backend
 var _searching = false;
+var _respectGitignore = true;
 
 // ---- Toggle buttons ----
 function toggleBtn(btn, stateKey) {
@@ -186,6 +193,10 @@ function toggleBtn(btn, stateKey) {
 $btnRegex.addEventListener('click', toggleBtn($btnRegex, 'regex'));
 $btnCase.addEventListener('click', toggleBtn($btnCase, 'case'));
 $btnWord.addEventListener('click', toggleBtn($btnWord, 'word'));
+$chkGitignore.addEventListener('change', function() {
+  _respectGitignore = $chkGitignore.checked;
+  triggerSearch();
+});
 
 // ---- Keyboard shortcuts ----
 document.addEventListener('keydown', function(e) {
@@ -266,6 +277,7 @@ async function doSearch() {
       contextLines: 1,
       maxResults: 5000,
       timeoutMs: 30000,
+      respectGitignore: _respectGitignore,
     });
 
     if (result.error) {

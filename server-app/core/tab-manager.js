@@ -585,7 +585,7 @@
       // ★ 文件已打开：直接触发 editor 搜索（如果有 _nextSearch）
       if (window._nextSearch) {
         var s = window._nextSearch; window._nextSearch = null;
-        setTimeout(function() { _triggerEditorFind(s); }, 150);
+        setTimeout(function () { _triggerEditorFind(s); }, 150);
       }
       return existing;
     }
@@ -628,27 +628,35 @@
     var ed = window.qqqEditor && window.qqqEditor.getEditorInstance();
     if (!ed) return;
     try {
-      // 清空选区：先把光标移到行首零宽度，避免 Monaco 抓取 "floor"
-      if (ed.setSelection) {
-        ed.setSelection({ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 });
-      }
-      // 打开查找控件
-      if (ed.getAction) {
+      // 使用 Monaco FindController API 直接设置搜索词（可靠，不依赖 DOM）
+      var fc = ed.getContribution('editor.contrib.findController');
+      if (fc) {
+        var state = fc.getState();
+        state.change({ searchString: searchText, isRevealed: true }, false);
         ed.getAction('actions.find').run();
-      }
-      // 强制写入搜索词（重试 6 次 × 80ms，对抗 Monaco 自动填入光标词）
-      var _attempts = 0;
-      var _trySet = function() {
-        var fi = document.querySelector('.monaco-editor .find-widget .find-part .monaco-inputbox input');
-        if (fi) {
-          var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-          nativeSetter.call(fi, searchText);
-          fi.dispatchEvent(new Event('input', { bubbles: true }));
+        // 二次确认（对抗某些版本 Monaco 的重置行为）
+        setTimeout(function () {
+          state.change({ searchString: searchText }, false);
+        }, 100);
+      } else {
+        // fallback：通过 DOM 操作
+        ed.getAction('actions.find').run();
+        var domNode = ed.getDomNode();
+        if (domNode) {
+          var _att = 0;
+          var _try = function () {
+            var fi = domNode.querySelector('.find-widget input[type="text"]') || domNode.querySelector('.find-widget .monaco-inputbox input');
+            if (fi) {
+              var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+              ns.call(fi, searchText);
+              fi.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            if (++_att < 8) setTimeout(_try, 60);
+          };
+          setTimeout(_try, 60);
         }
-        if (++_attempts < 6) { setTimeout(_trySet, 80); }
-      };
-      setTimeout(_trySet, 80);
-    } catch(_) {}
+      }
+    } catch (_) { }
   }
 
   // ---- Public: open file in left (first) file group ----

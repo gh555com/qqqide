@@ -247,7 +247,7 @@ export class DownloadService {
             // If resuming, we need to hash the already-downloaded portion too
             const h = hasher;  // narrow: TS can't narrow `let` inside nested closure
             try {
-              const existing = fs.readFileSync(entry.fi2lePath);
+              const existing = fs.readFileSync(entry.filePath);
               h.update(existing);
             } catch { /* ignore */ }
           }

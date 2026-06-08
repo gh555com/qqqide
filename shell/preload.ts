@@ -174,7 +174,7 @@ const QQQ = {
 
     // ---- search (高性能项目搜索引擎) ----
     search: {
-        query: (opts: { query: string; searchPath: string; isRegex?: boolean; caseSensitive?: boolean; wholeWord?: boolean; includePattern?: string; excludePattern?: string; contextLines?: number; maxResults?: number; timeoutMs?: number }) => ipcRenderer.invoke('qqqide:search:query', opts),
+        query: (opts: { query: string; searchPath: string; isRegex?: boolean; caseSensitive?: boolean; wholeWord?: boolean; includePattern?: string; excludePattern?: string; contextLines?: number; maxResults?: number; timeoutMs?: number; respectGitignore?: boolean }) => ipcRenderer.invoke('qqqide:search:query', opts),
         replace: (opts: { replacements: Array<{ file: string; line: number; col: number; matchLen: number; replacement: string }> }) => ipcRenderer.invoke('qqqide:search:replace', opts),
     },
 

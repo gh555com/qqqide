@@ -1334,26 +1334,35 @@
             if (_search && ed) {
               setTimeout(function () {
                 try {
-                  // 清空选区避免 Monaco 自动填入光标处单词
-                  if (ed.setSelection) {
-                    ed.setSelection({ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 });
-                  }
-                  // 打开查找控件
-                  if (ed.getAction) {
+                  // 使用 Monaco FindController API 直接设置搜索词（可靠，不依赖 DOM）
+                  var fc = ed.getContribution('editor.contrib.findController');
+                  if (fc) {
+                    // 先设状态再打开，避免 Monaco 从光标处抓词覆盖
+                    var state = fc.getState();
+                    state.change({ searchString: _search, isRevealed: true }, false);
                     ed.getAction('actions.find').run();
-                  }
-                  // 强制写入搜索词（重试 6 次 × 80ms）
-                  var _attempts2 = 0;
-                  var _trySet2 = function() {
-                    var fi = document.querySelector('.monaco-editor .find-widget .find-part .monaco-inputbox input');
-                    if (fi) {
-                      var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                      nativeSetter.call(fi, _search);
-                      fi.dispatchEvent(new Event('input', { bubbles: true }));
+                    // 二次确认（对抗某些版本 Monaco 的重置行为）
+                    setTimeout(function () {
+                      state.change({ searchString: _search }, false);
+                    }, 100);
+                  } else {
+                    // fallback：老方式
+                    ed.getAction('actions.find').run();
+                    var domNode = ed.getDomNode();
+                    if (domNode) {
+                      var _att = 0;
+                      var _try = function () {
+                        var fi = domNode.querySelector('.find-widget input[type="text"]') || domNode.querySelector('.find-widget .monaco-inputbox input');
+                        if (fi) {
+                          var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                          ns.call(fi, _search);
+                          fi.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        if (++_att < 8) setTimeout(_try, 60);
+                      };
+                      setTimeout(_try, 60);
                     }
-                    if (++_attempts2 < 6) { setTimeout(_trySet2, 80); }
-                  };
-                  setTimeout(_trySet2, 80);
+                  }
                 } catch (_) { }
               }, 250);
             }

@@ -255,7 +255,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 /* ── 滚动楼层指示器（豆腐块 + 探针）── */
 /* 渐入：从左侧滑入 0.2s；渐出：纯 opacity 1s（transform 延迟 1s 后瞬移，避免可见滑出） */
 #floor-indicator{position:absolute;left:0;top:50%;z-index:99999;pointer-events:none;opacity:0;transition:opacity 1s ease, transform 0s 1s;display:flex;align-items:center;transform:translateX(-120%) translateY(-50%)}
-#floor-indicator.visible{opacity:1;transform:translateX(0) translateY(-50%);transition:opacity 1s ease, transform 0.2s ease-out}
+#floor-indicator.visible{opacity:1;transform:translateX(0) translateY(-50%);transition:transform 0.2s ease-out}
 .floor-ind-tofu{background:var(--card-bg);border:1px solid var(--border-color);border-radius:5px 0 0 5px;padding:6px 14px;font-family:Tahoma,sans-serif;font-weight:normal;font-size:13px;color:#1a1a1a;white-space:nowrap;box-shadow:0 0 8px rgba(0,0,0,0.25),0 2px 12px rgba(0,0,0,0.15);line-height:1.5;user-select:none}
 [data-theme="dark"] .floor-ind-tofu{color:#eee}
 .floor-ind-needle{position:relative;width:30px;height:4px;flex-shrink:0;margin-left:-1px;filter:drop-shadow(0 0 6px rgba(0,0,0,0.3))}

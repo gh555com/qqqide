@@ -1228,6 +1228,7 @@ function registerIpc(): void {
         contextLines?: number;   // lines before/after match
         maxResults?: number;
         timeoutMs?: number;
+        respectGitignore?: boolean; // default true; set false to include gitignored files
     }
 
     interface SearchMatch {
@@ -1240,7 +1241,7 @@ function registerIpc(): void {
     }
 
     ipcMain.handle('qqqide:search:query', async (_e, opts: SearchOpts) => {
-        const { query, searchPath, isRegex, caseSensitive, wholeWord, includePattern, excludePattern, contextLines = 0, maxResults = 5000, timeoutMs = 60000 } = opts;
+        const { query, searchPath, isRegex, caseSensitive, wholeWord, includePattern, excludePattern, contextLines = 0, maxResults = 5000, timeoutMs = 60000, respectGitignore = true } = opts;
         if (!query || !searchPath) return { error: 'missing query or searchPath', results: [], total: 0 };
 
         const startTime = Date.now();
@@ -1271,12 +1272,14 @@ function registerIpc(): void {
             }
         }
 
-        // Load .gitignore from root
+        // Load .gitignore from root (skip if user opted out)
         let gitignoreTest: ((rel: string, isDir: boolean) => boolean) | null = null;
-        try {
-            const gi = await fs.promises.readFile(path.join(searchPath, '.gitignore'), 'utf8');
-            gitignoreTest = parseIgnoreFile(gi);
-        } catch { }
+        if (respectGitignore) {
+            try {
+                const gi = await fs.promises.readFile(path.join(searchPath, '.gitignore'), 'utf8');
+                gitignoreTest = parseIgnoreFile(gi);
+            } catch { }
+        }
 
         const results: SearchMatch[] = [];
         let totalMatches = 0;
