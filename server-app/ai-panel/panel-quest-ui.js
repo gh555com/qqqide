@@ -58,13 +58,11 @@ async function switchQuest(id) {
 
         // \u2550\u2550\u2550 \u4fdd\u5b58\u65e7 quest UI \u72b6\u6001 + \u91ca\u653e\u6240\u6709\u6743 \u2550\u2550\u2550
         if (questActiveId) {
-            if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
             saveQuestUIState(questActiveId);
             _stopAutoSave();
             if (_activeAgent) {
                 await _saveAgentQuestData(questActiveId, _activeAgent, _activeAgent._floorStartIdx);
             }
-            _activeAiDiv = null;
             if (!_isDraft(questActiveId)) {
                 _parentReleaseQuest(questActiveId);
                 try { await questStore.releaseOwner(questActiveId, _windowId); } catch (_) { }
@@ -94,21 +92,10 @@ async function switchQuest(id) {
         if (card && card.buildingFloor !== null) {
             var bDOM = card.floorDOM[card.buildingFloor];
             if (bDOM && bDOM.aiEl) {
-                _activeAiDiv = bDOM.aiEl;
                 _activeAgent._activeAiDiv = bDOM.aiEl;
-                if (_activeAgent._floorStartPerf) {
-                    _floorStartPerf = _activeAgent._floorStartPerf;
-                }
-                if (bDOM.aiEl._clockBlock && !_floorTimerId) {
-                    startFloorTimer(bDOM.aiEl, true);
-                }
             }
-        } else {
-            _activeAiDiv = null;
-            _floorTimerId = null;
-            _floorStartPerf = 0;
         }
-        _allTxtPath = _activeAgent._allTxtPath || '';
+        _allTxtPath = _activeAgent._currentAllTxtPath || _activeAgent._allTxtPath || '';
 
         restoreQuestUIState(id);
         renderQueueStrip();
@@ -169,6 +156,7 @@ async function createNewQuest() {
     saveQuestUIState(questActiveId);
     if (!_isDraft(questActiveId)) await saveQuestData();
     if (questActiveId && !_isDraft(questActiveId)) {
+        _parentReleaseQuest(questActiveId);
         try { await questStore.releaseOwner(questActiveId, _windowId); } catch (_) { }
         _broadcast('owner-released', questActiveId);
     }
@@ -181,8 +169,6 @@ async function createNewQuest() {
 function _unloadQuest() {
     var unloadId = questActiveId;
     if (unloadId && !_isDraft(unloadId)) { _parentReleaseQuest(unloadId); }
-    if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
-    _activeAiDiv = null;
     _stopAutoSave();
     if (unloadId && cardPool) {
         var oldCard = cardPool.getCard(unloadId);
@@ -221,6 +207,7 @@ async function deleteQuest(id) {
     if (quests.length <= 1) { await createNewQuest(); return; }
     await questStore.deleteQuest(id);
     delete questUIStates[id];
+    _parentReleaseQuest(id);
     try { await questStore.releaseOwner(id, _windowId); } catch (_) { }
     _broadcast('owner-released', id);
     if (agentPool[id]) {
@@ -229,6 +216,7 @@ async function deleteQuest(id) {
     }
     cardPool.removeCard(id);
     if (questActiveId === id) {
+        // 删除的是当前活跃 quest → 切换到下一个
         quests = await questStore.list();
         questActiveId = quests[0].id;
         if (_panelId === 1) await questStore.setActiveId(questActiveId);
@@ -236,9 +224,11 @@ async function deleteQuest(id) {
         await cardPool.switchTo(questActiveId);
         await _restoreAgentFromStore(questActiveId, _activeAgent);
         restoreQuestUIState(questActiveId);
-    } else {
-        _unloadQuest();
+        await questStore.claimOwner(questActiveId, _windowId);
+        _parentClaimQuest(questActiveId);
+        _broadcast('owner-claimed', questActiveId);
     }
+    // 删除非活跃 quest → 保持当前视图不变，仅刷新下拉
     await renderTabs();
 }
 
@@ -404,9 +394,10 @@ $guideBtn.onclick = function () {
 
     if (_sending || streaming) {
         // AI \u6b63\u5728\u5de5\u4f5c\u4e2d \u2192 \u7acb\u5373\u6ce8\u5165 + abort \u5f53\u524d house
-        if (_activeAiDiv && _activeAiDiv._contentWrap) {
-            if (_activeAiDiv._buf && _activeAiDiv._buf.trim()) {
-                var _cleanBuf = _activeAiDiv._buf
+        var _aiDiv = _activeAgent._activeAiDiv;
+        if (_aiDiv && _aiDiv._contentWrap) {
+            if (_aiDiv._buf && _aiDiv._buf.trim()) {
+                var _cleanBuf = _aiDiv._buf
                     .replace(/<invoke\s[\s\S]*?<\/invoke>/g, '')
                     .replace(/<parameter\s[^>]*\/>/g, '')
                     .replace(/<\/?_tool_calls>/g, '')
@@ -415,10 +406,10 @@ $guideBtn.onclick = function () {
                     var _stashPara = document.createElement('div');
                     _stashPara.className = 'stream-para';
                     _stashPara.innerHTML = renderMarkdown(_cleanBuf);
-                    _activeAiDiv._contentWrap.appendChild(_stashPara);
+                    _aiDiv._contentWrap.appendChild(_stashPara);
                 }
             }
-            var _existingParas = _activeAiDiv._contentWrap.querySelectorAll('.stream-para');
+            var _existingParas = _aiDiv._contentWrap.querySelectorAll('.stream-para');
             for (var _ep = 0; _ep < _existingParas.length; _ep++) {
                 var _epEl = _existingParas[_ep];
                 if (_epEl.innerHTML) {
@@ -431,23 +422,23 @@ $guideBtn.onclick = function () {
                 _epEl.classList.remove('stream-para');
                 _epEl.classList.add('stream-para-keep');
             }
-            _activeAiDiv._buf = '';
-            _activeAiDiv._fullText = '';
-            _activeAiDiv._paras = [];
-            _activeAiDiv._dirty = false;
-            _activeAiDiv._renderedCount = 0;
-            if (_activeAiDiv._lastParaEl) { _activeAiDiv._lastParaEl.remove(); _activeAiDiv._lastParaEl = null; }
-            _activeAiDiv._guideMode = true;
+            _aiDiv._buf = '';
+            _aiDiv._fullText = '';
+            _aiDiv._paras = [];
+            _aiDiv._dirty = false;
+            _aiDiv._renderedCount = 0;
+            if (_aiDiv._lastParaEl) { _aiDiv._lastParaEl.remove(); _aiDiv._lastParaEl = null; }
+            _aiDiv._guideMode = true;
             var guideBlock = document.createElement('div');
             guideBlock.className = 'msg-guide-ack';
             guideBlock.style.cssText = 'margin:8px 0;padding:8px 12px;background:rgba(255,107,0,0.08);border-left:3px solid #ff6b00;border-radius:4px;';
             guideBlock.innerHTML = '<div style="font-size:11px;font-weight:700;color:#ff6b00;margin-bottom:4px;">\u26a1 \u5f15\u5bfc\u4fe1\u606f</div><div style="font-size:13px;">' + escHtml(text) + '</div>';
-            _activeAiDiv._contentWrap.appendChild(guideBlock);
+            _aiDiv._contentWrap.appendChild(guideBlock);
             var marker = document.createElement('div');
             marker.className = 'msg-status guide-marker';
             marker.style.cssText = 'color:var(--blue);font-weight:600;padding:8px 0;';
             marker.textContent = '\u26a1 \u8bf7\u7b49\u5f85 AI \u786e\u8ba4\u5f15\u5bfc...';
-            _activeAiDiv._contentWrap.appendChild(marker);
+            _aiDiv._contentWrap.appendChild(marker);
         }
         agent.injectGuide(text);
     } else {

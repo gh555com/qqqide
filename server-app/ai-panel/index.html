@@ -236,10 +236,11 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-guide-ack-label{font-size:11px;font-weight:700;color:var(--blue);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px}
 .msg-guide-ack .msg-guide-ack-label + div{font-size:12px;opacity:0.9}
 /* ── 滚动楼层指示器（豆腐块 + 探针）── */
-#floor-indicator{position:absolute;left:0;top:50%;z-index:99999;pointer-events:none;opacity:0;transition:opacity 1s ease;display:flex;align-items:center;transform:translateY(-50%)}
-#floor-indicator.visible{opacity:1}
-.floor-ind-tofu{background:var(--card-bg);border:1px solid var(--border-color);border-radius:3px 0 0 3px;padding:2px 7px;font-family:ui-monospace,monospace;font-weight:700;font-size:11px;color:var(--text-primary);white-space:nowrap;box-shadow:0 1px 5px rgba(0,0,0,0.18);line-height:1.5;user-select:none}
-.floor-ind-needle{position:relative;width:15px;height:3px;flex-shrink:0;margin-left:-1px}
+/* 渐入：从左侧滑入 0.2s；渐出：纯 opacity 1s（transform 延迟 1s 后瞬移，避免可见滑出） */
+#floor-indicator{position:absolute;left:0;top:50%;z-index:99999;pointer-events:none;opacity:0;transition:opacity 1s ease, transform 0s 1s;display:flex;align-items:center;transform:translateX(-120%) translateY(-50%)}
+#floor-indicator.visible{opacity:1;transform:translateX(0) translateY(-50%);transition:opacity 1s ease, transform 0.2s ease-out}
+.floor-ind-tofu{background:var(--card-bg);border:1px solid var(--border-color);border-radius:4px 0 0 4px;padding:4px 10px;font-family:Tahoma,sans-serif;font-weight:normal;font-size:13px;color:var(--text-primary);white-space:nowrap;box-shadow:0 1px 5px rgba(0,0,0,0.18);line-height:1.5;user-select:none}
+.floor-ind-needle{position:relative;width:24px;height:3px;flex-shrink:0;margin-left:-1px}
 .floor-ind-needle::before{content:'';position:absolute;left:0;top:0;width:100%;height:100%;background:var(--text-primary);clip-path:polygon(0 0,100% 50%,0 100%);opacity:0.85}
 </style>
 <div id="clock-tooltip"></div>

@@ -104,7 +104,9 @@ var CardPool = (function () {
 
     // abort 该 quest 的 agent（如果还在跑）
     if (typeof window.agentPool !== 'undefined' && window.agentPool[questId]) {
-      try { window.agentPool[questId].abort(); } catch (_) {}
+      var _evictAgent = window.agentPool[questId];
+      if (_evictAgent._floorTimerId) { clearInterval(_evictAgent._floorTimerId); _evictAgent._floorTimerId = null; }
+      try { _evictAgent.abort(); } catch (_) { }
       delete window.agentPool[questId];
     }
 
@@ -151,9 +153,8 @@ var CardPool = (function () {
       await this._loadCardData(card);
     } else if (card.totalFloors === -1) {
       console.warn('[card-pool] card ' + questId + ' previously failed to load, skipping');
-    } else {
-      console.warn('[card-pool] switchTo NOT loading: totalFloors=' + card.totalFloors + ' questStore=' + (typeof qs));
     }
+    // [silent] already loaded, skip
 
     // 显示目标 card
     card.dom.style.display = 'block';
@@ -176,8 +177,6 @@ var CardPool = (function () {
     try {
       var allFloors = await qs.loadAllFloors(card.id);
       var questMeta = await qs.load(card.id);
-      var quests = await qs.list();
-      var qEntry = quests.find(function (q) { return q.id === card.id; }) || null;
 
       card.floors = allFloors || [];
       card.totalFloors = card.floors.length;
@@ -305,10 +304,13 @@ var CardPool = (function () {
       }
     }
 
-    // ⑤ 如果是已封顶楼层，绘制停止态时钟（使用 quest 级 timings，非全局 agent）
-    var timing = null;
-    for (var ti = 0; ti < questTimings.length; ti++) {
-      if (questTimings[ti].floorIndex === fNum) { timing = questTimings[ti]; break; }
+    // ⑤ 如果是已封顶楼层，从 floor 数据直接恢复时钟（不依赖 quest 级 floorTimings 数组）
+    var timing = fData.clockTiming || null;
+    // 回退：若 floor 数据无 clockTiming，尝试从 questTimings 数组查找
+    if (!timing) {
+      for (var ti = 0; ti < questTimings.length; ti++) {
+        if (questTimings[ti].floorIndex === fNum) { timing = questTimings[ti]; break; }
+      }
     }
     if (timing && aiEl._clockMin && aiEl._clockCanvas) {
       var totalS = Math.floor((timing.durationMs || 0) / 1000);
@@ -359,8 +361,11 @@ var CardPool = (function () {
   CardPool.prototype.startBuildingFloor = function (questId, floorNum, allTxtPath) {
     // ★ 兜底：若 card 不存在（新建 quest 首次发消息），自动创建
     var card = this.getOrCreate(questId);
-    if (!this._activeId) {
-      // 新 quest 尚无活跃 card → 显示它
+    if (!this._activeId || this._activeId !== questId) {
+      // 活跃 card 不匹配 → 隐藏旧 card，显示目标 card
+      if (this._activeId && this._cards[this._activeId] && this._cards[this._activeId].dom) {
+        this._cards[this._activeId].dom.style.display = 'none';
+      }
       this._activeId = questId;
       card.dom.style.display = 'block';
     }
@@ -487,7 +492,9 @@ var CardPool = (function () {
     if (typeof window.agentPool !== 'undefined') {
       var apIds = Object.keys(window.agentPool);
       for (var i = 0; i < apIds.length; i++) {
-        try { window.agentPool[apIds[i]].abort(); } catch (_) {}
+        var _ag = window.agentPool[apIds[i]];
+        if (_ag._floorTimerId) { clearInterval(_ag._floorTimerId); _ag._floorTimerId = null; }
+        try { _ag.abort(); } catch (_) { }
       }
     }
     // 2. 移除所有 card DOM

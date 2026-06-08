@@ -626,17 +626,28 @@
   function _triggerEditorFind(searchText) {
     if (!searchText) return;
     var ed = window.qqqEditor && window.qqqEditor.getEditorInstance();
-    if (!ed || !ed.getAction) return;
+    if (!ed) return;
     try {
-      ed.getAction('actions.find').run();
-      setTimeout(function() {
+      // 清空选区：先把光标移到行首零宽度，避免 Monaco 抓取 "floor"
+      if (ed.setSelection) {
+        ed.setSelection({ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 });
+      }
+      // 打开查找控件
+      if (ed.getAction) {
+        ed.getAction('actions.find').run();
+      }
+      // 强制写入搜索词（重试 6 次 × 80ms，对抗 Monaco 自动填入光标词）
+      var _attempts = 0;
+      var _trySet = function() {
         var fi = document.querySelector('.monaco-editor .find-widget .find-part .monaco-inputbox input');
         if (fi) {
           var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
           nativeSetter.call(fi, searchText);
           fi.dispatchEvent(new Event('input', { bubbles: true }));
         }
-      }, 100);
+        if (++_attempts < 6) { setTimeout(_trySet, 80); }
+      };
+      setTimeout(_trySet, 80);
     } catch(_) {}
   }
 

@@ -50,17 +50,15 @@ document.getElementById('rules-edit').onclick = async function () {
 function stopStream() {
     if (!_activeAgent || _activeAgent._compressing) return;
     try { _activeAgent.abort(); } catch (_) { }
-    if (_activeAiDiv) _activeAiDiv._renderScheduled = false;
+    if (_activeAgent._activeAiDiv) _activeAgent._activeAiDiv._renderScheduled = false;
     _sending = false;
     setStreaming(false);
 }
 
 // \u2550\u2550\u2550 All.txt streaming (per-floor) \u2550\u2550\u2550
-var _allTxtPath = null;
-var _allTxtPollTimer = null;
+// _allTxtPath / _allTxtPollTimer / _allTxtA1Block 已移入 agent（ag._allTxtPath 等）
 var _allTxtLiveTimer = null;
 var _allTxtOpenInEditor = false;
-var _allTxtA1Block = null;
 function _countRooms(houses) {
     if (!houses) return 0;
     var n = 0;
@@ -411,6 +409,9 @@ function _updateA1Size(a1, floorNum, hCount, rCount, allTxtPath) {
 }
 
 async function _finalizeAllTxt(aiDiv, allTxtPath, agent, floorNum, timing) {
+    // ★ 先强制刷新 FILE/ROW 计数（_updateA1Row2 有 5s 节流，finalize 必须冲破）
+    var a1 = aiDiv._a1Block;
+    if (a1 && agent) { _updateA1Row2(a1, agent, true); }
     _stopAllTxtStream();
     if (!allTxtPath) return;
     var bridge = window.parent && window.parent.qqqideBridge;
@@ -466,7 +467,7 @@ function _updateA1Row1(block, floorNum, hCount, rCount, fileSize) {
 }
 
 var _fileStatsCache = {};
-function _updateA1Row2(block, agent) {
+function _updateA1Row2(block, agent, force) {
     if (!block || !block._r2 || !agent) return;
     var houses = agent._houses;
     if (!houses) return;
@@ -477,7 +478,7 @@ function _updateA1Row2(block, agent) {
         cache = { files: {}, added: 0, deleted: 0, lastTs: 0 };
         _fileStatsCache[cacheKey] = cache;
     }
-    if (now - cache.lastTs < 5000 && cache._seenHouses >= houses.length) return;
+    if (!force && now - cache.lastTs < 5000 && cache._seenHouses >= houses.length) return;
     cache.lastTs = now;
     cache._seenHouses = houses.length;
     var fs = _computeFileStats(houses);

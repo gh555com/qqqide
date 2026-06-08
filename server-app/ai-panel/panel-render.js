@@ -134,7 +134,7 @@ function _restoreScrollDeferred(scrollTop) {
 
 function doStreamRender() {
 
-    var aiDiv = _activeAiDiv;
+    var aiDiv = _activeAgent._activeAiDiv;
 
     if (!aiDiv) { return; }
     if (!aiDiv._dirty) { aiDiv._renderScheduled = false; return; }

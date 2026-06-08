@@ -362,7 +362,7 @@ async function initQuests() {
         }
     }
 
-    if (questActiveId) {
+    if (questActiveId && !_isDraft(questActiveId)) {
         // [silent] loading data for quest
         _activeAgent = _getOrCreateAgent(questActiveId);
         await cardPool.switchTo(questActiveId);
@@ -398,7 +398,7 @@ async function initQuests() {
         updateCostDisplay();
         updateCtxBtn();
     } else {
-        // 无活跃 quest：清零上下文显示，避免残留硬编码值或旧 quest 数据
+        // draft 或无活跃 quest：清零上下文显示，不发起 DB 查询
         _activeAgent = null;
         _queueFallback = [];
         renderQueueStrip();
@@ -474,6 +474,7 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
             lastUserInput: ag._lastUserInput,
             allTxtPath: ag._currentAllTxtPath || _allTxtPath || '',
             fileStats: _computeFileStats(ag._houses),
+            clockTiming: ag._lastFloorTimingRecord || null,
             createdAt: Date.now()
         };
         await questStore.saveFloor(questId, floorNum, floorPayload);

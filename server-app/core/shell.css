@@ -41,6 +41,8 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  will-change: left, right;
+  transition: none;
 }
 
 /* ---- 左右翼 —— 全高 iframe，无菜单无状态栏 ---- */
@@ -51,6 +53,9 @@ body {
   overflow: hidden;
   z-index: 5;
   background: var(--card-bg);
+  will-change: width;
+  transition: none;
+  contain: layout style;
 }
 .qqq-wing iframe { width: 100%; height: 100%; border: 0; }
 
@@ -1095,4 +1100,21 @@ body {
 }
 .qqq-overlay-table-wrapper .msg-ai li {
   margin: 2px 0;
+}
+
+/* ═══ Monaco find-widget 搜索框配色覆写（仅改搜索框控件，不动 editor 正文区） ═══ */
+/* 选中文字 */
+.monaco-editor .find-widget .monaco-inputbox input::selection {
+  background-color: #ffd302 !important;
+  color: #000 !important;
+}
+/* 焦点边框 → Solarized yellow（替代默认蓝色） */
+.monaco-editor .find-widget .monaco-inputbox.synthetic-focus,
+.monaco-editor .find-widget .monaco-inputbox.focused {
+  border-color: var(--yellow) !important;
+  box-shadow: 0 0 0 1px var(--yellow) !important;
+}
+.monaco-editor .find-widget .monaco-inputbox input:focus-visible,
+.monaco-editor .find-widget .monaco-inputbox input:focus {
+  outline-color: var(--yellow) !important;
 }

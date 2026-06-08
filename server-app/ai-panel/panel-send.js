@@ -10,24 +10,24 @@ async function sendMessage() {
     var _guideStatuses = document.querySelectorAll('.guide-status');
     for (var _gsi = 0; _gsi < _guideStatuses.length; _gsi++) { _guideStatuses[_gsi].remove(); }
     // \u2550\u2550\u2550 \u6240\u6709\u6743\u5b88\u536b \u2550\u2550\u2550
-    if (questActiveId) {
+    // ── 快照 quest 上下文（所有 await 之前，防并发切 quest 错位）──
+    _capturedQuestId = questActiveId;
+    _capturedAgent = _activeAgent;
+    if (_capturedQuestId) {
         try {
-            var _owner = await questStore.getOwner(questActiveId);
+            var _owner = await questStore.getOwner(_capturedQuestId);
             if (_owner && _owner.windowId !== _windowId) {
                 _setPanelFocus(false);
-                _broadcast('focus-request', questActiveId, { targetWindow: _owner.windowId });
+                _broadcast('focus-request', _capturedQuestId, { targetWindow: _owner.windowId });
                 _sending = false;
                 updateQueueBtn();
                 return;
             }
             if (!_owner) {
-                await questStore.claimOwner(questActiveId, _windowId);
+                await questStore.claimOwner(_capturedQuestId, _windowId);
             }
         } catch (_) { }
     }
-    _capturedQuestId = questActiveId;
-    _capturedAgent = _activeAgent;
-    var _capturedFloorStartPerf = _floorStartPerf;
     updateQueueBtn();
     var text = getInputText().trim();
     var chipPaths = getInputChipPaths();
@@ -124,7 +124,7 @@ async function sendMessage() {
 
     var images = pendingImages.length > 0 ? pendingImages.map(function (img) { return { id: img.id, base64: img.base64 }; }) : null;
 
-    saveQuestUIState(questActiveId);
+    saveQuestUIState(_capturedQuestId);
     $input.value = '';
     $input._resetUndo();
     pendingImages = [];
@@ -132,7 +132,7 @@ async function sendMessage() {
     $input.focus();
 
     // \u82e5\u5c1a\u65e0 active quest\uff0c\u521b\u5efa\u5e76\u547d\u540d
-    if (_isDraft(questActiveId)) {
+    if (_isDraft(_capturedQuestId)) {
         var qId = await questStore.create('');
         if (!qId) { _sending = false; updateQueueBtn(); return; }
         questActiveId = qId;
@@ -155,16 +155,33 @@ async function sendMessage() {
             await _ensureQuestDir(root, qName, fName);
         }
         renderTabs();
+        // ★ Fix: draft → real quest card 迁移
+        // 用户消息已附加到 draft card，需迁移到真实 quest card
+        if (cardPool && _isDraft(cardPool._activeId)) {
+            var _oldDraftId = cardPool._activeId;
+            var _draftCard = cardPool._cards[_oldDraftId];
+            if (_draftCard && _draftCard._contentWrap) {
+                var _realCard = cardPool.getOrCreate(questActiveId);
+                while (_draftCard._contentWrap.firstChild) {
+                    _realCard._contentWrap.appendChild(_draftCard._contentWrap.firstChild);
+                }
+                _draftCard.dom.style.display = 'none';
+                _realCard.dom.style.display = 'block';
+                cardPool._activeId = questActiveId;
+                // 清理 draft card 释放 pool 槽位
+                cardPool.removeCard(_oldDraftId);
+            }
+        }
         _capturedQuestId = questActiveId;
         _capturedAgent = _activeAgent;
     }
-    var floorNum = await questStore.nextFloorNum(questActiveId);
+    var floorNum = await questStore.nextFloorNum(_capturedQuestId);
     var root2 = questStore.getProjectRoot();
     if (root2 && floorNum > 0) {
         var userQuestion = text || (userContent || '').split('\n')[0];
         var quests2 = await questStore.list();
-        var qEntry = quests2.find(function (qx) { return qx.id === questActiveId; });
-        var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : questActiveId;
+        var qEntry = quests2.find(function (qx) { return qx.id === _capturedQuestId; });
+        var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : _capturedQuestId;
         var qDirName2 = _makeName("q", qEntry && qEntry.numericId ? qEntry.numericId : 0, qTitle2);
         var fDirName2 = _makeName('f', floorNum, userQuestion);
         await _ensureQuestDir(root2, qDirName2, fDirName2);
@@ -188,10 +205,10 @@ async function sendMessage() {
     if (_bridge && _allTxtDirLocal) {
         try { await _bridge.fs.mkdir(_allTxtDirLocal); } catch (_) { }
     }
-    var aiDiv = cardPool.startBuildingFloor(questActiveId, floorNum, _allTxtPathLocal);
+    var aiDiv = cardPool.startBuildingFloor(_capturedQuestId, floorNum, _allTxtPathLocal);
     if (!aiDiv) { _sending = false; updateQueueBtn(); return; }
     aiDiv._allTxtPath = _allTxtPathLocal;
-    startFloorTimer(aiDiv);
+    startFloorTimer(aiDiv, _capturedAgent);
     _startAllTxtStream(aiDiv, _allTxtPathLocal, _capturedAgent, floorNum, text, '');
     _startAutoSave();
     scrollToBottom(true);
@@ -262,19 +279,21 @@ async function sendMessage() {
                 var _divDetached = !(aiDiv && aiDiv.isConnected);
 
                 if (_activeAgent === _capturedAgent) {
-                    stopFloorTimer(timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 });
+                    stopFloorTimer(timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 }, _capturedAgent);
                     scrollToBottom();
                 } else {
-                    var _elapsed = performance.now() - _capturedFloorStartPerf;
+                    var _elapsed = performance.now() - _capturedAgent._floorStartPerf;
                     _capturedAgent._floorTimings = _capturedAgent._floorTimings || [];
-                    _capturedAgent._floorTimings.push({
+                    var _bgRecord = {
                         floorIndex: _capturedAgent._ctx.totalFloors,
                         durationMs: Math.round(_elapsed),
                         networkMs: (timing && timing.networkMs) || 0,
                         deepseekMs: (timing && timing.deepseekMs) || 0,
                         toolMs: (timing && timing.toolMs) || 0,
                         finishedAt: new Date().toISOString()
-                    });
+                    };
+                    _capturedAgent._floorTimings.push(_bgRecord);
+                    _capturedAgent._lastFloorTimingRecord = _bgRecord;
                 }
 
                 await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._floorStartIdx);
@@ -298,7 +317,7 @@ async function sendMessage() {
             },
 
             onGuideAckDone: function () {
-                if (_activeAiDiv) _activeAiDiv._guideMode = false;
+                if (_activeAgent._activeAiDiv) _activeAgent._activeAiDiv._guideMode = false;
             },
 
             onCost: async function (cost, total, isFree) {
@@ -346,7 +365,7 @@ async function sendMessage() {
                         _errDiv.appendChild(_actRow);
                     }
                     _stopAllTxtStream();
-                    stopFloorTimer();
+                    stopFloorTimer(null, _capturedAgent);
                     setStreaming(false);
                     _continueQueue();
                 }
@@ -361,21 +380,21 @@ async function sendMessage() {
         _stopAutoSave();
         _stopAllTxtStream();
         if (_activeAgent === _capturedAgent) {
-            if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
-            if (_activeAiDiv) {
-                var _elapsed = performance.now() - _floorStartPerf;
+            if (_capturedAgent._floorTimerId) { clearInterval(_capturedAgent._floorTimerId); _capturedAgent._floorTimerId = null; }
+            if (_capturedAgent._activeAiDiv) {
+                var _elapsed = performance.now() - _capturedAgent._floorStartPerf;
                 var _totalS = Math.floor(_elapsed / 1000);
                 var _min = Math.floor(_totalS / 60);
                 var _sec = _totalS % 60;
-                if (_activeAiDiv._clockBlock) {
-                    _activeAiDiv._clockBlock.className = 'msg-ai-clock';
+                if (_capturedAgent._activeAiDiv._clockBlock) {
+                    _capturedAgent._activeAiDiv._clockBlock.className = 'msg-ai-clock';
                 }
-                if (_activeAiDiv._clockMin) {
-                    _activeAiDiv._clockMin.textContent = _min + 'm';
-                    _activeAiDiv._clockSec.textContent = ':' + (_sec < 10 ? '0' : '') + _sec + 's';
+                if (_capturedAgent._activeAiDiv._clockMin) {
+                    _capturedAgent._activeAiDiv._clockMin.textContent = _min + 'm';
+                    _capturedAgent._activeAiDiv._clockSec.textContent = ':' + (_sec < 10 ? '0' : '') + _sec + 's';
                 }
-                _activeAiDiv._renderScheduled = false;
-                _activeAiDiv = null;
+                _capturedAgent._activeAiDiv._renderScheduled = false;
+                _capturedAgent._activeAiDiv = null;
             }
         }
         _capturedAgent._sending = false;

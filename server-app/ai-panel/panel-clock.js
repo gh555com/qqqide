@@ -2,10 +2,9 @@
 // \u2550\u2550\u2550 panel-clock.js \u2550\u2550\u2550
 // Floor timer, pie chart, autoSave, quest dropdown, tofu, boot
 
-var _floorTimerId = null;
-var _floorStartPerf = 0;
-var _floorCurrentTiming = null;
-var _activeAiDiv = null;
+// ★ 全局变量已移除：_floorTimerId / _floorStartPerf / _floorCurrentTiming / _activeAiDiv
+//   全部移入 agent 对象（agent._floorTimerId / agent._floorStartPerf 等）
+//   保留：_lastPieTiming（canvas 去重缓存，无关 agent）、_autoSaveTimer（面板级）
 var _lastPieTiming = null;
 var _autoSaveTimer = null;
 
@@ -119,17 +118,17 @@ function _initClockBlock(aiDiv) {
     canvas.addEventListener('mouseleave', function () { _hidePieTooltip(); });
 }
 
-function startFloorTimer(aiDiv, resume) {
-    _activeAiDiv = aiDiv;
-    if (!resume || !_floorStartPerf) {
-        _floorStartPerf = performance.now();
+function startFloorTimer(aiDiv, ag, resume) {
+    ag._activeAiDiv = aiDiv;
+    if (!resume || !ag._floorStartPerf) {
+        ag._floorStartPerf = performance.now();
     }
-    _floorCurrentTiming = null;
+    ag._floorCurrentTiming = null;
     _initClockBlock(aiDiv);
     var clockMin = aiDiv._clockMin;
     var clockSec = aiDiv._clockSec;
     var canvas = aiDiv._clockCanvas;
-    var elapsed = performance.now() - _floorStartPerf;
+    var elapsed = performance.now() - ag._floorStartPerf;
     var totalS = Math.floor(elapsed / 1000);
     var min = Math.floor(totalS / 60);
     var sec = totalS % 60;
@@ -143,14 +142,15 @@ function startFloorTimer(aiDiv, resume) {
     }
     var _pieShown = false;
     var _lastN = 0, _lastD = 0, _lastT = 0;
-    _floorTimerId = setInterval(function () {
-        var elapsed = performance.now() - _floorStartPerf;
+    var _ag = ag;
+    ag._floorTimerId = setInterval(function () {
+        var elapsed = performance.now() - _ag._floorStartPerf;
         var totalS = Math.floor(elapsed / 1000);
         var min = Math.floor(totalS / 60);
         var sec = totalS % 60;
-        clockMin.textContent = min + 'm';
-        clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
-        var at = agent._floorTiming;
+    clockMin.textContent = min + 'm';
+    clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
+        var at = _ag._floorTiming;
         var n = (at && at.networkMs) || 0;
         var d = (at && at.deepseekMs) || 0;
         var t = (at && at.toolMs) || 0;
@@ -166,36 +166,37 @@ function startFloorTimer(aiDiv, resume) {
     }, 1000);
 }
 
-function stopFloorTimer(timing) {
-    if (_floorTimerId) { clearInterval(_floorTimerId); _floorTimerId = null; }
-    _floorCurrentTiming = timing;
-    var elapsed = performance.now() - _floorStartPerf;
+function stopFloorTimer(timing, ag) {
+    if (ag._floorTimerId) { clearInterval(ag._floorTimerId); ag._floorTimerId = null; }
+    ag._floorCurrentTiming = timing;
+    var elapsed = performance.now() - ag._floorStartPerf;
     var totalS = Math.floor(elapsed / 1000);
     var min = Math.floor(totalS / 60);
     var sec = totalS % 60;
-    var aiDiv = _activeAiDiv;
+    var aiDiv = ag._activeAiDiv;
     if (aiDiv && aiDiv._clockBlock) {
         aiDiv._clockBlock.className = 'msg-ai-clock';
     }
     if (aiDiv && aiDiv._clockMin && aiDiv._clockCanvas) {
-        aiDiv._clockMin.textContent = min + 'm';
-        aiDiv._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
+      aiDiv._clockMin.textContent = min + 'm';
+      aiDiv._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
         var tm = timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 };
         tm.totalMs = elapsed;
         if (elapsed > 0) { aiDiv._clockCanvas.style.visibility = 'visible'; drawPie(aiDiv._clockCanvas, tm); }
     }
-    _activeAiDiv = null;
+    ag._activeAiDiv = null;
     var durationMs = Math.round(elapsed);
     var record = {
-        floorIndex: agent._ctx.totalFloors,
+        floorIndex: ag._ctx.totalFloors,
         durationMs: durationMs,
         networkMs: (timing && timing.networkMs) || 0,
         deepseekMs: (timing && timing.deepseekMs) || 0,
         toolMs: (timing && timing.toolMs) || 0,
         finishedAt: new Date().toISOString()
     };
-    agent._floorTimings = agent._floorTimings || [];
-    agent._floorTimings.push(record);
+    ag._floorTimings = ag._floorTimings || [];
+    ag._floorTimings.push(record);
+    ag._lastFloorTimingRecord = record;
 }
 
 // \u2500\u2500 Quest \u8c46\u8150\u5757 + hover \u4e0b\u62c9 \u2500\u2500

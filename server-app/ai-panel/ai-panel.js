@@ -79,7 +79,7 @@
     panel.currentUrl = defaultUrl(panelId);
     var bar = _createDevBar(panel);
     var frame = document.createElement('iframe');
-    frame.style.cssText = 'flex:1 1 auto; width:100%; border:0; background:#fff;';
+    frame.style.cssText = 'flex:1 1 auto; width:100%; border:0; background:var(--background-color);';
     frame.setAttribute('referrerpolicy', 'no-referrer');
     frame.setAttribute('allow', 'clipboard-read; clipboard-write');
     frame.addEventListener('error', function() {

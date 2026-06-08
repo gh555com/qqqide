@@ -16,13 +16,15 @@ function _updateFloorIndicator() {
   if (userMsgs.length === 0) { _floorIndicatorEl.classList.remove('visible'); return; }
   var container = $messages;
   var viewCenter = container.scrollTop + container.clientHeight * 0.5;
-  var bestFloor = null, bestDist = Infinity;
+  // ★ 探针精准判定：找到 viewCenter 垂直穿过的楼层（最后一个 msg-user 顶部在视口中心线以上）
+  var bestFloor = null;
   for (var i = 0; i < userMsgs.length; i++) {
     var el = userMsgs[i];
     var absTop = 0, cur = el;
     while (cur && cur !== container) { absTop += cur.offsetTop || 0; cur = cur.offsetParent; }
-    var dist = Math.abs(viewCenter - absTop);
-    if (dist < bestDist) { bestDist = dist; bestFloor = el._floor; }
+    if (absTop <= viewCenter) {
+      bestFloor = el._floor;
+    }
   }
   if (bestFloor !== null && bestFloor !== undefined) {
     var timingStr = '';
@@ -33,10 +35,26 @@ function _updateFloorIndicator() {
       if (minEl && secEl) {
         var mt = (minEl.textContent || '').replace(/m.*$/, '');
         var st = (secEl.textContent || '').replace(/^[^\d]*/, '').replace(/s.*$/, '');
-        if (mt || st) timingStr = ' · ' + (mt || '0') + 'm' + (st || '0') + 's';
+        if (mt || st) timingStr = ' ● ' + (mt || '0') + 'm:' + (st || '0') + 's';
       }
     }
-    _floorIndicatorEl.querySelector('.floor-ind-tofu').textContent = 'F' + bestFloor + timingStr;
+    // ★ 楼层时间戳（从 agent._floorTimings 查找）
+    var tsStr = '';
+    var ag = typeof _activeAgent !== 'undefined' ? _activeAgent : null;
+    if (ag && ag._floorTimings) {
+      for (var ti = ag._floorTimings.length - 1; ti >= 0; ti--) {
+        var ft = ag._floorTimings[ti];
+        if (ft.floorIndex === bestFloor && ft.finishedAt) {
+          var startMs = ft.durationMs ? new Date(ft.finishedAt).getTime() - ft.durationMs : new Date(ft.finishedAt).getTime();
+          var d = new Date(startMs);
+          var pad = function(n) { return (n < 10 ? '0' : '') + n; };
+          tsStr = ' ● ' + d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + ' ' +
+                  pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+          break;
+        }
+      }
+    }
+    _floorIndicatorEl.querySelector('.floor-ind-tofu').innerHTML = 'F<span style="font-weight:bold;font-size:14px">' + escHtml(String(bestFloor)) + '</span>' + escHtml(tsStr + timingStr);
   }
 }
 

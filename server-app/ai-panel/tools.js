@@ -59,6 +59,18 @@ async function _checkFileSizeWarn(result, filePath) {
     return result;
 }
 
+// ---- \n escape corruption detection: if match failed and find contains literal \n, suggest \x0a workaround ----
+function _maybeHintBackslashN(result, edits) {
+    if (!result || result.indexOf('match failed') === -1) return result;
+    if (!edits || edits.length === 0) return result;
+    for (var i = 0; i < edits.length; i++) {
+        if (edits[i].find && edits[i].find.indexOf('\\n') !== -1) {
+            return result + '\n\n\u{d83d}\u{dca1} HINT: Your find pattern contains literal \\n (backslash-n). edit_file may have corrupted it to an actual newline, causing the match to fail. Retry with \\x0a (hex escape for newline) instead — \\x0a passes through the tool uncorrupted.';
+        }
+    }
+    return result;
+}
+
 // ============================================================
 // 工具定义（OpenAI function calling format）
 // ============================================================
@@ -450,6 +462,7 @@ async function executeEditFile(args) {
         try {
             var _r = await bridge.ai.edit_file({ path: args.path, edits: args.edits });
             if (_r && _r.indexOf('Error') !== 0) _notifyFileModified(args.path);
+            _r = _maybeHintBackslashN(_r, args.edits);
             return await _checkFileSizeWarn(_r, args.path);
         } catch (_) { /* fallback */ }
     }
@@ -476,7 +489,8 @@ async function executeEditFile(args) {
                         break;
                     }
                 }
-                return 'Error: edit #' + (i + 1) + ' match failed — text not found in ' + (args.path.split(/[\\/]/).pop()) + '.' + hint;
+                var _err = 'Error: edit #' + (i + 1) + ' match failed — text not found in ' + (args.path.split(/[\\/]/).pop()) + '.' + hint;
+                return _maybeHintBackslashN(_err, args.edits);
             }
             matchPlan.push({ edit: edit, match: m, index: i });
         }

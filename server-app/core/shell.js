@@ -616,7 +616,7 @@
 
   // ---- AI Zone ----
   function bootAiZone() {
-    // ★ 中面板始终加载；左右面板按需加载（灯泡触发）
+    // ★ 中面板始终加载（左右翼在 bootBulbs 中预初始化）
     var centerHost = document.getElementById('qqq-ai-zone');
     if (centerHost && window.qqqidePanel) {
       window.qqqidePanel.build(centerHost, 1);
@@ -625,6 +625,7 @@
 
   // ---- 红色灯泡：左右翼开关 + 窗口伸缩（中间块不动） ----
   var _bulbState = { left: false, right: false };
+  var _wingLocked = false; // 不应期锁：toggle 进行中拒绝一切重复点击
 
   function bootBulbs() {
     var d1 = document.getElementById('qqq-bulb-1');
@@ -637,92 +638,91 @@
     } catch (_) { }
 
     var _main = document.getElementById('qqq-main');
+    var _wl = document.getElementById('qqq-wing-left');
+    var _wr = document.getElementById('qqq-wing-right');
+
+    // ★ 预初始化：启动时即创建全部三个面板的 iframe（中面板在 bootAiZone 已建）
+    //    翼板 iframe 在 width:0 容器内静默加载，首开时零等待
+    function _preinitWings() {
+      if (_wl && !_wl.querySelector('iframe') && window.qqqidePanel) {
+        window.qqqidePanel.build(_wl, 0);
+      }
+      if (_wr && !_wr.querySelector('iframe') && window.qqqidePanel) {
+        window.qqqidePanel.build(_wr, 2);
+      }
+    }
 
     function _applyWings() {
       var leftOn = _bulbState.left;
       var rightOn = _bulbState.right;
-      // [silent] _applyWings
 
-      // ★ 中间块 left/right → 屏幕位置不变
       if (_main) {
         _main.style.left = leftOn ? AI_W + 'px' : '0';
         _main.style.right = rightOn ? AI_W + 'px' : '0';
-        // [silent] _main
       } else {
         console.warn('[wings] _main NOT FOUND!');
       }
 
-      // 左翼
-      var wl = document.getElementById('qqq-wing-left');
-      // [silent] left wing el
-      if (wl) {
-        wl.style.width = leftOn ? AI_W + 'px' : '0';
-        // ★ 首次打开时创建 iframe，之后永不销毁（切换 workspace 走内部 _teardownWorkspace）
-        //    翼板关闭 = 纯 CSS 隐藏（width:0），像素管道全切断，无 GPU 开销
-        if (leftOn && !wl.querySelector('iframe') && window.qqqidePanel) {
-          window.qqqidePanel.build(wl, 0);
-          // [silent] left wing iframe created
-        }
-        // 不再销毁 iframe —— 卡片池（每面板 10 张轮转卡）不因翼板开关而清空
+      if (_wl) {
+        _wl.style.width = leftOn ? AI_W + 'px' : '0';
       } else {
         console.warn('[wings] LEFT WING ELEMENT MISSING!');
       }
 
-      // 右翼
-      var wr = document.getElementById('qqq-wing-right');
-      // [silent] right wing el
-      if (wr) {
-        wr.style.width = rightOn ? AI_W + 'px' : '0';
-        // ★ 首次打开时创建 iframe，之后永不销毁
-        if (rightOn && !wr.querySelector('iframe') && window.qqqidePanel) {
-          window.qqqidePanel.build(wr, 2);
-          // [silent] right wing iframe created
-        }
+      if (_wr) {
+        _wr.style.width = rightOn ? AI_W + 'px' : '0';
       } else {
         console.warn('[wings] RIGHT WING ELEMENT MISSING!');
       }
     }
 
-    function _toggle(index) {
-      // [silent] _toggle
+    // ★ 原子帧 toggle：不应期锁 → await 窗口缩放 → rAF 批处理 CSS → 解锁
+    async function _toggle(index) {
+      if (_wingLocked) return; // 不应期内拒绝一切操作
+      _wingLocked = true;
+      // 安全网：1s 后强制解锁（防 adjustBounds 永不 resolve 的极端情况）
+      var safetyTimer = setTimeout(function () { _wingLocked = false; }, 1000);
+
       if (index === 0) _bulbState.left = !_bulbState.left;
       else _bulbState.right = !_bulbState.right;
-      // [silent] _toggle new state
 
-      // ★ 翼板切换会导致布局变化，关闭 AI 视口下拉（防止 fixed 定位漂移到 0,0）
+      // 关闭 AI 视口下拉（防止 fixed 定位漂移到 0,0）
       if (window.qqqideViewport && window.qqqideViewport.closeDropdown) {
         window.qqqideViewport.closeDropdown();
       }
 
+      // 灯泡红点即时响应（零布局开销）
       var dot = index === 0 ? d1 : d2;
       dot.classList.toggle('on', index === 0 ? _bulbState.left : _bulbState.right);
 
-      // 窗口伸缩
+      // Step 1: 窗口先就位（主进程同步 setBounds）
       var deltaLeft = 0, deltaRight = 0;
       if (index === 0) deltaLeft = _bulbState.left ? AI_W : -AI_W;
       else deltaRight = _bulbState.right ? AI_W : -AI_W;
-      // [silent] adjustBounds
       try {
         if (bridge && bridge.window && bridge.window.adjustBounds) {
-          bridge.window.adjustBounds(deltaLeft, deltaRight);
-          // [silent] adjustBounds called
+          await bridge.window.adjustBounds(deltaLeft, deltaRight);
         }
       } catch (e) { console.warn('[wings] adjustBounds error:', e); }
 
-      _applyWings();
-      try { localStorage.setItem('qqq-ai-bulbs', JSON.stringify(_bulbState)); } catch (_) { }
+      // Step 2: 窗口已就位，下一帧统一批处理 CSS（无 transition，一帧到位）
+      requestAnimationFrame(function () {
+        clearTimeout(safetyTimer);
+        _applyWings();
+        try { localStorage.setItem('qqq-ai-bulbs', JSON.stringify(_bulbState)); } catch (_) { }
+        _wingLocked = false;
+      });
     }
 
     d1.addEventListener('click', function () { _toggle(0); });
     d2.addEventListener('click', function () { _toggle(1); });
 
-    // 初始恢复
+    // 初始恢复：仅设 CSS（不调窗口尺寸，防重启累加）
     if (_bulbState.left) d1.classList.add('on');
     if (_bulbState.right) d2.classList.add('on');
     _applyWings();
-
-    // 初始恢复仅设 CSS，不调窗口尺寸（防重启累加）
-    // 窗口尺寸由 Electron 原生记忆 + 用户灯泡手动 toggle 控制
+    // 预初始化左右翼 iframe（width:0 容器内静默加载）
+    _preinitWings();
   }
 
   // ---- Output panel ----
@@ -1043,21 +1043,29 @@
         contentEl.style.overflow = '';
         zoomScale = 1.0;
         _dragX = 0; _dragY = 0;
-        contentEl.style.overflow = 'visible';
-        // ── 智能尺寸：目�?2x，不超过视口 ──
+        // ★ 先让 overlay 可见以取得正确容器尺寸，再加载图片（避免缓存图 onload 同步触发时容器尺寸为 0）
+        overlay.style.display = 'block';
+        contentEl.style.overflow = 'hidden';
+        // ── 边界适配：尝试 2x 放大，但绝不超出内容区可用空间 ──
         var img = new Image();
         img.onload = function () {
           var nw = img.naturalWidth, nh = img.naturalHeight;
-          var maxW = window.innerWidth * 0.9, maxH = window.innerHeight - 120;
-          var targetW = Math.min(nw * 2, maxW);
-          var targetH = Math.min(nh * 2, maxH);
+          // 内容区可用空间：overlay 填充 #qqq-main，扣除工具栏 64px + 内边距 32px×2
+          var availW = Math.max(200, (overlay.clientWidth || window.innerWidth) - 64);
+          var availH = Math.max(150, (overlay.clientHeight || window.innerHeight) - 64 - 64);
+          // 理想：2x 放大；上限：不超过可用空间
+          var targetW = Math.min(nw * 2, availW);
+          var targetH = Math.min(nh * 2, availH);
+          // 统一缩放比：取宽高两个方向中更紧的那个，且不超 2.0（2x 封顶）
           var scale = Math.min(targetW / nw, targetH / nh, 2.0);
+          // 若原图已大于可用空间，scale < 1.0 → 缩小适配
           var finalW = Math.round(nw * scale), finalH = Math.round(nh * scale);
           img.style.cssText =
             'width:' + finalW + 'px; height:' + finalH + 'px; ' +
             'object-fit:contain; box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
             'display:block; user-select:none; will-change:transform;';
           contentEl.appendChild(img);
+          contentEl.style.overflow = 'visible';
           // ── 拖拽平移 ──
           var dragging = false, sx = 0, sy = 0, _raf = 0, _pending = false;
           function onMD(ev) {
@@ -1087,7 +1095,7 @@
           img.addEventListener('mousedown', onMD);
           window.addEventListener('mousemove', onMM);
           window.addEventListener('mouseup', onMU);
-          // ── 关闭时清�?──
+          // ── 关闭时清理 ──
           var _origClose = close;
           close = function () {
             window.removeEventListener('mousemove', onMM);
@@ -1098,7 +1106,6 @@
           };
         };
         img.src = e.data.src;
-        overlay.style.display = 'block';
         dpad.style.display = 'block';
       }
 
@@ -1113,9 +1120,13 @@
           zoomScale = 1.0;
           _dragX = 0; _dragY = 0;
 
+          // 内容区可用空间：overlay 尺寸未必可用（display=none），回退到 window 尺寸
+          var _availW = Math.max(200, (overlay.clientWidth || window.innerWidth) - 64);
+          var _availH = Math.max(150, (overlay.clientHeight || window.innerHeight) - 64 - 64);
+
           var clipBox = document.createElement('div');
           clipBox.style.cssText =
-            'width:90vw; height:calc(100vh - 200px); overflow:hidden; ' +
+            'width:' + _availW + 'px; height:' + _availH + 'px; overflow:hidden; ' +
             'display:flex; align-items:center; justify-content:center;';
 
           var wrapper = document.createElement('div');
@@ -1185,9 +1196,12 @@
           }
 
           var natW = wrapper.scrollWidth, natH = wrapper.scrollHeight;
-          var viewW = window.innerWidth * 0.9, viewH = window.innerHeight - 200;
-          _initZoom = Math.min(1, viewW / Math.max(1, natW), viewH / Math.max(1, natH));
-          zoomScale = Math.min(5.0, _initZoom * 1.5625);
+          // fitZoom: 表格缩放后刚好不超出 clipBox 边界（可能 <1 需缩小，也可能 >1 表格本就小于视口）
+          var fitZoom = Math.min(_availW / Math.max(1, natW), _availH / Math.max(1, natH));
+          // _initZoom: 重置按钮用 — 取 fitZoom 和 1.0 中较小者（至多原样，不放大）
+          _initZoom = Math.min(1, fitZoom);
+          // 初始缩放：放大两级（1.25²=1.5625），但绝不超出边界 fitZoom
+          zoomScale = Math.min(5.0, _initZoom * 1.5625, fitZoom);
           applyZoom();
 
           overlay.style.visibility = '';
@@ -1317,18 +1331,29 @@
         bridge.fs.read(filePath).then(content => {
           var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
           window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts).then(function (ed) {
-            if (_search && ed && ed.getAction) {
+            if (_search && ed) {
               setTimeout(function () {
                 try {
-                  ed.getAction('actions.find').run();
-                  setTimeout(function () {
+                  // 清空选区避免 Monaco 自动填入光标处单词
+                  if (ed.setSelection) {
+                    ed.setSelection({ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 });
+                  }
+                  // 打开查找控件
+                  if (ed.getAction) {
+                    ed.getAction('actions.find').run();
+                  }
+                  // 强制写入搜索词（重试 6 次 × 80ms）
+                  var _attempts2 = 0;
+                  var _trySet2 = function() {
                     var fi = document.querySelector('.monaco-editor .find-widget .find-part .monaco-inputbox input');
                     if (fi) {
                       var nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
                       nativeSetter.call(fi, _search);
                       fi.dispatchEvent(new Event('input', { bubbles: true }));
                     }
-                  }, 120);
+                    if (++_attempts2 < 6) { setTimeout(_trySet2, 80); }
+                  };
+                  setTimeout(_trySet2, 80);
                 } catch (_) { }
               }, 250);
             }
