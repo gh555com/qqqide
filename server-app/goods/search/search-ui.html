@@ -52,6 +52,8 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .action-btn.primary:hover { opacity: 0.9; }
 .gitignore-toggle { font-size: 11px; color: var(--text-dim); cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 3px; margin-left: 8px; }
 .gitignore-toggle input { cursor: pointer; }
+.sort-select { height: 24px; padding: 0 4px; border: 1px solid var(--border-color); border-radius: 3px; background: transparent; color: var(--text-dim); font-size: 11px; cursor: pointer; outline: none; }
+.sort-select:focus { border-color: var(--blue); }
 
 /* ---- status bar ---- */
 .search-status { padding: 4px 12px; border-bottom: 1px solid var(--border-color); font-size: 11px; color: var(--text-dim); flex-shrink: 0; display: flex; align-items: center; gap: 8px; min-height: 22px; }
@@ -126,6 +128,12 @@ input, textarea { -webkit-user-select: text; user-select: text; }
       <input type="text" class="scope-input" id="include-input" placeholder="*.ts, *.js, src/**" spellcheck="false">
       <span class="scope-label" style="margin-left:8px">排除</span>
       <input type="text" class="scope-input" id="exclude-input" placeholder="*.min.js, dist/**" spellcheck="false">
+      <span class="scope-label" style="margin-left:8px">排序</span>
+      <select class="sort-select" id="sort-by">
+        <option value="count">匹配数</option>
+        <option value="path" selected>文件路径</option>
+        <option value="path-desc">路径倒序</option>
+      </select>
     </div>
   </div>
 
@@ -165,6 +173,7 @@ var $btnCase = document.getElementById('btn-case');
 var $btnWord = document.getElementById('btn-word');
 var $btnReplaceAll = document.getElementById('btn-replace-all');
 var $chkGitignore = document.getElementById('chk-gitignore');
+var $sortBy = document.getElementById('sort-by');
 var $statusBar = document.getElementById('status-bar');
 var $statusText = document.getElementById('status-text');
 var $results = document.getElementById('results-container');
@@ -179,6 +188,7 @@ var _lastQuery = '';
 var _lastResults = null; // raw results from backend
 var _searching = false;
 var _respectGitignore = false;
+var _sortMode = 'path';
 
 // ---- Toggle buttons ----
 function toggleBtn(btn, stateKey) {
@@ -196,6 +206,10 @@ $btnWord.addEventListener('click', toggleBtn($btnWord, 'word'));
 $chkGitignore.addEventListener('change', function() {
   _respectGitignore = $chkGitignore.checked;
   triggerSearch();
+});
+$sortBy.addEventListener('change', function() {
+  _sortMode = $sortBy.value;
+  if (_lastResults) renderResults(_lastResults);
 });
 
 // ---- Keyboard shortcuts ----
@@ -345,9 +359,21 @@ function renderResults(data) {
     groups.set(file, deduped);
   });
 
+  // Sort groups
+  var sortedGroups = Array.from(groups.entries());
+  if (_sortMode === 'path') {
+    sortedGroups.sort(function(a, b) { return a[0].localeCompare(b[0]); });
+  } else if (_sortMode === 'path-desc') {
+    sortedGroups.sort(function(a, b) { return b[0].localeCompare(a[0]); });
+  } else if (_sortMode === 'count') {
+    sortedGroups.sort(function(a, b) { return b[1].length - a[1].length || a[0].localeCompare(b[0]); });
+  }
+
   // Use document fragment for performance
   var frag = document.createDocumentFragment();
-  groups.forEach(function(matches, filePath) {
+  for (var gi = 0; gi < sortedGroups.length; gi++) {
+    var filePath = sortedGroups[gi][0];
+    var matches = sortedGroups[gi][1];
     var groupEl = document.createElement('div');
     groupEl.className = 'file-group';
 
@@ -412,7 +438,7 @@ function renderResults(data) {
       }
     }
     frag.appendChild(groupEl);
-  });
+  }
   $results.appendChild(frag);
 }
 

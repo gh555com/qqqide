@@ -676,12 +676,39 @@
       }
     }
 
-    // ★ 原子帧 toggle：不应期锁 → await 窗口缩放 → rAF 批处理 CSS → 解锁
+    // ★ 魔术遮罩（方案 B）：toggle 期间覆盖全窗口，阻塞一切交互 + 视觉遮盖
+    var _wingMask = null;
+    function _showMask() {
+      if (_wingMask) return;
+      _wingMask = document.createElement('div');
+      _wingMask.className = 'qqq-wing-mask';
+      var txt = document.createElement('div');
+      txt.className = 'qqq-wing-mask-text';
+      // 优先走 i18n，无则用硬编码回退
+      txt.textContent = (window._i && window._i('wings.redrawing', '重绘中')) || '重绘中';
+      _wingMask.appendChild(txt);
+      // 捕获取消一切事件（click/keydown/滚轮等）
+      _wingMask.addEventListener('keydown', function (e) { e.preventDefault(); e.stopPropagation(); }, true);
+      _wingMask.addEventListener('wheel', function (e) { e.preventDefault(); }, { passive: false, capture: true });
+      _wingMask.addEventListener('contextmenu', function (e) { e.preventDefault(); }, true);
+      document.body.appendChild(_wingMask);
+    }
+    function _hideMask() {
+      if (!_wingMask) return;
+      _wingMask.remove();
+      _wingMask = null;
+    }
+
+    // ★ 原子帧 toggle：不应期锁 → 魔术遮罩 → await 窗口缩放 → rAF 批处理 CSS → 收遮罩 → 解锁
     async function _toggle(index) {
       if (_wingLocked) return; // 不应期内拒绝一切操作
       _wingLocked = true;
-      // 安全网：1s 后强制解锁（防 adjustBounds 永不 resolve 的极端情况）
-      var safetyTimer = setTimeout(function () { _wingLocked = false; }, 1000);
+      // 安全网：1.5s 后强制解锁 + 收遮罩（极端情况兜底）
+      var safetyTimer = setTimeout(function () { _wingLocked = false; _hideMask(); }, 1500);
+
+      // ① 立刻弹出魔术遮罩，等一帧确保已上屏，再动任何 UI
+      _showMask();
+      await new Promise(function (resolve) { requestAnimationFrame(resolve); });
 
       if (index === 0) _bulbState.left = !_bulbState.left;
       else _bulbState.right = !_bulbState.right;
@@ -691,11 +718,11 @@
         window.qqqideViewport.closeDropdown();
       }
 
-      // 灯泡红点即时响应（零布局开销）
+      // 灯泡红点（遮罩已覆盖，用户不可见）
       var dot = index === 0 ? d1 : d2;
       dot.classList.toggle('on', index === 0 ? _bulbState.left : _bulbState.right);
 
-      // Step 1: 窗口先就位（主进程同步 setBounds）
+      // ② 窗口先就位（主进程同步 setBounds）
       var deltaLeft = 0, deltaRight = 0;
       if (index === 0) deltaLeft = _bulbState.left ? AI_W : -AI_W;
       else deltaRight = _bulbState.right ? AI_W : -AI_W;
@@ -705,12 +732,15 @@
         }
       } catch (e) { console.warn('[wings] adjustBounds error:', e); }
 
-      // Step 2: 窗口已就位，下一帧统一批处理 CSS（无 transition，一帧到位）
+      // ③ 窗口已就位，下一帧统一批处理 CSS，再等一帧收遮罩
       requestAnimationFrame(function () {
-        clearTimeout(safetyTimer);
         _applyWings();
         try { localStorage.setItem('qqq-ai-bulbs', JSON.stringify(_bulbState)); } catch (_) { }
-        _wingLocked = false;
+        requestAnimationFrame(function () {
+          clearTimeout(safetyTimer);
+          _hideMask();
+          _wingLocked = false;
+        });
       });
     }
 

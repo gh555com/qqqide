@@ -384,5 +384,8 @@
         "f1": "命令面板",
         "altLeft": "后退",
         "altRight": "前进"
+    },
+    "wings": {
+        "redrawing": "重绘中"
     }
 }

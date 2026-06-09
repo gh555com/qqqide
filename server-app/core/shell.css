@@ -43,8 +43,6 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  will-change: left, right;
-  transition: none;
 }
 
 /* ---- 左右翼 —— 全高 iframe，无菜单无状态栏 ---- */
@@ -56,9 +54,28 @@ body {
   overflow: hidden;
   z-index: 5;
   background: var(--card-bg);
-  will-change: width;
-  transition: none;
-  contain: layout style;
+}
+
+/* ---- 翼板魔术遮罩：toggle 期间覆盖全窗口，阻塞一切交互 ---- */
+.qqq-wing-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: all;
+  cursor: default;
+  -webkit-app-region: no-drag;
+}
+.qqq-wing-mask-text {
+  font-family: ui-monospace, "Microsoft YaHei", sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 6px;
+  user-select: none;
 }
 
 .qqq-wing iframe {
@@ -153,13 +170,21 @@ body {
 
 .qqq-bulb-dot {
   display: inline-block;
+  position: relative;
   width: 12px;
   height: 12px;
   border-radius: 50%;
   border: 1px solid var(--border-color);
   background: var(--background-color);
   flex-shrink: 0;
-  transition: background 100ms, border-color 100ms, box-shadow 100ms
+  transition: background 100ms, border-color 100ms, box-shadow 100ms;
+}
+/* 点击框放大到 32×32 矩形，视觉保持 12px 圆点 */
+.qqq-bulb-dot::after {
+  content: '';
+  position: absolute;
+  top: -10px; left: -10px;
+  right: -10px; bottom: -10px;
 }
 
 .qqq-bulb-dot.on {
