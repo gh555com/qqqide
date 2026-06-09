@@ -1175,6 +1175,8 @@ function registerIpc(): void {
     const SEARCH_SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'backup', '__pycache__', '.venv', 'vendor', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs', '.hg', '.svn', '.DS_Store', 'bower_components', '.idea', '.vs']);
     const SEARCH_BINARY_EXTS = new Set(['.exe', '.dll', '.so', '.dylib', '.bin', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico', '.mp3', '.mp4', '.avi', '.mkv', '.mov', '.wav', '.flac', '.ogg', '.zip', '.tar', '.gz', '.xz', '.bz2', '.7z', '.rar', '.woff', '.woff2', '.ttf', '.eot', '.pdf', '.psd', '.ai', '.sketch', '.vsix', '.wasm', '.class', '.o', '.obj', '.pyc', '.pyo', '.sqlite', '.db', '.mdb']);
     const SEARCH_MAX_FILE = 5 * 1024 * 1024; // 5MB per file
+    const SEARCH_MAX_FILES = 200000; // hard cap on total files to scan
+    const SEARCH_SCAN_CONCURRENCY = 8; // parallel directory reads (keep lower than file reads)
     const SEARCH_CONCURRENCY = 16; // parallel file reads
 
     // Parse .gitignore-like file into test function
@@ -1291,12 +1293,13 @@ function registerIpc(): void {
 
         async function collectFiles(dir: string, depth: number): Promise<void> {
             if (aborted || depth > 20) return;
+            if (filePaths.length >= SEARCH_MAX_FILES) { aborted = true; return; }
             let entries: fs.Dirent[];
             try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); }
             catch { return; }
             const subdirs: string[] = [];
             for (const ent of entries) {
-                if (aborted) return;
+                if (aborted || filePaths.length >= SEARCH_MAX_FILES) return;
                 const full = path.join(dir, ent.name);
                 const rel = full.replace(/\\/g, '/').slice(rootNorm.length + 1);
                 if (ent.isDirectory()) {
@@ -1312,10 +1315,15 @@ function registerIpc(): void {
                     if (includeMatchers.length > 0 && !includeMatchers.some(m => m.test(ent.name) || m.test(rel))) continue;
                     if (excludeMatchers.some(m => m.test(ent.name) || m.test(rel))) continue;
                     filePaths.push(full);
+                    if (filePaths.length >= SEARCH_MAX_FILES) { aborted = true; return; }
                 }
             }
-            // Parallel subdirectory descent
-            await Promise.all(subdirs.map(d => collectFiles(d, depth + 1)));
+            // Concurrency-limited subdirectory descent (prevent Promise.all explosion)
+            for (let i = 0; i < subdirs.length; i += SEARCH_SCAN_CONCURRENCY) {
+                if (aborted) return;
+                const batch = subdirs.slice(i, i + SEARCH_SCAN_CONCURRENCY);
+                await Promise.all(batch.map(d => collectFiles(d, depth + 1)));
+            }
         }
 
         await collectFiles(searchPath, 0);

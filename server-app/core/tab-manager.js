@@ -628,18 +628,27 @@
     var ed = window.qqqEditor && window.qqqEditor.getEditorInstance();
     if (!ed) return;
     try {
-      // 使用 Monaco FindController API 直接设置搜索词（可靠，不依赖 DOM）
       var fc = ed.getContribution('editor.contrib.findController');
-      if (fc) {
-        var state = fc.getState();
-        state.change({ searchString: searchText, isRevealed: true }, false);
-        ed.getAction('actions.find').run();
-        // 二次确认（对抗某些版本 Monaco 的重置行为）
+      if (fc && fc.start) {
+        // 用 start() 打开搜索框，seedSearchStringFromSelection:'none' 防止从光标抓词
+        fc.start({
+          forceRevealReplace: false,
+          seedSearchStringFromSelection: 'none',
+          seedSearchStringFromNonEmptySelection: false,
+          seedSearchStringFromGlobalClipboard: false,
+          shouldFocus: 2,
+          shouldAnimate: true,
+          updateSearchScope: false,
+          loop: true
+        });
+        // 设置搜索词
+        fc.getState().change({ searchString: searchText }, false);
+        // 延迟二次确认
         setTimeout(function () {
-          state.change({ searchString: searchText }, false);
-        }, 100);
+          fc.getState().change({ searchString: searchText }, false);
+        }, 120);
       } else {
-        // fallback：通过 DOM 操作
+        // fallback：直接用 action + DOM 写入
         ed.getAction('actions.find').run();
         var domNode = ed.getDomNode();
         if (domNode) {

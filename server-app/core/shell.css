@@ -1186,10 +1186,21 @@ body {
   color: var(--text-primary) !important;
 }
 
-/* 选中文字背景色 → 金色（不要蓝色） */
+/* 选中文字背景色 → 金色（不要蓝色）— 核弹级覆盖 */
 .monaco-editor .find-widget .monaco-inputbox input::selection {
   background-color: #ffd302 !important;
+  background: #ffd302 !important;
   color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
+}
+
+.monaco-editor .find-widget input::selection,
+.monaco-editor .find-widget textarea::selection,
+.monaco-editor .find-widget *::selection {
+  background-color: #ffd302 !important;
+  background: #ffd302 !important;
+  color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
 }
 
 /* 焦点边框 → Solarized yellow（替代默认蓝色） */
