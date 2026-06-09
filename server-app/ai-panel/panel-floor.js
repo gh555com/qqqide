@@ -241,7 +241,10 @@ async function _appendToSearchQuest(questId, floorNum) {
 
         // 读已有内容（若存在），检查是否已写过本层楼
         var existing = '';
-        try { existing = await bridge.fs.read(searchPath); } catch (_) { }
+        var fileExists = await bridge.fs.exists(searchPath);
+        if (fileExists) {
+            try { existing = await bridge.fs.read(searchPath); } catch (_) { }
+        }
         if (existing.indexOf(marker) >= 0) return;  // 已存在，跳过
 
         // 提取 AI 最终回答（最后一个 final 类型 house 的 answer）
