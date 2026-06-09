@@ -478,6 +478,23 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
             treasures: ag._floorTreasures || [],
             createdAt: Date.now()
         };
+
+        // ═══ A4 快照持久化 ═══
+        if (typeof _a4PersistSnapshots === 'function') {
+            try {
+                var _qIdx = questStore._index || [];
+                var _qItem = null;
+                for (var qi = 0; qi < _qIdx.length; qi++) {
+                    if (_qIdx[qi].id === questId) { _qItem = _qIdx[qi]; break; }
+                }
+                var _numId = _qItem ? (_qItem.numericId || 0) : 0;
+                var a4Meta = await _a4PersistSnapshots(ag, _numId, floorNum);
+                if (a4Meta && a4Meta.length) {
+                    floorPayload.a4Snapshots = a4Meta;
+                }
+            } catch (_a4Err) { console.warn('[a4] persist failed:', _a4Err); }
+        }
+
         await questStore.saveFloor(questId, floorNum, floorPayload);
     }
 

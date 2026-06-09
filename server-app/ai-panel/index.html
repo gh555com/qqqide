@@ -154,6 +154,13 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-a2-badge.urgent{background:#dc322f}
 .msg-a2-badge.soon{background:#cb4b16}
 .msg-a2-badge.later{background:#2aa198}
+/* A4 file snapshot block — between A2 and A1, per-floor file changes */
+.msg-a4{display:none;flex-direction:column;gap:1px;padding:6px 8px;margin:0 0 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--card-bg);max-height:200px;overflow-y:auto}
+.msg-a4.has-files{display:flex}
+.msg-a4-row{display:flex;align-items:center;justify-content:space-between;padding:3px 6px;border-radius:3px;cursor:pointer;gap:8px;min-height:22px}
+.msg-a4-row:hover{background:var(--base2)}
+.msg-a4-fname{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.msg-a4-stats{font-family:ui-monospace,Consolas,monospace;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0}
 #input-area{border-top:1px solid var(--border-color);padding:8px;display:flex;flex-direction:column;gap:6px;background:var(--card-bg)}
 #image-strip{display:none;overflow-x:hidden;flex-wrap:wrap;padding:4px 0;gap:6px}
 #image-strip::-webkit-scrollbar{height:4px}
@@ -424,6 +431,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 <script src="panel-quest-ui.js"></script>
 <script src="panel-clock.js"></script>
 <script src="panel-alltxt.js"></script>
+<script src="panel-a4.js"></script>
 <script src="panel-floor-indicator.js"></script>
 <script src="panel-send.js"></script>
 </body>

@@ -284,6 +284,17 @@ var CardPool = (function () {
       }
     }
 
+    // ④b 恢复 A4 文件快照块（在 A2 之后、A1 之前）
+    if (typeof window._a4RestoreBlock === 'function' && fData.a4Snapshots && fData.a4Snapshots.length) {
+      var _a4NumId = 0;
+      if (window.questStore && window.questStore._index) {
+        for (var _qi = 0; _qi < window.questStore._index.length; _qi++) {
+          if (window.questStore._index[_qi].id === card.id) { _a4NumId = window.questStore._index[_qi].numericId || 0; break; }
+        }
+      }
+      window._a4RestoreBlock(aiEl, fData.a4Snapshots, _a4NumId, fNum);
+    }
+
     // ⑤ 创建 A1 豆腐块（clockBlock 已存在，insertBefore 精准插入时钟上方）
     var meta = card._floorMetaMap[fNum];
     var a1El = null;
