@@ -492,6 +492,7 @@ function _esc(s) {
 // ═══════════════════════════════════════════════════════════════
 
 var _gitRoot = '';
+var _gitAvailable = null;
 
 async function _gitCmd(args, cwd) {
   if (!bridge || !bridge.qz) return { stdout: '', stderr: 'No bridge', exitCode: 1 };
@@ -507,6 +508,33 @@ async function _gitCmd(args, cwd) {
   } catch(e) {
     return { stdout: '', stderr: e.message || String(e), exitCode: 1 };
   }
+}
+
+async function _checkGitAvailable() {
+  if (_gitAvailable !== null) return _gitAvailable;
+  try {
+    var r = await _gitCmd(['--version']);
+    _gitAvailable = (r.exitCode === 0 && r.stdout.indexOf('git version') >= 0);
+  } catch(e) {
+    _gitAvailable = false;
+  }
+  if (!_gitAvailable) _showGitUnavailable();
+  return _gitAvailable;
+}
+
+function _showGitUnavailable() {
+  var el = document.getElementById('git-content');
+  if (!el) return;
+  el.innerHTML = '<div class="empty" style="flex-direction:column;gap:8px;">' +
+    '<span style="font-size:48px;">🔀</span>' +
+    '<span>未检测到 Git</span>' +
+    '<span style="font-size:11px;color:var(--base01);">系统 PATH 中找不到 git 命令。</span>' +
+    '<span style="font-size:11px;color:var(--base01);">请安装 Git 或将其加入环境变量后重启 IDE。</span>' +
+    '<span style="font-size:10px;color:var(--base01);margin-top:4px;">' +
+    '下载: <a href="https://git-scm.com/downloads" target="_blank" style="color:var(--blue);">git-scm.com</a> | ' +
+    '未来将内嵌绿色版 Git，无需系统安装。</span>' +
+    '</div>';
+  document.getElementById('git-toolbar').style.display = 'none';
 }
 
 async function _detectGitRoot() {
@@ -681,7 +709,10 @@ async function _showCommitDiff(fullHash) {
 }
 
 // ─── EVENT HANDLERS ───
-document.getElementById('git-refresh').addEventListener('click', _refreshGitStatus);
+document.getElementById('git-refresh').addEventListener('click', async function() {
+  var ok = await _checkGitAvailable();
+  if (ok) _refreshGitStatus();
+});
 document.getElementById('git-log-btn').addEventListener('click', _showGitLog);
 
 document.getElementById('git-stage-all').addEventListener('click', async function() {
@@ -714,8 +745,20 @@ document.getElementById('git-stash-btn').addEventListener('click', async functio
 });
 
 // ─── INIT ───
+function _initGit() {
+  _detectGitRoot().then(function() {
+    if (_gitRoot) {
+      _checkGitAvailable().then(function(ok) {
+        if (ok) _refreshGitStatus();
+      });
+    } else {
+      document.getElementById('nav-title').textContent = '非 Git 仓库';
+    }
+  });
+}
+
 if (MODE === 'git') {
-  _detectGitRoot().then(_refreshGitStatus);
+  _initGit();
 } else {
   _detectGitRoot();
 }

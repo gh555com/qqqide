@@ -14,6 +14,27 @@
 // ============================================================================
 
 var A4_MAX_SNAPSHOT_BYTES = 512 * 1024; // 512KB per file content cap
+var A4_COMPRESS = true; // 启用 gzip 压缩（~70% 节省，零依赖）
+var A4_COMPRESS_THRESHOLD = 256; // 小于此字节数不压缩（压缩小文件可能反而增大）
+var A4_BINARY_EXT = new RegExp('\\.(png|jpg|jpeg|gif|ico|webp|svgz|woff2?|ttf|eot|otf|wasm|zip|gz|br|tar|7z|rar|exe|dll|so|dylib|o|a|bin|dat|pak|pyc|class|map)(\\.|$)','i');
+var A4_GZIP_MAGIC = String.fromCharCode(0x1f, 0x8b); // gzip 魔数，用于检测已压缩数据
+
+// ---- Uint8Array ↔ base64（分块安全，避免栈溢出） ----
+function _a4Uint8ToBase64(bytes) {
+    var CHUNK = 0x8000; // 32KB chunks
+    var parts = [];
+    for (var i = 0; i < bytes.length; i += CHUNK) {
+        parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK)));
+    }
+    return btoa(parts.join(''));
+}
+
+function _a4Base64ToUint8(b64) {
+    var binary = atob(b64);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
 
 // ---- 简易 path hash（取路径的简单 hash 作为文件名） ----
 function _a4PathHash(p) {
@@ -79,6 +100,82 @@ function _a4LcsLength(a, b) {
     return prev[m];
 }
 
+// ═══ 压缩/解压（gzip，浏览器内置 CompressionStream，零依赖） ═══
+
+async function _a4Gzip(text) {
+    if (!text || text.length < A4_COMPRESS_THRESHOLD) return text;
+    try {
+        if (typeof CompressionStream === 'undefined') return text;
+        var cs = new CompressionStream('gzip');
+        var writer = cs.writable.getWriter();
+        var reader = cs.readable.getReader();
+        writer.write(new TextEncoder().encode(text));
+        writer.close();
+        var chunks = [];
+        var total = 0;
+        while (true) {
+            var chunk = await reader.read();
+            if (chunk.done) break;
+            chunks.push(chunk.value);
+            total += chunk.value.length;
+        }
+        var combined = new Uint8Array(total);
+        var off = 0;
+        for (var c = 0; c < chunks.length; c++) {
+            combined.set(chunks[c], off);
+            off += chunks[c].length;
+        }
+        // 转换为 base64（分块避免 fromCharCode.apply 栈溢出）
+        var b64 = _a4Uint8ToBase64(combined);
+        return A4_GZIP_MAGIC + b64;
+    } catch (e) {
+        return text; // 压缩失败，回退原文
+    }
+}
+
+async function _a4Gunzip(data) {
+    if (!data || data.indexOf(A4_GZIP_MAGIC) !== 0) return data;
+    try {
+        if (typeof DecompressionStream === 'undefined') return data;
+        var b64part = data.slice(A4_GZIP_MAGIC.length);
+        var bytes = _a4Base64ToUint8(b64part);
+        var ds = new DecompressionStream('gzip');
+        var writer = ds.writable.getWriter();
+        var reader = ds.readable.getReader();
+        writer.write(bytes);
+        writer.close();
+        var chunks = [];
+        var total = 0;
+        while (true) {
+            var chunk = await reader.read();
+            if (chunk.done) break;
+            chunks.push(chunk.value);
+            total += chunk.value.length;
+        }
+        var combined = new Uint8Array(total);
+        var off = 0;
+        for (var c2 = 0; c2 < chunks.length; c2++) {
+            combined.set(chunks[c2], off);
+            off += chunks[c2].length;
+        }
+        return new TextDecoder().decode(combined);
+    } catch (e) {
+        return data; // 解压失败，回退原文（可能未压缩）
+    }
+}
+
+// ---- 二进制文件检测 ----
+function _a4IsBinary(path, content) {
+    if (A4_BINARY_EXT.test(path)) return true;
+    if (!content) return false;
+    // 检查前 8KB 中是否有 null 字节
+    var checkLen = Math.min(content.length, 8192);
+    for (var i = 0; i < checkLen; i++) {
+        if (content.charCodeAt(i) === 0) return true;
+    }
+    return false;
+}
+
 // ---- 获取快照存储目录 ----
 function _a4SnapshotDir(questNumericId, floorNum) {
     if (!_workspaceRoot) return null;
@@ -107,12 +204,12 @@ async function _a4WrappedExecuteTool(name, args) {
             if (bridge.ai && bridge.ai.read_file) {
                 var raw = await bridge.ai.read_file({ path: filePath });
                 if (typeof raw === 'string' && raw.indexOf('Error') !== 0 && raw.length <= A4_MAX_SNAPSHOT_BYTES) {
-                    beforeContent = raw;
+                    if (!_a4IsBinary(filePath, raw)) beforeContent = raw;
                 }
             } else if (bridge.fs && bridge.fs.read) {
                 var raw2 = await bridge.fs.read(filePath);
                 if (typeof raw2 === 'string' && raw2.length <= A4_MAX_SNAPSHOT_BYTES) {
-                    beforeContent = raw2;
+                    if (!_a4IsBinary(filePath, raw2)) beforeContent = raw2;
                 }
             }
         } catch (_) { /* file might not exist for write_file creating new */ }
@@ -133,7 +230,7 @@ async function _a4WrappedExecuteTool(name, args) {
     } else if (name === 'create_file' || name === 'write_file') {
         // args.content IS the final content
         if (args.content && args.content.length <= A4_MAX_SNAPSHOT_BYTES) {
-            afterContent = args.content;
+            if (!_a4IsBinary(filePath, args.content)) afterContent = args.content;
         }
     } else {
         // edit_file: read file after edit
@@ -141,12 +238,12 @@ async function _a4WrappedExecuteTool(name, args) {
             if (bridge && bridge.ai && bridge.ai.read_file) {
                 var raw3 = await bridge.ai.read_file({ path: filePath });
                 if (typeof raw3 === 'string' && raw3.indexOf('Error') !== 0 && raw3.length <= A4_MAX_SNAPSHOT_BYTES) {
-                    afterContent = raw3;
+                    if (!_a4IsBinary(filePath, raw3)) afterContent = raw3;
                 }
             } else if (bridge && bridge.fs && bridge.fs.read) {
                 var raw4 = await bridge.fs.read(filePath);
                 if (typeof raw4 === 'string' && raw4.length <= A4_MAX_SNAPSHOT_BYTES) {
-                    afterContent = raw4;
+                    if (!_a4IsBinary(filePath, raw4)) afterContent = raw4;
                 }
             }
         } catch (_) { }
@@ -330,14 +427,16 @@ async function _a4PersistSnapshots(ag, questNumericId, floorNum) {
         };
         metadata.push(meta);
 
-        // Write content files (async, best-effort)
+        // Write content files (async, best-effort, compressed)
         if (dir && bridge && bridge.fs) {
             try {
                 if (snap.before !== null && snap.before !== undefined) {
-                    await bridge.fs.write(dir + hash + '.before', snap.before);
+                    var compBefore = A4_COMPRESS ? await _a4Gzip(snap.before) : snap.before;
+                    await bridge.fs.write(dir + hash + '.before', compBefore);
                 }
                 if (snap.after !== null && snap.after !== undefined) {
-                    await bridge.fs.write(dir + hash + '.after', snap.after);
+                    var compAfter = A4_COMPRESS ? await _a4Gzip(snap.after) : snap.after;
+                    await bridge.fs.write(dir + hash + '.after', compAfter);
                 }
                 // Write path mapping
                 await bridge.fs.write(dir + hash + '.meta', JSON.stringify(meta));
@@ -407,8 +506,14 @@ async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum) {
     var before = null, after = null;
 
     if (dir && bridge && bridge.fs) {
-        try { before = await bridge.fs.read(dir + meta.hash + '.before'); } catch (_) { }
-        try { after = await bridge.fs.read(dir + meta.hash + '.after'); } catch (_) { }
+        try { 
+            var rawBefore = await bridge.fs.read(dir + meta.hash + '.before'); 
+            before = A4_COMPRESS ? await _a4Gunzip(rawBefore) : rawBefore;
+        } catch (_) { }
+        try { 
+            var rawAfter = await bridge.fs.read(dir + meta.hash + '.after'); 
+            after = A4_COMPRESS ? await _a4Gunzip(rawAfter) : rawAfter;
+        } catch (_) { }
     }
 
     _postToHost({
