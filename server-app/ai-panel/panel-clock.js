@@ -254,34 +254,88 @@ async function renderQuestDrop() {
             var item = document.createElement('div');
             item.className = 'quest-drop-item' + (s.id === questActiveId ? ' active' : '');
             item.style.cssText = 'display:flex;align-items:center';
+            // 文本行（含前缀 + 标题/编辑框）
             var line = document.createElement('span');
             line.className = 'quest-drop-line';
-            line.style.cssText = 'flex:1;min-width:0';
+            line.style.cssText = 'flex:1;min-width:0;display:flex;align-items:center';
             var prefix = document.createElement('span');
             prefix.className = 'quest-drop-prefix';
+            prefix.style.cssText = 'flex:none';
             prefix.textContent = 'q' + (s.numericId || '?') + '. ';
             var title = document.createElement('span');
             title.className = 'quest-drop-title';
+            title.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
             title.textContent = s.title || '';
+            // 内联编辑框（默认隐藏）
+            var editInput = document.createElement('input');
+            editInput.type = 'text';
+            editInput.style.cssText = 'display:none;flex:1;min-width:0;border:none;outline:none;background:var(--card-bg);color:var(--text-primary);font-size:16px;font-family:inherit;padding:0 2px;margin:0';
+            var _editing = false;
+            function _startEdit() {
+                if (_editing) return;
+                _editing = true;
+                title.style.display = 'none';
+                editInput.style.display = 'block';
+                editInput.value = s.title || '';
+                editInput.focus();
+                editInput.select();
+            }
+            function _commitEdit() {
+                if (!_editing) return;
+                _editing = false;
+                var newTitle = editInput.value.trim();
+                editInput.style.display = 'none';
+                title.style.display = '';
+                if (newTitle && newTitle !== s.title) {
+                    s.title = newTitle;
+                    title.textContent = newTitle;
+                    renameQuest(s.id, newTitle);
+                }
+            }
+            function _cancelEdit() {
+                if (!_editing) return;
+                _editing = false;
+                editInput.style.display = 'none';
+                title.style.display = '';
+                title.textContent = s.title || '';
+            }
+            editInput.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') { e.preventDefault(); _commitEdit(); }
+                if (e.key === 'Escape') { e.preventDefault(); _cancelEdit(); }
+            });
+            editInput.addEventListener('blur', function () { _commitEdit(); });
             line.appendChild(prefix);
             line.appendChild(title);
+            line.appendChild(editInput);
             item.appendChild(line);
             // ✏️ 编辑按钮：hover 时显示
             var editBtn = document.createElement('span');
             editBtn.textContent = '\u270F\uFE0F';
             editBtn.title = '\u7F16\u8F91\u540D\u79F0';
-            editBtn.style.cssText = 'flex:none;margin-left:6px;font-size:14px;opacity:0;cursor:pointer;padding:0 4px;transition:opacity .12s';
-            editBtn.onclick = function (e) {
+            editBtn.style.cssText = 'flex:none;margin-left:6px;font-size:14px;opacity:0;cursor:pointer;padding:0 4px;transition:opacity .12s;line-height:1';
+            editBtn.addEventListener('mousedown', function (e) {
                 e.stopPropagation();
-                var newTitle = window.prompt('\u91CD\u547D\u540D Quest\uFF1A', s.title || '');
-                if (newTitle !== null && newTitle.trim() !== '' && newTitle.trim() !== s.title) {
-                    renameQuest(s.id, newTitle.trim());
-                }
-            };
+                e.preventDefault();
+                _startEdit();
+            });
+            editBtn.addEventListener('click', function (e) {
+                e.stopPropagation();
+            });
             item.appendChild(editBtn);
-            item.addEventListener('mouseenter', function () { editBtn.style.opacity = '1'; });
-            item.addEventListener('mouseleave', function () { editBtn.style.opacity = '0'; });
-            item.onclick = function (e) { e.stopPropagation(); closeQuestDrop(); switchQuest(s.id); };
+            // hover 显隐
+            item.addEventListener('mouseenter', function () {
+                if (!_editing) editBtn.style.opacity = '1';
+            });
+            item.addEventListener('mouseleave', function () {
+                if (!_editing) editBtn.style.opacity = '0';
+            });
+            // 点击整行 → 切换 quest（编辑中不触发）
+            item.addEventListener('mousedown', function (e) {
+                if (_editing) { e.stopPropagation(); e.preventDefault(); return; }
+                e.stopPropagation();
+                closeQuestDrop();
+                switchQuest(s.id);
+            });
             body.appendChild(item);
         })(filtered[i]);
     }
