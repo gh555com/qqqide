@@ -8,7 +8,7 @@
 // Cache version bumps on each shell.css/js change.
 // ============================================================================
 
-const CACHE_NAME = 'qqq-shell-v7';
+const CACHE_NAME = 'qqq-shell-v8';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -17,6 +17,7 @@ const PRECACHE_URLS = [
   './core/ipc-bridge.js',
   './core/menu-schema.js',
   './core/editor.js',
+  './core/editor-breadcrumb.js',
   './goods/file-explorer/file-explorer.js',
 ];
 

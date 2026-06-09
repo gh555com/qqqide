@@ -150,6 +150,50 @@ async function _ensureQuestDir(root, qName, fName) {
     return { qDir: qDir, fDir: fDir };
 }
 
+// ── 按 q{n}. 前缀搜索已有 quest 目录（不依赖标题，防分裂脑）──
+async function _findQuestDirByPrefix(root, questId) {
+    var bridge = window.parent && window.parent.qqqideBridge;
+    if (!bridge || !bridge.fs) return null;
+    var questsDir = root + '/qqq/quests/';
+    try {
+        var entries = await bridge.fs.list(questsDir);
+        for (var ei = 0; ei < entries.length; ei++) {
+            if (entries[ei].name.startsWith(questId + '.') && entries[ei].isDir) {
+                return entries[ei].name;
+            }
+        }
+    } catch (_) { }
+    return null;
+}
+
+// ── 解析 quest 目录名：先按前缀搜索已有目录，找不到才从标题构造 ──
+async function _resolveQuestDirName(root, questId, numericId, title) {
+    var existing = await _findQuestDirByPrefix(root, questId);
+    if (existing) return existing;
+    return _makeName('q', numericId, title);
+}
+
+// ── 惰性修复：若磁盘目录名与 DB 标题不一致，尝试重命名（失败静默，下次再试）──
+async function _tryRepairQuestDirName(root, questId, numericId, dbTitle) {
+    if (!dbTitle) return;
+    var bridge = window.parent && window.parent.qqqideBridge;
+    if (!bridge || !bridge.fs) return;
+    var currentName = await _findQuestDirByPrefix(root, questId);
+    if (!currentName) return;
+    var expectedName = _makeName('q', numericId, dbTitle);
+    if (currentName === expectedName) return;  // 已一致
+    // 尝试重命名
+    var questsDir = root + '/qqq/quests/';
+    var oldPath = questsDir + currentName;
+    var newPath = questsDir + expectedName;
+    try {
+        await bridge.fs.rename(oldPath, newPath);
+        // [silent] repaired quest dir: currentName → expectedName
+    } catch (_) {
+        // 静默失败，下次 floor 写入时再试
+    }
+}
+
 async function createNewQuest() {
     if (streaming) stopStream();
     saveQuestUIState(questActiveId);
@@ -228,6 +272,25 @@ async function deleteQuest(id) {
         _broadcast('owner-claimed', questActiveId);
     }
     // 删除非活跃 quest → 保持当前视图不变，仅刷新下拉
+    await renderTabs();
+}
+
+// ── 重命名 quest：DB 改名 + 尽力磁盘改名 + 惰性修复兜底 ──
+async function renameQuest(id, newTitle) {
+    if (!id || !newTitle) return;
+    var quests = await questStore.list();
+    var entry = quests.find(function (q) { return q.id === id; });
+    if (!entry) return;
+    var oldTitle = entry.title;
+    if (oldTitle === newTitle) return;
+    // 1. DB 改名（100% 可靠）
+    await questStore.rename(id, newTitle, entry.numericId);
+    // 2. 尽力磁盘改名
+    var root = questStore.getProjectRoot();
+    if (root) {
+        await _tryRepairQuestDirName(root, id, entry.numericId, newTitle);
+    }
+    // 3. 刷新 UI
     await renderTabs();
 }
 

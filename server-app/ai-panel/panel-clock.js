@@ -24,14 +24,21 @@ function _startAutoSave() {
         if (convLen <= _lastAutoSaveLen) return;
         _lastAutoSaveLen = convLen;
         var floorConv = fullConv.slice(floorStartIdx);
-        questStore.saveFloor(_capturedQuestId, floorNum, {
-            question: (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '',
-            conversation: floorConv,
-            houses: (_capturedAgent._houses || []).slice(),
-            costWge: _capturedAgent._floorCostWge,
-            lastUserInput: _capturedAgent._lastUserInput,
-            createdAt: Date.now()
-        }).catch(function () { });
+        // 优先使用统一增量 payload 构建器（含 a1/a2/a3/a4 全部数据）
+        var payload;
+        if (typeof window._a4BuildCompleteFloorPayload === 'function') {
+            payload = window._a4BuildCompleteFloorPayload(_capturedAgent);
+        } else {
+            payload = {
+                question: (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '',
+                conversation: floorConv,
+                houses: (_capturedAgent._houses || []).slice(),
+                costWge: _capturedAgent._floorCostWge,
+                lastUserInput: _capturedAgent._lastUserInput,
+                createdAt: Date.now()
+            };
+        }
+        questStore.saveFloor(_capturedQuestId, floorNum, payload).catch(function () { });
     }, _AUTOSAVE_INTERVAL);
 }
 function _stopAutoSave() {
@@ -246,8 +253,10 @@ async function renderQuestDrop() {
         (function (s) {
             var item = document.createElement('div');
             item.className = 'quest-drop-item' + (s.id === questActiveId ? ' active' : '');
+            item.style.cssText = 'display:flex;align-items:center';
             var line = document.createElement('span');
             line.className = 'quest-drop-line';
+            line.style.cssText = 'flex:1;min-width:0';
             var prefix = document.createElement('span');
             prefix.className = 'quest-drop-prefix';
             prefix.textContent = 'q' + (s.numericId || '?') + '. ';
@@ -257,6 +266,21 @@ async function renderQuestDrop() {
             line.appendChild(prefix);
             line.appendChild(title);
             item.appendChild(line);
+            // ✏️ 编辑按钮：hover 时显示
+            var editBtn = document.createElement('span');
+            editBtn.textContent = '\u270F\uFE0F';
+            editBtn.title = '\u7F16\u8F91\u540D\u79F0';
+            editBtn.style.cssText = 'flex:none;margin-left:6px;font-size:14px;opacity:0;cursor:pointer;padding:0 4px;transition:opacity .12s';
+            editBtn.onclick = function (e) {
+                e.stopPropagation();
+                var newTitle = window.prompt('\u91CD\u547D\u540D Quest\uFF1A', s.title || '');
+                if (newTitle !== null && newTitle.trim() !== '' && newTitle.trim() !== s.title) {
+                    renameQuest(s.id, newTitle.trim());
+                }
+            };
+            item.appendChild(editBtn);
+            item.addEventListener('mouseenter', function () { editBtn.style.opacity = '1'; });
+            item.addEventListener('mouseleave', function () { editBtn.style.opacity = '0'; });
             item.onclick = function (e) { e.stopPropagation(); closeQuestDrop(); switchQuest(s.id); };
             body.appendChild(item);
         })(filtered[i]);

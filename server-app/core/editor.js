@@ -419,6 +419,43 @@
     // [silent] editor TS/JS providers registered
   }
 
+  // ── 撤销模式：按设置决定是否挂载逐字回退 ──
+  var _undoModeUnsub = null;
+  var _allMonacoEditors = []; // 跟踪所有编辑器实例
+
+  function _applyUndoMode(ed, monaco) {
+    if (!ed || !monaco) return;
+    // 登记编辑器
+    if (_allMonacoEditors.indexOf(ed) < 0) {
+      _allMonacoEditors.push(ed);
+    }
+    var mode = window.qqqSettings ? window.qqqSettings.get('editor.undoMode', 'char') : 'char';
+    if (mode === 'char') {
+      if (window.qqqCharUndo) {
+        window.qqqCharUndo.attachMonaco(ed, monaco);
+      }
+    } else {
+      // 'word': 卸载逐字回退，Monaco 原生接管
+      if (window.qqqCharUndo) {
+        window.qqqCharUndo.detach(ed);
+      }
+    }
+  }
+
+  function _updateAllUndoModes() {
+    if (!_monacoRef) return;
+    for (var i = 0; i < _allMonacoEditors.length; i++) {
+      _applyUndoMode(_allMonacoEditors[i], _monacoRef);
+    }
+  }
+
+  // 监听设置变更
+  if (window.qqqSettings && window.qqqSettings.onChange) {
+    _undoModeUnsub = window.qqqSettings.onChange('editor.undoMode', function () {
+      _updateAllUndoModes();
+    });
+  }
+
   // ---------------- Editor build ----------------
   async function build(host) {
     mountEl = host;
@@ -445,9 +482,16 @@
         wordWrap: 'on',
         wrappingStrategy: 'advanced',
         tabSize: 4,
+        breadcrumbs: { enabled: true },
       });
       _monacoRef = monaco;
       _editorRef = ed;
+      // 唯一真理逐字回退机器：按设置决定是否挂载
+      _applyUndoMode(ed, monaco);
+      // ── 面包屑导航条（空编辑器：仅工具按钮）──
+      if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.create) {
+        window.qqqEditorBreadcrumb.create(host, '', ed, monaco);
+      }
       // 主题切换时同步 Monaco（全局注册一次）
       hookThemeSync(monaco);
 
@@ -499,11 +543,18 @@
       // Wire LSP diagnostics and hover
       wireLspDiagnostics();
       wireLspHover();
+      // 编辑器销毁时清理 char-undo 和跟踪列表
+      ed.onDidDispose(function () {
+        if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
+        var idx = _allMonacoEditors.indexOf(ed);
+        if (idx >= 0) _allMonacoEditors.splice(idx, 1);
+      });
       editor = {
         isFallback: false,
         setValue(v, lang) {
           const model = ed.getModel();
           if (model && lang) { monaco.editor.setModelLanguage(model, lang); }
+          if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
           ed.setValue(v == null ? '' : String(v));
           dirty = false; updateTitle();
         },
@@ -613,11 +664,19 @@
         wordWrap: 'on',
         wrappingStrategy: 'advanced',
         tabSize: 4,
+        breadcrumbs: { enabled: true },
       });
 
       // Set as primary editor if first one
       if (!_monacoRef) _monacoRef = monaco;
       if (!_editorRef) _editorRef = ed;
+      // 唯一真理逐字回退机器：按设置决定是否挂载
+      _applyUndoMode(ed, monaco);
+
+      // ── 面包屑导航条 ──
+      if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.create) {
+        window.qqqEditorBreadcrumb.create(host, filePath, ed, monaco);
+      }
 
       // ---- Dirty state tracking per pane ----
       let _paneDirty = false;
@@ -673,6 +732,10 @@
       ed.onDidDispose(function () {
         delete _paneEditors[filePath];
         delete _paneFiles[host];
+        if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
+        // 从跟踪列表移除
+        var idx = _allMonacoEditors.indexOf(ed);
+        if (idx >= 0) _allMonacoEditors.splice(idx, 1);
       });
       return ed;
     } catch (e) {
@@ -707,6 +770,7 @@
     if (!ed) return false;
     try {
       ed._isRefreshing = true;
+      if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
       ed.setValue(content == null ? '' : String(content));
       ed._isRefreshing = false;
       return true;

@@ -238,6 +238,7 @@ var AgentLoop = (function () {
         this._ctx = { narrative: "", facts: [], treasures: [], totalFloors: 0 };
         this._visionCache.clear();
         this._houses = [];
+        this._a4Snapshots = {};
         this._houseIndex = 0;
         this._persistentCount = 0;
         this._rulesVersion = "";
@@ -257,7 +258,7 @@ var AgentLoop = (function () {
             var urgency = (t.urgency === 'urgent' || t.urgency === 'soon' || t.urgency === 'later') ? t.urgency : 'later';
             var text = t.text.trim().slice(0, 300);
             if ((gain - cost) >= 7) {
-                validated.push({ text: text, urgency: urgency });
+                validated.push({ text: text, gain: gain, cost: cost, urgency: urgency });
                 // 去重后注入上下文（每条 treasure 全局只写一次）
                 var key = text.slice(0, 80);
                 if (!this._injectedTreasureKeys[key]) {
@@ -268,6 +269,7 @@ var AgentLoop = (function () {
             }
         }
         this._floorTreasures = validated;
+        if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
         var aiDiv = this._activeAiDiv;
         if (aiDiv && aiDiv._treasureBlock && typeof _renderTreasures === 'function') {
             _renderTreasures(aiDiv._treasureBlock, validated);
@@ -341,7 +343,7 @@ var AgentLoop = (function () {
         self._floorTreasures = [];
         self._floorTiming = { networkMs: 0, deepseekMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (self._serverDrift || 0) };
         self._floorStartServerMs = self._floorTiming.floorStartServerMs;  // 兼容旧引用
-        
+
         // ═══ 视觉预分析：阿里眼睛(Qwen VL) → 文本 → DeepSeek大脑 ═══
         // 将用户问题一并发送，让阿里针对实际问题做定向识别
         var visionText = '';
@@ -413,6 +415,7 @@ var AgentLoop = (function () {
         var maxIterations = forceNoTools ? 1 : 200;
         var conversationSnapshot = self.conversation.length;
         self._houses = [];
+        self._a4Snapshots = {};
         self._houseIndex = 0;
         self._resetStallCounter();
 
@@ -454,9 +457,10 @@ var AgentLoop = (function () {
                     if (_ackResp && _ackResp.content) {
                         // 移除确认指令（user 消息），只保留 AI 确认回复，避免硬指令污染后续对话
                         self.conversation.pop(); // pop _ackPrompt
-                        self.conversation.push({ role: 'assistant', content: _ackResp.content, _guideAck: true, _floor: self._ctx.totalFloors });
+                        self.conversation.push({ role: 'assistant', content: _ackResp.content, _guideAck: true, _guideText: _guideText, _floor: self._ctx.totalFloors });
                         // 归档：确认回合写入 houses（all.txt 可见）
                         self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], summary: '', ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString() });
+                        if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                         self._log('✅ guide ack: ' + _ackResp.content.slice(0, 80));
                     } else if (_ackResp && _ackResp.type === 'tool_calls') {
                         // AI 不听话，仍返回工具调用 → 移除 ack prompt，不污染对话
@@ -529,6 +533,7 @@ var AgentLoop = (function () {
 
                 if (response.type === 'message') {
                     self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '' });
+                    if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
                     if (response.reasoning_content) assistantMsg.reasoning_content = response.reasoning_content;
                     // 替换之前因切换 quest 而保存的截断消息，避免重复
@@ -551,6 +556,7 @@ var AgentLoop = (function () {
                 if (response.type === 'tool_calls') {
                     var _tools = response.tool_calls.map(function (tc) { return { name: tc.function.name, args: tc.function.arguments }; });
                     self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '' });
+                    if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     var assistantToolMsg = {
                         role: 'assistant', content: '',
                         tool_calls: response.tool_calls,
@@ -621,6 +627,7 @@ var AgentLoop = (function () {
                 });
                 if (finalResp && finalResp.content) {
                     self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ts: new Date().toISOString(), ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '' });
+                    if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     if (finalResp._ttfbMs !== undefined) {
                         self._floorTiming.networkMs += finalResp._ttfbMs;
                         self._floorTiming.deepseekMs += finalResp._streamMs;
@@ -862,14 +869,60 @@ var AgentLoop = (function () {
     // ---- 网关调用 ----
     AgentLoop.prototype._callGateway = async function (messages, opts) {
         var self = this;
-        var token = opts.token;
         var onToken = opts.onToken;
         var onReasoning = opts.onReasoning;
         var onError = opts.onError;
         var tier = opts.tier || TIER_PRO;
         var noTools = opts.noTools || false;
 
+        // ★ 号池：从 opts.token 获取初始 key，支持 429 自动切换
+        var _currentToken = opts.token || '';
+        var _keyRotated = false;
+        var _triedTokens = {};  // 本轮已尝试过的 token（避免死循环）
+        if (_currentToken) _triedTokens[_currentToken] = true;
+
+        function _rotateKey() {
+            // 标记当前 key 被限流
+            if (typeof markToken429 === 'function' && _currentToken) {
+                markToken429(_currentToken);
+            }
+            // 获取下一个可用 key
+            if (typeof getTokenInfo === 'function') {
+                var info = getTokenInfo();
+                if (info.key && info.key !== _currentToken && !_triedTokens[info.key]) {
+                    _currentToken = info.key;
+                    _triedTokens[_currentToken] = true;
+                    _keyRotated = true;
+                    if (info.cooldown) {
+                        self._log('  ⚡ key rotated (cooldown ' + info.cooldown + 's remaining)');
+                    } else {
+                        self._log('  ⚡ key rotated to next in pool');
+                    }
+                    return true;
+                }
+            }
+            return false;
+        }
+
         self.abortController = new AbortController();
+
+        // ★ HTTP/2 死连接防卡死：90s 无响应自动 abort（Cloudflare Free 100s 限制）
+        var _fetchDeadline = setTimeout(function () {
+            if (self.abortController) {
+                self._log('⏰ fetch deadline 90s reached — aborting to prevent hang');
+                self.abortController.abort();
+            }
+        }, 90000);
+        // 包装：每次进入 retry 重置 deadline
+        function _resetFetchDeadline() {
+            clearTimeout(_fetchDeadline);
+            _fetchDeadline = setTimeout(function () {
+                if (self.abortController) {
+                    self._log('⏰ fetch deadline 90s reached — aborting to prevent hang');
+                    self.abortController.abort();
+                }
+            }, 90000);
+        }
 
         // 注入动态上下文（叙事摘要 + 相关事实）
         var apiMessages = messages;
@@ -909,17 +962,35 @@ var AgentLoop = (function () {
         if (tier.thinking) body.thinking = tier.thinking;
         if (tier.effort) body.reasoning_effort = tier.effort;
 
+        // ★ 自适应节流：距上次 API 调用不足 MIN_API_INTERVAL_MS 则等待
+        var MIN_API_INTERVAL_MS = 600;
+        var _now = performance.now();
+        if (self._lastApiCallTs) {
+            var _elapsedSinceLastCall = _now - self._lastApiCallTs;
+            if (_elapsedSinceLastCall < MIN_API_INTERVAL_MS) {
+                var _waitMs = MIN_API_INTERVAL_MS - _elapsedSinceLastCall;
+                await new Promise(function (r) { setTimeout(r, _waitMs); });
+            }
+        }
+        self._lastApiCallTs = performance.now();
+
         var MAX_RETRIES = 2;
+        var MAX_KEY_ROTATIONS = 3;  // 最多切换 3 次 key
+        var _keyRotations = 0;
         var _ttfbAccum = 0;
-        var _fetchUrl = GATEWAY_URL;  // ★ HTTP/2 重试时可换连接
         for (var retry = 0; retry <= MAX_RETRIES; retry++) {
+            _resetFetchDeadline();  // ★ 每次 retry 重置 90s deadline
+            // ★ 防御：abortController 可能被外部 injectGuide() 置 null
+            if (!self.abortController) {
+                self.abortController = new AbortController();
+            }
             try {
                 var _fetchStart = performance.now();
-                var resp = await fetch(_fetchUrl, {
+                var resp = await fetch(GATEWAY_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
+                        'Authorization': 'Bearer ' + _currentToken
                     },
                     body: JSON.stringify(body),
                     signal: self.abortController.signal
@@ -929,8 +1000,19 @@ var AgentLoop = (function () {
                 _ttfbAccum += _ttfbMs;
                 if (!resp.ok) {
                     var text = await resp.text();
-                    if ((resp.status === 502 || resp.status === 503) && retry < MAX_RETRIES) {
-                        var waitMsGw = 2000;
+                    // ★ 429 时优先切换 key，再退避重试
+                    if (resp.status === 429 && _keyRotations < MAX_KEY_ROTATIONS) {
+                        if (_rotateKey()) {
+                            _keyRotations++;
+                            retry = -1;  // 重置重试计数（新 key 新机会）
+                            var _rotateWait = 1000;
+                            self._log('  gateway 429 → key rotated, retry in ' + _rotateWait + 'ms');
+                            await new Promise(function (r) { setTimeout(r, _rotateWait); });
+                            continue;
+                        }
+                    }
+                    if ((resp.status === 429 || resp.status === 502 || resp.status === 503) && retry < MAX_RETRIES) {
+                        var waitMsGw = resp.status === 429 ? 3000 * Math.pow(2, retry) : 2000 * Math.pow(2, retry);
                         self._log('  gateway ' + resp.status + ' retry #' + (retry + 1) + ' in ' + waitMsGw + 'ms');
                         await new Promise(function (r) { setTimeout(r, waitMsGw); });
                         continue;
@@ -946,7 +1028,14 @@ var AgentLoop = (function () {
                     // 标记 502/503，供上层 send 函数触发对话修复
                     if (resp.status === 502 || resp.status === 503) {
                         self._lastGatewayError = resp.status;
+                        // ★ 自愈：502/503 重试耗尽后自动 reload（HTTP/2 连接可能已腐坏）
+                        clearTimeout(_fetchDeadline);
+                        onError(friendly + '，正在自动恢复…');
+                        try { sessionStorage.setItem('__qqq_scroll_bottom', '1'); } catch (_) { }
+                        setTimeout(function () { window.location.reload(); }, 1200);
+                        return null;
                     }
+                    clearTimeout(_fetchDeadline);
                     onError(friendly);
                     return null;
                 }
@@ -969,15 +1058,17 @@ var AgentLoop = (function () {
                 }
                 self._log('✓ gateway ' + resp.status + ' streaming...');
                 self._consecutiveFetchErrors = 0;
-                self._http2Ceilings = 0;
+                clearTimeout(_fetchDeadline);  // ★ SSE 流开始，取消 fetch deadline
                 var _result = await self._parseSSE(resp.body, onToken, onReasoning);
                 if (_result) {
                     _result._ttfbMs = _ttfbAccum;
                     _result._streamMs = _result._streamMs || 0;
                 }
+                clearTimeout(_fetchDeadline);
                 return _result;
             } catch (err) {
                 if (err.name === 'AbortError') {
+                    clearTimeout(_fetchDeadline);
                     self._log('■ aborted');
                     if (self._guidePending) {
                         self._abortedByGuide = true;
@@ -993,36 +1084,29 @@ var AgentLoop = (function () {
                     || msg === 'Failed to fetch';
 
                 if (retry < MAX_RETRIES) {
-                    var waitMsF = 2000;
+                    // HTTP/2 死连接重试：等待更长时间让 Chromium 回收坏连接
+                    var waitMsF = _isHttp2Like ? 3000 : 2000;
                     self._log('  fetch error retry #' + (retry + 1) + ' in ' + waitMsF + 'ms: ' + msg);
-                    // ★ HTTP/2 错误：强换连接（URL 加随机参数破连接复用）
-                    if (_isHttp2Like) {
-                        _fetchUrl = GATEWAY_URL + '?_h2r=' + Date.now() + Math.random().toString(36).slice(2, 6);
-                        self._log('  switching to fresh connection: ' + _fetchUrl);
-                    }
                     await new Promise(function (r) { setTimeout(r, waitMsF); });
                     continue;
                 }
 
-                // 重试已耗尽 — 判断是否为 HTTP/2 协议死透（Chromium 108 已知限制）
-                if (_isHttp2Like) {
-                    self._consecutiveFetchErrors = (self._consecutiveFetchErrors || 0) + 1;
-                    self._http2Ceilings = (self._http2Ceilings || 0) + 1;
-                    var _n = self._http2Ceilings;
-                    if (_n >= 5) {
-                        onError('HTTP/2 连接已断开 ' + _n + ' 次，正在自动刷新面板恢复…');
-                        setTimeout(function () { window.location.reload(); }, 800);
-                    } else {
-                        onError('⚠️ HTTP/2 连接断开（第 ' + _n + ' 次）。这是 Chromium 108 已知限制，需刷新面板恢复。\n\n✅ 对话上下文已保留 · 刷新后继续\n🔧 建议：Ctrl+R 刷新 AI 面板');
-                    }
-                    self._log('✗ fetch exhausted (http2-death #' + _n + '): ' + msg + ' url=' + GATEWAY_URL);
-                    return null;
+                // 重试耗尽 — Chromium 108 HTTP/2 连接已彻底死亡
+                // ?_h2r= 参数无效：HTTP/2 按 origin 复用连接，查询参数不影响连接池
+                // 唯一可靠恢复方式：reload iframe（新 TCP 连接）
+                clearTimeout(_fetchDeadline);
+                self._consecutiveFetchErrors = (self._consecutiveFetchErrors || 0) + 1;
+                self._log('✗ fetch exhausted: ' + msg + ' (consecutive=' + self._consecutiveFetchErrors + ')');
+                if (_isHttp2Like || self._consecutiveFetchErrors >= 2) {
+                    // ★ 自愈：立即 reload 面板恢复连接（对话上下文已持久化）
+                    onError('连接中断，正在自动恢复…');
+                    try { sessionStorage.setItem('__qqq_scroll_bottom', '1'); } catch (_) { }
+                    setTimeout(function () { window.location.reload(); }, 600);
+                } else {
+                    onError('⚠️ 网络请求失败。对话已保存，正在自动恢复…');
+                    try { sessionStorage.setItem('__qqq_scroll_bottom', '1'); } catch (_) { }
+                    setTimeout(function () { window.location.reload(); }, 1500);
                 }
-
-                self._log('✗ fetch exhausted: ' + msg + ' url=' + GATEWAY_URL);
-                // ★ 诊断：记录调用栈，帮助定位谁在成功后还调了 _callGateway
-                try { console.trace('[qqq-net-err] _callGateway fetch exhausted'); } catch (_) { }
-                onError('⚠️ 网络请求失败（已重试）。\n\n✅ 对话上下文已保留\n🔧 请检查网络后重新发送消息');
                 return null;
             }
         } // retry loop
@@ -1042,62 +1126,115 @@ var AgentLoop = (function () {
         var stripper = new EnvelopeStripper(onToken);
         var _usage = null;
         var _finishReason = '';
+        var _sseError = null;  // ★ 服务端 SSE 错误事件（提升到外层避免被 JSON catch 吞掉）
+
+        // ★ 流级别看门狗：60s 无数据 → 连接已死，主动 abort
+        var _streamWatchdog = null;
+        function _resetStreamWatchdog() {
+            if (_streamWatchdog) clearTimeout(_streamWatchdog);
+            _streamWatchdog = setTimeout(function () {
+                self._log('⏰ stream watchdog 60s — no data, aborting dead connection');
+                if (self.abortController) self.abortController.abort();
+            }, 60000);
+        }
+        _resetStreamWatchdog();
 
         while (true) {
-            var readResult = await reader.read();
+            var readResult;
+            try {
+                readResult = await reader.read();
+            } catch (readErr) {
+                // AbortError = 主动中断（guide/用户停止），不是连接问题
+                // 重新抛出原始 AbortError 让 _callGateway 的 catch 识别处理
+                if (readErr && readErr.name === 'AbortError') {
+                    self._log('■ reader aborted (intentional)');
+                    clearTimeout(_streamWatchdog);
+                    throw readErr;  // 直接抛 AbortError，不被包装成普通 Error
+                }
+                // 其他异常 = 连接断开（HTTP/2 RST_STREAM 等）
+                self._log('✗ reader.read() threw: ' + (readErr.message || readErr));
+                _sseError = { code: 0, message: 'Stream interrupted: ' + (readErr.message || 'connection lost') };
+                break;
+            }
             if (readResult.done) break;
+            _resetStreamWatchdog();  // ★ 每次收到数据重置看门狗
             buffer += decoder.decode(readResult.value, { stream: true });
             var lines = buffer.split('\n');
             buffer = lines.pop() || '';
 
             for (var i = 0; i < lines.length; i++) {
                 var line = lines[i];
+                // SSE 注释行（心跳）— 忽略但证明连接活着
+                if (line.charAt(0) === ':') continue;
                 if (!line || line.slice(0, 6) !== 'data: ') continue;
                 var data = line.slice(6);
                 if (data === '[DONE]') continue; // don't break — billing/usage event may follow
-                try {
-                    var chunk = JSON.parse(data);
-                    if (chunk.type === 'billing') {
-                        self._floorCostWge += chunk.ge_cost || 0;
-                        if (chunk.free_window) self._floorFree = true;
-                        continue;
-                    }
+                var chunk;
+                try { chunk = JSON.parse(data); } catch (_) { continue; }
 
-                    // DeepSeek 流尾 usage（include_usage:true）— 精确上下文 token 数
-                    if (chunk.usage && chunk.usage.prompt_tokens) {
-                        _usage = chunk.usage;
-                        continue;
-                    }
+                if (chunk.type === 'billing') {
+                    self._floorCostWge += chunk.ge_cost || 0;
+                    if (chunk.free_window) self._floorFree = true;
+                    continue;
+                }
+                // ★ 服务端 SSE 错误事件（upstream 失败后通过 SSE 通知客户端）
+                if (chunk.type === 'error') {
+                    _sseError = chunk;
+                    break;  // 跳出 for 循环
+                }
 
-                    var choice0 = chunk.choices && chunk.choices[0];
-                    // 捕获 finish_reason（最后一帧才有）
-                    if (choice0 && choice0.finish_reason) {
-                        _finishReason = choice0.finish_reason;
-                    }
-                    var delta = choice0 && choice0.delta;
-                    if (!delta) continue;
+                // DeepSeek 流尾 usage（include_usage:true）— 精确上下文 token 数
+                if (chunk.usage && chunk.usage.prompt_tokens) {
+                    _usage = chunk.usage;
+                    continue;
+                }
 
-                    if (delta.reasoning_content) {
-                        reasoningContent += delta.reasoning_content;
-                        onReasoning(delta.reasoning_content);
-                    }
-                    if (delta.content) {
-                        stripper.push(delta.content);
-                    }
-                    if (delta.tool_calls) {
-                        for (var ti = 0; ti < delta.tool_calls.length; ti++) {
-                            var tc = delta.tool_calls[ti];
-                            if (tc.index !== undefined) {
-                                if (!toolCalls[tc.index]) {
-                                    toolCalls[tc.index] = { id: tc.id, type: 'function', function: { name: '', arguments: '' } };
-                                }
-                                if (tc.id) toolCalls[tc.index].id = tc.id;
-                                if (tc.function && tc.function.name) toolCalls[tc.index].function.name += tc.function.name;
-                                if (tc.function && tc.function.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
+                var choice0 = chunk.choices && chunk.choices[0];
+                // 捕获 finish_reason（最后一帧才有）
+                if (choice0 && choice0.finish_reason) {
+                    _finishReason = choice0.finish_reason;
+                }
+                var delta = choice0 && choice0.delta;
+                if (!delta) continue;
+
+                if (delta.reasoning_content) {
+                    reasoningContent += delta.reasoning_content;
+                    onReasoning(delta.reasoning_content);
+                }
+                if (delta.content) {
+                    stripper.push(delta.content);
+                }
+                if (delta.tool_calls) {
+                    for (var ti = 0; ti < delta.tool_calls.length; ti++) {
+                        var tc = delta.tool_calls[ti];
+                        if (tc.index !== undefined) {
+                            if (!toolCalls[tc.index]) {
+                                toolCalls[tc.index] = { id: tc.id, type: 'function', function: { name: '', arguments: '' } };
                             }
+                            if (tc.id) toolCalls[tc.index].id = tc.id;
+                            if (tc.function && tc.function.name) toolCalls[tc.index].function.name += tc.function.name;
+                            if (tc.function && tc.function.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
                         }
                     }
-                } catch (_) { }
+                }
+            }
+            if (_sseError) break;  // ★ 跳出 while 循环
+        }
+
+        clearTimeout(_streamWatchdog);
+
+        // ★ 服务端 SSE 错误 → 向上抛出（不再被 JSON catch 吞掉）
+        if (_sseError) {
+            var _errMsg = _sseError.message || 'Server error (' + (_sseError.code || 500) + ')';
+            self._log('✗ SSE error event: ' + _errMsg);
+            if (_sseError.code === 502 || _sseError.code === 503) {
+                self._lastGatewayError = _sseError.code;
+            }
+            // 如果已有部分内容，仍然返回（不丢数据）
+            if (stripper.raw && stripper.raw.length > 20) {
+                self._log('  (partial content preserved: ' + stripper.raw.length + ' chars)');
+            } else {
+                throw new Error(_errMsg);
             }
         }
 

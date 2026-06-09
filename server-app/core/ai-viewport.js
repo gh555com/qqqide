@@ -254,12 +254,12 @@
   }
 
   // ---- attach to AI: 路由到当前焦点面板（金色 q2 的面板）----
-  function attachToAi(filePath) {
+  function attachToAi(filePath, isDir) {
     // ★ 读取焦点面板目标（由 AI 面板 postMessage 更新）
     // 注意：左面板 panelId=0，不能用 || 1（0 是 falsy 会被吞掉）
     var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
     var zoneId = target === 0 ? 'qqq-wing-left' : target === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
-    console.log('[ai-viewport] attachToAi target=' + target + ' zone=' + zoneId + ' file=' + filePath);
+    console.log('[ai-viewport] attachToAi target=' + target + ' zone=' + zoneId + ' file=' + filePath + ' isDir=' + isDir);
     closeDropdown();
     var zone = document.getElementById(zoneId);
     var aiFrame = zone ? zone.querySelector('iframe') : null;
@@ -273,13 +273,13 @@
     }
     if (typeof aiFrame.contentWindow.qqqideAiAttach === 'function') {
       try {
-        aiFrame.contentWindow.qqqideAiAttach(filePath);
+        aiFrame.contentWindow.qqqideAiAttach(filePath, isDir);
         console.log('[ai-viewport] qqqideAiAttach OK, panel=' + target);
       } catch (e) {
         console.warn('[ai-viewport] qqqideAiAttach error:', e);
       }
     } else {
-      aiFrame.contentWindow.postMessage({ type: 'qqq-ai-attach', path: filePath }, '*');
+      aiFrame.contentWindow.postMessage({ type: 'qqq-ai-attach', path: filePath, isDir: isDir }, '*');
       console.log('[ai-viewport] postMessage fallback, panel=' + target);
     }
   }
@@ -393,7 +393,7 @@
         e.stopPropagation();
         e.preventDefault();
         const fullPath = pathJoin(dirPath, ent.name);
-        attachToAi(fullPath);
+        attachToAi(fullPath, ent.isDir);
       };
       row.addEventListener('mousedown', onAttach);
       // Also keep click as a safety net

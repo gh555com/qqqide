@@ -105,14 +105,16 @@ function scrollToBottom(force) {
     if (cardPool) cardPool.scrollActiveToBottom(force);
 }
 
-// ★ 延迟滚到底：三重 rAF + 零延迟 setTimeout 兜底，确保 DOM 全部布局完成
+// ★ 延迟滚到底：多重 rAF + 递进 setTimeout 兜底（应对大 DOM / 慢渲染）
 function _scrollToBottomDeferred(force) {
     function _do() {
         requestAnimationFrame(function () {
             requestAnimationFrame(function () {
                 scrollToBottom(force);
-                // 兜底：再等 50ms（大图/A1块渲染慢的场景）
+                // 递进兜底：50ms / 200ms / 500ms（最后一击必定滚到底）
                 setTimeout(function () { scrollToBottom(force); }, 50);
+                setTimeout(function () { scrollToBottom(force); }, 200);
+                setTimeout(function () { scrollToBottom(true); }, 500);
             });
         });
     }

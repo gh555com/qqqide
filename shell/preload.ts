@@ -10,6 +10,7 @@ const QQQ = {
     // ---- app info ----
     app: {
         root: () => ipcRenderer.invoke('qqqide:app:root'),
+        quitAll: () => ipcRenderer.invoke('qqqide:app:quitAll'),
     },
 
     // ---- file system (proxied to engine subprocess) ----
@@ -189,6 +190,8 @@ const QQQ = {
         create_file: (args: { path: string; content: string }) => ipcRenderer.invoke('qqqide:ai:create_file', args),
         delete_file: (args: { path: string }) => ipcRenderer.invoke('qqqide:ai:delete_file', args),
         write_file: (args: { path: string; content: string }) => ipcRenderer.invoke('qqqide:ai:write_file', args),
+        generate_image: (args: { prompt: string; style?: string; size?: string; n?: number; out_dir?: string }) => ipcRenderer.invoke('qqqide:ai:generate_image', args),
+        analyze_image: (args: { image: string; action: string; detail?: string; targets?: string; question?: string }) => ipcRenderer.invoke('qqqide:ai:analyze_image', args),
     },
 
     // ---- cache (KV + bucketed file cache rooted at portable.cache) ----

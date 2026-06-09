@@ -217,6 +217,76 @@ var CardPool = (function () {
     }
   };
 
+  // ═══════════════════════════════════════════════════════════════
+  // 流式对话渲染：将 conversation 数组转为 HTML（按消息类型分时序流）
+  // ═══════════════════════════════════════════════════════════════
+  // ═══ 唯一真理机：conversation → 显示 HTML（live onDone 与恢复共用） ═══
+  function _buildConversationFlowHtml(conv, fData) {
+    if (!conv || !conv.length) {
+      if (fData && fData._streamingText) {
+        return '<div class="msg-flow-partial">' + _escHtml(fData._streamingText) + '</div><div class="msg-status">⏳ 打印中断（已自动保存）</div>';
+      }
+      return '';
+    }
+
+    var parts = [];
+    var seenFirstUser = false;
+
+    for (var i = 0; i < conv.length; i++) {
+      var m = conv[i];
+      if (!m || typeof m !== 'object') continue;
+
+      // 跳过第一个 user 消息（由 userEl 单独渲染）
+      if (m.role === 'user' && !seenFirstUser) {
+        seenFirstUser = true;
+        continue;
+      }
+
+      if (m.role === 'assistant') {
+        if (m._guideAck) {
+          // 引导确认回合：先渲染引导注入信息，再渲染 AI 确认回复
+          if (m._guideText) {
+            parts.push('<div class="msg-flow-guide-inject"><span class="msg-flow-icon">⚡</span> ' + _escHtml(m._guideText) + '</div>');
+          }
+          var _ackText = (m.content || '已收到引导').replace(/^✅\s*/, '');
+          parts.push('<div class="msg-flow-guide"><span class="msg-flow-icon">✅</span> ' + _escHtml(_ackText) + '</div>');
+        } else if (m.tool_calls && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+          // 工具调用不渲染（与 live 一致：在后台执行，对用户不可见）
+        } else if (typeof m.content === 'string' && m.content) {
+          // 普通 AI 文字回复（走 renderMarkdown）
+          parts.push(m.content);
+        }
+      } else if (m.role === 'tool') {
+        // 工具结果不渲染
+      } else if (m.role === 'user' && seenFirstUser) {
+        if (m._guideAck) {
+          // 引导确认指令残留（正常情况不会出现，兜底）
+          // 跳过，不渲染
+        } else if (m.content && m.content.indexOf('[System:') === 0) {
+          // 系统注入消息（stale 文件警告 / stall 警告 / 强制回答）
+          parts.push('<div class="msg-flow-system">' + _escHtml(m.content) + '</div>');
+        } else if (m._injected) {
+          // 普通注入消息（如降级 [GUIDE] 注入）
+          var _injText = String(m.content || '').replace(/^\[GUIDE\]\s*/, '');
+          parts.push('<div class="msg-flow-guide-inject"><span class="msg-flow-icon">📌</span> ' + _escHtml(_injText) + '</div>');
+        }
+      }
+    }
+
+    // 附加流式中断文本
+    if (fData && fData._streamingText) {
+      parts.push('<div class="msg-flow-partial">' + _escHtml(fData._streamingText) + '</div>');
+      parts.push('<div class="msg-status">⏳ 打印中断（已自动保存）</div>');
+    }
+
+    return parts.join('\n\n');
+  }
+
+  function _escHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
   // ═══ 构建单层楼的 DOM（插入 card._contentWrap） ═══
   // isBuilding: 是否在建楼层（在建楼层需要额外的 streaming 标记）
   CardPool.prototype._buildFloorDOM = function (card, floorEntry, isBuilding, questTimings) {
@@ -251,51 +321,30 @@ var CardPool = (function () {
     aiEl._floor = fNum;
     aiEl._contentWrap = document.createElement('div');
 
-    // 从 conversation 提取 AI 回复文本（最后一个 assistant 消息）
+    // ★ 流式渲染：遍历 conversation 按消息类型生成时序流（非仅取最后 assistant）
     var conv = fData.conversation || [];
-    var aiText = '';
-    for (var ci = conv.length - 1; ci >= 0; ci--) {
-      if (conv[ci].role === 'assistant' && typeof conv[ci].content === 'string') {
-        aiText = conv[ci].content;
-        break;
-      }
-    }
+    var flowHtml = _buildConversationFlowHtml(conv, fData);
     var rm2 = window.renderMarkdown;
     aiEl._contentWrap.innerHTML = typeof rm2 === 'function'
-      ? rm2(aiText)
-      : aiText.replace(/</g, '&lt;');
+      ? rm2(flowHtml)
+      : flowHtml.replace(/</g, '&lt;');
     aiEl.appendChild(aiEl._contentWrap);
-    aiEl._fullText = aiText;
+    // 存储完整对话文本（用于全文检索等）
+    var fullText = '';
+    for (var ci = 0; ci < conv.length; ci++) {
+      if (typeof conv[ci].content === 'string') fullText += conv[ci].content + '\n';
+    }
+    if (fData._streamingText) fullText += fData._streamingText;
+    aiEl._fullText = fullText;
 
-    // ③ 创建电子钟+饼图
+    // ③ 创建电子钟+饼图（最底部锚点）
     var _initClk = window._initClockBlock;
     if (typeof _initClk === 'function') {
       _initClk(aiEl);
     }
 
-    // ④ 创建 A2 treasure block（在 A1 上方）
-    var _initA3 = window._initTreasureBlock;
-    var _renderTr = window._renderTreasures;
-    if (typeof _initA3 === 'function') {
-      _initA3(aiEl);
-      // 恢复历史 treasures
-      if (typeof _renderTr === 'function' && fData.treasures && fData.treasures.length) {
-        _renderTr(aiEl._treasureBlock, fData.treasures);
-      }
-    }
-
-    // ④b 恢复 A4 文件快照块（在 A2 之后、A1 之前）
-    if (typeof window._a4RestoreBlock === 'function' && fData.a4Snapshots && fData.a4Snapshots.length) {
-      var _a4NumId = 0;
-      if (window.questStore && window.questStore._index) {
-        for (var _qi = 0; _qi < window.questStore._index.length; _qi++) {
-          if (window.questStore._index[_qi].id === card.id) { _a4NumId = window.questStore._index[_qi].numericId || 0; break; }
-        }
-      }
-      window._a4RestoreBlock(aiEl, fData.a4Snapshots, _a4NumId, fNum);
-    }
-
-    // ⑤ 创建 A1 豆腐块（clockBlock 已存在，insertBefore 精准插入时钟上方）
+    // ④ 创建 A1 豆腐块（clockBlock 已存在，insertBefore 精准插入时钟上方）
+    // 铁律顺序: A2 → A4 → A1 → clock，先创建下层锚点
     var meta = card._floorMetaMap[fNum];
     var a1El = null;
     var _a1Path = (meta && meta.allTxtPath) || '';
@@ -323,6 +372,30 @@ var CardPool = (function () {
             }
           }).catch(function () { });
         }
+      }
+    }
+
+    // ④b 恢复 A4 文件快照块（在 A2 之后、A1 之前）
+    // A1 已存在，_initA4Block 会 insertBefore(A1) 定位
+    if (typeof window._a4RestoreBlock === 'function' && fData.a4Snapshots && fData.a4Snapshots.length) {
+      var _a4NumId = 0;
+      if (window.questStore && window.questStore._index) {
+        for (var _qi = 0; _qi < window.questStore._index.length; _qi++) {
+          if (window.questStore._index[_qi].id === card.id) { _a4NumId = window.questStore._index[_qi].numericId || 0; break; }
+        }
+      }
+      window._a4RestoreBlock(aiEl, fData.a4Snapshots, _a4NumId, fNum);
+    }
+
+    // ④c 创建 A2 treasure block（最上方，在 A4 或 A1 之前）
+    // A4 和 A1 已存在，_initTreasureBlock 会 insertBefore(A4 或 A1)
+    var _initA3 = window._initTreasureBlock;
+    var _renderTr = window._renderTreasures;
+    if (typeof _initA3 === 'function') {
+      _initA3(aiEl);
+      // 恢复历史 treasures
+      if (typeof _renderTr === 'function' && fData.treasures && fData.treasures.length) {
+        _renderTr(aiEl._treasureBlock, fData.treasures);
       }
     }
 
@@ -692,6 +765,8 @@ var CardPool = (function () {
 
   // ═══ 暴露到全局 ═══
   window.CardPool = CardPool;
+  window._buildConversationFlowHtml = _buildConversationFlowHtml;
+  window._escHtml = _escHtml;
 
   // [silent] card-pool ready
 

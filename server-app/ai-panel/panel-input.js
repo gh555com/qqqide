@@ -125,14 +125,108 @@ document.querySelectorAll('.tier-btn[data-tier]').forEach(function (btn) {
     btn.onclick = function () { selectTier(parseInt(btn.dataset.tier)); };
 });
 
-// Token management
-function getToken() { return localStorage.getItem('qqq-ai-token') || ''; }
-function saveToken(t) { localStorage.setItem('qqq-ai-token', t); }
+// ═══ Token / 号池管理 ═══
+var QQQ_KEY_POOL_KEY = 'qqq-ai-keys';  // JSON 数组 [{key, last429, addedAt}]
+var QQQ_KEY_COOLDOWN_MS = 30000;        // 429 后冷却 30 秒
+
+// 读取号池（兼容旧版单 key）
+function _loadKeyPool() {
+    try {
+        var raw = localStorage.getItem(QQQ_KEY_POOL_KEY);
+        if (raw) {
+            var arr = JSON.parse(raw);
+            if (Array.isArray(arr) && arr.length) return arr;
+        }
+    } catch (_) { }
+    // 兼容旧版：从 qqq-ai-token 迁移
+    var old = localStorage.getItem('qqq-ai-token');
+    if (old && old.trim()) {
+        var pool = [{ key: old.trim(), addedAt: Date.now(), last429: 0 }];
+        _saveKeyPool(pool);
+        localStorage.removeItem('qqq-ai-token');
+        return pool;
+    }
+    return [];
+}
+
+function _saveKeyPool(pool) {
+    try { localStorage.setItem(QQQ_KEY_POOL_KEY, JSON.stringify(pool)); } catch (_) { }
+}
+
+// 获取一个可用的 key（跳过冷却中的 key），返回 { key, index }
+function getTokenInfo() {
+    var pool = _loadKeyPool();
+    if (!pool.length) return { key: '', index: -1 };
+    var now = Date.now();
+    for (var i = 0; i < pool.length; i++) {
+        var entry = pool[i];
+        if (!entry.last429 || (now - entry.last429) >= QQQ_KEY_COOLDOWN_MS) {
+            return { key: entry.key, index: i };
+        }
+    }
+    // 全部在冷却中 → 返回冷却剩余最少的那个
+    var bestIdx = 0;
+    var bestRemain = Infinity;
+    for (var j = 0; j < pool.length; j++) {
+        var remain = (pool[j].last429 || 0) + QQQ_KEY_COOLDOWN_MS - now;
+        if (remain < bestRemain) { bestRemain = remain; bestIdx = j; }
+    }
+    return { key: pool[bestIdx].key, index: bestIdx, cooldown: Math.max(0, Math.ceil(bestRemain / 1000)) };
+}
+
+// 向后兼容：原有调用方
+function getToken() {
+    return getTokenInfo().key;
+}
+
+// 标记当前 key 被 429（调用方在 _callGateway 中触发）
+function markToken429(token) {
+    var pool = _loadKeyPool();
+    for (var i = 0; i < pool.length; i++) {
+        if (pool[i].key === token) {
+            pool[i].last429 = Date.now();
+            _saveKeyPool(pool);
+            return;
+        }
+    }
+}
+
+// 添加新 key 到号池
+function addKeyToPool(newKey) {
+    var pool = _loadKeyPool();
+    newKey = newKey.trim();
+    if (!newKey) return;
+    // 去重
+    for (var i = 0; i < pool.length; i++) {
+        if (pool[i].key === newKey) return;
+    }
+    pool.push({ key: newKey, addedAt: Date.now(), last429: 0 });
+    _saveKeyPool(pool);
+}
+
+// 移除 key
+function removeKeyFromPool(key) {
+    var pool = _loadKeyPool();
+    var filtered = pool.filter(function (e) { return e.key !== key; });
+    _saveKeyPool(filtered);
+}
+
+function saveToken(t) {
+    addKeyToPool(t);
+}
+
 if ($tokenInput) $tokenInput.value = getToken() ? '••••••••' : '';
 if ($tokenSave) $tokenSave.onclick = function () {
     if ($tokenInput) {
-        const v = $tokenInput.value.trim();
-        if (v && v !== '••••••••') { saveToken(v); $tokenInput.value = '••••••••'; }
+        var v = $tokenInput.value.trim();
+        if (v && v !== '••••••••') {
+            // 支持逗号/换行分隔多个 key
+            var keys = v.split(/[,\n]+/).filter(function (k) { return k.trim(); });
+            for (var ki = 0; ki < keys.length; ki++) {
+                addKeyToPool(keys[ki]);
+            }
+            $tokenInput.value = '••••••••';
+        }
     }
 };
 
@@ -189,63 +283,10 @@ $input.addEventListener('keydown', function (e) {
         sendMessage();
     }
 });
-// ══ 字符级 Undo/Redo（textarea 版：纯 value 快照，零 DOM 开销）══
-(function initCharUndo(input) {
-    var _initialVal = input.value || '';
-    var state = { history: [{ val: _initialVal, pos: 0 }], index: 0, isProgrammatic: false };
-    var _HISTORY_CEIL = 10000;  // 单条超此长度不记历史
-    var _HISTORY_MAX = 200;
-    input.addEventListener('input', function () {
-        var isProg = state.isProgrammatic;
-        if (isProg) { state.isProgrammatic = false; }
-        var v = input.value;
-        if (!isProg) {
-            if (state.index < state.history.length - 1) state.history = state.history.slice(0, state.index + 1);
-            var last = state.history[state.history.length - 1];
-            if (v !== last.val && v.length <= _HISTORY_CEIL) {
-                state.history.push({ val: v, pos: input.selectionStart });
-                state.index = state.history.length - 1;
-                if (state.history.length > _HISTORY_MAX) {
-                    var _drop = Math.floor(_HISTORY_MAX / 2);
-                    state.history = state.history.slice(_drop);
-                    state.index -= _drop;
-                }
-            }
-        }
-        updateQueueBtn();
-    });
-    input.addEventListener('keydown', function (e) {
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
-            e.preventDefault(); e.stopPropagation();
-            if (state.index > 0) {
-                state.index--;
-                state.isProgrammatic = true;
-                var entry = state.history[state.index];
-                input.value = entry.val;
-                input.setSelectionRange(entry.pos, entry.pos);
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-            return;
-        }
-        if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || e.key === 'Y')) {
-            e.preventDefault(); e.stopPropagation();
-            if (state.index < state.history.length - 1) {
-                state.index++;
-                state.isProgrammatic = true;
-                var entry = state.history[state.index];
-                input.value = entry.val;
-                input.setSelectionRange(entry.pos, entry.pos);
-                input.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-            return;
-        }
-    });
-    // 外部可调用：消息发出后截断历史，防止回退到已发送内容
-    input._resetUndo = function () {
-        state.history = [{ val: input.value || '', pos: 0 }];
-        state.index = 0;
-    };
-})($input);
+// ══ 字符级 Undo/Redo（唯一真理逐字回退机器接管）══
+if (window.qqqCharUndo) {
+    window.qqqCharUndo.attach($input, { onChange: updateQueueBtn });
+}
 
 // ══ 多图管理 ══
 var pendingImages = []; // [{id, base64, dataUrl}]

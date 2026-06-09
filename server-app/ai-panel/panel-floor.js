@@ -19,7 +19,8 @@ async function generateFloorTxt() {
         var quests = await questStore.list();
         var questEntry = quests.find(function (q) { return q.id === questId; }) || null;
         var rawQTitle = (questEntry && questEntry.title && questEntry.title !== 'New Chat') ? questEntry.title : questId;
-        var qDirName = _makeName('q', questEntry && questEntry.numericId ? questEntry.numericId : 0, rawQTitle);
+        var qNumericId = questEntry && questEntry.numericId ? questEntry.numericId : 0;
+        var qDirName = await _resolveQuestDirName(root, questId, qNumericId, rawQTitle);
         var _uiFallback = agent._lastUserInput;
         var _uiTextFallback = (_uiFallback && _uiFallback.text) ? _uiFallback.text.replace(/\n/g, ' ').trim() : '';
         var fDirName = _makeName('f', floorNum, _uiTextFallback || '');

@@ -289,8 +289,6 @@
         closeMenubarPopup();
         if (s.cmd) {
           handleMenuCmd(s.cmd);
-        } else if (s.role === 'quit') {
-          bridge.window.close();
         }
       });
       pop.appendChild(row);
@@ -316,6 +314,16 @@
         bridge.window.new().then(function (r) {
           if (r && !r.ok) { console.warn('[shell] new window failed'); }
         });
+      }
+      return;
+    }
+    if (cmd === 'file.exit') {
+      // 退出整个应用（关闭所有窗口），退出前保存所有打开的项目路径
+      if (bridge.app && bridge.app.quitAll) {
+        bridge.app.quitAll();
+      } else {
+        // 兜底：关闭当前窗口
+        bridge.window.close();
       }
       return;
     }

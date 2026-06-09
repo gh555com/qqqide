@@ -298,6 +298,9 @@ function _a4RecordSnapshot(filePath, op, before, after) {
 
     // Live update A4 UI
     _a4RenderLive(ag);
+
+    // 增量持久化：内容文件立即写盘，元数据延迟刷 SQLite（防崩溃丢失）
+    _a4IncrementalPersist(ag, filePath, before, after);
 }
 
 // ═══ A4 DOM 创建 + 渲染 ═══
@@ -306,7 +309,8 @@ function _initA4Block(aiDiv) {
     if (aiDiv._a4Block) return aiDiv._a4Block;
     var block = document.createElement('div');
     block.className = 'msg-a4';
-    // Position: after A2 (treasure), before A1 (stats)
+    // Position: after A2 (treasure), before A1 (stats) / clock
+    // 铁律顺序: A2 → A4 → A1 → clock
     var a1 = aiDiv._a1Block;
     if (a1) {
         aiDiv.insertBefore(block, a1);
@@ -318,8 +322,26 @@ function _initA4Block(aiDiv) {
             aiDiv.appendChild(block);
         }
     }
+    // 确保 A2 在 A4 上方：如果 A2 存在且位于 A4 之后，把 A2 挪到 A4 之前
+    var a2 = aiDiv._treasureBlock;
+    if (a2 && a2.nextSibling === block) {
+        // A2 刚好在 A4 后面（append 导致的逆序），交换
+        aiDiv.insertBefore(a2, block);
+    } else if (a2 && _isAfter(a2, block)) {
+        aiDiv.insertBefore(a2, block);
+    }
     aiDiv._a4Block = block;
     return block;
+}
+
+// 判断 elA 是否在 elB 之后（DOM 顺序）
+function _isAfter(elA, elB) {
+    var el = elB.nextSibling;
+    while (el) {
+        if (el === elA) return true;
+        el = el.nextSibling;
+    }
+    return false;
 }
 
 // ---- 渲染实时文件列表 ----
@@ -532,7 +554,167 @@ function _a4ClearCurrent(ag) {
     if (ag) ag._a4Snapshots = {};
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 增量持久化 — 统一入口（覆盖 a1/a2/a3/a4 全部豆腐块）
+// ═══════════════════════════════════════════════════════════════
+
+var _a4IncrementalDirty = false;
+var _a4IncrementalTimer = null;
+var _a4IncrementalBusy = false;
+var A4_INCREMENTAL_FLUSH_MS = 2000;
+var A4_INCREMENTAL_MAX_MS = 8000;
+var _a4FirstDirtyTs = 0;
+
+// ── 标记脏（其他模块调用此函数触发统一刷盘）──
+function _a4MarkIncrementalDirty() {
+    _a4IncrementalDirty = true;
+    if (!_a4FirstDirtyTs) _a4FirstDirtyTs = Date.now();
+    if (_a4IncrementalTimer) clearTimeout(_a4IncrementalTimer);
+    var elapsed = Date.now() - _a4FirstDirtyTs;
+    if (elapsed >= A4_INCREMENTAL_MAX_MS) {
+        _a4FlushCompleteFloor();
+    } else {
+        _a4IncrementalTimer = setTimeout(_a4FlushCompleteFloor, A4_INCREMENTAL_FLUSH_MS);
+    }
+}
+
+// ── A4 专属：每次快照后立即写内容文件到磁盘 ──
+function _a4IncrementalPersist(ag, filePath, before, after) {
+    var questId = (typeof questActiveId !== 'undefined') ? questActiveId : '';
+    var floorNum = (ag._ctx && ag._ctx.totalFloors) ? ag._ctx.totalFloors : 0;
+    if (!questId || !floorNum) return;
+
+    var dir = _a4SnapshotDir(_a4GetNumericId(questId), floorNum);
+    var bridge = getBridge();
+    if (!dir || !bridge || !bridge.fs) return;
+
+    var hash = _a4PathHash(filePath);
+
+    if (before !== null && before !== undefined) {
+        _a4Gzip(before).then(function(comp) {
+            bridge.fs.write(dir + hash + '.before', comp).catch(function(){});
+        }).catch(function(){});
+    }
+    if (after !== null && after !== undefined) {
+        _a4Gzip(after).then(function(comp) {
+            bridge.fs.write(dir + hash + '.after', comp).catch(function(){});
+        }).catch(function(){});
+    }
+
+    // 同时标记统一刷盘
+    _a4MarkIncrementalDirty();
+}
+
+function _a4GetNumericId(questId) {
+    var qs = window.questStore;
+    if (!qs || !qs._index) return 0;
+    for (var i = 0; i < qs._index.length; i++) {
+        if (qs._index[i].id === questId) return qs._index[i].numericId || 0;
+    }
+    return 0;
+}
+
+// ── 构建完整 floor payload（与 _saveAgentQuestData 同构）──
+function _a4BuildCompleteFloorPayload(ag) {
+    var fullConv = ag.conversation ? ag.conversation.slice() : [];
+    var floorStartIdx = ag._floorStartIdx || 0;
+    var floorConv = fullConv.slice(floorStartIdx);
+
+    var payload = {
+        question: (ag._lastUserInput && ag._lastUserInput.text) || '',
+        conversation: floorConv,
+        houses: (ag._houses || []).slice(),
+        costWge: ag._floorCostWge,
+        floorFree: ag._floorFree || false,
+        lastUserInput: ag._lastUserInput,
+        allTxtPath: ag._allTxtPath || '',
+        fileStats: (typeof _computeFileStats === 'function') ? _computeFileStats(ag._houses, ag._a4Snapshots) : { fileCount: 0, added: 0, deleted: 0 },
+        clockTiming: ag._lastFloorTimingRecord || null,
+        treasures: ag._floorTreasures || [],
+        createdAt: ag._floorCreatedAt || Date.now(),
+        savedAt: Date.now(),
+        // ★ 流式持久化：捕获正在打印中的部分 AI 回复文本
+        _streamingText: (ag._activeAiDiv && ag._activeAiDiv._fullText) ? ag._activeAiDiv._fullText : '',
+        _streaming: !!(ag._streaming)
+    };
+
+    // 附加 a4 快照明数据
+    if (ag._a4Snapshots) {
+        var snaps = ag._a4Snapshots;
+        var paths = Object.keys(snaps);
+        if (paths.length > 0) {
+            var a4Meta = [];
+            for (var i = 0; i < paths.length; i++) {
+                var s = snaps[paths[i]];
+                a4Meta.push({
+                    path: s.path, op: s.op, added: s.added, deleted: s.deleted,
+                    ts: s.ts, count: s.count, hash: _a4PathHash(s.path)
+                });
+            }
+            payload.a4Snapshots = a4Meta;
+        }
+    }
+
+    return payload;
+}
+
+// ── 统一刷盘：构建完整 payload → 直接覆写 SQLite ──
+function _a4FlushCompleteFloor() {
+    if (_a4IncrementalTimer) { clearTimeout(_a4IncrementalTimer); _a4IncrementalTimer = null; }
+    if (!_a4IncrementalDirty || _a4IncrementalBusy) return;
+    _a4IncrementalDirty = false;
+    _a4FirstDirtyTs = 0;
+    _a4IncrementalBusy = true;
+
+    var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    if (!ag) { _a4IncrementalBusy = false; return; }
+    var questId = (typeof questActiveId !== 'undefined') ? questActiveId : '';
+    if (!questId) { _a4IncrementalBusy = false; return; }
+    var floorNum = ag._ctx.totalFloors;
+    if (!floorNum) { _a4IncrementalBusy = false; return; }
+
+    var qs = window.questStore;
+    if (!qs || !qs.saveFloor) { _a4IncrementalBusy = false; return; }
+
+    var payload = _a4BuildCompleteFloorPayload(ag);
+
+    qs.saveFloor(questId, floorNum, payload).catch(function(){}).then(function() {
+        _a4IncrementalBusy = false;
+    });
+}
+
+// ── beforeunload 强制刷盘 ──
+function _a4OnBeforeUnload() {
+    if (_a4IncrementalTimer) { clearTimeout(_a4IncrementalTimer); _a4IncrementalTimer = null; }
+    if (!_a4IncrementalDirty) return;
+    _a4IncrementalDirty = false;
+    _a4FirstDirtyTs = 0;
+
+    var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    if (!ag) return;
+    var questId = (typeof questActiveId !== 'undefined') ? questActiveId : '';
+    if (!questId) return;
+    var qs = window.questStore;
+    if (!qs || !qs.saveFloor) return;
+    var floorNum = ag._ctx.totalFloors;
+    if (!floorNum) return;
+
+    var payload = _a4BuildCompleteFloorPayload(ag);
+    qs.saveFloor(questId, floorNum, payload).catch(function(){});
+}
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', _a4OnBeforeUnload);
+    // ★ 流式保护：流式输出期间每 5s 强制标记脏（防止长文本打印中断无保存）
+    setInterval(function() {
+        var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+        if (ag && ag._streaming) _a4MarkIncrementalDirty();
+    }, 5000);
+}
+
 // ═══ 导出到 window（跨模块引用 §29） ═══
+window._a4MarkIncrementalDirty = _a4MarkIncrementalDirty;
+window._a4BuildCompleteFloorPayload = _a4BuildCompleteFloorPayload;
 window._a4PersistSnapshots = _a4PersistSnapshots;
 window._a4RestoreBlock = _a4RestoreBlock;
 window._a4ClearCurrent = _a4ClearCurrent;

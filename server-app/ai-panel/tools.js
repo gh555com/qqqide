@@ -279,6 +279,42 @@ var TOOL_DEFINITIONS = [
                 required: ['path', 'content']
             }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'generate_image',
+            description: 'Generate high-quality PNG images using Alibaba Tongyi Wanxiang (wanx2.1-t2i-plus). Use this for website hero images, product photos, illustrations, logos, etc. Supports multiple styles. Images are saved locally and returned as file paths. ~15-40s per image.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    prompt: { type: 'string', description: 'Image description in natural language (Chinese or English)' },
+                    style: { type: 'string', description: 'Style tag: 写实(photorealistic)/插画(illustration)/3d(3D render)/二次元(anime)/水彩(watercolor)/国风(Chinese trad)/极简(minimalist)/电商(e-commerce product)/自然(nature photo)' },
+                    size: { type: 'string', description: 'Image size: "1024*1024" (square, default), "720*1280" (portrait), "1280*720" (landscape)' },
+                    n: { type: 'number', description: 'Number of images to generate (1-4, default 1)' },
+                    out_dir: { type: 'string', description: 'Output directory for generated images (absolute path). Default: current project\'s server-app/generated/' }
+                },
+                required: ['prompt']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'analyze_image',
+            description: 'Analyze an existing image using qwen-vl vision model. Can: describe image content, locate objects with bounding boxes (for clickable image maps), or answer questions about the image. Use when user wants interactive images or needs to understand generated image content.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    image: { type: 'string', description: 'Absolute path to the image file to analyze' },
+                    action: { type: 'string', description: 'Analysis action: "describe" (describe content), "locate" (find objects + return bounding boxes), "ask" (free-form question)' },
+                    detail: { type: 'string', description: 'For action=describe: "brief" (1 sentence), "standard" (paragraph), "detailed" (full analysis)' },
+                    targets: { type: 'string', description: 'For action=locate: comma-separated object names to find, e.g. "frog,lotus,leaf"' },
+                    question: { type: 'string', description: 'For action=ask: the question to ask about the image' }
+                },
+                required: ['image', 'action']
+            }
+        }
     }
 ];
 
@@ -291,7 +327,8 @@ var TOOL_CATEGORY = {
     find_files: 'READ', get_vision_context: 'READ', fetch_webpage: 'READ',
     get_diagnostics: 'READ',
     edit_file: 'WRITE', create_file: 'WRITE', delete_file: 'WRITE', write_file: 'WRITE',
-    run_command: 'EFFECT'
+    run_command: 'EFFECT',
+    generate_image: 'EFFECT', analyze_image: 'EFFECT'
 };
 
 // ============================================================
@@ -313,6 +350,8 @@ async function executeTool(name, args) {
         case 'fetch_webpage': return executeFetchWebpage(args);
         case 'get_diagnostics': return executeGetDiagnostics(args);
         case 'write_file': return executeWriteFile(args);
+        case 'generate_image': return executeGenerateImage(args);
+        case 'analyze_image': return executeAnalyzeImage(args);
         default: return 'Unknown tool: ' + name;
     }
 }
@@ -1030,6 +1069,134 @@ async function executeFetchWebpage(args) {
         return text.length > OUTPUT_CAP_FETCH ? text.slice(0, OUTPUT_CAP_FETCH) + '\n... (truncated)' : text;
     } catch (err) {
         return 'Fetch error: ' + (err.message || err);
+    }
+}
+
+// ============================================================
+// generate_image — 通义万相 文生图
+// ============================================================
+
+async function executeGenerateImage(args) {
+    var bridge = getBridge();
+    if (!bridge) return 'Error: bridge not available';
+
+    var prompt = args.prompt || '';
+    if (!prompt.trim()) return 'Error: prompt is required';
+
+    // 自动补全 out_dir
+    if (!args.out_dir) {
+        try {
+            if (parent.qqqideViewport) {
+                var vps = parent.qqqideViewport.getProjects();
+                if (vps && vps.length > 0) {
+                    var mainProj = null;
+                    for (var i = 0; i < vps.length; i++) {
+                        if (vps[i].star || vps[i].isMain) { mainProj = vps[i]; break; }
+                    }
+                    if (!mainProj && vps.length === 1) mainProj = vps[0];
+                    if (mainProj) {
+                        args.out_dir = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/server-app/generated';
+                    }
+                }
+            }
+        } catch (_) { }
+    }
+
+    // ★ 优先走主进程 IPC (1 IPC, 零渲染层序列化)
+    if (bridge.ai && bridge.ai.generate_image) {
+        try { return await bridge.ai.generate_image(args); } catch (_) { /* fallback */ }
+    }
+
+    // ---- fallback: qz-spawn 直接调 Python ----
+    var appRoot = '';
+    try { appRoot = await bridge.app.root(); } catch (_) { }
+    var scriptPath = (appRoot ? appRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/' : '') + 'engines/wanx_gen.py';
+    var cmdArgs = [scriptPath, '--prompt', prompt, '--size', args.size || '1024*1024'];
+    if (args.style) { cmdArgs.push('--style', args.style); }
+    if (args.n) { cmdArgs.push('--n', String(args.n)); }
+    if (args.out_dir) { cmdArgs.push('--out-dir', args.out_dir); }
+
+    try {
+        var result = await bridge.qz.spawn({
+            cmd: 'python',
+            args: ['-u'].concat(cmdArgs),
+            cwd: '',
+            timeout: 300000,
+            stallMs: 300000
+        });
+        if (result.exitCode !== 0) {
+            var errStr = (result.stdout || '') + (result.stderr || '');
+            return 'Image generation failed (exit ' + result.exitCode + '): ' + errStr.slice(0, 800);
+        }
+        var out = (result.stdout || '').trim();
+        try {
+            var parsed = JSON.parse(out);
+            if (parsed.ok && parsed.paths) {
+                var paths = parsed.paths;
+                return 'Generated ' + paths.length + ' image(s):\n' + paths.map(function(p, i) {
+                    return '  ' + (i + 1) + '. ' + p;
+                }).join('\n');
+            } else {
+                return 'Image generation error: ' + (parsed.error || out);
+            }
+        } catch (_) {
+            return 'Image generation output (unexpected format): ' + out.slice(0, 1000);
+        }
+    } catch (err) {
+        return 'Error running image generation: ' + (err.message || err);
+    }
+}
+
+// ============================================================
+// analyze_image — qwen-vl 视觉理解
+// ============================================================
+
+async function executeAnalyzeImage(args) {
+    var bridge = getBridge();
+    if (!bridge) return 'Error: bridge not available';
+
+    var image = args.image || '';
+    if (!image.trim()) return 'Error: image path is required';
+
+    // ★ 优先走主进程 IPC (1 IPC, 零渲染层序列化)
+    if (bridge.ai && bridge.ai.analyze_image) {
+        try { return await bridge.ai.analyze_image(args); } catch (_) { /* fallback */ }
+    }
+
+    // ---- fallback: qz-spawn 直接调 Python ----
+    var appRoot = '';
+    try { appRoot = await bridge.app.root(); } catch (_) { }
+    var scriptPath = (appRoot ? appRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/' : '') + 'engines/wanx_vision.py';
+    var cmdArgs = [scriptPath, '--image', image, '--action', args.action || 'describe'];
+    if (args.detail) { cmdArgs.push('--detail', args.detail); }
+    if (args.targets) { cmdArgs.push('--targets', args.targets); }
+    if (args.question) { cmdArgs.push('--question', args.question); }
+
+    try {
+        var result = await bridge.qz.spawn({
+            cmd: 'python',
+            args: ['-u'].concat(cmdArgs),
+            cwd: '',
+            timeout: 60000,
+            stallMs: 60000
+        });
+        if (result.exitCode !== 0) {
+            var errStr = (result.stdout || '') + (result.stderr || '');
+            return 'Image analysis failed (exit ' + result.exitCode + '): ' + errStr.slice(0, 800);
+        }
+        var out = (result.stdout || '').trim();
+        try {
+            var parsed = JSON.parse(out);
+            if (parsed.ok) {
+                return JSON.stringify(parsed.data, null, 2);
+            } else {
+                return 'Image analysis error: ' + (parsed.error || out);
+            }
+        } catch (_) {
+            return out.slice(0, 2000);
+        }
+    } catch (err) {
+        return 'Error running image analysis: ' + (err.message || err);
     }
 }
 

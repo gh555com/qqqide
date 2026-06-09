@@ -260,14 +260,15 @@ function _a1InnerSp() {
 }
 
 // ═══ A2 treasure block: per-floor treasures from AI envelope ═══
+// 铁律：A2 始终在最上方（A4 → A1 → clock 之前）
 function _initTreasureBlock(aiDiv) {
     if (aiDiv._treasureBlock) return aiDiv._treasureBlock;
     var block = document.createElement('div');
     block.className = 'msg-a2';
-    // insert before A1 (or append to aiDiv if no A1 yet)
-    var a1 = aiDiv._a1Block;
-    if (a1) {
-        aiDiv.insertBefore(block, a1);
+    // 找到最靠上的兄弟节点：A4 > A1 > clock
+    var anchor = aiDiv._a4Block || aiDiv._a1Block || aiDiv._clockBlock;
+    if (anchor) {
+        aiDiv.insertBefore(block, anchor);
     } else {
         aiDiv.appendChild(block);
     }
@@ -275,7 +276,7 @@ function _initTreasureBlock(aiDiv) {
     return block;
 }
 
-// ═══ 渲染 treasures 到 A3 block ═══
+// ═══ 渲染 treasures 到 A2 block ═══
 function _renderTreasures(block, treasures) {
     if (!block || !treasures || !treasures.length) {
         if (block) block.classList.remove('has-treasures');
@@ -286,13 +287,35 @@ function _renderTreasures(block, treasures) {
         var t = treasures[i];
         var item = document.createElement('div');
         item.className = 'msg-a2-item';
+
+        // 💎 钻石图标
+        var diamond = document.createElement('span');
+        diamond.className = 'msg-a2-diamond';
+        diamond.textContent = '💎';
+        diamond.style.cssText = 'flex-shrink:0;font-size:14px';
+        item.appendChild(diamond);
+
+        // urgency 紧急程度 badge
         var badge = document.createElement('span');
         badge.className = 'msg-a2-badge ' + (t.urgency || 'later');
         badge.textContent = t.urgency === 'urgent' ? '!!' : (t.urgency === 'soon' ? '>>' : '..');
+        item.appendChild(badge);
+
+        // gain / cost 指标
+        var metrics = document.createElement('span');
+        metrics.className = 'msg-a2-metrics';
+        metrics.style.cssText = 'flex-shrink:0;font-size:10px;opacity:0.7;font-family:ui-monospace,monospace';
+        var g = typeof t.gain === 'number' ? t.gain : 0;
+        var c = typeof t.cost === 'number' ? t.cost : 0;
+        metrics.textContent = 'gain:' + g + ' cost:' + c;
+        item.appendChild(metrics);
+
+        // 文字内容
         var text = document.createElement('span');
         text.textContent = t.text || '';
-        item.appendChild(badge);
+        text.style.cssText = 'flex:1;min-width:0';
         item.appendChild(text);
+
         block.appendChild(item);
     }
     block.classList.add('has-treasures');

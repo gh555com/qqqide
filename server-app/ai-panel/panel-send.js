@@ -182,7 +182,10 @@ async function sendMessage() {
         var quests2 = await questStore.list();
         var qEntry = quests2.find(function (qx) { return qx.id === _capturedQuestId; });
         var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : _capturedQuestId;
-        var qDirName2 = _makeName("q", qEntry && qEntry.numericId ? qEntry.numericId : 0, qTitle2);
+        var qNumericId = qEntry && qEntry.numericId ? qEntry.numericId : 0;
+        // ★ 先用前缀搜索已有目录（防分裂脑），再惰性修复磁盘目录名
+        var qDirName2 = await _resolveQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
+        _tryRepairQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
         var fDirName2 = _makeName('f', floorNum, userQuestion);
         await _ensureQuestDir(root2, qDirName2, fDirName2);
     }
@@ -206,8 +209,9 @@ async function sendMessage() {
     var aiDiv = cardPool.startBuildingFloor(_capturedQuestId, floorNum, _allTxtPathLocal);
     if (!aiDiv) { _sending = false; updateQueueBtn(); return; }
     aiDiv._allTxtPath = _allTxtPathLocal;
-    // ★ 新楼层开始，清空 agent._houses 防止 _updateA1Row2 读到上一楼层残影
+    // ★ 新楼层开始，清空 agent._houses / _a4Snapshots 防止读到上一楼层残影
     _capturedAgent._houses = [];
+    _capturedAgent._a4Snapshots = {};
     startFloorTimer(aiDiv, _capturedAgent);
     _startAllTxtStream(aiDiv, _allTxtPathLocal, _capturedAgent, floorNum, text, '');
     _startAutoSave();
@@ -248,24 +252,18 @@ async function sendMessage() {
                 aiDiv._renderScheduled = false;
                 var _targetDiv2 = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
                 if (_targetDiv2 && _targetDiv2._contentWrap) {
-                    var _rm = [];
-                    var _kids = _targetDiv2._contentWrap.children;
-                    for (var _gi = _kids.length - 1; _gi >= 0; _gi--) {
-                        var _gc = _kids[_gi];
-                        if (_gc.classList && (_gc.classList.contains('stream-para') ||
-                            (_gc.classList.contains('msg-status') && !_gc.classList.contains('guide-marker')))) {
-                            _rm.push(_gc);
-                        }
-                    }
-                    if (_targetDiv2._lastParaEl && _targetDiv2._lastParaEl.parentNode) {
-                        _rm.push(_targetDiv2._lastParaEl);
-                    }
-                    for (var _rj = 0; _rj < _rm.length; _rj++) { _rm[_rj].remove(); }
+                    // ═══ 唯一真理机：live onDone 与恢复路径共用同一渲染函数 ═══
                     _targetDiv2._lastParaEl = null;
                     _targetDiv2._guideMode = false;
-                    var _finalDiv = document.createElement('div');
-                    _finalDiv.innerHTML = renderMarkdown(content);
-                    _targetDiv2._contentWrap.appendChild(_finalDiv);
+                    var _conv = _capturedAgent.conversation || [];
+                    var _flowHtml = '';
+                    if (typeof window._buildConversationFlowHtml === 'function') {
+                        _flowHtml = window._buildConversationFlowHtml(_conv, {});
+                    } else {
+                        // 兜底：渲染函数未加载时，直接使用 content（保持兼容）
+                        _flowHtml = content || '';
+                    }
+                    _targetDiv2._contentWrap.innerHTML = renderMarkdown(_flowHtml);
                 }
                 if (aiDiv) {
                     aiDiv._paras = null;
@@ -441,8 +439,10 @@ $input.addEventListener('focus', function () {
     }
 });
 
-function insertChipAtCursor(filePath) {
-    var isDir = !filePath.match(/\.[a-zA-Z0-9]+$/);
+function insertChipAtCursor(filePath, isDir) {
+    if (typeof isDir !== 'boolean') {
+        isDir = !filePath.match(/\.[a-zA-Z0-9]+$/);
+    }
     var icon = isDir ? '\ud83d\udcc1' : '\ud83d\udcce';
     var tag = icon + '\u201c' + filePath + '\u201d ';
     $input.focus();
@@ -466,15 +466,16 @@ window.addEventListener('message', function (e) {
     if (e.data && e.data.type === 'qqq-ai-attach') {
         if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
         var path = e.data.path;
+        var isDir = e.data.isDir;
         if (path) {
-            insertChipAtCursor(path);
+            insertChipAtCursor(path, isDir);
         }
     }
 });
 
 document.addEventListener('qqq-ai-attach', function (e) {
     if (e.detail && e.detail.path) {
-        insertChipAtCursor(e.detail.path);
+        insertChipAtCursor(e.detail.path, e.detail.isDir);
     }
 });
 

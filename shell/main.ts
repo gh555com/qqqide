@@ -13,6 +13,7 @@ const portable = applyPortablePaths();
 import { app, BrowserWindow, ipcMain, dialog, shell as electronShell, session, protocol, nativeTheme, globalShortcut, screen } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { execFile } from 'child_process';
 import * as os from 'os';
 import * as http from 'http';
 import * as https from 'https';
@@ -1284,6 +1285,7 @@ function registerIpc(): void {
         }
 
         const results: SearchMatch[] = [];
+        const fileStats = new Map<string, { mtime: number; birthtime: number; size: number }>();
         let totalMatches = 0;
         let aborted = false;
 
@@ -1341,6 +1343,14 @@ function registerIpc(): void {
                 try {
                     const stat = await fs.promises.stat(filePath);
                     if (stat.size > SEARCH_MAX_FILE) continue;
+                    // Cache file metadata for sort (zero extra I/O — we already stat'd)
+                    if (!fileStats.has(filePath)) {
+                        fileStats.set(filePath, {
+                            mtime: stat.mtimeMs,
+                            birthtime: stat.birthtimeMs,
+                            size: stat.size,
+                        });
+                    }
                     const content = await fs.promises.readFile(filePath, 'utf8');
                     const lines = content.split('\n');
                     for (let li = 0; li < lines.length; li++) {
@@ -1383,6 +1393,7 @@ function registerIpc(): void {
             filesScanned: filePaths.length,
             elapsed: Date.now() - startTime,
             truncated: totalMatches >= maxResults,
+            fileStats: Object.fromEntries(fileStats),
         };
     });
 
@@ -1634,6 +1645,62 @@ function registerIpc(): void {
         });
     });
 
+    // generate_image — 通义万相文生图 (1 IPC → Python sidecar)
+    ipcMain.handle('qqqide:ai:generate_image', async (_e, args: { prompt: string; style?: string; size?: string; n?: number; out_dir?: string }) => {
+        const script = path.join(portable.root, 'engines', 'wanx_gen.py');
+        const cmdArgs = ['-u', script, '--prompt', args.prompt, '--size', args.size || '1024*1024'];
+        if (args.style) { cmdArgs.push('--style', args.style); }
+        if (args.n) { cmdArgs.push('--n', String(args.n)); }
+        if (args.out_dir) { cmdArgs.push('--out-dir', args.out_dir); }
+        return new Promise((resolve) => {
+            execFile('python', cmdArgs, { timeout: 300000, maxBuffer: 65536 }, (err, stdout, stderr) => {
+                if (err) {
+                    resolve('Image generation failed (exit ' + (err as any).code + '): ' + ((stdout || '') + (stderr || '')).slice(0, 800));
+                    return;
+                }
+                const out = (stdout || '').trim();
+                try {
+                    const parsed = JSON.parse(out);
+                    if (parsed.ok && parsed.paths) {
+                        resolve('Generated ' + parsed.paths.length + ' image(s):\n' + parsed.paths.map((p: string, i: number) => '  ' + (i + 1) + '. ' + p).join('\n'));
+                    } else {
+                        resolve('Image generation error: ' + (parsed.error || out));
+                    }
+                } catch (_) {
+                    resolve('Image generation output (unexpected format): ' + out.slice(0, 1000));
+                }
+            });
+        });
+    });
+
+    // analyze_image — qwen-vl 视觉理解 (1 IPC → Python sidecar)
+    ipcMain.handle('qqqide:ai:analyze_image', async (_e, args: { image: string; action: string; detail?: string; targets?: string; question?: string }) => {
+        const script = path.join(portable.root, 'engines', 'wanx_vision.py');
+        const cmdArgs = ['-u', script, '--image', args.image, '--action', args.action || 'describe'];
+        if (args.detail) { cmdArgs.push('--detail', args.detail); }
+        if (args.targets) { cmdArgs.push('--targets', args.targets); }
+        if (args.question) { cmdArgs.push('--question', args.question); }
+        return new Promise((resolve) => {
+            execFile('python', cmdArgs, { timeout: 60000, maxBuffer: 65536 }, (err, stdout, stderr) => {
+                if (err) {
+                    resolve('Image analysis failed (exit ' + (err as any).code + '): ' + ((stdout || '') + (stderr || '')).slice(0, 800));
+                    return;
+                }
+                const out = (stdout || '').trim();
+                try {
+                    const parsed = JSON.parse(out);
+                    if (parsed.ok) {
+                        resolve(JSON.stringify(parsed.data, null, 2));
+                    } else {
+                        resolve('Image analysis error: ' + (parsed.error || out));
+                    }
+                } catch (_) {
+                    resolve(out.slice(0, 2000));
+                }
+            });
+        });
+    });
+
     ipcMain.handle('qqqide:fs:drives', async () => {
         const drives: string[] = [];
         if (process.platform === 'win32') {
@@ -1790,6 +1857,28 @@ function registerIpc(): void {
             _projectWindowMap.delete(normalized);
         }
         return true;
+    });
+
+    // ---- app quit (保存所有窗口状态后统一退出) ----
+    ipcMain.handle('qqqide:app:quitAll', async () => {
+        // 收集所有打开窗口的项目路径
+        const projects: string[] = [];
+        for (const [, projectRoot] of _windowProjectMap) {
+            if (projectRoot) { projects.push(projectRoot); }
+        }
+        // 写入全局 qgs 状态（跨会话持久化）
+        try {
+            await stateStore.setNow('qqqide', 'exit_windows', {
+                projects,
+                count: projects.length,
+                at: Date.now(),
+            });
+            console.log('[app:quitAll] saved', projects.length, 'open windows:', projects);
+        } catch (e) {
+            console.warn('[app:quitAll] state save failed:', e);
+        }
+        // 触发退出（汇聚到 before-quit）
+        app.quit();
     });
 
     // ---- zoom IPC ----
@@ -2168,6 +2257,55 @@ app.whenReady().then(async () => {
     // Hydrate shell-side prefs from StateStore (post-boot so renderer can read too).
     await _hydrateZoomFromState();
     await _hydrateAssetRootsFromState();
+
+    // ═══ 多窗口还原：退出时若打开了多个项目窗口，启动时全部还原 ═══
+    try {
+        const exitWindows = await stateStore.get('qqqide', 'exit_windows');
+        if (exitWindows && Array.isArray(exitWindows.projects) && exitWindows.projects.length > 1) {
+            console.log('[boot] restoring', exitWindows.projects.length, 'windows from last exit');
+            // 延迟 3s 等主窗口渲染层完成项目绑定后再创建，避免锁竞争
+            setTimeout(async () => {
+                for (const projectRoot of exitWindows.projects) {
+                    if (!projectRoot || typeof projectRoot !== 'string') continue;
+                    try {
+                        const normalized = projectRoot.replace(/\\/g, '/').replace(/\/$/, '');
+                        // 第一层：内存映射查重
+                        const existingWinId = _projectWindowMap.get(normalized);
+                        if (existingWinId != null) {
+                            const existingWin = BrowserWindow.fromId(existingWinId);
+                            if (existingWin && !existingWin.isDestroyed()) {
+                                continue; // 已有窗口绑定了此项目，跳过
+                            }
+                            _projectWindowMap.delete(normalized);
+                            _windowProjectMap.delete(existingWinId);
+                        }
+                        // 第二层：磁盘锁文件检查
+                        const lockPath = normalized + '/qqq/alphal/.lock';
+                        try {
+                            const lockRaw = fs.readFileSync(lockPath, 'utf-8');
+                            const lockData = JSON.parse(lockRaw);
+                            const age = Date.now() - (lockData.atime || 0);
+                            if (age < 60000) { continue; } // 锁有效，跳过
+                            try { fs.unlinkSync(lockPath); } catch (_) { }
+                        } catch (_) { /* 锁文件不存在，正常 */ }
+                        const newWin = createWindow();
+                        const url = bootConfig.url + '?fresh=1&folder=' + encodeURIComponent(projectRoot);
+                        await newWin.loadURL(url);
+                        console.log('[boot] restored window for', projectRoot);
+                    } catch (e) {
+                        console.warn('[boot] failed to restore window for', projectRoot, e);
+                    }
+                }
+                // 清除退出标记
+                try { await stateStore.setNow('qqqide', 'exit_windows', null); } catch { /* ignore */ }
+            }, 3000);
+        } else {
+            // 单窗口/无记录：清除退出标记
+            try { await stateStore.setNow('qqqide', 'exit_windows', null); } catch { /* ignore */ }
+        }
+    } catch (e) {
+        console.warn('[boot] exit_windows restore failed:', e);
+    }
 });
 
 // ---- Crash / shutdown flush: StateStore flushSync on every exit path ----

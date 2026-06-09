@@ -185,7 +185,7 @@ async function _initWorkspace(root) {
     } catch (e) { console.warn('[workspace] migration error', e); }
 
     // ★ 三面板独立快照：从 ai.uiStates.{panelId} 恢复（异步读，首次绕过缓存）
-    var savedStates = onlyStore.isInited() ? await onlyStore.getAsync('ai.uiStates.' + _panelId) : null;
+    var savedStates = await onlyStore.getAsync('ai.uiStates.' + _panelId);
     if (savedStates && typeof savedStates === 'object') {
         questUIStates = savedStates;
         // [silent] restored questUIStates
@@ -327,7 +327,7 @@ async function initQuests() {
         // ★ 三级恢复：per-window 快照 → project global → first quest
         //   侧面板仅从自己的快照恢复，不抢全局 active quest
         var _perWindowKey = 'ai.window.' + _windowId + '.activeQuestId';
-        var _fromOnly = onlyStore.isInited() ? await onlyStore.getAsync(_perWindowKey) : null;
+        var _fromOnly = await onlyStore.getAsync(_perWindowKey);
         if (_fromOnly && quests.find(function (s) { return s.id === _fromOnly; })) {
             questActiveId = _fromOnly;
             // [silent] restored from per-window snapshot
@@ -370,8 +370,13 @@ async function initQuests() {
         await _restoreAgentFromStore(questActiveId, _activeAgent);
         restoreQuestUIState(questActiveId);
         // ★ 延迟恢复滚动位置（等 DOM 布局完成后）
+        // 自动恢复标记：连接中断自愈 reload 后强制滚到底
+        var _forceBottom = false;
+        try { if (sessionStorage.getItem('__qqq_scroll_bottom') === '1') { _forceBottom = true; sessionStorage.removeItem('__qqq_scroll_bottom'); } } catch (_) { }
         var _savedState = questUIStates[questActiveId];
-        if (_savedState && typeof _savedState.scrollTop === 'number') {
+        if (_forceBottom) {
+            _scrollToBottomDeferred(true);
+        } else if (_savedState && typeof _savedState.scrollTop === 'number') {
             _restoreScrollDeferred(_savedState.scrollTop);
         } else {
             _scrollToBottomDeferred(true);
@@ -409,8 +414,25 @@ async function initQuests() {
     // [silent] initQuests DONE
 }
 
-// ═══ 从 houses 数组计算文件变更统计（持久化到 floorPayload.fileStats） ═══
-function _computeFileStats(houses) {
+// ═══ 从 houses 数组 + A4 快照计算文件变更统计（持久化到 floorPayload.fileStats） ═══
+// 优先使用 A4 快照数据（真实 before/after LCS diff），
+// 无快照时回退到工具参数估算（不精确，仅兜底）
+function _computeFileStats(houses, a4Snapshots) {
+    // ★ 优先：A4 快照有真实 diff 数据
+    if (a4Snapshots && typeof a4Snapshots === 'object') {
+        var snapPaths = Object.keys(a4Snapshots);
+        if (snapPaths.length > 0) {
+            var snapAdded = 0, snapDeleted = 0;
+            for (var si = 0; si < snapPaths.length; si++) {
+                var s = a4Snapshots[snapPaths[si]];
+                snapAdded += s.added || 0;
+                snapDeleted += s.deleted || 0;
+            }
+            return { fileCount: snapPaths.length, added: snapAdded, deleted: snapDeleted };
+        }
+    }
+
+    // ★ 兜底：从工具参数估算（不精确，edit_file 按 find/replace 行数计）
     houses = houses || [];
     var fileSet = {};
     var added = 0;
@@ -456,6 +478,9 @@ function _computeFileStats(houses) {
     return { fileCount: Object.keys(fileSet).length, added: added, deleted: deleted };
 }
 
+// 导出 _computeFileStats 供 panel-a4.js 增量持久化使用
+window._computeFileStats = _computeFileStats;
+
 async function _saveAgentQuestData(questId, ag, floorStartIdx) {
     if (!questId || !ag) return;
     var floorNum = ag._ctx.totalFloors;
@@ -473,7 +498,7 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
             floorFree: ag._floorFree || false,
             lastUserInput: ag._lastUserInput,
             allTxtPath: ag._allTxtPath || '',
-            fileStats: _computeFileStats(ag._houses),
+            fileStats: _computeFileStats(ag._houses, ag._a4Snapshots),
             clockTiming: ag._lastFloorTimingRecord || null,
             treasures: ag._floorTreasures || [],
             createdAt: Date.now()

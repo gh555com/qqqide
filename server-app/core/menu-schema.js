@@ -17,7 +17,7 @@
           { type: 'separator' },
           { label: '开新窗口', i18n: 'shell.menu.fileNewWindow', cmd: 'file.newWindow' },
           { type: 'separator' },
-          { label: '退出', i18n: 'shell.menu.fileExit', role: 'quit' },
+          { label: '退出', i18n: 'shell.menu.fileExit', cmd: 'file.exit' },
         ],
       },
       {

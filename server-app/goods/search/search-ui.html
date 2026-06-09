@@ -85,9 +85,9 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .context-line .content { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 
 /* collapsed */
+.file-group.collapsed .file-body { display: none; }
 .file-group.collapsed .match-line,
 .file-group.collapsed .context-line { display: none; }
-.file-group.collapsed .arrow { transform: rotate(-90deg); }
 
 /* empty state */
 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-dim); gap: 8px; }
@@ -98,6 +98,7 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .match-line.replacing .content .hl { text-decoration: line-through; opacity: 0.6; }
 .match-line .replace-text { background: var(--green); color: #fff; border-radius: 1px; padding: 0 1px; margin-left: 2px; font-style: italic; }
 </style>
+<script src="../../core/char-undo.js"></script>
 </head>
 <body>
 <div class="search-container">
@@ -130,9 +131,15 @@ input, textarea { -webkit-user-select: text; user-select: text; }
       <input type="text" class="scope-input" id="exclude-input" placeholder="*.min.js, dist/**" spellcheck="false">
       <span class="scope-label" style="margin-left:8px">排序</span>
       <select class="sort-select" id="sort-by">
+        <option value="mtime" selected>修改时间↓</option>
+        <option value="mtime-asc">修改时间↑</option>
         <option value="count">匹配数</option>
-        <option value="path" selected>文件路径</option>
+        <option value="path">文件路径</option>
         <option value="path-desc">路径倒序</option>
+        <option value="birthtime">创建时间↓</option>
+        <option value="birthtime-asc">创建时间↑</option>
+        <option value="size">文件大小↓</option>
+        <option value="size-asc">文件大小↑</option>
       </select>
     </div>
   </div>
@@ -188,7 +195,7 @@ var _lastQuery = '';
 var _lastResults = null; // raw results from backend
 var _searching = false;
 var _respectGitignore = false;
-var _sortMode = 'path';
+var _sortMode = 'mtime';
 
 // ---- Toggle buttons ----
 function toggleBtn(btn, stateKey) {
@@ -322,8 +329,18 @@ function countFiles(results) {
   return seen.size;
 }
 
-// ---- Render results ----
+// ---- Render results (time-sliced for 60fps even with 1000+ matches) ----
+var _renderRaf = null;  // cancel pending render
+var _renderBatchIdx = 0;
+var _renderSorted = null;
+var _renderData = null;
+var RENDER_BATCH = 15;  // file groups per frame
+
 function clearResults() {
+  if (_renderRaf) { cancelAnimationFrame(_renderRaf); _renderRaf = null; }
+  _renderBatchIdx = 0;
+  _renderSorted = null;
+  _renderData = null;
   $results.innerHTML = '';
   $empty.style.display = '';
   $results.appendChild($empty);
@@ -331,6 +348,9 @@ function clearResults() {
 }
 
 function renderResults(data) {
+  // Cancel any ongoing render
+  if (_renderRaf) { cancelAnimationFrame(_renderRaf); _renderRaf = null; }
+  _renderBatchIdx = 0;
   $results.innerHTML = '';
   $empty.style.display = 'none';
   if (!data.results || data.results.length === 0) {
@@ -340,7 +360,7 @@ function renderResults(data) {
     return;
   }
 
-  // Group by file
+  // Group by file (fast — in-memory only)
   var groups = new Map();
   for (var i = 0; i < data.results.length; i++) {
     var r = data.results[i];
@@ -348,7 +368,7 @@ function renderResults(data) {
     groups.get(r.file).push(r);
   }
 
-  // Deduplicate match lines (same file+line shown once with first match)
+  // Deduplicate match lines
   groups.forEach(function(matches, file) {
     var seen = new Set();
     var deduped = [];
@@ -361,28 +381,65 @@ function renderResults(data) {
 
   // Sort groups
   var sortedGroups = Array.from(groups.entries());
-  if (_sortMode === 'path') {
-    sortedGroups.sort(function(a, b) { return a[0].localeCompare(b[0]); });
-  } else if (_sortMode === 'path-desc') {
-    sortedGroups.sort(function(a, b) { return b[0].localeCompare(a[0]); });
-  } else if (_sortMode === 'count') {
-    sortedGroups.sort(function(a, b) { return b[1].length - a[1].length || a[0].localeCompare(b[0]); });
+  var fstats = data.fileStats || {};
+  switch (_sortMode) {
+    case 'path':
+      sortedGroups.sort(function(a, b) { return a[0].localeCompare(b[0]); });
+      break;
+    case 'path-desc':
+      sortedGroups.sort(function(a, b) { return b[0].localeCompare(a[0]); });
+      break;
+    case 'count':
+      sortedGroups.sort(function(a, b) { return b[1].length - a[1].length || a[0].localeCompare(b[0]); });
+      break;
+    case 'mtime':
+      sortedGroups.sort(function(a, b) { return (fstats[b[0]] && fstats[b[0]].mtime || 0) - (fstats[a[0]] && fstats[a[0]].mtime || 0) || a[0].localeCompare(b[0]); });
+      break;
+    case 'mtime-asc':
+      sortedGroups.sort(function(a, b) { return (fstats[a[0]] && fstats[a[0]].mtime || 0) - (fstats[b[0]] && fstats[b[0]].mtime || 0) || a[0].localeCompare(b[0]); });
+      break;
+    case 'birthtime':
+      sortedGroups.sort(function(a, b) { return (fstats[b[0]] && fstats[b[0]].birthtime || 0) - (fstats[a[0]] && fstats[a[0]].birthtime || 0) || a[0].localeCompare(b[0]); });
+      break;
+    case 'birthtime-asc':
+      sortedGroups.sort(function(a, b) { return (fstats[a[0]] && fstats[a[0]].birthtime || 0) - (fstats[b[0]] && fstats[b[0]].birthtime || 0) || a[0].localeCompare(b[0]); });
+      break;
+    case 'size':
+      sortedGroups.sort(function(a, b) { return (fstats[b[0]] && fstats[b[0]].size || 0) - (fstats[a[0]] && fstats[a[0]].size || 0) || a[0].localeCompare(b[0]); });
+      break;
+    case 'size-asc':
+      sortedGroups.sort(function(a, b) { return (fstats[a[0]] && fstats[a[0]].size || 0) - (fstats[b[0]] && fstats[b[0]].size || 0) || a[0].localeCompare(b[0]); });
+      break;
   }
 
-  // Use document fragment for performance
+  // Start time-sliced rendering
+  _renderSorted = sortedGroups;
+  _renderData = data;
+  _renderBatchIdx = 0;
+  renderBatch();
+}
+
+function renderBatch() {
+  if (!_renderSorted || _renderBatchIdx >= _renderSorted.length) {
+    _renderRaf = null;
+    return;
+  }
+
+  var end = Math.min(_renderBatchIdx + RENDER_BATCH, _renderSorted.length);
   var frag = document.createDocumentFragment();
-  for (var gi = 0; gi < sortedGroups.length; gi++) {
-    var filePath = sortedGroups[gi][0];
-    var matches = sortedGroups[gi][1];
+
+  for (var gi = _renderBatchIdx; gi < end; gi++) {
+    var filePath = _renderSorted[gi][0];
+    var matches = _renderSorted[gi][1];
     var groupEl = document.createElement('div');
-    groupEl.className = 'file-group';
+    groupEl.className = 'file-group collapsed';  // start collapsed = lazy
 
     // File header
     var header = document.createElement('div');
     header.className = 'file-header';
     var arrow = document.createElement('span');
     arrow.className = 'arrow';
-    arrow.textContent = '▼';
+    arrow.textContent = '▶';  // collapsed arrow
     var fname = document.createElement('span');
     fname.className = 'fname';
     fname.textContent = baseName(filePath);
@@ -397,59 +454,96 @@ function renderResults(data) {
     header.appendChild(fname);
     header.appendChild(fpath);
     header.appendChild(fcount);
-    header.addEventListener('click', function() {
-      groupEl.classList.toggle('collapsed');
-    });
-    groupEl.appendChild(header);
 
-    // Match lines
-    for (var k = 0; k < matches.length; k++) {
-      var match = matches[k];
-      // Context before
-      if (match.before) {
-        for (var b = 0; b < match.before.length; b++) {
-          var ctxB = document.createElement('div');
-          ctxB.className = 'context-line';
-          ctxB.innerHTML = '<span class="ln">' + (match.line - match.before.length + b) + '</span><span class="content">' + escHtml(match.before[b]) + '</span>';
-          groupEl.appendChild(ctxB);
-        }
+    // Container for lazy-populated match lines
+    var bodyEl = document.createElement('div');
+    bodyEl.className = 'file-body';
+    bodyEl._populated = false;
+    bodyEl._matches = matches;
+    bodyEl._filePath = filePath;
+
+    header.addEventListener('click', function() {
+      if (!bodyEl._populated) {
+        populateGroupBody(bodyEl, bodyEl._matches, bodyEl._filePath);
+        bodyEl._populated = true;
       }
-      // Match line
-      var lineEl = document.createElement('div');
-      lineEl.className = 'match-line';
-      lineEl.dataset.file = filePath;
-      lineEl.dataset.line = match.line;
-      lineEl.dataset.col = match.col;
-      var lnSpan = '<span class="ln">' + match.line + '</span>';
-      var contentSpan = '<span class="content">' + highlightMatch(match.text, _lastQuery, _isRegex, _caseSensitive, _wholeWord) + '</span>';
-      lineEl.innerHTML = lnSpan + contentSpan;
-      lineEl.addEventListener('click', (function(f, l, c) {
-        return function() { openFile(f, l, c); };
-      })(filePath, match.line, match.col));
-      groupEl.appendChild(lineEl);
-      // Context after
-      if (match.after) {
-        for (var a = 0; a < match.after.length; a++) {
-          var ctxA = document.createElement('div');
-          ctxA.className = 'context-line';
-          ctxA.innerHTML = '<span class="ln">' + (match.line + 1 + a) + '</span><span class="content">' + escHtml(match.after[a]) + '</span>';
-          groupEl.appendChild(ctxA);
-        }
-      }
-    }
+      groupEl.classList.toggle('collapsed');
+      arrow.textContent = groupEl.classList.contains('collapsed') ? '▶' : '▼';
+    });
+
+    groupEl.appendChild(header);
+    groupEl.appendChild(bodyEl);
     frag.appendChild(groupEl);
   }
+
+  _renderBatchIdx = end;
   $results.appendChild(frag);
+
+  // Schedule next batch
+  if (_renderBatchIdx < _renderSorted.length) {
+    _renderRaf = requestAnimationFrame(renderBatch);
+  } else {
+    _renderRaf = null;
+  }
 }
 
-function highlightMatch(text, query, isRegex, caseSensitive, wholeWord) {
+// Lazy populate a file group's match lines on first expand
+function populateGroupBody(bodyEl, matches, filePath) {
+  var frag = document.createDocumentFragment();
+  for (var k = 0; k < matches.length; k++) {
+    var match = matches[k];
+    // Context before
+    if (match.before) {
+      for (var b = 0; b < match.before.length; b++) {
+        var ctxB = document.createElement('div');
+        ctxB.className = 'context-line';
+        var lnB = document.createElement('span');
+        lnB.className = 'ln';
+        lnB.textContent = match.line - match.before.length + b;
+        var ctB = document.createElement('span');
+        ctB.className = 'content';
+        ctB.textContent = match.before[b];
+        ctxB.appendChild(lnB);
+        ctxB.appendChild(ctB);
+        frag.appendChild(ctxB);
+      }
+    }
+    // Match line
+    var lineEl = document.createElement('div');
+    lineEl.className = 'match-line';
+    lineEl.dataset.file = filePath;
+    lineEl.dataset.line = match.line;
+    lineEl.dataset.col = match.col;
+    lineEl.innerHTML = '<span class="ln">' + match.line + '</span><span class="content">' + highlightMatch(match.text) + '</span>';
+    lineEl.addEventListener('click', (function(f, l, c) {
+      return function() { openFile(f, l, c); };
+    })(filePath, match.line, match.col));
+    frag.appendChild(lineEl);
+    // Context after
+    if (match.after) {
+      for (var a = 0; a < match.after.length; a++) {
+        var ctxA = document.createElement('div');
+        ctxA.className = 'context-line';
+        var lnA = document.createElement('span');
+        lnA.className = 'ln';
+        lnA.textContent = match.line + 1 + a;
+        var ctA = document.createElement('span');
+        ctA.className = 'content';
+        ctA.textContent = match.after[a];
+        ctxA.appendChild(lnA);
+        ctxA.appendChild(ctA);
+        frag.appendChild(ctxA);
+      }
+    }
+  }
+  bodyEl.appendChild(frag);
+}
+
+function highlightMatch(text) {
   var escaped = escHtml(text);
+  if (!_hlRegex) return escaped;
   try {
-    var pattern = isRegex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (wholeWord) pattern = '\\b' + pattern + '\\b';
-    var flags = caseSensitive ? 'g' : 'gi';
-    var re = new RegExp(pattern, flags);
-    // We need to highlight on the escaped HTML — tricky. Do it on raw text, then rebuild.
+    var re = _hlRegex;
     var parts = [];
     var lastIdx = 0;
     var m;
