@@ -98,8 +98,11 @@ var AgentLoop = (function () {
 
         // 清理：移除信封块 + 旧 floor_summary 标签
         var cleanContent = this.raw
-            .replace(/\s*___qqq_env___[\s\S]*?___end___\s*$/, '')
-            .replace(/\s*<floor_summary[^>]*>[\s\S]*?(?:<\/floor_summary>|$)\s*$/, '')
+            // ★ 不依赖 $ 结尾：信封和 floor_summary 可能不在末尾
+            .replace(/\s*___qqq_env___[\s\S]*?___end___\s*/g, '')
+            .replace(/\s*<floor_summary[^>]*>[\s\S]*?(?:<\/floor_summary>|$)\s*/g, '')
+            // ★ [DYNAMIC CONTEXT] 块：从该标记一直删到下一个段落分隔或文本末尾
+            .replace(/\[DYNAMIC CONTEXT\][\s\S]*?(?=\n\n|$)/g, '')
             .trim();
 
         // 清理残留的空 [💎] 行（过渡期兼容）
@@ -107,10 +110,25 @@ var AgentLoop = (function () {
         cleanContent = cleanContent.replace(/\x0a{3,}/g, '\x0a\x0a').replace(/^\x0a+/, '');
 
         // ★ 剥离可能泄漏的原生 XML tool-call 块（模型偶发在 content 中输出 invoke 语法）
-        cleanContent = cleanContent.replace(/<invoke\s[\s\S]*?<\/invoke>/g, '');
-        cleanContent = cleanContent.replace(/<parameter\s[^>]*\/>/g, '');
-        cleanContent = cleanContent.replace(/<\/?qqq_tool_calls>/g, '');
-        cleanContent = cleanContent.replace(/<\/?_tool_calls>/g, '');
+        // 🔴 安全闸：仅当内容疑似以 XML 开头（<invoke 或 <tool_call）时才做深度清洗，
+        //    否则只做轻量标签移除，防止正则误伤正常文本（如解释性文字中含 <invoke> 示例）
+        var _xmlLike = /^\s*<(?:invoke|tool_call|function_call|parameter|qqq_tool_calls)/i.test(cleanContent);
+        if (_xmlLike) {
+            // 深度清洗：整块移除 <invoke>...</invoke>
+            cleanContent = cleanContent.replace(/<invoke[\s>][\s\S]*?<\/invoke>/gi, '');
+            cleanContent = cleanContent.replace(/<invoke[\s>][^>]*\/>/gi, '');
+            cleanContent = cleanContent.replace(/<parameter[\s>][^>]*\/?>/gi, '');
+            cleanContent = cleanContent.replace(/<\/?qqq_tool_calls>/gi, '');
+            cleanContent = cleanContent.replace(/<\/?_?tool_calls?>/gi, '');
+            cleanContent = cleanContent.replace(/<\/?_?tool_call>/gi, '');
+            cleanContent = cleanContent.replace(/<\/?function_call>/gi, '');
+        } else {
+            // 轻量：仅移除孤立的 XML 标签（保留文本内容），不删除整块
+            // 匹配 <invoke...> 或 </invoke> 等独立标签行（前后是换行或字符串边界）
+            cleanContent = cleanContent.replace(/^<\/?invoke[^>]*>\s*$/gim, '');
+            cleanContent = cleanContent.replace(/^<\/?tool_calls?[^>]*>\s*$/gim, '');
+            cleanContent = cleanContent.replace(/^<\/?function_call[^>]*>\s*$/gim, '');
+        }
         // 去除因上述清理产生的连续空行
         cleanContent = cleanContent.replace(/\x0a{3,}/g, '\x0a\x0a').replace(/^\x0a+/, '').trim();
 
@@ -148,10 +166,18 @@ var AgentLoop = (function () {
         this._guidePending = false;
         this._guideMessage = '';
         this._abortedByGuide = false;
+        // ★ 楼层看门狗：防断头中断
+        this._floorKilled = false;
+        this._floorCompletedCleanly = false;
+        this._floorOnErrorCalled = false;
     }
 
     // ---- 中止 ----
-    AgentLoop.prototype.abort = function () {
+    // userKill: true = 用户点停止按钮；false/不传 = 内部中断（guide/inject 等）
+    AgentLoop.prototype.abort = function (userKill) {
+        if (userKill) {
+            this._floorKilled = true;  // ★ 看门狗：用户主动杀，不触发自动恢复
+        }
         if (this.abortController) {
             this.abortController.abort();
             this.abortController = null;
@@ -159,7 +185,7 @@ var AgentLoop = (function () {
     };
 
     // ═══ 修复断裂的 tool_calls（启动自愈） ═══
-    // DeepSeek 要求 assistant tool_calls 后必须紧跟 tool 消息。
+    // 要求 assistant tool_calls 后必须紧跟 tool 消息。
     // 扫描 conversation，砍掉孤立的 assistant tool_calls（后面缺 tool 配对），
     // 以及孤立的 tool 消息（前面缺 assistant tool_calls）。
     AgentLoop.prototype._repairOrphanedToolCalls = function () {
@@ -335,6 +361,9 @@ var AgentLoop = (function () {
 
         if (!token) { onError('No token'); return null; }
 
+        // ★ 存储 token 供 tools.js 调用 Go 端点时使用
+        self._token = token;
+
         // 重置本轮计费 + 生成 floor_id（同一轮内所有 gateway 调用共享）
         self._floorCostWge = 0;
         self._floorFree = false;
@@ -344,7 +373,7 @@ var AgentLoop = (function () {
         self._floorTiming = { networkMs: 0, deepseekMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (self._serverDrift || 0) };
         self._floorStartServerMs = self._floorTiming.floorStartServerMs;  // 兼容旧引用
 
-        // ═══ 视觉预分析：阿里眼睛(Qwen VL) → 文本 → DeepSeek大脑 ═══
+        // ═══ 视觉预分析：图像 → 文本 → 推理 ═══
         // 将用户问题一并发送，让阿里针对实际问题做定向识别
         var visionText = '';
         var _visionStart = performance.now();
@@ -367,7 +396,7 @@ var AgentLoop = (function () {
         }
         if (_visionStart) self._floorTiming.deepseekMs += performance.now() - _visionStart;
 
-        // 推入用户消息（纯文本 — DeepSeek 只看得懂 text）
+        // 推入用户消息（纯文本）
         var finalContent = (userContent || '') + visionText;
 
         // 归档：保存用户键入供 generateFloorTxt 写入
@@ -417,6 +446,9 @@ var AgentLoop = (function () {
         self._houses = [];
         self._a4Snapshots = {};
         self._houseIndex = 0;
+        self._floorKilled = false;  // ★ 看门狗：用户点停止才置 true
+        self._floorCompletedCleanly = false;  // ★ 看门狗：只有 onDone 路径才置 true
+        self._floorOnErrorCalled = false;  // ★ 看门狗：onError 回调已处理，不重复恢复
         self._resetStallCounter();
 
         try {
@@ -457,7 +489,20 @@ var AgentLoop = (function () {
                     if (_ackResp && _ackResp.content) {
                         // 移除确认指令（user 消息），只保留 AI 确认回复，避免硬指令污染后续对话
                         self.conversation.pop(); // pop _ackPrompt
-                        self.conversation.push({ role: 'assistant', content: _ackResp.content, _guideAck: true, _guideText: _guideText, _floor: self._ctx.totalFloors });
+                        // ★ 防御：模型偶发在 content 中输出原生 XML tool-call 语法
+                        // 引导确认预期极短（仅 "✅ 已收到引导：..."），若检测到 XML 污染直接降级为默认语
+                        var _ackRaw = _ackResp.content;
+                        var _xmlPattern = /<(?:invoke|tool_call|function_call|parameter|qqq_tool_calls)[\s>]/i;
+                        var _cleanAck;
+                        if (_xmlPattern.test(_ackRaw)) {
+                            // 含 XML 污染 → 尝试提取第一行纯文本，失败则降级
+                            var _firstLine = _ackRaw.replace(/<[^>]+>/g, '').split('\n')[0].trim();
+                            _cleanAck = (_firstLine && _firstLine.length >= 3) ? _firstLine : '✅ 已收到引导';
+                        } else {
+                            // 干净 → 直接取第一段非空内容（去多余换行）
+                            _cleanAck = _ackRaw.replace(/\n{3,}/g, '\n\n').trim();
+                        }
+                        self.conversation.push({ role: 'assistant', content: _cleanAck, _guideAck: true, _guideText: _guideText, _floor: self._ctx.totalFloors });
                         // 归档：确认回合写入 houses（all.txt 可见）
                         self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], summary: '', ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString() });
                         if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
@@ -526,12 +571,23 @@ var AgentLoop = (function () {
                     self._floorTiming.networkMs += response._ttfbMs;
                     self._floorTiming.deepseekMs += response._streamMs;
                 }
-                // API 精确上下文 token 计数（DeepSeek usage.prompt_tokens）
+                // API 精确上下文 token 计数（usage.prompt_tokens）
                 if (response._usage && response._usage.prompt_tokens) {
                     self._lastApiPromptTokens = response._usage.prompt_tokens;
                 }
 
                 if (response.type === 'message') {
+                    // ★ 引导在最终回复流式期间到达 → 暂存回复，先处理引导确认，再重新获取最终回复
+                    if (self._guidePending && self._guideMessage) {
+                        self._log('⚠ final response arrived but guide pending — deferring');
+                        // 暂存当前回复的 conversation 消息（已流式输出给用户，不丢）
+                        var _deferredMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
+                        if (response.reasoning_content) _deferredMsg.reasoning_content = response.reasoning_content;
+                        // 不 push 到 conversation（引导确认回合会 pop 掉多余消息）
+                        // 不调用 onDone（等引导确认后再重新获取最终回复）
+                        maxIterations++;  // 不消耗迭代配额
+                        continue;  // 回到循环顶部 → 触发引导确认回合
+                    }
                     self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '' });
                     if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
@@ -543,12 +599,12 @@ var AgentLoop = (function () {
                     } else {
                         self.conversation.push(assistantMsg);
                     }
-                    // 计费 + flush（写入账本）
-                    self._flushBilling(token);
+                    // 计费（Go 服务器 SSE 流中已完成）
                     var costGe = self._floorCostWge / 10000;
                     self.totalCostGe += costGe;
                     self._lastCostDisplay = costGe < 0.001 ? '<0.001' : costGe.toFixed(4);
                     onCost(self._lastCostDisplay, self.totalCostGe, self._floorFree);
+                    self._floorCompletedCleanly = true;  // ★ 看门狗：AI 正常回复
                     onDone(response.content, self._floorTiming);
                     return response.content;
                 }
@@ -574,7 +630,7 @@ var AgentLoop = (function () {
                     var _execResult = await self._executeToolCallsParallel(response.tool_calls, assistantToolMsg, onToolResult);
 
                     // ★ 原子推入 conversation：assistant tool_calls + 全部 tool 结果，无缝隙
-                    //    防止 auto-save 在中间捕获断裂状态导致 DeepSeek 校验失败
+                    //    防止 auto-save 在中间捕获断裂状态导致校验失败
                     if (_execResult && _execResult.assistantMsg) {
                         self.conversation.push(_execResult.assistantMsg);
                     }
@@ -611,6 +667,7 @@ var AgentLoop = (function () {
                 self._log('⚠ unexpected response type: ' + (response && response.type));
                 var _fallbackMsg = '⚠ AI 返回了意外的响应类型，但对话上下文已保留。你可以继续提问或重试。';
                 self.conversation.push({ role: 'assistant', content: _fallbackMsg, _floor: self._ctx.totalFloors });
+                self._floorCompletedCleanly = true;  // ★ 看门狗：虽非理想但已给出可读结束
                 onDone(_fallbackMsg, self._floorTiming);
                 return _fallbackMsg;
             }
@@ -626,6 +683,15 @@ var AgentLoop = (function () {
                     onError: onError, tier: tier, noTools: true
                 });
                 if (finalResp && finalResp.content) {
+                    // ★ 引导在强制回复流式期间到达 → 暂存，先确认引导
+                    if (self._guidePending && self._guideMessage) {
+                        self._log('⚠ forced final response arrived but guide pending — deferring');
+                        self.conversation.push({ role: 'user', content: '[System: The previous forced final answer was deferred. Now give your final answer after acknowledging the guide.]', _floor: self._ctx.totalFloors });
+                        // 不在循环内，不能用 continue → 直接 return，引导会在下次 send 时触发确认回合
+                        self._floorCompletedCleanly = true;
+                        onDone('(deferred for guide)', self._floorTiming);
+                        return '(deferred for guide)';
+                    }
                     self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ts: new Date().toISOString(), ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '' });
                     if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     if (finalResp._ttfbMs !== undefined) {
@@ -637,13 +703,14 @@ var AgentLoop = (function () {
                     self.totalCostGe += finalCostGe;
                     self._lastCostDisplay = finalCostGe < 0.001 ? '<0.001' : finalCostGe.toFixed(4);
                     onCost(self._lastCostDisplay, self.totalCostGe, self._floorFree);
-                    self._flushBilling(token);
+                    self._floorCompletedCleanly = true;  // ★ 看门狗：强制回答成功
                     onDone(finalResp.content, self._floorTiming);
                     return finalResp.content;
                 }
                 // 强制回答也失败 → 优雅降级，不丢上下文
                 var _exhaustedMsg = '⚠ 已达到最大工具调用次数 (200)，但 AI 未能生成最终回答。对话上下文已保留，你可以继续提问。';
                 self.conversation.push({ role: 'assistant', content: _exhaustedMsg, _floor: self._ctx.totalFloors });
+                self._floorCompletedCleanly = true;  // ★ 看门狗：已给出降级消息
                 onDone(_exhaustedMsg, self._floorTiming);
                 return _exhaustedMsg;
             }
@@ -656,7 +723,7 @@ var AgentLoop = (function () {
         }
     };
 
-    // ═══ 视觉预分析：阿里眼睛(Qwen VL) → 文本 ═══
+    // ═══ 视觉预分析：图像 → 文本 ═══
     // 并行分析所有图片，MD5 缓存
     // 返回 [{id, description, cached}] — 失败图片静默跳过
     AgentLoop.prototype._analyzeImages = async function (images, token, userContent) {
@@ -681,7 +748,7 @@ var AgentLoop = (function () {
                 return { id: img.id, description: cached.description, cached: true };
             }
             try {
-                var desc = await self._callVision(img.base64, token, visionPrompt);
+                var desc = await self._callVision(img.base64, token, visionPrompt, userContent);
                 if (desc) {
                     self._visionCache.set(hash, { description: desc, ts: Date.now() });
                 }
@@ -692,9 +759,10 @@ var AgentLoop = (function () {
             }
         };
 
-        // serial: avoid Chromium 108 HTTP/2 multiplex race on ERR_HTTP2_PROTOCOL_ERROR
-        for (var i = 0; i < images.length; i++) {
-            var r = await analyzeOne(images[i]);
+        // ★ 并行分析：所有图片独立调 Go vision 端点，无依赖关系
+        var allResults = await Promise.all(images.map(function (img) { return analyzeOne(img); }));
+        for (var i = 0; i < allResults.length; i++) {
+            var r = allResults[i];
             if (r.description) {
                 results.push({ id: r.id, description: r.description, cached: r.cached });
             } else {
@@ -705,7 +773,7 @@ var AgentLoop = (function () {
     };
 
     // ---- 调用 /api/v3/ai/vision（异步：提交 → SSE 推送，绕开 CF 100s 代理超时）----
-    AgentLoop.prototype._callVision = async function (base64, token, prompt) {
+    AgentLoop.prototype._callVision = async function (base64, token, prompt, userContent) {
         var self = this;
         var MAX_SUBMIT_RETRIES = 2;
 
@@ -716,6 +784,10 @@ var AgentLoop = (function () {
                 var reqBody = { image: base64 };
                 if (prompt && typeof prompt === 'string' && prompt.trim()) {
                     reqBody.prompt = prompt.trim();
+                }
+                // billing 摘要：传用户原始问题（不含视觉提示词前缀），Go 存为流水摘要
+                if (userContent && typeof userContent === 'string' && userContent.trim()) {
+                    reqBody.summary = userContent.trim().slice(0, 200);
                 }
                 if (self._floorId) {
                     reqBody.floor_id = self._floorId;
@@ -875,6 +947,9 @@ var AgentLoop = (function () {
         var tier = opts.tier || TIER_PRO;
         var noTools = opts.noTools || false;
 
+        // ★ 兜底：在备用线路超过 5 分钟，本次请求尝试主线路
+        var _gwTryingPrimary = (typeof _gwTryPrimary === 'function') ? _gwTryPrimary() : false;
+
         // ★ 号池：从 opts.token 获取初始 key，支持 429 自动切换
         var _currentToken = opts.token || '';
         var _keyRotated = false;
@@ -974,7 +1049,7 @@ var AgentLoop = (function () {
         }
         self._lastApiCallTs = performance.now();
 
-        var MAX_RETRIES = 2;
+        var MAX_RETRIES = 1;  // ★ 提速：有兜底线路，同 URL 最多重试 1 次
         var MAX_KEY_ROTATIONS = 3;  // 最多切换 3 次 key
         var _keyRotations = 0;
         var _ttfbAccum = 0;
@@ -990,7 +1065,8 @@ var AgentLoop = (function () {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + _currentToken
+                        'Authorization': 'Bearer ' + _currentToken,
+                        'X-Floor-Id': self._floorId || ''
                     },
                     body: JSON.stringify(body),
                     signal: self.abortController.signal
@@ -1012,10 +1088,15 @@ var AgentLoop = (function () {
                         }
                     }
                     if ((resp.status === 429 || resp.status === 502 || resp.status === 503) && retry < MAX_RETRIES) {
-                        var waitMsGw = resp.status === 429 ? 3000 * Math.pow(2, retry) : 2000 * Math.pow(2, retry);
-                        self._log('  gateway ' + resp.status + ' retry #' + (retry + 1) + ' in ' + waitMsGw + 'ms');
-                        await new Promise(function (r) { setTimeout(r, waitMsGw); });
-                        continue;
+                        // ★ 502/503: 不重试同一 URL，立刻走兜底切换（下面处理）
+                        if (resp.status === 502 || resp.status === 503) {
+                            // 跳过 retry，直接落入下方的兜底切换逻辑
+                        } else {
+                            var waitMsGw = 3000 * Math.pow(2, retry);
+                            self._log('  gateway ' + resp.status + ' retry #' + (retry + 1) + ' in ' + waitMsGw + 'ms');
+                            await new Promise(function (r) { setTimeout(r, waitMsGw); });
+                            continue;
+                        }
                     }
                     self._log('✗ gateway ' + resp.status + ': ' + text.slice(0, 200));
                     var friendly = resp.status === 401 ? '认证失败，请检查 Token'
@@ -1025,14 +1106,26 @@ var AgentLoop = (function () {
                                     : resp.status === 503 ? '服务器暂时不可达 (503)'
                                         : 'Server error (' + resp.status + ')';
                     try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(friendly, { type: resp.status === 429 ? 'warning' : 'error' }); } catch (_) { }
-                    // 标记 502/503，供上层 send 函数触发对话修复
+                    // ★ 502/503: 切备用线路，不 reload
                     if (resp.status === 502 || resp.status === 503) {
                         self._lastGatewayError = resp.status;
-                        // ★ 自愈：502/503 重试耗尽后自动 reload（HTTP/2 连接可能已腐坏）
                         clearTimeout(_fetchDeadline);
-                        onError(friendly + '，正在自动恢复…');
-                        try { sessionStorage.setItem('__qqq_scroll_bottom', '1'); } catch (_) { }
-                        setTimeout(function () { window.location.reload(); }, 1200);
+                        if (_gwTryingPrimary || (typeof _gwSwitch === 'function' && GATEWAY_URL === GATEWAY_URL_PRIMARY)) {
+                            // 主线路挂了 → 切备用 + qoast 提示
+                            if (_gwTryingPrimary) {
+                                if (typeof _gwPrimaryFailed === 'function') _gwPrimaryFailed();
+                                _gwTryingPrimary = false;  // 已退回备用，本次不再尝试切回
+                            } else {
+                                _gwSwitch(true);
+                            }
+                            // 重试一次（新线路）
+                            retry = -1;
+                            self._log('  ↳ switched to fallback, retrying...');
+                            continue;
+                        } else {
+                            // 已在备用线路 → 无计可施
+                            onError(friendly + '，所有线路均不可达');
+                        }
                         return null;
                     }
                     clearTimeout(_fetchDeadline);
@@ -1057,12 +1150,16 @@ var AgentLoop = (function () {
                     } catch (_) { }
                 }
                 self._log('✓ gateway ' + resp.status + ' streaming...');
-                self._consecutiveFetchErrors = 0;
                 clearTimeout(_fetchDeadline);  // ★ SSE 流开始，取消 fetch deadline
                 var _result = await self._parseSSE(resp.body, onToken, onReasoning);
                 if (_result) {
                     _result._ttfbMs = _ttfbAccum;
                     _result._streamMs = _result._streamMs || 0;
+                }
+                self._consecutiveFetchErrors = 0;  // ★ 整个 fetch+SSE 周期成功后才清零
+                // ★ 兜底：尝试主线路成功 → 正式切回
+                if (_gwTryingPrimary && typeof _gwSwitch === 'function') {
+                    _gwSwitch(false);  // 切回主线路 + qoast 提示
                 }
                 clearTimeout(_fetchDeadline);
                 return _result;
@@ -1079,29 +1176,48 @@ var AgentLoop = (function () {
                 var msg = err.message || '';
                 // HTTP/2 协议检测：JS 层 fetch() 对 ERR_HTTP2_* 只报 "Failed to fetch"
                 // net::ERR_HTTP2_PROTOCOL_ERROR 仅 DevTools 可见，JS Error.message 拿不到
+                // HTTP/2 检测：覆盖 fetch 阶段和 SSE 流阶段的网络错误
+                // ERR_HTTP2_PING_FAILED 在 fetch 层体现为 "Failed to fetch"
+                // 在 SSE 流层体现为 "network error"（reader.read() 抛出）
                 var _isHttp2Like = msg.indexOf("ERR_HTTP2") >= 0
                     || msg.indexOf("ERR_CONNECTION_CLOSED") >= 0
-                    || msg === 'Failed to fetch';
+                    || msg === 'Failed to fetch'
+                    || msg.indexOf('network error') >= 0;
 
                 if (retry < MAX_RETRIES) {
                     // HTTP/2 死连接重试：等待更长时间让 Chromium 回收坏连接
-                    var waitMsF = _isHttp2Like ? 3000 : 2000;
+                    var waitMsF = 1000;  // ★ 提速：1s 快速重试 + 兜底切换
                     self._log('  fetch error retry #' + (retry + 1) + ' in ' + waitMsF + 'ms: ' + msg);
                     await new Promise(function (r) { setTimeout(r, waitMsF); });
                     continue;
                 }
 
-                // 重试耗尽 — Chromium 108 HTTP/2 连接已彻底死亡
-                // ?_h2r= 参数无效：HTTP/2 按 origin 复用连接，查询参数不影响连接池
-                // 唯一可靠恢复方式：reload iframe（新 TCP 连接）
+                // 重试耗尽 — 先尝试切换线路，最后手段才 reload
                 clearTimeout(_fetchDeadline);
                 self._consecutiveFetchErrors = (self._consecutiveFetchErrors || 0) + 1;
                 self._log('✗ fetch exhausted: ' + msg + ' (consecutive=' + self._consecutiveFetchErrors + ')');
-                if (_isHttp2Like || self._consecutiveFetchErrors >= 2) {
-                    // ★ 自愈：立即 reload 面板恢复连接（对话上下文已持久化）
+
+                var _canSwitchUrl = false;
+                if (_gwTryingPrimary) {
+                    // 尝试主线路失败 → 无声退回备用
+                    if (typeof _gwPrimaryFailed === 'function') _gwPrimaryFailed();
+                    _gwTryingPrimary = false;  // 已退回备用
+                    _canSwitchUrl = true;
+                } else if (typeof _gwSwitch === 'function' && GATEWAY_URL === GATEWAY_URL_PRIMARY) {
+                    // 主线路 HTTP/2 连接坏 → 切备用 + qoast
+                    _gwSwitch(true);
+                    _canSwitchUrl = true;
+                }
+                // ★ 备用线路也 HTTP/2 错误 或 连续多次错误 → 只能 reload
+                if (_isHttp2Like || self._consecutiveFetchErrors >= 3) {
                     onError('连接中断，正在自动恢复…');
                     try { sessionStorage.setItem('__qqq_scroll_bottom', '1'); } catch (_) { }
                     setTimeout(function () { window.location.reload(); }, 600);
+                } else if (_canSwitchUrl) {
+                    // 切换了线路 → 重置 retry，走正常重试
+                    retry = -1;
+                    self._consecutiveFetchErrors = 0;
+                    continue;
                 } else {
                     onError('⚠️ 网络请求失败。对话已保存，正在自动恢复…');
                     try { sessionStorage.setItem('__qqq_scroll_bottom', '1'); } catch (_) { }
@@ -1183,7 +1299,7 @@ var AgentLoop = (function () {
                     break;  // 跳出 for 循环
                 }
 
-                // DeepSeek 流尾 usage（include_usage:true）— 精确上下文 token 数
+                // 流尾 usage（include_usage:true）— 精确上下文 token 数
                 if (chunk.usage && chunk.usage.prompt_tokens) {
                     _usage = chunk.usage;
                     continue;
@@ -1274,7 +1390,7 @@ var AgentLoop = (function () {
 
     // ---- 并行工具执行 ----
     // 返回 { allResults, assistantMsg }，由调用方原子推入 conversation
-    // 避免 auto-save 在 tool_calls 与 tool 结果之间捕获断裂状态（DeepSeek 校验：tool_calls 后必须紧跟 tool 消息）
+    // 避免 auto-save 在 tool_calls 与 tool 结果之间捕获断裂状态（校验：tool_calls 后必须紧跟 tool 消息）
     AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assistantMsg, onToolResult) {
         var self = this;
         var prepared = [];
@@ -1385,32 +1501,6 @@ var AgentLoop = (function () {
         return 'READ';
     };
 
-
-    // ═══ 计费 flush：聚合本轮所有 gateway 调用费用 → 发送到服务端入账 ═══
-    AgentLoop.prototype._flushBilling = function (token) {
-        var self = this;
-        if (!self._floorId || self._floorCostWge <= 0) return;
-        try {
-            var summary = (self._currentFloorSummary || '').trim().slice(0, 222);
-            if (!summary) {
-                // 降级：用最后一条用户消息
-                for (var fi = self.conversation.length - 1; fi >= 0; fi--) {
-                    if (self.conversation[fi].role === 'user') {
-                        summary = (typeof self.conversation[fi].content === 'string' ? self.conversation[fi].content : '').replace(/\s+/g, ' ').trim().slice(0, 200);
-                        break;
-                    }
-                }
-            }
-            fetch(BILLING_FLUSH_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + token
-                },
-                body: JSON.stringify({ floor_id: self._floorId, summary: summary })
-            }).catch(function () { });
-        } catch (_) { }
-    };
 
     // ---- 引导注入（旧）：将引导消息插入对话（不触发 API 调用） ----
     AgentLoop.prototype.inject = function (message) {
