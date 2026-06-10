@@ -1,0 +1,79 @@
+qqq-shell-v2 交接 — 先跑 npm run dev，再看文档。永远以运行结果为准。
+============================================================
+给下一棒 AI：先看 铁律 → 架构 → 进度，再读本文档。
+
+工作秩序
+--------
+- 永远先跑 `npm run dev`，先用代码再说。
+- 改 server-app/ 时 Ctrl+R 即可；动 shell/ 必须 `npm run build`。
+
+P0 — 烟囱测试
+----------------------------
+1. Electron 启动无 boot-fallback；标题栏窗控三按钮工作。
+2. 左侧 Activity 栏点目录→文件→tab→Monaco 渲染。
+3. 输入 `/\ E:\s\wol\py\q3\res\q.png \\/` 独占一行→ViewZone 相框(180px)。
+4. 同一 token 嵌入文字中间→16px 行内图标 ContentWidget。
+5. 截图 Ctrl+V 粘贴→自动落地+插 token。
+6. 同一张图再粘贴→hash 缓存命中→不重复写盘。
+7. Ctrl+\ → 分右组 (key-hook 统一调度)。
+8. Roam tab → 盘符 200ms 内出现 + 真实 free/total。
+9. AI 面板→输入+Enter→SSE 流式回包→楼层时钟饼图→引导按钮回字形→排队按钮吕字形。
+10. CodeLens 含 http(s)视频URL→显示"下载"按钮。
+
+P1 — 价值最大补完 ✓ (全部完成)
+-------------------------
+1. dow.js SmartHttpDownloader 移植 ✓
+2. 工作区目录白名单运行时追加 ✓
+3. q1 三件套 CSS 美化 ✓
+
+P2 — 未完成 (周级)
+-----------------------
+4. ~~qz spawn Rust 落地~~ ✓ (ghrun spawn.rs 反卡死全能力, runner.py 退役)
+5. 热更新流程 (ghrun pull→解压→原子swap→UI按钮)
+6. 生产打包发布 (6平台+自签+GitHub Releases)
+
+P3 — 长尾移植 (可缓)
+--------------------
+7. q3/src/cdp-sniffer.js → 复杂视频 URL 抓取 ✓ (已完成: shell/cdp-sniffer.ts)
+8. q3/src/brokerBridge.js → AI 多模型路由
+9. q3/src/qvenv.js → Python venv 管理
+
+绝对不要做的事
+--------------
+- 不往 do/拓扑 写故事/背景/思考过程 (§0 文档纪律)。
+- 不硬编码 keydown，所有快捷键走 key-bindings.json + key-hook。
+- 不绕过 bridge 直接 require('fs')。
+- 不在 shell.js 塞业务 — UI 业务进 core/ 或 goods/。
+- 不新建变量名含 "su" 组合。
+
+关键文件索引
+------------
+- 入口: server-app/index.html
+- 启动主流程: server-app/core/shell.js 的 main()
+- gaea 宿主: core/gaea-host.js (完整 panel/tabs/services/commands, goods 按钮渲染到 #qqq-goods-bar 菜单行2)
+- goods-bar: index.html 菜单行2 的 <span id="qqq-goods-bar">, renderTabBar() 填充
+- rage 面板: goods/rage/rage.html (剪切板+船长卡片)
+- Roam tab: goods/_shim.js 内注册，不再在 shell.js 硬编码
+- Monaco worker: core/editor.js getWorker 双路 — 基础 worker 直连 qqq-asset:// (importScripts 路径正确)，语言 worker blob+loader.js (define 不丢)；依赖由 convert_monaco_esm.py 转 AMD → cache/monaco-deps/，shell/main.ts qqq-asset:// 协议双根 fallback
+- 持久化(qgs+qg): core/state-sdk.js (window.qgs，唯一真理入口，背后 state-sqlite.ts + qg.ts 双引擎)
+- qgs (state-sqlite.ts): SQLite WAL，全局状态/云同步
+- qg (shell/qg.ts): FS 原子写，零配置项目元信息 .qqq/qg/
+- qoast 弹窗: core/qqq-qoast.js (唯一真理弹窗机器)
+- AI agent: ai-panel/agent-loop.js (floor/house/room 模型, SSE推送, 阻塞式压缩)
+- Quest 持久化: ai-panel/quest-store.js (qgs.project → qqq/quests/alphal/quest.sq3)
+- 项目规则: {root}/qqq/quests/alphal/rule/project.txt (Rules按钮编辑)
+- IPC 路由: shell/main.ts 全部 ipcMain.handle
+- bridge 出口: shell/preload.ts contextBridge.exposeInMainWorld
+- 快捷键源: core/key-bindings.json
+- 国际化: core/i18n.js (运行时, zh.json唯一真理源, qgs持久化) + server-app/locales/zh.json (开发者只管写中文)
+- 翻译面板: op/ky.py (python op/ky.py, PySide6 GUI一键翻译12语言, DashScope Qwen3.6-Plus)
+- 语言切换器: 菜单行1 中字按钮, shell.js bootLangSwitcher()
+- 媒体桥: shell/media-service.ts
+- （gaea 侧）AI 网关 Worker: cf/ai-gateway.js（CF edge 纯透传，~67行，ban检查+透传Go:8444）
+- （gaea 侧）AI 网关 Worker (ES Module): cf/ai-gateway-module.js（同上，模块格式）
+- （gaea 侧）AI 路由注册: internal/http/routes.go（8个AI端点）
+- （gaea 侧）AI 聊天处理: internal/http/handlers_ai_chat.go（含 AICheckHandler + 计费权威）
+- （gaea 侧）AI 视觉处理: internal/http/handlers_ai_vision.go（summary 取自 userContent 非 prompt）
+- （gaea 侧）CF 部署脚本: cf/ky.py（全自动编译/同步/翻译/回滚）
+- （gaea 侧）GUI 工具: cf/q.pyw（PySide6，DNS/Worker/R2 CDN 一键配置）
+- （gaea 侧）CF Worker 部署修复: cf/fix_worker.py（API 下载→修复→上传，Bearer Token 认证）

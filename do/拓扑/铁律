@@ -1,0 +1,333 @@
+qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
+=============================================
+
+§0 文档纪律
+  - 极简。不写背景、不写故事，只写结论。一段不超3行。全部文档 < 4000 token。
+  - 只写100%确定的事实。未落地的不写。落地了立刻写。
+  - 同一件事只存一处。发现重复→合并。发现冲突→立刻解决。
+  - 过时的直接删，不留注释/废弃标记。
+  - AI每回合产出新事实→同回合更新拓扑。
+
+§1 三层不可逆
+  - 壳(Electron 22) = 窗口 + IPC + spawn ghrun。不做业务。
+  - ghrun(Rust) = 进程管理(qz) + 热更新 + 下载校验 + 快照。OS单例。
+  - 载荷(server-app/) = 全部UI + 业务逻辑 + Monaco编辑器。热更Ctrl+R生效。
+  - 任何功能归属有疑问→归载荷层。
+
+§2 qz spawn — ghrun 统管所有子进程（2026-06-04 加固）
+  - 全部子进程(yt-dlp/引擎/编译/任何命令)必须经 ghrun spawn 启动。
+  - 管线: ghrun (Rust, 主力) → Node (child_process, 兜底)。runner.py 已退役（代码保留，调用点已删）。
+  - 四重防御: ①硬超时30min(SYSTEM_MAX_TIMEOUT) ②内存守卫2GB(Get-CimInstance每5s轮询)
+    ③ghrun原生Job Object(memLimitMb) ④失速看门狗(stallMs 5min无输出→杀)
+  - 进程组隔离: Windows CREATE_NEW_PROCESS_GROUP + CREATE_NO_WINDOW + taskkill /F /T。
+    POSIX process_group(0) → killpg (SIGTERM 2s宽限 → SIGKILL)。父死子必死。
+  - timeout=0 已被禁止：入口强制 cap 为 SYSTEM_MAX_TIMEOUT(30min)，永不无限执行。
+  - 空 cmd 保护、输出安全网 64KB 截断。stdout最后一行为JSON brief。
+  - guardMs 修复：原 timeout=0 时 guard=24h，现恒为 timeout+10s。
+
+§3 配色 — 唯一真理配色机器
+  - 唯一入口: core/qqqide-theme.js。一切组件禁止私自定义颜色。
+  - 色盘精确照抄 q2.html (Solarized Light/Dark 16色 + 语义变量)。
+  - editor token 照抄 VS Code solarized-light/dark-color-theme.json。
+  - CSS 变量由 qqqide-theme.js 一次性注入 <html> (<style>元素)，零回流。
+  - forced-color-adjust:none 破系统高对比度。
+  - 主题切换: qqqideTheme.apply(dark) → data-theme 属性 + Monaco 联动 + iframe postMessage。
+  - iframe 配色: injectTo(doc) + postMessage('qqqide-theme-change') 同步。
+  - 主题跟随: 三 AI iframe 通过 postMessage('qqqide-theme-change') 同步（灯泡开关开合不丢主题）。
+
+§4 编辑器
+  - 用 Monaco 原生 API (CodeLens/deltaDecorations/onDidPaste/addCommand)。
+  - 不引入 VS Code extension host。不引入 vscode.* 命名空间。
+  - Worker 加载：基础 worker 直走 qqqide-asset:// URL，语言 worker 走 blob+loader.js。依赖文件由 convert_monaco_esm.py 从 esm/ 转 AMD 至 cache/monaco-deps/，qqqide-asset:// 协议双根 fallback。
+
+§5 命名（2026-06-04 归一完成，铁律永不可逆）
+  - 变量名不含 "su" 组合（exposure/resume等避免）。
+  - 两级铁律: Tier1 外宣层 qqq IDE（仅人眼看到，有空格有大写，窗口标题/快捷方式/about）。
+    Tier2 编码层 qqqide（一切机器碰的东西，全小写，无空格无连字符无驼峰）。
+    违例: qqqIde / qqqIDE / qqq-ide / qqq_ide / QQQ 均禁止。脑中只有一个答案: qqqide。
+  - 覆盖: IPC通道(qqqide:fs:read) / JS API(qqqideBridge) / CSS ID(#qqqide-a-zone) /
+    环境变量(QQQIDE_URL) / 文件名(qqqide-theme.js) / state namespace(qqqide)。
+  - 环境变量大写 QQQIDE_ 是技术约定（OS 惯例），非品牌分歧，底层仍对应 qqqide。
+  - 核心层级体系: project → quest → floor → house → room。JSON: floor_id、quest_id。
+  - shell/ + server-app/ 全量 grep 验证通过，零旧名残留。发现任何旧名→立刻修正。
+
+§6 热更新
+  - 载荷层: 改 server-app/ 任何文件 → Deploy 热更新 → US → 所有客户端刷新即生效。
+  - 壳层 (dev): 改 shell/*.ts → npm run build (2秒) → 重启 Electron。
+  - 壳层 (prod): 改 shell/*.ts → Deploy → shell-out.tar.gz 上传 → 客户端启动时 bootstrap.js 自动拉取 → 下次启动原子替换生效。
+  - 引擎: ghrun.exe 自身可通过 ghrun upgrade 原子替换。
+
+§7 环境
+  - dev端口: 8090 (避开 gaea 的 8080)。
+  - Electron启动必须清除 ELECTRON_RUN_AS_NODE / VSCODE_* 环境变量。
+  - 直接调 electron.exe 二进制，不走 npx/cli.js。
+  - BrowserWindow: frame:false (无系统边框)。
+
+§8 便携
+  - 零C盘写入。所有数据写入应用目录 (userData/cache/temp/logs)。
+  - 通过 process.execPath 判断 dev/packaged，不依赖 app.isPackaged。
+
+§9 持久化 — qgs + qg + project 三入口
+  - 渲染层三个独立入口: window.qgs + window.qg + window.qgs.project。禁直接 bridge.state.* / fs / localStorage。
+  - qgs('my-ns'): SQLite 全局状态（云同步、可 SQL 查询 qgs.sql()）。
+  - qg(rootDir, 'my-ns'): FS 原子写项目元信息（.qqq/qg/，零配置零依赖）。
+  - qgs.project(dbPath, ns): SQLite 项目级 AI 持久化（qqq/quests/quest.sq3，快存快取，WAL 崩溃安全）。
+  - 共用 API: get/set/setNow/append/del/list/flush/flushOne/onChange。
+  - qgs/qgs.project 独有: sql()。qgs.project 独有: atomicIncr(key)（原子自增，零竞态，返回新值）。
+  - 选择: 全局共享/跨项目/云同步 → qgs。项目级元信息 → qg。项目 AI 对话 + 原子计数 → qgs.project。
+  - 云同步: 手动 push/pull，不自动。
+  - 退出保護: before-quit/SIGINT/SIGTERM 自动 flushSync qgs+qg+project 所有实例。
+  - 缓存穿透: flushOne 调用 _cacheDel → 后续 get 直读 DB，等效直读（替代原 _getRaw）。
+
+§10 goods 协议
+  - A 区 goods 宿主: core/gaea-host.js。一切 goods 必须通过 window.qqqideGaea.register() 注册。
+  - 一个 goods 可提供: panel(A区面板) + tabs(X区tab) + services(后台) + commands(命令)。
+  - goods 移除时必须清理所有 panel/tabs/services。
+  - 跨 goods 依赖通过 provides/uses 声明，暂不实现解析。
+  - 第一方 goods (rage) 用直接 DOM 渲染，第三方 goods 用 iframe 隔离。
+  - goods 目录: goods/<id>/。内置第一方 goods 随包同发。
+
+§11 qzlsp 唯一真理诊断机器
+  - 双层: Plan A (Monaco 内置 Worker, TS/JS/HTML/CSS/JSON) + Plan B (qzlsp LSP bridge, 其他全部).
+  - Plan A 零延迟零进程; Plan B TCP 优先 (ghrun lsp-daemon) → fallback 直连进程.
+  - ghrun 纯字节转发 (Content-Length 分帧, 不解析 JSON), 零语义耦合.
+  - 多窗口: LspBridge.targets=Set<WebContents>, 诊断广播到所有未销毁窗口.
+  - 多实例: ghrun lsp-daemon 一份 LSP 进程, TCP :9801-9804, 所有 Shell 共享.
+  - 红波浪: monaco.editor.setModelMarkers(model, 'lsp', markers). 兜底: editor.getModel().
+
+§12 qoast 唯一真理弹窗机器
+  - 唯一入口: core/qqqide-qoast.js。一切 notification/qoast/浮动提示必须走 qqqideQoast.show()。
+  - 升级只需改 qqqide-qoast.js 一处（样式、duration、行为全在此）。
+  - API: qqqideQoast.show(message, {duration, type, action})。默认 9s 自动关闭，0=不关。
+  - AI 面板在 iframe 内 → 走 window.parent.qqqideQoast（同源，try-catch 安全）。
+
+§13 Vision SSE 推送 — 禁止轮询
+  - 唯一通道: Go AIVisionStreamHandler (route: /v3/ai/vision/:task_id/stream)。
+  - 客户端 SSE: fetch + ReadableStream 消费 event:result。Go 侧 doneCh→close→push。
+  - 多图片并行: Promise.all 并发 qwen-vl-max，4-12s→3-8s。
+  - context 级联: client 断开/超时 → WithTimeout 取消 DashScope 请求，零僵尸 goroutine。
+
+§13a AI 网关 — Worker 纯代理 + Go 权威计费（2026-06-10 落地）
+  - 线路: Client → Worker(CF edge, 纯透传) → Go(唯一扣款权威) → DeepSeek/阿里。
+  - Worker 职责: ban 查询(GET /v3/ai/check) + SSE 纯透传到 Go:8444 + 自动 failover。
+    禁任何计费逻辑/模型映射/body 改写/并发限制。经济账本即唯一限流(ge≤0→402)。
+  - Go 职责: 直接 ChargeAITurnWithMeta 单步扣款。禁 lodge/flush 双轨计费（已删除）。
+  - CF Worker 免费额度 10 万次/天，纯透传模式 CPU 时间趋零，永不超限。
+  - 2026-06-10 晚修复: Worker 之前直连 DeepSeek 绕过了 Go（部署 Bug），现已改为透传 Go。
+
+§14 主文件夹 + 文件锁
+  - AI 视口第1个豆腐块 = 主文件夹，显示 ★ 标记，不可删除（UI+代码双重不可删）。
+  - AI 首轮对话注入 vision context（⭐ 标记主项目），末尾追加 REMINDER，首尾夹击确保 AI 认知。
+  - tools.js get_vision_context 同样标记 ⭐ 主项目。
+  - 主文件夹写入 qqq/.lock (30s 心跳, 60s 过期) → 防同一项目被多个 qqq IDE 窗口打开。
+  - quest 数据走 qgs.project(主文件夹/qqq/quests/quest.sq3)。
+  - 所有指令英文，零冗余，零"旧规则/历史上下文"等误导语。
+
+§15 i18n — 唯一真理国际化机器
+  - 唯一真理源: server-app/locales/zh.json。开发者只管写中文，不做其他事。
+  - 占位符系统: HTML 用 data-i18n/data-i18n-placeholder/data-i18n-title/data-i18n-html。JS 用 window._i(key, fallback)。
+  - 特殊: AI 面板 textarea 用 data-i18n-placeholder-attr (iframe translateUi 处理)。
+  - 翻译机器 + 面板: op/ky.py (PySide6 GUI，一键翻译 12 语言，DashScope Qwen3.6-Plus)。
+  - 13 语言: zh/zh-tw/en/ja/de/ko/ru/ar/es/fr/pt-BR/hi/vi。
+  - 前端运行时: core/i18n.js，启动时 detectLang → 加载 locale JSON → updateDom。
+  - 英语内嵌兜底: en.json 编译进 i18n.js _EN_BUILTIN，离线永不显示占位符 key。
+  - 语言持久化: qgs('qqqide.i18n').set('lang', code)，跨会话记忆。
+  - 语言切换器: 菜单行1 中字按钮，shell.js bootLangSwitcher()，弹出 13 语言下拉，选后即时刷新。
+  - AI iframe: i18n.setLang 自动 postMessage('qqqide-lang-change') 同步 iframe，iframe 调用 parent.window.i18n.updateDom(document)。
+  - 开发者工作流: (1) 在 zh.json 加中文 key (2) HTML 写 data-i18n="key" JS 写 _i('key', 'fallback') (3) python op/ky.py 翻译 12 语言 + 同步 _EN_BUILTIN。不改其他任何 locale 文件。
+
+§16 AI 流式渲染 — 唯一真理渲染机器 + Flag 白名单
+  - live onDone 与重启恢复共用 _buildConversationFlowHtml（唯一函数，card-pool.js）。
+  - 数据清洗在 EnvelopeStripper.finalize() 一次性完成：信封/floor_summary/DYNAMIC CONTEXT/XML invoke。
+  - 渲染规则用 flag 白名单（§16a），禁字符串匹配（[System:/[GUIDE]等全删）。
+  - 流式段缓冲: _buf持当前段, 完成段 push _paras, 渲染后原文置 null(GC瞬间回收)。
+  - 禁轮询: 脏标记 _dirty, 有内容才 setTimeout(doStreamRender, 1000ms)。
+  - Card Queue 铁律（§29）: 流式 AI div 永不脱离 DOM。agent onToken 始终写同一个 div。
+
+§16a Flag 白名单 — conversation → 显示的唯一判定标准
+  - _guideAck + role=assistant → 渲染引导确认。
+  - _injected + role=user       → 渲染注入消息。
+  - role=assistant + content + !tool_calls → 渲染 AI 文字回复。
+  - 其余一律不渲染（工具调用/工具结果/系统消息/stall警告等）。
+  - 新增消息类型默认不渲染（safe by default），需显式加 flag 才显示。
+
+§17 版本锁定 — 核心依赖永不升级
+  Electron 22.3.27    最后支持 Win7 的版本，IPC+窗口+spawn 能力完备无缺。
+  sql.js 1.11.0       底层 API (prepare/bind/step/getAsObject/free) 1.0 起无变化，key-value 存取不依赖 SQLite 内核查询优化。
+  monaco-editor 0.34.1 最后兼容 Chromium 108，CodeLens/deltaDecorations/paste 等核心 API 完备。
+  esbuild 0.19.12      构建 33ms 已到物理极限，新版本增量全在 serve/plugin 等未使用场景。
+  TypeScript 5.0.4     类型系统完备，新特性 (using/isolatedDeclarations) 对本项目零增益。
+  铁律: 以上版本 100% 消除已知 bug、能力与最新版无差距、且保证 Chromium 108 / Win7 兼容。
+  任何升级需同时证明: (a) 解决实际功能缺口 (b) 在 Electron 22 上测试通过。
+
+§18 CooldownGuard — 唯一真理防抖机器
+  - 唯一入口: core/cooldown-guard.js。index.html <head> 最早加载，捕获阶段拦截。
+  - 全自动: 所有 button/[onclick]/[role="button"]/input[submit|reset] 自动享有冷却防护。
+  - 默认冷却 800ms，关闭/取消按钮(×/close/cancel/关闭/取消)自动缩短至 400ms。
+  - 视觉反馈: 白色高光蒙版淡出 + 按钮内左下角 4×4 红点。
+  - 键盘防穿透: Enter/Space 冷却期内被吞掉（capture phase）。
+  - 例外: data-no-cd 属性跳过冷却（准许狂点的按钮）。
+  - 自定义冷却: data-cd="5000" 延长至 5s。
+  - 开发者零感知: 新 UI/新按钮自动受保护，无需手动接入。
+
+§19 光标铁律 — 禁止改光标外貌
+  - CSS 和 JS 在任何时候、任何原因、任何元素上不得修改 cursor。无例外。
+  - 违例: cursor:grab/grabbing/pointer/crosshair/help/wait/progress/ew-resize/ns-resize 等均禁止。
+  - 按钮/链接依赖浏览器原生 :hover 表现，不额外设 cursor:pointer。
+  - Sash 拖拽条也不设特殊光标——用户通过视觉分割线和 hover 高亮识别可拖拽区域。
+
+§20 源文件唯一 — 禁编译产物混入源码目录
+  - TS 源码在 shell/。编译产物在 shell-out/。两者永不相交。
+  - shell/ 内禁放任何 .js 编译产物（如 main.js/qg.js/preload.js）。发现→立刻删除。
+  - 同名文件在不同目录必须是不同功能（如 index.html 主壳 vs AI 面板），否则合并。
+  - 铁律: AI 改代码只改 shell/*.ts，改完跑 npm run build。绝不直接改 shell-out/*.js。
+
+§21 双模更新 — 载荷热更 + 壳层冷更
+  - 载荷 (server-app/): update-service.ts 自动拉取 server-app.tar.gz → 原子替换 → 重载窗口。零感知。
+  - 壳层 (shell-out/): bootstrap.js 启动时检查 cache/staging/shell-out-next/ → 有则原子替换 shell-out/ → 再加载 main.js。
+    新版本下载: main.ts 后台拉取 shell-out.tar.gz → 解压到 staging → 下次启动生效。两次重启完成更新。
+  - 部署: Deploy 按钮同时上传 server-app/ (tar.gz) + shell-out/ (tar.gz) 到 gh555.com。
+  - Electron 二进制永不更新（§17 锁定 22.3.27）。
+  - 用户一次下载绿色包，后续全自动——载荷热更零感知，壳层冷更最多两次重启。
+
+§22 输出截断 — 四重防御第四环，见 §2
+  - 64KB IPC 截断（ghrun + qz-spawn）是 §2 四重防御的第四环，不独立存在。
+  - AI 面限制: tools.js 顶部 4 个常量，改 AI 面只改此处。工具描述动态引用常数。
+
+§23 无进展终止 + 对话修复
+  - agent-loop 内置 stall 计数器：连续无进展 5 次警告、8 次强制 noTools。
+  - 502/503 自动修复：从 DB 重载 conversation → 重试一次（带递归保护）。
+  - search_text 二进制过滤：SKIP_EXTS 覆盖 70+ 种格式。
+  - quest 切换：timer 跑在 agent 上，切 quest 不停 timer，切回零干预（§36）。
+  - 安全网值远高于 AI 面值，永不成为短板。禁在 ghrun/qz-spawn 硬编码 AI 面限制。
+
+§26 三面板架构（左中右 iframe，同窗口）
+  - 三个 AI 面板：左翼(panel=0) + 中(panel=1) + 右翼(panel=2)，各自独立 iframe。
+  - 左/右翼由菜单栏灯泡开关控制，默认关闭。开关时窗口自动伸缩。
+  - _windowId 必须含 _panelId（sessionStorage key='qqq-ai-window-id-pN'），否则三面板共享同一 ID
+    导致所有权系统失效 → 同一 quest 可出现在多个面板（已修复 2026-06）。
+  - 项目锁仅中面板(panel=1)申请，左右翼共享。
+
+§27 时钟颜色状态机
+  - 楼层时钟只有三个合法状态: 工作中(绿#859900) / 活跃段切换(绿/黄/橙) / 停止(亮#000 暗#fff)。
+  - startFloorTimer(aiDiv, ag) 必须立即设绿色，不等计时数据。禁止初始黑色。
+  - stopFloorTimer(timing, ag) 必须设停止态颜色。中断/异常路径(finally块)同样必须设停止态。
+  - Card Pool _buildFloorDOM 重建历史楼层时钟从 fData.clockTiming 直接恢复，不再依赖 questTimings 数组。
+  - timer 跑在 agent 上（ag._floorTimerId/ag._floorStartPerf），切 quest 不停 timer。
+  - 违例: 工作中显示黑色、完成后显示绿色都是 bug。
+
+§28 跨面板同步 — IPC sync 桥（同窗口三面板所有权防重复）
+  - _broadcast 走 parent.qqqideBridge.sync.broadcast → 主进程 relay 到所有窗口（含发送者）。
+  - _handleSyncMessage 第一行过滤 msg.windowId === _windowId → 跳过自身广播。
+  - 主进程 sync:broadcast 必须发送到所有 webContents（含发送者），不可跳过 senderWC。
+    否则同窗口三面板无法互斥（已修复 2026-06）。
+  - 禁 BroadcastChannel。sync IPC 桥是唯一跨面板通知机制。
+
+§29 Card Queue — AI 面板终极架构（2026-06 重构，2026-06-10 加固，2026-06-24 唯一真理机）
+  - 一张 quest = 一张 Card（完整 DOM 子树）。创建后永不 innerHTML 清空。
+  - 切换 quest = 纯 CSS display 显隐，禁任何形式 DOM 销毁/重建。
+  - 每 Card 最多 16 已封顶 + 1 在建层楼 DOM（FLOOR_CAP_CAPPED=16 / BUILDING=1）。
+  - 超限 → 最老 capped 楼层 DOM remove() 彻底删除。conversation JSON 保留于内存。
+  - Card Pool 上限 10（CARD_POOL_MAX），LRU 驱逐。
+  - _buildConversationFlowHtml 为唯一渲染函数，live onDone 与恢复路径共用。
+  - 渲染规则见 §16a（flag 白名单）。数据清洗见 §16（EnvelopeStripper）。
+  - per-floor 状态归属铁律（禁全局）：
+    agent: _floorTimerId / _floorStartPerf / _floorCurrentTiming / _activeAiDiv / _allTxtPath / _a4Snapshots。
+    aiDiv: _a1Block / _a4Block / _allTxtOpenInEditor / _allTxtPath / _clockBlock。
+    面板级单例：_allTxtPollTimer / _allTxtBlocked / _sending。
+  - A4 铁律：_initA4Block → insertBefore(a1Block) 无条件。A4 始终在 A2 之后、A1 之前。
+  - A1 铁律：_initA1Block → insertBefore(clockBlock) 无条件。
+  - A1 行2 持久化：floorPayload.fileStats 入 SQLite（_computeFileStats 统一计算）。
+  - 时钟持久化：floorPayload.clockTiming 入 SQLite，_buildFloorDOM 优先读 fData.clockTiming。
+  - 滚动：scrollToBottom → container.scrollTop = scrollHeight。上滚即停，下滚到底才跟。
+  - 禁 $messages.innerHTML = ''。唯一例外 cardPool.refreshCard。
+  - 所有跨模块引用走 window.*（questStore/agentPool/cardPool/9 个函数）。
+
+§30 面板焦点
+  - 三面板（左中右）各自独立 iframe，各自 agentPool/cardPool/questActiveId。
+  - 面板焦点 = q2 背景金（#e8a030），mousedown/window.focus 触发。
+  - 获得焦点时 postMessage('qqq-ai-panel-focused', panel) 通知父窗口（AI 视口文件附加目标）。
+  - 快捷键（仅焦点面板 + 非编辑区）：1/2 上下滚 35%视口、q/w 前后楼层居中跳转。
+  - q2 两行制：第一行招牌（quest 名或 "~ New quest ~"），第二行 q2x（+ 号 + 搜索）。
+  - q2 下拉：2 行弹性高度、默认 20 条（滚轮扩容 40→60）、模糊子序列匹配。
+  - 一个 quest 同时只能在一个面板打开（所有权系统 §32 + 跨面板同步 §28 防重复）。
+
+§31 工作空间 — 多项目隔离（2026-06-07 重构）
+  - 一个窗口同一时刻只有一个工作空间。一个工作空间 = 一个主文件夹的全部运行时状态。
+  - IPC 频道名 = 'qqq-sync:' + sanitize(_workspaceRoot)，不同主文件夹物理隔离。
+  - bindMainProject = 入口：同 root 跳过，不同 root → 先拆旧空间后建新空间。
+  - _teardownWorkspace: Card Pool destroy → agentPool 清空 → questStore/onlyStore 重置 → DOM 清零。
+  - _initWorkspace: 锁 → questStore → Card Pool → initQuests → IPC 订阅。
+  - 禁 _questsInited 一刀切防重入。改用 _workspaceRoot 对比。
+  - Card Pool destroy() 必须：中止所有 agent + 移除所有 card DOM + 清空 _cards/_lru/_activeId。
+
+§32 所有权系统 — flushOne + get 穿透缓存
+  - quest 所有权（claimOwner/releaseOwner/getOwner）必须先 flushOne 再 get，确保读到最新值。
+  - flushOne 现在调用 _cacheDel 失效渲染层缓存（2026-06 加固），等效原 _getRaw 直读。
+  - _getRaw 已删除。所有权读写统一走 qgs 标准接口：flushOne → get → setNow。
+  - 禁任何形式的只读模式（"此 quest 正运行在另一窗口 — 只读" 已全量删除）。
+  - 被抢占 → _unloadQuest() 自动卸载，非进入只读。
+  - 点击 quest 即确立绑定（switchQuest 调 claimOwner），不依赖发送消息。
+  - 切换走旧 quest 必须 releaseOwner + broadcast 'owner-released'。
+
+§33 原子写入 — 绝不先删后改（2026-06-07 加固）
+  - shell/state-sqlite.ts _doSaveDb / _doSaveDbSync: rename 失败 → copy+unlink 降级，绝不先 unlink(dest)。
+  - shell/qg.ts atomicWrite / atomicWriteSync: 同上。
+  - 启动时 _cleanStaleTmp(): tmp 比主 DB 新 → rename 恢复；否则删除。不盲目删 tmp。
+  - _queueOutbox 补 finally 兜底 unlink(tmp)。
+  - 原则: 任何写入路径上，目标文件的旧版本必须在新版本落地之后才能删除。
+
+§34 AI 面板快照 — 重启百分百还原
+  - 快照存 only.sq3（键 ai.uiStates），per-quest 粒度。
+  - 快照内容: inputValue + inputCaret + pendingImages + selectedTier + scrollTop。
+  - 编辑框是 textarea，光标用 selectionStart/End 保存恢复（零 DOM walk）。
+  - 重启时 _restoreScrollDeferred 双 rAF 等 DOM 布局后再设 scrollTop。
+  - 下拉打开 quest 时 _scrollToBottomDeferred 强制滚到底（不等 saved scrollTop）。
+  - questUIStates 必须在 initQuests 之前从 onlyStore 加载，否则 restore 时为空对象。
+  - $sendBtn/stopStream/Enter key 全部加 _activeAgent null 守卫（新窗口无 quest 时防崩）。
+  - _appendToCard 兜底: cardPool.getOrCreate → 无 card 时自动创建，不裸插 $messages。
+
+§35 AI 面板模块化 — panel-*.js 拆分铁律（2026-06-10）
+  - index.html 仅保留 HTML+CSS 壳（~400行）+ <script src> 引用，禁内联 JS 逻辑。
+  - 每个 panel-*.js ≤800行。超限即再拆。
+  - GATEWAY_URL 唯一声明在 system-prompt.js（全局 const），panel-*.js 禁重复声明。
+  - 跨文件前向声明放 panel-state.js 顶部（第一个加载），用 var（安全重复声明）。
+  - 加载顺序固定不可调换：state→search→input→render→quest→floor→quest-ui→clock→alltxt→a4→floor-indicator→send。
+  - 拆分后全部代码在全局作用域（非 IIFE），变量/函数跨文件可见。
+  - 新增文件必须同步更新 index.html <script src> 顺序 + service-worker 缓存版本号。
+
+§36 Per-Agent 状态 — 禁全局 timer/A1 变量（2026-06-10 重构）
+  - 以下状态已从全局变量移入 agent 对象，每 quest 独立一份：
+    _floorTimerId → ag._floorTimerId
+    _floorStartPerf → ag._floorStartPerf
+    _floorCurrentTiming → ag._floorCurrentTiming
+    _activeAiDiv → ag._activeAiDiv
+  - startFloorTimer(aiDiv, ag, resume) / stopFloorTimer(timing, ag) 必须传 agent 参数。
+  - timer 回调内用闭包捕获的 _ag 引用，禁读全局 agent getter。
+  - 切 quest 不停 timer：旧 agent 的 timer 继续跑，新 agent 独立启停。
+  - 禁在 switchQuest/_unloadQuest 中调用 stopFloorTimer 或 completeBuildingFloor。切 quest = 纯 display 开关。
+  - _lastPieTiming（canvas 去重缓存）、_autoSaveTimer（面板级）保留全局，不冲突。
+
+§37 A4 文件快照 — 每层楼私有文件变更追踪（2026-06-09，2026-06-24 加固）
+  - 唯一入口: panel-a4.js。拦截 executeTool，文件修改前后自动捕获 before/after 快照。
+  - per-floor 状态归属 agent: ag._a4Snapshots = { [path]: { before, after, op, added, deleted, ts } }。
+  - 新 floor 开始必须清空: panel-send.js + agent-loop.js 两处同时 `ag._a4Snapshots = {}`。
+  - DOM 归属 aiDiv: aiDiv._a4Block（A4 豆腐块，位于 A2 与 A1 之间）。
+  - 快照内容上限 512KB/文件（A4_MAX_SNAPSHOT_BYTES），超限只记元数据不存内容。
+  - 持久化: 内容写入 {projectRoot}/qqq/snapshots/q{numericId}/f{floorNum}/{hash}.before|.after。
+    元数据入 floor payload 的 a4Snapshots 字段（随 quest.sq3 存取）。
+  - A4 UI: 瀑布式文件列表（文件名 + 颜色编码 + +N -M 统计），实时更新。
+  - 点击 → postMessage 'qqq-a4-open-diff' → 父窗口 → git goods Timeline tab → 显示 diff。
+  - 历史恢复: _buildFloorDOM 从 fData.a4Snapshots 还原 A4 块，点击从磁盘加载内容。
+  - diff 算法: LCS（小文件 O(mn) 精确 / 大文件 hash 近似），内置于 git-ui.html。
+  - 不依赖 git：纯内存+文件系统快照，零外部依赖。
+
+§38 Git Goods — 第一方 git 操作插件（2026-06-09）
+  - 位置: goods/git/git.js（manifest）+ goods/git/git-ui.html（多模式 UI）。
+  - 注册: window.qqqGaea.register({ id:'git', tabs:{timeline,git}, panel:{} })。
+  - X 区 Timeline tab: AI 楼层文件 diff 查看器（接收 A4 点击事件 + 统一差异/并排模式）。
+  - X 区 Git tab: 传统 git 操作（status/diff/commit/log/branch/stash）。
+  - A 区面板: git 快速状态预览。
+  - git 命令经 bridge.qz.spawn({ cmd:'git' }) 执行，30s 超时。
+  - diff 渲染: unified + side-by-side，上下文折叠（默认 3 行）/ 全文展开。
+  - 主题同步: postMessage('qqqide-theme-change') 响应。
