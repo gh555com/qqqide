@@ -112,6 +112,8 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - Worker 职责: ban 查询(GET /v3/ai/check) + SSE 纯透传到 Go:8444 + 自动 failover。
     禁任何计费逻辑/模型映射/body 改写/并发限制。经济账本即唯一限流(ge≤0→402)。
   - Go 职责: 直接 ChargeAITurnWithMeta 单步扣款。禁 lodge/flush 双轨计费（已删除）。
+  - 楼层聚合: ChargeAITurnWithMeta 写入 floorID → transactions.ref_type。
+    geflow 按 ref_type 折叠展示（底层多笔不容合并，展示层一行汇总）。
   - CF Worker 免费额度 10 万次/天，纯透传模式 CPU 时间趋零，永不超限。
   - 2026-06-10 晚修复: Worker 之前直连 DeepSeek 绕过了 Go（部署 Bug），现已改为透传 Go。
 

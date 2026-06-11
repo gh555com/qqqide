@@ -72,8 +72,11 @@ P3 — 长尾移植 (可缓)
 - （gaea 侧）AI 网关 Worker: cf/ai-gateway.js（CF edge 纯透传，~67行，ban检查+透传Go:8444）
 - （gaea 侧）AI 网关 Worker (ES Module): cf/ai-gateway-module.js（同上，模块格式）
 - （gaea 侧）AI 路由注册: internal/http/routes.go（8个AI端点）
-- （gaea 侧）AI 聊天处理: internal/http/handlers_ai_chat.go（含 AICheckHandler + 计费权威）
-- （gaea 侧）AI 视觉处理: internal/http/handlers_ai_vision.go（summary 取自 userContent 非 prompt）
+- （gaea 侧）AI 聊天处理: internal/http/handlers_ai_chat.go（含 AICheckHandler + 计费权威，floorID→ref_type）
+- （gaea 侧）AI 视觉处理: internal/http/handlers_ai_vision.go（summary 取自 userContent 非 prompt，floorID→ref_type）
+- （gaea 侧）AI 绘图处理: internal/http/handlers_ai_image.go（异步 DashScope wanx，floorID→ref_type）
+- （gaea 侧）计费引擎: internal/ledger/ledger.go（ChargeAITurnWithMeta 加 floorID→transactions.ref_type，geflow 折叠用）
+- （gaea 侧）ge 流水前端: web/templates/ge-history.html（按 ref_type 楼层折叠/展开）
 - （gaea 侧）CF 部署脚本: cf/ky.py（全自动编译/同步/翻译/回滚）
 - （gaea 侧）GUI 工具: cf/q.pyw（PySide6，DNS/Worker/R2 CDN 一键配置）
 - （gaea 侧）CF Worker 部署修复: cf/fix_worker.py（API 下载→修复→上传，Bearer Token 认证）

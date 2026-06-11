@@ -2,6 +2,17 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 ============================================================
 更新: 2026-06-10
 
+已完成 — 本轮 2026-06-10 (21) 楼层计费折叠 — 每层楼 geflow 汇总一行
+------
+· Go 层: ChargeAITurnWithMeta 加 floorID 参数 → transactions.ref_type 存储
+  · chat/vision/image 三路全部传入 req.FloorID
+  · HistoryEntry + SQL + API 响应新增 ref_type 字段
+· geflow 前端: 同 ref_type（楼层）多笔自动折叠 → ▶ 展开/▼ 收起
+  · 汇总行: 总额 + (N笔) 标注 + 黄色左边框
+  · 单笔或旧数据 (无 ref_type) → 原样展示
+· 视觉层把戏：底层多笔不合并（保持扣款权威零漏），展示层按 floor 折叠
+· 量化: 方案C 得分 8.70（Go聚合6.95 / 纯多笔7.95），DB成本 12MB/月可忽略
+
 已完成 — 本轮 2026-06-10 (20) Chat 计费漏掉修复 — 142分架构真正落地
 ------
 · 问题: CF Worker (ai-gateway.js) 之前直连 DeepSeek API，完全绕过 Go 服务器
