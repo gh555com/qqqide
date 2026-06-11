@@ -196,6 +196,7 @@ var _lastResults = null; // raw results from backend
 var _searching = false;
 var _respectGitignore = false;
 var _sortMode = 'mtime';
+var _hlRegex = null;
 
 // ---- Toggle buttons ----
 function toggleBtn(btn, stateKey) {
@@ -269,12 +270,15 @@ async function doSearch() {
     return;
   }
 
-  // Validate regex
+  // Validate regex & build highlight regex
   if (_isRegex) {
-    try { new RegExp(query); $query.classList.remove('error'); }
-    catch(e) { $query.classList.add('error'); $statusText.textContent = '⚠️ 无效正则: ' + e.message; return; }
+    try { _hlRegex = new RegExp(query, _caseSensitive ? 'g' : 'gi'); $query.classList.remove('error'); }
+    catch(e) { $query.classList.add('error'); $statusText.textContent = '⚠️ 无效正则: ' + e.message; _hlRegex = null; return; }
   } else {
     $query.classList.remove('error');
+    var escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (_wholeWord) escaped = '\\b' + escaped + '\\b';
+    _hlRegex = new RegExp(escaped, _caseSensitive ? 'g' : 'gi');
   }
 
   _searching = true;

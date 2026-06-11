@@ -60,6 +60,7 @@ const DEFAULT_REMOTE_URL = 'http://127.0.0.1:8090/qqq-app/';
 // ============================================================================
 
 const _timelineDbs: Map<string, any> = new Map(); // projectRoot → sql.js Database
+const _diffWindows: Map<string, BrowserWindow> = new Map(); // filePath → BrowserWindow (单例)
 
 function _tlDir(projectRoot: string): string {
     return path.join(projectRoot, 'qqq', 'timeline');
@@ -2451,13 +2452,49 @@ function registerIpc(): void {
         }
     });
 
-    // ═══ 打开 Timeline Diff 独立 BrowserWindow ═══
+    // ═══ Timeline: 列出所有追踪文件（含已删除） ═══
+    ipcMain.handle('qqqide:timeline:listTrackedFiles', async (_e, args: { projectRoot: string }) => {
+        try {
+            const { projectRoot } = args;
+            if (!projectRoot) return [];
+            const db = await _tlOpenDb(projectRoot);
+            const stmt = db.prepare('SELECT DISTINCT file_path, MAX(ts) as latest_ts FROM versions GROUP BY file_path ORDER BY file_path ASC');
+            var files = [];
+            while (stmt.step()) {
+                var row = stmt.getAsObject();
+                var exists = false;
+                try { exists = fs.existsSync(row.file_path); } catch (_) { }
+                files.push({
+                    file_path: row.file_path,
+                    latest_ts: row.latest_ts,
+                    exists: exists,
+                });
+            }
+            stmt.free();
+            return files;
+        } catch (err: any) {
+            console.error('[timeline:listTrackedFiles]', err);
+            return [];
+        }
+    });
+
+    // ═══ 打开 Timeline Diff 独立 BrowserWindow（单例：一个文件最多一个窗口） ═══
     ipcMain.handle('qqqide:open-diff-window', async (e, args: { filePath: string; beforeBlobHash?: string; afterBlobHash?: string; projectRoot: string }) => {
         const { filePath, beforeBlobHash, afterBlobHash, projectRoot } = args;
-        const senderWin = BrowserWindow.fromWebContents(e.sender);
-        const diffWin = new BrowserWindow({
-            width: 1200,
-            height: 700,
+        const normalizedPath = filePath.replace(/\\/g, '/');
+
+        // ★ 单例：若该文件已有窗口，直接更新
+        const existingWin = _diffWindows.get(normalizedPath);
+        if (existingWin && !existingWin.isDestroyed()) {
+            try {
+                existingWin.webContents.send('qqqide:diff:update', { beforeBlobHash, afterBlobHash });
+                if (existingWin.isMinimized()) existingWin.restore();
+                existingWin.focus();
+            } catch (_) { }
+            return { ok: true, windowId: existingWin.id, reused: true };
+        }
+
+undefined
             minWidth: 600,
             minHeight: 400,
             frame: false,
@@ -2479,6 +2516,12 @@ function registerIpc(): void {
             },
         });
         diffWin.removeMenu();
+        // 关闭时清理映射
+        diffWin.on('closed', () => {
+            _diffWindows.delete(normalizedPath);
+        });
+        _diffWindows.set(normalizedPath, diffWin);
+
         // 确保 URL 拼接安全（bootConfig.url 可能无尾部斜杠）
         const baseUrl = bootConfig.url.replace(/\/*$/, '/');
         const diffUrl = baseUrl + 'timeline/diff-window.html' +
@@ -2488,6 +2531,7 @@ function registerIpc(): void {
             (afterBlobHash ? '&after=' + encodeURIComponent(afterBlobHash) : '');
         diffWin.loadURL(diffUrl).catch(err => {
             console.warn('[diff-window] loadURL failed:', err && err.message);
+            _diffWindows.delete(normalizedPath);
         });
         return { ok: true, windowId: diffWin.id };
     });

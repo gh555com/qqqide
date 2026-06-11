@@ -19,6 +19,25 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #titlebar .win-btn:hover{background:var(--border)}
 #titlebar .win-btn.close:hover{background:#e81123;color:#fff}
 
+/* ═══ FILE SWITCHER ═══ */
+#file-bar{height:36px;background:var(--card);display:flex;align-items:center;padding:0 8px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0}
+#file-bar .fl-label{font-size:10px;color:var(--base01);white-space:nowrap}
+#file-bar .fl-input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:4px;font-size:11px;font-family:ui-monospace,monospace;outline:none}
+#file-bar .fl-input:focus{border-color:var(--blue)}
+#file-bar .fl-count{font-size:10px;color:var(--base01);white-space:nowrap}
+#file-bar .fl-btn{font-size:10px;padding:2px 8px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);cursor:pointer}
+#file-bar .fl-btn:hover{background:var(--border)}
+/* 下拉建议列表 */
+#file-suggestions{position:absolute;top:72px;left:8px;right:8px;max-height:240px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:0 0 6px 6px;z-index:100;display:none;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
+#file-suggestions .fs-item{padding:5px 10px;font-family:ui-monospace,monospace;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:6px}
+#file-suggestions .fs-item:hover{background:var(--border)}
+#file-suggestions .fs-item.deleted{color:var(--base01)}
+#file-suggestions .fs-item.deleted .fs-name{text-decoration:line-through}
+#file-suggestions .fs-item .fs-icon{font-size:12px;flex-shrink:0}
+#file-suggestions .fs-item .fs-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#file-suggestions .fs-item .fs-ts{font-size:9px;color:var(--base01);flex-shrink:0}
+.highlight{background:var(--yellow);color:#000;border-radius:2px;padding:0 1px}
+
 /* ═══ VERSION BAR ═══ */
 #version-bar{height:44px;background:var(--card);display:flex;align-items:center;border-bottom:1px solid var(--border);flex-shrink:0}
 .version-panel{flex:1;display:flex;align-items:center;padding:0 10px;gap:6px}
@@ -39,6 +58,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .act-btn.active{background:var(--yellow);color:#000;border-color:var(--yellow)}
 .act-btn.accept{background:var(--green);color:#fff;border-color:var(--green);display:none}
 .act-btn.accept.visible{display:inline-block}
+.act-btn.danger{background:var(--red);color:#fff;border-color:var(--red);display:none}
+.act-btn.danger.visible{display:inline-block}
 .act-sep{width:1px;height:16px;background:var(--border);margin:0 4px}
 
 /* ═══ DIFF CONTAINER ═══ */
@@ -57,12 +78,19 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 <body>
 
 <div id="titlebar">
-  <span class="file-icon">📄</span>
+  <span class="file-icon" id="file-icon">📄</span>
   <span class="file-path" id="file-path">—</span>
-  <button class="win-btn" id="btn-min" title="Minimize">─</button>
   <button class="win-btn" id="btn-max" title="Maximize">□</button>
   <button class="win-btn close" id="btn-close" title="Close">×</button>
 </div>
+
+<div id="file-bar">
+  <span class="fl-label">📂 文件</span>
+  <input class="fl-input" id="file-search" placeholder="搜索追踪文件 (模糊匹配)…" autocomplete="off">
+  <span class="fl-count" id="file-count">0 个</span>
+  <button class="fl-btn" id="btn-restore-file" title="还原已删除文件" style="display:none">↩ 还原</button>
+</div>
+<div id="file-suggestions"></div>
 
 <div id="version-bar">
   <div class="version-panel">

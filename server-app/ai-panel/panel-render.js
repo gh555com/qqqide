@@ -184,7 +184,18 @@ function doStreamRender() {
 
     }
 
-    aiDiv._lastParaEl.innerHTML = renderMarkdown(aiDiv._buf || '');
+    // 增量解析：若处于代码围栏内，_buf 含开围栏标记，剥离后包裹 <pre><code>
+    if (aiDiv._codeFenceOpen && aiDiv._buf) {
+        var _codeContent = aiDiv._buf;
+        // 剥离首行开围栏标记（``` 或 ```lang），仅显示代码本体
+        var _firstNL = _codeContent.indexOf('\n');
+        if (_firstNL > 0 && /^```/.test(_codeContent)) {
+            _codeContent = _codeContent.slice(_firstNL + 1);
+        }
+        aiDiv._lastParaEl.innerHTML = '<pre><code>' + escHtml(_codeContent) + '</code></pre>';
+    } else {
+        aiDiv._lastParaEl.innerHTML = renderMarkdown(aiDiv._buf || '');
+    }
 
     aiDiv._dirty = false;
 

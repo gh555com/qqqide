@@ -275,7 +275,14 @@ const QQQ = {
         content: (args: { projectRoot: string; blobHash: string }) => ipcRenderer.invoke('qqqide:timeline:content', args),
         stat: (filePath: string) => ipcRenderer.invoke('qqqide:timeline:stat', filePath),
         readCurrent: (filePath: string) => ipcRenderer.invoke('qqqide:timeline:readCurrent', filePath),
+        listTrackedFiles: (args: { projectRoot: string }) => ipcRenderer.invoke('qqqide:timeline:listTrackedFiles', args),
         openDiffWindow: (args: { filePath: string; beforeBlobHash?: string; afterBlobHash?: string; projectRoot: string }) => ipcRenderer.invoke('qqqide:open-diff-window', args),
+        // 监听主进程推送的 diff 更新（复用已有窗口时触发）
+        onDiffUpdate: (cb: (data: { beforeBlobHash?: string; afterBlobHash?: string }) => void) => {
+            const handler = (_e: any, data: any) => { try { cb(data); } catch (err) { console.warn('[timeline.onDiffUpdate]', err); } };
+            ipcRenderer.on('qqqide:diff:update', handler);
+            return () => ipcRenderer.removeListener('qqqide:diff:update', handler);
+        },
     },
 
     // ---- hash (xxh64 fast + sha256 strong, with mtime cache) ----

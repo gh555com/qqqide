@@ -17,7 +17,8 @@
   const bridge = window.qqqideBridge;
 
   // ── qzlsp §10 Plan A: 配置 TypeScript Worker 编译选项 ──
-  // Monaco 内置 TS Worker 默认 moduleResolution=Classic 且无 @types/node�?  // 会导�?Node.js 内置模块飘红(false positive) 和类型检查裸�?false negative)�?  // 此处注入编译选项 + Node 模块声明，对齐项�?tsconfig.json�?  var _tsConfigured = false;
+  // Monaco 内置 TS Worker 默认 moduleResolution=Classic 且无 @types/node�?  // 会导�?Node.js 内置模块飘红(false positive) 和类型检查裸�?false negative)�?  // 此处注入编译选项 + Node 模块声明，对齐项�?tsconfig.json�?
+  var _tsConfigured = false;
   function configureMonacoTypescript(monaco) {
     if (_tsConfigured) return;
     _tsConfigured = true;

@@ -201,12 +201,8 @@ async function _a4WrappedExecuteTool(name, args) {
     // ---- Capture BEFORE ----
     if (name !== 'create_file' && bridge) {
         try {
-            if (bridge.ai && bridge.ai.read_file) {
-                var raw = await bridge.ai.read_file({ path: filePath });
-                if (typeof raw === 'string' && raw.indexOf('Error') !== 0 && raw.length <= A4_MAX_SNAPSHOT_BYTES) {
-                    if (!_a4IsBinary(filePath, raw)) beforeContent = raw;
-                }
-            } else if (bridge.fs && bridge.fs.read) {
+            // ★ 用 fs.read 读原始内容，不用 ai.read_file（后者对 >500 行文件加分页头）
+            if (bridge.fs && bridge.fs.read) {
                 var raw2 = await bridge.fs.read(filePath);
                 if (typeof raw2 === 'string' && raw2.length <= A4_MAX_SNAPSHOT_BYTES) {
                     if (!_a4IsBinary(filePath, raw2)) beforeContent = raw2;
@@ -233,14 +229,9 @@ async function _a4WrappedExecuteTool(name, args) {
             if (!_a4IsBinary(filePath, args.content)) afterContent = args.content;
         }
     } else {
-        // edit_file: read file after edit
+        // edit_file: read file after edit（用 fs.read 读原始内容）
         try {
-            if (bridge && bridge.ai && bridge.ai.read_file) {
-                var raw3 = await bridge.ai.read_file({ path: filePath });
-                if (typeof raw3 === 'string' && raw3.indexOf('Error') !== 0 && raw3.length <= A4_MAX_SNAPSHOT_BYTES) {
-                    if (!_a4IsBinary(filePath, raw3)) afterContent = raw3;
-                }
-            } else if (bridge && bridge.fs && bridge.fs.read) {
+            if (bridge && bridge.fs && bridge.fs.read) {
                 var raw4 = await bridge.fs.read(filePath);
                 if (typeof raw4 === 'string' && raw4.length <= A4_MAX_SNAPSHOT_BYTES) {
                     if (!_a4IsBinary(filePath, raw4)) afterContent = raw4;

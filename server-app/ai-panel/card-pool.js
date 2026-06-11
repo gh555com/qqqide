@@ -484,6 +484,7 @@ var CardPool = (function () {
     aiEl._fullText = '';
     aiEl._buf = '';
     aiEl._paras = [];
+    aiEl._codeFenceOpen = false;
     aiEl._dirty = false;
     aiEl._renderScheduled = false;
     aiEl._renderedCount = 0;

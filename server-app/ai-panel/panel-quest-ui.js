@@ -449,15 +449,16 @@ $guideBtn.onclick = function () {
         // AI \u6b63\u5728\u5de5\u4f5c\u4e2d \u2192 \u7acb\u5373\u6ce8\u5165 + abort \u5f53\u524d house
         var _aiDiv = _activeAgent._activeAiDiv;
         if (_aiDiv && _aiDiv._contentWrap) {
-            // 清空流式缓冲区（onDone 会用 _buildConversationFlowHtml 整体替换 innerHTML）
+            // 清空流式缓冲区（一次渲染：后续流式直接续写，不再重建）
             _aiDiv._buf = '';
             _aiDiv._fullText = '';
             _aiDiv._paras = [];
+            _aiDiv._codeFenceOpen = false;
             _aiDiv._dirty = false;
             _aiDiv._renderedCount = 0;
             if (_aiDiv._lastParaEl) { _aiDiv._lastParaEl.remove(); _aiDiv._lastParaEl = null; }
             _aiDiv._guideMode = true;
-            // 引导注入块：与 _buildConversationFlowHtml 输出结构一致，onDone 替换时无视觉跳变
+            // 引导注入块：appendChild 就地插入，DOM 永驻不重建
             var guideBlock = document.createElement('div');
             guideBlock.className = 'msg-flow-guide-inject';
             guideBlock.innerHTML = '<span class="msg-flow-icon">\u26a1</span> ' + escHtml(text);

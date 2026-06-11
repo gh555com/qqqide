@@ -395,7 +395,6 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  height: 100%;
   background: var(--background-color);
 }
 
@@ -553,7 +552,6 @@ body {
   flex-direction: column;
   overflow: hidden;
   min-width: var(--panel-min);
-  height: 100%;
   background: var(--background-color);
 }
 
@@ -694,7 +692,7 @@ body {
 .qqq-tab-pane {
   position: absolute;
   inset: 0;
-  overflow: auto;
+  overflow: hidden;
   display: none;
 }
 
@@ -1387,6 +1385,7 @@ body {
   font-size: 12px;
   line-height: 1;
 }
+
 .qqq-gw-dot {
   color: #555;
   opacity: 0.5;
@@ -1394,11 +1393,13 @@ body {
   cursor: default;
   user-select: none;
 }
+
 .qqq-gw-dot.primary {
   color: #859900;
   opacity: 1;
   text-shadow: 0 0 4px #85990066;
 }
+
 .qqq-gw-dot.fallback {
   color: #e07020;
   opacity: 1;

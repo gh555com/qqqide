@@ -226,12 +226,59 @@ async function sendMessage() {
                 if (!_targetDiv) return;
                 _targetDiv._buf = (_targetDiv._buf || '') + chunk;
                 _targetDiv._fullText = (_targetDiv._fullText || '') + chunk;
-                var parts = _targetDiv._buf.split('\n\n');
                 _targetDiv._paras = _targetDiv._paras || [];
-                for (var pi = 0; pi < parts.length - 1; pi++) {
-                    if (parts[pi].trim()) _targetDiv._paras.push(parts[pi]);
+
+                // ═══ 增量解析器：代码围栏（```...```）感知拆分 ═══
+                // 核心：围栏内部的 \n\n 是代码内容，不可拆分为段落
+                // 用 ``` 行首标记的奇偶性判断是否在围栏内部
+
+                if (_targetDiv._codeFenceOpen) {
+                    // 已在围栏内：检查 _buf 是否已闭合（偶数个 ``` 行首标记）
+                    var _allFences = _targetDiv._buf.match(/^```/gm);
+                    var _allFc = _allFences ? _allFences.length : 0;
+                    if (_allFc % 2 === 0 && _allFc > 0) {
+                        // 闭合了：整段作为一个段落推送
+                        if (_targetDiv._buf.trim()) _targetDiv._paras.push(_targetDiv._buf);
+                        _targetDiv._buf = '';
+                        _targetDiv._codeFenceOpen = false;
+                        // 继续往下走，_buf 已清空，后续 chunk 正常处理
+                    } else {
+                        // 尚未闭合：不拆分，整段保留在 _buf
+                        _targetDiv._dirty = true;
+                        if (!_targetDiv._renderScheduled) {
+                            _targetDiv._renderScheduled = true;
+                            setTimeout(doStreamRender, 1000);
+                        }
+                        return;
+                    }
                 }
-                _targetDiv._buf = parts[parts.length - 1];
+
+                // 正常拆分（不在围栏内）
+                var parts = _targetDiv._buf.split('\n\n');
+                var _safeParas = [];
+                var _stopped = false;
+                for (var pi = 0; pi < parts.length - 1; pi++) {
+                    var _part = parts[pi];
+                    var _fenceCount = (_part.match(/^```/gm) || []).length;
+                    if (_fenceCount % 2 === 0) {
+                        // 偶数个 ```（含 0）：安全段落，可推送
+                        if (_part.trim()) _safeParas.push(_part);
+                    } else {
+                        // 奇数个 ```：此段落打开了围栏，从它开始全部回退到 _buf
+                        _targetDiv._buf = parts.slice(pi).join('\n\n');
+                        _targetDiv._codeFenceOpen = true;
+                        _stopped = true;
+                        break;
+                    }
+                }
+                if (!_stopped) {
+                    _targetDiv._buf = parts[parts.length - 1];
+                }
+                // 推送安全段落
+                for (var _sp = 0; _sp < _safeParas.length; _sp++) {
+                    _targetDiv._paras.push(_safeParas[_sp]);
+                }
+
                 _targetDiv._dirty = true;
                 if (!_targetDiv._renderScheduled) {
                     _targetDiv._renderScheduled = true;
@@ -254,29 +301,53 @@ async function sendMessage() {
                 if (_targetDiv2 && _targetDiv2._contentWrap) {
                     // ═══ 一次渲染 终身不变：清除流式临时标记，不改 DOM 结构 ═══
                     _targetDiv2._guideMode = false;
+
+                    // ★ 先冲洗未渲染的段落到 DOM（流式 1fps 节流可能导致积压）
+                    // 先移除 _lastParaEl（临时槽位），避免与下文的 _buf 冲洗重复
+                    if (_targetDiv2._lastParaEl) {
+                        _targetDiv2._lastParaEl.remove();
+                        _targetDiv2._lastParaEl = null;
+                    }
+                    var _rendered = _targetDiv2._renderedCount || 0;
+                    var _pendingParas = _targetDiv2._paras || [];
+                    while (_rendered < _pendingParas.length) {
+                        var _pp = _pendingParas[_rendered];
+                        if (_pp && _pp.trim()) {
+                            var _pDiv = document.createElement('div');
+                            _pDiv.innerHTML = (typeof renderMarkdown === 'function') ? renderMarkdown(_pp) : escHtml(_pp);
+                            _targetDiv2._contentWrap.appendChild(_pDiv);
+                        }
+                        _rendered++;
+                    }
+                    // 冲洗 _buf（未闭合代码块末尾 / 最后一段未完成文本）
+                    if (_targetDiv2._buf && _targetDiv2._buf.trim()) {
+                        var _fDiv = document.createElement('div');
+                        if (_targetDiv2._codeFenceOpen) {
+                            var _fc = _targetDiv2._buf;
+                            var _fnl = _fc.indexOf('\n');
+                            if (_fnl > 0 && /^```/.test(_fc)) _fc = _fc.slice(_fnl + 1);
+                            _fDiv.innerHTML = '<pre><code>' + (typeof escHtml === 'function' ? escHtml(_fc) : _fc) + '</code></pre>';
+                        } else {
+                            _fDiv.innerHTML = (typeof renderMarkdown === 'function') ? renderMarkdown(_targetDiv2._buf) : escHtml(_targetDiv2._buf);
+                        }
+                        _targetDiv2._contentWrap.appendChild(_fDiv);
+                    }
+
                     // 去掉所有 stream-para 类（流式临时标记，成品不需要）
                     var _spParas = _targetDiv2._contentWrap.querySelectorAll('.stream-para');
                     for (var _spi = 0; _spi < _spParas.length; _spi++) {
                         _spParas[_spi].classList.remove('stream-para');
                     }
-                    // 移除初始状态提示（"⏳ AI 正在思考中..."）
+                    // 移除初始状态提示（已在 startBuildingFloor 中删除，此处兜底）
                     var _initStatus = _targetDiv2._contentWrap.querySelector('.msg-status');
                     if (_initStatus) _initStatus.remove();
-                    // 清理流式 in-progress 段落槽位
-                    if (_targetDiv2._lastParaEl) {
-                        if (!_targetDiv2._lastParaEl.textContent || !_targetDiv2._lastParaEl.textContent.trim()) {
-                            _targetDiv2._lastParaEl.remove();
-                        } else {
-                            _targetDiv2._lastParaEl.classList.remove('stream-para');
-                        }
-                    }
-                    _targetDiv2._lastParaEl = null;
                 }
                 if (aiDiv) {
                     aiDiv._paras = null;
                     aiDiv._buf = null;
                     aiDiv._fullText = null;
                     aiDiv._lastParaEl = null;
+                    aiDiv._codeFenceOpen = false;
                     aiDiv._renderedCount = 0;
                     aiDiv._dirty = false;
                 }
