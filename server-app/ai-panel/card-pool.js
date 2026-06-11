@@ -221,6 +221,11 @@ var CardPool = (function () {
   // 流式对话渲染：将 conversation 数组转为 HTML（按消息类型分时序流）
   // ═══════════════════════════════════════════════════════════════
   // ═══ 唯一真理机：conversation → 显示 HTML（live onDone 与恢复共用） ═══
+  // ★ 方案 C：flag 白名单，不依赖字符串匹配
+  //   - _guideAck + role=assistant → 渲染引导确认
+  //   - _injected + role=user       → 渲染注入消息
+  //   - role=assistant + content    → 渲染 AI 文字回复
+  //   - 其余一律不渲染（工具调用、工具结果、系统消息等）
   function _buildConversationFlowHtml(conv, fData) {
     if (!conv || !conv.length) {
       if (fData && fData._streamingText) {
@@ -242,35 +247,28 @@ var CardPool = (function () {
         continue;
       }
 
-      if (m.role === 'assistant') {
-        if (m._guideAck) {
-          // 引导确认回合：先渲染引导注入信息，再渲染 AI 确认回复
-          if (m._guideText) {
-            parts.push('<div class="msg-flow-guide-inject"><span class="msg-flow-icon">⚡</span> ' + _escHtml(m._guideText) + '</div>');
-          }
-          var _ackText = (m.content || '已收到引导').replace(/^✅\s*/, '');
-          parts.push('<div class="msg-flow-guide"><span class="msg-flow-icon">✅</span> ' + _escHtml(_ackText) + '</div>');
-        } else if (m.tool_calls && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
-          // 工具调用不渲染（与 live 一致：在后台执行，对用户不可见）
-        } else if (typeof m.content === 'string' && m.content) {
-          // 普通 AI 文字回复（走 renderMarkdown）
-          parts.push(m.content);
+      // ═══ flag 白名单 ═══
+      if (m._guideAck && m.role === 'assistant') {
+        // 引导确认回合：渲染引导注入信息 + AI 确认回复
+        if (m._guideText) {
+          parts.push('<div class="msg-flow-guide-inject"><span class="msg-flow-icon">⚡</span> ' + _escHtml(m._guideText) + '</div>');
         }
-      } else if (m.role === 'tool') {
-        // 工具结果不渲染
-      } else if (m.role === 'user' && seenFirstUser) {
-        if (m._guideAck) {
-          // 引导确认指令残留（正常情况不会出现，兜底）
-          // 跳过，不渲染
-        } else if (m.content && m.content.indexOf('[System:') === 0) {
-          // 系统注入消息（stale 文件警告 / stall 警告 / 强制回答）
-          parts.push('<div class="msg-flow-system">' + _escHtml(m.content) + '</div>');
-        } else if (m._injected) {
-          // 普通注入消息（如降级 [GUIDE] 注入）
-          var _injText = String(m.content || '').replace(/^\[GUIDE\]\s*/, '');
+        var _ackText = (m.content || '已收到引导').replace(/^✅\s*/, '').trim();
+        if (_ackText) {
+          parts.push('<div class="msg-flow-guide"><span class="msg-flow-icon">✅</span> ' + _escHtml(_ackText) + '</div>');
+        }
+      } else if (m._injected && m.role === 'user') {
+        // 降级注入消息（如 [GUIDE] 注入）
+        var _injText = String(m.content || '').replace(/^\[GUIDE\]\s*/, '').trim();
+        if (_injText) {
           parts.push('<div class="msg-flow-guide-inject"><span class="msg-flow-icon">📌</span> ' + _escHtml(_injText) + '</div>');
         }
+      } else if (m.role === 'assistant' && !m.tool_calls && typeof m.content === 'string' && m.content) {
+        // 普通 AI 文字回复（数据已在 EnvelopeStripper 清洗，直接渲染）
+        var _rm = window.renderMarkdown;
+        parts.push(typeof _rm === 'function' ? _rm(m.content) : _escHtml(m.content));
       }
+      // else: 工具调用、工具结果、系统消息 → 一律跳过
     }
 
     // 附加流式中断文本
@@ -322,12 +320,11 @@ var CardPool = (function () {
     aiEl._contentWrap = document.createElement('div');
 
     // ★ 流式渲染：遍历 conversation 按消息类型生成时序流（非仅取最后 assistant）
+    // 注意：_buildConversationFlowHtml 内部已对 AI 回答内容调用 renderMarkdown，
+    // 此处直接使用其 HTML 输出，不再二次过 renderMarkdown（否则框架 div 会被转义泄露）
     var conv = fData.conversation || [];
     var flowHtml = _buildConversationFlowHtml(conv, fData);
-    var rm2 = window.renderMarkdown;
-    aiEl._contentWrap.innerHTML = typeof rm2 === 'function'
-      ? rm2(flowHtml)
-      : flowHtml.replace(/</g, '&lt;');
+    aiEl._contentWrap.innerHTML = flowHtml;
     aiEl.appendChild(aiEl._contentWrap);
     // 存储完整对话文本（用于全文检索等）
     var fullText = '';
@@ -363,6 +360,10 @@ var CardPool = (function () {
         if (_fs && a1El._r2a) {
           a1El._r2a.textContent = 'FILE ' + (_fs.fileCount || 0);
           a1El._r2b.textContent = '   ROW +' + (_fs.added || 0) + ' -' + (_fs.deleted || 0);
+          if (a1El._r2) {
+            var _hasChg = (_fs.fileCount || 0) > 0 || (_fs.added || 0) > 0 || (_fs.deleted || 0) > 0;
+            a1El._r2.style.display = _hasChg ? '' : 'none';
+          }
         }
         var bridge2 = window.parent && window.parent.qqqideBridge;
         if (bridge2 && _a1Path) {
@@ -478,7 +479,7 @@ var CardPool = (function () {
     aiEl.className = 'msg msg-ai card-building';
     aiEl._floor = floorNum;
     aiEl._contentWrap = document.createElement('div');
-    aiEl._contentWrap.innerHTML = '<div class="msg-status">⏳ AI 正在思考中...</div>';
+    // ★ 极致一次渲染：不留占位文字，流式 token 抵达后直接长出首批 DOM
     aiEl.appendChild(aiEl._contentWrap);
     aiEl._fullText = '';
     aiEl._buf = '';

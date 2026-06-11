@@ -268,6 +268,16 @@ const QQQ = {
         },
     },
 
+    // ---- timeline (文件版本时间线，SHA256去重 + gzip + SQLite) ----
+    timeline: {
+        record: (args: { projectRoot: string; filePath: string; content: string; source: string; floorId?: string }) => ipcRenderer.invoke('qqqide:timeline:record', args),
+        versions: (args: { projectRoot: string; filePath: string }) => ipcRenderer.invoke('qqqide:timeline:versions', args),
+        content: (args: { projectRoot: string; blobHash: string }) => ipcRenderer.invoke('qqqide:timeline:content', args),
+        stat: (filePath: string) => ipcRenderer.invoke('qqqide:timeline:stat', filePath),
+        readCurrent: (filePath: string) => ipcRenderer.invoke('qqqide:timeline:readCurrent', filePath),
+        openDiffWindow: (args: { filePath: string; beforeBlobHash?: string; afterBlobHash?: string; projectRoot: string }) => ipcRenderer.invoke('qqqide:open-diff-window', args),
+    },
+
     // ---- hash (xxh64 fast + sha256 strong, with mtime cache) ----
     hash: {
         file: (p: string, mode?: 'fast' | 'strong' | 'both') => ipcRenderer.invoke('qqqide:hash:file', p, mode),

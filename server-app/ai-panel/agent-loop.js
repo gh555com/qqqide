@@ -505,6 +505,15 @@ var AgentLoop = (function () {
                         self.conversation.push({ role: 'assistant', content: _cleanAck, _guideAck: true, _guideText: _guideText, _floor: self._ctx.totalFloors });
                         // 归档：确认回合写入 houses（all.txt 可见）
                         self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], summary: '', ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString() });
+                        // ★ 更新绿条标记：⏳ 确认中... → ✅ 已收到引导
+                        var _aiDiv2 = self._activeAiDiv;
+                        if (_aiDiv2 && _aiDiv2._guideMarker) {
+                            _aiDiv2._guideMarker.style.cssText = '';
+                            var _ackDisplay = _cleanAck.replace(/^✅\s*/, '').trim() || '已收到引导';
+                            var _esc = window._escHtml || function(s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+                            _aiDiv2._guideMarker.innerHTML = '<span class="msg-flow-icon">✅</span> ' + _esc(_ackDisplay);
+                            _aiDiv2._guideMarker = null;
+                        }
                         if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                         self._log('✅ guide ack: ' + _ackResp.content.slice(0, 80));
                     } else if (_ackResp && _ackResp.type === 'tool_calls') {

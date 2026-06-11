@@ -117,7 +117,7 @@ async function generateFloorTxt() {
             lines.push('\u2550\u2550\u2550\u2550 floor ' + floorNum + ' stats \u2550\u2550\u2550\u2550');
             lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.deepseekMs ? timing.deepseekMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.toolMs ? timing.toolMs.toFixed(0) : '0') + 'ms  cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge');
             // az 区文本化
-            var _floorDataForAz = { houses: houses, allTxtPath: agent._allTxtPath || '', costWge: agent._floorCostWge, floorFree: agent._floorFree || false };
+            var _floorDataForAz = { houses: houses, allTxtPath: agent._allTxtPath || '', costWge: agent._floorCostWge, floorFree: agent._floorFree || false, a4Snapshots: agent._a4Snapshots || {} };
             var _questMetaForAz = { floorTimings: agent._floorTimings || [] };
             var _azLines2 = _buildAzText(floorNum, _floorDataForAz, _questMetaForAz);
             for (var _azi2 = 0; _azi2 < _azLines2.length; _azi2++) {
@@ -145,21 +145,47 @@ function _buildAzText(floorNum, floorData, questMeta) {
         if (houses[hi].tools) rCount += houses[hi].tools.length;
     }
 
-    // A1 行1: Floor / House / Room
+    var a4Snapshots = floorData.a4Snapshots || {};
+    var timings = (questMeta && questMeta.floorTimings) || [];
+
+    // ═══ az 区打印顺序与对话框一致：A2(财宝) → A4(文件快照) → A1(楼层统计) → A3(时钟) ═══
+
+    // A2: 财宝（treasures）
+    if (floorData.treasures && floorData.treasures.length > 0) {
+        for (var tri = 0; tri < floorData.treasures.length; tri++) {
+            var tr = floorData.treasures[tri];
+            lines.push('az> 💎 ' + (tr.text || '').slice(0, 120));
+        }
+    }
+
+    // A4: 文件快照明细
+    if (a4Snapshots && typeof a4Snapshots === 'object') {
+        var a4Paths = Array.isArray(a4Snapshots) ? a4Snapshots : Object.keys(a4Snapshots);
+        if (a4Paths.length > 0) {
+            for (var a4i = 0; a4i < a4Paths.length; a4i++) {
+                var s = Array.isArray(a4Snapshots) ? a4Paths[a4i] : a4Snapshots[a4Paths[a4i]];
+                if (!s || !s.path) continue;
+                var fname = s.path.replace(/\\/g, '/').split('/').pop() || s.path;
+                var opLabel = s.op === 'create_file' ? '[new]' : s.op === 'delete_file' ? '[del]' : '[mod]';
+                var statStr = (s.added > 0 ? '+' + s.added : '') + (s.deleted > 0 ? ' -' + s.deleted : '');
+                if (!statStr) statStr = '~0';
+                lines.push('az> ' + opLabel + ' ' + fname + '  ' + statStr);
+            }
+        }
+    }
+
+    // A1: 楼层统计（行1: Floor/House/Room, 行2: FILE/ROW）
     var allTxtSize = '';
     if (floorData.allTxtPath && floorData.allTxtPath.length > 0) {
         allTxtSize = ' [all.txt: ' + floorData.allTxtPath.split('/').pop() + ']';
     }
     lines.push('az> Floor ' + floorNum + '  House ' + hCount + '  Room ' + rCount + allTxtSize);
-
-    // A1 行2: 文件变更统计（使用统一 _computeFileStats）
-    var fs = _computeFileStats(houses);
+    var fs = _computeFileStats(houses, a4Snapshots);
     if (fs.fileCount > 0 || fs.added > 0 || fs.deleted > 0) {
         lines.push('az> FILE ' + fs.fileCount + '   ROW +' + fs.added + ' -' + fs.deleted);
     }
 
-    // 时钟：楼层耗时 + network/deepseek/tool 分项
-    var timings = (questMeta && questMeta.floorTimings) || [];
+    // A3: 时钟
     for (var tii = 0; tii < timings.length; tii++) {
         if (timings[tii].floorIndex === floorNum) {
             var t = timings[tii];

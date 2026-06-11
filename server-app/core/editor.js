@@ -17,10 +17,7 @@
   const bridge = window.qqqideBridge;
 
   // ── qzlsp §10 Plan A: 配置 TypeScript Worker 编译选项 ──
-  // Monaco 内置 TS Worker 默认 moduleResolution=Classic 且无 @types/node，
-  // 会导致 Node.js 内置模块飘红(false positive) 和类型检查裸奔(false negative)。
-  // 此处注入编译选项 + Node 模块声明，对齐项目 tsconfig.json。
-  var _tsConfigured = false;
+  // Monaco 内置 TS Worker 默认 moduleResolution=Classic 且无 @types/node�?  // 会导�?Node.js 内置模块飘红(false positive) 和类型检查裸�?false negative)�?  // 此处注入编译选项 + Node 模块声明，对齐项�?tsconfig.json�?  var _tsConfigured = false;
   function configureMonacoTypescript(monaco) {
     if (_tsConfigured) return;
     _tsConfigured = true;
@@ -36,7 +33,7 @@
       noImplicitAny: false,
       lib: ['ES2020', 'DOM'],
     });
-    // 注入 Node.js 内置模块声明，消除 "Cannot find module 'http'" 等误报
+    // 注入 Node.js 内置模块声明，消�?"Cannot find module 'http'" 等误�?
     _tsDefaults.addExtraLib(
       'declare module "http" { const m: any; export = m; }\n' +
       'declare module "https" { const m: any; export = m; }\n' +
@@ -53,7 +50,7 @@
     );
   }
 
-  // ---- q1 三件套 + viewzone attach: hook all four modules onto one editor.
+  // ---- q1 三件�?+ viewzone attach: hook all four modules onto one editor.
   // Each module's attach() is idempotent and safe to call multiple times
   // (codelens provider de-duped, paste/decoration/viewzone per-editor).
   function attachQ1(ed, currentFileFn) {
@@ -287,7 +284,7 @@
             // If this works, we don't need the custom ts-service fallback.
 
             // ── Bootstrap custom TS/JS IntelliSense (fallback, optional) ──
-            // Disabled for now — using Monaco's built-in TS with plain-path URIs.
+            // Disabled for now �?using Monaco's built-in TS with plain-path URIs.
             // bootCustomTsService(monaco);
 
             // [silent] monaco ready
@@ -313,7 +310,7 @@
   }
 
   // ── Custom TS/JS providers (replaces Monaco's broken built-in TS worker) ──
-  // Called ONCE from the Monaco load callback — guaranteed to run regardless
+  // Called ONCE from the Monaco load callback �?guaranteed to run regardless
   // of whether build() or openInPane() is used.
   var _tsBootDone = false;
 
@@ -425,7 +422,7 @@
 
   function _applyUndoMode(ed, monaco) {
     if (!ed || !monaco) return;
-    // 登记编辑器
+    // 登记编辑�?
     if (_allMonacoEditors.indexOf(ed) < 0) {
       _allMonacoEditors.push(ed);
     }
@@ -461,10 +458,10 @@
     mountEl = host;
     try {
       const monaco = await loadMonaco();
-      // 注册唯一真理配色机器的 Monaco 主题
+      // 注册唯一真理配色机器�?Monaco 主题
       if (window.qqqideTheme) { window.qqqideTheme.defineMonacoThemes(monaco); }
 
-      // 配置 Monaco TypeScript 编译选项（会同步到 ts-service）
+      // 配置 Monaco TypeScript 编译选项（会同步�?ts-service�?
       configureMonacoTypescript(monaco);
 
       const theme = (window.qqqideTheme && window.qqqideTheme.getMonacoTheme()) || 'vs';
@@ -476,7 +473,7 @@
         fontSize: 13,
         fontFamily: 'ui-monospace, Consolas, Menlo, monospace',
         minimap: { enabled: false },
-        scrollBeyondLastLine: false,
+        scrollBeyondLastLine: 5,
         renderWhitespace: 'selection',
         overviewRulerLanes: 3,
         wordWrap: 'on',
@@ -492,7 +489,7 @@
       if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.create) {
         window.qqqEditorBreadcrumb.create(host, '', ed, monaco);
       }
-      // 主题切换时同步 Monaco（全局注册一次）
+      // 主题切换时同�?Monaco（全局注册一次）
       hookThemeSync(monaco);
 
       // Ctrl+S
@@ -538,12 +535,12 @@
           });
         }
       });
-      // q1 三件套 attach (no-op if module not yet loaded; will retry)
+      // q1 三件�?attach (no-op if module not yet loaded; will retry)
       attachQ1(ed);
       // Wire LSP diagnostics and hover
       wireLspDiagnostics();
       wireLspHover();
-      // 编辑器销毁时清理 char-undo 和跟踪列表
+      // 编辑器销毁时清理 char-undo 和跟踪列�?
       ed.onDidDispose(function () {
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
         var idx = _allMonacoEditors.indexOf(ed);
@@ -602,17 +599,54 @@
     }
   }
 
+  // ---- Timeline 快照：编辑器保存触发（60s 闸门 + 内容去重） ----
+  var _lastSaveSnapshotTs = {}; // filePath → 上次快照时间戳
+  var _lastSaveSnapshotHash = {}; // filePath → 上次快照内容的简化 hash（避免 SHA256 大文件开销）
+
   async function save() {
     if (!editor || !currentFile) { return false; }
     const v = editor.getValue();
     try {
       await bridge.fs.write(currentFile, v);
       dirty = false; updateTitle();
+
+      // ★ 触发 timeline 快照（60s 闸门 + 内容变更检测）
+      _maybeRecordTimeline(currentFile, v);
+
       return true;
     } catch (e) {
       console.error('[editor] save failed:', e);
       return false;
     }
+  }
+
+  async function _maybeRecordTimeline(filePath, content) {
+    if (!bridge || !bridge.timeline) return;
+    var now = Date.now();
+    var lastTs = _lastSaveSnapshotTs[filePath] || 0;
+    // 60秒闸门
+    if (now - lastTs < 60000) return;
+    // 内容变更检测：用前256字符的简单 hash 做快速去重
+    var quickHash = content.length + ':' + content.slice(0, 256);
+    if (_lastSaveSnapshotHash[filePath] === quickHash) return;
+    _lastSaveSnapshotTs[filePath] = now;
+    _lastSaveSnapshotHash[filePath] = quickHash;
+    // 获取 projectRoot
+    var projectRoot = '';
+    try {
+      if (bridge.sync && bridge.sync.getProjectPath) {
+        projectRoot = await bridge.sync.getProjectPath();
+      }
+    } catch (_) { }
+    if (!projectRoot) return;
+    try {
+      await bridge.timeline.record({
+        projectRoot: projectRoot,
+        filePath: filePath,
+        content: content,
+        source: 'editor-save'
+      });
+    } catch (_) { }
   }
 
   function updateTitle() {
@@ -624,8 +658,8 @@
 
   let _monacoRef = null;   // raw monaco namespace
   let _editorRef = null;   // raw monaco IStandaloneCodeEditor
-  let _paneFiles = {};      // editor dom node → filePath (reverse lookup for dispose cleanup)
-  let _paneEditors = {};    // filePath → editor instance (for live refresh)
+  let _paneFiles = {};      // editor dom node �?filePath (reverse lookup for dispose cleanup)
+  let _paneEditors = {};    // filePath �?editor instance (for live refresh)
 
   // ---- openInPane: create a Monaco editor inside a tab pane for a specific file ----
   async function openInPane(host, filePath, content, opts) {
@@ -658,7 +692,7 @@
         fontSize: 13,
         fontFamily: 'ui-monospace, Consolas, Menlo, monospace',
         minimap: { enabled: false },
-        scrollBeyondLastLine: false,
+        scrollBeyondLastLine: 5,
         renderWhitespace: 'selection',
         overviewRulerLanes: 3,
         wordWrap: 'on',
@@ -723,7 +757,7 @@
         currentFile = filePath;
       });
 
-      // q1 三件套 attach for this pane editor
+      // q1 三件�?attach for this pane editor
       attachQ1(ed, () => filePath);
 
       // track pane editor for live refresh (chat.txt etc.)
@@ -733,7 +767,7 @@
         delete _paneEditors[filePath];
         delete _paneFiles[host];
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
-        // 从跟踪列表移除
+        // 从跟踪列表移�?
         var idx = _allMonacoEditors.indexOf(ed);
         if (idx >= 0) _allMonacoEditors.splice(idx, 1);
       });

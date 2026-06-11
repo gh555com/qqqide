@@ -69,6 +69,7 @@ body {
   cursor: default;
   -webkit-app-region: no-drag;
 }
+
 .qqq-wing-mask-text {
   font-family: ui-monospace, "Microsoft YaHei", sans-serif;
   font-size: 28px;
@@ -179,12 +180,15 @@ body {
   flex-shrink: 0;
   transition: background 100ms, border-color 100ms, box-shadow 100ms;
 }
+
 /* 点击框放大到 32×32 矩形，视觉保持 12px 圆点 */
 .qqq-bulb-dot::after {
   content: '';
   position: absolute;
-  top: -10px; left: -10px;
-  right: -10px; bottom: -10px;
+  top: -10px;
+  left: -10px;
+  right: -10px;
+  bottom: -10px;
 }
 
 .qqq-bulb-dot.on {
@@ -391,7 +395,6 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  height: 100%;
   background: var(--background-color);
 }
 
@@ -549,7 +552,6 @@ body {
   flex-direction: column;
   overflow: hidden;
   min-width: var(--panel-min);
-  height: 100%;
   background: var(--background-color);
 }
 
@@ -690,7 +692,7 @@ body {
 .qqq-tab-pane {
   position: absolute;
   inset: 0;
-  overflow: auto;
+  overflow: hidden;
   display: none;
 }
 
@@ -781,6 +783,7 @@ body {
   flex: 1 1 auto;
   overflow: hidden;
   position: relative;
+  min-height: 0;
 }
 
 /* 弹出层 */
@@ -1372,4 +1375,50 @@ body {
 
 .monaco-editor .find-widget .button.checked {
   border-color: var(--yellow) !important;
+}
+
+/* ── 网关线路状态指示点（状态栏内 L/C/R 三点） ── */
+.qqq-gw-dots {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  margin: 0 8px;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.qqq-gw-dot {
+  color: var(--base01);
+  opacity: 0.35;
+  transition: color .3s, opacity .3s, transform .2s;
+  cursor: default;
+  user-select: none;
+}
+
+.qqq-gw-dot.primary {
+  color: #859900;
+  opacity: 1;
+}
+
+.qqq-gw-dot.fallback {
+  color: #e07020;
+  opacity: 1;
+}
+
+.qqq-gw-dot.pulse {
+  animation: qqqGwPulse .3s ease-out;
+}
+
+@keyframes qqqGwPulse {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(2.5);
+  }
+
+  100% {
+    transform: scale(1);
+  }
 }

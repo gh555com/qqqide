@@ -251,91 +251,21 @@ async function renderQuestDrop() {
     body.className = 'quest-drop-body';
     for (var i = 0; i < displayCount; i++) {
         (function (s) {
+            var isRunning = streaming && s.id === questActiveId;
             var item = document.createElement('div');
-            item.className = 'quest-drop-item' + (s.id === questActiveId ? ' active' : '');
-            item.style.cssText = 'display:flex;align-items:center';
-            // 文本行（含前缀 + 标题/编辑框）
+            item.className = 'quest-drop-item' + (s.id === questActiveId ? ' active' : '') + (isRunning ? ' running' : '');
             var line = document.createElement('span');
             line.className = 'quest-drop-line';
-            line.style.cssText = 'flex:1;min-width:0;display:flex;align-items:center';
             var prefix = document.createElement('span');
             prefix.className = 'quest-drop-prefix';
-            prefix.style.cssText = 'flex:none';
             prefix.textContent = 'q' + (s.numericId || '?') + '. ';
             var title = document.createElement('span');
             title.className = 'quest-drop-title';
-            title.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
             title.textContent = s.title || '';
-            // 内联编辑框（默认隐藏）
-            var editInput = document.createElement('input');
-            editInput.type = 'text';
-            editInput.style.cssText = 'display:none;flex:1;min-width:0;border:none;outline:none;background:var(--card-bg);color:var(--text-primary);font-size:16px;font-family:inherit;padding:0 2px;margin:0';
-            var _editing = false;
-            function _startEdit() {
-                if (_editing) return;
-                _editing = true;
-                title.style.display = 'none';
-                editInput.style.display = 'block';
-                editInput.value = s.title || '';
-                editInput.focus();
-                editInput.select();
-            }
-            function _commitEdit() {
-                if (!_editing) return;
-                _editing = false;
-                var newTitle = editInput.value.trim();
-                editInput.style.display = 'none';
-                title.style.display = '';
-                if (newTitle && newTitle !== s.title) {
-                    s.title = newTitle;
-                    title.textContent = newTitle;
-                    renameQuest(s.id, newTitle);
-                }
-            }
-            function _cancelEdit() {
-                if (!_editing) return;
-                _editing = false;
-                editInput.style.display = 'none';
-                title.style.display = '';
-                title.textContent = s.title || '';
-            }
-            editInput.addEventListener('keydown', function (e) {
-                if (e.key === 'Enter') { e.preventDefault(); _commitEdit(); }
-                if (e.key === 'Escape') { e.preventDefault(); _cancelEdit(); }
-            });
-            editInput.addEventListener('blur', function () { _commitEdit(); });
             line.appendChild(prefix);
             line.appendChild(title);
-            line.appendChild(editInput);
             item.appendChild(line);
-            // ✏️ 编辑按钮：hover 时显示
-            var editBtn = document.createElement('span');
-            editBtn.textContent = '\u270F\uFE0F';
-            editBtn.title = '\u7F16\u8F91\u540D\u79F0';
-            editBtn.style.cssText = 'flex:none;margin-left:6px;font-size:14px;opacity:0;cursor:pointer;padding:0 4px;transition:opacity .12s;line-height:1';
-            editBtn.addEventListener('mousedown', function (e) {
-                e.stopPropagation();
-                e.preventDefault();
-                _startEdit();
-            });
-            editBtn.addEventListener('click', function (e) {
-                e.stopPropagation();
-            });
-            item.appendChild(editBtn);
-            // hover 显隐
-            item.addEventListener('mouseenter', function () {
-                if (!_editing) editBtn.style.opacity = '1';
-            });
-            item.addEventListener('mouseleave', function () {
-                if (!_editing) editBtn.style.opacity = '0';
-            });
-            // 点击整行 → 切换 quest（编辑中不触发）
-            item.addEventListener('mousedown', function (e) {
-                if (_editing) { e.stopPropagation(); e.preventDefault(); return; }
-                e.stopPropagation();
-                closeQuestDrop();
-                switchQuest(s.id);
-            });
+            item.onclick = function (e) { e.stopPropagation(); closeQuestDrop(); switchQuest(s.id); };
             body.appendChild(item);
         })(filtered[i]);
     }
@@ -405,16 +335,33 @@ async function openQuestDrop() {
     });
     await renderQuestDrop();
 }
+var _tofuEntry = null;  // 当前活跃 quest 的 index 条目，供编辑用
+
 async function updateQuestTofu() {
-    var el = document.getElementById('quest-tofu-text');
+    var prefixEl = document.getElementById('quest-tofu-prefix');
+    var textEl = document.getElementById('quest-tofu-text');
+    var pen = document.getElementById('quest-tofu-pen');
     var quests = await questStore.list();
     var entry = quests.find(function (q) { return q.id === questActiveId; });
+    _tofuEntry = entry || null;
     if (entry) {
-        el.textContent = 'q' + (entry.numericId || '?') + '. ' + (entry.title || '');
-        el.parentElement.classList.remove('quest-tofu-new');
+        var num = entry.numericId || '?';
+        if (prefixEl) prefixEl.textContent = 'q' + num + '. ';
+        textEl.textContent = entry.title || '';
+        textEl.parentElement.classList.remove('quest-tofu-new');
+        if (pen) pen.style.display = '';
+        // 彗星环绕：streaming 时加 class
+        if (streaming) {
+            textEl.parentElement.classList.add('quest-running');
+        } else {
+            textEl.parentElement.classList.remove('quest-running');
+        }
     } else {
-        el.textContent = '~ New quest ~';
-        el.parentElement.classList.add('quest-tofu-new');
+        if (prefixEl) prefixEl.textContent = '';
+        textEl.textContent = '~ New quest ~';
+        textEl.parentElement.classList.add('quest-tofu-new');
+        textEl.parentElement.classList.remove('quest-running');
+        if (pen) pen.style.display = 'none';
     }
     var title = 'qqq IDE';
     var root = questStore.getProjectRoot();
@@ -429,9 +376,56 @@ async function updateQuestTofu() {
         if (b && b.window && b.window.setTitle) b.window.setTitle(title);
     } catch (_) { }
 }
-// hover \u5c55\u5f00/\u6536\u8d77
+
+// ── 豆腐块内联编辑 ──
+function _tofuStartEdit() {
+    if (!_tofuEntry) return;
+    var textEl = document.getElementById('quest-tofu-text');
+    var editEl = document.getElementById('quest-tofu-edit');
+    var pen = document.getElementById('quest-tofu-pen');
+    if (!textEl || !editEl) return;
+    textEl.style.display = 'none';
+    editEl.style.display = 'block';
+    editEl.value = _tofuEntry.title || '';
+    editEl.focus();
+    editEl.select();
+    if (pen) pen.style.display = 'none';
+}
+function _tofuCommitEdit() {
+    var textEl = document.getElementById('quest-tofu-text');
+    var editEl = document.getElementById('quest-tofu-edit');
+    var pen = document.getElementById('quest-tofu-pen');
+    if (!textEl || !editEl) return;
+    if (editEl.style.display === 'none') return;  // 未在编辑态
+    var newTitle = editEl.value.trim();
+    editEl.style.display = 'none';
+    textEl.style.display = '';
+    if (pen && _tofuEntry) pen.style.display = '';
+    if (newTitle && _tofuEntry && newTitle !== _tofuEntry.title) {
+        _tofuEntry.title = newTitle;
+        textEl.textContent = newTitle;
+        renameQuest(_tofuEntry.id, newTitle);
+    } else {
+        // 恢复原标题显示
+        if (_tofuEntry) {
+            textEl.textContent = _tofuEntry.title || '';
+        }
+    }
+}
+function _tofuCancelEdit() {
+    var textEl = document.getElementById('quest-tofu-text');
+    var editEl = document.getElementById('quest-tofu-edit');
+    var pen = document.getElementById('quest-tofu-pen');
+    if (!textEl || !editEl) return;
+    editEl.style.display = 'none';
+    textEl.style.display = '';
+    if (pen && _tofuEntry) pen.style.display = '';
+}
+// hover \u5c55\u5f00/\u6536\u8d77 + \u7F16\u8F91\u7B14\u7ED1\u5B9A
 (function () {
     var tofu = document.getElementById('quest-tofu');
+    var pen = document.getElementById('quest-tofu-pen');
+    var editEl = document.getElementById('quest-tofu-edit');
     if (tofu) {
         tofu.addEventListener('mouseenter', function () {
             clearTimeout(_questDropTimer);
@@ -440,6 +434,23 @@ async function updateQuestTofu() {
         tofu.addEventListener('mouseleave', function () {
             _questDropTimer = setTimeout(closeQuestDrop, 120);
         });
+    }
+    if (pen) {
+        pen.addEventListener('mousedown', function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            _tofuStartEdit();
+        });
+        pen.addEventListener('click', function (e) {
+            e.stopPropagation();
+        });
+    }
+    if (editEl) {
+        editEl.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); _tofuCommitEdit(); }
+            if (e.key === 'Escape') { e.preventDefault(); _tofuCancelEdit(); }
+        });
+        editEl.addEventListener('blur', function () { _tofuCommitEdit(); });
     }
 })();
 

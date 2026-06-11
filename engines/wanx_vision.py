@@ -16,6 +16,11 @@ from pathlib import Path
 VISION_MODEL = "qwen-vl-max"
 VISION_EP = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions"
 
+# 阿里云 DashScope 定价 → ge（1 ge ≈ ¥0.001）
+# qwen-vl-max: input ¥0.003/K tokens → 3 ge/K tokens, output ¥0.012/K tokens → 12 ge/K tokens
+GE_PER_1K_INPUT = 3
+GE_PER_1K_OUTPUT = 12
+
 
 def get_api_key():
     key = os.environ.get("DASHSCOPE_API_KEY", "")
@@ -66,7 +71,14 @@ def call_vision(api_key, data_url, question):
     resp = session.post(VISION_EP, headers=headers, json=body, timeout=60)
     if resp.status_code != 200:
         raise RuntimeError(f"Vision API {resp.status_code}: {resp.text[:300]}")
-    return resp.json()["choices"][0]["message"]["content"]
+    data = resp.json()
+    content = data["choices"][0]["message"]["content"]
+    # 提取 usage → ge_cost
+    usage = data.get("usage", {})
+    pt = usage.get("prompt_tokens", 0)
+    ct = usage.get("completion_tokens", 0)
+    ge_cost = round(pt * GE_PER_1K_INPUT / 1000 + ct * GE_PER_1K_OUTPUT / 1000)
+    return content, ge_cost
 
 
 def main():
@@ -94,8 +106,8 @@ def main():
                 "detailed": "详细描述这张图片：画面元素、色彩、光影、构图、风格、氛围。",
             }
             question = prompts.get(args.detail, prompts["standard"])
-            result = call_vision(api_key, data_url, question)
-            print(json.dumps({"ok": True, "data": result}, ensure_ascii=False))
+            result, ge_cost = call_vision(api_key, data_url, question)
+            print(json.dumps({"ok": True, "data": result, "ge_cost": ge_cost}, ensure_ascii=False))
 
         elif args.action == "locate":
             targets = [t.strip() for t in (args.targets or "").split(",") if t.strip()]
@@ -111,7 +123,7 @@ def main():
                 '[{"label": "物体名", "box": [x1, y1, x2, y2]}]'
                 "只返回 JSON，不要任何解释文字。"
             )
-            raw = call_vision(api_key, data_url, question)
+            raw, ge_cost = call_vision(api_key, data_url, question)
             # 清洗 markdown 围栅
             raw = raw.strip()
             if raw.startswith("```"):
@@ -126,14 +138,14 @@ def main():
                     boxes = json.loads(match.group())
                 else:
                     raise RuntimeError(f"无法解析定位结果: {raw[:300]}")
-            print(json.dumps({"ok": True, "data": boxes}, ensure_ascii=False))
+            print(json.dumps({"ok": True, "data": boxes, "ge_cost": ge_cost}, ensure_ascii=False))
 
         elif args.action == "ask":
             if not args.question:
                 print(json.dumps({"ok": False, "error": "需要 --question 参数"}))
                 sys.exit(1)
-            result = call_vision(api_key, data_url, args.question)
-            print(json.dumps({"ok": True, "data": result}, ensure_ascii=False))
+            result, ge_cost = call_vision(api_key, data_url, args.question)
+            print(json.dumps({"ok": True, "data": result, "ge_cost": ge_cost}, ensure_ascii=False))
 
     except Exception as e:
         print(json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False))

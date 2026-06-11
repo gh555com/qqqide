@@ -174,7 +174,7 @@
             try {
                 var result = await self._callCompactAPI(basePrompt);
                 if (!result || !result.parsed) throw new Error('parse_or_network_failed');
-                // accumulate compression timing: networkWait(ttfb) -> red, deepseek processing(rest) -> green
+                // accumulate compression timing: networkWait(ttfb) -> red, AI processing(rest) -> green
                 if (result.ttfbMs > 0 && self._floorTiming) {
                     self._floorTiming.networkMs += result.ttfbMs;
                     self._floorTiming.deepseekMs += result.totalMs - result.ttfbMs;

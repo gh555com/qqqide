@@ -183,7 +183,7 @@ async function sendMessage() {
         var qEntry = quests2.find(function (qx) { return qx.id === _capturedQuestId; });
         var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : _capturedQuestId;
         var qNumericId = qEntry && qEntry.numericId ? qEntry.numericId : 0;
-        // ★ 先用前缀搜索已有目录（防分裂脑），再惰性修复磁盘目录名
+        // ★ 前缀搜索已有目录 + 惰性修复磁盘目录名
         var qDirName2 = await _resolveQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
         _tryRepairQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
         var fDirName2 = _makeName('f', floorNum, userQuestion);
@@ -252,18 +252,25 @@ async function sendMessage() {
                 aiDiv._renderScheduled = false;
                 var _targetDiv2 = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
                 if (_targetDiv2 && _targetDiv2._contentWrap) {
-                    // ═══ 唯一真理机：live onDone 与恢复路径共用同一渲染函数 ═══
-                    _targetDiv2._lastParaEl = null;
+                    // ═══ 一次渲染 终身不变：清除流式临时标记，不改 DOM 结构 ═══
                     _targetDiv2._guideMode = false;
-                    var _conv = _capturedAgent.conversation || [];
-                    var _flowHtml = '';
-                    if (typeof window._buildConversationFlowHtml === 'function') {
-                        _flowHtml = window._buildConversationFlowHtml(_conv, {});
-                    } else {
-                        // 兜底：渲染函数未加载时，直接使用 content（保持兼容）
-                        _flowHtml = content || '';
+                    // 去掉所有 stream-para 类（流式临时标记，成品不需要）
+                    var _spParas = _targetDiv2._contentWrap.querySelectorAll('.stream-para');
+                    for (var _spi = 0; _spi < _spParas.length; _spi++) {
+                        _spParas[_spi].classList.remove('stream-para');
                     }
-                    _targetDiv2._contentWrap.innerHTML = renderMarkdown(_flowHtml);
+                    // 移除初始状态提示（"⏳ AI 正在思考中..."）
+                    var _initStatus = _targetDiv2._contentWrap.querySelector('.msg-status');
+                    if (_initStatus) _initStatus.remove();
+                    // 清理流式 in-progress 段落槽位
+                    if (_targetDiv2._lastParaEl) {
+                        if (!_targetDiv2._lastParaEl.textContent || !_targetDiv2._lastParaEl.textContent.trim()) {
+                            _targetDiv2._lastParaEl.remove();
+                        } else {
+                            _targetDiv2._lastParaEl.classList.remove('stream-para');
+                        }
+                    }
+                    _targetDiv2._lastParaEl = null;
                 }
                 if (aiDiv) {
                     aiDiv._paras = null;
@@ -341,6 +348,7 @@ async function sendMessage() {
             },
             onError: function (msg) {
                 _stopAutoSave();
+                if (_capturedAgent) _capturedAgent._floorOnErrorCalled = true;  // ★ 看门狗：标记已处理
                 if (_activeAgent === _capturedAgent) {
                     if (aiDiv && aiDiv._floorCompleted) {
                         setStreaming(false);
@@ -394,6 +402,16 @@ async function sendMessage() {
                 _capturedAgent._activeAiDiv._renderScheduled = false;
                 _capturedAgent._activeAiDiv = null;
             }
+        }
+        // ═══ 楼层看门狗：仅当 onDone 和 onError 都未调用时才自动恢复 ═══
+        // onError 已调用 → 错误已显示给用户，交给用户判断（避免 401 等永久错误无限重载）
+        // onDone 已调用 → 楼层正常结束，无需恢复
+        // 两者都未调用 → 真正的「断头」死楼层，reload 恢复
+        if (_capturedAgent && !_capturedAgent._floorCompletedCleanly && !_capturedAgent._floorKilled && !_capturedAgent._floorOnErrorCalled) {
+            console.log('[watchdog] floor ended headless — auto-recovering…');
+            addMessageEl('error', '\u26a0\ufe0f \u697c\u5c42\u5f02\u5e38\u4e2d\u65ad\uff0c\u5bf9\u8bdd\u5df2\u4fdd\u5b58\u3002\u6b63\u5728\u81ea\u52a8\u6062\u590d\u2026');
+            try { sessionStorage.setItem('__qqq_scroll_bottom', '1'); } catch (_) { }
+            setTimeout(function () { window.location.reload(); }, 1200);
         }
         _capturedAgent._sending = false;
         _capturedAgent._streaming = false;

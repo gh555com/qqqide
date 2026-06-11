@@ -24,7 +24,7 @@ function _notifyFileModified(filePath) {
 //
 // Two-tier architecture:
 //   SAFETY NET  (ghrun/qz-spawn): 65536 — prevents memory blowup, never active
-//   AI FACING  (here):           defined below — what DeepSeek sees & interacts with
+//   AI FACING  (here):           defined below — what the AI sees & interacts with
 //
 // ============================================================
 // ★ AI-facing output caps — 唯一真理在 ContentGateway（content-gateway.js）
@@ -1073,7 +1073,45 @@ async function executeFetchWebpage(args) {
 }
 
 // ============================================================
-// generate_image — 通义万相 文生图
+// _waitForTaskStream — SSE stream 等待异步任务完成（generate/vision 共用）
+// ============================================================
+async function _waitForTaskStream(streamUrl, token) {
+    var streamResp = await fetch(streamUrl, {
+        headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!streamResp.ok) {
+        return { _httpError: streamResp.status };
+    }
+
+    var reader = streamResp.body.getReader();
+    var decoder = new TextDecoder();
+    var buf = '';
+    var result = null;
+
+    while (true) {
+        var rd = await reader.read();
+        if (rd.done) break;
+        buf += decoder.decode(rd.value, { stream: true });
+        var lines = buf.split('\n');
+        buf = lines.pop() || '';
+        for (var li = 0; li < lines.length; li++) {
+            var line = lines[li];
+            if (line.charAt(0) === ':') continue;
+            if (line.slice(0, 7) !== 'data: ') continue;
+            try {
+                var parsed = JSON.parse(line.slice(7));
+                if (parsed.status === 'done' || parsed.status === 'error') {
+                    result = parsed;
+                }
+            } catch (_) { }
+        }
+    }
+    reader.releaseLock();
+    return result;
+}
+
+// ============================================================
+// generate_image — Go 代理通义万相 文生图（终极架构：全部 AI 过 Go）
 // ============================================================
 
 async function executeGenerateImage(args) {
@@ -1102,53 +1140,98 @@ async function executeGenerateImage(args) {
         } catch (_) { }
     }
 
-    // ★ 优先走主进程 IPC (1 IPC, 零渲染层序列化)
-    if (bridge.ai && bridge.ai.generate_image) {
-        try { return await bridge.ai.generate_image(args); } catch (_) { /* fallback */ }
-    }
+    // ★ 终极架构：全部 AI ──▶ Go ──▶ 阿里
+    var token = '';
+    try {
+        var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+        if (ag && ag._token) token = ag._token;
+    } catch (_) { }
+    if (!token) return 'Error: no auth token';
 
-    // ---- fallback: qz-spawn 直接调 Python ----
-    var appRoot = '';
-    try { appRoot = await bridge.app.root(); } catch (_) { }
-    var scriptPath = (appRoot ? appRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/' : '') + 'engines/wanx_gen.py';
-    var cmdArgs = [scriptPath, '--prompt', prompt, '--size', args.size || '1024*1024'];
-    if (args.style) { cmdArgs.push('--style', args.style); }
-    if (args.n) { cmdArgs.push('--n', String(args.n)); }
-    if (args.out_dir) { cmdArgs.push('--out-dir', args.out_dir); }
+    var IMG_URL = (typeof IMAGE_GEN_URL !== 'undefined') ? IMAGE_GEN_URL : 'https://direct.gh555.com:8444/api/v3/ai/generate-image';
+    var outDir = args.out_dir || '';
 
     try {
-        var result = await bridge.qz.spawn({
-            cmd: 'python',
-            args: ['-u'].concat(cmdArgs),
-            cwd: '',
-            timeout: 300000,
-            stallMs: 300000
+        // 1. POST → Go 创建异步绘图任务
+        var postResp = await fetch(IMG_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({
+                prompt: prompt,
+                style: args.style || '',
+                size: args.size || '1024*1024',
+                n: args.n || 1
+            })
         });
-        if (result.exitCode !== 0) {
-            var errStr = (result.stdout || '') + (result.stderr || '');
-            return 'Image generation failed (exit ' + result.exitCode + '): ' + errStr.slice(0, 800);
+        if (!postResp.ok) {
+            var errText = '';
+            try { errText = await postResp.text(); } catch (_) { }
+            return 'Image generation failed (HTTP ' + postResp.status + '): ' + errText.slice(0, 300);
         }
-        var out = (result.stdout || '').trim();
-        try {
-            var parsed = JSON.parse(out);
-            if (parsed.ok && parsed.paths) {
-                var paths = parsed.paths;
-                return 'Generated ' + paths.length + ' image(s):\n' + paths.map(function(p, i) {
-                    return '  ' + (i + 1) + '. ' + p;
-                }).join('\n');
-            } else {
-                return 'Image generation error: ' + (parsed.error || out);
-            }
-        } catch (_) {
-            return 'Image generation output (unexpected format): ' + out.slice(0, 1000);
+        var postData = await postResp.json();
+        if (!postData.ok || !postData.task_id) {
+            return 'Image generation failed: ' + (postData.error || 'unknown error');
         }
+
+        // 2. SSE stream → 等 Go 轮询完阿里 wanx 返回结果
+        var result = await _waitForTaskStream(IMG_URL + '/' + postData.task_id + '/stream', token);
+        if (!result || result._httpError) {
+            return 'Image generation stream failed (HTTP ' + (result ? result._httpError : '?') + ')';
+        }
+
+        if (!result || result.status === 'error') {
+            return 'Image generation failed: ' + (result ? result.error : 'no response');
+        }
+        if (!result.urls || result.urls.length === 0) {
+            return 'Image generation failed: no image URLs returned';
+        }
+
+        // ★ 累加显示用计费（Go 已权威记账，此处仅 UI 展示）
+        if (result.ge_cost && typeof _addToolGeCost === 'function') {
+            _addToolGeCost(result.ge_cost);
+        }
+
+        // 3. 并行下载图片到本地
+        if (outDir) {
+            try { await bridge.fs.mkdir(outDir); } catch (_) { }
+        } else {
+            outDir = '.';
+        }
+
+        var dlPromises = result.urls.map(function (url, u) {
+            var fname = 'wanx_' + Date.now() + '_' + u + '.png';
+            var fpath = outDir.replace(/\\/g, '/').replace(/\/$/, '') + '/' + fname;
+            return bridge.qz.spawn({
+                cmd: 'curl',
+                args: ['-sL', '--max-time', '60', '-o', fpath, url],
+                timeout: 90000
+            }).then(function (dl) {
+                return { path: fpath, ok: dl.exitCode === 0 };
+            }).catch(function () {
+                return { path: fpath, ok: false };
+            });
+        });
+        var dlResults = await Promise.all(dlPromises);
+        var paths = dlResults.filter(function (r) { return r.ok; }).map(function (r) { return r.path; });
+
+        if (paths.length === 0) {
+            return 'Image generation failed: could not download images (URLs may have expired)';
+        }
+
+        return 'Generated ' + paths.length + ' image(s):\n' + paths.map(function (p, i) {
+            return '  ' + (i + 1) + '. ' + p;
+        }).join('\n');
+
     } catch (err) {
         return 'Error running image generation: ' + (err.message || err);
     }
 }
 
 // ============================================================
-// analyze_image — qwen-vl 视觉理解
+// analyze_image — Go 代理 qwen-vl 视觉理解（终极架构：全部 AI 过 Go）
 // ============================================================
 
 async function executeAnalyzeImage(args) {
@@ -1158,43 +1241,119 @@ async function executeAnalyzeImage(args) {
     var image = args.image || '';
     if (!image.trim()) return 'Error: image path is required';
 
-    // ★ 优先走主进程 IPC (1 IPC, 零渲染层序列化)
-    if (bridge.ai && bridge.ai.analyze_image) {
-        try { return await bridge.ai.analyze_image(args); } catch (_) { /* fallback */ }
-    }
+    var action = args.action || 'describe';
 
-    // ---- fallback: qz-spawn 直接调 Python ----
-    var appRoot = '';
-    try { appRoot = await bridge.app.root(); } catch (_) { }
-    var scriptPath = (appRoot ? appRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/' : '') + 'engines/wanx_vision.py';
-    var cmdArgs = [scriptPath, '--image', image, '--action', args.action || 'describe'];
-    if (args.detail) { cmdArgs.push('--detail', args.detail); }
-    if (args.targets) { cmdArgs.push('--targets', args.targets); }
-    if (args.question) { cmdArgs.push('--question', args.question); }
+    // ★ 终极架构：全部 AI ──▶ Go ──▶ 阿里
+    var token = '';
+    try {
+        var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+        if (ag && ag._token) token = ag._token;
+    } catch (_) { }
+    if (!token) return 'Error: no auth token';
+
+    var VIS_URL = (typeof VISION_URL !== 'undefined') ? VISION_URL : 'https://direct.gh555.com:8444/api/v3/ai/vision';
 
     try {
-        var result = await bridge.qz.spawn({
-            cmd: 'python',
-            args: ['-u'].concat(cmdArgs),
-            cwd: '',
-            timeout: 60000,
-            stallMs: 60000
+        // 1. 读取图片 → base64
+        var b64Result = await bridge.qz.spawn({
+            cmd: 'bash',
+            args: ['-c', 'base64 -w0 "' + image.replace(/\\/g, '/') + '" 2>/dev/null || base64 "' + image.replace(/\\/g, '/') + '" 2>/dev/null'],
+            timeout: 15000
         });
-        if (result.exitCode !== 0) {
-            var errStr = (result.stdout || '') + (result.stderr || '');
-            return 'Image analysis failed (exit ' + result.exitCode + '): ' + errStr.slice(0, 800);
+        var b64 = (b64Result.stdout || '').replace(/\s/g, '');
+        if (!b64) return 'Error: could not read or encode image: ' + image;
+
+        // 2. 构建问题
+        var question;
+        if (action === 'describe') {
+            var prompts = {
+                'brief': '用一句话描述这张图片的内容。',
+                'standard': '描述这张图片的主要内容、风格和构图。',
+                'detailed': '详细描述这张图片：画面元素、色彩、光影、构图、风格、氛围。'
+            };
+            question = prompts[args.detail] || prompts['standard'];
+        } else if (action === 'locate') {
+            var targets = (args.targets || '').split(',').map(function (t) { return t.trim(); }).filter(Boolean);
+            if (targets.length === 0) return 'Error: --targets required for locate action';
+            var targetsStr = targets.join('、');
+            question = '在这张图片中找到以下物体：' + targetsStr + '。对每个物体，估算它的像素边界框 [x1, y1, x2, y2]。x1,y1 是左上角，x2,y2 是右下角。返回严格的 JSON 数组，格式：[{"label": "物体名", "box": [x1, y1, x2, y2]}]。只返回 JSON，不要任何解释文字。';
+        } else if (action === 'ask') {
+            if (!args.question) return 'Error: --question required for ask action';
+            question = args.question;
+        } else {
+            return 'Error: unknown action: ' + action;
         }
-        var out = (result.stdout || '').trim();
-        try {
-            var parsed = JSON.parse(out);
-            if (parsed.ok) {
-                return JSON.stringify(parsed.data, null, 2);
-            } else {
-                return 'Image analysis error: ' + (parsed.error || out);
+
+        // 3. POST → Go 创建异步视觉任务
+        var postBody = { image: b64, prompt: question, detail: 'high' };
+        var summary = (action === 'ask' ? question : question.slice(0, 60));
+        if (summary) postBody.summary = summary.slice(0, 200);
+        var postResp = await fetch(VIS_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify(postBody)
+        });
+        if (!postResp.ok) {
+            var errText = '';
+            try { errText = await postResp.text(); } catch (_) { }
+            return 'Image analysis failed (HTTP ' + postResp.status + '): ' + errText.slice(0, 300);
+        }
+        var postData = await postResp.json();
+        if (!postData.ok || !postData.task_id) {
+            return 'Image analysis failed: ' + (postData.error || 'unknown error');
+        }
+
+        // 4. SSE stream → 等 Go 返回视觉结果
+        var result = await _waitForTaskStream(VIS_URL + '/' + postData.task_id + '/stream', token);
+        if (!result || result._httpError) {
+            return 'Image analysis stream failed (HTTP ' + (result ? result._httpError : '?') + ')';
+        }
+
+        if (!result || result.status === 'error') {
+            return 'Image analysis failed: ' + (result ? result.error : 'no response');
+        }
+
+        var content = result.description || '';
+        if (!content) return 'Image analysis returned empty result';
+
+        // ★ 累加显示用计费（Go 已权威记账，此处仅 UI 展示）
+        if (result.ge_cost && typeof _addToolGeCost === 'function') {
+            _addToolGeCost(result.ge_cost);
+        }
+
+        // 5. 按 action 处理结果
+        if (action === 'locate') {
+            // 清洗 markdown 围栅
+            var raw = content.trim();
+            if (raw.indexOf('```') === 0) {
+                var mdLines = raw.split('\n');
+                if (mdLines[mdLines.length - 1].indexOf('```') === 0) {
+                    raw = mdLines.slice(1, -1).join('\n');
+                } else {
+                    raw = mdLines.slice(1).join('\n');
+                }
             }
-        } catch (_) {
-            return out.slice(0, 2000);
+            try {
+                var boxes = JSON.parse(raw);
+                return JSON.stringify(boxes, null, 2);
+            } catch (_) {
+                var match = raw.match(/\[[\s\S]*\]/);
+                if (match) {
+                    try {
+                        boxes = JSON.parse(match[0]);
+                        return JSON.stringify(boxes, null, 2);
+                    } catch (_2) { }
+                }
+                return 'Image locate failed: could not parse bounding boxes from response: ' + raw.slice(0, 500);
+            }
         }
+
+        // describe / ask → 直接返回内容
+        return content;
+
     } catch (err) {
         return 'Error running image analysis: ' + (err.message || err);
     }

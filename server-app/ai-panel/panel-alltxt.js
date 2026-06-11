@@ -49,7 +49,7 @@ document.getElementById('rules-edit').onclick = async function () {
 
 function stopStream() {
     if (!_activeAgent || _activeAgent._compressing) return;
-    try { _activeAgent.abort(); } catch (_) { }
+    try { _activeAgent.abort(true); } catch (_) { }  // ★ userKill=true → 看门狗不触发
     if (_activeAgent._activeAiDiv) _activeAgent._activeAiDiv._renderScheduled = false;
     _sending = false;
     setStreaming(false);
@@ -343,6 +343,7 @@ function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
     block._r1 = r1;
 
     var r2 = document.createElement('div'); r2.className = 'msg-a1-r2';
+    r2.style.display = 'none';  // 默认隐藏，有文件变更时才显示
     block._r2a = _a1Num('FILE 0');
     block._r2b = _a1Num('ROW +0 -0');
     r2.appendChild(block._r2a); r2.appendChild(_a1Sp()); r2.appendChild(block._r2b);
@@ -532,9 +533,13 @@ function _updateA1Row2(block, agent, force) {
     if (!force && now - cache.lastTs < 5000 && cache._seenHouses >= houses.length && houses.length > 0) return;
     cache.lastTs = now;
     cache._seenHouses = houses.length;
-    var fs = _computeFileStats(houses);
-    if (fs.fileCount > 0 || fs.added > 0 || fs.deleted > 0) {
+    var fs = _computeFileStats(houses, agent._a4Snapshots);
+    var hasChanges = fs.fileCount > 0 || fs.added > 0 || fs.deleted > 0;
+    if (hasChanges) {
         cache.files = {}; cache.added = fs.added; cache.deleted = fs.deleted;
+    }
+    if (block._r2) {
+        block._r2.style.display = hasChanges ? '' : 'none';
     }
     if (block._r2a) _a1AnimateNum(block._r2a, 'FILE ' + fs.fileCount);
     if (block._r2b) _a1AnimateNum(block._r2b, '   ROW +' + fs.added + ' -' + fs.deleted);

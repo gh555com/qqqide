@@ -155,3 +155,16 @@ const $queueStrip = document.getElementById('queue-strip');
         if (e.data && e.data.type === 'qqq-lang-change') _setGuideTip();
     });
 })();
+
+// ★ 初始网关状态上报 → 父窗口状态栏色点（此时所有脚本已加载完毕）
+(function () {
+    try {
+        if (!window.parent) return;
+        window.parent.postMessage({
+            type: 'qqq-gw-status',
+            panel: _panelId,
+            fallback: (typeof _gwUsingFallback !== 'undefined') ? _gwUsingFallback : false,
+            url: (typeof GATEWAY_URL !== 'undefined') ? GATEWAY_URL : ''
+        }, '*');
+    } catch (_) { }
+})();

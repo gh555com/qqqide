@@ -108,6 +108,11 @@
       <div class="qqq-status-row">
         <span class="qqq-status-item" id="qqq-status-version">v?</span>
         <span class="qqq-status-item" id="qqq-status-engine">engine ?</span>
+        <span class="qqq-gw-dots" id="qqq-gw-dots">
+          <span class="qqq-gw-dot" id="qqq-gw-dot-0" data-panel="0" title="左面板 · 等待连接">●</span>
+          <span class="qqq-gw-dot" id="qqq-gw-dot-1" data-panel="1" title="中面板 · 等待连接">●</span>
+          <span class="qqq-gw-dot" id="qqq-gw-dot-2" data-panel="2" title="右面板 · 等待连接">●</span>
+        </span>
         <span class="qqq-spacer"></span>
         <span class="qqq-status-item" id="qqq-status-clock"></span>
         <span class="qqq-status-item qqq-status-free" id="qqq-status-free" style="display:none">
@@ -244,6 +249,20 @@
       if (dot && !dot.classList.contains('on')) {
         dot.click();
       }
+    }
+    // ★ 网关线路状态指示：iframe 上报 → 更新状态栏色点
+    if (e.data && e.data.type === 'qqq-gw-status' && typeof e.data.panel === 'number') {
+      var gwDot = document.getElementById('qqq-gw-dot-' + e.data.panel);
+      if (!gwDot) return;
+      var names = ['左', '中', '右'];
+      var name = names[e.data.panel] || '';
+      var host = (e.data.url || '').replace('https://','').replace('http://','').split('/')[0];
+      var mode = e.data.fallback ? '备用直连' : 'Worker 主线路';
+      gwDot.className = 'qqq-gw-dot ' + (e.data.fallback ? 'fallback' : 'primary') + ' pulse';
+      gwDot.title = name + '面板 · ' + mode + (host ? ' (' + host + ')' : '');
+      setTimeout(function () {
+        if (gwDot.classList.contains('pulse')) gwDot.classList.remove('pulse');
+      }, 400);
     }
   });
 })();

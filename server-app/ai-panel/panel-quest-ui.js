@@ -150,7 +150,7 @@ async function _ensureQuestDir(root, qName, fName) {
     return { qDir: qDir, fDir: fDir };
 }
 
-// ── 按 q{n}. 前缀搜索已有 quest 目录（不依赖标题，防分裂脑）──
+// ── 按 q{n}. 前缀搜索已有 quest 目录（只匹配编号，不依赖标题）──
 async function _findQuestDirByPrefix(root, questId) {
     var bridge = window.parent && window.parent.qqqideBridge;
     if (!bridge || !bridge.fs) return null;
@@ -166,32 +166,31 @@ async function _findQuestDirByPrefix(root, questId) {
     return null;
 }
 
-// ── 解析 quest 目录名：先按前缀搜索已有目录，找不到才从标题构造 ──
+// ── 解析 quest 目录名：只按 q{n}. 前缀匹配已有目录，不依赖完整标题 ──
+// 多目录时挑第一个，找不到才从标题构造（仅限新 quest 首次创建）
 async function _resolveQuestDirName(root, questId, numericId, title) {
     var existing = await _findQuestDirByPrefix(root, questId);
     if (existing) return existing;
     return _makeName('q', numericId, title);
 }
 
-// ── 惰性修复：若磁盘目录名与 DB 标题不一致，尝试重命名（失败静默，下次再试）──
+// ── 惰性修复：磁盘目录名与 DB 不一致时尝试 rename，失败静默，下次再试 ──
+// 仅当期望名目录不存在时才 rename；若已存在（分裂脑残影）则跳过，不做合并。
 async function _tryRepairQuestDirName(root, questId, numericId, dbTitle) {
     if (!dbTitle) return;
     var bridge = window.parent && window.parent.qqqideBridge;
     if (!bridge || !bridge.fs) return;
+    var questsDir = root + '/qqq/quests/';
     var currentName = await _findQuestDirByPrefix(root, questId);
     if (!currentName) return;
     var expectedName = _makeName('q', numericId, dbTitle);
-    if (currentName === expectedName) return;  // 已一致
-    // 尝试重命名
-    var questsDir = root + '/qqq/quests/';
-    var oldPath = questsDir + currentName;
-    var newPath = questsDir + expectedName;
-    try {
-        await bridge.fs.rename(oldPath, newPath);
-        // [silent] repaired quest dir: currentName → expectedName
-    } catch (_) {
-        // 静默失败，下次 floor 写入时再试
+    if (currentName === expectedName) return;
+    // 期望名不存在 → 尝试重命名
+    try { await bridge.fs.stat(questsDir + expectedName); } catch (_) {
+        try { await bridge.fs.rename(questsDir + currentName, questsDir + expectedName); } catch (_) { }
+        return;
     }
+    // 期望名已存在 → 说明磁盘上有多个同前缀目录，跳过 rename（不做合并）
 }
 
 async function createNewQuest() {
@@ -325,7 +324,7 @@ function _fetchBalanceIfNeeded(force) {
     }
     var token = getToken();
     if (!token) return;
-    fetch('https://gh555.com/api/wallet/balance', {
+    fetch('https://direct.gh555.com:8444/api/wallet/balance', {
         headers: { 'Authorization': 'Bearer ' + token }
     }).then(function (r) { return r.json(); })
         .then(function (data) {
@@ -379,7 +378,7 @@ function estimateTokens() {
         }
         if (ctx.treasures && ctx.treasures.length > 0) {
             var recentT = ctx.treasures.slice(-8);
-            dynText += '\n\nKEY DISCOVERIES:\n' + recentT.map(function(t) {
+            dynText += '\n\nKEY DISCOVERIES:\n' + recentT.map(function (t) {
                 return '💎 ' + (t.content || '') + ' [' + (t.urgency || 'later') + ']';
             }).join('\n');
         }
@@ -450,32 +449,7 @@ $guideBtn.onclick = function () {
         // AI \u6b63\u5728\u5de5\u4f5c\u4e2d \u2192 \u7acb\u5373\u6ce8\u5165 + abort \u5f53\u524d house
         var _aiDiv = _activeAgent._activeAiDiv;
         if (_aiDiv && _aiDiv._contentWrap) {
-            if (_aiDiv._buf && _aiDiv._buf.trim()) {
-                var _cleanBuf = _aiDiv._buf
-                    .replace(/<invoke\s[\s\S]*?<\/invoke>/g, '')
-                    .replace(/<parameter\s[^>]*\/>/g, '')
-                    .replace(/<\/?_tool_calls>/g, '')
-                    .replace(/<\/?qqq_tool_calls>/g, '');
-                if (_cleanBuf.trim()) {
-                    var _stashPara = document.createElement('div');
-                    _stashPara.className = 'stream-para';
-                    _stashPara.innerHTML = renderMarkdown(_cleanBuf);
-                    _aiDiv._contentWrap.appendChild(_stashPara);
-                }
-            }
-            var _existingParas = _aiDiv._contentWrap.querySelectorAll('.stream-para');
-            for (var _ep = 0; _ep < _existingParas.length; _ep++) {
-                var _epEl = _existingParas[_ep];
-                if (_epEl.innerHTML) {
-                    _epEl.innerHTML = _epEl.innerHTML
-                        .replace(/&lt;invoke\s[\s\S]*?&lt;\/invoke&gt;/g, '')
-                        .replace(/&lt;parameter\s[^&]*\/&gt;/g, '')
-                        .replace(/&lt;\/?_tool_calls&gt;/g, '')
-                        .replace(/&lt;\/?qqq_tool_calls&gt;/g, '');
-                }
-                _epEl.classList.remove('stream-para');
-                _epEl.classList.add('stream-para-keep');
-            }
+            // 清空流式缓冲区（onDone 会用 _buildConversationFlowHtml 整体替换 innerHTML）
             _aiDiv._buf = '';
             _aiDiv._fullText = '';
             _aiDiv._paras = [];
@@ -483,16 +457,17 @@ $guideBtn.onclick = function () {
             _aiDiv._renderedCount = 0;
             if (_aiDiv._lastParaEl) { _aiDiv._lastParaEl.remove(); _aiDiv._lastParaEl = null; }
             _aiDiv._guideMode = true;
+            // 引导注入块：与 _buildConversationFlowHtml 输出结构一致，onDone 替换时无视觉跳变
             var guideBlock = document.createElement('div');
-            guideBlock.className = 'msg-guide-ack';
-            guideBlock.style.cssText = 'margin:8px 0;padding:8px 12px;background:rgba(255,107,0,0.08);border-left:3px solid #ff6b00;border-radius:4px;';
-            guideBlock.innerHTML = '<div style="font-size:11px;font-weight:700;color:#ff6b00;margin-bottom:4px;">\u26a1 \u5f15\u5bfc\u4fe1\u606f</div><div style="font-size:13px;">' + escHtml(text) + '</div>';
+            guideBlock.className = 'msg-flow-guide-inject';
+            guideBlock.innerHTML = '<span class="msg-flow-icon">\u26a1</span> ' + escHtml(text);
             _aiDiv._contentWrap.appendChild(guideBlock);
             var marker = document.createElement('div');
-            marker.className = 'msg-status guide-marker';
-            marker.style.cssText = 'color:var(--blue);font-weight:600;padding:8px 0;';
-            marker.textContent = '\u26a1 \u8bf7\u7b49\u5f85 AI \u786e\u8ba4\u5f15\u5bfc...';
+            marker.className = 'msg-flow-guide';
+            marker.style.cssText = 'opacity:0.6;';
+            marker.innerHTML = '<span class="msg-flow-icon">\u23f3</span> \u786e\u8ba4\u4e2d...';
             _aiDiv._contentWrap.appendChild(marker);
+            _aiDiv._guideMarker = marker;  // 供 agent loop 收到回复后更新
         }
         agent.injectGuide(text);
     } else {
@@ -548,13 +523,6 @@ function _triggerQueueSend() {
         : [];
     renderImageStrip();
     $input.value = next.text || next.html || '';
-    var _qStatus = document.createElement('div');
-    _qStatus.className = 'msg msg-status';
-    _qStatus.id = 'queue-sending-status';
-    _qStatus.style.color = 'var(--blue)';
-    _qStatus.textContent = '\ud83d\udcee \u6392\u961f\u53d1\u9001\u4e2d (' + (_remaining + 1) + '/' + _totalBefore + ')';
-    $messages.appendChild(_qStatus);
-    scrollToBottom(true);
     _queueBusy = true;
     setTimeout(function () { sendMessage(); }, 300);
 }

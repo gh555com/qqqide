@@ -299,8 +299,8 @@ function _a4RecordSnapshot(filePath, op, before, after) {
     // Live update A4 UI
     _a4RenderLive(ag);
 
-    // 增量持久化：内容文件立即写盘，元数据延迟刷 SQLite（防崩溃丢失）
-    _a4IncrementalPersist(ag, filePath, before, after);
+    // ★ 实时持久化到新 timeline 存储（SHA256去重 + SQLite）
+    _a4PersistToTimeline(filePath, op, before, after, ag);
 }
 
 // ═══ A4 DOM 创建 + 渲染 ═══
@@ -409,8 +409,36 @@ function _a4RenderLive(ag) {
     block.classList.add('has-files');
 }
 
-// ---- 打开 diff 查看器（发送到父窗口 → git goods timeline tab） ----
+// ---- 打开 diff 查看器（触发独立 BrowserWindow） ----
 function _a4OpenDiff(snap) {
+    // 新方式：通过 IPC 打开独立 BrowserWindow
+    var bridge = _getBridge();
+    if (bridge && bridge.timeline && typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
+        var root = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');
+        // 异步记录 before/after 并获取 blob hash，然后打开 diff 窗口
+        (async function () {
+            var beforeHash = null, afterHash = null;
+            try {
+                if (snap.before !== null && snap.before !== undefined) {
+                    var bRec = await bridge.timeline.record({ projectRoot: root, filePath: snap.path, content: snap.before, source: 'ai-edit', floorId: null });
+                    if (bRec && bRec.ok) beforeHash = bRec.blob_hash;
+                }
+                if (snap.after !== null && snap.after !== undefined) {
+                    var aRec = await bridge.timeline.record({ projectRoot: root, filePath: snap.path, content: snap.after, source: 'ai-edit', floorId: null });
+                    if (aRec && aRec.ok) afterHash = aRec.blob_hash;
+                }
+            } catch (_) { }
+            try {
+                await bridge.timeline.openDiffWindow({
+                    filePath: snap.path,
+                    projectRoot: root,
+                    beforeBlobHash: beforeHash || undefined,
+                    afterBlobHash: afterHash || undefined
+                });
+            } catch (_) { }
+        })();
+    }
+    // 兼容：仍然发消息给父窗口（保留旧路径作为 fallback）
     _postToHost({
         type: 'qqq-a4-open-diff',
         path: snap.path,
@@ -422,8 +450,9 @@ function _a4OpenDiff(snap) {
     });
 }
 
-// ═══ 快照持久化：floor 完成时写入文件系统 + 元数据入 floor payload ═══
-
+// ═══ 快照持久化：floor 完成时写入 timeline 存储 + 元数据入 floor payload ═══
+// 新架构：内容走 timeline.record（SHA256去重+gzip+SQLite）
+// 旧文件系统写入已废弃，仅保留元数据用于 floor payload
 // 由 panel-floor.js 的 _finalizeFloor 调用（或 panel-send.js 的 saveFloor）
 async function _a4PersistSnapshots(ag, questNumericId, floorNum) {
     if (!ag || !ag._a4Snapshots) return null;
@@ -431,13 +460,15 @@ async function _a4PersistSnapshots(ag, questNumericId, floorNum) {
     var paths = Object.keys(snaps);
     if (paths.length === 0) return null;
 
-    var dir = _a4SnapshotDir(questNumericId, floorNum);
+    var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
+        ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
     var bridge = getBridge();
     var metadata = [];
 
     for (var i = 0; i < paths.length; i++) {
         var snap = snaps[paths[i]];
-        var hash = _a4PathHash(snap.path);
+        var floorId = questNumericId ? ('q' + questNumericId + '/f' + floorNum) : null;
+        var hashVal = _a4PathHash(snap.path); // 保留兼容旧文件系统快照
         var meta = {
             path: snap.path,
             op: snap.op,
@@ -445,28 +476,52 @@ async function _a4PersistSnapshots(ag, questNumericId, floorNum) {
             deleted: snap.deleted,
             ts: snap.ts,
             count: snap.count,
-            hash: hash
+            hash: hashVal
         };
-        metadata.push(meta);
 
-        // Write content files (async, best-effort, compressed)
-        if (dir && bridge && bridge.fs) {
+        // ★ 新路径：通过 timeline.record 持久化到 SHA256去重存储
+        if (root && bridge && bridge.timeline) {
             try {
-                if (snap.before !== null && snap.before !== undefined) {
-                    var compBefore = A4_COMPRESS ? await _a4Gzip(snap.before) : snap.before;
-                    await bridge.fs.write(dir + hash + '.before', compBefore);
-                }
                 if (snap.after !== null && snap.after !== undefined) {
-                    var compAfter = A4_COMPRESS ? await _a4Gzip(snap.after) : snap.after;
-                    await bridge.fs.write(dir + hash + '.after', compAfter);
+                    var rec = await bridge.timeline.record({
+                        projectRoot: root,
+                        filePath: snap.path,
+                        content: snap.after,
+                        source: 'ai-edit',
+                        floorId: floorId
+                    });
+                    if (rec && rec.ok) meta.blob_hash = rec.blob_hash;
                 }
-                // Write path mapping
-                await bridge.fs.write(dir + hash + '.meta', JSON.stringify(meta));
+                if (snap.before !== null && snap.before !== undefined && snap.before !== snap.after) {
+                    await bridge.timeline.record({
+                        projectRoot: root,
+                        filePath: snap.path,
+                        content: snap.before,
+                        source: 'ai-edit',
+                        floorId: floorId
+                    });
+                }
             } catch (_) { /* best effort */ }
         }
+
+        metadata.push(meta);
     }
 
     return metadata;
+}
+
+// ★ 实时持久化单次快照到 timeline（在 _a4RecordSnapshot 中调用）
+async function _a4PersistToTimeline(filePath, op, before, after, ag) {
+    var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
+        ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
+    if (!root) return;
+    var bridge = getBridge();
+    if (!bridge || !bridge.timeline) return;
+    try {
+        if (after !== null && after !== undefined) {
+            await bridge.timeline.record({ projectRoot: root, filePath: filePath, content: after, source: 'ai-edit' });
+        }
+    } catch (_) { }
 }
 
 // ═══ 历史楼层 A4 恢复（从 floor payload 的 a4Snapshots 渲染） ═══
@@ -521,10 +576,26 @@ function _a4RestoreBlock(aiDiv, a4Meta, questNumericId, floorNum) {
     block.classList.add('has-files');
 }
 
-// ---- 历史楼层 diff：从快照文件加载 before/after 并发送到父窗口 ----
+// ---- 历史楼层 diff：尝试新 BrowserWindow 路径 + 旧文件系统 fallback ----
 async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum) {
-    var dir = _a4SnapshotDir(questNumericId, floorNum);
     var bridge = getBridge();
+    var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
+        ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
+
+    // ★ 优先尝试新路径：通过 timeline.openDiffWindow 打开 BrowserWindow
+    if (root && bridge && bridge.timeline && meta.blob_hash) {
+        try {
+            await bridge.timeline.openDiffWindow({
+                filePath: meta.path,
+                projectRoot: root,
+                afterBlobHash: meta.blob_hash
+            });
+            return; // 新路径成功
+        } catch (_) { }
+    }
+
+    // Fallback: 旧文件系统快照路径
+    var dir = _a4SnapshotDir(questNumericId, floorNum);
     var before = null, after = null;
 
     if (dir && bridge && bridge.fs) {

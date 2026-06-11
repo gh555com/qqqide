@@ -13,6 +13,8 @@ const portable = applyPortablePaths();
 import { app, BrowserWindow, ipcMain, dialog, shell as electronShell, session, protocol, nativeTheme, globalShortcut, screen } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
+import * as zlib from 'zlib';
 import { execFile } from 'child_process';
 import * as os from 'os';
 import * as http from 'http';
@@ -49,6 +51,132 @@ app.commandLine.appendSwitch('disable-features', 'ForcedColors,AutoDarkMode');
 // ----------------------------------------------------------------------------
 const APP_VERSION = '0.0.2';
 const DEFAULT_REMOTE_URL = 'http://127.0.0.1:8090/qqq-app/';
+
+// ============================================================================
+// Timeline 引擎 — 文件版本时间线存储 (SHA256去重 + gzip + SQLite索引)
+// 存储: {projectRoot}/qqq/timeline/
+//   blobs/{sha256[:2]}/{sha256}.gz  — 内容（不可变）
+//   timeline.db                       — SQLite 版本索引
+// ============================================================================
+
+const _timelineDbs: Map<string, any> = new Map(); // projectRoot → sql.js Database
+
+function _tlDir(projectRoot: string): string {
+    return path.join(projectRoot, 'qqq', 'timeline');
+}
+
+function _tlBlobPath(projectRoot: string, sha256: string): string {
+    return path.join(_tlDir(projectRoot), 'blobs', sha256.slice(0, 2), sha256 + '.gz');
+}
+
+/** 打开或创建 timeline SQLite 数据库 */
+async function _tlOpenDb(projectRoot: string): Promise<any> {
+    const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
+    let db = _timelineDbs.get(dbPath);
+    if (db) return db;
+    try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch (_) { }
+    const initSqlJs = require('sql.js');
+    const SQL = await initSqlJs();
+    if (fs.existsSync(dbPath)) {
+        try {
+            const buf = fs.readFileSync(dbPath);
+            db = new SQL.Database(buf);
+        } catch (e) {
+            console.warn('[timeline] corrupt db, starting fresh:', e);
+            try { fs.renameSync(dbPath, dbPath + '.corrupt.' + Date.now()); } catch (_) { }
+            db = new SQL.Database();
+        }
+    } else {
+        db = new SQL.Database();
+    }
+    db.run(`CREATE TABLE IF NOT EXISTS versions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_path TEXT NOT NULL,
+        ts INTEGER NOT NULL,
+        blob_hash TEXT NOT NULL,
+        source TEXT NOT NULL,
+        floor_id TEXT
+    )`);
+    db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_ts ON versions(file_path, ts)');
+    db.run('PRAGMA journal_mode=WAL');
+    db.run('PRAGMA synchronous=FULL');
+    db.run('PRAGMA busy_timeout=30000');
+    _timelineDbs.set(dbPath, db);
+    // 清理历史孤儿 tmp（纯收益，零风险）
+    _tlCleanStaleTmp(projectRoot);
+    return db;
+}
+
+function _tlFlushDb(db: any, dbPath: string): void {
+    try {
+        const data = db.export();
+        const tmp = dbPath + '.tmp.' + Date.now();
+        fs.writeFileSync(tmp, Buffer.from(data));
+        fs.renameSync(tmp, dbPath);
+    } catch (e) {
+        console.warn('[timeline] flush failed:', e);
+    }
+}
+
+/** SHA256 hex (64 chars) */
+function _sha256(content: string): string {
+    return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+}
+
+/** Gzip 压缩内容，返回 Buffer */
+function _gzipSync(content: string): Buffer {
+    return zlib.gzipSync(Buffer.from(content, 'utf8'), { level: 6 });
+}
+
+/** Gunzip 解压，返回 string */
+function _gunzipSync(buf: Buffer): string {
+    return zlib.gunzipSync(buf).toString('utf8');
+}
+
+/** 原子写入 blob（tmp + rename） */
+function _tlWriteBlob(projectRoot: string, sha256: string, gzBuf: Buffer): void {
+    const blobPath = _tlBlobPath(projectRoot, sha256);
+    const dir = path.dirname(blobPath);
+    try { fs.mkdirSync(dir, { recursive: true }); } catch (_) { }
+    // 如果已存在，跳过（相同内容不可变）
+    if (fs.existsSync(blobPath)) return;
+    const tmp = blobPath + '.tmp.' + Date.now();
+    fs.writeFileSync(tmp, gzBuf);
+    fs.renameSync(tmp, blobPath);
+}
+
+/** 清理孤儿 tmp 文件（进程崩溃遗孤，不影响功能但占磁盘） */
+function _tlCleanStaleTmp(projectRoot: string): void {
+    const blobsDir = path.join(_tlDir(projectRoot), 'blobs');
+    try {
+        if (!fs.existsSync(blobsDir)) return;
+        _tlCleanTmpRecursive(blobsDir);
+    } catch (_) { }
+    // 也清理 timeline.db 的 tmp
+    const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
+    try {
+        const dbDir = path.dirname(dbPath);
+        const files = fs.readdirSync(dbDir);
+        for (const f of files) {
+            if (f.startsWith('timeline.db') && f.includes('.tmp.')) {
+                try { fs.unlinkSync(path.join(dbDir, f)); } catch (_) { }
+            }
+        }
+    } catch (_) { }
+}
+
+function _tlCleanTmpRecursive(dir: string): void {
+    var entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (var i = 0; i < entries.length; i++) {
+        var ent = entries[i];
+        var fullPath = path.join(dir, ent.name);
+        if (ent.isDirectory()) {
+            _tlCleanTmpRecursive(fullPath);
+        } else if (ent.name.includes('.tmp.')) {
+            try { fs.unlinkSync(fullPath); } catch (_) { }
+        }
+    }
+}
 
 // ----------------------------------------------------------------------------
 // Boot configuration: read app-dir-local config.json (NEVER touches AppData)
@@ -1645,15 +1773,29 @@ function registerIpc(): void {
         });
     });
 
-    // generate_image — 通义万相文生图 (1 IPC → Python sidecar)
+    // Python 路径：优先 engines/python/，其次系统 PATH
+    const _pythonExe = (() => {
+        const bundled = path.join(portable.root, 'engines', 'python', 'python.exe');
+        if (fs.existsSync(bundled)) return bundled;
+        // 开发机 fallback
+        const devPy = 'E:\\s\\d\\python3810\\python.exe';
+        if (fs.existsSync(devPy)) return devPy;
+        return 'python';  // 最后赌系统 PATH
+    })();
+
+    // generate_image — 通义万相文生图 (1 IPC → Python sidecar, 含缓存+进度)
     ipcMain.handle('qqqide:ai:generate_image', async (_e, args: { prompt: string; style?: string; size?: string; n?: number; out_dir?: string }) => {
         const script = path.join(portable.root, 'engines', 'wanx_gen.py');
-        const cmdArgs = ['-u', script, '--prompt', args.prompt, '--size', args.size || '1024*1024'];
+        const cmdArgs = ['-u', script, '--prompt', args.prompt, '--size', args.size || '1024*1024', '--verbose'];
         if (args.style) { cmdArgs.push('--style', args.style); }
         if (args.n) { cmdArgs.push('--n', String(args.n)); }
         if (args.out_dir) { cmdArgs.push('--out-dir', args.out_dir); }
         return new Promise((resolve) => {
-            execFile('python', cmdArgs, { timeout: 300000, maxBuffer: 65536 }, (err, stdout, stderr) => {
+            execFile(_pythonExe, cmdArgs, { timeout: 300000, maxBuffer: 65536 }, (err, stdout, stderr) => {
+                // 进度日志输出到控制台（stderr）
+                if (stderr && stderr.trim()) {
+                    console.log('[wanx]', stderr.trim().replace(/\n/g, '\n[wanx] '));
+                }
                 if (err) {
                     resolve('Image generation failed (exit ' + (err as any).code + '): ' + ((stdout || '') + (stderr || '')).slice(0, 800));
                     return;
@@ -1662,7 +1804,10 @@ function registerIpc(): void {
                 try {
                     const parsed = JSON.parse(out);
                     if (parsed.ok && parsed.paths) {
-                        resolve('Generated ' + parsed.paths.length + ' image(s):\n' + parsed.paths.map((p: string, i: number) => '  ' + (i + 1) + '. ' + p).join('\n'));
+                        const prefix = parsed.cached
+                            ? '[cache hit] Generated '
+                            : '[generated in ' + (parsed.elapsed || '?') + 's, ' + (parsed.polls || '?') + ' polls] Generated ';
+                        resolve(prefix + parsed.paths.length + ' image(s):\n' + parsed.paths.map((p: string, i: number) => '  ' + (i + 1) + '. ' + p).join('\n'));
                     } else {
                         resolve('Image generation error: ' + (parsed.error || out));
                     }
@@ -1681,7 +1826,7 @@ function registerIpc(): void {
         if (args.targets) { cmdArgs.push('--targets', args.targets); }
         if (args.question) { cmdArgs.push('--question', args.question); }
         return new Promise((resolve) => {
-            execFile('python', cmdArgs, { timeout: 60000, maxBuffer: 65536 }, (err, stdout, stderr) => {
+            execFile(_pythonExe, cmdArgs, { timeout: 60000, maxBuffer: 65536 }, (err, stdout, stderr) => {
                 if (err) {
                     resolve('Image analysis failed (exit ' + (err as any).code + '): ' + ((stdout || '') + (stderr || '')).slice(0, 800));
                     return;
@@ -2212,6 +2357,140 @@ function registerIpc(): void {
             try { win.webContents.send('qqqide:sync:message', channel, data); } catch { /* ignore */ }
         }
     });
+
+    // ═══ Timeline: 记录一个版本快照 ═══
+    ipcMain.handle('qqqide:timeline:record', async (_e, args: { projectRoot: string; filePath: string; content: string; source: string; floorId?: string }) => {
+        try {
+            const { projectRoot, filePath, content, source, floorId } = args;
+            if (!projectRoot || !filePath || content === undefined || content === null) return { ok: false, error: 'missing args' };
+            const normalizedPath = filePath.replace(/\\/g, '/');
+            const sha = _sha256(content);
+            const db = await _tlOpenDb(projectRoot);
+            const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
+            // 去重：相同 (file_path, blob_hash) 不重复插入
+            const stmt = db.prepare('SELECT id FROM versions WHERE file_path = ? AND blob_hash = ?');
+            stmt.bind([normalizedPath, sha]);
+            const hasExisting = stmt.step();
+            stmt.free();
+            if (hasExisting) {
+                return { ok: true, dedup: true, blob_hash: sha };
+            }
+            // 先写 blob（不可变，原子写）
+            const blobPath = _tlBlobPath(projectRoot, sha);
+            if (!fs.existsSync(blobPath)) {
+                const gzBuf = _gzipSync(content);
+                _tlWriteBlob(projectRoot, sha, gzBuf);
+            }
+            // 再写索引
+            const ts = Date.now();
+            db.run('INSERT INTO versions (file_path, ts, blob_hash, source, floor_id) VALUES (?,?,?,?,?)',
+                [normalizedPath, ts, sha, source, floorId || null]);
+            _tlFlushDb(db, dbPath);
+            return { ok: true, blob_hash: sha, ts };
+        } catch (err: any) {
+            console.error('[timeline:record]', err);
+            return { ok: false, error: err.message };
+        }
+    });
+
+    // ═══ Timeline: 列出某文件所有版本 ═══
+    ipcMain.handle('qqqide:timeline:versions', async (_e, args: { projectRoot: string; filePath: string }) => {
+        try {
+            const { projectRoot, filePath } = args;
+            if (!projectRoot || !filePath) return [];
+            const normalizedPath = filePath.replace(/\\/g, '/');
+            const db = await _tlOpenDb(projectRoot);
+            const stmt2 = db.prepare('SELECT id, ts, blob_hash, source, floor_id FROM versions WHERE file_path = ? ORDER BY ts ASC');
+            stmt2.bind([normalizedPath]);
+            var versionRows = [];
+            while (stmt2.step()) {
+                var row = stmt2.getAsObject();
+                versionRows.push({
+                    id: row.id, ts: row.ts, blob_hash: row.blob_hash, source: row.source, floor_id: row.floor_id
+                });
+            }
+            stmt2.free();
+            return versionRows;
+        } catch (err: any) {
+            console.error('[timeline:versions]', err);
+            return [];
+        }
+    });
+
+    // ═══ Timeline: 获取某个版本的内容 ═══
+    ipcMain.handle('qqqide:timeline:content', async (_e, args: { projectRoot: string; blobHash: string }) => {
+        try {
+            const { projectRoot, blobHash } = args;
+            if (!projectRoot || !blobHash) return null;
+            const blobPath = _tlBlobPath(projectRoot, blobHash);
+            if (!fs.existsSync(blobPath)) return null;
+            const gzBuf = fs.readFileSync(blobPath);
+            return _gunzipSync(gzBuf);
+        } catch (err: any) {
+            console.error('[timeline:content]', err);
+            return null;
+        }
+    });
+
+    // ═══ Timeline: 获取文件 mtime + size（给 last 打时间戳） ═══
+    ipcMain.handle('qqqide:timeline:stat', async (_e, filePath: string) => {
+        try {
+            const st = fs.statSync(filePath);
+            return { mtimeMs: st.mtimeMs, size: st.size };
+        } catch (_) {
+            return null;
+        }
+    });
+
+    // ═══ Timeline: 读取文件最新内容（给 last 用） ═══
+    ipcMain.handle('qqqide:timeline:readCurrent', async (_e, filePath: string) => {
+        try {
+            return fs.readFileSync(filePath, 'utf8');
+        } catch (_) {
+            return null;
+        }
+    });
+
+    // ═══ 打开 Timeline Diff 独立 BrowserWindow ═══
+    ipcMain.handle('qqqide:open-diff-window', async (e, args: { filePath: string; beforeBlobHash?: string; afterBlobHash?: string; projectRoot: string }) => {
+        const { filePath, beforeBlobHash, afterBlobHash, projectRoot } = args;
+        const senderWin = BrowserWindow.fromWebContents(e.sender);
+        const diffWin = new BrowserWindow({
+            width: 1200,
+            height: 700,
+            minWidth: 600,
+            minHeight: 400,
+            frame: false,
+            title: 'Timeline Diff — ' + (filePath.split(/[\\/]/).pop() || filePath),
+            backgroundColor: '#1e1e1e',
+            parent: senderWin || undefined,
+            modal: false,
+            resizable: true,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+                sandbox: false,
+                webSecurity: false,
+                additionalArguments: [
+                    `--qqqide-root=${portable.root}`,
+                    `--qqqide-version=${APP_VERSION}`,
+                ],
+            },
+        });
+        diffWin.removeMenu();
+        // 确保 URL 拼接安全（bootConfig.url 可能无尾部斜杠）
+        const baseUrl = bootConfig.url.replace(/\/*$/, '/');
+        const diffUrl = baseUrl + 'timeline/diff-window.html' +
+            '?path=' + encodeURIComponent(filePath) +
+            '&projectRoot=' + encodeURIComponent(projectRoot) +
+            (beforeBlobHash ? '&before=' + encodeURIComponent(beforeBlobHash) : '') +
+            (afterBlobHash ? '&after=' + encodeURIComponent(afterBlobHash) : '');
+        diffWin.loadURL(diffUrl).catch(err => {
+            console.warn('[diff-window] loadURL failed:', err && err.message);
+        });
+        return { ok: true, windowId: diffWin.id };
+    });
 }
 
 // ----------------------------------------------------------------------------
@@ -2321,6 +2600,10 @@ function _flushStateSync(reason: string): void {
         }
         for (const [dbPath, pss] of _projectStateStores) {
             try { pss.flushSync(); } catch (e2) { console.warn('[project-state] flushSync failed for', dbPath, e2); }
+        }
+        // 刷新所有 timeline DB
+        for (const [dbPath, db] of _timelineDbs) {
+            try { _tlFlushDb(db, dbPath); } catch (e2) { console.warn('[timeline] flushSync failed for', dbPath, e2); }
         }
     } catch (e) {
         console.warn('[state] flushSync failed:', e);

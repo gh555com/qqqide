@@ -36,8 +36,37 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-tofu:hover{background:var(--background-color)}
 [data-theme="dark"] .quest-tofu:hover{background:#3f3830}
 .quest-tofu-text{overflow:hidden;text-overflow:ellipsis;flex:1;color:var(--text-primary)}
+.quest-tofu-prefix{flex:none;color:#e8a030;position:relative}
+/* ── 彗星环绕动画（quest 运行时围绕编号旋转）── */
+@keyframes comet-orbit-a{0%{transform:translate(-50%,-50%) rotate(0deg) translateX(18px) rotate(0deg)}100%{transform:translate(-50%,-50%) rotate(360deg) translateX(18px) rotate(-360deg)}}
+@keyframes comet-orbit-b{0%{transform:translate(-50%,-50%) rotate(0deg) translateX(14px) rotate(0deg)}100%{transform:translate(-50%,-50%) rotate(-360deg) translateX(14px) rotate(360deg)}}
+.quest-running .quest-tofu-prefix::before,
+.quest-running .quest-tofu-prefix::after,
+.quest-drop-item.running .quest-drop-prefix::before,
+.quest-drop-item.running .quest-drop-prefix::after{
+  content:'';position:absolute;top:50%;left:50%;
+  width:4px;height:4px;border-radius:50%;
+  pointer-events:none;z-index:-1;
+}
+.quest-running .quest-tofu-prefix::before,
+.quest-drop-item.running .quest-drop-prefix::before{
+  background:#e8a030;box-shadow:0 0 6px 2px #e8a030, 0 0 12px 4px rgba(232,160,48,.6);
+  animation:comet-orbit-a 1.2s linear infinite;
+}
+.quest-running .quest-tofu-prefix::after,
+.quest-drop-item.running .quest-drop-prefix::after{
+  background:#ff6b00;box-shadow:0 0 4px 2px #ff6b00, 0 0 8px 3px rgba(255,107,0,.5);
+  animation:comet-orbit-b 1.6s linear infinite;
+}
+.quest-running .quest-tofu-prefix{z-index:1}
 /* 白纸面板第一行 "~ New quest ~" 样式 */
 .quest-tofu-new .quest-tofu-text{color:var(--base01);font-style:italic;text-align:center}
+/* 豆腐块内联编辑 */
+.quest-tofu-edit{flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--text-primary);font-size:22px;font-weight:700;font-family:inherit;padding:0;margin:0}
+.quest-tofu-pen{flex:none;align-self:stretch;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:0;cursor:pointer;padding:0 14px;margin-right:-14px;transition:opacity .15s,background .15s;line-height:1}
+.quest-tofu-pen:hover{opacity:1!important;background:rgba(232,160,48,0.25)}
+[data-theme="dark"] .quest-tofu-pen:hover{background:rgba(232,160,48,0.30)}
+.quest-tofu:hover .quest-tofu-pen{opacity:.45}
 /* ── 面板焦点：q2 豆腐块背景变金，文字极致高对比 ── */
 .quest-tofu-focused{background:#e8a030!important;color:#000!important}
 .quest-tofu-focused .quest-tofu-text{color:#000!important}
@@ -66,13 +95,15 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-drop-search::placeholder{color:var(--base01);opacity:.6}
 [data-theme="dark"] .quest-drop-search::placeholder{color:#7a7670}
 /* 下拉条目 */
-.quest-drop-item{padding:6px 12px;font-size:16px;color:var(--text-primary);white-space:normal;overflow:hidden;cursor:default;line-height:1.3;max-height:calc(1.3em * 2 + 12px)}
-.quest-drop-line{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.quest-drop-item{padding:6px 12px;font-size:16px;color:var(--text-primary);white-space:normal;overflow:hidden;cursor:default;line-height:1.45;max-height:calc(1.45em * 2 + 14px);margin-bottom:4px}
+.quest-drop-item:last-child{margin-bottom:0}
+.quest-drop-line{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;text-overflow:ellipsis}
 .quest-drop-item:hover{background:var(--background-color)}
 [data-theme="dark"] .quest-drop-item:hover{background:#3f3830}
 .quest-drop-item.active{font-weight:700;color:var(--primary-color)}
+.quest-drop-item.running{overflow:visible}
 /* 下拉前缀 qN. — 加大两号 + 显著色 */
-.quest-drop-prefix{font-size:20px;color:#e8a030}
+.quest-drop-prefix{font-size:20px;color:#e8a030;position:relative}
 [data-theme="dark"] .quest-drop-prefix{color:#e8a030}
 .quest-drop-title{font-size:16px}
 /* 下拉列表体：滚动由父容器 .quest-drop 统一管理，头部粘滞 */
@@ -353,7 +384,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 <div id="quest-bar">
   <!-- 第一行：招牌行 -->
   <div class="quest-tofu" id="quest-tofu">
+    <span class="quest-tofu-prefix" id="quest-tofu-prefix"></span>
     <span class="quest-tofu-text" id="quest-tofu-text">─</span>
+    <input class="quest-tofu-edit" id="quest-tofu-edit" type="text" style="display:none">
+    <span class="quest-tofu-pen" id="quest-tofu-pen" title="编辑名称" style="display:none">✏️</span>
   </div>
   <!-- q2x 行已删除：统一走 dropdown 头行（hover q2 才出现） -->
 </div>

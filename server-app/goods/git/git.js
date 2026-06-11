@@ -87,7 +87,50 @@
     }
 
     function _openTimelineDiff(data) {
-        // Ensure timeline tab is open
+        // ★ 新路径：尝试通过 IPC 打开独立 BrowserWindow
+        var bridge = window.qqqideBridge;
+        if (bridge && bridge.timeline && bridge.timeline.openDiffWindow) {
+            (async function () {
+                try {
+                    // 获取 projectRoot
+                    var projectRoot = '';
+                    try {
+                        var pp = await bridge.sync.getProjectPath();
+                        if (pp) projectRoot = pp;
+                    } catch (_) { }
+                    if (!projectRoot && typeof window._workspaceRoot !== 'undefined') {
+                        projectRoot = window._workspaceRoot;
+                    }
+                    if (!projectRoot) {
+                        // 从文件路径推导
+                        var p = data.path.replace(/\\/g, '/');
+                        // 简单 fallback: 走旧路径
+                    }
+                    if (projectRoot) {
+                        // 记录 before/after 并获取 blob hash
+                        var beforeHash = null, afterHash = null;
+                        if (data.before !== null && data.before !== undefined) {
+                            var bRec = await bridge.timeline.record({ projectRoot: projectRoot, filePath: data.path, content: data.before, source: 'ai-edit' });
+                            if (bRec && bRec.ok) beforeHash = bRec.blob_hash;
+                        }
+                        if (data.after !== null && data.after !== undefined) {
+                            var aRec = await bridge.timeline.record({ projectRoot: projectRoot, filePath: data.path, content: data.after, source: 'ai-edit' });
+                            if (aRec && aRec.ok) afterHash = aRec.blob_hash;
+                        }
+                        await bridge.timeline.openDiffWindow({
+                            filePath: data.path,
+                            projectRoot: projectRoot,
+                            beforeBlobHash: beforeHash || undefined,
+                            afterBlobHash: afterHash || undefined
+                        });
+                        return; // 新路径成功，不走旧路径
+                    }
+                } catch (_) { }
+            })();
+            return; // 异步进行中，不阻塞
+        }
+
+        // Fallback: 旧路径 X区 tab（保留兼容）
         if (window.qqqTabs) {
             window.qqqTabs.addGaeaTab('timeline', '⏱ Timeline', function (pane) {
                 pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';

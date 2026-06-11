@@ -53,9 +53,14 @@ function renderMarkdown(src) {
             '<span class="table-view-btn" onclick="viewTable(' + tblId + ')">▶ 展开</span>' +
             '<div class="table-inner">' + rawTable + '</div></div>';
     });
-    // Lists
+    // Lists: 先转 <li>，再用占位符保护整个 <ul> 块，防止后续 <br> 和 <p> 破坏列表间距
     s = s.replace(/^[*\-+] (.+)$/gm, '<li>$1</li>');
-    s = s.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+    var listBlocks = [];
+    s = s.replace(/((?:<li>.*<\/li>\n?)+)/g, function (_, block) {
+        var idx = listBlocks.length;
+        listBlocks.push('<ul>' + block.replace(/\n/g, '') + '</ul>');
+        return '\x00UL' + idx + '\x00';
+    });
     // Blockquote
     s = s.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
     // Paragraphs
@@ -64,6 +69,9 @@ function renderMarkdown(src) {
     s = s.replace(/<p><\/p>/g, '');
     // Line breaks
     s = s.replace(/\n/g, '<br>');
+    // Restore list blocks（去掉包裹它们的 <p> 标签，<ul> 不能在 <p> 内）
+    s = s.replace(/<p>\x00UL(\d+)\x00<\/p>/g, function (_, i) { return listBlocks[+i]; });
+    s = s.replace(/\x00UL(\d+)\x00/g, function (_, i) { return listBlocks[+i]; });
     return s;
 }
 function escHtml(s) {
@@ -263,4 +271,10 @@ function setStreaming(val) {
     $sendBtn.textContent = val ? 'Stop' : 'Send';
     $sendBtn.className = val ? 'stop' : '';
     updateQueueBtn();
+    // 彗星环绕：streaming 时点亮 tofu 编号
+    var tofu = document.getElementById('quest-tofu');
+    if (tofu) {
+        if (val) tofu.classList.add('quest-running');
+        else tofu.classList.remove('quest-running');
+    }
 }
