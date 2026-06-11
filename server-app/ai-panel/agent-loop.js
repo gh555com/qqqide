@@ -1031,13 +1031,26 @@ var AgentLoop = (function () {
         }
 
         // 语言检测已移至 a1 审计按钮（后翻译方案），此处不再强制注入语言指令
+        // ★ 计费摘要提示（geflow 展开时区分每间 house，Go 优先使用此字段）
+        var summaryHint = '';
+        if (self._houseIndex <= 1) {
+            summaryHint = '用户提问';
+        } else {
+            var _lh = self._houses[self._houses.length - 1];
+            if (_lh && _lh.type === 'tools' && _lh.tools && _lh.tools.length > 0) {
+                summaryHint = '工具: ' + _lh.tools.map(function (t) { return t.name; }).join(', ');
+            } else if (_lh && _lh.type === 'guide_ack') {
+                summaryHint = '引导确认';
+            }
+        }
         var body = {
             model: tier.model || 'pro',
             messages: apiMessages,
             stream: true,
             stream_options: { include_usage: true },
             max_tokens: tier.maxTokens || ContentGateway.MAX_RESPONSE_TOKENS,
-            floor_id: self._floorId
+            floor_id: self._floorId,
+            summary_hint: summaryHint
         };
 
         if (!noTools && typeof getTools === 'function') {
