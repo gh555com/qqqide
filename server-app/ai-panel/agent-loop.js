@@ -1038,10 +1038,9 @@ var AgentLoop = (function () {
 
         // 语言检测已移至 a1 审计按钮（后翻译方案），此处不再强制注入语言指令
         // ★ 计费摘要提示（geflow 展开时区分每间 house，Go 优先使用此字段）
+        // ★ 第一间 house 不设 hint → Go 自动提取用户原文，比"用户提问"有意义得多
         var summaryHint = '';
-        if (self._houseIndex <= 1) {
-            summaryHint = '用户提问';
-        } else {
+        if (self._houseIndex > 1) {
             var _lh = self._houses[self._houses.length - 1];
             if (_lh && _lh.type === 'tools' && _lh.tools && _lh.tools.length > 0) {
                 summaryHint = '工具: ' + _lh.tools.map(function (t) { return t.name; }).join(', ');
