@@ -1343,6 +1343,11 @@
             const editorMount = document.createElement('div');
             editorMount.style.cssText = 'position:absolute; inset:0;';
             pane.appendChild(editorMount);
+            // Binary guard: prevent freeze on mp3/mp4/exe etc.
+            if (window.qqqEditor && window.qqqEditor.isBinaryFile && window.qqqEditor.isBinaryFile(filePath)) {
+              if (window.qqqideQoast) window.qqqideQoast.show('\u274C \u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u65E0\u6CD5\u5728\u7F16\u8F91\u5668\u4E2D\u6253\u5F00', { duration: 4000 });
+              return;
+            }
             // Read and display file
             bridge.fs.read(filePath).then(content => {
               var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
@@ -1366,6 +1371,11 @@
         editorMount.style.cssText = 'position:absolute; inset:0;';
         pane.appendChild(editorMount);
         var _search = window._nextSearch; window._nextSearch = null;
+        // Binary guard: prevent freeze on mp3/mp4/exe etc.
+        if (window.qqqEditor && window.qqqEditor.isBinaryFile && window.qqqEditor.isBinaryFile(filePath)) {
+          if (window.qqqideQoast) window.qqqideQoast.show('\u274C \u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u65E0\u6CD5\u5728\u7F16\u8F91\u5668\u4E2D\u6253\u5F00', { duration: 4000 });
+          return;
+        }
         bridge.fs.read(filePath).then(content => {
           var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
           window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts).then(function (ed) {

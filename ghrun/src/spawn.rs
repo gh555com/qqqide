@@ -23,8 +23,10 @@ use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt as _;
 #[cfg(windows)]
-use std::os::windows::{process::CommandExt, io::AsRawHandle};
+use std::os::windows::{process::CommandExt as _, io::AsRawHandle};
 #[cfg(windows)]
 struct JobHandle(isize);
 #[cfg(windows)]
@@ -35,8 +37,6 @@ impl Drop for JobHandle {
         }
     }
 }
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
 
 #[cfg(windows)]
 const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
@@ -221,6 +221,30 @@ pub fn run() -> Result<(), String> {
     cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
     #[cfg(unix)]
     cmd.process_group(0);
+
+    // ── Linux/macOS memory limit via setrlimit(RLIMIT_AS) in pre_exec ──
+    // Equivalent to Windows Job Object's process_memory_limit.
+    // RLIMIT_AS limits virtual address space (≈ RSS + swap). Inherited by fork().
+    // Unlike Job Objects which track tree total, setrlimit caps each process individually.
+    // The JS-layer memory guard provides tree-level monitoring as a fallback.
+    #[cfg(unix)]
+    let mem_limit_bytes = (brief.mem_limit_mb as usize) * 1024 * 1024;
+    #[cfg(unix)]
+    if mem_limit_bytes > 0 {
+        unsafe {
+            cmd.pre_exec(move || {
+                let rlim = libc::rlimit {
+                    rlim_cur: mem_limit_bytes as u64,
+                    rlim_max: mem_limit_bytes as u64,
+                };
+                if libc::setrlimit(libc::RLIMIT_AS, &rlim) != 0 {
+                    // Non-fatal: process can still run, just without memory cap
+                    eprintln!("ghrun: setrlimit(RLIMIT_AS) failed — running without memory limit");
+                }
+                Ok(())
+            });
+        }
+    }
 
     // ── 3. spawn ──
     let mut child = match cmd.spawn() {

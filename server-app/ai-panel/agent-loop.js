@@ -114,20 +114,26 @@ var AgentLoop = (function () {
         //    否则只做轻量标签移除，防止正则误伤正常文本（如解释性文字中含 <invoke> 示例）
         var _xmlLike = /^\s*<(?:invoke|tool_call|function_call|parameter|qqq_tool_calls)/i.test(cleanContent);
         if (_xmlLike) {
-            // 深度清洗：整块移除 <invoke>...</invoke>
+            // 深度清洗：整块移除 <invoke>...</invoke>（含内部 <parameter> 块）
             cleanContent = cleanContent.replace(/<invoke[\s>][\s\S]*?<\/invoke>/gi, '');
             cleanContent = cleanContent.replace(/<invoke[\s>][^>]*\/>/gi, '');
+            // ★ 补刀：裸 <parameter>...</parameter>（无外层 invoke 包裹时）
+            cleanContent = cleanContent.replace(/<parameter[\s>][^>]*>[\s\S]*?<\/parameter>/gi, '');
             cleanContent = cleanContent.replace(/<parameter[\s>][^>]*\/?>/gi, '');
             cleanContent = cleanContent.replace(/<\/?qqq_tool_calls>/gi, '');
             cleanContent = cleanContent.replace(/<\/?_?tool_calls?>/gi, '');
             cleanContent = cleanContent.replace(/<\/?_?tool_call>/gi, '');
             cleanContent = cleanContent.replace(/<\/?function_call>/gi, '');
         } else {
-            // 轻量：仅移除孤立的 XML 标签（保留文本内容），不删除整块
-            // 匹配 <invoke...> 或 </invoke> 等独立标签行（前后是换行或字符串边界）
+            // 轻量：移除孤立的 XML 标签行 + 多行块（仅含 XML 无正常文本）
+            // 孤行匹配 <invoke...> 或 </invoke> 等独立标签行
             cleanContent = cleanContent.replace(/^<\/?invoke[^>]*>\s*$/gim, '');
             cleanContent = cleanContent.replace(/^<\/?tool_calls?[^>]*>\s*$/gim, '');
             cleanContent = cleanContent.replace(/^<\/?function_call[^>]*>\s*$/gim, '');
+            // ★ 补刀：多行 <invoke>...</invoke> 和 <parameter>...</parameter> 整块移除
+            // 无 |$ 兜底 → 缺闭合标签时零匹配，零误伤
+            cleanContent = cleanContent.replace(/<invoke[\s>][\s\S]*?<\/invoke>/gi, '');
+            cleanContent = cleanContent.replace(/<parameter[\s>][^>]*>[\s\S]*?<\/parameter>/gi, '');
         }
         // 去除因上述清理产生的连续空行
         cleanContent = cleanContent.replace(/\x0a{3,}/g, '\x0a\x0a').replace(/^\x0a+/, '').trim();
@@ -510,7 +516,7 @@ var AgentLoop = (function () {
                         if (_aiDiv2 && _aiDiv2._guideMarker) {
                             _aiDiv2._guideMarker.style.cssText = '';
                             var _ackDisplay = _cleanAck.replace(/^✅\s*/, '').trim() || '已收到引导';
-                            var _esc = window._escHtml || function(s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+                            var _esc = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
                             _aiDiv2._guideMarker.innerHTML = '<span class="msg-flow-icon">✅</span> ' + _esc(_ackDisplay);
                             _aiDiv2._guideMarker = null;
                         }

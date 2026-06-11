@@ -104,6 +104,27 @@
     return LANG_BY_EXT[lower.slice(dot)] || 'plaintext';
   }
 
+
+  // 二进制文件扩展名（打开会卡死，直接拦截）
+  var BINARY_EXTS = new Set([
+    '.mp3', '.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm',
+    '.wav', '.ogg', '.flac', '.aac', '.wma', '.m4a',
+    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.tiff', '.psd',
+    '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz',
+    '.exe', '.dll', '.so', '.dylib', '.bin', '.dat',
+    '.ttf', '.otf', '.woff', '.woff2',
+    '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+    '.iso', '.dmg', '.pdb', '.class', '.pyc', '.wasm',
+  ]);
+
+  function isBinaryFile(filePath) {
+    if (!filePath) return false;
+    var lower = String(filePath).toLowerCase();
+    var dot = lower.lastIndexOf(String.fromCharCode(46));
+    if (dot < 0) return false;
+    return BINARY_EXTS.has(lower.slice(dot));
+  }
+
   let editor = null;             // monaco editor instance
   let currentFile = null;        // current open file path
   let dirty = false;             // unsaved changes flag
@@ -578,6 +599,10 @@
     if (!editor) { console.warn('[editor] not built yet'); return; }
     if (dirty && currentFile && !confirm('Unsaved changes will be lost. Continue?')) { return; }
     try {
+      if (isBinaryFile(file)) {
+        if (window.qqqideQoast) window.qqqideQoast.show(String.fromCharCode(10060, 32, 20108, 36827, 21046, 25991, 20214, 65292, 26080, 27861, 22312, 32534, 36753, 22120, 20013, 25171, 24320), { duration: 4000 });
+        return;
+      }
       const text = await bridge.fs.read(file);
       // Close previous LSP document
       if (lspLang && currentFile) {
@@ -670,6 +695,10 @@
       hookThemeSync(monaco);
       configureMonacoTypescript(monaco);
       const lang = langOf(filePath);
+      if (isBinaryFile(filePath)) {
+        if (window.qqqideQoast) window.qqqideQoast.show(String.fromCharCode(10060, 32, 20108, 36827, 21046, 25991, 20214, 65292, 26080, 27861, 22312, 32534, 36753, 22120, 20013, 25171, 24320), { duration: 4000 });
+        return null;
+      }
 
       // Use plain file path as URI so Monaco's TS worker can resolve it.
       // inmemory:// URIs cause "Could not find source file" in Electron.
@@ -828,5 +857,6 @@
     getMonaco() { return _monacoRef; },
     getEditorInstance() { return _editorRef; },
     refreshLiveContent,
+    isBinaryFile,
   };
 })();

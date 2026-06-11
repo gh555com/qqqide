@@ -2478,6 +2478,75 @@ function registerIpc(): void {
         }
     });
 
+    // ═══ Timeline: run_command 后扫描项目捕获文件变更 ═══
+    ipcMain.handle('qqqide:timeline:captureChanged', async (_e, args: { projectRoot: string; sinceMs: number; cwd?: string }) => {
+        const { projectRoot, sinceMs } = args;
+        const scanRoot = (args.cwd && args.cwd.startsWith(projectRoot)) ? args.cwd : projectRoot;
+        if (!projectRoot || !sinceMs) return [];
+        const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'backup', '__pycache__', '.venv', 'vendor', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs', 'cache', 'temp', 'crashDumps', '.qqq']);
+        const SKIP_EXTS = new Set(['.exe','.dll','.so','.dylib','.bin','.pyd','.pyc','.pyo','.class','.o','.obj','.lib','.a','.sys','.drv','.ocx','.scr','.cab','.msi','.msc','.cpl','.lnk','.dat','.pak','.res','.rom','.elf','.ko','.mod','.dex','.jar','.war','.ear','.apk','.ipa','.iso','.img','.dmg','.pkg','.deb','.rpm','.png','.jpg','.jpeg','.gif','.bmp','.tiff','.webp','.svgz','.mp3','.mp4','.avi','.mov','.mkv','.flv','.wmv','.webm','.zip','.tar','.gz','.xz','.bz2','.7z','.rar','.woff','.woff2','.ttf','.eot','.ico','.icns','.vsix','.lock','.wasm','.map','.tsbuildinfo','.sq3','.db','.sqlite','.sqlite3','.sdb','.gz']);
+        const MAX_SIZE = 512 * 1024; // 512KB cap (same as A4)
+        const changed = [];
+        const MAX_FILES = 500; // safety: don't scan forever
+        let scanned = 0;
+
+        function walk(dir) {
+            if (scanned >= MAX_FILES) return;
+            let entries;
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+            for (const ent of entries) {
+                if (scanned >= MAX_FILES) return;
+                const fullPath = path.join(dir, ent.name);
+                if (ent.isDirectory()) {
+                    if (SKIP_DIRS.has(ent.name)) continue;
+                    walk(fullPath);
+                } else if (ent.isFile() || ent.isSymbolicLink()) {
+                    const ext = path.extname(ent.name).toLowerCase();
+                    if (SKIP_EXTS.has(ext)) continue;
+                    scanned++;
+                    try {
+                        const st = fs.statSync(fullPath);
+                        if (st.mtimeMs > sinceMs && st.size <= MAX_SIZE) {
+                            const content = fs.readFileSync(fullPath, 'utf8');
+                            // Check for null bytes (binary)
+                            if (content.indexOf('\0') !== -1) continue;
+                            changed.push({ filePath: fullPath.replace(/\\/g, '/'), content, size: st.size, mtimeMs: st.mtimeMs });
+                        }
+                    } catch (_) { }
+                }
+            }
+        }
+        walk(scanRoot);
+
+        // Record to timeline
+        const results = [];
+        for (const f of changed) {
+            try {
+                const sha = _sha256(f.content);
+                const blobPath = _tlBlobPath(projectRoot, sha);
+                if (!fs.existsSync(blobPath)) {
+                    const gzBuf = _gzipSync(f.content);
+                    _tlWriteBlob(projectRoot, sha, gzBuf);
+                }
+                const db = await _tlOpenDb(projectRoot);
+                const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
+                // 去重
+                const stmt = db.prepare('SELECT id FROM versions WHERE file_path = ? AND blob_hash = ?');
+                stmt.bind([f.filePath, sha]);
+                const hasExisting = stmt.step();
+                stmt.free();
+                if (!hasExisting) {
+                    const ts = Date.now();
+                    db.run('INSERT INTO versions (file_path, ts, blob_hash, source, floor_id) VALUES (?,?,?,?,?)',
+                        [f.filePath, ts, sha, 'run-command', null]);
+                    _tlFlushDb(db, dbPath);
+                }
+                results.push({ filePath: f.filePath, blob_hash: sha });
+            } catch (_) { }
+        }
+        return results;
+    });
+
     // ═══ 打开 Timeline Diff 独立 BrowserWindow（单例：一个文件最多一个窗口） ═══
     ipcMain.handle('qqqide:open-diff-window', async (e, args: { filePath: string; beforeBlobHash?: string; afterBlobHash?: string; projectRoot: string }) => {
         const { filePath, beforeBlobHash, afterBlobHash, projectRoot } = args;
@@ -2494,13 +2563,13 @@ function registerIpc(): void {
             return { ok: true, windowId: existingWin.id, reused: true };
         }
 
-undefined
+        const diffWin = new BrowserWindow({
             minWidth: 600,
             minHeight: 400,
             frame: false,
             title: 'Timeline Diff — ' + (filePath.split(/[\\/]/).pop() || filePath),
             backgroundColor: '#1e1e1e',
-            parent: senderWin || undefined,
+            parent: BrowserWindow.fromWebContents(e.sender) || undefined,
             modal: false,
             resizable: true,
             webPreferences: {

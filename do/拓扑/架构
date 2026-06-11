@@ -45,12 +45,14 @@ qz spawn 管线 — 两层 + 四重防御（2026-06-04 加固）
 · 管线: ghrun (Rust, 主力) → Node (child_process, 兜底)
 · runner.py: 代码保留于 engines/runner.py，调用点已从 qz-spawn.ts 删除
 
-四重防御纵深（针对 40GB PowerShell 内存爆炸事件）:
-  ① 硬超时 30min: SYSTEM_MAX_TIMEOUT=1800000，所有命令统一硬天花板，入口强制 cap
-  ② 内存守卫: 每5s 用 Get-CimInstance 轮询进程树 WorkingSetSize，超 2GB → taskkill /F /T
+四重防御纵深（针对 40GB PowerShell 内存爆炸事件）— 2026-06-11 调参:
+  ① 硬超时 2h: SYSTEM_MAX_TIMEOUT=7200000，所有命令统一硬天花板，入口强制 cap
+  ② 内存守卫: nodeTier 专属，异步 execFile（非阻塞），首检 5s→后续 15s
+     ghrunTier 跳过 JS 守卫（Rust Job Object 已覆盖）
+     execSync→execFile 修复了 0.2-2s UI 冻结 bug
   ③ ghrun 原生 Job Object: spawn.rs memLimitMb 字段，Windows CreateJobObjectW →
      SetInformationJobObject(JOB_OBJECT_LIMIT_PROCESS_MEMORY) → AssignProcessToJobObject
-  ④ 失速看门狗: stallMs=5min 无输出→杀；output cap=64KB 防 IPC 洪水
+  ④ 失速看门狗: stallMs=30min 无输出→杀；output cap=64KB 防 IPC 洪水
 
 · ghrun 反卡死: deadline watchdog + stall watchdog (100ms) + kernel 级进程组隔离
   Windows: CREATE_NEW_PROCESS_GROUP + CREATE_NO_WINDOW + taskkill /F /T
@@ -286,6 +288,27 @@ qwr 机器 — 全局唯一真理写机器
 涉及: edit_file / write_file / create_file / delete_file / run_command (5个)
 保证: 零脏写、零丢失更新、零死锁、零误报
 
+Timeline 文件版本时间线 (2026-06-11 新建)
+--------------------------------------------
+独立 BrowserWindow diff 查看器（Monaco），替换旧 X区 hand-rolled diff。
+
+存储: SHA256 去重 + gzip level 6 + SQLite 索引，位于 {projectRoot}/qqq/timeline/
+  · blobs/{sha256[:2]}/{sha256}.gz — 内容不可变
+  · timeline.db — versions(file_path, ts, blob_hash, source, floor_id)
+
+触发: AI写工具(A4包装器) + 编辑器保存(60s闸门+内容变更) + diff窗口手动保存
+  run_command 未覆盖（命令可改任意文件，暂无可靠捕获方案）
+
+Diff窗口: 独立 BrowserWindow, Monaco 0.34.1 side-by-side + minimap
+  一个文件最多一个窗口（单例Map），再次点击复用
+  主窗口 -24px + 偏移 +12 (类悬浮层)
+  下拉标记: before/after/first/last
+  right=last 时可编辑 + ←移入 + 💾保存
+  最小化已移除 (frameless窗口有bug)
+  孤儿tmp启动时清理
+
+IPC: qqqide:timeline:{record,versions,content,stat,readCurrent} + qqqide:open-diff-window + qqqide:diff:update
+
 AI 工具 (13个) — 2026-06-04 强化，2026-06-10 三项优化
 ------------------------------------------------------------
 文件: read_file, edit_file, create_file, delete_file, write_file (★ 主进程 1 IPC, qwr机器保护)
@@ -295,7 +318,7 @@ AI 工具 (13个) — 2026-06-04 强化，2026-06-10 三项优化
   · search_content: 接收 keywords[] 数组，自动转义拼接为 regex OR，支持 case_sensitive
     解决 AI 用 PowerShell 搜多关键词的 40GB 问题，route 走 search_text 主进程管线
 诊断: get_diagnostics (Monaco markers)
-终端: run_command (qz-spawn, 硬超时 30min, stallMs=5min, ★ qwr _qgc 命令屏障保护)
+终端: run_command (qz-spawn, 硬超时 2h, stallMs=30min, ★ qwr _qgc 命令屏障保护)
   · 新增 reason 字段: AI 可选填写使用原因，仅 console.log 审计，不拦截
 网络: fetch_webpage (curl 绕过 CORS, 15s 超时, ≤8000 chars)
 视觉: get_vision_context (★ 并行预分析: 多图片并发 qwen-vl-max, Promise.all, 4-12s→3-8s)

@@ -276,6 +276,7 @@ const QQQ = {
         stat: (filePath: string) => ipcRenderer.invoke('qqqide:timeline:stat', filePath),
         readCurrent: (filePath: string) => ipcRenderer.invoke('qqqide:timeline:readCurrent', filePath),
         listTrackedFiles: (args: { projectRoot: string }) => ipcRenderer.invoke('qqqide:timeline:listTrackedFiles', args),
+        captureChanged: (args: { projectRoot: string; sinceMs: number; cwd?: string }) => ipcRenderer.invoke('qqqide:timeline:captureChanged', args),
         openDiffWindow: (args: { filePath: string; beforeBlobHash?: string; afterBlobHash?: string; projectRoot: string }) => ipcRenderer.invoke('qqqide:open-diff-window', args),
         // 监听主进程推送的 diff 更新（复用已有窗口时触发）
         onDiffUpdate: (cb: (data: { beforeBlobHash?: string; afterBlobHash?: string }) => void) => {

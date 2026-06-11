@@ -151,6 +151,17 @@ function doStreamRender() {
 
     aiDiv._renderScheduled = false;
 
+    // ★ 引导确认期间：不产生流式 DOM（模型可能输出 XML 垃圾未清洗）
+    // 仅清空积压的 _paras（释放内存），不触碰 DOM
+    if (aiDiv._guideMode) {
+        aiDiv._renderedCount = (aiDiv._paras || []).length;
+        for (var _gpi = 0; _gpi < (aiDiv._paras || []).length; _gpi++) {
+            aiDiv._paras[_gpi] = null;
+        }
+        aiDiv._dirty = false;
+        return;
+    }
+
     var rendered = aiDiv._renderedCount || 0;
 
     var paras = aiDiv._paras || [];
@@ -163,8 +174,7 @@ function doStreamRender() {
         // 跳过空段落（避免产生空白 div）
         if (para && para.trim()) {
             var pEl = document.createElement('div');
-            // ★ guideMode 期间不加 stream-para 类，防止 onDone 误删引导确认段落
-            if (!aiDiv._guideMode) pEl.className = 'stream-para';
+            pEl.className = 'stream-para';
             pEl.innerHTML = renderMarkdown(para);
             aiDiv._contentWrap.appendChild(pEl);
         }
@@ -179,7 +189,7 @@ function doStreamRender() {
     if (!aiDiv._lastParaEl) {
 
         aiDiv._lastParaEl = document.createElement('div');
-        if (!aiDiv._guideMode) aiDiv._lastParaEl.className = 'stream-para';
+        aiDiv._lastParaEl.className = 'stream-para';
         aiDiv._contentWrap.appendChild(aiDiv._lastParaEl);
 
     }

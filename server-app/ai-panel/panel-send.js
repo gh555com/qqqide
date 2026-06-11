@@ -393,7 +393,14 @@ async function sendMessage() {
             },
 
             onGuideAckDone: function () {
-                if (_activeAgent._activeAiDiv) _activeAgent._activeAiDiv._guideMode = false;
+                var _aiDiv3 = _activeAgent._activeAiDiv;
+                if (_aiDiv3) {
+                    _aiDiv3._guideMode = false;
+                    // 清空引导确认期间积压的流式缓冲（XML 等垃圾不应污染主回复）
+                    _aiDiv3._buf = '';
+                    _aiDiv3._paras = [];
+                    _aiDiv3._renderedCount = 0;
+                }
             },
 
             onCost: async function (cost, total, isFree) {

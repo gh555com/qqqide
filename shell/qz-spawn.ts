@@ -16,7 +16,7 @@
 //   - Output safety-net at IPC level (64KB) — AI-facing limit is in tools.js
 // ============================================================================
 
-import { spawn as cpSpawn, execSync, ChildProcess } from 'child_process';
+import { spawn as cpSpawn, execSync, execFile, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -31,28 +31,46 @@ function _capOutput(r: SpawnResult): SpawnResult {
 }
 
 // ── System-level hard limits (defense-in-depth against runaway commands) ──
-const SYSTEM_MAX_TIMEOUT = 1_800_000;  // 30 min — no command runs longer than this
+const SYSTEM_MAX_TIMEOUT = 7_200_000;  // 2h — no command runs longer than this
 const MEM_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;  // 2GB — kill if child exceeds this
 
-/** Memory guard: polls process tree every 5s, kills if total WorkingSetSize > limit. */
-function _startMemGuard(pid: number, killFn: () => void, limit: number): NodeJS.Timeout | null {
-    if (process.platform !== 'win32') return null; // TODO: cgroups on Linux
+/** Memory guard: async polls process tree (5s first check, 15s subsequent).
+ *  Kills if total memory > limit. Only used by nodeTier (ghrun has native Job Object).
+ *  Uses async execFile to avoid blocking the main process event loop.
+ *  Cross-platform: Windows (PowerShell WMI) / Linux+macOS (ps command). */
+function _startMemGuard(pid: number, killFn: () => void, limit: number): { stop: () => void } | null {
     if (!pid || limit <= 0) return null;
-    const interval = setInterval(() => {
-        try {
-            // Sum WorkingSetSize of pid + all descendants via WMI (server-side filter, fast)
-            const out = execSync(
-                `powershell -NoProfile -Command "$sum=0; Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId=${pid} OR ParentProcessId=${pid}' -ErrorAction SilentlyContinue | ForEach-Object { $sum+=$_.WorkingSetSize }; $sum"`,
-                { windowsHide: true, timeout: 5000, encoding: 'utf8' }
-            ).trim();
-            const bytes = parseInt(out, 10);
-            if (!isNaN(bytes) && bytes > limit) {
-                console.warn(`[qz] mem-guard: pid ${pid} tree at ${(bytes/1024/1024).toFixed(0)}MB > ${(limit/1024/1024).toFixed(0)}MB, killing tree`);
-                killFn();
-            }
-        } catch { /* guard itself must never throw */ }
-    }, 5000);
-    return interval;
+    let stopped = false;
+
+    // Build platform-specific command to get total memory (bytes) of pid + descendants
+    const isWin = process.platform === 'win32';
+    const memCmd = isWin
+        ? { bin: 'powershell', args: ['-NoProfile', '-Command',
+            `$sum=0; Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId=${pid} OR ParentProcessId=${pid}' -ErrorAction SilentlyContinue | ForEach-Object { $sum+=$_.WorkingSetSize }; $sum`] }
+        : { bin: 'sh', args: ['-c',
+            `ps -o rss= --pid ${pid} --ppid ${pid} 2>/dev/null | awk '{s+=$1} END {print s*1024}'`] };
+    // ps --ppid gets children; --pid gets self; sum RSS in kB → convert to bytes
+
+    const poll = () => {
+        if (stopped) return;
+        execFile(memCmd.bin, memCmd.args,
+            { windowsHide: isWin, timeout: 5000, encoding: 'utf8' },
+            (err, stdout) => {
+                if (stopped) return;
+                try {
+                    const bytes = parseInt((stdout || '').trim(), 10);
+                    if (!isNaN(bytes) && bytes > limit) {
+                        console.warn(`[qz] mem-guard: pid ${pid} tree at ${(bytes/1024/1024).toFixed(0)}MB > ${(limit/1024/1024).toFixed(0)}MB, killing tree`);
+                        killFn();
+                        stopped = true;
+                        return;
+                    }
+                } catch { /* guard itself must never throw */ }
+                setTimeout(poll, 15000);
+            });
+    };
+    setTimeout(poll, 5000);
+    return { stop: () => { stopped = true; } };
 }
 
 // Windows built-in commands (not real executables; need cmd /c wrapper)
@@ -170,7 +188,7 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
     return new Promise<SpawnResult>((resolve) => {
         const start = Date.now();
         const args = brief.args || [];
-        // A1: cap all timeouts at SYSTEM_MAX_TIMEOUT (10 min hard ceiling)
+        // A1: cap all timeouts at SYSTEM_MAX_TIMEOUT (2h hard ceiling)
         const rawTimeout = brief.timeout != null ? brief.timeout : 60_000;
         const timeoutMs = rawTimeout > 0 ? Math.min(rawTimeout, SYSTEM_MAX_TIMEOUT) : SYSTEM_MAX_TIMEOUT;
         const stallMs = brief.stallMs != null ? brief.stallMs : 0;
@@ -260,7 +278,7 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
         const cleanup = () => {
             clearTimeout(deadlineTimer);
             if (stallTimer) { clearTimeout(stallTimer); }
-            if (memGuardInterval) { clearInterval(memGuardInterval); }
+            if (memGuardInterval) { memGuardInterval.stop(); }
         };
 
         proc.on('exit', (code) => {
@@ -300,7 +318,7 @@ function nodeTier(brief: SpawnBrief, appRoot: string): Promise<SpawnResult> {
 function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promise<SpawnResult> {
     return new Promise<SpawnResult>((resolve) => {
         const start = Date.now();
-        // A1: cap all timeouts at SYSTEM_MAX_TIMEOUT (10 min hard ceiling)
+        // A1: cap all timeouts at SYSTEM_MAX_TIMEOUT (2h hard ceiling)
         const rawTimeout = brief.timeout != null ? brief.timeout : 60_000;
         const timeoutMs = rawTimeout > 0 ? Math.min(rawTimeout, SYSTEM_MAX_TIMEOUT) : SYSTEM_MAX_TIMEOUT;
         // A2: guardMs always timeout+10s, never 24h (was: 86400000 when timeout=0)
@@ -334,22 +352,11 @@ function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promis
         let outBuf = '';
         let errBuf = '';
         let done = false;
-        // A4: memory guard for ghrun tier — monitor ghrun's process tree
-        // Uses PowerShell to sum WorkingSet64 of ghrun + all descendants
-        const memGuardInterval = proc.pid ? _startMemGuard(proc.pid, () => {
-            if (!done) {
-                finish({
-                    exitCode: -1, stdout: outBuf, stderr: 'ghrun_mem_guard_killed',
-                    killReason: 'mem-guard', tier: 'ghrun',
-                    pid: proc.pid, durationMs: Date.now() - start,
-                });
-            }
-        }, MEM_LIMIT_BYTES) : null;
+        // ★ ghrun has native Job Object memory limit — skip JS mem guard (redundant)
         const finish = (r: SpawnResult) => {
             if (done) { return; }
             done = true;
             clearTimeout(guard);
-            if (memGuardInterval) { clearInterval(memGuardInterval); }
             // Tree-kill ghrun + child on forced termination (mem-guard/deadline)
             if (r.killReason) {
                 try {

@@ -366,7 +366,7 @@ async function executeReadFile(args) {
 
     // ★ 路径合理性校验：防止 AI 将中文文本当作文件路径
     var _p = args.path || '';
-    if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]|^[A-Za-z]:$/.test(_p.trim())) {
+    if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
         return 'Error: invalid path "' + _p + '" — does not appear to be a valid file path. Provide an absolute path (e.g. E:\\project\\file.js).';
     }
 
@@ -492,7 +492,7 @@ async function executeEditFile(args) {
     if (!args.edits || args.edits.length === 0) return 'Error: no edits provided.';
 
     var _p = args.path || '';
-    if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
+    if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
         return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
 
@@ -577,7 +577,7 @@ async function executeWriteFile(args) {
     if (!bridge) return 'Error: bridge not available';
 
     var _p = args.path || '';
-    if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
+    if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
         return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
 
@@ -730,7 +730,7 @@ async function executeListFiles(args) {
     if (!bridge) return 'Error: bridge not available';
 
     var _p = args.path || '';
-    if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
+    if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
         return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
 
@@ -817,7 +817,7 @@ async function executeCreateFile(args) {
     if (!bridge) return 'Error: bridge not available';
 
     var _p = args.path || '';
-    if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
+    if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
         return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
 
@@ -875,16 +875,42 @@ async function executeRunCommand(args) {
         }
         // Use qz spawn (ghrun → node fallback)
         // [silent] run_command
-        // All commands capped at 30min by qz-spawn SYSTEM_MAX_TIMEOUT
-        var effectiveTimeout = 1800000;  // 30 min (same as system cap)
+        // timeout=0 → 系统层自动 cap 为 SYSTEM_MAX_TIMEOUT (唯一真理源: qz-spawn.ts)
+        // stallMs 在此处定义，系统层无默认值
+        var cmdStart = Date.now();
         var result = await bridge.qz.spawn({
             cmd: cmd,
             args: cmdArgs,
             cwd: args.cwd || '',
-            timeout: effectiveTimeout,
-            stallMs: 300000,
+            timeout: 0,           // 不设限，交给系统天花板
+            stallMs: 1800000,      // 30min 无输出即杀
             shell: useShell
         });
+
+        // ★ 命令成功后扫描项目变更并记录 timeline 快照
+        if (result.exitCode === 0 && bridge.timeline && typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
+            try {
+                var root = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');
+                var changed = await bridge.timeline.captureChanged({
+                    projectRoot: root,
+                    sinceMs: cmdStart,
+                    cwd: args.cwd || ''
+                });
+                // 通知 A4 文件被修改（更新 UI 豆腐块 + 记录快照）
+                if (changed && changed.length) {
+                    for (var ci = 0; ci < changed.length; ci++) {
+                        _notifyFileModified(changed[ci].filePath);
+                        // 尝试更新 A4 快照（若 _a4RecordSnapshot 可用）
+                        if (typeof _a4RecordSnapshot === 'function') {
+                            try {
+                                _a4RecordSnapshot(changed[ci].filePath, 'run_command', null, changed[ci].content);
+                            } catch (_) { }
+                        }
+                    }
+                }
+            } catch (_) { /* best effort */ }
+        }
+
         // [silent] run_command result
         // AI-facing output cap (single source: OUTPUT_CAP_DEFAULT / OUTPUT_CAP_MAX)
         var cap = Math.min(args.maxOutput || OUTPUT_CAP_DEFAULT, OUTPUT_CAP_MAX);
@@ -909,7 +935,7 @@ async function executeDeleteFile(args) {
     if (!bridge) return 'Error: bridge not available';
 
     var _p = args.path || '';
-    if (!/[\/]/.test(_p) || !/^[A-Za-z]:[\/]|^[\/]/.test(_p.trim())) {
+    if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
         return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
 
