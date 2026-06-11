@@ -22,6 +22,20 @@
 // system-prompt.js  → GATEWAY_URL, SYSTEM_PROMPT, TRIVIAL_REGEX, CHAT_REGEX, TIER_FLASH, TIER_PRO
 // tools.js          → TOOL_DEFINITIONS, TOOL_CATEGORY, executeTool, getTools
 
+// ★ UTF-8 安全截断：取字符串前 maxBytes 字节，不回退到乱码中间
+//   先截取 maxBytes*2 字符再编码，避免对几千字 reasoning 全量编码
+function _utf8Trunc(str, maxBytes) {
+    if (!str) return '';
+    var head = str.length > maxBytes * 2 ? str.slice(0, maxBytes * 2) : str;
+    var bytes = new TextEncoder().encode(head);
+    if (bytes.length <= maxBytes) return head;
+    for (var i = maxBytes; i > maxBytes - 4; i--) {
+        try { return new TextDecoder('utf-8', { fatal: true }).decode(bytes.slice(0, i)); }
+        catch (_) { }
+    }
+    return new TextDecoder().decode(bytes.slice(0, maxBytes)); // 兜底（含替换符）
+}
+
 var AgentLoop = (function () {
     'use strict';
 
@@ -1038,12 +1052,14 @@ var AgentLoop = (function () {
 
         // 语言检测已移至 a1 审计按钮（后翻译方案），此处不再强制注入语言指令
         // ★ 计费摘要提示（geflow 展开时区分每间 house，Go 优先使用此字段）
-        // ★ 第一间 house 不设 hint → Go 自动提取用户原文，比"用户提问"有意义得多
+        // ★ 计费摘要（本轮详情）：house 1 取用户提问原文，后续 house 取 reasoning
         var summaryHint = '';
-        if (self._houseIndex > 1) {
+        if (self._houseIndex === 1) {
+            summaryHint = _utf8Trunc(lastUserQuery, 100);
+        } else {
             var _lh = self._houses[self._houses.length - 1];
-            if (_lh && _lh.type === 'tools' && _lh.tools && _lh.tools.length > 0) {
-                summaryHint = '工具: ' + _lh.tools.map(function (t) { return t.name; }).join(', ');
+            if (_lh && _lh.reasoning) {
+                summaryHint = _utf8Trunc(_lh.reasoning, 100);
             } else if (_lh && _lh.type === 'guide_ack') {
                 summaryHint = '引导确认';
             }

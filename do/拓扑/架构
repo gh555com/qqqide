@@ -59,6 +59,8 @@ qz spawn 管线 — 两层 + 四重防御（2026-06-04 加固）
   POSIX:   process_group(0) → killpg (SIGTERM→2s宽限→SIGKILL) + cwd 预校验
 · guardMs 修复: 原 timeout=0 时 guard=24h（形同虚设），现恒为 timeout+10s
 · 内存守卫 killReason: 'mem-guard'（新增），与 deadline/stall/disconnect 并列
+· 跨平台(2026-06-11): Win=JobObject / Linux+mac=setrlimit(RLIMIT_AS) via pre_exec
+  JS层异步内存守卫双路径(Win=PowerShell WMI / Unix=ps -o rss)
 · ghrun CI: gh555com/qqq-IDE → build-ghrun2.yml → 三端编译
 
 
@@ -290,24 +292,26 @@ qwr 机器 — 全局唯一真理写机器
 
 Timeline 文件版本时间线 (2026-06-11 新建)
 --------------------------------------------
-独立 BrowserWindow diff 查看器（Monaco），替换旧 X区 hand-rolled diff。
+独立 BrowserWindow + Monaco Diff Editor，替换旧 X区 hand-rolled diff。
 
 存储: SHA256 去重 + gzip level 6 + SQLite 索引，位于 {projectRoot}/qqq/timeline/
-  · blobs/{sha256[:2]}/{sha256}.gz — 内容不可变
-  · timeline.db — versions(file_path, ts, blob_hash, source, floor_id)
+  blobs/{sha256[:2]}/{sha256}.gz — 内容不可变，永不删除
+  timeline.db — versions(file_path, ts, blob_hash, source, floor_id)
 
-触发: AI写工具(A4包装器) + 编辑器保存(60s闸门+内容变更) + diff窗口手动保存
-  run_command 未覆盖（命令可改任意文件，暂无可靠捕获方案）
+触发: AI写工具(A4包装器自动捕获before+after) + 编辑器保存(60s闸门+内容变更)
+  + diff窗口手动💾保存 + run_command后项目扫描(captureChanged)
 
-Diff窗口: 独立 BrowserWindow, Monaco 0.34.1 side-by-side + minimap
-  一个文件最多一个窗口（单例Map），再次点击复用
-  主窗口 -24px + 偏移 +12 (类悬浮层)
-  下拉标记: before/after/first/last
-  right=last 时可编辑 + ←移入 + 💾保存
-  最小化已移除 (frameless窗口有bug)
-  孤儿tmp启动时清理
+Diff窗口: 独立 BrowserWindow，完全覆盖主窗口(inset:0，类图片悬浮层)
+  一个文件单例（Map），再次点击复用 → webContents.send 推送更新
+  Monaco 0.34.1 side-by-side + minimap(红绿差异) + 差异折叠 + 自动换行
+  下拉标记: before/after/first/last（A4点击上下文）
+  right=last 时可编辑 + ←移入(历史代码→当前文件) + 💾保存写盘
+  最小化已移除 (frameless bug)；孤儿tmp启动时清理
 
-IPC: qqqide:timeline:{record,versions,content,stat,readCurrent} + qqqide:open-diff-window + qqqide:diff:update
+IPC: qqqide:timeline:{record,versions,content,stat,readCurrent,captureChanged}
+  + qqqide:open-diff-window + qqqide:diff:update
+
+跨十年保证: SHA256 blob 不可变 + SQLite 索引 + 永不删 → 时间戳/内容永久锁定
 
 AI 工具 (13个) — 2026-06-04 强化，2026-06-10 三项优化
 ------------------------------------------------------------
@@ -391,14 +395,25 @@ Quest 切换完整性 (2026-06-10 重构)
   · switchQuest / _unloadQuest 中禁调 stopFloorTimer / completeBuildingFloor。
   · 时钟持久化: floorPayload.clockTiming，_buildFloorDOM 优先读 fData.clockTiming。
 
-流式渲染性能
------------
-- 段缓冲: onToken 只切chunk不切全文, _buf持当前段, 完成段落 push 到 _paras
-- GC释放: 段落渲染为DOM后原文置 null, 永不持有全文
-- 事件驱动: 脏标记 _dirty, 有内容才排 setTimeout(doStreamRender, 1000), 无内容停(零空转)
-- 1fps: 每秒最多1次渲染, 人眼无感知, GC压力归零
-- onDone 快速路径: 流式DOM保留，仅代码块含空行时全量 rebuild，99%+ 对话跳过闪屏
-- 复杂度: O(n^2)->O(n), 10万字响应内存 4GB->几MB
+流式渲染 — 一次渲染 终身不变 + 增量解析器（2026-06-11 落地）
+-----------------------------------------------------------------------
+铁律：封顶不重建 DOM。流式阶段 appendChild 的节点即为最终节点，永不 innerHTML 替换。
+  · onDone 仅做：去 stream-para 类 + 移除空 _lastParaEl + 清理初始状态提示。零 DOM 重建。
+  · 引导确认期间：doStreamRender 完全跳过（模型可能输出 XML 未清洗），
+    仅 agent-loop handler 更新绿条标记。确认结束后清空 _buf/_paras 防污染主回复。
+
+增量解析器（代码围栏感知）：
+  · 拆分前扫描 ^``` 行首标记奇偶性。奇数→围栏未闭合→禁止拆分，回退到 _buf 等待闭合。
+  · 围栏内 \n\n 是代码内容，不可拆为段落。闭合后整段作为一个段落推入 _paras。
+  · 流式半成品代码块：_lastParaEl 用 <pre><code> 实时显示（剥离首行围栏标记）。
+  · 拆分边界：\n\n 即 Markdown 段落边界（John Gruber 2004），围栏是唯一例外，已覆盖。
+
+段缓冲: onToken 只切chunk不切全文, _buf持当前段, 完成段落 push 到 _paras
+GC释放: 段落渲染为DOM后原文置 null, 永不持有全文
+事件驱动: 脏标记 _dirty, 有内容才排 setTimeout(doStreamRender, 1000), 无内容停(零空转)
+1fps: 每秒最多1次渲染, 人眼无感知, GC压力归零
+复杂度: O(n^2)->O(n), 10万字响应内存 4GB->几MB
+renderMarkdown 列表保护：<ul> 占位符隔离，避免 <br> 和 <p> 污染列表间距
 
 AI 网关 — Worker 纯代理 + Go 权威计费（2026-06-10 设计，06-10 晚强制落地）
 --------------------------------------------------------------------
@@ -459,33 +474,27 @@ AI FACING 层 (唯一真理源: tools.js 顶部):
 · 历史楼层重建: _buildFloorDOM 从 fData.clockTiming 直接恢复，回退 questTimings 数组
 · 饼图: 初始隐藏，数据到后显示；懒重绘（四字段全等跳过）
 
-A4 文件快照 — 每层楼私有文件变更追踪
+A4 文件快照 — 每层楼私有文件变更追踪 (2026-06-11 升级)
 --------------------------------------
 · 唯一入口: panel-a4.js（拦截 executeTool，零侵入式捕获 before/after）
-· 触发: edit_file/create_file/write_file/delete_file 四种文件修改工具
-· 流程: 修改前 read → 执行原始工具 → 修改后 read/取 args.content → 记录快照
+· 触发: edit/create/write/delete_file + run_command(captureChanged扫描)
+· 流程: 修改前 fs.read → 执行工具 → 修改后 fs.read/取 args.content → _a4RecordSnapshot
+· 读原始内容: 用 bridge.fs.read（不用 ai.read_file，避免>500行分页头污染快照）
 · 状态归属: agent._a4Snapshots（per-agent per-floor，§36 体系）
 · DOM: aiDiv._a4Block（A4 豆腐块，位于 A2 与 A1 之间）
 · UI: 瀑布式文件列表（文件名 + 颜色编码 + +N -M 统计），实时更新
-· 颜色: create=绿 / delete=红+删除线 / edit=黄（混合增删） / 纯增=绿 / 纯删=红
-· 点击: postMessage 'qqq-a4-open-diff' → 父窗口 → git goods Timeline tab
-· 持久化:
-    内容: {projectRoot}/qqq/snapshots/q{numericId}/f{floorNum}/{hash}.before|.after
-    元数据: floor payload 的 a4Snapshots 字段（随 quest.sq3 存取）
-· 恢复: _buildFloorDOM 从 fData.a4Snapshots 还原，点击从磁盘加载
-· 容量: 512KB/文件上限，超限只记元数据；LCS diff stats O(mn) / 大文件 hash 近似
-· 不依赖 git: 纯内存+文件系统，零外部依赖
+· 颜色: create=绿 / delete=红+删除线 / edit=黄（混合增删）
+· 点击: _a4OpenDiff → 旧路径_postToHost保底 + 新路径BrowserWindow增强
+  历史楼层: _a4OpenHistoricalDiff → 读旧快照或timeline blob
+· 持久化(新): timeline.record(SHA256+gzip+SQLite)，floor payload存blob_hash
+  旧文件系统快照已废弃，不再写入 qqq/snapshots/
+· 容量: 512KB/文件上限，超限只记元数据
 
-Git Goods — 第一方 git 操作 + Timeline 差异查看器
---------------------------------------------------
-· 位置: goods/git/git.js（manifest）+ goods/git/git-ui.html（多模式 UI）
-· 注册: window.qqqGaea.register({ id:'git', tabs:{timeline, git}, panel:{build} })
-· X 区 Timeline tab: 接收 A4 点击 → 显示文件 diff（unified / side-by-side / 全文展开）
+Git Goods — 第一方 git 操作
+----------------------------
+· 位置: goods/git/git.js + goods/git/git-ui.html
 · X 区 Git tab: status / diff / stage / unstage / commit / log / branch / stash
-· A 区面板: git 快速状态预览（iframe 模式）
-· git 命令: bridge.qz.spawn({ cmd:'git' })，30s 超时
-· diff 渲染: 内置 LCS diff 算法（小文件 O(mn) 精确 / 大文件 hash 近似）
-    unified: 行号双列 + 颜色高亮 + 上下文折叠（3 行）
-    side-by-side: 左右联动滚动 + 行对齐
-· 主题: postMessage('qqqide-theme-change') 同步
+· A 区面板: git 快速状态预览
+· Timeline diff 已迁出至独立 BrowserWindow (server-app/timeline/)
+· git.js 保留 A4 消息监听 → 双路径: BrowserWindow(新) + X区tab(旧保底)
 · 全局残留: _lastPieTiming（canvas 去重）、_autoSaveTimer（面板级）保留全局

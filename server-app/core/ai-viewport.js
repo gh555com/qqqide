@@ -213,12 +213,15 @@
   });
   // ---- close active dropdown ----
   function closeDropdown() {
+    cancelHover();  // ★ 清除任何待处理的子菜单 hover 定时器，防止孤儿子菜单漂移到 (0,0)
+    cancelClose();  // ★ 清除待处理的关闭定时器，防止二次触发
     closeAllSubmenus();
     _dirCache.clear();
     if (activeDropdown) {
       activeDropdown.remove();
       activeDropdown = null;
     }
+    if (_activeBlockEl) { _activeBlockEl.classList.remove('aiv-block-active'); _activeBlockEl = null; }
     _setAiIframesPointerEvents('');  // 恢复 iframe 鼠标事件
   }
 
@@ -382,6 +385,8 @@
           cancelHover();
           _hoverTimer = setTimeout(() => {
             _hoverTimer = null;
+            // ★ 防止竞态：父下拉已关闭时 row 已断连 DOM，跳过避免漂移到 (0,0)
+            if (!row.isConnected) return;
             const sub = openSubmenu(row, pathJoin(dirPath, ent.name));
             parentEl._childSub = sub;
           }, 150);
@@ -404,6 +409,8 @@
   }
 
   function openSubmenu(rowEl, dirPath) {
+    // ★ 防卫：rowEl 已断连 DOM 时放弃，防止孤儿子菜单漂移到 (0,0)
+    if (!rowEl.isConnected) return null;
     const sub = document.createElement('div');
     sub.className = 'aiv-submenu';
     // position to the right of the row

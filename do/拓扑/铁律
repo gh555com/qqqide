@@ -14,16 +14,13 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 载荷(server-app/) = 全部UI + 业务逻辑 + Monaco编辑器。热更Ctrl+R生效。
   - 任何功能归属有疑问→归载荷层。
 
-§2 qz spawn — ghrun 统管所有子进程（2026-06-04 加固）
-  - 全部子进程(yt-dlp/引擎/编译/任何命令)必须经 ghrun spawn 启动。
-  - 管线: ghrun (Rust, 主力) → Node (child_process, 兜底)。runner.py 已退役（代码保留，调用点已删）。
-  - 四重防御: ①硬超时30min(SYSTEM_MAX_TIMEOUT) ②内存守卫2GB(Get-CimInstance每5s轮询)
-    ③ghrun原生Job Object(memLimitMb) ④失速看门狗(stallMs 5min无输出→杀)
-  - 进程组隔离: Windows CREATE_NEW_PROCESS_GROUP + CREATE_NO_WINDOW + taskkill /F /T。
-    POSIX process_group(0) → killpg (SIGTERM 2s宽限 → SIGKILL)。父死子必死。
-  - timeout=0 已被禁止：入口强制 cap 为 SYSTEM_MAX_TIMEOUT(30min)，永不无限执行。
-  - 空 cmd 保护、输出安全网 64KB 截断。stdout最后一行为JSON brief。
-  - guardMs 修复：原 timeout=0 时 guard=24h，现恒为 timeout+10s。
+§2 qz spawn — ghrun 统管所有子进程（2026-06-11 调参+跨平台）
+  - 全部子进程必须经 ghrun spawn 启动。管线: ghrun(Rust) → Node(child_process 兜底)。
+  - 四重防御: ①硬超时2h(SYSTEM_MAX_TIMEOUT=7200000) ②内存守卫2GB(异步execFile,Win=PowerShell/Unix=ps -o rss,首检5s后续15s,ghrunTier跳过) ③ghrun原生Job Object(Windows)/setrlimit RLIMIT_AS(Unix) ④失速看门狗(stallMs=30min无输出→杀)
+  - 唯一真理: SYSTEM_MAX_TIMEOUT 只改 qz-spawn.ts 一处；tools.js 传 timeout=0 委托系统层。
+  - 进程组隔离: Win=CREATE_NEW_PROCESS_GROUP / Unix=process_group(0)。父死子必死。
+  - execSync→execFile 修复了 UI 冻结 bug（PowerShell 冷启动阻塞主进程 0.2-2s）。
+  - 空 cmd 保护、输出安全网 64KB。guardMs 恒为 timeout+10s。
 
 §3 配色 — 唯一真理配色机器
   - 唯一入口: core/qqqide-theme.js。一切组件禁止私自定义颜色。
@@ -310,26 +307,23 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 禁在 switchQuest/_unloadQuest 中调用 stopFloorTimer 或 completeBuildingFloor。切 quest = 纯 display 开关。
   - _lastPieTiming（canvas 去重缓存）、_autoSaveTimer（面板级）保留全局，不冲突。
 
-§37 A4 文件快照 — 每层楼私有文件变更追踪（2026-06-09，2026-06-24 加固）
-  - 唯一入口: panel-a4.js。拦截 executeTool，文件修改前后自动捕获 before/after 快照。
-  - per-floor 状态归属 agent: ag._a4Snapshots = { [path]: { before, after, op, added, deleted, ts } }。
-  - 新 floor 开始必须清空: panel-send.js + agent-loop.js 两处同时 `ag._a4Snapshots = {}`。
-  - DOM 归属 aiDiv: aiDiv._a4Block（A4 豆腐块，位于 A2 与 A1 之间）。
-  - 快照内容上限 512KB/文件（A4_MAX_SNAPSHOT_BYTES），超限只记元数据不存内容。
-  - 持久化: 内容写入 {projectRoot}/qqq/snapshots/q{numericId}/f{floorNum}/{hash}.before|.after。
-    元数据入 floor payload 的 a4Snapshots 字段（随 quest.sq3 存取）。
-  - A4 UI: 瀑布式文件列表（文件名 + 颜色编码 + +N -M 统计），实时更新。
-  - 点击 → postMessage 'qqq-a4-open-diff' → 父窗口 → git goods Timeline tab → 显示 diff。
-  - 历史恢复: _buildFloorDOM 从 fData.a4Snapshots 还原 A4 块，点击从磁盘加载内容。
-  - diff 算法: LCS（小文件 O(mn) 精确 / 大文件 hash 近似），内置于 git-ui.html。
-  - 不依赖 git：纯内存+文件系统快照，零外部依赖。
+§37 A4 文件快照 + Timeline 版本时间线（2026-06-11 重构）
+  - 唯一入口: panel-a4.js。拦截 executeTool + run_command 后 captureChanged 扫描。
+  - per-floor 状态归属 agent: ag._a4Snapshots。新 floor 开始必须清空。
+  - 快照内容上限 512KB/文件，超限只记元数据。读内容用 bridge.fs.read（不用 ai.read_file，避免分页头污染）。
+  - 持久化(新): SHA256 去重 + gzip + SQLite，位于 {projectRoot}/qqq/timeline/。
+    blobs/{sha256[:2]}/{sha256}.gz — 内容不可变，永不删除。
+    timeline.db — versions(file_path, ts, blob_hash, source, floor_id)。
+    旧文件系统快照(qqq/snapshots/)已废弃，不再写入。
+  - 点击 → 双路径: _postToHost(旧)保底 + BrowserWindow(Monaco,新)增强。
+  - 跨十年保证: blob 不可变 + SQLite 索引 → 时间戳/内容永久锁定。
 
-§38 Git Goods — 第一方 git 操作插件（2026-06-09）
-  - 位置: goods/git/git.js（manifest）+ goods/git/git-ui.html（多模式 UI）。
-  - 注册: window.qqqGaea.register({ id:'git', tabs:{timeline,git}, panel:{} })。
-  - X 区 Timeline tab: AI 楼层文件 diff 查看器（接收 A4 点击事件 + 统一差异/并排模式）。
-  - X 区 Git tab: 传统 git 操作（status/diff/commit/log/branch/stash）。
-  - A 区面板: git 快速状态预览。
-  - git 命令经 bridge.qz.spawn({ cmd:'git' }) 执行，30s 超时。
-  - diff 渲染: unified + side-by-side，上下文折叠（默认 3 行）/ 全文展开。
-  - 主题同步: postMessage('qqqide-theme-change') 响应。
+§38 Diff 窗口 — 独立 BrowserWindow（2026-06-11 新建）
+  - Monaco Diff Editor 0.34.1 side-by-side + minimap(红绿差异) + 差异折叠 + 自动换行。
+  - 一个文件单例（Map），再次点击复用。窗口完全覆盖主窗口(inset:0)。
+  - 下拉标记: before/after/first/last。right=last 时可编辑+←移入+💾保存写盘。
+  - 最小化已移除(frameless bug)。
+
+§39 Git Goods — 第一方 git 操作（2026-06-11 精简）
+  - X 区仅保留 Git tab。Timeline diff 已迁出至独立 BrowserWindow(§38)。
+  - git.js 保留 A4 消息监听 → 双路径: BrowserWindow(新) + X区tab(旧保底)。

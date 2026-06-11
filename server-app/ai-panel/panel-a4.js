@@ -402,11 +402,21 @@ function _a4RenderLive(ag) {
 
 // ---- 打开 diff 查看器（触发独立 BrowserWindow） ----
 function _a4OpenDiff(snap) {
-    // 新方式：通过 IPC 打开独立 BrowserWindow
+    // ★ 旧路径先发（保底，永远执行）
+    _postToHost({
+        type: 'qqq-a4-open-diff',
+        path: snap.path,
+        before: snap.before,
+        after: snap.after,
+        op: snap.op,
+        added: snap.added,
+        deleted: snap.deleted
+    });
+
+    // ★ 新路径作为增强（异步，失败不影响旧路径）
     var bridge = _getBridge();
     if (bridge && bridge.timeline && typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
         var root = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');
-        // 异步记录 before/after 并获取 blob hash，然后打开 diff 窗口
         (async function () {
             var beforeHash = null, afterHash = null;
             try {
@@ -429,16 +439,6 @@ function _a4OpenDiff(snap) {
             } catch (_) { }
         })();
     }
-    // 兼容：仍然发消息给父窗口（保留旧路径作为 fallback）
-    _postToHost({
-        type: 'qqq-a4-open-diff',
-        path: snap.path,
-        before: snap.before,
-        after: snap.after,
-        op: snap.op,
-        added: snap.added,
-        deleted: snap.deleted
-    });
 }
 
 // ═══ 快照持久化：floor 完成时写入 timeline 存储 + 元数据入 floor payload ═══
@@ -567,28 +567,15 @@ function _a4RestoreBlock(aiDiv, a4Meta, questNumericId, floorNum) {
     block.classList.add('has-files');
 }
 
-// ---- 历史楼层 diff：尝试新 BrowserWindow 路径 + 旧文件系统 fallback ----
+// ---- 历史楼层 diff：旧路径先发保底 + 新路径增强 ----
 async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum) {
     var bridge = getBridge();
     var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
         ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
 
-    // ★ 优先尝试新路径：通过 timeline.openDiffWindow 打开 BrowserWindow
-    if (root && bridge && bridge.timeline && meta.blob_hash) {
-        try {
-            await bridge.timeline.openDiffWindow({
-                filePath: meta.path,
-                projectRoot: root,
-                afterBlobHash: meta.blob_hash
-            });
-            return; // 新路径成功
-        } catch (_) { }
-    }
-
-    // Fallback: 旧文件系统快照路径
+    // ★ 旧路径保底：先尝试读旧文件系统快照
     var dir = _a4SnapshotDir(questNumericId, floorNum);
     var before = null, after = null;
-
     if (dir && bridge && bridge.fs) {
         try { 
             var rawBefore = await bridge.fs.read(dir + meta.hash + '.before'); 
@@ -600,6 +587,7 @@ async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum) {
         } catch (_) { }
     }
 
+    // ★ 发消息给父窗口（保底，永远执行）
     _postToHost({
         type: 'qqq-a4-open-diff',
         path: meta.path,
@@ -609,6 +597,17 @@ async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum) {
         added: meta.added,
         deleted: meta.deleted
     });
+
+    // ★ 新路径增强（异步，失败不影响旧路径）
+    if (root && bridge && bridge.timeline) {
+        try {
+            await bridge.timeline.openDiffWindow({
+                filePath: meta.path,
+                projectRoot: root,
+                afterBlobHash: meta.blob_hash || undefined
+            });
+        } catch (_) { }
+    }
 }
 
 // ═══ 清理当前 floor 快照（floor 结束时调用） ═══

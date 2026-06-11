@@ -53,12 +53,18 @@ function renderMarkdown(src) {
             '<span class="table-view-btn" onclick="viewTable(' + tblId + ')">▶ 展开</span>' +
             '<div class="table-inner">' + rawTable + '</div></div>';
     });
-    // Lists: 先转 <li>，再用占位符保护整个 <ul> 块，防止后续 <br> 和 <p> 破坏列表间距
+    // Lists: 先转 <li>，再用占位符保护整个 <ul>/<ol> 块，防止后续 <br> 和 <p> 破坏列表间距
+    // 有序列表（1. 2. 3.）→ <ol>；无序列表（* - +）→ <ul>
+    var _olPlaceholder = '\x00OL\x00';
+    s = s.replace(/^\d+\. (.+)$/gm, _olPlaceholder + '<li>$1</li>');
     s = s.replace(/^[*\-+] (.+)$/gm, '<li>$1</li>');
     var listBlocks = [];
     s = s.replace(/((?:<li>.*<\/li>\n?)+)/g, function (_, block) {
         var idx = listBlocks.length;
-        listBlocks.push('<ul>' + block.replace(/\n/g, '') + '</ul>');
+        var isOrdered = block.indexOf(_olPlaceholder) === 0;
+        block = block.replace(/\x00OL\x00/g, '');
+        var tag = isOrdered ? 'ol' : 'ul';
+        listBlocks.push('<' + tag + '>' + block.replace(/\n/g, '') + '</' + tag + '>');
         return '\x00UL' + idx + '\x00';
     });
     // Blockquote

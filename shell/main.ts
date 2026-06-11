@@ -2563,7 +2563,15 @@ function registerIpc(): void {
             return { ok: true, windowId: existingWin.id, reused: true };
         }
 
+        // 窗口完全覆盖主窗口（等同于图片/表格悬浮层 inset:0）
+        const mainBounds = (mainWindow && !mainWindow.isDestroyed())
+            ? mainWindow.getBounds()
+            : { x: 0, y: 0, width: 1200, height: 700 };
         const diffWin = new BrowserWindow({
+            x: mainBounds.x,
+            y: mainBounds.y,
+            width: mainBounds.width,
+            height: mainBounds.height,
             minWidth: 600,
             minHeight: 400,
             frame: false,
