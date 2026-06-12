@@ -548,14 +548,12 @@ function createWindow(): BrowserWindow {
     win.on('closed', () => {
         if (boundsSaveTimer) { clearTimeout(boundsSaveTimer); boundsSaveTimer = null; }
         try { lspBridge.removeTarget(win.webContents); } catch { /* ignore */ }
-        // 清理窗口↔项目映射
         const ownedProject = _windowProjectMap.get(win.id);
         if (ownedProject) {
             _windowProjectMap.delete(win.id);
             _projectWindowMap.delete(ownedProject);
         }
         if (win === mainWindow) {
-            // 关主窗口时兜底销毁一切残留窗口
             try {
                 const all = BrowserWindow.getAllWindows();
                 all.forEach(w => {
@@ -565,6 +563,13 @@ function createWindow(): BrowserWindow {
             try { engineHost.stop(); } catch { /* ignore */ }
             try { audioEngine.stop(); } catch { /* ignore */ }
             mainWindow = null;
+        }
+    });
+    // 窗口失焦 → 通知渲染层关闭 AI 视口下拉
+    win.on('blur', () => {
+        console.log('[main] window blur - dismissing dropdown');
+        if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+            win.webContents.executeJavaScript("if(window.qqqideViewport&&window.qqqideViewport.closeDropdown)window.qqqideViewport.closeDropdown()").catch((e) => { console.warn('[main] blur dismiss failed:', e && e.message); });
         }
     });
 
@@ -1112,21 +1117,22 @@ function registerIpc(): void {
     });
     ipcMain.handle('qqqide:fs:list', async (_e, p: string, callerStack?: string) => {
         console.log('[fs:list]', p);
-        // guard: reject non-directory paths gracefully
-        try {
-            const st = await fs.promises.stat(p);
-            if (!st.isDirectory()) {
-                console.warn('[fs:list] NOT_DIR:', p);
-                if (callerStack) { console.warn('[fs:list] CALLER_STACK:\n' + callerStack); }
-                return [];
-            }
-        } catch { return []; }
-        const entries = await fs.promises.readdir(p, { withFileTypes: true });
         const result: string[] = [];
-        const MAX = 500;
-        for (const e of entries) {
-            if (result.length >= MAX) break;
-            result.push(e.isDirectory() ? e.name + '/' : e.name);
+        const MAX = 2000;
+        // 使用 opendir 流式读取，读完 MAX 条立即关闭，绝不把整个目录加载进内存
+        let dir: fs.Dir | null = null;
+        try {
+            dir = await fs.promises.opendir(p);
+            let dirent: fs.Dirent | null;
+            while ((dirent = await dir.read()) !== null) {
+                if (result.length >= MAX) break;
+                result.push(dirent.isDirectory() ? dirent.name + '/' : dirent.name);
+            }
+        } catch {
+            if (callerStack) { console.warn('[fs:list] FAILED:', p, '\n' + callerStack); }
+            return [];
+        } finally {
+            if (dir) { try { await dir.close(); } catch (_) { } }
         }
         return result;
     });
@@ -2374,7 +2380,12 @@ function registerIpc(): void {
             const hasExisting = stmt.step();
             stmt.free();
             if (hasExisting) {
-                return { ok: true, dedup: true, blob_hash: sha };
+                // 更新 ts，防止 A4 before/after 时间线倒置（SHA256 去重会保留旧时间戳）
+                const now = Date.now();
+                db.run('UPDATE versions SET ts = ? WHERE file_path = ? AND blob_hash = ?',
+                    [now, normalizedPath, sha]);
+                _tlFlushDb(db, dbPath);
+                return { ok: true, dedup: true, blob_hash: sha, ts: now };
             }
             // 先写 blob（不可变，原子写）
             const blobPath = _tlBlobPath(projectRoot, sha);
@@ -2563,21 +2574,37 @@ function registerIpc(): void {
             return { ok: true, windowId: existingWin.id, reused: true };
         }
 
-        // 窗口完全覆盖主窗口（等同于图片/表格悬浮层 inset:0）
-        const mainBounds = (mainWindow && !mainWindow.isDestroyed())
-            ? mainWindow.getBounds()
-            : { x: 0, y: 0, width: 1200, height: 700 };
+        // 窗口覆盖 #qqq-main 区域（与图片/表格悬浮层一致：仅主区，不含左右翼）
+        const _parentWin = BrowserWindow.fromWebContents(e.sender);
+        let mainRect = { x: 0, y: 0, width: 1200, height: 700 };
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+                const jsRect = await mainWindow.webContents.executeJavaScript(
+                    `(function(){var m=document.getElementById('qqq-main');if(!m)return null;var r=m.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};})()`
+                );
+                if (jsRect && jsRect.w > 0) {
+                    const wb = mainWindow.getBounds();
+                    mainRect = { x: wb.x + (jsRect.x || 0), y: wb.y + (jsRect.y || 0), width: jsRect.w, height: jsRect.h };
+                } else {
+                    const wb = mainWindow.getBounds();
+                    mainRect = { x: wb.x, y: wb.y, width: wb.width, height: wb.height };
+                }
+            } catch (_) {
+                const wb = mainWindow.getBounds();
+                mainRect = { x: wb.x, y: wb.y, width: wb.width, height: wb.height };
+            }
+        }
         const diffWin = new BrowserWindow({
-            x: mainBounds.x,
-            y: mainBounds.y,
-            width: mainBounds.width,
-            height: mainBounds.height,
+            x: mainRect.x,
+            y: mainRect.y,
+            width: Math.max(600, mainRect.width),
+            height: Math.max(400, mainRect.height),
             minWidth: 600,
             minHeight: 400,
             frame: false,
             title: 'Timeline Diff — ' + (filePath.split(/[\\/]/).pop() || filePath),
             backgroundColor: '#1e1e1e',
-            parent: BrowserWindow.fromWebContents(e.sender) || undefined,
+            parent: _parentWin || undefined,
             modal: false,
             resizable: true,
             webPreferences: {
@@ -2601,9 +2628,19 @@ function registerIpc(): void {
 
         // 确保 URL 拼接安全（bootConfig.url 可能无尾部斜杠）
         const baseUrl = bootConfig.url.replace(/\/*$/, '/');
+        // 读取主窗口当前主题
+        var _isDark = true;
+        try {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                _isDark = await mainWindow.webContents.executeJavaScript(
+                    'document.documentElement.getAttribute("data-theme") === "dark"'
+                );
+            }
+        } catch (_) { }
         const diffUrl = baseUrl + 'timeline/diff-window.html' +
             '?path=' + encodeURIComponent(filePath) +
             '&projectRoot=' + encodeURIComponent(projectRoot) +
+            '&theme=' + (_isDark ? 'dark' : 'light') +
             (beforeBlobHash ? '&before=' + encodeURIComponent(beforeBlobHash) : '') +
             (afterBlobHash ? '&after=' + encodeURIComponent(afterBlobHash) : '');
         diffWin.loadURL(diffUrl).catch(err => {
@@ -2770,20 +2807,31 @@ app.on('before-quit', async (e) => {
 process.on('SIGINT', () => { _flushStateSync('SIGINT'); try { app.quit(); } catch { process.exit(0); } });
 process.on('SIGTERM', () => { _flushStateSync('SIGTERM'); try { app.quit(); } catch { process.exit(0); } });
 // ═══ 全局异常兜底：刷盘 + 抑制已销毁窗口错误 ═══
+var _ueInHandler = false;  // 防止递归进入（EPIPE 在 console.error 内再次触发 uncaughtException）
+var _ueLastLogTs = 0;     // 限速：同类错误至少间隔 5 秒才写文件
 process.on('uncaughtException', (err) => {
-    // 已销毁窗口的异步回调抛错 → 安全吞掉（Electron 常态）
-    if (err && err.message === 'Object has been destroyed') {
-        console.warn('[main] uncaughtException (Object destroyed) suppressed');
-        return;
-    }
-    console.error('[uncaughtException]', err);
-    _flushStateSync('uncaughtException');
-    // Also drop a crash log alongside other logs.
+    if (_ueInHandler) return;  // 递归调用直接吞掉，打断 EPIPE 死亡螺旋
+    _ueInHandler = true;
     try {
-        const f = path.join(portable.logs, 'crash-' + Date.now() + '.log');
-        fs.writeFileSync(f, String(err && (err as any).stack || err));
-    } catch { /* ignore */ }
-    // Let app continue if possible; do NOT exit silently.
+        if (err && err.message === 'Object has been destroyed') {
+            console.warn('[main] uncaughtException (Object destroyed) suppressed');
+            return;
+        }
+        // console.error 可能因管道断开抛 EPIPE，用 try-catch 保护
+        try { console.error('[uncaughtException]', err); } catch (_) { }
+        _flushStateSync('uncaughtException');
+        // 限速写 crash 日志：同类错误不灌满磁盘
+        var now = Date.now();
+        if (now - _ueLastLogTs > 5000) {
+            _ueLastLogTs = now;
+            try {
+                var f = path.join(portable.logs, 'crash-' + now + '.log');
+                fs.writeFileSync(f, String(err && (err as any).stack || err));
+            } catch (_) { }
+        }
+    } finally {
+        _ueInHandler = false;
+    }
 });
 process.on('unhandledRejection', (reason) => {
     console.warn('[unhandledRejection]', reason);

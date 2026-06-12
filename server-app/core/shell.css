@@ -1012,41 +1012,46 @@ body {
   background: rgba(220, 50, 47, 0.1);
 }
 
-/* ── AI 视口下拉：浅色主题用纯白底 + 清晰灰边框 ── */
+/* ── AI 视口下拉/子菜单共享样式 ── */
 .aiv-dropdown,
-.aiv-submenu {
-  background: #fafaf8 !important;
-  border-color: #c8c8c0 !important;
+.aiv-submenu,
+.aiv-recent-dropdown {
+  background: #e7e4c2 !important;
+  border: 1px solid #c8c8c0 !important;
+  padding: 4px 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
 }
 
 [data-theme="dark"] .aiv-dropdown,
-[data-theme="dark"] .aiv-submenu {
-  background: var(--card-bg) !important;
+[data-theme="dark"] .aiv-submenu,
+[data-theme="dark"] .aiv-recent-dropdown {
+  background: #1e211e !important;
   border-color: var(--border-color) !important;
 }
 
-/* ── 撞色 hover：浅色黑底白字 / 深色白底黑字 ── */
+/* ── hover 高亮：文件/文件夹统一，文字纯黑(亮)/纯白(暗)，更显眼 ── */
 .aiv-dd-row:hover,
 .aiv-recent-row:hover {
-  background: #000 !important;
-  color: #fff !important;
+  background: rgba(0,0,0,0.12) !important;
+  color: #000 !important;
 }
 
 [data-theme="dark"] .aiv-dd-row:hover,
 [data-theme="dark"] .aiv-recent-row:hover {
-  background: #fff !important;
-  color: #000 !important;
-}
-
-/* ── 面包屑：与 hover 同款撞色，路径清晰可见 ── */
-.aiv-breadcrumb {
-  background: #000 !important;
+  background: rgba(255,255,255,0.16) !important;
   color: #fff !important;
 }
 
-[data-theme="dark"] .aiv-breadcrumb {
-  background: #fff !important;
+/* ── 面包屑：比 hover 更深的高亮背景，文字色与 hover 一致 ── */
+.aiv-breadcrumb {
+  background: rgba(0,0,0,0.20) !important;
   color: #000 !important;
+}
+
+[data-theme="dark"] .aiv-breadcrumb {
+  background: rgba(255,255,255,0.24) !important;
+  color: #fff !important;
 }
 
 /* ============================================================================

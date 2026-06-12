@@ -21,6 +21,13 @@
     var OUTPUT_CAP_MAX = 65536;       // AI 视野最大上限（AI 传 maxOutput 时可突破到）
     var MAX_RESPONSE_TOKENS = 393216; // AI 回答最大 tokens（上限 393216，唯一真理在此）
     var COMPACT_MAX_TOKENS = 32768;   // 上下文压缩产出硬限 32K
+    var AI_OUTPUT_WATCHDOG_MS = 900000; // AI 流产出看门狗 15min（agent-loop 读此，唯一真理在此）
+
+    // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
+    var CTX_MAX_TOKENS = 1000000;     // DeepSeek V4 上下文窗口总上限（prompt + completion ≤ 1M）
+    var COMPRESS_THRESHOLD = 900000;  // 压缩触发阈值（90% 窗口，留 10% 缓冲）
+    var MAX_TOKENS_SAFETY = 10000;    // max_tokens 帽安全余量（防止边界情况）
+    var CHAR_PER_TOKEN = 3.0;         // 统一 chars→tokens 估算比例（所有估算器以此为准）
 
     // ═══ 二进制检测 ═══
     function detectBinary(str) {
@@ -80,7 +87,13 @@
         OUTPUT_CAP_DEFAULT: OUTPUT_CAP_DEFAULT,
         OUTPUT_CAP_MAX: OUTPUT_CAP_MAX,
         MAX_RESPONSE_TOKENS: MAX_RESPONSE_TOKENS,
-        COMPACT_MAX_TOKENS: COMPACT_MAX_TOKENS
+        COMPACT_MAX_TOKENS: COMPACT_MAX_TOKENS,
+        AI_OUTPUT_WATCHDOG_MS: AI_OUTPUT_WATCHDOG_MS,
+        // 模型上下文窗口参数
+        CTX_MAX_TOKENS: CTX_MAX_TOKENS,
+        COMPRESS_THRESHOLD: COMPRESS_THRESHOLD,
+        MAX_TOKENS_SAFETY: MAX_TOKENS_SAFETY,
+        CHAR_PER_TOKEN: CHAR_PER_TOKEN
     };
 
     // [silent] content-gateway ready

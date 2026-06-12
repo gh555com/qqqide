@@ -25,24 +25,28 @@
   let activeDropdown = null; // currently visible dropdown element
   let activeSubmenus = [];   // all open submenu elements
 
-  // ---- module-level close timer (shared by dropdown + all submenus) ----
-  let _closeTimer = null;
+  // ---- module-level state (dropdown stays forever until explicit dismiss) ----
   let _activeBlockEl = null;
+  let _dirCache = new Map(); // per-dropdown cache: key=dirPath, value=entries[]
   let _hoverTimer = null;
   function cancelHover() { if (_hoverTimer) { clearTimeout(_hoverTimer); _hoverTimer = null; } }
-  let _dirCache = new Map(); // per-dropdown cache: key=dirPath, value=entries[]
-  function scheduleClose() {
-    cancelHover();
-    if (_closeTimer) return; // already scheduled
-    _closeTimer = setTimeout(() => {
-      _closeTimer = null;
-      closeDropdown();
-      if (_activeBlockEl) { _activeBlockEl.classList.remove('aiv-block-active'); _activeBlockEl = null; }
-    }, 500);
-  }
-  function cancelClose() {
-    if (_closeTimer) { clearTimeout(_closeTimer); _closeTimer = null; }
-  }
+
+  // ★ 注入下拉/子菜单滚动条：3px 纯红 80%透明，无轨道
+  (function _injectScrollbarStyle() {
+    if (document.getElementById('aiv-scrollbar-style')) return;
+    var style = document.createElement('style');
+    style.id = 'aiv-scrollbar-style';
+    style.textContent = [
+      '.aiv-dropdown::-webkit-scrollbar, .aiv-submenu::-webkit-scrollbar { width:3px; }',
+      '.aiv-dropdown::-webkit-scrollbar-track, .aiv-submenu::-webkit-scrollbar-track { background:transparent; border:none; }',
+      '.aiv-dropdown::-webkit-scrollbar-thumb, .aiv-submenu::-webkit-scrollbar-thumb {',
+      '  background:rgba(255,0,0,0.80); border:none; border-radius:0; min-height:24px;',
+      '}',
+      '.aiv-dropdown::-webkit-scrollbar-thumb:hover, .aiv-submenu::-webkit-scrollbar-thumb:hover { background:rgba(255,0,0,0.95); }',
+      '.aiv-dropdown::-webkit-scrollbar-corner, .aiv-submenu::-webkit-scrollbar-corner { background:transparent; }',
+    ].join('\n');
+    (document.head || document.documentElement).appendChild(style);
+  })();
 
   // ---- helpers ----
   function basename(p) {
@@ -56,23 +60,38 @@
     return name.length > max ? name.slice(0, max) + '…' : name;
   }
 
+  // ★ 中部截断（字符位宽）：首部占剩余空间，尾部固定 N 字符，省略号置中
+  // 用字符数而非字节数——字节宽度不可预测（ASCII=1b, 中文=3b, 同字节数宽度差3倍）
+  function truncMiddle(name, maxLen, tailChars) {
+    maxLen = maxLen || 26;
+    tailChars = tailChars || 12; // 覆盖 .configtion .config.js 等长后缀
+    if (name.length <= maxLen) return name;
+    var headLen = maxLen - tailChars - 1; // -1 为「…」
+    if (headLen < 2) headLen = 2;
+    var head = name.slice(0, headLen);
+    var tail = name.slice(-tailChars);
+    return head + '…' + tail;
+  }
+
   function pathJoin(a, b) {
     if (!a) return b;
     if (a.endsWith('/') || a.endsWith('\\')) return a + b;
     return a + (a.includes('\\') ? '\\' : '/') + b;
   }
 
-  var SKIP_DIRS = ['node_modules', '.git', 'logs', 'cache', 'temp', 'crashDumps', '.qoder', '.github'];
+  var SKIP_DIRS = ['node_modules', '.git'];
 
+  var CACHE_TTL = 10000;  // 缓存 10 秒后过期，下次 hover 重新读盘
   async function listDir(p) {
-    if (_dirCache.has(p)) return _dirCache.get(p);
+    var cached = _dirCache.get(p);
+    if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.entries;
     try {
       const entries = await bridge.fs.list(p);
       entries.sort((x, y) => {
         if (x.isDir !== y.isDir) return x.isDir ? -1 : 1;
         return x.name < y.name ? -1 : x.name > y.name ? 1 : 0;
       });
-      _dirCache.set(p, entries);
+      _dirCache.set(p, { entries, ts: Date.now() });
       return entries;
     } catch (e) {
       return [];
@@ -213,16 +232,14 @@
   });
   // ---- close active dropdown ----
   function closeDropdown() {
-    cancelHover();  // ★ 清除任何待处理的子菜单 hover 定时器，防止孤儿子菜单漂移到 (0,0)
-    cancelClose();  // ★ 清除待处理的关闭定时器，防止二次触发
+    cancelHover();
     closeAllSubmenus();
-    _dirCache.clear();
+    // 缓存保留不清理——同项目重新 hover 时不需再调 IPC
     if (activeDropdown) {
       activeDropdown.remove();
       activeDropdown = null;
     }
     if (_activeBlockEl) { _activeBlockEl.classList.remove('aiv-block-active'); _activeBlockEl = null; }
-    _setAiIframesPointerEvents('');  // 恢复 iframe 鼠标事件
   }
 
   function closeAllSubmenus() {
@@ -233,7 +250,58 @@
     activeSubmenus = [];
   }
 
-  // ★ 防止下拉/子菜单被 AI iframe 遮挡（iframe 在某些平台有隐式最高 z-order）
+  // ★ 飞块动画：左键点击后，小矩形从点击位置飞到目标 AI 面板底部输入区
+  var _flyBlock = null;
+  function _animateFlyToPanel(rowEl, targetPanelId) {
+    // 取消上一次动画
+    if (_flyBlock) { _flyBlock.remove(); _flyBlock = null; }
+    var srcRect = rowEl.getBoundingClientRect();
+    if (srcRect.width === 0 && srcRect.height === 0) return;
+    // 目标面板
+    var zoneId = targetPanelId === 0 ? 'qqq-wing-left' : targetPanelId === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
+    var zone = document.getElementById(zoneId);
+    if (!zone) return;
+    var dstRect = zone.getBoundingClientRect();
+    if (dstRect.width === 0 || dstRect.height === 0) return;
+    // 目标 Y：面板底部输入框区域（距底部 ~60px）
+    var dstX = dstRect.left + dstRect.width / 2;
+    var dstY = dstRect.bottom - 60;
+    // 创建飞块
+    var block = document.createElement('div');
+    var startW = Math.round(srcRect.width * 0.55);
+    var startH = Math.round(srcRect.height * 0.5);
+    block.style.cssText =
+      'position:fixed; z-index:999999; pointer-events:none; ' +
+      'background:var(--yellow,#b58900); border-radius:2px; ' +
+      'width:' + startW + 'px; height:' + startH + 'px; ' +
+      'left:' + srcRect.left + 'px; top:' + srcRect.top + 'px; ' +
+      'transition:left 0.32s cubic-bezier(0.25,0.46,0.45,0.94), ' +
+      'top 0.32s cubic-bezier(0.25,0.46,0.45,0.94), ' +
+      'width 0.32s cubic-bezier(0.25,0.46,0.45,0.94), ' +
+      'height 0.32s cubic-bezier(0.25,0.46,0.45,0.94); ' +
+      'opacity:0.95;';
+    document.body.appendChild(block);
+    _flyBlock = block;
+    // 下一帧触发位移+缩放
+    requestAnimationFrame(function () {
+      block.style.left = (dstX - 12) + 'px';   // 终点 24×14
+      block.style.top = (dstY - 7) + 'px';
+      block.style.width = '24px';
+      block.style.height = '14px';
+    });
+    // 前 260ms 保持不透明，最后 60ms 淡出消失
+    setTimeout(function () {
+      if (_flyBlock !== block) return;
+      block.style.transition = 'opacity 0.06s ease-out';
+      block.style.opacity = '0';
+    }, 260);
+    // 动画结束后清理
+    setTimeout(function () {
+      if (_flyBlock === block) { block.remove(); _flyBlock = null; }
+    }, 380);
+  }
+
+  // ★ 冻结/恢复 AI iframe 点击：打开下拉时切断 iframe 交互，点击透传到遮罩
   function _setAiIframesPointerEvents(val) {
     var zones = ['qqq-wing-left', 'qqq-ai-zone', 'qqq-wing-right'];
     for (var i = 0; i < zones.length; i++) {
@@ -263,7 +331,7 @@
     var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
     var zoneId = target === 0 ? 'qqq-wing-left' : target === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
     console.log('[ai-viewport] attachToAi target=' + target + ' zone=' + zoneId + ' file=' + filePath + ' isDir=' + isDir);
-    closeDropdown();
+    // ★ 不关闭下拉：用户可连续点击同目录下多个文件附加到 AI
     var zone = document.getElementById(zoneId);
     var aiFrame = zone ? zone.querySelector('iframe') : null;
     if (!aiFrame || !aiFrame.contentWindow) {
@@ -289,41 +357,27 @@
 
   // ---- render: directory tree dropdown ----
   function showDropdown(blockEl, project) {
+    // 窗口无焦点时跳过——避免下拉刚开就被轮询关闭闪烁
+    if (!document.hasFocus()) return;
     closeDropdown();
-    cancelClose();
-    // 兜底：block 可能已被 render() 重建而脱离 DOM，getBoundingClientRect 会返回全零
     if (!blockEl.isConnected) return;
     _activeBlockEl = blockEl;
 
     const rect = blockEl.getBoundingClientRect();
-    // ★ 防护：翼板切换瞬间 rect 可能全零，跳过避免漂移到左上角
     if (rect.width === 0 && rect.height === 0) return;
     const dd = document.createElement('div');
     dd.className = 'aiv-dropdown';
-    // Fill maximum vertical space: from below block to bottom of viewport (minus 8px margin)
     const topPx = rect.bottom;
-    const maxH = Math.max(200, window.innerHeight - topPx - 8);
     dd.style.cssText =
       'position:fixed; z-index:99999; ' +
       'left:' + rect.left + 'px; top:' + topPx + 'px; ' +
-      'min-width:240px; max-width:360px; height:' + maxH + 'px; overflow-y:auto; overflow-x:hidden; ' +
-      'background:var(--card-bg); border:1px dashed var(--border-color); ' +
-      'border-radius:3px; box-shadow:0 4px 16px rgba(0,0,0,.18); padding:4px 0;';
+      'min-width:240px; max-width:360px; height:' + Math.max(200, window.innerHeight - topPx - 8) + 'px;';
 
-    // wrap the block + dropdown in a visual dashed frame
     blockEl.classList.add('aiv-block-active');
-    // ★ 屏蔽所有 AI iframe 鼠标事件，防止下拉被 iframe 遮挡导致点击穿透
-    _setAiIframesPointerEvents('none');
 
     loadDirInto(dd, project.path);
     document.body.appendChild(dd);
     activeDropdown = dd;
-
-    // Use module-level timer: mouse in block/dropdown cancels, mouse out schedules
-    blockEl.addEventListener('mouseleave', scheduleClose);
-    blockEl.addEventListener('mouseenter', cancelClose);
-    dd.addEventListener('mouseleave', scheduleClose);
-    dd.addEventListener('mouseenter', cancelClose);
   }
 
   function fileIconFor(name, isDir) {
@@ -358,81 +412,122 @@
       row.className = 'aiv-dd-row';
       row.style.cssText =
         'display:flex; align-items:center; padding:4px 10px; cursor:pointer; ' +
-        'font-size:14px; font-weight:600; color:var(--text-primary); white-space:nowrap; position:relative;';
+        'font-size:14px; font-weight:600; color:var(--text-primary); white-space:nowrap; position:relative; ' +
+        'width:100%; box-sizing:border-box;';
       const icon = document.createElement('span');
       icon.textContent = fileIconFor(ent.name, ent.isDir);
       icon.style.cssText = 'margin-right:6px; font-size:11px;';
       const label = document.createElement('span');
-      label.textContent = ent.name;
+      label.textContent = truncMiddle(ent.name, 26, 12);
+      label.title = ent.name;  // 完整名称在 hover tooltip 显示
       label.style.cssText = 'overflow:hidden; text-overflow:ellipsis;';
-      if (ent.isDir) {
-        const arrow = document.createElement('span');
-        arrow.textContent = '›';
-        arrow.style.cssText = 'margin-left:auto; padding-left:8px; color:var(--base1);';
-        row.appendChild(icon); row.appendChild(label); row.appendChild(arrow);
-      } else {
-        row.appendChild(icon); row.appendChild(label);
-      }
+      row.appendChild(icon); row.appendChild(label);
 
       row.addEventListener('mouseenter', () => {
-        // Only close the CHILD submenu of this parent, not the parent itself
+        if (!ent.isDir) return;
+        // 关闭旧子菜单后，150ms 防抖再展开新子菜单（防止光标掠过时惊群）
         if (parentEl._childSub) {
           closeSubmenuTree(parentEl._childSub);
           parentEl._childSub = null;
         }
-        // if dir, expand submenu to the right (150ms debounce via shared _hoverTimer)
-        if (ent.isDir) {
-          cancelHover();
-          _hoverTimer = setTimeout(() => {
-            _hoverTimer = null;
-            // ★ 防止竞态：父下拉已关闭时 row 已断连 DOM，跳过避免漂移到 (0,0)
-            if (!row.isConnected) return;
-            const sub = openSubmenu(row, pathJoin(dirPath, ent.name));
+        cancelHover();
+        var depth = (parentEl._depth || 0) + 1;
+        var subPath = pathJoin(dirPath, ent.name);
+        _hoverTimer = setTimeout(() => {
+          _hoverTimer = null;
+          const sub = openSubmenu(row, subPath, depth);
+          if (sub) {
+            sub._justOpened = Date.now();
             parentEl._childSub = sub;
-          }, 150);
+          }
+        }, 150);
+      });
+
+      const fullPath = pathJoin(dirPath, ent.name);
+
+      // 左键 → 附加到 AI 对话 + 飞块动画
+      row.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return; // 只响应左键
+        e.stopPropagation();
+        e.preventDefault();
+        attachToAi(fullPath, ent.isDir);
+        // 飞块动画：小矩形从点击行飞向目标 AI 面板
+        var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
+        _animateFlyToPanel(row, target);
+      });
+      row.addEventListener('click', (e) => { e.stopPropagation(); });
+
+      // 右键 → 文件用 editor 打开 / 目录用 search goods 搜索
+      row.addEventListener('contextmenu', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (ent.isDir) {
+          if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath);
+        } else {
+          // 通过 qqq-file-open 自定义事件走 shell.js 的完整渲染管线（读文件+Monaco editor）
+          document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: fullPath, preview: true } }));
         }
       });
 
-      // mousedown — fires earlier than click, more reliable across nested popups.
-      const onAttach = (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        const fullPath = pathJoin(dirPath, ent.name);
-        attachToAi(fullPath, ent.isDir);
-      };
-      row.addEventListener('mousedown', onAttach);
-      // Also keep click as a safety net
-      row.addEventListener('click', (e) => { e.stopPropagation(); });
-
       parentEl.appendChild(row);
     }
+    // ★ 行全部挂载后重置防抖窗口，防止行刚出现时光标恰在其上触发连锁展开
+    parentEl._justOpened = Date.now();
   }
 
-  function openSubmenu(rowEl, dirPath) {
-    // ★ 防卫：rowEl 已断连 DOM 时放弃，防止孤儿子菜单漂移到 (0,0)
+  function openSubmenu(rowEl, dirPath, depth) {
     if (!rowEl.isConnected) return null;
     const sub = document.createElement('div');
     sub.className = 'aiv-submenu';
-    // position to the right of the row
+    sub._depth = depth || 1;
     const rect = rowEl.getBoundingClientRect();
-    // Fill maximum vertical space: from row top down to viewport bottom
-    const topPx = rect.top;
-    const maxH = Math.max(200, window.innerHeight - topPx - 8);
+    const rootTop = activeDropdown ? activeDropdown.getBoundingClientRect().top : rect.top;
+    const maxH = Math.max(200, window.innerHeight - rootTop - 8);
     sub.style.cssText =
       'position:fixed; z-index:100000; ' +
-      'min-width:220px; max-width:340px; height:' + maxH + 'px; overflow-y:auto; overflow-x:hidden; ' +
-      'background:var(--card-bg); border:1px solid var(--border-color); ' +
-      'border-radius:3px; box-shadow:0 4px 12px rgba(0,0,0,.15); padding:4px 0;';
-    sub.style.left = rect.right + 'px';
-    sub.style.top = topPx + 'px';
+      'min-width:220px; max-width:340px; height:' + maxH + 'px;';
+    // ★ 方向决策基于父容器边缘（空间够不够放 340px 列表）
+    //    定位贴合父行边缘（用户视觉跟行走）
+    var estW = 340;
+    var gap = 0;
+    var parentEdge = rowEl.parentElement.getBoundingClientRect();
+    var parentDir = rowEl.parentElement && rowEl.parentElement._direction;
+    var goRight;
+    if (parentDir === undefined) {
+      var spaceR = window.innerWidth - parentEdge.right;
+      var spaceL = parentEdge.left;
+      goRight = (spaceR >= spaceL);
+    } else {
+      if (parentDir) {
+        goRight = (window.innerWidth - parentEdge.right >= estW);
+      } else {
+        goRight = !(parentEdge.left >= estW);
+      }
+    }
+    sub._direction = goRight;
+    // 定位贴父容器边缘（消除行宽≠容器宽造成的空隙）
+    var leftX;
+    if (goRight) {
+      leftX = parentEdge.right + gap;
+      if (leftX + estW > window.innerWidth) leftX = window.innerWidth - estW;
+    } else {
+      leftX = parentEdge.left - estW - gap;
+      if (leftX < 0) leftX = 0;
+    }
+    console.log('[aiv-gap] depth:', sub._depth,
+      '| goRight:', goRight,
+      '| parentEdge.left:', parentEdge.left.toFixed(0),
+      'parentEdge.right:', parentEdge.right.toFixed(0),
+      '| rowRect.left:', rect.left.toFixed(0),
+      'rowRect.right:', rect.right.toFixed(0),
+      '| leftX:', leftX.toFixed(0),
+      '| winW:', window.innerWidth);
+    sub.style.left = leftX + 'px';
+    sub.style.top = rootTop + 'px';
 
     // breadcrumb: mark the parent row so the path stays highlighted
     rowEl.classList.add('aiv-breadcrumb');
     sub._parentRow = rowEl;
-
-    // Submenus also participate in the shared close timer
-    sub.addEventListener('mouseenter', cancelClose);
-    sub.addEventListener('mouseleave', scheduleClose);
 
     document.body.appendChild(sub);
     activeSubmenus.push(sub);
@@ -508,12 +603,18 @@
     block.appendChild(searchBtn);
     block.appendChild(rmBtn);
 
-    // hover → dropdown (150ms debounce: skip flicker when mouse zips across blocks)
+    // hover → 150ms 防抖后展开下拉（防止光标掠过误触 + 限制 readdir 频率）
+    var _blockHoverTimer = null;
     block.addEventListener('mouseenter', () => {
-      cancelHover();
-      _hoverTimer = setTimeout(() => { _hoverTimer = null; showDropdown(block, proj); }, 150);
+      if (_blockHoverTimer) return; // 已在计时中
+      _blockHoverTimer = setTimeout(() => {
+        _blockHoverTimer = null;
+        showDropdown(block, proj);
+      }, 150);
     });
-    block.addEventListener('mouseleave', () => { cancelHover(); });
+    block.addEventListener('mouseleave', () => {
+      if (_blockHoverTimer) { clearTimeout(_blockHoverTimer); _blockHoverTimer = null; }
+    });
 
     return block;
   }
@@ -543,12 +644,10 @@
       }
     });
 
-    // hover → 150ms 后展示最近 20 个主文件夹下拉
+    // hover → 即时展示最近 20 个主文件夹下拉
     block.addEventListener('mouseenter', () => {
-      cancelHover();
-      _hoverTimer = setTimeout(() => { _hoverTimer = null; _showRecentDropdown(block); }, 150);
+      _showRecentDropdown(block);
     });
-    block.addEventListener('mouseleave', () => { cancelHover(); });
 
     return block;
   }
@@ -556,7 +655,6 @@
   // ---- recent folders dropdown (hover "+" block) ----
   function _showRecentDropdown(blockEl) {
     closeDropdown();
-    cancelClose();
     if (!blockEl.isConnected) return;
     _activeBlockEl = blockEl;
     blockEl.classList.add('aiv-block-active');
@@ -571,9 +669,7 @@
     dd.style.cssText =
       'position:fixed; z-index:99999; ' +
       'left:' + rect.left + 'px; top:' + topPx + 'px; ' +
-      'min-width:280px; max-width:420px; height:' + maxH + 'px; overflow-y:auto; overflow-x:hidden; ' +
-      'background:var(--card-bg); border:1px dashed var(--border-color); ' +
-      'border-radius:3px; box-shadow:0 4px 16px rgba(0,0,0,.18); padding:4px 0;';
+      'min-width:280px; max-width:420px; height:' + maxH + 'px;';
 
     // 标题行
     var titleRow = document.createElement('div');
@@ -625,11 +721,6 @@
 
     document.body.appendChild(dd);
     activeDropdown = dd;
-
-    blockEl.addEventListener('mouseleave', scheduleClose);
-    blockEl.addEventListener('mouseenter', cancelClose);
-    dd.addEventListener('mouseleave', scheduleClose);
-    dd.addEventListener('mouseenter', cancelClose);
   }
 
   async function confirmRemove(proj) {
@@ -738,20 +829,61 @@
     _loadRecents();
     loadProjects();
     render();
-    // close dropdown when clicking outside
-    document.addEventListener('mousedown', (e) => {
+    // ★ 关闭下拉：左键点击列表外任何位置（窗口内+窗口外）
+    function _isOutsideDropdown(target) {
+      if (!activeDropdown) return false;
+      if (activeDropdown.contains(target)) return false;
+      if (target.closest && target.closest('.aiv-submenu')) return false;
+      if (target.closest && target.closest('.aiv-block')) return false;
+      return true;
+    }
+    function _dismissDropdown() {
       if (!activeDropdown) return;
-      if (activeDropdown.contains(e.target)) return;
-      if (e.target.closest && e.target.closest('.aiv-block')) return;
-      // Submenu rows are sibling divs in body — treat them as inside-dropdown too
-      if (e.target.closest && e.target.closest('.aiv-submenu')) return;
       closeDropdown();
-      document.querySelectorAll('.aiv-block-active').forEach(el => el.classList.remove('aiv-block-active'));
+      document.querySelectorAll('.aiv-block-active').forEach(function (el) { el.classList.remove('aiv-block-active'); });
+    }
+    // ★ 关闭策略：遮罩 + iframe pointer-events 切断
+    //   1. 透明遮罩铺满菜单栏以下区域，拦截普通区域点击
+    //   2. iframe 设 pointer-events:none，点击穿透到遮罩 → 关闭
+    //   3. 主进程 blur → executeJavaScript 直接关
+    var _backdrop = null;
+    function _ensureBackdrop() {
+      if (_backdrop) return;
+      _backdrop = document.createElement('div');
+      _backdrop.style.cssText = 'position:fixed; left:0; right:0; bottom:0; z-index:99998; background:transparent;';
+      _backdrop.style.top = (container.getBoundingClientRect().bottom || 32) + 'px';
+      _backdrop.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        _dismissDropdown();
+      });
+      document.body.appendChild(_backdrop);
+    }
+    function _removeBackdrop() {
+      if (_backdrop) { _backdrop.remove(); _backdrop = null; }
+    }
+    // 打开下拉时：遮罩 + 冻结 iframe 点击
+    var _origShowDropdown = showDropdown;
+    showDropdown = function (blockEl, project) {
+      _origShowDropdown(blockEl, project);
+      _ensureBackdrop();
+      _setAiIframesPointerEvents('none');
+    };
+    // 关闭下拉时：移除遮罩 + 恢复 iframe 点击
+    var _origCloseDropdown = closeDropdown;
+    closeDropdown = function () {
+      _origCloseDropdown();
+      _removeBackdrop();
+      _setAiIframesPointerEvents('');
+    };
+    window.qqqideViewport.closeDropdown = closeDropdown;
+    // Escape 键关闭（任何情况下都可操作）
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && activeDropdown) _dismissDropdown();
     });
-    // 窗口缩放/翼板开关时关闭下拉（fixed 定位不会自动跟随）
-    window.addEventListener('resize', function () {
-      if (activeDropdown) closeDropdown();
-    });
+    // 窗口失焦轮询兜底（100ms 间隔）
+    setInterval(function () {
+      if (activeDropdown && !document.hasFocus()) _dismissDropdown();
+    }, 100);
 
   }
 

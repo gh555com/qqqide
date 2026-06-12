@@ -6,18 +6,18 @@
 <style>
 /* 配色变量由父窗口 qqq-theme.js 注入；独立运行时使用 fallback */
 :root {
-  --background-color:#fdf6e3;--card-bg:#eee8d5;--text-primary:#7a7874;--border-color:#d3c6aa;
-  --base03:#002b36;--base02:#073642;--base01:#777777;--base00:#7a7874;
+  --background-color:#fdf6e3;--card-bg:#eee8d5;--text-primary:#656360;--border-color:#d3c6aa;
+  --base03:#002d20;--base02:#07362e;--base01:#777777;--base00:#7a7874;
   --base0:#7a7874;--base1:#a8a6a2;--base2:#eee8d5;--base3:#fdf6e3;
-  --yellow:#b58900;--orange:#cb4b16;--red:#dc322f;--magenta:#d33682;
-  --violet:#6c71c4;--blue:#e8a030;--cyan:#2aa198;--green:#859900;
+  --yellow:#b58900;--orange:#cb4b16;--red:#dc322f;--magenta:#c83070;
+  --violet:#7e6c8e;--blue:#e8a030;--cyan:#2a9a78;--green:#859900;
 }
 [data-theme="dark"] {
-  --background-color:#1e1e1e;--card-bg:#2a2a2a;--text-primary:#d4d0c8;--border-color:#333333;
-  --base03:#fdf6e3;--base02:#eee8d5;--base01:#93a1a1;--base00:#c8c4b8;
+  --background-color:#1e1e1e;--card-bg:#2a2a2a;--text-primary:#dcd8d0;--border-color:#333333;
+  --base03:#fdf6e3;--base02:#eee8d5;--base01:#97978a;--base00:#c8c4b8;
   --base0:#a8a49c;--base1:#6a6660;--base2:#2a2a2a;--base3:#1e1e1e;
-  --yellow:#d4a017;--orange:#e07020;--red:#ff4444;--magenta:#c06080;
-  --violet:#a08060;--blue:#d4a017;--cyan:#5abfb5;--green:#8fbc5a;
+  --yellow:#d4a017;--orange:#e07020;--red:#ff4444;--magenta:#b85872;
+  --violet:#a08060;--blue:#d4a017;--cyan:#5ab890;--green:#8fbc5a;
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{forced-color-adjust:none!important;width:100%}
@@ -70,8 +70,12 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 /* ── 面板焦点：q2 豆腐块背景变金，文字极致高对比 ── */
 .quest-tofu-focused{background:#e8a030!important;color:#000!important}
 .quest-tofu-focused .quest-tofu-text{color:#000!important}
+.quest-tofu-focused .quest-tofu-prefix{color:#000!important}
+.quest-tofu-focused.quest-running .quest-tofu-prefix::before{background:#000;box-shadow:0 0 6px 2px #000,0 0 12px 4px rgba(0,0,0,.5)}
+.quest-tofu-focused.quest-running .quest-tofu-prefix::after{background:#fff;box-shadow:0 0 4px 2px #fff,0 0 8px 3px rgba(255,255,255,.7)}
 [data-theme="dark"] .quest-tofu-focused{background:#e8a030!important;color:#000!important}
 [data-theme="dark"] .quest-tofu-focused .quest-tofu-text{color:#000!important}
+[data-theme="dark"] .quest-tofu-focused .quest-tofu-prefix{color:#000!important}
 /* q2x 行已删除（统一走 dropdown hover，单一真理源）*/
 /* ── 暗主题 q2 hover/focus 专用色（比基底亮一档，确保可见）── */
 /* quest 下拉 — 与豆腐块齐宽、无缝隙，最大高度=AI面板2/3，层级仅次于qoast */
@@ -119,11 +123,11 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 [data-theme="dark"] #messages::-webkit-scrollbar-thumb:hover{background:rgba(255,110,80,0.60)}
 .msg{margin-bottom:10px;line-height:1.5;content-visibility:auto;contain-intrinsic-size:auto 200px}
 /* 用户消息气泡 */
-.msg-user{background:#f8e0e8;border-radius:8px;padding:8px 12px;overflow-x:hidden;overflow-wrap:break-word;word-break:break-word}
-[data-theme="dark"] .msg-user{background:#4a2d3a;color:#e8d0d6}
+.msg-user{background:#f8e0e0;border-radius:8px;padding:8px 12px;overflow-x:hidden;overflow-wrap:break-word;word-break:break-word}
+[data-theme="dark"] .msg-user{background:#4a2d30;color:#e8d0d0}
 /* 引导消息（guide 注入） */
-.msg-guide{background:#f0d0dc}
-[data-theme="dark"] .msg-guide{background:#3a2430;color:#d4c0c8}
+.msg-guide{background:#f0d0d0}
+[data-theme="dark"] .msg-guide{background:#3a2428;color:#d4c0c0}
 .msg-ai{padding:8px 0;word-break:break-word;overflow-x:hidden}
 .msg-ai h1,.msg-ai h2,.msg-ai h3{margin:8px 0 4px;line-height:1.3}
 .msg-ai h1{font-size:1.25em}.msg-ai h2{font-size:1.12em}.msg-ai h3{font-size:1.05em}
@@ -178,13 +182,16 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-a1-lang-select{font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:var(--text-primary);border:1px solid var(--border-color);border-radius:3px;padding:0 4px;cursor:pointer;max-width:130px;background:var(--base3)}
 .msg-a1-lang-select:hover{border-color:var(--text-primary)}
 /* A2 treasure block — above A1, per-floor treasures from AI envelope */
-.msg-a2{display:none;flex-direction:column;gap:3px;padding:6px 10px;margin:0 0 6px;border:1px dashed var(--yellow);border-radius:6px;background:var(--card-bg)}
+.msg-a2{display:none;flex-direction:column;gap:6px;padding:6px 10px;margin:0 0 6px;border:1px dashed var(--yellow);border-radius:6px;background:var(--card-bg)}
 .msg-a2.has-treasures{display:flex}
-.msg-a2-item{font-family:ui-monospace,monospace;font-size:12px;color:var(--text-primary);line-height:1.4;display:flex;align-items:flex-start;gap:6px}
+.msg-a2-item{display:flex;flex-direction:column;gap:2px;padding:2px 0;border-bottom:1px dotted var(--border-color)}
+.msg-a2-item:last-child{border-bottom:none}
+.msg-a2-header{display:flex;align-items:center;gap:4px;font-family:ui-monospace,monospace;font-size:12px;color:var(--text-primary)}
+.msg-a2-body{font-size:12px;color:var(--text-primary);line-height:1.5;word-break:break-word}
 .msg-a2-badge{flex-shrink:0;font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;color:#fff}
 .msg-a2-badge.urgent{background:#dc322f}
 .msg-a2-badge.soon{background:#cb4b16}
-.msg-a2-badge.later{background:#2aa198}
+.msg-a2-badge.later{background:#2a9a78}
 /* A4 file snapshot block — between A2 and A1, per-floor file changes */
 .msg-a4{display:none;flex-direction:column;gap:1px;padding:6px 8px;margin:0 0 6px;border:1px solid var(--border-color);border-radius:6px;background:var(--card-bg)}
 .msg-a4.has-files{display:flex}
@@ -193,8 +200,13 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-a4-fname{font-family:ui-monospace,Consolas,monospace;font-size:12px;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .msg-a4-stats{font-family:ui-monospace,Consolas,monospace;font-size:11px;font-weight:700;white-space:nowrap;flex-shrink:0}
 /* ── 流式消息气泡（历史楼层对话流）── */
-.msg-flow-guide{display:flex;align-items:flex-start;gap:6px;padding:6px 10px;margin:4px 0;border-left:3px solid var(--green);background:var(--added-bg, rgba(133,153,0,0.08));border-radius:0 4px 4px 0;font-size:12px;color:var(--text-primary)}
-.msg-flow-guide-inject{display:flex;align-items:flex-start;gap:6px;padding:6px 10px;margin:4px 0;border-left:3px solid #ff6b00;background:rgba(255,107,0,0.06);border-radius:0 4px 4px 0;font-size:12px;color:var(--text-primary)}
+.msg-flow-guide{display:flex;align-items:center;gap:6px;padding:6px 10px;margin:4px 0;border-left:3px solid var(--green);background:var(--added-bg, rgba(133,153,0,0.08));border-radius:0 4px 4px 0;font-size:13px;color:var(--text-primary)}
+.msg-flow-guide-ack{display:flex;flex-direction:column;gap:2px;padding:6px 10px;margin:4px 0;border-left:3px solid var(--green);background:var(--added-bg, rgba(133,153,0,0.08));border-radius:0 4px 4px 0;font-size:13px;color:var(--text-primary)}
+.msg-flow-guide-ack-hdr{display:flex;align-items:center;gap:4px;font-weight:700;color:#859900;font-size:13px}
+.msg-flow-guide-ack-body{font-size:13px;line-height:1.5;word-break:break-word}
+.msg-flow-guide-inject{display:flex;flex-direction:column;gap:2px;padding:6px 10px;margin:4px 0;border-left:3px solid #ff6b00;background:rgba(255,107,0,0.06);border-radius:0 4px 4px 0;font-size:14px;color:var(--text-primary)}
+.msg-flow-guide-hdr{display:flex;align-items:center;gap:4px;font-weight:700;color:#ff6b00;font-size:13px}
+.msg-flow-guide-body{padding-left:0;font-size:13px;line-height:1.5;word-break:break-word}
 .msg-flow-icon{flex-shrink:0;font-size:13px}
 .msg-flow-tools{display:flex;align-items:center;gap:6px;padding:4px 10px;margin:4px 0;border-left:3px solid var(--blue);background:rgba(38,139,210,0.06);border-radius:0 4px 4px 0;font-family:ui-monospace,monospace;font-size:11px;color:var(--blue)}
 .msg-flow-tool-result{padding:3px 10px;margin:2px 0 2px 12px;border-left:2px solid var(--base01);font-family:ui-monospace,monospace;font-size:10px;color:var(--base01);max-height:80px;overflow-y:auto;white-space:pre-wrap;word-break:break-all}
@@ -223,16 +235,16 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #input-limit-warn.show{display:block}
 #input::placeholder{color:var(--base01);opacity:.5}
 #btn-row{display:flex;gap:3px;align-items:center;flex-wrap:nowrap;overflow-x:hidden}
-#btn-row button{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:3px 7px;font-size:10px;height:25px;white-space:nowrap;flex-shrink:0}
+#btn-row button{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:3px 7px;font-size:12px;height:25px;white-space:nowrap;flex-shrink:0}
 #btn-row button:hover{background:var(--base3)}
 #btn-row button:disabled{opacity:.3;}
 #send-btn.stop{background:var(--red);color:#fff;border-color:var(--red);opacity:1}
 #guide-btn,#queue-btn{padding:3px 5px}
-#ctx-btn{position:relative;overflow:hidden;min-width:53px;color:#fff;text-shadow:0 1px 1px rgba(0,0,0,0.3);border-color:transparent;background:linear-gradient(to right,transparent var(--ctx-pct),rgba(0,0,0,0.25) var(--ctx-pct)),linear-gradient(to right,#7d967d,#c28888)}
-#ctx-btn:hover{background:linear-gradient(to right,transparent var(--ctx-pct),rgba(0,0,0,0.15) var(--ctx-pct)),linear-gradient(to right,#7d967d,#c28888)}
-#guide-btn svg,#queue-btn svg{display:block;width:11px;height:11px}
+#btn-row #ctx-btn{position:relative;overflow:hidden;min-width:53px;background:linear-gradient(to right,transparent var(--ctx-pct),var(--card-bg) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
+#btn-row #ctx-btn:hover{background:linear-gradient(to right,transparent var(--ctx-pct),var(--base3) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
+#guide-btn svg,#queue-btn svg{display:block;width:13px;height:13px}
 .tier-group{display:flex;align-items:center;gap:2px;margin-right:7px}
-#btn-row .tier-btn{width:25px;height:25px;padding:0;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-primary);font-size:10px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;user-select:none;line-height:1;flex-shrink:0}
+#btn-row .tier-btn{width:25px;height:25px;padding:0;border:1px solid var(--border-color);border-radius:2px;background:var(--card-bg);color:var(--text-primary);font-size:12px;display:inline-flex;align-items:center;justify-content:center;user-select:none;line-height:1;flex-shrink:0}
 #btn-row .tier-btn:hover{background:var(--base3)}
 #btn-row .tier-btn.sel{background:var(--red);color:#fff;font-weight:800;font-size:12px}
 .tier-bar{display:flex;gap:2px}
@@ -281,7 +293,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 @keyframes sml-glow{0%{box-shadow:0 0 4px 1px currentColor,0 0 8px 2px currentColor}100%{box-shadow:0 0 10px 3px currentColor,0 0 18px 5px currentColor}}
 /* ── 键盘按键标记（1 / q / w / 2）—— 手绘键帽风格 ── */
 .scroll-key{position:absolute;right:0;width:14px;height:14px;font-family:ui-monospace,monospace;font-size:8px;font-weight:700;text-align:center;line-height:14px;border-radius:3px;border:1px solid #b0aca8;background:linear-gradient(180deg,#faf8f5 0%,#e0dcd5 100%);color:#4a4642;box-shadow:0 1px 0 #c5bfb6,0 2px 4px rgba(0,0,0,0.18);pointer-events:none;z-index:23;user-select:none}
-[data-theme="dark"] .scroll-key{border-color:#5a5652;background:linear-gradient(180deg,#5a5650 0%,#3a3632 100%);color:#d4d0c8;box-shadow:0 1px 0 #6a6660,0 2px 4px rgba(0,0,0,0.35)}
+[data-theme="dark"] .scroll-key{border-color:#5a5652;background:linear-gradient(180deg,#5a5650 0%,#3a3632 100%);color:#dcd8d0;box-shadow:0 1px 0 #6a6660,0 2px 4px rgba(0,0,0,0.35)}
 .scroll-key-top{top:10px}
 .scroll-key-q{top:38%}
 .scroll-key-w{top:58%}

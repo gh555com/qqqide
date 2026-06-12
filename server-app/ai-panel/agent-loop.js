@@ -19,7 +19,7 @@
 // ============================================================================
 
 // ---- 依赖：由 index.html 中的 <script> 标签加载顺序保证 ----
-// system-prompt.js  → GATEWAY_URL, SYSTEM_PROMPT, TRIVIAL_REGEX, CHAT_REGEX, TIER_FLASH, TIER_PRO
+// system-prompt.js  → GATEWAY_URL, SYSTEM_PROMPT, TIER_PRO
 // tools.js          → TOOL_DEFINITIONS, TOOL_CATEGORY, executeTool, getTools
 
 // ★ UTF-8 安全截断：取字符串前 maxBytes 字节，不回退到乱码中间
@@ -34,6 +34,20 @@ function _utf8Trunc(str, maxBytes) {
         catch (_) { }
     }
     return new TextDecoder().decode(bytes.slice(0, maxBytes)); // 兜底（含替换符）
+}
+
+// ★ 计费摘要生成：换行→空格 → UTF-8 截断 → 超长加 ...
+function _makeSummaryHint(text, maxBytes) {
+    if (!text) return '';
+    // 把换行和连续空白压缩成单个空格，确保截断不会因换行提前结束
+    var flat = text.replace(/\s+/g, ' ').trim();
+    if (!flat) return '';
+    var truncated = _utf8Trunc(flat, maxBytes || 100);
+    // 如果原文比截断后长（按 UTF-8 字节），末尾加 ...
+    var origBytes = new TextEncoder().encode(flat).length;
+    var truncBytes = new TextEncoder().encode(truncated).length;
+    if (origBytes > truncBytes) truncated += '...';
+    return truncated;
 }
 
 var AgentLoop = (function () {
@@ -304,7 +318,8 @@ var AgentLoop = (function () {
             var urgency = (t.urgency === 'urgent' || t.urgency === 'soon' || t.urgency === 'later') ? t.urgency : 'later';
             var text = t.text.trim().slice(0, 300);
             if ((gain - cost) >= 7) {
-                validated.push({ text: text, gain: gain, cost: cost, urgency: urgency });
+                var done = (t.done === true || t.done === 'true');
+                validated.push({ text: text, gain: gain, cost: cost, urgency: urgency, done: done });
                 // 去重后注入上下文（每条 treasure 全局只写一次）
                 var key = text.slice(0, 80);
                 if (!this._injectedTreasureKeys[key]) {
@@ -378,6 +393,7 @@ var AgentLoop = (function () {
         var onGuideAckDone = opts.onGuideAckDone || function () { };
         var token = opts.token || '';
         var images = opts.images; // [{id, base64}]
+        var forceNoTools = false;
 
         if (!token) { onError('No token'); return null; }
 
@@ -387,7 +403,7 @@ var AgentLoop = (function () {
         // 重置本轮计费 + 生成 floor_id（同一轮内所有 gateway 调用共享）
         self._floorCostWge = 0;
         self._floorFree = false;
-        self._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        self._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ((typeof _panelId !== 'undefined') ? ['_L', '_C', '_R'][_panelId] || '' : '');
         self._currentFloorSummary = (userContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
         self._floorTreasures = [];
         self._floorTiming = { networkMs: 0, deepseekMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (self._serverDrift || 0) };
@@ -445,23 +461,10 @@ var AgentLoop = (function () {
         }
         self._log('→ user: ' + (userContent || '').slice(0, 80) + (images ? ' +' + images.length + ' images' : '') + (visionText ? ' [vision done]' : ''));
 
-        // 智能等级：优先手动选择，否则自动判断
-        var trimmed = userContent.trim();
-        var hasImages = images && images.length > 0;
-        var tier, forceNoTools;
-        if (opts.tier) {
-            tier = opts.tier;
-            forceNoTools = false;
-            self._log('◆ ' + tier.label + ' (manual)');
-        } else {
-            var isTrivial = !hasImages && typeof TRIVIAL_REGEX !== 'undefined' ? TRIVIAL_REGEX.test(trimmed) : false;
-            var isChat = !hasImages && !isTrivial && typeof CHAT_REGEX !== 'undefined' ? CHAT_REGEX.test(trimmed) : false;
-            tier = (hasImages || !isTrivial && !isChat) ? TIER_PRO : TIER_FLASH;
-            forceNoTools = !hasImages && (isTrivial || isChat);
-            self._log('◆ ' + tier.label + ' (auto: trivial=' + isTrivial + ', chat=' + isChat + ', noTools=' + forceNoTools + ')');
-        }
-
-        var maxIterations = forceNoTools ? 1 : 200;
+        // 智能等级：手动选择优先，未选则默认 Pro+Max
+        var tier = opts.tier || TIER_PRO;
+        self._log('◆ ' + tier.label);
+        var maxIterations = 200;
         var conversationSnapshot = self.conversation.length;
         self._houses = [];
         self._a4Snapshots = {};
@@ -484,9 +487,11 @@ var AgentLoop = (function () {
 
                     self._log('⚡ guide ack round: ' + _guideText.slice(0, 60));
 
-                    // 构建确认指令 — 追加到 conversation 末尾（精简版，节省 tokens）
-                    var _ackPrompt = '[GUIDE_ACK] 紧急补充：' + _guideText + '\n' +
-                        '只回复 "✅ 已收到引导：[一句话概述]"，不用工具，不输出其他。';
+                    // 引导确认回合：注入 → AI 简短确认收到 → pop prompt
+                    // The user sent a guide message — supplemental info or a direction change — without breaking the floor.
+                    // Acknowledge NOW: (1) confirm received, (2) recap what the user asked for so they can verify.
+                    // Brief, no tools, no XML tags.
+                    var _ackPrompt = '[GUIDE] ' + _guideText + '\nThe above is a guide message from the user (supplemental info or direction change). Acknowledge immediately in one sentence: (1) confirm received, (2) briefly restate what the user wants so they know you understood correctly. No tools, no XML tags.';
 
                     self.conversation.push({ role: 'user', content: _ackPrompt, _guideAck: true, _floor: self._ctx.totalFloors });
 
@@ -495,7 +500,7 @@ var AgentLoop = (function () {
                         onToken: onToken,
                         onReasoning: onReasoning,
                         onError: onError,
-                        tier: TIER_FLASH,
+                        tier: tier,
                         noTools: true
                     });
 
@@ -507,43 +512,54 @@ var AgentLoop = (function () {
                     }
 
                     if (_ackResp && _ackResp.content) {
-                        // 移除确认指令（user 消息），只保留 AI 确认回复，避免硬指令污染后续对话
+                        // 移除引导 prompt，保留 AI 回复，避免硬指令污染后续对话
                         self.conversation.pop(); // pop _ackPrompt
-                        // ★ 防御：模型偶发在 content 中输出原生 XML tool-call 语法
-                        // 引导确认预期极短（仅 "✅ 已收到引导：..."），若检测到 XML 污染直接降级为默认语
+                        // ★ 防御：剥离 XML 标签（<thinking> <qqq_tool_call> 等）
                         var _ackRaw = _ackResp.content;
-                        var _xmlPattern = /<(?:invoke|tool_call|function_call|parameter|qqq_tool_calls)[\s>]/i;
-                        var _cleanAck;
-                        if (_xmlPattern.test(_ackRaw)) {
-                            // 含 XML 污染 → 尝试提取第一行纯文本，失败则降级
-                            var _firstLine = _ackRaw.replace(/<[^>]+>/g, '').split('\n')[0].trim();
-                            _cleanAck = (_firstLine && _firstLine.length >= 3) ? _firstLine : '✅ 已收到引导';
-                        } else {
-                            // 干净 → 直接取第一段非空内容（去多余换行）
-                            _cleanAck = _ackRaw.replace(/\n{3,}/g, '\n\n').trim();
-                        }
+                        var _cleanAck = _ackRaw
+                            .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+                            .replace(/<\/?think(ing)?>/gi, '')
+                            .replace(/<qqq_tool_call>[\s\S]*?<\/qqq_tool_call>/gi, '')
+                            .replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, '')
+                            .replace(/\n{3,}/g, '\n\n')
+                            .trim();
+                        if (!_cleanAck || _cleanAck.length < 3) _cleanAck = '已收到引导';
                         self.conversation.push({ role: 'assistant', content: _cleanAck, _guideAck: true, _guideText: _guideText, _floor: self._ctx.totalFloors });
-                        // 归档：确认回合写入 houses（all.txt 可见）
+                        // 归档
                         self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], summary: '', ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString() });
-                        // ★ 更新绿条标记：⏳ 确认中... → ✅ 已收到引导
+                        // ★ 更新绿条标记：两行格式，✅ 已收到引导 / 确认内容
                         var _aiDiv2 = self._activeAiDiv;
                         if (_aiDiv2 && _aiDiv2._guideMarker) {
                             _aiDiv2._guideMarker.style.cssText = '';
-                            var _ackDisplay = _cleanAck.replace(/^✅\s*/, '').trim() || '已收到引导';
+                            var _ackDisplay = _cleanAck.slice(0, 200);
                             var _esc = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
-                            _aiDiv2._guideMarker.innerHTML = '<span class="msg-flow-icon">✅</span> ' + _esc(_ackDisplay);
+                            _aiDiv2._guideMarker.className = 'msg-flow-guide-ack';
+                            _aiDiv2._guideMarker.innerHTML = '<div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> 已收到引导</div><div class="msg-flow-guide-ack-body">' + _esc(_ackDisplay) + '</div>';
                             _aiDiv2._guideMarker = null;
                         }
                         if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
-                        self._log('✅ guide ack: ' + _ackResp.content.slice(0, 80));
+                        self._log('✅ guide ack: ' + _ackResp.content.slice(0, 120));
                     } else if (_ackResp && _ackResp.type === 'tool_calls') {
-                        // AI 不听话，仍返回工具调用 → 移除 ack prompt，不污染对话
+                        // 引导回合 AI 返回工具调用（noTools=true 下不应发生）
                         self.conversation.pop();
-                        self._log('⚠ guide ack: AI returned tool_calls despite noTools, ignored');
+                        self._log('⚠ guide ack: AI returned tool_calls despite noTools, cleared');
+                        // ★ 清除绿条标记
+                        var _aiDiv3 = self._activeAiDiv;
+                        if (_aiDiv3 && _aiDiv3._guideMarker) {
+                            _aiDiv3._guideMarker.style.cssText = '';
+                            _aiDiv3._guideMarker.innerHTML = '';
+                            _aiDiv3._guideMarker = null;
+                        }
                     } else {
-                        // 网络错误或其他异常 → 移除 ack prompt
+                        // 网络错误或其他异常 → 移除 prompt，清除标记，不阻塞
                         self.conversation.pop();
                         self._log('⚠ guide ack: no valid response, skipped');
+                        var _aiDiv4 = self._activeAiDiv;
+                        if (_aiDiv4 && _aiDiv4._guideMarker) {
+                            _aiDiv4._guideMarker.style.cssText = '';
+                            _aiDiv4._guideMarker.innerHTML = '';
+                            _aiDiv4._guideMarker = null;
+                        }
                     }
                     // 确认回合结束 → 继续正常 while 循环
                     onGuideAckDone();
@@ -587,7 +603,10 @@ var AgentLoop = (function () {
                         self._log('→ repair: orphaned tool_calls stripped, retrying...');
                         continue;
                     }
-                    // 错误已由 _callGateway 的 onError 处理
+                    // ★ 安全网：_callGateway 返回 null 但未调 onError（流空/异常静默等边角情况）
+                    if (!self._floorOnErrorCalled && !self._floorKilled) {
+                        onError('⚠️ 响应异常，对话已保存。');
+                    }
                     // 不回滚 conversation — 保留已执行的 tool call 结果，用户可重试
                     return null;
                 }
@@ -1051,17 +1070,28 @@ var AgentLoop = (function () {
         }
 
         // 语言检测已移至 a1 审计按钮（后翻译方案），此处不再强制注入语言指令
-        // ★ 计费摘要提示（geflow 展开时区分每间 house，Go 优先使用此字段）
-        // ★ 计费摘要（本轮详情）：house 1 取用户提问原文，后续 house 取 reasoning
+        // ★ 计费摘要（本轮详情）：house 1 = 用户提问，后续 = 前一间 reasoning
+        //   换行转空格 + UTF-8 截断 + 末尾 ...，永不截到 room 级工具调用
         var summaryHint = '';
         if (self._houseIndex === 1) {
-            summaryHint = _utf8Trunc(lastUserQuery, 100);
+            summaryHint = _makeSummaryHint(lastUserQuery);
         } else {
             var _lh = self._houses[self._houses.length - 1];
             if (_lh && _lh.reasoning) {
-                summaryHint = _utf8Trunc(_lh.reasoning, 100);
+                summaryHint = _makeSummaryHint(_lh.reasoning);
             } else if (_lh && _lh.type === 'guide_ack') {
                 summaryHint = '引导确认';
+            }
+        }
+        // 动态防御：确保 prompt + max_tokens ≤ 上下文窗口（唯一真理在 ContentGateway）
+        var DEEPSEEK_CTX_MAX = ContentGateway.CTX_MAX_TOKENS;
+        var SAFETY_MARGIN = ContentGateway.MAX_TOKENS_SAFETY;
+        var _reqMaxTokens = tier.maxTokens || ContentGateway.MAX_RESPONSE_TOKENS;
+        var _effectiveMaxTokens = _reqMaxTokens;
+        if (self._lastApiPromptTokens && self._lastApiPromptTokens > 0) {
+            var _cap = DEEPSEEK_CTX_MAX - self._lastApiPromptTokens - SAFETY_MARGIN;
+            if (_cap < _reqMaxTokens) {
+                _effectiveMaxTokens = Math.max(1024, Math.floor(_cap));
             }
         }
         var body = {
@@ -1069,7 +1099,7 @@ var AgentLoop = (function () {
             messages: apiMessages,
             stream: true,
             stream_options: { include_usage: true },
-            max_tokens: tier.maxTokens || ContentGateway.MAX_RESPONSE_TOKENS,
+            max_tokens: _effectiveMaxTokens,
             floor_id: self._floorId,
             summary_hint: summaryHint
         };
@@ -1214,6 +1244,8 @@ var AgentLoop = (function () {
                         self._abortedByGuide = true;
                         return { _abortedForGuide: true };
                     }
+                    // ★ 非引导中断 = 看门狗/超时/网络问题 → 通知用户
+                    onError('⚠️ 连接超时，对话已保存。');
                     return null;
                 }
                 var msg = err.message || '';
@@ -1251,21 +1283,15 @@ var AgentLoop = (function () {
                     _gwSwitch(true);
                     _canSwitchUrl = true;
                 }
-                // ★ 备用线路也 HTTP/2 错误 或 连续多次错误 → 只能 reload
-                if (_isHttp2Like || self._consecutiveFetchErrors >= 3) {
-                    onError('连接中断，正在自动恢复…');
-                    try { sessionStorage.setItem('__qqq_scroll_bottom', '1'); } catch (_) { }
-                    setTimeout(function () { window.location.reload(); }, 600);
-                } else if (_canSwitchUrl) {
-                    // 切换了线路 → 重置 retry，走正常重试
+                // ★ 网络耗尽：绝不 reload（毁 DOM 毁计时器毁一次渲染铁律）
+                // 恢复策略：线路切换 > 静默返回 null（agent loop 自然结束楼层，对话完整保留）
+                if (_canSwitchUrl) {
                     retry = -1;
                     self._consecutiveFetchErrors = 0;
                     continue;
-                } else {
-                    onError('⚠️ 网络请求失败。对话已保存，正在自动恢复…');
-                    try { sessionStorage.setItem('__qqq_scroll_bottom', '1'); } catch (_) { }
-                    setTimeout(function () { window.location.reload(); }, 1500);
                 }
+                // 无可切换线路 → 告知用户，返回 null 结束当前楼层
+                onError('⚠️ 网络请求失败。对话已完整保留，请稍后重新发送。');
                 return null;
             }
         } // retry loop
@@ -1287,16 +1313,29 @@ var AgentLoop = (function () {
         var _finishReason = '';
         var _sseError = null;  // ★ 服务端 SSE 错误事件（提升到外层避免被 JSON catch 吞掉）
 
-        // ★ 流级别看门狗：60s 无数据 → 连接已死，主动 abort
+        // ★ 流级别看门狗：90s 无数据 → 连接已死，主动 abort
+        //   Go 服务端心跳间隔 25-30s，90s 允许漏 3 个心跳，防误杀
+        // ★ 产出看门狗：10min 无实质产出（无 delta/tool_call）→ AI 陷入思考循环，主动 abort
         var _streamWatchdog = null;
+        var _outputWatchdog = null;
+        // 产出看门狗 → 唯一真理在 ContentGateway.AI_OUTPUT_WATCHDOG_MS（content-gateway.js）
+        var OUTPUT_WATCHDOG_MS = (typeof ContentGateway !== 'undefined' && ContentGateway.AI_OUTPUT_WATCHDOG_MS) ? ContentGateway.AI_OUTPUT_WATCHDOG_MS : 900000;
         function _resetStreamWatchdog() {
             if (_streamWatchdog) clearTimeout(_streamWatchdog);
             _streamWatchdog = setTimeout(function () {
-                self._log('⏰ stream watchdog 60s — no data, aborting dead connection');
+                self._log('⏰ stream watchdog 90s — no data, aborting dead connection');
                 if (self.abortController) self.abortController.abort();
-            }, 60000);
+            }, 90000);
+        }
+        function _resetOutputWatchdog() {
+            if (_outputWatchdog) clearTimeout(_outputWatchdog);
+            _outputWatchdog = setTimeout(function () {
+                self._log('⏰ output watchdog ' + (OUTPUT_WATCHDOG_MS / 60000) + 'min — no output, aborting thinking loop');
+                if (self.abortController) self.abortController.abort();
+            }, OUTPUT_WATCHDOG_MS);
         }
         _resetStreamWatchdog();
+        _resetOutputWatchdog();
 
         while (true) {
             var readResult;
@@ -1308,6 +1347,7 @@ var AgentLoop = (function () {
                 if (readErr && readErr.name === 'AbortError') {
                     self._log('■ reader aborted (intentional)');
                     clearTimeout(_streamWatchdog);
+                    clearTimeout(_outputWatchdog);
                     throw readErr;  // 直接抛 AbortError，不被包装成普通 Error
                 }
                 // 其他异常 = 连接断开（HTTP/2 RST_STREAM 等）
@@ -1362,8 +1402,10 @@ var AgentLoop = (function () {
                 }
                 if (delta.content) {
                     stripper.push(delta.content);
+                    _resetOutputWatchdog();  // ★ 有实质文本产出 → 重置产出看门狗
                 }
                 if (delta.tool_calls) {
+                    _resetOutputWatchdog();  // ★ 有工具调用 → 重置产出看门狗
                     for (var ti = 0; ti < delta.tool_calls.length; ti++) {
                         var tc = delta.tool_calls[ti];
                         if (tc.index !== undefined) {

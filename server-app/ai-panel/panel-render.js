@@ -55,14 +55,14 @@ function renderMarkdown(src) {
     });
     // Lists: 先转 <li>，再用占位符保护整个 <ul>/<ol> 块，防止后续 <br> 和 <p> 破坏列表间距
     // 有序列表（1. 2. 3.）→ <ol>；无序列表（* - +）→ <ul>
-    var _olPlaceholder = '\x00OL\x00';
-    s = s.replace(/^\d+\. (.+)$/gm, _olPlaceholder + '<li>$1</li>');
-    s = s.replace(/^[*\-+] (.+)$/gm, '<li>$1</li>');
+    // ★ 用 data-list 属性标记有序/无序（嵌在 <li> 内部），杜绝 \x00 孤儿前缀泄露
+    s = s.replace(/^\d+\. (.+)$/gm, '<li data-list="ol">$1</li>');
+    s = s.replace(/^[*\-+] (.+)$/gm, '<li data-list="ul">$1</li>');
     var listBlocks = [];
-    s = s.replace(/((?:<li>.*<\/li>\n?)+)/g, function (_, block) {
+    s = s.replace(/((?:<li[^>]*>.*<\/li>\n?)+)/g, function (_, block) {
         var idx = listBlocks.length;
-        var isOrdered = block.indexOf(_olPlaceholder) === 0;
-        block = block.replace(/\x00OL\x00/g, '');
+        var isOrdered = /^<li data-list="ol">/.test(block);
+        block = block.replace(/ data-list="(?:ol|ul)"/g, '');
         var tag = isOrdered ? 'ol' : 'ul';
         listBlocks.push('<' + tag + '>' + block.replace(/\n/g, '') + '</' + tag + '>');
         return '\x00UL' + idx + '\x00';

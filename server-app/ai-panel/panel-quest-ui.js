@@ -23,40 +23,7 @@ async function switchQuest(id) {
             _switching = false;
             return;
         }
-        var owner = await questStore.getOwner(id);
-        if (!owner) {
-            owner = await _broadcastOwnerCheck(id);
-        }
-        if (owner && owner.windowId !== _windowId) {
-            _setPanelFocus(false);
-            _broadcast('focus-request', id, { targetWindow: owner.windowId });
-            var ownerPanelId = parseInt(owner.windowId.split('_p')[1]);
-            if (ownerPanelId === 0 || ownerPanelId === 2) {
-                try { parent.postMessage({ type: 'qqq-open-wing', panel: ownerPanelId }, '*'); } catch (_) { }
-            }
-            try {
-                if (parent && parent.qqqideQoast) parent.qqqideQoast.show(
-                    '\ud83d\udccc \u8be5 Quest \u5df2\u5728' + (ownerPanelId === 0 ? '\u5de6' : '\u53f3') + '\u9762\u677f\u6253\u5f00\uff0c\u5df2\u81ea\u52a8\u8df3\u8f6c',
-                    { type: 'info', duration: 3000 }
-                );
-            } catch (_) { }
-            _switching = false;
-            return;
-        }
-        if (!owner) {
-            var claimResult = await questStore.claimOwner(id, _windowId);
-            if (claimResult.claimed) {
-                _parentClaimQuest(id);
-                _broadcast('owner-claimed', id);
-            } else if (claimResult.currentOwner && claimResult.currentOwner !== _windowId) {
-                _setPanelFocus(false);
-                _broadcast('focus-request', id, { targetWindow: claimResult.currentOwner });
-                _switching = false;
-                return;
-            }
-        }
-
-        // \u2550\u2550\u2550 \u4fdd\u5b58\u65e7 quest UI \u72b6\u6001 + \u91ca\u653e\u6240\u6709\u6743 \u2550\u2550\u2550
+        // ★ 保存旧 quest UI 状态 + 释放所有权
         if (questActiveId) {
             saveQuestUIState(questActiveId);
             _stopAutoSave();
@@ -65,7 +32,6 @@ async function switchQuest(id) {
             }
             if (!_isDraft(questActiveId)) {
                 _parentReleaseQuest(questActiveId);
-                try { await questStore.releaseOwner(questActiveId, _windowId); } catch (_) { }
                 _broadcast('owner-released', questActiveId);
             }
         }
@@ -78,9 +44,15 @@ async function switchQuest(id) {
             await questStore.setActiveId(id);
         }
         if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
-            onlyStore.set('ai.window.' + _windowId + '.activeQuestId', id);
-            if (_panelId === 1) onlyStore.set('ai.activeQuestId', id);
+            // ★ setNow 立即写盘：确保 activeQuestId 在崩溃/退出时不丢，
+            //    否则重启时 initQuests 找不到记录 → 回退到 ~New quest~ 草稿
+            onlyStore.setNow('ai.panel.' + _panelId + '.activeQuestId', id);
+            if (_panelId === 1) onlyStore.setNow('ai.activeQuestId', id);
         }
+
+        // ★ 声明所有权（仅父注册表；quest.sq3 不再参与）
+        _parentClaimQuest(id);
+        _broadcast('owner-claimed', id);
 
         // \u2550\u2550\u2550 \u4ea4\u6362 active agent \u2550\u2550\u2550
         _activeAgent = _getOrCreateAgent(id);
@@ -136,9 +108,16 @@ function _makeName(prefix, num, text) {
 }
 
 // \u2500\u2500 \u521b\u5efa quest \u6587\u4ef6\u5939\uff08\u542b\u5d4c\u5957 floor \u76ee\u5f55\uff09\u2500\u2500
+// \u2605 \u9632 TOCTOU \u5206\u88c2\uff1a\u4e0d\u4fe1\u4efb\u4f20\u5165\u7684 qName\uff0c\u6309\u524d\u7f00\u91cd\u67e5\u78c1\u76d8\u5b9e\u9645\u76ee\u5f55\u540d
 async function _ensureQuestDir(root, qName, fName) {
     var bridge = window.parent && window.parent.qqqideBridge;
     if (!bridge || !bridge.fs) return;
+    // \u4ece qName \u63d0\u53d6 questId\uff08\u5982 "q48.xxx" \u2192 "q48"\uff09\uff0c\u6309\u524d\u7f00\u91cd\u67e5\u5b9e\u9645\u76ee\u5f55
+    var questId = qName.split('.')[0];
+    if (questId) {
+        var actualName = await _findQuestDirByPrefix(root, questId);
+        if (actualName) qName = actualName;
+    }
     var qDir = root + '/qqq/quests/' + qName;
     var fDir = qDir + '/' + fName + '/';
     var parts = fDir.replace(/\\/g, '/').split('/').filter(function (p) { return p; });
@@ -168,9 +147,19 @@ async function _findQuestDirByPrefix(root, questId) {
 
 // ── 解析 quest 目录名：只按 q{n}. 前缀匹配已有目录，不依赖完整标题 ──
 // 多目录时挑第一个，找不到才从标题构造（仅限新 quest 首次创建）
+// 若已有目录名与 DB 标题不一致，立即尝试修复（await），防 TOCTOU 分裂
 async function _resolveQuestDirName(root, questId, numericId, title) {
     var existing = await _findQuestDirByPrefix(root, questId);
-    if (existing) return existing;
+    if (existing) {
+        var expectedName = _makeName('q', numericId, title);
+        if (existing !== expectedName) {
+            // 立即修复，不等惰性兜底
+            await _tryRepairQuestDirName(root, questId, numericId, title);
+            var afterRepair = await _findQuestDirByPrefix(root, questId);
+            if (afterRepair) return afterRepair;
+        }
+        return existing;
+    }
     return _makeName('q', numericId, title);
 }
 
@@ -185,12 +174,12 @@ async function _tryRepairQuestDirName(root, questId, numericId, dbTitle) {
     if (!currentName) return;
     var expectedName = _makeName('q', numericId, dbTitle);
     if (currentName === expectedName) return;
-    // 期望名不存在 → 尝试重命名
-    try { await bridge.fs.stat(questsDir + expectedName); } catch (_) {
+    // 期望名不存在 → 尝试重命名（stat 返回 null 不抛异常，必须检查返回值）
+    var statResult = await bridge.fs.stat(questsDir + expectedName);
+    if (!statResult) {
         try { await bridge.fs.rename(questsDir + currentName, questsDir + expectedName); } catch (_) { }
-        return;
     }
-    // 期望名已存在 → 说明磁盘上有多个同前缀目录，跳过 rename（不做合并）
+    // statResult 非 null → 期望名已存在，跳过 rename（不做合并）
 }
 
 async function createNewQuest() {
@@ -199,7 +188,6 @@ async function createNewQuest() {
     if (!_isDraft(questActiveId)) await saveQuestData();
     if (questActiveId && !_isDraft(questActiveId)) {
         _parentReleaseQuest(questActiveId);
-        try { await questStore.releaseOwner(questActiveId, _windowId); } catch (_) { }
         _broadcast('owner-released', questActiveId);
     }
     if (questActiveId) {
@@ -250,7 +238,6 @@ async function deleteQuest(id) {
     await questStore.deleteQuest(id);
     delete questUIStates[id];
     _parentReleaseQuest(id);
-    try { await questStore.releaseOwner(id, _windowId); } catch (_) { }
     _broadcast('owner-released', id);
     if (agentPool[id]) {
         try { agentPool[id].abort(); } catch (_) { }
@@ -266,7 +253,6 @@ async function deleteQuest(id) {
         await cardPool.switchTo(questActiveId);
         await _restoreAgentFromStore(questActiveId, _activeAgent);
         restoreQuestUIState(questActiveId);
-        await questStore.claimOwner(questActiveId, _windowId);
         _parentClaimQuest(questActiveId);
         _broadcast('owner-claimed', questActiveId);
     }
@@ -340,7 +326,7 @@ function updateCostDisplay() {
 }
 
 // \u2500\u2500 \u4e0a\u4e0b\u6587\u8840\u91cf \u2500\u2500
-var CTX_MAX_TOKENS = 1000000;
+var CTX_MAX_TOKENS = ContentGateway.CTX_MAX_TOKENS;
 var _estCache = { val: 0, convLen: -1, ctxHash: '' };
 function estimateTokens() {
     if (!_activeAgent) return 0;
@@ -351,7 +337,7 @@ function estimateTokens() {
         return _estCache.val;
     }
     var total = 0;
-    var CHAR_PER_TOKEN = 3.0;
+    var CHAR_PER_TOKEN = ContentGateway.CHAR_PER_TOKEN;
     for (var i = 0; i < conv.length; i++) {
         var c = conv[i].content;
         if (typeof c === 'string') total += c.length / CHAR_PER_TOKEN;
@@ -396,7 +382,10 @@ function updateCtxBtn() {
         $ctxBtn.style.setProperty('--ctx-pct', '0%');
         return;
     }
-    var used = agent._lastApiPromptTokens || estimateTokens();
+    var est = estimateTokens();
+    var dsTokens = agent._lastApiPromptTokens || 0;
+    // 取较大值：本地估算永远当前，DS 精确值可能不含上一轮 AI 回复
+    var used = Math.max(est, dsTokens);
     var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
     $ctxBtn.textContent = Math.round(used / 1000) + 'k';
     $ctxBtn.style.setProperty('--ctx-pct', pct + '%');
@@ -449,26 +438,24 @@ $guideBtn.onclick = function () {
         // AI \u6b63\u5728\u5de5\u4f5c\u4e2d \u2192 \u7acb\u5373\u6ce8\u5165 + abort \u5f53\u524d house
         var _aiDiv = _activeAgent._activeAiDiv;
         if (_aiDiv && _aiDiv._contentWrap) {
-            // 清空流式缓冲区（一次渲染：后续流式直接续写，不再重建）
+            // 仅清空流式缓冲（_buf），保留已渲染的 DOM 和段落数组，不删用户可见内容
             _aiDiv._buf = '';
-            _aiDiv._fullText = '';
-            _aiDiv._paras = [];
             _aiDiv._codeFenceOpen = false;
             _aiDiv._dirty = false;
-            _aiDiv._renderedCount = 0;
-            if (_aiDiv._lastParaEl) { _aiDiv._lastParaEl.remove(); _aiDiv._lastParaEl = null; }
+            // 正在流式的未完成段落转为静态 DOM 保留，不再跟踪
+            _aiDiv._lastParaEl = null;
             _aiDiv._guideMode = true;
-            // 引导注入块：appendChild 就地插入，DOM 永驻不重建
+            // 引导注入块：第一行 ⚡ 引导信息，第二行正文左对齐
             var guideBlock = document.createElement('div');
             guideBlock.className = 'msg-flow-guide-inject';
-            guideBlock.innerHTML = '<span class="msg-flow-icon">\u26a1</span> ' + escHtml(text);
+            guideBlock.innerHTML = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">⚡</span> 引导信息</div><div class="msg-flow-guide-body">' + escHtml(text) + '</div>';
             _aiDiv._contentWrap.appendChild(guideBlock);
             var marker = document.createElement('div');
             marker.className = 'msg-flow-guide';
             marker.style.cssText = 'opacity:0.6;';
             marker.innerHTML = '<span class="msg-flow-icon">\u23f3</span> \u786e\u8ba4\u4e2d...';
             _aiDiv._contentWrap.appendChild(marker);
-            _aiDiv._guideMarker = marker;  // 供 agent loop 收到回复后更新
+            _aiDiv._guideMarker = marker;
         }
         agent.injectGuide(text);
     } else {

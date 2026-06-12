@@ -26,17 +26,17 @@
   // §1 配色盘 — 精确照抄 q2.html
   // ==========================================================================
   const SOLARIZED_LIGHT = Object.freeze({
-    base03: '#002b36', base02: '#073642', base01: '#777777', base00: '#7a7874',
+    base03: '#002d20', base02: '#07362e', base01: '#777777', base00: '#7a7874',
     base0: '#7a7874', base1: '#a8a6a2', base2: '#eee8d5', base3: '#fdf6e3',
-    yellow: '#b58900', orange: '#cb4b16', red: '#dc322f', magenta: '#d33682',
-    violet: '#6c71c4', blue: '#e8a030', cyan: '#2aa198', green: '#859900',
+    yellow: '#b58900', orange: '#cb4b16', red: '#dc322f', magenta: '#c83070',
+    violet: '#7e6c8e', blue: '#e8a030', cyan: '#2a9a78', green: '#859900',
   });
 
   const SOLARIZED_DARK = Object.freeze({
-    base03: '#fdf6e3', base02: '#eee8d5', base01: '#93a1a1', base00: '#c8c4b8',
+    base03: '#fdf6e3', base02: '#eee8d5', base01: '#97978a', base00: '#c8c4b8',
     base0: '#a8a49c', base1: '#6a6660', base2: '#2a2a2a', base3: '#1e1e1e',
-    yellow: '#d4a017', orange: '#e07020', red: '#ff4444', magenta: '#c06080',
-    violet: '#a08060', blue: '#d4a017', cyan: '#5abfb5', green: '#8fbc5a',
+    yellow: '#d4a017', orange: '#e07020', red: '#ff4444', magenta: '#b85872',
+    violet: '#a08060', blue: '#d4a017', cyan: '#5ab890', green: '#8fbc5a',
   });
 
   // ==========================================================================
@@ -55,7 +55,7 @@
       // 语义角色（一切组件只应引用这些）
       '--background-color': dark ? '#1e1e1e' : p.base3,
       '--card-bg': dark ? '#2a2a2a' : p.base2,
-      '--text-primary': dark ? '#d4d0c8' : p.base00,
+      '--text-primary': dark ? '#dcd8d0' : '#656360',
       '--text-secondary': dark ? '#a8a49c' : p.base01,
       '--text-dim': dark ? '#6a6660' : p.base1,
       '--border-color': dark ? '#333333' : '#d3c6aa',
@@ -88,7 +88,7 @@
 
       // tooltip
       '--tooltip-bg': dark ? '#2a2520' : 'rgb(35,30,0)',
-      '--tooltip-text': dark ? '#d4d0c8' : p.base2,
+      '--tooltip-text': dark ? '#dcd8d0' : p.base2,
 
       // 布局（JS 可变）
       '--a-zone-w': '220px',
@@ -106,33 +106,33 @@
   // §3 Monaco Editor 主题定义 — 照抄 VS Code solarized-light/dark tokenColors
   // ==========================================================================
   const MONACO_LIGHT_RULES = [
-    { token: '', foreground: '657B83', background: 'FDF6E3' },
-    { token: 'comment', foreground: '93A1A1', fontStyle: 'italic' },
-    { token: 'string', foreground: '2AA198' },
+    { token: '', foreground: '5c7060', background: 'FDF6E3' },
+    { token: 'comment', foreground: '95958a', fontStyle: 'italic' },
+    { token: 'string', foreground: '2a9a78' },
     { token: 'string.regexp', foreground: 'DC322F' },
-    { token: 'number', foreground: 'D33682' },
-    { token: 'variable', foreground: '268BD2' },
+    { token: 'number', foreground: 'c83070' },
+    { token: 'variable', foreground: '4078a0' },
     { token: 'keyword', foreground: '859900' },
-    { token: 'storage', foreground: '586E75', fontStyle: 'bold' },
+    { token: 'storage', foreground: '58685e', fontStyle: 'bold' },
     { token: 'type', foreground: 'CB4B16' },
     { token: 'namespace', foreground: 'CB4B16' },
-    { token: 'function', foreground: '268BD2' },
+    { token: 'function', foreground: '4078a0' },
     { token: 'variable.predefined', foreground: 'B58900' },
     { token: 'constant', foreground: 'CB4B16' },
-    { token: 'tag', foreground: '268BD2' },
-    { token: 'attribute.name', foreground: '93A1A1' },
-    { token: 'support.function', foreground: '268BD2' },
+    { token: 'tag', foreground: '4078a0' },
+    { token: 'attribute.name', foreground: '95958a' },
+    { token: 'support.function', foreground: '4078a0' },
     { token: 'support.type', foreground: '859900' },
-    { token: 'support', foreground: '839496' },
+    { token: 'support', foreground: '839080' },
     { token: 'invalid', foreground: 'DC322F' },
   ];
 
   const MONACO_DARK_RULES = [
-    { token: '', foreground: 'd4d0c8', background: '1e1e1e' },
+    { token: '', foreground: 'dcd8d0', background: '1e1e1e' },
     { token: 'comment', foreground: '6a6660', fontStyle: 'italic' },
     { token: 'string', foreground: '8fbc5a' },
     { token: 'string.regexp', foreground: 'ff4444' },
-    { token: 'number', foreground: 'c06080' },
+    { token: 'number', foreground: 'b85872' },
     { token: 'variable', foreground: 'd4a017' },
     { token: 'keyword', foreground: '8fbc5a' },
     { token: 'storage', foreground: 'c8c4b8', fontStyle: 'bold' },
@@ -220,6 +220,11 @@
     // 通知 iframe（AI 面板）
     _notifyIframes();
 
+    // 通知 diff 窗口（timeline 等独立 BrowserWindow）
+    if (typeof window !== 'undefined' && window.qqqideBridge && window.qqqideBridge.sync) {
+      try { window.qqqideBridge.sync.broadcast('theme-change', { dark: _dark }); } catch (_) { }
+    }
+
     // 通知订阅者
     if (wasDark !== _dark) {
       for (const fn of _listeners) {
@@ -251,19 +256,20 @@
         inherit: false,
         colors: {
           'editor.background': '#FDF6E3',
-          'editor.foreground': '#657B83',
+          'editor.foreground': '#5c7060',
           'editor.lineHighlightBackground': '#EEE8D5',
-          'editorCursor.foreground': '#586E75',
+          'editorLineNumber.foreground': '#777777',
+          'editorCursor.foreground': '#58685e',
           'editor.selectionBackground': '#E8A090',
           'editor.inactiveSelectionBackground': '#E8C8B8',
           'editorOverviewRuler.border': '#00000000',
           // ═══ Find Widget 配色 — Solarized Light ═══
           'focusBorder': '#b58900',
           'editorWidget.background': '#eee8d5',
-          'editorWidget.foreground': '#657B83',
+          'editorWidget.foreground': '#5c7060',
           'editorWidget.border': '#d3c6aa',
           'input.background': '#fdf6e3',
-          'input.foreground': '#657B83',
+          'input.foreground': '#5c7060',
           'input.border': '#d3c6aa',
           'inputOption.activeBorder': '#b58900',
           'inputOption.activeBackground': '#eee8d5',
@@ -279,8 +285,9 @@
         inherit: false,
         colors: {
           'editor.background': '#1e1e1e',
-          'editor.foreground': '#d4d0c8',
+          'editor.foreground': '#dcd8d0',
           'editor.lineHighlightBackground': '#2a2a2a',
+          'editorLineNumber.foreground': '#97978a',
           'editorCursor.foreground': '#c8c4b8',
           'editor.selectionBackground': '#5a3a2a',
           'editor.inactiveSelectionBackground': '#4a3020',
@@ -288,10 +295,10 @@
           // ═══ Find Widget 配色 — Solarized Dark ═══
           'focusBorder': '#d4a017',
           'editorWidget.background': '#2a2a2a',
-          'editorWidget.foreground': '#d4d0c8',
+          'editorWidget.foreground': '#dcd8d0',
           'editorWidget.border': '#333333',
           'input.background': '#1e1e1e',
-          'input.foreground': '#d4d0c8',
+          'input.foreground': '#dcd8d0',
           'input.border': '#555555',
           'inputOption.activeBorder': '#d4a017',
           'inputOption.activeBackground': '#3a3520',

@@ -16,7 +16,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 
 §2 qz spawn — ghrun 统管所有子进程（2026-06-11 调参+跨平台）
   - 全部子进程必须经 ghrun spawn 启动。管线: ghrun(Rust) → Node(child_process 兜底)。
-  - 四重防御: ①硬超时2h(SYSTEM_MAX_TIMEOUT=7200000) ②内存守卫2GB(异步execFile,Win=PowerShell/Unix=ps -o rss,首检5s后续15s,ghrunTier跳过) ③ghrun原生Job Object(Windows)/setrlimit RLIMIT_AS(Unix) ④失速看门狗(stallMs=30min无输出→杀)
+  - 四重防御: ①硬超时2h(SYSTEM_MAX_TIMEOUT=7200000) ②内存守卫2GB(异步execFile,Win=PowerShell/Unix=ps -o rss,首检5s后续15s,ghrunTier跳过) ③ghrun原生Job Object(Windows)/setrlimit RLIMIT_AS(Unix) ④失速看门狗(stallMs=15min无输出→杀)
   - 唯一真理: SYSTEM_MAX_TIMEOUT 只改 qz-spawn.ts 一处；tools.js 传 timeout=0 委托系统层。
   - 进程组隔离: Win=CREATE_NEW_PROCESS_GROUP / Unix=process_group(0)。父死子必死。
   - execSync→execFile 修复了 UI 冻结 bug（PowerShell 冷启动阻塞主进程 0.2-2s）。
@@ -260,20 +260,24 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 禁 _questsInited 一刀切防重入。改用 _workspaceRoot 对比。
   - Card Pool destroy() 必须：中止所有 agent + 移除所有 card DOM + 清空 _cards/_lru/_activeId。
 
-§32 所有权系统 — flushOne + get 穿透缓存
-  - quest 所有权（claimOwner/releaseOwner/getOwner）必须先 flushOne 再 get，确保读到最新值。
-  - flushOne 现在调用 _cacheDel 失效渲染层缓存（2026-06 加固），等效原 _getRaw 直读。
-  - _getRaw 已删除。所有权读写统一走 qgs 标准接口：flushOne → get → setNow。
-  - 禁任何形式的只读模式（"此 quest 正运行在另一窗口 — 只读" 已全量删除）。
-  - 被抢占 → _unloadQuest() 自动卸载，非进入只读。
-  - 点击 quest 即确立绑定（switchQuest 调 claimOwner），不依赖发送消息。
-  - 切换走旧 quest 必须 releaseOwner + broadcast 'owner-released'。
+§32 所有权系统 — 唯一真理源：父窗口注册表（2026-06-11 重构）
+  - quest.sq3 _owner 已全量移除（冗余逆映射，windowId 跨会话失效成僵尸锁根源）。
+  - 唯一真理源：父窗口 __qqq_questOwners（questId→panelId 同步映射，零 TTL，零 IO）。
+  - 面板→任务映射：onlyStore `ai.panel.{panelId}.activeQuestId`（per-panel key，panelId 永恒不变，setNow 立即写盘）。
+  - claimOwner / releaseOwner / getOwner 已从 quest-store.js 删除。
+  - _broadcastOwnerCheck 已删除（IPC 跨窗口 sync 查询，项目锁已防多窗口）。
+  - _handleSyncMessage 移除 owner-check / owner-confirm 死代码。
+  - 流程：switchQuest→_parentGetQuestOwner（阻塞）→_parentReleaseQuest（旧）→_parentClaimQuest（新）。
+  - initQuests：per-panel snapshot 恢复 + cleanupOwners 一次性迁移。
+  - sendMessage：_parentGetQuestOwner 防御（防竞态），兜底 _parentClaimQuest。
 
-§33 原子写入 — 绝不先删后改（2026-06-07 加固）
+§33 原子写入 — 绝不先删后改（2026-06-07 加固，2026-06-11 腐蚀隔离）
   - shell/state-sqlite.ts _doSaveDb / _doSaveDbSync: rename 失败 → copy+unlink 降级，绝不先 unlink(dest)。
   - shell/qg.ts atomicWrite / atomicWriteSync: 同上。
   - 启动时 _cleanStaleTmp(): tmp 比主 DB 新 → rename 恢复；否则删除。不盲目删 tmp。
   - _queueOutbox 补 finally 兜底 unlink(tmp)。
+  - ★ 腐蚀隔离（2026-06-11）：_doInit 增加第二层 try/catch — 若 new Database(buf) 成功但首次 SQL 执行抛 "disk image is malformed"，自动 rename 旧文件为 .corrupt.{ts} + 空库重试，不丢数据且不阻断启动。
+  - ★ _init() 失败后重置 this._ready = null（否则永久 reject，项目级 StateStore 终身不可用）。
   - 原则: 任何写入路径上，目标文件的旧版本必须在新版本落地之后才能删除。
 
 §34 AI 面板快照 — 重启百分百还原
@@ -307,23 +311,30 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 禁在 switchQuest/_unloadQuest 中调用 stopFloorTimer 或 completeBuildingFloor。切 quest = 纯 display 开关。
   - _lastPieTiming（canvas 去重缓存）、_autoSaveTimer（面板级）保留全局，不冲突。
 
-§37 A4 文件快照 + Timeline 版本时间线（2026-06-11 重构）
+§37 A4 文件快照 + Timeline 版本时间线（2026-06-11 重构, 2026-06 归一路径）
   - 唯一入口: panel-a4.js。拦截 executeTool + run_command 后 captureChanged 扫描。
   - per-floor 状态归属 agent: ag._a4Snapshots。新 floor 开始必须清空。
-  - 快照内容上限 512KB/文件，超限只记元数据。读内容用 bridge.fs.read（不用 ai.read_file，避免分页头污染）。
-  - 持久化(新): SHA256 去重 + gzip + SQLite，位于 {projectRoot}/qqq/timeline/。
+  - 快照内容上限 512KB/文件，超限只记元数据。
+  - 持久化: SHA256 去重 + gzip + SQLite，位于 {projectRoot}/qqq/timeline/。
     blobs/{sha256[:2]}/{sha256}.gz — 内容不可变，永不删除。
     timeline.db — versions(file_path, ts, blob_hash, source, floor_id)。
-    旧文件系统快照(qqq/snapshots/)已废弃，不再写入。
-  - 点击 → 双路径: _postToHost(旧)保底 + BrowserWindow(Monaco,新)增强。
+    ★ record 对去重条目 UPDATE ts=Date.now()，防时间倒置。
+    旧文件系统快照(qqq/snapshots/)已废弃。旧 postMessage 双路径已删除。
+  - 点击 → 唯一路径: bridge.timeline.record(前/后) → openDiffWindow(独立BrowserWindow)。
   - 跨十年保证: blob 不可变 + SQLite 索引 → 时间戳/内容永久锁定。
 
-§38 Diff 窗口 — 独立 BrowserWindow（2026-06-11 新建）
-  - Monaco Diff Editor 0.34.1 side-by-side + minimap(红绿差异) + 差异折叠 + 自动换行。
-  - 一个文件单例（Map），再次点击复用。窗口完全覆盖主窗口(inset:0)。
-  - 下拉标记: before/after/first/last。right=last 时可编辑+←移入+💾保存写盘。
-  - 最小化已移除(frameless bug)。
+§38 Diff 窗口 — 独立 BrowserWindow（2026-06-11 新建, 2026-06 加固）
+  - Monaco 0.34.1 side-by-side + minimap + 手动差异折叠(setHiddenAreas, hideUnchangedRegions 不存在于0.34.1)。
+  - 一个文件单例（Map），再次点击复用。inset:0 覆盖主窗口。
+  - 下拉归并: 同秒条目合并一行，标签全组合（[first] [before] / [last] [after]）。
+  - before/after 语义永不交换，只调整显示索引保时间顺序。
+  - right=last 时可编辑+←移入+💾保存写盘。
+  - 主题跟随主窗口 solarized-light/dark，sync 广播实时切换。
+  - 全局偏好持久化(qgs:qqqide.timeline.showFull)，默认差异块。
+  - 编辑器极致精简: 零LSP/零波浪线/零智能，只留 tokenization。
+  - 防并发: _renderToken 竞态令牌 + _loading 重入锁 + model 显式 dispose。
+  - 无滚动条，只保留最右小地图导航。
 
-§39 Git Goods — 第一方 git 操作（2026-06-11 精简）
-  - X 区仅保留 Git tab。Timeline diff 已迁出至独立 BrowserWindow(§38)。
-  - git.js 保留 A4 消息监听 → 双路径: BrowserWindow(新) + X区tab(旧保底)。
+§39 Git Goods — 第一方 git 操作（2026-06-11 精简, 2026-06 去Timeline）
+  - X 区仅保留 Git tab。A 区保留 git 快速状态面板。
+  - Timeline 已完全迁出至独立 BrowserWindow(§38)。git.js 不再监听 A4 消息。

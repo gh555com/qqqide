@@ -400,20 +400,8 @@ function _a4RenderLive(ag) {
     block.classList.add('has-files');
 }
 
-// ---- 打开 diff 查看器（触发独立 BrowserWindow） ----
+// ---- 打开 diff 查看器（独立 BrowserWindow） ----
 function _a4OpenDiff(snap) {
-    // ★ 旧路径先发（保底，永远执行）
-    _postToHost({
-        type: 'qqq-a4-open-diff',
-        path: snap.path,
-        before: snap.before,
-        after: snap.after,
-        op: snap.op,
-        added: snap.added,
-        deleted: snap.deleted
-    });
-
-    // ★ 新路径作为增强（异步，失败不影响旧路径）
     var bridge = _getBridge();
     if (bridge && bridge.timeline && typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
         var root = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');
@@ -471,26 +459,28 @@ async function _a4PersistSnapshots(ag, questNumericId, floorNum) {
         };
 
         // ★ 新路径：通过 timeline.record 持久化到 SHA256去重存储
+        // ⚠️ before 和 after 的 blob_hash 都必须存入 meta，重启后才能恢复 before/after 标记
         if (root && bridge && bridge.timeline) {
             try {
-                if (snap.after !== null && snap.after !== undefined) {
-                    var rec = await bridge.timeline.record({
-                        projectRoot: root,
-                        filePath: snap.path,
-                        content: snap.after,
-                        source: 'ai-edit',
-                        floorId: floorId
-                    });
-                    if (rec && rec.ok) meta.blob_hash = rec.blob_hash;
-                }
-                if (snap.before !== null && snap.before !== undefined && snap.before !== snap.after) {
-                    await bridge.timeline.record({
+                if (snap.before !== null && snap.before !== undefined) {
+                    var bRec = await bridge.timeline.record({
                         projectRoot: root,
                         filePath: snap.path,
                         content: snap.before,
                         source: 'ai-edit',
                         floorId: floorId
                     });
+                    if (bRec && bRec.ok) meta.before_blob_hash = bRec.blob_hash;
+                }
+                if (snap.after !== null && snap.after !== undefined) {
+                    var aRec = await bridge.timeline.record({
+                        projectRoot: root,
+                        filePath: snap.path,
+                        content: snap.after,
+                        source: 'ai-edit',
+                        floorId: floorId
+                    });
+                    if (aRec && aRec.ok) meta.blob_hash = aRec.blob_hash;
                 }
             } catch (_) { /* best effort */ }
         }
@@ -587,23 +577,12 @@ async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum) {
         } catch (_) { }
     }
 
-    // ★ 发消息给父窗口（保底，永远执行）
-    _postToHost({
-        type: 'qqq-a4-open-diff',
-        path: meta.path,
-        before: before,
-        after: after,
-        op: meta.op,
-        added: meta.added,
-        deleted: meta.deleted
-    });
-
-    // ★ 新路径增强（异步，失败不影响旧路径）
     if (root && bridge && bridge.timeline) {
         try {
             await bridge.timeline.openDiffWindow({
                 filePath: meta.path,
                 projectRoot: root,
+                beforeBlobHash: meta.before_blob_hash || undefined,
                 afterBlobHash: meta.blob_hash || undefined
             });
         } catch (_) { }

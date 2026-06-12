@@ -9,22 +9,25 @@ async function sendMessage() {
     _sending = true;
     var _guideStatuses = document.querySelectorAll('.guide-status');
     for (var _gsi = 0; _gsi < _guideStatuses.length; _gsi++) { _guideStatuses[_gsi].remove(); }
-    // \u2550\u2550\u2550 \u6240\u6709\u6743\u5b88\u536b \u2550\u2550\u2550
+    // ═══ 所有权守卫：仅父注册表（唯一真理源） ═══
     // ── 快照 quest 上下文（所有 await 之前，防并发切 quest 错位）──
     _capturedQuestId = questActiveId;
     _capturedAgent = _activeAgent;
     if (_capturedQuestId) {
         try {
-            var _owner = await questStore.getOwner(_capturedQuestId);
-            if (_owner && _owner.windowId !== _windowId) {
+            var _ssSyncOwner = _parentGetQuestOwner(_capturedQuestId);
+            if (_ssSyncOwner !== undefined && _ssSyncOwner !== _panelId) {
+                // 另一面板持有此 quest → 跳转焦点，放弃发送
                 _setPanelFocus(false);
-                _broadcast('focus-request', _capturedQuestId, { targetWindow: _owner.windowId });
+                _broadcast('focus-request', _capturedQuestId, { targetPanel: _ssSyncOwner });
                 _sending = false;
                 updateQueueBtn();
                 return;
             }
-            if (!_owner) {
-                await questStore.claimOwner(_capturedQuestId, _windowId);
+            // 无人持有 → 声明所有权（兜底：新建 quest 时 switchQuest 未调用）
+            if (_ssSyncOwner === undefined) {
+                _parentClaimQuest(_capturedQuestId);
+                _broadcast('owner-claimed', _capturedQuestId);
             }
         } catch (_) { }
     }
@@ -139,9 +142,10 @@ async function sendMessage() {
         _activeAgent = _getOrCreateAgent(questActiveId);
         if (_panelId === 1) await questStore.setActiveId(questActiveId);
         if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
-            onlyStore.set('ai.window.' + _windowId + '.activeQuestId', questActiveId);
+            // ★ setNow 立即写盘：新建 quest 后必须可靠持久化 activeQuestId
+            onlyStore.setNow('ai.panel.' + _panelId + '.activeQuestId', questActiveId);
         }
-        await questStore.claimOwner(questActiveId, _windowId);
+        _parentClaimQuest(questActiveId);
         _broadcast('owner-claimed', questActiveId);
         var firstMsg = text || (userContent || '').split('\n')[0];
         var root = questStore.getProjectRoot();
@@ -183,9 +187,10 @@ async function sendMessage() {
         var qEntry = quests2.find(function (qx) { return qx.id === _capturedQuestId; });
         var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : _capturedQuestId;
         var qNumericId = qEntry && qEntry.numericId ? qEntry.numericId : 0;
-        // ★ 前缀搜索已有目录 + 惰性修复磁盘目录名
+        // ★ 前缀搜索已有目录（内含修复）+ 防 TOCTOU 二次确认
         var qDirName2 = await _resolveQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
-        _tryRepairQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
+        // 二次确认：_resolveQuestDirName 内已做修复，此处再查一次兜底
+        qDirName2 = await _resolveQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
         var fDirName2 = _makeName('f', floorNum, userQuestion);
         await _ensureQuestDir(root2, qDirName2, fDirName2);
     }
@@ -396,10 +401,8 @@ async function sendMessage() {
                 var _aiDiv3 = _activeAgent._activeAiDiv;
                 if (_aiDiv3) {
                     _aiDiv3._guideMode = false;
-                    // 清空引导确认期间积压的流式缓冲（XML 等垃圾不应污染主回复）
+                    // 只清流式缓冲，保留已渲染的 DOM 和段落跟踪
                     _aiDiv3._buf = '';
-                    _aiDiv3._paras = [];
-                    _aiDiv3._renderedCount = 0;
                 }
             },
 
@@ -413,8 +416,10 @@ async function sendMessage() {
                     _fetchBalanceIfNeeded();
                     var _targetDiv3 = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
                     if (_targetDiv3 && _targetDiv3._clockCost) {
-                        var _floorGe = (_capturedAgent._floorCostWge / 10000).toFixed(4);
-                        _targetDiv3._clockCost.textContent = _floorGe + ' ge' + (isFree ? ' Free' : '');
+                        var _rawGe = _capturedAgent._floorCostWge / 10000;
+                        var _displayGe = _formatGeDisplay(_rawGe);
+                        _targetDiv3._clockCost._rawGe = _formatGeRaw(_rawGe);
+                        _targetDiv3._clockCost.textContent = _displayGe + ' ge' + (isFree ? ' Free' : '');
                         _targetDiv3._clockCost.style.display = 'inline';
                         if (isFree) {
                             _targetDiv3._clockCost.style.color = '#859900';
@@ -433,21 +438,43 @@ async function sendMessage() {
                         return;
                     }
                     var _errDiv = addMessageEl('error', msg);
+                    var _actRow = document.createElement('div');
+                    _actRow.style.cssText = 'margin-top:8px;display:flex;gap:8px;';
+                    // ★ 重新发送按钮：回滚断头楼层，恢复用户输入，自动重发
+                    var _capturedInput = (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '';
+                    if (_capturedInput) {
+                        var _resendBtn = document.createElement('button');
+                        _resendBtn.textContent = '\u267b \u91cd\u65b0\u53d1\u9001';
+                        _resendBtn.style.cssText = 'padding:4px 14px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;';
+                        _resendBtn.onclick = function () {
+                            _resendBtn.disabled = true;
+                            _resendBtn.textContent = '\u6b63\u5728\u53d1\u9001...';
+                            if (typeof _capturedAgent._floorStartIdx === 'number') {
+                                _capturedAgent.conversation.length = _capturedAgent._floorStartIdx;
+                            }
+                            _capturedAgent._ctx.totalFloors = Math.max(0, (_capturedAgent._ctx.totalFloors || 1) - 1);
+                            if (userMsgEl && userMsgEl.parentNode) userMsgEl.remove();
+                            if (aiDiv && aiDiv.parentNode) aiDiv.remove();
+                            if (_errDiv.parentNode) _errDiv.remove();
+                            $input.value = _capturedInput;
+                            $input.focus();
+                            sendMessage();
+                        };
+                        _actRow.appendChild(_resendBtn);
+                    }
                     if (msg.indexOf('\u5237\u65b0') >= 0) {
-                        var _actRow = document.createElement('div');
-                        _actRow.style.cssText = 'margin-top:8px;display:flex;gap:8px;';
                         var _refreshBtn = document.createElement('button');
                         _refreshBtn.textContent = '\ud83d\udd04 \u5237\u65b0\u9762\u677f';
                         _refreshBtn.style.cssText = 'padding:4px 14px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;';
                         _refreshBtn.onclick = function () { window.location.reload(); };
-                        var _dismissBtn = document.createElement('button');
-                        _dismissBtn.textContent = '\u6211\u77e5\u9053\u4e86';
-                        _dismissBtn.style.cssText = 'padding:4px 14px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;';
-                        _dismissBtn.onclick = function () { _actRow.remove(); };
                         _actRow.appendChild(_refreshBtn);
-                        _actRow.appendChild(_dismissBtn);
-                        _errDiv.appendChild(_actRow);
                     }
+                    var _dismissBtn = document.createElement('button');
+                    _dismissBtn.textContent = '\u6211\u77e5\u9053\u4e86';
+                    _dismissBtn.style.cssText = 'padding:4px 14px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;';
+                    _dismissBtn.onclick = function () { _actRow.remove(); };
+                    _actRow.appendChild(_dismissBtn);
+                    _errDiv.appendChild(_actRow);
                     _stopAllTxtStream();
                     stopFloorTimer(null, _capturedAgent);
                     setStreaming(false);
@@ -482,14 +509,58 @@ async function sendMessage() {
             }
         }
         // ═══ 楼层看门狗：仅当 onDone 和 onError 都未调用时才自动恢复 ═══
-        // onError 已调用 → 错误已显示给用户，交给用户判断（避免 401 等永久错误无限重载）
-        // onDone 已调用 → 楼层正常结束，无需恢复
-        // 两者都未调用 → 真正的「断头」死楼层，reload 恢复
+        // 铁律：绝不 reload，但必须持久化计时数据（否则重启窗口丢失 A3 时钟/饼图）
         if (_capturedAgent && !_capturedAgent._floorCompletedCleanly && !_capturedAgent._floorKilled && !_capturedAgent._floorOnErrorCalled) {
-            console.log('[watchdog] floor ended headless — auto-recovering…');
-            addMessageEl('error', '\u26a0\ufe0f \u697c\u5c42\u5f02\u5e38\u4e2d\u65ad\uff0c\u5bf9\u8bdd\u5df2\u4fdd\u5b58\u3002\u6b63\u5728\u81ea\u52a8\u6062\u590d\u2026');
-            try { sessionStorage.setItem('__qqq_scroll_bottom', '1'); } catch (_) { }
-            setTimeout(function () { window.location.reload(); }, 1200);
+            console.log('[watchdog] floor ended headless — saving timing then yielding');
+            // ★ 可点击"重新发送"：用户一键回滚断头楼层并重发
+            var _errDiv = document.createElement('div');
+            _errDiv.className = 'msg msg-error';
+            _errDiv.style.whiteSpace = 'pre-wrap';
+            _errDiv.appendChild(document.createTextNode('\u26a0\ufe0f \u697c\u5c42\u5f02\u5e38\u4e2d\u65ad\uff0c\u5bf9\u8bdd\u5df2\u4fdd\u5b58\u3002'));
+            var _resendLink = document.createElement('a');
+            _resendLink.textContent = '\u91cd\u65b0\u53d1\u9001';
+            _resendLink.href = '#';
+            _resendLink.style.cssText = 'cursor:pointer;text-decoration:underline;color:var(--accent-color,#4a9eff);margin-left:2px;';
+            _resendLink.onclick = function(e) {
+                e.preventDefault();
+                _resendLink.onclick = null;
+                _resendLink.textContent = '\u6b63\u5728\u91cd\u65b0\u53d1\u9001...';
+                // 取回用户原话
+                var _userText = (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '';
+                // 回滚对话到断头楼层之前
+                if (typeof _capturedAgent._floorStartIdx === 'number') {
+                    _capturedAgent.conversation.length = _capturedAgent._floorStartIdx;
+                }
+                _capturedAgent._ctx.totalFloors = Math.max(0, (_capturedAgent._ctx.totalFloors || 1) - 1);
+                // 清理 UI：移除断头楼层的用户消息 + AI 在建 div + 本错误条
+                if (userMsgEl && userMsgEl.parentNode) userMsgEl.remove();
+                if (aiDiv && aiDiv.parentNode) aiDiv.remove();
+                if (_errDiv.parentNode) _errDiv.remove();
+                // 恢复输入框并重发
+                $input.value = _userText;
+                $input.focus();
+                sendMessage();
+            };
+            _errDiv.appendChild(_resendLink);
+            _appendToCard(_errDiv);
+            // ★ 持久化断头楼层的时钟数据（否则重启窗口后 A3 归零）
+            var _elapsed2 = performance.now() - _capturedAgent._floorStartPerf;
+            var _tm = _capturedAgent._floorTiming || { networkMs: 0, deepseekMs: 0, toolMs: 0 };
+            var _record = {
+                floorIndex: _capturedAgent._ctx ? _capturedAgent._ctx.totalFloors : 0,
+                durationMs: Math.round(_elapsed2),
+                networkMs: _tm.networkMs || 0,
+                deepseekMs: _tm.deepseekMs || 0,
+                toolMs: _tm.toolMs || 0,
+                finishedAt: new Date().toISOString()
+            };
+            _capturedAgent._lastFloorTimingRecord = _record;
+            _capturedAgent._floorTimings = _capturedAgent._floorTimings || [];
+            _capturedAgent._floorTimings.push(_record);
+            // 触发一次保存（异步，best-effort）
+            if (typeof saveQuestData === 'function') {
+                saveQuestData().catch(function () {});
+            }
         }
         _capturedAgent._sending = false;
         _capturedAgent._streaming = false;

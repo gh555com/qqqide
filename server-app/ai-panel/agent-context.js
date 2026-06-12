@@ -19,10 +19,11 @@
 
 ; (function () {
 
-    var TOKEN_BUDGET = 900000;   // token 预算上限
+    var TOKEN_BUDGET = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPRESS_THRESHOLD : 900000);   // 压缩触发阈值（来自唯一真理源）
     var KEEP_RATIO = 0.1;         // 保留最近 10%
     var MIN_FLOORS = 6;           // 最少保留 6 层楼（当前层 + 前 5 层）
     var MAX_FACTS = 100;          // 最多保留事实条数
+    var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 3.0); // 统一估算比例
     // 压缩产出硬限 — 唯一真理在 ContentGateway.COMPACT_MAX_TOKENS（content-gateway.js）
     var COMPACT_MAX_TOKENS = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPACT_MAX_TOKENS : 32768);
     var COMPACT_RETRY_BASE_MS = 2000;    // 重试基础间隔 2s
@@ -33,9 +34,9 @@
         if (!msg) return 0;
         var tokens = 10; // role overhead
         var content = msg.content;
-        if (typeof content === 'string') tokens += content.length / 4;
+        if (typeof content === 'string') tokens += content.length / CHAR_PER_TOKEN_EST;
         if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
-            try { tokens += JSON.stringify(msg.tool_calls).length / 4; } catch (_) { }
+            try { tokens += JSON.stringify(msg.tool_calls).length / CHAR_PER_TOKEN_EST; } catch (_) { }
         }
         return Math.round(tokens);
     };
@@ -60,8 +61,10 @@
     AgentLoop.prototype._compressContext = async function () {
         var self = this;
         var totalEst = self._estimateTotalTokens();
+        var dsTokens = self._lastApiPromptTokens || 0;
 
-        if (totalEst <= TOKEN_BUDGET) return;
+        // 两个指标都没超 900k → 跳过；任一超了 → 触发（本地估算可能低估，DS 值更准）
+        if (totalEst <= TOKEN_BUDGET && dsTokens <= TOKEN_BUDGET) return;
 
         var KEEP_TARGET = Math.floor(TOKEN_BUDGET * KEEP_RATIO);
 
@@ -183,7 +186,7 @@
 
                 // 校验产出大小：超 95% 阈值 → 产出可能被截断，重试
                 var outputText = JSON.stringify(parsed);
-                var outputTokens = Math.round(outputText.length / 4);
+                var outputTokens = Math.round(outputText.length / CHAR_PER_TOKEN_EST);
                 if (outputTokens > COMPACT_MAX_TOKENS * 0.95) {
                     var waitMs2 = Math.min(COMPACT_RETRY_BASE_MS * Math.pow(2, retry + 1), COMPACT_RETRY_MAX_MS);
                     self.log('⚠ Compact output near limit (~' + outputTokens + ' tok > ' + Math.round(COMPACT_MAX_TOKENS * 0.95) + '), retry #' + (retry + 1) + ' in ' + (waitMs2 / 1000) + 's');
@@ -290,7 +293,7 @@
         }
         if (this._ctx.treasures.length > 0) {
             var recent = this._ctx.treasures.slice(-8);
-            ctx += '\n\nKEY DISCOVERIES:\n' + recent.map(function(t) {
+            ctx += '\n\nKEY DISCOVERIES:\n' + recent.map(function (t) {
                 return '💎 ' + t.content + ' [' + (t.urgency || 'later') + ']';
             }).join('\n');
         }

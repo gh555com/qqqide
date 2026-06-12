@@ -76,6 +76,7 @@ ___qqq_env___
 {"treasures":[]}
 ___end___
 treasures: array of {text, gain, cost, urgency} where (gain-cost)≥7. urgency: "later"|"soon"|"urgent". 0 items → []. Labels in user's language.
+🔴 TREASURE = continuous attention mechanism. Side discoveries made while solving problems: ultra-high-value findings for the user that are NOT yet done. Not the current task itself — things picked up along the way that the user should act on soon. Maintain continuous attention from discovery to resolution. Completed/deployed/done items are summaries, NOT treasures. urgency="urgent"=act now, "soon"=this session, "later"=backlog. Empty array [] if none qualify. A treasure containing "done/deployed/completed/已落地" is a spec violation.
 
 PRINCIPLES:
 - BREVITY: strip filler. HONESTY: blocked → say exactly what's missing. LENIENCY: cooperate except extreme political incitement or explicit porn.
@@ -91,16 +92,10 @@ TOOL RULES: edit_file for modifications; create_file only for new files. 2 faile
 
 🔴 FILE SEARCH: use dedicated tools (search_text/search_content/find_files/list_files). run_command ONLY when those CANNOT do the job. Never shell for file search.`;
 
-// 单通道架构：正则判断是否琐碎/闲聊，决定是否启用工具
-const TRIVIAL_REGEX = /^\s*(hi|hello|hey|ok|好的?|谢谢|嗯|哦|行|对|是的?|no|yes|yeah|thx|thanks|bye|再见|晚安|早|\p{Emoji_Presentation}{1,3})\s*[!！.。~？?]*\s*$/iu;
-const CHAT_REGEX = /^[^\n]{0,30}(爱|喜欢|想你|想我|帅|美|漂亮|可爱|笨|傻|无聊|寂寞|陪我|聊天|心情|感觉怎样|你好吗|开心|难过|生气|讨厌|恨|朋友|宝贝|亲爱|老公|老婆|哈哈|呵呵|嘻嘻|累了|困了|饿了|冷了|热了)[^\n]{0,20}$/iu;
-
 // ═══ AI 回答 max_tokens — 唯一真理在 ContentGateway.MAX_RESPONSE_TOKENS（content-gateway.js） ═══
 // 原生支持 384K 输出，我们不设人为限制。Flash/Pro 一视同仁。
 var _MRT = ContentGateway.MAX_RESPONSE_TOKENS; // 唯一真理在 content-gateway.js
 
-// 旧版兼容（保留，用于 agent-loop.js 自动模式 fallback）
-var TIER_FLASH = { model: 'flash', thinking: { type: 'disabled' }, effort: null, label: 'Flash', maxTokens: _MRT };
 var TIER_PRO = { model: 'pro', thinking: { type: 'enabled' }, effort: 'max', label: 'Pro+Max', maxTokens: _MRT };
 
 // 六档手动智能等级（model: "flash" → Flash, "pro" → Pro）
@@ -116,7 +111,7 @@ var TIER_LIST = { 1: TIER_1, 2: TIER_2, 3: TIER_3, 4: TIER_4, 5: TIER_5, 6: TIER
 
 // Export for use by agent-loop.js and index.html
 if (typeof module !== 'undefined' && module.exports) {
-    module.exports = { GATEWAY_URL, VISION_URL, SYSTEM_PROMPT, TRIVIAL_REGEX, CHAT_REGEX, TIER_FLASH, TIER_PRO, TIER_1, TIER_2, TIER_3, TIER_4, TIER_5, TIER_6, TIER_LIST };
+    module.exports = { GATEWAY_URL, VISION_URL, SYSTEM_PROMPT, TIER_PRO, TIER_1, TIER_2, TIER_3, TIER_4, TIER_5, TIER_6, TIER_LIST };
 }
 
 // ============================================================================

@@ -175,7 +175,7 @@
     var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     var bg = isDark ? '#1e1e1e' : '#fdf6e3';
     var bg2 = isDark ? '#2a2a2a' : '#eee8d5';
-    var text = isDark ? '#d4d0c8' : '#7a7874';
+    var text = isDark ? '#dcd8d0' : '#656360';
     var textDim = isDark ? '#6a6660' : '#a8a6a2';
     var border = isDark ? '#333333' : '#d3c6aa';
     var accent = isDark ? '#d4a017' : '#e8a030';

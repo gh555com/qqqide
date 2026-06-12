@@ -194,7 +194,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'run_command',
-            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default. When you need full output (e.g. large file listings, long logs), pass maxOutput to request up to ' + OUTPUT_CAP_MAX + '. Hard timeout 30min, stall guard 5min. Use cwd to set working directory. ⚠️ PREFER search_text/search_content/find_files for code search — they are 10x faster and memory-safe. Only use run_command when dedicated tools CANNOT do the job.',
+            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default. When you need full output (e.g. large file listings, long logs), pass maxOutput to request up to ' + OUTPUT_CAP_MAX + '. Hard timeout 2h, stall guard 15min. Use cwd to set working directory. ⚠️ PREFER search_text/search_content/find_files for code search — they are 10x faster and memory-safe. Only use run_command when dedicated tools CANNOT do the job.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -876,14 +876,14 @@ async function executeRunCommand(args) {
         // Use qz spawn (ghrun → node fallback)
         // [silent] run_command
         // timeout=0 → 系统层自动 cap 为 SYSTEM_MAX_TIMEOUT (唯一真理源: qz-spawn.ts)
-        // stallMs 在此处定义，系统层无默认值
+        // stallMs 唯一真理在此（tools.js），系统层默认 0（关闭）
         var cmdStart = Date.now();
         var result = await bridge.qz.spawn({
             cmd: cmd,
             args: cmdArgs,
             cwd: args.cwd || '',
-            timeout: 0,           // 不设限，交给系统天花板
-            stallMs: 1800000,      // 30min 无输出即杀
+            timeout: 0,           // 不设限，交给系统天花板 (2h)
+            stallMs: 900000,      // 15min 无输出即杀
             shell: useShell
         });
 

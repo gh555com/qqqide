@@ -159,26 +159,25 @@ export class StateStore extends EventEmitter {
             // ★ 清理残留 .tmp 文件（原子写入失败/进程崩溃的遗孤）
             this._cleanStaleTmp();
 
-            // Create schema
-            this._db.run(`CREATE TABLE IF NOT EXISTS state (
-                ns TEXT NOT NULL,
-                key TEXT NOT NULL,
-                value TEXT,
-                meta TEXT,
-                updated_at INTEGER DEFAULT 0,
-                PRIMARY KEY (ns, key)
-            )`);
-            this._db.run('CREATE INDEX IF NOT EXISTS idx_state_ns ON state(ns)');
-            this._db.run('PRAGMA journal_mode=WAL');
-            this._db.run('PRAGMA synchronous=FULL');
-            this._db.run('PRAGMA busy_timeout=30000');
+            // ★ 初始化 schema — 若已加载的 DB 内部页损坏（"disk image is malformed"），
+            //    构造函数可能不报错但首次 SQL 执行才暴露 → 隔离旧文件 + 空库重试
+            try {
+                this._initSchema();
+            } catch (sqlError) {
+                console.warn('[state-sqlite] schema init failed (internal corruption?), quarantine & start fresh:', sqlError);
+                const bak = this.dbPath + '.corrupt.' + Date.now();
+                try { fs.renameSync(this.dbPath, bak); } catch { /* ignore */ }
+                this._db = new this._SQL.Database();
+                // Retry on fresh DB
+                this._initSchema();
+            }
 
-            // Load persisted schemas from registry table
-            this._loadSchemas();
             this._readyOk = true;
             console.log('[state-sqlite] ready, schemas:', this.schemas.size);
         } catch (e) {
             console.error('[state-sqlite] init FAILED:', e);
+            // ★ 失败后重置 ready，允下次调用重试（否则 this._ready 永久 reject）
+            this._ready = null;
             throw e;
         }
     }
@@ -191,6 +190,24 @@ export class StateStore extends EventEmitter {
         if (!this._readyOk || !this._db) {
             this._init().catch(() => { });
         }
+    }
+
+    /** Create/reset schema on current DB instance */
+    private _initSchema(): void {
+        this._db.run(`CREATE TABLE IF NOT EXISTS state (
+            ns TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT,
+            meta TEXT,
+            updated_at INTEGER DEFAULT 0,
+            PRIMARY KEY (ns, key)
+        )`);
+        this._db.run('CREATE INDEX IF NOT EXISTS idx_state_ns ON state(ns)');
+        this._db.run('PRAGMA journal_mode=WAL');
+        this._db.run('PRAGMA synchronous=FULL');
+        this._db.run('PRAGMA busy_timeout=30000');
+        // Load persisted schemas from registry table
+        this._loadSchemas();
     }
 
     // ★ 启动时恢复/清理残留 .tmp 文件（进程崩溃遗孤 → 恢复而非丢弃）

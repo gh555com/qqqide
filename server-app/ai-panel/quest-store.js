@@ -279,50 +279,22 @@ var QuestStore = (function () {
     };
 
     // ═══════════════════════════════════════════════════════════════
-    // Quest 所有权（防多窗口串味）
+    // Quest 所有权 — 已移除 quest.sq3 中的 _owner 冗余层
+    // 唯一真理源：父窗口 __qqq_questOwners（questId → panelId 同步映射）
+    // 面板→任务 映射：onlyStore `ai.window.{wid}.activeQuestId`
     // ═══════════════════════════════════════════════════════════════
 
-    QuestStore.prototype.claimOwner = async function (questId, windowId) {
-        // ★ 先 invalidate 缓存，确保读最新所有权
-        var b = _bridge();
-        if (b && b.flushOne) { try { await b.flushOne(QUEST_NS + '.' + questId); } catch (_) { } }
-        var existing = await _get(QUEST_NS + '.' + questId);
-        var oldOwner = (existing && existing._owner) || null;
-        if (oldOwner && oldOwner.windowId && oldOwner.windowId !== windowId) {
-            var age = Date.now() - (oldOwner.claimedAt || 0);
-            // ★ TTL 24h（纯崩溃恢复兜底；正常去重由父窗口同步注册表保障）
-            if (age < 86400000) {
-                return { claimed: false, currentOwner: oldOwner.windowId };
+    // ★ 清理遗留 _owner 数据（一次性迁移，幂等安全）
+    QuestStore.prototype.cleanupOwners = async function () {
+        await this._ensureIndex();
+        for (var i = 0; i < this._index.length; i++) {
+            var id = this._index[i].id;
+            var data = await _get(QUEST_NS + '.' + id);
+            if (data && data._owner) {
+                delete data._owner;
+                await _setNow(QUEST_NS + '.' + id, data);
             }
         }
-        var ownerData = { windowId: windowId, claimedAt: Date.now() };
-        if (!existing) existing = {};
-        existing._owner = ownerData;
-        await _setNow(QUEST_NS + '.' + questId, existing);
-        return { claimed: true, currentOwner: null };
-    };
-
-    QuestStore.prototype.releaseOwner = async function (questId, windowId) {
-        var b = _bridge();
-        if (b && b.flushOne) { try { await b.flushOne(QUEST_NS + '.' + questId); } catch (_) { } }
-        var existing = await _get(QUEST_NS + '.' + questId);
-        if (!existing || !existing._owner) return null;
-        var oldOwner = existing._owner;
-        if (windowId && oldOwner.windowId !== windowId) return null;
-        delete existing._owner;
-        await _setNow(QUEST_NS + '.' + questId, existing);
-        return oldOwner;
-    };
-
-    QuestStore.prototype.getOwner = async function (questId) {
-        var b = _bridge();
-        if (b && b.flushOne) { try { await b.flushOne(QUEST_NS + '.' + questId); } catch (_) { } }
-        var existing = await _get(QUEST_NS + '.' + questId);
-        if (!existing || !existing._owner) return null;
-        var age = Date.now() - (existing._owner.claimedAt || 0);
-        // ★ TTL 24h（纯崩溃恢复兜底）
-        if (age > 86400000) return null;
-        return existing._owner;
     };
 
     // ═══════════════════════════════════════════════════════════════
@@ -331,13 +303,9 @@ var QuestStore = (function () {
 
     QuestStore.prototype.save = async function (id, data) {
         data.savedAt = Date.now();
-        // 保留 _owner（由 claimOwner/releaseOwner 管理）
+        // floors 列表 + totalFloors 由 saveFloor 管理，save 不覆盖（取最大值）
         var existing = await _get(QUEST_NS + '.' + id);
         if (!existing) existing = {};
-        if (existing._owner) {
-            if (!data._owner) data._owner = existing._owner;
-        }
-        // floors 列表 + totalFloors 由 saveFloor 管理，save 不覆盖（取最大值）
         if (existing.floors && !data.floors) {
             data.floors = existing.floors;
         }

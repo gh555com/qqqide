@@ -277,44 +277,65 @@ function _initTreasureBlock(aiDiv) {
 }
 
 // ═══ 渲染 treasures 到 A2 block ═══
+// 格式：💎!! gain:8 cost:0   ← 第一行（header）
+//       财宝内容文字...       ← 第二行起（body）
+// 过滤：已落地/已完成的财宝不渲染（用户已经达成了，不再建议）
+var _TREASURE_DONE_RE = /已落地|已完成|已实现|已修复|已部署|已上线|已合并|DONE|\[x\]|✅.*完成|已解决/;
 function _renderTreasures(block, treasures) {
     if (!block || !treasures || !treasures.length) {
         if (block) block.classList.remove('has-treasures');
         return;
     }
-    block.innerHTML = '';
+    // 过滤掉已完成的 treasures（done 标记 + 文本正则双重保障）
+    var active = [];
     for (var i = 0; i < treasures.length; i++) {
         var t = treasures[i];
+        if (!t || !t.text) continue;
+        if (t.done === true) continue;
+        if (_TREASURE_DONE_RE.test(t.text)) continue;
+        active.push(t);
+    }
+    if (!active.length) {
+        block.classList.remove('has-treasures');
+        block.innerHTML = '';
+        return;
+    }
+    block.innerHTML = '';
+    for (var i = 0; i < active.length; i++) {
+        var t = active[i];
         var item = document.createElement('div');
         item.className = 'msg-a2-item';
 
-        // 💎 钻石图标
-        var diamond = document.createElement('span');
-        diamond.className = 'msg-a2-diamond';
-        diamond.textContent = '💎';
-        diamond.style.cssText = 'flex-shrink:0;font-size:14px';
-        item.appendChild(diamond);
+        // 第一行：💎 + badge + gain/cost
+        var header = document.createElement('div');
+        header.className = 'msg-a2-header';
+        header.style.cssText = 'display:flex;align-items:center;gap:4px;font-family:ui-monospace,monospace;font-size:12px;line-height:1.5';
 
-        // urgency 紧急程度 badge
+        var diamond = document.createElement('span');
+        diamond.style.cssText = 'flex-shrink:0;font-size:14px';
+        diamond.textContent = '💎';
+        header.appendChild(diamond);
+
         var badge = document.createElement('span');
         badge.className = 'msg-a2-badge ' + (t.urgency || 'later');
         badge.textContent = t.urgency === 'urgent' ? '!!' : (t.urgency === 'soon' ? '>>' : '..');
-        item.appendChild(badge);
+        header.appendChild(badge);
 
-        // gain / cost 指标
         var metrics = document.createElement('span');
-        metrics.className = 'msg-a2-metrics';
-        metrics.style.cssText = 'flex-shrink:0;font-size:10px;opacity:0.7;font-family:ui-monospace,monospace';
+        metrics.style.cssText = 'flex-shrink:0;opacity:0.7';
         var g = typeof t.gain === 'number' ? t.gain : 0;
         var c = typeof t.cost === 'number' ? t.cost : 0;
         metrics.textContent = 'gain:' + g + ' cost:' + c;
-        item.appendChild(metrics);
+        header.appendChild(metrics);
 
-        // 文字内容
-        var text = document.createElement('span');
-        text.textContent = t.text || '';
-        text.style.cssText = 'flex:1;min-width:0';
-        item.appendChild(text);
+        item.appendChild(header);
+
+        // 第二行：文字内容
+        var body = document.createElement('div');
+        body.className = 'msg-a2-body';
+        body.style.cssText = 'font-size:12px;color:var(--text-primary);line-height:1.5;padding-left:0;word-break:break-word';
+        body.textContent = t.text || '';
+        item.appendChild(body);
 
         block.appendChild(item);
     }

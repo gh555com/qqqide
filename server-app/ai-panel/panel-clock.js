@@ -68,9 +68,9 @@ function drawPie(canvas, timing) {
     if (total <= 0) { ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(w / 2, h / 2, w / 2 - 3, 0, Math.PI * 2); ctx.fill(); canvas._segments = null; return; }
     t = Math.max(0, total - n - d);
     var parts = [
-        { val: d, color: '#859900', label: 'AI', key: 'deepseek' },
+        { val: t, color: '#e6b800', label: 'Tool', key: 'tool' },
         { val: n, color: '#cb4b16', label: 'Network', key: 'network' },
-        { val: t, color: '#e6b800', label: 'Tool', key: 'tool' }
+        { val: d, color: '#859900', label: 'AI', key: 'deepseek' }
     ];
     var start = -Math.PI / 2;
     var segments = [];
@@ -89,23 +89,42 @@ function drawPie(canvas, timing) {
     canvas._total = total;
 }
 
+// ── ge 显示格式化：2位小数，四舍五入，最小0.01 ──
+function _formatGeDisplay(rawValue) {
+    if (rawValue <= 0) return '0.00';
+    var rounded = Math.round(rawValue * 100) / 100;
+    if (rounded < 0.01) return '0.01';
+    return rounded.toFixed(2);
+}
+function _formatGeRaw(rawValue) {
+    // 保留最多6位小数，去尾零
+    return rawValue.toFixed(6).replace(/\.?0+$/, '') || '0';
+}
+
 function _initClockBlock(aiDiv) {
     if (aiDiv._clockBlock) return;
     var block = document.createElement('div');
     block.className = 'msg-ai-clock';
-    block.innerHTML = '<span class="clock"><span class="clock-min">0m</span><span class="clock-sec">:0s</span></span><canvas width="112" height="112"></canvas><span class="clock-cost" style="display:none;font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:var(--text-primary);margin-left:auto">0.0000 ge</span>';
+    block.innerHTML = '<span class="clock"><span class="clock-min">0m</span><span class="clock-sec">:0s</span></span><canvas width="112" height="112"></canvas><span class="clock-cost" style="display:none;font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:var(--text-primary);margin-left:auto">0.00 ge</span>';
     aiDiv.appendChild(block);
     aiDiv._clockBlock = block;
     aiDiv._clockMin = block.querySelector('.clock-min');
     aiDiv._clockSec = block.querySelector('.clock-sec');
     aiDiv._clockCanvas = block.querySelector('canvas');
     aiDiv._clockCost = block.querySelector('.clock-cost');
+    var clockCost = aiDiv._clockCost;
+    clockCost.addEventListener('mouseenter', function (e) {
+        var raw = clockCost._rawGe;
+        if (raw === undefined || raw === null) return;
+        _showPieTooltip('<span style="color:#fff">' + raw + ' ge</span>', e.clientX, e.clientY);
+    });
+    clockCost.addEventListener('mouseleave', function () { _hidePieTooltip(); });
     var canvas = aiDiv._clockCanvas;
     canvas.addEventListener('mousemove', function (e) {
         if (!canvas._segments || !canvas._total) { _hidePieTooltip(); return; }
         var parts = [
-            { key: 'network', color: '#cb4b16', label: 'Net' },
             { key: 'tool', color: '#e6b800', label: 'Tool' },
+            { key: 'network', color: '#cb4b16', label: 'Net' },
             { key: 'deepseek', color: '#859900', label: 'AI' }
         ];
         var segs = canvas._segments;
@@ -144,8 +163,9 @@ function startFloorTimer(aiDiv, ag, resume) {
     aiDiv._clockBlock.className = 'msg-ai-clock clock-ai';
     canvas.style.visibility = 'hidden';
     if (aiDiv._clockCost) {
-        aiDiv._clockCost.textContent = '0.0000 ge';
+        aiDiv._clockCost.textContent = '0.00 ge';
         aiDiv._clockCost.style.display = 'inline';
+        aiDiv._clockCost._rawGe = null;
     }
     var _pieShown = false;
     var _lastN = 0, _lastD = 0, _lastT = 0;

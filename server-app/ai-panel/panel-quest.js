@@ -1,33 +1,10 @@
 'use strict';
 
-// ═══ 跨窗口同步消息处理 ═══
-function _broadcastOwnerCheck(questId) {
-    return new Promise(function (resolve) {
-        var timeout = setTimeout(function () { resolve(null); }, 250);
-        var _tmpUnsub = null;
-        try {
-            var sb = _getSyncBridge();
-            if (sb) {
-                var ch = _syncChannel();
-                _tmpUnsub = sb.onMessage(function (channel, data) {
-                    if (channel !== ch) return;
-                    if (data && data.type === 'owner-confirm' && data.questId === questId && data.ownerWindow) {
-                        clearTimeout(timeout);
-                        if (_tmpUnsub) { try { _tmpUnsub(); } catch (_) { } }
-                        resolve({ windowId: data.ownerWindow });
-                    }
-                });
-            }
-        } catch (_) { }
-        _broadcast('owner-check', questId);
-    });
-}
-
 async function _handleSyncMessage(msg) {
     if (!msg || msg.windowId === _windowId) return;
     // focus-request：焦点跳转
     if (msg.type === 'focus-request') {
-        if (msg.targetWindow === _windowId) {
+        if (msg.targetWindow === _windowId || msg.targetPanel === _panelId) {
             // [silent] focus-request received
             _postToHost({ type: 'qqq-focus-window' });
             _setPanelFocus(true);
@@ -53,13 +30,6 @@ async function _handleSyncMessage(msg) {
                     updateCostDisplay();
                     updateCtxBtn();
                 }
-                break;
-            case 'owner-check':
-                if (msg.questId === questActiveId) {
-                    _broadcast('owner-confirm', questActiveId, { ownerWindow: _windowId });
-                }
-                break;
-            case 'owner-confirm':
                 break;
             case 'owner-claimed':
                 // 另一面板抢走了我们正在看的 quest → 自动卸载，跳回空白
@@ -128,6 +98,7 @@ async function _initWorkspace(root) {
     // ★ 只有中面板（panelId=1）申请项目锁；左右翼共享
     onlyStore.init(root);
     // ★ 从 onlyStore 恢复或持久化 _windowId（唯一真理源，跨 iframe 重建不变）
+    //   用 setNow 立即写盘（非惰性），确保首次启动即持久化，防退出时丢失导致下次新 ID
     var _onlyWindowKey = 'ai.panel.' + _panelId + '.windowId';
     try {
         var _persistedWid = await onlyStore.getAsync(_onlyWindowKey);
@@ -135,7 +106,7 @@ async function _initWorkspace(root) {
             _windowId = _persistedWid;
             // [silent] restored _windowId
         } else {
-            onlyStore.set(_onlyWindowKey, _windowId);
+            onlyStore.setNow(_onlyWindowKey, _windowId);
             // [silent] persisted _windowId
         }
     } catch (e) { console.warn('[workspace] _windowId restore error:', e); }
@@ -240,14 +211,18 @@ async function bindMainProject() {
     await _initWorkspace(root);
 }
 
-// 窗口关闭时刷盘（翼板关闭只是隐藏不触发；只有窗口真正关闭才触发）
-// ownership 不释放（翼板关闭事实不变）；应用关闭由 30s 超时自然过期
+// 窗口关闭时刷盘 + 释放所有权（翼板关闭=iframe隐藏，不触发 beforeunload）
+//   应用真正退出 → 释放所有 quest 所有权，防重启后僵尸状态阻塞
 window.addEventListener('beforeunload', function () {
     if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
         saveQuestUIState(questActiveId);
+        // ★ 释放所有权（仅父注册表；quest.sq3 不再存储 _owner）
+        if (questActiveId && !_isDraft(questActiveId)) {
+            _parentReleaseQuest(questActiveId);
+            _broadcast('owner-released', questActiveId);
+        }
         onlyStore.flush();
     }
-    // ★ 不再 releaseOwner：翼板开关不改面板归属
 });
 
 // 监听视口变化：主文件夹改变时重新绑定
@@ -321,12 +296,14 @@ async function initQuests() {
     // [silent] initQuests START
     var quests = await questStore.list();
     // [silent] list returned
+    // ★ 一次性迁移：清理 quest.sq3 中的遗留 _owner 数据（幂等安全）
+    questStore.cleanupOwners().catch(function () { });
     if (quests.length === 0) {
         questActiveId = _draftId;
     } else {
-        // ★ 三级恢复：per-window 快照 → project global → first quest
-        //   侧面板仅从自己的快照恢复，不抢全局 active quest
-        var _perWindowKey = 'ai.window.' + _windowId + '.activeQuestId';
+        // ★ 三级恢复：per-panel 快照 → project global → first quest
+        //   panelId 永恒不变（0=左,1=中,2=右），不像 windowId 跨会话更换
+        var _perWindowKey = 'ai.panel.' + _panelId + '.activeQuestId';
         var _fromOnly = await onlyStore.getAsync(_perWindowKey);
         if (_fromOnly && quests.find(function (s) { return s.id === _fromOnly; })) {
             questActiveId = _fromOnly;
@@ -382,24 +359,9 @@ async function initQuests() {
             _scrollToBottomDeferred(true);
         }
         renderQueueStrip();
-        // ★ 声明所有权（防止其他面板加载同一 quest）
-        try {
-            var _initClaim = await questStore.claimOwner(questActiveId, _windowId);
-            if (_initClaim.claimed) {
-                _parentClaimQuest(questActiveId);  // ★ 同步注册到父窗口
-                _broadcast('owner-claimed', questActiveId);
-            } else if (_initClaim.currentOwner && _initClaim.currentOwner !== _windowId) {
-                // 已被其他面板持有 → 卸载，跳转焦点
-                // [silent] quest already owned by other panel, unloading
-                _broadcast('focus-request', questActiveId, { targetWindow: _initClaim.currentOwner });
-                // ★ 自动打开拥有者所在的翼板
-                var _initOwnerPanelId = parseInt(_initClaim.currentOwner.split('_p')[1]);
-                if (_initOwnerPanelId === 0 || _initOwnerPanelId === 2) {
-                    try { parent.postMessage({ type: 'qqq-open-wing', panel: _initOwnerPanelId }, '*'); } catch (_) { }
-                }
-                _unloadQuest();
-            }
-        } catch (_) { }
+        // ★ 声明所有权（仅父注册表；quest.sq3 不再参与）
+        _parentClaimQuest(questActiveId);
+        _broadcast('owner-claimed', questActiveId);
         updateCostDisplay();
         updateCtxBtn();
     } else {

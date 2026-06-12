@@ -251,17 +251,17 @@ var CardPool = (function () {
       if (m._guideAck && m.role === 'assistant') {
         // 引导确认回合：渲染引导注入信息 + AI 确认回复
         if (m._guideText) {
-          parts.push('<div class="msg-flow-guide-inject"><span class="msg-flow-icon">⚡</span> ' + _escHtml(m._guideText) + '</div>');
+          parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">⚡</span> 引导信息</div><div class="msg-flow-guide-body">' + _escHtml(m._guideText) + '</div></div>');
         }
         var _ackText = (m.content || '已收到引导').replace(/^✅\s*/, '').trim();
         if (_ackText) {
-          parts.push('<div class="msg-flow-guide"><span class="msg-flow-icon">✅</span> ' + _escHtml(_ackText) + '</div>');
+          parts.push('<div class="msg-flow-guide-ack"><div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> 已收到引导</div><div class="msg-flow-guide-ack-body">' + _escHtml(_ackText) + '</div></div>');
         }
       } else if (m._injected && m.role === 'user') {
         // 降级注入消息（如 [GUIDE] 注入）
         var _injText = String(m.content || '').replace(/^\[GUIDE\]\s*/, '').trim();
         if (_injText) {
-          parts.push('<div class="msg-flow-guide-inject"><span class="msg-flow-icon">📌</span> ' + _escHtml(_injText) + '</div>');
+          parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">📌</span> 引导信息</div><div class="msg-flow-guide-body">' + _escHtml(_injText) + '</div></div>');
         }
       } else if (m.role === 'assistant' && !m.tool_calls && typeof m.content === 'string' && m.content) {
         // 普通 AI 文字回复（数据已在 EnvelopeStripper 清洗，直接渲染）
@@ -429,9 +429,11 @@ var CardPool = (function () {
 
     // ⑥ 恢复历史楼层成本显示
     if (fData.costWge && aiEl._clockCost) {
-      var ge = (fData.costWge / 10000).toFixed(4);
+      var _rawGe = fData.costWge / 10000;
+      var _displayGe = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2);
       var isFree = fData.floorFree === true;
-      aiEl._clockCost.textContent = ge + ' ge' + (isFree ? ' Free' : '');
+      aiEl._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
+      aiEl._clockCost.textContent = _displayGe + ' ge' + (isFree ? ' Free' : '');
       aiEl._clockCost.style.display = 'inline';
       if (isFree) {
         aiEl._clockCost.style.color = '#859900';
