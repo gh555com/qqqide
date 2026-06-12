@@ -364,6 +364,32 @@ AI 面板增强
 - 时钟：分钟(48px)+冒号秒(24px)，动态色随 agent._floorTiming 变化
 - 饼图：canvas 112px，懒重绘，数据不到不显示
 
+AI 上下文窗口防护（三层纵深 + 参数集中化，2026-06-10 落地）
+--------------------------------------------------------------
+背景：DeepSeek V4 硬限制 prompt+completion ≤ 1,000,000 tokens，长对话叠加 max_tokens(393K) 超限导致零响应。
+
+参数唯一真理源：content-gateway.js
+  CTX_MAX_TOKENS / COMPRESS_THRESHOLD / MAX_TOKENS_SAFETY / CHAR_PER_TOKEN(3.0)
+  换模型只改这一处。四个消费方(panel-quest-ui/agent-context/agent-loop)全部引用，不硬编码。
+
+第一层 — 上下文压缩引擎（主防线）：
+  · 每轮消息前自动触发 _compressContext()（agent-loop.js L458）
+  · 双重判断: _lastApiPromptTokens（DS精确值）+ 本地估算(chars/3)，任一超 COMPRESS_THRESHOLD→压缩
+  · 保留最近 6 层楼，旧楼送往 AI 压缩成 32K 结构化 JSON(事实+叙事)
+  · 失败→指数退避无限重试(2s→4s→…→60s)，不丢消息
+  · 手动触发：左下角上下文按钮
+
+第二层 — 客户端 max_tokens 动态帽：
+  · 发 API 前: safeMax = CTX_MAX_TOKENS - _lastApiPromptTokens - MAX_TOKENS_SAFETY
+  · 与 tier.maxTokens 取 min → 压缩漏网时兜底
+
+第三层 — Go 服务端帽 + HTTP/1.1 隔离：
+  · Go handlers_ai_chat.go: 序列化后用 len(bodyBytes)/3 估算，超限缩 max_tokens(≥1024)
+  · 独立 dsTransport(ForceAttemptHTTP2:false) → 每请求独立 TCP，防 RST 级联
+  · nginx client_max_body_size 6200m (8444 端口)
+
+显示：左下角按钮取 Math.max(本地估算, DS精确值)，防过期值误导
+
 AI 面板 UI 增强
 --------------
 - 缩放比例显示: 菜单行1, zoom-out与主题按钮之间, 等宽字体显示当前比例(0.85/1.00/1.35), 纯展示非交互

@@ -2,6 +2,27 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 ============================================================
 更新: 2026-06-10
 
+已完成 — 本轮 2026-06-10 (23) 全链路架构审计 + 压缩后 token 清零修复
+------
+· 全链路审计: 客户端(6核心文件) + Go服务端 + nginx，评分 9.2/10
+· 🔴 修复关键bug: 压缩后 _lastApiPromptTokens 未清零 → max_tokens 帽误算(90K 而非 790K)
+  → agent-context.js L125: 压缩成功 splice 后 self._lastApiPromptTokens = 0
+· 🟡 已识别未修: 压缩 _callCompactAPI 未走 Worker failover（网关故障时压缩必败）
+· 🟡 已识别未修: Go len(bodyBytes)/3 估算含 JSON 开销（安全侧不误拦，低优先级）
+· ✅ 验证无问题: 参数集中化/chars-3统一/压缩边界对齐/HTTP1.1隔离/per-agent隔离/流看门狗
+· 拓扑文档: 铁律(§40-§42) + 进度 同步
+
+已完成 — 本轮 2026-06-10 (22) AI 上下文窗口防护 + 模型参数集中化
+------
+· 三层纵深防御落地: 压缩引擎(主防线) → 客户端 max_tokens 动态帽(兜底) → Go 服务端帽+HTTP/1.1 隔离(最终防线)
+· 模型参数唯一真理源: content-gateway.js 集中声明 CTX_MAX_TOKENS/COMPRESS_THRESHOLD/MAX_TOKENS_SAFETY/CHAR_PER_TOKEN
+· agent-loop.js: 发 API 前动态计算 safeMax = 1M - prompt_tokens - 10K safety，与 tier.maxTokens 取 min
+· agent-context.js: 统一 chars/3 估算(token 不低估)，双重判断(_lastApiPromptTokens + 估算)触发压缩
+· panel-quest-ui.js: 上下文血条显示 Math.max(估算, DS精确值)，防过期值误导
+· Go handlers_ai_chat.go: 独立 dsTransport(HTTP/1.1 隔离防 RST 级联) + Go 侧 max_tokens 帽
+· nginx 验证: US 服务器 8444 端口 client_max_body_size 已有 6200m，非瓶颈
+· 拓扑文档同步: 架构(上下文窗口防护章节) + 铁律(§40-§42 新增) + 进度
+
 已完成 — 本轮 2026-06-10 (21) 楼层计费折叠 — 每层楼 geflow 汇总一行
 ------
 · Go 层: ChargeAITurnWithMeta 加 floorID 参数 → transactions.ref_type 存储

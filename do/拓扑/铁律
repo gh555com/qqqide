@@ -338,3 +338,22 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 §39 Git Goods — 第一方 git 操作（2026-06-11 精简, 2026-06 去Timeline）
   - X 区仅保留 Git tab。A 区保留 git 快速状态面板。
   - Timeline 已完全迁出至独立 BrowserWindow(§38)。git.js 不再监听 A4 消息。
+
+§40 上下文压缩 — 发前自动压缩，三重判断（2026-06-10 落地）
+  - 每轮发消息前 agent-loop _compressContext() 自动触发。
+  - 双重判断: _lastApiPromptTokens（DS 精确值） + 本地估算(chars/3)，任一超 COMPRESS_THRESHOLD → 压缩。
+  - 保留最近 6 层楼，旧楼送往 AI 压缩成 32K 结构化 JSON（事实+叙事）。
+  - 失败→指数退避无限重试(2s→4s→…→60s)，不丢消息。
+  - 手动触发: 左下角上下文按钮。压缩期间 Stop 按钮锁定。
+
+§41 模型参数唯一真理源 — content-gateway.js（2026-06-10 落地）
+  - CTX_MAX_TOKENS / COMPRESS_THRESHOLD / MAX_TOKENS_SAFETY / CHAR_PER_TOKEN 全部集中声明在 content-gateway.js。
+  - 四个消费方（panel-quest-ui / agent-context / agent-loop）全部引用，禁硬编码。
+  - 换模型/改窗口大小 → 只改 content-gateway.js 一处。违者返工。
+
+§42 max_tokens 动态帽 — 压缩漏网兜底（2026-06-10 落地）
+  - 发 API 前: safeMax = CTX_MAX_TOKENS - _lastApiPromptTokens - MAX_TOKENS_SAFETY。
+  - 与 tier.maxTokens 取 min → effectiveMaxTokens。下限 1024。
+  - _lastApiPromptTokens 是 DS 返回的精确 prompt_tokens，per-floor 粒度，用则更新不用则过期。
+  - Go 服务端第三层兜底: 序列化后按 len/3 估算，超限同样缩 max_tokens。
+

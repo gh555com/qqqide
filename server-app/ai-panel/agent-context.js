@@ -119,6 +119,10 @@
             await self._digestColdMessages(coldMsgs);
             try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('\u2705 压缩完成 — ' + coldMsgs.length + ' 条消息已精简为结构知识', { type: 'info', duration: 5000 }); } catch (_) { }
             self.conversation.splice(self._persistentCount, hotStart - self._persistentCount);
+            // ★ 压缩后 _lastApiPromptTokens 已失效（旧消息被删，DS 精确值不再准确）
+            //    清零 → 下次 API 调用前仅靠本地估算，API 返回后自动更新为新的精确值
+            //    不清零会导致 max_tokens 动态帽过度限制（用 900K 旧值算 cap 而非 200K 真实值）
+            self._lastApiPromptTokens = 0;
             self.log('\u25C6 Context: done — ' + coldMsgs.length + ' msgs removed, ' + self.conversation.length + ' msgs kept');
         } catch (digestErr) {
             self.log('\u2717 Context: compress FAILED after 3 retries — ' + digestErr.message + ' — skipping, messages preserved');
