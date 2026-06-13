@@ -153,6 +153,12 @@ function doStreamRender() {
     var aiDiv = _activeAgent._activeAiDiv;
 
     if (!aiDiv) { return; }
+    // ★ 防"诈尸"：agent 已终止或楼层已完成，停止流式渲染
+    if (_activeAgent._sendTerminated || _activeAgent._floorKilled) {
+        aiDiv._renderScheduled = false;
+        aiDiv._dirty = false;
+        return;
+    }
     if (!aiDiv._dirty) { aiDiv._renderScheduled = false; return; }
 
     aiDiv._renderScheduled = false;

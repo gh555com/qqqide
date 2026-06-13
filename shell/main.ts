@@ -96,8 +96,13 @@ async function _tlOpenDb(projectRoot: string): Promise<any> {
         ts INTEGER NOT NULL,
         blob_hash TEXT NOT NULL,
         source TEXT NOT NULL,
-        floor_id TEXT
+        floor_id TEXT,
+        added_lines INTEGER,
+        deleted_lines INTEGER
     )`);
+    // 向前兼容：旧表无新列则补
+    try { db.run('ALTER TABLE versions ADD COLUMN added_lines INTEGER'); } catch (_) { /* already exists */ }
+    try { db.run('ALTER TABLE versions ADD COLUMN deleted_lines INTEGER'); } catch (_) { /* already exists */ }
     db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_ts ON versions(file_path, ts)');
     db.run('PRAGMA journal_mode=WAL');
     db.run('PRAGMA synchronous=FULL');
@@ -108,14 +113,49 @@ async function _tlOpenDb(projectRoot: string): Promise<any> {
     return db;
 }
 
+// ── 延迟批量化刷盘：避免每次 record 都全量导出 SQL.js DB ──
+const _tlFlushTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
+const _tlFlushDebounceMs = 2000; // 2s 无新写入再刷盘
+
+/** timeline tmp 目录 */
+function _tlTmpDir(projectRoot: string): string {
+    return path.join(_tlDir(projectRoot), '.tmp');
+}
+
 function _tlFlushDb(db: any, dbPath: string): void {
+    // 取消旧定时器，重新计时
+    const existing = _tlFlushTimers.get(dbPath);
+    if (existing) clearTimeout(existing);
+    _tlFlushTimers.set(dbPath, setTimeout(() => {
+        _tlFlushTimers.delete(dbPath);
+        try {
+            const projectRoot = path.dirname(path.dirname(dbPath)); // dbPath = {root}/qqq/timeline/timeline.db
+            const tmpDir = _tlTmpDir(projectRoot);
+            try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
+            const data = db.export();
+            const tmp = path.join(tmpDir, 'timeline.db.tmp.' + Date.now());
+            fs.writeFileSync(tmp, Buffer.from(data));
+            fs.renameSync(tmp, dbPath);
+        } catch (e) {
+            console.warn('[timeline] flush failed:', e);
+        }
+    }, _tlFlushDebounceMs));
+}
+
+/** 强制立即刷盘（退出前调用） */
+function _tlFlushNow(db: any, dbPath: string): void {
+    const timer = _tlFlushTimers.get(dbPath);
+    if (timer) { clearTimeout(timer); _tlFlushTimers.delete(dbPath); }
     try {
+        const projectRoot = path.dirname(path.dirname(dbPath));
+        const tmpDir = _tlTmpDir(projectRoot);
+        try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
         const data = db.export();
-        const tmp = dbPath + '.tmp.' + Date.now();
+        const tmp = path.join(tmpDir, 'timeline.db.tmp.' + Date.now());
         fs.writeFileSync(tmp, Buffer.from(data));
         fs.renameSync(tmp, dbPath);
     } catch (e) {
-        console.warn('[timeline] flush failed:', e);
+        console.warn('[timeline] flushNow failed:', e);
     }
 }
 
@@ -134,49 +174,30 @@ function _gunzipSync(buf: Buffer): string {
     return zlib.gunzipSync(buf).toString('utf8');
 }
 
-/** 原子写入 blob（tmp + rename） */
+/** 原子写入 blob（tmp 放在 .tmp/ 子目录，rename 到正式位置） */
 function _tlWriteBlob(projectRoot: string, sha256: string, gzBuf: Buffer): void {
     const blobPath = _tlBlobPath(projectRoot, sha256);
     const dir = path.dirname(blobPath);
     try { fs.mkdirSync(dir, { recursive: true }); } catch (_) { }
     // 如果已存在，跳过（相同内容不可变）
     if (fs.existsSync(blobPath)) return;
-    const tmp = blobPath + '.tmp.' + Date.now();
+    const tmpDir = _tlTmpDir(projectRoot);
+    try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
+    const tmp = path.join(tmpDir, sha256 + '.tmp.' + Date.now());
     fs.writeFileSync(tmp, gzBuf);
     fs.renameSync(tmp, blobPath);
 }
 
-/** 清理孤儿 tmp 文件（进程崩溃遗孤，不影响功能但占磁盘） */
+/** 清理孤儿 tmp 文件（.tmp/ 整个目录清空即可，零风险） */
 function _tlCleanStaleTmp(projectRoot: string): void {
-    const blobsDir = path.join(_tlDir(projectRoot), 'blobs');
+    const tmpDir = _tlTmpDir(projectRoot);
     try {
-        if (!fs.existsSync(blobsDir)) return;
-        _tlCleanTmpRecursive(blobsDir);
-    } catch (_) { }
-    // 也清理 timeline.db 的 tmp
-    const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
-    try {
-        const dbDir = path.dirname(dbPath);
-        const files = fs.readdirSync(dbDir);
+        if (!fs.existsSync(tmpDir)) return;
+        const files = fs.readdirSync(tmpDir);
         for (const f of files) {
-            if (f.startsWith('timeline.db') && f.includes('.tmp.')) {
-                try { fs.unlinkSync(path.join(dbDir, f)); } catch (_) { }
-            }
+            try { fs.unlinkSync(path.join(tmpDir, f)); } catch (_) { }
         }
     } catch (_) { }
-}
-
-function _tlCleanTmpRecursive(dir: string): void {
-    var entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (var i = 0; i < entries.length; i++) {
-        var ent = entries[i];
-        var fullPath = path.join(dir, ent.name);
-        if (ent.isDirectory()) {
-            _tlCleanTmpRecursive(fullPath);
-        } else if (ent.name.includes('.tmp.')) {
-            try { fs.unlinkSync(fullPath); } catch (_) { }
-        }
-    }
 }
 
 // ----------------------------------------------------------------------------
@@ -435,6 +456,9 @@ function registerShellState(): void {
                 }
                 return remote;
             },
+        });
+        stateStore.register('qqqide.timeline', {
+            v: 1, form: 'doc', cloud: false,
         });
     } catch (e) {
         console.warn('[state] registerShellState failed:', e);
@@ -1093,13 +1117,19 @@ function registerIpc(): void {
     });
 
     // ---- fs (use engine if alive, else native fallback) ----
+    ipcMain.handle('qqqide:fs:exists', async (_e, p: string) => fs.existsSync(p));
     ipcMain.handle('qqqide:fs:read', async (_e, p: string) => {
-        return fs.promises.readFile(p, 'utf8');
+        try { return await fs.promises.readFile(p, 'utf8'); } catch (e: any) {
+            if (e.code === 'ENOENT') return null;
+            throw e;
+        }
     });
     // Read file as base64 for binary content (images for AI vision, etc.)
     ipcMain.handle('qqqide:fs:readBase64', async (_e, p: string) => {
-        const buf = await fs.promises.readFile(p);
-        return buf.toString('base64');
+        try { const buf = await fs.promises.readFile(p); return buf.toString('base64'); } catch (e: any) {
+            if (e.code === 'ENOENT') return null;
+            throw e;
+        }
     });
     ipcMain.handle('qqqide:fs:writeBase64', async (_e, p: string, base64: string) => {
         // Binary write: decode base64 → Buffer → write atomically.
@@ -1142,7 +1172,6 @@ function registerIpc(): void {
             return { size: s.size, mtimeMs: s.mtimeMs, isDir: s.isDirectory(), isFile: s.isFile() };
         } catch { return null; }
     });
-    ipcMain.handle('qqqide:fs:exists', async (_e, p: string) => fs.existsSync(p));
     ipcMain.handle('qqqide:fs:mkdir', async (_e, p: string) => {
         await fs.promises.mkdir(p, { recursive: true });
         return true;
@@ -2366,27 +2395,25 @@ function registerIpc(): void {
     });
 
     // ═══ Timeline: 记录一个版本快照 ═══
-    ipcMain.handle('qqqide:timeline:record', async (_e, args: { projectRoot: string; filePath: string; content: string; source: string; floorId?: string }) => {
+    ipcMain.handle('qqqide:timeline:record', async (_e, args: { projectRoot: string; filePath: string; content: string; source: string; floorId?: string; addedLines?: number; deletedLines?: number }) => {
         try {
-            const { projectRoot, filePath, content, source, floorId } = args;
+            const { projectRoot, filePath, content, source, floorId, addedLines, deletedLines } = args;
             if (!projectRoot || !filePath || content === undefined || content === null) return { ok: false, error: 'missing args' };
             const normalizedPath = filePath.replace(/\\/g, '/');
             const sha = _sha256(content);
             const db = await _tlOpenDb(projectRoot);
             const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
-            // 去重：相同 (file_path, blob_hash) 不重复插入
-            const stmt = db.prepare('SELECT id FROM versions WHERE file_path = ? AND blob_hash = ?');
+            // 去重：相同 (file_path, blob_hash) 不重复插入，直接返回已有记录
+            const stmt = db.prepare('SELECT id, ts FROM versions WHERE file_path = ? AND blob_hash = ?');
             stmt.bind([normalizedPath, sha]);
             const hasExisting = stmt.step();
-            stmt.free();
             if (hasExisting) {
-                // 更新 ts，防止 A4 before/after 时间线倒置（SHA256 去重会保留旧时间戳）
-                const now = Date.now();
-                db.run('UPDATE versions SET ts = ? WHERE file_path = ? AND blob_hash = ?',
-                    [now, normalizedPath, sha]);
-                _tlFlushDb(db, dbPath);
-                return { ok: true, dedup: true, blob_hash: sha, ts: now };
+                const existingRow = stmt.getAsObject();
+                stmt.free();
+                // ★ 不再 UPDATE ts —— 钩子 Q 已确保 before/after 时间正确，去重即命中不应篡改时间戳
+                return { ok: true, dedup: true, blob_hash: sha, ts: existingRow.ts };
             }
+            stmt.free();
             // 先写 blob（不可变，原子写）
             const blobPath = _tlBlobPath(projectRoot, sha);
             if (!fs.existsSync(blobPath)) {
@@ -2395,8 +2422,8 @@ function registerIpc(): void {
             }
             // 再写索引
             const ts = Date.now();
-            db.run('INSERT INTO versions (file_path, ts, blob_hash, source, floor_id) VALUES (?,?,?,?,?)',
-                [normalizedPath, ts, sha, source, floorId || null]);
+            db.run('INSERT INTO versions (file_path, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?)',
+                [normalizedPath, ts, sha, source, floorId || null, addedLines || null, deletedLines || null]);
             _tlFlushDb(db, dbPath);
             return { ok: true, blob_hash: sha, ts };
         } catch (err: any) {
@@ -2412,13 +2439,14 @@ function registerIpc(): void {
             if (!projectRoot || !filePath) return [];
             const normalizedPath = filePath.replace(/\\/g, '/');
             const db = await _tlOpenDb(projectRoot);
-            const stmt2 = db.prepare('SELECT id, ts, blob_hash, source, floor_id FROM versions WHERE file_path = ? ORDER BY ts ASC');
+            const stmt2 = db.prepare('SELECT id, ts, blob_hash, source, floor_id, added_lines, deleted_lines FROM versions WHERE file_path = ? ORDER BY ts ASC');
             stmt2.bind([normalizedPath]);
             var versionRows = [];
             while (stmt2.step()) {
                 var row = stmt2.getAsObject();
                 versionRows.push({
-                    id: row.id, ts: row.ts, blob_hash: row.blob_hash, source: row.source, floor_id: row.floor_id
+                    id: row.id, ts: row.ts, blob_hash: row.blob_hash, source: row.source, floor_id: row.floor_id,
+                    added_lines: row.added_lines, deleted_lines: row.deleted_lines
                 });
             }
             stmt2.free();
@@ -2489,45 +2517,77 @@ function registerIpc(): void {
         }
     });
 
-    // ═══ Timeline: run_command 后扫描项目捕获文件变更 ═══
+    // ═══ Timeline: run_command 后捕获项目文件变更 ═══
+    // ★ git diff 优先（10ms），无 git 时钩子 Q 文件索引 fallback
+    // ★ 唯一过滤器：null 字节检测二进制
     ipcMain.handle('qqqide:timeline:captureChanged', async (_e, args: { projectRoot: string; sinceMs: number; cwd?: string }) => {
         const { projectRoot, sinceMs } = args;
         const scanRoot = (args.cwd && args.cwd.startsWith(projectRoot)) ? args.cwd : projectRoot;
         if (!projectRoot || !sinceMs) return [];
-        const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'backup', '__pycache__', '.venv', 'vendor', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs', 'cache', 'temp', 'crashDumps', '.qqq']);
-        const SKIP_EXTS = new Set(['.exe','.dll','.so','.dylib','.bin','.pyd','.pyc','.pyo','.class','.o','.obj','.lib','.a','.sys','.drv','.ocx','.scr','.cab','.msi','.msc','.cpl','.lnk','.dat','.pak','.res','.rom','.elf','.ko','.mod','.dex','.jar','.war','.ear','.apk','.ipa','.iso','.img','.dmg','.pkg','.deb','.rpm','.png','.jpg','.jpeg','.gif','.bmp','.tiff','.webp','.svgz','.mp3','.mp4','.avi','.mov','.mkv','.flv','.wmv','.webm','.zip','.tar','.gz','.xz','.bz2','.7z','.rar','.woff','.woff2','.ttf','.eot','.ico','.icns','.vsix','.lock','.wasm','.map','.tsbuildinfo','.sq3','.db','.sqlite','.sqlite3','.sdb','.gz']);
-        const MAX_SIZE = 512 * 1024; // 512KB cap (same as A4)
-        const changed = [];
-        const MAX_FILES = 500; // safety: don't scan forever
-        let scanned = 0;
+        const MAX_SIZE = 512 * 1024;
 
-        function walk(dir) {
-            if (scanned >= MAX_FILES) return;
-            let entries;
-            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
-            for (const ent of entries) {
+        function isBinary(content) { return content.indexOf('\0') !== -1; }
+        function tryRead(fp) {
+            try {
+                const st = fs.statSync(fp);
+                if (st.mtimeMs <= sinceMs || st.size > MAX_SIZE) return null;
+                const content = fs.readFileSync(fp, 'utf8');
+                if (isBinary(content)) return null;
+                return { filePath: fp.replace(/\\/g, '/'), content, size: st.size, mtimeMs: st.mtimeMs };
+            } catch (_) { return null; }
+        }
+
+        const changed = [];
+        let gitOk = false;
+
+        // ── A: git diff（未暂存 + 已暂存）──
+        try {
+            const { execSync } = require('child_process');
+            const gitFiles = new Set();
+            for (const gitArgs of [['diff', '--name-only', '--diff-filter=ACMR'], ['diff', '--cached', '--name-only', '--diff-filter=ACMR']]) {
+                try {
+                    const out = execSync('git', gitArgs, { cwd: scanRoot, timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+                    for (const line of out.split('\n')) {
+                        const t = line.trim();
+                        if (t) gitFiles.add(path.resolve(scanRoot, t));
+                    }
+                } catch (_) { }
+            }
+            if (gitFiles.size > 0) {
+                gitOk = true;
+                for (const fp of gitFiles) { const f = tryRead(fp); if (f) changed.push(f); }
+            }
+        } catch (_) { }
+
+        // ── B: 文件索引扫描（钩子 Q 维护）──
+        if (!gitOk) {
+            const indexPath = path.join(_tlDir(projectRoot), 'file-index.json');
+            let indexed = [];
+            try { if (fs.existsSync(indexPath)) indexed = JSON.parse(fs.readFileSync(indexPath, 'utf8')); } catch (_) { }
+            const indexedSet = new Set(indexed);
+            for (const fp of indexed) { const f = tryRead(fp); if (f) changed.push(f); }
+
+            // 浅扫根目录新增文件（仅 null 字节 + mtime 过滤）
+            const MAX_FILES = 500; let scanned = 0;
+            function walkNew(dir) {
                 if (scanned >= MAX_FILES) return;
-                const fullPath = path.join(dir, ent.name);
-                if (ent.isDirectory()) {
-                    if (SKIP_DIRS.has(ent.name)) continue;
-                    walk(fullPath);
-                } else if (ent.isFile() || ent.isSymbolicLink()) {
-                    const ext = path.extname(ent.name).toLowerCase();
-                    if (SKIP_EXTS.has(ext)) continue;
-                    scanned++;
-                    try {
-                        const st = fs.statSync(fullPath);
-                        if (st.mtimeMs > sinceMs && st.size <= MAX_SIZE) {
-                            const content = fs.readFileSync(fullPath, 'utf8');
-                            // Check for null bytes (binary)
-                            if (content.indexOf('\0') !== -1) continue;
-                            changed.push({ filePath: fullPath.replace(/\\/g, '/'), content, size: st.size, mtimeMs: st.mtimeMs });
-                        }
-                    } catch (_) { }
+                let entries; try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+                for (const ent of entries) {
+                    if (scanned >= MAX_FILES) return;
+                    const fp = path.join(dir, ent.name);
+                    if (ent.isDirectory()) {
+                        if (ent.name === 'node_modules' || ent.name === '.git' || ent.name === 'qqq' || ent.name === '.tmp') continue;
+                        walkNew(fp);
+                    } else if ((ent.isFile() || ent.isSymbolicLink()) && !indexedSet.has(fp)) {
+                        if (ent.name.endsWith('~') || ent.name.indexOf('.tmp.') !== -1) continue;
+                        if (ent.name === '.DS_Store' || ent.name === 'Thumbs.db' || ent.name === 'desktop.ini') continue;
+                        scanned++;
+                        const f = tryRead(fp); if (f) changed.push(f);
+                    }
                 }
             }
+            walkNew(scanRoot);
         }
-        walk(scanRoot);
 
         // Record to timeline
         const results = [];
@@ -2535,23 +2595,18 @@ function registerIpc(): void {
             try {
                 const sha = _sha256(f.content);
                 const blobPath = _tlBlobPath(projectRoot, sha);
-                if (!fs.existsSync(blobPath)) {
-                    const gzBuf = _gzipSync(f.content);
-                    _tlWriteBlob(projectRoot, sha, gzBuf);
-                }
+                if (!fs.existsSync(blobPath)) { const gzBuf = _gzipSync(f.content); _tlWriteBlob(projectRoot, sha, gzBuf); }
                 const db = await _tlOpenDb(projectRoot);
                 const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
-                // 去重
                 const stmt = db.prepare('SELECT id FROM versions WHERE file_path = ? AND blob_hash = ?');
                 stmt.bind([f.filePath, sha]);
-                const hasExisting = stmt.step();
-                stmt.free();
-                if (!hasExisting) {
+                if (!stmt.step()) {
                     const ts = Date.now();
                     db.run('INSERT INTO versions (file_path, ts, blob_hash, source, floor_id) VALUES (?,?,?,?,?)',
                         [f.filePath, ts, sha, 'run-command', null]);
                     _tlFlushDb(db, dbPath);
                 }
+                stmt.free();
                 results.push({ filePath: f.filePath, blob_hash: sha });
             } catch (_) { }
         }
@@ -2798,6 +2853,9 @@ app.on('before-quit', async (e) => {
         _flushStateSync('before-quit');
     }
 
+    // ★ 强制刷盘所有 timeline DB（延迟批量化中可能有未落盘数据）
+    _timelineDbs.forEach((db, dbPath) => { try { _tlFlushNow(db, dbPath); } catch (_) { } });
+
     // ④ 硬退出：双保险
     app.exit(0);
     // process.exit() 兜底：500ms 后仍未退出 → 强制杀
@@ -2821,13 +2879,17 @@ process.on('uncaughtException', (err) => {
         try { console.error('[uncaughtException]', err); } catch (_) { }
         _flushStateSync('uncaughtException');
         // 限速写 crash 日志：同类错误不灌满磁盘
-        var now = Date.now();
-        if (now - _ueLastLogTs > 5000) {
-            _ueLastLogTs = now;
-            try {
-                var f = path.join(portable.logs, 'crash-' + now + '.log');
-                fs.writeFileSync(f, String(err && (err as any).stack || err));
-            } catch (_) { }
+        // EPIPE / Object destroyed 是良性错误，不写 crash 文件
+        var _msg = (err && (err as any).message) || '';
+        if (_msg.indexOf('EPIPE') < 0 && _msg.indexOf('broken pipe') < 0 && _msg.indexOf('Object has been destroyed') < 0) {
+            var now = Date.now();
+            if (now - _ueLastLogTs > 5000) {
+                _ueLastLogTs = now;
+                try {
+                    var f = path.join(portable.logs, 'crash-' + now + '.log');
+                    fs.writeFileSync(f, String(err && (err as any).stack || err));
+                } catch (_) { }
+            }
         }
     } finally {
         _ueInHandler = false;

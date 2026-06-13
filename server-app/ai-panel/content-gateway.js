@@ -23,6 +23,11 @@
     var COMPACT_MAX_TOKENS = 32768;   // 上下文压缩产出硬限 32K
     var AI_OUTPUT_WATCHDOG_MS = 900000; // AI 流产出看门狗 15min（agent-loop 读此，唯一真理在此）
 
+    // ═══ 网络超时参数（单一真理源：改一处全局生效） ═══
+    var FETCH_DEADLINE_PRIMARY_MS = 98000;   // 主线路 fetch 超时（CF Worker 100s 硬限制，留 2s 余量）
+    var FETCH_DEADLINE_FALLBACK_MS = 180000; // 备用线路 fetch 超时（无 CF 限制，3min 包容慢响应）
+    var STREAM_WATCHDOG_MS = 180000;         // SSE 流看门狗 3min（DeepSeek 深度推理可能 2min+ 无 token）
+
     // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
     var CTX_MAX_TOKENS = 1000000;     // DeepSeek V4 上下文窗口总上限（prompt + completion ≤ 1M）
     var COMPRESS_THRESHOLD = 900000;  // 压缩触发阈值（90% 窗口，留 10% 缓冲）
@@ -89,6 +94,10 @@
         MAX_RESPONSE_TOKENS: MAX_RESPONSE_TOKENS,
         COMPACT_MAX_TOKENS: COMPACT_MAX_TOKENS,
         AI_OUTPUT_WATCHDOG_MS: AI_OUTPUT_WATCHDOG_MS,
+        // 网络超时参数
+        FETCH_DEADLINE_PRIMARY_MS: FETCH_DEADLINE_PRIMARY_MS,
+        FETCH_DEADLINE_FALLBACK_MS: FETCH_DEADLINE_FALLBACK_MS,
+        STREAM_WATCHDOG_MS: STREAM_WATCHDOG_MS,
         // 模型上下文窗口参数
         CTX_MAX_TOKENS: CTX_MAX_TOKENS,
         COMPRESS_THRESHOLD: COMPRESS_THRESHOLD,

@@ -415,6 +415,11 @@
     setTimeout(_syncSB, 50);
     var _sbObs = new MutationObserver(function () { setTimeout(_syncSB, 30); });
     _sbObs.observe(inner, { childList: true, subtree: true });
+    var _themeObs = new MutationObserver(function () {
+      var co3 = _qhCol();
+      sbThumb.style.background = co3.c;
+    });
+    _themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
     sbOuter.appendChild(sbThumb);
     outer.appendChild(sbOuter);

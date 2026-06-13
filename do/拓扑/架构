@@ -64,6 +64,48 @@ qz spawn 管线 — 两层 + 四重防御（2026-06-04 加固）
 · ghrun CI: gh555com/qqq-IDE → build-ghrun2.yml → 三端编译
 
 
+AI 网关双线路 + 故障切换引擎（2026-06-13 加固）
+---------------------------------------------
+· 双线路架构:
+  主线路: https://gh555.com/api/v3/ai/chat        (CF Worker 透传 → Go → DeepSeek)
+  备用线路: https://direct.gh555.com:8444/api/v3/ai/chat (直连 Go，旁路 CF)
+· 声明位置: system-prompt.js（唯一声明 GATEWAY_URL_PRIMARY / GATEWAY_URL_FALLBACK）
+· 切换引擎: agent-loop.js _callGateway 内建 retry+switch 管线
+  - 同 URL 最多重试 3 次（MAX_RETRIES=3），防瞬态抖动误切
+  - 重试耗尽 → 切线路（主→备或备→主），单次最多切换 2 次（MAX_LINE_SWITCHES=2 防乒乓）
+  - HTTP/2 连接级错误（ERR_HTTP2_PROTOCOL_ERROR / Failed to fetch）优先切线路
+  - 502/503 前半段重试同 URL（可能瞬态恢复），后半段切线路
+  - AI 上游错误（400/422 孤儿 tool_calls）跳过重试和切线路 → 直接走 auto-repair
+  - AbortError（超时）切线路恢复（主超时→切备，备超时→切主）
+· 延迟报错: _callGateway 不直接调 onError，设 _lastGatewayMessage 后返回 null
+  → agent loop 的 auto-repair 先尝试修复 → 成功则继续（用户无感）→ 失败才报错
+· 跨面板协同: panel-state.js 监听兄弟面板 qqq-gw-status → 自动调整 _gwFallbackAt
+
+Nginx 备用线路铁律（2026-06-13）
+---------------------------------------------
+· port 8444 必须纯 HTTP/1.1（listen 8444 ssl; 禁 http2 关键字）
+· 原因: Nginx HTTP/2 ↔ Go HTTP/1.1 SSE 长连接存在协议转换 bug → ERR_HTTP2_PROTOCOL_ERROR
+· sites-enabled/ 目录只保留 gh555 一个文件（include * 匹配所有文件，.bak 也会生效）
+· 验证: openssl s_client -connect :8444 -alpn h2 → "No ALPN negotiated"
+
+ContentGateway 超时常量（唯一真理源，2026-06-13）
+---------------------------------------------
+· 所有超时数字只在 content-gateway.js 定义，agent-loop.js 全部引用 ContentGateway.*
+· FETCH_DEADLINE_PRIMARY_MS  = 98000  (98s, CF 100s 硬限制留 2s 余量)
+· FETCH_DEADLINE_FALLBACK_MS = 180000 (180s, 无 CF 限制，可调大)
+· STREAM_WATCHDOG_MS         = 180000 (180s, DeepSeek 深度推理容忍度)
+· AI_OUTPUT_WATCHDOG_MS      = 900000 (15min, AI 无产出→死循环)
+· 改超时只改 content-gateway.js 一处。FETCH_DEADLINE_FALLBACK_MS 是唯一还能安全加大的值（240s/300s 均可）
+
+孤儿 tool_calls 自愈系统（2026-06-13）
+---------------------------------------------
+· 问题: DeepSeek 硬要求 assistant.tool_calls 后紧跟等量 tool 消息，缺→400
+· 自愈: _repairOrphanedToolCalls() 双向扫描 conversation（最多 20 轮）
+· 主动预检: 每次 _callGateway 发请求前跑一遍（防患未然）
+· 被动修复: 收到 400/422/502/503 后 auto-repair 再重试
+· 成功后重置 _floorOnErrorCalled（防之前错误标记污染）
+
+
 gaea goods 协议
 -----------------
 A 区宿主: core/gaea-host.js (完整 panel/tabs/services/commands/provides/uses)
@@ -290,27 +332,34 @@ qwr 机器 — 全局唯一真理写机器
 涉及: edit_file / write_file / create_file / delete_file / run_command (5个)
 保证: 零脏写、零丢失更新、零死锁、零误报
 
-Timeline 文件版本时间线 (2026-06-11 新建, 2026-06 重构)
+Timeline 文件版本时间线 (2026-06-13 钩子Q+X重构)
 --------------------------------------------------------------
-独立 BrowserWindow + Monaco Diff Editor。旧 X区 hand-rolled diff + goods/git timeline tab 已全删。
+独立 BrowserWindow + Monaco Diff Editor。旧系统全部删除。
 
 存储: SHA256 去重 + gzip level 6 + SQLite 索引，位于 {projectRoot}/qqq/timeline/
   blobs/{sha256[:2]}/{sha256}.gz — 内容不可变，永不删除
-  timeline.db — versions(file_path, ts, blob_hash, source, floor_id)
-  ★ record 对去重条目也会 UPDATE ts=Date.now()，防止 A4 before/after 时间倒置
+  timeline.db — versions(file_path, ts, blob_hash, source, floor_id, added_lines, deleted_lines)
+  ★ SHA256 去重命中时不再 UPDATE ts（钩子 Q 已确保时间正确，无篡改风险）
 
-触发: AI写工具(A4包装器自动捕获before+after) → bridge.timeline.record → openDiffWindow
-  + 编辑器保存(60s闸门+内容变更) + diff窗口手动💾保存 + run_command后captureChanged
+触发: 仅两个钩子 —
+  钩子 Q: AI写工具(edit/write/create/delete) → _a4PersistToTimeline(before+after, trace, diff stats)
+         run_command → 执行 → captureChanged → 逐文件 _a4PersistToTimeline(after, trace)
+  钩子 X: X区 editor blur(auto-save 60s冷却) / Ctrl+S(manual-save) → _xHookRecord(content, source, diff stats)
+  ★ 钩子 Q 已记全 before+after，点击 A4 不再补记；楼层完结不再补记
 
-Diff窗口: 独立 BrowserWindow，inset:0 覆盖主窗口
-  一个文件单例（Map），再次点击复用 → webContents.send 推送更新
+Diff窗口: 独立 BrowserWindow，一个文件单例（Map），再次点击复用
   Monaco 0.34.1 side-by-side + minimap + 手动差异折叠(setHiddenAreas) + 自动换行
-  下拉合并: 同秒条目归并为一行，标签全组合（例: [first] [before]）
+  下拉标签格式: "2026-06-13 11:36:41 +333 -66 q38 f14 h3 r2 [first] [before]"
+  xx 溯源: 钩子 Q → quest/floor/house/room 串；钩子 X → auto save / manual save
+  +N -M: 钩子 Q 从 before/after diff 直接得出；钩子 X 读上一版本内容 diff
+  下拉智能选择: beforeIdx ≤ afterIdx 强保证，before=after 时自动错位
+  同秒条目合并一行，标签全组合（[first] [before] [after] [last]）
   right=last 时可编辑 + ←移入 + 💾保存写盘
   主题: 跟随主窗口 solarized-light/dark，sync 广播实时切换
-  偏好: 全文/差异模式全局持久化(qgs:qqqide.timeline.showFull)，默认差异块
-  自动跳转: 首次渲染 + 模式切换后均跳到第一个差异行
-  极致精简: 编辑器关掉所有智能功能(零LSP/零波浪线)，只留 tokenization
+  偏好: 全文/差异模式全局持久化(state:qqqide.timeline.showFull)，默认差异块
+  防并发: _renderToken 竞态令牌 + _loading 重入锁 + model 显式 dispose
+  Monaco 加载 15s 超时保护，防永久白屏
+  编辑器极致精简: 零LSP/零波浪线/零智能，只留 tokenization
 
 IPC: qqqide:timeline:{record,versions,content,stat,readCurrent,captureChanged}
   + qqqide:open-diff-window + qqqide:diff:update
@@ -509,20 +558,23 @@ AI FACING 层 (唯一真理源: tools.js 顶部):
 · 历史楼层重建: _buildFloorDOM 从 fData.clockTiming 直接恢复，回退 questTimings 数组
 · 饼图: 初始隐藏，数据到后显示；懒重绘（四字段全等跳过）
 
-A4 文件快照 — 每层楼私有文件变更追踪 (2026-06-11 升级)
+A4 文件快照 — 每层楼私有文件变更追踪 (2026-06-13 钩子Q+X重构)
 --------------------------------------
-· 唯一入口: panel-a4.js（拦截 executeTool，零侵入式捕获 before/after）
-· 触发: edit/create/write/delete_file + run_command(captureChanged扫描)
-· 流程: 修改前 fs.read → 执行工具 → 修改后 fs.read/取 args.content → _a4RecordSnapshot
-· 读原始内容: 用 bridge.fs.read（不用 ai.read_file，避免>500行分页头污染快照）
-· 状态归属: agent._a4Snapshots（per-agent per-floor，§36 体系）
-· DOM: aiDiv._a4Block（A4 豆腐块，位于 A2 与 A1 之间）
-· UI: 瀑布式文件列表（文件名 + 颜色编码 + +N -M 统计），实时更新
-· 颜色: create=绿 / delete=红+删除线 / edit=黄（混合增删）
-· 点击: _a4OpenDiff → bridge.timeline.record(前/后) → openDiffWindow（独立BrowserWindow唯一路径）
-  历史楼层: _a4OpenHistoricalDiff → 读 timeline blob_hash
-· 持久化: timeline.record(SHA256+gzip+SQLite)，floor payload存blob_hash
-  旧文件系统快照已废弃，不再写入 qqq/snapshots/
+· 唯一入口: panel-a4.js 钩子 Q（拦截 executeTool） + editor.js 钩子 X
+· 钩子 Q 触发: edit/write/create/delete_file + run_command
+· 钩子 Q 流程: 捕获 before → 执行工具 → 捕获 after → _a4PersistToTimeline(both, trace, diff stats)
+  trace 格式: q{id}/f{num}/h{num}/r{num}（quest/floor/house/room，agent-loop 埋点）
+  run_command: 执行 → captureChanged 扫描变更 → 逐文件记录 after（trace 同享）
+· 钩子 X 触发: X区 editor blur (auto-save) / Ctrl+S (manual-save)，60s 冷却
+  流程: 读上一版本内容 → _a4DiffStats 计算 +N -M → timeline.record(content, source, diff stats)
+· 读原始内容: bridge.fs.read（不用 ai.read_file，避免分页头污染）
+· 状态归属: agent._a4Snapshots（§36 体系），内存累积(最早before+最新after)
+· DOM: aiDiv._a4Block（A4 豆腐块，A2 与 A1 之间）
+· UI: 瀑布式文件列表（文件名 + 颜色编码 + +N -M），实时更新
+· 点击: _a4OpenDiff → 读内存 snapEntry.beforeBlobHash/afterBlobHash → openDiffWindow（不补记！钩子 Q 已记全）
+  历史楼层: _a4OpenHistoricalDiff → 读 floor payload 中 blob_hash → openDiffWindow
+· 持久化: 钩子 Q/X 实时写 timeline (SHA256+gzip+SQLite)；floor 完结仅打包内存 blob_hash 入 payload
+· 旧文件系统快照 + _a4IncrementalPersist + gzip 编解码等全部删除
 · 容量: 512KB/文件上限，超限只记元数据
 
 Git Goods — 第一方 git 操作

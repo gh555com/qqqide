@@ -104,6 +104,30 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 多图片并行: Promise.all 并发 qwen-vl-max，4-12s→3-8s。
   - context 级联: client 断开/超时 → WithTimeout 取消 DashScope 请求，零僵尸 goroutine。
 
+§13b 网关超时 — 唯一真理在 ContentGateway（2026-06-13）
+  - 所有超时数字只在 content-gateway.js 定义（FETCH_DEADLINE_PRIMARY_MS / FETCH_DEADLINE_FALLBACK_MS / STREAM_WATCHDOG_MS / AI_OUTPUT_WATCHDOG_MS）。
+  - agent-loop.js 全部读 ContentGateway.*，禁硬编码数字。
+  - 主线路 98s（CF 100s 硬限制留 2s），备用 180s（无 CF 限制），流看门狗 180s，产出看门狗 15min。
+  - 改超时只改 content-gateway.js 一处。
+
+§13c 网关线路切换 — 主备双线 + 防乒乓（2026-06-13）
+  - 主线路 (CF Worker) 和备用线路 (直连 Go :8444) 声明在 system-prompt.js。
+  - 同 URL 最多重试 3 次（MAX_RETRIES=3）。重试耗尽→切线路。单次最多切换 2 次（MAX_LINE_SWITCHES=2 防乒乓）。
+  - HTTP/2 错误优先切线路（连接池问题重试无用）。502/503 前半段重试同 URL。
+  - AI 上游错误（400/422）→ 禁重试、禁切线路 → 直接返回 null 让 auto-repair 修复。
+  - AbortError（超时）→ 切线路恢复（不直接死）。
+  - onError 延迟到 auto-repair 之后调用（_lastGatewayMessage 机制），防止 UI 假死。
+
+§13d Nginx 8444 — 禁 HTTP/2（2026-06-13）
+  - port 8444 必须 listen 8444 ssl;（无 http2）。
+  - sites-enabled/ 目录只保留一个文件（Nginx include * 匹配所有文件，.bak 也会生效）。
+  - HTTP/2 与 Go HTTP/1.1 SSE 长连接协议转换有 bug → ERR_HTTP2_PROTOCOL_ERROR。
+
+§13e 孤儿 tool_calls 自愈（2026-06-13）
+  - _repairOrphanedToolCalls() 双向扫描 conversation（最多 20 轮），自动清理不配对的 tool_calls/tool 消息。
+  - 每次 _callGateway 发请求前主动预检。收到 400/422/502/503 后被动修复+重试。
+  - auto-repair 成功后必须重置 _floorOnErrorCalled（防之前 401/402/429 的 onError 标记污染后续判断）。
+
 §13a AI 网关 — Worker 纯代理 + Go 权威计费（2026-06-10 落地）
   - 线路: Client → Worker(CF edge, 纯透传) → Go(唯一扣款权威) → DeepSeek/阿里。
   - Worker 职责: ban 查询(GET /v3/ai/check) + SSE 纯透传到 Go:8444 + 自动 failover。
@@ -311,33 +335,37 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 禁在 switchQuest/_unloadQuest 中调用 stopFloorTimer 或 completeBuildingFloor。切 quest = 纯 display 开关。
   - _lastPieTiming（canvas 去重缓存）、_autoSaveTimer（面板级）保留全局，不冲突。
 
-§37 A4 文件快照 + Timeline 版本时间线（2026-06-11 重构, 2026-06 归一路径）
-  - 唯一入口: panel-a4.js。拦截 executeTool + run_command 后 captureChanged 扫描。
+§37 A4 文件快照 + Timeline 版本时间线（2026-06-13 钩子Q+X重构）
+  - 唯一入口: panel-a4.js 钩子 Q + editor.js 钩子 X。
+  - 钩子 Q: edit/write/create/delete → 捕获 before → 执行 → 捕获 after → _a4PersistToTimeline(both, trace, diff stats)。
+    run_command → 执行 → captureChanged → 逐文件 _a4PersistToTimeline(after, trace)。
+    trace: agent-loop 埋点 window._qqqCurrentTrace → floor_id = "q{id}/f{num}/h{num}/r{num}"。
+  - 钩子 X: editor blur(auto-save) / Ctrl+S(manual-save) → 读上一版本内容 diff → timeline.record(content, source, diff stats)。
+    60s 同文件冷却。
+  - ★ SHA256 去重命中时不再 UPDATE ts。钩子 Q 已确保 before/after 时间正确。
+  - 点击 A4 → 直接读内存 snapEntry.beforeBlobHash/afterBlobHash → openDiffWindow。不补记！
+    历史楼层 → 读 floor payload 中 blob_hash → openDiffWindow。
+  - 楼层完结 → 仅打包内存 blob_hash 入 meta，不调用 timeline.record。
   - per-floor 状态归属 agent: ag._a4Snapshots。新 floor 开始必须清空。
-  - 快照内容上限 512KB/文件，超限只记元数据。
-  - 持久化: SHA256 去重 + gzip + SQLite，位于 {projectRoot}/qqq/timeline/。
-    blobs/{sha256[:2]}/{sha256}.gz — 内容不可变，永不删除。
-    timeline.db — versions(file_path, ts, blob_hash, source, floor_id)。
-    ★ record 对去重条目 UPDATE ts=Date.now()，防时间倒置。
-    旧文件系统快照(qqq/snapshots/)已废弃。旧 postMessage 双路径已删除。
-  - 点击 → 唯一路径: bridge.timeline.record(前/后) → openDiffWindow(独立BrowserWindow)。
-  - 跨十年保证: blob 不可变 + SQLite 索引 → 时间戳/内容永久锁定。
+  - 旧文件系统快照(qqq/snapshots/)、_a4IncrementalPersist、gzip 编解码等全部删除。
 
-§38 Diff 窗口 — 独立 BrowserWindow（2026-06-11 新建, 2026-06 加固）
-  - Monaco 0.34.1 side-by-side + minimap + 手动差异折叠(setHiddenAreas, hideUnchangedRegions 不存在于0.34.1)。
+§38 Diff 窗口 — 独立 BrowserWindow（2026-06-13 强化）
+  - Monaco 0.34.1 side-by-side + minimap + 手动差异折叠(setHiddenAreas)。
   - 一个文件单例（Map），再次点击复用。inset:0 覆盖主窗口。
-  - 下拉归并: 同秒条目合并一行，标签全组合（[first] [before] / [last] [after]）。
-  - before/after 语义永不交换，只调整显示索引保时间顺序。
+  - 下拉标签: "时间 +N -M xx [first] [before]"，xx=溯源串(q38 f14 h3 r2 / auto save / manual save)。
+  - +N -M: 钩子 Q 从 before/after diff 直接得出；钩子 X 读上一版本内容 diff。
+  - beforeIdx ≤ afterIdx 强保证，before=after 时自动错位。同秒条目合并一行。
+  - before/after 语义永不交换，只调整显示索引。
   - right=last 时可编辑+←移入+💾保存写盘。
   - 主题跟随主窗口 solarized-light/dark，sync 广播实时切换。
-  - 全局偏好持久化(qgs:qqqide.timeline.showFull)，默认差异块。
+  - 全局偏好持久化(state:qqqide.timeline.showFull)，默认差异块。
   - 编辑器极致精简: 零LSP/零波浪线/零智能，只留 tokenization。
   - 防并发: _renderToken 竞态令牌 + _loading 重入锁 + model 显式 dispose。
-  - 无滚动条，只保留最右小地图导航。
+  - Monaco 加载 15s 超时保护，防永久白屏。
 
-§39 Git Goods — 第一方 git 操作（2026-06-11 精简, 2026-06 去Timeline）
+§39 Git Goods — 第一方 git 操作
   - X 区仅保留 Git tab。A 区保留 git 快速状态面板。
-  - Timeline 已完全迁出至独立 BrowserWindow(§38)。git.js 不再监听 A4 消息。
+  - Timeline 已完全迁出至独立 BrowserWindow(§38)。不再监听 A4 消息。
 
 §40 上下文压缩 — 发前自动压缩，三重判断（2026-06-10 落地）
   - 每轮发消息前 agent-loop _compressContext() 自动触发。

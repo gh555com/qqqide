@@ -2,48 +2,20 @@
 // panel-a4.js — A4 文件快照块（每层楼私有，A2 与 A1 之间）
 //
 // 职责：
-//   ① 拦截 executeTool，文件修改前捕获 before 快照，修改后捕获 after 快照
+//   ① 钩子 Q：拦截 executeTool，捕获 before/after → 实时记录到 timeline（含 trace + diff stats）
 //   ② 实时渲染 A4 瀑布列表（文件名 + +N -M 行变更）
-//   ③ 点击文件 → postMessage 到父窗口 → 在 X 区打开 diff 查看器
-//   ④ 快照内容持久化到 qqq/snapshots/，元数据持久化到 floor payload
+//   ③ 点击文件 → 读内存 blob_hash → openDiffWindow（不补记！钩子 Q 已记全）
+//   ④ 楼层完结 → 打包内存 blob_hash 入 meta → floor payload
 //
 // 铁律：
 //   - per-floor 状态归属 agent 对象（§36）：agent._a4Snapshots
 //   - A4 DOM 归属 aiDiv（§29）：aiDiv._a4Block
 //   - 快照内容上限 512KB/文件，超限只记录元数据不存内容
+//   - 钩子 Q+X 双钩子体系，无其他快照入口
 // ============================================================================
 
 var A4_MAX_SNAPSHOT_BYTES = 512 * 1024; // 512KB per file content cap
-var A4_COMPRESS = true; // 启用 gzip 压缩（~70% 节省，零依赖）
-var A4_COMPRESS_THRESHOLD = 256; // 小于此字节数不压缩（压缩小文件可能反而增大）
 var A4_BINARY_EXT = new RegExp('\\.(png|jpg|jpeg|gif|ico|webp|svgz|woff2?|ttf|eot|otf|wasm|zip|gz|br|tar|7z|rar|exe|dll|so|dylib|o|a|bin|dat|pak|pyc|class|map)(\\.|$)','i');
-var A4_GZIP_MAGIC = String.fromCharCode(0x1f, 0x8b); // gzip 魔数，用于检测已压缩数据
-
-// ---- Uint8Array ↔ base64（分块安全，避免栈溢出） ----
-function _a4Uint8ToBase64(bytes) {
-    var CHUNK = 0x8000; // 32KB chunks
-    var parts = [];
-    for (var i = 0; i < bytes.length; i += CHUNK) {
-        parts.push(String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK)));
-    }
-    return btoa(parts.join(''));
-}
-
-function _a4Base64ToUint8(b64) {
-    var binary = atob(b64);
-    var bytes = new Uint8Array(binary.length);
-    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-}
-
-// ---- 简易 path hash（取路径的简单 hash 作为文件名） ----
-function _a4PathHash(p) {
-    var h = 0;
-    for (var i = 0; i < p.length; i++) {
-        h = ((h << 5) - h + p.charCodeAt(i)) | 0;
-    }
-    return (h >>> 0).toString(16).padStart(8, '0');
-}
 
 // ---- 计算 +added -deleted（行级 diff 统计） ----
 function _a4DiffStats(before, after) {
@@ -100,70 +72,6 @@ function _a4LcsLength(a, b) {
     return prev[m];
 }
 
-// ═══ 压缩/解压（gzip，浏览器内置 CompressionStream，零依赖） ═══
-
-async function _a4Gzip(text) {
-    if (!text || text.length < A4_COMPRESS_THRESHOLD) return text;
-    try {
-        if (typeof CompressionStream === 'undefined') return text;
-        var cs = new CompressionStream('gzip');
-        var writer = cs.writable.getWriter();
-        var reader = cs.readable.getReader();
-        writer.write(new TextEncoder().encode(text));
-        writer.close();
-        var chunks = [];
-        var total = 0;
-        while (true) {
-            var chunk = await reader.read();
-            if (chunk.done) break;
-            chunks.push(chunk.value);
-            total += chunk.value.length;
-        }
-        var combined = new Uint8Array(total);
-        var off = 0;
-        for (var c = 0; c < chunks.length; c++) {
-            combined.set(chunks[c], off);
-            off += chunks[c].length;
-        }
-        // 转换为 base64（分块避免 fromCharCode.apply 栈溢出）
-        var b64 = _a4Uint8ToBase64(combined);
-        return A4_GZIP_MAGIC + b64;
-    } catch (e) {
-        return text; // 压缩失败，回退原文
-    }
-}
-
-async function _a4Gunzip(data) {
-    if (!data || data.indexOf(A4_GZIP_MAGIC) !== 0) return data;
-    try {
-        if (typeof DecompressionStream === 'undefined') return data;
-        var b64part = data.slice(A4_GZIP_MAGIC.length);
-        var bytes = _a4Base64ToUint8(b64part);
-        var ds = new DecompressionStream('gzip');
-        var writer = ds.writable.getWriter();
-        var reader = ds.readable.getReader();
-        writer.write(bytes);
-        writer.close();
-        var chunks = [];
-        var total = 0;
-        while (true) {
-            var chunk = await reader.read();
-            if (chunk.done) break;
-            chunks.push(chunk.value);
-            total += chunk.value.length;
-        }
-        var combined = new Uint8Array(total);
-        var off = 0;
-        for (var c2 = 0; c2 < chunks.length; c2++) {
-            combined.set(chunks[c2], off);
-            off += chunks[c2].length;
-        }
-        return new TextDecoder().decode(combined);
-    } catch (e) {
-        return data; // 解压失败，回退原文（可能未压缩）
-    }
-}
-
 // ---- 二进制文件检测 ----
 function _a4IsBinary(path, content) {
     if (A4_BINARY_EXT.test(path)) return true;
@@ -176,60 +84,161 @@ function _a4IsBinary(path, content) {
     return false;
 }
 
-// ---- 获取快照存储目录 ----
-function _a4SnapshotDir(questNumericId, floorNum) {
-    if (!_workspaceRoot) return null;
-    var root = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');
-    return root + '/qqq/snapshots/q' + questNumericId + '/f' + floorNum + '/';
+// ═══ 文件路径 → 归属项目根目录（终极架构：向上找 qqq/timeline/ 或 .git/） ═══
+var _projectRootCache = {}; // {filePath: projectRoot}
+
+async function _resolveProjectRoot(filePath) {
+    if (!filePath) return (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
+        ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
+    // 缓存命中（同一文件或同目录已查过）
+    if (_projectRootCache[filePath]) return _projectRootCache[filePath];
+    var bridge = getBridge();
+    if (!bridge || !bridge.fs) {
+        var fallback = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
+            ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
+        return fallback;
+    }
+    var dir = filePath.replace(/\\/g, '/').replace(/\/[^\/]*$/, ''); // 父目录
+    // 最多向上遍历 12 层
+    for (var depth = 0; depth < 12 && dir && dir.length > 3; depth++) {
+        // 检查 {dir}/qqq/timeline（已初始化滴项目）
+        try {
+            var st = await bridge.fs.stat(dir + '/qqq/timeline');
+            if (st && st.isDir) {
+                _projectRootCache[filePath] = dir;
+                return dir;
+            }
+        } catch (_) { }
+        // 检查 {dir}/.git（未初始化滴项目，后续会自动创建 qqq/timeline）
+        try {
+            var st2 = await bridge.fs.stat(dir + '/.git');
+            if (st2 && st2.isDir) {
+                _projectRootCache[filePath] = dir;
+                return dir;
+            }
+        } catch (_) { }
+        dir = dir.replace(/\/[^\/]*$/, '');
+    }
+    // 兜底：主项目
+    var fallback2 = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
+        ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
+    _projectRootCache[filePath] = fallback2;
+    return fallback2;
+}
+
+// ═══ 钩子 Q 文件索引：维护所有 AI 触碰过的文件列表 ═══
+// ★ run_command 捕获扫描时不再遍历全目录，只 stat 此索引中的文件
+var _fileIndex = {}; // {filePath: true}
+var _fileIndexDirty = false;
+var _fileIndexBusy = false;
+
+function _a4UpdateFileIndex(filePath) {
+    if (!filePath) return;
+    var normalized = filePath.replace(/\\/g, '/');
+    if (!_fileIndex[normalized]) {
+        _fileIndex[normalized] = true;
+        _fileIndexDirty = true;
+    }
+}
+
+async function _a4PersistFileIndex() {
+    if (!_fileIndexDirty || _fileIndexBusy) return;
+    _fileIndexDirty = false;
+    _fileIndexBusy = true;
+    var bridge = getBridge();
+    if (!bridge || !bridge.fs) { _fileIndexBusy = false; return; }
+    var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
+        ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
+    if (!root) { _fileIndexBusy = false; return; }
+    var indexPath = root + '/qqq/timeline/file-index.json';
+    var list = Object.keys(_fileIndex);
+    try {
+        await bridge.fs.write(indexPath, JSON.stringify(list));
+    } catch (_) { }
+    _fileIndexBusy = false;
+    // 如果在写入期间又有新文件加入，补写一次
+    if (_fileIndexDirty) _a4PersistFileIndex();
+}
+
+// ★ 页面关闭前强制写盘
+if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', function () {
+        _a4PersistFileIndex();
+    });
 }
 
 // ═══ executeTool 拦截器：文件修改前后自动捕获快照 ═══
 var _a4OriginalExecuteTool = (typeof executeTool === 'function') ? executeTool : null;
 
-var _WRITE_TOOLS = ['edit_file', 'create_file', 'write_file', 'delete_file'];
+var _WRITE_TOOLS = ['edit_file', 'create_file', 'write_file', 'delete_file', 'run_command'];
 
+// ── 钩子 Q：统一快照管线（AI 写工具 + run_command）──
 async function _a4WrappedExecuteTool(name, args) {
     // Non-write tools: pass through directly
     if (_WRITE_TOOLS.indexOf(name) === -1) {
         return _a4OriginalExecuteTool(name, args);
     }
 
+    // ═══ run_command 特殊处理：执行 → 扫描变更 → 逐文件记录 ═══
+    if (name === 'run_command') {
+        var cmdStartTs = Date.now();
+        var cmdResult = await _a4OriginalExecuteTool(name, args);
+        if (cmdResult && typeof cmdResult === 'string' && cmdResult.indexOf('Error') !== 0) {
+            var bridge2 = getBridge();
+            // ★ run_command 扫描以 cwd 所在项目为准（若 cwd 指定）或主项目兜底
+            var scanRoot = args.cwd ? await _resolveProjectRoot(args.cwd.replace(/\\/g, '/')) : null;
+            if (!scanRoot) {
+                scanRoot = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
+                    ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
+            }
+            if (bridge2 && bridge2.timeline && scanRoot) {
+                try {
+                    var changed = await bridge2.timeline.captureChanged({ projectRoot: scanRoot, sinceMs: cmdStartTs, cwd: args.cwd || '' });
+                    if (changed && changed.length) {
+                        for (var ci = 0; ci < changed.length; ci++) {
+                            await _a4RecordSnapshot(changed[ci].filePath, 'run_command', null, changed[ci].content);
+                        }
+                    }
+                } catch (_) { }
+            }
+        }
+        return cmdResult;
+    }
+
+    // ═══ 文件写工具：edit/write/create/delete_file ═══
     var filePath = args.path || '';
     var bridge = getBridge();
     var beforeContent = null;
 
-    // ---- Capture BEFORE ----
+    // ---- 1. 捕获 BEFORE ----
     if (name !== 'create_file' && bridge) {
         try {
-            // ★ 用 fs.read 读原始内容，不用 ai.read_file（后者对 >500 行文件加分页头）
             if (bridge.fs && bridge.fs.read) {
                 var raw2 = await bridge.fs.read(filePath);
                 if (typeof raw2 === 'string' && raw2.length <= A4_MAX_SNAPSHOT_BYTES) {
                     if (!_a4IsBinary(filePath, raw2)) beforeContent = raw2;
                 }
             }
-        } catch (_) { /* file might not exist for write_file creating new */ }
+        } catch (_) { }
     }
 
-    // ---- Execute original tool ----
+    // ---- 2. 执行原工具 ----
     var result = await _a4OriginalExecuteTool(name, args);
 
-    // ---- Check if tool succeeded ----
+    // 工具失败 → 不记录快照
     if (!result || (typeof result === 'string' && result.indexOf('Error') === 0)) {
         return result;
     }
 
-    // ---- Capture AFTER ----
+    // ---- 3. 捕获 AFTER ----
     var afterContent = null;
     if (name === 'delete_file') {
-        afterContent = null; // file is gone
+        afterContent = null;
     } else if (name === 'create_file' || name === 'write_file') {
-        // args.content IS the final content
         if (args.content && args.content.length <= A4_MAX_SNAPSHOT_BYTES) {
             if (!_a4IsBinary(filePath, args.content)) afterContent = args.content;
         }
     } else {
-        // edit_file: read file after edit（用 fs.read 读原始内容）
         try {
             if (bridge && bridge.fs && bridge.fs.read) {
                 var raw4 = await bridge.fs.read(filePath);
@@ -240,8 +249,8 @@ async function _a4WrappedExecuteTool(name, args) {
         } catch (_) { }
     }
 
-    // ---- Record snapshot ----
-    _a4RecordSnapshot(filePath, name, beforeContent, afterContent);
+    // ---- 4. 记录快照（钩子 Q：记 both before+after 到 timeline）----
+    await _a4RecordSnapshot(filePath, name, beforeContent, afterContent);
 
     return result;
 }
@@ -252,7 +261,7 @@ if (_a4OriginalExecuteTool) {
 }
 
 // ═══ 快照记录：写入当前 agent 的 _a4Snapshots ═══
-function _a4RecordSnapshot(filePath, op, before, after) {
+async function _a4RecordSnapshot(filePath, op, before, after) {
     // Get current active agent
     var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     if (!ag) return;
@@ -287,11 +296,17 @@ function _a4RecordSnapshot(filePath, op, before, after) {
         };
     }
 
-    // Live update A4 UI
-    _a4RenderLive(ag);
+    // ★ 钩子 Q：先持久化到 timeline（确保 blob_hash 已就位），再更新 UI
+    await _a4PersistToTimeline(filePath, op, before, after, ag);
 
-    // ★ 实时持久化到新 timeline 存储（SHA256去重 + SQLite）
-    _a4PersistToTimeline(filePath, op, before, after, ag);
+    // ★ 更新文件索引（供 run_command 扫描时使用）
+    _a4UpdateFileIndex(filePath);
+
+    // Persist file index periodically (debounced by dirty flag)
+    _a4PersistFileIndex();
+
+    // Live update A4 UI（此时 snapEntry.beforeBlobHash/afterBlobHash 已就位）
+    _a4RenderLive(ag);
 }
 
 // ═══ A4 DOM 创建 + 渲染 ═══
@@ -400,38 +415,26 @@ function _a4RenderLive(ag) {
     block.classList.add('has-files');
 }
 
-// ---- 打开 diff 查看器（独立 BrowserWindow） ----
-function _a4OpenDiff(snap) {
+// ---- 打开 diff 查看器（独立 BrowserWindow）----
+// ★ 只传 afterBlobHash：右侧选中该版本，左侧自动选上一个版本
+// before 也已记录到 timeline 但不需要传参——diff 窗口的默认逻辑自动处理
+async function _a4OpenDiff(snap) {
     var bridge = _getBridge();
-    if (bridge && bridge.timeline && typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
-        var root = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');
-        (async function () {
-            var beforeHash = null, afterHash = null;
-            try {
-                if (snap.before !== null && snap.before !== undefined) {
-                    var bRec = await bridge.timeline.record({ projectRoot: root, filePath: snap.path, content: snap.before, source: 'ai-edit', floorId: null });
-                    if (bRec && bRec.ok) beforeHash = bRec.blob_hash;
-                }
-                if (snap.after !== null && snap.after !== undefined) {
-                    var aRec = await bridge.timeline.record({ projectRoot: root, filePath: snap.path, content: snap.after, source: 'ai-edit', floorId: null });
-                    if (aRec && aRec.ok) afterHash = aRec.blob_hash;
-                }
-            } catch (_) { }
-            try {
-                await bridge.timeline.openDiffWindow({
-                    filePath: snap.path,
-                    projectRoot: root,
-                    beforeBlobHash: beforeHash || undefined,
-                    afterBlobHash: afterHash || undefined
-                });
-            } catch (_) { }
-        })();
+    if (bridge && bridge.timeline) {
+        var root = await _resolveProjectRoot(snap.path); // ★ 文件自寻主
+        if (!root) return;
+        var afterHash = snap.afterBlobHash || undefined;
+        bridge.timeline.openDiffWindow({
+            filePath: snap.path,
+            projectRoot: root,
+            beforeBlobHash: undefined,
+            afterBlobHash: afterHash
+        }).catch(function () { });
     }
 }
 
-// ═══ 快照持久化：floor 完成时写入 timeline 存储 + 元数据入 floor payload ═══
-// 新架构：内容走 timeline.record（SHA256去重+gzip+SQLite）
-// 旧文件系统写入已废弃，仅保留元数据用于 floor payload
+// ═══ 快照持久化：floor 完成时打包元数据入 floor payload ═══
+// ★ 钩子 Q 已实时记录 before/after 到 timeline；此处只读内存 blob_hash 打包 meta
 // 由 panel-floor.js 的 _finalizeFloor 调用（或 panel-send.js 的 saveFloor）
 async function _a4PersistSnapshots(ag, questNumericId, floorNum) {
     if (!ag || !ag._a4Snapshots) return null;
@@ -439,15 +442,10 @@ async function _a4PersistSnapshots(ag, questNumericId, floorNum) {
     var paths = Object.keys(snaps);
     if (paths.length === 0) return null;
 
-    var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
-        ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
-    var bridge = getBridge();
     var metadata = [];
 
     for (var i = 0; i < paths.length; i++) {
         var snap = snaps[paths[i]];
-        var floorId = questNumericId ? ('q' + questNumericId + '/f' + floorNum) : null;
-        var hashVal = _a4PathHash(snap.path); // 保留兼容旧文件系统快照
         var meta = {
             path: snap.path,
             op: snap.op,
@@ -455,54 +453,64 @@ async function _a4PersistSnapshots(ag, questNumericId, floorNum) {
             deleted: snap.deleted,
             ts: snap.ts,
             count: snap.count,
-            hash: hashVal
+            // ★ 钩子 Q 已记录，直接从内存读取 blob_hash
+            before_blob_hash: snap.beforeBlobHash || undefined,
+            blob_hash: snap.afterBlobHash || undefined
         };
-
-        // ★ 新路径：通过 timeline.record 持久化到 SHA256去重存储
-        // ⚠️ before 和 after 的 blob_hash 都必须存入 meta，重启后才能恢复 before/after 标记
-        if (root && bridge && bridge.timeline) {
-            try {
-                if (snap.before !== null && snap.before !== undefined) {
-                    var bRec = await bridge.timeline.record({
-                        projectRoot: root,
-                        filePath: snap.path,
-                        content: snap.before,
-                        source: 'ai-edit',
-                        floorId: floorId
-                    });
-                    if (bRec && bRec.ok) meta.before_blob_hash = bRec.blob_hash;
-                }
-                if (snap.after !== null && snap.after !== undefined) {
-                    var aRec = await bridge.timeline.record({
-                        projectRoot: root,
-                        filePath: snap.path,
-                        content: snap.after,
-                        source: 'ai-edit',
-                        floorId: floorId
-                    });
-                    if (aRec && aRec.ok) meta.blob_hash = aRec.blob_hash;
-                }
-            } catch (_) { /* best effort */ }
-        }
-
         metadata.push(meta);
     }
 
     return metadata;
 }
 
-// ★ 实时持久化单次快照到 timeline（在 _a4RecordSnapshot 中调用）
+// ★ 钩子 Q 核心：记录 both before+after 到 timeline（含 trace + diff stats）
+// ★ SHA256 去重由服务端处理（不再 UPDATE ts），直接调用即可
 async function _a4PersistToTimeline(filePath, op, before, after, ag) {
-    var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
-        ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
+    var root = await _resolveProjectRoot(filePath); // ★ 终极架构：文件自寻主
     if (!root) return;
     var bridge = getBridge();
     if (!bridge || !bridge.timeline) return;
-    try {
-        if (after !== null && after !== undefined) {
-            await bridge.timeline.record({ projectRoot: root, filePath: filePath, content: after, source: 'ai-edit' });
-        }
-    } catch (_) { }
+
+    var diffStats = _a4DiffStats(before, after);
+
+    // ★ 读取当前 trace（agent-loop.js 埋的全局标记）
+    var traceObj = (typeof window !== 'undefined' && window._qqqCurrentTrace) ? window._qqqCurrentTrace : null;
+    var floorId = null;
+    if (traceObj && traceObj.questId && traceObj.floorNum) {
+        // 格式: "q38/f14/h3/r2" — quest/floor/house/room
+        floorId = 'q' + traceObj.questId.replace(/^q/i, '') + '/f' + traceObj.floorNum +
+            '/h' + (traceObj.houseIdx || 0) + '/r' + (traceObj.roomIdx || 0);
+    }
+
+    var snapEntry = ag._a4Snapshots && ag._a4Snapshots[filePath];
+
+    // ── 记录 after（含 diff stats）──
+    if (after !== null && after !== undefined) {
+        try {
+            var aRec = await bridge.timeline.record({
+                projectRoot: root, filePath: filePath, content: after,
+                source: 'q', floorId: floorId,
+                addedLines: diffStats.added, deletedLines: diffStats.deleted
+            });
+            if (aRec && aRec.ok && snapEntry) {
+                snapEntry.afterBlobHash = aRec.blob_hash;
+            }
+        } catch (_) { }
+    }
+
+    // ── 记录 before（SHA256 去重由服务端处理，无 ts 篡改风险）──
+    if (before !== null && before !== undefined) {
+        try {
+            var bRec = await bridge.timeline.record({
+                projectRoot: root, filePath: filePath, content: before,
+                source: 'q', floorId: floorId,
+                addedLines: 0, deletedLines: 0
+            });
+            if (bRec && bRec.ok && snapEntry) {
+                snapEntry.beforeBlobHash = bRec.blob_hash;
+            }
+        } catch (_) { }
+    }
 }
 
 // ═══ 历史楼层 A4 恢复（从 floor payload 的 a4Snapshots 渲染） ═══
@@ -557,25 +565,10 @@ function _a4RestoreBlock(aiDiv, a4Meta, questNumericId, floorNum) {
     block.classList.add('has-files');
 }
 
-// ---- 历史楼层 diff：旧路径先发保底 + 新路径增强 ----
+// ---- 历史楼层 diff：唯一路径 bridge.timeline ----
 async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum) {
     var bridge = getBridge();
-    var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
-        ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
-
-    // ★ 旧路径保底：先尝试读旧文件系统快照
-    var dir = _a4SnapshotDir(questNumericId, floorNum);
-    var before = null, after = null;
-    if (dir && bridge && bridge.fs) {
-        try { 
-            var rawBefore = await bridge.fs.read(dir + meta.hash + '.before'); 
-            before = A4_COMPRESS ? await _a4Gunzip(rawBefore) : rawBefore;
-        } catch (_) { }
-        try { 
-            var rawAfter = await bridge.fs.read(dir + meta.hash + '.after'); 
-            after = A4_COMPRESS ? await _a4Gunzip(rawAfter) : rawAfter;
-        } catch (_) { }
-    }
+    var root = await _resolveProjectRoot(meta.path); // ★ 文件自寻主
 
     if (root && bridge && bridge.timeline) {
         try {
@@ -618,42 +611,6 @@ function _a4MarkIncrementalDirty() {
     }
 }
 
-// ── A4 专属：每次快照后立即写内容文件到磁盘 ──
-function _a4IncrementalPersist(ag, filePath, before, after) {
-    var questId = (typeof questActiveId !== 'undefined') ? questActiveId : '';
-    var floorNum = (ag._ctx && ag._ctx.totalFloors) ? ag._ctx.totalFloors : 0;
-    if (!questId || !floorNum) return;
-
-    var dir = _a4SnapshotDir(_a4GetNumericId(questId), floorNum);
-    var bridge = getBridge();
-    if (!dir || !bridge || !bridge.fs) return;
-
-    var hash = _a4PathHash(filePath);
-
-    if (before !== null && before !== undefined) {
-        _a4Gzip(before).then(function(comp) {
-            bridge.fs.write(dir + hash + '.before', comp).catch(function(){});
-        }).catch(function(){});
-    }
-    if (after !== null && after !== undefined) {
-        _a4Gzip(after).then(function(comp) {
-            bridge.fs.write(dir + hash + '.after', comp).catch(function(){});
-        }).catch(function(){});
-    }
-
-    // 同时标记统一刷盘
-    _a4MarkIncrementalDirty();
-}
-
-function _a4GetNumericId(questId) {
-    var qs = window.questStore;
-    if (!qs || !qs._index) return 0;
-    for (var i = 0; i < qs._index.length; i++) {
-        if (qs._index[i].id === questId) return qs._index[i].numericId || 0;
-    }
-    return 0;
-}
-
 // ── 构建完整 floor payload（与 _saveAgentQuestData 同构）──
 function _a4BuildCompleteFloorPayload(ag) {
     var fullConv = ag.conversation ? ag.conversation.slice() : [];
@@ -688,7 +645,9 @@ function _a4BuildCompleteFloorPayload(ag) {
                 var s = snaps[paths[i]];
                 a4Meta.push({
                     path: s.path, op: s.op, added: s.added, deleted: s.deleted,
-                    ts: s.ts, count: s.count, hash: _a4PathHash(s.path)
+                    ts: s.ts, count: s.count,
+                    before_blob_hash: s.beforeBlobHash || undefined,
+                    blob_hash: s.afterBlobHash || undefined
                 });
             }
             payload.a4Snapshots = a4Meta;
@@ -759,4 +718,5 @@ window._a4PersistSnapshots = _a4PersistSnapshots;
 window._a4RestoreBlock = _a4RestoreBlock;
 window._a4ClearCurrent = _a4ClearCurrent;
 window._a4RenderLive = _a4RenderLive;
+window._a4DiffStats = _a4DiffStats;
 window._initA4Block = _initA4Block;

@@ -51,6 +51,19 @@ function _gwPrimaryFailed() {
     }
 }
 
+// ★ 广播：备用线路不可达（通知兄弟面板不要切过来）
+function _gwBroadcastDeadFallback() {
+    try {
+        window.parent && window.parent.postMessage({
+            type: 'qqq-gw-status',
+            panel: (typeof _panelId !== 'undefined') ? _panelId : -1,
+            fallback: true,
+            fallbackDead: true,
+            url: GATEWAY_URL_FALLBACK
+        }, '*');
+    } catch (_) { }
+}
+
 // ★ 工具计费累加：Python 脚本返回 ge_cost → 计入当前楼层
 // 由 tools.js 在 executeGenerateImage / executeAnalyzeImage 中调用
 function _addToolGeCost(geCost) {

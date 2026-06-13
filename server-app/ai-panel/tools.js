@@ -887,29 +887,8 @@ async function executeRunCommand(args) {
             shell: useShell
         });
 
-        // ★ 命令成功后扫描项目变更并记录 timeline 快照
-        if (result.exitCode === 0 && bridge.timeline && typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
-            try {
-                var root = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');
-                var changed = await bridge.timeline.captureChanged({
-                    projectRoot: root,
-                    sinceMs: cmdStart,
-                    cwd: args.cwd || ''
-                });
-                // 通知 A4 文件被修改（更新 UI 豆腐块 + 记录快照）
-                if (changed && changed.length) {
-                    for (var ci = 0; ci < changed.length; ci++) {
-                        _notifyFileModified(changed[ci].filePath);
-                        // 尝试更新 A4 快照（若 _a4RecordSnapshot 可用）
-                        if (typeof _a4RecordSnapshot === 'function') {
-                            try {
-                                _a4RecordSnapshot(changed[ci].filePath, 'run_command', null, changed[ci].content);
-                            } catch (_) { }
-                        }
-                    }
-                }
-            } catch (_) { /* best effort */ }
-        }
+        // ★ 钩子 Q（_a4WrappedExecuteTool）统一处理 run_command 的扫描+记录
+        // 此处不再重复 captureChanged + _a4RecordSnapshot
 
         // [silent] run_command result
         // AI-facing output cap (single source: OUTPUT_CAP_DEFAULT / OUTPUT_CAP_MAX)

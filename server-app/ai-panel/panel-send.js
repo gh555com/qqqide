@@ -431,7 +431,25 @@ async function sendMessage() {
             },
             onError: function (msg) {
                 _stopAutoSave();
-                if (_capturedAgent) _capturedAgent._floorOnErrorCalled = true;  // ★ 看门狗：标记已处理
+                if (_capturedAgent) {
+                    _capturedAgent._floorOnErrorCalled = true;  // ★ 看门狗：标记已处理
+                    // ★ 一次渲染永久不变：错误消息推入 conversation 持久化
+                    var _errInput = (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '';
+                    _capturedAgent.conversation.push({
+                        role: 'assistant',
+                        content: msg,
+                        _error: true,
+                        _capturedInput: _errInput,
+                        _floor: _capturedAgent._ctx.totalFloors
+                    });
+                }
+                // ★ 清理 aiDiv 流式渲染状态，防止 doStreamRender 定时器"诈尸"
+                if (aiDiv) {
+                    aiDiv._renderScheduled = false;
+                    aiDiv._dirty = false;
+                    aiDiv._guideMode = false;
+                    if (aiDiv._lastParaEl) { aiDiv._lastParaEl.remove(); aiDiv._lastParaEl = null; }
+                }
                 if (_activeAgent === _capturedAgent) {
                     if (aiDiv && aiDiv._floorCompleted) {
                         setStreaming(false);
@@ -478,7 +496,11 @@ async function sendMessage() {
                     _stopAllTxtStream();
                     stopFloorTimer(null, _capturedAgent);
                     setStreaming(false);
-                    _continueQueue();
+                    // ★ 仅当队列非空且不是因网络错误中断时才继续队列
+                    //    网络错误时 _continueQueue 可能触发无意义重发，交由用户手动重试
+                    if (_queue.length > 0 && msg.indexOf('网络请求失败') === -1 && msg.indexOf('连接超时') === -1) {
+                        _continueQueue();
+                    }
                 }
             }
         });
@@ -488,6 +510,10 @@ async function sendMessage() {
             _continueQueue();
         }
     } finally {
+        // ★ 一次渲染永久不变：在清理 _activeAiDiv 之前，先保存当前楼层数据（含流式文本）
+        if (_capturedAgent && _capturedQuestId && !_capturedAgent._floorCompletedCleanly && !_capturedAgent._floorKilled) {
+            try { await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._floorStartIdx); } catch (_) { }
+        }
         _stopAutoSave();
         _stopAllTxtStream();
         if (_activeAgent === _capturedAgent) {

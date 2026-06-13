@@ -183,3 +183,24 @@ const $queueStrip = document.getElementById('queue-strip');
         }, '*');
     } catch (_) { }
 })();
+
+// ★ 跨面板网关状态协同：兄弟面板切回主线路成功 → 本面板也立即尝试切回
+window.addEventListener('message', function (e) {
+    if (!e.data || e.data.type !== 'qqq-gw-status') return;
+    if (e.data.panel === _panelId) return;  // 忽略自身
+    // 兄弟面板正在使用主线路 且 本面板在备用线路 → 尝试切回
+    if (!e.data.fallback && typeof _gwUsingFallback !== 'undefined' && _gwUsingFallback) {
+        if (typeof _gwTryPrimary === 'function') {
+            if (typeof _gwFallbackAt !== 'undefined') {
+                _gwFallbackAt = 0;  // 强制 _gwTryPrimary 认为已过 5 分钟
+            }
+        }
+    }
+    // ★ 兄弟面板报告备用线路不可达 → 本面板也标记备用为可疑，优先坚守主线路
+    if (e.data.fallbackDead && typeof _gwUsingFallback !== 'undefined' && !_gwUsingFallback) {
+        // 延长 _gwFallbackAt 防本面板误切到已死的备用
+        if (typeof _gwFallbackAt !== 'undefined') {
+            _gwFallbackAt = Date.now() + 10 * 60 * 1000;  // 10 分钟内不主动切备用
+        }
+    }
+});

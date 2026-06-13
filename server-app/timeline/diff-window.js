@@ -26,8 +26,16 @@
     var _monacoLoaded = false;
 
     var $filePath = document.getElementById('file-path');
+    // 隐藏 input 存值（兼容旧引用 $selLeft/$selRight → .value 读写）
     var $selLeft = document.getElementById('sel-left');
     var $selRight = document.getElementById('sel-right');
+    // 自定义下拉 DOM
+    var $ddLeftBtn = document.getElementById('dd-left-btn');
+    var $ddLeftList = document.getElementById('dd-left-list');
+    var $ddLeft = document.getElementById('dd-left');
+    var $ddRightBtn = document.getElementById('dd-right-btn');
+    var $ddRightList = document.getElementById('dd-right-list');
+    var $ddRight = document.getElementById('dd-right');
     var $markerLeft = document.getElementById('marker-left');
     var $markerRight = document.getElementById('marker-right');
     var $diffContainer = document.getElementById('diff-container');
@@ -109,7 +117,15 @@
                 }
             } catch (_) { }
             populateDropdowns();
-            await loadMonaco();
+            // ★ Monaco 加载超时保护（15s），防止永久白屏
+            var monacoOk = await Promise.race([
+                loadMonaco().then(function () { return true; }),
+                new Promise(function (r) { setTimeout(function () { r(false); }, 15000); })
+            ]);
+            if (!monacoOk) {
+                $emptyState.textContent = 'Monaco 加载超时，请检查网络或重启窗口';
+                return;
+            }
             $emptyState.style.display = 'none';
             $diffContainer.style.display = '';
         } finally {
@@ -119,16 +135,54 @@
 
     var _options = []; // 下拉选项缓存，供 updateOneMarker 查合并条目
 
+    // ═══ 解析 floor_id → 可读溯源串 "q38 f14 h3 r2" ═══
+    function _parseFloorId(floorId) {
+        if (!floorId) return '';
+        var parts = floorId.split('/');
+        // 格式: "q38/f14/h3/r2" 或 "q38/f14"
+        var out = [];
+        for (var pi = 0; pi < parts.length; pi++) {
+            out.push(parts[pi]);
+        }
+        return out.join(' ');
+    }
+
+    // ═══ 映射 source → 可读标签 ═══
+    function _sourceLabel(source, floorId) {
+        if (source === 'q') {
+            // 钩子 Q：AI 写工具 → 显示 trace（如 "q38 f14 h3 r2"）
+            var trace = _parseFloorId(floorId);
+            return trace || 'q';
+        }
+        if (source === 'auto-save') {
+            return 'auto save';
+        }
+        if (source === 'manual-save' || source === 'x' || source === 'diff-save') {
+            return 'manual save';
+        }
+        if (source === 'run-command') {
+            return 'cmd';
+        }
+        return source || '';
+    }
+
     // ═══ 填充下拉框 ═══
     function populateDropdowns() {
         var options = [];
         for (var i = 0; i < _versions.length; i++) {
             var v = _versions[i];
+            var sourceLabel = _sourceLabel(v.source, v.floor_id); // ★ 溯源标签
+            var added = (v.added_lines > 0) ? ('+' + v.added_lines) : '';
+            var deleted = (v.deleted_lines > 0) ? ('-' + v.deleted_lines) : '';
+            var diffStr = (added || deleted) ? (added + ' ' + deleted).trim() : '';
             options.push({
                 value: v.blob_hash,
                 label: formatTs(v.ts),
                 ts: v.ts,
                 source: v.source,
+                floorId: v.floor_id,
+                sourceLabel: sourceLabel,
+                diffStr: diffStr,
                 isFirst: (i === 0),
             });
         }
@@ -156,29 +210,55 @@
                     label: lastLabel,
                     ts: lastTs || Date.now(),
                     source: 'current',
+                    floorId: null,
+                    sourceLabel: '',
+                    diffStr: '',
                     isFirst: isFirst,
                     isLast: true,
                 });
             }
         }
 
+        // ── 查找 marked before/after 在 options 中的位置 ──
         var beforeIdx = -1, afterIdx = -1;
         for (var b = 0; b < options.length; b++) {
             if (_markedBefore && (options[b].value === _markedBefore || options[b]._blobHash === _markedBefore)) beforeIdx = b;
             if (_markedAfter && (options[b].value === _markedAfter || options[b]._blobHash === _markedAfter)) afterIdx = b;
         }
-        // ── 确保 before 在 after 之前（按时间线顺序）──
-        // 只交换索引（显示位置），不交换标记语义
-        if (beforeIdx >= 0 && beforeIdx === afterIdx && beforeIdx > 0) {
-            beforeIdx = beforeIdx - 1;
+
+        // ── 智能修正：如果 before/after 指向同一版本（内容未变或 hash 相同），
+        //     且该版本不是最早版本，则 before 退一格 ──
+        if (beforeIdx >= 0 && beforeIdx === afterIdx) {
+            if (beforeIdx > 0) {
+                beforeIdx = beforeIdx - 1;
+            } else if (options.length > 1) {
+                // beforeIdx=0，唯一版本无法退格；after 进一格取下一个版本
+                afterIdx = 1;
+            }
         }
+
+        // ── 如果 marked 未匹配到任何版本，使用智能默认 ──
+        // after 默认取最新（最后一个）；before 默认取 after 前一个
+        if (afterIdx < 0 && options.length > 0) {
+            afterIdx = options.length - 1;
+        }
+        if (beforeIdx < 0 && afterIdx >= 0) {
+            if (afterIdx > 0) {
+                beforeIdx = afterIdx - 1;
+            } else if (options.length >= 2) {
+                beforeIdx = 0;
+                afterIdx = 1;
+            } else {
+                beforeIdx = afterIdx; // 只有一个版本，左右同源
+            }
+        }
+
+        // ── 最终确保 before 时间 ≤ after 时间 ──
         if (beforeIdx >= 0 && afterIdx >= 0 && beforeIdx > afterIdx) {
-            // 时间线顺序倒置：before 条目时间晚于 after 条目
-            // 只交换显示位置，保持 _markedBefore/_markedAfter 语义不变
             var tmpI = beforeIdx; beforeIdx = afterIdx; afterIdx = tmpI;
         }
 
-        // ── 构建 HTML，同标签条目合并标记 ──
+        // ── 构建 HTML：标签格式 "2026-06-13 11:36:41 +333 -66 q38 f14 h3 r2 [first] [before]" ──
         var mergedOptions = [];
         for (var j = 0; j < options.length; j++) {
             var o = options[j];
@@ -187,6 +267,10 @@
             if (j === beforeIdx) markers.push('before');
             if (j === afterIdx) markers.push('after');
             if (o.isLast) markers.push('last');
+            // ── 拼接完整标签：时间 + 变更统计 + 溯源 ──
+            var fullLabel = o.label;
+            if (o.diffStr) fullLabel += ' ' + o.diffStr;
+            if (o.sourceLabel) fullLabel += ' ' + o.sourceLabel;
             // 如果与前一条目标签相同，合并标记到前一条
             if (mergedOptions.length > 0 && mergedOptions[mergedOptions.length - 1].label === o.label) {
                 var prev = mergedOptions[mergedOptions.length - 1];
@@ -200,46 +284,129 @@
                 if (j === afterIdx) afterIdx = mergedOptions.length - 1;
                 continue;
             }
-            mergedOptions.push({ value: o.value, label: o.label, markers: markers, _blobHash: o._blobHash, isLast: o.isLast, ts: o.ts });
-        }
-        var html = '';
-        for (var mj = 0; mj < mergedOptions.length; mj++) {
-            var mo = mergedOptions[mj];
-            var marker = mo.markers.length ? ' [' + mo.markers.join('] [') + ']' : '';
-            html += '<option value="' + _escAttr(mo.value) + '">' + _escHtml(mo.label) + marker + '</option>';
+            mergedOptions.push({ value: o.value, label: o.label, fullLabel: fullLabel, markers: markers, _blobHash: o._blobHash, isLast: o.isLast, ts: o.ts });
         }
         options = mergedOptions; // 替换为合并后的列表
-
-        $selLeft.innerHTML = html;
-        $selRight.innerHTML = html;
         _options = options; // 缓存供 updateOneMarker 使用
 
-        if (afterIdx >= 0) {
-            $selRight.value = options[afterIdx].value;
-        } else if (options.length > 0) {
-            $selRight.value = options[options.length - 1].value;
-        }
-        if (beforeIdx >= 0) {
-            $selLeft.value = options[beforeIdx].value;
-        } else {
-            var rightVal = $selRight.value;
-            var rightIdx = -1;
-            for (var k = 0; k < options.length; k++) {
-                if (options[k].value === rightVal) { rightIdx = k; break; }
-            }
-            if (rightIdx > 0) {
-                $selLeft.value = options[rightIdx - 1].value;
-            } else if (options.length >= 2) {
-                $selLeft.value = options[0].value;
-            }
-        }
+        // ── 应用选择（隐藏 input 存值）──
+        var afterVal = options[Math.min(afterIdx, options.length - 1)].value;
+        var beforeVal = options[Math.min(beforeIdx, options.length - 1)].value;
+        $selRight.value = afterVal;
+        $selLeft.value = beforeVal;
+
+        // ── 构建自定义下拉 HTML（含 +N -M 染色）──
+        _buildDropdownList($ddLeftList, options);
+        _buildDropdownList($ddRightList, options);
+        _refreshDropdownBtn($ddLeftBtn, $selLeft.value, options);
+        _refreshDropdownBtn($ddRightBtn, $selRight.value, options);
 
         updateMarkers();
-        $selLeft.onchange = null;
-        $selRight.onchange = null;
-        $selLeft.addEventListener('change', onVersionChange);
-        $selRight.addEventListener('change', onVersionChange);
     }
+
+    // ── 构建自定义下拉列表（富文本：+N 绿、-M 红、marker 标签）──
+    function _buildDropdownList($list, options) {
+        var html = '';
+        for (var i = 0; i < options.length; i++) {
+            var mo = options[i];
+            // 解析 fullLabel，将 +N 和 -M 分别染色
+            var displayHtml = _escHtml(mo.fullLabel || mo.label);
+            // 给 +数字 加绿色 span，-数字 加红色 span
+            displayHtml = displayHtml.replace(/\+(\d+)/g, '<span class="v-stat-green">+$1</span>');
+            displayHtml = displayHtml.replace(/\-(\d+)/g, '<span class="v-stat-red">-$1</span>');
+            // marker 标签
+            var markerHtml = '';
+            if (mo.markers && mo.markers.length) {
+                for (var mi = 0; mi < mo.markers.length; mi++) {
+                    var mk = mo.markers[mi];
+                    var mkClass = (mk === 'before') ? 'before' : (mk === 'after') ? 'after' : (mk === 'first') ? 'first' : (mk === 'last') ? 'last' : '';
+                    markerHtml += '<span class="v-marker' + (mkClass ? ' ' + mkClass : '') + '">' + _escHtml(mk) + '</span>';
+                }
+            }
+            html += '<div class="v-dropdown-item" data-value="' + _escAttr(mo.value) + '">' + displayHtml + markerHtml + '</div>';
+        }
+        $list.innerHTML = html;
+    }
+
+    // ── 刷新下拉按钮显示 + 高亮选中项 + 滚动到可见 ──
+    function _refreshDropdownBtn($btn, val, options) {
+        for (var i = 0; i < options.length; i++) {
+            if (options[i].value === val) {
+                var mo = options[i];
+                var displayHtml = _escHtml(mo.fullLabel || mo.label);
+                displayHtml = displayHtml.replace(/\+(\d+)/g, '<span class="v-stat-green">+$1</span>');
+                displayHtml = displayHtml.replace(/\-(\d+)/g, '<span class="v-stat-red">-$1</span>');
+                $btn.innerHTML = displayHtml;
+                return;
+            }
+        }
+        $btn.textContent = val || '—';
+    }
+
+    function _highlightAndScroll($list, val) {
+        var items = $list.querySelectorAll('.v-dropdown-item');
+        for (var i = 0; i < items.length; i++) {
+            if (items[i].dataset.value === val) {
+                items[i].classList.add('selected');
+                // 滚动到选中项居中
+                items[i].scrollIntoView({ block: 'center' });
+            } else {
+                items[i].classList.remove('selected');
+            }
+        }
+    }
+
+    // ── 动态计算下拉 max-height：按窗口高度（约 24 行，每行 ~28px）──
+    function _calcDropdownMaxHeight() {
+        var winH = window.innerHeight;
+        var barH = 36 + 36 + 44 + 32 + 22; // titlebar + file-bar + version-bar + actions-bar + statusbar
+        var avail = winH - barH - 24; // 减去上下留白
+        var rowH = 28;
+        var maxRows = Math.floor(avail / rowH);
+        maxRows = Math.max(6, Math.min(maxRows, 32)); // 最少 6 行，最多 32 行
+        var maxH = maxRows * rowH;
+        $ddLeftList.style.maxHeight = maxH + 'px';
+        $ddRightList.style.maxHeight = maxH + 'px';
+    }
+    _calcDropdownMaxHeight();
+    window.addEventListener('resize', _calcDropdownMaxHeight);
+
+    // ── 自定义下拉交互 ──
+    function _initDropdown($dd, $btn, $list, $hidden, side) {
+        // 点击按钮：切换展开
+        $btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var wasOpen = $dd.classList.contains('open');
+            // 关闭所有下拉
+            $ddLeft.classList.remove('open');
+            $ddRight.classList.remove('open');
+            if (!wasOpen) {
+                $dd.classList.add('open');
+                // 展开时动态计算高度 + 高亮选中项 + 滚动到可见
+                _calcDropdownMaxHeight();
+                _highlightAndScroll($list, $hidden.value);
+            }
+        });
+        // 点击列表项：选中并关闭
+        $list.addEventListener('click', function (e) {
+            var item = e.target.closest('.v-dropdown-item');
+            if (!item) return;
+            var val = item.dataset.value;
+            if (val === $hidden.value) { $dd.classList.remove('open'); return; }
+            $hidden.value = val;
+            _refreshDropdownBtn($btn, val, _options);
+            _highlightAndScroll($list, val);
+            $dd.classList.remove('open');
+            updateMarkers();
+            renderDiff();
+        });
+        // 点击外部关闭
+        document.addEventListener('click', function () {
+            $dd.classList.remove('open');
+        });
+    }
+    _initDropdown($ddLeft, $ddLeftBtn, $ddLeftList, $selLeft, 'left');
+    _initDropdown($ddRight, $ddRightBtn, $ddRightList, $selRight, 'right');
 
     function updateMarkers() {
         updateOneMarker($selLeft, $markerLeft);
@@ -290,11 +457,6 @@
             $btnAcceptLeft.classList.remove('visible');
             if ($btnSaveLast) $btnSaveLast.style.display = 'none';
         }
-    }
-
-    async function onVersionChange() {
-        updateMarkers();
-        await renderDiff();
     }
 
     // ═══ Monaco 加载 ═══
@@ -461,6 +623,7 @@
         try {
             editor.updateOptions({
                 // 语法染色保留（tokenization），其余全关
+                scrollbar: { vertical: 'hidden', horizontal: 'hidden' },
                 occurrencesHighlight: false,
                 selectionHighlight: false,
                 renderLineHighlight: 'none',

@@ -39,13 +39,49 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #file-suggestions .fs-item .fs-ts{font-size:9px;color:var(--base01);flex-shrink:0}
 .highlight{background:var(--yellow);color:#000;border-radius:2px;padding:0 1px}
 
+/* ═══ CUSTOM DROPDOWN ═══ */
+.v-dropdown{position:relative;flex:1;max-width:420px}
+.v-dropdown-btn{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px;font-family:ui-monospace,monospace;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:none;line-height:1.4}
+.v-dropdown-btn:hover{border-color:var(--yellow)}
+.v-dropdown.open .v-dropdown-btn{border-color:var(--yellow)}
+.v-dropdown-list{position:absolute;top:100%;left:0;right:0;max-height:360px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:0 0 6px 6px;z-index:100;display:none;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
+.v-dropdown.open .v-dropdown-list{display:block}
+.v-dropdown-item{padding:4px 8px;font-family:ui-monospace,monospace;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:4px;flex-wrap:wrap;white-space:nowrap;border-bottom:1px solid var(--border)}
+.v-dropdown-item:last-child{border-bottom:none}
+.v-dropdown-item:hover{background:var(--yellow);color:#000}
+.v-dropdown-item.selected{background:var(--blue);color:#fff}
+.v-stat-green{color:var(--green);font-weight:700}
+.v-stat-red{color:var(--red);font-weight:700}
+.v-dropdown-item:hover .v-stat-green,.v-dropdown-item:hover .v-stat-red{color:#000}
+.v-dropdown-item.selected .v-stat-green,.v-dropdown-item.selected .v-stat-red{color:#fff}
+.v-marker{font-size:9px;padding:1px 4px;border-radius:2px;font-weight:700;flex-shrink:0}
+.v-marker.before{background:var(--yellow);color:#000}
+.v-marker.after{background:var(--green);color:#fff}
+.v-marker.first{background:var(--blue);color:#fff}
+.v-marker.last{background:var(--red);color:#fff}
+
 /* ═══ VERSION BAR ═══ */
 #version-bar{height:44px;background:var(--card);display:flex;align-items:center;border-bottom:1px solid var(--border);flex-shrink:0}
 .version-panel{flex:1;display:flex;align-items:center;padding:0 10px;gap:6px}
 .version-panel:first-child{border-right:1px solid var(--border)}
 .version-panel .v-label{font-size:10px;color:var(--base01);text-transform:uppercase;white-space:nowrap;min-width:36px}
-.version-panel .v-select{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:4px;font-size:11px;font-family:ui-monospace,monospace;max-width:280px;cursor:pointer}
-.version-panel .v-select:focus{outline:none;border-color:var(--blue)}
+/* ── 自定义下拉（替代原生 select，支持富文本）── */
+.v-dropdown{position:relative;flex:1;max-width:420px;min-width:120px;cursor:pointer;user-select:none}
+.v-dropdown-btn{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
+.v-dropdown-btn:hover{border-color:var(--blue)}
+.v-dropdown-btn .v-stat-green{color:var(--green)}
+.v-dropdown-btn .v-stat-red{color:var(--red)}
+.v-dropdown-list{display:none;position:absolute;top:100%;left:0;right:0;max-height:260px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:0 0 4px 4px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
+.v-dropdown.open .v-dropdown-list{display:block}
+.v-dropdown-item{padding:4px 8px;font-size:11px;font-family:ui-monospace,monospace;font-weight:700;cursor:pointer;white-space:nowrap;color:var(--text)}
+.v-dropdown-item:hover{background:var(--border)}
+.v-dropdown-item .v-stat-green{color:var(--green)}
+.v-dropdown-item .v-stat-red{color:var(--red)}
+.v-dropdown-item .v-marker{font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700;margin-left:3px}
+.v-dropdown-item .v-marker.before{background:var(--yellow);color:#000}
+.v-dropdown-item .v-marker.after{background:var(--green);color:#fff}
+.v-dropdown-item .v-marker.first{background:var(--blue);color:#fff}
+.v-dropdown-item .v-marker.last{background:var(--red);color:#fff}
 .version-panel .v-marker{font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700;flex-shrink:0}
 .v-marker.before{background:var(--yellow);color:#000}
 .v-marker.after{background:var(--green);color:#fff}
@@ -98,13 +134,21 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 <div id="version-bar">
   <div class="version-panel">
     <span class="v-label">左 (旧)</span>
-    <select class="v-select" id="sel-left"></select>
+    <div class="v-dropdown" id="dd-left">
+      <div class="v-dropdown-btn" id="dd-left-btn">—</div>
+      <div class="v-dropdown-list" id="dd-left-list"></div>
+    </div>
     <span class="v-marker" id="marker-left" style="display:none"></span>
+    <input type="hidden" id="sel-left">
   </div>
   <div class="version-panel">
     <span class="v-label">右 (新)</span>
-    <select class="v-select" id="sel-right"></select>
+    <div class="v-dropdown" id="dd-right">
+      <div class="v-dropdown-btn" id="dd-right-btn">—</div>
+      <div class="v-dropdown-list" id="dd-right-list"></div>
+    </div>
     <span class="v-marker" id="marker-right" style="display:none"></span>
+    <input type="hidden" id="sel-right">
   </div>
 </div>
 

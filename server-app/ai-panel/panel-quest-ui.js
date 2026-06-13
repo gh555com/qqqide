@@ -736,6 +736,13 @@ $queueBtn.onclick = function () {
   var obs = new MutationObserver(function () { setTimeout(sync, 30); });
   obs.observe(el, { childList: true, subtree: true });
 
+  // 主题切换 → 立即刷滑块色
+  var themeObs = new MutationObserver(function () {
+    var co2 = _qhColors();
+    thumb.style.background = co2.c;
+  });
+  themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
   track.appendChild(thumb);
   host.appendChild(track);
 })();

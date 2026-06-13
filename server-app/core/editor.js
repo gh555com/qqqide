@@ -757,13 +757,48 @@
 
       ed.onDidChangeModelContent(function () { if (!ed._isRefreshing) _markDirty(); });
 
+      // ── 钩子 X 冷却 + diff stats：60s 内同文件不重复记录 ──
+      var _lastXHookTs = {};
+      async function _xHookRecord(fp, content, source) {
+        var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
+          ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
+        if (!root || !bridge || !bridge.timeline) return;
+        var now = Date.now();
+        if (_lastXHookTs[fp] && (now - _lastXHookTs[fp]) < 60000) return; // 60s 冷却
+        _lastXHookTs[fp] = now;
+
+        // ★ 计算 +N -M：对比上一版本内容
+        var addedLines = null, deletedLines = null;
+        try {
+            var versions = await bridge.timeline.versions({ projectRoot: root, filePath: fp });
+            if (versions && versions.length > 0) {
+                var lastVer = versions[versions.length - 1];
+                var prevContent = await bridge.timeline.content({ projectRoot: root, blobHash: lastVer.blob_hash });
+                if (typeof prevContent === 'string') {
+                    var diffFn = (typeof window._a4DiffStats === 'function') ? window._a4DiffStats : null;
+                    if (diffFn) {
+                        var stats = diffFn(prevContent, content);
+                        addedLines = stats.added;
+                        deletedLines = stats.deleted;
+                    }
+                }
+            }
+        } catch (_) { }
+
+        bridge.timeline.record({
+            projectRoot: root, filePath: fp, content: content,
+            source: source, addedLines: addedLines, deletedLines: deletedLines
+        }).catch(function () { });
+      }
+
       // ---- Auto-save on editor blur ----
       ed.onDidBlurEditorWidget(async function () {
         if (_paneDirty && filePath && !(opts && opts.readOnly)) {
           try {
-            await bridge.fs.write(filePath, ed.getValue());
+            var content = ed.getValue();
+            await bridge.fs.write(filePath, content);
             _markClean();
-            // [silent] auto-saved on blur
+            _xHookRecord(filePath, content, 'auto-save');
           } catch (err) {
             console.error('[editor] auto-save failed:', filePath, err && err.message);
           }
@@ -773,9 +808,10 @@
       // ---- Ctrl+S ----
       ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
         try {
-          var val = ed.getValue(); /* silent save */ await bridge.fs.write(filePath, val);
+          var val = ed.getValue();
+          await bridge.fs.write(filePath, val);
           _markClean();
-          // [silent] saved
+          _xHookRecord(filePath, val, 'manual-save');
         } catch (e) {
           console.error('[editor] save failed:', e);
         }

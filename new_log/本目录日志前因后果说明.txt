@@ -1,0 +1,48 @@
+# new_log/ 目录说明
+
+## 这是什么
+qqq-shell-v2 AI 面板的持久化日志目录。所有关键诊断事件（孤儿 tool_calls 检测、线路切换、连接超时等）都会写入此目录的日志文件，不依赖浏览器 Console（Console 日志重启即丢失）。
+
+## 日志文件命名
+- `agent-YYYY-MM-DD.log` — agent-loop 诊断事件（孤儿检测、auto-repair、线路切换、超时）
+
+## 写入机制
+日志通过 Electron IPC bridge 写入磁盘（`bridge.fs.writeFile`），写入失败时静默降级到 console.log。
+每 10 秒或满 20 条自动刷盘。
+
+## 关键诊断事件（搜索这些关键字）
+
+### 连接超时链路（完整追踪从触发到最终失败）
+- `⏰ ABORT [deadline/watchdog_stream/watchdog_output/unknown]` — 超时触发点（含 panel/floor/house/URL/retry#/abortRetries/lineSwitches/elapsed）
+- `⏳ abort retry #N/3 in Xs (same URL: ...)` — 同 URL 退避重试（2s/4s/8s 指数增长）
+- `↳ abort recovery: line switch #N/2 OLD → NEW` — 超时后切线路
+- `✗ TIMEOUT EXHAUSTED` — 所有恢复手段耗尽（最终失败，显示"连接超时"）
+
+### 孤儿 tool_calls
+- `ORPHAN DETECTED at source` — 工具执行后 assistant.tool_calls 数与 tool 结果数不匹配（根因探针）
+- `🔧 repaired: removed N orphaned` — auto-repair 清理了多少条断裂消息（含 floor 编号）
+
+### 线路切换
+- `↳ line switch #N/2 → ... (panel=..., floor=...)` — HTTP/网络错误触发的线路切换
+
+### 其他
+- `HTTP/2-like error` — HTTP/2 连接池错误（含 panel/retry 编号）
+- `✗ fetch exhausted` — 重试+线路切换全部耗尽
+
+## 超时恢复流程（完整版）
+```
+① 触发：fetch deadline(95s/180s) 或 stream watchdog(180s) 或 output watchdog(15min)
+② ⏰ ABORT 日志：记录触发源 + 当前 URL + panel/floor/house + 已重试/切换次数 + 已耗时
+③ 同 URL 退避重试：2s → 4s → 8s，每次打印 ⏳ abort retry
+④ 3 次同 URL 重试仍超时 → 切线路：打印 ↳ abort recovery: line switch
+⑤ 新线路上重复 ②-④
+⑥ 2 次切线路全部耗尽 → ✗ TIMEOUT EXHAUSTED → 显示「连接超时」+「重新发送」
+```
+
+## 维护
+- 日志文件按天轮转（`agent-YYYY-MM-DD.log`），旧文件不自动删除
+- AI 诊断问题时，先读最新日志文件末尾 200 行
+
+## 创建时间
+2026-06-13 — 网关故障切换引擎加固期间建立
+最后更新：2026-06-13 — 超时链路完整日志 + 错误持久化
