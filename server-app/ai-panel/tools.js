@@ -1369,6 +1369,11 @@ async function executeAnalyzeImage(args) {
 // ============================================================
 
 function getTools() {
+    // ★ 硬兜底：确保 tools 永远不会是 undefined（脚本加载顺序/异步问题）
+    if (typeof TOOL_DEFINITIONS === 'undefined' || !Array.isArray(TOOL_DEFINITIONS)) {
+        if (typeof console !== 'undefined') console.warn('[tools] TOOL_DEFINITIONS not ready, returning empty');
+        return [];
+    }
     return TOOL_DEFINITIONS;
 }
 

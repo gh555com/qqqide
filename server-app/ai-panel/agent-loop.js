@@ -1210,6 +1210,7 @@ var AgentLoop = (function () {
         var _deadlineMs = (GATEWAY_URL === GATEWAY_URL_FALLBACK) ? _deadlineFallback : _deadlinePrimary;
         var _fetchDeadline = setTimeout(function () {
             if (self.abortController) {
+                self._abortSource = 'fetch_deadline';
                 self._log('⏰ fetch deadline ' + (_deadlineMs / 1000) + 's reached — aborting to prevent hang');
                 self.abortController.abort();
             }
@@ -1220,10 +1221,11 @@ var AgentLoop = (function () {
             _deadlineMs = (GATEWAY_URL === GATEWAY_URL_FALLBACK) ? _deadlineFallback : _deadlinePrimary;
             _fetchDeadline = setTimeout(function () {
                 if (self.abortController) {
+                    self._abortSource = 'fetch_deadline';
                     self._log('⏰ fetch deadline ' + (_deadlineMs / 1000) + 's reached — aborting to prevent hang');
                     self.abortController.abort();
                 }
-            }, 90000);
+            }, _deadlineMs);
         }
 
         // 注入动态上下文（叙事摘要 + 相关事实）
@@ -1313,11 +1315,13 @@ var AgentLoop = (function () {
         var _lineSwitches = 0;
         var _ttfbAccum = 0;
         for (var retry = 0; retry <= MAX_RETRIES; retry++) {
-            _resetFetchDeadline();  // ★ 每次 retry 重置 90s deadline
-            // ★ 防御：abortController 可能被外部 injectGuide() 置 null
-            if (!self.abortController) {
-                self.abortController = new AbortController();
+            _resetFetchDeadline();  // ★ 每次 retry 重置 deadline
+            // ★ 强制重建 AbortController：防止已 abort 的 signal 导致后续 fetch 瞬死
+            if (self.abortController) {
+                try { self.abortController.abort(); } catch (_) { }
             }
+            self.abortController = new AbortController();
+            self._abortSource = '';  // ★ 重置探针
             try {
                 var _fetchStart = performance.now();
                 // ★ 超时血条：更新请求起止时间供 panel-clock 渲染
@@ -1652,6 +1656,7 @@ var AgentLoop = (function () {
         function _resetStreamWatchdog() {
             if (_streamWatchdog) clearTimeout(_streamWatchdog);
             _streamWatchdog = setTimeout(function () {
+                self._abortSource = 'stream_watchdog';
                 self._log('⏰ stream watchdog ' + (STREAM_WATCHDOG_MS / 1000) + 's — no data, aborting dead connection');
                 if (self.abortController) self.abortController.abort();
             }, STREAM_WATCHDOG_MS);
@@ -1659,6 +1664,7 @@ var AgentLoop = (function () {
         function _resetOutputWatchdog() {
             if (_outputWatchdog) clearTimeout(_outputWatchdog);
             _outputWatchdog = setTimeout(function () {
+                self._abortSource = 'output_watchdog';
                 self._log('⏰ output watchdog ' + (OUTPUT_WATCHDOG_MS / 60000) + 'min — no output, aborting thinking loop');
                 if (self.abortController) self.abortController.abort();
             }, OUTPUT_WATCHDOG_MS);

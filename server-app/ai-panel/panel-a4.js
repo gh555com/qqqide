@@ -126,38 +126,68 @@ async function _resolveProjectRoot(filePath) {
     return fallback2;
 }
 
-// ═══ 钩子 Q 文件索引：维护所有 AI 触碰过的文件列表 ═══
+// ═══ 钩子 Q 文件索引：分项目维护（辅项目各自独立，互不污染）═══
 // ★ run_command 捕获扫描时不再遍历全目录，只 stat 此索引中的文件
-var _fileIndex = {}; // {filePath: true}
-var _fileIndexDirty = false;
+var _fileIndex = {}; // {projectRoot: {filePath: true}}
+var _fileIndexDirty = {}; // {projectRoot: true}
 var _fileIndexBusy = false;
 
 function _a4UpdateFileIndex(filePath) {
     if (!filePath) return;
     var normalized = filePath.replace(/\\/g, '/');
-    if (!_fileIndex[normalized]) {
-        _fileIndex[normalized] = true;
-        _fileIndexDirty = true;
+    // 缓存命中 → 同步（常见：同一文件在同一楼层被多次编辑）
+    var cached = _projectRootCache[filePath];
+    if (cached) {
+        if (!_fileIndex[cached]) _fileIndex[cached] = {};
+        if (!_fileIndex[cached][normalized]) {
+            _fileIndex[cached][normalized] = true;
+            _fileIndexDirty[cached] = true;
+        }
+        return;
     }
+    // 缓存未命中 → 异步解析（首次遇见的文件）
+    _resolveProjectRoot(filePath).then(function (root) {
+        if (!root) return;
+        if (!_fileIndex[root]) _fileIndex[root] = {};
+        if (!_fileIndex[root][normalized]) {
+            _fileIndex[root][normalized] = true;
+            _fileIndexDirty[root] = true;
+        }
+    }).catch(function () { });
 }
 
 async function _a4PersistFileIndex() {
-    if (!_fileIndexDirty || _fileIndexBusy) return;
-    _fileIndexDirty = false;
+    if (_fileIndexBusy) return;
+    // 收集 dirty 项目
+    var dirtyRoots = Object.keys(_fileIndexDirty).filter(function (r) { return _fileIndexDirty[r]; });
+    if (dirtyRoots.length === 0) return;
     _fileIndexBusy = true;
     var bridge = getBridge();
     if (!bridge || !bridge.fs) { _fileIndexBusy = false; return; }
-    var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
-        ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
-    if (!root) { _fileIndexBusy = false; return; }
-    var indexPath = root + '/qqq/timeline/file-index.json';
-    var list = Object.keys(_fileIndex);
-    try {
-        await bridge.fs.write(indexPath, JSON.stringify(list));
-    } catch (_) { }
+    for (var di = 0; di < dirtyRoots.length; di++) {
+        var root = dirtyRoots[di];
+        _fileIndexDirty[root] = false;
+        var indexPath = root + '/qqq/timeline/file-index.json';
+        var files = _fileIndex[root] ? Object.keys(_fileIndex[root]) : [];
+        try { await bridge.fs.write(indexPath, JSON.stringify(files)); } catch (_) { }
+    }
     _fileIndexBusy = false;
     // 如果在写入期间又有新文件加入，补写一次
-    if (_fileIndexDirty) _a4PersistFileIndex();
+    var stillDirty = Object.keys(_fileIndexDirty).some(function (r) { return _fileIndexDirty[r]; });
+    if (stillDirty) _a4PersistFileIndex();
+}
+
+function _a4ClearFileIndex() {
+    var bridge = getBridge();
+    // 清除所有已打开项目的索引
+    var roots = Object.keys(_fileIndex);
+    for (var ri = 0; ri < roots.length; ri++) {
+        var root = roots[ri];
+        var indexPath = root + '/qqq/timeline/file-index.json';
+        if (bridge && bridge.fs) bridge.fs.write(indexPath, '[]').catch(function () { });
+    }
+    _fileIndex = {};
+    _fileIndexDirty = {};
 }
 
 // ★ 页面关闭前强制写盘
@@ -585,6 +615,7 @@ async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum) {
 // ═══ 清理当前 floor 快照（floor 结束时调用） ═══
 function _a4ClearCurrent(ag) {
     if (ag) ag._a4Snapshots = {};
+    _a4ClearFileIndex(); // ★ 战斗结束，清掉文件索引
 }
 
 // ═══════════════════════════════════════════════════════════════
