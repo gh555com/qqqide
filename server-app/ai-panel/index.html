@@ -114,13 +114,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-drop-body{/* max-height/overflow 已移至父 .quest-drop */}
 /* q3 floor 导航行已删除（card-pool 架构）*/
 #messages-wrap{position:relative;min-height:0;overflow:hidden;display:flex;flex-direction:column}
-#messages{overflow-y:auto;overflow-x:hidden;padding:12px;scrollbar-width:thin;min-height:0;position:relative;flex:1}
-#messages::-webkit-scrollbar{width:5px}
-#messages::-webkit-scrollbar-track{background:transparent}
-#messages::-webkit-scrollbar-thumb{background:rgba(203,75,22,0.60);border-radius:0}
-#messages::-webkit-scrollbar-thumb:hover{background:rgba(220,90,35,0.60)}
-[data-theme="dark"] #messages::-webkit-scrollbar-thumb{background:rgba(255,80,60,0.60)}
-[data-theme="dark"] #messages::-webkit-scrollbar-thumb:hover{background:rgba(255,110,80,0.60)}
+#messages{overflow-y:auto;overflow-x:hidden;padding:12px 13px 12px 8px;min-height:0;position:relative;flex:1;scrollbar-width:none}
+#messages::-webkit-scrollbar{display:none;width:0;height:0}
 .msg{margin-bottom:10px;line-height:1.5;content-visibility:auto;contain-intrinsic-size:auto 200px}
 /* 用户消息气泡 */
 .msg-user{background:#f8e0e0;border-radius:8px;padding:8px 12px;overflow-x:hidden;overflow-wrap:break-word;word-break:break-word}

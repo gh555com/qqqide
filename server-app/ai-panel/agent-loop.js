@@ -204,6 +204,12 @@ var AgentLoop = (function () {
         this._floorKilled = false;
         this._floorCompletedCleanly = false;
         this._floorOnErrorCalled = false;
+        // ★ 错误诊断探针（用于构建"继续"消息中的中断原因）
+        this._exitReason = '';           // 'ok'|'http_502'|'http_503'|'http_429'|'http_402'|'fetch_error'|'watchdog_stream'|'watchdog_output'|'deadline'|'stall'|'max_iter'|'unknown'
+        this._lastHttpStatus = 0;        // 最后一次 HTTP 状态码
+        this._lastFetchError = '';       // 最后一次 fetch 错误消息
+        this._lastSseError = '';         // 最后一次 SSE 服务端错误
+        this._abortSource = '';          // 'stream_watchdog'|'output_watchdog'|'fetch_deadline'|'user_kill'|'guide'|''
     }
 
     // ---- 中止 ----
@@ -218,10 +224,53 @@ var AgentLoop = (function () {
         }
     };
 
-    // ═══ 修复断裂的 tool_calls（启动自愈） ═══
-    // 要求 assistant tool_calls 后必须紧跟 tool 消息。
-    // 扫描 conversation，砍掉孤立的 assistant tool_calls（后面缺 tool 配对），
-    // 以及孤立的 tool 消息（前面缺 assistant tool_calls）。
+    // ═══ 构建中断诊断消息（用于"继续"按钮） ═══
+    // 只包含 AI 无法从上下文推断的实际错误原因，不含楼层号/耗时/工具次数等冗余信息
+    AgentLoop.prototype._buildDiagnosis = function () {
+        var parts = [];
+        // 主因
+        switch (this._exitReason) {
+            case 'http_502': parts.push('服务器返回502(Bad Gateway)'); break;
+            case 'http_503': parts.push('服务器返回503(Service Unavailable)'); break;
+            case 'http_429': parts.push('请求过于频繁(429限流)'); break;
+            case 'http_400': parts.push('AI接口返回400(请求格式错误，可能是孤儿tool消息)'); break;
+            case 'http_422': parts.push('AI接口返回422(参数错误)'); break;
+            case 'http_402': parts.push('ge余额不足(402)'); break;
+            case 'fetch_error':
+                var _fe = this._lastFetchError || '连接中断';
+                // 精简常见错误
+                if (_fe === 'Failed to fetch') _fe = '网络连接失败(Failed to fetch)';
+                else if (_fe.indexOf('network error') >= 0) _fe = '网络错误(network error)';
+                else if (_fe.indexOf('Timeout') >= 0) _fe = '请求超时';
+                parts.push('网络请求失败: ' + _fe);
+                break;
+            case 'watchdog_stream': parts.push('SSE流90秒无数据(连接假死)'); break;
+            case 'watchdog_output': parts.push('AI超过10分钟无产出(可能陷入循环)'); break;
+            case 'deadline': parts.push('请求90秒无响应(超时)'); break;
+            case 'stall': parts.push('连续多次工具调用无进展'); break;
+            case 'max_iter': parts.push('达到最大迭代次数(200)'); break;
+            default:
+                if (this._lastHttpStatus) parts.push('HTTP ' + this._lastHttpStatus + '错误');
+                break;
+        }
+        // 补充：服务端SSE错误消息
+        if (this._lastSseError && this._exitReason !== 'http_502' && this._exitReason !== 'http_503') {
+            parts.push('服务端: ' + this._lastSseError);
+        }
+        // 补充：连续失败次数
+        if (this._consecutiveFetchErrors > 1) {
+            parts.push('连续' + this._consecutiveFetchErrors + '次网络失败');
+        }
+        // 补充：请求体过大
+        if (this._lastApiPromptTokens > 900000) {
+            parts.push('上下文过大(' + Math.round(this._lastApiPromptTokens / 1000) + ' k tokens, 接近1M上限)');
+        }
+        return parts.join('; ') || '未知原因';
+    };
+
+    // ═══ 修复断裂的 tool_calls（启动自愈，双向扫描） ═══
+    // DeepSeek API 硬要求：tool 消息前必须有 assistant tool_calls，tool_calls 后必须有足够 tool
+    // 扫描 conversation，砍掉所有孤立的配对（任一方向残缺都移除整组）
     AgentLoop.prototype._repairOrphanedToolCalls = function () {
         var self = this;
         var conv = self.conversation;
@@ -230,7 +279,7 @@ var AgentLoop = (function () {
         // 多轮扫描直到干净（修复一处可能暴露上一处问题）
         for (var pass = 0; pass < 5; pass++) {
             var cutAt = -1;
-            // 从前往后扫：找 assistant tool_calls，验后面的 tool 数量
+            // 方向 A：assistant tool_calls 缺 tool 消息 → 移除 assistant + 残缺 tool
             for (var i = 0; i < conv.length; i++) {
                 var msg = conv[i];
                 if (msg && msg.role === 'assistant' && msg.tool_calls && Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
@@ -242,21 +291,37 @@ var AgentLoop = (function () {
                         else break;
                     }
                     if (actual < expected) {
-                        // 残缺：移除 assistant + 后面跟的 tool 消息（若有）
                         var removeCount = toolSeqEnd - i;
                         conv.splice(i, removeCount);
                         removedTotal += removeCount;
-                        cutAt = i;  // 从修复位置继续扫描
+                        cutAt = i;
                         break;
                     }
-                    // 完整 → 跳过整个 tool 序列
                     i = toolSeqEnd - 1;
                 }
             }
-            if (cutAt < 0) break;  // 本轮无修复，干净
+            if (cutAt >= 0) continue;  // 本轮有修复，重新扫描
+            // 方向 B：tool 消息缺前置 assistant tool_calls → 移除孤立的 tool
+            for (var k = 0; k < conv.length; k++) {
+                var m2 = conv[k];
+                if (m2 && m2.role === 'tool') {
+                    var prev = k > 0 ? conv[k - 1] : null;
+                    // 前一条不是 assistant with tool_calls → 孤立的 tool
+                    if (!prev || prev.role !== 'assistant' || !prev.tool_calls || !Array.isArray(prev.tool_calls)) {
+                        var end = k + 1;
+                        // 连续 tool 消息全砍（它们都缺前置 tool_calls）
+                        while (end < conv.length && conv[end] && conv[end].role === 'tool') end++;
+                        conv.splice(k, end - k);
+                        removedTotal += end - k;
+                        cutAt = k;
+                        break;
+                    }
+                }
+            }
+            if (cutAt < 0) break;  // 两个方向都无修复，干净
         }
         if (removedTotal > 0) {
-            self._log('🔧 repaired: removed ' + removedTotal + ' orphaned msgs (broken tool_calls/tool pairs)');
+            self._log('🔧 repaired: removed ' + removedTotal + ' orphaned msgs (broken tool_calls/tool pairs, bidirectional)');
         }
     };
 
@@ -593,8 +658,8 @@ var AgentLoop = (function () {
                 });
 
                 if (!response) {
-                    // 502/503 自动修复：轻量砍掉断裂的 tool_calls，继续当前循环重试
-                    if ((self._lastGatewayError === 502 || self._lastGatewayError === 503) && !opts._repairAttempted) {
+                    // 400/422/502/503 自动修复：轻量砍掉断裂的 tool_calls，继续当前循环重试
+                    if ((self._lastGatewayError === 400 || self._lastGatewayError === 422 || self._lastGatewayError === 502 || self._lastGatewayError === 503) && !opts._repairAttempted) {
                         self._lastGatewayError = 0;
                         self._repairOrphanedToolCalls();
                         self._resetStallCounter();
@@ -692,6 +757,30 @@ var AgentLoop = (function () {
                                 _rawContent: r2.rawContent,
                                 _floor: self._ctx.totalFloors
                             });
+                        }
+                    }
+
+                    // ★ Treasures 闭环清理：刚执行的 tool call 完成的工作 → 标记对应 treasure 为 done
+                    if (_execResult && _execResult.allResults && self._ctx.treasures.length > 0) {
+                        var _execNames = [];
+                        for (var en = 0; en < _execResult.allResults.length; en++) {
+                            if (_execResult.allResults[en].call && _execResult.allResults[en].call.name) {
+                                _execNames.push(_execResult.allResults[en].call.name.toLowerCase());
+                            }
+                        }
+                        if (_execNames.length > 0) {
+                            for (var tv = 0; tv < self._ctx.treasures.length; tv++) {
+                                var _tv = self._ctx.treasures[tv];
+                                if (_tv.done) continue;
+                                var _tvLower = (_tv.content || '').toLowerCase();
+                                for (var en2 = 0; en2 < _execNames.length; en2++) {
+                                    if (_tvLower.indexOf(_execNames[en2]) >= 0) {
+                                        _tv.done = true;
+                                        _tv.doneAt = self._ctx.totalFloors;
+                                        break;
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -988,7 +1077,9 @@ var AgentLoop = (function () {
 
     // ---- 网关调用 ----
     AgentLoop.prototype._callGateway = async function (messages, opts) {
+
         var self = this;
+        self._lastGatewayError = 0;  // ★ 重置，防上一 floor 错误码污染 _exitReason
         var onToken = opts.onToken;
         var onReasoning = opts.onReasoning;
         var onError = opts.onError;
@@ -1059,14 +1150,12 @@ var AgentLoop = (function () {
                 break;
             }
         }
-        var dynamicCtx = self._buildDynamicContext(lastUserQuery);
+        var dynamicCtx = (typeof self._buildDynamicContext === 'function') ? self._buildDynamicContext(lastUserQuery) : '';
         if (dynamicCtx) {
             apiMessages = messages.slice();
-            var lastIdx = apiMessages.length - 1;
-            if (lastIdx >= 0 && apiMessages[lastIdx] && apiMessages[lastIdx].role === 'user') {
-                var origContent = apiMessages[lastIdx].content;
-                apiMessages[lastIdx] = { role: 'user', content: origContent + '\n\n' + dynamicCtx };
-            }
+            // ★ 压缩历史作为独立 system 消息插在 persistent 消息之后、真实对话之前
+            var insertIdx = self._persistentCount || 0;
+            apiMessages.splice(insertIdx, 0, { role: 'system', content: dynamicCtx, _dynamic: true });
         }
 
         // 语言检测已移至 a1 审计按钮（后翻译方案），此处不再强制注入语言指令
@@ -1197,10 +1286,14 @@ var AgentLoop = (function () {
                             continue;
                         } else {
                             // 已在备用线路 → 无计可施
+                            self._exitReason = 'http_' + resp.status;
                             onError(friendly + '，所有线路均不可达');
                         }
                         return null;
                     }
+                    // ★ 其他 HTTP 错误（401/402/429等）
+                    self._lastHttpStatus = resp.status;
+                    self._exitReason = 'http_' + resp.status;
                     clearTimeout(_fetchDeadline);
                     onError(friendly);
                     return null;
@@ -1230,6 +1323,27 @@ var AgentLoop = (function () {
                     _result._streamMs = _result._streamMs || 0;
                 }
                 self._consecutiveFetchErrors = 0;  // ★ 整个 fetch+SSE 周期成功后才清零
+                // ★ Token 校准：对比本地估算和 API 精确值，自动修正 CHAR_PER_TOKEN
+                if (_result && _result._usage && _result._usage.prompt_tokens > 0 && typeof ContentGateway !== 'undefined') {
+                    var _estChars = 0;
+                    for (var _ei = 0; _ei < apiMessages.length; _ei++) {
+                        var _em = apiMessages[_ei];
+                        if (!_em) continue;
+                        try {
+                            if (typeof _em.content === 'string') _estChars += _em.content.length;
+                            if (_em.tool_calls) _estChars += JSON.stringify(_em.tool_calls).length;
+                        } catch (_) { }
+                    }
+                    if (_estChars > 0) {
+                        var _estTokens = _estChars / ContentGateway.CHAR_PER_TOKEN;
+                        var _actTokens = _result._usage.prompt_tokens;
+                        var _ratio = _estTokens / _actTokens;
+                        if (Math.abs(_ratio - 1) > 0.20) {
+                            var _newCPT = ContentGateway.CHAR_PER_TOKEN / _ratio;
+                            ContentGateway.CHAR_PER_TOKEN = Math.round(_newCPT * 100) / 100;
+                        }
+                    }
+                }
                 // ★ 兜底：尝试主线路成功 → 正式切回
                 if (_gwTryingPrimary && typeof _gwSwitch === 'function') {
                     _gwSwitch(false);  // 切回主线路 + qoast 提示
@@ -1245,6 +1359,11 @@ var AgentLoop = (function () {
                         return { _abortedForGuide: true };
                     }
                     // ★ 非引导中断 = 看门狗/超时/网络问题 → 通知用户
+                    // 设置探针：区分 abort 来源
+                    if (self._abortSource === 'stream_watchdog') self._exitReason = 'watchdog_stream';
+                    else if (self._abortSource === 'output_watchdog') self._exitReason = 'watchdog_output';
+                    else if (self._abortSource === 'fetch_deadline') self._exitReason = 'deadline';
+                    else self._exitReason = 'unknown';
                     onError('⚠️ 连接超时，对话已保存。');
                     return null;
                 }
@@ -1270,6 +1389,12 @@ var AgentLoop = (function () {
                 // 重试耗尽 — 先尝试切换线路，最后手段才 reload
                 clearTimeout(_fetchDeadline);
                 self._consecutiveFetchErrors = (self._consecutiveFetchErrors || 0) + 1;
+                self._lastFetchError = msg;
+                if (self._lastGatewayError) {
+                    self._exitReason = 'http_' + self._lastGatewayError;
+                } else {
+                    self._exitReason = 'fetch_error';
+                }
                 self._log('✗ fetch exhausted: ' + msg + ' (consecutive=' + self._consecutiveFetchErrors + ')');
 
                 var _canSwitchUrl = false;
@@ -1428,7 +1553,7 @@ var AgentLoop = (function () {
         if (_sseError) {
             var _errMsg = _sseError.message || 'Server error (' + (_sseError.code || 500) + ')';
             self._log('✗ SSE error event: ' + _errMsg);
-            if (_sseError.code === 502 || _sseError.code === 503) {
+            if (_sseError.code === 400 || _sseError.code === 422 || _sseError.code === 502 || _sseError.code === 503) {
                 self._lastGatewayError = _sseError.code;
             }
             // 如果已有部分内容，仍然返回（不丢数据）
@@ -1607,6 +1732,11 @@ var AgentLoop = (function () {
         }
         return true;
     };
+
+    // ★ 兜底：若 agent-context.js 未加载，提供空壳防全站崩溃
+    if (!AgentLoop.prototype._buildDynamicContext) {
+        AgentLoop.prototype._buildDynamicContext = function () { return ''; };
+    }
 
     return AgentLoop;
 })();

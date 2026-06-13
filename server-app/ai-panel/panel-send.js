@@ -524,23 +524,22 @@ async function sendMessage() {
             _resendLink.onclick = function(e) {
                 e.preventDefault();
                 _resendLink.onclick = null;
-                _resendLink.textContent = '\u6b63\u5728\u91cd\u65b0\u53d1\u9001...';
-                // 取回用户原话
+                _resendLink.textContent = '正在发送...';
+                // ★ 不滚 conversation、不删 DOM、不减楼层
+                //    模拟用户用原话 + 诊断原因发送一条"继续"消息
                 var _userText = (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '';
-                // 回滚对话到断头楼层之前
-                if (typeof _capturedAgent._floorStartIdx === 'number') {
-                    _capturedAgent.conversation.length = _capturedAgent._floorStartIdx;
-                }
-                _capturedAgent._ctx.totalFloors = Math.max(0, (_capturedAgent._ctx.totalFloors || 1) - 1);
-                // 清理 UI：移除断头楼层的用户消息 + AI 在建 div + 本错误条
-                if (userMsgEl && userMsgEl.parentNode) userMsgEl.remove();
-                if (aiDiv && aiDiv.parentNode) aiDiv.remove();
+                var _diag = '';
+                try { _diag = (_capturedAgent._buildDiagnosis && _capturedAgent._buildDiagnosis()) || ''; } catch(__) {}
+                var _continueMsg = '由于 ' + (_diag || '未知原因') + ' 导致会话中断，请继续。';
+                // ★ 原用户输入 + 中断诊断一起体现
+                var _fullMsg = _continueMsg + '\n\n[原始请求]: ' + _userText;
+                // 清理错误条（不移除用户消息/AI在建div，保持上下文完整）
                 if (_errDiv.parentNode) _errDiv.remove();
-                // 恢复输入框并重发
-                $input.value = _userText;
+                // 模拟用户发送
+                $input.value = _fullMsg;
                 $input.focus();
                 sendMessage();
-            };
+            }
             _errDiv.appendChild(_resendLink);
             _appendToCard(_errDiv);
             // ★ 持久化断头楼层的时钟数据（否则重启窗口后 A3 归零）

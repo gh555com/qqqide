@@ -31,22 +31,7 @@
   let _hoverTimer = null;
   function cancelHover() { if (_hoverTimer) { clearTimeout(_hoverTimer); _hoverTimer = null; } }
 
-  // ★ 注入下拉/子菜单滚动条：3px 纯红 80%透明，无轨道
-  (function _injectScrollbarStyle() {
-    if (document.getElementById('aiv-scrollbar-style')) return;
-    var style = document.createElement('style');
-    style.id = 'aiv-scrollbar-style';
-    style.textContent = [
-      '.aiv-dropdown::-webkit-scrollbar, .aiv-submenu::-webkit-scrollbar { width:3px; }',
-      '.aiv-dropdown::-webkit-scrollbar-track, .aiv-submenu::-webkit-scrollbar-track { background:transparent; border:none; }',
-      '.aiv-dropdown::-webkit-scrollbar-thumb, .aiv-submenu::-webkit-scrollbar-thumb {',
-      '  background:rgba(255,0,0,0.80); border:none; border-radius:0; min-height:24px;',
-      '}',
-      '.aiv-dropdown::-webkit-scrollbar-thumb:hover, .aiv-submenu::-webkit-scrollbar-thumb:hover { background:rgba(255,0,0,0.95); }',
-      '.aiv-dropdown::-webkit-scrollbar-corner, .aiv-submenu::-webkit-scrollbar-corner { background:transparent; }',
-    ].join('\n');
-    (document.head || document.documentElement).appendChild(style);
-  })();
+  // 原生滚动条由 qh 真理机器接管隐藏，此处不再注入
 
   // ---- helpers ----
   function basename(p) {
@@ -355,10 +340,102 @@
     }
   }
 
+  // ---- 滚动容器包装：外层不滚 + 自定义变形滚动条（照抄 q3 Roam）----
+  function _wrapScrollContainer(outer, depth) {
+    // 外层禁止滚动（覆盖 CSS !important）
+    outer.style.setProperty('overflow-y', 'hidden', 'important');
+    outer.style.setProperty('overflow-x', 'hidden', 'important');
+    var inner = document.createElement('div');
+    inner.className = 'aiv-scroll-inner';
+    inner.style.cssText = 'width:100%; height:100%; overflow-y:auto; overflow-x:hidden;';
+    inner._depth = depth;
+    inner._direction = outer._direction; // 方向决策需要
+    inner._outer = outer;
+    outer._scroll = inner;
+    // 点击列表空白处 → 关闭当前列表弹出滴下级子菜单
+    inner.addEventListener('click', function (e) {
+      if (e.target !== inner) return;
+      if (outer._childSub) { closeSubmenuTree(outer._childSub); outer._childSub = null; }
+    });
+
+    // ★ 自定义变形滚动条（滑轨锚定在外层，同步内层滚动）
+    var sbOuter = document.createElement('div');
+    sbOuter.className = 'qh-scroll-track';
+    sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:2;';
+    var sbThumb = document.createElement('div');
+    sbThumb.className = 'qh-scroll-thumb';
+    function _qhCol() {
+      var dk = document.documentElement.getAttribute('data-theme') === 'dark';
+      return { c: dk ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)',
+               cH: dk ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.80)' };
+    }
+    var _co = _qhCol();
+    sbThumb.style.cssText = 'position:absolute; right:10px; width:2px; min-height:24px; border-radius:0; ' +
+      'background:' + _co.c + '; cursor:pointer; ' +
+      'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
+    sbOuter.addEventListener('mouseenter', function () {
+      sbThumb.style.width = '12px'; sbThumb.style.right = '0px'; sbThumb.style.background = _qhCol().cH;
+    });
+    sbOuter.addEventListener('mouseleave', function () {
+      sbThumb.style.width = '2px'; sbThumb.style.right = '10px'; sbThumb.style.background = _qhCol().c;
+    });
+    function _syncSB() {
+      var sh = inner.scrollHeight, ch = inner.clientHeight;
+      if (sh <= ch) { sbThumb.style.display = 'none'; return; }
+      sbThumb.style.display = '';
+      var thumbH = Math.max(24, (ch / sh) * ch);
+      var maxTop = ch - thumbH;
+      sbThumb.style.height = thumbH + 'px';
+      sbThumb.style.top = ((inner.scrollTop / (sh - ch)) * maxTop) + 'px';
+    }
+    inner.addEventListener('scroll', _syncSB);
+    sbOuter.addEventListener('mousedown', function (e) {
+      if (e.target === sbThumb || e.button !== 0) return;
+      var sh = inner.scrollHeight, ch = inner.clientHeight;
+      if (sh <= ch) return;
+      var ratio = (e.clientY - sbOuter.getBoundingClientRect().top) / ch;
+      inner.scrollTop = Math.max(0, Math.min(sh - ch, Math.round(ratio * (sh - ch))));
+      e.preventDefault();
+    });
+    var _dr = false, _dsY = 0, _dsS = 0;
+    sbThumb.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
+      _dr = true; _dsY = e.clientY; _dsS = inner.scrollTop;
+      e.preventDefault(); e.stopPropagation();
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!_dr) return;
+      var sh = inner.scrollHeight, ch = inner.clientHeight;
+      if (sh <= ch) return;
+      var thumbH = Math.max(24, (ch / sh) * ch);
+      var ratio = (e.clientY - _dsY) / (ch - thumbH);
+      inner.scrollTop = Math.max(0, Math.min(sh - ch, _dsS + ratio * (sh - ch)));
+    });
+    document.addEventListener('mouseup', function () { _dr = false; });
+    setTimeout(_syncSB, 50);
+    var _sbObs = new MutationObserver(function () { setTimeout(_syncSB, 30); });
+    _sbObs.observe(inner, { childList: true, subtree: true });
+
+    sbOuter.appendChild(sbThumb);
+    outer.appendChild(sbOuter);
+    outer.appendChild(inner);
+    return inner;
+  }
+
+  // ---- 层级水印：列表底部居中显示深度编号（悬浮层，不随列表滚动）----
+  function _stampDepth(container, depth) {
+    var stamp = document.createElement('div');
+    stamp.style.cssText =
+      'position:absolute; bottom:12px; left:50%; transform:translateX(-50%); ' +
+      'font-size:64px; font-weight:900; line-height:1; ' +
+      'color:var(--text-primary); opacity:0.90; pointer-events:none; ' +
+      'z-index:1; user-select:none; white-space:nowrap;';
+    stamp.textContent = String(depth);
+    container.appendChild(stamp);
+  }
+
   // ---- render: directory tree dropdown ----
   function showDropdown(blockEl, project) {
-    // 窗口无焦点时跳过——避免下拉刚开就被轮询关闭闪烁
-    if (!document.hasFocus()) return;
     closeDropdown();
     if (!blockEl.isConnected) return;
     _activeBlockEl = blockEl;
@@ -367,6 +444,7 @@
     if (rect.width === 0 && rect.height === 0) return;
     const dd = document.createElement('div');
     dd.className = 'aiv-dropdown';
+    dd._depth = 1;
     const topPx = rect.bottom;
     dd.style.cssText =
       'position:fixed; z-index:99999; ' +
@@ -375,7 +453,9 @@
 
     blockEl.classList.add('aiv-block-active');
 
-    loadDirInto(dd, project.path);
+    var ddScroll = _wrapScrollContainer(dd, 1);
+    loadDirInto(ddScroll, project.path);
+    _stampDepth(dd, 1);
     document.body.appendChild(dd);
     activeDropdown = dd;
   }
@@ -423,24 +503,29 @@
       label.style.cssText = 'overflow:hidden; text-overflow:ellipsis;';
       row.appendChild(icon); row.appendChild(label);
 
+      row._hovered = false;
       row.addEventListener('mouseenter', () => {
         if (!ent.isDir) return;
-        // 关闭旧子菜单后，150ms 防抖再展开新子菜单（防止光标掠过时惊群）
-        if (parentEl._childSub) {
-          closeSubmenuTree(parentEl._childSub);
-          parentEl._childSub = null;
-        }
+        // 150ms 防抖：杀旧计时器，标 hovered，起新计时器
         cancelHover();
+        row._hovered = true;
         var depth = (parentEl._depth || 0) + 1;
         var subPath = pathJoin(dirPath, ent.name);
+        var outer = parentEl._outer || parentEl; // inner scroll wrapper → outer container
         _hoverTimer = setTimeout(() => {
           _hoverTimer = null;
+          if (!row._hovered) return; // 光标已离开，跳过
+          if (outer._childSub) { closeSubmenuTree(outer._childSub); }
+          outer._childSub = null;
           const sub = openSubmenu(row, subPath, depth);
           if (sub) {
             sub._justOpened = Date.now();
-            parentEl._childSub = sub;
+            outer._childSub = sub;
           }
         }, 150);
+      });
+      row.addEventListener('mouseleave', () => {
+        row._hovered = false;
       });
 
       const fullPath = pathJoin(dirPath, ent.name);
@@ -505,33 +590,35 @@
       }
     }
     sub._direction = goRight;
-    // 定位贴父容器边缘（消除行宽≠容器宽造成的空隙）
-    var leftX;
+    // 背景色交替：右跳主色，左跳辅色（亮/暗主题各自成对），区分展开方向
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    sub.style.setProperty('background', goRight ? (isDark ? '#1e211e' : '#e7e4c2') : (isDark ? '#232a23' : '#ede4cf'), 'important');
+    // 定位：右跳贴父容器右边缘，左跳用 CSS right 贴父容器左边缘（消除 estW≠实际宽度造成的空隙）
     if (goRight) {
-      leftX = parentEdge.right + gap;
+      var leftX = parentEdge.right + gap;
       if (leftX + estW > window.innerWidth) leftX = window.innerWidth - estW;
+      sub.style.left = leftX + 'px';
+      sub.style.right = 'auto';
     } else {
-      leftX = parentEdge.left - estW - gap;
-      if (leftX < 0) leftX = 0;
+      sub.style.right = (window.innerWidth - parentEdge.left) + 'px';
+      sub.style.left = 'auto';
+      // 如果左侧空间不够，退化为 left:0（不溢出屏幕）
+      if (parentEdge.left < estW) {
+        sub.style.left = '0px';
+        sub.style.right = 'auto';
+      }
     }
-    console.log('[aiv-gap] depth:', sub._depth,
-      '| goRight:', goRight,
-      '| parentEdge.left:', parentEdge.left.toFixed(0),
-      'parentEdge.right:', parentEdge.right.toFixed(0),
-      '| rowRect.left:', rect.left.toFixed(0),
-      'rowRect.right:', rect.right.toFixed(0),
-      '| leftX:', leftX.toFixed(0),
-      '| winW:', window.innerWidth);
-    sub.style.left = leftX + 'px';
     sub.style.top = rootTop + 'px';
 
     // breadcrumb: mark the parent row so the path stays highlighted
     rowEl.classList.add('aiv-breadcrumb');
     sub._parentRow = rowEl;
 
+    var subScroll = _wrapScrollContainer(sub, sub._depth);
+    _stampDepth(sub, sub._depth);
     document.body.appendChild(sub);
     activeSubmenus.push(sub);
-    loadDirInto(sub, dirPath);
+    loadDirInto(subScroll, dirPath);
     return sub;
   }
 
@@ -604,8 +691,10 @@
     block.appendChild(rmBtn);
 
     // hover → 150ms 防抖后展开下拉（防止光标掠过误触 + 限制 readdir 频率）
+    // 仅窗口有焦点时响应 hover，无焦点时靠 click 触发
     var _blockHoverTimer = null;
     block.addEventListener('mouseenter', () => {
+      if (!document.hasFocus()) return;
       if (_blockHoverTimer) return; // 已在计时中
       _blockHoverTimer = setTimeout(() => {
         _blockHoverTimer = null;
@@ -614,6 +703,11 @@
     });
     block.addEventListener('mouseleave', () => {
       if (_blockHoverTimer) { clearTimeout(_blockHoverTimer); _blockHoverTimer = null; }
+    });
+    // 光标左键点击 → 立即展开下拉（不防抖，窗口有无焦点均可）
+    block.addEventListener('click', () => {
+      if (_blockHoverTimer) { clearTimeout(_blockHoverTimer); _blockHoverTimer = null; }
+      showDropdown(block, proj);
     });
 
     return block;
@@ -630,9 +724,8 @@
 
     block.appendChild(plus);
 
-    // click → 原生对话框选择新文件夹
+    // 光标左键点击 → 原生对话框选择新文件夹（有无焦点均可）
     block.addEventListener('click', async (e) => {
-      // 先关闭可能已打开的下拉（最近文件夹等），再弹出原生对话框
       closeDropdown();
       if (_activeBlockEl) { _activeBlockEl.classList.remove('aiv-block-active'); _activeBlockEl = null; }
       const result = await bridge.dialog.open({
@@ -644,8 +737,9 @@
       }
     });
 
-    // hover → 即时展示最近 20 个主文件夹下拉
+    // hover → 即时展示最近 20 个主文件夹下拉（仅窗口有焦点时）
     block.addEventListener('mouseenter', () => {
+      if (!document.hasFocus()) return;
       _showRecentDropdown(block);
     });
 

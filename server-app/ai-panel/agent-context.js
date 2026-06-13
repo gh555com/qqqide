@@ -179,7 +179,19 @@
         var MAX_RETRIES = 3;
         for (var retry = 0; retry < MAX_RETRIES; retry++) {
             try {
-                var result = await self._callCompactAPI(basePrompt);
+                // ★ 最后一次重试：切到直连兜底（Worker 故障时仍能压缩）
+                var _savedUrl = null;
+                if (retry === MAX_RETRIES - 1 && typeof GATEWAY_URL_FALLBACK !== 'undefined' && GATEWAY_URL !== GATEWAY_URL_FALLBACK) {
+                    _savedUrl = GATEWAY_URL;
+                    GATEWAY_URL = GATEWAY_URL_FALLBACK;
+                    self.log('◆ Compact: last retry → fallback URL');
+                }
+                var result;
+                try {
+                    result = await self._callCompactAPI(basePrompt);
+                } finally {
+                    if (_savedUrl) GATEWAY_URL = _savedUrl;
+                }
                 if (!result || !result.parsed) throw new Error('parse_or_network_failed');
                 // accumulate compression timing: networkWait(ttfb) -> red, AI processing(rest) -> green
                 if (result.ttfbMs > 0 && self._floorTiming) {
@@ -201,11 +213,27 @@
                     continue;
                 }
 
-                // 存储
+                // 存储（含 Jaccard 关键词去重：≥0.7 覆盖旧事实）
                 if (parsed.facts && Array.isArray(parsed.facts)) {
                     for (var fi = 0; fi < parsed.facts.length; fi++) {
                         parsed.facts[fi].floor = self._ctx.totalFloors;
-                        self._ctx.facts.push(parsed.facts[fi]);
+                        var _nk = (parsed.facts[fi].keywords || []).map(function (k) { return k.toLowerCase(); });
+                        var _merged = false;
+                        for (var ej = 0; ej < self._ctx.facts.length; ej++) {
+                            var _ek = (self._ctx.facts[ej].keywords || []).map(function (k) { return k.toLowerCase(); });
+                            var _intersect = 0;
+                            var _union = new Set();
+                            for (var ik = 0; ik < _nk.length; ik++) { _union.add(_nk[ik]); }
+                            for (var jk = 0; jk < _ek.length; jk++) { _union.add(_ek[jk]); if (_nk.indexOf(_ek[jk]) >= 0) _intersect++; }
+                            if (_union.size > 0 && (_intersect / _union.size) >= 0.7) {
+                                self._ctx.facts[ej] = parsed.facts[fi];
+                                _merged = true;
+                                break;
+                            }
+                        }
+                        if (!_merged) {
+                            self._ctx.facts.push(parsed.facts[fi]);
+                        }
                     }
                     if (self._ctx.facts.length > MAX_FACTS)
                         self._ctx.facts = self._ctx.facts.slice(-MAX_FACTS);
@@ -251,6 +279,7 @@
                 },
                 signal: self.abortController ? self.abortController.signal : undefined,
                 body: JSON.stringify({
+                    model: 'flash',
                     messages: [
                         { role: 'system', content: 'You are a context compression engine. Extract structured facts and update narrative. Output ONLY valid JSON \u2014 no markdown, no explanation. Be concise and precise. Your output MUST fit within the token budget.' },
                         { role: 'user', content: prompt }
@@ -282,6 +311,13 @@
         }
     };// ═══ 构建动态上下文（注入到 API 消息末尾） ═══
     AgentLoop.prototype._buildDynamicContext = function (currentQuery) {
+        // ★ 缓存：narrative/facts/treasures 未变 → 跳过拼接（省字符串运算）
+        var _pendingTc = 0;
+        for (var ti0 = 0; ti0 < this._ctx.treasures.length; ti0++) { if (!this._ctx.treasures[ti0].done) _pendingTc++; }
+        var _sig = (this._ctx.narrative ? this._ctx.narrative.length : 0) + '|' + this._ctx.facts.length + '|' + _pendingTc;
+        if (_sig === this._ctx._dynCtxSig) return '';
+        this._ctx._dynCtxSig = _sig;
+
         var ctx = '[DYNAMIC CONTEXT]\n';
         if (this._ctx.narrative) {
             ctx += 'CONVERSATION CONTEXT (compressed history):\n' + this._ctx.narrative;
@@ -296,10 +332,17 @@
             }
         }
         if (this._ctx.treasures.length > 0) {
-            var recent = this._ctx.treasures.slice(-8);
-            ctx += '\n\nKEY DISCOVERIES:\n' + recent.map(function (t) {
-                return '💎 ' + t.content + ' [' + (t.urgency || 'later') + ']';
-            }).join('\n');
+            var _pending = [];
+            for (var ti = this._ctx.treasures.length - 1; ti >= 0 && _pending.length < 8; ti--) {
+                if (!this._ctx.treasures[ti].done) {
+                    _pending.unshift(this._ctx.treasures[ti]);
+                }
+            }
+            if (_pending.length > 0) {
+                ctx += '\n\nKEY DISCOVERIES:\n' + _pending.map(function (t) {
+                    return '💎 ' + t.content + ' [' + (t.urgency || 'later') + ']';
+                }).join('\n');
+            }
         }
         return ctx.trim() ? ctx : '';
     };

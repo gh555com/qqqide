@@ -657,7 +657,7 @@ function _a4GetNumericId(questId) {
 // ── 构建完整 floor payload（与 _saveAgentQuestData 同构）──
 function _a4BuildCompleteFloorPayload(ag) {
     var fullConv = ag.conversation ? ag.conversation.slice() : [];
-    var floorStartIdx = ag._floorStartIdx || 0;
+    var floorStartIdx = (typeof ag._floorStartIdx === "number") ? ag._floorStartIdx : fullConv.length;
     var floorConv = fullConv.slice(floorStartIdx);
 
     var payload = {

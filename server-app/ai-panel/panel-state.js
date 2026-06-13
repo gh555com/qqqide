@@ -7,6 +7,21 @@
 var questActiveId;
 var questUIStates = {};
 
+// ★ 前向声明：panel-quest-ui.js 定义，但 panel-floor.js / panel-quest.js 更早引用
+//   var 重复声明安全，真正逻辑在 panel-quest-ui.js 中用 Object.defineProperty 覆盖
+var _queueFallback = [];
+var _queuePaused = false;
+var _queueBusy = false;
+var _queueSaveTimer = null;
+var QUEUE_MAX = 50;
+Object.defineProperty(window, '_queue', {
+    get: function () { return _activeAgent ? _activeAgent._queue : _queueFallback; },
+    set: function (v) { if (_activeAgent) _activeAgent._queue = v; else _queueFallback = v; },
+    enumerable: true, configurable: true
+});
+// ★ 前向声明：panel-quest-ui.js 定义 renderQueueStrip，panel-quest.js 更早调用
+function renderQueueStrip() {}
+
 // State
 var _streamingFallback = false;
 var _sendingFallback = false;

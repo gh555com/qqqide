@@ -387,7 +387,7 @@ function updateCtxBtn() {
     // 取较大值：本地估算永远当前，DS 精确值可能不含上一轮 AI 回复
     var used = Math.max(est, dsTokens);
     var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
-    $ctxBtn.textContent = Math.round(used / 1000) + 'k';
+    $ctxBtn.textContent = Math.round(used / 1000) + ' k';
     $ctxBtn.style.setProperty('--ctx-pct', pct + '%');
 }
 $ctxBtn.onclick = function () {
@@ -472,16 +472,8 @@ $guideBtn.onclick = function () {
 };
 
 // \u2500\u2500 \u6392\u961f\u7cfb\u7edf \u2500\u2500
-var _queueFallback = [];
-var _queuePaused = false;
-var _queueBusy = false;
-var _queueSaveTimer = null;
-var QUEUE_MAX = 50;
-Object.defineProperty(window, '_queue', {
-    get: function () { return _activeAgent ? _activeAgent._queue : _queueFallback; },
-    set: function (v) { if (_activeAgent) _activeAgent._queue = v; else _queueFallback = v; },
-    enumerable: true, configurable: true
-});
+// ★ _queueFallback / _queuePaused 等已在 panel-state.js 中前向声明
+//   Object.defineProperty(window, '_queue', ...) 在 panel-state.js 已定义，此处仅做运行时可覆盖（configurable:true）
 
 function _debounceSaveQueue() {
     if (_queueSaveTimer) clearTimeout(_queueSaveTimer);
@@ -666,3 +658,86 @@ $queueBtn.onclick = function () {
     $input.focus();
     _debounceSaveQueue();
 };
+
+// ═══ qh 滚动条 — AI 面板聊天区（按标准文档接入）═══
+(function () {
+  var host = document.getElementById('messages-wrap');
+  var el = document.getElementById('messages');
+  if (!host || !el) return;
+
+  function _qhColors() {
+    var dk = document.documentElement.getAttribute('data-theme') === 'dark';
+    return { c: dk ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)',
+             cH: dk ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.80)' };
+  }
+
+  // 滑轨
+  var track = document.createElement('div');
+  track.style.cssText = 'position:absolute; right:-1px; top:0; bottom:0; width:11px; z-index:50;';
+
+  // 滑块
+  var thumb = document.createElement('div');
+  var co = _qhColors();
+  thumb.style.cssText = 'position:absolute; right:9px; width:2px; min-height:24px; border-radius:0; ' +
+    'background:' + co.c + '; cursor:pointer; ' +
+    'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
+
+  // hover 变粗贴边
+  track.addEventListener('mouseenter', function () {
+    thumb.style.width = '11px'; thumb.style.right = '-1px';
+    thumb.style.background = _qhColors().cH;
+  });
+  track.addEventListener('mouseleave', function () {
+    thumb.style.width = '2px'; thumb.style.right = '9px';
+    thumb.style.background = _qhColors().c;
+  });
+
+  // 同步
+  function sync() {
+    var sh = el.scrollHeight, ch = el.clientHeight;
+    if (sh <= ch) { thumb.style.display = 'none'; return; }
+    thumb.style.display = '';
+    var thumbH = Math.max(24, (ch / sh) * ch);
+    var maxTop = ch - thumbH;
+    thumb.style.height = thumbH + 'px';
+    thumb.style.top = ((el.scrollTop / (sh - ch)) * maxTop) + 'px';
+  }
+  el.addEventListener('scroll', sync);
+
+  // 滑轨点击跳转
+  track.addEventListener('mousedown', function (e) {
+    if (e.target === thumb || e.button !== 0) return;
+    var sh = el.scrollHeight, ch = el.clientHeight;
+    if (sh <= ch) return;
+    var ratio = (e.clientY - track.getBoundingClientRect().top) / ch;
+    el.scrollTop = Math.max(0, Math.min(sh - ch, Math.round(ratio * (sh - ch))));
+    e.preventDefault();
+  });
+
+  // 拖拽
+  var dragging = false, dragY = 0, dragS = 0;
+  thumb.addEventListener('mousedown', function (e) {
+    if (e.button !== 0) return;
+    dragging = true; dragY = e.clientY; dragS = el.scrollTop;
+    e.preventDefault(); e.stopPropagation();
+  });
+  document.addEventListener('mousemove', function (e) {
+    if (!dragging) return;
+    var sh = el.scrollHeight, ch = el.clientHeight;
+    if (sh <= ch) return;
+    var thumbH = Math.max(24, (ch / sh) * ch);
+    var ratio = (e.clientY - dragY) / (ch - thumbH);
+    el.scrollTop = Math.max(0, Math.min(sh - ch, dragS + ratio * (sh - ch)));
+  });
+  document.addEventListener('mouseup', function () { dragging = false; });
+
+  // 初始 + 内容变化
+  setTimeout(sync, 50);
+  var obs = new MutationObserver(function () { setTimeout(sync, 30); });
+  obs.observe(el, { childList: true, subtree: true });
+
+  track.appendChild(thumb);
+  host.appendChild(track);
+})();
+
+

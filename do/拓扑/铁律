@@ -357,3 +357,10 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - _lastApiPromptTokens 是 DS 返回的精确 prompt_tokens，per-floor 粒度，用则更新不用则过期。
   - Go 服务端第三层兜底: 序列化后按 len/3 估算，超限同样缩 max_tokens。
 
+§43 用户间隔绝不级联 — 一用户的脏数据不得杀死全体进程（2026-06-10 落地）
+  - 事故链: q54 孤立的 tool 消息 → DeepSeek 400 → Go stream writer nil dereference → panic → 进程崩溃 → 全体 502。
+  - JS 侧修复: _repairOrphanedToolCalls 双向扫描（A: tool_calls缺tool, B: tool缺tool_calls）。
+  - Go 侧双防御: ① sanitizeMessages() 转交前剔除孤立的 tool 消息；② stream writer goroutine 顶层 defer recover() 兜底，任何 panic 只关当前流不杀进程。
+  - 原则: 一名用户/一个请求的任何异常（格式错误、nil pointer、第三方 API 返回异常）最多影响该用户自己的请求，绝不波及其他用户。
+
+

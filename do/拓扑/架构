@@ -532,3 +532,14 @@ Git Goods — 第一方 git 操作
 · A 区面板: git 快速状态预览
 · Timeline 已完全迁出至独立 BrowserWindow (server-app/timeline/)
 · git.js 不再监听 A4 消息，不再有 timeline tab，只保留 git tab + panel
+
+
+qh 滚动真理机器 — 接入标准（非独立模块）
+--------------------------------------
+· 标准文档: do/拓扑/qh滚动真理机器接入标准.md
+· 核心铁律: 滚屏与滑轨必须是兄弟，同挂在一个不滚动父容器下
+· 接入方式: 按文档复制 ~90 行 JS（滑轨+滑块+同步+hover+拖拽+点击跳转）
+· 默认参数: 2px常态/12px展开/距右~10px/亮暗自适应
+· 效果清单: 常态细条 + hover变粗贴边 + 滑轨点击跳转 + 拖拽 + 内容自适应
+· 完整接入者: AI 视口下拉（ai-viewport.js _wrapScrollContainer）+ AI 面板聊天区（panel-quest-ui.js 末尾）
+· qh-scroll.js 已删除，原因: 无法做到对既有 DOM 零侵入的"一行接入"
