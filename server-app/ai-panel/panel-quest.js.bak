@@ -462,6 +462,7 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
             allTxtPath: ag._allTxtPath || '',
             fileStats: _computeFileStats(ag._houses, ag._a4Snapshots),
             clockTiming: ag._lastFloorTimingRecord || null,
+            treasures: ag._floorTreasures || [],
             createdAt: Date.now()
         };
 

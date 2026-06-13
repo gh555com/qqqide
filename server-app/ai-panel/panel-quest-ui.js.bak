@@ -362,6 +362,12 @@ function estimateTokens() {
                 dynText += '- [' + (facts[fi].type || '') + '] ' + (facts[fi].content || '') + '\n';
             }
         }
+        if (ctx.treasures && ctx.treasures.length > 0) {
+            var recentT = ctx.treasures.slice(-8);
+            dynText += '\n\nKEY DISCOVERIES:\n' + recentT.map(function (t) {
+                return '💎 ' + (t.content || '') + ' [' + (t.urgency || 'later') + ']';
+            }).join('\n');
+        }
         total += dynText.length / CHAR_PER_TOKEN;
     }
     var result = Math.round(total);

@@ -1464,6 +1464,44 @@
         return;
       }
 
+      // ★ Handle qqq-floor-indicator from AI panels — 将豆腐块渲染到父窗口（跨面板定位）
+      if (e.data.type === 'qqq-floor-indicator') {
+        if (e.data.action === 'hide') {
+          var _fi = document.getElementById('qqq-floor-indicator-host');
+          if (_fi) { _fi.style.opacity = '0'; _fi.classList.remove('visible'); }
+          return;
+        }
+        if (e.data.action === 'show' && e.data.html) {
+          var _fi2 = document.getElementById('qqq-floor-indicator-host');
+          if (!_fi2) {
+            // 注入豆腐块样式（一次性）
+            var _fis = document.getElementById('qqq-floor-indicator-style');
+            if (!_fis) {
+              _fis = document.createElement('style');
+              _fis.id = 'qqq-floor-indicator-style';
+              _fis.textContent = '#qqq-floor-indicator-host{transition:opacity 1s ease}#qqq-floor-indicator-host.visible{opacity:1}.floor-ind-tofu{background:var(--card-bg,#eee8d5);border:1px solid var(--border-color,#d3c6aa);border-radius:5px 0 0 5px;padding:6px 14px;font-family:Tahoma,sans-serif;font-weight:normal;font-size:13px;color:#1a1a1a;white-space:nowrap;box-shadow:0 0 8px rgba(0,0,0,0.25),0 2px 12px rgba(0,0,0,0.15);line-height:1.5;user-select:none}.floor-ind-needle{position:relative;width:30px;height:4px;flex-shrink:0;margin-left:-1px;filter:drop-shadow(0 0 6px rgba(0,0,0,0.3))}.floor-ind-needle::before{content:'';position:absolute;left:0;top:0;width:100%;height:100%;background:var(--text-primary,#7a7874);clip-path:polygon(0 0,100% 50%,0 100%);opacity:0.95}#qqq-floor-indicator-host.fl-ind-left{flex-direction:row-reverse}#qqq-floor-indicator-host.fl-ind-left .floor-ind-tofu{border-radius:0 5px 5px 0}#qqq-floor-indicator-host.fl-ind-left .floor-ind-needle{margin-left:0;margin-right:-1px}#qqq-floor-indicator-host.fl-ind-left .floor-ind-needle::before{clip-path:polygon(100% 0,0 50%,100% 100%)}';
+              document.head.appendChild(_fis);
+            }
+            _fi2 = document.createElement('div');
+            _fi2.id = 'qqq-floor-indicator-host';
+            _fi2.innerHTML = '<span class="floor-ind-tofu"></span><span class="floor-ind-needle"></span>';
+            _fi2.style.cssText = 'position:fixed;top:50%;z-index:99999;pointer-events:none;opacity:0;display:flex;align-items:center;transform:translateY(-50%)';
+            document.body.appendChild(_fi2);
+          }
+          var _pid2 = typeof e.data.panel === 'number' ? e.data.panel : 1;
+          if (_pid2 === 0) {
+            _fi2.style.left = 'auto'; _fi2.style.right = '10px';
+            _fi2.classList.add('fl-ind-left');
+          } else {
+            _fi2.style.left = '10px'; _fi2.style.right = 'auto';
+            _fi2.classList.remove('fl-ind-left');
+          }
+          _fi2.querySelector('.floor-ind-tofu').innerHTML = e.data.html;
+          _fi2.classList.add('visible');
+          return;
+        }
+      }
+
       // Handle generic RPC: iframe calls bridge methods
       // params 默认整体当成单一参数（数组也是单一参数，修�?diskFree 当前 bug�?      // 显式 spread: �?{ __spread: true, args: [...] } 才解包）
       if (e.data.type === 'qqq-rpc') {

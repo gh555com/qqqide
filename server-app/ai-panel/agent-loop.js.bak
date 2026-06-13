@@ -377,7 +377,7 @@ var AgentLoop = (function () {
         var removedTotal = 0;
         var _lastDirection = '';
         // 多轮扫描直到干净（修复一处可能暴露上一处问题）
-        for (var pass = 0; pass < 200; pass++) {  // ★ 跑至干净为止（长对话可能累积大量孤儿）
+        for (var pass = 0; pass < 100; pass++) {  // ★ 跑至干净为止（长对话可能累积大量孤儿）
             var cutAt = -1;
             // 方向 A：assistant tool_calls 缺 tool 消息 → 移除 assistant + 残缺 tool
             for (var i = 0; i < conv.length; i++) {
@@ -469,6 +469,7 @@ var AgentLoop = (function () {
     AgentLoop.prototype.clearConversation = function () {
         this.conversation = [];
         this._compressing = false;
+        this._ctx = { narrative: "", facts: [], treasures: [], totalFloors: 0 };
         this._visionCache.clear();
         this._houses = [];
         this._a4Snapshots = {};
@@ -478,6 +479,38 @@ var AgentLoop = (function () {
     };
 
     // ---- 结构化信封注入：校验 → A3渲染 + 上下文注入（去重，每条只写一次）-------
+    AgentLoop.prototype._injectEnvelope = function (envelope) {
+        if (!envelope || typeof envelope !== 'object') return;
+        if (!Array.isArray(envelope.treasures)) return;
+        this._injectedTreasureKeys = this._injectedTreasureKeys || {};
+        var validated = [];
+        for (var i = 0; i < envelope.treasures.length; i++) {
+            var t = envelope.treasures[i];
+            if (!t || typeof t.text !== 'string' || !t.text.trim()) continue;
+            var gain = Number(t.gain) || 0;
+            var cost = Number(t.cost) || 0;
+            var urgency = (t.urgency === 'urgent' || t.urgency === 'soon' || t.urgency === 'later') ? t.urgency : 'later';
+            var text = t.text.trim().slice(0, 300);
+            if ((gain - cost) >= 7) {
+                var done = (t.done === true || t.done === 'true');
+                validated.push({ text: text, gain: gain, cost: cost, urgency: urgency, done: done });
+                // 去重后注入上下文（每条 treasure 全局只写一次）
+                var key = text.slice(0, 80);
+                if (!this._injectedTreasureKeys[key]) {
+                    this._injectedTreasureKeys[key] = true;
+                    this._ctx.treasures.push({ floor: this._ctx.totalFloors, content: text, urgency: urgency });
+                    if (this._ctx.treasures.length > 30) this._ctx.treasures = this._ctx.treasures.slice(-30);
+                }
+            }
+        }
+        this._floorTreasures = validated;
+        if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
+        var aiDiv = this._activeAiDiv;
+        if (aiDiv && aiDiv._treasureBlock && typeof _renderTreasures === 'function') {
+            _renderTreasures(aiDiv._treasureBlock, validated);
+        }
+    };
+
     // ═══ 持久化 rules 刷新（版本追踪：只有源文件变化才重建） ═══
     AgentLoop.prototype._refreshRules = async function () {
         var self = this;
@@ -546,6 +579,7 @@ var AgentLoop = (function () {
         self._floorFree = false;
         self._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ((typeof _panelId !== 'undefined') ? ['_L', '_C', '_R'][_panelId] || '' : '');
         self._currentFloorSummary = (userContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+        self._floorTreasures = [];
         self._floorTiming = { networkMs: 0, deepseekMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (self._serverDrift || 0) };
         self._floorStartServerMs = self._floorTiming.floorStartServerMs;  // 兼容旧引用
 
@@ -850,6 +884,30 @@ var AgentLoop = (function () {
                         if (typeof self._writeFileLog === 'function') self._writeFileLog(_orphanMsg);
                         // 立即自愈：砍掉刚推入的不完整组
                         self._repairOrphanedToolCalls();
+                    }
+
+                    // ★ Treasures 闭环清理：刚执行的 tool call 完成的工作 → 标记对应 treasure 为 done
+                    if (_execResult && _execResult.allResults && self._ctx.treasures.length > 0) {
+                        var _execNames = [];
+                        for (var en = 0; en < _execResult.allResults.length; en++) {
+                            if (_execResult.allResults[en].call && _execResult.allResults[en].call.name) {
+                                _execNames.push(_execResult.allResults[en].call.name.toLowerCase());
+                            }
+                        }
+                        if (_execNames.length > 0) {
+                            for (var tv = 0; tv < self._ctx.treasures.length; tv++) {
+                                var _tv = self._ctx.treasures[tv];
+                                if (_tv.done) continue;
+                                var _tvLower = (_tv.content || '').toLowerCase();
+                                for (var en2 = 0; en2 < _execNames.length; en2++) {
+                                    if (_tvLower.indexOf(_execNames[en2]) >= 0) {
+                                        _tv.done = true;
+                                        _tv.doneAt = self._ctx.totalFloors;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // ═══ 无进展检测 ═══
@@ -1768,6 +1826,10 @@ var AgentLoop = (function () {
 
         var finalized = stripper.finalize();
 
+        // 结构化信封数据注入上下文引擎
+        if (finalized.envelope) {
+            self._injectEnvelope(finalized.envelope);
+        }
 
         var _streamMs = performance.now() - streamStart;
         if (toolCalls.length > 0) {
@@ -1789,7 +1851,7 @@ var AgentLoop = (function () {
                     content += '\n\n⚠️ 回复因 token 上限被截断。可回复"继续"获取完整内容。';
                 }
             }
-            return { type: 'message', content: content, reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage, _finishReason: _finishReason };
+            return { type: 'message', content: content, reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage, _finishReason: _finishReason, _envelope: finalized.envelope };
         }
         return _usage ? { _usage: _usage } : null;
     };

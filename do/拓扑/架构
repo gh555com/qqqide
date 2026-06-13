@@ -366,7 +366,7 @@ IPC: qqqide:timeline:{record,versions,content,stat,readCurrent,captureChanged}
 
 跨十年保证: SHA256 blob 不可变 + SQLite 索引 + 永不删 → 时间戳/内容永久锁定
 
-AI 工具 (13个) — 2026-06-04 强化，2026-06-10 三项优化
+AI 工具 (15个) — 2026-06-04 强化，2026-06-10 三项优化
 ------------------------------------------------------------
 文件: read_file, edit_file, create_file, delete_file, write_file (★ 主进程 1 IPC, qwr机器保护)
 搜索: search_text (regex), search_content (多关键词OR, 新增), find_files (glob), list_files
@@ -498,6 +498,13 @@ Quest 切换完整性 (2026-06-10 重构)
   · 产出看门狗 15min：无 delta.content 或 tool_calls → AI 思考死循环 → abort。
     纯 reasoning_content 不重置（防止 DeepSeek 沉思想 10+ 分钟无产出）。
   · 与 tools.js run_command stallMs=15min 同步，两边掐断时间一致。
+
+文本工具调用回生引擎（2026-06-13）
+--------------------------------
+· 问题：部分模型在 delta.content 中输出工具调用文本（而非原生 delta.tool_calls），旧逻辑剥离丢弃 → 楼层秒完零执行
+· 方案：EnvelopeStripper.finalize() 统一解析三种格式 → 汇入 textToolCalls[] → _parseSSE 优先执行
+· 覆盖格式：XML invoke 块（<invoke name="x"><parameter ...>）、XML 自闭合 tag、DeepSeek ReAct（Action: ...\nAction Input: {...}）
+· 防楼层空转：文本工具调用被回生为可执行 tool_calls，不再丢失
 
 AI 网关 — Worker 纯代理 + Go 权威计费（2026-06-10 设计，06-10 晚强制落地）
 --------------------------------------------------------------------

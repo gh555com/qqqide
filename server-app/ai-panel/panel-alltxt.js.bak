@@ -259,6 +259,88 @@ function _a1InnerSp() {
     var s = document.createElement('span'); s.className = 'msg-a1-sp'; s.textContent = A1_INNER_SP; return s;
 }
 
+// ═══ A2 treasure block: per-floor treasures from AI envelope ═══
+// 铁律：A2 始终在最上方（A4 → A1 → clock 之前）
+function _initTreasureBlock(aiDiv) {
+    if (aiDiv._treasureBlock) return aiDiv._treasureBlock;
+    var block = document.createElement('div');
+    block.className = 'msg-a2';
+    // 找到最靠上的兄弟节点：A4 > A1 > clock
+    var anchor = aiDiv._a4Block || aiDiv._a1Block || aiDiv._clockBlock;
+    if (anchor) {
+        aiDiv.insertBefore(block, anchor);
+    } else {
+        aiDiv.appendChild(block);
+    }
+    aiDiv._treasureBlock = block;
+    return block;
+}
+
+// ═══ 渲染 treasures 到 A2 block ═══
+// 格式：💎!! gain:8 cost:0   ← 第一行（header）
+//       财宝内容文字...       ← 第二行起（body）
+// 过滤：已落地/已完成的财宝不渲染（用户已经达成了，不再建议）
+var _TREASURE_DONE_RE = /已落地|已完成|已实现|已修复|已部署|已上线|已合并|DONE|\[x\]|✅.*完成|已解决/;
+function _renderTreasures(block, treasures) {
+    if (!block || !treasures || !treasures.length) {
+        if (block) block.classList.remove('has-treasures');
+        return;
+    }
+    // 过滤掉已完成的 treasures（done 标记 + 文本正则双重保障）
+    var active = [];
+    for (var i = 0; i < treasures.length; i++) {
+        var t = treasures[i];
+        if (!t || !t.text) continue;
+        if (t.done === true) continue;
+        if (_TREASURE_DONE_RE.test(t.text)) continue;
+        active.push(t);
+    }
+    if (!active.length) {
+        block.classList.remove('has-treasures');
+        block.innerHTML = '';
+        return;
+    }
+    block.innerHTML = '';
+    for (var i = 0; i < active.length; i++) {
+        var t = active[i];
+        var item = document.createElement('div');
+        item.className = 'msg-a2-item';
+
+        // 第一行：💎 + badge + gain/cost
+        var header = document.createElement('div');
+        header.className = 'msg-a2-header';
+        header.style.cssText = 'display:flex;align-items:center;gap:4px;font-family:ui-monospace,monospace;font-size:12px;line-height:1.5';
+
+        var diamond = document.createElement('span');
+        diamond.style.cssText = 'flex-shrink:0;font-size:14px';
+        diamond.textContent = '💎';
+        header.appendChild(diamond);
+
+        var badge = document.createElement('span');
+        badge.className = 'msg-a2-badge ' + (t.urgency || 'later');
+        badge.textContent = t.urgency === 'urgent' ? '!!' : (t.urgency === 'soon' ? '>>' : '..');
+        header.appendChild(badge);
+
+        var metrics = document.createElement('span');
+        metrics.style.cssText = 'flex-shrink:0;opacity:0.7';
+        var g = typeof t.gain === 'number' ? t.gain : 0;
+        var c = typeof t.cost === 'number' ? t.cost : 0;
+        metrics.textContent = 'gain:' + g + ' cost:' + c;
+        header.appendChild(metrics);
+
+        item.appendChild(header);
+
+        // 第二行：文字内容
+        var body = document.createElement('div');
+        body.className = 'msg-a2-body';
+        body.style.cssText = 'font-size:12px;color:var(--text-primary);line-height:1.5;padding-left:0;word-break:break-word';
+        body.textContent = t.text || '';
+        item.appendChild(body);
+
+        block.appendChild(item);
+    }
+    block.classList.add('has-treasures');
+}
 
 function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
     if (aiDiv._a1Block) return aiDiv._a1Block;

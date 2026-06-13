@@ -105,15 +105,13 @@ function _initClockBlock(aiDiv) {
     if (aiDiv._clockBlock) return;
     var block = document.createElement('div');
     block.className = 'msg-ai-clock';
-    block.innerHTML = '<span class="clock"><span class="clock-min">0m</span><span class="clock-sec">:0s</span></span><canvas width="112" height="112"></canvas><span class="clock-cost" style="display:none;font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:var(--text-primary);margin-left:auto">0.00 ge</span><div class="clock-health-bar" style="display:none;width:100%;height:3px;background:var(--base02);border-radius:2px;overflow:hidden;margin-top:2px"><div class="clock-health-fill" style="height:100%;width:100%;background:#859900;transition:width 0.3s,background 0.3s"></div></div>';
+    block.innerHTML = '<span class="clock"><span class="clock-min">0m</span><span class="clock-sec">:0s</span></span><canvas width="112" height="112"></canvas><span class="clock-cost" style="display:none;font-family:ui-monospace,monospace;font-weight:700;font-size:18px;color:var(--text-primary);margin-left:auto">0.00 ge</span>';
     aiDiv.appendChild(block);
     aiDiv._clockBlock = block;
     aiDiv._clockMin = block.querySelector('.clock-min');
     aiDiv._clockSec = block.querySelector('.clock-sec');
     aiDiv._clockCanvas = block.querySelector('canvas');
     aiDiv._clockCost = block.querySelector('.clock-cost');
-    aiDiv._healthBar = block.querySelector('.clock-health-bar');
-    aiDiv._healthFill = block.querySelector('.clock-health-fill');
     var clockCost = aiDiv._clockCost;
     clockCost.addEventListener('mouseenter', function (e) {
         var raw = clockCost._rawGe;
@@ -179,21 +177,6 @@ function startFloorTimer(aiDiv, ag, resume) {
         var sec = totalS % 60;
     clockMin.textContent = min + 'm';
     clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
-        // ★ 超时血条：展示当前 fetch 的剩余时间
-        var _healthBar = aiDiv._healthBar;
-        var _healthFill = aiDiv._healthFill;
-        var _deadline = _ag._requestDeadlineMs || 0;
-        if (_deadline > 0 && _healthBar && _healthFill) {
-            var _remaining = _deadline - (performance.now() - (_ag._requestStartPerf || 0));
-            var _pct = Math.max(0, Math.min(100, (_remaining / _deadline) * 100));
-            _healthBar.style.display = 'block';
-            _healthFill.style.width = _pct + '%';
-            if (_pct > 30) _healthFill.style.background = '#859900';       // 绿
-            else if (_pct > 10) _healthFill.style.background = '#e6b800';  // 黄
-            else _healthFill.style.background = '#cb4b16';                 // 红
-        } else if (_healthBar) {
-            _healthBar.style.display = 'none';
-        }
         var at = _ag._floorTiming;
         var n = (at && at.networkMs) || 0;
         var d = (at && at.deepseekMs) || 0;

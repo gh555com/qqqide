@@ -161,7 +161,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 
 §16 AI 流式渲染 — 唯一真理渲染机器 + Flag 白名单
   - live onDone 与重启恢复共用 _buildConversationFlowHtml（唯一函数，card-pool.js）。
-  - 数据清洗在 EnvelopeStripper.finalize() 一次性完成：信封/floor_summary/DYNAMIC CONTEXT/XML invoke。
+  - 数据清洗在 EnvelopeStripper.finalize() 一次性完成：信封/floor_summary/DYNAMIC CONTEXT。文本工具调用（XML invoke/Action:格式）解析回生为可执行 tool_calls，非剥离丢弃。
   - 渲染规则用 flag 白名单（§16a），禁字符串匹配（[System:/[GUIDE]等全删）。
   - 流式段缓冲: _buf持当前段, 完成段 push _paras, 渲染后原文置 null(GC瞬间回收)。
   - 禁轮询: 脏标记 _dirty, 有内容才 setTimeout(doStreamRender, 1000ms)。

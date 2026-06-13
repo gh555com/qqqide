@@ -148,6 +148,16 @@ function _buildAzText(floorNum, floorData, questMeta) {
     var a4Snapshots = floorData.a4Snapshots || {};
     var timings = (questMeta && questMeta.floorTimings) || [];
 
+    // ═══ az 区打印顺序与对话框一致：A2(财宝) → A4(文件快照) → A1(楼层统计) → A3(时钟) ═══
+
+    // A2: 财宝（treasures）
+    if (floorData.treasures && floorData.treasures.length > 0) {
+        for (var tri = 0; tri < floorData.treasures.length; tri++) {
+            var tr = floorData.treasures[tri];
+            lines.push('az> 💎 ' + (tr.text || '').slice(0, 120));
+        }
+    }
+
     // A4: 文件快照明细
     if (a4Snapshots && typeof a4Snapshots === 'object') {
         var a4Paths = Array.isArray(a4Snapshots) ? a4Snapshots : Object.keys(a4Snapshots);
@@ -326,6 +336,7 @@ async function _restoreAgentFromStore(questId, ag) {
 
         // 恢复 metadata
         if (data) {
+            ag._ctx = data.ctx || { narrative: '', facts: [], treasures: [], totalFloors: 0 };
             ag.totalCostGe = data.totalCostGe || 0;
             ag._lastApiPromptTokens = data.lastApiPromptTokens || 0;
             ag._floorTimings = data.floorTimings || [];
@@ -334,6 +345,7 @@ async function _restoreAgentFromStore(questId, ag) {
             ag._rulesVersion = data.rulesVersion || '';
             ag._persistentCount = data.persistentCount || 0;
         } else {
+            ag._ctx = { narrative: '', facts: [], treasures: [], totalFloors: 0 };
             ag.totalCostGe = 0;
             ag._lastApiPromptTokens = 0;
             ag._floorTimings = [];

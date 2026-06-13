@@ -372,7 +372,7 @@ var CardPool = (function () {
     }
 
     // ④ 创建 A1 豆腐块（clockBlock 已存在，insertBefore 精准插入时钟上方）
-    // 铁律顺序: A4 → A1 → clock，先创建下层锚点
+    // 铁律顺序: A2 → A4 → A1 → clock，先创建下层锚点
     var meta = card._floorMetaMap[fNum];
     var a1El = null;
     var _a1Path = (meta && meta.allTxtPath) || '';
@@ -407,7 +407,7 @@ var CardPool = (function () {
       }
     }
 
-    // ④b 恢复 A4 文件快照块（在 A1 之前）
+    // ④b 恢复 A4 文件快照块（在 A2 之后、A1 之前）
     // A1 已存在，_initA4Block 会 insertBefore(A1) 定位
     if (typeof window._a4RestoreBlock === 'function' && fData.a4Snapshots && fData.a4Snapshots.length) {
       var _a4NumId = 0;
@@ -417,6 +417,18 @@ var CardPool = (function () {
         }
       }
       window._a4RestoreBlock(aiEl, fData.a4Snapshots, _a4NumId, fNum);
+    }
+
+    // ④c 创建 A2 treasure block（最上方，在 A4 或 A1 之前）
+    // A4 和 A1 已存在，_initTreasureBlock 会 insertBefore(A4 或 A1)
+    var _initA3 = window._initTreasureBlock;
+    var _renderTr = window._renderTreasures;
+    if (typeof _initA3 === 'function') {
+      _initA3(aiEl);
+      // 恢复历史 treasures
+      if (typeof _renderTr === 'function' && fData.treasures && fData.treasures.length) {
+        _renderTr(aiEl._treasureBlock, fData.treasures);
+      }
     }
 
     // ⑤ 如果是已封顶楼层，从 floor 数据直接恢复时钟（不依赖 quest 级 floorTimings 数组）
@@ -510,6 +522,13 @@ var CardPool = (function () {
     aiEl._renderScheduled = false;
     aiEl._renderedCount = 0;
     aiEl._lastParaEl = null;
+
+    // A2 treasure block（在 A1 上方）
+    var _initA3b = window._initTreasureBlock;
+    if (typeof _initA3b === 'function') {
+      _initA3b(aiEl);
+    }
+
     // A1 块（必须在电子钟之前）
     var _initA1b = window._initA1Block;
     var _updA1b = window._updateA1Row1;

@@ -397,8 +397,8 @@ function _initA4Block(aiDiv) {
     if (aiDiv._a4Block) return aiDiv._a4Block;
     var block = document.createElement('div');
     block.className = 'msg-a4';
-    // Position: before A1 (stats) / clock
-    // 铁律顺序: A4 → A1 → clock
+    // Position: after A2 (treasure), before A1 (stats) / clock
+    // 铁律顺序: A2 → A4 → A1 → clock
     var a1 = aiDiv._a1Block;
     if (a1) {
         aiDiv.insertBefore(block, a1);
@@ -409,6 +409,14 @@ function _initA4Block(aiDiv) {
         } else {
             aiDiv.appendChild(block);
         }
+    }
+    // 确保 A2 在 A4 上方：如果 A2 存在且位于 A4 之后，把 A2 挪到 A4 之前
+    var a2 = aiDiv._treasureBlock;
+    if (a2 && a2.nextSibling === block) {
+        // A2 刚好在 A4 后面（append 导致的逆序），交换
+        aiDiv.insertBefore(a2, block);
+    } else if (a2 && _isAfter(a2, block)) {
+        aiDiv.insertBefore(a2, block);
     }
     aiDiv._a4Block = block;
     return block;
@@ -702,6 +710,7 @@ function _a4BuildCompleteFloorPayload(ag) {
         allTxtPath: ag._allTxtPath || '',
         fileStats: (typeof _computeFileStats === 'function') ? _computeFileStats(ag._houses, ag._a4Snapshots) : { fileCount: 0, added: 0, deleted: 0 },
         clockTiming: ag._lastFloorTimingRecord || null,
+        treasures: ag._floorTreasures || [],
         createdAt: ag._floorCreatedAt || Date.now(),
         savedAt: Date.now(),
         // ★ 流式持久化：捕获正在打印中的部分 AI 回复文本

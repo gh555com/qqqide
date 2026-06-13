@@ -311,13 +311,6 @@
         }
     };// ═══ 构建动态上下文（注入到 API 消息末尾） ═══
     AgentLoop.prototype._buildDynamicContext = function (currentQuery) {
-        // ★ 缓存：narrative/facts/treasures 未变 → 跳过拼接（省字符串运算）
-        var _pendingTc = 0;
-        for (var ti0 = 0; ti0 < this._ctx.treasures.length; ti0++) { if (!this._ctx.treasures[ti0].done) _pendingTc++; }
-        var _sig = (this._ctx.narrative ? this._ctx.narrative.length : 0) + '|' + this._ctx.facts.length + '|' + _pendingTc;
-        if (_sig === this._ctx._dynCtxSig) return '';
-        this._ctx._dynCtxSig = _sig;
-
         var ctx = '[DYNAMIC CONTEXT]\n';
         if (this._ctx.narrative) {
             ctx += 'CONVERSATION CONTEXT (compressed history):\n' + this._ctx.narrative;
@@ -329,19 +322,6 @@
                     return '- [' + f.type + '] ' + f.content;
                 }).join('\n');
                 ctx += '\n\nRELEVANT FACTS FROM EARLIER (' + relevant.length + '/' + this._ctx.facts.length + ' total):\n' + factsBlock;
-            }
-        }
-        if (this._ctx.treasures.length > 0) {
-            var _pending = [];
-            for (var ti = this._ctx.treasures.length - 1; ti >= 0 && _pending.length < 8; ti--) {
-                if (!this._ctx.treasures[ti].done) {
-                    _pending.unshift(this._ctx.treasures[ti]);
-                }
-            }
-            if (_pending.length > 0) {
-                ctx += '\n\nKEY DISCOVERIES:\n' + _pending.map(function (t) {
-                    return '💎 ' + t.content + ' [' + (t.urgency || 'later') + ']';
-                }).join('\n');
             }
         }
         return ctx.trim() ? ctx : '';

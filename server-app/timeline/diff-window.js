@@ -271,19 +271,7 @@
             var fullLabel = o.label;
             if (o.diffStr) fullLabel += ' ' + o.diffStr;
             if (o.sourceLabel) fullLabel += ' ' + o.sourceLabel;
-            // 如果与前一条目标签相同，合并标记到前一条
-            if (mergedOptions.length > 0 && mergedOptions[mergedOptions.length - 1].label === o.label) {
-                var prev = mergedOptions[mergedOptions.length - 1];
-                for (var mi = 0; mi < markers.length; mi++) {
-                    if (prev.markers.indexOf(markers[mi]) === -1) prev.markers.push(markers[mi]);
-                }
-                if (o.value === 'last') { prev.value = 'last'; prev._blobHash = o._blobHash || prev._blobHash; prev.isLast = true; }
-                if (o._blobHash) prev._blobHash = o._blobHash;
-                // 更新 beforeIdx/afterIdx 指向合并后的位置
-                if (j === beforeIdx) beforeIdx = mergedOptions.length - 1;
-                if (j === afterIdx) afterIdx = mergedOptions.length - 1;
-                continue;
-            }
+            // ★ 相同时间戳但不同 blob → 不合并（before 和 after 可能同秒，不可混淆）
             mergedOptions.push({ value: o.value, label: o.label, fullLabel: fullLabel, markers: markers, _blobHash: o._blobHash, isLast: o.isLast, ts: o.ts });
         }
         options = mergedOptions; // 替换为合并后的列表

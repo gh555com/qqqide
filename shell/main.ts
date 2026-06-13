@@ -593,7 +593,7 @@ function createWindow(): BrowserWindow {
     win.on('blur', () => {
         console.log('[main] window blur - dismissing dropdown');
         if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
-            win.webContents.executeJavaScript("if(window.qqqideViewport&&window.qqqideViewport.closeDropdown)window.qqqideViewport.closeDropdown()").catch((e) => { console.warn('[main] blur dismiss failed:', e && e.message); });
+            win.webContents.executeJavaScript("if(window.qqqideViewport&&window.qqqideViewport.closeDropdown)window.qqqideViewport.closeDropdown()").catch((e) => { try { console.warn('[main] blur dismiss failed:', e && e.message); } catch (_) { } });
         }
     });
 
@@ -2806,20 +2806,20 @@ function _flushStateSync(reason: string): void {
     if (_flushedOnce) { return; }
     _flushedOnce = true;
     try {
-        console.log('[state] flushSync on', reason);
+        try { console.log('[state] flushSync on', reason); } catch (_) { }
         stateStore.flushSync();
         for (const [rootDir, qg] of _qgInstances) {
-            try { qg.flushSync(); } catch (e2) { console.warn('[qg] flushSync failed for', rootDir, e2); }
+            try { qg.flushSync(); } catch (e2) { try { console.warn('[qg] flushSync failed for', rootDir, e2); } catch (_) { } }
         }
         for (const [dbPath, pss] of _projectStateStores) {
-            try { pss.flushSync(); } catch (e2) { console.warn('[project-state] flushSync failed for', dbPath, e2); }
+            try { pss.flushSync(); } catch (e2) { try { console.warn('[project-state] flushSync failed for', dbPath, e2); } catch (_) { } }
         }
         // 刷新所有 timeline DB
         for (const [dbPath, db] of _timelineDbs) {
-            try { _tlFlushDb(db, dbPath); } catch (e2) { console.warn('[timeline] flushSync failed for', dbPath, e2); }
+            try { _tlFlushDb(db, dbPath); } catch (e2) { try { console.warn('[timeline] flushSync failed for', dbPath, e2); } catch (_) { } }
         }
     } catch (e) {
-        console.warn('[state] flushSync failed:', e);
+        try { console.warn('[state] flushSync failed:', e); } catch (_) { }
     }
 }
 // ═══ 唯一退出路径：before-quit 统一清理所有资源 ═══
@@ -2848,7 +2848,7 @@ app.on('before-quit', async (e) => {
         try {
             await stateStore.flush();
         } catch (err) {
-            console.warn('[state] async flush before-quit failed:', err);
+            try { console.warn('[state] async flush before-quit failed:', err); } catch (_) { }
         }
         _flushStateSync('before-quit');
     }
@@ -2871,17 +2871,19 @@ process.on('uncaughtException', (err) => {
     if (_ueInHandler) return;  // 递归调用直接吞掉，打断 EPIPE 死亡螺旋
     _ueInHandler = true;
     try {
+        // EPIPE / broken pipe：管道已断，任何 console/log 都会再次 EPIPE，直接短路
+        var _msg = (err && (err as any).message) || '';
+        if (_msg.indexOf('EPIPE') >= 0 || _msg.indexOf('broken pipe') >= 0) {
+            return;  // 不写日志、不刷状态、不 console
+        }
         if (err && err.message === 'Object has been destroyed') {
-            console.warn('[main] uncaughtException (Object destroyed) suppressed');
+            try { console.warn('[main] uncaughtException (Object destroyed) suppressed'); } catch (_) { }
             return;
         }
-        // console.error 可能因管道断开抛 EPIPE，用 try-catch 保护
         try { console.error('[uncaughtException]', err); } catch (_) { }
         _flushStateSync('uncaughtException');
-        // 限速写 crash 日志：同类错误不灌满磁盘
-        // EPIPE / Object destroyed 是良性错误，不写 crash 文件
-        var _msg = (err && (err as any).message) || '';
-        if (_msg.indexOf('EPIPE') < 0 && _msg.indexOf('broken pipe') < 0 && _msg.indexOf('Object has been destroyed') < 0) {
+        // 限速写 crash 日志：同类错误至少间隔 5 秒才写文件
+        if (_msg.indexOf('Object has been destroyed') < 0) {
             var now = Date.now();
             if (now - _ueLastLogTs > 5000) {
                 _ueLastLogTs = now;
@@ -2896,7 +2898,8 @@ process.on('uncaughtException', (err) => {
     }
 });
 process.on('unhandledRejection', (reason) => {
-    console.warn('[unhandledRejection]', reason);
+    // console.warn 可能因管道断开抛 EPIPE，用 try-catch 保护，打断日志洪水
+    try { console.warn('[unhandledRejection]', reason); } catch (_) { }
 });
 
 // ═══ DevTools Console 悬浮按钮注入（复制 / 另存为） ═══

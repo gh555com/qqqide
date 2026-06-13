@@ -45,10 +45,14 @@ function _startMemGuard(pid: number, killFn: () => void, limit: number): { stop:
     // Build platform-specific command to get total memory (bytes) of pid + descendants
     const isWin = process.platform === 'win32';
     const memCmd = isWin
-        ? { bin: 'powershell', args: ['-NoProfile', '-Command',
-            `$sum=0; Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId=${pid} OR ParentProcessId=${pid}' -ErrorAction SilentlyContinue | ForEach-Object { $sum+=$_.WorkingSetSize }; $sum`] }
-        : { bin: 'sh', args: ['-c',
-            `ps -o rss= --pid ${pid} --ppid ${pid} 2>/dev/null | awk '{s+=$1} END {print s*1024}'`] };
+        ? {
+            bin: 'powershell', args: ['-NoProfile', '-Command',
+                `$sum=0; Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId=${pid} OR ParentProcessId=${pid}' -ErrorAction SilentlyContinue | ForEach-Object { $sum+=$_.WorkingSetSize }; $sum`]
+        }
+        : {
+            bin: 'sh', args: ['-c',
+                `ps -o rss= --pid ${pid} --ppid ${pid} 2>/dev/null | awk '{s+=$1} END {print s*1024}'`]
+        };
     // ps --ppid gets children; --pid gets self; sum RSS in kB → convert to bytes
 
     const poll = () => {
@@ -60,7 +64,7 @@ function _startMemGuard(pid: number, killFn: () => void, limit: number): { stop:
                 try {
                     const bytes = parseInt((stdout || '').trim(), 10);
                     if (!isNaN(bytes) && bytes > limit) {
-                        console.warn(`[qz] mem-guard: pid ${pid} tree at ${(bytes/1024/1024).toFixed(0)}MB > ${(limit/1024/1024).toFixed(0)}MB, killing tree`);
+                        console.warn(`[qz] mem-guard: pid ${pid} tree at ${(bytes / 1024 / 1024).toFixed(0)}MB > ${(limit / 1024 / 1024).toFixed(0)}MB, killing tree`);
                         killFn();
                         stopped = true;
                         return;
@@ -477,15 +481,15 @@ export class QzSpawn {
                 const r = await ghrunTier(brief, this.appRoot, ghrun);
                 if (r.killReason !== 'spawn-error') {
                     if (r.killReason) {
-                        console.warn('[qz] ghrun killed:', brief.cmd, 'reason:', r.killReason, r.durationMs + 'ms');
+                        try { console.warn('[qz] ghrun killed:', brief.cmd, 'reason:', r.killReason, r.durationMs + 'ms'); } catch (_) { }
                     } else {
-                        console.log('[qz] ghrun OK:', brief.cmd, r.durationMs + 'ms');
+                        try { console.log('[qz] ghrun OK:', brief.cmd, r.durationMs + 'ms'); } catch (_) { }
                     }
                     return _capOutput(r);
                 }
-                console.warn('[qz] ghrun spawn-error, falling back to node:', r.stderr.slice(0, 200));
+                try { console.warn('[qz] ghrun spawn-error, falling back to node:', r.stderr.slice(0, 200)); } catch (_) { }
             } catch (e: any) {
-                console.warn('[qz] ghrun threw, falling back to node:', e && e.message);
+                try { console.warn('[qz] ghrun threw, falling back to node:', e && e.message); } catch (_) { }
             }
         }
 
@@ -539,8 +543,8 @@ export class QzSpawn {
             const tick = () => {
                 if (!alive) return;
                 if (Date.now() - lastDataAt > idleTimeout) {
-                    console.warn('[qz] spawnPersist idle timeout, killing:', brief.cmd);
                     try { proc.kill(); } catch { /* ignore */ }
+                    try { console.warn('[qz] spawnPersist idle timeout, killing:', brief.cmd); } catch (_) { }
                     return;
                 }
                 idleTimer = setTimeout(tick, Math.max(5000, Math.floor(idleTimeout / 4)));
@@ -606,10 +610,10 @@ export class QzSpawn {
         });
 
         proc.on('error', (err: Error) => {
-            console.error('[qz] spawnPersist process error:', err?.message || err);
             alive = false;
             if (idleTimer) { clearTimeout(idleTimer); }
             for (const h of exitHandlers) { h(-1); }
+            try { console.error('[qz] spawnPersist process error:', err?.message || err); } catch (_) { }
         });
 
         const handle: PersistHandle = {
