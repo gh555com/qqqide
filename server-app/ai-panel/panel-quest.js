@@ -462,7 +462,8 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
             allTxtPath: ag._allTxtPath || '',
             fileStats: _computeFileStats(ag._houses, ag._a4Snapshots),
             clockTiming: ag._lastFloorTimingRecord || null,
-            createdAt: Date.now()
+            createdAt: Date.now(),
+            _serverFloorId: ag._floorId || ''
         };
 
         // ★ 保存前防线：修复孤儿 tool_calls + 断言（防腐蚀数据写入 SQLite）
@@ -502,6 +503,7 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
         ctx: ag._ctx,
         totalCostGe: ag.totalCostGe,
         lastApiPromptTokens: ag._lastApiPromptTokens || 0,
+        lastApiTotalTokens: ag._lastApiTotalTokens || 0,
         floorTimings: ag._floorTimings || [],
         serverDrift: ag._serverDrift || 0,
         queue: ag._queue || [],

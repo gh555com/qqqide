@@ -29,7 +29,7 @@
     var STREAM_WATCHDOG_MS = 180000;         // SSE 流看门狗 3min（DeepSeek 深度推理可能 2min+ 无 token）
 
     // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
-    var CTX_MAX_TOKENS = 1000000;     // DeepSeek V4 上下文窗口总上限（prompt + completion ≤ 1M）
+    var CTX_MAX_TOKENS = 1048565;     // DeepSeek 上下文窗口总上限（实测精确值，prompt + completion ≤ 1,048,565）
     var COMPRESS_THRESHOLD = 900000;  // 压缩触发阈值（90% 窗口，留 10% 缓冲）
     var MAX_TOKENS_SAFETY = 10000;    // max_tokens 帽安全余量（防止边界情况）
     var CHAR_PER_TOKEN = 3.0;         // 统一 chars→tokens 估算比例（所有估算器以此为准）

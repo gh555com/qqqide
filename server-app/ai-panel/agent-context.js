@@ -58,13 +58,19 @@
     //   3. 最少保留 6 层楼，即使超出 10%
     //   4. 阻塞等待 AI 压缩（32k），成功后才删除
     //   5. 压缩失败 → 无限重试，指数退避
-    AgentLoop.prototype._compressContext = async function () {
+    // reason: { trigger: 'auto'|'manual', detail: string }
+    // 返回: { compressed: true|false, detail: string, beforeTokens: number, afterTokens: number, elapsedMs: number }
+    AgentLoop.prototype._compressContext = async function (reason) {
         var self = this;
         var totalEst = self._estimateTotalTokens();
-        var dsTokens = self._lastApiPromptTokens || 0;
+        // ★ 优先用 _lastApiTotalTokens（prompt+completion 精确值），fallback 到 prompt_tokens
+        var dsTokens = self._lastApiTotalTokens || self._lastApiPromptTokens || 0;
+        var beforeTokens = Math.max(totalEst, dsTokens);
 
         // 两个指标都没超 900k → 跳过；任一超了 → 触发（本地估算可能低估，DS 值更准）
-        if (totalEst <= TOKEN_BUDGET && dsTokens <= TOKEN_BUDGET) return;
+        if (totalEst <= TOKEN_BUDGET && dsTokens <= TOKEN_BUDGET) {
+            return { compressed: false, detail: '无需压缩（' + beforeTokens + ' < ' + TOKEN_BUDGET + '）', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
+        }
 
         var KEEP_TARGET = Math.floor(TOKEN_BUDGET * KEEP_RATIO);
 
@@ -102,7 +108,7 @@
 
         if (hotStart <= self._persistentCount) {
             self.log('\u25C6 Context: ' + floorCount + ' floors \u2192 all hot, nothing to compress');
-            return;
+            return { compressed: false, detail: '所有楼层都在热点区，无可压缩内容', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
         }
 
         var coldMsgs = self.conversation.slice(0, hotStart);
@@ -110,23 +116,41 @@
         var hotMsgs = self.conversation.slice(hotStart);
         var hotTokenEst = self._estimateTotalTokens(hotMsgs);
 
-        if (coldTokenEst < 500) return;
+        if (coldTokenEst < 500) {
+            return { compressed: false, detail: '冷消息不足 500 tokens，跳过压缩', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
+        }
 
+        var _compressStart = performance.now();
         self.log('\u25C6 Context: compress ' + coldMsgs.length + ' msgs (~' + Math.round(coldTokenEst) + 'tok) \u2192 keep ' + hotMsgs.length + ' msgs (~' + Math.round(hotTokenEst) + 'tok, ' + floorCount + ' floors)');
 
-        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('\uD83E\uDDE0 压缩 ' + coldMsgs.length + ' 条历史消息中...', { type: 'info', duration: 0 }); } catch (_) { }
         try {
             await self._digestColdMessages(coldMsgs);
-            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('\u2705 压缩完成 — ' + coldMsgs.length + ' 条消息已精简为结构知识', { type: 'info', duration: 5000 }); } catch (_) { }
             self.conversation.splice(self._persistentCount, hotStart - self._persistentCount);
-            // ★ 压缩后 _lastApiPromptTokens 已失效（旧消息被删，DS 精确值不再准确）
-            //    清零 → 下次 API 调用前仅靠本地估算，API 返回后自动更新为新的精确值
-            //    不清零会导致 max_tokens 动态帽过度限制（用 900K 旧值算 cap 而非 200K 真实值）
             self._lastApiPromptTokens = 0;
+            self._lastApiTotalTokens = 0;
+            var _elapsed = Math.round(performance.now() - _compressStart);
+            var _afterEst = self._estimateTotalTokens();
+            var _saved = beforeTokens - _afterEst;
             self.log('\u25C6 Context: done — ' + coldMsgs.length + ' msgs removed, ' + self.conversation.length + ' msgs kept');
+            return {
+                compressed: true,
+                detail: '压缩 ' + coldMsgs.length + ' 条消息 → ' + self.conversation.length + ' 条保留\n上下文: ' + Math.round(beforeTokens/1000) + 'k → ' + Math.round(_afterEst/1000) + 'k tokens (节省 ' + Math.round(_saved/1000) + 'k)\nFacts: ' + self._ctx.facts.length + ' 条 | Narrative: ' + (self._ctx.narrative ? self._ctx.narrative.length : 0) + ' chars\n耗时: ' + (_elapsed/1000).toFixed(1) + 's',
+                beforeTokens: beforeTokens,
+                afterTokens: _afterEst,
+                elapsedMs: _elapsed
+            };
         } catch (digestErr) {
+            // 用户主动停止 → 立即向上抛出，终止楼层
+            if (digestErr && digestErr.name === 'AbortError') throw digestErr;
+            var _elapsed2 = Math.round(performance.now() - _compressStart);
             self.log('\u2717 Context: compress FAILED after 3 retries — ' + digestErr.message + ' — skipping, messages preserved');
-            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('\u26A0\uFE0F 上下文压缩失败（已重试3次）：' + (digestErr.message || '未知错误') + '。本次跳过压缩，下轮再试。', { type: 'error', duration: 8000 }); } catch (_) { }
+            return {
+                compressed: false,
+                detail: '已重试 3 次后失败: ' + (digestErr.message || '未知错误') + '\n消息未丢失，下轮再试\n耗时: ' + (_elapsed2/1000).toFixed(1) + 's',
+                beforeTokens: beforeTokens,
+                afterTokens: beforeTokens,
+                elapsedMs: _elapsed2
+            };
         }
     };
 
@@ -245,6 +269,8 @@
                 return;
 
             } catch (err) {
+                // 用户主动停止 → 立即终止，不重试
+                if (err && err.name === 'AbortError') throw err;
                 var waitMs3 = Math.min(COMPACT_RETRY_BASE_MS * Math.pow(2, retry + 1), COMPACT_RETRY_MAX_MS);
                 var attemptNum = retry + 1;
                 self.log('✗ Compact failed #' + attemptNum + ': ' + (err.message || err) + ', retry in ' + (waitMs3 / 1000) + 's');
@@ -270,6 +296,19 @@
             return { parsed: null, ttfbMs: 0, totalMs: 0 };
         }
 
+        // ★ 独立超时（30s）：防 fetch 永久悬挂
+        //    合并用户 abort + 超时 abort，任一触发即取消 fetch
+        var COMPACT_TIMEOUT_MS = 30000;
+        var _timeoutCtrl = new AbortController();
+        var _timeoutId = setTimeout(function () { _timeoutCtrl.abort(); }, COMPACT_TIMEOUT_MS);
+        var _userSignal = self.abortController ? self.abortController.signal : null;
+        // 合并两个 signal：任一 abort 都传播到 timeoutCtrl
+        var _onUserAbort = function () { _timeoutCtrl.abort(); };
+        if (_userSignal) {
+            if (_userSignal.aborted) { _timeoutCtrl.abort(); }
+            else { _userSignal.addEventListener('abort', _onUserAbort, { once: true }); }
+        }
+
         try {
             var resp = await fetch(GATEWAY_URL, {
                 method: 'POST',
@@ -277,7 +316,7 @@
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer ' + token
                 },
-                signal: self.abortController ? self.abortController.signal : undefined,
+                signal: _timeoutCtrl.signal,
                 body: JSON.stringify({
                     model: 'flash',
                     messages: [
@@ -307,7 +346,22 @@
 
             return { parsed: JSON.parse(match[0]), ttfbMs: _ttfbMs, totalMs: _totalMs };
         } catch (err) {
-            return { parsed: null, ttfbMs: performance.now() - _fetchStart, totalMs: performance.now() - _fetchStart };
+            var _totalMs = performance.now() - _fetchStart;
+            // AbortError: 区分用户停止 vs 超时
+            if (err && err.name === 'AbortError') {
+                // 用户主动停止 → 不重试，立即向上抛出让 while 循环终止
+                if (_userSignal && _userSignal.aborted) {
+                    clearTimeout(_timeoutId);
+                    if (_userSignal) _userSignal.removeEventListener('abort', _onUserAbort);
+                    throw err;  // 重新抛出，终止重试链
+                }
+                // 纯超时 → 返回失败，让上层重试
+                return { parsed: null, ttfbMs: _totalMs, totalMs: _totalMs, aborted: true };
+            }
+            return { parsed: null, ttfbMs: _totalMs, totalMs: _totalMs };
+        } finally {
+            clearTimeout(_timeoutId);
+            if (_userSignal) _userSignal.removeEventListener('abort', _onUserAbort);
         }
     };// ═══ 构建动态上下文（注入到 API 消息末尾） ═══
     AgentLoop.prototype._buildDynamicContext = function (currentQuery) {

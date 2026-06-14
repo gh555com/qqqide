@@ -204,3 +204,21 @@ window.addEventListener('message', function (e) {
         }
     }
 });
+
+// ★ 记账埋点：调试开关（控制台输入 _toggleBillingDebug() 切换）
+//   开启后每层楼完结时打印完整账单明细（geCost + model + token 量 + cache 命中率）
+//   默认关闭。数据始终存储于 houses[] 中，开关只控制 console.log 噪音
+window._toggleBillingDebug = function () {
+    var ag = _activeAgent;
+    if (ag) {
+        ag._billingDebug = !ag._billingDebug;
+        var st = ag._billingDebug ? '✅ ON' : '❌ OFF';
+        console.log('[billing debug] ' + st + ' — 楼层完结时打印全账单明细');
+        if (typeof window.parent !== 'undefined' && window.parent.qqqideQoast) {
+            window.parent.qqqideQoast.show('记账调试 ' + (ag._billingDebug ? '已开启' : '已关闭'), { duration: 2000 });
+        }
+        return ag._billingDebug;
+    }
+    console.warn('[billing debug] 无活跃 agent，请先打开一个 quest');
+    return false;
+};

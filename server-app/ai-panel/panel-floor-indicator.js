@@ -48,7 +48,7 @@ function _updateFloorIndicator() {
         var pad = function(n) { return (n < 10 ? '0' : '') + n; };
         var mo = pad(d.getMonth()+1);
         var dy = pad(d.getDate());
-        tsStr = ' ● ' + d.getFullYear() + '-<b style="font-size:21px">' + mo + '</b>-<b style="font-size:21px">' + dy + '</b> ' +
+        tsStr = ' ● ' + d.getFullYear() + '-<span style="font-size:21px">' + mo + '</span>-<span style="font-size:21px">' + dy + '</span> ' +
                 pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
         break;
       }

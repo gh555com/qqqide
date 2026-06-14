@@ -273,8 +273,10 @@
             var fullLabel = o.label;
             if (o.diffStr) fullLabel += ' ' + o.diffStr;
             if (o.sourceLabel) fullLabel += ' ' + o.sourceLabel;
-            // ★ 相同时间戳但不同 blob → 不合并（before 和 after 可能同秒，不可混淆）
-            mergedOptions.push({ value: o.value, label: o.label, fullLabel: fullLabel, markers: markers, _blobHash: o._blobHash, isLast: o.isLast, ts: o.ts });
+            // ★ 每行分配永不回退的编号（per-file 自增，按 id ASC 排序）
+            var seqNo = mergedOptions.length + 1;
+            var labeledLabel = '#' + seqNo + ' ' + fullLabel;
+            mergedOptions.push({ value: o.value, label: o.label, fullLabel: labeledLabel, markers: markers, _blobHash: o._blobHash, isLast: o.isLast, ts: o.ts });
         }
         options = mergedOptions; // 替换为合并后的列表
         _options = options; // 缓存供 updateOneMarker 使用

@@ -376,10 +376,12 @@ function updateCtxBtn() {
         $ctxBtn.style.setProperty('--ctx-pct', '0%');
         return;
     }
+    // ★ 优先用 _lastApiTotalTokens（prompt+completion 精确值，每间 house 更新）
+    //   fallback: _lastApiPromptTokens → 本地 chars/3 估算
+    var totalTokens = agent._lastApiTotalTokens || agent._lastApiPromptTokens || 0;
     var est = estimateTokens();
-    var dsTokens = agent._lastApiPromptTokens || 0;
-    // 取较大值：本地估算永远当前，DS 精确值可能不含上一轮 AI 回复
-    var used = Math.max(est, dsTokens);
+    // 取较大值：DS 精确值更可信，但压缩后清零 → 回退本地估算
+    var used = totalTokens > 0 ? Math.max(est, totalTokens) : est;
     var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
     $ctxBtn.textContent = Math.round(used / 1000) + ' k';
     $ctxBtn.style.setProperty('--ctx-pct', pct + '%');
@@ -392,14 +394,18 @@ document.getElementById('ctx-cancel').onclick = function () {
 };
 document.getElementById('ctx-compress').onclick = async function () {
     document.getElementById('ctx-panel').style.display = 'none';
-    var msg = addMessageEl('status', '\u6b63\u5728\u538b\u7f29\u4e0a\u4e0b\u6587...');
+    if (agent._compressing) return;
+    agent._compressing = true;
+    var _reason = '手动压缩（用户主动触发）';
+    agent._renderCompressStart(_reason);
     try {
-        await agent._compressContext();
-        msg.textContent = '\u4e0a\u4e0b\u6587\u538b\u7f29\u5b8c\u6210';
+        var _result = await agent._compressContext({ trigger: 'manual', detail: _reason });
+        agent._renderCompressResult(_result);
         updateCtxBtn();
     } catch (e) {
-        msg.textContent = '\u538b\u7f29\u5931\u8d25: ' + (e.message || e);
-        msg.className = 'msg msg-error';
+        agent._renderCompressResult({ compressed: false, detail: '异常: ' + (e.message || e), beforeTokens: 0, afterTokens: 0, elapsedMs: 0 });
+    } finally {
+        agent._compressing = false;
     }
 };
 document.querySelector('#ctx-panel .ctx-panel-overlay').onclick = function () {

@@ -284,6 +284,7 @@ var AgentLoop = (function () {
         this.totalCostGe = 0;
         this._lastCostDisplay = '0';
         this._lastApiPromptTokens = 0;  // 初始化清零，避免残留旧 quest 数值
+        this._lastApiTotalTokens = 0;    // API 返回的 total_tokens（prompt+completion 精确值）
         // 视觉缓存: MD5(base64) → {description, ge_cost}
         this._visionCache = new Map();
         this._visionCostWge = 0;
@@ -312,6 +313,13 @@ var AgentLoop = (function () {
         this._lastSseError = '';         // 最后一次 SSE 服务端错误
         this._lastGatewayMessage = '';   // ★ 延迟报错消息（_callGateway 设，agent loop 读）
         this._abortSource = '';          // 'stream_watchdog'|'output_watchdog'|'fetch_deadline'|'user_kill'|'guide'|''
+        // ★ 记账埋点：完整 billing 追踪（per-house 粒度）
+        this._lastBilling = null;        // { geCost, model, usage: {prompt_tokens,completion_tokens,cached_tokens,non_cached_tokens}, freeWindow, requestId }
+        this._billingSeq = 0;            // 全局 billing 事件序号（跨 floor 递增）
+        this._billingDebug = false;      // 详细记账日志开关（默认关，减少噪音）
+        // ★ 上下文快照：诊断 DeepSeek 缓存命中/未命中根因
+        this._lastSentSnapshot = null;   // { msgCount, prefixHash, firstMsgKeys, lastMsgKeys }
+        this._lastCacheDiag = null;      // { prevHash, currHash, firstDiffIdx, diffReason, prevMsgKeys, currMsgKeys }
     }
 
     // ---- 中止 ----
@@ -364,8 +372,9 @@ var AgentLoop = (function () {
             parts.push('连续' + this._consecutiveFetchErrors + '次网络失败');
         }
         // 补充：请求体过大
-        if (this._lastApiPromptTokens > 900000) {
-            parts.push('上下文过大(' + Math.round(this._lastApiPromptTokens / 1000) + ' k tokens, 接近1M上限)');
+        var _ctxTokens = this._lastApiTotalTokens || this._lastApiPromptTokens || 0;
+        if (_ctxTokens > 900000) {
+            parts.push('上下文过大(' + Math.round(_ctxTokens / 1000) + ' k tokens, 接近上限)');
         }
         return parts.join('; ') || '未知原因';
     };
@@ -628,12 +637,7 @@ var AgentLoop = (function () {
         self._ctx.totalFloors++;
         var userMsg = { role: 'user', content: finalContent, _floor: self._ctx.totalFloors };
         self.conversation.push(userMsg);
-        self._compressing = true;
-        try {
-            await self._compressContext();  // 上下文压缩（阻塞，必须拿到 q 才继续）
-        } finally {
-            self._compressing = false;
-        }
+        // 压缩已移至 while 循环内（每间 house 前检查），此处不再触发
         self._log('→ user: ' + (userContent || '').slice(0, 80) + (images ? ' +' + images.length + ' images' : '') + (visionText ? ' [vision done]' : ''));
 
         // 智能等级：手动选择优先，未选则默认 Pro+Max
@@ -743,6 +747,23 @@ var AgentLoop = (function () {
                     continue;
                 }
 
+                // ═══ 压缩守护：每间 house 前检查，超阈值则阻塞压缩 ═══
+                if (!self._compressing) {
+                    var _checkTokens = self._lastApiTotalTokens || self._lastApiPromptTokens || 0;
+                    var _threshold = (typeof ContentGateway !== 'undefined') ? ContentGateway.COMPRESS_THRESHOLD : 900000;
+                    if (_checkTokens > _threshold) {
+                        self._compressing = true;
+                        try {
+                            var _reason = '自动压缩（' + Math.round(_checkTokens/1000) + 'k / ' + Math.round(_threshold/1000) + 'k，超 90% 阈值）';
+                            self._renderCompressStart(_reason);
+                            var _result = await self._compressContext({ trigger: 'auto', detail: _reason });
+                            self._renderCompressResult(_result);
+                        } finally {
+                            self._compressing = false;
+                        }
+                    }
+                }
+
                 self._houseIndex++;
                 // ★ 跨面板写冲突预警：检查上一轮 AI 调用以来是否有其他面板修改了文件
                 if (self._lastCallTs && typeof _panelId !== 'undefined') {
@@ -801,9 +822,12 @@ var AgentLoop = (function () {
                     self._floorTiming.networkMs += response._ttfbMs;
                     self._floorTiming.deepseekMs += response._streamMs;
                 }
-                // API 精确上下文 token 计数（usage.prompt_tokens）
+                // API 精确上下文 token 计数
+                //   _lastApiPromptTokens: 发送时 conversation 的 token 数（用于动态帽）
+                //   _lastApiTotalTokens: prompt + completion 的 token 数（用于按钮显示/压缩阈值）
                 if (response._usage && response._usage.prompt_tokens) {
                     self._lastApiPromptTokens = response._usage.prompt_tokens;
+                    self._lastApiTotalTokens = response._usage.total_tokens || (response._usage.prompt_tokens + (response._usage.completion_tokens || 0));
                 }
 
                 if (response.type === 'message') {
@@ -818,7 +842,9 @@ var AgentLoop = (function () {
                         maxIterations++;  // 不消耗迭代配额
                         continue;  // 回到循环顶部 → 触发引导确认回合
                     }
-                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '' });
+                    var _bill = self._lastBilling; self._lastBilling = null;
+                    var _cd = self._lastCacheDiag; self._lastCacheDiag = null;
+                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', geCost: _bill ? _bill.geCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined });
                     if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
                     if (response.reasoning_content) assistantMsg.reasoning_content = response.reasoning_content;
@@ -834,6 +860,8 @@ var AgentLoop = (function () {
                     self.totalCostGe += costGe;
                     self._lastCostDisplay = costGe < 0.001 ? '<0.001' : costGe.toFixed(4);
                     onCost(self._lastCostDisplay, self.totalCostGe, self._floorFree);
+                    // ★ 记账埋点：调试模式下打印全楼层账单明细
+                    if (self._billingDebug) { _logBillingSummary(self); }
                     self._floorCompletedCleanly = true;  // ★ 看门狗：AI 正常回复
                     onDone(response.content, self._floorTiming);
                     return response.content;
@@ -841,7 +869,9 @@ var AgentLoop = (function () {
 
                 if (response.type === 'tool_calls') {
                     var _tools = response.tool_calls.map(function (tc) { return { name: tc.function.name, args: tc.function.arguments }; });
-                    self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '' });
+                    var _bill2 = self._lastBilling; self._lastBilling = null;
+                    var _cd2 = self._lastCacheDiag; self._lastCacheDiag = null;
+                    self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', geCost: _bill2 ? _bill2.geCost : 0, model: _bill2 ? _bill2.model : '', cacheHitRate: _bill2 ? _bill2.cacheHitRate : -1, usage: _bill2 ? _bill2.usage : null, billingSeq: _bill2 ? _bill2.seq : 0, billingRequestId: _bill2 ? _bill2.requestId : '', cacheDiag: _cd2 || undefined });
                     if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     var assistantToolMsg = {
                         role: 'assistant', content: '',
@@ -933,7 +963,9 @@ var AgentLoop = (function () {
                         onDone('(deferred for guide)', self._floorTiming);
                         return '(deferred for guide)';
                     }
-                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ts: new Date().toISOString(), ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '' });
+                    var _bill3 = self._lastBilling; self._lastBilling = null;
+                    var _cd3 = self._lastCacheDiag; self._lastCacheDiag = null;
+                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ts: new Date().toISOString(), ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '', geCost: _bill3 ? _bill3.geCost : 0, model: _bill3 ? _bill3.model : '', cacheHitRate: _bill3 ? _bill3.cacheHitRate : -1, usage: _bill3 ? _bill3.usage : null, billingSeq: _bill3 ? _bill3.seq : 0, billingRequestId: _bill3 ? _bill3.requestId : '', cacheDiag: _cd3 || undefined });
                     if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     if (finalResp._ttfbMs !== undefined) {
                         self._floorTiming.networkMs += finalResp._ttfbMs;
@@ -1295,17 +1327,10 @@ var AgentLoop = (function () {
                 summaryHint = '引导确认';
             }
         }
-        // 动态防御：确保 prompt + max_tokens ≤ 上下文窗口（唯一真理在 ContentGateway）
-        var DEEPSEEK_CTX_MAX = ContentGateway.CTX_MAX_TOKENS;
-        var SAFETY_MARGIN = ContentGateway.MAX_TOKENS_SAFETY;
+        // ★ 压缩守护（代替旧动态帽）：while 循环中每间 house 前检查，超 900k 则阻塞压缩
+        //   此处不再缩 max_tokens — 由压缩保证 prompt 不超限
         var _reqMaxTokens = tier.maxTokens || ContentGateway.MAX_RESPONSE_TOKENS;
         var _effectiveMaxTokens = _reqMaxTokens;
-        if (self._lastApiPromptTokens && self._lastApiPromptTokens > 0) {
-            var _cap = DEEPSEEK_CTX_MAX - self._lastApiPromptTokens - SAFETY_MARGIN;
-            if (_cap < _reqMaxTokens) {
-                _effectiveMaxTokens = Math.max(1024, Math.floor(_cap));
-            }
-        }
         var body = {
             model: tier.model || 'pro',
             messages: apiMessages,
@@ -1331,15 +1356,23 @@ var AgentLoop = (function () {
 
         // ★ 自适应节流：距上次 API 调用不足 MIN_API_INTERVAL_MS 则等待
         var MIN_API_INTERVAL_MS = 600;
-        var _now = performance.now();
+        var _now2 = performance.now();
         if (self._lastApiCallTs) {
-            var _elapsedSinceLastCall = _now - self._lastApiCallTs;
+            var _elapsedSinceLastCall = _now2 - self._lastApiCallTs;
             if (_elapsedSinceLastCall < MIN_API_INTERVAL_MS) {
                 var _waitMs = MIN_API_INTERVAL_MS - _elapsedSinceLastCall;
                 await new Promise(function (r) { setTimeout(r, _waitMs); });
             }
         }
         self._lastApiCallTs = performance.now();
+
+        // ★ 上下文快照：对比本次与上次发送的消息，诊断缓存命中/未命中根因
+        var _cacheDiag = null;
+        if (self._billingDebug && apiMessages && apiMessages.length > 0) {
+            _cacheDiag = _snapshotMessages(apiMessages, self._lastSentSnapshot);
+            self._lastSentSnapshot = _cacheDiag.currSnapshot;
+            self._lastCacheDiag = _cacheDiag;
+        }
 
         var MAX_RETRIES = 3;  // ★ 同 URL 最多重试 3 次（第4次失败才考虑切线路）
         var MAX_KEY_ROTATIONS = 3;  // 最多切换 3 次 key
@@ -1737,6 +1770,27 @@ var AgentLoop = (function () {
                 if (chunk.type === 'billing') {
                     self._floorCostWge += chunk.ge_cost || 0;
                     if (chunk.free_window) self._floorFree = true;
+                    // ★ 记账埋点：保存完整 billing 数据供 house 关联 + 事后审计
+                    self._billingSeq++;
+                    self._lastBilling = {
+                        seq: self._billingSeq,
+                        geCost: chunk.ge_cost || 0,
+                        model: chunk.model || '',
+                        cacheHitRate: (typeof chunk.cache_hit_rate === 'number') ? chunk.cache_hit_rate : -1,
+                        usage: chunk.usage ? {
+                            prompt_tokens: chunk.usage.prompt_tokens || 0,
+                            completion_tokens: chunk.usage.completion_tokens || 0,
+                            cached_tokens: chunk.usage.cached_tokens || 0,
+                            non_cached_tokens: chunk.usage.non_cached_tokens || 0
+                        } : null,
+                        freeWindow: chunk.free_window || false,
+                        requestId: chunk.request_id || '',
+                        ts: Date.now()
+                    };
+                    if (self._billingDebug && typeof self._log === 'function') {
+                        var _hr = (typeof chunk.cache_hit_rate === 'number') ? (chunk.cache_hit_rate.toFixed(1) + '%') : '?';
+                        self._log('💰 billing #' + self._billingSeq + ': ' + (chunk.ge_cost / 10000).toFixed(4) + ' ge | model=' + (chunk.model || '?') + ' | prompt=' + ((chunk.usage && chunk.usage.prompt_tokens) || '?') + ' cached=' + ((chunk.usage && chunk.usage.cached_tokens) || '?') + ' hit=' + _hr + (chunk.free_window ? ' [FREE]' : ''));
+                    }
                     continue;
                 }
                 // ★ 服务端 SSE 错误事件（upstream 失败后通过 SSE 通知客户端）
@@ -1969,6 +2023,53 @@ var AgentLoop = (function () {
         return true;
     };
 
+    // ═══ 压缩卡片渲染（复用引导消息 UI 模式） ═══
+    // 插入压缩启动卡片（紫色）到当前 AI div
+    AgentLoop.prototype._renderCompressStart = function (reason) {
+        var _aiDiv = this._activeAiDiv;
+        if (!_aiDiv || !_aiDiv._contentWrap) return;
+        var _escHtml = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+        var _now = new Date();
+        var _ts = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0') + ' ' + String(_now.getHours()).padStart(2,'0') + ':' + String(_now.getMinutes()).padStart(2,'0') + ':' + String(_now.getSeconds()).padStart(2,'0');
+        // 启动卡片
+        var _startCard = document.createElement('div');
+        _startCard.className = 'msg-flow-compress-start';
+        _startCard.innerHTML = '<div class="msg-flow-compress-hdr"><span class="msg-flow-icon">📦</span> 启动上下文压缩</div><div class="msg-flow-compress-body">' + _escHtml(_ts) + ' · ' + _escHtml(reason) + '</div>';
+        _aiDiv._contentWrap.appendChild(_startCard);
+        // 等待中标记
+        var _marker = document.createElement('div');
+        _marker.className = 'msg-flow-guide';
+        _marker.style.cssText = 'opacity:0.6;';
+        _marker.innerHTML = '<span class="msg-flow-icon">⏳</span> 压缩中...';
+        _aiDiv._contentWrap.appendChild(_marker);
+        _aiDiv._compressMarker = _marker;
+    };
+
+    // 压缩完成后替换等待标记为成功/失败卡片
+    AgentLoop.prototype._renderCompressResult = function (result) {
+        var _aiDiv = this._activeAiDiv;
+        if (!_aiDiv || !_aiDiv._compressMarker) return;
+        var _escHtml = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+        var _marker = _aiDiv._compressMarker;
+        _aiDiv._compressMarker = null;
+        if (result.compressed) {
+            // 成功压缩
+            _marker.className = 'msg-flow-compress-success';
+            _marker.style.cssText = '';
+            _marker.innerHTML = '<div class="msg-flow-compress-success-hdr"><span class="msg-flow-icon">✅</span> 成功压缩</div><div class="msg-flow-compress-success-body">' + _escHtml(result.detail) + '</div>';
+        } else if (result.detail && (result.detail.indexOf('无需压缩') === 0 || result.detail.indexOf('所有楼层') === 0 || result.detail.indexOf('冷消息不足') === 0)) {
+            // 正常跳过（阈值未达或无可压缩内容）→ 中性样式
+            _marker.className = 'msg-flow-guide';
+            _marker.style.cssText = '';
+            _marker.innerHTML = '<span class="msg-flow-icon">ℹ️</span> ' + _escHtml(result.detail);
+        } else {
+            // 真正失败
+            _marker.className = 'msg-flow-compress-fail';
+            _marker.style.cssText = '';
+            _marker.innerHTML = '<div class="msg-flow-compress-fail-hdr"><span class="msg-flow-icon">✗</span> 压缩失败</div><div class="msg-flow-compress-fail-body">' + _escHtml(result.detail || '未知错误') + '</div>';
+        }
+    };
+
     // ---- 引导注入（新）：立即中断当前 house，让 AI 回复确认 ----
     // 如果 send() 正在执行 → abort 当前流 + 设置 _guidePending，确认回合在 while 循环中自动触发
     // 如果 send() 未执行 → 降级为普通 inject（等下次 Send）
@@ -1986,6 +2087,143 @@ var AgentLoop = (function () {
     // ★ 兜底：若 agent-context.js 未加载，提供空壳防全站崩溃
     if (!AgentLoop.prototype._buildDynamicContext) {
         AgentLoop.prototype._buildDynamicContext = function () { return ''; };
+    }
+
+    // ★ 上下文快照：对比两次 API 调用发送的消息数组，定位缓存断裂点
+    // 返回 { prevSnapshot, currSnapshot, firstDiffIdx, diffReason, prevMsgKeys, currMsgKeys }
+    function _snapshotMessages(messages, prevSnapshot) {
+        var _makeKeys = function (m) {
+            var keys = [];
+            if (!m) return '(null)';
+            keys.push(m.role || '?');
+            if (m._injected) keys.push('inj');
+            if (m._dynamic) keys.push('dyn');
+            if (m._guideAck) keys.push('ack');
+            if (m._truncated) keys.push('trunc');
+            if (m._stallWarning) keys.push('stallW');
+            if (m._stallForce) keys.push('stallF');
+            if (m._floor !== undefined) keys.push('f' + m._floor);
+            var content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '');
+            keys.push('len=' + content.length);
+            if (m.tool_calls) keys.push('tc=' + m.tool_calls.length);
+            if (m.tool_call_id) keys.push('tid');
+            return keys.join('|');
+        };
+
+        var _makeSnapshot = function (msgs) {
+            var count = msgs.length;
+            var firstKeys = [];
+            var lastKeys = [];
+            var prefixParts = [];
+            var n = Math.min(10, count);
+            for (var i = 0; i < n; i++) {
+                var k = _makeKeys(msgs[i]);
+                firstKeys.push(k);
+                prefixParts.push(k);
+            }
+            for (var j = Math.max(0, count - 3); j < count; j++) {
+                lastKeys.push(_makeKeys(msgs[j]));
+            }
+            var prefixHash = prefixParts.join('\n');
+            return {
+                msgCount: count,
+                prefixHash: prefixHash,
+                firstMsgKeys: firstKeys,
+                lastMsgKeys: lastKeys
+            };
+        };
+
+        var curr = _makeSnapshot(messages);
+
+        if (!prevSnapshot) {
+            return { prevSnapshot: null, currSnapshot: curr, firstDiffIdx: null, diffReason: 'first_call', prevMsgKeys: null, currMsgKeys: curr.firstMsgKeys };
+        }
+
+        // 快速路径：prefix hash 相同 → 缓存命中
+        if (curr.prefixHash === prevSnapshot.prefixHash && curr.msgCount === prevSnapshot.msgCount) {
+            return { prevSnapshot: prevSnapshot, currSnapshot: curr, firstDiffIdx: -1, diffReason: 'prefix_match', prevMsgKeys: prevSnapshot.firstMsgKeys, currMsgKeys: curr.firstMsgKeys };
+        }
+
+        // 慢速路径：逐条对比前 50 条消息，找到第一个差异点
+        var maxCmp = Math.min(50, Math.max(curr.msgCount, prevSnapshot.msgCount));
+        var firstDiff = -1;
+        var reason = '';
+        for (var i2 = 0; i2 < maxCmp; i2++) {
+            var prevKey = i2 < prevSnapshot.msgCount ? _makeKeys(messages[i2]) : '(missing)';
+            // Note: messages is the current array; for prev we use prevSnapshot's stored keys
+            var prevStoredKey = (prevSnapshot.firstMsgKeys && i2 < prevSnapshot.firstMsgKeys.length) ? prevSnapshot.firstMsgKeys[i2] : ((i2 < prevSnapshot.msgCount) ? '(msg-' + i2 + ')' : '(eos)');
+            var currKey = i2 < curr.msgCount ? _makeKeys(messages[i2]) : '(eos)';
+            if (prevStoredKey !== currKey) {
+                firstDiff = i2;
+                if (i2 >= curr.msgCount) {
+                    reason = 'msg_removed@' + i2 + ' prev=[' + prevStoredKey + '] curr=(eos)';
+                } else if (i2 >= prevSnapshot.msgCount) {
+                    reason = 'msg_added@' + i2 + ' prev=(eos) curr=[' + currKey + ']';
+                } else if (curr.msgCount !== prevSnapshot.msgCount) {
+                    reason = 'msg_diff@' + i2 + ' count_changed prev=' + prevSnapshot.msgCount + ' curr=' + curr.msgCount;
+                } else {
+                    reason = 'msg_diff@' + i2 + ' prev=[' + prevStoredKey + '] curr=[' + currKey + ']';
+                }
+                break;
+            }
+        }
+        if (firstDiff < 0) {
+            reason = 'diff_beyond_' + maxCmp + ' (msgCount prev=' + prevSnapshot.msgCount + ' curr=' + curr.msgCount + ')';
+        }
+
+        return {
+            prevSnapshot: prevSnapshot,
+            currSnapshot: curr,
+            firstDiffIdx: firstDiff,
+            diffReason: reason,
+            prevMsgKeys: prevSnapshot.firstMsgKeys,
+            currMsgKeys: curr.firstMsgKeys
+        };
+    }
+
+    // ★ 记账埋点：调试账单汇总（floor 完结时调用）
+    function _logBillingSummary(ag) {
+        if (!ag || !ag._houses) return;
+        var houses = ag._houses;
+        var floorCost = ag._floorCostWge || 0;
+        var lines = [];
+        lines.push('══════ BILLING DEBUG — floor ' + (ag._ctx && ag._ctx.totalFloors) + ' ══════');
+        lines.push('  floor_id: ' + (ag._floorId || '?'));
+        lines.push('  total costWge: ' + floorCost + ' (' + (floorCost / 10000).toFixed(4) + ' ge)');
+        lines.push('  free window: ' + (ag._floorFree ? 'YES' : 'NO'));
+        lines.push('  houses: ' + houses.length);
+        for (var i = 0; i < houses.length; i++) {
+            var h = houses[i];
+            var ge = (h.geCost || 0) / 10000;
+            var usageStr = '';
+            if (h.usage) {
+                usageStr = ' prompt=' + (h.usage.prompt_tokens || 0) +
+                           ' compl=' + (h.usage.completion_tokens || 0) +
+                           ' cached=' + (h.usage.cached_tokens || 0) +
+                           ' noncached=' + (h.usage.non_cached_tokens || 0);
+            }
+            lines.push('  H' + i + ': type=' + (h.type || '?') +
+                       ' geCost=' + ge.toFixed(4) +
+                       ' model=' + (h.model || '?') +
+                       ' cacheHit=' + (h.cacheHitRate >= 0 ? h.cacheHitRate.toFixed(1) + '%' : '?') +
+                       ' billingSeq=' + (h.billingSeq || 0) +
+                       ' requestId=' + (h.billingRequestId || '') +
+                       usageStr);
+            // ★ 缓存诊断
+            if (h.cacheDiag) {
+                var cd = h.cacheDiag;
+                if (cd.diffReason === 'prefix_match') {
+                    lines.push('       cache: ✅ HIT (prefix match, ' + cd.currSnapshot.msgCount + ' msgs)');
+                } else if (cd.diffReason === 'first_call') {
+                    lines.push('       cache: 🆕 first call (' + cd.currSnapshot.msgCount + ' msgs)');
+                } else {
+                    lines.push('       cache: ❌ MISS @ idx=' + cd.firstDiffIdx + ' — ' + cd.diffReason);
+                }
+            }
+        }
+        if (typeof console !== 'undefined' && console.log) {
+            console.log(lines.join('\n'));
+        }
     }
 
     return AgentLoop;

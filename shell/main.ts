@@ -13,8 +13,6 @@ const portable = applyPortablePaths();
 import { app, BrowserWindow, ipcMain, dialog, shell as electronShell, session, protocol, nativeTheme, globalShortcut, screen } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import * as crypto from 'crypto';
-import * as zlib from 'zlib';
 import { execFile } from 'child_process';
 import * as os from 'os';
 import * as http from 'http';
@@ -35,6 +33,12 @@ import { StateCloud } from './state-cloud';
 import { Qg } from './qg';
 import { DownloadService, DownloadOpts } from './download-service';
 import { UpdateService } from './update-service';
+import { injectDevToolsConsoleButtons } from './devtools-inject';
+import { _timelineDbs, _diffWindows, _tlDir, _tlBlobPath, _tlOpenDb, _tlFlushDb, _tlFlushNow, _sha256, _gzipSync, _gunzipSync, _tlWriteBlob } from './timeline-store';
+
+// ── 控制台全量 buffer（所有窗口共用，供 DevTools 复制/另存为按钮） ──
+const _consoleBuffer: string[] = [];
+const _consoleMaxLines = 20000;
 
 // ----------------------------------------------------------------------------
 // Chromium flags: MUST be set before app.whenReady()
@@ -52,153 +56,6 @@ app.commandLine.appendSwitch('disable-features', 'ForcedColors,AutoDarkMode');
 const APP_VERSION = '0.0.2';
 const DEFAULT_REMOTE_URL = 'http://127.0.0.1:8090/qqq-app/';
 
-// ============================================================================
-// Timeline 引擎 — 文件版本时间线存储 (SHA256去重 + gzip + SQLite索引)
-// 存储: {projectRoot}/qqq/timeline/
-//   blobs/{sha256[:2]}/{sha256}.gz  — 内容（不可变）
-//   timeline.db                       — SQLite 版本索引
-// ============================================================================
-
-const _timelineDbs: Map<string, any> = new Map(); // projectRoot → sql.js Database
-const _diffWindows: Map<string, BrowserWindow> = new Map(); // filePath → BrowserWindow (单例)
-
-function _tlDir(projectRoot: string): string {
-    return path.join(projectRoot, 'qqq', 'timeline');
-}
-
-function _tlBlobPath(projectRoot: string, sha256: string): string {
-    return path.join(_tlDir(projectRoot), 'blobs', sha256.slice(0, 2), sha256 + '.gz');
-}
-
-/** 打开或创建 timeline SQLite 数据库 */
-async function _tlOpenDb(projectRoot: string): Promise<any> {
-    const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
-    let db = _timelineDbs.get(dbPath);
-    if (db) return db;
-    try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch (_) { }
-    const initSqlJs = require('sql.js');
-    const SQL = await initSqlJs();
-    if (fs.existsSync(dbPath)) {
-        try {
-            const buf = fs.readFileSync(dbPath);
-            db = new SQL.Database(buf);
-        } catch (e) {
-            console.warn('[timeline] corrupt db, starting fresh:', e);
-            try { fs.renameSync(dbPath, dbPath + '.corrupt.' + Date.now()); } catch (_) { }
-            db = new SQL.Database();
-        }
-    } else {
-        db = new SQL.Database();
-    }
-    db.run(`CREATE TABLE IF NOT EXISTS versions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        file_path TEXT NOT NULL,
-        ts INTEGER NOT NULL,
-        blob_hash TEXT NOT NULL,
-        source TEXT NOT NULL,
-        floor_id TEXT,
-        added_lines INTEGER,
-        deleted_lines INTEGER
-    )`);
-    // 向前兼容：旧表无新列则补
-    try { db.run('ALTER TABLE versions ADD COLUMN added_lines INTEGER'); } catch (_) { /* already exists */ }
-    try { db.run('ALTER TABLE versions ADD COLUMN deleted_lines INTEGER'); } catch (_) { /* already exists */ }
-    db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_ts ON versions(file_path, ts)');
-    db.run('PRAGMA journal_mode=WAL');
-    db.run('PRAGMA synchronous=FULL');
-    db.run('PRAGMA busy_timeout=30000');
-    _timelineDbs.set(dbPath, db);
-    // 清理历史孤儿 tmp（纯收益，零风险）
-    _tlCleanStaleTmp(projectRoot);
-    return db;
-}
-
-// ── 延迟批量化刷盘：避免每次 record 都全量导出 SQL.js DB ──
-const _tlFlushTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-const _tlFlushDebounceMs = 2000; // 2s 无新写入再刷盘
-
-/** timeline tmp 目录 */
-function _tlTmpDir(projectRoot: string): string {
-    return path.join(_tlDir(projectRoot), '.tmp');
-}
-
-function _tlFlushDb(db: any, dbPath: string): void {
-    // 取消旧定时器，重新计时
-    const existing = _tlFlushTimers.get(dbPath);
-    if (existing) clearTimeout(existing);
-    _tlFlushTimers.set(dbPath, setTimeout(() => {
-        _tlFlushTimers.delete(dbPath);
-        try {
-            const projectRoot = path.dirname(path.dirname(dbPath)); // dbPath = {root}/qqq/timeline/timeline.db
-            const tmpDir = _tlTmpDir(projectRoot);
-            try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
-            const data = db.export();
-            const tmp = path.join(tmpDir, 'timeline.db.tmp.' + Date.now());
-            fs.writeFileSync(tmp, Buffer.from(data));
-            fs.renameSync(tmp, dbPath);
-        } catch (e) {
-            console.warn('[timeline] flush failed:', e);
-        }
-    }, _tlFlushDebounceMs));
-}
-
-/** 强制立即刷盘（退出前调用） */
-function _tlFlushNow(db: any, dbPath: string): void {
-    const timer = _tlFlushTimers.get(dbPath);
-    if (timer) { clearTimeout(timer); _tlFlushTimers.delete(dbPath); }
-    try {
-        const projectRoot = path.dirname(path.dirname(dbPath));
-        const tmpDir = _tlTmpDir(projectRoot);
-        try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
-        const data = db.export();
-        const tmp = path.join(tmpDir, 'timeline.db.tmp.' + Date.now());
-        fs.writeFileSync(tmp, Buffer.from(data));
-        fs.renameSync(tmp, dbPath);
-    } catch (e) {
-        console.warn('[timeline] flushNow failed:', e);
-    }
-}
-
-/** SHA256 hex (64 chars) */
-function _sha256(content: string): string {
-    return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
-}
-
-/** Gzip 压缩内容，返回 Buffer */
-function _gzipSync(content: string): Buffer {
-    return zlib.gzipSync(Buffer.from(content, 'utf8'), { level: 6 });
-}
-
-/** Gunzip 解压，返回 string */
-function _gunzipSync(buf: Buffer): string {
-    return zlib.gunzipSync(buf).toString('utf8');
-}
-
-/** 原子写入 blob（tmp 放在 .tmp/ 子目录，rename 到正式位置） */
-function _tlWriteBlob(projectRoot: string, sha256: string, gzBuf: Buffer): void {
-    const blobPath = _tlBlobPath(projectRoot, sha256);
-    const dir = path.dirname(blobPath);
-    try { fs.mkdirSync(dir, { recursive: true }); } catch (_) { }
-    // 如果已存在，跳过（相同内容不可变）
-    if (fs.existsSync(blobPath)) return;
-    const tmpDir = _tlTmpDir(projectRoot);
-    try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
-    const tmp = path.join(tmpDir, sha256 + '.tmp.' + Date.now());
-    fs.writeFileSync(tmp, gzBuf);
-    fs.renameSync(tmp, blobPath);
-}
-
-/** 清理孤儿 tmp 文件（.tmp/ 整个目录清空即可，零风险） */
-function _tlCleanStaleTmp(projectRoot: string): void {
-    const tmpDir = _tlTmpDir(projectRoot);
-    try {
-        if (!fs.existsSync(tmpDir)) return;
-        const files = fs.readdirSync(tmpDir);
-        for (const f of files) {
-            try { fs.unlinkSync(path.join(tmpDir, f)); } catch (_) { }
-        }
-    } catch (_) { }
-}
 
 // ----------------------------------------------------------------------------
 // Boot configuration: read app-dir-local config.json (NEVER touches AppData)
@@ -564,6 +421,11 @@ function createWindow(): BrowserWindow {
             ],
         },
     });
+    // ── 控制台消息汇集到模块级 buffer ──
+    win.webContents.on('console-message', (_e: any, _level: number, message: string) => {
+        _consoleBuffer.push(message);
+        if (_consoleBuffer.length > _consoleMaxLines) _consoleBuffer.shift();
+    });
     win.removeMenu();
     win.once('ready-to-show', async () => {
         await restoreWindowBounds(win);
@@ -659,7 +521,7 @@ function createWindow(): BrowserWindow {
     // Dev mode: DevTools open (detached), no cache, F5 reload, Ctrl+Shift+I devtools toggle
     if (isDevFlag) {
         win.webContents.openDevTools({ mode: 'detach' });
-        injectDevToolsConsoleButtons(win.webContents);
+        injectDevToolsConsoleButtons(win.webContents, () => _consoleBuffer.join('\n'), win);
         win.webContents.session.clearCache().catch(() => { });
         win.webContents.on('before-input-event', (ev, input) => {
             if (input.type !== 'keyDown') { return; }
@@ -673,7 +535,7 @@ function createWindow(): BrowserWindow {
                     win.webContents.closeDevTools();
                 } else {
                     win.webContents.openDevTools({ mode: 'detach' });
-                    injectDevToolsConsoleButtons(win.webContents);
+                    injectDevToolsConsoleButtons(win.webContents, () => _consoleBuffer.join('\n'), win);
                 }
             }
         });
@@ -1966,7 +1828,7 @@ function registerIpc(): void {
             wc.closeDevTools();
         } else {
             wc.openDevTools({ mode: 'detach' });
-            injectDevToolsConsoleButtons(wc);
+            injectDevToolsConsoleButtons(wc, () => _consoleBuffer.join('\n'), win);
         }
     });
     // 开新窗口（可选绑定主文件夹，否则空 AI 视口）
@@ -2434,7 +2296,7 @@ function registerIpc(): void {
             if (!projectRoot || !filePath) return [];
             const normalizedPath = filePath.replace(/\\/g, '/');
             const db = await _tlOpenDb(projectRoot);
-            const stmt2 = db.prepare('SELECT id, ts, blob_hash, source, floor_id, added_lines, deleted_lines FROM versions WHERE file_path = ? ORDER BY ts ASC');
+            const stmt2 = db.prepare('SELECT id, ts, blob_hash, source, floor_id, added_lines, deleted_lines FROM versions WHERE file_path = ? ORDER BY id ASC');
             stmt2.bind([normalizedPath]);
             var versionRows = [];
             while (stmt2.step()) {
@@ -2892,116 +2754,6 @@ process.on('unhandledRejection', (reason) => {
     // console.warn 可能因管道断开抛 EPIPE，用 try-catch 保护，打断日志洪水
     try { console.warn('[unhandledRejection]', reason); } catch (_) { }
 });
-
-// ═══ DevTools Console 悬浮按钮注入（复制 / 另存为） ═══
-function injectDevToolsConsoleButtons(wc: Electron.WebContents): void {
-    // 等待 DevTools 加载完成后注入
-    const tryInject = () => {
-        const dwc = (wc as any).devToolsWebContents;
-        if (!dwc) { return; }
-        dwc.executeJavaScript(`
-(function() {
-  if (window.__qqq_dt_btns_installed) return;
-  window.__qqq_dt_btns_installed = true;
-
-  var style = document.createElement('style');
-  style.textContent = [
-    '#qqqide-dt-btns { position:fixed; bottom:12px; right:12px; display:flex; gap:6px; z-index:999999; opacity:0.3; transition:opacity 0.15s; }',
-    '#qqqide-dt-btns:hover { opacity:1; }',
-    '#qqqide-dt-btns button { padding:4px 10px; border:1px solid #888; border-radius:3px; background:#2a2a2a; color:#ccc; font-size:11px; cursor:pointer; white-space:nowrap; font-family:ui-monospace,monospace; }',
-    '#qqqide-dt-btns button:hover { background:#3a3a3a; border-color:#ccc; }',
-    '#qqqide-dt-toast { position:fixed; bottom:44px; right:12px; padding:4px 10px; border-radius:3px; background:rgba(0,0,0,0.85); color:#fff; font-size:11px; z-index:999999; pointer-events:none; opacity:0; transition:opacity 0.2s; font-family:ui-monospace,monospace; }'
-  ].join('\\n');
-  document.head.appendChild(style);
-
-  var btns = document.createElement('div');
-  btns.id = 'qqq-dt-btns';
-  btns.innerHTML = '<button id="qqq-dt-copy">\u{1F4CB} \u590D\u5236</button><button id="qqq-dt-save">\u{1F4BE} \u53E6\u5B58\u4E3A</button>';
-
-  var toast = document.createElement('div');
-  toast.id = 'qqq-dt-toast';
-
-  var _toastTimer = 0;
-  function showToast(msg) {
-    toast.textContent = msg;
-    toast.style.opacity = '1';
-    if (_toastTimer) clearTimeout(_toastTimer);
-    _toastTimer = setTimeout(function() { toast.style.opacity = '0'; }, 1800);
-  }
-
-  // 从 Console 面板提取全部文本
-  function getConsoleText() {
-    var parts = [];
-    // 尝试常见的 DevTools Console DOM 选择器
-    var msgs = document.querySelectorAll('.console-message-text, .console-message, .source-code, [class*="console"] [class*="text"], [class*="console"] [class*="message"]');
-    if (msgs.length === 0) {
-      // 回退：取整个 body 可见文本（粗糙但有结果）
-      var body = document.body;
-      if (body) { parts.push(body.innerText); }
-    } else {
-      for (var i = 0; i < msgs.length; i++) {
-        var t = (msgs[i].textContent || '').trim();
-        if (t) parts.push(t);
-      }
-    }
-    return parts.join('\\n');
-  }
-
-  // 仅在 Console 面板可见时显示按钮
-  function updateVisibility() {
-    var consolePanel = document.querySelector('.console-view, [aria-label="Console"], [class*="console"]');
-    btns.style.display = consolePanel ? '' : 'none';
-  }
-
-  var copyBtn = document.getElementById('qqq-dt-copy');
-  if (copyBtn) copyBtn.onclick = function() {
-    var text = getConsoleText();
-    if (!text) { showToast('\u63A7\u5236\u53F0\u6682\u65E0\u8F93\u51FA'); return; }
-    navigator.clipboard.writeText(text).then(function() {
-      showToast('\u5DF2\u590D\u5236 ' + text.split('\\n').length + ' \u884C');
-    }).catch(function() { showToast('\u590D\u5236\u5931\u8D25'); });
-  };
-
-  var saveBtn = document.getElementById('qqq-dt-save');
-  if (saveBtn) saveBtn.onclick = function() {
-    var text = getConsoleText();
-    if (!text) { showToast('\u63A7\u5236\u53F0\u6682\u65E0\u8F93\u51FA'); return; }
-    var blob = new Blob([text], { type: 'text/plain' });
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'console_' + new Date().toISOString().slice(0,10) + '.log';
-    a.click();
-    showToast('\u5DF2\u4E0B\u8F7D');
-  };
-
-  document.body.appendChild(btns);
-  document.body.appendChild(toast);
-
-  // 监听面板切换（Console 可见时才显示按钮）
-  updateVisibility();
-  var observer = new MutationObserver(updateVisibility);
-  observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
-})();
-`).catch(() => { /* DevTools may not be ready yet */ });
-    };
-
-    // 立即尝试（DevTools 可能已打开），否则轮询等待
-    if ((wc as any).devToolsWebContents) {
-        tryInject();
-        return;
-    }
-    let attempts = 0;
-    const pollTimer = setInterval(() => {
-        attempts++;
-        if ((wc as any).devToolsWebContents) {
-            clearInterval(pollTimer);
-            tryInject();
-        } else if (attempts >= 30) {
-            clearInterval(pollTimer);
-        }
-    }, 500);
-}
-
 
 
 // ═══ 所有窗口关闭 → 触发退出（汇聚到 before-quit 统一清理）═══
