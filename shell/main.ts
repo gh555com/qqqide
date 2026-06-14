@@ -1145,6 +1145,12 @@ function registerIpc(): void {
         await fs.promises.writeFile(p, content);
         return true;
     });
+    // ★ 真追加：零读取，只追加新内容到文件末尾
+    ipcMain.handle('qqqide:fs:append', async (_e, p: string, content: string) => {
+        try { await fs.promises.mkdir(path.dirname(p), { recursive: true }); } catch { /* ignore */ }
+        await fs.promises.appendFile(p, content, 'utf8');
+        return true;
+    });
     ipcMain.handle('qqqide:fs:list', async (_e, p: string, callerStack?: string) => {
         console.log('[fs:list]', p);
         const result: string[] = [];
@@ -2403,24 +2409,13 @@ function registerIpc(): void {
             const sha = _sha256(content);
             const db = await _tlOpenDb(projectRoot);
             const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
-            // 去重：相同 (file_path, blob_hash) 不重复插入，直接返回已有记录
-            const stmt = db.prepare('SELECT id, ts FROM versions WHERE file_path = ? AND blob_hash = ?');
-            stmt.bind([normalizedPath, sha]);
-            const hasExisting = stmt.step();
-            if (hasExisting) {
-                const existingRow = stmt.getAsObject();
-                stmt.free();
-                // ★ 不再 UPDATE ts —— 钩子 Q 已确保 before/after 时间正确，去重即命中不应篡改时间戳
-                return { ok: true, dedup: true, blob_hash: sha, ts: existingRow.ts };
-            }
-            stmt.free();
-            // 先写 blob（不可变，原子写）
+            // ★ blob 内容去重（不存重复 gzip）
             const blobPath = _tlBlobPath(projectRoot, sha);
             if (!fs.existsSync(blobPath)) {
                 const gzBuf = _gzipSync(content);
                 _tlWriteBlob(projectRoot, sha, gzBuf);
             }
-            // 再写索引
+            // ★ 版本索引总是新增（还原操作也会产生新 ts）
             const ts = Date.now();
             db.run('INSERT INTO versions (file_path, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?)',
                 [normalizedPath, ts, sha, source, floorId || null, addedLines || null, deletedLines || null]);
@@ -2598,15 +2593,11 @@ function registerIpc(): void {
                 if (!fs.existsSync(blobPath)) { const gzBuf = _gzipSync(f.content); _tlWriteBlob(projectRoot, sha, gzBuf); }
                 const db = await _tlOpenDb(projectRoot);
                 const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
-                const stmt = db.prepare('SELECT id FROM versions WHERE file_path = ? AND blob_hash = ?');
-                stmt.bind([f.filePath, sha]);
-                if (!stmt.step()) {
-                    const ts = Date.now();
-                    db.run('INSERT INTO versions (file_path, ts, blob_hash, source, floor_id) VALUES (?,?,?,?,?)',
-                        [f.filePath, ts, sha, 'run-command', null]);
-                    _tlFlushDb(db, dbPath);
-                }
-                stmt.free();
+                // ★ 版本索引总是新增（即使 blob 已有，ts 也是新的）
+                const ts = Date.now();
+                db.run('INSERT INTO versions (file_path, ts, blob_hash, source, floor_id) VALUES (?,?,?,?,?)',
+                    [f.filePath, ts, sha, 'run-command', null]);
+                _tlFlushDb(db, dbPath);
                 results.push({ filePath: f.filePath, blob_hash: sha });
             } catch (_) { }
         }

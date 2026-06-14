@@ -25,8 +25,7 @@
     var _diffEditor = null;
     var _monacoLoaded = false;
 
-    var $filePath = document.getElementById('file-path');
-    // 隐藏 input 存值（兼容旧引用 $selLeft/$selRight → .value 读写）
+    var $titleInput = document.getElementById('title-input');
     var $selLeft = document.getElementById('sel-left');
     var $selRight = document.getElementById('sel-right');
     // 自定义下拉 DOM
@@ -59,10 +58,12 @@
             });
         }
     });
-    var $btnClose = document.getElementById('btn-close');
-    if ($btnClose) $btnClose.addEventListener('click', function () {
-        if (bridge && bridge.window) bridge.window.close();
-    });
+
+    // ★ 大号关闭按钮 + 右键关闭窗口
+    var $btnBigClose = document.getElementById('big-close');
+    function _closeWindow() { if (bridge && bridge.window) bridge.window.close(); }
+    if ($btnBigClose) $btnBigClose.addEventListener('click', _closeWindow);
+    document.addEventListener('contextmenu', function (e) { e.preventDefault(); _closeWindow(); });
 
     // ═══ 监听主进程推送 diff 更新（同文件再次点击 A4 时复用窗口） ═══
     if (bridge && bridge.timeline && bridge.timeline.onDiffUpdate) {
@@ -77,9 +78,13 @@
     if (!FILE_PATH || !PROJECT_ROOT) {
         $emptyState.textContent = '缺少参数';
     } else {
-        $filePath.textContent = FILE_PATH;
-        $filePath.title = FILE_PATH;
+        $titleInput.value = FILE_PATH;
+        $titleInput.title = FILE_PATH;
         loadVersions(FILE_PATH);
+    }
+    // ★ Ctrl+Z 逐字回退
+    if ($titleInput && typeof window._qqqUndoAttach === 'function') {
+        window._qqqUndoAttach($titleInput);
     }
 
     // ═══ 加载版本列表 ═══
@@ -253,10 +258,7 @@
             }
         }
 
-        // ── 最终确保 before 时间 ≤ after 时间 ──
-        if (beforeIdx >= 0 && afterIdx >= 0 && beforeIdx > afterIdx) {
-            var tmpI = beforeIdx; beforeIdx = afterIdx; afterIdx = tmpI;
-        }
+        // ★ before/after 语义由钩子 Q 保证，不按时间戳排序（还原操作时 before 可能晚于 after）
 
         // ── 构建 HTML：标签格式 "2026-06-13 11:36:41 +333 -66 q38 f14 h3 r2 [first] [before]" ──
         var mergedOptions = [];
@@ -311,7 +313,9 @@
                     markerHtml += '<span class="v-marker' + (mkClass ? ' ' + mkClass : '') + '">' + _escHtml(mk) + '</span>';
                 }
             }
-            html += '<div class="v-dropdown-item" data-value="' + _escAttr(mo.value) + '">' + displayHtml + markerHtml + '</div>';
+            html += '<div class="v-dropdown-item" data-value="' + _escAttr(mo.value) + '">' +
+                displayHtml + markerHtml +
+                '<button class="v-copy-btn" title="复制此行文本">📋</button></div>';
         }
         $list.innerHTML = html;
     }
@@ -347,7 +351,7 @@
     // ── 动态计算下拉 max-height：按窗口高度（约 24 行，每行 ~28px）──
     function _calcDropdownMaxHeight() {
         var winH = window.innerHeight;
-        var barH = 36 + 36 + 44 + 32 + 22; // titlebar + file-bar + version-bar + actions-bar + statusbar
+        var barH = 36 + 44 + 32 + 22; // title-row + version-bar + actions-bar + statusbar
         var avail = winH - barH - 24; // 减去上下留白
         var rowH = 28;
         var maxRows = Math.floor(avail / rowH);
@@ -375,8 +379,22 @@
                 _highlightAndScroll($list, $hidden.value);
             }
         });
-        // 点击列表项：选中并关闭
+        // 点击列表项：选中并关闭（排除复制按钮）
         $list.addEventListener('click', function (e) {
+            // ★ 点复制按钮：复制纯文本
+            if (e.target.classList.contains('v-copy-btn')) {
+                e.stopPropagation();
+                var copyItem = e.target.closest('.v-dropdown-item');
+                if (copyItem) {
+                    var text = copyItem.textContent.replace(/📋/g, '').trim();
+                    if (bridge && bridge.clipboard && bridge.clipboard.writeText) {
+                        bridge.clipboard.writeText(text);
+                    } else {
+                        navigator.clipboard.writeText(text).catch(function(){});
+                    }
+                }
+                return;
+            }
             var item = e.target.closest('.v-dropdown-item');
             if (!item) return;
             var val = item.dataset.value;
@@ -610,36 +628,67 @@
         if (!editor) return;
         try {
             editor.updateOptions({
-                // 语法染色保留（tokenization），其余全关
+                // ★ 只保留 tokenization（语法染色），其余全部关死
+                // 滚动/视口
                 scrollbar: { vertical: 'hidden', horizontal: 'hidden' },
-                occurrencesHighlight: false,
-                selectionHighlight: false,
-                renderLineHighlight: 'none',
-                matchBrackets: 'never',
-                glyphMargin: false,
-                folding: false,
-                lineDecorationsWidth: 0,
-                renderWhitespace: 'none',
+                scrollBeyondLastLine: false,
+                smoothScrolling: false,
                 cursorBlinking: 'solid',
                 cursorSmoothCaretAnimation: 'off',
-                smoothScrolling: false,
-                links: false,
-                contextmenu: false,
+                cursorSurroundingLines: 0,
+                // 装饰/标注
+                minimap: { enabled: false },           // 内编辑器不画 minimap（diff 级别已有一个）
+                glyphMargin: false,
+                lineDecorationsWidth: 0,
+                renderLineHighlight: 'none',
+                renderLineHighlightOnlyWhenFocus: true,
+                overviewRulerLanes: 0,
+                renderOverviewRuler: false,
+                hideCursorInOverviewRuler: true,
+                overviewRulerBorder: false,
+                // 智能功能全杀
+                occurrencesHighlight: false,
+                selectionHighlight: false,
+                matchBrackets: 'never',
+                bracketPairColorization: { enabled: false },
+                autoClosingBrackets: 'never',
+                autoClosingQuotes: 'never',
+                autoIndent: 'none',
+                // LSP / 语法检查 / 红色波浪线
+                renderValidationDecorations: 'off',
+                // 建议/提示
                 quickSuggestions: false,
+                suggestOnTriggerCharacters: false,
+                acceptSuggestionOnEnter: 'off',
+                tabCompletion: 'off',
+                wordBasedSuggestions: false,
                 parameterHints: { enabled: false },
+                inlayHints: { enabled: false },
+                // 悬浮/灯泡/引用
                 hover: { enabled: false },
+                links: false,
                 codeLens: false,
                 colorDecorators: false,
                 lightbulb: { enabled: false },
-                tabCompletion: 'off',
-                wordBasedSuggestions: false,
-                suggestOnTriggerCharacters: false,
-                acceptSuggestionOnEnter: 'off',
-                selectionClipboard: false,
-                scrollBeyondLastLine: false,
-                unicodeHighlight: { nonBasicASCII: false, ambiguousCharacters: false },
-                renderControlCharacters: false,
+                // 缩进/参考线
+                guides: { indentation: false, bracketPairs: false, bracketPairsHorizontal: false, highlightActiveIndentation: false },
                 renderIndentGuides: false,
+                // 折叠/空白/控制字符
+                folding: false,
+                renderWhitespace: 'none',
+                renderControlCharacters: false,
+                unicodeHighlight: { nonBasicASCII: false, ambiguousCharacters: false },
+                // 拖拽/剪贴板/搜索
+                dragAndDrop: false,
+                selectionClipboard: false,
+                emptySelectionClipboard: false,
+                contextmenu: false,
+                // 其他
+                rulers: [],
+                roundedSelection: false,
+                padding: { top: 0, bottom: 0 },
+                stickyScroll: { enabled: false },
+                find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'never' },
             });
         } catch (_) { }
     }

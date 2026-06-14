@@ -27,7 +27,7 @@ document.getElementById('rules-edit').onclick = async function () {
             var projExists = await bridge.fs.exists(projPath);
             if (!projExists) {
                 try { await bridge.fs.mkdir(projDir, { recursive: true }); } catch (_) { }
-                await bridge.fs.write(projPath, '# qqq AI Project Rules\n# Write rules here that apply ONLY to this project.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) \u2014 AI remembers them from conversation history.\n');
+                await bridge.fs.write(projPath, '# You may optionally add must-read files or folders below.\n# Format: rule"<path>" \u2014 <path> is an absolute file or folder path.\n# Total lines across all added items combined are preferably under ~2000.\n# Suggest adding core architecture / iron-rule docs, like:\n# rule"D:\\your\\project\\docs\\rules.txt"\n');
             }
             _postToHost({ type: 'qqq-file-open-right', path: projPath });
         }

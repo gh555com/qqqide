@@ -1468,7 +1468,9 @@
       if (e.data.type === 'qqq-floor-indicator') {
         if (e.data.action === 'hide') {
           var _fi = document.getElementById('qqq-floor-indicator-host');
-          if (_fi) { _fi.style.opacity = '0'; _fi.classList.remove('visible'); }
+          if (_fi) { _fi.classList.remove('visible'); _fi.style.opacity = ''; }
+          var _kh = document.getElementById('qqq-scroll-keys-host');
+          if (_kh) _kh.style.opacity = '0';
           return;
         }
         if (e.data.action === 'show' && e.data.html) {
@@ -1479,25 +1481,90 @@
             if (!_fis) {
               _fis = document.createElement('style');
               _fis.id = 'qqq-floor-indicator-style';
-              _fis.textContent = '#qqq-floor-indicator-host{transition:opacity 1s ease}#qqq-floor-indicator-host.visible{opacity:1}.floor-ind-tofu{background:var(--card-bg,#eee8d5);border:1px solid var(--border-color,#d3c6aa);border-radius:5px 0 0 5px;padding:6px 14px;font-family:Tahoma,sans-serif;font-weight:normal;font-size:13px;color:#1a1a1a;white-space:nowrap;box-shadow:0 0 8px rgba(0,0,0,0.25),0 2px 12px rgba(0,0,0,0.15);line-height:1.5;user-select:none}.floor-ind-needle{position:relative;width:30px;height:4px;flex-shrink:0;margin-left:-1px;filter:drop-shadow(0 0 6px rgba(0,0,0,0.3))}.floor-ind-needle::before{content:'';position:absolute;left:0;top:0;width:100%;height:100%;background:var(--text-primary,#7a7874);clip-path:polygon(0 0,100% 50%,0 100%);opacity:0.95}#qqq-floor-indicator-host.fl-ind-left{flex-direction:row-reverse}#qqq-floor-indicator-host.fl-ind-left .floor-ind-tofu{border-radius:0 5px 5px 0}#qqq-floor-indicator-host.fl-ind-left .floor-ind-needle{margin-left:0;margin-right:-1px}#qqq-floor-indicator-host.fl-ind-left .floor-ind-needle::before{clip-path:polygon(100% 0,0 50%,100% 100%)}';
+              _fis.textContent = ''
+                + '#qqq-floor-indicator-host{transition:opacity 0.2s ease;opacity:0}'
+                + '#qqq-floor-indicator-host.visible{transition:opacity 0s;opacity:1}'
+                + '.floor-ind-tofu{background:#f2e8c0;border:1px solid rgba(0,0,0,0.15);border-radius:7px 0 0 7px;padding:9px 21px;font-family:Tahoma,sans-serif;font-weight:normal;font-size:19px;color:#111;white-space:nowrap;box-shadow:0 0 12px rgba(0,0,0,0.18),0 3px 18px rgba(0,0,0,0.22);line-height:1.5;user-select:none}'
+                + '[data-theme="dark"] .floor-ind-tofu{background:#3a3630;border-color:rgba(255,255,255,0.12);color:#eee}'
+                + '[data-theme="dark"] .floor-ind-tofu{box-shadow:0 0 12px rgba(255,255,255,0.16),0 3px 18px rgba(255,255,255,0.18)}'
+                + '.floor-ind-needle{position:relative;width:45px;height:6px;flex-shrink:0;margin-left:-1px;filter:drop-shadow(0 0 6px rgba(0,0,0,0.3))}'
+                + '.floor-ind-needle::before{content:"" !important;position:absolute;left:0;top:0;width:100%;height:100%;background:#7a7874;clip-path:polygon(0 0,100% 50%,0 100%);opacity:0.35}'
+                + '[data-theme="dark"] .floor-ind-needle{filter:drop-shadow(0 0 6px rgba(255,255,255,0.25))}'
+                + '[data-theme="dark"] .floor-ind-needle::before{background:#c8c4b8}'
+                + '#qqq-floor-indicator-host.fl-ind-left{flex-direction:row-reverse}'
+                + '#qqq-floor-indicator-host.fl-ind-left .floor-ind-tofu{border-radius:0 7px 7px 0}'
+                + '#qqq-floor-indicator-host.fl-ind-left .floor-ind-needle{margin-left:0;margin-right:-1px}'
+                + '#qqq-floor-indicator-host.fl-ind-left .floor-ind-needle::before{clip-path:polygon(100% 0,0 50%,100% 100%)}'
+              ;
               document.head.appendChild(_fis);
             }
             _fi2 = document.createElement('div');
             _fi2.id = 'qqq-floor-indicator-host';
             _fi2.innerHTML = '<span class="floor-ind-tofu"></span><span class="floor-ind-needle"></span>';
-            _fi2.style.cssText = 'position:fixed;top:50%;z-index:99999;pointer-events:none;opacity:0;display:flex;align-items:center;transform:translateY(-50%)';
+            _fi2.style.cssText = 'position:fixed;top:50%;z-index:99999;pointer-events:none;display:flex;align-items:center;transform:translateY(-50%)';
             document.body.appendChild(_fi2);
           }
+          // ★ 根据发送面板的 iframe 位置来定位豆腐块（贴在面板的 sash 侧边缘）
           var _pid2 = typeof e.data.panel === 'number' ? e.data.panel : 1;
-          if (_pid2 === 0) {
-            _fi2.style.left = 'auto'; _fi2.style.right = '10px';
-            _fi2.classList.add('fl-ind-left');
+          var _iframeRect = null;
+          try {
+            if (e.source && e.source.frameElement) {
+              _iframeRect = e.source.frameElement.getBoundingClientRect();
+            }
+          } catch (_) { }
+          if (_iframeRect) {
+            // ★ 探针尖端固定定位（不受豆腐块宽度变化影响）
+            _fi2.style.top = (_iframeRect.top + _iframeRect.height / 2) + 'px';
+            if (_pid2 === 0) {
+              _fi2.style.left = (_iframeRect.right - 43) + 'px';
+              _fi2.style.right = 'auto';
+              _fi2.classList.add('fl-ind-left');
+            } else {
+              _fi2.style.left = 'auto';
+              _fi2.style.right = (window.innerWidth - _iframeRect.left - 43) + 'px';
+              _fi2.classList.remove('fl-ind-left');
+            }
+            // ★ 同步创建/更新 1/2/q/w 按键标记（与豆腐块同 X 位置）
+            var _keysHost = document.getElementById('qqq-scroll-keys-host');
+            if (!_keysHost) {
+              _keysHost = document.createElement('div');
+              _keysHost.id = 'qqq-scroll-keys-host';
+              _keysHost.style.cssText = 'position:fixed;z-index:99998;pointer-events:none;opacity:0;transition:opacity 0.2s ease';
+              _keysHost.innerHTML = '<div class="skey" style="position:absolute;top:12%;left:0;right:0;margin:0 auto">1</div><div class="skey" style="position:absolute;top:38%;left:0;right:0;margin:0 auto">q</div><div class="skey" style="position:absolute;top:58%;left:0;right:0;margin:0 auto">w</div><div class="skey" style="position:absolute;bottom:12%;left:0;right:0;margin:0 auto">2</div>';
+              document.body.appendChild(_keysHost);
+              // 注入按键样式（一次性）
+              var _ks = document.getElementById('qqq-scroll-keys-style');
+              if (!_ks) {
+                _ks = document.createElement('style');
+                _ks.id = 'qqq-scroll-keys-style';
+                _ks.textContent = '@font-face{font-family:Unifont;src:url(http://127.0.0.1:8090/qqq-app/fonts/unifont-17.0.04.otf) format("opentype")}.skey{width:42px;height:42px;font-family:Unifont,monospace;font-size:24px;font-weight:400;text-align:center;line-height:42px;border-radius:9px;border:1px solid #b0aca8;background:linear-gradient(180deg,#faf8f5 0%,#e0dcd5 100%);color:#4a4642;box-shadow:0 1px 0 #c5bfb6,0 2px 4px rgba(0,0,0,0.18);user-select:none}[data-theme="dark"] .skey{border-color:#5a5652;background:linear-gradient(180deg,#5a5650 0%,#3a3632 100%);color:#dcd8d0;box-shadow:0 1px 0 #6a6660,0 2px 4px rgba(0,0,0,0.35)}';
+                document.head.appendChild(_ks);
+              }
+            }
+            _keysHost.style.top = _iframeRect.top + 'px';
+            _keysHost.style.height = _iframeRect.height + 'px';
+            _keysHost.style.opacity = '1';
+            if (_pid2 === 0) {
+              _keysHost.style.left = 'auto';
+              _keysHost.style.right = (window.innerWidth - _iframeRect.right + 2) + 'px';
+            } else {
+              _keysHost.style.left = (_iframeRect.left - 42) + 'px';
+              _keysHost.style.right = 'auto';
+            }
           } else {
-            _fi2.style.left = '10px'; _fi2.style.right = 'auto';
-            _fi2.classList.remove('fl-ind-left');
+            // 降级：固定定位在视口边缘
+            if (_pid2 === 0) {
+              _fi2.style.left = '4px'; _fi2.style.right = 'auto';
+              _fi2.classList.add('fl-ind-left');
+            } else {
+              _fi2.style.left = 'auto'; _fi2.style.right = '4px';
+              _fi2.classList.remove('fl-ind-left');
+            }
           }
           _fi2.querySelector('.floor-ind-tofu').innerHTML = e.data.html;
+          // ★ 渐入：inline opacity=1 立即显示；渐出：CSS transition 0.1s 接管
           _fi2.classList.add('visible');
+          _fi2.style.opacity = '1';
           return;
         }
       }

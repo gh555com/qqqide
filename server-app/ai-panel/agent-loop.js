@@ -262,13 +262,16 @@ var AgentLoop = (function () {
                 var logPath = logDir + '/agent-' + today + '.log';
                 var bridge = window.parent && window.parent.qqqideBridge;
                 if (bridge && bridge.fs) {
-                    // 读已有内容 → 追加 → 写回
-                    bridge.fs.read(logPath).then(function (old) {
-                        var content = (typeof old === 'string' ? old : '') + lines;
-                        bridge.fs.write(logPath, content);
-                    }).catch(function () {
-                        bridge.fs.write(logPath, lines);
-                    });
+                    // ★ 真追加：优先用 append，不支持则降级为 read+write
+                    if (typeof bridge.fs.append === 'function') {
+                        bridge.fs.append(logPath, lines).catch(function () { });
+                    } else {
+                        bridge.fs.read(logPath).then(function (old) {
+                            bridge.fs.write(logPath, (typeof old === 'string' ? old : '') + lines);
+                        }).catch(function () {
+                            bridge.fs.write(logPath, lines);
+                        });
+                    }
                 }
             } catch (_) { /* 静默降级：文件日志失败不影响主流程 */ }
         };
@@ -445,13 +448,45 @@ var AgentLoop = (function () {
         // 判断是否全部无进展：search_text 返回 No matches / find_files 空 / list_files 空 / 错误
         var allNoProgress = toolResults.every(function (r) {
             var s = typeof r === 'string' ? r : '';
-            return s.startsWith('No matches found') || s.startsWith('Error') || s === '' || s.startsWith('Tool error');
+            return s.startsWith('No matches found') || s.startsWith('Error') || s === '' || s.startsWith('Tool error') || s.startsWith('[ALREADY READ]');
         });
         if (allNoProgress) {
             self._stallCount++;
         } else {
             self._stallCount = 0;
             self._stallWarned = false;
+        }
+        // ★ 工具循环检测：连续 3 个 house 调同一批工具（同 name + 同 args）且零文本产出 → 死循环
+        //    覆盖 read_file / search_text / find_files / list_files / fetch_webpage 等一切工具
+        if (!allNoProgress && self._houses.length >= 3) {
+            var _last3 = self._houses.slice(-3);
+            var _allTools = _last3.every(function (h) { return h.type === 'tools'; });
+            if (_allTools) {
+                var _toolFingerprints = _last3.map(function (h) {
+                    var _fp = [];
+                    for (var _ti = 0; _ti < h.tools.length; _ti++) {
+                        var _t = h.tools[_ti];
+                        // 指纹 = 工具名 + 关键参数（path 归一化 \→/ 小写 + 行范围，防 AI 换格式/分块逃逸）
+                        var _argsKey = '';
+                        if (_t.args) {
+                            _argsKey = (_t.args.path || _t.args.regex || _t.args.keyword || _t.args.command || _t.args.url || _t.args.pattern || _t.args.query || '');
+                            if (_t.args.path) {
+                                _argsKey = _argsKey.replace(/\\/g, '/').toLowerCase();
+                                // 行范围也纳入指纹：读不同行 ≠ 重复
+                                if (_t.args.start_line != null) _argsKey += '|s' + _t.args.start_line;
+                                if (_t.args.end_line != null) _argsKey += '|e' + _t.args.end_line;
+                            }
+                        }
+                        _fp.push(_t.name + '\x00' + _argsKey);
+                    }
+                    return _fp.sort().join('\x01');
+                });
+                if (_toolFingerprints[0] && _toolFingerprints[0] === _toolFingerprints[1] && _toolFingerprints[0] === _toolFingerprints[2]) {
+                    self._log('🔁 tool-loop detected: same tool+args 3 times without output, forcing final answer');
+                    self._stallCount = 8;  // 直接跳到 force 级
+                    return 'force';
+                }
+            }
         }
         // 5 次无进展 → 警告注入
         if (self._stallCount >= 5 && !self._stallWarned) {
@@ -614,6 +649,7 @@ var AgentLoop = (function () {
         self._floorOnErrorCalled = false;  // ★ 看门狗：onError 回调已处理，不重复恢复
         self._sendTerminated = false;  // ★ 终止旗：onError 后强制退出 while
         self._resetStallCounter();
+        if (typeof window !== 'undefined') window._qqqReadFilesThisFloor = {};  // ★ 读文件去重计数器：每层楼复位
 
         try {
             while (maxIterations-- > 0 && !self._sendTerminated) {

@@ -319,9 +319,13 @@ async function _restoreAgentFromStore(questId, ag) {
             }
         }
 
-        // 修复断裂的 tool_calls
+        // ★ 修复断裂的 tool_calls（循环至干净，200 轮/次，最多 10 次）
         if (ag._repairOrphanedToolCalls) {
-            ag._repairOrphanedToolCalls();
+            for (var _rp = 0; _rp < 10; _rp++) {
+                var _lenPre = ag.conversation.length;
+                ag._repairOrphanedToolCalls();
+                if (ag.conversation.length === _lenPre) break;  // 无修复产出 → 已干净
+            }
         }
 
         // 恢复 metadata

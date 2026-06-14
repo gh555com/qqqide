@@ -160,12 +160,92 @@ window.loadQqqideProjectRules = async function (projectRoot) {
         var bridge = parent.qqqideBridge;
         if (!bridge) { /* silent */ return; }
         var projPath = projectRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/rule/project.txt';
+
+        // ★ mtime 缓存：换项目自动失效；project.txt 没变 → 跳过所有磁盘读
+        var _cachedRoot = window._qqqideProjectRulesRoot || '';
+        if (projectRoot !== _cachedRoot) {
+            window._qqqideProjectRulesMtime = 0;
+            window._qqqideProjectRulesRoot = projectRoot;
+        }
+
         // 先检查文件是否存在，避免 IPC 层打印 ENOENT 错误
         var stat = await bridge.fs.stat(projPath).catch(function () { return null; });
-        if (!stat) { /* silent */ return; }
+        if (!stat) { window._qqqideProjectRulesMtime = 0; return; }
+
+        var _mtimeNow = stat.mtimeMs || 0;
+        if (_mtimeNow && _mtimeNow === window._qqqideProjectRulesMtime && window.qqqideProjectRulesContent) {
+            return; // project.txt 没变，引用的文件也没变，跳过一切磁盘读
+        }
+        window._qqqideProjectRulesMtime = _mtimeNow;
+
         var text = await bridge.fs.read(projPath);
         if (text && text.trim()) {
             window.qqqideProjectRulesContent = '[PROJECT RULES — Rules specific to this project. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction about this project. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END PROJECT RULES]';
+
+            // ★ 自动预加载 project.txt 中 rule"..." 声明的文件或文件夹
+            //    换 project = 换一套引用。无引用则啥也不发生。
+            //    滤 # 注释行：注释行中的路径不算数，不会被自动加载
+            var _raw = text.trim();
+            var _cleanLines = _raw.split('\n').filter(function (l) { return !/^\s*#/.test(l); }).join('\n');
+            var _seen = {};
+            var _injected = [];
+            // 固定约定格式：rule"<绝对路径>" — 文件或文件夹均可
+            var _re = /rule"((?:[A-Za-z]:[\\\/]|\/)[^"]+)"/g;
+            var _m;
+
+            // ★ 递归收集文件夹内所有文件路径
+            function _collectFiles(dirPath, _depth) {
+                if (_depth > 6) return Promise.resolve([]); // 最多 6 层，防无限递归
+                return bridge.fs.list(dirPath).then(function (entries) {
+                    if (!entries || !entries.length) return [];
+                    var _promises = entries.map(function (e) {
+                        if (!e || !e.name || e.name.startsWith('.') || e.name === 'node_modules') return Promise.resolve([]);
+                        var _full = dirPath.replace(/\\/g, '/').replace(/\/$/, '') + '/' + e.name;
+                        if (e.isDir) return _collectFiles(_full, _depth + 1);
+                        return Promise.resolve([_full]);
+                    });
+                    return Promise.all(_promises).then(function (_arrs) {
+                        var _flat = [];
+                        for (var _i = 0; _i < _arrs.length; _i++) { _flat = _flat.concat(_arrs[_i]); }
+                        return _flat.sort();
+                    });
+                }).catch(function () { return []; });
+            }
+
+            while ((_m = _re.exec(_cleanLines)) !== null) {
+                var _fp = _m[1];
+                if (!_fp || _seen[_fp]) continue;
+                _seen[_fp] = true;
+                try {
+                    var _st = await bridge.fs.stat(_fp).catch(function () { return null; });
+                    if (!_st) continue;
+                    if (_st.isDir) {
+                        // 文件夹：递归收集所有文件并合并注入
+                        var _files = await _collectFiles(_fp, 0);
+                        var _chunks = [];
+                        for (var _fi = 0; _fi < _files.length; _fi++) {
+                            try {
+                                var _fc = await bridge.fs.read(_files[_fi]);
+                                if (_fc && _fc.length > 20) {
+                                    _chunks.push('\n--- ' + _files[_fi] + ' ---\n' + _fc.replace(/\r\n/g, '\n'));
+                                }
+                            } catch (_) { /* skip unreadable */ }
+                        }
+                        if (_chunks.length > 0) {
+                            _injected.push('\n═══ AUTO-LOADED DIR: ' + _fp + ' (' + _chunks.length + ' files) ═══' + _chunks.join(''));
+                        }
+                    } else {
+                        // 单文件
+                        var _fc = await bridge.fs.read(_fp);
+                        if (_fc && _fc.length > 50) {
+                            _injected.push('\n═══ AUTO-LOADED: ' + _fp + ' ═══\n' + _fc.replace(/\r\n/g, '\n'));
+                        }
+                    }
+                } catch (_) { /* 不存在则跳 */ }
+            }
+            if (_injected.length > 0) {
+                window.qqqideProjectRulesContent += '\n\n[PRE-LOADED FILES — The following files are referenced in project rules and have been automatically loaded into context. Their content is already here — do NOT call read_file on them.]\n\n' + _injected.join('\n\n---\n\n');
+            }
             // [silent] project rules loaded
         }
     } catch (e) {

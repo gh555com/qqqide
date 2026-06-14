@@ -4,89 +4,62 @@
 <meta charset="UTF-8">
 <title>Timeline Diff</title>
 <style>
-:root,[data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--blue:#60a0d0;--base01:#97978a;--base2:#2a2a2a;--base3:#1e1e1e}
-[data-theme="light"]{--bg:#fdf6e3;--card:#eee8d5;--text:#073642;--border:#d3cbb7;--green:#859900;--red:#dc322f;--yellow:#b58900;--blue:#4078a0;--base01:#97978a;--base2:#eee8d5;--base3:#fdf6e3}
-*{margin:0;padding:0;box-sizing:border-box}
+:root,[data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--accent:#b58900;--base01:#97978a;--base2:#2a2a2a;--base3:#1e1e1e}
+[data-theme="light"]{--bg:#fdf6e3;--card:#eee8d5;--text:#073642;--border:#d3cbb7;--green:#859900;--red:#dc322f;--yellow:#b58900;--accent:#cb4b16;--base01:#97978a;--base2:#eee8d5;--base3:#fdf6e3}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column}
 ::-webkit-scrollbar{width:6px;height:6px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+/* ★ 文字选中色：金色，与 X 区 editor 搜索框一致 */
+::selection{background:#ffd302;color:#000}
+[data-theme="dark"] ::selection{background:#ffd302;color:#000}
+/* ── 全局输入框文字选中色 ── */
+input::selection, textarea::selection{background:#ffd302;color:#000}
 
-/* ═══ TITLEBAR ═══ */
-#titlebar{height:36px;background:var(--card);display:flex;align-items:center;padding:0 12px;-webkit-app-region:drag;border-bottom:1px solid var(--border);flex-shrink:0}
-#titlebar .file-icon{font-size:14px;margin-right:6px}
-#titlebar .file-path{flex:1;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:ui-monospace,monospace}
-#titlebar .win-btn{-webkit-app-region:no-drag;width:32px;height:28px;border:none;background:transparent;color:var(--base01);font-size:14px;cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center}
-#titlebar .win-btn:hover{background:var(--border)}
-#titlebar .win-btn.close:hover{background:#e81123;color:#fff}
-
-/* ═══ FILE SWITCHER ═══ */
-#file-bar{height:36px;background:var(--card);display:flex;align-items:center;padding:0 8px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0}
-#file-bar .fl-label{font-size:10px;color:var(--base01);white-space:nowrap}
-#file-bar .fl-input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:4px;font-size:11px;font-family:ui-monospace,monospace;outline:none}
-#file-bar .fl-input:focus{border-color:var(--blue)}
-#file-bar .fl-count{font-size:10px;color:var(--base01);white-space:nowrap}
-#file-bar .fl-btn{font-size:10px;padding:2px 8px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);cursor:pointer}
-#file-bar .fl-btn:hover{background:var(--border)}
-/* 下拉建议列表 */
-#file-suggestions{position:absolute;top:72px;left:8px;right:8px;max-height:240px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:0 0 6px 6px;z-index:100;display:none;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
-#file-suggestions .fs-item{padding:5px 10px;font-family:ui-monospace,monospace;font-size:11px;cursor:pointer;display:flex;align-items:center;gap:6px}
-#file-suggestions .fs-item:hover{background:var(--border)}
-#file-suggestions .fs-item.deleted{color:var(--base01)}
-#file-suggestions .fs-item.deleted .fs-name{text-decoration:line-through}
-#file-suggestions .fs-item .fs-icon{font-size:12px;flex-shrink:0}
-#file-suggestions .fs-item .fs-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#file-suggestions .fs-item .fs-ts{font-size:9px;color:var(--base01);flex-shrink:0}
-.highlight{background:var(--yellow);color:#000;border-radius:2px;padding:0 1px}
+/* ═══ TITLE ROW = 文件搜索框 ═══ */
+#title-row{height:36px;background:var(--card);display:flex;align-items:center;padding:0 8px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0;-webkit-app-region:drag}
+#title-row .title-input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 8px;border-radius:4px;font-size:11px;font-family:ui-monospace,monospace;outline:none;-webkit-app-region:no-drag}
+#title-row .title-input:hover{border-color:var(--yellow)}
+#title-row .title-input:focus{border-color:var(--yellow)}
+#title-row .win-btn{-webkit-app-region:no-drag;width:28px;height:26px;border:none;background:transparent;color:var(--base01);font-size:14px;cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#title-row .win-btn:hover{background:var(--border)}
 
 /* ═══ CUSTOM DROPDOWN ═══ */
-.v-dropdown{position:relative;flex:1;max-width:420px}
-.v-dropdown-btn{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px;font-family:ui-monospace,monospace;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;user-select:none;line-height:1.4}
+.v-dropdown{position:relative;flex:1;max-width:420px;min-width:120px;cursor:pointer;user-select:none}
+.v-dropdown-btn{display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
 .v-dropdown-btn:hover{border-color:var(--yellow)}
+.v-dropdown-btn::after{content:' ▼';font-size:9px;margin-left:auto;color:var(--base01)}
 .v-dropdown.open .v-dropdown-btn{border-color:var(--yellow)}
-.v-dropdown-list{position:absolute;top:100%;left:0;right:0;max-height:360px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:0 0 6px 6px;z-index:100;display:none;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
+.v-dropdown.open .v-dropdown-btn::after{content:' ▲'}
+.v-dropdown-list{display:none;position:absolute;top:100%;left:0;right:0;max-height:260px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:0 0 4px 4px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
 .v-dropdown.open .v-dropdown-list{display:block}
-.v-dropdown-item{padding:4px 8px;font-family:ui-monospace,monospace;font-size:10px;cursor:pointer;display:flex;align-items:center;gap:4px;flex-wrap:wrap;white-space:nowrap;border-bottom:1px solid var(--border)}
+.v-dropdown-item{padding:4px 8px;font-size:11px;font-family:ui-monospace,monospace;font-weight:700;cursor:pointer;white-space:nowrap;color:var(--text);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:4px;position:relative}
 .v-dropdown-item:last-child{border-bottom:none}
 .v-dropdown-item:hover{background:var(--yellow);color:#000}
-.v-dropdown-item.selected{background:var(--blue);color:#fff}
-.v-stat-green{color:var(--green);font-weight:700}
-.v-stat-red{color:var(--red);font-weight:700}
+.v-dropdown-item.selected{background:var(--accent);color:#fff}
+.v-dropdown-item .v-stat-green{color:var(--green);font-weight:700}
+.v-dropdown-item .v-stat-red{color:var(--red);font-weight:700}
 .v-dropdown-item:hover .v-stat-green,.v-dropdown-item:hover .v-stat-red{color:#000}
 .v-dropdown-item.selected .v-stat-green,.v-dropdown-item.selected .v-stat-red{color:#fff}
-.v-marker{font-size:9px;padding:1px 4px;border-radius:2px;font-weight:700;flex-shrink:0}
-.v-marker.before{background:var(--yellow);color:#000}
-.v-marker.after{background:var(--green);color:#fff}
-.v-marker.first{background:var(--blue);color:#fff}
-.v-marker.last{background:var(--red);color:#fff}
+/* ★ 复制按钮：hover 时显示在行最右侧 */
+.v-dropdown-item .v-copy-btn{display:none;position:absolute;right:4px;top:50%;transform:translateY(-50%);width:22px;height:18px;border:1px solid var(--border);border-radius:3px;background:var(--card);color:var(--text);font-size:10px;cursor:pointer;line-height:1;padding:0}
+.v-dropdown-item:hover .v-copy-btn{display:block}
+.v-dropdown-item .v-copy-btn:hover{background:var(--yellow);color:#000}
+.v-dropdown-item .v-marker{font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700;margin-left:3px}
+.v-dropdown-item .v-marker.before{background:var(--yellow);color:#000}
+.v-dropdown-item .v-marker.after{background:var(--green);color:#fff}
+.v-dropdown-item .v-marker.first{background:var(--accent);color:#fff}
+.v-dropdown-item .v-marker.last{background:var(--red);color:#fff}
+.v-dropdown-item:hover .v-marker.before{background:#fff;color:#000}
+.v-dropdown-item:hover .v-marker.after{background:#fff;color:#000}
+.v-dropdown-item.selected .v-marker.before,.v-dropdown-item.selected .v-marker.after,.v-dropdown-item.selected .v-marker.first,.v-dropdown-item.selected .v-marker.last{filter:brightness(1.3)}
 
 /* ═══ VERSION BAR ═══ */
 #version-bar{height:44px;background:var(--card);display:flex;align-items:center;border-bottom:1px solid var(--border);flex-shrink:0}
 .version-panel{flex:1;display:flex;align-items:center;padding:0 10px;gap:6px}
 .version-panel:first-child{border-right:1px solid var(--border)}
 .version-panel .v-label{font-size:10px;color:var(--base01);text-transform:uppercase;white-space:nowrap;min-width:36px}
-/* ── 自定义下拉（替代原生 select，支持富文本）── */
-.v-dropdown{position:relative;flex:1;max-width:420px;min-width:120px;cursor:pointer;user-select:none}
-.v-dropdown-btn{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
-.v-dropdown-btn:hover{border-color:var(--blue)}
-.v-dropdown-btn .v-stat-green{color:var(--green)}
-.v-dropdown-btn .v-stat-red{color:var(--red)}
-.v-dropdown-list{display:none;position:absolute;top:100%;left:0;right:0;max-height:260px;overflow-y:auto;background:var(--card);border:1px solid var(--border);border-radius:0 0 4px 4px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
-.v-dropdown.open .v-dropdown-list{display:block}
-.v-dropdown-item{padding:4px 8px;font-size:11px;font-family:ui-monospace,monospace;font-weight:700;cursor:pointer;white-space:nowrap;color:var(--text)}
-.v-dropdown-item:hover{background:var(--border)}
-.v-dropdown-item .v-stat-green{color:var(--green)}
-.v-dropdown-item .v-stat-red{color:var(--red)}
-.v-dropdown-item .v-marker{font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700;margin-left:3px}
-.v-dropdown-item .v-marker.before{background:var(--yellow);color:#000}
-.v-dropdown-item .v-marker.after{background:var(--green);color:#fff}
-.v-dropdown-item .v-marker.first{background:var(--blue);color:#fff}
-.v-dropdown-item .v-marker.last{background:var(--red);color:#fff}
-.version-panel .v-marker{font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700;flex-shrink:0}
-.v-marker.before{background:var(--yellow);color:#000}
-.v-marker.after{background:var(--green);color:#fff}
-.v-marker.first{background:var(--blue);color:#fff}
-.v-marker.last{background:var(--red);color:#fff}
 
 /* ═══ ACTIONS BAR ═══ */
 #actions-bar{height:32px;background:var(--card);display:flex;align-items:center;padding:0 8px;gap:4px;border-bottom:1px solid var(--border);flex-shrink:0}
@@ -110,26 +83,23 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 
 /* ═══ EMPTY STATE ═══ */
 #empty-state{display:flex;align-items:center;justify-content:center;height:100%;color:var(--base01);font-size:13px}
+
+/* ═══ BIG CLOSE BUTTON (bottom center floating) ═══ */
+#big-close{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:56px;height:56px;border-radius:50%;border:2px solid var(--red);background:var(--card);color:var(--red);font-size:24px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s}
+#big-close:hover{background:var(--red);color:#fff;transform:translateX(-50%) scale(1.1)}
 </style>
-<script>// 读取 URL 主题参数，设置 data-theme 属性
-(function(){var p=new URLSearchParams(location.search);var t=p.get('theme')||'dark';document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');})();</script>
+<script>
+(function(){var p=new URLSearchParams(location.search);var t=p.get('theme')||'dark';document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark');})();
+</script>
 </head>
 <body>
 
-<div id="titlebar">
-  <span class="file-icon" id="file-icon">📄</span>
-  <span class="file-path" id="file-path">—</span>
-  <button class="win-btn" id="btn-max" title="Maximize">□</button>
-  <button class="win-btn close" id="btn-close" title="Close">×</button>
+<!-- ★ 合并后的标题行：文件路径直接填在输入框中 -->
+<div id="title-row">
+  <span style="font-size:13px;flex-shrink:0">📄</span>
+  <input class="title-input" id="title-input" placeholder="文件路径…" autocomplete="off" spellcheck="false">
+  <button class="win-btn" id="btn-max" title="最大化">□</button>
 </div>
-
-<div id="file-bar">
-  <span class="fl-label">📂 文件</span>
-  <input class="fl-input" id="file-search" placeholder="搜索追踪文件 (模糊匹配)…" autocomplete="off">
-  <span class="fl-count" id="file-count">0 个</span>
-  <button class="fl-btn" id="btn-restore-file" title="还原已删除文件" style="display:none">↩ 还原</button>
-</div>
-<div id="file-suggestions"></div>
 
 <div id="version-bar">
   <div class="version-panel">
@@ -170,6 +140,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 </div>
 
 <div id="empty-state">加载中…</div>
+
+<button id="big-close" title="关闭 (右键也可关闭)">✕</button>
 
 <script src="/qqq-app/timeline/diff-window.js"></script>
 </body>

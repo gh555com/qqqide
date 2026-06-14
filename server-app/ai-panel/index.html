@@ -19,7 +19,7 @@
   --yellow:#d4a017;--orange:#e07020;--red:#ff4444;--magenta:#b85872;
   --violet:#a08060;--blue:#d4a017;--cyan:#5ab890;--green:#8fbc5a;
 }
-*{margin:0;padding:0;box-sizing:border-box}
+@font-face{font-family:Unifont;src:url(fonts/unifont-17.0.04.otf) format('opentype')}*{margin:0;padding:0;box-sizing:border-box}
 html{forced-color-adjust:none!important;width:100%}
 /* ── 选中高亮：固定 #ffd302（金），暗主题同色 ── */
 ::selection{background:#ffd302;color:#000}
@@ -286,13 +286,14 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #scroll-mark-layer{position:absolute;right:0;top:12px;bottom:12px;width:16px;pointer-events:auto;z-index:22}
 #scroll-mark-layer .sml-mark{position:absolute;right:0;width:16px;height:3px;border-radius:2px;opacity:0.95;box-shadow:0 0 6px 2px currentColor,0 0 12px 4px currentColor;animation:sml-glow 1.8s ease-in-out infinite alternate}
 @keyframes sml-glow{0%{box-shadow:0 0 4px 1px currentColor,0 0 8px 2px currentColor}100%{box-shadow:0 0 10px 3px currentColor,0 0 18px 5px currentColor}}
-/* ── 键盘按键标记（1 / q / w / 2）—— 手绘键帽风格 ── */
-.scroll-key{position:absolute;right:0;width:14px;height:14px;font-family:ui-monospace,monospace;font-size:8px;font-weight:700;text-align:center;line-height:14px;border-radius:3px;border:1px solid #b0aca8;background:linear-gradient(180deg,#faf8f5 0%,#e0dcd5 100%);color:#4a4642;box-shadow:0 1px 0 #c5bfb6,0 2px 4px rgba(0,0,0,0.18);pointer-events:none;z-index:23;user-select:none}
+/* ── 键盘按键标记（1 / q / w / 2）—— 3x 放大，滚动才显现 ── */
+.scroll-key{position:fixed;width:42px;height:42px;font-family:Unifont,monospace;font-size:24px;font-weight:400;text-align:center;line-height:42px;border-radius:9px;border:1px solid #b0aca8;background:linear-gradient(180deg,#faf8f5 0%,#e0dcd5 100%);color:#4a4642;box-shadow:0 1px 0 #c5bfb6,0 2px 4px rgba(0,0,0,0.18);pointer-events:none;z-index:99998;user-select:none;opacity:0;transition:opacity 0.2s ease}
+.scroll-key.visible{opacity:1}
 [data-theme="dark"] .scroll-key{border-color:#5a5652;background:linear-gradient(180deg,#5a5650 0%,#3a3632 100%);color:#dcd8d0;box-shadow:0 1px 0 #6a6660,0 2px 4px rgba(0,0,0,0.35)}
-.scroll-key-top{top:10px}
+.scroll-key-top{top:12%}
 .scroll-key-q{top:38%}
 .scroll-key-w{top:58%}
-.scroll-key-bot{bottom:8px}
+.scroll-key-bot{bottom:12%}
 /* ── 搜索栏 ── */
 #search-bar{display:none;position:sticky;top:0;z-index:100;background:var(--card-bg);border-bottom:1px solid var(--border-color);padding:4px 8px;align-items:center;gap:6px}
 #search-bar.show{display:flex}

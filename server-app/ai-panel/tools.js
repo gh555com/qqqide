@@ -370,6 +370,22 @@ async function executeReadFile(args) {
         return 'Error: invalid path "' + _p + '" — does not appear to be a valid file path. Provide an absolute path (e.g. E:\\project\\file.js).';
     }
 
+    // ★ 同楼层去重：同文件 + 同行范围 反复读 3 次+ → 死循环
+    //    键 = 路径 + 行范围，不同行范围互不干扰。全文读用 L0-0。
+    //    计数器由 agent-loop.js 在每层楼开始时清零 (window._qqqReadFilesThisFloor = {})
+    var _normPath = _p.replace(/\\/g, '/').toLowerCase();
+    var _sl = args.start_line || 0;
+    var _el = args.end_line || 0;
+    var _dedupKey = _normPath + '|' + _sl + '|' + _el;
+    var _tracker = (typeof window !== 'undefined') ? window._qqqReadFilesThisFloor : null;
+    if (_tracker) {
+        _tracker[_dedupKey] = (_tracker[_dedupKey] || 0) + 1;
+        if (_tracker[_dedupKey] >= 3) {
+            var _rangeHint = (_sl || _el) ? (' L' + _sl + '-' + _el) : ' (全文)';
+            return '[ALREADY READ] 文件 ' + args.path + _rangeHint + ' 在本层楼已读过 ' + (_tracker[_dedupKey] - 1) + ' 次，内容已在对话中。请基于已有信息继续分析，不要重复读取。';
+        }
+    }
+
     // ★ 优先走主进程 (1 IPC, 消除大文件序列化开销)
     if (bridge.ai && bridge.ai.read_file) {
         try {

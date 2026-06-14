@@ -19,6 +19,7 @@ const QQQ = {
         readBase64: (p: string) => ipcRenderer.invoke('qqqide:fs:readBase64', p),
         write: (p: string, content: string | Buffer) => ipcRenderer.invoke('qqqide:fs:write', p, content),
         writeBase64: (p: string, base64: string) => ipcRenderer.invoke('qqqide:fs:writeBase64', p, base64),
+        append: (p: string, content: string) => ipcRenderer.invoke('qqqide:fs:append', p, content),
         list: async (p: string) => {
             const result: string[] = await ipcRenderer.invoke('qqqide:fs:list', p, new Error('fs.list caller').stack);
             if (Array.isArray(result) && result.length > 0 && typeof result[0] === 'string') {
