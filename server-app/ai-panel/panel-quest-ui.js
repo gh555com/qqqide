@@ -330,8 +330,9 @@ var CTX_MAX_TOKENS = ContentGateway.CTX_MAX_TOKENS;
 var _estCache = { val: 0, convLen: -1, ctxHash: '' };
 function estimateTokens() {
     if (!_activeAgent) return 0;
-    var conv = agent.conversation;
-    var ctx = agent._ctx;
+    var _ag = _activeAgent;
+    var conv = _ag.conversation;
+    var ctx = _ag._ctx;
     var ctxHash = ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '';
     if (_estCache.convLen === conv.length && _estCache.ctxHash === ctxHash && _estCache.val > 0) {
         return _estCache.val;
@@ -376,9 +377,10 @@ function updateCtxBtn() {
         $ctxBtn.style.setProperty('--ctx-pct', '0%');
         return;
     }
+    var _ag = _activeAgent;
     // ★ 优先用 _lastApiTotalTokens（prompt+completion 精确值，每间 house 更新）
     //   fallback: _lastApiPromptTokens → 本地 chars/3 估算
-    var totalTokens = agent._lastApiTotalTokens || agent._lastApiPromptTokens || 0;
+    var totalTokens = _ag._lastApiTotalTokens || _ag._lastApiPromptTokens || 0;
     var est = estimateTokens();
     // 取较大值：DS 精确值更可信，但压缩后清零 → 回退本地估算
     var used = totalTokens > 0 ? Math.max(est, totalTokens) : est;
@@ -394,18 +396,41 @@ document.getElementById('ctx-cancel').onclick = function () {
 };
 document.getElementById('ctx-compress').onclick = async function () {
     document.getElementById('ctx-panel').style.display = 'none';
-    if (agent._compressing) return;
-    agent._compressing = true;
+    var _ag = _activeAgent;
+    if (!_ag) {
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('⚠️ 请先发送一条消息创建对话', { type: 'warning', duration: 3000 }); } catch (_) { }
+        return;
+    }
+    if (_ag._compressing) return;
+    _ag._compressing = true;
     var _reason = '手动压缩（用户主动触发）';
-    agent._renderCompressStart(_reason);
+    // 有活跃 AI div → 用卡片；无 → 用 qoast 通知
+    var _hasAI = _ag._activeAiDiv && _ag._activeAiDiv._contentWrap;
+    if (_hasAI) {
+        _ag._renderCompressStart(_reason);
+    } else {
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('🧠 压缩中...', { type: 'info', duration: 0 }); } catch (_) { }
+    }
     try {
-        var _result = await agent._compressContext({ trigger: 'manual', detail: _reason });
-        agent._renderCompressResult(_result);
+        var _result = await _ag._compressContext({ trigger: 'manual', detail: _reason });
+        if (_hasAI) {
+            _ag._renderCompressResult(_result);
+        } else {
+            if (_result.compressed) {
+                try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✅ ' + _result.detail.replace(/\n/g, ' | '), { type: 'info', duration: 5000 }); } catch (_) { }
+            } else {
+                try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('ℹ️ ' + (_result.detail || '无需压缩'), { type: 'info', duration: 4000 }); } catch (_) { }
+            }
+        }
         updateCtxBtn();
     } catch (e) {
-        agent._renderCompressResult({ compressed: false, detail: '异常: ' + (e.message || e), beforeTokens: 0, afterTokens: 0, elapsedMs: 0 });
+        if (_hasAI) {
+            _ag._renderCompressResult({ compressed: false, detail: '异常: ' + (e.message || e), beforeTokens: 0, afterTokens: 0, elapsedMs: 0 });
+        } else {
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✗ 压缩异常: ' + (e.message || '未知错误'), { type: 'error', duration: 8000 }); } catch (_) { }
+        }
     } finally {
-        agent._compressing = false;
+        _ag._compressing = false;
     }
 };
 document.querySelector('#ctx-panel .ctx-panel-overlay').onclick = function () {
@@ -457,10 +482,10 @@ $guideBtn.onclick = function () {
             _aiDiv._contentWrap.appendChild(marker);
             _aiDiv._guideMarker = marker;
         }
-        agent.injectGuide(text);
+        _activeAgent.injectGuide(text);
     } else {
         // AI \u6ca1\u5728\u5de5\u4f5c \u2192 \u964d\u7ea7\u4e3a\u666e\u901a inject
-        agent.inject('[GUIDE] ' + text);
+        _activeAgent.inject('[GUIDE] ' + text);
         var statusEl2 = document.createElement('div');
         statusEl2.className = 'msg msg-status guide-status';
         statusEl2.textContent = '\ud83d\udccc \u5f15\u5bfc\u5df2\u6ce8\u5165 \u00b7 AI \u4e0b\u6b21\u56de\u590d\u53ef\u89c1';
