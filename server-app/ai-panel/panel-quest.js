@@ -473,9 +473,40 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
             var _lenAfter = ag.conversation ? ag.conversation.length : 0;
             if (_lenBefore !== _lenAfter) {
                 console.warn('[CRITICAL] saving corrupted conversation: repaired ' + (_lenBefore - _lenAfter) + ' orphaned msgs (quest=' + questId + ', floor=' + floorNum + ')');
-                // 刷新 fullConv 和 floorConv（因为 conversation 被修过了）
                 fullConv = ag.conversation.slice();
                 floorConv = fullConv.slice(floorStartIdx);
+                // ★ 根治：修复后按 _floor 标签重建所有楼层分段，重写受影响的过去楼层到 sq3
+                //   不这样做的话，下次重启又从 sq3 读出旧数据，同样的孤儿永远修不好
+                try {
+                    var _floorsMap = {};
+                    for (var mi = 0; mi < fullConv.length; mi++) {
+                        var _f = fullConv[mi]._floor;
+                        if (_f !== undefined && _f >= 1) {
+                            if (!_floorsMap[_f]) _floorsMap[_f] = [];
+                            _floorsMap[_f].push(fullConv[mi]);
+                        }
+                    }
+                    var _allFloors = await questStore.loadAllFloors(questId);
+                    var _rewritten = 0;
+                    for (var fi = 0; fi < _allFloors.length; fi++) {
+                        var _fNum = _allFloors[fi].floorNum;
+                        if (_fNum === floorNum) continue;  // 当前楼层后面会正常保存
+                        var _newConv = _floorsMap[_fNum];
+                        if (_newConv && _newConv.length > 0) {
+                            var _oldData = _allFloors[fi].data || {};
+                            if (!_oldData.conversation || _oldData.conversation.length !== _newConv.length) {
+                                _oldData.conversation = _newConv;
+                                await questStore.saveFloor(questId, _fNum, _oldData);
+                                _rewritten++;
+                            }
+                        }
+                    }
+                    if (_rewritten > 0) {
+                        console.warn('[CRITICAL] repaired past floors: ' + _rewritten + ' floors rewritten to sq3');
+                    }
+                } catch (_floorRewriteErr) {
+                    console.warn('[CRITICAL] floor rewrite failed (will retry next save):', _floorRewriteErr);
+                }
             }
         }
 
@@ -505,7 +536,6 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
         lastApiPromptTokens: ag._lastApiPromptTokens || 0,
         lastApiTotalTokens: ag._lastApiTotalTokens || 0,
         lastTier: ag._lastTier || null,
-        ctx: { lastCompressedFloor: ag._ctx.lastCompressedFloor || 0, floorArchives: ag._ctx.floorArchives || [] },
         floorTimings: ag._floorTimings || [],
         serverDrift: ag._serverDrift || 0,
         queue: ag._queue || [],

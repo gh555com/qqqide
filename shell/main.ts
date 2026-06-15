@@ -1582,6 +1582,7 @@ function registerIpc(): void {
             try {
                 let content = await fs.promises.readFile(args.path, 'utf8');
                 content = content.replace(/\r\n/g, '\n');
+                const originalContent = content;  // 快照，用于多候选检查
                 const results: string[] = [];
                 let totalApplied = 0;
                 const matchPlan: Array<{ edit: typeof edits[0]; match: { start: number; end: number; matchLevel: number }; index: number }> = [];
@@ -1602,22 +1603,55 @@ function registerIpc(): void {
                     }
                     matchPlan.push({ edit, match: m, index: i });
                 }
+                const editLines: string[] = [];
                 for (let pi = 0; pi < matchPlan.length; pi++) {
                     const plan = matchPlan[pi];
                     const ed = plan.edit;
+                    // 计算行号
+                    const preContent = content.slice(0, plan.match.start);
+                    const lineNum = (preContent.match(/\n/g) || []).length + 1;
                     if (ed.replace_all) {
                         const count = content.split(ed.find).length - 1;
+                        let allLines: number[] = [];
+                        let pos = 0;
+                        while (pos < content.length) {
+                            const idx = content.indexOf(ed.find, pos);
+                            if (idx === -1) break;
+                            allLines.push((content.slice(0, idx).match(/\n/g) || []).length + 1);
+                            pos = idx + 1;
+                        }
                         content = content.split(ed.find).join(ed.replace);
-                        results.push(`#${pi + 1}: all (${count}x, L${plan.match.matchLevel})`);
+                        results.push(`#${pi + 1}: all (${count}x, L${plan.match.matchLevel}, lines ${allLines.join(',')})`);
+                        editLines.push(`#${pi + 1}: lines ${allLines.join(',')} (${count}x replace_all)`);
                         totalApplied += count;
                     } else {
                         const m2 = aiFindMatch(content, ed.find);
                         if (m2) {
+                            const postPre = content.slice(0, m2.start);
+                            const newLineNum = (postPre.match(/\n/g) || []).length + 1;
                             content = content.slice(0, m2.start) + ed.replace + content.slice(m2.end);
-                            results.push(`L${m2.matchLevel}`);
+                            results.push(`L${m2.matchLevel} @L${newLineNum}`);
+                            editLines.push(`#${pi + 1}: L${newLineNum} (L${m2.matchLevel})`);
                             totalApplied++;
                         } else {
                             results.push('skip(moved)');
+                            editLines.push(`#${pi + 1}: skip (match moved)`);
+                        }
+                    }
+                }
+                // L2/L3 多候选警告
+                let multiWarn = '';
+                for (let pi = 0; pi < matchPlan.length; pi++) {
+                    const plan = matchPlan[pi];
+                    if (plan.match.matchLevel >= 2 && !plan.edit.replace_all) {
+                        // 检查原始内容中是否有多个宽松匹配
+                        const nf = aiNormalizeWhitespace(plan.edit.find);
+                        const nc = aiNormalizeWhitespace(originalContent);
+                        let count = 0;
+                        let pos = 0;
+                        while ((pos = nc.indexOf(nf, pos)) !== -1) { count++; pos++; }
+                        if (count > 1) {
+                            multiWarn += ` ⚠️ edit #${pi + 1}: ${count} candidates found, applied to first (L${plan.match.matchLevel})`;
                         }
                     }
                 }
@@ -1626,7 +1660,8 @@ function registerIpc(): void {
                 try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
                 const matchInfo = results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1)
                     ? ' (whitespace-tolerant match used)' : '';
-                return `\u2713 ${totalApplied} edit(s) applied to ${args.path.split(/[\\/]/).pop()}${matchInfo}`;
+                let lineInfo = editLines.length > 0 ? ' [' + editLines.join(', ') + ']' : '';
+                return `\u2713 ${totalApplied} edit(s) applied to ${args.path.split(/[\\/]/).pop()}${lineInfo}${matchInfo}${multiWarn}`;
             } catch (err: any) {
                 return 'Error editing file: ' + (err.message || err);
             }

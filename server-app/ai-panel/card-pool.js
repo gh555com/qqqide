@@ -264,14 +264,9 @@ var CardPool = (function () {
           parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">📌</span> 引导信息</div><div class="msg-flow-guide-body">' + _escHtml(_injText) + '</div></div>');
         }
       } else if (m._error && m.role === 'assistant') {
-        // ★ 错误消息持久化：一次渲染永久不变，重启后仍可见
+        // ★ 错误消息持久化：统一红框，一次渲染永久不变
         var _errText = (m.content || '⚠️ 楼层异常中断，对话已保存。');
-        var _capturedInput = (m._capturedInput || '');
-        parts.push('<div class="msg msg-error" style="white-space:pre-wrap">' + _escHtml(_errText));
-        if (_capturedInput) {
-          parts.push('<div style="margin-top:8px;display:flex;gap:8px"><button class="msg-errt-retry-btn" data-qqq-errt-input="' + _escHtml(_capturedInput) + '" data-qqq-errt-floor="' + (m._floor || 0) + '">♻ 重新发送</button><button class="msg-errt-dismiss-btn">我知道了</button></div>');
-        }
-        parts.push('</div>');
+        parts.push('<div class="msg msg-error" style="white-space:pre-wrap">' + _escHtml(_errText) + ' <a class="msg-err-continue" href="#" data-i18n="ai.error.continueTask">继续任务</a></div>');
       } else if (m.role === 'assistant' && !m.tool_calls && typeof m.content === 'string' && m.content) {
         // 普通 AI 文字回复（数据已在 EnvelopeStripper 清洗，直接渲染）
         var _rm = window.renderMarkdown;
@@ -335,27 +330,13 @@ var CardPool = (function () {
     var flowHtml = _buildConversationFlowHtml(conv, fData);
     aiEl._contentWrap.innerHTML = flowHtml;
     aiEl.appendChild(aiEl._contentWrap);
-    // ★ 错误持久化按钮：事件委托，重启后仍可点击「重新发送」
+    // ★ 错误持久化：「继续任务」链接 — 仅聚焦输入框，不自动发送
     aiEl._contentWrap.addEventListener('click', function (e) {
-      var btn = e.target.closest('.msg-errt-retry-btn');
-      if (!btn) return;
+      var link = e.target.closest('.msg-err-continue');
+      if (!link) return;
       e.preventDefault();
-      btn.disabled = true;
-      btn.textContent = '正在发送...';
-      var inputText = btn.getAttribute('data-qqq-errt-input') || '';
-      var errFloor = parseInt(btn.getAttribute('data-qqq-errt-floor')) || 0;
-      // 回滚 conversation 到错误楼层之前
-      var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-      if (ag && typeof ag._floorStartIdx === 'number' && errFloor > 0) {
-        ag.conversation.length = ag._floorStartIdx;
-        ag._ctx.totalFloors = Math.max(0, errFloor - 1);
-      }
-      // 设置输入框并发关
-      if (typeof $input !== 'undefined' && $input) {
-        $input.value = inputText;
-        $input.focus();
-      }
-      if (typeof sendMessage === 'function') sendMessage();
+      if (typeof $input !== 'undefined' && $input) $input.focus();
+      if (typeof scrollToBottom === 'function') scrollToBottom(true);
     });
     // 存储完整对话文本（用于全文检索等）
     var fullText = '';
@@ -427,6 +408,7 @@ var CardPool = (function () {
         if (questTimings[ti].floorIndex === fNum) { timing = questTimings[ti]; break; }
       }
     }
+
     if (timing && aiEl._clockMin && aiEl._clockCanvas) {
       var totalS = Math.floor((timing.durationMs || 0) / 1000);
       var min = Math.floor(totalS / 60);
@@ -438,7 +420,7 @@ var CardPool = (function () {
       if (typeof _dp === 'function') {
         _dp(aiEl._clockCanvas, {
           networkMs: timing.networkMs || 0,
-          deepseekMs: timing.deepseekMs || 0,
+          aiMs: timing.aiMs || 0,
           toolMs: timing.toolMs || 0,
           totalMs: timing.durationMs || 0
         });

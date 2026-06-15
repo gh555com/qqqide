@@ -67,8 +67,8 @@ qz spawn 管线 — 两层 + 四重防御（2026-06-04 加固）
 AI 网关双线路 + 故障切换引擎（2026-06-13 加固）
 ---------------------------------------------
 · 双线路架构:
-  主线路: https://gh555.com/api/v3/ai/chat        (CF Worker 透传 → Go → DeepSeek)
-  备用线路: https://direct.gh555.com:8444/api/v3/ai/chat (直连 Go，旁路 CF)
+  主线路: https://direct.gh555.com:8444/api/v3/ai/chat (直连 HTTP/1.1，87ms，无中间人)
+  备用线路: https://gh555.com/api/v3/ai/chat        (CF Worker 透传 → Go → DeepSeek)
 · 声明位置: system-prompt.js（唯一声明 GATEWAY_URL_PRIMARY / GATEWAY_URL_FALLBACK）
 · 切换引擎: agent-loop.js _callGateway 内建 retry+switch 管线
   - 同 URL 最多重试 3 次（MAX_RETRIES=3），防瞬态抖动误切
@@ -91,19 +91,23 @@ Nginx 备用线路铁律（2026-06-13）
 ContentGateway 超时常量（唯一真理源，2026-06-13）
 ---------------------------------------------
 · 所有超时数字只在 content-gateway.js 定义，agent-loop.js 全部引用 ContentGateway.*
-· FETCH_DEADLINE_PRIMARY_MS  = 98000  (98s, CF 100s 硬限制留 2s 余量)
-· FETCH_DEADLINE_FALLBACK_MS = 180000 (180s, 无 CF 限制，可调大)
+· FETCH_DEADLINE_PRIMARY_MS  = 180000 (180s, 直连主线无限制，可调大)
+· FETCH_DEADLINE_FALLBACK_MS = 98000  (98s, CF Worker 备用，CF 100s 留 2s)
 · STREAM_WATCHDOG_MS         = 180000 (180s, DeepSeek 深度推理容忍度)
 · AI_OUTPUT_WATCHDOG_MS      = 900000 (15min, AI 无产出→死循环)
-· 改超时只改 content-gateway.js 一处。FETCH_DEADLINE_FALLBACK_MS 是唯一还能安全加大的值（240s/300s 均可）
+· 改超时只改 content-gateway.js 一处。
 
-孤儿 tool_calls 自愈系统（2026-06-13）
+孤儿 tool_calls 自愈系统（2026-06-14 加固）
 ---------------------------------------------
 · 问题: DeepSeek 硬要求 assistant.tool_calls 后紧跟等量 tool 消息，缺→400
-· 自愈: _repairOrphanedToolCalls() 双向扫描 conversation（最多 20 轮）
-· 主动预检: 每次 _callGateway 发请求前跑一遍（防患未然）
-· 被动修复: 收到 400/422/502/503 后 auto-repair 再重试
-· 成功后重置 _floorOnErrorCalled（防之前错误标记污染）
+· 自愈: _repairOrphanedToolCalls() 双向扫描 conversation（200 轮，方向 A/B 日志记录）
+· 三道防线:
+  ① 请求前主动预检（_callGateway 开头，conversation 未变则跳过）
+  ② 楼层保存前修复（_saveAgentQuestData，发现腐蚀打 [CRITICAL] 日志）
+  ③ 自动保存前修复（auto-save 每 15s，同上）
+· 恢复阶段循环修复至干净（最多 10 轮 × 200 次 = 2000 次扫描）
+· 成功后重置 _floorOnErrorCalled
+· Go 服务端 sanitizeMessages 双向校验（方向 A+B，gaea 源码已更新）
 
 
 gaea goods 协议
@@ -418,22 +422,25 @@ AI 上下文窗口防护（三层纵深 + 参数集中化，2026-06-10 落地）
 背景：DeepSeek V4 硬限制 prompt+completion ≤ 1,000,000 tokens，长对话叠加 max_tokens(393K) 超限导致零响应。
 
 参数唯一真理源：content-gateway.js
-  CTX_MAX_TOKENS / COMPRESS_THRESHOLD / MAX_TOKENS_SAFETY / CHAR_PER_TOKEN(3.0)
-  换模型只改这一处。四个消费方(panel-quest-ui/agent-context/agent-loop)全部引用，不硬编码。
+  CTX_MAX_TOKENS(1,048,565) / COMPRESS_THRESHOLD(900k) / MAX_TOKENS_SAFETY(10k) / CHAR_PER_TOKEN(3.0)
+  + COMPACT_FACTS_TOKENS(16k) / COMPACT_NARRATIVE_TOKENS(32k) / COMPACT_ARCHIVE_TOKENS(32k) / ARCHIVE_MAX_CHARS(1M) / COMPACT_DEBUG
+  换模型只改这一处。消费方全部引用，不硬编码。
+  按钮显示+压缩阈值用 _lastApiTotalTokens（prompt+completion精确值，每间house更新）。
 
-第一层 — 上下文压缩引擎（主防线）：
-  · 每轮消息前自动触发 _compressContext()（agent-loop.js L458）
-  · 双重判断: _lastApiPromptTokens（DS精确值）+ 本地估算(chars/3)，任一超 COMPRESS_THRESHOLD→压缩
-  · 保留最近 6 层楼，旧楼送往 AI 压缩成 32K 结构化 JSON(事实+叙事)
-  · 失败→指数退避无限重试(2s→4s→…→60s)，不丢消息
-  · 手动触发：左下角上下文按钮
+第一层 — 上下文压缩引擎（主防线，2026-06-15 三专家架构）：
+  · 每间 house 前检查 _lastApiTotalTokens > COMPRESS_THRESHOLD(900k) → 阻塞压缩。每层楼最多压一次。
+  · 三专家并行 Promise.all: ①facts(16k) ②narrative(32k,含硬保证+缩水检测) ③archive(32k,仅新楼层)。
+  · 全成功→splice conversation+写入_ctx；任一败→快照回滚。KEEP_TARGET=总tokens×0.1动态伸缩。
+  · narrative缩水>50%→用archive重建→失败则回滚。facts全量注入上下文（不检索）。
+  · 手动触发：左下角按钮，仅限空闲时，≥50k即可。压缩期间发送按钮⏳+disabled。
 
-第二层 — 客户端 max_tokens 动态帽：
-  · 发 API 前: safeMax = CTX_MAX_TOKENS - _lastApiPromptTokens - MAX_TOKENS_SAFETY
-  · 与 tier.maxTokens 取 min → 压缩漏网时兜底
+第二层 — 孤儿tool_calls自愈（持久化根治）：
+  · _saveAgentQuestData 修复后按_floor标签重建所有楼层，逐层saveFloor写回sq3。
+  · 三条防线: ①请求前(_callGateway) ②保存前(_saveAgentQuestData) ③自动保存前(auto-save)。
 
-第三层 — Go 服务端帽 + HTTP/1.1 隔离：
-  · Go handlers_ai_chat.go: 序列化后用 len(bodyBytes)/3 估算，超限缩 max_tokens(≥1024)
+第三层 — Go 服务端 HTTP/1.1 隔离：
+  · dsTransport 独立Transport，ForceAttemptHTTP2:false，每请求独立TCP。
+  · 序列化后用 len(bodyBytes)/3 估算兜底帽(≥1024)。
   · 独立 dsTransport(ForceAttemptHTTP2:false) → 每请求独立 TCP，防 RST 级联
   · nginx client_max_body_size 6200m (8444 端口)
 
@@ -494,10 +501,11 @@ Quest 切换完整性 (2026-06-10 重构)
 段缓冲/事件驱动/1fps: 同上。renderMarkdown 列表占位符保护 <ul> 免 <br> <p> 污染。
 
 双层流看门狗（agent-loop _parseSSE）：
-  · 流看门狗 60s：无任何 SSE 数据 → abort 死连接。
-  · 产出看门狗 15min：无 delta.content 或 tool_calls → AI 思考死循环 → abort。
-    纯 reasoning_content 不重置（防止 DeepSeek 沉思想 10+ 分钟无产出）。
-  · 与 tools.js run_command stallMs=15min 同步，两边掐断时间一致。
+· 流看门狗 60s：无任何 SSE 数据 → abort 死连接。
+· 产出看门狗 15min：无 delta.content 或 tool_calls → AI 思考死循环 → abort。
+    纯 reasoning_content 不重置。
+· SSE error 处理（2026-06-15修）：_sseError提到while外层throw，不再被JSON.parse的catch吞掉。
+· usage-only响应(无type字段)→返回null→触发正常错误路径。
 
 文本工具调用回生引擎（2026-06-13）
 --------------------------------

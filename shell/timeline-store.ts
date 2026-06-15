@@ -13,6 +13,8 @@ import { BrowserWindow } from 'electron';
 
 export const _timelineDbs: Map<string, any> = new Map(); // projectRoot → sql.js Database
 export const _diffWindows: Map<string, BrowserWindow> = new Map(); // filePath → BrowserWindow (单例)
+// ★ 初始化锁：防止同时两个请求各开各的 DB（导致去重失效 + 数据覆盖）
+const _tlInitLocks: Map<string, Promise<any>> = new Map();
 
 export function _tlDir(projectRoot: string): string {
     return path.join(projectRoot, 'qqq', 'timeline');
@@ -22,12 +24,16 @@ export function _tlBlobPath(projectRoot: string, sha256: string): string {
     return path.join(_tlDir(projectRoot), 'blobs', sha256.slice(0, 2), sha256 + '.gz');
 }
 
-/** 打开或创建 timeline SQLite 数据库 */
+/** 打开或创建 timeline SQLite 数据库（加锁防双开） */
 export async function _tlOpenDb(projectRoot: string): Promise<any> {
     const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
     let db = _timelineDbs.get(dbPath);
     if (db) return db;
-    try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch (_) { }
+    // ★ 同一 dbPath 同时只允许一个初始化
+    const existingInit = _tlInitLocks.get(dbPath);
+    if (existingInit) return existingInit;
+    const initPromise = (async () => {
+        try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch (_) { }
     const initSqlJs = require('sql.js');
     const SQL = await initSqlJs();
     if (fs.existsSync(dbPath)) {
@@ -59,10 +65,13 @@ export async function _tlOpenDb(projectRoot: string): Promise<any> {
     db.run('PRAGMA journal_mode=WAL');
     db.run('PRAGMA synchronous=FULL');
     db.run('PRAGMA busy_timeout=30000');
-    _timelineDbs.set(dbPath, db);
-    // 清理历史孤儿 tmp（纯收益，零风险）
-    _tlCleanStaleTmp(projectRoot);
-    return db;
+        _timelineDbs.set(dbPath, db);
+        // 清理历史孤儿 tmp（纯收益，零风险）
+        _tlCleanStaleTmp(projectRoot);
+        return db;
+    })();
+    _tlInitLocks.set(dbPath, initPromise);
+    try { return await initPromise; } finally { _tlInitLocks.delete(dbPath); }
 }
 
 // ── 延迟批量化刷盘：避免每次 record 都全量导出 SQL.js DB ──

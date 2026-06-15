@@ -65,22 +65,22 @@ function _hidePieTooltip() {
 function drawPie(canvas, timing) {
     if (_lastPieTiming && timing &&
         _lastPieTiming.networkMs === timing.networkMs &&
-        _lastPieTiming.deepseekMs === timing.deepseekMs &&
+        _lastPieTiming.aiMs === timing.aiMs &&
         _lastPieTiming.toolMs === timing.toolMs) return;
-    _lastPieTiming = timing ? { networkMs: timing.networkMs, deepseekMs: timing.deepseekMs, toolMs: timing.toolMs } : null;
+    _lastPieTiming = timing ? { networkMs: timing.networkMs, aiMs: timing.aiMs, toolMs: timing.toolMs } : null;
     var ctx = canvas.getContext('2d');
     var w = canvas.width, h = canvas.height;
     ctx.clearRect(0, 0, w, h);
     var n = timing.networkMs || 0;
-    var d = timing.deepseekMs || 0;
+    var d = timing.aiMs || 0;
     var t = timing.toolMs || 0;
     var total = timing.totalMs || (n + d + t);
     if (total <= 0) { ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(w / 2, h / 2, w / 2 - 3, 0, Math.PI * 2); ctx.fill(); canvas._segments = null; return; }
     t = Math.max(0, total - n - d);
     var parts = [
+        { val: d, color: '#859900', label: 'AI', key: 'ai' },
         { val: t, color: '#e6b800', label: 'Tool', key: 'tool' },
-        { val: n, color: '#cb4b16', label: 'Network', key: 'network' },
-        { val: d, color: '#859900', label: 'AI', key: 'deepseek' }
+        { val: n, color: '#cb4b16', label: 'Network', key: 'network' }
     ];
     var start = -Math.PI / 2;
     var segments = [];
@@ -133,9 +133,9 @@ function _initClockBlock(aiDiv) {
     canvas.addEventListener('mousemove', function (e) {
         if (!canvas._segments || !canvas._total) { _hidePieTooltip(); return; }
         var parts = [
+            { key: 'ai', color: '#859900', label: 'AI' },
             { key: 'tool', color: '#e6b800', label: 'Tool' },
-            { key: 'network', color: '#cb4b16', label: 'Net' },
-            { key: 'deepseek', color: '#859900', label: 'AI' }
+            { key: 'network', color: '#cb4b16', label: 'Net' }
         ];
         var segs = canvas._segments;
         var map = {};
@@ -180,7 +180,16 @@ function startFloorTimer(aiDiv, ag, resume) {
     var _pieShown = false;
     var _lastN = 0, _lastD = 0, _lastT = 0;
     var _ag = ag;
+    // ★ 防御：先清除可能残存的旧 timer（防止重复 start 产生僵尸）
+    if (ag._floorTimerId) { clearInterval(ag._floorTimerId); ag._floorTimerId = null; }
     ag._floorTimerId = setInterval(function () {
+        // ★ DOM 有效性守卫：若 aiDiv 已脱离 DOM（Card 被驱逐/重建），停止 timer
+        var _curDiv = _ag._activeAiDiv;
+        if (!_curDiv || !_curDiv._clockBlock || !_curDiv._clockBlock.isConnected) {
+            clearInterval(_ag._floorTimerId);
+            _ag._floorTimerId = null;
+            return;
+        }
         var elapsed = performance.now() - _ag._floorStartPerf;
         var totalS = Math.floor(elapsed / 1000);
         var min = Math.floor(totalS / 60);
@@ -189,7 +198,7 @@ function startFloorTimer(aiDiv, ag, resume) {
     clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
         var at = _ag._floorTiming;
         var n = (at && at.networkMs) || 0;
-        var d = (at && at.deepseekMs) || 0;
+        var d = (at && at.aiMs) || 0;
         var t = (at && at.toolMs) || 0;
         if (!_pieShown && (n > 0 || d > 0 || t > 0)) { _pieShown = true; canvas.style.visibility = 'visible'; }
         if (!_pieShown) return;
@@ -199,7 +208,7 @@ function startFloorTimer(aiDiv, ag, resume) {
         else if (n > _lastN) state = 'network';
         _lastN = n; _lastD = d; _lastT = t;
         aiDiv._clockBlock.className = 'msg-ai-clock clock-' + state;
-        drawPie(canvas, { networkMs: n, deepseekMs: d, toolMs: t, totalMs: elapsed });
+        drawPie(canvas, { networkMs: n, aiMs: d, toolMs: t, totalMs: elapsed });
     }, 1000);
 }
 
@@ -217,17 +226,17 @@ function stopFloorTimer(timing, ag) {
     if (aiDiv && aiDiv._clockMin && aiDiv._clockCanvas) {
       aiDiv._clockMin.textContent = min + 'm';
       aiDiv._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
-        var tm = timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 };
+        var tm = timing || { networkMs: 0, aiMs: 0, toolMs: 0 };
         tm.totalMs = elapsed;
         if (elapsed > 0) { aiDiv._clockCanvas.style.visibility = 'visible'; drawPie(aiDiv._clockCanvas, tm); }
     }
-    ag._activeAiDiv = null;
+    // ★ 不再清空 _activeAiDiv：它是 agent 与 Card DOM 的永久绑定，切 quest 时 switchQuest 负责重绑
     var durationMs = Math.round(elapsed);
     var record = {
         floorIndex: ag._ctx.totalFloors,
         durationMs: durationMs,
         networkMs: (timing && timing.networkMs) || 0,
-        deepseekMs: (timing && timing.deepseekMs) || 0,
+        aiMs: (timing && timing.aiMs) || 0,
         toolMs: (timing && timing.toolMs) || 0,
         finishedAt: new Date().toISOString()
     };

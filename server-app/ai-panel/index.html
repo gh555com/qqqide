@@ -345,6 +345,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #floor-indicator.fl-ind-left .floor-ind-tofu{border-radius:0 5px 5px 0}
 #floor-indicator.fl-ind-left .floor-ind-needle{margin-left:0;margin-right:-1px}
 #floor-indicator.fl-ind-left .floor-ind-needle::before{clip-path:polygon(100% 0,0 50%,100% 100%)}
+/* ★ quest 切换保护态：dim 消息区 + 禁用指针事件 */
+#messages.qqq-switching{opacity:.35;pointer-events:none;transition:opacity .15s}
 </style>
 <div id="clock-tooltip"></div>
 <script>

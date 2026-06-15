@@ -164,7 +164,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 数据清洗在 EnvelopeStripper.finalize() 一次性完成：信封/floor_summary/DYNAMIC CONTEXT。文本工具调用（XML invoke/Action:格式）解析回生为可执行 tool_calls，非剥离丢弃。
   - 渲染规则用 flag 白名单（§16a），禁字符串匹配（[System:/[GUIDE]等全删）。
   - 流式段缓冲: _buf持当前段, 完成段 push _paras, 渲染后原文置 null(GC瞬间回收)。
-  - 禁轮询: 脏标记 _dirty, 有内容才 setTimeout(doStreamRender, 1000ms)。
+  - 流式渲染代理到 agent._doStreamRender()（per-agent 方法），调用方传 _capturedAgent 拒绝全局 _activeAgent。后端 agent 流式输出永不污染前端可见 Card。
   - Card Queue 铁律（§29）: 流式 AI div 永不脱离 DOM。agent onToken 始终写同一个 div。
 
 §16a Flag 白名单 — conversation → 显示的唯一判定标准
@@ -237,7 +237,10 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - stopFloorTimer(timing, ag) 必须设停止态颜色。中断/异常路径(finally块)同样必须设停止态。
   - Card Pool _buildFloorDOM 重建历史楼层时钟从 fData.clockTiming 直接恢复，不再依赖 questTimings 数组。
   - timer 跑在 agent 上（ag._floorTimerId/ag._floorStartPerf），切 quest 不停 timer。
+  - timer 回调内置 DOM 有效性守卫（isConnected）：Card 被驱逐或 DOM 重建时自动停止，防僵尸 timer 写已销毁节点。
+  - _activeAiDiv 是 agent 与 Card DOM 的永久绑定，stopFloorTimer 不再清空。切 quest 时 switchQuest 无条件重绑（含已停止楼层）。
   - 违例: 工作中显示黑色、完成后显示绿色都是 bug。
+  - ★ quest 切换保护态：_switching=true 期间 dim 消息区（opacity:.35 + pointer-events:none），Send/Enter/guide/queue/createNewQuest 全部入口拦截。
 
 §28 跨面板同步 — IPC sync 桥（同窗口三面板所有权防重复）
   - _broadcast 走 parent.qqqideBridge.sync.broadcast → 主进程 relay 到所有窗口（含发送者）。
@@ -255,7 +258,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - _buildConversationFlowHtml 为唯一渲染函数，live onDone 与恢复路径共用。
   - 渲染规则见 §16a（flag 白名单）。数据清洗见 §16（EnvelopeStripper）。
   - per-floor 状态归属铁律（禁全局）：
-    agent: _floorTimerId / _floorStartPerf / _floorCurrentTiming / _activeAiDiv / _allTxtPath / _a4Snapshots。
+    agent: _floorTimerId / _floorStartPerf / _floorCurrentTiming / _activeAiDiv（agent↔Card DOM 永久绑定，stopFloorTimer 不清空，switchQuest 无条件重绑） / _allTxtPath / _a4Snapshots。
     aiDiv: _a1Block / _a4Block / _allTxtOpenInEditor / _allTxtPath / _clockBlock。
     面板级单例：_allTxtPollTimer / _allTxtBlocked / _sending。
   - A4 铁律：_initA4Block → insertBefore(a1Block) 无条件。A4 始终在 A2 之后、A1 之前。
@@ -311,7 +314,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 重启时 _restoreScrollDeferred 双 rAF 等 DOM 布局后再设 scrollTop。
   - 下拉打开 quest 时 _scrollToBottomDeferred 强制滚到底（不等 saved scrollTop）。
   - questUIStates 必须在 initQuests 之前从 onlyStore 加载，否则 restore 时为空对象。
-  - $sendBtn/stopStream/Enter key 全部加 _activeAgent null 守卫（新窗口无 quest 时防崩）。
+  - $sendBtn/Enter key 守卫：仅拦截压缩中（_activeAgent._compressing），不拦截 _activeAgent===null（draft→real quest 由 sendMessage 内部处理）。
   - _appendToCard 兜底: cardPool.getOrCreate → 无 card 时自动创建，不裸插 $messages。
 
 §35 AI 面板模块化 — panel-*.js 拆分铁律（2026-06-10）
@@ -367,25 +370,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - X 区仅保留 Git tab。A 区保留 git 快速状态面板。
   - Timeline 已完全迁出至独立 BrowserWindow(§38)。不再监听 A4 消息。
 
-§40 上下文压缩 — 发前自动压缩，三重判断（2026-06-10 落地）
-  - 每轮发消息前 agent-loop _compressContext() 自动触发。
-  - 双重判断: _lastApiPromptTokens（DS 精确值） + 本地估算(chars/3)，任一超 COMPRESS_THRESHOLD → 压缩。
-  - 保留最近 6 层楼，旧楼送往 AI 压缩成 32K 结构化 JSON（事实+叙事）。
-  - 失败→指数退避无限重试(2s→4s→…→60s)，不丢消息。
-  - 手动触发: 左下角上下文按钮。压缩期间 Stop 按钮锁定。
-
-§41 模型参数唯一真理源 — content-gateway.js（2026-06-10 落地）
-  - CTX_MAX_TOKENS / COMPRESS_THRESHOLD / MAX_TOKENS_SAFETY / CHAR_PER_TOKEN 全部集中声明在 content-gateway.js。
-  - 四个消费方（panel-quest-ui / agent-context / agent-loop）全部引用，禁硬编码。
-  - 换模型/改窗口大小 → 只改 content-gateway.js 一处。违者返工。
-
-§42 max_tokens 动态帽 — 压缩漏网兜底（2026-06-10 落地）
-  - 发 API 前: safeMax = CTX_MAX_TOKENS - _lastApiPromptTokens - MAX_TOKENS_SAFETY。
-  - 与 tier.maxTokens 取 min → effectiveMaxTokens。下限 1024。
-  - _lastApiPromptTokens 是 DS 返回的精确 prompt_tokens，per-floor 粒度，用则更新不用则过期。
-  - Go 服务端第三层兜底: 序列化后按 len/3 估算，超限同样缩 max_tokens。
-
-§43 用户间隔绝不级联 — 一用户的脏数据不得杀死全体进程（2026-06-10 落地）
+undefined
   - 事故链: q54 孤立的 tool 消息 → DeepSeek 400 → Go stream writer nil dereference → panic → 进程崩溃 → 全体 502。
   - JS 侧修复: _repairOrphanedToolCalls 双向扫描（A: tool_calls缺tool, B: tool缺tool_calls）。
   - Go 侧双防御: ① sanitizeMessages() 转交前剔除孤立的 tool 消息；② stream writer goroutine 顶层 defer recover() 兜底，任何 panic 只关当前流不杀进程。

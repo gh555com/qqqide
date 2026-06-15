@@ -202,7 +202,7 @@ var AgentLoop = (function () {
         cleanContent = cleanContent.replace(/<parameter[\s>][^>]*>[\s\S]*?<\/parameter>/gi, '');
         cleanContent = cleanContent.replace(/<parameter[\s>][^>]*\/>/gi, '');
 
-        // ── 2) DeepSeek ReAct 格式：Action: tool_name\nAction Input: {...} ──
+        // ── 2) ReAct 格式：Action: tool_name\nAction Input: {...} ──
         if (/^Action:\s*\w+/m.test(cleanContent)) {
             var _actionPat = /^Action:\s*(\w[\w.-]*).*(?:\nAction Input:\s*(\{[\s\S]*?\}))?/gm;
             var _m;
@@ -241,7 +241,12 @@ var AgentLoop = (function () {
         this._fileLogBuffer = [];
         this._fileLogTimer = null;
         var _self = this;
+        // ★ 全局日志开关：window.__qqq_file_log = false 可关闭所有文件日志
+        if (typeof window !== 'undefined' && window.__qqq_file_log === undefined) {
+            window.__qqq_file_log = true;  // 默认开启
+        }
         this._writeFileLog = function (msg) {
+            if (typeof window !== 'undefined' && window.__qqq_file_log === false) return;
             _self._fileLogBuffer.push(new Date().toISOString() + ' ' + msg);
             if (_self._fileLogBuffer.length > 20) {
                 _self._flushFileLog();
@@ -277,6 +282,7 @@ var AgentLoop = (function () {
         };
         // 上下文引擎
         this._compressing = false;
+        this._compressAttemptedThisFloor = false;
         this._ctx = { narrative: '', facts: [], totalFloors: 0, lastCompressedFloor: 0, floorArchives: [] };
         this._compactTraces = [];  // 埋点日志（最近 10 条）
 
@@ -319,7 +325,7 @@ var AgentLoop = (function () {
         this._lastBilling = null;        // { geCost, model, usage: {prompt_tokens,completion_tokens,cached_tokens,non_cached_tokens}, freeWindow, requestId }
         this._billingSeq = 0;            // 全局 billing 事件序号（跨 floor 递增）
         this._billingDebug = false;      // 详细记账日志开关（默认关，减少噪音）
-        // ★ 上下文快照：诊断 DeepSeek 缓存命中/未命中根因
+        // ★ 上下文快照：诊断模型缓存命中/未命中根因
         this._lastSentSnapshot = null;   // { msgCount, prefixHash, firstMsgKeys, lastMsgKeys }
         this._lastCacheDiag = null;      // { prevHash, currHash, firstDiffIdx, diffReason, prevMsgKeys, currMsgKeys }
     }
@@ -382,7 +388,7 @@ var AgentLoop = (function () {
     };
 
     // ═══ 修复断裂的 tool_calls（启动自愈，双向扫描） ═══
-    // DeepSeek API 硬要求：tool 消息前必须有 assistant tool_calls，tool_calls 后必须有足够 tool
+    // API 硬要求：tool 消息前必须有 assistant tool_calls，tool_calls 后必须有足够 tool
     // 扫描 conversation，砍掉所有孤立的配对（任一方向残缺都移除整组）
     AgentLoop.prototype._repairOrphanedToolCalls = function () {
         var self = this;
@@ -584,6 +590,7 @@ var AgentLoop = (function () {
 
         if (!token) { onError('No token'); return null; }
 
+        self._compressing = false;  // ★ 安全重置：防上次异常未清理
         // ★ 存储 token 供 tools.js 调用 Go 端点时使用
         self._token = token;
 
@@ -592,7 +599,7 @@ var AgentLoop = (function () {
         self._floorFree = false;
         self._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ((typeof _panelId !== 'undefined') ? ['_L', '_C', '_R'][_panelId] || '' : '');
         self._currentFloorSummary = (userContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
-        self._floorTiming = { networkMs: 0, deepseekMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (self._serverDrift || 0) };
+        self._floorTiming = { networkMs: 0, aiMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (self._serverDrift || 0) };
         self._floorStartServerMs = self._floorTiming.floorStartServerMs;  // 兼容旧引用
 
         // ═══ 视觉预分析：图像 → 文本 → 推理 ═══
@@ -616,7 +623,7 @@ var AgentLoop = (function () {
                 self._visionCostWge = 0;
             }
         }
-        if (_visionStart) self._floorTiming.deepseekMs += performance.now() - _visionStart;
+        if (_visionStart) self._floorTiming.aiMs += performance.now() - _visionStart;
 
         // 推入用户消息（纯文本）
         var finalContent = (userContent || '') + visionText;
@@ -651,6 +658,7 @@ var AgentLoop = (function () {
         self._houses = [];
         self._a4Snapshots = {};
         self._houseIndex = 0;
+        self._compressAttemptedThisFloor = false;
         self._floorKilled = false;  // ★ 看门狗：用户点停止才置 true
         self._floorCompletedCleanly = false;  // ★ 看门狗：只有 onDone 路径才置 true
         self._floorOnErrorCalled = false;  // ★ 看门狗：onError 回调已处理，不重复恢复
@@ -751,14 +759,16 @@ var AgentLoop = (function () {
                 }
 
                 // ═══ 压缩守护：每间 house 前检查，超阈值则阻塞压缩 ═══
-                if (!self._compressing) {
-                    var _checkTokens = self._lastApiTotalTokens || self._lastApiPromptTokens || 0;
+                if (!self._compressing && !self._compressAttemptedThisFloor) {
+                    var _apiTokens = self._lastApiTotalTokens || self._lastApiPromptTokens || 0;
                     var _threshold = (typeof ContentGateway !== 'undefined') ? ContentGateway.COMPRESS_THRESHOLD : 900000;
-                    if (_checkTokens > _threshold) {
+                    if (_apiTokens === 0 || _apiTokens <= _threshold) { /* skip */ }
+                    else {
+                        self._compressAttemptedThisFloor = true;
                         self._compressing = true;
                         window._updateSendBtnForCompress(true);
                         try {
-                            var _reason = '自动压缩（' + Math.round(_checkTokens/1000) + 'k / ' + Math.round(_threshold/1000) + 'k，超 90% 阈值）';
+                            var _reason = '自动压缩（' + Math.round(_apiTokens/1000) + 'k / ' + Math.round(_threshold/1000) + 'k，超 90% 阈值）';
                             self._renderCompressStart(_reason);
                             var _result = await self._compressContext({ trigger: 'auto', detail: _reason });
                             self._renderCompressResult(_result);
@@ -825,7 +835,7 @@ var AgentLoop = (function () {
                 // accumulate timing from gateway call
                 if (response._ttfbMs !== undefined) {
                     self._floorTiming.networkMs += response._ttfbMs;
-                    self._floorTiming.deepseekMs += response._streamMs;
+                    self._floorTiming.aiMs += response._streamMs;
                 }
                 // API 精确上下文 token 计数
                 //   _lastApiPromptTokens: 发送时 conversation 的 token 数（用于动态帽）
@@ -940,7 +950,11 @@ var AgentLoop = (function () {
                 }
 
                 // 未知响应类型 → 不中断，给用户一个可读的结束
-                self._log('⚠ unexpected response type: ' + (response && response.type));
+                var _utype = (response && response.type);
+                var _uusage = (response && response._usage);
+                var _umsg = '⚠ unexpected response type: ' + _utype + ' _usage=' + (_uusage ? JSON.stringify({prompt:_uusage.prompt_tokens, total:_uusage.total_tokens, completion:_uusage.completion_tokens}) : 'null');
+                self._log(_umsg);
+                if (typeof self._writeFileLog === 'function') self._writeFileLog(_umsg);
                 var _fallbackMsg = '⚠ AI 返回了意外的响应类型，但对话上下文已保留。你可以继续提问或重试。';
                 self.conversation.push({ role: 'assistant', content: _fallbackMsg, _floor: self._ctx.totalFloors });
                 self._floorCompletedCleanly = true;  // ★ 看门狗：虽非理想但已给出可读结束
@@ -974,7 +988,7 @@ var AgentLoop = (function () {
                     if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     if (finalResp._ttfbMs !== undefined) {
                         self._floorTiming.networkMs += finalResp._ttfbMs;
-                        self._floorTiming.deepseekMs += finalResp._streamMs;
+                        self._floorTiming.aiMs += finalResp._streamMs;
                     }
                     self.conversation.push({ role: 'assistant', content: finalResp.content, _floor: self._ctx.totalFloors });
                     var finalCostGe = self._floorCostWge / 10000;
@@ -1346,13 +1360,13 @@ var AgentLoop = (function () {
             summary_hint: summaryHint
         };
 
-        // ★ 始终发送工具定义：即使 noTools 为 true，也要传 tools 防止 DeepSeek 退化为文本格式
+        // ★ 始终发送工具定义：即使 noTools 为 true，也要传 tools 防止模型退化为文本格式
         if (typeof getTools === 'function') {
             var _tools = getTools();
             if (_tools && _tools.length) {
                 body.tools = _tools;
                 if (noTools) {
-                    body.tool_choice = 'none';  // DeepSeek 支持 tool_choice，禁用工具调用但保留格式
+                    body.tool_choice = 'none';  // 模型支持 tool_choice，禁用工具调用但保留格式
                 }
             }
         }
@@ -1485,7 +1499,7 @@ var AgentLoop = (function () {
                     self._exitReason = 'http_' + resp.status;
                     clearTimeout(_fetchDeadline);
                     self._sendTerminated = true;  // ★ 标记终止
-                    self._lastGatewayMessage = friendly;
+                    self._lastGatewayMessage = friendly + ' Conversation saved.';
                     onError(friendly);
                     return null;
                 }
@@ -1579,6 +1593,8 @@ var AgentLoop = (function () {
                         var _retryMsg = '  ⏳ abort retry #' + self._abortRetries + '/3 in ' + (_abortWait / 1000) + 's (same URL: ' + GATEWAY_URL.replace('https://', '').split('/')[0] + ')';
                         self._log(_retryMsg);
                         if (typeof self._writeFileLog === 'function') self._writeFileLog(_retryMsg);
+                        // ★ 退避等待归入网络时间（红）
+                        self._floorTiming.networkMs += _abortWait;
                         await new Promise(function (r) { setTimeout(r, _abortWait); });
                         continue;  // 回到 retry 循环顶部，同 URL 重试
                     }
@@ -1605,7 +1621,10 @@ var AgentLoop = (function () {
                     var _finalMsg = '✗ TIMEOUT EXHAUSTED: all ' + MAX_LINE_SWITCHES + ' line switches + 3 abort retries per URL exhausted. Final URL=' + GATEWAY_URL.replace('https://', '').split('/')[0] + ' panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?') + ' floor=' + self._ctx.totalFloors;
                     self._log(_finalMsg);
                     if (typeof self._writeFileLog === 'function') self._writeFileLog(_finalMsg);
-                    self._lastGatewayMessage = '⚠️ 连接超时，对话已保存。';
+                    var _errDetail = 'Connection timed out. Retried 3x + switched 2x lines. All recovery exhausted.';
+                    if (self._abortSource) _errDetail += ' Trigger: ' + self._abortSource + '.';
+                    _errDetail += ' Conversation saved.';
+                    self._lastGatewayMessage = _errDetail;
                     return null;
                 }
                 var msg = err.message || '';
@@ -1615,7 +1634,7 @@ var AgentLoop = (function () {
                     self._log('  AI upstream ' + self._lastGatewayError + ' — skipping retries, letting auto-repair handle');
                     clearTimeout(_fetchDeadline);
                     self._exitReason = 'http_' + self._lastGatewayError;
-                    self._lastGatewayMessage = '⚠️ AI 上游返回 ' + self._lastGatewayError + '，正在自动修复...';
+                    self._lastGatewayMessage = 'AI upstream returned ' + self._lastGatewayError + ' (bad request or context limit). Auto-repair attempted.';
                     return null;
                 }
 
@@ -1684,7 +1703,10 @@ var AgentLoop = (function () {
                     continue;
                 }
                 // 无可切换线路 或 已达切换上限 → 交给上层处理
-                self._lastGatewayMessage = '⚠️ 网络请求失败。对话已完整保留，请稍后重新发送。';
+                var _errDet = 'Network request failed. Retried ' + MAX_RETRIES + 'x + switched ' + MAX_LINE_SWITCHES + 'x lines. All recovery exhausted.';
+                if (msg) _errDet += ' Error: ' + msg + '.';
+                _errDet += ' Conversation preserved.';
+                self._lastGatewayMessage = _errDet;
                 // ★ 通知兄弟面板：当前线路已死
                 if (typeof _gwBroadcastDeadFallback === 'function' && GATEWAY_URL === GATEWAY_URL_FALLBACK) {
                     _gwBroadcastDeadFallback();
@@ -1712,7 +1734,7 @@ var AgentLoop = (function () {
         var _sseError = null;  // ★ 服务端 SSE 错误事件（提升到外层避免被 JSON catch 吞掉）
 
         // ★ 流级别看门狗：120s 无数据 → 连接已死，主动 abort
-        //   DeepSeek 深度推理可能 90s+ 无 token，120s 防误杀
+        //   深度推理可能 90s+ 无 token，120s 防误杀
         // ★ 产出看门狗：10min 无实质产出（无 delta/tool_call）→ AI 陷入思考循环，主动 abort
         var _streamWatchdog = null;
         var _outputWatchdog = null;
@@ -1849,7 +1871,9 @@ var AgentLoop = (function () {
         // ★ 服务端 SSE 错误 → 向上抛出（不再被 JSON catch 吞掉）
         if (_sseError) {
             var _errMsg = _sseError.message || 'Server error (' + (_sseError.code || 500) + ')';
-            self._log('✗ SSE error event: ' + _errMsg);
+            var _errFull = '✗ SSE error: code=' + (_sseError.code || '?') + ' msg=' + _errMsg + ' floor=' + (self._ctx ? self._ctx.totalFloors : '?') + ' house=' + (self._houseIndex || '?');
+            self._log(_errFull);
+            if (typeof self._writeFileLog === 'function') self._writeFileLog(_errFull);
             if (_sseError.code === 400 || _sseError.code === 422 || _sseError.code === 502 || _sseError.code === 503) {
                 self._lastGatewayError = _sseError.code;
             }
@@ -1886,7 +1910,13 @@ var AgentLoop = (function () {
             }
             return { type: 'message', content: content, reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage, _finishReason: _finishReason };
         }
-        return _usage ? { _usage: _usage } : null;
+        // 仅有 usage 无内容 → 上游可能拒绝了请求（上下文超限等）
+        if (_usage && _usage.prompt_tokens) {
+            var _msg = '⚠ SSE ended with usage only, no content — upstream likely rejected request (prompt_tokens=' + _usage.prompt_tokens + ' total_tokens=' + (_usage.total_tokens || '?') + ' completion_tokens=' + (_usage.completion_tokens || '?') + ')';
+            self._log(_msg);
+            if (typeof self._writeFileLog === 'function') self._writeFileLog(_msg);
+        }
+        return null;
     };
 
     // ---- timing getters (for UI clock + pie) ----
@@ -2245,6 +2275,55 @@ var AgentLoop = (function () {
             console.log(lines.join('\n'));
         }
     }
+
+    // ═══ 每 agent 独立流式渲染（拒绝全局 _activeAgent） ═══
+    AgentLoop.prototype._doStreamRender = function () {
+        var aiDiv = this._activeAiDiv;
+        if (!aiDiv || !aiDiv._contentWrap) return;  // ★ Card 已驱逐或 DOM 不完整
+        if (this._sendTerminated || this._floorKilled) {
+            aiDiv._renderScheduled = false;
+            aiDiv._dirty = false;
+            return;
+        }
+        if (!aiDiv._dirty) { aiDiv._renderScheduled = false; return; }
+        aiDiv._renderScheduled = false;
+        if (aiDiv._guideMode) {
+            aiDiv._renderedCount = (aiDiv._paras || []).length;
+            for (var _gpi = 0; _gpi < (aiDiv._paras || []).length; _gpi++) aiDiv._paras[_gpi] = null;
+            aiDiv._dirty = false;
+            return;
+        }
+        var rendered = aiDiv._renderedCount || 0;
+        var paras = aiDiv._paras || [];
+        var _rm = typeof renderMarkdown === 'function' ? renderMarkdown : function (s) { return s; };
+        while (rendered < paras.length) {
+            var para = paras[rendered];
+            if (para && para.trim()) {
+                var pEl = document.createElement('div');
+                pEl.className = 'stream-para';
+                pEl.innerHTML = _rm(para);
+                aiDiv._contentWrap.appendChild(pEl);
+            }
+            paras[rendered] = null;
+            rendered++;
+        }
+        aiDiv._renderedCount = rendered;
+        if (!aiDiv._lastParaEl) {
+            aiDiv._lastParaEl = document.createElement('div');
+            aiDiv._lastParaEl.className = 'stream-para';
+            aiDiv._contentWrap.appendChild(aiDiv._lastParaEl);
+        }
+        if (aiDiv._codeFenceOpen && aiDiv._buf) {
+            var _codeContent = aiDiv._buf;
+            var _firstNL = _codeContent.indexOf('\n');
+            if (_firstNL > 0 && /^```/.test(_codeContent)) _codeContent = _codeContent.slice(_firstNL + 1);
+            var _esc = typeof escHtml === 'function' ? escHtml : function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+            aiDiv._lastParaEl.innerHTML = '<pre><code>' + _esc(_codeContent) + '</code></pre>';
+        } else {
+            aiDiv._lastParaEl.innerHTML = _rm(aiDiv._buf || '');
+        }
+        aiDiv._dirty = false;
+    };
 
     return AgentLoop;
 })();

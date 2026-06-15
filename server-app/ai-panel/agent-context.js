@@ -424,7 +424,13 @@
             });
 
             var _ttfbMs = performance.now() - _fetchStart;
-            if (!resp.ok) return { parsed: null, ttfbMs: _ttfbMs, totalMs: _ttfbMs };
+            if (!resp.ok) {
+                var _errText = '';
+                try { _errText = await resp.text(); } catch (_) { }
+                self._log('✗ Compact API HTTP ' + resp.status + ': ' + _errText.slice(0, 200));
+                if (typeof self._writeFileLog === 'function') self._writeFileLog('✗ Compact API HTTP ' + resp.status + ': ' + _errText.slice(0, 300));
+                return { parsed: null, ttfbMs: _ttfbMs, totalMs: _ttfbMs };
+            }
 
             var data = await resp.json();
             var _totalMs = performance.now() - _fetchStart;

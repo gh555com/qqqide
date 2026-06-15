@@ -10,8 +10,16 @@
 <script src="core/i18n.js"></script>
 <script src="core/qqqide-qoast.js"></script>
 <link rel="stylesheet" href="core/shell.css">
+<style>
+#qqq-brand-banner{position:fixed;top:0;left:50%;transform:translate(-50%,calc(-100% - 40px));transition:transform .5s cubic-bezier(.4,0,.2,1);z-index:99999;background:var(--bg-primary,#1a1a1a);border:1px solid var(--border-color,#333);border-top:none;border-radius:0 0 12px 12px;padding:18px 32px;text-align:center;min-width:320px;box-shadow:0 4px 24px rgba(0,0,0,.4);pointer-events:none}
+#qqq-brand-banner.show{transform:translate(-50%,0)}
+#qqq-brand-banner .bl1{font-size:20px;font-weight:700;color:var(--text-primary,#e8e8e8);letter-spacing:.05em;margin-bottom:4px}
+#qqq-brand-banner .bl2{font-size:14px;font-weight:400;color:var(--text-secondary,#888);letter-spacing:.02em}
+</style>
 </head>
 <body>
+
+<div id="qqq-brand-banner"><div class="bl1"></div><div class="bl2"></div></div>
 
 <!-- 控制台捕获：拦截一切 console 输出 → 环形缓冲区（必须在所有脚本之前） -->
 <script>
@@ -266,6 +274,9 @@
     }
   });
 })();
+</script>
+<script>
+(function(){var b=document.getElementById('qqq-brand-banner');var l1=b.querySelector('.bl1');var l2=b.querySelector('.bl2');var s=[{a:'GH Health',b:'的梦gaea'},{a:'四川的梦科技有限公司 All Rights Reserved.',b:'gh555.com'}];function show(i){if(i>=s.length){b.remove();return}l1.textContent=s[i].a;l2.textContent=s[i].b;b.offsetHeight;b.classList.add('show');setTimeout(function(){b.classList.remove('show');setTimeout(function(){show(i+1)},550)},3000)}setTimeout(function(){show(0)},400)})();
 </script>
 </body>
 </html>

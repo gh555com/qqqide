@@ -170,6 +170,9 @@
         "queue": "排队",
         "context": "上下文",
         "compress": "压缩",
+        "error": {
+            "continueTask": "继续任务"
+        },
         "ctx": {
             "title": "你可以选择压缩上下文",
             "benefit": "唯一好处：",

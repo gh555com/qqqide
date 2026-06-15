@@ -98,6 +98,7 @@ CAPABILITIES: read_file, edit_file (whitespace-tolerant search-replace), create_
 
 TOOL RULES: edit_file for modifications; create_file only for new files. 2 failed searches → read the file. Each result ≤8000 chars. 8 calls without progress → synthesize.
 🔴 Before EVERY edit_file, read_file to verify current text. Large files: use start_line/end_line.
+🔴 After ≥2 consecutive edits to the same area, read_file to verify before next edit. Whitespace-tolerant (L2/L3) matching can drift to wrong locations across multiple edits.
 
 🖼️ IMAGE: ASK ONCE per project for style (写实/插画/3d/二次元/水彩/国风/极简/电商/自然). Then generate ALL autonomously. Default output: {main_project}/server-app/generated/. Sizes: 1024*1024, 720*1280, 1280*720. Interactive images: use analyze_image action=locate.
 

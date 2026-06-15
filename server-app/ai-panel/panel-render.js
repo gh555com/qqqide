@@ -148,79 +148,11 @@ function _restoreScrollDeferred(scrollTop) {
 
 // doStreamRender: 1fps event-driven incremental render (no polling, no full-text accumulation)
 
-function doStreamRender() {
-
-    var aiDiv = _activeAgent._activeAiDiv;
-
-    if (!aiDiv) { return; }
-    // ★ 防"诈尸"：agent 已终止或楼层已完成，停止流式渲染
-    if (_activeAgent._sendTerminated || _activeAgent._floorKilled) {
-        aiDiv._renderScheduled = false;
-        aiDiv._dirty = false;
-        return;
-    }
-    if (!aiDiv._dirty) { aiDiv._renderScheduled = false; return; }
-
-    aiDiv._renderScheduled = false;
-
-    // ★ 引导确认期间：不产生流式 DOM（模型可能输出 XML 垃圾未清洗）
-    // 仅清空积压的 _paras（释放内存），不触碰 DOM
-    if (aiDiv._guideMode) {
-        aiDiv._renderedCount = (aiDiv._paras || []).length;
-        for (var _gpi = 0; _gpi < (aiDiv._paras || []).length; _gpi++) {
-            aiDiv._paras[_gpi] = null;
-        }
-        aiDiv._dirty = false;
-        return;
-    }
-
-    var rendered = aiDiv._renderedCount || 0;
-
-    var paras = aiDiv._paras || [];
-
-    // Render completed paragraphs (once, then release string for GC)
-
-    while (rendered < paras.length) {
-
-        var para = paras[rendered];
-        // 跳过空段落（避免产生空白 div）
-        if (para && para.trim()) {
-            var pEl = document.createElement('div');
-            pEl.className = 'stream-para';
-            pEl.innerHTML = renderMarkdown(para);
-            aiDiv._contentWrap.appendChild(pEl);
-        }
-        paras[rendered] = null;  // release for GC
-        rendered++;
-    }
-
-    aiDiv._renderedCount = rendered;
-
-    // Last (in-progress) paragraph: re-render in dedicated slot
-
-    if (!aiDiv._lastParaEl) {
-
-        aiDiv._lastParaEl = document.createElement('div');
-        aiDiv._lastParaEl.className = 'stream-para';
-        aiDiv._contentWrap.appendChild(aiDiv._lastParaEl);
-
-    }
-
-    // 增量解析：若处于代码围栏内，_buf 含开围栏标记，剥离后包裹 <pre><code>
-    if (aiDiv._codeFenceOpen && aiDiv._buf) {
-        var _codeContent = aiDiv._buf;
-        // 剥离首行开围栏标记（``` 或 ```lang），仅显示代码本体
-        var _firstNL = _codeContent.indexOf('\n');
-        if (_firstNL > 0 && /^```/.test(_codeContent)) {
-            _codeContent = _codeContent.slice(_firstNL + 1);
-        }
-        aiDiv._lastParaEl.innerHTML = '<pre><code>' + escHtml(_codeContent) + '</code></pre>';
-    } else {
-        aiDiv._lastParaEl.innerHTML = renderMarkdown(aiDiv._buf || '');
-    }
-
-    aiDiv._dirty = false;
-
+// doStreamRender: 代理到 _activeAgent._doStreamRender（若给定 ag 则用 ag）
+// 调用方可选传入 agent 引用，避免后台 agent 的流写入前台 Card
+function doStreamRender(ag) {
+    var _ag = ag || _activeAgent;
+    if (_ag && _ag._doStreamRender) { _ag._doStreamRender(); }
 }
 
 // ═══ 唯一真理机：用户消息显示内容（剥离所有注入块，无论输入干净还是脏） ═══

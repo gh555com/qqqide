@@ -6,6 +6,8 @@ async function switchQuest(id) {
     if (id === questActiveId) return;
     if (_switching) return;
     _switching = true;
+    // ★ 视觉保护：切换期间 dim 消息区，防用户误操作
+    if ($messages) $messages.classList.add('qqq-switching');
     try {
         // \u2550\u2550\u2550 \u6240\u6709\u6743\u68c0\u67e5\uff08\u5206\u4e24\u5c42\uff1a\u2460 \u540c\u6b65\u7236\u6ce8\u518c\u8868 \u2461 \u5f02\u6b65 store + broadcast \u515c\u5e95\uff09 \u2550\u2550\u2550
         var _syncOwnerPanel = _parentGetQuestOwner(id);
@@ -60,11 +62,52 @@ async function switchQuest(id) {
         // \u2550\u2550\u2550 \u6062\u590d agent \u72b6\u6001\uff08conversation + metadata\uff09 \u2550\u2550\u2550
         await _restoreAgentFromStore(id, _activeAgent);
 
+        // ★ 无条件恢复 _activeAiDiv 绑定（不区分 building/stopped）
         var card = cardPool.getCard(id);
-        if (card && card.buildingFloor !== null) {
-            var bDOM = card.floorDOM[card.buildingFloor];
-            if (bDOM && bDOM.aiEl) {
-                _activeAgent._activeAiDiv = bDOM.aiEl;
+        if (card) {
+            if (card.buildingFloor !== null) {
+                var bDOM = card.floorDOM[card.buildingFloor];
+                if (bDOM && bDOM.aiEl) {
+                    _activeAgent._activeAiDiv = bDOM.aiEl;
+                }
+            } else {
+                // 已停止的 quest：找到最后一个有 aiEl 的楼层
+                var _floorNums = Object.keys(card.floorDOM || {}).map(Number).sort(function(a,b){return b-a;});
+                for (var _fi = 0; _fi < _floorNums.length; _fi++) {
+                    var _fDom = card.floorDOM[_floorNums[_fi]];
+                    if (_fDom && _fDom.aiEl) {
+                        _activeAgent._activeAiDiv = _fDom.aiEl;
+                        // ★ 恢复时钟为停止态（匹配该楼层专属 timing 记录，非盲目取最后一条）
+                        if (_fDom.aiEl._clockBlock && _activeAgent._floorTimings && _activeAgent._floorTimings.length > 0) {
+                            var _thisFloorNum = _floorNums[_fi];
+                            var _matchTiming = null;
+                            for (var _ti = 0; _ti < _activeAgent._floorTimings.length; _ti++) {
+                                if (_activeAgent._floorTimings[_ti].floorIndex === _thisFloorNum) {
+                                    _matchTiming = _activeAgent._floorTimings[_ti];
+                                    break;
+                                }
+                            }
+                            if (!_matchTiming) _matchTiming = _activeAgent._floorTimings[_activeAgent._floorTimings.length - 1];
+                            var _cBlock = _fDom.aiEl._clockBlock;
+                            _cBlock.className = 'msg-ai-clock';
+                            var _durS = Math.floor((_matchTiming.durationMs || 0) / 1000);
+                            var _cMin = _fDom.aiEl._clockMin;
+                            var _cSec = _fDom.aiEl._clockSec;
+                            if (_cMin) _cMin.textContent = Math.floor(_durS / 60) + 'm';
+                            if (_cSec) _cSec.textContent = ':' + (_durS % 60 < 10 ? '0' : '') + (_durS % 60) + 's';
+                            if (_fDom.aiEl._clockCanvas) {
+                                _fDom.aiEl._clockCanvas.style.visibility = 'visible';
+                                drawPie(_fDom.aiEl._clockCanvas, {
+                                    networkMs: _matchTiming.networkMs || 0,
+                                    aiMs: _matchTiming.aiMs || 0,
+                                    toolMs: _matchTiming.toolMs || 0,
+                                    totalMs: _matchTiming.durationMs || 0
+                                });
+                            }
+                        }
+                        break;
+                    }
+                }
             }
         }
 
@@ -74,7 +117,10 @@ async function switchQuest(id) {
         updateCtxBtn();
         await renderTabs();
         _scrollToBottomDeferred(true);
-    } finally { _switching = false; }
+    } finally {
+        _switching = false;
+        if ($messages) $messages.classList.remove('qqq-switching');
+    }
 }
 
 // \u2500\u2500 \u751f\u6210 quest/floor \u6587\u4ef6\u5939\u540d\uff1aq{n}.{\u5b89\u5168\u5316\u6587\u672c} \u6216 f{n}.{\u5b89\u5168\u5316\u6587\u672c} \u2500\u2500
@@ -183,6 +229,7 @@ async function _tryRepairQuestDirName(root, questId, numericId, dbTitle) {
 }
 
 async function createNewQuest() {
+    if (_switching) return;  // ★ quest 切换中
     if (streaming) stopStream();
     saveQuestUIState(questActiveId);
     if (!_isDraft(questActiveId)) await saveQuestData();
@@ -382,7 +429,6 @@ function updateCtxBtn() {
     //   fallback: _lastApiPromptTokens → 本地 chars/3 估算
     var totalTokens = _ag._lastApiTotalTokens || _ag._lastApiPromptTokens || 0;
     var est = estimateTokens();
-    // 取较大值：DS 精确值更可信，但压缩后清零 → 回退本地估算
     var used = totalTokens > 0 ? Math.max(est, totalTokens) : est;
     var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
     $ctxBtn.textContent = Math.round(used / 1000) + ' k';
@@ -410,9 +456,12 @@ document.getElementById('ctx-compress').onclick = async function () {
     _ag._compressing = true;
     window._updateSendBtnForCompress(true);
     var _reason = '手动压缩（用户主动触发）';
-    try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('🧠 压缩中...', { type: 'info', duration: 0 }); } catch (_) { }
+    var _compressQoast = null;
+    try { if (window.parent && window.parent.qqqideQoast) _compressQoast = window.parent.qqqideQoast.show('🧠 压缩中...', { type: 'info', duration: 0 }); } catch (_) { }
     try {
         var _result = await _ag._compressContext({ trigger: 'manual', detail: _reason, force: true });
+        // 关闭"压缩中"qoast
+        if (_compressQoast) { try { _compressQoast.dismiss(); } catch (_) { } _compressQoast = null; }
         if (_result.compressed) {
             try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✅ ' + _result.detail.replace(/\n/g, ' | '), { type: 'info', duration: 5000 }); } catch (_) { }
         } else {
@@ -420,8 +469,10 @@ document.getElementById('ctx-compress').onclick = async function () {
         }
         updateCtxBtn();
     } catch (e) {
+        if (_compressQoast) { try { _compressQoast.dismiss(); } catch (_) { } _compressQoast = null; }
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✗ 压缩异常: ' + (e.message || '未知错误'), { type: 'error', duration: 8000 }); } catch (_) { }
     } finally {
+        if (_compressQoast) { try { _compressQoast.dismiss(); } catch (_) { } }
         _ag._compressing = false;
         window._updateSendBtnForCompress(false);
     }
@@ -441,6 +492,7 @@ document.addEventListener('keydown', function (e) {
 
 // \u2500\u2500 \u5f15\u5bfc\u6309\u94ae\uff1a\u6700\u5feb\u901f\u5ea6\u5c06\u7d27\u6025\u4fe1\u606f\u786c\u585e\u7ed9\u6b63\u5728\u5de5\u4f5c\u7684 AI\uff0c\u4e0d\u4e2d\u65ad\u697c\u5c42 \u2500\u2500
 $guideBtn.onclick = function () {
+    if (_switching) return;  // ★ quest 切换中
     if (!_activeAgent) {
         addMessageEl('error', '\u8bf7\u5148\u53d1\u9001\u4e00\u6761\u6d88\u606f\u521b\u5efa\u5bf9\u8bdd');
         return;
@@ -658,6 +710,7 @@ function renderQueueStrip() {
 }
 
 $queueBtn.onclick = function () {
+    if (_switching) return;  // ★ quest 切换中
     if (!_activeAgent) {
         addMessageEl('error', '\u8bf7\u5148\u53d1\u9001\u4e00\u6761\u6d88\u606f\u521b\u5efa\u5bf9\u8bdd');
         return;

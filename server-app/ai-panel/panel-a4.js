@@ -213,13 +213,21 @@ async function _a4EnsureBeforeBaseline(filePath, currentContent) {
     if (!bridge || !bridge.timeline) return null;
 
     try {
+        // ★ 读取当前 trace
+        var traceObj = (typeof window !== 'undefined' && window._qqqCurrentTrace) ? window._qqqCurrentTrace : null;
+        var floorId = null;
+        if (traceObj && traceObj.questId && traceObj.floorNum) {
+            floorId = 'q' + traceObj.questId.replace(/^q/i, '') + '/f' + traceObj.floorNum +
+                '/h' + (traceObj.houseIdx || 0) + '/r' + (traceObj.roomIdx || 0);
+        }
+
         // 查 timeline 是否有该文件版本
         var versions = await bridge.timeline.versions({ projectRoot: root, filePath: filePath });
         if (!versions || versions.length === 0) {
             // ① 从未追踪 → 记录当前内容，建立基线
             var rec = await bridge.timeline.record({
                 projectRoot: root, filePath: filePath, content: currentContent,
-                source: 'q', addedLines: 0, deletedLines: 0
+                source: 'q', floorId: floorId, addedLines: 0, deletedLines: 0
             });
             return (rec && rec.ok) ? rec.blob_hash : null;
         }
@@ -236,7 +244,7 @@ async function _a4EnsureBeforeBaseline(filePath, currentContent) {
         // ③ 内容不一致（外部改过）→ 记录当前内容为新版本
         var rec2 = await bridge.timeline.record({
             projectRoot: root, filePath: filePath, content: currentContent,
-            source: 'q', addedLines: 0, deletedLines: 0
+            source: 'q', floorId: floorId, addedLines: 0, deletedLines: 0
         });
         return (rec2 && rec2.ok) ? rec2.blob_hash : null;
     } catch (_) {
@@ -572,19 +580,7 @@ async function _a4PersistToTimeline(filePath, op, before, after, ag) {
         } catch (_) { }
     }
 
-    // ── 记录 before（SHA256 去重由服务端处理；若 _ensureBeforeBaseline 已建立则复用）──
-    if (before !== null && before !== undefined) {
-        try {
-            var bRec = await bridge.timeline.record({
-                projectRoot: root, filePath: filePath, content: before,
-                source: 'q', floorId: floorId,
-                addedLines: 0, deletedLines: 0
-            });
-            if (bRec && bRec.ok && snapEntry && !snapEntry.beforeBlobHash) {
-                snapEntry.beforeBlobHash = bRec.blob_hash;
-            }
-        } catch (_) { }
-    }
+    // ★ before 已由 _a4EnsureBeforeBaseline 记录，此处不重复
 }
 
 // ═══ 历史楼层 A4 恢复（从 floor payload 的 a4Snapshots 渲染） ═══

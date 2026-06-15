@@ -637,6 +637,23 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 - 上下文压缩: 阻塞式压缩, Stop 按钮锁, 输出 32k 三重保障
 - 楼层保底: MIN_FLOORS=6, 压缩后至少保留6层; <floor_summary> 标签替代 <turn_summary>
 
+已完成 — 2026-06-15 上下文窗口防护重构
+------
+- 三专家并行压缩: ①facts(16k) ②narrative(32k,硬保证+缩水检测) ③archive(32k) Promise.all原子操作
+- 每间house前检查 _lastApiTotalTokens > 900k → 阻塞压缩。每层楼最多压一次(_compressAttemptedThisFloor)。
+- 按钮显示+压缩阈值改用 _lastApiTotalTokens（prompt+completion精确值，每间house更新）。
+- narrative 硬保证: prompt死命令 + 缩水>50%→archive重建→失败则回滚。
+- facts 全量注入上下文（不检索），archive 仅用于灾难恢复（不注入）。
+- 动态 max_tokens 帽删除（压缩替代）。KEEP_TARGET 按总tokens×0.1动态伸缩。
+- 孤儿 tool_calls 持久化根治: repair后按_floor标签重建所有楼层，逐层saveFloor写回sq3。
+- SSE error 不再被 JSON.parse catch 吞掉: _sseError提到while外层throw。
+- usage-only响应(无type)→返回null而非伪response，触发正常错误路径。
+- 压缩期间发送按钮⏳+disabled。手动压缩仅限空闲时，≥50k门槛。
+- COMPACT_DEBUG埋点(最近10条完整压缩记录)，content-gateway.js 统一开关。
+- Go 端 deepseekCtxMax 同步到 1,048,565（实测精确上限）。
+- edit_file 返回行号 + L2/L3多候选警告。全局规则: 连续编辑强制验证。
+- 日志新增: SSE error、usage-only、unexpected response type、sq3楼层重写四项事件。
+
 未完成 — 功能
 ------
 - 热更新全流程 (ghrun pull→解压→原子swap→UI按钮; update-service.ts 已完成)

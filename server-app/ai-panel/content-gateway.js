@@ -26,7 +26,7 @@
     // ═══ 网络超时参数（单一真理源：改一处全局生效） ═══
     var FETCH_DEADLINE_PRIMARY_MS = 98000;   // 主线路 fetch 超时（CF Worker 100s 硬限制，留 2s 余量）
     var FETCH_DEADLINE_FALLBACK_MS = 180000; // 备用线路 fetch 超时（无 CF 限制，3min 包容慢响应）
-    var STREAM_WATCHDOG_MS = 180000;         // SSE 流看门狗 3min（DeepSeek 深度推理可能 2min+ 无 token）
+    var STREAM_WATCHDOG_MS = 180000;         // SSE 流看门狗 3min（深度推理可能 2min+ 无 token）
 
     // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
     var CTX_MAX_TOKENS = 1048565;     // 上下文窗口总上限（实测精确值）

@@ -115,7 +115,7 @@ async function generateFloorTxt() {
         // ═══ floor stats + az 区（每层楼私有） ═══
         if (timing) {
             lines.push('\u2550\u2550\u2550\u2550 floor ' + floorNum + ' stats \u2550\u2550\u2550\u2550');
-            lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.deepseekMs ? timing.deepseekMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.toolMs ? timing.toolMs.toFixed(0) : '0') + 'ms  cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge');
+            lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.aiMs ? timing.aiMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.toolMs ? timing.toolMs.toFixed(0) : '0') + 'ms  cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge');
             // az 区文本化
             var _floorDataForAz = { houses: houses, allTxtPath: agent._allTxtPath || '', costWge: agent._floorCostWge, floorFree: agent._floorFree || false, a4Snapshots: agent._a4Snapshots || {} };
             var _questMetaForAz = { floorTimings: agent._floorTimings || [] };
@@ -179,13 +179,14 @@ function _buildAzText(floorNum, floorData, questMeta) {
     for (var tii = 0; tii < timings.length; tii++) {
         if (timings[tii].floorIndex === floorNum) {
             var t = timings[tii];
+
             var durS = Math.round((t.durationMs || 0) / 1000);
             var min = Math.floor(durS / 60);
             var sec = durS % 60;
             var netS = Math.round((t.networkMs || 0) / 1000);
-            var dsS = Math.round((t.deepseekMs || 0) / 1000);
+            var aiS = Math.round((t.aiMs || 0) / 1000);
             var toolS = Math.round((t.toolMs || 0) / 1000);
-            lines.push('az> \u23f1 ' + min + 'm' + (sec < 10 ? '0' : '') + sec + 's  Net:' + netS + 's  AI:' + dsS + 's  Tool:' + toolS + 's');
+            lines.push('az> \u23f1 ' + min + 'm' + (sec < 10 ? '0' : '') + sec + 's  Net:' + netS + 's  AI:' + aiS + 's  Tool:' + toolS + 's');
             break;
         }
     }

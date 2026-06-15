@@ -252,7 +252,7 @@ async function sendMessage() {
                         _targetDiv._dirty = true;
                         if (!_targetDiv._renderScheduled) {
                             _targetDiv._renderScheduled = true;
-                            setTimeout(doStreamRender, 1000);
+                            setTimeout(function () { doStreamRender(_capturedAgent); }, 1000);
                         }
                         return;
                     }
@@ -287,7 +287,7 @@ async function sendMessage() {
                 _targetDiv._dirty = true;
                 if (!_targetDiv._renderScheduled) {
                     _targetDiv._renderScheduled = true;
-                    setTimeout(doStreamRender, 1000);
+                    setTimeout(function () { doStreamRender(_capturedAgent); }, 1000);
                 }
                 if (_activeAgent === _capturedAgent && !_scrollPending) {
                     _scrollPending = true;
@@ -360,21 +360,37 @@ async function sendMessage() {
                 var _divDetached = !(aiDiv && aiDiv.isConnected);
 
                 if (_activeAgent === _capturedAgent) {
-                    stopFloorTimer(timing || { networkMs: 0, deepseekMs: 0, toolMs: 0 }, _capturedAgent);
+                    stopFloorTimer(timing || { networkMs: 0, aiMs: 0, toolMs: 0 }, _capturedAgent);
                     scrollToBottom();
                 } else {
+                    // ★ 后台 agent 楼层完结：停 timer + 记录 timing（不停 timer 会导致切回后时钟继续走）
+                    if (_capturedAgent._floorTimerId) { clearInterval(_capturedAgent._floorTimerId); _capturedAgent._floorTimerId = null; }
                     var _elapsed = performance.now() - _capturedAgent._floorStartPerf;
                     _capturedAgent._floorTimings = _capturedAgent._floorTimings || [];
                     var _bgRecord = {
                         floorIndex: _capturedAgent._ctx.totalFloors,
                         durationMs: Math.round(_elapsed),
                         networkMs: (timing && timing.networkMs) || 0,
-                        deepseekMs: (timing && timing.deepseekMs) || 0,
+                        aiMs: (timing && timing.aiMs) || 0,
                         toolMs: (timing && timing.toolMs) || 0,
                         finishedAt: new Date().toISOString()
                     };
                     _capturedAgent._floorTimings.push(_bgRecord);
                     _capturedAgent._lastFloorTimingRecord = _bgRecord;
+                    // 若后台 agent 的 aiDiv 仍在线（同面板切换未清理），设时钟为停止态
+                    var _bgAiDiv = _capturedAgent._activeAiDiv;
+                    if (_bgAiDiv && _bgAiDiv._clockBlock) {
+                        _bgAiDiv._clockBlock.className = 'msg-ai-clock';
+                        var _bgDurS = Math.floor(_elapsed / 1000);
+                        if (_bgAiDiv._clockMin) _bgAiDiv._clockMin.textContent = Math.floor(_bgDurS / 60) + 'm';
+                        if (_bgAiDiv._clockSec) _bgAiDiv._clockSec.textContent = ':' + (_bgDurS % 60 < 10 ? '0' : '') + (_bgDurS % 60) + 's';
+                        if (_bgAiDiv._clockCanvas) {
+                            _bgAiDiv._clockCanvas.style.visibility = 'visible';
+                            var _bgTm = timing || { networkMs: 0, aiMs: 0, toolMs: 0 };
+                            _bgTm.totalMs = _elapsed;
+                            if (typeof drawPie === 'function') drawPie(_bgAiDiv._clockCanvas, _bgTm);
+                        }
+                    }
                 }
 
                 await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._floorStartIdx);
@@ -434,12 +450,10 @@ async function sendMessage() {
                 if (_capturedAgent) {
                     _capturedAgent._floorOnErrorCalled = true;  // ★ 看门狗：标记已处理
                     // ★ 一次渲染永久不变：错误消息推入 conversation 持久化
-                    var _errInput = (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '';
                     _capturedAgent.conversation.push({
                         role: 'assistant',
                         content: msg,
                         _error: true,
-                        _capturedInput: _errInput,
                         _floor: _capturedAgent._ctx.totalFloors
                     });
                 }
@@ -455,44 +469,27 @@ async function sendMessage() {
                         setStreaming(false);
                         return;
                     }
+                    // ★ 统一红框：消息文本 + "继续任务"链接（仅聚焦输入框）
                     var _errDiv = addMessageEl('error', msg);
-                    var _actRow = document.createElement('div');
-                    _actRow.style.cssText = 'margin-top:8px;display:flex;gap:8px;';
-                    // ★ 重新发送按钮：回滚断头楼层，恢复用户输入，自动重发
-                    var _capturedInput = (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '';
-                    if (_capturedInput) {
-                        var _resendBtn = document.createElement('button');
-                        _resendBtn.textContent = '\u267b \u91cd\u65b0\u53d1\u9001';
-                        _resendBtn.style.cssText = 'padding:4px 14px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;';
-                        _resendBtn.onclick = function () {
-                            _resendBtn.disabled = true;
-                            _resendBtn.textContent = '\u6b63\u5728\u53d1\u9001...';
-                            if (typeof _capturedAgent._floorStartIdx === 'number') {
-                                _capturedAgent.conversation.length = _capturedAgent._floorStartIdx;
-                            }
-                            _capturedAgent._ctx.totalFloors = Math.max(0, (_capturedAgent._ctx.totalFloors || 1) - 1);
-                            if (userMsgEl && userMsgEl.parentNode) userMsgEl.remove();
-                            if (aiDiv && aiDiv.parentNode) aiDiv.remove();
-                            if (_errDiv.parentNode) _errDiv.remove();
-                            $input.value = _capturedInput;
+                    if (_errDiv) {
+                        var _continueLink = document.createElement('a');
+                        _continueLink.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
+                        _continueLink.href = '#';
+                        _continueLink.className = 'msg-err-continue';
+                        _continueLink.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
+                        _continueLink.onclick = function (e) {
+                            e.preventDefault();
                             $input.focus();
-                            sendMessage();
+                            scrollToBottom(true);
                         };
-                        _actRow.appendChild(_resendBtn);
+                        _errDiv.appendChild(_continueLink);
                     }
-                    if (msg.indexOf('\u5237\u65b0') >= 0) {
-                        var _refreshBtn = document.createElement('button');
-                        _refreshBtn.textContent = '\ud83d\udd04 \u5237\u65b0\u9762\u677f';
-                        _refreshBtn.style.cssText = 'padding:4px 14px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;';
-                        _refreshBtn.onclick = function () { window.location.reload(); };
-                        _actRow.appendChild(_refreshBtn);
+                    _stopAllTxtStream();
+                    stopFloorTimer(null, _capturedAgent);
+                    setStreaming(false);
+                    if (_queue.length > 0 && msg.indexOf('网络请求失败') === -1 && msg.indexOf('连接超时') === -1) {
+                        _continueQueue();
                     }
-                    var _dismissBtn = document.createElement('button');
-                    _dismissBtn.textContent = '\u6211\u77e5\u9053\u4e86';
-                    _dismissBtn.style.cssText = 'padding:4px 14px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;';
-                    _dismissBtn.onclick = function () { _actRow.remove(); };
-                    _actRow.appendChild(_dismissBtn);
-                    _errDiv.appendChild(_actRow);
                     _stopAllTxtStream();
                     stopFloorTimer(null, _capturedAgent);
                     setStreaming(false);
@@ -516,8 +513,12 @@ async function sendMessage() {
         }
         _stopAutoSave();
         _stopAllTxtStream();
+        // ★ 通用 timer 清理：无论前台/后台，防止僵尸 timer
+        if (_capturedAgent && _capturedAgent._floorTimerId) {
+            clearInterval(_capturedAgent._floorTimerId);
+            _capturedAgent._floorTimerId = null;
+        }
         if (_activeAgent === _capturedAgent) {
-            if (_capturedAgent._floorTimerId) { clearInterval(_capturedAgent._floorTimerId); _capturedAgent._floorTimerId = null; }
             if (_capturedAgent._activeAiDiv) {
                 var _elapsed = performance.now() - _capturedAgent._floorStartPerf;
                 var _totalS = Math.floor(_elapsed / 1000);
@@ -570,12 +571,12 @@ async function sendMessage() {
             _appendToCard(_errDiv);
             // ★ 持久化断头楼层的时钟数据（否则重启窗口后 A3 归零）
             var _elapsed2 = performance.now() - _capturedAgent._floorStartPerf;
-            var _tm = _capturedAgent._floorTiming || { networkMs: 0, deepseekMs: 0, toolMs: 0 };
+            var _tm = _capturedAgent._floorTiming || { networkMs: 0, aiMs: 0, toolMs: 0 };
             var _record = {
                 floorIndex: _capturedAgent._ctx ? _capturedAgent._ctx.totalFloors : 0,
                 durationMs: Math.round(_elapsed2),
                 networkMs: _tm.networkMs || 0,
-                deepseekMs: _tm.deepseekMs || 0,
+                aiMs: _tm.aiMs || 0,
                 toolMs: _tm.toolMs || 0,
                 finishedAt: new Date().toISOString()
             };
@@ -590,6 +591,7 @@ async function sendMessage() {
         _capturedAgent._sending = false;
         _capturedAgent._streaming = false;
         _queueBusy = false;
+        _sending = false;
         if (_activeAgent === _capturedAgent) {
             setStreaming(false);
         }

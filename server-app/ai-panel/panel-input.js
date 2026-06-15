@@ -278,9 +278,10 @@ window.addEventListener('resize', function () { _inputLineHeight = 0; autoResize
 $input.addEventListener('keydown', function (e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
+        if (_switching) return;  // ★ quest 切换中 → 禁止一切操作
         if (_sending) return;
         if (_activeAgent && _activeAgent._compressing) return;
-        sendMessage();
+        if (streaming) { stopStream(); } else { sendMessage(); }
     }
 });
 // ══ 字符级 Undo/Redo（唯一真理逐字回退机器接管）══
@@ -389,6 +390,7 @@ $input.addEventListener('paste', function (e) {
     }
 });
 $sendBtn.onclick = function () {
-    if (!_activeAgent || _activeAgent._compressing) return;  // 无 agent 或压缩中 → 不响应
+    if (_switching) return;  // ★ quest 切换中 → 禁止一切操作
+    if (_activeAgent && _activeAgent._compressing) return;  // 压缩中 → 不响应
     if (streaming) { stopStream(); } else { sendMessage(); }
 };
