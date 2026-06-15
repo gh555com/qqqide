@@ -360,12 +360,12 @@ var AgentLoop = (function () {
                 if (_fe === 'Failed to fetch') _fe = '网络连接失败(Failed to fetch)';
                 else if (_fe.indexOf('network error') >= 0) _fe = '网络错误(network error)';
                 else if (_fe.indexOf('Timeout') >= 0) _fe = '请求超时';
-                parts.push('网络请求失败: ' + _fe);
+                parts.push('Network request failed: ' + _fe);
                 break;
             case 'watchdog_stream': parts.push('SSE流90秒无数据(连接假死)'); break;
             case 'watchdog_output': parts.push('AI超过10分钟无产出(可能陷入循环)'); break;
             case 'deadline': parts.push('请求90秒无响应(超时)'); break;
-            case 'stall': parts.push('连续多次工具调用无进展'); break;
+            case 'stall': parts.push('Multiple consecutive tool calls with no progress'); break;
             case 'max_iter': parts.push('达到最大迭代次数(200)'); break;
             default:
                 if (this._lastHttpStatus) parts.push('HTTP ' + this._lastHttpStatus + '错误');
@@ -382,7 +382,7 @@ var AgentLoop = (function () {
         // 补充：请求体过大
         var _ctxTokens = this._lastApiTotalTokens || this._lastApiPromptTokens || 0;
         if (_ctxTokens > 900000) {
-            parts.push('上下文过大(' + Math.round(_ctxTokens / 1000) + ' k tokens, 接近上限)');
+            parts.push('Context too large (' + Math.round(_ctxTokens / 1000) + 'k tokens, near limit)');
         }
         return parts.join('; ') || '未知原因';
     };
@@ -664,7 +664,7 @@ var AgentLoop = (function () {
         self._floorOnErrorCalled = false;  // ★ 看门狗：onError 回调已处理，不重复恢复
         self._sendTerminated = false;  // ★ 终止旗：onError 后强制退出 while
         self._resetStallCounter();
-        if (typeof window !== 'undefined') window._qqqReadFilesThisFloor = {};  // ★ 读文件去重计数器：每层楼复位
+        if (typeof window !== 'undefined') { window._qqqReadFilesThisFloor = {}; window._qqqEnoentCache = {}; window._qqqPathResolve = {}; }  // ★ 去重 + ENOENT + 路径纠错：每层楼复位
 
         try {
             while (maxIterations-- > 0 && !self._sendTerminated) {
@@ -715,7 +715,7 @@ var AgentLoop = (function () {
                             .replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, '')
                             .replace(/\n{3,}/g, '\n\n')
                             .trim();
-                        if (!_cleanAck || _cleanAck.length < 3) _cleanAck = '已收到引导';
+                        if (!_cleanAck || _cleanAck.length < 3) _cleanAck = 'Guide received';
                         self.conversation.push({ role: 'assistant', content: _cleanAck, _guideAck: true, _guideText: _guideText, _floor: self._ctx.totalFloors });
                         // 归档
                         self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], summary: '', ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString() });
@@ -726,7 +726,7 @@ var AgentLoop = (function () {
                             var _ackDisplay = _cleanAck.slice(0, 200);
                             var _esc = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
                             _aiDiv2._guideMarker.className = 'msg-flow-guide-ack';
-                            _aiDiv2._guideMarker.innerHTML = '<div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> 已收到引导</div><div class="msg-flow-guide-ack-body">' + _esc(_ackDisplay) + '</div>';
+                            _aiDiv2._guideMarker.innerHTML = '<div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> Guide received</div><div class="msg-flow-guide-ack-body">' + _esc(_ackDisplay) + '</div>';
                             _aiDiv2._guideMarker = null;
                         }
                         if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
@@ -768,7 +768,7 @@ var AgentLoop = (function () {
                         self._compressing = true;
                         window._updateSendBtnForCompress(true);
                         try {
-                            var _reason = '自动压缩（' + Math.round(_apiTokens/1000) + 'k / ' + Math.round(_threshold/1000) + 'k，超 90% 阈值）';
+                            var _reason = 'Auto-compress (' + Math.round(_apiTokens / 1000) + 'k / ' + Math.round(_threshold / 1000) + 'k, >90% threshold)';
                             self._renderCompressStart(_reason);
                             var _result = await self._compressContext({ trigger: 'auto', detail: _reason });
                             self._renderCompressResult(_result);
@@ -819,7 +819,7 @@ var AgentLoop = (function () {
                         continue;
                     }
                     // ★ auto-repair 不适用或已尝试 → 统一在此处报错（延迟报错，避免 UI 假死）
-                    var _errMsg = self._lastGatewayMessage || '⚠️ 响应异常，对话已保存。';
+                    var _errMsg = self._lastGatewayMessage || '⚠️ Unexpected response. Conversation saved.';
                     self._lastGatewayMessage = '';
                     if (!self._floorOnErrorCalled && !self._floorKilled) {
                         onError(_errMsg);
@@ -952,10 +952,10 @@ var AgentLoop = (function () {
                 // 未知响应类型 → 不中断，给用户一个可读的结束
                 var _utype = (response && response.type);
                 var _uusage = (response && response._usage);
-                var _umsg = '⚠ unexpected response type: ' + _utype + ' _usage=' + (_uusage ? JSON.stringify({prompt:_uusage.prompt_tokens, total:_uusage.total_tokens, completion:_uusage.completion_tokens}) : 'null');
+                var _umsg = '⚠ unexpected response type: ' + _utype + ' _usage=' + (_uusage ? JSON.stringify({ prompt: _uusage.prompt_tokens, total: _uusage.total_tokens, completion: _uusage.completion_tokens }) : 'null');
                 self._log(_umsg);
                 if (typeof self._writeFileLog === 'function') self._writeFileLog(_umsg);
-                var _fallbackMsg = '⚠ AI 返回了意外的响应类型，但对话上下文已保留。你可以继续提问或重试。';
+                var _fallbackMsg = '⚠ AI returned an unexpected response type. Conversation preserved. You can continue or retry.';
                 self.conversation.push({ role: 'assistant', content: _fallbackMsg, _floor: self._ctx.totalFloors });
                 self._floorCompletedCleanly = true;  // ★ 看门狗：虽非理想但已给出可读结束
                 onDone(_fallbackMsg, self._floorTiming);
@@ -1905,7 +1905,7 @@ var AgentLoop = (function () {
                 var lastChar = content[content.length - 1];
                 var abruptEnd = !/[。！？.!?\n)\]]/.test(lastChar);
                 if (abruptEnd) {
-                    content += '\n\n⚠️ 回复因 token 上限被截断。可回复"继续"获取完整内容。';
+                    content += '\n\n⚠️ Response truncated due to token limit. Reply "continue" to get the full content.';
                 }
             }
             return { type: 'message', content: content, reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage, _finishReason: _finishReason };
@@ -2062,46 +2062,48 @@ var AgentLoop = (function () {
     // 插入压缩启动卡片（紫色）到当前 AI div
     AgentLoop.prototype._renderCompressStart = function (reason) {
         var _aiDiv = this._activeAiDiv;
-        if (!_aiDiv || !_aiDiv._contentWrap) return;
         var _escHtml = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
         var _now = new Date();
-        var _ts = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0') + ' ' + String(_now.getHours()).padStart(2,'0') + ':' + String(_now.getMinutes()).padStart(2,'0') + ':' + String(_now.getSeconds()).padStart(2,'0');
-        // 启动卡片
-        var _startCard = document.createElement('div');
-        _startCard.className = 'msg-flow-compress-start';
-        _startCard.innerHTML = '<div class="msg-flow-compress-hdr"><span class="msg-flow-icon">📦</span> 启动上下文压缩</div><div class="msg-flow-compress-body">' + _escHtml(_ts) + ' · ' + _escHtml(reason) + '</div>';
-        _aiDiv._contentWrap.appendChild(_startCard);
-        // 等待中标记
-        var _marker = document.createElement('div');
-        _marker.className = 'msg-flow-guide';
-        _marker.style.cssText = 'opacity:0.6;';
-        _marker.innerHTML = '<span class="msg-flow-icon">⏳</span> 压缩中...';
-        _aiDiv._contentWrap.appendChild(_marker);
-        _aiDiv._compressMarker = _marker;
+        var _ts = _now.getFullYear() + '-' + String(_now.getMonth() + 1).padStart(2, '0') + '-' + String(_now.getDate()).padStart(2, '0') + ' ' + String(_now.getHours()).padStart(2, '0') + ':' + String(_now.getMinutes()).padStart(2, '0') + ':' + String(_now.getSeconds()).padStart(2, '0');
+        // ★ 永久记录：推入 conversation（重启可见）
+        this.conversation.push({ role: 'system', content: _ts + ' ' + reason, _compressRecord: true, _compressPhase: 'start', _floor: (this._ctx && this._ctx.totalFloors) || 0 });
+        if (_aiDiv && _aiDiv._contentWrap) {
+            var _startCard = document.createElement('div');
+            _startCard.className = 'msg-flow-compress-start';
+            _startCard.innerHTML = '<div class="msg-flow-compress-hdr"><span class="msg-flow-icon">📦</span> Compress started</div><div class="msg-flow-compress-body">' + _escHtml(_ts) + ' · ' + _escHtml(reason) + '</div>';
+            _aiDiv._contentWrap.appendChild(_startCard);
+            var _marker = document.createElement('div');
+            _marker.className = 'msg-flow-guide';
+            _marker.style.cssText = 'opacity:0.6;';
+            _marker.innerHTML = '<span class="msg-flow-icon">⏳</span> Compressing...';
+            _aiDiv._contentWrap.appendChild(_marker);
+            _aiDiv._compressMarker = _marker;
+        }
     };
 
     // 压缩完成后替换等待标记为成功/失败卡片
     AgentLoop.prototype._renderCompressResult = function (result) {
         var _aiDiv = this._activeAiDiv;
-        if (!_aiDiv || !_aiDiv._compressMarker) return;
         var _escHtml = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
-        var _marker = _aiDiv._compressMarker;
-        _aiDiv._compressMarker = null;
-        if (result.compressed) {
-            // 成功压缩
-            _marker.className = 'msg-flow-compress-success';
-            _marker.style.cssText = '';
-            _marker.innerHTML = '<div class="msg-flow-compress-success-hdr"><span class="msg-flow-icon">✅</span> 成功压缩</div><div class="msg-flow-compress-success-body">' + _escHtml(result.detail) + '</div>';
-        } else if (result.detail && (result.detail.indexOf('无需压缩') === 0 || result.detail.indexOf('所有楼层') === 0 || result.detail.indexOf('冷消息不足') === 0)) {
-            // 正常跳过（阈值未达或无可压缩内容）→ 中性样式
-            _marker.className = 'msg-flow-guide';
-            _marker.style.cssText = '';
-            _marker.innerHTML = '<span class="msg-flow-icon">ℹ️</span> ' + _escHtml(result.detail);
-        } else {
-            // 真正失败
-            _marker.className = 'msg-flow-compress-fail';
-            _marker.style.cssText = '';
-            _marker.innerHTML = '<div class="msg-flow-compress-fail-hdr"><span class="msg-flow-icon">✗</span> 压缩失败</div><div class="msg-flow-compress-fail-body">' + _escHtml(result.detail || '未知错误') + '</div>';
+        var _summary = result.compressed ? '✅ Compress completed' : (result.detail || 'Compress result');
+        // ★ 永久记录：推入 conversation（重启可见）
+        this.conversation.push({ role: 'system', content: _summary + '\n' + (result.detail || ''), _compressRecord: true, _compressPhase: 'result', _floor: (this._ctx && this._ctx.totalFloors) || 0 });
+        if (_aiDiv && _aiDiv._compressMarker) {
+            var _marker = _aiDiv._compressMarker;
+            _aiDiv._compressMarker = null;
+            if (result.compressed) {
+                _marker.className = 'msg-flow-compress-success';
+                _marker.style.cssText = '';
+                _marker.innerHTML = '<div class="msg-flow-compress-success-hdr"><span class="msg-flow-icon">✅</span> Compress completed</div><div class="msg-flow-compress-success-body">' + _escHtml(result.detail) + '</div>';
+            } else if (result.detail && (result.detail.indexOf('无需压缩') === 0 || result.detail.indexOf('所有楼层') === 0 || result.detail.indexOf('冷消息不足') === 0)) {
+                _marker.className = 'msg-flow-guide';
+                _marker.style.cssText = '';
+                _marker.innerHTML = '<span class="msg-flow-icon">ℹ️</span> ' + _escHtml(result.detail);
+            } else {
+                _marker.className = 'msg-flow-compress-fail';
+                _marker.style.cssText = '';
+                _marker.innerHTML = '<div class="msg-flow-compress-fail-hdr"><span class="msg-flow-icon">✗</span> Compress failed</div><div class="msg-flow-compress-fail-body">' + _escHtml(result.detail || 'Unknown error') + '</div>';
+            }
         }
     };
 
@@ -2248,17 +2250,17 @@ var AgentLoop = (function () {
             var usageStr = '';
             if (h.usage) {
                 usageStr = ' prompt=' + (h.usage.prompt_tokens || 0) +
-                           ' compl=' + (h.usage.completion_tokens || 0) +
-                           ' cached=' + (h.usage.cached_tokens || 0) +
-                           ' noncached=' + (h.usage.non_cached_tokens || 0);
+                    ' compl=' + (h.usage.completion_tokens || 0) +
+                    ' cached=' + (h.usage.cached_tokens || 0) +
+                    ' noncached=' + (h.usage.non_cached_tokens || 0);
             }
             lines.push('  H' + i + ': type=' + (h.type || '?') +
-                       ' geCost=' + ge.toFixed(4) +
-                       ' model=' + (h.model || '?') +
-                       ' cacheHit=' + (h.cacheHitRate >= 0 ? h.cacheHitRate.toFixed(1) + '%' : '?') +
-                       ' billingSeq=' + (h.billingSeq || 0) +
-                       ' requestId=' + (h.billingRequestId || '') +
-                       usageStr);
+                ' geCost=' + ge.toFixed(4) +
+                ' model=' + (h.model || '?') +
+                ' cacheHit=' + (h.cacheHitRate >= 0 ? h.cacheHitRate.toFixed(1) + '%' : '?') +
+                ' billingSeq=' + (h.billingSeq || 0) +
+                ' requestId=' + (h.billingRequestId || '') +
+                usageStr);
             // ★ 缓存诊断
             if (h.cacheDiag) {
                 var cd = h.cacheDiag;

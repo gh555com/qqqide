@@ -87,6 +87,7 @@ async function sendMessage() {
                     } else {
                         try {
                             var content = await bridge.fs.read(p);
+                            if (!content && content !== '') { contentParts.push('[File: ' + p + ']\n(read error: null result)'); continue; }
                             var MAX_SIZE = 50 * 1024;
                             if (content.length > MAX_SIZE) {
                                 var head = content.substring(0, 20 * 1024);

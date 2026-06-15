@@ -150,14 +150,14 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 唯一真理源: server-app/locales/zh.json。开发者只管写中文，不做其他事。
   - 占位符系统: HTML 用 data-i18n/data-i18n-placeholder/data-i18n-title/data-i18n-html。JS 用 window._i(key, fallback)。
   - 特殊: AI 面板 textarea 用 data-i18n-placeholder-attr (iframe translateUi 处理)。
-  - 翻译机器 + 面板: op/ky.py (PySide6 GUI，一键翻译 12 语言，DashScope Qwen3.6-Plus)。
+  - 翻译机器 + 面板: op/qky.py (PySide6 GUI，一键翻译 12 语言，DashScope Qwen3.6-Plus)。
   - 13 语言: zh/zh-tw/en/ja/de/ko/ru/ar/es/fr/pt-BR/hi/vi。
   - 前端运行时: core/i18n.js，启动时 detectLang → 加载 locale JSON → updateDom。
   - 英语内嵌兜底: en.json 编译进 i18n.js _EN_BUILTIN，离线永不显示占位符 key。
   - 语言持久化: qgs('qqqide.i18n').set('lang', code)，跨会话记忆。
   - 语言切换器: 菜单行1 中字按钮，shell.js bootLangSwitcher()，弹出 13 语言下拉，选后即时刷新。
   - AI iframe: i18n.setLang 自动 postMessage('qqqide-lang-change') 同步 iframe，iframe 调用 parent.window.i18n.updateDom(document)。
-  - 开发者工作流: (1) 在 zh.json 加中文 key (2) HTML 写 data-i18n="key" JS 写 _i('key', 'fallback') (3) python op/ky.py 翻译 12 语言 + 同步 _EN_BUILTIN。不改其他任何 locale 文件。
+  - 开发者工作流: (1) 在 zh.json 加中文 key (2) HTML 写 data-i18n="key" JS 写 _i('key', 'fallback') (3) python op/qky.py 翻译 12 语言 + 同步 _EN_BUILTIN。不改其他任何 locale 文件。
 
 §16 AI 流式渲染 — 唯一真理渲染机器 + Flag 白名单
   - live onDone 与重启恢复共用 _buildConversationFlowHtml（唯一函数，card-pool.js）。
@@ -240,7 +240,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - timer 回调内置 DOM 有效性守卫（isConnected）：Card 被驱逐或 DOM 重建时自动停止，防僵尸 timer 写已销毁节点。
   - _activeAiDiv 是 agent 与 Card DOM 的永久绑定，stopFloorTimer 不再清空。切 quest 时 switchQuest 无条件重绑（含已停止楼层）。
   - 违例: 工作中显示黑色、完成后显示绿色都是 bug。
-  - ★ quest 切换保护态：_switching=true 期间 dim 消息区（opacity:.35 + pointer-events:none），Send/Enter/guide/queue/createNewQuest 全部入口拦截。
+  - ★ quest 切换保护态：_switching=true → 全屏透明蒙板(#qqq-switch-overlay, z-index:99999)接管一切鼠标事件 + 消息区 dim(opacity:.35) + Send/Enter/guide/queue/createNewQuest 全部入口硬拦截。零攻击窗口。
 
 §28 跨面板同步 — IPC sync 桥（同窗口三面板所有权防重复）
   - _broadcast 走 parent.qqqideBridge.sync.broadcast → 主进程 relay 到所有窗口（含发送者）。

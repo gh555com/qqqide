@@ -379,6 +379,11 @@ async function executeReadFile(args) {
     var _dedupKey = _normPath + '|' + _sl + '|' + _el;
     var _tracker = (typeof window !== 'undefined') ? window._qqqReadFilesThisFloor : null;
     if (_tracker) {
+        // ★ ENOENT 缓存：文件不存在 → 同路径永生不复读（不管行范围）。防 AI 被截断路径坑 10 次
+        var _enoCache = window._qqqEnoentCache;
+        if (_enoCache && _enoCache[_normPath]) {
+            return '[FILE NOT FOUND] ' + _normPath + ' — 该文件在本层楼已确认不存在，请勿重试。检查路径是否有截断或中文字符。';
+        }
         _tracker[_dedupKey] = (_tracker[_dedupKey] || 0) + 1;
         if (_tracker[_dedupKey] >= 3) {
             var _rangeHint = (_sl || _el) ? (' L' + _sl + '-' + _el) : ' (全文)';
@@ -387,32 +392,77 @@ async function executeReadFile(args) {
     }
 
     // ★ 优先走主进程 (1 IPC, 消除大文件序列化开销)
+    var _readResult = null;
+    var _readErr = null;
     if (bridge.ai && bridge.ai.read_file) {
         try {
             var result = await bridge.ai.read_file({ path: args.path, start_line: args.start_line, end_line: args.end_line });
-            // 主进程路径也做二进制检测（委托 ContentGateway 唯一真理）
-            return _guardBinaryResult(result);
-        } catch (_) { /* fallback */ }
+            _readResult = _guardBinaryResult(result);
+        } catch (e) { _readErr = e; }
     }
 
-    // ---- fallback: renderer ----
-    try {
-        var content = await bridge.fs.read(args.path);
-        // 二进制检测（委托 ContentGateway）
-        var binCheck = _checkBinary(content);
-        if (binCheck) return binCheck;
-        // CRLF→LF normalize
-        content = content.replace(/\r\n/g, '\n');
-        var lines = content.split('\n');
-        var total = lines.length;
-        var start = Math.max(0, (args.start_line || 1) - 1);
-        var end = args.end_line ? Math.min(total, args.end_line) : Math.min(total, start + 500);
-        var slice = lines.slice(start, end).join('\n');
-        if (total <= 500 && !args.start_line) return content;
-        return 'File has ' + total + ' lines. Showing L' + (start + 1) + '-' + end + ':\n' + slice;
-    } catch (err) {
-        return 'Error reading file: ' + (err.message || err);
+    if (_readResult === null) {
+        // ---- fallback: renderer ----
+        try {
+            var content = await bridge.fs.read(args.path);
+            var binCheck = _checkBinary(content);
+            if (binCheck) { _readResult = binCheck; }
+            else {
+                content = content.replace(/\r\n/g, '\n');
+                var lines = content.split('\n');
+                var total = lines.length;
+                var start = Math.max(0, (args.start_line || 1) - 1);
+                var end = args.end_line ? Math.min(total, args.end_line) : Math.min(total, start + 500);
+                var slice = lines.slice(start, end).join('\n');
+                _readResult = (total <= 500 && !args.start_line) ? content : ('File has ' + total + ' lines. Showing L' + (start + 1) + '-' + end + ':\n' + slice);
+            }
+        } catch (err) { _readErr = err; }
     }
+
+    if (_readErr) {
+        var _errMsg = 'Error reading file: ' + (_readErr.message || _readErr);
+        // ★ 治根：ENOENT → 去父目录模糊匹配，防中文路径/引号截断
+        if ((_errMsg.indexOf('ENOENT') >= 0 || _errMsg.indexOf('no such file') >= 0) && (typeof window !== 'undefined')) {
+            var _lastSep = Math.max(args.path.lastIndexOf('\\'), args.path.lastIndexOf('/'));
+            var _parentDir = _lastSep > 0 ? args.path.slice(0, _lastSep) : '';
+            var _baseName = _lastSep > 0 ? args.path.slice(_lastSep + 1) : args.path;
+            if (_parentDir && bridge.fs.list) {
+                try {
+                    var _entries = await bridge.fs.list(_parentDir);
+                    if (_entries && _entries.length) {
+                        var _matches = _entries.filter(function (e) { return e.name && e.name.toLowerCase().startsWith(_baseName.toLowerCase()); });
+                        if (_matches.length === 1 && _matches[0].name !== _baseName) {
+                            // 找到唯一匹配 → 自动纠正路径
+                            var _resolved = _parentDir.replace(/\\/g, '/') + '/' + _matches[0].name;
+                            if (!window._qqqPathResolve) window._qqqPathResolve = {};
+                            window._qqqPathResolve[_normPath] = _resolved;
+                            // ★ 判断是目录还是文件
+                            if (_matches[0].isDir) {
+                                // 目录 → 列出内容，不递归读（会 EISDIR）
+                                var _subEntries = await bridge.fs.list(_resolved);
+                                if (_subEntries && _subEntries.length) {
+                                    var _subList = _subEntries.map(function (e) { return (e.isDir ? '[DIR]  ' : '[FILE] ') + e.name; }).join('\n');
+                                    return '[PATH CORRECTED] 路径被截断，已纠正为目录: ' + _resolved + '\n\n' + _subList + '\n\n请用完整路径重新 read_file。';
+                                }
+                                return '[PATH CORRECTED] 路径被截断，已纠正为目录: ' + _resolved + '\n(目录为空)';
+                            }
+                            // 文件 → 递归重试
+                            args.path = _resolved;
+                            return executeReadFile(args);
+                        }
+                        if (_matches.length > 1) {
+                            return '[AMBIGUOUS PATH] 路径前缀匹配到 ' + _matches.length + ' 个条目: ' + _matches.slice(0, 5).map(function (e) { return e.name; }).join(', ') + '。请指定完整路径。';
+                        }
+                    }
+                } catch (_) { /* 父目录不可列则跳过 */ }
+            }
+            // 无法匹配 → 缓存，永不复读
+            if (!window._qqqEnoentCache) window._qqqEnoentCache = {};
+            window._qqqEnoentCache[_normPath] = true;
+        }
+        return _errMsg;
+    }
+    return _readResult;
 }
 
 // 二进制检测 — 委托 ContentGateway 唯一真理实现

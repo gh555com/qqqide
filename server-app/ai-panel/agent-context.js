@@ -388,16 +388,21 @@
         var _suffix = suffix || '';
         var _maxTokens = maxTokens || COMPACT_NARRATIVE_TOKENS;
 
-        var token = '';
-        try { token = localStorage.getItem('qqq-ai-token') || ''; } catch (_) { }
+        // ★ 优先用 self._token（已校验），fallback localStorage（需清理非ASCII）
+        var token = (self._token || '').trim();
+        if (!token) {
+            try { token = (localStorage.getItem('qqq-ai-token') || '').trim(); } catch (_) { }
+            // 清理非 Latin1 字符（HTTP headers 不允许）
+            token = token.replace(/[^\x00-\xFF]/g, '');
+        }
 
         if (!token || typeof GATEWAY_URL === 'undefined') {
             self._log('✗ Compact API no token or GATEWAY_URL (token=' + !!token + ' url=' + (typeof GATEWAY_URL !== 'undefined') + ')');
             return { parsed: null, ttfbMs: 0, totalMs: 0 };
         }
 
-        // ★ 独立超时（30s）：压缩不可中断，用独立 AbortController
-        var COMPACT_TIMEOUT_MS = 30000;
+        // ★ 独立超时（200s）：非流式大型 prompt + 最高级 AI 可能需较长处理时间
+        var COMPACT_TIMEOUT_MS = 200000;
         var _timeoutCtrl = new AbortController();
         var _timeoutId = setTimeout(function () { _timeoutCtrl.abort(); }, COMPACT_TIMEOUT_MS);
 

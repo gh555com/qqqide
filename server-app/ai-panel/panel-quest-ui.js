@@ -6,7 +6,9 @@ async function switchQuest(id) {
     if (id === questActiveId) return;
     if (_switching) return;
     _switching = true;
-    // ★ 视觉保护：切换期间 dim 消息区，防用户误操作
+    // ★ 全屏蒙板 + dim：阻绝一切鼠标操作，键盘由 _switching 守卫拦截
+    var _overlay = document.getElementById('qqq-switch-overlay');
+    if (_overlay) _overlay.classList.add('show');
     if ($messages) $messages.classList.add('qqq-switching');
     try {
         // \u2550\u2550\u2550 \u6240\u6709\u6743\u68c0\u67e5\uff08\u5206\u4e24\u5c42\uff1a\u2460 \u540c\u6b65\u7236\u6ce8\u518c\u8868 \u2461 \u5f02\u6b65 store + broadcast \u515c\u5e95\uff09 \u2550\u2550\u2550
@@ -29,6 +31,13 @@ async function switchQuest(id) {
         if (questActiveId) {
             saveQuestUIState(questActiveId);
             _stopAutoSave();
+            if (_activeAgent && _activeAgent._compressing) {
+                // 压缩进行中 → 等待完成（最多 220s），防保存半成品
+                var _waitStart = Date.now();
+                while (_activeAgent._compressing && (Date.now() - _waitStart) < 220000) {
+                    await new Promise(function (r) { setTimeout(r, 200); });
+                }
+            }
             if (_activeAgent) {
                 await _saveAgentQuestData(questActiveId, _activeAgent, _activeAgent._floorStartIdx);
             }
@@ -111,6 +120,12 @@ async function switchQuest(id) {
             }
         }
 
+        // ★ 切换到 quest 时修复磁盘目录名（惰性修正）
+        var _qEntry = (await questStore.list()).find(function (s) { return s.id === id; });
+        if (_qEntry && typeof _tryRepairQuestDirName === 'function') {
+            _tryRepairQuestDirName(questStore.getProjectRoot(), id, _qEntry.numericId, _qEntry.title)
+                .catch(function (e) { console.warn('[quest-dir] switch repair failed:', id, e); });
+        }
         restoreQuestUIState(id);
         renderQueueStrip();
         updateCostDisplay();
@@ -119,6 +134,8 @@ async function switchQuest(id) {
         _scrollToBottomDeferred(true);
     } finally {
         _switching = false;
+        var _overlay = document.getElementById('qqq-switch-overlay');
+        if (_overlay) _overlay.classList.remove('show');
         if ($messages) $messages.classList.remove('qqq-switching');
     }
 }
@@ -176,17 +193,24 @@ async function _ensureQuestDir(root, qName, fName) {
 }
 
 // ── 按 q{n}. 前缀搜索已有 quest 目录（只匹配编号，不依赖标题）──
+// ── 遇碰撞（同前缀多目录）打 warn，始终返回第一个 ──
 async function _findQuestDirByPrefix(root, questId) {
     var bridge = window.parent && window.parent.qqqideBridge;
     if (!bridge || !bridge.fs) return null;
     var questsDir = root + '/qqq/quests/';
     try {
         var entries = await bridge.fs.list(questsDir);
+        var matches = [];
         for (var ei = 0; ei < entries.length; ei++) {
             if (entries[ei].name.startsWith(questId + '.') && entries[ei].isDir) {
-                return entries[ei].name;
+                matches.push(entries[ei].name);
             }
         }
+        if (matches.length > 1) {
+            console.warn('[quest-dir] COLLISION: prefix ' + questId + ' has ' + matches.length + ' dirs:', matches.join(', '));
+            console.warn('[quest-dir]   → using ' + matches[0]);
+        }
+        return matches[0] || null;
     } catch (_) { }
     return null;
 }
@@ -199,8 +223,8 @@ async function _resolveQuestDirName(root, questId, numericId, title) {
     if (existing) {
         var expectedName = _makeName('q', numericId, title);
         if (existing !== expectedName) {
-            // 立即修复，不等惰性兜底
-            await _tryRepairQuestDirName(root, questId, numericId, title);
+            // 立即修复，传已知名省一次 list
+            await _tryRepairQuestDirName(root, questId, numericId, title, existing);
             var afterRepair = await _findQuestDirByPrefix(root, questId);
             if (afterRepair) return afterRepair;
         }
@@ -209,23 +233,88 @@ async function _resolveQuestDirName(root, questId, numericId, title) {
     return _makeName('q', numericId, title);
 }
 
-// ── 惰性修复：磁盘目录名与 DB 不一致时尝试 rename，失败静默，下次再试 ──
-// 仅当期望名目录不存在时才 rename；若已存在（分裂脑残影）则跳过，不做合并。
-async function _tryRepairQuestDirName(root, questId, numericId, dbTitle) {
+// ── 修复：磁盘目录名与 DB 不一致时 rename，失败打日志不阻塞 ──
+// _knownName: 调用方已知的当前目录名（省一次 list），可选；不传则自行查找
+async function _tryRepairQuestDirName(root, questId, numericId, dbTitle, _knownName) {
     if (!dbTitle) return;
     var bridge = window.parent && window.parent.qqqideBridge;
-    if (!bridge || !bridge.fs) return;
+    if (!bridge || !bridge.fs) { console.warn('[quest-dir] bridge.fs unavailable, skip repair for', questId); return; }
     var questsDir = root + '/qqq/quests/';
-    var currentName = await _findQuestDirByPrefix(root, questId);
-    if (!currentName) return;
+    var currentName = _knownName || await _findQuestDirByPrefix(root, questId);
+    if (!currentName) { console.warn('[quest-dir] dir not found by prefix:', questId); return; }
     var expectedName = _makeName('q', numericId, dbTitle);
     if (currentName === expectedName) return;
     // 期望名不存在 → 尝试重命名（stat 返回 null 不抛异常，必须检查返回值）
     var statResult = await bridge.fs.stat(questsDir + expectedName);
     if (!statResult) {
-        try { await bridge.fs.rename(questsDir + currentName, questsDir + expectedName); } catch (_) { }
+        try {
+            await bridge.fs.rename(questsDir + currentName, questsDir + expectedName);
+            console.log('[quest-dir] renamed:', currentName, '→', expectedName);
+        } catch (e) {
+            console.warn('[quest-dir] rename failed:', currentName, '→', expectedName, '|', (e && e.message) || e);
+        }
+    } else {
+        console.warn('[quest-dir] expected name already exists, skip rename:', expectedName);
     }
-    // statResult 非 null → 期望名已存在，跳过 rename（不做合并）
+}
+
+// ── 启动时批量修复：单次 list 构建前缀映射，O(n) 对齐所有 quest 目录名 ──
+var __repairDone = false;  // ★ 同一会话只跑一次（多面板各自 initQuests 会重复触发）
+async function _repairAllQuestDirNames(quests) {
+    if (__repairDone) return;
+    __repairDone = true;
+    var root = questStore.getProjectRoot();
+    if (!root) return;
+    var bridge = window.parent && window.parent.qqqideBridge;
+    if (!bridge || !bridge.fs) return;
+    var questsDir = root + '/qqq/quests/';
+    // 一次 list，构建 questId → dirName 映射 + 碰撞检测
+    var dirMap = {};
+    var collisions = {}; // { prefix: [name1, name2, ...] }
+    try {
+        var entries = await bridge.fs.list(questsDir);
+        for (var ei = 0; ei < entries.length; ei++) {
+            var name = entries[ei].name;
+            if (!entries[ei].isDir) continue;
+            var dotIdx = name.indexOf('.');
+            if (dotIdx > 0) {
+                var prefix = name.substring(0, dotIdx); // e.g. "q80"
+                if (!dirMap[prefix]) {
+                    dirMap[prefix] = name;
+                } else {
+                    if (!collisions[prefix]) collisions[prefix] = [dirMap[prefix]];
+                    collisions[prefix].push(name);
+                }
+            }
+        }
+        // 碰撞告警：同编号存在多个不同名目录，数据可能分裂
+        var _colKeys = Object.keys(collisions);
+        for (var _ci = 0; _ci < _colKeys.length; _ci++) {
+            var _cp = _colKeys[_ci];
+            console.warn('[quest-dir] COLLISION: prefix ' + _cp + ' has ' + collisions[_cp].length + ' dirs:', collisions[_cp].join(', '));
+            console.warn('[quest-dir]   → using first: ' + dirMap[_cp] + ' | stale orphans: ' + collisions[_cp].slice(1).join(', '));
+        }
+    } catch (_) { return; }
+    // 逐个 quest 检查并修复
+    for (var i = 0; i < quests.length; i++) {
+        var q = quests[i];
+        if (!q.id || !q.title) continue;
+        var expectedName = _makeName('q', q.numericId, q.title);
+        var currentName = dirMap[q.id];
+        if (!currentName || currentName === expectedName) continue;
+        // 期望名不存在 → rename
+        var statResult = await bridge.fs.stat(questsDir + expectedName);
+        if (!statResult) {
+            try {
+                await bridge.fs.rename(questsDir + currentName, questsDir + expectedName);
+                // ★ 更新 dirMap，防止后续同 ID quest 用旧名重试（ENOENT）
+                dirMap[q.id] = expectedName;
+                console.log('[quest-dir] batch renamed:', currentName, '→', expectedName);
+            } catch (e) {
+                console.warn('[quest-dir] batch rename failed:', currentName, '→', expectedName, '|', (e && e.message) || e);
+            }
+        }
+    }
 }
 
 async function createNewQuest() {
@@ -444,22 +533,27 @@ document.getElementById('ctx-compress').onclick = async function () {
     document.getElementById('ctx-panel').style.display = 'none';
     var _ag = _activeAgent;
     if (!_ag) {
-        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('⚠️ 请先发送一条消息创建对话', { type: 'warning', duration: 3000 }); } catch (_) { }
+        var _noAgentMsg = (typeof _i === 'function') ? _i('ai.error.noActiveAgent', '请先发送一条消息创建对话') : 'Send a message first to create a conversation';
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('⚠️ ' + _noAgentMsg, { type: 'warning', duration: 3000 }); } catch (_) { }
         return;
     }
-    // ★ 手动压缩仅限空闲时（AI 不在建楼）
-    if (_ag._activeAiDiv && _ag._activeAiDiv._contentWrap) {
-        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('⚠️ AI 正在建楼中，请等待当前楼层完成后再压缩', { type: 'warning', duration: 4000 }); } catch (_) { }
+    // ★ 手动压缩仅限空闲时（AI 不在建楼）。额外检查 isConnected 防残留 DOM
+    if (_ag._activeAiDiv && _ag._activeAiDiv._contentWrap && _ag._activeAiDiv.isConnected) {
+        var _buildingMsg = (typeof _i === 'function') ? _i('ai.error.buildingFloor', 'AI 正在建楼中，请等待当前楼层完成后再压缩') : 'AI is building a floor, wait for it to finish before compressing';
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('⚠️ ' + _buildingMsg, { type: 'warning', duration: 4000 }); } catch (_) { }
         return;
     }
     if (_ag._compressing) return;
     _ag._compressing = true;
     window._updateSendBtnForCompress(true);
-    var _reason = '手动压缩（用户主动触发）';
+    var _reason = 'Manual compress (user triggered)';
+    _ag._renderCompressStart(_reason);  // ★ 推入 conversation（永久记录）
     var _compressQoast = null;
-    try { if (window.parent && window.parent.qqqideQoast) _compressQoast = window.parent.qqqideQoast.show('🧠 压缩中...', { type: 'info', duration: 0 }); } catch (_) { }
+    var _compressingText = (typeof _i === 'function') ? _i('ai.compressing', '🧠 压缩中...') : '🧠 Compressing...';
+    try { if (window.parent && window.parent.qqqideQoast) _compressQoast = window.parent.qqqideQoast.show(_compressingText, { type: 'info', duration: 0 }); } catch (_) { }
     try {
         var _result = await _ag._compressContext({ trigger: 'manual', detail: _reason, force: true });
+        _ag._renderCompressResult(_result);  // ★ 推入 conversation（永久记录）
         // 关闭"压缩中"qoast
         if (_compressQoast) { try { _compressQoast.dismiss(); } catch (_) { } _compressQoast = null; }
         if (_result.compressed) {
@@ -469,8 +563,9 @@ document.getElementById('ctx-compress').onclick = async function () {
         }
         updateCtxBtn();
     } catch (e) {
+        _ag._renderCompressResult({ compressed: false, detail: 'Exception: ' + (e.message || 'unknown'), beforeTokens: 0, afterTokens: 0, elapsedMs: 0 });
         if (_compressQoast) { try { _compressQoast.dismiss(); } catch (_) { } _compressQoast = null; }
-        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✗ 压缩异常: ' + (e.message || '未知错误'), { type: 'error', duration: 8000 }); } catch (_) { }
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✗ Compress exception: ' + (e.message || 'unknown'), { type: 'error', duration: 8000 }); } catch (_) { }
     } finally {
         if (_compressQoast) { try { _compressQoast.dismiss(); } catch (_) { } }
         _ag._compressing = false;

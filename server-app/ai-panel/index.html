@@ -345,8 +345,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #floor-indicator.fl-ind-left .floor-ind-tofu{border-radius:0 5px 5px 0}
 #floor-indicator.fl-ind-left .floor-ind-needle{margin-left:0;margin-right:-1px}
 #floor-indicator.fl-ind-left .floor-ind-needle::before{clip-path:polygon(100% 0,0 50%,100% 100%)}
-/* ★ quest 切换保护态：dim 消息区 + 禁用指针事件 */
-#messages.qqq-switching{opacity:.35;pointer-events:none;transition:opacity .15s}
+/* ★ quest 切换保护态：全屏蒙板接管一切鼠标事件，键盘由 _switching 守卫拦截 */
+#qqq-switch-overlay.show{display:block!important}
+#messages.qqq-switching{opacity:.35;transition:opacity .15s}
 </style>
 <div id="clock-tooltip"></div>
 <script>
@@ -460,6 +461,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
     <button id="ctx-btn">--</button>
   </div>
 </div>
+<!-- ★ quest 切换全屏蒙板：阻绝一切鼠标操作 -->
+<div id="qqq-switch-overlay" style="display:none;position:fixed;inset:0;z-index:99999;cursor:default;background:rgba(0,0,0,0.03)"></div>
 <!-- 上下文压缩确认面板 -->
 <div id="ctx-panel" style="display:none">
   <div class="ctx-panel-overlay"></div>

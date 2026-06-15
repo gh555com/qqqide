@@ -298,6 +298,10 @@ async function initQuests() {
     // [silent] list returned
     // ★ 一次性迁移：清理 quest.sq3 中的遗留 _owner 数据（幂等安全）
     questStore.cleanupOwners().catch(function () { });
+    // ★ 启动时批量修复：单次 list O(n)，对齐所有 quest 磁盘目录名（不阻塞加载）
+    if (typeof _repairAllQuestDirNames === 'function') {
+        _repairAllQuestDirNames(quests).catch(function (e) { console.warn('[quest-dir] batch repair error:', e); });
+    }
     if (quests.length === 0) {
         questActiveId = _draftId;
     } else {

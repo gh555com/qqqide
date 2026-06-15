@@ -66,7 +66,7 @@ P3 — 长尾移植 (可缓)
 - bridge 出口: shell/preload.ts contextBridge.exposeInMainWorld
 - 快捷键源: core/key-bindings.json
 - 国际化: core/i18n.js (运行时, zh.json唯一真理源, qgs持久化) + server-app/locales/zh.json (开发者只管写中文)
-- 翻译面板: op/ky.py (python op/ky.py, PySide6 GUI一键翻译12语言, DashScope Qwen3.6-Plus)
+- 翻译面板: op/qky.py (python op/qky.py, PySide6 GUI一键翻译12语言, DashScope Qwen3.6-Plus)
 - 语言切换器: 菜单行1 中字按钮, shell.js bootLangSwitcher()
 - 媒体桥: shell/media-service.ts
 - （gaea 侧）AI 网关 Worker: cf/ai-gateway.js（CF edge 纯透传，~67行，ban检查+透传Go:8444）

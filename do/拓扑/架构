@@ -272,7 +272,7 @@ i18n — 唯一真理国际化机器
 唯一真理源: zh.json (开发者只写中文)
 占位符: data-i18n / data-i18n-placeholder / data-i18n-title / data-i18n-html, JS: _i(key, fallback)
 特殊: contenteditable div 用 data-i18n-placeholder-attr (iframe translateUi 处理)
-翻译机器 + 面板: op/ky.py (PySide6 GUI, DashScope Qwen3.6-Plus, 差异翻译, 全并发)
+翻译机器 + 面板: op/qky.py (PySide6 GUI, DashScope Qwen3.6-Plus, 差异翻译, 全并发)
 前端运行时: core/i18n.js (autoload, detectLang -> loadLang -> updateDom)
 英语内嵌兜底: en.json 编译进 _EN_BUILTIN 常量, 离线永不显示 key
 语言持久化: qgs('qqq.i18n').set('lang', code)
