@@ -79,8 +79,8 @@ function drawPie(canvas, timing) {
     t = Math.max(0, total - n - d);
     var parts = [
         { val: d, color: '#859900', label: 'AI', key: 'ai' },
-        { val: t, color: '#e6b800', label: 'Tool', key: 'tool' },
-        { val: n, color: '#cb4b16', label: 'Network', key: 'network' }
+        { val: n, color: '#cb4b16', label: 'Network', key: 'network' },
+        { val: t, color: '#e6b800', label: 'Tool', key: 'tool' }
     ];
     var start = -Math.PI / 2;
     var segments = [];
@@ -134,8 +134,8 @@ function _initClockBlock(aiDiv) {
         if (!canvas._segments || !canvas._total) { _hidePieTooltip(); return; }
         var parts = [
             { key: 'ai', color: '#859900', label: 'AI' },
-            { key: 'tool', color: '#e6b800', label: 'Tool' },
-            { key: 'network', color: '#cb4b16', label: 'Net' }
+            { key: 'network', color: '#cb4b16', label: 'Net' },
+            { key: 'tool', color: '#e6b800', label: 'Tool' }
         ];
         var segs = canvas._segments;
         var map = {};

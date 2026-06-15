@@ -290,7 +290,8 @@
 
         for (var ei = 0; ei < _results.length; ei++) {
             var _r = _results[ei];
-            if (!_r || !_r.parsed) throw new Error(_names[ei] + '_expert_failed');
+            if (!_r) { self._log('✗ Compact expert ' + _names[ei] + ' returned null'); throw new Error(_names[ei] + '_expert_failed'); }
+            if (!_r.parsed) { self._log('✗ Compact expert ' + _names[ei] + ' returned no parsed data (ttfb=' + _r.ttfbMs + 'ms total=' + _r.totalMs + 'ms)'); throw new Error(_names[ei] + '_expert_failed'); }
             if (COMPACT_DEBUG) { _debugTrace.experts[_names[ei]] = { ok: true, ms: _r.totalMs, parsedKeys: Object.keys(_r.parsed) }; }
         }
 
@@ -391,6 +392,7 @@
         try { token = localStorage.getItem('qqq-ai-token') || ''; } catch (_) { }
 
         if (!token || typeof GATEWAY_URL === 'undefined') {
+            self._log('✗ Compact API no token or GATEWAY_URL (token=' + !!token + ' url=' + (typeof GATEWAY_URL !== 'undefined') + ')');
             return { parsed: null, ttfbMs: 0, totalMs: 0 };
         }
 
@@ -401,7 +403,16 @@
 
         try {
             // ★ 用用户当前等级（_lastTier），回退到 TIER_6（最高级）
-            var _tier = self._lastTier || (typeof TIER_6 !== 'undefined' ? TIER_6 : { model: 'pro', thinking: { type: 'enabled' }, effort: 'max' });
+            var _tier = self._lastTier;
+            if (!_tier || !_tier.model) {
+                if (typeof TIER_6 !== 'undefined' && TIER_6 && TIER_6.model) {
+                    _tier = TIER_6;
+                } else if (typeof TIER_PRO !== 'undefined' && TIER_PRO && TIER_PRO.model) {
+                    _tier = TIER_PRO;
+                } else {
+                    _tier = { model: 'pro', thinking: { type: 'enabled' }, effort: 'max' };
+                }
+            }
             var resp = await fetch(GATEWAY_URL, {
                 method: 'POST',
                 headers: {
@@ -434,17 +445,22 @@
 
             var data = await resp.json();
             var _totalMs = performance.now() - _fetchStart;
-            if (!data) return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+            if (!data) { self._log('✗ Compact API empty response body'); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
 
             var text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-            if (!text) return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+            if (!text) { self._log('✗ Compact API no content in response'); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
 
             var match = text.match(/\{[\s\S]*\}/);
-            if (!match) return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+            if (!match) { self._log('✗ Compact API no JSON in content: ' + text.slice(0, 200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
 
-            return { parsed: JSON.parse(match[0]), ttfbMs: _ttfbMs, totalMs: _totalMs };
+            var parsed;
+            try { parsed = JSON.parse(match[0]); } catch (_jsonErr) { self._log('✗ Compact API JSON parse error: ' + match[0].slice(0, 200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            return { parsed: parsed, ttfbMs: _ttfbMs, totalMs: _totalMs };
         } catch (err) {
-            return { parsed: null, ttfbMs: performance.now() - _fetchStart, totalMs: performance.now() - _fetchStart };
+            var _totalMs = performance.now() - _fetchStart;
+            self._log('✗ Compact API exception: ' + (err.message || err) + ' (suffix=' + _suffix + ')');
+            if (typeof self._writeFileLog === 'function') self._writeFileLog('✗ Compact API exception: ' + (err.message || err) + ' suffix=' + _suffix);
+            return { parsed: null, ttfbMs: _totalMs, totalMs: _totalMs };
         } finally {
             clearTimeout(_timeoutId);
         }
