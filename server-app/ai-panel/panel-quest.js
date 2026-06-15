@@ -504,6 +504,8 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
         totalCostGe: ag.totalCostGe,
         lastApiPromptTokens: ag._lastApiPromptTokens || 0,
         lastApiTotalTokens: ag._lastApiTotalTokens || 0,
+        lastTier: ag._lastTier || null,
+        ctx: { lastCompressedFloor: ag._ctx.lastCompressedFloor || 0, floorArchives: ag._ctx.floorArchives || [] },
         floorTimings: ag._floorTimings || [],
         serverDrift: ag._serverDrift || 0,
         queue: ag._queue || [],

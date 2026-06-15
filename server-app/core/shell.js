@@ -1537,7 +1537,7 @@
               if (!_ks) {
                 _ks = document.createElement('style');
                 _ks.id = 'qqq-scroll-keys-style';
-                _ks.textContent = '@font-face{font-family:Unifont;src:url(http://127.0.0.1:8090/qqq-app/fonts/unifont-17.0.04.otf) format("opentype")}.skey{width:42px;height:42px;font-family:Unifont,monospace;font-size:16px;font-weight:700;text-align:center;line-height:42px;border-radius:9px;border:1px solid #b0aca8;background:linear-gradient(180deg,#faf8f5 0%,#e0dcd5 100%);color:#4a4642;box-shadow:0 1px 0 #c5bfb6,0 2px 4px rgba(0,0,0,0.18);user-select:none;-webkit-font-smoothing:none;image-rendering:pixelated}[data-theme="dark"] .skey{border-color:#5a5652;background:linear-gradient(180deg,#5a5650 0%,#3a3632 100%);color:#dcd8d0;box-shadow:0 1px 0 #6a6660,0 2px 4px rgba(0,0,0,0.35)}';
+                _ks.textContent = '@font-face{font-family:Unifont;src:url(http://127.0.0.1:8090/qqq-app/fonts/unifont-17.0.04.otf) format("opentype")}.skey{width:42px;height:42px;font-family:Unifont,monospace;font-size:24px;font-weight:700;text-align:center;line-height:42px;border-radius:9px;border:1px solid #b0aca8;background:linear-gradient(180deg,#faf8f5 0%,#e0dcd5 100%);color:#4a4642;box-shadow:0 1px 0 #c5bfb6,0 2px 4px rgba(0,0,0,0.18);user-select:none}[data-theme="dark"] .skey{border-color:#5a5652;background:linear-gradient(180deg,#5a5650 0%,#3a3632 100%);color:#dcd8d0;box-shadow:0 1px 0 #6a6660,0 2px 4px rgba(0,0,0,0.35)}';
                 document.head.appendChild(_ks);
               }
             }

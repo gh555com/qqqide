@@ -333,6 +333,9 @@ async function _restoreAgentFromStore(questId, ag) {
             ag.totalCostGe = data.totalCostGe || 0;
             ag._lastApiPromptTokens = data.lastApiPromptTokens || 0;
             ag._lastApiTotalTokens = data.lastApiTotalTokens || 0;
+            ag._lastTier = data.lastTier || null;
+            ag._ctx.lastCompressedFloor = (data.ctx && data.ctx.lastCompressedFloor) || 0;
+            ag._ctx.floorArchives = (data.ctx && data.ctx.floorArchives) || [];
             ag._floorTimings = data.floorTimings || [];
             ag._serverDrift = data.serverDrift || 0;
             _queue = data.queue || [];
@@ -342,6 +345,9 @@ async function _restoreAgentFromStore(questId, ag) {
             ag.totalCostGe = 0;
             ag._lastApiPromptTokens = 0;
             ag._lastApiTotalTokens = 0;
+            ag._lastTier = null;
+            ag._ctx.lastCompressedFloor = 0;
+            ag._ctx.floorArchives = [];
             ag._floorTimings = [];
             ag._serverDrift = 0;
             _queue = [];

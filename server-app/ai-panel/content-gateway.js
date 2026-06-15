@@ -29,10 +29,16 @@
     var STREAM_WATCHDOG_MS = 180000;         // SSE 流看门狗 3min（DeepSeek 深度推理可能 2min+ 无 token）
 
     // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
-    var CTX_MAX_TOKENS = 1048565;     // DeepSeek 上下文窗口总上限（实测精确值，prompt + completion ≤ 1,048,565）
+    var CTX_MAX_TOKENS = 1048565;     // 上下文窗口总上限（实测精确值）
     var COMPRESS_THRESHOLD = 900000;  // 压缩触发阈值（90% 窗口，留 10% 缓冲）
-    var MAX_TOKENS_SAFETY = 10000;    // max_tokens 帽安全余量（防止边界情况）
-    var CHAR_PER_TOKEN = 3.0;         // 统一 chars→tokens 估算比例（所有估算器以此为准）
+    var MAX_TOKENS_SAFETY = 10000;    // max_tokens 帽安全余量
+    var CHAR_PER_TOKEN = 3.0;         // 统一 chars→tokens 估算比例
+    // 三专家输出阀值
+    var COMPACT_FACTS_TOKENS = 16384;     // ① facts 专家 16k
+    var COMPACT_NARRATIVE_TOKENS = 32768; // ② narrative 专家 32k
+    var COMPACT_ARCHIVE_TOKENS = 32768;   // ③ archive 专家 32k
+    var ARCHIVE_MAX_CHARS = 1000000;      // archive 硬上限 ~1M chars
+    var COMPACT_DEBUG = true;            // 压缩埋点开关（调试期开，稳定后关）
 
     // ═══ 二进制检测 ═══
     function detectBinary(str) {
@@ -102,7 +108,13 @@
         CTX_MAX_TOKENS: CTX_MAX_TOKENS,
         COMPRESS_THRESHOLD: COMPRESS_THRESHOLD,
         MAX_TOKENS_SAFETY: MAX_TOKENS_SAFETY,
-        CHAR_PER_TOKEN: CHAR_PER_TOKEN
+        CHAR_PER_TOKEN: CHAR_PER_TOKEN,
+        // 三专家阀值
+        COMPACT_FACTS_TOKENS: COMPACT_FACTS_TOKENS,
+        COMPACT_NARRATIVE_TOKENS: COMPACT_NARRATIVE_TOKENS,
+        COMPACT_ARCHIVE_TOKENS: COMPACT_ARCHIVE_TOKENS,
+        ARCHIVE_MAX_CHARS: ARCHIVE_MAX_CHARS,
+        COMPACT_DEBUG: COMPACT_DEBUG
     };
 
     // [silent] content-gateway ready

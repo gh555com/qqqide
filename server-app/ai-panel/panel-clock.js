@@ -23,7 +23,17 @@ function _startAutoSave() {
         var convLen = fullConv.length;
         if (convLen <= _lastAutoSaveLen) return;
         _lastAutoSaveLen = convLen;
-        var floorConv = fullConv.slice(floorStartIdx);
+        // ★ 保存前防线：修复孤儿 tool_calls + 断言（与 _saveAgentQuestData 一致）
+        if (typeof _capturedAgent._repairOrphanedToolCalls === 'function') {
+            var _lenBefore = fullConv.length;
+            _capturedAgent._repairOrphanedToolCalls();
+            var _lenAfter = _capturedAgent.conversation.length;
+            if (_lenBefore !== _lenAfter) {
+                console.warn('[CRITICAL] auto-save caught dirty conversation: repaired ' + (_lenBefore - _lenAfter) + ' orphaned msgs (quest=' + _capturedQuestId + ', floor=' + floorNum + ')');
+                fullConv = _capturedAgent.conversation.slice();
+                floorConv = fullConv.slice(floorStartIdx);
+            }
+        }
         // 优先使用统一增量 payload 构建器（含 a1/a2/a3/a4 全部数据）
         var payload;
         if (typeof window._a4BuildCompleteFloorPayload === 'function') {

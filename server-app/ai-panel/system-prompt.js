@@ -3,8 +3,8 @@
 // 从 q3/ai/src/prompt.js 移植，适配 Shell v2 Electron 环境
 // ============================================================================
 
-const GATEWAY_URL_PRIMARY = 'https://gh555.com/api/v3/ai/chat';              // CF Worker ai-gateway
-const GATEWAY_URL_FALLBACK = 'https://direct.gh555.com:8444/api/v3/ai/chat';  // 直连 US 兜底
+const GATEWAY_URL_PRIMARY = 'https://direct.gh555.com:8444/api/v3/ai/chat';  // ★ 直连 HTTP/1.1 主线
+const GATEWAY_URL_FALLBACK = 'https://gh555.com/api/v3/ai/chat';              // CF Worker 备用
 var GATEWAY_URL = GATEWAY_URL_PRIMARY;
 var _gwUsingFallback = false;          // 当前是否在备用线路
 var _gwFallbackAt = 0;                 // 切到备用线路的时间戳

@@ -277,7 +277,8 @@ var AgentLoop = (function () {
         };
         // 上下文引擎
         this._compressing = false;
-        this._ctx = { narrative: '', facts: [], totalFloors: 0 };
+        this._ctx = { narrative: '', facts: [], totalFloors: 0, lastCompressedFloor: 0, floorArchives: [] };
+        this._compactTraces = [];  // 埋点日志（最近 10 条）
 
         // 计费
         this._floorCostWge = 0;
@@ -285,6 +286,7 @@ var AgentLoop = (function () {
         this._lastCostDisplay = '0';
         this._lastApiPromptTokens = 0;  // 初始化清零，避免残留旧 quest 数值
         this._lastApiTotalTokens = 0;    // API 返回的 total_tokens（prompt+completion 精确值）
+        this._lastTier = null;           // 最近一次使用的 AI 等级（压缩复用它）
         // 视觉缓存: MD5(base64) → {description, ge_cost}
         this._visionCache = new Map();
         this._visionCostWge = 0;
@@ -642,6 +644,7 @@ var AgentLoop = (function () {
 
         // 智能等级：手动选择优先，未选则默认 Pro+Max
         var tier = opts.tier || TIER_PRO;
+        self._lastTier = tier;  // ★ 记录当前等级，压缩时复用
         self._log('◆ ' + tier.label);
         var maxIterations = 200;
         var conversationSnapshot = self.conversation.length;
@@ -753,6 +756,7 @@ var AgentLoop = (function () {
                     var _threshold = (typeof ContentGateway !== 'undefined') ? ContentGateway.COMPRESS_THRESHOLD : 900000;
                     if (_checkTokens > _threshold) {
                         self._compressing = true;
+                        window._updateSendBtnForCompress(true);
                         try {
                             var _reason = '自动压缩（' + Math.round(_checkTokens/1000) + 'k / ' + Math.round(_threshold/1000) + 'k，超 90% 阈值）';
                             self._renderCompressStart(_reason);
@@ -760,6 +764,7 @@ var AgentLoop = (function () {
                             self._renderCompressResult(_result);
                         } finally {
                             self._compressing = false;
+                            window._updateSendBtnForCompress(false);
                         }
                     }
                 }
@@ -1305,7 +1310,7 @@ var AgentLoop = (function () {
                 break;
             }
         }
-        var dynamicCtx = (typeof self._buildDynamicContext === 'function') ? self._buildDynamicContext(lastUserQuery) : '';
+        var dynamicCtx = (typeof self._buildDynamicContext === 'function') ? self._buildDynamicContext() : '';
         if (dynamicCtx) {
             apiMessages = messages.slice();
             // ★ 压缩历史作为独立 system 消息插在 persistent 消息之后、真实对话之前
@@ -2070,6 +2075,18 @@ var AgentLoop = (function () {
         }
     };
 
+    // ═══ 压缩期间锁定发送按钮 ═══
+    window._updateSendBtnForCompress = function (flag) {
+        try {
+            var _btn = document.getElementById('send-btn');
+            if (_btn) {
+                _btn.textContent = flag ? '⏳' : (typeof streaming !== 'undefined' && streaming ? 'Stop' : 'Send');
+                _btn.className = flag ? 'compressing' : (typeof streaming !== 'undefined' && streaming ? 'stop' : '');
+                _btn.disabled = !!flag;
+            }
+        } catch (_) { }
+    };
+
     // ---- 引导注入（新）：立即中断当前 house，让 AI 回复确认 ----
     // 如果 send() 正在执行 → abort 当前流 + 设置 _guidePending，确认回合在 while 循环中自动触发
     // 如果 send() 未执行 → 降级为普通 inject（等下次 Send）
@@ -2087,6 +2104,9 @@ var AgentLoop = (function () {
     // ★ 兜底：若 agent-context.js 未加载，提供空壳防全站崩溃
     if (!AgentLoop.prototype._buildDynamicContext) {
         AgentLoop.prototype._buildDynamicContext = function () { return ''; };
+    }
+    if (!AgentLoop.prototype._updateSendBtnForCompress) {
+        AgentLoop.prototype._updateSendBtnForCompress = function () { };
     }
 
     // ★ 上下文快照：对比两次 API 调用发送的消息数组，定位缓存断裂点

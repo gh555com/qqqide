@@ -401,36 +401,29 @@ document.getElementById('ctx-compress').onclick = async function () {
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('⚠️ 请先发送一条消息创建对话', { type: 'warning', duration: 3000 }); } catch (_) { }
         return;
     }
+    // ★ 手动压缩仅限空闲时（AI 不在建楼）
+    if (_ag._activeAiDiv && _ag._activeAiDiv._contentWrap) {
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('⚠️ AI 正在建楼中，请等待当前楼层完成后再压缩', { type: 'warning', duration: 4000 }); } catch (_) { }
+        return;
+    }
     if (_ag._compressing) return;
     _ag._compressing = true;
+    window._updateSendBtnForCompress(true);
     var _reason = '手动压缩（用户主动触发）';
-    // 有活跃 AI div → 用卡片；无 → 用 qoast 通知
-    var _hasAI = _ag._activeAiDiv && _ag._activeAiDiv._contentWrap;
-    if (_hasAI) {
-        _ag._renderCompressStart(_reason);
-    } else {
-        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('🧠 压缩中...', { type: 'info', duration: 0 }); } catch (_) { }
-    }
+    try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('🧠 压缩中...', { type: 'info', duration: 0 }); } catch (_) { }
     try {
-        var _result = await _ag._compressContext({ trigger: 'manual', detail: _reason });
-        if (_hasAI) {
-            _ag._renderCompressResult(_result);
+        var _result = await _ag._compressContext({ trigger: 'manual', detail: _reason, force: true });
+        if (_result.compressed) {
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✅ ' + _result.detail.replace(/\n/g, ' | '), { type: 'info', duration: 5000 }); } catch (_) { }
         } else {
-            if (_result.compressed) {
-                try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✅ ' + _result.detail.replace(/\n/g, ' | '), { type: 'info', duration: 5000 }); } catch (_) { }
-            } else {
-                try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('ℹ️ ' + (_result.detail || '无需压缩'), { type: 'info', duration: 4000 }); } catch (_) { }
-            }
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('ℹ️ ' + (_result.detail || '无需压缩'), { type: 'info', duration: 4000 }); } catch (_) { }
         }
         updateCtxBtn();
     } catch (e) {
-        if (_hasAI) {
-            _ag._renderCompressResult({ compressed: false, detail: '异常: ' + (e.message || e), beforeTokens: 0, afterTokens: 0, elapsedMs: 0 });
-        } else {
-            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✗ 压缩异常: ' + (e.message || '未知错误'), { type: 'error', duration: 8000 }); } catch (_) { }
-        }
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✗ 压缩异常: ' + (e.message || '未知错误'), { type: 'error', duration: 8000 }); } catch (_) { }
     } finally {
         _ag._compressing = false;
+        window._updateSendBtnForCompress(false);
     }
 };
 document.querySelector('#ctx-panel .ctx-panel-overlay').onclick = function () {

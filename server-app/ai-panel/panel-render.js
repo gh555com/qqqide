@@ -301,8 +301,15 @@ function addMessageEl(role, content) {
 
 function setStreaming(val) {
     streaming = val;
-    $sendBtn.textContent = val ? 'Stop' : 'Send';
-    $sendBtn.className = val ? 'stop' : '';
+    if (_activeAgent && _activeAgent._compressing) {
+        $sendBtn.textContent = '⏳';
+        $sendBtn.className = 'compressing';
+        $sendBtn.disabled = true;
+    } else {
+        $sendBtn.textContent = val ? 'Stop' : 'Send';
+        $sendBtn.className = val ? 'stop' : '';
+        $sendBtn.disabled = false;
+    }
     updateQueueBtn();
     // 彗星环绕：streaming 时点亮 tofu 编号
     var tofu = document.getElementById('quest-tofu');
