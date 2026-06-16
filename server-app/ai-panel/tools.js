@@ -364,8 +364,10 @@ async function executeReadFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
+    // ★ 参数名兼容：Qoder/DeepSeek 可能用 filePath 而非 path
+    args.path = args.path || args.filePath || '';
     // ★ 路径合理性校验：防止 AI 将中文文本当作文件路径
-    var _p = args.path || '';
+    var _p = args.path;
     if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
         return 'Error: invalid path "' + _p + '" — does not appear to be a valid file path. Provide an absolute path (e.g. E:\\project\\file.js).';
     }
@@ -557,7 +559,9 @@ async function executeEditFile(args) {
     if (!bridge) return 'Error: bridge not available';
     if (!args.edits || args.edits.length === 0) return 'Error: no edits provided.';
 
-    var _p = args.path || '';
+    // ★ 参数名兼容：Qoder/DeepSeek 可能用 filePath 而非 path
+    args.path = args.path || args.filePath || '';
+    var _p = args.path;
     if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
         return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
@@ -642,7 +646,8 @@ async function executeWriteFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
-    var _p = args.path || '';
+    args.path = args.path || args.filePath || '';
+    var _p = args.path;
     if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
         return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
@@ -760,7 +765,11 @@ async function executeSearchText(args) {
 async function executeSearchContent(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
-    if (!args.keywords || args.keywords.length === 0) return 'Error: no keywords provided.';
+    // ★ 兼容：模型可能把 keywords 发成 JSON 字符串而非数组
+    if (typeof args.keywords === 'string') {
+        try { args.keywords = JSON.parse(args.keywords); } catch (_) { }
+    }
+    if (!args.keywords || !Array.isArray(args.keywords) || args.keywords.length === 0) return 'Error: no keywords provided.';
 
     // Escape each keyword for regex and join with |
     var escapeRegex = function (s) {
@@ -795,7 +804,8 @@ async function executeListFiles(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
-    var _p = args.path || '';
+    args.path = args.path || args.filePath || '';
+    var _p = args.path;
     if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
         return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
@@ -882,7 +892,8 @@ async function executeCreateFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
-    var _p = args.path || '';
+    args.path = args.path || args.filePath || '';
+    var _p = args.path;
     if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
         return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
@@ -979,7 +990,8 @@ async function executeDeleteFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
-    var _p = args.path || '';
+    args.path = args.path || args.filePath || '';
+    var _p = args.path;
     if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
         return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
@@ -1021,8 +1033,9 @@ async function executeFindFiles(args) {
     if (!bridge) return 'Error: bridge not available';
 
     var searchDirs = [];
-    if (args.path) {
-        searchDirs = [args.path];
+    var _findPath = args.path || args.filePath || '';
+    if (_findPath) {
+        searchDirs = [_findPath];
     } else {
         try {
             if (parent.qqqideViewport) {
@@ -1084,7 +1097,7 @@ async function executeGetDiagnostics(args) {
         if (!monaco) return 'Error: Monaco not available';
 
         var allMarkers = monaco.editor.getModelMarkers({});
-        var path = args.path || '';
+        var path = args.path || args.filePath || '';
         var normPath = path.replace(/\\/g, '/').toLowerCase();
 
         var filtered = allMarkers.filter(function (m) {

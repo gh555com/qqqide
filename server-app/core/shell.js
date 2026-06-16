@@ -944,10 +944,31 @@
       applyZoom();
     });
 
-    // Close (extra large)
-    var closeBtn = tbBtn('\u2715', window._i('shell.overlay.close', 'Close (Esc or cursor right-click)'), 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
+    // Close (extra large) — custom tooltip: high-contrast instant cursor-following
+    var closeBtn = tbBtn('\u2715', '', 'font-size:24px; font-weight:bold; padding:8px 22px; ' +
       'background:rgba(220,50,47,0.5); border-color:rgba(220,50,47,0.7);');
     closeBtn.addEventListener('click', close);
+
+    // ★ 自定义高对比度瞬间弹出 tooltip，跟随光标
+    var _closeTt = document.createElement('div');
+    _closeTt.textContent = '= Right Click';
+    _closeTt.style.cssText = 'display:none;position:fixed;z-index:100001;pointer-events:none;' +
+      'background:#000;color:#fff;padding:6px 12px;font-size:13px;font-weight:bold;' +
+      'border:2px solid #dc322f;border-radius:4px;white-space:nowrap;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,0.8);';
+    document.body.appendChild(_closeTt);
+    closeBtn.addEventListener('mouseenter', function(e) {
+      _closeTt.style.display = '';
+      _closeTt.style.left = (e.clientX + 16) + 'px';
+      _closeTt.style.top = (e.clientY - 36) + 'px';
+    });
+    closeBtn.addEventListener('mousemove', function(e) {
+      _closeTt.style.left = (e.clientX + 16) + 'px';
+      _closeTt.style.top = (e.clientY - 36) + 'px';
+    });
+    closeBtn.addEventListener('mouseleave', function() {
+      _closeTt.style.display = 'none';
+    });
 
     // 右键关闭
     overlay.addEventListener('contextmenu', function (e) {
@@ -968,6 +989,7 @@
 
     function close() {
       try { _stopRepeat(); } catch (_) { }
+      _closeTt.style.display = 'none';
       overlay.style.display = 'none';
       dpad.style.display = 'none';
       contentEl.innerHTML = '';

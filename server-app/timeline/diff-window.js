@@ -61,8 +61,24 @@
 
     // ★ 大号关闭按钮 + 右键关闭窗口
     var $btnBigClose = document.getElementById('big-close');
+    var $bigCloseTip = document.getElementById('big-close-tip');
     function _closeWindow() { if (bridge && bridge.window) bridge.window.close(); }
     if ($btnBigClose) $btnBigClose.addEventListener('click', _closeWindow);
+    // ★ 自定义 tooltip：高对比度、瞬间弹出、跟随光标
+    if ($btnBigClose && $bigCloseTip) {
+        $btnBigClose.addEventListener('mouseenter', function (e) {
+            $bigCloseTip.style.display = '';
+            $bigCloseTip.style.left = (e.clientX + 14) + 'px';
+            $bigCloseTip.style.top = (e.clientY - 28) + 'px';
+        });
+        $btnBigClose.addEventListener('mousemove', function (e) {
+            $bigCloseTip.style.left = (e.clientX + 14) + 'px';
+            $bigCloseTip.style.top = (e.clientY - 28) + 'px';
+        });
+        $btnBigClose.addEventListener('mouseleave', function () {
+            $bigCloseTip.style.display = 'none';
+        });
+    }
     document.addEventListener('contextmenu', function (e) { e.preventDefault(); _closeWindow(); });
 
     // ═══ 监听主进程推送 diff 更新（同文件再次点击 A4 时复用窗口） ═══
@@ -392,7 +408,7 @@
                     if (bridge && bridge.clipboard && bridge.clipboard.writeText) {
                         bridge.clipboard.writeText(text);
                     } else {
-                        navigator.clipboard.writeText(text).catch(function(){});
+                        navigator.clipboard.writeText(text).catch(function () { });
                     }
                 }
                 return;
@@ -854,12 +870,12 @@
 
     function langOf(fp) {
         var ext = (fp || '').split('.').pop().toLowerCase();
-        var map = { js:'javascript', mjs:'javascript', ts:'typescript', tsx:'typescript', json:'json', md:'markdown', py:'python', rs:'rust', go:'go', java:'java', cpp:'cpp', c:'c', h:'cpp', html:'html', htm:'html', css:'css', scss:'scss', xml:'xml', yml:'yaml', yaml:'yaml', sh:'shell', bash:'shell', sql:'sql', lua:'lua', rb:'ruby', php:'php', swift:'swift', kt:'kotlin', r:'r' };
+        var map = { js: 'javascript', mjs: 'javascript', ts: 'typescript', tsx: 'typescript', json: 'json', md: 'markdown', py: 'python', rs: 'rust', go: 'go', java: 'java', cpp: 'cpp', c: 'c', h: 'cpp', html: 'html', htm: 'html', css: 'css', scss: 'scss', xml: 'xml', yml: 'yaml', yaml: 'yaml', sh: 'shell', bash: 'shell', sql: 'sql', lua: 'lua', rb: 'ruby', php: 'php', swift: 'swift', kt: 'kotlin', r: 'r' };
         return map[ext] || 'plaintext';
     }
 
-    function _escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-    function _escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+    function _escHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function _escAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 
     // ═══ 全局持久化偏好（跨窗口记忆） ═══
     function _savePref(key, value) {

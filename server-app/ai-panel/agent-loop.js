@@ -139,6 +139,11 @@ var AgentLoop = (function () {
         // 当模型在 content 中输出工具调用（XML/Action: 格式）而非原生 delta.tool_calls，
         // 解析为可执行结构，防止楼层空转。
         var _textToolCalls = [];
+        // ★ DEBUG: 日志 cleanContent 前 500 字符，诊断文本工具调用是否进入解析器
+        if (cleanContent && cleanContent.length > 0) {
+            var _previewLen = Math.min(500, cleanContent.length);
+            console.log('[EnvelopeStripper] cleanContent (' + cleanContent.length + ' chars): ' + JSON.stringify(cleanContent.slice(0, _previewLen)));
+        }
 
         // ── 1) XML 格式：<invoke name="..."><parameter name="...">...</parameter></invoke> ──
         //    兼容 <function_call> <qqq_tool_calls> 等变体
@@ -179,6 +184,25 @@ var AgentLoop = (function () {
             }
             _xmlBlocks.push({ full: _scm[0], name: _scName, args: _scArgs });
         }
+        // ★ 新增：<tool_name attr="value" ... /> 格式（模型用工具名直接当标签名）
+        var _toolTagNames = ['read_file', 'search_file', 'edit_file', 'search_text', 'search_content', 'list_files', 'find_files', 'write_file', 'create_file', 'delete_file', 'fetch_webpage', 'get_diagnostics', 'generate_image', 'analyze_image', 'run_command'];
+        var _toolTagRe = new RegExp('<(' + _toolTagNames.join('|') + ')\\s([^>]*?)\\/>', 'gi');
+        var _ttm;
+        while ((_ttm = _toolTagRe.exec(cleanContent)) !== null) {
+            var _ttName = _ttm[1];
+            var _ttAttrs = _ttm[2];
+            var _ttArgs = {};
+            var _attrRe2 = /\b(\w[\w-]*)\s*=\s*["']([^"']*)["']/gi;
+            var _am2;
+            while ((_am2 = _attrRe2.exec(_ttAttrs)) !== null) {
+                var _aKey = _am2[1];
+                if (_aKey === 'as') continue;  // 模型幻觉属性，忽略
+                var _aVal2 = _am2[2];
+                try { _aVal2 = JSON.parse(_aVal2); } catch (_) { }
+                _ttArgs[_aKey] = _aVal2;
+            }
+            _xmlBlocks.push({ full: _ttm[0], name: _ttName, args: _ttArgs });
+        }
         // 解析后的 XML 块转为 textToolCalls + 从 content 剥离
         for (var _xbi = 0; _xbi < _xmlBlocks.length; _xbi++) {
             var _xb = _xmlBlocks[_xbi];
@@ -194,11 +218,16 @@ var AgentLoop = (function () {
             // 剥离已解析的 XML 块（精确替换）
             cleanContent = cleanContent.replace(_xb.full, '');
         }
-        // 残留 XML 标签清除（<qqq_tool_calls> <tool_call> 等无参数包裹标签）
+        // ★ DEBUG: 日志解析结果
+        console.log('[EnvelopeStripper] _xmlBlocks found: ' + _xmlBlocks.length + ', _textToolCalls: ' + _textToolCalls.length);
+        if (_textToolCalls.length > 0) {
+            console.log('[EnvelopeStripper] textToolCalls names: ' + _textToolCalls.map(function (tc) { return tc.function.name; }).join(', '));
+        }
+        // 残留 XML 标签清除（<qqq_tool_calls> <tool_call> <function_calls> 等无参数包裹标签）
         cleanContent = cleanContent.replace(/<\/?qqq_tool_calls>/gi, '');
         cleanContent = cleanContent.replace(/<\/?_?tool_calls?[^>]*>/gi, '');
         cleanContent = cleanContent.replace(/<\/?_?tool_call[^>]*>/gi, '');
-        cleanContent = cleanContent.replace(/<\/?function_call[^>]*>/gi, '');
+        cleanContent = cleanContent.replace(/<\/?function_calls?[^>]*>/gi, '');
         cleanContent = cleanContent.replace(/<parameter[\s>][^>]*>[\s\S]*?<\/parameter>/gi, '');
         cleanContent = cleanContent.replace(/<parameter[\s>][^>]*\/>/gi, '');
 
@@ -466,7 +495,9 @@ var AgentLoop = (function () {
         // 判断是否全部无进展：search_text 返回 No matches / find_files 空 / list_files 空 / 错误
         var allNoProgress = toolResults.every(function (r) {
             var s = typeof r === 'string' ? r : '';
-            return s.startsWith('No matches found') || s.startsWith('Error') || s === '' || s.startsWith('Tool error') || s.startsWith('[ALREADY READ]');
+            // [ALREADY READ] 不算无进展 — 它告诉模型"已有内容，直接用"，不是失败
+            // 真正的读文件死循环由工具循环检测（同工具+同参数 3 次）拦截
+            return s.startsWith('No matches found') || s.startsWith('Error') || s === '' || s.startsWith('Tool error');
         });
         if (allNoProgress) {
             self._stallCount++;
@@ -970,9 +1001,11 @@ var AgentLoop = (function () {
                     var stall = self._checkStall(lastResults);
                     if (stall === 'warn') {
                         self._log('⚠ stall detected: ' + self._stallCount + ' consecutive no-progress calls, injecting warning');
+                        if (typeof self._writeFileLog === 'function') self._writeFileLog('⚠ stall detected: ' + self._stallCount + ' consecutive no-progress calls (panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?') + ', floor=' + self._ctx.totalFloors + ', house=' + self._houseIndex + ')');
                         self.conversation.push({ role: 'user', content: '[System: You have made ' + self._stallCount + ' consecutive tool calls with no useful results. Pivot your approach or give your best answer with what you have. Do NOT repeat the same search.]', _stallWarning: true, _floor: self._ctx.totalFloors });
                     } else if (stall === 'force') {
                         self._log('⛔ stall force: ' + self._stallCount + ' consecutive no-progress calls, forcing final answer');
+                        if (typeof self._writeFileLog === 'function') self._writeFileLog('⛔ stall force: ' + self._stallCount + ' consecutive no-progress calls (panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?') + ', floor=' + self._ctx.totalFloors + ', house=' + self._houseIndex + ')');
                         self.conversation.push({ role: 'user', content: '[System: You have made ' + self._stallCount + ' consecutive tool calls with no useful results. Stop using tools now and give your final answer based on what you have gathered so far. Be concise.]', _stallForce: true, _floor: self._ctx.totalFloors });
                         // 强制 noTools 下一轮
                         forceNoTools = true;
@@ -1924,6 +1957,46 @@ var AgentLoop = (function () {
 
         var finalized = stripper.finalize();
 
+        // ★ 兜底提取：若 EnvelopeStripper 没提取到文本工具调用，直接从 stripper.raw 扫描
+        //    修复 forceNoTools 场景下模型输出的 <function_calls><invoke> 格式未被解析的问题
+        if (!finalized.textToolCalls || finalized.textToolCalls.length === 0) {
+            var _rawFallback = stripper.raw || '';
+            // 匹配 <function_calls>...</function_calls> 内嵌的 <invoke name="X"><parameter name="K">V</parameter></invoke>
+            var _fbInvokeRe = /<invoke\s[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/invoke>/gi;
+            var _fbBlocks = [];
+            var _fbm;
+            while ((_fbm = _fbInvokeRe.exec(_rawFallback)) !== null) {
+                var _fbName = _fbm[1];
+                var _fbBody = _fbm[2];
+                var _fbArgs = {};
+                var _fbParamRe = /<parameter\s[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*?(?:>([\s\S]*?)<\/parameter>|\bvalue\s*=\s*["']([^"']*)["'][^>]*\/>)/gi;
+                var _fbpm;
+                while ((_fbpm = _fbParamRe.exec(_fbBody)) !== null) {
+                    var _fbpName = _fbpm[1];
+                    var _fbpVal = (_fbpm[2] !== undefined) ? _fbpm[2].trim() : (_fbpm[3] || '');
+                    try { _fbpVal = JSON.parse(_fbpVal); } catch (_) { }
+                    _fbArgs[_fbpName] = _fbpVal;
+                }
+                _fbBlocks.push({ name: _fbName, args: _fbArgs });
+            }
+            if (_fbBlocks.length > 0) {
+                finalized.textToolCalls = [];
+                for (var _fbi = 0; _fbi < _fbBlocks.length; _fbi++) {
+                    var _fbb = _fbBlocks[_fbi];
+                    var _fbCallId = 'fb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+                    finalized.textToolCalls.push({
+                        id: _fbCallId,
+                        type: 'function',
+                        function: { name: _fbb.name, arguments: JSON.stringify(_fbb.args) }
+                    });
+                }
+                self._log('🔄 fallback textToolCalls: parsed ' + _fbBlocks.length + ' tool(s) from raw content');
+                // 从 cleanContent 剥离已解析的 <function_calls> 块（防止显示给用户）
+                finalized.cleanContent = (finalized.cleanContent || '')
+                    .replace(/<function_calls>[\s\S]*?<\/function_calls>/gi, '')
+                    .replace(/\x0a{3,}/g, '\x0a\x0a').trim();
+            }
+        }
 
         var _streamMs = performance.now() - streamStart;
         if (toolCalls.length > 0) {
