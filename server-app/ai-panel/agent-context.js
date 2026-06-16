@@ -392,8 +392,8 @@
         var token = (self._token || '').trim();
         if (!token) {
             try { token = (localStorage.getItem('qqq-ai-token') || '').trim(); } catch (_) { }
-            // 清理非 Latin1 字符（HTTP headers 不允许）
-            token = token.replace(/[^\x00-\xFF]/g, '');
+            // 清理非 ASCII 字符（HTTP headers 仅允许 ASCII）
+            token = token.replace(/[^\x00-\x7F]/g, '');
         }
 
         if (!token || typeof GATEWAY_URL === 'undefined') {
@@ -448,18 +448,33 @@
                 return { parsed: null, ttfbMs: _ttfbMs, totalMs: _ttfbMs };
             }
 
-            var data = await resp.json();
+            // ★ 服务器始终返回 SSE 格式（即使 stream:false）。提取最后一个 data: 行
+            var _bodyText = await resp.text();
             var _totalMs = performance.now() - _fetchStart;
-            if (!data) { self._log('✗ Compact API empty response body'); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            var _lines = _bodyText.replace(/\r\n/g, '\n').split('\n');
+            var _lastData = '';
+            for (var li = _lines.length - 1; li >= 0; li--) {
+                if (_lines[li].indexOf('data: ') === 0) {
+                    var _d = _lines[li].slice(6);
+                    if (_d !== '[DONE]') { _lastData = _d; break; }
+                }
+            }
+            if (!_lastData) {
+                try { var _dj = JSON.parse(_bodyText); _lastData = JSON.stringify(_dj); } catch (_) { }
+            }
+            if (!_lastData) { self._log('✗ Compact API no data (body=' + _bodyText.slice(0,150) + ')'); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
 
-            var text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-            if (!text) { self._log('✗ Compact API no content in response'); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            var _chunk;
+            try { _chunk = JSON.parse(_lastData); } catch (_e) { self._log('✗ Compact JSON parse: ' + _lastData.slice(0,200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+
+            var text = _chunk.choices && _chunk.choices[0] && _chunk.choices[0].message && _chunk.choices[0].message.content;
+            if (!text) { self._log('✗ Compact no content (keys=' + Object.keys(_chunk).join(',') + ')'); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
 
             var match = text.match(/\{[\s\S]*\}/);
-            if (!match) { self._log('✗ Compact API no JSON in content: ' + text.slice(0, 200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            if (!match) { self._log('✗ Compact no JSON: ' + text.slice(0,200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
 
             var parsed;
-            try { parsed = JSON.parse(match[0]); } catch (_jsonErr) { self._log('✗ Compact API JSON parse error: ' + match[0].slice(0, 200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            try { parsed = JSON.parse(match[0]); } catch (_jsonErr) { self._log('✗ Compact JSON err: ' + match[0].slice(0,200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
             return { parsed: parsed, ttfbMs: _ttfbMs, totalMs: _totalMs };
         } catch (err) {
             var _totalMs = performance.now() - _fetchStart;

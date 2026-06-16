@@ -540,6 +540,7 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
         lastApiPromptTokens: ag._lastApiPromptTokens || 0,
         lastApiTotalTokens: ag._lastApiTotalTokens || 0,
         lastTier: ag._lastTier || null,
+        uncleanShutdown: ag._uncleanShutdown || false,
         floorTimings: ag._floorTimings || [],
         serverDrift: ag._serverDrift || 0,
         queue: ag._queue || [],

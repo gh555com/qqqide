@@ -259,8 +259,9 @@ async function _tryRepairQuestDirName(root, questId, numericId, dbTitle, _knownN
 }
 
 // ── 启动时批量修复：单次 list 构建前缀映射，O(n) 对齐所有 quest 目录名 ──
-var __repairDone = false;  // ★ 同一会话只跑一次（多面板各自 initQuests 会重复触发）
+var __repairDone = false;  // ★ 仅中面板执行 + 单会话一次（防 3 面板同时 rename 互斥 EPERM）
 async function _repairAllQuestDirNames(quests) {
+    if (typeof _panelId !== 'undefined' && _panelId !== 1) return;  // ★ 侧面板跳过
     if (__repairDone) return;
     __repairDone = true;
     var root = questStore.getProjectRoot();
@@ -546,24 +547,52 @@ document.getElementById('ctx-compress').onclick = async function () {
     if (_ag._compressing) return;
     _ag._compressing = true;
     window._updateSendBtnForCompress(true);
-    var _reason = 'Manual compress (user triggered)';
-    _ag._renderCompressStart(_reason);  // ★ 推入 conversation（永久记录）
+    var _questName = (typeof questActiveId !== 'undefined') ? questActiveId : '?';
+
+    // ★ 专用压缩楼层：上文 = 上一楼层末尾，压缩楼层 = user(原因) + assistant(结果)，下文 = 用户下一轮
+    _ag._ctx.totalFloors++;
+    var _compressFloorNum = _ag._ctx.totalFloors;
+    _ag._floorStartIdx = _ag.conversation.length;  // 本楼层起点
+    _ag._floorTiming = { networkMs: 0, aiMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (_ag._serverDrift || 0) };
+    _ag._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ((typeof _panelId !== 'undefined') ? ['_L', '_C', '_R'][_panelId] || '' : '');
+    var _now = new Date();
+    var _ts = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0') + ' ' + String(_now.getHours()).padStart(2,'0') + ':' + String(_now.getMinutes()).padStart(2,'0') + ':' + String(_now.getSeconds()).padStart(2,'0');
+    var _userMsg = _ts + ' · Compress requested (manual trigger)';
+    _ag.conversation.push({ role: 'user', content: _userMsg, _floor: _compressFloorNum });
+    _ag._lastUserInput = { text: _userMsg, vision: '' };
+
     var _compressQoast = null;
-    var _compressingText = (typeof _i === 'function') ? _i('ai.compressing', '🧠 压缩中...') : '🧠 Compressing...';
+    var _compressingText = '🧠 Compressing ' + _questName + '...';
     try { if (window.parent && window.parent.qqqideQoast) _compressQoast = window.parent.qqqideQoast.show(_compressingText, { type: 'info', duration: 0 }); } catch (_) { }
     try {
-        var _result = await _ag._compressContext({ trigger: 'manual', detail: _reason, force: true });
-        _ag._renderCompressResult(_result);  // ★ 推入 conversation（永久记录）
-        // 关闭"压缩中"qoast
+        var _result = await _ag._compressContext({ trigger: 'manual', detail: _userMsg, force: true });
         if (_compressQoast) { try { _compressQoast.dismiss(); } catch (_) { } _compressQoast = null; }
+        // ★ 压缩耗时入 timing（网络=三个API的总网络时间，思考=总时间-网络）
+        _ag._floorTiming.networkMs = _result.elapsedMs || 0;
+        _ag._floorTiming.aiMs = 0;
+        // ★ 结果作为 assistant 消息推入同楼层
+        var _assistantMsg = _result.compressed
+            ? ('✅ Compress completed\n' + _result.detail)
+            : ('ℹ️ ' + (_result.detail || 'No compression needed'));
+        _ag.conversation.push({ role: 'assistant', content: _assistantMsg, _floor: _compressFloorNum });
+        // ★ 持久化：保存这个压缩楼层
+        if (typeof _saveAgentQuestData === 'function') {
+            await _saveAgentQuestData(questActiveId, _ag, _ag._floorStartIdx).catch(function () { });
+        }
+        // ★ 刷新 card-pool 显示压缩楼层
+        try { if (typeof cardPool !== 'undefined' && cardPool.refreshCard) { await cardPool.refreshCard(questActiveId); } } catch (_) { }
         if (_result.compressed) {
-            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✅ ' + _result.detail.replace(/\n/g, ' | '), { type: 'info', duration: 5000 }); } catch (_) { }
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✅ Compress done: ' + _result.detail.replace(/\n/g, ' | '), { type: 'info', duration: 5000 }); } catch (_) { }
         } else {
-            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('ℹ️ ' + (_result.detail || '无需压缩'), { type: 'info', duration: 4000 }); } catch (_) { }
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('ℹ️ ' + (_result.detail || 'No compression needed'), { type: 'info', duration: 4000 }); } catch (_) { }
         }
         updateCtxBtn();
     } catch (e) {
-        _ag._renderCompressResult({ compressed: false, detail: 'Exception: ' + (e.message || 'unknown'), beforeTokens: 0, afterTokens: 0, elapsedMs: 0 });
+        _ag.conversation.push({ role: 'assistant', content: '✗ Compress failed: ' + (e.message || 'unknown'), _floor: _compressFloorNum });
+        if (typeof _saveAgentQuestData === 'function') {
+            await _saveAgentQuestData(questActiveId, _ag, _ag._floorStartIdx).catch(function () { });
+        }
+        try { if (typeof cardPool !== 'undefined' && cardPool.refreshCard) { await cardPool.refreshCard(questActiveId); } } catch (_) { }
         if (_compressQoast) { try { _compressQoast.dismiss(); } catch (_) { } _compressQoast = null; }
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✗ Compress exception: ' + (e.message || 'unknown'), { type: 'error', duration: 8000 }); } catch (_) { }
     } finally {

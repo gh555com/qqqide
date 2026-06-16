@@ -761,3 +761,23 @@ window._updateA1Row1 = _updateA1Row1;
 window.drawPie = drawPie;
 window._showPieTooltip = _showPieTooltip;
 window._hidePieTooltip = _hidePieTooltip;
+
+// ═══ 崩溃防护：窗口关闭前尽力保存当前楼层/压缩状态 ═══
+window.addEventListener('beforeunload', function () {
+    var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    var _qid = (typeof questActiveId !== 'undefined') ? questActiveId : null;
+    if (!_ag || !_qid) return;
+    // 修复孤儿（同步，不依赖 async）
+    if (typeof _ag._repairOrphanedToolCalls === 'function') {
+        try { _ag._repairOrphanedToolCalls(); } catch (_) { }
+    }
+    // fire-and-forget 保存（不 await，浏览器会尽力完成 IPC）
+    if (typeof _saveAgentQuestData === 'function') {
+        try { _saveAgentQuestData(_qid, _ag, _ag._floorStartIdx || 0).catch(function () { }); } catch (_) { }
+    }
+    // 压缩中 → 尽力回滚快照（不保证完成），标记异常供下次启动修复
+    if (_ag._compressing && _ag._ctx) {
+        _ag._uncleanShutdown = true;
+        try { console.warn('[beforeunload] agent was compressing — marked unclean'); } catch (_) { }
+    }
+});

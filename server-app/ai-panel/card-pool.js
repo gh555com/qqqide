@@ -254,9 +254,8 @@ var CardPool = (function () {
           parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">⚡</span> 引导信息</div><div class="msg-flow-guide-body">' + _escHtml(m._guideText) + '</div></div>');
         }
         var _ackText = (m.content || '已收到引导').replace(/^✅\s*/, '').trim();
-        if (_ackText) {
-          parts.push('<div class="msg-flow-guide-ack"><div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> 已收到引导</div><div class="msg-flow-guide-ack-body">' + _escHtml(_ackText) + '</div></div>');
-        }
+        // ★ 始终渲染绿条（即使 _ackText 为空也显示占位，防止空洞）
+        parts.push('<div class="msg-flow-guide-ack"><div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> 已收到引导</div><div class="msg-flow-guide-ack-body">' + _escHtml(_ackText || '已收到引导') + '</div></div>');
       } else if (m._injected && m.role === 'user') {
         // 降级注入消息（如 [GUIDE] 注入）
         var _injText = String(m.content || '').replace(/^\[GUIDE\]\s*/, '').trim();
@@ -267,12 +266,6 @@ var CardPool = (function () {
         // ★ 错误消息持久化：统一红框，一次渲染永久不变
         var _errText = (m.content || '⚠️ 楼层异常中断，对话已保存。');
         parts.push('<div class="msg msg-error" style="white-space:pre-wrap">' + _escHtml(_errText) + ' <a class="msg-err-continue" href="#" data-i18n="ai.error.continueTask">继续任务</a></div>');
-      } else if (m._compressRecord) {
-        // ★ 压缩记录持久化：灰框，上文-压缩-下文占位
-        var _cText = (m.content || '');
-        var _cPhase = m._compressPhase || '';
-        var _cClass = _cPhase === 'start' ? 'msg-flow-compress-start' : (_cPhase === 'result' ? 'msg-flow-guide' : 'msg-flow-system');
-        parts.push('<div class="' + _cClass + '" style="white-space:pre-wrap;padding:4px 10px;margin:2px 0;font-size:12px;color:var(--base01);">' + _escHtml(_cText) + '</div>');
       } else if (m.role === 'assistant' && !m.tool_calls && typeof m.content === 'string' && m.content) {
         // 普通 AI 文字回复（数据已在 EnvelopeStripper 清洗，直接渲染）
         var _rm = window.renderMarkdown;

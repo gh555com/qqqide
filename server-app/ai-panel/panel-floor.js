@@ -335,6 +335,7 @@ async function _restoreAgentFromStore(questId, ag) {
             ag._lastApiPromptTokens = data.lastApiPromptTokens || 0;
             ag._lastApiTotalTokens = data.lastApiTotalTokens || 0;
             ag._lastTier = data.lastTier || null;
+            ag._uncleanShutdown = data.uncleanShutdown || false;
             ag._ctx.lastCompressedFloor = (data.ctx && data.ctx.lastCompressedFloor) || 0;
             ag._ctx.floorArchives = (data.ctx && data.ctx.floorArchives) || [];
             ag._floorTimings = data.floorTimings || [];
@@ -347,11 +348,20 @@ async function _restoreAgentFromStore(questId, ag) {
             ag._lastApiPromptTokens = 0;
             ag._lastApiTotalTokens = 0;
             ag._lastTier = null;
+            ag._uncleanShutdown = false;
             ag._ctx.lastCompressedFloor = 0;
             ag._ctx.floorArchives = [];
             ag._floorTimings = [];
             ag._serverDrift = 0;
             _queue = [];
+        }
+        // ★ 崩溃恢复：上次关闭时正在压缩 → 修复可能的半成品状态
+        if (ag._uncleanShutdown) {
+            ag._uncleanShutdown = false;
+            console.warn('[restore] unclean shutdown detected — repairing');
+            if (typeof ag._repairOrphanedToolCalls === 'function') {
+                try { ag._repairOrphanedToolCalls(); } catch (_) { }
+            }
         }
         // [silent] restored agent state
     } catch (e) {

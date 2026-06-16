@@ -309,6 +309,7 @@ var AgentLoop = (function () {
         this._guidePending = false;
         this._guideMessage = '';
         this._abortedByGuide = false;
+        this._deferredFinalMsg = null;  // 引导中断时暂存的最终回复
         // ★ 楼层看门狗：防断头中断
         this._floorKilled = false;
         this._floorCompletedCleanly = false;
@@ -473,9 +474,9 @@ var AgentLoop = (function () {
             self._stallCount = 0;
             self._stallWarned = false;
         }
-        // ★ 工具循环检测：连续 3 个 house 调同一批工具（同 name + 同 args）且零文本产出 → 死循环
-        //    覆盖 read_file / search_text / find_files / list_files / fetch_webpage 等一切工具
-        if (!allNoProgress && self._houses.length >= 3) {
+        // ★ 工具循环检测：连续 3 个 house 调同一批工具（同 name + 同 args）→ 死循环
+        //    无论结果是否 [ALREADY READ] 都要检测 —— 反复同工具本身就是死循环
+        if (self._houses.length >= 3) {
             var _last3 = self._houses.slice(-3);
             var _allTools = _last3.every(function (h) { return h.type === 'tools'; });
             if (_allTools) {
@@ -667,7 +668,7 @@ var AgentLoop = (function () {
         if (typeof window !== 'undefined') { window._qqqReadFilesThisFloor = {}; window._qqqEnoentCache = {}; window._qqqPathResolve = {}; }  // ★ 去重 + ENOENT + 路径纠错：每层楼复位
 
         try {
-            while (maxIterations-- > 0 && !self._sendTerminated) {
+            while (maxIterations-- > 0 && !self._sendTerminated && !self._floorKilled) {
                 // ═══ 引导确认回合：不中断楼层，立即让 AI 回复确认 ═══
                 if (self._guidePending && self._guideMessage) {
                     self._guidePending = false;
@@ -712,7 +713,7 @@ var AgentLoop = (function () {
                             .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
                             .replace(/<\/?think(ing)?>/gi, '')
                             .replace(/<qqq_tool_call>[\s\S]*?<\/qqq_tool_call>/gi, '')
-                            .replace(/<[^>]+>[\s\S]*?<\/[^>]+>/g, '')
+                            .replace(/<\/?think>|<\/?thinking>|<qqq_tool_call>|<\/qqq_tool_call>/gi, '')
                             .replace(/\n{3,}/g, '\n\n')
                             .trim();
                         if (!_cleanAck || _cleanAck.length < 3) _cleanAck = 'Guide received';
@@ -721,13 +722,19 @@ var AgentLoop = (function () {
                         self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], summary: '', ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString() });
                         // ★ 更新绿条标记：两行格式，✅ 已收到引导 / 确认内容
                         var _aiDiv2 = self._activeAiDiv;
+                        var _esc = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+                        var _ackDisplay = _cleanAck.slice(0, 200);
                         if (_aiDiv2 && _aiDiv2._guideMarker) {
                             _aiDiv2._guideMarker.style.cssText = '';
-                            var _ackDisplay = _cleanAck.slice(0, 200);
-                            var _esc = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
                             _aiDiv2._guideMarker.className = 'msg-flow-guide-ack';
                             _aiDiv2._guideMarker.innerHTML = '<div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> Guide received</div><div class="msg-flow-guide-ack-body">' + _esc(_ackDisplay) + '</div>';
                             _aiDiv2._guideMarker = null;
+                        } else if (_aiDiv2 && _aiDiv2._contentWrap) {
+                            // ★ 兜底：marker 丢失时创建新的确认块（防绿条空洞）
+                            var _ackEl = document.createElement('div');
+                            _ackEl.className = 'msg-flow-guide-ack';
+                            _ackEl.innerHTML = '<div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> Guide received</div><div class="msg-flow-guide-ack-body">' + _esc(_ackDisplay) + '</div>';
+                            _aiDiv2._contentWrap.appendChild(_ackEl);
                         }
                         if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                         self._log('✅ guide ack: ' + _ackResp.content.slice(0, 120));
@@ -735,26 +742,42 @@ var AgentLoop = (function () {
                         // 引导回合 AI 返回工具调用（noTools=true 下不应发生）
                         self.conversation.pop();
                         self._log('⚠ guide ack: AI returned tool_calls despite noTools, cleared');
-                        // ★ 清除绿条标记
+                        // ★ 显示失败状态（替代空条）
                         var _aiDiv3 = self._activeAiDiv;
                         if (_aiDiv3 && _aiDiv3._guideMarker) {
                             _aiDiv3._guideMarker.style.cssText = '';
-                            _aiDiv3._guideMarker.innerHTML = '';
+                            _aiDiv3._guideMarker.className = 'msg-flow-guide';
+                            _aiDiv3._guideMarker.innerHTML = '<span class="msg-flow-icon">⚠️</span> 引导确认异常，已跳过';
                             _aiDiv3._guideMarker = null;
                         }
                     } else {
-                        // 网络错误或其他异常 → 移除 prompt，清除标记，不阻塞
+                        // 网络错误或其他异常 → 移除 prompt，标记失败，不阻塞
                         self.conversation.pop();
                         self._log('⚠ guide ack: no valid response, skipped');
                         var _aiDiv4 = self._activeAiDiv;
                         if (_aiDiv4 && _aiDiv4._guideMarker) {
                             _aiDiv4._guideMarker.style.cssText = '';
-                            _aiDiv4._guideMarker.innerHTML = '';
+                            _aiDiv4._guideMarker.className = 'msg-flow-guide';
+                            _aiDiv4._guideMarker.innerHTML = '<span class="msg-flow-icon">⚠️</span> 引导确认超时，已跳过';
                             _aiDiv4._guideMarker = null;
                         }
                     }
-                    // 确认回合结束 → 继续正常 while 循环
+                    // 确认回合结束 → 恢复被延迟的最终回复（若有）
                     onGuideAckDone();
+                    if (self._deferredFinalMsg) {
+                        var _restoredContent = self._deferredFinalMsg.content;
+                        self.conversation.push(self._deferredFinalMsg);
+                        self._deferredFinalMsg = null;
+                        self._log('↩ deferred final msg restored after guide ack');
+                        // 计费
+                        var _costGe = self._floorCostWge / 10000;
+                        self.totalCostGe += _costGe;
+                        self._lastCostDisplay = _costGe < 0.001 ? '<0.001' : _costGe.toFixed(4);
+                        onCost(self._lastCostDisplay, self.totalCostGe, self._floorFree);
+                        self._floorCompletedCleanly = true;
+                        onDone(_restoredContent, self._floorTiming);
+                        return _restoredContent;
+                    }
                     continue;
                 }
 
@@ -802,7 +825,8 @@ var AgentLoop = (function () {
                     onReasoning: onReasoning,
                     onError: onError,
                     tier: tier,
-                    noTools: forceNoTools
+                    noTools: forceNoTools,
+                    forceNoTools: forceNoTools
                 });
 
                 if (!response) {
@@ -852,8 +876,9 @@ var AgentLoop = (function () {
                         // 暂存当前回复的 conversation 消息（已流式输出给用户，不丢）
                         var _deferredMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
                         if (response.reasoning_content) _deferredMsg.reasoning_content = response.reasoning_content;
-                        // 不 push 到 conversation（引导确认回合会 pop 掉多余消息）
-                        // 不调用 onDone（等引导确认后再重新获取最终回复）
+                        // ★ 暂存到 agent，等引导确认回合结束后 push 回 conversation
+                        self._deferredFinalMsg = _deferredMsg;
+                        // 不调用 onDone（等引导确认后再处理最终回复）
                         maxIterations++;  // 不消耗迭代配额
                         continue;  // 回到循环顶部 → 触发引导确认回合
                     }
@@ -883,6 +908,12 @@ var AgentLoop = (function () {
                 }
 
                 if (response.type === 'tool_calls') {
+                    // ★ forceNoTools 兜底：tools 已从请求中删除，若 AI 仍吐出 tool_calls → 丢弃
+                    if (forceNoTools) {
+                        self._log('⚠ forceNoTools: AI returned tool_calls despite no tools in request, dropping');
+                        self.conversation.push({ role: 'user', content: '[System: Give your final text answer now based on what you have. Do not call any tools.]', _floor: self._ctx.totalFloors });
+                        continue;
+                    }
                     var _tools = response.tool_calls.map(function (tc) { return { name: tc.function.name, args: tc.function.arguments }; });
                     var _bill2 = self._lastBilling; self._lastBilling = null;
                     var _cd2 = self._lastCacheDiag; self._lastCacheDiag = null;
@@ -1361,12 +1392,18 @@ var AgentLoop = (function () {
         };
 
         // ★ 始终发送工具定义：即使 noTools 为 true，也要传 tools 防止模型退化为文本格式
+        //    例外：forceNoTools（stall=8 强制终止）→ 直接砍掉 tools，模型无从调用
         if (typeof getTools === 'function') {
             var _tools = getTools();
             if (_tools && _tools.length) {
-                body.tools = _tools;
-                if (noTools) {
-                    body.tool_choice = 'none';  // 模型支持 tool_choice，禁用工具调用但保留格式
+                if (noTools && opts.forceNoTools) {
+                    // forceNoTools → 不传 tools，模型无法调用工具
+                    body.tool_choice = 'none';
+                } else {
+                    body.tools = _tools;
+                    if (noTools) {
+                        body.tool_choice = 'none';  // 非强制 noTools：保留工具定义但禁用调用
+                    }
                 }
             }
         }
@@ -2065,8 +2102,7 @@ var AgentLoop = (function () {
         var _escHtml = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
         var _now = new Date();
         var _ts = _now.getFullYear() + '-' + String(_now.getMonth() + 1).padStart(2, '0') + '-' + String(_now.getDate()).padStart(2, '0') + ' ' + String(_now.getHours()).padStart(2, '0') + ':' + String(_now.getMinutes()).padStart(2, '0') + ':' + String(_now.getSeconds()).padStart(2, '0');
-        // ★ 永久记录：推入 conversation（重启可见）
-        this.conversation.push({ role: 'system', content: _ts + ' ' + reason, _compressRecord: true, _compressPhase: 'start', _floor: (this._ctx && this._ctx.totalFloors) || 0 });
+        // ★ auto 压缩卡片（仅在活跃楼层渲染，不推 conversation——手动压缩已用专用楼层）
         if (_aiDiv && _aiDiv._contentWrap) {
             var _startCard = document.createElement('div');
             _startCard.className = 'msg-flow-compress-start';
@@ -2085,9 +2121,7 @@ var AgentLoop = (function () {
     AgentLoop.prototype._renderCompressResult = function (result) {
         var _aiDiv = this._activeAiDiv;
         var _escHtml = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
-        var _summary = result.compressed ? '✅ Compress completed' : (result.detail || 'Compress result');
-        // ★ 永久记录：推入 conversation（重启可见）
-        this.conversation.push({ role: 'system', content: _summary + '\n' + (result.detail || ''), _compressRecord: true, _compressPhase: 'result', _floor: (this._ctx && this._ctx.totalFloors) || 0 });
+        // ★ auto 压缩结果卡片（仅在活跃楼层渲染）
         if (_aiDiv && _aiDiv._compressMarker) {
             var _marker = _aiDiv._compressMarker;
             _aiDiv._compressMarker = null;

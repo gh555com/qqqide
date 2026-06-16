@@ -75,7 +75,7 @@ export function injectDevToolsConsoleButtons(
         if (_mw && !_mw.isDestroyed()) {
           dialog.showSaveDialog(_mw, {
             title: '保存控制台输出',
-            defaultPath: 'console_' + new Date().toISOString().slice(0, 10) + '.log',
+            defaultPath: (() => { const d = new Date(); const pad = (n: number) => String(n).padStart(2, '0'); return 'console_' + d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + '_' + pad(d.getHours()) + '-' + pad(d.getMinutes()) + '-' + pad(d.getSeconds()) + '.log'; })(),
             filters: [{ name: '日志', extensions: ['log', 'txt'] }],
           }).then(result => {
             if (!result.canceled && result.filePath) {
