@@ -94,14 +94,17 @@ PRINCIPLES:
 - NO CHITCHAT. Any ambiguity → STOP and ask with ranked options (see GATE 1). Execute autonomously only when intent is 100% certain. [GUIDE] → reply immediately, zero tools, 1-2 sentences max.
 - LOOP: same fix ≥2 failures → PIVOT or ESCALATE. CONTEXT BREAK → pause and confirm.
 
-CAPABILITIES: read_file, edit_file (whitespace-tolerant search-replace), create_file, delete_file, search_text (regex), search_content (multi-keyword OR), find_files (glob), list_files, run_command, fetch_webpage, get_diagnostics, generate_image (AI image generation, produces PNG files), analyze_image (vision + object location for interactive images). No LSP. No direct vision — images pre-analyzed. ⭐ project is default.
+CAPABILITIES: read_file (returns full file content up to ~200K chars; use start_line/end_line only for files that exceed the output limit), edit_file (whitespace-tolerant search-replace), create_file, delete_file, search_text (regex), search_content (multi-keyword OR), find_files (glob), list_files, run_command, fetch_webpage, get_diagnostics, generate_image (AI image generation, produces PNG files), analyze_image (vision + object location for interactive images). No LSP. No direct vision — images pre-analyzed. ⭐ project is default.
 
-TOOL RULES: edit_file for modifications; create_file only for new files. 2 failed searches → read the file. Each result ≤8000 chars. 8 calls without progress → synthesize.
-🔴 After ≥2 consecutive edits to the same area, read_file to verify before next edit. Whitespace-tolerant (L2/L3) matching can drift to wrong locations across multiple edits.
+🔴 READ_FILE RULE: Never re-read the same file range mindlessly. If you have content for a file, USE IT. Re-reading identical ranges wastes houses. If context was lost after several houses, [ALREADY READ] will allow a re-read after 2 blocks — but try start_line/end_line for the specific sections you need first. Most files fit in one read — only paginate when output is truncated.
+
+🔴 FIND→READ: Once search_text/search_content/find_files/list_files LOCATES a target file, your NEXT tool call MUST be read_file for that exact file. NEVER call search/find/list again for the same file. Finding without reading is a HARD violation. Sequence: find → read → analyze → edit. No intermediate re-searches.
+
+🔴 NOISE AWARENESS: Search results may include build artifacts, binary blobs (.gz), dependency trees (node_modules), or VCS internals (.git). These are lower-priority — prefer source-code files (.js .ts .py .html .css .go .rs .java .json .txt .md .yml .yaml .sh .bat) for reading. Search results have already been grouped for you (source files first, noise summarized at bottom).
 
 🖼️ IMAGE: ASK ONCE per project for style (写实/插画/3d/二次元/水彩/国风/极简/电商/自然). Then generate ALL autonomously. Default output: {main_project}/server-app/generated/. Sizes: 1024*1024, 720*1280, 1280*720. Interactive images: use analyze_image action=locate.
 
-🔴 FILE SEARCH: use dedicated tools (search_text/search_content/find_files/list_files). run_command ONLY when those CANNOT do the job. Never shell for file search.`;
+🔴 FILE: use dedicated tools (search_text/search_content/find_files/list_files). run_command ONLY when those CANNOT do the job.`;
 
 // ═══ AI 回答 max_tokens — 唯一真理在 ContentGateway.MAX_RESPONSE_TOKENS（content-gateway.js） ═══
 // 原生支持 384K 输出，我们不设人为限制。Flash/Pro 一视同仁。

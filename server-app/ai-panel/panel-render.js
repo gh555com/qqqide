@@ -233,8 +233,15 @@ function addMessageEl(role, content) {
 
 function setStreaming(val) {
     streaming = val;
-    if (_activeAgent && _activeAgent._compressing) {
-        $sendBtn.textContent = '⏳';
+    // ★ Stop 闭环：三态 UX（IDLE / SENDING / STOPPING）
+    //   val=true 表示流式输出中；_stopState 仅用于 TOPPING 覆盖
+    var _state = _activeAgent ? _activeAgent._stopState : 'idle';
+    if (_state === 'stopping') {
+        $sendBtn.textContent = '....';
+        $sendBtn.className = 'stop';
+        $sendBtn.disabled = true;
+    } else if (_activeAgent && _activeAgent._compressing) {
+        $sendBtn.textContent = '\u23f3';
         $sendBtn.className = 'compressing';
         $sendBtn.disabled = true;
     } else {
@@ -246,7 +253,7 @@ function setStreaming(val) {
     // 彗星环绕：streaming 时点亮 tofu 编号
     var tofu = document.getElementById('quest-tofu');
     if (tofu) {
-        if (val) tofu.classList.add('quest-running');
+        if (val && _state !== 'stopping') tofu.classList.add('quest-running');
         else tofu.classList.remove('quest-running');
     }
 }

@@ -48,6 +48,205 @@
     var $btnAcceptLeft = document.getElementById('btn-accept-left');
     var $btnSaveLast = document.getElementById('btn-save-last');
 
+    // ═══ 文件搜索历史 + 模糊匹配 ═══
+    var $inputWrap = document.getElementById('input-wrap');
+    var $btnHistory = document.getElementById('btn-history');
+    var $fuzzyDropdown = document.getElementById('fuzzy-dropdown');
+    var $fuzzyList = document.getElementById('fuzzy-list');
+    var _fileHistory = [];       // 最近搜索历史 [{path, ts}]
+    var _historyLoaded = false;
+    var _fuzzyIdx = -1;          // 当前高亮索引
+    var _fuzzyVisible = false;
+    var HISTORY_KEY = 'fileHistory';
+    var HISTORY_MAX = 50;
+
+    // 加载历史
+    (async function _loadHistory() {
+        try {
+            if (bridge && bridge.state) {
+                var raw = await bridge.state.get(_PREF_NS, HISTORY_KEY);
+                if (Array.isArray(raw)) _fileHistory = raw;
+            }
+        } catch (_) { }
+        _historyLoaded = true;
+    })();
+
+    // 保存历史（去重 + 限长 + 新在前）
+    function _addHistory(filePath) {
+        if (!filePath) return;
+        // 去重：移除同路径旧条目
+        _fileHistory = _fileHistory.filter(function (h) { return h.path !== filePath; });
+        _fileHistory.unshift({ path: filePath, ts: Date.now() });
+        if (_fileHistory.length > HISTORY_MAX) _fileHistory.length = HISTORY_MAX;
+        _saveHistory();
+    }
+
+    var _saveHistoryTimer = 0;
+    function _saveHistory() {
+        clearTimeout(_saveHistoryTimer);
+        _saveHistoryTimer = setTimeout(function () {
+            try {
+                if (bridge && bridge.state) {
+                    bridge.state.setNow(_PREF_NS, HISTORY_KEY, _fileHistory.slice(0, HISTORY_MAX));
+                }
+            } catch (_) { }
+        }, 500);
+    }
+
+    // 模糊匹配：query 的每个字符按顺序在 path 中出现（大小写不敏感）
+    function _fuzzyMatch(query, path) {
+        var q = query.toLowerCase();
+        var p = path.toLowerCase();
+        var qi = 0;
+        for (var pi = 0; pi < p.length && qi < q.length; pi++) {
+            if (p[pi] === q[qi]) qi++;
+        }
+        return qi === q.length;
+    }
+
+    // 构建模糊匹配下拉
+    function _buildFuzzyList(query) {
+        $fuzzyList.innerHTML = '';
+        _fuzzyIdx = -1;
+        // _fuzzyIdxMap: DOM顺序 → _fileHistory 实际索引
+        var idxMap = [];
+        if (!query || !query.trim()) {
+            for (var i = 0; i < _fileHistory.length; i++) {
+                idxMap.push(i);
+                _appendFuzzyItem(_fileHistory[i].path, i);
+            }
+        } else {
+            var q = query.trim();
+            for (var j = 0; j < _fileHistory.length; j++) {
+                if (_fuzzyMatch(q, _fileHistory[j].path)) {
+                    idxMap.push(j);
+                    _appendFuzzyItem(_fileHistory[j].path, j);
+                }
+            }
+        }
+        _fuzzyVisible = $fuzzyList.children.length > 0;
+        $fuzzyDropdown.style.display = _fuzzyVisible ? '' : 'none';
+        // 存储映射供键盘选择使用
+        $fuzzyList._idxMap = idxMap;
+    }
+
+    function _appendFuzzyItem(path, idx) {
+        var div = document.createElement('div');
+        div.className = 'fuzzy-item';
+        div.dataset.idx = idx;
+        div.innerHTML = '<span class="fi-icon">📄</span>' + _escHtml(path);
+        div.addEventListener('mousedown', function (e) {
+            e.preventDefault(); // 防止 blur 先于 click 关闭下拉
+            _selectHistory(path);
+        });
+        $fuzzyList.appendChild(div);
+    }
+
+    function _highlightFuzzy(idx) {
+        var items = $fuzzyList.querySelectorAll('.fuzzy-item');
+        for (var i = 0; i < items.length; i++) {
+            items[i].classList.toggle('active', i === idx);
+            if (i === idx) items[i].scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    function _selectHistory(path) {
+        $titleInput.value = path;
+        _closeFuzzy();
+        _openFileByPath(path);
+    }
+
+    function _closeFuzzy() {
+        _fuzzyVisible = false;
+        _fuzzyIdx = -1;
+        $fuzzyDropdown.style.display = 'none';
+    }
+
+    // 打开文件（按路径加载版本）
+    function _openFileByPath(filePath) {
+        if (!filePath) return;
+        FILE_PATH = filePath;
+        $titleInput.value = filePath;
+        $titleInput.title = filePath;
+        _addHistory(filePath);
+        // 通知主进程更新 diffWindows 映射
+        try { if (bridge && bridge.timeline && bridge.timeline.setPath) bridge.timeline.setPath(filePath); } catch (_) { }
+        loadVersions(filePath);
+    }
+
+    // ▼ 历史按钮：切换下拉
+    if ($btnHistory) {
+        $btnHistory.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (_fuzzyVisible) {
+                _closeFuzzy();
+            } else {
+                _buildFuzzyList('');
+            }
+        });
+    }
+
+    // 输入框事件
+    if ($titleInput) {
+        // Enter 键：打开文件
+        $titleInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (_fuzzyVisible && _fuzzyIdx >= 0) {
+                    // 选中下拉项：通过 idxMap 找到 _fileHistory 实际索引
+                    var idxMap = $fuzzyList._idxMap || [];
+                    var realIdx = idxMap[_fuzzyIdx];
+                    if (typeof realIdx === 'number' && _fileHistory[realIdx]) {
+                        _selectHistory(_fileHistory[realIdx].path);
+                    }
+                } else {
+                    _closeFuzzy();
+                    _openFileByPath($titleInput.value.trim());
+                }
+                return;
+            }
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!_fuzzyVisible) { _buildFuzzyList($titleInput.value); }
+                var items = $fuzzyList.querySelectorAll('.fuzzy-item');
+                if (items.length) {
+                    _fuzzyIdx = Math.min(_fuzzyIdx + 1, items.length - 1);
+                    _highlightFuzzy(_fuzzyIdx);
+                }
+                return;
+            }
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (_fuzzyVisible) {
+                    _fuzzyIdx = Math.max(_fuzzyIdx - 1, 0);
+                    _highlightFuzzy(_fuzzyIdx);
+                }
+                return;
+            }
+            if (e.key === 'Escape') {
+                _closeFuzzy();
+                return;
+            }
+        });
+
+        // 输入时模糊匹配
+        $titleInput.addEventListener('input', function () {
+            _buildFuzzyList($titleInput.value);
+        });
+
+        // 聚焦时显示历史
+        $titleInput.addEventListener('focus', function () {
+            if (!_fuzzyVisible) _buildFuzzyList($titleInput.value);
+        });
+
+        // 点击外部关闭下拉
+        document.addEventListener('click', function (e) {
+            if (_fuzzyVisible && $inputWrap && !$inputWrap.contains(e.target)) {
+                _closeFuzzy();
+            }
+        });
+    }
+
     // ═══ 窗口控制 ═══
     var $btnMax = document.getElementById('btn-max');
     if ($btnMax) $btnMax.addEventListener('click', function () {
@@ -84,6 +283,8 @@
     // ═══ 监听主进程推送 diff 更新（同文件再次点击 A4 时复用窗口） ═══
     if (bridge && bridge.timeline && bridge.timeline.onDiffUpdate) {
         bridge.timeline.onDiffUpdate(function (data) {
+            // 仅当推送的文件路径与当前一致时才处理（用户可能已切换到其他文件）
+            if (data.filePath && data.filePath !== FILE_PATH) return;
             _markedBefore = data.beforeBlobHash || '';
             _markedAfter = data.afterBlobHash || '';
             loadVersions(FILE_PATH);

@@ -48,11 +48,9 @@ document.getElementById('rules-edit').onclick = async function () {
 };
 
 function stopStream() {
-    if (!_activeAgent || _activeAgent._compressing) return;
-    try { _activeAgent.abort(true); } catch (_) { }  // ★ userKill=true → 看门狗不触发
-    if (_activeAgent._activeAiDiv) _activeAgent._activeAiDiv._renderScheduled = false;
-    _sending = false;
-    setStreaming(false);
+    // ★ 终极 Stop 闭环：单一入口 agent.stop() → _stopCtrl 级联中断一切 async 操作
+    //   UX (按钮/A3时钟/队列/持久化) 由 panel-send.js finally 块统一处理
+    if (_activeAgent) _activeAgent.stop();
 }
 
 // ═══ All.txt streaming (per-floor) ═══

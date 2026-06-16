@@ -67,6 +67,8 @@
     // 返回: { compressed: true|false, detail: string, beforeTokens: number, afterTokens: number, elapsedMs: number }
     AgentLoop.prototype._compressContext = async function (reason) {
         var self = this;
+        // ★ Stop 守卫：用户点停止后立即跳过压缩
+        if (self._stopCtrl && self._stopCtrl.signal.aborted) return { compressed: false, detail: '用户已停止', beforeTokens: 0, afterTokens: 0, elapsedMs: 0 };
         var totalEst = self._estimateTotalTokens();
         // ★ 优先用 _lastApiTotalTokens（prompt+completion 精确值），fallback 到 prompt_tokens
         var dsTokens = self._lastApiTotalTokens || self._lastApiPromptTokens || 0;
@@ -76,13 +78,13 @@
         // 自动模式：任一指标超 900k → 触发；两个都没超 → 跳过
         if (!_force) {
             if (totalEst <= TOKEN_BUDGET && dsTokens <= TOKEN_BUDGET) {
-                return { compressed: false, detail: '无需压缩（' + Math.round(beforeTokens/1000) + 'k < ' + Math.round(TOKEN_BUDGET/1000) + 'k）', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
+                return { compressed: false, detail: '无需压缩（' + Math.round(beforeTokens / 1000) + 'k < ' + Math.round(TOKEN_BUDGET / 1000) + 'k）', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
             }
         } else {
             // 手动模式：50k 最低门槛
             var MIN_MANUAL_TOKENS = 50000;
             if (beforeTokens < MIN_MANUAL_TOKENS) {
-                return { compressed: false, detail: '上下文仅 ' + Math.round(beforeTokens/1000) + 'k，未达手动压缩最低门槛 ' + Math.round(MIN_MANUAL_TOKENS/1000) + 'k', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
+                return { compressed: false, detail: '上下文仅 ' + Math.round(beforeTokens / 1000) + 'k，未达手动压缩最低门槛 ' + Math.round(MIN_MANUAL_TOKENS / 1000) + 'k', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
             }
         }
 
@@ -158,7 +160,7 @@
             self.log('\u25C6 Context: done — ' + coldMsgs.length + ' msgs removed, ' + self.conversation.length + ' msgs kept');
             return {
                 compressed: true,
-                detail: '压缩 ' + coldMsgs.length + ' 条消息 → ' + self.conversation.length + ' 条保留\n上下文: ' + Math.round(beforeTokens/1000) + 'k → ' + Math.round(_afterEst/1000) + 'k tokens (节省 ' + Math.round(_saved/1000) + 'k)\nFacts: ' + self._ctx.facts.length + ' 条 | Narrative: ' + (self._ctx.narrative ? self._ctx.narrative.length : 0) + ' chars\n耗时: ' + (_elapsed/1000).toFixed(1) + 's',
+                detail: '压缩 ' + coldMsgs.length + ' 条消息 → ' + self.conversation.length + ' 条保留\n上下文: ' + Math.round(beforeTokens / 1000) + 'k → ' + Math.round(_afterEst / 1000) + 'k tokens (节省 ' + Math.round(_saved / 1000) + 'k)\nFacts: ' + self._ctx.facts.length + ' 条 | Narrative: ' + (self._ctx.narrative ? self._ctx.narrative.length : 0) + ' chars\n耗时: ' + (_elapsed / 1000).toFixed(1) + 's',
                 beforeTokens: beforeTokens,
                 afterTokens: _afterEst,
                 elapsedMs: _elapsed
@@ -174,7 +176,7 @@
             self.log('\u2717 Context: compress FAILED — ' + (digestErr.message || digestErr) + ' — rolled back');
             return {
                 compressed: false,
-                detail: '压缩失败: ' + (digestErr.message || '未知错误') + '\n已回滚，消息未丢失\n耗时: ' + (_elapsed2/1000).toFixed(1) + 's',
+                detail: '压缩失败: ' + (digestErr.message || '未知错误') + '\n已回滚，消息未丢失\n耗时: ' + (_elapsed2 / 1000).toFixed(1) + 's',
                 beforeTokens: beforeTokens,
                 afterTokens: beforeTokens,
                 elapsedMs: _elapsed2
@@ -197,7 +199,7 @@
 
         var _oldFacts = (self._ctx.facts || []).slice();
         var _oldNarrative = self._ctx.narrative || '';
-        var _debugTrace = { ts: new Date().toISOString(), trigger: 'auto', input: { floors: (lastCompressedFloor||0) + '→' + self._ctx.totalFloors, coldMsgs: coldMsgs.length, coldTextPreview: coldText.slice(0, 2000), oldFacts: _oldFacts.length, oldNarrativeLen: _oldNarrative.length }, experts: {} };
+        var _debugTrace = { ts: new Date().toISOString(), trigger: 'auto', input: { floors: (lastCompressedFloor || 0) + '→' + self._ctx.totalFloors, coldMsgs: coldMsgs.length, coldTextPreview: coldText.slice(0, 2000), oldFacts: _oldFacts.length, oldNarrativeLen: _oldNarrative.length }, experts: {} };
 
         // ── ① facts 专家 prompt ──
         var factsPrompt = [
@@ -280,7 +282,7 @@
                 break;
             } catch (_err) {
                 if (_retry < MAX_COMPACT_RETRIES - 1) {
-                    self.log('⚠ Compact retry ' + (_retry+1) + '/' + MAX_COMPACT_RETRIES + ': ' + (_err.message || _err));
+                    self.log('⚠ Compact retry ' + (_retry + 1) + '/' + MAX_COMPACT_RETRIES + ': ' + (_err.message || _err));
                     await new Promise(function (r) { setTimeout(r, COMPACT_RETRY_BASE_MS * Math.pow(2, _retry)); });
                 } else {
                     throw _err;
@@ -462,19 +464,19 @@
             if (!_lastData) {
                 try { var _dj = JSON.parse(_bodyText); _lastData = JSON.stringify(_dj); } catch (_) { }
             }
-            if (!_lastData) { self._log('✗ Compact API no data (body=' + _bodyText.slice(0,150) + ')'); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            if (!_lastData) { self._log('✗ Compact API no data (body=' + _bodyText.slice(0, 150) + ')'); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
 
             var _chunk;
-            try { _chunk = JSON.parse(_lastData); } catch (_e) { self._log('✗ Compact JSON parse: ' + _lastData.slice(0,200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            try { _chunk = JSON.parse(_lastData); } catch (_e) { self._log('✗ Compact JSON parse: ' + _lastData.slice(0, 200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
 
             var text = _chunk.choices && _chunk.choices[0] && _chunk.choices[0].message && _chunk.choices[0].message.content;
             if (!text) { self._log('✗ Compact no content (keys=' + Object.keys(_chunk).join(',') + ')'); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
 
             var match = text.match(/\{[\s\S]*\}/);
-            if (!match) { self._log('✗ Compact no JSON: ' + text.slice(0,200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            if (!match) { self._log('✗ Compact no JSON: ' + text.slice(0, 200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
 
             var parsed;
-            try { parsed = JSON.parse(match[0]); } catch (_jsonErr) { self._log('✗ Compact JSON err: ' + match[0].slice(0,200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            try { parsed = JSON.parse(match[0]); } catch (_jsonErr) { self._log('✗ Compact JSON err: ' + match[0].slice(0, 200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
             return { parsed: parsed, ttfbMs: _ttfbMs, totalMs: _totalMs };
         } catch (err) {
             var _totalMs = performance.now() - _fetchStart;

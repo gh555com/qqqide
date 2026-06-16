@@ -344,6 +344,9 @@ var AgentLoop = (function () {
         this._floorCompletedCleanly = false;
         this._floorOnErrorCalled = false;
         this._sendTerminated = false;  // ★ onError 后强制终止 send() while 循环
+        // ★ 终极 Stop 闭环：单一真理源 + 级联信号
+        this._stopCtrl = null;          // AbortController（仅用户 Stop 时 abort，永不重建）
+        this._stopState = 'idle';       // 'idle' | 'sending' | 'stopping'
         // ★ 错误诊断探针（用于构建"继续"消息中的中断原因）
         this._exitReason = '';           // 'ok'|'http_502'|'http_503'|'http_429'|'http_402'|'fetch_error'|'watchdog_stream'|'watchdog_output'|'deadline'|'stall'|'max_iter'|'unknown'
         this._lastHttpStatus = 0;        // 最后一次 HTTP 状态码
@@ -361,11 +364,24 @@ var AgentLoop = (function () {
     }
 
     // ---- 中止 ----
-    // userKill: true = 用户点停止按钮；false/不传 = 内部中断（guide/inject 等）
+    // ★ 终极 Stop 闭环：单一真理源 _stopCtrl，仅用户 Stop 时 abort
+    //   级联信号：每轮 retry 的 _retryCtrl 通过 addEventListener 监听 _stopCtrl
+    //   效果：不管 agent-loop 在哪个重试循环深度，Stop 一掐即停
+    AgentLoop.prototype.stop = function () {
+        if (this._stopState !== 'sending') return;  // 幂等：非 SENDING 不响应
+        this._stopState = 'stopping';
+        if (this._stopCtrl) {
+            this._stopCtrl.abort();  // ★ 一掐：级联所有 _retryCtrl → 所有 fetch 立即抛 AbortError
+        }
+    };
+    // 保留旧 abort() 兼容其他调用方（guide/inject 等内部中断）
+    // userKill: true = 用户点停止按钮 → 走新 stop() 逻辑
     AgentLoop.prototype.abort = function (userKill) {
         if (userKill) {
-            this._floorKilled = true;  // ★ 看门狗：用户主动杀，不触发自动恢复
+            this.stop();  // ★ 委托新闭环
+            return;
         }
+        // 非用户中断（guide/inject）→ 只 abort 当前 fetch
         if (this.abortController) {
             this.abortController.abort();
             this.abortController = null;
@@ -484,30 +500,58 @@ var AgentLoop = (function () {
         }
     };
 
-    // ═══ 无进展计数器（硬约束：防止 AI 反复无意义搜索） ═══
+    // ═══ 阶梯式停滞检测（三层：工具循环 → 搜索停滞 → 真正空转） ═══
+    //   原则：永远不剥离工具。模型有手才能干活，砍手只能得到无法解析的文本工具调用。
     AgentLoop.prototype._resetStallCounter = function () {
         this._stallCount = 0;
         this._stallWarned = false;
+        this._searchFruitlessCount = 0;  // 搜索有结果但从不读/写
+        this._stallForceSent = false;     // force 消息只发一次
+        this._searchStallSent = false;    // T2 L1 搜索停滞警告只发一次
+        this._searchStallEscalated = false; // T2 L2 升级警告只发一次
+        this._t1ConsecutiveCount = 0;     // ★ T1 同指纹连续触发次数（≥3 终止楼层）
+        this._lastT1Fingerprint = '';     // ★ 上一次 T1 触发时的指纹
     };
-    AgentLoop.prototype._checkStall = function (toolResults) {
+    AgentLoop.prototype._checkStall = function (toolResults, toolNames, toolArgsList) {
         var self = this;
+        // ★ 入口日志：绕过 log 过滤器，直接用 console.warn 确认 _checkStall 被调到
+        console.warn('[stall-check] house=' + self._houseIndex + ' tools=' + (toolNames || []).join(',') + ' results=' + (toolResults || []).length + ' sc=' + self._stallCount + ' sfc=' + self._searchFruitlessCount);
         if (!toolResults || toolResults.length === 0) return false;
-        // 判断是否全部无进展：search_text 返回 No matches / find_files 空 / list_files 空 / 错误
-        var allNoProgress = toolResults.every(function (r) {
-            var s = typeof r === 'string' ? r : '';
-            // [ALREADY READ] 不算无进展 — 它告诉模型"已有内容，直接用"，不是失败
-            // 真正的读文件死循环由工具循环检测（同工具+同参数 3 次）拦截
-            return s.startsWith('No matches found') || s.startsWith('Error') || s === '' || s.startsWith('Tool error');
-        });
-        if (allNoProgress) {
-            self._stallCount++;
-        } else {
-            self._stallCount = 0;
-            self._stallWarned = false;
-        }
-        // ★ 工具循环检测：连续 3 个 house 调同一批工具（同 name + 同 args）→ 死循环
-        //    无论结果是否 [ALREADY READ] 都要检测 —— 反复同工具本身就是死循环
-        if (self._houses.length >= 3) {
+        if (!toolNames) toolNames = [];
+        if (!toolArgsList) toolArgsList = [];
+
+        // ── 辅助：判断单条结果是否无进展 ──
+        var _isDead = function (r) {
+            if (typeof r !== 'string') return false;  // 非字符串=有结果
+            if (r === '') return true;
+            if (/^\[ALREADY READ\]/i.test(r)) return true;  // ★ 去重拦截=无进展（内容已在对话中，重复读取无意义）
+            if (/^\[SEARCH DISABLED\]/i.test(r)) return true;  // ★ 搜索工具被禁=无进展
+            if (/^(No (matches|files|results) found)/i.test(r)) return true;
+            if (/^(Error|Tool error)/i.test(r)) return true;
+            if (/^\s*\[\s*\]\s*$/.test(r)) return true;  // JSON 空数组
+            return false;
+        };
+        // ── 辅助：判断工具是否为纯搜索（查找，不读不写） ──
+        var _isSearchTool = function (name) {
+            return name === 'search_text' || name === 'search_content' || name === 'search_file'
+                || name === 'find_files' || name === 'list_files'
+                || name === 'search_symbol' || name === 'grep_code';
+        };
+        // ── 辅助：判断工具是否为读/写（实质性操作） ──
+        var _isReadWriteTool = function (name) {
+            return name === 'read_file' || name === 'edit_file' || name === 'search_replace'
+                || name === 'create_file' || name === 'write_file' || name === 'delete_file'
+                || name === 'run_command' || name === 'run_in_terminal';
+        };
+
+        // ═══ 预判：本轮结果是否全部无进展（含 [ALREADY READ]） ═══
+        //   T1/T3 分流依据：全部 dead → 跳过 T1 工具循环检测，交给 T3 递增 stallCount
+        //   因为 [ALREADY READ] 说明模型已被去重拦截而非主动重复调用
+        var _allDead = toolResults.every(function (r) { return _isDead(r); });
+
+        // ═══ T1: 工具循环检测（3 次同工具+同参数 → 死循环） ═══
+        //   ★ 守卫：仅当 NOT 全部 dead 时才检查 —— [ALREADY READ] 循环交给 T3
+        if (!_allDead && self._houses.length >= 3) {
             var _last3 = self._houses.slice(-3);
             var _allTools = _last3.every(function (h) { return h.type === 'tools'; });
             if (_allTools) {
@@ -515,13 +559,11 @@ var AgentLoop = (function () {
                     var _fp = [];
                     for (var _ti = 0; _ti < h.tools.length; _ti++) {
                         var _t = h.tools[_ti];
-                        // 指纹 = 工具名 + 关键参数（path 归一化 \→/ 小写 + 行范围，防 AI 换格式/分块逃逸）
                         var _argsKey = '';
                         if (_t.args) {
                             _argsKey = (_t.args.path || _t.args.regex || _t.args.keyword || _t.args.command || _t.args.url || _t.args.pattern || _t.args.query || '');
                             if (_t.args.path) {
                                 _argsKey = _argsKey.replace(/\\/g, '/').toLowerCase();
-                                // 行范围也纳入指纹：读不同行 ≠ 重复
                                 if (_t.args.start_line != null) _argsKey += '|s' + _t.args.start_line;
                                 if (_t.args.end_line != null) _argsKey += '|e' + _t.args.end_line;
                             }
@@ -531,22 +573,95 @@ var AgentLoop = (function () {
                     return _fp.sort().join('\x01');
                 });
                 if (_toolFingerprints[0] && _toolFingerprints[0] === _toolFingerprints[1] && _toolFingerprints[0] === _toolFingerprints[2]) {
-                    self._log('🔁 tool-loop detected: same tool+args 3 times without output, forcing final answer');
-                    self._stallCount = 8;  // 直接跳到 force 级
-                    return 'force';
+                    self._log('⚠ T1 tool-loop: same tool+args 3 times');
+                    self._lastT1Fingerprint = _toolFingerprints[0];  // ★ 记录指纹供 handler 做连续计数
+                    return 'tool_loop';
                 }
             }
         }
-        // 5 次无进展 → 警告注入
+
+        // ═══ T2: 搜索停滞检测 → 纯信息助手，永不禁止工具永不终止 ═══
+        //   三级升级：5→10→15，每级注入更强引导信息（含已找到的文件路径）
+        var _allSearch = toolNames.length > 0 && toolNames.every(function (n) { return _isSearchTool(n); });
+        var _anySearchHasResults = toolResults.some(function (r) { return !_isDead(r); });
+        var _anyReadWrite = toolNames.some(function (n) { return _isReadWriteTool(n); });
+
+        if (_allSearch && _anySearchHasResults) {
+            self._searchFruitlessCount++;
+        } else if (_anyReadWrite) {
+            self._searchFruitlessCount = 0;
+            self._searchStallSent = false;
+            self._searchStallEscalated = false;
+        }
+        // L1: 连续 5 次纯搜索（有结果但不读）→ 温和提醒 + 路径注入
+        if (self._searchFruitlessCount >= 5 && !self._searchStallSent) {
+            self._searchStallSent = true;
+            self._log('⚠ T2 search-stagnation L1: ' + self._searchFruitlessCount + ' searches found files but never read');
+            return 'search_stall';
+        }
+        // L2: 连续 10 次 → 更强引导信息
+        if (self._searchFruitlessCount >= 10 && !self._searchStallEscalated) {
+            self._searchStallEscalated = true;
+            self._log('⚠ T2 search-stagnation L2: ' + self._searchFruitlessCount + ' searches no reads. Stronger guidance.');
+            return 'search_stall_escalate';
+        }
+        // L3: 连续 15 次 → 终极引导（永不终止，仅最强信息注入）
+        if (self._searchFruitlessCount >= 15) {
+            self._log('⚠ T2 search-stagnation L3: ' + self._searchFruitlessCount + ' searches no reads. Max guidance.');
+            return 'search_stall_escalate';  // ★ 复用 L2 的升级消息路径
+        }
+
+        // ═══ T3: 真正空转（全部结果无进展） ═══
+        if (_allDead) {
+            self._stallCount++;
+        } else {
+            self._stallCount = 0;
+        }
+        // 5 次真无进展 → 警告
         if (self._stallCount >= 5 && !self._stallWarned) {
             self._stallWarned = true;
             return 'warn';
         }
-        // 8 次无进展 → 强制终止
-        if (self._stallCount >= 8) {
+        // 8 次真无进展 → 强制（注入消息，不剥离工具）
+        if (self._stallCount >= 8 && !self._stallForceSent) {
+            self._stallForceSent = true;
             return 'force';
         }
         return false;
+    };
+
+    // ★ 从最近 N 个 house 的搜索结果中提取唯一文件路径
+    //   用于 T2 停滞消息注入：告诉模型它到底找到了哪些文件
+    AgentLoop.prototype._collectFoundFilePaths = function (maxHouses) {
+        var self = this;
+        var paths = [];
+        var seen = {};
+        var _recent = self._houses.slice(-(maxHouses || 8));
+        for (var hi = 0; hi < _recent.length; hi++) {
+            var h = _recent[hi];
+            if (!h || !h.toolResults) continue;
+            for (var ri = 0; ri < h.toolResults.length; ri++) {
+                var r = h.toolResults[ri];
+                if (typeof r !== 'string') continue;
+                // 提取看起来像文件路径的行（含盘符或斜杠）
+                var _lines = r.split('\n');
+                for (var li = 0; li < _lines.length; li++) {
+                    var line = _lines[li].trim();
+                    if (!line) continue;
+                    // 匹配绝对路径：Windows E:\... 或 Unix /...
+                    var _isPath = /^[A-Za-z]:[\\/]/.test(line) || /^\//.test(line);
+                    if (!_isPath) continue;
+                    // 排除二进制 blob 文件
+                    if (/\.gz$/i.test(line)) continue;
+                    var norm = line.replace(/\\/g, '/').toLowerCase();
+                    if (!seen[norm]) {
+                        seen[norm] = true;
+                        paths.push(line);
+                    }
+                }
+            }
+        }
+        return paths.slice(0, 12); // 最多 12 个路径
     };
 
     // ---- 清空对话 ----
@@ -695,11 +810,14 @@ var AgentLoop = (function () {
         self._floorCompletedCleanly = false;  // ★ 看门狗：只有 onDone 路径才置 true
         self._floorOnErrorCalled = false;  // ★ 看门狗：onError 回调已处理，不重复恢复
         self._sendTerminated = false;  // ★ 终止旗：onError 后强制退出 while
+        // ★ 终极 Stop 闭环：每层楼创建真理源
+        self._stopCtrl = new AbortController();
+        self._stopState = 'sending';
         self._resetStallCounter();
         if (typeof window !== 'undefined') { window._qqqReadFilesThisFloor = {}; window._qqqEnoentCache = {}; window._qqqPathResolve = {}; }  // ★ 去重 + ENOENT + 路径纠错：每层楼复位
 
         try {
-            while (maxIterations-- > 0 && !self._sendTerminated && !self._floorKilled) {
+            while (maxIterations-- > 0 && !self._sendTerminated && self._stopState === 'sending') {
                 // ═══ 引导确认回合：不中断楼层，立即让 AI 回复确认 ═══
                 if (self._guidePending && self._guideMessage) {
                     self._guidePending = false;
@@ -876,7 +994,7 @@ var AgentLoop = (function () {
                     // ★ auto-repair 不适用或已尝试 → 统一在此处报错（延迟报错，避免 UI 假死）
                     var _errMsg = self._lastGatewayMessage || '⚠️ Unexpected response. Conversation saved.';
                     self._lastGatewayMessage = '';
-                    if (!self._floorOnErrorCalled && !self._floorKilled) {
+                    if (!self._floorOnErrorCalled && self._stopState === 'sending') {
                         onError(_errMsg);
                     }
                     self._sendTerminated = true;  // ★ 强制终止 while 循环
@@ -940,10 +1058,16 @@ var AgentLoop = (function () {
 
                 if (response.type === 'tool_calls') {
                     // ★ forceNoTools 兜底：tools 已从请求中删除，若 AI 仍吐出 tool_calls → 丢弃
+                    //    例外：文本工具调用回生（ID 不以 "call_" 开头）→ 最后执行一次
                     if (forceNoTools) {
-                        self._log('⚠ forceNoTools: AI returned tool_calls despite no tools in request, dropping');
-                        self.conversation.push({ role: 'user', content: '[System: Give your final text answer now based on what you have. Do not call any tools.]', _floor: self._ctx.totalFloors });
-                        continue;
+                        var _hasTextTools = response.tool_calls && response.tool_calls.some(function (tc) { return tc.id && tc.id.indexOf('call_') !== 0; });
+                        if (_hasTextTools) {
+                            self._log('⚠ forceNoTools: allowing text-extracted tool calls as last chance (' + response.tool_calls.length + ' tool(s))');
+                        } else {
+                            self._log('⚠ forceNoTools: AI returned tool_calls despite no tools in request, dropping');
+                            self.conversation.push({ role: 'user', content: '[System: Give your final text answer now based on what you have. Do not call any tools.]', _floor: self._ctx.totalFloors });
+                            continue;
+                        }
                     }
                     var _tools = response.tool_calls.map(function (tc) { return { name: tc.function.name, args: tc.function.arguments }; });
                     var _bill2 = self._lastBilling; self._lastBilling = null;
@@ -995,20 +1119,67 @@ var AgentLoop = (function () {
                         self._repairOrphanedToolCalls();
                     }
 
-                    // ═══ 无进展检测 ═══
+                    // ═══ 阶梯停滞检测 ═══
                     var lastHouse = self._houses[self._houses.length - 1];
                     var lastResults = lastHouse && lastHouse.toolResults ? lastHouse.toolResults : [];
-                    var stall = self._checkStall(lastResults);
-                    if (stall === 'warn') {
-                        self._log('⚠ stall detected: ' + self._stallCount + ' consecutive no-progress calls, injecting warning');
-                        if (typeof self._writeFileLog === 'function') self._writeFileLog('⚠ stall detected: ' + self._stallCount + ' consecutive no-progress calls (panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?') + ', floor=' + self._ctx.totalFloors + ', house=' + self._houseIndex + ')');
+                    var _toolNames = (response.tool_calls || []).map(function (tc) { return tc.function.name; });
+                    var _toolArgsList = (response.tool_calls || []).map(function (tc) { return tc.function.arguments; });
+                    // ★ T1 连续计数：保存调用 _checkStall 前的指纹，供比较
+                    var _prevT1Fp = self._lastT1Fingerprint || '';
+                    var stall = self._checkStall(lastResults, _toolNames, _toolArgsList);
+
+                    if (stall === 'tool_loop') {
+                        // T1: 死循环 → 根据连续触发次数升级
+                        var _fp = self._lastT1Fingerprint || '';
+                        if (_fp && _fp === _prevT1Fp) {
+                            // ★ 指纹与上次相同 → 同一轮死循环在继续
+                            self._t1ConsecutiveCount++;
+                        } else {
+                            // ★ 指纹变了 → 新一轮死循环，重置计数
+                            self._t1ConsecutiveCount = 1;
+                        }
+                        // 第五次 T1 连续触发（15 个 house 同工具同参数）→ 终止楼层
+                        if (self._t1ConsecutiveCount >= 5) {
+                            self._log('⛔ T1 tool-loop TERMINATION: ' + self._t1ConsecutiveCount + ' consecutive T1 triggers, terminating floor');
+                            if (typeof self._writeFileLog === 'function') self._writeFileLog('⛔ T1 TERMINATION: ' + self._t1ConsecutiveCount + ' consecutive same-tool loops (panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?') + ', floor=' + self._ctx.totalFloors + ')');
+                            self.conversation.push({ role: 'user', content: '[System: ⛔ TERMINATED — You called the same tools ' + (self._t1ConsecutiveCount * 3) + ' times. You have all needed information. Discussion saved so far.]', _stallTerminated: true, _floor: self._ctx.totalFloors });
+                            self._sendTerminated = true;
+                            // ★ 不 return —— 让 while 自然退出，后处理会输出终止消息
+                        } else {
+                            // T1 第 1-2 次：注入循环打断消息
+                            self._log('⚠ T1 tool-loop (#'
+                                + self._t1ConsecutiveCount + '): injecting loop-break message');
+                            if (typeof self._writeFileLog === 'function') self._writeFileLog('⚠ T1 tool-loop #' + self._t1ConsecutiveCount + ': same tool+args 3x (panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?') + ', floor=' + self._ctx.totalFloors + ')');
+                            self.conversation.push({ role: 'user', content: '[System: ⛔ You are calling the same tool with the same arguments repeatedly. This is an infinite loop. IMMEDIATELY stop calling this tool. Either try a DIFFERENT approach or give your final answer NOW.]', _stallToolLoop: true, _floor: self._ctx.totalFloors });
+                        }
+                    } else if (stall === 'search_stall') {
+                        // T2 L1: 搜索停滞 → 温和提醒 + 路径注入
+                        self._log('⚠ T2 L1: injecting read reminder with paths');
+                        if (typeof self._writeFileLog === 'function') self._writeFileLog('⚠ T2 search-stagnation L1: ' + self._searchFruitlessCount + ' searches found files but never read (panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?') + ', floor=' + self._ctx.totalFloors + ')');
+                        var _foundPathsL1 = self._collectFoundFilePaths(8);
+                        var _pathListL1 = _foundPathsL1.length > 0
+                            ? '\n\n建议先读取这些文件：\n' + _foundPathsL1.map(function (p) { return '  • ' + p; }).join('\n')
+                            : '';
+                        self.conversation.push({ role: 'user', content: '[System: 你已搜索 ' + self._searchFruitlessCount + ' 次，找到了一些文件，但还没读任何文件。搜索不是目的，理解代码才是。' + _pathListL1 + '\n\n用 read_file 打开最相关的 1-2 个文件，然后你可以继续搜索。]', _stallSearch: true, _floor: self._ctx.totalFloors });
+                    } else if (stall === 'search_stall_escalate') {
+                        // T2 L2/L3: 更强引导（永不禁止工具，永不终止）
+                        self._log('⚠ T2 L2+: injecting escalated guidance with paths');
+                        if (typeof self._writeFileLog === 'function') self._writeFileLog('⚠ T2 search-stagnation L2+: ' + self._searchFruitlessCount + ' searches no reads (panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?') + ', floor=' + self._ctx.totalFloors + ')');
+                        var _foundPathsL2 = self._collectFoundFilePaths(12);
+                        var _pathListL2 = _foundPathsL2.length > 0
+                            ? '\n\n这是你已发现的所有文件：\n' + _foundPathsL2.map(function (p) { return '  • ' + p; }).join('\n')
+                            : '';
+                        self.conversation.push({ role: 'user', content: '[System: 你已经搜索 ' + self._searchFruitlessCount + ' 次，找到了很多文件，但一个也没读。现在请立即用 read_file 打开最相关的文件来理解代码。' + _pathListL2 + '\n\n搜索工具仍然可用——只是建议你先读完关键文件再搜。]', _stallSearchEscalate: true, _floor: self._ctx.totalFloors });
+                    } else if (stall === 'warn') {
+                        // T3: 真正空转 5 次 → 警告
+                        self._log('⚠ T3 stall warn: ' + self._stallCount + ' consecutive no-progress calls');
+                        if (typeof self._writeFileLog === 'function') self._writeFileLog('⚠ T3 stall warn: ' + self._stallCount + ' consecutive no-progress (panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?') + ', floor=' + self._ctx.totalFloors + ')');
                         self.conversation.push({ role: 'user', content: '[System: You have made ' + self._stallCount + ' consecutive tool calls with no useful results. Pivot your approach or give your best answer with what you have. Do NOT repeat the same search.]', _stallWarning: true, _floor: self._ctx.totalFloors });
                     } else if (stall === 'force') {
-                        self._log('⛔ stall force: ' + self._stallCount + ' consecutive no-progress calls, forcing final answer');
-                        if (typeof self._writeFileLog === 'function') self._writeFileLog('⛔ stall force: ' + self._stallCount + ' consecutive no-progress calls (panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?') + ', floor=' + self._ctx.totalFloors + ', house=' + self._houseIndex + ')');
-                        self.conversation.push({ role: 'user', content: '[System: You have made ' + self._stallCount + ' consecutive tool calls with no useful results. Stop using tools now and give your final answer based on what you have gathered so far. Be concise.]', _stallForce: true, _floor: self._ctx.totalFloors });
-                        // 强制 noTools 下一轮
-                        forceNoTools = true;
+                        // T3: 真正空转 8 次 → 最后通牒（不剥离工具）
+                        self._log('⛔ T3 stall force: ' + self._stallCount + ' consecutive no-progress calls');
+                        if (typeof self._writeFileLog === 'function') self._writeFileLog('⛔ T3 stall force: ' + self._stallCount + ' consecutive no-progress (panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?') + ', floor=' + self._ctx.totalFloors + ')');
+                        self.conversation.push({ role: 'user', content: '[System: ⛔ FINAL — All your recent tool calls returned nothing useful. You have tools available but use them WISELY. Pick ONLY the single most critical action you still need. After that, deliver your final answer. Do NOT search — only READ or ACT.]', _stallForce: true, _floor: self._ctx.totalFloors });
                     }
                     continue;
                 }
@@ -1070,9 +1241,25 @@ var AgentLoop = (function () {
                 onDone(_exhaustedMsg, self._floorTiming);
                 return _exhaustedMsg;
             }
+            // ★ T1 终止：同工具死循环被强制终止（_sendTerminated 已在 handler 中设置）
+            if (self._t1ConsecutiveCount >= 5) {
+                var _t1TermMsg = '⛔ 楼层因工具死循环被终止（同工具同参数重复 ' + (self._t1ConsecutiveCount * 3) + ' 次），对话已保存。你可以继续提问或重新开始。';
+                self.conversation.push({ role: 'assistant', content: _t1TermMsg, _floor: self._ctx.totalFloors });
+                self._floorCompletedCleanly = true;
+                onDone(_t1TermMsg, self._floorTiming);
+                return _t1TermMsg;
+            }
+            // ★ T2 L3 终止：搜索死循环被强制终止（_sendTerminated 已在 handler 中设置）
+            if (self._searchFruitlessCount >= 15) {
+                var _t2TermMsg = '⛔ 楼层因搜索死循环被终止（' + self._searchFruitlessCount + ' 次搜索但从未读取文件），对话已保存。你可以继续提问或重新开始。';
+                self.conversation.push({ role: 'assistant', content: _t2TermMsg, _floor: self._ctx.totalFloors });
+                self._floorCompletedCleanly = true;
+                onDone(_t2TermMsg, self._floorTiming);
+                return _t2TermMsg;
+            }
             // 不应到达这里，但兜底
             self._lastGatewayMessage = '⚠️ 楼层异常中断，对话已保存。';
-            if (!self._floorOnErrorCalled && !self._floorKilled) {
+            if (!self._floorOnErrorCalled && self._stopState === 'sending') {
                 onError(self._lastGatewayMessage);
             }
             self._sendTerminated = true;
@@ -1451,6 +1638,7 @@ var AgentLoop = (function () {
             if (_elapsedSinceLastCall < MIN_API_INTERVAL_MS) {
                 var _waitMs = MIN_API_INTERVAL_MS - _elapsedSinceLastCall;
                 await new Promise(function (r) { setTimeout(r, _waitMs); });
+                if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
             }
         }
         self._lastApiCallTs = performance.now();
@@ -1470,12 +1658,15 @@ var AgentLoop = (function () {
         var _lineSwitches = 0;
         var _ttfbAccum = 0;
         for (var retry = 0; retry <= MAX_RETRIES; retry++) {
+            // ★ Stop 守卫：_stopCtrl 已 abort → 立即退出（替代散落 _floorKilled）
+            if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
             _resetFetchDeadline();  // ★ 每次 retry 重置 deadline
-            // ★ 强制重建 AbortController：防止已 abort 的 signal 导致后续 fetch 瞬死
-            if (self.abortController) {
-                try { self.abortController.abort(); } catch (_) { }
-            }
+            // ★ 每轮 retry 创建 _retryCtrl，级联到 _stopCtrl
+            //   用户 Stop → _stopCtrl.abort() → 级联 → _retryCtrl.abort() → fetch 立即断
             self.abortController = new AbortController();
+            self._stopCtrl.signal.addEventListener('abort', function () {
+                try { self.abortController.abort(); } catch (_) { }
+            }, { once: true });
             self._abortSource = '';  // ★ 重置探针
             try {
                 var _fetchStart = performance.now();
@@ -1502,6 +1693,7 @@ var AgentLoop = (function () {
                             var _rotateWait = 1000;
                             self._log('  gateway 429 → key rotated, retry in ' + _rotateWait + 'ms');
                             await new Promise(function (r) { setTimeout(r, _rotateWait); });
+                            if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
                             continue;
                         }
                     }
@@ -1512,6 +1704,7 @@ var AgentLoop = (function () {
                                 var waitMsGw = 2000 * Math.pow(2, retry);
                                 self._log('  gateway ' + resp.status + ' retry #' + (retry + 1) + ' in ' + waitMsGw + 'ms (transient?)');
                                 await new Promise(function (r) { setTimeout(r, waitMsGw); });
+                                if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
                                 continue;
                             }
                             // 后半段重试 → 跳过 retry，落入下方线路切换
@@ -1519,6 +1712,7 @@ var AgentLoop = (function () {
                             var waitMsGw = 3000 * Math.pow(2, retry);
                             self._log('  gateway ' + resp.status + ' retry #' + (retry + 1) + ' in ' + waitMsGw + 'ms');
                             await new Promise(function (r) { setTimeout(r, waitMsGw); });
+                            if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
                             continue;
                         }
                     }
@@ -1633,6 +1827,12 @@ var AgentLoop = (function () {
                         self._abortedByGuide = true;
                         return { _abortedForGuide: true };
                     }
+                    // ★ Stop 闭环：用户 Stop 引起的 abort → 不做任何恢复，直接返回
+                    if (self._stopState === 'stopping') {
+                        self._exitReason = 'user_kill';
+                        self._log('■ user stopped — no recovery');
+                        return null;
+                    }
                     // ★ 非引导中断 = 看门狗/超时/网络问题
                     // 设置探针：区分 abort 来源
                     if (self._abortSource === 'stream_watchdog') self._exitReason = 'watchdog_stream';
@@ -1657,6 +1857,12 @@ var AgentLoop = (function () {
                     if (typeof self._writeFileLog === 'function') self._writeFileLog(_abortSummary);
 
                     // ★ 超时恢复：先同 URL 退避重试（最多 3 次），再切线路
+                    // ★ Stop 守卫：用户点停止后立即退出，不做任何恢复
+                    if (self._stopCtrl.signal.aborted) {
+                        self._log('■ abort recovery skipped: user killed');
+                        clearTimeout(_fetchDeadline);
+                        return null;
+                    }
                     self._abortRetries = (self._abortRetries || 0) + 1;
                     if (self._abortRetries <= 3) {
                         var _abortWait = 2000 * Math.pow(2, self._abortRetries - 1);  // 2s, 4s, 8s
@@ -1666,6 +1872,7 @@ var AgentLoop = (function () {
                         // ★ 退避等待归入网络时间（红）
                         self._floorTiming.networkMs += _abortWait;
                         await new Promise(function (r) { setTimeout(r, _abortWait); });
+                        if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
                         continue;  // 回到 retry 循环顶部，同 URL 重试
                     }
                     self._abortRetries = 0;
@@ -1685,6 +1892,7 @@ var AgentLoop = (function () {
                         var _switchMsg = '  ↳ abort recovery: line switch #' + _lineSwitches + '/' + MAX_LINE_SWITCHES + ' ' + _oldUrl + ' → ' + _newUrl;
                         self._log(_switchMsg);
                         if (typeof self._writeFileLog === 'function') self._writeFileLog(_switchMsg);
+                        if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
                         continue;
                     }
                     // ★ 所有恢复手段耗尽 → 记录最终失败
@@ -1726,6 +1934,7 @@ var AgentLoop = (function () {
                         var waitMsF = _isHttp2Like ? 2000 : 1000;  // HTTP/2 多等 1s 让 Chromium 回收连接
                         self._log('  fetch error retry #' + (retry + 1) + ' in ' + waitMsF + 'ms: ' + msg);
                         await new Promise(function (r) { setTimeout(r, waitMsF); });
+                        if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
                         continue;
                     }
                 }
@@ -1958,12 +2167,16 @@ var AgentLoop = (function () {
         var finalized = stripper.finalize();
 
         // ★ 兜底提取：若 EnvelopeStripper 没提取到文本工具调用，直接从 stripper.raw 扫描
-        //    修复 forceNoTools 场景下模型输出的 <function_calls><invoke> 格式未被解析的问题
+        //    模型在 forceNoTools/卡死时会输出多种文本工具调用格式：
+        //      A) <function_calls><invoke name="X"><parameter name="K">V</parameter></invoke></function_calls>
+        //      B) <search_text><pattern>...</pattern><path>...</path></search_text> （工具名直作标签）
+        //      C) <Tool Call: list_files><Parameter name="k">v</Parameter></Tool Call>
         if (!finalized.textToolCalls || finalized.textToolCalls.length === 0) {
             var _rawFallback = stripper.raw || '';
-            // 匹配 <function_calls>...</function_calls> 内嵌的 <invoke name="X"><parameter name="K">V</parameter></invoke>
-            var _fbInvokeRe = /<invoke\s[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/invoke>/gi;
             var _fbBlocks = [];
+
+            // ── 格式 A: <invoke name="X"> ──
+            var _fbInvokeRe = /<invoke\s[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/invoke>/gi;
             var _fbm;
             while ((_fbm = _fbInvokeRe.exec(_rawFallback)) !== null) {
                 var _fbName = _fbm[1];
@@ -1979,6 +2192,76 @@ var AgentLoop = (function () {
                 }
                 _fbBlocks.push({ name: _fbName, args: _fbArgs });
             }
+
+            // ── 格式 B: <tool_name><k1>v1</k1><k2>v2</k2></tool_name> ──
+            //    模型把 read_file/search_text/find_files 等直接当标签名
+            var _fbToolNames = ['read_file', 'search_file', 'edit_file', 'search_text', 'search_content',
+                'list_files', 'find_files', 'create_file', 'delete_file', 'fetch_webpage',
+                'get_diagnostics', 'generate_image', 'analyze_image', 'run_command', 'write_file'];
+            for (var _tni = 0; _tni < _fbToolNames.length; _tni++) {
+                var _tn = _fbToolNames[_tni];
+                var _fbToolTagRe = new RegExp('<' + _tn + '>([\\s\\S]*?)<\\/' + _tn + '>', 'gi');
+                var _ftm;
+                while ((_ftm = _fbToolTagRe.exec(_rawFallback)) !== null) {
+                    var _ftBody = _ftm[1];
+                    var _ftArgs = {};
+                    // 提取子标签 <key>value</key> 对
+                    var _ftSubRe = /<(\w[\w-]*)>([\s\S]*?)<\/\1>/gi;
+                    var _ftsm;
+                    while ((_ftsm = _ftSubRe.exec(_ftBody)) !== null) {
+                        var _ftKey = _ftsm[1];
+                        // 跳过常见非参数标签
+                        if (/^(?:max_results|filetypes|recursive|string|include_pattern)$/i.test(_ftKey)) {
+                            // try to treat value as string
+                            var _ftVal = _ftsm[2].trim();
+                            try { _ftVal = JSON.parse(_ftVal); } catch (_) { }
+                            _ftArgs[_ftKey] = _ftVal;
+                        } else {
+                            _ftArgs[_ftKey] = _ftsm[2].trim();
+                        }
+                    }
+                    _fbBlocks.push({ name: _tn, args: _ftArgs });
+                }
+            }
+
+            // ── 格式 C: <Tool Call: tool_name><Parameter name="k">v</Parameter></Tool Call> ──
+            var _fbToolCallRe = /<Tool\s+Call:\s*(\w[\w.-]*)>([\s\S]*?)<\/Tool\s+Call>/gi;
+            var _tcm;
+            while ((_tcm = _fbToolCallRe.exec(_rawFallback)) !== null) {
+                var _tcName = _tcm[1];
+                var _tcBody = _tcm[2];
+                var _tcArgs = {};
+                var _tcParamRe = /<Parameter\s[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/Parameter>/gi;
+                var _tpm;
+                while ((_tpm = _tcParamRe.exec(_tcBody)) !== null) {
+                    var _tpVal = _tpm[2].trim();
+                    try { _tpVal = JSON.parse(_tpVal); } catch (_) { }
+                    _tcArgs[_tpm[1]] = _tpVal;
+                }
+                _fbBlocks.push({ name: _tcName, args: _tcArgs });
+            }
+
+            // ── 格式 D: <Tool_call name="X"><parameter name="k" string="true">v</parameter></Tool_call> ──
+            //    模型在 forceNoTools 下输出，q98 实测格式：Tool_call（下划线）+ name= 属性
+            var _fbTcUnderscoreRe = /<[Tt]ool_call\s[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/[Tt]ool_call>/gi;
+            var _tcm2;
+            while ((_tcm2 = _fbTcUnderscoreRe.exec(_rawFallback)) !== null) {
+                var _tcName2 = _tcm2[1];
+                var _tcBody2 = _tcm2[2];
+                var _tcArgs2 = {};
+                var _tcParamRe2 = /<parameter\s[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/parameter>/gi;
+                var _tpm2;
+                while ((_tpm2 = _tcParamRe2.exec(_tcBody2)) !== null) {
+                    var _tpVal2 = _tpm2[2].trim();
+                    // string="false" → 尝试 JSON 解析（数字/布尔），string="true" → 保留字符串
+                    try { _tpVal2 = JSON.parse(_tpVal2); } catch (_) { }
+                    _tcArgs2[_tpm2[1]] = _tpVal2;
+                }
+                if (Object.keys(_tcArgs2).length > 0) {
+                    _fbBlocks.push({ name: _tcName2, args: _tcArgs2 });
+                }
+            }
+
             if (_fbBlocks.length > 0) {
                 finalized.textToolCalls = [];
                 for (var _fbi = 0; _fbi < _fbBlocks.length; _fbi++) {
@@ -1991,9 +2274,10 @@ var AgentLoop = (function () {
                     });
                 }
                 self._log('🔄 fallback textToolCalls: parsed ' + _fbBlocks.length + ' tool(s) from raw content');
-                // 从 cleanContent 剥离已解析的 <function_calls> 块（防止显示给用户）
+                // 从 cleanContent 剥离已解析的文本工具调用块（防止显示给用户）
                 finalized.cleanContent = (finalized.cleanContent || '')
                     .replace(/<function_calls>[\s\S]*?<\/function_calls>/gi, '')
+                    .replace(/<Tool\s+Call:\s*\w[\w.-]*>[\s\S]*?<\/Tool\s+Call>/gi, '')
                     .replace(/\x0a{3,}/g, '\x0a\x0a').trim();
             }
         }
@@ -2059,6 +2343,11 @@ var AgentLoop = (function () {
 
         var allResults = [];
         for (var li = 0; li < layers.length; li++) {
+            // ★ Stop 守卫：用户点停止后立即中断工具执行
+            if (self._stopCtrl.signal.aborted) {
+                self._log('■ tool execution aborted: user killed (layer ' + (li + 1) + '/' + layers.length + ')');
+                break;
+            }
             var layer = layers[li];
             var promises = layer.items.map(async function (item) {
                 var toolStart = Date.now();
@@ -2073,6 +2362,9 @@ var AgentLoop = (function () {
                     };
                 }
                 try {
+                    var _isSearch = item.name === 'search_text' || item.name === 'search_content' || item.name === 'search_file'
+                        || item.name === 'find_files' || item.name === 'list_files'
+                        || item.name === 'search_symbol' || item.name === 'grep_code';
                     result = await executeTool(item.name, item.args);
                 } catch (err) {
                     result = 'Tool error: ' + (err.message || err);
@@ -2080,6 +2372,53 @@ var AgentLoop = (function () {
                 if (typeof window !== 'undefined') { window._qqqCurrentTrace = null; }
                 var toolMs = Date.now() - toolStart;
                 var resultStr = typeof result === 'string' ? result : JSON.stringify(result);
+                // ★ 搜索结果智能分组：信号前置 + 噪音折叠（不删任何信息）
+                if (_isSearch && resultStr.length > 1200) {
+                    var _lines = resultStr.split('\n');
+                    var _signal = [];    // 源文件路径
+                    var _noise = {};     // 噪音按类别计数
+                    var _srcExts = /\.(js|mjs|ts|tsx|py|html|htm|css|scss|go|rs|java|cpp|c|h|json|txt|md|yml|yaml|sh|bash|bat|xml|sql|lua|rb|php|swift|kt|r|toml|cfg|ini|conf)$/i;
+                    var _noiseDirs = /(node_modules|\.git|blobs|__pycache__|\.next|dist|build|cache)[\\/]/;
+                    var _noiseExts = /\.(gz|zip|tar|exe|dll|so|dylib|wasm|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|otf|eot|mp3|mp4|wav|ogg|pdf|log|lock|map|min\.(js|css))$/i;
+                    for (var _li = 0; _li < _lines.length; _li++) {
+                        var _line = _lines[_li].trim();
+                        if (!_line) continue;
+                        var _isPathLine = /^[A-Za-z]:[\\/]/.test(_line) || /^\//.test(_line);
+                        if (_isPathLine) {
+                            if (_noiseDirs.test(_line)) {
+                                var _cat = _line.match(_noiseDirs)[0].replace(/[\\/]/g, '');
+                                _noise[_cat] = (_noise[_cat] || 0) + 1;
+                            } else if (_srcExts.test(_line)) {
+                                _signal.push(_line);
+                            } else if (_noiseExts.test(_line)) {
+                                _noise['binary'] = (_noise['binary'] || 0) + 1;
+                            } else {
+                                _signal.push(_line);  // 未知类型视为信号
+                            }
+                        } else {
+                            _signal.push(_line);  // 非路径行（如上下文匹配行）保留
+                        }
+                    }
+                    var _MAX_SIGNAL = 30;
+                    if (_signal.length > 0 || Object.keys(_noise).length > 0) {
+                        var _parts = [];
+                        if (_signal.length > 0) {
+                            var _show = _signal.slice(0, _MAX_SIGNAL);
+                            _parts.push(_show.join('\n'));
+                            if (_signal.length > _MAX_SIGNAL) {
+                                _parts.push('... (' + (_signal.length - _MAX_SIGNAL) + ' more source files)');
+                            }
+                        }
+                        if (Object.keys(_noise).length > 0) {
+                            var _noiseSummary = [];
+                            for (var _nk in _noise) {
+                                if (_noise.hasOwnProperty(_nk)) _noiseSummary.push(_nk + ': ' + _noise[_nk] + ' entries');
+                            }
+                            _parts.push('[NOISE] ' + _noiseSummary.join(', ') + ' — ignored (use read_file for source files above)');
+                        }
+                        resultStr = _parts.join('\n');
+                    }
+                }
                 self._log('← ' + item.name + ' (' + toolMs + 'ms): ' + resultStr.slice(0, 120));
                 if (onToolResult) {
                     var truncated = resultStr.length > 2000;
@@ -2389,7 +2728,7 @@ var AgentLoop = (function () {
     AgentLoop.prototype._doStreamRender = function () {
         var aiDiv = this._activeAiDiv;
         if (!aiDiv || !aiDiv._contentWrap) return;  // ★ Card 已驱逐或 DOM 不完整
-        if (this._sendTerminated || this._floorKilled) {
+        if (this._sendTerminated || this._stopState !== 'sending') {
             aiDiv._renderScheduled = false;
             aiDiv._dirty = false;
             return;

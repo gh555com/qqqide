@@ -1509,9 +1509,9 @@ function registerIpc(): void {
             const lines = content.split('\n');
             const total = lines.length;
             const start = Math.max(0, startLine - 1);
-            const end = endLine ? Math.min(total, endLine) : Math.min(total, start + 500);
+            const end = endLine ? Math.min(total, endLine) : Math.min(total, start + 3000);
             const slice = lines.slice(start, end).join('\n');
-            if (total <= 500 && !args.start_line) return content;
+            if (total <= 3000 && !args.start_line) return content;
             return `File has ${total} lines. Showing L${start + 1}-${end}:\n${slice}`;
         } catch (err: any) {
             return 'Error reading file: ' + (err.message || err);
@@ -2510,7 +2510,7 @@ function registerIpc(): void {
         const existingWin = _diffWindows.get(normalizedPath);
         if (existingWin && !existingWin.isDestroyed()) {
             try {
-                existingWin.webContents.send('qqqide:diff:update', { beforeBlobHash, afterBlobHash });
+                existingWin.webContents.send('qqqide:diff:update', { filePath: normalizedPath, beforeBlobHash, afterBlobHash });
                 if (existingWin.isMinimized()) existingWin.restore();
                 existingWin.focus();
             } catch (_) { }
@@ -2566,8 +2566,23 @@ function registerIpc(): void {
         // 关闭时清理映射
         diffWin.on('closed', () => {
             _diffWindows.delete(normalizedPath);
+            // 清理可能存在的旧路径映射（用户可能切换了文件）
+            for (const [k, v] of _diffWindows) {
+                if (v === diffWin) _diffWindows.delete(k);
+            }
         });
         _diffWindows.set(normalizedPath, diffWin);
+
+        // ★ 用户可在 diff 窗口内切换文件 → 更新映射
+        diffWin.webContents.on('ipc-message', (_ev, ch, ...args) => {
+            if (ch === 'qqqide:diff:set-path') {
+                const newPath = (args && args[0]) ? String(args[0]).replace(/\\/g, '/') : '';
+                if (newPath && newPath !== normalizedPath) {
+                    _diffWindows.delete(normalizedPath);
+                    _diffWindows.set(newPath, diffWin);
+                }
+            }
+        });
 
         // 确保 URL 拼接安全（bootConfig.url 可能无尾部斜杠）
         const baseUrl = bootConfig.url.replace(/\/*$/, '/');

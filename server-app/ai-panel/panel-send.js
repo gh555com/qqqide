@@ -4,6 +4,8 @@
 
 async function sendMessage() {
     if (_sending) return;
+    // ★ Stop 闭环：STOPPING 态下禁止新发送（等清理完成才能 Send）
+    if (_activeAgent && _activeAgent._stopState === 'stopping') return;
     if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
     _checkTokenReset();
     _sending = true;
@@ -447,6 +449,7 @@ async function sendMessage() {
                 }
             },
             onError: function (msg) {
+                _sending = false;  // ★ 立即复位：防 stall/force 中断后 _sending 残留导致新 quest Send 失效
                 _stopAutoSave();
                 if (_capturedAgent) {
                     _capturedAgent._floorOnErrorCalled = true;  // ★ 看门狗：标记已处理
@@ -509,7 +512,7 @@ async function sendMessage() {
         }
     } finally {
         // ★ 一次渲染永久不变：在清理 _activeAiDiv 之前，先保存当前楼层数据（含流式文本）
-        if (_capturedAgent && _capturedQuestId && !_capturedAgent._floorCompletedCleanly && !_capturedAgent._floorKilled) {
+        if (_capturedAgent && _capturedQuestId && !_capturedAgent._floorCompletedCleanly && _capturedAgent._stopState === 'sending') {
             try { await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._floorStartIdx); } catch (_) { }
         }
         _stopAutoSave();
@@ -518,6 +521,23 @@ async function sendMessage() {
         if (_capturedAgent && _capturedAgent._floorTimerId) {
             clearInterval(_capturedAgent._floorTimerId);
             _capturedAgent._floorTimerId = null;
+        }
+        // ★ Stop 闭环：STOPPING 态显式持久化 + 状态机复位
+        if (_capturedAgent && _capturedAgent._stopState === 'stopping') {
+            _stopAutoSave();
+            if (typeof stopFloorTimer === 'function') {
+                stopFloorTimer(_capturedAgent._floorTiming || { networkMs: 0, aiMs: 0, toolMs: 0 }, _capturedAgent);
+            }
+            setStreaming(false);
+            // 暂停队列
+            if (typeof _queuePaused !== 'undefined') _queuePaused = true;
+            // 保存楼层数据到 sq3
+            if (_capturedQuestId) {
+                try { await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._floorStartIdx); } catch (_) { }
+            }
+            // 恢复 IDLE
+            _capturedAgent._stopState = 'idle';
+            _capturedAgent._stopCtrl = null;
         }
         if (_activeAgent === _capturedAgent) {
             if (_capturedAgent._activeAiDiv) {
@@ -538,7 +558,7 @@ async function sendMessage() {
         }
         // ═══ 楼层看门狗：仅当 onDone 和 onError 都未调用时才自动恢复 ═══
         // 铁律：绝不 reload，但必须持久化计时数据（否则重启窗口丢失 A3 时钟/饼图）
-        if (_capturedAgent && !_capturedAgent._floorCompletedCleanly && !_capturedAgent._floorKilled && !_capturedAgent._floorOnErrorCalled) {
+        if (_capturedAgent && !_capturedAgent._floorCompletedCleanly && _capturedAgent._stopState === 'sending' && !_capturedAgent._floorOnErrorCalled) {
             console.log('[watchdog] floor ended headless — saving timing then yielding');
             // ★ 可点击"重新发送"：用户一键回滚断头楼层并重发
             var _errDiv = document.createElement('div');
@@ -549,7 +569,7 @@ async function sendMessage() {
             _resendLink.textContent = '\u91cd\u65b0\u53d1\u9001';
             _resendLink.href = '#';
             _resendLink.style.cssText = 'cursor:pointer;text-decoration:underline;color:var(--accent-color,#4a9eff);margin-left:2px;';
-            _resendLink.onclick = function(e) {
+            _resendLink.onclick = function (e) {
                 e.preventDefault();
                 _resendLink.onclick = null;
                 _resendLink.textContent = '正在发送...';
@@ -557,7 +577,7 @@ async function sendMessage() {
                 //    模拟用户用原话 + 诊断原因发送一条"继续"消息
                 var _userText = (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '';
                 var _diag = '';
-                try { _diag = (_capturedAgent._buildDiagnosis && _capturedAgent._buildDiagnosis()) || ''; } catch(__) {}
+                try { _diag = (_capturedAgent._buildDiagnosis && _capturedAgent._buildDiagnosis()) || ''; } catch (__) { }
                 var _continueMsg = '由于 ' + (_diag || '未知原因') + ' 导致会话中断，请继续。';
                 // ★ 原用户输入 + 中断诊断一起体现
                 var _fullMsg = _continueMsg + '\n\n[原始请求]: ' + _userText;
@@ -586,7 +606,7 @@ async function sendMessage() {
             _capturedAgent._floorTimings.push(_record);
             // 触发一次保存（异步，best-effort）
             if (typeof saveQuestData === 'function') {
-                saveQuestData().catch(function () {});
+                saveQuestData().catch(function () { });
             }
         }
         _capturedAgent._sending = false;

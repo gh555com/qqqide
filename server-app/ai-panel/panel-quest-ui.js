@@ -81,7 +81,7 @@ async function switchQuest(id) {
                 }
             } else {
                 // 已停止的 quest：找到最后一个有 aiEl 的楼层
-                var _floorNums = Object.keys(card.floorDOM || {}).map(Number).sort(function(a,b){return b-a;});
+                var _floorNums = Object.keys(card.floorDOM || {}).map(Number).sort(function (a, b) { return b - a; });
                 for (var _fi = 0; _fi < _floorNums.length; _fi++) {
                     var _fDom = card.floorDOM[_floorNums[_fi]];
                     if (_fDom && _fDom.aiEl) {
@@ -137,6 +137,7 @@ async function switchQuest(id) {
         var _overlay = document.getElementById('qqq-switch-overlay');
         if (_overlay) _overlay.classList.remove('show');
         if ($messages) $messages.classList.remove('qqq-switching');
+        setStreaming(false);  // ★ 切 quest 后刷新按钮状态
     }
 }
 
@@ -357,6 +358,7 @@ function _unloadQuest() {
     updateTierButtons(6);
     renderImageStrip();
     _activeAgent = null;
+    setStreaming(false);  // ★ 卸载 quest 后刷新按钮状态
     updateCostDisplay();
     updateCtxBtn();
     var children = $messages.children;
@@ -556,7 +558,7 @@ document.getElementById('ctx-compress').onclick = async function () {
     _ag._floorTiming = { networkMs: 0, aiMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (_ag._serverDrift || 0) };
     _ag._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ((typeof _panelId !== 'undefined') ? ['_L', '_C', '_R'][_panelId] || '' : '');
     var _now = new Date();
-    var _ts = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0') + ' ' + String(_now.getHours()).padStart(2,'0') + ':' + String(_now.getMinutes()).padStart(2,'0') + ':' + String(_now.getSeconds()).padStart(2,'0');
+    var _ts = _now.getFullYear() + '-' + String(_now.getMonth() + 1).padStart(2, '0') + '-' + String(_now.getDate()).padStart(2, '0') + ' ' + String(_now.getHours()).padStart(2, '0') + ':' + String(_now.getMinutes()).padStart(2, '0') + ':' + String(_now.getSeconds()).padStart(2, '0');
     var _userMsg = _ts + ' · Compress requested (manual trigger)';
     _ag.conversation.push({ role: 'user', content: _userMsg, _floor: _compressFloorNum });
     _ag._lastUserInput = { text: _userMsg, vision: '' };
@@ -856,90 +858,92 @@ $queueBtn.onclick = function () {
 
 // ═══ qh 滚动条 — AI 面板聊天区（按标准文档接入）═══
 (function () {
-  var host = document.getElementById('messages-wrap');
-  var el = document.getElementById('messages');
-  if (!host || !el) return;
+    var host = document.getElementById('messages-wrap');
+    var el = document.getElementById('messages');
+    if (!host || !el) return;
 
-  function _qhColors() {
-    var dk = document.documentElement.getAttribute('data-theme') === 'dark';
-    return { c: dk ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)',
-             cH: dk ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.80)' };
-  }
+    function _qhColors() {
+        var dk = document.documentElement.getAttribute('data-theme') === 'dark';
+        return {
+            c: dk ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)',
+            cH: dk ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.80)'
+        };
+    }
 
-  // 滑轨
-  var track = document.createElement('div');
-  track.style.cssText = 'position:absolute; right:-1px; top:0; bottom:0; width:11px; z-index:50;';
+    // 滑轨
+    var track = document.createElement('div');
+    track.style.cssText = 'position:absolute; right:-1px; top:0; bottom:0; width:11px; z-index:50;';
 
-  // 滑块
-  var thumb = document.createElement('div');
-  var co = _qhColors();
-  thumb.style.cssText = 'position:absolute; right:9px; width:2px; min-height:24px; border-radius:0; ' +
-    'background:' + co.c + '; cursor:pointer; ' +
-    'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
+    // 滑块
+    var thumb = document.createElement('div');
+    var co = _qhColors();
+    thumb.style.cssText = 'position:absolute; right:9px; width:2px; min-height:24px; border-radius:0; ' +
+        'background:' + co.c + '; cursor:pointer; ' +
+        'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
 
-  // hover 变粗贴边
-  track.addEventListener('mouseenter', function () {
-    thumb.style.width = '11px'; thumb.style.right = '-1px';
-    thumb.style.background = _qhColors().cH;
-  });
-  track.addEventListener('mouseleave', function () {
-    thumb.style.width = '2px'; thumb.style.right = '9px';
-    thumb.style.background = _qhColors().c;
-  });
+    // hover 变粗贴边
+    track.addEventListener('mouseenter', function () {
+        thumb.style.width = '11px'; thumb.style.right = '-1px';
+        thumb.style.background = _qhColors().cH;
+    });
+    track.addEventListener('mouseleave', function () {
+        thumb.style.width = '2px'; thumb.style.right = '9px';
+        thumb.style.background = _qhColors().c;
+    });
 
-  // 同步
-  function sync() {
-    var sh = el.scrollHeight, ch = el.clientHeight;
-    if (sh <= ch) { thumb.style.display = 'none'; return; }
-    thumb.style.display = '';
-    var thumbH = Math.max(24, (ch / sh) * ch);
-    var maxTop = ch - thumbH;
-    thumb.style.height = thumbH + 'px';
-    thumb.style.top = ((el.scrollTop / (sh - ch)) * maxTop) + 'px';
-  }
-  el.addEventListener('scroll', sync);
+    // 同步
+    function sync() {
+        var sh = el.scrollHeight, ch = el.clientHeight;
+        if (sh <= ch) { thumb.style.display = 'none'; return; }
+        thumb.style.display = '';
+        var thumbH = Math.max(24, (ch / sh) * ch);
+        var maxTop = ch - thumbH;
+        thumb.style.height = thumbH + 'px';
+        thumb.style.top = ((el.scrollTop / (sh - ch)) * maxTop) + 'px';
+    }
+    el.addEventListener('scroll', sync);
 
-  // 滑轨点击跳转
-  track.addEventListener('mousedown', function (e) {
-    if (e.target === thumb || e.button !== 0) return;
-    var sh = el.scrollHeight, ch = el.clientHeight;
-    if (sh <= ch) return;
-    var ratio = (e.clientY - track.getBoundingClientRect().top) / ch;
-    el.scrollTop = Math.max(0, Math.min(sh - ch, Math.round(ratio * (sh - ch))));
-    e.preventDefault();
-  });
+    // 滑轨点击跳转
+    track.addEventListener('mousedown', function (e) {
+        if (e.target === thumb || e.button !== 0) return;
+        var sh = el.scrollHeight, ch = el.clientHeight;
+        if (sh <= ch) return;
+        var ratio = (e.clientY - track.getBoundingClientRect().top) / ch;
+        el.scrollTop = Math.max(0, Math.min(sh - ch, Math.round(ratio * (sh - ch))));
+        e.preventDefault();
+    });
 
-  // 拖拽
-  var dragging = false, dragY = 0, dragS = 0;
-  thumb.addEventListener('mousedown', function (e) {
-    if (e.button !== 0) return;
-    dragging = true; dragY = e.clientY; dragS = el.scrollTop;
-    e.preventDefault(); e.stopPropagation();
-  });
-  document.addEventListener('mousemove', function (e) {
-    if (!dragging) return;
-    var sh = el.scrollHeight, ch = el.clientHeight;
-    if (sh <= ch) return;
-    var thumbH = Math.max(24, (ch / sh) * ch);
-    var ratio = (e.clientY - dragY) / (ch - thumbH);
-    el.scrollTop = Math.max(0, Math.min(sh - ch, dragS + ratio * (sh - ch)));
-  });
-  document.addEventListener('mouseup', function () { dragging = false; });
+    // 拖拽
+    var dragging = false, dragY = 0, dragS = 0;
+    thumb.addEventListener('mousedown', function (e) {
+        if (e.button !== 0) return;
+        dragging = true; dragY = e.clientY; dragS = el.scrollTop;
+        e.preventDefault(); e.stopPropagation();
+    });
+    document.addEventListener('mousemove', function (e) {
+        if (!dragging) return;
+        var sh = el.scrollHeight, ch = el.clientHeight;
+        if (sh <= ch) return;
+        var thumbH = Math.max(24, (ch / sh) * ch);
+        var ratio = (e.clientY - dragY) / (ch - thumbH);
+        el.scrollTop = Math.max(0, Math.min(sh - ch, dragS + ratio * (sh - ch)));
+    });
+    document.addEventListener('mouseup', function () { dragging = false; });
 
-  // 初始 + 内容变化
-  setTimeout(sync, 50);
-  var obs = new MutationObserver(function () { setTimeout(sync, 30); });
-  obs.observe(el, { childList: true, subtree: true });
+    // 初始 + 内容变化
+    setTimeout(sync, 50);
+    var obs = new MutationObserver(function () { setTimeout(sync, 30); });
+    obs.observe(el, { childList: true, subtree: true });
 
-  // 主题切换 → 立即刷滑块色
-  var themeObs = new MutationObserver(function () {
-    var co2 = _qhColors();
-    thumb.style.background = co2.c;
-  });
-  themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    // 主题切换 → 立即刷滑块色
+    var themeObs = new MutationObserver(function () {
+        var co2 = _qhColors();
+        thumb.style.background = co2.c;
+    });
+    themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-  track.appendChild(thumb);
-  host.appendChild(track);
+    track.appendChild(thumb);
+    host.appendChild(track);
 })();
 
 

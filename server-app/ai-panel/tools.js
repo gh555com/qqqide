@@ -80,13 +80,13 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'read_file',
-            description: 'Read file contents. Fast single-IPC, memory-safe. For large files (>500 lines), use start_line/end_line to paginate.',
+            description: 'Read file contents. Returns full file content (up to ~200K chars). For extremely large files, paginate with start_line/end_line. Re-reading same range twice triggers [ALREADY READ]; if context was lost, it will allow re-read on 3rd attempt.',
             parameters: {
                 type: 'object',
                 properties: {
                     path: { type: 'string', description: 'Absolute path to the file' },
                     start_line: { type: 'number', description: 'Start line number (1-based, default 1)' },
-                    end_line: { type: 'number', description: 'End line number (inclusive, default start+500)' }
+                    end_line: { type: 'number', description: 'End line number (inclusive, default start+3000)' }
                 },
                 required: ['path']
             }
@@ -194,7 +194,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'run_command',
-            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default. When you need full output (e.g. large file listings, long logs), pass maxOutput to request up to ' + OUTPUT_CAP_MAX + '. Hard timeout 2h, stall guard 15min. Use cwd to set working directory. ⚠️ PREFER search_text/search_content/find_files for code search — they are 10x faster and memory-safe. Only use run_command when dedicated tools CANNOT do the job.',
+            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default, up to ' + OUTPUT_CAP_MAX + ' with maxOutput. Hard timeout 2h, stall guard 15min. Use cwd to set working directory. ⚠️ PREFER search_text/search_content/find_files for code search — they are 10x faster and memory-safe. Only use run_command when dedicated tools CANNOT do the job.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -372,13 +372,11 @@ async function executeReadFile(args) {
         return 'Error: invalid path "' + _p + '" — does not appear to be a valid file path. Provide an absolute path (e.g. E:\\project\\file.js).';
     }
 
-    // ★ 同楼层去重：同文件 + 同行范围 反复读 3 次+ → 死循环
-    //    键 = 路径 + 行范围，不同行范围互不干扰。全文读用 L0-0。
+    // ★ 同楼层去重：按行范围智能去重——防模型微调 start_line/end_line 绕过
+    //    全文读（无 start/end）→ 标记文件已全覆盖 → 后续任何范围都挡。
+    //    分段读（有 start/end）→ 只挡已覆盖范围，新范围放行。10 次/文件硬封顶。
     //    计数器由 agent-loop.js 在每层楼开始时清零 (window._qqqReadFilesThisFloor = {})
     var _normPath = _p.replace(/\\/g, '/').toLowerCase();
-    var _sl = args.start_line || 0;
-    var _el = args.end_line || 0;
-    var _dedupKey = _normPath + '|' + _sl + '|' + _el;
     var _tracker = (typeof window !== 'undefined') ? window._qqqReadFilesThisFloor : null;
     if (_tracker) {
         // ★ ENOENT 缓存：文件不存在 → 同路径永生不复读（不管行范围）。防 AI 被截断路径坑 10 次
@@ -386,10 +384,78 @@ async function executeReadFile(args) {
         if (_enoCache && _enoCache[_normPath]) {
             return '[FILE NOT FOUND] ' + _normPath + ' — 该文件在本层楼已确认不存在，请勿重试。检查路径是否有截断或中文字符。';
         }
-        _tracker[_dedupKey] = (_tracker[_dedupKey] || 0) + 1;
-        if (_tracker[_dedupKey] >= 3) {
-            var _rangeHint = (_sl || _el) ? (' L' + _sl + '-' + _el) : ' (全文)';
-            return '[ALREADY READ] 文件 ' + args.path + _rangeHint + ' 在本层楼已读过 ' + (_tracker[_dedupKey] - 1) + ' 次，内容已在对话中。请基于已有信息继续分析，不要重复读取。';
+        var _rec = _tracker[_normPath];
+        if (!_rec) { _rec = { f: false, r: [], c: 0, b: 0 }; _tracker[_normPath] = _rec; }
+        _rec.c++;
+
+        // 硬封顶：同一文件在本层楼读 10 次以上 → 无条件拦
+        if (_rec.c > 10) {
+            return '[ALREADY READ] 文件 ' + args.path + ' 在本层楼已读过 ' + (_rec.c - 1) + ' 次，已达上限。请基于已有信息继续分析。';
+        }
+
+        var _sl = args.start_line || 0;
+        var _el = args.end_line || 0;
+        var _isFull = (!args.start_line && !args.end_line);  // 全文读
+
+        // ★ 治根：全文读被阻 2 次后 → 允许重读（上下文丢失是真实需求，不能永久封锁）
+        if (_rec.f) {
+            if (!_isFull) {
+                // 全文读过后请求分段读 → 检查范围
+                var _reqStart = _sl;
+                var _reqEnd = _el || (_sl + 2999);
+                var _alreadyCovered = false;
+                for (var _ri = 0; _ri < _rec.r.length; _ri++) {
+                    var _rr = _rec.r[_ri];
+                    if (_rr[0] <= _reqStart && _rr[1] >= _reqEnd) {
+                        _alreadyCovered = true;
+                        break;
+                    }
+                }
+                if (_alreadyCovered) {
+                    _rec.b++;
+                    if (_rec.b >= 3) {
+                        // 阻了 3 次 → 上下文确实丢了，重置放行
+                        _rec.b = 0;
+                    } else {
+                        return '[ALREADY READ] 文件 ' + args.path + ' L' + _reqStart + '-' + _reqEnd + ' 已读过（第 ' + _rec.b + ' 次阻拦）。若上下文丢失请换更大行范围重读，或继续分析已有内容。';
+                    }
+                }
+            } else {
+                // 再次全文读 → 阻拦但有阶梯
+                _rec.b++;
+                if (_rec.b >= 3) {
+                    // 阻了 3 次 → 上下文确实丢了，重置放行
+                    _rec.b = 0;
+                } else {
+                    return '[ALREADY READ] 文件 ' + args.path + ' 已全文读过（第 ' + _rec.b + ' 次阻拦）。若上下文丢失，请用 start_line/end_line 读你缺失的具体段落。';
+                }
+            }
+        }
+
+        if (_isFull) {
+            // 全文读 → 标记全覆盖
+            _rec.f = true;
+            _rec.r = [[1, 999999]];
+        } else {
+            // 分段读 → 记录范围
+            var _reqStart = _sl;
+            var _reqEnd = _el || (_sl + 2999);
+            // 合并范围
+            _rec.r.push([_reqStart, _reqEnd]);
+            _rec.r.sort(function (a, b) { return a[0] - b[0]; });
+            var _merged = [];
+            for (var _mi = 0; _mi < _rec.r.length; _mi++) {
+                var _cur = _rec.r[_mi];
+                if (_merged.length === 0 || _merged[_merged.length - 1][1] < _cur[0] - 1) {
+                    _merged.push([_cur[0], _cur[1]]);
+                } else {
+                    _merged[_merged.length - 1][1] = Math.max(_merged[_merged.length - 1][1], _cur[1]);
+                }
+            }
+            _rec.r = _merged;
+            if (_merged.length === 1 && _merged[0][0] <= 1 && _merged[0][1] >= 999999) {
+                _rec.f = true;
+            }
         }
     }
 
@@ -414,16 +480,27 @@ async function executeReadFile(args) {
                 var lines = content.split('\n');
                 var total = lines.length;
                 var start = Math.max(0, (args.start_line || 1) - 1);
-                var end = args.end_line ? Math.min(total, args.end_line) : Math.min(total, start + 500);
+                var end = args.end_line ? Math.min(total, args.end_line) : Math.min(total, start + 3000);
                 var slice = lines.slice(start, end).join('\n');
-                _readResult = (total <= 500 && !args.start_line) ? content : ('File has ' + total + ' lines. Showing L' + (start + 1) + '-' + end + ':\n' + slice);
+                _readResult = (total <= 3000 && !args.start_line) ? content : ('File has ' + total + ' lines. Showing L' + (start + 1) + '-' + end + ':\n' + slice);
             }
         } catch (err) { _readErr = err; }
     }
 
     if (_readErr) {
         var _errMsg = 'Error reading file: ' + (_readErr.message || _readErr);
+        // ★ 治根：EISDIR → 自动列目录内容（模型读了文件夹而非文件）
         // ★ 治根：ENOENT → 去父目录模糊匹配，防中文路径/引号截断
+        if ((_errMsg.indexOf('EISDIR') >= 0) && (typeof window !== 'undefined')) {
+            try {
+                var _dirEntries = await bridge.fs.list(args.path);
+                if (_dirEntries && _dirEntries.length) {
+                    var _dirList = _dirEntries.map(function (e) { return (e.isDir ? '[DIR]  ' : '[FILE] ') + e.name; }).join('\n');
+                    return '[IS DIRECTORY] 你读的是一个文件夹，不是文件。其内容如下：\n\n' + _dirList + '\n\n请选择上面的文件名，用完整路径 read_file。';
+                }
+                return '[IS DIRECTORY] 这是一个空文件夹: ' + args.path;
+            } catch (_) { /* 列目录失败，让原始错误透传 */ }
+        }
         if ((_errMsg.indexOf('ENOENT') >= 0 || _errMsg.indexOf('no such file') >= 0) && (typeof window !== 'undefined')) {
             var _lastSep = Math.max(args.path.lastIndexOf('\\'), args.path.lastIndexOf('/'));
             var _parentDir = _lastSep > 0 ? args.path.slice(0, _lastSep) : '';

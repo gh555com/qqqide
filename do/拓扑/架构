@@ -553,13 +553,13 @@ SAFETY NET 层 (永远不需要改):
   ghrun spawn.rs:    65536  纯防内存爆炸，非 AI 面限制
   qz-spawn.ts:       65536  纯防 IPC 洪水，非 AI 面限制
 
-AI FACING 层 (唯一真理源: tools.js 顶部):
-  OUTPUT_CAP_DEFAULT   = 8000    DeepSeek 默认每次返回
-  OUTPUT_CAP_MAX       = 65536   maxOutput 参数上限（尚方宝剑）
+AI FACING 层 (唯一真理源: content-gateway.js):
+  OUTPUT_CAP_DEFAULT   = 200000  DeepSeek 默认每次返回（1M 上下文→一次可读完整文件）
+  OUTPUT_CAP_MAX       = 800000  maxOutput 参数上限（AI 可显式请求突破默认值）
   OUTPUT_CAP_FETCH     = 8000    网页抓取文本提取
   OUTPUT_CAP_FETCH_ERR = 500     网页抓取错误信息
 
-  改 AI 面限制 → 只改 tools.js 顶部常量。
+  改 AI 面限制 → 只改 content-gateway.js 常量。tools.js 和 agent-loop.js 自动跟随。
   安全网值远高于 AI 面，永不成为短板。
   run_command/fetch_webpage 工具描述动态引用常量，DeepSeek 自动感知。
 
