@@ -814,7 +814,7 @@ var AgentLoop = (function () {
         self._stopCtrl = new AbortController();
         self._stopState = 'sending';
         self._resetStallCounter();
-        if (typeof window !== 'undefined') { window._qqqReadFilesThisFloor = {}; window._qqqEnoentCache = {}; window._qqqPathResolve = {}; }  // ★ 去重 + ENOENT + 路径纠错：每层楼复位
+        if (typeof window !== 'undefined') { window._qqqReadFilesThisFloor = {}; window._qqqEnoentCache = {}; window._qqqPathResolve = {}; window._qqqToolCacheThisFloor = {}; }  // ★ 去重 + ENOENT + 路径纠错 + 泛化 READ 缓存：每层楼复位
 
         try {
             while (maxIterations-- > 0 && !self._sendTerminated && self._stopState === 'sending') {
@@ -1268,6 +1268,9 @@ var AgentLoop = (function () {
             self._log('✗ agent error: ' + (err.message || err));
             onError(err.message || String(err));
             return null;
+        } finally {
+            // ★ P2: 状态机闭环 — 无论正常/错误/停止，清理后复位到 idle
+            self._stopState = 'idle';
         }
     };
 
@@ -2364,7 +2367,8 @@ var AgentLoop = (function () {
                 try {
                     var _isSearch = item.name === 'search_text' || item.name === 'search_content' || item.name === 'search_file'
                         || item.name === 'find_files' || item.name === 'list_files'
-                        || item.name === 'search_symbol' || item.name === 'grep_code';
+                        || item.name === 'search_symbol' || item.name === 'grep_code'
+                        || item.name === 'search_smart';
                     result = await executeTool(item.name, item.args);
                 } catch (err) {
                     result = 'Tool error: ' + (err.message || err);

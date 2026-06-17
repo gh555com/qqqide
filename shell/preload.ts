@@ -193,6 +193,7 @@ const QQQ = {
         write_file: (args: { path: string; content: string }) => ipcRenderer.invoke('qqqide:ai:write_file', args),
         generate_image: (args: { prompt: string; style?: string; size?: string; n?: number; out_dir?: string }) => ipcRenderer.invoke('qqqide:ai:generate_image', args),
         analyze_image: (args: { image: string; action: string; detail?: string; targets?: string; question?: string }) => ipcRenderer.invoke('qqqide:ai:analyze_image', args),
+        search_smart: (args: { query: string; topK?: number; path?: string; regex?: string }) => ipcRenderer.invoke('qqqide:ai:search_smart', args),
     },
 
     // ---- cache (KV + bucketed file cache rooted at portable.cache) ----

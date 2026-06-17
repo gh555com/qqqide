@@ -953,8 +953,9 @@
     var _closeTt = document.createElement('div');
     _closeTt.textContent = '= Right Click';
     _closeTt.style.cssText = 'display:none;position:fixed;z-index:100001;pointer-events:none;' +
-      'background:#000;color:#fff;padding:6px 12px;font-size:13px;font-weight:bold;' +
-      'border:2px solid #dc322f;border-radius:4px;white-space:nowrap;' +
+      'background:#000;color:#ffd302;padding:4px 10px;font-size:12px;font-weight:700;' +
+      'font-family:system-ui,-apple-system,sans-serif;border:2px solid #ffd302;border-radius:4px;white-space:nowrap;' +
+      'line-height:1.4;' +
       'box-shadow:0 2px 8px rgba(0,0,0,0.8);';
     document.body.appendChild(_closeTt);
     closeBtn.addEventListener('mouseenter', function(e) {

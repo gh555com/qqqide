@@ -9,8 +9,9 @@ qqq-shell-v2 架构 — 代码若与此冲突，以本文档为准。
 │ 壳 (shell/)                          │
 │ Electron 22.3.27 · Win7+ · frame:false│
 │ 入口: bootstrap.js → main.js          │
-│ 职责: 窗口 + preload bridge + 热更新检查│
-│ 产物: shell-out/ (esbuild 35ms)       │
+│ 职责: 窗口 + IPC + bridge + 热更新检查 │
+│ 源码: main.ts + 12 子模块 (≤290行/个)  │
+│ 产物: shell-out/ (esbuild ~35ms)      │
 │ 热更: bootstrap 启动时原子替换 shell-out/ │
 └──────────┬───────────────────────────┘
            │ spawn at boot (×2)
@@ -157,7 +158,28 @@ LSP 四种:
 目录结构
 --------
 qqq-shell-v2/
-├── shell/             壳层TS
+├── shell/             壳层TS（入口 main.ts → 13 子模块）
+│   ├── main.ts              入口：组装+启动
+│   ├── boot.ts              启动配置/健康检查/壳层热更/启动序列
+│   ├── window-manager.ts    窗口创建/缩放/边界/全局快捷键
+│   ├── asset-protocol.ts    qqqide-asset:// 协议/资产根/磁盘空闲
+│   ├── ipc-state.ts         共享状态（qwr机器/Python路径/跳过列表）
+│   ├── ipc-boot.ts          启动信息/重试/探测 IPC
+│   ├── ipc-fs.ts            文件系统 IPC（读写列表状态等）
+│   ├── ipc-ai-tools.ts      AI工具 IPC（search_text/find_files/list_files）
+│   ├── ipc-search.ts        高性能搜索引擎 IPC（qqqide:search）
+│   ├── ipc-edit.ts          编辑工具 IPC + qwr 保护
+│   ├── ipc-media.ts         图像生成/分析 IPC
+│   ├── ipc-timeline.ts      Timeline 版本时间线 + Diff窗口 IPC
+│   ├── ipc-misc.ts          窗口/对话框/资产根/磁盘 IPC
+│   ├── shutdown.ts          安全加固/退出处理器/崩溃兜底
+│   ├── preload.ts           预加载桥
+│   ├── qz-spawn.ts          进程生成（四重防御）
+│   ├── lsp-bridge.ts        LSP 诊断桥
+│   ├── state-sqlite.ts      SQLite 引擎
+│   ├── state-store.ts       状态存储门面
+│   ├── qg.ts                FS 原子写
+│   └── ...                  其他服务（engines/audio/monaco-host 等）
 ├── server-app/        载荷层(热更)
 │   ├── index.html
 │   ├── core/           IDE 平台 (shell/theme/editor/qoast/cooldown-guard/state-sdk/gaea-host/tab-manager/...)

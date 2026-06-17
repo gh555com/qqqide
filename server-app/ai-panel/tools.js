@@ -315,6 +315,23 @@ var TOOL_DEFINITIONS = [
                 required: ['image', 'action']
             }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'search_smart',
+            description: 'Smart semantic search — BM25 + regex + symbol matching. One call finds relevant files by meaning AND text. Much faster than calling search_text search_content find_files separately. Use as your PRIMARY search tool; fall back to search_text only for exact regex patterns.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: { type: 'string', description: 'Search query — natural language or keywords (e.g. "authentication logic" or "jwt verify")' },
+                    top_k: { type: 'number', description: 'Max results (default 10)' },
+                    path: { type: 'string', description: 'Directory to search in (optional, default: entire project)' },
+                    regex: { type: 'string', description: 'Optional explicit regex (auto-extracted from query if empty)' }
+                },
+                required: ['query']
+            }
+        }
     }
 ];
 
@@ -325,7 +342,7 @@ var TOOL_DEFINITIONS = [
 var TOOL_CATEGORY = {
     read_file: 'READ', search_text: 'READ', search_content: 'READ', list_files: 'READ',
     find_files: 'READ', get_vision_context: 'READ', fetch_webpage: 'READ',
-    get_diagnostics: 'READ',
+    get_diagnostics: 'READ', search_smart: 'READ',
     edit_file: 'WRITE', create_file: 'WRITE', delete_file: 'WRITE', write_file: 'WRITE',
     run_command: 'EFFECT',
     generate_image: 'EFFECT', analyze_image: 'EFFECT'
@@ -336,24 +353,56 @@ var TOOL_CATEGORY = {
 // ============================================================
 
 async function executeTool(name, args) {
-    switch (name) {
-        case 'read_file': return executeReadFile(args);
-        case 'edit_file': return executeEditFile(args);
-        case 'search_text': return executeSearchText(args);
-        case 'search_content': return executeSearchContent(args);
-        case 'list_files': return executeListFiles(args);
-        case 'get_vision_context': return executeGetVisionContext();
-        case 'create_file': return executeCreateFile(args);
-        case 'run_command': return executeRunCommand(args);
-        case 'delete_file': return executeDeleteFile(args);
-        case 'find_files': return executeFindFiles(args);
-        case 'fetch_webpage': return executeFetchWebpage(args);
-        case 'get_diagnostics': return executeGetDiagnostics(args);
-        case 'write_file': return executeWriteFile(args);
-        case 'generate_image': return executeGenerateImage(args);
-        case 'analyze_image': return executeAnalyzeImage(args);
-        default: return 'Unknown tool: ' + name;
+    // ★ Floor 级泛化 READ 缓存 — 消灭同 floor 内重搜索/重列目录死循环
+    //   缓存 key = toolName + 规范化参数 JSON（剔除 null/undefined）
+    //   每层楼由 agent-loop.js 复位: window._qqqToolCacheThisFloor = {}
+    var _cache = (typeof window !== 'undefined') ? window._qqqToolCacheThisFloor : null;
+    var _cat = TOOL_CATEGORY[name] || 'EFFECT';
+    if (_cache && _cat === 'READ' && name !== 'read_file') {
+        // 规范化 args：排序 key + 剔除 null/undefined
+        var _canon = {};
+        var _keys = Object.keys(args || {}).sort();
+        for (var _ki = 0; _ki < _keys.length; _ki++) {
+            var _k = _keys[_ki];
+            if (args[_k] != null) _canon[_k] = args[_k];
+        }
+        var _cacheKey = name + '::' + JSON.stringify(_canon);
+        var _cached = _cache[_cacheKey];
+        if (_cached !== undefined) {
+            return '[CACHED — same args this floor] ' + _cached;
+        }
+        // 闭包捕获，供下方缓存写入
+        var __shouldCache = true;
+        var __cacheKey = _cacheKey;
     }
+
+    var _result;
+    switch (name) {
+        case 'read_file': _result = executeReadFile(args); break;
+        case 'edit_file': _result = executeEditFile(args); break;
+        case 'search_text': _result = executeSearchText(args); break;
+        case 'search_content': _result = executeSearchContent(args); break;
+        case 'list_files': _result = executeListFiles(args); break;
+        case 'get_vision_context': _result = executeGetVisionContext(); break;
+        case 'create_file': _result = executeCreateFile(args); break;
+        case 'run_command': _result = executeRunCommand(args); break;
+        case 'delete_file': _result = executeDeleteFile(args); break;
+        case 'find_files': _result = executeFindFiles(args); break;
+        case 'fetch_webpage': _result = executeFetchWebpage(args); break;
+        case 'get_diagnostics': _result = executeGetDiagnostics(args); break;
+        case 'write_file': _result = executeWriteFile(args); break;
+        case 'generate_image': _result = executeGenerateImage(args); break;
+        case 'analyze_image': _result = executeAnalyzeImage(args); break;
+        case 'search_smart': _result = executeSearchSmart(args); break;
+        default: _result = 'Unknown tool: ' + name; break;
+    }
+    _result = await _result;
+
+    // 缓存写入：仅成功 READ（非 read_file），非错误
+    if (_cache && __shouldCache && _result && typeof _result === 'string' && !_result.startsWith('Error:') && !_result.startsWith('Unknown tool:')) {
+        _cache[__cacheKey] = _result;
+    }
+    return _result;
 }
 
 // ============================================================
@@ -629,6 +678,158 @@ function _findMatch(content, find) {
         }
     }
     return null;
+}
+
+// ═══ search_smart — 语义搜索 (BM25 + Embedding 混合 + 正则 + 符号) ═══
+async function executeSearchSmart(args) {
+    var bridge = getBridge();
+    if (!bridge) return 'Error: bridge not available';
+
+    var query = args.query || '';
+    if (!query) return 'Error: query is required';
+
+    var topK = args.top_k || 10;
+    var searchPath = args.path || null;
+
+    // ★ 走主进程 IPC (请求结构化结果用于 embedding 重排)
+    if (bridge.ai && bridge.ai.search_smart) {
+        try {
+            var _r = await bridge.ai.search_smart({
+                query: query,
+                topK: topK,
+                path: searchPath,
+                regex: args.regex || null,
+                returnStructured: true  // ★ 请求结构化 BM25 结果
+            });
+
+            // ── Embedding 混合重排 ──
+            var _textResult = typeof _r === 'string' ? _r : (_r.text || '');
+            if (_r && _r.bm25 && _r.bm25.length > 0) {
+                try {
+                    var _hybridText = await _tryEmbeddingRerank(query, _r);
+                    if (_hybridText) {
+                        // ★ 重排成功：用混合结果替换 BM25 部分
+                        _textResult = _hybridText;
+                    }
+                } catch (_embErr) {
+                    // ★ embedding 失败静默降级：保留原始 BM25 结果
+                }
+            }
+
+            // content-gateway.js 自动截断
+            return _textResult;
+        } catch (_) { /* fallback to search_text */ }
+    }
+
+    // Fallback: 降级为 search_text
+    try {
+        var _fb = await bridge.ai.search_text({
+            query: query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+            path: searchPath
+        });
+        return '[FALLBACK — search_smart IPC unavailable, using search_text]\n' + _fb;
+    } catch (_) {
+        return 'Error: search_smart IPC not available and fallback failed.';
+    }
+}
+
+// ═══ Embedding 混合重排：query embedding × BM25 snippets → hybrid score ═══
+async function _tryEmbeddingRerank(query, structuredResult) {
+    var _emb = (typeof window !== 'undefined') ? window._qqqEmbedding : null;
+    if (!_emb || !_emb.embedBatch || !_emb.rerankWithEmbedding) return null;
+
+    // 获取 auth token + floor_id
+    var token = '';
+    var floorId = '';
+    try {
+        var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+        if (ag && ag._token) token = ag._token;
+        if (ag && ag._floorId) floorId = ag._floorId;
+    } catch (_) { }
+    if (!token) return null; // 无 token 则静默降级
+
+    var bm25Results = structuredResult.bm25 || [];
+    // ★ 分离 BM25 和符号结果
+    var bm25Only = [];
+    var symbolOnly = [];
+    for (var i = 0; i < bm25Results.length; i++) {
+        if (bm25Results[i].matchType === 'symbol') {
+            symbolOnly.push(bm25Results[i]);
+        } else {
+            bm25Only.push(bm25Results[i]);
+        }
+    }
+
+    var topN = Math.min(bm25Only.length, 10); // 最多 10 条 BM25（batch 上限）
+
+    // 构建 snippet 列表（截断至 200 字符）
+    var snippets = [];
+    for (var i = 0; i < topN; i++) {
+        var s = bm25Only[i].snippet || '';
+        if (s.length > 200) s = s.slice(0, 200);
+        snippets.push(s);
+    }
+
+    // ★ 调用 embedding API：[query, ...snippets] → 计费自动发生
+    var embResult = await _emb.embedBatch([query].concat(snippets), token, floorId);
+    if (!embResult || !embResult.vectors || embResult.vectors.length < 2) return null;
+
+    var queryVec = embResult.vectors[0];
+    var docVecs = embResult.vectors.slice(1);
+
+    // ★ 混合重排
+    var reranked = _emb.rerankWithEmbedding(queryVec, bm25Only.slice(0, topN), docVecs);
+
+    // 构建混合结果输出
+    var out = [];
+    out.push('══════ SEARCH SMART: "' + query + '" ══════');
+    out.push('');
+    out.push('── Hybrid (BM25 + Embedding) ──');
+
+    for (var ri = 0; ri < reranked.length; ri++) {
+        var r = reranked[ri];
+        var lineInfo = r.filePath + (r.line ? ':' + r.line : '');
+        var snippet = (r.snippet || '').length > 200 ? r.snippet.slice(0, 200) + '...' : (r.snippet || '');
+        out.push('[' + (r.matchType || 'CONTENT').toUpperCase() + '] ' + lineInfo + ' (hybrid:' + r._hybridScore.toFixed(2) + ' bm25:' + r._bm25Score.toFixed(2) + ' emb:' + r._embScore.toFixed(2) + ')');
+        out.push('  ' + snippet);
+    }
+    out.push('');
+
+    // ★ 附加符号匹配结果（不被 embedding 重排影响）
+    if (symbolOnly.length > 0) {
+        out.push('── Symbol Matches ──');
+        for (var si = 0; si < symbolOnly.length; si++) {
+            var sr = symbolOnly[si];
+            out.push('[SYMBOL] ' + sr.filePath + ' (score:' + sr.score.toFixed(1) + ')');
+            out.push('  ' + sr.snippet);
+        }
+        out.push('');
+
+        // ★ P3: 符号图 — 每个匹配符号的引用关系
+        if (structuredResult.symbolGraph && structuredResult.symbolGraph.length > 0) {
+            out.push('── Symbol Graph ──');
+            for (var gi = 0; gi < structuredResult.symbolGraph.length; gi++) {
+                var g = structuredResult.symbolGraph[gi];
+                var parts = [];
+                if (g.definingFiles.length > 0) parts.push('defines: [' + g.definingFiles.join(', ') + ']');
+                if (g.exportingFiles.length > 0) parts.push('exports: [' + g.exportingFiles.join(', ') + ']');
+                if (g.importingFiles.length > 0) parts.push('imported by: [' + g.importingFiles.slice(0, 5).join(', ') + (g.importingFiles.length > 5 ? ', +' + (g.importingFiles.length - 5) + ' more' : '') + ']');
+                if (parts.length > 0) {
+                    out.push('  ' + g.symbol + ' [' + g.kind + '] → ' + parts.join(' | '));
+                }
+            }
+            out.push('');
+        }
+    }
+
+    // 附加 Stats
+    out.push('── Stats ──');
+    if (structuredResult.fileCount) {
+        out.push('Index: ' + structuredResult.fileCount + ' files, ' + structuredResult.chunkCount + ' chunks');
+    }
+    out.push('BM25: ' + bm25Results.length + ' results');
+    out.push('Embedding: text-embedding-v4, ' + embResult.tokenCount + ' tokens');
+    return out.join('\n');
 }
 
 async function executeEditFile(args) {
