@@ -684,21 +684,23 @@ function _triggerQueueSend() {
     var _q = _queue;
     if (!_q || _q.length === 0) { renderQueueStrip(); return; }
     var inputText = ($input.value || '').trim();
+    // ★ 永不自停：即使输入框有文字也不暂停，交给用户手动控制
     if (inputText) {
-        _queuePaused = true;
-        renderQueueStrip();
-        return;
+        _queuePaused = false;
     }
-    var _totalBefore = _q.length;
     var next = _q.shift();
-    var _remaining = _q.length;
     renderQueueStrip();
     _debounceSaveQueue();
-    pendingImages = (next.pendingImages && next.pendingImages.length > 0)
-        ? next.pendingImages.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl }; })
+    // ★ 还原背包：图片 + 等级 + 文本
+    pendingImages = (next.images && next.images.length > 0)
+        ? next.images.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl }; })
         : [];
     renderImageStrip();
-    $input.value = next.text || next.html || '';
+    if (typeof next.selectedTier === 'number') {
+        selectedTier = next.selectedTier;
+        updateTierButtons(selectedTier);
+    }
+    $input.value = next.text || '';
     _queueBusy = true;
     setTimeout(function () { sendMessage(); }, 300);
 }
@@ -708,11 +710,13 @@ function renderQueueStrip() {
     if (_queue.length === 0) { $queueStrip.style.display = 'none'; return; }
     $queueStrip.style.display = 'block';
 
+    // ── 头部：队列计数 + 暂停/清空 ──
     var header = document.createElement('div');
     header.className = 'queue-header';
+    var _i = window._i || function(k,f){return f;};
     var countEl = document.createElement('span');
     countEl.className = 'queue-header-count';
-    countEl.textContent = '\ud83d\udcee \u961f\u5217 (' + _queue.length + ')';
+    countEl.textContent = '📬 ' + _i('ai.queue.header', '队列') + ' (' + _queue.length + '/' + QUEUE_MAX + ')';
     header.appendChild(countEl);
 
     var spacer = document.createElement('span');
@@ -721,8 +725,8 @@ function renderQueueStrip() {
 
     var pauseBtn = document.createElement('button');
     pauseBtn.className = 'queue-header-btn';
-    pauseBtn.textContent = _queuePaused ? '\u25b6 \u7ee7\u7eed' : '\u23f8 \u6682\u505c';
-    pauseBtn.title = _queuePaused ? '\u6062\u590d\u81ea\u52a8\u53d1\u9001' : '\u6682\u505c\u81ea\u52a8\u53d1\u9001';
+    pauseBtn.textContent = _queuePaused ? ('▶ ' + _i('ai.queue.resume', '继续')) : ('⏸ ' + _i('ai.queue.pause', '暂停'));
+    pauseBtn.title = _queuePaused ? '恢复自动发送' : '暂停自动发送';
     pauseBtn.onclick = function (e) {
         e.stopPropagation();
         _queuePaused = !_queuePaused;
@@ -735,8 +739,8 @@ function renderQueueStrip() {
 
     var clearBtn = document.createElement('button');
     clearBtn.className = 'queue-header-btn';
-    clearBtn.textContent = '\ud83d\uddd1 \u6e05\u7a7a';
-    clearBtn.title = '\u6e05\u7a7a\u6240\u6709\u6392\u961f\u6d88\u606f';
+    clearBtn.textContent = _i('ai.queue.clear', '清空');
+    clearBtn.title = '清空所有排队消息';
     clearBtn.onclick = function (e) {
         e.stopPropagation();
         _queue.length = 0;
@@ -746,112 +750,160 @@ function renderQueueStrip() {
     header.appendChild(clearBtn);
     $queueStrip.appendChild(header);
 
+    // ── 背包卡片 ──
     for (var i = 0; i < _queue.length; i++) {
         (function (q, idx) {
-            var card = document.createElement('div');
-            card.className = 'queue-card';
+            var images = q.images || q.pendingImages || [];
             var preview = q.text.slice(0, 80) + (q.text.length > 80 ? '...' : '');
-            var badgesHtml = '';
-            var imgCount = (q.pendingImages && q.pendingImages.length) || 0;
-            var fileCount = 0;
-            if (q.html) {
-                var tmpDiv = document.createElement('div');
-                tmpDiv.innerHTML = q.html;
-                fileCount = tmpDiv.querySelectorAll('.file-chip').length;
-                tmpDiv = null;
+            var tierLabel = (typeof q.selectedTier === 'number') ? ('A' + q.selectedTier) : '';
+
+            var card = document.createElement('div');
+            card.className = 'bk-card';
+
+            // ── 行1：等级徽章 + 文本预览 + 图片计数 ──
+            var row1 = document.createElement('div');
+            row1.className = 'bk-row1';
+            if (tierLabel) {
+                var tierBadge = document.createElement('span');
+                tierBadge.className = 'bk-tier';
+                tierBadge.textContent = tierLabel;
+                row1.appendChild(tierBadge);
             }
-            if (imgCount > 0) badgesHtml += '<span class="qcard-badge">\ud83d\udcf7' + imgCount + '</span>';
-            if (fileCount > 0) badgesHtml += '<span class="qcard-badge">\ud83d\udcce' + fileCount + '</span>';
-            card.innerHTML = '<span>' + (idx + 1) + '. ' + escHtml(preview) + '</span>' + (badgesHtml ? '<span class="qcard-badges">' + badgesHtml + '</span>' : '');
-            card.title = '\u70b9\u51fb\u7f16\u8f91\u6216\u5220\u9664';
+            var textSpan = document.createElement('span');
+            textSpan.className = 'bk-text';
+            textSpan.textContent = preview;
+            row1.appendChild(textSpan);
+            if (images.length > 0) {
+                var imgCount = document.createElement('span');
+                imgCount.className = 'bk-img-count';
+                imgCount.textContent = '📷' + images.length;
+                row1.appendChild(imgCount);
+            }
+            card.appendChild(row1);
+
+            // ── 行2：图片缩略图（背包专有图片集）──
+            if (images.length > 0) {
+                var row2 = document.createElement('div');
+                row2.className = 'bk-row2';
+                for (var imi = 0; imi < images.length; imi++) {
+                    var thumb = document.createElement('img');
+                    thumb.className = 'bk-thumb';
+                    thumb.src = images[imi].dataUrl || '';
+                    thumb.title = '图片 #' + (images[imi].id || (imi + 1));
+                    row2.appendChild(thumb);
+                }
+                card.appendChild(row2);
+            }
+
+            // ── 点击展开编辑 ──
+            card.title = (typeof _i === 'function') ? _i('ai.queue.editTitle', '点击编辑或删除') : '点击编辑或删除';
             card.onclick = function () {
-                if (card.classList.contains('queue-card-expanded')) return;
-                card.classList.add('queue-card-expanded');
-                var attachmentInfo = '';
-                var _imgCount = (q.pendingImages && q.pendingImages.length) || 0;
-                var _fileCount = 0;
-                if (q.html) {
-                    var tmpDiv2 = document.createElement('div');
-                    tmpDiv2.innerHTML = q.html;
-                    _fileCount = tmpDiv2.querySelectorAll('.file-chip').length;
-                    tmpDiv2 = null;
-                }
-                if (_imgCount > 0 || _fileCount > 0) {
-                    attachmentInfo = '<div style="font-size:10px;color:var(--base01);margin-bottom:4px">\ud83d\udcce \u9644\u4ef6\uff1a' +
-                        (_imgCount > 0 ? ' \ud83d\udcf7\u00d7' + _imgCount : '') +
-                        (_fileCount > 0 ? ' \ud83d\udcc4\u00d7' + _fileCount : '') + '</div>';
-                }
-                card.innerHTML = attachmentInfo;
+                if (card.classList.contains('bk-expanded')) return;
+                card.classList.add('bk-expanded');
+                var _i2 = window._i || function(k,f){return f;};
+                // 保留 row1/row2，追加编辑区
+                var editArea = document.createElement('div');
+                editArea.className = 'bk-edit';
                 var ta = document.createElement('textarea');
+                ta.className = 'bk-ta';
                 ta.value = q.text;
-                card.appendChild(ta);
+                ta.spellcheck = false;
+                ta.setAttribute('spellcheck', 'false');
+                ta.setAttribute('autocomplete', 'off');
+                ta.setAttribute('autocorrect', 'off');
+                ta.setAttribute('autocapitalize', 'off');
+                // ★ 逐字 ctrl+z 回退
+                if (window.qqqCharUndo && typeof window.qqqCharUndo.attach === 'function') {
+                    window.qqqCharUndo.attach(ta);
+                }
+                // ★ 自动扩展（与主编辑框同原理）
+                var _taLineH = 0;
+                var _taMaxH = 222;
+                function _taAutoResize() {
+                    if (!_taLineH) _taLineH = parseFloat(getComputedStyle(ta).lineHeight) || 20;
+                    if (!ta.value) { ta.style.height = ''; ta.style.overflowY = 'hidden'; return; }
+                    ta.style.height = 'auto';
+                    var sh = ta.scrollHeight;
+                    var newH = sh + _taLineH;
+                    if (newH >= _taMaxH) { ta.style.height = _taMaxH + 'px'; ta.style.overflowY = 'auto'; }
+                    else { ta.style.height = newH + 'px'; ta.style.overflowY = 'hidden'; }
+                }
+                ta.addEventListener('input', function () {
+                    _taAutoResize();
+                    // ★ 实时回写：确保切换 quest 时编辑不丢
+                    q.text = ta.value;
+                });
+                // ★ 失焦也回写一次（兜底）
+                ta.addEventListener('blur', function () {
+                    q.text = ta.value;
+                    _debounceSaveQueue();
+                });
+                setTimeout(_taAutoResize, 0);
+                editArea.appendChild(ta);
                 var actions = document.createElement('div');
-                actions.className = 'qcard-actions';
+                actions.className = 'bk-actions';
 
                 var modBtn = document.createElement('button');
-                modBtn.textContent = '\u4fdd\u5b58';
+                modBtn.textContent = _i2('ai.queue.save', '保存');
                 modBtn.onclick = function (e) {
                     e.stopPropagation();
                     q.text = ta.value;
-                    q.html = ta.value;
                     renderQueueStrip();
                     _debounceSaveQueue();
                 };
-
+                var cancelBtn = document.createElement('button');
+                cancelBtn.textContent = _i2('ai.queue.cancel', '取消');
+                cancelBtn.onclick = function (e) {
+                    e.stopPropagation();
+                    renderQueueStrip();
+                };
                 var delBtn = document.createElement('button');
-                delBtn.textContent = '\u5220\u9664';
+                delBtn.textContent = _i2('ai.queue.delete', '删除');
                 delBtn.onclick = function (e) {
                     e.stopPropagation();
                     _queue.splice(idx, 1);
                     renderQueueStrip();
                     _debounceSaveQueue();
                 };
-
-                var cancelBtn = document.createElement('button');
-                cancelBtn.textContent = '\u53d6\u6d88';
-                cancelBtn.onclick = function (e) {
-                    e.stopPropagation();
-                    renderQueueStrip();
-                };
-
                 actions.appendChild(modBtn);
-                actions.appendChild(delBtn);
                 actions.appendChild(cancelBtn);
-                card.appendChild(actions);
+                actions.appendChild(delBtn);
+                editArea.appendChild(actions);
+                card.appendChild(editArea);
             };
             $queueStrip.appendChild(card);
         })(_queue[i], i);
     }
-
-    var footer = document.createElement('div');
-    footer.className = 'queue-footer';
-    if (_queuePaused) {
-        footer.textContent = '\u23f8 \u5df2\u6682\u505c \u00b7 \u961f\u5217\u4e2d ' + _queue.length + ' \u6761\u6d88\u606f\u7b49\u5f85\u624b\u52a8\u53d1\u9001';
-    } else if (_sending || streaming) {
-        footer.textContent = '\u23f3 AI \u56de\u590d\u5b8c\u6210\u540e\u81ea\u52a8\u53d1\u9001\u4e0b\u4e00\u6761';
-    } else {
-        footer.textContent = '\ud83d\udce4 \u4e0b\u4e00\u6761\uff1a' + _queue[0].text.slice(0, 60) + (_queue[0].text.length > 60 ? '...' : '');
-    }
-    $queueStrip.appendChild(footer);
 }
 
 $queueBtn.onclick = function () {
-    if (_switching) return;  // ★ quest 切换中
+    if (_switching) return;
     if (!_activeAgent) {
-        addMessageEl('error', '\u8bf7\u5148\u53d1\u9001\u4e00\u6761\u6d88\u606f\u521b\u5efa\u5bf9\u8bdd');
+        var _noAgentMsg = (typeof _i === 'function') ? _i('ai.error.noActiveAgent', '请先发送一条消息创建对话') : '请先发送一条消息创建对话';
+        addMessageEl('error', _noAgentMsg);
         return;
     }
     if (_queue.length >= QUEUE_MAX) {
-        addMessageEl('error', '\u961f\u5217\u5df2\u6ee1\uff08\u6700\u591a ' + QUEUE_MAX + ' \u6761\uff09');
+        var _fullMsg = (typeof _i === 'function') ? _i('ai.queue.full', '队列限宽3，请等待上一条消息发出。') : '队列限宽3，请等待上一条消息发出。';
+        addMessageEl('error', _fullMsg);
         return;
     }
     var text = getInputText().trim();
     if (!text) return;
-    var imgSnapshot = pendingImages.length > 0 ? pendingImages.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl }; }) : null;
-    _queue.push({ id: 'q_' + Date.now(), text: text, ts: Date.now(), pendingImages: imgSnapshot });
+    // ★ 背包：冻结当前全部输入状态
+    var backpack = {
+        id: 'bk_' + Date.now(),
+        text: text,
+        images: pendingImages.length > 0 ? pendingImages.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl }; }) : [],
+        selectedTier: selectedTier,
+        ts: Date.now()
+    };
+    _queue.push(backpack);
     renderQueueStrip();
     $input.value = '';
     $input._resetUndo();
+    pendingImages = [];
+    renderImageStrip();
     $input.focus();
     _debounceSaveQueue();
 };
@@ -866,19 +918,22 @@ $queueBtn.onclick = function () {
         var dk = document.documentElement.getAttribute('data-theme') === 'dark';
         return {
             c: dk ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)',
-            cH: dk ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.80)'
+            cH: dk ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.80)',
+            trackBg: dk ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'
         };
     }
 
     // 滑轨
     var track = document.createElement('div');
-    track.style.cssText = 'position:absolute; right:-1px; top:0; bottom:0; width:11px; z-index:50;';
+    var co0 = _qhColors();
+    track.style.cssText = 'position:absolute; right:-1px; top:0; bottom:0; width:11px; z-index:50; ' +
+        'background:' + co0.trackBg + ';';
 
     // 滑块
     var thumb = document.createElement('div');
     var co = _qhColors();
     thumb.style.cssText = 'position:absolute; right:9px; width:2px; min-height:24px; border-radius:0; ' +
-        'background:' + co.c + '; cursor:pointer; ' +
+        'display:none; background:' + co.c + '; cursor:pointer; ' +
         'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
 
     // hover 变粗贴边
@@ -935,9 +990,10 @@ $queueBtn.onclick = function () {
     var obs = new MutationObserver(function () { setTimeout(sync, 30); });
     obs.observe(el, { childList: true, subtree: true });
 
-    // 主题切换 → 立即刷滑块色
+    // 主题切换 → 立即刷滑块色 + 滑轨底色
     var themeObs = new MutationObserver(function () {
         var co2 = _qhColors();
+        track.style.background = co2.trackBg;
         thumb.style.background = co2.c;
     });
     themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });

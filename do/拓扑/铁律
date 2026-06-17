@@ -17,7 +17,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 §2 qz spawn — ghrun 统管所有子进程（2026-06-11 调参+跨平台）
   - 全部子进程必须经 ghrun spawn 启动。管线: ghrun(Rust) → Node(child_process 兜底)。
   - 四重防御: ①硬超时2h(SYSTEM_MAX_TIMEOUT=7200000) ②内存守卫2GB(异步execFile,Win=PowerShell/Unix=ps -o rss,首检5s后续15s,ghrunTier跳过) ③ghrun原生Job Object(Windows)/setrlimit RLIMIT_AS(Unix) ④失速看门狗(stallMs=15min无输出→杀)
-  - 唯一真理: SYSTEM_MAX_TIMEOUT 只改 qz-spawn.ts 一处；tools.js 传 timeout=0 委托系统层。
+  - 唯一真理: SYSTEM_MAX_TIMEOUT 只改 qz-spawn.ts 一处；tools-exec-effect.js 传 timeout=0 委托系统层。
   - 进程组隔离: Win=CREATE_NEW_PROCESS_GROUP / Unix=process_group(0)。父死子必死。
   - execSync→execFile 修复了 UI 冻结 bug（PowerShell 冷启动阻塞主进程 0.2-2s）。
   - 空 cmd 保护、输出安全网 64KB。guardMs 恒为 timeout+10s。
@@ -141,7 +141,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 §14 主文件夹 + 文件锁
   - AI 视口第1个豆腐块 = 主文件夹，显示 ★ 标记，不可删除（UI+代码双重不可删）。
   - AI 首轮对话注入 vision context（⭐ 标记主项目），末尾追加 REMINDER，首尾夹击确保 AI 认知。
-  - tools.js get_vision_context 同样标记 ⭐ 主项目。
+  - tools-exec.js get_vision_context 同样标记 ⭐ 主项目。
   - 主文件夹写入 qqq/.lock (30s 心跳, 60s 过期) → 防同一项目被多个 qqq IDE 窗口打开。
   - quest 数据走 qgs.project(主文件夹/qqq/quests/quest.sq3)。
   - 所有指令英文，零冗余，零"旧规则/历史上下文"等误导语。
@@ -215,7 +215,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 
 §22 输出截断 — 四重防御第四环，见 §2
   - 64KB IPC 截断（ghrun + qz-spawn）是 §2 四重防御的第四环，不独立存在。
-  - AI 面限制: tools.js 顶部 4 个常量，改 AI 面只改此处。工具描述动态引用常数。
+  - AI 面限制: tools-defs.js 顶部 4 个常量，改 AI 面只改此处。工具描述动态引用常数。
 
 §23 无进展终止 + 对话修复（Write-Aware，2026-06-17 终极重构）
   - T1 工具循环: 同工具+同参数 3 间 house → 触发，8 次连续 → 终止。

@@ -13,7 +13,7 @@ var _lastAutoSaveLen = 0;
 function _startAutoSave() {
     _stopAutoSave();
     _lastAutoSaveLen = 0;
-    _autoSaveTimer = setInterval(function () {
+    _autoSaveTimer = setInterval(async function () {
         if (!_capturedAgent || !_capturedQuestId) return;
         var floorNum = _capturedAgent._ctx.totalFloors;
         if (floorNum <= 0) return;
@@ -32,6 +32,37 @@ function _startAutoSave() {
                 console.warn('[CRITICAL] auto-save caught dirty conversation: repaired ' + (_lenBefore - _lenAfter) + ' orphaned msgs (quest=' + _capturedQuestId + ', floor=' + floorNum + ')');
                 fullConv = _capturedAgent.conversation.slice();
                 floorConv = fullConv.slice(floorStartIdx);
+                // ★ 根治：修复后重写受影响的过去楼层到 sq3，否则下次打开又复发
+                try {
+                    var _floorsMap = {};
+                    for (var mi = 0; mi < fullConv.length; mi++) {
+                        var _f = fullConv[mi]._floor;
+                        if (_f !== undefined && _f >= 1) {
+                            if (!_floorsMap[_f]) _floorsMap[_f] = [];
+                            _floorsMap[_f].push(fullConv[mi]);
+                        }
+                    }
+                    var _allFloors = await questStore.loadAllFloors(_capturedQuestId);
+                    var _rewritten = 0;
+                    for (var fi = 0; fi < _allFloors.length; fi++) {
+                        var _fNum = _allFloors[fi].floorNum;
+                        if (_fNum === floorNum) continue;
+                        var _newConv = _floorsMap[_fNum];
+                        if (_newConv && _newConv.length > 0) {
+                            var _oldData = _allFloors[fi].data || {};
+                            if (!_oldData.conversation || _oldData.conversation.length !== _newConv.length) {
+                                _oldData.conversation = _newConv;
+                                await questStore.saveFloor(_capturedQuestId, _fNum, _oldData);
+                                _rewritten++;
+                            }
+                        }
+                    }
+                    if (_rewritten > 0) {
+                        console.warn('[CRITICAL] auto-save repaired past floors: ' + _rewritten + ' floors rewritten to sq3 (quest=' + _capturedQuestId + ')');
+                    }
+                } catch (_floorRewriteErr) {
+                    console.warn('[CRITICAL] auto-save floor rewrite failed:', _floorRewriteErr);
+                }
             }
         }
         // 优先使用统一增量 payload 构建器（含 a1/a2/a3/a4 全部数据）
@@ -194,8 +225,8 @@ function startFloorTimer(aiDiv, ag, resume) {
         var totalS = Math.floor(elapsed / 1000);
         var min = Math.floor(totalS / 60);
         var sec = totalS % 60;
-    clockMin.textContent = min + 'm';
-    clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
+        clockMin.textContent = min + 'm';
+        clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
         var at = _ag._floorTiming;
         var n = (at && at.networkMs) || 0;
         var d = (at && at.aiMs) || 0;
@@ -224,8 +255,8 @@ function stopFloorTimer(timing, ag) {
         aiDiv._clockBlock.className = 'msg-ai-clock';
     }
     if (aiDiv && aiDiv._clockMin && aiDiv._clockCanvas) {
-      aiDiv._clockMin.textContent = min + 'm';
-      aiDiv._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
+        aiDiv._clockMin.textContent = min + 'm';
+        aiDiv._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
         var tm = timing || { networkMs: 0, aiMs: 0, toolMs: 0 };
         tm.totalMs = elapsed;
         if (elapsed > 0) { aiDiv._clockCanvas.style.visibility = 'visible'; drawPie(aiDiv._clockCanvas, tm); }
@@ -297,7 +328,7 @@ async function renderQuestDrop() {
             line.className = 'quest-drop-line';
             var prefix = document.createElement('span');
             prefix.className = 'quest-drop-prefix';
-            prefix.textContent = 'q' + (s.numericId || '?') + '.  ';
+            prefix.textContent = 'q' + (s.numericId || '?') + '.  ';
             var title = document.createElement('span');
             title.className = 'quest-drop-title';
             title.textContent = s.title || '';
@@ -385,7 +416,7 @@ async function updateQuestTofu() {
     _tofuEntry = entry || null;
     if (entry) {
         var num = entry.numericId || '?';
-        if (prefixEl) prefixEl.textContent = 'q' + num + '.  ';
+        if (prefixEl) prefixEl.textContent = 'q' + num + '.  ';
         textEl.textContent = entry.title || '';
         textEl.parentElement.classList.remove('quest-tofu-new');
         if (pen) pen.style.display = '';

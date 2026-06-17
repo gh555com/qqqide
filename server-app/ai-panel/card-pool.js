@@ -298,22 +298,63 @@ var CardPool = (function () {
 
     var frag = document.createDocumentFragment();
 
-    // ① 渲染用户消息
+    // ① 渲染用户消息（纯文本，不渲染 Markdown）
     var userEl = null;
     if (fData.question) {
       userEl = document.createElement('div');
       userEl.className = 'msg msg-user';
+      userEl.style.whiteSpace = 'pre-wrap';
       userEl._floor = fNum;
-      // 使用外部 renderMarkdown 和 getUserDisplayContent
       var getUDC = window.getUserDisplayContent;
-      var rm = window.renderMarkdown;
       var displayContent = typeof getUDC === 'function'
         ? getUDC(fData.question)
         : fData.question;
-      userEl.innerHTML = typeof rm === 'function'
-        ? rm(displayContent)
-        : displayContent.replace(/</g, '&lt;');
+      userEl.textContent = displayContent;
+      // ★ 恢复图片（背包图片引用）
+      if (fData.images && fData.images.length > 0) {
+        var imgRow = document.createElement('div');
+        imgRow.style.cssText = 'margin-top:6px;';
+        for (var imi = 0; imi < fData.images.length; imi++) {
+          var img = fData.images[imi];
+          var wrap = document.createElement('span');
+          wrap.className = 'msg-img-wrap';
+          var imgEl = document.createElement('img');
+          // ★ 优先用 dataUrl（缩略图），否则尝试从磁盘加载
+          if (img.dataUrl) {
+            imgEl.src = img.dataUrl;
+          } else if (img.fileName && fData._fDir) {
+            imgEl.src = fData._fDir + img.fileName;
+          }
+          if (img.fileName) imgEl.dataset.fileName = img.fileName;
+          wrap.appendChild(imgEl);
+          var badge = document.createElement('span');
+          badge.className = 'msg-img-badge';
+          badge.textContent = '#' + (img.id || (imi + 1));
+          badge.onclick = (function (imgData, fDir) {
+            return function (ev) {
+              ev.stopPropagation();
+              var srcUrl = imgData.dataUrl;
+              var b64 = imgData.base64 || '';
+              if (!srcUrl && imgData.fileName && fDir) {
+                srcUrl = fDir + imgData.fileName;
+              }
+              if (typeof openLightbox === 'function') openLightbox(srcUrl, b64);
+            };
+          })(img, fData._fDir || '');
+          wrap.appendChild(badge);
+          imgRow.appendChild(wrap);
+        }
+        userEl.appendChild(imgRow);
+      }
       frag.appendChild(userEl);
+    }
+
+    // ①b AI 等级 + 启动时间指示器（用户消息与 AI 回复之间）
+    if (fData.aiStartTime && fData.tierLabel) {
+      var tierEl = document.createElement('div');
+      tierEl.className = 'msg-tier-indicator';
+      tierEl.textContent = fData.tierLabel + ' start in ' + fData.aiStartTime;
+      frag.appendChild(tierEl);
     }
 
     // ② 渲染 AI 回复

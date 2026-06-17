@@ -310,7 +310,8 @@ var AgentLoop = (function () {
         var _isSearchTool = function (name) {
             return name === 'search_text' || name === 'search_content' || name === 'search_file'
                 || name === 'find_files' || name === 'list_files'
-                || name === 'search_symbol' || name === 'grep_code';
+                || name === 'search_symbol' || name === 'grep_code'
+                || name === 'search_smart' || name === 'search_codebase';
         };
         // ── 辅助：判断工具是否为读/写（实质性操作） ──
         var _isReadWriteTool = function (name) {
@@ -551,7 +552,7 @@ var AgentLoop = (function () {
         var finalContent = (userContent || '') + visionText;
 
         // 归档：保存用户键入供 generateFloorTxt 写入
-        self._lastUserInput = { text: userContent || '', vision: visionText || '' };
+        self._lastUserInput = { text: userContent || '', vision: visionText || '', images: images || [] };;
 
         // ═══ 持久化 rules 注入（版本追踪，永不压缩） ═══
         var rulesPrefix = await self._refreshRules();
@@ -844,7 +845,22 @@ var AgentLoop = (function () {
                             continue;
                         }
                     }
-                    var _tools = response.tool_calls.map(function (tc) { return { name: tc.function.name, args: tc.function.arguments }; });
+                    var _tools = response.tool_calls.map(function (tc) {
+                        var _name = tc.function.name;
+                        if (typeof tc.function.arguments !== 'string') return { name: _name, args: tc.function.arguments };
+                        // ★ 安全解析：DeepSeek 偶发生成畸形 JSON，容错处理
+                        try { return { name: _name, args: JSON.parse(tc.function.arguments) }; } catch (_e1) {
+                            // L1: 去末尾逗号（},] 前的逗号是 JSON 语法错误，去掉不改语义）
+                            try {
+                                var _sanitized = tc.function.arguments.replace(/,\s*([}\]])/g, '$1');
+                                return { name: _name, args: JSON.parse(_sanitized) };
+                            } catch (_e2) {
+                                // L2: 全部失败 → 空 object 降级，工具缺参会报错让 AI 重试
+                                self._log('⚠ JSON parse failed for ' + _name + ' args (len=' + tc.function.arguments.length + '): ' + _e1.message.slice(0, 80) + ' → fallback {}');
+                                return { name: _name, args: {} };
+                            }
+                        }
+                    });
                     var _bill2 = self._lastBilling; self._lastBilling = null;
                     var _cd2 = self._lastCacheDiag; self._lastCacheDiag = null;
                     self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', geCost: _bill2 ? _bill2.geCost : 0, model: _bill2 ? _bill2.model : '', cacheHitRate: _bill2 ? _bill2.cacheHitRate : -1, usage: _bill2 ? _bill2.usage : null, billingSeq: _bill2 ? _bill2.seq : 0, billingRequestId: _bill2 ? _bill2.requestId : '', cacheDiag: _cd2 || undefined });
@@ -948,8 +964,9 @@ var AgentLoop = (function () {
                             self.conversation.push({ role: 'user', content: '[System: ⛔ TERMINATED — You called the same tools ' + (self._t1ConsecutiveCount * 3) + ' times. You have all needed information. Discussion saved so far.]', _stallTerminated: true, _floor: self._ctx.totalFloors });
                             self._sendTerminated = true;
                             // ★ 不 return —— 让 while 自然退出，后处理会输出终止消息
-                        } else {
-                            // T1 第 1-2 次：注入循环打断消息
+                        } else if (self._t1ConsecutiveCount > 0) {
+                            // ★ 结果增量已归零时（count=0）→ 不注入 loop-break，AI 有进展
+                            // T1 第 1-7 次：注入循环打断消息
                             self._log('⚠ T1 tool-loop (#'
                                 + self._t1ConsecutiveCount + '): injecting loop-break message');
                             if (typeof self._writeFileLog === 'function') self._writeFileLog('⚠ T1 tool-loop #' + self._t1ConsecutiveCount + ': same tool+args 3x (panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?') + ', floor=' + self._ctx.totalFloors + ')');

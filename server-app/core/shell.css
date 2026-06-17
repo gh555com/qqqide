@@ -1023,6 +1023,17 @@ body {
   overflow-x: hidden !important;
 }
 
+/* 内层滚动容器：百分百消除原生滚动条，仅显示 qh 自定义滑轨 */
+.aiv-scroll-inner {
+  scrollbar-width: none;          /* Firefox */
+  -ms-overflow-style: none;       /* IE/Edge */
+}
+.aiv-scroll-inner::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
 [data-theme="dark"] .aiv-dropdown,
 [data-theme="dark"] .aiv-submenu,
 [data-theme="dark"] .aiv-recent-dropdown {

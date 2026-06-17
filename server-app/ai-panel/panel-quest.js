@@ -466,6 +466,13 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
             allTxtPath: ag._allTxtPath || '',
             fileStats: _computeFileStats(ag._houses, ag._a4Snapshots),
             clockTiming: ag._lastFloorTimingRecord || null,
+            aiStartTime: ag._aiStartTime || '',
+            tierLabel: ag._aiTierLabel || '',
+            images: ag._lastUserInput && ag._lastUserInput.images ? ag._lastUserInput.images.map(function (img) {
+                // ★ sq3 只存引用（fileName + dataUrl 缩略图），base64 存磁盘文件
+                return { id: img.id, fileName: img.fileName || '', dataUrl: img.dataUrl || '' };
+            }) : [],
+            _fDir: ag._allTxtPath ? ag._allTxtPath.replace(/[\\/]all\.txt$/g, '').replace(/[\\/]$/, '') + '/' : '',
             createdAt: Date.now(),
             _serverFloorId: ag._floorId || ''
         };

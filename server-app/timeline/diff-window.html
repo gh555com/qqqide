@@ -37,18 +37,19 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
 
 /* ═══ CUSTOM DROPDOWN ═══ */
 .v-dropdown{position:relative;flex:1;max-width:420px;min-width:120px;cursor:pointer;user-select:none}
-.v-dropdown-btn{display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px;font-family:Tahoma,ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
+.v-dropdown-btn{display:flex;align-items:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px;font-family:Tahoma,ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:400}
 .v-dropdown-btn:hover{border-color:var(--yellow)}
 .v-dropdown-btn::after{content:' ▼';font-size:9px;margin-left:auto;color:var(--base01)}
-.v-dropdown.open .v-dropdown-btn{border-color:var(--yellow)}
-.v-dropdown-list{display:none;position:absolute;top:100%;left:0;right:0;max-height:260px;overflow-y:auto;background:var(--card);border:2px dashed var(--base01);border-radius:0 0 4px 4px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
+/* 展开时按钮与列表共用一个虚线框 */
+.v-dropdown.open .v-dropdown-btn{border:1px dashed var(--base01);border-bottom:1px dashed var(--base01);border-radius:4px 4px 0 0}
+.v-dropdown-list{display:none;position:absolute;top:100%;left:0;right:0;max-height:260px;overflow-y:auto;background:var(--card);border:1px dashed var(--base01);border-top:none;border-radius:0 0 4px 4px;z-index:200;box-shadow:0 4px 16px rgba(0,0,0,0.5)}
 .v-dropdown.open .v-dropdown-list{display:block}
 .v-dropdown-item{padding:4px 8px;font-size:11px;font-family:Tahoma,ui-monospace,monospace;font-weight:400;cursor:pointer;white-space:nowrap;color:var(--text);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:4px;position:relative}
 .v-dropdown-item:last-child{border-bottom:none}
 .v-dropdown-item:hover{background:var(--hover-bg)}
 .v-dropdown-item.selected{background:var(--sel-bg)}
-.v-dropdown-item .v-stat-green{color:var(--green);font-weight:700}
-.v-dropdown-item .v-stat-red{color:var(--red);font-weight:700}
+.v-dropdown-item .v-stat-green,.v-dropdown-btn .v-stat-green{color:var(--green);font-weight:700}
+.v-dropdown-item .v-stat-red,.v-dropdown-btn .v-stat-red{color:var(--red);font-weight:700;margin-left:0.2em}
 .v-date-md{font-weight:700}
 .v-dropdown-item .v-copy-btn{display:none;position:absolute;right:4px;top:50%;transform:translateY(-50%);width:22px;height:18px;border:1px solid var(--border);border-radius:3px;background:var(--card);color:var(--text);font-size:10px;cursor:pointer;line-height:1;padding:0}
 .v-dropdown-item:hover .v-copy-btn{display:block}
@@ -61,7 +62,7 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
 /* 来源标签 — 虚线框强调 */
 .v-source-tag{border:1px dashed var(--base01);border-radius:3px;padding:1px 6px;font-size:11px;font-weight:400;margin-left:5px;white-space:nowrap;letter-spacing:0.3px}
 /* f 楼层数字用主题金色 */
-.v-fnum{color:var(--yellow)}
+.v-fnum{color:#e0553a}
 
 /* ═══ VERSION BAR ═══ */
 #version-bar{height:44px;background:var(--card);display:flex;align-items:center;border-bottom:1px solid var(--border);flex-shrink:0}

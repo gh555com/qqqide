@@ -183,8 +183,10 @@ function _markLongMsg(el, role, rawText) {
 function renderUserMessageEl(content) {
     var div = document.createElement('div');
     div.className = 'msg msg-user';
+    div.style.whiteSpace = 'pre-wrap';
     var displayContent = getUserDisplayContent(content);
-    div.innerHTML = renderMarkdown(displayContent);
+    var esc = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+    div.textContent = displayContent;
     return div;
 }
 

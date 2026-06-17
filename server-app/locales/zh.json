@@ -256,7 +256,18 @@
             "selectFolder": "请先选择一个主文件夹！",
             "selectFolderTitle": "请选择一个主文件夹"
         },
-        "guideBtnTooltip": "立即用当下消息引导 AI 而不起新楼层！"
+        "guideBtnTooltip": "立即用当下消息引导 AI 而不起新楼层！",
+        "queue": {
+            "full": "队列限宽3，请等待上一条消息发出。",
+            "save": "保存",
+            "delete": "删除",
+            "cancel": "取消",
+            "pause": "暂停",
+            "resume": "继续",
+            "clear": "清空",
+            "header": "队列",
+            "editTitle": "点击编辑或删除"
+        }
     },
     "goods": {
         "bar": {

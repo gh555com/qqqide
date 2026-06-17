@@ -13,7 +13,7 @@ var _queueFallback = [];
 var _queuePaused = false;
 var _queueBusy = false;
 var _queueSaveTimer = null;
-var QUEUE_MAX = 50;
+var QUEUE_MAX = 3;
 Object.defineProperty(window, '_queue', {
     get: function () { return _activeAgent ? _activeAgent._queue : _queueFallback; },
     set: function (v) { if (_activeAgent) _activeAgent._queue = v; else _queueFallback = v; },

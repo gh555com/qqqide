@@ -530,17 +530,24 @@
         return displayHtml;
     }
 
-    // ★ 将 trace 格式 "q113 f1 h53 r1" 中的字母半透明不加粗，数字加粗
-    // ★ f（楼层）的数字用主题色高亮，便于快速定位楼层
+    // ★ 将 trace 格式 "q113 f1 h53 r1" 中的字母半透明，数字加粗
+    // ★ f（楼层）的数字用主题色高亮；token 间全角空格防 flexbox 吞
     function _buildSourceInnerHtml(rawSource) {
         if (/^[a-z]\d+(\s+[a-z]\d+)*$/i.test(rawSource)) {
-            return rawSource.replace(/([a-z])(\d+)/gi, function (_, letter, num) {
+            var tokens = rawSource.split(/\s+/);
+            var parts = [];
+            for (var t = 0; t < tokens.length; t++) {
+                var m = tokens[t].match(/^([a-z])(\d+)$/i);
+                if (!m) { parts.push(_escHtml(tokens[t])); continue; }
+                var letter = m[1], num = m[2];
                 var letterSpan = '<span style="opacity:0.45;font-weight:400">' + letter + '</span>';
-                if (letter.toLowerCase() === 'f') {
-                    return letterSpan + '<b class="v-fnum">' + num + '</b>';
-                }
-                return letterSpan + '<b>' + num + '</b>';
-            });
+                var numTag = (letter.toLowerCase() === 'f')
+                    ? '<b class="v-fnum">' + num + '</b>'
+                    : '<b>' + num + '</b>';
+                parts.push(letterSpan + numTag);
+            }
+            // ★ 全角空格 U+3000（宽一倍，不被 flexbox 删除）
+            return parts.join('\u3000');
         }
         return _escHtml(rawSource);
     }
@@ -552,13 +559,15 @@
             // 解析 fullLabel，将 +N 和 -M 分别染色，MM-DD / #N 加粗
             var displayHtml = _escHtml(mo.fullLabel || mo.label);
             // ★ 编号 #41 加粗
-            displayHtml = displayHtml.replace(/^(#\d+)\s/, '<b>$1</b> ');
+            displayHtml = displayHtml.replace(/^(#\d+)\s/, '<b>$1</b>&nbsp;');
             // 给 +数字 加绿色 span
             displayHtml = displayHtml.replace(/\+(\d+)/g, '<span class="v-stat-green">+$1</span>');
             // ★ 减号染色：仅 diff 统计（空格后 -N），不染日期
             displayHtml = displayHtml.replace(/\s\-(\d+)/g, ' <span class="v-stat-red">-$1</span>');
             // ★ 日期中 06-15 加粗
-            displayHtml = displayHtml.replace(/(\d{4}-)(\d{2}-\d{2})/g, '$1<b class="v-date-md">$2</b>');
+            displayHtml = displayHtml.replace(/(\d{4})-(\d{2})-(\d{2})/g, '$1-<b class="v-date-md">$2-$3</b>');
+            // ★ 时分秒左右加空格（防 flexbox 吞）
+            displayHtml = displayHtml.replace(/(\d{2}:\d{2}:\d{2})/g, '&nbsp;$1&nbsp;');
             // ★ 来源标签虚线框
             if (mo.sourceLabel) displayHtml = _wrapSourceTag(displayHtml, mo.sourceLabel);
             // marker 标签
@@ -583,10 +592,11 @@
             if (options[i].value === val) {
                 var mo = options[i];
                 var displayHtml = _escHtml(mo.fullLabel || mo.label);
-                displayHtml = displayHtml.replace(/^(#\d+)\s/, '<b>$1</b> ');
+                displayHtml = displayHtml.replace(/^(#\d+)\s/, '<b>$1</b>&nbsp;');
                 displayHtml = displayHtml.replace(/\+(\d+)/g, '<span class="v-stat-green">+$1</span>');
                 displayHtml = displayHtml.replace(/\s\-(\d+)/g, ' <span class="v-stat-red">-$1</span>');
-                displayHtml = displayHtml.replace(/(\d{4}-)(\d{2}-\d{2})/g, '$1<b class="v-date-md">$2</b>');
+                displayHtml = displayHtml.replace(/(\d{4})-(\d{2})-(\d{2})/g, '$1-<b class="v-date-md">$2-$3</b>');
+                displayHtml = displayHtml.replace(/(\d{2}:\d{2}:\d{2})/g, '&nbsp;$1&nbsp;');
                 if (mo.sourceLabel) displayHtml = _wrapSourceTag(displayHtml, mo.sourceLabel);
                 $btn.innerHTML = displayHtml;
                 return;
@@ -639,17 +649,29 @@
         });
         // 点击列表项：选中并关闭（排除复制按钮）
         $list.addEventListener('click', function (e) {
-            // ★ 点复制按钮：复制纯文本
-            if (e.target.classList.contains('v-copy-btn')) {
+            // ★ 点复制按钮：复制纯文本（手动冒泡查找到按钮元素）
+            var copyBtn = null;
+            var el = e.target;
+            while (el && el !== $list) {
+                if (el.classList && el.classList.contains('v-copy-btn')) { copyBtn = el; break; }
+                el = el.parentElement;
+            }
+            if (copyBtn) {
                 e.stopPropagation();
-                var copyItem = e.target.closest('.v-dropdown-item');
+                e.preventDefault();
+                var copyItem = copyBtn.closest('.v-dropdown-item');
                 if (copyItem) {
                     var text = copyItem.textContent.replace(/📋/g, '').trim();
-                    if (bridge && bridge.clipboard && bridge.clipboard.writeText) {
-                        bridge.clipboard.writeText(text);
-                    } else {
-                        navigator.clipboard.writeText(text).catch(function () { });
-                    }
+                    // 使用 textarea + execCommand 兜底（兼容 Electron / 非安全上下文）
+                    var ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.style.position = 'fixed';
+                    ta.style.left = '-9999px';
+                    ta.style.top = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    try { document.execCommand('copy'); } catch (_) { }
+                    document.body.removeChild(ta);
                 }
                 return;
             }

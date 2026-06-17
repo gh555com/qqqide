@@ -208,7 +208,10 @@ qqq-shell-v2/
 │       ├── agent-vision.js    视觉预分析（_analyzeImages + _callVision）
 │       ├── agent-exec.js      并行工具执行引擎 + 分层调度（_executeToolCallsParallel等）
 │       ├── agent-context.js   上下文压缩（三专家架构, _compressContext）
-│       ├── tools.js           AI 工具定义
+│       ├── tools-defs.js       AI 工具定义 + 分类 + 常量 + 辅助函数
+│       ├── tools-exec-write.js WRITE 类工具（edit/write/create/delete）
+│       ├── tools-exec.js       工具调度中心 + READ 类工具（read/search/list/find/diag/fetch）
+│       ├── tools-exec-effect.js EFFECT 类工具（run_command/search_smart/generate/analyze）+ Embedding
 │       ├── embedding-service.js Embedding 向量化服务（text-embedding-v4）
 │       ├── system-prompt.js   系统提示词（GATEWAY_URL 唯一声明处）
 │       ├── content-gateway.js 内容安全网关
@@ -422,10 +425,7 @@ AI 工具 (16个) — 2026-06-04 强化，2026-06-10 三项优化，2026-06-16 s
   · 缓存: 同 prompt+style+size → .wanx_cache.json → 零 API 费用即时复用
   · 进度: --verbose → stderr 轮询状态 (PENDING→RUNNING→SUCCEEDED), 返回值含 elapsed/polls
 组件下载 (★ 并行化): tool-dl 多文件 Promise.all(PUT/POST) 并发，5文件 40s→8s
-SSE 复用 (★ 零行代码): fetch 新建流复用已有 ReadableStream，零代码改动
-辅助: git_snapshot.bat
-
-工具描述透明化 (A7): 全部 16 个工具描述均标注性能特征（IPC次数/内存安全性/速度倍数），
+SSE 复用 (★ 零行代码): fetch 新建流复用已有 ReadableStream· 入口: tools-exec-effect.js search_smart → _tryEmbeddingRerank() → embedding-service.js速度倍数），
 AI 有充分知情权选择最优工具。system-prompt 新增 🔴 FILE SEARCH PRIORITY 铁律段。
 
 Embedding 混合搜索管道 — BM25 + text-embedding-v4 语义重排（2026-06-16）
@@ -523,14 +523,14 @@ Write-Aware 约束系统 — T1/T2/T3 三层阶梯 + 写入感知（2026-06-17 �
   T2 搜索停滞: 连续 5/10/15 次纯搜索有结果但不读 → L1温和→L2引导→L3终极（永不终止）
   T3 真正空转: 全部 dead 累积 5 次→警告, 8 次→强制。有进展立即归零
 
-Read 约束（tools.js executeReadFile, ~90 行）：
+Read 约束（tools-exec.js executeReadFile, ~90 行）：
   全文读→全覆盖标记；分段读→区间合并去重。同范围再读阻 2 次后放行（上下文丢失）。
   硬封顶: 同文件 20 次/楼层。每层楼复位。
   写入感知: edit_file/create_file/delete_file/write_file 成功后，自动重置该文件追踪。
   搜索缓存写入感知: READ 工具（search_text/search_content/find_files）结果缓存，
     写入后自动清除含该路径的缓存 key，防旧结果误导 AI。
 
-写入通知机制（tools.js executeTool, ~17 行）：
+写入通知机制（tools-exec.js executeTool, ~17 行）：
   WRITE 成功 → ① 删 _qqqReadFilesThisFloor[path] ② 遍历 _qqqToolCacheThisFloor 失效含路径 key
   零侵入：只对 WRITE 类工具生效，run_command 不感知（不确定影响哪些文件）
 
@@ -620,9 +620,7 @@ Go (唯一计费权威):
 -------------------------------------
 SAFETY NET 层 (永远不需要改):
   ghrun spawn.rs:    65536  纯防内存爆炸，非 AI 面限制
-  qz-spawn.ts:       65536  纯防 IPC 洪水，非 AI 面限制
-
-AI FACING 层 (唯一真理源: content-gateway.js):
+  qz-spawn.ts  改 AI 面限制 → 只改 content-gateway.js 常量。tools-defs.js 和 agent-loop.js 自动跟随。ay.js):
   OUTPUT_CAP_DEFAULT   = 200000  DeepSeek 默认每次返回（1M 上下文→一次可读完整文件）
   OUTPUT_CAP_MAX       = 800000  maxOutput 参数上限（AI 可显式请求突破默认值）
   OUTPUT_CAP_FETCH     = 8000    网页抓取文本提取
@@ -678,4 +676,5 @@ qh 滚动真理机器 — 接入标准（非独立模块）
 · 默认参数: 2px常态/12px展开/距右~10px/亮暗自适应
 · 效果清单: 常态细条 + hover变粗贴边 + 滑轨点击跳转 + 拖拽 + 内容自适应
 · 完整接入者: AI 视口下拉（ai-viewport.js _wrapScrollContainer）+ AI 面板聊天区（panel-quest-ui.js 末尾）
+· qh-scroll.js 已删除，原因: 无法做到对既有 DOM 零侵入的"一行接入"ntainer）+ AI 面板聊天区（panel-quest-ui.js 末尾）
 · qh-scroll.js 已删除，原因: 无法做到对既有 DOM 零侵入的"一行接入"

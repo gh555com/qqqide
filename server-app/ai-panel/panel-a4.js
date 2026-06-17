@@ -698,6 +698,12 @@ function _a4BuildCompleteFloorPayload(ag) {
         allTxtPath: ag._allTxtPath || '',
         fileStats: (typeof _computeFileStats === 'function') ? _computeFileStats(ag._houses, ag._a4Snapshots) : { fileCount: 0, added: 0, deleted: 0 },
         clockTiming: ag._lastFloorTimingRecord || null,
+        aiStartTime: ag._aiStartTime || '',
+        tierLabel: ag._aiTierLabel || '',
+        images: ag._lastUserInput && ag._lastUserInput.images ? ag._lastUserInput.images.map(function (img) {
+            return { id: img.id, fileName: img.fileName || '', dataUrl: img.dataUrl || '' };
+        }) : [],
+        _fDir: ag._allTxtPath ? ag._allTxtPath.replace(/[\\/]all\.txt$/g, '').replace(/[\\/]$/, '') + '/' : '',
         createdAt: ag._floorCreatedAt || Date.now(),
         savedAt: Date.now(),
         // ★ 流式持久化：捕获正在打印中的部分 AI 回复文本

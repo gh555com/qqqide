@@ -347,7 +347,8 @@
     outer.style.setProperty('overflow-x', 'hidden', 'important');
     var inner = document.createElement('div');
     inner.className = 'aiv-scroll-inner';
-    inner.style.cssText = 'width:100%; height:100%; overflow-y:auto; overflow-x:hidden;';
+    inner.style.cssText = 'width:100%; height:100%; overflow-y:auto; overflow-x:hidden; ' +
+      'scrollbar-width:none; -ms-overflow-style:none;';
     inner._depth = depth;
     inner._direction = outer._direction; // 方向决策需要
     inner._outer = outer;
@@ -361,17 +362,19 @@
     // ★ 自定义变形滚动条（滑轨锚定在外层，同步内层滚动）
     var sbOuter = document.createElement('div');
     sbOuter.className = 'qh-scroll-track';
-    sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:2;';
+    sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:50;';
     var sbThumb = document.createElement('div');
     sbThumb.className = 'qh-scroll-thumb';
     function _qhCol() {
       var dk = document.documentElement.getAttribute('data-theme') === 'dark';
       return { c: dk ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)',
-               cH: dk ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.80)' };
+               cH: dk ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.80)',
+               trackBg: dk ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)' };
     }
     var _co = _qhCol();
+    sbOuter.style.background = _co.trackBg;
     sbThumb.style.cssText = 'position:absolute; right:10px; width:2px; min-height:24px; border-radius:0; ' +
-      'background:' + _co.c + '; cursor:pointer; ' +
+      'display:none; background:' + _co.c + '; cursor:pointer; ' +
       'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
     sbOuter.addEventListener('mouseenter', function () {
       sbThumb.style.width = '12px'; sbThumb.style.right = '0px'; sbThumb.style.background = _qhCol().cH;
@@ -413,10 +416,12 @@
     });
     document.addEventListener('mouseup', function () { _dr = false; });
     setTimeout(_syncSB, 50);
+    // 仅监听直接子节点变更（行平铺无嵌套），subtree:false 省去递归遍历开销
     var _sbObs = new MutationObserver(function () { setTimeout(_syncSB, 30); });
-    _sbObs.observe(inner, { childList: true, subtree: true });
+    _sbObs.observe(inner, { childList: true });
     var _themeObs = new MutationObserver(function () {
       var co3 = _qhCol();
+      sbOuter.style.background = co3.trackBg;
       sbThumb.style.background = co3.c;
     });
     _themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });

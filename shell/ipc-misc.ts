@@ -2,7 +2,7 @@
 // ipc-misc.ts — 杂项 IPC: 窗口 / 对话框 / 资产根 / 磁盘 / 新窗口
 // ============================================================================
 
-import { ipcMain, BrowserWindow, dialog, shell as electronShell } from 'electron';
+import { ipcMain, BrowserWindow, clipboard, dialog, shell as electronShell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { URL } from 'url';
@@ -29,6 +29,12 @@ export function registerMiscIpc(
     updateService: UpdateService,
     getMainWindow: () => any,
 ): void {
+    // ---- clipboard ----
+    ipcMain.handle('qqqide:clipboard:writeText', async (_e, s: string) => clipboard.writeText(String(s)));
+    ipcMain.handle('qqqide:clipboard:readText', async () => clipboard.readText());
+    ipcMain.handle('qqqide:clipboard:readImage', async () => { var img = clipboard.readImage(); return img.isEmpty() ? null : img.toDataURL(); });
+    ipcMain.handle('qqqide:clipboard:hasImage', async () => !clipboard.readImage().isEmpty());
+
     // ---- drives / diskFree ----
     ipcMain.handle('qqqide:fs:drives', async () => {
         const drives: string[] = [];

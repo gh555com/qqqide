@@ -128,7 +128,7 @@ async function sendMessage() {
         userMsgEl.appendChild(imgRow);
     }
 
-    var images = pendingImages.length > 0 ? pendingImages.map(function (img) { return { id: img.id, base64: img.base64 }; }) : null;
+    var images = pendingImages.length > 0 ? pendingImages.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl, fileName: img.fileName || '' }; }) : null;
 
     saveQuestUIState(_capturedQuestId);
     $input.value = '';
@@ -195,7 +195,33 @@ async function sendMessage() {
         // 二次确认：_resolveQuestDirName 内已做修复，此处再查一次兜底
         qDirName2 = await _resolveQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
         var fDirName2 = _makeName('f', floorNum, userQuestion);
-        await _ensureQuestDir(root2, qDirName2, fDirName2);
+        var _ensured = await _ensureQuestDir(root2, qDirName2, fDirName2);
+        // ★ 保存图片到楼层目录（确保重启后可还原）
+        if (_ensured && _ensured.fDir && pendingImages.length > 0) {
+            var _bridge = window.parent && window.parent.qqqideBridge;
+            if (_bridge && _bridge.fs) {
+                for (var _imi = 0; _imi < pendingImages.length; _imi++) {
+                    var _pimg = pendingImages[_imi];
+                    var _fileName = 'img_' + _pimg.id + '.png';
+                    try {
+                        var _binStr = atob(_pimg.base64);
+                        var _bytes = new Uint8Array(_binStr.length);
+                        for (var _bi = 0; _bi < _binStr.length; _bi++) { _bytes[_bi] = _binStr.charCodeAt(_bi); }
+                        // fs.write expects UTF-8 string; write base64 as file via bridge
+                        // ★ 使用 write_file（bridge.fs.write）写二进制：传 base64 标记
+                        if (typeof _bridge.fs.writeBase64 === 'function') {
+                            await _bridge.fs.writeBase64(_ensured.fDir + _fileName, _pimg.base64);
+                        } else {
+                            // 降级：存 dataUrl（可被识别为图片）
+                            await _bridge.fs.write(_ensured.fDir + _fileName, _pimg.dataUrl);
+                        }
+                        _pimg.fileName = _fileName;
+                    } catch (_imgSaveErr) {
+                        console.warn('[img-save] failed to save image to disk:', _imgSaveErr);
+                    }
+                }
+            }
+        }
     }
     agent._ctx.totalFloors = floorNum - 1;
     var _floorStartIdx = agent.conversation.length;
@@ -220,6 +246,8 @@ async function sendMessage() {
     // ★ 新楼层开始，清空 agent._houses / _a4Snapshots 防止读到上一楼层残影
     _capturedAgent._houses = [];
     _capturedAgent._a4Snapshots = {};
+    _capturedAgent._aiStartTime = '';
+    _capturedAgent._aiTierLabel = '';
     startFloorTimer(aiDiv, _capturedAgent);
     _startAllTxtStream(aiDiv, _allTxtPathLocal, _capturedAgent, floorNum, text, '');
     _startAutoSave();
@@ -230,6 +258,11 @@ async function sendMessage() {
             token: token,
             tier: selectedTier ? TIER_LIST[selectedTier] : null,
             onToken: function (chunk) {
+                // ★ 记录 AI 真正开始干活的时间（仅第一次）
+                if (!_capturedAgent._aiStartTime) {
+                    _capturedAgent._aiStartTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
+                    _capturedAgent._aiTierLabel = 'A' + (selectedTier || 6);
+                }
                 var _targetDiv = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
                 if (!_targetDiv) return;
                 _targetDiv._buf = (_targetDiv._buf || '') + chunk;
@@ -491,15 +524,8 @@ async function sendMessage() {
                     _stopAllTxtStream();
                     stopFloorTimer(null, _capturedAgent);
                     setStreaming(false);
-                    if (_queue.length > 0 && msg.indexOf('网络请求失败') === -1 && msg.indexOf('连接超时') === -1) {
-                        _continueQueue();
-                    }
-                    _stopAllTxtStream();
-                    stopFloorTimer(null, _capturedAgent);
-                    setStreaming(false);
-                    // ★ 仅当队列非空且不是因网络错误中断时才继续队列
-                    //    网络错误时 _continueQueue 可能触发无意义重发，交由用户手动重试
-                    if (_queue.length > 0 && msg.indexOf('网络请求失败') === -1 && msg.indexOf('连接超时') === -1) {
+                    // ★ 永不自停：任何错误都继续队列，网络波动不阻断
+                    if (_queue.length > 0) {
                         _continueQueue();
                     }
                 }
@@ -529,8 +555,7 @@ async function sendMessage() {
                 stopFloorTimer(_capturedAgent._floorTiming || { networkMs: 0, aiMs: 0, toolMs: 0 }, _capturedAgent);
             }
             setStreaming(false);
-            // 暂停队列
-            if (typeof _queuePaused !== 'undefined') _queuePaused = true;
+            // ★ 永不自停：Stop 不暂停队列，用户手动点暂停才停
             // 保存楼层数据到 sq3
             if (_capturedQuestId) {
                 try { await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._floorStartIdx); } catch (_) { }
