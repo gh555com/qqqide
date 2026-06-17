@@ -493,7 +493,7 @@
             // ★ 每行分配永不回退的编号（per-file 自增，按 id ASC 排序）
             var seqNo = mergedOptions.length + 1;
             var labeledLabel = '#' + seqNo + ' ' + fullLabel;
-            mergedOptions.push({ value: o.value, label: o.label, fullLabel: labeledLabel, markers: markers, _blobHash: o._blobHash, isLast: o.isLast, ts: o.ts });
+            mergedOptions.push({ value: o.value, label: o.label, fullLabel: labeledLabel, markers: markers, _blobHash: o._blobHash, isLast: o.isLast, ts: o.ts, sourceLabel: o.sourceLabel });
         }
         options = mergedOptions; // 替换为合并后的列表
         _options = options; // 缓存供 updateOneMarker 使用
@@ -514,15 +514,53 @@
     }
 
     // ── 构建自定义下拉列表（富文本：+N 绿、-M 红、marker 标签）──
+    // ★ 将来源标签（如 q113 f1 h53 r1 / auto save / manual save）用背景色块包裹
+    // ★ trace 格式中的字母（q/f/h/r）降低不透明度，让数字更清晰
+    function _wrapSourceTag(displayHtml, sourceLabel) {
+        if (!sourceLabel) return displayHtml;
+        var escapedSrc = _escHtml(sourceLabel);
+        var idx = displayHtml.lastIndexOf(escapedSrc);
+        if (idx >= 0) {
+            // ★ 构建来源标签内部 HTML：trace 格式字母半透明
+            var innerHtml = _buildSourceInnerHtml(sourceLabel);
+            displayHtml = displayHtml.substring(0, idx) +
+                '<span class="v-source-tag">' + innerHtml + '</span>' +
+                displayHtml.substring(idx + escapedSrc.length);
+        }
+        return displayHtml;
+    }
+
+    // ★ 将 trace 格式 "q113 f1 h53 r1" 中的字母半透明不加粗，数字加粗
+    // ★ f（楼层）的数字用主题色高亮，便于快速定位楼层
+    function _buildSourceInnerHtml(rawSource) {
+        if (/^[a-z]\d+(\s+[a-z]\d+)*$/i.test(rawSource)) {
+            return rawSource.replace(/([a-z])(\d+)/gi, function (_, letter, num) {
+                var letterSpan = '<span style="opacity:0.45;font-weight:400">' + letter + '</span>';
+                if (letter.toLowerCase() === 'f') {
+                    return letterSpan + '<b class="v-fnum">' + num + '</b>';
+                }
+                return letterSpan + '<b>' + num + '</b>';
+            });
+        }
+        return _escHtml(rawSource);
+    }
+
     function _buildDropdownList($list, options) {
         var html = '';
         for (var i = 0; i < options.length; i++) {
             var mo = options[i];
-            // 解析 fullLabel，将 +N 和 -M 分别染色
+            // 解析 fullLabel，将 +N 和 -M 分别染色，MM-DD / #N 加粗
             var displayHtml = _escHtml(mo.fullLabel || mo.label);
-            // 给 +数字 加绿色 span，-数字 加红色 span
+            // ★ 编号 #41 加粗
+            displayHtml = displayHtml.replace(/^(#\d+)\s/, '<b>$1</b> ');
+            // 给 +数字 加绿色 span
             displayHtml = displayHtml.replace(/\+(\d+)/g, '<span class="v-stat-green">+$1</span>');
-            displayHtml = displayHtml.replace(/\-(\d+)/g, '<span class="v-stat-red">-$1</span>');
+            // ★ 减号染色：仅 diff 统计（空格后 -N），不染日期
+            displayHtml = displayHtml.replace(/\s\-(\d+)/g, ' <span class="v-stat-red">-$1</span>');
+            // ★ 日期中 06-15 加粗
+            displayHtml = displayHtml.replace(/(\d{4}-)(\d{2}-\d{2})/g, '$1<b class="v-date-md">$2</b>');
+            // ★ 来源标签虚线框
+            if (mo.sourceLabel) displayHtml = _wrapSourceTag(displayHtml, mo.sourceLabel);
             // marker 标签
             var markerHtml = '';
             if (mo.markers && mo.markers.length) {
@@ -545,8 +583,11 @@
             if (options[i].value === val) {
                 var mo = options[i];
                 var displayHtml = _escHtml(mo.fullLabel || mo.label);
+                displayHtml = displayHtml.replace(/^(#\d+)\s/, '<b>$1</b> ');
                 displayHtml = displayHtml.replace(/\+(\d+)/g, '<span class="v-stat-green">+$1</span>');
-                displayHtml = displayHtml.replace(/\-(\d+)/g, '<span class="v-stat-red">-$1</span>');
+                displayHtml = displayHtml.replace(/\s\-(\d+)/g, ' <span class="v-stat-red">-$1</span>');
+                displayHtml = displayHtml.replace(/(\d{4}-)(\d{2}-\d{2})/g, '$1<b class="v-date-md">$2</b>');
+                if (mo.sourceLabel) displayHtml = _wrapSourceTag(displayHtml, mo.sourceLabel);
                 $btn.innerHTML = displayHtml;
                 return;
             }
@@ -584,16 +625,14 @@
 
     // ── 自定义下拉交互 ──
     function _initDropdown($dd, $btn, $list, $hidden, side) {
-        // 点击按钮：切换展开
+        // 点击按钮：切换展开（不关另一个列表）
         $btn.addEventListener('click', function (e) {
             e.stopPropagation();
             var wasOpen = $dd.classList.contains('open');
-            // 关闭所有下拉
-            $ddLeft.classList.remove('open');
-            $ddRight.classList.remove('open');
-            if (!wasOpen) {
+            if (wasOpen) {
+                $dd.classList.remove('open');
+            } else {
                 $dd.classList.add('open');
-                // 展开时动态计算高度 + 高亮选中项 + 滚动到可见
                 _calcDropdownMaxHeight();
                 _highlightAndScroll($list, $hidden.value);
             }

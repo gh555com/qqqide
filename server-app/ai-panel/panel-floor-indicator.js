@@ -54,7 +54,7 @@ function _updateFloorIndicator() {
       }
     }
   }
-  var floorSpan = '<span style="font-weight:bold;font-size:24px;color:#dc322f">F' + escHtml(String(bestFloor)) + '</span>';
+  var floorSpan = '<span style="font-weight:bold;font-size:24px;color:#dc322f">' + escHtml(String(bestFloor)) + '</span>';
   var _pid = typeof _panelId !== 'undefined' ? _panelId : 1;
   // ★ 中/右面板：文字顺序翻转（计时在前，楼层在尾）；左面板保持原序
   var html;

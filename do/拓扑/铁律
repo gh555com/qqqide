@@ -106,7 +106,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 
 §13b 网关超时 — 唯一真理在 ContentGateway（2026-06-13）
   - 所有超时数字只在 content-gateway.js 定义（FETCH_DEADLINE_PRIMARY_MS / FETCH_DEADLINE_FALLBACK_MS / STREAM_WATCHDOG_MS / AI_OUTPUT_WATCHDOG_MS）。
-  - agent-loop.js 全部读 ContentGateway.*，禁硬编码数字。
+  - agent-gateway.js + agent-sse.js 全部读 ContentGateway.*，禁硬编码数字。
   - 主线路 98s（CF 100s 硬限制留 2s），备用 180s（无 CF 限制），流看门狗 180s，产出看门狗 15min。
   - 改超时只改 content-gateway.js 一处。
 
@@ -217,12 +217,12 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 64KB IPC 截断（ghrun + qz-spawn）是 §2 四重防御的第四环，不独立存在。
   - AI 面限制: tools.js 顶部 4 个常量，改 AI 面只改此处。工具描述动态引用常数。
 
-§23 无进展终止 + 对话修复
-  - agent-loop 内置 stall 计数器：连续无进展 5 次警告、8 次强制 noTools。
-  - 502/503 自动修复：从 DB 重载 conversation → 重试一次（带递归保护）。
-  - search_text 二进制过滤：SKIP_EXTS 覆盖 70+ 种格式。
-  - quest 切换：timer 跑在 agent 上，切 quest 不停 timer，切回零干预（§36）。
-  - 安全网值远高于 AI 面值，永不成为短板。禁在 ghrun/qz-spawn 硬编码 AI 面限制。
+§23 无进展终止 + 对话修复（Write-Aware，2026-06-17 终极重构）
+  - T1 工具循环: 同工具+同参数 3 间 house → 触发，8 次连续 → 终止。
+    结果增量检测: 同参数不同结果(相似度<70%)→有进展→不计入。非 T1 楼层清零指纹断链。
+  - T2 搜索停滞: 连续搜索有结果但不读 → L1(5)温和→L2(10)→L3(15)终极引导，永不终止。
+  - T3 真正空转: 全部 dead 累积 5 次→警告, 8 次→强制。有进展归零。
+  - 写入感知: WRITE 成功→重置 re-read 追踪+失效搜索缓存。Read 阻 2 次放行，硬封顶 20 次/楼。
 
 §26 三面板架构（左中右 iframe，同窗口）
   - 三个 AI 面板：左翼(panel=0) + 中(panel=1) + 右翼(panel=2)，各自独立 iframe。

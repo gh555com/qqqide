@@ -5,6 +5,9 @@
 import { ipcMain } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { _sn } from './ipc-state';
+
+const READ_FILE_MAX = 50 * 1024 * 1024; // 50MB guard
 
 export function registerFsIpc(): void {
     ipcMain.handle('qqqide:fs:exists', async (_e, p: string) => fs.existsSync(p));
@@ -89,5 +92,31 @@ export function registerFsIpc(): void {
     ipcMain.handle('qqqide:fs:rename', async (_e, oldP: string, newP: string) => {
         await fs.promises.rename(oldP, newP);
         return true;
+    });
+
+    // ★ read_file — 主进程直接读，1 IPC，50MB 守卫 + qwr 快照
+    ipcMain.handle('qqqide:ai:read_file', async (_e, args: { path: string; start_line?: number; end_line?: number }) => {
+        try {
+            const st = await fs.promises.stat(args.path);
+            if (st.size > READ_FILE_MAX) {
+                return 'Error: file ' + path.basename(args.path) + ' is ' + (st.size / 1024 / 1024).toFixed(1) + 'MB. Use start_line/end_line to paginate.';
+            }
+            let content = await fs.promises.readFile(args.path, 'utf8');
+            // Record snapshot for qwr machine (external modification detection)
+            try { _sn[args.path] = { mtimeMs: st.mtimeMs, size: st.size }; } catch { /* best-effort */ }
+            // Line-range pagination
+            if (args.start_line != null || args.end_line != null) {
+                const lines = content.split('\n');
+                const start = Math.max(0, (args.start_line || 1) - 1);
+                const end = args.end_line != null ? Math.min(args.end_line, lines.length) : lines.length;
+                const header = '[paginated ' + (start + 1) + '-' + end + ' of ' + lines.length + ' lines]\n';
+                return header + lines.slice(start, end).join('\n');
+            }
+            return content;
+        } catch (e: any) {
+            if (e.code === 'ENOENT') return 'Error: file not found: ' + args.path;
+            if (e.code === 'EACCES') return 'Error: permission denied: ' + args.path;
+            return 'Error reading file: ' + (e.message || e);
+        }
     });
 }

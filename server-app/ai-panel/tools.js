@@ -398,6 +398,23 @@ async function executeTool(name, args) {
     }
     _result = await _result;
 
+    // ★ 写入感知：WRITE 成功后重置该路径的读追踪 + 搜缓存
+    //   编辑后内容已变，旧读记录作废，旧搜索结果作废
+    if (_result && typeof _result === 'string' && !_result.startsWith('Error:') && !_result.startsWith('Unknown tool:') && _cat === 'WRITE') {
+        var _wPath = (args.path || args.filePath || '').replace(/\\/g, '/').toLowerCase();
+        if (_wPath) {
+            // ① 重置 re-read tracker
+            var _rt = (typeof window !== 'undefined') ? window._qqqReadFilesThisFloor : null;
+            if (_rt && _rt[_wPath]) { delete _rt[_wPath]; }
+            // ② 失效搜索缓存中含该路径的 key
+            if (_cache) {
+                for (var _ck in _cache) {
+                    if (_ck.indexOf(_wPath) >= 0) { delete _cache[_ck]; }
+                }
+            }
+        }
+    }
+
     // 缓存写入：仅成功 READ（非 read_file），非错误
     if (_cache && __shouldCache && _result && typeof _result === 'string' && !_result.startsWith('Error:') && !_result.startsWith('Unknown tool:')) {
         _cache[__cacheKey] = _result;
@@ -423,7 +440,8 @@ async function executeReadFile(args) {
 
     // ★ 同楼层去重：按行范围智能去重——防模型微调 start_line/end_line 绕过
     //    全文读（无 start/end）→ 标记文件已全覆盖 → 后续任何范围都挡。
-    //    分段读（有 start/end）→ 只挡已覆盖范围，新范围放行。10 次/文件硬封顶。
+    //    分段读（有 start/end）→ 只挡已覆盖范围，新范围放行。20 次/文件硬封顶。
+    //    写入感知：edit_file/create_file/delete_file/write_file 成功后自动重置该文件追踪。
     //    计数器由 agent-loop.js 在每层楼开始时清零 (window._qqqReadFilesThisFloor = {})
     var _normPath = _p.replace(/\\/g, '/').toLowerCase();
     var _tracker = (typeof window !== 'undefined') ? window._qqqReadFilesThisFloor : null;
@@ -437,8 +455,8 @@ async function executeReadFile(args) {
         if (!_rec) { _rec = { f: false, r: [], c: 0, b: 0 }; _tracker[_normPath] = _rec; }
         _rec.c++;
 
-        // 硬封顶：同一文件在本层楼读 10 次以上 → 无条件拦
-        if (_rec.c > 10) {
+        // 硬封顶：同一文件在本层楼读 20 次以上 → 无条件拦
+        if (_rec.c > 20) {
             return '[ALREADY READ] 文件 ' + args.path + ' 在本层楼已读过 ' + (_rec.c - 1) + ' 次，已达上限。请基于已有信息继续分析。';
         }
 
@@ -446,7 +464,7 @@ async function executeReadFile(args) {
         var _el = args.end_line || 0;
         var _isFull = (!args.start_line && !args.end_line);  // 全文读
 
-        // ★ 治根：全文读被阻 2 次后 → 允许重读（上下文丢失是真实需求，不能永久封锁）
+        // ★ 治根：阻 2 次 → 第 3 次放行 → 永久解冻（上下文丢失是一次性的，证明确实忘了就停止阻拦）
         if (_rec.f) {
             if (!_isFull) {
                 // 全文读过后请求分段读 → 检查范围
@@ -461,22 +479,24 @@ async function executeReadFile(args) {
                     }
                 }
                 if (_alreadyCovered) {
-                    _rec.b++;
-                    if (_rec.b >= 3) {
-                        // 阻了 3 次 → 上下文确实丢了，重置放行
-                        _rec.b = 0;
-                    } else {
-                        return '[ALREADY READ] 文件 ' + args.path + ' L' + _reqStart + '-' + _reqEnd + ' 已读过（第 ' + _rec.b + ' 次阻拦）。若上下文丢失请换更大行范围重读，或继续分析已有内容。';
+                    if (!_rec.thawed) {
+                        _rec.b++;
+                        if (_rec.b >= 3) {
+                            _rec.thawed = true;  // ★ 永久解冻：AI 已证明上下文丢失，后续不再阻拦
+                        } else {
+                            return '[ALREADY READ] 文件 ' + args.path + ' L' + _reqStart + '-' + _reqEnd + ' 已读过（第 ' + _rec.b + ' 次阻拦）。若上下文丢失请换更大行范围重读，或继续分析已有内容。';
+                        }
                     }
                 }
             } else {
                 // 再次全文读 → 阻拦但有阶梯
-                _rec.b++;
-                if (_rec.b >= 3) {
-                    // 阻了 3 次 → 上下文确实丢了，重置放行
-                    _rec.b = 0;
-                } else {
-                    return '[ALREADY READ] 文件 ' + args.path + ' 已全文读过（第 ' + _rec.b + ' 次阻拦）。若上下文丢失，请用 start_line/end_line 读你缺失的具体段落。';
+                if (!_rec.thawed) {
+                    _rec.b++;
+                    if (_rec.b >= 3) {
+                        _rec.thawed = true;  // ★ 永久解冻
+                    } else {
+                        return '[ALREADY READ] 文件 ' + args.path + ' 已全文读过（第 ' + _rec.b + ' 次阻拦）。若上下文丢失，请用 start_line/end_line 读你缺失的具体段落。';
+                    }
                 }
             }
         }
@@ -734,9 +754,17 @@ async function executeSearchSmart(args) {
 }
 
 // ═══ Embedding 混合重排：query embedding × BM25 snippets → hybrid score ═══
+var _EMBEDDING_LOG = false; // ★ 开关：设 true 开启全链路日志（DevTools console 实时设）
+function _embLog(msg) { if (_EMBEDDING_LOG) console.log('[_emb]', msg); }
+
 async function _tryEmbeddingRerank(query, structuredResult) {
+    var _t0 = _EMBEDDING_LOG ? performance.now() : 0;
+
     var _emb = (typeof window !== 'undefined') ? window._qqqEmbedding : null;
-    if (!_emb || !_emb.embedBatch || !_emb.rerankWithEmbedding) return null;
+    if (!_emb || !_emb.embedBatch || !_emb.rerankWithEmbedding) {
+        _embLog('SKIP: _qqqEmbedding not loaded');
+        return null;
+    }
 
     // 获取 auth token + floor_id
     var token = '';
@@ -746,9 +774,12 @@ async function _tryEmbeddingRerank(query, structuredResult) {
         if (ag && ag._token) token = ag._token;
         if (ag && ag._floorId) floorId = ag._floorId;
     } catch (_) { }
-    if (!token) return null; // 无 token 则静默降级
+    if (!token) { _embLog('SKIP: no auth token'); return null; }
+    _embLog('auth: token=' + (token ? 'yes' : 'no') + ' floor=' + (floorId || '(new quest)'));
 
     var bm25Results = structuredResult.bm25 || [];
+    _embLog('BM25 raw: ' + bm25Results.length + ' results');
+
     // ★ 分离 BM25 和符号结果
     var bm25Only = [];
     var symbolOnly = [];
@@ -759,8 +790,10 @@ async function _tryEmbeddingRerank(query, structuredResult) {
             bm25Only.push(bm25Results[i]);
         }
     }
+    _embLog('split: BM25=' + bm25Only.length + ' symbols=' + symbolOnly.length);
 
-    var topN = Math.min(bm25Only.length, 10); // 最多 10 条 BM25（batch 上限）
+    var topN = Math.min(bm25Only.length, 10);
+    if (topN === 0) { _embLog('SKIP: no BM25 results for rerank'); return null; }
 
     // 构建 snippet 列表（截断至 200 字符）
     var snippets = [];
@@ -769,16 +802,29 @@ async function _tryEmbeddingRerank(query, structuredResult) {
         if (s.length > 200) s = s.slice(0, 200);
         snippets.push(s);
     }
+    _embLog('batch: ' + snippets.length + ' snippets, total chars=' + snippets.reduce(function (a, b) { return a + b.length; }, 0));
 
     // ★ 调用 embedding API：[query, ...snippets] → 计费自动发生
+    _embLog('API call → text-embedding-v4...');
+    var _apiT0 = _EMBEDDING_LOG ? performance.now() : 0;
     var embResult = await _emb.embedBatch([query].concat(snippets), token, floorId);
-    if (!embResult || !embResult.vectors || embResult.vectors.length < 2) return null;
+    if (_EMBEDDING_LOG) _embLog('API done: ' + (performance.now() - _apiT0).toFixed(0) + 'ms');
+
+    if (!embResult || !embResult.vectors || embResult.vectors.length < 2) {
+        _embLog('SKIP: invalid response, vectors=' + (embResult && embResult.vectors ? embResult.vectors.length : 0));
+        return null;
+    }
+    _embLog('vectors: ' + embResult.vectors.length + ' (' + (embResult.vectors[0] && embResult.vectors[0].length || 0) + 'd), tokens=' + embResult.tokenCount);
 
     var queryVec = embResult.vectors[0];
     var docVecs = embResult.vectors.slice(1);
 
     // ★ 混合重排
+    _embLog('rerank: ' + docVecs.length + ' docs vs query (alpha=0.3)');
     var reranked = _emb.rerankWithEmbedding(queryVec, bm25Only.slice(0, topN), docVecs);
+    if (reranked.length > 0) {
+        _embLog('top hybrid score: ' + reranked[0]._hybridScore.toFixed(3) + ' | bm25=' + reranked[0]._bm25Score.toFixed(3) + ' emb=' + reranked[0]._embScore.toFixed(3));
+    }
 
     // 构建混合结果输出
     var out = [];
@@ -797,6 +843,7 @@ async function _tryEmbeddingRerank(query, structuredResult) {
 
     // ★ 附加符号匹配结果（不被 embedding 重排影响）
     if (symbolOnly.length > 0) {
+        _embLog('symbols: ' + symbolOnly.length + ' appended');
         out.push('── Symbol Matches ──');
         for (var si = 0; si < symbolOnly.length; si++) {
             var sr = symbolOnly[si];
@@ -807,6 +854,7 @@ async function _tryEmbeddingRerank(query, structuredResult) {
 
         // ★ P3: 符号图 — 每个匹配符号的引用关系
         if (structuredResult.symbolGraph && structuredResult.symbolGraph.length > 0) {
+            _embLog('symbolGraph: ' + structuredResult.symbolGraph.length + ' entries');
             out.push('── Symbol Graph ──');
             for (var gi = 0; gi < structuredResult.symbolGraph.length; gi++) {
                 var g = structuredResult.symbolGraph[gi];
@@ -829,6 +877,8 @@ async function _tryEmbeddingRerank(query, structuredResult) {
     }
     out.push('BM25: ' + bm25Results.length + ' results');
     out.push('Embedding: text-embedding-v4, ' + embResult.tokenCount + ' tokens');
+
+    if (_EMBEDDING_LOG) _embLog('DONE: ' + out.length + ' lines, total ' + (performance.now() - _t0).toFixed(0) + 'ms');
     return out.join('\n');
 }
 

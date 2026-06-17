@@ -117,7 +117,7 @@ function searchInContent(content: string, query: string, caseSensitive: boolean,
 }
 
 export function registerSearchIpc(): void {
-    ipcMain.handle('qqqide:search', async (_e, args: {
+    ipcMain.handle('qqqide:search:query', async (_e, args: {
         rootDir: string;
         query: string;
         caseSensitive?: boolean;

@@ -7,8 +7,9 @@
 
 var EMBEDDING_GATEWAY = 'https://direct.gh555.com:8444/api/v3/ai/embedding';
 var EMBEDDING_FALLBACK = 'https://gh555.com/api/v3/ai/embedding';
-var EMBEDDING_BATCH_MAX = 10; // DashScope text-embedding-v4 单次最多 10 条
+var EMBEDDING_BATCH_MAX = 10;
 var EMBEDDING_DIMS = 1024;
+var EMBEDDING_LOG = false; // ★ 开关：设 true 开启底层 API 日志
 
 /**
  * 获取单个文本的向量
@@ -34,16 +35,20 @@ async function embedBatch(texts, authToken, floorID) {
     var allVectors = [];
     var totalTokens = 0;
     var model = 'text-embedding-v4';
+    var batches = Math.ceil(texts.length / EMBEDDING_BATCH_MAX);
+    if (EMBEDDING_LOG) console.log('[embed] embedBatch: ' + texts.length + ' texts → ' + batches + ' batch(es), floor=' + (floorID || '(new quest)'));
 
     // 分批调用（每批 ≤ EMBEDDING_BATCH_MAX）
     for (var i = 0; i < texts.length; i += EMBEDDING_BATCH_MAX) {
         var batch = texts.slice(i, i + EMBEDDING_BATCH_MAX);
+        if (EMBEDDING_LOG) console.log('[embed] batch ' + (Math.floor(i / EMBEDDING_BATCH_MAX) + 1) + '/' + batches + ': ' + batch.length + ' texts');
         var result = await callEmbeddingAPI_(batch, authToken, floorID);
         allVectors.push.apply(allVectors, result.vectors);
         totalTokens += result.tokenCount;
         model = result.model;
     }
 
+    if (EMBEDDING_LOG) console.log('[embed] done: ' + allVectors.length + ' vectors, ' + totalTokens + ' tokens');
     return { vectors: allVectors, tokenCount: totalTokens, model: model };
 }
 
@@ -63,13 +68,20 @@ async function callEmbeddingAPI_(input, authToken, floorID) {
     if (floorID) body.floor_id = floorID;
 
     // 尝试主线，失败切备用
+    if (EMBEDDING_LOG) console.log('[embed] fetch → ' + EMBEDDING_GATEWAY);
+    var _t0 = EMBEDDING_LOG ? performance.now() : 0;
     var resp = await tryFetch_(EMBEDDING_GATEWAY, authToken, body);
+    var usedUrl = EMBEDDING_GATEWAY;
     if (!resp) {
+        if (EMBEDDING_LOG) console.log('[embed] primary failed, → fallback');
         resp = await tryFetch_(EMBEDDING_FALLBACK, authToken, body);
+        usedUrl = EMBEDDING_FALLBACK;
     }
     if (!resp) {
+        if (EMBEDDING_LOG) console.log('[embed] both URLs failed');
         throw new Error('Embedding API unreachable');
     }
+    if (EMBEDDING_LOG) console.log('[embed] HTTP ok: ' + (performance.now() - _t0).toFixed(0) + 'ms (' + usedUrl + ')');
 
     var data = JSON.parse(resp);
     if (!data.data || !Array.isArray(data.data)) {

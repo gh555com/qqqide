@@ -44,7 +44,7 @@ import { EngineHost } from './engines';
 import { AudioEngine } from './audio-engine';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 import { MonacoHost } from './monaco-host';
-import { QzSpawn } from './qz-spawn';
+import { QzSpawn, registerQzSpawnIpc } from './qz-spawn';
 import { LspBridge } from './lsp-bridge';
 import { CacheStore } from './cache-store';
 import { HashService } from './hash-service';
@@ -151,6 +151,7 @@ function registerAllIpc(): void {
     registerTimelineIpc(portable.root, bootConfig);
     registerSmartSearchIpc(indexService);
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgInstances, () => mainWindow);
+    registerQzSpawnIpc(qzSpawn);
 }
 
 // ── App 就绪 ──

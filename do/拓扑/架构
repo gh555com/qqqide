@@ -200,10 +200,16 @@ qqq-shell-v2/
 │       ├── panel-send.js      发送逻辑 + 事件绑定 + DOMContentLoaded
 │       ├── panel-floor-indicator.js 滚动楼层指示器（豆腐块+探针）
 │       ├── card-pool.js       Card Queue 引擎（切换零 DOM 销毁，16+1 视口）
-│       ├── agent-loop.js      核心 Agentic 循环
 │       ├── quest-store.js     多任务 SQLite 持久化
-│       ├── agent-context.js   上下文压缩
+│       ├── agent-loop.js      核心 Agentic 循环（send/stop/stall/repair/inject/render, ~1300行）
+│       ├── agent-envelope.js  信封剥离 + UTF-8 截断（_utf8Trunc, EnvelopeStripper）
+│       ├── agent-gateway.js   网关调用（双线路+重试+故障切换, _callGateway）
+│       ├── agent-sse.js       SSE 流解析 + 文本工具调用回生（_parseSSE）
+│       ├── agent-vision.js    视觉预分析（_analyzeImages + _callVision）
+│       ├── agent-exec.js      并行工具执行引擎 + 分层调度（_executeToolCallsParallel等）
+│       ├── agent-context.js   上下文压缩（三专家架构, _compressContext）
 │       ├── tools.js           AI 工具定义
+│       ├── embedding-service.js Embedding 向量化服务（text-embedding-v4）
 │       ├── system-prompt.js   系统提示词（GATEWAY_URL 唯一声明处）
 │       ├── content-gateway.js 内容安全网关
 │       └── only-store.js      项目偏好 SQLite
@@ -392,14 +398,20 @@ IPC: qqqide:timeline:{record,versions,content,stat,readCurrent,captureChanged}
 
 跨十年保证: SHA256 blob 不可变 + SQLite 索引 + 永不删 → 时间戳/内容永久锁定
 
-AI 工具 (15个) — 2026-06-04 强化，2026-06-10 三项优化
+AI 工具 (16个) — 2026-06-04 强化，2026-06-10 三项优化，2026-06-16 search_smart
 ------------------------------------------------------------
 文件: read_file, edit_file, create_file, delete_file, write_file (★ 主进程 1 IPC, qwr机器保护)
-搜索: search_text (regex), search_content (多关键词OR, 新增), find_files (glob), list_files
+搜索: search_text (regex), search_content (多关键词OR, 新增), find_files (glob), list_files,
+      search_smart (★ BM25语义+Embedding混合重排, 三路并行引擎, 新增)
   · search_text 二进制过滤: SKIP_EXTS 覆盖 70+ 种二进制格式
   · search_text 目录跳过: SKIP_DIRS 排除 node_modules/.git/dist/__pycache__ 等
   · search_content: 接收 keywords[] 数组，自动转义拼接为 regex OR，支持 case_sensitive
     解决 AI 用 PowerShell 搜多关键词的 40GB 问题，route 走 search_text 主进程管线
+  · search_smart: BM25倒排索引 + 符号匹配(定义/导出/引用) + Embedding语义重排(text-embedding-v4)
+    三路并行: 文件内容分词搜索 / 符号名精确匹配 / 目录名glob匹配
+    Embedding管道: BM25 top10 → DashScope text-embedding-v4 → cosine重排(alpha=0.3) → Hybrid输出
+    符号图: 每个匹配符号附定义文件/导出文件/导入引用关系（P3 符号图引擎）
+    静默降级: Embedding失败→保留BM25结果；无token→纯BM25
 诊断: get_diagnostics (Monaco markers)
 终端: run_command (qz-spawn, 硬超时 2h, stallMs=15min, ★ qwr _qgc 命令屏障保护)
   · 新增 reason 字段: AI 可选填写使用原因，仅 console.log 审计，不拦截
@@ -413,8 +425,27 @@ AI 工具 (15个) — 2026-06-04 强化，2026-06-10 三项优化
 SSE 复用 (★ 零行代码): fetch 新建流复用已有 ReadableStream，零代码改动
 辅助: git_snapshot.bat
 
-工具描述透明化 (A7): 全部 15 个工具描述均标注性能特征（IPC次数/内存安全性/速度倍数），
+工具描述透明化 (A7): 全部 16 个工具描述均标注性能特征（IPC次数/内存安全性/速度倍数），
 AI 有充分知情权选择最优工具。system-prompt 新增 🔴 FILE SEARCH PRIORITY 铁律段。
+
+Embedding 混合搜索管道 — BM25 + text-embedding-v4 语义重排（2026-06-16）
+--------------------------------------------------------------
+· 入口: tools.js search_smart → _tryEmbeddingRerank() → embedding-service.js
+· 管线: query + BM25 top10 snippets → 阿里云 text-embedding-v4 (1024d) → cosine → alpha=0.3 融合
+· 计费: 归 floor/house/room，Go geflow 扣款，明细可见 text-embedding-v4 扣费
+· 静默降级: 无 auth token / API 失败 / 向量异常 → 保留原始 BM25 结果，用户无体感
+· 开关: window._EMBEDDING_LOG=true 开启全链路日志（DevTools 实时控制），默认关闭零开销
+· 底层: embedding-service.js 双线路(fallback)+归一化+15s超时，暴露 window._qqqEmbedding
+· 符号图: P3 引擎为每个匹配符号提供 defines/exports/imported-by 三向引用（见下文符号图引擎节）
+· 状态: 代码+编译已就绪，待线上验证
+
+Agent 三态状态机 — idle / sending / stopping（2026-06-16）
+--------------------------------------------------------------
+· 三态: idle(空闲) → sending(发送中) → stopping(用户点击Stop) → 全部中止后 → idle
+· agent._stopState 单一真理源，agent-loop.js finally 块无条件复位 _stopState='idle'
+· 停止按钮: Stop 点击 → _stopState='stopping' → 中断流+拒绝后续house → finally 复位
+· 防重复: _stopState 已是 stopping 时禁止并发停止操作
+· 启动发送: _callGateway 前检查 _stopState==='stopping' → 直接return，零house创建
 
 AI 悬浮预览层
 --------------
@@ -458,7 +489,7 @@ AI 上下文窗口防护（三层纵深 + 参数集中化，2026-06-10 落地）
 
 第二层 — 孤儿tool_calls自愈（持久化根治）：
   · _saveAgentQuestData 修复后按_floor标签重建所有楼层，逐层saveFloor写回sq3。
-  · 三条防线: ①请求前(_callGateway) ②保存前(_saveAgentQuestData) ③自动保存前(auto-save)。
+  · 三条防线: ①请求前(agent-gateway.js _callGateway) ②保存前(_saveAgentQuestData) ③自动保存前(auto-save)。
 
 第三层 — Go 服务端 HTTP/1.1 隔离：
   · dsTransport 独立Transport，ForceAttemptHTTP2:false，每请求独立TCP。
@@ -479,13 +510,29 @@ AI 面板 UI 增强
 - 上下文血条: ctx-btn, 固定底板渐变绿(#7d967d)->红(#c28888), --ctx-pct CSS变量控制填充截断, 只显示token数(234k), 右侧未填充叠25%黑遮罩, hover减淡
 - 无进展终止: agent-loop 内置 stall 计数器（见下方"无进展终止"节）
 
-无进展终止（Stall Detection）
----------------------------
-  代码层硬约束 — agent-loop 每轮工具执行后检测结果。
-  无进展: 返回 No matches found / Error / Tool error / 空字符串。
-  有进展: 找到匹配/读到文件/编辑成功 → 计数器归零。
-  连续 5 次无进展 → 注入警告；连续 8 次 → 强制 noTools=true。
-  每层楼自动复位。杜绝 183-house 灾难重演。
+Write-Aware 约束系统 — T1/T2/T3 三层阶梯 + 写入感知（2026-06-17 终极重构）
+----------------------------------------------------------------------------
+核心原则：一切约束感知写入操作。对文件 X 的写入使关于 X 的所有旧状态作废。
+不改写架构形状，只补上缺失的「写入感知」——同一套代码适用一万年。
+
+三层阶梯分流（agent-loop.js _checkStall, ~100 行）：
+  预判: 本轮工具结果全部 dead（[ALREADY READ]/空/Error/No matches）→跳过 T1，交 T3
+  T1 工具循环: 同工具+同参数连续 3 间 house → 触发；8 次连续 → 终止楼层
+    结果增量检测: 同参数不同结果（相似度 < 70%）→ 有进展 → 重置计数，不进 T1
+    跨非 T1 楼层断链: 中间有进展（不同工具）→ _lastT1Fingerprint 清零，不跨楼累积
+  T2 搜索停滞: 连续 5/10/15 次纯搜索有结果但不读 → L1温和→L2引导→L3终极（永不终止）
+  T3 真正空转: 全部 dead 累积 5 次→警告, 8 次→强制。有进展立即归零
+
+Read 约束（tools.js executeReadFile, ~90 行）：
+  全文读→全覆盖标记；分段读→区间合并去重。同范围再读阻 2 次后放行（上下文丢失）。
+  硬封顶: 同文件 20 次/楼层。每层楼复位。
+  写入感知: edit_file/create_file/delete_file/write_file 成功后，自动重置该文件追踪。
+  搜索缓存写入感知: READ 工具（search_text/search_content/find_files）结果缓存，
+    写入后自动清除含该路径的缓存 key，防旧结果误导 AI。
+
+写入通知机制（tools.js executeTool, ~17 行）：
+  WRITE 成功 → ① 删 _qqqReadFilesThisFloor[path] ② 遍历 _qqqToolCacheThisFloor 失效含路径 key
+  零侵入：只对 WRITE 类工具生效，run_command 不感知（不确定影响哪些文件）
 
 502 自动修复 + 降级恢复 (2026-06-11 加固)
 ----------------------------------------------

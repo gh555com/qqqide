@@ -297,7 +297,7 @@ async function renderQuestDrop() {
             line.className = 'quest-drop-line';
             var prefix = document.createElement('span');
             prefix.className = 'quest-drop-prefix';
-            prefix.textContent = 'q' + (s.numericId || '?') + '. ';
+            prefix.textContent = 'q' + (s.numericId || '?') + '.  ';
             var title = document.createElement('span');
             title.className = 'quest-drop-title';
             title.textContent = s.title || '';
@@ -385,7 +385,7 @@ async function updateQuestTofu() {
     _tofuEntry = entry || null;
     if (entry) {
         var num = entry.numericId || '?';
-        if (prefixEl) prefixEl.textContent = 'q' + num + '. ';
+        if (prefixEl) prefixEl.textContent = 'q' + num + '.  ';
         textEl.textContent = entry.title || '';
         textEl.parentElement.classList.remove('quest-tofu-new');
         if (pen) pen.style.display = '';
