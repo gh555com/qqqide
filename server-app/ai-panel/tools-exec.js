@@ -53,6 +53,7 @@ async function executeTool(name, args) {
         case 'generate_image': _result = executeGenerateImage(args); break;
         case 'analyze_image': _result = executeAnalyzeImage(args); break;
         case 'search_smart': _result = executeSearchSmart(args); break;
+        case 'search_web': _result = executeSearchWeb(args); break;
         default: _result = 'Unknown tool: ' + name; break;
     }
     _result = await _result;

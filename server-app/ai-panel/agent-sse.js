@@ -204,7 +204,8 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
         //    模型把 read_file/search_text/find_files 等直接当标签名
         var _fbToolNames = ['read_file', 'search_file', 'edit_file', 'search_text', 'search_content',
             'list_files', 'find_files', 'create_file', 'delete_file', 'fetch_webpage',
-            'get_diagnostics', 'generate_image', 'analyze_image', 'run_command', 'write_file'];
+            'get_diagnostics', 'generate_image', 'analyze_image', 'run_command', 'write_file',
+            'search_web'];
         for (var _tni = 0; _tni < _fbToolNames.length; _tni++) {
             var _tn = _fbToolNames[_tni];
             var _fbToolTagRe = new RegExp('<' + _tn + '>([\\s\\S]*?)<\\/' + _tn + '>', 'gi');

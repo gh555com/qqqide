@@ -1,0 +1,55 @@
+=== 1. Stopping old container ===
+exit=0
+searxng
+searxng
+
+
+=== 2. Updating settings.yml ===
+settings.yml updated
+
+=== 3. Starting SearXNG with --network host ===
+exit=0
+7a906e61a4af2fbba924abf50abfaccdb2a7e8d959c6a575d779d1ff091b2ec9
+
+
+=== 4. Container status ===
+CONTAINER ID   IMAGE     COMMAND   CREATED   STATUS    PORTS     NAMES
+
+=== 5. Test search from host ===
+exit=0
+
+
+=== 6. SearXNG logs ===
+           ~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/usr/local/searxng/.venv/lib/python3.14/site-packages/click/core.py", line 1445, in main
+    rv = self.invoke(ctx)
+  File "/usr/local/searxng/.venv/lib/python3.14/site-packages/click/core.py", line 1308, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/searxng/.venv/lib/python3.14/site-packages/click/core.py", line 877, in invoke
+    return callback(*args, **kwargs)
+  File "/usr/local/searxng/.venv/lib/python3.14/site-packages/granian/cli.py", line 600, in cli
+    server.serve()
+    ~~~~~~~~~~~~^^
+  File "/usr/local/searxng/.venv/lib/python3.14/site-packages/granian/server/mp.py", line 458, in serve
+    super().serve(spawn_target, target_loader, wrap_loader)
+    ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/searxng/.venv/lib/python3.14/site-packages/granian/server/common.py", line 735, in serve
+    serve_method(spawn_target, target_loader)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/searxng/.venv/lib/python3.14/site-packages/granian/server/common.py", line 577, in _serve
+    self.startup(spawn_target, target_loader)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/searxng/.venv/lib/python3.14/site-packages/granian/server/common.py", line 476, in startup
+    self._init_shared_socket()
+    ~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/local/searxng/.venv/lib/python3.14/site-packages/granian/server/mp.py", line 329, in _init_shared_socket
+    super()._init_shared_socket()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/usr/local/searxng/.venv/lib/python3.14/site-packages/granian/server/common.py", line 318, in _init_shared_socket
+    self._shd = self._ssp.build()
+                ~~~~~~~~~~~~~~~^^
+RuntimeError: Address already in use (os error 98)
+
+
+DONE

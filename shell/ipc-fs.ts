@@ -76,23 +76,24 @@ export function registerFsIpc(): void {
 
     ipcMain.handle('qqqide:fs:list', async (_e, p: string, callerStack?: string) => {
         console.log('[fs:list]', p);
-        const result: string[] = [];
-        const MAX = 2000;
-        let dir: fs.Dir | null = null;
+        const MAX = 10000;
         try {
-            dir = await fs.promises.opendir(p);
-            let dirent: fs.Dirent | null;
-            while ((dirent = await dir.read()) !== null) {
-                if (result.length >= MAX) break;
-                result.push(dirent.isDirectory() ? dirent.name + '/' : dirent.name);
+            const names = await fs.promises.readdir(p, { withFileTypes: true });
+            const result: string[] = [];
+            for (let i = 0; i < names.length && i < MAX; i++) {
+                result.push(names[i].isDirectory() ? names[i].name + '/' : names[i].name);
             }
-        } catch {
-            if (callerStack) { console.warn('[fs:list] FAILED:', p, '\n' + callerStack); }
+            if (names.length > MAX) {
+                console.warn('[fs:list] TRUNCATED:', p, `returned ${MAX}/${names.length} entries`);
+            }
+            return result;
+        } catch (e: any) {
+            // ENOENT is normal — quests/ or floor dir may not exist yet
+            if (e?.code !== 'ENOENT' && callerStack) {
+                console.warn('[fs:list] FAILED:', p, '\n' + callerStack, e?.message);
+            }
             return [];
-        } finally {
-            if (dir) { try { await dir.close(); } catch (_) { } }
         }
-        return result;
     });
 
     ipcMain.handle('qqqide:fs:stat', async (_e, p: string) => {

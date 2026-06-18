@@ -173,6 +173,13 @@ var QuestStore = (function () {
 
     // ★ 并发锁：三面板同时启动时只做一次 fs.list，后续面板等同一 Promise
     var _indexLoadPromise = null;
+    // ★ 主面板判定（?panel=1 或无参数=中面板），仅中面板执行磁盘扫描
+    var _isMainPanel = (function () {
+        try {
+            var m = location.search.match(/panel=(\d)/);
+            return !m || parseInt(m[1], 10) === 1;
+        } catch (_) { return true; }
+    })();
 
     QuestStore.prototype._ensureIndex = async function () {
         if (this._index !== null) return;
@@ -182,8 +189,10 @@ var QuestStore = (function () {
                 var raw = await _get(INDEX_KEY);
                 this._index = (raw && Array.isArray(raw)) ? raw : [];
                 await this._healIndex();
-                // ★ 文件系统 → sq3 自动对账：磁盘删了的 quest 从索引踢掉
-                await this._syncIndexFromFs();
+                // ★ 仅中面板执行磁盘↔索引对账，侧面板只读索引免竞态
+                if (_isMainPanel) {
+                    await this._syncIndexFromFs();
+                }
             } finally {
                 _indexLoadPromise = null;
             }
@@ -228,7 +237,7 @@ var QuestStore = (function () {
                 // 扫描磁盘 → diskList（按 ID 分组，检测重复）
                 var diskById = {};   // qId → [{ name, title, numericId }]
                 try {
-                    var list = await bf.list(_rootDir + '/qqq/quests');
+                    var list = await _safeList(_rootDir + '/qqq/quests');
                     for (var i = 0; i < list.length; i++) {
                         if (!list[i].isDir) continue;
                         var m = list[i].name.match(/^q(\d+)\.(.+)$/);
@@ -344,7 +353,10 @@ var QuestStore = (function () {
     // ★ 手动触发双向对账（备份还原 / 手动复制目录后调用）
     QuestStore.prototype.rescan = async function () {
         await this._ensureIndex();
-        await this._syncIndexFromFs();
+        // ★ 仅中面板执行磁盘重扫
+        if (_isMainPanel) {
+            await this._syncIndexFromFs();
+        }
     };
 
     // ★ 修复同编号重复 quest：扫描磁盘，将多余目录重命名到新 ID
@@ -363,7 +375,7 @@ var QuestStore = (function () {
                 // 扫描磁盘，按 ID 分组
                 var diskById = {};
                 try {
-                    var list = await bf.list(_rootDir + '/qqq/quests');
+                    var list = await _safeList(_rootDir + '/qqq/quests');
                     for (var i = 0; i < list.length; i++) {
                         if (!list[i].isDir) continue;
                         var m = list[i].name.match(/^q(\d+)\.(.+)$/);
@@ -445,7 +457,7 @@ var QuestStore = (function () {
                 // 重新扫描（quest 目录可能已改名）
                 var allDiskDirs = {};
                 try {
-                    var list2 = await bf.list(_rootDir + '/qqq/quests');
+                    var list2 = await _safeList(_rootDir + '/qqq/quests');
                     for (var li = 0; li < list2.length; li++) {
                         if (list2[li].isDir) {
                             var m2 = list2[li].name.match(/^q(\d+)\./);
@@ -702,6 +714,22 @@ var QuestStore = (function () {
         return (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.fs) || null;
     }
 
+    // ★ 模块级 fs.list 互斥锁：Windows 上 readdir 底层仍是 FindFirstFile，并发会冲突
+    var _fsListLock = null;
+    async function _safeList(dirPath) {
+        while (_fsListLock) { await _fsListLock; }
+        _fsListLock = (async () => {
+            try {
+                var bf = _bridgeFs();
+                if (!bf) return [];
+                return await bf.list(dirPath);
+            } finally {
+                _fsListLock = null;
+            }
+        })();
+        return _fsListLock;
+    }
+
     // ═══════════════════════════════════════════════════════════
     // ID 前缀路径解析 — q{n}. / f{n}. 模糊匹配，标题随意改
     // ═══════════════════════════════════════════════════════════
@@ -733,7 +761,7 @@ var QuestStore = (function () {
         var bf = _bridgeFs();
         if (!bf) return null;
         try {
-            var list = await bf.list(_rootDir + '/qqq/quests');
+            var list = await _safeList(_rootDir + '/qqq/quests');
             for (var i = 0; i < list.length; i++) {
                 if (list[i].isDir && list[i].name.indexOf(questId + '.') === 0) {
                     _questDirCache[questId] = list[i].name;

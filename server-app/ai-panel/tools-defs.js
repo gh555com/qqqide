@@ -314,6 +314,20 @@ var TOOL_DEFINITIONS = [
                 required: ['image', 'action']
             }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'search_web',
+            description: 'Search the web using SearXNG meta-search engine (Google + Brave + Wikipedia + Wikidata). Returns up to 20 results with title, URL, and snippet. Use for: current events, API docs, error messages, technology questions, or anything beyond your knowledge cutoff. Cost: 5 ge per search.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    query: { type: 'string', description: 'Search query in natural language. Keep it concise and keyword-rich. Examples: "python asyncio gather vs wait", "react 19 new features 2025", "golang generics tutorial"' }
+                },
+                required: ['query']
+            }
+        }
     }
 ];
 
@@ -327,7 +341,7 @@ var TOOL_CATEGORY = {
     get_diagnostics: 'READ',
     edit_file: 'WRITE', create_file: 'WRITE', delete_file: 'WRITE', write_file: 'WRITE',
     run_command: 'EFFECT',
-    generate_image: 'EFFECT', analyze_image: 'EFFECT'
+    generate_image: 'EFFECT', analyze_image: 'EFFECT', search_web: 'EFFECT'
 };
 
 // ---- getTools 兜底 ----

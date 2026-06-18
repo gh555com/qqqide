@@ -163,7 +163,7 @@ EnvelopeStripper.prototype.finalize = function () {
         _xmlBlocks.push({ full: _scm[0], name: _scName, args: _scArgs });
     }
     // ★ 新增：<tool_name attr="value" ... /> 格式（模型用工具名直接当标签名）
-    var _toolTagNames = ['read_file', 'search_file', 'edit_file', 'search_text', 'search_content', 'list_files', 'find_files', 'write_file', 'create_file', 'delete_file', 'fetch_webpage', 'get_diagnostics', 'generate_image', 'analyze_image', 'run_command'];
+    var _toolTagNames = ['read_file', 'search_file', 'edit_file', 'search_text', 'search_content', 'list_files', 'find_files', 'write_file', 'create_file', 'delete_file', 'fetch_webpage', 'get_diagnostics', 'generate_image', 'analyze_image', 'run_command', 'search_web'];
     var _toolTagRe = new RegExp('<(' + _toolTagNames.join('|') + ')\\s([^>]*?)\\/>', 'gi');
     var _ttm;
     while ((_ttm = _toolTagRe.exec(cleanContent)) !== null) {

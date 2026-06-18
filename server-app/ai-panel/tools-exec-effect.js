@@ -535,6 +535,71 @@ async function executeAnalyzeImage(args) {
 }
 
 // ============================================================
+// search_web — Go 代理 SearXNG 多引擎搜索（终极架构：全部 AI 过 Go）
+// ============================================================
+
+async function executeSearchWeb(args) {
+    var query = args.query || '';
+    if (!query.trim()) return 'Error: query is required';
+
+    // ★ 终极架构：全部 AI ──▶ Go ──▶ SearXNG(Google+Brave+Wikipedia+Wikidata)
+    var token = '';
+    try {
+        var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+        if (ag && ag._token) token = ag._token;
+    } catch (_) { }
+    if (!token) return 'Error: no auth token';
+
+    var SEARCH_URL = (typeof SEARCH_WEB_URL !== 'undefined') ? SEARCH_WEB_URL : 'https://direct.gh555.com:8444/api/v3/search/web';
+
+    try {
+        var resp = await fetch(SEARCH_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token
+            },
+            body: JSON.stringify({ query: query })
+        });
+
+        if (!resp.ok) {
+            var errText = '';
+            try { errText = await resp.text(); } catch (_) { }
+            return 'Search failed (HTTP ' + resp.status + '): ' + errText.slice(0, 300);
+        }
+
+        var data = await resp.json();
+        if (!data.ok) {
+            return 'Search failed: ' + (data.error || 'unknown error');
+        }
+
+        // ★ 累加显示用计费（Go 已权威记账，此处仅 UI 展示）
+        if (data.ge_cost && typeof _addToolGeCost === 'function') {
+            _addToolGeCost(data.ge_cost);
+        }
+
+        var results = data.results || [];
+        if (results.length === 0) {
+            return 'No results found for: ' + query;
+        }
+
+        var lines = ['═══ Web Search: "' + query + '" ═══', ''];
+        for (var i = 0; i < results.length; i++) {
+            var r = results[i];
+            lines.push((i + 1) + '. ' + r.title);
+            lines.push('   ' + r.url);
+            if (r.snippet) lines.push('   ' + r.snippet);
+            lines.push('');
+        }
+        lines.push('── ' + results.length + ' results ──');
+        return lines.join('\n');
+
+    } catch (err) {
+        return 'Error searching web: ' + (err.message || err);
+    }
+}
+
+// ============================================================
 // 导出（Node.js 兼容）
 // ============================================================
 
