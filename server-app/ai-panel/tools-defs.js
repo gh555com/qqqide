@@ -319,7 +319,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'search_web',
-            description: 'Search the web using SearXNG meta-search engine (Google + Brave + Wikipedia + Wikidata). Returns up to 20 results with title, URL, and snippet. Use for: current events, API docs, error messages, technology questions, or anything beyond your knowledge cutoff. Cost: 5 ge per search.',
+            description: 'Search the web. Returns up to 20 results with title, URL, and snippet. ALWAYS follow up with fetch_webpage on the most relevant result URLs to extract full data — search_web alone only gives snippets, not complete information. Cost: 5 ge per search.',
             parameters: {
                 type: 'object',
                 properties: {

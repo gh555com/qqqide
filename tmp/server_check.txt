@@ -1,0 +1,11 @@
+-rwxr-xr-x 1 q root 45353101 Jun 18 12:16 /opt/dgs/server_new
+panic: missing env: DATABASE_URL
+
+goroutine 1 [running]:
+gaea/internal/config.mustGetenv(...)
+	/opt/dgs/internal/config/config.go:133
+gaea/internal/config.Load()
+	/opt/dgs/internal/config/config.go:177 +0x17fa
+main.main()
+	/opt/dgs/cmd/api/main.go:42 +0x58
+no version flag

@@ -24,6 +24,7 @@ async function _atomicWrite(absPath: string, data: Buffer): Promise<void> {
             try {
                 const data = await fs.promises.readFile(tmp);
                 await fs.promises.writeFile(absPath, data as any);
+                try { await fs.promises.unlink(tmp); } catch { /* ignore */ }
             } catch (e2) {
                 try { await fs.promises.unlink(tmp); } catch { /* ignore */ }
                 throw e2;

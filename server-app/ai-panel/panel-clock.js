@@ -311,6 +311,7 @@ function _matchQuest(query, title) {
 async function renderQuestDrop() {
     if (!_questDrop) return;
     var allQuests = await questStore.list();
+    if (!_questDrop) return;
     var query = _questSearchText;
     var filtered = query
         ? allQuests.filter(function (q) {

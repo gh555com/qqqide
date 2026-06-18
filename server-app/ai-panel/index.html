@@ -31,7 +31,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #top-bar button{padding:1px 6px;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);font-size:10px;white-space:nowrap;flex-shrink:0}
 /* q2 quest 豆腐块 — 无边框贴合 q1 */
 #quest-bar{position:relative;margin:0;padding:0;border:none}
-.quest-tofu{display:flex;align-items:center;padding:8px 14px;border:none;border-radius:0;font-size:22px;font-weight:700;white-space:nowrap;user-select:none;background:#ebe3ca;width:100%;cursor:default}
+.quest-tofu{display:flex;align-items:center;padding:8px 14px;border:2px solid transparent;border-radius:0;font-size:22px;font-weight:700;white-space:nowrap;user-select:none;background:#ebe3ca;width:100%;cursor:default;box-sizing:border-box}
 [data-theme="dark"] .quest-tofu{background:#211f1c}
 .quest-tofu:hover{background:var(--background-color)}
 [data-theme="dark"] .quest-tofu:hover{background:#3f3830}
@@ -69,7 +69,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-tofu:hover .quest-tofu-pen{opacity:.45}
 /* ── 面板焦点：虚线边框 + 左金边 + 流光扫过 ── */
 .quest-tofu-focused{color:#000!important;position:relative;overflow:hidden;box-sizing:border-box;
-  border:2px dashed var(--yellow);
+  border-color:var(--yellow);border-style:dashed;
   background:linear-gradient(90deg,rgba(255,211,2,.14) 0%,rgba(255,211,2,.05) 35%,transparent 70%),#ebe3ca!important;
   box-shadow:inset 3px 0 0 #ffd302,0 0 14px rgba(255,211,2,.22);
 }
@@ -102,8 +102,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 /* ── q2 展开统一虚线框：tofu + dropdown 整包 ── */
 #quest-bar.quest-expanded .quest-tofu,
 #quest-bar.quest-expanded .quest-tofu-focused{
-  border:2px dashed var(--yellow)!important;
-  border-bottom:none!important;
+  border-color:var(--yellow);border-style:dashed;
+  border-bottom-color:transparent!important;
 }
 #quest-bar.quest-expanded .quest-drop{
   border:2px dashed var(--yellow);

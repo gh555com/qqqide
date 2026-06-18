@@ -132,8 +132,19 @@ var QuestStore = (function () {
         return _rootDir;
     };
 
-    // 项目守卫：设置后，无 _rootDir 时所有写入操作在 _bridge() 层自动阻断
+    // ★ 外部失效索引（跨面板同步后强制重载，等 in-flight load 完成再重置）
+    QuestStore.prototype.invalidateIndex = function () {
+        if (_indexLoadPromise) {
+            // 正在加载中：闭包等待完成后自动设置 _index，不需手动 null
+            // 但为了保证重载，在 _indexLoadPromise 的 then 中再 null 一次
+            var self = this;
+            _indexLoadPromise.then(function () { self._index = null; });
+        } else {
+            this._index = null;
+        }
+    };
     // 返回 true 表示有项目绑定，false 表示无（上层可据此拒绝操作）
+    // 项目守卫：设置后，无 _rootDir 时所有写入操作在 _bridge() 层自动阻断
     QuestStore.prototype.requireProjectForWrites = function (val) {
         // 标记已调用；实际守卫在 _bridge() → null 阻断
         if (val) {
@@ -193,6 +204,9 @@ var QuestStore = (function () {
                 if (_isMainPanel) {
                     await this._syncIndexFromFs();
                 }
+            } catch (e) {
+                console.warn('[quest-store] _ensureIndex failed:', e && e.message);
+                if (!this._index) this._index = [];
             } finally {
                 _indexLoadPromise = null;
             }
@@ -661,7 +675,7 @@ var QuestStore = (function () {
 
     QuestStore.prototype.list = async function () {
         await this._ensureIndex();
-        return this._index.slice().sort(function (a, b) { return b.lastActiveAt - a.lastActiveAt; });
+        return (this._index || []).slice().sort(function (a, b) { return b.lastActiveAt - a.lastActiveAt; });
     };
 
     // ═══════════════════════════════════════════════════════════════

@@ -1,0 +1,2 @@
+/opt/dgs/cmd/cmd/api/main.go
+/opt/dgs/cmd/api/main.go

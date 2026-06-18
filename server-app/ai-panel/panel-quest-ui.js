@@ -120,9 +120,9 @@ async function switchQuest(id) {
             }
         }
 
-        // ★ 切换到 quest 时修复磁盘目录名（惰性修正）
+        // ★ 切换到 quest 时修复磁盘目录名（惰性修正，仅 numericId 有效时）
         var _qEntry = (await questStore.list()).find(function (s) { return s.id === id; });
-        if (_qEntry && typeof _tryRepairQuestDirName === 'function') {
+        if (_qEntry && _qEntry.numericId > 0 && typeof _tryRepairQuestDirName === 'function') {
             _tryRepairQuestDirName(questStore.getProjectRoot(), id, _qEntry.numericId, _qEntry.title)
                 .catch(function (e) { console.warn('[quest-dir] switch repair failed:', id, e); });
         }

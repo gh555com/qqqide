@@ -188,8 +188,8 @@ async function sendMessage() {
         var userQuestion = text || (userContent || '').split('\n')[0];
         var quests2 = await questStore.list();
         var qEntry = quests2.find(function (qx) { return qx.id === _capturedQuestId; });
-        var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : _capturedQuestId;
-        var qNumericId = qEntry && qEntry.numericId ? qEntry.numericId : 0;
+        var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : '';
+        var qNumericId = (qEntry && qEntry.numericId) ? qEntry.numericId : parseInt(_capturedQuestId.replace('q', ''), 10) || 0;
         // ★ 前缀搜索已有目录（内含修复）+ 防 TOCTOU 二次确认
         var qDirName2 = await _resolveQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
         // 二次确认：_resolveQuestDirName 内已做修复，此处再查一次兜底

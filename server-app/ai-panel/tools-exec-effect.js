@@ -565,6 +565,14 @@ async function executeSearchWeb(args) {
         if (!resp.ok) {
             var errText = '';
             try { errText = await resp.text(); } catch (_) { }
+
+            // ★ 429 限流 → 明确告知 AI 改用 fetch_webpage / run_command，不要盲重试
+            if (resp.status === 429) {
+                var retrySec = '?';
+                try { var _j = JSON.parse(errText); retrySec = (_j.retry_after || '?'); } catch (_) { }
+                return 'Search rate limited (HTTP 429, retry after ' + retrySec + 's). DO NOT retry search_web — use fetch_webpage to visit specific URLs, or run_command with curl for API calls.';
+            }
+
             return 'Search failed (HTTP ' + resp.status + '): ' + errText.slice(0, 300);
         }
 

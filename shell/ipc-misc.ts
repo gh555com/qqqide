@@ -157,10 +157,13 @@ export function registerMiscIpc(
             const normalized = folderPath.replace(/\\/g, '/').replace(/\/$/, '');
             _windowProjectMap.set(newWin.id, normalized);
             _projectWindowMap.set(normalized, newWin.id);
-            try { newWin.webContents.send('qqqide:project-path', normalized); } catch { /* ignore */ }
         }
-        // Load
-        newWin.loadURL(bootConfig.url).catch(() => { });
+        // Build URL: 新窗口始终带 ?fresh=1，防止继承父窗口的 qgs 项目快照
+        let url = bootConfig.url + '?fresh=1';
+        if (folderPath && typeof folderPath === 'string') {
+            url += '&folder=' + encodeURIComponent(folderPath);
+        }
+        newWin.loadURL(url).catch(() => { });
         return { ok: true, windowId: newWin.id };
     });
 

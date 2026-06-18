@@ -13,7 +13,7 @@ async function _handleSyncMessage(msg) {
     }
     // quest 列表变更
     if (msg.type === 'quest-created' || msg.type === 'quest-deleted' || msg.type === 'quest-renamed') {
-        questStore._index = null;
+        questStore.invalidateIndex();
         await updateQuestTofu();
         return;
     }

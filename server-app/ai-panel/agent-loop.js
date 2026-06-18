@@ -894,7 +894,6 @@ var AgentLoop = (function () {
                                 role: 'tool',
                                 tool_call_id: r2.call.id,
                                 content: r2.content,
-                                _rawContent: r2.rawContent,
                                 _floor: self._ctx.totalFloors
                             });
                             _pushedToolCount++;
