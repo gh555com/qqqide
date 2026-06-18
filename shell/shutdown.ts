@@ -8,6 +8,7 @@ import * as fs from 'fs';
 import { URL } from 'url';
 import { BootConfig } from './boot';
 import { StateStore } from './state-sqlite';
+import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
 
 // ---- Security hardening ----
@@ -38,13 +39,25 @@ export function registerExitHandlers(
     portableLogs: string,
     stateStore: StateStore,
     bootConfig: BootConfig,
+    qgfInstances: Map<string, Qgf>,
 ): void {
-    // Sync flush helper
+    // Sync flush helper — SQLite
     function _flushStateSync(label: string): void {
         try {
             stateStore.flushSync();
         } catch (err) {
             try { console.warn('[state] ' + label + ' flush failed:', err); } catch (_) { }
+        }
+    }
+
+    // Sync flush helper — qgf FS instances
+    function _flushQgfSync(label: string): void {
+        for (const [rootDir, qf] of qgfInstances) {
+            try {
+                qf.flushSync();
+            } catch (err) {
+                try { console.warn('[qgf] ' + label + ' flush failed for', rootDir, err); } catch (_) { }
+            }
         }
     }
 
@@ -62,8 +75,9 @@ export function registerExitHandlers(
             // engineHost is handled in main.ts
         } catch { /* ignore */ }
 
-        // ② flush state
+        // ② flush state (SQLite + qgf FS)
         try { _flushStateSync('before-quit'); } catch { /* ignore */ }
+        try { _flushQgfSync('before-quit'); } catch { /* ignore */ }
 
         // ③ async flush
         try {
@@ -81,8 +95,8 @@ export function registerExitHandlers(
     });
 
     // SIGINT/SIGTERM
-    process.on('SIGINT', () => { _flushStateSync('SIGINT'); try { app.quit(); } catch { process.exit(0); } });
-    process.on('SIGTERM', () => { _flushStateSync('SIGTERM'); try { app.quit(); } catch { process.exit(0); } });
+    process.on('SIGINT', () => { _flushStateSync('SIGINT'); _flushQgfSync('SIGINT'); try { app.quit(); } catch { process.exit(0); } });
+    process.on('SIGTERM', () => { _flushStateSync('SIGTERM'); _flushQgfSync('SIGTERM'); try { app.quit(); } catch { process.exit(0); } });
 
     // Global uncaught exception handler
     let _ueInHandler = false;
@@ -101,6 +115,7 @@ export function registerExitHandlers(
             }
             try { console.error('[uncaughtException]', err); } catch (_) { }
             _flushStateSync('uncaughtException');
+            _flushQgfSync('uncaughtException');
             if (_msg.indexOf('Object has been destroyed') < 0) {
                 const now = Date.now();
                 if (now - _ueLastLogTs > 5000) {

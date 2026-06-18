@@ -459,13 +459,13 @@ AI 面板增强
 -----------
 - 楼层模型: 一次回车 = 一栋楼(floor)，楼内多次 API 调用 = 多个房子(house)，
   房内一次工具调用 = 一个房间(room)。计费按楼累计，压缩按楼层保底(≥6层)。
-- 持久化: 对话→quest.sq3，偏好/快照→only.sq3（onlyStore 唯一真理配置机器）
+- 持久化: 对话→all.json（唯一真理源），索引→quest.sq3（SQLite 轻量索引），偏好/快照→only.sq3
 - 项目锁: onlyStore.claimLock() 统一管理（30s 心跳/60s 过期/自动释放），零维护
 - 无主文件夹守卫: 三层防线（UI capture管线+函数兜底+持久层铁闸），引导蒙版
 - quest 切换防丢: 流式中断回复保存（_fullText+_truncated）+ 互斥锁 + snapshot 副本
 - 引导注入: injectGuide() 立即 abort 当前 house → 确认回合(Flash/noTools) → AI 回复 "✅ 已收到引导" → pop 指令 → 继续工作。不中断楼层，确认来自 DeepSeek。空闲时降级为普通 inject。
 - 排队信封: 任何时候可添加，AI 回复完自动消费下一条。暂停/继续/清空控制栏。_debounceSaveQueue 500ms 合并写盘。最大 50 条。
-- 楼层归档: qqq/quests/q{N}.{title}/f{N}/rooms.txt + thinking.txt + chat.txt
+- 楼层归档: qqq/quests/q{N}.{title}/f{N}.{question}/all.json（楼层全量）+ all.txt（纯导出快照）+ chat.txt
 - 悬浮层预览：图片（智能2x尺寸+拖拽+滚轮缩放）+ 表格（transform保持长宽比+十字D-pad+初始适配）
 - 时钟：分钟(48px)+冒号秒(24px)，动态色随 agent._floorTiming 变化
 - 饼图：canvas 112px，懒重绘，数据不到不显示

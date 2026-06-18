@@ -23,6 +23,11 @@
     return (typeof window !== 'undefined' && window.qqqideBridge && window.qqqideBridge.state) || null;
   }
 
+  // ★ qgf 桥接（FS 原子读写机）— qqideBridge.qgf 直接可取，不走 state
+  function _qgfBridge() {
+    return (typeof window !== 'undefined' && window.qqqideBridge && window.qqqideBridge.qgf) || null;
+  }
+
   // Browser-dev fallback (in-memory; lost on reload — fine for goods authors).
   const _mem = new Map(); // ns -> Map(key -> value)
   function _memGet(ns, key) {
@@ -69,7 +74,7 @@
 
   // Module-level register dedup: multiple closures for same ns share ONE register IPC
   var _nsReg = {};       // ns()     — keyed by nsName
-  var _qgReg = {};       // qg()     — keyed by rootDir + '\x00' + nsName
+  var _qgfReg = {};      // qgf()    — keyed by rootDir + '\x00' + nsName
   var _projReg = {};     // project() — keyed by dbPath + '\x00' + nsName
 
   function _ensureGlobalChgListener() {
@@ -227,11 +232,11 @@
     return ns(nsName, { v: 1, form: form, cloud: cloud });
   }
 
-  // ---- qg — project-level FS state (.qqq/qg/) -------------------------
+  // ---- qgf — FS 原子读写真理机 (per-project .qqq/qgf/) -----------------
   //
-  //   const state = qg('/path/to/project', 'my-ns');
-  //   const state = qg('/path/to/project', 'my-ns', { form:'blob' });
-  //   const state = qg('/path/to/project', 'my-ns', { form:'log'  });
+  //   const state = qgf('/path/to/project', 'my-ns');
+  //   const state = qgf('/path/to/project', 'my-ns', { form:'blob' });
+  //   const state = qgf('/path/to/project', 'my-ns', { form:'log'  });
   //
   //   await state.set('key', value);
   //   const v = await state.get('key');
@@ -239,8 +244,8 @@
   //   const keys = await state.list();
   //   state.onChange((key, value, deleted) => { ... });
   //
-  function qg(rootDir, nsName, opts) {
-    if (!rootDir || !nsName) throw new Error('qg: rootDir and nsName required');
+  function qgf(rootDir, nsName, opts) {
+    if (!rootDir || !nsName) throw new Error('qgf: rootDir and nsName required');
     const form = (opts && opts.form) || 'doc';
     const schema = { v: 1, form: form };
     // Cache key isolates per-project: rootDir + ns avoids cross-project collisions
@@ -251,7 +256,7 @@
     async function _ensureRegistered() {
       if (_registered) { return; }
       if (_registerPromise) { return _registerPromise; }
-      var existing = _qgReg[_cacheNs];
+      var existing = _qgfReg[_cacheNs];
       if (existing) {
         if (existing.done) { _registered = true; return; }
         _registerPromise = existing.promise.catch(function () { });
@@ -260,17 +265,17 @@
         return;
       }
       var promise = (async () => {
-        const b = _bridge();
-        if (!b || !b.qg) { _registered = true; return; }
-        try { await b.qg.register(rootDir, nsName, schema); } catch (e) {
-          console.warn('[qg] register failed for', nsName, e);
+        const b = _qgfBridge();
+        if (!b) { _registered = true; return; }
+        try { await b.register(rootDir, nsName, schema); } catch (e) {
+          console.warn('[qgf] register failed for', nsName, e);
         }
         _registered = true;
       })();
-      _qgReg[_cacheNs] = { promise: promise, done: false };
+      _qgfReg[_cacheNs] = { promise: promise, done: false };
       _registerPromise = promise;
       await promise;
-      _qgReg[_cacheNs].done = true;
+      _qgfReg[_cacheNs].done = true;
     }
 
     return {
@@ -280,9 +285,9 @@
         await _ensureRegistered();
         var cached = _cacheGet(_cacheNs, key);
         if (cached !== undefined) return cached;
-        var b = _bridge();
+        var b = _qgfBridge();
         var v;
-        if (b && b.qg && b.qg.get) { v = await b.qg.get(rootDir, nsName, key); }
+        if (b && b.get) { v = await b.get(rootDir, nsName, key); }
         else { v = _memGet(_cacheNs, key); }
         _cacheSet(_cacheNs, key, v);
         return v;
@@ -290,54 +295,54 @@
       set: async (key, value) => {
         await _ensureRegistered();
         _cacheSet(_cacheNs, key, value);
-        var b = _bridge();
-        if (b && b.qg && b.qg.set) { return b.qg.set(rootDir, nsName, key, value); }
+        var b = _qgfBridge();
+        if (b && b.set) { return b.set(rootDir, nsName, key, value); }
         _memSet(_cacheNs, key, value); return true;
       },
       setNow: async (key, value) => {
         await _ensureRegistered();
         _cacheSet(_cacheNs, key, value);
-        var b = _bridge();
-        if (b && b.qg && b.qg.setNow) { return b.qg.setNow(rootDir, nsName, key, value); }
+        var b = _qgfBridge();
+        if (b && b.setNow) { return b.setNow(rootDir, nsName, key, value); }
         _memSet(_cacheNs, key, value); return true;
       },
       append: async (key, event) => {
         await _ensureRegistered();
-        const b = _bridge();
-        if (b && b.qg && b.qg.append) { return b.qg.append(rootDir, nsName, key, event); }
+        const b = _qgfBridge();
+        if (b && b.append) { return b.append(rootDir, nsName, key, event); }
         _memAppend(_cacheNs, key, event); return true;
       },
       del: async (key) => {
         await _ensureRegistered();
         _cacheDel(_cacheNs, key);
-        var b = _bridge();
-        if (b && b.qg && b.qg.del) { return b.qg.del(rootDir, nsName, key); }
+        var b = _qgfBridge();
+        if (b && b.del) { return b.del(rootDir, nsName, key); }
         return _memDel(_cacheNs, key);
       },
       list: async () => {
         await _ensureRegistered();
-        const b = _bridge();
-        if (b && b.qg && b.qg.list) { return b.qg.list(rootDir, nsName); }
+        const b = _qgfBridge();
+        if (b && b.list) { return b.list(rootDir, nsName); }
         return _memList(_cacheNs);
       },
       flush: async () => {
-        const b = _bridge();
-        if (b && b.qg && b.qg.flush) { return b.qg.flush(rootDir); }
+        const b = _qgfBridge();
+        if (b && b.flush) { return b.flush(rootDir); }
         return true;
       },
       flushOne: async (key) => {
         await _ensureRegistered();
-        const b = _bridge();
+        const b = _qgfBridge();
         _cacheDel(_cacheNs, key);  // invalidate renderer cache before flush
-        if (b && b.qg && b.qg.flushOne) { return b.qg.flushOne(rootDir, nsName, key); }
+        if (b && b.flushOne) { return b.flushOne(rootDir, nsName, key); }
         return true;
       },
       onChange: (cb) => {
-        const b = _bridge();
-        if (!b || !b.qg || !b.qg.onChange) { return function () { }; }
-        return b.qg.onChange(function (msg) {
+        const b = _qgfBridge();
+        if (!b || !b.onChange) { return function () { }; }
+        return b.onChange(function (msg) {
           if (msg && msg.ns === nsName && msg.rootDir === rootDir) {
-            try { cb(msg.key, msg.value, !!msg.deleted); } catch (e) { console.warn('[qg.onChange]', e); }
+            try { cb(msg.key, msg.value, !!msg.deleted); } catch (e) { console.warn('[qgf.onChange]', e); }
           }
         });
       },
@@ -479,7 +484,6 @@
   const qgs = {
     ns,
     simple,
-    qg,
     project,
     cloud: {
       pull: () => { const b = _bridge(); return b && b.cloud ? b.cloud.pull() : Promise.resolve({ ok: false, reason: 'no-bridge' }); },
@@ -497,7 +501,7 @@
   };
 
   if (typeof window !== 'undefined') {
-    window.qg = qg;
+    window.qgf = qgf;
     window.qgs = qgs;
     window.qqqState = qgs; // legacy alias
   }

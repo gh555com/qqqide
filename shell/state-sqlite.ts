@@ -91,7 +91,7 @@ export class StateStore extends EventEmitter {
     private _saveDbTimer: NodeJS.Timeout | null = null;
     // ★ in-memory read cache (avoids append() re-reading from DB each time)
     private _memCache: Map<string, any> = new Map();
-    // ★ 全局数据库标记：用于阻止 quest 相关 namespace 误写入全局 state.db
+    // ★ 全局数据库标记：用于阻止 quest 相关 namespace 误写入全局 state.sq3
     private _isGlobal: boolean = false;
 
     /** Hook for state-cloud.ts */
@@ -100,7 +100,7 @@ export class StateStore extends EventEmitter {
     // ----- constructor --------------------------------------------------------
 
     /**
-     * @param userDataDir  Electron userData path (for global state.db).
+     * @param userDataDir  Electron userData path (for global state.sq3).
      *                      When dbPath is provided, userDataDir is only used for deviceId fallback.
      * @param dbPath       Optional explicit SQLite file path. When set, the DB is created
      *                      at this exact path (e.g. project-level quest.sq3).
@@ -119,7 +119,7 @@ export class StateStore extends EventEmitter {
             // Global: db in userData/state/
             const stateDir = path.join(userDataDir, 'state');
             try { fs.mkdirSync(stateDir, { recursive: true }); } catch { /* ignore */ }
-            this.dbPath = path.join(stateDir, 'state.db');
+            this.dbPath = path.join(stateDir, 'state.sq3');
             this.outboxDir = path.join(stateDir, 'outbox');
             this._isGlobal = true;
         }
@@ -146,14 +146,20 @@ export class StateStore extends EventEmitter {
                     const buf = fs.readFileSync(this.dbPath);
                     this._db = new this._SQL.Database(buf);
                 } catch (e) {
-                    console.warn('[state-sqlite] failed to load state.db, starting fresh:', e);
+                    console.warn('[state-sqlite] failed to load state.sq3, starting fresh:', e);
                     // Quarantine corrupt DB
                     const bak = this.dbPath + '.corrupt.' + Date.now();
                     try { fs.renameSync(this.dbPath, bak); } catch { /* ignore */ }
-                    this._db = new this._SQL.Database();
+                    // ★ 优先尝试从最近的 .bak 恢复，没有才建空库
+                    if (!this._tryRestoreFromBak()) {
+                        this._db = new this._SQL.Database();
+                    }
                 }
             } else {
-                this._db = new this._SQL.Database();
+                // ★ 文件不存在 → 尝试 .bak 恢复（可能是上次腐败隔离后还没来得及写新数据）
+                if (!this._tryRestoreFromBak()) {
+                    this._db = new this._SQL.Database();
+                }
             }
 
             // ★ 清理残留 .tmp 文件（原子写入失败/进程崩溃的遗孤）
@@ -305,29 +311,111 @@ export class StateStore extends EventEmitter {
     /** Get single row via step()+getAsObject(), compatible with sql.js >=1.4 */
     private _stmtGet(sql: string, params: any[]): any | null {
         if (!this._db) return null;
-        const stmt = this._db.prepare(sql);
         try {
-            stmt.bind(params);
-            if (stmt.step()) {
-                return stmt.getAsObject();
+            const stmt = this._db.prepare(sql);
+            try {
+                stmt.bind(params);
+                if (stmt.step()) {
+                    return stmt.getAsObject();
+                }
+                return null;
+            } finally {
+                stmt.free();
             }
-            return null;
-        } finally {
-            stmt.free();
+        } catch (e: any) {
+            if (e && e.message && /disk image is malformed/i.test(e.message)) {
+                console.warn('[state-sqlite] ⚠ runtime corruption detected in _stmtGet — quarantining & rebuilding');
+                this._quarantineAndRebuild();
+            }
+            throw e;
         }
     }
 
     /** Run DML via step()+getRowsModified(), compatible with sql.js >=1.4 */
     private _stmtRun(sql: string, params: any[]): { changes: number } {
         if (!this._db) return { changes: 0 };
-        const stmt = this._db.prepare(sql);
         try {
-            stmt.bind(params);
-            stmt.step();
-            return { changes: this._db.getRowsModified() };
-        } finally {
-            stmt.free();
+            const stmt = this._db.prepare(sql);
+            try {
+                stmt.bind(params);
+                stmt.step();
+                return { changes: this._db.getRowsModified() };
+            } finally {
+                stmt.free();
+            }
+        } catch (e: any) {
+            if (e && e.message && /disk image is malformed/i.test(e.message)) {
+                console.warn('[state-sqlite] ⚠ runtime corruption detected in _stmtRun — quarantining & rebuilding');
+                this._quarantineAndRebuild();
+            }
+            throw e;
         }
+    }
+
+    /** ★ 运行时腐败隔离： rename 坏库 → 创建空库 → 重建 schema → 标记脏数据全部重写 */
+    private _quarantineAndRebuild(): void {
+        try {
+            // 1. 隔离坏库
+            const bak = this.dbPath + '.corrupt.' + Date.now();
+            try { fs.renameSync(this.dbPath, bak); } catch { /* ignore */ }
+            // 2. 创建新库
+            this._db = new this._SQL.Database();
+            // 3. 重建 schema（从 registry 恢复所有 namespace）
+            this._initSchema();
+            // 4. 清除缓存 + 标记所有脏 key（触发下次 save 全部重写）
+            this._memCache.clear();
+            // 将所有已注册 namespace 的数据标记为脏（保证下次 save 写入空值）
+            for (const [id] of this._debouncers) {
+                this._dirtySet.add(id);
+            }
+            console.warn('[state-sqlite] ⚠ quarantined corrupt db → ' + bak + ', fresh db ready (data loss may have occurred)');
+        } catch (e2) {
+            console.error('[state-sqlite] CRITICAL: quarantine failed:', e2);
+        }
+    }
+
+    /** ★ 验证导出的 SQLite 数据是否有效：打开 → SELECT 1 → true/false */
+    private _tryValidateDb(data: Uint8Array): boolean {
+        try {
+            const testDb = new this._SQL.Database(data);
+            try {
+                testDb.exec('SELECT 1');
+                return true;
+            } finally {
+                testDb.close();
+            }
+        } catch {
+            return false;
+        }
+    }
+
+    /** ★ 尝试从最近的 .bak 文件恢复数据库。成功返回 true。 */
+    private _tryRestoreFromBak(): boolean {
+        try {
+            const dir = path.dirname(this.dbPath);
+            const base = path.basename(this.dbPath);
+            // 找最近的 .bak 文件
+            const bakFiles = fs.readdirSync(dir)
+                .filter((f: string) => f.startsWith(base + '.bak.'))
+                .sort()
+                .reverse();
+            for (const bakFile of bakFiles) {
+                const bakPath = path.join(dir, bakFile);
+                try {
+                    const buf = fs.readFileSync(bakPath);
+                    this._db = new this._SQL.Database(buf);
+                    // 验证可读
+                    this._db.exec('SELECT 1');
+                    console.warn('[state-sqlite] ⚠ restored from backup: ' + bakPath);
+                    return true;
+                } catch {
+                    // 该 bak 也坏了，继续尝试下一个
+                }
+            }
+        } catch {
+            // 目录不存在或无 bak 文件
+        }
+        return false;
     }
 
     // ----- schema registry ----------------------------------------------------
@@ -422,13 +510,13 @@ export class StateStore extends EventEmitter {
             throw new Error('state.register: schema.v must be >=1');
         }
 
-        // 🔴 铁律：全局 state.db 禁止注册 quest/AI 相关 namespace
+        // 🔴 铁律：全局 state.sq3 禁止注册 quest/AI 相关 namespace
         // quest 数据仅允许存在于项目级 quest.sq3/only.sq3
         if (this._isGlobal) {
             const FORBIDDEN_NS = ['qqq.ai', 'qqq.only', 'qqq.quest'];
             if (FORBIDDEN_NS.includes(ns) || ns.startsWith('qqq.ai.') || ns.startsWith('qqq.quest.')) {
                 throw new Error(
-                    `state.register: ns "${ns}" is FORBIDDEN in global state.db. ` +
+                    `state.register: ns "${ns}" is FORBIDDEN in global state.sq3. ` +
                     `Quest/AI data MUST use project-level SQLite (quest.sq3/only.sq3). ` +
                     `Refusing to register.`
                 );
@@ -644,9 +732,15 @@ export class StateStore extends EventEmitter {
         const tmp = this.dbPath + '.tmp.' + Date.now();
         try {
             const data = this._db.export();
+            // ★ 写入前验证：export 出的数据是否有效 SQLite（防 WASM 内存腐败扩散）
+            if (!this._tryValidateDb(data)) {
+                console.error('[state-sqlite] CRITICAL: exported data is invalid SQLite — SKIPPING save to prevent corruption (dbPath=' + this.dbPath + ')');
+                return;
+            }
             const buf = Buffer.from(data);
             // 确保父目录存在（兜底：构造函数中已创建，但可能被外部删除）
             try { fs.mkdirSync(path.dirname(this.dbPath), { recursive: true }); } catch { /* ignore */ }
+            // ★ sq3 降级为轻量索引后不再需要 .bak 备份（数据真理源在 f{n}.json）
             await fs.promises.writeFile(tmp, buf as any);
             // 原子 rename，含重试（Windows 上可能因瞬时文件锁失败）
             await this._atomicRename(tmp, this.dbPath);
@@ -685,8 +779,14 @@ export class StateStore extends EventEmitter {
         const tmp = this.dbPath + '.tmp.' + Date.now();
         try {
             const data = this._db.export();
+            // ★ 写入前验证：export 出的数据是否有效 SQLite（防 WASM 内存腐败扩散）
+            if (!this._tryValidateDb(data)) {
+                console.error('[state-sqlite] CRITICAL: exported data is invalid SQLite — SKIPPING save to prevent corruption (dbPath=' + this.dbPath + ')');
+                return;
+            }
             const buf = Buffer.from(data);
             try { fs.mkdirSync(path.dirname(this.dbPath), { recursive: true }); } catch { /* ignore */ }
+            // ★ sq3 降级为轻量索引后不再需要 .bak 备份（数据真理源在 f{n}.json）
             fs.writeFileSync(tmp, buf as any);
             // 原子 rename（绝不先删后改，防崩溃丢数据）
             try {

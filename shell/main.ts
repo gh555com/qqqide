@@ -51,7 +51,7 @@ import { HashService } from './hash-service';
 import { MediaService } from './media-service';
 import { StateStore } from './state-sqlite';
 import { StateCloud } from './state-cloud';
-import { Qg } from './qg';
+import { Qgf } from './qgf';
 import { DownloadService } from './download-service';
 import { UpdateService } from './update-service';
 
@@ -77,7 +77,7 @@ const hashService = new HashService(cacheStore);
 const mediaService = new MediaService(portable.root, qzSpawn, cacheStore, hashService);
 const stateStore = new StateStore(portable.userData);
 const stateCloud = new StateCloud(stateStore);
-const _qgInstances = new Map<string, Qg>();
+const _qgfInstances = new Map<string, Qgf>();
 const _projectStateStores = new Map<string, StateStore>();
 const downloadService = new DownloadService(portable.cache);
 const updateService = new UpdateService(portable.root, APP_VERSION);
@@ -150,7 +150,7 @@ function registerAllIpc(): void {
     );
     registerTimelineIpc(portable.root, bootConfig);
     registerSmartSearchIpc(indexService);
-    registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgInstances, () => mainWindow);
+    registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
     registerQzSpawnIpc(qzSpawn);
 }
 
@@ -196,7 +196,7 @@ app.whenReady().then(async () => {
     registerAllIpc();
 
     // Register exit handlers
-    registerExitHandlers(portable.root, portable.logs, stateStore, bootConfig);
+    registerExitHandlers(portable.root, portable.logs, stateStore, bootConfig, _qgfInstances);
 
     // Boot
     await bootSequence(

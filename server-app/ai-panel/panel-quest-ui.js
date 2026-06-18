@@ -259,66 +259,6 @@ async function _tryRepairQuestDirName(root, questId, numericId, dbTitle, _knownN
     }
 }
 
-// ── 启动时批量修复：单次 list 构建前缀映射，O(n) 对齐所有 quest 目录名 ──
-var __repairDone = false;  // ★ 仅中面板执行 + 单会话一次（防 3 面板同时 rename 互斥 EPERM）
-async function _repairAllQuestDirNames(quests) {
-    if (typeof _panelId !== 'undefined' && _panelId !== 1) return;  // ★ 侧面板跳过
-    if (__repairDone) return;
-    __repairDone = true;
-    var root = questStore.getProjectRoot();
-    if (!root) return;
-    var bridge = window.parent && window.parent.qqqideBridge;
-    if (!bridge || !bridge.fs) return;
-    var questsDir = root + '/qqq/quests/';
-    // 一次 list，构建 questId → dirName 映射 + 碰撞检测
-    var dirMap = {};
-    var collisions = {}; // { prefix: [name1, name2, ...] }
-    try {
-        var entries = await bridge.fs.list(questsDir);
-        for (var ei = 0; ei < entries.length; ei++) {
-            var name = entries[ei].name;
-            if (!entries[ei].isDir) continue;
-            var dotIdx = name.indexOf('.');
-            if (dotIdx > 0) {
-                var prefix = name.substring(0, dotIdx); // e.g. "q80"
-                if (!dirMap[prefix]) {
-                    dirMap[prefix] = name;
-                } else {
-                    if (!collisions[prefix]) collisions[prefix] = [dirMap[prefix]];
-                    collisions[prefix].push(name);
-                }
-            }
-        }
-        // 碰撞告警：同编号存在多个不同名目录，数据可能分裂
-        var _colKeys = Object.keys(collisions);
-        for (var _ci = 0; _ci < _colKeys.length; _ci++) {
-            var _cp = _colKeys[_ci];
-            console.warn('[quest-dir] COLLISION: prefix ' + _cp + ' has ' + collisions[_cp].length + ' dirs:', collisions[_cp].join(', '));
-            console.warn('[quest-dir]   → using first: ' + dirMap[_cp] + ' | stale orphans: ' + collisions[_cp].slice(1).join(', '));
-        }
-    } catch (_) { return; }
-    // 逐个 quest 检查并修复
-    for (var i = 0; i < quests.length; i++) {
-        var q = quests[i];
-        if (!q.id || !q.title) continue;
-        var expectedName = _makeName('q', q.numericId, q.title);
-        var currentName = dirMap[q.id];
-        if (!currentName || currentName === expectedName) continue;
-        // 期望名不存在 → rename
-        var statResult = await bridge.fs.stat(questsDir + expectedName);
-        if (!statResult) {
-            try {
-                await bridge.fs.rename(questsDir + currentName, questsDir + expectedName);
-                // ★ 更新 dirMap，防止后续同 ID quest 用旧名重试（ENOENT）
-                dirMap[q.id] = expectedName;
-                console.log('[quest-dir] batch renamed:', currentName, '→', expectedName);
-            } catch (e) {
-                console.warn('[quest-dir] batch rename failed:', currentName, '→', expectedName, '|', (e && e.message) || e);
-            }
-        }
-    }
-}
-
 async function createNewQuest() {
     if (_switching) return;  // ★ quest 切换中
     if (streaming) stopStream();
@@ -713,7 +653,7 @@ function renderQueueStrip() {
     // ── 头部：队列计数 + 暂停/清空 ──
     var header = document.createElement('div');
     header.className = 'queue-header';
-    var _i = window._i || function(k,f){return f;};
+    var _i = window._i || function (k, f) { return f; };
     var countEl = document.createElement('span');
     countEl.className = 'queue-header-count';
     countEl.textContent = '📬 ' + _i('ai.queue.header', '队列') + ' (' + _queue.length + '/' + QUEUE_MAX + ')';
@@ -800,7 +740,7 @@ function renderQueueStrip() {
             card.onclick = function () {
                 if (card.classList.contains('bk-expanded')) return;
                 card.classList.add('bk-expanded');
-                var _i2 = window._i || function(k,f){return f;};
+                var _i2 = window._i || function (k, f) { return f; };
                 // 保留 row1/row2，追加编辑区
                 var editArea = document.createElement('div');
                 editArea.className = 'bk-edit';

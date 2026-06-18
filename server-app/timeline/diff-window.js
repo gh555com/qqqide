@@ -563,7 +563,7 @@
             // 给 +数字 加绿色 span
             displayHtml = displayHtml.replace(/\+(\d+)/g, '<span class="v-stat-green">+$1</span>');
             // ★ 减号染色：仅 diff 统计（空格后 -N），不染日期
-            displayHtml = displayHtml.replace(/\s\-(\d+)/g, ' <span class="v-stat-red">-$1</span>');
+            displayHtml = displayHtml.replace(/\s\-(\d+)/g, '&nbsp;<span class="v-stat-red">-$1</span>');
             // ★ 日期中 06-15 加粗
             displayHtml = displayHtml.replace(/(\d{4})-(\d{2})-(\d{2})/g, '$1-<b class="v-date-md">$2-$3</b>');
             // ★ 时分秒左右加空格（防 flexbox 吞）
@@ -594,7 +594,7 @@
                 var displayHtml = _escHtml(mo.fullLabel || mo.label);
                 displayHtml = displayHtml.replace(/^(#\d+)\s/, '<b>$1</b>&nbsp;');
                 displayHtml = displayHtml.replace(/\+(\d+)/g, '<span class="v-stat-green">+$1</span>');
-                displayHtml = displayHtml.replace(/\s\-(\d+)/g, ' <span class="v-stat-red">-$1</span>');
+                displayHtml = displayHtml.replace(/\s\-(\d+)/g, '&nbsp;<span class="v-stat-red">-$1</span>');
                 displayHtml = displayHtml.replace(/(\d{4})-(\d{2})-(\d{2})/g, '$1-<b class="v-date-md">$2-$3</b>');
                 displayHtml = displayHtml.replace(/(\d{2}:\d{2}:\d{2})/g, '&nbsp;$1&nbsp;');
                 if (mo.sourceLabel) displayHtml = _wrapSourceTag(displayHtml, mo.sourceLabel);

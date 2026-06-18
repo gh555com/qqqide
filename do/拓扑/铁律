@@ -288,10 +288,9 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - Card Pool destroy() 必须：中止所有 agent + 移除所有 card DOM + 清空 _cards/_lru/_activeId。
 
 §32 所有权系统 — 唯一真理源：父窗口注册表（2026-06-11 重构）
-  - quest.sq3 _owner 已全量移除（冗余逆映射，windowId 跨会话失效成僵尸锁根源）。
   - 唯一真理源：父窗口 __qqq_questOwners（questId→panelId 同步映射，零 TTL，零 IO）。
   - 面板→任务映射：onlyStore `ai.panel.{panelId}.activeQuestId`（per-panel key，panelId 永恒不变，setNow 立即写盘）。
-  - claimOwner / releaseOwner / getOwner 已从 quest-store.js 删除。
+  - claimOwner / releaseOwner / getOwner 及 cleanupOwners 已从 quest-store.js 删除。
   - _broadcastOwnerCheck 已删除（IPC 跨窗口 sync 查询，项目锁已防多窗口）。
   - _handleSyncMessage 移除 owner-check / owner-confirm 死代码。
   - 流程：switchQuest→_parentGetQuestOwner（阻塞）→_parentReleaseQuest（旧）→_parentClaimQuest（新）。

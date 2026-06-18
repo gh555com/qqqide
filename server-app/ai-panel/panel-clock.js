@@ -276,15 +276,19 @@ function stopFloorTimer(timing, ag) {
     ag._lastFloorTimingRecord = record;
 }
 
-// \u2500\u2500 Quest \u8c46\u8150\u5757 + hover \u4e0b\u62c9 \u2500\u2500
+// ── Quest 豆腐块 + hover 下拉 ──
 var _questDrop = null;
 var _questDropTimer = null;
 var _questSearchText = '';
 var _questDropLimit = 20;
+var _questSearchFocused = false;  // ★ 搜索框焦点追踪
 function closeQuestDrop() {
     if (_questDrop) { _questDrop.remove(); _questDrop = null; }
     _questSearchText = '';
     _questDropLimit = 20;
+    _questSearchFocused = false;
+    var bar = document.getElementById('quest-bar');
+    if (bar) bar.classList.remove('quest-expanded');
 }
 function _matchQuest(query, title) {
     if (!query) return true;
@@ -380,12 +384,29 @@ async function openQuestDrop() {
         _questSearchText = search.value;
         renderQuestDrop();
     };
+    // ★ 搜索框获得焦点 → 阻止鼠标移出自动关闭
+    search.addEventListener('focus', function () {
+        _questSearchFocused = true;
+    });
+    search.addEventListener('blur', function () {
+        _questSearchFocused = false;
+        // 延迟关闭：允许 click 先落到下拉列表项上
+        setTimeout(function () {
+            if (!_questSearchFocused && _questDrop) {
+                closeQuestDrop();
+            }
+        }, 150);
+    });
     head.appendChild(search);
     drop.appendChild(head);
     bar.appendChild(drop);
     _questDrop = drop;
+    // ★ 展开统一虚线框
+    bar.classList.add('quest-expanded');
     drop.addEventListener('mouseenter', function () { clearTimeout(_questDropTimer); });
     drop.addEventListener('mouseleave', function () {
+        // 搜索框有焦点 → 不自动关闭
+        if (_questSearchFocused) return;
         _questDropTimer = setTimeout(closeQuestDrop, 120);
     });
     drop.addEventListener('click', function (e) { e.stopPropagation(); });
@@ -524,12 +545,19 @@ function _tofuCancelEdit() {
     }
 })();
 
-document.addEventListener('click', function () { closeQuestDrop(); });
+document.addEventListener('click', function () {
+    // 搜索框有焦点 → 不关闭（由 blur 延迟处理）
+    if (_questSearchFocused) return;
+    closeQuestDrop();
+});
 
 async function renderTabs() { await updateQuestTofu(); }
 
-// \u2550\u2550\u2550 Boot sequence \u2550\u2550\u2550
+// ═══ Boot sequence ═══
 (async function () {
     loadQqqideRules();
     await bindMainProject();
+    // ★ q1 行 ↻ 按钮 — 从磁盘重新扫描 quest 列表
+    var _qrsBtn = document.getElementById('quest-rescan');
+    if (_qrsBtn) _qrsBtn.onclick = function () { questStore.rescan().then(function () { renderQuestDrop(); }); };
 })();

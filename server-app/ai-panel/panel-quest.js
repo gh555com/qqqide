@@ -164,6 +164,10 @@ async function _initWorkspace(root) {
 
     // 初始化 quest 列表
     _questsInited = true;
+    // ★ 仅中面板做磁盘扫描 + 索引建仓（fs.list 只跑一次，左右翼复用缓存）
+    if (_panelId === 1) {
+        await questStore.list();
+    }
     await initQuests();
     if (typeof loadQqqideProjectRules === 'function') {
         loadQqqideProjectRules(questStore.getProjectRoot());
@@ -296,12 +300,6 @@ async function initQuests() {
     // [silent] initQuests START
     var quests = await questStore.list();
     // [silent] list returned
-    // ★ 一次性迁移：清理 quest.sq3 中的遗留 _owner 数据（幂等安全）
-    questStore.cleanupOwners().catch(function () { });
-    // ★ 启动时批量修复：单次 list O(n)，对齐所有 quest 磁盘目录名（不阻塞加载）
-    if (typeof _repairAllQuestDirNames === 'function') {
-        _repairAllQuestDirNames(quests).catch(function (e) { console.warn('[quest-dir] batch repair error:', e); });
-    }
     if (quests.length === 0) {
         questActiveId = _draftId;
     } else {

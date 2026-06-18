@@ -1,27 +1,27 @@
 // ============================================================================
 // ipc-state-handlers.ts — 状态持久化 IPC 全家桶
-// 补回重构时从 main.ts 掉落的 state / state.project / state.cloud / qg 处理器
+// 补回重构时从 main.ts 掉落的 state / state.project / state.cloud / qgf 处理器
 // ============================================================================
 
 import { ipcMain } from 'electron';
 import { StateStore, NsSchema } from './state-sqlite';
 import { StateCloud } from './state-cloud';
-import { Qg } from './qg';
+import { Qgf, atomicWrite, atomicRead } from './qgf';
 
 /**
  * 注册所有状态相关的 IPC handler。
- * 必须在 stateStore / stateCloud / _qgInstances / _projectStateStores / mainWindow 可用后调用。
+ * 必须在 stateStore / stateCloud / qgfInstances / projectStateStores / mainWindow 可用后调用。
  */
 export function registerStateHandlersIpc(
     stateStore: StateStore,
     stateCloud: StateCloud,
     projectStateStores: Map<string, StateStore>,
-    qgInstances: Map<string, Qg>,
+    qgfInstances: Map<string, Qgf>,
     getMainWindow: () => any,
 ): void {
 
     // ═══════════════════════════════════════════════════════════════
-    // 全局 state (state.db)
+    // 全局 state (state.sq3)
     // ═══════════════════════════════════════════════════════════════
 
     ipcMain.handle('qqqide:state:register', async (_e, ns: string, schema: NsSchema) => {
@@ -92,36 +92,45 @@ export function registerStateHandlersIpc(
     ipcMain.handle('qqqide:state:project:atomicIncr', async (_e, dbPath: string, ns: string, key: string) => _getProjectStateStore(dbPath).atomicIncr(ns, key));
 
     // ═══════════════════════════════════════════════════════════════
-    // qg (FS project-level state, per-project .qqq/qg/ instances)
+    // qgf (FS project-level KV + 任意路径原子读写)
     // ═══════════════════════════════════════════════════════════════
 
-    function _getQg(rootDir: string): Qg {
-        let inst = qgInstances.get(rootDir);
+    function _getQgf(rootDir: string): Qgf {
+        let inst = qgfInstances.get(rootDir);
         if (!inst) {
-            inst = new Qg(rootDir);
+            inst = new Qgf(rootDir);
             const mainWindow = getMainWindow();
             inst.on('changed', (msg: any) => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
-                    try { mainWindow.webContents.send('qqqide:qg:changed', { ...msg, rootDir }); } catch { /* ignore */ }
+                    try { mainWindow.webContents.send('qqqide:qgf:changed', { ...msg, rootDir }); } catch { /* ignore */ }
                 }
             });
-            qgInstances.set(rootDir, inst);
+            qgfInstances.set(rootDir, inst);
         }
         return inst;
     }
 
-    ipcMain.handle('qqqide:qg:register', async (_e, rootDir: string, ns: string, schema: any) => {
+    ipcMain.handle('qqqide:qgf:register', async (_e, rootDir: string, ns: string, schema: any) => {
         const safeSchema = { v: schema.v, form: schema.form, cloud: false };
-        _getQg(rootDir).register(ns, safeSchema);
+        _getQgf(rootDir).register(ns, safeSchema);
         return true;
     });
-    ipcMain.handle('qqqide:qg:get', async (_e, rootDir: string, ns: string, key: string) => _getQg(rootDir).get(ns, key));
-    ipcMain.handle('qqqide:qg:set', async (_e, rootDir: string, ns: string, key: string, v: any) => { const qg = _getQg(rootDir); await qg.set(ns, key, v); return true; });
-    ipcMain.handle('qqqide:qg:setNow', async (_e, rootDir: string, ns: string, key: string, v: any) => { const qg = _getQg(rootDir); await qg.setNow(ns, key, v); return true; });
-    ipcMain.handle('qqqide:qg:append', async (_e, rootDir: string, ns: string, key: string, ev: any) => { const qg = _getQg(rootDir); await qg.append(ns, key, ev); return true; });
-    ipcMain.handle('qqqide:qg:del', async (_e, rootDir: string, ns: string, key: string) => _getQg(rootDir).del(ns, key));
-    ipcMain.handle('qqqide:qg:list', async (_e, rootDir: string, ns: string) => _getQg(rootDir).list(ns));
-    ipcMain.handle('qqqide:qg:flush', async (_e, rootDir: string) => { const qg = _getQg(rootDir); await qg.flush(); return true; });
-    ipcMain.handle('qqqide:qg:stats', async (_e, rootDir: string) => _getQg(rootDir).stats());
-    ipcMain.handle('qqqide:qg:flushOne', async (_e, rootDir: string, ns: string, key: string) => { await _getQg(rootDir).flushOne(ns, key); return true; });
+    ipcMain.handle('qqqide:qgf:get', async (_e, rootDir: string, ns: string, key: string) => _getQgf(rootDir).get(ns, key));
+    ipcMain.handle('qqqide:qgf:set', async (_e, rootDir: string, ns: string, key: string, v: any) => { const qf = _getQgf(rootDir); await qf.set(ns, key, v); return true; });
+    ipcMain.handle('qqqide:qgf:setNow', async (_e, rootDir: string, ns: string, key: string, v: any) => { const qf = _getQgf(rootDir); await qf.setNow(ns, key, v); return true; });
+    ipcMain.handle('qqqide:qgf:append', async (_e, rootDir: string, ns: string, key: string, ev: any) => { const qf = _getQgf(rootDir); await qf.append(ns, key, ev); return true; });
+    ipcMain.handle('qqqide:qgf:del', async (_e, rootDir: string, ns: string, key: string) => _getQgf(rootDir).del(ns, key));
+    ipcMain.handle('qqqide:qgf:list', async (_e, rootDir: string, ns: string) => _getQgf(rootDir).list(ns));
+    ipcMain.handle('qqqide:qgf:flush', async (_e, rootDir: string) => { const qf = _getQgf(rootDir); await qf.flush(); return true; });
+    ipcMain.handle('qqqide:qgf:stats', async (_e, rootDir: string) => _getQgf(rootDir).stats());
+    ipcMain.handle('qqqide:qgf:flushOne', async (_e, rootDir: string, ns: string, key: string) => { await _getQgf(rootDir).flushOne(ns, key); return true; });
+
+    // ★ 任意路径原子读写（突破固定目录限制）
+    ipcMain.handle('qqqide:qgf:atomicWrite', async (_e, absPath: string, data: string) => {
+        await atomicWrite(absPath, data);
+        return true;
+    });
+    ipcMain.handle('qqqide:qgf:atomicRead', async (_e, absPath: string) => {
+        return await atomicRead(absPath);
+    });
 }

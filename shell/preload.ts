@@ -206,7 +206,7 @@ const QQQ = {
         bucketPath: (sig: string, ext?: string) => ipcRenderer.invoke('qqqide:cache:bucketPath', sig, ext),
     },
 
-    // ---- state (唯一真理持久化机器: doc/blob/log via shell/state-store.ts) ----
+    // ---- state (唯一真理持久化机器: doc/blob/log via shell/state-sqlite.ts) ----
     state: {
         register: (ns: string, schema: any) => ipcRenderer.invoke('qqqide:state:register', ns, schema),
         get: (ns: string, key: string) => ipcRenderer.invoke('qqqide:state:get', ns, key),
@@ -251,22 +251,25 @@ const QQQ = {
         },
     },
 
-    // ---- qg (FS project-level state, per-project .qqq/qg/ instances) ----
-    qg: {
-        register: (rootDir: string, ns: string, schema: any) => ipcRenderer.invoke('qqqide:qg:register', rootDir, ns, schema),
-        get: (rootDir: string, ns: string, key: string) => ipcRenderer.invoke('qqqide:qg:get', rootDir, ns, key),
-        set: (rootDir: string, ns: string, key: string, value: any) => ipcRenderer.invoke('qqqide:qg:set', rootDir, ns, key, value),
-        setNow: (rootDir: string, ns: string, key: string, value: any) => ipcRenderer.invoke('qqqide:qg:setNow', rootDir, ns, key, value),
-        append: (rootDir: string, ns: string, key: string, event: any) => ipcRenderer.invoke('qqqide:qg:append', rootDir, ns, key, event),
-        del: (rootDir: string, ns: string, key: string) => ipcRenderer.invoke('qqqide:qg:del', rootDir, ns, key),
-        list: (rootDir: string, ns: string) => ipcRenderer.invoke('qqqide:qg:list', rootDir, ns),
-        flush: (rootDir: string) => ipcRenderer.invoke('qqqide:qg:flush', rootDir),
-        stats: (rootDir: string) => ipcRenderer.invoke('qqqide:qg:stats', rootDir),
-        flushOne: (rootDir: string, ns: string, key: string) => ipcRenderer.invoke('qqqide:qg:flushOne', rootDir, ns, key),
+    // ---- qgf (FS 原子读写真理机) ----
+    qgf: {
+        register: (rootDir: string, ns: string, schema: any) => ipcRenderer.invoke('qqqide:qgf:register', rootDir, ns, schema),
+        get: (rootDir: string, ns: string, key: string) => ipcRenderer.invoke('qqqide:qgf:get', rootDir, ns, key),
+        set: (rootDir: string, ns: string, key: string, value: any) => ipcRenderer.invoke('qqqide:qgf:set', rootDir, ns, key, value),
+        setNow: (rootDir: string, ns: string, key: string, value: any) => ipcRenderer.invoke('qqqide:qgf:setNow', rootDir, ns, key, value),
+        append: (rootDir: string, ns: string, key: string, event: any) => ipcRenderer.invoke('qqqide:qgf:append', rootDir, ns, key, event),
+        del: (rootDir: string, ns: string, key: string) => ipcRenderer.invoke('qqqide:qgf:del', rootDir, ns, key),
+        list: (rootDir: string, ns: string) => ipcRenderer.invoke('qqqide:qgf:list', rootDir, ns),
+        flush: (rootDir: string) => ipcRenderer.invoke('qqqide:qgf:flush', rootDir),
+        stats: (rootDir: string) => ipcRenderer.invoke('qqqide:qgf:stats', rootDir),
+        flushOne: (rootDir: string, ns: string, key: string) => ipcRenderer.invoke('qqqide:qgf:flushOne', rootDir, ns, key),
+        // ★ 任意路径原子读写（突破固定目录限制）
+        atomicWrite: (absPath: string, data: string) => ipcRenderer.invoke('qqqide:qgf:atomicWrite', absPath, data),
+        atomicRead: (absPath: string) => ipcRenderer.invoke('qqqide:qgf:atomicRead', absPath),
         onChange: (cb: (msg: { rootDir: string; ns: string; key: string; value: any; deleted: boolean }) => void) => {
-            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[qg.onChange]', err); } };
-            ipcRenderer.on('qqqide:qg:changed', handler);
-            return () => ipcRenderer.removeListener('qqqide:qg:changed', handler);
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[qgf.onChange]', err); } };
+            ipcRenderer.on('qqqide:qgf:changed', handler);
+            return () => ipcRenderer.removeListener('qqqide:qgf:changed', handler);
         },
     },
 

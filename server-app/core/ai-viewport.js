@@ -384,8 +384,9 @@
     });
     function _syncSB() {
       var sh = inner.scrollHeight, ch = inner.clientHeight;
-      if (sh <= ch) { sbThumb.style.display = 'none'; return; }
+      if (sh <= ch) { sbThumb.style.display = 'none'; sbOuter.style.display = 'none'; return; }
       sbThumb.style.display = '';
+      sbOuter.style.display = '';
       var thumbH = Math.max(24, (ch / sh) * ch);
       var maxTop = ch - thumbH;
       sbThumb.style.height = thumbH + 'px';
@@ -437,7 +438,7 @@
     var stamp = document.createElement('div');
     stamp.style.cssText =
       'position:absolute; bottom:12px; left:50%; transform:translateX(-50%); ' +
-      'font-size:64px; font-weight:900; line-height:1; ' +
+      'font-size:64px; font-weight:900; line-height:1; font-family:Verdana,sans-serif; ' +
       'color:var(--text-primary); opacity:0.90; pointer-events:none; ' +
       'z-index:1; user-select:none; white-space:nowrap;';
     stamp.textContent = String(depth);
@@ -502,7 +503,7 @@
       row.className = 'aiv-dd-row';
       row.style.cssText =
         'display:flex; align-items:center; padding:4px 10px; cursor:pointer; ' +
-        'font-size:14px; font-weight:600; color:var(--text-primary); white-space:nowrap; position:relative; ' +
+        'font-size:14px; font-weight:300; color:var(--text-primary); white-space:nowrap; position:relative; ' +
         'width:100%; box-sizing:border-box;';
       const icon = document.createElement('span');
       icon.textContent = fileIconFor(ent.name, ent.isDir);
@@ -790,7 +791,7 @@
       _recentFolders.forEach(function (f) {
         var row = document.createElement('div');
         row.className = 'aiv-row aiv-recent-row';
-        row.style.cssText = 'padding:8px 12px; cursor:default; font-size:14px; font-weight:600; display:flex; align-items:center; gap:6px;';
+        row.style.cssText = 'padding:8px 12px; cursor:default; font-size:14px; font-weight:300; display:flex; align-items:center; gap:6px;';
 
         var icon = document.createElement('span');
         icon.textContent = '📁';

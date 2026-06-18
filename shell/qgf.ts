@@ -1,5 +1,5 @@
 // ============================================================================
-// qg.ts — 精简 FS 真理机器 (optimized)
+// qgf.ts — FS 原子读写真理机器
 //
 // 从旧 state-store.ts (836行) 提取核心 — 去掉了七层架构：
 //   ✗ registry.json (持久化 schema)  → schemas 仅内存
@@ -24,12 +24,11 @@
 //   3. blob 快速路径 — ≤4KB 不压缩(纯JSON)，>4KB 用 brotli(解压比gzip快3x)
 //   4. 空闲压缩 — log compact 异步执行，不阻塞 save
 //
-// 物理布局 (rootDir = .qqq/qg/)：
-//   {ns}/{safeKey}.{json|bin|log}      ← payload
-//   {ns}/{safeKey}.log.tail            ← log incremental (append-only)
-//   locks/{ns}__{safeKey}.lock         ← 文件锁
-//   corrupt/                           ← 损坏隔离
-//   outbox/                            ← 云端同步队列
+// 物理布局 (rootDir = 由调用方传入，如 project/qqq/qgf)：
+//   ns/{ns}/{safeKey}.{json|bin|log}       ← payload
+//   locks/{ns}__{safeKey}.lock              ← 文件锁
+//   corrupt/                                ← 损坏隔离
+//   outbox/                                 ← 云端同步队列
 //
 // 零依赖 — 只用 node fs/zlib/crypto/path/events。
 // ============================================================================
@@ -93,7 +92,7 @@ function safeName(s: string): string {
 }
 
 /** Atomic write: tmp file then rename over target. 绝不先删后改（防崩溃丢数据）。 */
-async function atomicWrite(absPath: string, data: Buffer | string): Promise<void> {
+export async function atomicWrite(absPath: string, data: Buffer | string): Promise<void> {
     const dir = path.dirname(absPath);
     await fs.promises.mkdir(dir, { recursive: true });
     const tmp = absPath + '.tmp.' + process.pid + '.' + Math.random().toString(36).slice(2, 8);
@@ -143,6 +142,12 @@ function atomicWriteSync(absPath: string, data: Buffer | string): void {
     }
 }
 
+/** Atomic read: simple fs readFile wrapper（qgf 真理机统一入口）。 */
+export async function atomicRead(absPath: string): Promise<string> {
+    const buf = await fs.promises.readFile(absPath);
+    return buf.toString('utf8');
+}
+
 // ---------------------------------------------------------------------------
 // Internal state per key
 // ---------------------------------------------------------------------------
@@ -161,10 +166,10 @@ interface KeyState {
 }
 
 // ---------------------------------------------------------------------------
-// Qg — FS 真理机器
+// Qgf — FS 原子读写真理机器
 // ---------------------------------------------------------------------------
 
-export class Qg extends EventEmitter {
+export class Qgf extends EventEmitter {
     private rootDir: string;
     private nsDir: string;
     private locksDir: string;
@@ -178,7 +183,7 @@ export class Qg extends EventEmitter {
     private states: Map<string, KeyState> = new Map();
     private _dirCache: Map<string, string[]> = new Map();  // ★ ns → key list cache
 
-    /** Hook for cloud sync (qg doesn't auto-push; state-cloud.ts drains outbox). */
+    /** Hook for cloud sync (qgf doesn't auto-push; state-cloud.ts drains outbox). */
     public onCloudDirty: ((ns: string, key: string) => void) | null = null;
 
     // ★ blob fast path threshold
@@ -187,7 +192,7 @@ export class Qg extends EventEmitter {
     // ----- constructor --------------------------------------------------------
 
     /**
-     * @param rootDir  e.g. "/path/to/project/.qqq/qg"
+     * @param rootDir  e.g. "/path/to/project/.qqq/qgf"
      */
     constructor(rootDir: string) {
         super();
@@ -230,13 +235,13 @@ export class Qg extends EventEmitter {
     // ----- registration -------------------------------------------------------
 
     register(ns: string, schema: NsSchema): void {
-        if (!ns || typeof ns !== 'string') throw new Error('qg.register: bad ns');
+        if (!ns || typeof ns !== 'string') throw new Error('qgf.register: bad ns');
         if (!schema || !['doc', 'blob', 'log'].includes(schema.form))
-            throw new Error('qg.register: schema.form must be doc/blob/log');
-        if (typeof schema.v !== 'number' || schema.v < 1) throw new Error('qg.register: schema.v >=1');
+            throw new Error('qgf.register: schema.form must be doc/blob/log');
+        if (typeof schema.v !== 'number' || schema.v < 1) throw new Error('qgf.register: schema.v >=1');
         const existing = this.schemas.get(ns);
         if (existing && existing.form !== schema.form)
-            throw new Error(`qg.register: ns "${ns}" form mismatch`);
+            throw new Error(`qgf.register: ns "${ns}" form mismatch`);
         this.schemas.set(ns, schema);
     }
 
@@ -271,7 +276,7 @@ export class Qg extends EventEmitter {
 
     private _requireSchema(ns: string): NsSchema {
         const sc = this.schemas.get(ns);
-        if (!sc) throw new Error(`qg: ns "${ns}" not registered`);
+        if (!sc) throw new Error(`qgf: ns "${ns}" not registered`);
         return sc;
     }
 
@@ -287,7 +292,7 @@ export class Qg extends EventEmitter {
         if (form === 'blob') {
             const json = Buffer.from(JSON.stringify(value), 'utf8');
             // ★ Small blobs: plain JSON (instant read, zero decompression)
-            if (json.length <= Qg.BLOB_NOCOMPRESS_BYTES) return json;
+            if (json.length <= Qgf.BLOB_NOCOMPRESS_BYTES) return json;
             // ★ Large blobs: brotli (faster decompress than gzip, built-in Node.js)
             return zlib.brotliCompressSync(json as any);
         }
@@ -342,7 +347,7 @@ export class Qg extends EventEmitter {
                 throw e;
             }
         }
-        console.warn('[qg] _acquireLock timeout', lp);
+        console.warn('[qgf] _acquireLock timeout', lp);
         return lp;
     }
 
@@ -361,8 +366,8 @@ export class Qg extends EventEmitter {
             const dst = path.join(this.corruptDir, safeNs + '__' + safeKey + '.' + ts + ext);
             fs.mkdirSync(this.corruptDir, { recursive: true });
             fs.renameSync(src, dst);
-            console.warn('[qg] quarantined', src, '->', dst, 'reason=', reason);
-        } catch (e) { console.warn('[qg] _quarantine failed:', e); }
+            console.warn('[qgf] quarantined', src, '->', dst, 'reason=', reason);
+        } catch (e) { console.warn('[qgf] _quarantine failed:', e); }
     }
 
     // ----- load ---------------------------------------------------------------
@@ -395,7 +400,7 @@ export class Qg extends EventEmitter {
             }
             st.loaded = true;
         } catch (e) {
-            console.warn('[qg] decode failed for', st.ns, st.key, '— quarantining:', e);
+            console.warn('[qgf] decode failed for', st.ns, st.key, '— quarantining:', e);
             this._quarantine(st.safeNs, st.safeKey, sc.form, String(e));
             st.value = sc.form === 'log' ? [] : null;
             st.loaded = true;
@@ -418,7 +423,7 @@ export class Qg extends EventEmitter {
     async set(ns: string, key: string, value: any): Promise<void> {
         const sc = this._requireSchema(ns);
         if (sc.form === 'log' && !Array.isArray(value))
-            throw new Error(`qg.set on log form requires array; ns=${ns} key=${key}`);
+            throw new Error(`qgf.set on log form requires array; ns=${ns} key=${key}`);
         const st = this._resolveKeyState(ns, key);
         await this._ensureLoaded(st);
         st.value = value;
@@ -430,7 +435,7 @@ export class Qg extends EventEmitter {
     async setNow(ns: string, key: string, value: any): Promise<void> {
         const sc = this._requireSchema(ns);
         if (sc.form === 'log' && !Array.isArray(value))
-            throw new Error(`qg.setNow on log form requires array; ns=${ns} key=${key}`);
+            throw new Error(`qgf.setNow on log form requires array; ns=${ns} key=${key}`);
         const st = this._resolveKeyState(ns, key);
         await this._ensureLoaded(st);
         st.value = value;
@@ -441,7 +446,7 @@ export class Qg extends EventEmitter {
 
     async append(ns: string, key: string, event: any): Promise<void> {
         const sc = this._requireSchema(ns);
-        if (sc.form !== 'log') throw new Error(`qg.append only for log form; ns=${ns}`);
+        if (sc.form !== 'log') throw new Error(`qgf.append only for log form; ns=${ns}`);
         const st = this._resolveKeyState(ns, key);
         await this._ensureLoaded(st);
         if (!Array.isArray(st.value)) st.value = [];
@@ -506,7 +511,7 @@ export class Qg extends EventEmitter {
         st.debounceTimer = setTimeout(() => {
             st.debounceTimer = undefined;
             st.saveChain = st.saveChain.then(() => this._doSaveOnce(st, sc)).catch(e => {
-                console.warn('[qg] save error', st.ns, st.key, e);
+                console.warn('[qgf] save error', st.ns, st.key, e);
             });
         }, ms);
     }
@@ -528,7 +533,7 @@ export class Qg extends EventEmitter {
     }
 
     async flushOne(ns: string, key: string): Promise<void> {
-        const id = ns + '::' + key;
+        const id = ns + '\u0000' + key;
         const st = this.states.get(id);
         if (!st) return;
         const sc = this.schemas.get(ns);
@@ -543,7 +548,7 @@ export class Qg extends EventEmitter {
             if (st.debounceTimer) { clearTimeout(st.debounceTimer); st.debounceTimer = undefined; }
             if (!st.dirty) continue;
             try { this._doSaveOnceSync(st, sc); } catch (e) {
-                console.warn('[qg] flushSync error', st.ns, st.key, e);
+                console.warn('[qgf] flushSync error', st.ns, st.key, e);
             }
         }
     }
@@ -602,7 +607,7 @@ export class Qg extends EventEmitter {
 
             // ★ Deferred compaction: run async after save, avoids blocking
             if (needsCompact) {
-                setImmediate(() => this._maybeCompact(st, sc).catch(() => {}));
+                setImmediate(() => this._maybeCompact(st, sc).catch(() => { }));
             }
         } finally {
             this._releaseLock(lp);
@@ -642,7 +647,7 @@ export class Qg extends EventEmitter {
                     : st.value;
             }
         } catch (e) {
-            console.warn('[qg] merger threw — keeping in-memory value', st.ns, st.key, e);
+            console.warn('[qgf] merger threw — keeping in-memory value', st.ns, st.key, e);
         }
     }
 
@@ -654,7 +659,7 @@ export class Qg extends EventEmitter {
             try {
                 const compacted = sc.merger([], st.value, { ns: st.ns, key: st.key });
                 if (Array.isArray(compacted)) return compacted;
-            } catch (e) { console.warn('[qg] compactLog merger threw', st.ns, st.key, e); }
+            } catch (e) { console.warn('[qgf] compactLog merger threw', st.ns, st.key, e); }
         }
         return (st.value as any[]).slice(Math.floor(st.value.length / 2));
     }
@@ -683,7 +688,7 @@ export class Qg extends EventEmitter {
             const f = path.join(this.outboxDir, seq + '.json');
             const payload = { seq, ns, key, ts: nowMs(), deleted, value: deleted ? null : value };
             atomicWriteSync(f, JSON.stringify(payload));
-        } catch (e) { console.warn('[qg] _queueOutbox failed:', e); }
+        } catch (e) { console.warn('[qgf] _queueOutbox failed:', e); }
     }
 
     listOutbox(): { seq: string; file: string }[] {

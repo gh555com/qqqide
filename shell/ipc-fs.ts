@@ -9,6 +9,32 @@ import { _sn } from './ipc-state';
 
 const READ_FILE_MAX = 50 * 1024 * 1024; // 50MB guard
 
+/** ★ 原子写入：tmp + rename，与 qgf.ts atomicWrite 同模式。
+ *  进程崩溃 mid-write 时只有 tmp 损坏，目标文件始终完好。 */
+async function _atomicWrite(absPath: string, data: Buffer): Promise<void> {
+    const dir = path.dirname(absPath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    const tmp = absPath + '.tmp.' + process.pid + '.' + Math.random().toString(36).slice(2, 8);
+    await fs.promises.writeFile(tmp, data as any);
+    try {
+        await fs.promises.rename(tmp, absPath);
+    } catch (e: any) {
+        if (e && (e.code === 'EEXIST' || e.code === 'EPERM' || e.code === 'EACCES')) {
+            // Windows 文件锁/防病毒 → 降级为 copy+unlink，绝不先删后改
+            try {
+                const data = await fs.promises.readFile(tmp);
+                await fs.promises.writeFile(absPath, data as any);
+            } catch (e2) {
+                try { await fs.promises.unlink(tmp); } catch { /* ignore */ }
+                throw e2;
+            }
+        } else {
+            try { await fs.promises.unlink(tmp); } catch { /* ignore */ }
+            throw e;
+        }
+    }
+}
+
 export function registerFsIpc(): void {
     ipcMain.handle('qqqide:fs:exists', async (_e, p: string) => fs.existsSync(p));
 
@@ -26,16 +52,19 @@ export function registerFsIpc(): void {
         }
     });
 
+    // ★ 原子写入：tmp + rename，防进程崩溃导致文件半写损坏
+    //    与 qgf.ts atomicWrite 同模式，保证真理源文件（如 f{n}.json）永不损坏
     ipcMain.handle('qqqide:fs:writeBase64', async (_e, p: string, base64: string) => {
         try { await fs.promises.mkdir(path.dirname(p), { recursive: true }); } catch { /* ignore */ }
         const buf = Buffer.from(base64 || '', 'base64');
-        await fs.promises.writeFile(p, buf as any);
+        await _atomicWrite(p, buf);
         return true;
     });
 
     ipcMain.handle('qqqide:fs:write', async (_e, p: string, content: any) => {
         try { await fs.promises.mkdir(path.dirname(p), { recursive: true }); } catch { /* ignore */ }
-        await fs.promises.writeFile(p, content);
+        const buf = Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8');
+        await _atomicWrite(p, buf);
         return true;
     });
 
