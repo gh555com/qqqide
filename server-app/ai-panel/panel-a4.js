@@ -688,10 +688,28 @@ function _a4BuildCompleteFloorPayload(ag) {
     var floorStartIdx = (typeof ag._floorStartIdx === "number") ? ag._floorStartIdx : fullConv.length;
     var floorConv = fullConv.slice(floorStartIdx);
 
+    // ★ 持久化净化：_lines 是运行时缓存不入库，reasoning_content 与 house.reasoning 重复
+    var cleanHouses = (ag._houses || []).map(function(h) {
+        var c = Object.assign({}, h);
+        delete c._lines;
+        delete c.reasoning;
+        delete c.tools;
+        delete c.toolResults;
+        return c;
+    });
+    var cleanConv = floorConv.map(function(m) {
+        if (m && m.reasoning_content !== undefined) {
+            var c = Object.assign({}, m);
+            delete c.reasoning_content;
+            return c;
+        }
+        return m;
+    });
+
     var payload = {
         question: (ag._lastUserInput && ag._lastUserInput.text) || '',
-        conversation: floorConv,
-        houses: (ag._houses || []).slice(),
+        conversation: cleanConv,
+        houses: cleanHouses,
         costWge: ag._floorCostWge,
         floorFree: ag._floorFree || false,
         lastUserInput: ag._lastUserInput,

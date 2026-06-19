@@ -20,7 +20,7 @@ Object.defineProperty(window, '_queue', {
     enumerable: true, configurable: true
 });
 // ★ 前向声明：panel-quest-ui.js 定义 renderQueueStrip，panel-quest.js 更早调用
-function renderQueueStrip() {}
+function renderQueueStrip() { }
 
 // State
 var _streamingFallback = false;
@@ -96,14 +96,11 @@ var _panelFocused = false;  // 当前面板是否获得焦点（金光边框 + �
 function _setPanelFocus(on) {
     if (_panelFocused === on) return;
     _panelFocused = on;
-    // 焦点视觉：q2 豆腐块背景变金色
-    var tofu = document.getElementById('quest-tofu');
-    if (tofu) {
-        if (on) {
-            tofu.classList.add('quest-tofu-focused');
-        } else {
-            tofu.classList.remove('quest-tofu-focused');
-        }
+    // 焦点视觉：body 级别 class 控制滑轨显隐
+    if (on) {
+        document.body.classList.add('panel-focused');
+    } else {
+        document.body.classList.remove('panel-focused');
     }
     // 广播焦点状态给父窗口（AI 视口用于文件附加目标）
     if (on) {

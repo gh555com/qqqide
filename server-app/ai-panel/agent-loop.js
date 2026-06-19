@@ -299,7 +299,7 @@ var AgentLoop = (function () {
         var _isDead = function (r) {
             if (typeof r !== 'string') return false;  // 非字符串=有结果
             if (r === '') return true;
-            if (/^\[ALREADY READ\]/i.test(r)) return true;  // ★ 去重拦截=无进展（内容已在对话中，重复读取无意义）
+            // [ALREADY READ 去重已禁用] if (/^\[ALREADY READ\]/i.test(r)) return true;
             if (/^\[SEARCH DISABLED\]/i.test(r)) return true;  // ★ 搜索工具被禁=无进展
             if (/^(No (matches|files|results) found)/i.test(r)) return true;
             if (/^(Error|Tool error)/i.test(r)) return true;
@@ -320,13 +320,13 @@ var AgentLoop = (function () {
                 || name === 'run_command' || name === 'run_in_terminal';
         };
 
-        // ═══ 预判：本轮结果是否全部无进展（含 [ALREADY READ]） ═══
-        //   T1/T3 分流依据：全部 dead → 跳过 T1 工具循环检测，交给 T3 递增 stallCount
-        //   因为 [ALREADY READ] 说明模型已被去重拦截而非主动重复调用
+        // ═══ 预判：本轮结果是否全部无进展 ═══
+        // [ALREADY READ 去重已禁用] 原注释：T1/T3 分流依据，全部 dead → 跳过 T1
+        //   原逻辑：因为 [ALREADY READ] 说明模型已被去重拦截而非主动重复调用
         var _allDead = toolResults.every(function (r) { return _isDead(r); });
 
         // ═══ T1: 工具循环检测（3 次同工具+同参数 → 死循环） ═══
-        //   ★ 守卫：仅当 NOT 全部 dead 时才检查 —— [ALREADY READ] 循环交给 T3
+        // [ALREADY READ 去重已禁用] 原守卫：仅当 NOT 全部 dead 时才检查 —— [ALREADY READ] 循环交给 T3
         if (!_allDead && self._houses.length >= 3) {
             var _last3 = self._houses.slice(-3);
             var _allTools = _last3.every(function (h) { return h.type === 'tools'; });
@@ -467,6 +467,13 @@ var AgentLoop = (function () {
         if (typeof qqqideVisionContext !== "undefined" && qqqideVisionContext) {
             parts.push(qqqideVisionContext);
         }
+        // ═══ CURRENT TIME — 与状态栏时钟共享 SSE 锚点，同步捕获，精确到秒 ═══
+        if (typeof getTimeContext === "function") {
+            try {
+                var timeCtx = getTimeContext();
+                if (timeCtx) parts.push(timeCtx);
+            } catch (_) { /* silent: time context unavailable */ }
+        }
         // SYSTEM_PROMPT 只发送一次，打入哨兵永久存在（重启窗口后从 SQLite 恢复）
         if (typeof SYSTEM_PROMPT !== "undefined" && SYSTEM_PROMPT) {
             parts.push(SYSTEM_PROMPT);
@@ -477,7 +484,7 @@ var AgentLoop = (function () {
         if (typeof qqqideProjectRulesContent !== "undefined" && qqqideProjectRulesContent) {
             parts.push(qqqideProjectRulesContent);
         }
-        // ═══ TRAILING REMINDER — reinforce main project after all rules ═══
+        // ═══ TRAILING REMINDERR — reinforce main project after all rules ═══
         var panelRoot = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
         if (panelRoot) {
             panelRoot = panelRoot.replace(/\\/g, '/').replace(/\/$/, '');
@@ -799,8 +806,7 @@ var AgentLoop = (function () {
                     if (self._guidePending && self._guideMessage) {
                         self._log('⚠ final response arrived but guide pending — deferring');
                         // 暂存当前回复的 conversation 消息（已流式输出给用户，不丢）
-                        var _deferredMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
-                        if (response.reasoning_content) _deferredMsg.reasoning_content = response.reasoning_content;
+                        var _deferredMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };;
                         // ★ 暂存到 agent，等引导确认回合结束后 push 回 conversation
                         self._deferredFinalMsg = _deferredMsg;
                         // 不调用 onDone（等引导确认后再处理最终回复）
@@ -812,7 +818,6 @@ var AgentLoop = (function () {
                     self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', geCost: _bill ? _bill.geCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined });
                     if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
-                    if (response.reasoning_content) assistantMsg.reasoning_content = response.reasoning_content;
                     // 替换之前因切换 quest 而保存的截断消息，避免重复
                     var _lastConv = self.conversation[self.conversation.length - 1];
                     if (_lastConv && _lastConv._truncated && _lastConv._floor === self._ctx.totalFloors) {
@@ -870,7 +875,6 @@ var AgentLoop = (function () {
                         tool_calls: response.tool_calls,
                         _floor: self._ctx.totalFloors
                     };
-                    if (response.reasoning_content) assistantToolMsg.reasoning_content = response.reasoning_content;
 
                     // 通知 UI 有工具调用（不等工具执行完，实时反馈）
                     for (var tc = 0; tc < response.tool_calls.length; tc++) {

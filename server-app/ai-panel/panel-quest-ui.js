@@ -854,35 +854,83 @@ $queueBtn.onclick = function () {
     var el = document.getElementById('messages');
     if (!host || !el) return;
 
+    // ★ 冒泡粒子动画（焦点水箱）
+    var _bubbleStyle = document.createElement('style');
+    _bubbleStyle.textContent =
+        '@keyframes qh-bubble-rise { 0%{transform:translateY(0);opacity:0.8} 80%{opacity:0.3} 100%{transform:translateY(-100vh);opacity:0} }' +
+        '.qh-bubble-dot { position:absolute; border-radius:50%; pointer-events:none; ' +
+        'animation:qh-bubble-rise linear infinite; }';
+    document.head.appendChild(_bubbleStyle);
+
     function _qhColors() {
         var dk = document.documentElement.getAttribute('data-theme') === 'dark';
+        var focused = document.body.classList.contains('panel-focused');
         return {
-            c: dk ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)',
-            cH: dk ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.80)',
-            trackBg: dk ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)'
+            // 滑块色：始终 q3 标准色，跟焦点无关（保证任何背景下都看得见）
+            c: dk ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)',
+            // 水箱：白主题=深炭条带，黑主题=亮银条带；非焦点=透明
+            trackBg: focused
+                ? (dk
+                    ? 'linear-gradient(to bottom, rgba(255,255,255,0.12), rgba(255,255,255,0.03))'
+                    : 'linear-gradient(to bottom, #4a4640, #2a2620)')
+                : 'transparent',
+            // 粒子：统一纯白
+            bubbleC: '#ffffff'
         };
     }
 
-    // 滑轨
+    // 滑轨（水箱）
     var track = document.createElement('div');
     var co0 = _qhColors();
-    track.style.cssText = 'position:absolute; right:-1px; top:0; bottom:0; width:11px; z-index:50; ' +
-        'background:' + co0.trackBg + ';';
+    track.style.cssText = 'position:absolute; right:-1px; top:0; bottom:0; width:10px; z-index:50; ' +
+        'background:' + co0.trackBg + '; overflow:hidden;';
+
+    // ★ 冒泡粒子：18 个纯白小圆点，随机大小/位置/速度，从下往上冒
+    var _bubbles = [];
+    for (var bi = 0; bi < 18; bi++) {
+        var dot = document.createElement('div');
+        dot.className = 'qh-bubble-dot';
+        var size = 1.5 + Math.random() * 3.5;  // 1.5~5px
+        var left = 0.5 + Math.random() * 7.5;  // 0.5~8px（10px 宽轨道内）
+        var dur = 2 + Math.random() * 4.5;     // 2~6.5s 一个周期
+        var delay = Math.random() * 6;          // 0~6s 初相位
+        var op = 0.45 + Math.random() * 0.55;  // 0.45~1.0 随机不透明
+        dot.style.cssText =
+            'width:' + size + 'px; height:' + size + 'px; ' +
+            'left:' + left + 'px; bottom:0; ' +
+            'background:#ffffff; opacity:' + op.toFixed(2) + '; ' +
+            'animation-duration:' + dur + 's; ' +
+            'animation-delay:' + delay + 's; ' +
+            'display:none;';
+        track.appendChild(dot);
+        _bubbles.push(dot);
+    }
+    function _setBubbles(on) {
+        for (var i = 0; i < _bubbles.length; i++) {
+            _bubbles[i].style.display = on ? '' : 'none';
+            if (on) {
+                // 随机微调再次触发动画（改变 animation-delay 立即生效）
+                _bubbles[i].style.animationDelay = (Math.random() * 5) + 's';
+            }
+        }
+    }
+    // 初始状态
+    if (document.body.classList.contains('panel-focused')) _setBubbles(true);
 
     // 滑块
     var thumb = document.createElement('div');
     var co = _qhColors();
-    thumb.style.cssText = 'position:absolute; right:9px; width:2px; min-height:24px; border-radius:0; ' +
+    thumb.style.cssText = 'position:absolute; right:9px; width:1px; min-height:24px; border-radius:0; ' +
         'display:none; background:' + co.c + '; cursor:pointer; ' +
         'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
 
-    // hover 变粗贴边
+    // hover 变粗贴边（填满10px水箱）
     track.addEventListener('mouseenter', function () {
-        thumb.style.width = '11px'; thumb.style.right = '-1px';
-        thumb.style.background = _qhColors().cH;
+        thumb.style.width = '10px'; thumb.style.right = '-1px';
+        thumb.style.background = _qhColors().c;
     });
     track.addEventListener('mouseleave', function () {
-        thumb.style.width = '2px'; thumb.style.right = '9px';
+        thumb.style.width = '1px'; thumb.style.right = '9px';
         thumb.style.background = _qhColors().c;
     });
 
@@ -930,13 +978,24 @@ $queueBtn.onclick = function () {
     var obs = new MutationObserver(function () { setTimeout(sync, 30); });
     obs.observe(el, { childList: true, subtree: true });
 
-    // 主题切换 → 立即刷滑块色 + 滑轨底色
+    // 主题切换 → 立即刷滑块色 + 滑轨底色 + 粒子色
     var themeObs = new MutationObserver(function () {
         var co2 = _qhColors();
         track.style.background = co2.trackBg;
         thumb.style.background = co2.c;
+        for (var i = 0; i < _bubbles.length; i++) {
+            _bubbles[i].style.background = co2.bubbleC;
+        }
     });
     themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    // 焦点切换 → 水箱显隐 + 粒子显隐（滑块色不变，始终可见）
+    var focusObs = new MutationObserver(function () {
+        var on = document.body.classList.contains('panel-focused');
+        track.style.background = _qhColors().trackBg;
+        _setBubbles(on);
+    });
+    focusObs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
     track.appendChild(thumb);
     host.appendChild(track);

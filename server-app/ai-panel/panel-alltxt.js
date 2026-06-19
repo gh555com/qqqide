@@ -106,8 +106,10 @@ function _buildFloorHeaderLines(agent, floorNum, userInput, visionInput, timing)
     return lines;
 }
 
-function _buildHouseLines(h) {
-    if (h._lines) return h._lines;
+// ★ 统一 house 格式化：all.txt（全量）和 reasoning.txt（截断300字）共用同一逻辑
+//   maxToolResultLen: 0=不截断, >0=截断到该字符数
+function _buildHouseLines(h, maxToolResultLen) {
+    if (h._lines && !maxToolResultLen) return h._lines;
     var lines = [];
     var houseTs = h.ts ? new Date(h.ts) : new Date();
     lines.push('\u2550\u2550\u2550\u2550 HOUSE ' + h.index + ' \u2550\u2550\u2550\u2550 ' + _ts(houseTs) + ' [' + h.ms + 'ms] \u2550\u2550\u2550\u2550');
@@ -123,7 +125,11 @@ function _buildHouseLines(h) {
             var argsStr = (typeof t.args === 'string') ? t.args : JSON.stringify(t.args || {});
             lines.push('  \u2500\u2500 ROOM ' + h.index + '.' + (ti + 1) + '  ' + t.name + '(' + argsStr + ') \u2500\u2500');
             if (h.toolResults && h.toolResults[ti]) {
-                lines.push(h.toolResults[ti]);
+                var result = String(h.toolResults[ti]);
+                if (maxToolResultLen && result.length > maxToolResultLen) {
+                    result = result.slice(0, maxToolResultLen) + '\u2026 [' + result.length + ' chars total]';
+                }
+                lines.push(result);
                 lines.push('');
             }
         }
@@ -138,7 +144,7 @@ function _buildHouseLines(h) {
         lines.push('  ' + h.answer);
     }
     lines.push('');
-    h._lines = lines;
+    if (!maxToolResultLen) h._lines = lines;
     return lines;
 }
 
@@ -293,13 +299,11 @@ function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
     var auditBtn = document.createElement('button');
     auditBtn.className = 'msg-a1-audit-btn';
     auditBtn.textContent = '\u5ba1\u8ba1';
-    auditBtn.title = '\u4ece\u6570\u636e\u5e93\u751f\u6210 chat.txt\uff08\u601d\u8003\u94fe + \u5de5\u5177\u8c03\u7528 + \u95ee\u7b54\uff09';
-    auditBtn.onclick = function (e) { e.stopPropagation(); _onAuditClick(block); };
-
+    auditBtn.title = '\u7b49\u540c\u4e8e\u5f53\u524d\u78c1\u76d8\u6ef4 all.txt \uff0c\u53ea\u662f\u5de5\u5177\u8c03\u7528\u6ef4\u8fd4\u56de\u4f1a\u88ab\u622a\u65ad\uff0c\u65b9\u4fbf\u67e5\u770b AI \u63a8\u7406\uff0c\u5982\u679c\u78c1\u76d8\u4e0a\u6ef4 all.txt \u4e22\u5931\u6216\u88ab\u7834\u574f\uff0c\u5ba1\u8ba1\u6587\u672c reasoning.txt \u4f1a\u7b49\u540c\u6ef4\u4e22\u5931\u6216\u7834\u574f';
     var translateBtn = document.createElement('button');
     translateBtn.className = 'msg-a1-audit-btn';
     translateBtn.textContent = '\u7ffb\u8bd1';
-    translateBtn.title = 'AI \u7ffb\u8bd1 chat.txt \u81ea\u7136\u8bed\u8a00\u90e8\u5206\u5230\u76ee\u6807\u8bed\u8a00';
+    translateBtn.title = 'AI \u7ffb\u8bd1 reasoning.txt \u81ea\u7136\u8bed\u8a00\u90e8\u5206\u5230\u76ee\u6807\u8bed\u8a00';
     translateBtn.setAttribute('data-cd', '30000');
     translateBtn.onclick = function (e) { e.stopPropagation(); _onTranslateClick(block); };
 
@@ -363,8 +367,8 @@ function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, vis
         }
 
         var now = Date.now();
-        var hasNew = hCount > lastHouseCount || rCount > lastRoomCount;
-        if (now - lastWriteMs > 10000 || hasNew) {
+        // ★ 固定 5 秒间隔写盘（统一节奏，简单可维护）
+        if (now - lastWriteMs > 5000) {
             lastWriteMs = now;
             lastHouseCount = hCount;
             lastRoomCount = rCount;
@@ -526,7 +530,7 @@ var _auditBusy = false;
 var _translateBusy = false;
 var _auditLastLang = null;
 
-function _generateChatTxt(floorData, questMeta, floorNum) {
+function _generateReasoningTxt(floorData, questMeta, floorNum) {
     var lines = [];
     var now = new Date();
     var pad2 = function (n) { return String(n).padStart(2, '0'); };
@@ -563,38 +567,11 @@ function _generateChatTxt(floorData, questMeta, floorNum) {
     lines.push('');
 
     var houses = (floorData && floorData.houses) || [];
-    var TRUNCATE_TOOL_RESULT = 300;
     for (var hi = 0; hi < houses.length; hi++) {
-        var h = houses[hi];
-        var hTs = h.ts ? new Date(h.ts) : now;
-        lines.push('\u2550\u2550\u2550\u2550 HOUSE ' + h.index + ' \u2550\u2550\u2550\u2550 ' + ts(hTs) + ' [' + (h.ms || 0) + 'ms] \u2550\u2550\u2550\u2550');
-        if (h.reasoning) {
-            lines.push('<thinking>');
-            lines.push(h.reasoning);
-            lines.push('</thinking>');
-            lines.push('');
+        var houseLines = _buildHouseLines(houses[hi], 300);
+        for (var hli = 0; hli < houseLines.length; hli++) {
+            lines.push(houseLines[hli]);
         }
-        if (h.tools && h.tools.length > 0) {
-            for (var ti2 = 0; ti2 < h.tools.length; ti2++) {
-                var t = h.tools[ti2];
-                var argsStr = (typeof t.args === 'string') ? t.args : JSON.stringify(t.args || {});
-                lines.push('  \u2500\u2500 ROOM ' + h.index + '.' + (ti2 + 1) + '  ' + t.name + '(' + argsStr + ') \u2500\u2500');
-                if (h.toolResults && h.toolResults[ti2]) {
-                    var result = String(h.toolResults[ti2]);
-                    if (result.length > TRUNCATE_TOOL_RESULT) {
-                        result = result.slice(0, TRUNCATE_TOOL_RESULT) + '\u2026 [' + result.length + ' chars total]';
-                    }
-                    lines.push(result);
-                    lines.push('');
-                }
-            }
-        }
-        if (h.type === 'final' && h.answer) {
-            lines.push('  <answer>');
-            lines.push(h.answer);
-            lines.push('  </answer>');
-        }
-        lines.push('');
     }
 
     if (timing) {
@@ -605,6 +582,35 @@ function _generateChatTxt(floorData, questMeta, floorNum) {
     return lines.join('\n');
 }
 
+// ★ 从 all.txt 截断工具结果生成 reasoning.txt（主路径用）
+//   all.txt 格式中，工具结果在 "  ── ROOM X.Y  func(args) ──" 和下一个 ROOM/HOUSE 头之间
+function _truncateAllTxtToolResults(text, maxLen) {
+    var lines = text.split('\n');
+    var out = [];
+    var inTool = false;
+    var toolChars = 0;
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        // 下一节开始（ROOM 头 / HOUSE 头 / <answer> / floor stats / az> / 空行后的下一块）
+        var isHeader = /^  \u2500\u2500 ROOM \d+\.\d+  /.test(line) || /^\u2550\u2550\u2550\u2550 HOUSE/.test(line) || /^  <answer>/.test(line) || /^\u2550\u2550\u2550\u2550 floor/.test(line) || /^az> /.test(line);
+        if (isHeader) inTool = false;
+        // 新的工具结果区开始
+        if (/^  \u2500\u2500 ROOM \d+\.\d+  /.test(line)) {
+            inTool = true;
+            toolChars = 0;
+        }
+        if (inTool && !/^  \u2500\u2500 ROOM \d+\.\d+  /.test(line)) {
+            if (toolChars >= maxLen) continue;  // 已超限，跳过
+            if (toolChars + line.length > maxLen) {
+                line = line.slice(0, maxLen - toolChars) + '\u2026';
+            }
+            toolChars += line.length + 1;  // +1 for \n
+        }
+        out.push(line);
+    }
+    return out.join('\n');
+}
+
 async function _onAuditClick(block) {
     if (_auditBusy) return;
     _auditBusy = true;
@@ -613,25 +619,44 @@ async function _onAuditClick(block) {
     if (btn) { btn.textContent = '\u2026'; btn.disabled = true; }
 
     try {
-        var questId = block._questId;
-        var floorNum = block._floorNum;
-        if (!questId || !floorNum) { _auditBusy = false; if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
+        var allTxtPath = block._path;
+        var reasoningPath = allTxtPath.replace(/all\.txt$/, 'reasoning.txt');
+        var bridge = window.parent && window.parent.qqqideBridge;
+        if (!bridge) { _auditBusy = false; if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
 
-        var floorData = await questStore.loadFloor(questId, floorNum);
-        if (!floorData) {
-            console.warn('[audit] floor data not found for ' + questId + ' floor ' + floorNum);
+        var reasoningContent = '';
+
+        // ★ 主路径：从 all.txt 截断工具结果生成 reasoning.txt
+        try {
+            var allTxtContent = await bridge.fs.read(allTxtPath);
+            if (allTxtContent) {
+                reasoningContent = _truncateAllTxtToolResults(allTxtContent, 300);
+            }
+        } catch (_) { /* all.txt 不存在，走降级路径 */ }
+
+        // ★ 降级路径：all.txt 丢失 → 从 all.json conversation 重建（缺推理，工具调用+结果可见）
+        if (!reasoningContent) {
+            var questId = block._questId;
+            var floorNum = block._floorNum;
+            if (questId && floorNum) {
+                var floorData = await questStore.loadFloor(questId, floorNum);
+                if (floorData) {
+                    var questMeta = await questStore.load(questId);
+                    reasoningContent = _generateReasoningTxt(floorData, questMeta, floorNum);
+                    if (reasoningContent) {
+                        reasoningContent = '⚠ all.txt 不存在，以下由 all.json 的 conversation 重建（AI 推理过程缺失，工具调用及结果可见）。\n\n' + reasoningContent;
+                    }
+                }
+            }
+        }
+
+        if (!reasoningContent) {
+            console.warn('[audit] unable to generate reasoning.txt');
             _auditBusy = false; if (btn) { btn.textContent = origText; btn.disabled = false; } return;
         }
-        var questMeta = await questStore.load(questId);
-        var chatContent = _generateChatTxt(floorData, questMeta, floorNum);
 
-        var chatPath = block._path.replace(/all\.txt$/, 'chat.txt');
-        var bridge = window.parent && window.parent.qqqideBridge;
-        if (bridge) {
-            await bridge.fs.write(chatPath, chatContent);
-        }
-
-        _postToHost({ type: 'qqq-file-open-right', path: chatPath, readOnly: true });
+        await bridge.fs.write(reasoningPath, reasoningContent);
+        _postToHost({ type: 'qqq-file-open-right', path: reasoningPath, readOnly: true });
 
         if (btn) { btn.textContent = '\u2713'; btn.disabled = false; }
         setTimeout(function () { if (btn) btn.textContent = '\u5ba1\u8ba1'; }, 1500);
@@ -654,33 +679,31 @@ async function _onTranslateClick(block) {
 
     try {
         var lang = block._auditLang || 'zh';
-        var chatPath = block._path.replace(/all\.txt$/, 'chat.txt');
-        var translatedPath = chatPath.replace(/\.txt$/, '.' + lang + '.txt');
+        var reasoningPath = block._path.replace(/all\.txt$/, 'reasoning.txt');
+        var translatedPath = reasoningPath.replace(/\.txt$/, '.' + lang + '.txt');
         var bridge = window.parent && window.parent.qqqideBridge;
         if (!bridge) { _translateBusy = false; if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
 
-        var chatContent = '';
-        try { chatContent = await bridge.fs.read(chatPath); } catch (_) { }
-        if (!chatContent) {
+        var reasoningContent = '';
+        try { reasoningContent = await bridge.fs.read(reasoningPath); } catch (_) { }
+        if (!reasoningContent) {
             var questId = block._questId;
             var floorNum = block._floorNum;
             if (questId && floorNum) {
                 var floorData = await questStore.loadFloor(questId, floorNum);
                 var questMeta = await questStore.load(questId);
                 if (floorData) {
-                    chatContent = _generateChatTxt(floorData, questMeta, floorNum);
-                    await bridge.fs.write(chatPath, chatContent);
+                    reasoningContent = _generateReasoningTxt(floorData, questMeta, floorNum);
+                    await bridge.fs.write(reasoningPath, reasoningContent);
                 }
             }
-            if (!chatContent) { _translateBusy = false; if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
+            if (!reasoningContent) { _translateBusy = false; if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
         }
-
-        var cache = _translateCache[chatPath];
+        var cache = _translateCache[reasoningPath];
         if (cache && cache.lang !== lang) {
             cache = null;
         }
-
-        if (cache && cache.sourceContent === chatContent) {
+        if (cache && cache.sourceContent === reasoningContent) {
             var _exists = false;
             try { var _st = await bridge.fs.stat(translatedPath); _exists = !!_st; } catch (_) { }
             if (_exists) {
@@ -693,8 +716,8 @@ async function _onTranslateClick(block) {
         }
 
         var toTranslate, isIncremental;
-        if (cache && cache.sourceContent && chatContent.startsWith(cache.sourceContent)) {
-            var newPart = chatContent.slice(cache.sourceContent.length);
+        if (cache && cache.sourceContent && reasoningContent.startsWith(cache.sourceContent)) {
+            var newPart = reasoningContent.slice(cache.sourceContent.length);
             if (newPart.trim()) {
                 toTranslate = newPart;
                 isIncremental = true;
@@ -706,7 +729,7 @@ async function _onTranslateClick(block) {
                 return;
             }
         } else {
-            toTranslate = chatContent;
+            toTranslate = reasoningContent;
             isIncremental = false;
         }
 
@@ -718,9 +741,8 @@ async function _onTranslateClick(block) {
         } else {
             finalTranslated = translatedPart;
         }
-
-        _translateCache[chatPath] = {
-            sourceContent: chatContent,
+        _translateCache[reasoningPath] = {
+            sourceContent: reasoningContent,
             translatedContent: finalTranslated,
             lang: lang
         };
@@ -749,13 +771,13 @@ async function _translateViaAI(text, targetLang, isIncremental) {
     var langName = langNames[targetLang] || targetLang;
     var prompt;
     if (isIncremental) {
-        prompt = 'This is a CONTINUATION of a chat log. Translate ONLY the following new text to ' + langName + '.\n' +
+        prompt = 'This is a CONTINUATION of a reasoning log. Translate ONLY the following new text to ' + langName + '.\n' +
             'CRITICAL: Preserve ALL structure markers unchanged: "\u2550\u2550\u2550\u2550 HOUSE", "floor.", "<thinking>", "</thinking>", "<answer>", "</answer>", "\u2500\u2500 ROOM".\n' +
             'Keep ALL code, file paths, JSON, numbers, and technical terms unchanged.\n' +
             'Translate ONLY the natural language content.\n' +
             'Output ONLY the translated text \u2014 no explanations.\n\n' + text;
     } else {
-        prompt = 'Translate the natural language parts of this chat log to ' + langName + '.\n' +
+        prompt = 'Translate the natural language parts of this reasoning log to ' + langName + '.\n' +
             'CRITICAL: Preserve ALL structure markers unchanged: "\u2550\u2550\u2550\u2550 HOUSE", "floor.", "<thinking>", "</thinking>", "<answer>", "</answer>", "\u2500\u2500 ROOM".\n' +
             'Keep ALL code, file paths, JSON, numbers, and technical terms unchanged.\n' +
             'Translate ONLY the natural language content (thinking text, answers, user messages).\n' +

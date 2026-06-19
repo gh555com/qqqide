@@ -34,21 +34,21 @@ export async function _tlOpenDb(projectRoot: string): Promise<any> {
     if (existingInit) return existingInit;
     const initPromise = (async () => {
         try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch (_) { }
-    const initSqlJs = require('sql.js');
-    const SQL = await initSqlJs();
-    if (fs.existsSync(dbPath)) {
-        try {
-            const buf = fs.readFileSync(dbPath);
-            db = new SQL.Database(buf);
-        } catch (e) {
-            console.warn('[timeline] corrupt db, starting fresh:', e);
-            try { fs.renameSync(dbPath, dbPath + '.corrupt.' + Date.now()); } catch (_) { }
+        const initSqlJs = require('sql.js');
+        const SQL = await initSqlJs();
+        if (fs.existsSync(dbPath)) {
+            try {
+                const buf = fs.readFileSync(dbPath);
+                db = new SQL.Database(buf);
+            } catch (e) {
+                console.warn('[timeline] corrupt db, starting fresh:', e);
+                try { fs.renameSync(dbPath, dbPath + '.corrupt.' + Date.now()); } catch (_) { }
+                db = new SQL.Database();
+            }
+        } else {
             db = new SQL.Database();
         }
-    } else {
-        db = new SQL.Database();
-    }
-    db.run(`CREATE TABLE IF NOT EXISTS versions (
+        db.run(`CREATE TABLE IF NOT EXISTS versions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         file_path TEXT NOT NULL,
         ts INTEGER NOT NULL,
@@ -58,13 +58,13 @@ export async function _tlOpenDb(projectRoot: string): Promise<any> {
         added_lines INTEGER,
         deleted_lines INTEGER
     )`);
-    // 向前兼容：旧表无新列则补
-    try { db.run('ALTER TABLE versions ADD COLUMN added_lines INTEGER'); } catch (_) { /* already exists */ }
-    try { db.run('ALTER TABLE versions ADD COLUMN deleted_lines INTEGER'); } catch (_) { /* already exists */ }
-    db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_ts ON versions(file_path, ts)');
-    db.run('PRAGMA journal_mode=WAL');
-    db.run('PRAGMA synchronous=FULL');
-    db.run('PRAGMA busy_timeout=30000');
+        // 向前兼容：旧表无新列则补
+        try { db.run('ALTER TABLE versions ADD COLUMN added_lines INTEGER'); } catch (_) { /* already exists */ }
+        try { db.run('ALTER TABLE versions ADD COLUMN deleted_lines INTEGER'); } catch (_) { /* already exists */ }
+        db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_ts ON versions(file_path, ts)');
+        db.run('PRAGMA journal_mode=WAL');
+        db.run('PRAGMA synchronous=FULL');
+        db.run('PRAGMA busy_timeout=30000');
         _timelineDbs.set(dbPath, db);
         // 清理历史孤儿 tmp（纯收益，零风险）
         _tlCleanStaleTmp(projectRoot);
@@ -90,7 +90,7 @@ export function _tlFlushDb(db: any, dbPath: string): void {
     _tlFlushTimers.set(dbPath, setTimeout(() => {
         _tlFlushTimers.delete(dbPath);
         try {
-            const projectRoot = path.dirname(path.dirname(dbPath)); // dbPath = {root}/qqq/timeline/timeline.db
+            const projectRoot = path.dirname(path.dirname(path.dirname(dbPath))); // dbPath = {root}/qqq/timeline/timeline.db
             const tmpDir = _tlTmpDir(projectRoot);
             try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
             const data = db.export();
@@ -108,7 +108,7 @@ export function _tlFlushNow(db: any, dbPath: string): void {
     const timer = _tlFlushTimers.get(dbPath);
     if (timer) { clearTimeout(timer); _tlFlushTimers.delete(dbPath); }
     try {
-        const projectRoot = path.dirname(path.dirname(dbPath));
+        const projectRoot = path.dirname(path.dirname(path.dirname(dbPath)));
         const tmpDir = _tlTmpDir(projectRoot);
         try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
         const data = db.export();

@@ -13,8 +13,9 @@ async function _handleSyncMessage(msg) {
     }
     // quest 列表变更
     if (msg.type === 'quest-created' || msg.type === 'quest-deleted' || msg.type === 'quest-renamed') {
-        questStore.invalidateIndex();
+        await questStore.invalidateIndex();  // ★ await：等 in-flight load 完成后再 null，防 updateQuestTofu 读到旧缓存
         await updateQuestTofu();
+        if (typeof closeQuestDrop === 'function') closeQuestDrop();  // ★ 关闭旧下拉，确保下次 hover 全新渲染含新 quest
         return;
     }
     if (_isDraft(questActiveId)) return;
@@ -448,44 +449,17 @@ window._computeFileStats = _computeFileStats;
 async function _saveAgentQuestData(questId, ag, floorStartIdx) {
     if (!questId || !ag) return;
     var floorNum = ag._ctx.totalFloors;
-    // [silent] saveQuestData
 
-    // ═══ 1) 先写 floor 数据（原子操作：写 floor + 更新 quest.floors[]） ═══
     if (typeof floorStartIdx === 'number' && floorNum > 0) {
-        var fullConv = ag.conversation ? ag.conversation.slice() : [];
-        var floorConv = fullConv.slice(floorStartIdx);
-        var floorPayload = {
-            question: (ag._lastUserInput && ag._lastUserInput.text) || '',
-            conversation: floorConv,
-            houses: (ag._houses || []).slice(),
-            costWge: ag._floorCostWge,
-            floorFree: ag._floorFree || false,
-            lastUserInput: ag._lastUserInput,
-            allTxtPath: ag._allTxtPath || '',
-            fileStats: _computeFileStats(ag._houses, ag._a4Snapshots),
-            clockTiming: ag._lastFloorTimingRecord || null,
-            aiStartTime: ag._aiStartTime || '',
-            tierLabel: ag._aiTierLabel || '',
-            images: ag._lastUserInput && ag._lastUserInput.images ? ag._lastUserInput.images.map(function (img) {
-                // ★ sq3 只存引用（fileName + dataUrl 缩略图），base64 存磁盘文件
-                return { id: img.id, fileName: img.fileName || '', dataUrl: img.dataUrl || '' };
-            }) : [],
-            _fDir: ag._allTxtPath ? ag._allTxtPath.replace(/[\\/]all\.txt$/g, '').replace(/[\\/]$/, '') + '/' : '',
-            createdAt: Date.now(),
-            _serverFloorId: ag._floorId || ''
-        };
-
-        // ★ 保存前防线：修复孤儿 tool_calls + 断言（防腐蚀数据写入 SQLite）
+        // ★ 保存前防线：修复孤儿 tool_calls（防腐蚀数据写入 SQLite）
         if (typeof ag._repairOrphanedToolCalls === 'function') {
             var _lenBefore = ag.conversation ? ag.conversation.length : 0;
             ag._repairOrphanedToolCalls();
             var _lenAfter = ag.conversation ? ag.conversation.length : 0;
             if (_lenBefore !== _lenAfter) {
                 console.warn('[CRITICAL] saving corrupted conversation: repaired ' + (_lenBefore - _lenAfter) + ' orphaned msgs (quest=' + questId + ', floor=' + floorNum + ')');
-                fullConv = ag.conversation.slice();
-                floorConv = fullConv.slice(floorStartIdx);
-                // ★ 根治：修复后按 _floor 标签重建所有楼层分段，重写受影响的过去楼层到 sq3
-                //   不这样做的话，下次重启又从 sq3 读出旧数据，同样的孤儿永远修不好
+                var fullConv = ag.conversation.slice();
+                // ★ 根治：修复后按 _floor 标签重建所有楼层分段
                 try {
                     var _floorsMap = {};
                     for (var mi = 0; mi < fullConv.length; mi++) {
@@ -499,7 +473,7 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
                     var _rewritten = 0;
                     for (var fi = 0; fi < _allFloors.length; fi++) {
                         var _fNum = _allFloors[fi].floorNum;
-                        if (_fNum === floorNum) continue;  // 当前楼层后面会正常保存
+                        if (_fNum === floorNum) continue;
                         var _newConv = _floorsMap[_fNum];
                         if (_newConv && _newConv.length > 0) {
                             var _oldData = _allFloors[fi].data || {};
@@ -518,6 +492,21 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
                 }
             }
         }
+
+        // ★ 统一 payload 构建（净化 houses/conversation，单一真理源）
+        var floorPayload = (typeof window._a4BuildCompleteFloorPayload === 'function')
+            ? window._a4BuildCompleteFloorPayload(ag)
+            : {
+                question: (ag._lastUserInput && ag._lastUserInput.text) || '',
+                conversation: ag.conversation ? ag.conversation.slice(ag._floorStartIdx || 0) : [],
+                houses: (ag._houses || []).slice(),
+                costWge: ag._floorCostWge,
+                lastUserInput: ag._lastUserInput,
+                createdAt: Date.now()
+            };
+
+        // 附加 _serverFloorId（_a4BuildCompleteFloorPayload 不含此字段）
+        floorPayload._serverFloorId = ag._floorId || '';
 
         // ═══ A4 快照持久化 ═══
         if (typeof _a4PersistSnapshots === 'function') {

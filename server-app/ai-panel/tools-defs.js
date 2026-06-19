@@ -79,7 +79,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'read_file',
-            description: 'Read file contents. Returns full file content (up to ~200K chars). For extremely large files, paginate with start_line/end_line. Re-reading same range twice triggers [ALREADY READ]; if context was lost, it will allow re-read on 3rd attempt.',
+            description: 'Read file contents. Returns full file content (up to ~200K chars). For extremely large files, paginate with start_line/end_line. [ALREADY READ de-dup disabled — re-read freely when context is lost.]',
             parameters: {
                 type: 'object',
                 properties: {
@@ -319,7 +319,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'search_web',
-            description: 'Search the web. Returns up to 20 results with title, URL, and snippet. ALWAYS follow up with fetch_webpage on the most relevant result URLs to extract full data — search_web alone only gives snippets, not complete information. Cost: 5 ge per search.',
+            description: 'Search the web. Returns up to 20 results with title, URL, and snippet. ALWAYS follow up with fetch_webpage on the most relevant result URLs to extract full data — search_web alone only gives links, not the actual content you need. After search_web: use fetch_webpage for text (docs, articles) or run_command+curl for structured data (APIs, rankings, prices). 5 ge per search.',
             parameters: {
                 type: 'object',
                 properties: {

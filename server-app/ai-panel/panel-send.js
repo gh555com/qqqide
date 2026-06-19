@@ -161,7 +161,7 @@ async function sendMessage() {
             await questStore.rename(questActiveId, questTitle, questNum);
             await _ensureQuestDir(root, qName, fName);
         }
-        renderTabs();
+        await renderTabs();  // ★ 必须 await：确保 tofu 在卡片迁移前更新
         // ★ Fix: draft → real quest card 迁移
         // 用户消息已附加到 draft card，需迁移到真实 quest card
         if (cardPool && _isDraft(cardPool._activeId)) {
@@ -441,6 +441,7 @@ async function sendMessage() {
                 await _finalizeAllTxt(_targetDiv2 || aiDiv, _ftxtPath, _capturedAgent, floorNum, timing);
                 if (_activeAgent === _capturedAgent) {
                     updateCtxBtn();
+                    updateQuestTofu();  // ★ 楼层完成后刷新 tofu（防草稿→正式 quest 后未及时更新）
                     if (!_queuePaused) {
                         _triggerQueueSend();
                     } else {

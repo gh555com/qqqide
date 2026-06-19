@@ -279,7 +279,8 @@ async function _appendToSearchQuest(questId, floorNum) {
         var lines = [];
         if (existing) lines.push('');  // 与上一楼层间隔一行
         lines.push(marker + '   ' + ts(floorTs));
-        lines.push('\u25a0 Q: ' + (floorData.question || ''));
+        var cleanQuestion = (floorData.question || '').replace(/\[File: [^\]]+\]\s*\n```[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim();
+        lines.push('\u25a0 Q: ' + cleanQuestion);
         lines.push('\u25a0 A: ' + (answer || '(no answer)'));
 
         // ═══ az 区文本化（每层楼私有 A1 + 时钟数据） ═══

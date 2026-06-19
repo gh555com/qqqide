@@ -101,6 +101,14 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
         apiMessages.splice(insertIdx, 0, { role: 'system', content: dynamicCtx, _dynamic: true });
     }
 
+    // ★ 净化：strip reasoning_content（AI 思维链），不发给 API（非标准字段，白浪费带宽）
+    for (var _si = 0; _si < apiMessages.length; _si++) {
+        var _sm = apiMessages[_si];
+        if (_sm && _sm.reasoning_content !== undefined) {
+            delete _sm.reasoning_content;
+        }
+    }
+
     // 语言检测已移至 a1 审计按钮（后翻译方案），此处不再强制注入语言指令
     // ★ 计费摘要（本轮详情）：house 1 = 用户提问，后续 = 前一间 reasoning
     //   换行转空格 + UTF-8 截断 + 末尾 ...，永不截到 room 级工具调用

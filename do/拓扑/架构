@@ -104,8 +104,8 @@ ContentGateway 超时常量（唯一真理源，2026-06-13）
 · 自愈: _repairOrphanedToolCalls() 双向扫描 conversation（200 轮，方向 A/B 日志记录）
 · 三道防线:
   ① 请求前主动预检（_callGateway 开头，conversation 未变则跳过）
-  ② 楼层保存前修复（_saveAgentQuestData，发现腐蚀打 [CRITICAL] 日志）
-  ③ 自动保存前修复（auto-save 每 15s，同上）
+  ② 楼层保存前修复（_saveAgentQuestData → _a4BuildCompleteFloorPayload 归一，发现腐蚀打 [CRITICAL] 日志）
+  ③ 自动保存前修复（auto-save 每 5s，同上））
 · 恢复阶段循环修复至干净（最多 10 轮 × 200 次 = 2000 次扫描）
 · 成功后重置 _floorOnErrorCalled
 · Go 服务端 sanitizeMessages 双向校验（方向 A+B，gaea 源码已更新）
@@ -195,7 +195,7 @@ qqq-shell-v2/
 │       ├── panel-floor.js     楼层管理 + all.txt 归档触发
 │       ├── panel-quest-ui.js  quest UI 交互 + 下拉列表
 │       ├── panel-clock.js     电子钟 + 饼图 + 自动保存
-│       ├── panel-alltxt.js    all.txt 流写入 + 审计
+│       ├── panel-alltxt.js    all.txt 流写入 + reasoning.txt 审计（从 all.txt 截断生成）
 │       ├── panel-a4.js        A4 文件快照（executeTool 拦截 + 瀑布列表 + 持久化）
 │       ├── panel-send.js      发送逻辑 + 事件绑定 + DOMContentLoaded
 │       ├── panel-floor-indicator.js 滚动楼层指示器（豆腐块+探针）
@@ -255,14 +255,17 @@ Card Queue — 终极 AI 面板架构（2026-06 重构，2026-06-10 加固）
 · 所有跨模块引用走 window.*（questStore/agentPool/cardPool/9 个函数）
 · 配置常量位于 card-pool.js 头部，改一处全生效
 
-q2 两行制 + 面板焦点（2026-06 重构）
+q2 单行 + hover 展开（2026-06 重构）
 -----------------------------------------
-· 第一行（招牌行）：有 quest → "q{n}.{title}"；无 quest → "~ New quest ~"（斜体灰）
-· 第二行（q2x 行）：[ + ] 新建 + 搜索框（有 quest 时隐藏）
-· 下拉列表：2 行弹性高度、默认 20 条（滚轮扩容 20→40→60）、模糊子序列匹配
+· 招牌行：有 quest → "q{n}.{title}"；无 quest → "~ New quest ~"（斜体灰）
+· hover 展开下拉 → 虚线框 + 效果 q（左金边+渐变+外发光+悬浮层统一流光）
+· 悬浮层流光：单个 .q2-shimmer-overlay DOM 元素覆盖整区，pointer-events:none，零布局干扰
+· 下拉列表：2 行弹性高度、默认 20 条（滚轮扩容 40→60）、模糊子序列匹配
+· 搜索与新建整合进下拉头部（+ 按钮 + 搜索框），不再有独立 q2x 行
 · 三面板各自独立持久化：关闭前 quest/光标/滚动/输入草稿全部保存（ai.uiStates.{panelId}）
-· 面板焦点：获得焦点 → q2 背景变金（#e8a030）；mousedown/window.focus 触发
+· q2 与面板焦点完全解耦：焦点不改变 q2 任何样式，焦点仅用于快捷键+postMessage 广播
 · 快捷键（仅焦点 + 非编辑区）：1/2 上下滚 35%视口、q/w 前后楼层跳转
+· 统一高亮色：豆腐块 hover/编辑笔 hover/下拉行 hover/搜索框 focus 全用 #fdf6e3（暗 #3f3830）
 · 一个 quest 同时只能在一个面板打开（所有权系统 + 跨面板 sync 广播互斥）
 
 持久化 — qgs + qg + project + only 四入口
@@ -465,7 +468,12 @@ AI 面板增强
 - quest 切换防丢: 流式中断回复保存（_fullText+_truncated）+ 互斥锁 + snapshot 副本
 - 引导注入: injectGuide() 立即 abort 当前 house → 确认回合(Flash/noTools) → AI 回复 "✅ 已收到引导" → pop 指令 → 继续工作。不中断楼层，确认来自 DeepSeek。空闲时降级为普通 inject。
 - 排队信封: 任何时候可添加，AI 回复完自动消费下一条。暂停/继续/清空控制栏。_debounceSaveQueue 500ms 合并写盘。最大 50 条。
-- 楼层归档: qqq/quests/q{N}.{title}/f{N}.{question}/all.json（楼层全量）+ all.txt（纯导出快照）+ chat.txt
+- 楼层归档（2026-06-19 清洁分工）：
+    all.json  →  机器用（conversation[] + 计费元数据 + 文件快照），仅存结构化数据，
+                houses 不含 reasoning/tools/toolResults，禁 reasoning_content 入 conversation
+    all.txt  →  人类读（完整母本：thinking + 工具调用 + 结果 + 回答），建楼期间每5s从内存全量写盘
+    reasoning.txt → 审计用（all.txt 截断工具结果到300字），从 all.txt 直接截断生成，不再依赖 SQLite
+    quest.sq3 →  纯元数据索引（question + costWge + _fDir + 时间戳），~200字节/floor，不含正文
 - 悬浮层预览：图片（智能2x尺寸+拖拽+滚轮缩放）+ 表格（transform保持长宽比+十字D-pad+初始适配）
 - 时钟：分钟(48px)+冒号秒(24px)，动态色随 agent._floorTiming 变化
 - 饼图：canvas 112px，懒重绘，数据不到不显示

@@ -133,15 +133,14 @@ var QuestStore = (function () {
     };
 
     // ★ 外部失效索引（跨面板同步后强制重载，等 in-flight load 完成再重置）
+    //   返回 Promise：确保调用方 await 后 this._index 确已被 null
     QuestStore.prototype.invalidateIndex = function () {
+        this._index = null;
         if (_indexLoadPromise) {
-            // 正在加载中：闭包等待完成后自动设置 _index，不需手动 null
-            // 但为了保证重载，在 _indexLoadPromise 的 then 中再 null 一次
             var self = this;
-            _indexLoadPromise.then(function () { self._index = null; });
-        } else {
-            this._index = null;
+            return _indexLoadPromise.then(function () { self._index = null; });
         }
+        return Promise.resolve();
     };
     // 返回 true 表示有项目绑定，false 表示无（上层可据此拒绝操作）
     // 项目守卫：设置后，无 _rootDir 时所有写入操作在 _bridge() 层自动阻断

@@ -367,20 +367,17 @@
     sbThumb.className = 'qh-scroll-thumb';
     function _qhCol() {
       var dk = document.documentElement.getAttribute('data-theme') === 'dark';
-      return { c: dk ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.55)',
-               cH: dk ? 'rgba(255,255,255,0.70)' : 'rgba(0,0,0,0.80)',
-               trackBg: dk ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.05)' };
+      return { c: dk ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' };
     }
     var _co = _qhCol();
-    sbOuter.style.background = _co.trackBg;
-    sbThumb.style.cssText = 'position:absolute; right:10px; width:2px; min-height:24px; border-radius:0; ' +
+    sbThumb.style.cssText = 'position:absolute; right:10px; width:1px; min-height:24px; border-radius:0; ' +
       'display:none; background:' + _co.c + '; cursor:pointer; ' +
       'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
     sbOuter.addEventListener('mouseenter', function () {
-      sbThumb.style.width = '12px'; sbThumb.style.right = '0px'; sbThumb.style.background = _qhCol().cH;
+      sbThumb.style.width = '11px'; sbThumb.style.right = '0px'; sbThumb.style.background = _qhCol().c;
     });
     sbOuter.addEventListener('mouseleave', function () {
-      sbThumb.style.width = '2px'; sbThumb.style.right = '10px'; sbThumb.style.background = _qhCol().c;
+      sbThumb.style.width = '1px'; sbThumb.style.right = '10px'; sbThumb.style.background = _qhCol().c;
     });
     function _syncSB() {
       var sh = inner.scrollHeight, ch = inner.clientHeight;
@@ -422,7 +419,6 @@
     _sbObs.observe(inner, { childList: true });
     var _themeObs = new MutationObserver(function () {
       var co3 = _qhCol();
-      sbOuter.style.background = co3.trackBg;
       sbThumb.style.background = co3.c;
     });
     _themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });

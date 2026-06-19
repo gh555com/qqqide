@@ -64,54 +64,51 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 /* 豆腐块内联编辑 */
 .quest-tofu-edit{flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--text-primary);font-size:22px;font-weight:700;font-family:inherit;padding:0;margin:0}
 .quest-tofu-pen{flex:none;align-self:stretch;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:0;cursor:pointer;padding:0 14px;margin:-8px -14px -8px 0;transition:opacity .15s,background .15s;line-height:1}
-.quest-tofu-pen:hover{opacity:1!important;background:rgba(232,160,48,0.25)}
-[data-theme="dark"] .quest-tofu-pen:hover{background:rgba(232,160,48,0.30)}
+.quest-tofu-pen:hover{opacity:1!important;background:var(--background-color)}
+[data-theme="dark"] .quest-tofu-pen:hover{background:#3f3830}
 .quest-tofu:hover .quest-tofu-pen{opacity:.45}
-/* ── 面板焦点：虚线边框 + 左金边 + 流光扫过 ── */
-.quest-tofu-focused{color:#000!important;position:relative;overflow:hidden;box-sizing:border-box;
+/* q2x 行已删除（统一走 dropdown hover，单一真理源）*/
+/* ── q2 展开：虚线框 + 效果 q（左金边 + 渐变 + 外发光）── */
+#quest-bar.quest-expanded .quest-tofu{
   border-color:var(--yellow);border-style:dashed;
+  border-bottom-color:transparent!important;
   background:linear-gradient(90deg,rgba(255,211,2,.14) 0%,rgba(255,211,2,.05) 35%,transparent 70%),#ebe3ca!important;
   box-shadow:inset 3px 0 0 #ffd302,0 0 14px rgba(255,211,2,.22);
 }
-.quest-tofu-focused .quest-tofu-text{color:#000!important}
-.quest-tofu-focused .quest-tofu-prefix{color:#e8a030!important}
-/* 流光扫过：对角线光带每 5s 从左到右 */
-.quest-tofu-focused::after{
-  content:'';position:absolute;top:-50%;left:-60%;width:45%;height:200%;
-  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.06) 44%,rgba(255,255,255,.14) 50%,rgba(255,255,255,.06) 56%,transparent 70%);
-  animation:q2-shimmer 5s ease-in-out infinite;pointer-events:none;z-index:0;
-  transform:skewX(-8deg);
-}
 @keyframes q2-shimmer{0%{left:-60%}100%{left:120%}}
-.quest-tofu-focused>*{position:relative;z-index:1}
-/* 运行中彗星：金边焦点下适配 */
-.quest-tofu-focused.quest-running .quest-tofu-prefix::before{background:#b8860b;box-shadow:0 0 6px 2px #b8860b,0 0 12px 4px rgba(184,134,11,.5)}
-.quest-tofu-focused.quest-running .quest-tofu-prefix::after{background:#8b6914;box-shadow:0 0 4px 2px #8b6914,0 0 8px 3px rgba(139,105,20,.6)}
-[data-theme="dark"] .quest-tofu-focused{color:#f0e6d2!important;
-  border-color:var(--yellow);
+[data-theme="dark"] #quest-bar.quest-expanded .quest-tofu{
   background:linear-gradient(90deg,rgba(255,211,2,.16) 0%,rgba(255,211,2,.06) 35%,transparent 70%),#211f1c!important;
   box-shadow:inset 3px 0 0 #ffd302,0 0 18px rgba(255,211,2,.30);
 }
-[data-theme="dark"] .quest-tofu-focused .quest-tofu-text{color:#f0e6d2!important}
-[data-theme="dark"] .quest-tofu-focused .quest-tofu-prefix{color:#e8a030!important}
-[data-theme="dark"] .quest-tofu-focused::after{
-  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.04) 44%,rgba(255,255,255,.10) 50%,rgba(255,255,255,.04) 56%,transparent 70%);
+/* 悬浮层流光：覆盖整个展开区域，不碰布局 */
+.q2-shimmer-overlay{
+  position:absolute;top:0;left:0;right:0;pointer-events:none;overflow:hidden;z-index:99991;
 }
-/* q2x 行已删除（统一走 dropdown hover，单一真理源）*/
-/* ── 暗主题 q2 hover/focus 专用色（比基底亮一档，确保可见）── */
-/* ── q2 展开统一虚线框：tofu + dropdown 整包 ── */
-#quest-bar.quest-expanded .quest-tofu,
-#quest-bar.quest-expanded .quest-tofu-focused{
-  border-color:var(--yellow);border-style:dashed;
-  border-bottom-color:transparent!important;
+.q2-shimmer-overlay::before{
+  content:'';position:absolute;top:-50%;left:-60%;width:45%;height:200%;
+  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.06) 44%,rgba(255,255,255,.14) 50%,rgba(255,255,255,.06) 56%,transparent 70%);
+  animation:q2-shimmer 5s ease-in-out infinite;
+  transform:skewX(-8deg);
+}
+[data-theme="dark"] .q2-shimmer-overlay::before{
+  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.04) 44%,rgba(255,255,255,.10) 50%,rgba(255,255,255,.04) 56%,transparent 70%);
 }
 #quest-bar.quest-expanded .quest-drop{
   border:2px dashed var(--yellow);
   border-top:none;
+  background:linear-gradient(90deg,rgba(255,211,2,.14) 0%,rgba(255,211,2,.05) 35%,transparent 70%),#ebe3ca!important;
+  box-shadow:inset 3px 0 0 #ffd302,0 0 14px rgba(255,211,2,.22);
 }
 [data-theme="dark"] #quest-bar.quest-expanded .quest-drop{
   border-color:var(--yellow);
+  background:linear-gradient(90deg,rgba(255,211,2,.16) 0%,rgba(255,211,2,.06) 35%,transparent 70%),#211f1c!important;
+  box-shadow:inset 3px 0 0 #ffd302,0 0 18px rgba(255,211,2,.30);
 }
+#quest-bar.quest-expanded .quest-drop-head{background:transparent}
+#quest-bar.quest-expanded .quest-drop-search{background:transparent}
+#quest-bar.quest-expanded .quest-drop-search:focus{background:var(--background-color)}
+[data-theme="dark"] #quest-bar.quest-expanded .quest-drop-search{background:transparent}
+[data-theme="dark"] #quest-bar.quest-expanded .quest-drop-search:focus{background:#3f3830}
 /* quest 下拉 — 与豆腐块齐宽、无缝隙，最大高度=AI面板2/3，层级仅次于qoast */
 .quest-drop{position:absolute;top:100%;left:0;width:100%;z-index:99990;max-height:66.67vh;overflow-y:auto;overflow-x:hidden;background:#ebe3ca;border:none;border-radius:0;box-shadow:0 4px 12px rgba(0,0,0,0.22);display:none;scrollbar-width:thin}
 [data-theme="dark"] .quest-drop{background:#211f1c;box-shadow:0 4px 12px rgba(0,0,0,0.55)}
@@ -135,7 +132,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 /* 下拉条目 */
 .quest-drop-item{padding:6px 12px;font-size:16px;color:var(--text-primary);white-space:normal;overflow:hidden;cursor:default;line-height:1.45;max-height:calc(1.45em * 2 + 14px);margin-bottom:4px;display:flex;align-items:flex-start}
 .quest-drop-item:last-child{margin-bottom:0}
-.quest-drop-line{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;text-overflow:ellipsis}
+.quest-drop-line{overflow:hidden}
 .quest-drop-item:hover{background:var(--background-color)}
 [data-theme="dark"] .quest-drop-item:hover{background:#3f3830}
 .quest-drop-item.active{font-weight:700;color:var(--primary-color)}
@@ -191,7 +188,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-ai-clock .clock-sec{font-size:24px}
 .msg-ai-clock canvas{width:42px;height:42px;border-radius:50%;flex-shrink:0}
 .msg-ai-clock .clock-cost{font-family:ui-monospace,monospace;font-weight:700;font-size:18px;margin-left:auto;flex-shrink:0}
-/* A1 tofu — live HOUSE/ROOM counter + chat.txt size, above clock */
+/* A1 tofu — live HOUSE/ROOM counter + reasoning.txt size, above clock */
 .msg-a1{display:flex;flex-direction:column;gap:4px;padding:8px 10px;margin:4px 0 10px;border:1px solid var(--border-color);border-radius:6px;background:var(--card-bg);user-select:none;cursor:pointer}
 .msg-a1:hover{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
 /* A1 统一配色：高对比度粗体，亮主题近黑 / 暗主题近白 */

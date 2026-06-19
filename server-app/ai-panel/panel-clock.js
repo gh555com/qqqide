@@ -8,7 +8,7 @@
 var _lastPieTiming = null;
 var _autoSaveTimer = null;
 
-var _AUTOSAVE_INTERVAL = 15000;
+var _AUTOSAVE_INTERVAL = 5000;
 var _lastAutoSaveLen = 0;
 function _startAutoSave() {
     _stopAutoSave();
@@ -278,12 +278,14 @@ function stopFloorTimer(timing, ag) {
 
 // ── Quest 豆腐块 + hover 下拉 ──
 var _questDrop = null;
+var _q2Shimmer = null;
 var _questDropTimer = null;
 var _questSearchText = '';
 var _questDropLimit = 20;
 var _questSearchFocused = false;  // ★ 搜索框焦点追踪
 function closeQuestDrop() {
     if (_questDrop) { _questDrop.remove(); _questDrop = null; }
+    if (_q2Shimmer) { _q2Shimmer.remove(); _q2Shimmer = null; }
     _questSearchText = '';
     _questDropLimit = 20;
     _questSearchFocused = false;
@@ -360,6 +362,11 @@ async function renderQuestDrop() {
     }
     _questDrop.appendChild(body);
     _questDrop._hasScrollbar = _questDrop.scrollHeight > _questDrop.clientHeight + 2;
+    // ★ 更新悬浮层高度（滚动加载更多时下拉变高）
+    if (_q2Shimmer) {
+        var tofu2 = document.getElementById('quest-tofu');
+        if (tofu2 && _questDrop) _q2Shimmer.style.height = (tofu2.offsetHeight + _questDrop.scrollHeight) + 'px';
+    }
 }
 async function openQuestDrop() {
     closeQuestDrop();
@@ -426,6 +433,13 @@ async function openQuestDrop() {
         }
     });
     await renderQuestDrop();
+    // ★ 悬浮层流光：覆盖整个展开区域
+    if (_q2Shimmer) { _q2Shimmer.remove(); _q2Shimmer = null; }
+    var sOverlay = document.createElement('div');
+    sOverlay.className = 'q2-shimmer-overlay';
+    sOverlay.style.height = (tofu.offsetHeight + drop.scrollHeight) + 'px';
+    bar.appendChild(sOverlay);
+    _q2Shimmer = sOverlay;
 }
 var _tofuEntry = null;  // 当前活跃 quest 的 index 条目，供编辑用
 
