@@ -299,7 +299,7 @@ var AgentLoop = (function () {
         var _isDead = function (r) {
             if (typeof r !== 'string') return false;  // 非字符串=有结果
             if (r === '') return true;
-            // [ALREADY READ 去重已禁用] if (/^\[ALREADY READ\]/i.test(r)) return true;
+            if (/^\[ALREADY READ\]/i.test(r)) return true;  // ★ 去重拦截=无进展（内容已在对话中，重复读取无意义）
             if (/^\[SEARCH DISABLED\]/i.test(r)) return true;  // ★ 搜索工具被禁=无进展
             if (/^(No (matches|files|results) found)/i.test(r)) return true;
             if (/^(Error|Tool error)/i.test(r)) return true;
@@ -320,13 +320,13 @@ var AgentLoop = (function () {
                 || name === 'run_command' || name === 'run_in_terminal';
         };
 
-        // ═══ 预判：本轮结果是否全部无进展 ═══
-        // [ALREADY READ 去重已禁用] 原注释：T1/T3 分流依据，全部 dead → 跳过 T1
-        //   原逻辑：因为 [ALREADY READ] 说明模型已被去重拦截而非主动重复调用
+        // ═══ 预判：本轮结果是否全部无进展（含 [ALREADY READ]） ═══
+        //   T1/T3 分流依据：全部 dead → 跳过 T1 工具循环检测，交给 T3 递增 stallCount
+        //   因为 [ALREADY READ] 说明模型已被去重拦截而非主动重复调用
         var _allDead = toolResults.every(function (r) { return _isDead(r); });
 
         // ═══ T1: 工具循环检测（3 次同工具+同参数 → 死循环） ═══
-        // [ALREADY READ 去重已禁用] 原守卫：仅当 NOT 全部 dead 时才检查 —— [ALREADY READ] 循环交给 T3
+        //   ★ 守卫：仅当 NOT 全部 dead 时才检查 —— [ALREADY READ] 循环交给 T3
         if (!_allDead && self._houses.length >= 3) {
             var _last3 = self._houses.slice(-3);
             var _allTools = _last3.every(function (h) { return h.type === 'tools'; });

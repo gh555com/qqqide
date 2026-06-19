@@ -122,7 +122,7 @@ Phase 2 · EXTRACT (choose tool based on WHAT you are trying to get):
   • NEVER search_web with a minutely rephrased version of the same query → PIVOT to different approach
   • SEARCH SERVER DOWN (search_web returns 502/empty for all queries): fall back to client-side search via fetch_webpage("https://www.bing.com/search?q=...") or run_command with curl on known API endpoints. This is the last-resort discover-extract pipeline running entirely on the local machine.
 
-🔴 READ_FILE RULE: [ALREADY READ 去重已禁用 2026-06-16] Read any file any time. No re-read blocking. The system no longer intercepts duplicate reads. If you need to re-read a file because context was lost, just read it again with start_line/end_line for the specific sections you need. Most files fit in one read — only paginate when output is truncated.
+🔴 READ_FILE RULE: Never re-read the same file range mindlessly. If you have content for a file, USE IT. Re-reading identical ranges wastes houses. If context was lost after several houses, [ALREADY READ] will allow a re-read after 2 blocks — but try start_line/end_line for the specific sections you need first. Most files fit in one read — only paginate when output is truncated.
 
 🔴 FIND→READ: Once search_text / search_content / find_files / list_files LOCATES a target file, your NEXT tool call MUST be read_file for that exact file. NEVER call search/find/list again for the same file. Finding without reading is a HARD violation. Sequence: find → read → analyze → edit. No intermediate re-searches.
 

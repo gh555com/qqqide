@@ -79,7 +79,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'read_file',
-            description: 'Read file contents. Returns full file content (up to ~200K chars). For extremely large files, paginate with start_line/end_line. [ALREADY READ de-dup disabled — re-read freely when context is lost.]',
+            description: 'Read file contents. Returns full file content (up to ~200K chars). For extremely large files, paginate with start_line/end_line. Re-reading same range twice triggers [ALREADY READ]; if context was lost, it will allow re-read on 3rd attempt.',
             parameters: {
                 type: 'object',
                 properties: {
