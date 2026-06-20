@@ -483,7 +483,7 @@ async function sendMessage() {
                 }
             },
             onError: function (msg) {
-                _sending = false;  // ★ 立即复位：防 stall/force 中断后 _sending 残留导致新 quest Send 失效
+                _sending = false;  // ★ 立即复位：防中断后 _sending 残留导致新 quest Send 失效
                 _stopAutoSave();
                 if (_capturedAgent) {
                     _capturedAgent._floorOnErrorCalled = true;  // ★ 看门狗：标记已处理
@@ -813,10 +813,6 @@ window.addEventListener('beforeunload', function () {
     var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     var _qid = (typeof questActiveId !== 'undefined') ? questActiveId : null;
     if (!_ag || !_qid) return;
-    // 修复孤儿（同步，不依赖 async）
-    if (typeof _ag._repairOrphanedToolCalls === 'function') {
-        try { _ag._repairOrphanedToolCalls(); } catch (_) { }
-    }
     // fire-and-forget 保存（不 await，浏览器会尽力完成 IPC）
     if (typeof _saveAgentQuestData === 'function') {
         try { _saveAgentQuestData(_qid, _ag, _ag._floorStartIdx || 0).catch(function () { }); } catch (_) { }

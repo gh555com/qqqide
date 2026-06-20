@@ -10,6 +10,8 @@ crashDumps/
 .DS_Store
 Thumbs.db
 config.json
+new_log/
+
 
 # Python 缓存
 engines/__pycache__/

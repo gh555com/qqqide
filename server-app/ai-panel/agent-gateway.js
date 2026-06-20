@@ -138,18 +138,12 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
     };
 
     // ★ 始终发送工具定义：即使 noTools 为 true，也要传 tools 防止模型退化为文本格式
-    //    例外：forceNoTools（stall=8 强制终止）→ 直接砍掉 tools，模型无从调用
     if (typeof getTools === 'function') {
         var _tools = getTools();
         if (_tools && _tools.length) {
-            if (noTools && opts.forceNoTools) {
-                // forceNoTools → 不传 tools，模型无法调用工具
+            body.tools = _tools;
+            if (noTools) {
                 body.tool_choice = 'none';
-            } else {
-                body.tools = _tools;
-                if (noTools) {
-                    body.tool_choice = 'none';  // 非强制 noTools：保留工具定义但禁用调用
-                }
             }
         }
     }

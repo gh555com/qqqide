@@ -236,9 +236,14 @@ async function _a4EnsureBeforeBaseline(filePath, currentContent) {
         var lastBlob = versions[versions.length - 1].blob_hash;
         var lastContent = await bridge.timeline.content({ projectRoot: root, blobHash: lastBlob });
 
-        if (typeof lastContent === 'string' && lastContent === currentContent) {
-            // ② 内容一致 → 复用已有 blob_hash
-            return lastBlob;
+        // ★ 行尾归一化比较：CRLF vs LF 应视为相同内容，防重复版本
+        if (typeof lastContent === 'string' && typeof currentContent === 'string') {
+            var normLast = lastContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            var normCurr = currentContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            if (normLast === normCurr) {
+                // ② 内容一致（忽略行尾差异）→ 复用已有 blob_hash
+                return lastBlob;
+            }
         }
 
         // ③ 内容不一致（外部改过）→ 记录当前内容为新版本

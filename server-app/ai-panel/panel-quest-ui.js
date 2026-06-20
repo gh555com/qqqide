@@ -866,39 +866,39 @@ $queueBtn.onclick = function () {
         var dk = document.documentElement.getAttribute('data-theme') === 'dark';
         var focused = document.body.classList.contains('panel-focused');
         return {
-            // 滑块色：始终 q3 标准色，跟焦点无关（保证任何背景下都看得见）
+            // 滑块色：始终 q3 标准色
             c: dk ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)',
-            // 水箱：白主题=深炭条带，黑主题=亮银条带；非焦点=透明
+            // 水箱：灰黄橄榄 — 白主题=枯叶绿渐变，黑主题=暖灰绿渐变；非焦点=透明
             trackBg: focused
                 ? (dk
-                    ? 'linear-gradient(to bottom, rgba(255,255,255,0.12), rgba(255,255,255,0.03))'
-                    : 'linear-gradient(to bottom, #4a4640, #2a2620)')
+                    ? 'linear-gradient(to bottom, rgba(145,155,80,0.45), rgba(95,105,45,0.12))'
+                    : 'linear-gradient(to bottom, rgba(115,125,60,0.5), rgba(75,85,30,0.15))')
                 : 'transparent',
-            // 粒子：统一纯白
-            bubbleC: '#ffffff'
+            // 粒子：白主題=干草黄，黑主题=暖灰绿
+            bubbleC: dk ? 'rgba(180,190,80,0.8)' : 'rgba(160,170,70,0.7)'
         };
     }
 
     // 滑轨（水箱）
     var track = document.createElement('div');
     var co0 = _qhColors();
-    track.style.cssText = 'position:absolute; right:-1px; top:0; bottom:0; width:10px; z-index:50; ' +
+    track.style.cssText = 'position:absolute; right:-1px; top:0; bottom:0; width:9px; z-index:50; ' +
         'background:' + co0.trackBg + '; overflow:hidden;';
 
-    // ★ 冒泡粒子：18 个纯白小圆点，随机大小/位置/速度，从下往上冒
+    // ★ 冒泡粒子：18 个酸橙/荧光绿小圆点，随机大小/位置/速度，从下往上冒
     var _bubbles = [];
     for (var bi = 0; bi < 18; bi++) {
         var dot = document.createElement('div');
         dot.className = 'qh-bubble-dot';
         var size = 1.5 + Math.random() * 3.5;  // 1.5~5px
-        var left = 0.5 + Math.random() * 7.5;  // 0.5~8px（10px 宽轨道内）
+        var left = 0.5 + Math.random() * 6.5;  // 0.5~7px（9px 宽轨道内）
         var dur = 2 + Math.random() * 4.5;     // 2~6.5s 一个周期
         var delay = Math.random() * 6;          // 0~6s 初相位
         var op = 0.45 + Math.random() * 0.55;  // 0.45~1.0 随机不透明
         dot.style.cssText =
             'width:' + size + 'px; height:' + size + 'px; ' +
             'left:' + left + 'px; bottom:0; ' +
-            'background:#ffffff; opacity:' + op.toFixed(2) + '; ' +
+            'background:' + _qhColors().bubbleC + '; opacity:' + op.toFixed(2) + '; ' +
             'animation-duration:' + dur + 's; ' +
             'animation-delay:' + delay + 's; ' +
             'display:none;';
@@ -920,21 +920,18 @@ $queueBtn.onclick = function () {
     // 滑块
     var thumb = document.createElement('div');
     var co = _qhColors();
-    thumb.style.cssText = 'position:absolute; right:9px; width:1px; min-height:24px; border-radius:0; ' +
-        'display:none; background:' + co.c + '; cursor:pointer; ' +
+    thumb.style.cssText = 'position:absolute; right:7px; width:1px; min-height:24px; border-radius:0; ' + 'display:none; background:' + co.c + '; cursor:pointer; ' +
         'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
 
-    // hover 变粗贴边（填满10px水箱）
+    // hover 变粗贴边（填满9px水箱）
     track.addEventListener('mouseenter', function () {
-        thumb.style.width = '10px'; thumb.style.right = '-1px';
+        thumb.style.width = '9px'; thumb.style.right = '-1px';
         thumb.style.background = _qhColors().c;
     });
     track.addEventListener('mouseleave', function () {
-        thumb.style.width = '1px'; thumb.style.right = '9px';
+        thumb.style.width = '1px'; thumb.style.right = '7px';
         thumb.style.background = _qhColors().c;
-    });
-
-    // 同步
+    });    // 同步
     function sync() {
         var sh = el.scrollHeight, ch = el.clientHeight;
         if (sh <= ch) { thumb.style.display = 'none'; return; }

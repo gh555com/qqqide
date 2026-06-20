@@ -120,9 +120,10 @@ export function _tlFlushNow(db: any, dbPath: string): void {
     }
 }
 
-/** SHA256 hex (64 chars) */
+/** SHA256 hex (64 chars) — 行尾归一化：CRLF/LF/CR 视为相同内容，防幽灵版本 */
 export function _sha256(content: string): string {
-    return crypto.createHash('sha256').update(content, 'utf8').digest('hex');
+    const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
 }
 
 /** Gzip 压缩内容，返回 Buffer */

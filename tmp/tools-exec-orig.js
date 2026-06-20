@@ -98,15 +98,95 @@ async function executeReadFile(args) {
         return 'Error: invalid path "' + _p + '" — does not appear to be a valid file path. Provide an absolute path (e.g. E:\\project\\file.js).';
     }
 
-    // ★ 读追踪：仅用于 ENOENT 防重试 + 预加载软提示（不拦截读取，交给 AI 自主判断）
+    // ★ 同楼层去重：按行范围智能去重——防模型微调 start_line/end_line 绕过
+    //    全文读（无 start/end）→ 标记文件已全覆盖 → 后续任何范围都挡。
+    //    分段读（有 start/end）→ 只挡已覆盖范围，新范围放行。20 次/文件硬封顶。
+    //    写入感知：edit_file/create_file/delete_file/write_file 成功后自动重置该文件追踪。
+    //    计数器由 agent-loop.js 在每层楼开始时清零 (window._qqqReadFilesThisFloor = {})
     var _normPath = _p.replace(/\\/g, '/').toLowerCase();
-    var _enoCache = (typeof window !== 'undefined') ? window._qqqEnoentCache : null;
-    if (_enoCache && _enoCache[_normPath]) {
-        return '[FILE NOT FOUND] ' + _normPath + ' — 该文件在本层楼已确认不存在，请勿重试。检查路径是否有截断或中文字符。';
+    var _tracker = (typeof window !== 'undefined') ? window._qqqReadFilesThisFloor : null;
+    if (_tracker) {
+        // ★ ENOENT 缓存：文件不存在 → 同路径永生不复读（不管行范围）。防 AI 被截断路径坑 10 次
+        var _enoCache = window._qqqEnoentCache;
+        if (_enoCache && _enoCache[_normPath]) {
+            return '[FILE NOT FOUND] ' + _normPath + ' — 该文件在本层楼已确认不存在，请勿重试。检查路径是否有截断或中文字符。';
+        }
+        var _rec = _tracker[_normPath];
+        if (!_rec) { _rec = { f: false, r: [], c: 0, b: 0 }; _tracker[_normPath] = _rec; }
+        _rec.c++;
+
+        // 硬封顶：同一文件在本层楼读 20 次以上 → 无条件拦
+        if (_rec.c > 20) {
+            return '[ALREADY READ] 文件 ' + args.path + ' 在本层楼已读过 ' + (_rec.c - 1) + ' 次，已达上限。请基于已有信息继续分析。';
+        }
+
+        var _sl = args.start_line || 0;
+        var _el = args.end_line || 0;
+        var _isFull = (!args.start_line && !args.end_line);  // 全文读
+
+        // ★ 治根：阻 2 次 → 第 3 次放行 → 永久解冻（上下文丢失是一次性的，证明确实忘了就停止阻拦）
+        if (_rec.f) {
+            if (!_isFull) {
+                // 全文读过后请求分段读 → 检查范围
+                var _reqStart = _sl;
+                var _reqEnd = _el || (_sl + 2999);
+                var _alreadyCovered = false;
+                for (var _ri = 0; _ri < _rec.r.length; _ri++) {
+                    var _rr = _rec.r[_ri];
+                    if (_rr[0] <= _reqStart && _rr[1] >= _reqEnd) {
+                        _alreadyCovered = true;
+                        break;
+                    }
+                }
+                if (_alreadyCovered) {
+                    if (!_rec.thawed) {
+                        _rec.b++;
+                        if (_rec.b >= 3) {
+                            _rec.thawed = true;  // ★ 永久解冻：AI 已证明上下文丢失，后续不再阻拦
+                        } else {
+                            return '[ALREADY READ] 文件 ' + args.path + ' L' + _reqStart + '-' + _reqEnd + ' 已读过（第 ' + _rec.b + ' 次阻拦）。若上下文丢失请换更大行范围重读，或继续分析已有内容。';
+                        }
+                    }
+                }
+            } else {
+                // 再次全文读 → 阻拦但有阶梯
+                if (!_rec.thawed) {
+                    _rec.b++;
+                    if (_rec.b >= 3) {
+                        _rec.thawed = true;  // ★ 永久解冻
+                    } else {
+                        return '[ALREADY READ] 文件 ' + args.path + ' 已全文读过（第 ' + _rec.b + ' 次阻拦）。若上下文丢失，请用 start_line/end_line 读你缺失的具体段落。';
+                    }
+                }
+            }
+        }
+
+        if (_isFull) {
+            // 全文读 → 标记全覆盖
+            _rec.f = true;
+            _rec.r = [[1, 999999]];
+        } else {
+            // 分段读 → 记录范围
+            var _reqStart = _sl;
+            var _reqEnd = _el || (_sl + 2999);
+            // 合并范围
+            _rec.r.push([_reqStart, _reqEnd]);
+            _rec.r.sort(function (a, b) { return a[0] - b[0]; });
+            var _merged = [];
+            for (var _mi = 0; _mi < _rec.r.length; _mi++) {
+                var _cur = _rec.r[_mi];
+                if (_merged.length === 0 || _merged[_merged.length - 1][1] < _cur[0] - 1) {
+                    _merged.push([_cur[0], _cur[1]]);
+                } else {
+                    _merged[_merged.length - 1][1] = Math.max(_merged[_merged.length - 1][1], _cur[1]);
+                }
+            }
+            _rec.r = _merged;
+            if (_merged.length === 1 && _merged[0][0] <= 1 && _merged[0][1] >= 999999) {
+                _rec.f = true;
+            }
+        }
     }
-    // ★ 预加载软提示：若此文件在 rule"..." 注册表中，读完后追加提示
-    var _preloadedOrigin = (typeof window !== 'undefined' && window._qqqPreloadedPaths && window._qqqPreloadedPaths[_normPath]) || null;
-    var _preloadHint = _preloadedOrigin ? ('\n\n💡 此文件内容已在对话首条系统消息中预加载（搜索 \'═══ AUTO-LOADED: ' + _preloadedOrigin + ' ═══\'）。本次是从磁盘重读。') : '';
 
     // ★ 优先走主进程 (1 IPC, 消除大文件序列化开销)
     var _readResult = null;
@@ -189,40 +269,6 @@ async function executeReadFile(args) {
             window._qqqEnoentCache[_normPath] = true;
         }
         return _errMsg;
-    }
-    // ★ read_file 截断（单一真理: ContentGateway.READ_FILE_CAP_BYTES，默认 48KB）
-    if (typeof _readResult === 'string' && _readResult.indexOf('[BINARY FILE]') !== 0 && _readResult.indexOf('[IS DIRECTORY]') !== 0) {
-        var _maxSrcBytes = (typeof ContentGateway !== 'undefined' && ContentGateway.READ_FILE_CAP_BYTES) ? ContentGateway.READ_FILE_CAP_BYTES : 49152;
-        var _srcBytes = 0;
-        // 计算字节数（优先 TextEncoder，兼容旧环境）
-        if (typeof TextEncoder !== 'undefined') {
-            _srcBytes = new TextEncoder().encode(_readResult).length;
-        } else {
-            // 粗略估算：ASCII 1字节/字符，非ASCII ⩽3字节/字符
-            _srcBytes = _readResult.length + _readResult.replace(/[\x00-\x7f]/g, '').length * 2;
-        }
-        if (_srcBytes > _maxSrcBytes) {
-            var _truncated = '';
-            var _usedBytes = 0;
-            if (typeof TextEncoder !== 'undefined') {
-                for (var _ci = 0; _ci < _readResult.length; _ci++) {
-                    var _cb = new TextEncoder().encode(_readResult[_ci]).length;
-                    if (_usedBytes + _cb > _maxSrcBytes) break;
-                    _truncated += _readResult[_ci];
-                    _usedBytes += _cb;
-                }
-            } else {
-                _truncated = _readResult.slice(0, Math.floor(_maxSrcBytes / 2));
-            }
-            var _totalKB = Math.round(_srcBytes / 1024);
-            var _shownLines = _truncated.split('\n').length;
-            var _nextStart = _shownLines + 1;
-            _readResult = '[TRUNCATED L1-' + _shownLines + '] 原文 ' + _totalKB + 'KB，仅返回前 ~4KB（' + _shownLines + ' 行）。\n\n🔴 下一轮必须用 start_line: ' + _nextStart + ' 继续。禁止从头读！\n\n' + _truncated;
-        }
-    }
-    // ★ 追加预加载软提示（不拦截，仅告知）
-    if (_preloadHint && typeof _readResult === 'string' && _readResult.indexOf('[BINARY FILE]') !== 0 && _readResult.indexOf('[TRUNCATED]') !== 0) {
-        _readResult += _preloadHint;
     }
     return _readResult;
 }

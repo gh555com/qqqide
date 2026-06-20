@@ -79,7 +79,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'read_file',
-            description: 'Read file contents. Returns full file content (up to ~200K chars). For extremely large files, paginate with start_line/end_line. Re-reading same range twice triggers [ALREADY READ]; if context was lost, it will allow re-read on 3rd attempt.',
+            description: 'Read file contents. Returns up to ~48KB per call. If truncated (marked [TRUNCATED L1-N]), next call MUST use start_line: N+1 to continue. You may read any file at any time — the system trusts your judgment.',
             parameters: {
                 type: 'object',
                 properties: {

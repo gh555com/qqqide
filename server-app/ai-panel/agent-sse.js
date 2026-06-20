@@ -174,7 +174,7 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
     var finalized = stripper.finalize();
 
     // ★ 兜底提取：若 EnvelopeStripper 没提取到文本工具调用，直接从 stripper.raw 扫描
-    //    模型在 forceNoTools/卡死时会输出多种文本工具调用格式：
+    //    模型在卡死时会输出多种文本工具调用格式：
     //      A) <function_calls><invoke name="X"><parameter name="K">V</parameter></invoke></function_calls>
     //      B) <search_text><pattern>...</pattern><path>...</path></search_text> （工具名直作标签）
     //      C) <Tool Call: list_files><Parameter name="k">v</Parameter></Tool Call>
@@ -250,7 +250,7 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
         }
 
         // ── 格式 D: <Tool_call name="X"><parameter name="k" string="true">v</parameter></Tool_call> ──
-        //    模型在 forceNoTools 下输出，q98 实测格式：Tool_call（下划线）+ name= 属性
+        //    模型在卡死时输出，q98 实测格式：Tool_call（下划线）+ name= 属性
         var _fbTcUnderscoreRe = /<[Tt]ool_call\s[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/[Tt]ool_call>/gi;
         var _tcm2;
         while ((_tcm2 = _fbTcUnderscoreRe.exec(_rawFallback)) !== null) {
@@ -292,13 +292,13 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
 
     var _streamMs = performance.now() - streamStart;
     if (toolCalls.length > 0) {
-        return { type: 'tool_calls', tool_calls: toolCalls.filter(Boolean), reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage };
+        return { type: 'tool_calls', tool_calls: toolCalls.filter(Boolean), content: finalized.cleanContent || '', reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage };
     }
     // ★ 文本工具调用回生：模型在 content 中输出 Action: 格式而非原生 delta.tool_calls
     //    解析后回送给 agent-loop 正常执行，防止楼层空转（5秒中断无限循环）
     if (finalized.textToolCalls && finalized.textToolCalls.length > 0) {
         self._log('🔄 textToolCalls: parsed ' + finalized.textToolCalls.length + ' tool(s) from content → executing');
-        return { type: 'tool_calls', tool_calls: finalized.textToolCalls, reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage };
+        return { type: 'tool_calls', tool_calls: finalized.textToolCalls, content: finalized.cleanContent || '', reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage };
     }
     if (finalized.cleanContent) {
         // 检测 max_tokens 截断

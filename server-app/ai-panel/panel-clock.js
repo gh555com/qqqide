@@ -23,48 +23,6 @@ function _startAutoSave() {
         var convLen = fullConv.length;
         if (convLen <= _lastAutoSaveLen) return;
         _lastAutoSaveLen = convLen;
-        // ★ 保存前防线：修复孤儿 tool_calls + 断言（与 _saveAgentQuestData 一致）
-        if (typeof _capturedAgent._repairOrphanedToolCalls === 'function') {
-            var _lenBefore = fullConv.length;
-            _capturedAgent._repairOrphanedToolCalls();
-            var _lenAfter = _capturedAgent.conversation.length;
-            if (_lenBefore !== _lenAfter) {
-                console.warn('[CRITICAL] auto-save caught dirty conversation: repaired ' + (_lenBefore - _lenAfter) + ' orphaned msgs (quest=' + _capturedQuestId + ', floor=' + floorNum + ')');
-                fullConv = _capturedAgent.conversation.slice();
-                floorConv = fullConv.slice(floorStartIdx);
-                // ★ 根治：修复后重写受影响的过去楼层到 sq3，否则下次打开又复发
-                try {
-                    var _floorsMap = {};
-                    for (var mi = 0; mi < fullConv.length; mi++) {
-                        var _f = fullConv[mi]._floor;
-                        if (_f !== undefined && _f >= 1) {
-                            if (!_floorsMap[_f]) _floorsMap[_f] = [];
-                            _floorsMap[_f].push(fullConv[mi]);
-                        }
-                    }
-                    var _allFloors = await questStore.loadAllFloors(_capturedQuestId);
-                    var _rewritten = 0;
-                    for (var fi = 0; fi < _allFloors.length; fi++) {
-                        var _fNum = _allFloors[fi].floorNum;
-                        if (_fNum === floorNum) continue;
-                        var _newConv = _floorsMap[_fNum];
-                        if (_newConv && _newConv.length > 0) {
-                            var _oldData = _allFloors[fi].data || {};
-                            if (!_oldData.conversation || _oldData.conversation.length !== _newConv.length) {
-                                _oldData.conversation = _newConv;
-                                await questStore.saveFloor(_capturedQuestId, _fNum, _oldData);
-                                _rewritten++;
-                            }
-                        }
-                    }
-                    if (_rewritten > 0) {
-                        console.warn('[CRITICAL] auto-save repaired past floors: ' + _rewritten + ' floors rewritten to sq3 (quest=' + _capturedQuestId + ')');
-                    }
-                } catch (_floorRewriteErr) {
-                    console.warn('[CRITICAL] auto-save floor rewrite failed:', _floorRewriteErr);
-                }
-            }
-        }
         // 优先使用统一增量 payload 构建器（含 a1/a2/a3/a4 全部数据）
         var payload;
         if (typeof window._a4BuildCompleteFloorPayload === 'function') {

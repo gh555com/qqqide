@@ -451,48 +451,6 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
     var floorNum = ag._ctx.totalFloors;
 
     if (typeof floorStartIdx === 'number' && floorNum > 0) {
-        // ★ 保存前防线：修复孤儿 tool_calls（防腐蚀数据写入 SQLite）
-        if (typeof ag._repairOrphanedToolCalls === 'function') {
-            var _lenBefore = ag.conversation ? ag.conversation.length : 0;
-            ag._repairOrphanedToolCalls();
-            var _lenAfter = ag.conversation ? ag.conversation.length : 0;
-            if (_lenBefore !== _lenAfter) {
-                console.warn('[CRITICAL] saving corrupted conversation: repaired ' + (_lenBefore - _lenAfter) + ' orphaned msgs (quest=' + questId + ', floor=' + floorNum + ')');
-                var fullConv = ag.conversation.slice();
-                // ★ 根治：修复后按 _floor 标签重建所有楼层分段
-                try {
-                    var _floorsMap = {};
-                    for (var mi = 0; mi < fullConv.length; mi++) {
-                        var _f = fullConv[mi]._floor;
-                        if (_f !== undefined && _f >= 1) {
-                            if (!_floorsMap[_f]) _floorsMap[_f] = [];
-                            _floorsMap[_f].push(fullConv[mi]);
-                        }
-                    }
-                    var _allFloors = await questStore.loadAllFloors(questId);
-                    var _rewritten = 0;
-                    for (var fi = 0; fi < _allFloors.length; fi++) {
-                        var _fNum = _allFloors[fi].floorNum;
-                        if (_fNum === floorNum) continue;
-                        var _newConv = _floorsMap[_fNum];
-                        if (_newConv && _newConv.length > 0) {
-                            var _oldData = _allFloors[fi].data || {};
-                            if (!_oldData.conversation || _oldData.conversation.length !== _newConv.length) {
-                                _oldData.conversation = _newConv;
-                                await questStore.saveFloor(questId, _fNum, _oldData);
-                                _rewritten++;
-                            }
-                        }
-                    }
-                    if (_rewritten > 0) {
-                        console.warn('[CRITICAL] repaired past floors: ' + _rewritten + ' floors rewritten to sq3');
-                    }
-                } catch (_floorRewriteErr) {
-                    console.warn('[CRITICAL] floor rewrite failed (will retry next save):', _floorRewriteErr);
-                }
-            }
-        }
-
         // ★ 统一 payload 构建（净化 houses/conversation，单一真理源）
         var floorPayload = (typeof window._a4BuildCompleteFloorPayload === 'function')
             ? window._a4BuildCompleteFloorPayload(ag)

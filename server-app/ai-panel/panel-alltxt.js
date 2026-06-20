@@ -119,6 +119,11 @@ function _buildHouseLines(h, maxToolResultLen) {
         lines.push('</thinking>');
         lines.push('');
     }
+    if (h.houserecap) {
+        lines.push('\u2550\u2550\u2550 HOUSERECAP \u2550\u2550\u2550');
+        lines.push(h.houserecap);
+        lines.push('');
+    }
     if (h.tools && h.tools.length > 0) {
         for (var ti = 0; ti < h.tools.length; ti++) {
             var t = h.tools[ti];
@@ -380,6 +385,25 @@ function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, vis
             var houses = agent._houses;
             for (var hi = 0; hi < houses.length; hi++) {
                 allLines = allLines.concat(_buildHouseLines(houses[hi]));
+            }
+            // ★ 扫描 conversation 中未入 houses 的特殊消息（guide、DYNAMIC CONTEXT）
+            var conv = agent.conversation;
+            if (conv && conv.length) {
+                var _sysAdded = false;
+                for (var ci = 0; ci < conv.length; ci++) {
+                    var cm = conv[ci];
+                    if (!cm || !cm.content) continue;
+                    var isHouserecap = cm._houserecap;
+                    var isDynamicCtx = cm._dynamic && cm.role === 'system' && !cm._houserecap;
+                    var isGuide = cm.role === 'user' && cm.content.indexOf('[Guide]') === 0;
+                    if (isHouserecap || isDynamicCtx || isGuide) {
+                        if (!_sysAdded) { allLines.push(''); allLines.push('\u2550\u2550\u2550 SYSTEM INJECTIONS \u2550\u2550\u2550'); _sysAdded = true; }
+                        var label = isHouserecap ? '\u{1F9E0} HOUSERECAP' : isDynamicCtx ? '\u{1F4E6} DYNAMIC CONTEXT' : '\u{1F4AC} GUIDE';
+                        allLines.push(label + ' (floor ' + (cm._floor || '?') + '):');
+                        allLines.push(cm.content);
+                        allLines.push('');
+                    }
+                }
             }
             _safeWriteAllTxt(allTxtPath, allLines, 0).then(function (ok) {
                 if (ok) {

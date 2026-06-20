@@ -321,15 +321,6 @@ async function _restoreAgentFromStore(questId, ag) {
             }
         }
 
-        // ★ 修复断裂的 tool_calls（循环至干净，200 轮/次，最多 10 次）
-        if (ag._repairOrphanedToolCalls) {
-            for (var _rp = 0; _rp < 10; _rp++) {
-                var _lenPre = ag.conversation.length;
-                ag._repairOrphanedToolCalls();
-                if (ag.conversation.length === _lenPre) break;  // 无修复产出 → 已干净
-            }
-        }
-
         // 恢复 metadata
         if (data) {
             ag.totalCostGe = data.totalCostGe || 0;
@@ -359,10 +350,7 @@ async function _restoreAgentFromStore(questId, ag) {
         // ★ 崩溃恢复：上次关闭时正在压缩 → 修复可能的半成品状态
         if (ag._uncleanShutdown) {
             ag._uncleanShutdown = false;
-            console.warn('[restore] unclean shutdown detected — repairing');
-            if (typeof ag._repairOrphanedToolCalls === 'function') {
-                try { ag._repairOrphanedToolCalls(); } catch (_) { }
-            }
+            console.warn("[restore] unclean shutdown detected — state cleaned");
         }
         // [silent] restored agent state
     } catch (e) {

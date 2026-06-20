@@ -17,20 +17,6 @@ function _utf8Trunc(str, maxBytes) {
     return new TextDecoder().decode(bytes.slice(0, maxBytes)); // 兜底（含替换符）
 }
 
-// ★ 计费摘要生成：换行→空格 → UTF-8 截断 → 超长加 ...
-function _makeSummaryHint(text, maxBytes) {
-    if (!text) return '';
-    // 把换行和连续空白压缩成单个空格，确保截断不会因换行提前结束
-    var flat = text.replace(/\s+/g, ' ').trim();
-    if (!flat) return '';
-    var truncated = _utf8Trunc(flat, maxBytes || 100);
-    // 如果原文比截断后长（按 UTF-8 字节），末尾加 ...
-    var origBytes = new TextEncoder().encode(flat).length;
-    var truncBytes = new TextEncoder().encode(truncated).length;
-    if (origBytes > truncBytes) truncated += '...';
-    return truncated;
-}
-
 // ═══ EnvelopeStripper: 流式剥离 ___qqq_env___ 信封 + <floor_summary> 回退 ═══
 // "硬约束桥" — 代码强行剥离并校验结构化信封，不靠 prompt 自觉
 function EnvelopeStripper(onToken) {
