@@ -139,48 +139,56 @@ async function sendMessage() {
 
     // \u82e5\u5c1a\u65e0 active quest\uff0c\u521b\u5efa\u5e76\u547d\u540d
     if (_isDraft(_capturedQuestId)) {
-        var qId = await questStore.create('');
-        if (!qId) { _sending = false; updateQueueBtn(); return; }
-        questActiveId = qId;
-        _activeAgent = _getOrCreateAgent(questActiveId);
-        if (_panelId === 1) await questStore.setActiveId(questActiveId);
-        if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
-            // ★ setNow 立即写盘：新建 quest 后必须可靠持久化 activeQuestId
-            onlyStore.setNow('ai.panel.' + _panelId + '.activeQuestId', questActiveId);
-        }
-        _parentClaimQuest(questActiveId);
-        _broadcast('owner-claimed', questActiveId);
-        var firstMsg = text || (userContent || '').split('\n')[0];
-        var root = questStore.getProjectRoot();
-        if (root) {
-            var questNum = parseInt(questActiveId.slice(1)) || 1;
-            var qName = _makeName('q', questNum, firstMsg);
-            var fName = _makeName('f', 1, firstMsg);
-            var dotIdx = qName.indexOf('.');
-            var questTitle = dotIdx >= 0 ? qName.slice(dotIdx + 1) : ('Quest ' + questNum);
-            await questStore.rename(questActiveId, questTitle, questNum);
-            await _ensureQuestDir(root, qName, fName);
-        }
-        await renderTabs();  // ★ 必须 await：确保 tofu 在卡片迁移前更新
-        // ★ Fix: draft → real quest card 迁移
-        // 用户消息已附加到 draft card，需迁移到真实 quest card
-        if (cardPool && _isDraft(cardPool._activeId)) {
-            var _oldDraftId = cardPool._activeId;
-            var _draftCard = cardPool._cards[_oldDraftId];
-            if (_draftCard && _draftCard._contentWrap) {
-                var _realCard = cardPool.getOrCreate(questActiveId);
-                while (_draftCard._contentWrap.firstChild) {
-                    _realCard._contentWrap.appendChild(_draftCard._contentWrap.firstChild);
-                }
-                _draftCard.dom.style.display = 'none';
-                _realCard.dom.style.display = 'block';
-                cardPool._activeId = questActiveId;
-                // 清理 draft card 释放 pool 槽位
-                cardPool.removeCard(_oldDraftId);
+        try {
+            var qId = await questStore.create('');
+            if (!qId) { _sending = false; updateQueueBtn(); return; }
+            questActiveId = qId;
+            _activeAgent = _getOrCreateAgent(questActiveId);
+            if (_panelId === 1) await questStore.setActiveId(questActiveId);
+            if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+                // ★ setNow 立即写盘：新建 quest 后必须可靠持久化 activeQuestId
+                onlyStore.setNow('ai.panel.' + _panelId + '.activeQuestId', questActiveId);
             }
+            _parentClaimQuest(questActiveId);
+            _broadcast('owner-claimed', questActiveId);
+            var firstMsg = text || (userContent || '').split('\n')[0];
+            var root = questStore.getProjectRoot();
+            if (root) {
+                var questNum = parseInt(questActiveId.slice(1)) || 1;
+                var qName = _makeName('q', questNum, firstMsg);
+                var fName = _makeName('f', 1, firstMsg);
+                var dotIdx = qName.indexOf('.');
+                var questTitle = dotIdx >= 0 ? qName.slice(dotIdx + 1) : ('Quest ' + questNum);
+                await questStore.rename(questActiveId, questTitle, questNum);
+                await _ensureQuestDir(root, qName, fName);
+            }
+            await renderTabs();  // ★ 必须 await：确保 tofu 在卡片迁移前更新
+            // ★ Fix: draft → real quest card 迁移
+            // 用户消息已附加到 draft card，需迁移到真实 quest card
+            if (cardPool && _isDraft(cardPool._activeId)) {
+                var _oldDraftId = cardPool._activeId;
+                var _draftCard = cardPool._cards[_oldDraftId];
+                if (_draftCard && _draftCard._contentWrap) {
+                    var _realCard = cardPool.getOrCreate(questActiveId);
+                    while (_draftCard._contentWrap.firstChild) {
+                        _realCard._contentWrap.appendChild(_draftCard._contentWrap.firstChild);
+                    }
+                    _draftCard.dom.style.display = 'none';
+                    _realCard.dom.style.display = 'block';
+                    cardPool._activeId = questActiveId;
+                    // 清理 draft card 释放 pool 槽位
+                    cardPool.removeCard(_oldDraftId);
+                }
+            }
+            _capturedQuestId = questActiveId;
+            _capturedAgent = _activeAgent;
+        } catch (_draftErr) {
+            console.warn('[send] draft->quest creation failed:', _draftErr && _draftErr.message);
+            addMessageEl('error', '创建 Quest 失败：' + ((_draftErr && _draftErr.message) || '未知错误'));
+            _sending = false;
+            updateQueueBtn();
+            return;
         }
-        _capturedQuestId = questActiveId;
-        _capturedAgent = _activeAgent;
     }
     var floorNum = await questStore.nextFloorNum(_capturedQuestId);
     var root2 = questStore.getProjectRoot();
@@ -429,6 +437,15 @@ async function sendMessage() {
                     }
                 }
 
+                // ★ 必须在保存前清除 _streaming，否则 all.json 永久记录 _streaming:true（僵尸）
+                _capturedAgent._streaming = false;
+                // ★ 释放中心机器 running 标记（setStreaming(false) 不再负责此事）
+                _markQuestRunning(_capturedQuestId, false);
+                if (_panelRunningQuestId === _capturedQuestId) _panelRunningQuestId = null;
+                if (_activeAgent === _capturedAgent) {
+                    setStreaming(false);
+                }
+
                 await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._floorStartIdx);
 
                 if (cardPool) cardPool.completeBuildingFloor(_capturedQuestId, floorNum);
@@ -495,13 +512,16 @@ async function sendMessage() {
                         _floor: _capturedAgent._ctx.totalFloors
                     });
                 }
-                // ★ 清理 aiDiv 流式渲染状态，防止 doStreamRender 定时器"诈尸"
+                                // ★ 清理 aiDiv 流式渲染状态，防止 doStreamRender 定时器"诈尸"
                 if (aiDiv) {
                     aiDiv._renderScheduled = false;
                     aiDiv._dirty = false;
                     aiDiv._guideMode = false;
                     if (aiDiv._lastParaEl) { aiDiv._lastParaEl.remove(); aiDiv._lastParaEl = null; }
                 }
+                // ★ 释放中心机器 running 标记（setStreaming 不再负责此事）
+                _markQuestRunning(_capturedQuestId, false);
+                if (_panelRunningQuestId === _capturedQuestId) _panelRunningQuestId = null;
                 if (_activeAgent === _capturedAgent) {
                     if (aiDiv && aiDiv._floorCompleted) {
                         setStreaming(false);
@@ -529,6 +549,31 @@ async function sendMessage() {
                     if (_queue.length > 0) {
                         _continueQueue();
                     }
+                } else {
+                    // ★ 后台 agent 错误：仍需停 timer + 停 all.txt 流（否则时钟僵尸 + 轮询泄漏）
+                    //   running 标记已在上方统一释放，此处不再重复
+                    if (_capturedAgent && _capturedAgent._floorTimerId) {
+                        clearInterval(_capturedAgent._floorTimerId);
+                        _capturedAgent._floorTimerId = null;
+                    }
+                    _stopAllTxtStream();
+                    // 后台 agent 的 aiDiv 时钟设为停止态
+                    var _bgAiDiv2 = _capturedAgent && _capturedAgent._activeAiDiv;
+                    if (_bgAiDiv2 && _bgAiDiv2._clockBlock) {
+                        _bgAiDiv2._clockBlock.className = 'msg-ai-clock';
+                        var _elapsed3 = performance.now() - _capturedAgent._floorStartPerf;
+                        var _durS3 = Math.floor(_elapsed3 / 1000);
+                        if (_bgAiDiv2._clockMin) _bgAiDiv2._clockMin.textContent = Math.floor(_durS3 / 60) + 'm';
+                        if (_bgAiDiv2._clockSec) _bgAiDiv2._clockSec.textContent = ':' + (_durS3 % 60 < 10 ? '0' : '') + (_durS3 % 60) + 's';
+                    }
+                    // 记录错误 timing
+                    _capturedAgent._floorTimings = _capturedAgent._floorTimings || [];
+                    _capturedAgent._floorTimings.push({
+                        floorIndex: _capturedAgent._ctx ? _capturedAgent._ctx.totalFloors : 0,
+                        durationMs: Math.round(performance.now() - _capturedAgent._floorStartPerf),
+                        error: msg,
+                        finishedAt: new Date().toISOString()
+                    });
                 }
             }
         });
@@ -565,7 +610,8 @@ async function sendMessage() {
             _capturedAgent._stopState = 'idle';
             _capturedAgent._stopCtrl = null;
         }
-        if (_activeAgent === _capturedAgent) {
+        // ★ null guard：draft→quest 创建失败时两者皆 null，跳过时钟清理（零影响）
+        if (_capturedAgent && _activeAgent === _capturedAgent) {
             if (_capturedAgent._activeAiDiv) {
                 var _elapsed = performance.now() - _capturedAgent._floorStartPerf;
                 var _totalS = Math.floor(_elapsed / 1000);
@@ -635,12 +681,19 @@ async function sendMessage() {
                 saveQuestData().catch(function () { });
             }
         }
-        _capturedAgent._sending = false;
-        _capturedAgent._streaming = false;
+        if (_capturedAgent) {
+            _capturedAgent._sending = false;
+            _capturedAgent._streaming = false;
+        }
         _queueBusy = false;
         _sending = false;
         if (_activeAgent === _capturedAgent) {
             setStreaming(false);
+        } else if (_capturedQuestId && !_capturedAgent._floorCompletedCleanly && !_capturedAgent._floorOnErrorCalled) {
+            // ★ 后台 agent finally 兜底：onDone/onError 均未触发时才释放 running 标记
+            //   （若 onDone/onError 已触发，它们已在上方统一释放，此处不重复）
+            _markQuestRunning(_capturedQuestId, false);
+            if (_panelRunningQuestId === _capturedQuestId) _panelRunningQuestId = null;
         }
     }
 }

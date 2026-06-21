@@ -152,18 +152,20 @@ var onlyStore = (function () {
     _loadAll().catch(function () { });
     // 注册崩溃防护
     if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', _  function get(key, fallback) {
+      window.addEventListener('beforeunload', _onBeforeUnload);
+    }
+  }
+
+  // ★ 同步读：纯内存缓存，零 I/O（fallback 到 DB 懒回填仅异步触发）
+  function get(key, fallback) {
     if (key in _cache) return _cache[key];
-    // ★ 未缓存时异步触发 SQLite 回读，同时返回 fallback
-    // 下次同 key 调用即可命中缓存（per-window key 等动态 key）
+    // 未缓存时异步触发 SQLite 回读，同时返回 fallback
     var _b = _bridge();
     if (_b) {
-      _b.get(key).then(function(v) {
+      _b.get(key).then(function (v) {
         if (v !== null && v !== undefined) { _cache[key] = v; }
-      }).catch(function(){});
+      }).catch(function () { });
     }
-    return fallback !== undefined ? fallback : null;
-  } }
     return fallback !== undefined ? fallback : null;
   }
 
@@ -173,10 +175,10 @@ var onlyStore = (function () {
     if (key in _cache) return Promise.resolve(_cache[key]);
     var _b = _bridge();
     if (!_b) return Promise.resolve(null);
-    return _b.get(key).then(function(v) {
+    return _b.get(key).then(function (v) {
       if (v !== null && v !== undefined) { _cache[key] = v; return v; }
       return null;
-    }).catch(function() { return null; });
+    }).catch(function () { return null; });
   }
 
   function set(key, value) {

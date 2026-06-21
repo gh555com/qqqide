@@ -233,10 +233,18 @@ function addMessageEl(role, content) {
     return div;
 }
 
+var _panelRunningQuestId = null;  // 本面板标记为 running 的 quest（配对更新中心机器用）
+
+function _markQuestRunning(questId, isRunning) {
+    if (!questId || _isDraft(questId)) return;
+    try { if (parent && parent.__qqq_setQuestRunning) parent.__qqq_setQuestRunning(questId, isRunning); } catch (_) { }
+    _broadcast('quest-running', questId, { isRunning: isRunning });
+}
+
 function setStreaming(val) {
     streaming = val;
     // ★ Stop 闭环：三态 UX（IDLE / SENDING / STOPPING）
-    //   val=true 表示流式输出中；_stopState 仅用于 TOPPING 覆盖
+    //   val=true 表示流式输出中；_stopState 仅用于 STOPPING 覆盖
     var _state = _activeAgent ? _activeAgent._stopState : 'idle';
     if (_state === 'stopping') {
         $sendBtn.textContent = '....';
@@ -252,10 +260,22 @@ function setStreaming(val) {
         $sendBtn.disabled = false;
     }
     updateQueueBtn();
-    // 彗星环绕：streaming 时点亮 tofu 编号
+    // ★ 彗星环绕：开始建楼时写入父窗口中心注册表（释放由 onDone/onError/finally 显式处理）
+    //   setStreaming(false) 只做 UI 清理，绝不动中心机器（防 switchQuest/_unloadQuest 误写）
+    if (val && questActiveId && !_isDraft(questActiveId)) {
+        if (_panelRunningQuestId && _panelRunningQuestId !== questActiveId) {
+            _markQuestRunning(_panelRunningQuestId, false);
+        }
+        _panelRunningQuestId = questActiveId;
+        _markQuestRunning(questActiveId, true);
+    }
+    // 彗星环绕：当前面板 tofu 立即更新（读中心机器，跨面板一致）
     var tofu = document.getElementById('quest-tofu');
     if (tofu) {
-        if (val && _state !== 'stopping') tofu.classList.add('quest-running');
+        var runningNow = _getRunningQuestIds();
+        if (runningNow.indexOf(questActiveId) >= 0) tofu.classList.add('quest-running');
         else tofu.classList.remove('quest-running');
     }
+    // 刷新下拉列表中的彗星标记（如果当前打开）
+    if (typeof _questDrop !== 'undefined' && _questDrop) renderQuestDrop();
 }

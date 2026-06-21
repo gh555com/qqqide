@@ -19,13 +19,10 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
     var _finishReason = '';
     var _sseError = null;  // ★ 服务端 SSE 错误事件（提升到外层避免被 JSON catch 吞掉）
 
-    // ★ 流级别看门狗：120s 无数据 → 连接已死，主动 abort
-    //   深度推理可能 90s+ 无 token，120s 防误杀
-    // ★ 产出看门狗：10min 无实质产出（无 delta/tool_call）→ AI 陷入思考循环，主动 abort
+    // ★ 流级别看门狗：180s 无数据 → 连接已死，主动 abort
+    //   深度推理可能 120s+ 无 token，180s 防误杀
+    //   output_watchdog 已移除 — AI 推理不限时，信任模型自行收敛
     var _streamWatchdog = null;
-    var _outputWatchdog = null;
-    // 产出看门狗 → 唯一真理在 ContentGateway.AI_OUTPUT_WATCHDOG_MS（content-gateway.js）
-    var OUTPUT_WATCHDOG_MS = (typeof ContentGateway !== 'undefined' && ContentGateway.AI_OUTPUT_WATCHDOG_MS) ? ContentGateway.AI_OUTPUT_WATCHDOG_MS : 900000;
     var STREAM_WATCHDOG_MS = (typeof ContentGateway !== 'undefined' ? ContentGateway.STREAM_WATCHDOG_MS : 180000);  // ★ 唯一真理在 ContentGateway
     function _resetStreamWatchdog() {
         if (_streamWatchdog) clearTimeout(_streamWatchdog);
@@ -35,16 +32,7 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
             if (self.abortController) self.abortController.abort();
         }, STREAM_WATCHDOG_MS);
     }
-    function _resetOutputWatchdog() {
-        if (_outputWatchdog) clearTimeout(_outputWatchdog);
-        _outputWatchdog = setTimeout(function () {
-            self._abortSource = 'output_watchdog';
-            self._log('⏰ output watchdog ' + (OUTPUT_WATCHDOG_MS / 60000) + 'min — no output, aborting thinking loop');
-            if (self.abortController) self.abortController.abort();
-        }, OUTPUT_WATCHDOG_MS);
-    }
     _resetStreamWatchdog();
-    _resetOutputWatchdog();
 
     while (true) {
         var readResult;
@@ -56,7 +44,6 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
             if (readErr && readErr.name === 'AbortError') {
                 self._log('■ reader aborted (intentional)');
                 clearTimeout(_streamWatchdog);
-                clearTimeout(_outputWatchdog);
                 throw readErr;  // 直接抛 AbortError，不被包装成普通 Error
             }
             // 其他异常 = 连接断开（HTTP/2 RST_STREAM 等）
@@ -132,10 +119,8 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
             }
             if (delta.content) {
                 stripper.push(delta.content);
-                _resetOutputWatchdog();  // ★ 有实质文本产出 → 重置产出看门狗
             }
             if (delta.tool_calls) {
-                _resetOutputWatchdog();  // ★ 有工具调用 → 重置产出看门狗
                 for (var ti = 0; ti < delta.tool_calls.length; ti++) {
                     var tc = delta.tool_calls[ti];
                     if (tc.index !== undefined) {
@@ -318,5 +303,7 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
         self._log(_msg);
         if (typeof self._writeFileLog === 'function') self._writeFileLog(_msg);
     }
+    // ★ 将 SSE 错误传回给 _callGateway，防止 onError 时 _lastGatewayMessage 落空
+    if (_sseError) self._sseError = _sseError;
     return null;
 };

@@ -25,14 +25,17 @@ function renderQueueStrip() { }
 // State
 var _streamingFallback = false;
 var _sendingFallback = false;
+// _sending / streaming now panel-level guards, NOT redirected through _activeAgent
+var _sendingVar = false;
+var _streamingVar = false;
 Object.defineProperty(window, 'streaming', {
-    get: function () { return _activeAgent ? _activeAgent._streaming : _streamingFallback; },
-    set: function (v) { if (_activeAgent) _activeAgent._streaming = v; else _streamingFallback = v; },
+    get: function () { return _streamingVar; },
+    set: function (v) { _streamingVar = v; },
     enumerable: true, configurable: true
 });
 Object.defineProperty(window, '_sending', {
-    get: function () { return _activeAgent ? _activeAgent._sending : _sendingFallback; },
-    set: function (v) { if (_activeAgent) _activeAgent._sending = v; else _sendingFallback = v; },
+    get: function () { return _sendingVar; },
+    set: function (v) { _sendingVar = v; },
     enumerable: true, configurable: true
 });
 var _renderPending = false;
@@ -88,6 +91,13 @@ function _parentReleaseQuest(questId) {
 function _parentGetQuestOwner(questId) {
     try { if (parent && parent.__qqq_getQuestOwner) return parent.__qqq_getQuestOwner(questId); } catch (_) { }
     return undefined;
+}
+// ★ 中心机器：读取所有正在建楼的 questId 列表（跨面板共享，只读）
+function _getRunningQuestIds() {
+    try {
+        if (parent && parent.__qqq_getRunningQuests) return parent.__qqq_getRunningQuests();
+    } catch (_) { }
+    return [];
 }
 
 var _panelFocused = false;  // 当前面板是否获得焦点（金光边框 + 快捷键激活）

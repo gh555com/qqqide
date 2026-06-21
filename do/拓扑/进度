@@ -1,6 +1,25 @@
 qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向参考。
 ============================================================
-更新: 2026-06-19
+更新: 2026-06-21
+
+已完成 — 本轮 2026-06-21 (27) 跨面板并发建楼僵尸 bug
+------
+· 根因 A：panel-state.js 中 _sending/streaming defineProperty 经 _activeAgent 重定向
+  → 切 quest 时 _activeAgent 变更 → _sending 栅栏穿透 → 同面板并发建楼
+  → 两楼层共享 _allTxtPollTimer → 旧楼层流式中止 → 进入僵尸状态
+· 修复 A：_sending/streaming 改为 panel-state.js 顶层 var（面板级栅栏，禁 _activeAgent 重定向）
+· 根因 B：onDone 内 _saveAgentQuestData 在 _capturedAgent._streaming=false 之前执行
+  → all.json 永久记录 _streaming:true → 重启后仍被认为是"在建"楼层
+· 修复 B：_capturedAgent._streaming=false 移到 _saveAgentQuestData 之前 + 同步 setStreaming(false)
+· 证据：q44 f1 all.json _streaming:true + floorFree:true（楼层已完结但流式标志永未清除）
+
+已完成 — 本轮 2026-06-21 (26) quest 切换后台完整性加固
+------
+· 移除 output_watchdog：彻底删除 900s 输出看门狗，AI 推理不限时，仅保留 stream_watchdog(180s)
+· A4 快照恢复：_restoreAgentFromStore 从最后一层 floor 数据重建 _a4Snapshots，切 quest 回来 A4 区块不再消失
+· 电子钟僵尸 timer 三重防御：① timer 回调 _floorCompletedCleanly 自停 ② isConnected DOM 守卫 ③ switchQuest 切回已停止 quest 时显式 clearInterval
+· all.txt 截断修复：generateFloorTxt(ag, questId) 重构为显式参数，去掉主动守卫，后台 agent 完结后也全量写入 all.txt（含 stats + az 行）
+· 拓扑文档同步：铁律 §27 + 架构 quest切换完整性 + 楼层归档
 
 已完成 — 本轮 2026-06-19 (25) q2 hover 视觉系统重构 + 焦点解耦
 ------

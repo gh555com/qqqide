@@ -79,29 +79,40 @@ function applyLayout() {
 }
 
 // ---- Window resize: proportional scaling, frozen min panels stay frozen ----
-var _shPrevWinW = 0;
+var _shPrevAvailAX = 0; // available middle space for A+X (main - AI - sash), not raw winW
 var _shPrevWinH = 0;
 
 function onWindowResize() {
   var winW = window.innerWidth;
   var winH = window.innerHeight;
-  if (_shPrevWinW === 0) { _shPrevWinW = winW; _shPrevWinH = winH; }
 
   var aEl = document.getElementById('qqq-a-zone');
   if (aEl && !aEl.classList.contains('qqq-collapsed')) {
-    var oldA = _shLayoutState.aZoneW;
-    // available middle width = win - AI - sash
-    var oldAvail = _shPrevWinW - _shAiW - _shSashW;
-    var newAvail = winW - _shAiW - _shSashW;
-    if (oldAvail > 0 && newAvail > 0) {
+    // ★ 计算 A+X 实际可用空间：必须扣掉翼板宽度（翼板在 #qqq-main 外但在 window 内）
+    //    以及 AI 区实际渲染宽度（受 zoom 影响，不能用 _shAiW 常量）
+    var wingW = (typeof _shellBulbState !== 'undefined' ? (_shellBulbState.left ? _shAiW : 0) + (_shellBulbState.right ? _shAiW : 0) : 0);
+    var mainW = winW - wingW;
+    var aiEl = document.getElementById('qqq-ai-zone');
+    var aiW = aiEl ? aiEl.offsetWidth : _shAiW;
+    var availAX = mainW - aiW - _shSashW;
+
+    if (_shPrevAvailAX === 0) {
+      _shPrevAvailAX = availAX;
+      _shPrevWinH = winH;
+      return;
+    }
+
+    if (availAX > 0 && _shPrevAvailAX > 0) {
+      var oldA = _shLayoutState.aZoneW;
       if (oldA <= _shMin) {
         // frozen at min, keep at min
         _shLayoutState.aZoneW = _shMin;
       } else {
-        var ratio = oldA / oldAvail;
-        _shLayoutState.aZoneW = Math.max(_shMin, Math.round(ratio * newAvail));
+        var ratio = oldA / _shPrevAvailAX;
+        _shLayoutState.aZoneW = Math.max(_shMin, Math.round(ratio * availAX));
       }
     }
+    _shPrevAvailAX = availAX;
   }
 
   // output height proportional
@@ -120,7 +131,6 @@ function onWindowResize() {
     }
   }
 
-  _shPrevWinW = winW;
   _shPrevWinH = winH;
   applyLayout();
 }
@@ -318,7 +328,6 @@ async function main() {
   await loadState();
   applyLayout();
 
-  _shPrevWinW = window.innerWidth;
   _shPrevWinH = window.innerHeight;
   window.addEventListener('resize', onWindowResize);
 

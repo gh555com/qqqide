@@ -122,12 +122,12 @@ var AgentLoop = (function () {
         this._stopCtrl = null;          // AbortController（仅用户 Stop 时 abort，永不重建）
         this._stopState = 'idle';       // 'idle' | 'sending' | 'stopping'
         // ★ 错误诊断探针（用于构建"继续"消息中的中断原因）
-        this._exitReason = '';           // 'ok'|'http_502'|'http_503'|'http_429'|'http_402'|'fetch_error'|'watchdog_stream'|'watchdog_output'|'deadline'|'max_iter'|'unknown'
+        this._exitReason = '';           // 'ok'|'http_502'|'http_503'|'http_429'|'http_402'|'fetch_error'|'watchdog_stream'|'deadline'|'max_iter'|'unknown'
         this._lastHttpStatus = 0;        // 最后一次 HTTP 状态码
         this._lastFetchError = '';       // 最后一次 fetch 错误消息
         this._lastSseError = '';         // 最后一次 SSE 服务端错误
         this._lastGatewayMessage = '';   // ★ 延迟报错消息（_callGateway 设，agent loop 读）
-        this._abortSource = '';          // 'stream_watchdog'|'output_watchdog'|'fetch_deadline'|'user_kill'|'guide'|''
+        this._abortSource = '';          // 'stream_watchdog'|'fetch_deadline'|'user_kill'|'guide'|''
         // ★ 记账埋点：完整 billing 追踪（per-house 粒度）
         this._lastBilling = null;        // { geCost, model, usage: {prompt_tokens,completion_tokens,cached_tokens,non_cached_tokens}, freeWindow, requestId }
         this._billingSeq = 0;            // 全局 billing 事件序号（跨 floor 递增）
@@ -183,7 +183,6 @@ var AgentLoop = (function () {
                 parts.push('Network request failed: ' + _fe);
                 break;
             case 'watchdog_stream': parts.push('SSE流90秒无数据(连接假死)'); break;
-            case 'watchdog_output': parts.push('AI超过10分钟无产出(可能陷入循环)'); break;
             case 'deadline': parts.push('请求90秒无响应(超时)'); break;
             case 'max_iter': parts.push('达到最大迭代次数(200)'); break;
             default:

@@ -306,6 +306,12 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             if (_result) {
                 _result._ttfbMs = _ttfbAccum;
                 _result._streamMs = _result._streamMs || 0;
+            } else if (self._sseError) {
+                // ★ SSE 流中断（非 AbortError）= 连接断开
+                //    把错误详情写入 _lastGatewayMessage，避免 UI 显示泛泛的 "Unexpected response"
+                self._lastGatewayMessage = 'SSE connection lost: ' + (self._sseError.message || 'unknown');
+                self._log('✗ ' + self._lastGatewayMessage);
+                self._sseError = null;
             }
             self._consecutiveFetchErrors = 0;  // ★ 整个 fetch+SSE 周期成功后才清零
             // ★ Token 校准：对比本地估算和 API 精确值，自动修正 CHAR_PER_TOKEN
@@ -352,7 +358,6 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 // ★ 非引导中断 = 看门狗/超时/网络问题
                 // 设置探针：区分 abort 来源
                 if (self._abortSource === 'stream_watchdog') self._exitReason = 'watchdog_stream';
-                else if (self._abortSource === 'output_watchdog') self._exitReason = 'watchdog_output';
                 else if (self._abortSource === 'fetch_deadline') self._exitReason = 'deadline';
                 else self._exitReason = 'unknown';
 

@@ -39,6 +39,11 @@ async function _handleSyncMessage(msg) {
                     _unloadQuest();
                 }
                 break;
+            case 'quest-running':
+                // 另一面板 quest 开始/停止建楼 → 刷新彗星标记（下拉+tofu）
+                if (typeof updateQuestTofu === 'function') await updateQuestTofu();
+                if (typeof _questDrop !== 'undefined' && _questDrop && typeof renderQuestDrop === 'function') renderQuestDrop();
+                break;
             case 'owner-released':
                 // 另一面板释放了 quest — 不做任何事（我们不自动加载）
                 break;
@@ -163,6 +168,23 @@ async function _initWorkspace(root) {
         // [silent] restored questUIStates
     }
 
+    // ★ IPC sync & onChange 必须在 initQuests 之前注册，
+    //   否则 _syncIndexFromFs 发现的 quest 无法广播到其他面板
+    try {
+        var sb = _getSyncBridge();
+        if (sb) {
+            if (_syncUnsub) { _syncUnsub(); _syncUnsub = null; }
+            var ch = _syncChannel();
+            _syncUnsub = sb.onMessage(function (channel, data) {
+                if (channel === ch) { _handleSyncMessage(data); }
+            });
+            // [silent] IPC sync subscribed
+        }
+    } catch (e) { console.warn('[workspace] IPC sync unavailable:', e); }
+    questStore.onChange(function (payload) {
+        _broadcast(payload.type, payload.questId, { floorNum: payload.floorNum, title: payload.title });
+    });
+
     // 初始化 quest 列表
     _questsInited = true;
     // ★ 仅中面板做磁盘扫描 + 索引建仓（fs.list 只跑一次，左右翼复用缓存）
@@ -176,22 +198,6 @@ async function _initWorkspace(root) {
     if (typeof buildQqqideVisionContext === 'function') {
         buildQqqideVisionContext();
     }
-
-    // ★ IPC sync：workspace-scoped channel
-    try {
-        var sb = _getSyncBridge();
-        if (sb) {
-            if (_syncUnsub) { _syncUnsub(); _syncUnsub = null; }
-            var ch = _syncChannel();
-            _syncUnsub = sb.onMessage(function (channel, data) {
-                if (channel === ch) { _handleSyncMessage(data); }
-            });
-            // [silent] IPC sync subscribed
-            questStore.onChange(function (payload) {
-                _broadcast(payload.type, payload.questId, { floorNum: payload.floorNum, title: payload.title });
-            });
-        }
-    } catch (e) { console.warn('[workspace] IPC sync unavailable:', e); }
 
     // [silent] workspace bound
 }
@@ -299,6 +305,7 @@ async function initQuests() {
         return;
     }
     // [silent] initQuests START
+    // ★ 中心大脑：三面板读同一 parent.__qqq_questIndex，主面板扫盘后侧面板立即可见
     var quests = await questStore.list();
     // [silent] list returned
     if (quests.length === 0) {
@@ -469,10 +476,10 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
         // ═══ A4 快照持久化 ═══
         if (typeof _a4PersistSnapshots === 'function') {
             try {
-                var _qIdx = questStore._index || [];
+                var _qList = await questStore.list();
                 var _qItem = null;
-                for (var qi = 0; qi < _qIdx.length; qi++) {
-                    if (_qIdx[qi].id === questId) { _qItem = _qIdx[qi]; break; }
+                for (var qi = 0; qi < _qList.length; qi++) {
+                    if (_qList[qi].id === questId) { _qItem = _qList[qi]; break; }
                 }
                 var _numId = _qItem ? (_qItem.numericId || 0) : 0;
                 var a4Meta = await _a4PersistSnapshots(ag, _numId, floorNum);
@@ -502,12 +509,11 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
     await questStore.touch(questId);
     await questStore.save(questId, metaPayload);
 
-    // generate floor txt ONLY for active quest (not background agents)
-    if (ag === _activeAgent && questId === questActiveId) {
-        await generateFloorTxt().catch(function () { });
-        // 追加到 quest 级 search_quest.txt（全文检索用：时间线 + Q + A）
-        _appendToSearchQuest(questId, floorNum).catch(function () { });
-    }
+    // generate floor txt for ANY agent (foreground or background)
+    //    generateFloorTxt 已重构为接受显式 ag + questId，不再依赖全局 _activeAgent
+    await generateFloorTxt(ag, questId).catch(function () { });
+    // 追加到 quest 级 search_quest.txt（全文检索用：时间线 + Q + A）
+    _appendToSearchQuest(questId, floorNum).catch(function () { });
 }
 
 async function saveQuestData(floorStartIdx) {

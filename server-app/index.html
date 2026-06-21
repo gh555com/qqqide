@@ -205,6 +205,24 @@
     if (!questId || typeof questId !== 'string') return undefined;
     return window.__qqq_questOwners[questId];
   };
+  // questId → 是否正在建楼（跨面板共享，引用计数零竞态）
+  window.__qqq_runningQuests = {};
+  window.__qqq_setQuestRunning = function(questId, isRunning) {
+    if (!questId || typeof questId !== 'string') return;
+    if (isRunning) {
+      window.__qqq_runningQuests[questId] = (window.__qqq_runningQuests[questId] || 0) + 1;
+    } else {
+      if (window.__qqq_runningQuests[questId]) {
+        window.__qqq_runningQuests[questId]--;
+        if (window.__qqq_runningQuests[questId] <= 0) {
+          delete window.__qqq_runningQuests[questId];
+        }
+      }
+    }
+  };
+  window.__qqq_getRunningQuests = function() {
+    return Object.keys(window.__qqq_runningQuests);
+  };
 })();
 </script>
 

@@ -17,13 +17,16 @@ body{font-family:Tahoma,system-ui,-apple-system,sans-serif;font-size:13px;color:
 input::selection, textarea::selection{background:#ffd302;color:#000}
 
 /* ═══ TITLE ROW ═══ */
-#title-row{height:36px;background:var(--card);display:flex;align-items:center;padding:0 8px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0;-webkit-app-region:drag}
+#title-row{height:40px;background:var(--card);display:flex;align-items:flex-end;padding:0 8px 2px 8px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0;-webkit-app-region:drag}
 #input-wrap{flex:1;position:relative;display:flex;align-items:center;min-width:0}
-#title-row .title-input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 34px 3px 8px;border-radius:4px;font-size:11px;font-family:Tahoma,ui-monospace,monospace;outline:none;-webkit-app-region:no-drag;min-width:0}
+#title-row .title-input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 34px 4px 8px;border-radius:4px;font-size:12px;font-family:Tahoma,ui-monospace,monospace;outline:none;-webkit-app-region:no-drag;min-width:0;white-space:pre;overflow:hidden;line-height:1.6;caret-color:var(--text)}
+#title-row .title-input:empty::before{content:attr(data-placeholder);color:var(--base01);font-style:italic}
+#title-row .title-input .sep{color:var(--red);font-weight:700}
 #title-row .title-input:hover{border-color:var(--yellow)}
-#title-row .title-input:focus{border-color:var(--yellow)}
+#title-row .title-input:focus{border-color:var(--yellow);outline:none}
 #title-row .win-btn{-webkit-app-region:no-drag;width:28px;height:26px;border:none;background:transparent;color:var(--base01);font-size:14px;cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 #title-row .win-btn:hover{background:var(--border)}
+#btn-max{width:40px!important;height:36px!important;font-size:20px!important}
 .hist-btn{position:absolute;right:2px;top:50%;transform:translateY(-50%);width:30px;height:26px;font-size:11px;color:var(--base01);border-radius:3px;z-index:2;font-weight:700}
 .hist-btn:hover{color:var(--yellow);background:var(--bg)}
 #drag-handle{width:56px;height:100%;display:flex;align-items:center;justify-content:center;opacity:.55;flex-shrink:0}
@@ -94,6 +97,8 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
 /* ═══ EMPTY STATE ═══ */
 #empty-state{display:flex;align-items:center;justify-content:center;height:100%;color:var(--base01);font-size:13px}
 
+
+
 /* ═══ BIG CLOSE BUTTON ═══ */
 #big-close{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:56px;height:56px;border-radius:50%;border:2px solid var(--red);background:var(--card);color:var(--red);font-size:24px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s}
 #big-close:hover{background:var(--red);color:#fff;transform:translateX(-50%) scale(1.1)}
@@ -107,9 +112,9 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
 
 <!-- ★ 标题行 -->
 <div id="title-row">
-  <span style="font-size:13px;flex-shrink:0;-webkit-app-region:no-drag">📄</span>
+  <span style="font-size:13px;flex-shrink:0;align-self:center;margin-top:1px;-webkit-app-region:no-drag">📄</span>
   <div id="input-wrap" style="flex:1;position:relative;display:flex;align-items:center;-webkit-app-region:no-drag">
-    <input class="title-input" id="title-input" placeholder="文件路径…" autocomplete="off" spellcheck="false">
+    <div class="title-input" id="title-input" contenteditable="true" spellcheck="false" data-placeholder="文件路径…"></div>
     <button class="win-btn hist-btn" id="btn-history" title="搜索历史">▼</button>
     <div id="fuzzy-dropdown" class="fuzzy-dropdown" style="display:none">
       <div class="fuzzy-dropdown-list" id="fuzzy-list"></div>
@@ -125,12 +130,11 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
       <polyline points="8,16 11,18 14,16" fill="none" stroke="var(--base01)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </div>
-  <button class="win-btn" id="btn-max" title="最大化" style="-webkit-app-region:no-drag">□</button>
+  <button class="win-btn" id="btn-max" title="最大化" style="align-self:center;padding-bottom:2px;-webkit-app-region:no-drag">□</button>
 </div>
 
 <div id="version-bar">
   <div class="version-panel">
-    <span class="v-label">左 (旧)</span>
     <div class="v-dropdown" id="dd-left">
       <div class="v-dropdown-btn" id="dd-left-btn">—</div>
       <div class="v-dropdown-list" id="dd-left-list"></div>
@@ -139,7 +143,6 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
     <input type="hidden" id="sel-left">
   </div>
   <div class="version-panel">
-    <span class="v-label">右 (新)</span>
     <div class="v-dropdown" id="dd-right">
       <div class="v-dropdown-btn" id="dd-right-btn">—</div>
       <div class="v-dropdown-list" id="dd-right-list"></div>

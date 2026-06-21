@@ -237,7 +237,8 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - stopFloorTimer(timing, ag) 必须设停止态颜色。中断/异常路径(finally块)同样必须设停止态。
   - Card Pool _buildFloorDOM 重建历史楼层时钟从 fData.clockTiming 直接恢复，不再依赖 questTimings 数组。
   - timer 跑在 agent 上（ag._floorTimerId/ag._floorStartPerf），切 quest 不停 timer。
-  - timer 回调内置 DOM 有效性守卫（isConnected）：Card 被驱逐或 DOM 重建时自动停止，防僵尸 timer 写已销毁节点。
+  - timer 回调三层自停守卫：① _floorCompletedCleanly（楼层干净完结→自停）② isConnected（Card 被驱逐或 DOM 重建→自停）③ switchQuest 切回已停止 quest 时显式 clearInterval 兜底。
+    三重防御确保切 quest 回来时钟绝不僵尸走字。
   - _activeAiDiv 是 agent 与 Card DOM 的永久绑定，stopFloorTimer 不再清空。切 quest 时 switchQuest 无条件重绑（含已停止楼层）。
   - 违例: 工作中显示黑色、完成后显示绿色都是 bug。
   - ★ quest 切换保护态：_switching=true → 全屏透明蒙板(#qqq-switch-overlay, z-index:99999)接管一切鼠标事件 + 消息区 dim(opacity:.35) + Send/Enter/guide/queue/createNewQuest 全部入口硬拦截。零攻击窗口。
@@ -248,6 +249,14 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 主进程 sync:broadcast 必须发送到所有 webContents（含发送者），不可跳过 senderWC。
     否则同窗口三面板无法互斥（已修复 2026-06）。
   - 禁 BroadcastChannel。sync IPC 桥是唯一跨面板通知机制。
+
+§28b quest 索引中心大脑（2026-06-21）
+  - parent.__qqq_questIndex = [] — 同窗口三面板共享唯一 quest 索引数组引用，零拷贝。
+  - 主面板（panelId=1）扫盘一次 → 写入共享数组 → 广播 _notify。侧面板直接读同一引用。
+  - 跨窗口：IPC sync quest-created/deleted/renamed → invalidateIndex() 清空共享数组 → 从 sq3 重载。
+  - 删除 this._index 面板本地缓存。create/rename/delete 直接 mutate 共享数组 + _saveIndex 写 sq3。
+  - 30s 宽限期：_syncIndexFromFs 不删除 createdAt<30s 且磁盘尚无目录的 quest（防 create 先写索引后建目录的竞态）。
+  - 仅主面板扫盘。侧面板 never fs.list。通知机制。
 
 §29 Card Queue — AI 面板终极架构（2026-06 重构，2026-06-10 加固，2026-06-24 唯一真理机）
   - 一张 quest = 一张 Card（完整 DOM 子树）。创建后永不 innerHTML 清空。
@@ -260,7 +269,8 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - per-floor 状态归属铁律（禁全局）：
     agent: _floorTimerId / _floorStartPerf / _floorCurrentTiming / _activeAiDiv（agent↔Card DOM 永久绑定，stopFloorTimer 不清空，switchQuest 无条件重绑） / _allTxtPath / _a4Snapshots。
     aiDiv: _a1Block / _a4Block / _allTxtOpenInEditor / _allTxtPath / _clockBlock。
-    面板级单例：_allTxtPollTimer / _allTxtBlocked / _sending。
+    面板级单例（禁经 _activeAgent 重定向）：_allTxtPollTimer / _allTxtBlocked / _sending / streaming。
+    ★ _sending / streaming 必须是 panel-state.js 顶层 var，不可 defineProperty 经 _activeAgent 重定向（切 quest 时 _activeAgent 变更导致栅栏穿透→并发建楼→僵尸）。
   - A4 铁律：_initA4Block → insertBefore(a1Block) 无条件。A4 始终在 A2 之后、A1 之前。
   - A1 铁律：_initA1Block → insertBefore(clockBlock) 无条件。
   - A1 行2 持久化：floorPayload.fileStats 入 SQLite（_computeFileStats 统一计算）。

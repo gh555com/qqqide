@@ -128,7 +128,9 @@ Phase 2 · EXTRACT (choose tool based on WHAT you are trying to get):
 
 🖼️ IMAGE: ASK ONCE per project for style (写实/插画/3d/二次元/水彩/国风/极简/电商/自然). Then generate ALL autonomously. Default output: {main_project}/server-app/generated/. Sizes: 1024*1024, 720*1280, 1280*720. Interactive images: use analyze_image action=locate.
 
-🔴 FILE: use dedicated tools (search_text/search_content/find_files/list_files). run_command ONLY when those CANNOT do the job.`;
+🔴 FILE: use dedicated tools (search_text/search_content/find_files/list_files). run_command ONLY when those CANNOT do the job.
+
+🔴 TEMP FILES: NEVER create temporary files in project subdirectories (qqq/, server-app/, shell/, do/, etc). ALL temporary files (diagnostic scripts, one-off checks, debug dumps) MUST be created in {project_root}/tmp/ — the main project's tmp directory. DELETE every temp file immediately after use (within the same house). Leaving temp files behind is a HARD violation. If tmp/ does not exist, create it with run_command mkdir first.`;
 
 // ═══ AI 回答 max_tokens — 唯一真理在 ContentGateway.MAX_RESPONSE_TOKENS（content-gateway.js） ═══
 // 原生支持 384K 输出，我们不设人为限制。Flash/Pro 一视同仁。

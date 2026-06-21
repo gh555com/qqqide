@@ -114,6 +114,11 @@ async function switchQuest(id) {
                                 });
                             }
                         }
+                        // ★ 防御：切回已停止 quest 时，确保时钟 timer 已清除（防僵尸 timer 继续走字）
+                        if (_activeAgent._floorTimerId) {
+                            clearInterval(_activeAgent._floorTimerId);
+                            _activeAgent._floorTimerId = null;
+                        }
                         break;
                     }
                 }
@@ -868,13 +873,13 @@ $queueBtn.onclick = function () {
         return {
             // 滑块色：始终 q3 标准色
             c: dk ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)',
-            // 水箱：灰黄橄榄 — 白主题=枯叶绿渐变，黑主题=暖灰绿渐变；非焦点=透明
+            // 水箱：A 配色（灰黄橄榄）— 上浅下深；非焦点=透明
             trackBg: focused
                 ? (dk
-                    ? 'linear-gradient(to bottom, rgba(145,155,80,0.45), rgba(95,105,45,0.12))'
-                    : 'linear-gradient(to bottom, rgba(115,125,60,0.5), rgba(75,85,30,0.15))')
+                    ? 'linear-gradient(to bottom, rgba(95,105,45,0.12), rgba(145,155,80,0.45))'
+                    : 'linear-gradient(to bottom, rgba(75,85,30,0.15), rgba(115,125,60,0.5))')
                 : 'transparent',
-            // 粒子：白主題=干草黄，黑主题=暖灰绿
+            // 粒子：白主题=干草黄，黑主题=暖灰绿
             bubbleC: dk ? 'rgba(180,190,80,0.8)' : 'rgba(160,170,70,0.7)'
         };
     }
@@ -885,7 +890,8 @@ $queueBtn.onclick = function () {
     track.style.cssText = 'position:absolute; right:-1px; top:0; bottom:0; width:9px; z-index:50; ' +
         'background:' + co0.trackBg + '; overflow:hidden;';
 
-    // ★ 冒泡粒子：18 个酸橙/荧光绿小圆点，随机大小/位置/速度，从下往上冒
+    // ★ 冒泡粒子：18 个小圆点，随机大小/位置/速度，从下往上冒
+    // A 配色（灰黄橄榄）上浅下深：trackBg = 白 rgba(75,85,30,0.15)→(115,125,60,0.5) / 黑 rgba(95,105,45,0.12)→(145,155,80,0.45)  bubbleC = 白 rgba(160,170,70,0.7) / 黑 rgba(180,190,80,0.8)
     var _bubbles = [];
     for (var bi = 0; bi < 18; bi++) {
         var dot = document.createElement('div');
@@ -917,21 +923,24 @@ $queueBtn.onclick = function () {
     // 初始状态
     if (document.body.classList.contains('panel-focused')) _setBubbles(true);
 
-    // 滑块
+    // 滑块（独立渲染，贴合水箱左侧，与水箱零交合）
     var thumb = document.createElement('div');
     var co = _qhColors();
-    thumb.style.cssText = 'position:absolute; right:7px; width:1px; min-height:24px; border-radius:0; ' + 'display:none; background:' + co.c + '; cursor:pointer; ' +
+    thumb.style.cssText = 'position:absolute; right:8px; width:2px; min-height:24px; border-radius:0; z-index:52; ' +
+        'display:none; background:' + co.c + '; cursor:pointer; ' +
         'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
 
-    // hover 变粗贴边（填满9px水箱）
+    // hover 展开：填满水箱 + 左侧多出1px
     track.addEventListener('mouseenter', function () {
-        thumb.style.width = '9px'; thumb.style.right = '-1px';
+        thumb.style.width = '10px'; thumb.style.right = '-1px';
         thumb.style.background = _qhColors().c;
     });
     track.addEventListener('mouseleave', function () {
-        thumb.style.width = '1px'; thumb.style.right = '7px';
+        thumb.style.width = '2px'; thumb.style.right = '8px';
         thumb.style.background = _qhColors().c;
-    });    // 同步
+    });
+
+    // 同步
     function sync() {
         var sh = el.scrollHeight, ch = el.clientHeight;
         if (sh <= ch) { thumb.style.display = 'none'; return; }
@@ -986,7 +995,7 @@ $queueBtn.onclick = function () {
     });
     themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-    // 焦点切换 → 水箱显隐 + 粒子显隐（滑块色不变，始终可见）
+    // 焦点切换 → 水箱显隐 + 粒子显隐
     var focusObs = new MutationObserver(function () {
         var on = document.body.classList.contains('panel-focused');
         track.style.background = _qhColors().trackBg;
@@ -994,8 +1003,9 @@ $queueBtn.onclick = function () {
     });
     focusObs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
-    track.appendChild(thumb);
+    // 初始焦点状态
+    if (document.body.classList.contains('panel-focused')) _setBubbles(true);
+
     host.appendChild(track);
+    host.appendChild(thumb);
 })();
-
-

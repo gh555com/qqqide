@@ -476,7 +476,8 @@ AI 面板增强
 - 楼层归档（2026-06-19 清洁分工）：
     all.json  →  机器用（conversation[] + 计费元数据 + 文件快照），仅存结构化数据，
                 houses 不含 reasoning/tools/toolResults，禁 reasoning_content 入 conversation
-    all.txt  →  人类读（完整母本：thinking + 工具调用 + 结果 + 回答），建楼期间每5s从内存全量写盘
+    all.txt  →  人类读（完整母本：thinking + 工具调用 + 结果 + 回答），建楼期间每5s流式写盘，
+               完结时 generateFloorTxt 最终覆盖写入（含 stats + az 行），前台/后台 agent 均覆盖。
     reasoning.txt → 审计用（all.txt 截断工具结果到300字），从 all.txt 直接截断生成，不再依赖 SQLite
     quest.sq3 →  纯元数据索引（question + costWge + _fDir + 时间戳），~200字节/floor，不含正文
 - 悬浮层预览：图片（智能2x尺寸+拖拽+滚轮缩放）+ 表格（transform保持长宽比+十字D-pad+初始适配）
@@ -488,8 +489,9 @@ AI 上下文窗口防护（三层纵深 + 参数集中化，2026-06-10 落地）
 背景：DeepSeek V4 硬限制 prompt+completion ≤ 1,000,000 tokens，长对话叠加 max_tokens(393K) 超限导致零响应。
 
 参数唯一真理源：content-gateway.js
-  CTX_MAX_TOKENS(1,048,565) / COMPRESS_THRESHOLD(900k) / MAX_TOKENS_SAFETY(10k) / CHAR_PER_TOKEN(3.0)
+  CTX_MAX_TOKENS(1,048,565) / COMPRESS_THRESHOLD(900k) / MAX_RESPONSE_TOKENS(393216) / MAX_TOKENS_SAFETY(10k) / CHAR_PER_TOKEN(3.0)
   + COMPACT_FACTS_TOKENS(16k) / COMPACT_NARRATIVE_TOKENS(32k) / COMPACT_ARCHIVE_TOKENS(32k) / ARCHIVE_MAX_CHARS(1M) / COMPACT_DEBUG
+  MAX_RESPONSE_TOKENS=393216（~394k）→ 全部 6 档 tier 统一读取，Flash/Pro 不区分。
   换模型只改这一处。消费方全部引用，不硬编码。
   按钮显示+压缩阈值用 _lastApiTotalTokens（prompt+completion精确值，每间house更新）。
 
@@ -555,12 +557,16 @@ Read 约束（tools-exec.js executeReadFile, ~90 行）：
   · 断头楼层看门狗：finally 块检测 onDone/onError 均未触发 → 持久化计时数据 → 提示重发。
     不再 reload。重启窗口后 A3 时钟/饼图从 clockTiming 恢复，不归零。
 
-Quest 切换完整性 (2026-06-10 重构)
+Quest 切换完整性 (2026-06-10 重构，2026-06-21 加固)
 ----------------
   · 切 quest = 纯 display 开关。零 DOM 操作、零 timer 干预。
   · timer 跑在 agent 上（ag._floorTimerId/ag._floorStartPerf），切 quest 不停 timer。
+  · 后台楼层完结后 generateFloorTxt(ag, questId) 全覆盖写入 all.txt（含 stats + az 行），不再区分前台/后台 agent。
   · allTxt 状态全部 per-floor：agent._allTxtPath（路径）、aiDiv._allTxtOpenInEditor（编辑器标志）、aiDiv._a1Block（A1 DOM）。
-  · 面板级单例（合理）：_allTxtPollTimer（单流串行）、_allTxtBlocked（每层重置）、_sending。
+  · 面板级单例：_allTxtPollTimer / _allTxtBlocked / _sending / streaming。
+    ★ _sending / streaming 必须是 panel-state.js 顶层 var（禁经 _activeAgent defineProperty 重定向），
+    否则切 quest 时 _activeAgent 变更→旧楼层 _sending 栅栏穿透→同面板并发建楼→旧楼层僵尸。
+  · ★ _streaming 持久化顺序：onDone 内 _capturedAgent._streaming = false 必须在 _saveAgentQuestData 之前，否则 all.json 永久记录 _streaming:true。
   · allTxtPath 精确存入 floor payload，不再事后重建。
   · 切回时 card 的 DOM 原样保留，无需 resume/重挂/重建。
   · switchQuest / _unloadQuest 中禁调 stopFloorTimer / completeBuildingFloor。
@@ -633,15 +639,18 @@ Go (唯一计费权威):
 -------------------------------------
 SAFETY NET 层 (永远不需要改):
   ghrun spawn.rs:    65536  纯防内存爆炸，非 AI 面限制
-  qz-spawn.ts  改 AI 面限制 → 只改 content-gateway.js 常量。tools-defs.js 和 agent-loop.js 自动跟随。ay.js):
-  OUTPUT_CAP_DEFAULT   = 200000  DeepSeek 默认每次返回（1M 上下文→一次可读完整文件）
-  OUTPUT_CAP_MAX       = 800000  maxOutput 参数上限（AI 可显式请求突破默认值）
+  qz-spawn.ts:        65536  命令输出安全网
+OUTPUT 面 (改 content-gateway.js 一处，消费方全引用):
+  OUTPUT_CAP_DEFAULT   = 200000  AI 视野默认上限（单次工具结果字符数）
+  OUTPUT_CAP_MAX       = 800000  maxOutput 参数上限（AI 可传参突破默认值）
   OUTPUT_CAP_FETCH     = 8000    网页抓取文本提取
   OUTPUT_CAP_FETCH_ERR = 500     网页抓取错误信息
+  READ_FILE_CAP_BYTES  = 200000  read_file 单次返回字节上限（~195KB，超则截断+分页提示）
+  READ_FILE_CAP_KB     = 195     system-prompt.js + tools-defs.js 动态读取，AI 自感知
 
-  改 AI 面限制 → 只改 content-gateway.js 常量。tools.js 和 agent-loop.js 自动跟随。
+  tools-defs.js 工具描述 + system-prompt.js 系统提示词全动态引用 KB 值，不硬编码。
   安全网值远高于 AI 面，永不成为短板。
-  run_command/fetch_webpage 工具描述动态引用常量，DeepSeek 自动感知。
+  OUTPUT_CAP_FETCH 等 tool 描述动态引用常量，DeepSeek 自动感知。
 
 时钟颜色状态机
 -------------

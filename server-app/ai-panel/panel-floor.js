@@ -1,17 +1,16 @@
 'use strict';
 
 // ═══ 楼层 txt 归档：单 all.txt，完整时间线（分隔线区分 USER/HOUSE/ROOM/ANSWER） ═══
-async function generateFloorTxt() {
+async function generateFloorTxt(ag, questId) {
+    if (!ag || !questId) return;
     var root = questStore.getProjectRoot();
     if (!root) return;
-    var houses = agent._houses;
+    var houses = ag._houses;
     if (!houses || houses.length === 0) return;
-    var floorNum = agent._ctx.totalFloors;
-    var questId = questActiveId;
-    if (!questId) return;
+    var floorNum = ag._ctx.totalFloors;
 
     // 优先使用已存储的精确路径（与流式写入一致）
-    var allTxtPath = agent._allTxtPath || '';
+    var allTxtPath = ag._allTxtPath || '';
     var dir = '';
     if (allTxtPath) {
         dir = allTxtPath.replace(/\/all\.txt$/, '/');
@@ -21,7 +20,7 @@ async function generateFloorTxt() {
         var rawQTitle = (questEntry && questEntry.title && questEntry.title !== 'New Chat') ? questEntry.title : '';
         var qNumericId = (questEntry && questEntry.numericId) ? questEntry.numericId : parseInt(questId.replace('q', ''), 10) || 0;
         var qDirName = await _resolveQuestDirName(root, questId, qNumericId, rawQTitle);
-        var _uiFallback = agent._lastUserInput;
+        var _uiFallback = ag._lastUserInput;
         var _uiTextFallback = (_uiFallback && _uiFallback.text) ? _uiFallback.text.replace(/\n/g, ' ').trim() : '';
         var fDirName = _makeName('f', floorNum, _uiTextFallback || '');
         dir = root + '/qqq/quests/' + qDirName + '/' + fDirName + '/';
@@ -36,11 +35,11 @@ async function generateFloorTxt() {
             if (!d) d = now;
             return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
         };
-        var timing = agent._floorTiming;
+        var timing = ag._floorTiming;
         var lines = [];
 
         // ═══ 计算 body size ═══
-        var ui = agent._lastUserInput;
+        var ui = ag._lastUserInput;
         var fmtK = function (bytes) { return (bytes / 1024).toFixed(3) + 'k'; };
         var userText = (ui && ui.text) ? ui.text.trim() : '';
         var visionText = (ui && ui.vision) ? ui.vision.trim() : '';
@@ -49,7 +48,7 @@ async function generateFloorTxt() {
         var promptBytes = 0;
         var ruleBytes = 0;
         var memoryBytes = 0;
-        var conv = agent.conversation;
+        var conv = ag.conversation;
         for (var ci = 0; ci < conv.length; ci++) {
             var cm = conv[ci];
             if (!cm || typeof cm.content !== 'string') continue;
@@ -115,10 +114,10 @@ async function generateFloorTxt() {
         // ═══ floor stats + az 区（每层楼私有） ═══
         if (timing) {
             lines.push('\u2550\u2550\u2550\u2550 floor ' + floorNum + ' stats \u2550\u2550\u2550\u2550');
-            lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.aiMs ? timing.aiMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.toolMs ? timing.toolMs.toFixed(0) : '0') + 'ms  cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge');
+            lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.aiMs ? timing.aiMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.toolMs ? timing.toolMs.toFixed(0) : '0') + 'ms  cost: ' + (ag._floorCostWge / 10000).toFixed(4) + ' ge');
             // az 区文本化
-            var _floorDataForAz = { houses: houses, allTxtPath: agent._allTxtPath || '', costWge: agent._floorCostWge, floorFree: agent._floorFree || false, a4Snapshots: agent._a4Snapshots || {} };
-            var _questMetaForAz = { floorTimings: agent._floorTimings || [] };
+            var _floorDataForAz = { houses: houses, allTxtPath: ag._allTxtPath || '', costWge: ag._floorCostWge, floorFree: ag._floorFree || false, a4Snapshots: ag._a4Snapshots || {} };
+            var _questMetaForAz = { floorTimings: ag._floorTimings || [] };
             var _azLines2 = _buildAzText(floorNum, _floorDataForAz, _questMetaForAz);
             for (var _azi2 = 0; _azi2 < _azLines2.length; _azi2++) {
                 lines.push(_azLines2[_azi2]);
@@ -313,11 +312,48 @@ async function _restoreAgentFromStore(questId, ag) {
         // 重建 conversation：聚合所有楼层
         ag.conversation = [];
         for (var fi = 0; fi < allFloors.length; fi++) {
-            var fConv = allFloors[fi].data.conversation;
+            var fData = allFloors[fi].data;
+            var fConv = fData.conversation;
             if (fConv && fConv.length) {
                 for (var mi = 0; mi < fConv.length; mi++) {
                     ag.conversation.push(fConv[mi]);
                 }
+            }
+            // ★ 注入推理：保留上一轮 AI 的分析上下文，防止继续时重复分析
+            //   _reasoning 标记 → UI 渲染跳过（system 消息已被 card-pool 白名单过滤）
+            var fHouses = fData.houses;
+            if (fHouses && fHouses.length) {
+                var reasoningParts = [];
+                for (var hi = 0; hi < fHouses.length; hi++) {
+                    var h = fHouses[hi];
+                    if (h.reasoning) {
+                        reasoningParts.push('HOUSE ' + (h.index != null ? h.index : hi) + ':\n' + h.reasoning);
+                    }
+                }
+                if (reasoningParts.length > 0) {
+                    ag.conversation.push({
+                        role: 'system',
+                        content: '[PREVIOUS FLOOR ' + (fi + 1) + ' ANALYSIS — preserved reasoning, do NOT re-analyze these findings]\n\n' + reasoningParts.join('\n\n---\n\n'),
+                        _reasoning: true,
+                        _floor: fi + 1
+                    });
+                }
+            }
+        }
+
+        // ★ 恢复 _a4Snapshots：从最后一层有 a4Snapshots 的 floor 数据重建
+        //   防止切 quest 回来后 A4 文件快照块消失
+        ag._a4Snapshots = {};
+        for (var _rfi = allFloors.length - 1; _rfi >= 0; _rfi--) {
+            var _rfData = allFloors[_rfi].data;
+            if (_rfData.a4Snapshots && _rfData.a4Snapshots.length) {
+                for (var _rsi = 0; _rsi < _rfData.a4Snapshots.length; _rsi++) {
+                    var _rs = _rfData.a4Snapshots[_rsi];
+                    if (_rs && _rs.path) {
+                        ag._a4Snapshots[_rs.path] = _rs;
+                    }
+                }
+                break;  // 只取最后一层有快照的
             }
         }
 

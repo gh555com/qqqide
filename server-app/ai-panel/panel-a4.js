@@ -15,7 +15,7 @@
 // ============================================================================
 
 var A4_MAX_SNAPSHOT_BYTES = 512 * 1024; // 512KB per file content cap
-var A4_BINARY_EXT = new RegExp('\\.(png|jpg|jpeg|gif|ico|webp|svgz|woff2?|ttf|eot|otf|wasm|zip|gz|br|tar|7z|rar|exe|dll|so|dylib|o|a|bin|dat|pak|pyc|class|map)(\\.|$)','i');
+var A4_BINARY_EXT = new RegExp('\\.(png|jpg|jpeg|gif|ico|webp|svgz|woff2?|ttf|eot|otf|wasm|zip|gz|br|tar|7z|rar|exe|dll|so|dylib|o|a|bin|dat|pak|pyc|class|map)(\\.|$)', 'i');
 
 // ---- 计算 +added -deleted（行级 diff 统计） ----
 function _a4DiffStats(before, after) {
@@ -693,16 +693,16 @@ function _a4BuildCompleteFloorPayload(ag) {
     var floorStartIdx = (typeof ag._floorStartIdx === "number") ? ag._floorStartIdx : fullConv.length;
     var floorConv = fullConv.slice(floorStartIdx);
 
-    // ★ 持久化净化：_lines 是运行时缓存不入库，reasoning_content 与 house.reasoning 重复
-    var cleanHouses = (ag._houses || []).map(function(h) {
+    // ★ 持久化净化：_lines 是运行时缓存不入库
+    //   reasoning 保留！下一轮继续时注入上下文，防止 AI 重复分析
+    var cleanHouses = (ag._houses || []).map(function (h) {
         var c = Object.assign({}, h);
         delete c._lines;
-        delete c.reasoning;
         delete c.tools;
         delete c.toolResults;
         return c;
     });
-    var cleanConv = floorConv.map(function(m) {
+    var cleanConv = floorConv.map(function (m) {
         if (m && m.reasoning_content !== undefined) {
             var c = Object.assign({}, m);
             delete c.reasoning_content;
@@ -776,7 +776,7 @@ function _a4FlushCompleteFloor() {
 
     var payload = _a4BuildCompleteFloorPayload(ag);
 
-    qs.saveFloor(questId, floorNum, payload).catch(function(){}).then(function() {
+    qs.saveFloor(questId, floorNum, payload).catch(function () { }).then(function () {
         _a4IncrementalBusy = false;
     });
 }
@@ -798,13 +798,13 @@ function _a4OnBeforeUnload() {
     if (!floorNum) return;
 
     var payload = _a4BuildCompleteFloorPayload(ag);
-    qs.saveFloor(questId, floorNum, payload).catch(function(){});
+    qs.saveFloor(questId, floorNum, payload).catch(function () { });
 }
 
 if (typeof window !== 'undefined') {
     window.addEventListener('beforeunload', _a4OnBeforeUnload);
     // ★ 流式保护：流式输出期间每 5s 强制标记脏（防止长文本打印中断无保存）
-    setInterval(function() {
+    setInterval(function () {
         var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
         if (ag && ag._streaming) _a4MarkIncrementalDirty();
     }, 5000);

@@ -22,6 +22,12 @@
 //   ⑩ 重复编号修复 — repairDuplicateIds() 扫描并重命名同编号 quest/floor 目录
 //      楼层改名时 all.json 无需同步改名，零重命名失败风险
 //
+// ★ 中心大脑架构（2026-06-21）：
+//   parent.__qqq_questIndex = []  — 同窗口三面板共享唯一 quest 索引数组
+//   主面板（panelId=1）扫盘一次 → 写入共享索引 → 广播
+//   侧面板直接读 parent.__qqq_questIndex，零拷贝、零延迟、零不一致
+//   跨窗口通过 IPC sync 广播 quest-created/deleted/renamed 保持同步
+//
 // 存储结构:
 //   Filesystem (真理源):
 //     qqq/quests/q{n}.{title}/f{n}.{question}/
@@ -102,11 +108,35 @@ var QuestStore = (function () {
     }
 
     // ═══════════════════════════════════════════════════════════════
+    // ★ 中心大脑：共享 quest 索引（同窗口三面板读同一引用，零拷贝）★
+    // ═══════════════════════════════════════════════════════════════
+
+    function _idx() {
+        try {
+            if (parent && Array.isArray(parent.__qqq_questIndex)) {
+                return parent.__qqq_questIndex;
+            }
+        } catch (_) { }
+        return null;
+    }
+
+    function _setIdx(arr) {
+        try {
+            // ★ null 始终允许（invalidateIndex 清空用）；
+            //   数组仅在共享索引为空时写入（第一写者胜，防侧面板覆盖主面板结果）
+            if (arr === null || !parent.__qqq_questIndex || parent.__qqq_questIndex.length === 0) {
+                parent.__qqq_questIndex = arr;
+                return true;
+            }
+            return false;
+        } catch (_) { return false; }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     // 构造函数
     // ═══════════════════════════════════════════════════════════════
 
     function QuestStore() {
-        this._index = null;
         this._onChangeCbs = [];
     }
 
@@ -114,7 +144,6 @@ var QuestStore = (function () {
         if (rootDir && typeof rootDir === 'string') {
             _rootDir = rootDir.replace(/\\/g, '/').replace(/\/$/, '');
             _qgs = null;
-            this._index = null;
             _questDirCache = {};
             _floorDirCache = {};
             // [silent] setProjectRoot
@@ -122,7 +151,6 @@ var QuestStore = (function () {
             // ★ workspace 拆卸时清空
             _rootDir = null;
             _qgs = null;
-            this._index = null;
             _questDirCache = {};
             _floorDirCache = {};
         }
@@ -132,13 +160,17 @@ var QuestStore = (function () {
         return _rootDir;
     };
 
-    // ★ 外部失效索引（跨面板同步后强制重载，等 in-flight load 完成再重置）
-    //   返回 Promise：确保调用方 await 后 this._index 确已被 null
+    // ★ 外部失效索引（跨面板同步后强制重载）
+    //   同窗口：共享索引已被发送方原地修改，reload 产生短暂空窗但 sq3 数据一致
+    //   跨窗口：sq3 已被另一窗口更新，必须从 sq3 重载到共享索引
+    //   返回 Promise：确保调用方 await 后共享索引确已从 sq3 重载
     QuestStore.prototype.invalidateIndex = function () {
-        this._index = null;
-        if (_indexLoadPromise) {
-            var self = this;
-            return _indexLoadPromise.then(function () { self._index = null; });
+        // ★ 清空共享索引 → 下次 list() 触发 _ensureIndex 从 sq3 重新加载
+        _setIdx(null);
+        var _pending = _indexLoadPromise;
+        _indexLoadPromise = null;
+        if (_pending) {
+            return _pending.then(function () { });
         }
         return Promise.resolve();
     };
@@ -179,6 +211,7 @@ var QuestStore = (function () {
 
     // ═══════════════════════════════════════════════════════════════
     // Index — quest 列表（唯一入口，懒加载 + 自愈）
+    // ★ 中心大脑：parent.__qqq_questIndex 是唯一真理源
     // ═══════════════════════════════════════════════════════════════
 
     // ★ 并发锁：三面板同时启动时只做一次 fs.list，后续面板等同一 Promise
@@ -192,37 +225,70 @@ var QuestStore = (function () {
     })();
 
     QuestStore.prototype._ensureIndex = async function () {
-        if (this._index !== null) return;
+        // ★ 中心大脑：若共享索引已存在且非空 → 直接返回（已加载）
+        var shared = _idx();
+        if (shared && shared.length > 0) return;
+
+        if (!_isMainPanel) {
+            // ★ 侧面板：等主面板完成加载（轮询 parent.__qqq_questIndex）
+            //   绝不写共享索引（防止覆盖主面板的 _syncIndexFromFs 结果）
+            for (var attempt = 0; attempt < 80; attempt++) {
+                shared = _idx();
+                if (shared && shared.length > 0) return;
+                if (parent && parent.__qqq_questIndexLoading) {
+                    await new Promise(function (r) { setTimeout(r, 100); });
+                    continue;
+                }
+                await new Promise(function (r) { setTimeout(r, 100); });
+            }
+            // ★ 超时（8s）：主面板未响应 → 自己读 sq3 应急（不写共享索引）
+            var raw = await _get(INDEX_KEY);
+            if (raw && Array.isArray(raw) && raw.length > 0) {
+                _setIdx(raw);
+            }
+            return;
+        }
+
+        // ★ 主面板：唯一扫盘者。用 _indexLoadPromise 串行化（模块级锁，防主面板重复加载）
         if (_indexLoadPromise) return _indexLoadPromise;
+        // ★ 同步设标记+空占位（必须在 await 前，防侧面板读到 undefined/null）
+        if (parent) { parent.__qqq_questIndexLoading = true; _setIdx([]); }
         _indexLoadPromise = (async () => {
             try {
                 var raw = await _get(INDEX_KEY);
-                this._index = (raw && Array.isArray(raw)) ? raw : [];
-                await this._healIndex();
-                // ★ 仅中面板执行磁盘↔索引对账，侧面板只读索引免竞态
-                if (_isMainPanel) {
-                    await this._syncIndexFromFs();
+                var idx = (raw && Array.isArray(raw)) ? raw.slice() : [];
+                // ★ 原地替换占位数组内容（保留引用，侧面板可见）
+                var cur = _idx();
+                if (cur) {
+                    cur.length = 0;
+                    for (var ci = 0; ci < idx.length; ci++) { cur.push(idx[ci]); }
+                } else {
+                    _setIdx(idx);
                 }
+                await _healIndex();
+                await _syncIndexFromFs();
             } catch (e) {
                 console.warn('[quest-store] _ensureIndex failed:', e && e.message);
-                if (!this._index) this._index = [];
+                if (!_idx()) _setIdx([]);
             } finally {
                 _indexLoadPromise = null;
+                if (parent) parent.__qqq_questIndexLoading = false;
             }
         })();
         return _indexLoadPromise;
     };
 
     // ★ 计数器自愈：若 quest_id_counter 未初始化，从 index 推最大 ID 种子
-    QuestStore.prototype._healIndex = async function () {
+    async function _healIndex() {
         var b = _bridge();
         if (!b) return;
         try {
             var cur = await b.get('quest_id_counter');
             if (!cur || !(typeof cur === 'number' && cur > 0)) {
+                var idx = _idx() || [];
                 var maxN = 0;
-                for (var i = 0; i < this._index.length; i++) {
-                    var n = this._index[i].numericId || 0;
+                for (var i = 0; i < idx.length; i++) {
+                    var n = idx[i].numericId || 0;
                     if (n > maxN) maxN = n;
                 }
                 if (maxN > 0) {
@@ -233,7 +299,7 @@ var QuestStore = (function () {
         } catch (e) {
             console.warn('[quest-store] _healIndex seed failed:', e && e.message);
         }
-    };
+    }
 
     // ★ 双向对账：磁盘 ↔ sq3 索引
     //   ① 磁盘有、索引无 → 自动发现（备份还原 / 手动复制 quest 目录）
@@ -280,17 +346,23 @@ var QuestStore = (function () {
                 }
 
                 // 索引 → idxMap（id → entry）
+                var idx = _idx() || [];
                 var idxMap = {};
-                for (var j = 0; j < this._index.length; j++) {
-                    idxMap[this._index[j].id] = this._index[j];
+                for (var j = 0; j < idx.length; j++) {
+                    idxMap[idx[j].id] = idx[j];
                 }
 
                 // ① 减法：索引有、磁盘无 → 踢出
+                // ★ 30s 宽限期：questStore.create() 先写索引，_ensureQuestDir() 后建目录，
+                //   这中间若 _syncIndexFromFs 运行会误删刚创建但目录未建的 quest
                 var stale = [];
-                for (var k = this._index.length - 1; k >= 0; k--) {
-                    if (!diskById[this._index[k].id]) {
-                        stale.push(this._index[k].id);
-                        this._index.splice(k, 1);
+                var _now = Date.now();
+                for (var k = idx.length - 1; k >= 0; k--) {
+                    if (!diskById[idx[k].id]) {
+                        var _age = _now - (idx[k].createdAt || 0);
+                        if (_age < 30000) continue;  // ★ 30s 内新建 → 暂不踢，等目录落地
+                        stale.push(idx[k].id);
+                        idx.splice(k, 1);
                     }
                 }
 
@@ -300,7 +372,7 @@ var QuestStore = (function () {
                     var aid = diskIds[ai];
                     if (!idxMap[aid]) {
                         var d = diskById[aid][0];  // 取第一个
-                        this._index.push({
+                        idx.push({
                             id: aid,
                             numericId: d.numericId,
                             title: d.title,
@@ -315,8 +387,8 @@ var QuestStore = (function () {
                 }
 
                 // ★ 更新已有条目的 dirName + 同步缓存（防同编号多目录 prefix scan 误匹配）
-                for (var ui = 0; ui < this._index.length; ui++) {
-                    var ue = this._index[ui];
+                for (var ui = 0; ui < idx.length; ui++) {
+                    var ue = idx[ui];
                     if (ue.id && diskById[ue.id] && diskById[ue.id].length >= 1) {
                         if (!ue.dirName) ue.dirName = diskById[ue.id][0].name;
                         // ★ 缓存必须与索引一致（否则 _resolveQuestDirName prefix scan 可能返回错误目录）
@@ -353,7 +425,10 @@ var QuestStore = (function () {
                         } catch (_) { }
                     }
                 }
-                await this._saveIndex();
+                await _saveIndex();
+                // ★ 广播发现/移除的 quest，让侧面板同步更新
+                for (var _ai = 0; _ai < added.length; _ai++) { _notify(this, 'quest-created', added[_ai]); }
+                for (var _si = 0; _si < stale.length; _si++) { _notify(this, 'quest-deleted', stale[_si]); }
                 if (added.length) console.log('[quest-store] _syncIndexFromFs: discovered ' + added.length + ' new quest(s) from filesystem');
                 if (stale.length) console.log('[quest-store] _syncIndexFromFs: removed ' + stale.length + ' stale quest(s) from index');
             } finally {
@@ -364,9 +439,9 @@ var QuestStore = (function () {
     };
 
     // ★ 手动触发双向对账（备份还原 / 手动复制目录后调用）
+    //   仅主面板执行磁盘扫描（侧面板通过中心大脑 + IPC sync 获取更新，避免多面板并发扫盘竞态）
     QuestStore.prototype.rescan = async function () {
         await this._ensureIndex();
-        // ★ 仅中面板执行磁盘重扫
         if (_isMainPanel) {
             await this._syncIndexFromFs();
         }
@@ -405,6 +480,7 @@ var QuestStore = (function () {
                 var curCounter = 0;
                 try { curCounter = await b.get('quest_id_counter') || 0; } catch (_) { }
 
+                var idx = _idx() || [];
                 for (var di = 0; di < diskIds.length; di++) {
                     var did = diskIds[di];
                     var entries = diskById[did];
@@ -414,9 +490,9 @@ var QuestStore = (function () {
 
                     // 查找 index 中已有该 ID 的条目 → 保留其 dirName
                     var keepName = null;
-                    for (var ei = 0; ei < this._index.length; ei++) {
-                        if (this._index[ei].id === did && this._index[ei].dirName) {
-                            keepName = this._index[ei].dirName;
+                    for (var ei = 0; ei < idx.length; ei++) {
+                        if (idx[ei].id === did && idx[ei].dirName) {
+                            keepName = idx[ei].dirName;
                             break;
                         }
                     }
@@ -437,7 +513,7 @@ var QuestStore = (function () {
                         try {
                             await bf.rename(oldPath, newPath);
                             // 添加到 index
-                            this._index.push({
+                            idx.push({
                                 id: newId,
                                 numericId: curCounter,
                                 title: entries[zi].title,
@@ -461,7 +537,7 @@ var QuestStore = (function () {
                 if (curCounter > 0) {
                     try { await b.setNow('quest_id_counter', curCounter); } catch (_) { }
                 }
-                await this._saveIndex();
+                await _saveIndex();
                 console.log('[quest-store] repairDuplicateIds: fixed=' + fixed + ' failed=' + failed);
 
                 // ★ 同时修复楼层重复（同一 quest 内多个 f{n}.* 目录）
@@ -479,8 +555,8 @@ var QuestStore = (function () {
                     }
                 } catch (_) { }
 
-                for (var flQi = 0; flQi < this._index.length; flQi++) {
-                    var flQe = this._index[flQi];
+                for (var flQi = 0; flQi < idx.length; flQi++) {
+                    var flQe = idx[flQi];
                     var flDirName = flQe.dirName || allDiskDirs[flQe.id];
                     if (!flDirName) continue;
 
@@ -568,9 +644,10 @@ var QuestStore = (function () {
         return _repairLock;
     };
 
-    QuestStore.prototype._saveIndex = async function () {
-        await _setNow(INDEX_KEY, this._index);
-    };
+    async function _saveIndex() {
+        var idx = _idx();
+        if (idx) await _setNow(INDEX_KEY, idx);
+    }
 
     // ═══════════════════════════════════════════════════════════════
     // Quest CRUD
@@ -592,8 +669,9 @@ var QuestStore = (function () {
             createdAt: now,
             lastActiveAt: now
         };
-        this._index.push(entry);
-        await this._saveIndex();
+        var idx = _idx();
+        if (idx) idx.push(entry);
+        await _saveIndex();
 
         // 初始化 quest 元数据（含空的 floors 数组）
         await _setNow(QUEST_NS + '.' + id, {
@@ -613,14 +691,17 @@ var QuestStore = (function () {
 
     QuestStore.prototype.rename = async function (id, title, numericId) {
         await this._ensureIndex();
+        var idx = _idx();
         var entry = null;
-        for (var i = 0; i < this._index.length; i++) {
-            if (this._index[i].id === id) { entry = this._index[i]; break; }
+        if (idx) {
+            for (var i = 0; i < idx.length; i++) {
+                if (idx[i].id === id) { entry = idx[i]; break; }
+            }
         }
         if (entry) {
             entry.title = title;
             if (typeof numericId === 'number') entry.numericId = numericId;
-            await this._saveIndex();
+            await _saveIndex();
             // ★ 标题变了 → 目录名变了 → 失效路径缓存，下次走 list 重新解析
             _invalidatePathCache(id);
             _notify(this, 'quest-renamed', id, { title: title });
@@ -631,16 +712,20 @@ var QuestStore = (function () {
 
     QuestStore.prototype.deleteQuest = async function (id) {
         await this._ensureIndex();
-        this._index = this._index.filter(function (s) { return s.id !== id; });
-        await this._saveIndex();
+        var idx = _idx() || [];
+        var filtered = idx.filter(function (s) { return s.id !== id; });
+        // ★ 直接从共享数组移除（保持引用不变，splice-based 替换）
+        idx.length = 0;
+        for (var fi = 0; fi < filtered.length; fi++) { idx.push(filtered[fi]); }
+        await _saveIndex();
         // 删除 quest 元数据和所有 floor 数据
         var b = _bridge();
         var floors = [];
         if (b && b.del) {
             var qData = await _get(QUEST_NS + '.' + id);
             floors = (qData && qData.floors) || [];
-            for (var fi = 0; fi < floors.length; fi++) {
-                await b.del(FLOOR_NS + '.' + id + '.' + floors[fi].n);
+            for (var fi2 = 0; fi2 < floors.length; fi2++) {
+                await b.del(FLOOR_NS + '.' + id + '.' + floors[fi2].n);
             }
             await b.del(QUEST_NS + '.' + id);
         }
@@ -663,10 +748,12 @@ var QuestStore = (function () {
 
     QuestStore.prototype.touch = async function (id) {
         await this._ensureIndex();
-        for (var i = 0; i < this._index.length; i++) {
-            if (this._index[i].id === id) {
-                this._index[i].lastActiveAt = Date.now();
-                await this._saveIndex();
+        var idx = _idx();
+        if (!idx) return;
+        for (var i = 0; i < idx.length; i++) {
+            if (idx[i].id === id) {
+                idx[i].lastActiveAt = Date.now();
+                await _saveIndex();
                 return;
             }
         }
@@ -674,7 +761,8 @@ var QuestStore = (function () {
 
     QuestStore.prototype.list = async function () {
         await this._ensureIndex();
-        return (this._index || []).slice().sort(function (a, b) { return b.lastActiveAt - a.lastActiveAt; });
+        var idx = _idx() || [];
+        return idx.slice().sort(function (a, b) { return b.lastActiveAt - a.lastActiveAt; });
     };
 
     // ═══════════════════════════════════════════════════════════════
@@ -689,10 +777,6 @@ var QuestStore = (function () {
     QuestStore.prototype.setActiveId = async function (id) {
         await _setNow(ACTIVE_KEY, id);
     };
-
-    // ═══════════════════════════════════════════════════════════════
-    // Quest 所有权 — 唯一真理源：父窗口 __qqq_questOwners
-    // ═══════════════════════════════════════════════════════════════
 
     // ═══════════════════════════════════════════════════════════════
     // Quest 元数据 — save/load（不含 floor 数据）
@@ -863,14 +947,15 @@ var QuestStore = (function () {
             if (resolved) _fDir = resolved;
         }
         // ★ 索引条目存 dirName（精确匹配，防同编号多目录）
-        if (_fDir && this._index) {
-            for (var di = 0; di < this._index.length; di++) {
-                if (this._index[di].id === questId && !this._index[di].dirName) {
+        var idx = _idx();
+        if (_fDir && idx) {
+            for (var di = 0; di < idx.length; di++) {
+                if (idx[di].id === questId && !idx[di].dirName) {
                     // 从 _fDir 提取 quest 目录名: ".../qqq/quests/q{n}.xxx/f{n}.yyy/" → "q{n}.xxx"
                     var parts = _fDir.replace(/\\/g, '/').split('/');
                     for (var pi = parts.length - 1; pi >= 0; pi--) {
                         if (parts[pi] && /^q\d+\./.test(parts[pi])) {
-                            this._index[di].dirName = parts[pi];
+                            idx[di].dirName = parts[pi];
                             break;
                         }
                     }
@@ -1108,7 +1193,7 @@ var QuestStore = (function () {
         }
 
         // 写入重建的 index + 种子计数器
-        this._index = newIndex;
+        _setIdx(newIndex);
         await _setNow(INDEX_KEY, newIndex);
         if (_b && nextNumeric > 0) {
             try { await _b.setNow('quest_id_counter', nextNumeric); } catch (_e) { }

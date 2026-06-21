@@ -172,7 +172,13 @@ function startFloorTimer(aiDiv, ag, resume) {
     // ★ 防御：先清除可能残存的旧 timer（防止重复 start 产生僵尸）
     if (ag._floorTimerId) { clearInterval(ag._floorTimerId); ag._floorTimerId = null; }
     ag._floorTimerId = setInterval(function () {
-        // ★ DOM 有效性守卫：若 aiDiv 已脱离 DOM（Card 被驱逐/重建），停止 timer
+        // ★ 守卫1：楼层已干净完结 → 自停（防僵尸 timer）
+        if (_ag._floorCompletedCleanly) {
+            clearInterval(_ag._floorTimerId);
+            _ag._floorTimerId = null;
+            return;
+        }
+        // ★ 守卫2：DOM 有效性 — 若 aiDiv 已脱离 DOM（Card 被驱逐/重建），停止 timer
         var _curDiv = _ag._activeAiDiv;
         if (!_curDiv || !_curDiv._clockBlock || !_curDiv._clockBlock.isConnected) {
             clearInterval(_ag._floorTimerId);
@@ -286,7 +292,9 @@ async function renderQuestDrop() {
     body.className = 'quest-drop-body';
     for (var i = 0; i < displayCount; i++) {
         (function (s) {
-            var isRunning = streaming && s.id === questActiveId;
+            // ★ 彗星标记：读父窗口中心机器，所有正在建楼的 quest 都显示环绕
+            var runningIds = (typeof _getRunningQuestIds === 'function') ? _getRunningQuestIds() : [];
+            var isRunning = runningIds.indexOf(s.id) >= 0;
             var item = document.createElement('div');
             item.className = 'quest-drop-item' + (s.id === questActiveId ? ' active' : '') + (isRunning ? ' running' : '');
             var line = document.createElement('span');
@@ -320,10 +328,10 @@ async function renderQuestDrop() {
     }
     _questDrop.appendChild(body);
     _questDrop._hasScrollbar = _questDrop.scrollHeight > _questDrop.clientHeight + 2;
-    // ★ 更新悬浮层高度（滚动加载更多时下拉变高）
+    // ★ 更新悬浮层流光高度（豆腐块+下拉可视区，滚动加载更多时变高）
     if (_q2Shimmer) {
         var tofu2 = document.getElementById('quest-tofu');
-        if (tofu2 && _questDrop) _q2Shimmer.style.height = (tofu2.offsetHeight + _questDrop.scrollHeight) + 'px';
+        if (tofu2 && _questDrop) _q2Shimmer.style.height = (tofu2.offsetHeight + _questDrop.clientHeight) + 'px';
     }
 }
 async function openQuestDrop() {
@@ -391,11 +399,12 @@ async function openQuestDrop() {
         }
     });
     await renderQuestDrop();
-    // ★ 悬浮层流光：覆盖整个展开区域
+    // ★ 悬浮层流光：覆盖整个虚线框区域（豆腐块+下拉可视区）
     if (_q2Shimmer) { _q2Shimmer.remove(); _q2Shimmer = null; }
     var sOverlay = document.createElement('div');
     sOverlay.className = 'q2-shimmer-overlay';
-    sOverlay.style.height = (tofu.offsetHeight + drop.scrollHeight) + 'px';
+    sOverlay.style.top = '0';
+    sOverlay.style.height = (tofu.offsetHeight + drop.clientHeight) + 'px';
     bar.appendChild(sOverlay);
     _q2Shimmer = sOverlay;
 }
@@ -414,8 +423,9 @@ async function updateQuestTofu() {
         textEl.textContent = entry.title || '';
         textEl.parentElement.classList.remove('quest-tofu-new');
         if (pen) pen.style.display = '';
-        // 彗星环绕：streaming 时加 class
-        if (streaming) {
+        // ★ 彗星环绕：读父窗口中心机器，所有正在建楼的 quest 均显示
+        var runningIds = (typeof _getRunningQuestIds === 'function') ? _getRunningQuestIds() : [];
+        if (runningIds.indexOf(questActiveId) >= 0) {
             textEl.parentElement.classList.add('quest-running');
         } else {
             textEl.parentElement.classList.remove('quest-running');

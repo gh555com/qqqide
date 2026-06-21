@@ -30,6 +30,68 @@
     var _monacoLoaded = false;
 
     var $titleInput = document.getElementById('title-input');
+
+    // ★ contenteditable：分隔符 \ / 自动红色高亮 + 光标安全
+    function _titleGetText() {
+        return ($titleInput.textContent || '').replace(/\n/g, '');
+    }
+    function _titleCursorOffset() {
+        var sel = window.getSelection();
+        if (!sel.rangeCount) return 0;
+        var range = sel.getRangeAt(0);
+        if (!$titleInput.contains(range.startContainer)) return 0;
+        var pre = document.createRange();
+        pre.setStart($titleInput, 0);
+        pre.setEnd(range.startContainer, range.startOffset);
+        return pre.toString().replace(/\n/g, '').length;
+    }
+    function _titleRestoreCursor(offset) {
+        var sel = window.getSelection();
+        var walker = document.createTreeWalker($titleInput, NodeFilter.SHOW_TEXT);
+        var count = 0;
+        while (walker.nextNode()) {
+            var node = walker.currentNode;
+            var len = (node.textContent || '').length;
+            if (count + len >= offset) {
+                var range = document.createRange();
+                range.setStart(node, Math.max(0, offset - count));
+                range.collapse(true);
+                sel.removeAllRanges();
+                sel.addRange(range);
+                return;
+            }
+            count += len;
+        }
+        // clamp to end
+        var w2 = document.createTreeWalker($titleInput, NodeFilter.SHOW_TEXT);
+        var lastNode = null;
+        while (w2.nextNode()) lastNode = w2.currentNode;
+        if (lastNode) {
+            var range = document.createRange();
+            range.setStart(lastNode, lastNode.textContent.length);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+    }
+    function _titleRebuild(raw) {
+        var offset = _titleCursorOffset();
+        var html = '';
+        for (var i = 0; i < raw.length; i++) {
+            var ch = raw[i];
+            if (ch === '\\' || ch === '/') {
+                html += '<span class="sep">' + _escHtml(ch) + '<\/span>';
+            } else {
+                html += _escHtml(ch);
+            }
+        }
+        $titleInput.innerHTML = html;
+        if (raw.length > 0) _titleRestoreCursor(Math.min(offset, raw.length));
+    }
+    function _titleSetText(raw) {
+        _titleRebuild(raw || '');
+    }
+
     var $selLeft = document.getElementById('sel-left');
     var $selRight = document.getElementById('sel-right');
     // 自定义下拉 DOM
@@ -155,7 +217,7 @@
     }
 
     function _selectHistory(path) {
-        $titleInput.value = path;
+        _titleSetText(path);
         _closeFuzzy();
         _openFileByPath(path);
     }
@@ -170,7 +232,7 @@
     function _openFileByPath(filePath) {
         if (!filePath) return;
         FILE_PATH = filePath;
-        $titleInput.value = filePath;
+        _titleSetText(filePath);
         $titleInput.title = filePath;
         _addHistory(filePath);
         // 通知主进程更新 diffWindows 映射
@@ -190,14 +252,34 @@
         });
     }
 
-    // 输入框事件
+    // ═══ 输入框事件（contenteditable） ═══
     if ($titleInput) {
+        // ★ 每次输入后重建红色分隔符 + 保留光标
+        $titleInput.addEventListener('input', function () {
+            _titleRebuild(_titleGetText());
+            _buildFuzzyList(_titleGetText());
+        });
+        // ★ 粘贴后清洗换行并重建
+        $titleInput.addEventListener('paste', function (e) {
+            e.preventDefault();
+            var text = (e.clipboardData || window.clipboardData).getData('text/plain');
+            text = text.replace(/[\r\n]+/g, '');
+            if (text) {
+                var sel = window.getSelection();
+                if (sel.rangeCount && $titleInput.contains(sel.anchorNode)) {
+                    sel.getRangeAt(0).deleteContents();
+                    sel.getRangeAt(0).insertNode(document.createTextNode(text));
+                    sel.collapseToEnd();
+                }
+            }
+            _titleRebuild(_titleGetText());
+        });
+
         // Enter 键：打开文件
         $titleInput.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 if (_fuzzyVisible && _fuzzyIdx >= 0) {
-                    // 选中下拉项：通过 idxMap 找到 _fileHistory 实际索引
                     var idxMap = $fuzzyList._idxMap || [];
                     var realIdx = idxMap[_fuzzyIdx];
                     if (typeof realIdx === 'number' && _fileHistory[realIdx]) {
@@ -205,13 +287,13 @@
                     }
                 } else {
                     _closeFuzzy();
-                    _openFileByPath($titleInput.value.trim());
+                    _openFileByPath(_titleGetText().trim());
                 }
                 return;
             }
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
-                if (!_fuzzyVisible) { _buildFuzzyList($titleInput.value); }
+                if (!_fuzzyVisible) { _buildFuzzyList(_titleGetText()); }
                 var items = $fuzzyList.querySelectorAll('.fuzzy-item');
                 if (items.length) {
                     _fuzzyIdx = Math.min(_fuzzyIdx + 1, items.length - 1);
@@ -233,14 +315,9 @@
             }
         });
 
-        // 输入时模糊匹配
-        $titleInput.addEventListener('input', function () {
-            _buildFuzzyList($titleInput.value);
-        });
-
         // 聚焦时显示历史
         $titleInput.addEventListener('focus', function () {
-            if (!_fuzzyVisible) _buildFuzzyList($titleInput.value);
+            if (!_fuzzyVisible) _buildFuzzyList(_titleGetText());
         });
 
         // 点击外部关闭下拉
@@ -299,7 +376,7 @@
     if (!FILE_PATH || !PROJECT_ROOT) {
         $emptyState.textContent = '缺少参数';
     } else {
-        $titleInput.value = FILE_PATH;
+        _titleSetText(FILE_PATH);
         $titleInput.title = FILE_PATH;
         loadVersions(FILE_PATH);
     }
@@ -365,20 +442,23 @@
     function _parseFloorId(floorId) {
         if (!floorId) return '';
         var parts = floorId.split('/');
-        // 格式: "q38/f14/h3/r2" 或 "q38/f14"
         var out = [];
         for (var pi = 0; pi < parts.length; pi++) {
             out.push(parts[pi]);
         }
         return out.join(' ');
     }
+    // ★ 精简溯源：r1 在所有快照中都是 1，去掉省空间
+    function _compactTrace(trace) {
+        if (!trace) return '';
+        return trace.replace(/ r1\b/g, '');
+    }
 
     // ═══ 映射 source → 可读标签 ═══
     function _sourceLabel(source, floorId) {
         if (source === 'q') {
-            // 钩子 Q：AI 写工具 → 显示 trace（如 "q38 f14 h3 r2"）
             var trace = _parseFloorId(floorId);
-            return trace || 'q';
+            return _compactTrace(trace) || 'q';
         }
         if (source === 'auto-save') {
             return 'auto save';
@@ -567,7 +647,7 @@
             // 给 +数字 加绿色 span
             displayHtml = displayHtml.replace(/\+(\d+)/g, '<span class="v-stat-green">+$1</span>');
             // ★ 减号染色：仅 diff 统计（空格后 -N），不染日期
-            displayHtml = displayHtml.replace(/\s\-(\d+)/g, '&nbsp;<span class="v-stat-red">-$1</span>');
+            displayHtml = displayHtml.replace(/\s\-(\d+)/g, '<span class="v-stat-red">-$1</span>');
             // ★ 日期中 06-15 加粗
             displayHtml = displayHtml.replace(/(\d{4})-(\d{2})-(\d{2})/g, '$1-<b class="v-date-md">$2-$3</b>');
             // ★ 时分秒左右加空格（防 flexbox 吞）
@@ -598,7 +678,7 @@
                 var displayHtml = _escHtml(mo.fullLabel || mo.label);
                 displayHtml = displayHtml.replace(/^(#\d+)\s/, '<b>$1</b>&nbsp;');
                 displayHtml = displayHtml.replace(/\+(\d+)/g, '<span class="v-stat-green">+$1</span>');
-                displayHtml = displayHtml.replace(/\s\-(\d+)/g, '&nbsp;<span class="v-stat-red">-$1</span>');
+                displayHtml = displayHtml.replace(/\s\-(\d+)/g, '<span class="v-stat-red">-$1</span>');
                 displayHtml = displayHtml.replace(/(\d{4})-(\d{2})-(\d{2})/g, '$1-<b class="v-date-md">$2-$3</b>');
                 displayHtml = displayHtml.replace(/(\d{2}:\d{2}:\d{2})/g, '&nbsp;$1&nbsp;');
                 if (mo.sourceLabel) displayHtml = _wrapSourceTag(displayHtml, mo.sourceLabel);
@@ -637,23 +717,40 @@
     _calcDropdownMaxHeight();
     window.addEventListener('resize', _calcDropdownMaxHeight);
 
-    // ── 自定义下拉交互 ──
+    // ── 自定义下拉交互（hover 自动展开，点击锁定）──
     function _initDropdown($dd, $btn, $list, $hidden, side) {
-        // 点击按钮：切换展开（不关另一个列表）
-        $btn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            var wasOpen = $dd.classList.contains('open');
-            if (wasOpen) {
-                $dd.classList.remove('open');
-            } else {
+        $dd._clickOpened = false;  // 标记：是否由用户点击打开（锁定态，不因 mouseleave 关闭）
+
+        // hover 自动展开
+        $dd.addEventListener('mouseenter', function () {
+            if (!$dd.classList.contains('open')) {
                 $dd.classList.add('open');
                 _calcDropdownMaxHeight();
                 _highlightAndScroll($list, $hidden.value);
             }
         });
-        // 点击列表项：选中并关闭（排除复制按钮）
+        // 移出自动收回（仅非点击锁定态）
+        $dd.addEventListener('mouseleave', function () {
+            if (!$dd._clickOpened) {
+                $dd.classList.remove('open');
+            }
+        });
+        // 点击按钮：切换展开，并锁定（不关另一个列表）
+        $btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var wasOpen = $dd.classList.contains('open');
+            if (wasOpen) {
+                $dd.classList.remove('open');
+                $dd._clickOpened = false;
+            } else {
+                $dd.classList.add('open');
+                $dd._clickOpened = true;  // ★ 点击锁定
+                _calcDropdownMaxHeight();
+                _highlightAndScroll($list, $hidden.value);
+            }
+        });
+        // 点击列表项：选中并关闭，解除锁定
         $list.addEventListener('click', function (e) {
-            // ★ 点复制按钮：复制纯文本（手动冒泡查找到按钮元素）
             var copyBtn = null;
             var el = e.target;
             while (el && el !== $list) {
@@ -666,7 +763,6 @@
                 var copyItem = copyBtn.closest('.v-dropdown-item');
                 if (copyItem) {
                     var text = copyItem.textContent.replace(/📋/g, '').trim();
-                    // 使用 textarea + execCommand 兜底（兼容 Electron / 非安全上下文）
                     var ta = document.createElement('textarea');
                     ta.value = text;
                     ta.style.position = 'fixed';
@@ -682,17 +778,21 @@
             var item = e.target.closest('.v-dropdown-item');
             if (!item) return;
             var val = item.dataset.value;
-            if (val === $hidden.value) { $dd.classList.remove('open'); return; }
+            if (val === $hidden.value) { $dd.classList.remove('open'); $dd._clickOpened = false; return; }
             $hidden.value = val;
             _refreshDropdownBtn($btn, val, _options);
             _highlightAndScroll($list, val);
             $dd.classList.remove('open');
+            $dd._clickOpened = false;  // ★ 选择后解除锁定
             updateMarkers();
             renderDiff();
         });
-        // 点击外部关闭
-        document.addEventListener('click', function () {
-            $dd.classList.remove('open');
+        // 点击外部关闭并解除锁定
+        document.addEventListener('click', function (e) {
+            if (!$dd.contains(e.target)) {
+                $dd.classList.remove('open');
+                $dd._clickOpened = false;
+            }
         });
     }
     _initDropdown($ddLeft, $ddLeftBtn, $ddLeftList, $selLeft, 'left');
@@ -836,6 +936,8 @@
             renderOverviewRuler: true,
             fontSize: 13,
             lineNumbers: 'on',
+            lineNumbersMinChars: 2,
+            lineDecorationsWidth: 10,
             scrollBeyondLastLine: false,
             theme: THEME,
         });
@@ -881,8 +983,9 @@
             if (c.originalEndLineNumber > 0 && c.modifiedEndLineNumber > 0) {
                 var ol = c.originalEndLineNumber - c.originalStartLineNumber + 1;
                 var ml = c.modifiedEndLineNumber - c.modifiedStartLineNumber + 1;
-                if (ml > ol) added += ml - ol;
-                else if (ol > ml) deleted += ol - ml;
+                // ★ LCS 语义：替换块 = 删掉所有旧行 + 加入所有新行（与 A4 _a4DiffStats 一致）
+                added += ml;
+                deleted += ol;
             } else if (c.modifiedEndLineNumber > 0) {
                 added += c.modifiedEndLineNumber - c.modifiedStartLineNumber + 1;
             } else if (c.originalEndLineNumber > 0) {
@@ -974,6 +1077,8 @@
                 // 其他
                 rulers: [],
                 roundedSelection: false,
+                lineNumbersMinChars: 2,
+                lineDecorationsWidth: 10,
                 padding: { top: 0, bottom: 0 },
                 stickyScroll: { enabled: false },
                 find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'never' },

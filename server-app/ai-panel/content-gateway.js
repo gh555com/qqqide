@@ -22,12 +22,12 @@
     var MAX_RESPONSE_TOKENS = 393216; // AI 回答最大 tokens（上限 393216，唯一真理在此）
     var READ_FILE_CAP_BYTES = 200000;  // read_file 单次返回字节上限（～200KB，超过则截断+分页提示）
     var COMPACT_MAX_TOKENS = 32768;   // 上下文压缩产出硬限 32K
-    var AI_OUTPUT_WATCHDOG_MS = 900000; // AI 流产出看门狗 15min（agent-loop 读此，唯一真理在此）
+    var AI_OUTPUT_WATCHDOG_MS_REMOVED = true; // output_watchdog 已移除（2026-06-21）— AI 推理不限时
 
     // ═══ 网络超时参数（单一真理源：改一处全局生效） ═══
-    var FETCH_DEADLINE_PRIMARY_MS = 98000;   // 主线路 fetch 超时（CF Worker 100s 硬限制，留 2s 余量）
-    var FETCH_DEADLINE_FALLBACK_MS = 180000; // 备用线路 fetch 超时（无 CF 限制，3min 包容慢响应）
-    var STREAM_WATCHDOG_MS = 180000;         // SSE 流看门狗 3min（深度推理可能 2min+ 无 token）
+    var FETCH_DEADLINE_PRIMARY_MS = 600000;   // 主线直连（绕过 CF），对齐 Nginx+Go 600s，仅作兜底天花板
+    var FETCH_DEADLINE_FALLBACK_MS = 600000;  // 备线走 CF Worker，实测 CF Proxy 有心跳流不掐 100s
+    var STREAM_WATCHDOG_MS = 180000;          // SSE 流看门狗 3min（深度推理可能 2min+ 无 token）
 
     // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
     var CTX_MAX_TOKENS = 1048565;     // 上下文窗口总上限（实测精确值）
@@ -102,7 +102,7 @@
         READ_FILE_CAP_BYTES: READ_FILE_CAP_BYTES,
         READ_FILE_CAP_KB: Math.round(READ_FILE_CAP_BYTES / 1024),
         COMPACT_MAX_TOKENS: COMPACT_MAX_TOKENS,
-        AI_OUTPUT_WATCHDOG_MS: AI_OUTPUT_WATCHDOG_MS,
+        AI_OUTPUT_WATCHDOG_MS_REMOVED: true,
         // 网络超时参数
         FETCH_DEADLINE_PRIMARY_MS: FETCH_DEADLINE_PRIMARY_MS,
         FETCH_DEADLINE_FALLBACK_MS: FETCH_DEADLINE_FALLBACK_MS,
