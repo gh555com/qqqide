@@ -74,12 +74,13 @@ function _maybeHintBackslashN(result, edits) {
 // 工具定义（OpenAI function calling format）
 // ============================================================
 
+var _RFCKB_D = typeof ContentGateway !== "undefined" ? ContentGateway.READ_FILE_CAP_KB : 195;
 var TOOL_DEFINITIONS = [
     {
         type: 'function',
         function: {
             name: 'read_file',
-            description: 'Read file contents. Returns up to ~48KB per call. If truncated (marked [TRUNCATED L1-N]), next call MUST use start_line: N+1 to continue. You may read any file at any time — the system trusts your judgment.',
+            description: 'Read file contents. Returns up to ~' + _RFCKB_D + 'KB per call. If truncated (marked [TRUNCATED L1-N]), next call MUST use start_line: N+1 to continue. You may read any file at any time — the system trusts your judgment.',
             parameters: {
                 type: 'object',
                 properties: {

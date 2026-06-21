@@ -10,9 +10,12 @@
     var PROJECT_ROOT = params.get('projectRoot') || '';
     var INIT_BEFORE = params.get('before') || '';
     var INIT_AFTER = params.get('after') || '';
-    // 主题：优先 URL 参数，其次系统偏好，默认 dark（使用 solarized 以匹配 X 区 editor）
-    var THEME = params.get('theme') === 'light' ? 'solarized-light' : 'solarized-dark';
-    if (typeof qqqideTheme !== 'undefined') qqqideTheme.apply(params.get('theme') === 'dark');
+    // 主题：URL 参数优先，同步到 qqqideTheme + THEME 变量
+    var _urlDark = params.get('theme') === 'dark';
+    if (typeof qqqideTheme !== 'undefined') qqqideTheme.apply(_urlDark);
+    // ★ 以 qqqideTheme 的最终状态为准（localStorage 预设 + URL 覆盖后的结果）
+    var _isDark = (typeof qqqideTheme !== 'undefined') ? qqqideTheme.isDark() : _urlDark;
+    var THEME = _isDark ? 'solarized-dark' : 'solarized-light';
 
     var _versions = [];
     var _lastContent = null;
@@ -762,7 +765,12 @@
                 };
                 require(['vs/editor/editor.main'], function () {
                     _monacoLoaded = true;
-                    if (typeof qqqideTheme !== 'undefined') qqqideTheme.defineMonacoThemes(window.monaco);
+                    // ★ 优先走 qqqideTheme 统一入口，未加载时内联兜底（同色盘，二选一，不重复注册）
+                    if (typeof qqqideTheme !== 'undefined') {
+                        qqqideTheme.defineMonacoThemes(window.monaco);
+                    } else {
+                        _defineMonacoThemesFallback(window.monaco);
+                    }
                     resolve();
                 }, function (err) {
                     console.error('[diff] monaco load failed:', err);
@@ -1148,7 +1156,106 @@
         } catch (_) { }
     }
 
-    // ★ Monaco 主题由 qqqide-theme.js 的 defineMonacoThemes() 统一定义，此处不再重复
+    // ★ Monaco 主题兜底（qqqide-theme.js 未加载时启用，色盘与 qqqide-theme.js 完全一致）
+    function _defineMonacoThemesFallback(monaco) {
+        if (!monaco || !monaco.editor) return;
+        try {
+            monaco.editor.defineTheme('solarized-light', {
+                base: 'vs', inherit: false,
+                colors: {
+                    'editor.background': '#FDF6E3',
+                    'editor.foreground': '#5c7060',
+                    'editor.lineHighlightBackground': '#EEE8D5',
+                    'editorLineNumber.foreground': '#777777',
+                    'editorCursor.foreground': '#58685e',
+                    'editor.selectionBackground': '#E8A090',
+                    'editor.inactiveSelectionBackground': '#E8C8B8',
+                    'editorOverviewRuler.border': '#00000000',
+                    'focusBorder': '#b58900',
+                    'editorWidget.background': '#eee8d5',
+                    'editorWidget.foreground': '#5c7060',
+                    'editorWidget.border': '#d3c6aa',
+                    'input.background': '#fdf6e3',
+                    'input.foreground': '#5c7060',
+                    'input.border': '#d3c6aa',
+                    'inputOption.activeBorder': '#b58900',
+                    'inputOption.activeBackground': '#eee8d5',
+                    'editor.findMatchBackground': '#ffd30266',
+                    'editor.findMatchHighlightBackground': '#ffd30233',
+                    'editor.findRangeHighlightBackground': '#ffd30215',
+                },
+                rules: [
+                    { token: '', foreground: '5c7060', background: 'FDF6E3' },
+                    { token: 'comment', foreground: '95958a', fontStyle: 'italic' },
+                    { token: 'string', foreground: '2a9a78' },
+                    { token: 'string.regexp', foreground: 'DC322F' },
+                    { token: 'number', foreground: 'c83070' },
+                    { token: 'variable', foreground: '4078a0' },
+                    { token: 'keyword', foreground: '859900' },
+                    { token: 'storage', foreground: '58685e', fontStyle: 'bold' },
+                    { token: 'type', foreground: 'CB4B16' },
+                    { token: 'namespace', foreground: 'CB4B16' },
+                    { token: 'function', foreground: '4078a0' },
+                    { token: 'variable.predefined', foreground: 'B58900' },
+                    { token: 'constant', foreground: 'CB4B16' },
+                    { token: 'tag', foreground: '4078a0' },
+                    { token: 'attribute.name', foreground: '95958a' },
+                    { token: 'support.function', foreground: '4078a0' },
+                    { token: 'support.type', foreground: '859900' },
+                    { token: 'support', foreground: '839080' },
+                    { token: 'invalid', foreground: 'DC322F' },
+                ]
+            });
+            monaco.editor.defineTheme('solarized-dark', {
+                base: 'vs-dark', inherit: false,
+                colors: {
+                    'editor.background': '#1e1e1e',
+                    'editor.foreground': '#dcd8d0',
+                    'editor.lineHighlightBackground': '#2a2a2a',
+                    'editorLineNumber.foreground': '#97978a',
+                    'editorCursor.foreground': '#c8c4b8',
+                    'editor.selectionBackground': '#5a3a2a',
+                    'editor.inactiveSelectionBackground': '#4a3020',
+                    'editorOverviewRuler.border': '#00000000',
+                    'focusBorder': '#d4a017',
+                    'editorWidget.background': '#2a2a2a',
+                    'editorWidget.foreground': '#dcd8d0',
+                    'editorWidget.border': '#333333',
+                    'input.background': '#1e1e1e',
+                    'input.foreground': '#dcd8d0',
+                    'input.border': '#555555',
+                    'inputOption.activeBorder': '#d4a017',
+                    'inputOption.activeBackground': '#3a3520',
+                    'editor.findMatchBackground': '#d4a01766',
+                    'editor.findMatchHighlightBackground': '#d4a01733',
+                    'editor.findRangeHighlightBackground': '#d4a01715',
+                },
+                rules: [
+                    { token: '', foreground: 'dcd8d0', background: '1e1e1e' },
+                    { token: 'comment', foreground: '6a6660', fontStyle: 'italic' },
+                    { token: 'string', foreground: '8fbc5a' },
+                    { token: 'string.regexp', foreground: 'ff4444' },
+                    { token: 'number', foreground: 'b85872' },
+                    { token: 'variable', foreground: 'd4a017' },
+                    { token: 'keyword', foreground: '8fbc5a' },
+                    { token: 'storage', foreground: 'c8c4b8', fontStyle: 'bold' },
+                    { token: 'type', foreground: 'e07020' },
+                    { token: 'namespace', foreground: 'e07020' },
+                    { token: 'function', foreground: 'd4a017' },
+                    { token: 'variable.predefined', foreground: 'd4a017' },
+                    { token: 'constant', foreground: 'e07020' },
+                    { token: 'tag', foreground: 'e07020' },
+                    { token: 'attribute.name', foreground: 'c8c4b8' },
+                    { token: 'support.function', foreground: 'd4a017' },
+                    { token: 'support.type', foreground: '8fbc5a' },
+                    { token: 'support', foreground: 'a8a49c' },
+                    { token: 'invalid', foreground: 'ff4444' },
+                ]
+            });
+        } catch (e) {
+            console.warn('[diff] defineTheme fallback failed:', e && e.message);
+        }
+    }
 
     // ═══ 监听主题切换（来自主窗口 qqqide-theme.js 的广播） ═══
     if (bridge && bridge.sync && bridge.sync.onMessage) {

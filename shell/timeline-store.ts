@@ -1,8 +1,25 @@
 // ============================================================================
-// timeline-store.ts — 文件版本时间线存储 (SHA256去重 + gzip + SQLite索引)
+// timeline-store.ts — 文件版本时间线存储（极简架构，2026-06-21）
+//
 // 存储: {projectRoot}/qqq/timeline/
-//   blobs/{sha256[:2]}/{sha256}.gz  — 内容（不可变）
-//   timeline.db                       — SQLite 版本索引
+//   blobs/{sha256[:2]}/{sha256}.gz    — 内容（不可变，SHA256 寻址，永不删除）
+//   timeline.db                         — SQLite 索引（全量快照，每 100 条快照压缩一次）
+//   timeline.db.bak                     — 索引备份（压缩后同步更新，损坏时自动恢复）
+//   timeline.wal                        — 增量日志（NDJSON 追加，压缩后清空）
+//
+// 写入:
+//   每条快照 → 内存 INSERT + append 一行到 .wal（零延迟）
+//   第 100 条 → 压缩：db.export → .db + .bak → 清空 .wal（重置计数）
+//   退出时 → 强制压缩一次（确保 .wal 不残留）
+//
+// 恢复:
+//   启动 → 加载 .db（损坏→.bak→空库）→ 回放 .wal（最多 99 行未压缩的）→ 完整
+//
+// 铁律:
+//   - blob 文件永不删除（内容寻址 + gzip，git 内核设计）
+//   - SQLite 是纯缓存，.bak 是一份备份，.wal 是暂存器（最多 99 行）
+//   - 所有写入走 tmp+rename 原子化
+//   - SHA256 行尾归一化（CRLF/LF 视为相同内容）
 // ============================================================================
 
 import * as path from 'path';
@@ -11,10 +28,13 @@ import * as crypto from 'crypto';
 import * as zlib from 'zlib';
 import { BrowserWindow } from 'electron';
 
-export const _timelineDbs: Map<string, any> = new Map(); // projectRoot → sql.js Database
-export const _diffWindows: Map<string, BrowserWindow> = new Map(); // filePath → BrowserWindow (单例)
-// ★ 初始化锁：防止同时两个请求各开各的 DB（导致去重失效 + 数据覆盖）
+export const _timelineDbs: Map<string, any> = new Map();
+export const _diffWindows: Map<string, BrowserWindow> = new Map();
 const _tlInitLocks: Map<string, Promise<any>> = new Map();
+
+const WAL_MAX_LINES = 100;
+
+const _tlWalCounts: Map<string, number> = new Map();  // .wal 当前行数（用于阈值判断）
 
 export function _tlDir(projectRoot: string): string {
     return path.join(projectRoot, 'qqq', 'timeline');
@@ -24,124 +44,209 @@ export function _tlBlobPath(projectRoot: string, sha256: string): string {
     return path.join(_tlDir(projectRoot), 'blobs', sha256.slice(0, 2), sha256 + '.gz');
 }
 
-/** 打开或创建 timeline SQLite 数据库（加锁防双开） */
-export async function _tlOpenDb(projectRoot: string): Promise<any> {
-    const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
-    let db = _timelineDbs.get(dbPath);
-    if (db) return db;
-    // ★ 同一 dbPath 同时只允许一个初始化
-    const existingInit = _tlInitLocks.get(dbPath);
-    if (existingInit) return existingInit;
-    const initPromise = (async () => {
-        try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch (_) { }
-        const initSqlJs = require('sql.js');
-        const SQL = await initSqlJs();
-        if (fs.existsSync(dbPath)) {
-            try {
-                const buf = fs.readFileSync(dbPath);
-                db = new SQL.Database(buf);
-            } catch (e) {
-                console.warn('[timeline] corrupt db, starting fresh:', e);
-                try { fs.renameSync(dbPath, dbPath + '.corrupt.' + Date.now()); } catch (_) { }
-                db = new SQL.Database();
-            }
-        } else {
-            db = new SQL.Database();
-        }
-        db.run(`CREATE TABLE IF NOT EXISTS versions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        file_path TEXT NOT NULL,
-        ts INTEGER NOT NULL,
-        blob_hash TEXT NOT NULL,
-        source TEXT NOT NULL,
-        floor_id TEXT,
-        added_lines INTEGER,
-        deleted_lines INTEGER
-    )`);
-        // 向前兼容：旧表无新列则补
-        try { db.run('ALTER TABLE versions ADD COLUMN added_lines INTEGER'); } catch (_) { /* already exists */ }
-        try { db.run('ALTER TABLE versions ADD COLUMN deleted_lines INTEGER'); } catch (_) { /* already exists */ }
-        db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_ts ON versions(file_path, ts)');
-        db.run('PRAGMA journal_mode=WAL');
-        db.run('PRAGMA synchronous=FULL');
-        db.run('PRAGMA busy_timeout=30000');
-        _timelineDbs.set(dbPath, db);
-        // 清理历史孤儿 tmp（纯收益，零风险）
-        _tlCleanStaleTmp(projectRoot);
-        return db;
-    })();
-    _tlInitLocks.set(dbPath, initPromise);
-    try { return await initPromise; } finally { _tlInitLocks.delete(dbPath); }
+function _tlDbPath(projectRoot: string): string {
+    return path.join(_tlDir(projectRoot), 'timeline.db');
 }
 
-// ── 延迟批量化刷盘：避免每次 record 都全量导出 SQL.js DB ──
-const _tlFlushTimers: Map<string, ReturnType<typeof setTimeout>> = new Map();
-const _tlFlushDebounceMs = 2000; // 2s 无新写入再刷盘
+function _tlBakPath(projectRoot: string): string {
+    return path.join(_tlDir(projectRoot), 'timeline.db.bak');
+}
 
-/** timeline tmp 目录 */
+function _tlWalPath(projectRoot: string): string {
+    return path.join(_tlDir(projectRoot), 'timeline.wal');
+}
+
 function _tlTmpDir(projectRoot: string): string {
     return path.join(_tlDir(projectRoot), '.tmp');
 }
 
-export function _tlFlushDb(db: any, dbPath: string): void {
-    // 取消旧定时器，重新计时
-    const existing = _tlFlushTimers.get(dbPath);
-    if (existing) clearTimeout(existing);
-    _tlFlushTimers.set(dbPath, setTimeout(() => {
-        _tlFlushTimers.delete(dbPath);
-        try {
-            const projectRoot = path.dirname(path.dirname(path.dirname(dbPath))); // dbPath = {root}/qqq/timeline/timeline.db
-            const tmpDir = _tlTmpDir(projectRoot);
-            try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
-            const data = db.export();
-            const tmp = path.join(tmpDir, 'timeline.db.tmp.' + Date.now());
-            fs.writeFileSync(tmp, Buffer.from(data));
-            fs.renameSync(tmp, dbPath);
-        } catch (e) {
-            console.warn('[timeline] flush failed:', e);
+// ── 回放 .wal 的内容到 DB，返回回放行数 ──
+function _tlReplayWal(db: any, projectRoot: string): number {
+    const walPath = _tlWalPath(projectRoot);
+    if (!fs.existsSync(walPath)) return 0;
+    let count = 0;
+    try {
+        const content = fs.readFileSync(walPath, 'utf8');
+        const lines = content.split('\n').filter(l => l.trim());
+        if (lines.length === 0) return 0;
+        const stmt = db.prepare(
+            'INSERT INTO versions (file_path, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?)'
+        );
+        for (const line of lines) {
+            try {
+                const row = JSON.parse(line);
+                stmt.run([row.p || '', row.t || 0, row.h || '', row.s || 'q', row.f || null, row.a || null, row.d || null]);
+                count++;
+            } catch (_) { /* 跳过损坏行 */ }
         }
-    }, _tlFlushDebounceMs));
+        stmt.free();
+    } catch (e) {
+        console.warn('[timeline] wal replay failed:', e && (e as any).message);
+    }
+    return count;
 }
 
-/** 强制立即刷盘（退出前调用） */
-export function _tlFlushNow(db: any, dbPath: string): void {
-    const timer = _tlFlushTimers.get(dbPath);
-    if (timer) { clearTimeout(timer); _tlFlushTimers.delete(dbPath); }
-    try {
-        const projectRoot = path.dirname(path.dirname(path.dirname(dbPath)));
-        const tmpDir = _tlTmpDir(projectRoot);
-        try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
-        const data = db.export();
-        const tmp = path.join(tmpDir, 'timeline.db.tmp.' + Date.now());
-        fs.writeFileSync(tmp, Buffer.from(data));
-        fs.renameSync(tmp, dbPath);
-    } catch (e) {
-        console.warn('[timeline] flushNow failed:', e);
+// ═══ 打开或创建 DB — 恢复：.db → .bak → 空库 → 回放 .wal ═══
+export async function _tlOpenDb(projectRoot: string): Promise<any> {
+    const dbPath = _tlDbPath(projectRoot);
+    let db = _timelineDbs.get(dbPath);
+    if (db) return db;
+
+    const existingInit = _tlInitLocks.get(dbPath);
+    if (existingInit) return existingInit;
+
+    const initPromise = (async () => {
+        try { fs.mkdirSync(path.dirname(dbPath), { recursive: true }); } catch (_) { }
+        const initSqlJs = require('sql.js');
+        const SQL = await initSqlJs();
+
+        // 1. 加载主 DB（损坏 → 尝试 .bak → 空库）
+        let dbLoaded = false;
+        for (const tryPath of [dbPath, _tlBakPath(projectRoot)]) {
+            if (!fs.existsSync(tryPath)) continue;
+            try {
+                const buf = fs.readFileSync(tryPath);
+                db = new SQL.Database(buf);
+                db.exec('SELECT 1');  // 验证真实可用
+                dbLoaded = true;
+                if (tryPath !== dbPath) {
+                    console.warn('[timeline] main db corrupt, recovered from .bak');
+                    try { fs.writeFileSync(dbPath, buf); } catch (_) { }
+                }
+                break;
+            } catch (e) {
+                console.warn('[timeline] db load failed:', tryPath, e && (e as any).message);
+                try { fs.renameSync(tryPath, tryPath + '.corrupt.' + Date.now()); } catch (_) { }
+                db = null;
+            }
+        }
+        if (!dbLoaded || !db) db = new SQL.Database();
+
+        // 2. 建表（幂等）
+        db.run(`CREATE TABLE IF NOT EXISTS versions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_path TEXT NOT NULL, ts INTEGER NOT NULL, blob_hash TEXT NOT NULL,
+            source TEXT NOT NULL, floor_id TEXT, added_lines INTEGER, deleted_lines INTEGER
+        )`);
+        try { db.run('ALTER TABLE versions ADD COLUMN added_lines INTEGER'); } catch (_) { }
+        try { db.run('ALTER TABLE versions ADD COLUMN deleted_lines INTEGER'); } catch (_) { }
+        db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_ts ON versions(file_path, ts)');
+        db.run('PRAGMA journal_mode=WAL');
+        db.run('PRAGMA synchronous=FULL');
+        db.run('PRAGMA busy_timeout=30000');
+
+        // 3. 回放 .wal（最多 99 行，上次压缩后未压缩的）
+        const replayed = _tlReplayWal(db, projectRoot);
+        if (replayed > 0) {
+            console.log('[timeline] replayed ' + replayed + ' wal entries');
+        }
+
+        _timelineDbs.set(dbPath, db);
+        _tlWalCounts.set(dbPath, replayed);
+        _tlCleanStaleTmp(projectRoot);
+
+        // 4. 有回放数据 → 立即压缩到 .db + .bak（清 .wal）
+        if (replayed > 0) {
+            try { _tlCompactSync(db, dbPath, projectRoot); } catch (_) { }
+        }
+
+        return db;
+    })();
+
+    _tlInitLocks.set(dbPath, initPromise);
+    try { return await initPromise; } finally { _tlInitLocks.delete(dbPath); }
+}
+
+// ═══ 写入一条快照 → 内存 INSERT + 追加 .wal（零延迟） ═══
+export function _tlRecord(
+    db: any, dbPath: string, projectRoot: string,
+    row: { file_path: string; ts: number; blob_hash: string; source: string; floor_id?: string | null; added_lines?: number | null; deleted_lines?: number | null }
+): void {
+    // 内存 INSERT
+    db.run(
+        'INSERT INTO versions (file_path, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?)',
+        [row.file_path, row.ts, row.blob_hash, row.source, row.floor_id || null, row.added_lines || null, row.deleted_lines || null]
+    );
+
+    // 追加 .wal（字段缩写，每行 ~100 字节）
+    const walLine = JSON.stringify({
+        p: row.file_path, t: row.ts, h: row.blob_hash, s: row.source,
+        f: row.floor_id || undefined,
+        a: row.added_lines ?? undefined, d: row.deleted_lines ?? undefined,
+    }) + '\n';
+
+    const walPath = _tlWalPath(projectRoot);
+    try { fs.mkdirSync(path.dirname(walPath), { recursive: true }); } catch (_) { }
+    fs.appendFileSync(walPath, walLine, 'utf8');
+
+    // 递增计数，达到阈值 → 立即压缩
+    const count = (_tlWalCounts.get(dbPath) || 0) + 1;
+    _tlWalCounts.set(dbPath, count);
+
+    if (count >= WAL_MAX_LINES) {
+        _tlCompactSync(db, dbPath, projectRoot);
     }
 }
 
-/** SHA256 hex (64 chars) — 行尾归一化：CRLF/LF/CR 视为相同内容，防幽灵版本 */
+// ═══ 强制压缩（退出前调用） ═══
+export function _tlFlushNow(db: any, dbPath: string, projectRoot: string): void {
+    try { _tlCompactSync(db, dbPath, projectRoot); } catch (e) {
+        console.warn('[timeline] flushNow failed:', e && (e as any).message);
+    }
+}
+
+// ═══ 压缩：全量快照 → .db + .bak → 清空 .wal ═══
+function _tlCompactSync(db: any, dbPath: string, projectRoot: string): void {
+    const walPath = _tlWalPath(projectRoot);
+    const tmpDir = _tlTmpDir(projectRoot);
+    try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
+
+    // 空 .wal 无需压缩
+    let walSize = 0;
+    try { walSize = fs.statSync(walPath).size; } catch (_) { }
+    if (walSize === 0) return;
+
+    // 1. 全量快照 → .tmp → rename .db
+    const data = db.export();
+    const tmp = path.join(tmpDir, 'timeline.db.tmp.' + Date.now());
+    fs.writeFileSync(tmp, Buffer.from(data));
+    fs.renameSync(tmp, dbPath);
+
+    // 2. 更新 .bak
+    const bakPath = _tlBakPath(projectRoot);
+    const bakTmp = path.join(tmpDir, 'timeline.db.bak.tmp.' + Date.now());
+    fs.writeFileSync(bakTmp, Buffer.from(data));
+    try { fs.renameSync(bakTmp, bakPath); } catch (_) {
+        // rename 失败 → 降级 copy
+        try { fs.writeFileSync(bakPath, Buffer.from(data)); } catch (_) { }
+        try { fs.unlinkSync(bakTmp); } catch (_) { }
+    }
+
+    // 3. 清空 .wal（内容已全量进入 .db）
+    try { fs.writeFileSync(walPath, '', 'utf8'); } catch (_) { }
+    _tlWalCounts.set(dbPath, 0);
+}
+
+// ═══ SHA256（行尾归一化：CRLF/LF/CR 视为同一内容） ═══
 export function _sha256(content: string): string {
     const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
     return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
 }
 
-/** Gzip 压缩内容，返回 Buffer */
+// ═══ Gzip 压缩/解压 ═══
 export function _gzipSync(content: string): Buffer {
     return zlib.gzipSync(Buffer.from(content, 'utf8'), { level: 6 });
 }
 
-/** Gunzip 解压，返回 string */
 export function _gunzipSync(buf: Buffer): string {
     return zlib.gunzipSync(buf).toString('utf8');
 }
 
-/** 原子写入 blob（tmp 放在 .tmp/ 子目录，rename 到正式位置） */
+// ═══ 原子写入 blob ═══
 export function _tlWriteBlob(projectRoot: string, sha256: string, gzBuf: Buffer): void {
     const blobPath = _tlBlobPath(projectRoot, sha256);
     const dir = path.dirname(blobPath);
     try { fs.mkdirSync(dir, { recursive: true }); } catch (_) { }
-    // 如果已存在，跳过（相同内容不可变）
     if (fs.existsSync(blobPath)) return;
     const tmpDir = _tlTmpDir(projectRoot);
     try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) { }
@@ -150,7 +255,7 @@ export function _tlWriteBlob(projectRoot: string, sha256: string, gzBuf: Buffer)
     fs.renameSync(tmp, blobPath);
 }
 
-/** 清理孤儿 tmp 文件（.tmp/ 整个目录清空即可，零风险） */
+// ═══ 清理孤儿 tmp ═══
 function _tlCleanStaleTmp(projectRoot: string): void {
     const tmpDir = _tlTmpDir(projectRoot);
     try {

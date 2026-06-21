@@ -110,18 +110,14 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
     }
 
     // 语言检测已移至 a1 审计按钮（后翻译方案），此处不再强制注入语言指令
-    // ★ 计费摘要（本轮详情）：house 1 = 用户提问，后续 = 前一间 reasoning
-    //   换行转空格 + UTF-8 截断 + 末尾 ...，永不截到 room 级工具调用
-    var summaryHint = '';
-    if (self._houseIndex === 1) {
-        summaryHint = _makeSummaryHint(lastUserQuery);
-    } else {
-        var _lh = self._houses[self._houses.length - 1];
-        if (_lh && _lh.reasoning) {
-            summaryHint = _makeSummaryHint(_lh.reasoning);
-        } else if (_lh && _lh.type === 'guide_ack') {
-            summaryHint = '引导确认';
-        }
+    // ★ house_hint：每间 house 推理前 30 字，供服务器账单按 house 区分
+    var houseHint = '';
+    var _lh = self._houses[self._houses.length - 1];
+    if (_lh && _lh.reasoning) {
+        var _chars = Array.from(_lh.reasoning);
+        houseHint = _chars.slice(0, 30).join('');
+    } else if (_lh && _lh.type === 'guide_ack') {
+        houseHint = '引导确认';
     }
     // ★ 压缩守护（代替旧动态帽）：while 循环中每间 house 前检查，超 900k 则阻塞压缩
     //   此处不再缩 max_tokens — 由压缩保证 prompt 不超限
@@ -134,7 +130,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
         stream_options: { include_usage: true },
         max_tokens: _effectiveMaxTokens,
         floor_id: self._floorId,
-        summary_hint: summaryHint
+        house_hint: houseHint
     };
 
     // ★ 始终发送工具定义：即使 noTools 为 true，也要传 tools 防止模型退化为文本格式

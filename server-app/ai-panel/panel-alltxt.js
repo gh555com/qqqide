@@ -119,11 +119,6 @@ function _buildHouseLines(h, maxToolResultLen) {
         lines.push('</thinking>');
         lines.push('');
     }
-    if (h.houserecap) {
-        lines.push('\u2550\u2550\u2550 HOUSERECAP \u2550\u2550\u2550');
-        lines.push(h.houserecap);
-        lines.push('');
-    }
     if (h.tools && h.tools.length > 0) {
         for (var ti = 0; ti < h.tools.length; ti++) {
             var t = h.tools[ti];
@@ -393,12 +388,11 @@ function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, vis
                 for (var ci = 0; ci < conv.length; ci++) {
                     var cm = conv[ci];
                     if (!cm || !cm.content) continue;
-                    var isHouserecap = cm._houserecap;
-                    var isDynamicCtx = cm._dynamic && cm.role === 'system' && !cm._houserecap;
+                    var isDynamicCtx = cm._dynamic && cm.role === 'system';
                     var isGuide = cm.role === 'user' && cm.content.indexOf('[Guide]') === 0;
-                    if (isHouserecap || isDynamicCtx || isGuide) {
+                    if (isDynamicCtx || isGuide) {
                         if (!_sysAdded) { allLines.push(''); allLines.push('\u2550\u2550\u2550 SYSTEM INJECTIONS \u2550\u2550\u2550'); _sysAdded = true; }
-                        var label = isHouserecap ? '\u{1F9E0} HOUSERECAP' : isDynamicCtx ? '\u{1F4E6} DYNAMIC CONTEXT' : '\u{1F4AC} GUIDE';
+                        var label = isDynamicCtx ? '\u{1F4E6} DYNAMIC CONTEXT' : '\u{1F4AC} GUIDE';
                         allLines.push(label + ' (floor ' + (cm._floor || '?') + '):');
                         allLines.push(cm.content);
                         allLines.push('');

@@ -190,9 +190,9 @@ async function executeReadFile(args) {
         }
         return _errMsg;
     }
-    // ★ read_file 截断（单一真理: ContentGateway.READ_FILE_CAP_BYTES，默认 48KB）
+    // ★ read_file 截断（单一真理: ContentGateway.READ_FILE_CAP_BYTES，默认 ~200KB）
     if (typeof _readResult === 'string' && _readResult.indexOf('[BINARY FILE]') !== 0 && _readResult.indexOf('[IS DIRECTORY]') !== 0) {
-        var _maxSrcBytes = (typeof ContentGateway !== 'undefined' && ContentGateway.READ_FILE_CAP_BYTES) ? ContentGateway.READ_FILE_CAP_BYTES : 49152;
+        var _maxSrcBytes = (typeof ContentGateway !== 'undefined' && ContentGateway.READ_FILE_CAP_BYTES) ? ContentGateway.READ_FILE_CAP_BYTES : 200000;
         var _srcBytes = 0;
         // 计算字节数（优先 TextEncoder，兼容旧环境）
         if (typeof TextEncoder !== 'undefined') {

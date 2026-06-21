@@ -5,7 +5,7 @@
 import { ipcMain, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { _timelineDbs, _diffWindows, _tlDir, _tlBlobPath, _tlOpenDb, _tlFlushDb, _tlFlushNow, _sha256, _gzipSync, _gunzipSync, _tlWriteBlob } from './timeline-store';
+import { _timelineDbs, _diffWindows, _tlDir, _tlBlobPath, _tlOpenDb, _tlRecord, _tlFlushNow, _sha256, _gzipSync, _gunzipSync, _tlWriteBlob } from './timeline-store';
 import { BootConfig } from './boot';
 import { APP_VERSION } from './boot';
 
@@ -25,9 +25,10 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
                 _tlWriteBlob(projectRoot, sha, gzBuf);
             }
             const ts = Date.now();
-            db.run('INSERT INTO versions (file_path, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?)',
-                [normalizedPath, ts, sha, source, floorId || null, addedLines || null, deletedLines || null]);
-            _tlFlushDb(db, dbPath);
+            _tlRecord(db, dbPath, projectRoot, {
+                file_path: normalizedPath, ts, blob_hash: sha, source,
+                floor_id: floorId || null, added_lines: addedLines || null, deleted_lines: deletedLines || null
+            });
             return { ok: true, blob_hash: sha, ts };
         } catch (err: any) {
             console.error('[timeline:record]', err);
@@ -199,9 +200,9 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
                 const db = await _tlOpenDb(projectRoot);
                 const dbPath2 = path.join(_tlDir(projectRoot), 'timeline.db');
                 const ts = Date.now();
-                db.run('INSERT INTO versions (file_path, ts, blob_hash, source, floor_id) VALUES (?,?,?,?,?)',
-                    [f.filePath, ts, sha, 'run-command', null]);
-                _tlFlushDb(db, dbPath2);
+                _tlRecord(db, dbPath2, projectRoot, {
+                    file_path: f.filePath, ts, blob_hash: sha, source: 'run-command'
+                });
                 results.push({ filePath: f.filePath, blob_hash: sha });
             } catch (_) { }
         }

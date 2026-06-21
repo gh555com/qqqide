@@ -71,8 +71,7 @@ var onlyStore = (function () {
           if (v !== null && v !== undefined) _cache[keys[i]] = v;
         } catch (_) { }
       }
-      _initDone = true;
-      // [silent] loaded keys from disk
+      // [silent] loaded keys from disk (cache warm-up, _initDone already set in init)
     } catch (e) { console.warn('[only-store] _loadAll error:', e); }
   }
 
@@ -146,28 +145,25 @@ var onlyStore = (function () {
     _qgs = null;
     _cache = {};
     _dirty = {};
-    _initDone = false;
+    _initDone = true;  // ★ 立即就绪：bridge 可能尚未建立，但 bridge() 懒初始化可容错
     _flushFirstDirty = 0;
     if (_flushTimer) { clearTimeout(_flushTimer); _flushTimer = null; }
-    // 异步加载已有数据
+    // 异步加载已有数据（预热缓存，失败不影响核心读写）
     _loadAll().catch(function () { });
     // 注册崩溃防护
     if (typeof window !== 'undefined') {
-      window.addEventListener('beforeunload', _onBeforeUnload);
-    }
-    // [silent] init with root
-  }
-
-  function get(key, fallback) {
+      window.addEventListener('beforeunload', _  function get(key, fallback) {
     if (key in _cache) return _cache[key];
     // ★ 未缓存时异步触发 SQLite 回读，同时返回 fallback
     // 下次同 key 调用即可命中缓存（per-window key 等动态 key）
     var _b = _bridge();
-    if (_b && _initDone) {
+    if (_b) {
       _b.get(key).then(function(v) {
         if (v !== null && v !== undefined) { _cache[key] = v; }
       }).catch(function(){});
     }
+    return fallback !== undefined ? fallback : null;
+  } }
     return fallback !== undefined ? fallback : null;
   }
 

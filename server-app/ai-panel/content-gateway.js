@@ -20,7 +20,7 @@
     var OUTPUT_CAP_DEFAULT = 200000;    // AI 视野默认上限（单次工具结果 AI 最多看到这些字符）
     var OUTPUT_CAP_MAX = 800000;       // AI 视野最大上限（AI 传 maxOutput 时可突破到）
     var MAX_RESPONSE_TOKENS = 393216; // AI 回答最大 tokens（上限 393216，唯一真理在此）
-    var READ_FILE_CAP_BYTES = 49152;  // read_file 单次返回字节上限（48KB，覆盖 95% 源文件，超过则截断+分页提示）
+    var READ_FILE_CAP_BYTES = 200000;  // read_file 单次返回字节上限（～200KB，超过则截断+分页提示）
     var COMPACT_MAX_TOKENS = 32768;   // 上下文压缩产出硬限 32K
     var AI_OUTPUT_WATCHDOG_MS = 900000; // AI 流产出看门狗 15min（agent-loop 读此，唯一真理在此）
 
@@ -100,6 +100,7 @@
         OUTPUT_CAP_MAX: OUTPUT_CAP_MAX,
         MAX_RESPONSE_TOKENS: MAX_RESPONSE_TOKENS,
         READ_FILE_CAP_BYTES: READ_FILE_CAP_BYTES,
+        READ_FILE_CAP_KB: Math.round(READ_FILE_CAP_BYTES / 1024),
         COMPACT_MAX_TOKENS: COMPACT_MAX_TOKENS,
         AI_OUTPUT_WATCHDOG_MS: AI_OUTPUT_WATCHDOG_MS,
         // 网络超时参数

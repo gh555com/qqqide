@@ -21,7 +21,7 @@
 // ---- 依赖：由 index.html 中的 <script> 标签加载顺序保证 ----
 // system-prompt.js  → GATEWAY_URL, SYSTEM_PROMPT, TIER_PRO
 // tools.js          → TOOL_DEFINITIONS, TOOL_CATEGORY, executeTool, getTools
-// agent-envelope.js → _utf8Trunc, _makeSummaryHint, EnvelopeStripper
+// agent-envelope.js → _utf8Trunc, EnvelopeStripper
 //
 // ★ 已拆分模块（2026-06 重构）：
 //   agent-envelope.js — 信封剥离 + UTF-8 截断
@@ -416,7 +416,7 @@ var AgentLoop = (function () {
                         if (!_cleanAck || _cleanAck.length < 3) _cleanAck = 'Guide received';
                         self.conversation.push({ role: 'assistant', content: _cleanAck, _guideAck: true, _guideText: _guideText, _floor: self._ctx.totalFloors });
                         // 归档
-                        self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], summary: '', ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString() });
+                        self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString() });
                         // ★ 更新绿条标记：两行格式，✅ 已收到引导 / 确认内容
                         var _aiDiv2 = self._activeAiDiv;
                         var _esc = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
@@ -590,7 +590,7 @@ var AgentLoop = (function () {
                     }
                     var _bill = self._lastBilling; self._lastBilling = null;
                     var _cd = self._lastCacheDiag; self._lastCacheDiag = null;
-                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', geCost: _bill ? _bill.geCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined });
+                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', geCost: _bill ? _bill.geCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined });
                     if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
                     // 替换之前因切换 quest 而保存的截断消息，避免重复
@@ -632,8 +632,22 @@ var AgentLoop = (function () {
                     });
                     var _bill2 = self._lastBilling; self._lastBilling = null;
                     var _cd2 = self._lastCacheDiag; self._lastCacheDiag = null;
-                    self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', geCost: _bill2 ? _bill2.geCost : 0, model: _bill2 ? _bill2.model : '', cacheHitRate: _bill2 ? _bill2.cacheHitRate : -1, usage: _bill2 ? _bill2.usage : null, billingSeq: _bill2 ? _bill2.seq : 0, billingRequestId: _bill2 ? _bill2.requestId : '', cacheDiag: _cd2 || undefined });
+                    self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', geCost: _bill2 ? _bill2.geCost : 0, model: _bill2 ? _bill2.model : '', cacheHitRate: _bill2 ? _bill2.cacheHitRate : -1, usage: _bill2 ? _bill2.usage : null, billingSeq: _bill2 ? _bill2.seq : 0, billingRequestId: _bill2 ? _bill2.requestId : '', cacheDiag: _cd2 || undefined });
                     if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
+                    // ★ per-house ge display: 每间 house 即时更新右下角费用（纯 DOM，零服务器压力）
+                    var _aiDiv5 = self._activeAiDiv;
+                    if (_aiDiv5 && _aiDiv5._clockCost) {
+                        var _rawGe5 = self._floorCostWge / 10000;
+                        var _displayGe5 = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe5) : _rawGe5.toFixed(2);
+                        _aiDiv5._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe5) : _rawGe5.toFixed(4);
+                        _aiDiv5._clockCost.textContent = _displayGe5 + ' ge' + (self._floorFree ? ' Free' : '');
+                        _aiDiv5._clockCost.style.display = 'inline';
+                        if (self._floorFree) {
+                            _aiDiv5._clockCost.style.color = '#859900';
+                        } else {
+                            _aiDiv5._clockCost.style.color = '';
+                        }
+                    }
                     var assistantToolMsg = {
                         role: 'assistant', content: '',
                         tool_calls: response.tool_calls,
@@ -688,7 +702,9 @@ var AgentLoop = (function () {
                             }
                         }
                     }
- → 不中断，给用户一个可读的结束
+                }
+                continue;  // 工具执行完毕，回到 while 循环顶部进入下一间 house
+                // 不中断，给用户一个可读的结束
                 var _utype = (response && response.type);
                 var _uusage = (response && response._usage);
                 var _umsg = '⚠ unexpected response type: ' + _utype + ' _usage=' + (_uusage ? JSON.stringify({ prompt: _uusage.prompt_tokens, total: _uusage.total_tokens, completion: _uusage.completion_tokens }) : 'null');

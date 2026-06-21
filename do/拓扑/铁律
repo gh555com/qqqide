@@ -337,33 +337,35 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 禁在 switchQuest/_unloadQuest 中调用 stopFloorTimer 或 completeBuildingFloor。切 quest = 纯 display 开关。
   - _lastPieTiming（canvas 去重缓存）、_autoSaveTimer（面板级）保留全局，不冲突。
 
-§37 A4 文件快照 + Timeline 版本时间线（2026-06-13 钩子Q+X重构）
+§37 A4 文件快照 + Timeline 版本时间线（2026-06-13 钩子Q+X重构，2026-06-21 终极存储架构）
   - 唯一入口: panel-a4.js 钩子 Q + editor.js 钩子 X。
   - 钩子 Q: edit/write/create/delete → 捕获 before → 执行 → 捕获 after → _a4PersistToTimeline(both, trace, diff stats)。
     run_command → 执行 → captureChanged → 逐文件 _a4PersistToTimeline(after, trace)。
     trace: agent-loop 埋点 window._qqqCurrentTrace → floor_id = "q{id}/f{num}/h{num}/r{num}"。
   - 钩子 X: editor blur(auto-save) / Ctrl+S(manual-save) → 读上一版本内容 diff → timeline.record(content, source, diff stats)。
     60s 同文件冷却。
-  - ★ SHA256 去重命中时不再 UPDATE ts。钩子 Q 已确保 before/after 时间正确。
+  - ★ SHA256 行尾归一化（CRLF/LF/CR→\n），同内容必同 hash，防幽灵版本。
+  - 存储架构: blobs/{sha256[:2]}/{sha256}.gz(内容不可变+永不删除) + timeline.wal(NDJSON增量,≤99行) + timeline.db(SQLite全量快照,每100条压缩) + timeline.db.bak(备份,损坏自动恢复)。
+    所有写入走 tmp+rename 原子化。无 2s debounce、无 archive 目录、无不必要延迟。
   - 点击 A4 → 直接读内存 snapEntry.beforeBlobHash/afterBlobHash → openDiffWindow。不补记！
     历史楼层 → 读 floor payload 中 blob_hash → openDiffWindow。
   - 楼层完结 → 仅打包内存 blob_hash 入 meta，不调用 timeline.record。
   - per-floor 状态归属 agent: ag._a4Snapshots。新 floor 开始必须清空。
   - 旧文件系统快照(qqq/snapshots/)、_a4IncrementalPersist、gzip 编解码等全部删除。
 
-§38 Diff 窗口 — 独立 BrowserWindow（2026-06-13 强化）
+§38 Diff 窗口 — 独立 BrowserWindow（2026-06-13 强化，2026-06-21 主题归一）
   - Monaco 0.34.1 side-by-side + minimap + 手动差异折叠(setHiddenAreas)。
   - 一个文件单例（Map），再次点击复用。inset:0 覆盖主窗口。
-  - 下拉标签: "时间 +N -M xx [first] [before]"，xx=溯源串(q38 f14 h3 r2 / auto save / manual save)。
+  - 下拉标签: "#N 时间 +N -M xx [first] [before]"，xx=溯源串(q38 f14 h3 r2 / auto save / manual save)。
   - +N -M: 钩子 Q 从 before/after diff 直接得出；钩子 X 读上一版本内容 diff。
   - beforeIdx ≤ afterIdx 强保证，before=after 时自动错位。同秒条目合并一行。
-  - before/after 语义永不交换，只调整显示索引。
+  - 合并「当前文件」用 SHA256 内容匹配（快路径零 I/O），不再猜测时间戳。
   - right=last 时可编辑+←移入+💾保存写盘。
-  - 主题跟随主窗口 solarized-light/dark，sync 广播实时切换。
+  - 主题跟随主窗口 solarized-light/dark: CSS 变量同约定(:root=light)，URL 参数预设 localStorage，qqqide-theme.js 统一定义 Monaco 色盘，内联兜底防未加载。
   - 全局偏好持久化(state:qqqide.timeline.showFull)，默认差异块。
   - 编辑器极致精简: 零LSP/零波浪线/零智能，只留 tokenization。
   - 防并发: _renderToken 竞态令牌 + _loading 重入锁 + model 显式 dispose。
-  - Monaco 加载 15s 超时保护，防永久白屏。
+  - Monaco 加载 15s 超时保护，防永久白屏。 Monaco 加载 15s 超时保护，防永久白屏。
 
 §39 Git Goods — 第一方 git 操作
   - X 区仅保留 Git tab。A 区保留 git 快速状态面板。

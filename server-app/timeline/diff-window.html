@@ -4,8 +4,9 @@
 <meta charset="UTF-8">
 <title>Timeline Diff</title>
 <style>
-:root,[data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--accent:#b58900;--base01:#97978a;--base2:#2a2a2a;--base3:#1e1e1e;--hover-bg:rgba(255,255,255,0.05);--sel-bg:rgba(255,255,255,0.10)}
-[data-theme="light"]{--bg:#fdf6e3;--card:#eee8d5;--text:#073642;--border:#d3cbb7;--green:#859900;--red:#dc322f;--yellow:#b58900;--accent:#cb4b16;--base01:#97978a;--base2:#eee8d5;--base3:#fdf6e3;--hover-bg:rgba(0,0,0,0.035);--sel-bg:rgba(0,0,0,0.07)}
+/* ═══ 配色与 qqqide-theme.js 同约定：:root=light, [data-theme="dark"]=dark ═══ */
+:root{--bg:#fdf6e3;--card:#eee8d5;--text:#073642;--border:#d3cbb7;--green:#859900;--red:#dc322f;--yellow:#b58900;--accent:#cb4b16;--base01:#97978a;--base2:#eee8d5;--base3:#fdf6e3;--hover-bg:rgba(0,0,0,0.035);--sel-bg:rgba(0,0,0,0.07)}
+[data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--accent:#b58900;--base01:#97978a;--base2:#2a2a2a;--base3:#1e1e1e;--hover-bg:rgba(255,255,255,0.05);--sel-bg:rgba(255,255,255,0.10)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Tahoma,system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column}
 ::-webkit-scrollbar{width:4px;height:4px}
@@ -97,7 +98,10 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
 #big-close{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:56px;height:56px;border-radius:50%;border:2px solid var(--red);background:var(--card);color:var(--red);font-size:24px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s}
 #big-close:hover{background:var(--red);color:#fff;transform:translateX(-50%) scale(1.1)}
 </style>
-<!-- theme now managed by qqqide-theme.js, overridden by URL param in diff-window.js -->
+<!-- ★ 将 URL 主题参数预设到 localStorage，qqqide-theme.js 的 init() 读到即生效，零闪烁 -->
+<script>
+(function(){var p=new URLSearchParams(location.search);var t=p.get('theme');var dark=t==='dark';if(t)try{localStorage.setItem('qqqide-theme',dark?'dark':'light');}catch(_){}document.documentElement.setAttribute('data-theme',dark?'dark':'light');})();
+</script>
 </head>
 <body>
 

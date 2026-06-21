@@ -10,6 +10,7 @@ import { BootConfig } from './boot';
 import { StateStore } from './state-sqlite';
 import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
+import * as path from 'path';
 
 // ---- Security hardening ----
 export function hardenSession(): void {
@@ -87,8 +88,12 @@ export function registerExitHandlers(
         }
         _flushStateSync('before-quit');
 
-        // ★ 强制刷盘所有 timeline DB
-        _timelineDbs.forEach((db, dbPath) => { try { _tlFlushNow(db, dbPath); } catch (_) { } });
+        _timelineDbs.forEach((db, dbPath) => {
+            try {
+                const projectRoot = path.dirname(path.dirname(path.dirname(dbPath)));
+                _tlFlushNow(db, dbPath, projectRoot);
+            } catch (_) { }
+        });
 
         app.exit(0);
         setTimeout(() => { process.exit(0); }, 500);
