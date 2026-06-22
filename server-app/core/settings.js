@@ -216,11 +216,11 @@
       if (def.type === 'radio') {
         // ★ 默认 AI 等级：6 个水平格子（紧凑1-2行），选中打勾 ✓
         if (def.key === 'ai.defaultTier') {
-          html += '<div style="display:flex; flex-wrap:wrap; gap:6px;">';
+          html += '<div style="display:flex; gap:6px;">';
           for (var j = 0; j < def.options.length; j++) {
             var opt = def.options[j];
             var checked = (currentVal === opt.value);
-            html += '<label style="flex:0 0 calc(33.33% - 5px); min-width:68px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:4px; padding:6px 4px; border-radius:4px; border:2px solid ' + (checked ? accent : border) + '; background:' + (checked ? accent + '20' : 'transparent') + '; cursor:pointer; font-size:12px; color:' + text + '; user-select:none;">';
+            html += '<label style="flex:1; min-width:40px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:4px; padding:6px 4px; border-radius:4px; border:2px solid ' + (checked ? accent : border) + '; background:' + (checked ? accent + '20' : 'transparent') + '; cursor:pointer; font-size:12px; color:' + text + '; user-select:none;">';
             html += '<input type="radio" name="' + def.key + '" value="' + opt.value + '" ' + (checked ? 'checked' : '') + ' data-setting-key="' + def.key + '" style="display:none;">';
             html += checked ? '<span style="font-weight:bold; color:' + accent + ';">\u2713</span>' : '<span style="opacity:0.3;">\u25cb</span>';
             html += '<span>' + opt.label + '</span>';

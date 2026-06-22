@@ -279,7 +279,8 @@ export async function loadStaticFallback(
 export async function loadRemoteWithCacheGuard(
     mainWindow: BrowserWindow | null,
     bootConfig: BootConfig,
-    timeoutMs: number = 0
+    timeoutMs: number = 0,
+    isDev: boolean = false,
 ): Promise<{ ok: boolean; mode: BootMode }> {
     if (!mainWindow) { bootLog('remote: no window'); return { ok: false, mode: 'fallback' }; }
     bootLog('remote: loading ' + bootConfig.url + (timeoutMs > 0 ? ' timeout=' + timeoutMs + 'ms' : ''));
@@ -287,17 +288,67 @@ export async function loadRemoteWithCacheGuard(
     return new Promise<{ ok: boolean; mode: BootMode }>(resolve => {
         let settled = false;
         let timeoutTimer: NodeJS.Timeout | null = null;
+        let overlayTimer: NodeJS.Timeout | null = null;
+        const OVERLAY_MAX_MS = 90000;  // 最多遮 90s，防止弱网永遮
+
+        const clearOverlay = () => {
+            if (overlayTimer) { clearTimeout(overlayTimer); overlayTimer = null; }
+            wc.executeJavaScript('try{document.getElementById("__qqq_boot_overlay")?.remove()}catch(_){}').catch(() => { });
+        };
+        const injectOverlay = () => {
+            // 注入到远端页面：白屏+旋转小圈，等 JS/CSS 加载完就摘掉
+            const css = `
+                #__qqq_boot_overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;
+                background:#fdf6e3;display:flex;align-items:center;justify-content:center;
+                font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei",sans-serif}
+                #__qqq_boot_overlay .inner{text-align:center;color:#657b83}
+                #__qqq_boot_overlay .spinner{width:32px;height:32px;margin:0 auto 12px;
+                border:3px solid #eee8d5;border-top-color:#268bd2;border-radius:50%;
+                animation:__qqq_spin .8s linear infinite}
+                @keyframes __qqq_spin{to{transform:rotate(360deg)}}
+            `.replace(/\n\s*/g, '');
+            const html = '<div id="__qqq_boot_overlay"><div class="inner"><div class="spinner"></div><div>正在加载…</div></div></div>';
+            wc.executeJavaScript(`
+                try{if(!document.getElementById("__qqq_boot_overlay")){
+                var s=document.createElement("style");s.textContent=\`${css}\`;document.head.appendChild(s);
+                var d=document.createElement("div");d.innerHTML=\`${html}\`;document.body.appendChild(d.firstElementChild);
+                }}catch(_){}
+            `).catch(() => { });
+            overlayTimer = setTimeout(() => { bootLog('remote: overlay timeout ' + OVERLAY_MAX_MS + 'ms'); clearOverlay(); }, OVERLAY_MAX_MS);
+        };
+
         const finish = (ok: boolean, mode: BootMode) => {
             if (settled) { return; }
             settled = true;
             if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = null; }
+            wc.removeListener('did-start-navigation', onStartNav);
+            wc.removeListener('did-navigate', onNavigate);
             wc.removeListener('did-finish-load', onFinish);
             wc.removeListener('did-fail-load', onFail);
+            if (!ok && mode === 'fallback') {
+                clearOverlay();
+                try { wc.stop(); } catch (_) { }
+            }
             bootLog('remote: ' + (ok ? 'LOADED' : 'FAILED') + ' mode=' + mode);
             resolve({ ok, mode });
         };
+        // ── 混合策略：did-navigate 就切页面+遮罩，did-finish-load 摘遮罩 ──
+        const onStartNav = (_e: any, _url: string, _inFrame: boolean, _isMain: boolean) => {
+            if (!_isMain) { return; }
+            bootLog('remote: did-start-navigation ' + _url);
+        };
+        const onNavigate = (_e: any, _url: string, httpCode: number) => {
+            bootLog('remote: did-navigate http=' + httpCode);
+            if (httpCode >= 200 && httpCode < 400) {
+                if (!isDev) { injectOverlay(); }   // 本地无遮罩，远端才遮
+                finish(true, 'live');          // 告诉 bootSequence 我们成了
+            } else {
+                finish(false, 'fallback');
+            }
+        };
         const onFinish = () => {
-            finish(true, 'live');
+            bootLog('remote: did-finish-load');
+            clearOverlay();                    // JS/CSS 加载完，摘遮罩
         };
         const onFail = (_e: any, code: number, desc: string, validatedURL: string, isMain: boolean) => {
             if (!isMain) { return; }
@@ -306,10 +357,12 @@ export async function loadRemoteWithCacheGuard(
         };
         if (timeoutMs > 0) {
             timeoutTimer = setTimeout(() => {
-                bootLog('remote: TIMEOUT after ' + timeoutMs + 'ms');
+                bootLog('remote: TIMEOUT (did-navigate never fired) after ' + timeoutMs + 'ms');
                 finish(false, 'fallback');
             }, timeoutMs);
         }
+        wc.on('did-start-navigation', onStartNav);
+        wc.on('did-navigate', onNavigate);
         wc.on('did-finish-load', onFinish);
         wc.on('did-fail-load', onFail);
         mainWindow!.loadURL(bootConfig.url).catch(err => {
@@ -333,7 +386,15 @@ export async function bootSequence(
     getLastBootMode: () => BootMode,
 ): Promise<void> {
     // 0) Init boot file log for diagnostics
-    initBootLog(path.join(portableRoot, 'logs'));
+    initBootLog(path.join(portableRoot, 'userData', 'Logs'));
+
+    // ★ 开发模式：直连本地 dev-server，不走网络
+    const DEV_URL = 'http://127.0.0.1:8090/qqq-app/';
+    if (isDev) {
+        bootConfig.url = DEV_URL;
+        bootConfig.healthTimeoutMs = 500;  // 本地极快，不等
+        bootLog('dev: forced local URL → ' + DEV_URL);
+    }
     bootLog('url: ' + bootConfig.url);
 
     // 1) Show fallback IMMEDIATELY → 窗口在 <1s 内弹出，用户看到"连接中…"
@@ -346,8 +407,8 @@ export async function bootSequence(
         }
     }).catch(() => { });
 
-    // 3) Health check (fast, 3s timeout)
-    const healthy = await healthCheck(bootConfig.url, bootConfig.healthTimeoutMs, isOffline);
+    // 3) Health check (fast, 3s timeout) — skip in dev mode (localhost)
+    const healthy = isDev ? true : await healthCheck(bootConfig.url, bootConfig.healthTimeoutMs, isOffline);
     if (healthy) {
         bootLog('seq: server OK');
     } else {
@@ -356,8 +417,8 @@ export async function bootSequence(
 
     // 4) Try remote with 15s timeout
     //    loadURL() 会自动替换当前 fallback 页面，用户无缝过渡到正式应用
-    const REMOTE_TIMEOUT_MS = 15000;
-    const { ok, mode } = await loadRemoteWithCacheGuard(mainWindow, bootConfig, REMOTE_TIMEOUT_MS);
+    const REMOTE_TIMEOUT_MS = 30000;  // 只等 HTML（did-navigate），不等子资源
+    const { ok, mode } = await loadRemoteWithCacheGuard(mainWindow, bootConfig, REMOTE_TIMEOUT_MS, isDev);
     if (ok) {
         bootLog('seq: remote OK, boot complete');
         setLastBootMode(mode);

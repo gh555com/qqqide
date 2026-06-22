@@ -59,7 +59,9 @@ function _countRooms(houses) {
     if (!houses) return 0;
     var n = 0;
     for (var i = 0; i < houses.length; i++) {
-        if (houses[i].tools) n += houses[i].tools.length;
+        // ★ 优先使用 toolCount（从保存数据恢复），降级到 tools 数组（实时流式数据）
+        if (typeof houses[i].toolCount === 'number') n += houses[i].toolCount;
+        else if (houses[i].tools) n += houses[i].tools.length;
     }
     return n;
 }

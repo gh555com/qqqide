@@ -39,7 +39,7 @@ AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assis
             if (typeof window !== 'undefined') {
                 window._qqqCurrentTrace = {
                     questId: (typeof questActiveId !== 'undefined') ? questActiveId : '',
-                    floorNum: self._ctx ? self._ctx.totalFloors : 0,
+                    floorNum: self._currentFloorNum || 0,
                     houseIdx: self._houseIndex || 0,
                     roomIdx: item._toolIndex || 0
                 };

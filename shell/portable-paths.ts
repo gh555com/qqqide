@@ -25,10 +25,11 @@ export function getAppRoot(): string {
 export function applyPortablePaths(): { root: string; userData: string; cache: string; logs: string } {
     const root = getAppRoot();
     const userData = path.join(root, 'userData');
-    const cache = path.join(root, 'cache');
-    const temp = path.join(root, 'temp');
-    const logs = path.join(root, 'logs');
-    const crashDumps = path.join(root, 'crashDumps');
+    // ★ 所有运行时目录收进 userData/，根目录保持干净
+    const cache = path.join(userData, 'Cache');
+    const temp = path.join(userData, 'Temp');
+    const logs = path.join(userData, 'Logs');
+    const crashDumps = path.join(userData, 'CrashDumps');
 
     // ensure directories exist
     for (const d of [userData, cache, temp, logs, crashDumps]) {

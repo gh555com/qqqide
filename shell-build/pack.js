@@ -398,6 +398,52 @@ function pruneElectron(unpacked) {
   }
 }
 
+// 3.8) prune node_modules in the app — remove dev-only / unused subdirectories
+function pruneNodeModules(unpacked) {
+  if (!target.startsWith('win-')) { return; }
+  const appDir = appResourcesDir(unpacked);
+  if (!appDir || !fs.existsSync(appDir)) { return; }
+
+  // monaco-editor/dev/ (~35MB) — development build, never used at runtime
+  const monacoDev = path.join(appDir, 'node_modules', 'monaco-editor', 'dev');
+  if (fs.existsSync(monacoDev)) {
+    fs.rmSync(monacoDev, { recursive: true, force: true });
+    console.log('[pack] pruned monaco-editor/dev/ (35MB)');
+  }
+}
+
+// 3.9) clean runtime-generated directories from unpacked tree (should not be in zip)
+function cleanRuntimeDirs(unpacked) {
+  // Old flat structure (for cleanup of existing trees)
+  const oldFlat = ['cache', 'crashDumps', 'temp', 'logs'];
+  // New nested: all under userData/
+  const nested = path.join(unpacked, 'userData');
+  const toClean = new Set(['Cache', 'CrashDumps', 'Temp', 'Logs']);
+
+  for (const d of oldFlat) {
+    const p = path.join(unpacked, d);
+    if (fs.existsSync(p)) {
+      fs.rmSync(p, { recursive: true, force: true });
+      console.log('[pack] cleaned old runtime dir:', d);
+    }
+  }
+  // qqq/ is project data — should be empty in distribution
+  const qqqDir = path.join(unpacked, 'qqq');
+  if (fs.existsSync(qqqDir)) {
+    fs.rmSync(qqqDir, { recursive: true, force: true });
+    console.log('[pack] cleaned runtime dir: qqq/');
+  }
+  // Clean nested runtime dirs inside userData/ (leave userData/ itself)
+  if (fs.existsSync(nested)) {
+    for (const d of fs.readdirSync(nested)) {
+      if (toClean.has(d)) {
+        fs.rmSync(path.join(nested, d), { recursive: true, force: true });
+        console.log('[pack] cleaned nested runtime dir: userData/' + d);
+      }
+    }
+  }
+}
+
 // 4) compress
 function packDir(unpacked) {
   const distRoot = path.join(ROOT, 'dist-pack');
@@ -459,6 +505,8 @@ print('[pack] python zip done:', out)
   injectRootConfig(unpacked);
   injectLauncher(unpacked);
   pruneElectron(unpacked);
+  pruneNodeModules(unpacked);
+  cleanRuntimeDirs(unpacked);
   packDir(unpacked);
   console.log('[pack] done. output -> dist-pack/');
   console.log('[pack] win-unpacked/ kept as ready-to-run environment (same as zip)');

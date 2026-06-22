@@ -415,7 +415,7 @@ function _estimateTokensFull() {
         }
     }
     var total = sysTok + toolsTok + rulesTok + msgsTok + compTok;
-    console.error('[CTX_BD] sys=' + sysTok + ' tools=' + toolsTok + ' rules=' + rulesTok + ' msgs=' + msgsTok + ' comp=' + compTok + ' conv=' + conv.length + ' msgs, SYSTEM_PROMPT.len=' + _dbg.sys + ' TOOL_DEFS.len=' + _dbg.tools + ' contentCount=' + _dbg.contentCount + ' contentChars=' + _dbg.contentChars + ' nonStringContent=' + _dbg.nonStringContent + ' tool_calls=' + _dbg.tcalls + ' CP=' + CP);
+    console.log('[CTX_BD] sys=' + sysTok + ' tools=' + toolsTok + ' rules=' + rulesTok + ' msgs=' + msgsTok + ' comp=' + compTok + ' conv=' + conv.length + ' msgs, SYSTEM_PROMPT.len=' + _dbg.sys + ' TOOL_DEFS.len=' + _dbg.tools + ' contentCount=' + _dbg.contentCount + ' contentChars=' + _dbg.contentChars + ' nonStringContent=' + _dbg.nonStringContent + ' tool_calls=' + _dbg.tcalls + ' CP=' + CP);
     _ctxBreakdownData = [
         { key: 'sys', label: 'System Prompt', tok: sysTok, color: '#268bd2' },
         { key: 'tools', label: 'Tool Definitions', tok: toolsTok, color: '#6c71c4' },

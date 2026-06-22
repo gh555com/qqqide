@@ -348,7 +348,8 @@ async function _a4WrappedExecuteTool(name, args) {
         } catch (_) { }
     }
 
-    // ---- 4. 记录快照（钩子 Q：记 both before+aft    await _a4RecordSnapshot(filePath, name, beforeContent, afterContent, beforeBlobHash, _capturedAg);t, beforeBlobHash);
+    // ---- 4. 记录快照（钩子 Q：记 both before+after 到 timeline）----
+    await _a4RecordSnapshot(filePath, name, beforeContent, afterContent, beforeBlobHash, _capturedAg);
 
     return result;
 }
@@ -725,6 +726,8 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
     var cleanHouses = (ag._houses || []).map(function (h) {
         var c = Object.assign({}, h);
         delete c._lines;
+        // ★ 保存工具调用次数（room 计数用），再删除 tools 数组
+        c.toolCount = (c.tools && c.tools.length) || 0;
         delete c.tools;
         delete c.toolResults;
         return c;
@@ -798,7 +801,7 @@ function _a4FlushCompleteFloor() {
     if (!ag) { _a4IncrementalBusy = false; return; }
     var questId = _a4IncrementalQuestId;
     if (!questId) { _a4IncrementalBusy = false; return; }
-    var floorNum = ag._currentFloorNum || ag._ctx.totalFloors;
+    var floorNum = ag._currentFloorNum;
     if (!floorNum) { _a4IncrementalBusy = false; return; }
 
     var qs = window.questStore;
@@ -825,10 +828,8 @@ function _a4OnBeforeUnload() {
     if (!questId) return;
     var qs = window.questStore;
     if (!qs || !qs.saveFloor) return;
-    var floorNum = ag._currentFloorNum || ag._ctx.totalFloors;
-    if (!floorNum) return;
-
-    var payload = _a4BuildCompleteFloorPayload(ag, floorNum);
+    var floorNum = ag._    var floorNum = ag._currentFloorNum;
+    if (!floorNum) return;BuildCompleteFloorPayload(ag, floorNum);
     qs.saveFloor(questId, floorNum, payload).catch(function () { });
 }
 

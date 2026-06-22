@@ -668,6 +668,7 @@ A4 文件快照 — 每层楼私有文件变更追踪 (2026-06-13 钩子Q+X重�
 · 钩子 Q 触发: edit/write/create/delete_file + run_command
 · 钩子 Q 流程: 捕获 before → 执行工具 → 捕获 after → _a4PersistToTimeline(both, trace, diff stats)
   trace 格式: q{id}/f{num}/h{num}/r{num}（quest/floor/house/room，agent-loop 埋点）
+  ★ floorNum 唯一真理源: ag._currentFloorNum（panel-send.js 创建楼层时分配，panel-floor.js 恢复时从 DB 重建，agent-exec.js 打 trace 时读取）。禁止回退 _ctx.totalFloors。
   run_command: 执行 → captureChanged 扫描变更 → 逐文件记录 after（trace 同享）
 · 钩子 X 触发: X区 editor blur (auto-save) / Ctrl+S (manual-save)，60s 冷却
   流程: 读上一版本内容 → _a4DiffStats 计算 +N -M → timeline.record(content, source, diff stats)

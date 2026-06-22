@@ -1,7 +1,0 @@
-Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-    import searx.engines; engines = [e.name for e in searx.engines.engines.values() if not e.disabled]; print(sorted(engines))
-    ^^^^^^^^^^^^^^^^^^^^
-  File "/usr/local/searxng/searx/__init__.py", line 12, in <module>
-    import msgspec
-ModuleNotFoundError: No module named 'msgspec'

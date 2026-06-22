@@ -15,7 +15,7 @@ function _startAutoSave() {
     _lastAutoSaveLen = 0;
     _autoSaveTimer = setInterval(async function () {
         if (!_capturedAgent || !_capturedQuestId) return;
-        var floorNum = _capturedAgent._currentFloorNum || _capturedAgent._ctx.totalFloors;
+        var floorNum = _capturedAgent._currentFloorNum;
         if (!floorNum || floorNum <= 0) return;
         // ★ 从不可变楼层元数据读取 floorStartIdx（而非 agent._floorStartIdx 可能已变化）
         var floorMeta = _capturedAgent._floorMeta && _capturedAgent._floorMeta[floorNum];

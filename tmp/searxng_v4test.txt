@@ -1,5 +1,0 @@
-searxng
-Up 5 seconds
---- engines loaded ---
---- config test ---
-HTTP:200

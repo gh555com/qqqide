@@ -179,9 +179,39 @@
             "used": "Used",
             "free": "Available"
         },
+        "title": "AI",
+        "send": "Send",
+        "stop": "Stop",
+        "guide": "Guide",
+        "queue": "Queue",
+        "context": "Context",
+        "compress": "Compress",
+        "compressing": "🧠 Compressing...",
+        "compressSuccess": "✅ Compressed",
+        "compressFail": "✗ Compression failed",
         "error": {
+            "continueTask": "Continue task",
             "noActiveAgent": "Please send a message to start a conversation first",
             "buildingFloor": "AI is currently processing. Please wait for the current task to complete before compressing."
+        },
+        "inputPlaceholder": "Ask qqq AI... (Ctrl+V to paste image)",
+        "inputLimitWarn": "Input limit reached (58KB), cannot type further",
+        "embedImage": "Embed",
+        "guideBtnTooltip": "Guide AI with this message immediately without starting a new floor!",
+        "onboarding": {
+            "selectFolder": "Please select a main folder first!",
+            "selectFolderTitle": "Please select a main folder"
+        },
+        "queue": {
+            "full": "Queue limited to 3. Please wait for the previous message to send.",
+            "save": "Save",
+            "delete": "Delete",
+            "cancel": "Cancel",
+            "pause": "Pause",
+            "resume": "Resume",
+            "clear": "Clear",
+            "header": "Queue",
+            "editTitle": "Click to edit or delete"
         },
         "level": {},
         "tools": {},

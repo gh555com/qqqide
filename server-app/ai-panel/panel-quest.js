@@ -232,7 +232,9 @@ window.addEventListener('beforeunload', function () {
             _parentReleaseQuest(questActiveId);
             _broadcast('owner-released', questActiveId);
         }
-        // saveQuestUIState 内部已通过 setNow 触发 async flush
+        // ★ 强制刷盘：setNow 虽已标记脏 + 启动异步 flush，但 beforeunload
+        //   可以再加一把同步 flush（_onBeforeUnload 内的同步 fire-and-forget IPC）
+        try { onlyStore.flush(); } catch (_) { }
     }
 });
 
@@ -577,7 +579,8 @@ async function _saveAgentQuestData(questId, ag, floorNum) {
         serverDrift: ag._serverDrift || 0,
         queue: ag._queue || [],
         rulesVersion: ag._rulesVersion || '',
-        persistentCount: ag._persistentCount || 0
+        persistentCount: ag._persistentCount || 0,
+        currentFloorNum: ag._currentFloorNum || 0
     };
     await questStore.touch(questId);
     await questStore.save(questId, metaPayload);

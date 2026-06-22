@@ -16,12 +16,9 @@
   const isElectron = !!window.qqqIsElectron;
   const bridge = window.qqqideBridge;
 
-  // ── LSP OFF — TypeScript compiler options disabled ──
-  var _tsConfigured = false;
-  function configureMonacoTypescript(_monaco) {
-    // LSP OFF — TypeScript compiler options disabled
-    return;
-  }
+  // ═══ LSP OFF: all external LSP and TS compiler integrations removed ═══
+  // Monaco built-in TS/JS/CSS/HTML/JSON workers are disabled in loadMonaco() below.
+  // External LSP servers (pyright/gopls/rust-analyzer/clangd) — bridge code removed.
 
   // ---- q1 三件套 + viewzone attach: hook all four modules onto one editor.
   // Each module's attach() is idempotent and safe to call multiple times
@@ -101,52 +98,7 @@
   let currentFile = null;        // current open file path
   let dirty = false;             // unsaved changes flag
   let mountEl = null;            // <div> we mount into
-  let lspVersion = 0;            // LSP document version counter
-  let lspLang = null;            // current LSP language (null = Monaco native)
-  let lspDebounce = null;        // 150ms debounce timer for LSP changeDocument
-  var LSP_DEBOUNCE_MS = 150;
-
-  var MONACO_NATIVE_LANGS = new Set([
-    'typescript', 'typescriptreact', 'javascript', 'javascriptreact',
-    'json', 'html', 'css', 'scss', 'less'
-  ]);
-
-  var LSP_LANG_MAP = {
-    'python': 'python', 'go': 'go', 'rust': 'rust',
-    'c': 'c', 'cpp': 'cpp',
-    'java': 'java', 'ruby': 'ruby', 'php': 'php',
-    'swift': 'swift', 'kotlin': 'kotlin', 'dart': 'dart', 'lua': 'lua',
-    'r': 'r', 'sql': 'sql',
-  };
-
-  function needsLsp(langId) {
-    if (!window.qqqideBridge || !window.qqqideBridge.lsp) return false;
-    if (MONACO_NATIVE_LANGS.has(langId)) return false;
-    return !!LSP_LANG_MAP[langId];
-  }
-
-  async function lspOpen(file, langId, text) {
-    var bridgeLang = LSP_LANG_MAP[langId];
-    if (!bridgeLang) return;
-    try {
-      var slash = file.replace(/\\/g, '/');
-      var rootUri = 'file:///' + slash.substring(0, slash.lastIndexOf('/'));
-      await window.qqqideBridge.lsp.startLanguage(bridgeLang, rootUri);
-      await window.qqqideBridge.lsp.openDocument(file, text);
-      lspVersion = 1;
-      lspLang = bridgeLang;
-    } catch (e) {
-      console.warn('[editor] LSP open failed for', langId, ':', e && e.message);
-    }
-  }
-
-  function wireLspDiagnostics() {
-    // LSP OFF
-  }
-
-  function wireLspHover() {
-    // LSP OFF
-  }
+  // LSP-related variables and functions removed (all external LSP disabled)
 
 
   // ---------------- Fallback (no monaco available) ----------------
@@ -323,9 +275,9 @@
         lineDecorationsWidth: 0,
         renderLineHighlight: 'none',
         renderLineHighlightOnlyWhenFocus: true,
-        occurrencesHighlight: false,
-        selectionHighlight: false,
-        matchBrackets: 'never',
+        occurrencesHighlight: true,
+        selectionHighlight: true,
+        matchBrackets: 'always',
         bracketPairColorization: { enabled: false },
         autoClosingBrackets: 'never',
         autoClosingQuotes: 'never',
@@ -563,9 +515,9 @@
         lineDecorationsWidth: 0,
         renderLineHighlight: 'none',
         renderLineHighlightOnlyWhenFocus: true,
-        occurrencesHighlight: false,
-        selectionHighlight: false,
-        matchBrackets: 'never',
+        occurrencesHighlight: true,
+        selectionHighlight: true,
+        matchBrackets: 'always',
         bracketPairColorization: { enabled: false },
         autoClosingBrackets: 'never',
         autoClosingQuotes: 'never',

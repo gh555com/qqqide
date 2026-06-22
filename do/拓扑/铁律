@@ -84,13 +84,12 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 第一方 goods (rage) 用直接 DOM 渲染，第三方 goods 用 iframe 隔离。
   - goods 目录: goods/<id>/。内置第一方 goods 随包同发。
 
-§11 qzlsp 唯一真理诊断机器
-  - 双层: Plan A (Monaco 内置 Worker, TS/JS/HTML/CSS/JSON) + Plan B (qzlsp LSP bridge, 其他全部).
-  - Plan A 零延迟零进程; Plan B TCP 优先 (ghrun lsp-daemon) → fallback 直连进程.
-  - ghrun 纯字节转发 (Content-Length 分帧, 不解析 JSON), 零语义耦合.
-  - 多窗口: LspBridge.targets=Set<WebContents>, 诊断广播到所有未销毁窗口.
-  - 多实例: ghrun lsp-daemon 一份 LSP 进程, TCP :9801-9804, 所有 Shell 共享.
-  - 红波浪: monaco.editor.setModelMarkers(model, 'lsp', markers). 兜底: editor.getModel().
+§11 LSP — 全部禁用（2026-06-22）
+  - 编辑器从 Monaco 内置 Worker 到外部 LSP 桥接（pyright/gopls/rust-analyzer/clangd）全部关闭。
+  - editor.js: TS/JS 语义诊断、CSS/HTML/JSON 校验、configureMonacoTypescript、bootCustomTsService、wireLspDiagnostics、wireLspHover 全部删除。
+  - 编辑器只保留 tokenization（代码染色）+ 基础编辑，无红色波浪线、hover、补全、面包屑、minimap。
+  - lsp-bridge.ts（壳层）仍存在但前端无任何调用路径（wireLsp* 已删除），可后续彻底移除。
+  - 如需恢复：恢复 editor.js 中的 diagnosticsOptions 注释 + 取消 wireLsp* 注释。
 
 §12 qoast 唯一真理弹窗机器
   - 唯一入口: core/qqqide-qoast.js。一切 notification/qoast/浮动提示必须走 qqqideQoast.show()。

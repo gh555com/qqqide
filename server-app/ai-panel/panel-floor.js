@@ -8,7 +8,7 @@ async function generateFloorTxt(ag, questId) {
     var houses = ag._houses;
     if (!houses || houses.length === 0) return;
     // ★ 优先使用 _currentFloorNum（不可变），降级到 _ctx.totalFloors
-    var floorNum = ag._currentFloorNum || ag._ctx.totalFloors;
+    var floorNum = ag._currentFloorNum;
 
     // ★ 优先使用 _floorMeta 中的不可变路径，降级到 ag._allTxtPath
     var meta = (floorNum && ag._floorMeta && ag._floorMeta[floorNum]) ? ag._floorMeta[floorNum] : null;
@@ -388,6 +388,8 @@ async function _restoreAgentFromStore(questId, ag) {
             _queue = data.queue || [];
             ag._rulesVersion = data.rulesVersion || '';
             ag._persistentCount = data.persistentCount || 0;
+            // ★ 恢复楼层计数器（旧 quest 无此字段时回退到已保存楼层数）
+            ag._currentFloorNum = data.currentFloorNum || allFloors.length || 0;
         } else {
             ag.totalCostGe = 0;
             ag._lastApiPromptTokens = 0;

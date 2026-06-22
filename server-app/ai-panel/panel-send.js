@@ -270,6 +270,7 @@ async function sendMessage() {
     _startAllTxtStream(aiDiv, _allTxtPathLocal, _capturedAgent, floorNum, text, '');
     _startAutoSave();
     scrollToBottom(true);
+    setStreaming(true);
     try {
         await agent.send(userContent, {
             images: images,
@@ -876,7 +877,7 @@ window.addEventListener('beforeunload', function () {
     if (!_ag || !_qid) return;
     // fire-and-forget 保存（不 await，浏览器会尽力完成 IPC）
     if (typeof _saveAgentQuestData === 'function') {
-        try { _saveAgentQuestData(_qid, _ag, _ag._currentFloorNum || _ag._ctx.totalFloors || 0).catch(function () { }); } catch (_) { }
+        try { _saveAgentQuestData(_qid, _ag, _ag._currentFloorNum || 0).catch(function () { }); } catch (_) { }
     }
     // 压缩中 → 尽力回滚快照（不保证完成），标记异常供下次启动修复
     if (_ag._compressing && _ag._ctx) {

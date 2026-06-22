@@ -231,7 +231,7 @@ export function createWindow(
     if (isDevFlag) {
         win.webContents.openDevTools({ mode: 'detach' });
         injectDevToolsConsoleButtons(win.webContents, () => _consoleBuffer.join('\n'), win);
-        win.webContents.session.clearCache().catch(() => { });
+        // ★ 不再 clearCache() — 保留缓存避免每次启动都重新下载全部资源
         win.webContents.on('before-input-event', (ev, input) => {
             if (input.type !== 'keyDown') { return; }
             if (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r')) {

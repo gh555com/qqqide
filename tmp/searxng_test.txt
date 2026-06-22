@@ -1,2 +1,0 @@
-Up 4 hours
-{"query": "hello", "results": [{"url": "https://open.spotify.com/track/1Yk0cQdMLx5RzzFTYwmuld", "title": "Hello - song and lyrics by Adele - Spotify", "content": "Lyrics. Hello, it's me. I was wonderi
