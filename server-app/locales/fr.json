@@ -89,7 +89,8 @@
             "copyFailed": "Échec de la copie",
             "zoomIn": "Zoom avant",
             "zoomOut": "Zoom arrière",
-            "close": "Fermer (Échap)"
+            "close": "Fermer (Échap)",
+            "resetPosition": "Réinitialiser la position"
         },
         "about": {
             "title": "À propos de qqq",
@@ -104,10 +105,18 @@
             "mainFolder": "Dossier principal (non supprimable)",
             "removeProject": "Supprimer ce projet",
             "addProject": "Ajouter le dossier du projet à la vue IA",
-            "selectFolder": "Sélectionner le dossier à ajouter à la vue IA"
+            "selectFolder": "Sélectionner le dossier à ajouter à la vue IA",
+            "searchFolder": "Rechercher dans ce dossier",
+            "recentFolders": "Dossiers principaux récemment ouverts",
+            "noRecent": "Aucun historique récent, cliquez sur + pour sélectionner un dossier"
         },
         "dev": "Mode développeur",
-        "gaeaHostLoading": "Chargement de gaea host..."
+        "gaeaHostLoading": "Chargement de gaea host...",
+        "free": {
+            "active": "💎 Gratuit actif",
+            "ending": "🎈 La période gratuite se termine",
+            "soonPrefix": "🤍 Prochain accès gratuit dans"
+        }
     },
     "editor": {
         "tabs": {
@@ -130,6 +139,8 @@
             "undo": "Annuler",
             "redo": "Rétablir"
         },
+        "undo": "Annuler (Ctrl+Z)",
+        "redo": "Rétablir (Ctrl+Y)",
         "unsaved": "Non enregistré",
         "saved": "Enregistré",
         "saving": "Enregistrement...",
@@ -152,13 +163,6 @@
         }
     },
     "ai": {
-        "title": "IA",
-        "send": "Envoyer",
-        "stop": "Arrêter",
-        "guide": "Guide",
-        "queue": "File d'attente",
-        "context": "Contexte",
-        "compress": "Compresser",
         "ctx": {
             "title": "Vous pouvez choisir de compresser le contexte",
             "benefit": "Seul avantage :",
@@ -170,68 +174,21 @@
             "noLoss": "Dans tous les cas (avec ou sans compression, quel que soit l'auteur), cela ne saturera ni ne fera perdre la mémoire de l'IA.",
             "complex": "Plus adapté aux tâches de programmation complexes, où l'IA disposera d'un espace mémoire de longueur limitée.",
             "compress": "Compresser",
-            "cancel": "Annuler"
+            "cancel": "Annuler",
+            "breakdown": "Utilisation du contexte",
+            "used": "Utilisé",
+            "free": "Libre"
         },
-        "inputPlaceholder": "Demander à qqq AI... (Ctrl+V pour coller une image)",
-        "embedImage": "Intégrer",
-        "level": {
-            "a": "Conservateur",
-            "1": "Léger",
-            "2": "Modéré",
-            "3": "Intelligent",
-            "4": "Puissant",
-            "5": "Extrême",
-            "6": "Pro Max"
+        "error": {
+            "noActiveAgent": "Veuillez d'abord envoyer un message pour créer une conversation",
+            "buildingFloor": "L'IA est en train de construire, veuillez attendre que l'étage actuel soit terminé avant de compresser"
         },
-        "floor": "Étage",
-        "house": "Maison",
-        "room": "Pièce",
-        "ttfb": "Attente réseau",
-        "work": "Temps de travail",
-        "total": "Total",
-        "tokens": "Consommation de tokens",
-        "confirmConnect": "Confirmer la connexion",
-        "thinking": "Réflexion en cours...",
-        "streaming": "Génération en cours...",
-        "tools": {
-            "readFile": "Lire le fichier",
-            "editFile": "Modifier le fichier",
-            "createFile": "Créer un fichier",
-            "deleteFile": "Supprimer le fichier",
-            "writeFile": "Écrire dans le fichier",
-            "searchText": "Rechercher du texte",
-            "findFiles": "Trouver des fichiers",
-            "listFiles": "Lister les fichiers",
-            "getDiagnostics": "Obtenir les diagnostics",
-            "runCommand": "Exécuter la commande",
-            "fetchWebpage": "Récupérer la page web",
-            "getVision": "Obtenir le contexte visuel"
-        },
-        "output": {
-            "empty": "En attente de saisie...",
-            "compressInProgress": "Compression en cours...",
-            "compressDone": "Compression terminée",
-            "tokenLimit": "Limite de tokens atteinte"
-        },
-        "rules": {
-            "title": "Règles du projet",
-            "edit": "Modifier les règles",
-            "empty": "Aucune règle pour le moment",
-            "globalRule": "Règle globale (.qqq-rules.txt)",
-            "projectRule": "Règle du projet (project.txt)"
-        },
-        "quest": {
-            "switch": "Changer de projet",
-            "newQuest": "Nouvelle conversation",
-            "history": "Historique",
-            "noHistory": "Aucun historique",
-            "saveFailed": "Échec de l'enregistrement"
-        },
-        "lock": {
-            "locked": "Le projet est déjà ouvert dans une autre fenêtre",
-            "stale": "Verrou expiré",
-            "heartbeat": "Signal de présence"
-        }
+        "level": {},
+        "tools": {},
+        "output": {},
+        "rules": {},
+        "quest": {},
+        "lock": {}
     },
     "goods": {
         "bar": {
@@ -370,5 +327,31 @@
         "f1": "Palette de commandes",
         "altLeft": "Précédent",
         "altRight": "Suivant"
+    },
+    "wings": {
+        "redrawing": "Redessin en cours"
+    },
+    "timeline": {
+        "filePathPlaceholder": "Chemin du fichier…",
+        "searchHistory": "Historique de recherche",
+        "dragHandle": "Glisser pour déplacer la fenêtre",
+        "maximize": "Agrandir",
+        "full": "📋 Texte intégral",
+        "diff": "📌 Différences",
+        "acceptLeft": "← Déplacer vers la droite",
+        "save": "💾 Enregistrer",
+        "changes": "{n} modification(s)",
+        "modeFull": "Texte intégral",
+        "modeDiff": "Différences",
+        "loading": "Chargement…",
+        "noVersions": "Aucune version historique pour ce fichier",
+        "missingParams": "Paramètres manquants",
+        "loadingVersions": "Chargement de la liste des versions…",
+        "monacoTimeout": "Délai d'attente dépassé pour le chargement de Monaco, veuillez vérifier votre connexion ou redémarrer la fenêtre",
+        "monacoFailed": "Échec du chargement de Monaco",
+        "saved": "Enregistré",
+        "saveFailed": "Échec de l'enregistrement",
+        "copyRow": "Copier cette ligne",
+        "closeHint": "= Clic droit pour fermer"
     }
 }

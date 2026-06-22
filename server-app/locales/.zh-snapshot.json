@@ -89,7 +89,8 @@
             "copyFailed": "复制失败",
             "zoomIn": "放大",
             "zoomOut": "缩小",
-            "close": "关闭(Esc 或 光标右键)"
+            "close": "关闭(Esc 或 光标右键)",
+            "resetPosition": "重置位置"
         },
         "about": {
             "title": "关于 qqq",
@@ -104,10 +105,18 @@
             "mainFolder": "主文件夹（不可移除）",
             "removeProject": "移除此项目",
             "addProject": "添加项目文件夹到 AI 视口",
-            "selectFolder": "选择要添加到 AI 视口的文件夹"
+            "selectFolder": "选择要添加到 AI 视口的文件夹",
+            "searchFolder": "搜索此文件夹",
+            "recentFolders": "最近打开的主文件夹",
+            "noRecent": "暂无最近记录，点击 + 选择文件夹"
         },
         "dev": "开发模式",
-        "gaeaHostLoading": "gaea host 加载中..."
+        "gaeaHostLoading": "gaea host 加载中...",
+        "free": {
+            "active": "💎 免费中",
+            "ending": "🎈免费将结束",
+            "soonPrefix": "🤍距离下次免费"
+        }
     },
     "editor": {
         "tabs": {
@@ -130,6 +139,8 @@
             "undo": "撤销",
             "redo": "重做"
         },
+        "undo": "撤销 (Ctrl+Z)",
+        "redo": "重做 (Ctrl+Y)",
         "unsaved": "未保存",
         "saved": "已保存",
         "saving": "保存中...",
@@ -152,13 +163,6 @@
         }
     },
     "ai": {
-        "title": "AI",
-        "send": "发送",
-        "stop": "停止",
-        "guide": "引导",
-        "queue": "排队",
-        "context": "上下文",
-        "compress": "压缩",
         "ctx": {
             "title": "你可以选择压缩上下文",
             "benefit": "唯一好处：",
@@ -170,67 +174,14 @@
             "noLoss": "无论如何（压缩与否、谁来压缩）都既不会导致 AI 记忆撑爆，也不会导致 AI 记忆丢失。",
             "complex": "更适合复杂滴编程任务，AI 将会有极限长度滴记忆空间。",
             "compress": "压缩",
-            "cancel": "取消"
+            "cancel": "取消",
+            "breakdown": "上下文占用",
+            "used": "已用",
+            "free": "空闲"
         },
-        "inputPlaceholder": "Ask qqq AI... (Ctrl+V 粘贴图片)",
-        "embedImage": "嵌入",
-        "level": {
-            "a": "保守",
-            "1": "轻度",
-            "2": "中等",
-            "3": "智能",
-            "4": "强力",
-            "5": "极限",
-            "6": "Pro Max"
-        },
-        "floor": "楼层",
-        "house": "房子",
-        "room": "房间",
-        "ttfb": "网络等待",
-        "work": "工作时间",
-        "total": "总计",
-        "tokens": "Token 消耗",
-        "confirmConnect": "确认连接",
-        "thinking": "思考中...",
-        "streaming": "生成中...",
-        "tools": {
-            "readFile": "读取文件",
-            "editFile": "编辑文件",
-            "createFile": "创建文件",
-            "deleteFile": "删除文件",
-            "writeFile": "写入文件",
-            "searchText": "搜索文本",
-            "findFiles": "查找文件",
-            "listFiles": "列出文件",
-            "getDiagnostics": "获取诊断",
-            "runCommand": "运行命令",
-            "fetchWebpage": "抓取网页",
-            "getVision": "获取视觉上下文"
-        },
-        "output": {
-            "empty": "等待键入...",
-            "compressInProgress": "压缩中...",
-            "compressDone": "压缩完成",
-            "tokenLimit": "达到 Token 上限"
-        },
-        "rules": {
-            "title": "项目规则",
-            "edit": "编辑规则",
-            "empty": "暂无规则",
-            "globalRule": "全局规则 (.qqq-rules.txt)",
-            "projectRule": "项目规则 (project.txt)"
-        },
-        "quest": {
-            "switch": "切换项目",
-            "newQuest": "新建对话",
-            "history": "历史记录",
-            "noHistory": "暂无历史",
-            "saveFailed": "保存失败"
-        },
-        "lock": {
-            "locked": "项目已被其他窗口打开",
-            "stale": "锁已过期",
-            "heartbeat": "心跳"
+        "error": {
+            "noActiveAgent": "请先发送一条消息创建对话",
+            "buildingFloor": "AI 正在建楼中，请等待当前楼层完成后再压缩"
         }
     },
     "goods": {
@@ -370,5 +321,31 @@
         "f1": "命令面板",
         "altLeft": "后退",
         "altRight": "前进"
+    },
+    "wings": {
+        "redrawing": "重绘中"
+    },
+    "timeline": {
+        "filePathPlaceholder": "文件路径…",
+        "searchHistory": "搜索历史",
+        "dragHandle": "拖拽移动窗口",
+        "maximize": "最大化",
+        "full": "📋 全文",
+        "diff": "📌 差异",
+        "acceptLeft": "← 移到右",
+        "save": "💾 保存",
+        "changes": "{n} 处修改",
+        "modeFull": "全文",
+        "modeDiff": "差异",
+        "loading": "加载中…",
+        "noVersions": "该文件没有历史版本",
+        "missingParams": "缺少参数",
+        "loadingVersions": "加载版本列表…",
+        "monacoTimeout": "Monaco 加载超时，请检查网络或重启窗口",
+        "monacoFailed": "Monaco 加载失败",
+        "saved": "已保存",
+        "saveFailed": "保存失败",
+        "copyRow": "复制此行文本",
+        "closeHint": "= 右键单击关闭"
     }
 }

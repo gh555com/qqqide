@@ -46,16 +46,16 @@
     {
       key: 'ai.defaultTier',
       label: '默认 AI 等级',
-      desc: '新建任务或 ~New quest~ 时使用的 AI 等级。任务中手动改过的等级会被单独记忆',
+      desc: '数字越大=思考越深、质量越高、越慢、越贵',
       type: 'radio',
       defaultValue: '6',
       options: [
-        { value: '1', label: '1-Flash', desc: '最快速度，无推理' },
-        { value: '2', label: '2-Flash+High', desc: '快速 + 高推理' },
-        { value: '3', label: '3-Flash+Max', desc: '快速 + 最大推理' },
-        { value: '4', label: '4-Pro', desc: '专业模型，无推理' },
-        { value: '5', label: '5-Pro+High', desc: '专业模型 + 高推理' },
-        { value: '6', label: '6-Pro+Max', desc: '专业模型 + 最大推理（默认）' }
+        { value: '1', label: '1', desc: '轻量' },
+        { value: '2', label: '2', desc: '轻量+推理' },
+        { value: '3', label: '3', desc: '轻量+深度推理' },
+        { value: '4', label: '4', desc: '专业' },
+        { value: '5', label: '5', desc: '专业+推理' },
+        { value: '6', label: '6', desc: '专业+深度推理' }
       ]
     }
   ];
@@ -214,17 +214,33 @@
       html += '<div style="font-size:11px; color:' + textDim + '; margin-bottom:10px;">' + def.desc + '</div>';
 
       if (def.type === 'radio') {
-        for (var j = 0; j < def.options.length; j++) {
-          var opt = def.options[j];
-          var checked = (currentVal === opt.value);
-          var radioId = 'qqq-setting-' + def.key.replace(/\./g, '-') + '-' + opt.value;
-          html += '<label style="display:flex; align-items:flex-start; margin-bottom:6px; padding:6px 8px; border-radius:3px; background:' + (checked ? accent + '20' : 'transparent') + '; border:1px solid ' + (checked ? accent : 'transparent') + ';">';
-          html += '<input type="radio" name="' + def.key + '" value="' + opt.value + '" ' + (checked ? 'checked' : '') + ' data-setting-key="' + def.key + '" style="margin-top:2px; margin-right:8px; accent-color:' + accent + ';">';
-          html += '<div>';
-          html += '<div style="font-size:12px; color:' + text + ';">' + opt.label + '</div>';
-          html += '<div style="font-size:10px; color:' + textDim + ';">' + opt.desc + '</div>';
+        // ★ 默认 AI 等级：6 个水平格子（紧凑1-2行），选中打勾 ✓
+        if (def.key === 'ai.defaultTier') {
+          html += '<div style="display:flex; flex-wrap:wrap; gap:6px;">';
+          for (var j = 0; j < def.options.length; j++) {
+            var opt = def.options[j];
+            var checked = (currentVal === opt.value);
+            html += '<label style="flex:0 0 calc(33.33% - 5px); min-width:68px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:4px; padding:6px 4px; border-radius:4px; border:2px solid ' + (checked ? accent : border) + '; background:' + (checked ? accent + '20' : 'transparent') + '; cursor:pointer; font-size:12px; color:' + text + '; user-select:none;">';
+            html += '<input type="radio" name="' + def.key + '" value="' + opt.value + '" ' + (checked ? 'checked' : '') + ' data-setting-key="' + def.key + '" style="display:none;">';
+            html += checked ? '<span style="font-weight:bold; color:' + accent + ';">\u2713</span>' : '<span style="opacity:0.3;">\u25cb</span>';
+            html += '<span>' + opt.label + '</span>';
+            html += '</label>';
+          }
           html += '</div>';
-          html += '</label>';
+        } else {
+          // 其他 radio 项保持原样
+          for (var j = 0; j < def.options.length; j++) {
+            var opt = def.options[j];
+            var checked = (currentVal === opt.value);
+            var radioId = 'qqq-setting-' + def.key.replace(/\./g, '-') + '-' + opt.value;
+            html += '<label style="display:flex; align-items:flex-start; margin-bottom:6px; padding:6px 8px; border-radius:3px; background:' + (checked ? accent + '20' : 'transparent') + '; border:1px solid ' + (checked ? accent : 'transparent') + ';">';
+            html += '<input type="radio" name="' + def.key + '" value="' + opt.value + '" ' + (checked ? 'checked' : '') + ' data-setting-key="' + def.key + '" style="margin-top:2px; margin-right:8px; accent-color:' + accent + ';">';
+            html += '<div>';
+            html += '<div style="font-size:12px; color:' + text + ';">' + opt.label + '</div>';
+            html += '<div style="font-size:10px; color:' + textDim + ';">' + opt.desc + '</div>';
+            html += '</div>';
+            html += '</label>';
+          }
         }
       }
 

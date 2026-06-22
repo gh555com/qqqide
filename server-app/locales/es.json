@@ -89,7 +89,8 @@
             "copyFailed": "Error al copiar",
             "zoomIn": "Acercar",
             "zoomOut": "Alejar",
-            "close": "Cerrar (Esc)"
+            "close": "Cerrar (Esc)",
+            "resetPosition": "Restablecer posición"
         },
         "about": {
             "title": "Acerca de qqq",
@@ -104,10 +105,18 @@
             "mainFolder": "Carpeta principal (no se puede eliminar)",
             "removeProject": "Eliminar este proyecto",
             "addProject": "Añadir carpeta del proyecto a la vista de IA",
-            "selectFolder": "Selecciona la carpeta para añadir a la vista de IA"
+            "selectFolder": "Selecciona la carpeta para añadir a la vista de IA",
+            "searchFolder": "Buscar en esta carpeta",
+            "recentFolders": "Carpetas principales abiertas recientemente",
+            "noRecent": "No hay registros recientes, haga clic en + para seleccionar una carpeta"
         },
         "dev": "Modo desarrollador",
-        "gaeaHostLoading": "Cargando host gaea..."
+        "gaeaHostLoading": "Cargando host gaea...",
+        "free": {
+            "active": "💎 Gratis activo",
+            "ending": "🎈 La versión gratuita finalizará pronto",
+            "soonPrefix": "🤍 Hasta la próxima sesión gratuita"
+        }
     },
     "editor": {
         "tabs": {
@@ -130,6 +139,8 @@
             "undo": "Deshacer",
             "redo": "Rehacer"
         },
+        "undo": "Deshacer (Ctrl+Z)",
+        "redo": "Rehacer (Ctrl+Y)",
         "unsaved": "Sin guardar",
         "saved": "Guardado",
         "saving": "Guardando...",
@@ -152,13 +163,6 @@
         }
     },
     "ai": {
-        "title": "IA",
-        "send": "Enviar",
-        "stop": "Detener",
-        "guide": "Guía",
-        "queue": "En cola",
-        "context": "Contexto",
-        "compress": "Comprimir",
         "ctx": {
             "title": "Puedes optar por comprimir el contexto",
             "benefit": "Único beneficio:",
@@ -170,68 +174,21 @@
             "noLoss": "En cualquier caso (con o sin compresión, quienquiera que comprima) no se saturará la memoria de la IA ni se perderá información.",
             "complex": "Más adecuado para tareas de programación complejas, donde la IA tendrá un espacio de memoria de longitud limitada.",
             "compress": "Comprimir",
-            "cancel": "Cancelar"
+            "cancel": "Cancelar",
+            "breakdown": "Uso del contexto",
+            "used": "Usado",
+            "free": "Disponible"
         },
-        "inputPlaceholder": "Pregunta a qqq AI... (Ctrl+V para pegar imagen)",
-        "embedImage": "Incrustar",
-        "level": {
-            "a": "Conservador",
-            "1": "Leve",
-            "2": "Moderado",
-            "3": "Inteligente",
-            "4": "Potente",
-            "5": "Extremo",
-            "6": "Pro Max"
+        "error": {
+            "noActiveAgent": "Por favor, envíe un mensaje primero para crear una conversación",
+            "buildingFloor": "La IA está procesando, espere a que termine el proceso actual antes de comprimir"
         },
-        "floor": "Planta",
-        "house": "Casa",
-        "room": "Habitación",
-        "ttfb": "Espera de red",
-        "work": "Tiempo de trabajo",
-        "total": "Total",
-        "tokens": "Consumo de Tokens",
-        "confirmConnect": "Confirmar conexión",
-        "thinking": "Pensando...",
-        "streaming": "Generando...",
-        "tools": {
-            "readFile": "Leer archivo",
-            "editFile": "Editar archivo",
-            "createFile": "Crear archivo",
-            "deleteFile": "Eliminar archivo",
-            "writeFile": "Escribir archivo",
-            "searchText": "Buscar texto",
-            "findFiles": "Buscar archivos",
-            "listFiles": "Listar archivos",
-            "getDiagnostics": "Obtener diagnósticos",
-            "runCommand": "Ejecutar comando",
-            "fetchWebpage": "Capturar página web",
-            "getVision": "Obtener contexto visual"
-        },
-        "output": {
-            "empty": "Esperando entrada...",
-            "compressInProgress": "Comprimiendo...",
-            "compressDone": "Compresión completada",
-            "tokenLimit": "Límite de Tokens alcanzado"
-        },
-        "rules": {
-            "title": "Reglas del proyecto",
-            "edit": "Editar reglas",
-            "empty": "No hay reglas",
-            "globalRule": "Regla global (.qqq-rules.txt)",
-            "projectRule": "Regla del proyecto (project.txt)"
-        },
-        "quest": {
-            "switch": "Cambiar proyecto",
-            "newQuest": "Nueva conversación",
-            "history": "Historial",
-            "noHistory": "Sin historial",
-            "saveFailed": "Error al guardar"
-        },
-        "lock": {
-            "locked": "El proyecto está abierto en otra ventana",
-            "stale": "Bloqueo expirado",
-            "heartbeat": "Latido"
-        }
+        "level": {},
+        "tools": {},
+        "output": {},
+        "rules": {},
+        "quest": {},
+        "lock": {}
     },
     "goods": {
         "bar": {
@@ -370,5 +327,31 @@
         "f1": "Paleta de comandos",
         "altLeft": "Atrás",
         "altRight": "Adelante"
+    },
+    "wings": {
+        "redrawing": "Redibujando"
+    },
+    "timeline": {
+        "filePathPlaceholder": "Ruta del archivo…",
+        "searchHistory": "Historial de búsqueda",
+        "dragHandle": "Arrastrar para mover la ventana",
+        "maximize": "Maximizar",
+        "full": "📋 Texto completo",
+        "diff": "📌 Diferencias",
+        "acceptLeft": "← Mover a la derecha",
+        "save": "💾 Guardar",
+        "changes": "{n} cambios",
+        "modeFull": "Texto completo",
+        "modeDiff": "Diferencias",
+        "loading": "Cargando…",
+        "noVersions": "Este archivo no tiene versiones anteriores",
+        "missingParams": "Faltan parámetros",
+        "loadingVersions": "Cargando lista de versiones…",
+        "monacoTimeout": "Tiempo de espera agotado al cargar Monaco. Verifique su conexión o reinicie la ventana",
+        "monacoFailed": "Error al cargar Monaco",
+        "saved": "Guardado",
+        "saveFailed": "Error al guardar",
+        "copyRow": "Copiar texto de esta línea",
+        "closeHint": "= Clic derecho para cerrar"
     }
 }

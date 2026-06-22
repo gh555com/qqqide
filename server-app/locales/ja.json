@@ -89,7 +89,8 @@
             "copyFailed": "コピーに失敗しました",
             "zoomIn": "拡大",
             "zoomOut": "縮小",
-            "close": "閉じる (Esc)"
+            "close": "閉じる (Esc)",
+            "resetPosition": "位置をリセット"
         },
         "about": {
             "title": "qqq について",
@@ -104,10 +105,18 @@
             "mainFolder": "メインフォルダ（削除不可）",
             "removeProject": "このプロジェクトを削除",
             "addProject": "プロジェクトフォルダを AI ビューポートに追加",
-            "selectFolder": "AI ビューポートに追加するフォルダを選択"
+            "selectFolder": "AI ビューポートに追加するフォルダを選択",
+            "searchFolder": "このフォルダ内を検索",
+            "recentFolders": "最近開いたメインフォルダ",
+            "noRecent": "最近の記録はありません。+ をクリックしてフォルダを選択してください"
         },
         "dev": "開発モード",
-        "gaeaHostLoading": "gaea host 読み込み中..."
+        "gaeaHostLoading": "gaea host 読み込み中...",
+        "free": {
+            "active": "💎 無料利用中",
+            "ending": "🎈 無料利用終了間近",
+            "soonPrefix": "🤍 次の無料利用まで"
+        }
     },
     "editor": {
         "tabs": {
@@ -130,6 +139,8 @@
             "undo": "元に戻す",
             "redo": "やり直し"
         },
+        "undo": "元に戻す (Ctrl+Z)",
+        "redo": "やり直し (Ctrl+Y)",
         "unsaved": "未保存",
         "saved": "保存済み",
         "saving": "保存中...",
@@ -152,13 +163,6 @@
         }
     },
     "ai": {
-        "title": "AI",
-        "send": "送信",
-        "stop": "停止",
-        "guide": "ガイド",
-        "queue": "キュー",
-        "context": "コンテキスト",
-        "compress": "圧縮",
         "ctx": {
             "title": "コンテキストを圧縮することを選択できます",
             "benefit": "唯一の利点：",
@@ -170,68 +174,21 @@
             "noLoss": "圧縮の有無や実行主体に関わらず、AI のメモリが溢れたり、記憶が失われたりすることはありません。",
             "complex": "複雑なプログラミングタスクに最適で、AI は限界までの長さの記憶空間を持つことになります。",
             "compress": "圧縮",
-            "cancel": "キャンセル"
+            "cancel": "キャンセル",
+            "breakdown": "コンテキスト使用量",
+            "used": "使用中",
+            "free": "空き"
         },
-        "inputPlaceholder": "qqq AI に質問... (Ctrl+V で画像を貼り付け)",
-        "embedImage": "埋め込み",
-        "level": {
-            "a": "保守的",
-            "1": "軽度",
-            "2": "中程度",
-            "3": "スマート",
-            "4": "強力",
-            "5": "極限",
-            "6": "Pro Max"
+        "error": {
+            "noActiveAgent": "会話を開始するには、まずメッセージを送信してください",
+            "buildingFloor": "AI が処理中です。現在の処理が完了するまでお待ちください"
         },
-        "floor": "階層",
-        "house": "ハウス",
-        "room": "ルーム",
-        "ttfb": "ネットワーク待機時間",
-        "work": "処理時間",
-        "total": "合計",
-        "tokens": "Token 消費量",
-        "confirmConnect": "接続を確認",
-        "thinking": "思考中...",
-        "streaming": "生成中...",
-        "tools": {
-            "readFile": "ファイルを読み込む",
-            "editFile": "ファイルを編集",
-            "createFile": "ファイルを作成",
-            "deleteFile": "ファイルを削除",
-            "writeFile": "ファイルに書き込む",
-            "searchText": "テキストを検索",
-            "findFiles": "ファイルを探す",
-            "listFiles": "ファイル一覧を取得",
-            "getDiagnostics": "診断情報を取得",
-            "runCommand": "コマンドを実行",
-            "fetchWebpage": "ウェブページを取得",
-            "getVision": "視覚コンテキストを取得"
-        },
-        "output": {
-            "empty": "入力待ち...",
-            "compressInProgress": "圧縮中...",
-            "compressDone": "圧縮完了",
-            "tokenLimit": "Token 上限に達しました"
-        },
-        "rules": {
-            "title": "プロジェクトルール",
-            "edit": "ルールを編集",
-            "empty": "ルールなし",
-            "globalRule": "グローバルルール (.qqq-rules.txt)",
-            "projectRule": "プロジェクトルール (project.txt)"
-        },
-        "quest": {
-            "switch": "プロジェクトを切り替え",
-            "newQuest": "新しい会話",
-            "history": "履歴",
-            "noHistory": "履歴なし",
-            "saveFailed": "保存に失敗しました"
-        },
-        "lock": {
-            "locked": "プロジェクトは他のウィンドウで開かれています",
-            "stale": "ロックの有効期限が切れました",
-            "heartbeat": "ハートビート"
-        }
+        "level": {},
+        "tools": {},
+        "output": {},
+        "rules": {},
+        "quest": {},
+        "lock": {}
     },
     "goods": {
         "bar": {
@@ -370,5 +327,31 @@
         "f1": "コマンドパレット",
         "altLeft": "戻る",
         "altRight": "進む"
+    },
+    "wings": {
+        "redrawing": "再描画中"
+    },
+    "timeline": {
+        "filePathPlaceholder": "ファイルパス…",
+        "searchHistory": "検索履歴",
+        "dragHandle": "ドラッグしてウィンドウを移動",
+        "maximize": "最大化",
+        "full": "📋 全文",
+        "diff": "📌 差分",
+        "acceptLeft": "← 左側を採用",
+        "save": "💾 保存",
+        "changes": "{n} 件の変更",
+        "modeFull": "全文",
+        "modeDiff": "差分",
+        "loading": "読み込み中…",
+        "noVersions": "このファイルには履歴バージョンがありません",
+        "missingParams": "パラメータが不足しています",
+        "loadingVersions": "バージョンリストを読み込み中…",
+        "monacoTimeout": "Monaco の読み込みがタイムアウトしました。ネットワークを確認するか、ウィンドウを再起動してください",
+        "monacoFailed": "Monaco の読み込みに失敗しました",
+        "saved": "保存済み",
+        "saveFailed": "保存に失敗しました",
+        "copyRow": "この行のテキストをコピー",
+        "closeHint": "= 右クリックで閉じる"
     }
 }

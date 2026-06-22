@@ -89,7 +89,8 @@
             "copyFailed": "複製失敗",
             "zoomIn": "放大",
             "zoomOut": "縮小",
-            "close": "關閉 (Esc)"
+            "close": "關閉 (Esc)",
+            "resetPosition": "重置位置"
         },
         "about": {
             "title": "關於 qqq",
@@ -104,10 +105,18 @@
             "mainFolder": "主要資料夾（不可移除）",
             "removeProject": "移除此專案",
             "addProject": "將專案資料夾新增至 AI 視窗",
-            "selectFolder": "選擇要新增至 AI 視窗的資料夾"
+            "selectFolder": "選擇要新增至 AI 視窗的資料夾",
+            "searchFolder": "搜尋此資料夾",
+            "recentFolders": "最近開啟的主要資料夾",
+            "noRecent": "尚無近期記錄，點擊 + 選擇資料夾"
         },
         "dev": "開發模式",
-        "gaeaHostLoading": "gaea host 載入中..."
+        "gaeaHostLoading": "gaea host 載入中...",
+        "free": {
+            "active": "💎 免費方案使用中",
+            "ending": "🎈免費即將結束",
+            "soonPrefix": "🤍距離下次免費"
+        }
     },
     "editor": {
         "tabs": {
@@ -130,6 +139,8 @@
             "undo": "復原",
             "redo": "重做"
         },
+        "undo": "復原 (Ctrl+Z)",
+        "redo": "重做 (Ctrl+Y)",
         "unsaved": "未儲存",
         "saved": "已儲存",
         "saving": "儲存中...",
@@ -152,13 +163,6 @@
         }
     },
     "ai": {
-        "title": "AI",
-        "send": "傳送",
-        "stop": "停止",
-        "guide": "引導",
-        "queue": "排隊中",
-        "context": "上下文",
-        "compress": "壓縮",
         "ctx": {
             "title": "您可以選擇壓縮上下文",
             "benefit": "唯一好處：",
@@ -170,68 +174,21 @@
             "noLoss": "無論是否壓縮或由誰壓縮，都不會導致 AI 記憶溢位或遺失。",
             "complex": "更適合複雜的程式設計任務，AI 將擁有有限長度的記憶空間。",
             "compress": "壓縮",
-            "cancel": "取消"
+            "cancel": "取消",
+            "breakdown": "上下文佔用",
+            "used": "已使用",
+            "free": "閒置"
         },
-        "inputPlaceholder": "詢問 qqq AI... (Ctrl+V 貼上圖片)",
-        "embedImage": "嵌入",
-        "level": {
-            "a": "保守",
-            "1": "輕度",
-            "2": "中等",
-            "3": "智慧",
-            "4": "強力",
-            "5": "極限",
-            "6": "Pro Max"
+        "error": {
+            "noActiveAgent": "請先傳送一則訊息以建立對話",
+            "buildingFloor": "AI 正在建構中，請等待當前步驟完成後再進行壓縮"
         },
-        "floor": "樓層",
-        "house": "房子",
-        "room": "房間",
-        "ttfb": "網路等待",
-        "work": "工作時間",
-        "total": "總計",
-        "tokens": "Token 消耗量",
-        "confirmConnect": "確認連線",
-        "thinking": "思考中...",
-        "streaming": "生成中...",
-        "tools": {
-            "readFile": "讀取檔案",
-            "editFile": "編輯檔案",
-            "createFile": "建立檔案",
-            "deleteFile": "刪除檔案",
-            "writeFile": "寫入檔案",
-            "searchText": "搜尋文字",
-            "findFiles": "尋找檔案",
-            "listFiles": "列出檔案",
-            "getDiagnostics": "取得診斷資訊",
-            "runCommand": "執行命令",
-            "fetchWebpage": "擷取網頁",
-            "getVision": "取得視覺上下文"
-        },
-        "output": {
-            "empty": "等待輸入...",
-            "compressInProgress": "壓縮中...",
-            "compressDone": "壓縮完成",
-            "tokenLimit": "達到 Token 上限"
-        },
-        "rules": {
-            "title": "專案規則",
-            "edit": "編輯規則",
-            "empty": "尚無規則",
-            "globalRule": "全域規則 (.qqq-rules.txt)",
-            "projectRule": "專案規則 (project.txt)"
-        },
-        "quest": {
-            "switch": "切換專案",
-            "newQuest": "新增對話",
-            "history": "歷史記錄",
-            "noHistory": "尚無歷史記錄",
-            "saveFailed": "儲存失敗"
-        },
-        "lock": {
-            "locked": "專案已被其他視窗開啟",
-            "stale": "鎖定已過期",
-            "heartbeat": "心跳檢測"
-        }
+        "level": {},
+        "tools": {},
+        "output": {},
+        "rules": {},
+        "quest": {},
+        "lock": {}
     },
     "goods": {
         "bar": {
@@ -370,5 +327,31 @@
         "f1": "命令面板",
         "altLeft": "後退",
         "altRight": "前進"
+    },
+    "wings": {
+        "redrawing": "重繪中"
+    },
+    "timeline": {
+        "filePathPlaceholder": "檔案路徑…",
+        "searchHistory": "搜尋歷史",
+        "dragHandle": "拖曳移動視窗",
+        "maximize": "最大化",
+        "full": "📋 全文",
+        "diff": "📌 差異",
+        "acceptLeft": "← 移至右側",
+        "save": "💾 儲存",
+        "changes": "{n} 處修改",
+        "modeFull": "全文",
+        "modeDiff": "差異",
+        "loading": "載入中…",
+        "noVersions": "該檔案沒有歷史版本",
+        "missingParams": "缺少參數",
+        "loadingVersions": "載入版本清單…",
+        "monacoTimeout": "Monaco 載入逾時，請檢查網路或重新啟動視窗",
+        "monacoFailed": "Monaco 載入失敗",
+        "saved": "已儲存",
+        "saveFailed": "儲存失敗",
+        "copyRow": "複製此行文字",
+        "closeHint": "= 右鍵點擊關閉"
     }
 }

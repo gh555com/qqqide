@@ -89,7 +89,8 @@
             "copyFailed": "복사 실패",
             "zoomIn": "확대",
             "zoomOut": "축소",
-            "close": "닫기 (Esc)"
+            "close": "닫기 (Esc)",
+            "resetPosition": "위치 초기화"
         },
         "about": {
             "title": "qqq 정보",
@@ -104,10 +105,18 @@
             "mainFolder": "메인 폴더 (제거 불가)",
             "removeProject": "이 프로젝트 제거",
             "addProject": "프로젝트 폴더를 AI 뷰포트에 추가",
-            "selectFolder": "AI 뷰포트에 추가할 폴더 선택"
+            "selectFolder": "AI 뷰포트에 추가할 폴더 선택",
+            "searchFolder": "이 폴더 검색",
+            "recentFolders": "최근 열린 주요 폴더",
+            "noRecent": "최근 기록이 없습니다. +를 클릭하여 폴더 선택"
         },
         "dev": "개발 모드",
-        "gaeaHostLoading": "gaea 호스트 로딩 중..."
+        "gaeaHostLoading": "gaea 호스트 로딩 중...",
+        "free": {
+            "active": "💎 무료 이용 중",
+            "ending": "🎈무료 이용 종료 예정",
+            "soonPrefix": "🤍다음 무료 이용까지"
+        }
     },
     "editor": {
         "tabs": {
@@ -130,6 +139,8 @@
             "undo": "실행 취소",
             "redo": "다시 실행"
         },
+        "undo": "실행 취소 (Ctrl+Z)",
+        "redo": "다시 실행 (Ctrl+Y)",
         "unsaved": "저장되지 않음",
         "saved": "저장됨",
         "saving": "저장 중...",
@@ -152,13 +163,6 @@
         }
     },
     "ai": {
-        "title": "AI",
-        "send": "보내기",
-        "stop": "중지",
-        "guide": "가이드",
-        "queue": "대기열",
-        "context": "컨텍스트",
-        "compress": "압축",
         "ctx": {
             "title": "컨텍스트 압축을 선택할 수 있습니다",
             "benefit": "유일한 이점:",
@@ -170,68 +174,21 @@
             "noLoss": "압축 여부나 주체에 관계없이 AI 메모리가 초과되거나 손실되지 않습니다.",
             "complex": "복잡한 프로그래밍 작업에 더 적합하며, AI는 제한된 길이의 메모리 공간을 갖게 됩니다.",
             "compress": "압축",
-            "cancel": "취소"
+            "cancel": "취소",
+            "breakdown": "컨텍스트 사용량",
+            "used": "사용됨",
+            "free": "여유"
         },
-        "inputPlaceholder": "qqq AI에게 질문... (Ctrl+V로 이미지 붙여넣기)",
-        "embedImage": "삽입",
-        "level": {
-            "a": "보수적",
-            "1": "낮음",
-            "2": "중간",
-            "3": "스마트",
-            "4": "강력",
-            "5": "극한",
-            "6": "Pro Max"
+        "error": {
+            "noActiveAgent": "대화를 시작하려면 먼저 메시지를 보내세요",
+            "buildingFloor": "AI가 빌드를 진행 중입니다. 현재 층이 완료될 때까지 기다린 후 압축하세요"
         },
-        "floor": "층",
-        "house": "집",
-        "room": "방",
-        "ttfb": "네트워크 대기 시간",
-        "work": "작업 시간",
-        "total": "총계",
-        "tokens": "Token 소모량",
-        "confirmConnect": "연결 확인",
-        "thinking": "생각 중...",
-        "streaming": "생성 중...",
-        "tools": {
-            "readFile": "파일 읽기",
-            "editFile": "파일 편집",
-            "createFile": "파일 생성",
-            "deleteFile": "파일 삭제",
-            "writeFile": "파일 쓰기",
-            "searchText": "텍스트 검색",
-            "findFiles": "파일 찾기",
-            "listFiles": "파일 목록",
-            "getDiagnostics": "진단 정보 가져오기",
-            "runCommand": "명령 실행",
-            "fetchWebpage": "웹페이지 가져오기",
-            "getVision": "비주얼 컨텍스트 가져오기"
-        },
-        "output": {
-            "empty": "입력 대기 중...",
-            "compressInProgress": "압축 중...",
-            "compressDone": "압축 완료",
-            "tokenLimit": "Token 제한 도달"
-        },
-        "rules": {
-            "title": "프로젝트 규칙",
-            "edit": "규칙 편집",
-            "empty": "규칙 없음",
-            "globalRule": "전역 규칙 (.qqq-rules.txt)",
-            "projectRule": "프로젝트 규칙 (project.txt)"
-        },
-        "quest": {
-            "switch": "프로젝트 전환",
-            "newQuest": "새 대화",
-            "history": "기록",
-            "noHistory": "기록 없음",
-            "saveFailed": "저장 실패"
-        },
-        "lock": {
-            "locked": "프로젝트가 다른 창에서 열려 있습니다",
-            "stale": "잠금 만료",
-            "heartbeat": "하트비트"
-        }
+        "level": {},
+        "tools": {},
+        "output": {},
+        "rules": {},
+        "quest": {},
+        "lock": {}
     },
     "goods": {
         "bar": {
@@ -370,5 +327,31 @@
         "f1": "명령 팔레트",
         "altLeft": "뒤로",
         "altRight": "앞으로"
+    },
+    "wings": {
+        "redrawing": "재배포 중"
+    },
+    "timeline": {
+        "filePathPlaceholder": "파일 경로…",
+        "searchHistory": "검색 기록",
+        "dragHandle": "드래그하여 창 이동",
+        "maximize": "최대화",
+        "full": "📋 전체 텍스트",
+        "diff": "📌 차이점",
+        "acceptLeft": "← 오른쪽으로 이동",
+        "save": "💾 저장",
+        "changes": "{n}개 수정 사항",
+        "modeFull": "전체 텍스트",
+        "modeDiff": "차이점",
+        "loading": "로딩 중…",
+        "noVersions": "이 파일에는 이전 버전이 없습니다",
+        "missingParams": "매개변수 누락",
+        "loadingVersions": "버전 목록 로딩 중…",
+        "monacoTimeout": "Monaco 로드 시간 초과, 네트워크를 확인하거나 창을 재시작하세요",
+        "monacoFailed": "Monaco 로드 실패",
+        "saved": "저장됨",
+        "saveFailed": "저장 실패",
+        "copyRow": "이 줄 텍스트 복사",
+        "closeHint": "= 우클릭으로 닫기"
     }
 }

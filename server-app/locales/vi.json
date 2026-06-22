@@ -89,7 +89,8 @@
             "copyFailed": "Sao chép thất bại",
             "zoomIn": "Phóng to",
             "zoomOut": "Thu nhỏ",
-            "close": "Đóng (Esc)"
+            "close": "Đóng (Esc)",
+            "resetPosition": "Đặt lại vị trí"
         },
         "about": {
             "title": "Giới thiệu về qqq",
@@ -104,10 +105,18 @@
             "mainFolder": "Thư mục chính (không thể xóa)",
             "removeProject": "Xóa dự án này",
             "addProject": "Thêm thư mục dự án vào khung nhìn AI",
-            "selectFolder": "Chọn thư mục để thêm vào khung nhìn AI"
+            "selectFolder": "Chọn thư mục để thêm vào khung nhìn AI",
+            "searchFolder": "Tìm kiếm trong thư mục này",
+            "recentFolders": "Thư mục chính đã mở gần đây",
+            "noRecent": "Chưa có lịch sử gần đây, nhấp + để chọn thư mục"
         },
         "dev": "Chế độ phát triển",
-        "gaeaHostLoading": "Đang tải gaea host..."
+        "gaeaHostLoading": "Đang tải gaea host...",
+        "free": {
+            "active": "💎 Đang miễn phí",
+            "ending": "🎈 Sắp hết hạn miễn phí",
+            "soonPrefix": "🤍 Còn lại đến lần miễn phí tiếp theo"
+        }
     },
     "editor": {
         "tabs": {
@@ -130,6 +139,8 @@
             "undo": "Hoàn tác",
             "redo": "Làm lại"
         },
+        "undo": "Hoàn tác (Ctrl+Z)",
+        "redo": "Làm lại (Ctrl+Y)",
         "unsaved": "Chưa lưu",
         "saved": "Đã lưu",
         "saving": "Đang lưu...",
@@ -152,13 +163,6 @@
         }
     },
     "ai": {
-        "title": "AI",
-        "send": "Gửi",
-        "stop": "Dừng",
-        "guide": "Hướng dẫn",
-        "queue": "Xếp hàng",
-        "context": "Ngữ cảnh",
-        "compress": "Nén",
         "ctx": {
             "title": "Bạn có thể chọn nén ngữ cảnh",
             "benefit": "Lợi ích duy nhất:",
@@ -170,68 +174,21 @@
             "noLoss": "Dù thế nào (có nén hay không, ai thực hiện nén) cũng sẽ không làm tràn bộ nhớ AI hoặc gây mất dữ liệu bộ nhớ AI.",
             "complex": "Phù hợp hơn cho các tác vụ lập trình phức tạp, AI sẽ có không gian bộ nhớ với độ dài giới hạn.",
             "compress": "Nén",
-            "cancel": "Hủy"
+            "cancel": "Hủy",
+            "breakdown": "Sử dụng ngữ cảnh",
+            "used": "Đã dùng",
+            "free": "Trống"
         },
-        "inputPlaceholder": "Hỏi qqq AI... (Ctrl+V để dán ảnh)",
-        "embedImage": "Nhúng",
-        "level": {
-            "a": "Thận trọng",
-            "1": "Nhẹ",
-            "2": "Trung bình",
-            "3": "Thông minh",
-            "4": "Mạnh mẽ",
-            "5": "Cực hạn",
-            "6": "Pro Max"
+        "error": {
+            "noActiveAgent": "Vui lòng gửi một tin nhắn trước để tạo cuộc trò chuyện",
+            "buildingFloor": "AI đang xử lý, vui lòng đợi hoàn tất trước khi nén"
         },
-        "floor": "Tầng",
-        "house": "Nhà",
-        "room": "Phòng",
-        "ttfb": "Chờ mạng",
-        "work": "Thời gian xử lý",
-        "total": "Tổng cộng",
-        "tokens": "Token đã dùng",
-        "confirmConnect": "Xác nhận kết nối",
-        "thinking": "Đang suy nghĩ...",
-        "streaming": "Đang tạo...",
-        "tools": {
-            "readFile": "Đọc tệp",
-            "editFile": "Chỉnh sửa tệp",
-            "createFile": "Tạo tệp",
-            "deleteFile": "Xóa tệp",
-            "writeFile": "Ghi tệp",
-            "searchText": "Tìm kiếm văn bản",
-            "findFiles": "Tìm tệp",
-            "listFiles": "Liệt kê tệp",
-            "getDiagnostics": "Lấy chẩn đoán",
-            "runCommand": "Chạy lệnh",
-            "fetchWebpage": "Truy xuất trang web",
-            "getVision": "Lấy ngữ cảnh hình ảnh"
-        },
-        "output": {
-            "empty": "Đang chờ nhập liệu...",
-            "compressInProgress": "Đang nén...",
-            "compressDone": "Nén hoàn tất",
-            "tokenLimit": "Đạt giới hạn Token"
-        },
-        "rules": {
-            "title": "Quy tắc dự án",
-            "edit": "Chỉnh sửa quy tắc",
-            "empty": "Chưa có quy tắc",
-            "globalRule": "Quy tắc toàn cục (.qqq-rules.txt)",
-            "projectRule": "Quy tắc dự án (project.txt)"
-        },
-        "quest": {
-            "switch": "Chuyển dự án",
-            "newQuest": "Tạo hội thoại mới",
-            "history": "Lịch sử",
-            "noHistory": "Chưa có lịch sử",
-            "saveFailed": "Lưu thất bại"
-        },
-        "lock": {
-            "locked": "Dự án đã được mở bởi cửa sổ khác",
-            "stale": "Khóa đã hết hạn",
-            "heartbeat": "Nhịp tim"
-        }
+        "level": {},
+        "tools": {},
+        "output": {},
+        "rules": {},
+        "quest": {},
+        "lock": {}
     },
     "goods": {
         "bar": {
@@ -370,5 +327,31 @@
         "f1": "Bảng lệnh",
         "altLeft": "Quay lại",
         "altRight": "Tiến tới"
+    },
+    "wings": {
+        "redrawing": "Đang vẽ lại"
+    },
+    "timeline": {
+        "filePathPlaceholder": "Đường dẫn tệp…",
+        "searchHistory": "Lịch sử tìm kiếm",
+        "dragHandle": "Kéo để di chuyển cửa sổ",
+        "maximize": "Phóng to",
+        "full": "📋 Toàn văn",
+        "diff": "📌 So sánh",
+        "acceptLeft": "← Chấp nhận bên trái",
+        "save": "💾 Lưu",
+        "changes": "{n} thay đổi",
+        "modeFull": "Toàn văn",
+        "modeDiff": "So sánh",
+        "loading": "Đang tải…",
+        "noVersions": "Tệp này không có phiên bản lịch sử",
+        "missingParams": "Thiếu tham số",
+        "loadingVersions": "Đang tải danh sách phiên bản…",
+        "monacoTimeout": "Hết thời gian tải Monaco, vui lòng kiểm tra mạng hoặc khởi động lại cửa sổ",
+        "monacoFailed": "Tải Monaco thất bại",
+        "saved": "Đã lưu",
+        "saveFailed": "Lưu thất bại",
+        "copyRow": "Sao chép dòng này",
+        "closeHint": "= Nhấp chuột phải để đóng"
     }
 }

@@ -89,7 +89,8 @@
             "copyFailed": "Copy Failed",
             "zoomIn": "Zoom In",
             "zoomOut": "Zoom Out",
-            "close": "Close (Esc or cursor right-click)"
+            "close": "Close (Esc or cursor right-click)",
+            "resetPosition": "Reset Position"
         },
         "about": {
             "title": "About qqq",
@@ -104,10 +105,18 @@
             "mainFolder": "Main folder (cannot be removed)",
             "removeProject": "Remove this project",
             "addProject": "Add project folder to AI viewport",
-            "selectFolder": "Select folder to add to AI viewport"
+            "selectFolder": "Select folder to add to AI viewport",
+            "searchFolder": "Search in this folder",
+            "recentFolders": "Recently opened root folders",
+            "noRecent": "No recent history. Click + to select a folder."
         },
         "dev": "Dev Mode",
-        "gaeaHostLoading": "Loading gaea host..."
+        "gaeaHostLoading": "Loading gaea host...",
+        "free": {
+            "active": "💎 Free Tier Active",
+            "ending": "🎈 Free tier ending soon",
+            "soonPrefix": "🤍 Time until next free tier"
+        }
     },
     "editor": {
         "tabs": {
@@ -130,6 +139,8 @@
             "undo": "Undo",
             "redo": "Redo"
         },
+        "undo": "Undo (Ctrl+Z)",
+        "redo": "Redo (Ctrl+Y)",
         "unsaved": "Unsaved",
         "saved": "Saved",
         "saving": "Saving...",
@@ -152,13 +163,6 @@
         }
     },
     "ai": {
-        "title": "AI",
-        "send": "Send",
-        "stop": "Stop",
-        "guide": "Guide",
-        "queue": "Queued",
-        "context": "Context",
-        "compress": "Compress",
         "ctx": {
             "title": "You can choose to compress context",
             "benefit": "The only benefit:",
@@ -170,68 +174,21 @@
             "noLoss": "Regardless of whether you compress or who does it, AI memory will neither overflow nor lose data.",
             "complex": "Better suited for complex programming tasks, giving AI a maximum memory length.",
             "compress": "Compress",
-            "cancel": "Cancel"
+            "cancel": "Cancel",
+            "breakdown": "Context Usage",
+            "used": "Used",
+            "free": "Available"
         },
-        "inputPlaceholder": "Ask qqq AI... (Ctrl+V to paste image)",
-        "embedImage": "Embed",
-        "level": {
-            "a": "Conservative",
-            "1": "Light",
-            "2": "Medium",
-            "3": "Smart",
-            "4": "Strong",
-            "5": "Extreme",
-            "6": "Pro Max"
+        "error": {
+            "noActiveAgent": "Please send a message to start a conversation first",
+            "buildingFloor": "AI is currently processing. Please wait for the current task to complete before compressing."
         },
-        "floor": "Floor",
-        "house": "House",
-        "room": "Room",
-        "ttfb": "Network Wait",
-        "work": "Work Time",
-        "total": "Total",
-        "tokens": "Token Usage",
-        "confirmConnect": "Confirm Connection",
-        "thinking": "Thinking...",
-        "streaming": "Generating...",
-        "tools": {
-            "readFile": "Read File",
-            "editFile": "Edit File",
-            "createFile": "Create File",
-            "deleteFile": "Delete File",
-            "writeFile": "Write File",
-            "searchText": "Search Text",
-            "findFiles": "Find Files",
-            "listFiles": "List Files",
-            "getDiagnostics": "Get Diagnostics",
-            "runCommand": "Run Command",
-            "fetchWebpage": "Fetch Webpage",
-            "getVision": "Get Visual Context"
-        },
-        "output": {
-            "empty": "Waiting for input...",
-            "compressInProgress": "Compressing...",
-            "compressDone": "Compression Complete",
-            "tokenLimit": "Token Limit Reached"
-        },
-        "rules": {
-            "title": "Project Rules",
-            "edit": "Edit Rules",
-            "empty": "No rules yet",
-            "globalRule": "Global Rule (.qqq-rules.txt)",
-            "projectRule": "Project Rule (project.txt)"
-        },
-        "quest": {
-            "switch": "Switch Project",
-            "newQuest": "New Chat",
-            "history": "History",
-            "noHistory": "No history",
-            "saveFailed": "Save Failed"
-        },
-        "lock": {
-            "locked": "Project is open in another window",
-            "stale": "Lock expired",
-            "heartbeat": "Heartbeat"
-        }
+        "level": {},
+        "tools": {},
+        "output": {},
+        "rules": {},
+        "quest": {},
+        "lock": {}
     },
     "goods": {
         "bar": {
@@ -370,5 +327,31 @@
         "f1": "Command Palette",
         "altLeft": "Back",
         "altRight": "Forward"
+    },
+    "wings": {
+        "redrawing": "Redrawing"
+    },
+    "timeline": {
+        "filePathPlaceholder": "File path…",
+        "searchHistory": "Search History",
+        "dragHandle": "Drag to move window",
+        "maximize": "Maximize",
+        "full": "📋 Full Text",
+        "diff": "📌 Diff",
+        "acceptLeft": "← Accept Left",
+        "save": "💾 Save",
+        "changes": "{n} change(s)",
+        "modeFull": "Full Text",
+        "modeDiff": "Diff",
+        "loading": "Loading…",
+        "noVersions": "No version history for this file",
+        "missingParams": "Missing parameters",
+        "loadingVersions": "Loading version history…",
+        "monacoTimeout": "Monaco load timed out. Please check your network or restart the window.",
+        "monacoFailed": "Monaco failed to load",
+        "saved": "Saved",
+        "saveFailed": "Save failed",
+        "copyRow": "Copy this line",
+        "closeHint": "= Right-click to close"
     }
 }

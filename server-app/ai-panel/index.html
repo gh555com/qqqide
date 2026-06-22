@@ -75,22 +75,21 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   background:linear-gradient(90deg,rgba(255,211,2,.14) 0%,rgba(255,211,2,.05) 35%,transparent 70%),#ebe3ca!important;
   position:relative;z-index:99991;
 }
-@keyframes q2-shimmer{0%{left:-60%}100%{left:120%}}
+@keyframes q2-shimmer-bg{0%{background-position:0% 0}100%{background-position:100% 0}}
 [data-theme="dark"] #quest-bar.quest-expanded .quest-tofu{
   background:linear-gradient(90deg,rgba(255,211,2,.16) 0%,rgba(255,211,2,.06) 35%,transparent 70%),#211f1c!important;
 }
-/* 悬浮层流光：覆盖整个虚线框区域（豆腐块+下拉），左右边缘mask柔化 */
+/* 悬浮层流光：背景渐变滑动，消除边缘断崖 */
 .q2-shimmer-overlay{
   position:absolute;left:0;right:0;pointer-events:none;overflow:hidden;z-index:99993;
+  background:linear-gradient(105deg,transparent 0%,rgba(255,255,255,.06) 30%,rgba(255,255,255,.16) 50%,rgba(255,255,255,.06) 70%,transparent 100%);
+  background-size:300% 100%;
+  animation:q2-shimmer-bg 5s linear infinite alternate;
 }
-.q2-shimmer-overlay::before{
-  content:'';position:absolute;top:-50%;left:-60%;width:60%;height:200%;
-  background:linear-gradient(105deg,transparent 15%,rgba(255,255,255,.04) 35%,rgba(255,255,255,.10) 46%,rgba(255,255,255,.16) 50%,rgba(255,255,255,.10) 54%,rgba(255,255,255,.04) 65%,transparent 85%);
-  animation:q2-shimmer 5s linear infinite alternate;
-  transform:skewX(-5deg);
-}
-[data-theme="dark"] .q2-shimmer-overlay::before{
-  background:linear-gradient(105deg,transparent 20%,rgba(255,255,255,.02) 35%,rgba(255,255,255,.05) 46%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.05) 54%,rgba(255,255,255,.02) 65%,transparent 80%);
+[data-theme="dark"] .q2-shimmer-overlay{
+  background:linear-gradient(105deg,transparent 0%,rgba(255,255,255,.03) 30%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.03) 70%,transparent 100%);
+  background-size:300% 100%;
+  animation:q2-shimmer-bg 5s linear infinite alternate;
 }
 #quest-bar.quest-expanded .quest-drop{
   border:2px dashed var(--yellow);
