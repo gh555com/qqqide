@@ -266,7 +266,7 @@ var QuestStore = (function () {
                     _setIdx(idx);
                 }
                 await _healIndex();
-                await _syncIndexFromFs();
+                await this._syncIndexFromFs();
             } catch (e) {
                 console.warn('[quest-store] _ensureIndex failed:', e && e.message);
                 if (!_idx()) _setIdx([]);

@@ -880,7 +880,7 @@ $queueBtn.onclick = function () {
                     : 'linear-gradient(to bottom, rgba(75,85,30,0.15), rgba(115,125,60,0.5))')
                 : 'transparent',
             // 粒子：白主题=干草黄，黑主题=暖灰绿
-            bubbleC: dk ? 'rgba(180,190,80,0.8)' : 'rgba(160,170,70,0.7)'
+            bubbleC: dk ? 'rgba(180,190,80,0.8)' : '#ffffff'
         };
     }
 

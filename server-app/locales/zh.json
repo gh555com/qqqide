@@ -409,5 +409,28 @@
     },
     "wings": {
         "redrawing": "重绘中"
+    },
+    "timeline": {
+        "filePathPlaceholder": "文件路径…",
+        "searchHistory": "搜索历史",
+        "dragHandle": "拖拽移动窗口",
+        "maximize": "最大化",
+        "full": "📋 全文",
+        "diff": "📌 差异",
+        "acceptLeft": "← 移到右",
+        "save": "💾 保存",
+        "changes": "{n} 处修改",
+        "modeFull": "全文",
+        "modeDiff": "差异",
+        "loading": "加载中…",
+        "noVersions": "该文件没有历史版本",
+        "missingParams": "缺少参数",
+        "loadingVersions": "加载版本列表…",
+        "monacoTimeout": "Monaco 加载超时，请检查网络或重启窗口",
+        "monacoFailed": "Monaco 加载失败",
+        "saved": "已保存",
+        "saveFailed": "保存失败",
+        "copyRow": "复制此行文本",
+        "closeHint": "= 右键单击关闭"
     }
 }

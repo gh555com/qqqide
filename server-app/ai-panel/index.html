@@ -31,7 +31,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #top-bar button{padding:1px 6px;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);font-size:10px;white-space:nowrap;flex-shrink:0}
 /* q2 quest 豆腐块 — 无边框贴合 q1 */
 #quest-bar{position:relative;margin:0;padding:0;border:none}
-.quest-tofu{display:flex;align-items:center;padding:8px 14px;border:2px solid transparent;border-radius:0;font-size:22px;font-weight:700;white-space:nowrap;user-select:none;background:#ebe3ca;width:100%;cursor:default;box-sizing:border-box;position:relative;z-index:99992}
+.quest-tofu{display:flex;align-items:center;padding:8px 14px;border:2px solid transparent;border-radius:0;font-size:22px;font-weight:700;white-space:nowrap;user-select:none;background:#ebe3ca;width:100%;cursor:default;box-sizing:border-box}
 [data-theme="dark"] .quest-tofu{background:#211f1c}
 .quest-tofu:hover{background:var(--background-color)}
 [data-theme="dark"] .quest-tofu:hover{background:#3f3830}
@@ -73,25 +73,26 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   border-color:var(--yellow);border-style:dashed;
   border-bottom-color:transparent!important;
   background:linear-gradient(90deg,rgba(255,211,2,.14) 0%,rgba(255,211,2,.05) 35%,transparent 70%),#ebe3ca!important;
+  position:relative;z-index:99991;
 }
-@keyframes q2-shimmer{0%{left:-150%}100%{left:-50%}}
+@keyframes q2-shimmer{0%{left:-60%}100%{left:120%}}
 [data-theme="dark"] #quest-bar.quest-expanded .quest-tofu{
   background:linear-gradient(90deg,rgba(255,211,2,.16) 0%,rgba(255,211,2,.06) 35%,transparent 70%),#211f1c!important;
 }
-/* 悬浮层流光：覆盖整个虚线框区域，光束3x宽防左右断崖 */
+/* 悬浮层流光：覆盖整个虚线框区域（豆腐块+下拉），左右边缘mask柔化 */
 .q2-shimmer-overlay{
   position:absolute;left:0;right:0;pointer-events:none;overflow:hidden;z-index:99993;
-  -webkit-mask-image:linear-gradient(to right,transparent 0%,black 6%,black 94%,transparent 100%);
-  mask-image:linear-gradient(to right,transparent 0%,black 6%,black 94%,transparent 100%);
+  -webkit-mask-image:linear-gradient(to right,transparent 0%,black 3%,black 97%,transparent 100%);
+  mask-image:linear-gradient(to right,transparent 0%,black 3%,black 97%,transparent 100%);
 }
 .q2-shimmer-overlay::before{
-  content:'';position:absolute;top:-50%;left:-150%;width:300%;height:200%;
-  background:linear-gradient(105deg,transparent 0%,rgba(255,255,255,.04) 35%,rgba(255,255,255,.12) 44%,rgba(255,255,255,.22) 48%,rgba(255,255,255,.22) 52%,rgba(255,255,255,.12) 56%,rgba(255,255,255,.04) 65%,transparent 100%);
-  animation:q2-shimmer 5s ease-in-out infinite;
-  transform:skewX(-3deg);
+  content:'';position:absolute;top:-50%;left:-60%;width:60%;height:200%;
+  background:linear-gradient(105deg,transparent 15%,rgba(255,255,255,.04) 35%,rgba(255,255,255,.10) 46%,rgba(255,255,255,.16) 50%,rgba(255,255,255,.10) 54%,rgba(255,255,255,.04) 65%,transparent 85%);
+  animation:q2-shimmer 5s linear infinite alternate;
+  transform:skewX(-5deg);
 }
 [data-theme="dark"] .q2-shimmer-overlay::before{
-  background:linear-gradient(105deg,transparent 0%,rgba(255,255,255,.03) 35%,rgba(255,255,255,.08) 44%,rgba(255,255,255,.16) 48%,rgba(255,255,255,.16) 52%,rgba(255,255,255,.08) 56%,rgba(255,255,255,.03) 65%,transparent 100%);
+  background:linear-gradient(105deg,transparent 20%,rgba(255,255,255,.02) 35%,rgba(255,255,255,.05) 46%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.05) 54%,rgba(255,255,255,.02) 65%,transparent 80%);
 }
 #quest-bar.quest-expanded .quest-drop{
   border:2px dashed var(--yellow);
