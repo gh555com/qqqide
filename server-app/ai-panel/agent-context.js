@@ -154,6 +154,8 @@
             self._ctx.lastCompressedFloor = self._ctx.totalFloors;
             self._lastApiPromptTokens = 0;
             self._lastApiTotalTokens = 0;
+            self._lastApiCompletionTokens = 0;
+            self._accumulatedCompletionTokens = 0;
             var _elapsed = Math.round(performance.now() - _compressStart);
             var _afterEst = self._estimateTotalTokens();
             var _saved = beforeTokens - _afterEst;

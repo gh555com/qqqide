@@ -573,6 +573,8 @@ async function _saveAgentQuestData(questId, ag, floorNum) {
         totalCostGe: ag.totalCostGe,
         lastApiPromptTokens: ag._lastApiPromptTokens || 0,
         lastApiTotalTokens: ag._lastApiTotalTokens || 0,
+        lastApiCompletionTokens: ag._lastApiCompletionTokens || 0,
+        accumulatedCompletionTokens: ag._accumulatedCompletionTokens || 0,
         lastTier: ag._lastTier || null,
         uncleanShutdown: ag._uncleanShutdown || false,
         floorTimings: ag._floorTimings || [],

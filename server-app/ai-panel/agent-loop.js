@@ -95,6 +95,8 @@ var AgentLoop = (function () {
         this._lastCostDisplay = '0';
         this._lastApiPromptTokens = 0;  // 初始化清零，避免残留旧 quest 数值
         this._lastApiTotalTokens = 0;    // API 返回的 total_tokens（prompt+completion 精确值）
+        this._lastApiCompletionTokens = 0; // API 返回的 completion_tokens（独立展示用）
+        this._accumulatedCompletionTokens = 0; // 累计 completion_tokens（跨所有 house，用于面板展示）
         this._lastTier = null;           // 最近一次使用的 AI 等级（压缩复用它）
         // 视觉缓存: MD5(base64) → {description, ge_cost}
         this._visionCache = new Map();
@@ -215,6 +217,10 @@ var AgentLoop = (function () {
         this._compressing = false;
         this._visionCache.clear();
         this._houses = [];
+        this._lastApiPromptTokens = 0;
+        this._lastApiTotalTokens = 0;
+        this._lastApiCompletionTokens = 0;
+        this._accumulatedCompletionTokens = 0;
         this._a4Snapshots = {};
         this._houseIndex = 0;
         this._persistentCount = 0;
@@ -569,7 +575,10 @@ var AgentLoop = (function () {
                 //   _lastApiTotalTokens: prompt + completion 的 token 数（用于按钮显示/压缩阈值）
                 if (response._usage && response._usage.prompt_tokens) {
                     self._lastApiPromptTokens = response._usage.prompt_tokens;
-                    self._lastApiTotalTokens = response._usage.total_tokens || (response._usage.prompt_tokens + (response._usage.completion_tokens || 0));
+                    var _compTok = response._usage.completion_tokens || 0;
+                    self._lastApiCompletionTokens = _compTok;
+                    self._accumulatedCompletionTokens = (self._accumulatedCompletionTokens || 0) + _compTok;
+                    self._lastApiTotalTokens = response._usage.total_tokens || (response._usage.prompt_tokens + _compTok);
                     // ★ 每间 house 立即更新上下文按钮（服务器真理，不再等 quest 切换）
                     if (typeof updateCtxBtn === 'function') updateCtxBtn();
                     // ★ 诊断日志：记录服务器返回的精确 token 数

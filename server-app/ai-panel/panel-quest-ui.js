@@ -369,115 +369,188 @@ function updateCostDisplay() {
 
 // \u2500\u2500 \u4e0a\u4e0b\u6587\u8840\u91cf \u2500\u2500
 var CTX_MAX_TOKENS = ContentGateway.CTX_MAX_TOKENS;
-var _estCache = { val: 0, convLen: -1, ctxHash: '' };
+var _estCache = { val: 0, convLen: -1, ctxHash: '', apiVer: '' };
 function estimateTokens() {
     if (!_activeAgent) return 0;
     var conv = _activeAgent.conversation;
     var ctx = _activeAgent._ctx;
     var ctxHash = ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '';
-    if (_estCache.convLen === conv.length && _estCache.ctxHash === ctxHash && _estCache.val > 0) {
+    var apiVer = (_activeAgent._lastApiTotalTokens || 0) + '|' + (_activeAgent._lastApiPromptTokens || 0);
+    if (_estCache.convLen === conv.length && _estCache.ctxHash === ctxHash && _estCache.apiVer === apiVer && _estCache.val > 0) {
         return _estCache.val;
     }
-    // ★ 委托给统一计算函数（同时产出 _ctxBreakdownData）
     return _estimateTokensFull();
 }
 
 // ★ 统一计算：总 token + 拆解，一次遍历，单一缓存（按钮+面板共用）
+// ★★ 架构重构 v3：终极精确分类（2026-06-22）
+//   原则：只展示可验证的精确数据。单位统一为 tokens（chars/3 估算用 ≈ 标记）。
+//   - 按钮、标题行、Available：API total_tokens（唯一真理）
+//   - msg[0] 各组分：精确 chars → ≈tokens
+//   - 对话按 role 分组：精确 chars → ≈tokens
+//   - Completion：API accumulated completion_tokens（精确）
+//   - 不展示 Tool Definitions（固定开销，用户无须关注）
+//   - 全英文，零 i18n 依赖
+var CP = 3.0;
 function _estimateTokensFull() {
-    var CP = ContentGateway.CHAR_PER_TOKEN;
     var _ag = _activeAgent;
-    var conv = _ag ? _ag.conversation : [];
-    var ctx = _ag ? _ag._ctx : null;
-    var sysTok = 0, toolsTok = 0, rulesTok = 0, msgsTok = 0, compTok = 0;
-    var _dbg = { sys: typeof SYSTEM_PROMPT !== 'undefined' ? SYSTEM_PROMPT.length : 'UNDEFINED', tools: typeof TOOL_DEFINITIONS !== 'undefined' ? JSON.stringify(TOOL_DEFINITIONS).length : 'UNDEFINED', convLen: conv.length, contentCount: 0, contentChars: 0, nonStringContent: 0, tcalls: 0 };
-    if (typeof SYSTEM_PROMPT !== 'undefined' && SYSTEM_PROMPT) sysTok = Math.round(SYSTEM_PROMPT.length / CP);
-    if (typeof TOOL_DEFINITIONS !== 'undefined') {
-        try { toolsTok = Math.round(JSON.stringify(TOOL_DEFINITIONS).length / CP); } catch (_) { }
+    if (!_ag) { _ctxBreakdownData = null; return 0; }
+    var conv = _ag.conversation || [];
+    var ctx = _ag._ctx || null;
+
+    // ── 1. API 精确值（唯一真理） ──
+    var apiPromptTotal = _ag._lastApiPromptTokens || 0;
+    var apiTotalTokens = _ag._lastApiTotalTokens || 0;
+    var accCompletion = _ag._accumulatedCompletionTokens || 0;
+    var actualTotalUsed = apiTotalTokens > 0 ? apiTotalTokens : (apiPromptTotal > 0 ? apiPromptTotal : 0);
+
+    // ── 2. msg[0] 组分（精确 chars → ≈tokens） ──
+    var visionChars = typeof window.qqqideVisionContext === 'string' ? window.qqqideVisionContext.length : 0;
+    var timeChars = typeof getTimeContext === 'function' ? getTimeContext().length : 0;
+    var sysPromptChars = typeof SYSTEM_PROMPT === 'string' ? SYSTEM_PROMPT.length : 0;
+    var globalRulesChars = typeof window.qqqideRulesContent === 'string' ? window.qqqideRulesContent.length : 0;
+    var projectRulesChars = typeof window.qqqideProjectRulesContent === 'string' ? window.qqqideProjectRulesContent.length : 0;
+    var panelRoot = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : '';
+    var reminderChars = 0;
+    if (panelRoot) {
+        panelRoot = panelRoot.replace(/\\/g, '/').replace(/\/$/, '');
+        var reminder = '\n\n═══ DEFAULT WORKING DIRECTORY ═══\nMain project: ' + panelRoot + '\nWhen the user does not specify a project, all file operations default to this directory.\n═══════════════════';
+        reminderChars = reminder.length;
     }
+    var msg0TotalChars = visionChars + timeChars + sysPromptChars + globalRulesChars + projectRulesChars + reminderChars;
+
+    // ── 3. 对话统计（按 role 分组） ──
+    var userCount = 0, userChars = 0;
+    var asstCount = 0, asstChars = 0;
+    var toolCount = 0, toolChars = 0;
+    var sysCount = 0, sysChars = 0;
     for (var i = 0; i < conv.length; i++) {
         var m = conv[i];
-        if (m._persistent) {
-            if (typeof m.content === 'string') { rulesTok += Math.round(m.content.length / CP); _dbg.contentChars += m.content.length; _dbg.contentCount++; } else { _dbg.nonStringContent++; }
-            continue;
-        }
-        if (typeof m.content === 'string') { msgsTok += Math.round(m.content.length / CP); _dbg.contentChars += m.content.length; _dbg.contentCount++; } else { _dbg.nonStringContent++; }
-        if (m.tool_calls && Array.isArray(m.tool_calls)) {
-            try { msgsTok += Math.round(JSON.stringify(m.tool_calls).length / CP); _dbg.tcalls += m.tool_calls.length; } catch (_) { }
-        }
-        msgsTok += 10;
+        if (!m || m._persistent) continue;
+        var c = typeof m.content === 'string' ? m.content.length : 0;
+        if (m.role === 'user') { userCount++; userChars += c; }
+        else if (m.role === 'assistant') { asstCount++; asstChars += c; }
+        else if (m.role === 'tool') { toolCount++; toolChars += c; }
+        else if (m.role === 'system') { sysCount++; sysChars += c; }
     }
-    if (ctx) {
-        if (ctx.narrative) compTok += Math.round(('[DYNAMIC CONTEXT]\nCONVERSATION CONTEXT (compressed history):\n' + ctx.narrative).length / CP);
-        if (ctx.facts && ctx.facts.length > 0) {
-            for (var fi = 0; fi < ctx.facts.length; fi++) {
-                compTok += Math.round(((ctx.facts[fi].content || '') + ' [' + (ctx.facts[fi].type || '') + ']').length / CP);
-            }
+
+    // ── 4. 压缩摘要 ──
+    var narrativeChars = (ctx && ctx.narrative) ? ctx.narrative.length : 0;
+    var factsChars = 0;
+    if (ctx && ctx.facts && ctx.facts.length > 0) {
+        for (var fi = 0; fi < ctx.facts.length; fi++) {
+            factsChars += ((ctx.facts[fi].content || '') + ' [' + (ctx.facts[fi].type || '') + ']').length;
         }
     }
-    var total = sysTok + toolsTok + rulesTok + msgsTok + compTok;
-    console.log('[CTX_BD] sys=' + sysTok + ' tools=' + toolsTok + ' rules=' + rulesTok + ' msgs=' + msgsTok + ' comp=' + compTok + ' conv=' + conv.length + ' msgs, SYSTEM_PROMPT.len=' + _dbg.sys + ' TOOL_DEFS.len=' + _dbg.tools + ' contentCount=' + _dbg.contentCount + ' contentChars=' + _dbg.contentChars + ' nonStringContent=' + _dbg.nonStringContent + ' tool_calls=' + _dbg.tcalls + ' CP=' + CP);
-    _ctxBreakdownData = [
-        { key: 'sys', label: 'System Prompt', tok: sysTok, color: '#268bd2' },
-        { key: 'tools', label: 'Tool Definitions', tok: toolsTok, color: '#6c71c4' },
-        { key: 'rules', label: 'Project Rules', tok: rulesTok, color: '#2aa198' },
-        { key: 'msgs', label: 'Messages', tok: msgsTok, color: '#b58900' },
-        { key: 'comp', label: 'Compressed', tok: compTok, color: '#cb4b16' },
-        { key: 'free', label: 'Free', tok: Math.max(0, CTX_MAX_TOKENS - total), color: '#859900' }
-    ];
-    _estCache = { val: total, convLen: conv.length, ctxHash: ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '' };
-    return total;
+    var compressedChars = narrativeChars + factsChars;
+
+    // ── 5. tool_calls schema overhead ──
+    var toolCallsChars = 0;
+    for (var i2 = 0; i2 < conv.length; i2++) {
+        var m2 = conv[i2];
+        if (m2.tool_calls && Array.isArray(m2.tool_calls)) {
+            try { toolCallsChars += JSON.stringify(m2.tool_calls).length; } catch (_) { }
+        }
+    }
+
+    // ── 6. 单位统一：tokens ──
+    var msg0Tok = Math.round(msg0TotalChars / CP);
+    var userTok = Math.round(userChars / CP);
+    var asstTok = Math.round(asstChars / CP);
+    var toolTok = Math.round(toolChars / CP);
+    var sysTok = Math.round(sysChars / CP);
+    var compTok = Math.round(compressedChars / CP);
+    var tcSchemaTok = Math.round(toolCallsChars / CP);
+
+    console.log('[CTX_BD] apiTotal=' + actualTotalUsed + ' accCompletion=' + accCompletion
+        + ' msg0≈' + msg0Tok + ' user×' + userCount + '≈' + userTok + ' asst×' + asstCount + '≈' + asstTok
+        + ' tool×' + toolCount + '≈' + toolTok + ' sys≈' + sysTok + ' comp≈' + compTok + ' tcSchema≈' + tcSchemaTok);
+
+    // ── 7. Build rows (all tokens) ──
+    function _tk(label, tokens, indent) {
+        return { label: label, tok: tokens, indent: indent || 0 };
+    }
+    var rows = [];
+    // msg[0] breakdown
+    rows.push(_tk('Permanent System Block', msg0Tok, 0));
+    if (visionChars) rows.push(_tk('  Vision Context', Math.round(visionChars / CP), 1));
+    if (timeChars) rows.push(_tk('  Time Context', Math.round(timeChars / CP), 1));
+    if (sysPromptChars) rows.push(_tk('  System Prompt', Math.round(sysPromptChars / CP), 1));
+    if (globalRulesChars) rows.push(_tk('  Global Rules', Math.round(globalRulesChars / CP), 1));
+    if (projectRulesChars) rows.push(_tk('  Project Rules', Math.round(projectRulesChars / CP), 1));
+    if (reminderChars) rows.push(_tk('  Reminder', Math.round(reminderChars / CP), 1));
+    // Conversation by role
+    // Note: Assistant Msgs chars + tool_calls schema ≈ Completion tokens (API exact)
+    // We show Completion as the authoritative AI output total.
+    if (userCount) rows.push(_tk('User \u00d7 ' + userCount + '  = ' + _tkStr(userTok), userTok, 0));
+    if (toolCount) rows.push(_tk('Tool Results \u00d7 ' + toolCount + '  = ' + _tkStr(toolTok), toolTok, 0));
+    if (sysCount) rows.push(_tk('Dynamic System', sysTok, 0));
+    if (compressedChars) rows.push(_tk('Compressed Summary', compTok, 0));
+    // Completion = accumulated API exact (all AI output across all houses)
+    rows.push(_tk('Completion (all AI output)', accCompletion, 0));
+    // Available
+    rows.push(_tk('Available', Math.max(0, CTX_MAX_TOKENS - actualTotalUsed), 0));
+
+    _ctxBreakdownData = {
+        rows: rows,
+        apiTotalTokens: actualTotalUsed,
+        accCompletion: accCompletion,
+        msg0Tok: msg0Tok, userCount: userCount, userTok: userTok,
+        toolCount: toolCount, toolTok: toolTok,
+        asstTok: asstTok,
+        compressedTok: compTok
+    };
+    var apiVer = (apiTotalTokens || 0) + '|' + (apiPromptTotal || 0) + '|' + (accCompletion || 0);
+    _estCache = { val: actualTotalUsed, convLen: conv.length, ctxHash: ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '', apiVer: apiVer };
+    return actualTotalUsed;
 }
 
-// ═══ 上下文占用拆解面板（hover ctx-btn 弹出） ═══
+function _tkStr(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'm';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+    return String(n);
+}
+
+// ═══ 上下文占用拆解面板（hover ctx-btn 弹出） ═════
 var _ctxBreakdownVisible = false;
 var _ctxBreakdownTimer = null;
 var _ctxBreakdownData = null;
-
-function _ctxBdUnit() {
-    if (CTX_MAX_TOKENS <= 100000) return 1000;
-    if (CTX_MAX_TOKENS <= 250000) return 2500;
-    if (CTX_MAX_TOKENS <= 500000) return 5000;
-    if (CTX_MAX_TOKENS <= 1000000) return 10000;
-    return 20000;
-}
-
-// ★ 读取共享缓存（由 _estimateTokensFull 一次性算出）
-function computeCtxBreakdown() {
-    if (!_ctxBreakdownData) _estimateTokensFull();
-    return _ctxBreakdownData || [];
-}
 
 function renderCtxBreakdown() {
     var bd = document.getElementById('ctx-breakdown');
     if (!bd) return;
     if (!_activeAgent || !_activeAgent.conversation) { bd.classList.remove('show'); return; }
-    // ★ 强制刷新：绕过缓存，确保面板显示最新数据
     _estimateTokensFull();
-    var data = _ctxBreakdownData || computeCtxBreakdown();
-    var unit = _ctxBdUnit();
+    var data = _ctxBreakdownData;
+    if (!data || !data.rows) { bd.classList.remove('show'); return; }
     var rowsEl = bd.querySelector('.ctx-bd-rows');
     var usedEl = bd.querySelector('.ctx-bd-used-num');
     var freeEl = bd.querySelector('.ctx-bd-free-num');
-    var totalUsed = 0;
+    var titleEl = bd.querySelector('.ctx-bd-title');
+    // Title: authoritative API total
+    var usedStr = data.apiTotalTokens >= 1000 ? (data.apiTotalTokens / 1000).toFixed(1) + 'k' : String(data.apiTotalTokens);
+    var freeTok = Math.max(0, CTX_MAX_TOKENS - data.apiTotalTokens);
+    var freeStr = freeTok >= 1000 ? (freeTok / 1000).toFixed(1) + 'k' : String(freeTok);
+    var pct = CTX_MAX_TOKENS > 0 ? (data.apiTotalTokens / CTX_MAX_TOKENS * 100).toFixed(1) : 0;
+    if (titleEl) titleEl.textContent = 'Context Usage: ' + usedStr + ' / ' + _tkStr(CTX_MAX_TOKENS) + ' (' + pct + '%)';
+    if (usedEl) usedEl.textContent = usedStr;
+    if (freeEl) freeEl.textContent = freeStr;
+    // Build rows
     var html = '';
-    for (var i = 0; i < data.length; i++) {
-        var d = data[i];
-        if (d.key === 'free') continue;
-        totalUsed += d.tok;
-        var n = Math.max(0, Math.round(d.tok / unit));
-        var boxes = '';
-        for (var b = 0; b < n && b < 120; b++) boxes += '<span class="ctx-bd-box" style="background:' + d.color + '"></span>';
-        var pct = CTX_MAX_TOKENS > 0 ? (d.tok / CTX_MAX_TOKENS * 100) : 0;
-        html += '<div class="ctx-bd-row"><span class="ctx-bd-color" style="background:' + d.color + '"></span>' +
-            '<span class="ctx-bd-label">' + d.label + '</span>' +
-            '<span class="ctx-bd-boxes">' + boxes + '</span>' +
-            '<span class="ctx-bd-num">' + (d.tok >= 1000 ? (d.tok / 1000).toFixed(1) + 'k' : d.tok) + '</span>' +
-            '<span class="ctx-bd-pct">' + pct.toFixed(1) + '%</span></div>';
+    for (var i = 0; i < data.rows.length; i++) {
+        var r = data.rows[i];
+        var indent = r.indent || 0;
+        var padLeft = indent ? (12 + (indent - 1) * 14) + 'px' : '0';
+        var fontSize = indent ? '10.5px' : '11px';
+        var fontWeight = indent ? '400' : '500';
+        var colorStyle = (i === data.rows.length - 1) ? 'color:var(--green);' : '';  // Available green
+        var valStr = r.tok >= 1000 ? (r.tok / 1000).toFixed(1) + 'k' : String(r.tok);
+        html += '<div class="ctx-bd-row" style="padding-left:' + padLeft + ';font-size:' + fontSize + ';font-weight:' + fontWeight + '">' +
+            '<span class="ctx-bd-label">' + r.label + '</span>' +
+            '<span class="ctx-bd-num" style="' + colorStyle + '">' + valStr + '</span>' +
+            '<span class="ctx-bd-pct">tokens</span></div>';
     }
     rowsEl.innerHTML = html;
-    var freeData = data[data.length - 1];
-    usedEl.textContent = totalUsed >= 1000 ? (totalUsed / 1000).toFixed(1) + 'k' : totalUsed;
-    freeEl.textContent = freeData.tok >= 1000 ? (freeData.tok / 1000).toFixed(1) + 'k' : freeData.tok;
     var btnRect = $ctxBtn.getBoundingClientRect();
     bd.style.bottom = (window.innerHeight - btnRect.top + 10) + 'px';
     bd.style.right = (window.innerWidth - btnRect.right) + 'px';
@@ -508,15 +581,17 @@ function updateCtxBtn() {
         return;
     }
     var _ag = _activeAgent;
-    // ★ 优先用 _lastApiTotalTokens（prompt+completion 精确值，每间 house 更新）
-    //   fallback: _lastApiPromptTokens → 本地 chars/3 估算
-    var totalTokens = _ag._lastApiTotalTokens || _ag._lastApiPromptTokens || 0;
-    var est = estimateTokens();
-    var used = totalTokens > 0 ? Math.max(est, totalTokens) : est;
+    // ★★ 架构重构 v2：单一真理源 = API 精确值（prompt+completion，每间 house 更新）
+    //   不再与本地估算取 max（双轨制已废除）
+    var used = _ag._lastApiTotalTokens > 0 ? _ag._lastApiTotalTokens : (_ag._lastApiPromptTokens > 0 ? _ag._lastApiPromptTokens : estimateTokens());
     var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
     $ctxBtn.textContent = Math.round(used / 1000) + ' k';
     $ctxBtn.style.setProperty('--ctx-pct', pct + '%');
-    if (_ctxBreakdownVisible) renderCtxBreakdown();
+    // ★★ 强制刷新面板（house 级别同步）：检查面板 DOM 是否真正显示
+    try {
+        var bd = document.getElementById('ctx-breakdown');
+        if (bd && bd.classList.contains('show')) renderCtxBreakdown();
+    } catch (_) { }
 }
 $ctxBtn.onclick = function () {
     hideCtxBreakdown();
@@ -528,7 +603,7 @@ $ctxBtn.addEventListener('mouseenter', function () {
 });
 $ctxBtn.addEventListener('mouseleave', function () {
     hideCtxBreakdown();
-});
+});;
 // ★ 进入拆解面板自身时不关闭
 var _bdPanel = document.getElementById('ctx-breakdown');
 if (_bdPanel) {

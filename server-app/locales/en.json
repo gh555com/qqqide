@@ -108,7 +108,11 @@
             "selectFolder": "Select folder to add to AI viewport",
             "searchFolder": "Search in this folder",
             "recentFolders": "Recently opened root folders",
-            "noRecent": "No recent history. Click + to select a folder."
+            "noRecent": "No recent history. Click + to select a folder.",
+            "editx": "Edit File",
+            "openInOs": "Open in System",
+            "timeline": "Timeline",
+            "copyPath": "Copy Path"."
         },
         "dev": "Dev Mode",
         "gaeaHostLoading": "Loading gaea host...",

@@ -108,7 +108,11 @@
             "selectFolder": "选择要添加到 AI 视口的文件夹",
             "searchFolder": "搜索此文件夹",
             "recentFolders": "最近打开的主文件夹",
-            "noRecent": "暂无最近记录，点击 + 选择文件夹"
+            "noRecent": "暂无最近记录，点击 + 选择文件夹",
+            "editx": "编辑文件",
+            "openInOs": "在系统中打开",
+            "timeline": "时间线",
+            "copyPath": "复制路径"
         },
         "dev": "开发模式",
         "gaeaHostLoading": "gaea host 加载中...",

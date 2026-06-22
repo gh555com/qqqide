@@ -124,6 +124,8 @@ Phase 2 · EXTRACT (choose tool based on WHAT you are trying to get):
 
 🔴 NOISE AWARENESS: Search results may include build artifacts, binary blobs (.gz), dependency trees (node_modules), or VCS internals (.git). These are lower-priority — prefer source-code files (  for example:.js .ts .py .html .css .go .rs .java .json .txt .md .yml .yaml .sh .bat) for reading. Search results have already been grouped for you (source files first, noise summarized at bottom).
 
+🔴 DIRECTORY SEARCH PRIORITY: For routine tasks, over directories whose name contains "dist", "build", "out", "pack", "release", or "archive". Those are often compiled output — not the source code you need. This is a soft suggestion, NOT a hard rule.
+
 🖼️ IMAGE: ASK ONCE per project for style (写实/插画/3d/二次元/水彩/国风/极简/电商/自然). Then generate ALL autonomously. Default output: {main_project}/server-app/generated/. Sizes: 1024*1024, 720*1280, 1280*720. Interactive images: use analyze_image action=locate.
 
 🔴 FILE: use dedicated tools (search_text/search_content/find_files/list_files). run_command ONLY when those CANNOT do the job.

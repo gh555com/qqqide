@@ -379,6 +379,8 @@ async function _restoreAgentFromStore(questId, ag) {
             ag.totalCostGe = data.totalCostGe || 0;
             ag._lastApiPromptTokens = data.lastApiPromptTokens || 0;
             ag._lastApiTotalTokens = data.lastApiTotalTokens || 0;
+            ag._lastApiCompletionTokens = data.lastApiCompletionTokens || 0;
+            ag._accumulatedCompletionTokens = data.accumulatedCompletionTokens || 0;
             ag._lastTier = data.lastTier || null;
             ag._uncleanShutdown = data.uncleanShutdown || false;
             ag._ctx.lastCompressedFloor = (data.ctx && data.ctx.lastCompressedFloor) || 0;
@@ -389,11 +391,12 @@ async function _restoreAgentFromStore(questId, ag) {
             ag._rulesVersion = data.rulesVersion || '';
             ag._persistentCount = data.persistentCount || 0;
             // ★ 恢复楼层计数器（旧 quest 无此字段时回退到已保存楼层数）
-            ag._currentFloorNum = data.currentFloorNum || allFloors.length || 0;
-        } else {
-            ag.totalCostGe = 0;
-            ag._lastApiPromptTokens = 0;
+            ag._currentFloorNum = data.curren            ag._lastApiPromptTokens = 0;
             ag._lastApiTotalTokens = 0;
+            ag._lastApiCompletionTokens = 0;
+            ag._accumulatedCompletionTokens = 0;
+            ag._lastTier = null;ns = 0;
+            ag._lastApiCompletionTokens = 0;
             ag._lastTier = null;
             ag._uncleanShutdown = false;
             ag._ctx.lastCompressedFloor = 0;

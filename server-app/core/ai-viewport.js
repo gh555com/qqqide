@@ -31,6 +31,9 @@
   let _hoverTimer = null;
   function cancelHover() { if (_hoverTimer) { clearTimeout(_hoverTimer); _hoverTimer = null; } }
 
+  // ---- 树展开快照：每个项目记住关闭前的展开链（相对路径数组）----
+  var _treeSnapshots = {}; // projectPath → [relPath1, relPath2, ...]
+
   // 原生滚动条由 qh 真理机器接管隐藏，此处不再注入
 
   // ---- helpers ----
@@ -217,6 +220,14 @@
   });
   // ---- close active dropdown ----
   function closeDropdown() {
+    // ★ 关闭前保存快照：记录已展开的链（空数组=无展开，下次不还原）
+    if (activeDropdown && activeDropdown._projectRoot) {
+      if (activeDropdown._expandedChain && activeDropdown._expandedChain.length > 0) {
+        _treeSnapshots[activeDropdown._projectRoot] = activeDropdown._expandedChain.slice();
+      } else {
+        delete _treeSnapshots[activeDropdown._projectRoot];
+      }
+    }
     cancelHover();
     closeAllSubmenus();
     // 缓存保留不清理——同项目重新 hover 时不需再调 IPC
@@ -429,14 +440,23 @@
     return inner;
   }
 
-  // ---- 层级水印：列表底部居中显示深度编号（悬浮层，不随列表滚动）----
+  // ---- 层级水印：列表底部显示深度编号，位置指示焦点面板（左/中/右）----
   function _stampDepth(container, depth) {
     var stamp = document.createElement('div');
-    stamp.style.cssText =
-      'position:absolute; bottom:12px; left:50%; transform:translateX(-50%); ' +
+    var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
+    // 构建 CSS：左面板→靠左，中面板→居中，右面板→靠右
+    var cssText = 'position:absolute; bottom:12px; ' +
       'font-size:64px; font-weight:900; line-height:1; font-family:Verdana,sans-serif; ' +
       'color:var(--text-primary); opacity:0.90; pointer-events:none; ' +
       'z-index:1; user-select:none; white-space:nowrap;';
+    if (target === 0) {
+      cssText += ' left:8px; transform:none;';
+    } else if (target === 2) {
+      cssText += ' left:auto; right:8px; transform:none;';
+    } else {
+      cssText += ' left:50%; transform:translateX(-50%);';
+    }
+    stamp.style.cssText = cssText;
     stamp.textContent = String(depth);
     container.appendChild(stamp);
   }
@@ -460,8 +480,14 @@
 
     blockEl.classList.add('aiv-block-active');
 
+    dd._projectRoot = project.path;
     var ddScroll = _wrapScrollContainer(dd, 1);
-    loadDirInto(ddScroll, project.path);
+    // ★ 检查是否有保存的快照，设到滚动容器上供 loadDirInto 完成后自动还原
+    var snap = _treeSnapshots[project.path];
+    if (snap && snap.length > 0) {
+      ddScroll._pendingChain = snap.slice(); // 复制一份，防止修改原快照
+    }
+    loadDirInto(ddScroll, project.path, project.path);
     _stampDepth(dd, 1);
     document.body.appendChild(dd);
     activeDropdown = dd;
@@ -479,11 +505,11 @@
     if (['doc', 'docx', 'rtf'].indexOf(ext) !== -1) return '📘';
     if (['xls', 'xlsx', 'csv'].indexOf(ext) !== -1) return '📗';
     if (['ppt', 'pptx'].indexOf(ext) !== -1) return '📙';
-    if (['exe', 'msi', 'dll'].indexOf(ext) !== -1) return '⚙️';
+    if (['exe', 'msi', 'dll'].indexOf(ext) !== -1) return '⚙\ufe0f';
     return '📄';
   }
 
-  async function loadDirInto(parentEl, dirPath) {
+  async function loadDirInto(parentEl, dirPath, projectRoot) {
     const entries = await listDir(dirPath);
     if (entries.length === 0) {
       const empty = document.createElement('div');
@@ -501,6 +527,9 @@
         'display:flex; align-items:center; padding:4px 10px; cursor:pointer; ' +
         'font-size:14px; font-weight:300; color:var(--text-primary); white-space:nowrap; position:relative; ' +
         'width:100%; box-sizing:border-box;';
+      // ★ 标记行属性，供快照还原匹配
+      row.dataset.name = ent.name;
+      row.dataset.isDir = ent.isDir ? 'true' : 'false';
       const icon = document.createElement('span');
       icon.textContent = fileIconFor(ent.name, ent.isDir);
       icon.style.cssText = 'margin-right:6px; font-size:11px;';
@@ -522,8 +551,7 @@
         _hoverTimer = setTimeout(() => {
           _hoverTimer = null;
           if (!row._hovered) return; // 光标已离开，跳过
-          if (outer._childSub) { closeSubmenuTree(outer._childSub); }
-          outer._childSub = null;
+          if (outer._childSub) { closeSub          const sub = openSubmenu(row, subPath, depth, projectRoot);= null;
           const sub = openSubmenu(row, subPath, depth);
           if (sub) {
             sub._justOpened = Date.now();
@@ -549,15 +577,14 @@
       });
       row.addEventListener('click', (e) => { e.stopPropagation(); });
 
-      // 右键 → 文件用 editor 打开 / 目录用 search goods 搜索
+      // 右键 → 弹出上下文菜单
       row.addEventListener('contextmenu', (e) => {
         e.stopPropagation();
         e.preventDefault();
         if (ent.isDir) {
           if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath);
         } else {
-          // 通过 qqq-file-open 自定义事件走 shell.js 的完整渲染管线（读文件+Monaco editor）
-          document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: fullPath, preview: true } }));
+          showFileContextMenu(e, fullPath, projectRoot);
         }
       });
 
@@ -565,9 +592,129 @@
     }
     // ★ 行全部挂载后重置防抖窗口，防止行刚出现时光标恰在其上触发连锁展开
     parentEl._justOpened = Date.now();
+
+    // ★ 快照还原：若本层有待展开链，自动触发下一级
+    if (parentEl._pendingChain && parentEl._pendingChain.length > 0) {
+      var nextName = parentEl._pendingChain[0];
+      var rows2 = parentEl.querySelectorAll(':scope > .aiv-dd-row');
+      var foundRow = null;
+      for (var ri2 = 0; ri2 < rows2.length; ri2++) {
+        if (rows2[ri2].dataset.name === nextName && rows2[ri2].dataset.isDir === 'true') {
+          foundRow = rows2[ri2];
+          break;
+        }
+      }
+      if (foundRow) {
+        var subPath2 = pathJoin(dirPath, nextName);
+        var depth2 = (parentEl._depth || 0) + 1;
+        var outer2 = parentEl._outer || parentEl;
+        if (outer2._childSub) { closeSubmenuTree(outer2._childSub); }
+        outer2._childSub = null;
+        var sub2 = openSubmenu(foundRow, subPath2, depth2, projectRoot);
+        if (sub2) {
+          sub2._justOpened = Date.now();
+          outer2._childSub = sub2;
+          // 剩余链传递到下一级滚动容器
+          parentEl._pendingChain.shift(); // 已展开的移除
+          if (parentEl._pendingChain.length > 0) {
+            var nextScroll = sub2.querySelector('.aiv-scroll-inner');
+            if (nextScroll) {
+              nextScroll._pendingChain = parentEl._pendingChain;
+            }
+          }
+        }
+      }
+      // 无论是否找到匹配行，清理链防止残留
+      parentEl._pendingChain = null;
+    }
   }
 
-  function openSubmenu(rowEl, dirPath, depth) {
+  // ── 文件右键上下文菜单 ──
+  var _ctxMenu = null;
+  function closeCtxMenu() {
+    if (_ctxMenu) { _ctxMenu.remove(); _ctxMenu = null; }
+  }
+  function showFileContextMenu(e, filePath, projectRoot) {
+    closeCtxMenu();
+    var pop = document.createElement('div');
+    pop.className = 'aiv-file-ctx-menu';
+    pop.style.cssText =
+      'position:fixed; z-index:999999; ' +
+      'left:' + e.clientX + 'px; top:' + e.clientY + 'px; ' +
+      'min-width:140px; background:var(--card-bg); ' +
+      'border:1px solid var(--border-color); border-radius:3px; ' +
+      'box-shadow:0 4px 16px rgba(0,0,0,.18); padding:4px 0;';
+
+    function addRow(label, onClick) {
+      var row = document.createElement('div');
+      row.style.cssText =
+        'display:flex; align-items:center; padding:5px 14px; ' +
+        'cursor:pointer; font-size:12px; color:var(--text-primary); ' +
+        'white-space:nowrap; user-select:none;';
+      row.textContent = label;
+      row.addEventListener('mouseenter', function () { row.style.background = 'var(--background-color)'; });
+      row.addEventListener('mouseleave', function () { row.style.background = ''; });
+      row.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        closeCtxMenu();
+        onClick();
+      });
+      pop.appendChild(row);
+    }
+
+    // Row 1: editx — 编辑文件
+    addRow(window._i('shell.viewport.editx', '编辑文件'), function () {
+      document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: filePath, preview: true } }));
+    });
+
+    // Row 2: open — 在系统中打开
+    addRow(window._i('shell.viewport.openInOs', '在系统中打开'), function () {
+      if (bridge && bridge.shell && bridge.shell.openPath) {
+        bridge.shell.openPath(filePath);
+      }
+    });
+
+    // Row 3: timeline — 时间线
+    addRow(window._i('shell.viewport.timeline', '时间线'), function () {
+      if (bridge && bridge.timeline && bridge.timeline.openDiffWindow) {
+        bridge.timeline.openDiffWindow({ filePath: filePath, projectRoot: projectRoot });
+      }
+    });
+
+    // Row 4: copy path — 复制路径
+    addRow(window._i('shell.viewport.copyPath', '复制路径'), function () {
+      var text = filePath;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(function () { fallbackCopy(text); });
+      } else {
+        fallbackCopy(text);
+      }
+      function fallbackCopy(t) {
+        var ta = document.createElement('textarea');
+        ta.value = t;
+        ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.style.top = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (_) { }
+        document.body.removeChild(ta);
+      }
+    });
+
+    document.body.appendChild(pop);
+    _ctxMenu = pop;
+
+    // 全局点击关闭
+    setTimeout(function () {
+      document.addEventListener('mousedown', function _dismiss(e) {
+        if (_ctxMenu && !_ctxMenu.contains(e.target)) {
+          closeCtxMenu();
+          document.removeEventListener('mousedown', _dismiss, true);
+        }
+      }, true);
+    }, 0);
+  }
+
+  function openSubmenu(rowEl, dirPath, depth, projectRoot) {
     if (!rowEl.isConnected) return null;
     const sub = document.createElement('div');
     sub.className = 'aiv-submenu';
@@ -625,7 +772,18 @@
     _stampDepth(sub, sub._depth);
     document.body.appendChild(sub);
     activeSubmenus.push(sub);
-    loadDirInto(subScroll, dirPath);
+
+    // ★ 记录展开链到根下拉（用于关闭时快照）
+    if (activeDropdown) {
+      if (!activeDropdown._expandedChain) activeDropdown._expandedChain = [];
+      // 裁剪到当前深度 - 1（同级重新展开时覆盖后续）
+      activeDropdown._expandedChain.length = depth - 1;
+      var rel = dirPath.substring(projectRoot.length).replace(/^[\\/]+/, '');
+      activeDropdown._expandedChain.push(rel);
+    }
+
+    loadDirInto(subScroll, dirPath, projectRoot);
+    sub._projectRoot = projectRoot;
     return sub;
   }
 

@@ -346,17 +346,15 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 /* ── 上下文占用拆解面板（hover ctx-btn 弹出） ── */
 #ctx-breakdown{position:fixed;z-index:10001;display:none;bottom:60px;right:10px}
 #ctx-breakdown.show{display:block}
-.ctx-bd-wrap{background:var(--card-bg);border:1px solid var(--border-color);border-radius:6px;padding:10px 12px 8px;min-width:260px;max-width:320px;box-shadow:0 2px 16px rgba(0,0,0,0.35);font-size:11px;line-height:1.5}
+.ctx-bd-wrap{background:var(--card-bg);border:1px solid var(--border-color);border-radius:6px;padding:10px 12px 8px;min-width:300px;max-width:380px;box-shadow:0 2px 16px rgba(0,0,0,0.35);font-size:11px;line-height:1.5}
 .ctx-bd-title{font-weight:600;font-size:12px;margin-bottom:6px;color:var(--text-primary);border-bottom:1px solid var(--border-color);padding-bottom:4px}
-.ctx-bd-row{display:flex;align-items:center;gap:6px;padding:2px 0}
-.ctx-bd-color{width:8px;height:8px;border-radius:2px;flex-shrink:0}
-.ctx-bd-label{flex:1;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ctx-bd-boxes{display:flex;flex-wrap:wrap;gap:1px;flex-shrink:0;max-width:120px;justify-content:flex-end}
-.ctx-bd-box{width:5px;height:5px;border-radius:1px;opacity:.85}
-.ctx-bd-num{min-width:38px;text-align:right;color:var(--text-primary);font-weight:600;font-size:10.5px;flex-shrink:0}
-.ctx-bd-pct{min-width:32px;text-align:right;color:var(--text-dim);font-size:10px;flex-shrink:0}
+.ctx-bd-row{display:flex;align-items:center;gap:5px;padding:1.5px 0}
+.ctx-bd-label{flex:1;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ctx-bd-num{min-width:40px;text-align:right;color:var(--text-primary);font-weight:600;font-size:10.5px;flex-shrink:0;font-variant-numeric:tabular-nums}
+.ctx-bd-pct{min-width:40px;text-align:right;color:var(--text-dim);font-size:10px;flex-shrink:0}
 .ctx-bd-total{border-top:1px solid var(--border-color);margin-top:4px;padding-top:4px;display:flex;justify-content:space-between;font-weight:600;font-size:11px;color:var(--text-primary)}
 .ctx-bd-free{color:var(--green);font-weight:400}
+:root{--cyan:#2aa198} .dark .ctx-bd-num{--cyan:#2aa198}
 /* ── 超长消息：可滚动容器，不截断不遮罩 ── */
 .msg-long{max-height:360px;overflow-y:auto;scrollbar-width:thin}
 .msg-long::-webkit-scrollbar{width:6px}
@@ -558,12 +556,12 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 <!-- 上下文占用拆解面板（hover ctx-btn 弹出） -->
 <div id="ctx-breakdown">
   <div class="ctx-bd-wrap">
-    <div class="ctx-bd-title" data-i18n="ai.ctx.breakdown">上下文占用</div>
+    <div class="ctx-bd-title">Context Usage</div>
     <div class="ctx-bd-rows"></div>
     <div class="ctx-bd-total">
-      <span data-i18n="ai.ctx.used">已用</span>
+      <span>Used</span>
       <span class="ctx-bd-used-num">-</span>
-      <span class="ctx-bd-free"><span class="ctx-bd-free-num">-</span> <span data-i18n="ai.ctx.free">空闲</span></span>
+      <span class="ctx-bd-free"><span class="ctx-bd-free-num">-</span> <span>Available</span></span>
     </div>
   </div>
 </div>
