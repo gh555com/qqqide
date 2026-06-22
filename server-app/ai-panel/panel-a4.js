@@ -822,14 +822,15 @@ function _a4OnBeforeUnload() {
     _a4FirstDirtyTs = 0;
 
     // ★ 优先使用脏标记中捕获的 agent（正确），降级到 _activeAgent（可能已切换）
-    var ag = _a4IncrementalAg || (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    var ag = _a4IncrementalAg || (typeof _activeAgent !== 'undefined' ? _activeAgent : null);
     if (!ag) return;
-    var questId = _a4IncrementalQuestId || (typeof questActiveId !== 'undefined') ? questActiveId : '';
+    var questId = _a4IncrementalQuestId || (typeof questActiveId !== 'undefined' ? questActiveId : '');
     if (!questId) return;
     var qs = window.questStore;
     if (!qs || !qs.saveFloor) return;
-    var floorNum = ag._    var floorNum = ag._currentFloorNum;
-    if (!floorNum) return;BuildCompleteFloorPayload(ag, floorNum);
+    var floorNum = ag._currentFloorNum;
+    if (!floorNum) return;
+    var payload = _a4BuildCompleteFloorPayload(ag, floorNum);
     qs.saveFloor(questId, floorNum, payload).catch(function () { });
 }
 
