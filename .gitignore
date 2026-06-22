@@ -62,7 +62,7 @@ server-app/runtime/
 /goods/
 
 # 私有数据（不公开）
-qqq/
+qqq*/
 qqq2/
 do/
 op/

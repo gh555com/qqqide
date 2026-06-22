@@ -1,0 +1,352 @@
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+# configuration file /etc/nginx/nginx.conf:
+user www-data;
+worker_processes auto;
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+	worker_connections 768;
+	# multi_accept on;
+}
+
+http {
+
+	##
+	# Basic Settings
+	##
+
+	sendfile on;
+	tcp_nopush on;
+	types_hash_max_size 2048;
+	# server_tokens off;
+
+	# server_names_hash_bucket_size 64;
+	# server_name_in_redirect off;
+
+	include /etc/nginx/mime.types;
+	default_type application/octet-stream;
+
+	##
+	# SSL Settings
+	##
+
+	ssl_protocols TLSv1 TLSv1.1 TLSv1.2 TLSv1.3; # Dropping SSLv3, ref: POODLE
+	ssl_prefer_server_ciphers on;
+
+	##
+	# Logging Settings
+	##
+
+	access_log /var/log/nginx/access.log;
+
+	##
+	# Gzip Settings
+	##
+
+	gzip on;
+
+	# gzip_vary on;
+	# gzip_proxied any;
+	# gzip_comp_level 6;
+	# gzip_buffers 16 8k;
+	# gzip_http_version 1.1;
+	# gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
+
+	##
+	# Virtual Host Configs
+	##
+
+	include /etc/nginx/conf.d/*.conf;
+    # 429 独立日志分流
+    map $status $loggable_ratelimited {
+        429 1;
+        default 0;
+    }
+
+	include /etc/nginx/sites-enabled/*;
+}
+
+
+#mail {
+#	# See sample authentication script at:
+#	# http://wiki.nginx.org/ImapAuthenticateWithApachePhpScript
+#
+#	# auth_http localhost/auth.php;
+#	# pop3_capabilities "TOP" "USER";
+#	# imap_capabilities "IMAP4rev1" "UIDPLUS";
+#
+#	server {
+#		listen     localhost:110;
+#		protocol   pop3;
+#		proxy      on;
+#	}
+#
+#	server {
+#		listen     localhost:143;
+#		protocol   imap;
+#		proxy      on;
+#	}
+#}
+
+# configuration file /etc/nginx/modules-enabled/50-mod-stream.conf:
+load_module modules/ngx_stream_module.so;
+
+# configuration file /etc/nginx/modules-enabled/90-stream-sni.conf:
+stream {
+    map $ssl_preread_server_name $backend {
+        www.microsoft.com   xray;
+        default             web;
+    }
+    upstream xray {
+        server 127.0.0.1:10443;
+    }
+    upstream web {
+        server 127.0.0.1:8444;
+    }
+    server {
+        listen 443;
+        listen [::]:443;
+        ssl_preread on;
+        proxy_pass $backend;
+    }
+}
+
+# configuration file /etc/nginx/mime.types:
+
+types {
+    text/html                             html htm shtml;
+    text/css                              css;
+    text/xml                              xml;
+    image/gif                             gif;
+    image/jpeg                            jpeg jpg;
+    application/javascript                js;
+    application/atom+xml                  atom;
+    application/rss+xml                   rss;
+
+    text/mathml                           mml;
+    text/plain                            txt;
+    text/vnd.sun.j2me.app-descriptor      jad;
+    text/vnd.wap.wml                      wml;
+    text/x-component                      htc;
+
+    image/avif                            avif;
+    image/png                             png;
+    image/svg+xml                         svg svgz;
+    image/tiff                            tif tiff;
+    image/vnd.wap.wbmp                    wbmp;
+    image/webp                            webp;
+    image/x-icon                          ico;
+    image/x-jng                           jng;
+    image/x-ms-bmp                        bmp;
+
+    font/woff                             woff;
+    font/woff2                            woff2;
+
+    application/java-archive              jar war ear;
+    application/json                      json;
+    application/mac-binhex40              hqx;
+    application/msword                    doc;
+    application/pdf                       pdf;
+    application/postscript                ps eps ai;
+    application/rtf                       rtf;
+    application/vnd.apple.mpegurl         m3u8;
+    application/vnd.google-earth.kml+xml  kml;
+    application/vnd.google-earth.kmz      kmz;
+    application/vnd.ms-excel              xls;
+    application/vnd.ms-fontobject         eot;
+    application/vnd.ms-powerpoint         ppt;
+    application/vnd.oasis.opendocument.graphics        odg;
+    application/vnd.oasis.opendocument.presentation    odp;
+    application/vnd.oasis.opendocument.spreadsheet     ods;
+    application/vnd.oasis.opendocument.text            odt;
+    application/vnd.openxmlformats-officedocument.presentationml.presentation    pptx;
+    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet    xlsx;
+    application/vnd.openxmlformats-officedocument.wordprocessingml.document    docx;
+    application/vnd.wap.wmlc              wmlc;
+    application/wasm                      wasm;
+    application/x-7z-compressed           7z;
+    application/x-cocoa                   cco;
+    application/x-java-archive-diff       jardiff;
+    application/x-java-jnlp-file          jnlp;
+    application/x-makeself                run;
+    application/x-perl                    pl pm;
+    application/x-pilot                   prc pdb;
+    application/x-rar-compressed          rar;
+    application/x-redhat-package-manager  rpm;
+    application/x-sea                     sea;
+    application/x-shockwave-flash         swf;
+    application/x-stuffit                 sit;
+    application/x-tcl                     tcl tk;
+    application/x-x509-ca-cert            der pem crt;
+    application/x-xpinstall               xpi;
+    application/xhtml+xml                 xhtml;
+    application/xspf+xml                  xspf;
+    application/zip                       zip;
+
+    application/octet-stream              bin exe dll;
+    application/octet-stream              deb;
+    application/octet-stream              dmg;
+    application/octet-stream              iso img;
+    application/octet-stream              msi msp msm;
+
+    audio/midi                            mid midi kar;
+    audio/mpeg                            mp3;
+    audio/ogg                             ogg;
+    audio/x-m4a                           m4a;
+    audio/x-realaudio                     ra;
+
+    video/3gpp                            3gpp 3gp;
+    video/mp2t                            ts;
+    video/mp4                             mp4;
+    video/mpeg                            mpeg mpg;
+    video/quicktime                       mov;
+    video/webm                            webm;
+    video/x-flv                           flv;
+    video/x-m4v                           m4v;
+    video/x-mng                           mng;
+    video/x-ms-asf                        asx asf;
+    video/x-ms-wmv                        wmv;
+    video/x-msvideo                       avi;
+}
+
+# configuration file /etc/nginx/conf.d/rate-limit.conf:
+# 请求速率：每 IP 10r/s，burst 20，超出的排队或拒绝
+limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
+# 并发连接数：每 IP 最多 20 个连接
+limit_conn_zone $binary_remote_addr zone=conn_limit:10m;
+# 慢速读取速率（防 slow read body）
+client_body_timeout 30s;
+client_header_timeout 10s;
+
+# configuration file /etc/nginx/sites-enabled/gh555:
+# HTTP: redirect + certbot challenge
+server {
+    listen 80;
+    listen [::]:80;
+    server_name gh555.com www.gh555.com gaea.gh555.com usk.gh555.com direct.gh555.com;
+    location /.well-known/acme-challenge/ { root /var/www/html; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+
+# Unified site — both domains → single app on :8080
+server {
+    listen 8444 ssl;
+    server_name gh555.com www.gh555.com gaea.gh555.com usk.gh555.com direct.gh555.com;
+
+    ssl_certificate /etc/letsencrypt/live/gh555.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/gh555.com/privkey.pem;
+
+    location = /__lbprobe {
+        add_header Content-Type text/plain;
+        return 200 "ok";
+    }
+
+    location /common/ {
+        alias /opt/shared/;
+        expires 5m;
+        add_header Cache-Control "public, max-age=300";
+        # CORS for shared static
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Content-Type, If-None-Match, If-Modified-Since" always;
+        add_header Access-Control-Expose-Headers "ETag, Last-Modified" always;
+        if ($request_method = OPTIONS) { return 204; }
+    }
+
+    # GoatCounter endpoints
+    location = /count {
+        proxy_pass http://127.0.0.1:8082/count;
+        proxy_set_header Host stats.gh555.com;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+    location /counter/ {
+        proxy_pass http://127.0.0.1:8082/;
+        proxy_set_header Host stats.gh555.com;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
+    # Block admin API from external access (only accessible via SSH + localhost)
+    location /api/admin/ {
+        return 404;
+    }
+
+    # 🌐 Gaea hot-update bundles — vscode-file:// origin 必需 CORS
+    location /gaea/d/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Expose-Headers;
+        proxy_hide_header Access-Control-Max-Age;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_http_version 1.1;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        proxy_set_header CF-IPCountry $http_cf_ipcountry;
+        # CORS — always 即使是 4xx/5xx 也带（fix vscode-file:// 拉取失败）
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Content-Type, If-None-Match, If-Modified-Since, Authorization" always;
+        add_header Access-Control-Expose-Headers "ETag, Last-Modified, Content-Length" always;
+        add_header Access-Control-Max-Age "86400" always;
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Content-Type, If-None-Match, If-Modified-Since, Authorization" always;
+            add_header Access-Control-Max-Age "86400" always;
+            return 204;
+        }
+    }
+
+    # WebSocket （长连接 + Upgrade）
+    location /ws {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        proxy_set_header CF-IPCountry $http_cf_ipcountry;
+        proxy_set_header X-Original-Client-IP $http_x_original_client_ip;
+        proxy_set_header X-Original-Country $http_x_original_country;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+        proxy_buffering off;
+    }
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_http_version 1.1;
+        # 上传支持（最大 6GB，R2 存储计费）
+        client_max_body_size 6200m;
+        proxy_connect_timeout 600s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+        # Cloudflare headers
+        proxy_set_header CF-Connecting-IP $http_cf_connecting_ip;
+        proxy_set_header CF-IPCountry $http_cf_ipcountry;
+        proxy_set_header CF-Colo $http_cf_colo;
+        proxy_set_header CF-Ray $http_cf_ray;
+        # Worker custom headers
+        proxy_set_header X-Original-Client-IP $http_x_original_client_ip;
+        proxy_set_header X-Original-Country $http_x_original_country;
+        proxy_set_header X-Original-Colo $http_x_original_colo;
+    }
+}
+
+nginx: configuration file /etc/nginx/nginx.conf test is successful

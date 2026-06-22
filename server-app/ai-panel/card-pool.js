@@ -314,6 +314,8 @@ var CardPool = (function () {
       if (fData.images && fData.images.length > 0) {
         var imgRow = document.createElement('div');
         imgRow.style.cssText = 'margin-top:6px;';
+        var _imgQuestId = card.id;
+        var _imgFloorNum = fNum;
         for (var imi = 0; imi < fData.images.length; imi++) {
           var img = fData.images[imi];
           var wrap = document.createElement('span');
@@ -324,23 +326,52 @@ var CardPool = (function () {
             imgEl.src = img.dataUrl;
           } else if (img.fileName && fData._fDir) {
             imgEl.src = fData._fDir + img.fileName;
+          } else if (img.fileName && window.questStore && typeof window.questStore.resolveFloorDir === 'function') {
+            // ★ 无 _fDir 时直接动态解析（极少发生，新 quest 首次建楼）
+            window.questStore.resolveFloorDir(_imgQuestId, _imgFloorNum).then(function (_fDir) {
+              if (_fDir) imgEl.src = _fDir + img.fileName;
+            });
+          }
+          // ★ 防 _fDir 过期（quest 目录被 lazyRenameScan rename 后）→ onerror 重试
+          if (img.fileName && !img.dataUrl && window.questStore && typeof window.questStore.resolveFloorDir === 'function') {
+            (function (_qId, _fNum, _fn) {
+              imgEl.addEventListener('error', function __retryImg() {
+                if (this._retried) return;
+                this._retried = true;
+                window.questStore.resolveFloorDir(_qId, _fNum).then(function (_fDir2) {
+                  if (_fDir2 && _fDir2 + _fn !== this.src) {
+                    this.src = _fDir2 + _fn;
+                  }
+                }.bind(this));
+              });
+            })(_imgQuestId, _imgFloorNum, img.fileName);
           }
           if (img.fileName) imgEl.dataset.fileName = img.fileName;
           wrap.appendChild(imgEl);
           var badge = document.createElement('span');
           badge.className = 'msg-img-badge';
           badge.textContent = '#' + (img.id || (imi + 1));
-          badge.onclick = (function (imgData, fDir) {
+          badge.onclick = (function (imgData, fDir, _qId, _fNum) {
             return function (ev) {
               ev.stopPropagation();
               var srcUrl = imgData.dataUrl;
               var b64 = imgData.base64 || '';
-              if (!srcUrl && imgData.fileName && fDir) {
-                srcUrl = fDir + imgData.fileName;
+              if (!srcUrl && imgData.fileName) {
+                if (fDir) srcUrl = fDir + imgData.fileName;
+                // ★ badge 点击也用动态解析防 _fDir 过期
+                if (window.questStore && typeof window.questStore.resolveFloorDir === 'function') {
+                  window.questStore.resolveFloorDir(_qId, _fNum).then(function (_fDir2) {
+                    if (_fDir2 && _fDir2 !== fDir) {
+                      if (typeof openLightbox === 'function') openLightbox(_fDir2 + imgData.fileName, b64);
+                    }
+                  });
+                }
               }
-              if (typeof openLightbox === 'function') openLightbox(srcUrl, b64);
+              if (typeof openLightbox === 'function') {
+                if (srcUrl) openLightbox(srcUrl, b64);
+              }
             };
-          })(img, fData._fDir || '');
+          })(img, fData._fDir || '', _imgQuestId, _imgFloorNum);
           wrap.appendChild(badge);
           imgRow.appendChild(wrap);
         }

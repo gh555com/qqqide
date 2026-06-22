@@ -284,7 +284,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'generate_image',
-            description: 'Generate high-quality PNG images using Alibaba Tongyi Wanxiang (wanx2.1-t2i-plus). Use this for website hero images, product photos, illustrations, logos, etc. Supports multiple styles. Images are saved locally and returned as file paths. ~15-40s per image.',
+            description: 'Generate high-quality PNG images. Supports multiple styles. Images are saved locally and returned as file paths. ~15-40s per image.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -302,10 +302,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'analyze_image',
-            description: 'Analyze an existing image using qwen-vl vision model. Can: describe image content, locate objects with bounding boxes (for clickable image maps), or answer questions about the image. Use when user wants interactive images or needs to understand generated image content.',
-            parameters: {
-                type: 'object',
-                properties: {
+            description: 'Analyze an existing image. Can: describe content, locate objects with bounding boxes (for clickable image maps), or answer questions about the image. Use when user wants interactive images or needs to understand generated image content.',
                     image: { type: 'string', description: 'Absolute path to the image file to analyze' },
                     action: { type: 'string', description: 'Analysis action: "describe" (describe content), "locate" (find objects + return bounding boxes), "ask" (free-form question)' },
                     detail: { type: 'string', description: 'For action=describe: "brief" (1 sentence), "standard" (paragraph), "detailed" (full analysis)' },

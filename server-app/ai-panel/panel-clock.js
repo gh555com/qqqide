@@ -15,9 +15,11 @@ function _startAutoSave() {
     _lastAutoSaveLen = 0;
     _autoSaveTimer = setInterval(async function () {
         if (!_capturedAgent || !_capturedQuestId) return;
-        var floorNum = _capturedAgent._ctx.totalFloors;
-        if (floorNum <= 0) return;
-        var floorStartIdx = _capturedAgent._floorStartIdx;
+        var floorNum = _capturedAgent._currentFloorNum || _capturedAgent._ctx.totalFloors;
+        if (!floorNum || floorNum <= 0) return;
+        // ★ 从不可变楼层元数据读取 floorStartIdx（而非 agent._floorStartIdx 可能已变化）
+        var floorMeta = _capturedAgent._floorMeta && _capturedAgent._floorMeta[floorNum];
+        var floorStartIdx = floorMeta ? floorMeta.floorStartIdx : _capturedAgent._floorStartIdx;
         if (typeof floorStartIdx !== 'number') return;
         var fullConv = _capturedAgent.conversation ? _capturedAgent.conversation.slice() : [];
         var convLen = fullConv.length;
@@ -26,7 +28,7 @@ function _startAutoSave() {
         // 优先使用统一增量 payload 构建器（含 a1/a2/a3/a4 全部数据）
         var payload;
         if (typeof window._a4BuildCompleteFloorPayload === 'function') {
-            payload = window._a4BuildCompleteFloorPayload(_capturedAgent);
+            payload = window._a4BuildCompleteFloorPayload(_capturedAgent, floorNum);
         } else {
             payload = {
                 question: (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '',

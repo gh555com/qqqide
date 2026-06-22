@@ -129,14 +129,14 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - auto-repair 成功后必须重置 _floorOnErrorCalled（防之前 401/402/429 的 onError 标记污染后续判断）。
 
 §13a AI 网关 — Worker 纯代理 + Go 权威计费（2026-06-10 落地）
-  - 线路: Client → Worker(CF edge, 纯透传) → Go(唯一扣款权威) → DeepSeek/阿里。
+  - 线路: Client → Worker(CF edge, 纯透传) → Go(唯一扣款权威) → 模型供应商。
   - Worker 职责: ban 查询(GET /v3/ai/check) + SSE 纯透传到 Go:8444 + 自动 failover。
     禁任何计费逻辑/模型映射/body 改写/并发限制。经济账本即唯一限流(ge≤0→402)。
   - Go 职责: 直接 ChargeAITurnWithMeta 单步扣款。禁 lodge/flush 双轨计费（已删除）。
   - 楼层聚合: ChargeAITurnWithMeta 写入 floorID → transactions.ref_type。
     geflow 按 ref_type 折叠展示（底层多笔不容合并，展示层一行汇总）。
   - CF Worker 免费额度 10 万次/天，纯透传模式 CPU 时间趋零，永不超限。
-  - 2026-06-10 晚修复: Worker 之前直连 DeepSeek 绕过了 Go（部署 Bug），现已改为透传 Go。
+  - 2026-06-10 晚修复: Worker 之前直连模型绕过了 Go（部署 Bug），现已改为透传 Go。
 
 §14 主文件夹 + 文件锁
   - AI 视口第1个豆腐块 = 主文件夹，显示 ★ 标记，不可删除（UI+代码双重不可删）。
@@ -145,6 +145,15 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 主文件夹写入 qqq/.lock (30s 心跳, 60s 过期) → 防同一项目被多个 qqq IDE 窗口打开。
   - quest 数据走 qgs.project(主文件夹/qqq/quests/quest.sq3)。
   - 所有指令英文，零冗余，零"旧规则/历史上下文"等误导语。
+
+§14b 统一 AI 模型包装器 — AiGateway（2026-06-22）
+  - 唯一入口: server-app/ai-panel/ai-gateway.js（window.AiGateway）。
+  - 铁律: 一切 AI 模型调用必须经 AiGateway 走出，禁止直接 fetch 第三方端点。
+  - 客户端零暴露: 不出现任何模型名/厂商名/API 端点字符串。
+  - 覆盖服务: chat / vision / generateImage / analyzeImage / embed / searchWeb。
+  - tier 1-6 数字传参，模型映射由 AiGateway 内部 _tierToModel() + Go 端双重保障。
+  - 统一超时/重试/双线路故障切换/错误处理。
+  - 旧 Python 脚本(wanx_gen.py/wanx_vision.py)和 ipc-media.ts 已删除（全量走 Go 代理）。
 
 §15 i18n — 唯一真理国际化机器
   - 唯一真理源: server-app/locales/zh.json。开发者只管写中文，不做其他事。
@@ -381,8 +390,17 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - X 区仅保留 Git tab。A 区保留 git 快速状态面板。
   - Timeline 已完全迁出至独立 BrowserWindow(§38)。不再监听 A4 消息。
 
-undefined
-  - 事故链: q54 孤立的 tool 消息 → DeepSeek 400 → Go stream writer nil dereference → panic → 进程崩溃 → 全体 502。
+§40 Quest 目录名懒惰重命名（B+ 方案，2026-06-22）
+  - rename 只改 DB（questStore.rename），永不实时操作磁盘目录。
+  - 磁盘目录名仅在 IDE 启动/关闭时由 lazyRenameScan() 修正（仅中面板执行一次，侧面板轮询等待）。
+  - 扫描跳过正在建楼（__qqq_runningQuests 含该 questId）和 30s 内新创建的 quest。
+  - 修不了（文件锁/权限/MAX_PATH/目标已存在）→ 静默放弃，下次启动再试。
+  - 中心大脑锁：__qqq_renameScanDone / __qqq_renameScanInProgress 防三面板重复。
+  - COLLISION（同前缀多目录）→ 跳过，由 repairDuplicateIds 处理，扫描不自动删目录。
+  - _fDir 在 floor payload 中为绝对路径含旧目录名，rename 后图片加载 fallback 到 dataUrl。
+
+§41 孤儿 tool_calls 自愈（2026-06-14 加固）
+  - 事故链: q54 孤立的 tool 消息 → 模型 400 → Go stream writer nil dereference → panic → 进程崩溃 → 全体 502。
   - JS 侧修复: _repairOrphanedToolCalls 双向扫描（A: tool_calls缺tool, B: tool缺tool_calls）。
   - Go 侧双防御: ① sanitizeMessages() 转交前剔除孤立的 tool 消息；② stream writer goroutine 顶层 defer recover() 兜底，任何 panic 只关当前流不杀进程。
   - 原则: 一名用户/一个请求的任何异常（格式错误、nil pointer、第三方 API 返回异常）最多影响该用户自己的请求，绝不波及其他用户。

@@ -223,6 +223,11 @@
   window.__qqq_getRunningQuests = function() {
     return Object.keys(window.__qqq_runningQuests);
   };
+
+  // ★ 懒惰重命名扫描锁（B+ 方案）：只中面板做一次，侧面板轮询等待
+  window.__qqq_renameScanDone = false;
+  window.__qqq_renameScanInProgress = false;
+  window.__qqq_renameScanResult = null;  // { fixed, failed, skipped, collisions }
 })();
 </script>
 

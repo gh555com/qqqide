@@ -33,12 +33,12 @@ const TARGET_MAP = {
   // unpackedDir = electron-builder's output sub-directory name
   // ebPlat = electron prebuilt name segment
   // tarExt: .zip works on win; mac .app bundles need tar.gz on win host to preserve symlinks
-  'win-x64':    { plat: '--win',   arch: '--x64',   tarExt: '.zip',    unpackedDir: 'win-unpacked',     ebPlat: 'win32-x64' },
-  'win-arm64':  { plat: '--win',   arch: '--arm64', tarExt: '.zip',    unpackedDir: 'win-arm64-unpacked', ebPlat: 'win32-arm64' },
-  'linux-x64':  { plat: '--linux', arch: '--x64',   tarExt: '.tar.gz', unpackedDir: 'linux-unpacked',   ebPlat: 'linux-x64' },
-  'linux-arm64':{ plat: '--linux', arch: '--arm64', tarExt: '.tar.gz', unpackedDir: 'linux-arm64-unpacked', ebPlat: 'linux-arm64' },
-  'mac-x64':    { plat: '--mac',   arch: '--x64',   tarExt: '.tar.gz', unpackedDir: 'mac',              ebPlat: 'darwin-x64' },
-  'mac-arm64':  { plat: '--mac',   arch: '--arm64', tarExt: '.tar.gz', unpackedDir: 'mac-arm64',        ebPlat: 'darwin-arm64' },
+  'win-x64': { plat: '--win', arch: '--x64', tarExt: '.zip', unpackedDir: 'win-unpacked', ebPlat: 'win32-x64' },
+  'win-arm64': { plat: '--win', arch: '--arm64', tarExt: '.zip', unpackedDir: 'win-arm64-unpacked', ebPlat: 'win32-arm64' },
+  'linux-x64': { plat: '--linux', arch: '--x64', tarExt: '.tar.gz', unpackedDir: 'linux-unpacked', ebPlat: 'linux-x64' },
+  'linux-arm64': { plat: '--linux', arch: '--arm64', tarExt: '.tar.gz', unpackedDir: 'linux-arm64-unpacked', ebPlat: 'linux-arm64' },
+  'mac-x64': { plat: '--mac', arch: '--x64', tarExt: '.tar.gz', unpackedDir: 'mac', ebPlat: 'darwin-x64' },
+  'mac-arm64': { plat: '--mac', arch: '--arm64', tarExt: '.tar.gz', unpackedDir: 'mac-arm64', ebPlat: 'darwin-arm64' },
 };
 
 const cfg = TARGET_MAP[target];
@@ -143,10 +143,10 @@ function findUnpackedDir() {
   );
   // look for an *unpacked* dir that matches plat hints
   const hint = target.startsWith('win-') ? 'win' :
-               target.startsWith('linux-') ? 'linux' :
-               'mac';
+    target.startsWith('linux-') ? 'linux' :
+      'mac';
   const match = subs.find(n => n.includes('unpacked') && n.includes(hint))
-              || subs.find(n => n.includes('unpacked'));
+    || subs.find(n => n.includes('unpacked'));
   return match ? path.join(distRoot, match) : null;
 }
 
@@ -166,11 +166,11 @@ function isUnpackedComplete(unpacked) {
   // a complete unpacked tree has the electron binary at the root
   if (target.startsWith('win-')) {
     return fs.existsSync(path.join(unpacked, 'qqqide.exe')) ||
-           fs.existsSync(path.join(unpacked, 'electron.exe'));
+      fs.existsSync(path.join(unpacked, 'electron.exe'));
   }
   if (target.startsWith('linux-')) {
     return fs.existsSync(path.join(unpacked, 'qqqide')) ||
-           fs.existsSync(path.join(unpacked, 'electron'));
+      fs.existsSync(path.join(unpacked, 'electron'));
   }
   if (target.startsWith('mac-')) {
     const apps = fs.readdirSync(unpacked).filter(n => n.endsWith('.app'));
@@ -186,21 +186,21 @@ function downloadFile(url, dest) {
     let timer = null;
     const cleanup = () => { if (timer) { clearTimeout(timer); timer = null; } };
     const get = (u, hops = 0) => {
-      if (hops > 8) { cleanup(); file.close(); fs.unlink(dest, () => {}); return reject(new Error('too many redirects')); }
+      if (hops > 8) { cleanup(); file.close(); fs.unlink(dest, () => { }); return reject(new Error('too many redirects')); }
       const req = https.get(u, { timeout: 30000 }, res => {
         if ([301, 302, 307, 308].includes(res.statusCode)) {
           res.resume();
           return get(res.headers.location, hops + 1);
         }
         if (res.statusCode !== 200) {
-          cleanup(); file.close(); fs.unlink(dest, () => {});
+          cleanup(); file.close(); fs.unlink(dest, () => { });
           return reject(new Error('http ' + res.statusCode + ' for ' + u));
         }
         res.pipe(file);
         file.on('finish', () => { cleanup(); file.close(resolve); });
       });
       req.on('timeout', () => { req.destroy(new Error('connect/read timeout')); });
-      req.on('error', err => { cleanup(); file.close(); fs.unlink(dest, () => {}); reject(err); });
+      req.on('error', err => { cleanup(); file.close(); fs.unlink(dest, () => { }); reject(err); });
     };
     get(url);
   });
@@ -230,7 +230,7 @@ async function fetchElectronPrebuilt() {
     } catch (err) {
       console.warn('[pack] mirror failed:', url, '->', err.message);
       lastErr = err;
-      try { fs.unlinkSync(local); } catch (_) {}
+      try { fs.unlinkSync(local); } catch (_) { }
     }
   }
   throw lastErr || new Error('all mirrors failed');
@@ -311,6 +311,18 @@ async function repairUnpacked(unpacked) {
   }
 }
 
+// 3.5) inject root-level config files into unpacked tree
+function injectRootConfig(unpacked) {
+  const items = ['config.json'];
+  for (const rel of items) {
+    const src = path.join(ROOT, rel);
+    if (!fs.existsSync(src)) { continue; }
+    const dst = path.join(unpacked, rel);
+    fs.cpSync(src, dst, { force: true });
+    console.log('[pack] injected', rel, '->', path.basename(unpacked));
+  }
+}
+
 // 4) compress
 function packDir(unpacked) {
   const distRoot = path.join(ROOT, 'dist-pack');
@@ -351,9 +363,10 @@ function packDir(unpacked) {
       console.log('[pack] unpacked tree complete:', unpacked);
     }
   }
+  injectRootConfig(unpacked);
   packDir(unpacked);
   console.log('[pack] done. output -> dist-pack/');
-  console.log('[pack] win-unpacked/ kept as ready-to-run s environment (same as zip)');
+  console.log('[pack] win-unpacked/ kept as ready-to-run environment (same as zip)');
 })().catch(err => {
   console.error('[pack] failed:', err);
   process.exit(1);

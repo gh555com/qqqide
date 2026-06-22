@@ -88,26 +88,28 @@ var onlyStore = (function () {
     }
   }
 
+  var _flushPromise = null;
   async function _doFlush() {
     if (_flushTimer) { clearTimeout(_flushTimer); _flushTimer = null; }
-    if (_flushing) return;
+    // ★ 如果已有 flush 在进行中，返回其 Promise 让 await 者能正确等待完成
+    if (_flushing && _flushPromise) return _flushPromise;
     var dirtyKeys = Object.keys(_dirty);
     if (dirtyKeys.length === 0) return;
     _flushing = true;
-    var b = _bridge();
-    if (!b) { _flushing = false; return; }
-    try {
-      // 批量写：逐个 setNow（qgs 不支持事务批处理，但 setNow 本身是原子的）
-      for (var i = 0; i < dirtyKeys.length; i++) {
-        var k = dirtyKeys[i];
-        try { await b.setNow(k, _cache[k]); } catch (_) { }
-      }
-      _dirty = {};
-      _flushFirstDirty = 0;
-      if (_onFlushCb) { try { _onFlushCb(dirtyKeys); } catch (_) { } }
-      // [silent] flushed keys
-    } catch (e) { console.warn('[only-store] flush error:', e); }
-    _flushing = false;
+    _flushPromise = (async () => {
+      var b = _bridge();
+      if (!b) return;
+      try {
+        for (var i = 0; i < dirtyKeys.length; i++) {
+          var k = dirtyKeys[i];
+          try { await b.setNow(k, _cache[k]); } catch (_) { }
+        }
+        _dirty = {};
+        _flushFirstDirty = 0;
+        if (_onFlushCb) { try { _onFlushCb(dirtyKeys); } catch (_) { } }
+      } catch (e) { console.warn('[only-store] flush error:', e); }
+    })();
+    try { await _flushPromise; } finally { _flushing = false; _flushPromise = null; }
   }
 
   // ── beforeunload 同步刷盘（尽力）──
@@ -194,11 +196,14 @@ var onlyStore = (function () {
     if (!_flushFirstDirty) _flushFirstDirty = Date.now();
     // 立即刷盘（跳过空闲等待）
     if (_flushTimer) { clearTimeout(_flushTimer); _flushTimer = null; }
-    _doFlush();
+    // ★ 不启动重复 flush，防止 _flushing 守卫导致 flush() 无法等待
+    if (!_flushing) _doFlush();
   }
 
   function flush() {
     if (_flushTimer) { clearTimeout(_flushTimer); _flushTimer = null; }
+    // ★ 如果 _doFlush 正在进行中，返回其 Promise 而非静默跳过
+    if (_flushing && _flushPromise) return _flushPromise;
     return _doFlush();
   }
 

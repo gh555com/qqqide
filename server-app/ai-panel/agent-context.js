@@ -19,7 +19,7 @@
 
 ; (function () {
 
-    var TOKEN_BUDGET = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPRESS_THRESHOLD : 900000);
+    var TOKEN_BUDGET = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPRESS_THRESHOLD : 200000);
     var KEEP_RATIO = 0.1;         // 保留最近 10%
     var MIN_FLOORS = 6;           // 最少保留 6 层楼（当前层 + 前 5 层）
     var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 3.0);

@@ -286,7 +286,7 @@ async function _waitForTaskStream(streamUrl, token) {
 }
 
 // ============================================================
-// generate_image — Go 代理通义万相 文生图（终极架构：全部 AI 过 Go）
+// generate_image — AI 图像生成（全走 Go 代理）
 // ============================================================
 
 async function executeGenerateImage(args) {
@@ -315,8 +315,7 @@ async function executeGenerateImage(args) {
         } catch (_) { }
     }
 
-    // ★ 终极架构：全部 AI ──▶ Go ──▶ 阿里
-    var token = '';
+    // ★ 终极架构    // ★ 全走 Go 代理n = '';
     try {
         var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
         if (ag && ag._token) token = ag._token;
@@ -351,7 +350,7 @@ async function executeGenerateImage(args) {
             return 'Image generation failed: ' + (postData.error || 'unknown error');
         }
 
-        // 2. SSE stream → 等 Go 轮询完阿里 wanx 返回结果
+        // 2. SSE stream → 等 Go 轮询完返回结果
         var result = await _waitForTaskStream(IMG_URL + '/' + postData.task_id + '/stream', token);
         if (!result || result._httpError) {
             return 'Image generation stream failed (HTTP ' + (result ? result._httpError : '?') + ')';
@@ -377,7 +376,7 @@ async function executeGenerateImage(args) {
         }
 
         var dlPromises = result.urls.map(function (url, u) {
-            var fname = 'wanx_' + Date.now() + '_' + u + '.png';
+            var fname = 'gen_img_' + Date.now() + '_' + u + '.png';
             var fpath = outDir.replace(/\\/g, '/').replace(/\/$/, '') + '/' + fname;
             return bridge.qz.spawn({
                 cmd: 'curl',
@@ -406,7 +405,7 @@ async function executeGenerateImage(args) {
 }
 
 // ============================================================
-// analyze_image — Go 代理 qwen-vl 视觉理解（终极架构：全部 AI 过 Go）
+// analyze_image — AI 视觉分析（全走 Go 代理）
 // ============================================================
 
 async function executeAnalyzeImage(args) {
@@ -418,7 +417,7 @@ async function executeAnalyzeImage(args) {
 
     var action = args.action || 'describe';
 
-    // ★ 终极架构：全部 AI ──▶ Go ──▶ 阿里
+    // ★ 全走 Go 代理
     var token = '';
     try {
         var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;

@@ -39,7 +39,7 @@ async function switchQuest(id) {
                 }
             }
             if (_activeAgent) {
-                await _saveAgentQuestData(questActiveId, _activeAgent, _activeAgent._floorStartIdx);
+                await _saveAgentQuestData(questActiveId, _activeAgent, _activeAgent._currentFloorNum);
             }
             if (!_isDraft(questActiveId)) {
                 _parentReleaseQuest(questActiveId);
@@ -125,12 +125,8 @@ async function switchQuest(id) {
             }
         }
 
-        // ★ 切换到 quest 时修复磁盘目录名（惰性修正，仅 numericId 有效时）
-        var _qEntry = (await questStore.list()).find(function (s) { return s.id === id; });
-        if (_qEntry && _qEntry.numericId > 0 && typeof _tryRepairQuestDirName === 'function') {
-            _tryRepairQuestDirName(questStore.getProjectRoot(), id, _qEntry.numericId, _qEntry.title)
-                .catch(function (e) { console.warn('[quest-dir] switch repair failed:', id, e); });
-        }
+        // ★ 切换到 quest 时不再尝试实时修复磁盘目录名
+        //   B+ 方案：懒惰重命名扫描只在启动/关闭时由中面板执行
         restoreQuestUIState(id);
         renderQueueStrip();
         updateCostDisplay();
@@ -221,47 +217,15 @@ async function _findQuestDirByPrefix(root, questId) {
     return null;
 }
 
-// ── 解析 quest 目录名：只按 q{n}. 前缀匹配已有目录，不依赖完整标题 ──
-// 多目录时挑第一个，找不到才从标题构造（仅限新 quest 首次创建）
-// 若已有目录名与 DB 标题不一致，立即尝试修复（await），防 TOCTOU 分裂
+// ── 解析 quest 目录名：只按 q{n}. 前缀匹配已有目录 ──
+// B+ 方案：不再实时修复或创建新目录，只返回已有目录名
+// 若找不到（首次建楼调用此函数），则由 build 路径自己决定
 async function _resolveQuestDirName(root, questId, numericId, title) {
     var existing = await _findQuestDirByPrefix(root, questId);
-    if (existing) {
-        var expectedName = _makeName('q', numericId, title);
-        if (existing !== expectedName) {
-            // 立即修复，传已知名省一次 list
-            await _tryRepairQuestDirName(root, questId, numericId, title, existing);
-            var afterRepair = await _findQuestDirByPrefix(root, questId);
-            if (afterRepair) return afterRepair;
-        }
-        return existing;
-    }
+    if (existing) return existing;
+    // ★ 找不到 → 返回 expected name（调用方 _ensureQuestDir 会按需创建）
+    //   不再实时修复目录名，懒惰修正留给 lazyRenameScan
     return _makeName('q', numericId, title);
-}
-
-// ── 修复：磁盘目录名与 DB 不一致时 rename，失败打日志不阻塞 ──
-// _knownName: 调用方已知的当前目录名（省一次 list），可选；不传则自行查找
-async function _tryRepairQuestDirName(root, questId, numericId, dbTitle, _knownName) {
-    if (!dbTitle) return;
-    var bridge = window.parent && window.parent.qqqideBridge;
-    if (!bridge || !bridge.fs) { console.warn('[quest-dir] bridge.fs unavailable, skip repair for', questId); return; }
-    var questsDir = root + '/qqq/quests/';
-    var currentName = _knownName || await _findQuestDirByPrefix(root, questId);
-    if (!currentName) { console.warn('[quest-dir] dir not found by prefix:', questId); return; }
-    var expectedName = _makeName('q', numericId, dbTitle);
-    if (currentName === expectedName) return;
-    // 期望名不存在 → 尝试重命名（stat 返回 null 不抛异常，必须检查返回值）
-    var statResult = await bridge.fs.stat(questsDir + expectedName);
-    if (!statResult) {
-        try {
-            await bridge.fs.rename(questsDir + currentName, questsDir + expectedName);
-            console.log('[quest-dir] renamed:', currentName, '→', expectedName);
-        } catch (e) {
-            console.warn('[quest-dir] rename failed:', currentName, '→', expectedName, '|', (e && e.message) || e);
-        }
-    } else {
-        console.warn('[quest-dir] expected name already exists, skip rename:', expectedName);
-    }
 }
 
 async function createNewQuest() {
@@ -299,11 +263,11 @@ function _unloadQuest() {
     $input.value = '';
     $input._resetUndo();
     pendingImages = [];
-    selectedTier = 6;
-    updateTierButtons(6);
+    selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 6;
+    updateTierButtons(selectedTier);
     renderImageStrip();
     _activeAgent = null;
-    setStreaming(false);  // ★ 卸载 quest 后刷新按钮状态
+    setStreaming(false);  // ★ 卸载 quest 后刷新按钮状态后刷新按钮状态
     updateCostDisplay();
     updateCtxBtn();
     var children = $messages.children;
@@ -344,7 +308,8 @@ async function deleteQuest(id) {
     await renderTabs();
 }
 
-// ── 重命名 quest：DB 改名 + 尽力磁盘改名 + 惰性修复兜底 ──
+// ── 重命名 quest：只改 DB，不改磁盘目录名 ──
+//   B+ 方案：磁盘目录名由 lazyRenameScan 在启动/关闭时懒惰修正
 async function renameQuest(id, newTitle) {
     if (!id || !newTitle) return;
     var quests = await questStore.list();
@@ -352,14 +317,7 @@ async function renameQuest(id, newTitle) {
     if (!entry) return;
     var oldTitle = entry.title;
     if (oldTitle === newTitle) return;
-    // 1. DB 改名（100% 可靠）
     await questStore.rename(id, newTitle, entry.numericId);
-    // 2. 尽力磁盘改名
-    var root = questStore.getProjectRoot();
-    if (root) {
-        await _tryRepairQuestDirName(root, id, entry.numericId, newTitle);
-    }
-    // 3. 刷新 UI
     await renderTabs();
 }
 
@@ -414,44 +372,134 @@ var CTX_MAX_TOKENS = ContentGateway.CTX_MAX_TOKENS;
 var _estCache = { val: 0, convLen: -1, ctxHash: '' };
 function estimateTokens() {
     if (!_activeAgent) return 0;
-    var _ag = _activeAgent;
-    var conv = _ag.conversation;
-    var ctx = _ag._ctx;
+    var conv = _activeAgent.conversation;
+    var ctx = _activeAgent._ctx;
     var ctxHash = ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '';
     if (_estCache.convLen === conv.length && _estCache.ctxHash === ctxHash && _estCache.val > 0) {
         return _estCache.val;
     }
-    var total = 0;
-    var CHAR_PER_TOKEN = ContentGateway.CHAR_PER_TOKEN;
-    for (var i = 0; i < conv.length; i++) {
-        var c = conv[i].content;
-        if (typeof c === 'string') total += c.length / CHAR_PER_TOKEN;
-        if (conv[i].tool_calls && Array.isArray(conv[i].tool_calls)) {
-            try { total += JSON.stringify(conv[i].tool_calls).length / CHAR_PER_TOKEN; } catch (_) { }
-        }
-        total += 10;
-    }
-    if (typeof SYSTEM_PROMPT !== 'undefined') total += SYSTEM_PROMPT.length / CHAR_PER_TOKEN;
+    // ★ 委托给统一计算函数（同时产出 _ctxBreakdownData）
+    return _estimateTokensFull();
+}
+
+// ★ 统一计算：总 token + 拆解，一次遍历，单一缓存（按钮+面板共用）
+function _estimateTokensFull() {
+    var CP = ContentGateway.CHAR_PER_TOKEN;
+    var _ag = _activeAgent;
+    var conv = _ag ? _ag.conversation : [];
+    var ctx = _ag ? _ag._ctx : null;
+    var sysTok = 0, toolsTok = 0, rulesTok = 0, msgsTok = 0, compTok = 0;
+    var _dbg = { sys: typeof SYSTEM_PROMPT !== 'undefined' ? SYSTEM_PROMPT.length : 'UNDEFINED', tools: typeof TOOL_DEFINITIONS !== 'undefined' ? JSON.stringify(TOOL_DEFINITIONS).length : 'UNDEFINED', convLen: conv.length, contentCount: 0, contentChars: 0, nonStringContent: 0, tcalls: 0 };
+    if (typeof SYSTEM_PROMPT !== 'undefined' && SYSTEM_PROMPT) sysTok = Math.round(SYSTEM_PROMPT.length / CP);
     if (typeof TOOL_DEFINITIONS !== 'undefined') {
-        try { total += JSON.stringify(TOOL_DEFINITIONS).length / CHAR_PER_TOKEN; } catch (_) { }
+        try { toolsTok = Math.round(JSON.stringify(TOOL_DEFINITIONS).length / CP); } catch (_) { }
+    }
+    for (var i = 0; i < conv.length; i++) {
+        var m = conv[i];
+        if (m._persistent) {
+            if (typeof m.content === 'string') { rulesTok += Math.round(m.content.length / CP); _dbg.contentChars += m.content.length; _dbg.contentCount++; } else { _dbg.nonStringContent++; }
+            continue;
+        }
+        if (typeof m.content === 'string') { msgsTok += Math.round(m.content.length / CP); _dbg.contentChars += m.content.length; _dbg.contentCount++; } else { _dbg.nonStringContent++; }
+        if (m.tool_calls && Array.isArray(m.tool_calls)) {
+            try { msgsTok += Math.round(JSON.stringify(m.tool_calls).length / CP); _dbg.tcalls += m.tool_calls.length; } catch (_) { }
+        }
+        msgsTok += 10;
     }
     if (ctx) {
-        var dynText = '';
-        if (ctx.narrative) {
-            dynText += '[DYNAMIC CONTEXT]\nCONVERSATION CONTEXT (compressed history):\n' + ctx.narrative;
-        }
+        if (ctx.narrative) compTok += Math.round(('[DYNAMIC CONTEXT]\nCONVERSATION CONTEXT (compressed history):\n' + ctx.narrative).length / CP);
         if (ctx.facts && ctx.facts.length > 0) {
-            var facts = ctx.facts.slice(-10);
-            dynText += '\n\nRELEVANT FACTS FROM EARLIER (' + facts.length + '/' + ctx.facts.length + ' total):\n';
-            for (var fi = 0; fi < facts.length; fi++) {
-                dynText += '- [' + (facts[fi].type || '') + '] ' + (facts[fi].content || '') + '\n';
+            for (var fi = 0; fi < ctx.facts.length; fi++) {
+                compTok += Math.round(((ctx.facts[fi].content || '') + ' [' + (ctx.facts[fi].type || '') + ']').length / CP);
             }
         }
-        total += dynText.length / CHAR_PER_TOKEN;
     }
-    var result = Math.round(total);
-    _estCache = { val: result, convLen: conv.length, ctxHash: ctxHash };
-    return result;
+    var total = sysTok + toolsTok + rulesTok + msgsTok + compTok;
+    console.error('[CTX_BD] sys=' + sysTok + ' tools=' + toolsTok + ' rules=' + rulesTok + ' msgs=' + msgsTok + ' comp=' + compTok + ' conv=' + conv.length + ' msgs, SYSTEM_PROMPT.len=' + _dbg.sys + ' TOOL_DEFS.len=' + _dbg.tools + ' contentCount=' + _dbg.contentCount + ' contentChars=' + _dbg.contentChars + ' nonStringContent=' + _dbg.nonStringContent + ' tool_calls=' + _dbg.tcalls + ' CP=' + CP);
+    _ctxBreakdownData = [
+        { key: 'sys', label: 'System Prompt', tok: sysTok, color: '#268bd2' },
+        { key: 'tools', label: 'Tool Definitions', tok: toolsTok, color: '#6c71c4' },
+        { key: 'rules', label: 'Project Rules', tok: rulesTok, color: '#2aa198' },
+        { key: 'msgs', label: 'Messages', tok: msgsTok, color: '#b58900' },
+        { key: 'comp', label: 'Compressed', tok: compTok, color: '#cb4b16' },
+        { key: 'free', label: 'Free', tok: Math.max(0, CTX_MAX_TOKENS - total), color: '#859900' }
+    ];
+    _estCache = { val: total, convLen: conv.length, ctxHash: ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '' };
+    return total;
+}ength : 0)) : '' };
+    return total;
+}
+
+// ═══ 上下文占用拆解面板（hover ctx-btn 弹出） ═══
+var _ctxBreakdownVisible = false;
+var _ctxBreakdownTimer = null;
+var _ctxBreakdownData = null;
+
+function _ctxBdUnit() {
+    if (CTX_MAX_TOKENS <= 100000) return 1000;
+    if (CTX_MAX_TOKENS <= 250000) return 2500;
+    if (CTX_MAX_TOKENS <= 500000) return 5000;
+    if (CTX_MAX_TOKENS <= 1000000) return 10000;
+    return 20000;
+}
+
+// ★ 读取共享缓存（由 _estimateTokensFull 一次性算出）
+function computeCtxBreakdown() {
+    if (!_ctxBreakdownData) _estimateTokensFull();
+    return _ctxBreakdownData || [];
+}
+
+function renderCtxBreakdown() {
+    var bd = document.getElementById('ctx-breakdown');
+    if (!bd) return;
+    if (!_activeAgent || !_activeAgent.conversation) { bd.classList.remove('show'); return; }
+    // ★ 强制刷新：绕过缓存，确保面板显示最新数据
+    _estimateTokensFull();
+    var data = _ctxBreakdownData || computeCtxBreakdown();
+    var unit = _ctxBdUnit();
+    var rowsEl = bd.querySelector('.ctx-bd-rows');
+    var usedEl = bd.querySelector('.ctx-bd-used-num');
+    var freeEl = bd.querySelector('.ctx-bd-free-num');
+    var totalUsed = 0;
+    var html = '';
+    for (var i = 0; i < data.length; i++) {
+        var d = data[i];
+        if (d.key === 'free') continue;
+        totalUsed += d.tok;
+        var n = Math.max(0, Math.round(d.tok / unit));
+        var boxes = '';
+        for (var b = 0; b < n && b < 120; b++) boxes += '<span class="ctx-bd-box" style="background:' + d.color + '"></span>';
+        var pct = CTX_MAX_TOKENS > 0 ? (d.tok / CTX_MAX_TOKENS * 100) : 0;
+        html += '<div class="ctx-bd-row"><span class="ctx-bd-color" style="background:' + d.color + '"></span>' +
+            '<span class="ctx-bd-label">' + d.label + '</span>' +
+            '<span class="ctx-bd-boxes">' + boxes + '</span>' +
+            '<span class="ctx-bd-num">' + (d.tok >= 1000 ? (d.tok / 1000).toFixed(1) + 'k' : d.tok) + '</span>' +
+            '<span class="ctx-bd-pct">' + pct.toFixed(1) + '%</span></div>';
+    }
+    rowsEl.innerHTML = html;
+    var freeData = data[data.length - 1];
+    usedEl.textContent = totalUsed >= 1000 ? (totalUsed / 1000).toFixed(1) + 'k' : totalUsed;
+    freeEl.textContent = freeData.tok >= 1000 ? (freeData.tok / 1000).toFixed(1) + 'k' : freeData.tok;
+    var btnRect = $ctxBtn.getBoundingClientRect();
+    bd.style.bottom = (window.innerHeight - btnRect.top + 10) + 'px';
+    bd.style.right = (window.innerWidth - btnRect.right) + 'px';
+}
+
+function showCtxBreakdown() {
+    if (!_activeAgent || !_activeAgent.conversation) return;
+    clearTimeout(_ctxBreakdownTimer);
+    _ctxBreakdownTimer = setTimeout(function () {
+        renderCtxBreakdown();
+        var bd = document.getElementById('ctx-breakdown');
+        if (bd) { bd.classList.add('show'); _ctxBreakdownVisible = true; }
+    }, 200);
+}
+
+function hideCtxBreakdown() {
+    clearTimeout(_ctxBreakdownTimer);
+    _ctxBreakdownVisible = false;
+    var bd = document.getElementById('ctx-breakdown');
+    if (bd) bd.classList.remove('show');
 }
 
 // \u2500\u2500 \u4e0a\u4e0b\u6587\u6309\u94ae \u2500\u2500
@@ -470,10 +518,29 @@ function updateCtxBtn() {
     var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
     $ctxBtn.textContent = Math.round(used / 1000) + ' k';
     $ctxBtn.style.setProperty('--ctx-pct', pct + '%');
+    if (_ctxBreakdownVisible) renderCtxBreakdown();
 }
 $ctxBtn.onclick = function () {
+    hideCtxBreakdown();
     document.getElementById('ctx-panel').style.display = 'flex';
 };
+// ★ hover 显示上下文占用拆解面板
+$ctxBtn.addEventListener('mouseenter', function () {
+    showCtxBreakdown();
+});
+$ctxBtn.addEventListener('mouseleave', function () {
+    hideCtxBreakdown();
+});
+// ★ 进入拆解面板自身时不关闭
+var _bdPanel = document.getElementById('ctx-breakdown');
+if (_bdPanel) {
+    _bdPanel.addEventListener('mouseenter', function () {
+        clearTimeout(_ctxBreakdownTimer);
+    });
+    _bdPanel.addEventListener('mouseleave', function () {
+        hideCtxBreakdown();
+    });
+}
 document.getElementById('ctx-cancel').onclick = function () {
     document.getElementById('ctx-panel').style.display = 'none';
 };
@@ -524,9 +591,9 @@ document.getElementById('ctx-compress').onclick = async function () {
         _ag.conversation.push({ role: 'assistant', content: _assistantMsg, _floor: _compressFloorNum });
         // ★ 持久化：保存这个压缩楼层
         if (typeof _saveAgentQuestData === 'function') {
-            await _saveAgentQuestData(questActiveId, _ag, _ag._floorStartIdx).catch(function () { });
+            await _saveAgentQuestData(questActiveId, _ag, _compressFloorNum).catch(function () { });
         }
-        // ★ 刷新 card-pool 显示压缩楼层
+        // ★ 刷新 card-pool 显示压缩楼层楼层
         try { if (typeof cardPool !== 'undefined' && cardPool.refreshCard) { await cardPool.refreshCard(questActiveId); } } catch (_) { }
         if (_result.compressed) {
             try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✅ Compress done: ' + _result.detail.replace(/\n/g, ' | '), { type: 'info', duration: 5000 }); } catch (_) { }
@@ -537,7 +604,7 @@ document.getElementById('ctx-compress').onclick = async function () {
     } catch (e) {
         _ag.conversation.push({ role: 'assistant', content: '✗ Compress failed: ' + (e.message || 'unknown'), _floor: _compressFloorNum });
         if (typeof _saveAgentQuestData === 'function') {
-            await _saveAgentQuestData(questActiveId, _ag, _ag._floorStartIdx).catch(function () { });
+            await _saveAgentQuestData(questActiveId, _ag, _compressFloorNum).catch(function () { });
         }
         try { if (typeof cardPool !== 'undefined' && cardPool.refreshCard) { await cardPool.refreshCard(questActiveId); } } catch (_) { }
         if (_compressQoast) { try { _compressQoast.dismiss(); } catch (_) { } _compressQoast = null; }
@@ -562,52 +629,79 @@ document.addEventListener('keydown', function (e) {
 });
 
 // \u2500\u2500 \u5f15\u5bfc\u6309\u94ae\uff1a\u6700\u5feb\u901f\u5ea6\u5c06\u7d27\u6025\u4fe1\u606f\u786c\u585e\u7ed9\u6b63\u5728\u5de5\u4f5c\u7684 AI\uff0c\u4e0d\u4e2d\u65ad\u697c\u5c42 \u2500\u2500
-$guideBtn.onclick = function () {
-    if (_switching) return;  // ★ quest 切换中
-    if (!_activeAgent) {
-        addMessageEl('error', '\u8bf7\u5148\u53d1\u9001\u4e00\u6761\u6d88\u606f\u521b\u5efa\u5bf9\u8bdd');
-        return;
-    }
-    if (_activeAgent._compressing) return;
+$guideBtn.onclick = async function () {
+    // ═══ 铁律：仅建楼中可用（_sending||streaming），闲置时按钮灰色禁用由 updateGuideBtn 控制 ═══
+    if (_switching) return;
+    if (!(_sending || streaming)) return;
+
     var text = getInputText().trim();
-    if (!text) return;
+    if (!text && pendingImages.length === 0) return;
+
+    // ★ 冻结图片副本，立即清空 UI
+    var capturedImages = pendingImages.length > 0 ? pendingImages.map(function (img) {
+        return { id: img.id, base64: img.base64, dataUrl: img.dataUrl };
+    }) : [];
+    pendingImages = [];
+    renderImageStrip();
+
     $input.value = '';
     $input._resetUndo();
     $input.focus();
 
-    if (_sending || streaming) {
-        // AI \u6b63\u5728\u5de5\u4f5c\u4e2d \u2192 \u7acb\u5373\u6ce8\u5165 + abort \u5f53\u524d house
-        var _aiDiv = _activeAgent._activeAiDiv;
-        if (_aiDiv && _aiDiv._contentWrap) {
-            // 仅清空流式缓冲（_buf），保留已渲染的 DOM 和段落数组，不删用户可见内容
-            _aiDiv._buf = '';
-            _aiDiv._codeFenceOpen = false;
-            _aiDiv._dirty = false;
-            // 正在流式的未完成段落转为静态 DOM 保留，不再跟踪
-            _aiDiv._lastParaEl = null;
-            _aiDiv._guideMode = true;
-            // 引导注入块：第一行 ⚡ 引导信息，第二行正文左对齐
-            var guideBlock = document.createElement('div');
-            guideBlock.className = 'msg-flow-guide-inject';
-            guideBlock.innerHTML = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">⚡</span> 引导信息</div><div class="msg-flow-guide-body">' + escHtml(text) + '</div>';
-            _aiDiv._contentWrap.appendChild(guideBlock);
-            var marker = document.createElement('div');
-            marker.className = 'msg-flow-guide';
-            marker.style.cssText = 'opacity:0.6;';
-            marker.innerHTML = '<span class="msg-flow-icon">\u23f3</span> \u786e\u8ba4\u4e2d...';
-            _aiDiv._contentWrap.appendChild(marker);
-            _aiDiv._guideMarker = marker;
+    // ═══ 异步视觉分析 ═══
+    var visionText = '';
+    if (capturedImages.length > 0) {
+        var token = (_activeAgent && _activeAgent._token) || getToken();
+        if (token) {
+            try {
+                var visionResults = await _activeAgent._analyzeImages(capturedImages, token, text);
+                if (visionResults && visionResults.length > 0) {
+                    var vparts = [];
+                    for (var vi = 0; vi < visionResults.length; vi++) {
+                        if (visionResults[vi].description) {
+                            vparts.push('[\u56fe#' + visionResults[vi].id + ' \u89c6\u89c9\u5206\u6790]:\n' + visionResults[vi].description);
+                        }
+                    }
+                    if (vparts.length > 0) {
+                        visionText = '\n\n\u2501\u2501\u2501 GUIDE IMAGE ANALYSIS \u2501\u2501\u2501\n' + vparts.join('\n\n') + '\n\u2501\u2501\u2501 END GUIDE IMAGE ANALYSIS \u2501\u2501\u2501';
+                    }
+                }
+            } catch (_ve) {
+                console.warn('[guide-vision]', _ve);
+            }
         }
-        _activeAgent.injectGuide(text);
-    } else {
-        // AI \u6ca1\u5728\u5de5\u4f5c \u2192 \u964d\u7ea7\u4e3a\u666e\u901a inject
-        _activeAgent.inject('[GUIDE] ' + text);
-        var statusEl2 = document.createElement('div');
-        statusEl2.className = 'msg msg-status guide-status';
-        statusEl2.textContent = '\ud83d\udccc \u5f15\u5bfc\u5df2\u6ce8\u5165 \u00b7 AI \u4e0b\u6b21\u56de\u590d\u53ef\u89c1';
-        $messages.appendChild(statusEl2);
-        scrollToBottom(true);
     }
+
+    var hasImages = capturedImages.length > 0;
+    var guideText = text + (visionText || '');
+
+    // ══ 注入引导到当前活跃楼层 ══
+    var _aiDiv = _activeAgent._activeAiDiv;
+    if (_aiDiv && _aiDiv._contentWrap) {
+        _aiDiv._buf = '';
+        _aiDiv._codeFenceOpen = false;
+        _aiDiv._dirty = false;
+        _aiDiv._lastParaEl = null;
+        _aiDiv._guideMode = true;
+
+        var guideBlock = document.createElement('div');
+        guideBlock.className = 'msg-flow-guide-inject';
+        var guideHtml = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">\u26a1</span> \u5f15\u5bfc\u4fe1\u606f</div><div class="msg-flow-guide-body">' + escHtml(text) + '</div>';
+        if (hasImages) {
+            guideHtml += '<div style="margin-top:4px;font-size:10px;color:var(--text-secondary);">\ud83d\udcf7 ' + capturedImages.length + ' \u5f20\u56fe\u7247\uff08\u5df2\u5206\u6790\uff09</div>';
+        }
+        guideBlock.innerHTML = guideHtml;
+        _aiDiv._contentWrap.appendChild(guideBlock);
+
+        var marker = document.createElement('div');
+        marker.className = 'msg-flow-guide';
+        marker.style.cssText = 'opacity:0.6;';
+        marker.innerHTML = '<span class="msg-flow-icon">\u23f3</span> \u786e\u8ba4\u4e2d...';
+        _aiDiv._contentWrap.appendChild(marker);
+        _aiDiv._guideMarker = marker;
+    }
+    _activeAgent.injectGuide(guideText);
+
     saveQuestData().catch(function () { });
     updateQueueBtn();
 };

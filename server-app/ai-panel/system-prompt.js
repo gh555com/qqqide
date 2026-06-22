@@ -136,16 +136,16 @@ Phase 2 · EXTRACT (choose tool based on WHAT you are trying to get):
 // 原生支持 384K 输出，我们不设人为限制。Flash/Pro 一视同仁。
 var _MRT = ContentGateway.MAX_RESPONSE_TOKENS; // 唯一真理在 content-gateway.js
 
-var TIER_PRO = { model: 'pro', thinking: { type: 'enabled' }, effort: 'max', label: 'Pro+Max', maxTokens: _MRT };
+var TIER_PRO = { model: 'deep', thinking: { type: 'enabled' }, effort: 'max', label: '6-Deep+Max', maxTokens: _MRT };
 
-// 六档手动智能等级（model: "flash" → Flash, "pro" → Pro）
-// maxTokens 全部统一为 _MRT，Flash 和 Pro 输出上限不区分
-var TIER_1 = { model: 'flash', thinking: { type: 'disabled' }, effort: null, label: '1-Flash', maxTokens: _MRT };
-var TIER_2 = { model: 'flash', thinking: { type: 'enabled' }, effort: 'high', label: '2-Flash+High', maxTokens: _MRT };
-var TIER_3 = { model: 'flash', thinking: { type: 'enabled' }, effort: 'max', label: '3-Flash+Max', maxTokens: _MRT };
-var TIER_4 = { model: 'pro', thinking: { type: 'disabled' }, effort: null, label: '4-Pro', maxTokens: _MRT };
-var TIER_5 = { model: 'pro', thinking: { type: 'enabled' }, effort: 'high', label: '5-Pro+High', maxTokens: _MRT };
-var TIER_6 = { model: 'pro', thinking: { type: 'enabled' }, effort: 'max', label: '6-Pro+Max', maxTokens: _MRT };
+// 六档手动智能等级
+// maxTokens 全部统一为 _MRT
+var TIER_1 = { model: 'fast', thinking: { type: 'disabled' }, effort: null, label: '1-Fast', maxTokens: _MRT };
+var TIER_2 = { model: 'fast', thinking: { type: 'enabled' }, effort: 'high', label: '2-Fast+High', maxTokens: _MRT };
+var TIER_3 = { model: 'fast', thinking: { type: 'enabled' }, effort: 'max', label: '3-Fast+Max', maxTokens: _MRT };
+var TIER_4 = { model: 'deep', thinking: { type: 'disabled' }, effort: null, label: '4-Deep', maxTokens: _MRT };
+var TIER_5 = { model: 'deep', thinking: { type: 'enabled' }, effort: 'high', label: '5-Deep+High', maxTokens: _MRT };
+var TIER_6 = { model: 'deep', thinking: { type: 'enabled' }, effort: 'max', label: '6-Deep+Max', maxTokens: _MRT };
 
 var TIER_LIST = { 1: TIER_1, 2: TIER_2, 3: TIER_3, 4: TIER_4, 5: TIER_5, 6: TIER_6 };
 

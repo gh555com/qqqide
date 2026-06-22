@@ -1004,6 +1004,12 @@ var QuestStore = (function () {
         return await _readFloorFile(questId, floorNum);
     };
 
+    // ★ 动态解析 floor 目录完整路径（防 _fDir 过期导致图片 404）
+    //   暴露私有函数 _resolveFloorDir 给 card-pool.js 等外部模块
+    QuestStore.prototype.resolveFloorDir = async function (questId, floorNum) {
+        return await _resolveFloorDir(questId, floorNum);
+    };
+
     // ★ 从已加载的 all.json 数据重建 sq3 quest 元数据（备份还原 / 改名编号后自愈）
     //   仅重建可计算字段，serverDrift/rulesVersion 保活或设默认值
     async function _rebuildQuestMetaFromFloors(questId, floors) {
@@ -1199,6 +1205,138 @@ var QuestStore = (function () {
             try { await _b.setNow('quest_id_counter', nextNumeric); } catch (_e) { }
         }
         console.log('[quest-store] rebuildIndexFromFiles: rebuilt ' + newIndex.length + ' quest(s) from filesystem');
+    };
+
+    // ═══════════════════════════════════════════════════════════════
+    // ★ 懒惰重命名扫描（B+ 方案）— 仅中面板执行，只在启动/关闭时运行
+    //   只修不删，修不了就放弃。跳过正在建楼的 quest。
+    // ═══════════════════════════════════════════════════════════════
+    // ── 生成安全的目录名（与 panel-quest-ui.js _makeName 同构）──
+    function _scanMakeName(prefix, num, text) {
+        var MAX_BYTES = 100;
+        if (!text) return prefix + num;
+        var bytes = new TextEncoder().encode(text);
+        var end = Math.min(MAX_BYTES, bytes.length);
+        while (end > 0 && (bytes[end] & 0xC0) === 0x80) { end--; }
+        var sanitized = new TextDecoder().decode(bytes.slice(0, end))
+            .replace(/[\x00-\x1f\x7f-\x9f]/g, '')
+            .replace(/[\\\/:*?"<>|]/g, '_')
+            .replace(/[\u200B-\u200D\uFEFF\u200E\u200F]/gu, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        sanitized = sanitized.replace(/^\.+/, '').replace(/\.+$/, '');
+        var RESERVED = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/;
+        if (RESERVED.test(sanitized.toUpperCase()) || RESERVED.test(sanitized.toUpperCase().replace(/\..*/, ''))) {
+            sanitized = '_' + sanitized;
+        }
+        if (!sanitized) return prefix + num;
+        return prefix + num + '.' + sanitized;
+    }
+
+    // ── 扫描所有 quest，修正目录名与 DB title 不一致 ──
+    // 返回值: { fixed, failed, skipped, collisions }
+    QuestStore.prototype.lazyRenameScan = async function () {
+        var result = { fixed: 0, failed: 0, skipped: 0, collisions: 0 };
+
+        // ★ 仅中面板执行
+        if (!_isMainPanel) return result;
+        // ★ 防重入
+        try {
+            if (parent && parent.__qqq_renameScanDone) return result;
+            if (parent && parent.__qqq_renameScanInProgress) return result;
+        } catch (_) { return result; }
+
+        try { if (parent) parent.__qqq_renameScanInProgress = true; } catch (_) {}
+
+        try {
+            var bf = _bridgeFs();
+            if (!bf || !_rootDir) return result;
+
+            var questsDir = _rootDir + '/qqq/quests/';
+            var idx = _idx();
+            if (!idx || !idx.length) return result;
+
+            // ★ 获取正在建楼的 quest（跳过，防文件锁争用）
+            var running = [];
+            try { if (parent && parent.__qqq_getRunningQuests) running = parent.__qqq_getRunningQuests() || []; } catch (_) {}
+
+            var diskList = [];
+            try {
+                var list = await bf.list(questsDir);
+                for (var li = 0; li < list.length; li++) {
+                    if (list[li].isDir) diskList.push(list[li].name);
+                }
+            } catch (_) { return result; }
+
+            for (var i = 0; i < idx.length; i++) {
+                var e = idx[i];
+
+                // ★ 跳过正在建楼的 quest
+                if (running.indexOf(e.id) >= 0) { result.skipped++; continue; }
+
+                // ★ 跳过无 numericId 或草稿
+                if (!e.numericId || e.numericId <= 0) { result.skipped++; continue; }
+
+                // ★ 30s 宽限期：刚创建的 quest 可能 DB 已写但目录未建
+                if (e.createdAt && (Date.now() - e.createdAt) < 30000) { result.skipped++; continue; }
+
+                // ★ 按前缀匹配磁盘实际目录
+                var currentName = null;
+                var matches = [];
+                for (var di = 0; di < diskList.length; di++) {
+                    if (diskList[di].startsWith(e.id + '.')) {
+                        matches.push(diskList[di]);
+                    }
+                }
+
+                // ── COLLISION 检测：同前缀多目录 ──
+                if (matches.length > 1) {
+                    console.warn('[quest-store] lazyRenameScan COLLISION: ' + e.id + ' → ' + matches.join(', '));
+                    result.collisions++;
+                    // 保留与 DB title 最匹配的，或 floor 最多的，或第一个（按数量）
+                    // 此时不自动删，只记日志，让 repairDuplicateIds 处理
+                    result.skipped++;
+                    continue;
+                }
+
+                if (matches.length === 1) currentName = matches[0];
+                if (!currentName) { result.skipped++; continue; }
+
+                var expectedName = _scanMakeName('q', e.numericId, e.title || '');
+                if (currentName === expectedName) continue;  // 一致，无需改
+
+                // ★ 尝试重命名
+                var targetExists = false;
+                try { targetExists = !!(await bf.stat(questsDir + expectedName)); } catch (_) {}
+                if (targetExists) {
+                    // 目标名已被占用（可能手动创建的）→ 放弃
+                    console.warn('[quest-store] lazyRenameScan: target exists, skip rename', currentName, '→', expectedName);
+                    result.failed++;
+                    continue;
+                }
+
+                try {
+                    await bf.rename(questsDir + currentName, questsDir + expectedName);
+                    console.log('[quest-store] lazyRenameScan: renamed', currentName, '→', expectedName);
+                    // ★ 同步缓存
+                    _questDirCache[e.id] = expectedName;
+                    if (e.dirName) e.dirName = expectedName;
+                    result.fixed++;
+                } catch (err) {
+                    console.warn('[quest-store] lazyRenameScan: FAIL rename', currentName, '→', expectedName, (err && err.message) || err);
+                    result.failed++;
+                }
+            }
+        } finally {
+            try {
+                if (parent) {
+                    parent.__qqq_renameScanInProgress = false;
+                    parent.__qqq_renameScanDone = true;
+                    parent.__qqq_renameScanResult = result;
+                }
+            } catch (_) {}
+        }
+        return result;
     };
 
     return QuestStore;

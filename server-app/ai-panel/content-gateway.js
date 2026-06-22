@@ -31,7 +31,7 @@
 
     // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
     var CTX_MAX_TOKENS = 1048565;     // 上下文窗口总上限（实测精确值）
-    var COMPRESS_THRESHOLD = 900000;  // 压缩触发阈值（90% 窗口，留 10% 缓冲）
+    var COMPRESS_THRESHOLD = 200000;  // 压缩触发阈值（200k tokens，约 20% 窗口）
     var MAX_TOKENS_SAFETY = 10000;    // max_tokens 帽安全余量
     var CHAR_PER_TOKEN = 3.0;         // 统一 chars→tokens 估算比例
     // 三专家输出阀值

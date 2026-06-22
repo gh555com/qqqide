@@ -1,6 +1,6 @@
 // ============================================================================
 // embedding-service.js — 文本向量化服务 (纯 JS)
-// 调用网关 /api/v3/ai/embedding → 代理 DashScope text-embedding-v4
+// 调用网关 /api/v3/ai/embedding
 // 支持单文本 + batch（最多 10 条/请求），返回归一化向量
 // 暴露为 window._qqqEmbedding = { embedText, embedBatch, cosineSimilarity, rerankWithEmbedding }
 // ============================================================================
@@ -30,11 +30,11 @@ async function embedText(text, authToken, floorID) {
  * @returns {Promise<{vectors: number[][], tokenCount: number, model: string}>}
  */
 async function embedBatch(texts, authToken, floorID) {
-    if (!texts || texts.length === 0) return { vectors: [], tokenCount: 0, model: 'text-embedding-v4' };
+    if (!texts || texts.length === 0) return { vectors: [], tokenCount: 0, model: 'embedding-v1' };
 
     var allVectors = [];
     var totalTokens = 0;
-    var model = 'text-embedding-v4';
+    var model = 'embedding-v1';
     var batches = Math.ceil(texts.length / EMBEDDING_BATCH_MAX);
     if (EMBEDDING_LOG) console.log('[embed] embedBatch: ' + texts.length + ' texts → ' + batches + ' batch(es), floor=' + (floorID || '(new quest)'));
 
@@ -61,7 +61,7 @@ async function embedBatch(texts, authToken, floorID) {
  */
 async function callEmbeddingAPI_(input, authToken, floorID) {
     var body = {
-        model: 'text-embedding-v4',
+        model: 'embedding-v1',
         input: input.length === 1 ? input[0] : input,
         dimensions: EMBEDDING_DIMS
     };
@@ -107,7 +107,7 @@ async function callEmbeddingAPI_(input, authToken, floorID) {
     return {
         vectors: vectors,
         tokenCount: data.usage ? data.usage.total_tokens || 0 : 0,
-        model: data.model || 'text-embedding-v4'
+        model: data.model || 'embedding-v1'
     };
 }
 

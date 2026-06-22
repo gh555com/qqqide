@@ -10,7 +10,6 @@
 //   ipc-ai-tools.ts    AI工具 IPC（search_text / find_files / list_files）
 //   ipc-search.ts      高性能搜索引擎 IPC
 //   ipc-edit.ts        编辑工具 IPC + qwr 保护
-//   ipc-media.ts       图像生成 / 分析 IPC
 //   ipc-timeline.ts    Timeline 版本时间线 + Diff 窗口 IPC
 //   ipc-misc.ts        窗口 / 对话框 / 资产根 / 磁盘 IPC
 //   shutdown.ts        安全加固 / 退出处理器 / 崩溃兜底
@@ -31,8 +30,6 @@ import { registerFsIpc } from './ipc-fs';
 import { registerAiToolsIpc } from './ipc-ai-tools';
 import { registerSearchIpc } from './ipc-search';
 import { registerEditIpc } from './ipc-edit';
-import { registerMediaIpc } from './ipc-media';
-import { registerBootIpc } from './ipc-boot';
 import { registerMiscIpc } from './ipc-misc';
 import { registerTimelineIpc } from './ipc-timeline';
 import { registerSmartSearchIpc, IndexService } from './ipc-smart-search';
@@ -60,6 +57,20 @@ app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('forced-colors', 'none');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('disable-features', 'ForcedColors,AutoDarkMode');
+
+// ── 自签名证书信任（自建 Nginx 用自签 SSL，必须放行） ──
+app.on('certificate-error', (event, _webContents, _url, _error, certificate, callback) => {
+    // 信任 direct.gh555.com 域名下任何证书（自签 / 过期都过）
+    if (certificate && certificate.issuerName && certificate.issuerName.includes('gh555')) {
+        event.preventDefault();
+        callback(true);
+    } else if (_url.includes('direct.gh555.com')) {
+        event.preventDefault();
+        callback(true);
+    } else {
+        callback(false);
+    }
+});
 
 // ── 启动配置 + 标志 ──
 const bootConfig: BootConfig = loadBootConfig(portable.root);
@@ -135,7 +146,6 @@ function registerAllIpc(): void {
     registerAiToolsIpc();
     registerSearchIpc();
     registerEditIpc();
-    registerMediaIpc(portable.root);
     registerBootIpc(
         portable.root, portable.userData, portable.cache, portable.logs,
         APP_VERSION, bootConfig,

@@ -63,7 +63,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-tofu-new .quest-tofu-text{color:var(--base01);font-style:italic;text-align:center}
 /* 豆腐块内联编辑 */
 .quest-tofu-edit{flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--text-primary);font-size:22px;font-weight:700;font-family:inherit;padding:0;margin:0}
-.quest-tofu-pen{flex:none;align-self:stretch;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:0;cursor:pointer;padding:0 14px;margin:-8px -14px -8px 0;transition:opacity .15s,background .15s;line-height:1}
+.quest-tofu-pen{flex:none;align-self:stretch;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:0;cursor:pointer;padding:0 14px;margin:-10px -14px -10px 0;transition:opacity .15s,background .15s;line-height:1}
 .quest-tofu-pen:hover{opacity:1!important;background:var(--background-color)}
 [data-theme="dark"] .quest-tofu-pen:hover{background:#3f3830}
 .quest-tofu:hover .quest-tofu-pen{opacity:.45}
@@ -82,8 +82,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 /* 悬浮层流光：覆盖整个虚线框区域（豆腐块+下拉），左右边缘mask柔化 */
 .q2-shimmer-overlay{
   position:absolute;left:0;right:0;pointer-events:none;overflow:hidden;z-index:99993;
-  -webkit-mask-image:linear-gradient(to right,transparent 0%,black 3%,black 97%,transparent 100%);
-  mask-image:linear-gradient(to right,transparent 0%,black 3%,black 97%,transparent 100%);
 }
 .q2-shimmer-overlay::before{
   content:'';position:absolute;top:-50%;left:-60%;width:60%;height:200%;
@@ -105,12 +103,12 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   background:linear-gradient(90deg,rgba(255,211,2,.16) 0%,rgba(255,211,2,.06) 35%,transparent 70%),#211f1c!important;
   box-shadow:0 0 18px rgba(255,211,2,.30);
 }
-/* 头部展开时保持不透明白底，防下拉行透出；流光层 z-index:99993 在上方不受影响 */
-#quest-bar.quest-expanded .quest-drop-head{background:#ebe3ca}
-#quest-bar.quest-expanded .quest-drop-search{background:#ebe3ca}
+/* 头部展开时保持不透明白底，防下拉行透出；渐变与父容器一致，q2x 行也覆盖渐变 */
+#quest-bar.quest-expanded .quest-drop-head{background:linear-gradient(90deg,rgba(255,211,2,.14) 0%,rgba(255,211,2,.05) 35%,transparent 70%),#ebe3ca}
+#quest-bar.quest-expanded .quest-drop-search{background:transparent}
 #quest-bar.quest-expanded .quest-drop-search:focus{background:var(--background-color)}
-[data-theme="dark"] #quest-bar.quest-expanded .quest-drop-head{background:#211f1c}
-[data-theme="dark"] #quest-bar.quest-expanded .quest-drop-search{background:#211f1c}
+[data-theme="dark"] #quest-bar.quest-expanded .quest-drop-head{background:linear-gradient(90deg,rgba(255,211,2,.16) 0%,rgba(255,211,2,.06) 35%,transparent 70%),#211f1c}
+[data-theme="dark"] #quest-bar.quest-expanded .quest-drop-search{background:transparent}
 [data-theme="dark"] #quest-bar.quest-expanded .quest-drop-search:focus{background:#3f3830}
 /* quest 下拉 — 与豆腐块齐宽、无缝隙，最大高度=AI面板2/3，层级仅次于qoast */
 .quest-drop{position:absolute;top:100%;left:0;width:100%;z-index:99990;max-height:66.67vh;overflow-y:auto;overflow-x:hidden;background:#ebe3ca;border:none;border-radius:0;box-shadow:0 4px 12px rgba(0,0,0,0.22);display:none;scrollbar-width:thin}
@@ -284,6 +282,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #send-btn{min-width:44px;text-align:center}
 #guide-btn,#queue-btn{padding:3px 5px}
 #guide-btn{margin-left:-2px}
+#guide-btn:disabled{opacity:0.35}
 #send-btn{margin-left:6px}
 #btn-row #ctx-btn{position:relative;overflow:hidden;min-width:53px;background:linear-gradient(to right,transparent var(--ctx-pct),var(--card-bg) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
 #btn-row #ctx-btn:hover{background:linear-gradient(to right,transparent var(--ctx-pct),var(--base3) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
@@ -343,6 +342,21 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .ctx-panel-actions button{padding:6px 18px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;}
 #ctx-compress{background:var(--yellow);color:#fff;border-color:var(--yellow)}
 #ctx-cancel{background:var(--card-bg)}
+
+/* ── 上下文占用拆解面板（hover ctx-btn 弹出） ── */
+#ctx-breakdown{position:fixed;z-index:10001;display:none;bottom:60px;right:10px}
+#ctx-breakdown.show{display:block}
+.ctx-bd-wrap{background:var(--card-bg);border:1px solid var(--border-color);border-radius:6px;padding:10px 12px 8px;min-width:260px;max-width:320px;box-shadow:0 2px 16px rgba(0,0,0,0.35);font-size:11px;line-height:1.5}
+.ctx-bd-title{font-weight:600;font-size:12px;margin-bottom:6px;color:var(--text-primary);border-bottom:1px solid var(--border-color);padding-bottom:4px}
+.ctx-bd-row{display:flex;align-items:center;gap:6px;padding:2px 0}
+.ctx-bd-color{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.ctx-bd-label{flex:1;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctx-bd-boxes{display:flex;flex-wrap:wrap;gap:1px;flex-shrink:0;max-width:120px;justify-content:flex-end}
+.ctx-bd-box{width:5px;height:5px;border-radius:1px;opacity:.85}
+.ctx-bd-num{min-width:38px;text-align:right;color:var(--text-primary);font-weight:600;font-size:10.5px;flex-shrink:0}
+.ctx-bd-pct{min-width:32px;text-align:right;color:var(--text-dim);font-size:10px;flex-shrink:0}
+.ctx-bd-total{border-top:1px solid var(--border-color);margin-top:4px;padding-top:4px;display:flex;justify-content:space-between;font-weight:600;font-size:11px;color:var(--text-primary)}
+.ctx-bd-free{color:var(--green);font-weight:400}
 /* ── 超长消息：可滚动容器，不截断不遮罩 ── */
 .msg-long{max-height:360px;overflow-y:auto;scrollbar-width:thin}
 .msg-long::-webkit-scrollbar{width:6px}
@@ -511,7 +525,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
         <button class="tier-btn" data-tier="6">6</button>
       </div>
     </div>
-    <button id="guide-btn"><svg width="14" height="14" viewBox="0 0 14 14"><rect x="2.5" y="2.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><rect x="5.5" y="5.5" width="3" height="3" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/></svg></button>
+    <button id="guide-btn" disabled><svg width="14" height="14" viewBox="0 0 14 14"><rect x="2.5" y="2.5" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><rect x="5.5" y="5.5" width="3" height="3" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/></svg></button>
     <button id="queue-btn" disabled><svg width="14" height="14" viewBox="0 0 14 14"><rect x="2.5" y="1.5" width="9" height="4" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><line x1="2.5" y1="7.5" x2="11.5" y2="7.5" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/><rect x="2.5" y="9.5" width="9" height="4" fill="none" stroke="currentColor" stroke-width="1" shape-rendering="crispEdges"/></svg></button>
     <button id="send-btn">Send</button>
     <button id="ctx-btn">--</button>
@@ -541,10 +555,24 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   </div>
 </div>
 
+<!-- 上下文占用拆解面板（hover ctx-btn 弹出） -->
+<div id="ctx-breakdown">
+  <div class="ctx-bd-wrap">
+    <div class="ctx-bd-title" data-i18n="ai.ctx.breakdown">上下文占用</div>
+    <div class="ctx-bd-rows"></div>
+    <div class="ctx-bd-total">
+      <span data-i18n="ai.ctx.used">已用</span>
+      <span class="ctx-bd-used-num">-</span>
+      <span class="ctx-bd-free"><span class="ctx-bd-free-num">-</span> <span data-i18n="ai.ctx.free">空闲</span></span>
+    </div>
+  </div>
+</div>
+
 <script src="../core/char-undo.js"></script>
 <script src="content-gateway.js"></script>
 <script src="system-prompt.js"></script>
 <script src="embedding-service.js"></script>
+<script src="ai-gateway.js"></script>
 <script src="tools-defs.js"></script>
 <script src="tools-exec-write.js"></script>
 <script src="tools-exec.js"></script>

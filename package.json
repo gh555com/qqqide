@@ -55,6 +55,7 @@
       "node_modules/monaco-editor/min/**",
       "node_modules/sql.js/**",
       "node_modules/sql.js/**",
+      "config.json",
       "package.json"
     ],
     "win": {

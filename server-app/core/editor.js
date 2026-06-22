@@ -16,42 +16,14 @@
   const isElectron = !!window.qqqIsElectron;
   const bridge = window.qqqideBridge;
 
-  // ── qzlsp §10 Plan A: 配置 TypeScript Worker 编译选项 ──
-  // Monaco 内置 TS Worker 默认 moduleResolution=Classic 且无 @types/node�?  // 会导�?Node.js 内置模块飘红(false positive) 和类型检查裸�?false negative)�?  // 此处注入编译选项 + Node 模块声明，对齐项�?tsconfig.json�?
+  // ── LSP OFF — TypeScript compiler options disabled ──
   var _tsConfigured = false;
-  function configureMonacoTypescript(monaco) {
-    if (_tsConfigured) return;
-    _tsConfigured = true;
-    var _tsDefaults = monaco.languages.typescript.typescriptDefaults;
-    _tsDefaults.setCompilerOptions({
-      target: monaco.languages.typescript.ScriptTarget.ES2020,
-      module: monaco.languages.typescript.ModuleKind.CommonJS,
-      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-      strict: true,
-      esModuleInterop: true,
-      skipLibCheck: true,
-      resolveJsonModule: true,
-      noImplicitAny: false,
-      lib: ['ES2020', 'DOM'],
-    });
-    // 注入 Node.js 内置模块声明，消�?"Cannot find module 'http'" 等误�?
-    _tsDefaults.addExtraLib(
-      'declare module "http" { const m: any; export = m; }\n' +
-      'declare module "https" { const m: any; export = m; }\n' +
-      'declare module "fs" { const m: any; export = m; }\n' +
-      'declare module "path" { const m: any; export = m; }\n' +
-      'declare module "crypto" { const m: any; export = m; }\n' +
-      'declare module "url" { const m: any; export = m; }\n' +
-      'declare module "stream" { const m: any; export = m; }\n' +
-      'declare module "events" { const m: any; export = m; }\n' +
-      'declare module "child_process" { const m: any; export = m; }\n' +
-      'declare module "net" { const m: any; export = m; }\n' +
-      'declare module "electron" { const m: any; export = m; }\n',
-      'ts:node-builtins.d.ts'
-    );
+  function configureMonacoTypescript(_monaco) {
+    // LSP OFF — TypeScript compiler options disabled
+    return;
   }
 
-  // ---- q1 三件�?+ viewzone attach: hook all four modules onto one editor.
+  // ---- q1 三件套 + viewzone attach: hook all four modules onto one editor.
   // Each module's attach() is idempotent and safe to call multiple times
   // (codelens provider de-duped, paste/decoration/viewzone per-editor).
   function attachQ1(ed, currentFileFn) {
@@ -169,74 +141,11 @@
   }
 
   function wireLspDiagnostics() {
-    if (!window.qqqideBridge || !window.qqqideBridge.lsp) return;
-    window.qqqideBridge.lsp.onDiagnostics(function (msg) {
-      if (!msg || !msg.uri) return;
-      var filePath = msg.uri.replace(/^file:\/\/\//, '').replace(/^file:\/\//, '');
-      if (currentFile !== filePath) return;
-      var monaco = window.monaco;
-      if (!monaco || !monaco.editor || !editor || editor.isFallback) return;
-      var model = monaco.editor.getModel(
-        monaco.Uri.parse(msg.uri)
-      );
-      if (!model) {
-        if (editor && editor.getModel) model = editor.getModel();
-        if (!model) return;
-      }
-      var markers = (msg.diagnostics || []).map(function (d) {
-        var severity = monaco.MarkerSeverity.Error;
-        if (d.severity === 2) severity = monaco.MarkerSeverity.Warning;
-        else if (d.severity === 3) severity = monaco.MarkerSeverity.Info;
-        else if (d.severity === 4) severity = monaco.MarkerSeverity.Hint;
-        return {
-          severity: severity,
-          message: d.message || '',
-          startLineNumber: (d.range && d.range.start ? d.range.start.line : 0) + 1,
-          startColumn: (d.range && d.range.start ? d.range.start.character : 0) + 1,
-          endLineNumber: (d.range && d.range.end ? d.range.end.line : 0) + 1,
-          endColumn: (d.range && d.range.end ? d.range.end.character : 0) + 1,
-          source: 'qzlsp',
-        };
-      });
-      monaco.editor.setModelMarkers(model, 'lsp', markers);
-    });
+    // LSP OFF
   }
 
   function wireLspHover() {
-    if (!window.qqqideBridge || !window.qqqideBridge.lsp) return;
-    var monaco = window.monaco;
-    if (!monaco) return;
-    for (var langId in LSP_LANG_MAP) {
-      var bridgeLang = LSP_LANG_MAP[langId];
-      monaco.languages.registerHoverProvider(langId, {
-        provideHover: async function (model, position) {
-          if (!currentFile || lspLang !== bridgeLang) return null;
-          try {
-            var result = await window.qqqideBridge.lsp.hover(
-              currentFile, position.lineNumber - 1, position.column - 1
-            );
-            if (!result || !result.contents) return null;
-            var contents = Array.isArray(result.contents) ? result.contents : [result.contents];
-            return {
-              range: result.range ? {
-                startLineNumber: result.range.start.line + 1,
-                startColumn: result.range.start.character + 1,
-                endLineNumber: result.range.end.line + 1,
-                endColumn: result.range.end.character + 1,
-              } : undefined,
-              contents: contents.map(function (c) {
-                if (typeof c === 'string') return { value: c };
-                if (c.language) return { value: '```' + c.language + '\n' + c.value + '\n```' };
-                if (c.value) return c;
-                return { value: String(c) };
-              }),
-            };
-          } catch (e) {
-            return null;
-          }
-        }
-      });
-    }
+    // LSP OFF
   }
 
 
@@ -285,9 +194,6 @@
           require.config({ paths: { vs: baseUrl } });
 
           // All workers: use workerMain.js.
-          // TS/JS: Monaco's built-in TS worker will fail (known Electron bug),
-          // but failing fast is better than a dummy worker that hangs.
-          // Our custom ts-service.js handles TS/JS IntelliSense independently.
           window.MonacoEnvironment = {
             getWorker: function (workerId, label) {
               var workerUrl = 'qqqide-asset://monaco/vs/base/worker/workerMain.js';
@@ -300,15 +206,20 @@
           require(['vs/editor/editor.main'], () => {
             var monaco = window.monaco;
 
-            // Keep Monaco's built-in TS diagnostics enabled.
-            // The plain-path URI fix (in openInPane) should let the TS worker
-            // find source files properly in Electron.
-            // If this works, we don't need the custom ts-service fallback.
-
             // ── Bootstrap custom TS/JS IntelliSense (fallback, optional) ──
-            // Disabled for now �?using Monaco's built-in TS with plain-path URIs.
-            // bootCustomTsService(monaco);
+            // Disabled for now — using Monaco's built-in TS with plain-path URIs.
+            // bootCustomTsService(monaco); // LSP OFF
 
+            // ═══ LSP OFF: disable all Monaco built-in worker diagnostics ═══
+            // TS/JS: no semantic/syntax validation, no completions, no hover
+            if (monaco.languages.typescript) {
+              monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: true });
+              monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions({ noSemanticValidation: true, noSyntaxValidation: true });
+            }
+            // CSS/HTML/JSON: disable validation
+            if (monaco.languages.css) monaco.languages.css.cssDefaults.setOptions({ validate: false });
+            if (monaco.languages.html) monaco.languages.html.htmlDefaults.setOptions({ validate: false });
+            if (monaco.languages.json) monaco.languages.json.jsonDefaults.setDiagnosticsOptions({ validate: false });
             // [silent] monaco ready
             resolve(monaco);
           }, reject);
@@ -332,110 +243,10 @@
   }
 
   // ── Custom TS/JS providers (replaces Monaco's broken built-in TS worker) ──
-  // Called ONCE from the Monaco load callback �?guaranteed to run regardless
-  // of whether build() or openInPane() is used.
   var _tsBootDone = false;
 
   function bootCustomTsService(monaco) {
-    if (_tsBootDone) return;
-    _tsBootDone = true;
-
-    var tsService = window.qqqTsService;
-    if (!tsService) {
-      console.warn('[editor] qqqTsService not available, TS features disabled');
-      return;
-    }
-
-    // ── Hover Provider ──
-    var hoverProvider = {
-      provideHover: function (model, position) {
-        if (!tsService.isReady()) return null;
-        return tsService.getHover(model, position);
-      },
-    };
-    monaco.languages.registerHoverProvider('typescript', hoverProvider);
-    monaco.languages.registerHoverProvider('javascript', hoverProvider);
-    monaco.languages.registerHoverProvider('typescriptreact', hoverProvider);
-    monaco.languages.registerHoverProvider('javascriptreact', hoverProvider);
-
-    // ── Completion Provider ──
-    var tsTriggerChars = ['.', '"', "'", '`', '/', '@', '<', '#', ' '];
-    var completionProvider = {
-      triggerCharacters: tsTriggerChars,
-      provideCompletionItems: function (model, position) {
-        if (!tsService.isReady()) return { suggestions: [] };
-        var items = tsService.getCompletions(model, position);
-        return { suggestions: items };
-      },
-    };
-    monaco.languages.registerCompletionItemProvider('typescript', completionProvider);
-    monaco.languages.registerCompletionItemProvider('javascript', completionProvider);
-    monaco.languages.registerCompletionItemProvider('typescriptreact', completionProvider);
-    monaco.languages.registerCompletionItemProvider('javascriptreact', completionProvider);
-
-    // ── Diagnostics ──
-    var _diagTimers = {};
-
-    function updateDiagnostics(model) {
-      if (!model || !tsService || !tsService.isReady()) return;
-      var lang = model.getLanguageId();
-      if (lang !== 'typescript' && lang !== 'javascript' &&
-        lang !== 'typescriptreact' && lang !== 'javascriptreact') return;
-      try {
-        var diags = tsService.getDiagnostics(model);
-        monaco.editor.setModelMarkers(model, 'ts-service', diags);
-      } catch (e) {
-        console.warn('[editor] ts diagnostics update failed:', e && e.message);
-      }
-    }
-
-    function scheduleDiagnostics(model) {
-      var uri = model.uri.toString();
-      if (_diagTimers[uri]) clearTimeout(_diagTimers[uri]);
-      _diagTimers[uri] = setTimeout(function () {
-        delete _diagTimers[uri];
-        updateDiagnostics(model);
-      }, 300);
-    }
-
-    monaco.editor.onDidCreateModel(function (model) {
-      scheduleDiagnostics(model);
-      model.onDidChangeContent(function () { scheduleDiagnostics(model); });
-      model.onWillDispose(function () {
-        var u = model.uri.toString();
-        if (_diagTimers[u]) { clearTimeout(_diagTimers[u]); delete _diagTimers[u]; }
-      });
-    });
-
-    var existingModels = monaco.editor.getModels();
-    for (var i = 0; i < existingModels.length; i++) {
-      (function (model) {
-        scheduleDiagnostics(model);
-        model.onDidChangeContent(function () { scheduleDiagnostics(model); });
-        model.onWillDispose(function () {
-          var u = model.uri.toString();
-          if (_diagTimers[u]) { clearTimeout(_diagTimers[u]); delete _diagTimers[u]; }
-        });
-      })(existingModels[i]);
-    }
-
-    // ── Start loading TypeScript (async) ──
-    tsService.init(function () {
-      if (tsService.isReady()) {
-        // [silent] editor ts-service ready
-        var allModels = monaco.editor.getModels();
-        for (var j = 0; j < allModels.length; j++) {
-          var m = allModels[j];
-          var lang = m.getLanguageId();
-          if (lang === 'typescript' || lang === 'javascript' ||
-            lang === 'typescriptreact' || lang === 'javascriptreact') {
-            scheduleDiagnostics(m);
-          }
-        }
-      }
-    });
-
-    // [silent] editor TS/JS providers registered
+    // LSP OFF — not called
   }
 
   // ── 撤销模式：按设置决定是否挂载逐字回退 ──
@@ -444,7 +255,7 @@
 
   function _applyUndoMode(ed, monaco) {
     if (!ed || !monaco) return;
-    // 登记编辑�?
+    // 登记编辑器
     if (_allMonacoEditors.indexOf(ed) < 0) {
       _allMonacoEditors.push(ed);
     }
@@ -480,11 +291,10 @@
     mountEl = host;
     try {
       const monaco = await loadMonaco();
-      // 注册唯一真理配色机器�?Monaco 主题
+      // 注册唯一真理配色机器的 Monaco 主题
       if (window.qqqideTheme) { window.qqqideTheme.defineMonacoThemes(monaco); }
 
-      // 配置 Monaco TypeScript 编译选项（会同步�?ts-service�?
-      configureMonacoTypescript(monaco);
+      // configureMonacoTypescript(monaco); // LSP OFF
 
       const theme = (window.qqqideTheme && window.qqqideTheme.getMonacoTheme()) || 'vs';
       const ed = monaco.editor.create(host, {
@@ -494,14 +304,61 @@
         automaticLayout: true,
         fontSize: 13,
         fontFamily: 'ui-monospace, Consolas, Menlo, monospace',
+        // ═══ LSP OFF: strip all smart features ═══
         minimap: { enabled: false },
-        scrollBeyondLastLine: 5,
-        renderWhitespace: 'selection',
-        overviewRulerLanes: 3,
+        scrollBeyondLastLine: false,
+        renderWhitespace: 'none',
+        overviewRulerLanes: 0,
+        overviewRulerBorder: false,
+        hideCursorInOverviewRuler: true,
         wordWrap: 'on',
         wrappingStrategy: 'advanced',
         tabSize: 4,
-        breadcrumbs: { enabled: true },
+        breadcrumbs: { enabled: false },
+        smoothScrolling: false,
+        cursorBlinking: 'solid',
+        cursorSmoothCaretAnimation: 'off',
+        cursorSurroundingLines: 0,
+        glyphMargin: false,
+        lineDecorationsWidth: 0,
+        renderLineHighlight: 'none',
+        renderLineHighlightOnlyWhenFocus: true,
+        occurrencesHighlight: false,
+        selectionHighlight: false,
+        matchBrackets: 'never',
+        bracketPairColorization: { enabled: false },
+        autoClosingBrackets: 'never',
+        autoClosingQuotes: 'never',
+        autoIndent: 'none',
+        renderValidationDecorations: 'off',
+        quickSuggestions: false,
+        suggestOnTriggerCharacters: false,
+        acceptSuggestionOnEnter: 'off',
+        tabCompletion: 'off',
+        wordBasedSuggestions: false,
+        parameterHints: { enabled: false },
+        inlayHints: { enabled: false },
+        hover: { enabled: false },
+        links: false,
+        codeLens: false,
+        colorDecorators: false,
+        lightbulb: { enabled: false },
+        folding: false,
+        guides: { indentation: false, bracketPairs: false, bracketPairsHorizontal: false, highlightActiveIndentation: false },
+        renderIndentGuides: false,
+        renderControlCharacters: false,
+        unicodeHighlight: { nonBasicASCII: false, ambiguousCharacters: false },
+        dragAndDrop: false,
+        selectionClipboard: false,
+        emptySelectionClipboard: false,
+        contextmenu: false,
+        rulers: [],
+        roundedSelection: false,
+        lineNumbersMinChars: 2,
+        lineDecorationsWidth: 10,
+        padding: { top: 0, bottom: 0 },
+        stickyScroll: { enabled: false },
+        find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'never' },
       });
       _monacoRef = monaco;
       _editorRef = ed;
@@ -511,7 +368,7 @@
       if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.create) {
         window.qqqEditorBreadcrumb.create(host, '', ed, monaco);
       }
-      // 主题切换时同�?Monaco（全局注册一次）
+      // 主题切换时同步 Monaco（全局注册一次）
       hookThemeSync(monaco);
 
       // Ctrl+S
@@ -522,30 +379,8 @@
         if (currentFile) {
           document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: currentFile, dirty: true } }));
         }
+        // LSP OFF — no LSP change notifications
         if (!lspLang || !currentFile) return;
-        lspVersion++;
-        var version = lspVersion;
-        var changes = [];
-        for (var i = 0; i < e.changes.length; i++) {
-          var ch = e.changes[i];
-          var item = { text: ch.text };
-          if (ch.range) {
-            item.range = {
-              start: { line: ch.range.startLineNumber - 1, character: ch.range.startColumn - 1 },
-              end: { line: ch.range.endLineNumber - 1, character: ch.range.endColumn - 1 }
-            };
-          }
-          changes.push(item);
-        }
-        if (lspDebounce) clearTimeout(lspDebounce);
-        lspDebounce = setTimeout(function () {
-          lspDebounce = null;
-          try {
-            window.qqqideBridge.lsp.changeDocument(currentFile, changes, version);
-          } catch (ex) {
-            console.warn('[editor] LSP changeDocument failed:', ex && ex.message);
-          }
-        }, LSP_DEBOUNCE_MS);
       });
       // Auto-save on blur
       ed.onDidBlurEditorWidget(() => {
@@ -557,12 +392,12 @@
           });
         }
       });
-      // q1 三件�?attach (no-op if module not yet loaded; will retry)
+      // q1 三件套 attach (no-op if module not yet loaded; will retry)
       attachQ1(ed);
-      // Wire LSP diagnostics and hover
-      wireLspDiagnostics();
-      wireLspHover();
-      // 编辑器销毁时清理 char-undo 和跟踪列�?
+      // Wire LSP diagnostics and hover — LSP OFF
+      // wireLspDiagnostics(); // LSP OFF
+      // wireLspHover(); // LSP OFF
+      // 编辑器销毁时清理 char-undo 和跟踪列表
       ed.onDidDispose(function () {
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
         var idx = _allMonacoEditors.indexOf(ed);
@@ -604,20 +439,10 @@
         return;
       }
       const text = await bridge.fs.read(file);
-      // Close previous LSP document
-      if (lspLang && currentFile) {
-        try { window.qqqideBridge.lsp.closeDocument(currentFile); } catch (e) { /* ignore */ }
-      }
       currentFile = file;
       editor.setValue(text, langOf(file));
       dirty = false;
-      // Open LSP for new file if needed
-      var lid = langOf(file);
-      if (needsLsp(lid)) {
-        lspOpen(file, lid, text);
-      } else {
-        lspLang = null;
-      }
+      lspLang = null; // LSP OFF
       updateTitle();
     } catch (e) {
       console.error('[editor] open failed:', e);
@@ -684,8 +509,8 @@
 
   let _monacoRef = null;   // raw monaco namespace
   let _editorRef = null;   // raw monaco IStandaloneCodeEditor
-  let _paneFiles = {};      // editor dom node �?filePath (reverse lookup for dispose cleanup)
-  let _paneEditors = {};    // filePath �?editor instance (for live refresh)
+  let _paneFiles = {};      // editor dom node → filePath (reverse lookup for dispose cleanup)
+  let _paneEditors = {};    // filePath → editor instance (for live refresh)
 
   // ---- openInPane: create a Monaco editor inside a tab pane for a specific file ----
   async function openInPane(host, filePath, content, opts) {
@@ -693,7 +518,7 @@
       const monaco = await loadMonaco();
       if (window.qqqideTheme) { window.qqqideTheme.defineMonacoThemes(monaco); }
       hookThemeSync(monaco);
-      configureMonacoTypescript(monaco);
+      // configureMonacoTypescript(monaco); // LSP OFF
       const lang = langOf(filePath);
       if (isBinaryFile(filePath)) {
         if (window.qqqideQoast) window.qqqideQoast.show(String.fromCharCode(10060, 32, 20108, 36827, 21046, 25991, 20214, 65292, 26080, 27861, 22312, 32534, 36753, 22120, 20013, 25171, 24320), { duration: 4000 });
@@ -701,8 +526,6 @@
       }
 
       // Use plain file path as URI so Monaco's TS worker can resolve it.
-      // inmemory:// URIs cause "Could not find source file" in Electron.
-      // file:// scheme also fails because TS path normalization strips it.
       var plainPath = filePath.replace(/\\/g, '/');
       var fileUri = monaco.Uri.parse(plainPath);
       var model = monaco.editor.getModel(fileUri);
@@ -721,14 +544,61 @@
         readOnly: (opts && opts.readOnly) || false,
         fontSize: 13,
         fontFamily: 'ui-monospace, Consolas, Menlo, monospace',
+        // ═══ LSP OFF: strip all smart features ═══
         minimap: { enabled: false },
-        scrollBeyondLastLine: 5,
-        renderWhitespace: 'selection',
-        overviewRulerLanes: 3,
+        scrollBeyondLastLine: false,
+        renderWhitespace: 'none',
+        overviewRulerLanes: 0,
+        overviewRulerBorder: false,
+        hideCursorInOverviewRuler: true,
         wordWrap: 'on',
         wrappingStrategy: 'advanced',
         tabSize: 4,
-        breadcrumbs: { enabled: true },
+        breadcrumbs: { enabled: false },
+        smoothScrolling: false,
+        cursorBlinking: 'solid',
+        cursorSmoothCaretAnimation: 'off',
+        cursorSurroundingLines: 0,
+        glyphMargin: false,
+        lineDecorationsWidth: 0,
+        renderLineHighlight: 'none',
+        renderLineHighlightOnlyWhenFocus: true,
+        occurrencesHighlight: false,
+        selectionHighlight: false,
+        matchBrackets: 'never',
+        bracketPairColorization: { enabled: false },
+        autoClosingBrackets: 'never',
+        autoClosingQuotes: 'never',
+        autoIndent: 'none',
+        renderValidationDecorations: 'off',
+        quickSuggestions: false,
+        suggestOnTriggerCharacters: false,
+        acceptSuggestionOnEnter: 'off',
+        tabCompletion: 'off',
+        wordBasedSuggestions: false,
+        parameterHints: { enabled: false },
+        inlayHints: { enabled: false },
+        hover: { enabled: false },
+        links: false,
+        codeLens: false,
+        colorDecorators: false,
+        lightbulb: { enabled: false },
+        folding: false,
+        guides: { indentation: false, bracketPairs: false, bracketPairsHorizontal: false, highlightActiveIndentation: false },
+        renderIndentGuides: false,
+        renderControlCharacters: false,
+        unicodeHighlight: { nonBasicASCII: false, ambiguousCharacters: false },
+        dragAndDrop: false,
+        selectionClipboard: false,
+        emptySelectionClipboard: false,
+        contextmenu: false,
+        rulers: [],
+        roundedSelection: false,
+        lineNumbersMinChars: 2,
+        lineDecorationsWidth: 10,
+        padding: { top: 0, bottom: 0 },
+        stickyScroll: { enabled: false },
+        find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'never' },
       });
 
       // Set as primary editor if first one
@@ -823,7 +693,7 @@
         currentFile = filePath;
       });
 
-      // q1 三件�?attach for this pane editor
+      // q1 三件套 attach for this pane editor
       attachQ1(ed, () => filePath);
 
       // track pane editor for live refresh (chat.txt etc.)
@@ -833,7 +703,7 @@
         delete _paneEditors[filePath];
         delete _paneFiles[host];
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
-        // 从跟踪列表移�?
+        // 从跟踪列表移除
         var idx = _allMonacoEditors.indexOf(ed);
         if (idx >= 0) _allMonacoEditors.splice(idx, 1);
       });

@@ -77,7 +77,7 @@ export function registerFsIpc(): void {
 
     ipcMain.handle('qqqide:fs:list', async (_e, p: string, callerStack?: string) => {
         console.log('[fs:list]', p);
-        const MAX = 10000;
+        const MAX = 3000;
         try {
             const names = await fs.promises.readdir(p, { withFileTypes: true });
             const result: string[] = [];

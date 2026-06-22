@@ -35,7 +35,7 @@ Object.defineProperty(window, 'streaming', {
 });
 Object.defineProperty(window, '_sending', {
     get: function () { return _sendingVar; },
-    set: function (v) { _sendingVar = v; },
+    set: function (v) { _sendingVar = v; if (typeof updateGuideBtn === 'function') updateGuideBtn(); },
     enumerable: true, configurable: true
 });
 var _renderPending = false;
@@ -98,6 +98,20 @@ function _getRunningQuestIds() {
         if (parent && parent.__qqq_getRunningQuests) return parent.__qqq_getRunningQuests();
     } catch (_) { }
     return [];
+}
+
+// ★ 全局默认 AI 等级：读父窗口 settings 机器
+//   返回 1-6 整数，失败兜底 6
+function _getDefaultTier() {
+    try {
+        if (parent && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
+            var t = parent.window.qqqSettings.get('ai.defaultTier', '6');
+            var n = parseInt(t, 10);
+            if (n >= 1 && n <= 6) return n;
+        }
+    } catch (_) { }
+    return 6;
+}
 }
 
 var _panelFocused = false;  // 当前面板是否获得焦点（金光边框 + 快捷键激活）

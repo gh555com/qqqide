@@ -169,7 +169,7 @@ qqq-shell-v2/
 │   ├── ipc-ai-tools.ts      AI工具 IPC（search_text/find_files/list_files）
 │   ├── ipc-search.ts        高性能搜索引擎 IPC（qqqide:search）
 │   ├── ipc-edit.ts          编辑工具 IPC + qwr 保护
-│   ├── ipc-media.ts         图像生成/分析 IPC
+│   ├── ipc-media.ts         已删除（2026-06-22，图像全走 Go 代理）
 │   ├── ipc-timeline.ts      Timeline 版本时间线 + Diff窗口 IPC
 │   ├── ipc-misc.ts          窗口/对话框/资产根/磁盘 IPC
 │   ├── shutdown.ts          安全加固/退出处理器/崩溃兜底
@@ -215,6 +215,7 @@ qqq-shell-v2/
 │       ├── embedding-service.js Embedding 向量化服务（text-embedding-v4）
 │       ├── system-prompt.js   系统提示词（GATEWAY_URL 唯一声明处）
 │       ├── content-gateway.js 内容安全网关
+│       ├── ai-gateway.js     统一 AI 模型调用包装器（禁直接调用第三方端点）
 │       └── only-store.js      项目偏好 SQLite
 ├── engines/           二进制 + manifest.json 外部下载清单
 ├── op/                运维脚本 (ky.py翻译 + components.py组件 + git_snapshot.bat + install_lsp.bat)
@@ -428,10 +429,10 @@ AI 工具 (16个) — 2026-06-04 强化，2026-06-10 三项优化，2026-06-16 s
   · 新增 reason 字段: AI 可选填写使用原因，仅 console.log 审计，不拦截
 网络: fetch_webpage (curl 绕过 CORS, 15s 超时, ≤8000 chars)
 视觉: get_vision_context (★ 并行预分析: 多图片并发 qwen-vl-max, Promise.all, 4-12s→3-8s)
-图片: generate_image (wanx2.1-t2i-plus, ★ 主进程 1 IPC→Python, 15-40s/张, 缓存命中<1s, stderr 进度, 默认输出 server-app/generated/)
-      analyze_image (qwen-vl-max, ★ 主进程 1 IPC→Python, 3-10s, 支持描述/定位/问答)
-  · 缓存: 同 prompt+style+size → .wanx_cache.json → 零 API 费用即时复用
-  · 进度: --verbose → stderr 轮询状态 (PENDING→RUNNING→SUCCEEDED), 返回值含 elapsed/polls
+图片: generate_image / analyze_image (全走 Go 代理，无 Python 侧载)
+  · 生成: fetch IMAGE_GEN_URL → Go → 模型供应商 → SSE 结果流 → curl 下载
+  · 分析: fetch VISION_URL → Go → 模型供应商 → SSE 结果流
+  · 旧 Python 脚本(wanx_gen.py/wanx_vision.py)和 ipc-media.ts 已删除（2026-06-22）
 组件下载 (★ 并行化): tool-dl 多文件 Promise.all(PUT/POST) 并发，5文件 40s→8s
 SSE 复用 (★ 零行代码): fetch 新建流复用已有 ReadableStream· 入口: tools-exec-effect.js search_smart → _tryEmbeddingRerank() → embedding-service.js速度倍数），
 AI 有充分知情权选择最优工具。system-prompt 新增 🔴 FILE SEARCH PRIORITY 铁律段。
@@ -486,7 +487,7 @@ AI 面板增强
 
 AI 上下文窗口防护（三层纵深 + 参数集中化，2026-06-10 落地）
 --------------------------------------------------------------
-背景：DeepSeek V4 硬限制 prompt+completion ≤ 1,000,000 tokens，长对话叠加 max_tokens(393K) 超限导致零响应。
+背景：模型硬限制 prompt+completion ≤ 1,000,000 tokens，长对话叠加 max_tokens(393K) 超限导致零响应。
 
 参数唯一真理源：content-gateway.js
   CTX_MAX_TOKENS(1,048,565) / COMPRESS_THRESHOLD(900k) / MAX_RESPONSE_TOKENS(393216) / MAX_TOKENS_SAFETY(10k) / CHAR_PER_TOKEN(3.0)
@@ -655,8 +656,7 @@ OUTPUT 面 (改 content-gateway.js 一处，消费方全引用):
 时钟颜色状态机
 -------------
 · timer 跑在 agent 上（ag._floorTimerId/ag._floorStartPerf），每 quest 独立，切 quest 不停 timer。
-· 工作中: startFloorTimer(aiDiv, ag) 初始设绿色 (#859900 DeepSeek 色)，不等计时数据
-· 活跃段切换: DeepSeek 活跃→绿 / Tool 活跃→黄 (#e6b800) / Network 活跃→橙 (#cb4b16)
+· 工作中: startFloorTimer(aiDiv, ag) 初始设绿色 (#859900 DeepSeek 色AI 活跃色 活跃段切换: DeepSeek 活跃→绿 / Tool 活跃→黄 (#e6b800) / Network 活跃→橙 (#cb4b16)
 · 完成: stopFloorTimer(timing, ag) 设停止态（亮色#000 / 暗色#fff）
 · 中断/异常: finally 块用 _capturedAgent 属性设停止态，杜绝残留绿色
 · 历史楼层重建: _buildFloorDOM 从 fData.clockTiming 直接恢复，回退 questTimings 数组

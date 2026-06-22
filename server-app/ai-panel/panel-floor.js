@@ -7,10 +7,12 @@ async function generateFloorTxt(ag, questId) {
     if (!root) return;
     var houses = ag._houses;
     if (!houses || houses.length === 0) return;
-    var floorNum = ag._ctx.totalFloors;
+    // ★ 优先使用 _currentFloorNum（不可变），降级到 _ctx.totalFloors
+    var floorNum = ag._currentFloorNum || ag._ctx.totalFloors;
 
-    // 优先使用已存储的精确路径（与流式写入一致）
-    var allTxtPath = ag._allTxtPath || '';
+    // ★ 优先使用 _floorMeta 中的不可变路径，降级到 ag._allTxtPath
+    var meta = (floorNum && ag._floorMeta && ag._floorMeta[floorNum]) ? ag._floorMeta[floorNum] : null;
+    var allTxtPath = meta ? meta.allTxtPath : (ag._allTxtPath || '');
     var dir = '';
     if (allTxtPath) {
         dir = allTxtPath.replace(/\/all\.txt$/, '/');
@@ -338,6 +340,21 @@ async function _restoreAgentFromStore(questId, ag) {
                         _floor: fi + 1
                     });
                 }
+            }
+        }
+
+        // ★ 重建 _floorMeta（不可变楼层元数据）
+        ag._floorMeta = {};
+        for (var _fmfi = 0; _fmfi < allFloors.length; _fmfi++) {
+            var _fmfData = allFloors[_fmfi].data;
+            if (_fmfData) {
+                var _fmfn = allFloors[_fmfi].floorNum;
+                ag._floorMeta[_fmfn] = {
+                    floorStartIdx: _fmfData._floorStartIdx,
+                    allTxtPath: _fmfData.allTxtPath || '',
+                    _fDir: _fmfData._fDir || '',
+                    createdAt: _fmfData.createdAt || Date.now()
+                };
             }
         }
 

@@ -241,8 +241,18 @@ function _markQuestRunning(questId, isRunning) {
     _broadcast('quest-running', questId, { isRunning: isRunning });
 }
 
+// ═══ 引导按钮：仅建楼中可用 ═══
+function updateGuideBtn() {
+    var building = _sending || streaming;
+    $guideBtn.disabled = !building;
+    $guideBtn.style.opacity = building ? '1' : '0.35';
+}
+// ★ 立即初始化：闲置 = 禁用（HTML 已 disabled，再确保 JS 支配）
+updateGuideBtn();
+
 function setStreaming(val) {
     streaming = val;
+    updateGuideBtn();
     // ★ Stop 闭环：三态 UX（IDLE / SENDING / STOPPING）
     //   val=true 表示流式输出中；_stopState 仅用于 STOPPING 覆盖
     var _state = _activeAgent ? _activeAgent._stopState : 'idle';

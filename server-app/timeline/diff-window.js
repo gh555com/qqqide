@@ -420,6 +420,8 @@
                 }
             } catch (_) { }
             populateDropdowns();
+            // ★ 如果 Monaco 已加载，显式渲染 diff（确保 populateDropdowns 设值后立即渲染）
+            if (_monacoLoaded && window.monaco) renderDiff();
             // ★ Monaco 加载超时保护（15s），防止永久白屏
             var monacoOk = await Promise.race([
                 loadMonaco().then(function () { return true; }),
@@ -431,6 +433,8 @@
             }
             $emptyState.style.display = 'none';
             $diffContainer.style.display = '';
+            // ★ 安全兜底：再次确保 diff 渲染（幂等，_renderToken 防并发）
+            renderDiff();
         } finally {
             _loading = false;
         }
@@ -895,7 +899,11 @@
         if (!_monacoLoaded || !window.monaco) return;
         var leftVal = $selLeft.value;
         var rightVal = $selRight.value;
-        if (!leftVal || !rightVal) return;
+        if (!leftVal || !rightVal) {
+            console.log('[diff] renderDiff skipped: left=' + leftVal + ' right=' + rightVal);
+            return;
+        }
+        console.log('[diff] renderDiff left=' + leftVal.substring(0, 16) + '... right=' + rightVal.substring(0, 16) + '... leftVal==rightVal=' + (leftVal === rightVal));
 
         // 防并发：只允许最新一次渲染生效
         var token = ++_renderToken;
@@ -909,6 +917,13 @@
         } catch (e) {
             console.error('[diff] content load failed:', e);
         }
+        // 诊断日志
+        if (leftContent.length === 0 && rightContent.length > 0) {
+            console.warn('[diff] LEFT CONTENT EMPTY! leftVal=' + leftVal.substring(0, 16));
+        } else if (rightContent.length === 0 && leftContent.length > 0) {
+            console.warn('[diff] RIGHT CONTENT EMPTY! rightVal=' + rightVal.substring(0, 16));
+        }
+        console.log('[diff] renderDiff token=' + token + ' leftLen=' + leftContent.length + ' rightLen=' + rightContent.length + ' same=' + (leftContent === rightContent));
         // 竞态检查：如果在这期间又触发了新渲染，放弃本次
         if (token !== _renderToken) return;
 

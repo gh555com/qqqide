@@ -143,6 +143,12 @@ async function sendMessage() {
             var qId = await questStore.create('');
             if (!qId) { _sending = false; updateQueueBtn(); return; }
             questActiveId = qId;
+            // ★ Copy draft's tier preference to real quest (per-quest tier memory)
+            if (questUIStates[_capturedQuestId] && typeof questUIStates[_capturedQuestId].selectedTier === 'number') {
+                if (!questUIStates[questActiveId]) questUIStates[questActiveId] = {};
+                questUIStates[questActiveId].selectedTier = questUIStates[_capturedQuestId].selectedTier;
+                selectedTier = questUIStates[_capturedQuestId].selectedTier;
+            }
             _activeAgent = _getOrCreateAgent(questActiveId);
             if (_panelId === 1) await questStore.setActiveId(questActiveId);
             if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
@@ -198,10 +204,8 @@ async function sendMessage() {
         var qEntry = quests2.find(function (qx) { return qx.id === _capturedQuestId; });
         var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : '';
         var qNumericId = (qEntry && qEntry.numericId) ? qEntry.numericId : parseInt(_capturedQuestId.replace('q', ''), 10) || 0;
-        // ★ 前缀搜索已有目录（内含修复）+ 防 TOCTOU 二次确认
+        // ★ 前缀搜索已有目录（B+ 方案：懒惰修正，不实时 rename）
         var qDirName2 = await _resolveQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
-        // 二次确认：_resolveQuestDirName 内已做修复，此处再查一次兜底
-        qDirName2 = await _resolveQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
         var fDirName2 = _makeName('f', floorNum, userQuestion);
         var _ensured = await _ensureQuestDir(root2, qDirName2, fDirName2);
         // ★ 保存图片到楼层目录（确保重启后可还原）
@@ -231,12 +235,12 @@ async function sendMessage() {
             }
         }
     }
-    agent._ctx.totalFloors = floorNum - 1;
+    // ★ 铁律：不再修改 _ctx.totalFloors。_currentFloorNum 是楼层的不可变标识。
     var _floorStartIdx = agent.conversation.length;
     agent._floorStartIdx = _floorStartIdx;
-
-    // ---- Agentic loop ----
-    setStreaming(true);
+    agent._currentFloorNum = floorNum;
+    // ★ 存储该楼层的不可变元数据（所有保存路径使用此元数据，而非 agent 全局变量）
+    if (!agent._floorMeta) agent._floorMeta = {};
     var _projectRoot = root2 || questStore.getProjectRoot();
     var _allTxtDirLocal = '';
     if (_projectRoot) {
@@ -244,6 +248,12 @@ async function sendMessage() {
     }
     var _allTxtPathLocal = _allTxtDirLocal ? _allTxtDirLocal + 'all.txt' : '';
     agent._allTxtPath = _allTxtPathLocal;
+    agent._floorMeta[floorNum] = {
+        floorStartIdx: _floorStartIdx,
+        allTxtPath: _allTxtPathLocal,
+        _fDir: _allTxtDirLocal,
+        createdAt: Date.now()
+    };
     var _bridge = window.parent && window.parent.qqqideBridge;
     if (_bridge && _allTxtDirLocal) {
         try { await _bridge.fs.mkdir(_allTxtDirLocal); } catch (_) { }
@@ -446,7 +456,7 @@ async function sendMessage() {
                     setStreaming(false);
                 }
 
-                await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._floorStartIdx);
+                await _saveAgentQuestData(_capturedQuestId, _capturedAgent, floorNum);
 
                 if (cardPool) cardPool.completeBuildingFloor(_capturedQuestId, floorNum);
 
@@ -512,7 +522,7 @@ async function sendMessage() {
                         _floor: _capturedAgent._ctx.totalFloors
                     });
                 }
-                                // ★ 清理 aiDiv 流式渲染状态，防止 doStreamRender 定时器"诈尸"
+                // ★ 清理 aiDiv 流式渲染状态，防止 doStreamRender 定时器"诈尸"
                 if (aiDiv) {
                     aiDiv._renderScheduled = false;
                     aiDiv._dirty = false;
@@ -585,9 +595,8 @@ async function sendMessage() {
     } finally {
         // ★ 一次渲染永久不变：在清理 _activeAiDiv 之前，先保存当前楼层数据（含流式文本）
         if (_capturedAgent && _capturedQuestId && !_capturedAgent._floorCompletedCleanly && _capturedAgent._stopState === 'sending') {
-            try { await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._floorStartIdx); } catch (_) { }
+            try { await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._currentFloorNum); } catch (_) { }
         }
-        _stopAutoSave();
         _stopAllTxtStream();
         // ★ 通用 timer 清理：无论前台/后台，防止僵尸 timer
         if (_capturedAgent && _capturedAgent._floorTimerId) {
@@ -604,9 +613,8 @@ async function sendMessage() {
             // ★ 永不自停：Stop 不暂停队列，用户手动点暂停才停
             // 保存楼层数据到 sq3
             if (_capturedQuestId) {
-                try { await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._floorStartIdx); } catch (_) { }
+                try { await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._currentFloorNum); } catch (_) { }
             }
-            // 恢复 IDLE
             _capturedAgent._stopState = 'idle';
             _capturedAgent._stopCtrl = null;
         }
@@ -868,7 +876,7 @@ window.addEventListener('beforeunload', function () {
     if (!_ag || !_qid) return;
     // fire-and-forget 保存（不 await，浏览器会尽力完成 IPC）
     if (typeof _saveAgentQuestData === 'function') {
-        try { _saveAgentQuestData(_qid, _ag, _ag._floorStartIdx || 0).catch(function () { }); } catch (_) { }
+        try { _saveAgentQuestData(_qid, _ag, _ag._currentFloorNum || _ag._ctx.totalFloors || 0).catch(function () { }); } catch (_) { }
     }
     // 压缩中 → 尽力回滚快照（不保证完成），标记异常供下次启动修复
     if (_ag._compressing && _ag._ctx) {

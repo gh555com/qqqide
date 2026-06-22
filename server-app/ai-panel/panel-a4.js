@@ -259,6 +259,9 @@ async function _a4EnsureBeforeBaseline(filePath, currentContent) {
 
 // ── 钩子 Q：统一快照管线（AI 写工具 + run_command）──
 async function _a4WrappedExecuteTool(name, args) {
+    // ★ 在入口处捕获当前 agent（执行过程中可能切 quest，_activeAgent 会变）
+    var _capturedAg = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+
     // Non-write tools: pass through directly
     if (_WRITE_TOOLS.indexOf(name) === -1) {
         return _a4OriginalExecuteTool(name, args);
@@ -281,7 +284,7 @@ async function _a4WrappedExecuteTool(name, args) {
                     var changed = await bridge2.timeline.captureChanged({ projectRoot: scanRoot, sinceMs: cmdStartTs, cwd: args.cwd || '' });
                     if (changed && changed.length) {
                         for (var ci = 0; ci < changed.length; ci++) {
-                            await _a4RecordSnapshot(changed[ci].filePath, 'run_command', null, changed[ci].content);
+                            await _a4RecordSnapshot(changed[ci].filePath, 'run_command', null, changed[ci].content, null, _capturedAg);
                         }
                     }
                 } catch (_) { }
@@ -297,19 +300,25 @@ async function _a4WrappedExecuteTool(name, args) {
     var beforeBlobHash = null; // ★ 编辑前基线 blob_hash
 
     // ---- 1. 捕获 BEFORE + 建立基线 ----
-    if (name !== 'create_file' && bridge) {
-        try {
-            if (bridge.fs && bridge.fs.read) {
-                var raw2 = await bridge.fs.read(filePath);
-                if (typeof raw2 === 'string' && raw2.length <= A4_MAX_SNAPSHOT_BYTES) {
-                    if (!_a4IsBinary(filePath, raw2)) {
-                        beforeContent = raw2;
-                        // ★ 确保 before 进入 timeline：查是否有版本，无/不一致则补录
-                        beforeBlobHash = await _a4EnsureBeforeBaseline(filePath, beforeContent);
+    if (bridge) {
+        if (name === 'create_file') {
+            // ★ 新建文件：以空文本为基线（before），记完后工具写内容为 after
+            beforeContent = '';
+            beforeBlobHash = await _a4EnsureBeforeBaseline(filePath, beforeContent);
+        } else {
+            try {
+                if (bridge.fs && bridge.fs.read) {
+                    var raw2 = await bridge.fs.read(filePath);
+                    if (typeof raw2 === 'string' && raw2.length <= A4_MAX_SNAPSHOT_BYTES) {
+                        if (!_a4IsBinary(filePath, raw2)) {
+                            beforeContent = raw2;
+                            // ★ 确保 before 进入 timeline：查是否有版本，无/不一致则补录
+                            beforeBlobHash = await _a4EnsureBeforeBaseline(filePath, beforeContent);
+                        }
                     }
                 }
-            }
-        } catch (_) { }
+            } catch (_) { }
+        }
     }
 
     // ---- 2. 执行原工具 ----
@@ -339,8 +348,7 @@ async function _a4WrappedExecuteTool(name, args) {
         } catch (_) { }
     }
 
-    // ---- 4. 记录快照（钩子 Q：记 both before+after 到 timeline）----
-    await _a4RecordSnapshot(filePath, name, beforeContent, afterContent, beforeBlobHash);
+    // ---- 4. 记录快照（钩子 Q：记 both before+aft    await _a4RecordSnapshot(filePath, name, beforeContent, afterContent, beforeBlobHash, _capturedAg);t, beforeBlobHash);
 
     return result;
 }
@@ -350,10 +358,10 @@ if (_a4OriginalExecuteTool) {
     executeTool = _a4WrappedExecuteTool;
 }
 
-// ═══ 快照记录：写入当前 agent 的 _a4Snapshots ═══
-async function _a4RecordSnapshot(filePath, op, before, after, knownBeforeHash) {
-    // Get current active agent
-    var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+// ═══ 快照记录：写入 agent 的 _a4Snapshots ═══
+//   可选 ag 参数：传入则用该 agent（后台 agent 工具调用时使用），否则用 _activeAgent
+async function _a4RecordSnapshot(filePath, op, before, after, knownBeforeHash, ag) {
+    if (!ag) ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     if (!ag) return;
 
     if (!ag._a4Snapshots) ag._a4Snapshots = {};
@@ -511,6 +519,7 @@ async function _a4OpenDiff(snap) {
         if (!root) return;
         var beforeHash = snap.beforeBlobHash || undefined;
         var afterHash = snap.afterBlobHash || undefined;
+        console.log('[a4] openDiff path=' + snap.path + ' before=' + (beforeHash || '').substring(0, 16) + ' after=' + (afterHash || '').substring(0, 16) + ' same=' + (beforeHash === afterHash));
         bridge.timeline.openDiffWindow({
             filePath: snap.path,
             projectRoot: root,
@@ -673,9 +682,21 @@ var _a4IncrementalBusy = false;
 var A4_INCREMENTAL_FLUSH_MS = 2000;
 var A4_INCREMENTAL_MAX_MS = 8000;
 var _a4FirstDirtyTs = 0;
+// ★ 存储触发脏标记的 agent 和 questId（确保后台 agent 也能正确刷盘）
+var _a4IncrementalAg = null;
+var _a4IncrementalQuestId = null;
 
 // ── 标记脏（其他模块调用此函数触发统一刷盘）──
-function _a4MarkIncrementalDirty() {
+//   可传入 agent 引用（来自 agent-loop.js 的 self），确保后台 agent 也能正确持久化
+function _a4MarkIncrementalDirty(ag) {
+    if (ag) {
+        _a4IncrementalAg = ag;
+        _a4IncrementalQuestId = (typeof questActiveId !== 'undefined') ? questActiveId : '';
+    } else if (!_a4IncrementalAg) {
+        // 首次无 agent → 用 _activeAgent 兜底
+        _a4IncrementalAg = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+        _a4IncrementalQuestId = (typeof questActiveId !== 'undefined') ? questActiveId : '';
+    }
     _a4IncrementalDirty = true;
     if (!_a4FirstDirtyTs) _a4FirstDirtyTs = Date.now();
     if (_a4IncrementalTimer) clearTimeout(_a4IncrementalTimer);
@@ -688,9 +709,15 @@ function _a4MarkIncrementalDirty() {
 }
 
 // ── 构建完整 floor payload（与 _saveAgentQuestData 同构）──
-function _a4BuildCompleteFloorPayload(ag) {
+//   可选 floorNum: 若传入则使用 ag._floorMeta[floorNum] 中的不可变元数据
+function _a4BuildCompleteFloorPayload(ag, floorNum) {
+    // ★ 查询该楼层的不可变元数据（如传入了 floorNum 且有 _floorMeta）
+    var meta = (floorNum && ag._floorMeta && ag._floorMeta[floorNum]) ? ag._floorMeta[floorNum] : null;
+    var floorStartIdx = meta ? meta.floorStartIdx : (typeof ag._floorStartIdx === "number" ? ag._floorStartIdx : 0);
+    var allTxtPath = meta ? meta.allTxtPath : (ag._allTxtPath || '');
+    var fDir = meta && meta._fDir ? meta._fDir : (allTxtPath ? allTxtPath.replace(/[\\/]all\.txt$/g, '').replace(/[\\/]$/, '') + '/' : '');
+
     var fullConv = ag.conversation ? ag.conversation.slice() : [];
-    var floorStartIdx = (typeof ag._floorStartIdx === "number") ? ag._floorStartIdx : fullConv.length;
     var floorConv = fullConv.slice(floorStartIdx);
 
     // ★ 持久化净化：_lines 是运行时缓存不入库
@@ -718,7 +745,7 @@ function _a4BuildCompleteFloorPayload(ag) {
         costWge: ag._floorCostWge,
         floorFree: ag._floorFree || false,
         lastUserInput: ag._lastUserInput,
-        allTxtPath: ag._allTxtPath || '',
+        allTxtPath: allTxtPath,
         fileStats: (typeof _computeFileStats === 'function') ? _computeFileStats(ag._houses, ag._a4Snapshots) : { fileCount: 0, added: 0, deleted: 0 },
         clockTiming: ag._lastFloorTimingRecord || null,
         aiStartTime: ag._aiStartTime || '',
@@ -726,7 +753,8 @@ function _a4BuildCompleteFloorPayload(ag) {
         images: ag._lastUserInput && ag._lastUserInput.images ? ag._lastUserInput.images.map(function (img) {
             return { id: img.id, fileName: img.fileName || '', dataUrl: img.dataUrl || '' };
         }) : [],
-        _fDir: ag._allTxtPath ? ag._allTxtPath.replace(/[\\/]all\.txt$/g, '').replace(/[\\/]$/, '') + '/' : '',
+        _floorStartIdx: floorStartIdx,
+        _fDir: fDir,
         createdAt: ag._floorCreatedAt || Date.now(),
         savedAt: Date.now(),
         // ★ 流式持久化：捕获正在打印中的部分 AI 回复文本
@@ -757,6 +785,7 @@ function _a4BuildCompleteFloorPayload(ag) {
 }
 
 // ── 统一刷盘：构建完整 payload → 直接覆写 SQLite ──
+//   使用 _a4IncrementalAg（来自触发脏标记的 agent），而非 _activeAgent（可能在切换后变化）
 function _a4FlushCompleteFloor() {
     if (_a4IncrementalTimer) { clearTimeout(_a4IncrementalTimer); _a4IncrementalTimer = null; }
     if (!_a4IncrementalDirty || _a4IncrementalBusy) return;
@@ -764,17 +793,18 @@ function _a4FlushCompleteFloor() {
     _a4FirstDirtyTs = 0;
     _a4IncrementalBusy = true;
 
-    var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    // ★ 使用捕获的 agent 引用，确保后台 agent 也能正确持久化
+    var ag = _a4IncrementalAg;
     if (!ag) { _a4IncrementalBusy = false; return; }
-    var questId = (typeof questActiveId !== 'undefined') ? questActiveId : '';
+    var questId = _a4IncrementalQuestId;
     if (!questId) { _a4IncrementalBusy = false; return; }
-    var floorNum = ag._ctx.totalFloors;
+    var floorNum = ag._currentFloorNum || ag._ctx.totalFloors;
     if (!floorNum) { _a4IncrementalBusy = false; return; }
 
     var qs = window.questStore;
     if (!qs || !qs.saveFloor) { _a4IncrementalBusy = false; return; }
 
-    var payload = _a4BuildCompleteFloorPayload(ag);
+    var payload = _a4BuildCompleteFloorPayload(ag, floorNum);
 
     qs.saveFloor(questId, floorNum, payload).catch(function () { }).then(function () {
         _a4IncrementalBusy = false;
@@ -788,25 +818,38 @@ function _a4OnBeforeUnload() {
     _a4IncrementalDirty = false;
     _a4FirstDirtyTs = 0;
 
-    var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    // ★ 优先使用脏标记中捕获的 agent（正确），降级到 _activeAgent（可能已切换）
+    var ag = _a4IncrementalAg || (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     if (!ag) return;
-    var questId = (typeof questActiveId !== 'undefined') ? questActiveId : '';
+    var questId = _a4IncrementalQuestId || (typeof questActiveId !== 'undefined') ? questActiveId : '';
     if (!questId) return;
     var qs = window.questStore;
     if (!qs || !qs.saveFloor) return;
-    var floorNum = ag._ctx.totalFloors;
+    var floorNum = ag._currentFloorNum || ag._ctx.totalFloors;
     if (!floorNum) return;
 
-    var payload = _a4BuildCompleteFloorPayload(ag);
+    var payload = _a4BuildCompleteFloorPayload(ag, floorNum);
     qs.saveFloor(questId, floorNum, payload).catch(function () { });
 }
 
 if (typeof window !== 'undefined') {
     window.addEventListener('beforeunload', _a4OnBeforeUnload);
     // ★ 流式保护：流式输出期间每 5s 强制标记脏（防止长文本打印中断无保存）
+    //   遍历整个 agentPool，确保后台 agent 的流式数据也不会丢失
     setInterval(function () {
-        var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-        if (ag && ag._streaming) _a4MarkIncrementalDirty();
+        var pool = (typeof agentPool !== 'undefined') ? agentPool : null;
+        if (pool) {
+            var ids = Object.keys(pool);
+            for (var pi = 0; pi < ids.length; pi++) {
+                var ag2 = pool[ids[pi]];
+                if (ag2 && ag2._streaming) {
+                    _a4MarkIncrementalDirty(ag2);
+                }
+            }
+        } else {
+            var ag2 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+            if (ag2 && ag2._streaming) _a4MarkIncrementalDirty(ag2);
+        }
     }, 5000);
 }
 

@@ -42,6 +42,21 @@
         { value: 'char', label: '逐字回退', desc: '每按一次 Ctrl+Z 撤销一个字符' },
         { value: 'word', label: '单词回退', desc: 'Monaco 原生撤销，按编辑操作分组（推荐用于代码）' }
       ]
+    },
+    {
+      key: 'ai.defaultTier',
+      label: '默认 AI 等级',
+      desc: '新建任务或 ~New quest~ 时使用的 AI 等级。任务中手动改过的等级会被单独记忆',
+      type: 'radio',
+      defaultValue: '6',
+      options: [
+        { value: '1', label: '1-Flash', desc: '最快速度，无推理' },
+        { value: '2', label: '2-Flash+High', desc: '快速 + 高推理' },
+        { value: '3', label: '3-Flash+Max', desc: '快速 + 最大推理' },
+        { value: '4', label: '4-Pro', desc: '专业模型，无推理' },
+        { value: '5', label: '5-Pro+High', desc: '专业模型 + 高推理' },
+        { value: '6', label: '6-Pro+Max', desc: '专业模型 + 最大推理（默认）' }
+      ]
     }
   ];
 

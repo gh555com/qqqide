@@ -232,7 +232,7 @@ window.addEventListener('beforeunload', function () {
             _parentReleaseQuest(questActiveId);
             _broadcast('owner-released', questActiveId);
         }
-        onlyStore.flush();
+        // saveQuestUIState 内部已通过 setNow 触发 async flush
     }
 });
 
@@ -270,8 +270,13 @@ function saveQuestUIState(id) {
         scrollTop: $messages.scrollTop
     };
     // ★ 三面板独立快照：左/中/右各自保存到 ai.uiStates.{panelId}
+    //   使用 setNow 立即刷盘（不可用 set，否则 beforeunload 可能来不及 flush）
     if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
-        onlyStore.set('ai.uiStates.' + _panelId, questUIStates);
+        onlyStore.setNow('ai.uiStates.' + _panelId, questUIStates);
+        // ★ 同时持久化面板当前活跃 quest ID，确保重启时能自动恢复
+        if (id && !_isDraft(id)) {
+            onlyStore.setNow('ai.panel.' + _panelId + '.activeQuestId', id);
+        }
     }
 }
 
@@ -292,8 +297,8 @@ function restoreQuestUIState(id) {
         $input.value = '';
         $input._resetUndo();
         pendingImages = [];
-        selectedTier = 6;
-        updateTierButtons(6);
+        selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 6;
+        updateTierButtons(selectedTier);
         renderImageStrip();
         updateQueueBtn();
     }
@@ -307,6 +312,30 @@ async function initQuests() {
     // [silent] initQuests START
     // ★ 中心大脑：三面板读同一 parent.__qqq_questIndex，主面板扫盘后侧面板立即可见
     var quests = await questStore.list();
+
+    // ★ B+ 方案：懒惰重命名扫描 — 仅中面板执行一次（启动时）
+    //   同步等待扫描完成，消除 lazyRenameScan 与后续 loadAllFloors 的竞态窗口
+    if (_panelId === 1) {
+        try {
+            var scanResult = await questStore.lazyRenameScan();
+            if (scanResult && scanResult.fixed > 0) {
+                console.log('[lazyRenameScan] fixed ' + scanResult.fixed + ' quest dir(s), failed=' + scanResult.failed + ', skipped=' + scanResult.skipped + ', collisions=' + scanResult.collisions);
+                // 修了目录 → 重新加载索引让侧面板感知
+                await questStore.invalidateIndex();
+            }
+        } catch (e) {
+            console.warn('[lazyRenameScan] error:', e && e.message);
+        }
+    }
+    // 侧面板：等待中面板扫描完成（最多 8s）
+    if (_panelId !== 1) {
+        for (var _rsw = 0; _rsw < 40; _rsw++) {
+            try {
+                if (parent && (parent.__qqq_renameScanDone || (!parent.__qqq_renameScanInProgress && parent.__qqq_renameScanResult !== null))) break;
+            } catch (_) {}
+            await new Promise(function (r) { setTimeout(r, 200); });
+        }
+    }
     // [silent] list returned
     if (quests.length === 0) {
         questActiveId = _draftId;
@@ -314,7 +343,13 @@ async function initQuests() {
         // ★ 三级恢复：per-panel 快照 → project global → first quest
         //   panelId 永恒不变（0=左,1=中,2=右），不像 windowId 跨会话更换
         var _perWindowKey = 'ai.panel.' + _panelId + '.activeQuestId';
-        var _fromOnly = await onlyStore.getAsync(_perWindowKey);
+        var _fromOnly = null;
+        // ★ 侧面板 retry：onlyStore 的 bridge 可能尚未就绪，重试 3 次（共 1.5s）
+        for (var _retry = 0; _retry < 3; _retry++) {
+            _fromOnly = await onlyStore.getAsync(_perWindowKey);
+            if (_fromOnly) break;
+            await new Promise(function (r) { setTimeout(r, 500); });
+        }
         if (_fromOnly && quests.find(function (s) { return s.id === _fromOnly; })) {
             questActiveId = _fromOnly;
             // [silent] restored from per-window snapshot
@@ -386,6 +421,24 @@ async function initQuests() {
     // [silent] initQuests DONE
 }
 
+// ★ B+ 方案：窗口关闭/刷新前触发懒惰重命名扫描 — 仅中面板执行一次
+//   由于 rename 操作可能在 beforeunload 时被浏览器限制（可能不完成），
+//   我们异步触发（不 await），下次启动时会再次扫描修正
+window.addEventListener('beforeunload', function () {
+    if (window._lazyRenameShutdownTriggered) return;
+    window._lazyRenameShutdownTriggered = true;
+    try {
+        if (parent && parent.__qqq_renameScanDone) return;  // 启动时已扫过
+    } catch (_) {}
+    if (_panelId === 1 && typeof questStore !== 'undefined' && questStore.hasProjectRoot && questStore.hasProjectRoot()) {
+        questStore.lazyRenameScan().then(function (scanResult) {
+            if (scanResult && scanResult.fixed > 0) {
+                try { parent.__qqq_renameScanDone = true; } catch (_) {}
+            }
+        }).catch(function () {});
+    }
+});
+
 // ═══ 从 houses 数组 + A4 快照计算文件变更统计（持久化到 floorPayload.fileStats） ═══
 // 优先使用 A4 快照数据（真实 before/after LCS diff），
 // 无快照时回退到工具参数估算（不精确，仅兜底）
@@ -453,24 +506,41 @@ function _computeFileStats(houses, a4Snapshots) {
 // 导出 _computeFileStats 供 panel-a4.js 增量持久化使用
 window._computeFileStats = _computeFileStats;
 
-async function _saveAgentQuestData(questId, ag, floorStartIdx) {
+// ★ 铁律：任何保存必须传入显式 floorNum，禁止从 ag._ctx.totalFloors 推导
+//   floorNum 来自创建楼层时由 questStore.nextFloorNum() 分配的值，永久不变。
+//   ag._floorMeta[floorNum] 保存该楼层的不可变元数据（allTxtPath/floorStartIdx）。
+//   所有调用方必须传 floorNum，auto-save 传 ag._currentFloorNum，onDone 传完成的楼层号。
+async function _saveAgentQuestData(questId, ag, floorNum) {
     if (!questId || !ag) return;
-    var floorNum = ag._ctx.totalFloors;
+    if (!floorNum) floorNum = ag._currentFloorNum;
 
-    if (typeof floorStartIdx === 'number' && floorNum > 0) {
-        // ★ 统一 payload 构建（净化 houses/conversation，单一真理源）
+    // ═══ 1) 如果楼层号有效且有元数据 → 保存楼层 payload ═══
+    if (floorNum && floorNum > 0) {
+        // ★ 查询该楼层不可变元数据
+        var meta = ag._floorMeta && ag._floorMeta[floorNum];
+        if (!meta) {
+            // 兼容层：旧楼层（本修复前创建）没有 _floorMeta
+            meta = {
+                floorStartIdx: ag._floorStartIdx,
+                allTxtPath: ag._allTxtPath || '',
+            };
+        }
+
+        // ★ 统一 payload 构建（使用该楼层自己的 startIdx，非 ag._floorStartIdx 可能已变化）
         var floorPayload = (typeof window._a4BuildCompleteFloorPayload === 'function')
-            ? window._a4BuildCompleteFloorPayload(ag)
+            ? window._a4BuildCompleteFloorPayload(ag, floorNum)
             : {
                 question: (ag._lastUserInput && ag._lastUserInput.text) || '',
-                conversation: ag.conversation ? ag.conversation.slice(ag._floorStartIdx || 0) : [],
+                conversation: ag.conversation ? ag.conversation.slice(meta.floorStartIdx || 0) : [],
                 houses: (ag._houses || []).slice(),
                 costWge: ag._floorCostWge,
                 lastUserInput: ag._lastUserInput,
+                allTxtPath: meta.allTxtPath || '',
+                _floorStartIdx: meta.floorStartIdx || 0,
+                _fDir: meta.allTxtPath ? meta.allTxtPath.replace(/[\\/]all\.txt$/g, '').replace(/[\\/]$/, '') + '/' : '',
                 createdAt: Date.now()
             };
 
-        // 附加 _serverFloorId（_a4BuildCompleteFloorPayload 不含此字段）
         floorPayload._serverFloorId = ag._floorId || '';
 
         // ═══ A4 快照持久化 ═══
@@ -490,9 +560,12 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
         }
 
         await questStore.saveFloor(questId, floorNum, floorPayload);
+
+        await generateFloorTxt(ag, questId).catch(function () { });
+        _appendToSearchQuest(questId, floorNum).catch(function () { });
     }
 
-    // ═══ 2) 再写 quest 级元数据（save 内部保留 saveFloor 已写的 floors[]） ═══
+    // ═══ 2) 无论是否有楼层号，都写 quest 级元数据 ═══
     var metaPayload = {
         ctx: ag._ctx,
         totalCostGe: ag.totalCostGe,
@@ -508,14 +581,10 @@ async function _saveAgentQuestData(questId, ag, floorStartIdx) {
     };
     await questStore.touch(questId);
     await questStore.save(questId, metaPayload);
-
-    // generate floor txt for ANY agent (foreground or background)
-    //    generateFloorTxt 已重构为接受显式 ag + questId，不再依赖全局 _activeAgent
-    await generateFloorTxt(ag, questId).catch(function () { });
-    // 追加到 quest 级 search_quest.txt（全文检索用：时间线 + Q + A）
-    _appendToSearchQuest(questId, floorNum).catch(function () { });
 }
 
-async function saveQuestData(floorStartIdx) {
-    return _saveAgentQuestData(questActiveId, _activeAgent, floorStartIdx);
+// ★ saveQuestData 不再接受 floorStartIdx 参数，改为从 _activeAgent 读取 _currentFloorNum
+async function saveQuestData() {
+    var fn = _activeAgent ? _activeAgent._currentFloorNum : null;
+    return _saveAgentQuestData(questActiveId, _activeAgent, fn);
 }

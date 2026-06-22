@@ -81,7 +81,9 @@ export function healthCheck(urlStr: string, timeoutMs: number, isOffline: boolea
             return resolve(false);
         }
         const lib = healthUrl.startsWith('https') ? https : http;
-        const req = lib.get(healthUrl, { timeout: timeoutMs }, res => {
+        const opts: any = { timeout: timeoutMs };
+        if (healthUrl.startsWith('https')) { opts.rejectUnauthorized = false; }
+        const req = lib.get(healthUrl, opts, res => {
             const ok = !!(res.statusCode && res.statusCode >= 200 && res.statusCode < 400);
             res.resume();
             resolve(ok);
@@ -117,7 +119,9 @@ export async function checkAndDownloadShellUpdate(
         try {
             const versionUrl = baseUrl + 'version.json';
             const vResp = await new Promise<{ status: number; data: string }>((resolve, reject) => {
-                const req = lib.get(versionUrl, { timeout: 5000 }, (res) => {
+                const opts2: any = { timeout: 5000 };
+                if (versionUrl.startsWith('https')) { opts2.rejectUnauthorized = false; }
+                const req = lib.get(versionUrl, opts2, (res) => {
                     let data = '';
                     res.setEncoding('utf8');
                     res.on('data', (c: string) => data += c);
@@ -150,13 +154,17 @@ export async function checkAndDownloadShellUpdate(
         try { fs.mkdirSync(path.dirname(tarPath), { recursive: true }); } catch { }
 
         const downloadOk = await new Promise<boolean>((resolve) => {
-            const req = lib.get(updateUrl, { timeout: 30000 }, (res) => {
+            const dlopts: any = { timeout: 30000 };
+            if (updateUrl.startsWith('https')) { dlopts.rejectUnauthorized = false; }
+            const req = lib.get(updateUrl, dlopts, (res) => {
                 if (res.statusCode !== 200) {
                     if (res.statusCode === 301 || res.statusCode === 302) {
                         const loc = res.headers.location;
                         if (loc) {
                             const lib2 = loc.startsWith('https') ? https : http;
-                            const req2 = lib2.get(loc, { timeout: 30000 }, (res2) => {
+                            const redirOpts: any = { timeout: 30000 };
+                            if (loc.startsWith('https')) { redirOpts.rejectUnauthorized = false; }
+                            const req2 = lib2.get(loc, redirOpts, (res2) => {
                                 if (res2.statusCode !== 200) { resolve(false); return; }
                                 const file = fs.createWriteStream(tarPath);
                                 res2.pipe(file);
