@@ -124,7 +124,6 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
     var _reqMaxTokens = tier.maxTokens || ContentGateway.MAX_RESPONSE_TOKENS;
     var _effectiveMaxTokens = _reqMaxTokens;
     var body = {
-        model: tier.model || 'pro',
         messages: apiMessages,
         stream: true,
         stream_options: { include_usage: true },
@@ -186,18 +185,28 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
         self._abortSource = '';  // ★ 重置探针
         try {
             var _fetchStart = performance.now();
-            var resp = await fetch(GATEWAY_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + _currentToken,
-                    'X-Floor-Id': self._floorId || ''
-                },
-                body: JSON.stringify(body),
-                signal: self.abortController.signal
-            });
-
-            var _ttfbMs = performance.now() - _fetchStart;
+                     // ★ 经 AiGateway 统一执行 fetch（模型映射 + 线路选择 + auth）
+                    var resp;
+                    if (typeof AiGateway !== 'undefined' && AiGateway.chatFetch) {
+                        resp = await AiGateway.chatFetch(body, {
+                            token: _currentToken,
+                            signal: self.abortController.signal,
+                            tier: parseInt(tier.label) || 6,
+                            isFallback: GATEWAY_URL === GATEWAY_URL_FALLBACK
+                        });
+                    } else {
+                        // 兜底：AiGateway 未加载（不应发生）
+                        resp = await fetch(GATEWAY_URL, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': 'Bearer ' + _currentToken,
+                                'X-Floor-Id': self._floorId || ''
+                            },
+                            body: JSON.stringify(body),
+                            signal: self.abortController.signal
+                        });
+                    }     var _ttfbMs = performance.now() - _fetchStart;
             _ttfbAccum += _ttfbMs;
             if (!resp.ok) {
                 var text = await resp.text();

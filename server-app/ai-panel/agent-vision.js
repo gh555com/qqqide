@@ -11,7 +11,7 @@ AgentLoop.prototype._analyzeImages = async function (images, token, userContent)
     var self = this;
     var results = [];
 
-    // 构造视觉 prompt：把用户问题原文带上，让阿里做针对性识别
+    // 构造视觉 prompt：把用户问题原文带上，做针对性识别
     var visionPrompt = '';
     if (userContent && typeof userContent === 'string' && userContent.trim()) {
         visionPrompt = 'The user is asking the following question about this image. ' +
@@ -53,154 +53,56 @@ AgentLoop.prototype._analyzeImages = async function (images, token, userContent)
     return results;
 };
 
-// ---- 调用 /api/v3/ai/vision（异步：提交 → SSE 推送，绕开 CF 100s 代理超时）----
+// ---- 调用 /api/v3/ai/vision（经 AiGateway 统一代理）----
 AgentLoop.prototype._callVision = async function (base64, token, prompt, userContent) {
     var self = this;
-    var MAX_SUBMIT_RETRIES = 2;
 
-    // ═══ Step 1: 提交任务（带重试） ═══
-    var taskId = null;
-    for (var retry = 0; retry <= MAX_SUBMIT_RETRIES; retry++) {
-        try {
-            var reqBody = { image: base64 };
-            if (prompt && typeof prompt === 'string' && prompt.trim()) {
-                reqBody.prompt = prompt.trim();
-            }
-            // billing 摘要：传用户原始问题（不含视觉提示词前缀），Go 存为流水摘要
-            if (userContent && typeof userContent === 'string' && userContent.trim()) {
-                reqBody.summary = userContent.trim().slice(0, 200);
-            }
-            if (self._floorId) {
-                reqBody.floor_id = self._floorId;
-            }
-            var resp = await fetch(VISION_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + token
-                },
-                body: JSON.stringify(reqBody),
-                signal: self.abortController ? self.abortController.signal : undefined
-            });
-
-            if (resp.ok) {
-                var data = await resp.json();
-                // Redis 缓存命中 → 直接返回，跳过 SSE
-                if (data.status === 'done') {
-                    if (data.ge_cost) { self._visionCostWge += data.ge_cost; }
-                    self._log('  ✓ vision done (cached)');
-                    return data.description || '[Vision returned empty description]';
-                }
-                if (data.task_id) {
-                    taskId = data.task_id;
-                    self._log('  vision task: ' + taskId.slice(0, 12) + '...');
-                    break;
-                }
-                self._log('  vision: no task_id in response');
-                return null;
-            }
-
-            // 可重试的状态码
-            if ((resp.status === 429 || resp.status === 502 || resp.status === 503) && retry < MAX_SUBMIT_RETRIES) {
-                var waitMs = resp.status === 429 ? 3000 : 2000 * Math.pow(2, retry);
-                self._log('  vision submit retry #' + (retry + 1) + ' in ' + waitMs + 'ms (HTTP ' + resp.status + ')');
-                await new Promise(function (r) { setTimeout(r, waitMs); });
-                continue;
-            }
-
-            if (resp.status === 413) { self._log('  vision skipped: image too large'); return null; }
-            // 429 重试耗尽 → qoast 弹窗
-            if (resp.status === 429) { try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('视觉分析请求过于频繁，已跳过部分图片', { type: 'warning' }); } catch (_) { } }
-            self._log('  vision submit HTTP ' + resp.status + ': ' + (await resp.text().catch(function () { return ''; })).slice(0, 100));
-            return null;
-        } catch (err) {
-            if (err.name === 'AbortError') throw err;
-            if (retry < MAX_SUBMIT_RETRIES) {
-                var waitMs2 = 2000 * Math.pow(2, retry);
-                self._log('  vision submit retry #' + (retry + 1) + ' in ' + waitMs2 + 'ms (' + (err.message || err) + ')');
-                await new Promise(function (r) { setTimeout(r, waitMs2); });
-                continue;
-            }
-            self._log('  vision submit failed: ' + (err.message || err));
-            return null;
-        }
+    // ═══ Step 1: 提交任务（经 AiGateway） ═══
+    if (typeof AiGateway === 'undefined' || !AiGateway.visionSubmit) {
+        self._log('  ✗ vision: AiGateway not available');
+        return null;
     }
 
-    if (!taskId) return null;
+    var submitOpts = {};
+    if (prompt && typeof prompt === 'string' && prompt.trim()) {
+        submitOpts.prompt = prompt.trim();
+    }
+    if (userContent && typeof userContent === 'string' && userContent.trim()) {
+        submitOpts.summary = userContent.trim().slice(0, 200);
+    }
+    if (self._floorId) {
+        submitOpts.floorId = self._floorId;
+    }
+    submitOpts.signal = self.abortController ? self.abortController.signal : undefined;
 
-    // Step 2: SSE push (retry once on 404)
-    var streamUrl = VISION_URL + '/' + taskId + '/stream';
-    var MAX_STREAM_RETRIES = 1;
-    for (var streamRetry = 0; streamRetry <= MAX_STREAM_RETRIES; streamRetry++) {
-        try {
-            var streamResp = await fetch(streamUrl, {
-                headers: { 'Authorization': 'Bearer ' + token },
-                signal: self.abortController ? self.abortController.signal : undefined
-            });
-            if (!streamResp.ok) {
-                if (streamResp.status === 404) {
-                    if (streamRetry < MAX_STREAM_RETRIES) {
-                        self._log('  vision stream 404, retry in 1s...');
-                        await new Promise(function (r) { setTimeout(r, 1000); });
-                        continue;
-                    }
-                    self._log('  vision task expired'); return null;
-                }
-                self._log('  vision stream HTTP ' + streamResp.status);
-                return null;
-            }
+    var result = await AiGateway.visionSubmit(base64, token, submitOpts);
+    if (!result) {
+        self._log('  ✗ vision submit failed');
+        return null;
+    }
 
-            var reader = streamResp.body.getReader();
-            var decoder = new TextDecoder();
-            var textBuf = '';
-            var sseStart = Date.now();
-            var MAX_SSE_WAIT = 120000;
+    // 缓存命中
+    if (result.description !== undefined) {
+        if (result.ge_cost) { self._visionCostWge += result.ge_cost; }
+        self._log('  ✓ vision done (cached)');
+        return result.description || '[Vision returned empty description]';
+    }
 
-            while (Date.now() - sseStart < MAX_SSE_WAIT) {
-                var chunk = await reader.read();
-                if (chunk.done) break;
-                textBuf += decoder.decode(chunk.value, { stream: true });
+    if (!result.task_id) {
+        self._log('  ✗ vision: no task_id');
+        return null;
+    }
 
-                // 解析 SSE lines
-                var lines = textBuf.split('\n');
-                textBuf = lines.pop();
-                var eventData = '';
-                for (var li = 0; li < lines.length; li++) {
-                    var line = lines[li];
-                    if (line.startsWith('data: ')) {
-                        eventData = line.slice(6);
-                    } else if (line === '' && eventData) {
-                        try {
-                            var evt = JSON.parse(eventData);
-                            if (evt.status === 'done') {
-                                if (evt.ge_cost) { self._visionCostWge += evt.ge_cost; }
-                                var elapsedSse = ((Date.now() - sseStart) / 1000).toFixed(1);
-                                self._log('  ✓ vision done (SSE) in ' + elapsedSse + 's');
-                                reader.cancel();
-                                return evt.description || '[Vision returned empty description]';
-                            }
-                            if (evt.status === 'error') {
-                                self._log('  ✗ vision error: ' + (evt.error || 'unknown'));
-                                reader.cancel();
-                                return null;
-                            }
-                        } catch (_) { }
-                        eventData = '';
-                    }
-                }
-            }
-            reader.cancel();
-            self._log('  ✗ vision SSE timeout');
-            return null;
-        } catch (err) {
-            if (err.name === 'AbortError') throw err;
-            if (streamRetry < MAX_STREAM_RETRIES) {
-                self._log('  vision SSE error, retry in 1s: ' + (err.message || err));
-                await new Promise(function (r) { setTimeout(r, 1000); });
-                continue;
-            }
-            self._log('  ✗ vision SSE error: ' + (err.message || err));
-            return null;
-        }
-    } // stream retry loop
+    self._log('  vision task: ' + result.task_id.slice(0, 12) + '...');
+
+    // ═══ Step 2: SSE 轮询（经 AiGateway） ═══
+    var pollResult = await AiGateway.visionPoll(result.task_id, token);
+    if (pollResult && pollResult.description) {
+        if (pollResult.ge_cost) { self._visionCostWge += pollResult.ge_cost; }
+        self._log('  ✓ vision done (SSE)');
+        return pollResult.description;
+    }
+
+    self._log('  ✗ vision poll failed');
+    return null;
 };

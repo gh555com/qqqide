@@ -1,48 +1,77 @@
 // ============================================================================
 // ai-gateway.js — 统一 AI 模型调用包装器
 //
-// 铁律：一切 AI 模型调用必须经过此包装器，禁止直接 fetch 第三方 AI 端点。
-// 所有模型名、厂商名、API 端点信息收敛于此文件 + Go 后端，客户端零暴露。
+// 铁律（参见 do/拓扑/铁律 §14b）：
+//   1. 一切 AI 模型调用必须经 AiGateway 走出，禁止直接 fetch 第三方端点
+//   2. 所有模型名/厂商名/API 端点字符串收敛于本文件 + Go 后端，客户端零暴露
+//   3. tier 1-6 数字传参，模型映射由本文件 + Go 双端保障
 //
-// 调用关系：
-//   agent-gateway.js (chat) / tools-exec-effect.js (tools) / agent-vision.js / embedding-service.js
-//     → ai-gateway.js
-//       → fetch(自家 Go 端点) → Go → 第三方模型
+// 使用方式：
+//   AiGateway.chat(body, opts)        → 高层：发消息 + 等 stream 解析结果
+//   AiGateway.chatFetch(body, opts)   → 低层：只管 HTTP fetch，返回 Response
+//   AiGateway.visionSubmit(base64, token, opts) → 提交视觉任务
+//   AiGateway.visionPoll(taskId, token)          → SSE 轮询视觉结果
+//   AiGateway.imageGenSubmit(prompt, opts)       → 提交绘图任务
+//   AiGateway.pollTaskStream(url, token, timeoutMs) → 通用 SSE 轮询
+//   AiGateway.embed(texts, token)     → 向量化
+//   AiGateway.searchWeb(query, token) → 搜索
 //
-// 架构铁律（见 do/拓扑/铁律 §X）：
-//   1. 所有 AI 调用走此包装器，不绕过
-//   2. 不暴露任何模型名、厂商名、API 端点给客户端 JS
-//   3. 统一错误处理、重试、故障切换
+// 无外部依赖（不依赖 system-prompt.js 的 GATEWAY_URL 等常量）
 // ============================================================================
 
 ;(function () {
     'use strict';
 
-    // ═══ 内部常量（不暴露到 window，不给任何外部读取） ═══
-    var _GATEWAY = {
-        chat:        'https://direct.gh555.com:8444/api/v3/ai/chat',
-        chatFallback:'https://gh555.com/api/v3/ai/chat',
-        vision:      'https://direct.gh555.com:8444/api/v3/ai/vision',
-        imageGen:    'https://direct.gh555.com:8444/api/v3/ai/generate-image',
-        embed:       'https://direct.gh555.com:8444/api/v3/ai/embedding',
-        embedFallback:'https://gh555.com/api/v3/ai/embedding',
-        search:      'https://direct.gh555.com:8444/api/v3/search/web',
-        searchFallback:'https://gh555.com/api/v3/search/web',
+    // ════════════════════════════════════════════════════
+    // 内部常量 — 所有 URL 的唯一真理源
+    // 不暴露到 window，不对外读取
+    // ════════════════════════════════════════════════════
+
+    var _URLS = {
+        chatPrimary:    'https://direct.gh555.com:8444/api/v3/ai/chat',
+        chatFallback:   'https://gh555.com/api/v3/ai/chat',
+        vision:         'https://direct.gh555.com:8444/api/v3/ai/vision',
+        imageGen:       'https://direct.gh555.com:8444/api/v3/ai/generate-image',
+        embedPrimary:   'https://direct.gh555.com:8444/api/v3/ai/embedding',
+        embedFallback:  'https://gh555.com/api/v3/ai/embedding',
+        searchPrimary:  'https://direct.gh555.com:8444/api/v3/search/web',
+        searchFallback: 'https://gh555.com/api/v3/search/web',
     };
 
-    // ★ tier 数字 → Go 内部模型名映射（Go 端同步映射，双重保障）
-    // 客户端只传数字 1-6，Go 端做最终映射
+    var _DEFAULT_TIMEOUT = 30000;
+    var _CHAT_TIMEOUT = 600000;
+
+    // ════════════════════════════════════════════════════
+    // 内部工具函数
+    // ════════════════════════════════════════════════════
+
+    // ★ tier 数字 → 客户端 opaque 模型名（Go 端做最终映射）
     function _tierToModel(tier) {
-        var map = { 1: 'fast', 2: 'fast', 3: 'fast', 4: 'deep', 5: 'deep', 6: 'deep' };
-        return map[tier] || 'deep';
+        return (tier >= 4) ? 'deep' : 'fast';
     }
 
-    // ═══ 通用 fetch 带超时 + 重试 ═══
+    // 取 auth token
+    function _getToken() {
+        if (typeof getToken === 'function') return getToken();
+        return '';
+    }
+
+    // fetch 带超时
     function _fetchWithTimeout(url, opts, timeoutMs) {
-        timeoutMs = timeoutMs || 30000;
+        timeoutMs = timeoutMs || _DEFAULT_TIMEOUT;
         var controller = new AbortController();
         var timer = setTimeout(function () { controller.abort(); }, timeoutMs);
-        opts.signal = controller.signal;
+        opts.signal = (function (orig) {
+            // 合并外部 signal（如果有）
+            if (orig) {
+                var parent = orig;
+                var child = controller;
+                parent.addEventListener('abort', function () {
+                    try { child.abort(); } catch (_) {}
+                }, { once: true });
+            }
+            return controller.signal;
+        })(opts.signal);
         return fetch(url, opts).then(function (resp) {
             clearTimeout(timer);
             return resp;
@@ -52,40 +81,113 @@
         });
     }
 
-    // ═══ 双线路故障切换 ═══
-    async function _fetchWithFallback(primaryUrl, fallbackUrl, opts, timeoutMs) {
+    // 双线路故障切换 fetch
+    async function _fetchWithFailover(primaryUrl, fallbackUrl, opts, timeoutMs) {
         try {
             return await _fetchWithTimeout(primaryUrl, opts, timeoutMs);
         } catch (e) {
-            // 主线路失败 → 尝试备用
-            return await _fetchWithTimeout(fallbackUrl, opts, timeoutMs);
+            try {
+                return await _fetchWithTimeout(fallbackUrl, opts, timeoutMs);
+            } catch (e2) {
+                throw e2;
+            }
         }
     }
 
-    // ═══ 从挂载点取 auth token ═══
-    function _getToken() {
-        if (typeof getToken === 'function') return getToken();
-        return '';
+    // 通用 SSE 流轮询（用于 vision/imageGen 异步任务）
+    async function _pollStream(url, token, timeoutMs) {
+        timeoutMs = timeoutMs || 120000;
+        var deadline = Date.now() + timeoutMs;
+        try {
+            var resp = await _fetchWithTimeout(url, {
+                headers: { 'Authorization': 'Bearer ' + token },
+            }, timeoutMs);
+            if (!resp.ok) return null;
+
+            var reader = resp.body.getReader();
+            var decoder = new TextDecoder();
+            var buf = '';
+
+            while (Date.now() < deadline) {
+                var chunk = await reader.read();
+                if (chunk.done) break;
+                buf += decoder.decode(chunk.value, { stream: true });
+
+                var lines = buf.split('\n');
+                buf = lines.pop();
+                for (var li = 0; li < lines.length; li++) {
+                    if (lines[li].startsWith('data: ')) {
+                        try {
+                            var evt = JSON.parse(lines[li].slice(6));
+                            if (evt.status === 'done' || evt.status === 'error') {
+                                reader.cancel();
+                                return evt;
+                            }
+                        } catch (_) {}
+                    }
+                }
+            }
+            reader.cancel();
+            return null;
+        } catch (_) {
+            return null;
+        }
     }
 
 
-    // ════════════════════════════════════════════════
-    // 公有 API — 暴露给外部调用
-    // ════════════════════════════════════════════════
+    // ════════════════════════════════════════════════════
+    // 公有 API
+    // ════════════════════════════════════════════════════
 
     var AiGateway = {
 
-        // ── Chat ──────────────────────────────────
-        // 调用 AI 聊天。返回值由 onDone/onError 回调处理。
-        // opts: { tier, onToken, onReasoning, onDone, onError, noTools, token, images, maxTokens }
+        // ──────────────────────────────────────────────
+        // 【低层】Chat fetch：只管 HTTP，模型映射 + failover + auth
+        // 由 agent-gateway.js _callGateway 调用（它负责重试/切换/stream 消费）
+        //
+        // body: 已组装好的完整请求体（含 messages/tools/stream/thinking 等）
+        //       注意: body.model 会被本函数覆盖（映射为 fast/deep）
+        // opts: { token, signal, tier, isFallback? }
+        // 返回: Promise<Response> 或 reject
+        // ──────────────────────────────────────────────
+        chatFetch: async function (body, opts) {
+            opts = opts || {};
+            var token = opts.token || _getToken();
+            if (!token) throw new Error('No token');
+
+            // ★ 模型映射：客户端只传 fast/deep
+            var tierNum = opts.tier || 6;
+            body.model = _tierToModel(tierNum);
+
+            // ★ 线路选择
+            var isFallback = opts.isFallback || false;
+            var primaryUrl = _URLS.chatPrimary;
+            var fallbackUrl = _URLS.chatFallback;
+            var url = isFallback ? fallbackUrl : primaryUrl;
+
+            var headers = {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token,
+            };
+
+            return _fetchWithTimeout(url, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(body),
+                signal: opts.signal || null,
+            }, _CHAT_TIMEOUT);
+        },
+
+        // ──────────────────────────────────────────────
+        // 【高层】Chat：构建请求体 + 发消息 + 消费 SSE stream
+        // 适用于简单场景（非 agent loop 内部调用）
+        // 返回解析后的响应对象
+        // ──────────────────────────────────────────────
         chat: async function (messages, opts) {
             opts = opts || {};
             var tier = opts.tier || 6;
-            var token = opts.token || _getToken();
-            if (!token) { opts.onError && opts.onError('No token'); return null; }
 
             var body = {
-                model: _tierToModel(tier),
                 messages: messages,
                 stream: true,
                 stream_options: { include_usage: true },
@@ -93,6 +195,8 @@
             };
             if (opts.floorId) body.floor_id = opts.floorId;
             if (opts.houseHint) body.house_hint = opts.houseHint;
+
+            // tools
             if (typeof getTools === 'function') {
                 var tools = getTools();
                 if (tools && tools.length) {
@@ -100,34 +204,29 @@
                     if (opts.noTools) body.tool_choice = 'none';
                 }
             }
+
             // thinking/reasoning_effort
             if (tier >= 4) {
                 body.thinking = { type: 'enabled' };
-                body.reasoning_effort = ['high', 'max'][tier - 4] || 'max';
+                var efforts = ['', 'high', 'max'];
+                body.reasoning_effort = efforts[tier - 3] || 'max';
             } else if (tier >= 2) {
                 body.thinking = { type: 'enabled' };
-                body.reasoning_effort = ['high', 'max'][tier - 2] || 'max';
+                var efforts2 = ['', 'high', 'max'];
+                body.reasoning_effort = efforts2[tier - 1] || 'max';
             } else {
                 body.thinking = { type: 'disabled' };
             }
 
             try {
-                var resp = await _fetchWithFallback(
-                    _GATEWAY.chat, _GATEWAY.chatFallback,
-                    {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                        body: JSON.stringify(body),
-                    },
-                    600000
-                );
+                var resp = await AiGateway.chatFetch(body, opts);
                 if (!resp.ok) {
                     var errText = '';
                     try { errText = await resp.text(); } catch (_) {}
                     opts.onError && opts.onError('HTTP ' + resp.status + ': ' + errText.slice(0, 200));
                     return null;
                 }
-                // 返回 response 流让调用方消费 SSE
+                // 返回 response body（ReadableStream）供调用方消费
                 return resp;
             } catch (err) {
                 opts.onError && opts.onError('Network error: ' + (err.message || err));
@@ -135,50 +234,68 @@
             }
         },
 
-        // ── Vision ────────────────────────────────
-        // 分析图片，返回描述文本。支持多图片并行。
-        vision: async function (images, prompt, opts) {
+        // ──────────────────────────────────────────────
+        // 视觉任务提交（异步：POST → 得 task_id）
+        // ──────────────────────────────────────────────
+        visionSubmit: async function (base64, token, opts) {
             opts = opts || {};
-            var token = opts.token || _getToken();
-            if (!token) return [];
+            token = token || _getToken();
+            if (!token) return null;
 
-            var results = [];
-            for (var i = 0; i < images.length; i++) {
-                var img = images[i];
-                try {
-                    var reqBody = { image: img.base64 };
-                    if (prompt) reqBody.prompt = prompt;
-                    if (opts.floorId) reqBody.floor_id = opts.floorId;
-
-                    var resp = await _fetchWithTimeout(_GATEWAY.vision, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                        body: JSON.stringify(reqBody),
-                    }, 120000);
-
-                    if (resp.ok) {
-                        var data = await resp.json();
-                        if (data.status === 'done') {
-                            results.push({ id: img.id, description: data.description || '' });
-                        } else if (data.task_id) {
-                            // SSE 轮询
-                            var desc = await _pollVisionTask(data.task_id, token);
-                            if (desc) results.push({ id: img.id, description: desc });
-                        }
-                    }
-                } catch (_) {}
-            }
-            return results;
-        },
-
-        // ── Generate Image ────────────────────────
-        generateImage: async function (prompt, opts) {
-            opts = opts || {};
-            var token = opts.token || _getToken();
-            if (!token) return { ok: false, error: 'No token' };
+            var reqBody = { image: base64 };
+            if (opts.prompt) reqBody.prompt = opts.prompt;
+            if (opts.floorId) reqBody.floor_id = opts.floorId;
+            if (opts.summary) reqBody.summary = opts.summary;
 
             try {
-                var resp = await _fetchWithTimeout(_GATEWAY.imageGen, {
+                var resp = await _fetchWithTimeout(_URLS.vision, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify(reqBody),
+                    signal: opts.signal || null,
+                }, 120000);
+
+                if (!resp.ok) return null;
+                var data = await resp.json();
+
+                // 缓存命中 → 直接返回描述
+                if (data.status === 'done') {
+                    return { description: data.description, ge_cost: data.ge_cost || 0 };
+                }
+                if (data.task_id) {
+                    return { task_id: data.task_id };
+                }
+                return null;
+            } catch (_) {
+                return null;
+            }
+        },
+
+        // ──────────────────────────────────────────────
+        // 视觉结果轮询（SSE）：等 AI 分析完返回描述
+        // ──────────────────────────────────────────────
+        visionPoll: async function (taskId, token) {
+            token = token || _getToken();
+            if (!token || !taskId) return null;
+
+            var url = _URLS.vision + '/' + taskId + '/stream';
+            var evt = await _pollStream(url, token, 120000);
+            if (evt && evt.status === 'done') {
+                return { description: evt.description, ge_cost: evt.ge_cost || 0 };
+            }
+            return null;
+        },
+
+        // ──────────────────────────────────────────────
+        // 绘图任务提交
+        // ──────────────────────────────────────────────
+        imageGenSubmit: async function (prompt, opts) {
+            opts = opts || {};
+            var token = opts.token || _getToken();
+            if (!token) return null;
+
+            try {
+                var resp = await _fetchWithTimeout(_URLS.imageGen, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({
@@ -189,62 +306,36 @@
                     }),
                 }, 120000);
 
-                if (!resp.ok) return { ok: false, error: 'HTTP ' + resp.status };
-
+                if (!resp.ok) return null;
                 var data = await resp.json();
-                if (!data.ok || !data.task_id) return { ok: false, error: data.error || 'Unknown error' };
-
-                // 轮询 SSE 结果
-                var result = await _pollImageTask(data.task_id, token);
-                return result || { ok: false, error: 'No result from stream' };
-            } catch (err) {
-                return { ok: false, error: err.message || String(err) };
+                if (!data.ok || !data.task_id) return null;
+                return { task_id: data.task_id };
+            } catch (_) {
+                return null;
             }
         },
 
-        // ── Analyze Image ─────────────────────────
-        analyzeImage: async function (imagePath, action, opts) {
-            opts = opts || {};
-            var token = opts.token || _getToken();
-            if (!token) return { ok: false, error: 'No token' };
+        // ──────────────────────────────────────────────
+        // 绘图结果轮询（SSE）
+        // ──────────────────────────────────────────────
+        imageGenPoll: async function (taskId, token) {
+            token = token || _getToken();
+            if (!token || !taskId) return null;
 
-            try {
-                // 先读本地图片 → base64
-                var bridge = window.parent && window.parent.qqqideBridge;
-                if (!bridge) return { ok: false, error: 'Bridge unavailable' };
-                var base64 = await bridge.fs.readBase64(imagePath);
-                if (!base64) return { ok: false, error: 'Failed to read image' };
-
-                var reqBody = {
-                    image: base64,
-                    action: action || 'describe',
-                };
-                if (opts.detail) reqBody.detail = opts.detail;
-                if (opts.targets) reqBody.targets = opts.targets;
-                if (opts.question) reqBody.question = opts.question;
-
-                var resp = await _fetchWithTimeout(_GATEWAY.vision, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-                    body: JSON.stringify(reqBody),
-                }, 120000);
-
-                if (!resp.ok) return { ok: false, error: 'HTTP ' + resp.status };
-
-                var data = await resp.json();
-                if (data.status === 'done') {
-                    return { ok: true, description: data.description };
-                } else if (data.task_id) {
-                    var desc = await _pollVisionTask(data.task_id, token);
-                    return desc ? { ok: true, description: desc } : { ok: false, error: 'Vision timeout' };
-                }
-                return { ok: false, error: 'Unexpected response' };
-            } catch (err) {
-                return { ok: false, error: err.message || String(err) };
+            var url = _URLS.imageGen + '/' + taskId + '/stream';
+            var evt = await _pollStream(url, token, 180000);
+            if (evt && evt.status === 'done') {
+                return { urls: evt.urls, ge_cost: evt.ge_cost || 0 };
             }
+            if (evt && evt.status === 'error') {
+                return { error: evt.error };
+            }
+            return null;
         },
 
-        // ── Embedding ─────────────────────────────
+        // ──────────────────────────────────────────────
+        // Embedding：文本 → 向量
+        // ──────────────────────────────────────────────
         embed: async function (texts, opts) {
             opts = opts || {};
             var token = opts.token || _getToken();
@@ -257,7 +348,7 @@
             };
             if (opts.floorId) body.floor_id = opts.floorId;
 
-            var resp = await _fetchWithFallback(_GATEWAY.embed, _GATEWAY.embedFallback, {
+            var resp = await _fetchWithFailover(_URLS.embedPrimary, _URLS.embedFallback, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                 body: JSON.stringify(body),
@@ -289,14 +380,16 @@
             };
         },
 
-        // ── Web Search ────────────────────────────
+        // ──────────────────────────────────────────────
+        // Web Search
+        // ──────────────────────────────────────────────
         searchWeb: async function (query, opts) {
             opts = opts || {};
             var token = opts.token || _getToken();
             if (!token) return [];
 
             try {
-                var resp = await _fetchWithFallback(_GATEWAY.search, _GATEWAY.searchFallback, {
+                var resp = await _fetchWithFailover(_URLS.searchPrimary, _URLS.searchFallback, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                     body: JSON.stringify({ query: query, maxResults: opts.maxResults || 20 }),
@@ -309,96 +402,19 @@
                 return [];
             }
         },
+
+        // ──────────────────────────────────────────────
+        // 通用 SSE 流轮询（公共接口）
+        // ──────────────────────────────────────────────
+        pollTaskStream: async function (url, token, timeoutMs) {
+            return _pollStream(url, token, timeoutMs);
+        },
     };
-
-    // ═══ SSE 轮询辅助（vision task） ═══
-    async function _pollVisionTask(taskId, token) {
-        var url = _GATEWAY.vision + '/' + taskId + '/stream';
-        try {
-            var resp = await _fetchWithTimeout(url, {
-                headers: { 'Authorization': 'Bearer ' + token },
-            }, 120000);
-            if (!resp.ok) return null;
-
-            var reader = resp.body.getReader();
-            var decoder = new TextDecoder();
-            var buf = '';
-            var deadline = Date.now() + 120000;
-
-            while (Date.now() < deadline) {
-                var chunk = await reader.read();
-                if (chunk.done) break;
-                buf += decoder.decode(chunk.value, { stream: true });
-
-                var lines = buf.split('\n');
-                buf = lines.pop();
-                for (var li = 0; li < lines.length; li++) {
-                    if (lines[li].startsWith('data: ')) {
-                        try {
-                            var evt = JSON.parse(lines[li].slice(6));
-                            if (evt.status === 'done') {
-                                reader.cancel();
-                                return evt.description || '';
-                            }
-                        } catch (_) {}
-                    }
-                }
-            }
-            reader.cancel();
-            return null;
-        } catch (_) {
-            return null;
-        }
-    }
-
-    // ═══ SSE 轮询辅助（image gen task） ═══
-    async function _pollImageTask(taskId, token) {
-        var url = _GATEWAY.imageGen + '/' + taskId + '/stream';
-        try {
-            var resp = await _fetchWithTimeout(url, {
-                headers: { 'Authorization': 'Bearer ' + token },
-            }, 180000);
-            if (!resp.ok) return null;
-
-            var reader = resp.body.getReader();
-            var decoder = new TextDecoder();
-            var buf = '';
-            var deadline = Date.now() + 180000;
-
-            while (Date.now() < deadline) {
-                var chunk = await reader.read();
-                if (chunk.done) break;
-                buf += decoder.decode(chunk.value, { stream: true });
-
-                var lines = buf.split('\n');
-                buf = lines.pop();
-                for (var li = 0; li < lines.length; li++) {
-                    if (lines[li].startsWith('data: ')) {
-                        try {
-                            var evt = JSON.parse(lines[li].slice(6));
-                            if (evt.status === 'done') {
-                                reader.cancel();
-                                return { ok: true, urls: evt.urls, ge_cost: evt.ge_cost };
-                            }
-                            if (evt.status === 'error') {
-                                reader.cancel();
-                                return { ok: false, error: evt.error };
-                            }
-                        } catch (_) {}
-                    }
-                }
-            }
-            reader.cancel();
-            return null;
-        } catch (_) {
-            return null;
-        }
-    }
 
     // ═══ 暴露到全局 ═══
     window.AiGateway = AiGateway;
 
-    // ═══ 兼容旧引用（逐步迁移） ═══
+    // ═══ 兼容旧引用 ═══
     window._qqqAiGateway = AiGateway;
 
 })();

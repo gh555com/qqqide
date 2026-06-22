@@ -315,49 +315,40 @@ async function executeGenerateImage(args) {
         } catch (_) { }
     }
 
-    // ★ 终极架构    // ★ 全走 Go 代理n = '';
-    try {
-        var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-        if (ag && ag._token) token = ag._token;
-    } catch (_) { }
+    // ★ 经 AiGateway 统一代理
+    var token = (function () {
+        try {
+            var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+            if (ag && ag._token) return ag._token;
+        } catch (_) {}
+        return '';
+    })();
     if (!token) return 'Error: no auth token';
 
-    var IMG_URL = (typeof IMAGE_GEN_URL !== 'undefined') ? IMAGE_GEN_URL : 'https://direct.gh555.com:8444/api/v3/ai/generate-image';
     var outDir = args.out_dir || '';
 
     try {
-        // 1. POST → Go 创建异步绘图任务
-        var postResp = await fetch(IMG_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + token
-            },
-            body: JSON.stringify({
-                prompt: prompt,
-                style: args.style || '',
-                size: args.size || '1024*1024',
-                n: args.n || 1
-            })
+        // 1. 经 AiGateway 创建绘图任务
+        if (typeof AiGateway === 'undefined' || !AiGateway.imageGenSubmit) {
+            return 'Error: AiGateway not available';
+        }
+        var submitResult = await AiGateway.imageGenSubmit(prompt, {
+            style: args.style,
+            size: args.size,
+            n: args.n,
+            token: token
         });
-        if (!postResp.ok) {
-            var errText = '';
-            try { errText = await postResp.text(); } catch (_) { }
-            return 'Image generation failed (HTTP ' + postResp.status + '): ' + errText.slice(0, 300);
-        }
-        var postData = await postResp.json();
-        if (!postData.ok || !postData.task_id) {
-            return 'Image generation failed: ' + (postData.error || 'unknown error');
+        if (!submitResult || !submitResult.task_id) {
+            return 'Image generation failed: could not create task';
         }
 
-        // 2. SSE stream → 等 Go 轮询完返回结果
-        var result = await _waitForTaskStream(IMG_URL + '/' + postData.task_id + '/stream', token);
-        if (!result || result._httpError) {
-            return 'Image generation stream failed (HTTP ' + (result ? result._httpError : '?') + ')';
+        // 2. 经 AiGateway 轮询 SSE 结果
+        var result = await AiGateway.imageGenPoll(submitResult.task_id, token);
+        if (!result) {
+            return 'Image generation failed: no result from stream';
         }
-
-        if (!result || result.status === 'error') {
-            return 'Image generation failed: ' + (result ? result.error : 'no response');
+        if (result.error) {
+            return 'Image generation failed: ' + result.error;
         }
         if (!result.urls || result.urls.length === 0) {
             return 'Image generation failed: no image URLs returned';
@@ -417,15 +408,15 @@ async function executeAnalyzeImage(args) {
 
     var action = args.action || 'describe';
 
-    // ★ 全走 Go 代理
-    var token = '';
-    try {
-        var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-        if (ag && ag._token) token = ag._token;
-    } catch (_) { }
+    // ★ 经 AiGateway 统一代理
+    var token = (function () {
+        try {
+            var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+            if (ag && ag._token) return ag._token;
+        } catch (_) {}
+        return '';
+    })();
     if (!token) return 'Error: no auth token';
-
-    var VIS_URL = (typeof VISION_URL !== 'undefined') ? VISION_URL : 'https://direct.gh555.com:8444/api/v3/ai/vision';
 
     try {
         // 1. 读取图片 → base64
@@ -458,44 +449,39 @@ async function executeAnalyzeImage(args) {
             return 'Error: unknown action: ' + action;
         }
 
-        // 3. POST → Go 创建异步视觉任务
-        var postBody = { image: b64, prompt: question, detail: 'high' };
-        var summary = (action === 'ask' ? question : question.slice(0, 60));
-        if (summary) postBody.summary = summary.slice(0, 200);
-        var postResp = await fetch(VIS_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + token
-            },
-            body: JSON.stringify(postBody)
+        // 3. 经 AiGateway 提交视觉任务
+        if (typeof AiGateway === 'undefined' || !AiGateway.visionSubmit) {
+            return 'Error: AiGateway not available';
+        }
+        var submitResult = await AiGateway.visionSubmit(b64, token, {
+            prompt: question,
+            summary: (action === 'ask' ? question : question.slice(0, 60)),
         });
-        if (!postResp.ok) {
-            var errText = '';
-            try { errText = await postResp.text(); } catch (_) { }
-            return 'Image analysis failed (HTTP ' + postResp.status + '): ' + errText.slice(0, 300);
-        }
-        var postData = await postResp.json();
-        if (!postData.ok || !postData.task_id) {
-            return 'Image analysis failed: ' + (postData.error || 'unknown error');
+        if (!submitResult) {
+            return 'Image analysis failed: could not create task';
         }
 
-        // 4. SSE stream → 等 Go 返回视觉结果
-        var result = await _waitForTaskStream(VIS_URL + '/' + postData.task_id + '/stream', token);
-        if (!result || result._httpError) {
-            return 'Image analysis stream failed (HTTP ' + (result ? result._httpError : '?') + ')';
-        }
+        // 缓存命中
+        var content = submitResult.description || '';
+        if (submitResult.description !== undefined && !submitResult.task_id) {
+            if (submitResult.ge_cost && typeof _addToolGeCost === 'function') {
+                _addToolGeCost(submitResult.ge_cost);
+            }
+            if (!content) return 'Image analysis returned empty result';
+        } else if (submitResult.task_id) {
+            // 4. 经 AiGateway 轮询 SSE 结果
+            var pollResult = await AiGateway.visionPoll(submitResult.task_id, token);
+            if (!pollResult || !pollResult.description) {
+                return 'Image analysis failed: no result from stream';
+            }
+            content = pollResult.description;
 
-        if (!result || result.status === 'error') {
-            return 'Image analysis failed: ' + (result ? result.error : 'no response');
-        }
-
-        var content = result.description || '';
-        if (!content) return 'Image analysis returned empty result';
-
-        // ★ 累加显示用计费（Go 已权威记账，此处仅 UI 展示）
-        if (result.ge_cost && typeof _addToolGeCost === 'function') {
-            _addToolGeCost(result.ge_cost);
+            // ★ 累加显示用计费
+            if (pollResult.ge_cost && typeof _addToolGeCost === 'function') {
+                _addToolGeCost(pollResult.ge_cost);
+            }
+        } else {
+            return 'Image analysis failed: unexpected response';
         }
 
         // 5. 按 action 处理结果
