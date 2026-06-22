@@ -103,8 +103,10 @@ var onlyStore = (function () {
         for (var i = 0; i < dirtyKeys.length; i++) {
           var k = dirtyKeys[i];
           try { await b.setNow(k, _cache[k]); } catch (_) { }
+          // ★ 逐个删除已刷盘的脏键，而非 _dirty = {} 整体清空
+          //   防止 _doFlush 捕获 dirtyKeys 之后又有新 setNow 添加的键被误删
+          delete _dirty[k];
         }
-        _dirty = {};
         _flushFirstDirty = 0;
         if (_onFlushCb) { try { _onFlushCb(dirtyKeys); } catch (_) { } }
       } catch (e) { console.warn('[only-store] flush error:', e); }
