@@ -250,6 +250,7 @@ async function executeRunCommand(args) {
 // ============================================================
 // _waitForTaskStream — SSE stream 等待异步任务完成（generate/vision 共用）
 // ============================================================
+// ★ 已废弃：由 AiGateway.pollTaskStream 替代
 async function _waitForTaskStream(streamUrl, token) {
     var streamResp = await fetch(streamUrl, {
         headers: { 'Authorization': 'Bearer ' + token }
@@ -520,48 +521,31 @@ async function executeAnalyzeImage(args) {
 }
 
 // ============================================================
-// search_web — Go 代理 SearXNG 多引擎搜索（终极架构：全部 AI 过 Go）
+// search_web — 经 AiGateway 统一代理
 // ============================================================
 
 async function executeSearchWeb(args) {
     var query = args.query || '';
     if (!query.trim()) return 'Error: query is required';
 
-    // ★ 终极架构：全部 AI ──▶ Go ──▶ SearXNG(Google+Brave+Wikipedia+Wikidata)
-    var token = '';
-    try {
-        var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-        if (ag && ag._token) token = ag._token;
-    } catch (_) { }
+    // ★ 经 AiGateway 统一代理
+    var token = (function () {
+        try {
+            var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+            if (ag && ag._token) return ag._token;
+        } catch (_) {}
+        return '';
+    })();
     if (!token) return 'Error: no auth token';
 
-    var SEARCH_URL = (typeof SEARCH_WEB_URL !== 'undefined') ? SEARCH_WEB_URL : 'https://direct.gh555.com:8444/api/v3/search/web';
-
     try {
-        var resp = await fetch(SEARCH_URL, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + token
-            },
-            body: JSON.stringify({ query: query })
-        });
-
-        if (!resp.ok) {
-            var errText = '';
-            try { errText = await resp.text(); } catch (_) { }
-
-            // ★ 429 限流 → 明确告知 AI 改用 fetch_webpage / run_command，不要盲重试
-            if (resp.status === 429) {
-                var retrySec = '?';
-                try { var _j = JSON.parse(errText); retrySec = (_j.retry_after || '?'); } catch (_) { }
-                return 'Search rate limited (HTTP 429, retry after ' + retrySec + 's). DO NOT retry search_web — use fetch_webpage to visit specific URLs, or run_command with curl for API calls.';
-            }
-
-            return 'Search failed (HTTP ' + resp.status + '): ' + errText.slice(0, 300);
+        if (typeof AiGateway === 'undefined' || !AiGateway.searchWeb) {
+            return 'Error: AiGateway not available';
         }
-
-        var data = await resp.json();
+        var data = await AiGateway.searchWeb(query, { token: token, maxResults: args.maxResults || 20 });
+        if (!data || data.length === 0) {
+            return 'Search returned no results.';
+        }
         if (!data.ok) {
             return 'Search failed: ' + (data.error || 'unknown error');
         }

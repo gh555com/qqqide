@@ -10,7 +10,7 @@ qqq-shell-v2 架构 — 代码若与此冲突，以本文档为准。
 │ Electron 22.3.27 · Win7+ · frame:false│
 │ 入口: bootstrap.js → main.js          │
 │ 职责: 窗口 + IPC + bridge + 热更新检查 │
-│ 源码: main.ts + 12 子模块 (≤290行/个)  │
+│ 源码: main.ts + 11 子模块 (≤290行/个)  │
 │ 产物: shell-out/ (esbuild ~35ms)      │
 │ 热更: bootstrap 启动时原子替换 shell-out/ │
 └──────────┬───────────────────────────┘

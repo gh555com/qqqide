@@ -27,6 +27,7 @@ import { loadBootConfig, extractFlags, bootSequence, BootMode, BootConfig } from
 import { initZoom, hydrateZoomFromState, saveZoom, zoomFactor, createWindow, _windowProjectMap, _projectWindowMap } from './window-manager';
 import { initAssetProtocol, hydrateAssetRootsFromState } from './asset-protocol';
 import { registerFsIpc } from './ipc-fs';
+import { registerBootIpc } from './ipc-boot';
 import { registerAiToolsIpc } from './ipc-ai-tools';
 import { registerSearchIpc } from './ipc-search';
 import { registerEditIpc } from './ipc-edit';

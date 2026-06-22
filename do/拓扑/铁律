@@ -341,6 +341,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - GATEWAY_URL 唯一声明在 system-prompt.js（全局 const），panel-*.js 禁重复声明。
   - 跨文件前向声明放 panel-state.js 顶部（第一个加载），用 var（安全重复声明）。
   - 加载顺序固定不可调换：state→search→input→render→quest→floor→quest-ui→clock→alltxt→a4→floor-indicator→send。
+  - AI 基础设施加载顺序：content-gateway.js → system-prompt.js → embedding-service.js → ai-gateway.js → tools-defs.js
   - 拆分后全部代码在全局作用域（非 IIFE），变量/函数跨文件可见。
   - 新增文件必须同步更新 index.html <script src> 顺序 + service-worker 缓存版本号。
 

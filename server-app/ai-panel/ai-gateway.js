@@ -386,7 +386,7 @@
         searchWeb: async function (query, opts) {
             opts = opts || {};
             var token = opts.token || _getToken();
-            if (!token) return [];
+            if (!token) return { ok: false, error: 'No token', results: [] };
 
             try {
                 var resp = await _fetchWithFailover(_URLS.searchPrimary, _URLS.searchFallback, {
@@ -395,11 +395,13 @@
                     body: JSON.stringify({ query: query, maxResults: opts.maxResults || 20 }),
                 }, 30000);
 
-                if (!resp || !resp.ok) return [];
+                if (!resp || !resp.ok) {
+                    return { ok: false, error: 'HTTP ' + (resp ? resp.status : '?'), results: [] };
+                }
                 var data = await resp.json();
-                return data.results || [];
-            } catch (_) {
-                return [];
+                return { ok: true, results: data.results || [], ge_cost: data.ge_cost || 0 };
+            } catch (err) {
+                return { ok: false, error: err.message || 'Network error', results: [] };
             }
         },
 

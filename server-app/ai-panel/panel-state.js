@@ -112,7 +112,6 @@ function _getDefaultTier() {
     } catch (_) { }
     return 6;
 }
-}
 
 var _panelFocused = false;  // 当前面板是否获得焦点（金光边框 + 快捷键激活）
 

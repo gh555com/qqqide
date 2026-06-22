@@ -12,6 +12,25 @@ import { spawnSync } from 'child_process';
 import { BrowserWindow } from 'electron';
 
 // ----------------------------------------------------------------------------
+// Boot file log — 启动日志落地到 cache/boot.log，诊断连接失败
+// ----------------------------------------------------------------------------
+let _bootLogPath: string | null = null;
+function bootLog(msg: string) {
+    if (!_bootLogPath) { return; }
+    const ts = new Date().toISOString();
+    try {
+        fs.appendFileSync(_bootLogPath, `[${ts}] ${msg}\n`);
+    } catch (_) { }
+}
+function initBootLog(logsDir: string) {
+    try { fs.mkdirSync(logsDir, { recursive: true }); } catch (_) { }
+    _bootLogPath = path.join(logsDir, 'boot.log');
+    bootLog('=== qqqide boot start ===');
+    bootLog('version: ' + APP_VERSION);
+    bootLog('platform: ' + os.platform() + ' ' + os.release());
+}
+
+// ----------------------------------------------------------------------------
 // Constants
 // ----------------------------------------------------------------------------
 export const APP_VERSION = '0.0.2';
@@ -71,13 +90,15 @@ export function extractFlags(): { isOffline: boolean; isDev: boolean } {
 // Health check
 // ----------------------------------------------------------------------------
 export function healthCheck(urlStr: string, timeoutMs: number, isOffline: boolean): Promise<boolean> {
+    bootLog('health: check ' + urlStr);
     return new Promise(resolve => {
-        if (isOffline) { return resolve(false); }
+        if (isOffline) { bootLog('health: SKIP (offline mode)'); return resolve(false); }
         let healthUrl: string;
         try {
             const u = new URL('health', urlStr.endsWith('/') ? urlStr : urlStr + '/');
             healthUrl = u.toString();
         } catch {
+            bootLog('health: FAIL — bad URL');
             return resolve(false);
         }
         const lib = healthUrl.startsWith('https') ? https : http;
@@ -86,10 +107,11 @@ export function healthCheck(urlStr: string, timeoutMs: number, isOffline: boolea
         const req = lib.get(healthUrl, opts, res => {
             const ok = !!(res.statusCode && res.statusCode >= 200 && res.statusCode < 400);
             res.resume();
+            bootLog('health: ' + (ok ? 'OK ' + res.statusCode : 'FAIL status=' + res.statusCode));
             resolve(ok);
         });
-        req.on('error', () => resolve(false));
-        req.on('timeout', () => { req.destroy(); resolve(false); });
+        req.on('error', (err) => { bootLog('health: FAIL — ' + (err && (err as any).message || String(err))); resolve(false); });
+        req.on('timeout', () => { bootLog('health: FAIL — timeout ' + timeoutMs + 'ms'); req.destroy(); resolve(false); });
     });
 }
 
@@ -238,7 +260,7 @@ export async function loadStaticFallback(
     reason: string
 ): Promise<BootMode> {
     if (!mainWindow) { return 'fallback'; }
-    console.warn('[boot] static fallback:', reason);
+    bootLog('fallback: reason=' + reason);
     const candidates = [
         path.join(__dirname, '..', 'shell', 'boot-fallback.html'),
         path.join(__dirname, 'boot-fallback.html'),
@@ -256,17 +278,22 @@ export async function loadStaticFallback(
 
 export async function loadRemoteWithCacheGuard(
     mainWindow: BrowserWindow | null,
-    bootConfig: BootConfig
+    bootConfig: BootConfig,
+    timeoutMs: number = 0
 ): Promise<{ ok: boolean; mode: BootMode }> {
-    if (!mainWindow) { return { ok: false, mode: 'fallback' }; }
+    if (!mainWindow) { bootLog('remote: no window'); return { ok: false, mode: 'fallback' }; }
+    bootLog('remote: loading ' + bootConfig.url + (timeoutMs > 0 ? ' timeout=' + timeoutMs + 'ms' : ''));
     const wc = mainWindow.webContents;
     return new Promise<{ ok: boolean; mode: BootMode }>(resolve => {
         let settled = false;
+        let timeoutTimer: NodeJS.Timeout | null = null;
         const finish = (ok: boolean, mode: BootMode) => {
             if (settled) { return; }
             settled = true;
+            if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = null; }
             wc.removeListener('did-finish-load', onFinish);
             wc.removeListener('did-fail-load', onFail);
+            bootLog('remote: ' + (ok ? 'LOADED' : 'FAILED') + ' mode=' + mode);
             resolve({ ok, mode });
         };
         const onFinish = () => {
@@ -274,13 +301,19 @@ export async function loadRemoteWithCacheGuard(
         };
         const onFail = (_e: any, code: number, desc: string, validatedURL: string, isMain: boolean) => {
             if (!isMain) { return; }
-            console.warn('[boot] did-fail-load', code, desc, validatedURL);
+            bootLog('remote: did-fail-load code=' + code + ' desc=' + desc + ' url=' + validatedURL);
             finish(false, 'fallback');
         };
+        if (timeoutMs > 0) {
+            timeoutTimer = setTimeout(() => {
+                bootLog('remote: TIMEOUT after ' + timeoutMs + 'ms');
+                finish(false, 'fallback');
+            }, timeoutMs);
+        }
         wc.on('did-finish-load', onFinish);
         wc.on('did-fail-load', onFail);
         mainWindow!.loadURL(bootConfig.url).catch(err => {
-            console.warn('[boot] loadURL threw:', err && (err as Error).message);
+            bootLog('remote: loadURL error — ' + (err && (err as Error).message || String(err)));
             finish(false, 'fallback');
         });
     });
@@ -299,27 +332,40 @@ export async function bootSequence(
     setLastBootMode: (m: BootMode) => void,
     getLastBootMode: () => BootMode,
 ): Promise<void> {
-    // Check for shell-code hot-update (non-blocking)
+    // 0) Init boot file log for diagnostics
+    initBootLog(path.join(portableRoot, 'logs'));
+    bootLog('url: ' + bootConfig.url);
+
+    // 1) Show fallback IMMEDIATELY → 窗口在 <1s 内弹出，用户看到"连接中…"
+    await loadStaticFallback(mainWindow, bootConfig, portableRoot, 'connecting');
+
+    // 2) Check for shell-code hot-update (non-blocking)
     checkAndDownloadShellUpdate(bootConfig, portableCache, isDev, isOffline).then(updated => {
         if (updated) {
             console.log('[boot] shell update staged — will apply on next restart');
         }
     }).catch(() => { });
 
+    // 3) Health check (fast, 3s timeout)
     const healthy = await healthCheck(bootConfig.url, bootConfig.healthTimeoutMs, isOffline);
     if (healthy) {
-        console.log('[boot] server OK ->', bootConfig.url);
+        bootLog('seq: server OK');
     } else {
-        console.warn('[boot] server unreachable; relying on PWA cache (if any)');
+        bootLog('seq: server unreachable');
     }
-    const { ok, mode } = await loadRemoteWithCacheGuard(mainWindow, bootConfig);
-    if (!ok) {
-        const m = await loadStaticFallback(mainWindow, bootConfig, portableRoot, healthy ? 'load-failed' : 'no-network-no-cache');
-        setLastBootMode(m);
-    } else if (!healthy) {
-        setLastBootMode('cache');
-        console.log('[boot] served from PWA cache');
-    } else {
+
+    // 4) Try remote with 15s timeout
+    //    loadURL() 会自动替换当前 fallback 页面，用户无缝过渡到正式应用
+    const REMOTE_TIMEOUT_MS = 15000;
+    const { ok, mode } = await loadRemoteWithCacheGuard(mainWindow, bootConfig, REMOTE_TIMEOUT_MS);
+    if (ok) {
+        bootLog('seq: remote OK, boot complete');
         setLastBootMode(mode);
+    } else {
+        // Reload fallback with actual error reason (was 'connecting' before)
+        const reason = healthy ? 'load-failed' : 'no-network-no-cache';
+        bootLog('seq: FAILED — staying on fallback, reason=' + reason);
+        await loadStaticFallback(mainWindow, bootConfig, portableRoot, reason);
+        setLastBootMode('fallback');
     }
 }

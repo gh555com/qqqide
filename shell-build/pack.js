@@ -103,7 +103,7 @@ async function manualAssemble() {
     }
   } else if (target.startsWith('win-')) {
     const src = path.join(unpacked, 'electron.exe');
-    const dst = path.join(unpacked, 'qqqide.exe');
+    const dst = path.join(unpacked, 'qqqide-core.exe');
     if (fs.existsSync(src)) { fs.renameSync(src, dst); }
   } else if (target.startsWith('linux-')) {
     const src = path.join(unpacked, 'electron');
@@ -166,6 +166,7 @@ function isUnpackedComplete(unpacked) {
   // a complete unpacked tree has the electron binary at the root
   if (target.startsWith('win-')) {
     return fs.existsSync(path.join(unpacked, 'qqqide.exe')) ||
+      fs.existsSync(path.join(unpacked, 'qqqide-core.exe')) ||
       fs.existsSync(path.join(unpacked, 'electron.exe'));
   }
   if (target.startsWith('linux-')) {
@@ -279,11 +280,11 @@ async function repairUnpacked(unpacked) {
     }
   }
 
-  // rename binary to qqqide
+  // rename binary to qqqide-core
   if (target.startsWith('win-')) {
     const src = path.join(unpacked, 'electron.exe');
-    const dst = path.join(unpacked, 'qqqide.exe');
-    if (fs.existsSync(src)) { fs.renameSync(src, dst); console.log('[pack] renamed electron.exe -> qqqide.exe'); }
+    const dst = path.join(unpacked, 'qqqide-core.exe');
+    if (fs.existsSync(src)) { fs.renameSync(src, dst); console.log('[pack] renamed electron.exe -> qqqide-core.exe'); }
   } else if (target.startsWith('linux-')) {
     const src = path.join(unpacked, 'electron');
     const dst = path.join(unpacked, 'qqqide');
@@ -323,6 +324,80 @@ function injectRootConfig(unpacked) {
   }
 }
 
+// 3.6) inject native launcher (win only) — replaces qqqide.exe with the fast C splash, renames real Electron to qqqide-core.exe
+function injectLauncher(unpacked) {
+  if (!target.startsWith('win-')) { return; }
+  const launcherSrc = path.join(ROOT, 'launcher', 'qqqide.exe');
+  if (!fs.existsSync(launcherSrc)) {
+    console.warn('[pack] launcher binary not found, skipping:', launcherSrc);
+    return;
+  }
+  const electronExe = path.join(unpacked, 'qqqide.exe');
+  const coreExe = path.join(unpacked, 'qqqide-core.exe');
+  // rename Electron binary -> qqqide-core.exe
+  if (fs.existsSync(electronExe) && !fs.existsSync(coreExe)) {
+    fs.renameSync(electronExe, coreExe);
+    console.log('[pack] renamed qqqide.exe -> qqqide-core.exe');
+  }
+  // copy launcher as qqqide.exe
+  fs.cpSync(launcherSrc, electronExe, { force: true });
+  console.log('[pack] injected launcher -> qqqide.exe (' + fs.statSync(launcherSrc).size + 'B)');
+}
+
+// 3.7) prune unnecessary Electron baggage — slim the unpacked tree
+function pruneElectron(unpacked) {
+  if (!target.startsWith('win-')) { return; }
+
+  // ── 法律文件（可删除或替换） ──
+  const legalFiles = [
+    'LICENSES.chromium.html',   // 6.5MB — Chromium 第三方许可，对最终用户无用
+    'LICENSE.electron.txt',     // 1KB — Electron 许可，应被自有许可替代
+  ];
+  for (const f of legalFiles) {
+    const p = path.join(unpacked, f);
+    if (fs.existsSync(p)) {
+      fs.rmSync(p);
+      console.log('[pack] pruned', f);
+    }
+  }
+
+  // 替换为项目自有许可
+  const projLicense = path.join(ROOT, 'LICENSE');
+  if (fs.existsSync(projLicense) && fs.statSync(projLicense).size > 100) {
+    fs.cpSync(projLicense, path.join(unpacked, 'LICENSE'), { force: true });
+    console.log('[pack] injected LICENSE');
+  }
+
+  // ── 只保留中英文语言包（55→2，省~25MB） ──
+  const locDir = path.join(unpacked, 'locales');
+  if (fs.existsSync(locDir)) {
+    const keep = new Set(['en-US.pak', 'zh-CN.pak']);
+    for (const f of fs.readdirSync(locDir)) {
+      if (!keep.has(f)) {
+        fs.rmSync(path.join(locDir, f));
+      }
+    }
+    console.log('[pack] pruned locales -> en-US + zh-CN only');
+  }
+
+  // ── 不必要 DLL ──
+  // vk_swiftshader* : 软件 Vulkan 回退，有 D3D/ANGLE 兜底，安全删除省 5MB
+  // vulkan-1.dll    : Vulkan Loader，非必要
+  const delDlls = [
+    'vk_swiftshader.dll',
+    'vk_swiftshader_icd.json',
+    'vulkan-1.dll',
+  ];
+  for (const f of delDlls) {
+    const p = path.join(unpacked, f);
+    if (fs.existsSync(p)) {
+      const sz = fs.statSync(p).size;
+      fs.rmSync(p);
+      console.log('[pack] pruned', f, '(' + Math.round(sz / 1024) + 'KB)');
+    }
+  }
+}
+
 // 4) compress
 function packDir(unpacked) {
   const distRoot = path.join(ROOT, 'dist-pack');
@@ -332,8 +407,26 @@ function packDir(unpacked) {
   console.log('[pack] zipping', path.basename(unpacked), '->', out);
   if (cfg.tarExt === '.zip') {
     if (process.platform === 'win32') {
-      run('powershell', ['-NoProfile', '-Command',
-        `Compress-Archive -Path '${unpacked}\\*' -DestinationPath '${out}' -Force`]);
+      // Python zipfile 比 PowerShell Compress-Archive 可靠得多（PS 经常生成损坏 zip）
+      // 写临时脚本避免多行 shell 转义问题
+      const scriptPath = path.join(ROOT, 'shell-build', '_zip_worker.py');
+      const script = `import zipfile, os
+srcdir = r'${unpacked.replace(/\\/g, '\\\\')}'
+out = r'${out.replace(/\\/g, '\\\\')}'
+with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED, allowZip64=True) as z:
+    for root, dirs, files in os.walk(srcdir):
+        for f in files:
+            fp = os.path.join(root, f)
+            arc = os.path.relpath(fp, srcdir)
+            z.write(fp, arc)
+print('[pack] python zip done:', out)
+`;
+      fs.writeFileSync(scriptPath, script, 'utf8');
+      try {
+        run('python', [scriptPath]);
+      } finally {
+        try { fs.rmSync(scriptPath); } catch (_) { }
+      }
     } else {
       run('zip', ['-r', '-9', out, '.'], { cwd: unpacked });
     }
@@ -364,6 +457,8 @@ function packDir(unpacked) {
     }
   }
   injectRootConfig(unpacked);
+  injectLauncher(unpacked);
+  pruneElectron(unpacked);
   packDir(unpacked);
   console.log('[pack] done. output -> dist-pack/');
   console.log('[pack] win-unpacked/ kept as ready-to-run environment (same as zip)');

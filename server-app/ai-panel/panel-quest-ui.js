@@ -426,8 +426,6 @@ function _estimateTokensFull() {
     ];
     _estCache = { val: total, convLen: conv.length, ctxHash: ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '' };
     return total;
-}ength : 0)) : '' };
-    return total;
 }
 
 // ═══ 上下文占用拆解面板（hover ctx-btn 弹出） ═══

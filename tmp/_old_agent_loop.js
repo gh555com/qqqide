@@ -21,7 +21,7 @@
 // ---- 依赖：由 index.html 中的 <script> 标签加载顺序保证 ----
 // system-prompt.js  → GATEWAY_URL, SYSTEM_PROMPT, TIER_PRO
 // tools.js          → TOOL_DEFINITIONS, TOOL_CATEGORY, executeTool, getTools
-// agent-envelope.js → _utf8Trunc, EnvelopeStripper
+// agent-envelope.js → _utf8Trunc, _makeSummaryHint, EnvelopeStripper
 //
 // ★ 已拆分模块（2026-06 重构）：
 //   agent-envelope.js — 信封剥离 + UTF-8 截断
@@ -108,9 +108,6 @@ var AgentLoop = (function () {
         // 持久化 rules 注入（永不压缩，版本追踪）
         this._persistentCount = 0;
         this._rulesVersion = '';
-        // ★ 不可变楼层元数据（铁律：保存/恢复都用此信息，不依赖 _ctx.totalFloors 推导）
-        this._currentFloorNum = null;
-        this._floorMeta = {};
         // 引导注入（不中断楼层，立即让 AI 回复确认）
         this._guidePending = false;
         this._guideMessage = '';
@@ -125,12 +122,12 @@ var AgentLoop = (function () {
         this._stopCtrl = null;          // AbortController（仅用户 Stop 时 abort，永不重建）
         this._stopState = 'idle';       // 'idle' | 'sending' | 'stopping'
         // ★ 错误诊断探针（用于构建"继续"消息中的中断原因）
-        this._exitReason = '';           // 'ok'|'http_502'|'http_503'|'http_429'|'http_402'|'fetch_error'|'watchdog_stream'|'deadline'|'max_iter'|'unknown'
+        this._exitReason = '';           // 'ok'|'http_502'|'http_503'|'http_429'|'http_402'|'fetch_error'|'watchdog_stream'|'watchdog_output'|'deadline'|'max_iter'|'unknown'
         this._lastHttpStatus = 0;        // 最后一次 HTTP 状态码
         this._lastFetchError = '';       // 最后一次 fetch 错误消息
         this._lastSseError = '';         // 最后一次 SSE 服务端错误
         this._lastGatewayMessage = '';   // ★ 延迟报错消息（_callGateway 设，agent loop 读）
-        this._abortSource = '';          // 'stream_watchdog'|'fetch_deadline'|'user_kill'|'guide'|''
+        this._abortSource = '';          // 'stream_watchdog'|'output_watchdog'|'fetch_deadline'|'user_kill'|'guide'|''
         // ★ 记账埋点：完整 billing 追踪（per-house 粒度）
         this._lastBilling = null;        // { geCost, model, usage: {prompt_tokens,completion_tokens,cached_tokens,non_cached_tokens}, freeWindow, requestId }
         this._billingSeq = 0;            // 全局 billing 事件序号（跨 floor 递增）
@@ -186,6 +183,7 @@ var AgentLoop = (function () {
                 parts.push('Network request failed: ' + _fe);
                 break;
             case 'watchdog_stream': parts.push('SSE流90秒无数据(连接假死)'); break;
+            case 'watchdog_output': parts.push('AI超过10分钟无产出(可能陷入循环)'); break;
             case 'deadline': parts.push('请求90秒无响应(超时)'); break;
             case 'max_iter': parts.push('达到最大迭代次数(200)'); break;
             default:
@@ -301,7 +299,7 @@ var AgentLoop = (function () {
         self._floorStartServerMs = self._floorTiming.floorStartServerMs;  // 兼容旧引用
 
         // ═══ 视觉预分析：图像 → 文本 → 推理 ═══
-        // 将用户问题一并发送，让模型针对实际问题做定向识别
+        // 将用户问题一并发送，让阿里针对实际问题做定向识别
         var visionText = '';
         var _visionStart = performance.now();
         if (images && images.length > 0) {
@@ -418,7 +416,7 @@ var AgentLoop = (function () {
                         if (!_cleanAck || _cleanAck.length < 3) _cleanAck = 'Guide received';
                         self.conversation.push({ role: 'assistant', content: _cleanAck, _guideAck: true, _guideText: _guideText, _floor: self._ctx.totalFloors });
                         // 归档
-                        self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString() });
+                        self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], summary: '', ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString() });
                         // ★ 更新绿条标记：两行格式，✅ 已收到引导 / 确认内容
                         var _aiDiv2 = self._activeAiDiv;
                         var _esc = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
@@ -435,7 +433,7 @@ var AgentLoop = (function () {
                             _ackEl.innerHTML = '<div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> Guide received</div><div class="msg-flow-guide-ack-body">' + _esc(_ackDisplay) + '</div>';
                             _aiDiv2._contentWrap.appendChild(_ackEl);
                         }
-                        if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty(self);
+                        if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                         self._log('✅ guide ack: ' + _ackResp.content.slice(0, 120));
                     } else if (_ackResp && _ackResp.type === 'tool_calls') {
                         // 引导回合 AI 返回工具调用（noTools=true 下不应发生）
@@ -483,7 +481,7 @@ var AgentLoop = (function () {
                 // ═══ 压缩守护：每间 house 前检查，超阈值则阻塞压缩 ═══
                 if (!self._compressing && !self._compressAttemptedThisFloor) {
                     var _apiTokens = self._lastApiTotalTokens || self._lastApiPromptTokens || 0;
-                    var _threshold = (typeof ContentGateway !== 'undefined') ? ContentGateway.COMPRESS_THRESHOLD : 200000;
+                    var _threshold = (typeof ContentGateway !== 'undefined') ? ContentGateway.COMPRESS_THRESHOLD : 900000;
                     if (_apiTokens === 0 || _apiTokens <= _threshold) { /* skip */ }
                     else {
                         self._compressAttemptedThisFloor = true;
@@ -592,8 +590,8 @@ var AgentLoop = (function () {
                     }
                     var _bill = self._lastBilling; self._lastBilling = null;
                     var _cd = self._lastCacheDiag; self._lastCacheDiag = null;
-                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', geCost: _bill ? _bill.geCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined });
-                    if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty(self);
+                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', geCost: _bill ? _bill.geCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined });
+                    if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
                     // 替换之前因切换 quest 而保存的截断消息，避免重复
                     var _lastConv = self.conversation[self.conversation.length - 1];
@@ -619,7 +617,7 @@ var AgentLoop = (function () {
                     var _tools = response.tool_calls.map(function (tc) {
                         var _name = tc.function.name;
                         if (typeof tc.function.arguments !== 'string') return { name: _name, args: tc.function.arguments };
-                        // ★ 安全解析：偶发生成畸形 JSON，容错处理
+                        // ★ 安全解析：DeepSeek 偶发生成畸形 JSON，容错处理
                         try { return { name: _name, args: JSON.parse(tc.function.arguments) }; } catch (_e1) {
                             // L1: 去末尾逗号（},] 前的逗号是 JSON 语法错误，去掉不改语义）
                             try {
@@ -634,22 +632,8 @@ var AgentLoop = (function () {
                     });
                     var _bill2 = self._lastBilling; self._lastBilling = null;
                     var _cd2 = self._lastCacheDiag; self._lastCacheDiag = null;
-                    self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', geCost: _bill2 ? _bill2.geCost : 0, model: _bill2 ? _bill2.model : '', cacheHitRate: _bill2 ? _bill2.cacheHitRate : -1, usage: _bill2 ? _bill2.usage : null, billingSeq: _bill2 ? _bill2.seq : 0, billingRequestId: _bill2 ? _bill2.requestId : '', cacheDiag: _cd2 || undefined });
-                    if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty(self);
-                    // ★ per-house ge display: 每间 house 即时更新右下角费用时更新右下角费用（纯 DOM，零服务器压力）
-                    var _aiDiv5 = self._activeAiDiv;
-                    if (_aiDiv5 && _aiDiv5._clockCost) {
-                        var _rawGe5 = self._floorCostWge / 10000;
-                        var _displayGe5 = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe5) : _rawGe5.toFixed(2);
-                        _aiDiv5._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe5) : _rawGe5.toFixed(4);
-                        _aiDiv5._clockCost.textContent = _displayGe5 + ' ge' + (self._floorFree ? ' Free' : '');
-                        _aiDiv5._clockCost.style.display = 'inline';
-                        if (self._floorFree) {
-                            _aiDiv5._clockCost.style.color = '#859900';
-                        } else {
-                            _aiDiv5._clockCost.style.color = '';
-                        }
-                    }
+                    self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], summary: '', ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', geCost: _bill2 ? _bill2.geCost : 0, model: _bill2 ? _bill2.model : '', cacheHitRate: _bill2 ? _bill2.cacheHitRate : -1, usage: _bill2 ? _bill2.usage : null, billingSeq: _bill2 ? _bill2.seq : 0, billingRequestId: _bill2 ? _bill2.requestId : '', cacheDiag: _cd2 || undefined });
+                    if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     var assistantToolMsg = {
                         role: 'assistant', content: '',
                         tool_calls: response.tool_calls,
@@ -704,9 +688,7 @@ var AgentLoop = (function () {
                             }
                         }
                     }
-                }
-                continue;  // 工具执行完毕，回到 while 循环顶部进入下一间 house
-                // 不中断，给用户一个可读的结束
+ → 不中断，给用户一个可读的结束
                 var _utype = (response && response.type);
                 var _uusage = (response && response._usage);
                 var _umsg = '⚠ unexpected response type: ' + _utype + ' _usage=' + (_uusage ? JSON.stringify({ prompt: _uusage.prompt_tokens, total: _uusage.total_tokens, completion: _uusage.completion_tokens }) : 'null');
@@ -742,7 +724,7 @@ var AgentLoop = (function () {
                     var _bill3 = self._lastBilling; self._lastBilling = null;
                     var _cd3 = self._lastCacheDiag; self._lastCacheDiag = null;
                     self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ts: new Date().toISOString(), ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '', geCost: _bill3 ? _bill3.geCost : 0, model: _bill3 ? _bill3.model : '', cacheHitRate: _bill3 ? _bill3.cacheHitRate : -1, usage: _bill3 ? _bill3.usage : null, billingSeq: _bill3 ? _bill3.seq : 0, billingRequestId: _bill3 ? _bill3.requestId : '', cacheDiag: _cd3 || undefined });
-                    if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty(self);
+                    if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty();
                     if (finalResp._ttfbMs !== undefined) {
                         self._floorTiming.networkMs += finalResp._ttfbMs;
                         self._floorTiming.aiMs += finalResp._streamMs;

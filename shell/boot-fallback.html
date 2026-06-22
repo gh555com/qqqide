@@ -36,27 +36,42 @@
   .countdown { color: #859900; font-weight: 600; }
   .status { margin-top: 12px; min-height: 18px; font-size: 12px; color: #859900; }
   .status.err { color: #dc322f; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .connecting-msg::after { content:'…'; animation:pulse 1.2s steps(4) infinite; display:inline-block; }
 </style>
 </head>
 <body>
 <div class="box">
   <h1>qqq-shell offline</h1>
-  <p>无法连接服务器，可能网络中断或服务器未就绪。</p>
+  <p id="msg">无法连接服务器，可能网络中断或服务器未就绪。</p>
   <p class="url" id="url"></p>
-  <p class="reason" id="reason"></p>
-  <p>将在 <span class="countdown" id="cd">10</span> 秒后自动重试…</p>
-  <div class="row">
+  <p class="reason" id="reason" style="display:none"></p>
+  <p id="countdown-row">将在 <span class="countdown" id="cd">10</span> 秒后自动重试…</p>
+  <div class="row" id="retry-row">
     <button id="btn-retry">立即重试</button>
     <button class="secondary" id="btn-pause">暂停自动重试</button>
   </div>
   <p class="status" id="status"></p>
-  <p class="small">壳保持便携模式。所有数据仅写入应用目录。</p>
+  <p class="small" id="small-hint">壳保持便携模式。所有数据仅写入应用目录。</p>
 </div>
 <script>
   (function () {
     const params = new URLSearchParams(location.search);
     document.getElementById('url').textContent = params.get('url') || '';
     const reason = params.get('reason') || '';
+
+    // ── 连接中（首次加载、无错误） ──
+    if (!reason || reason === 'connecting') {
+      document.getElementById('msg').textContent = '正在连接服务器';
+      document.getElementById('msg').className = 'connecting-msg';
+      document.getElementById('reason').style.display = 'none';
+      document.getElementById('retry-row').style.display = 'none';
+      document.getElementById('countdown-row').style.display = 'none';
+      document.getElementById('small-hint').style.display = 'none';
+      return;
+    }
+
+    // ── 错误状态 ──
     if (reason) {
       document.getElementById('reason').textContent = '原因：' + reason;
     }

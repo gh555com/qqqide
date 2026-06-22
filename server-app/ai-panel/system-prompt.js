@@ -3,12 +3,14 @@
 // 从 q3/ai/src/prompt.js 移植，适配 Shell v2 Electron 环境
 // ============================================================================
 
-const GATEWAY_URL_PRIMARY = 'https://direct.gh555.com:8444/api/v3/ai/chat';  // ★ 直连 HTTP/1.1 主线
-const GATEWAY_URL_FALLBACK = 'https://gh555.com/api/v3/ai/chat';              // CF Worker 备用
+// ★ GATEWAY_URL — 保留向后兼容，实际 fetch 已全部经 AiGateway 统一代理
+//    AiGateway 内部持有 URL 唯一真理（ai-gateway.js）
+const GATEWAY_URL_PRIMARY = 'https://direct.gh555.com:8444/api/v3/ai/chat';
+const GATEWAY_URL_FALLBACK = 'https://gh555.com/api/v3/ai/chat';
 var GATEWAY_URL = GATEWAY_URL_PRIMARY;
-var _gwUsingFallback = false;          // 当前是否在备用线路
-var _gwFallbackAt = 0;                 // 切到备用线路的时间戳
-var _GW_FALLBACK_RETRY_MS = 5 * 60 * 1000;  // 5 分钟后尝试切回主线路
+var _gwUsingFallback = false;
+var _gwFallbackAt = 0;
+var _GW_FALLBACK_RETRY_MS = 5 * 60 * 1000;
 
 // 切线路 + qoast 提示
 function _gwSwitch(toFallback) {
@@ -23,7 +25,6 @@ function _gwSwitch(toFallback) {
             { type: toFallback ? 'warning' : 'success' }
         );
     } catch (_) { }
-    // ★ 通知父窗口状态栏色点
     try {
         window.parent && window.parent.postMessage({
             type: 'qqq-gw-status',
@@ -34,24 +35,20 @@ function _gwSwitch(toFallback) {
     } catch (_) { }
 }
 
-// 本次请求是否应该尝试主线路（已在备用超过 5 分钟）
 function _gwTryPrimary() {
     if (!_gwUsingFallback) return false;
     if (Date.now() - _gwFallbackAt < _GW_FALLBACK_RETRY_MS) return false;
-    // 临时切到主线路，不触发 qoast（成功了才切）
     GATEWAY_URL = GATEWAY_URL_PRIMARY;
     return true;
 }
 
-// 尝试主线路失败 → 无声退回备用
 function _gwPrimaryFailed() {
     if (_gwUsingFallback) {
         GATEWAY_URL = GATEWAY_URL_FALLBACK;
-        _gwFallbackAt = Date.now();  // 重置计时器
+        _gwFallbackAt = Date.now();
     }
 }
 
-// ★ 广播：备用线路不可达（通知兄弟面板不要切过来）
 function _gwBroadcastDeadFallback() {
     try {
         window.parent && window.parent.postMessage({
@@ -64,8 +61,7 @@ function _gwBroadcastDeadFallback() {
     } catch (_) { }
 }
 
-// ★ 工具计费累加：Python 脚本返回 ge_cost → 计入当前楼层
-// 由 tools.js 在 executeGenerateImage / executeAnalyzeImage 中调用
+// ★ 工具计费累加（Ge 累计）
 function _addToolGeCost(geCost) {
     if (!geCost || geCost <= 0) return;
     try {
@@ -76,6 +72,8 @@ function _addToolGeCost(geCost) {
     } catch (_) { }
 }
 
+// ★ VISION_URL / IMAGE_GEN_URL / SEARCH_WEB_URL — 保留向后兼容
+//    实际调用已经 AiGateway 统一代理
 const VISION_URL = 'https://direct.gh555.com:8444/api/v3/ai/vision';
 const IMAGE_GEN_URL = 'https://direct.gh555.com:8444/api/v3/ai/generate-image';
 const SEARCH_WEB_URL = 'https://direct.gh555.com:8444/api/v3/search/web';
