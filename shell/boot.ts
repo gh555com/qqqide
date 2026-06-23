@@ -11,6 +11,10 @@ import { URL } from 'url';
 import { spawnSync } from 'child_process';
 import { BrowserWindow } from 'electron';
 
+// ── 全局启动锁：一旦 bootSequence 成功完成，绝不允许 fallback 再入侵窗口 ──
+let bootCompleted = false;
+export function isBootCompleted(): boolean { return bootCompleted; }
+
 // ----------------------------------------------------------------------------
 // Boot file log — 启动日志落地到 cache/boot.log，诊断连接失败
 // ----------------------------------------------------------------------------
@@ -260,6 +264,11 @@ export async function loadStaticFallback(
     reason: string
 ): Promise<BootMode> {
     if (!mainWindow) { return 'fallback'; }
+    // ★ 启动已完成 → 绝不覆盖已运行的 IDE
+    if (bootCompleted) {
+        bootLog('fallback: BLOCKED — boot already completed, refusing to replace IDE');
+        return 'fallback';
+    }
     bootLog('fallback: reason=' + reason);
     const candidates = [
         path.join(__dirname, '..', 'shell', 'boot-fallback.html'),
@@ -268,11 +277,17 @@ export async function loadStaticFallback(
     ];
     for (const p of candidates) {
         if (fs.existsSync(p)) {
-            await mainWindow.loadFile(p, { query: { url: bootConfig.url, reason } });
+            try {
+                await mainWindow.loadFile(p, { query: { url: bootConfig.url, reason } });
+            } catch (e) {
+                bootLog('fallback: loadFile crashed — ' + (e && (e as Error).message || String(e)));
+                // 最后的最后的兜底：data URL
+                try { await mainWindow.loadURL('data:text/html,<h1>qqq IDE offline</h1><p>请重启应用</p>'); } catch (_) { }
+            }
             return 'fallback';
         }
     }
-    await mainWindow.loadURL('data:text/html,<h1>qqq IDE offline</h1>');
+    try { await mainWindow.loadURL('data:text/html,<h1>qqq IDE offline</h1><p>请重启应用</p>'); } catch (_) { }
     return 'fallback';
 }
 
@@ -306,6 +321,7 @@ export async function loadRemoteWithCacheGuard(
         const reqFilter = { urls: ['*://*/*'] };
         const onBeforeReq = (details: any, cb: any) => {
             if (details.resourceType === 'mainFrame') { cb({}); return; }
+            if (pendingReqs === 0) { bootLog('webReq: first tracked — ' + details.url?.slice(0, 80)); }
             pendingReqs++;
             cb({});
         };
@@ -378,24 +394,38 @@ export async function loadRemoteWithCacheGuard(
         const updateProgress = () => {
             const total = pendingReqs + doneReqs;
             if (total === 0) { return; }
-            const pct = Math.min(98, Math.round(doneReqs / Math.max(total, 1) * 100));
+            const pct = Math.min(94, Math.round(doneReqs / Math.max(total, 1) * 100));
             const stage = pct < 30 ? '正在加载页面结构…'
                 : pct < 60 ? '正在加载组件脚本…'
                     : pct < 85 ? '正在加载样式资源…'
                         : '正在初始化 IDE…';
             updateLoadingPanel(stage, pct);
-            // 资源都加载完 + dom-ready → 就绪
-            if (pendingReqs === 0 && domReadyFired) {
+            // ★ Win7 上 dom-ready/did-stop-loading 均不触发，唯一可靠信号：所有请求完成
+            if (pendingReqs === 0 && doneReqs > 0) {
+                bootLog('webReq: all requests done — pending=0 done=' + doneReqs);
                 onAllReady();
             }
         };
+        let readyShown = false;     // onAllReady 防重入
         const onAllReady = () => {
-            if (settled) { return; }
+            if (readyShown) { return; }
+            readyShown = true;
+            // ★ 最终清理：移除所有后续事件监听
+            if (progressTickId) { clearInterval(progressTickId); progressTickId = null; }
+            if (panelTimer) { clearTimeout(panelTimer); panelTimer = null; }
+            cleanupWebRequest();
+            wc.removeListener('did-start-navigation', onStartNav);
+            wc.removeListener('did-navigate', onNavigate);
+            wc.removeListener('dom-ready', onDomReady);
+            wc.removeListener('did-finish-load', onFinish);
+            wc.removeListener('did-stop-loading', onStopLoading);
+            wc.removeListener('did-fail-load', onFail);
             bootLog('remote: all resources loaded + dom-ready → IDE ready');
             updateLoadingPanel('正在启动 IDE…', 100);
             writeLoadingStatus('ready');
+            // ★ 重要：resolve Promise，否则 30s 超时会把 fallback 盖到 IDE 上
+            finish(true, 'live');
             setTimeout(() => {
-                if (settled) { return; }
                 removeLoadingPanel();
                 // ★ 显示 Electron 窗口 — 此前一直隐藏，launcher 用小窗口展示进度
                 if (mainWindow && !mainWindow.isDestroyed()) {
@@ -416,15 +446,22 @@ export async function loadRemoteWithCacheGuard(
             if (settled) { return; }
             settled = true;
             if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = null; }
-            cleanupWebRequest();
-            wc.removeListener('did-start-navigation', onStartNav);
-            wc.removeListener('did-navigate', onNavigate);
-            wc.removeListener('dom-ready', onDomReady);
-            wc.removeListener('did-finish-load', onFinish);
-            wc.removeListener('did-stop-loading', onStopLoading);
-            wc.removeListener('did-fail-load', onFail);
+            // ★ 不要让 finish 移除 dom-ready / did-stop-loading 监听器
+            //    这些事件在 did-navigate 之后才异步触发，finish 在 onNavigate 里同步调用
+            //    只有 onAllReady() 或 fallback 时才能安全移除
             if (!ok && mode === 'fallback') {
+                cleanupWebRequest();
+                wc.removeListener('did-start-navigation', onStartNav);
+                wc.removeListener('did-navigate', onNavigate);
+                wc.removeListener('dom-ready', onDomReady);
+                wc.removeListener('did-finish-load', onFinish);
+                wc.removeListener('did-stop-loading', onStopLoading);
+                wc.removeListener('did-fail-load', onFail);
                 removeLoadingPanel();
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.show();
+                    mainWindow.focus();
+                }
                 try { wc.stop(); } catch (_) { }
             }
             bootLog('remote: ' + (ok ? 'LOADED' : 'FAILED') + ' mode=' + mode);
@@ -440,21 +477,30 @@ export async function loadRemoteWithCacheGuard(
             bootLog('remote: did-navigate http=' + httpCode);
             if (httpCode >= 200 && httpCode < 400) {
                 if (!isDev) { injectLoadingPanel(); updateLoadingPanel('正在解析页面…', 5); }
-                // ★ 时间兜底进度：每 2s 推进，写 loading-status 文件给 C 启动器
+                // ★ 时间兜底进度 + 定期状态报告
                 let lastPct = 5;
+                let tickCount = 0;
                 progressTickId = setInterval(() => {
-                    if (domReadyFired) { clearInterval(progressTickId!); progressTickId = null; return; }
+                    tickCount++;
+                    // 每 15 秒打一次心跳，知道卡在哪儿
+                    if (tickCount % 6 === 0 && !domReadyFired) {
+                        bootLog('webReq: heartbeat pending=' + pendingReqs + ' done=' + doneReqs + ' domReadyFired=' + domReadyFired + ' tickPct=' + lastPct);
+                    }
+                    if (domReadyFired || (pendingReqs === 0 && doneReqs > 0)) {
+                        clearInterval(progressTickId!); progressTickId = null; return;
+                    }
                     lastPct = Math.min(88, lastPct + 6);
                     const stage = lastPct < 35 ? '正在加载页面结构…'
                         : lastPct < 60 ? '正在加载组件脚本…'
-                        : lastPct < 80 ? '正在加载样式资源…'
-                        : '正在初始化 IDE…';
+                            : lastPct < 80 ? '正在加载样式资源…'
+                                : '正在初始化 IDE…';
                     updateLoadingPanel(stage, lastPct);
                 }, 2500);
                 // 10 分钟终极兜底（跨洋弱网 + Win7 极端慢）
                 panelTimer = setTimeout(() => {
-                    bootLog('remote: ultimate fallback after 10min — force show');
+                    bootLog('remote: ultimate fallback after 10min — force show (pending=' + pendingReqs + ' done=' + doneReqs + ')');
                     updateLoadingPanel('即将完成…', 95);
+                    writeLoadingStatus('ready');  // ★ 告知 C 启动器可以关了
                     removeLoadingPanel();
                     if (mainWindow && !mainWindow.isDestroyed()) {
                         mainWindow.show();
@@ -512,15 +558,16 @@ export async function loadRemoteWithCacheGuard(
         session.webRequest.onCompleted(reqFilter, onReqDone);
         session.webRequest.onErrorOccurred(reqFilter, onReqErr);
 
-        // ★ ERR_FAILED 重试：Win7 + Chromium 108 SSL 预热问题
+        // ★ 可重试连接错误：ERR_CONNECTION_REFUSED（dev 服务器抢跑）、ERR_FAILED（Win7 SSL）
         let loadRetries = 0;
         const doLoad = () => {
             mainWindow!.loadURL(bootConfig.url).catch(err => {
                 const msg = err && (err as Error).message || String(err);
                 bootLog('remote: loadURL error — ' + msg);
-                if (msg.includes('ERR_FAILED') && loadRetries < 2) {
+                const retryable = /ERR_FAILED|ERR_CONNECTION_REFUSED|ERR_TIMED_OUT|ERR_CONNECTION_RESET/i.test(msg);
+                if (retryable && loadRetries < 5) {
                     loadRetries++;
-                    bootLog('remote: ERR_FAILED retry ' + loadRetries + '/2, waiting 3s...');
+                    bootLog('remote: retry ' + loadRetries + '/5 in 3s…');
                     setTimeout(doLoad, 3000);
                     return;
                 }
@@ -558,7 +605,11 @@ export async function bootSequence(
     bootLog('url: ' + bootConfig.url);
 
     // 1) Show fallback IMMEDIATELY → 窗口在 <1s 内弹出，用户看到"连接中…"
-    await loadStaticFallback(mainWindow, bootConfig, portableRoot, 'connecting');
+    try {
+        await loadStaticFallback(mainWindow, bootConfig, portableRoot, 'connecting');
+    } catch (e) {
+        bootLog('seq: initial fallback crashed — ' + (e && (e as Error).message || String(e)));
+    }
 
     // 2) Check for shell-code hot-update (non-blocking)
     checkAndDownloadShellUpdate(bootConfig, portableCache, isDev, isOffline).then(updated => {
@@ -581,12 +632,17 @@ export async function bootSequence(
     const { ok, mode } = await loadRemoteWithCacheGuard(mainWindow, bootConfig, REMOTE_TIMEOUT_MS, isDev, portableRoot);
     if (ok) {
         bootLog('seq: remote OK, boot complete');
+        bootCompleted = true;
         setLastBootMode(mode);
     } else {
         // Reload fallback with actual error reason (was 'connecting' before)
         const reason = healthy ? 'load-failed' : 'no-network-no-cache';
         bootLog('seq: FAILED — staying on fallback, reason=' + reason);
-        await loadStaticFallback(mainWindow, bootConfig, portableRoot, reason);
+        try {
+            await loadStaticFallback(mainWindow, bootConfig, portableRoot, reason);
+        } catch (e) {
+            bootLog('seq: loadStaticFallback crashed — ' + (e && (e as Error).message || String(e)));
+        }
         setLastBootMode('fallback');
     }
 }

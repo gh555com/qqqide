@@ -689,6 +689,8 @@ var _a4FirstDirtyTs = 0;
 // ★ 存储触发脏标记的 agent 和 questId（确保后台 agent 也能正确刷盘）
 var _a4IncrementalAg = null;
 var _a4IncrementalQuestId = null;
+// ★ 捕获脏标记时的 floorNum（防 ag._currentFloorNum 在新楼层启动后被覆写导致跨楼污染）
+var _a4IncrementalFloorNum = null;
 
 // ── 标记脏（其他模块调用此函数触发统一刷盘）──
 //   可传入 agent 引用（来自 agent-loop.js 的 self），确保后台 agent 也能正确持久化
@@ -696,10 +698,13 @@ function _a4MarkIncrementalDirty(ag) {
     if (ag) {
         _a4IncrementalAg = ag;
         _a4IncrementalQuestId = (typeof questActiveId !== 'undefined') ? questActiveId : '';
+        // ★ 捕获当前楼层号（不可变快照），防止后续 _currentFloorNum 被新楼层覆写
+        _a4IncrementalFloorNum = ag._currentFloorNum || null;
     } else if (!_a4IncrementalAg) {
         // 首次无 agent → 用 _activeAgent 兜底
         _a4IncrementalAg = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
         _a4IncrementalQuestId = (typeof questActiveId !== 'undefined') ? questActiveId : '';
+        _a4IncrementalFloorNum = _a4IncrementalAg ? (_a4IncrementalAg._currentFloorNum || null) : null;
     }
     _a4IncrementalDirty = true;
     if (!_a4FirstDirtyTs) _a4FirstDirtyTs = Date.now();
@@ -804,7 +809,8 @@ function _a4FlushCompleteFloor() {
     if (!ag) { _a4IncrementalBusy = false; return; }
     var questId = _a4IncrementalQuestId;
     if (!questId) { _a4IncrementalBusy = false; return; }
-    var floorNum = ag._currentFloorNum;
+    // ★ 用捕获时的 floorNum（不可变快照），而非 ag._currentFloorNum（可能已被新楼层覆写）
+    var floorNum = _a4IncrementalFloorNum || ag._currentFloorNum;
     if (!floorNum) { _a4IncrementalBusy = false; return; }
 
     var qs = window.questStore;
@@ -831,7 +837,8 @@ function _a4OnBeforeUnload() {
     if (!questId) return;
     var qs = window.questStore;
     if (!qs || !qs.saveFloor) return;
-    var floorNum = ag._currentFloorNum;
+    // ★ 用捕获时的 floorNum（不可变快照），而非 ag._currentFloorNum（可能已被新楼层覆写）
+    var floorNum = _a4IncrementalFloorNum || ag._currentFloorNum;
     if (!floorNum) return;
     var payload = _a4BuildCompleteFloorPayload(ag, floorNum);
     qs.saveFloor(questId, floorNum, payload).catch(function () { });

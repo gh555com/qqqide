@@ -53,10 +53,8 @@
   <p id="msg">无法连接服务器，可能网络中断或服务器未就绪。</p>
   <p class="url" id="url"></p>
   <p class="reason" id="reason" style="display:none"></p>
-  <p id="countdown-row">将在 <span class="countdown" id="cd">10</span> 秒后自动重试…</p>
   <div class="row" id="retry-row">
     <button id="btn-retry">立即重试</button>
-    <button class="secondary" id="btn-pause">暂停自动重试</button>
   </div>
   <p class="status" id="status"></p>
   <p class="small" id="small-hint">壳保持便携模式。所有数据仅写入应用目录。</p>
@@ -85,11 +83,9 @@
     const cdEl = document.getElementById('cd');
     const statusEl = document.getElementById('status');
     const btnRetry = document.getElementById('btn-retry');
-    const btnPause = document.getElementById('btn-pause');
 
     let countdown = 10;
     let timer = null;
-    let paused = false;
     let busy = false;
 
     function setStatus(msg, isErr) {
@@ -106,41 +102,20 @@
         if (window.qqqide && window.qqqide.boot && typeof window.qqqide.boot.retry === 'function') {
           const ok = await window.qqqide.boot.retry();
           if (!ok) {
-            setStatus('仍无法连接，将继续等待…', true);
-            countdown = 10;
+            setStatus('仍无法连接，请稍后再试…', true);
           }
         } else {
-          // best-effort: just reload
           location.reload();
         }
       } catch (e) {
         setStatus('重试失败：' + (e && e.message), true);
-        countdown = 10;
       } finally {
         busy = false;
         btnRetry.disabled = false;
       }
     }
 
-    function tick() {
-      if (paused) { return; }
-      countdown -= 1;
-      if (countdown <= 0) {
-        countdown = 10;
-        cdEl.textContent = countdown;
-        tryRetry();
-        return;
-      }
-      cdEl.textContent = countdown;
-    }
-    timer = setInterval(tick, 1000);
-
-    btnRetry.addEventListener('click', () => { countdown = 10; cdEl.textContent = countdown; tryRetry(); });
-    btnPause.addEventListener('click', () => {
-      paused = !paused;
-      btnPause.textContent = paused ? '继续自动重试' : '暂停自动重试';
-      setStatus(paused ? '已暂停' : '', false);
-    });
+    btnRetry.addEventListener('click', () => tryRetry());
   })();
 </script>
 </body>

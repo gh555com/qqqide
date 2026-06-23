@@ -163,7 +163,8 @@
     _$btn.textContent = '\u2699'; // ⚙ gear
     _$btn.addEventListener('click', function (e) {
       e.preventDefault();
-      if (_$panel && _$panel.style.display !== 'none') {
+      // ★ 用 overlay 的 display 判断，而非 panel.style.display（close 只隐藏 overlay）
+      if (_$overlay && _$overlay.style.display !== 'none') {
         close();
       } else {
         open();

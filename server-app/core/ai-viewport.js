@@ -31,8 +31,9 @@
   let _hoverTimer = null;
   function cancelHover() { if (_hoverTimer) { clearTimeout(_hoverTimer); _hoverTimer = null; } }
 
-  // ---- 树展开快照：每个项目记住关闭前的展开链（相对路径数组）----
+  // ---- 树展开快照：每个顶层文件夹记住关闭前的完整路径链 ----
   var _treeSnapshots = {}; // projectPath → [relPath1, relPath2, ...]
+  // relPath = dirPath.substring(projectRoot.length)，如 ["src", "src/app", "src/app/components"]
 
   // 原生滚动条由 qh 真理机器接管隐藏，此处不再注入
 
@@ -218,9 +219,9 @@
       }
     } catch (_) { }
   });
-  // ---- close active dropdown ----
+  // ---- close active dropdown: save snapshot then destroy ----
   function closeDropdown() {
-    // ★ 关闭前保存快照：记录已展开的链（空数组=无展开，下次不还原）
+    // ★ 关闭前快照：将当前展开路径链存入 _treeSnapshots
     if (activeDropdown && activeDropdown._projectRoot) {
       if (activeDropdown._expandedChain && activeDropdown._expandedChain.length > 0) {
         _treeSnapshots[activeDropdown._projectRoot] = activeDropdown._expandedChain.slice();
@@ -230,7 +231,6 @@
     }
     cancelHover();
     closeAllSubmenus();
-    // 缓存保留不清理——同项目重新 hover 时不需再调 IPC
     if (activeDropdown) {
       activeDropdown.remove();
       activeDropdown = null;
@@ -463,7 +463,8 @@
 
   // ---- render: directory tree dropdown ----
   function showDropdown(blockEl, project) {
-    closeDropdown();
+    // ★ 先关闭旧的（会存快照）
+    if (activeDropdown) { closeDropdown(); }
     if (!blockEl.isConnected) return;
     _activeBlockEl = blockEl;
 
@@ -482,10 +483,10 @@
 
     dd._projectRoot = project.path;
     var ddScroll = _wrapScrollContainer(dd, 1);
-    // ★ 检查是否有保存的快照，设到滚动容器上供 loadDirInto 完成后自动还原
+    // ★ 快照还原：检查该目录是否有保存的展开链
     var snap = _treeSnapshots[project.path];
     if (snap && snap.length > 0) {
-      ddScroll._pendingChain = snap.slice(); // 复制一份，防止修改原快照
+      ddScroll._pendingChain = snap.slice(); // 复制一份，避免修改原快照
     }
     loadDirInto(ddScroll, project.path, project.path);
     _stampDepth(dd, 1);
@@ -577,10 +578,14 @@
       });
       row.addEventListener('click', (e) => { e.stopPropagation(); });
 
-      // 右键 → 弹出上下文菜单
+      // 右键 → 弹出上下文菜单，保持当前行 hover 效果
       row.addEventListener('contextmenu', (e) => {
         e.stopPropagation();
         e.preventDefault();
+        // ★ 标记当前行高亮，关闭菜单时清除
+        if (_ctxMenuRow) _ctxMenuRow.style.background = '';
+        _ctxMenuRow = row;
+        row.style.background = 'var(--background-color)';
         if (ent.isDir) {
           if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath);
         } else {
@@ -595,35 +600,34 @@
 
     // ★ 快照还原：若本层有待展开链，自动触发下一级
     if (parentEl._pendingChain && parentEl._pendingChain.length > 0) {
-      var nextName = parentEl._pendingChain[0];
-      // ★ 防 nextName 为 undefined 导致 .split() 崩溃（链被污染时）
-      if (!nextName) { parentEl._pendingChain = null; return; }
-      // ★ 提取最后一段（兼容「src」和「src/app」两种格式）
-      var targetName = nextName.split(/[\\/]/).pop();
-      var rows2 = parentEl.querySelectorAll(':scope > .aiv-dd-row');
+      var nextRel = parentEl._pendingChain[0];
+      // ★ 提取最后一段（兼容 "src" 和 "src/app" 两种格式）
+      var targetName = nextRel.split(/[\\/]/).pop();
+      var rows3 = parentEl.querySelectorAll(':scope > .aiv-dd-row');
       var foundRow = null;
-      for (var ri2 = 0; ri2 < rows2.length; ri2++) {
-        if (rows2[ri2].dataset.name === targetName && rows2[ri2].dataset.isDir === 'true') {
-          foundRow = rows2[ri2];
-          break;
+      for (var ri3 = 0; ri3 < rows3.length; ri3++) {
+        if (rows3[ri3].dataset.isDir === 'true') {
+          // 先精确匹配完整相对路径，再降级匹配 basename
+          var matchName = targetName;
+          if (rows3[ri3].dataset.name === matchName) { foundRow = rows3[ri3]; break; }
         }
       }
       if (foundRow) {
-        var subPath2 = pathJoin(dirPath, targetName);
-        var depth2 = (parentEl._depth || 0) + 1;
-        var outer2 = parentEl._outer || parentEl;
-        if (outer2._childSub) { closeSubmenuTree(outer2._childSub); }
-        outer2._childSub = null;
-        var sub2 = openSubmenu(foundRow, subPath2, depth2, projectRoot);
-        if (sub2) {
-          sub2._justOpened = Date.now();
-          outer2._childSub = sub2;
+        var subPath3 = pathJoin(dirPath, targetName);
+        var depth3 = (parentEl._depth || 0) + 1;
+        var outer3 = parentEl._outer || parentEl;
+        if (outer3._childSub) { closeSubmenuTree(outer3._childSub); }
+        outer3._childSub = null;
+        var sub3 = openSubmenu(foundRow, subPath3, depth3, projectRoot);
+        if (sub3) {
+          sub3._justOpened = Date.now();
+          outer3._childSub = sub3;
           // 剩余链传递到下一级滚动容器
-          parentEl._pendingChain.shift(); // 已展开的移除
+          parentEl._pendingChain.shift();
           if (parentEl._pendingChain.length > 0) {
-            var nextScroll = sub2.querySelector('.aiv-scroll-inner');
-            if (nextScroll) {
-              nextScroll._pendingChain = parentEl._pendingChain;
+            var nextScroll2 = sub3.querySelector('.aiv-scroll-inner');
+            if (nextScroll2) {
+              nextScroll2._pendingChain = parentEl._pendingChain;
             }
           }
         }
@@ -635,7 +639,9 @@
 
   // ── 文件右键上下文菜单 ──
   var _ctxMenu = null;
+  var _ctxMenuRow = null; // 右键时高亮的行
   function closeCtxMenu() {
+    if (_ctxMenuRow) { _ctxMenuRow.style.background = ''; _ctxMenuRow = null; }
     if (_ctxMenu) { _ctxMenu.remove(); _ctxMenu = null; }
   }
   function showFileContextMenu(e, filePath, projectRoot) {
@@ -673,9 +679,15 @@
 
     // Row 2: open — 在系统中打开
     addRow(window._i('shell.viewport.openInOs', '在系统中打开'), function () {
-      if (bridge && bridge.shell && bridge.shell.openPath) {
-        bridge.shell.openPath(filePath);
-      }
+      try {
+        if (bridge && bridge.shell) {
+          if (bridge.shell.openPath) {
+            bridge.shell.openPath(filePath);
+          } else if (bridge.shell.openExternal) {
+            bridge.shell.openExternal('file:///' + filePath.replace(/\\/g, '/'));
+          }
+        }
+      } catch (_) { }
     });
 
     // Row 3: timeline — 时间线
@@ -782,10 +794,8 @@
       if (!activeDropdown._expandedChain) activeDropdown._expandedChain = [];
       // 裁剪到当前深度 - 1（同级重新展开时覆盖后续）
       activeDropdown._expandedChain.length = depth - 1;
-      // 存目录短名（不含路径层级），还原时只需 basename 匹配
-      // ★ 防 dirPath 为空或根路径时 dirName 为 undefined → 链被污染 → 下次 .split() 崩溃
-      var dirName = (dirPath || '').split(/[\\/]/).filter(Boolean).pop();
-      if (dirName) activeDropdown._expandedChain.push(dirName);
+      var rel = dirPath.substring(projectRoot.length).replace(/^[\\/]+/, '');
+      activeDropdown._expandedChain.push(rel);
     }
 
     loadDirInto(subScroll, dirPath, projectRoot);

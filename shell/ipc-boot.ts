@@ -3,7 +3,7 @@
 // ============================================================================
 
 import { ipcMain, BrowserWindow } from 'electron';
-import { BootConfig, BootMode, healthCheck, loadStaticFallback, loadRemoteWithCacheGuard } from './boot';
+import { BootConfig, BootMode, healthCheck, loadStaticFallback, loadRemoteWithCacheGuard, isBootCompleted } from './boot';
 
 export function registerBootIpc(
     portableRoot: string,
@@ -34,6 +34,11 @@ export function registerBootIpc(
     }));
 
     ipcMain.handle('qqqide:boot:retry', async () => {
+        // ★ 如果已经成功启动，绝不降级到 fallback
+        if (isBootCompleted()) {
+            console.log('[boot.retry] boot already completed — ignoring retry from stale fallback');
+            return true;
+        }
         const mw = getMainWindow();
         if (!mw) { return false; }
         const healthy = await healthCheck(bootConfig.url, bootConfig.healthTimeoutMs, false);
