@@ -449,6 +449,13 @@ function _isAfter(elA, elB) {
     return false;
 }
 
+// ---- 中间截断超长文件名 ----
+function _truncMiddle(text, maxLen) {
+  if (text.length <= maxLen) return text;
+  var keep = Math.floor((maxLen - 3) / 2);
+  return text.slice(0, keep) + '...' + text.slice(text.length - keep);
+}
+
 // ---- 渲染实时文件列表 ----
 function _a4RenderLive(ag) {
     if (!ag || !ag._activeAiDiv) return;
@@ -469,12 +476,17 @@ function _a4RenderLive(ag) {
         row.className = 'msg-a4-row';
         row.dataset.path = snap.path;
 
-        // Filename
+        // Filename (middle truncation for long names)
         var fname = snap.path.replace(/\\/g, '/').split('/').pop() || snap.path;
         var nameSpan = document.createElement('span');
         nameSpan.className = 'msg-a4-fname';
-        nameSpan.textContent = fname;
+        nameSpan.textContent = _truncMiddle(fname, 36);
         nameSpan.title = snap.path;
+
+        // Count badge（第几次修改）
+        var countSpan = document.createElement('span');
+        countSpan.className = 'msg-a4-count';
+        countSpan.textContent = (snap.count || 1);
 
         // Stats
         var statsSpan = document.createElement('span');
@@ -497,6 +509,7 @@ function _a4RenderLive(ag) {
         else if (snap.added > 0 && snap.deleted > 0) statsSpan.style.color = 'var(--yellow)';
 
         row.appendChild(nameSpan);
+        row.appendChild(countSpan);
         row.appendChild(statsSpan);
 
         // Click → open diff in X zone
@@ -596,28 +609,16 @@ async function _a4PersistToTimeline(filePath, op, before, after, ag) {
                 snapEntry.afterBlobHash = aRec.blob_hash;
             }
         } catch (_) { }
-    }
-
-    // ★ before 已由 _a4EnsureBeforeBaseline 记录，此处不重复
-}
-
-// ═══ 历史楼层 A4 恢复（从 floor payload 的 a4Snapshots 渲染） ═══
-function _a4RestoreBlock(aiDiv, a4Meta, questNumericId, floorNum) {
-    if (!a4Meta || !a4Meta.length) return;
-    var block = _initA4Block(aiDiv);
-    block.innerHTML = '';
-
-    for (var i = 0; i < a4Meta.length; i++) {
-        var meta = a4Meta[i];
-        var row = document.createElement('div');
-        row.className = 'msg-a4-row';
-        row.dataset.path = meta.path;
-
-        var fname = meta.path.replace(/\\/g, '/').split('/').pop() || meta.path;
+          var fname = meta.path.replace(/\\/g, '/').split('/').pop() || meta.path;
         var nameSpan = document.createElement('span');
         nameSpan.className = 'msg-a4-fname';
-        nameSpan.textContent = fname;
+        nameSpan.textContent = _truncMiddle(fname, 36);
         nameSpan.title = meta.path;
+
+        // Count badge（第几次修改）
+        var countSpan = document.createElement('span');
+        countSpan.className = 'msg-a4-count';
+        countSpan.textContent = (meta.count || 1);
 
         var statsSpan = document.createElement('span');
         statsSpan.className = 'msg-a4-stats';
@@ -638,6 +639,7 @@ function _a4RestoreBlock(aiDiv, a4Meta, questNumericId, floorNum) {
         else if (meta.added > 0 && meta.deleted > 0) statsSpan.style.color = 'var(--yellow)';
 
         row.appendChild(nameSpan);
+        row.appendChild(countSpan);
         row.appendChild(statsSpan);
 
         // Click → load from disk + open diff

@@ -291,6 +291,18 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
 
     centerWindow(g_hwnd);
 
+    // ★ 清除上次残留的 loading-status 文件 — 否则第一 tick 读到 "ready"
+    //    就直接 self-close，launchCore() 永远不会被调用
+    {
+        WCHAR cleanPath[MAX_PATH];
+        WCHAR myDir[MAX_PATH];
+        GetModuleFileNameW(NULL, myDir, MAX_PATH);
+        WCHAR *slash = wcsrchr(myDir, L'\\');
+        if (slash) *slash = L'\0';
+        swprintf(cleanPath, MAX_PATH, L"%s\\loading-status", myDir);
+        DeleteFileW(cleanPath);
+    }
+
     // 初始状态
     setStatus("正在启动…", 0);
 

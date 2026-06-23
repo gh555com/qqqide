@@ -313,27 +313,43 @@ export async function loadRemoteWithCacheGuard(
             try { fs.writeFileSync(LOADING_STATUS_PATH, line, 'utf-8'); } catch (_) { }
         };
 
-        // ── 资源追踪（进度条用） ──
+        // ── 资源追踪（进度条用）+ 耗时统计 ──
         let pendingReqs = 0;
         let doneReqs = 0;
         let domReadyFired = false;
         const session = wc.session;
         const reqFilter = { urls: ['*://*/*'] };
+        const reqStartTimes = new Map<string, number>();
         const onBeforeReq = (details: any, cb: any) => {
             if (details.resourceType === 'mainFrame') { cb({}); return; }
-            if (pendingReqs === 0) { bootLog('webReq: first tracked — ' + details.url?.slice(0, 80)); }
+            const now = Date.now();
+            reqStartTimes.set(details.url, now);
             pendingReqs++;
+            const shortUrl = details.url?.slice(0, 100);
+            bootLog('webReq: +' + pendingReqs + ' ' + details.resourceType + ' ' + shortUrl);
             cb({});
         };
         const onReqDone = (details: any) => {
             if (details.resourceType === 'mainFrame') { return; }
             doneReqs++;
             pendingReqs = Math.max(0, pendingReqs - 1);
+            const startTime = reqStartTimes.get(details.url);
+            const elapsed = startTime ? Date.now() - startTime : -1;
+            reqStartTimes.delete(details.url);
+            if (elapsed > 1500) {
+                bootLog('webReq: SLOW ' + elapsed + 'ms ' + details.resourceType + ' ' + details.url?.slice(0, 80));
+            } else {
+                bootLog('webReq: ✓' + elapsed + 'ms ' + details.resourceType + ' ' + details.url?.slice(0, 80));
+            }
             updateProgress();
         };
         const onReqErr = (details: any) => {
             if (details.resourceType === 'mainFrame') { return; }
             pendingReqs = Math.max(0, pendingReqs - 1);
+            const startTime = reqStartTimes.get(details.url);
+            const elapsed = startTime ? Date.now() - startTime : -1;
+            reqStartTimes.delete(details.url);
+            bootLog('webReq: ERR ' + elapsed + 'ms ' + details.resourceType + ' ' + details.url?.slice(0, 80));
             updateProgress();
         };
 
@@ -592,6 +608,7 @@ export async function bootSequence(
     getLastBootMode: () => BootMode,
 ): Promise<void> {
     // 0) Init boot file log + clean stale loading-status (from previous run)
+    const bootT0 = Date.now();
     initBootLog(path.join(portableRoot, 'userData', 'Logs'));
     try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
 
@@ -610,6 +627,8 @@ export async function bootSequence(
     } catch (e) {
         bootLog('seq: initial fallback crashed — ' + (e && (e as Error).message || String(e)));
     }
+    const bootT1 = Date.now();
+    bootLog('phase: fallback-shown ' + (bootT1 - bootT0) + 'ms');
 
     // 2) Check for shell-code hot-update (non-blocking)
     checkAndDownloadShellUpdate(bootConfig, portableCache, isDev, isOffline).then(updated => {
@@ -620,24 +639,26 @@ export async function bootSequence(
 
     // 3) Health check (fast, 3s timeout) — skip in dev mode (localhost)
     const healthy = isDev ? true : await healthCheck(bootConfig.url, bootConfig.healthTimeoutMs, isOffline);
+    const bootT2 = Date.now();
     if (healthy) {
-        bootLog('seq: server OK');
+        bootLog('seq: server OK (' + (bootT2 - bootT1) + 'ms)');
     } else {
-        bootLog('seq: server unreachable');
+        bootLog('seq: server unreachable (' + (bootT2 - bootT1) + 'ms)');
     }
 
     // 4) Try remote with 15s timeout
     //    loadURL() 会自动替换当前 fallback 页面，用户无缝过渡到正式应用
     const REMOTE_TIMEOUT_MS = 30000;  // 只等 HTML（did-navigate），不等子资源
     const { ok, mode } = await loadRemoteWithCacheGuard(mainWindow, bootConfig, REMOTE_TIMEOUT_MS, isDev, portableRoot);
+    const bootT3 = Date.now();
     if (ok) {
-        bootLog('seq: remote OK, boot complete');
+        bootLog('seq: remote OK, boot complete — total ' + (bootT3 - bootT0) + 'ms');
         bootCompleted = true;
         setLastBootMode(mode);
     } else {
         // Reload fallback with actual error reason (was 'connecting' before)
         const reason = healthy ? 'load-failed' : 'no-network-no-cache';
-        bootLog('seq: FAILED — staying on fallback, reason=' + reason);
+        bootLog('seq: FAILED — staying on fallback, reason=' + reason + ' total ' + (bootT3 - bootT0) + 'ms');
         try {
             await loadStaticFallback(mainWindow, bootConfig, portableRoot, reason);
         } catch (e) {

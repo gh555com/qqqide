@@ -31,6 +31,9 @@
   let _hoverTimer = null;
   function cancelHover() { if (_hoverTimer) { clearTimeout(_hoverTimer); _hoverTimer = null; } }
 
+  // ★ 还原不应期：链式还原期间（最多1秒），禁止 hover 展开新菜单破坏还原
+  var _restoringChain = false;
+
   // ---- 树展开快照：每个顶层文件夹记住关闭前的完整路径链 ----
   var _treeSnapshots = {}; // projectPath → [relPath1, relPath2, ...]
   // relPath = dirPath.substring(projectRoot.length)，如 ["src", "src/app", "src/app/components"]
@@ -582,10 +585,10 @@
       row.addEventListener('contextmenu', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        // ★ 标记当前行高亮，关闭菜单时清除
+        // ★ 标记当前行高亮（模拟 CSS hover 效果），关闭菜单时清除
         if (_ctxMenuRow) _ctxMenuRow.style.background = '';
         _ctxMenuRow = row;
-        row.style.background = 'var(--background-color)';
+        row.style.background = 'var(--card-bg)';
         if (ent.isDir) {
           if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath);
         } else {
@@ -792,8 +795,9 @@
     // ★ 记录展开链到根下拉（用于关闭时快照）
     if (activeDropdown) {
       if (!activeDropdown._expandedChain) activeDropdown._expandedChain = [];
-      // 裁剪到当前深度 - 1（同级重新展开时覆盖后续）
-      activeDropdown._expandedChain.length = depth - 1;
+      // ★ splice(depth-1) 删除 depth-1 及之后的所有元素
+      //    不会产生稀疏数组（.length = N 当数组更短时会产生空洞）
+      activeDropdown._expandedChain.splice(depth - 1);
       var rel = dirPath.substring(projectRoot.length).replace(/^[\\/]+/, '');
       activeDropdown._expandedChain.push(rel);
     }
