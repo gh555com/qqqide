@@ -488,8 +488,13 @@
     var ddScroll = _wrapScrollContainer(dd, 1);
     // ★ 快照还原：检查该目录是否有保存的展开链
     var snap = _treeSnapshots[project.path];
-    if (snap && snap.length > 0) {
-      ddScroll._pendingChain = snap.slice(); // 复制一份，避免修改原快照
+    if (snap && snap.length > 1) {
+      // 多于 1 级才启动还原不应期（纯根级别无需保护）
+      ddScroll._pendingChain = snap.slice();
+      _restoringChain = true;
+      setTimeout(function () { _restoringChain = false; }, 1000);
+    } else if (snap && snap.length === 1) {
+      ddScroll._pendingChain = snap.slice();
     }
     loadDirInto(ddScroll, project.path, project.path);
     _stampDepth(dd, 1);
@@ -546,6 +551,8 @@
       row._hovered = false;
       row.addEventListener('mouseenter', () => {
         if (!ent.isDir) return;
+        // ★ 还原不应期内，禁止 hover 展开新菜单
+        if (_restoringChain) return;
         // 150ms 防抖：杀旧计时器，标 hovered，起新计时器
         cancelHover();
         row._hovered = true;
@@ -585,10 +592,12 @@
       row.addEventListener('contextmenu', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        // ★ 标记当前行高亮（模拟 CSS hover 效果），关闭菜单时清除
-        if (_ctxMenuRow) _ctxMenuRow.style.background = '';
+        // ★ 标记当前行高亮（照抄 .aiv-dd-row:hover 的 rgba 值），关闭菜单时清除
+        if (_ctxMenuRow) _ctxMenuRow.style.cssText = _ctxMenuRow._origRowStyle;
         _ctxMenuRow = row;
-        row.style.background = 'var(--card-bg)';
+        row._origRowStyle = row.style.cssText;
+        var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+        row.style.cssText += ';background:' + (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)') + '!important;color:' + (isDark ? '#fff' : '#000') + '!important;';
         if (ent.isDir) {
           if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath);
         } else {
@@ -644,7 +653,12 @@
   var _ctxMenu = null;
   var _ctxMenuRow = null; // 右键时高亮的行
   function closeCtxMenu() {
-    if (_ctxMenuRow) { _ctxMenuRow.style.background = ''; _ctxMenuRow = null; }
+    if (_ctxMenuRow) {
+      // ★ 恢复原始样式
+      if (_ctxMenuRow._origRowStyle) _ctxMenuRow.style.cssText = _ctxMenuRow._origRowStyle;
+      _ctxMenuRow._origRowStyle = null;
+      _ctxMenuRow = null;
+    }
     if (_ctxMenu) { _ctxMenu.remove(); _ctxMenu = null; }
   }
   function showFileContextMenu(e, filePath, projectRoot) {
