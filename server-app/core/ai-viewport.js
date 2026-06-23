@@ -939,6 +939,7 @@
       _showRecentDropdown(block);
     });
 
+
     return block;
   }
 
