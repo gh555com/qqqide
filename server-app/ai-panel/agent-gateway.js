@@ -28,11 +28,18 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
 
     // ★ 号池：从 opts.token 获取初始 key，支持 429 自动切换
     var _currentToken = opts.token || '';
+    // ★ 备用线绑死 19232854249 Key，不使用号池（防止并发打同一个账号）
+    if (GATEWAY_URL === GATEWAY_URL_FALLBACK && typeof AiGateway !== 'undefined' && AiGateway.getFallbackToken) {
+        var _fb = AiGateway.getFallbackToken();
+        if (_fb) { _currentToken = _fb; }
+    }
     var _keyRotated = false;
     var _triedTokens = {};  // 本轮已尝试过的 token（避免死循环）
     if (_currentToken) _triedTokens[_currentToken] = true;
 
     function _rotateKey() {
+        // 备用线只有一根 key，不轮转（防止切换到主线 Key 池）
+        if (GATEWAY_URL === GATEWAY_URL_FALLBACK) return false;
         // 标记当前 key 被限流
         if (typeof markToken429 === 'function' && _currentToken) {
             markToken429(_currentToken);
@@ -185,28 +192,28 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
         self._abortSource = '';  // ★ 重置探针
         try {
             var _fetchStart = performance.now();
-                     // ★ 经 AiGateway 统一执行 fetch（模型映射 + 线路选择 + auth）
-                    var resp;
-                    if (typeof AiGateway !== 'undefined' && AiGateway.chatFetch) {
-                        resp = await AiGateway.chatFetch(body, {
-                            token: _currentToken,
-                            signal: self.abortController.signal,
-                            tier: parseInt(tier.label) || 6,
-                            isFallback: GATEWAY_URL === GATEWAY_URL_FALLBACK
-                        });
-                    } else {
-                        // 兜底：AiGateway 未加载（不应发生）
-                        resp = await fetch(GATEWAY_URL, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': 'Bearer ' + _currentToken,
-                                'X-Floor-Id': self._floorId || ''
-                            },
-                            body: JSON.stringify(body),
-                            signal: self.abortController.signal
-                        });
-                    }     var _ttfbMs = performance.now() - _fetchStart;
+            // ★ 经 AiGateway 统一执行 fetch（模型映射 + 线路选择 + auth）
+            var resp;
+            if (typeof AiGateway !== 'undefined' && AiGateway.chatFetch) {
+                resp = await AiGateway.chatFetch(body, {
+                    token: _currentToken,
+                    signal: self.abortController.signal,
+                    tier: parseInt(tier.label) || 6,
+                    isFallback: GATEWAY_URL === GATEWAY_URL_FALLBACK
+                });
+            } else {
+                // 兜底：AiGateway 未加载（不应发生）
+                resp = await fetch(GATEWAY_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + _currentToken,
+                        'X-Floor-Id': self._floorId || ''
+                    },
+                    body: JSON.stringify(body),
+                    signal: self.abortController.signal
+                });
+            } var _ttfbMs = performance.now() - _fetchStart;
             _ttfbAccum += _ttfbMs;
             if (!resp.ok) {
                 var text = await resp.text();

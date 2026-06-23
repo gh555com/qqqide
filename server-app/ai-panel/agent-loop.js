@@ -367,6 +367,9 @@ var AgentLoop = (function () {
         self._floorCompletedCleanly = false;  // ★ 看门狗：只有 onDone 路径才置 true
         self._floorOnErrorCalled = false;  // ★ 看门狗：onError 回调已处理，不重复恢复
         self._sendTerminated = false;  // ★ 终止旗：onError 后强制退出 while
+        self._lastGatewayError = 0;   // ★ 每层楼重置：防跨 floor 虚假 auto-repair
+        self._lastGatewayMessage = '';  // ★ 每层楼重置：防错误信息跨 floor 污染
+        self._exitReason = '';         // ★ 每层楼重置：防 _buildDiagnosis 误报上楼层原因
         // ★ 终极 Stop 闭环：每层楼创建真理源
         self._stopCtrl = new AbortController();
         self._stopState = 'sending';
@@ -489,7 +492,17 @@ var AgentLoop = (function () {
                 // ═══ 压缩守护：每间 house 前检查，超阈值则阻塞压缩 ═══
                 if (!self._compressing && !self._compressAttemptedThisFloor) {
                     var _apiTokens = self._lastApiTotalTokens || self._lastApiPromptTokens || 0;
-                    var _threshold = (typeof ContentGateway !== 'undefined') ? ContentGateway.COMPRESS_THRESHOLD : 200000;
+                    // ★ 动态读取用户设置的压缩阈值（k → tokens）
+                    var _threshold = 200000;
+                    try {
+                        if (typeof parent !== 'undefined' && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
+                            var _k = parseInt(parent.window.qqqSettings.get('ai.compressThreshold', '200'), 10);
+                            if (!isNaN(_k) && _k >= 100 && _k <= 1000) _threshold = _k * 1000;
+                        }
+                    } catch (_) { }
+                    if (typeof ContentGateway !== 'undefined' && ContentGateway.COMPRESS_THRESHOLD && _threshold === 200000) {
+                        _threshold = ContentGateway.COMPRESS_THRESHOLD;
+                    }
                     if (_apiTokens === 0 || _apiTokens <= _threshold) { /* skip */ }
                     else {
                         self._compressAttemptedThisFloor = true;
@@ -508,6 +521,7 @@ var AgentLoop = (function () {
                 }
 
                 self._houseIndex++;
+                opts._netRetryCount = 0;  // ★ 每 house 重置网络重试预算
                 // ★ 跨面板写冲突预警：检查上一轮 AI 调用以来是否有其他面板修改了文件
                 if (self._lastCallTs && typeof _panelId !== 'undefined') {
                     try {
@@ -533,6 +547,21 @@ var AgentLoop = (function () {
                 });
 
                 if (!response) {
+                    // ★ 网络中断自动重试 (SSE droppage, 非 HTTP 错误码)
+                    // ─ 网关内部已用完 3次/线 ×2线 的重试，agent-loop 再兜底 3 次
+                    if (!self._lastGatewayError) {
+                        opts._netRetryCount = (opts._netRetryCount || 0) + 1;
+                        if (opts._netRetryCount <= 3) {
+                            var _wait = 3000 * opts._netRetryCount;
+                            self._log('🔄 SSE dropped — auto-retry #' + opts._netRetryCount + '/3 in ' + (_wait / 1000) + 's');
+                            if (self._floorTiming) self._floorTiming.networkMs = (self._floorTiming.networkMs || 0) + _wait;
+                            await new Promise(function (r) { setTimeout(r, _wait); });
+                            if (self._stopState !== 'sending') break;
+                            maxIterations++;
+                            self._lastGatewayMessage = '';
+                            continue;
+                        }
+                    }
                     // 400/422/502/503 自动修复：弹掉最后一组 assistant+tool，重试
                     if ((self._lastGatewayError === 400 || self._lastGatewayError === 422 || self._lastGatewayError === 502 || self._lastGatewayError === 503) && !opts._repairAttempted) {
                         self._lastGatewayError = 0;
@@ -549,6 +578,7 @@ var AgentLoop = (function () {
                         maxIterations++;
                         self._floorOnErrorCalled = false;
                         self._lastGatewayMessage = '';
+                        opts._netRetryCount = 0;  // ★ reset after repair
                         continue;
                     }
                     // ★ auto-repair 不适用或已尝试 → 统一在此处报错（延迟报错，避免 UI 假死）

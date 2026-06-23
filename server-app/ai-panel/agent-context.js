@@ -19,12 +19,23 @@
 
 ; (function () {
 
-    var TOKEN_BUDGET = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPRESS_THRESHOLD : 200000);
+    // ★ 从用户设置读取压缩阈值（k → tokens），fallback ContentGateway → 200k
+    function _readCompressThreshold() {
+        try {
+            if (typeof parent !== 'undefined' && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
+                var k = parseInt(parent.window.qqqSettings.get('ai.compressThreshold', '200'), 10);
+                if (!isNaN(k) && k >= 100 && k <= 1000) return k * 1000;
+            }
+        } catch (_) { }
+        if (typeof ContentGateway !== 'undefined' && ContentGateway.COMPRESS_THRESHOLD) return ContentGateway.COMPRESS_THRESHOLD;
+        return 200000;
+    }
+    var TOKEN_BUDGET = _readCompressThreshold();
     var KEEP_RATIO = 0.1;         // 保留最近 10%
     var MIN_FLOORS = 6;           // 最少保留 6 层楼（当前层 + 前 5 层）
     var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 3.0);
     // 三专家输出阀值
-    var COMPACT_FACTS_TOKENS = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPACT_FACTS_TOKENS : 16384);       // 16k
+    var COMPACT_FACTS_TOKENS = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPACT_FACTS_TOKENS : 32768);       // 32k（facts 可能很多，给足空间）
     var COMPACT_NARRATIVE_TOKENS = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPACT_NARRATIVE_TOKENS : 32768); // 32k
     var COMPACT_ARCHIVE_TOKENS = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPACT_ARCHIVE_TOKENS : 32768);   // 32k
     var ARCHIVE_MAX_CHARS = (typeof ContentGateway !== 'undefined' ? ContentGateway.ARCHIVE_MAX_CHARS : 1000000); // ~1M chars
@@ -75,10 +86,13 @@
         var beforeTokens = Math.max(totalEst, dsTokens);
         var _force = reason && reason.force;
 
-        // 自动模式：任一指标超 900k → 触发；两个都没超 → 跳过
+        // ★ 动态读取用户设置的压缩阈值（k → tokens）
+        var _budget = _readCompressThreshold();
+
+        // 自动模式：任一指标超阈值 → 触发；两个都没超 → 跳过
         if (!_force) {
-            if (totalEst <= TOKEN_BUDGET && dsTokens <= TOKEN_BUDGET) {
-                return { compressed: false, detail: '无需压缩（' + Math.round(beforeTokens / 1000) + 'k < ' + Math.round(TOKEN_BUDGET / 1000) + 'k）', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
+            if (totalEst <= _budget && dsTokens <= _budget) {
+                return { compressed: false, detail: '无需压缩（' + Math.round(beforeTokens / 1000) + 'k < ' + Math.round(_budget / 1000) + 'k）', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
             }
         } else {
             // 手动模式：50k 最低门槛
@@ -90,7 +104,7 @@
 
         // ★ KEEP_TARGET 按实际上下文动态伸缩，不是固定 90k
         //   beforeTokens=950k → keep 95k；beforeTokens=70k → keep 7k
-        var KEEP_TARGET = Math.floor(Math.min(beforeTokens, TOKEN_BUDGET) * KEEP_RATIO);
+        var KEEP_TARGET = Math.floor(Math.min(beforeTokens, _budget) * KEEP_RATIO);
 
         var runningTokens = 0;
         var hotStart = self.conversation.length;
@@ -203,6 +217,14 @@
         var _oldNarrative = self._ctx.narrative || '';
         var _debugTrace = { ts: new Date().toISOString(), trigger: 'auto', input: { floors: (lastCompressedFloor || 0) + '→' + self._ctx.totalFloors, coldMsgs: coldMsgs.length, coldTextPreview: coldText.slice(0, 2000), oldFacts: _oldFacts.length, oldNarrativeLen: _oldNarrative.length }, experts: {} };
 
+        // ★ 截断冷文本（防 prompt 过大导致模型输出截断），保留首尾
+        var COLD_TEXT_CAP = 200000; // ~67k tokens，给 facts 专家足够但不过量的上下文
+        var _factsColdText = coldText;
+        if (_factsColdText.length > COLD_TEXT_CAP) {
+            var _half = Math.floor(COLD_TEXT_CAP / 2);
+            _factsColdText = coldText.slice(0, _half) + '\n... [truncated ' + (coldText.length - COLD_TEXT_CAP) + ' chars] ...\n' + coldText.slice(-_half);
+        }
+
         // ── ① facts 专家 prompt ──
         var factsPrompt = [
             'You are a context compression engine specializing in structured facts.',
@@ -233,7 +255,7 @@
             JSON.stringify(_oldFacts),
             '',
             'NEW CONVERSATION HISTORY (' + coldMsgs.length + ' messages):',
-            coldText
+            _factsColdText
         ].join('\n');
 
         // ── ② narrative 专家 prompt ──
@@ -430,14 +452,13 @@
                 },
                 signal: _timeoutCtrl.signal,
                 body: JSON.stringify({
-                    model: _tier.model || 'pro',
+                    model: _tier.model || 'deep',
                     messages: [
                         { role: 'system', content: 'You are a context compression engine. Output ONLY valid JSON — no markdown, no explanation. Be concise and precise. Your output MUST fit within the token budget.' },
                         { role: 'user', content: prompt }
                     ],
                     stream: false,
-                    thinking: _tier.thinking || { type: 'enabled' },
-                    reasoning_effort: _tier.effort || 'max',
+                    thinking: { type: 'disabled' },
                     max_tokens: _maxTokens,
                     floor_id: (self._floorId || 'compact') + _suffix
                 })
@@ -466,19 +487,36 @@
             if (!_lastData) {
                 try { var _dj = JSON.parse(_bodyText); _lastData = JSON.stringify(_dj); } catch (_) { }
             }
-            if (!_lastData) { self._log('✗ Compact API no data (body=' + _bodyText.slice(0, 150) + ')'); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            if (!_lastData) {
+                self._log('✗ Compact API no data (suffix=' + _suffix + ' bodyLen=' + _bodyText.length + ' preview=' + _bodyText.slice(0, 150) + ')');
+                return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+            }
 
             var _chunk;
-            try { _chunk = JSON.parse(_lastData); } catch (_e) { self._log('✗ Compact JSON parse: ' + _lastData.slice(0, 200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            try { _chunk = JSON.parse(_lastData); } catch (_e) {
+                self._log('✗ Compact JSON parse (suffix=' + _suffix + ' dataLen=' + _lastData.length + ' preview=' + _lastData.slice(0, 300) + ')');
+                return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+            }
 
             var text = _chunk.choices && _chunk.choices[0] && _chunk.choices[0].message && _chunk.choices[0].message.content;
-            if (!text) { self._log('✗ Compact no content (keys=' + Object.keys(_chunk).join(',') + ')'); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            if (!text) {
+                var _choice0 = _chunk.choices && _chunk.choices[0];
+                var _msg = _choice0 && _choice0.message;
+                self._log('✗ Compact no content (suffix=' + _suffix + ' chunkKeys=' + Object.keys(_chunk).join(',') + ' msgKeys=' + (_msg ? Object.keys(_msg).join(',') : 'null') + ' contentLen=' + (text ? text.length : 0) + ')');
+                return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+            }
 
             var match = text.match(/\{[\s\S]*\}/);
-            if (!match) { self._log('✗ Compact no JSON: ' + text.slice(0, 200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            if (!match) {
+                self._log('✗ Compact no JSON (suffix=' + _suffix + ' textLen=' + text.length + ' preview=' + text.slice(0, 300) + ')');
+                return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+            }
 
             var parsed;
-            try { parsed = JSON.parse(match[0]); } catch (_jsonErr) { self._log('✗ Compact JSON err: ' + match[0].slice(0, 200)); return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs }; }
+            try { parsed = JSON.parse(match[0]); } catch (_jsonErr) {
+                self._log('✗ Compact JSON err (suffix=' + _suffix + ' matchLen=' + match[0].length + ' preview=' + match[0].slice(0, 300) + ')');
+                return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+            }
             return { parsed: parsed, ttfbMs: _ttfbMs, totalMs: _totalMs };
         } catch (err) {
             var _totalMs = performance.now() - _fetchStart;

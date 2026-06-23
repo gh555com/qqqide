@@ -26,10 +26,11 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
     var STREAM_WATCHDOG_MS = (typeof ContentGateway !== 'undefined' ? ContentGateway.STREAM_WATCHDOG_MS : 180000);  // ★ 唯一真理在 ContentGateway
     function _resetStreamWatchdog() {
         if (_streamWatchdog) clearTimeout(_streamWatchdog);
+        var _ctrl = self.abortController;  // ★ 捕获当前 AbortController，防 retry 替换后旧 timer 误杀新请求
         _streamWatchdog = setTimeout(function () {
             self._abortSource = 'stream_watchdog';
             self._log('⏰ stream watchdog ' + (STREAM_WATCHDOG_MS / 1000) + 's — no data, aborting dead connection');
-            if (self.abortController) self.abortController.abort();
+            if (_ctrl) _ctrl.abort();
         }, STREAM_WATCHDOG_MS);
     }
     _resetStreamWatchdog();

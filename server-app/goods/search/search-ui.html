@@ -38,6 +38,9 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .search-input { flex: 1; height: 26px; padding: 2px 8px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--bg-highlight); color: var(--text-primary); font-size: 13px; font-family: Consolas, monospace; outline: none; }
 .search-input:focus { border-color: var(--blue); }
 .search-input.error { border-color: var(--red); }
+.search-input::placeholder { color: var(--text-dim); opacity: 0.4; }
+.scope-input::placeholder { color: var(--text-dim); opacity: 0.35; }
+.replace-input::placeholder { color: var(--text-dim); opacity: 0.4; }
 .toggle-btn { width: 26px; height: 26px; border: 1px solid var(--border-color); border-radius: 3px; background: transparent; color: var(--text-dim); font-size: 12px; font-weight: bold; line-height: 26px; text-align: center; cursor: pointer; flex-shrink: 0; }
 .toggle-btn:hover { background: var(--bg-highlight); color: var(--text-primary); }
 .toggle-btn.active { background: var(--blue); color: #1e1e1e; border-color: var(--blue); }
@@ -146,14 +149,14 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 
   <!-- Status bar -->
   <div class="search-status" id="status-bar">
-    <span id="status-text">输入搜索内容开始</span>
+    <span id="status-text">键盘搜索内容开始</span>
   </div>
 
   <!-- Results -->
   <div class="search-results" id="results-container">
     <div class="empty-state" id="empty-state">
       <span class="icon">🔍</span>
-      <span class="hint">输入关键字开始搜索</span>
+      <span class="hint">键盘关键字开始搜索</span>
     </div>
   </div>
 </div>
@@ -228,21 +231,27 @@ document.addEventListener('keydown', function(e) {
   // Ctrl+Shift+F focuses search input
   if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') { e.preventDefault(); $query.focus(); $query.select(); }
   // Escape clears
-  if (e.key === 'Escape') { $query.value = ''; triggerSearch(); }
+  if (e.key === 'Escape') { $query.value = ''; doSearch(); }
 });
 
-// ---- Search trigger (debounced) ----
+// ---- Search trigger -------
 function triggerSearch() {
   if (_searchTimer) clearTimeout(_searchTimer);
   _searchTimer = setTimeout(doSearch, 200);
 }
 
-$query.addEventListener('input', triggerSearch);
-$include.addEventListener('input', triggerSearch);
-$exclude.addEventListener('input', triggerSearch);
-$scope.addEventListener('input', triggerSearch);
+// ★ 禁键入即搜索，仅 Enter 触发
 $query.addEventListener('keydown', function(e) {
-  if (e.key === 'Enter') { if (_searchTimer) clearTimeout(_searchTimer); doSearch(); }
+  if (e.key === 'Enter') { e.preventDefault(); if (_searchTimer) clearTimeout(_searchTimer); doSearch(); }
+});
+$include.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
+});
+$exclude.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
+});
+$scope.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); doSearch(); }
 });
 
 // ---- Main search ----
@@ -250,7 +259,7 @@ async function doSearch() {
   var query = $query.value;
   if (!query) {
     clearResults();
-    $statusText.textContent = '输入搜索内容开始';
+    $statusText.textContent = '键盘搜索内容开始';
     return;
   }
 
@@ -466,18 +475,21 @@ function renderBatch() {
     bodyEl._matches = matches;
     bodyEl._filePath = filePath;
 
+    // ★ 闭包捕获当前迭代变量（let 块作用域，防 var 提升导致全部 handler 指向最后一行）
+    var _groupEl = groupEl, _bodyEl = bodyEl, _arrow = arrow, _filePath = filePath;
+
     header.addEventListener('click', function() {
-      if (!bodyEl._populated) {
-        populateGroupBody(bodyEl, bodyEl._matches, bodyEl._filePath);
-        bodyEl._populated = true;
+      if (!_bodyEl._populated) {
+        populateGroupBody(_bodyEl, _bodyEl._matches, _filePath);
+        _bodyEl._populated = true;
       }
-      groupEl.classList.toggle('collapsed');
-      arrow.textContent = groupEl.classList.contains('collapsed') ? '▶' : '▼';
+      _groupEl.classList.toggle('collapsed');
+      _arrow.textContent = _groupEl.classList.contains('collapsed') ? '▶' : '▼';
     });
 
-    groupEl.appendChild(header);
-    groupEl.appendChild(bodyEl);
-    frag.appendChild(groupEl);
+    _groupEl.appendChild(header);
+    _groupEl.appendChild(_bodyEl);
+    frag.appendChild(_groupEl);
   }
 
   _renderBatchIdx = end;

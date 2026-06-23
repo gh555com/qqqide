@@ -19,7 +19,7 @@
 // 无外部依赖（不依赖 system-prompt.js 的 GATEWAY_URL 等常量）
 // ============================================================================
 
-;(function () {
+; (function () {
     'use strict';
 
     // ════════════════════════════════════════════════════
@@ -28,18 +28,21 @@
     // ════════════════════════════════════════════════════
 
     var _URLS = {
-        chatPrimary:    'https://direct.gh555.com:8444/api/v3/ai/chat',
-        chatFallback:   'https://gh555.com/api/v3/ai/chat',
-        vision:         'https://direct.gh555.com:8444/api/v3/ai/vision',
-        imageGen:       'https://direct.gh555.com:8444/api/v3/ai/generate-image',
-        embedPrimary:   'https://direct.gh555.com:8444/api/v3/ai/embedding',
-        embedFallback:  'https://gh555.com/api/v3/ai/embedding',
-        searchPrimary:  'https://direct.gh555.com:8444/api/v3/search/web',
+        chatPrimary: 'https://direct.gh555.com:8444/api/v3/ai/chat',
+        chatFallback: 'https://gh555.com/api/v3/ai/chat',
+        vision: 'https://direct.gh555.com:8444/api/v3/ai/vision',
+        imageGen: 'https://direct.gh555.com:8444/api/v3/ai/generate-image',
+        embedPrimary: 'https://direct.gh555.com:8444/api/v3/ai/embedding',
+        embedFallback: 'https://gh555.com/api/v3/ai/embedding',
+        searchPrimary: 'https://direct.gh555.com:8444/api/v3/search/web',
         searchFallback: 'https://gh555.com/api/v3/search/web',
     };
 
     var _DEFAULT_TIMEOUT = 30000;
-    var _CHAT_TIMEOUT = 600000;
+    var _CHAT_TIMEOUT = 1000000;
+
+    // ★ 备用线专用 API Key（19232854249 账号），与主线 Key 隔离防止并发限制
+    var _FALLBACK_TOKEN = 'sk-985c15849ad44094adddb5115f5dbd87';
 
     // ════════════════════════════════════════════════════
     // 内部工具函数
@@ -67,7 +70,7 @@
                 var parent = orig;
                 var child = controller;
                 parent.addEventListener('abort', function () {
-                    try { child.abort(); } catch (_) {}
+                    try { child.abort(); } catch (_) { }
                 }, { once: true });
             }
             return controller.signal;
@@ -123,7 +126,7 @@
                                 reader.cancel();
                                 return evt;
                             }
-                        } catch (_) {}
+                        } catch (_) { }
                     }
                 }
             }
@@ -222,7 +225,7 @@
                 var resp = await AiGateway.chatFetch(body, opts);
                 if (!resp.ok) {
                     var errText = '';
-                    try { errText = await resp.text(); } catch (_) {}
+                    try { errText = await resp.text(); } catch (_) { }
                     opts.onError && opts.onError('HTTP ' + resp.status + ': ' + errText.slice(0, 200));
                     return null;
                 }
@@ -411,6 +414,9 @@
         pollTaskStream: async function (url, token, timeoutMs) {
             return _pollStream(url, token, timeoutMs);
         },
+
+        // ★ 暴露备用线 Key 给 agent-gateway 用
+        getFallbackToken: function () { return _FALLBACK_TOKEN; },
     };
 
     // ═══ 暴露到全局 ═══

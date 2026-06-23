@@ -12,6 +12,7 @@
 #include <commctrl.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 // ── 窗口尺寸 ──
 #define WW 420
@@ -23,14 +24,17 @@
 #define COL_STATUS  RGB(0x58, 0x6e, 0x75)
 #define COL_DOT     RGB(0x85, 0x99, 0x00)
 #define COL_ERR     RGB(0xdc, 0x32, 0x2f)
+#define COL_BAR_BG  RGB(0xee, 0xe8, 0xd5)
+#define COL_BAR_FG  RGB(0x26, 0x8b, 0xd2)
 
 // ── 状态常量 ──
 enum { PHASE_INIT, PHASE_LAUNCHING, PHASE_WAITING, PHASE_DONE, PHASE_ERROR };
 
 static int  g_phase   = PHASE_INIT;
-static int  g_dot     = 0;       // 动画帧 0-3
 static int  g_err     = 0;       // 是否错误态
+static int  g_pct     = 0;       // 进度 0-100
 static char g_status[128] = "";
+static char g_stage[128]  = "";  // 阶段文字
 
 static HWND    g_hwnd      = NULL;
 static HANDLE  g_hProcess  = NULL;
@@ -120,41 +124,37 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         SelectObject(hdc, hOld);
         DeleteObject(hTitle);
 
-        // 状态文字
-        HFONT hStat = CreateFontW(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-            DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-            PROOF_QUALITY, DEFAULT_PITCH, L"Microsoft YaHei");
-        SelectObject(hdc, hStat);
+        // 阶段文字
         SetTextColor(hdc, g_err ? COL_ERR : COL_STATUS);
+        WCHAR wStage[128];
+        MultiByteToWideChar(CP_UTF8, 0, g_stage[0] ? g_stage : g_status, -1, wStage, 128);
+        RECT sr2 = {20, 130, WW - 20, 160};
+        DrawTextW(hdc, wStage, -1, &sr2, DT_CENTER | DT_VCENTER | DT_WORD_ELLIPSIS);
 
-        WCHAR wbuf[128];
-        MultiByteToWideChar(CP_UTF8, 0, g_status, -1, wbuf, 128);
-        RECT sr = {20, 120, WW - 20, 170};
-        DrawTextW(hdc, wbuf, -1, &sr, DT_CENTER | DT_VCENTER | DT_WORD_ELLIPSIS);
+        // 进度条背景
+        RECT barBg = {60, 170, WW - 60, 178};
+        HBRUSH hBarBg = CreateSolidBrush(COL_BAR_BG);
+        FillRect(hdc, &barBg, hBarBg);
+        DeleteObject(hBarBg);
 
-        // 动画小圆点
-        SelectObject(hdc, GetStockObject(DC_PEN));
-        HPEN hDotPen = CreatePen(PS_SOLID, 6, COL_DOT);
-        SelectObject(hdc, hDotPen);
-        for (int i = 0; i < 4; i++) {
-            int x = WW / 2 - 30 + i * 20;
-            int y = 180;
-            if (i == g_dot) {
-                // 当前点高亮
-                HBRUSH hDot = CreateSolidBrush(COL_DOT);
-                SelectObject(hdc, hDot);
-                Ellipse(hdc, x - 4, y - 4, x + 4, y + 4);
-                DeleteObject(hDot);
-            } else {
-                HBRUSH hDot = CreateSolidBrush(COL_BG);
-                SelectObject(hdc, hDot);
-                Ellipse(hdc, x - 4, y - 4, x + 4, y + 4);
-                DeleteObject(hDot);
-            }
+        // 进度条前景
+        int barW = barBg.right - barBg.left;
+        int fillW = (g_pct > 0) ? (barW * g_pct / 100) : 0;
+        if (fillW > barW) fillW = barW;
+        if (fillW > 0) {
+            RECT barFg = {barBg.left, barBg.top, barBg.left + fillW, barBg.bottom};
+            HBRUSH hBarFg = CreateSolidBrush(COL_BAR_FG);
+            FillRect(hdc, &barFg, hBarFg);
+            DeleteObject(hBarFg);
         }
-        DeleteObject(hDotPen);
-        SelectObject(hdc, hOld);
-        DeleteObject(hStat);
+        // 进度文字
+        char pctText[16];
+        snprintf(pctText, sizeof(pctText), "%d%%", g_pct);
+        SetTextColor(hdc, COL_STATUS);
+        RECT pr = {60, 180, WW - 60, 200};
+        WCHAR wPct[16];
+        MultiByteToWideChar(CP_UTF8, 0, pctText, -1, wPct, 16);
+        DrawTextW(hdc, wPct, -1, &pr, DT_CENTER | DT_VCENTER);
 
         EndPaint(hwnd, &ps);
         return 0;
@@ -163,14 +163,53 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
     case WM_TIMER: {
         g_tickCount++;
 
-        // 动画：圆点循环
-        g_dot = (g_dot + 1) % 4;
+        // ── 读取 Electron 写入的进度文件 ──
+        // 格式：每行 "N|文字" 或 "ready"
+        WCHAR statusPath[MAX_PATH];
+        {
+            WCHAR myDir[MAX_PATH];
+            GetModuleFileNameW(NULL, myDir, MAX_PATH);
+            WCHAR *slash = wcsrchr(myDir, L'\\');
+            if (slash) *slash = L'\0';
+            swprintf(statusPath, MAX_PATH, L"%s\\loading-status", myDir);
+        }
+
+        HANDLE hFile = CreateFileW(statusPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+            NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (hFile != INVALID_HANDLE_VALUE) {
+            char buf[256] = {0};
+            DWORD read = 0;
+            ReadFile(hFile, buf, sizeof(buf) - 1, &read, NULL);
+            CloseHandle(hFile);
+            if (read > 0) {
+                buf[read] = '\0';
+                // 去掉换行
+                char *nl = strchr(buf, '\n');
+                if (nl) *nl = '\0';
+                nl = strchr(buf, '\r');
+                if (nl) *nl = '\0';
+                if (strcmp(buf, "ready") == 0) {
+                    // ★ Electron 已就绪，关闭启动器
+                    g_phase = PHASE_DONE;
+                    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                    return 0;
+                }
+                // 解析 "N|文字"
+                char *pipe = strchr(buf, '|');
+                if (pipe) {
+                    *pipe = '\0';
+                    g_pct = atoi(buf);
+                    strncpy(g_stage, pipe + 1, sizeof(g_stage) - 1);
+                }
+            }
+        }
 
         // 阶段转换
         switch (g_phase) {
         case PHASE_INIT:
             if (g_tickCount >= 2) { // ~0.5s
                 setStatus("正在启动主程序…", 0);
+                g_stage[0] = '\0';
                 g_phase = PHASE_LAUNCHING;
                 launchCore();
             }
@@ -182,9 +221,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
             }
             break;
         case PHASE_WAITING:
-            if (g_tickCount >= 120) { // ~30s 超时
-                setStatus("正在等待主窗口…", 0);
-                g_phase = PHASE_DONE;
+            if (g_tickCount >= 480) { // ~120s 超时（跨洋弱网可能很慢）
+                setStatus("加载超时", 1);
+                g_phase = PHASE_ERROR;
             } else if (g_hProcess) {
                 // 检查进程是否还在运行
                 DWORD ec = 0;
@@ -193,14 +232,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
                     g_phase = PHASE_ERROR;
                     break;
                 }
-                // 尝试找到 Electron 主窗口
-                HWND target = FindWindowW(NULL, L"qqq IDE");
-                if (target) {
-                    // Electron 窗口已出现，关闭 splash
-                    g_phase = PHASE_DONE;
-                    PostMessageW(hwnd, WM_CLOSE, 0, 0);
-                    return 0;
-                }
+                // ★ 不靠 FindWindowW 找窗口 — launcher 自己标题也是 "qqq IDE"
+                //    只靠 loading-status 文件里的 "ready" 信号
             }
             break;
         default:

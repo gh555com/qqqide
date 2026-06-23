@@ -57,6 +57,16 @@
         { value: '5', label: '5', desc: '专业+推理' },
         { value: '6', label: '6', desc: '专业+深度推理' }
       ]
+    },
+    {
+      key: 'ai.compressThreshold',
+      label: '自动压缩阈值',
+      desc: '上下文 token 数超过此值自动触发压缩。单位 k（千 tokens），接收范围 100-1000',
+      type: 'number',
+      defaultValue: '200',
+      min: 100,
+      max: 1000,
+      unit: 'k'
     }
   ];
 
@@ -242,6 +252,17 @@
             html += '</label>';
           }
         }
+      } else if (def.type === 'number') {
+        // 数字输入（范围 100-1000，单位 k）
+        var numId = 'qqq-setting-' + def.key.replace(/\./g, '-');
+        var min = def.min || 100;
+        var max = def.max || 1000;
+        var unit = def.unit || '';
+        html += '<div style="display:flex; align-items:center; gap:8px;">';
+        html += '<input type="number" id="' + numId + '" value="' + currentVal + '" min="' + min + '" max="' + max + '" step="10" data-setting-key="' + def.key + '" style="width:100px; padding:6px 8px; border:2px solid ' + border + '; border-radius:4px; background:' + bg + '; color:' + text + '; font-size:13px; outline:none;" onfocus="this.style.borderColor=\'' + accent + '\'" onblur="this.style.borderColor=\'' + border + '\'">';
+        html += '<span style="font-size:13px; color:' + textDim + ';">' + unit + '</span>';
+        html += '<span style="font-size:11px; color:' + textDim + ';">（' + min + '–' + max + '）</span>';
+        html += '</div>';
       }
 
       html += '</div>';
@@ -269,6 +290,30 @@
         set(key, val);
         // 实时刷新面板以反映选中状态
         _renderPanel();
+      });
+    }
+
+    // 绑定 number 变更（debounce 500ms 后写入）
+    var numInputs = _$panel.querySelectorAll('input[type="number"]');
+    for (var n = 0; n < numInputs.length; n++) {
+      numInputs[n].addEventListener('input', function () {
+        var self = this;
+        var key = self.getAttribute('data-setting-key');
+        var def = null;
+        for (var d = 0; d < SETTINGS_DEF.length; d++) {
+          if (SETTINGS_DEF[d].key === key) { def = SETTINGS_DEF[d]; break; }
+        }
+        var val = parseInt(self.value, 10);
+        if (isNaN(val)) return;
+        var min = def ? (def.min || 100) : 100;
+        var max = def ? (def.max || 1000) : 1000;
+        if (val < min) val = min;
+        if (val > max) val = max;
+        // debounce 写入
+        clearTimeout(self._debounceTimer);
+        self._debounceTimer = setTimeout(function () {
+          set(key, String(val));
+        }, 500);
       });
     }
   }

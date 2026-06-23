@@ -281,6 +281,7 @@ export async function loadRemoteWithCacheGuard(
     bootConfig: BootConfig,
     timeoutMs: number = 0,
     isDev: boolean = false,
+    portableRoot: string = '',
 ): Promise<{ ok: boolean; mode: BootMode }> {
     if (!mainWindow) { bootLog('remote: no window'); return { ok: false, mode: 'fallback' }; }
     bootLog('remote: loading ' + bootConfig.url + (timeoutMs > 0 ? ' timeout=' + timeoutMs + 'ms' : ''));
@@ -288,51 +289,149 @@ export async function loadRemoteWithCacheGuard(
     return new Promise<{ ok: boolean; mode: BootMode }>(resolve => {
         let settled = false;
         let timeoutTimer: NodeJS.Timeout | null = null;
-        let overlayTimer: NodeJS.Timeout | null = null;
-        const OVERLAY_MAX_MS = 90000;  // 最多遮 90s，防止弱网永遮
-
-        const clearOverlay = () => {
-            if (overlayTimer) { clearTimeout(overlayTimer); overlayTimer = null; }
-            wc.executeJavaScript('try{document.getElementById("__qqq_boot_overlay")?.remove()}catch(_){}').catch(() => { });
+        let panelTimer: NodeJS.Timeout | null = null;
+        let progressTickId: NodeJS.Timeout | null = null;
+        const PANEL_MAX_MS = 30000;     // 加载面板最多撑 30s
+        const LOADING_STATUS_PATH = portableRoot ? path.join(portableRoot, 'loading-status') : '';
+        const writeLoadingStatus = (line: string) => {
+            if (!LOADING_STATUS_PATH) { return; }
+            try { fs.writeFileSync(LOADING_STATUS_PATH, line, 'utf-8'); } catch (_) { }
         };
-        const injectOverlay = () => {
-            // 注入到远端页面：白屏+旋转小圈，等 JS/CSS 加载完就摘掉
+
+        // ── 资源追踪（进度条用） ──
+        let pendingReqs = 0;
+        let doneReqs = 0;
+        let domReadyFired = false;
+        const session = wc.session;
+        const reqFilter = { urls: ['*://*/*'] };
+        const onBeforeReq = (details: any, cb: any) => {
+            if (details.resourceType === 'mainFrame') { cb({}); return; }
+            pendingReqs++;
+            cb({});
+        };
+        const onReqDone = (details: any) => {
+            if (details.resourceType === 'mainFrame') { return; }
+            doneReqs++;
+            pendingReqs = Math.max(0, pendingReqs - 1);
+            updateProgress();
+        };
+        const onReqErr = (details: any) => {
+            if (details.resourceType === 'mainFrame') { return; }
+            pendingReqs = Math.max(0, pendingReqs - 1);
+            updateProgress();
+        };
+
+        // ── 加载面板 ──
+        const injectLoadingPanel = () => {
             const css = `
-                #__qqq_boot_overlay{position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;
+                #__qqq_boot_panel{position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;
                 background:#fdf6e3;display:flex;align-items:center;justify-content:center;
                 font-family:-apple-system,BlinkMacSystemFont,"Microsoft YaHei",sans-serif}
-                #__qqq_boot_overlay .inner{text-align:center;color:#657b83}
-                #__qqq_boot_overlay .spinner{width:32px;height:32px;margin:0 auto 12px;
+                #__qqq_boot_panel .wrap{text-align:center;max-width:420px;padding:32px}
+                #__qqq_boot_panel .spinner{width:36px;height:36px;margin:0 auto 20px;
                 border:3px solid #eee8d5;border-top-color:#268bd2;border-radius:50%;
                 animation:__qqq_spin .8s linear infinite}
+                #__qqq_boot_panel .stage{color:#586e75;font-size:14px;margin-bottom:20px;min-height:20px}
+                #__qqq_boot_panel .bar-bg{background:#eee8d5;border-radius:8px;height:8px;overflow:hidden}
+                #__qqq_boot_panel .bar-fg{background:linear-gradient(90deg,#268bd2,#2aa198);height:100%;width:0%;transition:width .3s ease}
+                #__qqq_boot_panel .pct{color:#93a1a1;font-size:12px;margin-top:8px}
                 @keyframes __qqq_spin{to{transform:rotate(360deg)}}
             `.replace(/\n\s*/g, '');
-            const html = '<div id="__qqq_boot_overlay"><div class="inner"><div class="spinner"></div><div>正在加载…</div></div></div>';
+            const html = '<div id="__qqq_boot_panel"><div class="wrap"><div class="spinner"></div><div class="stage">正在连接服务器…</div><div class="bar-bg"><div class="bar-fg" id="__qqq_boot_bar"></div></div><div class="pct" id="__qqq_boot_pct">0%</div></div></div>';
             wc.executeJavaScript(`
-                try{if(!document.getElementById("__qqq_boot_overlay")){
-                var s=document.createElement("style");s.textContent=\`${css}\`;document.head.appendChild(s);
-                var d=document.createElement("div");d.innerHTML=\`${html}\`;document.body.appendChild(d.firstElementChild);
-                }}catch(_){}
+                try{
+                    // ★ 彻底隐藏 IDE 内容 — 不是遮罩，是完全不显示
+                    var hideCSS=document.createElement("style");
+                    hideCSS.id="__qqq_boot_hide";
+                    hideCSS.textContent="html>body>:not(#__qqq_boot_panel){display:none!important}";
+                    document.head.appendChild(hideCSS);
+                    // 注入面板
+                    var panelCSS=document.createElement("style");
+                    panelCSS.textContent=\`${css}\`;document.head.appendChild(panelCSS);
+                    var d=document.createElement("div");
+                    d.innerHTML=\`${html}\`;document.body.appendChild(d.firstElementChild);
+                }catch(_){}
             `).catch(() => { });
-            overlayTimer = setTimeout(() => { bootLog('remote: overlay timeout ' + OVERLAY_MAX_MS + 'ms'); clearOverlay(); }, OVERLAY_MAX_MS);
+        };
+        const updateLoadingPanel = (stage: string, pct: number) => {
+            writeLoadingStatus(pct + '|' + stage);
+            wc.executeJavaScript(`
+                try{
+                    var s=document.getElementById("__qqq_boot_pct");
+                    if(s&&s.parentElement){s.textContent="${pct}%"}
+                    var b=document.getElementById("__qqq_boot_bar");
+                    if(b){b.style.width="${pct}%"}
+                    Array.from(document.querySelectorAll("#__qqq_boot_panel .stage")).forEach(function(e){e.textContent="${stage}"})
+                }catch(_){}
+            `.replace(/\n\s*/g, '')).catch(() => { });
+        };
+        const removeLoadingPanel = () => {
+            if (panelTimer) { clearTimeout(panelTimer); panelTimer = null; }
+            if (progressTickId) { clearInterval(progressTickId); progressTickId = null; }
+            wc.executeJavaScript(`
+                try{
+                    var p=document.getElementById("__qqq_boot_panel");if(p)p.remove();
+                    var h=document.getElementById("__qqq_boot_hide");if(h)h.remove();
+                }catch(_){}
+            `).catch(() => { });
+        };
+        const updateProgress = () => {
+            const total = pendingReqs + doneReqs;
+            if (total === 0) { return; }
+            const pct = Math.min(98, Math.round(doneReqs / Math.max(total, 1) * 100));
+            const stage = pct < 30 ? '正在加载页面结构…'
+                : pct < 60 ? '正在加载组件脚本…'
+                    : pct < 85 ? '正在加载样式资源…'
+                        : '正在初始化 IDE…';
+            updateLoadingPanel(stage, pct);
+            // 资源都加载完 + dom-ready → 就绪
+            if (pendingReqs === 0 && domReadyFired) {
+                onAllReady();
+            }
+        };
+        const onAllReady = () => {
+            if (settled) { return; }
+            bootLog('remote: all resources loaded + dom-ready → IDE ready');
+            updateLoadingPanel('正在启动 IDE…', 100);
+            writeLoadingStatus('ready');
+            setTimeout(() => {
+                if (settled) { return; }
+                removeLoadingPanel();
+                // ★ 显示 Electron 窗口 — 此前一直隐藏，launcher 用小窗口展示进度
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.show();
+                    mainWindow.focus();
+                }
+                bootLog('remote: panel removed, IDE shown');
+            }, 400);  // 短暂延迟让用户看到 100%
         };
 
+        // ── cleanup & finish ──
+        const cleanupWebRequest = () => {
+            try { session.webRequest.onBeforeRequest(reqFilter, null as any); } catch (_) { }
+            try { session.webRequest.onCompleted(reqFilter, null as any); } catch (_) { }
+            try { session.webRequest.onErrorOccurred(reqFilter, null as any); } catch (_) { }
+        };
         const finish = (ok: boolean, mode: BootMode) => {
             if (settled) { return; }
             settled = true;
             if (timeoutTimer) { clearTimeout(timeoutTimer); timeoutTimer = null; }
+            cleanupWebRequest();
             wc.removeListener('did-start-navigation', onStartNav);
             wc.removeListener('did-navigate', onNavigate);
+            wc.removeListener('dom-ready', onDomReady);
             wc.removeListener('did-finish-load', onFinish);
+            wc.removeListener('did-stop-loading', onStopLoading);
             wc.removeListener('did-fail-load', onFail);
             if (!ok && mode === 'fallback') {
-                clearOverlay();
+                removeLoadingPanel();
                 try { wc.stop(); } catch (_) { }
             }
             bootLog('remote: ' + (ok ? 'LOADED' : 'FAILED') + ' mode=' + mode);
             resolve({ ok, mode });
         };
-        // ── 混合策略：did-navigate 就切页面+遮罩，did-finish-load 摘遮罩 ──
+
+        // ── 事件：启动追踪、注入面板、完成 ──
         const onStartNav = (_e: any, _url: string, _inFrame: boolean, _isMain: boolean) => {
             if (!_isMain) { return; }
             bootLog('remote: did-start-navigation ' + _url);
@@ -340,35 +439,95 @@ export async function loadRemoteWithCacheGuard(
         const onNavigate = (_e: any, _url: string, httpCode: number) => {
             bootLog('remote: did-navigate http=' + httpCode);
             if (httpCode >= 200 && httpCode < 400) {
-                if (!isDev) { injectOverlay(); }   // 本地无遮罩，远端才遮
-                finish(true, 'live');          // 告诉 bootSequence 我们成了
+                if (!isDev) { injectLoadingPanel(); updateLoadingPanel('正在解析页面…', 5); }
+                // ★ 时间兜底进度：每 2s 推进，写 loading-status 文件给 C 启动器
+                let lastPct = 5;
+                progressTickId = setInterval(() => {
+                    if (domReadyFired) { clearInterval(progressTickId!); progressTickId = null; return; }
+                    lastPct = Math.min(88, lastPct + 6);
+                    const stage = lastPct < 35 ? '正在加载页面结构…'
+                        : lastPct < 60 ? '正在加载组件脚本…'
+                        : lastPct < 80 ? '正在加载样式资源…'
+                        : '正在初始化 IDE…';
+                    updateLoadingPanel(stage, lastPct);
+                }, 2500);
+                // 10 分钟终极兜底（跨洋弱网 + Win7 极端慢）
+                panelTimer = setTimeout(() => {
+                    bootLog('remote: ultimate fallback after 10min — force show');
+                    updateLoadingPanel('即将完成…', 95);
+                    removeLoadingPanel();
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.show();
+                        mainWindow.focus();
+                    }
+                }, 600000);
+                finish(true, 'live');
             } else {
                 finish(false, 'fallback');
             }
         };
+        const onDomReady = () => {
+            bootLog('remote: dom-ready');
+            domReadyFired = true;
+            // ★ 兜底：webRequest 没追踪到资源时，dom-ready 本身就是强信号
+            if (doneReqs === 0) {
+                bootLog('remote: dom-ready fallback (no requests tracked) → 90%');
+                updateLoadingPanel('正在初始化 IDE…', 90);
+            }
+            if (pendingReqs === 0) { onAllReady(); }
+        };
         const onFinish = () => {
-            bootLog('remote: did-finish-load');
-            clearOverlay();                    // JS/CSS 加载完，摘遮罩
+            bootLog('remote: did-finish-load (onload)');
+        };
+        // ★ did-stop-loading：比 onload/dom-ready 更可靠，浏览器加载指示器停止即触发
+        const onStopLoading = () => {
+            bootLog('remote: did-stop-loading');
+            if (progressTickId) { clearInterval(progressTickId); progressTickId = null; }
+            onAllReady();
         };
         const onFail = (_e: any, code: number, desc: string, validatedURL: string, isMain: boolean) => {
             if (!isMain) { return; }
             bootLog('remote: did-fail-load code=' + code + ' desc=' + desc + ' url=' + validatedURL);
             finish(false, 'fallback');
         };
+
+        // ── 兜底超时 ──
         if (timeoutMs > 0) {
             timeoutTimer = setTimeout(() => {
                 bootLog('remote: TIMEOUT (did-navigate never fired) after ' + timeoutMs + 'ms');
                 finish(false, 'fallback');
             }, timeoutMs);
         }
+        // ★ 面板 timer 移到 onNavigate 里 — 不能从函数入口就开始计时
+
         wc.on('did-start-navigation', onStartNav);
         wc.on('did-navigate', onNavigate);
+        wc.on('dom-ready', onDomReady);
         wc.on('did-finish-load', onFinish);
+        wc.on('did-stop-loading', onStopLoading);
         wc.on('did-fail-load', onFail);
-        mainWindow!.loadURL(bootConfig.url).catch(err => {
-            bootLog('remote: loadURL error — ' + (err && (err as Error).message || String(err)));
-            finish(false, 'fallback');
-        });
+
+        // ★ 提前注册 webRequest 追踪 — 在 loadURL 之前，确保捕获所有子资源
+        session.webRequest.onBeforeRequest(reqFilter, onBeforeReq);
+        session.webRequest.onCompleted(reqFilter, onReqDone);
+        session.webRequest.onErrorOccurred(reqFilter, onReqErr);
+
+        // ★ ERR_FAILED 重试：Win7 + Chromium 108 SSL 预热问题
+        let loadRetries = 0;
+        const doLoad = () => {
+            mainWindow!.loadURL(bootConfig.url).catch(err => {
+                const msg = err && (err as Error).message || String(err);
+                bootLog('remote: loadURL error — ' + msg);
+                if (msg.includes('ERR_FAILED') && loadRetries < 2) {
+                    loadRetries++;
+                    bootLog('remote: ERR_FAILED retry ' + loadRetries + '/2, waiting 3s...');
+                    setTimeout(doLoad, 3000);
+                    return;
+                }
+                finish(false, 'fallback');
+            });
+        };
+        doLoad();
     });
 }
 
@@ -385,8 +544,9 @@ export async function bootSequence(
     setLastBootMode: (m: BootMode) => void,
     getLastBootMode: () => BootMode,
 ): Promise<void> {
-    // 0) Init boot file log for diagnostics
+    // 0) Init boot file log + clean stale loading-status (from previous run)
     initBootLog(path.join(portableRoot, 'userData', 'Logs'));
+    try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
 
     // ★ 开发模式：直连本地 dev-server，不走网络
     const DEV_URL = 'http://127.0.0.1:8090/qqq-app/';
@@ -418,7 +578,7 @@ export async function bootSequence(
     // 4) Try remote with 15s timeout
     //    loadURL() 会自动替换当前 fallback 页面，用户无缝过渡到正式应用
     const REMOTE_TIMEOUT_MS = 30000;  // 只等 HTML（did-navigate），不等子资源
-    const { ok, mode } = await loadRemoteWithCacheGuard(mainWindow, bootConfig, REMOTE_TIMEOUT_MS, isDev);
+    const { ok, mode } = await loadRemoteWithCacheGuard(mainWindow, bootConfig, REMOTE_TIMEOUT_MS, isDev, portableRoot);
     if (ok) {
         bootLog('seq: remote OK, boot complete');
         setLastBootMode(mode);

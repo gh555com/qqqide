@@ -596,6 +596,8 @@
     // ★ 快照还原：若本层有待展开链，自动触发下一级
     if (parentEl._pendingChain && parentEl._pendingChain.length > 0) {
       var nextName = parentEl._pendingChain[0];
+      // ★ 防 nextName 为 undefined 导致 .split() 崩溃（链被污染时）
+      if (!nextName) { parentEl._pendingChain = null; return; }
       // ★ 提取最后一段（兼容「src」和「src/app」两种格式）
       var targetName = nextName.split(/[\\/]/).pop();
       var rows2 = parentEl.querySelectorAll(':scope > .aiv-dd-row');
@@ -781,8 +783,9 @@
       // 裁剪到当前深度 - 1（同级重新展开时覆盖后续）
       activeDropdown._expandedChain.length = depth - 1;
       // 存目录短名（不含路径层级），还原时只需 basename 匹配
-      var dirName = dirPath.split(/[\\/]/).filter(Boolean).pop();
-      activeDropdown._expandedChain.push(dirName);
+      // ★ 防 dirPath 为空或根路径时 dirName 为 undefined → 链被污染 → 下次 .split() 崩溃
+      var dirName = (dirPath || '').split(/[\\/]/).filter(Boolean).pop();
+      if (dirName) activeDropdown._expandedChain.push(dirName);
     }
 
     loadDirInto(subScroll, dirPath, projectRoot);

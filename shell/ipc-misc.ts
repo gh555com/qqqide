@@ -35,6 +35,14 @@ export function registerMiscIpc(
     ipcMain.handle('qqqide:clipboard:readImage', async () => { var img = clipboard.readImage(); return img.isEmpty() ? null : img.toDataURL(); });
     ipcMain.handle('qqqide:clipboard:hasImage', async () => !clipboard.readImage().isEmpty());
 
+    // ---- shell (open file / URL) ----
+    ipcMain.handle('qqqide:shell:openPath', async (_e, p: string) => {
+      try { return await electronShell.openPath(p); } catch (e) { console.warn('[shell:openPath]', e); return ''; }
+    });
+    ipcMain.handle('qqqide:shell:openExternal', async (_e, url: string) => {
+      try { await electronShell.openExternal(url); } catch (e) { console.warn('[shell:openExternal]', e); }
+    });
+
     // ---- drives / diskFree ----
     ipcMain.handle('qqqide:fs:drives', async () => {
         const drives: string[] = [];

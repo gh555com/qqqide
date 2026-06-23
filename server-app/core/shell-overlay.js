@@ -392,8 +392,9 @@ function bootAiOverlay() {
 
         var wrapper = document.createElement('div');
         wrapper.className = 'qqq-overlay-table-wrapper';
+        var _overlayDark = window.qqqideTheme && window.qqqideTheme.isDark();
         wrapper.style.cssText =
-          'background:var(--card-bg,#2a2a2a); color:var(--text-primary,#dcd8d0); ' +
+          'background:' + (_overlayDark ? '#2a2a2a' : '#ede4cf') + '; color:var(--text-primary,#dcd8d0); ' +
           'border-radius:8px; padding:20px; user-select:text; ' +
           'box-shadow:0 4px 32px rgba(0,0,0,0.4); ' +
           'transform-origin:center center; ' +
@@ -490,7 +491,7 @@ function bootAiOverlay() {
     window.qqqideTheme.onChange(function (dark) {
       var wrapper = contentEl.querySelector('div > div') || contentEl.querySelector('div');
       if (wrapper) {
-        wrapper.style.background = dark ? '#2a2a2a' : '#eee8d5';
+        wrapper.style.background = dark ? '#2a2a2a' : '#ede4cf';
         wrapper.style.color = dark ? '#dcd8d0' : '#656360';
       }
     });

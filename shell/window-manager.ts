@@ -143,7 +143,7 @@ export function createWindow(
 
     win.once('ready-to-show', async () => {
         await restoreWindowBounds(win, stateStore);
-        win.show();
+        // ★ 不在 ready-to-show 就 show() — 等 boot 完成加载面板到 100% 才由 boot.ts 调用 show()
     });
 
     win.on('closed', () => {

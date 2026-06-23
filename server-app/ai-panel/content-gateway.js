@@ -25,8 +25,8 @@
     var AI_OUTPUT_WATCHDOG_MS_REMOVED = true; // output_watchdog 已移除（2026-06-21）— AI 推理不限时
 
     // ═══ 网络超时参数（单一真理源：改一处全局生效） ═══
-    var FETCH_DEADLINE_PRIMARY_MS = 600000;   // 主线直连（绕过 CF），对齐 Nginx+Go 600s，仅作兜底天花板
-    var FETCH_DEADLINE_FALLBACK_MS = 600000;  // 备线走 CF Worker，实测 CF Proxy 有心跳流不掐 100s
+    var FETCH_DEADLINE_PRIMARY_MS = 1000000;   // 主线直连（绕过 CF），对齐 Nginx+Go 1000s，仅作兜底天花板
+    var FETCH_DEADLINE_FALLBACK_MS = 1000000;  // 备线走 CF Worker，实测 CF Proxy 有心跳流不掐 100s
     var STREAM_WATCHDOG_MS = 180000;          // SSE 流看门狗 3min（深度推理可能 2min+ 无 token）
 
     // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
@@ -35,7 +35,7 @@
     var MAX_TOKENS_SAFETY = 10000;    // max_tokens 帽安全余量
     var CHAR_PER_TOKEN = 3.0;         // 统一 chars→tokens 估算比例
     // 三专家输出阀值
-    var COMPACT_FACTS_TOKENS = 16384;     // ① facts 专家 16k
+    var COMPACT_FACTS_TOKENS = 32768;     // ① facts 专家 32k（facts 可能很多，给足空间）
     var COMPACT_NARRATIVE_TOKENS = 32768; // ② narrative 专家 32k
     var COMPACT_ARCHIVE_TOKENS = 32768;   // ③ archive 专家 32k
     var ARCHIVE_MAX_CHARS = 1000000;      // archive 硬上限 ~1M chars
