@@ -391,19 +391,7 @@ async function _restoreAgentFromStore(questId, ag) {
             ag._rulesVersion = data.rulesVersion || '';
             ag._persistentCount = data.persistentCount || 0;
             // ★ 恢复楼层计数器（旧 quest 无此字段时回退到已保存楼层数）
-            ag._currentFloorNum = data.curren            ag._lastApiPromptTokens = 0;
-            ag._lastApiTotalTokens = 0;
-            ag._lastApiCompletionTokens = 0;
-            ag._accumulatedCompletionTokens = 0;
-            ag._lastTier = null;ns = 0;
-            ag._lastApiCompletionTokens = 0;
-            ag._lastTier = null;
-            ag._uncleanShutdown = false;
-            ag._ctx.lastCompressedFloor = 0;
-            ag._ctx.floorArchives = [];
-            ag._floorTimings = [];
-            ag._serverDrift = 0;
-            _queue = [];
+            ag._currentFloorNum = data.currentFloorNum || 0;
         }
         // ★ 崩溃恢复：上次关闭时正在压缩 → 修复可能的半成品状态
         if (ag._uncleanShutdown) {

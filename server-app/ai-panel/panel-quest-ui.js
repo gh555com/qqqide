@@ -543,11 +543,13 @@ function renderCtxBreakdown() {
         var padLeft = indent ? (12 + (indent - 1) * 14) + 'px' : '0';
         var fontSize = indent ? '10.5px' : '11px';
         var fontWeight = indent ? '400' : '500';
+        var isSmall = r.tok > 0 && r.tok < 1000;
         var colorStyle = (i === data.rows.length - 1) ? 'color:var(--green);' : '';  // Available green
+        var numWeight = isSmall ? 'font-weight:400;' : '';
         var valStr = r.tok >= 1000 ? (r.tok / 1000).toFixed(1) + 'k' : String(r.tok);
         html += '<div class="ctx-bd-row" style="padding-left:' + padLeft + ';font-size:' + fontSize + ';font-weight:' + fontWeight + '">' +
             '<span class="ctx-bd-label">' + r.label + '</span>' +
-            '<span class="ctx-bd-num" style="' + colorStyle + '">' + valStr + '</span>' +
+            '<span class="ctx-bd-num" style="' + colorStyle + numWeight + '">' + valStr + '</span>' +
             '<span class="ctx-bd-pct">tokens</span></div>';
     }
     rowsEl.innerHTML = html;

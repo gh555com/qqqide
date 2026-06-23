@@ -33,6 +33,9 @@ function _a4DiffStats(before, after) {
     // edit/write: line-by-line count
     var bLines = before.split('\n');
     var aLines = after.split('\n');
+    // ★ 行尾归一化：strip trailing \r 防止 CRLF vs LF 污染 LCS
+    for (var _bi = 0; _bi < bLines.length; _bi++) { if (bLines[_bi].charCodeAt(bLines[_bi].length - 1) === 13) bLines[_bi] = bLines[_bi].slice(0, -1); }
+    for (var _ai = 0; _ai < aLines.length; _ai++) { if (aLines[_ai].charCodeAt(aLines[_ai].length - 1) === 13) aLines[_ai] = aLines[_ai].slice(0, -1); }
     // Simple approximation: count changed lines via LCS length
     var lcsLen = _a4LcsLength(bLines, aLines);
     return { added: aLines.length - lcsLen, deleted: bLines.length - lcsLen };

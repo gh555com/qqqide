@@ -1,0 +1,14 @@
+question total: 42901 chars
+
+All [File: occurrences:
+  #1 at 499 header='[File: E:\\s\\wol\\py\\qqq-shell-v2\\do\\需解决滴 timeline 问题]' block_size=1245 chars tok~415
+  #2 at 1744 header='[File: E:\\s\\wol\\py\\qqq-shell-v2\\qqq\\quests\\q1.AI 视口 我们现在右键点击 一个文件 是直接打开文件 ， 对于文件 右键点击\\f1.AI 视口 我们现在右键点击 一个文件 是直接打开文件 ， 对' block_size=41157 chars tok~13719
+
+Between [File:#1 and [File:#2:
+'[File: E:\\s\\wol\\py\\qqq-shell-v2\\do\\需解决滴 timeline 问题]\n```\n# Timeline 待解决问题\n\n## ① Diff 窗口延迟更新（隐蔽，难以复现）\n- 现象：点击 A4 打开文件，左侧版本=11、右侧=12，但 Monaco 显示零差异；等待片刻后再次打开或等第 13 个快照出现后，差异才正确显示。\n- 初步判断：`_markedBefore`/`_markedAfter` 的 blob_hash 此时已正确传入 diff 窗口，但 Monaco `loadVersions` → `populateDropdowns` → `renderDiff` 的链路中，`renderDiff` 在 `loadVersions` 调用前被触发（Monaco 异步加载的竞态窗口），使用的仍是上一次的 `$selLeft.value` / `$selRight.value`。\n- 排查思路：\n  - ① 在 `renderDiff` 入口打印 leftVal/rightVal，确认是否拿到了正确的 blob_hash\n  - ② 检查 `populateDropdowns` 是否正确更新了 `$selLeft.value` / `$selRight.value`\n  - ③ 确认 `_markedBefore`/`_markedAfter` 在 `initOpen`→`loadVersions` 调用链中未被覆盖\n- 状态：已观察到但未抓到罪证，等待能稳定复现的 case\n\n## ② 同秒 before/after 时 "before" 被标为 "last"\n- 现象：before 快照（如 V11）和 after 快照（如 V12）在同秒内产生，旧版合并逻辑从前往后遍历，先命中 before 版本的条目，错误地将 before 标记为 "last"\n- 修复：`populateDropdowns` 已改为 SHA256 内容匹配（快路径）+ 从后往前遍历（最新版本优先），2026-06-21 落地\n- 状态：已修，需实际测试确认。如仍有此现象 → Ctrl+R 强制刷新 diff 窗口（可能运行的是缓存旧代码）\n\n## ③ 状态栏 diff stats 与 A4 数字不一致\n- 现象：A4 豆腐块和 DB 记录显示 +3 -1（LCS 行级），diff 窗口状态栏显示 +2 -0（Monaco 块级净差）\n- 根因：`updateDiffStats` 用 Monaco `getLineChanges` 的块级数据，替换块只计净增/净删（ml-ol），不计原始行删除数\n- 修复：改为直接读两侧 Monaco model 内容，跑 LCS 与 `_a4DiffStats` 同算法（2026-06-21 落地）\n- 注意：Monaco 本身用于渲染 diff 不可替代，此处仅涉及状态栏数字的计算方式\n\n```\n\n[File: E:\\s\\wol\\py\\qqq-shell-v2\\qqq\\quests\\q1.AI 视口 我们现在右键点击 一个文件 是直接打开文件 ， 对于文件 右键点击\\f1.AI 视口 我们现在右键点击 一个文件 是直接打开文件 ， 对于文件 右键点击\\all.txt]\n```\nfloor.1   2026-06-22 19:53:44\n\n(body 320.139k: ask 0.369k '
+
+[File:#2 content (first 500 chars):
+'[File: E:\\s\\wol\\py\\qqq-shell-v2\\qqq\\quests\\q1.AI 视口 我们现在右键点击 一个文件 是直接打开文件 ， 对于文件 右键点击\\f1.AI 视口 我们现在右键点击 一个文件 是直接打开文件 ， 对于文件 右键点击\\all.txt]\n```\nfloor.1   2026-06-22 19:53:44\n\n(body 320.139k: ask 0.369k + rule 13.654k + Source code 0.000k + prompt 0.000k + memory 306.115k)\n\nAI 视口 我们现在右键点击 一个文件 是直接打开文件 ， 对于文件 右键点击改： 弹出一个菜单 第一个是 editx ， 等同于现在编辑一个文件。 第2个是 open 等同于 直接在操作系统中双击文件。 第3个是 timeline， 因为 我们自定义滴timeline 弹窗打开该文件。 第4个是 copy path 复制文件完整路径\n\n════ HOUSE 1 ════ 2026-06-22 19:54:11 [26564ms] ════\n<thin'
+
+[File:#2 content (last 200 chars):
+' -1\naz> [mod] en.json  +7 -3\naz> [mod] ai-viewport.js  +96 -11\naz> Floor 1  House 86  Room 109 [all.txt: all.txt]\naz> FILE 3   ROW +108 -15\naz> ⏱ 19m04s  Net:225s  AI:758s  Tool:0s\naz> 💰 0.5780 ge\n```'

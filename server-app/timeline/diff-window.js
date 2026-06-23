@@ -502,7 +502,8 @@
         if (_lastContent !== null) {
             var lastTs = _lastMtimeMs;
             var lastLabel = formatTs(lastTs);
-            for (var li = 0; li < options.length; li++) {
+            // ★ 必须从后往前遍历（最新版本优先），否则同秒内 before 版本会错误地吃掉 'last' 标记
+            for (var li = options.length - 1; li >= 0; li--) {
                 // 秒级比对（同秒视为同一时刻）
                 if (lastTs && Math.abs(options[li].ts - lastTs) < 1000) {
                     // 把版本条目升级为 last 载体（value 改为 'last'，保留 blob_hash）

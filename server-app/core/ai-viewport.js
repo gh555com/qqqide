@@ -551,8 +551,8 @@
         _hoverTimer = setTimeout(() => {
           _hoverTimer = null;
           if (!row._hovered) return; // 光标已离开，跳过
-          if (outer._childSub) { closeSub          const sub = openSubmenu(row, subPath, depth, projectRoot);= null;
-          const sub = openSubmenu(row, subPath, depth);
+          if (outer._childSub) { closeSubmenuTree(outer._childSub); outer._childSub = null; }
+          const sub = openSubmenu(row, subPath, depth, projectRoot);
           if (sub) {
             sub._justOpened = Date.now();
             outer._childSub = sub;
@@ -596,16 +596,18 @@
     // ★ 快照还原：若本层有待展开链，自动触发下一级
     if (parentEl._pendingChain && parentEl._pendingChain.length > 0) {
       var nextName = parentEl._pendingChain[0];
+      // ★ 提取最后一段（兼容「src」和「src/app」两种格式）
+      var targetName = nextName.split(/[\\/]/).pop();
       var rows2 = parentEl.querySelectorAll(':scope > .aiv-dd-row');
       var foundRow = null;
       for (var ri2 = 0; ri2 < rows2.length; ri2++) {
-        if (rows2[ri2].dataset.name === nextName && rows2[ri2].dataset.isDir === 'true') {
+        if (rows2[ri2].dataset.name === targetName && rows2[ri2].dataset.isDir === 'true') {
           foundRow = rows2[ri2];
           break;
         }
       }
       if (foundRow) {
-        var subPath2 = pathJoin(dirPath, nextName);
+        var subPath2 = pathJoin(dirPath, targetName);
         var depth2 = (parentEl._depth || 0) + 1;
         var outer2 = parentEl._outer || parentEl;
         if (outer2._childSub) { closeSubmenuTree(outer2._childSub); }
@@ -778,8 +780,9 @@
       if (!activeDropdown._expandedChain) activeDropdown._expandedChain = [];
       // 裁剪到当前深度 - 1（同级重新展开时覆盖后续）
       activeDropdown._expandedChain.length = depth - 1;
-      var rel = dirPath.substring(projectRoot.length).replace(/^[\\/]+/, '');
-      activeDropdown._expandedChain.push(rel);
+      // 存目录短名（不含路径层级），还原时只需 basename 匹配
+      var dirName = dirPath.split(/[\\/]/).filter(Boolean).pop();
+      activeDropdown._expandedChain.push(dirName);
     }
 
     loadDirInto(subScroll, dirPath, projectRoot);
