@@ -631,12 +631,12 @@ document.getElementById('ctx-compress').onclick = async function () {
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('⚠️ ' + _noAgentMsg, { type: 'warning', duration: 3000 }); } catch (_) { }
         return;
     }
-    // ★ 手动压缩仅限空闲时（AI 不在建楼）。额外检查 isConnected 防残留 DOM
-    if (_ag._activeAiDiv && _ag._activeAiDiv._contentWrap && _ag._activeAiDiv.isConnected) {
+    // ★ 手动压缩仅限空闲时（AI 不在建楼）
+    if (typeof _sending !== 'undefined' && _sending) {
         var _buildingMsg = (typeof _i === 'function') ? _i('ai.error.buildingFloor', 'AI 正在建楼中，请等待当前楼层完成后再压缩') : 'AI is building a floor, wait for it to finish before compressing';
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('⚠️ ' + _buildingMsg, { type: 'warning', duration: 4000 }); } catch (_) { }
         return;
-    }
+    }    }
     if (_ag._compressing) return;
     _ag._compressing = true;
     window._updateSendBtnForCompress(true);

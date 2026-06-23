@@ -37,7 +37,7 @@ const WAL_MAX_LINES = 100;
 const _tlWalCounts: Map<string, number> = new Map();  // .wal 当前行数（用于阈值判断）
 
 export function _tlDir(projectRoot: string): string {
-    return path.join(projectRoot, 'qqq', 'timeline');
+    return path.join(projectRoot, 'Data', 'qqq', 'timeline');
 }
 
 export function _tlBlobPath(projectRoot: string, sha256: string): string {

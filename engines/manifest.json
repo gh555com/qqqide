@@ -39,41 +39,7 @@
         "win32-x64":    { "url": "https://cdn.gh555.com/components/git/2.46.0/win32-x64.zip",        "sha256": "", "extract_to": "git",    "bin": "bin/git.exe",  "kind": "zip" }
       }
     },
-    {
-      "name": "lsp/clangd",
-      "version": "19.1.0",
-      "platforms": {
-        "win32-x64":    { "url": "https://github.com/clangd/clangd/releases/download/19.1.0/clangd-windows-19.1.0.zip",  "sha256": "", "extract_to": null, "bin": "clangd.exe",       "kind": "zip" },
-        "linux-x64":    { "url": "https://github.com/clangd/clangd/releases/download/19.1.0/clangd-linux-19.1.0.zip",    "sha256": "", "extract_to": null, "bin": "clangd",           "kind": "zip" },
-        "darwin-arm64": { "url": "https://github.com/clangd/clangd/releases/download/19.1.0/clangd-mac-19.1.0.zip",      "sha256": "", "extract_to": null, "bin": "clangd",           "kind": "zip" },
-        "darwin-x64":   { "url": "https://github.com/clangd/clangd/releases/download/19.1.0/clangd-mac-19.1.0.zip",      "sha256": "", "extract_to": null, "bin": "clangd",           "kind": "zip" }
-      }
-    },
-    {
-      "name": "lsp/gopls",
-      "version": "0.22.0",
-      "_note": "gopls no longer publishes GitHub binaries. Use: go install golang.org/x/tools/gopls@v0.22.0. Then copy gopls.exe to userData/components/lsp_gopls/",
-      "platforms": {
-        "win32-x64":    { "url": "https://cdn.gh555.com/components/lsp/gopls/0.22.0/win32-x64.zip",    "sha256": "", "extract_to": null, "bin": "gopls.exe",        "kind": "zip" }
-      }
-    },
-    {
-      "name": "lsp/rust-analyzer",
-      "version": "2026-05-25",
-      "platforms": {
-        "win32-x64":    { "url": "https://github.com/rust-lang/rust-analyzer/releases/download/2026-05-25/rust-analyzer-x86_64-pc-windows-msvc.zip",  "sha256": "", "extract_to": null, "bin": "rust-analyzer.exe", "kind": "zip" },
-        "linux-x64":    { "url": "https://github.com/rust-lang/rust-analyzer/releases/download/2026-05-25/rust-analyzer-x86_64-unknown-linux-gnu.gz", "sha256": "", "extract_to": null, "bin": "rust-analyzer",     "kind": "tar.gz" },
-        "darwin-arm64": { "url": "https://github.com/rust-lang/rust-analyzer/releases/download/2026-05-25/rust-analyzer-aarch64-apple-darwin.gz",     "sha256": "", "extract_to": null, "bin": "rust-analyzer",     "kind": "tar.gz" },
-        "darwin-x64":   { "url": "https://github.com/rust-lang/rust-analyzer/releases/download/2026-05-25/rust-analyzer-x86_64-apple-darwin.gz",      "sha256": "", "extract_to": null, "bin": "rust-analyzer",     "kind": "tar.gz" }
-      }
-    },
-    {
-      "name": "lsp/pyright",
-      "version": "1.1.390",
-      "_note": "pyright: npm install pyright@1.1.390, then copy node_modules/pyright/ to userData/components/lsp_pyright/",
-      "platforms": {
-        "win32-x64":    { "url": "https://cdn.gh555.com/components/lsp/pyright/1.1.390/win32-x64.zip", "sha256": "", "extract_to": "pyright", "bin": "index.js",    "kind": "zip" }
-      }
-    }
+    // ═══ LSP COMPONENTS REMOVED — 2026-06-23 ═══
+    // clangd / gopls / rust-analyzer / pyright — all LSP disabled
   ]
 }

@@ -107,7 +107,7 @@ export function registerAssetProtocol(portableRoot: string): void {
         monaco: path.join(portableRoot, 'node_modules', 'monaco-editor', 'min'),
         'monaco-maps': path.join(portableRoot, 'node_modules', 'monaco-editor', 'min-maps'),
         'monaco-esm': path.join(portableRoot, 'node_modules', 'monaco-editor', 'esm'),
-        monaco_deps: path.join(portableRoot, 'cache', 'monaco-deps'),
+        monaco_deps: path.join(portableRoot, 'Data', 'monaco-deps'),
         ts: path.join(portableRoot, 'node_modules', 'typescript', 'lib'),
         shell: path.join(portableRoot, 'shell'),
     };

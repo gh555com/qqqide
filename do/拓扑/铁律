@@ -84,12 +84,14 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 第一方 goods (rage) 用直接 DOM 渲染，第三方 goods 用 iframe 隔离。
   - goods 目录: goods/<id>/。内置第一方 goods 随包同发。
 
-§11 LSP — 全部禁用（2026-06-22）
-  - 编辑器从 Monaco 内置 Worker 到外部 LSP 桥接（pyright/gopls/rust-analyzer/clangd）全部关闭。
-  - editor.js: TS/JS 语义诊断、CSS/HTML/JSON 校验、configureMonacoTypescript、bootCustomTsService、wireLspDiagnostics、wireLspHover 全部删除。
-  - 编辑器只保留 tokenization（代码染色）+ 基础编辑，无红色波浪线、hover、补全、面包屑、minimap。
-  - lsp-bridge.ts（壳层）仍存在但前端无任何调用路径（wireLsp* 已删除），可后续彻底移除。
-  - 如需恢复：恢复 editor.js 中的 diagnosticsOptions 注释 + 取消 wireLsp* 注释。
+§11 LSP — 全部禁用（2026-06-22 前端，2026-06-23 壳层冻结）
+  - 前端: Monaco 内置 TS/JS/CSS/HTML/JSON 诊断全禁，renderValidationDecorations:'off'，
+    零红色波浪线/hover/补全/面包屑/minimap。仅保留 tokenization + selectionHighlight + occurrencesHighlight。
+  - 壳层: lsp-bridge.ts 保留源码但零引用（main.ts/window-manager.ts/ipc-misc.ts import 全注释 + 实例化=null），
+    esbuild tree-shake 排除出 shell-out/main.js，运行时零加载零执行。
+  - engines/manifest.json: 4 个 LSP 组件（clangd/gopls/rust-analyzer/pyright）已删除，仅剩 4 个工具组件。
+  - 编辑器性能: matchBrackets:'never'（省每键 CPU），overviewRulerLanes:3（滚动条标注全开）。
+  - 恢复: 取消三处 import 注释 + 改回 new LspBridge(portable.root) + 恢复 manifest.json LSP 条目。
 
 §12 qoast 唯一真理弹窗机器
   - 唯一入口: core/qqqide-qoast.js。一切 notification/qoast/浮动提示必须走 qqqideQoast.show()。
@@ -286,6 +288,10 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 滚动：scrollToBottom → container.scrollTop = scrollHeight。上滚即停，下滚到底才跟。
   - 禁 $messages.innerHTML = ''。唯一例外 cardPool.refreshCard。
   - 所有跨模块引用走 window.*（questStore/agentPool/cardPool/9 个函数）。
+  - ★ all.json 写入归一（2026-06-23）：A4 增量刷盘系统已删除。唯一增量路径 = auto-save（面板级
+    _ensureAutoSave 持久 timer，遍历 agentPool，5s 间隔，conversation.length 去重后零拷贝跳过）。
+    beforeunload → _saveAllBeforeUnload(force=true) 无条件全量刷盘。_stopAutoSave 是 no-op。
+    禁止再引入任何第二条增量写入路径（引入即返工）。
 
 §30 面板焦点
   - 三面板（左中右）各自独立 iframe，各自 agentPool/cardPool/questActiveId。

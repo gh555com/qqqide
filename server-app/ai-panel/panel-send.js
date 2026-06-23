@@ -264,6 +264,7 @@ async function sendMessage() {
     // ★ 新楼层开始，清空 agent._houses / _a4Snapshots 防止读到上一楼层残影
     _capturedAgent._houses = [];
     _capturedAgent._a4Snapshots = {};
+    _capturedAgent._lastFloorTimingRecord = null;
     _capturedAgent._aiStartTime = '';
     _capturedAgent._aiTierLabel = '';
     startFloorTimer(aiDiv, _capturedAgent);
@@ -287,6 +288,9 @@ async function sendMessage() {
                 _targetDiv._buf = (_targetDiv._buf || '') + chunk;
                 _targetDiv._fullText = (_targetDiv._fullText || '') + chunk;
                 _targetDiv._paras = _targetDiv._paras || [];
+                // ★ 增量拆分：只 split 从 _splitCursor 之后的新内容，避免每轮重推全部历史段落
+                //   _splitCursor = 上次已 split 到的 _buf 字符位置
+                if (typeof _targetDiv._splitCursor !== 'number') _targetDiv._splitCursor = 0;
 
                 // ═══ 增量解析器：代码围栏（```...```）感知拆分 ═══
                 // 核心：围栏内部的 \n\n 是代码内容，不可拆分为段落
@@ -300,10 +304,9 @@ async function sendMessage() {
                         // 闭合了：整段作为一个段落推送
                         if (_targetDiv._buf.trim()) _targetDiv._paras.push(_targetDiv._buf);
                         _targetDiv._buf = '';
+                        _targetDiv._splitCursor = 0;
                         _targetDiv._codeFenceOpen = false;
-                        // 继续往下走，_buf 已清空，后续 chunk 正常处理
                     } else {
-                        // 尚未闭合：不拆分，整段保留在 _buf
                         _targetDiv._dirty = true;
                         if (!_targetDiv._renderScheduled) {
                             _targetDiv._renderScheduled = true;
@@ -314,28 +317,34 @@ async function sendMessage() {
                     }
                 }
 
-                // 正常拆分（不在围栏内）
-                var parts = _targetDiv._buf.split('\n\n');
+                // ★ 只 split _buf 从 _splitCursor 开始的增量部分
+                //   但需向前回溯到最近的 \n\n 边界，确保断开的段落被完整捕获
+                var _newRegion = _targetDiv._buf.slice(_targetDiv._splitCursor);
+                // 向前回溯：找 _splitCursor 之前最近的 \n\n，确保当前段落不从中间开始
+                var _lookback = _targetDiv._buf.lastIndexOf('\n\n', _targetDiv._splitCursor - 1);
+                var _scanStart = _lookback >= 0 ? _lookback + 2 : 0;  // +2 跳过 \n\n 本身
+                var _scanText = _targetDiv._buf.slice(_scanStart);
+                var parts = _scanText.split('\n\n');
                 var _safeParas = [];
                 var _stopped = false;
                 for (var pi = 0; pi < parts.length - 1; pi++) {
                     var _part = parts[pi];
                     var _fenceCount = (_part.match(/^```/gm) || []).length;
                     if (_fenceCount % 2 === 0) {
-                        // 偶数个 ```（含 0）：安全段落，可推送
                         if (_part.trim()) _safeParas.push(_part);
                     } else {
-                        // 奇数个 ```：此段落打开了围栏，从它开始全部回退到 _buf
+                        // 奇数个 ```：围栏打开，从它开始回退到 _buf，重设 splitCursor
                         _targetDiv._buf = parts.slice(pi).join('\n\n');
+                        _targetDiv._splitCursor = _scanStart + parts.slice(0, pi).join('\n\n').length + (pi > 0 ? 2 : 0);
                         _targetDiv._codeFenceOpen = true;
                         _stopped = true;
                         break;
                     }
                 }
                 if (!_stopped) {
-                    _targetDiv._buf = parts[parts.length - 1];
+                    // ★ 更新 _splitCursor 到最后的 \n\n 之后（或保持原位置）
+                    _targetDiv._splitCursor = _targetDiv._buf.length - (parts[parts.length - 1] || '').length;
                 }
-                // 推送安全段落
                 for (var _sp = 0; _sp < _safeParas.length; _sp++) {
                     _targetDiv._paras.push(_safeParas[_sp]);
                 }
@@ -412,6 +421,7 @@ async function sendMessage() {
                     aiDiv._codeFenceOpen = false;
                     aiDiv._renderedCount = 0;
                     aiDiv._dirty = false;
+                    aiDiv._splitCursor = 0;
                 }
 
                 var _divDetached = !(aiDiv && aiDiv.isConnected);

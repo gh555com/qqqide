@@ -427,10 +427,7 @@
             return { parsed: null, ttfbMs: 0, totalMs: 0 };
         }
 
-        // ★ 独立超时（200s）：非流式大型 prompt + 最高级 AI 可能需较长处理时间
-        var COMPACT_TIMEOUT_MS = 200000;
-        var _timeoutCtrl = new AbortController();
-        var _timeoutId = setTimeout(function () { _timeoutCtrl.abort(); }, COMPACT_TIMEOUT_MS);
+        // 无超时 — 让 AI 慢慢想，爱多久想多久
 
         try {
             // ★ 用用户当前等级（_lastTier），回退到 TIER_6（最高级）
@@ -450,7 +447,6 @@
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer ' + token
                 },
-                signal: _timeoutCtrl.signal,
                 body: JSON.stringify({
                     model: _tier.model || 'deep',
                     messages: [
@@ -458,8 +454,8 @@
                         { role: 'user', content: prompt }
                     ],
                     stream: false,
-                    thinking: _tier.thinking || { type: 'enabled' },
-                    reasoning_effort: _tier.effort || 'max',
+                    // ★ 压缩是 JSON 提取，禁 thinking（启用时模型会推理 200s+ 然后超时）
+                    thinking: { type: 'disabled' },
                     max_tokens: _maxTokens,
                     floor_id: (self._floorId || 'compact') + _suffix
                 })
@@ -524,7 +520,7 @@
             if (typeof self._writeFileLog === 'function') self._writeFileLog('✗ Compact API exception: ' + (err.message || err) + ' suffix=' + _suffix);
             return { parsed: null, ttfbMs: _totalMs, totalMs: _totalMs };
         } finally {
-            clearTimeout(_timeoutId);
+            // 无超时，无需清理
         }
     };
 

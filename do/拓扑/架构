@@ -18,7 +18,7 @@ qqq-shell-v2 架构 — 代码若与此冲突，以本文档为准。
 ┌──────────▼───────────────────────────┐
 │ 引擎层 (Rust ×2)                      │
 │ q_win_x64.exe — IO引擎(fs/SQLite/IPC) │
-│ ghrun.exe     — LSP守护+进程管理(qz)  │
+│ ghrun.exe     — 进程管理(qz)（LSP守护已冻结）│
 │ 兜底: qz-spawn 两层 (ghrun→Node)      │
 │ 新增: Windows Job Object 内存硬限制(B2)│
 └──────────┬───────────────────────────┘
@@ -140,20 +140,13 @@ Monaco Worker 加载
   · convert_monaco_esm.py：ESM→AMD 转换器，将 esm/vs/ 796 文件转为 AMD define() 格式 → cache/monaco-deps/vs/
   · shell/main.ts qqq-asset:// 协议：monaco 根先查 node_modules/min/vs/；缺文件时 fallback 到 cache/monaco-deps/vs/
 
-组件管理 & LSP 体系
--------------------
-外部清单: engines/manifest.json — 8个组件 (ffmpeg/yt-dlp/python/git + 4个LSP), 改URL不需重编译ghrun
+组件管理
+-----------
+外部清单: engines/manifest.json — 4个组件 (ffmpeg/yt-dlp/python/git), 改URL不需重编译ghrun（LSP 组件 2026-06-23 已删除）
 三层加载: userData/manifest.json (用户覆盖) → engines/manifest.json (随发布) → manifest.rs 硬编码兜底
 安装脚本: op/components.py — ensure(下载+解压) / upload(灌装CDN) / list(查看状态)
-交互面板: qide-shell.py "④ LSP 语言组件" — 4复选框 + 安装 + 状态刷新
-一键菜单: op/install_lsp.bat — 交互式选择安装
-灌装流程: GitHub下载 → SHA256 → 更新manifest CDN URL → R2上传(ky.py r2_upload_file)
-
-LSP 四种:
-  clangd (C/C++)  — GitHub直下, 42MB zip, 解压~200MB
-  rust-analyzer   — GitHub直下, 19MB zip, 解压~40MB
-  gopls (Go)      — 需 go install 构建 (Go官方不再发GitHub二进制)
-  pyright (Python)— 需 npm install 构建 (仅VSIX无独立包)
+LSP 相关已冻结（2026-06-23）: 交互面板④/install_lsp.bat/components.py LSP 部分均失效，
+  manifest.json LSP 条目已删除，壳层 lsp-bridge.ts 零引用，仅源码保留于磁盘。
 
 目录结构
 --------
@@ -175,7 +168,7 @@ qqq-shell-v2/
 │   ├── shutdown.ts          安全加固/退出处理器/崩溃兜底
 │   ├── preload.ts           预加载桥
 │   ├── qz-spawn.ts          进程生成（四重防御）
-│   ├── lsp-bridge.ts        LSP 诊断桥
+│   ├── lsp-bridge.ts        LSP 诊断桥（冻结，零引用）
 │   ├── state-sqlite.ts      SQLite 引擎
 │   ├── state-store.ts       状态存储门面
 │   ├── qg.ts                FS 原子写
@@ -218,7 +211,7 @@ qqq-shell-v2/
 │       ├── ai-gateway.js     统一 AI 模型调用包装器（禁直接调用第三方端点）
 │       └── only-store.js      项目偏好 SQLite
 ├── engines/           二进制 + manifest.json 外部下载清单
-├── op/                运维脚本 (ky.py翻译 + components.py组件 + git_snapshot.bat + install_lsp.bat)
+├── op/                运维脚本 (ky.py翻译 + components.py组件 + git_snapshot.bat)
 ├── do/拓扑/           架构文档
 
 UI 布局 — A/X/AI + 左右翼（三面板）
@@ -533,6 +526,17 @@ AI 上下文窗口防护（三层纵深 + 参数集中化，2026-06-10 落地）
   _accumulatedCompletionTokens: agent 新增字段，每间 house 累加 completion_tokens（跨楼层）
   不再展示 Tool Definitions（固定 ~3.2k tokens，无需用户关注）
 
+all.json 写入系统归一（2026-06-23）
+---------------------------------------------
+· A4 增量刷盘系统（_a4MarkIncrementalDirty→_a4FlushCompleteFloor, ~100行）已删除。
+· 症结：双重定时器（A4 2s + auto-save 5s）并发写 all.json，新楼层启动清空 agent._houses
+  后旧定时器仍以旧 floorNum 触发刷盘 → 空数据覆写旧楼层 all.json → az 区永久损坏。
+· 归一：仅一条增量写入路径 — auto-save（面板级持久 timer，_ensureAutoSave 启动一次永不停止，
+  遍历 agentPool 覆盖全部 agent）。_stopAutoSave 变 no-op，切 quest 不掉保存。
+· beforeunload: _saveAllBeforeUnload → _saveAgentFloor(force=true) 无条件全量刷盘。
+· 数据流: agent._houses / _a4Snapshots / _lastFloorTimingRecord ─→ _a4BuildCompleteFloorPayload ─→ all.json
+· 维护面: 3 条写入路径 → 2 条（auto-save + onDone），零跨楼竞态。
+
 AI 面板 UI 增强
 --------------
 - 缩放比例显示: 菜单行1, zoom-out与主题按钮之间, 等宽字体显示当前比例(0.85/1.00/1.35), 纯展示非交互
@@ -604,6 +608,12 @@ Quest 切换完整性 (2026-06-10 重构，2026-06-21 加固)
   · 围栏内 \n\n 是代码内容，不可拆为段落。闭合后整段推入 _paras。
   · 流式半成品代码块：_lastParaEl 用 <pre><code> 实时显示（剥离首行围栏标记）。
   · 拆分边界：\n\n = Markdown 段落边界，围栏是唯一例外，已覆盖。
+
+增量拆分修复（2026-06-23）：
+  · 旧问题：onToken 每轮对 _buf 全量 split → 历史段落重复推入 _paras → 重复渲染。
+    静态段落用 appendChild 追加出现在 _lastParaEl 下方 → 用户看到 4321 倒序跳动。
+  · 修复：_splitCursor 只扫描上次位置后的新增内容 + _doStreamRender 用 insertBefore(_lastParaEl)
+    静态段落始终插入实时打字区上方 → 永远 1234 正序。
 
 段缓冲/事件驱动/1fps: 同上。renderMarkdown 列表占位符保护 <ul> 免 <br> <p> 污染。
 

@@ -43,7 +43,7 @@ import { AudioEngine } from './audio-engine';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 import { MonacoHost } from './monaco-host';
 import { QzSpawn, registerQzSpawnIpc } from './qz-spawn';
-import { LspBridge } from './lsp-bridge';
+// import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { CacheStore } from './cache-store';
 import { HashService } from './hash-service';
 import { MediaService } from './media-service';
@@ -83,7 +83,8 @@ const engineHost = new EngineHost(portable.root);
 const audioEngine = new AudioEngine(portable.root);
 const monacoHost = new MonacoHost();
 const qzSpawn = new QzSpawn(portable.root);
-const lspBridge = new LspBridge(portable.root);
+// const lspBridge = new LspBridge(portable.root); // LSP OFF — 2026-06-23
+const lspBridge: any = null;
 const cacheStore = new CacheStore(portable.cache);
 const hashService = new HashService(cacheStore);
 const mediaService = new MediaService(portable.root, qzSpawn, cacheStore, hashService);
@@ -157,7 +158,7 @@ function registerAllIpc(): void {
     registerMiscIpc(
         portable.root, portable.cache, APP_VERSION, isDevFlag,
         bootConfig, lspBridge, downloadService, stateStore,
-        updateService, () => mainWindow
+        updateService, () => mainWindow  // lspBridge=null (LSP OFF)
     );
     registerTimelineIpc(portable.root, bootConfig);
     registerSmartSearchIpc(indexService);

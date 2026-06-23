@@ -63,7 +63,7 @@ const SKIP_DIRS = new Set([
     'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs',
     '.hg', '.svn', 'bower_components', '.idea', '.vs', 'cache', 'temp',
     'crashDumps', 'dist-pack', 'shell-out', 'shell-build', '.qoder',
-    'qqq', 'userData', 'logs', 'new_log', 'tmp', 'op'
+    'Data', 'logs', 'new_log', 'tmp', 'op'
 ]);
 
 const SKIP_EXTS = new Set([
@@ -504,7 +504,7 @@ function symbolSearch(symbols: SymbolTable, query: string, topK: number): Search
 // ---------------------------------------------------------------------------
 
 function indexDir(rootDir: string): string {
-    return path.join(rootDir, 'qqq', 'index');
+    return path.join(rootDir, 'Data', 'index');
 }
 
 function ensureIndexDir(rootDir: string): string {

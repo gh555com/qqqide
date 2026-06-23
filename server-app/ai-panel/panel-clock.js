@@ -8,42 +8,64 @@
 var _lastPieTiming = null;
 var _autoSaveTimer = null;
 
+// ── 保存单个 agent 的当前楼层到 all.json（auto-save + beforeunload 共用）──
+//   force: true → 跳过去重检查（beforeunload 用）
+function _saveAgentFloor(ag, questId, force) {
+    if (!ag || !ag._currentFloorNum || ag._currentFloorNum <= 0) return;
+    if (typeof questStore === 'undefined' || !questStore || !questStore.saveFloor) return;
+    var floorNum = ag._currentFloorNum;
+    if (!force) {
+        // ★ 去重：仅在 conversation 增长时才写盘（避免无变化的 O(n) slice + payload 构建）
+        var convLen = ag.conversation ? ag.conversation.length : 0;
+        if (ag._lastAutoSaveLen && convLen <= ag._lastAutoSaveLen) return;
+        ag._lastAutoSaveLen = convLen;
+    }
+    var payload;
+    if (typeof window._a4BuildCompleteFloorPayload === 'function') {
+        payload = window._a4BuildCompleteFloorPayload(ag, floorNum);
+    } else {
+        payload = {
+            question: (ag._lastUserInput && ag._lastUserInput.text) || '',
+            conversation: ag.conversation ? ag.conversation.slice() : [],
+            houses: (ag._houses || []).slice(),
+            costWge: ag._floorCostWge,
+            lastUserInput: ag._lastUserInput,
+            createdAt: Date.now()
+        };
+    }
+    questStore.saveFloor(questId, floorNum, payload).catch(function () { });
+}
+
 var _AUTOSAVE_INTERVAL = 5000;
-var _lastAutoSaveLen = 0;
-function _startAutoSave() {
-    _stopAutoSave();
-    _lastAutoSaveLen = 0;
-    _autoSaveTimer = setInterval(async function () {
-        if (!_capturedAgent || !_capturedQuestId) return;
-        var floorNum = _capturedAgent._currentFloorNum;
-        if (!floorNum || floorNum <= 0) return;
-        // ★ 从不可变楼层元数据读取 floorStartIdx（而非 agent._floorStartIdx 可能已变化）
-        var floorMeta = _capturedAgent._floorMeta && _capturedAgent._floorMeta[floorNum];
-        var floorStartIdx = floorMeta ? floorMeta.floorStartIdx : _capturedAgent._floorStartIdx;
-        if (typeof floorStartIdx !== 'number') return;
-        var fullConv = _capturedAgent.conversation ? _capturedAgent.conversation.slice() : [];
-        var convLen = fullConv.length;
-        if (convLen <= _lastAutoSaveLen) return;
-        _lastAutoSaveLen = convLen;
-        // 优先使用统一增量 payload 构建器（含 a1/a2/a3/a4 全部数据）
-        var payload;
-        if (typeof window._a4BuildCompleteFloorPayload === 'function') {
-            payload = window._a4BuildCompleteFloorPayload(_capturedAgent, floorNum);
-        } else {
-            payload = {
-                question: (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '',
-                conversation: floorConv,
-                houses: (_capturedAgent._houses || []).slice(),
-                costWge: _capturedAgent._floorCostWge,
-                lastUserInput: _capturedAgent._lastUserInput,
-                createdAt: Date.now()
-            };
+var _autoSaveRunning = false;
+// ★ 面板级持久定时器：启动一次，永不停止，遍历 agentPool 覆盖全部 agent
+function _ensureAutoSave() {
+    if (_autoSaveRunning) return;
+    _autoSaveRunning = true;
+    _autoSaveTimer = setInterval(function () {
+        var pool = (typeof agentPool !== 'undefined') ? agentPool : null;
+        if (!pool) return;
+        var ids = Object.keys(pool);
+        for (var i = 0; i < ids.length; i++) {
+            _saveAgentFloor(pool[ids[i]], ids[i]);
         }
-        questStore.saveFloor(_capturedQuestId, floorNum, payload).catch(function () { });
     }, _AUTOSAVE_INTERVAL);
 }
-function _stopAutoSave() {
-    if (_autoSaveTimer) { clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
+// ★ 保留 _startAutoSave 别名（旧调用方兼容），_stopAutoSave 变为 no-op
+function _startAutoSave() { _ensureAutoSave(); }
+function _stopAutoSave() { /* no-op: persistent timer, 不再随 quest 切换启停 */ }
+
+// ── beforeunload：保存所有在建楼层（防崩溃丢数据）──
+function _saveAllBeforeUnload() {
+    var pool = (typeof agentPool !== 'undefined') ? agentPool : null;
+    if (!pool) return;
+    var ids = Object.keys(pool);
+    for (var i = 0; i < ids.length; i++) {
+        _saveAgentFloor(pool[ids[i]], ids[i], true);
+    }
+}
+if (typeof window !== 'undefined') {
+    window.addEventListener('beforeunload', _saveAllBeforeUnload);
 }
 
 function _showPieTooltip(html, cx, cy) {

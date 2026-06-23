@@ -10,7 +10,7 @@ import { BootConfig } from './boot';
 import { addAssetRoot, _assetFileWorkspaceRoots, diskFreeBatch } from './asset-protocol';
 import { _windowProjectMap, _projectWindowMap, createWindow, zoomFactor, saveZoom, setZoomFactor } from './window-manager';
 import { StateStore } from './state-sqlite';
-import { LspBridge } from './lsp-bridge';
+// import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
 import { UpdateService } from './update-service';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
@@ -22,8 +22,8 @@ export function registerMiscIpc(
     portableCache: string,
     appVersion: string,
     isDevFlag: boolean,
-    bootConfig: BootConfig,
-    lspBridge: LspBridge,
+     // lspBridge: LspBridge,  // LSP OFF — 2026-06-23
+    lspBridge: any,
     downloadService: DownloadService,
     stateStore: StateStore,
     updateService: UpdateService,

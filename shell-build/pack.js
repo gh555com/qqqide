@@ -126,6 +126,18 @@ async function manualAssemble() {
   cpFile('engines');
   cpFile('node_modules/monaco-editor/min');
   cpFile('package.json');
+  // ★ webapp: bundle server-app/ so first boot is instant + offline-capable
+  {
+    const src = path.join(ROOT, 'server-app');
+    const dst = path.join(appDst, 'webapp');
+    if (fs.existsSync(src)) {
+      fs.mkdirSync(path.dirname(dst), { recursive: true });
+      fs.cpSync(src, dst, { recursive: true });
+      console.log('[pack] bundled webapp/ (server-app) for offline first boot');
+    } else {
+      console.warn('[pack] server-app/ not found, skipping webapp bundle');
+    }
+  }
   console.log('[pack] manual assemble complete:', unpacked);
   return unpacked;
 }
@@ -416,8 +428,8 @@ function pruneNodeModules(unpacked) {
 function cleanRuntimeDirs(unpacked) {
   // Old flat structure (for cleanup of existing trees)
   const oldFlat = ['cache', 'crashDumps', 'temp', 'logs'];
-  // New nested: all under userData/
-  const nested = path.join(unpacked, 'userData');
+  // New nested: all under Data/
+  const nested = path.join(unpacked, 'Data');
   const toClean = new Set(['Cache', 'CrashDumps', 'Temp', 'Logs']);
 
   for (const d of oldFlat) {
@@ -427,18 +439,24 @@ function cleanRuntimeDirs(unpacked) {
       console.log('[pack] cleaned old runtime dir:', d);
     }
   }
-  // qqq/ is project data — should be empty in distribution
+  // Also clean old userData/ if present (renamed to Data/)
+  const oldUserData = path.join(unpacked, 'userData');
+  if (fs.existsSync(oldUserData)) {
+    fs.rmSync(oldUserData, { recursive: true, force: true });
+    console.log('[pack] cleaned old userData/');
+  }
+  // qqq/ is project data — should be empty in distribution (now under Data/)
   const qqqDir = path.join(unpacked, 'qqq');
   if (fs.existsSync(qqqDir)) {
     fs.rmSync(qqqDir, { recursive: true, force: true });
     console.log('[pack] cleaned runtime dir: qqq/');
   }
-  // Clean nested runtime dirs inside userData/ (leave userData/ itself)
+  // Clean nested runtime dirs inside Data/ (leave Data/ itself)
   if (fs.existsSync(nested)) {
     for (const d of fs.readdirSync(nested)) {
       if (toClean.has(d)) {
         fs.rmSync(path.join(nested, d), { recursive: true, force: true });
-        console.log('[pack] cleaned nested runtime dir: userData/' + d);
+        console.log('[pack] cleaned nested runtime dir: Data/' + d);
       }
     }
   }

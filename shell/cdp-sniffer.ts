@@ -217,9 +217,9 @@ export class CdpSniffer {
     private keepAliveTimers: NodeJS.Timeout[] = [];
     private static customBrowserPath: string | null = null;
 
-    private log: LogFn = () => {};
+    private log: LogFn = () => { };
 
-    constructor(private appRoot: string) {}
+    constructor(private appRoot: string) { }
 
     /** Set custom browser path globally. */
     static setCustomBrowserPath(p: string): void {
@@ -232,7 +232,7 @@ export class CdpSniffer {
 
     /** Start sniffing on a target URL. Returns when CDP is connected. */
     async start(targetUrl: string, onLog?: LogFn, options: SniffOptions = {}): Promise<void> {
-        this.log = onLog || (() => {});
+        this.log = onLog || (() => { });
 
         const browserPath = CdpSniffer.customBrowserPath || findBrowserPath();
         if (!browserPath) throw new Error('未找到 Chrome 或 Edge 浏览器');
@@ -242,8 +242,8 @@ export class CdpSniffer {
         // User data dir: use provided or create in portable cache
         let userDataDir = options.userDataDir;
         if (!userDataDir) {
-            userDataDir = path.join(this.appRoot, 'cache', 'chrome-user-data');
-            try { fs.mkdirSync(userDataDir, { recursive: true }); } catch {}
+            userDataDir = path.join(this.appRoot, 'Data', 'chrome-user-data');
+            try { fs.mkdirSync(userDataDir, { recursive: true }); } catch { }
         }
         this.tmpDir = userDataDir;
 
@@ -477,7 +477,7 @@ export class CdpSniffer {
                             const idx = this.ws!.listeners.message.indexOf(listener);
                             if (idx > -1) this.ws!.listeners.message.splice(idx, 1);
                         }
-                    } catch {}
+                    } catch { }
                 };
                 this.ws!.on('message', listener);
                 this.ws!.send(JSON.stringify({
@@ -496,7 +496,7 @@ export class CdpSniffer {
             result.headers.Referer = ref;
         }
         if (!result.headers.Origin && result.headers.Referer) {
-            try { result.headers.Origin = new URL(result.headers.Referer).origin; } catch {}
+            try { result.headers.Origin = new URL(result.headers.Referer).origin; } catch { }
         }
 
         this.log(`[CDP] !!! 捕获成功 (${source}): ${url} Size:${contentLength}`);
@@ -529,7 +529,7 @@ export class CdpSniffer {
                                         let referer = obj.referer ? obj.referer.trim() : 'https://www.google.com/';
                                         if (referer.includes(',')) referer = referer.split(',')[0].trim();
                                         let origin = '';
-                                        try { origin = new URL(referer).origin; } catch {}
+                                        try { origin = new URL(referer).origin; } catch { }
                                         resolve({
                                             url: obj.url,
                                             userDataDir: this.tmpDir,
@@ -544,7 +544,7 @@ export class CdpSniffer {
                                         });
                                         return;
                                     }
-                                } catch {}
+                                } catch { }
                                 if (val.startsWith('http')) {
                                     resolve({
                                         url: val,
@@ -582,7 +582,7 @@ export class CdpSniffer {
     }
 
     private cleanup(): void {
-        if (this.ws) { try { this.ws.close(); } catch {} this.ws = null; }
+        if (this.ws) { try { this.ws.close(); } catch { } this.ws = null; }
         if (this.keepAliveTimers) {
             this.keepAliveTimers.forEach(t => clearInterval(t));
             this.keepAliveTimers = [];
@@ -595,9 +595,9 @@ export class CdpSniffer {
                         stdio: 'ignore',
                         env: { ...process.env, QQQ_NO_TRACK: '1' },
                     });
-                } catch {}
+                } catch { }
             }
-            try { this.browserProcess.kill(); } catch {}
+            try { this.browserProcess.kill(); } catch { }
             this.browserProcess = null;
         }
     }

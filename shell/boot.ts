@@ -253,6 +253,186 @@ export async function checkAndDownloadShellUpdate(
 }
 
 // ----------------------------------------------------------------------------
+// Webapp local loading: bundle server-app/ as webapp/ → first boot instant + offline
+// ----------------------------------------------------------------------------
+const WEBAPP_PROTOCOL = 'qqqide-webapp';
+let _webappProtocolRegistered = false;
+
+/** Find or create local webapp/ at portableRoot/Data level. Returns dir path or null. */
+function ensureLocalWebapp(portableRoot: string): string | null {
+    const localDir = path.join(portableRoot, 'Data', 'webapp');
+
+    // ── Swap staged update if present (from previous background download) ──
+    const stagingDir = path.join(portableRoot, 'Data', 'webapp-staging');
+    if (fs.existsSync(stagingDir)) {
+        bootLog('webapp: staged update detected, swapping…');
+        try {
+            const oldDir = localDir + '.old';
+            // Step 1: rename current → .old (atomic)
+            if (fs.existsSync(localDir)) { fs.renameSync(localDir, oldDir); }
+            // Step 2: rename staging → target (atomic)
+            fs.renameSync(stagingDir, localDir);
+            // Step 3: cleanup old
+            if (fs.existsSync(oldDir)) { fs.rmSync(oldDir, { recursive: true, force: true }); }
+            bootLog('webapp: staged update swapped → ' + localDir);
+        } catch (e: any) {
+            bootLog('webapp: swap failed — ' + (e.message || e));
+            // Rollback: restore .old if target is missing
+            try {
+                const oldDir = localDir + '.old';
+                if (fs.existsSync(oldDir) && !fs.existsSync(localDir)) {
+                    fs.renameSync(oldDir, localDir);
+                    bootLog('webapp: rolled back .old → target');
+                }
+            } catch (_) { }
+            try { if (fs.existsSync(stagingDir)) fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (_) { }
+        }
+    }
+
+    // Already exists (from previous boot or copy)
+    if (fs.existsSync(path.join(localDir, 'index.html'))) {
+        return localDir;
+    }
+
+    // Copy from package (resources/app/webapp/ or resources/app/server-app/)
+    const candidates: string[] = [
+        path.join(portableRoot, 'resources', 'app', 'webapp'),
+        path.join(portableRoot, 'resources', 'app', 'server-app'),
+        path.join(__dirname, 'webapp'),
+        path.join(__dirname, '..', 'webapp'),
+    ];
+    for (const src of candidates) {
+        if (fs.existsSync(path.join(src, 'index.html'))) {
+            try {
+                fs.cpSync(src, localDir, { recursive: true });
+                bootLog('webapp: copied from package → ' + localDir);
+                return localDir;
+            } catch (e: any) {
+                bootLog('webapp: copy failed — ' + (e.message || e));
+            }
+        }
+    }
+    return null;
+}
+
+/** Register qqqide-webapp:// protocol to serve local webapp files. */
+function registerWebappProtocol(webappDir: string): void {
+    if (_webappProtocolRegistered) return;
+    _webappProtocolRegistered = true;
+    // Lazy-load protocol from electron (available after app.whenReady)
+    const _electron = require('electron');
+    _electron.protocol.registerFileProtocol(WEBAPP_PROTOCOL, (request: any, callback: any) => {
+        try {
+            const u = new URL(request.url);
+            let rel = decodeURIComponent(u.pathname);
+            // strip /qqq-app/ prefix if present
+            rel = rel.replace(/^\/qqq-app\//, '/');
+            if (rel.startsWith('/')) rel = rel.slice(1);
+            if (!rel) rel = 'index.html';
+            const abs = path.join(webappDir, rel);
+            // security: ensure we don't escape webappDir
+            if (abs.startsWith(webappDir) && fs.existsSync(abs)) {
+                callback({ path: abs });
+            } else {
+                callback({ error: -6 }); // FILE_NOT_FOUND
+            }
+        } catch {
+            callback({ error: -2 }); // FAILED
+        }
+    });
+}
+
+/** 20s after boot, check server for newer webapp, download+extract to staging. */
+async function backgroundCheckWebappUpdate(
+    bootConfig: BootConfig,
+    portableRoot: string,
+): Promise<void> {
+    try {
+        const baseUrl = bootConfig.url.endsWith('/') ? bootConfig.url : bootConfig.url + '/';
+
+        // 1) Check server version
+        let latestVersion = '';
+        try {
+            const lib = baseUrl.startsWith('https') ? https : http;
+            const vResp = await new Promise<{ status: number; data: string }>((resolve, reject) => {
+                const req = lib.get(baseUrl + 'version.json', { timeout: 8000 }, (res) => {
+                    let data = '';
+                    res.setEncoding('utf8');
+                    res.on('data', (c: string) => data += c);
+                    res.on('end', () => resolve({ status: res.statusCode || 0, data }));
+                });
+                req.on('error', reject);
+                req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+            });
+            if (vResp.status === 200) {
+                const v = JSON.parse(vResp.data);
+                latestVersion = v.webapp_version || v.version || '';
+            }
+        } catch { bootLog('webapp-update: version check failed'); return; }
+        if (!latestVersion) { bootLog('webapp-update: no version info on server'); return; }
+
+        // 2) Compare with local version
+        const localVerPath = path.join(portableRoot, 'Data', 'webapp-version');
+        let localVersion = '';
+        try {
+            if (fs.existsSync(localVerPath)) {
+                localVersion = fs.readFileSync(localVerPath, 'utf8').trim();
+            }
+        } catch { }
+        if (localVersion === latestVersion) {
+            bootLog('webapp-update: already latest (' + latestVersion + ')');
+            return;
+        }
+        bootLog('webapp-update: local=' + (localVersion || 'none') + ' server=' + latestVersion);
+
+        // 3) Download server-app.tar.xz
+        const dlUrl = baseUrl + 'server-app.tar.xz';
+        bootLog('webapp-update: downloading ' + dlUrl);
+        const lib = dlUrl.startsWith('https') ? https : http;
+        const dlDir = path.join(portableRoot, 'Data', 'webapp-dl');
+        try { fs.mkdirSync(dlDir, { recursive: true }); } catch { }
+        const tarPath = path.join(dlDir, 'server-app.tar.xz');
+
+        const dlOk = await new Promise<boolean>((resolve) => {
+            const req = lib.get(dlUrl, { timeout: 120000 }, (res) => {
+                if (res.statusCode !== 200) { resolve(false); return; }
+                const file = fs.createWriteStream(tarPath);
+                res.pipe(file);
+                file.on('finish', () => resolve(true));
+                file.on('error', () => resolve(false));
+            });
+            req.on('error', () => resolve(false));
+            req.on('timeout', () => { req.destroy(); resolve(false); });
+        });
+        if (!dlOk) { bootLog('webapp-update: download failed'); return; }
+
+        // 4) Extract to staging
+        const stagingDir = path.join(portableRoot, 'Data', 'webapp-staging');
+        try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
+        try { fs.mkdirSync(stagingDir, { recursive: true }); } catch { }
+        const extractResult = spawnSync('tar', ['-xJf', tarPath, '-C', stagingDir], {
+            stdio: 'pipe', timeout: 30000,
+        });
+        if (extractResult.status !== 0) {
+            bootLog('webapp-update: extract failed, status=' + extractResult.status);
+            try { fs.rmSync(tarPath); } catch { }
+            return;
+        }
+        try { fs.unlinkSync(tarPath); } catch { }
+
+        // 5) Write version marker
+        try {
+            fs.mkdirSync(path.dirname(localVerPath), { recursive: true });
+            fs.writeFileSync(localVerPath, latestVersion, 'utf8');
+        } catch { }
+
+        bootLog('webapp-update: staged for next restart — ' + stagingDir);
+    } catch (e: any) {
+        bootLog('webapp-update: error — ' + (e.message || e));
+    }
+}
+
+// ----------------------------------------------------------------------------
 // Boot fallback + remote load
 // ----------------------------------------------------------------------------
 export type BootMode = 'live' | 'cache' | 'fallback';
@@ -618,7 +798,7 @@ export async function bootSequence(
 ): Promise<void> {
     // 0) Init boot file log + clean stale loading-status (from previous run)
     const bootT0 = Date.now();
-    initBootLog(path.join(portableRoot, 'userData', 'Logs'));
+    initBootLog(path.join(portableRoot, 'Data', 'Logs'));
     try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
 
     // ★ 开发模式：直连本地 dev-server，不走网络
@@ -630,40 +810,67 @@ export async function bootSequence(
     }
     bootLog('url: ' + bootConfig.url);
 
-    // 1) Show fallback IMMEDIATELY → 窗口在 <1s 内弹出，用户看到"连接中…"
-    try {
-        await loadStaticFallback(mainWindow, bootConfig, portableRoot, 'connecting');
-    } catch (e) {
-        bootLog('seq: initial fallback crashed — ' + (e && (e as Error).message || String(e)));
+    // ★★ 本地 webapp 优先：首次免网秒开，后续从本地加载 + 后台静默更新
+    let effectiveUrl = bootConfig.url;
+    if (!isDev) {
+        const webappDir = ensureLocalWebapp(portableRoot);
+        if (webappDir) {
+            registerWebappProtocol(webappDir);
+            effectiveUrl = WEBAPP_PROTOCOL + '://app/qqq-app/index.html';
+            bootLog('local: using bundled webapp (no network needed for first boot)');
+        } else {
+            bootLog('local: no webapp found, will load from remote');
+        }
     }
-    const bootT1 = Date.now();
-    bootLog('phase: fallback-shown ' + (bootT1 - bootT0) + 'ms');
+    const isLocal = effectiveUrl.startsWith(WEBAPP_PROTOCOL);
 
-    // 2) Check for shell-code hot-update (non-blocking)
+    // 1) Show fallback — skip if local (instant boot, no "connecting…" needed)
+    if (!isLocal) {
+        try {
+            await loadStaticFallback(mainWindow, bootConfig, portableRoot, 'connecting');
+        } catch (e) {
+            bootLog('seq: initial fallback crashed — ' + (e && (e as Error).message || String(e)));
+        }
+        bootLog('phase: fallback-shown ' + (Date.now() - bootT0) + 'ms');
+    } else {
+        bootLog('local: skipping fallback (instant boot)');
+    }
+
+    // 2) Check for shell-code hot-update (non-blocking, always try)
     checkAndDownloadShellUpdate(bootConfig, portableCache, isDev, isOffline).then(updated => {
         if (updated) {
             console.log('[boot] shell update staged — will apply on next restart');
         }
     }).catch(() => { });
 
-    // 3) Health check (fast, 3s timeout) — skip in dev mode (localhost)
-    const healthy = isDev ? true : await healthCheck(bootConfig.url, bootConfig.healthTimeoutMs, isOffline);
-    const bootT2 = Date.now();
-    if (healthy) {
-        bootLog('seq: server OK (' + (bootT2 - bootT1) + 'ms)');
+    // 3) Health check — skip if local (local files don't need server)
+    const healthy = isLocal ? false : isDev ? true : await healthCheck(bootConfig.url, bootConfig.healthTimeoutMs, isOffline);
+    if (isLocal) {
+        bootLog('seq: local boot, skipping health check');
+    } else if (healthy) {
+        bootLog('seq: server OK (' + (Date.now() - bootT0) + 'ms)');
     } else {
-        bootLog('seq: server unreachable (' + (bootT2 - bootT1) + 'ms)');
+        bootLog('seq: server unreachable (' + (Date.now() - bootT0) + 'ms)');
     }
 
     // 4) Try remote with 15s timeout
     //    loadURL() 会自动替换当前 fallback 页面，用户无缝过渡到正式应用
     const REMOTE_TIMEOUT_MS = 30000;  // 只等 HTML（did-navigate），不等子资源
-    const { ok, mode } = await loadRemoteWithCacheGuard(mainWindow, bootConfig, REMOTE_TIMEOUT_MS, isDev, portableRoot);
+    const loadConfig = { ...bootConfig, url: effectiveUrl };
+    const { ok, mode } = await loadRemoteWithCacheGuard(mainWindow, loadConfig, REMOTE_TIMEOUT_MS, isDev, portableRoot);
     const bootT3 = Date.now();
     if (ok) {
         bootLog('seq: remote OK, boot complete — total ' + (bootT3 - bootT0) + 'ms');
         bootCompleted = true;
         setLastBootMode(mode);
+        // ★★ 20s 后后台检查 webapp 更新（错过启动高峰，每窗口生命周期仅一次）
+        if (!isDev) {
+            const _url = bootConfig.url;  // always use remote URL for updates
+            const _root = portableRoot;
+            setTimeout(() => {
+                backgroundCheckWebappUpdate({ ...bootConfig, url: _url }, _root).catch(() => { });
+            }, 20000);
+        }
     } else {
         // Reload fallback with actual error reason (was 'connecting' before)
         const reason = healthy ? 'load-failed' : 'no-network-no-cache';

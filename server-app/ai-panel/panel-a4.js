@@ -720,45 +720,6 @@ function _a4ClearCurrent(ag) {
 
 // ═══════════════════════════════════════════════════════════════
 // 增量持久化 — 统一入口（覆盖 a1/a2/a3/a4 全部豆腐块）
-// ═══════════════════════════════════════════════════════════════
-
-var _a4IncrementalDirty = false;
-var _a4IncrementalTimer = null;
-var _a4IncrementalBusy = false;
-var A4_INCREMENTAL_FLUSH_MS = 2000;
-var A4_INCREMENTAL_MAX_MS = 8000;
-var _a4FirstDirtyTs = 0;
-// ★ 存储触发脏标记的 agent 和 questId（确保后台 agent 也能正确刷盘）
-var _a4IncrementalAg = null;
-var _a4IncrementalQuestId = null;
-// ★ 捕获脏标记时的 floorNum（防 ag._currentFloorNum 在新楼层启动后被覆写导致跨楼污染）
-var _a4IncrementalFloorNum = null;
-
-// ── 标记脏（其他模块调用此函数触发统一刷盘）──
-//   可传入 agent 引用（来自 agent-loop.js 的 self），确保后台 agent 也能正确持久化
-function _a4MarkIncrementalDirty(ag) {
-    if (ag) {
-        _a4IncrementalAg = ag;
-        _a4IncrementalQuestId = (typeof questActiveId !== 'undefined') ? questActiveId : '';
-        // ★ 捕获当前楼层号（不可变快照），防止后续 _currentFloorNum 被新楼层覆写
-        _a4IncrementalFloorNum = ag._currentFloorNum || null;
-    } else if (!_a4IncrementalAg) {
-        // 首次无 agent → 用 _activeAgent 兜底
-        _a4IncrementalAg = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-        _a4IncrementalQuestId = (typeof questActiveId !== 'undefined') ? questActiveId : '';
-        _a4IncrementalFloorNum = _a4IncrementalAg ? (_a4IncrementalAg._currentFloorNum || null) : null;
-    }
-    _a4IncrementalDirty = true;
-    if (!_a4FirstDirtyTs) _a4FirstDirtyTs = Date.now();
-    if (_a4IncrementalTimer) clearTimeout(_a4IncrementalTimer);
-    var elapsed = Date.now() - _a4FirstDirtyTs;
-    if (elapsed >= A4_INCREMENTAL_MAX_MS) {
-        _a4FlushCompleteFloor();
-    } else {
-        _a4IncrementalTimer = setTimeout(_a4FlushCompleteFloor, A4_INCREMENTAL_FLUSH_MS);
-    }
-}
-
 // ── 构建完整 floor payload（与 _saveAgentQuestData 同构）──
 //   可选 floorNum: 若传入则使用 ag._floorMeta[floorNum] 中的不可变元数据
 function _a4BuildCompleteFloorPayload(ag, floorNum) {
@@ -837,78 +798,7 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
     return payload;
 }
 
-// ── 统一刷盘：构建完整 payload → 直接覆写 SQLite ──
-//   使用 _a4IncrementalAg（来自触发脏标记的 agent），而非 _activeAgent（可能在切换后变化）
-function _a4FlushCompleteFloor() {
-    if (_a4IncrementalTimer) { clearTimeout(_a4IncrementalTimer); _a4IncrementalTimer = null; }
-    if (!_a4IncrementalDirty || _a4IncrementalBusy) return;
-    _a4IncrementalDirty = false;
-    _a4FirstDirtyTs = 0;
-    _a4IncrementalBusy = true;
-
-    // ★ 使用捕获的 agent 引用，确保后台 agent 也能正确持久化
-    var ag = _a4IncrementalAg;
-    if (!ag) { _a4IncrementalBusy = false; return; }
-    var questId = _a4IncrementalQuestId;
-    if (!questId) { _a4IncrementalBusy = false; return; }
-    // ★ 用捕获时的 floorNum（不可变快照），而非 ag._currentFloorNum（可能已被新楼层覆写）
-    var floorNum = _a4IncrementalFloorNum || ag._currentFloorNum;
-    if (!floorNum) { _a4IncrementalBusy = false; return; }
-
-    var qs = window.questStore;
-    if (!qs || !qs.saveFloor) { _a4IncrementalBusy = false; return; }
-
-    var payload = _a4BuildCompleteFloorPayload(ag, floorNum);
-
-    qs.saveFloor(questId, floorNum, payload).catch(function () { }).then(function () {
-        _a4IncrementalBusy = false;
-    });
-}
-
-// ── beforeunload 强制刷盘 ──
-function _a4OnBeforeUnload() {
-    if (_a4IncrementalTimer) { clearTimeout(_a4IncrementalTimer); _a4IncrementalTimer = null; }
-    if (!_a4IncrementalDirty) return;
-    _a4IncrementalDirty = false;
-    _a4FirstDirtyTs = 0;
-
-    // ★ 优先使用脏标记中捕获的 agent（正确），降级到 _activeAgent（可能已切换）
-    var ag = _a4IncrementalAg || (typeof _activeAgent !== 'undefined' ? _activeAgent : null);
-    if (!ag) return;
-    var questId = _a4IncrementalQuestId || (typeof questActiveId !== 'undefined' ? questActiveId : '');
-    if (!questId) return;
-    var qs = window.questStore;
-    if (!qs || !qs.saveFloor) return;
-    // ★ 用捕获时的 floorNum（不可变快照），而非 ag._currentFloorNum（可能已被新楼层覆写）
-    var floorNum = _a4IncrementalFloorNum || ag._currentFloorNum;
-    if (!floorNum) return;
-    var payload = _a4BuildCompleteFloorPayload(ag, floorNum);
-    qs.saveFloor(questId, floorNum, payload).catch(function () { });
-}
-
-if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload', _a4OnBeforeUnload);
-    // ★ 流式保护：流式输出期间每 5s 强制标记脏（防止长文本打印中断无保存）
-    //   遍历整个 agentPool，确保后台 agent 的流式数据也不会丢失
-    setInterval(function () {
-        var pool = (typeof agentPool !== 'undefined') ? agentPool : null;
-        if (pool) {
-            var ids = Object.keys(pool);
-            for (var pi = 0; pi < ids.length; pi++) {
-                var ag2 = pool[ids[pi]];
-                if (ag2 && ag2._streaming) {
-                    _a4MarkIncrementalDirty(ag2);
-                }
-            }
-        } else {
-            var ag2 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-            if (ag2 && ag2._streaming) _a4MarkIncrementalDirty(ag2);
-        }
-    }, 5000);
-}
-
 // ═══ 导出到 window（跨模块引用 §29） ═══
-window._a4MarkIncrementalDirty = _a4MarkIncrementalDirty;
 window._a4BuildCompleteFloorPayload = _a4BuildCompleteFloorPayload;
 window._a4PersistSnapshots = _a4PersistSnapshots;
 window._a4RestoreBlock = _a4RestoreBlock;

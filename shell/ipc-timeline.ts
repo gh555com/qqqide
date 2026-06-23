@@ -178,7 +178,7 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
                     if (scanned >= MAX_FILES) return;
                     const fp = path.join(dir, ent.name);
                     if (ent.isDirectory()) {
-                        if (ent.name === 'node_modules' || ent.name === '.git' || ent.name === 'qqq' || ent.name === '.tmp') continue;
+                        if (ent.name === 'node_modules' || ent.name === '.git' || ent.name === '.tmp') continue;
                         walkNew(fp);
                     } else if ((ent.isFile() || ent.isSymbolicLink()) && !indexedSet.has(fp)) {
                         if (ent.name.endsWith('~') || ent.name.indexOf('.tmp.') !== -1) continue;

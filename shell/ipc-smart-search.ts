@@ -17,7 +17,7 @@ const REGEX_SKIP_DIRS = new Set([
     'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs',
     '.hg', '.svn', 'bower_components', '.idea', '.vs', 'cache', 'temp',
     'crashDumps', 'dist-pack', 'shell-out', 'shell-build', '.qoder',
-    'qqq', 'userData', 'logs', 'new_log', 'tmp', 'op'
+    'Data', 'logs', 'new_log', 'tmp', 'op'
 ]);
 
 const REGEX_SKIP_EXTS = new Set([

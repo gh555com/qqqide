@@ -6,7 +6,7 @@ import { BrowserWindow, screen, globalShortcut } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
-import { LspBridge } from './lsp-bridge';
+// import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
 import { StateStore } from './state-sqlite';
 import { BootConfig } from './boot';
@@ -105,8 +105,8 @@ export function createWindow(
     portableRoot: string,
     portableCache: string,
     appVersion: string,
-    isDevFlag: boolean,
-    lspBridge: LspBridge,
+    // lspBridge: LspBridge,  // LSP OFF — 2026-06-23
+    lspBridge: any,
     downloadService: DownloadService,
     stateStore: StateStore,
 ): BrowserWindow {
@@ -148,7 +148,7 @@ export function createWindow(
 
     win.on('closed', () => {
         if (_boundsSaveTimer) { clearTimeout(_boundsSaveTimer); _boundsSaveTimer = null; }
-        try { lspBridge.removeTarget(win.webContents); } catch { /* ignore */ }
+        // try { lspBridge.removeTarget(win.webContents); } catch { /* ignore */ } // LSP OFF — 2026-06-23
         const ownedProject = _windowProjectMap.get(win.id);
         if (ownedProject) {
             _windowProjectMap.delete(win.id);
@@ -196,8 +196,7 @@ export function createWindow(
 
     // Apply zoom factor on load
     win.webContents.on('did-finish-load', () => {
-        win.webContents.setZoomFactor(zoomFactor);
-        lspBridge.addTarget(win.webContents);
+        win.webContents.setZoomF// lspBridge.addTarget(win.webContents); // LSP OFF — 2026-06-23addTarget(win.webContents);
     });
 
     // Ctrl/Cmd + (+/-/0) zoom shortcuts

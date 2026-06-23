@@ -444,7 +444,6 @@ var AgentLoop = (function () {
                             _ackEl.innerHTML = '<div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">✅</span> Guide received</div><div class="msg-flow-guide-ack-body">' + _esc(_ackDisplay) + '</div>';
                             _aiDiv2._contentWrap.appendChild(_ackEl);
                         }
-                        if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty(self);
                         self._log('✅ guide ack: ' + _ackResp.content.slice(0, 120));
                     } else if (_ackResp && _ackResp.type === 'tool_calls') {
                         // 引导回合 AI 返回工具调用（noTools=true 下不应发生）
@@ -632,7 +631,6 @@ var AgentLoop = (function () {
                     var _bill = self._lastBilling; self._lastBilling = null;
                     var _cd = self._lastCacheDiag; self._lastCacheDiag = null;
                     self._houses.push({ index: self._houseIndex, type: 'final', tools: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', geCost: _bill ? _bill.geCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined });
-                    if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty(self);
                     var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
                     // 替换之前因切换 quest 而保存的截断消息，避免重复
                     var _lastConv = self.conversation[self.conversation.length - 1];
@@ -674,7 +672,6 @@ var AgentLoop = (function () {
                     var _bill2 = self._lastBilling; self._lastBilling = null;
                     var _cd2 = self._lastCacheDiag; self._lastCacheDiag = null;
                     self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', geCost: _bill2 ? _bill2.geCost : 0, model: _bill2 ? _bill2.model : '', cacheHitRate: _bill2 ? _bill2.cacheHitRate : -1, usage: _bill2 ? _bill2.usage : null, billingSeq: _bill2 ? _bill2.seq : 0, billingRequestId: _bill2 ? _bill2.requestId : '', cacheDiag: _cd2 || undefined });
-                    if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty(self);
                     // ★ per-house ge display: 每间 house 即时更新右下角费用时更新右下角费用（纯 DOM，零服务器压力）
                     var _aiDiv5 = self._activeAiDiv;
                     if (_aiDiv5 && _aiDiv5._clockCost) {
@@ -781,7 +778,6 @@ var AgentLoop = (function () {
                     var _bill3 = self._lastBilling; self._lastBilling = null;
                     var _cd3 = self._lastCacheDiag; self._lastCacheDiag = null;
                     self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ts: new Date().toISOString(), ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '', geCost: _bill3 ? _bill3.geCost : 0, model: _bill3 ? _bill3.model : '', cacheHitRate: _bill3 ? _bill3.cacheHitRate : -1, usage: _bill3 ? _bill3.usage : null, billingSeq: _bill3 ? _bill3.seq : 0, billingRequestId: _bill3 ? _bill3.requestId : '', cacheDiag: _cd3 || undefined });
-                    if (typeof window._a4MarkIncrementalDirty === 'function') window._a4MarkIncrementalDirty(self);
                     if (finalResp._ttfbMs !== undefined) {
                         self._floorTiming.networkMs += finalResp._ttfbMs;
                         self._floorTiming.aiMs += finalResp._streamMs;
@@ -1113,23 +1109,25 @@ var AgentLoop = (function () {
         var rendered = aiDiv._renderedCount || 0;
         var paras = aiDiv._paras || [];
         var _rm = typeof renderMarkdown === 'function' ? renderMarkdown : function (s) { return s; };
+        // ★ 确保 _lastParaEl 存在（创建时自然在末尾），后续静态段落插在它之前
+        if (!aiDiv._lastParaEl) {
+            aiDiv._lastParaEl = document.createElement('div');
+            aiDiv._lastParaEl.className = 'stream-para';
+            aiDiv._contentWrap.appendChild(aiDiv._lastParaEl);
+        }
         while (rendered < paras.length) {
             var para = paras[rendered];
             if (para && para.trim()) {
                 var pEl = document.createElement('div');
                 pEl.className = 'stream-para';
                 pEl.innerHTML = _rm(para);
-                aiDiv._contentWrap.appendChild(pEl);
+                // ★ 插入 _lastParaEl 之前：保证静态段落在上，实时打字块始终在最底部
+                aiDiv._contentWrap.insertBefore(pEl, aiDiv._lastParaEl);
             }
             paras[rendered] = null;
             rendered++;
         }
         aiDiv._renderedCount = rendered;
-        if (!aiDiv._lastParaEl) {
-            aiDiv._lastParaEl = document.createElement('div');
-            aiDiv._lastParaEl.className = 'stream-para';
-            aiDiv._contentWrap.appendChild(aiDiv._lastParaEl);
-        }
         if (aiDiv._codeFenceOpen && aiDiv._buf) {
             var _codeContent = aiDiv._buf;
             var _firstNL = _codeContent.indexOf('\n');

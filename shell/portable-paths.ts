@@ -24,7 +24,7 @@ export function getAppRoot(): string {
 /** Apply portable redirects. Call this BEFORE app.whenReady(). */
 export function applyPortablePaths(): { root: string; userData: string; cache: string; logs: string } {
     const root = getAppRoot();
-    const userData = path.join(root, 'userData');
+    const userData = path.join(root, 'Data');
     // ★ 所有运行时目录收进 userData/，根目录保持干净
     const cache = path.join(userData, 'Cache');
     const temp = path.join(userData, 'Temp');

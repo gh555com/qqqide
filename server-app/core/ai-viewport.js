@@ -225,8 +225,6 @@
     if (activeDropdown && activeDropdown._projectRoot) {
       if (activeDropdown._expandedChain && activeDropdown._expandedChain.length > 0) {
         _treeSnapshots[activeDropdown._projectRoot] = activeDropdown._expandedChain.slice();
-      } else {
-        delete _treeSnapshots[activeDropdown._projectRoot];
       }
     }
     cancelHover();
@@ -558,7 +556,7 @@
             sub._justOpened = Date.now();
             outer._childSub = sub;
           }
-        }, 1000);
+        }, 150);
       });
       row.addEventListener('mouseleave', () => {
         row._hovered = false;
@@ -808,7 +806,9 @@
       if (!activeDropdown._expandedChain) activeDropdown._expandedChain = [];
       // ★ splice(depth-1) 删除 depth-1 及之后的所有元素
       //    不会产生稀疏数组（.length = N 当数组更短时会产生空洞）
-      activeDropdown._expandedChain.splice(depth - 1);
+      // ★ splice(depth-2)：depth≥2，splice(depth-2) 清掉从本级开始之后的所有路径
+      //    例如 depth=2(第1级) splice(0) 清空 → 同级切换不会残留旧路径
+      activeDropdown._expandedChain.splice(depth - 2);
       var rel = dirPath.substring(projectRoot.length).replace(/^[\\/]+/, '');
       activeDropdown._expandedChain.push(rel);
     }

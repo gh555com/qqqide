@@ -52,6 +52,7 @@
       "shell-out/**",
       "shell/boot-fallback.html",
       "engines/**",
+      "server-app/**",
       "node_modules/monaco-editor/min/**",
       "node_modules/sql.js/**",
       "node_modules/sql.js/**",

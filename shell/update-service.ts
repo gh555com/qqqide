@@ -24,7 +24,7 @@ import { URL } from 'url';
 import { execSync, spawnSync } from 'child_process';
 
 const UPDATE_MANIFEST_URL = 'https://gh555.com/qqq-app/version.json';
-const UPDATE_TAR_URL      = 'https://gh555.com/qqq-app/server-app.tar.xz';
+const UPDATE_TAR_URL = 'https://gh555.com/qqq-app/server-app.tar.xz';
 
 export interface UpdateState {
     lastCheck: number;       // Date.now() of last check
@@ -55,7 +55,7 @@ export class UpdateService {
     constructor(appRoot: string, currentVersion: string) {
         this._appRoot = appRoot;
         this._currentVersion = currentVersion || '0.0.0';
-        this._statePath = path.join(appRoot, 'userData', 'update-state.json');
+        this._statePath = path.join(appRoot, 'Data', 'update-state.json');
         this._state = this._loadState();
     }
 
@@ -90,12 +90,12 @@ export class UpdateService {
             }
 
             // 2) Download tar.xz
-            const stagingDir = path.join(this._appRoot, 'cache', 'staging');
+            const stagingDir = path.join(this._appRoot, 'Data', 'staging');
             const tarPath = path.join(stagingDir, 'server-app.tar.xz');
             const extractDir = path.join(stagingDir, 'server-app');
 
-            try { fs.mkdirSync(stagingDir, { recursive: true }); } catch {}
-            try { fs.rmSync(extractDir, { recursive: true, force: true }); } catch {}
+            try { fs.mkdirSync(stagingDir, { recursive: true }); } catch { }
+            try { fs.rmSync(extractDir, { recursive: true, force: true }); } catch { }
 
             const downloadOk = await this._downloadFile(UPDATE_TAR_URL, tarPath,
                 this._abortController.signal);
@@ -113,7 +113,7 @@ export class UpdateService {
             const serverAppDir = path.join(this._appRoot, 'server-app');
             const oldDir = path.join(this._appRoot, 'server-app.old');
 
-            try { fs.rmSync(oldDir, { recursive: true, force: true }); } catch {}
+            try { fs.rmSync(oldDir, { recursive: true, force: true }); } catch { }
             try {
                 if (fs.existsSync(serverAppDir)) {
                     fs.renameSync(serverAppDir, oldDir);
@@ -126,13 +126,13 @@ export class UpdateService {
                 fs.renameSync(extractDir, serverAppDir);
             } catch (e: any) {
                 // Rollback: restore old
-                try { fs.renameSync(oldDir, serverAppDir); } catch {}
+                try { fs.renameSync(oldDir, serverAppDir); } catch { }
                 return { success: false, version: '', error: 'Atomic swap failed (replace): ' + (e.message || e) };
             }
 
             // 5) Cleanup
-            try { fs.unlinkSync(tarPath); } catch {}
-            try { fs.rmSync(oldDir, { recursive: true, force: true }); } catch {}
+            try { fs.unlinkSync(tarPath); } catch { }
+            try { fs.rmSync(oldDir, { recursive: true, force: true }); } catch { }
 
             // 6) Update state
             this._state.currentVersion = latestVersion;
@@ -188,7 +188,7 @@ export class UpdateService {
     private _saveState(): void {
         try {
             const dir = path.dirname(this._statePath);
-            try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+            try { fs.mkdirSync(dir, { recursive: true }); } catch { }
             fs.writeFileSync(this._statePath, JSON.stringify(this._state, null, 2), 'utf8');
         } catch { /* ignore */ }
     }
@@ -247,7 +247,7 @@ export class UpdateService {
                 let bytes = 0;
                 res.on('data', (chunk: Buffer) => { bytes += chunk.length; file.write(chunk); });
                 res.on('end', () => { file.end(); resolve(bytes > 0); });
-                res.on('error', () => { try { file.close(); } catch {} resolve(false); });
+                res.on('error', () => { try { file.close(); } catch { } resolve(false); });
             });
 
             req.on('error', () => resolve(false));
@@ -262,7 +262,7 @@ export class UpdateService {
 
     private _extractTarXz(tarPath: string, destDir: string): boolean {
         try {
-            try { fs.mkdirSync(destDir, { recursive: true }); } catch {}
+            try { fs.mkdirSync(destDir, { recursive: true }); } catch { }
             // Use tar command (available in git-bash on Windows, always on Linux/Mac)
             const result = spawnSync('tar', ['-xJf', tarPath, '-C', destDir], {
                 stdio: 'pipe',
