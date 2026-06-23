@@ -149,6 +149,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #messages{overflow-y:auto;overflow-x:hidden;padding:12px 13px 12px 8px;min-height:0;position:relative;flex:1;scrollbar-width:none}
 #messages::-webkit-scrollbar{display:none;width:0;height:0}
 .msg{margin-bottom:10px;line-height:1.5;content-visibility:auto;contain-intrinsic-size:auto 200px}
+/* ★ 在建楼层禁用 content-visibility，确保时钟行高度被 scrollHeight 精确计入 */
+.msg.card-building{content-visibility:visible}
 /* 用户消息气泡 */
 .msg-user{background:#f8e0e0;border-radius:8px;padding:8px 12px;overflow-x:hidden;overflow-wrap:break-word;word-break:break-word}
 [data-theme="dark"] .msg-user{background:#4a2d30;color:#e8d0d0}
@@ -350,6 +352,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .ctx-bd-wrap{background:var(--card-bg);border:1px solid var(--border-color);border-radius:6px;padding:10px 12px 8px;min-width:300px;max-width:380px;box-shadow:0 2px 16px rgba(0,0,0,0.35);font-size:11px;line-height:1.5}
 .ctx-bd-title{font-weight:600;font-size:12px;margin-bottom:6px;color:var(--text-primary);border-bottom:1px solid var(--border-color);padding-bottom:4px}
 .ctx-bd-row{display:flex;align-items:center;gap:5px;padding:1.5px 0}
+.ctx-bd-boxes{display:flex;gap:1px;flex-shrink:0;align-items:center}
+.ctx-bd-box{width:11px;height:8px;border-radius:1px;flex-shrink:0}
+.ctx-bd-box-full{background:var(--cyan);opacity:.85}
+.ctx-bd-box-empty{width:10px;height:7px;border:1px solid var(--cyan);opacity:.45;background:transparent}
 .ctx-bd-label{flex:1;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .ctx-bd-num{min-width:40px;text-align:right;color:var(--text-primary);font-weight:600;font-size:10.5px;flex-shrink:0;font-variant-numeric:tabular-nums}
 .ctx-bd-pct{min-width:40px;text-align:right;color:var(--text-dim);font-size:10px;flex-shrink:0}

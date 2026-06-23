@@ -313,24 +313,25 @@ export async function loadRemoteWithCacheGuard(
             try { fs.writeFileSync(LOADING_STATUS_PATH, line, 'utf-8'); } catch (_) { }
         };
 
-        // ── 资源追踪（进度条用）+ 耗时统计 ──
+        // ── 资源追踪（进度条用）+ 耗时统计 + 冷却期 ──
         let pendingReqs = 0;
         let doneReqs = 0;
         let domReadyFired = false;
         const session = wc.session;
-        const reqFilter = { urls: ['*://*/*'] };
         const reqStartTimes = new Map<string, number>();
+        let cooldownTimer: NodeJS.Timeout | null = null;
+        const COOLDOWN_MS = 4000; // 4 秒无新请求 → 真·完成（SPA 动态 import 链）
         const onBeforeReq = (details: any, cb: any) => {
-            if (details.resourceType === 'mainFrame') { cb({}); return; }
             const now = Date.now();
             reqStartTimes.set(details.url, now);
             pendingReqs++;
+            // 冷却期被打断 → 重置计时器
+            if (cooldownTimer) { clearTimeout(cooldownTimer); cooldownTimer = null; }
             const shortUrl = details.url?.slice(0, 100);
             bootLog('webReq: +' + pendingReqs + ' ' + details.resourceType + ' ' + shortUrl);
             cb({});
         };
         const onReqDone = (details: any) => {
-            if (details.resourceType === 'mainFrame') { return; }
             doneReqs++;
             pendingReqs = Math.max(0, pendingReqs - 1);
             const startTime = reqStartTimes.get(details.url);
@@ -341,16 +342,24 @@ export async function loadRemoteWithCacheGuard(
             } else {
                 bootLog('webReq: ✓' + elapsed + 'ms ' + details.resourceType + ' ' + details.url?.slice(0, 80));
             }
-            updateProgress();
+            tryCooldown();
         };
         const onReqErr = (details: any) => {
-            if (details.resourceType === 'mainFrame') { return; }
             pendingReqs = Math.max(0, pendingReqs - 1);
             const startTime = reqStartTimes.get(details.url);
             const elapsed = startTime ? Date.now() - startTime : -1;
             reqStartTimes.delete(details.url);
             bootLog('webReq: ERR ' + elapsed + 'ms ' + details.resourceType + ' ' + details.url?.slice(0, 80));
-            updateProgress();
+            tryCooldown();
+        };
+        const tryCooldown = () => {
+            if (pendingReqs === 0 && doneReqs > 0 && !cooldownTimer) {
+                bootLog('webReq: cooldown started — pending=0 done=' + doneReqs + ' wait=' + COOLDOWN_MS + 'ms');
+                cooldownTimer = setTimeout(() => {
+                    bootLog('webReq: cooldown expired — truly done (total=' + doneReqs + ')');
+                    onAllReady();
+                }, COOLDOWN_MS);
+            }
         };
 
         // ── 加载面板 ──
@@ -416,10 +425,9 @@ export async function loadRemoteWithCacheGuard(
                     : pct < 85 ? '正在加载样式资源…'
                         : '正在初始化 IDE…';
             updateLoadingPanel(stage, pct);
-            // ★ Win7 上 dom-ready/did-stop-loading 均不触发，唯一可靠信号：所有请求完成
+            // ★ Win7 上 dom-ready/did-stop-loading 均不触发，通过 webReq 冷却期判断完成
             if (pendingReqs === 0 && doneReqs > 0) {
-                bootLog('webReq: all requests done — pending=0 done=' + doneReqs);
-                onAllReady();
+                tryCooldown();
             }
         };
         let readyShown = false;     // onAllReady 防重入
@@ -429,7 +437,8 @@ export async function loadRemoteWithCacheGuard(
             // ★ 最终清理：移除所有后续事件监听
             if (progressTickId) { clearInterval(progressTickId); progressTickId = null; }
             if (panelTimer) { clearTimeout(panelTimer); panelTimer = null; }
-            cleanupWebRequest();
+            if (cooldownTimer) { clearTimeout(cooldownTimer); cooldownTimer = null; }
+            // ★ 不清理 webRequest — 冷却期确保没有新请求，保留以观测后续动态加载
             wc.removeListener('did-start-navigation', onStartNav);
             wc.removeListener('did-navigate', onNavigate);
             wc.removeListener('dom-ready', onDomReady);
@@ -454,9 +463,9 @@ export async function loadRemoteWithCacheGuard(
 
         // ── cleanup & finish ──
         const cleanupWebRequest = () => {
-            try { session.webRequest.onBeforeRequest(reqFilter, null as any); } catch (_) { }
-            try { session.webRequest.onCompleted(reqFilter, null as any); } catch (_) { }
-            try { session.webRequest.onErrorOccurred(reqFilter, null as any); } catch (_) { }
+            try { session.webRequest.onBeforeRequest(null as any, null as any); } catch (_) { }
+            try { session.webRequest.onCompleted(null as any, null as any); } catch (_) { }
+            try { session.webRequest.onErrorOccurred(null as any, null as any); } catch (_) { }
         };
         const finish = (ok: boolean, mode: BootMode) => {
             if (settled) { return; }
@@ -569,10 +578,10 @@ export async function loadRemoteWithCacheGuard(
         wc.on('did-stop-loading', onStopLoading);
         wc.on('did-fail-load', onFail);
 
-        // ★ 提前注册 webRequest 追踪 — 在 loadURL 之前，确保捕获所有子资源
-        session.webRequest.onBeforeRequest(reqFilter, onBeforeReq);
-        session.webRequest.onCompleted(reqFilter, onReqDone);
-        session.webRequest.onErrorOccurred(reqFilter, onReqErr);
+        // ★ 提前注册 webRequest 追踪 — 在 loadURL 之前，确保捕获所有子资源（无 filter=全量匹配）
+        session.webRequest.onBeforeRequest(onBeforeReq as any);
+        session.webRequest.onCompleted(onReqDone as any);
+        session.webRequest.onErrorOccurred(onReqErr as any);
 
         // ★ 可重试连接错误：ERR_CONNECTION_REFUSED（dev 服务器抢跑）、ERR_FAILED（Win7 SSL）
         let loadRetries = 0;

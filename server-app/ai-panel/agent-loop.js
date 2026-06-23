@@ -1140,6 +1140,8 @@ var AgentLoop = (function () {
             aiDiv._lastParaEl.innerHTML = _rm(aiDiv._buf || '');
         }
         aiDiv._dirty = false;
+        // ★ 渲染后立即滚到底：新 DOM 已落地，scrollHeight 已更新，确保时钟行等底部元素可见
+        if (typeof scrollToBottom === 'function') scrollToBottom(true);
     };
 
     return AgentLoop;

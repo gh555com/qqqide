@@ -130,6 +130,8 @@ Phase 2 · EXTRACT (choose tool based on WHAT you are trying to get):
 
 🔴 FILE: use dedicated tools (search_text/search_content/find_files/list_files). run_command ONLY when those CANNOT do the job.
 
+🔴 READ BEFORE EDIT: Before calling edit_file on any file, you MUST call read_file on that file first. The ONLY exception: the same file was already read in the immediately preceding tool call within the same house. This ensures your find/replace strings always match the actual current disk content. If edit_file returns "modified externally since last read", re-read the file and retry.
+
 🔴 TEMP FILES: NEVER create temporary files in project subdirectories (qqq/, server-app/, shell/, do/, etc). ALL temporary files (diagnostic scripts, one-off checks, debug dumps) MUST be created in {project_root}/tmp/ — the main project's tmp directory. DELETE every temp file immediately after use (within the same house). Leaving temp files behind is a HARD violation. If tmp/ does not exist, create it with run_command mkdir first.`;
 
 // ═══ AI 回答 max_tokens — 唯一真理在 ContentGateway.MAX_RESPONSE_TOKENS（content-gateway.js） ═══

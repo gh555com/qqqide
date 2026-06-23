@@ -609,7 +609,24 @@ async function _a4PersistToTimeline(filePath, op, before, after, ag) {
                 snapEntry.afterBlobHash = aRec.blob_hash;
             }
         } catch (_) { }
-          var fname = meta.path.replace(/\\/g, '/').split('/').pop() || meta.path;
+    }
+
+    // ★ before 已由 _a4EnsureBeforeBaseline 记录，此处不重复
+}
+
+// ═══ 历史楼层 A4 恢复（从 floor payload 的 a4Snapshots 渲染） ═══
+function _a4RestoreBlock(aiDiv, a4Meta, questNumericId, floorNum) {
+    if (!a4Meta || !a4Meta.length) return;
+    var block = _initA4Block(aiDiv);
+    block.innerHTML = '';
+
+    for (var i = 0; i < a4Meta.length; i++) {
+        var meta = a4Meta[i];
+        var row = document.createElement('div');
+        row.className = 'msg-a4-row';
+        row.dataset.path = meta.path;
+
+        var fname = meta.path.replace(/\\/g, '/').split('/').pop() || meta.path;
         var nameSpan = document.createElement('span');
         nameSpan.className = 'msg-a4-fname';
         nameSpan.textContent = _truncMiddle(fname, 36);

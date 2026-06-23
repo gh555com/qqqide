@@ -33,7 +33,7 @@
     var CTX_MAX_TOKENS = 1048565;     // 上下文窗口总上限（实测精确值）
     var COMPRESS_THRESHOLD = 200000;  // 压缩触发阈值（200k tokens，约 20% 窗口）
     var MAX_TOKENS_SAFETY = 10000;    // max_tokens 帽安全余量
-    var CHAR_PER_TOKEN = 3.0;         // 统一 chars→tokens 估算比例
+    var CHAR_PER_TOKEN = 2.7;         // 统一 chars→tokens 估算比例（2026-06-22 校准: 3.0→2.7）
     // 三专家输出阀值
     var COMPACT_FACTS_TOKENS = 32768;     // ① facts 专家 32k（facts 可能很多，给足空间）
     var COMPACT_NARRATIVE_TOKENS = 32768; // ② narrative 专家 32k

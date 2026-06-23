@@ -13,6 +13,17 @@ export function registerEditIpc(): void {
     ipcMain.handle('qqqide:ai:edit_file', async (_e, args: { path: string; edits: Array<{ find: string; replace: string; replace_all?: boolean }> }) => {
         return _qe(args.path, async () => {
             try {
+                // ★ qwr CAS: 检查 _sn 快照 — 若 AI 读后文件被外部修改，拒绝编辑
+                const snap = _sn[args.path];
+                if (snap) {
+                    try {
+                        const st = await fs.promises.stat(args.path);
+                        if (st.mtimeMs !== snap.mtimeMs || st.size !== snap.size) {
+                            return 'Error: file has been modified externally since last read. Please re-read the file and try again.';
+                        }
+                    } catch (_) { /* stat failed, proceed */ }
+                }
+
                 const originalContent = await fs.promises.readFile(args.path, 'utf8');
                 let content = originalContent;
                 const matchPlan: Array<{ edit: any; match: { start: number; end: number; matchLevel: number }; index: number }> = [];
