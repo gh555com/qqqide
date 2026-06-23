@@ -468,29 +468,29 @@ function _estimateTokensFull() {
         + ' tool×' + toolCount + '≈' + toolTok + ' sys≈' + sysTok + ' comp≈' + compTok + ' tcSchema≈' + tcSchemaTok);
 
     // ── 7. Build rows (all tokens) ──
-    function _tk(label, tokens, indent, always) {
-        return { label: label, tok: tokens, indent: indent || 0, always: always || false };
+    function _tk(label, tokens, indent, always, color) {
+        return { label: label, tok: tokens, indent: indent || 0, always: always || false, color: color || '' };
     }
     var rows = [];
     // msg[0] breakdown
-    rows.push(_tk('Permanent System Block', msg0Tok, 0));
-    if (visionChars) rows.push(_tk('  Vision Context', Math.round(visionChars / CPT), 1));
-    if (timeChars) rows.push(_tk('  Time Context', Math.round(timeChars / CPT), 1));
-    if (sysPromptChars) rows.push(_tk('  System Prompt', Math.round(sysPromptChars / CPT), 1));
-    if (globalRulesChars) rows.push(_tk('  Global Rules', Math.round(globalRulesChars / CPT), 1));
-    if (projectRulesChars) rows.push(_tk('  Project Rules', Math.round(projectRulesChars / CPT), 1));
-    if (reminderChars) rows.push(_tk('  Reminder', Math.round(reminderChars / CPT), 1));
+    rows.push(_tk('Permanent\ System\ Block', msg0Tok, 0, false, '#268bd2'));
+    if (visionChars) rows.push(_tk('\ \ Vision\ Context', Math.round(visionChars / CPT, false, '#859900'), 1));
+    if (timeChars) rows.push(_tk('\ \ Time\ Context', Math.round(timeChars / CPT, false, '#2aa198'), 1));
+    if (sysPromptChars) rows.push(_tk('\ \ System\ Prompt', Math.round(sysPromptChars / CPT, false, '#268bd2'), 1));
+    if (globalRulesChars) rows.push(_tk('\ \ Global\ Rules', Math.round(globalRulesChars / CPT, false, '#6c71c4'), 1));
+    if (projectRulesChars) rows.push(_tk('\ \ Project\ Rules', Math.round(projectRulesChars / CPT, false, '#b58900'), 1));
+    if (reminderChars) rows.push(_tk('\ \ Reminder', Math.round(reminderChars / CPT, false, '#cb4b16'), 1));
     // Conversation by role
     // Note: Assistant Msgs chars + tool_calls schema ≈ Completion tokens (API exact)
     // We show Completion as the authoritative AI output total.
-    if (userCount) rows.push(_tk('User \u00d7 ' + userCount + '  = ' + Math.round(userTok / 1000) + 'k', userTok, 0));
-    if (toolCount) rows.push(_tk('Tool Results \u00d7 ' + toolCount + '  = ' + Math.round(toolTok / 1000) + 'k', toolTok, 0));
-    if (sysCount) rows.push(_tk('Dynamic System', sysTok, 0));
-    if (compressedChars) rows.push(_tk('Compressed Summary', compTok, 0));
+    if (userCount) rows.push(_tk('User \u00d7 ' + userCount + '  = ' + Math.round(userTok / 1000) + 'k', userTok, 0, false, '#268bd2'));
+    if (toolCount) rows.push(_tk('Tool Results \u00d7 ' + toolCount + '  = ' + Math.round(toolTok / 1000) + 'k', toolTok, 0, false, '#dc322f'));
+    if (sysCount) rows.push(_tk('Dynamic\ System', sysTok, 0, false, '#6c71c4'));
+    if (compressedChars) rows.push(_tk('Compressed\ Summary', compTok, 0, false, '#cb4b16'));
     // Completion = accumulated API exact (all AI output across all houses)
-    rows.push(_tk('Completion (all AI output)', accCompletion, 0, true));
+    rows.push(_tk('Completion\ \(all\ AI\ output\)', accCompletion, 0, true, '#2aa198'));
     // Available
-    rows.push(_tk('Available', Math.max(0, CTX_MAX_TOKENS - actualTotalUsed), 0, true));
+    rows.push(_tk('Available', Math.max(0, CTX_MAX_TOKENS - actualTotalUsed, false, '#859900'), 0, true));
 
     _ctxBreakdownData = {
         rows: rows,
@@ -542,21 +542,19 @@ function renderCtxBreakdown() {
         if (!r.always && r.tok < 1000) continue;
         var indent = r.indent || 0;
         var padLeft = indent ? (12 + (indent - 1) * 14) + 'px' : '0';
-        var fontSize = indent ? '10.5px' : '11px';
-        var fontWeight = indent ? '400' : '500';
-        var colorStyle = (r.always && r.label === 'Available') ? 'color:var(--green);' : '';
+        var c = r.color || '#2aa198';
         var boxes = '';
         var fullN = Math.floor(r.tok / BX);
         var rem = r.tok % BX;
-        for (var b = 0; b < fullN && b < 100; b++) boxes += '<span class=\"ctx-bd-box ctx-bd-box-full\"></span>';
-        if (fullN === 0 || rem > 0) boxes += '<span class=\"ctx-bd-box ctx-bd-box-empty\"></span>';
+        for (var b = 0; b < fullN && b < 100; b++) boxes += '<span class=\"ctx-bd-box ctx-bd-box-full\" style=\"background:' + c + '\"></span>';
+        if (fullN === 0 || rem > 0) boxes += '<span class=\"ctx-bd-box ctx-bd-box-empty\" style=\"border-color:' + c + '\"></span>';
         var valStr = r.tok >= 1000 ? Math.round(r.tok / 1000) + 'k' : String(r.tok);
         var isSmall = r.tok > 0 && r.tok < 1000;
         var numWeight = isSmall ? 'font-weight:400;' : '';
-        html += '<div class=\"ctx-bd-row\" style=\"padding-left:' + padLeft + ';font-size:' + fontSize + ';font-weight:' + fontWeight + '\">' +
-            '<span class=\"ctx-bd-label\">' + r.label + '</span>' +
+        html += '<div class=\"ctx-bd-row\" style=\"padding-left:' + padLeft + '\">' +
+            '<span class=\"ctx-bd-label\" style=\"color:' + c + '\">' + r.label + '</span>' +
             '<span class=\"ctx-bd-boxes\">' + boxes + '</span>' +
-            '<span class=\"ctx-bd-num\" style=\"' + colorStyle + numWeight + '\">' + valStr + '</span></div>';
+            '<span class=\"ctx-bd-num\" style=\"color:' + c + ';' + numWeight + '\">' + valStr + '</span></div>';
     }
     rowsEl.innerHTML = html;
     var btnRect = $ctxBtn.getBoundingClientRect();

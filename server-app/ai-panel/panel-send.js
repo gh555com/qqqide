@@ -307,7 +307,8 @@ async function sendMessage() {
                         _targetDiv._dirty = true;
                         if (!_targetDiv._renderScheduled) {
                             _targetDiv._renderScheduled = true;
-                            setTimeout(function () { doStreamRender(_capturedAgent); }, 1000);
+                            var _rd = _targetDiv._firstRenderDone ? 1000 : 16; _targetDiv._firstRenderDone = true;
+                            setTimeout(function () { doStreamRender(_capturedAgent); }, _rd);
                         }
                         return;
                     }
@@ -342,7 +343,8 @@ async function sendMessage() {
                 _targetDiv._dirty = true;
                 if (!_targetDiv._renderScheduled) {
                     _targetDiv._renderScheduled = true;
-                    setTimeout(function () { doStreamRender(_capturedAgent); }, 1000);
+                    var _rd2 = _targetDiv._firstRenderDone ? 1000 : 16; _targetDiv._firstRenderDone = true;
+                    setTimeout(function () { doStreamRender(_capturedAgent); }, _rd2);
                 }
                 if (_activeAgent === _capturedAgent && !_scrollPending) {
                     _scrollPending = true;

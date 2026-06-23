@@ -563,6 +563,7 @@ var CardPool = (function () {
     aiEl._renderScheduled = false;
     aiEl._renderedCount = 0;
     aiEl._lastParaEl = null;
+    aiEl._firstRenderDone = false;  // ★ 每层楼首次渲染不节流，16ms 即刻落地
     // A1 块（必须在电子钟之前）
     var _initA1b = window._initA1Block;
     var _updA1b = window._updateA1Row1;

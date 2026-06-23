@@ -87,6 +87,27 @@ function _a4IsBinary(path, content) {
     return false;
 }
 
+// ---- 噪声文件检测（run_command 扫描结果过滤）----
+var _A4_NOISE_PATTERNS = [
+    /[\\\/]new_log[\\\/]/i,       // agent 日志目录
+    /\.log$/i,                        // 任意 .log 文件
+    /[\\\/]tmp[\\\/]/i,            // temp 文件目录
+    /[\\\/]node_modules[\\\/]/i,   // npm 依赖
+    /[\\\/]__pycache__[\\\/]/i,    // Python 缓存
+    /[\\\/]\.(git|svn|hg)[\\\/]/i,
+    /\.pyc$/i,
+    /\.tmp\./i,
+    /Thumbs\.db$/i,
+    /\.DS_Store$/i,
+    /desktop\.ini$/i,
+];
+function _a4IsNoiseFile(filePath) {
+    for (var _ni = 0; _ni < _A4_NOISE_PATTERNS.length; _ni++) {
+        if (_A4_NOISE_PATTERNS[_ni].test(filePath)) return true;
+    }
+    return false;
+}
+
 // ═══ 文件路径 → 归属项目根目录（终极架构：向上找 qqq/timeline/ 或 .git/） ═══
 var _projectRootCache = {}; // {filePath: projectRoot}
 
@@ -287,6 +308,8 @@ async function _a4WrappedExecuteTool(name, args) {
                     var changed = await bridge2.timeline.captureChanged({ projectRoot: scanRoot, sinceMs: cmdStartTs, cwd: args.cwd || '' });
                     if (changed && changed.length) {
                         for (var ci = 0; ci < changed.length; ci++) {
+                            // ★ 跳过噪声文件（日志/tmp/缓存等），防 run_command 产生垃圾快照
+                            if (_a4IsNoiseFile(changed[ci].filePath)) continue;
                             await _a4RecordSnapshot(changed[ci].filePath, 'run_command', null, changed[ci].content, null, _capturedAg);
                         }
                     }

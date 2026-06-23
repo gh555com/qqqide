@@ -1,12 +1,15 @@
 // ============================================================================
 // ai-viewport.js - AI 视口组件
 //
-// 菜单�?row-1 的横向豆腐块容器。每个豆腐块 = AI 能看到的一个项目文件夹�?// - 空态：虚线�?+ "+"
-// - 有项目：实线�?+ 📁图标 + 文件夹名 + "�?
-// - hover 项目块：展开该文件夹的目录树下拉（级联子目录向右展开�?// - hover "+" 块：展开最�?20 个主文件夹下拉（qgs global 持久化）
-// - 单击目录树中任意项：附加�?AI 对话
-// - 单击最近文件夹：在当前窗口添加（空窗口→主文件夹，有主文件夹→辅文件夹�?//
-// 持久化层�? global(recent_folders) �?project(editor tabs) �?quest �?floor �?house �?room
+// 菜单栏 row-1 的横向豆腐块容器。每个豆腐块 = AI 能看到的一个项目文件夹。
+// - 空态：虚线框 + "+"
+// - 有项目：实线框 + 📁图标 + 文件夹名 + "−"
+// - hover 项目块：展开该文件夹的目录树下拉（级联子目录向右展开）
+// - hover "+" 块：展开最近 20 个主文件夹下拉（qgs global 持久化）
+// - 单击目录树中任意项：附加到 AI 对话
+// - 单击最近文件夹：在当前窗口添加（空窗口→主文件夹，有主文件夹→辅文件夹）
+//
+// 持久化层级: global(recent_folders) → project(editor tabs) → quest → floor → house → room
 //
 // API: window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject }
 // ============================================================================
@@ -28,11 +31,12 @@
   let _hoverTimer = null;
   function cancelHover() { if (_hoverTimer) { clearTimeout(_hoverTimer); _hoverTimer = null; } }
 
-  // ---- 树展开快照：每个顶层文件夹记住关闭前的完整路径�?----
-  var _treeSnapshots = {}; // projectPath �?[relPath1, relPath2, ...]
+  // ---- 树展开快照：每个顶层文件夹记住关闭前的完整路径链 ----
+  var _treeSnapshots = {}; // projectPath → [relPath1, relPath2, ...]
   // relPath = dirPath.substring(projectRoot.length)，如 ["src", "src/app", "src/app/components"]
 
-  // 原生滚动条由 qh 真理机器接管隐藏，此处不再注�?
+  // 原生滚动条由 qh 真理机器接管隐藏，此处不再注入
+
   // ---- helpers ----
   function basename(p) {
     if (!p) return '';
@@ -45,8 +49,8 @@
     return name.length > max ? name.slice(0, max) + '…' : name;
   }
 
-  // �?中部截断（字符位宽）：首部占剩余空间，尾部固�?N 字符，省略号置中
-  // 用字符数而非字节数——字节宽度不可预测（ASCII=1b, 中文=3b, 同字节数宽度�?倍）
+  // ★ 中部截断（字符位宽）：首部占剩余空间，尾部固定 N 字符，省略号置中
+  // 用字符数而非字节数——字节宽度不可预测（ASCII=1b, 中文=3b, 同字节数宽度差3倍）
   function truncMiddle(name, maxLen, tailChars) {
     maxLen = maxLen || 26;
     tailChars = tailChars || 12; // 覆盖 .configtion .config.js 等长后缀
@@ -66,7 +70,7 @@
 
   var SKIP_DIRS = ['node_modules', '.git'];
 
-  var CACHE_TTL = 10000;  // 缓存 10 秒后过期，下�?hover 重新读盘
+  var CACHE_TTL = 10000;  // 缓存 10 秒后过期，下次 hover 重新读盘
   async function listDir(p) {
     var cached = _dirCache.get(p);
     if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.entries;
@@ -83,9 +87,9 @@
     }
   }
 
-  // ---- persist (localStorage �?fast sync; qgs backup on unload) ----
+  // ---- persist (localStorage — fast sync; qgs backup on unload) ----
   var STORAGE_KEY = 'qqq-ai-viewport-projects';
-  var _shellHandle = null;  // cached �?NEVER call qgs.ns() more than once
+  var _shellHandle = null;  // cached — NEVER call qgs.ns() more than once
 
   function _getShellHandle() {
     if (_shellHandle) return _shellHandle;
@@ -123,9 +127,11 @@
   function _bumpRecent(folderPath) {
     var name = basename(folderPath);
     var now = Date.now();
-    // 移除旧条目（若有�?    _recentFolders = _recentFolders.filter(function (f) { return f.path !== folderPath; });
-    // 插入到最�?    _recentFolders.unshift({ path: folderPath, name: name, atime: now });
-    // 截断�?MAX_RECENT
+    // 移除旧条目（若有）
+    _recentFolders = _recentFolders.filter(function (f) { return f.path !== folderPath; });
+    // 插入到最前
+    _recentFolders.unshift({ path: folderPath, name: name, atime: now });
+    // 截断到 MAX_RECENT
     if (_recentFolders.length > MAX_RECENT) _recentFolders.length = MAX_RECENT;
     _saveRecents();
   }
@@ -134,7 +140,7 @@
   // 仅在 ?folder= 新窗口场景使用，作为主进程锁检查的兜底
   function _verifyFolderLock(folderPath) {
     var lockPath = folderPath.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/.lock';
-    // 延迟 2s 再检查，避开本窗�?bindMainProject 的锁写入
+    // 延迟 2s 再检查，避开本窗口 bindMainProject 的锁写入
     setTimeout(function () {
       bridge.fs.stat(lockPath).then(function (statInfo) {
         if (!statInfo) return; // 锁文件不存在，安全
@@ -142,7 +148,7 @@
           try {
             var data = JSON.parse(raw);
             var age = Date.now() - (data.atime || 0);
-            // 锁有效且年龄 > 3s（避免误判本窗口刚写入的锁），从视口移除
+            // 锁有效且年龄 > 3s（避免误判本窗口刚写入的锁）→ 从视口移除
             if (age > 3000 && age < 60000) {
               console.warn('[ai-viewport] stale lock detected for ' + folderPath + ' (age=' + (age / 1000).toFixed(1) + 's), removing from viewport');
               var idx = -1;
@@ -172,7 +178,7 @@
         try {
           var folderPath = decodeURIComponent(m[1]);
           if (folderPath) {
-            // 先添加到 projects（同步，保证 UI 即时响应），然后异步校验
+            // 先添加到 projects（同步，保证 UI 即时响应），然后异步校验锁
             projects.push({ path: folderPath, name: basename(folderPath) });
             _bumpRecent(folderPath);
             // 异步校验：若主文件夹被其他窗口锁定，立即移除
@@ -200,396 +206,417 @@
       var raw = localStorage.getItem(STORAGE_KEY);
       if (raw) { var parsed = JSON.parse(raw); if (parsed.length > 0) projects = parsed; }
     } catch (_) { }
-    function saveProjects() {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (_) { }
+  }
+  function saveProjects() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (_) { }
+  }
+  // 窗口关闭前写入 qgs 全局快照（跨重启恢复）
+  window.addEventListener('beforeunload', function () {
+    try {
+      if (projects.length > 0) {
+        var s = _getShellHandle();
+        if (s) s.setNow('ai_viewport_projects', projects).catch(function () { });
+      }
+    } catch (_) { }
+  });
+  // ---- close active dropdown: save snapshot then destroy ----
+  function closeDropdown() {
+    // ★ 关闭前快照：将当前展开路径链存入 _treeSnapshots
+    if (activeDropdown && activeDropdown._projectRoot) {
+      if (activeDropdown._expandedChain && activeDropdown._expandedChain.length > 0) {
+        _treeSnapshots[activeDropdown._projectRoot] = activeDropdown._expandedChain.slice();
+      } else {
+        delete _treeSnapshots[activeDropdown._projectRoot];
+      }
     }
-    // 窗口关闭前写入 qgs 全局快照（跨重启恢复）
-    window.addEventListener('beforeunload', function () {
-      try {
-        if (projects.length > 0) {
-          var s = _getShellHandle();
-          if (s) s.setNow('ai_viewport_projects', projects).catch(function () { });
-        }
-      } catch (_) { }
+    cancelHover();
+    closeAllSubmenus();
+    if (activeDropdown) {
+      activeDropdown.remove();
+      activeDropdown = null;
+    }
+    if (_activeBlockEl) { _activeBlockEl.classList.remove('aiv-block-active'); _activeBlockEl = null; }
+  }
+
+  function closeAllSubmenus() {
+    activeSubmenus.forEach(s => {
+      if (s._parentRow) { s._parentRow.classList.remove('aiv-breadcrumb'); s._parentRow = null; }
+      try { s.remove(); } catch (_) { }
     });
-    // ---- close active dropdown: save snapshot then destroy ----
-    function closeDropdown() {
-      // �?关闭前快照：将当前展开路径链存�?_treeSnapshots
-      if (activeDropdown && activeDropdown._projectRoot) {
-        if (activeDropdown._expandedChain && activeDropdown._expandedChain.length > 0) {
-          _treeSnapshots[activeDropdown._projectRoot] = activeDropdown._expandedChain.slice();
-        } else {
-          delete _treeSnapshots[activeDropdown._projectRoot];
-        }
-      }
-      cancelHover();
-      closeAllSubmenus();
-      if (activeDropdown) {
-        activeDropdown.remove();
-        activeDropdown = null;
-      }
-      if (_activeBlockEl) { _activeBlockEl.classList.remove('aiv-block-active'); _activeBlockEl = null; }
-    }
+    activeSubmenus = [];
+  }
 
-    function closeAllSubmenus() {
-      activeSubmenus.forEach(s => {
-        if (s._parentRow) { s._parentRow.classList.remove('aiv-breadcrumb'); s._parentRow = null; }
-        try { s.remove(); } catch (_) { }
-      });
-      activeSubmenus = [];
-    }
+  // ★ 飞块动画：左键点击后，小矩形从点击位置飞到目标 AI 面板底部输入区
+  var _flyBlock = null;
+  function _animateFlyToPanel(rowEl, targetPanelId) {
+    // 取消上一次动画
+    if (_flyBlock) { _flyBlock.remove(); _flyBlock = null; }
+    var srcRect = rowEl.getBoundingClientRect();
+    if (srcRect.width === 0 && srcRect.height === 0) return;
+    // 目标面板
+    var zoneId = targetPanelId === 0 ? 'qqq-wing-left' : targetPanelId === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
+    var zone = document.getElementById(zoneId);
+    if (!zone) return;
+    var dstRect = zone.getBoundingClientRect();
+    if (dstRect.width === 0 || dstRect.height === 0) return;
+    // 目标 Y：面板底部输入框区域（距底部 ~60px）
+    var dstX = dstRect.left + dstRect.width / 2;
+    var dstY = dstRect.bottom - 60;
+    // 创建飞块
+    var block = document.createElement('div');
+    var startW = Math.round(srcRect.width * 0.55);
+    var startH = Math.round(srcRect.height * 0.5);
+    block.style.cssText =
+      'position:fixed; z-index:999999; pointer-events:none; ' +
+      'background:var(--yellow,#b58900); border-radius:2px; ' +
+      'width:' + startW + 'px; height:' + startH + 'px; ' +
+      'left:' + srcRect.left + 'px; top:' + srcRect.top + 'px; ' +
+      'transition:left 0.32s cubic-bezier(0.25,0.46,0.45,0.94), ' +
+      'top 0.32s cubic-bezier(0.25,0.46,0.45,0.94), ' +
+      'width 0.32s cubic-bezier(0.25,0.46,0.45,0.94), ' +
+      'height 0.32s cubic-bezier(0.25,0.46,0.45,0.94); ' +
+      'opacity:0.95;';
+    document.body.appendChild(block);
+    _flyBlock = block;
+    // 下一帧触发位移+缩放
+    requestAnimationFrame(function () {
+      block.style.left = (dstX - 12) + 'px';   // 终点 24×14
+      block.style.top = (dstY - 7) + 'px';
+      block.style.width = '24px';
+      block.style.height = '14px';
+    });
+    // 前 260ms 保持不透明，最后 60ms 淡出消失
+    setTimeout(function () {
+      if (_flyBlock !== block) return;
+      block.style.transition = 'opacity 0.06s ease-out';
+      block.style.opacity = '0';
+    }, 260);
+    // 动画结束后清理
+    setTimeout(function () {
+      if (_flyBlock === block) { block.remove(); _flyBlock = null; }
+    }, 380);
+  }
 
-    // �?飞块动画：左键点击后，小矩形从点击位置飞到目�?AI 面板底部输入�?  var _flyBlock = null;
-    function _animateFlyToPanel(rowEl, targetPanelId) {
-      // 取消上一次动�?    if (_flyBlock) { _flyBlock.remove(); _flyBlock = null; }
-      var srcRect = rowEl.getBoundingClientRect();
-      if (srcRect.width === 0 && srcRect.height === 0) return;
-      // 目标面板
-      var zoneId = targetPanelId === 0 ? 'qqq-wing-left' : targetPanelId === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
-      var zone = document.getElementById(zoneId);
-      if (!zone) return;
-      var dstRect = zone.getBoundingClientRect();
-      if (dstRect.width === 0 || dstRect.height === 0) return;
-      // 目标 Y：面板底部输入框区域（距底部 ~60px�?    var dstX = dstRect.left + dstRect.width / 2;
-      var dstY = dstRect.bottom - 60;
-      // 创建飞块
-      var block = document.createElement('div');
-      var startW = Math.round(srcRect.width * 0.55);
-      var startH = Math.round(srcRect.height * 0.5);
-      block.style.cssText =
-        'position:fixed; z-index:999999; pointer-events:none; ' +
-        'background:var(--yellow,#b58900); border-radius:2px; ' +
-        'width:' + startW + 'px; height:' + startH + 'px; ' +
-        'left:' + srcRect.left + 'px; top:' + srcRect.top + 'px; ' +
-        'transition:left 0.32s cubic-bezier(0.25,0.46,0.45,0.94), ' +
-        'top 0.32s cubic-bezier(0.25,0.46,0.45,0.94), ' +
-        'width 0.32s cubic-bezier(0.25,0.46,0.45,0.94), ' +
-        'height 0.32s cubic-bezier(0.25,0.46,0.45,0.94); ' +
-        'opacity:0.95;';
-      document.body.appendChild(block);
-      _flyBlock = block;
-      // 下一帧触发位�?缩放
-      requestAnimationFrame(function () {
-        block.style.left = (dstX - 12) + 'px';   // 终点 24×14
-        block.style.top = (dstY - 7) + 'px';
-        block.style.width = '24px';
-        block.style.height = '14px';
-      });
-      // �?260ms 保持不透明，最�?60ms 淡出消失
-      setTimeout(function () {
-        if (_flyBlock !== block) return;
-        block.style.transition = 'opacity 0.06s ease-out';
-        block.style.opacity = '0';
-      }, 260);
-      // 动画结束后清除
-      setTimeout(function () {
-        if (_flyBlock === block) { block.remove(); _flyBlock = null; }
-      }, 380);
-    }
-
-    // 冻结/恢复 AI iframe 点击：打开下拉时切断 iframe 交互，点击透传到遮罩
-    function _setAiIframesPointerEvents(val) {
-      var zones = ['qqq-wing-left', 'qqq-ai-zone', 'qqq-wing-right'];
-      for (var i = 0; i < zones.length; i++) {
-        var zone = document.getElementById(zones[i]);
-        if (!zone) continue;
-        var iframe = zone.querySelector('iframe');
-        if (iframe) {
-          iframe.style.pointerEvents = val;
-        }
+  // ★ 冻结/恢复 AI iframe 点击：打开下拉时切断 iframe 交互，点击透传到遮罩
+  function _setAiIframesPointerEvents(val) {
+    var zones = ['qqq-wing-left', 'qqq-ai-zone', 'qqq-wing-right'];
+    for (var i = 0; i < zones.length; i++) {
+      var zone = document.getElementById(zones[i]);
+      if (!zone) continue;
+      var iframe = zone.querySelector('iframe');
+      if (iframe) {
+        iframe.style.pointerEvents = val;
       }
     }
+  }
 
-    // Close a submenu and all its descendant submenus
-    function closeSubmenuTree(sub) {
-      if (!sub) return;
-      if (sub._childSub) { closeSubmenuTree(sub._childSub); sub._childSub = null; }
-      if (sub._parentRow) { sub._parentRow.classList.remove('aiv-breadcrumb'); sub._parentRow = null; }
-      const idx = activeSubmenus.indexOf(sub);
-      if (idx !== -1) activeSubmenus.splice(idx, 1);
-      try { sub.remove(); } catch (_) { }
-    }
+  // Close a submenu and all its descendant submenus
+  function closeSubmenuTree(sub) {
+    if (!sub) return;
+    if (sub._childSub) { closeSubmenuTree(sub._childSub); sub._childSub = null; }
+    if (sub._parentRow) { sub._parentRow.classList.remove('aiv-breadcrumb'); sub._parentRow = null; }
+    const idx = activeSubmenus.indexOf(sub);
+    if (idx !== -1) activeSubmenus.splice(idx, 1);
+    try { sub.remove(); } catch (_) { }
+  }
 
-    // ---- attach to AI: 路由到当前焦点面板（金色 q2 的面板）----
-    function attachToAi(filePath, isDir) {
-      // �?读取焦点面板目标（由 AI 面板 postMessage 更新�?    // 注意：左面板 panelId=0，不能用 || 1�? �?falsy 会被吞掉�?    var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
-      var zoneId = target === 0 ? 'qqq-wing-left' : target === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
-      console.log('[ai-viewport] attachToAi target=' + target + ' zone=' + zoneId + ' file=' + filePath + ' isDir=' + isDir);
-      // �?不关闭下拉：用户可连续点击同目录下多个文件附加到 AI
-      var zone = document.getElementById(zoneId);
-      var aiFrame = zone ? zone.querySelector('iframe') : null;
+  // ---- attach to AI: 路由到当前焦点面板（金色 q2 的面板）----
+  function attachToAi(filePath, isDir) {
+    // ★ 读取焦点面板目标（由 AI 面板 postMessage 更新）
+    // 注意：左面板 panelId=0，不能用 || 1（0 是 falsy 会被吞掉）
+    var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
+    var zoneId = target === 0 ? 'qqq-wing-left' : target === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
+    console.log('[ai-viewport] attachToAi target=' + target + ' zone=' + zoneId + ' file=' + filePath + ' isDir=' + isDir);
+    // ★ 不关闭下拉：用户可连续点击同目录下多个文件附加到 AI
+    var zone = document.getElementById(zoneId);
+    var aiFrame = zone ? zone.querySelector('iframe') : null;
+    if (!aiFrame || !aiFrame.contentWindow) {
+      console.warn('[ai-viewport] no AI iframe for target=' + target + ', falling back to center');
+      aiFrame = document.querySelector('#qqq-ai-zone iframe');
       if (!aiFrame || !aiFrame.contentWindow) {
-        console.warn('[ai-viewport] no AI iframe for target=' + target + ', falling back to center');
-        aiFrame = document.querySelector('#qqq-ai-zone iframe');
-        if (!aiFrame || !aiFrame.contentWindow) {
-          console.warn('[ai-viewport] no AI iframe at all');
-          return;
-        }
-      }
-      if (typeof aiFrame.contentWindow.qqqideAiAttach === 'function') {
-        try {
-          aiFrame.contentWindow.qqqideAiAttach(filePath, isDir);
-          console.log('[ai-viewport] qqqideAiAttach OK, panel=' + target);
-        } catch (e) {
-          console.warn('[ai-viewport] qqqideAiAttach error:', e);
-        }
-      } else {
-        aiFrame.contentWindow.postMessage({ type: 'qqq-ai-attach', path: filePath, isDir: isDir }, '*');
-        console.log('[ai-viewport] postMessage fallback, panel=' + target);
-      }
-    }
-
-    // ---- 滚动容器包装：外层不�?+ 自定义变形滚动条（照�?q3 Roam�?---
-    function _wrapScrollContainer(outer, depth) {
-      // 外层禁止滚动（覆�?CSS !important�?    outer.style.setProperty('overflow-y', 'hidden', 'important');
-      outer.style.setProperty('overflow-x', 'hidden', 'important');
-      var inner = document.createElement('div');
-      inner.className = 'aiv-scroll-inner';
-      inner.style.cssText = 'width:100%; height:100%; overflow-y:auto; overflow-x:hidden; ' +
-        'scrollbar-width:none; -ms-overflow-style:none;';
-      inner._depth = depth;
-      inner._direction = outer._direction; // 方向决策需�?    inner._outer = outer;
-      outer._scroll = inner;
-      // 点击列表空白�?�?关闭当前列表弹出滴下级子菜单
-      inner.addEventListener('click', function (e) {
-        if (e.target !== inner) return;
-        if (outer._childSub) { closeSubmenuTree(outer._childSub); outer._childSub = null; }
-      });
-
-      // �?自定义变形滚动条（滑轨锚定在外层，同步内层滚动）
-      var sbOuter = document.createElement('div');
-      sbOuter.className = 'qh-scroll-track';
-      sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:50;';
-      var sbThumb = document.createElement('div');
-      sbThumb.className = 'qh-scroll-thumb';
-      function _qhCol() {
-        var dk = document.documentElement.getAttribute('data-theme') === 'dark';
-        return { c: dk ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' };
-      }
-      var _co = _qhCol();
-      sbThumb.style.cssText = 'position:absolute; right:10px; width:1px; min-height:24px; border-radius:0; ' +
-        'display:none; background:' + _co.c + '; cursor:pointer; ' +
-        'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
-      sbOuter.addEventListener('mouseenter', function () {
-        sbThumb.style.width = '11px'; sbThumb.style.right = '0px'; sbThumb.style.background = _qhCol().c;
-      });
-      sbOuter.addEventListener('mouseleave', function () {
-        sbThumb.style.width = '1px'; sbThumb.style.right = '10px'; sbThumb.style.background = _qhCol().c;
-      });
-      function _syncSB() {
-        var sh = inner.scrollHeight, ch = inner.clientHeight;
-        if (sh <= ch) { sbThumb.style.display = 'none'; sbOuter.style.display = 'none'; return; }
-        sbThumb.style.display = '';
-        sbOuter.style.display = '';
-        var thumbH = Math.max(24, (ch / sh) * ch);
-        var maxTop = ch - thumbH;
-        sbThumb.style.height = thumbH + 'px';
-        sbThumb.style.top = ((inner.scrollTop / (sh - ch)) * maxTop) + 'px';
-      }
-      inner.addEventListener('scroll', _syncSB);
-      sbOuter.addEventListener('mousedown', function (e) {
-        if (e.target === sbThumb || e.button !== 0) return;
-        var sh = inner.scrollHeight, ch = inner.clientHeight;
-        if (sh <= ch) return;
-        var ratio = (e.clientY - sbOuter.getBoundingClientRect().top) / ch;
-        inner.scrollTop = Math.max(0, Math.min(sh - ch, Math.round(ratio * (sh - ch))));
-        e.preventDefault();
-      });
-      var _dr = false, _dsY = 0, _dsS = 0;
-      sbThumb.addEventListener('mousedown', function (e) {
-        if (e.button !== 0) return;
-        _dr = true; _dsY = e.clientY; _dsS = inner.scrollTop;
-        e.preventDefault(); e.stopPropagation();
-      });
-      document.addEventListener('mousemove', function (e) {
-        if (!_dr) return;
-        var sh = inner.scrollHeight, ch = inner.clientHeight;
-        if (sh <= ch) return;
-        var thumbH = Math.max(24, (ch / sh) * ch);
-        var ratio = (e.clientY - _dsY) / (ch - thumbH);
-        inner.scrollTop = Math.max(0, Math.min(sh - ch, _dsS + ratio * (sh - ch)));
-      });
-      document.addEventListener('mouseup', function () { _dr = false; });
-      setTimeout(_syncSB, 50);
-      // 仅监听直接子节点变更（行平铺无嵌套），subtree:false 省去递归遍历开销
-      var _sbObs = new MutationObserver(function () { setTimeout(_syncSB, 30); });
-      _sbObs.observe(inner, { childList: true });
-      var _themeObs = new MutationObserver(function () {
-        var co3 = _qhCol();
-        sbThumb.style.background = co3.c;
-      });
-      _themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-
-      sbOuter.appendChild(sbThumb);
-      outer.appendChild(sbOuter);
-      outer.appendChild(inner);
-      return inner;
-    }
-
-    // ---- 层级水印：列表底部显示深度编号，位置指示焦点面板（左/�?右）----
-    function _stampDepth(container, depth) {
-      var stamp = document.createElement('div');
-      var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
-      // 构建 CSS：左面板→靠左，中面板→居中，右面板→靠�?    var cssText = 'position:absolute; bottom:12px; ' +
-      'font-size:64px; font-weight:900; line-height:1; font-family:Verdana,sans-serif; ' +
-        'color:var(--text-primary); opacity:0.90; pointer-events:none; ' +
-        'z-index:1; user-select:none; white-space:nowrap;';
-      if (target === 0) {
-        cssText += ' left:8px; transform:none;';
-      } else if (target === 2) {
-        cssText += ' left:auto; right:8px; transform:none;';
-      } else {
-        cssText += ' left:50%; transform:translateX(-50%);';
-      }
-      stamp.style.cssText = cssText;
-      stamp.textContent = String(depth);
-      container.appendChild(stamp);
-    }
-
-    // ---- render: directory tree dropdown ----
-    function showDropdown(blockEl, project) {
-      // �?先关闭旧的（会存快照�?    if (activeDropdown) { closeDropdown(); }
-      if (!blockEl.isConnected) return;
-      _activeBlockEl = blockEl;
-
-      const rect = blockEl.getBoundingClientRect();
-      if (rect.width === 0 && rect.height === 0) return;
-      const dd = document.createElement('div');
-      dd.className = 'aiv-dropdown';
-      dd._depth = 1;
-      const topPx = rect.bottom;
-      dd.style.cssText =
-        'position:fixed; z-index:99999; ' +
-        'left:' + rect.left + 'px; top:' + topPx + 'px; ' +
-        'min-width:240px; max-width:360px; height:' + Math.max(200, window.innerHeight - topPx - 8) + 'px;';
-
-      blockEl.classList.add('aiv-block-active');
-
-      dd._projectRoot = project.path;
-      var ddScroll = _wrapScrollContainer(dd, 1);
-      // �?快照还原：检查该目录是否有保存的展开�?    var snap = _treeSnapshots[project.path];
-      if (snap && snap.length > 0) {
-        ddScroll._pendingChain = snap.slice();
-      }
-      loadDirInto(ddScroll, project.path, project.path);
-      _stampDepth(dd, 1);
-      document.body.appendChild(dd);
-      activeDropdown = dd;
-    }
-
-    function fileIconFor(name, isDir) {
-      if (isDir) return '📁';
-      const m = String(name).toLowerCase().match(/\.([a-z0-9]+)$/);
-      const ext = m ? m[1] : '';
-      if (['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'opus', 'wma', 'ape'].indexOf(ext) !== -1) return '🎵';
-      if (['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', 'mpg', 'mpeg', 'ts', '3gp'].indexOf(ext) !== -1) return '🎬';
-      if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'heic', 'avif'].indexOf(ext) !== -1) return '🖼️';
-      if (['zip', 'rar', '7z', 'tar', 'gz', 'xz', 'bz2'].indexOf(ext) !== -1) return '📦';
-      if (['pdf'].indexOf(ext) !== -1) return '📕';
-      if (['doc', 'docx', 'rtf'].indexOf(ext) !== -1) return '📘';
-      if (['xls', 'xlsx', 'csv'].indexOf(ext) !== -1) return '📗';
-      if (['ppt', 'pptx'].indexOf(ext) !== -1) return '📙';
-      if (['exe', 'msi', 'dll'].indexOf(ext) !== -1) return '⚙\ufe0f';
-      return '📄';
-    }
-
-    async function loadDirInto(parentEl, dirPath, projectRoot) {
-      const entries = await listDir(dirPath);
-      if (entries.length === 0) {
-        const empty = document.createElement('div');
-        empty.style.cssText = 'padding:6px 12px; color:var(--base1); font-size:11px;';
-        empty.textContent = '(�?';
-        parentEl.appendChild(empty);
+        console.warn('[ai-viewport] no AI iframe at all');
         return;
       }
-      for (const ent of entries) {
-        // Skip known-heavy directories to prevent OOM from hover-triggered listing
-        if (ent.isDir && SKIP_DIRS.indexOf(ent.name) !== -1) continue;
-        const row = document.createElement('div');
-        row.className = 'aiv-dd-row';
-        row.style.cssText =
-          'display:flex; align-items:center; padding:4px 10px; cursor:pointer; ' +
-          'font-size:14px; font-weight:300; color:var(--text-primary); white-space:nowrap; position:relative; ' +
-          'width:100%; box-sizing:border-box;';
-        // �?标记行属性，供快照还原匹�?      row.dataset.name = ent.name;
-        row.dataset.isDir = ent.isDir ? 'true' : 'false';
-        const icon = document.createElement('span');
-        icon.textContent = fileIconFor(ent.name, ent.isDir);
-        icon.style.cssText = 'margin-right:6px; font-size:11px;';
-        const label = document.createElement('span');
-        label.textContent = truncMiddle(ent.name, 26, 12);
-        label.title = ent.name;  // 完整名称�?hover tooltip 显示
-        label.style.cssText = 'overflow:hidden; text-overflow:ellipsis;';
-        row.appendChild(icon); row.appendChild(label);
-
-        row._hovered = false;
-        row.addEventListener('mouseenter', () => {
-          if (!ent.isDir) return;
-          // 150ms 防抖：杀旧计时器，标 hovered，起新计时器
-          cancelHover();
-          row._hovered = true;
-          var depth = (parentEl._depth || 0) + 1;
-          var subPath = pathJoin(dirPath, ent.name);
-          var outer = parentEl._outer || parentEl; // inner scroll wrapper �?outer container
-          _hoverTimer = setTimeout(() => {
-            _hoverTimer = null;
-            if (!row._hovered) return; // 光标已离开，跳�?          if (outer._childSub) { closeSubmenuTree(outer._childSub); outer._childSub = null; }
-            const sub = openSubmenu(row, subPath, depth, projectRoot);
-            if (sub) {
-              sub._justOpened = Date.now();
-              outer._childSub = sub;
-            }
-          }, 150);
-        });
-        row.addEventListener('mouseleave', () => {
-          row._hovered = false;
-        });
-
-        const fullPath = pathJoin(dirPath, ent.name);
-
-        // 左键 �?附加�?AI 对话 + 飞块动画
-        row.addEventListener('mousedown', (e) => {
-          if (e.button !== 0) return; // 只响应左�?        e.stopPropagation();
-          e.preventDefault();
-          attachToAi(fullPath, ent.isDir);
-          // 飞块动画：小矩形从点击行飞向目标 AI 面板
-          var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
-          _animateFlyToPanel(row, target);
-        });
-        row.addEventListener('click', (e) => { e.stopPropagation(); });
-
-        // 右键 �?弹出上下文菜单，保持当前�?hover 效果
-        row.addEventListener('contextmenu', (e) => {
-          e.stopPropagation();
-          e.preventDefault();
-          // �?保存原始 cssText，注入与 CSS :hover 完全一致的样式
-          if (_ctxMenuRow && _ctxMenuRow !== row) {
-            _ctxMenuRow.style.cssText = _ctxMenuRow._origCss || '';
-          }
-          _ctxMenuRow = row;
-          var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-          row._origCss = row.style.cssText;
-          row.style.cssText += ';background:' + (isDark ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)') + '!important;color:' + (isDark ? '#fff' : '#000') + '!important;';
-          if (ent.isDir) {
-            if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath);
-          } else {
-            showFileContextMenu(e, fullPath, projectRoot);
-          }
-        });
-
-        parentEl.appendChild(row);
+    }
+    if (typeof aiFrame.contentWindow.qqqideAiAttach === 'function') {
+      try {
+        aiFrame.contentWindow.qqqideAiAttach(filePath, isDir);
+        console.log('[ai-viewport] qqqideAiAttach OK, panel=' + target);
+      } catch (e) {
+        console.warn('[ai-viewport] qqqideAiAttach error:', e);
       }
-      // �?行全部挂载后重置防抖窗口，防止行刚出现时光标恰在其上触发连锁展开
-      parentEl._justOpened = Date.now();
+    } else {
+      aiFrame.contentWindow.postMessage({ type: 'qqq-ai-attach', path: filePath, isDir: isDir }, '*');
+      console.log('[ai-viewport] postMessage fallback, panel=' + target);
+    }
+  }
 
-      // �?快照还原：若本层有待展开链，自动触发下一�?    if (parentEl._pendingChain && parentEl._pendingChain.length > 0) {
+  // ---- 滚动容器包装：外层不滚 + 自定义变形滚动条（照抄 q3 Roam）----
+  function _wrapScrollContainer(outer, depth) {
+    // 外层禁止滚动（覆盖 CSS !important）
+    outer.style.setProperty('overflow-y', 'hidden', 'important');
+    outer.style.setProperty('overflow-x', 'hidden', 'important');
+    var inner = document.createElement('div');
+    inner.className = 'aiv-scroll-inner';
+    inner.style.cssText = 'width:100%; height:100%; overflow-y:auto; overflow-x:hidden; ' +
+      'scrollbar-width:none; -ms-overflow-style:none;';
+    inner._depth = depth;
+    inner._direction = outer._direction; // 方向决策需要
+    inner._outer = outer;
+    outer._scroll = inner;
+    // 点击列表空白处 → 关闭当前列表弹出滴下级子菜单
+    inner.addEventListener('click', function (e) {
+      if (e.target !== inner) return;
+      if (outer._childSub) { closeSubmenuTree(outer._childSub); outer._childSub = null; }
+    });
+
+    // ★ 自定义变形滚动条（滑轨锚定在外层，同步内层滚动）
+    var sbOuter = document.createElement('div');
+    sbOuter.className = 'qh-scroll-track';
+    sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:50;';
+    var sbThumb = document.createElement('div');
+    sbThumb.className = 'qh-scroll-thumb';
+    function _qhCol() {
+      var dk = document.documentElement.getAttribute('data-theme') === 'dark';
+      return { c: dk ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' };
+    }
+    var _co = _qhCol();
+    sbThumb.style.cssText = 'position:absolute; right:10px; width:1px; min-height:24px; border-radius:0; ' +
+      'display:none; background:' + _co.c + '; cursor:pointer; ' +
+      'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
+    sbOuter.addEventListener('mouseenter', function () {
+      sbThumb.style.width = '11px'; sbThumb.style.right = '0px'; sbThumb.style.background = _qhCol().c;
+    });
+    sbOuter.addEventListener('mouseleave', function () {
+      sbThumb.style.width = '1px'; sbThumb.style.right = '10px'; sbThumb.style.background = _qhCol().c;
+    });
+    function _syncSB() {
+      var sh = inner.scrollHeight, ch = inner.clientHeight;
+      if (sh <= ch) { sbThumb.style.display = 'none'; sbOuter.style.display = 'none'; return; }
+      sbThumb.style.display = '';
+      sbOuter.style.display = '';
+      var thumbH = Math.max(24, (ch / sh) * ch);
+      var maxTop = ch - thumbH;
+      sbThumb.style.height = thumbH + 'px';
+      sbThumb.style.top = ((inner.scrollTop / (sh - ch)) * maxTop) + 'px';
+    }
+    inner.addEventListener('scroll', _syncSB);
+    sbOuter.addEventListener('mousedown', function (e) {
+      if (e.target === sbThumb || e.button !== 0) return;
+      var sh = inner.scrollHeight, ch = inner.clientHeight;
+      if (sh <= ch) return;
+      var ratio = (e.clientY - sbOuter.getBoundingClientRect().top) / ch;
+      inner.scrollTop = Math.max(0, Math.min(sh - ch, Math.round(ratio * (sh - ch))));
+      e.preventDefault();
+    });
+    var _dr = false, _dsY = 0, _dsS = 0;
+    sbThumb.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
+      _dr = true; _dsY = e.clientY; _dsS = inner.scrollTop;
+      e.preventDefault(); e.stopPropagation();
+    });
+    document.addEventListener('mousemove', function (e) {
+      if (!_dr) return;
+      var sh = inner.scrollHeight, ch = inner.clientHeight;
+      if (sh <= ch) return;
+      var thumbH = Math.max(24, (ch / sh) * ch);
+      var ratio = (e.clientY - _dsY) / (ch - thumbH);
+      inner.scrollTop = Math.max(0, Math.min(sh - ch, _dsS + ratio * (sh - ch)));
+    });
+    document.addEventListener('mouseup', function () { _dr = false; });
+    setTimeout(_syncSB, 50);
+    // 仅监听直接子节点变更（行平铺无嵌套），subtree:false 省去递归遍历开销
+    var _sbObs = new MutationObserver(function () { setTimeout(_syncSB, 30); });
+    _sbObs.observe(inner, { childList: true });
+    var _themeObs = new MutationObserver(function () {
+      var co3 = _qhCol();
+      sbThumb.style.background = co3.c;
+    });
+    _themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    sbOuter.appendChild(sbThumb);
+    outer.appendChild(sbOuter);
+    outer.appendChild(inner);
+    return inner;
+  }
+
+  // ---- 层级水印：列表底部显示深度编号，位置指示焦点面板（左/中/右）----
+  function _stampDepth(container, depth) {
+    var stamp = document.createElement('div');
+    var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
+    // 构建 CSS：左面板→靠左，中面板→居中，右面板→靠右
+    var cssText = 'position:absolute; bottom:12px; ' +
+      'font-size:64px; font-weight:900; line-height:1; font-family:Verdana,sans-serif; ' +
+      'color:var(--text-primary); opacity:0.90; pointer-events:none; ' +
+      'z-index:1; user-select:none; white-space:nowrap;';
+    if (target === 0) {
+      cssText += ' left:8px; transform:none;';
+    } else if (target === 2) {
+      cssText += ' left:auto; right:8px; transform:none;';
+    } else {
+      cssText += ' left:50%; transform:translateX(-50%);';
+    }
+    stamp.style.cssText = cssText;
+    stamp.textContent = String(depth);
+    container.appendChild(stamp);
+  }
+
+  // ---- render: directory tree dropdown ----
+  function showDropdown(blockEl, project) {
+    // ★ 先关闭旧的（会存快照）
+    if (activeDropdown) { closeDropdown(); }
+    if (!blockEl.isConnected) return;
+    _activeBlockEl = blockEl;
+
+    const rect = blockEl.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return;
+    const dd = document.createElement('div');
+    dd.className = 'aiv-dropdown';
+    dd._depth = 1;
+    const topPx = rect.bottom;
+    dd.style.cssText =
+      'position:fixed; z-index:99999; ' +
+      'left:' + rect.left + 'px; top:' + topPx + 'px; ' +
+      'min-width:240px; max-width:360px; height:' + Math.max(200, window.innerHeight - topPx - 8) + 'px;';
+
+    blockEl.classList.add('aiv-block-active');
+
+    dd._projectRoot = project.path;
+    var ddScroll = _wrapScrollContainer(dd, 1);
+    // ★ 快照还原：检查该目录是否有保存的展开链
+    var snap = _treeSnapshots[project.path];
+    if (snap && snap.length > 0) {
+      ddScroll._pendingChain = snap.slice();
+    }
+    loadDirInto(ddScroll, project.path, project.path);
+    _stampDepth(dd, 1);
+    document.body.appendChild(dd);
+    activeDropdown = dd;
+  }
+
+  function fileIconFor(name, isDir) {
+    if (isDir) return '📁';
+    const m = String(name).toLowerCase().match(/\.([a-z0-9]+)$/);
+    const ext = m ? m[1] : '';
+    if (['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg', 'opus', 'wma', 'ape'].indexOf(ext) !== -1) return '🎵';
+    if (['mp4', 'avi', 'mkv', 'mov', 'wmv', 'flv', 'webm', 'm4v', 'mpg', 'mpeg', 'ts', '3gp'].indexOf(ext) !== -1) return '🎬';
+    if (['png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp', 'svg', 'ico', 'tiff', 'tif', 'heic', 'avif'].indexOf(ext) !== -1) return '🖼️';
+    if (['zip', 'rar', '7z', 'tar', 'gz', 'xz', 'bz2'].indexOf(ext) !== -1) return '📦';
+    if (['pdf'].indexOf(ext) !== -1) return '📕';
+    if (['doc', 'docx', 'rtf'].indexOf(ext) !== -1) return '📘';
+    if (['xls', 'xlsx', 'csv'].indexOf(ext) !== -1) return '📗';
+    if (['ppt', 'pptx'].indexOf(ext) !== -1) return '📙';
+    if (['exe', 'msi', 'dll'].indexOf(ext) !== -1) return '⚙\ufe0f';
+    return '📄';
+  }
+
+  async function loadDirInto(parentEl, dirPath, projectRoot) {
+    const entries = await listDir(dirPath);
+    if (entries.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'padding:6px 12px; color:var(--base1); font-size:11px;';
+      empty.textContent = '(空)';
+      parentEl.appendChild(empty);
+      return;
+    }
+    for (const ent of entries) {
+      // Skip known-heavy directories to prevent OOM from hover-triggered listing
+      if (ent.isDir && SKIP_DIRS.indexOf(ent.name) !== -1) continue;
+      const row = document.createElement('div');
+      row.className = 'aiv-dd-row';
+      row.style.cssText =
+        'display:flex; align-items:center; padding:4px 10px; cursor:pointer; ' +
+        'font-size:14px; font-weight:300; color:var(--text-primary); white-space:nowrap; position:relative; ' +
+        'width:100%; box-sizing:border-box;';
+      // ★ 标记行属性，供快照还原匹配
+      row.dataset.name = ent.name;
+      row.dataset.isDir = ent.isDir ? 'true' : 'false';
+      const icon = document.createElement('span');
+      icon.textContent = fileIconFor(ent.name, ent.isDir);
+      icon.style.cssText = 'margin-right:6px; font-size:11px;';
+      const label = document.createElement('span');
+      label.textContent = truncMiddle(ent.name, 26, 12);
+      label.title = ent.name;  // 完整名称在 hover tooltip 显示
+      label.style.cssText = 'overflow:hidden; text-overflow:ellipsis;';
+      row.appendChild(icon); row.appendChild(label);
+
+      row._hovered = false;
+      row.addEventListener('mouseenter', () => {
+        if (!ent.isDir) return;
+        // 1000ms 防抖：杀旧计时器，标 hovered，起新计时器
+        cancelHover();
+        row._hovered = true;
+        var depth = (parentEl._depth || 0) + 1;
+        var subPath = pathJoin(dirPath, ent.name);
+        var outer = parentEl._outer || parentEl; // inner scroll wrapper → outer container
+        _hoverTimer = setTimeout(() => {
+          _hoverTimer = null;
+          if (!row._hovered) return; // 光标已离开，跳过
+          if (outer._childSub) { closeSubmenuTree(outer._childSub); outer._childSub = null; }
+          const sub = openSubmenu(row, subPath, depth, projectRoot);
+          if (sub) {
+            sub._justOpened = Date.now();
+            outer._childSub = sub;
+          }
+        }, 1000);
+      });
+      row.addEventListener('mouseleave', () => {
+        row._hovered = false;
+      });
+
+      const fullPath = pathJoin(dirPath, ent.name);
+
+      // 左键 → 附加到 AI 对话 + 飞块动画
+      row.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return; // 只响应左键
+        e.stopPropagation();
+        e.preventDefault();
+        attachToAi(fullPath, ent.isDir);
+        // 飞块动画：小矩形从点击行飞向目标 AI 面板
+        var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
+        _animateFlyToPanel(row, target);
+      });
+      row.addEventListener('click', (e) => { e.stopPropagation(); });
+
+      // 右键 → 弹出上下文菜单，保持当前行 hover 效果
+      row.addEventListener('contextmenu', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        function _setRowHighlight(r) {
+          var dk = document.documentElement.getAttribute('data-theme') === 'dark';
+          r._origRowStyle = r.style.cssText;
+          r.style.cssText += ';background:' + (dk ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)') + '!important;color:' + (dk ? '#fff' : '#000') + '!important;';
+          _ctxMenuRow = r;
+        }
+        if (ent.isDir) {
+          // 目录：先清除旧行高亮，再设新行，最后打开搜索
+          if (_ctxMenuRow) _ctxMenuRow.style.cssText = _ctxMenuRow._origRowStyle;
+          _setRowHighlight(row);
+          if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath);
+        } else {
+          // 文件：先打开菜单（内部 closeCtxMenu 会恢复旧行），再设高亮
+          showFileContextMenu(e, fullPath, projectRoot);
+          // ★ closeCtxMenu 已执行完毕，旧行已恢复，现在安全设新行高亮
+          if (_ctxMenuRow) _ctxMenuRow.style.cssText = _ctxMenuRow._origRowStyle;
+          _setRowHighlight(row);
+        }
+      });
+
+      parentEl.appendChild(row);
+    }
+    // ★ 行全部挂载后重置防抖窗口，防止行刚出现时光标恰在其上触发连锁展开
+    parentEl._justOpened = Date.now();
+
+    // ★ 快照还原：若本层有待展开链，自动触发下一级
+    if (parentEl._pendingChain && parentEl._pendingChain.length > 0) {
       var nextRel = parentEl._pendingChain[0];
-      // �?提取最后一段（兼容 "src" �?"src/app" 两种格式�?      var targetName = nextRel.split(/[\\/]/).pop();
+      // ★ 提取最后一段（兼容 "src" 和 "src/app" 两种格式）
+      var targetName = nextRel.split(/[\\/]/).pop();
       var rows3 = parentEl.querySelectorAll(':scope > .aiv-dd-row');
       var foundRow = null;
       for (var ri3 = 0; ri3 < rows3.length; ri3++) {
         if (rows3[ri3].dataset.isDir === 'true') {
-          // 先精确匹配完整相对路径，再降级匹�?basename
+          // 先精确匹配完整相对路径，再降级匹配 basename
           var matchName = targetName;
           if (rows3[ri3].dataset.name === matchName) { foundRow = rows3[ri3]; break; }
         }
@@ -604,7 +631,8 @@
         if (sub3) {
           sub3._justOpened = Date.now();
           outer3._childSub = sub3;
-          // 剩余链传递到下一级滚动容�?          parentEl._pendingChain.shift();
+          // 剩余链传递到下一级滚动容器
+          parentEl._pendingChain.shift();
           if (parentEl._pendingChain.length > 0) {
             var nextScroll2 = sub3.querySelector('.aiv-scroll-inner');
             if (nextScroll2) {
@@ -616,147 +644,150 @@
       // 无论是否找到匹配行，清理链防止残留
       parentEl._pendingChain = null;
     }
+  }
 
-    // ── 文件右键上下文菜单 ──
-    var _ctxMenu = null;
-    var _ctxMenuRow = null; // 右键时高亮的行
-    function closeCtxMenu() {
-      if (_ctxMenuRow) {
-        if (_ctxMenuRow._origCss) {
-          _ctxMenuRow.style.cssText = _ctxMenuRow._origCss;
-          _ctxMenuRow._origCss = null;
-        }
-        _ctxMenuRow = null;
-      }
-      if (_ctxMenu) { _ctxMenu.remove(); _ctxMenu = null; }
+  // ── 文件右键上下文菜单 ──
+  var _ctxMenu = null;
+  var _ctxMenuRow = null; // 右键时高亮的行
+  function closeCtxMenu() {
+    if (_ctxMenuRow) {
+      // ★ 恢复原始样式
+      if (_ctxMenuRow._origRowStyle) _ctxMenuRow.style.cssText = _ctxMenuRow._origRowStyle;
+      _ctxMenuRow._origRowStyle = null;
+      _ctxMenuRow = null;
     }
-    function showFileContextMenu(e, filePath, projectRoot) {
-      closeCtxMenu();
-      var pop = document.createElement('div');
-      pop.className = 'aiv-file-ctx-menu';
-      pop.style.cssText =
-        'position:fixed; z-index:999999; ' +
-        'left:' + e.clientX + 'px; top:' + e.clientY + 'px; ' +
-        'min-width:140px; background:var(--card-bg); ' +
-        'border:1px solid var(--border-color); border-radius:3px; ' +
-        'box-shadow:0 4px 16px rgba(0,0,0,.18); padding:4px 0;';
+    if (_ctxMenu) { _ctxMenu.remove(); _ctxMenu = null; }
+  }
+  function showFileContextMenu(e, filePath, projectRoot) {
+    closeCtxMenu();
+    var pop = document.createElement('div');
+    pop.className = 'aiv-file-ctx-menu';
+    pop.style.cssText =
+      'position:fixed; z-index:999999; ' +
+      'left:' + e.clientX + 'px; top:' + e.clientY + 'px; ' +
+      'min-width:140px; background:var(--card-bg); ' +
+      'border:1px solid var(--border-color); border-radius:3px; ' +
+      'box-shadow:0 4px 16px rgba(0,0,0,.18); padding:4px 0;';
 
-      function addRow(label, onClick) {
-        var row = document.createElement('div');
-        row.style.cssText =
-          'display:flex; align-items:center; padding:5px 14px; ' +
-          'cursor:pointer; font-size:12px; color:var(--text-primary); ' +
-          'white-space:nowrap; user-select:none;';
-        row.textContent = label;
-        row.addEventListener('mouseenter', function () { row.style.background = 'var(--background-color)'; });
-        row.addEventListener('mouseleave', function () { row.style.background = ''; });
-        row.addEventListener('click', function (ev) {
-          ev.stopPropagation();
+    function addRow(label, onClick) {
+      var row = document.createElement('div');
+      row.style.cssText =
+        'display:flex; align-items:center; padding:5px 14px; ' +
+        'cursor:pointer; font-size:12px; color:var(--text-primary); ' +
+        'white-space:nowrap; user-select:none;';
+      row.textContent = label;
+      row.addEventListener('mouseenter', function () { row.style.background = 'var(--background-color)'; });
+      row.addEventListener('mouseleave', function () { row.style.background = ''; });
+      row.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        closeCtxMenu();
+        onClick();
+      });
+      pop.appendChild(row);
+    }
+
+    // Row 1: editx — 编辑文件
+    addRow(window._i('shell.viewport.editx', '编辑文件'), function () {
+      document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: filePath, preview: true } }));
+    });
+
+    // Row 2: open — 在系统中打开
+    addRow(window._i('shell.viewport.openInOs', '在系统中打开'), function () {
+      try {
+        if (bridge && bridge.shell) {
+          if (bridge.shell.openPath) {
+            bridge.shell.openPath(filePath);
+          } else if (bridge.shell.openExternal) {
+            bridge.shell.openExternal('file:///' + filePath.replace(/\\/g, '/'));
+          }
+        }
+      } catch (_) { }
+    });
+
+    // Row 3: timeline — 时间线
+    addRow(window._i('shell.viewport.timeline', '时间线'), function () {
+      if (bridge && bridge.timeline && bridge.timeline.openDiffWindow) {
+        bridge.timeline.openDiffWindow({ filePath: filePath, projectRoot: projectRoot });
+      }
+    });
+
+    // Row 4: copy path — 复制路径
+    addRow(window._i('shell.viewport.copyPath', '复制路径'), function () {
+      var text = filePath;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(function () { fallbackCopy(text); });
+      } else {
+        fallbackCopy(text);
+      }
+      function fallbackCopy(t) {
+        var ta = document.createElement('textarea');
+        ta.value = t;
+        ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.style.top = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (_) { }
+        document.body.removeChild(ta);
+      }
+    });
+
+    document.body.appendChild(pop);
+    _ctxMenu = pop;
+
+    // 全局点击关闭
+    setTimeout(function () {
+      document.addEventListener('mousedown', function _dismiss(e) {
+        if (_ctxMenu && !_ctxMenu.contains(e.target)) {
           closeCtxMenu();
-          onClick();
-        });
-        pop.appendChild(row);
+          document.removeEventListener('mousedown', _dismiss, true);
+        }
+      }, true);
+    }, 0);
+  }
+
+  function openSubmenu(rowEl, dirPath, depth, projectRoot) {
+    if (!rowEl.isConnected) return null;
+    const sub = document.createElement('div');
+    sub.className = 'aiv-submenu';
+    sub._depth = depth || 1;
+    const rect = rowEl.getBoundingClientRect();
+    const rootTop = activeDropdown ? activeDropdown.getBoundingClientRect().top : rect.top;
+    const maxH = Math.max(200, window.innerHeight - rootTop - 8);
+    sub.style.cssText =
+      'position:fixed; z-index:100000; ' +
+      'min-width:220px; max-width:340px; height:' + maxH + 'px;';
+    // ★ 方向决策基于父容器边缘（空间够不够放 340px 列表）
+    //    定位贴合父行边缘（用户视觉跟行走）
+    var estW = 340;
+    var gap = 0;
+    var parentEdge = rowEl.parentElement.getBoundingClientRect();
+    var parentDir = rowEl.parentElement && rowEl.parentElement._direction;
+    var goRight;
+    if (parentDir === undefined) {
+      var spaceR = window.innerWidth - parentEdge.right;
+      var spaceL = parentEdge.left;
+      goRight = (spaceR >= spaceL);
+    } else {
+      if (parentDir) {
+        goRight = (window.innerWidth - parentEdge.right >= estW);
+      } else {
+        goRight = !(parentEdge.left >= estW);
       }
-
-      // Row 1: editx �?编辑文件
-      addRow(window._i('shell.viewport.editx', '编辑文件'), function () {
-        document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: filePath, preview: true } }));
-      });
-
-      // Row 2: open �?在系统中打开
-      addRow(window._i('shell.viewport.openInOs', '在系统中打开'), function () {
-        try {
-          if (bridge && bridge.shell) {
-            if (bridge.shell.openPath) {
-              bridge.shell.openPath(filePath);
-            } else if (bridge.shell.openExternal) {
-              bridge.shell.openExternal('file:///' + filePath.replace(/\\/g, '/'));
-            }
-          }
-        } catch (_) { }
-      });
-
-      // Row 3: timeline 时间线
-      addRow(window._i('shell.viewport.timeline', '时间线'), function () {
-        if (bridge && bridge.timeline && bridge.timeline.openDiffWindow) {
-          bridge.timeline.openDiffWindow({ filePath: filePath, projectRoot: projectRoot });
-        }
-      });
-
-      // Row 4: copy path 复制路径
-      addRow(window._i('shell.viewport.copyPath', '复制路径'), function () {
-        var text = filePath;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).catch(function () { fallbackCopy(text); });
-        } else {
-          fallbackCopy(text);
-        }
-        function fallbackCopy(t) {
-          var ta = document.createElement('textarea');
-          ta.value = t;
-          ta.style.position = 'fixed'; ta.style.left = '-9999px'; ta.style.top = '-9999px';
-          document.body.appendChild(ta);
-          ta.select();
-          try { document.execCommand('copy'); } catch (_) { }
-          document.body.removeChild(ta);
-        }
-      });
-
-      document.body.appendChild(pop);
-      _ctxMenu = pop;
-
-      // 全局点击关闭
-      setTimeout(function () {
-        document.addEventListener('mousedown', function _dismiss(e) {
-          if (_ctxMenu && !_ctxMenu.contains(e.target)) {
-            closeCtxMenu();
-            document.removeEventListener('mousedown', _dismiss, true);
-          }
-        }, true);
-      }, 0);
     }
-
-    function openSubmenu(rowEl, dirPath, depth, projectRoot) {
-      if (!rowEl.isConnected) return null;
-      const sub = document.createElement('div');
-      sub.className = 'aiv-submenu';
-      sub._depth = depth || 1;
-      const rect = rowEl.getBoundingClientRect();
-      const rootTop = activeDropdown ? activeDropdown.getBoundingClientRect().top : rect.top;
-      const maxH = Math.max(200, window.innerHeight - rootTop - 8);
-      sub.style.cssText =
-        'position:fixed; z-index:100000; ' +
-        'min-width:220px; max-width:340px; height:' + maxH + 'px;';
-      // �?方向决策基于父容器边缘（空间够不够放 340px 列表�?    //    定位贴合父行边缘（用户视觉跟行走�?    var estW = 340;
-      var gap = 0;
-      var parentEdge = rowEl.parentElement.getBoundingClientRect();
-      var parentDir = rowEl.parentElement && rowEl.parentElement._direction;
-      var goRight;
-      if (parentDir === undefined) {
-        var spaceR = window.innerWidth - parentEdge.right;
-        var spaceL = parentEdge.left;
-        goRight = (spaceR >= spaceL);
-      } else {
-        if (parentDir) {
-          goRight = (window.innerWidth - parentEdge.right >= estW);
-        } else {
-          goRight = !(parentEdge.left >= estW);
-        }
-      }
-      sub._direction = goRight;
-      // 背景色交替：右跳主色，左跳辅色（�?暗主题各自成对），区分展开方向
-      var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-      sub.style.setProperty('background', goRight ? (isDark ? '#1e211e' : '#e7e4c2') : (isDark ? '#232a23' : '#ede4cf'), 'important');
-      // 定位：右跳贴父容器右边缘，左跳用 CSS right 贴父容器左边缘（消除 estW≠实际宽度造成的空隙）
-      if (goRight) {
-        var leftX = parentEdge.right + gap;
-        if (leftX + estW > window.innerWidth) leftX = window.innerWidth - estW;
-        sub.style.left = leftX + 'px';
-        sub.style.right = 'auto';
-      } else {
-        sub.style.right = (window.innerWidth - parentEdge.left) + 'px';
-        sub.style.left = 'auto';
-        // 如果左侧空间不够，退化为 left:0（不溢出屏幕�?      if (parentEdge.left < estW) {
+    sub._direction = goRight;
+    // 背景色交替：右跳主色，左跳辅色（亮/暗主题各自成对），区分展开方向
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    sub.style.setProperty('background', goRight ? (isDark ? '#1e211e' : '#e7e4c2') : (isDark ? '#232a23' : '#ede4cf'), 'important');
+    // 定位：右跳贴父容器右边缘，左跳用 CSS right 贴父容器左边缘（消除 estW≠实际宽度造成的空隙）
+    if (goRight) {
+      var leftX = parentEdge.right + gap;
+      if (leftX + estW > window.innerWidth) leftX = window.innerWidth - estW;
+      sub.style.left = leftX + 'px';
+      sub.style.right = 'auto';
+    } else {
+      sub.style.right = (window.innerWidth - parentEdge.left) + 'px';
+      sub.style.left = 'auto';
+      // 如果左侧空间不够，退化为 left:0（不溢出屏幕）
+      if (parentEdge.left < estW) {
         sub.style.left = '0px';
         sub.style.right = 'auto';
       }
@@ -772,10 +803,11 @@
     document.body.appendChild(sub);
     activeSubmenus.push(sub);
 
-    // �?记录展开链到根下拉（用于关闭时快照）
+    // ★ 记录展开链到根下拉（用于关闭时快照）
     if (activeDropdown) {
       if (!activeDropdown._expandedChain) activeDropdown._expandedChain = [];
-      // �?splice(depth-1) 删除 depth-1 及之后的所有元�?      //    不会产生稀疏数组（.length = N 当数组更短时会产生空洞）
+      // ★ splice(depth-1) 删除 depth-1 及之后的所有元素
+      //    不会产生稀疏数组（.length = N 当数组更短时会产生空洞）
       activeDropdown._expandedChain.splice(depth - 1);
       var rel = dirPath.substring(projectRoot.length).replace(/^[\\/]+/, '');
       activeDropdown._expandedChain.push(rel);
@@ -791,7 +823,7 @@
     if (!container) return;
     container.innerHTML = '';
 
-    // each existing project �?solid block
+    // each existing project → solid block
     projects.forEach((proj, idx) => {
       const block = createBlock(proj, idx);
       container.appendChild(block);
@@ -814,7 +846,7 @@
     name.className = 'aiv-block-name';
     name.textContent = truncName(proj.name);
 
-    // �?放大镜搜索按�?�?点击打开 X 区搜索标签并自动填入此文件夹
+    // ★ 放大镜搜索按钮 — 点击打开 X 区搜索标签并自动填入此文件夹
     const searchBtn = document.createElement('span');
     searchBtn.className = 'aiv-block-search';
     searchBtn.textContent = '🔍';
@@ -833,12 +865,12 @@
     const rmBtn = document.createElement('span');
     rmBtn.className = 'aiv-block-rm';
     if (idx === 0) {
-      // 主文件夹不可删除，显示 ⚠ 标记
-      rmBtn.textContent = '⚠';
+      // 主文件夹不可删除，显示 ★ 标记
+      rmBtn.textContent = '★';
       rmBtn.title = window._i('shell.viewport.mainFolder', '主文件夹（不可移除）');
       rmBtn.style.cssText = 'color:var(--yellow,#b58900);font-size:14px;cursor:default;font-weight:bold;';
     } else {
-      rmBtn.textContent = '×';
+      rmBtn.textContent = '−';
       rmBtn.title = window._i('shell.viewport.removeProject', '移除此项目');
       rmBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -854,7 +886,7 @@
     block.appendChild(searchBtn);
     block.appendChild(rmBtn);
 
-    // hover: 150ms 防抖后展开下拉（防止光标掠过误触 + 限制 readdir 频率）
+    // hover → 150ms 防抖后展开下拉（防止光标掠过误触 + 限制 readdir 频率）
     // 仅窗口有焦点时响应 hover，无焦点时靠 click 触发
     var _blockHoverTimer = null;
     block.addEventListener('mouseenter', () => {
@@ -868,7 +900,7 @@
     block.addEventListener('mouseleave', () => {
       if (_blockHoverTimer) { clearTimeout(_blockHoverTimer); _blockHoverTimer = null; }
     });
-    // 光标左键点击 �?立即展开下拉（不防抖，窗口有无焦点均可）
+    // 光标左键点击 → 立即展开下拉（不防抖，窗口有无焦点均可）
     block.addEventListener('click', () => {
       if (_blockHoverTimer) { clearTimeout(_blockHoverTimer); _blockHoverTimer = null; }
       showDropdown(block, proj);
@@ -888,7 +920,7 @@
 
     block.appendChild(plus);
 
-    // 光标左键点击 �?原生对话框选择新文件夹（有无焦点均可）
+    // 光标左键点击 → 原生对话框选择新文件夹（有无焦点均可）
     block.addEventListener('click', async (e) => {
       closeDropdown();
       if (_activeBlockEl) { _activeBlockEl.classList.remove('aiv-block-active'); _activeBlockEl = null; }
@@ -901,7 +933,7 @@
       }
     });
 
-    // hover �?即时展示最�?20 个主文件夹下拉（仅窗口有焦点时）
+    // hover → 即时展示最近 20 个主文件夹下拉（仅窗口有焦点时）
     block.addEventListener('mouseenter', () => {
       if (!document.hasFocus()) return;
       _showRecentDropdown(block);
@@ -929,7 +961,7 @@
       'left:' + rect.left + 'px; top:' + topPx + 'px; ' +
       'min-width:280px; max-width:420px; height:' + maxH + 'px;';
 
-    // 标题
+    // 标题行
     var titleRow = document.createElement('div');
     titleRow.style.cssText = 'padding:6px 12px; font-size:11px; color:var(--text-muted); border-bottom:1px solid var(--border-color); margin-bottom:2px;';
     titleRow.textContent = window._i ? window._i('shell.viewport.recentFolders', '最近打开的主文件夹') : '最近打开的主文件夹';
@@ -969,7 +1001,8 @@
           closeDropdown();
           blockEl.classList.remove('aiv-block-active');
           _bumpRecent(f.path);
-          // 在当前窗口添加：空窗口→主文件夹，有主文件夹→辅文件�?          addProject(f.path);
+          // 在当前窗口添加：空窗口→主文件夹，有主文件夹→辅文件夹
+          addProject(f.path);
         });
 
         dd.appendChild(row);
@@ -985,7 +1018,7 @@
       const r = await bridge.dialog.message({
         type: 'question',
         title: '移除项目',
-        message: `确定�?AI 视口移除�?{proj.name}」？`,
+        message: `确定从 AI 视口移除「${proj.name}」？`,
         detail: proj.path,
         buttons: ['移除', '取消'],
         defaultId: 1,
@@ -993,7 +1026,7 @@
       });
       return r && r.response === 0;
     } catch (_) {
-      return confirm(`移除�?{proj.name}」？`);
+      return confirm(`移除「${proj.name}」？`);
     }
   }
 
@@ -1002,7 +1035,8 @@
     var detail = { projects: projects };
     // 同窗口订阅者（file-explorer 等）
     window.dispatchEvent(new CustomEvent('qqq-ai-viewport-changed', { detail: detail }));
-    // AI iframe（跨 frame 通信必须�?postMessage）—�?广播到左/�?右所有面�?    var zones = ['qqq-wing-left', 'qqq-ai-zone', 'qqq-wing-right'];
+    // AI iframe（跨 frame 通信必须用 postMessage）—— 广播到左/中/右所有面板
+    var zones = ['qqq-wing-left', 'qqq-ai-zone', 'qqq-wing-right'];
     for (var i = 0; i < zones.length; i++) {
       var zone = document.getElementById(zones[i]);
       if (!zone) continue;
@@ -1046,14 +1080,14 @@
           var data = JSON.parse(raw);
           var age = Date.now() - (data.atime || 0);
           if (age < 60000) {
-            // 锁有�?�?拒绝添加
+            // 锁有效 → 拒绝添加
             console.warn('[ai-viewport] lock pre-check failed for ' + folderPath + ' (age=' + (age / 1000).toFixed(1) + 's)');
             if (window.qqqideQoast) {
-              window.qqqideQoast.show('⚠️ 该项目已在另一�?QQQ 窗口中作为主文件夹打开', { duration: 6000, type: 'warn' });
+              window.qqqideQoast.show('⚠️ 该项目已在另一个 QQQ 窗口中作为主文件夹打开', { duration: 6000, type: 'warn' });
             }
             return;
           }
-          // 僵尸�?�?允许添加
+          // 僵尸锁 → 允许添加
           _doAddProject(folderPath, name);
         } catch (_) { _doAddProject(folderPath, name); }
       });
@@ -1085,7 +1119,7 @@
     _loadRecents();
     loadProjects();
     render();
-    // �?关闭下拉：左键点击列表外任何位置（窗口内+窗口外）
+    // ★ 关闭下拉：左键点击列表外任何位置（窗口内+窗口外）
     function _isOutsideDropdown(target) {
       if (!activeDropdown) return false;
       if (activeDropdown.contains(target)) return false;
@@ -1098,9 +1132,11 @@
       closeDropdown();
       document.querySelectorAll('.aiv-block-active').forEach(function (el) { el.classList.remove('aiv-block-active'); });
     }
-    // �?关闭策略：遮�?+ iframe pointer-events 切断
-    //   1. 透明遮罩铺满菜单栏以下区域，拦截普通区域点�?    //   2. iframe �?pointer-events:none，点击穿透到遮罩 �?关闭
-    //   3. 主进�?blur �?executeJavaScript 直接�?    var _backdrop = null;
+    // ★ 关闭策略：遮罩 + iframe pointer-events 切断
+    //   1. 透明遮罩铺满菜单栏以下区域，拦截普通区域点击
+    //   2. iframe 设 pointer-events:none，点击穿透到遮罩 → 关闭
+    //   3. 主进程 blur → executeJavaScript 直接关
+    var _backdrop = null;
     function _ensureBackdrop() {
       if (_backdrop) return;
       _backdrop = document.createElement('div');
@@ -1134,7 +1170,7 @@
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && activeDropdown) _dismissDropdown();
     });
-    // 窗口失焦轮询兜底，100ms 间隔
+    // 窗口失焦轮询兜底（100ms 间隔）
     setInterval(function () {
       if (activeDropdown && !document.hasFocus()) _dismissDropdown();
     }, 100);
@@ -1159,7 +1195,7 @@
     }
   });
 
-  // 焦点面板路由：文件附加到当前金色 q2 AI 面板
+  // ★ 焦点面板路由：文件附加到当前金色 q2 的 AI 面板
   window.__qqq_aiTarget = 1;  // 默认中面板
   window.__qqq_updateAiTarget = function (n) {
     if (typeof n === 'number' && n >= 0 && n <= 2) window.__qqq_aiTarget = n;

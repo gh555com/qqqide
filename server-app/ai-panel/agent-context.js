@@ -458,7 +458,8 @@
                         { role: 'user', content: prompt }
                     ],
                     stream: false,
-                    thinking: { type: 'disabled' },
+                    thinking: _tier.thinking || { type: 'enabled' },
+                    reasoning_effort: _tier.effort || 'max',
                     max_tokens: _maxTokens,
                     floor_id: (self._floorId || 'compact') + _suffix
                 })
@@ -473,48 +474,47 @@
                 return { parsed: null, ttfbMs: _ttfbMs, totalMs: _ttfbMs };
             }
 
-            // ★ 服务器始终返回 SSE 格式（即使 stream:false）。提取最后一个 data: 行
+            // ★ 服务器始终返回 SSE 格式（即使 stream:false）。
+            //    正确做法：遍历所有 SSE data: 行，累积 delta.content，得到完整文本。
             var _bodyText = await resp.text();
             var _totalMs = performance.now() - _fetchStart;
             var _lines = _bodyText.replace(/\r\n/g, '\n').split('\n');
-            var _lastData = '';
-            for (var li = _lines.length - 1; li >= 0; li--) {
+            // 累积 SSE delta 内容 + 保留最后一条完整 data 作为降级备选
+            var _sseAccum = '';
+            var _lastChunk = null;
+            for (var li = 0; li < _lines.length; li++) {
                 if (_lines[li].indexOf('data: ') === 0) {
                     var _d = _lines[li].slice(6);
-                    if (_d !== '[DONE]') { _lastData = _d; break; }
+                    if (_d === '[DONE]') continue;
+                    try {
+                        var _parsed = JSON.parse(_d);
+                        _lastChunk = _parsed;
+                        // ★ 累积 delta.content（流式格式 Go 始终返回）
+                        var _c = _parsed.choices && _parsed.choices[0] && (_parsed.choices[0].delta || _parsed.choices[0].message);
+                        if (_c && typeof _c.content === 'string') _sseAccum += _c.content;
+                    } catch (_) { }
                 }
             }
-            if (!_lastData) {
-                try { var _dj = JSON.parse(_bodyText); _lastData = JSON.stringify(_dj); } catch (_) { }
+            // 尝试从累积的 delta 内容中提取 JSON（主路径）
+            var text = _sseAccum;
+            // 降级：如果 SSE 累积为空，尝试最后一条 chunk 的 message.content（非流式格式）
+            if (!text && _lastChunk) {
+                text = _lastChunk.choices && _lastChunk.choices[0] && _lastChunk.choices[0].message && _lastChunk.choices[0].message.content || '';
             }
-            if (!_lastData) {
-                self._log('✗ Compact API no data (suffix=' + _suffix + ' bodyLen=' + _bodyText.length + ' preview=' + _bodyText.slice(0, 150) + ')');
-                return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
-            }
-
-            var _chunk;
-            try { _chunk = JSON.parse(_lastData); } catch (_e) {
-                self._log('✗ Compact JSON parse (suffix=' + _suffix + ' dataLen=' + _lastData.length + ' preview=' + _lastData.slice(0, 300) + ')');
-                return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
-            }
-
-            var text = _chunk.choices && _chunk.choices[0] && _chunk.choices[0].message && _chunk.choices[0].message.content;
             if (!text) {
-                var _choice0 = _chunk.choices && _chunk.choices[0];
-                var _msg = _choice0 && _choice0.message;
-                self._log('✗ Compact no content (suffix=' + _suffix + ' chunkKeys=' + Object.keys(_chunk).join(',') + ' msgKeys=' + (_msg ? Object.keys(_msg).join(',') : 'null') + ' contentLen=' + (text ? text.length : 0) + ')');
+                self._log('✗ Compact no content (suffix=' + _suffix + ' bodyLen=' + _bodyText.length + ' lines=' + _lines.length + ' accum=' + _sseAccum.length + ' lastKeys=' + (_lastChunk ? Object.keys(_lastChunk).join(',') : 'null') + ')');
                 return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
             }
 
             var match = text.match(/\{[\s\S]*\}/);
             if (!match) {
-                self._log('✗ Compact no JSON (suffix=' + _suffix + ' textLen=' + text.length + ' preview=' + text.slice(0, 300) + ')');
+                self._log('✗ Compact no JSON (suffix=' + _suffix + ' textLen=' + text.length + ' preview=' + text.slice(0, 400) + ')');
                 return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
             }
 
             var parsed;
             try { parsed = JSON.parse(match[0]); } catch (_jsonErr) {
-                self._log('✗ Compact JSON err (suffix=' + _suffix + ' matchLen=' + match[0].length + ' preview=' + match[0].slice(0, 300) + ')');
+                self._log('✗ Compact JSON err (suffix=' + _suffix + ' matchLen=' + match[0].length + ' preview=' + match[0].slice(0, 400) + ')');
                 return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
             }
             return { parsed: parsed, ttfbMs: _ttfbMs, totalMs: _totalMs };
