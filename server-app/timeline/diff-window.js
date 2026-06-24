@@ -23,11 +23,15 @@
     var _markedBefore = INIT_BEFORE;
     var _markedAfter = INIT_AFTER;
     // 全局持久化偏好：差异模式（false=差异块 / true=全文），默认差异
-    var _showFull = false;
+    var _diffOnly = false;
     var _isLastOnRight = false;
     var _PREF_NS = 'qqqide.timeline';
     var _diffEditor = null;
     var _monacoLoaded = false;
+    var _editing = false;
+    var _editDirty = false;
+    var _editOriginalContent = '';
+    var _editSnapshotSeq = 0;
 
     var $titleInput = document.getElementById('title-input');
 
@@ -105,14 +109,11 @@
     var $markerRight = document.getElementById('marker-right');
     var $diffContainer = document.getElementById('diff-container');
     var $emptyState = document.getElementById('empty-state');
-    var $statAdded = document.getElementById('stat-added');
-    var $statDeleted = document.getElementById('stat-deleted');
-    var $statChanges = document.getElementById('stat-changes');
-    var $statMode = document.getElementById('stat-mode');
-    var $btnFull = document.getElementById('btn-full');
-    var $btnHideUnchanged = document.getElementById('btn-hide-unchanged');
-    var $btnAcceptLeft = document.getElementById('btn-accept-left');
-    var $btnSaveLast = document.getElementById('btn-save-last');
+    var $btnDiffOnly = document.getElementById('btn-diff-only');
+    var $btnEdit = document.getElementById('btn-edit');
+    var $editStatus = document.getElementById('edit-status');
+    var $esStatus = $editStatus ? $editStatus.querySelector('.es-status') : null;
+    var $esSnap = $editStatus ? $editStatus.querySelector('.es-snap') : null;
 
     // ═══ 文件搜索历史 + 模糊匹配 ═══
     var $inputWrap = document.getElementById('input-wrap');
@@ -412,11 +413,11 @@
                 $emptyState.textContent = '该文件没有历史版本';
                 return;
             }
-            // 加载全局持久化偏好（跨窗口记忆）
+            // 加载项目级持久化偏好：仅差异模式
             try {
-                if (bridge && bridge.state) {
-                    var pref = await bridge.state.get(_PREF_NS, 'showFull');
-                    if (typeof pref === 'boolean') _showFull = pref;
+                if (bridge && bridge.state && bridge.state.project && PROJECT_ROOT) {
+                    var pref = await bridge.state.project.get(PROJECT_ROOT + '/qqq/alphal/only.sq3', 'qqq.timeline', 'diffOnly');
+                    if (typeof pref === 'boolean') _diffOnly = pref;
                 }
             } catch (_) { }
             populateDropdowns();
@@ -464,16 +465,10 @@
             var trace = _parseFloorId(floorId);
             return _compactTrace(trace) || 'q';
         }
-        if (source === 'auto-save') {
-            return 'auto save';
-        }
-        if (source === 'manual-save' || source === 'x' || source === 'diff-save') {
-            return 'manual save';
-        }
-        if (source === 'run-command') {
-            return 'cmd';
-        }
-        return source || '';
+        if (source === 'editx') return 'editx';
+        if (source === 'diff-edit') return 'diff edit';
+        if (source === 'run-command') return 'cmd';
+        return 'other';
     }
 
     // ═══ 填充下拉框 ═══
@@ -710,7 +705,7 @@
     // ── 动态计算下拉 max-height：按窗口高度（约 24 行，每行 ~28px）──
     function _calcDropdownMaxHeight() {
         var winH = window.innerHeight;
-        var barH = 36 + 44 + 32 + 22; // title-row + version-bar + actions-bar + statusbar
+        var barH = 40 + 44; // title-row + version-bar
         var avail = winH - barH - 24; // 减去上下留白
         var rowH = 28;
         var maxRows = Math.floor(avail / rowH);
@@ -807,7 +802,6 @@
         updateOneMarker($selLeft, $markerLeft);
         updateOneMarker($selRight, $markerRight);
         _isLastOnRight = ($selRight.value === 'last');
-        updateButtons();
     }
 
     function updateOneMarker($sel, $marker) {
@@ -844,15 +838,7 @@
         }
     }
 
-    function updateButtons() {
-        if (_isLastOnRight) {
-            $btnAcceptLeft.classList.add('visible');
-            if ($btnSaveLast) $btnSaveLast.style.display = '';
-        } else {
-            $btnAcceptLeft.classList.remove('visible');
-            if ($btnSaveLast) $btnSaveLast.style.display = 'none';
-        }
-    }
+
 
     // ═══ Monaco 加载 ═══
     function loadMonaco() {
@@ -939,9 +925,10 @@
         $emptyState.style.display = 'none';
         $diffContainer.style.display = '';
 
+        var _editorReadOnly = _editing ? false : true;
         _diffEditor = monaco.editor.createDiffEditor($diffContainer, {
             renderSideBySide: true,
-            readOnly: !_isLastOnRight,
+            readOnly: _editorReadOnly,
             originalEditable: false,
             automaticLayout: true,
             minimap: { enabled: true, showSlider: 'mouseover' },
@@ -963,15 +950,15 @@
         _oldOriginalModel = originalModel;
         _oldModifiedModel = modifiedModel;
 
-        if (_isLastOnRight) {
+        if (_isLastOnRight || _editing) {
             modifiedModel.onDidChangeContent(function () {
                 _lastContent = modifiedModel.getValue();
                 updateDiffStats();
+                if (_editing) _markEditDirty();
             });
         }
 
         _diffEditor.setModel({ original: originalModel, modified: modifiedModel });
-        // 极致精简：只保留代码染色，剔除一切智能功能
         _stripEditor(_diffEditor.getOriginalEditor());
         _stripEditor(_diffEditor.getModifiedEditor());
         var _firstDiffReady = false;
@@ -983,34 +970,39 @@
                 _scrollToFirstChange();
             }
         });
+        if (_editing) {
+            try { _diffEditor.getOriginalEditor().updateOptions({ readOnly: true }); } catch (_) { }
+        }
         updateDiffStats();
-        $statMode.textContent = _showFull ? '全文' : '差异';
-        $btnFull.classList.toggle('active', _showFull);
-        $btnHideUnchanged.classList.toggle('active', !_showFull);
+        _syncDiffOnlyBtn();
+    }
+
+    function _markEditDirty() { _editDirty = true; _checkEditReverted(); _updateEditStatus(); }
+    function _checkEditReverted() {
+        if (!_editing || !_diffEditor) return;
+        try {
+            var cur = _diffEditor.getModifiedEditor().getModel().getValue();
+            if (cur === _editOriginalContent) { _editDirty = false; }
+        } catch (_) { }
+    }
+    function _updateEditStatus() {
+        if (!$esStatus) return;
+        $esStatus.textContent = _editDirty ? '未保存' : '已保存';
+        if (_editDirty) { $esStatus.classList.add('dirty'); }
+        else { $esStatus.classList.remove('dirty'); }
+    }
+    function _setEditSnapText(snapLabel) {
+        if (!$esSnap) return;
+        $esSnap.textContent = snapLabel ? ' 且打快照至：' + snapLabel : '';
+    }
+    function _formatTimestamp(ts) {
+        if (!ts) return '';
+        var d = new Date(ts);
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + ':' + String(d.getSeconds()).padStart(2, '0');
     }
 
     function updateDiffStats() {
-        if (!_diffEditor) return;
-        var changes = _diffEditor.getLineChanges();
-        if (!changes) return;
-        var added = 0, deleted = 0;
-        for (var i = 0; i < changes.length; i++) {
-            var c = changes[i];
-            if (c.originalEndLineNumber > 0 && c.modifiedEndLineNumber > 0) {
-                var ol = c.originalEndLineNumber - c.originalStartLineNumber + 1;
-                var ml = c.modifiedEndLineNumber - c.modifiedStartLineNumber + 1;
-                // ★ LCS 语义：替换块 = 删掉所有旧行 + 加入所有新行（与 A4 _a4DiffStats 一致）
-                added += ml;
-                deleted += ol;
-            } else if (c.modifiedEndLineNumber > 0) {
-                added += c.modifiedEndLineNumber - c.modifiedStartLineNumber + 1;
-            } else if (c.originalEndLineNumber > 0) {
-                deleted += c.originalEndLineNumber - c.originalStartLineNumber + 1;
-            }
-        }
-        $statAdded.textContent = '+' + added;
-        $statDeleted.textContent = '-' + deleted;
-        $statChanges.textContent = changes.length + ' 处修改';
+        // 仅内部使用，不再显示状态栏
     }
 
     // ═══ 自动滚动到第一个差异块 ═══
@@ -1109,7 +1101,7 @@
         if (!_diffEditor) return;
         var originalEditor = _diffEditor.getOriginalEditor();
         var modifiedEditor = _diffEditor.getModifiedEditor();
-        if (_showFull) {
+        if (!_diffOnly) {
             // 全文模式：清除所有隐藏区域
             try { originalEditor.setHiddenAreas([]); } catch (_) { }
             try { modifiedEditor.setHiddenAreas([]); } catch (_) { }
@@ -1183,69 +1175,219 @@
         try { modifiedEditor.setHiddenAreas(toRanges(mUnchanged)); } catch (_) { }
     }
 
-    // ═══ 按钮事件 ═══
-    function applyDiffMode() {
-        if (!_diffEditor) { renderDiff(); return; }
+    // ═══ 仅差异按钮 + 编辑模式 ═══
+    function _syncDiffOnlyBtn() {
+        if (!$btnDiffOnly) return;
+        if (_diffOnly) {
+            $btnDiffOnly.classList.add('checked');
+        } else {
+            $btnDiffOnly.classList.remove('checked');
+        }
+    }
+    function _toggleDiffOnly() {
+        _diffOnly = !_diffOnly;
+        _syncDiffOnlyBtn();
         _applyHiddenAreas();
-        $btnFull.classList.toggle('active', _showFull);
-        $btnHideUnchanged.classList.toggle('active', !_showFull);
-        $statMode.textContent = _showFull ? '全文' : '差异';
-        _savePref('showFull', _showFull);
-        // 切换模式后跳到第一个差异行（等隐藏区域清空/应用后再跳）
+        _saveDiffOnlyPref(_diffOnly);
         setTimeout(function () { _scrollToFirstChange(); }, 50);
     }
-    $btnFull.addEventListener('click', function () {
-        _showFull = !_showFull;
-        applyDiffMode();
-    });
-    $btnHideUnchanged.addEventListener('click', function () {
-        _showFull = false;
-        applyDiffMode();
-    });
-    $btnAcceptLeft.addEventListener('click', function () {
-        if (!_isLastOnRight || !_diffEditor) return;
-        var changes = _diffEditor.getLineChanges();
-        if (!changes || !changes.length) return;
-        var monaco = window.monaco;
-        var modifiedModel = _diffEditor.getModifiedEditor().getModel();
-        var edits = [];
-        for (var i = changes.length - 1; i >= 0; i--) {
-            var c = changes[i];
-            if (c.originalEndLineNumber === 0) continue;
-            if (c.modifiedEndLineNumber === 0) {
-                edits.push({ range: new monaco.Range(c.modifiedStartLineNumber, 1, c.modifiedEndLineNumber + 1, 1), text: '' });
-            } else {
-                var leftText = _diffEditor.getOriginalEditor().getModel().getValueInRange({
-                    startLineNumber: c.originalStartLineNumber, startColumn: 1,
-                    endLineNumber: c.originalEndLineNumber, endColumn: Number.MAX_SAFE_INTEGER,
-                });
-                edits.push({ range: new monaco.Range(c.modifiedStartLineNumber, 1, c.modifiedEndLineNumber, Number.MAX_SAFE_INTEGER), text: leftText });
-            }
+    if ($btnDiffOnly) $btnDiffOnly.addEventListener('click', _toggleDiffOnly);
+
+    function _toggleEdit() { _editing ? _exitEditMode() : _enterEditMode(); }
+    async function _enterEditMode() {
+        if (!_diffEditor) return;
+        _editing = true;
+        var latestContent = _lastContent || '';
+        try { if (bridge && bridge.timeline && bridge.timeline.readCurrent) { var cur = await bridge.timeline.readCurrent(FILE_PATH); if (typeof cur === 'string') latestContent = cur; } } catch (_) { }
+        _editDirty = false; _editSnapshotSeq = 0;
+        _editOriginalContent = latestContent;
+        $btnEdit.textContent = '取消编辑'; $btnEdit.classList.add('editing');
+        var ddR = document.getElementById('dd-right'); if (ddR) ddR.style.display = 'none';
+        if ($editStatus) $editStatus.classList.add('visible');
+        var mr = document.getElementById('marker-right'); if (mr) mr.style.display = 'none';
+        _updateEditStatus(); _setEditSnapText('');
+        document.getElementById('sel-right').value = 'last'; _isLastOnRight = true;
+        await _renderDiffWithLatest(latestContent);
+        if (_diffEditor) {
+            try { var me = _diffEditor.getModifiedEditor(); me.updateOptions({ readOnly: false }); me.focus(); } catch (_) { }
         }
-        if (edits.length) {
-            modifiedModel.pushEditOperations([], edits, function () { return null; });
-            _lastContent = modifiedModel.getValue();
-            updateDiffStats();
+    }
+    async function _exitEditMode() {
+        _editing = false; _editDirty = false;
+        $btnEdit.textContent = '编辑'; $btnEdit.classList.remove('editing');
+        _clearBlockArrows();
+        var ddR = document.getElementById('dd-right'); if (ddR) ddR.style.display = '';
+        if ($editStatus) $editStatus.classList.remove('visible');
+        _updateEditStatus(); _setEditSnapText('');
+        var mr = document.getElementById('marker-right'); if (mr) mr.style.display = '';
+        await _refreshVersions();
+        if (_diffEditor) {
+            try { _diffEditor.getModifiedEditor().updateOptions({ readOnly: true }); _diffEditor.getOriginalEditor().updateOptions({ readOnly: true }); } catch (_) { }
         }
-    });
-    if ($btnSaveLast) $btnSaveLast.addEventListener('click', async function () {
-        if (!_isLastOnRight || !_diffEditor) return;
-        var content = _diffEditor.getModifiedEditor().getModel().getValue();
+        renderDiff();
+    }
+
+    async function _renderDiffWithLatest(latestContent) {
+        if (!_monacoLoaded || !window.monaco) return;
+        var token = ++_renderToken;
+        var leftVal = document.getElementById('sel-left').value;
+        var leftContent = '';
+        try { leftContent = (leftVal === 'last') ? (_lastContent || '') : (await bridge.timeline.content({ projectRoot: PROJECT_ROOT, blobHash: leftVal }) || ''); } catch (_) { }
+        if (token !== _renderToken) return;
+        var lang = langOf(FILE_PATH); var monaco = window.monaco;
+        if (_oldOriginalModel) { _oldOriginalModel.dispose(); _oldOriginalModel = null; }
+        if (_oldModifiedModel) { _oldModifiedModel.dispose(); _oldModifiedModel = null; }
+        if (_diffEditor) { _diffEditor.dispose(); _diffEditor = null; }
+        $emptyState.style.display = 'none'; $diffContainer.style.display = '';
+        _diffEditor = monaco.editor.createDiffEditor($diffContainer, { renderSideBySide: true, readOnly: false, originalEditable: false, automaticLayout: true, minimap: { enabled: true, showSlider: 'mouseover' }, scrollbar: { vertical: 'hidden', horizontal: 'hidden' }, wordWrap: 'on', wordWrapColumn: 0, renderIndicators: false, renderOverviewRuler: true, fontSize: 13, lineNumbers: 'on', lineNumbersMinChars: 2, lineDecorationsWidth: 10, scrollBeyondLastLine: false, theme: THEME });
+        var originalModel = monaco.editor.createModel(leftContent, lang);
+        var modifiedModel = monaco.editor.createModel(latestContent, lang);
+        _oldOriginalModel = originalModel; _oldModifiedModel = modifiedModel;
+        modifiedModel.onDidChangeContent(function () { _lastContent = modifiedModel.getValue(); updateDiffStats(); _markEditDirty(); });
+        _diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+        _stripEditor(_diffEditor.getOriginalEditor()); _stripEditor(_diffEditor.getModifiedEditor());
+        try { _diffEditor.getOriginalEditor().updateOptions({ readOnly: true }); } catch (_) { }
+        try { _diffEditor.getModifiedEditor().updateOptions({ readOnly: false }); } catch (_) { }
+        _setupEditAutoSave(_diffEditor.getModifiedEditor());
+        _setupEditCtrlS(_diffEditor.getModifiedEditor(), monaco);
+        var firstDiffReady = false;
+        _diffEditor.onDidUpdateDiff(function () {
+            updateDiffStats(); _applyHiddenAreas();
+            if (!firstDiffReady) { firstDiffReady = true; _scrollToFirstChange(); }
+            if (_editing) _updateBlockArrows();
+        });
+        updateDiffStats(); _syncDiffOnlyBtn();
+    }
+
+    async function _saveEditContent() {
+        if (!_editing || !_diffEditor) return false;
+        var content = _lastContent;
+        if (!content && _diffEditor.getModifiedEditor()) content = _diffEditor.getModifiedEditor().getModel().getValue();
+        if (!content) return false;
+        // 内容与进入编辑时一致 → 跳过保存和快照（Ctrl+Z 回退到底）
+        if (content === _editOriginalContent) {
+            _editDirty = false; _updateEditStatus();
+            return true;
+        }
         try {
             await bridge.fs.write(FILE_PATH, content);
-            _lastContent = content;
-            try { await bridge.timeline.record({ projectRoot: PROJECT_ROOT, filePath: FILE_PATH, content: content, source: 'diff-save' }); } catch (_) { }
-            $statMode.textContent = '已保存';
-            // 更新 mtime，下次 loadVersions 时用
-            _lastMtimeMs = Date.now();
-            setTimeout(function () { $statMode.textContent = _showFull ? '全文' : '差异'; }, 1500);
-        } catch (e) {
-            console.error('[diff] save failed:', e);
-            $statMode.textContent = '保存失败';
-            $statMode.style.color = 'var(--red)';
-            setTimeout(function () { $statMode.textContent = _showFull ? '全文' : '差异'; $statMode.style.color = ''; }, 2000);
+            _lastContent = content; _editDirty = false;
+            _editOriginalContent = content;
+            // 打快照（冷却+去重已移至主进程真理机）
+            var snapTaken = false;
+            try {
+                var rec = await bridge.timeline.record({ projectRoot: PROJECT_ROOT, filePath: FILE_PATH, content: content, source: 'diff-edit' });
+                if (rec && rec.ok && rec.recorded) {
+                    _editSnapshotSeq++;
+                    _setEditSnapText('#' + _editSnapshotSeq + ' ' + _formatTimestamp(Date.now()) + ' diff edit');
+                    snapTaken = true;
+                }
+            } catch (_) { }
+            if (snapTaken) _refreshVersions();
+            _updateEditStatus();
+            return true;
+        } catch (e) { console.error('[diff] edit save failed:', e); return false; }
+    }
+    function _setupEditAutoSave(editor) {
+        if (!editor) return;
+        editor.onDidBlurEditorWidget(async function () { if (_editing && _editDirty) await _saveEditContent(); });
+    }
+    function _setupEditCtrlS(editor, monaco) {
+        if (!editor || !monaco) return;
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async function () { if (_editing) await _saveEditContent(); });
+    }
+    if ($btnEdit) $btnEdit.addEventListener('click', _toggleEdit);
+
+    async function _refreshVersions() {
+        try {
+            var newVer = await bridge.timeline.versions({ projectRoot: PROJECT_ROOT, filePath: FILE_PATH });
+            _versions = newVer || [];
+            _lastContent = await bridge.timeline.readCurrent(FILE_PATH);
+            var st = await bridge.timeline.stat(FILE_PATH); if (st) _lastMtimeMs = st.mtimeMs;
+            var curLeft = $selLeft.value; populateDropdowns();
+            var found = false;
+            for (var oi = 0; oi < _options.length; oi++) {
+                if (_options[oi].value === curLeft || _options[oi]._blobHash === curLeft) {
+                    $selLeft.value = _options[oi].value; _refreshDropdownBtn($ddLeftBtn, $selLeft.value, _options); found = true; break;
+                }
+            }
+            if (!found && _options.length > 0) { $selLeft.value = _options[_options.length - 1].value; _refreshDropdownBtn($ddLeftBtn, $selLeft.value, _options); }
+            updateMarkers(); _refreshDropdownBtn($ddRightBtn, $selRight.value, _options);
+        } catch (_) { }
+    }
+
+    var _blockArrowEls = [];
+    var _blockArrowChanges = [];
+    function _clearBlockArrows() {
+        for (var i = 0; i < _blockArrowEls.length; i++) {
+            try { _blockArrowEls[i].dom.remove(); } catch (_) { }
         }
-    });
+        _blockArrowEls = [];
+        _blockArrowChanges = [];
+    }
+    function _updateBlockArrows() {
+        _clearBlockArrows();
+        if (!_editing || !_diffEditor) return;
+        var changes = _diffEditor.getLineChanges();
+        if (!changes || !changes.length) return;
+        var origEditor = _diffEditor.getOriginalEditor();
+        if (!origEditor) return;
+        for (var ci = 0; ci < changes.length; ci++) {
+            var c = changes[ci];
+            var line = c.originalStartLineNumber > 0 ? c.originalStartLineNumber : c.originalEndLineNumber;
+            if (!line || line <= 0) continue;
+            (function (capLine, capChange) {
+                var div = document.createElement('div');
+                div.className = 'block-arrow';
+                div.innerHTML = '→';
+                div.title = '将左侧差异移到右侧';
+                div.addEventListener('mousedown', function (ev) { ev.preventDefault(); ev.stopPropagation(); _copyBlockToRight(capChange); });
+                div.addEventListener('click', function (ev) { ev.stopPropagation(); });
+                // 插入到 diff-container
+                if (!$diffContainer.contains(div)) $diffContainer.appendChild(div);
+                // 用原始 editor 的行号算 Y，放在中间分割线位置
+                var top = origEditor.getTopForLineNumber(capLine) - origEditor.getScrollTop();
+                div.style.top = top + 'px';
+                var li = origEditor.getLayoutInfo();
+                div.style.left = (li.contentLeft + li.contentWidth - 28) + 'px';
+                _blockArrowEls.push({ dom: div, line: capLine });
+            })(line, c);
+        }
+    }
+    // 滚动时同步箭头位置
+    if (!window._arrowScrollBound) {
+        window._arrowScrollBound = true;
+        setInterval(function () {
+            if (!_editing || !_diffEditor || !_blockArrowEls.length) return;
+            var origEditor = _diffEditor.getOriginalEditor();
+            if (!origEditor) return;
+            var st = origEditor.getScrollTop();
+            var li = origEditor.getLayoutInfo();
+            var lx = li.contentLeft + li.contentWidth - 28;
+            for (var ai = 0; ai < _blockArrowEls.length; ai++) {
+                var a = _blockArrowEls[ai];
+                if (a.dom && a.line > 0) {
+                    var top = origEditor.getTopForLineNumber(a.line) - st;
+                    a.dom.style.top = top + 'px';
+                    a.dom.style.left = lx + 'px';
+                }
+            }
+        }, 100);
+    }
+    function _copyBlockToRight(c) {
+        if (!_diffEditor) return;
+        var mc = window.monaco;
+        if (!mc || c.originalEndLineNumber === 0) return;
+        var mm = _diffEditor.getModifiedEditor().getModel();
+        var edit;
+        if (c.modifiedEndLineNumber === 0) {
+            edit = { range: new mc.Range(c.modifiedStartLineNumber, 1, c.modifiedEndLineNumber + 1, 1), text: '' };
+        } else {
+            var lt = _diffEditor.getOriginalEditor().getModel().getValueInRange({ startLineNumber: c.originalStartLineNumber, startColumn: 1, endLineNumber: c.originalEndLineNumber, endColumn: Number.MAX_SAFE_INTEGER });
+            edit = { range: new mc.Range(c.modifiedStartLineNumber, 1, c.modifiedEndLineNumber, Number.MAX_SAFE_INTEGER), text: lt };
+        }
+        if (edit) { mm.pushEditOperations([], [edit], function () { return null; }); _lastContent = mm.getValue(); _markEditDirty(); }
+    }
 
     // ═══ 工具 ═══
     function formatTs(ts) {
@@ -1269,10 +1411,10 @@
     function _escAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 
     // ═══ 全局持久化偏好（跨窗口记忆） ═══
-    function _savePref(key, value) {
+    function _saveDiffOnlyPref(value) {
         try {
-            if (bridge && bridge.state) {
-                bridge.state.setNow(_PREF_NS, key, value);
+            if (bridge && bridge.state && bridge.state.project && PROJECT_ROOT) {
+                bridge.state.project.setNow(PROJECT_ROOT + '/qqq/alphal/only.sq3', 'qqq.timeline', 'diffOnly', value);
             }
         } catch (_) { }
     }

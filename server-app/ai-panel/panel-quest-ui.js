@@ -402,9 +402,13 @@ function _estimateTokensFull() {
     var apiPromptTotal = _ag._lastApiPromptTokens || 0;
     var apiTotalTokens = _ag._lastApiTotalTokens || 0;
     var accCompletion = _ag._accumulatedCompletionTokens || 0;
-    var actualTotalUsed = apiTotalTokens > 0 ? apiTotalTokens : (apiPromptTotal > 0 ? apiPromptTotal : 0);
+    // ★ 压缩后 API 值归零时 fallback 到本地估算
+    var actualTotalUsed = (apiTotalTokens > 0) ? apiTotalTokens : (apiPromptTotal > 0 ? apiPromptTotal : 0);
 
-    // ── 2. msg[0] 组分（精确 chars → ≈tokens） ──
+    // ── 2. SAFE CPT — 防 ContentGateway 未加载或 CHAR_PER_TOKEN 被异常设为 0 ──
+    var CPT = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN > 0) ? ContentGateway.CHAR_PER_TOKEN : 2.7;
+
+    // ── 3. msg[0] 组分 ★ 优先读全局变量，全空时从 conversation[0] 兜底 ──
     var visionChars = typeof window.qqqideVisionContext === 'string' ? window.qqqideVisionContext.length : 0;
     var timeChars = typeof getTimeContext === 'function' ? getTimeContext().length : 0;
     var sysPromptChars = typeof SYSTEM_PROMPT === 'string' ? SYSTEM_PROMPT.length : 0;
@@ -414,14 +418,17 @@ function _estimateTokensFull() {
     var reminderChars = 0;
     if (panelRoot) {
         panelRoot = panelRoot.replace(/\\/g, '/').replace(/\/$/, '');
-        var reminder = '\n\n═══ DEFAULT WORKING DIRECTORY ═══\nMain project: ' + panelRoot + '\nWhen the user does not specify a project, all file operations default to this directory.\n═══════════════════';
+        var reminder = '\n\n════ DEFAULT WORKING DIRECTORY ═══\nMain project: ' + panelRoot + '\nWhen the user does not specify a project, all file operations default to this directory.\n═══════════════════';
         reminderChars = reminder.length;
     }
     var msg0TotalChars = visionChars + timeChars + sysPromptChars + globalRulesChars + projectRulesChars + reminderChars;
+    // ★ 兜底：全局变量全空时（如刚切 quest），从 conversation[0] 的总 content 长度估计
+    if (msg0TotalChars === 0 && conv.length > 0 && conv[0]._persistent) {
+        msg0TotalChars = (typeof conv[0].content === 'string') ? conv[0].content.length : 0;
+    }
 
-    // ── 3. 对话统计（按 role 分组） ──
+    // ── 4. 对话统计（按 role 分组，精确 chars） ──
     var userCount = 0, userChars = 0;
-    var asstCount = 0, asstChars = 0;
     var toolCount = 0, toolChars = 0;
     var sysCount = 0, sysChars = 0;
     for (var i = 0; i < conv.length; i++) {
@@ -429,12 +436,11 @@ function _estimateTokensFull() {
         if (!m || m._persistent) continue;
         var c = typeof m.content === 'string' ? m.content.length : 0;
         if (m.role === 'user') { userCount++; userChars += c; }
-        else if (m.role === 'assistant') { asstCount++; asstChars += c; }
         else if (m.role === 'tool') { toolCount++; toolChars += c; }
         else if (m.role === 'system') { sysCount++; sysChars += c; }
     }
 
-    // ── 4. 压缩摘要 ──
+    // ── 5. 压缩摘要 ＋ 工具调用声明 ──
     var narrativeChars = (ctx && ctx.narrative) ? ctx.narrative.length : 0;
     var factsChars = 0;
     if (ctx && ctx.facts && ctx.facts.length > 0) {
@@ -444,69 +450,57 @@ function _estimateTokensFull() {
     }
     var compressedChars = narrativeChars + factsChars;
 
-    // ── 5. tool_calls schema overhead ──
-    var toolCallsChars = 0;
-    for (var i2 = 0; i2 < conv.length; i2++) {
-        var m2 = conv[i2];
-        if (m2.tool_calls && Array.isArray(m2.tool_calls)) {
-            try { toolCallsChars += JSON.stringify(m2.tool_calls).length; } catch (_) { }
-        }
-    }
-
-    // ── 6. 单位统一：tokens ──
-    var CPT = ContentGateway.CHAR_PER_TOKEN;
+    // ── 6. 统一换算为 tokens ──
     var msg0Tok = Math.round(msg0TotalChars / CPT);
     var userTok = Math.round(userChars / CPT);
-    var asstTok = Math.round(asstChars / CPT);
     var toolTok = Math.round(toolChars / CPT);
     var sysTok = Math.round(sysChars / CPT);
     var compTok = Math.round(compressedChars / CPT);
-    var tcSchemaTok = Math.round(toolCallsChars / CPT);
+    // ★ actualTotalUsed 兜底：API 无数据时用本地估算
+    if (actualTotalUsed === 0) {
+        actualTotalUsed = msg0Tok + userTok + toolTok + sysTok + compTok + accCompletion;
+    }
 
-    console.log('[CTX_BD] apiTotal=' + actualTotalUsed + ' accCompletion=' + accCompletion
-        + ' msg0≈' + msg0Tok + ' user×' + userCount + '≈' + userTok + ' asst×' + asstCount + '≈' + asstTok
-        + ' tool×' + toolCount + '≈' + toolTok + ' sys≈' + sysTok + ' comp≈' + compTok + ' tcSchema≈' + tcSchemaTok);
+    console.log('[CTX_BD] apiTotal=' + apiTotalTokens + ' accCompletion=' + accCompletion
+        + ' msg0=' + msg0Tok + ' user=' + userCount + 'x' + userTok + ' tool=' + toolCount + 'x' + toolTok
+        + ' sys=' + sysTok + ' comp=' + compTok + ' CPT=' + CPT + ' used=' + actualTotalUsed);
 
-    // ── 7. Build rows (all tokens) ──
-    function _tk(label, tokens, indent, always, color) {
-        return { label: label, tok: tokens, indent: indent || 0, always: always || false, color: color || '' };
+    // ── 7. Build rows (all tokens, <1k skipped, always/color support) ──
+    function _r(label, tok, indent, always, color) {
+        return { label: label, tok: tok, indent: indent || 0, always: always || false, color: color || '#2aa198' };
     }
     var rows = [];
-    // msg[0] breakdown
-    rows.push(_tk('Permanent\ System\ Block', msg0Tok, 0, false, '#268bd2'));
-    if (visionChars) rows.push(_tk('\ \ Vision\ Context', Math.round(visionChars / CPT, false, '#859900'), 1));
-    if (timeChars) rows.push(_tk('\ \ Time\ Context', Math.round(timeChars / CPT, false, '#2aa198'), 1));
-    if (sysPromptChars) rows.push(_tk('\ \ System\ Prompt', Math.round(sysPromptChars / CPT, false, '#268bd2'), 1));
-    if (globalRulesChars) rows.push(_tk('\ \ Global\ Rules', Math.round(globalRulesChars / CPT, false, '#6c71c4'), 1));
-    if (projectRulesChars) rows.push(_tk('\ \ Project\ Rules', Math.round(projectRulesChars / CPT, false, '#b58900'), 1));
-    if (reminderChars) rows.push(_tk('\ \ Reminder', Math.round(reminderChars / CPT, false, '#cb4b16'), 1));
+    // msg[0] block — only show sub-components when globals are actually available
+    if (msg0TotalChars > 0) {
+        rows.push(_r('Permanent System Block', msg0Tok, 0, false, '#268bd2'));
+        if (visionChars > 0) rows.push(_r('  Vision Context', Math.round(visionChars / CPT), 1, false, '#859900'));
+        if (timeChars > 0) rows.push(_r('  Time Context', Math.round(timeChars / CPT), 1, false, '#2aa198'));
+        if (sysPromptChars > 0) rows.push(_r('  System Prompt', Math.round(sysPromptChars / CPT), 1, false, '#268bd2'));
+        if (globalRulesChars > 0) rows.push(_r('  Global Rules', Math.round(globalRulesChars / CPT), 1, false, '#6c71c4'));
+        if (projectRulesChars > 0) rows.push(_r('  Project Rules', Math.round(projectRulesChars / CPT), 1, false, '#b58900'));
+        if (reminderChars > 0) rows.push(_r('  Reminder', Math.round(reminderChars / CPT), 1, false, '#cb4b16'));
+    }
     // Conversation by role
-    // Note: Assistant Msgs chars + tool_calls schema ≈ Completion tokens (API exact)
-    // We show Completion as the authoritative AI output total.
-    if (userCount) rows.push(_tk('User \u00d7 ' + userCount + '  = ' + Math.round(userTok / 1000) + 'k', userTok, 0, false, '#268bd2'));
-    if (toolCount) rows.push(_tk('Tool Results \u00d7 ' + toolCount + '  = ' + Math.round(toolTok / 1000) + 'k', toolTok, 0, false, '#dc322f'));
-    if (sysCount) rows.push(_tk('Dynamic\ System', sysTok, 0, false, '#6c71c4'));
-    if (compressedChars) rows.push(_tk('Compressed\ Summary', compTok, 0, false, '#cb4b16'));
-    // Completion = accumulated API exact (all AI output across all houses)
-    rows.push(_tk('Completion\ \(all\ AI\ output\)', accCompletion, 0, true, '#2aa198'));
-    // Available
-    rows.push(_tk('Available', Math.max(0, CTX_MAX_TOKENS - actualTotalUsed, false, '#859900'), 0, true));
+    if (userCount > 0) rows.push(_r('User \u00d7 ' + userCount + '  = ' + Math.round(userTok / 1000) + 'k', userTok, 0, false, '#268bd2'));
+    if (toolCount > 0) rows.push(_r('Tool Results \u00d7 ' + toolCount + '  = ' + Math.round(toolTok / 1000) + 'k', toolTok, 0, false, '#dc322f'));
+    if (sysCount > 0) rows.push(_r('Dynamic System', sysTok, 0, false, '#6c71c4'));
+    if (compressedChars > 0) rows.push(_r('Compressed Summary', compTok, 0, false, '#cb4b16'));
+    // Completion = accumulated API exact (always show)
+    rows.push(_r('Completion (all AI output)', accCompletion, 0, true, '#2aa198'));
+    // Available (always show)
+    rows.push(_r('Available', Math.max(0, CTX_MAX_TOKENS - Math.max(actualTotalUsed, accCompletion + msg0Tok)), 0, true, '#859900'));
 
     _ctxBreakdownData = {
         rows: rows,
         apiTotalTokens: actualTotalUsed,
-        accCompletion: accCompletion,
-        msg0Tok: msg0Tok, userCount: userCount, userTok: userTok,
-        toolCount: toolCount, toolTok: toolTok,
-        asstTok: asstTok,
-        compressedTok: compTok
+        accCompletion: accCompletion
     };
     var apiVer = (apiTotalTokens || 0) + '|' + (apiPromptTotal || 0) + '|' + (accCompletion || 0);
     _estCache = { val: actualTotalUsed, convLen: conv.length, ctxHash: ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '', apiVer: apiVer };
     return actualTotalUsed;
 }
 
-function _tkStr(n) {
+function _tkStrStr(n) {
     if (n >= 1000000) return (n / 1000000).toFixed(1) + 'm';
     if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
     return String(n);
@@ -536,6 +530,7 @@ function renderCtxBreakdown() {
     if (usedEl) usedEl.textContent = usedStr;
     if (freeEl) freeEl.textContent = freeStr;
     var BX = 10000;
+    var MAX_BLOCKS = 100;
     var html = '';
     for (var i = 0; i < data.rows.length; i++) {
         var r = data.rows[i];
@@ -543,25 +538,24 @@ function renderCtxBreakdown() {
         var indent = r.indent || 0;
         var padLeft = indent ? (12 + (indent - 1) * 14) + 'px' : '0';
         var c = r.color || '#2aa198';
-        var boxes = '';
-        var fullN = Math.floor(r.tok / BX);
-        var rem = r.tok % BX;
-        for (var b = 0; b < fullN && b < 100; b++) boxes += '<span class=\"ctx-bd-box ctx-bd-box-full\" style=\"background:' + c + '\"></span>';
-        if (fullN === 0 || rem > 0) boxes += '<span class=\"ctx-bd-box ctx-bd-box-empty\" style=\"border-color:' + c + '\"></span>';
+        var n = Math.min(MAX_BLOCKS, Math.max(0, Math.round(r.tok / BX)));
+        var bar = '';
+        if (n > 0) {
+            bar = '<span class="ctx-bd-bar">';
+            for (var b = 0; b < n; b++) bar += '<i style="background:' + c + '"></i>';
+            bar += '</span>';
+        }
         var valStr = r.tok >= 1000 ? Math.round(r.tok / 1000) + 'k' : String(r.tok);
-        var isSmall = r.tok > 0 && r.tok < 1000;
-        var numWeight = isSmall ? 'font-weight:400;' : '';
-        html += '<div class=\"ctx-bd-row\" style=\"padding-left:' + padLeft + '\">' +
-            '<span class=\"ctx-bd-label\" style=\"color:' + c + '\">' + r.label + '</span>' +
-            '<span class=\"ctx-bd-boxes\">' + boxes + '</span>' +
-            '<span class=\"ctx-bd-num\" style=\"color:' + c + ';' + numWeight + '\">' + valStr + '</span></div>';
+        html += '<div class="ctx-bd-row" style="padding-left:' + padLeft + '">' +
+            bar +
+            '<span class="ctx-bd-label" style="color:' + c + '">' + r.label + '</span>' +
+            '<span class="ctx-bd-num" style="color:' + c + '">' + valStr + '</span></div>';
     }
     rowsEl.innerHTML = html;
     var btnRect = $ctxBtn.getBoundingClientRect();
     bd.style.bottom = (window.innerHeight - btnRect.top + 10) + 'px';
     bd.style.right = (window.innerWidth - btnRect.right) + 'px';
 }
-
 function showCtxBreakdown() {
     if (!_activeAgent || !_activeAgent.conversation) return;
     clearTimeout(_ctxBreakdownTimer);
@@ -609,8 +603,8 @@ $ctxBtn.addEventListener('mouseenter', function () {
 });
 $ctxBtn.addEventListener('mouseleave', function () {
     hideCtxBreakdown();
-});;
-// ★ 进入拆解面板自身时不关闭
+});
+// ★ 进入拆解面板自身时不关闭关闭
 var _bdPanel = document.getElementById('ctx-breakdown');
 if (_bdPanel) {
     _bdPanel.addEventListener('mouseenter', function () {
@@ -636,7 +630,7 @@ document.getElementById('ctx-compress').onclick = async function () {
         var _buildingMsg = (typeof _i === 'function') ? _i('ai.error.buildingFloor', 'AI 正在建楼中，请等待当前楼层完成后再压缩') : 'AI is building a floor, wait for it to finish before compressing';
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('⚠️ ' + _buildingMsg, { type: 'warning', duration: 4000 }); } catch (_) { }
         return;
-    }    }
+    }
     if (_ag._compressing) return;
     _ag._compressing = true;
     window._updateSendBtnForCompress(true);
@@ -665,7 +659,7 @@ document.getElementById('ctx-compress').onclick = async function () {
         _ag._floorTiming.aiMs = 0;
         // ★ 结果作为 assistant 消息推入同楼层
         var _assistantMsg = _result.compressed
-            ? ('✅ Compress completed\n    var CPT = ContentGateway.CHAR_PER_TOKEN;\n' + _result.detail)
+            ? ('✅ Compress completed\n' + _result.detail)
             : ('ℹ️ ' + (_result.detail || 'No compression needed'));
         _ag.conversation.push({ role: 'assistant', content: _assistantMsg, _floor: _compressFloorNum });
         // ★ 持久化：保存这个压缩楼层
@@ -688,7 +682,8 @@ document.getElementById('ctx-compress').onclick = async function () {
         try { if (typeof cardPool !== 'undefined' && cardPool.refreshCard) { await cardPool.refreshCard(questActiveId); } } catch (_) { }
         if (_compressQoast) { try { _compressQoast.dismiss(); } catch (_) { } _compressQoast = null; }
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('✗ Compress exception: ' + (e.message || 'unknown'), { type: 'error', duration: 8000 }); } catch (_) { }
-    } finally {
+        updateCtxBtn();
+    } finally {{
         if (_compressQoast) { try { _compressQoast.dismiss(); } catch (_) { } }
         _ag._compressing = false;
         window._updateSendBtnForCompress(false);
@@ -998,12 +993,12 @@ $queueBtn.onclick = function () {
     if (_switching) return;
     if (!_activeAgent) {
         var _noAgentMsg = (typeof _i === 'function') ? _i('ai.error.noActiveAgent', '请先发送一条消息创建对话') : '请先发送一条消息创建对话';
-        addMessageEl('error', _noAgentMsg);
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_noAgentMsg, { type: 'warning', duration: 4000 }); } catch (_) { }
         return;
     }
     if (_queue.length >= QUEUE_MAX) {
         var _fullMsg = (typeof _i === 'function') ? _i('ai.queue.full', '队列限宽3，请等待上一条消息发出。') : '队列限宽3，请等待上一条消息发出。';
-        addMessageEl('error', _fullMsg);
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(_fullMsg, { type: 'warning', duration: 4000 }); } catch (_) { }
         return;
     }
     var text = getInputText().trim();
@@ -1024,6 +1019,10 @@ $queueBtn.onclick = function () {
     renderImageStrip();
     $input.focus();
     _debounceSaveQueue();
+    // ★ 空闲时立即触发：若当前无发送/无流式/未暂停，直接排水
+    if (!_sending && !streaming && !_queuePaused) {
+        _triggerQueueSend();
+    }
 };
 
 // ═══ qh 滚动条 — AI 面板聊天区（按标准文档接入）═══

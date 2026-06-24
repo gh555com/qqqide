@@ -1135,7 +1135,12 @@ var AgentLoop = (function () {
             var _esc = typeof escHtml === 'function' ? escHtml : function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
             aiDiv._lastParaEl.innerHTML = '<pre><code>' + _esc(_codeContent) + '</code></pre>';
         } else {
-            aiDiv._lastParaEl.innerHTML = _rm(aiDiv._buf || '');
+            // ★ 只渲染 _buf 中 _splitCursor 之后的尾部（未完成段落），
+            //   已完成段落已作为独立 div 渲染在 _lastParaEl 上方，
+            //   全量渲染 _buf 会导致前半部分重复出现两次
+            var _trailStart = aiDiv._splitCursor || 0;
+            var _trailing = aiDiv._buf ? aiDiv._buf.slice(_trailStart) : '';
+            aiDiv._lastParaEl.innerHTML = _rm(_trailing);
         }
         aiDiv._dirty = false;
         // ★ 渲染后立即滚到底：新 DOM 已落地，scrollHeight 已更新，确保时钟行等底部元素可见

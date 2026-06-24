@@ -10,6 +10,12 @@ import { BootConfig } from './boot';
 import { APP_VERSION } from './boot';
 
 export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig): void {
+    // ★ 编辑类快照防抖真理机（唯一入口，改一处全局生效）
+    const COOLING_MS = 100000;       // 同文件两次快照最小间隔
+    const COOLING_SOURCES = new Set(['editx', 'diff-edit']);
+    const _lastRecordTs: Map<string, number> = new Map();
+    const _lastRecordHash: Map<string, string> = new Map();
+
     // ═══ Timeline: record version ═══
     ipcMain.handle('qqqide:timeline:record', async (_e, args: { projectRoot: string; filePath: string; content: string; source: string; floorId?: string; addedLines?: number; deletedLines?: number }) => {
         try {
@@ -17,6 +23,19 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
             if (!projectRoot || !filePath || content === undefined || content === null) return { ok: false, error: 'missing args' };
             const normalizedPath = filePath.replace(/\\/g, '/');
             const sha = _sha256(content);
+
+            // ★ 编辑类快照：100s 冷却 + SHA256 内容去重（真理机，仅此一处）
+            if (COOLING_SOURCES.has(source)) {
+                const coolKey = normalizedPath + '|' + source;
+                const prevHash = _lastRecordHash.get(coolKey);
+                if (prevHash === sha) return { ok: true, blob_hash: sha, recorded: false, reason: 'same-content' };
+                const prevTs = _lastRecordTs.get(coolKey) || 0;
+                const now = Date.now();
+                if (now - prevTs < COOLING_MS) return { ok: true, blob_hash: sha, recorded: false, reason: 'cooling' };
+                _lastRecordTs.set(coolKey, now);
+                _lastRecordHash.set(coolKey, sha);
+            }
+
             const db = await _tlOpenDb(projectRoot);
             const dbPath = path.join(_tlDir(projectRoot), 'timeline.db');
             const blobPath = _tlBlobPath(projectRoot, sha);
@@ -29,7 +48,7 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
                 file_path: normalizedPath, ts, blob_hash: sha, source,
                 floor_id: floorId || null, added_lines: addedLines || null, deleted_lines: deletedLines || null
             });
-            return { ok: true, blob_hash: sha, ts };
+            return { ok: true, blob_hash: sha, ts, recorded: true };
         } catch (err: any) {
             console.error('[timeline:record]', err);
             return { ok: false, error: err.message };

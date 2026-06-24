@@ -302,10 +302,12 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - q2 与焦点完全解耦（2026-06 重构），焦点不改变 q2 任何视觉。
   - 一个 quest 同时只能在一个面板打开（所有权系统 §32 + 跨面板同步 §28 防重复）。
 
-§31 工作空间 — 多项目隔离（2026-06-07 重构）
+§31 工作空间 — 多项目隔离（2026-06-07 重构，2026-06-23 加固）
   - 一个窗口同一时刻只有一个工作空间。一个工作空间 = 一个主文件夹的全部运行时状态。
   - IPC 频道名 = 'qqq-sync:' + sanitize(_workspaceRoot)，不同主文件夹物理隔离。
-  - bindMainProject = 入口：同 root 跳过，不同 root → 先拆旧空间后建新空间。
+  - bindMainProject = 入口：同 root 跳过。★ 轮询 getMainProject() 最多 6s（防翼板 iframe 加载
+    早于父窗口异步项目加载的竞态，旧消息重试机制在时序不巧时丢消息导致翼板永久空白）。
+    并发锁 _bindLock 防 boot IIFE 与 postMessage 回调同时进入。
   - _teardownWorkspace: Card Pool destroy → agentPool 清空 → questStore/onlyStore 重置 → DOM 清零。
   - _initWorkspace: 锁 → questStore → Card Pool → initQuests → IPC 订阅。
   - 禁 _questsInited 一刀切防重入。改用 _workspaceRoot 对比。
@@ -367,8 +369,9 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 钩子 Q: edit/write/create/delete → 捕获 before → 执行 → 捕获 after → _a4PersistToTimeline(both, trace, diff stats)。
     run_command → 执行 → captureChanged → 逐文件 _a4PersistToTimeline(after, trace)。
     trace: agent-loop 埋点 window._qqqCurrentTrace → floor_id = "q{id}/f{num}/h{num}/r{num}"。
-  - 钩子 X: editor blur(auto-save) / Ctrl+S(manual-save) → 读上一版本内容 diff → timeline.record(content, source, diff stats)。
-    60s 同文件冷却。
+  - 钩子 X: editor blur / Ctrl+S → 读上一版本内容 diff → timeline.record(source='editx')。
+  - ★ 编辑类快照（editx + diff-edit）共享主进程真理机：100s 冷却 + SHA256 去重，
+    改 ipc-timeline.ts 一处全局生效。钩子 Q（q / run-command）不走冷却。
   - ★ SHA256 行尾归一化（CRLF/LF/CR→\n），同内容必同 hash，防幽灵版本。
   - 存储架构: blobs/{sha256[:2]}/{sha256}.gz(内容不可变+永不删除) + timeline.wal(NDJSON增量,≤99行) + timeline.db(SQLite全量快照,每100条压缩) + timeline.db.bak(备份,损坏自动恢复)。
     所有写入走 tmp+rename 原子化。无 2s debounce、无 archive 目录、无不必要延迟。
@@ -378,19 +381,23 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - per-floor 状态归属 agent: ag._a4Snapshots。新 floor 开始必须清空。
   - 旧文件系统快照(qqq/snapshots/)、_a4IncrementalPersist、gzip 编解码等全部删除。
 
-§38 Diff 窗口 — 独立 BrowserWindow（2026-06-13 强化，2026-06-21 主题归一）
+§38 Diff 窗口 — 独立 BrowserWindow（2026-06-13 强化，2026-06-24 精简+项目级持久化）
   - Monaco 0.34.1 side-by-side + minimap + 手动差异折叠(setHiddenAreas)。
   - 一个文件单例（Map），再次点击复用。inset:0 覆盖主窗口。
-  - 下拉标签: "#N 时间 +N -M xx [first] [before]"，xx=溯源串(q38 f14 h3 r2 / auto save / manual save)。
-  - +N -M: 钩子 Q 从 before/after diff 直接得出；钩子 X 读上一版本内容 diff。
+  - 下拉标签: "#N 时间 +N -M xx [first] [before]"，xx=溯源串(q / editx / cmd / diff edit)。
   - beforeIdx ≤ afterIdx 强保证，before=after 时自动错位。同秒条目合并一行。
-  - 合并「当前文件」用 SHA256 内容匹配（快路径零 I/O），不再猜测时间戳。
-  - right=last 时可编辑+←移入+💾保存写盘。
+  - 合并「当前文件」用 SHA256 内容匹配（快路径零 I/O）。
+  - 动作栏+状态栏已删除，空间全部给编辑器。
+  - 底部居中有三按钮：☐仅差异 | 编辑/取消编辑 | ✕关闭。
+  - ☐仅差异 项目级持久化(only.sq3:qqq.timeline.diffOnly)，默认全文对比。
+  - 编辑模式: 右下拉→"编辑中 未保存/已保存/…打快照至：#N"，右侧可编辑(左侧永远只读)。
+  - 编辑模式每差异块显示→箭头，点击复制左侧到右侧。Ctrl+Z回退到底自动复原"已保存"。
+  - 取消编辑不保存不触发快照。保存仅由 blur/Ctrl+S 触发。
+  - 编辑保存(source='diff-edit') + X区/主编辑器(source='editx') 共享主进程真理机：100s冷却+内容去重。
   - 主题跟随主窗口 solarized-light/dark: CSS 变量同约定(:root=light)，URL 参数预设 localStorage，qqqide-theme.js 统一定义 Monaco 色盘，内联兜底防未加载。
-  - 全局偏好持久化(state:qqqide.timeline.showFull)，默认差异块。
   - 编辑器极致精简: 零LSP/零波浪线/零智能，只留 tokenization。
   - 防并发: _renderToken 竞态令牌 + _loading 重入锁 + model 显式 dispose。
-  - Monaco 加载 15s 超时保护，防永久白屏。 Monaco 加载 15s 超时保护，防永久白屏。
+  - Monaco 加载 15s 超时保护，防永久白屏。
 
 §39 Git Goods — 第一方 git 操作
   - X 区仅保留 Git tab。A 区保留 git 快速状态面板。
@@ -410,5 +417,14 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - JS 侧修复: _repairOrphanedToolCalls 双向扫描（A: tool_calls缺tool, B: tool缺tool_calls）。
   - Go 侧双防御: ① sanitizeMessages() 转交前剔除孤立的 tool 消息；② stream writer goroutine 顶层 defer recover() 兜底，任何 panic 只关当前流不杀进程。
   - 原则: 一名用户/一个请求的任何异常（格式错误、nil pointer、第三方 API 返回异常）最多影响该用户自己的请求，绝不波及其他用户。
+
+§42 E-Flow — 专家文档框架协议（2026-06-24）
+  - 入口: panel-expert.js（四态机）、system-prompt.js（协议模板）、expert-template/（骨架文件）。
+  - 触发: q1 首层楼 100%，其余一切楼层均匀 10%。防抖 5min。注入 [E-FLOW TASK] 到 conversation。
+  - 四态: none(未决定) → pending(已询问等回复,1h超时回退) → standard(标准框架) / custom(自定义文档)。
+  - 自动检测: 启动时 + 每层楼完结时。expert/index.md 存在 → standard；project.txt 有 rule"..." → custom。
+  - 框架: 3 强制文件（topology/iron_law/env_var）+ AI 按复杂度自主划分可选文件。模板在 expert-template/。
+  - 持久化: onlyStore.qqq.expert.mode（none/pending/standard/custom），项目级 only.sq3。
+  - 铁律: 已锁定模式（standard/custom）永不回退到 none。文件删除不自动降级——AI 发现缺失时自然询问用户。
 
 

@@ -260,7 +260,7 @@
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         renderWhitespace: 'none',
-        overviewRulerLanes: 3,
+        overviewRulerLanes: 0,
         overviewRulerBorder: false,
         hideCursorInOverviewRuler: true,
         wordWrap: 'on',
@@ -277,7 +277,7 @@
         renderLineHighlightOnlyWhenFocus: true,
         occurrencesHighlight: true,
         selectionHighlight: true,
-        matchBrackets: 'never',
+        matchBrackets: 'always',
         bracketPairColorization: { enabled: false },
         autoClosingBrackets: 'never',
         autoClosingQuotes: 'never',
@@ -308,7 +308,7 @@
         roundedSelection: false,
         lineNumbersMinChars: 2,
         lineDecorationsWidth: 10,
-        padding: { top: 0, bottom: 20 },
+        padding: { top: 0, bottom: 0 },
         stickyScroll: { enabled: false },
         find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'never' },
       });
@@ -402,9 +402,7 @@
     }
   }
 
-  // ---- Timeline 快照：编辑器保存触发（60s 闸门 + 内容去重） ----
-  var _lastSaveSnapshotTs = {}; // filePath → 上次快照时间戳
-  var _lastSaveSnapshotHash = {}; // filePath → 上次快照内容的简化 hash（避免 SHA256 大文件开销）
+  // ---- Timeline 快照：编辑器保存触发（冷却+去重已移至主进程 ipc-timeline.ts 真理机） ----
 
   async function save() {
     if (!editor || !currentFile) { return false; }
@@ -413,7 +411,7 @@
       await bridge.fs.write(currentFile, v);
       dirty = false; updateTitle();
 
-      // ★ 触发 timeline 快照（60s 闸门 + 内容变更检测）
+      // ★ 触发 timeline 快照（冷却+去重在主进程真理机）
       _maybeRecordTimeline(currentFile, v);
 
       return true;
@@ -425,16 +423,6 @@
 
   async function _maybeRecordTimeline(filePath, content) {
     if (!bridge || !bridge.timeline) return;
-    var now = Date.now();
-    var lastTs = _lastSaveSnapshotTs[filePath] || 0;
-    // 60秒闸门
-    if (now - lastTs < 60000) return;
-    // 内容变更检测：用前256字符的简单 hash 做快速去重
-    var quickHash = content.length + ':' + content.slice(0, 256);
-    if (_lastSaveSnapshotHash[filePath] === quickHash) return;
-    _lastSaveSnapshotTs[filePath] = now;
-    _lastSaveSnapshotHash[filePath] = quickHash;
-    // 获取 projectRoot
     var projectRoot = '';
     try {
       if (bridge.sync && bridge.sync.getProjectPath) {
@@ -447,7 +435,7 @@
         projectRoot: projectRoot,
         filePath: filePath,
         content: content,
-        source: 'editor-save'
+        source: 'editx'
       });
     } catch (_) { }
   }
@@ -500,7 +488,7 @@
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         renderWhitespace: 'none',
-        overviewRulerLanes: 3,
+        overviewRulerLanes: 0,
         overviewRulerBorder: false,
         hideCursorInOverviewRuler: true,
         wordWrap: 'on',
@@ -517,7 +505,7 @@
         renderLineHighlightOnlyWhenFocus: true,
         occurrencesHighlight: true,
         selectionHighlight: true,
-        matchBrackets: 'never',
+        matchBrackets: 'always',
         bracketPairColorization: { enabled: false },
         autoClosingBrackets: 'never',
         autoClosingQuotes: 'never',
@@ -548,7 +536,7 @@
         roundedSelection: false,
         lineNumbersMinChars: 2,
         lineDecorationsWidth: 10,
-        padding: { top: 0, bottom: 20 },
+        padding: { top: 0, bottom: 0 },
         stickyScroll: { enabled: false },
         find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'never' },
       });
@@ -579,15 +567,11 @@
 
       ed.onDidChangeModelContent(function () { if (!ed._isRefreshing) _markDirty(); });
 
-      // ── 钩子 X 冷却 + diff stats：60s 内同文件不重复记录 ──
-      var _lastXHookTs = {};
+      // ── 钩子 X 快照（冷却+去重已移至主进程 ipc-timeline.ts 真理机）──
       async function _xHookRecord(fp, content, source) {
         var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
           ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
         if (!root || !bridge || !bridge.timeline) return;
-        var now = Date.now();
-        if (_lastXHookTs[fp] && (now - _lastXHookTs[fp]) < 60000) return; // 60s 冷却
-        _lastXHookTs[fp] = now;
 
         // ★ 计算 +N -M：对比上一版本内容
         var addedLines = null, deletedLines = null;
@@ -620,7 +604,7 @@
             var content = ed.getValue();
             await bridge.fs.write(filePath, content);
             _markClean();
-            _xHookRecord(filePath, content, 'auto-save');
+            _xHookRecord(filePath, content, 'editx');
           } catch (err) {
             console.error('[editor] auto-save failed:', filePath, err && err.message);
           }
@@ -633,7 +617,7 @@
           var val = ed.getValue();
           await bridge.fs.write(filePath, val);
           _markClean();
-          _xHookRecord(filePath, val, 'manual-save');
+          _xHookRecord(filePath, val, 'editx');
         } catch (e) {
           console.error('[editor] save failed:', e);
         }

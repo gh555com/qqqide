@@ -233,7 +233,7 @@
             var checked = (currentVal === opt.value);
             html += '<label style="flex:1; min-width:40px; box-sizing:border-box; display:flex; align-items:center; justify-content:center; gap:4px; padding:6px 4px; border-radius:4px; border:2px solid ' + (checked ? accent : border) + '; background:' + (checked ? accent + '20' : 'transparent') + '; cursor:pointer; font-size:12px; color:' + text + '; user-select:none;">';
             html += '<input type="radio" name="' + def.key + '" value="' + opt.value + '" ' + (checked ? 'checked' : '') + ' data-setting-key="' + def.key + '" style="display:none;">';
-            html += checked ? '<span style="font-weight:bold; color:' + accent + ';">\u2713</span>' : '<span style="opacity:0.3;">\u25cb</span>';
+            html += checked ? '<span style="font-weight:bold; color:' + accent + ';">\u2713</span>' : '';
             html += '<span>' + opt.label + '</span>';
             html += '</label>';
           }

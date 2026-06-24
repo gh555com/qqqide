@@ -27,7 +27,7 @@
     // ═══ 网络超时参数（单一真理源：改一处全局生效） ═══
     var FETCH_DEADLINE_PRIMARY_MS = 1000000;   // 主线直连（绕过 CF），对齐 Nginx+Go 1000s，仅作兜底天花板
     var FETCH_DEADLINE_FALLBACK_MS = 1000000;  // 备线走 CF Worker，实测 CF Proxy 有心跳流不掐 100s
-    var STREAM_WATCHDOG_MS = 180000;          // SSE 流看门狗 3min（深度推理可能 2min+ 无 token）
+    var STREAM_WATCHDOG_MS = 60000;           // SSE 流看门狗 60s（Go 心跳 25~30s，2 轮心跳未复位即判死）
 
     // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
     var CTX_MAX_TOKENS = 1048565;     // 上下文窗口总上限（实测精确值）

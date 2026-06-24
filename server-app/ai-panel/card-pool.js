@@ -694,8 +694,20 @@ var CardPool = (function () {
     if (force || !card._userScrolledUp) {
       var container = card.dom.parentNode;
       if (!container) return;
-      // 直接设 scrollTop = scrollHeight（精确滚到底，不用 scrollIntoView 避免方向错误）
+      // 方案1：scrollHeight（主流，快）
       container.scrollTop = container.scrollHeight;
+      // 方案2：时钟块 scrollIntoView({block:'end'}) 兜底，破 content-visibility / margin 导致的 scrollHeight 不准
+      // 用 getBoundingClientRect 做前置检测，避免不必要的 scrollIntoView 触发布局抖动
+      var clockBlock = card._contentWrap.querySelector('.msg-ai-clock');
+      if (clockBlock) {
+        var cr = container.getBoundingClientRect();
+        var clr = clockBlock.getBoundingClientRect();
+        if (clr.bottom > cr.bottom + 1) {
+          clockBlock.scrollIntoView({ block: 'end', behavior: 'auto', inline: 'nearest' });
+        }
+      }
+      // ★ 记录自动滚动时间戳，用于 onUserScroll 区分程序滚动 vs 用户拖拽滚动条
+      card._lastAutoScroll = Date.now();
     }
   };
 
@@ -709,6 +721,11 @@ var CardPool = (function () {
     if (atBottom) {
       // 用户在底部 → 恢复自动滚动
       card._userScrolledUp = false;
+    } else {
+      // ★ 不在底部且非程序自动滚动（拖拽滚动条 / 键盘上翻等）→ 立即停自动跟滚
+      if (!card._lastAutoScroll || Date.now() - card._lastAutoScroll > 250) {
+        card._userScrolledUp = true;
+      }
     }
   };
 

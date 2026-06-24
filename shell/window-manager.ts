@@ -9,7 +9,7 @@ import { injectDevToolsConsoleButtons } from './devtools-inject';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
 import { StateStore } from './state-sqlite';
-import { BootConfig } from './boot';
+import { extractFlags } from './boot';
 
 // ── 控制台全量 buffer（所有窗口共用，供 DevTools 复制/另存为按钮） ──
 export const _consoleBuffer: string[] = [];
@@ -196,7 +196,7 @@ export function createWindow(
 
     // Apply zoom factor on load
     win.webContents.on('did-finish-load', () => {
-        win.webContents.setZoomF// lspBridge.addTarget(win.webContents); // LSP OFF — 2026-06-23addTarget(win.webContents);
+        win.webContents.setZoomFactor(zoomFactor);
     });
 
     // Ctrl/Cmd + (+/-/0) zoom shortcuts
@@ -227,7 +227,7 @@ export function createWindow(
     });
 
     // Dev mode extras
-    if (isDevFlag) {
+    if (extractFlags().isDev) {
         win.webContents.openDevTools({ mode: 'detach' });
         injectDevToolsConsoleButtons(win.webContents, () => _consoleBuffer.join('\n'), win);
         // ★ 不再 clearCache() — 保留缓存避免每次启动都重新下载全部资源

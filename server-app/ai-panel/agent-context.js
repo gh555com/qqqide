@@ -405,7 +405,50 @@
         return null;
     };
 
-    // ═══ 调用 API 做精简（非流式，复用 gateway） ═══
+    // ═══ 稳健 JSON 提取器（三策略降级） ═══
+    // 策略1: 去 markdown 围栏后直接 parse
+    // 策略2: 正则提取第一个 {…} 块（非贪婪优先，贪婪兜底）
+    // 策略3: 递归括号匹配从第一个 { 到对应 }
+    function _extractJsonRobust(text, suffix, self) {
+        // 策略1：去掉 markdown 代码围栏后直接 JSON.parse
+        var _cleaned = text.replace(/^```(?:json)?[\s\n]*/i, '').replace(/[\s\n]*```[\s\n]*$/i, '').trim();
+        try {
+            var _parsed = JSON.parse(_cleaned);
+            if (_parsed && typeof _parsed === 'object') return _parsed;
+        } catch (_) { }
+
+        // 策略2：正则提取第一个 { ... } 块
+        var _match = _cleaned.match(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/);
+        if (!_match) _match = _cleaned.match(/\{[\s\S]*\}/);
+        if (_match) {
+            try {
+                var _parsed2 = JSON.parse(_match[0]);
+                if (_parsed2 && typeof _parsed2 === 'object') return _parsed2;
+            } catch (_) { }
+        }
+
+        // 策略3：递归括号匹配
+        var _start = _cleaned.indexOf('{');
+        if (_start >= 0) {
+            var _depth = 0;
+            for (var i = _start; i < _cleaned.length; i++) {
+                var _ch = _cleaned[i];
+                if (_ch === '{') _depth++;
+                else if (_ch === '}') { _depth--; if (_depth === 0) {
+                    try {
+                        var _parsed3 = JSON.parse(_cleaned.slice(_start, i + 1));
+                        if (_parsed3 && typeof _parsed3 === 'object') return _parsed3;
+                    } catch (_) { }
+                    break;
+                }}
+            }
+        }
+
+        self._log('✗ Compact JSON extract failed — all 3 strategies exhausted (suffix=' + suffix + ' textLen=' + text.length + ' preview=' + text.slice(0, 400) + ')');
+        return null;
+    }
+
+    // ═══ 调用 API 做精简（经 AiGateway 统一出口） ═══
     // suffix: 附加到 floor_id 区分账单（如 ':facts'）
     // maxTokens: 覆盖默认阀值
     AgentLoop.prototype._callCompactAPI = async function (prompt, suffix, maxTokens) {
@@ -414,54 +457,70 @@
         var _suffix = suffix || '';
         var _maxTokens = maxTokens || COMPACT_NARRATIVE_TOKENS;
 
-        // ★ 优先用 self._token（已校验），fallback localStorage（需清理非ASCII）
+        // ★ 取 token：优先 self._token，fallback localStorage
         var token = (self._token || '').trim();
         if (!token) {
             try { token = (localStorage.getItem('qqq-ai-token') || '').trim(); } catch (_) { }
-            // 清理非 ASCII 字符（HTTP headers 仅允许 ASCII）
             token = token.replace(/[^\x00-\x7F]/g, '');
         }
 
-        if (!token || typeof GATEWAY_URL === 'undefined') {
-            self._log('✗ Compact API no token or GATEWAY_URL (token=' + !!token + ' url=' + (typeof GATEWAY_URL !== 'undefined') + ')');
+        if (!token) {
+            self._log('✗ Compact API no token');
             return { parsed: null, ttfbMs: 0, totalMs: 0 };
         }
 
-        // 无超时 — 让 AI 慢慢想，爱多久想多久
+        // ★ tier：复用用户当前等级，回退 Tier 6
+        var _tierNum = 6;
+        if (self._lastTier && typeof self._lastTier.label !== 'undefined') {
+            _tierNum = parseInt(self._lastTier.label) || 6;
+        }
+
+        // ★ 构建请求体（Go 忽略 stream:false 始终 SSE，但保留语义）
+        var body = {
+            messages: [
+                { role: 'system', content: 'You are a context compression engine. Output ONLY valid JSON — no markdown, no explanation. Be concise and precise. Your output MUST fit within the token budget.' },
+                { role: 'user', content: prompt }
+            ],
+            stream: false,
+            thinking: { type: 'disabled' },
+            max_tokens: _maxTokens,
+            floor_id: (self._floorId || 'compact') + _suffix
+        };
+
+        // ★ 硬超时 2min：压缩是快速 JSON 提取，不应超过此值
+        var COMPACT_TIMEOUT_MS = 120000;
+        var _abortCtrl = new AbortController();
+        var _timer = setTimeout(function () {
+            self._log('⏰ Compact API timeout ' + (COMPACT_TIMEOUT_MS / 1000) + 's (suffix=' + _suffix + ')');
+            _abortCtrl.abort();
+        }, COMPACT_TIMEOUT_MS);
 
         try {
-            // ★ 用用户当前等级（_lastTier），回退到 TIER_6（最高级）
-            var _tier = self._lastTier;
-            if (!_tier || !_tier.model) {
-                if (typeof TIER_6 !== 'undefined' && TIER_6 && TIER_6.model) {
-                    _tier = TIER_6;
-                } else if (typeof TIER_PRO !== 'undefined' && TIER_PRO && TIER_PRO.model) {
-                    _tier = TIER_PRO;
-                } else {
-                    _tier = { model: 'pro', thinking: { type: 'enabled' }, effort: 'max' };
-                }
+            var resp;
+            // ★ 经 AiGateway 统一出口（超时 + 线路切换 + 密钥管理）
+            if (typeof AiGateway !== 'undefined' && AiGateway.chatFetch) {
+                resp = await AiGateway.chatFetch(body, {
+                    token: token,
+                    signal: _abortCtrl.signal,
+                    tier: _tierNum,
+                    isFallback: (typeof _gwUsingFallback !== 'undefined') ? !!_gwUsingFallback : false
+                });
+            } else {
+                // 兜底：AiGateway 未加载（不应发生）
+                resp = await fetch((typeof GATEWAY_URL !== 'undefined' ? GATEWAY_URL : 'https://direct.gh555.com:8444/api/v3/ai/chat'), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + token
+                    },
+                    body: JSON.stringify(body),
+                    signal: _abortCtrl.signal
+                });
             }
-            var resp = await fetch(GATEWAY_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + token
-                },
-                body: JSON.stringify({
-                    model: _tier.model || 'deep',
-                    messages: [
-                        { role: 'system', content: 'You are a context compression engine. Output ONLY valid JSON — no markdown, no explanation. Be concise and precise. Your output MUST fit within the token budget.' },
-                        { role: 'user', content: prompt }
-                    ],
-                    stream: false,
-                    // ★ 压缩是 JSON 提取，禁 thinking（启用时模型会推理 200s+ 然后超时）
-                    thinking: { type: 'disabled' },
-                    max_tokens: _maxTokens,
-                    floor_id: (self._floorId || 'compact') + _suffix
-                })
-            });
 
+            clearTimeout(_timer);
             var _ttfbMs = performance.now() - _fetchStart;
+
             if (!resp.ok) {
                 var _errText = '';
                 try { _errText = await resp.text(); } catch (_) { }
@@ -470,12 +529,10 @@
                 return { parsed: null, ttfbMs: _ttfbMs, totalMs: _ttfbMs };
             }
 
-            // ★ 服务器始终返回 SSE 格式（即使 stream:false）。
-            //    正确做法：遍历所有 SSE data: 行，累积 delta.content，得到完整文本。
+            // ★ Go 始终返回 SSE（即使 stream:false），逐行解析累积 delta.content
             var _bodyText = await resp.text();
             var _totalMs = performance.now() - _fetchStart;
             var _lines = _bodyText.replace(/\r\n/g, '\n').split('\n');
-            // 累积 SSE delta 内容 + 保留最后一条完整 data 作为降级备选
             var _sseAccum = '';
             var _lastChunk = null;
             for (var li = 0; li < _lines.length; li++) {
@@ -484,43 +541,43 @@
                     if (_d === '[DONE]') continue;
                     try {
                         var _parsed = JSON.parse(_d);
+                        // ★ 检测 SSE 错误事件（Go upstream 失败通知）
+                        if (_parsed.type === 'error') {
+                            self._log('✗ Compact SSE error (suffix=' + _suffix + '): ' + (_parsed.message || JSON.stringify(_parsed).slice(0, 200)));
+                            return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+                        }
                         _lastChunk = _parsed;
-                        // ★ 累积 delta.content（流式格式 Go 始终返回）
                         var _c = _parsed.choices && _parsed.choices[0] && (_parsed.choices[0].delta || _parsed.choices[0].message);
                         if (_c && typeof _c.content === 'string') _sseAccum += _c.content;
                     } catch (_) { }
                 }
             }
-            // 尝试从累积的 delta 内容中提取 JSON（主路径）
+
             var text = _sseAccum;
-            // 降级：如果 SSE 累积为空，尝试最后一条 chunk 的 message.content（非流式格式）
             if (!text && _lastChunk) {
                 text = _lastChunk.choices && _lastChunk.choices[0] && _lastChunk.choices[0].message && _lastChunk.choices[0].message.content || '';
             }
             if (!text) {
-                self._log('✗ Compact no content (suffix=' + _suffix + ' bodyLen=' + _bodyText.length + ' lines=' + _lines.length + ' accum=' + _sseAccum.length + ' lastKeys=' + (_lastChunk ? Object.keys(_lastChunk).join(',') : 'null') + ')');
+                self._log('✗ Compact no content (suffix=' + _suffix + ' bodyLen=' + _bodyText.length + ' lines=' + _lines.length + ')');
                 return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
             }
 
-            var match = text.match(/\{[\s\S]*\}/);
-            if (!match) {
-                self._log('✗ Compact no JSON (suffix=' + _suffix + ' textLen=' + text.length + ' preview=' + text.slice(0, 400) + ')');
-                return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
-            }
-
-            var parsed;
-            try { parsed = JSON.parse(match[0]); } catch (_jsonErr) {
-                self._log('✗ Compact JSON err (suffix=' + _suffix + ' matchLen=' + match[0].length + ' preview=' + match[0].slice(0, 400) + ')');
+            // ★ 稳健 JSON 提取
+            var parsed = _extractJsonRobust(text, _suffix, self);
+            if (!parsed) {
                 return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
             }
             return { parsed: parsed, ttfbMs: _ttfbMs, totalMs: _totalMs };
         } catch (err) {
+            clearTimeout(_timer);
             var _totalMs = performance.now() - _fetchStart;
-            self._log('✗ Compact API exception: ' + (err.message || err) + ' (suffix=' + _suffix + ')');
-            if (typeof self._writeFileLog === 'function') self._writeFileLog('✗ Compact API exception: ' + (err.message || err) + ' suffix=' + _suffix);
+            if (err && err.name === 'AbortError') {
+                self._log('✗ Compact API aborted (timeout/stop) suffix=' + _suffix);
+            } else {
+                self._log('✗ Compact API exception: ' + (err.message || err) + ' (suffix=' + _suffix + ')');
+                if (typeof self._writeFileLog === 'function') self._writeFileLog('✗ Compact API exception: ' + (err.message || err) + ' suffix=' + _suffix);
+            }
             return { parsed: null, ttfbMs: _totalMs, totalMs: _totalMs };
-        } finally {
-            // 无超时，无需清理
         }
     };
 

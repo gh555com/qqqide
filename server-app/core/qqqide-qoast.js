@@ -32,16 +32,16 @@
     var s = document.createElement('style');
     s.id = 'qqqide-qoast-style';
     s.textContent = [
-      '#qqqide-qoast-container { position:fixed; top:44px; right:12px; z-index:99999; display:flex; flex-direction:column; gap:6px; pointer-events:none; }',
+      '#qqqide-qoast-container { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:99999; display:flex; flex-direction:column-reverse; gap:6px; pointer-events:none; align-items:center; }',
       '.qqoast {',
       '  pointer-events:auto; padding:8px 12px; border-radius:4px; font-size:12px; line-height:1.4;',
       '  min-width:200px; max-width:380px;',
-      '  opacity:0; transform:translateX(40px); transition:all .25s ease;',
+      '  opacity:0; transform:translateY(40px); transition:all .25s ease;',
       '  color:var(--text-primary); background:var(--card-bg);',
-      '  border:1px solid var(--border-color); box-shadow:0 2px 10px rgba(0,0,0,.18);',
+      '  border:1px solid var(--border-color); box-shadow:0 -2px 10px rgba(0,0,0,.18);',
       '  display:flex; align-items:flex-start; gap:8px; cursor:default;',
       '}',
-      '.qqoast--show { opacity:1; transform:translateX(0); }',
+      '.qqoast--show { opacity:1; transform:translateY(0); }',
       '.qqoast--error  { border-left:3px solid var(--red); }',
       '.qqoast--warn   { border-left:3px solid var(--orange); }',
       '.qqoast--success{ border-left:3px solid var(--green); }',

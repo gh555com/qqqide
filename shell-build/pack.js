@@ -354,6 +354,12 @@ function injectLauncher(unpacked) {
   // copy launcher as qqqide.exe
   fs.cpSync(launcherSrc, electronExe, { force: true });
   console.log('[pack] injected launcher -> qqqide.exe (' + fs.statSync(launcherSrc).size + 'B)');
+
+  // hide qqqide-core.exe — 用户只需看到 qqqide.exe
+  try {
+    require('child_process').execSync('attrib +h "' + coreExe + '"');
+    console.log('[pack] hidden qqqide-core.exe');
+  } catch (e) { console.warn('[pack] hide failed:', e.message); }
 }
 
 // 3.7) prune unnecessary Electron baggage — slim the unpacked tree

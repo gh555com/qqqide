@@ -41,7 +41,7 @@ async function sendMessage() {
 
     var token = getToken();
     if (!token) {
-        addMessageEl('error', '\u8bf7\u5148\u5728\u9876\u90e8\u8f93\u5165 Token \u5e76\u70b9\u51fb Save');
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在顶部输入 Token 并点击 Save', { type: 'warning', duration: 6000 }); } catch (_) { }
         _sending = false;
         updateQueueBtn();
         return;
@@ -272,6 +272,32 @@ async function sendMessage() {
     _startAutoSave();
     scrollToBottom(true);
     setStreaming(true);
+
+    // ═══ E-Flow: Expert Document Framework trigger ═══
+    // First floor of first quest (100%) or random 10% on other floors
+    try {
+        if (typeof ExpertFlow !== 'undefined' && root2) {
+            var _firstQuest = false;
+            try {
+                var _allQuests = await questStore.list();
+                // First quest: this is the only quest with a floor
+                var _qWithContent = 0;
+                for (var _qi = 0; _qi < (_allQuests ? _allQuests.length : 0); _qi++) {
+                    if (_allQuests[_qi].floorCount > 0) _qWithContent++;
+                }
+                // ★ Only q1 (the very first quest) triggers at 100%.
+                // Once q1 has floors, all other quests uniformly use 10%.
+                _firstQuest = (_qWithContent === 0);
+            } catch (_) { }
+            if (ExpertFlow.shouldTrigger(_firstQuest, floorNum)) {
+                ExpertFlow.markTriggered();
+                ExpertFlow.setMode(ExpertFlow.MODE_PENDING);  // ★ block re-trigger until user replies
+                var _eMsg = ExpertFlow.buildInjectMessage(root2);
+                agent.inject(_eMsg);
+            }
+        }
+    } catch (_) { /* silent: E-flow failure must not break send */ }
+
     try {
         await agent.send(userContent, {
             images: images,
@@ -391,17 +417,27 @@ async function sendMessage() {
                         _rendered++;
                     }
                     // 冲洗 _buf（未闭合代码块末尾 / 最后一段未完成文本）
-                    if (_targetDiv2._buf && _targetDiv2._buf.trim()) {
-                        var _fDiv = document.createElement('div');
-                        if (_targetDiv2._codeFenceOpen) {
+                    // ★ 只冲 _splitCursor 之后的尾部：已完成段落已在 _doStreamRender 或上方 flush 中入 DOM，
+                    //   全量冲 _buf 会把前半部分再印一遍（_buf 从未被截断，始终累加全文）
+                    //   但围栏未闭合时 _buf 已在 onToken 中重写为纯围栏内容，_splitCursor 可能跨坐标系失效，
+                    //   故围栏路径仍用全量 _buf，非围栏路径用 _splitCursor 切片
+                    if (_targetDiv2._codeFenceOpen) {
+                        if (_targetDiv2._buf && _targetDiv2._buf.trim()) {
+                            var _fDiv = document.createElement('div');
                             var _fc = _targetDiv2._buf;
                             var _fnl = _fc.indexOf('\n');
                             if (_fnl > 0 && /^```/.test(_fc)) _fc = _fc.slice(_fnl + 1);
                             _fDiv.innerHTML = '<pre><code>' + (typeof escHtml === 'function' ? escHtml(_fc) : _fc) + '</code></pre>';
-                        } else {
-                            _fDiv.innerHTML = (typeof renderMarkdown === 'function') ? renderMarkdown(_targetDiv2._buf) : escHtml(_targetDiv2._buf);
+                            _targetDiv2._contentWrap.appendChild(_fDiv);
                         }
-                        _targetDiv2._contentWrap.appendChild(_fDiv);
+                    } else {
+                        var _trailStart2 = _targetDiv2._splitCursor || 0;
+                        var _trailing2 = _targetDiv2._buf ? _targetDiv2._buf.slice(_trailStart2) : '';
+                        if (_trailing2 && _trailing2.trim()) {
+                            var _fDiv = document.createElement('div');
+                            _fDiv.innerHTML = (typeof renderMarkdown === 'function') ? renderMarkdown(_trailing2) : escHtml(_trailing2);
+                            _targetDiv2._contentWrap.appendChild(_fDiv);
+                        }
                     }
 
                     // 去掉所有 stream-para 类（流式临时标记，成品不需要）
@@ -482,6 +518,14 @@ async function sendMessage() {
                 if (_activeAgent === _capturedAgent) {
                     updateCtxBtn();
                     updateQuestTofu();  // ★ 楼层完成后刷新 tofu（防草稿→正式 quest 后未及时更新）
+                    // ═══ E-Flow post-floor auto-detect ═══
+                    // After floor completes, check if AI created standard framework files.
+                    // If index.md now exists and mode is 'none', auto-set to 'standard'.
+                    try {
+                        if (typeof ExpertFlow !== 'undefined' && root2 && ExpertFlow.getMode() === ExpertFlow.MODE_NONE) {
+                            ExpertFlow.autoDetect(root2);
+                        }
+                    } catch (_) { /* silent */ }
                     if (!_queuePaused) {
                         _triggerQueueSend();
                     } else {
@@ -708,6 +752,10 @@ async function sendMessage() {
         }
         _queueBusy = false;
         _sending = false;
+        // ★ 队列自动排水：楼层完结后（onDone 内因 _queueBusy=true 被阻断），此处补排
+        if (_queue && _queue.length > 0 && !_queuePaused && _activeAgent === _capturedAgent) {
+            _triggerQueueSend();
+        }
         if (_activeAgent === _capturedAgent) {
             setStreaming(false);
         } else if (_capturedQuestId && !_capturedAgent._floorCompletedCleanly && !_capturedAgent._floorOnErrorCalled) {
@@ -802,6 +850,8 @@ document.addEventListener('keydown', function (e) {
     var key = e.key;
     if (key === '1') {
         e.preventDefault();
+        // ★ 用户主动上滚 → 立即停自动跟滚
+        if (cardPool) { var _c1 = cardPool.getActive(); if (_c1) _c1._userScrolledUp = true; }
         $messages.scrollBy({ top: -$messages.clientHeight * 0.35, behavior: 'smooth' });
         _showFloorIndicatorBriefly();
     } else if (key === '2') {
@@ -810,6 +860,8 @@ document.addEventListener('keydown', function (e) {
         _showFloorIndicatorBriefly();
     } else if (key === 'q' || key === 'w') {
         e.preventDefault();
+        // ★ q 键往上跳 → 立即停自动跟滚；w 键往下跳 → 交给 scroll 事件检测底部
+        if (key === 'q' && cardPool) { var _cq = cardPool.getActive(); if (_cq) _cq._userScrolledUp = true; }
         var card = cardPool ? cardPool.getActive() : null;
         var container = card ? card._contentWrap : $messages;
         var userMsgs = container.querySelectorAll('.msg-user');

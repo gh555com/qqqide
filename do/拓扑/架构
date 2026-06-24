@@ -209,7 +209,9 @@ qqq-shell-v2/
 │       ├── system-prompt.js   系统提示词（GATEWAY_URL 唯一声明处）
 │       ├── content-gateway.js 内容安全网关
 │       ├── ai-gateway.js     统一 AI 模型调用包装器（禁直接调用第三方端点）
-│       └── only-store.js      项目偏好 SQLite
+│       ├── only-store.js      项目偏好 SQLite
+      ├── panel-expert.js    E-Flow 引擎（复杂度评估+框架推荐+自动维护）
+      └── expert-template/   标准 expert 文档框架模板
 ├── engines/           二进制 + manifest.json 外部下载清单
 ├── op/                运维脚本 (ky.py翻译 + components.py组件 + git_snapshot.bat)
 ├── do/拓扑/           架构文档
@@ -378,22 +380,26 @@ Timeline 文件版本时间线 (2026-06-13 钩子Q+X重构，2026-06-21 终极�
   ★ 恢复: 加载 .db（损坏→.bak→空库）→ 回放 .wal（≤99行）→ 完整
   ★ 退出时强制压缩一次。无 2s debounce，无 archive 目录。，无篡改风险）
 
-触发: 仅两个钩子 —
-  钩子 Q: AI写工具(edit/write/create/delete) → _a4PersistToTimeline(before+after, trace, diff stats)
-         run_command → 执行 → captureChanged → 逐文件 _a4PersistToTimeline(after, trace)
-  钩子 X: X区 editor blur(auto-save 60s冷却) / Ctrl+S(manual-save) → _xHookRecord(content, source, diff stats)
+触发: 5种时机（3 种 source）—
+  ① 钩子 Q — AI写工具(edit/write/create/delete) → _a4PersistToTimeline，source='q'
+  ② 钩子 Q — run_command → captureChanged → source='run-command'
+  ③ 钩子 X — X区 editor blur / Ctrl+S / 主编辑器 save() → source='editx'
+  ④ Diff窗口编辑保存(blur/Ctrl+S) → source='diff-edit'
+  ★ editx + diff-edit 共享主进程真理机：100s 冷却 + SHA256 去重（改 ipc-timeline.ts 一处全局生效）
+  ★ 钩子 Q（q / run-command）不走冷却
   ★ 钩子 Q 已记全 before+after，点击 A4 不再补记；楼层完结不再补记
 
 Diff窗口: 独立 BrowserWindow，一个文件单例（Map），再次点击复用
   Monaco 0.34.1 side-by-side + minimap + 手动差异折叠(setHiddenAreas) + 自动换行
-  下拉标签格式: "2026-06-13 11:36:41 +333 -66 q38 f14 h3 r2 [first] [before]"
-  xx 溯源: 钩子 Q → quest/floor/house/room 串；钩子 X → auto save / manual save
-  +N -M: 钩子 Q 从 before/after diff 直接得出；钩子 X 读上一版本内容 diff
-  下拉智能选择: beforeIdx ≤ afterIdx 强保证，before=after 时自动错位
-  同秒条目合并一行，标签全组合（[first] [before] [after] [last]）
-  right=last 时可编辑 + ←移入 + 💾保存写盘
-  主题: 跟随主窗口 solarized-light/dark，sync 广播实时切换
-  偏好: 全文/差异模式全局持久化(state:qqqide.timeline.showFull)，默认差异块
+  下拉标签格式: "#N 时间 +N -M xx [first] [before]"，xx=溯源串(q / editx / cmd / diff edit)
+  动作栏+状态栏已删除(2026-06-24)，空间全部给编辑器
+  底部居中有三按钮：☐仅差异 | 编辑/取消编辑 | ✕关闭
+  编辑模式: 右下拉替换为"编辑中 未保存/已保存/已保存 且打快照至：#N"，右侧可编辑，左侧永远只读
+  编辑模式每差异块显示→箭头，点击复制左侧到右侧
+  编辑保存(blur/Ctrl+S)触发快照(source='diff-edit', 100s冷却+去重，主进程真理机)
+  退出编辑模式不保存，取消编辑清空脏标记
+  偏好: 仅差异模式项目级持久化(only.sq3:qqq.timeline.diffOnly)，默认全文对比
+  编辑器极致精简: 零LSP/零波浪线/零智能，只留 tokenization
   防并发: _renderToken 竞态令牌 + _loading 重入锁 + model 显式 dispose
   Monaco 加载 15s 超时保护，防永久白屏
   编辑器极致精简: 零LSP/零波浪线/零智能，只留 tokenization
@@ -465,6 +471,7 @@ AI 面板增强
 - 📎 文件附件截断: panel-send.js 内建 50KB 硬帽(MAX_SIZE=50×1024)。
   超过时保留首尾各 20KB，中间截断标记「... [truncated: X bytes] ...」。
   二进制文件(.exe/.png/.zip 等 40+ 扩展名)不读内容，只记录 type/size/mtime。
+- E-Flow 文档框架引擎：q1首层楼100%触发，后续楼层10%概率触发。四态机(none→pending→standard/custom)，自动检测并维护每项目的 expert 文档体系。详见 panel-expert.js。
 - 项目锁: onlyStore.claimLock() 统一管理（30s 心跳/60s 过期/自动释放），零维护
 - 无主文件夹守卫: 三层防线（UI capture管线+函数兜底+持久层铁闸），引导蒙版
 - quest 切换防丢: 流式中断回复保存（_fullText+_truncated）+ 互斥锁 + snapshot 副本
@@ -614,6 +621,13 @@ Quest 切换完整性 (2026-06-10 重构，2026-06-21 加固)
     静态段落用 appendChild 追加出现在 _lastParaEl 下方 → 用户看到 4321 倒序跳动。
   · 修复：_splitCursor 只扫描上次位置后的新增内容 + _doStreamRender 用 insertBefore(_lastParaEl)
     静态段落始终插入实时打字区上方 → 永远 1234 正序。
+
+_lastParaEl 全量 _buf 致前半重复修复（2026-06-24）：
+  · 旧问题：onToken 完成段 push 到 _paras 后 _buf 不清（保持累加全文），
+    _doStreamRender 用 _rm(_buf) 全量渲染 _lastParaEl → 已完成段落既在独立 div 中又在 _lastParaEl 中→流式时前半重复。
+    onDone flush 同理→完结后 DOM 仍有残影。重启恢复走 _buildConversationFlowHtml 不复现。
+  · 修复：_doStreamRender + onDone 非围栏路径改为 _buf.slice(_splitCursor) 只取尾部未完成段。
+    围栏路径 _buf 已在 onToken 重写为纯围栏内容（splitCursor 跨坐标系失效），仍用全量 _buf。
 
 段缓冲/事件驱动/1fps: 同上。renderMarkdown 列表占位符保护 <ul> 免 <br> <p> 污染。
 

@@ -41,8 +41,8 @@
     var _DEFAULT_TIMEOUT = 30000;
     var _CHAT_TIMEOUT = 1000000;
 
-    // ★ 备用线专用 API Key（19232854249 账号），与主线 Key 隔离防止并发限制
-    var _FALLBACK_TOKEN = 'sk-985c15849ad44094adddb5115f5dbd87';
+    // ★ 备用线标记：通过 X-Key-Slot header 告知 Go 选备用 key，客户端零密钥暴露
+    //    主线: X-Key-Slot 不发送或为 0（Go 取默认 key）
 
     // ════════════════════════════════════════════════════
     // 内部工具函数
@@ -161,6 +161,7 @@
             // ★ 模型映射：客户端只传 fast/deep
             var tierNum = opts.tier || 6;
             body.model = _tierToModel(tierNum);
+            body.tier = tierNum;  // ★ 透传 tier 给 Go 计费用（客户端零费率知识）
 
             // ★ 线路选择
             var isFallback = opts.isFallback || false;
@@ -172,6 +173,9 @@
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + token,
             };
+            if (isFallback) {
+                headers['X-Key-Slot'] = '1';  // ★ Go 端据此选 192 号 key，客户端零密钥暴露
+            }
 
             return _fetchWithTimeout(url, {
                 method: 'POST',
@@ -415,8 +419,6 @@
             return _pollStream(url, token, timeoutMs);
         },
 
-        // ★ 暴露备用线 Key 给 agent-gateway 用
-        getFallbackToken: function () { return _FALLBACK_TOKEN; },
     };
 
     // ═══ 暴露到全局 ═══

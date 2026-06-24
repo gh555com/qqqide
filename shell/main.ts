@@ -157,7 +157,7 @@ function registerAllIpc(): void {
     );
     registerMiscIpc(
         portable.root, portable.cache, APP_VERSION, isDevFlag,
-        bootConfig, lspBridge, downloadService, stateStore,
+        lspBridge, downloadService, stateStore,
         updateService, () => mainWindow  // lspBridge=null (LSP OFF)
     );
     registerTimelineIpc(portable.root, bootConfig);
@@ -187,7 +187,7 @@ app.whenReady().then(async () => {
 
     // Create main window
     mainWindow = createWindow(
-        portable.root, portable.cache, APP_VERSION, isDevFlag,
+        portable.root, portable.cache, APP_VERSION,
         lspBridge, downloadService, stateStore
     );
 
@@ -223,7 +223,7 @@ app.whenReady().then(async () => {
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
             mainWindow = createWindow(
-                portable.root, portable.cache, APP_VERSION, isDevFlag,
+                portable.root, portable.cache, APP_VERSION,
                 lspBridge, downloadService, stateStore
             );
             bootSequence(

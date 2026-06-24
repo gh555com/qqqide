@@ -192,6 +192,14 @@ async function _initWorkspace(root) {
         await questStore.list();
     }
     await initQuests();
+
+    // ═══ E-Flow auto-detect: check if standard expert framework exists ═══
+    try {
+        if (typeof ExpertFlow !== 'undefined') {
+            await ExpertFlow.autoDetect(root);
+        }
+    } catch (_) { /* silent */ }
+
     if (typeof loadQqqideProjectRules === 'function') {
         loadQqqideProjectRules(questStore.getProjectRoot());
     }
@@ -202,24 +210,47 @@ async function _initWorkspace(root) {
     // [silent] workspace bound
 }
 
+// ★ bindMainProject 并发锁：防 boot IIFE 与 postMessage 回调同时进入
+var _bindLock = null;
+
 // 入口：绑定主文件夹（仅首次，终身一次）
 async function bindMainProject() {
     // 已绑定 → 跳过（同窗口不可切换主文件夹）
     if (_workspaceRoot) return;
+    // 并发锁：另一调用正在进行中 → 等它完成
+    if (_bindLock) return _bindLock;
 
-    var root = null;
-    if (window.parent && window.parent.qqqideViewport) {
-        var main = window.parent.qqqideViewport.getMainProject();
-        if (!main || !main.path) {
-            // [silent] bindMainProject: no main project yet
+    _bindLock = (async () => {
+        // 二次检查：可能在等锁期间另一调用已完成绑定
+        if (_workspaceRoot) { _bindLock = null; return; }
+
+        var root = null;
+        if (!window.parent || !window.parent.qqqideViewport) { _bindLock = null; return; }
+
+        // ★ 轮询等待主项目就绪（最多 12 次 × 500ms = 6s）
+        //   解决翼板 iframe 加载时序早于父窗口异步项目加载的竞态问题
+        //   旧架构依赖 qqq-ai-viewport-changed postMessage 重试，
+        //   但 postMessage 可能在翼板脚本注册监听器之前发出导致消息丢失
+        for (var _bpRetry = 0; _bpRetry < 12; _bpRetry++) {
+            var main = window.parent.qqqideViewport.getMainProject();
+            if (main && main.path) {
+                root = main.path.replace(/\\/g, '/').replace(/\/$/, '');
+                break;
+            }
+            if (_bpRetry < 11) await new Promise(function (r) { setTimeout(r, 500); });
+        }
+
+        if (!root) {
+            // [silent] bindMainProject: no main project after retries, wait for viewport-changed message
+            _bindLock = null;
             return;
         }
-        root = main.path.replace(/\\/g, '/').replace(/\/$/, '');
-    } else {
-        return;
-    }
 
-    await _initWorkspace(root);
+        await _initWorkspace(root);
+        _bindLock = null;
+    })();
+
+    return _bindLock;
 }
 
 // 窗口关闭时刷盘 + 释放所有权（翼板关闭=iframe隐藏，不触发 beforeunload）

@@ -22,7 +22,7 @@ export function registerMiscIpc(
     portableCache: string,
     appVersion: string,
     isDevFlag: boolean,
-     // lspBridge: LspBridge,  // LSP OFF — 2026-06-23
+    // lspBridge: LspBridge,  // LSP OFF — 2026-06-23
     lspBridge: any,
     downloadService: DownloadService,
     stateStore: StateStore,
@@ -37,10 +37,10 @@ export function registerMiscIpc(
 
     // ---- shell (open file / URL) ----
     ipcMain.handle('qqqide:shell:openPath', async (_e, p: string) => {
-      try { return await electronShell.openPath(p); } catch (e) { console.warn('[shell:openPath]', e); return ''; }
+        try { return await electronShell.openPath(p); } catch (e) { console.warn('[shell:openPath]', e); return ''; }
     });
     ipcMain.handle('qqqide:shell:openExternal', async (_e, url: string) => {
-      try { await electronShell.openExternal(url); } catch (e) { console.warn('[shell:openExternal]', e); }
+        try { await electronShell.openExternal(url); } catch (e) { console.warn('[shell:openExternal]', e); }
     });
 
     // ---- drives / diskFree ----
@@ -159,7 +159,7 @@ export function registerMiscIpc(
                 try { fs.unlinkSync(lockPath); } catch (_) { }
             } catch (_) { }
         }
-        const newWin = createWindow(portableRoot, portableCache, appVersion, isDevFlag, lspBridge, downloadService, stateStore);
+        const newWin = createWindow(portableRoot, portableCache, appVersion, lspBridge, downloadService, stateStore);
         // 绑定主文件夹
         if (folderPath && typeof folderPath === 'string') {
             const normalized = folderPath.replace(/\\/g, '/').replace(/\/$/, '');

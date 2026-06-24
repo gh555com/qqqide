@@ -28,17 +28,12 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
 
     // ★ 号池：从 opts.token 获取初始 key，支持 429 自动切换
     var _currentToken = opts.token || '';
-    // ★ 备用线绑死 19232854249 Key，不使用号池（防止并发打同一个账号）
-    if (GATEWAY_URL === GATEWAY_URL_FALLBACK && typeof AiGateway !== 'undefined' && AiGateway.getFallbackToken) {
-        var _fb = AiGateway.getFallbackToken();
-        if (_fb) { _currentToken = _fb; }
-    }
     var _keyRotated = false;
     var _triedTokens = {};  // 本轮已尝试过的 token（避免死循环）
     if (_currentToken) _triedTokens[_currentToken] = true;
 
     function _rotateKey() {
-        // 备用线只有一根 key，不轮转（防止切换到主线 Key 池）
+        // 备用线不轮转用户 JWT（防无意义重试，DeepSeek key 由服务端 X-Key-Slot 决定）
         if (GATEWAY_URL === GATEWAY_URL_FALLBACK) return false;
         // 标记当前 key 被限流
         if (typeof markToken429 === 'function' && _currentToken) {
@@ -249,6 +244,25 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     }
                 }
                 self._log('✗ gateway ' + resp.status + ': ' + text.slice(0, 200));
+
+                // ★ 备线 402（欠费）：静默切回主线，不曝服务端内部状态给用户
+                if (resp.status === 402 && GATEWAY_URL === GATEWAY_URL_FALLBACK && typeof _gwSwitch === 'function') {
+                    self._log('  fallback depleted — switching back to primary');
+                    _gwSwitch(false);  // → 主线
+                    if (_lineSwitches < MAX_LINE_SWITCHES) {
+                        _lineSwitches++;
+                        retry = -1;
+                        continue;
+                    }
+                    // 已达切换上限 → 同 502/503 无线路可用，不曝余额不足给用户
+                    self._exitReason = 'http_' + resp.status;
+                    self._lastGatewayMessage = '服务器暂时不可达，所有线路均已耗尽';
+                    if (typeof _gwBroadcastDeadFallback === 'function') {
+                        _gwBroadcastDeadFallback();
+                    }
+                    return null;
+                }
+
                 var friendly = resp.status === 401 ? '认证失败，请检查 Token'
                     : resp.status === 402 ? 'ge 余额不足，请充值'
                         : resp.status === 429 ? '请求过于频繁，请稍后再试'
@@ -292,6 +306,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 }
                 // ★ 其他 HTTP 错误（401/402/429等）— 终端错误，直接报错
                 self._lastHttpStatus = resp.status;
+                self._lastGatewayError = resp.status;  // ★ 标记错误码，防 agent-loop 无意义重试
                 self._exitReason = 'http_' + resp.status;
                 clearTimeout(_fetchDeadline);
                 self._sendTerminated = true;  // ★ 标记终止
@@ -444,37 +459,45 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             }
             var msg = err.message || '';
 
-            // ★ AI 上游错误（400/422）：请求体有问题，重试/切线路均无效 → 直接返回 null 让 auto-repair 修复
+            // ★ AI 上游错误（400/422）：请求体/上下文有问题，重试/切线路均无效 → 直接返回 null
             if (self._lastGatewayError === 400 || self._lastGatewayError === 422) {
-                self._log('  AI upstream ' + self._lastGatewayError + ' — skipping retries, letting auto-repair handle');
+                self._log('  AI upstream ' + self._lastGatewayError + ' — unrecoverable, skipping retries');
                 clearTimeout(_fetchDeadline);
                 self._exitReason = 'http_' + self._lastGatewayError;
                 self._lastGatewayMessage = 'AI upstream returned ' + self._lastGatewayError + ' (bad request or context limit). Auto-repair attempted.';
                 return null;
             }
 
-            // HTTP/2 协议检测：JS 层 fetch() 对 ERR_HTTP2_* 只报 "Failed to fetch"
-            // net::ERR_HTTP2_PROTOCOL_ERROR 仅 DevTools 可见，JS Error.message 拿不到
-            var _isHttp2Like = msg.indexOf("ERR_HTTP2") >= 0
-                || msg.indexOf("ERR_CONNECTION_CLOSED") >= 0
-                || msg === 'Failed to fetch'
-                || msg.indexOf('network error') >= 0;
+            // ★ 402（服务端 DeepSeek key 欠费）：不重试同线路，直接切线路（另一把 key 可能有钱）
+            if (self._lastGatewayError === 402) {
+                self._log('  AI upstream 402 — key depleted, trying line switch');
+                clearTimeout(_fetchDeadline);
+                self._lastGatewayMessage = 'AI 服务暂时不可用，请稍后再试';
+                // 跳过 HTTP/2 重试，直接落入下方线路切换逻辑
+            } else {
+                // HTTP/2 协议检测：JS 层 fetch() 对 ERR_HTTP2_* 只报 "Failed to fetch"
+                // net::ERR_HTTP2_PROTOCOL_ERROR 仅 DevTools 可见，JS Error.message 拿不到
+                var _isHttp2Like = msg.indexOf("ERR_HTTP2") >= 0
+                    || msg.indexOf("ERR_CONNECTION_CLOSED") >= 0
+                    || msg === 'Failed to fetch'
+                    || msg.indexOf('network error') >= 0;
 
-            if (retry < MAX_RETRIES) {
-                // ★ HTTP/2 连接级错误：优先切线路（连接池问题不会因重试恢复）
-                if (_isHttp2Like && retry >= Math.floor(MAX_RETRIES / 2)) {
-                    var _h2Msg = '  HTTP/2-like error (retry ' + retry + '/' + MAX_RETRIES + '), skipping remaining → line switch | msg=' + msg + ' | panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?');
-                    self._log(_h2Msg);
-                    if (typeof self._writeFileLog === 'function') self._writeFileLog(_h2Msg);
-                    // 不 continue，直接落入下方线路切换逻辑
-                } else {
-                    var waitMsF = _isHttp2Like ? 2000 : 1000;  // HTTP/2 多等 1s 让 Chromium 回收连接
-                    self._log('  fetch error retry #' + (retry + 1) + ' in ' + waitMsF + 'ms: ' + msg);
-                    await new Promise(function (r) { setTimeout(r, waitMsF); });
-                    if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
-                    continue;
+                if (retry < MAX_RETRIES) {
+                    // ★ HTTP/2 连接级错误：优先切线路（连接池问题不会因重试恢复）
+                    if (_isHttp2Like && retry >= Math.floor(MAX_RETRIES / 2)) {
+                        var _h2Msg = '  HTTP/2-like error (retry ' + retry + '/' + MAX_RETRIES + '), skipping remaining → line switch | msg=' + msg + ' | panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?');
+                        self._log(_h2Msg);
+                        if (typeof self._writeFileLog === 'function') self._writeFileLog(_h2Msg);
+                        // 不 continue，直接落入下方线路切换逻辑
+                    } else {
+                        var waitMsF = _isHttp2Like ? 2000 : 1000;  // HTTP/2 多等 1s 让 Chromium 回收连接
+                        self._log('  fetch error retry #' + (retry + 1) + ' in ' + waitMsF + 'ms: ' + msg);
+                        await new Promise(function (r) { setTimeout(r, waitMsF); });
+                        if (self._stopCtrl.signal.aborted) { clearTimeout(_fetchDeadline); return null; }
+                        continue;
+                    }
                 }
-            }
+            } // end else (non-402)
 
             // 重试耗尽 — 先尝试切换线路，最后手段才 reload
             clearTimeout(_fetchDeadline);
@@ -519,10 +542,12 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 continue;
             }
             // 无可切换线路 或 已达切换上限 → 交给上层处理
-            var _errDet = 'Network request failed. Retried ' + MAX_RETRIES + 'x + switched ' + MAX_LINE_SWITCHES + 'x lines. All recovery exhausted.';
-            if (msg) _errDet += ' Error: ' + msg + '.';
-            _errDet += ' Conversation preserved.';
-            self._lastGatewayMessage = _errDet;
+            if (!self._lastGatewayMessage) {
+                var _errDet = 'Network request failed. Retried ' + MAX_RETRIES + 'x + switched ' + MAX_LINE_SWITCHES + 'x lines. All recovery exhausted.';
+                if (msg) _errDet += ' Error: ' + msg + '.';
+                _errDet += ' Conversation preserved.';
+                self._lastGatewayMessage = _errDet;
+            }
             // ★ 通知兄弟面板：当前线路已死
             if (typeof _gwBroadcastDeadFallback === 'function' && GATEWAY_URL === GATEWAY_URL_FALLBACK) {
                 _gwBroadcastDeadFallback();
