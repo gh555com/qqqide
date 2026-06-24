@@ -1,3 +1,7 @@
+// 禁掉 Electron 开发模式安全警告（webSecurity/allowRunningInsecureContent/CSP unsafe-eval）
+// 这些配置为项目必需（访问多源 HTTP/HTTPS、Monaco 动态执行），打包后不会显示
+process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
+
 // ============================================================================
 // main.ts - Electron main process entry
 // 导航 → 子模块职责一览（详细见 do/拓扑/架构 §目录结构）：
@@ -24,7 +28,7 @@ import * as os from 'os';
 
 // ── 子模块 ──
 import { loadBootConfig, extractFlags, bootSequence, BootMode, BootConfig } from './boot';
-import { initZoom, hydrateZoomFromState, saveZoom, zoomFactor, createWindow, _windowProjectMap, _projectWindowMap } from './window-manager';
+import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap } from './window-manager';
 import { initAssetProtocol, hydrateAssetRootsFromState } from './asset-protocol';
 import { registerFsIpc } from './ipc-fs';
 import { registerBootIpc } from './ipc-boot';
@@ -174,10 +178,6 @@ app.whenReady().then(async () => {
     // Init asset protocol + roots
     initAssetProtocol(portable.root, portable.cache, portable.userData);
     await hydrateAssetRootsFromState(stateStore);
-
-    // Init zoom
-    initZoom(portable.root, stateStore);
-    await hydrateZoomFromState(stateStore);
 
     // Register shell state
     registerShellState();

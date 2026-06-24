@@ -238,6 +238,25 @@
     });
   }
 
+  // ── Editor font size (from zoom buttons) ──
+  var _editorFontSize = 13;
+  function _applyFontSizeToAll() {
+    for (var i = 0; i < _allMonacoEditors.length; i++) {
+      try { _allMonacoEditors[i].updateOptions({ fontSize: _editorFontSize }); } catch (_) { }
+    }
+  }
+  // Listen via bridge zoom API (now controls font size, not window zoom)
+  if (bridge && bridge.zoom) {
+    bridge.zoom.get().then(function (s) {
+      if (typeof s === 'number') { _editorFontSize = s; _applyFontSizeToAll(); }
+    });
+    if (bridge.zoom.onChanged) {
+      bridge.zoom.onChanged(function (s) {
+        if (typeof s === 'number') { _editorFontSize = Math.round(s); _applyFontSizeToAll(); }
+      });
+    }
+  }
+
   // ---------------- Editor build ----------------
   async function build(host) {
     mountEl = host;
@@ -254,13 +273,13 @@
         language: 'plaintext',
         theme: theme,
         automaticLayout: true,
-        fontSize: 13,
+        fontSize: _editorFontSize,
         fontFamily: 'ui-monospace, Consolas, Menlo, monospace',
         // ═══ LSP OFF: strip all smart features ═══
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         renderWhitespace: 'none',
-        overviewRulerLanes: 0,
+        overviewRulerLanes: 3,
         overviewRulerBorder: false,
         hideCursorInOverviewRuler: true,
         wordWrap: 'on',
@@ -277,7 +296,7 @@
         renderLineHighlightOnlyWhenFocus: true,
         occurrencesHighlight: true,
         selectionHighlight: true,
-        matchBrackets: 'always',
+        matchBrackets: 'never',
         bracketPairColorization: { enabled: false },
         autoClosingBrackets: 'never',
         autoClosingQuotes: 'never',
@@ -308,7 +327,7 @@
         roundedSelection: false,
         lineNumbersMinChars: 2,
         lineDecorationsWidth: 10,
-        padding: { top: 0, bottom: 0 },
+        padding: { top: 0, bottom: 20 },
         stickyScroll: { enabled: false },
         find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'never' },
       });
@@ -482,13 +501,13 @@
         theme: (window.qqqideTheme && window.qqqideTheme.getMonacoTheme()) || 'vs',
         automaticLayout: true,
         readOnly: (opts && opts.readOnly) || false,
-        fontSize: 13,
+        fontSize: _editorFontSize,
         fontFamily: 'ui-monospace, Consolas, Menlo, monospace',
         // ═══ LSP OFF: strip all smart features ═══
         minimap: { enabled: false },
         scrollBeyondLastLine: false,
         renderWhitespace: 'none',
-        overviewRulerLanes: 0,
+        overviewRulerLanes: 3,
         overviewRulerBorder: false,
         hideCursorInOverviewRuler: true,
         wordWrap: 'on',
@@ -505,7 +524,7 @@
         renderLineHighlightOnlyWhenFocus: true,
         occurrencesHighlight: true,
         selectionHighlight: true,
-        matchBrackets: 'always',
+        matchBrackets: 'never',
         bracketPairColorization: { enabled: false },
         autoClosingBrackets: 'never',
         autoClosingQuotes: 'never',
@@ -536,7 +555,7 @@
         roundedSelection: false,
         lineNumbersMinChars: 2,
         lineDecorationsWidth: 10,
-        padding: { top: 0, bottom: 0 },
+        padding: { top: 0, bottom: 20 },
         stickyScroll: { enabled: false },
         find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'never' },
       });

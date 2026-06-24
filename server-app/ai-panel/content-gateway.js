@@ -40,6 +40,7 @@
     var COMPACT_ARCHIVE_TOKENS = 32768;   // ③ archive 专家 32k
     var ARCHIVE_MAX_CHARS = 1000000;      // archive 硬上限 ~1M chars
     var COMPACT_DEBUG = true;            // 压缩埋点开关（调试期开，稳定后关）
+    var COMPACT_THINKING_ENABLED = false; // 压缩是 JSON 提取，禁 thinking。true 会让模型推理很久后超时
 
     // ═══ 二进制检测 ═══
     function detectBinary(str) {
@@ -56,7 +57,7 @@
     }
 
     // ═══ 主入口：处理工具结果 → 返回安全版本 ═══
-    // 输入：工具执行的原始字符串结果
+    // 键入：工具执行的原始字符串结果
     // 返回：{ safe: string, flags: { binary, truncated, originalSize } }
     function process(rawResult) {
         if (rawResult == null) {
@@ -117,7 +118,8 @@
         COMPACT_NARRATIVE_TOKENS: COMPACT_NARRATIVE_TOKENS,
         COMPACT_ARCHIVE_TOKENS: COMPACT_ARCHIVE_TOKENS,
         ARCHIVE_MAX_CHARS: ARCHIVE_MAX_CHARS,
-        COMPACT_DEBUG: COMPACT_DEBUG
+        COMPACT_DEBUG: COMPACT_DEBUG,
+        COMPACT_THINKING_ENABLED: COMPACT_THINKING_ENABLED
     };
 
     // [silent] content-gateway ready

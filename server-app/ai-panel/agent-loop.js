@@ -242,14 +242,8 @@ var AgentLoop = (function () {
         if (typeof qqqideVisionContext !== "undefined" && qqqideVisionContext) {
             parts.push(qqqideVisionContext);
         }
-        // ═══ CURRENT TIME — 与状态栏时钟共享 SSE 锚点，同步捕获，精确到秒 ═══
-        if (typeof getTimeContext === "function") {
-            try {
-                var timeCtx = getTimeContext();
-                if (timeCtx) parts.push(timeCtx);
-            } catch (_) { /* silent: time context unavailable */ }
-        }
         // SYSTEM_PROMPT 只发送一次，打入哨兵永久存在（重启窗口后从 SQLite 恢复）
+        // ★ 时间上下文已移至 _callGateway 末尾（msg[-1]），保持 msg[0] 纯静态以命中 prefix cache
         if (typeof SYSTEM_PROMPT !== "undefined" && SYSTEM_PROMPT) {
             parts.push(SYSTEM_PROMPT);
         }
@@ -347,10 +341,9 @@ var AgentLoop = (function () {
             self._log("[rules] persistent injected (" + rulesPrefix.length + " chars, v=" + self._rulesVersion.slice(0, 8) + ")");
         }
 
-        self._ctx.totalFloors++;
-        var userMsg = { role: 'user', content: finalContent, _floor: self._ctx.totalFloors };
-        self.conversation.push(userMsg);
-        // 压缩已移至 while 循环内（每间 house 前检查），此处不再触发
+        // ★ 时间上下文已移至 _callGateway 末尾（msg[-1]），不再注入到 conversation 中
+        //    msg[0] 纯静态 → prefix cache 100%命中；时间戳在末尾 → 零缓存污染
+
         self._log('→ user: ' + (userContent || '').slice(0, 80) + (images ? ' +' + images.length + ' images' : '') + (visionText ? ' [vision done]' : ''));
 
         // 智能等级：手动选择优先，未选则默认 Pro+Max

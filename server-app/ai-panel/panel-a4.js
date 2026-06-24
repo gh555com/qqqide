@@ -771,8 +771,8 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
         _fDir: fDir,
         createdAt: ag._floorCreatedAt || Date.now(),
         savedAt: Date.now(),
-        // ★ 流式持久化：捕获正在打印中的部分 AI 回复文本
-        _streamingText: (ag._activeAiDiv && ag._activeAiDiv._fullText) ? ag._activeAiDiv._fullText : '',
+        // ★ 流式持久化：捕获正在打印中的部分 AI 回复文本（仅在流式中断时保留）
+        _streamingText: (ag._streaming && ag._activeAiDiv && ag._activeAiDiv._fullText) ? ag._activeAiDiv._fullText : '',
         _streaming: !!(ag._streaming)
     };
 

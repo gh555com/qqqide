@@ -525,44 +525,23 @@ async function executeFindFiles(args) {
     return matches.length > 0 ? matches.join('\n') : 'No files found.';
 }
 
-// ============================================================
-// get_diagnostics — LSP/compiler markers from Monaco
-// ============================================================
+// ══════════════════════════════════════════════════════════════
+// get_diagnostics — 轻量语法检查（node --check / py_compile / JSON.parse）
+// 复用 _autoSyntaxCheck（tools-exec-write.js），不依赖 Monaco LSP。
+// ══════════════════════════════════════════════════════════════
 
 async function executeGetDiagnostics(args) {
-    try {
-        var monaco = null;
-        if (parent.qqqEditor && parent.qqqEditor.getMonaco) {
-            monaco = parent.qqqEditor.getMonaco();
+    var path = args.path || args.filePath || '';
+    if (!path) return 'Error: path required for get_diagnostics';
+    if (typeof _autoSyntaxCheck === 'function') {
+        try {
+            var result = await _autoSyntaxCheck(path);
+            return result || 'No syntax check available for this file type: ' + path;
+        } catch (e) {
+            return 'Error running syntax check: ' + (e.message || e);
         }
-        if (!monaco) return 'Error: Monaco not available';
-
-        var allMarkers = monaco.editor.getModelMarkers({});
-        var path = args.path || args.filePath || '';
-        var normPath = path.replace(/\\/g, '/').toLowerCase();
-
-        var filtered = allMarkers.filter(function (m) {
-            if (!normPath) return true;
-            var mp = (m.resource && m.resource.path) ? m.resource.path.replace(/\\/g, '/').toLowerCase() : '';
-            return mp.indexOf(normPath) >= 0 || normPath.indexOf(mp) >= 0;
-        });
-
-        if (filtered.length === 0) return normPath ? 'No diagnostics for: ' + path : 'No diagnostics in any open file.';
-
-        var severityMap = { 1: 'HINT', 2: 'INFO', 4: 'WARN', 8: 'ERROR' };
-        var lines = [];
-        for (var i = 0; i < filtered.length; i++) {
-            var m = filtered[i];
-            var sev = severityMap[m.severity] || '?';
-            var file = (m.resource && m.resource.path) ? m.resource.path.replace(/.*[/\\]/, '') : '?';
-            var pos = 'L' + m.startLineNumber + ':' + m.startColumn;
-            lines.push('[' + sev + '] ' + file + ' ' + pos + ' — ' + m.message);
-            if (lines.length >= 100) { lines.push('... (' + (filtered.length - 100) + ' more)'); break; }
-        }
-        return lines.join('\n');
-    } catch (err) {
-        return 'Error getting diagnostics: ' + (err.message || err);
     }
+    return 'Error: syntax checker not available';
 }
 
 // ============================================================

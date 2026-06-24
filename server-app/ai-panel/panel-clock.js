@@ -33,7 +33,10 @@ function _saveAgentFloor(ag, questId, force) {
             createdAt: Date.now()
         };
     }
-    questStore.saveFloor(questId, floorNum, payload).catch(function () { });
+    questStore.saveFloor(questId, floorNum, payload).catch(function (e) {
+        console.warn('[auto-save] saveFloor failed for q=' + questId + ' f=' + floorNum + ': ' + (e && e.message || e));
+        if (typeof _writeFileLog === 'function') _writeFileLog('⚠ auto-save fail q=' + questId + ' f=' + floorNum + ': ' + (e && e.message || e));
+    });
 }
 
 var _AUTOSAVE_INTERVAL = 5000;

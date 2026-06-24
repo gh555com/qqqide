@@ -22,12 +22,13 @@
     var _lastMtimeMs = null;
     var _markedBefore = INIT_BEFORE;
     var _markedAfter = INIT_AFTER;
-    // 全局持久化偏好：差异模式（false=差异块 / true=全文），默认差异
+    // 项目级持久化偏好：仅差异模式（true=仅差异 / false=全文对比），默认全文
     var _diffOnly = false;
     var _isLastOnRight = false;
     var _PREF_NS = 'qqqide.timeline';
     var _diffEditor = null;
     var _monacoLoaded = false;
+    var _editorFontSize = 13;
     var _editing = false;
     var _editDirty = false;
     var _editOriginalContent = '';
@@ -253,9 +254,9 @@
         });
     }
 
-    // ═══ 输入框事件（contenteditable） ═══
+    // ═══ 键入框事件（contenteditable） ═══
     if ($titleInput) {
-        // ★ 每次输入后重建红色分隔符 + 保留光标
+        // ★ 每次键入后重建红色分隔符 + 保留光标
         $titleInput.addEventListener('input', function () {
             _titleRebuild(_titleGetText());
             _buildFuzzyList(_titleGetText());
@@ -413,10 +414,10 @@
                 $emptyState.textContent = '该文件没有历史版本';
                 return;
             }
-            // 加载项目级持久化偏好：仅差异模式
+            // 加载项目级持久化偏好：仅差异模式（走 qgs 唯一真理入口，自动注册+缓存）
             try {
-                if (bridge && bridge.state && bridge.state.project && PROJECT_ROOT) {
-                    var pref = await bridge.state.project.get(PROJECT_ROOT + '/qqq/alphal/only.sq3', 'qqq.timeline', 'diffOnly');
+                if (typeof qgs !== 'undefined' && PROJECT_ROOT) {
+                    var pref = await qgs.project(PROJECT_ROOT + '/qqq/alphal/only.sq3', 'qqq.timeline').get('diffOnly');
                     if (typeof pref === 'boolean') _diffOnly = pref;
                 }
             } catch (_) { }
@@ -937,7 +938,7 @@
             wordWrapColumn: 0,
             renderIndicators: false,
             renderOverviewRuler: true,
-            fontSize: 13,
+            fontSize: _editorFontSize,
             lineNumbers: 'on',
             lineNumbersMinChars: 2,
             lineDecorationsWidth: 10,
@@ -1239,7 +1240,7 @@
         if (_oldModifiedModel) { _oldModifiedModel.dispose(); _oldModifiedModel = null; }
         if (_diffEditor) { _diffEditor.dispose(); _diffEditor = null; }
         $emptyState.style.display = 'none'; $diffContainer.style.display = '';
-        _diffEditor = monaco.editor.createDiffEditor($diffContainer, { renderSideBySide: true, readOnly: false, originalEditable: false, automaticLayout: true, minimap: { enabled: true, showSlider: 'mouseover' }, scrollbar: { vertical: 'hidden', horizontal: 'hidden' }, wordWrap: 'on', wordWrapColumn: 0, renderIndicators: false, renderOverviewRuler: true, fontSize: 13, lineNumbers: 'on', lineNumbersMinChars: 2, lineDecorationsWidth: 10, scrollBeyondLastLine: false, theme: THEME });
+        _diffEditor = monaco.editor.createDiffEditor($diffContainer, { renderSideBySide: true, readOnly: false, originalEditable: false, automaticLayout: true, minimap: { enabled: true, showSlider: 'mouseover' }, scrollbar: { vertical: 'hidden', horizontal: 'hidden' }, wordWrap: 'on', wordWrapColumn: 0, renderIndicators: false, renderOverviewRuler: true, fontSize: _editorFontSize, lineNumbers: 'on', lineNumbersMinChars: 2, lineDecorationsWidth: 10, scrollBeyondLastLine: false, theme: THEME });
         var originalModel = monaco.editor.createModel(leftContent, lang);
         var modifiedModel = monaco.editor.createModel(latestContent, lang);
         _oldOriginalModel = originalModel; _oldModifiedModel = modifiedModel;
@@ -1410,11 +1411,11 @@
     function _escHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
     function _escAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 
-    // ═══ 全局持久化偏好（跨窗口记忆） ═══
+    // ═══ 全局持久化偏好（跨窗口记忆，走 qgs 唯一真理入口） ═══
     function _saveDiffOnlyPref(value) {
         try {
-            if (bridge && bridge.state && bridge.state.project && PROJECT_ROOT) {
-                bridge.state.project.setNow(PROJECT_ROOT + '/qqq/alphal/only.sq3', 'qqq.timeline', 'diffOnly', value);
+            if (typeof qgs !== 'undefined' && PROJECT_ROOT) {
+                qgs.project(PROJECT_ROOT + '/qqq/alphal/only.sq3', 'qqq.timeline').setNow('diffOnly', value);
             }
         } catch (_) { }
     }
@@ -1531,5 +1532,27 @@
                 try { _diffEditor.updateOptions({ theme: THEME }); } catch (_) { }
             }
         });
+    }
+
+    // ═══ 监听编辑器字体大小（来自缩放按钮 / Ctrl+= / Ctrl+-） ═══
+    if (bridge && bridge.zoom) {
+        bridge.zoom.get().then(function (s) {
+            if (typeof s === 'number') {
+                _editorFontSize = Math.round(s);
+                if (_diffEditor) {
+                    try { _diffEditor.updateOptions({ fontSize: _editorFontSize }); } catch (_) { }
+                }
+            }
+        });
+        if (bridge.zoom.onChanged) {
+            bridge.zoom.onChanged(function (s) {
+                if (typeof s === 'number') {
+                    _editorFontSize = Math.round(s);
+                    if (_diffEditor) {
+                        try { _diffEditor.updateOptions({ fontSize: _editorFontSize }); } catch (_) { }
+                    }
+                }
+            });
+        }
     }
 })();

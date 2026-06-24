@@ -172,33 +172,75 @@ function bootAiViewport() {
   window.qqqideViewport.build(host);
 }
 
-// ---- Zoom +/- buttons (step 0.05) ----
-function applyZoomCompensation(f) {
-  document.documentElement.style.setProperty('--ai-zone-w', (_shAiW / f) + 'px');
+// ---- Editor font size (was zoom; window UI locked at 1.00) ----
+// Press-and-hold: mousedown fires immediately, then repeats with accelerating speed
+//   first repeat ~180ms → gradually → min ~25ms (≈ 3× faster than old 80ms)
+var _efsRepeatTimer = 0;
+var _efsRepeatDelta = 0;
+var _efsDelay = 0;
+
+function applyFontSizeLabel(size) {
   var $label = document.getElementById('qqq-zoom-label');
-  if ($label) $label.textContent = f.toFixed(2);
+  if ($label) $label.textContent = String(Math.round(size));
 }
+
+function _efsStartRepeat(delta) {
+  var bridge = _shBridge;
+  if (!bridge || !bridge.zoom) return;
+  _efsRepeatDelta = delta;
+  _efsDelay = 180;  // initial repeat interval (ms)
+  _efsStopRepeat();
+  _efsRepeatTick();  // fire immediately
+}
+
+function _efsScheduleNext() {
+  if (_efsRepeatTimer) return;  // stopped
+  _efsRepeatTimer = setTimeout(_efsRepeatTick, _efsDelay);
+}
+
+async function _efsRepeatTick() {
+  _efsRepeatTimer = 0;
+  var bridge = _shBridge;
+  if (!bridge || !bridge.zoom) return;
+  try {
+    var s = await bridge.zoom.adjust(_efsRepeatDelta);
+    applyFontSizeLabel(s);
+  } catch (_) { }
+  // Accelerate: multiply delay by 0.88 each tick, floor at 25ms
+  _efsDelay = Math.max(25, _efsDelay * 0.88);
+  _efsScheduleNext();
+}
+
+function _efsStopRepeat() {
+  if (_efsRepeatTimer) { clearTimeout(_efsRepeatTimer); _efsRepeatTimer = 0; }
+  _efsDelay = 0;
+}
+
 function bootZoomButtons() {
   var bridge = _shBridge;
   var $in = document.getElementById('qqq-zoom-in');
   var $out = document.getElementById('qqq-zoom-out');
   if (!bridge.zoom) return;
-  if ($in) $in.addEventListener('click', async function () {
-    var f = await bridge.zoom.adjust(0.05);
-    applyZoomCompensation(f);
-  });
-  if ($out) $out.addEventListener('click', async function () {
-    var f = await bridge.zoom.adjust(-0.05);
-    applyZoomCompensation(f);
-  });
-  // Listen for zoom changes from keyboard shortcuts (main process)
+
+  if ($in) {
+    $in.addEventListener('mousedown', function () { _efsStartRepeat(1); });
+    $in.addEventListener('mouseup', _efsStopRepeat);
+    $in.addEventListener('mouseleave', _efsStopRepeat);
+  }
+  if ($out) {
+    $out.addEventListener('mousedown', function () { _efsStartRepeat(-1); });
+    $out.addEventListener('mouseup', _efsStopRepeat);
+    $out.addEventListener('mouseleave', _efsStopRepeat);
+  }
+
+  // Listen for changes from keyboard shortcuts (Ctrl+= / Ctrl+- / Ctrl+0)
   if (bridge.zoom.onChanged) {
-    bridge.zoom.onChanged(function (f) {
-      applyZoomCompensation(f);
+    bridge.zoom.onChanged(function (s) {
+      applyFontSizeLabel(s);
     });
   }
-  // Initial compensation on boot
-  bridge.zoom.get().then(applyZoomCompensation);
+  // Initial label
+  bridge.zoom.get().then(applyFontSizeLabel);
 }
 
 // ---- A Zone (gaea host) ----

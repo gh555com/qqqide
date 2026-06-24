@@ -3,6 +3,38 @@
 // 从 tools.js 拆分而来。依赖 tools-defs.js 中的 helper 函数。
 // ============================================================================
 
+// ══════════════════════════════════════════════════════════════
+// 自动语法检查 — 每次写入后静默运行（副作用附加到结果字符串）
+// ══════════════════════════════════════════════════════════════
+
+function _autoSyntaxCheck(filePath) {
+    var ext = (filePath || '').split('.').pop().toLowerCase();
+    var bridge = getBridge();
+    if (!bridge || !bridge.qz || !bridge.qz.spawn) return Promise.resolve('');
+
+    // ── JSON: 直接 parse，不 spawn 进程 ──
+    if (ext === 'json') {
+        return bridge.fs.read(filePath).then(function (content) {
+            try { JSON.parse(content); return '\n[SYNTAX OK] ' + ext; } catch (e) {
+                return '\n[SYNTAX ERROR] JSON parse: ' + (e.message || e);
+            }
+        }).catch(function () { return ''; });
+    }
+
+    var cmd, args;
+    if (ext === 'js' || ext === 'mjs' || ext === 'cjs') { cmd = 'node'; args = ['--check', filePath]; }
+    else if (ext === 'py') { cmd = 'python'; args = ['-m', 'py_compile', filePath]; }
+    else { return Promise.resolve(''); }
+
+    return bridge.qz.spawn({ cmd: cmd, args: args, timeout: 5000 }).then(function (r) {
+        if (r.code === 0) return '\n[SYNTAX OK] ' + ext;
+        var errMsg = (r.stderr || r.stdout || '').split('\n').slice(0, 3).join(' ');
+        return '\n[SYNTAX ERROR] ' + ext + ': ' + errMsg;
+    }).catch(function (e) {
+        return '\n[SYNTAX CHECK FAILED] ' + ext + ' — ' + (e.message || e);
+    });
+}
+
 // ============================================================
 // edit_file — 精准文件编辑引擎（三级降级匹配 + 原子性）
 // 移植自 q3/ai/src/tools.js

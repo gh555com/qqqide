@@ -64,17 +64,17 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 零C盘写入。所有数据写入应用目录 (userData/cache/temp/logs)。
   - 通过 process.execPath 判断 dev/packaged，不依赖 app.isPackaged。
 
-§9 持久化 — qgs + qg + project 三入口
-  - 渲染层三个独立入口: window.qgs + window.qg + window.qgs.project。禁直接 bridge.state.* / fs / localStorage。
-  - qgs('my-ns'): SQLite 全局状态（云同步、可 SQL 查询 qgs.sql()）。
-  - qg(rootDir, 'my-ns'): FS 原子写项目元信息（.qqq/qg/，零配置零依赖）。
-  - qgs.project(dbPath, ns): SQLite 项目级 AI 持久化（qqq/quests/quest.sq3，快存快取，WAL 崩溃安全）。
-  - 共用 API: get/set/setNow/append/del/list/flush/flushOne/onChange。
-  - qgs/qgs.project 独有: sql()。qgs.project 独有: atomicIncr(key)（原子自增，零竞态，返回新值）。
-  - 选择: 全局共享/跨项目/云同步 → qgs。项目级元信息 → qg。项目 AI 对话 + 原子计数 → qgs.project。
-  - 云同步: 手动 push/pull，不自动。
-  - 退出保護: before-quit/SIGINT/SIGTERM 自动 flushSync qgs+qg+project 所有实例。
-  - 缓存穿透: flushOne 调用 _cacheDel → 后续 get 直读 DB，等效直读（替代原 _getRaw）。
+§9 持久化 — qgs + qgs.simple + qg + qgs.project + onlyStore + qgf 六入口
+  - 六个入口: window.qgs / window.qgs.simple / window.qg / window.qgs.project / onlyStore / window.qgf。
+    禁直接 bridge.state.* / bridge.fs / localStorage。
+  - qgs('ns'): SQLite 全局状态（云同步、可 SQL 查询）。
+  - qgs.simple('ns'): 同 qgs 但零配置（省 v/form/cloud），最常用。
+  - qg(rootDir,'ns'): FS 原子写项目元信息（qqq/qg/）。
+  - qgs.project(dbPath,'ns'): SQLite 项目级（qqq/alphal/quest.sq3）。
+  - onlyStore: 项目级偏好 SQLite（qqq/alphal/only.sq3），自动延迟刷盘管线。
+  - qgf(rootDir,'ns'): FS 原子写项目 KV（qqq/qgf/），预留未用。
+  - 选择: 全局/跨项目/云同步→qgs。项目对话→qgs.project。项目偏好→onlyStore。项目元信息→qg。
+  - 退出保護: before-quit/SIGINT/SIGTERM 自动 flushSync 所有实例。
 
 §10 goods 协议
   - A 区 goods 宿主: core/gaea-host.js。一切 goods 必须通过 window.qqqideGaea.register() 注册。
@@ -87,11 +87,11 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 §11 LSP — 全部禁用（2026-06-22 前端，2026-06-23 壳层冻结）
   - 前端: Monaco 内置 TS/JS/CSS/HTML/JSON 诊断全禁，renderValidationDecorations:'off'，
     零红色波浪线/hover/补全/面包屑/minimap。仅保留 tokenization + selectionHighlight + occurrencesHighlight。
-  - 壳层: lsp-bridge.ts 保留源码但零引用（main.ts/window-manager.ts/ipc-misc.ts import 全注释 + 实例化=null），
-    esbuild tree-shake 排除出 shell-out/main.js，运行时零加载零执行。
-  - engines/manifest.json: 4 个 LSP 组件（clangd/gopls/rust-analyzer/pyright）已删除，仅剩 4 个工具组件。
+  - 壳层: lsp-bridge.ts 保留源码但零引用，esbuild tree-shake 排除，运行时零加载零执行。
+  - engines/manifest.json: 4 个 LSP 组件已删除，仅剩 4 个工具组件。
   - 编辑器性能: matchBrackets:'never'（省每键 CPU），overviewRulerLanes:3（滚动条标注全开）。
   - 恢复: 取消三处 import 注释 + 改回 new LspBridge(portable.root) + 恢复 manifest.json LSP 条目。
+  - 替代: 三级语法检查（2026-06-24）— L1 系统自动 node --check（0 ge）+ L2 get_diagnostics 工具（~50 ge）+ L3 run_command 全仓（~200 ge）。详见 架构 拓扑。
 
 §12 qoast 唯一真理弹窗机器
   - 唯一入口: core/qqqide-qoast.js。一切 notification/qoast/浮动提示必须走 qqqideQoast.show()。
@@ -427,4 +427,11 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 持久化: onlyStore.qqq.expert.mode（none/pending/standard/custom），项目级 only.sq3。
   - 铁律: 已锁定模式（standard/custom）永不回退到 none。文件删除不自动降级——AI 发现缺失时自然询问用户。
 
-
+§43 窗口缩放锁定 + 编辑器字体大小（2026-06-24）
+  - 窗口 UI 永远锁死 1.00（win.webContents.setZoomFactor(1.0)），禁 Electron 原 zoom 机制。
+  - 菜单行1 +/- 按钮 + Ctrl+=/Ctrl+-/Ctrl+0: 只改 X 区 editor 和 Timeline Diff 弹窗 editor 的 fontSize。
+  - 持久化: shell.js 通过 qgs.simple('qqqide') 的 editorFontSize.{root} key 存每项目字号。
+    不新建文件，不引入新存储引擎。
+  - 主进程: 只保留内存 editorFontSize + broadcast（qqqide:zoom:changed 频道复用，值域 [8-48]）。
+  - 消费方: editor.js + diff-window.js 各自监听 bridge → Monaco updateOptions({ fontSize })。
+  - 窗口创建时无条件 setZoomFactor(1.0)，无视任何历史 zoom 值。

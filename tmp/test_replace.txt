@@ -799,7 +799,7 @@ function _triggerQueueSend() {
     var _q = _queue;
     if (!_q || _q.length === 0) { renderQueueStrip(); return; }
     var inputText = ($input.value || '').trim();
-    // ★ 永不自停：即使输入框有文字也不暂停，交给用户手动控制
+    // ★ 永不自停：即使键入框有文字也不暂停，交给用户手动控制
     if (inputText) {
         _queuePaused = false;
     }
@@ -1005,7 +1005,7 @@ $queueBtn.onclick = function () {
     }
     var text = getInputText().trim();
     if (!text) return;
-    // ★ 背包：冻结当前全部输入状态
+    // ★ 背包：冻结当前全部键入状态
     var backpack = {
         id: 'bk_' + Date.now(),
         text: text,

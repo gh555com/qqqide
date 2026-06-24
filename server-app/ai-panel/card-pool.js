@@ -228,7 +228,8 @@ var CardPool = (function () {
   //   - 其余一律不渲染（工具调用、工具结果、系统消息等）
   function _buildConversationFlowHtml(conv, fData) {
     if (!conv || !conv.length) {
-      if (fData && fData._streamingText) {
+      // ★ 仅在真正流式中断时展示 _streamingText（_streaming 为 true 才说明是中断，而非正常完成后的残留）
+      if (fData && fData._streamingText && fData._streaming) {
         return '<div class="msg-flow-partial">' + _escHtml(fData._streamingText) + '</div><div class="msg-status">⏳ 打印中断（已自动保存）</div>';
       }
       return '';
@@ -274,8 +275,8 @@ var CardPool = (function () {
       // else: 工具调用、工具结果、系统消息 → 一律跳过
     }
 
-    // 附加流式中断文本
-    if (fData && fData._streamingText) {
+    // ★ 附加流式中断文本（仅在真正中断时，而非 floor 正常完成后残留的 _streamingText）
+    if (fData && fData._streamingText && fData._streaming) {
       parts.push('<div class="msg-flow-partial">' + _escHtml(fData._streamingText) + '</div>');
       parts.push('<div class="msg-status">⏳ 打印中断（已自动保存）</div>');
     }
@@ -299,16 +300,24 @@ var CardPool = (function () {
     var frag = document.createDocumentFragment();
 
     // ① 渲染用户消息（纯文本，不渲染 Markdown）
+    // ★ 优先 fData.question，若为空则从 conversation[0] 回退提取
+    var _qText = fData.question || '';
+    if (!_qText) {
+      var _conv = fData.conversation || [];
+      if (_conv.length && _conv[0] && _conv[0].role === 'user' && _conv[0].content) {
+        _qText = _conv[0].content;
+      }
+    }
     var userEl = null;
-    if (fData.question) {
+    if (_qText) {
       userEl = document.createElement('div');
       userEl.className = 'msg msg-user';
       userEl.style.whiteSpace = 'pre-wrap';
       userEl._floor = fNum;
       var getUDC = window.getUserDisplayContent;
       var displayContent = typeof getUDC === 'function'
-        ? getUDC(fData.question)
-        : fData.question;
+        ? getUDC(_qText)
+        : _qText;
       userEl.textContent = displayContent;
       // ★ 恢复图片（背包图片引用）
       if (fData.images && fData.images.length > 0) {
@@ -401,7 +410,7 @@ var CardPool = (function () {
     var flowHtml = _buildConversationFlowHtml(conv, fData);
     aiEl._contentWrap.innerHTML = flowHtml;
     aiEl.appendChild(aiEl._contentWrap);
-    // ★ 错误持久化：「继续任务」链接 — 仅聚焦输入框，不自动发送
+    // ★ 错误持久化：「继续任务」链接 — 仅聚焦键入框，不自动发送
     aiEl._contentWrap.addEventListener('click', function (e) {
       var link = e.target.closest('.msg-err-continue');
       if (!link) return;

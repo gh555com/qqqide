@@ -300,7 +300,7 @@ body {
   color: var(--primary-color);
 }
 
-/* Zoom +/- buttons (UI scale, step 0.05, range 0.5-2.0) */
+/* Editor font size buttons (+/- 1, range 8-48) */
 .qqq-zoom-btn {
   -webkit-app-region: no-drag;
   border: 0;
@@ -1334,7 +1334,7 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
 }
 
-/* 输入框背景/文字 */
+/* 键入框背景/文字 */
 .monaco-editor .find-widget .monaco-inputbox {
   background-color: var(--background-color) !important;
   border-color: var(--border-color) !important;

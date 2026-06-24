@@ -254,7 +254,7 @@
           }
         }
       } else if (def.type === 'number') {
-        // 数字输入（范围 100-1000，单位 k）
+        // 数字键入（范围 100-1000，单位 k）
         var numId = 'qqq-setting-' + def.key.replace(/\./g, '-');
         var min = def.min || 100;
         var max = def.max || 1000;

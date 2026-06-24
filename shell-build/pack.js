@@ -101,10 +101,6 @@ async function manualAssemble() {
         fs.renameSync(path.join(unpacked, a), path.join(unpacked, 'qqqide.app'));
       }
     }
-  } else if (target.startsWith('win-')) {
-    const src = path.join(unpacked, 'electron.exe');
-    const dst = path.join(unpacked, 'qqqide-core.exe');
-    if (fs.existsSync(src)) { fs.renameSync(src, dst); }
   } else if (target.startsWith('linux-')) {
     const src = path.join(unpacked, 'electron');
     const dst = path.join(unpacked, 'qqqide');
@@ -164,13 +160,17 @@ function findUnpackedDir() {
 
 function appResourcesDir(unpacked) {
   // electron-builder layout:
-  //   linux/win:  unpacked/resources/app/
+  //   linux/win:  unpacked/core/resources/app/ (after injectLauncher)
+  //               unpacked/resources/app/     (before injectLauncher)
   //   mac:        unpacked/<ProductName>.app/Contents/Resources/app/
   if (target.startsWith('mac-')) {
     const candidates = fs.readdirSync(unpacked).filter(n => n.endsWith('.app'));
     if (candidates.length === 0) { return null; }
     return path.join(unpacked, candidates[0], 'Contents', 'Resources', 'app');
   }
+  // check post-move path first
+  const corePath = path.join(unpacked, 'gh555.com', 'resources', 'app');
+  if (fs.existsSync(corePath)) { return corePath; }
   return path.join(unpacked, 'resources', 'app');
 }
 
@@ -336,7 +336,7 @@ function injectRootConfig(unpacked) {
   }
 }
 
-// 3.6) inject native launcher (win only) — replaces qqqide.exe with the fast C splash, renames real Electron to qqqide-core.exe
+// 3.6) inject native launcher (win only) — moves all Electron runtime to core/, places C splash as qqqide.exe
 function injectLauncher(unpacked) {
   if (!target.startsWith('win-')) { return; }
   const launcherSrc = path.join(ROOT, 'launcher', 'qqqide.exe');
@@ -344,22 +344,45 @@ function injectLauncher(unpacked) {
     console.warn('[pack] launcher binary not found, skipping:', launcherSrc);
     return;
   }
+  const coreDir = path.join(unpacked, 'gh555.com');
+  fs.mkdirSync(coreDir, { recursive: true });
+
+  // ── 搬 Electron 运行时文件到 gh555.com/ ──
+  const electronFiles = [
+    // binary
+    'electron.exe', 'qqqide.exe',
+    // DLLs
+    'd3dcompiler_47.dll', 'ffmpeg.dll', 'libEGL.dll', 'libGLESv2.dll',
+    // Chromium resources
+    'chrome_100_percent.pak', 'chrome_200_percent.pak', 'resources.pak',
+    'snapshot_blob.bin', 'v8_context_snapshot.bin', 'icudtl.dat',
+    // directories
+    'locales', 'resources',
+  ];
+  for (const name of electronFiles) {
+    const src = path.join(unpacked, name);
+    const dst = path.join(coreDir, name);
+    if (fs.existsSync(src) && !fs.existsSync(dst)) {
+      fs.renameSync(src, dst);
+    }
+  }
+  // rename electron's own binary to qqqide-core.exe
+  const electronBin = path.join(coreDir, 'electron.exe');
+  const coreExe = path.join(coreDir, 'slave.exe');
+  if (fs.existsSync(electronBin) && !fs.existsSync(coreExe)) {
+    fs.renameSync(electronBin, coreExe);
+  }
+  // also handle case where electron.exe was already renamed to qqqide.exe at root
   const electronExe = path.join(unpacked, 'qqqide.exe');
-  const coreExe = path.join(unpacked, 'qqqide-core.exe');
-  // rename Electron binary -> qqqide-core.exe
   if (fs.existsSync(electronExe) && !fs.existsSync(coreExe)) {
     fs.renameSync(electronExe, coreExe);
-    console.log('[pack] renamed qqqide.exe -> qqqide-core.exe');
   }
-  // copy launcher as qqqide.exe
-  fs.cpSync(launcherSrc, electronExe, { force: true });
-  console.log('[pack] injected launcher -> qqqide.exe (' + fs.statSync(launcherSrc).size + 'B)');
+  console.log('[pack] moved Electron runtime -> gh555.com/');
 
-  // hide qqqide-core.exe — 用户只需看到 qqqide.exe
-  try {
-    require('child_process').execSync('attrib +h "' + coreExe + '"');
-    console.log('[pack] hidden qqqide-core.exe');
-  } catch (e) { console.warn('[pack] hide failed:', e.message); }
+  // ── 复制 C 启动器为根 qqqide.exe ──
+  const launcherDst = path.join(unpacked, 'qqqide.exe');
+  fs.cpSync(launcherSrc, launcherDst, { force: true });
+  console.log('[pack] injected launcher -> qqqide.exe (' + fs.statSync(launcherSrc).size + 'B)');
 }
 
 // 3.7) prune unnecessary Electron baggage — slim the unpacked tree
@@ -532,8 +555,10 @@ print('[pack] python zip done:', out)
   pruneNodeModules(unpacked);
   cleanRuntimeDirs(unpacked);
   packDir(unpacked);
+  // ★ 删掉解压目录，避免和源代码混淆
+  fs.rmSync(unpacked, { recursive: true, force: true });
+  console.log('[pack] cleaned staging:', unpacked);
   console.log('[pack] done. output -> dist-pack/');
-  console.log('[pack] win-unpacked/ kept as ready-to-run environment (same as zip)');
 })().catch(err => {
   console.error('[pack] failed:', err);
   process.exit(1);

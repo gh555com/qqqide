@@ -31,11 +31,11 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 #top-bar button{padding:1px 6px;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);font-size:10px;white-space:nowrap;flex-shrink:0}
 /* q2 quest 豆腐块 — 无边框贴合 q1 */
 #quest-bar{position:relative;margin:0;padding:0;border:none}
-.quest-tofu{display:flex;align-items:center;padding:8px 14px;border:2px solid transparent;border-radius:0;font-size:22px;font-weight:700;white-space:nowrap;user-select:none;background:#ebe3ca;width:100%;cursor:default;box-sizing:border-box}
+.quest-tofu{display:flex;align-items:center;padding:8px 14px;border:2px solid transparent;border-radius:0;font-size:22px;font-weight:700;white-space:nowrap;user-select:none;background:#ebe3ca;width:100%;cursor:default;box-sizing:border-box;position:relative}
 [data-theme="dark"] .quest-tofu{background:#211f1c}
 .quest-tofu:hover{background:var(--background-color)}
 [data-theme="dark"] .quest-tofu:hover{background:#3f3830}
-.quest-tofu-text{overflow:hidden;text-overflow:ellipsis;flex:1;color:var(--text-primary)}
+.quest-tofu-text{overflow:hidden;flex:1;color:var(--text-primary)}
 .quest-tofu-prefix{flex:none;color:#e8a030;position:relative;white-space:pre}
 /* ── 彗星环绕动画（quest 运行时围绕编号旋转）── */
 @keyframes comet-orbit-a{0%{transform:translate(-50%,-50%) rotate(0deg) translateX(18px) rotate(0deg)}100%{transform:translate(-50%,-50%) rotate(360deg) translateX(18px) rotate(-360deg)}}
@@ -63,10 +63,11 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-tofu-new .quest-tofu-text{color:var(--base01);font-style:italic;text-align:center}
 /* 豆腐块内联编辑 */
 .quest-tofu-edit{flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--text-primary);font-size:22px;font-weight:700;font-family:inherit;padding:0;margin:0}
-.quest-tofu-pen{flex:none;align-self:stretch;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:0;cursor:pointer;padding:0 14px;margin:-9px -14px -9px 0;transition:opacity .15s,background .15s;line-height:1}
+.quest-tofu-pen{position:absolute;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:0;cursor:pointer;padding:0 14px;z-index:2;background:#ebe3ca;transition:opacity .15s,background .15s;line-height:1}
+[data-theme="dark"] .quest-tofu-pen{background:#211f1c}
 .quest-tofu-pen:hover{opacity:1!important;background:var(--background-color)}
 [data-theme="dark"] .quest-tofu-pen:hover{background:#3f3830}
-.quest-tofu:hover .quest-tofu-pen{opacity:.45}
+.quest-tofu:hover .quest-tofu-pen{opacity:1}
 /* q2x 行已删除（统一走 dropdown hover，单一真理源）*/
 /* ── q2 展开：虚线框 + 渐变背景 ── */
 #quest-bar.quest-expanded .quest-tofu{
@@ -512,7 +513,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 <div id="input-area">
   <div id="image-strip"></div>
   <div id="queue-strip"></div>
-  <div id="input-limit-warn" data-i18n="ai.inputLimitWarn">输入已达上限 58KB，无法继续键入</div>
+  <div id="input-limit-warn" data-i18n="ai.inputLimitWarn">键入已达上限 58KB，无法继续键入</div>
   <div id="input-row">
     <textarea id="input" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" placeholder="Ask qqq AI... (Ctrl+V 粘贴图片)" data-i18n-placeholder-attr="ai.inputPlaceholder" rows="2"></textarea>
   </div>
@@ -573,7 +574,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 
 <script src="../core/char-undo.js"></script>
 <script src="content-gateway.js"></script>
-<script src="panel-expert.js"></script>>
+<script src="panel-expert.js"></script>
 <script src="system-prompt.js"></script>
 <script src="embedding-service.js"></script>
 <script src="ai-gateway.js"></script>

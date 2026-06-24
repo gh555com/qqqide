@@ -244,7 +244,7 @@
     activeSubmenus = [];
   }
 
-  // ★ 飞块动画：左键点击后，小矩形从点击位置飞到目标 AI 面板底部输入区
+  // ★ 飞块动画：左键点击后，小矩形从点击位置飞到目标 AI 面板底部键入区
   var _flyBlock = null;
   function _animateFlyToPanel(rowEl, targetPanelId) {
     // 取消上一次动画
@@ -257,7 +257,7 @@
     if (!zone) return;
     var dstRect = zone.getBoundingClientRect();
     if (dstRect.width === 0 || dstRect.height === 0) return;
-    // 目标 Y：面板底部输入框区域（距底部 ~60px）
+    // 目标 Y：面板底部键入框区域（距底部 ~60px）
     var dstX = dstRect.left + dstRect.width / 2;
     var dstY = dstRect.bottom - 60;
     // 创建飞块

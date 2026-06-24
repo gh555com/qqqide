@@ -239,7 +239,7 @@ function autoResizeInput() {
     if (!_inputLineHeight) {
         _inputLineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
     }
-    // 空输入 → 恢复默认两行高
+    // 空键入 → 恢复默认两行高
     if (!el.value) {
         el.rows = 2;
         el.style.height = '';

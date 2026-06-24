@@ -96,6 +96,44 @@ questStore.requireProjectForWrites(true);  // 底层守卫：无主项目禁止�
 //       因此不存在 workspace 切换，只有首次绑定（应用重启时）。
 //       iframe 永不销毁（翼板开关 = width 显隐），所以每面板仅绑定一次。
 
+// ★ 清理上次异常退出残留的 all.json.tmp.* 文件（原子写 tmp+rename 的中断垃圾）
+async function _cleanStaleAllJsonTmp(root) {
+    try {
+        var bridge = _getBridge();
+        if (!bridge || !bridge.fs) return;
+        var questsDir = root + '/qqq/quests';
+        var stat = await bridge.fs.stat(questsDir);
+        if (!stat) return;
+        var deleted = 0;
+        // 两级扫描：q{n} → f{n}（all.json.tmp.* 只在叶子目录）
+        var qEntries = await bridge.fs.list(questsDir);
+        if (!qEntries || !qEntries.length) return;
+        for (var qi = 0; qi < qEntries.length; qi++) {
+            var qName = qEntries[qi];
+            if (qName.indexOf('q') !== 0) continue;
+            var qDir = questsDir + '/' + qName;
+            var fEntries = await bridge.fs.list(qDir);
+            if (!fEntries || !fEntries.length) continue;
+            for (var fi = 0; fi < fEntries.length; fi++) {
+                var fName = fEntries[fi];
+                if (fName.indexOf('f') !== 0) continue;
+                var fDir = qDir + '/' + fName;
+                var allEntries = await bridge.fs.list(fDir);
+                if (!allEntries || !allEntries.length) continue;
+                for (var ai = 0; ai < allEntries.length; ai++) {
+                    var aName = allEntries[ai];
+                    if (aName.indexOf('all.json.tmp.') === 0) {
+                        try { await bridge.fs.remove(fDir + '/' + aName); deleted++; } catch (_) { }
+                    }
+                }
+            }
+        }
+        if (deleted > 0) {
+            console.log('[workspace] cleaned ' + deleted + ' stale all.json.tmp.* files');
+        }
+    } catch (_) { /* best-effort */ }
+}
+
 // 初始化工作空间
 async function _initWorkspace(root) {
     // [silent] workspace init
@@ -135,6 +173,9 @@ async function _initWorkspace(root) {
     }
 
     questStore.setProjectRoot(root);
+
+    // ★ 清理上次异常退出残留的 all.json.tmp.* 文件（原子写 tmp+rename 的中断垃圾）
+    _cleanStaleAllJsonTmp(root).catch(function () { });
 
     // ═══ Card Pool：首次绑定时创建（唯一一次） ═══
     if (typeof CardPool !== 'undefined') {

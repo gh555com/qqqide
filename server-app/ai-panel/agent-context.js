@@ -164,7 +164,18 @@
         try {
             await self._digestColdMessages(coldMsgs, _lastCompressed);
             // 全成功 → splice conversation
-            self.conversation.splice(self._persistentCount, hotStart - self._persistentCount);
+            var _removedCount = hotStart - self._persistentCount;
+            self.conversation.splice(self._persistentCount, _removedCount);
+            // ★ 修复 _floorStartIdx 和 _floorMeta 中的索引（conversation 截短后需要平移）
+            if (self._floorStartIdx >= hotStart) { self._floorStartIdx -= _removedCount; }
+            if (self._floorMeta) {
+                for (var _fk in self._floorMeta) {
+                    if (self._floorMeta.hasOwnProperty(_fk)) {
+                        var _fm = self._floorMeta[_fk];
+                        if (_fm.floorStartIdx >= hotStart) { _fm.floorStartIdx -= _removedCount; }
+                    }
+                }
+            }
             self._ctx.lastCompressedFloor = self._ctx.totalFloors;
             self._lastApiPromptTokens = 0;
             self._lastApiTotalTokens = 0;
@@ -448,77 +459,27 @@
         return null;
     }
 
-    // ═══ 调用 API 做精简（经 AiGateway 统一出口） ═══
-    // suffix: 附加到 floor_id 区分账单（如 ':facts'）
-    // maxTokens: 覆盖默认阀值
+    // ═══ 调用 API 做精简（经 AiGateway 统一出口 §14b） ═══
     AgentLoop.prototype._callCompactAPI = async function (prompt, suffix, maxTokens) {
         var self = this;
         var _fetchStart = performance.now();
         var _suffix = suffix || '';
         var _maxTokens = maxTokens || COMPACT_NARRATIVE_TOKENS;
 
-        // ★ 取 token：优先 self._token，fallback localStorage
-        var token = (self._token || '').trim();
-        if (!token) {
-            try { token = (localStorage.getItem('qqq-ai-token') || '').trim(); } catch (_) { }
-            token = token.replace(/[^\x00-\x7F]/g, '');
-        }
-
-        if (!token) {
-            self._log('✗ Compact API no token');
-            return { parsed: null, ttfbMs: 0, totalMs: 0 };
-        }
-
-        // ★ tier：复用用户当前等级，回退 Tier 6
-        var _tierNum = 6;
-        if (self._lastTier && typeof self._lastTier.label !== 'undefined') {
-            _tierNum = parseInt(self._lastTier.label) || 6;
-        }
-
-        // ★ 构建请求体（Go 忽略 stream:false 始终 SSE，但保留语义）
-        var body = {
-            messages: [
-                { role: 'system', content: 'You are a context compression engine. Output ONLY valid JSON — no markdown, no explanation. Be concise and precise. Your output MUST fit within the token budget.' },
-                { role: 'user', content: prompt }
-            ],
-            stream: false,
-            thinking: { type: 'disabled' },
-            max_tokens: _maxTokens,
-            floor_id: (self._floorId || 'compact') + _suffix
-        };
-
-        // ★ 硬超时 2min：压缩是快速 JSON 提取，不应超过此值
-        var COMPACT_TIMEOUT_MS = 120000;
-        var _abortCtrl = new AbortController();
-        var _timer = setTimeout(function () {
-            self._log('⏰ Compact API timeout ' + (COMPACT_TIMEOUT_MS / 1000) + 's (suffix=' + _suffix + ')');
-            _abortCtrl.abort();
-        }, COMPACT_TIMEOUT_MS);
-
         try {
-            var resp;
-            // ★ 经 AiGateway 统一出口（超时 + 线路切换 + 密钥管理）
-            if (typeof AiGateway !== 'undefined' && AiGateway.chatFetch) {
-                resp = await AiGateway.chatFetch(body, {
-                    token: token,
-                    signal: _abortCtrl.signal,
-                    tier: _tierNum,
-                    isFallback: (typeof _gwUsingFallback !== 'undefined') ? !!_gwUsingFallback : false
-                });
-            } else {
-                // 兜底：AiGateway 未加载（不应发生）
-                resp = await fetch((typeof GATEWAY_URL !== 'undefined' ? GATEWAY_URL : 'https://direct.gh555.com:8444/api/v3/ai/chat'), {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    },
-                    body: JSON.stringify(body),
-                    signal: _abortCtrl.signal
-                });
-            }
+            var resp = await AiGateway.chatFetch({
+                model: 'deep',
+                messages: [
+                    { role: 'system', content: 'You are a context compression engine. Output ONLY valid JSON — no markdown, no explanation. Be concise and precise. Your output MUST fit within the token budget.' },
+                    { role: 'user', content: prompt }
+                ],
+                stream: false,
+                // ★ 读 ContentGateway 常量，改只改一处
+                thinking: { type: (typeof ContentGateway !== 'undefined' && ContentGateway.COMPACT_THINKING_ENABLED) ? 'enabled' : 'disabled' },
+                max_tokens: _maxTokens,
+                floor_id: (self._floorId || 'compact') + _suffix
+            }, { compact: true });
 
-            clearTimeout(_timer);
             var _ttfbMs = performance.now() - _fetchStart;
 
             if (!resp.ok) {
@@ -541,7 +502,6 @@
                     if (_d === '[DONE]') continue;
                     try {
                         var _parsed = JSON.parse(_d);
-                        // ★ 检测 SSE 错误事件（Go upstream 失败通知）
                         if (_parsed.type === 'error') {
                             self._log('✗ Compact SSE error (suffix=' + _suffix + '): ' + (_parsed.message || JSON.stringify(_parsed).slice(0, 200)));
                             return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
@@ -562,14 +522,12 @@
                 return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
             }
 
-            // ★ 稳健 JSON 提取
             var parsed = _extractJsonRobust(text, _suffix, self);
             if (!parsed) {
                 return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
             }
             return { parsed: parsed, ttfbMs: _ttfbMs, totalMs: _totalMs };
         } catch (err) {
-            clearTimeout(_timer);
             var _totalMs = performance.now() - _fetchStart;
             if (err && err.name === 'AbortError') {
                 self._log('✗ Compact API aborted (timeout/stop) suffix=' + _suffix);

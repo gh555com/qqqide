@@ -55,6 +55,13 @@ async function _checkFileSizeWarn(result, filePath) {
             }
         }
     } catch (_) { }
+    // ★ 自动语法检查：每次写入后静默运行，结果拼接在返回字符串末尾
+    if (typeof _autoSyntaxCheck === 'function') {
+        try {
+            var _syntaxResult = await _autoSyntaxCheck(filePath);
+            if (_syntaxResult) result += _syntaxResult;
+        } catch (_) { }
+    }
     return result;
 }
 
@@ -255,13 +262,13 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'get_diagnostics',
-            description: 'Get LSP/compiler diagnostics (errors, warnings, hints) for a file or all open files. Returns the same red/yellow squiggles you see in the IDE. Max 100 markers returned.',
+            description: 'Run a lightweight syntax check on a file (JS: node --check, PY: py_compile, JSON: JSON.parse). Returns [SYNTAX OK] or [SYNTAX ERROR] with details. Use after editing files, or to verify any file at any time.',
             parameters: {
                 type: 'object',
                 properties: {
-                    path: { type: 'string', description: 'File path to get diagnostics for (optional; omit for all open files)' }
+                    path: { type: 'string', description: 'Absolute path to the file to check' }
                 },
-                required: []
+                required: ['path']
             }
         }
     },

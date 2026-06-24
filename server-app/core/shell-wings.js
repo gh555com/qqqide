@@ -4,7 +4,7 @@
 // 常量: _shAiW = 389 (AI 面板宽度，shell.js 也引用)
 // ============================================================================
 
-var _shAiW = 389;  // AI panel width, shared with shell.js (onWindowResize + applyZoomCompensation)
+var _shAiW = 389;  // AI panel width, shared with shell.js (onWindowResize)
 
 var _shellBulbState = { left: false, right: false };
 var _shellWingLocked = false; // 不应期锁：toggle 进行中拒绝一切重复点击

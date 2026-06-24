@@ -801,15 +801,6 @@ export async function bootSequence(
     initBootLog(path.join(portableRoot, 'Data', 'Logs'));
     try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
 
-    // hide qqqide-core.exe — 用户只需看到 qqqide.exe，ZIP 解压不保留隐藏属性，每次启动补一刀
-    if (!isDev && process.platform === 'win32') {
-        const corePath = path.join(portableRoot, 'qqqide-core.exe');
-        try {
-            const { execSync } = require('child_process');
-            execSync('attrib +h "' + corePath + '"', { timeout: 2000 });
-        } catch (_) { }
-    }
-
     // ★ 开发模式：直连本地 dev-server，不走网络
     const DEV_URL = 'http://127.0.0.1:8090/qqq-app/';
     if (isDev) {

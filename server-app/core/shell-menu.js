@@ -93,10 +93,10 @@ window._shHandleMenuCmd = function handleMenuCmd(cmd) {
     }
     return;
   }
-  // ---- Zoom (also reachable via Ctrl+= / Ctrl+- / Ctrl+0 via key-hook) ----
-  if (cmd === 'zoom.in') { bridge.zoom && bridge.zoom.adjust(0.05); return; }
-  if (cmd === 'zoom.out') { bridge.zoom && bridge.zoom.adjust(-0.05); return; }
-  if (cmd === 'zoom.reset') { bridge.zoom && bridge.zoom.set(0.85); return; }
+  // ---- Editor font size (was zoom; also reachable via Ctrl+= / Ctrl+- / Ctrl+0) ----
+  if (cmd === 'zoom.in') { bridge.zoom && bridge.zoom.adjust(1); return; }
+  if (cmd === 'zoom.out') { bridge.zoom && bridge.zoom.adjust(-1); return; }
+  if (cmd === 'zoom.reset') { bridge.zoom && bridge.zoom.set(13); return; }
   // ---- Editor split right (Ctrl+\) ----
   if (cmd === 'editor.splitRight') {
     if (!window.qqqTabs) return;

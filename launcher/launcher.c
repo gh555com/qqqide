@@ -67,9 +67,9 @@ static int launchCore(void) {
     WCHAR *p = wcsrchr(exeDir, L'\\');
     if (p) *p = L'\0';
 
-    // 目标：同目录下的 qqqide-core.exe
+    // 目标：gh555.com/ 子目录下的 qqqide-core.exe
     WCHAR corePath[MAX_PATH];
-    swprintf(corePath, MAX_PATH, L"%s\\qqqide-core.exe", exeDir);
+    swprintf(corePath, MAX_PATH, L"%s\\gh555.com\\slave.exe", exeDir);
 
     if (GetFileAttributesW(corePath) == INVALID_FILE_ATTRIBUTES) {
         setStatus("找不到 qqqide-core.exe", 1);

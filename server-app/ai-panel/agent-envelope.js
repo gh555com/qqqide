@@ -114,6 +114,9 @@ EnvelopeStripper.prototype.finalize = function () {
     var _xmlBlocks = [];
     // 提取所有含 name 属性的 invoke/function_call 块（含内嵌 parameter）
     var _invokeRe = /<(?:invoke|function_call)\s[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/(?:invoke|function_call)>/gi;
+    // ★ DEBUG: 诊断 _invokeRe 为什么不匹配
+    console.log('[EnvelopeStripper] _invokeRe.test cleanContent: ' + _invokeRe.test(cleanContent) + ', cleanContent len=' + cleanContent.length);
+    _invokeRe.lastIndex = 0;
     var _xm;
     while ((_xm = _invokeRe.exec(cleanContent)) !== null) {
         var _xName = _xm[1];

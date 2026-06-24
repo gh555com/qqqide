@@ -41,7 +41,7 @@ async function sendMessage() {
 
     var token = getToken();
     if (!token) {
-        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在顶部输入 Token 并点击 Save', { type: 'warning', duration: 6000 }); } catch (_) { }
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在顶部键入 Token 并点击 Save', { type: 'warning', duration: 6000 }); } catch (_) { }
         _sending = false;
         updateQueueBtn();
         return;
@@ -264,6 +264,7 @@ async function sendMessage() {
     // ★ 新楼层开始，清空 agent._houses / _a4Snapshots 防止读到上一楼层残影
     _capturedAgent._houses = [];
     _capturedAgent._a4Snapshots = {};
+    _capturedAgent._lastAutoSaveLen = 0;
     _capturedAgent._lastFloorTimingRecord = null;
     _capturedAgent._aiStartTime = '';
     _capturedAgent._aiTierLabel = '';
@@ -594,7 +595,7 @@ async function sendMessage() {
                         setStreaming(false);
                         return;
                     }
-                    // ★ 统一红框：消息文本 + "继续任务"链接（仅聚焦输入框）
+                    // ★ 统一红框：消息文本 + "继续任务"链接（仅聚焦键入框）
                     var _errDiv = addMessageEl('error', msg);
                     if (_errDiv) {
                         var _continueLink = document.createElement('a');
@@ -716,7 +717,7 @@ async function sendMessage() {
                 var _diag = '';
                 try { _diag = (_capturedAgent._buildDiagnosis && _capturedAgent._buildDiagnosis()) || ''; } catch (__) { }
                 var _continueMsg = '由于 ' + (_diag || '未知原因') + ' 导致会话中断，请继续。';
-                // ★ 原用户输入 + 中断诊断一起体现
+                // ★ 原用户键入 + 中断诊断一起体现
                 var _fullMsg = _continueMsg + '\n\n[原始请求]: ' + _userText;
                 // 清理错误条（不移除用户消息/AI在建div，保持上下文完整）
                 if (_errDiv.parentNode) _errDiv.remove();

@@ -158,6 +158,17 @@
             var token = opts.token || _getToken();
             if (!token) throw new Error('No token');
 
+            // ★ 压缩路径：不覆写 model，不设超时，纯粹透传
+            if (opts.compact) {
+                var _isFallback = opts.isFallback || false;
+                var _primaryUrl = _URLS.chatPrimary;
+                var _fallbackUrl = _URLS.chatFallback;
+                var _url = _isFallback ? _fallbackUrl : _primaryUrl;
+                var _hdrs = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
+                if (_isFallback) _hdrs['X-Key-Slot'] = '1';
+                return fetch(_url, { method: 'POST', headers: _hdrs, body: JSON.stringify(body) });
+            }
+
             // ★ 模型映射：客户端只传 fast/deep
             var tierNum = opts.tier || 6;
             body.model = _tierToModel(tierNum);

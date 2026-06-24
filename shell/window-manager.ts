@@ -15,46 +15,25 @@ import { extractFlags } from './boot';
 export const _consoleBuffer: string[] = [];
 export const _consoleMaxLines = 20000;
 
-// ---- Persisted zoom factor ----
-export let zoomFactor = 0.85;
-let _zoomFile = '';
+// ---- Editor font size (replaces zoom — window UI locked at 1.0) ----
+export let editorFontSize = 13;
 
-export function initZoom(portableRoot: string, stateStore: StateStore): void {
-    _zoomFile = path.join(portableRoot, 'zoom.json');
-    // legacy file load
-    try {
-        if (fs.existsSync(_zoomFile)) {
-            const z = JSON.parse(fs.readFileSync(_zoomFile, 'utf8'));
-            if (typeof z.factor === 'number' && z.factor >= 0.5 && z.factor <= 2.0) {
-                zoomFactor = z.factor;
-            }
-        }
-    } catch (e) { /* ignore */ }
+export function setEditorFontSize(size: number): void {
+    editorFontSize = size;
 }
 
-export async function hydrateZoomFromState(stateStore: StateStore): Promise<void> {
-    try {
-        const v = await stateStore.get('qqqide', 'zoom');
-        if (v && typeof v.factor === 'number' && v.factor >= 0.5 && v.factor <= 2.0) {
-            zoomFactor = v.factor;
-        } else {
-            // first run after migration: write boot-loaded legacy value into state
-            await stateStore.setNow('qqqide', 'zoom', { factor: zoomFactor });
-            try {
-                if (_zoomFile && fs.existsSync(_zoomFile)) { fs.renameSync(_zoomFile, _zoomFile + '.migrated'); }
-            } catch { /* ignore */ }
+export function saveEditorFontSize(stateStore: StateStore): void {
+    try { stateStore.set('qqqide', 'editorFontSize', { size: editorFontSize }); } catch { /* ignore */ }
+}
+
+/** Broadcast editor font size change to ALL windows (main + diff) */
+export function broadcastEditorFontSize(size: number): void {
+    const allWindows = BrowserWindow.getAllWindows();
+    for (const win of allWindows) {
+        if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+            try { win.webContents.send('qqqide:zoom:changed', size); } catch { /* ignore */ }
         }
-    } catch (e) {
-        console.warn('[state] _hydrateZoomFromState failed:', e);
     }
-}
-
-export function saveZoom(stateStore: StateStore): void {
-    try { stateStore.set('qqqide', 'zoom', { factor: zoomFactor }); } catch { /* ignore */ }
-}
-
-export function setZoomFactor(f: number): void {
-    zoomFactor = f;
 }
 
 // ---- Window bounds ----
@@ -194,12 +173,12 @@ export function createWindow(
         }
     });
 
-    // Apply zoom factor on load
+    // Lock window UI at 1.0 (no zoom — editor font size handles text scaling)
     win.webContents.on('did-finish-load', () => {
-        win.webContents.setZoomFactor(zoomFactor);
+        win.webContents.setZoomFactor(1.0);
     });
 
-    // Ctrl/Cmd + (+/-/0) zoom shortcuts
+    // Ctrl/Cmd + (+/-/0) editor font size shortcuts
     win.webContents.on('before-input-event', (ev, input) => {
         if (input.type !== 'keyDown') { return; }
         const ctrl = input.control || input.meta;
@@ -207,22 +186,19 @@ export function createWindow(
         const k = input.key;
         if (k === '=' || k === '+') {
             ev.preventDefault();
-            zoomFactor = Math.min(2.0, +(zoomFactor + 0.05).toFixed(2));
-            win.webContents.setZoomFactor(zoomFactor);
-            saveZoom(stateStore);
-            try { win.webContents.send('qqqide:zoom:changed', zoomFactor); } catch { /* ignore */ }
+            editorFontSize = Math.min(128, editorFontSize + 1);
+            saveEditorFontSize(stateStore);
+            broadcastEditorFontSize(editorFontSize);
         } else if (k === '-' || k === '_') {
             ev.preventDefault();
-            zoomFactor = Math.max(0.5, +(zoomFactor - 0.05).toFixed(2));
-            win.webContents.setZoomFactor(zoomFactor);
-            saveZoom(stateStore);
-            try { win.webContents.send('qqqide:zoom:changed', zoomFactor); } catch { /* ignore */ }
+            editorFontSize = Math.max(6, editorFontSize - 1);
+            saveEditorFontSize(stateStore);
+            broadcastEditorFontSize(editorFontSize);
         } else if (k === '0') {
             ev.preventDefault();
-            zoomFactor = 1.0;
-            win.webContents.setZoomFactor(zoomFactor);
-            saveZoom(stateStore);
-            try { win.webContents.send('qqqide:zoom:changed', zoomFactor); } catch { /* ignore */ }
+            editorFontSize = 13;
+            saveEditorFontSize(stateStore);
+            broadcastEditorFontSize(editorFontSize);
         }
     });
 

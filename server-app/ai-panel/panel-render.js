@@ -155,7 +155,7 @@ function doStreamRender(ag) {
     if (_ag && _ag._doStreamRender) { _ag._doStreamRender(); }
 }
 
-// ═══ 唯一真理机：用户消息显示内容（剥离所有注入块，无论输入干净还是脏） ═══
+// ═══ 唯一真理机：用户消息显示内容（剥离所有注入块，无论键入干净还是脏） ═══
 function getUserDisplayContent(content) {
     if (typeof content !== 'string') return '';
     var text = content;

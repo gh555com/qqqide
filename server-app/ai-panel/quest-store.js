@@ -387,16 +387,23 @@ var QuestStore = (function () {
                 }
 
                 // ★ 更新已有条目的 dirName + 同步缓存（防同编号多目录 prefix scan 误匹配）
+                var _dirNamesUpdated = false;
                 for (var ui = 0; ui < idx.length; ui++) {
                     var ue = idx[ui];
                     if (ue.id && diskById[ue.id] && diskById[ue.id].length >= 1) {
-                        if (!ue.dirName) ue.dirName = diskById[ue.id][0].name;
+                        var diskName = diskById[ue.id][0].name;
+                        // ★ 改名后 dirName 需同步磁盘真相（否则 _resolveQuestDirName 返回旧目录名 → bf.list 空）
+                        if (ue.dirName !== diskName) {
+                            if (ue.dirName) { console.log('[quest-store] _syncIndexFromFs: dirName updated for ' + ue.id + ' "' + ue.dirName + '" → "' + diskName + '"'); }
+                            ue.dirName = diskName;
+                            _dirNamesUpdated = true;
+                        }
                         // ★ 缓存必须与索引一致（否则 _resolveQuestDirName prefix scan 可能返回错误目录）
-                        if (!_questDirCache[ue.id] && ue.dirName) _questDirCache[ue.id] = ue.dirName;
+                        if (_questDirCache[ue.id] !== diskName) _questDirCache[ue.id] = diskName;
                     }
                 }
 
-                if (!stale.length && !added.length) return;
+                if (!stale.length && !added.length && !_dirNamesUpdated) return;
 
                 // 清理 sq3 中已删除 quest 的数据
                 var b = _bridge();
@@ -833,6 +840,7 @@ var QuestStore = (function () {
 
     var _questDirCache = {};   // questId → 目录名 (e.g. "q1.标题")
     var _floorDirCache = {};   // questId+'\x00'+floorNum → 完整路径 (e.g. "qqq/quests/q1.新标题/f3.新问题/")
+    var _questDirListLock = {};  // qDirName → Promise (防同目录并发 list——loadAllFloors Promise.all 触发)
 
     function _invalidatePathCache(questId) {
         delete _questDirCache[questId];
@@ -842,18 +850,15 @@ var QuestStore = (function () {
         });
     }
 
-    // 解析 quest 目录名: 优先精确 dirName → 兜底 prefix scan
-    //   dirName 来自索引条目（_syncIndexFromFs/saveFloor 存入），防止同编号多目录误匹配
+    // ★ 解析 quest 目录名 — 永远从磁盘编号匹配（sq3 的 dirName 只是给 UI 看的摘要，不参与路径解析）
     async function _resolveQuestDirName(questId, _dirName) {
-        // ★ 优先精确匹配：索引条目有 dirName 时，缓存优先（由 _syncIndexFromFs 喂入）
+        // ★ 调用方显式传入已验证的 dirName → 直接信任（如 deleteQuest）
         if (_dirName) {
-            if (_questDirCache[questId] && _questDirCache[questId] === _dirName) return _dirName;
-            // 新 dirName → 直接信任（索引条目已验证过文件系统）
             _questDirCache[questId] = _dirName;
             return _dirName;
         }
 
-        if (_questDirCache[questId]) return _questDirCache[questId];
+        // ★ 磁盘编号前缀扫描（唯一真理源）
         if (!_rootDir) return null;
         var bf = _bridgeFs();
         if (!bf) return null;
@@ -870,6 +875,8 @@ var QuestStore = (function () {
     }
 
     // 解析 floor 目录完整路径: list("q{n}.*/") → startsWith("f{n}.")
+    // ★ 2026-06-24 加固：loadAllFloors Promise.all 并发时，同 quest 目录只 list 一次。
+    //   首次 list 时预热全部 floor 缓存，后续调用 100% 缓存命中零 IO。
     async function _resolveFloorDir(questId, floorNum) {
         var cacheKey = questId + '\x00' + floorNum;
         if (_floorDirCache[cacheKey]) return _floorDirCache[cacheKey];
@@ -877,34 +884,55 @@ var QuestStore = (function () {
         if (!qDirName) return null;
         var bf = _bridgeFs();
         if (!bf) return null;
-        try {
-            var qDirPath = _rootDir + '/qqq/quests/' + qDirName;
-            var list = await bf.list(qDirPath);
-            for (var i = 0; i < list.length; i++) {
-                if (list[i].isDir && list[i].name.indexOf('f' + floorNum + '.') === 0) {
-                    var fDir = qDirPath + '/' + list[i].name + '/';
-                    _floorDirCache[cacheKey] = fDir;
-                    return fDir;
+        var qDirPath = _rootDir + '/qqq/quests/' + qDirName;
+
+        // ★ 同 quest 目录的并发 list 合并为一个（防 loadAllFloors Promise.all 触发 N 次）
+        var _listProm = _questDirListLock[qDirName];
+        if (_listProm) {
+            await _listProm;
+            return _floorDirCache[cacheKey] || null;
+        }
+
+        _listProm = (async () => {
+            try {
+                var list = await bf.list(qDirPath);
+                // ★ 预热全部 floor 目录缓存（一次 list 覆盖所有楼层）
+                for (var i = 0; i < list.length; i++) {
+                    if (list[i].isDir) {
+                        var fm = list[i].name.match(/^f(\d+)\./);
+                        if (fm) {
+                            var fk = questId + '\x00' + fm[1];
+                            if (!_floorDirCache[fk]) {
+                                _floorDirCache[fk] = qDirPath + '/' + list[i].name + '/';
+                            }
+                        }
+                    }
                 }
+            } catch (_e) {
+                console.warn('[quest-store] _resolveFloorDir: bf.list FAIL for ' + qDirPath + ' — ' + (_e && _e.message));
             }
-        } catch (_) { }
-        return null;
+        })();
+        _questDirListLock[qDirName] = _listProm;
+        await _listProm;
+        delete _questDirListLock[qDirName];
+
+        return _floorDirCache[cacheKey] || null;
     }
 
     // ★ 读取 all.json（真理源）
     async function _readFloorFile(questId, floorNum) {
-        if (!_rootDir) return null;
+        if (!_rootDir) { console.warn('[quest-store] _readFloorFile FAIL: no _rootDir for ' + questId + '.' + floorNum); return null; }
         try {
             var bf = _bridgeFs();
-            if (!bf) return null;
+            if (!bf) { console.warn('[quest-store] _readFloorFile FAIL: no bridgeFs for ' + questId + '.' + floorNum); return null; }
             var fDir = await _resolveFloorDir(questId, floorNum);
-            if (!fDir) return null;
+            if (!fDir) { console.warn('[quest-store] _readFloorFile FAIL: _resolveFloorDir null for ' + questId + '.' + floorNum + ' (dir missing or cache miss)'); return null; }
             var raw = await bf.read(fDir + 'all.json');
-            if (raw && typeof raw === 'string') {
-                return JSON.parse(raw);
-            }
-            return null;
+            if (!raw) { console.warn('[quest-store] _readFloorFile FAIL: bf.read null for ' + questId + '.' + floorNum + ' path=' + fDir + 'all.json'); return null; }
+            if (typeof raw !== 'string') { console.warn('[quest-store] _readFloorFile FAIL: raw not string for ' + questId + '.' + floorNum + ' type=' + typeof raw); return null; }
+            return JSON.parse(raw);
         } catch (_e) {
+            console.warn('[quest-store] _readFloorFile FAIL: exception for ' + questId + '.' + floorNum + ' — ' + (_e && _e.message));
             return null;
         }
     }
@@ -1089,16 +1117,27 @@ var QuestStore = (function () {
         }));
 
         var floors = [];
+        var missingFloorNums = [];
         for (var i = 0; i < results.length; i++) {
             if (results[i].data) {
                 floors.push(results[i]);
             } else {
+                missingFloorNums.push(results[i].floorNum);
                 console.warn('[quest-store] loadAllFloors: floor.' + questId + '.' + results[i].floorNum + ' listed but data missing');
             }
         }
 
-        // ★ sq3 缺失时从 all.json 重建 quest 元数据（改名编号/备份还原 零损失）
-        if (floorListFromFs || !qData) {
+        // ★ 清理失败的楼层 sq3 条目 + 重建 quest 元数据（仅包含成功加载的楼层）
+        if (missingFloorNums.length) {
+            var b2 = _bridge();
+            if (b2) {
+                for (var mi = 0; mi < missingFloorNums.length; mi++) {
+                    try { await b2.del(FLOOR_NS + '.' + questId + '.' + missingFloorNums[mi]); } catch (_) { }
+                }
+            }
+            await _rebuildQuestMetaFromFloors(questId, floors);
+        } else if (floorListFromFs || !qData) {
+            // ★ sq3 缺失时从 all.json 重建 quest 元数据（改名编号/备份还原 零损失）
             await _rebuildQuestMetaFromFloors(questId, floors);
         }
 
@@ -1246,7 +1285,7 @@ var QuestStore = (function () {
             if (parent && parent.__qqq_renameScanInProgress) return result;
         } catch (_) { return result; }
 
-        try { if (parent) parent.__qqq_renameScanInProgress = true; } catch (_) {}
+        try { if (parent) parent.__qqq_renameScanInProgress = true; } catch (_) { }
 
         try {
             var bf = _bridgeFs();
@@ -1258,7 +1297,7 @@ var QuestStore = (function () {
 
             // ★ 获取正在建楼的 quest（跳过，防文件锁争用）
             var running = [];
-            try { if (parent && parent.__qqq_getRunningQuests) running = parent.__qqq_getRunningQuests() || []; } catch (_) {}
+            try { if (parent && parent.__qqq_getRunningQuests) running = parent.__qqq_getRunningQuests() || []; } catch (_) { }
 
             var diskList = [];
             try {
@@ -1307,7 +1346,7 @@ var QuestStore = (function () {
 
                 // ★ 尝试重命名
                 var targetExists = false;
-                try { targetExists = !!(await bf.stat(questsDir + expectedName)); } catch (_) {}
+                try { targetExists = !!(await bf.stat(questsDir + expectedName)); } catch (_) { }
                 if (targetExists) {
                     // 目标名已被占用（可能手动创建的）→ 放弃
                     console.warn('[quest-store] lazyRenameScan: target exists, skip rename', currentName, '→', expectedName);
@@ -1334,7 +1373,7 @@ var QuestStore = (function () {
                     parent.__qqq_renameScanDone = true;
                     parent.__qqq_renameScanResult = result;
                 }
-            } catch (_) {}
+            } catch (_) { }
         }
         return result;
     };

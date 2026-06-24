@@ -272,6 +272,8 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
             finalized.cleanContent = (finalized.cleanContent || '')
                 .replace(/<function_calls>[\s\S]*?<\/function_calls>/gi, '')
                 .replace(/<Tool\s+Call:\s*\w[\w.-]*>[\s\S]*?<\/Tool\s+Call>/gi, '')
+                .replace(/<invoke\s[^>]*?\bname\s*=\s*["'][^"']+["'][^>]*>[\s\S]*?<\/invoke>/gi, '')
+                .replace(/<tool_call[\s>][^>]*>[\s\S]*?<\/tool_call>/gi, '')
                 .replace(/\x0a{3,}/g, '\x0a\x0a').trim();
         }
     }

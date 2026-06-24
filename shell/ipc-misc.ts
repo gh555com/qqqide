@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import { URL } from 'url';
 import { BootConfig } from './boot';
 import { addAssetRoot, _assetFileWorkspaceRoots, diskFreeBatch } from './asset-protocol';
-import { _windowProjectMap, _projectWindowMap, createWindow, zoomFactor, saveZoom, setZoomFactor } from './window-manager';
+import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize } from './window-manager';
 import { StateStore } from './state-sqlite';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
@@ -239,28 +239,20 @@ export function registerMiscIpc(
         win.setBounds({ x: newX, y: b.y, width: newW, height: b.height });
     });
 
-    // ---- zoom ----
-    ipcMain.handle('qqqide:zoom:get', () => zoomFactor);
-    ipcMain.handle('qqqide:zoom:set', (_e, factor: number) => {
-        const f = Math.max(0.5, Math.min(2.0, +Number(factor).toFixed(2)));
-        setZoomFactor(f);
-        const mainWindow = getMainWindow();
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.setZoomFactor(f);
-            try { mainWindow.webContents.send('qqqide:zoom:changed', f); } catch { /* ignore */ }
-        }
-        saveZoom(stateStore);
-        return f;
+    // ---- editor font size (was zoom — now controls text size, not window scale) ----
+    ipcMain.handle('qqqide:zoom:get', () => editorFontSize);
+    ipcMain.handle('qqqide:zoom:set', (_e, size: number) => {
+        const s = Math.max(6, Math.min(128, Math.round(Number(size))));
+        setEditorFontSize(s);
+        saveEditorFontSize(stateStore);
+        broadcastEditorFontSize(s);
+        return s;
     });
     ipcMain.handle('qqqide:zoom:adjust', (_e, delta: number) => {
-        const next = Math.max(0.5, Math.min(2.0, +(zoomFactor + Number(delta)).toFixed(2)));
-        setZoomFactor(next);
-        const mainWindow = getMainWindow();
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.setZoomFactor(next);
-            try { mainWindow.webContents.send('qqqide:zoom:changed', next); } catch { /* ignore */ }
-        }
-        saveZoom(stateStore);
+        const next = Math.max(6, Math.min(128, Math.round(editorFontSize + Number(delta))));
+        setEditorFontSize(next);
+        saveEditorFontSize(stateStore);
+        broadcastEditorFontSize(next);
         return next;
     });
 
