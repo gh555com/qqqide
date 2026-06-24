@@ -196,28 +196,41 @@ async function _ensureQuestDir(root, qName, fName) {
 
 // ── 按 q{n}. 前缀搜索已有 quest 目录（只匹配编号，不依赖标题）──
 // ── 遇碰撞（同前缀多目录）打 warn，始终返回第一个 ──
+// ★ 加固（2026-06-25）：I/O 错误不再静默吞 → 3x 重试，全失败则抛异常
+//   避免静默返回 null → 上游误认为目录不存在 → 创建重复目录（§漏洞①）
 async function _findQuestDirByPrefix(root, questId) {
     var bridge = window.parent && window.parent.qqqideBridge;
     if (!bridge || !bridge.fs) return null;
     var questsDir = root + '/qqq/quests/';
-    try {
-        var entries = await bridge.fs.list(questsDir);
-        var matches = [];
-        for (var ei = 0; ei < entries.length; ei++) {
-            if (entries[ei].name.startsWith(questId + '.') && entries[ei].isDir) {
-                matches.push(entries[ei].name);
+    var lastErr = null;
+    for (var attempt = 0; attempt < 3; attempt++) {
+        try {
+            var entries = await bridge.fs.list(questsDir);
+            var matches = [];
+            for (var ei = 0; ei < entries.length; ei++) {
+                if (entries[ei].name.startsWith(questId + '.') && entries[ei].isDir) {
+                    matches.push(entries[ei].name);
+                }
+            }
+            if (matches.length > 1) {
+                console.warn('[quest-dir] COLLISION: prefix ' + questId + ' has ' + matches.length + ' dirs:', matches.join(', '));
+                console.warn('[quest-dir]   → using ' + matches[0]);
+            }
+            return matches[0] || null;  // ★ null = 真无目录（list 成功但无匹配）
+        } catch (e) {
+            lastErr = e;
+            if (attempt < 2) {
+                console.warn('[quest-dir] _findQuestDirByPrefix I/O error (attempt ' + (attempt+1) + '/3):', e && e.message);
+                await new Promise(function (r) { setTimeout(r, 200); });
             }
         }
-        if (matches.length > 1) {
-            console.warn('[quest-dir] COLLISION: prefix ' + questId + ' has ' + matches.length + ' dirs:', matches.join(', '));
-            console.warn('[quest-dir]   → using ' + matches[0]);
-        }
-        return matches[0] || null;
-    } catch (_) { }
-    return null;
+    }
+    // ★ 3 次全失败 → 抛异常，不可静默返回 null（否则上游误以为目录不存在 → 创建重复目录）
+    console.error('[quest-dir] _findQuestDirByPrefix FAILED after 3 attempts for ' + questId + ':', lastErr && lastErr.message);
+    throw new Error('_findQuestDirByPrefix: I/O error after 3 retries — ' + (lastErr && lastErr.message));
 }
 
-// ── 解析 quest 目录名：只按 q{n}. 前缀匹配已有目录 ──
+// ── 解析 quest 目录名录名：只按 q{n}. 前缀匹配已有目录 ──
 // B+ 方案：不再实时修复或创建新目录，只返回已有目录名
 // 若找不到（首次建楼调用此函数），则由 build 路径自己决定
 async function _resolveQuestDirName(root, questId, numericId, title) {

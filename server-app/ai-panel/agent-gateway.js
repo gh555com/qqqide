@@ -111,16 +111,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
         }
     }
 
-    // ★ 时间上下文：注入到 apiMessages 末尾（非 conversation）以最大化 prefix cache 命中
-    //    msg[0] 纯静态 + 时间在末尾 → 整个 conversation prefix 跨 floor 100% 缓存命中
-    //    仅 ~35 tokens 的时间戳每层楼重新计算
-    var _timeCtx = '';
-    if (typeof getTimeContext === "function") {
-        try { _timeCtx = getTimeContext(); } catch (_) { }
-    }
-    if (_timeCtx) {
-        apiMessages.push({ role: 'system', content: _timeCtx });
-    }
+    // ★ 时间上下文已嵌入用户消息末尾（agent-loop.js send()），不在此处重复注入
 
     // 语言检测已移至 a1 审计按钮（后翻译方案），此处不再强制注入语言指令
     // ★ house_hint：每间 house 推理前 30 字，供服务器账单按 house 区分

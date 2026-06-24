@@ -341,8 +341,17 @@ var AgentLoop = (function () {
             self._log("[rules] persistent injected (" + rulesPrefix.length + " chars, v=" + self._rulesVersion.slice(0, 8) + ")");
         }
 
-        // ★ 时间上下文已移至 _callGateway 末尾（msg[-1]），不再注入到 conversation 中
-        //    msg[0] 纯静态 → prefix cache 100%命中；时间戳在末尾 → 零缓存污染
+        // ★ 时间上下文：嵌入用户消息末尾（非独立消息）
+        //    msg[0] 纯静态 → prefix cache 100%命中；时间随用户消息自然在末尾 → 零缓存污染
+        var _timeCtx = '';
+        if (typeof getTimeContext === "function") {
+            try { _timeCtx = getTimeContext(); } catch (_) {}
+        }
+        finalContent += _timeCtx;
+
+        self._ctx.totalFloors++;
+        var userMsg = { role: 'user', content: finalContent, _floor: self._ctx.totalFloors };
+        self.conversation.push(userMsg);
 
         self._log('→ user: ' + (userContent || '').slice(0, 80) + (images ? ' +' + images.length + ' images' : '') + (visionText ? ' [vision done]' : ''));
 

@@ -162,7 +162,7 @@ function registerAllIpc(): void {
     registerMiscIpc(
         portable.root, portable.cache, APP_VERSION, isDevFlag,
         lspBridge, downloadService, stateStore,
-        updateService, () => mainWindow  // lspBridge=null (LSP OFF)
+        updateService, () => mainWindow, bootConfig  // lspBridge=null (LSP OFF)
     );
     registerTimelineIpc(portable.root, bootConfig);
     registerSmartSearchIpc(indexService);

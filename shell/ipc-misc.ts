@@ -28,6 +28,7 @@ export function registerMiscIpc(
     stateStore: StateStore,
     updateService: UpdateService,
     getMainWindow: () => any,
+    bootConfig: BootConfig,
 ): void {
     // ---- clipboard ----
     ipcMain.handle('qqqide:clipboard:writeText', async (_e, s: string) => clipboard.writeText(String(s)));

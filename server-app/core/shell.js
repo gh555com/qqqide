@@ -173,11 +173,12 @@ function bootAiViewport() {
 }
 
 // ---- Editor font size (was zoom; window UI locked at 1.00) ----
-// Press-and-hold: mousedown fires immediately, then repeats with accelerating speed
-//   first repeat ~180ms → gradually → min ~25ms (≈ 3× faster than old 80ms)
+// Press-and-hold: mousedown fires immediately, then a 300ms pause, then accel repeat.
+//   Single click = one immediate fire only (mouseup before 300ms → no repeat).
 var _efsRepeatTimer = 0;
 var _efsRepeatDelta = 0;
 var _efsDelay = 0;
+var _efsStopped = false;
 
 function applyFontSizeLabel(size) {
   var $label = document.getElementById('qqq-zoom-label');
@@ -187,31 +188,49 @@ function applyFontSizeLabel(size) {
 function _efsStartRepeat(delta) {
   var bridge = _shBridge;
   if (!bridge || !bridge.zoom) return;
+  _efsStopped = false;
   _efsRepeatDelta = delta;
-  _efsDelay = 180;  // initial repeat interval (ms)
-  _efsStopRepeat();
-  _efsRepeatTick();  // fire immediately
+  _efsDelay = 160;  // initial repeat interval (ms)
+  if (_efsRepeatTimer) { clearTimeout(_efsRepeatTimer); _efsRepeatTimer = 0; }
+  _efsRepeatTick();  // fire immediately (single click = this one tick, then stopped by mouseup)
+  // Schedule next tick — will be cancelled by _efsStopRepeat on mouseup if user released
+  _efsRepeatTimer = setTimeout(function () {
+    _efsRepeatTimer = 0;
+    if (_efsStopped) return;
+    _efsRepeatTickChained();
+  }, 300);
 }
 
-function _efsScheduleNext() {
-  if (_efsRepeatTimer) return;  // stopped
-  _efsRepeatTimer = setTimeout(_efsRepeatTick, _efsDelay);
-}
-
-async function _efsRepeatTick() {
-  _efsRepeatTimer = 0;
+// chained repeat: accel loop, respects _efsStopped
+async function _efsRepeatTickChained() {
+  if (_efsStopped) return;
   var bridge = _shBridge;
   if (!bridge || !bridge.zoom) return;
   try {
     var s = await bridge.zoom.adjust(_efsRepeatDelta);
     applyFontSizeLabel(s);
   } catch (_) { }
-  // Accelerate: multiply delay by 0.88 each tick, floor at 25ms
+  if (_efsStopped) return;
   _efsDelay = Math.max(25, _efsDelay * 0.88);
-  _efsScheduleNext();
+  _efsRepeatTimer = setTimeout(function () {
+    _efsRepeatTimer = 0;
+    if (_efsStopped) return;
+    _efsRepeatTickChained();
+  }, _efsDelay);
+}
+
+// the immediate first tick (always fires, single click or hold)
+async function _efsRepeatTick() {
+  var bridge = _shBridge;
+  if (!bridge || !bridge.zoom) return;
+  try {
+    var s = await bridge.zoom.adjust(_efsRepeatDelta);
+    applyFontSizeLabel(s);
+  } catch (_) { }
 }
 
 function _efsStopRepeat() {
+  _efsStopped = true;
   if (_efsRepeatTimer) { clearTimeout(_efsRepeatTimer); _efsRepeatTimer = 0; }
   _efsDelay = 0;
 }
