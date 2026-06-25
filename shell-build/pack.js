@@ -366,18 +366,25 @@ function injectLauncher(unpacked) {
       fs.renameSync(src, dst);
     }
   }
-  // rename electron's own binary to qqqide-core.exe
-  const electronBin = path.join(coreDir, 'electron.exe');
+  // rename whatever binary ended up in gh555.com/ to slave.exe
   const coreExe = path.join(coreDir, 'slave.exe');
-  if (fs.existsSync(electronBin) && !fs.existsSync(coreExe)) {
-    fs.renameSync(electronBin, coreExe);
-  }
-  // also handle case where electron.exe was already renamed to qqqide.exe at root
-  const electronExe = path.join(unpacked, 'qqqide.exe');
-  if (fs.existsSync(electronExe) && !fs.existsSync(coreExe)) {
-    fs.renameSync(electronExe, coreExe);
+  for (const candidate of ['electron.exe', 'qqqide.exe']) {
+    const bin = path.join(coreDir, candidate);
+    if (fs.existsSync(bin) && !fs.existsSync(coreExe)) {
+      fs.renameSync(bin, coreExe);
+      console.log('[pack] renamed ' + candidate + ' -> slave.exe');
+      break;
+    }
   }
   console.log('[pack] moved Electron runtime -> gh555.com/');
+
+  // ── config.json 也要进 gh555.com/（portableRoot = gh555.com/，boot.ts 从 portableRoot 读） ──
+  const rootCfg = path.join(unpacked, 'config.json');
+  const coreCfg = path.join(coreDir, 'config.json');
+  if (fs.existsSync(rootCfg) && !fs.existsSync(coreCfg)) {
+    fs.cpSync(rootCfg, coreCfg);
+    console.log('[pack] copied config.json -> gh555.com/');
+  }
 
   // ── 复制 C 启动器为根 qqqide.exe ──
   const launcherDst = path.join(unpacked, 'qqqide.exe');

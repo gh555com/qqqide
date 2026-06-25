@@ -30,7 +30,6 @@ async function switchQuest(id) {
         // ★ 保存旧 quest UI 状态 + 释放所有权
         if (questActiveId) {
             saveQuestUIState(questActiveId);
-            _stopAutoSave();
             if (_activeAgent && _activeAgent._compressing) {
                 // 压缩进行中 → 等待完成（最多 220s），防保存半成品
                 var _waitStart = Date.now();
@@ -266,7 +265,6 @@ async function createNewQuest() {
 function _unloadQuest() {
     var unloadId = questActiveId;
     if (unloadId && !_isDraft(unloadId)) { _parentReleaseQuest(unloadId); }
-    _stopAutoSave();
     if (unloadId && cardPool) {
         var oldCard = cardPool.getCard(unloadId);
         if (oldCard && oldCard.dom) {

@@ -264,7 +264,12 @@ document.addEventListener('click', function(e) {
 var _diffState = { before: null, after: null, path: '', showFull: false, sideBySide: false, isGit: false, isStaged: false, hunkCount: 0 };
 
 window.addEventListener('message', function(e) {
-  if (e.data && e.data.type === 'qqqide-sfunction _showDiff(data) {
+  if (e.data && e.data.type === 'qqqide-show-diff') {
+    _showDiff(e.data);
+  }
+});
+
+function _showDiff(data) {
   _diffState.before = data.before || '';
   _diffState.after = data.after || '';
   _diffState.path = data.path || '';
@@ -272,8 +277,7 @@ window.addEventListener('message', function(e) {
   _diffState.sideBySide = false;
   _diffState.isGit = data.isGit || false;
   _diffState.isStaged = data.isStaged || false;
-  _diffState.hunkCount = data.hunkCount || 0;ull = false;
-  _diffState.sideBySide = false;
+  _diffState.hunkCount = data.hunkCount || 0;
 
   document.getElementById('timeline-empty').classList.add('hidden');
   document.getElementById('timeline-diff').classList.remove('hidden');

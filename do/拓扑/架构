@@ -268,6 +268,27 @@ UI 布局 — A/X/AI + 左右翼（三面板）
   右翼     #qqq-wing-right   右面板(panel=2)，灯泡开关，默认关闭，宽度=AI_W
   灯泡     #qqq-bulb-1/2     菜单行2 红色圆点，toggle 开关 + 窗口伸缩
 
+菜单栏 (shell-menu.js + menu-schema.js) — 2026-06-25
+----------------------------------------------------------
+· 顶部两菜单："qqq IDE" + "的梦gaea"（无 i18n，纯文本标签）
+· 子菜单 hover 高亮：IIFE 捕获行引用修复闭包 bug（原 var hoist 导致高亮错位到末行）
+· "开新窗口" 行特殊：min-width:210px（比其他行宽 30px），右侧 20×20px ▶ square button
+· hover ▶ → 延迟 200ms 弹出最近主文件夹下拉（数据源=qgs recent_folders，与 AI 视口+号共享）
+· 点击下拉文件夹 → 保存当前窗口快照 → 新窗口以 ?restore=1 模式打开
+
+窗口快照系统 (win_snap:{normalizedPath} in qgs global) — 2026-06-25
+------------------------------------------------------------------------
+· 保存时机：beforeunload / file.exit / file.newWindow / 从最近列表打开新窗口前
+· 快照内容：mainFolder + auxFolders[] + editorTabs[{path,groupIdx,active,preview}]
+             + editorPositions{filePath:{lineNumber,column}} + layout + theme
+· AI 面板状态不重复存储——onlyStore (only.sq3) 已完整记录 ai.panel.*.activeQuestId
+  + ai.uiStates.{panelId}，新窗口 initQuests() 自动从 onlyStore 恢复
+· 光标位置：editor.js 新增 getAllEditorPositions() + setEditorPosition(fp,pos) API
+· 还原流程：tab-manager._restoreTabsFromSnapshot 设置 qqqPendingEditorPositions
+  → 分发 qqq-file-open → openInPane 创建 editor 后自动消费 pending 位置
+· URL 参数：bridge.window.new(folderPath) → ?restore=1&folder=xxx（无 folderPath → ?fresh=1）
+· 锁检查：ipc-misc.ts 窗口创建前检查 project lock，已锁 → 返回 locked:true
+
 Card Queue — 终极 AI 面板架构（2026-06 重构，2026-06-10 加固）
 -------------------------------------------------------------------
 · 一张 quest = 一张 Card（完整 DOM 子树），创建后永不 innerHTML 清空
@@ -335,7 +356,8 @@ onlyStore 管线：set→内存缓存(dirty)→500ms空闲刷盘→3s强制刷�
 已接入: editor tabs (qgs.simple:qqqide) 、shell layout (bridge.state→qgs:qqqide)、
         rage 剪切板 (qgs:rage.clip)、cache meta (qgs:qqq.cache)、
         AI quests (qgs.project:qqq.ai)、AI 面板状态 (onlyStore:ai.*)、
-        主题 (onlyStore:theme)、编辑器字体大小 (qgs.simple:qqqide)
+        主题 (onlyStore:theme)、编辑器字体大小 (qgs.simple:qqqide)、
+        ★ 窗口快照 (qgs:qqqide, key=win_snap:{normalizedPath}) — 含主/辅文件夹+editor tabs+光标位置+layout+theme
 
 qqq/ — 家目录结构（{project_root}/qqq/）
 -----------------------------------------------------------------------
@@ -601,18 +623,21 @@ AI 上下文窗口防护（三层纵深 + 参数集中化，2026-06-10 落地）
   _accumulatedCompletionTokens: agent 新增字段，每间 house 累加 completion_tokens（跨楼层）
   不再展示 Tool Definitions（固定 ~3.2k tokens，无需用户关注）
 
-all.json 写入系统归一（2026-06-23）
+all.json 写入系统（2026-06-25 重启恢复加固）
 ---------------------------------------------
-· A4 增量刷盘系统（_a4MarkIncrementalDirty→_a4FlushCompleteFloor, ~100行）已删除。
-· 症结：双重定时器（A4 2s + auto-save 5s）并发写 all.json，新楼层启动清空 agent._houses
-  后旧定时器仍以旧 floorNum 触发刷盘 → 空数据覆写旧楼层 all.json → az 区永久损坏。
-· 归一：仅一条增量写入路径 — auto-save（面板级持久 timer，_ensureAutoSave 启动一次永不停止，
-  遍历 agentPool 覆盖全部 agent）。_stopAutoSave 变 no-op，切 quest 不掉保存。
+· 唯一增量路径: auto-save（面板级持久 timer，_ensureAutoSave 模块加载即启动，永不停止）。
+  _startAutoSave / _stopAutoSave 已彻底删除（面板级单例，不随 quest 切换启停）。
 · beforeunload: _saveAllBeforeUnload → _saveAgentFloor(force=true) 无条件全量刷盘。
 · 数据流: agent._houses / _a4Snapshots / _lastFloorTimingRecord ─→ _a4BuildCompleteFloorPayload ─→ all.json
-· 维护面: 3 条写入路径 → 2 条（auto-save + onDone），零跨楼竞态。
 · 原子写入: bridge.fs.write → ipc-fs.ts _atomicWrite（tmp+rename），进程崩溃零数据损坏。
-· 启动清理: _cleanStaleAllJsonTmp（扫描所有 f{n} 目录清除 all.json.tmp.* 残留），零人工介入。
+· 写后清理: _writeFloorFile 每次写完立即清扫本目录 all.json.tmp.*（_cleanTmpInDir），零累积。
+  兜底: _cleanStaleAllJsonTmp 启动时全量扫描（覆盖进程崩溃残留）。
+· 重启恢复两层防线（2026-06-25）：
+  ① _restoreAgentFromStore 从 allFloors 回填 _houses / _floorCostWge / _lastFloorTimingRecord
+     → 重启后 az 区数据完整恢复（之前因 AgentLoop 构造函数 _houses=[] 未恢复而丢失）
+  ② _saveAgentFloor 安全网：_houses 为空且 _lastAutoSaveLen !== 0 时拒绝写盘
+     → 禁止空 houses 覆盖已有 all.json（最后防线）
+· 旧 A4 增量刷盘系统（2026-06-23 已删除）：_a4MarkIncrementalDirty→_a4FlushCompleteFloor ~100行
 
 AI 面板 UI 增强
 --------------

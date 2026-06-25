@@ -277,7 +277,7 @@
         fontFamily: 'ui-monospace, Consolas, Menlo, monospace',
         // ═══ LSP OFF: strip all smart features ═══
         minimap: { enabled: false },
-        scrollBeyondLastLine: false,
+        scrollBeyondLastLine: 20,
         renderWhitespace: 'none',
         overviewRulerLanes: 3,
         overviewRulerBorder: false,
@@ -327,14 +327,12 @@
         roundedSelection: false,
         lineNumbersMinChars: 2,
         lineDecorationsWidth: 10,
-        padding: { top: 0, bottom: 20 },
+        padding: { top: 0, bottom: 0 },
         stickyScroll: { enabled: false },
         find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'never' },
       });
       _monacoRef = monaco;
       _editorRef = ed;
-      // 底部留空隙，防状态栏遮挡末行
-      if (host && host.style) { host.style.paddingBottom = '24px'; }
       // 唯一真理逐字回退机器：按设置决定是否挂载
       _applyUndoMode(ed, monaco);
       // ── 面包屑导航条（空编辑器：仅工具按钮）──
@@ -507,7 +505,7 @@
         fontFamily: 'ui-monospace, Consolas, Menlo, monospace',
         // ═══ LSP OFF: strip all smart features ═══
         minimap: { enabled: false },
-        scrollBeyondLastLine: false,
+        scrollBeyondLastLine: 20,
         renderWhitespace: 'none',
         overviewRulerLanes: 3,
         overviewRulerBorder: false,
@@ -557,7 +555,7 @@
         roundedSelection: false,
         lineNumbersMinChars: 2,
         lineDecorationsWidth: 10,
-        padding: { top: 0, bottom: 20 },
+        padding: { top: 0, bottom: 0 },
         stickyScroll: { enabled: false },
         find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'never' },
       });
@@ -565,10 +563,15 @@
       // Set as primary editor if first one
       if (!_monacoRef) _monacoRef = monaco;
       if (!_editorRef) _editorRef = ed;
-      // 底部留空隙，防状态栏遮挡末行
-      if (host && host.style) { host.style.paddingBottom = '24px'; }
       // 唯一真理逐字回退机器：按设置决定是否挂载
       _applyUndoMode(ed, monaco);
+
+      // ★ 窗口快照还原：检查是否有待恢复的光标位置
+      if (window.qqqPendingEditorPositions && window.qqqPendingEditorPositions[filePath]) {
+        var _pendPos = window.qqqPendingEditorPositions[filePath];
+        try { ed.setPosition(_pendPos); ed.revealPositionInCenter(_pendPos); } catch (_) {}
+        delete window.qqqPendingEditorPositions[filePath];
+      }
 
       // ── 面包屑导航条 ──
       if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.create) {
@@ -723,5 +726,43 @@
     getEditorInstance() { return _editorRef; },
     refreshLiveContent,
     isBinaryFile,
+    // ★ 窗口快照：获取所有打开 editor 的光标位置
+    getAllEditorPositions() {
+      var positions = {};
+      // 主编辑器
+      if (_editorRef && currentFile) {
+        try {
+          var m = _editorRef.getModel();
+          if (m && !m.isDisposed()) {
+            var p = _editorRef.getPosition();
+            if (p) positions[currentFile] = { lineNumber: p.lineNumber, column: p.column };
+          }
+        } catch (_) {}
+      }
+      // 面板编辑器（split groups）
+      var fpKeys = Object.keys(_paneEditors);
+      for (var i = 0; i < fpKeys.length; i++) {
+        var fp = fpKeys[i];
+        var ed = _paneEditors[fp];
+        try {
+          if (ed && ed.getModel && !ed.getModel().isDisposed()) {
+            var p = ed.getPosition();
+            if (p) positions[fp] = { lineNumber: p.lineNumber, column: p.column };
+          }
+        } catch (_) {}
+      }
+      return positions;
+    },
+    // ★ 窗口快照：还原指定文件的光标位置
+    setEditorPosition(filePath, pos) {
+      var ed = _paneEditors[filePath];
+      if (!ed && _editorRef && currentFile === filePath) ed = _editorRef;
+      if (!ed) return false;
+      try {
+        ed.setPosition(pos);
+        ed.revealPositionInCenter(pos);
+        return true;
+      } catch (_) { return false; }
+    },
   };
 })();

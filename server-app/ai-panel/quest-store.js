@@ -1005,7 +1005,7 @@ var QuestStore = (function () {
         }
     }
 
-    // ★ 写入 all.json（真理源）— bridge.fs.write 内部 _atomicWrite
+    // ★ 写入 all.json（真理源）— bridge.fs.write 内部 _atomicWrite（tmp+rename）
     async function _writeFloorFile(questId, floorNum, floorData) {
         if (!_rootDir) return false;
         try {
@@ -1015,11 +1015,27 @@ var QuestStore = (function () {
             if (!fDir) return false;
             var fJsonPath = fDir + 'all.json';
             await bf.write(fJsonPath, JSON.stringify(floorData, null, 2));
+            // ★ 写后清理：_atomicWrite 的 tmp+rename 在并发/杀毒软件干扰下
+            //   可能残留 all.json.tmp.* 文件。每次写完立即清扫本目录，零累积。
+            _cleanTmpInDir(fDir, bf);
             return true;
         } catch (_e) {
             console.warn('[quest-store] _writeFloorFile FAIL:', _e && _e.message);
             return false;
         }
+    }
+
+    // ★ 清扫单个楼层目录中的 all.json.tmp.* 残留（fire-and-forget）
+    async function _cleanTmpInDir(fDir, bf) {
+        try {
+            var entries = await bf.list(fDir);
+            if (!entries || !entries.length) return;
+            for (var i = 0; i < entries.length; i++) {
+                if (entries[i].indexOf('all.json.tmp.') === 0) {
+                    try { await bf.remove(fDir + '/' + entries[i]); } catch (_) { }
+                }
+            }
+        } catch (_) { /* best-effort */ }
     }
 
     // 分配下一个 floor 号（原子自增，每 quest 独立计数器）

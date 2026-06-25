@@ -19,6 +19,26 @@ var _shLayoutState = {
 
 async function loadState() {
   var bridge = _shBridge;
+  // ★ restore 模式：优先从 qgs 窗口快照读取 layout
+  if (window.location.search.indexOf('restore=1') !== -1) {
+    try {
+      var m = window.location.search.match(/[?&]folder=([^&]+)/);
+      if (m && bridge && bridge.state && bridge.state.get) {
+        var key = 'win_snap:' + decodeURIComponent(m[1]).replace(/\\/g, '/').replace(/\/$/, '');
+        var snap = await bridge.state.get('qqqide', key).catch(function () { return null; });
+        if (snap && snap.layout && typeof snap.layout === 'object') {
+          if (typeof snap.layout.aZoneW === 'number') _shLayoutState.aZoneW = snap.layout.aZoneW;
+          if (typeof snap.layout.outputH === 'number') _shLayoutState.outputH = snap.layout.outputH;
+          if (typeof snap.layout.outputVisible === 'boolean') _shLayoutState.outputVisible = snap.layout.outputVisible;
+          _shLayoutState.aZoneW = Math.max(_shMin, _shLayoutState.aZoneW || 220);
+          _shLayoutState.outputH = Math.max(_shMin, _shLayoutState.outputH || 200);
+          // 也写回 layout_v2 确保下次正常启动也能拿到
+          if (bridge.state.set) bridge.state.set('qqqide', 'layout_v2', _shLayoutState).catch(function () { });
+          return; // 快照成功 → 退出，不再走下面的逻辑
+        }
+      }
+    } catch (_) { /* fall through */ }
+  }
   // 1) try StateStore first
   try {
     if (bridge && bridge.state && bridge.state.get) {

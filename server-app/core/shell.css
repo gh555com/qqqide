@@ -415,7 +415,19 @@ body {
   flex-direction: row;
   overflow: hidden;
   min-height: var(--panel-min);
-  padding-bottom: 24px;
+}
+
+/* tab group: column flex so content fills remaining height, overflow hidden prevents spill */
+.qqq-tab-group {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.qqq-tab-content {
+  flex: 1 1 auto;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
 }
 
 /* X output panel */

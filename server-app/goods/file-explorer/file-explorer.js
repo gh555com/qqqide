@@ -11,6 +11,26 @@
 
   const bridge = window.qqqideBridge;
 
+  // ★ 自然排序：数字部分按数值比较
+  function naturalCompare(a, b) {
+    var re = /(\d+)|(\D+)/g;
+    var aParts = String(a).match(re) || [];
+    var bParts = String(b).match(re) || [];
+    var maxLen = Math.max(aParts.length, bParts.length);
+    for (var i = 0; i < maxLen; i++) {
+      var ap = aParts[i] || '';
+      var bp = bParts[i] || '';
+      var aNum = parseInt(ap, 10);
+      var bNum = parseInt(bp, 10);
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        if (aNum !== bNum) return aNum - bNum;
+      } else {
+        if (ap !== bp) return ap < bp ? -1 : 1;
+      }
+    }
+    return 0;
+  }
+
   // root = working dir of shell (set later via boot info)
   let root = null;
 
@@ -33,7 +53,7 @@
       // sort: dirs first, then alpha
       entries.sort((x, y) => {
         if (!!x.isDir !== !!y.isDir) { return x.isDir ? -1 : 1; }
-        return String(x.name).localeCompare(String(y.name));
+        return naturalCompare(String(x.name), String(y.name));
       });
       return entries;
     } catch (e) {

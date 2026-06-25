@@ -176,10 +176,12 @@ export function registerMiscIpc(
             _windowProjectMap.set(newWin.id, normalized);
             _projectWindowMap.set(normalized, newWin.id);
         }
-        // Build URL: 新窗口始终带 ?fresh=1，防止继承父窗口的 qgs 项目快照
-        let url = bootConfig.url + '?fresh=1';
+        // Build URL: 有 folderPath → restore 模式；无 folderPath → fresh 模式
+        let url: string;
         if (folderPath && typeof folderPath === 'string') {
-            url += '&folder=' + encodeURIComponent(folderPath);
+            url = bootConfig.url + '?restore=1&folder=' + encodeURIComponent(folderPath);
+        } else {
+            url = bootConfig.url + '?fresh=1';
         }
         console.log('[window:new] loadURL:', url);
         newWin.loadURL(url).then(() => {

@@ -70,6 +70,27 @@
 
   var SKIP_DIRS = ['node_modules', '.git'];
 
+  // ★ 自然排序：数字部分按数值比较，非数字部分按字符串比较
+  //   如 q1 < q2 < q10 < q11（而非字典序 q1 < q10 < q11 < q2）
+  function naturalCompare(a, b) {
+    var re = /(\d+)|(\D+)/g;
+    var aParts = String(a).match(re) || [];
+    var bParts = String(b).match(re) || [];
+    var maxLen = Math.max(aParts.length, bParts.length);
+    for (var i = 0; i < maxLen; i++) {
+      var ap = aParts[i] || '';
+      var bp = bParts[i] || '';
+      var aNum = parseInt(ap, 10);
+      var bNum = parseInt(bp, 10);
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        if (aNum !== bNum) return aNum - bNum;
+      } else {
+        if (ap !== bp) return ap < bp ? -1 : 1;
+      }
+    }
+    return 0;
+  }
+
   var CACHE_TTL = 10000;  // 缓存 10 秒后过期，下次 hover 重新读盘
   async function listDir(p) {
     var cached = _dirCache.get(p);
@@ -78,7 +99,7 @@
       const entries = await bridge.fs.list(p);
       entries.sort((x, y) => {
         if (x.isDir !== y.isDir) return x.isDir ? -1 : 1;
-        return x.name < y.name ? -1 : x.name > y.name ? 1 : 0;
+        return naturalCompare(x.name, y.name);
       });
       _dirCache.set(p, { entries, ts: Date.now() });
       return entries;
@@ -136,6 +157,28 @@
     _saveRecents();
   }
 
+  // ★ restore 模式：从 qgs 读取窗口快照，还原辅文件夹
+  function _restoreFromSnapshot(folderPath) {
+    var key = 'win_snap:' + folderPath.replace(/\\/g, '/').replace(/\/$/, '');
+    try {
+      var s = _getShellHandle();
+      if (s) {
+        s.get(key).then(function (snap) {
+          if (!snap || !snap.auxFolders || !Array.isArray(snap.auxFolders)) return;
+          for (var i = 0; i < snap.auxFolders.length; i++) {
+            var aux = snap.auxFolders[i];
+            if (!projects.some(function (p) { return p.path === aux; })) {
+              projects.push({ path: aux, name: basename(aux) });
+            }
+          }
+          saveProjects();
+          render();
+          _notifyChanged();
+        }).catch(function () { });
+      }
+    } catch (_) { }
+  }
+
   // 异步校验主文件夹锁：若该项目已被其他窗口锁定，从视口移除
   // 仅在 ?folder= 新窗口场景使用，作为主进程锁检查的兜底
   function _verifyFolderLock(folderPath) {
@@ -186,6 +229,26 @@
           }
         } catch (_) { }
       }
+      return;
+    }
+    // ★ restore 模式（?restore=1&folder=xxx）：从 qgs 快照还原辅文件夹
+    if (window.location.search.indexOf('restore=1') !== -1) {
+      projects = [];
+      var rm = window.location.search.match(/[?&]folder=([^&]+)/);
+      if (rm) {
+        try {
+          var rFolderPath = decodeURIComponent(rm[1]);
+          if (rFolderPath) {
+            projects.push({ path: rFolderPath, name: basename(rFolderPath) });
+            _bumpRecent(rFolderPath);
+            _verifyFolderLock(rFolderPath);
+            // 异步读快照 → 恢复辅文件夹
+            _restoreFromSnapshot(rFolderPath);
+          }
+        } catch (_) { }
+      }
+      render();
+      _notifyChanged();
       return;
     }
     // 优先从 qgs 全局 SQLite 加载（跨重启）

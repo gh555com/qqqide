@@ -14,6 +14,10 @@ function _saveAgentFloor(ag, questId, force) {
     if (!ag || !ag._currentFloorNum || ag._currentFloorNum <= 0) return;
     if (typeof questStore === 'undefined' || !questStore || !questStore.saveFloor) return;
     var floorNum = ag._currentFloorNum;
+
+    // ★ 安全网：_houses 为空且非新楼层时跳过，防重启后覆盖已有数据
+    //   _lastAutoSaveLen === 0 仅在新楼层初始化时设置（panel-send.js），是唯一准入空 houses 的路径
+    if ((!ag._houses || ag._houses.length === 0) && ag._lastAutoSaveLen !== 0) return;
     if (!force) {
         // ★ 去重：仅在 conversation 增长时才写盘（避免无变化的 O(n) slice + payload 构建）
         var convLen = ag.conversation ? ag.conversation.length : 0;
@@ -54,9 +58,6 @@ function _ensureAutoSave() {
         }
     }, _AUTOSAVE_INTERVAL);
 }
-// ★ 保留 _startAutoSave 别名（旧调用方兼容），_stopAutoSave 变为 no-op
-function _startAutoSave() { _ensureAutoSave(); }
-function _stopAutoSave() { /* no-op: persistent timer, 不再随 quest 切换启停 */ }
 
 // ── beforeunload：保存所有在建楼层（防崩溃丢数据）──
 function _saveAllBeforeUnload() {
@@ -69,6 +70,8 @@ function _saveAllBeforeUnload() {
 }
 if (typeof window !== 'undefined') {
     window.addEventListener('beforeunload', _saveAllBeforeUnload);
+    // ★ auto-save 面板级持久 timer：模块加载即启动，永不停止
+    _ensureAutoSave();
 }
 
 function _showPieTooltip(html, cx, cy) {

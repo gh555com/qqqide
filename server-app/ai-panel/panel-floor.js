@@ -393,6 +393,25 @@ async function _restoreAgentFromStore(questId, ag) {
             // ★ 恢复楼层计数器（旧 quest 无此字段时回退到已保存楼层数）
             ag._currentFloorNum = data.currentFloorNum || 0;
         }
+        // ★ 恢复 _houses / _floorCostWge / _lastFloorTimingRecord（防重启后 az 区丢失）
+        if (ag._currentFloorNum > 0 && allFloors && allFloors.length) {
+            for (var _rhfi = allFloors.length - 1; _rhfi >= 0; _rhfi--) {
+                if (allFloors[_rhfi].floorNum === ag._currentFloorNum) {
+                    var _rhData = allFloors[_rhfi].data;
+                    if (_rhData) {
+                        if (_rhData.houses && _rhData.houses.length) {
+                            ag._houses = _rhData.houses.slice();
+                            ag._houseIndex = ag._houses.length;
+                        }
+                        if (_rhData.costWge) ag._floorCostWge = _rhData.costWge;
+                        if (_rhData.clockTiming) ag._lastFloorTimingRecord = _rhData.clockTiming;
+                        // ★ 恢复 _lastAutoSaveLen 防止空 houses 安全网误杀新楼层首存
+                        ag._lastAutoSaveLen = (ag.conversation ? ag.conversation.length : 0);
+                    }
+                    break;
+                }
+            }
+        }
         // ★ 崩溃恢复：上次关闭时正在压缩 → 修复可能的半成品状态
         if (ag._uncleanShutdown) {
             ag._uncleanShutdown = false;

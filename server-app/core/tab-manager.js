@@ -766,6 +766,11 @@
     _restored = true;
     // 新窗口（?fresh=1）：X 区空，不继承任何 editor tab
     if (window.location.search.indexOf('fresh=1') !== -1) return;
+    // ★ restore 模式：从 qgs 窗口快照读取 editor tabs
+    if (window.location.search.indexOf('restore=1') !== -1) {
+      await _restoreTabsFromSnapshot();
+      return;
+    }
     const state = _tabState();
     if (!state) return;
     try {
@@ -776,6 +781,34 @@
           document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: t.path, groupIdx: t.groupIdx, preview: !!t.preview } }));
         }
       }
+    } catch (e) { /* ignore */ }
+  }
+
+  // ★ 从 qgs 窗口快照还原 editor tabs
+  async function _restoreTabsFromSnapshot() {
+    var m = window.location.search.match(/[?&]folder=([^&]+)/);
+    if (!m) return;
+    var folderPath = decodeURIComponent(m[1]);
+    var key = 'win_snap:' + folderPath.replace(/\\/g, '/').replace(/\/$/, '');
+    try {
+      var bridge = window.qqqideBridge;
+      if (!bridge || !bridge.state) return;
+      var snap = await bridge.state.get('qqqide', key).catch(function () { return null; });
+      if (!snap || !snap.editorTabs || !Array.isArray(snap.editorTabs)) return;
+      // ★ 填充待恢复光标位置（editor.js openInPane 创建 editor 后自动消费）
+      if (snap.editorPositions && typeof snap.editorPositions === 'object') {
+        window.qqqPendingEditorPositions = snap.editorPositions;
+      }
+      for (var i = 0; i < snap.editorTabs.length; i++) {
+        var t = snap.editorTabs[i];
+        if (t.path) {
+          document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: t.path, groupIdx: t.groupIdx, preview: !!t.preview } }));
+        }
+      }
+      // 延迟清理：给 editor 创建+消费留够时间
+      setTimeout(function () {
+        window.qqqPendingEditorPositions = null;
+      }, 4000);
     } catch (e) { /* ignore */ }
   }
 

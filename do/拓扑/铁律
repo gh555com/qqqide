@@ -288,9 +288,12 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 滚动：scrollToBottom → container.scrollTop = scrollHeight。上滚即停，下滚到底才跟。
   - 禁 $messages.innerHTML = ''。唯一例外 cardPool.refreshCard。
   - 所有跨模块引用走 window.*（questStore/agentPool/cardPool/9 个函数）。
-  - ★ all.json 写入归一（2026-06-23）：A4 增量刷盘系统已删除。唯一增量路径 = auto-save（面板级
-    _ensureAutoSave 持久 timer，遍历 agentPool，5s 间隔，conversation.length 去重后零拷贝跳过）。
-    beforeunload → _saveAllBeforeUnload(force=true) 无条件全量刷盘。_stopAutoSave 是 no-op。
+  - ★ all.json 写入归一（2026-06-23 归一，2026-06-25 加固）：唯一增量路径 = auto-save（面板级
+    _ensureAutoSave 持久 timer，***模块加载即启动***，遍历 agentPool，5s 间隔）。
+    _startAutoSave / _stopAutoSave 已彻底删除——不随 quest 切换启停，切 quest 不掉保存。
+    重启恢复两层防线：① _restoreAgentFromStore 从 allFloors 回填 _houses / cost / clockTiming
+    ② _saveAgentFloor 安全网：空 houses + 非新楼层 → 拒绝写盘。
+    写后清理：每写一次 all.json 清一次本目录 .tmp.*。启动全量扫描兜底。
     禁止再引入任何第二条增量写入路径（引入即返工）。
 
 §30 面板焦点
@@ -435,3 +438,17 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 主进程: 只保留内存 editorFontSize + broadcast（qqqide:zoom:changed 频道复用，值域 [8-48]）。
   - 消费方: editor.js + diff-window.js 各自监听 bridge → Monaco updateOptions({ fontSize })。
   - 窗口创建时无条件 setZoomFactor(1.0)，无视任何历史 zoom 值。
+
+§44 窗口快照 — 开新窗口百分百还原（2026-06-25）
+  - 唯一入口: shell-menu.js _saveWindowSnapshot() / _openWindowFromRecent()。
+  - 存储: qgs global key=win_snap:{normalizedPath}，setNow 立即落盘（beforeunload 时不可用 set）。
+  - 快照包含: mainFolder + auxFolders[] + editorTabs[{path,groupIdx,active,preview}]
+    + editorPositions{filePath:{lineNumber,column}} + layout{aZoneW,outputH,outputVisible} + theme。
+  - ★ AI 面板状态不重复存储——onlyStore (only.sq3) 已有 ai.panel.*.activeQuestId + ai.uiStates.*，
+    新窗口 initQuests() 自动从 onlyStore 恢复。如需扩充 onlyStore 覆盖度，改 only-store.js，不在此造轮子。
+  - 光标位置: editor.js 暴露 getAllEditorPositions() + setEditorPosition(fp,pos)。
+    还原: tab-manager 设 qqqPendingEditorPositions → openInPane 创建后自动消费。
+  - URL 参数: bridge.window.new(folderPath) → ipc-misc 用 ?restore=1&folder=xxx（无 folderPath → ?fresh=1）。
+  - 锁检查: ipc-misc 创建前检查 project lock，已锁 → 返回 {ok:false, locked:true}。
+  - 菜单栏: "qqq IDE" + "的梦gaea" 纯文本无 i18n。"开新窗口" 行右侧 ▶ square button。
+  - 铁律: 窗口快照只存 qgs 全局键，不引入新文件/新存储引擎。不与 onlyStore 重复存储 AI 面板状态。

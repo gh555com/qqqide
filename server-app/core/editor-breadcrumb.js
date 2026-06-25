@@ -14,6 +14,26 @@
   var bridge = window.qqqideBridge;
   var i18n = window._i;
 
+  // ★ 自然排序：数字部分按数值比较
+  function naturalCompare(a, b) {
+    var re = /(\d+)|(\D+)/g;
+    var aParts = String(a).match(re) || [];
+    var bParts = String(b).match(re) || [];
+    var maxLen = Math.max(aParts.length, bParts.length);
+    for (var i = 0; i < maxLen; i++) {
+      var ap = aParts[i] || '';
+      var bp = bParts[i] || '';
+      var aNum = parseInt(ap, 10);
+      var bNum = parseInt(bp, 10);
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        if (aNum !== bNum) return aNum - bNum;
+      } else {
+        if (ap !== bp) return ap < bp ? -1 : 1;
+      }
+    }
+    return 0;
+  }
+
   // ── 按住连点引擎 ──
   var _repeatTimer = null;
   var _repeatInterval = null;
@@ -62,7 +82,7 @@
     bridge.fs.list(dirPath).then(function (entries) {
       entries.sort(function (a, b) {
         if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
-        return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+        return naturalCompare(a.name, b.name);
       });
 
       pop.innerHTML = '';
