@@ -350,11 +350,21 @@ body {
   align-items: center;
   justify-content: center;
   border-radius: 4px;
-  margin-right: 2px;
+  margin-right: 6px;
 }
 
 .qqq-settings-btn:hover {
   background: rgba(128, 128, 128, 0.15);
+}
+
+/* Settings panel tab bar */
+.qqq-settings-tab {
+  cursor: pointer;
+  user-select: none;
+}
+
+.qqq-settings-tab:hover {
+  background: rgba(128, 128, 128, 0.08);
 }
 
 /* ============================================================================
@@ -405,6 +415,7 @@ body {
   flex-direction: row;
   overflow: hidden;
   min-height: var(--panel-min);
+  padding-bottom: 24px;
 }
 
 /* X output panel */

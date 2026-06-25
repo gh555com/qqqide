@@ -333,6 +333,8 @@
       });
       _monacoRef = monaco;
       _editorRef = ed;
+      // 底部留空隙，防状态栏遮挡末行
+      if (host && host.style) { host.style.paddingBottom = '24px'; }
       // 唯一真理逐字回退机器：按设置决定是否挂载
       _applyUndoMode(ed, monaco);
       // ── 面包屑导航条（空编辑器：仅工具按钮）──
@@ -563,6 +565,8 @@
       // Set as primary editor if first one
       if (!_monacoRef) _monacoRef = monaco;
       if (!_editorRef) _editorRef = ed;
+      // 底部留空隙，防状态栏遮挡末行
+      if (host && host.style) { host.style.paddingBottom = '24px'; }
       // 唯一真理逐字回退机器：按设置决定是否挂载
       _applyUndoMode(ed, monaco);
 

@@ -89,9 +89,7 @@ function _a4IsBinary(path, content) {
 
 // ---- 噪声文件检测（run_command 扫描结果过滤）----
 var _A4_NOISE_PATTERNS = [
-    /[\\\/]new_log[\\\/]/i,       // agent 日志目录
     /\.log$/i,                        // 任意 .log 文件
-    /[\\\/]tmp[\\\/]/i,            // temp 文件目录
     /[\\\/]node_modules[\\\/]/i,   // npm 依赖
     /[\\\/]__pycache__[\\\/]/i,    // Python 缓存
     /[\\\/]\.(git|svn|hg)[\\\/]/i,
@@ -292,23 +290,26 @@ async function _a4WrappedExecuteTool(name, args) {
     }
 
     // ═══ run_command 特殊处理：执行 → 扫描变更 → 逐文件记录 ═══
+    // ★ 默认关闭（timeline.trackRunCommand=false），用户可在设置→高级中开启
     if (name === 'run_command') {
+        var _trackCmd = (typeof qqqSettings !== 'undefined' && qqqSettings.get) ? qqqSettings.get('timeline.trackRunCommand', false) : false;
+        if (!_trackCmd) {
+            return _a4OriginalExecuteTool(name, args);
+        }
         var cmdStartTs = Date.now();
         var cmdResult = await _a4OriginalExecuteTool(name, args);
         if (cmdResult && typeof cmdResult === 'string' && cmdResult.indexOf('Error') !== 0) {
-            var bridge2 = getBridge();
-            // ★ run_command 扫描以 cwd 所在项目为准（若 cwd 指定）或主项目兜底
+            var bridge3 = getBridge();
             var scanRoot = args.cwd ? await _resolveProjectRoot(args.cwd.replace(/\\/g, '/')) : null;
             if (!scanRoot) {
                 scanRoot = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
                     ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
             }
-            if (bridge2 && bridge2.timeline && scanRoot) {
+            if (bridge3 && bridge3.timeline && scanRoot) {
                 try {
-                    var changed = await bridge2.timeline.captureChanged({ projectRoot: scanRoot, sinceMs: cmdStartTs, cwd: args.cwd || '' });
+                    var changed = await bridge3.timeline.captureChanged({ projectRoot: scanRoot, sinceMs: cmdStartTs, cwd: args.cwd || '' });
                     if (changed && changed.length) {
                         for (var ci = 0; ci < changed.length; ci++) {
-                            // ★ 跳过噪声文件（日志/tmp/缓存等），防 run_command 产生垃圾快照
                             if (_a4IsNoiseFile(changed[ci].filePath)) continue;
                             await _a4RecordSnapshot(changed[ci].filePath, 'run_command', null, changed[ci].content, null, _capturedAg);
                         }

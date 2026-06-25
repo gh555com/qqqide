@@ -37,6 +37,7 @@
       label: '编辑器撤销模式',
       desc: 'Ctrl+Z 在代码编辑器中撤销的粒度',
       type: 'radio',
+      tab: 'general',
       defaultValue: 'char',
       options: [
         { value: 'char', label: '逐字回退', desc: '每按一次 Ctrl+Z 撤销一个字符' },
@@ -48,6 +49,7 @@
       label: '默认 AI 等级',
       desc: '数字越大=思考越深、质量越高、越慢、越贵',
       type: 'radio',
+      tab: 'general',
       defaultValue: '6',
       options: [
         { value: '1', label: '1', desc: '轻量' },
@@ -63,10 +65,19 @@
       label: '自动压缩阈值',
       desc: '上下文 token 数超过此值自动触发压缩。单位 k（千 tokens），接收范围 100-1000',
       type: 'number',
+      tab: 'general',
       defaultValue: '200',
       min: 100,
       max: 1000,
       unit: 'k'
+    },
+    {
+      key: 'timeline.trackRunCommand',
+      label: '追踪命令文件变更',
+      desc: '开启后，AI 执行的 shell 命令修改的文件会自动记录到版本时间线。关闭可减少 timeline 快照噪音。',
+      type: 'bool',
+      tab: 'advanced',
+      defaultValue: false
     }
   ];
 
@@ -153,9 +164,10 @@
   // ── 按钮注入 ──
   function _injectButton() {
     if (_$btn) return;
-    // 插到菜单行1，缩放比例标签后面、语言按钮前面
-    var $zoomLabel = document.getElementById('qqq-zoom-label');
-    if (!$zoomLabel) return;
+    // ★ 插到菜单行2，灯泡左边
+    var $bulb1 = document.getElementById('qqq-bulb-1');
+    if (!$bulb1) return;
+    var $bulbs = $bulb1.parentNode; // qqq-bulbs span
     _$btn = document.createElement('button');
     _$btn.className = 'qqq-settings-btn';
     _$btn.setAttribute('data-i18n-title', 'settings.title');
@@ -163,14 +175,13 @@
     _$btn.textContent = '\u2699'; // ⚙ gear
     _$btn.addEventListener('click', function (e) {
       e.preventDefault();
-      // ★ 用 overlay 的 display 判断，而非 panel.style.display（close 只隐藏 overlay）
       if (_$overlay && _$overlay.style.display !== 'none') {
         close();
       } else {
         open();
       }
     });
-    $zoomLabel.parentNode.insertBefore(_$btn, $zoomLabel.nextSibling);
+    $bulbs.parentNode.insertBefore(_$btn, $bulbs);
   }
 
   // ── 创建设置面板 DOM ──
@@ -195,6 +206,8 @@
     document.body.appendChild(_$overlay);
   }
 
+  var _activeTab = 'general'; // 'general' | 'advanced'
+
   function _renderPanel() {
     if (!_$panel) return;
     // 获取主题色
@@ -209,22 +222,51 @@
     var red = isDark ? '#ff4444' : '#dc322f';
 
     var html = '';
+    // 标题行
     html += '<div style="padding:16px 20px; border-bottom:1px solid ' + border + '; display:flex; align-items:center; justify-content:space-between;">';
     html += '<span style="font-size:15px; font-weight:bold; color:' + text + ';">设置</span>';
     html += '<button id="qqq-settings-close" style="width:24px; height:24px; border:1px solid ' + border + '; border-radius:3px; background:transparent; color:' + textDim + '; font-size:14px; line-height:22px; text-align:center;">✕</button>';
     html += '</div>';
 
+    // ★ 标签栏
+    html += '<div style="display:flex; border-bottom:1px solid ' + border + ';">';
+    html += '<button id="qqq-settings-tab-general" class="qqq-settings-tab" style="flex:1; padding:8px 0; border:none; border-bottom:2px solid ' + (_activeTab === 'general' ? accent : 'transparent') + '; background:transparent; color:' + (_activeTab === 'general' ? text : textDim) + '; font-size:13px; font-weight:' + (_activeTab === 'general' ? 'bold' : 'normal') + ';">常规</button>';
+    html += '<button id="qqq-settings-tab-advanced" class="qqq-settings-tab" style="flex:1; padding:8px 0; border:none; border-bottom:2px solid ' + (_activeTab === 'advanced' ? accent : 'transparent') + '; background:transparent; color:' + (_activeTab === 'advanced' ? text : textDim) + '; font-size:13px; font-weight:' + (_activeTab === 'advanced' ? 'bold' : 'normal') + ';">高级</button>';
+    html += '</div>';
+
     html += '<div style="padding:12px 20px;">';
 
-    // 渲染每个设置项
+    // 筛选当前 tab 的设置项
+    var tabDefs = [];
     for (var i = 0; i < SETTINGS_DEF.length; i++) {
-      var def = SETTINGS_DEF[i];
+      var dTab = SETTINGS_DEF[i].tab || 'general';
+      if (dTab === _activeTab) tabDefs.push(SETTINGS_DEF[i]);
+    }
+
+    if (tabDefs.length === 0) {
+      html += '<div style="font-size:12px; color:' + textDim + '; text-align:center; padding:40px 0;">此标签页暂无设置项</div>';
+    }
+
+    // 渲染每个设置项
+    for (var i = 0; i < tabDefs.length; i++) {
+      var def = tabDefs[i];
       var currentVal = get(def.key, def.defaultValue);
       html += '<div class="qqq-setting-item" style="margin-bottom:16px; padding:12px; border:1px solid ' + border + '; border-radius:4px; background:' + bg2 + ';">';
       html += '<div style="font-size:13px; font-weight:bold; color:' + text + '; margin-bottom:4px;">' + def.label + '</div>';
       html += '<div style="font-size:11px; color:' + textDim + '; margin-bottom:10px;">' + def.desc + '</div>';
 
-      if (def.type === 'radio') {
+      if (def.type === 'bool') {
+        // 开关切换
+        var boolOn = (currentVal === true || currentVal === 'true');
+        var toggleId = 'qqq-setting-' + def.key.replace(/\./g, '-');
+        html += '<label style="display:flex; align-items:center; gap:8px; cursor:pointer;">';
+        html += '<div style="position:relative; width:44px; height:24px; border-radius:12px; background:' + (boolOn ? green : border) + '; transition:background 150ms; flex-shrink:0;">';
+        html += '<div style="position:absolute; top:2px; left:' + (boolOn ? '22px' : '2px') + '; width:20px; height:20px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.3); transition:left 150ms;"></div>';
+        html += '</div>';
+        html += '<input type="checkbox" id="' + toggleId + '" ' + (boolOn ? 'checked' : '') + ' data-setting-key="' + def.key + '" style="position:absolute; opacity:0; pointer-events:none;">';
+        html += '<span style="font-size:12px; color:' + text + ';">' + (boolOn ? '已开启' : '已关闭') + '</span>';
+        html += '</label>';
+      } else if (def.type === 'radio') {
         // ★ 默认 AI 等级：6 个水平格子（紧凑1-2行），选中打勾 ✓
         if (def.key === 'ai.defaultTier') {
           html += '<div style="display:flex; gap:6px;">';
@@ -243,7 +285,6 @@
           for (var j = 0; j < def.options.length; j++) {
             var opt = def.options[j];
             var checked = (currentVal === opt.value);
-            var radioId = 'qqq-setting-' + def.key.replace(/\./g, '-') + '-' + opt.value;
             html += '<label style="display:flex; align-items:flex-start; margin-bottom:6px; padding:6px 8px; border-radius:3px; background:' + (checked ? accent + '20' : 'transparent') + '; border:1px solid ' + (checked ? accent : 'transparent') + ';">';
             html += '<input type="radio" name="' + def.key + '" value="' + opt.value + '" ' + (checked ? 'checked' : '') + ' data-setting-key="' + def.key + '" style="margin-top:2px; margin-right:8px; accent-color:' + accent + ';">';
             html += '<div>';
@@ -282,6 +323,30 @@
       $close.addEventListener('click', close);
     }
 
+    // ★ 绑定标签页切换
+    var $tabGeneral = document.getElementById('qqq-settings-tab-general');
+    var $tabAdvanced = document.getElementById('qqq-settings-tab-advanced');
+    if ($tabGeneral) {
+      $tabGeneral.addEventListener('click', function () {
+        if (_activeTab !== 'general') { _activeTab = 'general'; _renderPanel(); }
+      });
+    }
+    if ($tabAdvanced) {
+      $tabAdvanced.addEventListener('click', function () {
+        if (_activeTab !== 'advanced') { _activeTab = 'advanced'; _renderPanel(); }
+      });
+    }
+
+    // 绑定 bool checkbox 变更
+    var checkboxes = _$panel.querySelectorAll('input[type="checkbox"]');
+    for (var c = 0; c < checkboxes.length; c++) {
+      checkboxes[c].addEventListener('change', function () {
+        var key = this.getAttribute('data-setting-key');
+        set(key, this.checked);
+        _renderPanel();
+      });
+    }
+
     // 绑定 radio 变更
     var radios = _$panel.querySelectorAll('input[type="radio"]');
     for (var r = 0; r < radios.length; r++) {
@@ -289,7 +354,6 @@
         var key = this.getAttribute('data-setting-key');
         var val = this.value;
         set(key, val);
-        // 实时刷新面板以反映选中状态
         _renderPanel();
       });
     }
@@ -310,7 +374,6 @@
         var max = def ? (def.max || 1000) : 1000;
         if (val < min) val = min;
         if (val > max) val = max;
-        // debounce 写入
         clearTimeout(self._debounceTimer);
         self._debounceTimer = setTimeout(function () {
           set(key, String(val));

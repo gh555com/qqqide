@@ -447,7 +447,7 @@ Timeline 文件版本时间线 (2026-06-13 钩子Q+X重构，2026-06-21 终极�
 
 触发: 5种时机（3 种 source）—
   ① 钩子 Q — AI写工具(edit/write/create/delete) → _a4PersistToTimeline，source='q'
-  ② 钩子 Q — run_command → captureChanged → source='run-command'
+  ② 钩子 Q — run_command → (用户可开关, 默认关) captureChanged → source='run-command'
   ③ 钩子 X — X区 editor blur / Ctrl+S / 主编辑器 save() → source='editx'
   ④ Diff窗口编辑保存(blur/Ctrl+S) → source='diff-edit'
   ★ editx + diff-edit 共享主进程真理机：100s 冷却 + SHA256 去重（改 ipc-timeline.ts 一处全局生效）
@@ -783,8 +783,7 @@ A4 文件快照 — 每层楼私有文件变更追踪 (2026-06-13 钩子Q+X重�
 · 钩子 Q 触发: edit/write/create/delete_file + run_command
 · 钩子 Q 流程: 捕获 before → 执行工具 → 捕获 after → _a4PersistToTimeline(both, trace, diff stats)
   trace 格式: q{id}/f{num}/h{num}/r{num}（quest/floor/house/room，agent-loop 埋点）
-  ★ floorNum 唯一真理源: ag._currentFloorNum（panel-send.js 创建楼层时分配，panel-floor.js 恢复时从 DB 重建，agent-exec.js 打 trace 时读取）。禁止回退 _ctx.totalFloors。
-  run_command: 执行 → captureChanged 扫描变更 → 逐文件记录 after（trace 同享）
+  ★ floorNum 唯一真理源: ag._currentFloorNum（panel-send.js 创建楼层时分配，panel-floor.js 恢复时从 DB 重建，agent-exec.js 打 trace 时读取）。禁止回退 _ctx.torun_command: ★ 用户可开关（默认关，设置→高级），开启后 → captureChanged 扫描变更 → 噪声过滤(.log/node_modules/__pycache__/VCS/OS垃圾) → 逐文件记录 after（trace 同享）ter（trace 同享）
 · 钩子 X 触发: X区 editor blur (auto-save) / Ctrl+S (manual-save)，60s 冷却
   流程: 读上一版本内容 → _a4DiffStats 计算 +N -M → timeline.record(content, source, diff stats)
 · 读原始内容: bridge.fs.read（不用 ai.read_file，避免分页头污染）

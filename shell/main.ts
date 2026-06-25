@@ -58,7 +58,12 @@ import { DownloadService } from './download-service';
 import { UpdateService } from './update-service';
 
 // ── Chromium flags (必须在 app.whenReady() 前) ──
-app.disableHardwareAcceleration();
+// ★ 原 disableHardwareAcceleration() 注释于 2026-06-25
+//   最初加它只为了省 ~40MB 内存（2026-06-06 快照），但代价是强制
+//   SwiftShader CPU 软件合成 → GPU 进程纯 CPU 渲染 → 长期 ~55% 单核
+//   空闲占用（PID 2160 累计 1878s CPU / 57min 窗口）。现在回到默认，
+//   让 Chromium 自动裁决硬件/软件渲染，进入观察期。
+// app.disableHardwareAcceleration(); // [COMMENTED OUT 2026-06-25]
 app.commandLine.appendSwitch('forced-colors', 'none');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('disable-features', 'ForcedColors,AutoDarkMode');

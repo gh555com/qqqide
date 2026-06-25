@@ -152,6 +152,30 @@ const QQQ = {
     // ---- qz unified spawn (canonical entry; ghrun/runner.py/node fallback) ----
     qz: {
         spawn: (brief: any) => ipcRenderer.invoke('qqqide:qz:spawn', brief),
+        // Streaming spawn: real-time stdout/stderr via onChunk(channel, data).
+        // Returns Promise<SpawnResult>. Used for long-running commands like git push/pull.
+        spawnStream: (brief: any, onChunk: (channel: string, data: string) => void) => {
+            const streamId = 'qzs-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+            return new Promise((resolve, reject) => {
+                const handler = (_e: any, msg: any) => {
+                    if (!msg || msg.streamId !== streamId) return;
+                    if (msg.type === 'progress') {
+                        try { onChunk(msg.channel || 'stdout', msg.data || ''); } catch {}
+                    } else if (msg.type === 'done') {
+                        ipcRenderer.removeListener('qqqide:qz:stream', handler);
+                        resolve(msg.result);
+                    } else if (msg.type === 'error') {
+                        ipcRenderer.removeListener('qqqide:qz:stream', handler);
+                        reject(new Error(msg.error || 'spawn-stream failed'));
+                    }
+                };
+                ipcRenderer.on('qqqide:qz:stream', handler);
+                ipcRenderer.invoke('qqqide:qz:spawn-stream', { ...brief, streamId }).catch((err: any) => {
+                    ipcRenderer.removeListener('qqqide:qz:stream', handler);
+                    reject(err);
+                });
+            });
+        },
         which: (cmd: string) => ipcRenderer.invoke('qqqide:qz:which', cmd),
         ghrunAlive: () => ipcRenderer.invoke('qqqide:qz:ghrunAlive'),
         runnerAlive: () => ipcRenderer.invoke('qqqide:qz:runnerAlive'),

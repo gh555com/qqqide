@@ -466,6 +466,13 @@ function _a1AnimateNum(el, newText) {
     el.classList.remove('msg-a1-num-pop');
     void el.offsetWidth;
     el.classList.add('msg-a1-num-pop');
+    // ★ animationend 自动清理：摘掉 class 释放 will-change GPU 合成层
+    //    用代数 gen 防竞态：新动画触发后旧回调不再误删 class
+    var gen = (el._a1Gen || 0) + 1;
+    el._a1Gen = gen;
+    el.addEventListener('animationend', function () {
+        if (el._a1Gen === gen) el.classList.remove('msg-a1-num-pop');
+    }, { once: true });
 }
 
 function _updateA1Row1(block, floorNum, hCount, rCount, fileSize) {

@@ -78,6 +78,24 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .git-branch{padding:4px 8px;font-family:ui-monospace,monospace;font-size:12px;display:flex;align-items:center;gap:6px}
 .git-branch .current{color:var(--green);font-weight:700}
 
+.hunk-btn{font-size:9px;padding:1px 6px;border:1px solid var(--border);border-radius:2px;background:var(--card);color:var(--blue);cursor:pointer;margin-left:4px;white-space:nowrap}
+.hunk-btn:hover{background:var(--blue);color:#fff;border-color:var(--blue)}
+.hunk-btn.staged{background:var(--green);color:#fff;border-color:var(--green)}
+.hunk-btn.danger{color:var(--red);border-color:var(--red)}
+.hunk-btn.danger:hover{background:var(--red);color:#fff}
+.hunk-sep{border-top:1px dashed var(--border);margin:2px 0}
+
+/* ─── STASH / CLONE / AMEND ─── */
+.git-stash-item{display:flex;align-items:center;gap:6px;font-family:ui-monospace,monospace;font-size:11px;padding:3px 8px;cursor:default}
+.git-stash-item .stash-ref{color:var(--yellow);font-weight:700;flex-shrink:0}
+.git-stash-item .stash-msg{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.clone-dialog{display:none;padding:12px;background:var(--card);border:1px solid var(--border);border-radius:4px;margin:12px}
+.clone-dialog input{width:100%;font-size:11px;padding:4px 8px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text);margin-bottom:6px;font-family:ui-monospace,monospace}
+.clone-dialog .clone-row{display:flex;gap:4px}
+.clone-dialog .clone-row button{flex:1}
+.amend-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--base01);margin-bottom:4px}
+.amend-row input[type=checkbox]{accent-color:var(--blue)}
+
 /* ─── EMPTY STATE ─── */
 .empty{display:flex;align-items:center;justify-content:center;height:100%;color:var(--base01);font-size:14px;text-align:center;padding:20px}
 
@@ -101,10 +119,12 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   <span class="nav-title" id="nav-title"></span>
 </div>
 
-<!-- ═══ TIMELINE VIEW (diff viewer) ═══ -->
-<div id="view-timeline" class="content">
-  <div class="empty" id="timeline-empty">点击 AI 面板 A4 区域的文件查看 diff</div>
-  <div id="timeline-diff" class="hidden" style="display:flex;flex-direction:column;height:100%">
+<!-- ═══ TIMELINE VIEW (diff viewer) ═    <button id="git-log-btn">日志</button>
+    <button id="git-branch-btn">分支</button>
+    <button id="git-stash-btn">贮藏</button>
+    <div class="sep"></div>
+    <button id="git-clone-btn">克隆</button>
+  </div>ine-diff" class="hidden" style="display:flex;flex-direction:column;height:100%">
     <div class="diff-header" id="diff-header">
       <span class="path" id="diff-path"></span>
       <span class="stats"><span class="added" id="diff-added"></span> <span class="deleted" id="diff-deleted"></span></span>
@@ -128,17 +148,44 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
     <div class="sep"></div>
     <button id="git-log-btn">日志</button>
     <button id="git-branch-btn">分支</button>
-    <button id="git-stash-btn">贮藏</button>
-  </div>
-  <div id="git-content">
-    <div class="git-section" id="git-status-section">
-      <div class="git-branch" id="git-branch-info"></div>
+    <button id="git-      <div class="git-section" id="git-stash-section" style="display:none;">
+        <h3>贮藏列表</h3>
+        <div id="git-stash-list"></div>
+      </div>
+      <div id="git-clone-dialog" class="clone-dialog">
+        <input id="git-clone-url" placeholder="仓库 URL (https://...)">
+        <input id="git-clone-dir" placeholder="目标目录名（可选）">
+        <div class="clone-row">
+          <button id="git-clone-start" class="nav-btn">开始克隆</button>
+          <button id="git-clone-cancel" class="nav-btn">取消</button>
+        </div>
+      </div>
+      <div class="git-commit-form">
+        <div class="amend-row">
+          <input type="checkbox" id="git-amend-check">
+          <label for="git-amend-check">修正上一次提交 (amend)</label>
+        </div>
+        <textarea id="git-commit-msg" placeholder="提交信息..."></textarea>
+        <button id="git-commit-btn">提交</button>
+      </div>
       <h3>暂存区</h3>
       <ul class="git-file-list" id="git-staged"></ul>
       <h3>工作区</h3>
       <ul class="git-file-list" id="git-unstaged"></ul>
       <h3>未追踪</h3>
       <ul class="git-file-list" id="git-untracked"></ul>
+      <div class="git-branch-mgmt" id="git-branch-section" style="display:none;">
+        <h3>分支管理</h3>
+        <div style="display:flex;gap:4px;margin-bottom:6px;">
+          <input id="git-new-branch-name" placeholder="新分支名..." style="flex:1;font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text);">
+          <button id="git-create-branch-btn" class="nav-btn">新建</button>
+        </div>
+        <ul class="git-file-list" id="git-branch-list"></ul>
+      </div>
+      <div class="git-section" id="git-conflict-section" style="display:none;">
+        <h3 style="color:var(--orange);">⚠ 合并冲突</h3>
+        <ul class="git-file-list" id="git-conflict-list"></ul>
+      </div>
       <div class="git-commit-form">
         <textarea id="git-commit-msg" placeholder="提交信息..."></textarea>
         <button id="git-commit-btn">提交</button>
@@ -190,23 +237,42 @@ navBtns.forEach(function(b) {
 if (MODE === 'git') switchView('git');
 else switchView('timeline');
 
+// ─── Hunk stage button delegation ───
+document.addEventListener('click', function(e) {
+  var btn = e.target.closest('.hunk-btn');
+  if (!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  var hunkIdx = parseInt(btn.getAttribute('data-hunk'), 10);
+  var path = btn.getAttribute('data-path');
+  if (!isNaN(hunkIdx) && path) {
+    btn.disabled = true;
+    btn.textContent = '...';
+    _stageHunk(path, hunkIdx).then(function() {
+      // _stageHunk calls _refreshGitStatus + _showGitFileDiff which re-renders
+    }).catch(function(err) {
+      btn.disabled = false;
+      btn.textContent = '失败';
+    });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // TIMELINE DIFF VIEWER
 // ═══════════════════════════════════════════════════════════════
 
-var _diffState = { before: null, after: null, path: '', showFull: false, sideBySide: false };
+var _diffState = { before: null, after: null, path: '', showFull: false, sideBySide: false, isGit: false, isStaged: false, hunkCount: 0 };
 
 window.addEventListener('message', function(e) {
-  if (e.data && e.data.type === 'qqqide-show-diff') {
-    _showDiff(e.data);
-  }
-});
-
-function _showDiff(data) {
+  if (e.data && e.data.type === 'qqqide-sfunction _showDiff(data) {
   _diffState.before = data.before || '';
   _diffState.after = data.after || '';
   _diffState.path = data.path || '';
   _diffState.showFull = false;
+  _diffState.sideBySide = false;
+  _diffState.isGit = data.isGit || false;
+  _diffState.isStaged = data.isStaged || false;
+  _diffState.hunkCount = data.hunkCount || 0;ull = false;
   _diffState.sideBySide = false;
 
   document.getElementById('timeline-empty').classList.add('hidden');
@@ -252,17 +318,19 @@ function _renderUnified(container, diff) {
   container.innerHTML = '';
   container.className = 'diff-body';
   var frag = document.createDocumentFragment();
-  var contextLines = _diffState.showFull ? 99999 : 3;
-
-  // Group into hunks
-  var hunks = _buildHunks(diff, contextLines);
-
-  for (var h = 0; h < hunks.length; h++) {
-    var hunk = hunks[h];
-    // Hunk header
+  var contex    // Hunk header + stage button (git diff only)
     if (!_diffState.showFull && h > 0) {
-      var hunkEl = document.createElement('div');
-      hunkEl.className = 'diff-line hunk';
+      var hunkSep = document.createElement('div');
+      hunkSep.className = 'diff-line hunk';
+      var sepHtml = '<span class="ln"></span><span class="ln2"></span><span class="code">@@ ...</span>';
+      if (_diffState.isGit) {
+        sepHtml += '<span style="float:right;margin-right:8px;">' +
+          '<button class="hunk-btn" data-hunk="' + h + '" data-path="' + _esc(_diffState.path) + '">' +
+          (_diffState.isStaged ? '取消暂存' : '暂存此块') + '</button></span>';
+      }
+      hunkSep.innerHTML = sepHtml;
+      frag.appendChild(hunkSep);
+    }kEl.className = 'diff-line hunk';
       hunkEl.innerHTML = '<span class="ln"></span><span class="ln2"></span><span class="code">@@ ...</span>';
       frag.appendChild(hunkEl);
     }
@@ -666,6 +734,9 @@ async function _refreshGitStatus() {
   _renderFileList('git-staged', staged, true);
   _renderFileList('git-unstaged', unstaged, false);
   _renderFileList('git-untracked', untracked, false);
+
+  // Check for merge conflicts
+  _detectConflicts();
 }
 
 function _renderFileList(elId, files, isStaged) {
@@ -701,14 +772,15 @@ function _renderFileList(elId, files, isStaged) {
   }
 }
 
+// ─── HUNK STAGING ───
+var _hunkDiffCache = {};  // { path: { hunks, staged, diffLines } }
+
 async function _showGitFileDiff(filePath, staged) {
-  var args = staged ? ['diff', '--cached', '--', filePath] : ['diff', '--', filePath];
+  var args = staged ? ['diff', '--cached', '-U3', '--', filePath] : ['diff', '-U3', '--', filePath];
   var r = await _gitCmd(args);
   if (r.exitCode !== 0 && !r.stdout) {
-    // Untracked file: show full content as added
     var readR = await _gitCmd(['show', ':' + filePath]);
     if (readR.exitCode !== 0) {
-      // Really untracked, read from disk
       try {
         var content = await bridge.fs.read((_gitRoot + '/' + filePath).replace(/\/\//g, '/'));
         _showDiff({ path: filePath, before: '', after: content || '', op: 'create_file', added: (content||'').split('\n').length, deleted: 0 });
@@ -717,18 +789,19 @@ async function _showGitFileDiff(filePath, staged) {
     }
   }
 
-  // Parse unified diff
   var diffLines = (r.stdout || '').split('\n');
-  var before = [], after = [];
-  var inHunk = false;
+  var hunks = _parseHunks(diffLines);
+  _hunkDiffCache[filePath] = { hunks: hunks, staged: staged, diffLines: diffLines };
 
-  for (var i = 0; i < diffLines.length; i++) {
-    var l = diffLines[i];
-    if (l.startsWith('@@')) { inHunk = true; continue; }
-    if (!inHunk) continue;
-    if (l.startsWith('-')) { before.push(l.slice(1)); }
-    else if (l.startsWith('+')) { after.push(l.slice(1)); }
-    else { before.push(l.startsWith(' ') ? l.slice(1) : l); after.push(l.startsWith(' ') ? l.slice(1) : l); }
+  // Build before/after for timeline diff
+  var before = [], after = [];
+  for (var h = 0; h < hunks.length; h++) {
+    for (var i = 0; i < hunks[h].length; i++) {
+      var e = hunks[h][i];
+      if (e.type === '-') before.push(e.text);
+      else if (e.type === '+') after.push(e.text);
+      else { before.push(e.text); after.push(e.text); }
+    }
   }
 
   _showDiff({
@@ -736,45 +809,275 @@ async function _showGitFileDiff(filePath, staged) {
     before: before.join('\n'),
     after: after.join('\n'),
     op: 'edit_file',
-    added: after.length - before.filter(function(l,i){ return after[i] === l; }).length,
-    deleted: before.length - after.filter(function(l,i){ return before[i] === l; }).length
+    isGit: true,
+    isStaged: staged,
+    hunkCount: hunks.length
   });
 }
 
-// ─── GIT LOG ───
+// Parse git diff output into hunks (preserving @@ headers)
+function _parseHunks(diffLines) {
+  var hunks = [];
+  var cur = [];
+  for (var i = 0; i < diffLines.length; i++) {
+    var l = diffLines[i]  var r = await _gitCmd(['log', '--graph', '--oneline', '--decorate', '-100', '--format=%H|%D|%s|%ai']);   cur.push({ type: '@', text: l });
+    } else if (l.startsWith('-')) {
+      cur.push({ type: '-', text: l.slice(1) });
+    } else if (l.startsWith('+')) {
+      cur.pu    var fullHash = parts[0];
+    var decorate = parts[1] || '';
+    var msg = parts[2] || '';
+    var date = parts[3] || '';
+    var hash = (fullHash || '').slice(0, 8);
+
+    var item = document.createElement('div');
+    item.className = 'git-log-item';
+    item.innerHTML = '<span class="git-log-hash">' + _esc(hash) + '</span>' +
+      (decorate ? '<span style="color:var(--cyan);font-size:10px;margin-left:4px;">' + _esc(decorate) + '</span>' : '') +
+      '<span class="git-log-msg">' + _esc(msg) + '</span>' +
+      '<span class="git-log-date">' + _esc(date) + '</span>';
+    item.title = '点击: 查看详情 | Ctrl+点击: Cherry-pick | Alt+点击: Revert';
+
+    (function(h) {
+      item.addEventListener('click', function(e) {
+        if (e.ctrlKey || e.metaKey) { _cherryPick(h); return; }
+        if (e.altKey) { _revertCommit(h); return; }
+        _showCommitDiff(h);
+      });
+    })(fullHash); < hunk.length; i++) {
+    patch += hunk[i].typeasync function _showCommitDiff(fullHash) {
+  var r = await _gitCmd(['show', '--stat', '--format=%B', fullHash]);
+  var nav = document.getElementById('nav-title');
+  nav.textContent = 'Commit ' + fullHash.slice(0, 8) + ': ' + ((r.stdout || '').split('\n')[0] || '').slice(0, 60);
+
+  // Show full diff in timeline view
+  var diffR = await _gitCmd(['diff', fullHash + '~1', fullHash]);
+  if (diffR.exitCode === 0 && diffR.stdout) {
+    var diffLines = diffR.stdout.split('\n');
+    var before = [], after = [];
+    var inHunk = false;
+    for (var i = 0; i < diffLines.length; i++) {
+      var l = diffLines[i];
+      if (l.startsWith('@@')) { inHunk = true; continue; }
+      if (!inHunk) continue;
+      if (l.startsWith('-')) before.push(l.slice(1));
+      else if (l.startsWith('+')) after.push(l.slice(1));
+      else { before.push(l.startsWith(' ') ? l.slice(1) : l); after.push(l.startsWith(' ') ? l.slice(1) : l); }
+    }
+    _showDiff({ path: 'commit ' + fullHash.slice(0, 8), before: before.join('\n'), after: after.join('\n'), op: 'commit_show' });
+  }
+}
+
+async function _unstageFileHunks(filePath) {
+  await _gitCmd(['reset', 'HEAD', '--', filePath]);
+  _refreshGitStatus();
+  _showGitFileDiff(filePath, false);
+}
+
+// ─── GIT LOG (with --graph) ───
 async function _showGitLog() {
   document.getElementById('git-status-section').classList.add('hidden');
   document.getElementById('git-log-section').classList.remove('hidden');
 
-  var r = await _gitCmd(['log', '--oneline', '--no-decorate', '-50', '--format=%H|%s|%ai']);
+  var r = await _gitCmd(['log', '--graph', '--oneline', '--decorate', '-100', '--format=%H|%D|%s|%ai']);
   var list = document.getElementById('git-log-list');
   list.innerHTML = '';
   var lines = (r.stdout || '').split('\n').filter(Boolean);
 
   for (var i = 0; i < lines.length; i++) {
-    var parts = lines[i].split('|');
-    var hash = (parts[0] || '').slice(0, 8);
-    var msg = parts[1] || '';
-    var date = parts[2] || '';
+    var rest = lines[i];
+    // Extract graph part (leading * / | / \ and spaces)
+    var graphEnd = 0;
+    while (graphEnd < rest.length && (' *|/\\'.indexOf(rest[graphEnd]) >= 0)) graphEnd++;
+    var graph = rest.slice(0, graphEnd).trim();
+    var data = rest.slice(graphEnd);
+    var parts = data.split('|');
+    var fullHash = parts[0] || '';
+    var decorate = parts[1] || '';
+    var msg = parts[2] || '';
+    var date = parts[3] || '';
+    var hash = (fullHash).slice(0, 8);
+
     var item = document.createElement('div');
     item.className = 'git-log-item';
-    item.innerHTML = '<span class="git-log-hash">' + _esc(hash) + '</span><span class="git-log-msg">' + _esc(msg) + '</span><span class="git-log-date">' + _esc(date) + '</span>';
+    item.innerHTML = '<span style="color:var(--base01);font-family:ui-monospace,monospace;font-size:10px;white-space:pre;margin-right:4px;">' + _esc(graph || '') + '</span>' +
+      '<span class="git-log-hash">' + _esc(hash) + '</span>' +
+      (decorate ? '<span style="color:var(--cyan);font-size:10px;margin-left:4px;">' + _esc(decorate) + '</span>' : '') +
+      '<span class="git-log-msg">' + _esc(msg) + '</span>' +
+      '<span class="git-log-date">' + _esc(date) + '</span>';
+    item.title = '点击: 查看详情 | Ctrl+点击: Cherry-pick | Alt+点击: Revert';
+
     (function(h) {
-      item.addEventListener('click', function() { _showCommitDiff(h); });
-    })(parts[0]);
+      item.addEventListener('click', function(e) {
+        if (e.ctrlKey || e.metaKey) { _cherryPick(h); return; }
+        if (e.altKey) { _revertCommit(h); return; }
+        _showCommitDiff(h);
+      });
+    })(fullHash);
     list.appendChild(item);
   }
 }
 
 async function _showCommitDiff(fullHash) {
-  var r = await _gitCmd(['show', '--stat', '--format=', fullHash]);
-  // Just show stat for now, clicking opens full diff view
-  var statR = await _gitCmd(['diff', fullHash + '~1', fullHash, '--numstat']);
+  var r = await _gitCmd(['show', '--stat', '--format=%B', fullHash]);
   var nav = document.getElementById('nav-title');
-  nav.textContent = 'Commit ' + fullHash.slice(0, 8);
+  nav.textContent = 'Commit ' + fullHash.slice(0, 8) + ': ' + ((r.stdout || '').split('\n')[0] || '').slice(0, 60);
+  var diffR = await _gitCmd(['diff', fullHash + '~1', fullHash]);
+  if (diffR.exitCode === 0 && diffR.stdout) {
+    var diffLines = diffR.stdout.split('\n');
+    var before = [], after = [];
+    var inHunk = false;
+    for (var i = 0; i < diffLines.length; i++) {
+      var l = diffLines[i];
+      if (l.startsWith('@@')) { inHunk = true; continue; }
+      if (!inHunk) continue;
+      if (l.startsWith('-')) before.push(l.slice(1));
+      else if (l.startsWith('+')) after.push(l.slice(1));
+      else { before.push(l.startsWith(' ') ? l.slice(1) : l); after.push(l.startsWith(' ') ? l.slice(1) : l); }
+    }
+    _showDiff({ path: 'commit ' + fullHash.slice(0, 8), before: before.join('\n'), after: after.join('\n'), op: 'commit_show' });
+  }
 }
 
-// ─── EVENT HANDLERS ───
+// ─── CHERRY-PICK / REVERT ───
+async function _cherryPick(hash) {
+  _showProgress('Cherry-pick ' + hash.slice(0, 8) + ' ...');
+  var r = await _gitCmd(['cherry-pick', hash]);
+  if (r.exitCode === 0) {
+    _hideProgress();
+    _refreshGitStatus();
+  } else {
+    if (_gitProgressEl) { _gitProgressEl.style.color = 'var(--red)'; _gitProgressEl.textContent = '✕ cherry-pick 失败: ' + (r.stderr || '').slice(0, 200); }
+  }
+}
+
+async function _revertCommit(hash) {
+  if (!confirm('Revert 提交 ' + hash.slice(0, 8) + '？（将创建一个反向提交）')) return;
+  _showProgress('Revert ' + hash.slice(0, 8) + ' ...');
+  var r = await _gitCmd(['revert', '--no-edit', hash]);
+  if (r.exitCode === 0) {
+    _hideProgress();
+    _refreshGitStatus();
+  } else {
+    if (_gitProgressEl) { _gitProgressEl.style.color = 'var(--red)'; _gitProgressEl.textContent = '✕ revert 失败: ' + (r.stderr || '').slice(0, 200); }
+  }
+}
+
+// ─── STASH MANAGEMENT ───
+async function _showStashes() {
+  document.getElementById('git-stash-section').style.display = '';
+  var r = await _gitCmd(['stash', 'list']);
+  var list = document.getElementById('git-stash-list');
+  list.innerHTML = '';
+  var lines = (r.stdout || '').split('\n').filter(Boolean);
+
+  if (lines.length === 0) {
+    list.innerHTML = '<div style="color:var(--base01);font-size:11px;padding:4px 8px;">(空)</div>';
+    return;
+  }
+
+  for (var i = 0; i < lines.length; i++) {
+    // Format: stash@{0}: WIP on branch: hash msg
+    var line = lines[i];
+    var match = line.match(/^(stash@\{\d+\}):\s*(.*)/);
+    var ref = match ? match[1] : line;
+    var desc = match ? match[2] : '';
+
+    var item = document.createElement('div');
+    item.className = 'git-stash-item';
+    item.innerHTML = '<span class="stash-ref">' + _esc(ref) + '</span><span class="stash-msg" title="' + _esc(desc) + '">' + _esc(desc.slice(0, 80)) + '</span>';
+
+    var applyBtn = document.createElement('button');
+    applyBtn.className = 'hunk-btn';
+    applyBtn.textContent = '应用';
+    (function(n) {
+      applyBtn.addEventListener('click', function(e) { e.stopPropagation(); _applyStash(n); });
+    })(ref);
+    item.appendChild(applyBtn);
+
+    var popBtn = document.createElement('button');
+    popBtn.className = 'hunk-btn';
+    popBtn.textContent = '弹出';
+    (function(n) {
+      popBtn.addEventListener('click', function(e) { e.stopPropagation(); _popStash(n); });
+    })(ref);
+    item.appendChild(popBtn);
+
+    var dropBtn = document.createElement('button');
+    dropBtn.className = 'hunk-btn danger';
+    dropBtn.textContent = '丢弃';
+    (function(n) {
+      dropBtn.addEventListener('click', function(e) { e.stopPropagation(); _dropStash(n); });
+    })(ref);
+    item.appendChild(dropBtn);
+
+    list.appendChild(item);
+  }
+}
+
+async function _applyStash(ref) {
+  var r = await _gitCmd(['stash', 'apply', ref]);
+  if (r.exitCode === 0) { _refreshGitStatus(); _showStashes(); }
+  else _showProgress('应用贮藏失败: ' + (r.stderr || '').slice(0, 100));
+}
+
+async function _popStash(ref) {
+  var r = await _gitCmd(['stash', 'pop', ref]);
+  if (r.exitCode === 0) { _refreshGitStatus(); _showStashes(); }
+  else _showProgress('弹出贮藏失败: ' + (r.stderr || '').slice(0, 100));
+}
+
+async function _dropStash(ref) {
+  if (!confirm('丢弃 ' + ref + '？')) return;
+  var r = await _gitCmd(['stash', 'drop', ref]);
+  if (r.exitCode === 0) _showStashes();
+  else _showProgress('丢弃贮藏失败: ' + (r.stderr || '').slice(0, 100));
+}
+
+// ─── CLONE ───
+document.getElementById('git-clone-btn').addEventListener('click', function() {
+  document.getElementById('git-clone-dialog').style.display = '';
+});
+document.getElementById('git-clone-cancel').addEventListener('click', function() {
+  document.getElementById('git-clone-dialog').style.display = 'none';
+  document.getElementById('git-clone-url').value = '';
+  document.getElementById('git-clone-dir').value = '';
+});
+document.getElementById('git-clone-start').addEventListener('click', async function() {
+  var url = document.getElementById('git-clone-url').value.trim();
+  if (!url) return;
+  var dirName = document.getElementById('git-clone-dir').value.trim() || url.split('/').pop().replace('.git', '');
+  var parentDir = _gitRoot ? _gitRoot.replace(/\/[^\/]+$/, '') : '.';
+  var targetPath = parentDir + '/' + dirName;
+
+  _showProgress('克隆 ' + url + ' → ' + targetPath + ' ...');
+  document.getElementById('git-clone-dialog').style.display = 'none';
+
+  try {
+    var result = await bridge.qz.spawnStream ?
+      bridge.qz.spawnStream({ cmd: _gitExePath || (await _initGitExe()), args: ['clone', '--progress', url, targetPath], cwd: parentDir, timeout: 600000 },
+        function(channel, data) {
+          var lines = data.split('\n').filter(Boolean);
+          var last = lines[lines.length - 1] || '';
+          if (_gitProgressEl && last.trim()) _gitProgressEl.textContent = '⏳ ' + last.trim().slice(0, 160);
+        }) :
+      await _gitCmd(['clone', url, targetPath], { timeout: 600000 });
+
+    if (result.exitCode === 0) {
+      _hideProgress();
+      _gitRoot = targetPath;
+      document.getElementById('git-clone-url').value = '';
+      document.getElementById('git-clone-dir').value = '';
+      _refreshGitStatus();
+    } else {
+      if (_gitProgressEl) { _gitProgressEl.style.color = 'var(--red)'; _gitProgressEl.textContent = '✕ 克隆失败: ' + (result.stderr || '').slice(0, 200); }
+    }
+  } catch(e) {
+    if (_gitProgressEl) { _gitProgressEl.style.color = 'var(--red)'; _gitProgressEl.textContent = '✕ 克隆失败: ' + (e.message || String(e)).slice(0, 200); }
+  }
+});
+
+// ─── EVENT HANDLERS (updated with amend + stash management + auto-refresh) ───
 document.getElementById('git-refresh').addEventListener('click', async function() {
   var ok = await _checkGitAvailable();
   if (ok) _refreshGitStatus();
@@ -794,32 +1097,49 @@ document.getElementById('git-unstage-all').addEventListener('click', async funct
 document.getElementById('git-commit-btn').addEventListener('click', async function() {
   var msg = document.getElementById('git-commit-msg').value.trim();
   if (!msg) return;
-  await _gitCmd(['commit', '-m', msg]);
+  var isAmend = document.getElementById('git-amend-check').checked;
+  var args = isAmend ? ['commit', '--amend', '-m', msg] : ['commit', '-m', msg];
+  await _gitCmd(args);
   document.getElementById('git-commit-msg').value = '';
+  document.getElementById('git-amend-check').checked = false;
   _refreshGitStatus();
-});
-
-document.getElementById('git-branch-btn').addEventListener('click', async function() {
-  var r = await _gitCmd(['branch', '-a']);
-  var nav = document.getElementById('nav-title');
-  nav.textContent = (r.stdout || '').trim().split('\n').join(' | ');
 });
 
 document.getElementById('git-stash-btn').addEventListener('click', async function() {
-  await _gitCmd(['stash']);
-  _refreshGitStatus();
+  var stashSection = document.getElementById('git-stash-section');
+  if (stashSection.style.display === 'none' || !stashSection.style.display) {
+    _showStashes();
+  } else {
+    // Second click: create new stash
+    await _gitCmd(['stash']);
+    _refreshGitStatus();
+    _showStashes();
+  }
 });
 
-// ─── PUSH / PULL / FETCH (long ops, streaming) ───
+// ─── AUTO-REFRESH (poll every 15s when git tab is open) ───
+var _gitAutoRefreshTimer = null;
+function _startAutoRefresh() {
+  if (_gitAutoRefreshTimer) return;
+  _gitAutoRefreshTimer = setInterval(function() {
+    if (MODE === 'git' && _gitRoot && _gitAvailable) {
+      _refreshGitStatus();
+    }
+  }, 15000);
+}
+if (MODE === 'git') _startAutoRefresh();
+
+// ─── PUSH / PULL / FETCH (long ops, streaming via spawnStream) ───
 var _gitProgressEl = null;
 
 function _showProgress(label) {
   if (!_gitProgressEl) {
     _gitProgressEl = document.createElement('div');
-    _gitProgressEl.style.cssText = 'padding:8px 12px;background:var(--card);border-bottom:1px solid var(--border);font-family:ui-monospace,monospace;font-size:11px;color:var(--blue);';
+    _gitProgressEl.style.cssText = 'padding:8px 12px;background:var(--card);border-bottom:1px solid var(--border);font-family:ui-monospace,monospace;font-size:11px;color:var(--blue);white-space:pre-wrap;max-height:200px;overflow-y:auto;';
     var toolbar = document.getElementById('git-toolbar');
     toolbar.parentNode.insertBefore(_gitProgressEl, toolbar.nextSibling);
   }
+  _gitProgressEl.style.color = 'var(--blue)';
   _gitProgressEl.textContent = '⏳ ' + label + ' ...';
   _gitProgressEl.style.display = '';
 }
@@ -831,9 +1151,30 @@ function _hideProgress() {
 async function _gitLongOp(args, label) {
   _showProgress(label);
   try {
-    var result = await _gitCmd(args, { timeout: 300000 });
+    var useStream = !!(bridge && bridge.qz && bridge.qz.spawnStream);
+    var result;
+    if (useStream) {
+      var lastLine = '';
+      result = await bridge.qz.spawnStream({
+        cmd: _gitExePath || (await _initGitExe()),
+        args: args,
+        cwd: _gitRoot,
+        timeout: 300000
+      }, function(channel, data) {
+        // Show last meaningful line as progress
+        var lines = data.split('\n').filter(Boolean);
+        for (var i = 0; i < lines.length; i++) {
+          var ln = lines[i].trim();
+          if (ln) lastLine = ln;
+        }
+        if (_gitProgressEl && lastLine) {
+          _gitProgressEl.textContent = '⏳ ' + lastLine.slice(0, 160);
+        }
+      });
+    } else {
+      result = await _gitCmd(args, { timeout: 300000 });
+    }
     if (result.exitCode !== 0 && result.stderr) {
-      // Show error in progress bar
       if (_gitProgressEl) {
         _gitProgressEl.style.color = 'var(--red)';
         _gitProgressEl.textContent = '✕ ' + label + ': ' + (result.stderr || 'failed').slice(0, 200);
@@ -867,6 +1208,155 @@ document.getElementById('git-fetch-btn').addEventListener('click', async functio
   if (!ok) return;
   _gitLongOp(['fetch', '--all', '--prune'], 'git fetch --all --prune');
 });
+
+// ─── BRANCH MANAGEMENT ───
+async function _showBranches() {
+  document.getElementById('git-branch-section').style.display = '';
+  var r = await _gitCmd(['branch', '-a', '--format=%(refname:short)|%(objectname:short)|%(upstream:short)']);
+  var list = document.getElementById('git-branch-list');
+  list.innerHTML = '';
+  var lines = (r.stdout || '').split('\n').filter(Boolean);
+
+  // Get current branch from status
+  var statusR = await _gitCmd(['status', '--porcelain=v2', '--branch']);
+  var currentBranch = '';
+  (statusR.stdout || '').split('\n').forEach(function(l) {
+    if (l.startsWith('# branch.head ')) currentBranch = l.slice('# branch.head '.length).trim();
+  });
+
+  for (var i = 0; i < lines.length; i++) {
+    var parts = lines[i].split('|');
+    var name = parts[0] || '';
+    var hash = parts[1] || '';
+    var upstream = parts[2] || '';
+    var isCurrent = (name === currentBranch) || (name === 'origin/' + currentBranch && !lines.some(function(l) { return l.split('|')[0] === currentBranch; }));
+
+    var li = document.createElement('li');
+    li.style.cssText = 'display:flex;align-items:center;gap:6px;';
+    var nameEl = document.createElement('span');
+    nameEl.className = 'git-file-path';
+    nameEl.textContent = name;
+    if (isCurrent) nameEl.style.cssText = 'color:var(--green);font-weight:700;';
+    li.appendChild(nameEl);
+
+    if (isCurrent) {
+      var curBadge = document.createElement('span');
+      curBadge.style.cssText = 'font-size:9px;color:var(--green);font-weight:700;';
+      curBadge.textContent = '●';
+      li.appendChild(curBadge);
+    } else if (!name.startsWith('origin/')) {
+      // Switch button for local branches
+      var switchBtn = document.createElement('button');
+      switchBtn.className = 'hunk-btn';
+      switchBtn.textContent = '切换';
+      switchBtn.style.marginLeft = 'auto';
+      (function(branch) {
+        switchBtn.addEventListener('click', function(e) { e.stopPropagation(); _switchBranch(branch); });
+      })(name);
+      li.appendChild(switchBtn);
+
+      // Delete button
+      var delBtn = document.createElement('button');
+      delBtn.className = 'hunk-btn';
+      delBtn.textContent = '删除';
+      delBtn.style.color = 'var(--red)';
+      (function(branch) {
+        delBtn.addEventListener('click', function(e) { e.stopPropagation(); _deleteBranch(branch); });
+      })(name);
+      li.appendChild(delBtn);
+    }
+    list.appendChild(li);
+  }
+}
+
+async function _switchBranch(name) {
+  var r = await _gitCmd(['switch', name]);
+  if (r.exitCode === 0) {
+    _refreshGitStatus();
+    _showBranches();
+  } else {
+    _showProgress('切换失败: ' + (r.stderr || '').slice(0, 100));
+  }
+}
+
+async function _deleteBranch(name) {
+  if (!confirm('删除分支 ' + name + '？（仅删除指针，不删除提交）')) return;
+  var r = await _gitCmd(['branch', '-d', name]);
+  if (r.exitCode === 0) {
+    _showBranches();
+  } else {
+    _showProgress('删除失败: ' + (r.stderr || '').slice(0, 100));
+  }
+}
+
+document.getElementById('git-branch-btn').addEventListener('click', _showBranches);
+
+document.getElementById('git-create-branch-btn').addEventListener('click', async function() {
+  var name = document.getElementById('git-new-branch-name').value.trim();
+  if (!name) return;
+  var r = await _gitCmd(['checkout', '-b', name]);
+  if (r.exitCode === 0) {
+    document.getElementById('git-new-branch-name').value = '';
+    _refreshGitStatus();
+    _showBranches();
+  } else {
+    _showProgress('新建失败: ' + (r.stderr || '').slice(0, 100));
+  }
+});
+
+// ─── CONFLICT RESOLUTION ───
+async function _detectConflicts() {
+  var r = await _gitCmd(['diff', '--name-only', '--diff-filter=U']);
+  var files = (r.stdout || '').split('\n').filter(Boolean);
+  var section = document.getElementById('git-conflict-section');
+  var list = document.getElementById('git-conflict-list');
+  if (files.length === 0) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  list.innerHTML = '';
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    var li = document.createElement('li');
+    li.style.cssText = 'display:flex;align-items:center;gap:4px;';
+    var pathEl = document.createElement('span');
+    pathEl.className = 'git-file-path';
+    pathEl.textContent = f;
+    pathEl.title = f;
+    li.appendChild(pathEl);
+
+    var oursBtn = document.createElement('button');
+    oursBtn.className = 'hunk-btn';
+    oursBtn.textContent = '用本地';
+    (function(file) {
+      oursBtn.addEventListener('click', function(e) { e.stopPropagation(); _resolveConflict(file, 'ours'); });
+    })(f);
+    li.appendChild(oursBtn);
+
+    var theirsBtn = document.createElement('button');
+    theirsBtn.className = 'hunk-btn';
+    theirsBtn.textContent = '用远端';
+    (function(file) {
+      theirsBtn.addEventListener('click', function(e) { e.stopPropagation(); _resolveConflict(file, 'theirs'); });
+    })(f);
+    li.appendChild(theirsBtn);
+
+    // Click to show conflict diff
+    (function(file) {
+      li.addEventListener('click', function() { _showGitFileDiff(file, false); });
+    })(f);
+    list.appendChild(li);
+  }
+}
+
+async function _resolveConflict(filePath, strategy) {
+  var r = await _gitCmd(['checkout', '--' + strategy, '--', filePath]);
+  if (r.exitCode === 0) {
+    await _gitCmd(['add', '--', filePath]);
+    _detectConflicts();
+    _refreshGitStatus();
+  } else {
+    _showProgress('解决冲突失败: ' + (r.stderr || '').slice(0, 100));
+  }
+}
 
 // ─── INIT ───
 function _initGit() {

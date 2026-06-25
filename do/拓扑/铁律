@@ -367,7 +367,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 §37 A4 文件快照 + Timeline 版本时间线（2026-06-13 钩子Q+X重构，2026-06-21 终极存储架构）
   - 唯一入口: panel-a4.js 钩子 Q + editor.js 钩子 X。
   - 钩子 Q: edit/write/create/delete → 捕获 before → 执行 → 捕获 after → _a4PersistToTimeline(both, trace, diff stats)。
-    run_command → 执行 → captureChanged → 逐文件 _a4PersistToTimeline(after, trace)。
+    run_command → ★ 默认关闭（设置→高级→追踪命令文件变更），开启后：执行 → captureChanged → 噪声过滤 → 逐文件 _a4PersistToTimeline(after, trace)。
     trace: agent-loop 埋点 window._qqqCurrentTrace → floor_id = "q{id}/f{num}/h{num}/r{num}"。
   - 钩子 X: editor blur / Ctrl+S → 读上一版本内容 diff → timeline.record(source='editx')。
   - ★ 编辑类快照（editx + diff-edit）共享主进程真理机：100s 冷却 + SHA256 去重，
