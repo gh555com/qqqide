@@ -63,11 +63,11 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-tofu-new .quest-tofu-text{color:var(--base01);font-style:italic;text-align:center}
 /* 豆腐块内联编辑 */
 .quest-tofu-edit{flex:1;min-width:0;border:none;outline:none;background:transparent;color:var(--text-primary);font-size:22px;font-weight:700;font-family:inherit;padding:0;margin:0}
-.quest-tofu-pen{position:absolute;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:0;cursor:pointer;padding:0 14px;z-index:2;background:#ebe3ca;transition:opacity .15s,background .15s;line-height:1}
-[data-theme="dark"] .quest-tofu-pen{background:#211f1c}
-.quest-tofu-pen:hover{opacity:1!important;background:var(--background-color)}
+.quest-tofu-pen{position:absolute;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:0;cursor:pointer;padding:0 14px;z-index:2;background:transparent;transition:opacity .15s,background .15s;line-height:1}
+[data-theme="dark"] .quest-tofu-pen{background:transparent}
+.quest-tofu-pen:hover{opacity:1!important;background:var(--background-color)!important}
 [data-theme="dark"] .quest-tofu-pen:hover{background:#3f3830}
-.quest-tofu:hover .quest-tofu-pen{opacity:1;background:transparent}
+.quest-tofu:hover .quest-tofu-pen{opacity:1}
 /* q2x 行已删除（统一走 dropdown hover，单一真理源）*/
 /* ── q2 展开：虚线框 + 渐变背景 ── */
 #quest-bar.quest-expanded .quest-tofu{

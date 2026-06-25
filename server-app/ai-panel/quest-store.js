@@ -267,6 +267,10 @@ var QuestStore = (function () {
                 }
                 await _healIndex();
                 await this._syncIndexFromFs();
+                // ★ 加固（2026-06-25）：最终保险 — 确保 counter ≥ 索引最大 ID
+                //   _syncIndexFromFs 只对 "新发现" 的 quest 更新 counter，
+                //   若所有 quest 均在索引中则跳过 → counter 可能长期偏低而不被发现
+                _healCounterFromIndex();
             } catch (e) {
                 console.warn('[quest-store] _ensureIndex failed:', e && e.message);
                 if (!_idx()) _setIdx([]);
@@ -298,6 +302,30 @@ var QuestStore = (function () {
             }
         } catch (e) {
             console.warn('[quest-store] _healIndex seed failed:', e && e.message);
+        }
+    }
+
+    // ★ 加固（2026-06-25）：确保 quest_id_counter ≥ 索引中最大 ID
+    //   _syncIndexFromFs 的 counter 更新只覆盖 "新发现" 的 quest，
+    //   若所有 quest 均已在索引中则跳过 — counter 长期偏低时不会被发现
+    async function _healCounterFromIndex() {
+        var b = _bridge();
+        if (!b) return;
+        var idx = _idx() || [];
+        var maxN = 0;
+        for (var i = 0; i < idx.length; i++) {
+            var n = idx[i].numericId || 0;
+            if (n > maxN) maxN = n;
+        }
+        if (maxN <= 0) return;
+        try {
+            var cur = await b.get('quest_id_counter');
+            if (!cur || !(typeof cur === 'number' && cur >= maxN)) {
+                await b.setNow('quest_id_counter', maxN);
+                console.log('[quest-store] _healCounterFromIndex: fixed quest_id_counter ' + (cur || '?') + ' → ' + maxN);
+            }
+        } catch (e) {
+            console.warn('[quest-store] _healCounterFromIndex failed:', e && e.message);
         }
     }
 
@@ -337,12 +365,16 @@ var QuestStore = (function () {
                     }
                 }
                 if (dupIds.length) {
-                    console.error('[quest-store] ⚠️ DUPLICATE QUEST IDS DETECTED: ' + dupIds.join(', ') + ' — call repairDuplicateIds() to fix');
+                    console.error('[quest-store] ⚠️ DUPLICATE QUEST IDS DETECTED: ' + dupIds.join(', ') + ' — auto-repairing via repairDuplicateIds()');
                     for (var zi = 0; zi < dupIds.length; zi++) {
                         var zid = dupIds[zi];
                         var names = diskById[zid].map(function (d) { return d.name; });
                         console.error('[quest-store]   ' + zid + ' → ' + names.join(' | '));
                     }
+                    // ★ 加固（2026-06-25）：检测到碰撞 → 立即自动修复，不再仅打日志
+                    //   延迟 2s 执行（fire-and-forget），不阻塞启动流程
+                    var _store = this;
+                    setTimeout(function () { _store.repairDuplicateIds().catch(function (_e) { console.warn('[quest-store] auto-repair failed:', _e && _e.message); }); }, 2000);
                 }
 
                 // 索引 → idxMap（id → entry）
@@ -661,13 +693,50 @@ var QuestStore = (function () {
     // ═══════════════════════════════════════════════════════════════
 
     // create(title) → id='qN'，N 由 SQLite atomicIncr 原子分配，零竞态
+    // ★ 加固（2026-06-25）：创建前检查磁盘+索引是否有重复 → 发现碰撞则愈合计数器后重分配
     QuestStore.prototype.create = async function (title) {
         await this._ensureIndex();
         var b = _bridge();
         if (!b) throw new Error('quest-store: no bridge');
-        var numericId = await b.atomicIncr('quest_id_counter');
-        var id = 'q' + numericId;
-        var now = Date.now();
+        var bf = _bridgeFs();
+        var idx = _idx();
+
+        // ★ 磁盘去重守卫：atomicIncr 只保证 sq3 内原子，不保证与磁盘一致
+        //   若 counter 偏低（sq3 损坏/手动操作），可能分配已存在的编号 → 必须先验
+        var maxRetries = 5;
+        var numericId, id, now;
+        for (var retry = 0; retry < maxRetries; retry++) {
+            numericId = await b.atomicIncr('quest_id_counter');
+            id = 'q' + numericId;
+            // 检查索引中是否已有此 ID
+            var idxDup = false;
+            if (idx) {
+                for (var di = 0; di < idx.length; di++) {
+                    if (idx[di].id === id) { idxDup = true; break; }
+                }
+            }
+            if (idxDup) {
+                console.warn('[quest-store] create: index already has ' + id + ', retrying (attempt ' + (retry+1) + '/' + maxRetries + ')');
+                continue;
+            }
+            // 检查磁盘上是否已有此编号目录
+            var diskDup = false;
+            if (bf && _rootDir) {
+                try {
+                    var diskList = await _safeList(_rootDir + '/qqq/quests');
+                    for (var ddi = 0; ddi < diskList.length; ddi++) {
+                        if (diskList[ddi].isDir && diskList[ddi].name.indexOf(id + '.') === 0) {
+                            diskDup = true;
+                            console.warn('[quest-store] create: disk already has ' + id + ' (' + diskList[ddi].name + '), retrying (attempt ' + (retry+1) + '/' + maxRetries + ')');
+                            break;
+                        }
+                    }
+                } catch (_) { /* disk check failed → proceed anyway (worse case: _findQuestDirByPrefix catches it later) */ }
+            }
+            if (!diskDup) break;  // ★ 干净 ID，退出循环
+        }
+
+        now = Date.now();
         var entry = {
             id: id,
             numericId: numericId,
@@ -676,7 +745,6 @@ var QuestStore = (function () {
             createdAt: now,
             lastActiveAt: now
         };
-        var idx = _idx();
         if (idx) idx.push(entry);
         await _saveIndex();
 

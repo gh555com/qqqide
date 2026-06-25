@@ -136,31 +136,40 @@ export function registerMiscIpc(
 
     // ---- 新窗口 ----
     ipcMain.handle('qqqide:window:new', async (_e, folderPath?: string) => {
+        console.log('[window:new] called, folderPath:', folderPath);
+        console.log('[window:new] bootConfig.url:', bootConfig.url);
         if (folderPath && typeof folderPath === 'string') {
             const normalized = folderPath.replace(/\\/g, '/').replace(/\/$/, '');
+            console.log('[window:new] normalized:', normalized);
             const existingWinId = _projectWindowMap.get(normalized);
             if (existingWinId != null) {
                 const existingWin = BrowserWindow.fromId(existingWinId);
                 if (existingWin && !existingWin.isDestroyed()) {
                     if (existingWin.isMinimized()) existingWin.restore();
                     existingWin.focus();
+                    console.log('[window:new] existing window restored');
                     return { ok: false, locked: true, existingWindowId: existingWinId };
                 }
                 _projectWindowMap.delete(normalized);
                 _windowProjectMap.delete(existingWinId);
             }
             const lockPath = normalized + '/qqq/alphal/.lock';
+            console.log('[window:new] checking lock:', lockPath);
             try {
                 const lockRaw = fs.readFileSync(lockPath, 'utf-8');
                 const lockData = JSON.parse(lockRaw);
                 const age = Date.now() - (lockData.atime || 0);
+                console.log('[window:new] lock age:', age, 'ms');
                 if (age < 60000) {
+                    console.log('[window:new] locked by active window');
                     return { ok: false, locked: true, existingWindowId: null };
                 }
                 try { fs.unlinkSync(lockPath); } catch (_) { }
             } catch (_) { }
         }
+        console.log('[window:new] creating new window...');
         const newWin = createWindow(portableRoot, portableCache, appVersion, lspBridge, downloadService, stateStore);
+        console.log('[window:new] newWin.id:', newWin.id);
         // 绑定主文件夹
         if (folderPath && typeof folderPath === 'string') {
             const normalized = folderPath.replace(/\\/g, '/').replace(/\/$/, '');
@@ -172,7 +181,14 @@ export function registerMiscIpc(
         if (folderPath && typeof folderPath === 'string') {
             url += '&folder=' + encodeURIComponent(folderPath);
         }
-        newWin.loadURL(url).catch(() => { });
+        console.log('[window:new] loadURL:', url);
+        newWin.loadURL(url).then(() => {
+            console.log('[window:new] loadURL OK, showing window');
+            newWin.show();
+        }).catch((err: any) => {
+            console.error('[window:new] loadURL FAILED:', err);
+        });
+        console.log('[window:new] returning ok, windowId:', newWin.id);
         return { ok: true, windowId: newWin.id };
     });
 

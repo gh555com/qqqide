@@ -76,10 +76,18 @@ window._shHandleMenuCmd = function handleMenuCmd(cmd) {
     return;
   }
   if (cmd === 'file.newWindow') {
+    console.log('[shell-menu] file.newWindow triggered');
+    console.log('[shell-menu] bridge:', !!bridge, 'bridge.window:', !!(bridge && bridge.window), 'bridge.window.new:', !!(bridge && bridge.window && bridge.window.new));
     if (bridge.window && bridge.window.new) {
+      console.log('[shell-menu] calling bridge.window.new()...');
       bridge.window.new().then(function (r) {
+        console.log('[shell-menu] bridge.window.new() result:', r);
         if (r && !r.ok) { console.warn('[shell] new window failed'); }
+      }).catch(function (e) {
+        console.error('[shell-menu] bridge.window.new() error:', e);
       });
+    } else {
+      console.error('[shell-menu] bridge.window.new not available!');
     }
     return;
   }

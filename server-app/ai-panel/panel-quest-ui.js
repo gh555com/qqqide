@@ -234,8 +234,15 @@ async function _findQuestDirByPrefix(root, questId) {
 // B+ 方案：不再实时修复或创建新目录，只返回已有目录名
 // 若找不到（首次建楼调用此函数），则由 build 路径自己决定
 async function _resolveQuestDirName(root, questId, numericId, title) {
-    var existing = await _findQuestDirByPrefix(root, questId);
-    if (existing) return existing;
+    try {
+        var existing = await _findQuestDirByPrefix(root, questId);
+        if (existing) return existing;
+    } catch (e) {
+        // ★ _findQuestDirByPrefix 现在不再静默吞错；I/O 错误会抛异常
+        //   对于已存在的 quest（发后续楼层），抛异常比创建重复目录更安全
+        //   对于新 quest（首次建楼），回退到 _makeName 是合理的
+        console.warn('[quest-dir] _resolveQuestDirName: prefix scan failed for ' + questId + ', falling back to generated name:', e && e.message);
+    }
     // ★ 找不到 → 返回 expected name（调用方 _ensureQuestDir 会按需创建）
     //   不再实时修复目录名，懒惰修正留给 lazyRenameScan
     return _makeName('q', numericId, title);

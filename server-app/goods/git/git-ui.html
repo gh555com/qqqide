@@ -122,6 +122,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
     <button id="git-stage-all">全部暂存</button>
     <button id="git-unstage-all">取消暂存</button>
     <div class="sep"></div>
+    <button id="git-pull-btn">拉取</button>
+    <button id="git-push-btn">推送</button>
+    <button id="git-fetch-btn">获取</button>
+    <div class="sep"></div>
     <button id="git-log-btn">日志</button>
     <button id="git-branch-btn">分支</button>
     <button id="git-stash-btn">贮藏</button>
@@ -493,24 +497,79 @@ function _esc(s) {
 
 var _gitRoot = '';
 var _gitAvailable = null;
+var _gitExePath = '';         // resolved path to git.exe
+var _gitExeResolved = false;  // true after init probe
 
-async function _gitCmd(args, cwd) {
+// Resolve git.exe: embedded MinGit > system PATH
+// Embedded MinGit is a stripped Git for Windows (~47MB) with NO bash,
+// NO terminal, NO GUI — just git.exe + core DLLs.
+// Path: {userData}/components/git/cmd/git.exe
+async function _initGitExe() {
+  if (_gitExeResolved) return _gitExePath;
+  _gitExeResolved = true;
+
+  if (!bridge || !bridge.qz) { _gitExePath = 'git'; return _gitExePath; }
+
+  // 1. Probe embedded MinGit (if exists)
+  var userData = '';
+  try { userData = (parent.qqqBootInfo || {}).userData || ''; } catch(_) {}
+  if (userData) {
+    var embedded = userData.replace(/\\/g, '/') + '/components/git/cmd/git.exe';
+    try {
+      var probe = await bridge.qz.spawn({
+        cmd: embedded, args: ['--version'], timeout: 4000
+      });
+      if (probe.exitCode === 0 && probe.stdout.indexOf('git version') >= 0) {
+        _gitExePath = embedded;
+        _gitAvailable = true;
+        return _gitExePath;
+      }
+    } catch(_) {}
+  }
+
+  // 2. Fallback: system PATH
+  _gitExePath = 'git';
+  return _gitExePath;
+}
+
+// Core git spawn — zero shell layer, times out per operation type
+async function _gitCmd(args, opts) {
+  opts = opts || {};
   if (!bridge || !bridge.qz) return { stdout: '', stderr: 'No bridge', exitCode: 1 };
   try {
-    var result = await bridge.qz.spawn({
-      cmd: 'git',
+    var spawnOpts = {
+      cmd: _gitExePath || (await _initGitExe()),
       args: args,
-      cwd: cwd || _gitRoot,
-      timeout: 30000,
-      shell: true
-    });
+      cwd: opts.cwd || _gitRoot,
+      timeout: opts.timeout || 30000
+      // NO shell — direct CreateProcess on git.exe
+    };
+    if (opts.onProgress) spawnOpts.onProgress = opts.onProgress;
+    var result = await bridge.qz.spawn(spawnOpts);
+
+    // First success via embedded → mark available
+    if (_gitAvailable === null && result.exitCode === 0) {
+      _gitAvailable = true;
+    }
     return result;
   } catch(e) {
+    // Embedded MinGit failed → fall back to PATH git for this call
+    if (_gitExePath.indexOf('/components/git/') >= 0) {
+      try {
+        var fallback = await bridge.qz.spawn({
+          cmd: 'git', args: args, cwd: opts.cwd || _gitRoot,
+          timeout: opts.timeout || 30000
+        });
+        return fallback;
+      } catch(e2) {}
+    }
     return { stdout: '', stderr: e.message || String(e), exitCode: 1 };
   }
 }
 
 async function _checkGitAvailable() {
+  if (_gitAvailable !== null) return _gitAvailable;
+  await _initGitExe();
   if (_gitAvailable !== null) return _gitAvailable;
   try {
     var r = await _gitCmd(['--version']);
@@ -528,11 +587,9 @@ function _showGitUnavailable() {
   el.innerHTML = '<div class="empty" style="flex-direction:column;gap:8px;">' +
     '<span style="font-size:48px;">🔀</span>' +
     '<span>未检测到 Git</span>' +
-    '<span style="font-size:11px;color:var(--base01);">系统 PATH 中找不到 git 命令。</span>' +
-    '<span style="font-size:11px;color:var(--base01);">请安装 Git 或将其加入环境变量后重启 IDE。</span>' +
+    '<span style="font-size:11px;color:var(--base01);">内嵌 MinGit 未安装且系统 PATH 中找不到 git。</span>' +
     '<span style="font-size:10px;color:var(--base01);margin-top:4px;">' +
-    '下载: <a href="https://git-scm.com/downloads" target="_blank" style="color:var(--blue);">git-scm.com</a> | ' +
-    '未来将内嵌绿色版 Git，无需系统安装。</span>' +
+    '运行: <code style="background:var(--card);padding:2px 6px;border-radius:3px;">python op/components.py ensure git</code></span>' +
     '</div>';
   document.getElementById('git-toolbar').style.display = 'none';
 }
@@ -562,14 +619,23 @@ async function _refreshGitStatus() {
   if (!_gitRoot) { await _detectGitRoot(); }
   if (!_gitRoot) return;
 
-  // Branch
-  var branchR = await _gitCmd(['branch', '--show-current']);
-  var branchInfo = document.getElementById('git-branch-info');
-  branchInfo.innerHTML = '分支: <span class="current">' + _esc((branchR.stdout || '').trim() || 'HEAD detached') + '</span>';
-
-  // Status (porcelain)
-  var statusR = await _gitCmd(['status', '--porcelain=2', '--branch']);
+  // Single call: porcelain v2 includes branch info (# branch.head ...)
+  var statusR = await _gitCmd(['status', '--porcelain=v2', '--branch']);
   var lines = (statusR.stdout || '').split('\n').filter(Boolean);
+
+  // Parse branch from # lines
+  var branchName = '';
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (line.startsWith('# branch.head ')) {
+      branchName = line.slice('# branch.head '.length).trim();
+      if (branchName === '(detached)') branchName = 'HEAD detached';
+      break;
+    }
+  }
+  document.getElementById('git-branch-info').innerHTML = '分支: <span class="current">' + _esc(branchName || 'HEAD detached') + '</span>';
+
+  // Parse file status
 
   var staged = [], unstaged = [], untracked = [];
 
@@ -742,6 +808,64 @@ document.getElementById('git-branch-btn').addEventListener('click', async functi
 document.getElementById('git-stash-btn').addEventListener('click', async function() {
   await _gitCmd(['stash']);
   _refreshGitStatus();
+});
+
+// ─── PUSH / PULL / FETCH (long ops, streaming) ───
+var _gitProgressEl = null;
+
+function _showProgress(label) {
+  if (!_gitProgressEl) {
+    _gitProgressEl = document.createElement('div');
+    _gitProgressEl.style.cssText = 'padding:8px 12px;background:var(--card);border-bottom:1px solid var(--border);font-family:ui-monospace,monospace;font-size:11px;color:var(--blue);';
+    var toolbar = document.getElementById('git-toolbar');
+    toolbar.parentNode.insertBefore(_gitProgressEl, toolbar.nextSibling);
+  }
+  _gitProgressEl.textContent = '⏳ ' + label + ' ...';
+  _gitProgressEl.style.display = '';
+}
+
+function _hideProgress() {
+  if (_gitProgressEl) _gitProgressEl.style.display = 'none';
+}
+
+async function _gitLongOp(args, label) {
+  _showProgress(label);
+  try {
+    var result = await _gitCmd(args, { timeout: 300000 });
+    if (result.exitCode !== 0 && result.stderr) {
+      // Show error in progress bar
+      if (_gitProgressEl) {
+        _gitProgressEl.style.color = 'var(--red)';
+        _gitProgressEl.textContent = '✕ ' + label + ': ' + (result.stderr || 'failed').slice(0, 200);
+      }
+      return;
+    }
+    _hideProgress();
+    _refreshGitStatus();
+  } catch(e) {
+    if (_gitProgressEl) {
+      _gitProgressEl.style.color = 'var(--red)';
+      _gitProgressEl.textContent = '✕ ' + label + ': ' + (e.message || String(e)).slice(0, 200);
+    }
+  }
+}
+
+document.getElementById('git-pull-btn').addEventListener('click', async function() {
+  var ok = await _checkGitAvailable();
+  if (!ok) return;
+  _gitLongOp(['pull', '--ff-only'], 'git pull');
+});
+
+document.getElementById('git-push-btn').addEventListener('click', async function() {
+  var ok = await _checkGitAvailable();
+  if (!ok) return;
+  _gitLongOp(['push'], 'git push');
+});
+
+document.getElementById('git-fetch-btn').addEventListener('click', async function() {
+  var ok = await _checkGitAvailable();
+  if (!ok) return;
+  _gitLongOp(['fetch', '--all', '--prune'], 'git fetch --all --prune');
 });
 
 // ─── INIT ───
