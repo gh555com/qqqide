@@ -10,7 +10,6 @@ import { BootConfig } from './boot';
 import { StateStore } from './state-sqlite';
 import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
-import * as path from 'path';
 
 // ---- Security hardening ----
 export function hardenSession(): void {

@@ -10,6 +10,7 @@ import * as https from 'https';
 import { URL } from 'url';
 import { spawnSync } from 'child_process';
 import { BrowserWindow } from 'electron';
+import { APP_VERSION, decideUpdate, fetchServerVersionInfo, readLocalShellVersion, writeLocalShellVersion, readLocalWebappVersion, writeLocalWebappVersion } from './version';
 
 // ── 全局启动锁：一旦 bootSequence 成功完成，绝不允许 fallback 再入侵窗口 ──
 let bootCompleted = false;
@@ -37,7 +38,6 @@ function initBootLog(logsDir: string) {
 // ----------------------------------------------------------------------------
 // Constants
 // ----------------------------------------------------------------------------
-export const APP_VERSION = '0.0.2';
 export const DEFAULT_REMOTE_URL = 'http://127.0.0.1:8090/qqq-app/';
 
 // ----------------------------------------------------------------------------
@@ -126,6 +126,7 @@ const SHELL_UPDATE_URL = 'shell-out.tar.gz';
 
 export async function checkAndDownloadShellUpdate(
     bootConfig: BootConfig,
+    portableRoot: string,
     portableCache: string,
     isDev: boolean,
     isOffline: boolean
@@ -140,40 +141,18 @@ export async function checkAndDownloadShellUpdate(
         const updateUrl = baseUrl + SHELL_UPDATE_URL;
         const lib = updateUrl.startsWith('https') ? https : http;
 
-        // Fetch version.json first to get latest shell version
-        let latestVersion = '';
-        try {
-            const versionUrl = baseUrl + 'version.json';
-            const vResp = await new Promise<{ status: number; data: string }>((resolve, reject) => {
-                const opts2: any = { timeout: 5000 };
-                if (versionUrl.startsWith('https')) { opts2.rejectUnauthorized = false; }
-                const req = lib.get(versionUrl, opts2, (res) => {
-                    let data = '';
-                    res.setEncoding('utf8');
-                    res.on('data', (c: string) => data += c);
-                    res.on('end', () => resolve({ status: res.statusCode || 0, data }));
-                });
-                req.on('error', reject);
-                req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-            });
-            if (vResp.status === 200) {
-                const v = JSON.parse(vResp.data);
-                latestVersion = v.shell_version || v.version || '';
-            }
-        } catch { /* version check is optional */ }
+        // Fetch server version info — 工业级语义比较，防降级
+        const versionInfo = await fetchServerVersionInfo(bootConfig.url);
+        const latestVersion = versionInfo?.shell || '';
+        if (!latestVersion) return false;
 
-        // Compare with local version
-        const localVersionPath = path.join(portableCache, 'shell-version');
-        let localVersion = '';
-        try {
-            if (fs.existsSync(localVersionPath)) {
-                localVersion = fs.readFileSync(localVersionPath, 'utf8').trim();
-            }
-        } catch { }
-
-        if (latestVersion && localVersion === latestVersion) {
-            return false; // Already up to date
+        const localVersion = readLocalShellVersion(portableRoot) || APP_VERSION;
+        const decision = decideUpdate(localVersion, latestVersion, versionInfo?.min_shell);
+        if (decision !== 'hot-update' && decision !== 'force-full-upgrade') {
+            console.log('[shell-update]', decision, '— local=' + localVersion + ' server=' + latestVersion);
+            return false;
         }
+        console.log('[shell-update]', decision, '— local=' + localVersion + ' server=' + latestVersion);
 
         // Download shell-out.tar.gz
         console.log('[shell-update] downloading', updateUrl);
@@ -237,12 +216,7 @@ export async function checkAndDownloadShellUpdate(
 
         try { fs.unlinkSync(tarPath); } catch { }
 
-        if (latestVersion) {
-            try {
-                fs.mkdirSync(path.dirname(localVersionPath), { recursive: true });
-                fs.writeFileSync(localVersionPath, latestVersion, 'utf8');
-            } catch { }
-        }
+        writeLocalShellVersion(portableRoot, latestVersion);
 
         console.log('[shell-update] staged for next restart:', stagingDir);
         return true;
@@ -350,40 +324,20 @@ async function backgroundCheckWebappUpdate(
     try {
         const baseUrl = bootConfig.url.endsWith('/') ? bootConfig.url : bootConfig.url + '/';
 
-        // 1) Check server version
-        let latestVersion = '';
-        try {
-            const lib = baseUrl.startsWith('https') ? https : http;
-            const vResp = await new Promise<{ status: number; data: string }>((resolve, reject) => {
-                const req = lib.get(baseUrl + 'version.json', { timeout: 8000 }, (res) => {
-                    let data = '';
-                    res.setEncoding('utf8');
-                    res.on('data', (c: string) => data += c);
-                    res.on('end', () => resolve({ status: res.statusCode || 0, data }));
-                });
-                req.on('error', reject);
-                req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-            });
-            if (vResp.status === 200) {
-                const v = JSON.parse(vResp.data);
-                latestVersion = v.webapp_version || v.version || '';
-            }
-        } catch { bootLog('webapp-update: version check failed'); return; }
+        // 1) Fetch server version info — 工业级语义比较
+        const versionInfo = await fetchServerVersionInfo(bootConfig.url);
+        if (!versionInfo) { bootLog('webapp-update: version check failed'); return; }
+        const latestVersion = versionInfo.webapp || '';
         if (!latestVersion) { bootLog('webapp-update: no version info on server'); return; }
 
-        // 2) Compare with local version
-        const localVerPath = path.join(portableRoot, 'Data', 'webapp-version');
-        let localVersion = '';
-        try {
-            if (fs.existsSync(localVerPath)) {
-                localVersion = fs.readFileSync(localVerPath, 'utf8').trim();
-            }
-        } catch { }
-        if (localVersion === latestVersion) {
-            bootLog('webapp-update: already latest (' + latestVersion + ')');
+        // 2) Semver-based update decision（防降级：本地 > 服务器 → 跳过）
+        const localVersion = readLocalWebappVersion(portableRoot) || '0.0.0';
+        const decision = decideUpdate(localVersion, latestVersion);
+        if (decision !== 'hot-update') {
+            bootLog('webapp-update: ' + decision + ' — local=' + localVersion + ' server=' + latestVersion);
             return;
         }
-        bootLog('webapp-update: local=' + (localVersion || 'none') + ' server=' + latestVersion);
+        bootLog('webapp-update: hot-update — local=' + localVersion + ' server=' + latestVersion);
 
         // 3) Download server-app.tar.xz
         const dlUrl = baseUrl + 'server-app.tar.xz';
@@ -421,10 +375,7 @@ async function backgroundCheckWebappUpdate(
         try { fs.unlinkSync(tarPath); } catch { }
 
         // 5) Write version marker
-        try {
-            fs.mkdirSync(path.dirname(localVerPath), { recursive: true });
-            fs.writeFileSync(localVerPath, latestVersion, 'utf8');
-        } catch { }
+        writeLocalWebappVersion(portableRoot, latestVersion);
 
         bootLog('webapp-update: staged for next restart — ' + stagingDir);
     } catch (e: any) {
@@ -837,7 +788,7 @@ export async function bootSequence(
     }
 
     // 2) Check for shell-code hot-update (non-blocking, always try)
-    checkAndDownloadShellUpdate(bootConfig, portableCache, isDev, isOffline).then(updated => {
+    checkAndDownloadShellUpdate(bootConfig, portableRoot, portableCache, isDev, isOffline).then(updated => {
         if (updated) {
             console.log('[boot] shell update staged — will apply on next restart');
         }

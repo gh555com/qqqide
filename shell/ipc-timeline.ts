@@ -7,7 +7,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { _timelineDbs, _diffWindows, _tlDir, _tlBlobPath, _tlOpenDb, _tlRecord, _tlFlushNow, _sha256, _gzipSync, _gunzipSync, _tlWriteBlob } from './timeline-store';
 import { BootConfig } from './boot';
-import { APP_VERSION } from './boot';
+import { APP_VERSION } from './version';
 
 export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig): void {
     // ★ 编辑类快照防抖真理机（唯一入口，改一处全局生效）

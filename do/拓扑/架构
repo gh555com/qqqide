@@ -158,8 +158,17 @@ goods 切换按钮: 菜单行2 (qqq-goods-bar, 由 gaea-host renderTabBar 渲染
   navigator — 文件导航
   paste-image — 粘贴图片
   file-explorer — 文件浏览器
-  search — 高性能项目搜索 (X区tab)
+  search — 高性能项目搜索 (X区tab, ripgrep引擎)
   git — Git操作 (A区面板 + X区 Git tab)
+
+搜索引擎 — ripgrep 单引擎（2026-06-25）
+---------------------------------------------
+· 引擎: ripgrep 14.1.1 (Rust · mmap · SIMD · PCRE2 JIT)
+· 入口: shell/ipc-search.ts spawn rg.exe --json → 流式解析
+· 查找: _findRipgrep() 三路 (userData/components/ → resourcesPath/ → engines/ripgrep/ → PATH)
+· 打包: package.json build.files 含 engines/**, 打包前 components.py ensure ripgrep
+  发 mac 包 → 在 mac 上跑 pack:mac-arm64, 二进制自动带在 engines/ripgrep/rg 下
+· UI: goods/search/ (search.js 注册 + search-ui.html X区标签), ai-viewport.js 🔍 按钮
 
 Monaco 五件套 (codelens/decoration/paste/viewzone/video) 已搬入 goods/rage/services/。
 
@@ -177,9 +186,12 @@ Monaco Worker 加载
 
 组件管理
 -----------
-外部清单: engines/manifest.json — 4个组件 (ffmpeg/yt-dlp/python/git), 改URL不需重编译ghrun（LSP 组件 2026-06-23 已删除）
+外部清单: engines/manifest.json — 5个组件 (ffmpeg/yt-dlp/python/git/ripgrep)
+  改URL不需重编译ghrun（LSP 组件 2026-06-23 已删除）
 三层加载: userData/manifest.json (用户覆盖) → engines/manifest.json (随发布) → manifest.rs 硬编码兜底
 安装脚本: op/components.py — ensure(下载+解压) / upload(灌装CDN) / list(查看状态)
+  ★ ripgrep 安装: python op/components.py ensure ripgrep → 自动下载当前平台二进制
+  ★ 打包: package.json build.files 含 engines/**，打包时自动携带 engines/ripgrep/ 下当前平台二进制
 LSP 相关已冻结（2026-06-23）: 交互面板④/install_lsp.bat/components.py LSP 部分均失效，
   manifest.json LSP 条目已删除，壳层 lsp-bridge.ts 零引用，仅源码保留于磁盘。
 
@@ -201,7 +213,7 @@ qqq-shell-v2/
 │   ├── ipc-boot.ts          启动信息/重试/探测 IPC
 │   ├── ipc-fs.ts            文件系统 IPC（读写列表状态等）
 │   ├── ipc-ai-tools.ts      AI工具 IPC（search_text/find_files/list_files）
-│   ├── ipc-search.ts        高性能搜索引擎 IPC（qqqide:search）
+│   ├── ipc-search.ts        搜索引擎 IPC（ripgrep 单引擎，qqqide:search）
 │   ├── ipc-edit.ts          编辑工具 IPC + qwr 保护
 │   ├── ipc-media.ts         已删除（2026-06-22，图像全走 Go 代理）
 │   ├── ipc-timeline.ts      Timeline 版本时间线 + Diff窗口 IPC
@@ -253,7 +265,8 @@ qqq-shell-v2/
 │       ├── only-store.js      项目偏好 SQLite
       ├── panel-expert.js    E-Flow 引擎（复杂度评估+框架推荐+自动维护）
       └── expert-template/   标准 expert 文档框架模板
-├── engines/           二进制 + manifest.json 外部下载清单
+├── engines/           二进制 + manifest.json (5组件: ffmpeg/yt-dlp/python/git/ripgrep)
+│   └── ripgrep/rg.exe  ripgrep 14.1.1 (Windows 已安装; mac/linux 二进制同目录)
 ├── op/                运维脚本 (ky.py翻译 + components.py组件 + git_snapshot.bat)
 ├── do/拓扑/           架构文档
 

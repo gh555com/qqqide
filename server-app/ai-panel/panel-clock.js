@@ -50,6 +50,10 @@ function _saveAgentFloor(ag, questId, force) {
 var _AUTOSAVE_INTERVAL = 5000;
 var _autoSaveRunning = false;
 // ★ 面板级持久定时器：启动一次，永不停止，遍历 agentPool 覆盖全部 agent
+// ★ Stub: auto-save 已改为 always-on（_ensureAutoSave 模块加载即启动）
+//   保留 _startAutoSave / _stopAutoSave 供 panel-send.js 兼容调用
+function _startAutoSave() { }
+function _stopAutoSave() { }
 function _ensureAutoSave() {
     if (_autoSaveRunning) return;
     _autoSaveRunning = true;

@@ -142,8 +142,12 @@ export function registerAssetProtocol(portableRoot: string): void {
                     return callback({ path: fallback });
                 }
             }
-            if (resource === 'monaco' && !fs.existsSync(resolved) && roots['monaco-maps']) {
-                const mapsFallback = path.normalize(path.join(roots['monaco-maps'], subPath));
+            // ★ Monaco source map 补丁：min/vs/loader.js 内嵌 sourceMappingURL=../../min-maps/...
+            // → 浏览器解析为 qqqide-asset://monaco/min-maps/... → subPath=/min-maps/...
+            //   但 monaco-maps root 已是 min-maps/ 目录，不能重复前缀
+            if (resource === 'monaco' && !fs.existsSync(resolved) && roots['monaco-maps'] && subPath.startsWith('/min-maps/')) {
+                const realSubPath = subPath.slice('/min-maps'.length); // ← 剥掉多余的 /min-maps 前缀
+                const mapsFallback = path.normalize(path.join(roots['monaco-maps'], realSubPath));
                 if (mapsFallback.startsWith(roots['monaco-maps']) && fs.existsSync(mapsFallback)) {
                     return callback({ path: mapsFallback });
                 }

@@ -20,10 +20,10 @@ const get = name => {
 };
 const has = name => args.includes('--' + name);
 
-const HOST   = get('host')   || process.env.QQQ_DEPLOY_HOST   || '';
+const HOST = get('host') || process.env.QQQ_DEPLOY_HOST || '';
 const REMOTE = get('remote') || process.env.QQQ_DEPLOY_REMOTE || '/var/www/qqq-app';
-const KEY    = get('key')    || process.env.QQQ_DEPLOY_KEY    || '';
-const DRY    = has('dry-run');
+const KEY = get('key') || process.env.QQQ_DEPLOY_KEY || '';
+const DRY = has('dry-run');
 const PORTABLE = has('include-portable');
 
 if (!HOST) {
@@ -32,7 +32,7 @@ if (!HOST) {
 }
 
 const ROOT = path.resolve(__dirname, '..');
-const SRC  = path.join(ROOT, 'server-app');
+const SRC = path.join(ROOT, 'server-app');
 const PKG_DIR = path.join(ROOT, 'dist-pack');
 
 if (!fs.existsSync(SRC)) {
@@ -87,7 +87,7 @@ run('scp', [...sshOpts(), shellQuote(localPath(tarPath)), `${HOST}:${REMOTE}/_qq
 // 3) extract server-app
 console.log('[deploy] extract server-app on remote');
 run('ssh', [...sshOpts(), HOST,
-  `"cd ${REMOTE} && tar -xzf _qqq-app.tar.gz && rm _qqq-app.tar.gz"`]);
+`"cd ${REMOTE} && tar -xzf _qqq-app.tar.gz && rm _qqq-app.tar.gz"`]);
 
 // 3b) pack + upload shell-out/ (for bootstrap hot-update)
 const shellOutSrc = path.join(ROOT, 'shell-out');
@@ -101,12 +101,45 @@ if (fs.existsSync(shellOutSrc)) {
   }
   console.log('[deploy] uploading shell-out to remote');
   run('scp', [...sshOpts(), shellQuote(localPath(shellOutTar)), `${HOST}:${REMOTE}/shell-out.tar.gz`]);
-  try { fs.unlinkSync(shellOutTar); console.log('[deploy] cleanup', shellOutTar); } catch {}
+  try { fs.unlinkSync(shellOutTar); console.log('[deploy] cleanup', shellOutTar); } catch { }
 } else {
   console.log('[deploy] shell-out/ not found, skipping');
 }
 
-// 4) optional portable zips
+// 4) Generate version.json from shell/version.ts APP_VERSION (唯一真理源)
+const versionTs = path.join(ROOT, 'shell', 'version.ts');
+let appVersion = '0.0.3'; // fallback
+if (fs.existsSync(versionTs)) {
+  const content = fs.readFileSync(versionTs, 'utf8');
+  const m = content.match(/export const APP_VERSION = '([^']+)'/);
+  if (m) appVersion = m[1];
+}
+const versionJson = JSON.stringify({
+  shell: appVersion,
+  webapp: appVersion,
+  min_shell: '0.0.1',
+  _comment: 'qqq IDE version manifest — semver-based update decisions',
+}, null, 2);
+const tmpVerPath = path.join(ROOT, '_version.json');
+fs.writeFileSync(tmpVerPath, versionJson, 'utf8');
+console.log('[deploy] version.json generated — shell=' + appVersion);
+run('scp', [...sshOpts(), shellQuote(localPath(tmpVerPath)), `${HOST}:${REMOTE}/version.json`]);
+try { fs.unlinkSync(tmpVerPath); } catch { }
+
+// 4b) Package server-app.tar.xz for client offline download (hot-update)
+if (fs.existsSync(SRC)) {
+  const xzPath = path.join(ROOT, '_server-app.tar.xz');
+  console.log('[deploy] packing server-app.tar.xz');
+  if (isWin) {
+    run('tar', ['-cJf', shellQuote(xzPath), '-C', shellQuote(SRC), '.']);
+  } else {
+    run('tar', ['-cJf', shellQuote(toBashPath(xzPath)), '-C', shellQuote(toBashPath(SRC)), '.']);
+  }
+  run('scp', [...sshOpts(), shellQuote(localPath(xzPath)), `${HOST}:${REMOTE}/server-app.tar.xz`]);
+  try { fs.unlinkSync(xzPath); console.log('[deploy] cleanup', xzPath); } catch { }
+}
+
+// 5) optional portable zips
 if (PORTABLE && fs.existsSync(PKG_DIR)) {
   const zips = fs.readdirSync(PKG_DIR).filter(n => /\.(zip|tar\.gz)$/.test(n));
   if (zips.length) {
@@ -119,8 +152,8 @@ if (PORTABLE && fs.existsSync(PKG_DIR)) {
   }
 }
 
-// 5) cleanup local tar
-try { fs.unlinkSync(tarPath); console.log('[deploy] cleanup', tarPath); } catch (_) {}
+// 6) cleanup local tar
+try { fs.unlinkSync(tarPath); console.log('[deploy] cleanup', tarPath); } catch (_) { }
 
 console.log('[deploy] done. server-app/ uploaded to', HOST + ':' + REMOTE);
 console.log('[deploy] verify: curl http://<host>/qqq-app/health');

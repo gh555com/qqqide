@@ -1081,7 +1081,7 @@
                 // 拖拽/剪贴板/搜索
                 dragAndDrop: false,
                 selectionClipboard: false,
-                emptySelectionClipboard: false,
+                emptySelectionClipboard: true,
                 contextmenu: false,
                 // 其他
                 rulers: [],

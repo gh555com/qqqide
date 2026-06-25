@@ -297,21 +297,11 @@ async function executeGenerateImage(args) {
     var prompt = args.prompt || '';
     if (!prompt.trim()) return 'Error: prompt is required';
 
-    // 自动补全 out_dir
+    // 自动补全 out_dir（直接读 _workspaceRoot，不依赖跨 iframe）
     if (!args.out_dir) {
         try {
-            if (parent.qqqideViewport) {
-                var vps = parent.qqqideViewport.getProjects();
-                if (vps && vps.length > 0) {
-                    var mainProj = null;
-                    for (var i = 0; i < vps.length; i++) {
-                        if (vps[i].star || vps[i].isMain) { mainProj = vps[i]; break; }
-                    }
-                    if (!mainProj && vps.length === 1) mainProj = vps[0];
-                    if (mainProj) {
-                        args.out_dir = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/server-app/generated';
-                    }
-                }
+            if (typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
+                args.out_dir = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/server-app/generated';
             }
         } catch (_) { }
     }

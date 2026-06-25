@@ -28,6 +28,7 @@ import * as os from 'os';
 
 // ── 子模块 ──
 import { loadBootConfig, extractFlags, bootSequence, BootMode, BootConfig } from './boot';
+import { APP_VERSION } from './version';
 import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap } from './window-manager';
 import { initAssetProtocol, hydrateAssetRootsFromState } from './asset-protocol';
 import { registerFsIpc } from './ipc-fs';
@@ -85,7 +86,6 @@ app.on('certificate-error', (event, _webContents, _url, _error, certificate, cal
 // ── 启动配置 + 标志 ──
 const bootConfig: BootConfig = loadBootConfig(portable.root);
 const { isOffline: isOfflineFlag, isDev: isDevFlag } = extractFlags();
-const APP_VERSION = '0.0.2';
 
 // ── 单例服务 ──
 const engineHost = new EngineHost(portable.root);

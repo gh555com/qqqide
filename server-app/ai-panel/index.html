@@ -71,7 +71,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 /* q2x 行已删除（统一走 dropdown hover，单一真理源）*/
 /* ── q2 展开：虚线框 + 渐变背景 ── */
 #quest-bar.quest-expanded .quest-tofu{
-  border-color:var(--yellow);border-style:dashed;border-width:1px;;
+  border-color:var(--yellow);border-style:dashed;border-width:1px;
   border-bottom-color:transparent!important;
   background:linear-gradient(90deg,rgba(255,211,2,.14) 0%,rgba(255,211,2,.05) 35%,transparent 70%),#ebe3ca!important;
   position:relative;z-index:99991;
@@ -91,8 +91,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   transform:skewX(-5deg);
 }
 [data-theme="dark"] .q2-shimmer-overlay::before{
-  background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.02) 40%,rgba(255,255,255,.05) 46%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.05) 54%,rgba(255,255,255,.02) 60%,trans#quest-bar.quest-expanded .quest-drop{
-  border:1px dashed var(--yellow);hed var(--yellow);
+  background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.02) 40%,rgba(255,255,255,.05) 46%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.05) 54%,rgba(255,255,255,.02) 60%,transparent 75%);
+}
+#quest-bar.quest-expanded .quest-drop{
+  border:1px dashed var(--yellow);
   border-top:none;
   background:linear-gradient(90deg,rgba(255,211,2,.14) 0%,rgba(255,211,2,.05) 35%,transparent 70%),#ebe3ca!important;
   box-shadow:0 0 14px rgba(255,211,2,.22);

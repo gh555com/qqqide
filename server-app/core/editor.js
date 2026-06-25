@@ -334,9 +334,8 @@
         unicodeHighlight: { nonBasicASCII: false, ambiguousCharacters: false },
         dragAndDrop: false,
         selectionClipboard: false,
-        emptySelectionClipboard: false,
+        emptySelectionClipboard: true,
         contextmenu: false,
-        rulers: [],
         roundedSelection: false,
         lineNumbersMinChars: 2,
         lineDecorationsWidth: 10,
@@ -580,6 +579,9 @@
       if (!_editorRef) _editorRef = ed;
       // 唯一真理逐字回退机器：按设置决定是否挂载
       _applyUndoMode(ed, monaco);
+
+      // 行号右侧空气墙点击 → 光标跳到第一列
+      _installGutterClickFix(ed, monaco);
 
       // ★ 窗口快照还原：检查是否有待恢复的光标位置
       if (window.qqqPendingEditorPositions && window.qqqPendingEditorPositions[filePath]) {
