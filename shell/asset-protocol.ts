@@ -103,13 +103,16 @@ export function isPathAllowed(abs: string): boolean {
 
 // ---- Asset protocol registration ----
 export function registerAssetProtocol(portableRoot: string): void {
+    // ★ packaged 模式下 monaco/ts/shell 在 resources/app/ 下，不在 portableRoot (gh555.com/) 下
+    const resApp = path.join(portableRoot, 'resources', 'app');
+    const appAssetsRoot = fs.existsSync(resApp) ? resApp : portableRoot;
     const roots: Record<string, string> = {
-        monaco: path.join(portableRoot, 'node_modules', 'monaco-editor', 'min'),
-        'monaco-maps': path.join(portableRoot, 'node_modules', 'monaco-editor', 'min-maps'),
-        'monaco-esm': path.join(portableRoot, 'node_modules', 'monaco-editor', 'esm'),
+        monaco: path.join(appAssetsRoot, 'node_modules', 'monaco-editor', 'min'),
+        'monaco-maps': path.join(appAssetsRoot, 'node_modules', 'monaco-editor', 'min-maps'),
+        'monaco-esm': path.join(appAssetsRoot, 'node_modules', 'monaco-editor', 'esm'),
         monaco_deps: path.join(portableRoot, 'Data', 'monaco-deps'),
-        ts: path.join(portableRoot, 'node_modules', 'typescript', 'lib'),
-        shell: path.join(portableRoot, 'shell'),
+        ts: path.join(appAssetsRoot, 'node_modules', 'typescript', 'lib'),
+        shell: path.join(appAssetsRoot, 'shell-out'),
     };
     protocol.registerFileProtocol('qqqide-asset', (request, callback) => {
         try {

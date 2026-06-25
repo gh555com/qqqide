@@ -195,10 +195,12 @@ function bootAiViewport() {
 // ---- Editor font size (was zoom; window UI locked at 1.00) ----
 // Press-and-hold: mousedown fires immediately, then a 300ms pause, then accel repeat.
 //   Single click = one immediate fire only (mouseup before 300ms → no repeat).
+//   Persistence: fast path (adjust) does NOT save. Only on mouseup we call set() once.
 var _efsRepeatTimer = 0;
 var _efsRepeatDelta = 0;
 var _efsDelay = 0;
 var _efsStopped = false;
+var _efsLastSize = 0;
 
 function applyFontSizeLabel(size) {
   var $label = document.getElementById('qqq-zoom-label');
@@ -210,10 +212,9 @@ function _efsStartRepeat(delta) {
   if (!bridge || !bridge.zoom) return;
   _efsStopped = false;
   _efsRepeatDelta = delta;
-  _efsDelay = 160;  // initial repeat interval (ms)
+  _efsDelay = 160;
   if (_efsRepeatTimer) { clearTimeout(_efsRepeatTimer); _efsRepeatTimer = 0; }
-  _efsRepeatTick();  // fire immediately (single click = this one tick, then stopped by mouseup)
-  // Schedule next tick — will be cancelled by _efsStopRepeat on mouseup if user released
+  _efsRepeatTick();
   _efsRepeatTimer = setTimeout(function () {
     _efsRepeatTimer = 0;
     if (_efsStopped) return;
@@ -221,13 +222,13 @@ function _efsStartRepeat(delta) {
   }, 300);
 }
 
-// chained repeat: accel loop, respects _efsStopped
 async function _efsRepeatTickChained() {
   if (_efsStopped) return;
   var bridge = _shBridge;
   if (!bridge || !bridge.zoom) return;
   try {
     var s = await bridge.zoom.adjust(_efsRepeatDelta);
+    _efsLastSize = s;
     applyFontSizeLabel(s);
   } catch (_) { }
   if (_efsStopped) return;
@@ -239,12 +240,12 @@ async function _efsRepeatTickChained() {
   }, _efsDelay);
 }
 
-// the immediate first tick (always fires, single click or hold)
 async function _efsRepeatTick() {
   var bridge = _shBridge;
   if (!bridge || !bridge.zoom) return;
   try {
     var s = await bridge.zoom.adjust(_efsRepeatDelta);
+    _efsLastSize = s;
     applyFontSizeLabel(s);
   } catch (_) { }
 }
@@ -253,6 +254,13 @@ function _efsStopRepeat() {
   _efsStopped = true;
   if (_efsRepeatTimer) { clearTimeout(_efsRepeatTimer); _efsRepeatTimer = 0; }
   _efsDelay = 0;
+  // ★ Persist ONCE on mouseup (adjust ticks never save — fast path above)
+  if (_efsLastSize) {
+    var bridge = _shBridge;
+    if (bridge && bridge.zoom) {
+      try { bridge.zoom.set(_efsLastSize); } catch (_) { }
+    }
+  }
 }
 
 function bootZoomButtons() {

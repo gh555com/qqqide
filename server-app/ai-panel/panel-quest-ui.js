@@ -126,6 +126,9 @@ async function switchQuest(id) {
 
         // ★ 切换到 quest 时不再尝试实时修复磁盘目录名
         //   B+ 方案：懒惰重命名扫描只在启动/关闭时由中面板执行
+        // ★ 同步面板级 _sending 到新 active agent（切回未建楼 quest 时允许发送）
+        _sending = _activeAgent && _activeAgent._stopState === 'sending';
+
         restoreQuestUIState(id);
         renderQueueStrip();
         updateCostDisplay();

@@ -94,6 +94,19 @@
     return BINARY_EXTS.has(lower.slice(dot));
   }
 
+  // ── 行号右侧空气墙点击 → 光标跳到第一列 (方案1: Monaco onMouseDown + MouseTargetType) ──
+  function _installGutterClickFix(ed, monaco) {
+    if (!ed || !monaco) return;
+    ed.onMouseDown(function (e) {
+      if (!e.target || !e.target.position) return;
+      if (e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_DECORATIONS) {
+        e.event.preventDefault();
+        ed.setPosition({ lineNumber: e.target.position.lineNumber, column: 1 });
+        ed.focus();
+      }
+    });
+  }
+
   let editor = null;             // monaco editor instance
   let currentFile = null;        // current open file path
   let dirty = false;             // unsaved changes flag
@@ -335,6 +348,8 @@
       _editorRef = ed;
       // 唯一真理逐字回退机器：按设置决定是否挂载
       _applyUndoMode(ed, monaco);
+      // 行号右侧空气墙点击 → 光标跳到第一列
+      _installGutterClickFix(ed, monaco);
       // ── 面包屑导航条（空编辑器：仅工具按钮）──
       if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.create) {
         window.qqqEditorBreadcrumb.create(host, '', ed, monaco);

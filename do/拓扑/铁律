@@ -291,8 +291,11 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - ★ all.json 写入归一（2026-06-23 归一，2026-06-25 加固）：唯一增量路径 = auto-save（面板级
     _ensureAutoSave 持久 timer，***模块加载即启动***，遍历 agentPool，5s 间隔）。
     _startAutoSave / _stopAutoSave 已彻底删除——不随 quest 切换启停，切 quest 不掉保存。
-    重启恢复两层防线：① _restoreAgentFromStore 从 allFloors 回填 _houses / cost / clockTiming
-    ② _saveAgentFloor 安全网：空 houses + 非新楼层 → 拒绝写盘。
+    三层防线：① _restoreAgentFromStore 回填 _houses / cost / clockTiming
+    ② _saveAgentFloor 安全网：空 houses + 非新楼层 → 拒绝写盘
+    ③ 跨面板写保护：stopState !== 'sending' → 拒绝 auto-save + generateFloorTxt
+    → 只有正在建楼的 agent 有权写盘，其他面板 restore 出的 agent 只能读。
+    _sending 复位加 frontmost 守卫（后台 agent 不复位前台）。trace 改走 per-agent _questId。
     写后清理：每写一次 all.json 清一次本目录 .tmp.*。启动全量扫描兜底。
     禁止再引入任何第二条增量写入路径（引入即返工）。
 

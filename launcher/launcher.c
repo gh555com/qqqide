@@ -171,7 +171,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
             GetModuleFileNameW(NULL, myDir, MAX_PATH);
             WCHAR *slash = wcsrchr(myDir, L'\\');
             if (slash) *slash = L'\0';
-            swprintf(statusPath, MAX_PATH, L"%s\\loading-status", myDir);
+            swprintf(statusPath, MAX_PATH, L"%s\\gh555.com\\loading-status", myDir);
         }
 
         HANDLE hFile = CreateFileW(statusPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
@@ -299,7 +299,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
         GetModuleFileNameW(NULL, myDir, MAX_PATH);
         WCHAR *slash = wcsrchr(myDir, L'\\');
         if (slash) *slash = L'\0';
-        swprintf(cleanPath, MAX_PATH, L"%s\\loading-status", myDir);
+        swprintf(cleanPath, MAX_PATH, L"%s\\gh555.com\\loading-status", myDir);
         DeleteFileW(cleanPath);
     }
 

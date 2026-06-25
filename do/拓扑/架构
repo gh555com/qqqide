@@ -634,9 +634,16 @@ all.json 写入系统（2026-06-25 重启恢复加固）
   兜底: _cleanStaleAllJsonTmp 启动时全量扫描（覆盖进程崩溃残留）。
 · 重启恢复两层防线（2026-06-25）：
   ① _restoreAgentFromStore 从 allFloors 回填 _houses / _floorCostWge / _lastFloorTimingRecord
-     → 重启后 az 区数据完整恢复（之前因 AgentLoop 构造函数 _houses=[] 未恢复而丢失）
+     → 重启后 az 区数据完整恢复
   ② _saveAgentFloor 安全网：_houses 为空且 _lastAutoSaveLen !== 0 时拒绝写盘
-     → 禁止空 houses 覆盖已有 all.json（最后防线）
+· 跨面板写保护（2026-06-25）：
+  ③ _saveAgentFloor：ag._stopState !== 'sending' 时拒绝 auto-save（非建楼面板禁止写盘）
+  ④ generateFloorTxt：同守卫（禁止非建楼面板覆写 all.txt）
+  → 三面板独立 agent，只有正在建楼的那个有权写盘。force(=beforeunload) 和
+    floorCompletedCleanly(=刚建完) 例外放行。零跨面板覆写。
+· 跨面板状态隔离（2026-06-25）：
+  _sending 复位加 _activeAgent === _capturedAgent 守卫（后台 agent 不复位前台发送管道）
+  _qqqCurrentTrace questId 改走 ag._questId（per-agent，非全局 questActiveId）
 · 旧 A4 增量刷盘系统（2026-06-23 已删除）：_a4MarkIncrementalDirty→_a4FlushCompleteFloor ~100行
 
 AI 面板 UI 增强

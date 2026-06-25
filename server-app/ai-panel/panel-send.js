@@ -270,6 +270,7 @@ async function sendMessage() {
     _capturedAgent._aiTierLabel = '';
     startFloorTimer(aiDiv, _capturedAgent);
     _startAllTxtStream(aiDiv, _allTxtPathLocal, _capturedAgent, floorNum, text, '');
+    _startAutoSave();
     scrollToBottom(true);
     setStreaming(true);
 
@@ -391,6 +392,7 @@ async function sendMessage() {
             },
 
             onDone: async function (content, timing) {
+                _stopAutoSave();
                 if (aiDiv) aiDiv._floorCompleted = true;
                 aiDiv._renderScheduled = false;
                 var _targetDiv2 = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
@@ -566,7 +568,8 @@ async function sendMessage() {
                 }
             },
             onError: function (msg) {
-                _sending = false;  // ★ 立即复位：防中断后 _sending 残留导致新 quest Send 失效
+                if (_activeAgent === _capturedAgent) _sending = false;  // ★ 仅前台复位，后台 agent 错误不影响前台
+                _stopAutoSave();
                 if (_capturedAgent) {
                     _capturedAgent._floorOnErrorCalled = true;  // ★ 看门狗：标记已处理
                     // ★ 一次渲染永久不变：错误消息推入 conversation 持久化
@@ -660,6 +663,7 @@ async function sendMessage() {
         }
         // ★ Stop 闭环：STOPPING 态显式持久化 + 状态机复位
         if (_capturedAgent && _capturedAgent._stopState === 'stopping') {
+            _stopAutoSave();
             if (typeof stopFloorTimer === 'function') {
                 stopFloorTimer(_capturedAgent._floorTiming || { networkMs: 0, aiMs: 0, toolMs: 0 }, _capturedAgent);
             }
@@ -748,7 +752,7 @@ async function sendMessage() {
             _capturedAgent._streaming = false;
         }
         _queueBusy = false;
-        _sending = false;
+        if (_activeAgent === _capturedAgent) _sending = false;  // ★ 仅前台复位
         // ★ 队列自动排水：楼层完结后（onDone 内因 _queueBusy=true 被阻断），此处补排
         if (_queue && _queue.length > 0 && !_queuePaused && _activeAgent === _capturedAgent) {
             _triggerQueueSend();

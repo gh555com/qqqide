@@ -638,15 +638,6 @@ export async function loadRemoteWithCacheGuard(
                     mainWindow.focus();
                 }
                 bootLog('remote: panel removed, IDE shown');
-                // DEBUG: dump renderer console to file
-                try {
-                    const { _consoleBuffer } = require('./window-manager');
-                    if (_consoleBuffer && _consoleBuffer.length > 0) {
-                        const dump = _consoleBuffer.join('\n');
-                        fs.writeFileSync(path.join(portableRoot, 'Data', 'Logs', 'renderer-console.log'), dump, 'utf8');
-                        bootLog('debug: dumped ' + _consoleBuffer.length + ' renderer console lines');
-                    }
-                } catch (e2: any) { bootLog('debug: dump error ' + (e2.message || e2)); }
             }, 400);  // 短暂延迟让用户看到 100%
         };
 

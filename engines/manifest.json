@@ -40,6 +40,17 @@
         "win32-x64":    { "url": "https://cdn.gh555.com/components/git/2.46.0/win32-x64.zip",        "sha256": "", "extract_to": "git",    "bin": "cmd/git.exe",  "kind": "zip" }
       }
     },
+    {
+      "name": "ripgrep",
+      "_note": "ripgrep 14.1.1 — Rust regex search, mmap+SIMD, MIT license. VS Code同款引擎.",
+      "version": "14.1.1",
+      "platforms": {
+        "win32-x64":    { "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-pc-windows-msvc.zip",  "sha256": "", "extract_to": "ripgrep", "bin": "rg.exe", "kind": "zip" },
+        "linux-x64":    { "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-unknown-linux-musl.tar.gz", "sha256": "", "extract_to": "ripgrep", "bin": "rg",     "kind": "tar.gz" },
+        "darwin-arm64": { "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-aarch64-apple-darwin.tar.gz", "sha256": "", "extract_to": "ripgrep", "bin": "rg",     "kind": "tar.gz" },
+        "darwin-x64":   { "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-apple-darwin.tar.gz", "sha256": "", "extract_to": "ripgrep", "bin": "rg",     "kind": "tar.gz" }
+      }
+    },
     // ═══ LSP COMPONENTS REMOVED — 2026-06-23 ═══
     // clangd / gopls / rust-analyzer / pyright — all LSP disabled
   ]

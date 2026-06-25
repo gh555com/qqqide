@@ -3,6 +3,9 @@
 // ═══ 楼层 txt 归档：单 all.txt，完整时间线（分隔线区分 USER/HOUSE/ROOM/ANSWER） ═══
 async function generateFloorTxt(ag, questId) {
     if (!ag || !questId) return;
+    // ★ 跨面板写保护：只有建楼中的 agent 或刚完成的 agent 有权写 all.txt
+    //   非建楼面板 restore 出来的 agent（stopState='idle' + floorCompletedCleanly=false）禁止覆写
+    if (ag._stopState !== 'sending' && !ag._floorCompletedCleanly) return;
     var root = questStore.getProjectRoot();
     if (!root) return;
     var houses = ag._houses;
@@ -307,6 +310,10 @@ var _switching = false;  // 互斥锁：防止快速双击 tab 导致并发切�
 // ═══ 从 questStore 恢复 agent 全量状态（conversation + metadata） ═══
 async function _restoreAgentFromStore(questId, ag) {
     if (!questId || !ag) return;
+    // ★ 跨面板隔离：agent 正在建楼（stopState='sending'）→ 不覆写内存状态
+    //    agent 持有最新 conversation / _houses / cost / timing，比磁盘数据更权威。
+    //    switchQuest 切回时只 rebind _activeAiDiv，不重建 agent 内部状态。
+    if (ag._stopState === 'sending') return;
     try {
         var data = await questStore.load(questId);
         var allFloors = await questStore.loadAllFloors(questId);

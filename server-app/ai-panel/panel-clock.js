@@ -18,6 +18,10 @@ function _saveAgentFloor(ag, questId, force) {
     // ★ 安全网：_houses 为空且非新楼层时跳过，防重启后覆盖已有数据
     //   _lastAutoSaveLen === 0 仅在新楼层初始化时设置（panel-send.js），是唯一准入空 houses 的路径
     if ((!ag._houses || ag._houses.length === 0) && ag._lastAutoSaveLen !== 0) return;
+    // ★ 跨面板写保护：只有建楼中的 agent（stopState='sending'）有权 auto-save
+    //   非建楼面板的 agent（从 all.json 恢复，stopState='idle'）禁止写盘，防止覆盖真理数据
+    //   force=true（beforeunload）绕过此限制
+    if (!force && ag._stopState !== 'sending') return;
     if (!force) {
         // ★ 去重：仅在 conversation 增长时才写盘（避免无变化的 O(n) slice + payload 构建）
         var convLen = ag.conversation ? ag.conversation.length : 0;

@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "monaco-editor": "0.34.1",
+    "rcedit": "^5.0.1",
     "sql.js": "^1.11.0"
   },
   "devDependencies": {

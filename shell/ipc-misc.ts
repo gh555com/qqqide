@@ -259,6 +259,7 @@ export function registerMiscIpc(
     });
 
     // ---- editor font size (was zoom — now controls text size, not window scale) ----
+    // adjust is the hot path (every repeat tick) — no persist, just memory + broadcast
     ipcMain.handle('qqqide:zoom:get', () => editorFontSize);
     ipcMain.handle('qqqide:zoom:set', (_e, size: number) => {
         const s = Math.max(6, Math.min(128, Math.round(Number(size))));
@@ -270,7 +271,7 @@ export function registerMiscIpc(
     ipcMain.handle('qqqide:zoom:adjust', (_e, delta: number) => {
         const next = Math.max(6, Math.min(128, Math.round(editorFontSize + Number(delta))));
         setEditorFontSize(next);
-        saveEditorFontSize(stateStore);
+        // ★ no saveEditorFontSize here — every adjust tick must be FAST (memory + broadcast only)
         broadcastEditorFontSize(next);
         return next;
     });

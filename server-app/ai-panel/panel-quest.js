@@ -81,6 +81,7 @@ function _getOrCreateAgent(questId) {
         ag._streaming = false;
         ag._sending = false;
         ag._queue = [];
+        ag._questId = questId;  // ★ per-agent questId for trace/cross-panel isolation
         agentPool[questId] = ag;
     }
     return agentPool[questId];

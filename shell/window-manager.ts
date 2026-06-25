@@ -202,8 +202,8 @@ export function createWindow(
         }
     });
 
-    // Dev mode extras — DEBUG: force open
-    if (true || extractFlags().isDev || process.env.QQQIDE_DEVTOOLS === '1') {
+    // Dev mode extras
+    if (extractFlags().isDev) {
         win.webContents.openDevTools({ mode: 'detach' });
         injectDevToolsConsoleButtons(win.webContents, () => _consoleBuffer.join('\n'), win);
         // ★ 不再 clearCache() — 保留缓存避免每次启动都重新下载全部资源

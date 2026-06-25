@@ -116,6 +116,7 @@ function getLastBootMode(): BootMode { return lastBootMode; }
 // ── 注册协议 (必须在 app.ready 前) ──
 protocol.registerSchemesAsPrivileged([
     { scheme: 'qqqide-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    { scheme: 'qqqide-webapp', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
 ]);
 
 // ── Shell state 注册 ──

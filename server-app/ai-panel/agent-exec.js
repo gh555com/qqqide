@@ -38,7 +38,7 @@ AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assis
             // ★ 埋 trace 标记，供钩子 Q 读取（quest/floor/house/room 溯源）
             if (typeof window !== 'undefined') {
                 window._qqqCurrentTrace = {
-                    questId: (typeof questActiveId !== 'undefined') ? questActiveId : '',
+                    questId: self._questId || '',
                     floorNum: self._currentFloorNum || 0,
                     houseIdx: self._houseIndex || 0,
                     roomIdx: item._toolIndex || 0

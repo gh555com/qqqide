@@ -127,8 +127,15 @@ body {
   display: flex;
   align-items: center;
   height: 100%;
-  padding-left: 8px;
+  padding-left: 0;
   -webkit-app-region: no-drag;
+}
+
+/* 菜单行1 分割空气墙（8px）— 可拖拽窗口 */
+.qqq-drag-gap {
+  width: 8px;
+  height: 100%;
+  flex-shrink: 0;
 }
 
 .qqq-toolbar {
