@@ -291,7 +291,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'generate_image',
-            description: 'Generate high-quality PNG images. Supports multiple styles. Images are saved locally and returned as file paths. ~15-40s per image.',
+            description: 'Generate high-quality PNG images. Supports multiple styles (~15-40s). Images auto-render inline in chat via Markdown ![](path). Returns file: paths that display immediately.',
             parameters: {
                 type: 'object',
                 properties: {

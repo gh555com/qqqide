@@ -64,16 +64,17 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 零C盘写入。所有数据写入应用目录 (userData/cache/temp/logs)。
   - 通过 process.execPath 判断 dev/packaged，不依赖 app.isPackaged。
 
-§9 持久化 — qgs + qgs.simple + qg + qgs.project + onlyStore + qgf 六入口
+§9 持久化 — qgs / qgs.simple / qg / qgs.project / onlyStore / qgf 六入口
   - 六个入口: window.qgs / window.qgs.simple / window.qg / window.qgs.project / onlyStore / window.qgf。
     禁直接 bridge.state.* / bridge.fs / localStorage。
-  - qgs('ns'): SQLite 全局状态（云同步、可 SQL 查询）。
-  - qgs.simple('ns'): 同 qgs 但零配置（省 v/form/cloud），最常用。
-  - qg(rootDir,'ns'): FS 原子写项目元信息（qqq/qg/）。
-  - qgs.project(dbPath,'ns'): SQLite 项目级（qqq/alphal/quest.sq3）。
-  - onlyStore: 项目级偏好 SQLite（qqq/alphal/only.sq3），自动延迟刷盘管线。
-  - qgf(rootDir,'ns'): FS 原子写项目 KV（qqq/qgf/），预留未用。
-  - 选择: 全局/跨项目/云同步→qgs。项目对话→qgs.project。项目偏好→onlyStore。项目元信息→qg。
+  - 物理位置:
+    · 全局 (qgs/qgs.simple) → {程序}/Data/alphal/global.sq3（惰性创建，跨项目共享）
+    · 项目对话 (qgs.project) → {项目}/qqq/alphal/quest.sq3
+    · 项目偏好 (onlyStore) → {项目}/qqq/alphal/only.sq3（搜索/主题/面板状态/字号）
+    · 项目元信息 (qg/qgf)   → {项目}/qqq/qg/ 或 qqq/qgf/（FS 原子写）
+  - alphal 是统一子目录名: 程序侧和项目侧同名，方便集中备份/恢复/outbox。
+  - Data/databases/ 是 Chromium 内置 IndexedDB，非本项目产物，忽略。
+  - 选择: 全局共享→qgs。项目对话→qgs.project。项目偏好→onlyStore。项目元信息→qg。
   - 退出保護: before-quit/SIGINT/SIGTERM 自动 flushSync 所有实例。
 
 §10 goods 协议
@@ -88,7 +89,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 前端: Monaco 内置 TS/JS/CSS/HTML/JSON 诊断全禁，renderValidationDecorations:'off'，
     零红色波浪线/hover/补全/面包屑/minimap。仅保留 tokenization + selectionHighlight + occurrencesHighlight。
   - 壳层: lsp-bridge.ts 保留源码但零引用，esbuild tree-shake 排除，运行时零加载零执行。
-  - engines/manifest.json: 4 个 LSP 组件已删除，仅剩 4 个工具组件。
+  - engines/manifest.json: 4 个 LSP 组件已删除，仅剩 5 个工具组件 (ffmpeg/yt-dlp/python/git/ripgrep)。
   - 编辑器性能: matchBrackets:'never'（省每键 CPU），overviewRulerLanes:3（滚动条标注全开）。
   - 恢复: 取消三处 import 注释 + 改回 new LspBridge(portable.root) + 恢复 manifest.json LSP 条目。
   - 替代: 三级语法检查（2026-06-24）— L1 系统自动 node --check（0 ge）+ L2 get_diagnostics 工具（~50 ge）+ L3 run_command 全仓（~200 ge）。详见 架构 拓扑。
@@ -102,8 +103,8 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 §13 Vision SSE 推送 — 禁止轮询
   - 唯一通道: Go AIVisionStreamHandler (route: /v3/ai/vision/:task_id/stream)。
   - 客户端 SSE: fetch + ReadableStream 消费 event:result。Go 侧 doneCh→close→push。
-  - 多图片并行: Promise.all 并发 qwen-vl-max，4-12s→3-8s。
-  - context 级联: client 断开/超时 → WithTimeout 取消 DashScope 请求，零僵尸 goroutine。
+  - 多图片并行: Promise.all 并发视觉模型，4-12s→3-8s。
+  - context 级联: client 断开/超时 → WithTimeout 取消上游请求，零僵尸 goroutine。
 
 §13b 网关超时 — 唯一真理在 ContentGateway（2026-06-13）
   - 所有超时数字只在 content-gateway.js 定义（FETCH_DEADLINE_PRIMARY_MS / FETCH_DEADLINE_FALLBACK_MS / STREAM_WATCHDOG_MS / AI_OUTPUT_WATCHDOG_MS）。
@@ -154,14 +155,11 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 覆盖服务: chat / vision / generateImage / analyzeImage / embed / searchWeb。
   - tier 1-6 数字传参，模型映射由 AiGateway 内部 _tierToModel() + Go 端双重保障。
   - 统一超时/重试/双线路故障切换/错误处理。
-  - 旧 Python 脚本(wanx_gen.py/wanx_vision.py)和 ipc-media.ts 已删除（全量走 Go 代理）。
-
-§15 i18n — 唯一真理国际化机器
+  - 旧 Python 脚本(w  - 旧 Python 脚本和 ipc-media.ts 已删除（全量走 Go 代理）。国际化机器
   - 唯一真理源: server-app/locales/zh.json。开发者只管写中文，不做其他事。
   - 占位符系统: HTML 用 data-i18n/data-i18n-placeholder/data-i18n-title/data-i18n-html。JS 用 window._i(key, fallback)。
   - 特殊: AI 面板 textarea 用 data-i18n-placeholder-attr (iframe translateUi 处理)。
-  - 翻译机器 + 面板: op/qky.py (PySide6 GUI，一键翻译 12 语言，DashScope Qwen3.6-Plus)。
-  - 13 语言: zh/zh-tw/en/ja/de/ko/ru/ar/es/fr/pt-BR/hi/vi。
+  - 翻译机器 + 面板: op/qky.py (PySide6 GUI，一键翻译 12  - 翻译机器 + 面板: op/qky.py (PySide6 GUI，一键翻译 12 语言，翻译模型)。pt-BR/hi/vi。
   - 前端运行时: core/i18n.js，启动时 detectLang → 加载 locale JSON → updateDom。
   - 英语内嵌兜底: en.json 编译进 i18n.js _EN_BUILTIN，离线永不显示占位符 key。
   - 语言持久化: qgs('qqqide.i18n').set('lang', code)，跨会话记忆。
@@ -455,3 +453,18 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 锁检查: ipc-misc 创建前检查 project lock，已锁 → 返回 {ok:false, locked:true}。
   - 菜单栏: "qqq IDE" + "的梦gaea" 纯文本无 i18n。"开新窗口" 行右侧 ▶ square button。
   - 铁律: 窗口快照只存 qgs 全局键，不引入新文件/新存储引擎。不与 onlyStore 重复存储 AI 面板状态。
+
+
+§45 唯一源码目录 — 防脑分裂（2026-06-22）
+  - webapp 唯一真理源: server-app/。gh555.com/ = npm run pack 输出，已 gitignore，禁止编辑。
+  - dev 模式 (qide-shell.py 按 Q) 读 server-app/ 直出 http://127.0.0.1:8090/qqq-app/。
+    Ctrl+R 即时刷新。不经过 gh555.com/。
+  - shell/ TS 源码 → esbuild → shell-out/ 编译产物，只改源码。
+
+§46 开发基础设施 — 已知工具链（2026-06-22）
+  - qide-shell.py: 一站式控制台。按 Q = esbuild build → dev-server :8090 + esbuild watch + electron。
+  - 热更新: 改 server-app/ (HTML/CSS/JS) → Ctrl+R 刷新。改 shell/*.ts → esbuild watch 自动重编 → Ctrl+R。
+  - 不需要: 重启 dev-server、重启 electron、手动编译、杀进程重来。
+  - npm run build = 一次性 esbuild。npm run pack:win-x64 等 → dist-pack/。
+  - 部署: ③ Deploy 按钮 → ssh 上传 server-app/ + shell-out/ 到 US 生产。
+  - 引擎: ghrun (进程管理+Rust spawn)、ripgrep (全文搜索)、q_win_x64 (AI 推理)。

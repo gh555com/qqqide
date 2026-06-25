@@ -33,6 +33,8 @@ function renderMarkdown(src) {
     // Bold, italic
     s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    // Images — must run BEFORE links to prevent ![alt](url) being caught as [alt](url)
+    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" loading="lazy" style="max-width:100%;display:block;margin:8px 0;" onerror="this.style.display=\'none\'">');
     // Links
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
     // Tables (must run before lists to avoid confusing | with list markers)

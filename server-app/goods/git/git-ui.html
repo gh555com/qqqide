@@ -322,7 +322,13 @@ function _renderUnified(container, diff) {
   container.innerHTML = '';
   container.className = 'diff-body';
   var frag = document.createDocumentFragment();
-  var contex    // Hunk header + stage button (git diff only)
+  var contextLines = _diffState.showFull ? 99999 : 3;
+
+  var hunks = _buildHunks(diff, contextLines);
+
+  for (var h = 0; h < hunks.length; h++) {
+    var hunk = hunks[h];
+    // Hunk header + stage button (git diff only)
     if (!_diffState.showFull && h > 0) {
       var hunkSep = document.createElement('div');
       hunkSep.className = 'diff-line hunk';
@@ -334,9 +340,6 @@ function _renderUnified(container, diff) {
       }
       hunkSep.innerHTML = sepHtml;
       frag.appendChild(hunkSep);
-    }kEl.className = 'diff-line hunk';
-      hunkEl.innerHTML = '<span class="ln"></span><span class="ln2"></span><span class="code">@@ ...</span>';
-      frag.appendChild(hunkEl);
     }
     for (var i = 0; i < hunk.length; i++) {
       var entry = hunk[i];

@@ -66,7 +66,7 @@ function isHTML(req) {
 }
 function isAssetScheme(url) {
   // Skip our custom electron-served scheme entirely.
-  return url.protocol === 'qqqide-asset:' || url.protocol === 'devtools:' || url.protocol === 'chrome:';
+  return url.protocol === 'qqqide-asset:' || url.protocol === 'devtools:' || url.protocol === 'chrome:' || url.protocol === 'file:';
 }
 function timeout(ms) {
   return new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));

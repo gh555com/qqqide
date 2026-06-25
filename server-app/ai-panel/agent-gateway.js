@@ -33,7 +33,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
     if (_currentToken) _triedTokens[_currentToken] = true;
 
     function _rotateKey() {
-        // 备用线不轮转用户 JWT（防无意义重试，DeepSeek key 由服务端 X-Key-Slot 决定）
+        // 备用线不轮转用户 JWT（防无意义重试，key 由服务端 X-Key-Slot 决定）
         if (GATEWAY_URL === GATEWAY_URL_FALLBACK) return false;
         // 标记当前 key 被限流
         if (typeof markToken429 === 'function' && _currentToken) {
@@ -470,7 +470,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 return null;
             }
 
-            // ★ 402（服务端 DeepSeek key 欠费）：不重试同线路，直接切线路（另一把 key 可能有钱）
+            // ★ 402（服务端 key 欠费）：不重试同线路，直接切线路（另一把 key 可能有钱）
             if (self._lastGatewayError === 402) {
                 self._log('  AI upstream 402 — key depleted, trying line switch');
                 clearTimeout(_fetchDeadline);

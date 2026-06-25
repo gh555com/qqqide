@@ -108,7 +108,7 @@ async function _tryEmbeddingRerank(query, structuredResult) {
     _embLog('batch: ' + snippets.length + ' snippets, total chars=' + snippets.reduce(function (a, b) { return a + b.length; }, 0));
 
     // ★ 调用 embedding API：[query, ...snippets] → 计费自动发生
-    _embLog('API call → text-embedding-v4...');
+    _embLog('API call → embedding...');
     var _apiT0 = _EMBEDDING_LOG ? performance.now() : 0;
     var embResult = await _emb.embedBatch([query].concat(snippets), token, floorId);
     if (_EMBEDDING_LOG) _embLog('API done: ' + (performance.now() - _apiT0).toFixed(0) + 'ms');
@@ -179,7 +179,7 @@ async function _tryEmbeddingRerank(query, structuredResult) {
         out.push('Index: ' + structuredResult.fileCount + ' files, ' + structuredResult.chunkCount + ' chunks');
     }
     out.push('BM25: ' + bm25Results.length + ' results');
-    out.push('Embedding: text-embedding-v4, ' + embResult.tokenCount + ' tokens');
+    out.push('Semantic rerank: ' + embResult.tokenCount + ' tokens');
 
     if (_EMBEDDING_LOG) _embLog('DONE: ' + out.length + ' lines, total ' + (performance.now() - _t0).toFixed(0) + 'ms');
     return out.join('\n');
@@ -377,9 +377,7 @@ async function executeGenerateImage(args) {
             return 'Image generation failed: could not download images (URLs may have expired)';
         }
 
-        return 'Generated ' + paths.length + ' image(s):\n' + paths.map(function (p, i) {
-            return '  ' + (i + 1) + '. ' + p;
-        }).join('\n');
+        return paths.map(function (p) { return '![](file:///' + p.replace(/\\/g, '/') + ')'; }).join('\n');
 
     } catch (err) {
         return 'Error running image generation: ' + (err.message || err);

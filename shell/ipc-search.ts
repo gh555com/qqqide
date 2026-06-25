@@ -69,10 +69,11 @@ function _findRipgrep(): string | null {
     }
 
     for (const p of tries) {
-        try { if (fs.existsSync(p)) return p; } catch { /* skip */ }
+        try { if (fs.existsSync(p)) { console.log('[search] ripgrep found:', p); return p; } } catch { /* skip */ }
     }
 
     // 4. PATH (bare name — spawn will search PATH for brew/apt/choco installs)
+    console.log('[search] ripgrep not found in known paths, trying PATH:', rgName);
     return rgName;
 }
 
@@ -99,6 +100,7 @@ async function _ripgrepSearch(
     }
 
     const startTime = Date.now();
+    console.log('[search] spawning ripgrep:', rgPath, 'query:', query.slice(0, 80));
     const args: string[] = [
         '--json',
         '--no-heading',
@@ -242,21 +244,21 @@ function _parseRgJson(
                 const cleanText = text.replace(/\r?\n$/, '').slice(0, 300);
 
                 if (!fileEntries.has(displayPath)) fileEntries.set(displayPath, []);
-                fileEntries.get(displayPath)!.push({ type: 'match', line: lineNum, col, text: cleanText });
+                fileEntries.get(displayPath)!.push({ type: 'match', file: displayPath, line: lineNum, col, text: cleanText });
             } else if (obj.type === 'context' && contextLines > 0) {
                 const lineNum: number = obj.data.line_number || 0;
                 const text: string = (obj.data.lines && obj.data.lines.text) || '';
                 const cleanText = text.replace(/\r?\n$/, '').slice(0, 200);
 
                 if (!fileEntries.has(displayPath)) fileEntries.set(displayPath, []);
-                fileEntries.get(displayPath)!.push({ type: 'context', line: lineNum, text: cleanText });
+                fileEntries.get(displayPath)!.push({ type: 'context', file: displayPath, line: lineNum, text: cleanText });
             }
         } catch { /* skip malformed JSON */ }
     }
 
     // Build results with context assignment
     const results: SearchMatch[] = [];
-    for (const [, entries] of fileEntries) {
+    for (const [filePath, entries] of fileEntries) {
         const matches = entries.filter(e => e.type === 'match');
         const contexts = entries.filter(e => e.type === 'context');
 
@@ -264,9 +266,9 @@ function _parseRgJson(
             if (results.length >= maxResults) break;
 
             // Skip duplicate line in same file
-            if (results.some(r => r.file === m.file && r.line === m.line)) continue;
+            if (results.some(r => r.file === filePath && r.line === m.line)) continue;
 
-            const match: SearchMatch = { file: (m as any).file || '', line: m.line, col: m.col || 1, text: m.text };
+            const match: SearchMatch = { file: filePath, line: m.line, col: m.col || 1, text: m.text };
 
             if (contextLines > 0) {
                 const before = contexts.filter(c => c.line < m.line && m.line - c.line <= contextLines)

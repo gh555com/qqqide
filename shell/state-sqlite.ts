@@ -91,7 +91,7 @@ export class StateStore extends EventEmitter {
     private _saveDbTimer: NodeJS.Timeout | null = null;
     // ★ in-memory read cache (avoids append() re-reading from DB each time)
     private _memCache: Map<string, any> = new Map();
-    // ★ 全局数据库标记：用于阻止 quest 相关 namespace 误写入全局 state.sq3
+    // ★ 全局数据库标记：用于阻止 quest 相关 namespace 误写入全局 global.sq3
     private _isGlobal: boolean = false;
 
     /** Hook for state-cloud.ts */
@@ -100,7 +100,7 @@ export class StateStore extends EventEmitter {
     // ----- constructor --------------------------------------------------------
 
     /**
-     * @param userDataDir  Electron userData path (for global state.sq3).
+     * @param userDataDir  Electron userData path (for global Data/alphal/global.sq3).
      *                      When dbPath is provided, userDataDir is only used for deviceId fallback.
      * @param dbPath       Optional explicit SQLite file path. When set, the DB is created
      *                      at this exact path (e.g. project-level quest.sq3).
@@ -116,11 +116,11 @@ export class StateStore extends EventEmitter {
             this.outboxDir = path.join(dbDir, 'outbox');
             this._isGlobal = false;
         } else {
-            // Global: db in userData/state/
-            const stateDir = path.join(userDataDir, 'state');
-            try { fs.mkdirSync(stateDir, { recursive: true }); } catch { /* ignore */ }
-            this.dbPath = path.join(stateDir, 'state.sq3');
-            this.outboxDir = path.join(stateDir, 'outbox');
+            // Global: db in userData/alphal/ (global.sq3 + backups/outbox)
+            const alphalDir = path.join(userDataDir, 'alphal');
+            try { fs.mkdirSync(alphalDir, { recursive: true }); } catch { /* ignore */ }
+            this.dbPath = path.join(alphalDir, 'global.sq3');
+            this.outboxDir = path.join(alphalDir, 'outbox');
             this._isGlobal = true;
         }
         try { fs.mkdirSync(this.outboxDir, { recursive: true }); } catch { /* ignore */ }
@@ -146,7 +146,7 @@ export class StateStore extends EventEmitter {
                     const buf = fs.readFileSync(this.dbPath);
                     this._db = new this._SQL.Database(buf);
                 } catch (e) {
-                    console.warn('[state-sqlite] failed to load state.sq3, starting fresh:', e);
+                    console.warn('[state-sqlite]failed to load global.sq33, starting fresh:', e);
                     // Quarantine corrupt DB
                     const bak = this.dbPath + '.corrupt.' + Date.now();
                     try { fs.renameSync(this.dbPath, bak); } catch { /* ignore */ }
@@ -516,7 +516,7 @@ export class StateStore extends EventEmitter {
             const FORBIDDEN_NS = ['qqq.ai', 'qqq.only', 'qqq.quest'];
             if (FORBIDDEN_NS.includes(ns) || ns.startsWith('qqq.ai.') || ns.startsWith('qqq.quest.')) {
                 throw new Error(
-                    `state.register: ns "${ns}" is FORBIDDEN in global state.sq3. ` +
+                    `state.register: ns "${ns}" is FORBIDDEN in global global.sq3. ` +
                     `Quest/AI data MUST use project-level SQLite (quest.sq3/only.sq3). ` +
                     `Refusing to register.`
                 );

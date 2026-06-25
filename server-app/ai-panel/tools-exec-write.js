@@ -108,7 +108,7 @@ async function executeEditFile(args) {
     if (!bridge) return 'Error: bridge not available';
     if (!args.edits || args.edits.length === 0) return 'Error: no edits provided.';
 
-    // ★ 参数名兼容：Qoder/DeepSeek 可能用 filePath 而非 path
+    // ★ 参数名兼容：模型可能用 filePath 而非 path
     args.path = args.path || args.filePath || '';
     var _p = args.path;
     if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {

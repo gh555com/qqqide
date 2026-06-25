@@ -90,7 +90,7 @@ async function executeReadFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
-    // ★ 参数名兼容：Qoder/DeepSeek 可能用 filePath 而非 path
+    // ★ 参数名兼容：模型可能用 filePath 而非 path
     args.path = args.path || args.filePath || '';
     // ★ 路径合理性校验：防止 AI 将中文文本当作文件路径
     var _p = args.path;

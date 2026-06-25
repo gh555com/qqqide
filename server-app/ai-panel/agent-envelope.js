@@ -103,19 +103,15 @@ EnvelopeStripper.prototype.finalize = function () {
     // 当模型在 content 中输出工具调用（XML/Action: 格式）而非原生 delta.tool_calls，
     // 解析为可执行结构，防止楼层空转。
     var _textToolCalls = [];
-    // ★ DEBUG: 日志 cleanContent 前 500 字符，诊断文本工具调用是否进入解析器
-    if (cleanContent && cleanContent.length > 0) {
-        var _previewLen = Math.min(500, cleanContent.length);
-        console.log('[EnvelopeStripper] cleanContent (' + cleanContent.length + ' chars): ' + JSON.stringify(cleanContent.slice(0, _previewLen)));
-    }
+    // ★ DEBUG (off): cleanContent preview
+    // if (cleanContent && cleanContent.length > 0) { ... }
 
     // ── 1) XML 格式：<invoke name="..."><parameter name="...">...</parameter></invoke> ──
     //    兼容 <function_call> <qqq_tool_calls> 等变体
     var _xmlBlocks = [];
     // 提取所有含 name 属性的 invoke/function_call 块（含内嵌 parameter）
     var _invokeRe = /<(?:invoke|function_call)\s[^>]*?\bname\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/(?:invoke|function_call)>/gi;
-    // ★ DEBUG: 诊断 _invokeRe 为什么不匹配
-    console.log('[EnvelopeStripper] _invokeRe.test cleanContent: ' + _invokeRe.test(cleanContent) + ', cleanContent len=' + cleanContent.length);
+    // ★ DEBUG (off): _invokeRe match diagnostic
     _invokeRe.lastIndex = 0;
     var _xm;
     while ((_xm = _invokeRe.exec(cleanContent)) !== null) {
@@ -185,11 +181,7 @@ EnvelopeStripper.prototype.finalize = function () {
         // 剥离已解析的 XML 块（精确替换）
         cleanContent = cleanContent.replace(_xb.full, '');
     }
-    // ★ DEBUG: 日志解析结果
-    console.log('[EnvelopeStripper] _xmlBlocks found: ' + _xmlBlocks.length + ', _textToolCalls: ' + _textToolCalls.length);
-    if (_textToolCalls.length > 0) {
-        console.log('[EnvelopeStripper] textToolCalls names: ' + _textToolCalls.map(function (tc) { return tc.function.name; }).join(', '));
-    }
+    // ★ DEBUG (off): parse results
     // 残留 XML 标签清除（<qqq_tool_calls> <tool_call> <function_calls> 等无参数包裹标签）
     cleanContent = cleanContent.replace(/<\/?qqq_tool_calls>/gi, '');
     cleanContent = cleanContent.replace(/<\/?_?tool_calls?[^>]*>/gi, '');

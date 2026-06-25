@@ -1090,7 +1090,7 @@
                 lineDecorationsWidth: 10,
                 padding: { top: 0, bottom: 0 },
                 stickyScroll: { enabled: false },
-                find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'never' },
+                find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'selection' },
             });
         } catch (_) { }
     }

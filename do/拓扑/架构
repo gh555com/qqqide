@@ -69,34 +69,31 @@ AI 网关双线路 + 故障切换引擎（2026-06-13 加固，2026-06-23 402+双
 ---------------------------------------------
 · 双线路架构:
   主线路: https://direct.gh555.com:8444/api/v3/ai/chat (直连 HTTP/1.1，87ms，无中间人)
-  备用线路: https://gh555.com/api/v3/ai/chat        (CF Worker 透传 → Go → DeepSeek)
+  备用线路: https://gh555.com/api/v3/ai/chat        (CF Worker 透传 → Go → 推理引擎)
 · 声明位置: system-prompt.js（唯一声明 GATEWAY_URL_PRIMARY / GATEWAY_URL_FALLBACK）
 · 切换引擎: agent-loop.js _callGateway 内建 retry+switch 管线
   - 同 URL 最多重试 3 次（MAX_RETRIES=3），防瞬态抖动误切
   - 重试耗尽 → 切线路（主→备或备→主），单次最多切换 2 次（MAX_LINE_SWITCHES=2 防乒乓）
   - HTTP/2 连接级错误（ERR_HTTP2_PROTOCOL_ERROR / Failed to fetch）优先切线路
   - 502/503 前半段重试同 URL（可能瞬态恢复），后半段切线路
-  - AI 上游错误: 400/422（孤儿 tool_calls）跳过重试→走 auto-repair; 402（DeepSeek key 欠费）直接切线路（另一把 key 可能有钱）
-  - AbortError（超时）切线路恢复（主超时→切备，备超时→切主）
+  - AI- AI 上游错误: 400/422（孤儿 tool_calls）跳过重试→走 auto-repair; 402（key 欠费）直接切线路（另一把 key 可能有钱） AbortError（超时）切线路恢复（主超时→切备，备超时→切主）
 · 延迟报错: _callGateway 不直接调 onError，设 _lastGatewayMessage 后返回 null
   → agent loop 的 auto-repair 先尝试修复 → 成功则继续（用户无感）→ 失败才报错
 · 跨面板协同: panel-state.js 监听兄弟面板 qqq-gw-status → 自动调整 _gwFallbackAt
 
-DeepSeek 双 Key 隔离 + JWT 解耦（2026-06-23）
+双 Key 隔离 + JWT 解耦（2026-06-23）
 ---------------------------------------------
-· 两把 DeepSeek key 完全隔离于服务器 .env（客户端零密钥）:
-  DEEPSEEK_API_KEY         → 主线（158 账号）
-  DEEPSEEK_API_KEY_FALLBACK → 备用线（192 账号）
+· 两把 API key 完全隔离于服务器 .env（客户端零密钥）:
+  API_KEY_MAIN         → 主线
+  API_KEY_FALLBACK → 备用线
 · 线路→Key 路由: 客户端通过 X-Key-Slot header 告知 Go 选哪把 key
-  主线: X-Key-Slot 不传 → Go PickAIKey()        → 158 消费
-  备线: X-Key-Slot: 1    → Go PickFallbackAIKey() → 192 消费
-· JWT 仅管认证（我是谁+ge扣费），X-Key-Slot 仅管路由（走哪把 DeepSeek key）
+  主线: X-Key-Slot 不传 → Go PickAIKey()        → 主线消费
+  备线: X-Key-Slot: 1    → Go PickFallbackAIKey() → 备用消费
+· JWT 仅管认证（我是谁+ge扣费），X-Key-Slot 仅管路由（走哪把 key）
   两个身份体系完全解耦，互不穿透。
 · SSE 402（服务端 key 欠费）→ 自动切线路→另一把 key → 用户无感
   HTTP 402（用户 ge 不足）→ 直接终止，不浪费线路切换
-  双 key 都欠费 → MAX_LINE_SWITCHES=2 兜底 → "AI 服务暂时不可用"
-
-banned:th Redis 封禁检查 — 已彻底移除（2026-06-23）
+  双 key 都欠费 → MAX_LINE_SWITCHES=2 兜底 → "AI 服务暂时不可用"edis 封禁检查 — 已彻底移除（2026-06-23）
 ---------------------------------------------
 · 旧机制: CF Worker 调 GET /api/v3/ai/check?th=hash → Go 读 Redis banned:th → 永远空(零写入端)
 · 移除: AICheckHandler 函数、路由 /v3/ai/check、CF Worker banned check 段、sha256hex 函数、fix_worker.py
@@ -129,15 +126,14 @@ ContentGateway 超时常量（唯一真理源，2026-06-13）
 · 所有超时数字只在 content-gateway.js 定义，agent-loop.js 全部引用 ContentGateway.*
 · FETCH_DEADLINE_PRIMARY_MS  = 180000 (180s, 直连主线无限制，可调大)
 · FETCH_DEADLINE_FALLBACK_MS = 98000  (98s, CF Worker 备用，CF 100s 留 2s)
-· STREAM_WATCHDOG_MS         = 180000 (180s, DeepSeek 深度推理容忍度)
+· STREAM_WATCHDOG_MS         = 180000 (180s, 深度推理容忍度)
 · AI_OUTPUT_WATCHDOG_MS      = 900000 (15min, AI 无产出→死循环)
 · 改超时只改 content-gateway.js 一处。
 
 孤儿 tool_calls 自愈系统（2026-06-14 加固）
 ---------------------------------------------
-· 问题: DeepSeek 硬要求 assistant.tool_calls 后紧跟等量 tool 消息，缺→400
+· 问题: 模型硬要求 assistant.tool_calls 后紧跟等量 tool 消息，缺→400
 · 自愈: _repairOrphanedToolCalls() 双向扫描 conversation（200 轮，方向 A/B 日志记录）
-· 三道防线:
   ① 请求前主动预检（_callGateway 开头，conversation 未变则跳过）
   ② 楼层保存前修复（_saveAgentQuestData → _a4BuildCompleteFloorPayload 归一，发现腐蚀打 [CRITICAL] 日志）
   ③ 自动保存前修复（auto-save 每 5s，同上））
@@ -258,8 +254,7 @@ qqq-shell-v2/
 │       ├── tools-exec-write.js WRITE 类工具（edit/write/create/delete）
 │       ├── tools-exec.js       工具调度中心 + READ 类工具（read/search/list/find/diag/fetch）
 │       ├── tools-exec-effect.js EFFECT 类工具（run_command/search_smart/generate/analyze）+ Embedding
-│       ├── embedding-service.js Embedding 向量化服务（text-embedding-v4）
-│       ├── system-prompt.js   系统提示词（GATEWAY_URL 唯一声明处）
+│       ├── embedding-service.js Embedding 向量化服务
 │       ├── content-gateway.js 内容安全网关
 │       ├── ai-gateway.js     统一 AI 模型调用包装器（禁直接调用第三方端点）
 │       ├── only-store.js      项目偏好 SQLite
@@ -269,6 +264,17 @@ qqq-shell-v2/
 │   └── ripgrep/rg.exe  ripgrep 14.1.1 (Windows 已安装; mac/linux 二进制同目录)
 ├── op/                运维脚本 (ky.py翻译 + components.py组件 + git_snapshot.bat)
 ├── do/拓扑/           架构文档
+
+
+构建与打包（shell-build/）
+-----------------------------------
+· 开发: qide-shell.py 按 Q → esbuild build → dev-server :8090 + esbuild watch + electron
+· 编译: shell/*.ts → esbuild → shell-out/（~35ms）。npm run build 一次性编译。
+· 打包: npm run pack:win-x64 → dist-pack/qqq-shell-win-x64.zip
+· ★ gh555.com/ = npm run pack 中间产物（Electron 运行时 + resources/app/ 副本）
+  已在 .gitignore。dev 模式完全不经过它。AI 禁止编辑 gh555.com/ 下任何文件。
+· 绿色包 = 最终 zip 包，用户解压即用。pack.js 打包后会自动 rm -rf unpacked 中间目录。
+· 教训: search_replace 跨行替换时需确保匹配文本唯一，否则会合并相邻行损坏代码。
 
 UI 布局 — A/X/AI + 左右翼（三面板）
 -------------------------------------------------------------------------------
@@ -349,11 +355,14 @@ q2 单行 + hover 展开（2026-06 重构）
   onlyStore (only-store.js)          → SQLite 项目级偏好（qqq/alphal/only.sq3、快照/偏好/状态）
   window.qgf(rootDir, 'my-ns')       → FS 项目级 KV（qqq/qgf/ 原子写、零依赖、预留未用）
 
-背后引擎:
+背后引擎 + 物理路径:
   · qgs / qgs.simple / qgs.project  (state-sqlite.ts): sql.js WASM → 内存SQLite → 批量落盘
+    全局: Data/alphal/global.sq3 (跨项目共享: 窗口快照/最近文件夹/语言/设置/主题)
+    项目: qqq/alphal/quest.sq3 (AI 对话索引)
   · qg                              (shell/qg.ts):      tmp+rename 原子写 → JSON/brotli/NDJSON
   · qgf                             (shell/qgf.ts):     同 qg 引擎，建 qqq/qgf/{ns}.json 原子读写
   · onlyStore                       (only-store.js):    内存缓存+自动批量刷盘管线
+    物理: qqq/alphal/only.sq3 (项目偏好: 搜索/主题/面板状态/字号)
 
 何时用哪个：
   · 全局共享、跨项目、云同步                           → qgs
@@ -372,15 +381,22 @@ onlyStore 管线：set→内存缓存(dirty)→500ms空闲刷盘→3s强制刷�
         主题 (onlyStore:theme)、编辑器字体大小 (qgs.simple:qqqide)、
         ★ 窗口快照 (qgs:qqqide, key=win_snap:{normalizedPath}) — 含主/辅文件夹+editor tabs+光标位置+layout+theme
 
-qqq/ — 家目录结构（{project_root}/qqq/）
+家目录 — 项目级 ({项目}/qqq/) 与程序级 ({程序}/Data/alphal/)
 -----------------------------------------------------------------------
-  qqq/.lock              30s心跳/60s过期文件锁，防多窗口打开同一项目
-  qqq/alphal/
-    ├── quest.sq3         AI 对话索引 SQLite（questStore: 楼层元数据 ~200B/层）
-    ├── only.sq3          项目偏好 SQLite（onlyStore: 面板快照/主题/tabs/设置）
-    ├── rule/project.txt  E-Flow custom 模式规则文件
-    ├── expert/           E-Flow standard 模式文档框架（index.md + arch/*.md）
-    └── .lock             项目锁文件
+  项目级: {project_root}/qqq/（纯项目数据，跟项目走，拷到另一台机器自带）
+  程序级: {appRoot}/Data/alphal/（零 C 盘写入，绿色包解压即在，惰性创建）
+  ★ 项目偏好 (搜索/主题/面板) → {项目}/qqq/alphal/only.sq3
+  ★ 全局共享 (语言/最近文件夹/窗口快照) → {程序}/Data/alphal/global.sq3
+  ★ {程序}/Data/databases/ 是 Chromium 内置 IndexedDB 目录，非本项目产物
+
+  {项目}/qqq/
+    ├── .lock              30s心跳/60s过期文件锁，防多窗口打开同一项目
+    └── alphal/
+        ├── quest.sq3         AI 对话索引 SQLite（questStore: 楼层元数据 ~200B/层）
+        ├── only.sq3          项目偏好 SQLite（onlyStore: 搜索偏好/主题/tabs/字号）
+        ├── rule/project.txt  E-Flow custom 模式规则文件
+        ├── expert/           E-Flow standard 模式文档框架（index.md + arch/*.md）
+        └── .lock             项目锁文件
   qqq/quests/             AI 对话正文（FS）
     ├── _index.json       quest 索引（跨面板共享、30s宽限期防竞态）
     └── q{n}.{title}/     每个 quest 一个目录
@@ -402,7 +418,7 @@ i18n — 唯一真理国际化机器
 唯一真理源: zh.json (开发者只写中文)
 占位符: data-i18n / data-i18n-placeholder / data-i18n-title / data-i18n-html, JS: _i(key, fallback)
 特殊: contenteditable div 用 data-i18n-placeholder-attr (iframe translateUi 处理)
-翻译机器 + 面板: op/qky.py (PySide6 GUI, DashScope Qwen3.6-Plus, 差异翻译, 全并发)
+翻译机器 + 面板: op/qky.py (PySide6 GUI, 翻译模型, 差异翻译, 全并发)
 前端运行时: core/i18n.js (autoload, detectLang -> loadLang -> updateDom)
 英语内嵌兜底: en.json 编译进 _EN_BUILTIN 常量, 离线永不显示 key
 语言持久化: qgs('qqq.i18n').set('lang', code)
@@ -518,30 +534,26 @@ AI 工具 (16个) — 2026-06-04 强化，2026-06-10 三项优化，2026-06-16 s
   · search_text 目录跳过: SKIP_DIRS 排除 node_modules/.git/dist/__pycache__ 等
   · search_content: 接收 keywords[] 数组，自动转义拼接为 regex OR，支持 case_sensitive
     解决 AI 用 PowerShell 搜多关键词的 40GB 问题，route 走 search_text 主进程管线
-  · search_smart: BM25倒排索引 + 符号匹配(定义/导出/引用) + Embedding语义重排(text-embedding-v4)
+  · search_smart: BM25倒排索引 + 符号匹配(定义/导出/引用) + Embedding语义重排
     三路并行: 文件内容分词搜索 / 符号名精确匹配 / 目录名glob匹配
-    Embedding管道: BM25 top10 → DashScope text-embedding-v4 → cosine重排(alpha=0.3) → Hybrid输出
+    Embedding管道: BM25 top10 → 向量模型 → cosine重排(alpha=0.3) → Hybrid输出
     符号图: 每个匹配符号附定义文件/导出文件/导入引用关系（P3 符号图引擎）
     静默降级: Embedding失败→保留BM25结果；无token→纯BM25
 诊断: get_diagnostics (Monaco markers)
 终端: run_command (qz-spawn, 硬超时 2h, stallMs=15min, ★ qwr _qgc 命令屏障保护)
   · 新增 reason 字段: AI 可选填写使用原因，仅 console.log 审计，不拦截
 网络: fetch_webpage (curl 绕过 CORS, 15s 超时, ≤8000 chars)
-视觉: get_vision_context (★ 并行预分析: 多图片并发 qwen-vl-max, Promise.all, 4-12s→3-8s)
-图片: generate_image / analyze_image (全走 Go 代理，无 Python 侧载)
+视觉: get_vision_context (★ 并行预分析: 多图片并发视觉模型, Promise.all, 4-12s→3-8s)
   · 生成: fetch IMAGE_GEN_URL → Go → 模型供应商 → SSE 结果流 → curl 下载
   · 分析: fetch VISION_URL → Go → 模型供应商 → SSE 结果流
-  · 旧 Python 脚本(wanx_gen.py/wanx_vision.py)和 ipc-media.ts 已删除（2026-06-22）
-组件下载 (★ 并行化): tool-dl 多文件 Promise.all(PUT/POST) 并发，5文件 40s→8s
+  · 旧 Python 脚本和 ipc-media.ts 已删除（2026-06-22）
 SSE 复用 (★ 零行代码): fetch 新建流复用已有 ReadableStream· 入口: tools-exec-effect.js search_smart → _tryEmbeddingRerank() → embedding-service.js速度倍数），
 AI 有充分知情权选择最优工具。system-prompt 新增 🔴 FILE SEARCH PRIORITY 铁律段。
 
-Embedding 混合搜索管道 — BM25 + text-embedding-v4 语义重排（2026-06-16）
+Embedding 混合搜索管道 — BM25 + 语义重排（2026-06-16）
 --------------------------------------------------------------
 · 入口: tools.js search_smart → _tryEmbeddingRerank() → embedding-service.js
-· 管线: query + BM25 top10 snippets → 阿里云 text-embedding-v4 (1024d) → cosine → alpha=0.3 融合
-· 计费: 归 floor/house/room，Go geflow 扣款，明细可见 text-embedding-v4 扣费
-· 静默降级: 无 auth token / API 失败 / 向量异常 → 保留原始 BM25 结果，用户无体感
+· 管线: query + BM25 top10 snippets → 向量模型 (1024d) → cosine → alpha=0.3 融合h token / API 失败 / 向量异常 → 保留原始 BM25 结果，用户无体感
 · 开关: window._EMBEDDING_LOG=true 开启全链路日志（DevTools 实时控制），默认关闭零开销
 · 底层: embedding-service.js 双线路(fallback)+归一化+15s超时，暴露 window._qqqEmbedding
 · 符号图: P3 引擎为每个匹配符号提供 defines/exports/imported-by 三向引用（见下文符号图引擎节）
@@ -575,7 +587,7 @@ AI 面板增强
 - 项目锁: onlyStore.claimLock() 统一管理（30s 心跳/60s 过期/自动释放），零维护
 - 无主文件夹守卫: 三层防线（UI capture管线+函数兜底+持久层铁闸），引导蒙版
 - quest 切换防丢: 流式中断回复保存（_fullText+_truncated）+ 互斥锁 + snapshot 副本
-- 引导注入: injectGuide() 立即 abort 当前 house → 确认回合(Flash/noTools) → AI 回复 "✅ 已收到引导" → pop 指令 → 继续工作。不中断楼层，确认来自 DeepSeek。空闲时降级为普通 inject。
+- 引导注入: injectGuide() 立即 abort 当前 house → 确认回合(Flash/noTools) → AI 回复 "✅ 已收到引导" → pop 指令 → 继续工作。不中断楼层，确认来自模型。空闲时降级为普通 inject。
 - 排队信封: 任何时候可添加，AI 回复完自动消费下一条。暂停/继续/清空控制栏。_debounceSaveQueue 500ms 合并写盘。最大 50 条。
 - 楼层归档（2026-06-19 清洁分工）：
     all.json  →  机器用（conversation[] + 计费元数据 + 文件快照），仅存结构化数据，
@@ -760,13 +772,11 @@ _lastParaEl 全量 _buf 致前半重复修复（2026-06-24）：
 --------------------------------
 · 问题：部分模型在 delta.content 中输出工具调用文本（而非原生 delta.tool_calls），旧逻辑剥离丢弃 → 楼层秒完零执行
 · 方案：EnvelopeStripper.finalize() 统一解析三种格式 → 汇入 textToolCalls[] → _parseSSE 优先执行
-· 覆盖格式：XML invoke 块（<invoke name="x"><parameter ...>）、XML 自闭合 tag、DeepSeek ReAct（Action: ...\nAction Input: {...}）
-· 防楼层空转：文本工具调用被回生为可执行 tool_calls，不再丢失
+· 覆盖格式：· 覆盖格式：XML invoke 块（<invoke name="x"><parameter ...>）、XML 自闭合 tag、ReAct 格式（Action: ...\nAction Input: {...}）转：文本工具调用被回生为可执行 tool_calls，不再丢失
 
 AI 网关 — Worker 纯代理 + Go 权威计费（2026-06-10 设计，06-10 晚强制落地）
 --------------------------------------------------------------------
-线路: Client ────SSE────▶ Worker(cf edge, 纯透传) ────▶ Go ────▶ DeepSeek/阿里
-              (零计费)              (ban查询+自动failover)   (唯一权威扣款)
+线路: Client ──线路: Client ────SSE────▶ Worker(cf edge, 纯透传) ────▶ Go ────▶ 推理引擎  (零计费)              (ban查询+自动failover)   (唯一权威扣款)
 
 Worker (cf/ai-gateway.js, ~67行):
   · 禁运查询: fetch CHECK_URL?th=xxx → Go banned 检查，402 直接封
@@ -792,8 +802,7 @@ Go (唯一计费权威):
 饼图 + 时钟
 -----------
 - 时钟每秒更新: setInterval 1s, fmtTime Xm:Ys 格式
-- 饼图每秒更新: 直接读 agent._floorTiming (agent-loop 实时累加), 已归因(network橙色/deepseek绿/tool黄)+未归因(wait灰#888), 零值切片自动跳过不画
-- 饼图懒重绘: _lastPieTiming 缓存，四字段全等跳过 drawPie，消灭无效 Canvas 重绘
+- 饼图每秒更新: 直接读 agent.- 饼图每秒更新: 直接读 agent._floorTiming (agent-loop 实时累加), 已归因(network橙色/AI绿/tool黄)+未归因(wait灰#888), 零值切片自动跳过不画ming 缓存，四字段全等跳过 drawPie，消灭无效 Canvas 重绘
 - hover tooltip: 2x放大(22px字号, 20px圆点), 4色+时间, 固定黑色半透明底
 
 输出截断体系 — 两层语义（单一真理源）
@@ -811,13 +820,8 @@ OUTPUT 面 (改 content-gateway.js 一处，消费方全引用):
 
   tools-defs.js 工具描述 + system-prompt.js 系统提示词全动态引用 KB 值，不硬编码。
   安全网值远高于 AI 面，永不成为短板。
-  OUTPUT_CAP_FETCH 等 tool 描述动态引用常量，DeepSeek 自动感知。
-
-时钟颜色状态机
--------------
-· timer 跑在 agent 上（ag._floorTimerId/ag._floorStartPerf），每 quest 独立，切 quest 不停 timer。
-· 工作中: startFloorTimer(aiDiv, ag) 初始设绿色 (#859900 DeepSeek 色AI 活跃色 活跃段切换: DeepSeek 活跃→绿 / Tool 活跃→黄 (#e6b800) / Network 活跃→橙 (#cb4b16)
-· 完成: stopFloorTimer(timing, ag) 设停止态（亮色#000 / 暗色#fff）
+  OUTPUT_CAP_FETCH 等 tool 描述OUTPUT_CAP_FETCH 等 tool 描述动态引用常量，模型自动感知。timer 跑在 agent 上（ag._floorTimerId/ag._floorStartPerf），每 quest 独立，切 quest 不停 timer。
+· 工作中: startFloorTimer(aiDiv, ag)· 工作中: startFloorTimer(aiDiv, ag) 初始设绿色 (#859900 AI 活跃色) 活跃段切换: AI 活跃→绿 / Tool 活跃→黄 (#e6b800) / Network 活跃→橙 (#cb4b16) 设停止态（亮色#000 / 暗色#fff）
 · 中断/异常: finally 块用 _capturedAgent 属性设停止态，杜绝残留绿色
 · 历史楼层重建: _buildFloorDOM 从 fData.clockTiming 直接恢复，回退 questTimings 数组
 · 饼图: 初始隐藏，数据到后显示；懒重绘（四字段全等跳过）
