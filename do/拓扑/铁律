@@ -373,6 +373,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 钩子 Q: edit/write/create/delete → 捕获 before → 执行 → 捕获 after → _a4PersistToTimeline(both, trace, diff stats)。
     run_command → ★ 默认关闭（设置→高级→追踪命令文件变更），开启后：执行 → captureChanged → 噪声过滤 → 逐文件 _a4PersistToTimeline(after, trace)。
     trace: agent-loop 埋点 window._qqqCurrentTrace → floor_id = "q{id}/f{num}/h{num}/r{num}"。
+    ★ trace 捕获在 await 之前（2026-06-26 修复竞态），防并行工具互相覆盖导致 floor_id 为空。
   - 钩子 X: editor blur / Ctrl+S → 读上一版本内容 diff → timeline.record(source='editx')。
   - ★ 编辑类快照（editx + diff-edit）共享主进程真理机：100s 冷却 + SHA256 去重，
     改 ipc-timeline.ts 一处全局生效。钩子 Q（q / run-command）不走冷却。

@@ -69,13 +69,25 @@ function _tlReplayWal(db: any, projectRoot: string): number {
         const content = fs.readFileSync(walPath, 'utf8');
         const lines = content.split('\n').filter(l => l.trim());
         if (lines.length === 0) return 0;
+        // ★ per-file 序号计数器（WAL 条目按追加顺序，同文件递增）
+        var seqMap: Map<string, number> = new Map();
+        // 预查询已有最大序号（WAL 条目续接 DB 中已有编号）
+        var seqInitStmt = db.prepare('SELECT file_path, COALESCE(MAX(file_seq), 0) as mx FROM versions GROUP BY file_path');
+        while (seqInitStmt.step()) {
+            var sr = seqInitStmt.getAsObject();
+            seqMap.set(sr.file_path, sr.mx);
+        }
+        seqInitStmt.free();
         const stmt = db.prepare(
-            'INSERT INTO versions (file_path, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?)'
+            'INSERT INTO versions (file_path, file_seq, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?,?)'
         );
         for (const line of lines) {
             try {
                 const row = JSON.parse(line);
-                stmt.run([row.p || '', row.t || 0, row.h || '', row.s || 'q', row.f || null, row.a || null, row.d || null]);
+                var fp = row.p || '';
+                var seq = (seqMap.get(fp) || 0) + 1;
+                seqMap.set(fp, seq);
+                stmt.run([fp, seq, row.t || 0, row.h || '', row.s || 'q', row.f || null, row.a || null, row.d || null]);
                 count++;
             } catch (_) { /* 跳过损坏行 */ }
         }
@@ -126,11 +138,14 @@ export async function _tlOpenDb(projectRoot: string): Promise<any> {
         db.run(`CREATE TABLE IF NOT EXISTS versions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             file_path TEXT NOT NULL, ts INTEGER NOT NULL, blob_hash TEXT NOT NULL,
-            source TEXT NOT NULL, floor_id TEXT, added_lines INTEGER, deleted_lines INTEGER
+            source TEXT NOT NULL, floor_id TEXT, added_lines INTEGER, deleted_lines INTEGER,
+            file_seq INTEGER
         )`);
+        try { db.run('ALTER TABLE versions ADD COLUMN file_seq INTEGER'); } catch (_) { }
         try { db.run('ALTER TABLE versions ADD COLUMN added_lines INTEGER'); } catch (_) { }
         try { db.run('ALTER TABLE versions ADD COLUMN deleted_lines INTEGER'); } catch (_) { }
         db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_ts ON versions(file_path, ts)');
+        db.run('CREATE INDEX IF NOT EXISTS idx_versions_path_seq ON versions(file_path, file_seq)');
         db.run('PRAGMA journal_mode=WAL');
         db.run('PRAGMA synchronous=FULL');
         db.run('PRAGMA busy_timeout=30000');
@@ -162,14 +177,27 @@ export function _tlRecord(
     db: any, dbPath: string, projectRoot: string,
     row: { file_path: string; ts: number; blob_hash: string; source: string; floor_id?: string | null; added_lines?: number | null; deleted_lines?: number | null }
 ): void {
+    // ★ 计算 per-file 自增序号（AI 和人类用序号指代快照，如 #23）
+    var fileSeq = 1;
+    try {
+        var seqStmt = db.prepare('SELECT COALESCE(MAX(file_seq), 0) + 1 as ns FROM versions WHERE file_path = ?');
+        seqStmt.bind([row.file_path]);
+        if (seqStmt.step()) { fileSeq = seqStmt.getAsObject().ns; }
+        seqStmt.free();
+    } catch (_) { /* 列不存在时静默降级 */ }
+
     // 内存 INSERT
     db.run(
-        'INSERT INTO versions (file_path, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?)',
-        [row.file_path, row.ts, row.blob_hash, row.source, row.floor_id || null, row.added_lines || null, row.deleted_lines || null]
+        'INSERT INTO versions (file_path, file_seq, ts, blob_hash, source, floor_id, added_lines, deleted_lines) VALUES (?,?,?,?,?,?,?,?)',
+        [row.file_path, fileSeq, row.ts, row.blob_hash, row.source, row.floor_id || null, row.added_lines || null, row.deleted_lines || null]
     );
 
     // 追加 .wal（字段缩写，每行 ~100 字节）
     const walLine = JSON.stringify({
+        p: row.file_path, q: fileSeq, t: row.ts, h: row.blob_hash, s: row.source,
+        f: row.floor_id || undefined,
+        a: row.added_lines ?? undefined, d: row.deleted_lines ?? undefined,
+    }) + '\n';ine = JSON.stringify({
         p: row.file_path, t: row.ts, h: row.blob_hash, s: row.source,
         f: row.floor_id || undefined,
         a: row.added_lines ?? undefined, d: row.deleted_lines ?? undefined,

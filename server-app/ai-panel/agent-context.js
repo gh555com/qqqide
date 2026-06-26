@@ -3,16 +3,18 @@
 // 从 q3/ai/src/agent-context.js 移植，适配 Shell v2
 //
 // 核心机制：
-//   1. _compressContext() — 阻塞式：token 超 900k → 保留 10% 最近楼层（≥6层），压 90%
-//   2. _digestColdMessages() — 调 AI 压缩冷消息 → 32k 多重保证 + 无限重试
-//   3. _buildDynamicContext() — 注入叙事 + 相关事实 + 摘要到 API 消息末尾
+//   1. _compressContext() — 阻塞式：token 超阈值 → 保留 10% 最近楼层（≥6层），压 90%
+//   2. _digestColdMessages() — 单专家 tier 6 统一压缩（facts+narrative+archive 合一，64K max_tokens）
+//   3. _buildDynamicContext() — 注入叙事 + 相关事实到 API 消息末尾
 //
 // 关键设计（铁律）：
-//   - 压缩是打断任务：触发 → 停一切 → 等 q 拿到 → 删旧消息 → 再继续
+//   - 压缩是打断任务：触发 → 停一切 → 等 AI 产出 → 删旧消息 → 再继续
 //   - 保留边界对齐楼层（user 消息 = 楼层边界），绝不切断一条楼层
 //   - 最少保留 6 层楼（当前层 + 前 5 层），即使超出 10%
-//   - 压缩产出硬限 32k tokens，prompt + max_tokens + 校验三重保证
-//   - 压缩失败 → 指数退避无限重试（2s/4s/8s/.../60s），永不静默丢弃
+//   - 单专家 = 1 次 API 调用 → 一致性天然保证，不必 cross-check
+//   - 冷文本 4 段均匀采样（200K chars），时空覆盖不偏首尾
+//   - facts 后处理自动合并同话题事实（keyword 重叠 >50%）
+//   - 压缩失败 → 指数退避无限重试（2s/4s/8s/.../60s），永不静默丢弃0s），永不静默丢弃
 //
 // 依赖：GATEWAY_URL（由 system-prompt.js 提供），AgentLoop（由 agent-loop.js 提供）
 // ============================================================================
@@ -34,11 +36,9 @@
     var KEEP_RATIO = 0.1;         // 保留最近 10%
     var MIN_FLOORS = 6;           // 最少保留 6 层楼（当前层 + 前 5 层）
     var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 3.0);
-    // 三专家输出阀值
-    var COMPACT_FACTS_TOKENS = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPACT_FACTS_TOKENS : 32768);       // 32k（facts 可能很多，给足空间）
-    var COMPACT_NARRATIVE_TOKENS = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPACT_NARRATIVE_TOKENS : 32768); // 32k
-    var COMPACT_ARCHIVE_TOKENS = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPACT_ARCHIVE_TOKENS : 32768);   // 32k
-    var ARCHIVE_MAX_CHARS = (typeof ContentGateway !== 'undefined' ? ContentGateway.ARCHIVE_MAX_CHARS : 1000000); // ~1M chars
+    // 单专家统一压缩（tier 6, 64K max_tokens）
+    var COMPACT_MAX_TOKENS = (typeof ContentGateway !== 'undefined' && ContentGateway.COMPACT_MAX_TOKENS) ? ContentGateway.COMPACT_MAX_TOKENS : 65536;  // 64K
+    var ARCHIVE_MAX_CHARS = (typeof ContentGateway !== 'undefined' ? ContentGateway.ARCHIVE_MAX_CHARS : 1000000); // ~1M charshars
     var COMPACT_RETRY_BASE_MS = 2000;
     var COMPACT_RETRY_MAX_MS = 60000;
     // 埋点开关
@@ -180,14 +180,22 @@
             self._lastApiPromptTokens = 0;
             self._lastApiTotalTokens = 0;
             self._lastApiCompletionTokens = 0;
-            self._accumulatedCompletionTokens = 0;
+            // ★ 从保留的 assistant 消息重算（不再清零，防 UI 误导）
+            var _newCompTokens = 0;
+            for (var _ci = self._persistentCount; _ci < self.conversation.length; _ci++) {
+                if (self.conversation[_ci].role === 'assistant') {
+                    _newCompTokens += self._estimateMsgTokens(self.conversation[_ci]);
+                }
+            }
+            self._accumulatedCompletionTokens = _newCompTokens;
             var _elapsed = Math.round(performance.now() - _compressStart);
             var _afterEst = self._estimateTotalTokens();
             var _saved = beforeTokens - _afterEst;
+            var _archiveNote = (_lastCompressed === 0) ? '\n📦 首次压缩，无增量归档（Archive 专家信息已在 Facts + Narrative 中）' : '\n📦 归档: ' + (self._ctx.floorArchives ? self._ctx.floorArchives.length : 0) + ' 条';
             self.log('\u25C6 Context: done — ' + coldMsgs.length + ' msgs removed, ' + self.conversation.length + ' msgs kept');
             return {
                 compressed: true,
-                detail: '压缩 ' + coldMsgs.length + ' 条消息 → ' + self.conversation.length + ' 条保留\n上下文: ' + Math.round(beforeTokens / 1000) + 'k → ' + Math.round(_afterEst / 1000) + 'k tokens (节省 ' + Math.round(_saved / 1000) + 'k)\nFacts: ' + self._ctx.facts.length + ' 条 | Narrative: ' + (self._ctx.narrative ? self._ctx.narrative.length : 0) + ' chars\n耗时: ' + (_elapsed / 1000).toFixed(1) + 's',
+                detail: '压缩 ' + coldMsgs.length + ' 条消息 → ' + self.conversation.length + ' 条保留\n上下文: ' + Math.round(beforeTokens / 1000) + 'k → ' + Math.round(_afterEst / 1000) + 'k tokens (节省 ' + Math.round(_saved / 1000) + 'k)\nFacts: ' + self._ctx.facts.length + ' 条 | Narrative: ' + (self._ctx.narrative ? self._ctx.narrative.length : 0) + ' chars' + _archiveNote + '\n耗时: ' + (_elapsed / 1000).toFixed(1) + 's',
                 beforeTokens: beforeTokens,
                 afterTokens: _afterEst,
                 elapsedMs: _elapsed
@@ -211,10 +219,9 @@
         }
     };
 
-    // ═══ 三专家并行压缩 — ACID 原子操作 ═══
-    //  ① facts 专家: 旧facts + 新楼层 → 合并后全量 facts (16k)
-    //  ② narrative 专家: 旧narrative + 新楼层 → 合并后 narrative (32k)
-    //  ③ archive 专家: 仅新楼层 → 结构化楼层记录 (32k, 不注入上下文)
+    // ═══ 单专家统一压缩 — ACID 原子操作 ═══
+    //  合并 facts + narrative + archive 为一次 tier 6 API 调用（64K max_tokens）
+    //  旧三专家并行架构已废弃：3 次调用产出 <3K tokens → 严重浪费，合并后一次到位
     AgentLoop.prototype._digestColdMessages = async function (coldMsgs, lastCompressedFloor) {
         var self = this;
         var coldText = coldMsgs.map(function (m) {
@@ -228,92 +235,77 @@
         var _oldNarrative = self._ctx.narrative || '';
         var _debugTrace = { ts: new Date().toISOString(), trigger: 'auto', input: { floors: (lastCompressedFloor || 0) + '→' + self._ctx.totalFloors, coldMsgs: coldMsgs.length, coldTextPreview: coldText.slice(0, 2000), oldFacts: _oldFacts.length, oldNarrativeLen: _oldNarrative.length }, experts: {} };
 
-        // ★ 截断冷文本（防 prompt 过大导致模型输出截断），保留首尾
-        var COLD_TEXT_CAP = 200000; // ~67k tokens，给 facts 专家足够但不过量的上下文
-        var _factsColdText = coldText;
-        if (_factsColdText.length > COLD_TEXT_CAP) {
-            var _half = Math.floor(COLD_TEXT_CAP / 2);
-            _factsColdText = coldText.slice(0, _half) + '\n... [truncated ' + (coldText.length - COLD_TEXT_CAP) + ' chars] ...\n' + coldText.slice(-_half);
+        // ★ 冷文本多段均匀采样（4段 × 各50K chars = 200K），时空分布均匀，不偏首尾
+        var COLD_TEXT_CAP = 200000;
+        var _sampledColdText = coldText;
+        if (_sampledColdText.length > COLD_TEXT_CAP) {
+            var _segments = 4;
+            var _segSize = Math.floor(COLD_TEXT_CAP / _segments);
+            var _stride = Math.floor(coldText.length / _segments);
+            var _parts = [];
+            for (var _s = 0; _s < _segments; _s++) {
+                var _segStart = _s * _stride;
+                var _segEnd = Math.min(_segStart + _segSize, coldText.length);
+                _parts.push('--- Segment ' + (_s + 1) + '/' + _segments + ' (~' + Math.round(_segStart / coldText.length * 100) + '% position) ---\n' + coldText.slice(_segStart, _segEnd));
+            }
+            _sampledColdText = _parts.join('\n\n');
+            self._log('  ║ coldText sampled: ' + coldText.length + ' → ' + _sampledColdText.length + ' chars (' + _segments + ' segments × ~' + Math.round(_segSize / 1000) + 'k)');
         }
 
-        // ── ① facts 专家 prompt ──
-        var factsPrompt = [
-            'You are a context compression engine specializing in structured facts.',
-            'Merge existing facts with new conversation history into a SINGLE comprehensive facts array.',
+        // ── 单专家统一 prompt（facts + narrative + archive 三者合一，tier 6, 64K）──
+        var _existingNarrative = _oldNarrative || '(empty — this is the first compression)';
+        var _unifiedPrompt = [
+            'You are a context compression engine. Produce a COMPREHENSIVE compressed context in a SINGLE JSON output.',
             '',
-            'RULES:',
-            '  - Merge facts about the same topic — do NOT duplicate',
-            '  - If existing fact is still accurate, KEEP it (optionally reword for clarity)',
-            '  - Add new facts for new information only',
-            '  - Each fact MUST be self-contained: reading it alone tells the full story',
-            '  - Keywords MUST include exact file paths, function names, error codes',
-            '  - Drop vague facts. Quality over quantity.',
+            'Your budget is 64K tokens. USE IT. Do not be overly brief — this is the only record of these conversations.',
             '',
-            'FACT TYPES:',
-            '  file        — file paths read, written, created, deleted',
-            '  decision    — irreversible or costly choices and why',
-            '  error       — problems encountered and their resolution',
-            '  code_change — what was modified, added, removed in code',
-            '  preference  — user conventions, habits, dislikes discovered',
-            '  goal        — the user ultimate objective(s) for this quest',
-            '  blocker     — what is currently blocking progress',
-            '  context     — other critical info that does not fit above',
+            '═══════════════════════════════════════════',
+            'OUTPUT — pure JSON, no markdown, no explanation:',
+            '{',
+            '  "facts": [{ "type":"...", "content":"...", "keywords":["k1","k2"] }],',
+            '  "narrative": "...",',
+            '  "floors": [{ "n":<number>, "summary":"1-sentence", "keyFiles":["path"], "keyDecisions":["decision"], "errors":["error"] }]',
+            '}',
             '',
-            'OUTPUT — pure JSON, no markdown:',
-            '{"facts":[{"type":"file","content":"...","keywords":["k1","k2"]}]}',
+            '═══════════════════════════════════════════',
+            'FACTS RULES:',
+            '  ★ COVERAGE: Input is split into time segments spanning the FULL timeline. Extract from EVERY segment.',
+            '  ★ MERGE: Same file/topic/concept → ONE fact. If two facts overlap >50%, merge them.',
+            '  ★ Each fact MUST be self-contained: reading it alone tells the full story.',
+            '  ★ Keywords MUST include exact file paths, function names, error codes — no vague words.',
+            '  ★ Target 10-25 facts. Drop vague ones. Quality > quantity.',
+            '  ★ FACT TYPES: file / decision / error / code_change / preference / goal / blocker / context',
             '',
-            'EXISTING FACTS (' + _oldFacts.length + ' total):',
+            'NARRATIVE RULES:',
+            '  ★ Target 4000-12000 chars (~1.5K-4.5K tokens). USE THE BUDGET.',
+            '  ★ PRESERVE EVERY sentence from existing narrative (rewording OK, dropping = FAILURE).',
+            '  ★ COVERAGE: Most recent floors → detailed. Early floors → 1-2 sentences each. Middle → brief transitions.',
+            '  ★ Ensure EVERY distinct topic/thread is represented, even if briefly.',
+            '  ★ Be specific: cite file names, function names, decisions. No vague hand-waving.',
+            '',
+            'FLOORS RULES (optional — may be empty for first compression):',
+            '  ★ One record per floor: { n, summary, keyFiles, keyDecisions, errors }',
+            '',
+            '═══════════════════════════════════════════',
+            'EXISTING CONTEXT:',
+            '',
+            'FACTS (' + _oldFacts.length + ' total):',
             JSON.stringify(_oldFacts),
             '',
-            'NEW CONVERSATION HISTORY (' + coldMsgs.length + ' messages):',
-            _factsColdText
-        ].join('\n');
-
-        // ── ② narrative 专家 prompt ──
-        var _existingNarrative = _oldNarrative || '(empty — this is the first compression)';
-        var narrativePrompt = [
-            'You are a context compression engine specializing in narrative synthesis.',
-            'Merge the existing narrative with new conversation history into a SINGLE comprehensive narrative.',
-            '',
-            '!!! CRITICAL — NARRATIVE PRESERVATION !!!',
-            '  EVERY sentence from the existing narrative MUST survive in your output.',
-            '  Rewording is OK. Dropping any information = FAILURE.',
-            '  Add new information from the new conversation history.',
-            '  If nothing new to add, output the existing narrative VERBATIM.',
-            '  Be comprehensive but ruthlessly concise. Every word must earn its place.',
-            '',
-            'OUTPUT — pure JSON, no markdown:',
-            '{"narrative":"..."}',
-            '',
-            'EXISTING NARRATIVE:',
+            'NARRATIVE:',
             _existingNarrative,
             '',
-            'NEW CONVERSATION HISTORY (' + coldMsgs.length + ' messages):',
-            coldText
+            '═══════════════════════════════════════════',
+            'NEW CONVERSATION HISTORY (' + coldMsgs.length + ' messages, sampled into time segments):',
+            _sampledColdText
         ].join('\n');
 
-        // ── ③ archive 专家 prompt ──
-        var archivePrompt = [
-            'You are a context archivist. Produce a structured record of these floors for disaster recovery.',
-            '',
-            'OUTPUT — pure JSON, no markdown:',
-            '{"floors":[{"n":<floor number>,"summary":"1-sentence summary","keyFiles":["path"],"keyDecisions":["decision"],"errors":["error"]}]}',
-            '',
-            'CONVERSATION HISTORY (' + coldMsgs.length + ' messages):',
-            coldText
-        ].join('\n');
-
-        // ── 并行执行（最多 2 次总尝试）──
-        var _names = ['facts', 'narrative', 'archive'];
-        var _results = null;
+        // ── 单次调用（最多 2 次重试）──
+        var _result = null;
         var MAX_COMPACT_RETRIES = 2;
         for (var _retry = 0; _retry < MAX_COMPACT_RETRIES; _retry++) {
             try {
-                _results = await Promise.all([
-                    self._callCompactAPI(factsPrompt, ':facts', COMPACT_FACTS_TOKENS),
-                    self._callCompactAPI(narrativePrompt, ':narrative', COMPACT_NARRATIVE_TOKENS),
-                    self._callCompactAPI(archivePrompt, ':archive', COMPACT_ARCHIVE_TOKENS)
-                ]);
+                _result = await self._callCompactAPI(_unifiedPrompt, ':unified', COMPACT_MAX_TOKENS);
                 break;
             } catch (_err) {
                 if (_retry < MAX_COMPACT_RETRIES - 1) {
@@ -325,31 +317,57 @@
             }
         }
 
-        for (var ei = 0; ei < _results.length; ei++) {
-            var _r = _results[ei];
-            if (!_r) { self._log('✗ Compact expert ' + _names[ei] + ' returned null'); throw new Error(_names[ei] + '_expert_failed'); }
-            if (!_r.parsed) { self._log('✗ Compact expert ' + _names[ei] + ' returned no parsed data (ttfb=' + _r.ttfbMs + 'ms total=' + _r.totalMs + 'ms)'); throw new Error(_names[ei] + '_expert_failed'); }
-            if (COMPACT_DEBUG) { _debugTrace.experts[_names[ei]] = { ok: true, ms: _r.totalMs, parsedKeys: Object.keys(_r.parsed) }; }
-        }
+        if (!_result) { self._log('✗ Compact unified returned null'); throw new Error('compact_unified_failed'); }
+        if (!_result.parsed) { self._log('✗ Compact unified returned no parsed data (ttfb=' + _result.ttfbMs + 'ms total=' + _result.totalMs + 'ms)'); throw new Error('compact_unified_failed'); }
 
-        var _parsedFacts = _results[0].parsed;
-        var _parsedNarrative = _results[1].parsed;
-        var _parsedArchive = _results[2].parsed;
+        var _parsed = _result.parsed;
 
-        var _newFacts = _parsedFacts.facts;
-        if (!_newFacts || !Array.isArray(_newFacts)) throw new Error('facts_expert_output_invalid');
+        // ── 处理 facts ──
+        var _newFacts = _parsed.facts;
+        if (!_newFacts || !Array.isArray(_newFacts)) throw new Error('facts_output_invalid');
         for (var fi = 0; fi < _newFacts.length; fi++) {
             _newFacts[fi].floor = self._ctx.totalFloors;
         }
-        self._ctx.facts = _newFacts;
+        // ★ 后处理: 合并同话题事实（相同 type + 关键词重叠 >50% → 合并为一条）
+        var _mergedFacts = [];
+        var _mergedIdx = [];
+        for (var fi2 = 0; fi2 < _newFacts.length; fi2++) {
+            if (_mergedIdx.indexOf(fi2) >= 0) continue;
+            var _f = _newFacts[fi2];
+            var _merged = { type: _f.type, content: _f.content, keywords: (_f.keywords || []).slice() };
+            for (var fj = fi2 + 1; fj < _newFacts.length; fj++) {
+                if (_mergedIdx.indexOf(fj) >= 0) continue;
+                var _g = _newFacts[fj];
+                if (_g.type === _f.type) {
+                    var _kwOverlap = 0;
+                    if ((_f.keywords || []).length > 0 && (_g.keywords || []).length > 0) {
+                        for (var _ki = 0; _ki < _f.keywords.length; _ki++) {
+                            if (_g.keywords.indexOf(_f.keywords[_ki]) >= 0) _kwOverlap++;
+                        }
+                        if (_kwOverlap / Math.min(_f.keywords.length, _g.keywords.length) > 0.5) {
+                            _merged.content = _merged.content + ' | ' + _g.content;
+                            for (var _kj = 0; _kj < _g.keywords.length; _kj++) {
+                                if (_merged.keywords.indexOf(_g.keywords[_kj]) < 0) _merged.keywords.push(_g.keywords[_kj]);
+                            }
+                            _mergedIdx.push(fj);
+                        }
+                    }
+                }
+            }
+            _mergedFacts.push(_merged);
+        }
+        if (_mergedFacts.length < _newFacts.length) {
+            self._log('  ║ facts merged: ' + _newFacts.length + ' → ' + _mergedFacts.length + ' (' + (_newFacts.length - _mergedFacts.length) + ' duplicates removed)');
+        }
+        self._ctx.facts = _mergedFacts;
 
-        var _newNarrative = _parsedNarrative.narrative;
-        if (!_newNarrative || typeof _newNarrative !== 'string') throw new Error('narrative_expert_output_invalid');
-        // 首次压缩：narrative 至少要有基本内容
-        if (!_oldNarrative && _newNarrative.length < 100) {
+        // ── 处理 narrative ──
+        var _newNarrative = _parsed.narrative;
+        if (!_newNarrative || typeof _newNarrative !== 'string') throw new Error('narrative_output_invalid');
+        if (!_oldNarrative && _newNarrative.length < 200) {
             throw new Error('narrative_too_short_first_compress');
         }
-        // 缩水检测：用 token 估算而非字符数（中英文密度不同）
+        // 缩水检测
         if (_oldNarrative) {
             var _oldTok = Math.round(_oldNarrative.length / CHAR_PER_TOKEN_EST);
             var _newTok = Math.round(_newNarrative.length / CHAR_PER_TOKEN_EST);
@@ -365,9 +383,10 @@
         }
         self._ctx.narrative = _newNarrative;
 
-        if (_parsedArchive.floors && Array.isArray(_parsedArchive.floors)) {
+        // ── 处理 archives ──
+        if (_parsed.floors && Array.isArray(_parsed.floors)) {
             var _archives = self._ctx.floorArchives || [];
-            _archives = _archives.concat(_parsedArchive.floors);
+            _archives = _archives.concat(_parsed.floors);
             var _totalChars = 0;
             for (var ai = _archives.length - 1; ai >= 0; ai--) {
                 _totalChars += JSON.stringify(_archives[ai]).length;
@@ -379,17 +398,17 @@
             self._ctx.floorArchives = _archives;
         }
 
+        // ★ 一致性天然保证（同一模型同一上下文），无需 cross-check 专家
+
         if (COMPACT_DEBUG) {
             self._compactTraces = self._compactTraces || [];
-            _debugTrace.experts.facts.outputPreview = JSON.stringify(_newFacts).slice(0, 1000);
-            _debugTrace.experts.narrative.outputPreview = _newNarrative.slice(0, 1000);
-            _debugTrace.experts.archive.outputPreview = JSON.stringify(_parsedArchive).slice(0, 1000);
+            _debugTrace.experts.unified = { ok: true, ms: _result.totalMs, factsLen: _mergedFacts.length, narrativeLen: _newNarrative.length, archiveLen: (_parsed.floors ? _parsed.floors.length : 0) };
             _debugTrace.allSucceeded = true;
             self._compactTraces.push(_debugTrace);
             if (self._compactTraces.length > 10) self._compactTraces = self._compactTraces.slice(-10);
         }
 
-        self.log('◆ Context: +' + _newFacts.length + ' facts, narrative=' + _newNarrative.length + 'c, archives=' + (self._ctx.floorArchives ? self._ctx.floorArchives.length : 0));
+        self.log('◆ Context: +' + _mergedFacts.length + ' facts, narrative=' + _newNarrative.length + 'c, archives=' + (self._ctx.floorArchives ? self._ctx.floorArchives.length : 0));
     };
 
     // ═══ 从 archive 重建 narrative ═══
@@ -408,7 +427,7 @@
             _archiveText
         ].join('\n');
         try {
-            var _result = await self._callCompactAPI(_prompt, ':rebuild', COMPACT_NARRATIVE_TOKENS);
+            var _result = await self._callCompactAPI(_prompt, ':rebuild', COMPACT_MAX_TOKENS);
             if (_result && _result.parsed && _result.parsed.narrative) {
                 return _result.parsed.narrative;
             }
@@ -460,22 +479,24 @@
     }
 
     // ═══ 调用 API 做精简（经 AiGateway 统一出口 §14b） ═══
+    // ★ 固定 tier 6 + reasoning_effort max + thinking enabled，压缩质量优先
     AgentLoop.prototype._callCompactAPI = async function (prompt, suffix, maxTokens) {
         var self = this;
         var _fetchStart = performance.now();
         var _suffix = suffix || '';
-        var _maxTokens = maxTokens || COMPACT_NARRATIVE_TOKENS;
+        var _maxTokens = maxTokens || COMPACT_MAX_TOKENS;
 
         try {
             var resp = await AiGateway.chatFetch({
                 model: 'deep',
+                tier: 6,
+                thinking: { type: 'enabled' },
+                reasoning_effort: 'max',
                 messages: [
                     { role: 'system', content: 'You are a context compression engine. Output ONLY valid JSON — no markdown, no explanation. Be concise and precise. Your output MUST fit within the token budget.' },
                     { role: 'user', content: prompt }
                 ],
                 stream: false,
-                // ★ 读 ContentGateway 常量，改只改一处
-                thinking: { type: (typeof ContentGateway !== 'undefined' && ContentGateway.COMPACT_THINKING_ENABLED) ? 'enabled' : 'disabled' },
                 max_tokens: _maxTokens,
                 floor_id: (self._floorId || 'compact') + _suffix
             }, { compact: true });

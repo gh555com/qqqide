@@ -486,15 +486,17 @@ Timeline 文件版本时间线 (2026-06-13 钩子Q+X重构，2026-06-21 终极�
 --------------------------------------------------------------
 独立 BrowserWindow + Monaco Diff Editor。旧系统全部删除。
 
-存储（极简，零延迟，三文件）: {projectRoot}/qqq/timeline/
+存储（极简，零延迟）: {projectRoot}/qqq/timeline/
   blobs/{sha256[:2]}/{sha256}.gz — 内容不可变，永不删除（SHA256 寻址 + gzip，git 内核）
   timeline.wal — NDJSON 增量日志（每快照追加一行 ~100B，最多 99 行）
   timeline.db — SQLite 全量快照（每 100 条压缩一次，db.export→.bak 同步备份）
   timeline.db.bak — 索引备份（压缩后同步更新，.db 损坏时自动恢复）
   ★ SHA256 行尾归一化（CRLF/LF/CR→\n），同内容必同 hash，零幽灵版本
+  ★ file_seq: per-file 自增序号（2026-06-26 新增），插入时自动计算
+    旧条目为 NULL，diff 下拉降级为 UI 序号。AI 可用 WHERE file_seq=N 直查新快照
   ★ 写入: 每条快照→内存 INSERT + append .wal（零延迟）；第 100 条→压缩 .db + .bak→清 .wal
   ★ 恢复: 加载 .db（损坏→.bak→空库）→ 回放 .wal（≤99行）→ 完整
-  ★ 退出时强制压缩一次。无 2s debounce，无 archive 目录。，无篡改风险）
+  ★ 退出时强制压缩一次。无 2s debounce，无 archive 目录，无篡改风险
 
 触发: 5种时机（3 种 source）—
   ① 钩子 Q — AI写工具(edit/write/create/delete) → _a4PersistToTimeline，source='q'

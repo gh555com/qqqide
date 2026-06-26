@@ -464,7 +464,8 @@
     function _sourceLabel(source, floorId) {
         if (source === 'q') {
             var trace = _parseFloorId(floorId);
-            return _compactTrace(trace) || 'q';
+            // ★ trace 为空时不降级为 'q'（竞态或记录失败导致）
+            return _compactTrace(trace) || '';
         }
         if (source === 'editx') return 'editx';
         if (source === 'diff-edit') return 'diff edit';
@@ -490,6 +491,7 @@
                 sourceLabel: sourceLabel,
                 diffStr: diffStr,
                 isFirst: (i === 0),
+                file_seq: v.file_seq,
             });
         }
         var isFirst = options.length === 0;
@@ -575,8 +577,8 @@
             var fullLabel = o.label;
             if (o.diffStr) fullLabel += ' ' + o.diffStr;
             if (o.sourceLabel) fullLabel += ' ' + o.sourceLabel;
-            // ★ 每行分配永不回退的编号（per-file 自增，按 id ASC 排序）
-            var seqNo = mergedOptions.length + 1;
+            // ★ 每行编号优先用 DB file_seq（AI 可直接用编号查快照），降级为 UI 序号
+            var seqNo = (o.file_seq != null) ? o.file_seq : (mergedOptions.length + 1);
             var labeledLabel = '#' + seqNo + ' ' + fullLabel;
             mergedOptions.push({ value: o.value, label: o.label, fullLabel: labeledLabel, markers: markers, _blobHash: o._blobHash, isLast: o.isLast, ts: o.ts, sourceLabel: o.sourceLabel });
         }

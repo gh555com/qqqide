@@ -229,14 +229,14 @@ var _WRITE_TOOLS = ['edit_file', 'create_file', 'write_file', 'delete_file', 'ru
 // ② 有版本但 last ≠ 当前内容 → 记录（外部改过）
 // ③ 有版本且 last == 当前内容 → 返回已有 blob_hash
 async function _a4EnsureBeforeBaseline(filePath, currentContent) {
+    // ★ 在 await 前捕获 trace（防止并行工具竞态覆盖）
+    var traceObj = (typeof window !== 'undefined' && window._qqqCurrentTrace) ? window._qqqCurrentTrace : null;
     var root = await _resolveProjectRoot(filePath);
     if (!root) return null;
     var bridge = getBridge();
     if (!bridge || !bridge.timeline) return null;
 
     try {
-        // ★ 读取当前 trace
-        var traceObj = (typeof window !== 'undefined' && window._qqqCurrentTrace) ? window._qqqCurrentTrace : null;
         var floorId = null;
         if (traceObj && traceObj.questId && traceObj.floorNum) {
             floorId = 'q' + traceObj.questId.replace(/^q/i, '') + '/f' + traceObj.floorNum +
@@ -274,7 +274,8 @@ async function _a4EnsureBeforeBaseline(filePath, currentContent) {
             source: 'q', floorId: floorId, addedLines: 0, deletedLines: 0
         });
         return (rec2 && rec2.ok) ? rec2.blob_hash : null;
-    } catch (_) {
+    } catch (err) {
+        console.error('[a4] _a4EnsureBeforeBaseline error:', (err && err.message) || err, filePath);
         return null;
     }
 }
@@ -603,6 +604,8 @@ async function _a4PersistSnapshots(ag, questNumericId, floorNum) {
 // ★ 钩子 Q 核心：记录 both before+after 到 timeline（含 trace + diff stats）
 // ★ SHA256 去重由服务端处理（不再 UPDATE ts），直接调用即可
 async function _a4PersistToTimeline(filePath, op, before, after, ag) {
+    // ★ 在 await 前捕获 trace（防止并行工具竞态覆盖）
+    var traceObj = (typeof window !== 'undefined' && window._qqqCurrentTrace) ? window._qqqCurrentTrace : null;
     var root = await _resolveProjectRoot(filePath); // ★ 终极架构：文件自寻主
     if (!root) return;
     var bridge = getBridge();
@@ -610,11 +613,8 @@ async function _a4PersistToTimeline(filePath, op, before, after, ag) {
 
     var diffStats = _a4DiffStats(before, after);
 
-    // ★ 读取当前 trace（agent-loop.js 埋的全局标记）
-    var traceObj = (typeof window !== 'undefined' && window._qqqCurrentTrace) ? window._qqqCurrentTrace : null;
     var floorId = null;
     if (traceObj && traceObj.questId && traceObj.floorNum) {
-        // 格式: "q38/f14/h3/r2" — quest/floor/house/room
         floorId = 'q' + traceObj.questId.replace(/^q/i, '') + '/f' + traceObj.floorNum +
             '/h' + (traceObj.houseIdx || 0) + '/r' + (traceObj.roomIdx || 0);
     }
@@ -632,7 +632,9 @@ async function _a4PersistToTimeline(filePath, op, before, after, ag) {
             if (aRec && aRec.ok && snapEntry) {
                 snapEntry.afterBlobHash = aRec.blob_hash;
             }
-        } catch (_) { }
+        } catch (_e) {
+            console.error('[a4] _a4PersistToTimeline error:', (_e && _e.message) || _e, filePath);
+        }
     }
 
     // ★ before 已由 _a4EnsureBeforeBaseline 记录，此处不重复

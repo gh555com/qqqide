@@ -62,14 +62,15 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
             if (!projectRoot || !filePath) return [];
             const normalizedPath = filePath.replace(/\\/g, '/');
             const db = await _tlOpenDb(projectRoot);
-            const stmt = db.prepare('SELECT id, ts, blob_hash, source, floor_id, added_lines, deleted_lines FROM versions WHERE file_path = ? ORDER BY id ASC');
+            const stmt = db.prepare('SELECT id, ts, blob_hash, source, floor_id, added_lines, deleted_lines, file_seq FROM versions WHERE file_path = ? ORDER BY id ASC');
             stmt.bind([normalizedPath]);
             const versionRows: any[] = [];
             while (stmt.step()) {
                 const row = stmt.getAsObject();
                 versionRows.push({
                     id: row.id, ts: row.ts, blob_hash: row.blob_hash, source: row.source, floor_id: row.floor_id,
-                    added_lines: row.added_lines, deleted_lines: row.deleted_lines
+                    added_lines: row.added_lines, deleted_lines: row.deleted_lines,
+                    file_seq: row.file_seq
                 });
             }
             stmt.free();

@@ -639,7 +639,7 @@ document.getElementById('ctx-cancel').onclick = function () {
     document.getElementById('ctx-panel').style.display = 'none';
 };
 // ═══ 手动压缩 — 唯一真理机器 ═══
-// 等同于 send "请帮我压缩上下文" → 楼层管理器接管一切
+// 建专属楼层 → 创建 DOM → 渲染压缩卡片 → 执行压缩 → 封顶保存
 // 渲染用 _renderCompressStart / _renderCompressResult（与 auto 共用）
 document.getElementById('ctx-compress').onclick = async function () {
     document.getElementById('ctx-panel').style.display = 'none';
@@ -648,47 +648,108 @@ document.getElementById('ctx-compress').onclick = async function () {
     if (_sending) return;
     if (_ag._compressing) return;
 
+    // ★ 所有权检查
+    var _ownerPanel = _parentGetQuestOwner(questActiveId);
+    if (_ownerPanel !== undefined && _ownerPanel !== _panelId) return;
+
     _ag._compressing = true;
     window._updateSendBtnForCompress(true);
+    var _floorNum = 0;
+    var _aiDiv = null;
     try {
-        _ag._ctx.totalFloors++;
-        var _floorNum = _ag._ctx.totalFloors;
-        _ag._floorStartIdx = _ag.conversation.length;
+        // ① 分配楼层号（questStore 原子自增，不碰 _ctx.totalFloors）
+        _floorNum = await questStore.nextFloorNum(questActiveId);
+        _ag._currentFloorNum = _floorNum;
         _ag._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ((typeof _panelId !== 'undefined') ? ['_L', '_C', '_R'][_panelId] || '' : '');
 
+        // ② 计算 floor 目录路径（同 panel-send.js 管线）
+        var _root = questStore.getProjectRoot();
+        var _questList = await questStore.list();
+        var _qEntry = _questList.find(function (qx) { return qx.id === questActiveId; });
+        var _qTitle = (_qEntry && _qEntry.title && _qEntry.title !== 'New Chat') ? _qEntry.title : '';
+        var _qNumericId = (_qEntry && _qEntry.numericId) ? _qEntry.numericId : parseInt(questActiveId.replace('q', ''), 10) || 0;
+        var _qDirName = await _resolveQuestDirName(_root, questActiveId, _qNumericId, _qTitle);
+        var _fDirName = _makeName('f', _floorNum, '请帮我压缩上下文');
+        var _ensured = await _ensureQuestDir(_root, _qDirName, _fDirName);
+        var _allTxtDir = _ensured && _ensured.fDir ? _ensured.fDir : (_root + '/qqq/quests/' + _qDirName + '/' + _fDirName + '/');
+        var _allTxtPath = _allTxtDir + 'all.txt';
+
+        // ③ 设置 agent 不可变元数据
+        _ag._floorStartIdx = _ag.conversation.length;
+        if (!_ag._floorMeta) _ag._floorMeta = {};
+        _ag._floorMeta[_floorNum] = {
+            floorStartIdx: _ag._floorStartIdx,
+            allTxtPath: _allTxtPath,
+            _fDir: _allTxtDir,
+            createdAt: Date.now()
+        };
+        _ag._allTxtPath = _allTxtPath;
+        _ag._houses = [];
+        _ag._a4Snapshots = {};
+        _ag._lastAutoSaveLen = 0;
+        _ag._lastFloorTimingRecord = null;
+        _ag._floorCostWge = 0;
+        _ag._compressFloor = true;
+
+        // ④ 创建楼层 DOM（A1 + 时钟 + 内容区）
+        _aiDiv = cardPool.startBuildingFloor(questActiveId, _floorNum, _allTxtPath);
+        if (!_aiDiv) throw new Error('startBuildingFloor returned null');
+        _aiDiv._allTxtPath = _allTxtPath;
+        _ag._activeAiDiv = _aiDiv;
+
+        // ⑤ 推入用户消息
         _ag.conversation.push({ role: 'user', content: '请帮我压缩上下文', _floor: _floorNum });
         _ag._lastUserInput = { text: '请帮我压缩上下文', vision: '' };
 
+        // ⑥ 启动楼层计时器 + 滚动到底
+        if (typeof startFloorTimer === 'function') startFloorTimer(_aiDiv, _ag);
+        if (typeof scrollToBottom === 'function') scrollToBottom(true);
+
+        // ⑦ 压缩（渲染卡片在 _aiDiv 内，用户可见）
         var _reason = 'Manual compress';
         _ag._renderCompressStart(_reason);
         var _result = await _ag._compressContext({ trigger: 'manual', detail: _reason, force: true });
         _ag._renderCompressResult(_result);
 
-        // ★ 给 az 区提供真实数据：压缩耗时、标记为压缩楼层
-        _ag._lastFloorTimingRecord = {
-            floorIndex: _floorNum,
-            durationMs: _result.elapsedMs || 0,
-            networkMs: 0,
-            aiMs: _result.elapsedMs || 0,
-            toolMs: 0,
-            finishedAt: new Date().toISOString()
-        };
-        _ag._floorCostWge = 0;
-        _ag._compressFloor = true;  // ★ 标记为压缩楼层，_buildFloorDOM 识别用);
+        // ⑧ 停止计时（捕获 timing 数据）
+        var _timing = (typeof stopFloorTimer === 'function') ? stopFloorTimer(null, _ag) : null;
+        if (_timing) {
+            _timing.floorIndex = _floorNum;
+            _ag._lastFloorTimingRecord = _timing;
+        } else {
+            _ag._lastFloorTimingRecord = {
+                floorIndex: _floorNum,
+                durationMs: _result.elapsedMs || 0,
+                networkMs: 0,
+                aiMs: _result.elapsedMs || 0,
+                toolMs: 0,
+                finishedAt: new Date().toISOString()
+            };
+        }
 
+        // ⑨ 推入 AI 回复
         var _assistantMsg = _result.compressed
             ? ('✅ Compress completed\n' + _result.detail)
             : ('ℹ️ ' + (_result.detail || 'No compression needed'));
         _ag.conversation.push({ role: 'assistant', content: _assistantMsg, _floor: _floorNum });
 
+        // ⑩ 封顶 + 保存 + all.txt
+        cardPool.completeBuildingFloor(questActiveId, _floorNum);
         if (typeof _saveAgentQuestData === 'function') {
             await _saveAgentQuestData(questActiveId, _ag, _floorNum).catch(function () { });
         }
+        if (typeof generateFloorTxt === 'function') {
+            generateFloorTxt(_ag, questActiveId).catch(function () { });
+        }
         updateCtxBtn();
     } catch (e) {
-        _ag.conversation.push({ role: 'assistant', content: '✗ Compress failed: ' + (e.message || 'unknown'), _floor: _floorNum });
-        if (typeof _saveAgentQuestData === 'function') {
-            await _saveAgentQuestData(questActiveId, _ag, _floorNum).catch(function () { });
+        if (_floorNum > 0) {
+            _ag.conversation.push({ role: 'assistant', content: '✗ Compress failed: ' + (e.message || 'unknown'), _floor: _floorNum });
+            // ★ 失败时也有 DOM（步骤④之后失败），必须封顶防僵尸
+            try { cardPool.completeBuildingFloor(questActiveId, _floorNum); } catch (_) {}
+            if (typeof _saveAgentQuestData === 'function') {
+                await _saveAgentQuestData(questActiveId, _ag, _floorNum).catch(function () { });
+            }
         }
         updateCtxBtn();
     } finally {

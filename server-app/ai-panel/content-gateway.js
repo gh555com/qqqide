@@ -34,13 +34,10 @@
     var COMPRESS_THRESHOLD = 200000;  // 压缩触发阈值（200k tokens，约 20% 窗口）
     var MAX_TOKENS_SAFETY = 10000;    // max_tokens 帽安全余量
     var CHAR_PER_TOKEN = 2.7;         // 统一 chars→tokens 估算比例（2026-06-22 校准: 3.0→2.7）
-    // 三专家输出阀值
-    var COMPACT_FACTS_TOKENS = 32768;     // ① facts 专家 32k（facts 可能很多，给足空间）
-    var COMPACT_NARRATIVE_TOKENS = 32768; // ② narrative 专家 32k
-    var COMPACT_ARCHIVE_TOKENS = 32768;   // ③ archive 专家 32k
+    // 单专家统一压缩参数（tier 6, 64K max_tokens）
+    var COMPACT_MAX_TOKENS = 65536;       // 单专家统一 max_tokens（旧三专家 3×32K 已废弃）
     var ARCHIVE_MAX_CHARS = 1000000;      // archive 硬上限 ~1M chars
     var COMPACT_DEBUG = true;            // 压缩埋点开关（调试期开，稳定后关）
-    var COMPACT_THINKING_ENABLED = false; // 压缩是 JSON 提取，禁 thinking。true 会让模型推理很久后超时
 
     // ═══ 二进制检测 ═══
     function detectBinary(str) {
@@ -113,13 +110,10 @@
         COMPRESS_THRESHOLD: COMPRESS_THRESHOLD,
         MAX_TOKENS_SAFETY: MAX_TOKENS_SAFETY,
         CHAR_PER_TOKEN: CHAR_PER_TOKEN,
-        // 三专家阀值
-        COMPACT_FACTS_TOKENS: COMPACT_FACTS_TOKENS,
-        COMPACT_NARRATIVE_TOKENS: COMPACT_NARRATIVE_TOKENS,
-        COMPACT_ARCHIVE_TOKENS: COMPACT_ARCHIVE_TOKENS,
+        // 单专家统一阀值
+        COMPACT_MAX_TOKENS: COMPACT_MAX_TOKENS,
         ARCHIVE_MAX_CHARS: ARCHIVE_MAX_CHARS,
-        COMPACT_DEBUG: COMPACT_DEBUG,
-        COMPACT_THINKING_ENABLED: COMPACT_THINKING_ENABLED
+        COMPACT_DEBUG: COMPACT_DEBUG
     };
 
     // [silent] content-gateway ready
