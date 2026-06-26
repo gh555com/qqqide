@@ -469,3 +469,9 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - npm run build = 一次性 esbuild。npm run pack:win-x64 等 → dist-pack/。
   - 部署: ③ Deploy 按钮 → ssh 上传 server-app/ + shell-out/ 到 US 生产。
   - 引擎: ghrun (进程管理+Rust spawn)、ripgrep (全文搜索)、q_win_x64 (AI 推理)。
+
+§47 INFRA OPSEC — AI 输出基础设施屏蔽（2026-06-26）
+  - AI 禁止在任何对用户输出中暴露内部基础设施信息。
+  - 禁止项: 内部域名/URL/IP/端口、API 路径、服务器名、项目代号(gaea等)、后端组件名、API key 状态、配额详情、部署拓扑。
+  - 工具失败时：仅回复"该功能暂时不可用，请稍后再试。"禁推测根因/列可能原因/建议查服务器配置。
+  - 此规则在 system-prompt.js 的 INFRA OPSEC 段落地，与本文档互为唯一真理源。

@@ -691,27 +691,32 @@ document.getElementById('ctx-compress').onclick = async function () {
         _ag._floorCostWge = 0;
         _ag._compressFloor = true;
 
-        // ④ 创建楼层 DOM（A1 + 时钟 + 内容区）
+        // ④ 推入用户消息到 conversation（必须在 startBuildingFloor 之前）
+        _ag.conversation.push({ role: 'user', content: '请帮我压缩上下文', _floor: _floorNum });
+        _ag._lastUserInput = { text: '请帮我压缩上下文', vision: '' };
+
+        // ⑤ 创建楼层 DOM（A1 + 时钟 + 内容区）
         _aiDiv = cardPool.startBuildingFloor(questActiveId, _floorNum, _allTxtPath);
         if (!_aiDiv) throw new Error('startBuildingFloor returned null');
         _aiDiv._allTxtPath = _allTxtPath;
         _ag._activeAiDiv = _aiDiv;
 
-        // ⑤ 推入用户消息
-        _ag.conversation.push({ role: 'user', content: '请帮我压缩上下文', _floor: _floorNum });
-        _ag._lastUserInput = { text: '请帮我压缩上下文', vision: '' };
+        // ⑥ 渲染用户消息气泡（粉色背景）
+        if (typeof addUserMessageEl === 'function') {
+            addUserMessageEl('请帮我压缩上下文');
+        }
 
-        // ⑥ 启动楼层计时器 + 滚动到底
+        // ⑦ 启动楼层计时器 + 滚动到底
         if (typeof startFloorTimer === 'function') startFloorTimer(_aiDiv, _ag);
         if (typeof scrollToBottom === 'function') scrollToBottom(true);
 
-        // ⑦ 压缩（渲染卡片在 _aiDiv 内，用户可见）
+        // ⑧ 压缩（渲染卡片在 _aiDiv 内，用户可见）
         var _reason = 'Manual compress';
         _ag._renderCompressStart(_reason);
         var _result = await _ag._compressContext({ trigger: 'manual', detail: _reason, force: true });
         _ag._renderCompressResult(_result);
 
-        // ⑧ 停止计时（捕获 timing 数据）
+        // ⑨ 停止计时
         var _timing = (typeof stopFloorTimer === 'function') ? stopFloorTimer(null, _ag) : null;
         if (_timing) {
             _timing.floorIndex = _floorNum;
@@ -727,13 +732,13 @@ document.getElementById('ctx-compress').onclick = async function () {
             };
         }
 
-        // ⑨ 推入 AI 回复
+        // ⑩ 推入 AI 回复
         var _assistantMsg = _result.compressed
             ? ('✅ Compress completed\n' + _result.detail)
             : ('ℹ️ ' + (_result.detail || 'No compression needed'));
         _ag.conversation.push({ role: 'assistant', content: _assistantMsg, _floor: _floorNum });
 
-        // ⑩ 封顶 + 保存 + all.txt
+        // ⑪ 封顶 + 保存 + all.txt
         cardPool.completeBuildingFloor(questActiveId, _floorNum);
         if (typeof _saveAgentQuestData === 'function') {
             await _saveAgentQuestData(questActiveId, _ag, _floorNum).catch(function () { });
@@ -745,7 +750,7 @@ document.getElementById('ctx-compress').onclick = async function () {
     } catch (e) {
         if (_floorNum > 0) {
             _ag.conversation.push({ role: 'assistant', content: '✗ Compress failed: ' + (e.message || 'unknown'), _floor: _floorNum });
-            // ★ 失败时也有 DOM（步骤④之后失败），必须封顶防僵尸
+            // ★ 失败时也有 DOM（步骤⑤之后失败），必须封顶防僵尸
             try { cardPool.completeBuildingFloor(questActiveId, _floorNum); } catch (_) {}
             if (typeof _saveAgentQuestData === 'function') {
                 await _saveAgentQuestData(questActiveId, _ag, _floorNum).catch(function () { });

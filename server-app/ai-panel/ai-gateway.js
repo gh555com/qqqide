@@ -158,7 +158,7 @@
             var token = opts.token || _getToken();
             if (!token) throw new Error('No token');
 
-            // ★ 压缩路径：不覆写 model，不设超时，纯粹透传
+            // ★ 压缩路径：不覆写 model，透传 body，但必须带超时（裸 fetch 仅 ~30s 不够）
             if (opts.compact) {
                 var _isFallback = opts.isFallback || false;
                 var _primaryUrl = _URLS.chatPrimary;
@@ -166,7 +166,8 @@
                 var _url = _isFallback ? _fallbackUrl : _primaryUrl;
                 var _hdrs = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
                 if (_isFallback) _hdrs['X-Key-Slot'] = '1';
-                return fetch(_url, { method: 'POST', headers: _hdrs, body: JSON.stringify(body) });
+                // 压缩可能很长（大 prompt + 64K 输出 + deep thinking），用 10min 超时
+                return _fetchWithTimeout(_url, { method: 'POST', headers: _hdrs, body: JSON.stringify(body) }, 600000);
             }
 
             // ★ 模型映射：客户端只传 fast/deep

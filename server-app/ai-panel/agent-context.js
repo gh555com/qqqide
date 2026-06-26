@@ -490,6 +490,7 @@
             var resp = await AiGateway.chatFetch({
                 model: 'deep',
                 tier: 6,
+                // ★ tier 6 全开：thinking enabled + reasoning_effort max
                 thinking: { type: 'enabled' },
                 reasoning_effort: 'max',
                 messages: [
