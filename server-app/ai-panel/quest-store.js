@@ -1062,10 +1062,14 @@ var QuestStore = (function () {
         return await b.atomicIncr('floor_counter.' + questId);
     };
 
-    // ★ 保存楼层 — 唯一真理源 quest.sq3（不再写 all.json）
+    // 保存楼层 — all.json 真理源 + sq3 轻量索引
     QuestStore.prototype.saveFloor = async function (questId, floorNum, floorData) {
         floorData.savedAt = Date.now();
 
+        // 1) ★ 写 all.json（真理源）— 串行锁防 auto-save/onDone 并发 tmp→rename 竞态
+        await _writeFloorFile(questId, floorNum, floorData);
+
+        // 2) 解析当前路径写入 sq3 轻量索引（quest 元数据 + 快速查找）
         var _fDir = floorData._fDir || '';
         if (!_fDir) {
             var resolved = await _resolveFloorDir(questId, floorNum);
@@ -1088,35 +1092,19 @@ var QuestStore = (function () {
             }
         }
 
-        // ★ 全量真理记录（替代 all.json）— 存 quest.sq3，原子写入零 tmp 残留
-        var truthRecord = {
+        // 3) sq3 轻量索引（含预渲染字段：house_count / room_count，不包括 conversation/houses/ai_html）
+        var lightRecord = {
             _fDir: _fDir,
-            question: floorData.question || '',
-            question_clean: floorData.question_clean || (floorData.question || ''),
-            ai_html: floorData.ai_html || '',
-            conversation_json: floorData.conversation || [],
-            houses_json: floorData.houses || [],
-            house_count: floorData.house_count != null ? floorData.house_count : ((floorData.houses && floorData.houses.length) || 0),
+            question: floorData.question_clean || floorData.question || '',
+            house_count: floorData.house_count != null ? floorData.house_count : 0,
             room_count: floorData.room_count != null ? floorData.room_count : 0,
-            file_count: (floorData.fileStats && floorData.fileStats.fileCount) || 0,
-            file_added: (floorData.fileStats && floorData.fileStats.added) || 0,
-            file_deleted: (floorData.fileStats && floorData.fileStats.deleted) || 0,
             costWge: floorData.costWge || 0,
-            clockTiming: floorData.clockTiming || null,
-            a4Snapshots: floorData.a4Snapshots || null,
-            a2Treasures: floorData.a2Treasures || null,
-            allTxtPath: floorData.allTxtPath || '',
-            tierLabel: floorData.tierLabel || '',
-            images: floorData.images || [],
-            _floorStartIdx: floorData._floorStartIdx || 0,
-            _streamingText: floorData._streamingText || '',
-            _streaming: !!floorData._streaming,
-            createdAt: floorData.createdAt || Date.now(),
+            createdAt: floorData.createdAt,
             savedAt: floorData.savedAt
         };
-        await _setNow(FLOOR_NS + '.' + questId + '.' + floorNum, truthRecord);
+        await _setNow(FLOOR_NS + '.' + questId + '.' + floorNum, lightRecord);
 
-        // 3) 更新 quest.floors[] 列表
+        // 4) 更新 quest.floors[] 列表
         var qData = await _get(QUEST_NS + '.' + questId) || {};
         var floors = qData.floors || [];
         var found = false;
@@ -1142,34 +1130,8 @@ var QuestStore = (function () {
     };
 
     // 加载单层楼 — 全部来自 all.json（唯一真理源）
-    // ★ 从 sq3 加载楼层（不再读 all.json）
     QuestStore.prototype.loadFloor = async function (questId, floorNum) {
-        var record = await _get(FLOOR_NS + '.' + questId + '.' + floorNum);
-        if (!record) return null;
-        // ★ 映射 sq3 truthRecord 到旧 all.json 字段名（兼容下游消费方）
-        return {
-            question: record.question || '',
-            question_clean: record.question_clean || (record.question || ''),
-            ai_html: record.ai_html || '',
-            conversation: record.conversation_json || [],
-            houses: record.houses_json || [],
-            house_count: record.house_count || 0,
-            room_count: record.room_count || 0,
-            costWge: record.costWge || 0,
-            clockTiming: record.clockTiming || null,
-            a4Snapshots: record.a4Snapshots || null,
-            a2Treasures: record.a2Treasures || null,
-            fileStats: { fileCount: record.file_count || 0, added: record.file_added || 0, deleted: record.file_deleted || 0 },
-            allTxtPath: record.allTxtPath || '',
-            _floorStartIdx: record._floorStartIdx || 0,
-            _fDir: record._fDir || '',
-            createdAt: record.createdAt || Date.now(),
-            savedAt: record.savedAt || Date.now(),
-            _streamingText: record._streamingText || '',
-            _streaming: !!record._streaming,
-            tierLabel: record.tierLabel || '',
-            images: record.images || []
-        };
+        return await _readFloorFile(questId, floorNum);
     };
 
     // ★ 动态解析 floor 目录完整路径（防 _fDir 过期导致图片 404）

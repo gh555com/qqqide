@@ -50,9 +50,6 @@ function _saveAgentFloor(ag, questId, force) {
 var _AUTOSAVE_INTERVAL = 5000;
 var _autoSaveRunning = false;
 // ★ 面板级持久定时器：启动一次，永不停止，遍历 agentPool 覆盖全部 agent
-// ★ 保留 _startAutoSave 别名（旧调用方兼容），_stopAutoSave 变为 no-op
-function _startAutoSave() { _ensureAutoSave(); }
-function _stopAutoSave() { /* no-op: persistent timer, 不再随 quest 切换启停 */ }
 function _ensureAutoSave() {
     if (_autoSaveRunning) return;
     _autoSaveRunning = true;
