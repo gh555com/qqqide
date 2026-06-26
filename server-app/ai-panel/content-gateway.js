@@ -21,7 +21,6 @@
     var OUTPUT_CAP_MAX = 800000;       // AI 视野最大上限（AI 传 maxOutput 时可突破到）
     var MAX_RESPONSE_TOKENS = 393216; // AI 回答最大 tokens（上限 393216，唯一真理在此）
     var READ_FILE_CAP_BYTES = 200000;  // read_file 单次返回字节上限（～200KB，超过则截断+分页提示）
-    var COMPACT_MAX_TOKENS = 32768;   // 上下文压缩产出硬限 32K
     var AI_OUTPUT_WATCHDOG_MS_REMOVED = true; // output_watchdog 已移除（2026-06-21）— AI 推理不限时
 
     // ═══ 网络超时参数（单一真理源：改一处全局生效） ═══

@@ -328,26 +328,7 @@ async function _restoreAgentFromStore(questId, ag) {
                     ag.conversation.push(fConv[mi]);
                 }
             }
-            // ★ 注入推理：保留上一轮 AI 的分析上下文，防止继续时重复分析
-            //   _reasoning 标记 → UI 渲染跳过（system 消息已被 card-pool 白名单过滤）
-            var fHouses = fData.houses;
-            if (fHouses && fHouses.length) {
-                var reasoningParts = [];
-                for (var hi = 0; hi < fHouses.length; hi++) {
-                    var h = fHouses[hi];
-                    if (h.reasoning) {
-                        reasoningParts.push('HOUSE ' + (h.index != null ? h.index : hi) + ':\n' + h.reasoning);
-                    }
-                }
-                if (reasoningParts.length > 0) {
-                    ag.conversation.push({
-                        role: 'system',
-                        content: '[PREVIOUS FLOOR ' + (fi + 1) + ' ANALYSIS — preserved reasoning, do NOT re-analyze these findings]\n\n' + reasoningParts.join('\n\n---\n\n'),
-                        _reasoning: true,
-                        _floor: fi + 1
-                    });
-                }
-            }
+            // ★ 推理不再注入 conversation（由 Compressed Summary 覆盖历史上下文）
         }
 
         // ★ 重建 _floorMeta（不可变楼层元数据）

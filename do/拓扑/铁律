@@ -130,15 +130,19 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 每次 _callGateway 发请求前主动预检。收到 400/422/502/503 后被动修复+重试。
   - auto-repair 成功后必须重置 _floorOnErrorCalled（防之前 401/402/429 的 onError 标记污染后续判断）。
 
-§13a AI 网关 — Worker 纯代理 + Go 权威计费（2026-06-10 落地）
+§13a AI 网关 — Worker 纯代理 + Go 权威计费（2026-06-10 落地，2026-06-26 全路由）
   - 线路: Client → Worker(CF edge, 纯透传) → Go(唯一扣款权威) → 模型供应商。
-  - Worker 职责: ban 查询(GET /v3/ai/check) + SSE 纯透传到 Go:8444 + 自动 failover。
-    禁任何计费逻辑/模型映射/body 改写/并发限制。经济账本即唯一限流(ge≤0→402)。
+  - ★ Worker 全路由覆盖（6 个端点，2026-06-26 补齐）:
+    POST /api/v3/ai/chat / POST vision / GET vision/:id/stream
+    POST generate-image / GET generate-image/:id/stream / POST embedding / POST search
+    所有路由纯透传到 Go:8444，禁业务逻辑修改。
+  - Worker 职责: 纯透传 + X-Key-Slot 中继。禁任何计费逻辑/模型映射/body 改写。
+    经济账本即唯一限流(ge≤0→402)。
   - Go 职责: 直接 ChargeAITurnWithMeta 单步扣款。禁 lodge/flush 双轨计费（已删除）。
   - 楼层聚合: ChargeAITurnWithMeta 写入 floorID → transactions.ref_type。
     geflow 按 ref_type 折叠展示（底层多笔不容合并，展示层一行汇总）。
   - CF Worker 免费额度 10 万次/天，纯透传模式 CPU 时间趋零，永不超限。
-  - 2026-06-10 晚修复: Worker 之前直连模型绕过了 Go（部署 Bug），现已改为透传 Go。
+  - 部署: python cf/deploy_worker.py deploy → Cloudflare API 直接上传。
 
 §14 主文件夹 + 文件锁
   - AI 视口第1个豆腐块 = 主文件夹，显示 ★ 标记，不可删除（UI+代码双重不可删）。
@@ -148,14 +152,15 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - quest 数据走 qgs.project(主文件夹/qqq/quests/quest.sq3)。
   - 所有指令英文，零冗余，零"旧规则/历史上下文"等误导语。
 
-§14b 统一 AI 模型包装器 — AiGateway（2026-06-22）
+§14b 统一 AI 模型包装器 — AiGateway（2026-06-22，2026-06-26 全服务双线路）
   - 唯一入口: server-app/ai-panel/ai-gateway.js（window.AiGateway）。
   - 铁律: 一切 AI 模型调用必须经 AiGateway 走出，禁止直接 fetch 第三方端点。
   - 客户端零暴露: 不出现任何模型名/厂商名/API 端点字符串。
-  - 覆盖服务: chat / vision / generateImage / analyzeImage / embed / searchWeb。
+  - ★ 全服务双线路覆盖（2026-06-26）: chat / vision / generateImage / embed / searchWeb
+    均在 _URLS 声明 primary+fallback，vision/imageGen 通过 _postJsonWithFailover + _pollStream 自动切换。
   - tier 1-6 数字传参，模型映射由 AiGateway 内部 _tierToModel() + Go 端双重保障。
   - 统一超时/重试/双线路故障切换/错误处理。
-  - 旧 Python 脚本(w  - 旧 Python 脚本和 ipc-media.ts 已删除（全量走 Go 代理）。国际化机器
+  - 旧 Python 脚本和 ipc-media.ts 已删除（全量走 Go 代理）。国际化机器
   - 唯一真理源: server-app/locales/zh.json。开发者只管写中文，不做其他事。
   - 占位符系统: HTML 用 data-i18n/data-i18n-placeholder/data-i18n-title/data-i18n-html。JS 用 window._i(key, fallback)。
   - 特殊: AI 面板 textarea 用 data-i18n-placeholder-attr (iframe translateUi 处理)。

@@ -735,11 +735,12 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
     var fullConv = ag.conversation ? ag.conversation.slice() : [];
     var floorConv = fullConv.slice(floorStartIdx);
 
-    // ★ 持久化净化：_lines 是运行时缓存不入库
-    //   reasoning 保留！下一轮继续时注入上下文，防止 AI 重复分析
+    // ★ 持久化净化：_lines/reasoning/tools/toolResults 是运行时数据不入库
+    //   reasoning 已由 Compressed Summary 覆盖，不再需要保留
     var cleanHouses = (ag._houses || []).map(function (h) {
         var c = Object.assign({}, h);
         delete c._lines;
+        delete c.reasoning;
         // ★ 保存工具调用次数（room 计数用），再删除 tools 数组
         c.toolCount = (c.tools && c.tools.length) || 0;
         delete c.tools;
@@ -764,7 +765,7 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
         lastUserInput: ag._lastUserInput,
         allTxtPath: allTxtPath,
         fileStats: (typeof _computeFileStats === 'function') ? _computeFileStats(ag._houses, ag._a4Snapshots) : { fileCount: 0, added: 0, deleted: 0 },
-        clockTiming: ag._lastFloorTimingRecord || null,
+        clockTiming: ag._lastFloorTimingRecord || (ag._floorTiming && ag._floorTiming.floorStartPerf ? { durationMs: Math.round(performance.now() - ag._floorTiming.floorStartPerf), networkMs: ag._floorTiming.networkMs || 0, aiMs: ag._floorTiming.aiMs || 0, toolMs: ag._floorTiming.toolMs || 0, floorIndex: ag._currentFloorNum || 0 } : null),
         aiStartTime: ag._aiStartTime || '',
         tierLabel: ag._aiTierLabel || '',
         images: ag._lastUserInput && ag._lastUserInput.images ? ag._lastUserInput.images.map(function (img) {

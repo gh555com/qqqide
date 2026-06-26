@@ -16,7 +16,7 @@ body{font-family:Tahoma,system-ui,-apple-system,sans-serif;font-size:13px;color:
 [data-theme="dark"] ::selection{background:#ffd302;color:#000}
 input::selection, textarea::selection{background:#ffd302;color:#000}
 
-/* ═══ TITLE ROW ═══ */
+/* ═══ TITLE ROW ═══qq */
 #title-row{height:40px;background:var(--card);display:flex;align-items:flex-end;padding:0 8px 2px 8px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0;-webkit-app-region:drag}
 #input-wrap{flex:1;position:relative;display:flex;align-items:center;min-width:0}
 #title-row .title-input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 34px 4px 8px;border-radius:4px;font-size:12px;font-family:Tahoma,ui-monospace,monospace;outline:none;-webkit-app-region:no-drag;min-width:0;white-space:pre;overflow:hidden;line-height:1.6;caret-color:var(--text)}
@@ -75,7 +75,7 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
 .block-arrow{position:absolute;width:22px;height:22px;border:1px solid var(--green);border-radius:3px;background:var(--card);color:var(--green);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;transition:all .12s;box-shadow:0 1px 4px rgba(0,0,0,0.3);z-index:10}
 .block-arrow:hover{background:var(--green);color:#fff;transform:scale(1.15)}
 
-/* ═══ EDIT STATUS (replaces right dropdown in edit mode) ═══ */
+/* ═══ EDIT STATUS (replaces right dropdown in edit mode)  ═══ */
 #edit-status{flex:1;display:none;align-items:center;padding:4px 10px;font-size:13px;font-family:Tahoma,ui-monospace,monospace;color:var(--text);gap:6px;min-width:0}
 #edit-status.visible{display:flex}
 #edit-status .es-label{color:var(--text);white-space:nowrap}
@@ -92,10 +92,11 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
 /* ═══ BOTTOM BUTTONS ═══ */
 #big-close{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:56px;height:56px;border-radius:50%;border:2px solid var(--red);background:var(--card);color:var(--red);font-size:24px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;line-height:1}
 #big-close:hover{background:var(--red);color:#fff;transform:translateX(-50%) scale(1.1)}
-#btn-diff-only{position:fixed;bottom:calc(16px + 4px);left:50%;transform:translateX(calc(-50% - 28px - 144px));height:48px;padding:0 24px;border-radius:6px;border:1.5px solid var(--base01);background:var(--card);color:var(--text);font-size:14px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap}
+#btn-diff-only{position:fixed;bottom:calc(16px + 4px);left:50%;transform:translateX(calc(-50% - 28px - 144px));height:48px;padding:0 24px;border-radius:6px;border:2px solid #4a4a4a;background:var(--card);color:var(--text);font-size:14px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap}
 #btn-diff-only:hover{background:var(--bg)}
 #btn-diff-only.checked{border-color:var(--accent);color:var(--accent);font-weight:800}
-#btn-diff-only.checked::after{content:'';display:inline-block;width:5px;height:10px;border:solid var(--accent);border-width:0 2px 2px 0;transform:rotate(45deg);margin-left:8px;margin-bottom:2px#btn-edit{position:fixed;bottom:calc(16px + 4px);left:50%;transform:translateX(calc(-50% + 28px + 244px));height:48px;padding:0 24px;border-radius:6px;border:1.5px solid var(--base01);background:var(--card);color:var(--text);font-size:14px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap}p}
+#btn-diff-only.checked::after{content:'';display:inline-block;width:5px;height:10px;border:solid var(--accent);border-width:0 2px 2px 0;transform:rotate(45deg);margin-left:8px;margin-bottom:2px}
+#btn-edit{position:fixed;bottom:calc(16px + 4px);left:90%;transform:translateX(-50%);height:48px;padding:0 24px;border-radius:6px;border:2px solid #4a4a4a;background:var(--card);color:var(--text);font-size:14px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap}
 #btn-edit:hover{background:var(--bg)}
 #btn-edit.editing{border-color:var(--accent);color:var(--accent);font-weight:800}
 </style>
@@ -103,7 +104,7 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
 (function(){var p=new URLSearchParams(location.search);var t=p.get('theme');var dark=t==='dark';if(t)try{localStorage.setItem('qqqide-theme',dark?'dark':'light');}catch(_){}document.documentElement.setAttribute('data-theme',dark?'dark':'light');})();
 </script>
 </head>
-<body>
+<body> 
 
 <!-- ★ 标题行 -->
 <div id="title-row">
@@ -147,6 +148,7 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
     <div id="edit-status">
       <span class="es-label">编辑中</span>
       <span class="es-status">未保存</span>
+      <button id="btn-snap" style="display:none;margin-left:10px;padding:6px 20px;border:2px solid var(--accent);border-radius:5px;background:var(--card);color:var(--accent);font-size:15px;font-weight:700;cursor:pointer;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap">📸 打快照</button>
       <span class="es-snap"></span>
     </div>
   </div>
@@ -159,6 +161,7 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
 <button id="btn-diff-only">仅差异</button>
 <button id="big-close">✕</button>
 <button id="btn-edit">编辑</button>
+<div id="btn-edit-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd302;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd302;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4">编辑当前磁盘文件（而非任何一个历史快照）</div>
 <div id="big-close-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd302;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd302;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4">= Right Click</div>
 
 <script src="/core/qqqide-theme.js"></script>

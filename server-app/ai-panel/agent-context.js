@@ -66,16 +66,32 @@
         return total;
     };
 
+    // ═══ conversation splice 后所有索引统一平移 ═══
+    // 入口：conversation 已 splice(_persistentCount, removedCount)
+    // 巡检所有持有 floorStartIdx 的地方，>= hotStart 的统一减 removedCount
+    AgentLoop.prototype._shiftConversationIndices = function (removedCount, hotStart) {
+        var self = this;
+        if (self._floorStartIdx >= hotStart) { self._floorStartIdx -= removedCount; }
+        if (self._floorMeta) {
+            for (var fk in self._floorMeta) {
+                if (self._floorMeta.hasOwnProperty(fk)) {
+                    var fm = self._floorMeta[fk];
+                    if (fm.floorStartIdx >= hotStart) { fm.floorStartIdx -= removedCount; }
+                }
+            }
+        }
+    };
+
     // ═══ 阻塞式上下文压缩 — 铁律 ═══
     // 规则：
-    //   1. 超 900k 才触发
-    //   2. 从末尾倒推 90k tokens → 取整到楼层边界（user 消息）
+    //   1. 超阈值才触发（阈值由用户设置，100-900k）
+    //   2. 从末尾倒推 KEEP_TARGET tokens → 取整到楼层边界（user 消息）
     //   3. 最少保留 6 层楼，即使超出 10%
-    //   4. 阻塞等待 AI 压缩（32k），成功后才删除
+    //   4. 阻塞等待 AI 压缩（64K），成功后才删除
     //   5. 压缩失败 → 无限重试，指数退避
     // reason: { trigger: 'auto'|'manual', detail: string, force: bool }
-    //   force=true → 跳过 900k 阈值检查，但要求 beforeTokens ≥ 50k
-    // 返回: { compressed: true|false, detail: string, beforeTokens: number, afterTokens: number, elapsedMs: number }
+    //   force=true → 跳过阈值检查，但要求 beforeTokens ≥ 50k
+    // 返回: { compressed: true|false, detail: string, beforeTokens: number, afterTokens: number, elapsedMs: number } number }
     AgentLoop.prototype._compressContext = async function (reason) {
         var self = this;
         // ★ Stop 守卫：用户点停止后立即跳过压缩
@@ -163,19 +179,10 @@
 
         try {
             await self._digestColdMessages(coldMsgs, _lastCompressed);
-            // 全成功 → splice conversation
+            // 全成功 → splice conversation + 统一平移所有索引
             var _removedCount = hotStart - self._persistentCount;
             self.conversation.splice(self._persistentCount, _removedCount);
-            // ★ 修复 _floorStartIdx 和 _floorMeta 中的索引（conversation 截短后需要平移）
-            if (self._floorStartIdx >= hotStart) { self._floorStartIdx -= _removedCount; }
-            if (self._floorMeta) {
-                for (var _fk in self._floorMeta) {
-                    if (self._floorMeta.hasOwnProperty(_fk)) {
-                        var _fm = self._floorMeta[_fk];
-                        if (_fm.floorStartIdx >= hotStart) { _fm.floorStartIdx -= _removedCount; }
-                    }
-                }
-            }
+            self._shiftConversationIndices(_removedCount, hotStart);
             self._ctx.lastCompressedFloor = self._ctx.totalFloors;
             self._lastApiPromptTokens = 0;
             self._lastApiTotalTokens = 0;
@@ -235,11 +242,11 @@
         var _oldNarrative = self._ctx.narrative || '';
         var _debugTrace = { ts: new Date().toISOString(), trigger: 'auto', input: { floors: (lastCompressedFloor || 0) + '→' + self._ctx.totalFloors, coldMsgs: coldMsgs.length, coldTextPreview: coldText.slice(0, 2000), oldFacts: _oldFacts.length, oldNarrativeLen: _oldNarrative.length }, experts: {} };
 
-        // ★ 冷文本多段均匀采样（4段 × 各50K chars = 200K），时空分布均匀，不偏首尾
-        var COLD_TEXT_CAP = 200000;
+        // ★ 冷文本多段均匀采样（8段 × 各50K chars = 400K），时空覆盖翻倍
+        var COLD_TEXT_CAP = 400000;
         var _sampledColdText = coldText;
         if (_sampledColdText.length > COLD_TEXT_CAP) {
-            var _segments = 4;
+            var _segments = 8;
             var _segSize = Math.floor(COLD_TEXT_CAP / _segments);
             var _stride = Math.floor(coldText.length / _segments);
             var _parts = [];
@@ -252,51 +259,69 @@
             self._log('  ║ coldText sampled: ' + coldText.length + ' → ' + _sampledColdText.length + ' chars (' + _segments + ' segments × ~' + Math.round(_segSize / 1000) + 'k)');
         }
 
-        // ── 单专家统一 prompt（facts + narrative + archive 三者合一，tier 6, 64K）──
+        // ── 单专家统一 prompt — Narrative-First 架构 ──
+        //   1. 先写 Narrative（8K-48K chars，主记录）
+        //   2. 再从 Narrative 提取 Facts（索引）
+        //   3. 最后生成 Floors（每层一句摘要）
         var _existingNarrative = _oldNarrative || '(empty — this is the first compression)';
         var _unifiedPrompt = [
             'You are a context compression engine. Produce a COMPREHENSIVE compressed context in a SINGLE JSON output.',
             '',
-            'Your budget is 64K tokens. USE IT. Do not be overly brief — this is the only record of these conversations.',
+            'Your output is the ONLY record of these conversations. If you miss something, it is lost forever.',
+            'Your budget is 64K tokens. USE IT FULLY. Incomplete preservation = failure.',
             '',
             '═══════════════════════════════════════════',
-            'OUTPUT — pure JSON, no markdown, no explanation:',
+            'OUTPUT ORDER — follow this exactly:',
+            '  STEP 1: Write "narrative" FIRST — the master chronicle. 8000-48000 chars.',
+            '  STEP 2: Extract "facts" FROM the narrative you just wrote — they are an index, not a replacement.',
+            '  STEP 3: Write "floors" — one sentence per floor.',
+            '',
+            'OUTPUT FORMAT — pure JSON, no markdown, no explanation:',
             '{',
-            '  "facts": [{ "type":"...", "content":"...", "keywords":["k1","k2"] }],',
             '  "narrative": "...",',
+            '  "facts": [{ "type":"...", "content":"...", "keywords":["k1","k2"] }],',
             '  "floors": [{ "n":<number>, "summary":"1-sentence", "keyFiles":["path"], "keyDecisions":["decision"], "errors":["error"] }]',
             '}',
             '',
             '═══════════════════════════════════════════',
-            'FACTS RULES:',
-            '  ★ COVERAGE: Input is split into time segments spanning the FULL timeline. Extract from EVERY segment.',
-            '  ★ MERGE: Same file/topic/concept → ONE fact. If two facts overlap >50%, merge them.',
-            '  ★ Each fact MUST be self-contained: reading it alone tells the full story.',
-            '  ★ Keywords MUST include exact file paths, function names, error codes — no vague words.',
-            '  ★ Target 10-25 facts. Drop vague ones. Quality > quantity.',
-            '  ★ FACT TYPES: file / decision / error / code_change / preference / goal / blocker / context',
-            '',
-            'NARRATIVE RULES:',
-            '  ★ Target 4000-12000 chars (~1.5K-4.5K tokens). USE THE BUDGET.',
+            '★ NARRATIVE — PRIMARY RECORD (write FIRST, before facts):',
+            '  ★ HARD MINIMUM: 8000 chars. HARD MAXIMUM: 48000 chars.',
+            '  ★ Below 8000 chars = FAILURE — the record is too thin to be useful.',
+            '  ★ Above 48000 chars = wasteful — you are repeating yourself.',
+            '  ★ This is the master chronicle. Facts are DERIVED from it, not the other way around.',
+            '  ★ Write the narrative FIRST. Only after it is complete, extract facts from it.',
             '  ★ PRESERVE EVERY sentence from existing narrative (rewording OK, dropping = FAILURE).',
-            '  ★ COVERAGE: Most recent floors → detailed. Early floors → 1-2 sentences each. Middle → brief transitions.',
-            '  ★ Ensure EVERY distinct topic/thread is represented, even if briefly.',
-            '  ★ Be specific: cite file names, function names, decisions. No vague hand-waving.',
+            '  ★ ALLOCATION guideline for ' + coldMsgs.length + ' messages across ' + (self._ctx.totalFloors - (lastCompressedFloor || 0)) + ' new floors:',
+            '    - Each floor → at least 3-5 sentences of narrative.',
+            '    - Recent floors → 1-2 paragraphs each (most detailed, AI will reference these first).',
+            '    - Early floors → 2-4 sentences each (context + key decisions).',
+            '    - Middle floors → brief transitions (1-2 sentences) linking early decisions to recent outcomes.',
+            '  ★ Track THREADS end-to-end: if a topic spans multiple floors, trace it as one continuous story.',
+            '  ★ Cite exact file paths, function names, error codes. No vague hand-waving.',
+            '  ★ If you have existing narrative in the EXISTING CONTEXT section below, preserve ALL of it.',
             '',
-            'FLOORS RULES (optional — may be empty for first compression):',
-            '  ★ One record per floor: { n, summary, keyFiles, keyDecisions, errors }',
+            '★ FACTS — INDEX (extract FROM the narrative you just wrote):',
+            '  ★ DO NOT write facts first. Facts are extracted FROM the completed narrative.',
+            '  ★ Each fact = one self-contained atomic unit from the narrative.',
+            '  ★ Keywords MUST include exact file paths, function names, error codes.',
+            '  ★ MERGE: same file/topic/concept → ONE fact. Overlap >50% → merge.',
+            '  ★ Target 15-30 facts. Quality > quantity.',
+            '  ★ FACT TYPES: file / decision / error / code_change / preference / goal / blocker / context.',
+            '',
+            '★ FLOORS — optional, may be empty for first compression:',
+            '  ★ One record per floor: { n, summary, keyFiles, keyDecisions, errors }.',
             '',
             '═══════════════════════════════════════════',
-            'EXISTING CONTEXT:',
-            '',
-            'FACTS (' + _oldFacts.length + ' total):',
-            JSON.stringify(_oldFacts),
+            'EXISTING CONTEXT (must be preserved):',
             '',
             'NARRATIVE:',
             _existingNarrative,
             '',
+            'FACTS (' + _oldFacts.length + ' total):',
+            JSON.stringify(_oldFacts),
+            '',
             '═══════════════════════════════════════════',
-            'NEW CONVERSATION HISTORY (' + coldMsgs.length + ' messages, sampled into time segments):',
+            'NEW CONVERSATION HISTORY (' + coldMsgs.length + ' messages, 8 time-segments):',
             _sampledColdText
         ].join('\n');
 
@@ -364,10 +389,11 @@
         // ── 处理 narrative ──
         var _newNarrative = _parsed.narrative;
         if (!_newNarrative || typeof _newNarrative !== 'string') throw new Error('narrative_output_invalid');
-        if (!_oldNarrative && _newNarrative.length < 200) {
-            throw new Error('narrative_too_short_first_compress');
+        // 首次压缩过短告警（不重试，prompt 已约束 8K-48K）
+        if (!_oldNarrative && _newNarrative.length < 8000) {
+            self.log('⚠ narrative below target: ' + _newNarrative.length + ' chars (target 8K-48K)');
         }
-        // 缩水检测
+        // 缩水检测（后续压缩）
         if (_oldNarrative) {
             var _oldTok = Math.round(_oldNarrative.length / CHAR_PER_TOKEN_EST);
             var _newTok = Math.round(_newNarrative.length / CHAR_PER_TOKEN_EST);
@@ -490,14 +516,13 @@
             var resp = await AiGateway.chatFetch({
                 model: 'deep',
                 tier: 6,
-                // ★ tier 6 全开：thinking enabled + reasoning_effort max
                 thinking: { type: 'enabled' },
                 reasoning_effort: 'max',
                 messages: [
-                    { role: 'system', content: 'You are a context compression engine. Output ONLY valid JSON — no markdown, no explanation. Be concise and precise. Your output MUST fit within the token budget.' },
+                    { role: 'system', content: 'You are a context compression engine. Output ONLY valid JSON — no markdown, no explanation. You are the last line of defense for preserving conversation history — be thorough, not brief. Your output MUST fully utilize the available token budget. Incomplete preservation is worse than verbosity.' },
                     { role: 'user', content: prompt }
                 ],
-                stream: false,
+                stream: true,
                 max_tokens: _maxTokens,
                 floor_id: (self._floorId || 'compact') + _suffix
             }, { compact: true });

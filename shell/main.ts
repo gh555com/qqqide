@@ -78,6 +78,9 @@ app.on('certificate-error', (event, _webContents, _url, _error, certificate, cal
     } else if (_url.includes('direct.gh555.com')) {
         event.preventDefault();
         callback(true);
+    } else if (_url.includes('47.105.67.51')) {
+        event.preventDefault();
+        callback(true);
     } else {
         callback(false);
     }

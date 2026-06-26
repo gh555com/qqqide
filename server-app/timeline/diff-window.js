@@ -363,6 +363,26 @@
     }
     document.addEventListener('contextmenu', function (e) { e.preventDefault(); _closeWindow(); });
 
+    // ★ 编辑按钮 tooltip（动态文本，靠左显示防超出屏幕）
+    var $btnEditTip = document.getElementById('btn-edit-tip');
+    if ($btnEdit && $btnEditTip) {
+        $btnEdit.addEventListener('mouseenter', function (e) {
+            $btnEditTip.textContent = _editing ? '退出编辑时不会自动保存' : '编辑当前磁盘文件（而非任何一个历史快照）';
+            $btnEditTip.style.display = '';
+            $btnEditTip.style.left = 'auto';
+            $btnEditTip.style.right = (window.innerWidth - e.clientX + 14) + 'px';
+            $btnEditTip.style.top = (e.clientY - 28) + 'px';
+        });
+        $btnEdit.addEventListener('mousemove', function (e) {
+            $btnEditTip.style.left = 'auto';
+            $btnEditTip.style.right = (window.innerWidth - e.clientX + 14) + 'px';
+            $btnEditTip.style.top = (e.clientY - 28) + 'px';
+        });
+        $btnEdit.addEventListener('mouseleave', function () {
+            $btnEditTip.style.display = 'none';
+        });
+    }
+
     // ═══ 监听主进程推送 diff 更新（同文件再次点击 A4 时复用窗口） ═══
     if (bridge && bridge.timeline && bridge.timeline.onDiffUpdate) {
         bridge.timeline.onDiffUpdate(function (data) {
@@ -996,7 +1016,7 @@
     }
     function _setEditSnapText(snapLabel) {
         if (!$esSnap) return;
-        $esSnap.textContent = snapLabel ? ' 且打快照至：' + snapLabel : '';
+        $esSnap.textContent = snapLabel || '';
     }
     function _formatTimestamp(ts) {
         if (!ts) return '';
@@ -1207,6 +1227,7 @@
         $btnEdit.textContent = '取消编辑'; $btnEdit.classList.add('editing');
         var ddR = document.getElementById('dd-right'); if (ddR) ddR.style.display = 'none';
         if ($editStatus) $editStatus.classList.add('visible');
+        var $btnSnap2 = document.getElementById('btn-snap'); if ($btnSnap2) $btnSnap2.style.display = '';
         var mr = document.getElementById('marker-right'); if (mr) mr.style.display = 'none';
         _updateEditStatus(); _setEditSnapText('');
         document.getElementById('sel-right').value = 'last'; _isLastOnRight = true;
@@ -1221,13 +1242,14 @@
         _clearBlockArrows();
         var ddR = document.getElementById('dd-right'); if (ddR) ddR.style.display = '';
         if ($editStatus) $editStatus.classList.remove('visible');
+        var $btnSnap3 = document.getElementById('btn-snap'); if ($btnSnap3) $btnSnap3.style.display = 'none';
         _updateEditStatus(); _setEditSnapText('');
         var mr = document.getElementById('marker-right'); if (mr) mr.style.display = '';
         await _refreshVersions();
         if (_diffEditor) {
             try { _diffEditor.getModifiedEditor().updateOptions({ readOnly: true }); _diffEditor.getOriginalEditor().updateOptions({ readOnly: true }); } catch (_) { }
         }
-        renderDiff();
+        renderDiff(); 
     }
 
     async function _renderDiffWithLatest(latestContent) {
@@ -1267,7 +1289,7 @@
         var content = _lastContent;
         if (!content && _diffEditor.getModifiedEditor()) content = _diffEditor.getModifiedEditor().getModel().getValue();
         if (!content) return false;
-        // 内容与进入编辑时一致 → 跳过保存和快照（Ctrl+Z 回退到底）
+        // 内容与进入编辑时一致 → 跳过保存
         if (content === _editOriginalContent) {
             _editDirty = false; _updateEditStatus();
             return true;
@@ -1276,20 +1298,69 @@
             await bridge.fs.write(FILE_PATH, content);
             _lastContent = content; _editDirty = false;
             _editOriginalContent = content;
-            // 打快照（冷却+去重已移至主进程真理机）
-            var snapTaken = false;
+            _updateEditStatus();
+            return true;
+        } catch (e) { console.error('[diff] edit save failed:', e); return false; }
+    }
+    async function _snapshotEditContent() {
+        if (!_editing || !_diffEditor) return;
+        var content = _lastContent;
+        if (!content && _diffEditor.getModifiedEditor()) content = _diffEditor.getModifiedEditor().getModel().getValue();
+        if (!content) return;
+        // 内容与进入编辑时一致 → 不写盘、不打快照
+        if (content === _editOriginalContent) {
+            _setEditSnapText('内容未变，无需打快照');
+            return;
+        }
+        _setEditSnapText('打快照中…');
+        try {
+            await bridge.fs.write(FILE_PATH, content);
+            _lastContent = content; _editDirty = false;
+            _editOriginalContent = content;
+            _updateEditStatus();
+            var snapOk = false;
             try {
                 var rec = await bridge.timeline.record({ projectRoot: PROJECT_ROOT, filePath: FILE_PATH, content: content, source: 'diff-edit' });
                 if (rec && rec.ok && rec.recorded) {
                     _editSnapshotSeq++;
-                    _setEditSnapText('#' + _editSnapshotSeq + ' ' + _formatTimestamp(Date.now()) + ' diff edit');
-                    snapTaken = true;
+                    _setEditSnapText('已打快照 #' + _editSnapshotSeq + ' ' + _formatTimestamp(Date.now()) + ' diff edit');
+                    snapOk = true;
+                } else {
+                    _setEditSnapText('未生成新快照，可能内容未变或冷却中');
                 }
-            } catch (_) { }
-            if (snapTaken) _refreshVersions();
-            _updateEditStatus();
-            return true;
-        } catch (e) { console.error('[diff] edit save failed:', e); return false; }
+            } catch (_) {
+                _setEditSnapText('打快照失败');
+            }
+            if (snapOk) await _refreshEditLeftDropdown();
+        } catch (e) {
+            console.error('[diff] snapshot save failed:', e);
+            _setEditSnapText('保存失败，请重试');
+        }
+    }
+    // ★ 编辑模式下只刷新左侧下拉（右侧已隐藏），让新快照立即可在下拉中看到
+    async function _refreshEditLeftDropdown() {
+        try {
+            var newVer = await bridge.timeline.versions({ projectRoot: PROJECT_ROOT, filePath: FILE_PATH });
+            _versions = newVer || [];
+            _lastContent = await bridge.timeline.readCurrent(FILE_PATH);
+            var st = await bridge.timeline.stat(FILE_PATH); if (st) _lastMtimeMs = st.mtimeMs;
+            // 只重建左侧下拉，保持右侧不变（编辑模式下右侧隐藏）
+            var curLeft = $selLeft.value;
+            populateDropdowns();
+            var found = false;
+            for (var oi = 0; oi < _options.length; oi++) {
+                if (_options[oi].value === curLeft || _options[oi]._blobHash === curLeft) {
+                    $selLeft.value = _options[oi].value;
+                    _refreshDropdownBtn($ddLeftBtn, $selLeft.value, _options);
+                    found = true; break;
+                }
+            }
+            if (!found && _options.length > 0) {
+                $selLeft.value = _options[_options.length - 1].value;
+                _refreshDropdownBtn($ddLeftBtn, $selLeft.value, _options);
+            }
+            updateOneMarker($selLeft, $markerLeft);
+        } catch (_) { }
     }
     function _setupEditAutoSave(editor) {
         if (!editor) return;
@@ -1300,6 +1371,8 @@
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async function () { if (_editing) await _saveEditContent(); });
     }
     if ($btnEdit) $btnEdit.addEventListener('click', _toggleEdit);
+    var $btnSnap = document.getElementById('btn-snap');
+    if ($btnSnap) $btnSnap.addEventListener('click', _snapshotEditContent);
 
     async function _refreshVersions() {
         try {

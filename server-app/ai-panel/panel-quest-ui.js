@@ -691,20 +691,20 @@ document.getElementById('ctx-compress').onclick = async function () {
         _ag._floorCostWge = 0;
         _ag._compressFloor = true;
 
-        // ④ 推入用户消息到 conversation（必须在 startBuildingFloor 之前）
+        // ④ 推入用户消息到 conversation
         _ag.conversation.push({ role: 'user', content: '请帮我压缩上下文', _floor: _floorNum });
         _ag._lastUserInput = { text: '请帮我压缩上下文', vision: '' };
 
-        // ⑤ 创建楼层 DOM（A1 + 时钟 + 内容区）
+        // ⑤ 渲染用户消息气泡（粉色背景，必须在 startBuildingFloor 之前）
+        if (typeof addUserMessageEl === 'function') {
+            addUserMessageEl('请帮我压缩上下文');
+        }
+
+        // ⑥ 创建楼层 DOM（A1 + 时钟 + 内容区）
         _aiDiv = cardPool.startBuildingFloor(questActiveId, _floorNum, _allTxtPath);
         if (!_aiDiv) throw new Error('startBuildingFloor returned null');
         _aiDiv._allTxtPath = _allTxtPath;
         _ag._activeAiDiv = _aiDiv;
-
-        // ⑥ 渲染用户消息气泡（粉色背景）
-        if (typeof addUserMessageEl === 'function') {
-            addUserMessageEl('请帮我压缩上下文');
-        }
 
         // ⑦ 启动楼层计时器 + 滚动到底
         if (typeof startFloorTimer === 'function') startFloorTimer(_aiDiv, _ag);

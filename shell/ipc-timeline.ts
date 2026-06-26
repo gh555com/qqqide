@@ -12,7 +12,7 @@ import { APP_VERSION } from './version';
 export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig): void {
     // ★ 编辑类快照防抖真理机（唯一入口，改一处全局生效）
     const COOLING_MS = 100000;       // 同文件两次快照最小间隔
-    const COOLING_SOURCES = new Set(['editx', 'diff-edit']);
+    const COOLING_SOURCES = new Set(['editx']);
     const _lastRecordTs: Map<string, number> = new Map();
     const _lastRecordHash: Map<string, string> = new Map();
 
