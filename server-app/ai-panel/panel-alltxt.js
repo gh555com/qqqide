@@ -155,7 +155,7 @@ function _buildFloorStatsLines(timing, floorNum, agent) {
     if (timing) {
         lines.push('\u2550\u2550\u2550\u2550 floor ' + floorNum + ' stats \u2550\u2550\u2550\u2550');
         var costStr = (agent && agent._floorCostWge !== undefined) ? '  cost: ' + (agent._floorCostWge / 10000).toFixed(4) + ' ge' : '';
-        lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.aiMs ? timing.aiMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.toolMs ? timing.toolMs.toFixed(0) : '0') + 'ms' + costStr);
+        lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.aiMs ? timing.aiMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.otherMs ? timing.otherMs.toFixed(0) : '0') + 'ms' + costStr);
     }
     return lines;
 }
@@ -603,7 +603,7 @@ function _generateReasoningTxt(floorData, questMeta, floorNum) {
 
     if (timing) {
         lines.push('\u2550\u2550\u2550\u2550 floor ' + floorNum + ' stats \u2550\u2550\u2550\u2550');
-        lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.aiMs ? timing.aiMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.toolMs ? timing.toolMs.toFixed(0) : '0') + 'ms  cost: ' + ((floorData.costWge || 0) / 10000).toFixed(4) + ' ge');
+        lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.aiMs ? timing.aiMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.otherMs ? timing.otherMs.toFixed(0) : '0') + 'ms  cost: ' + ((floorData.costWge || 0) / 10000).toFixed(4) + ' ge');
     }
 
     return lines.join('\n');

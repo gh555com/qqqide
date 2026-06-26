@@ -92,21 +92,21 @@ function drawPie(canvas, timing) {
     if (_lastPieTiming && timing &&
         _lastPieTiming.networkMs === timing.networkMs &&
         _lastPieTiming.aiMs === timing.aiMs &&
-        _lastPieTiming.toolMs === timing.toolMs) return;
-    _lastPieTiming = timing ? { networkMs: timing.networkMs, aiMs: timing.aiMs, toolMs: timing.toolMs } : null;
+        _lastPieTiming.otherMs === timing.otherMs) return;
+    _lastPieTiming = timing ? { networkMs: timing.networkMs, aiMs: timing.aiMs, otherMs: timing.otherMs } : null;
     var ctx = canvas.getContext('2d');
     var w = canvas.width, h = canvas.height;
     ctx.clearRect(0, 0, w, h);
     var n = timing.networkMs || 0;
     var d = timing.aiMs || 0;
-    var t = timing.toolMs || 0;
+    var t = timing.otherMs || 0;
     var total = timing.totalMs || (n + d + t);
     if (total <= 0) { ctx.fillStyle = '#555'; ctx.beginPath(); ctx.arc(w / 2, h / 2, w / 2 - 3, 0, Math.PI * 2); ctx.fill(); canvas._segments = null; return; }
     t = Math.max(0, total - n - d);
     var parts = [
         { val: d, color: '#859900', label: 'AI', key: 'ai' },
         { val: n, color: '#cb4b16', label: 'Network', key: 'network' },
-        { val: t, color: '#e6b800', label: 'Tool', key: 'tool' }
+        { val: t, color: '#e6b800', label: 'Other', key: 'other' }
     ];
     var start = -Math.PI / 2;
     var segments = [];
@@ -231,7 +231,7 @@ function startFloorTimer(aiDiv, ag, resume) {
         var at = _ag._floorTiming;
         var n = (at && at.networkMs) || 0;
         var d = (at && at.aiMs) || 0;
-        var t = (at && at.toolMs) || 0;
+        var t = (at && at.otherMs) || 0;
         if (!_pieShown && (n > 0 || d > 0 || t > 0)) { _pieShown = true; canvas.style.visibility = 'visible'; }
         if (!_pieShown) return;
         var state = 'ai';
@@ -240,7 +240,7 @@ function startFloorTimer(aiDiv, ag, resume) {
         else if (n > _lastN) state = 'network';
         _lastN = n; _lastD = d; _lastT = t;
         aiDiv._clockBlock.className = 'msg-ai-clock clock-' + state;
-        drawPie(canvas, { networkMs: n, aiMs: d, toolMs: t, totalMs: elapsed });
+        drawPie(canvas, { networkMs: n, aiMs: d, otherMs: t, totalMs: elapsed });
     }, 1000);
 }
 
@@ -258,7 +258,7 @@ function stopFloorTimer(timing, ag) {
     if (aiDiv && aiDiv._clockMin && aiDiv._clockCanvas) {
         aiDiv._clockMin.textContent = min + 'm';
         aiDiv._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
-        var tm = timing || { networkMs: 0, aiMs: 0, toolMs: 0 };
+        var tm = timing || { networkMs: 0, aiMs: 0, otherMs: 0 };
         tm.totalMs = elapsed;
         if (elapsed > 0) { aiDiv._clockCanvas.style.visibility = 'visible'; drawPie(aiDiv._clockCanvas, tm); }
     }
@@ -269,7 +269,7 @@ function stopFloorTimer(timing, ag) {
         durationMs: durationMs,
         networkMs: (timing && timing.networkMs) || 0,
         aiMs: (timing && timing.aiMs) || 0,
-        toolMs: (timing && timing.toolMs) || 0,
+        otherMs: (timing && timing.otherMs) || 0,
         finishedAt: new Date().toISOString()
     };
     ag._floorTimings = ag._floorTimings || [];

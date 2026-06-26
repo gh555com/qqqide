@@ -300,8 +300,8 @@ var CardPool = (function () {
     var frag = document.createDocumentFragment();
 
     // ① 渲染用户消息（纯文本，不渲染 Markdown）
-    // ★ 优先 fData.question，若为空则从 conversation[0] 回退提取
-    var _qText = fData.question || '';
+    // ★ 优先 quest.sq3 预计算 question_clean（已剥离 CURRENT TIME + 系统提示词）
+    var _qText = fData.question_clean || fData.question || '';
     if (!_qText) {
       var _conv = fData.conversation || [];
       // ★ 跳过 _persistent 消息（系统提示词/rules），找真正的用户问题
@@ -312,7 +312,7 @@ var CardPool = (function () {
         }
       }
     }
-    // ★ 剥离尾部 CURRENT TIME 块（agent-loop 追加到用户消息末尾，混淆用户气泡显示）
+    // ★ 剥离尾部 CURRENT TIME 块（兜底：旧数据可能未预处理）
     if (_qText) {
       var _ctIdx = _qText.indexOf('\n\n═══ CURRENT TIME ═══');
       if (_ctIdx > 0) _qText = _qText.slice(0, _ctIdx);
@@ -412,11 +412,13 @@ var CardPool = (function () {
     aiEl._floor = fNum;
     aiEl._contentWrap = document.createElement('div');
 
-    // ★ 流式渲染：遍历 conversation 按消息类型生成时序流（非仅取最后 assistant）
-    // 注意：_buildConversationFlowHtml 内部已对 AI 回答内容调用 renderMarkdown，
-    // 此处直接使用其 HTML 输出，不再二次过 renderMarkdown（否则框架 div 会被转义泄露）
+    // ★ 优先用预渲染 ai_html（quest.sq3 真理源），建楼时已跑过 _buildConversationFlowHtml
+    //   仅当 ai_html 为空（旧数据未迁移）时才回退到现场渲染
     var conv = fData.conversation || [];
-    var flowHtml = _buildConversationFlowHtml(conv, fData);
+    var flowHtml = fData.ai_html || '';
+    if (!flowHtml && typeof _buildConversationFlowHtml === 'function') {
+        flowHtml = _buildConversationFlowHtml(conv, fData);
+    }
     aiEl._contentWrap.innerHTML = flowHtml;
     aiEl.appendChild(aiEl._contentWrap);
     // ★ 错误持久化：「继续任务」链接 — 仅聚焦键入框，不自动发送
@@ -452,8 +454,8 @@ var CardPool = (function () {
     if (typeof _initA1 === 'function') {
       a1El = _initA1(aiEl, _a1Path, card.id, fNum);
       if (a1El) {
-        var hCount = meta && meta.houses ? meta.houses.length : 0;
-        var rCount = typeof _cntR === 'function' ? _cntR(meta ? meta.houses : []) : 0;
+        var hCount = (fData.house_count != null) ? fData.house_count : (meta && meta.houses ? meta.houses.length : 0);
+        var rCount = (fData.room_count != null) ? fData.room_count : (typeof _cntR === 'function' ? _cntR(meta ? meta.houses : []) : 0);
         if (typeof _updA1 === 'function') {
           _updA1(a1El, fNum, hCount, rCount);
         }
@@ -510,7 +512,7 @@ var CardPool = (function () {
         _dp(aiEl._clockCanvas, {
           networkMs: timing.networkMs || 0,
           aiMs: timing.aiMs || 0,
-          toolMs: timing.toolMs || 0,
+          otherMs: timing.otherMs || 0,
           totalMs: timing.durationMs || 0
         });
       }

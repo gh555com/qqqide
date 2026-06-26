@@ -108,7 +108,7 @@ async function switchQuest(id) {
                                 drawPie(_fDom.aiEl._clockCanvas, {
                                     networkMs: _matchTiming.networkMs || 0,
                                     aiMs: _matchTiming.aiMs || 0,
-                                    toolMs: _matchTiming.toolMs || 0,
+                                    otherMs: _matchTiming.otherMs || 0,
                                     totalMs: _matchTiming.durationMs || 0
                                 });
                             }
@@ -727,7 +727,7 @@ document.getElementById('ctx-compress').onclick = async function () {
                 durationMs: _result.elapsedMs || 0,
                 networkMs: 0,
                 aiMs: _result.elapsedMs || 0,
-                toolMs: 0,
+                otherMs: 0,
                 finishedAt: new Date().toISOString()
             };
         }
