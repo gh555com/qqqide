@@ -756,18 +756,25 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
         return m;
     });
 
-    // ★ 预计算渲染数据（一次渲染，永久不变）
-    var _fDataForRender = {
-        question: (ag._lastUserInput && ag._lastUserInput.text) || '',
-        conversation: cleanConv,
-        costWge: ag._floorCostWge,
-        clockTiming: ag._lastFloorTimingRecord || null,
-        _streamingText: (ag._streaming && ag._activeAiDiv && ag._activeAiDiv._fullText) ? ag._activeAiDiv._fullText : '',
-        _streaming: !!(ag._streaming)
-    };
+    // ★ 预计算渲染数据 — 一次渲染永久不变
+    //   优先取 live DOM HTML（用户实际看到的 _contentWrap.innerHTML），保证所见即所得
+    //   仅当 DOM 已销毁（旧楼/异常）才回退到 _buildConversationFlowHtml 从 conversation 重建
     var ai_html = '';
-    if (typeof _buildConversationFlowHtml === 'function') {
-        try { ai_html = _buildConversationFlowHtml(cleanConv, _fDataForRender); } catch (_) { }
+    if (ag._activeAiDiv && ag._activeAiDiv._contentWrap) {
+        try { ai_html = ag._activeAiDiv._contentWrap.innerHTML; } catch (_) { }
+    }
+    if (!ai_html && typeof _buildConversationFlowHtml === 'function') {
+        try {
+            var _fDataForRender = {
+                question: (ag._lastUserInput && ag._lastUserInput.text) || '',
+                conversation: cleanConv,
+                costWge: ag._floorCostWge,
+                clockTiming: ag._lastFloorTimingRecord || null,
+                _streamingText: (ag._streaming && ag._activeAiDiv && ag._activeAiDiv._fullText) ? ag._activeAiDiv._fullText : '',
+                _streaming: !!(ag._streaming)
+            };
+            ai_html = _buildConversationFlowHtml(cleanConv, _fDataForRender);
+        } catch (_) { }
     }
     // ★ 剥离 CURRENT TIME 块
     var question_clean = (ag._lastUserInput && ag._lastUserInput.text) || '';
