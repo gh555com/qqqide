@@ -1005,19 +1005,36 @@ var QuestStore = (function () {
         }
     }
 
-    // ★ 写入 all.json（真理源）— bridge.fs.write 内部 _atomicWrite（tmp+rename）
+    // ★ 写入 all.json（真理源）— 串行锁防 auto-save/onDone 并发 → tmp→rename 竞态残留
+    var _floorWriteLocks = {};
     async function _writeFloorFile(questId, floorNum, floorData) {
+        if (!_rootDir) return false;
+        var key = questId + '.' + floorNum;
+        // 串行化：同一楼层的 auto-save + onDone 不可能同时写，杜绝双 tmp 残留
+        var chain = (_floorWriteLocks[key] || Promise.resolve()).then(function () {
+            return _doWriteFloorFile(questId, floorNum, floorData);
+        }, function () {
+            return _doWriteFloorFile(questId, floorNum, floorData);
+        });
+        _floorWriteLocks[key] = chain;
+        // 写完后异步清扫，不阻塞返回
+        chain.then(function () {
+            var fDir = _floorDirCache && _floorDirCache[key];
+            if (fDir) _cleanTmpInDir(fDir, _bridgeFs());
+        }).catch(function () { });
+        return chain;
+    }
+    async function _doWriteFloorFile(questId, floorNum, floorData) {
         if (!_rootDir) return false;
         try {
             var bf = _bridgeFs();
             if (!bf) return false;
             var fDir = await _resolveFloorDir(questId, floorNum);
             if (!fDir) return false;
+            _floorDirCache = _floorDirCache || {};
+            _floorDirCache[questId + '.' + floorNum] = fDir;
             var fJsonPath = fDir + 'all.json';
             await bf.write(fJsonPath, JSON.stringify(floorData, null, 2));
-            // ★ 写后清理：_atomicWrite 的 tmp+rename 在并发/杀毒软件干扰下
-            //   可能残留 all.json.tmp.* 文件。每次写完立即清扫本目录，零累积。
-            _cleanTmpInDir(fDir, bf);
             return true;
         } catch (_e) {
             console.warn('[quest-store] _writeFloorFile FAIL:', _e && _e.message);

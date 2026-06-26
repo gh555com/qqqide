@@ -304,9 +304,18 @@ var CardPool = (function () {
     var _qText = fData.question || '';
     if (!_qText) {
       var _conv = fData.conversation || [];
-      if (_conv.length && _conv[0] && _conv[0].role === 'user' && _conv[0].content) {
-        _qText = _conv[0].content;
+      // ★ 跳过 _persistent 消息（系统提示词/rules），找真正的用户问题
+      for (var _cqi = 0; _cqi < _conv.length; _cqi++) {
+        if (_conv[_cqi].role === 'user' && !_conv[_cqi]._persistent && _conv[_cqi].content) {
+          _qText = _conv[_cqi].content;
+          break;
+        }
       }
+    }
+    // ★ 剥离尾部 CURRENT TIME 块（agent-loop 追加到用户消息末尾，混淆用户气泡显示）
+    if (_qText) {
+      var _ctIdx = _qText.indexOf('\n\n═══ CURRENT TIME ═══');
+      if (_ctIdx > 0) _qText = _qText.slice(0, _ctIdx);
     }
     var userEl = null;
     if (_qText) {
