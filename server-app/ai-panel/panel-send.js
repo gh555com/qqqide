@@ -753,6 +753,8 @@ async function sendMessage() {
             _capturedAgent._sending = false;
             _capturedAgent._streaming = false;
         }
+        // ★ 中央建楼状态机：确保注销（onDone/onError 已处理，此处兜底看门狗/异常路径）
+        if (_capturedQuestId && typeof _unregisterBuilding === 'function') _unregisterBuilding(_capturedQuestId);
         _queueBusy = false;
         if (_activeAgent === _capturedAgent) _sending = false;  // ★ 仅前台复位
         // ★ 队列自动排水：楼层完结后（onDone 内因 _queueBusy=true 被阻断），此处补排
