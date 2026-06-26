@@ -10,8 +10,13 @@ var questUIStates = {};
 // ★ 前向声明：panel-quest-ui.js 定义，但 panel-floor.js / panel-quest.js 更早引用
 //   var 重复声明安全，真正逻辑在 panel-quest-ui.js 中用 Object.defineProperty 覆盖
 var _queueFallback = [];
-var _queuePaused = false;
+var _queuePausedFallback = false;
 var _queueBusy = false;
+Object.defineProperty(window, '_queuePaused', {
+    get: function () { return _activeAgent ? _activeAgent._queuePaused : _queuePausedFallback; },
+    set: function (v) { if (_activeAgent) _activeAgent._queuePaused = v; else _queuePausedFallback = v; },
+    enumerable: true, configurable: true
+});
 var _queueSaveTimer = null;
 var QUEUE_MAX = 3;
 Object.defineProperty(window, '_queue', {

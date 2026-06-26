@@ -375,7 +375,7 @@ async function _restoreAgentFromStore(questId, ag) {
             ag._ctx.floorArchives = (data.ctx && data.ctx.floorArchives) || [];
             ag._floorTimings = data.floorTimings || [];
             ag._serverDrift = data.serverDrift || 0;
-            _queue = data.queue || [];
+            ag._queue = data.queue || [];
             ag._rulesVersion = data.rulesVersion || '';
             ag._persistentCount = data.persistentCount || 0;
             // ★ 恢复楼层计数器（旧 quest 无此字段时回退到已保存楼层数）
