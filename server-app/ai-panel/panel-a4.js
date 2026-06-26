@@ -756,8 +756,34 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
         return m;
     });
 
+    // ★ 预计算渲染数据（一次渲染，永久不变）
+    var _fDataForRender = {
+        question: (ag._lastUserInput && ag._lastUserInput.text) || '',
+        conversation: cleanConv,
+        costWge: ag._floorCostWge,
+        clockTiming: ag._lastFloorTimingRecord || null,
+        _streamingText: (ag._streaming && ag._activeAiDiv && ag._activeAiDiv._fullText) ? ag._activeAiDiv._fullText : '',
+        _streaming: !!(ag._streaming)
+    };
+    var ai_html = '';
+    if (typeof _buildConversationFlowHtml === 'function') {
+        try { ai_html = _buildConversationFlowHtml(cleanConv, _fDataForRender); } catch (_) { }
+    }
+    // ★ 剥离 CURRENT TIME 块
+    var question_clean = (ag._lastUserInput && ag._lastUserInput.text) || '';
+    var _ctIdx2 = question_clean.indexOf('\n\n═══ CURRENT TIME ═══');
+    if (_ctIdx2 > 0) question_clean = question_clean.slice(0, _ctIdx2);
+    // ★ house / room 计数
+    var house_count = (ag._houses && ag._houses.length) || 0;
+    var room_count = 0;
+    if (ag._houses) { for (var _hci = 0; _hci < ag._houses.length; _hci++) { room_count += (ag._houses[_hci].toolCount || 0); } }
+
     var payload = {
         question: (ag._lastUserInput && ag._lastUserInput.text) || '',
+        question_clean: question_clean,
+        ai_html: ai_html,
+        house_count: house_count,
+        room_count: room_count,
         conversation: cleanConv,
         houses: cleanHouses,
         costWge: ag._floorCostWge,
@@ -765,7 +791,7 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
         lastUserInput: ag._lastUserInput,
         allTxtPath: allTxtPath,
         fileStats: (typeof _computeFileStats === 'function') ? _computeFileStats(ag._houses, ag._a4Snapshots) : { fileCount: 0, added: 0, deleted: 0 },
-        clockTiming: ag._lastFloorTimingRecord || (ag._floorTiming && ag._floorTiming.floorStartPerf ? { durationMs: Math.round(performance.now() - ag._floorTiming.floorStartPerf), networkMs: ag._floorTiming.networkMs || 0, aiMs: ag._floorTiming.aiMs || 0, toolMs: ag._floorTiming.toolMs || 0, floorIndex: ag._currentFloorNum || 0 } : null),
+        clockTiming: ag._lastFloorTimingRecord || (ag._floorTiming && ag._floorTiming.floorStartPerf ? { durationMs: Math.round(performance.now() - ag._floorTiming.floorStartPerf), networkMs: ag._floorTiming.networkMs || 0, aiMs: ag._floorTiming.aiMs || 0, otherMs: ag._floorTiming.otherMs != null ? ag._floorTiming.otherMs : Math.max(0, (performance.now() - ag._floorTiming.floorStartPerf) - ((ag._floorTiming.networkMs || 0) + (ag._floorTiming.aiMs || 0))), floorIndex: ag._currentFloorNum || 0 } : null),
         aiStartTime: ag._aiStartTime || '',
         tierLabel: ag._aiTierLabel || '',
         images: ag._lastUserInput && ag._lastUserInput.images ? ag._lastUserInput.images.map(function (img) {

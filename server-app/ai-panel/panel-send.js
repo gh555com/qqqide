@@ -273,6 +273,8 @@ async function sendMessage() {
     _startAutoSave();
     scrollToBottom(true);
     setStreaming(true);
+    // ★ 中央建楼状态机：登记 quest 开始建楼
+    if (typeof _registerBuilding === 'function') _registerBuilding(_capturedQuestId, typeof _panelId !== 'undefined' ? _panelId : 1);
 
     // ═══ E-Flow: Expert Document Framework trigger ═══
     // First floor of first quest (100%) or random 10% on other floors
@@ -464,7 +466,7 @@ async function sendMessage() {
                 var _divDetached = !(aiDiv && aiDiv.isConnected);
 
                 if (_activeAgent === _capturedAgent) {
-                    stopFloorTimer(timing || { networkMs: 0, aiMs: 0, toolMs: 0 }, _capturedAgent);
+                    stopFloorTimer(timing || { networkMs: 0, aiMs: 0, otherMs: 0 }, _capturedAgent);
                     scrollToBottom();
                 } else {
                     // ★ 后台 agent 楼层完结：停 timer + 记录 timing（不停 timer 会导致切回后时钟继续走）
@@ -476,7 +478,7 @@ async function sendMessage() {
                         durationMs: Math.round(_elapsed),
                         networkMs: (timing && timing.networkMs) || 0,
                         aiMs: (timing && timing.aiMs) || 0,
-                        toolMs: (timing && timing.toolMs) || 0,
+                        otherMs: (timing && timing.otherMs) || 0,
                         finishedAt: new Date().toISOString()
                     };
                     _capturedAgent._floorTimings.push(_bgRecord);
@@ -490,7 +492,7 @@ async function sendMessage() {
                         if (_bgAiDiv._clockSec) _bgAiDiv._clockSec.textContent = ':' + (_bgDurS % 60 < 10 ? '0' : '') + (_bgDurS % 60) + 's';
                         if (_bgAiDiv._clockCanvas) {
                             _bgAiDiv._clockCanvas.style.visibility = 'visible';
-                            var _bgTm = timing || { networkMs: 0, aiMs: 0, toolMs: 0 };
+                            var _bgTm = timing || { networkMs: 0, aiMs: 0, otherMs: 0 };
                             _bgTm.totalMs = _elapsed;
                             if (typeof drawPie === 'function') drawPie(_bgAiDiv._clockCanvas, _bgTm);
                         }
@@ -501,6 +503,8 @@ async function sendMessage() {
                 _capturedAgent._streaming = false;
                 // ★ 释放中心机器 running 标记（setStreaming(false) 不再负责此事）
                 _markQuestRunning(_capturedQuestId, false);
+                // ★ 中央建楼状态机：注销 quest 建楼状态
+                if (typeof _unregisterBuilding === 'function') _unregisterBuilding(_capturedQuestId);
                 if (_panelRunningQuestId === _capturedQuestId) _panelRunningQuestId = null;
                 if (_activeAgent === _capturedAgent) {
                     setStreaming(false);
@@ -589,6 +593,8 @@ async function sendMessage() {
                 }
                 // ★ 释放中心机器 running 标记（setStreaming 不再负责此事）
                 _markQuestRunning(_capturedQuestId, false);
+                // ★ 中央建楼状态机：注销 quest 建楼状态
+                if (typeof _unregisterBuilding === 'function') _unregisterBuilding(_capturedQuestId);
                 if (_panelRunningQuestId === _capturedQuestId) _panelRunningQuestId = null;
                 if (_activeAgent === _capturedAgent) {
                     if (aiDiv && aiDiv._floorCompleted) {
@@ -665,7 +671,7 @@ async function sendMessage() {
         if (_capturedAgent && _capturedAgent._stopState === 'stopping') {
             _stopAutoSave();
             if (typeof stopFloorTimer === 'function') {
-                stopFloorTimer(_capturedAgent._floorTiming || { networkMs: 0, aiMs: 0, toolMs: 0 }, _capturedAgent);
+                stopFloorTimer(_capturedAgent._floorTiming || { networkMs: 0, aiMs: 0, otherMs: 0 }, _capturedAgent);
             }
             setStreaming(false);
             // ★ 永不自停：Stop 不暂停队列，用户手动点暂停才停
@@ -730,13 +736,13 @@ async function sendMessage() {
             _appendToCard(_errDiv);
             // ★ 持久化断头楼层的时钟数据（否则重启窗口后 A3 归零）
             var _elapsed2 = performance.now() - _capturedAgent._floorStartPerf;
-            var _tm = _capturedAgent._floorTiming || { networkMs: 0, aiMs: 0, toolMs: 0 };
+            var _tm = _capturedAgent._floorTiming || { networkMs: 0, aiMs: 0, otherMs: 0 };
             var _record = {
                 floorIndex: _capturedAgent._ctx ? _capturedAgent._ctx.totalFloors : 0,
                 durationMs: Math.round(_elapsed2),
                 networkMs: _tm.networkMs || 0,
                 aiMs: _tm.aiMs || 0,
-                toolMs: _tm.toolMs || 0,
+                otherMs: _tm.otherMs || 0,
                 finishedAt: new Date().toISOString()
             };
             _capturedAgent._lastFloorTimingRecord = _record;

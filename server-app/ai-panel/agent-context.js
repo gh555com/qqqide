@@ -12,7 +12,7 @@
 //   - 保留边界对齐楼层（user 消息 = 楼层边界），绝不切断一条楼层
 //   - 最少保留 6 层楼（当前层 + 前 5 层），即使超出 10%
 //   - 单专家 = 1 次 API 调用 → 一致性天然保证，不必 cross-check
-//   - 冷文本 4 段均匀采样（200K chars），时空覆盖不偏首尾
+//   - 冷文本全量送入（不采样），模型 1M 窗口完全装得下
 //   - facts 后处理自动合并同话题事实（keyword 重叠 >50%）
 //   - 压缩失败 → 指数退避无限重试（2s/4s/8s/.../60s），永不静默丢弃0s），永不静默丢弃
 //
@@ -242,22 +242,8 @@
         var _oldNarrative = self._ctx.narrative || '';
         var _debugTrace = { ts: new Date().toISOString(), trigger: 'auto', input: { floors: (lastCompressedFloor || 0) + '→' + self._ctx.totalFloors, coldMsgs: coldMsgs.length, coldTextPreview: coldText.slice(0, 2000), oldFacts: _oldFacts.length, oldNarrativeLen: _oldNarrative.length }, experts: {} };
 
-        // ★ 冷文本多段均匀采样（8段 × 各50K chars = 400K），时空覆盖翻倍
-        var COLD_TEXT_CAP = 400000;
-        var _sampledColdText = coldText;
-        if (_sampledColdText.length > COLD_TEXT_CAP) {
-            var _segments = 8;
-            var _segSize = Math.floor(COLD_TEXT_CAP / _segments);
-            var _stride = Math.floor(coldText.length / _segments);
-            var _parts = [];
-            for (var _s = 0; _s < _segments; _s++) {
-                var _segStart = _s * _stride;
-                var _segEnd = Math.min(_segStart + _segSize, coldText.length);
-                _parts.push('--- Segment ' + (_s + 1) + '/' + _segments + ' (~' + Math.round(_segStart / coldText.length * 100) + '% position) ---\n' + coldText.slice(_segStart, _segEnd));
-            }
-            _sampledColdText = _parts.join('\n\n');
-            self._log('  ║ coldText sampled: ' + coldText.length + ' → ' + _sampledColdText.length + ' chars (' + _segments + ' segments × ~' + Math.round(_segSize / 1000) + 'k)');
-        }
+        // ★ 冷文本全量送入（不采样，模型有 1M token 窗口，coldText 最大 ~900K tokens ≈ 2.4M chars，完全装得下）
+        self._log('  ║ coldText: ' + coldText.length + ' chars sent in full (no sampling)');
 
         // ── 单专家统一 prompt — Narrative-First 架构 ──
         //   1. 先写 Narrative（8K-48K chars，主记录）
@@ -321,8 +307,8 @@
             JSON.stringify(_oldFacts),
             '',
             '═══════════════════════════════════════════',
-            'NEW CONVERSATION HISTORY (' + coldMsgs.length + ' messages, 8 time-segments):',
-            _sampledColdText
+            'NEW CONVERSATION HISTORY (' + coldMsgs.length + ' messages, full text):',
+            coldText
         ].join('\n');
 
         // ── 单次调用（最多 2 次重试）──

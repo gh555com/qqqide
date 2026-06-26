@@ -119,7 +119,7 @@ async function generateFloorTxt(ag, questId) {
         // ═══ floor stats + az 区（每层楼私有） ═══
         if (timing) {
             lines.push('\u2550\u2550\u2550\u2550 floor ' + floorNum + ' stats \u2550\u2550\u2550\u2550');
-            lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.aiMs ? timing.aiMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.toolMs ? timing.toolMs.toFixed(0) : '0') + 'ms  cost: ' + (ag._floorCostWge / 10000).toFixed(4) + ' ge');
+            lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.aiMs ? timing.aiMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.otherMs ? timing.otherMs.toFixed(0) : '0') + 'ms  cost: ' + (ag._floorCostWge / 10000).toFixed(4) + ' ge');
             // az 区文本化
             var _floorDataForAz = { houses: houses, allTxtPath: ag._allTxtPath || '', costWge: ag._floorCostWge, floorFree: ag._floorFree || false, a4Snapshots: ag._a4Snapshots || {} };
             var _questMetaForAz = { floorTimings: ag._floorTimings || [] };
@@ -189,7 +189,7 @@ function _buildAzText(floorNum, floorData, questMeta) {
             var sec = durS % 60;
             var netS = Math.round((t.networkMs || 0) / 1000);
             var aiS = Math.round((t.aiMs || 0) / 1000);
-            var toolS = Math.round((t.toolMs || 0) / 1000);
+            var toolS = Math.round((t.otherMs || 0) / 1000);
             lines.push('az> \u23f1 ' + min + 'm' + (sec < 10 ? '0' : '') + sec + 's  Net:' + netS + 's  AI:' + aiS + 's  Tool:' + toolS + 's');
             break;
         }

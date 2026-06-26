@@ -21,8 +21,6 @@
     var OUTPUT_CAP_MAX = 800000;       // AI 视野最大上限（AI 传 maxOutput 时可突破到）
     var MAX_RESPONSE_TOKENS = 393216; // AI 回答最大 tokens（上限 393216，唯一真理在此）
     var READ_FILE_CAP_BYTES = 200000;  // read_file 单次返回字节上限（～200KB，超过则截断+分页提示）
-    var AI_OUTPUT_WATCHDOG_MS_REMOVED = true; // output_watchdog 已移除（2026-06-21）— AI 推理不限时
-
     // ═══ 网络超时参数（单一真理源：改一处全局生效） ═══
     var FETCH_DEADLINE_PRIMARY_MS = 1000000;   // 主线直连（绕过 CF），对齐 Nginx+Go 1000s，仅作兜底天花板
     var FETCH_DEADLINE_FALLBACK_MS = 1000000;  // 备线走 CF Worker，实测 CF Proxy 有心跳流不掐 100s
@@ -99,10 +97,8 @@
         READ_FILE_CAP_BYTES: READ_FILE_CAP_BYTES,
         READ_FILE_CAP_KB: Math.round(READ_FILE_CAP_BYTES / 1024),
         COMPACT_MAX_TOKENS: COMPACT_MAX_TOKENS,
-        AI_OUTPUT_WATCHDOG_MS_REMOVED: true,
-        // 网络超时参数
-        FETCH_DEADLINE_PRIMARY_MS: FETCH_DEADLINE_PRIMARY_MS,
-        FETCH_DEADLINE_FALLBACK_MS: FETCH_DEADLINE_FALLBACK_MS,
+        AI_OUTPUT_WATCHDOG_MS_REMOVED: true,        COMPACT_MAX_TOKENS: COMPACT_MAX_TOKENS,
+        // 网络超时参数CK_MS: FETCH_DEADLINE_FALLBACK_MS,
         STREAM_WATCHDOG_MS: STREAM_WATCHDOG_MS,
         // 模型上下文窗口参数
         CTX_MAX_TOKENS: CTX_MAX_TOKENS,
