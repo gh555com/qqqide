@@ -49,7 +49,7 @@ AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assis
                     || item.name === 'find_files' || item.name === 'list_files'
                     || item.name === 'search_symbol' || item.name === 'grep_code'
                     || item.name === 'search_smart';
-                result = await executeTool(item.name, item.args);
+                result = await executeTool(item.name, item.args, self);
             } catch (err) {
                 result = 'Tool error: ' + (err.message || err);
             }

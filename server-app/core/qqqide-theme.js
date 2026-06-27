@@ -273,9 +273,9 @@
           'input.border': '#d3c6aa',
           'inputOption.activeBorder': '#b58900',
           'inputOption.activeBackground': '#eee8d5',
-          'editor.findMatchBackground': '#ffd30266',
-          'editor.findMatchHighlightBackground': '#ffd30233',
-          'editor.findRangeHighlightBackground': '#ffd30215',
+          'editor.findMatchBackground': '#ffd30166',
+          'editor.findMatchHighlightBackground': '#ffd30133',
+          'editor.findRangeHighlightBackground': '#ffd30115',
         },
         rules: MONACO_LIGHT_RULES,
       });

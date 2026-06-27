@@ -528,6 +528,8 @@
       if (!_editorRef) _editorRef = ed;
       // 唯一真理逐字回退机器：按设置决定是否挂载
       _applyUndoMode(ed, monaco);
+      // 防滚动条贴底：Monaco 内部 scrollable 底部留 1px
+      try { var _se = host.querySelector('.monaco-scrollable-element'); if (_se) _se.style.marginBottom = '1px'; } catch (_) {}
 
       // 行号右侧空气墙点击 → 光标跳到第一列
       _installGutterClickFix(ed, monaco);

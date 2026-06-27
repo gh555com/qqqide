@@ -11,7 +11,7 @@ var SKIP_EXTS = ['.exe', '.dll', '.so', '.dylib', '.bin', '.pyd', '.pyc', '.pyo'
 // 工具执行分发
 // ============================================================
 
-async function executeTool(name, args) {
+async function executeTool(name, args, ownerAgent) {
     // ★ Floor 级泛化 READ 缓存 — 消灭同 floor 内重搜索/重列目录死循环
     //   缓存 key = toolName + 规范化参数 JSON（剔除 null/undefined）
     //   每层楼由 agent-loop.js 复位: window._qqqToolCacheThisFloor = {}

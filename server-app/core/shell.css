@@ -424,18 +424,7 @@ body {
   min-height: var(--panel-min);
 }
 
-/* tab group: column flex so content fills remaining height, overflow hidden prevents spill */
-.qqq-tab-group {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.qqq-tab-content {
-  flex: 1 1 auto;
-  overflow: hidden;
-  position: relative;
-  min-height: 0;
-}
+
 
 /* X output panel */
 .qqq-x-output {
@@ -1057,9 +1046,12 @@ body {
 
 /* 内层滚动容器：百分百消除原生滚动条，仅显示 qh 自定义滑轨 */
 .aiv-scroll-inner {
-  scrollbar-width: none;          /* Firefox */
-  -ms-overflow-style: none;       /* IE/Edge */
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE/Edge */
 }
+
 .aiv-scroll-inner::-webkit-scrollbar {
   display: none;
   width: 0;
@@ -1076,24 +1068,24 @@ body {
 /* ── hover 高亮：文件/文件夹统一，文字纯黑(亮)/纯白(暗)，更显眼 ── */
 .aiv-dd-row:hover,
 .aiv-recent-row:hover {
-  background: rgba(0,0,0,0.12) !important;
+  background: rgba(0, 0, 0, 0.12) !important;
   color: #000 !important;
 }
 
 [data-theme="dark"] .aiv-dd-row:hover,
 [data-theme="dark"] .aiv-recent-row:hover {
-  background: rgba(255,255,255,0.16) !important;
+  background: rgba(255, 255, 255, 0.16) !important;
   color: #fff !important;
 }
 
 /* ── 面包屑：比 hover 更深的高亮背景，文字色与 hover 一致 ── */
 .aiv-breadcrumb {
-  background: rgba(0,0,0,0.20) !important;
+  background: rgba(0, 0, 0, 0.20) !important;
   color: #000 !important;
 }
 
 [data-theme="dark"] .aiv-breadcrumb {
-  background: rgba(255,255,255,0.24) !important;
+  background: rgba(255, 255, 255, 0.24) !important;
   color: #fff !important;
 }
 
@@ -1377,8 +1369,8 @@ body {
 
 /* 选中文字背景色 → 金色（不要蓝色）— 核弹级覆盖 */
 .monaco-editor .find-widget .monaco-inputbox input::selection {
-  background-color: #ffd302 !important;
-  background: #ffd302 !important;
+  background-color: #ffd301 !important;
+  background: #ffd301 !important;
   color: #000 !important;
   -webkit-text-fill-color: #000 !important;
 }
@@ -1386,8 +1378,8 @@ body {
 .monaco-editor .find-widget input::selection,
 .monaco-editor .find-widget textarea::selection,
 .monaco-editor .find-widget *::selection {
-  background-color: #ffd302 !important;
-  background: #ffd302 !important;
+  background-color: #ffd301 !important;
+  background: #ffd301 !important;
   color: #000 !important;
   -webkit-text-fill-color: #000 !important;
 }

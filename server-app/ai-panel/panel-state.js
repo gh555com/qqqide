@@ -12,30 +12,29 @@ var questUIStates = {};
 var _queueFallback = [];
 var _queuePausedFallback = false;
 var _queueBusy = false;
+var _qa = function () { return (typeof _activeAgent !== 'undefined' && _activeAgent); };
 Object.defineProperty(window, '_queuePaused', {
-    get: function () { return _activeAgent ? _activeAgent._queuePaused : _queuePausedFallback; },
-    set: function (v) { if (_activeAgent) _activeAgent._queuePaused = v; else _queuePausedFallback = v; },
+    get: function () { return _qa() ? _qa()._queuePaused : _queuePausedFallback; },
+    set: function (v) { if (_qa()) _qa()._queuePaused = v; else _queuePausedFallback = v; },
     enumerable: true, configurable: true
 });
 var _queueSaveTimer = null;
 var QUEUE_MAX = 3;
 Object.defineProperty(window, '_queue', {
-    get: function () { return _activeAgent ? _activeAgent._queue : _queueFallback; },
-    set: function (v) { if (_activeAgent) _activeAgent._queue = v; else _queueFallback = v; },
+    get: function () { return _qa() ? _qa()._queue : _queueFallback; },
+    set: function (v) { if (_qa()) _qa()._queue = v; else _queueFallback = v; },
     enumerable: true, configurable: true
 });
 // ★ 前向声明：panel-quest-ui.js 定义 renderQueueStrip，panel-quest.js 更早调用
 function renderQueueStrip() { }
 
 // State
-var _streamingFallback = false;
-var _sendingFallback = false;
-// _sending / streaming now panel-level guards, NOT redirected through _activeAgent
+//   _sending = panel-level guard（一个面板同一时刻只能有一个 quest 在发送）
+//   streaming = per-agent proxy（通过 _activeAgent 透明路由，后台 quest 流式不阻塞前台发送）
 var _sendingVar = false;
-var _streamingVar = false;
 Object.defineProperty(window, 'streaming', {
-    get: function () { return _streamingVar; },
-    set: function (v) { _streamingVar = v; },
+    get: function () { return (typeof _activeAgent !== 'undefined' && _activeAgent) ? _activeAgent._streaming : false; },
+    set: function (v) { if (typeof _activeAgent !== 'undefined' && _activeAgent) _activeAgent._streaming = v; },
     enumerable: true, configurable: true
 });
 Object.defineProperty(window, '_sending', {
