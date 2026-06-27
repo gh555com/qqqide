@@ -234,6 +234,7 @@ qqq-shell-v2/
 │   └── ai-panel/       AI面板（模块化拆分，index.html 仅 HTML/CSS 壳）
 │       ├── index.html         壳文件（~400行 HTML+CSS + script src 引用）
 │       ├── panel-state.js     全局状态 + 前向声明 + 同步桥
+│       ├── panel-registry.js  中央建楼状态机（父窗口共享注册表）
 │       ├── panel-search.js    搜索逻辑 + CSS Highlight API
 │       ├── panel-input.js     输入处理 + tier 选择 + 图片粘贴
 │       ├── panel-render.js    消息渲染 + Markdown→DOM
@@ -654,8 +655,14 @@ AI 上下文窗口防护（三层纵深 + 参数集中化，2026-06-10 落地）
   _accumulatedCompletionTokens: agent 新增字段，每间 house 累加 completion_tokens（跨楼层）
   不再展示 Tool Definitions（固定 ~3.2k tokens，无需用户关注）
 
-all.json 写入系统（2026-06-25 重启恢复加固）
+all.json 写入系统（2026-06-27 预渲染加固）
 ---------------------------------------------
+· ★ 预计算字段（保存时一次性计算，恢复时直接读）：
+  ai_html = _contentWrap.innerHTML（live DOM 优先）|| _buildConversationFlowHtml（回退）
+  question_clean = 剥离 CURRENT TIME + 跳过 _persistent → 用户气泡直接 textContent
+  house_count / room_count → A1 计数直接 DOM
+  clockTiming.otherMs = 总时间 - network - AI（全量重命名自 toolMs）
+· 恢复路径：优先读预计算字段 → innerHTML / textContent 零逻辑；旧数据回退现场渲染。
 · 唯一增量路径: auto-save（面板级持久 timer，_ensureAutoSave 模块加载即启动，永不停止）。
   _startAutoSave / _stopAutoSave 已彻底删除（面板级单例，不随 quest 切换启停）。
 · beforeunload: _saveAllBeforeUnload → _saveAgentFloor(force=true) 无条件全量刷盘。

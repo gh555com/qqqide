@@ -467,6 +467,27 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
     Ctrl+R 即时刷新。不经过 gh555.com/。
   - shell/ TS 源码 → esbuild → shell-out/ 编译产物，只改源码。
 
+§46b 中央建楼状态机 — 跨面板唯一真理源（2026-06-27）
+  - 三面板共享父窗口 __qqq_buildingRegistry（questId → {stopState, panelId}）。
+  - ★ 每 quest 独立沙箱：_sending / _queue / _queuePaused 全部 per-agent（_activeAgent 代理），
+    切 quest 时自动切换。面板 A 后台建楼不阻塞面板 A 前台新 quest 发送。
+  - 彗星环绕：_getRunningQuestIds() → updateQuestTofu() → quest-running CSS 类。
+    跨面板广播 qqq-registry-changed → 其他面板自动刷新。
+  - 生命周期：registerBuilding（建楼开始）→ unregisterBuilding（建楼完结/错误/异常）。
+    finally 块兜底 unregisterBuilding 防僵尸残留。
+  - ★ 排队/引导/压缩均 per-agent，不跨 quest 污染。_queuePaused 也是 per-agent。
+  - 新增文件: panel-registry.js（加载顺序：state→registry→search→...）
+
+§46c 预渲染 all.json — 一次渲染永久不变（2026-06-27）
+  - all.json 新增预计算字段：ai_html / question_clean / house_count / room_count。
+  - ai_html 优先取 _contentWrap.innerHTML（onDone 冲刷后的 live DOM），用户看到什么存什么。
+    仅当 DOM 已销毁（旧楼/异常）才回退 _buildConversationFlowHtml 重建。
+  - question_clean：剥离末尾 CURRENT TIME 块，跳过 _persistent 消息。
+  - 恢复时 card-pool.js 优先读 ai_html→innerHTML + question_clean→textContent，
+    零重新渲染。旧数据无这些字段时回退到现场渲染（向后兼容）。
+  - 饼图时序：toolMs 全量重命名为 otherMs（总时间 - network - AI），
+    clockTiming 双重保障：_lastFloorTimingRecord 优先 + _floorStartPerf 兜底。
+
 §46 开发基础设施 — 已知工具链（2026-06-22）
   - qide-shell.py: 一站式控制台。按 Q = esbuild build → dev-server :8090 + esbuild watch + electron。
   - 热更新: 改 server-app/ (HTML/CSS/JS) → Ctrl+R 刷新。改 shell/*.ts → esbuild watch 自动重编 → Ctrl+R。
