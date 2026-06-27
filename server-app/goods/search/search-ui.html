@@ -138,26 +138,35 @@ var Q=document.getElementById('q'),RP=document.getElementById('rp'),SP=document.
 
 var _rx=false,_cs=false,_ww=false,_tmr=null,_last=null,_lastQ='',_hl=null,_scopePath='';
 
-// ═══════════ persistence via onlyStore (prefs) + direct bridge (history) ═══════════
-// onlyStore.init() resets _cache={} on every call, so prefs are loaded once on init
-// and then cached. For history we use the unwrapped StateStore bridge directly
-// to avoid the cache-wipe issue.
-var _storeReady=false,_rawDb=null;
+// ═══════════ history: dual-layer (JS array primary, onlyStore backup) ═══════════
+var _histMem=[null,null,null,null,null];
+function _hydrateHist(){
+  if(!_storeReady)return;
+  for(var i=0;i<5;i++){
+    if(_histMem[i])continue;
+    try{var v=onlyStore.get('search.h'+i);if(v&&v.length)_histMem[i]=v}catch(e){}
+  }
+}
+
+// ═══════════ persistence via onlyStore → {项目}/qqq/alphal/only.sq3 ═══════════
+// onlyStore.init() is called ONCE (guarded by _storeReady).
+// After init, .set() writes to in-memory cache + schedules SQLite flush.
+// .get() reads from in-memory cache (zero I/O, synchronous).
+// This is the same pipeline used by the AI panel.
+var _storeReady=false,_storeTimer=null;
 function _initStore(){
   if(_storeReady)return;
   try{
-    if(typeof onlyStore==='undefined'||!onlyStore.init)return;
-    var vp=window.parent&&window.parent.qqqideViewport;if(!vp)return;
-    var m=vp.getMainProject();if(!m||!m.path)return;
-    var root=m.path.replace(/\\/g,'/').replace(/\/$/,'');
+    if(typeof onlyStore==='undefined'||!onlyStore.init){_retryInit();return}
+    var vp=window.parent&&window.parent.qqqideViewport;if(!vp){_retryInit();return}
+    var m=vp.getMainProject();if(!m||!m.path){_retryInit();return}
     onlyStore.init(m.path);
-    // Also create a raw bridge for history (bypasses onlyStore's cache-wipe)
-    if(!_rawDb&&window.parent.qgs&&window.parent.qgs.project){
-      _rawDb=window.parent.qgs.project(root+'/qqq/alphal/only.sq3','qqq.only',{v:1,form:'doc'});
-    }
     _storeReady=true;
-  }catch(e){}
+    console.log('[search] onlyStore ready: '+m.path);
+    _hydrateHist();
+  }catch(e){_retryInit()}
 }
+function _retryInit(){if(!_storeTimer)_storeTimer=setTimeout(function(){_storeTimer=null;if(!_storeReady)_initStore()},300)}
 function _ldPrefs(){
   if(!_storeReady)_initStore();if(!_storeReady)return;
   try{
@@ -178,19 +187,24 @@ function _svPrefs(){
   }catch(e){}
 }
 
-// ═══════════ history via raw bridge (bypasses onlyStore cache wipe) ═══════════
-// _rawDb = qgs.project(...) → StateStore with ns='qqq.only' baked in
-// .get(key) → StateStore.get('qqq.only', key) — sync, mem cache + SQLite fallback
-// .set(key, val) → StateStore.set('qqq.only', key, val) — sync mem + async flush
+// ═══════════ history with dual-layer: JS array (instant) + onlyStore (persist) ═══════════
+// onlyStore.get() is sync (mem cache), but _cache wipe on init can cause races.
+// Dual-layer: _histMem[] is the primary truth, onlyStore is async backup.
+var _histMem=[null,null,null,null,null]; // 5 inputs: 0=q 1=rp 2=sp 3=inc 4=exc
 function _ldHist(fid){
-  if(!_storeReady)_initStore();if(!_storeReady||!_rawDb)return[];
-  try{var v=_rawDb.get('search.h'+fid);return v||[]}catch(e){return[]}
+  // Try to hydrate from onlyStore once
+  if(!_histMem[fid]&&_storeReady){
+    try{var v=onlyStore.get('search.h'+fid);if(v)_histMem[fid]=v}catch(e){}
+  }
+  return _histMem[fid]||[];
 }
 function _addHist(fid,val){
-  if(!_storeReady)_initStore();if(!_storeReady||!_rawDb)return;
   if(!val||!val.trim())return;val=val.trim();
-  var h=_ldHist(fid);h=h.filter(function(x){return x!==val});h.unshift(val);if(h.length>15)h.length=15;
-  try{_rawDb.set('search.h'+fid,h)}catch(e){}
+  var h=_histMem[fid]||[];
+  h=h.filter(function(x){return x!==val});h.unshift(val);if(h.length>15)h.length=15;
+  _histMem[fid]=h;
+  if(_storeReady)try{onlyStore.set('search.h'+fid,h)}catch(e){}
+  console.log('[search] hist'+fid+' =',h.slice(0,3));
 }
 function _showHist(inp,fid){
   var vals=_ldHist(fid);if(!vals.length){HD.style.display='none';return}
@@ -240,6 +254,7 @@ document.getElementById('cbf').onclick=function(){var fgs=RC.querySelectorAll('.
 // Init
 _ldPrefs();
 if(!EX.value)EX.value='.git/, *.log';
+_initStore();_hydrateHist();
 
 SRT.onchange=function(){_svPrefs();if(_last)rdr(_last)};
 CGI.onchange=function(){_svPrefs();trg()};

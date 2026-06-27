@@ -151,10 +151,7 @@ async function sendMessage() {
             }
             _activeAgent = _getOrCreateAgent(questActiveId);
             if (_panelId === 1) await questStore.setActiveId(questActiveId);
-            if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
-                // ★ setNow 立即写盘：新建 quest 后必须可靠持久化 activeQuestId
-                onlyStore.setNow('ai.panel.' + _panelId + '.activeQuestId', questActiveId);
-            }
+            _persistPanelResume(questActiveId);
             _parentClaimQuest(questActiveId);
             _broadcast('owner-claimed', questActiveId);
             var firstMsg = text || (userContent || '').split('\n')[0];

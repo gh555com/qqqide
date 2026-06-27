@@ -373,6 +373,10 @@ async function _restoreAgentFromStore(questId, ag) {
             ag._uncleanShutdown = data.uncleanShutdown || false;
             ag._ctx.lastCompressedFloor = (data.ctx && data.ctx.lastCompressedFloor) || 0;
             ag._ctx.floorArchives = (data.ctx && data.ctx.floorArchives) || [];
+            ag._ctx.totalFloors = (data.ctx && data.ctx.totalFloors) || 0;
+            if (data.ctx && data.ctx.narrative) ag._ctx.narrative = data.ctx.narrative;
+            if (data.ctx && data.ctx.facts) ag._ctx.facts = data.ctx.facts;
+            if (data.ctx && data.ctx.treasures) ag._ctx.treasures = data.ctx.treasures;
             ag._floorTimings = data.floorTimings || [];
             ag._serverDrift = data.serverDrift || 0;
             ag._queue = data.queue || [];
