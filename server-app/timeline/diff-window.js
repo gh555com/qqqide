@@ -964,7 +964,7 @@
             lineNumbers: 'on',
             lineNumbersMinChars: 2,
             lineDecorationsWidth: 10,
-            scrollBeyondLastLine: false,
+            scrollBeyondLastLine: 20,
             theme: THEME,
         });
 
@@ -1053,7 +1053,7 @@
                 // ★ 只保留 tokenization（语法染色），其余全部关死
                 // 滚动/视口
                 scrollbar: { vertical: 'hidden', horizontal: 'hidden' },
-                scrollBeyondLastLine: false,
+                scrollBeyondLastLine: 20,
                 smoothScrolling: false,
                 cursorBlinking: 'solid',
                 cursorSmoothCaretAnimation: 'off',
@@ -1249,7 +1249,7 @@
         if (_diffEditor) {
             try { _diffEditor.getModifiedEditor().updateOptions({ readOnly: true }); _diffEditor.getOriginalEditor().updateOptions({ readOnly: true }); } catch (_) { }
         }
-        renderDiff(); 
+        renderDiff();
     }
 
     async function _renderDiffWithLatest(latestContent) {
@@ -1264,7 +1264,7 @@
         if (_oldModifiedModel) { _oldModifiedModel.dispose(); _oldModifiedModel = null; }
         if (_diffEditor) { _diffEditor.dispose(); _diffEditor = null; }
         $emptyState.style.display = 'none'; $diffContainer.style.display = '';
-        _diffEditor = monaco.editor.createDiffEditor($diffContainer, { renderSideBySide: true, readOnly: false, originalEditable: false, automaticLayout: true, minimap: { enabled: true, showSlider: 'mouseover' }, scrollbar: { vertical: 'hidden', horizontal: 'hidden' }, wordWrap: 'on', wordWrapColumn: 0, renderIndicators: false, renderOverviewRuler: true, fontSize: _editorFontSize, lineNumbers: 'on', lineNumbersMinChars: 2, lineDecorationsWidth: 10, scrollBeyondLastLine: false, theme: THEME });
+        _diffEditor = monaco.editor.createDiffEditor($diffContainer, { renderSideBySide: true, readOnly: false, originalEditable: false, automaticLayout: true, minimap: { enabled: true, showSlider: 'mouseover' }, scrollbar: { vertical: 'hidden', horizontal: 'hidden' }, wordWrap: 'on', wordWrapColumn: 0, renderIndicators: false, renderOverviewRuler: true, fontSize: _editorFontSize, lineNumbers: 'on', lineNumbersMinChars: 2, lineDecorationsWidth: 10, scrollBeyondLastLine: 20, theme: THEME });
         var originalModel = monaco.editor.createModel(leftContent, lang);
         var modifiedModel = monaco.editor.createModel(latestContent, lang);
         _oldOriginalModel = originalModel; _oldModifiedModel = modifiedModel;
@@ -1519,9 +1519,9 @@
                     'input.border': '#d3c6aa',
                     'inputOption.activeBorder': '#b58900',
                     'inputOption.activeBackground': '#eee8d5',
-                    'editor.findMatchBackground': '#ffd30266',
-                    'editor.findMatchHighlightBackground': '#ffd30233',
-                    'editor.findRangeHighlightBackground': '#ffd30215',
+                    'editor.findMatchBackground': '#ffd30166',
+                    'editor.findMatchHighlightBackground': '#ffd30133',
+                    'editor.findRangeHighlightBackground': '#ffd30115',
                 },
                 rules: [
                     { token: '', foreground: '5c7060', background: 'FDF6E3' },

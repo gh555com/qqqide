@@ -281,12 +281,59 @@ var CardPool = (function () {
       parts.push('<div class="msg-status">⏳ 打印中断（已自动保存）</div>');
     }
 
+    // ★ 工具执行总结：若所有 assistant 消息都是 tool_calls（无文本回复）且确有 house 被执行，
+    //   渲染工具执行指示器，防止跨面板加载时 AI 回复区空白
+    if (parts.length === 0 && fData && fData.houses && fData.houses.length) {
+      var _tc = 0;
+      for (var _ti = 0; _ti < fData.houses.length; _ti++) {
+        _tc += (fData.houses[_ti].toolCount || (fData.houses[_ti].tools ? fData.houses[_ti].tools.length : 0));
+      }
+      parts.push('<div class="msg-flow-tools-done">' + _escHtml('工具执行完毕' + (_tc > 0 ? '（' + _tc + ' 次调用）' : '')) + '</div>');
+    }
+
     return parts.join('\n\n');
   }
 
   function _escHtml(s) {
     if (!s) return '';
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ═══ 图片信息填充：读取 naturalWidth/Height → 写入 .img-info ═══
+  // 可用于任何容器（父 div / contentWrap / 整个 card）
+  function _populateImgInfos(container) {
+    if (!container || !container.querySelectorAll) return;
+    var wraps = container.querySelectorAll('.table-wrap');
+    for (var _wi = 0; _wi < wraps.length; _wi++) {
+      var _img = wraps[_wi].querySelector(':scope > img');
+      if (!_img) continue;
+      var _inf = wraps[_wi].querySelector(':scope > .img-info');
+      if (!_inf || _inf.textContent) continue;
+      if (_img.naturalWidth) {
+        _inf.textContent = _img.naturalWidth + '\u00d7' + _img.naturalHeight;
+      } else {
+        _img.addEventListener('load', function () {
+          var _i = this.parentNode && this.parentNode.querySelector('.img-info');
+          if (_i && this.naturalWidth) _i.textContent = this.naturalWidth + '\u00d7' + this.naturalHeight;
+        }, { once: true });
+      }
+    }
+  }
+
+  // ═══ MutationObserver：自动捕获后续插入的图片（流式渲染 / innerHTML） ═══
+  function _setupImgObserver(contentWrap) {
+    if (contentWrap._imgObserver) return;
+    var _obs = new MutationObserver(function (mutations) {
+      for (var _mi = 0; _mi < mutations.length; _mi++) {
+        var _nodes = mutations[_mi].addedNodes;
+        for (var _ni = 0; _ni < _nodes.length; _ni++) {
+          var _node = _nodes[_ni];
+          if (_node.nodeType === 1) _populateImgInfos(_node);
+        }
+      }
+    });
+    _obs.observe(contentWrap, { childList: true, subtree: true });
+    contentWrap._imgObserver = _obs;
   }
 
   // ═══ 构建单层楼的 DOM（插入 card._contentWrap） ═══
@@ -417,9 +464,30 @@ var CardPool = (function () {
     var conv = fData.conversation || [];
     var flowHtml = fData.ai_html || '';
     if (!flowHtml && typeof _buildConversationFlowHtml === 'function') {
-        flowHtml = _buildConversationFlowHtml(conv, fData);
+      flowHtml = _buildConversationFlowHtml(conv, fData);
     }
     aiEl._contentWrap.innerHTML = flowHtml;
+    // ★ 后处理：将裸 <img>（旧格式缓存/回退渲染）统一包裹为 .table-wrap.img-wrap
+    var _bareImgs = aiEl._contentWrap.querySelectorAll('img');
+    for (var _bi = 0; _bi < _bareImgs.length; _bi++) {
+      var _bImg = _bareImgs[_bi];
+      if (_bImg.closest('.table-wrap')) continue;
+      var _twrap = document.createElement('div');
+      _twrap.className = 'table-wrap img-wrap';
+      var _tbtn = document.createElement('span');
+      _tbtn.className = 'table-view-btn';
+      _tbtn.textContent = '\u25b6 \u5c55\u5f00';
+      var _iinfo = document.createElement('span');
+      _iinfo.className = 'img-info';
+      _bImg.parentNode.insertBefore(_twrap, _bImg);
+      _twrap.appendChild(_tbtn);
+      _twrap.appendChild(_iinfo);
+      _twrap.appendChild(_bImg);
+    }
+    // ★ 统一填充所有 .img-info（覆盖新渲染 + 旧格式迁移）
+    _populateImgInfos(aiEl._contentWrap);
+    // ★ MutationObserver：流式渲染中后续插入的图片自动补分辨率
+    _setupImgObserver(aiEl._contentWrap);
     aiEl.appendChild(aiEl._contentWrap);
     // ★ 事件委托（点击）：继续任务链接 + 表格/代码块预览
     //   表格/代码块从 DOM 自描述内容读取，零全局状态，跨面板切换不失效
@@ -435,11 +503,16 @@ var CardPool = (function () {
       if (btn) {
         var wrap = btn.closest('.table-wrap');
         if (wrap) {
-          var pre = wrap.querySelector(':scope > pre');
-          var inner = wrap.querySelector(':scope > .table-inner');
-          var content = pre ? pre.outerHTML : (inner ? inner.innerHTML : '');
-          if (content && typeof _postToHost === 'function') {
-            _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: '<div class="msg-ai">' + content + '</div>' });
+          var img = wrap.querySelector(':scope > img');
+          if (img && img.src && typeof _postToHost === 'function') {
+            _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: img.src });
+          } else {
+            var pre = wrap.querySelector(':scope > pre');
+            var inner = wrap.querySelector(':scope > .table-inner');
+            var content = pre ? pre.outerHTML : (inner ? inner.innerHTML : '');
+            if (content && typeof _postToHost === 'function') {
+              _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: '<div class="msg-ai">' + content + '</div>' });
+            }
           }
         }
       }
@@ -596,13 +669,20 @@ var CardPool = (function () {
       if (!btn) return;
       var wrap = btn.closest('.table-wrap');
       if (!wrap) return;
-      var pre = wrap.querySelector(':scope > pre');
-      var inner = wrap.querySelector(':scope > .table-inner');
-      var content = pre ? pre.outerHTML : (inner ? inner.innerHTML : '');
-      if (content && typeof _postToHost === 'function') {
-        _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: '<div class="msg-ai">' + content + '</div>' });
+      var img = wrap.querySelector(':scope > img');
+      if (img && img.src && typeof _postToHost === 'function') {
+        _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: img.src });
+      } else {
+        var pre = wrap.querySelector(':scope > pre');
+        var inner = wrap.querySelector(':scope > .table-inner');
+        var content = pre ? pre.outerHTML : (inner ? inner.innerHTML : '');
+        if (content && typeof _postToHost === 'function') {
+          _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: '<div class="msg-ai">' + content + '</div>' });
+        }
       }
     });
+    // ★ MutationObserver：流式渲染中后续插入的图片自动补分辨率
+    _setupImgObserver(aiEl._contentWrap);
     aiEl._fullText = '';
     aiEl._buf = '';
     aiEl._paras = [];
@@ -830,7 +910,7 @@ var CardPool = (function () {
       if (pct > 100) pct = 100;
       var mark = document.createElement('div');
       mark.className = 'sml-mark';
-      var c = positions[i].active ? '#ffd302' : '#ff6b00';
+      var c = positions[i].active ? '#ffd301' : '#ff6b00';
       mark.style.cssText =
         'top:' + pct + '%; ' +
         'background:' + c + '; ' +

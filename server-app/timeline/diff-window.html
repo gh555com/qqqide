@@ -12,9 +12,9 @@ body{font-family:Tahoma,system-ui,-apple-system,sans-serif;font-size:13px;color:
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}
-::selection{background:#ffd302;color:#000}
-[data-theme="dark"] ::selection{background:#ffd302;color:#000}
-input::selection, textarea::selection{background:#ffd302;color:#000}
+::selection{background:#ffd301;color:#000}
+[data-theme="dark"] ::selection{background:#ffd301;color:#000}
+input::selection, textarea::selection{background:#ffd301;color:#000}
 
 /* ═══ TITLE ROW ═══qq */
 #title-row{height:40px;background:var(--card);display:flex;align-items:flex-end;padding:0 8px 2px 8px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0;-webkit-app-region:drag}
@@ -104,7 +104,7 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
 (function(){var p=new URLSearchParams(location.search);var t=p.get('theme');var dark=t==='dark';if(t)try{localStorage.setItem('qqqide-theme',dark?'dark':'light');}catch(_){}document.documentElement.setAttribute('data-theme',dark?'dark':'light');})();
 </script>
 </head>
-<body> 
+<body>
 
 <!-- ★ 标题行 -->
 <div id="title-row">
@@ -161,8 +161,8 @@ input::selection, textarea::selection{background:#ffd302;color:#000}
 <button id="btn-diff-only">仅差异</button>
 <button id="big-close">✕</button>
 <button id="btn-edit">编辑</button>
-<div id="btn-edit-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd302;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd302;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4">编辑当前磁盘文件（而非任何一个历史快照）</div>
-<div id="big-close-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd302;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd302;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4">= Right Click</div>
+<div id="btn-edit-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4">编辑当前磁盘文件（而非任何一个历史快照）</div>
+<div id="big-close-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4">= Right Click</div>
 
 <script src="/core/qqqide-theme.js"></script>
 <script src="/core/state-sdk.js"></script>

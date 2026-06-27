@@ -21,7 +21,7 @@ function hookFileExplorerToTabs() {
         if (window.qqqEditor) {
           pane.style.cssText = 'position:relative; width:100%; height:100%;';
           var editorMount = document.createElement('div');
-          editorMount.style.cssText = 'position:absolute; inset:0;';
+          editorMount.style.cssText = 'position:absolute; inset:0 0 4px 0;';
           pane.appendChild(editorMount);
           // Binary guard: prevent freeze on mp3/mp4/exe etc.
           if (window.qqqEditor && window.qqqEditor.isBinaryFile && window.qqqEditor.isBinaryFile(filePath)) {
@@ -48,7 +48,7 @@ function hookFileExplorerToTabs() {
     if (window.qqqEditor) {
       pane.style.cssText = 'position:relative; width:100%; height:100%;';
       var editorMount = document.createElement('div');
-      editorMount.style.cssText = 'position:absolute; inset:0;';
+      editorMount.style.cssText = 'position:absolute; inset:0 0 4px 0;';
       pane.appendChild(editorMount);
       var _search = window._nextSearch; window._nextSearch = null;
       // Binary guard: prevent freeze on mp3/mp4/exe etc.

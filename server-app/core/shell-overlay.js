@@ -36,6 +36,15 @@ function bootAiOverlay() {
     '#qqqide-overlay-content>div::-webkit-scrollbar{display:none}';
   document.head.appendChild(_scrollStyle);
 
+  // ── 选中色 + 高亮匹配色 ──
+  //    ::selection（用户拖选）= 实心 #ffd301
+  //    ::highlight(ov-matches)（全文匹配）= 半透明同色，区分用户选区
+  var _selStyle = document.createElement('style');
+  _selStyle.textContent =
+    '#qqq-ai-overlay-content ::selection{background:#ffd301;color:#000}' +
+    '::highlight(ov-matches){background:rgba(255,140,110,0.38);color:inherit;border-radius:2px}';
+  document.head.appendChild(_selStyle);
+
   var contentEl = document.createElement('div');
   contentEl.id = 'qqq-ai-overlay-content';
   contentEl.style.cssText =
@@ -54,15 +63,62 @@ function bootAiOverlay() {
     var b = document.createElement('button');
     b.textContent = text;
     b.title = title || '';
+    b.tabIndex = -1;  // ★ 防焦点窃取：按钮不抢焦点，确保 Ctrl+C 原生复制可用
     b.style.cssText = 'padding:8px 18px; border:1px solid rgba(255,255,255,0.25); border-radius:6px; ' +
       'background:rgba(255,255,255,0.1); color:#fff; font-size:14px; ' +
-      'user-select:none; line-height:1; ' + (styles || '');
+      'user-select:none; line-height:1; outline:none; ' + (styles || '');
     return b;
   }
 
   var zoomScale = 1.0;
   // 拖拽偏移（图片和表格共用 translate）
   var _dragX = 0, _dragY = 0;
+
+  // ── 选中高亮全文匹配（CSS Highlight API — 零 DOM 操作，不阻复制、零抖动）──
+  var _ovLastMatchText = '';
+
+  function _ovApplyHighlights(text) {
+    _ovClearHighlights();
+    if (!text || text.length < 1) return;
+    _ovLastMatchText = text;
+    // 找到表格/代码块的 wrapper
+    var wrapper = contentEl.querySelector('.qqq-overlay-table-wrapper');
+    if (!wrapper) {
+      var d2 = contentEl.querySelector('div > div');
+      if (d2 && !d2.querySelector('img')) wrapper = d2;
+    }
+    if (!wrapper) return;
+    var tLower = text.toLowerCase();
+    var ranges = [];
+    var walker = document.createTreeWalker(wrapper, NodeFilter.SHOW_TEXT, null, false);
+    while (walker.nextNode()) {
+      var node = walker.currentNode;
+      if (!node.textContent || !node.textContent.trim()) continue;
+      var lower = node.textContent.toLowerCase();
+      var searchFrom = 0;
+      while (searchFrom < lower.length) {
+        var idx = lower.indexOf(tLower, searchFrom);
+        if (idx < 0) break;
+        var r = new Range();
+        r.setStart(node, idx);
+        r.setEnd(node, idx + text.length);
+        ranges.push(r);
+        searchFrom = idx + tLower.length;
+      }
+    }
+    if (ranges.length > 0) {
+      try {
+        var hl = new Highlight();
+        for (var ri = 0; ri < ranges.length; ri++) hl.add(ranges[ri]);
+        CSS.highlights.set('ov-matches', hl);
+      } catch (_) { /* CSS Highlight API 不可用则静默降级 */ }
+    }
+  }
+
+  function _ovClearHighlights() {
+    try { CSS.highlights.delete('ov-matches'); } catch (_) { }
+    _ovLastMatchText = '';
+  }
   function applyZoom() {
     var img = contentEl.querySelector('img');
     if (img) {
@@ -153,21 +209,21 @@ function bootAiOverlay() {
   var _closeTt = document.createElement('div');
   _closeTt.textContent = '= Right Click';
   _closeTt.style.cssText = 'display:none;position:fixed;z-index:100001;pointer-events:none;' +
-    'background:#000;color:#ffd302;padding:4px 10px;font-size:12px;font-weight:700;' +
-    'font-family:system-ui,-apple-system,sans-serif;border:2px solid #ffd302;border-radius:4px;white-space:nowrap;' +
+    'background:#000;color:#ffd301;padding:4px 10px;font-size:12px;font-weight:700;' +
+    'font-family:system-ui,-apple-system,sans-serif;border:2px solid #ffd301;border-radius:4px;white-space:nowrap;' +
     'line-height:1.4;' +
     'box-shadow:0 2px 8px rgba(0,0,0,0.8);';
   document.body.appendChild(_closeTt);
-  closeBtnEl.addEventListener('mouseenter', function(e) {
+  closeBtnEl.addEventListener('mouseenter', function (e) {
     _closeTt.style.display = '';
     _closeTt.style.left = (e.clientX + 16) + 'px';
     _closeTt.style.top = (e.clientY - 36) + 'px';
   });
-  closeBtnEl.addEventListener('mousemove', function(e) {
+  closeBtnEl.addEventListener('mousemove', function (e) {
     _closeTt.style.left = (e.clientX + 16) + 'px';
     _closeTt.style.top = (e.clientY - 36) + 'px';
   });
-  closeBtnEl.addEventListener('mouseleave', function() {
+  closeBtnEl.addEventListener('mouseleave', function () {
     _closeTt.style.display = 'none';
   });
 
@@ -190,6 +246,7 @@ function bootAiOverlay() {
 
   function close() {
     try { _stopRepeat(); } catch (_) { }
+    try { _ovClearHighlights(); } catch (_) { }
     _closeTt.style.display = 'none';
     overlay.style.display = 'none';
     dpad.style.display = 'none';
@@ -205,9 +262,56 @@ function bootAiOverlay() {
   });
 
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && overlay.style.display !== 'none') {
-      close();
+    if (overlay.style.display === 'none') return;
+    if (e.key === 'Escape') { close(); return; }
+    // ★ Ctrl+C / Ctrl+Insert：绕过浏览器焦点路由，直接用剪贴板 API 复制选中文本
+    if ((e.key === 'c' || e.key === 'C' || e.key === 'Insert') && (e.ctrlKey || e.metaKey)) {
+      var sel = window.getSelection();
+      var selText = sel && sel.toString().trim();
+      if (selText) {
+        e.preventDefault(); e.stopPropagation();
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(selText).catch(function () {
+              // 静默回退
+              var ta = document.createElement('textarea');
+              ta.value = selText; ta.style.cssText = 'position:fixed;left:-9999px';
+              document.body.appendChild(ta); ta.select();
+              try { document.execCommand('copy'); } catch (_) { }
+              document.body.removeChild(ta);
+            });
+          }
+        } catch (_) { }
+      }
     }
+  });
+
+  // ── 选中高亮全文匹配（CSS Highlight API）──
+  overlay.addEventListener('mouseup', function (e) {
+    if (overlay.style.display === 'none') return;
+    if (e.target.closest('#qqq-ai-overlay-toolbar')) return;
+    if (e.target.closest('button')) return;
+    setTimeout(function () {
+      if (overlay.style.display === 'none') return;
+      var sel = window.getSelection();
+      var text = sel && sel.toString().trim();
+      if (text && text.length >= 1 && text !== _ovLastMatchText) {
+        _ovApplyHighlights(text);
+      } else if (!text) {
+        _ovClearHighlights();
+      }
+    }, 80);
+  });
+
+  overlay.addEventListener('mousedown', function (e) {
+    if (overlay.style.display === 'none') return;
+    setTimeout(function () {
+      var sel = window.getSelection();
+      var newText = sel && sel.toString().trim();
+      if (!newText || newText !== _ovLastMatchText) {
+        _ovClearHighlights();
+      }
+    }, 100);
   });
 
   // Mouse wheel zoom（统一图片和表格，滚轮=缩放）
@@ -228,9 +332,10 @@ function bootAiOverlay() {
   function _crossBtn(sym, top, left) {
     var b = document.createElement('button');
     b.textContent = sym; b.setAttribute('data-no-cd', '');
+    b.tabIndex = -1;  // ★ 防焦点窃取
     b.style.cssText = 'position:absolute; width:' + BS + 'px; height:' + BS + 'px; padding:0; font-size:16px; line-height:1; ' +
       'border:1px solid rgba(255,255,255,0.35); border-radius:4px; background:rgba(0,0,0,0.55); ' +
-      'color:#ccc; display:flex; align-items:center; justify-content:center;';
+      'color:#ccc; display:flex; align-items:center; justify-content:center; outline:none;';
     b.style.top = top + 'px'; b.style.left = left + 'px';
     return b;
   }

@@ -281,9 +281,9 @@ async function _a4EnsureBeforeBaseline(filePath, currentContent) {
 }
 
 // ── 钩子 Q：统一快照管线（AI 写工具 + run_command）──
-async function _a4WrappedExecuteTool(name, args) {
-    // ★ 在入口处捕获当前 agent（执行过程中可能切 quest，_activeAgent 会变）
-    var _capturedAg = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+async function _a4WrappedExecuteTool(name, args, ownerAgent) {
+    // ★ 优先用调用方显式传入的 agent（防 _activeAgent 全局指针漂移致跨 quest 污染）
+    var _capturedAg = ownerAgent || ((typeof _activeAgent !== 'undefined') ? _activeAgent : null);
 
     // Non-write tools: pass through directly
     if (_WRITE_TOOLS.indexOf(name) === -1) {
@@ -768,6 +768,7 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
             var _fDataForRender = {
                 question: (ag._lastUserInput && ag._lastUserInput.text) || '',
                 conversation: cleanConv,
+                houses: cleanHouses,
                 costWge: ag._floorCostWge,
                 clockTiming: ag._lastFloorTimingRecord || null,
                 _streamingText: (ag._streaming && ag._activeAiDiv && ag._activeAiDiv._fullText) ? ag._activeAiDiv._fullText : '',
@@ -783,7 +784,7 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
     // ★ house / room 计数
     var house_count = (ag._houses && ag._houses.length) || 0;
     var room_count = 0;
-    if (ag._houses) { for (var _hci = 0; _hci < ag._houses.length; _hci++) { room_count += (ag._houses[_hci].toolCount || 0); } }
+    if (ag._houses) { for (var _hci = 0; _hci < ag._houses.length; _hci++) { room_count += (ag._houses[_hci].tools ? ag._houses[_hci].tools.length : 0); } }
 
     var payload = {
         question: (ag._lastUserInput && ag._lastUserInput.text) || '',

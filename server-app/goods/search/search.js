@@ -61,11 +61,14 @@
                 // Activate existing tab
                 window.qqqTabs.addGaeaTab('search', '🔍 Search', null, { closable: true });
             } else {
-                // Re-register to create tab
+                // Tab was closed — recreate using registered goods definition (or inline fallback)
                 var def = window.qqqGaea && window.qqqGaea.get && window.qqqGaea.get('search');
-                if (!def) {
-                    // Tab not yet created, trigger through addGaeaTab
-                    window.qqqTabs.addGaeaTab('search', '🔍 Search', function (pane) {
+                var buildFn = null;
+                if (def && def.tabs && def.tabs.search && typeof def.tabs.search.build === 'function') {
+                    buildFn = def.tabs.search.build;
+                }
+                if (!buildFn) {
+                    buildFn = function (pane) {
                         pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
                         var iframe = document.createElement('iframe');
                         iframe.src = '/qqq-app/goods/search/search-ui.html';
@@ -73,8 +76,9 @@
                         iframe.setAttribute('frameborder', '0');
                         pane.appendChild(iframe);
                         pane._searchIframe = iframe;
-                    }, { closable: true });
+                    };
                 }
+                window.qqqTabs.addGaeaTab('search', '🔍 Search', buildFn, { closable: true });
             }
         }
 
