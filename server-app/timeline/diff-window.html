@@ -78,10 +78,11 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
 /* ═══ EDIT STATUS (replaces right dropdown in edit mode)  ═══ */
 #edit-status{flex:1;display:none;align-items:center;padding:4px 10px;font-size:13px;font-family:Tahoma,ui-monospace,monospace;color:var(--text);gap:6px;min-width:0}
 #edit-status.visible{display:flex}
-#edit-status .es-label{color:var(--text);white-space:nowrap}
-#edit-status .es-status{color:var(--text);white-space:nowrap}
+#edit-status .es-label{display:inline-flex;align-items:center;gap:4px;border:1px dashed var(--base01);border-radius:4px;padding:1px 6px;color:var(--text);white-space:nowrap;flex-shrink:0}
+#edit-status .es-icon{width:15px;height:15px;flex-shrink:0;opacity:.7}
+#edit-status .es-status{color:var(--text);white-space:nowrap;flex-shrink:0}
 #edit-status .es-status.dirty{font-weight:700}
-#edit-status .es-snap{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#edit-status .es-snap{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:1;min-width:0}
 
 /* ═══ DIFF CONTAINER ═══ */
 #diff-container{flex:1;overflow:hidden;position:relative}
@@ -94,29 +95,30 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
 #big-close:hover{background:var(--red);color:#fff;transform:translateX(-50%) scale(1.1)}
 #btn-diff-only{position:fixed;bottom:calc(16px + 4px);left:50%;transform:translateX(calc(-50% - 28px - 144px));height:48px;padding:0 24px;border-radius:6px;border:2px solid #4a4a4a;background:var(--card);color:var(--text);font-size:14px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap}
 #btn-diff-only:hover{background:var(--bg)}
-#btn-diff-only.checked{border-color:var(--accent);color:var(--accent);font-weight:800}
-#btn-diff-only.checked::after{content:'';display:inline-block;width:5px;height:10px;border:solid var(--accent);border-width:0 2px 2px 0;transform:rotate(45deg);margin-left:8px;margin-bottom:2px}
+#btn-diff-only.checked{border-color:#4a4a4a;color:var(--text);font-weight:800}
+#btn-diff-only.checked::after{content:'';display:inline-block;width:5px;height:10px;border:solid #4a4a4a;border-width:0 2px 2px 0;transform:rotate(45deg);margin-left:8px;margin-bottom:2px}
 #btn-edit{position:fixed;bottom:calc(16px + 4px);left:90%;transform:translateX(-50%);height:48px;padding:0 24px;border-radius:6px;border:2px solid #4a4a4a;background:var(--card);color:var(--text);font-size:14px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap}
 #btn-edit:hover{background:var(--bg)}
-#btn-edit.editing{border-color:var(--accent);color:var(--accent);font-weight:800}
+#btn-edit.editing{border-color:var(--red);color:var(--red);font-weight:800}
 </style>
 <script>
 (function(){var p=new URLSearchParams(location.search);var t=p.get('theme');var dark=t==='dark';if(t)try{localStorage.setItem('qqqide-theme',dark?'dark':'light');}catch(_){}document.documentElement.setAttribute('data-theme',dark?'dark':'light');})();
 </script>
 </head>
 <body>
+<body>
 
 <!-- ★ 标题行 -->
 <div id="title-row">
   <span style="font-size:13px;flex-shrink:0;align-self:center;margin-top:2px;-webkit-app-region:no-drag">📄</span>
   <div id="input-wrap" style="flex:1;position:relative;display:flex;align-items:center;-webkit-app-region:no-drag">
-    <div class="title-input" id="title-input" contenteditable="true" spellcheck="false" data-placeholder="文件路径…"></div>
-    <button class="win-btn hist-btn" id="btn-history" title="搜索历史">▼</button>
+    <div class="title-input" id="title-input" contenteditable="true" spellcheck="false" data-i18n-placeholder-attr="timeline.filePathPlaceholder" data-placeholder="文件路径…"></div>
+    <button class="win-btn hist-btn" id="btn-history" data-i18n-title="timeline.searchHistory" title="搜索历史">▼</button>
     <div id="fuzzy-dropdown" class="fuzzy-dropdown" style="display:none">
       <div class="fuzzy-dropdown-list" id="fuzzy-list"></div>
     </div>
   </div>
-  <div id="drag-handle" title="拖拽移动窗口">
+  <div id="drag-handle" data-i18n-title="timeline.dragHandle" title="拖拽移动窗口">
     <svg id="drag-cross" width="22" height="22" viewBox="0 0 22 22" style="pointer-events:none;display:block">
       <line x1="4" y1="11" x2="18" y2="11" stroke="var(--base01)" stroke-width="1.8" stroke-linecap="round"/>
       <line x1="11" y1="4" x2="11" y2="18" stroke="var(--base01)" stroke-width="1.8" stroke-linecap="round"/>
@@ -126,7 +128,7 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
       <polyline points="8,16 11,18 14,16" fill="none" stroke="var(--base01)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </div>
-  <button class="win-btn" id="btn-max" title="最大化" style="align-self:center;padding-bottom:2px;-webkit-app-region:no-drag">□</button>
+  <button class="win-btn" id="btn-max" data-i18n-title="timeline.maximize" title="最大化" style="align-self:center;padding-bottom:2px;-webkit-app-region:no-drag">□</button>
 </div>
 
 <div id="version-bar">
@@ -146,9 +148,9 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
     <span class="v-marker" id="marker-right" style="display:none"></span>
     <input type="hidden" id="sel-right">
     <div id="edit-status">
-      <span class="es-label">编辑中</span>
-      <span class="es-status">未保存</span>
-      <button id="btn-snap" style="display:none;margin-left:10px;padding:6px 20px;border:2px solid var(--accent);border-radius:5px;background:var(--card);color:var(--accent);font-size:15px;font-weight:700;cursor:pointer;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap">📸 打快照</button>
+      <span class="es-label"><svg class="es-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg><span data-i18n="timeline.editing">编辑中</span></span>
+      <span class="es-status" data-i18n="timeline.unsaved">未保存</span>
+      <button id="btn-snap" style="display:none;padding:6px 16px;border:2px solid var(--text);border-radius:5px;background:var(--card);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap;flex-shrink:0" data-i18n="timeline.snapshot">📸 打快照</button>
       <span class="es-snap"></span>
     </div>
   </div>
@@ -156,16 +158,20 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
 
 <div id="diff-container"></div>
 
-<div id="empty-state">加载中…</div>
+<div id="empty-state"><span data-i18n="timeline.loading">加载中…</span></div>
 
-<button id="btn-diff-only">仅差异</button>
+<button id="btn-diff-only" data-i18n="timeline.diffOnly">仅差异</button>
 <button id="big-close">✕</button>
-<button id="btn-edit">编辑</button>
-<div id="btn-edit-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4">编辑当前磁盘文件（而非任何一个历史快照）</div>
-<div id="big-close-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4">= Right Click</div>
+<button id="btn-edit" data-i18n="timeline.editBtn">编辑</button>
+<div id="btn-edit-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4"><span data-i18n="timeline.editTooltip">编辑当前磁盘文件（而非任何一个历史快照）</span></div>
+<div id="big-close-tip" style="position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,system-ui,-apple-system,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4"><span data-i18n="timeline.closeHint">= Right Click</span></div>
 
 <script src="/core/qqqide-theme.js"></script>
+<script src="/core/i18n.js"></script>
 <script src="/core/state-sdk.js"></script>
 <script src="/qqq-app/timeline/diff-window.js"></script>
+<script src="/qqq-app/timeline/diff-versions.js"></script>
+<script src="/qqq-app/timeline/diff-render.js"></script>
+<script src="/qqq-app/timeline/diff-edit.js"></script>
 </body>
 </html>

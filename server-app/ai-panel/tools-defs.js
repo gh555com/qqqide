@@ -297,9 +297,9 @@ var TOOL_DEFINITIONS = [
                 properties: {
                     prompt: { type: 'string', description: 'Image description in natural language (Chinese or English)' },
                     style: { type: 'string', description: 'Style tag: 写实(photorealistic)/插画(illustration)/3d(3D render)/二次元(anime)/水彩(watercolor)/国风(Chinese trad)/极简(minimalist)/电商(e-commerce product)/自然(nature photo)' },
-                    size: { type: 'string', description: 'Image size: "1024*1024" (square, default), "720*1280" (portrait), "1280*720" (landscape)' },
+                    size: { type: 'string', description: 'Image size: "1K"=1024*1024, "2K"=2048*2048 (default), "4K"=4096*4096, or custom "W*H" e.g. "720*1280", "640*640". 4K only for pure text-to-image (no reference images).' },
                     n: { type: 'number', description: 'Number of images to generate (1-4, default 1)' },
-                    out_dir: { type: 'string', description: 'Output directory for generated images (absolute path). Default: current project\'s server-app/generated/' }
+                    out_dir: { type: 'string', description: 'Output directory for generated images (absolute path). Default: current project\'s qqq/genera/' }
                 },
                 required: ['prompt']
             }

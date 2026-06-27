@@ -349,10 +349,10 @@ function saveQuestUIState(id) {
     //   使用 setNow 立即刷盘（未可用 set，否则 beforeunload 可能来不及 flush）
     if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
         onlyStore.setNow('ai.uiStates.' + _panelId, questUIStates);
-        // ★ 同时持久化面板当前活跃 quest ID，确保重启时能自动恢复
-        if (id && !_isDraft(id)) {
-            onlyStore.setNow('ai.panel.' + _panelId + '.activeQuestId', id);
-        }
+    }
+    // ★ activeQuestId 走 bridge.fs.write 原子 JSON（零踩踏），不依赖 onlyStore
+    if (id && !_isDraft(id)) {
+        _persistPanelResume(id);
     }
 }
 
@@ -416,35 +416,15 @@ async function initQuests() {
     if (quests.length === 0) {
         questActiveId = _draftId;
     } else {
-        // ★ 三级恢复：per-panel 快照 → project global → first quest
-        //   panelId 永恒不变（0=左,1=中,2=右），不像 windowId 跨会话更换
-        var _perWindowKey = 'ai.panel.' + _panelId + '.activeQuestId';
-        var _fromOnly = null;
-        // ★ 侧面板 retry：onlyStore 的 bridge 可能尚未就绪，重试 3 次（共 1.5s）
-        for (var _retry = 0; _retry < 3; _retry++) {
-            _fromOnly = await onlyStore.getAsync(_perWindowKey);
-            if (_fromOnly) break;
-            await new Promise(function (r) { setTimeout(r, 500); });
-        }
-        if (_fromOnly && quests.find(function (s) { return s.id === _fromOnly; })) {
-            questActiveId = _fromOnly;
-            // [silent] restored from per-window snapshot
-            // 仅中面板更新全局 active（侧面板不污染全局状态）
-            if (_panelId === 1) await questStore.setActiveId(questActiveId);
-        } else if (_panelId === 1) {
-            // 中面板无快照 → 回退到全局 active quest
-            questActiveId = await questStore.getActiveId();
-            // [silent] stored activeId from quest.sq3
-            if (!questActiveId || !quests.find(function (s) { return s.id === questActiveId; })) {
-                if (quests.length > 0) {
-                    questActiveId = quests[0].id;
-                    // [silent] activeId invalid, fallback to first
-                    await questStore.setActiveId(questActiveId);
-                }
-            }
+        // ★ 面板 resume JSON → quest.sq3 global → first quest（三级降级，三面板统一路径）
+        var _fromResume = await _readPanelResume();
+        if (_fromResume && quests.find(function (s) { return s.id === _fromResume; })) {
+            questActiveId = _fromResume;
         } else {
-            // 侧面板无快照 → 空白起点
-            questActiveId = _draftId;
+            questActiveId = await questStore.getActiveId();
+            if (!questActiveId || !quests.find(function (s) { return s.id === questActiveId; })) {
+                questActiveId = quests.length > 0 ? quests[0].id : _draftId;
+            }
         }
     }
 
@@ -514,6 +494,35 @@ window.addEventListener('beforeunload', function () {
         }).catch(function () { });
     }
 });
+
+// ═══ 面板 resume 持久化 — atomic JSON，三面板独立文件，零踩踏 ═══
+var _RESUME_MAP = {0: 'l', 1: 'c', 2: 'r'};
+function _panelResumeKey() {
+    return 'panel_re' + (_RESUME_MAP[_panelId] || 'c') + '.json';
+}
+async function _persistPanelResume(questId) {
+    var root = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
+    if (!root) return;
+    var bridge = _getBridge();
+    if (!bridge || !bridge.fs) return;
+    var path = root + '/qqq/alphal/' + _panelResumeKey();
+    try {
+        await bridge.fs.write(path, JSON.stringify({ activeQuestId: questId, updatedAt: Date.now() }));
+    } catch (_) { }
+}
+async function _readPanelResume() {
+    var root = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
+    if (!root) return null;
+    var bridge = _getBridge();
+    if (!bridge || !bridge.fs) return null;
+    var path = root + '/qqq/alphal/' + _panelResumeKey();
+    try {
+        var raw = await bridge.fs.read(path);
+        if (!raw || typeof raw !== 'string') return null;
+        var data = JSON.parse(raw);
+        return data.activeQuestId || null;
+    } catch (_) { return null; }
+}
 
 // ═══ 从 houses 数组 + A4 快照计算文件变更统计（持久化到 floorPayload.fileStats） ═══
 // 优先使用 A4 快照数据（真实 before/after LCS diff），

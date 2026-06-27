@@ -290,6 +290,16 @@ async function _waitForTaskStream(streamUrl, token) {
 // generate_image — AI 图像生成（全走 Go 代理）
 // ============================================================
 
+// ★ 简单 prompt 哈希（8 字符，用于文件名去重 + 追溯）
+function _hashPrompt8(p) {
+    var h = 0;
+    for (var i = 0; i < p.length; i++) {
+        h = ((h << 5) - h) + p.charCodeAt(i);
+        h |= 0;
+    }
+    return ('0000000' + Math.abs(h).toString(36)).slice(-8);
+}
+
 async function executeGenerateImage(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
@@ -301,19 +311,19 @@ async function executeGenerateImage(args) {
     if (!args.out_dir) {
         try {
             if (typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
-                args.out_dir = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/server-app/generated';
+                args.out_dir = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/genera';
             }
         } catch (_) { }
     }
 
-    // ★ 经 AiGateway 统一代理
-    var token = (function () {
-        try {
-            var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-            if (ag && ag._token) return ag._token;
-        } catch (_) {}
-        return '';
-    })();
+	// ★ 经 AiGateway 统一代理
+	var token = (function () {
+		try {
+			var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+			if (ag && ag._token) return ag._token;
+		} catch (_) {}
+		return '';
+	})();
     if (!token) return 'Error: no auth token';
 
     var outDir = args.out_dir || '';
@@ -357,8 +367,18 @@ async function executeGenerateImage(args) {
             outDir = '.';
         }
 
+        // ★ 文件名格式：gen_img_{年月日}_{时分秒}_{promptHash8}_{序号}.png
+        var _now = new Date();
+        var _dateStr = _now.getFullYear() +
+            ('0' + (_now.getMonth() + 1)).slice(-2) +
+            ('0' + _now.getDate()).slice(-2);
+        var _timeStr = ('0' + _now.getHours()).slice(-2) +
+            ('0' + _now.getMinutes()).slice(-2) +
+            ('0' + _now.getSeconds()).slice(-2);
+        var _phash8 = _hashPrompt8(prompt);
+
         var dlPromises = result.urls.map(function (url, u) {
-            var fname = 'gen_img_' + Date.now() + '_' + u + '.png';
+            var fname = 'gen_img_' + _dateStr + '_' + _timeStr + '_' + _phash8 + '_' + u + '.png';
             var fpath = outDir.replace(/\\/g, '/').replace(/\/$/, '') + '/' + fname;
             return bridge.qz.spawn({
                 cmd: 'curl',
@@ -376,6 +396,39 @@ async function executeGenerateImage(args) {
         if (paths.length === 0) {
             return 'Image generation failed: could not download images (URLs may have expired)';
         }
+
+        // ★ stat 每个下载成功的文件，写入全局缓存供 hover 显示文件大小
+        if (!window.__qqqImgSizes) window.__qqqImgSizes = {};
+        for (var _si = 0; _si < paths.length; _si++) {
+            try {
+                var _st = await bridge.fs.stat(paths[_si]);
+                if (_st && _st.size > 0) {
+                    var _normPath = paths[_si].replace(/\\/g, '/');
+                    window.__qqqImgSizes[_normPath] = _st.size;
+                }
+            } catch (__) { }
+        }
+
+        // ★ 写元数据索引（_index.json，NDJSON 格式，每批一行）
+        try {
+            var _indexEntry = JSON.stringify({
+                ts: _now.toISOString(),
+                prompt: prompt.slice(0, 200),
+                style: args.style || '',
+                size: args.size || '2K',
+                n: paths.length,
+                phash: _phash8,
+                paths: paths,
+                ge_cost: result.ge_cost || 0
+            });
+            var _indexPath = outDir.replace(/\\/g, '/').replace(/\/$/, '') + '/_index.json';
+            // NDJSON 追加：读→追加→写（原子写，防并发竞态）
+            var _existing = '';
+            try { _existing = await bridge.fs.read(_indexPath); } catch (__) { }
+            _existing = (typeof _existing === 'string') ? _existing.trimEnd() : '';
+            var _newContent = (_existing ? _existing + '\n' : '') + _indexEntry + '\n';
+            await bridge.fs.write(_indexPath, _newContent).catch(function () { });
+        } catch (__) { /* 索引非致命 */ }
 
         return paths.map(function (p) { return '![](file:///' + p.replace(/\\/g, '/') + ')'; }).join('\n');
 

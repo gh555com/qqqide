@@ -426,6 +426,7 @@ onlyStore 管线：set→内存缓存(dirty)→500ms空闲刷盘→3s强制刷�
     └── timeline.db.bak    备份（损坏自动恢复）
   qqq/qg/                 qg 写入目录（JSON/brotli/NDJSON 原子写）
   qqq/qgf/                qgf 写入目录（预留，零消费者）
+  qqq/genera/             AI 图片生成落盘（gen_img_{日期}_{时间}_{hash}_{序号}.png + _index.json）
 
 i18n — 唯一真理国际化机器
 ---------------------------
@@ -888,5 +889,12 @@ qh 滚动真理机器 — 接入标准（非独立模块）
 · 默认参数: 2px常态/12px展开/距右~10px/亮暗自适应
 · 效果清单: 常态细条 + hover变粗贴边 + 滑轨点击跳转 + 拖拽 + 内容自适应
 · 完整接入者: AI 视口下拉（ai-viewport.js _wrapScrollContainer）+ AI 面板聊天区（panel-quest-ui.js 末尾）
-· qh-scroll.js 已删除，原因: 无法做到对既有 DOM 零侵入的"一行接入"ntainer）+ AI 面板聊天区（panel-quest-ui.js 末尾）
 · qh-scroll.js 已删除，原因: 无法做到对既有 DOM 零侵入的"一行接入"
+
+面板 resume 持久化 — 三面板独立原子 JSON（2026-06-27）
+-------------------------------------------------------
+· 存储: `qqq/alphal/panel_re{l|c|r}.json`，三面板物理隔离
+· 写入: `_persistPanelResume(id)` → bridge.fs.write → 主进程 tmp+rename 原子写
+· 读取: `_readPanelResume()` → bridge.fs.read + JSON.parse，initQuests 三级降级
+· 优势: 单写入者（主进程），零 multi-writer 踩踏，断电安全（tmp+rename 原子）
+· 废弃: onlyStore 存 activeQuestId（三面板 sql.js WASM 实例互踩）

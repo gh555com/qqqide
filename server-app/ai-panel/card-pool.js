@@ -299,30 +299,81 @@ var CardPool = (function () {
     return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
-  // ═══ 图片信息填充：读取 naturalWidth/Height → 写入 .img-info ═══
-  // 可用于任何容器（父 div / contentWrap / 整个 card）
+  // ═══ 图片信息填充：分辨率 + 文件大小 ═══
+  // 文件大小来源：① 全局缓存 window.__qqqImgSizes（下载时 stat）② .img-info 已有则跳过
+  function _formatFileSize(bytes) {
+    if (!bytes || bytes < 0) return '';
+    if (bytes < 1024) return bytes + 'B';
+    if (bytes < 1048576) return (bytes / 1024).toFixed(1) + 'KB';
+    return (bytes / 1048576).toFixed(2) + 'MB';
+  }
+
+  function _fillImgInfo(img, info) {
+    if (!info || info.textContent) return;
+    var w = img.naturalWidth || img.width || 0;
+    var h = img.naturalHeight || img.height || 0;
+    if (!w || !h) return;
+    // ★ 大小在左，分辨率在右："1.3MB · 1024×1024"
+    var parts = [];
+    // 文件大小：优先从全局缓存读取（download 时 stat），fallback 到 data-filesize 属性
+    var cacheKey = (img.src || '').replace(/^file:\/\/\//, '').replace(/\//g, '/').replace(/^\/[A-Z]:/, function (m) { return m.slice(1); });
+    var cache = typeof window !== 'undefined' && window.__qqqImgSizes ? window.__qqqImgSizes : null;
+    var sz = 0;
+    if (cache) {
+      // 直接匹配
+      if (cache[cacheKey]) sz = cache[cacheKey];
+      // fallback: 遍历缓存的 key，路径规范化后比对
+      if (!sz) {
+        var _ckNorm = cacheKey.replace(/\\/g, '/').toLowerCase();
+        var _cacheKeys = Object.keys(cache);
+        for (var _cki = 0; _cki < _cacheKeys.length; _cki++) {
+          if (_cacheKeys[_cki].replace(/\\/g, '/').toLowerCase() === _ckNorm) {
+            sz = cache[_cacheKeys[_cki]];
+            break;
+          }
+        }
+      }
+    }
+    // fallback: data-filesize 属性
+    if (!sz) {
+      var _ds = img.getAttribute && img.getAttribute('data-filesize');
+      if (_ds) sz = parseInt(_ds, 10) || 0;
+    }
+    if (sz > 0) parts.push(_formatFileSize(sz));
+    parts.push(w + '\u00d7' + h);
+    info.textContent = parts.join(' \u00b7 ');
+  }
+
   function _populateImgInfos(container) {
     if (!container || !container.querySelectorAll) return;
     var wraps = container.querySelectorAll('.table-wrap');
     for (var _wi = 0; _wi < wraps.length; _wi++) {
       var _img = wraps[_wi].querySelector(':scope > img');
-      if (!_img) continue;
       var _inf = wraps[_wi].querySelector(':scope > .img-info');
-      if (!_inf || _inf.textContent) continue;
-      if (_img.naturalWidth) {
-        _inf.textContent = _img.naturalWidth + '\u00d7' + _img.naturalHeight;
-      } else {
-        _img.addEventListener('load', function () {
-          var _i = this.parentNode && this.parentNode.querySelector('.img-info');
-          if (_i && this.naturalWidth) _i.textContent = this.naturalWidth + '\u00d7' + this.naturalHeight;
-        }, { once: true });
-      }
+      if (_img && _inf) _fillImgInfo(_img, _inf);
     }
   }
 
-  // ═══ MutationObserver：自动捕获后续插入的图片（流式渲染 / innerHTML） ═══
-  function _setupImgObserver(contentWrap) {
-    if (contentWrap._imgObserver) return;
+  // ★ 统一入口：一次性设置图片分辨率支持（扫描 + 委托 + Observer）
+  function _setupImgSupport(contentWrap) {
+    if (contentWrap._imgSupportReady) return;
+    contentWrap._imgSupportReady = true;
+
+    // ① 委托 load 捕获：任何 <img> 加载完成 → 自动填分辨率
+    //    捕获阶段 + 事件冒泡，无论图片何时/以何种方式进入 DOM 都生效
+    contentWrap.addEventListener('load', function (e) {
+      var img = e.target;
+      if (img.tagName !== 'IMG') return;
+      var wrap = img.closest('.table-wrap');
+      if (!wrap) return;
+      var info = wrap.querySelector(':scope > .img-info');
+      if (info) _fillImgInfo(img, info);
+    }, true);
+
+    // ② 初始扫描：处理已缓存/已加载的图片
+    _populateImgInfos(contentWrap);
+
+    // ③ MutationObserver：流式渲染中后续插入的子树
     var _obs = new MutationObserver(function (mutations) {
       for (var _mi = 0; _mi < mutations.length; _mi++) {
         var _nodes = mutations[_mi].addedNodes;
@@ -484,11 +535,9 @@ var CardPool = (function () {
       _twrap.appendChild(_iinfo);
       _twrap.appendChild(_bImg);
     }
-    // ★ 统一填充所有 .img-info（覆盖新渲染 + 旧格式迁移）
-    _populateImgInfos(aiEl._contentWrap);
-    // ★ MutationObserver：流式渲染中后续插入的图片自动补分辨率
-    _setupImgObserver(aiEl._contentWrap);
     aiEl.appendChild(aiEl._contentWrap);
+    // ★ 统一填充所有 .img-info（覆盖新渲染 + 旧格式迁移 + load 委托 + Observer）
+    _setupImgSupport(aiEl._contentWrap);
     // ★ 事件委托（点击）：继续任务链接 + 表格/代码块预览
     //   表格/代码块从 DOM 自描述内容读取，零全局状态，跨面板切换不失效
     aiEl._contentWrap.addEventListener('click', function (e) {
@@ -543,7 +592,8 @@ var CardPool = (function () {
       a1El = _initA1(aiEl, _a1Path, card.id, fNum);
       if (a1El) {
         var hCount = (fData.house_count != null) ? fData.house_count : (meta && meta.houses ? meta.houses.length : 0);
-        var rCount = (fData.room_count != null) ? fData.room_count : (typeof _cntR === 'function' ? _cntR(meta ? meta.houses : []) : 0);
+        var _fallbackRc = (typeof _cntR === 'function' && meta && meta.houses) ? _cntR(meta.houses) : 0;
+        var rCount = (fData.room_count != null && fData.room_count > 0) ? fData.room_count : _fallbackRc;
         if (typeof _updA1 === 'function') {
           _updA1(a1El, fNum, hCount, rCount);
         }
@@ -579,20 +629,20 @@ var CardPool = (function () {
       window._a4RestoreBlock(aiEl, fData.a4Snapshots, _a4NumId, fNum);
     }
 
-    // ⑤ 如果是已封顶楼层，从 floor 数据直接恢复时钟（不依赖 quest 级 floorTimings 数组）
+    // ⑤ 已封顶楼层：始终设时钟为停止态（dark），不管是否找到计时数据
+    if (aiEl._clockBlock) {
+      aiEl._clockBlock.className = 'msg-ai-clock';
+    }
     var timing = fData.clockTiming || null;
-    // 回退：若 floor 数据无 clockTiming，尝试从 questTimings 数组查找
     if (!timing) {
       for (var ti = 0; ti < questTimings.length; ti++) {
         if (questTimings[ti].floorIndex === fNum) { timing = questTimings[ti]; break; }
       }
     }
-
     if (timing && aiEl._clockMin && aiEl._clockCanvas) {
       var totalS = Math.floor((timing.durationMs || 0) / 1000);
       var min = Math.floor(totalS / 60);
       var sec = totalS % 60;
-      aiEl._clockBlock.className = 'msg-ai-clock';
       aiEl._clockMin.textContent = min + 'm';
       aiEl._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
       var _dp = window.drawPie;
@@ -681,8 +731,8 @@ var CardPool = (function () {
         }
       }
     });
-    // ★ MutationObserver：流式渲染中后续插入的图片自动补分辨率
-    _setupImgObserver(aiEl._contentWrap);
+    // ★ 图片分辨率支持（load 委托 + 扫描 + Observer）
+    _setupImgSupport(aiEl._contentWrap);
     aiEl._fullText = '';
     aiEl._buf = '';
     aiEl._paras = [];

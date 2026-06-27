@@ -50,15 +50,8 @@ async function switchQuest(id) {
         await cardPool.switchTo(id);
 
         questActiveId = id;
-        if (_panelId === 1) {
-            await questStore.setActiveId(id);
-        }
-        if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
-            // ★ setNow 立即写盘：确保 activeQuestId 在崩溃/退出时不丢，
-            //    否则重启时 initQuests 找不到记录 → 回退到 ~New quest~ 草稿
-            onlyStore.setNow('ai.panel.' + _panelId + '.activeQuestId', id);
-            if (_panelId === 1) onlyStore.setNow('ai.activeQuestId', id);
-        }
+        // 原子写面板 resume JSON（bridge.fs.write → 主进程 tmp+rename，零踩踏）
+        _persistPanelResume(id);
 
         // ★ 声明所有权（仅父注册表；quest.sq3 不再参与）
         _parentClaimQuest(id);
@@ -85,34 +78,6 @@ async function switchQuest(id) {
                     var _fDom = card.floorDOM[_floorNums[_fi]];
                     if (_fDom && _fDom.aiEl) {
                         _activeAgent._activeAiDiv = _fDom.aiEl;
-                        // ★ 恢复时钟为停止态（匹配该楼层专属 timing 记录，非盲目取最后一条）
-                        if (_fDom.aiEl._clockBlock && _activeAgent._floorTimings && _activeAgent._floorTimings.length > 0) {
-                            var _thisFloorNum = _floorNums[_fi];
-                            var _matchTiming = null;
-                            for (var _ti = 0; _ti < _activeAgent._floorTimings.length; _ti++) {
-                                if (_activeAgent._floorTimings[_ti].floorIndex === _thisFloorNum) {
-                                    _matchTiming = _activeAgent._floorTimings[_ti];
-                                    break;
-                                }
-                            }
-                            if (!_matchTiming) _matchTiming = _activeAgent._floorTimings[_activeAgent._floorTimings.length - 1];
-                            var _cBlock = _fDom.aiEl._clockBlock;
-                            _cBlock.className = 'msg-ai-clock';
-                            var _durS = Math.floor((_matchTiming.durationMs || 0) / 1000);
-                            var _cMin = _fDom.aiEl._clockMin;
-                            var _cSec = _fDom.aiEl._clockSec;
-                            if (_cMin) _cMin.textContent = Math.floor(_durS / 60) + 'm';
-                            if (_cSec) _cSec.textContent = ':' + (_durS % 60 < 10 ? '0' : '') + (_durS % 60) + 's';
-                            if (_fDom.aiEl._clockCanvas) {
-                                _fDom.aiEl._clockCanvas.style.visibility = 'visible';
-                                drawPie(_fDom.aiEl._clockCanvas, {
-                                    networkMs: _matchTiming.networkMs || 0,
-                                    aiMs: _matchTiming.aiMs || 0,
-                                    otherMs: _matchTiming.otherMs || 0,
-                                    totalMs: _matchTiming.durationMs || 0
-                                });
-                            }
-                        }
                         // ★ 防御：切回已停止 quest 时，确保时钟 timer 已清除（防僵尸 timer 继续走字）
                         if (_activeAgent._floorTimerId) {
                             clearInterval(_activeAgent._floorTimerId);
@@ -317,7 +282,7 @@ async function deleteQuest(id) {
         // 删除的是当前活跃 quest → 切换到下一个
         quests = await questStore.list();
         questActiveId = quests[0].id;
-        if (_panelId === 1) await questStore.setActiveId(questActiveId);
+        _persistPanelResume(questActiveId);
         _activeAgent = _getOrCreateAgent(questActiveId);
         await cardPool.switchTo(questActiveId);
         await _restoreAgentFromStore(questActiveId, _activeAgent);

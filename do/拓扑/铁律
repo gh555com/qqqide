@@ -283,7 +283,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
     agent: _floorTimerId / _floorStartPerf / _floorCurrentTiming / _activeAiDiv（agent↔Card DOM 永久绑定，stopFloorTimer 不清空，switchQuest 无条件重绑） / _allTxtPath / _a4Snapshots。
     aiDiv: _a1Block / _a4Block / _allTxtOpenInEditor / _allTxtPath / _clockBlock。
     面板级单例（禁经 _activeAgent 重定向）：_allTxtPollTimer / _allTxtBlocked / _sending / streaming。
-    ★ _sending / streaming 必须是 panel-state.js 顶层 var，不可 defineProperty 经 _activeAgent 重定向（切 quest 时 _activeAgent 变更导致栅栏穿透→并发建楼→僵尸）。
+    ★ _sending 为面板级 var（单发送入口）。streaming / _queue / _queuePaused 经 defineProperty 代理到 _activeAgent（per-quest 沙箱）。
   - A4 铁律：_initA4Block → insertBefore(a1Block) 无条件。A4 始终在 A2 之后、A1 之前。
   - A1 铁律：_initA1Block → insertBefore(clockBlock) 无条件。
   - A1 行2 持久化：floorPayload.fileStats 入 SQLite（_computeFileStats 统一计算）。
@@ -322,9 +322,9 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 禁 _questsInited 一刀切防重入。改用 _workspaceRoot 对比。
   - Card Pool destroy() 必须：中止所有 agent + 移除所有 card DOM + 清空 _cards/_lru/_activeId。
 
-§32 所有权系统 — 唯一真理源：父窗口注册表（2026-06-11 重构）
+§32 所有权系统 — 唯一真理源：父窗口注册表（2026-06-11 重构，2026-06-27 面板 resume JSON）
   - 唯一真理源：父窗口 __qqq_questOwners（questId→panelId 同步映射，零 TTL，零 IO）。
-  - 面板→任务映射：onlyStore `ai.panel.{panelId}.activeQuestId`（per-panel key，panelId 永恒不变，setNow 立即写盘）。
+  - 面板→任务映射：bridge.fs.write 原子 JSON → `qqq/alphal/panel_re{l|c|r}.json`（三面板独立文件，主进程 tmp+rename 原子写，零 multi-writer 踩踏）。
   - claimOwner / releaseOwner / getOwner 及 cleanupOwners 已从 quest-store.js 删除。
   - _broadcastOwnerCheck 已删除（IPC 跨窗口 sync 查询，项目锁已防多窗口）。
   - _handleSyncMessage 移除 owner-check / owner-confirm 死代码。
@@ -338,10 +338,9 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 启动时 _cleanStaleTmp(): tmp 比主 DB 新 → rename 恢复；否则删除。不盲目删 tmp。
   - _queueOutbox 补 finally 兜底 unlink(tmp)。
   - ★ 腐蚀隔离（2026-06-11）：_doInit 增加第二层 try/catch — 若 new Database(buf) 成功但首次 SQL 执行抛 "disk image is malformed"，自动 rename 旧文件为 .corrupt.{ts} + 空库重试，不丢数据且不阻断启动。
-  - ★ _init() 失败后重置 this._ready = null（否则永久 reject，项目级 StateStore 终身不可用）。
-  - 原则: 任何写入路径上，目标文件的旧版本必须在新版本落地之后才能删除。
-
-§34 AI 面板快照 — 重启百分百还原
+  - ★ _init() 失败后重置 this._ready = null（否则永久 reject，项目级 StateStore 终身§34 AI 面板快照 — 重启百分百还原（2026-06-27 面板 resume JSON）
+  - activeQuestId 存 `qqq/alphal/panel_re{l|c|r}.json`（bridge.fs.write 原子写，零踩踏，断电安全）。
+  - UI 快照（scroll/input/draft）存 only.sq3（键 ai.uiStates.{panelId}），per-quest 粒度。原
   - 快照存 only.sq3（键 ai.uiStates），per-quest 粒度。
   - 快照内容: inputValue + inputCaret + pendingImages + selectedTier + scrollTop。
   - 编辑框是 textarea，光标用 selectionStart/End 保存恢复（零 DOM walk）。
@@ -501,3 +500,16 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 禁止项: 内部域名/URL/IP/端口、API 路径、服务器名、项目代号(gaea等)、后端组件名、API key 状态、配额详情、部署拓扑。
   - 工具失败时：仅回复"该功能暂时不可用，请稍后再试。"禁推测根因/列可能原因/建议查服务器配置。
   - 此规则在 system-prompt.js 的 INFRA OPSEC 段落地，与本文档互为唯一真理源。
+
+§48 AI 图片生成 — wan2.7-image-pro（2026-06-27）
+  - 模型: wan2.7-image-pro，同步调用，代码在 handlers_ai_image_v27.go
+  - 尺寸: "1K"(1024×1024) / "2K"(2048×2048 默认) / "4K"(4096×4096) / 自定义"W*H"
+  - 落盘: {project}/qqq/genera/，文件名 gen_img_{YYYYMMDD}_{HHMMSS}_{hash8}_{idx}.png
+  - 元数据: _index.json (NDJSON，每批一行：ts/prompt/style/size/phash/paths/ge_cost)
+  - 计费: ¥0.75/张 = 7,500 wge (成本 ¥0.50 × 1.5×)，Go 权威 ChargeAITurnWithMeta
+  - 路由: GKLimit("ai_image") 余额阀 + validateImageSize(512-4096) 尺寸校验
+  - 进度: SSE event:progress 每 3s 推送 5%→90%→完成时 100%
+  - 渲染: 聊天区图 hover 显示"1.3MB · 1024×1024"+ ▶ 展开按钮，点开展悬浮大图
+  - CSP: server-app/index.html img-src 含 file: 白名单
+  - 甲壳规则: gaea/guard/system-prompt.txt IMAGE 段（file:/// 前缀 + 尺寸 + genera/）
+  - Go 编译部署后生效（ky.py deploy go）

@@ -435,7 +435,20 @@
         "saved": "已保存",
         "saveFailed": "保存失败",
         "copyRow": "复制此行文本",
-        "closeHint": "= 右键单击关闭"
+        "closeHint": "= 右键单击关闭",
+        "diffOnly": "仅差异",
+        "editBtn": "编辑",
+        "cancelEdit": "取消编辑",
+        "editTooltip": "编辑当前磁盘文件（而非任何一个历史快照）",
+        "editTooltipExit": "退出编辑时不会自动保存",
+        "editing": "编辑中",
+        "unsaved": "未保存",
+        "snapshot": "📸 打快照",
+        "snapUnchanged": "内容未变，无需打快照",
+        "snapping": "打快照中…",
+        "snapOk": "已打快照 #{seq} {time} diff edit",
+        "snapNoNew": "未生成新快照，可能内容未变或冷却中",
+        "snapFailed": "打快照失败"
     },
     "ai": {
         "ctx": {
