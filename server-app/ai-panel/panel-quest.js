@@ -258,7 +258,7 @@ var _bindLock = null;
 
 // 入口：绑定主文件夹（仅首次，终身一次）
 async function bindMainProject() {
-    // 已绑定 → 跳过（同窗口不可切换主文件夹）
+    // 已绑定 → 跳过（同窗口未可切换主文件夹）
     if (_workspaceRoot) return;
     // 并发锁：另一调用正在进行中 → 等它完成
     if (_bindLock) return _bindLock;
@@ -346,7 +346,7 @@ function saveQuestUIState(id) {
         scrollTop: $messages.scrollTop
     };
     // ★ 三面板独立快照：左/中/右各自保存到 ai.uiStates.{panelId}
-    //   使用 setNow 立即刷盘（不可用 set，否则 beforeunload 可能来不及 flush）
+    //   使用 setNow 立即刷盘（未可用 set，否则 beforeunload 可能来不及 flush）
     if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
         onlyStore.setNow('ai.uiStates.' + _panelId, questUIStates);
         // ★ 同时持久化面板当前活跃 quest ID，确保重启时能自动恢复
@@ -408,7 +408,7 @@ async function initQuests() {
         for (var _rsw = 0; _rsw < 40; _rsw++) {
             try {
                 if (parent && (parent.__qqq_renameScanDone || (!parent.__qqq_renameScanInProgress && parent.__qqq_renameScanResult !== null))) break;
-            } catch (_) {}
+            } catch (_) { }
             await new Promise(function (r) { setTimeout(r, 200); });
         }
     }
@@ -505,13 +505,13 @@ window.addEventListener('beforeunload', function () {
     window._lazyRenameShutdownTriggered = true;
     try {
         if (parent && parent.__qqq_renameScanDone) return;  // 启动时已扫过
-    } catch (_) {}
+    } catch (_) { }
     if (_panelId === 1 && typeof questStore !== 'undefined' && questStore.hasProjectRoot && questStore.hasProjectRoot()) {
         questStore.lazyRenameScan().then(function (scanResult) {
             if (scanResult && scanResult.fixed > 0) {
-                try { parent.__qqq_renameScanDone = true; } catch (_) {}
+                try { parent.__qqq_renameScanDone = true; } catch (_) { }
             }
-        }).catch(function () {});
+        }).catch(function () { });
     }
 });
 
@@ -584,7 +584,7 @@ window._computeFileStats = _computeFileStats;
 
 // ★ 铁律：任何保存必须传入显式 floorNum，禁止从 ag._ctx.totalFloors 推导
 //   floorNum 来自创建楼层时由 questStore.nextFloorNum() 分配的值，永久不变。
-//   ag._floorMeta[floorNum] 保存该楼层的不可变元数据（allTxtPath/floorStartIdx）。
+//   ag._floorMeta[floorNum] 保存该楼层的未可变元数据（allTxtPath/floorStartIdx）。
 //   所有调用方必须传 floorNum，auto-save 传 ag._currentFloorNum，onDone 传完成的楼层号。
 async function _saveAgentQuestData(questId, ag, floorNum) {
     if (!questId || !ag) return;
@@ -592,7 +592,7 @@ async function _saveAgentQuestData(questId, ag, floorNum) {
 
     // ═══ 1) 如果楼层号有效且有元数据 → 保存楼层 payload ═══
     if (floorNum && floorNum > 0) {
-        // ★ 查询该楼层不可变元数据
+        // ★ 查询该楼层未可变元数据
         var meta = ag._floorMeta && ag._floorMeta[floorNum];
         if (!meta) {
             // 兼容层：旧楼层（本修复前创建）没有 _floorMeta

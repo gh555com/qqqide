@@ -149,7 +149,7 @@ Monaco Editor 本质是一个 **DOM 容器内的渲染引擎**，它的所有 UI
 
 * 所有弹出层（自动补全、hover 提示、右键菜单等）都是 `position: absolute/fixed` 在编辑器容器内
 * 无法原生"溢出"到 editor 容器之外
-* 更不可能脱离当前 BrowserWindow 变成独立悬浮窗
+* 更未可能脱离当前 BrowserWindow 变成独立悬浮窗
 
 ---
 

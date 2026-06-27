@@ -186,12 +186,12 @@ class BrokerBridge extends EventEmitter {
 
 		const id = this.nextId++;
 		const req = {
-      _id: id,
-      action,
-      client_id: this.clientId,
-      token: this.token,
-      ...payload
-    };
+			_id: id,
+			action,
+			client_id: this.clientId,
+			token: this.token,
+			...payload
+		};
 
 		const line = JSON.stringify(req) + "\n";
 
@@ -587,7 +587,7 @@ class BrokerBridge extends EventEmitter {
 								}
 								// ★ 触发重新安装（ensurePythonReady 会调用 autoInstall）
 								global.logMessage("[Broker] Triggering fresh Python install...", "INFO");
-								downloader.ensurePythonReady(global.extensionContext).catch(() => {});
+								downloader.ensurePythonReady(global.extensionContext).catch(() => { });
 							}
 						} catch (healErr) {
 							global.logMessage(`[Broker] Self-healing trigger failed: ${healErr.message}`, "WARN");
@@ -781,7 +781,7 @@ class BrokerBridge extends EventEmitter {
 			pythonPath = this._downloadedPythonPath;
 		}
 
-		// 如果 Python 不可用，pythonPath 为 null，调用方会处理（不启动 Broker）
+		// 如果 Python 未可用，pythonPath 为 null，调用方会处理（不启动 Broker）
 
 		return { pythonPath, scriptPath };
 	}

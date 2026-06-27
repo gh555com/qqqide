@@ -333,7 +333,7 @@ var QuestStore = (function () {
     //   ① 磁盘有、索引无 → 自动发现（备份还原 / 手动复制 quest 目录）
     //   ② 索引有、磁盘无 → 自动清除（手动删文件夹）
     //   ③ 同编号多目录 → 警告 + 仅保留一条（其余需手动 repairDuplicateIds）
-    var _syncLock = null;  // ★ 防并发（rescan 与 _ensureIndex 不可同时跑）
+    var _syncLock = null;  // ★ 防并发（rescan 与 _ensureIndex 未可同时跑）
     QuestStore.prototype._syncIndexFromFs = async function () {
         if (_syncLock) return _syncLock;
         _syncLock = (async () => {
@@ -716,7 +716,7 @@ var QuestStore = (function () {
                 }
             }
             if (idxDup) {
-                console.warn('[quest-store] create: index already has ' + id + ', retrying (attempt ' + (retry+1) + '/' + maxRetries + ')');
+                console.warn('[quest-store] create: index already has ' + id + ', retrying (attempt ' + (retry + 1) + '/' + maxRetries + ')');
                 continue;
             }
             // 检查磁盘上是否已有此编号目录
@@ -727,7 +727,7 @@ var QuestStore = (function () {
                     for (var ddi = 0; ddi < diskList.length; ddi++) {
                         if (diskList[ddi].isDir && diskList[ddi].name.indexOf(id + '.') === 0) {
                             diskDup = true;
-                            console.warn('[quest-store] create: disk already has ' + id + ' (' + diskList[ddi].name + '), retrying (attempt ' + (retry+1) + '/' + maxRetries + ')');
+                            console.warn('[quest-store] create: disk already has ' + id + ' (' + diskList[ddi].name + '), retrying (attempt ' + (retry + 1) + '/' + maxRetries + ')');
                             break;
                         }
                     }
@@ -1010,7 +1010,7 @@ var QuestStore = (function () {
     async function _writeFloorFile(questId, floorNum, floorData) {
         if (!_rootDir) return false;
         var key = questId + '.' + floorNum;
-        // 串行化：同一楼层的 auto-save + onDone 不可能同时写，杜绝双 tmp 残留
+        // 串行化：同一楼层的 auto-save + onDone 未可能同时写，杜绝双 tmp 残留
         var chain = (_floorWriteLocks[key] || Promise.resolve()).then(function () {
             return _doWriteFloorFile(questId, floorNum, floorData);
         }, function () {

@@ -102,7 +102,7 @@
             "openLeft": "左側に新規タブを開く"
         },
         "viewport": {
-            "mainFolder": "メインフォルダ（削除不可）",
+            "mainFolder": "メインフォルダ（削除未可）",
             "removeProject": "このプロジェクトを削除",
             "addProject": "プロジェクトフォルダを AI ビューポートに追加",
             "selectFolder": "AI ビューポートに追加するフォルダを選択",

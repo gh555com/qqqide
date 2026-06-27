@@ -50,7 +50,7 @@
   }
 
   // ★ 中部截断（字符位宽）：首部占剩余空间，尾部固定 N 字符，省略号置中
-  // 用字符数而非字节数——字节宽度不可预测（ASCII=1b, 中文=3b, 同字节数宽度差3倍）
+  // 用字符数而非字节数——字节宽度未可预测（ASCII=1b, 中文=3b, 同字节数宽度差3倍）
   function truncMiddle(name, maxLen, tailChars) {
     maxLen = maxLen || 26;
     tailChars = tailChars || 12; // 覆盖 .configtion .config.js 等长后缀
@@ -928,9 +928,9 @@
     const rmBtn = document.createElement('span');
     rmBtn.className = 'aiv-block-rm';
     if (idx === 0) {
-      // 主文件夹不可删除，显示 ★ 标记
+      // 主文件夹未可删除，显示 ★ 标记
       rmBtn.textContent = '★';
-      rmBtn.title = window._i('shell.viewport.mainFolder', '主文件夹（不可移除）');
+      rmBtn.title = window._i('shell.viewport.mainFolder', '主文件夹（未可移除）');
       rmBtn.style.cssText = 'color:var(--yellow,#b58900);font-size:14px;cursor:default;font-weight:bold;';
     } else {
       rmBtn.textContent = '−';
@@ -1160,7 +1160,7 @@
 
   function removeProject(idx) {
     if (idx < 0 || idx >= projects.length) return;
-    // 主文件夹（索引 0）不可删除
+    // 主文件夹（索引 0）未可删除
     if (idx === 0) {
       console.warn('[ai-viewport] cannot remove main project');
       return;

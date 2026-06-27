@@ -221,7 +221,7 @@ window.addEventListener('message', function (e) {
             }
         }
     }
-    // ★ 兄弟面板报告备用线路不可达 → 本面板也标记备用为可疑，优先坚守主线路
+    // ★ 兄弟面板报告备用线路未可达 → 本面板也标记备用为可疑，优先坚守主线路
     if (e.data.fallbackDead && typeof _gwUsingFallback !== 'undefined' && !_gwUsingFallback) {
         // 延长 _gwFallbackAt 防本面板误切到已死的备用
         if (typeof _gwFallbackAt !== 'undefined') {

@@ -759,7 +759,7 @@ export class StateStore extends EventEmitter {
             await fs.promises.rename(tmp, dest);
             return;
         } catch (e: any) {
-            // 非 EEXIST/EPERM/EACCES → 不可恢复，抛出
+            // 非 EEXIST/EPERM/EACCES → 未可恢复，抛出
             if (!e || (e.code !== 'EEXIST' && e.code !== 'EPERM' && e.code !== 'EACCES')) {
                 throw e;
             }

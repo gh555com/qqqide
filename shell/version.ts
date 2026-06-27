@@ -88,7 +88,7 @@ export interface VersionInfo {
     shell?: string;
     /** 服务器上最新 webapp 版本 */
     webapp?: string;
-    /** 最低兼容 shell 版本（低于此版本需整包升级，不可热更新） */
+    /** 最低兼容 shell 版本（低于此版本需整包升级，未可热更新） */
     min_shell?: string;
 }
 

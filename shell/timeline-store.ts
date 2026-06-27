@@ -2,7 +2,7 @@
 // timeline-store.ts — 文件版本时间线存储（极简架构，2026-06-21）
 //
 // 存储: {projectRoot}/qqq/timeline/
-//   blobs/{sha256[:2]}/{sha256}.gz    — 内容（不可变，SHA256 寻址，永不删除）
+//   blobs/{sha256[:2]}/{sha256}.gz    — 内容（未可变，SHA256 寻址，永不删除）
 //   timeline.db                         — SQLite 索引（全量快照，每 100 条快照压缩一次）
 //   timeline.db.bak                     — 索引备份（压缩后同步更新，损坏时自动恢复）
 //   timeline.wal                        — 增量日志（NDJSON 追加，压缩后清空）
@@ -37,7 +37,7 @@ const WAL_MAX_LINES = 100;
 const _tlWalCounts: Map<string, number> = new Map();  // .wal 当前行数（用于阈值判断）
 
 export function _tlDir(projectRoot: string): string {
-    return path.join(projectRoot, 'Data', 'qqq', 'timeline');
+    return path.join(projectRoot, 'qqq', 'timeline');
 }
 
 export function _tlBlobPath(projectRoot: string, sha256: string): string {
@@ -197,7 +197,7 @@ export function _tlRecord(
         p: row.file_path, q: fileSeq, t: row.ts, h: row.blob_hash, s: row.source,
         f: row.floor_id || undefined,
         a: row.added_lines ?? undefined, d: row.deleted_lines ?? undefined,
-    }) + '\n';ine = JSON.stringify({
+    }) + '\n'; ine = JSON.stringify({
         p: row.file_path, t: row.ts, h: row.blob_hash, s: row.source,
         f: row.floor_id || undefined,
         a: row.added_lines ?? undefined, d: row.deleted_lines ?? undefined,

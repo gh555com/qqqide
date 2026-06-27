@@ -2324,7 +2324,7 @@ class NonBlockingAudioEngine:
                     )
                     return decoded.samples
             except (FileNotFoundError, subprocess.TimeoutExpired):
-                pass  # ffmpeg 不可用或超时
+                pass  # ffmpeg 未可用或超时
             finally:
                 try: os.unlink(wav_path)
                 except Exception: pass

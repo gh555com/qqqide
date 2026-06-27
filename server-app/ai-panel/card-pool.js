@@ -421,13 +421,28 @@ var CardPool = (function () {
     }
     aiEl._contentWrap.innerHTML = flowHtml;
     aiEl.appendChild(aiEl._contentWrap);
-    // ★ 错误持久化：「继续任务」链接 — 仅聚焦键入框，不自动发送
+    // ★ 事件委托（点击）：继续任务链接 + 表格/代码块预览
+    //   表格/代码块从 DOM 自描述内容读取，零全局状态，跨面板切换不失效
     aiEl._contentWrap.addEventListener('click', function (e) {
       var link = e.target.closest('.msg-err-continue');
-      if (!link) return;
-      e.preventDefault();
-      if (typeof $input !== 'undefined' && $input) $input.focus();
-      if (typeof scrollToBottom === 'function') scrollToBottom(true);
+      if (link) {
+        e.preventDefault();
+        if (typeof $input !== 'undefined' && $input) $input.focus();
+        if (typeof scrollToBottom === 'function') scrollToBottom(true);
+        return;
+      }
+      var btn = e.target.closest('.table-view-btn');
+      if (btn) {
+        var wrap = btn.closest('.table-wrap');
+        if (wrap) {
+          var pre = wrap.querySelector(':scope > pre');
+          var inner = wrap.querySelector(':scope > .table-inner');
+          var content = pre ? pre.outerHTML : (inner ? inner.innerHTML : '');
+          if (content && typeof _postToHost === 'function') {
+            _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: '<div class="msg-ai">' + content + '</div>' });
+          }
+        }
+      }
     });
     // 存储完整对话文本（用于全文检索等）
     var fullText = '';
@@ -575,6 +590,19 @@ var CardPool = (function () {
     aiEl._contentWrap = document.createElement('div');
     // ★ 极致一次渲染：不留占位文字，流式 token 抵达后直接长出首批 DOM
     aiEl.appendChild(aiEl._contentWrap);
+    // ★ 事件委托（点击）：表格/代码块预览 — DOM 自描述，零全局状态
+    aiEl._contentWrap.addEventListener('click', function (e) {
+      var btn = e.target.closest('.table-view-btn');
+      if (!btn) return;
+      var wrap = btn.closest('.table-wrap');
+      if (!wrap) return;
+      var pre = wrap.querySelector(':scope > pre');
+      var inner = wrap.querySelector(':scope > .table-inner');
+      var content = pre ? pre.outerHTML : (inner ? inner.innerHTML : '');
+      if (content && typeof _postToHost === 'function') {
+        _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: '<div class="msg-ai">' + content + '</div>' });
+      }
+    });
     aiEl._fullText = '';
     aiEl._buf = '';
     aiEl._paras = [];

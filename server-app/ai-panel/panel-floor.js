@@ -10,10 +10,10 @@ async function generateFloorTxt(ag, questId) {
     if (!root) return;
     var houses = ag._houses;
     if (!houses || houses.length === 0) return;
-    // ★ 优先使用 _currentFloorNum（不可变），降级到 _ctx.totalFloors
+    // ★ 优先使用 _currentFloorNum（未可变），降级到 _ctx.totalFloors
     var floorNum = ag._currentFloorNum;
 
-    // ★ 优先使用 _floorMeta 中的不可变路径，降级到 ag._allTxtPath
+    // ★ 优先使用 _floorMeta 中的未可变路径，降级到 ag._allTxtPath
     var meta = (floorNum && ag._floorMeta && ag._floorMeta[floorNum]) ? ag._floorMeta[floorNum] : null;
     var allTxtPath = meta ? meta.allTxtPath : (ag._allTxtPath || '');
     var dir = '';
@@ -331,7 +331,7 @@ async function _restoreAgentFromStore(questId, ag) {
             // ★ 推理不再注入 conversation（由 Compressed Summary 覆盖历史上下文）
         }
 
-        // ★ 重建 _floorMeta（不可变楼层元数据）
+        // ★ 重建 _floorMeta（未可变楼层元数据）
         ag._floorMeta = {};
         for (var _fmfi = 0; _fmfi < allFloors.length; _fmfi++) {
             var _fmfData = allFloors[_fmfi].data;
