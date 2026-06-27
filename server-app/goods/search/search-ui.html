@@ -138,14 +138,24 @@ var Q=document.getElementById('q'),RP=document.getElementById('rp'),SP=document.
 
 var _rx=false,_cs=false,_ww=false,_tmr=null,_last=null,_lastQ='',_hl=null,_scopePath='';
 
-// ═══════════ persistence via onlyStore → {项目}/qqq/alphal/only.sq3 ═══════════
-var _storeReady=false;
+// ═══════════ persistence via onlyStore (prefs) + direct bridge (history) ═══════════
+// onlyStore.init() resets _cache={} on every call, so prefs are loaded once on init
+// and then cached. For history we use the unwrapped StateStore bridge directly
+// to avoid the cache-wipe issue.
+var _storeReady=false,_rawDb=null;
 function _initStore(){
   if(_storeReady)return;
-  try{if(typeof onlyStore==='undefined'||!onlyStore.init)return;
+  try{
+    if(typeof onlyStore==='undefined'||!onlyStore.init)return;
     var vp=window.parent&&window.parent.qqqideViewport;if(!vp)return;
     var m=vp.getMainProject();if(!m||!m.path)return;
-    onlyStore.init(m.path);_storeReady=true;
+    var root=m.path.replace(/\\/g,'/').replace(/\/$/,'');
+    onlyStore.init(m.path);
+    // Also create a raw bridge for history (bypasses onlyStore's cache-wipe)
+    if(!_rawDb&&window.parent.qgs&&window.parent.qgs.project){
+      _rawDb=window.parent.qgs.project(root+'/qqq/alphal/only.sq3','qqq.only',{v:1,form:'doc'});
+    }
+    _storeReady=true;
   }catch(e){}
 }
 function _ldPrefs(){
@@ -168,16 +178,19 @@ function _svPrefs(){
   }catch(e){}
 }
 
-// ═══════════ history per input (last 15, project-scoped) ═══════════
+// ═══════════ history via raw bridge (bypasses onlyStore cache wipe) ═══════════
+// _rawDb = qgs.project(...) → StateStore with ns='qqq.only' baked in
+// .get(key) → StateStore.get('qqq.only', key) — sync, mem cache + SQLite fallback
+// .set(key, val) → StateStore.set('qqq.only', key, val) — sync mem + async flush
 function _ldHist(fid){
-  if(!_storeReady)_initStore();if(!_storeReady)return[];
-  try{var v=onlyStore.get('search.h'+fid);return v||[]}catch(e){return[]}
+  if(!_storeReady)_initStore();if(!_storeReady||!_rawDb)return[];
+  try{var v=_rawDb.get('search.h'+fid);return v||[]}catch(e){return[]}
 }
 function _addHist(fid,val){
-  if(!_storeReady)_initStore();if(!_storeReady)return;
+  if(!_storeReady)_initStore();if(!_storeReady||!_rawDb)return;
   if(!val||!val.trim())return;val=val.trim();
   var h=_ldHist(fid);h=h.filter(function(x){return x!==val});h.unshift(val);if(h.length>15)h.length=15;
-  try{onlyStore.set('search.h'+fid,h)}catch(e){}
+  try{_rawDb.set('search.h'+fid,h)}catch(e){}
 }
 function _showHist(inp,fid){
   var vals=_ldHist(fid);if(!vals.length){HD.style.display='none';return}
