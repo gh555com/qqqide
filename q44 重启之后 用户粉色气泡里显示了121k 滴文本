@@ -336,7 +336,7 @@ AI 网关双线路 + 故障切换引擎（2026-06-13 加固，2026-06-23 402+双
   两个身份体系完全解耦，互不穿透。
 · SSE 402（服务端 key 欠费）→ 自动切线路→另一把 key → 用户无感
   HTTP 402（用户 ge 不足）→ 直接终止，不浪费线路切换
-  双 key 都欠费 → MAX_LINE_SWITCHES=2 兜底 → "AI 服务暂时不可用"edis 封禁检查 — 已彻底移除（2026-06-23）
+  双 key 都欠费 → MAX_LINE_SWITCHES=2 兜底 → "AI 服务暂时未可用"edis 封禁检查 — 已彻底移除（2026-06-23）
 ------------------------------------------
 · 旧机制: CF Worker 调 GET /api/v3/ai/check?th=hash → Go 读 Redis banned:th → 永远空(零写入端)
 · 移除: AICheckHandler 函数、路由 /v3/ai/check、CF Worker banned check 段、sha256hex 函数、fix_worker.py
@@ -648,7 +648,7 @@ onlyStore 管线：set→内存缓存(dirty)→500ms空闲刷盘→3s强制刷�
             ├── all.txt   人类读（thinking + 工具调用 + 结果 + 回答完整母本）
             └── reasoning.txt  审计用（all.txt 截断工具结果到300字）
   qqq/timeline/           文件版本时间线
-    ├── blobs/{sha256[:2]}/{sha256}.gz  内容不可变（SHA256+gzip）
+    ├── blobs/{sha256[:2]}/{sha256}.gz  内容未可变（SHA256+gzip）
     ├── timeline.wal       NDJSON 增量日志（≤99行）
     ├── timeline.db        SQLite 全量快照（每100条压缩）
     └── timeline.db.bak    备份（损坏自动恢复）
@@ -730,7 +730,7 @@ Timeline 文件版本时间线 (2026-06-13 钩子Q+X重构，2026-06-21 终极�
 独立 BrowserWindow + Monaco Diff Editor。旧系统全部删除。
 
 存储（极简，零延迟）: {projectRoot}/qqq/timeline/
-  blobs/{sha256[:2]}/{sha256}.gz — 内容不可变，永不删除（SHA256 寻址 + gzip，git 内核）
+  blobs/{sha256[:2]}/{sha256}.gz — 内容未可变，永不删除（SHA256 寻址 + gzip，git 内核）
   timeline.wal — NDJSON 增量日志（每快照追加一行 ~100B，最多 99 行）
   timeline.db — SQLite 全量快照（每 100 条压缩一次，db.export→.bak 同步备份）
   timeline.db.bak — 索引备份（压缩后同步更新，.db 损坏时自动恢复）
@@ -768,7 +768,7 @@ Diff窗口: 独立 BrowserWindow，一个文件单例（Map），再次点击复
 IPC: qqqide:timeline:{record,versions,content,stat,readCurrent,captureChanged}
   + qqqide:open-diff-window + qqqide:diff:update
 
-跨十年保证: SHA256 blob 不可变 + .wal 增量日志 + .bak 双备份 + 永不删 → 时间戳/内容永久锁定
+跨十年保证: SHA256 blob 未可变 + .wal 增量日志 + .bak 双备份 + 永不删 → 时间戳/内容永久锁定
 
 AI 工具 (16个) — 2026-06-04 强化，2026-06-10 三项优化，2026-06-16 search_smart
 ---------------------------------------------------------
@@ -987,7 +987,7 @@ Quest 切换完整性 (2026-06-10 重构，2026-06-21 加固)
 
 增量解析器（代码围栏感知）：
   · 拆分前扫描 ^``` 行首标记奇偶性。奇数→围栏未闭合→禁止拆分，回退到 _buf 等待闭合。
-  · 围栏内 \n\n 是代码内容，不可拆为段落。闭合后整段推入 _paras。
+  · 围栏内 \n\n 是代码内容，未可拆为段落。闭合后整段推入 _paras。
   · 流式半成品代码块：_lastParaEl 用 <pre><code> 实时显示（剥离首行围栏标记）。
   · 拆分边界：\n\n = Markdown 段落边界，围栏是唯一例外，已覆盖。
 
@@ -1042,7 +1042,7 @@ Go (唯一计费权威):
   · Go 为唯一扣款权威，不再有 lodge/flush 双轨计费
   · 删除: POST /v3/ai/lodge、POST /v3/ai/billing/flush、handlers_ai_lodge.go、LODGE_HMAC_SECRET
   · 删除: cf/deploy_go.py、cf/go_deploy.py（旧 lodge 一次性部署脚本）
-  · JSON字段: floor_id 不可用 turn_id（命名铁律）
+  · JSON字段: floor_id 未可用 turn_id（命名铁律）
 
 饼图 + 时钟
 --------
@@ -1110,7 +1110,7 @@ qh 滚动真理机器 — 接入标准（非独立模块）
 · qh-scroll.js 已删除，原因: 无法做到对既有 DOM 零侵入的"一行接入"ntainer）+ AI 面板聊天区（panel-quest-ui.js 末尾）
 · qh-scroll.js 已删除，原因: 无法做到对既有 DOM 零侵入的"一行接入"
 ═══ AUTO-LOADED: E:\s\wol\py\qqq-shell-v2\do\拓扑\铁律 ═══
-qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
+qqq-shell-v2 铁律 — 未可违反的硬约束。违反即返工。
 =============================================
 
 §0 文档纪律
@@ -1120,7 +1120,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 过时的直接删，不留注释/废弃标记。
   - AI每回合产出新事实→同回合更新拓扑。
 
-§1 三层不可逆
+§1 三层未可逆
   - 壳(Electron 22) = 窗口 + IPC + spawn ghrun。不做业务。
   - ghrun(Rust) = 进程管理(qz) + 热更新 + 下载校验 + 快照。OS单例。
   - 载荷(server-app/) = 全部UI + 业务逻辑 + Monaco编辑器。热更Ctrl+R生效。
@@ -1149,7 +1149,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 不引入 VS Code extension host。不引入 vscode.* 命名空间。
   - Worker 加载：基础 worker 直走 qqqide-asset:// URL，语言 worker 走 blob+loader.js。依赖文件由 convert_monaco_esm.py 从 esm/ 转 AMD 至 cache/monaco-deps/，qqqide-asset:// 协议双根 fallback。
 
-§5 命名（2026-06-04 归一完成，铁律永不可逆）
+§5 命名（2026-06-04 归一完成，铁律永未可逆）
   - 变量名不含 "su" 组合（exposure/resume等避免）。
   - 两级铁律: Tier1 外宣层 qqq IDE（仅人眼看到，有空格有大写，窗口标题/快捷方式/about）。
     Tier2 编码层 qqqide（一切机器碰的东西，全小写，无空格无连字符无驼峰）。
@@ -1253,7 +1253,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 2026-06-10 晚修复: Worker 之前直连模型绕过了 Go（部署 Bug），现已改为透传 Go。
 
 §14 主文件夹 + 文件锁
-  - AI 视口第1个豆腐块 = 主文件夹，显示 ★ 标记，不可删除（UI+代码双重不可删）。
+  - AI 视口第1个豆腐块 = 主文件夹，显示 ★ 标记，未可删除（UI+代码双重未可删）。
   - AI 首轮对话注入 vision context（⭐ 标记主项目），末尾追加 REMINDER，首尾夹击确保 AI 认知。
   - tools-exec.js get_vision_context 同样标记 ⭐ 主项目。
   - 主文件夹写入 qqq/.lock (30s 心跳, 60s 过期) → 防同一项目被多个 qqq IDE 窗口打开。
@@ -1366,7 +1366,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 §28 跨面板同步 — IPC sync 桥（同窗口三面板所有权防重复）
   - _broadcast 走 parent.qqqideBridge.sync.broadcast → 主进程 relay 到所有窗口（含发送者）。
   - _handleSyncMessage 第一行过滤 msg.windowId === _windowId → 跳过自身广播。
-  - 主进程 sync:broadcast 必须发送到所有 webContents（含发送者），不可跳过 senderWC。
+  - 主进程 sync:broadcast 必须发送到所有 webContents（含发送者），未可跳过 senderWC。
     否则同窗口三面板无法互斥（已修复 2026-06）。
   - 禁 BroadcastChannel。sync IPC 桥是唯一跨面板通知机制。
 
@@ -1390,7 +1390,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
     agent: _floorTimerId / _floorStartPerf / _floorCurrentTiming / _activeAiDiv（agent↔Card DOM 永久绑定，stopFloorTimer 不清空，switchQuest 无条件重绑） / _allTxtPath / _a4Snapshots。
     aiDiv: _a1Block / _a4Block / _allTxtOpenInEditor / _allTxtPath / _clockBlock。
     面板级单例（禁经 _activeAgent 重定向）：_allTxtPollTimer / _allTxtBlocked / _sending / streaming。
-    ★ _sending / streaming 必须是 panel-state.js 顶层 var，不可 defineProperty 经 _activeAgent 重定向（切 quest 时 _activeAgent 变更导致栅栏穿透→并发建楼→僵尸）。
+    ★ _sending / streaming 必须是 panel-state.js 顶层 var，未可 defineProperty 经 _activeAgent 重定向（切 quest 时 _activeAgent 变更导致栅栏穿透→并发建楼→僵尸）。
   - A4 铁律：_initA4Block → insertBefore(a1Block) 无条件。A4 始终在 A2 之后、A1 之前。
   - A1 铁律：_initA1Block → insertBefore(clockBlock) 无条件。
   - A1 行2 持久化：floorPayload.fileStats 入 SQLite（_computeFileStats 统一计算）。
@@ -1445,7 +1445,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 启动时 _cleanStaleTmp(): tmp 比主 DB 新 → rename 恢复；否则删除。不盲目删 tmp。
   - _queueOutbox 补 finally 兜底 unlink(tmp)。
   - ★ 腐蚀隔离（2026-06-11）：_doInit 增加第二层 try/catch — 若 new Database(buf) 成功但首次 SQL 执行抛 "disk image is malformed"，自动 rename 旧文件为 .corrupt.{ts} + 空库重试，不丢数据且不阻断启动。
-  - ★ _init() 失败后重置 this._ready = null（否则永久 reject，项目级 StateStore 终身不可用）。
+  - ★ _init() 失败后重置 this._ready = null（否则永久 reject，项目级 StateStore 终身未可用）。
   - 原则: 任何写入路径上，目标文件的旧版本必须在新版本落地之后才能删除。
 
 §34 AI 面板快照 — 重启百分百还原
@@ -1463,7 +1463,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 每个 panel-*.js ≤800行。超限即再拆。
   - GATEWAY_URL 唯一声明在 system-prompt.js（全局 const），panel-*.js 禁重复声明。
   - 跨文件前向声明放 panel-state.js 顶部（第一个加载），用 var（安全重复声明）。
-  - 加载顺序固定不可调换：state→search→input→render→quest→floor→quest-ui→clock→alltxt→a4→floor-indicator→send。
+  - 加载顺序固定未可调换：state→search→input→render→quest→floor→quest-ui→clock→alltxt→a4→floor-indicator→send。
   - AI 基础设施加载顺序：content-gateway.js → system-prompt.js → embedding-service.js → ai-gateway.js → tools-defs.js
   - 拆分后全部代码在全局作用域（非 IIFE），变量/函数跨文件可见。
   - 新增文件必须同步更新 index.html <script src> 顺序 + service-worker 缓存版本号。
@@ -1490,7 +1490,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - ★ 编辑类快照（editx + diff-edit）共享主进程真理机：100s 冷却 + SHA256 去重，
     改 ipc-timeline.ts 一处全局生效。钩子 Q（q / run-command）不走冷却。
   - ★ SHA256 行尾归一化（CRLF/LF/CR→\n），同内容必同 hash，防幽灵版本。
-  - 存储架构: blobs/{sha256[:2]}/{sha256}.gz(内容不可变+永不删除) + timeline.wal(NDJSON增量,≤99行) + timeline.db(SQLite全量快照,每100条压缩) + timeline.db.bak(备份,损坏自动恢复)。
+  - 存储架构: blobs/{sha256[:2]}/{sha256}.gz(内容未可变+永不删除) + timeline.wal(NDJSON增量,≤99行) + timeline.db(SQLite全量快照,每100条压缩) + timeline.db.bak(备份,损坏自动恢复)。
     所有写入走 tmp+rename 原子化。无 2s debounce、无 archive 目录、无不必要延迟。
   - 点击 A4 → 直接读内存 snapEntry.beforeBlobHash/afterBlobHash → openDiffWindow。不补记！
     历史楼层 → 读 floor payload 中 blob_hash → openDiffWindow。
@@ -1555,7 +1555,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 
 §44 窗口快照 — 开新窗口百分百还原（2026-06-25）
   - 唯一入口: shell-menu.js _saveWindowSnapshot() / _openWindowFromRecent()。
-  - 存储: qgs global key=win_snap:{normalizedPath}，setNow 立即落盘（beforeunload 时不可用 set）。
+  - 存储: qgs global key=win_snap:{normalizedPath}，setNow 立即落盘（beforeunload 时未可用 set）。
   - 快照包含: mainFolder + auxFolders[] + editorTabs[{path,groupIdx,active,preview}]
     + editorPositions{filePath:{lineNumber,column}} + layout{aZoneW,outputH,outputVisible} + theme。
   - ★ AI 面板状态不重复存储——onlyStore (only.sq3) 已有 ai.panel.*.activeQuestId + ai.uiStates.*，

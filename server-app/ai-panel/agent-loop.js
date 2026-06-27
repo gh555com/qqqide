@@ -3,7 +3,7 @@
 // 从 q3/ai/src/agent.js 移植，适配 Shell v2
 //
 // 流程：
-//   1. 构建请求体（含工具定义 + 完整 SYSTEM_PROMPT）
+//   1. 构建请求体（含工具定义 + 服务端 guard 甲壳 + 客户端规则）
 //   2. SSE 流式解析：区分 content / tool_calls / billing
 //   3. 若响应含 tool_calls → 并行执行工具 → 结果推入对话 → 回到步骤 1
 //   4. 若响应含 content → 展示给用户，结束
@@ -18,8 +18,7 @@
 //   onError(message)       — 错误
 // ============================================================================
 
-// ---- 依赖：由 index.html 中的 <script> 标签加载顺序保证 ----
-// system-prompt.js  → GATEWAY_URL, SYSTEM_PROMPT, TIER_PRO
+// ---- 依赖：由 index.html 中的 <script> 标签加载顺序保证 -// system-prompt.js  → GATEWAY_URL, TIER_PRO_PRO
 // tools.js          → TOOL_DEFINITIONS, TOOL_CATEGORY, executeTool, getTools
 // agent-envelope.js → _utf8Trunc, EnvelopeStripper
 //
@@ -110,7 +109,7 @@ var AgentLoop = (function () {
         // 持久化 rules 注入（永不压缩，版本追踪）
         this._persistentCount = 0;
         this._rulesVersion = '';
-        // ★ 不可变楼层元数据（铁律：保存/恢复都用此信息，不依赖 _ctx.totalFloors 推导）
+        // ★ 未可变楼层元数据（铁律：保存/恢复都用此信息，不依赖 _ctx.totalFloors 推导）
         this._currentFloorNum = null;
         this._floorMeta = {};
         // 引导注入（不中断楼层，立即让 AI 回复确认）
@@ -242,11 +241,8 @@ var AgentLoop = (function () {
         if (typeof qqqideVisionContext !== "undefined" && qqqideVisionContext) {
             parts.push(qqqideVisionContext);
         }
-        // SYSTEM_PROMPT 只发送一次，打入哨兵永久存在（重启窗口后从 SQLite 恢复）
-        // ★ 时间上下文已移至 _callGateway 末尾（msg[-1]），保持 msg[0] 纯静态以命中 prefix cache
-        if (typeof SYSTEM_PROMPT !== "undefined" && SYSTEM_PROMPT) {
-            parts.push(SYSTEM_PROMPT);
-        }
+        // ★ SYSTEM_PROMPT 已移至服务端（gaea/guard/system-prompt.txt），客户端不再携带
+        //    服务端 prepend 到 messages 头部，甲壳不再出现在网络包中，防逆向破甲
         if (typeof qqqideRulesContent !== "undefined" && qqqideRulesContent) {
             parts.push(qqqideRulesContent);
         }
@@ -345,7 +341,7 @@ var AgentLoop = (function () {
         //    msg[0] 纯静态 → prefix cache 100%命中；时间随用户消息自然在末尾 → 零缓存污染
         var _timeCtx = '';
         if (typeof getTimeContext === "function") {
-            try { _timeCtx = getTimeContext(); } catch (_) {}
+            try { _timeCtx = getTimeContext(); } catch (_) { }
         }
         finalContent += _timeCtx;
 
@@ -493,6 +489,8 @@ var AgentLoop = (function () {
                 // ═══ 压缩守护：每间 house 前检查，超阈值则阻塞压缩 ═══
                 if (!self._compressing && !self._compressAttemptedThisFloor) {
                     var _apiTokens = self._lastApiTotalTokens || self._lastApiPromptTokens || 0;
+                    // ★ 冷启动兜底：磁盘加载 quest 后无 usage，用估算防首轮 400
+                    if (_apiTokens === 0) { _apiTokens = self._estimateTotalTokens(); }
                     // ★ 动态读取用户设置的压缩阈值（k → tokens）
                     var _threshold = 200000;
                     try {

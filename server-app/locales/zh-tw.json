@@ -102,7 +102,7 @@
             "openLeft": "在左側開啟新分頁"
         },
         "viewport": {
-            "mainFolder": "主要資料夾（不可移除）",
+            "mainFolder": "主要資料夾（未可移除）",
             "removeProject": "移除此專案",
             "addProject": "將專案資料夾新增至 AI 視窗",
             "selectFolder": "選擇要新增至 AI 視窗的資料夾",

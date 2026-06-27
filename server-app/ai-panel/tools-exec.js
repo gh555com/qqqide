@@ -182,7 +182,7 @@ async function executeReadFile(args) {
                             return '[AMBIGUOUS PATH] 路径前缀匹配到 ' + _matches.length + ' 个条目: ' + _matches.slice(0, 5).map(function (e) { return e.name; }).join(', ') + '。请指定完整路径。';
                         }
                     }
-                } catch (_) { /* 父目录不可列则跳过 */ }
+                } catch (_) { /* 父目录未可列则跳过 */ }
             }
             // 无法匹配 → 缓存，永不复读
             if (!window._qqqEnoentCache) window._qqqEnoentCache = {};

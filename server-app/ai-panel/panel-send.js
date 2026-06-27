@@ -235,11 +235,11 @@ async function sendMessage() {
             }
         }
     }
-    // ★ 铁律：不再修改 _ctx.totalFloors。_currentFloorNum 是楼层的不可变标识。
+    // ★ 铁律：不再修改 _ctx.totalFloors。_currentFloorNum 是楼层的未可变标识。
     var _floorStartIdx = agent.conversation.length;
     agent._floorStartIdx = _floorStartIdx;
     agent._currentFloorNum = floorNum;
-    // ★ 存储该楼层的不可变元数据（所有保存路径使用此元数据，而非 agent 全局变量）
+    // ★ 存储该楼层的未可变元数据（所有保存路径使用此元数据，而非 agent 全局变量）
     if (!agent._floorMeta) agent._floorMeta = {};
     var _projectRoot = root2 || questStore.getProjectRoot();
     var _allTxtDirLocal = '';
@@ -321,7 +321,7 @@ async function sendMessage() {
                 if (typeof _targetDiv._splitCursor !== 'number') _targetDiv._splitCursor = 0;
 
                 // ═══ 增量解析器：代码围栏（```...```）感知拆分 ═══
-                // 核心：围栏内部的 \n\n 是代码内容，不可拆分为段落
+                // 核心：围栏内部的 \n\n 是代码内容，未可拆分为段落
                 // 用 ``` 行首标记的奇偶性判断是否在围栏内部
 
                 if (_targetDiv._codeFenceOpen) {

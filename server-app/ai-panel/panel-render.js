@@ -10,11 +10,9 @@ function renderMarkdown(src) {
         const idx = codeBlocks.length;
         var rawCode = escHtml(code);
         var codeHtml = '<pre><code class="lang-' + (lang || '') + '">' + rawCode + '</code></pre>';
-        var codeId = window._tableStore.length;
-        window._tableStore.push(codeHtml);
         codeBlocks.push(
             '<div class="table-wrap">' +
-            '<span class="table-view-btn" onclick="viewTable(' + codeId + ')">▶ 展开</span>' +
+            '<span class="table-view-btn">▶ 展开</span>' +
             codeHtml + '</div>'
         );
         return '\x00CB' + idx + '\x00';
@@ -48,11 +46,8 @@ function renderMarkdown(src) {
             return '<tr>' + tds + '</tr>';
         }).join('');
         var rawTable = '<table><thead><tr>' + ths + '</tr></thead><tbody>' + trs + '</tbody></table>';
-        var tblId = window._tableStore.length;
-        window._tableStore.push(rawTable);
-        // 悬浮按钮：hover 时右上角出现，易点击，底色黄醒目
         return '<div class="table-wrap">' +
-            '<span class="table-view-btn" onclick="viewTable(' + tblId + ')">▶ 展开</span>' +
+            '<span class="table-view-btn">▶ 展开</span>' +
             '<div class="table-inner">' + rawTable + '</div></div>';
     });
     // Lists: 先转 <li>，再用占位符保护整个 <ul>/<ol> 块，防止后续 <br> 和 <p> 破坏列表间距
@@ -85,20 +80,6 @@ function renderMarkdown(src) {
 function escHtml(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-
-// ═══ Table store (for full-window table viewer) ═══
-window._tableStore = [];
-
-function viewTable(id) {
-    var html = window._tableStore[id];
-    if (html) {
-        // 用 class="msg-ai" 包裹，让父窗口 overlay 能复用 AI 面板 CSS
-        var wrapped = '<div class="msg-ai">' + html + '</div>';
-        _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: wrapped });
-    }
-}
-// Expose globally — onclick in HTML needs global scope
-window.viewTable = viewTable;
 
 function formatBytes(n) {
     if (!n || n < 0) return '0 B';

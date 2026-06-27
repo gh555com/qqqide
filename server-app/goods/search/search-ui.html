@@ -114,7 +114,6 @@ input,select,textarea{-webkit-user-select:text;user-select:text}
   <div class="rs" id="rc"><div class="emp" id="em"><span class="ic">🔍</span><span class="ht">键入关键字开始搜索</span></div></div>
 </div>
 
-<script src="../../ai-panel/only-store.js"></script>
 <script>
 (function(){"use strict";
 var bri=window.parent&&window.parent.qqqideBridge;
@@ -129,47 +128,26 @@ var Q=document.getElementById('q'),RP=document.getElementById('rp'),SP=document.
 
 var _rx=false,_cs=false,_ww=false,_tmr=null,_last=null,_lastQ='',_hl=null,_scopePath='';
 
-// ═══════════ persistence via onlyStore (project-level, 家目录 qqq/alphal/only.sq3) ═══════════
-// onlyStore 从 ai-panel/only-store.js 加载，调用 onlyStore.init(主项目路径) 绑定项目根目录
-// 写入位置：{主项目}/qqq/alphal/only.sq3 — 项目级持久化，非程序目录全局数据库
-var _storeReady=false;
-function _initStore(){
-  if(_storeReady)return;
-  try{
-    var vp=window.parent&&window.parent.qqqideViewport;
-    if(!vp)return;
-    var m=vp.getMainProject();
-    if(!m||!m.path)return;
-    if(typeof onlyStore!=='undefined'&&onlyStore.init){
-      onlyStore.init(m.path);
-      _storeReady=true;
-    }
-  }catch(e){}
-}
+// ═══════════ persistence via localStorage (per scope-path key, project-level) ═══════════
+var _prefKey=function(){return _scopePath?'srch.'+_scopePath.replace(/[^a-zA-Z0-9]/g,'_'):'srch.__global__'};
 function _ld(){
-  if(!_storeReady)_initStore();
-  if(!_storeReady)return;
-  try{
-    var v;(v=onlyStore.get('search.sort'))&&setTimeout(function(){var o=SRT.querySelector('option[value="'+v+'"]');if(o){o.selected=true;SRT.value=v}},0);
-    (v=onlyStore.get('search.include'))&&(IC.value=v);
-    (v=onlyStore.get('search.exclude'))&&(EX.value=v);if(!EX.value)EX.value='.git/, *.log';
-    (typeof(v=onlyStore.get('search.gitignore'))==='boolean')&&(CGI.checked=v);
-    (typeof(v=onlyStore.get('search.regex'))==='boolean')&&(_rx=v,BRX.classList.toggle('on',_rx));
-    (typeof(v=onlyStore.get('search.caseSens'))==='boolean')&&(_cs=v,BCS.classList.toggle('on',_cs));
-    (typeof(v=onlyStore.get('search.wholeWord'))==='boolean')&&(_ww=v,BWW.classList.toggle('on',_ww));
+  try{var k=_prefKey(),r=JSON.parse(localStorage.getItem(k)||'{}');
+    if(r.sort){var o=SRT.querySelector('option[value="'+r.sort+'"]');if(o){o.selected=true;SRT.value=r.sort}}
+    if(r.inc)IC.value=r.inc;
+    if(r.exc)EX.value=r.exc;if(!EX.value)EX.value='.git/, *.log';
+    if(typeof r.gi==='boolean')CGI.checked=r.gi;
+    if(typeof r.rx==='boolean'){_rx=r.rx;BRX.classList.toggle('on',_rx)}
+    if(typeof r.cs==='boolean'){_cs=r.cs;BCS.classList.toggle('on',_cs)}
+    if(typeof r.ww==='boolean'){_ww=r.ww;BWW.classList.toggle('on',_ww)}
   }catch(e){}
 }
 function _sv(){
-  if(!_storeReady){_initStore();if(!_storeReady)return}
-  try{
-    onlyStore.set('search.sort',SRT.value);onlyStore.set('search.include',IC.value);
-    onlyStore.set('search.exclude',EX.value);onlyStore.set('search.gitignore',CGI.checked);
-    onlyStore.set('search.regex',_rx);onlyStore.set('search.caseSens',_cs);onlyStore.set('search.wholeWord',_ww);
-  }catch(e){}
+  try{var v={sort:SRT.value,inc:IC.value,exc:EX.value,gi:CGI.checked,rx:_rx,cs:_cs,ww:_ww};
+    localStorage.setItem(_prefKey(),JSON.stringify(v));}catch(e){}
 }
 
 // ── Init: load prefs ──
-(function(){_ld();})();
+_ld();
 
 // ── Save on user actions ──
 SRT.onchange=function(){_sv();if(_last)rdr(_last)};
@@ -297,12 +275,12 @@ BRA.onclick=async function(){
 })();
 window.addEventListener('message',function(e){
   if(e.data&&e.data.type==='qqqide-theme-change'){var t=e.data.theme||e.data.dark;if(t!==undefined)document.documentElement.setAttribute('data-theme',t?'dark':'');else ts()}
-  if(e.data&&e.data.type==='qqqide-search-set-scope'){SP.value=e.data.path||'';_scopePath=SP.value.trim();_initStore();_ld();if(Q.value)trg();Q.focus()}
+  if(e.data&&e.data.type==='qqqide-search-set-scope'){SP.value=e.data.path||'';_scopePath=SP.value.trim();_ld();if(Q.value)trg();Q.focus()}
 });
 
 // Init scope from viewport, then init store & load prefs
 setTimeout(function(){
-  try{var vp=window.parent&&window.parent.qqqideViewport;if(vp&&!SP.value){var m=vp.getMainProject();if(m){SP.value=m.path;_scopePath=m.path}}}_initStore();_ld()}catch(_){}
+  try{var vp=window.parent&&window.parent.qqqideViewport;if(vp&&!SP.value){var m=vp.getMainProject();if(m){SP.value=m.path;_scopePath=m.path}}_ld();}catch(_){}
 },100);
 
 // Debounced save for text inputs

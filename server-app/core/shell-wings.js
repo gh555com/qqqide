@@ -101,7 +101,7 @@ function bootBulbs() {
       window.qqqideViewport.closeDropdown();
     }
 
-    // 灯泡红点（遮罩已覆盖，用户不可见）
+    // 灯泡红点（遮罩已覆盖，用户未可见）
     var dot = index === 0 ? d1 : d2;
     dot.classList.toggle('on', index === 0 ? _shellBulbState.left : _shellBulbState.right);
 

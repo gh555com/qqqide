@@ -102,7 +102,7 @@
             "openLeft": "在左侧再开"
         },
         "viewport": {
-            "mainFolder": "主文件夹（不可移除）",
+            "mainFolder": "主文件夹（未可移除）",
             "removeProject": "移除此项目",
             "addProject": "添加项目文件夹到 AI 视口",
             "selectFolder": "选择要添加到 AI 视口的文件夹",
@@ -288,7 +288,7 @@
         },
         "confirmDelete": {
             "title": "确认删除",
-            "message": "确定要删除吗？此操作不可撤销。"
+            "message": "确定要删除吗？此操作未可撤销。"
         },
         "unsaved": {
             "title": "未保存的更改",

@@ -476,9 +476,9 @@ function _isAfter(elA, elB) {
 
 // ---- 中间截断超长文件名 ----
 function _truncMiddle(text, maxLen) {
-  if (text.length <= maxLen) return text;
-  var keep = Math.floor((maxLen - 3) / 2);
-  return text.slice(0, keep) + '...' + text.slice(text.length - keep);
+    if (text.length <= maxLen) return text;
+    var keep = Math.floor((maxLen - 3) / 2);
+    return text.slice(0, keep) + '...' + text.slice(text.length - keep);
 }
 
 // ---- 渲染实时文件列表 ----
@@ -724,9 +724,9 @@ function _a4ClearCurrent(ag) {
 // ═══════════════════════════════════════════════════════════════
 // 增量持久化 — 统一入口（覆盖 a1/a2/a3/a4 全部豆腐块）
 // ── 构建完整 floor payload（与 _saveAgentQuestData 同构）──
-//   可选 floorNum: 若传入则使用 ag._floorMeta[floorNum] 中的不可变元数据
+//   可选 floorNum: 若传入则使用 ag._floorMeta[floorNum] 中的未可变元数据
 function _a4BuildCompleteFloorPayload(ag, floorNum) {
-    // ★ 查询该楼层的不可变元数据（如传入了 floorNum 且有 _floorMeta）
+    // ★ 查询该楼层的未可变元数据（如传入了 floorNum 且有 _floorMeta）
     var meta = (floorNum && ag._floorMeta && ag._floorMeta[floorNum]) ? ag._floorMeta[floorNum] : null;
     var floorStartIdx = meta ? meta.floorStartIdx : (typeof ag._floorStartIdx === "number" ? ag._floorStartIdx : 0);
     var allTxtPath = meta ? meta.allTxtPath : (ag._allTxtPath || '');

@@ -222,12 +222,12 @@ async function _findQuestDirByPrefix(root, questId) {
         } catch (e) {
             lastErr = e;
             if (attempt < 2) {
-                console.warn('[quest-dir] _findQuestDirByPrefix I/O error (attempt ' + (attempt+1) + '/3):', e && e.message);
+                console.warn('[quest-dir] _findQuestDirByPrefix I/O error (attempt ' + (attempt + 1) + '/3):', e && e.message);
                 await new Promise(function (r) { setTimeout(r, 200); });
             }
         }
     }
-    // ★ 3 次全失败 → 抛异常，不可静默返回 null（否则上游误以为目录不存在 → 创建重复目录）
+    // ★ 3 次全失败 → 抛异常，未可静默返回 null（否则上游误以为目录不存在 → 创建重复目录）
     console.error('[quest-dir] _findQuestDirByPrefix FAILED after 3 attempts for ' + questId + ':', lastErr && lastErr.message);
     throw new Error('_findQuestDirByPrefix: I/O error after 3 retries — ' + (lastErr && lastErr.message));
 }
@@ -430,9 +430,9 @@ function _estimateTokensFull() {
     var CPT = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN > 0) ? ContentGateway.CHAR_PER_TOKEN : 2.7;
 
     // ── 3. msg[0] 组分 ★ 优先读全局变量，全空时从 conversation[0] 兜底 ──
+    //   Time Context 不在 msg[0] 中——它嵌在每层用户消息末尾，已计入 userChars
+    //   System Prompt 已移至服务端——客户端不再携带，不在此估算
     var visionChars = typeof window.qqqideVisionContext === 'string' ? window.qqqideVisionContext.length : 0;
-    var timeChars = typeof getTimeContext === 'function' ? getTimeContext().length : 0;
-    var sysPromptChars = typeof SYSTEM_PROMPT === 'string' ? SYSTEM_PROMPT.length : 0;
     var globalRulesChars = typeof window.qqqideRulesContent === 'string' ? window.qqqideRulesContent.length : 0;
     var projectRulesChars = typeof window.qqqideProjectRulesContent === 'string' ? window.qqqideProjectRulesContent.length : 0;
     var panelRoot = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : '';
@@ -442,7 +442,7 @@ function _estimateTokensFull() {
         var reminder = '\n\n════ DEFAULT WORKING DIRECTORY ═══\nMain project: ' + panelRoot + '\nWhen the user does not specify a project, all file operations default to this directory.\n═══════════════════';
         reminderChars = reminder.length;
     }
-    var msg0TotalChars = visionChars + timeChars + sysPromptChars + globalRulesChars + projectRulesChars + reminderChars;
+    var msg0TotalChars = visionChars + globalRulesChars + projectRulesChars + reminderChars;
     // ★ 兜底：全局变量全空时（如刚切 quest），从 conversation[0] 的总 content 长度估计
     if (msg0TotalChars === 0 && conv.length > 0 && conv[0]._persistent) {
         msg0TotalChars = (typeof conv[0].content === 'string') ? conv[0].content.length : 0;
@@ -495,8 +495,6 @@ function _estimateTokensFull() {
     if (msg0TotalChars > 0) {
         rows.push(_r('Permanent System Block', msg0Tok, 0, false, '#268bd2'));
         if (visionChars > 0) rows.push(_r('  Vision Context', Math.round(visionChars / CPT), 1, false, '#859900'));
-        if (timeChars > 0) rows.push(_r('  Time Context', Math.round(timeChars / CPT), 1, false, '#2aa198'));
-        if (sysPromptChars > 0) rows.push(_r('  System Prompt', Math.round(sysPromptChars / CPT), 1, false, '#268bd2'));
         if (globalRulesChars > 0) rows.push(_r('  Global Rules', Math.round(globalRulesChars / CPT), 1, false, '#6c71c4'));
         if (projectRulesChars > 0) rows.push(_r('  Project Rules', Math.round(projectRulesChars / CPT), 1, false, '#b58900'));
         if (reminderChars > 0) rows.push(_r('  Reminder', Math.round(reminderChars / CPT), 1, false, '#cb4b16'));
@@ -674,7 +672,7 @@ document.getElementById('ctx-compress').onclick = async function () {
         var _allTxtDir = _ensured && _ensured.fDir ? _ensured.fDir : (_root + '/qqq/quests/' + _qDirName + '/' + _fDirName + '/');
         var _allTxtPath = _allTxtDir + 'all.txt';
 
-        // ③ 设置 agent 不可变元数据
+        // ③ 设置 agent 未可变元数据
         _ag._floorStartIdx = _ag.conversation.length;
         if (!_ag._floorMeta) _ag._floorMeta = {};
         _ag._floorMeta[_floorNum] = {
@@ -751,7 +749,7 @@ document.getElementById('ctx-compress').onclick = async function () {
         if (_floorNum > 0) {
             _ag.conversation.push({ role: 'assistant', content: '✗ Compress failed: ' + (e.message || 'unknown'), _floor: _floorNum });
             // ★ 失败时也有 DOM（步骤⑤之后失败），必须封顶防僵尸
-            try { cardPool.completeBuildingFloor(questActiveId, _floorNum); } catch (_) {}
+            try { cardPool.completeBuildingFloor(questActiveId, _floorNum); } catch (_) { }
             if (typeof _saveAgentQuestData === 'function') {
                 await _saveAgentQuestData(questActiveId, _ag, _floorNum).catch(function () { });
             }

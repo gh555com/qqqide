@@ -111,7 +111,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
         }
     }
 
-    // ★ 时间上下文已嵌入用户消息末尾（agent-loop.js send()），不在此处重复注入
+    // ★ 时间上下文已嵌在用户消息末尾（agent-loop.js send()），不在网关重复注入
 
     // 语言检测已移至 a1 审计按钮（后翻译方案），此处不再强制注入语言指令
     // ★ house_hint：每间 house 推理前 30 字，供服务器账单按 house 区分
@@ -258,7 +258,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     }
                     // 已达切换上限 → 同 502/503 无线路可用，不曝余额不足给用户
                     self._exitReason = 'http_' + resp.status;
-                    self._lastGatewayMessage = '服务器暂时不可达，所有线路均已耗尽';
+                    self._lastGatewayMessage = '服务器暂时未可达，所有线路均已耗尽';
                     if (typeof _gwBroadcastDeadFallback === 'function') {
                         _gwBroadcastDeadFallback();
                     }
@@ -268,8 +268,8 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 var friendly = resp.status === 401 ? '认证失败，请检查 Token'
                     : resp.status === 402 ? 'ge 余额不足，请充值'
                         : resp.status === 429 ? '请求过于频繁，请稍后再试'
-                            : resp.status === 502 ? '服务器暂时不可达 (502)'
-                                : resp.status === 503 ? '服务器暂时不可达 (503)'
+                            : resp.status === 502 ? '服务器暂时未可达 (502)'
+                                : resp.status === 503 ? '服务器暂时未可达 (503)'
                                     : 'Server error (' + resp.status + ')';
                 try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(friendly, { type: resp.status === 429 ? 'warning' : 'error' }); } catch (_) { }
                 // ★ 502/503: 切线路（带防 ping-pong）
@@ -298,7 +298,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     }
                     // 无可切换线路 或 已达切换上限 → 交给上层 auto-repair 处理
                     self._exitReason = 'http_' + resp.status;
-                    self._lastGatewayMessage = friendly + '，所有线路均不可达';
+                    self._lastGatewayMessage = friendly + '，所有线路均未可达';
                     // ★ 通知兄弟面板：当前线路已死
                     if (typeof _gwBroadcastDeadFallback === 'function' && GATEWAY_URL === GATEWAY_URL_FALLBACK) {
                         _gwBroadcastDeadFallback();
@@ -474,7 +474,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             if (self._lastGatewayError === 402) {
                 self._log('  AI upstream 402 — key depleted, trying line switch');
                 clearTimeout(_fetchDeadline);
-                self._lastGatewayMessage = 'AI 服务暂时不可用，请稍后再试';
+                self._lastGatewayMessage = 'AI 服务暂时未可用，请稍后再试';
                 // 跳过 HTTP/2 重试，直接落入下方线路切换逻辑
             } else {
                 // HTTP/2 协议检测：JS 层 fetch() 对 ERR_HTTP2_* 只报 "Failed to fetch"

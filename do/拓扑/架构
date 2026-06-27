@@ -85,6 +85,16 @@ AI 网关双线路 + 故障切换引擎（2026-06-13 加固，2026-06-26 全路�
   → agent loop 的 auto-repair 先尝试修复 → 成功则继续（用户无感）→ 失败才报错
 · 跨面板协同: panel-state.js 监听兄弟面板 qqq-gw-status → 自动调整 _gwFallbackAt
 
+服务端甲壳系统提示词（2026-06-27）
+---------------------------------------------
+· 唯一真理源: gaea/guard/system-prompt.txt（开发者在此编辑甲壳文本）
+· Go 加载: gaea/internal/guard/guard.go 启动时 sync.Once 读取并预序列化，内存缓存，零每请求开销
+· 注入点: handlers_ai_chat.go §6 — sanitizeMessages 之后、aiReq 构建之前，prepend 到 messages[0]
+· 客户端: agent-loop.js _refreshRules() 不再发送 SYSTEM_PROMPT（已从 msg[0] 删除）
+· 甲壳文本固定不变 → AI prefix cache 100% 命中，费用与客户端携带完全等价
+· 安全收益: 客户端网络包中不再出现甲壳文本 → TLS MITM/客户端逆向 无法提取甲壳
+· 部署联动: 改 system-prompt.txt 后只需 ky.py deploy go（纯文件变更，无需重新编译）
+
 双 Key 隔离 + JWT 解耦（2026-06-23）
 ---------------------------------------------
 · 两把 API key 完全隔离于服务器 .env（客户端零密钥）:
@@ -254,7 +264,7 @@ qqq-shell-v2/
 │       ├── agent-sse.js       SSE 流解析 + 文本工具调用回生（_parseSSE）
 │       ├── agent-vision.js    视觉预分析（_analyzeImages + _callVision）
 │       ├── agent-exec.js      并行工具执行引擎 + 分层调度（_executeToolCallsParallel等）
-│       ├── agent-context.js   上下文压缩（三专家架构, _compressContext）
+│       ├── agent-context.js   上下文压缩（单专家统一压缩 + Narrative-First, _compressContext）
 │       ├── tools-defs.js       AI 工具定义 + 分类 + 常量 + 辅助函数
 │       ├── tools-exec-write.js WRITE 类工具（edit/write/create/delete）
 │       ├── tools-exec.js       工具调度中心 + READ 类工具（read/search/list/find/diag/fetch）
@@ -607,26 +617,29 @@ AI 面板增强
 - 时钟：分钟(48px)+冒号秒(24px)，动态色随 agent._floorTiming 变化
 - 饼图：canvas 112px，懒重绘，数据不到不显示
 
-AI 上下文窗口防护（三层纵深 + 参数集中化，2026-06-10 落地）
+AI 上下文窗口防护（三层纵深 + 参数集中化，2026-06-10 落地，2026-06-27 单专家统一重构）
 --------------------------------------------------------------
-背景：模型硬限制 prompt+completion ≤ 1,000,000 tokens，长对话叠加 max_tokens(393K) 超限导致零响应。
+背景：模型硬限制 prompt+completion ≤ 1M tokens，长对话叠加 max_tokens(393K) 超限导致零响应。
 
 参数唯一真理源：content-gateway.js
-  CTX_MAX_TOKENS(1,048,565) / COMPRESS_THRESHOLD(200k, 可配置 100-1000k 通过设置面板) / MAX_RESPONSE_TOKENS(393216) / MAX_TOKENS_SAFETY(10k) / CHAR_PER_TOKEN(2.7)
-  + COMPACT_FACTS_TOKENS(32k) / COMPACT_NARRATIVE_TOKENS(32k) / COMPACT_ARCHIVE_TOKENS(32k) / ARCHIVE_MAX_CHARS(1M) / COMPACT_DEBUG / COMPACT_THINKING_ENABLED(false)
-  MAX_RESPONSE_TOKENS=393216（~394k）→ 全部 6 档 tier 统一读取，Flash/Pro 不区分。
+  CTX_MAX_TOKENS(1,048,565) / COMPRESS_THRESHOLD(200k, 用户设置面板 100-900k 可调) / MAX_RESPONSE_TOKENS(393216) / CHAR_PER_TOKEN(2.7)
+  + COMPACT_MAX_TOKENS(65536, 单专家统一 max_tokens) / ARCHIVE_MAX_CHARS(1M) / COMPACT_DEBUG
   换模型只改这一处。消费方全部引用，不硬编码。
-  按钮显示+压缩阈值第一层 — 上下文压缩引擎（主防线，2026-06-24 加固）：
-  · 每间 house 前检查 _lastApiTotalTokens > 用户设置的阈值(默认200k) → 阻塞压缩。每层楼最多压一次。
-  · 三专家并行 Promise.all: ①facts(32k) ②narrative(32k,含硬保证+缩水检测) ③archive(32k,仅新楼层)。
-  · thinking=disabled：压缩是 JSON 提取，不需要推理（ContentGateway.COMPACT_THINKING_ENABLED=false）。
+
+第一层 — 上下文压缩引擎（主防线，2026-06-27 重构）：
+  · 每间 house 前检查 _lastApiTotalTokens > 用户设置的阈值 → 阻塞压缩。每层楼最多压一次。
+  · 单专家统一压缩（tier 6, thinking=enabled, 64K max_tokens）：合并 facts+narrative+archive 一次调用。
+    ★ Narrative-First：先写 narrative（8K-48K chars 主记录），再从 narrative 提取 facts（索引）→ 最后写 floors 摘要。
+    ★ 冷文本全量送入（不采样）：模型 1M 窗口装得下最大 ~900K tokens 的冷文本，不存在覆盖不足问题。
+    ★ System message: "be thorough, not brief. Incomplete preservation is worse than verbosity."
   · 经 AiGateway 统一出口（chatFetch compact 路径），token 走 key pool，无超时限制。
-  · SSE 响应累积解析：遍历所有 data: 行累加 delta.content → 稳健 JSON 三策略提取。
-  · 全成功→splice conversation+平移 _floorStartIdx/_floorMeta 索引（防重建时切片为空）。
-  · 任一败→快照回滚。KEEP_TARGET=总tokens×0.1动态伸缩。facts 冷文本截断 200k chars。
+  · 全成功→splice conversation + _shiftConversationIndices 统一平移所有索引。
+  · 任一败→快照回滚（facts/narrative/archives 全原子恢复）。
+  · Facts 后处理：同 type + 关键词重叠 >50% → 合并为一条。
+  · KEEP_TARGET = min(beforeTokens, budget) × 0.1，最少保留 6 层楼（当前层+前 5 层）。
+  · 对话压缩失败 → 指数退避无限重试（2s→4s→8s→...→60s），永不静默丢弃。
   · 手动/自动共用 _renderCompressStart/_renderCompressResult（唯一真理渲染机器）。
-  · 手动压缩：send "请帮我压缩上下文" 建楼层，az 区显示压缩耗时，不调 AI house。下文（不检索）。
-  · 手动触发：左下角按钮，仅限空闲时，≥50k即可。压缩期间发送按钮⏳+disabled。
+  · 手动触发：左下角按钮，≥50k 即可，压缩期间发送按钮⏳+disabled。
 
 第二层 — 孤儿tool_calls自愈（持久化根治）：
   · _saveAgentQuestData 修复后按_floor标签重建所有楼层，逐层saveFloor写回sq3。
@@ -666,7 +679,7 @@ all.json 写入系统（2026-06-27 预渲染加固）
 · 唯一增量路径: auto-save（面板级持久 timer，_ensureAutoSave 模块加载即启动，永不停止）。
   _startAutoSave / _stopAutoSave 已彻底删除（面板级单例，不随 quest 切换启停）。
 · beforeunload: _saveAllBeforeUnload → _saveAgentFloor(force=true) 无条件全量刷盘。
-· 数据流: agent._houses / _a4Snapshots / _lastFloorTimingRecord ─→ _a4BuildCompleteFloorPayload ─→ all.json
+· 数据流: agent._houses(不含 reasoning/tools/toolResults) / _a4Snapshots / _lastFloorTimingRecord ─→ _a4BuildCompleteFloorPayload ─→ all.json
 · 原子写入: bridge.fs.write → ipc-fs.ts _atomicWrite（tmp+rename），进程崩溃零数据损坏。
 · 写后清理: _writeFloorFile 每次写完立即清扫本目录 all.json.tmp.*（_cleanTmpInDir），零累积。
   兜底: _cleanStaleAllJsonTmp 启动时全量扫描（覆盖进程崩溃残留）。

@@ -32,10 +32,10 @@
         chatFallback: 'https://gh555.com/api/v3/ai/chat',
         chatBackup: 'https://direct.gh555.com:8444/api/v3/ai/chat',
         visionPrimary: 'https://47.105.67.51/api/v3/ai/vision',
-        visionFallback: 'https://gh555.com/api/v3/ai/vision',
+        visionFallback: 'https://cnk.gh555.com/api/v3/ai/vision',
         visionBackup: 'https://direct.gh555.com:8444/api/v3/ai/vision',
         imageGenPrimary: 'https://47.105.67.51/api/v3/ai/generate-image',
-        imageGenFallback: 'https://gh555.com/api/v3/ai/generate-image',
+        imageGenFallback: 'https://cnk.gh555.com/api/v3/ai/generate-image',
         imageGenBackup: 'https://direct.gh555.com:8444/api/v3/ai/generate-image',
         embedPrimary: 'https://47.105.67.51/api/v3/ai/embedding',
         embedFallback: 'https://gh555.com/api/v3/ai/embedding',
@@ -103,7 +103,7 @@
     }
 
     // 双线路 JSON POST（提交类：vision/imageGen），先主后备用
-    // primaryConnTimeout: 主线连接探测超时（默认 8s，主线不可达时快速切备用）
+    // primaryConnTimeout: 主线连接探测超时（默认 8s，主线未可达时快速切备用）
     // fallbackTimeout: 备用线全程超时（默认 120s，包含大 body 上传）
     async function _postJsonWithFailover(primaryUrl, fallbackUrl, body, token, primaryConnTimeout, fallbackTimeout) {
         primaryConnTimeout = primaryConnTimeout || 8000;
@@ -116,7 +116,7 @@
                 body: JSON.stringify(body),
             }, primaryConnTimeout);
             if (resp && resp.ok) return resp;
-        } catch (_) {}
+        } catch (_) { }
         // Fallback（X-Key-Slot 告知 Go 选备用 key，更长的超时容忍大 body）
         try {
             return await _fetchWithTimeout(fallbackUrl, {
@@ -134,8 +134,8 @@
     async function _pollStream(url, token, timeoutMs) {
         timeoutMs = timeoutMs || 120000;
         var deadline = Date.now() + timeoutMs;
-        // 主线探测超时短（8s，不可达快速切），备用线连接超时宽（30s，CF Worker→Go SSE 协商）
-        var primaryConnTimeout = 8000;
+        // 主线探测超时短（8s，未可达快速切），备用线连接超时宽（30s，CF Worker→Go SSE 协商）
+        var primaryConnTimeout = 35000;
         var fallbackConnTimeout = 30000;
 
         // 双线路：先主后备
@@ -146,7 +146,7 @@
                 resp = await _fetchWithTimeout(url.primary, {
                     headers: { 'Authorization': 'Bearer ' + token },
                 }, primaryConnTimeout);
-            } catch (_) {}
+            } catch (_) { }
             // Fallback
             if (!resp || !resp.ok) {
                 try {
@@ -196,7 +196,7 @@
 
 
     // ════════════════════════════════════════════════════
-    // 公有 API 
+    // 公有 API
     // ═══════════════════════════════════════════════════════════════════
 
     var AiGateway = {
