@@ -34,7 +34,7 @@ function _cln(l){l=l.trim().replace(/^at\s+/,'');
 function _cap(){
  try{var s=new Error().stack;if(!s)return{head:'?:?',trace:''};var ln=s.split('\n'),hd='',tr='';
   for(var i=3;i<ln.length;i++){var l=ln[i];if(!l||l.indexOf('(native)')>=0||l.indexOf('index.html')>=0&&l.indexOf('<anonymous>')>=0)continue;
-   var c=_cln(l);if(!c)continue;if(!hd){hd=c;}else{tr+=(tr?'\n':'')+'    '+c;}}
+   var c=_cln(l);if(!c)continue;if(!hd){var a=c.indexOf(' @ ');hd=a>=0?c.slice(a+3):c;}else{tr+=(tr?'\n':'')+'    '+c;}}
   return{head:hd||'?:?',trace:tr};}catch(_){return{head:'?:?',trace:''};}
 }
 var _orig={};

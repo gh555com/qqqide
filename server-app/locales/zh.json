@@ -271,6 +271,20 @@
             "clear": "清空",
             "header": "队列",
             "editTitle": "点击编辑或删除"
+        },
+        "billing": {
+            "number": "编号",
+            "type": "类型",
+            "toolCount": "工具数",
+            "time": "时间消耗",
+            "wge": "wge",
+            "aiLv": "AI 等级",
+            "cacheHit": "缓存命中率",
+            "promptTokens": "prompt_tokens",
+            "completionTokens": "completion_tokens",
+            "totalTokens": "total_tokens",
+            "receipt": "查账凭据",
+            "title": "计费明细"
         }
     },
     "goods": {

@@ -1,8 +1,57 @@
 // ============================================================================
-// agent-sse.js — SSE 流解析 + 文本工具调用回生引擎
-// 从 agent-loop.js 拆分，为 AgentLoop.prototype 添加 _parseSSE 方法
+// agent-sse.js — SSE 流解析 + 文本工具调用回生引擎 + 计费事件处理
+// 从 agent-loop.js 拆分，为 AgentLoop.prototype 添加 _parseSSE / _processBillingEvent 方法
 // 依赖：AgentLoop（由 agent-loop.js 定义），EnvelopeStripper（由 agent-envelope.js 定义）
 // ============================================================================
+
+// ═══ 计费事件处理 — 唯一真理源（_parseSSE 和 _callCompactAPI 共用） ═══
+// ★ 同一 house 内多次 billing 事件 → 累加 wgeCost，保留最新元数据
+//   正常路径：每 house 仅一次 billing → _lastBilling 为 null → 新建对象
+//   压缩路径：_callCompactAPI 可能多次调用 → _lastBilling 已存在 → 累加
+AgentLoop.prototype._processBillingEvent = function (parsed) {
+    var self = this;
+    var cost = parsed.ge_cost || 0;
+    self._floorCostWge += cost;
+    if (parsed.free_window) self._floorFree = true;
+    self._billingSeq++;
+    if (self._lastBilling) {
+        // ★ 累加模式（压缩路径多次 API 调用）
+        self._lastBilling.wgeCost += cost;
+        self._lastBilling.seq = self._billingSeq;
+        self._lastBilling.requestId = parsed.request_id || self._lastBilling.requestId;
+        self._lastBilling.model = parsed.model || self._lastBilling.model;
+        self._lastBilling.cacheHitRate = (typeof parsed.cache_hit_rate === 'number') ? parsed.cache_hit_rate : self._lastBilling.cacheHitRate;
+        if (parsed.usage) {
+            self._lastBilling.usage = {
+                prompt_tokens: parsed.usage.prompt_tokens || 0,
+                completion_tokens: parsed.usage.completion_tokens || 0,
+                cached_tokens: parsed.usage.cached_tokens || 0,
+                non_cached_tokens: parsed.usage.non_cached_tokens || 0
+            };
+        }
+    } else {
+        // ★ 新建模式（正常路径首次 billing）
+        self._lastBilling = {
+            seq: self._billingSeq,
+            wgeCost: cost,
+            model: parsed.model || '',
+            cacheHitRate: (typeof parsed.cache_hit_rate === 'number') ? parsed.cache_hit_rate : -1,
+            usage: parsed.usage ? {
+                prompt_tokens: parsed.usage.prompt_tokens || 0,
+                completion_tokens: parsed.usage.completion_tokens || 0,
+                cached_tokens: parsed.usage.cached_tokens || 0,
+                non_cached_tokens: parsed.usage.non_cached_tokens || 0
+            } : null,
+            freeWindow: parsed.free_window || false,
+            requestId: parsed.request_id || '',
+            ts: Date.now()
+        };
+    }
+    if (self._billingDebug && typeof self._log === 'function') {
+        var _hr = (typeof parsed.cache_hit_rate === 'number') ? (parsed.cache_hit_rate.toFixed(1) + '%') : '?';
+        self._log('💰 billing #' + self._billingSeq + ': ' + (cost / 10000).toFixed(4) + ' ge | model=' + (parsed.model || '?') + ' | prompt=' + ((parsed.usage && parsed.usage.prompt_tokens) || '?') + ' cached=' + ((parsed.usage && parsed.usage.cached_tokens) || '?') + ' hit=' + _hr + (parsed.free_window ? ' [FREE]' : ''));
+    }
+};
 
 // ---- SSE 解析 ----
 AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
@@ -69,29 +118,7 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
             try { chunk = JSON.parse(data); } catch (_) { continue; }
 
             if (chunk.type === 'billing') {
-                self._floorCostWge += chunk.ge_cost || 0;
-                if (chunk.free_window) self._floorFree = true;
-                // ★ 记账埋点：保存完整 billing 数据供 house 关联 + 事后审计
-                self._billingSeq++;
-                self._lastBilling = {
-                    seq: self._billingSeq,
-                    wgeCost: chunk.ge_cost || 0,
-                    model: chunk.model || '',
-                    cacheHitRate: (typeof chunk.cache_hit_rate === 'number') ? chunk.cache_hit_rate : -1,
-                    usage: chunk.usage ? {
-                        prompt_tokens: chunk.usage.prompt_tokens || 0,
-                        completion_tokens: chunk.usage.completion_tokens || 0,
-                        cached_tokens: chunk.usage.cached_tokens || 0,
-                        non_cached_tokens: chunk.usage.non_cached_tokens || 0
-                    } : null,
-                    freeWindow: chunk.free_window || false,
-                    requestId: chunk.request_id || '',
-                    ts: Date.now()
-                };
-                if (self._billingDebug && typeof self._log === 'function') {
-                    var _hr = (typeof chunk.cache_hit_rate === 'number') ? (chunk.cache_hit_rate.toFixed(1) + '%') : '?';
-                    self._log('💰 billing #' + self._billingSeq + ': ' + (chunk.ge_cost / 10000).toFixed(4) + ' ge | model=' + (chunk.model || '?') + ' | prompt=' + ((chunk.usage && chunk.usage.prompt_tokens) || '?') + ' cached=' + ((chunk.usage && chunk.usage.cached_tokens) || '?') + ' hit=' + _hr + (chunk.free_window ? ' [FREE]' : ''));
-                }
+                self._processBillingEvent(chunk);
                 continue;
             }
             // ★ 服务端 SSE 错误事件（upstream 失败后通过 SSE 通知客户端）

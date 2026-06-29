@@ -112,9 +112,14 @@ export function createWindow(
         },
     });
 
-    // Console message buffer
-    win.webContents.on('console-message', (_e: any, _level: number, message: string) => {
-        _consoleBuffer.push(message);
+    // ★ Console buffer — 完整捕获 (含 iframe)、与 DevTools 另存为格式一致
+    win.webContents.on('console-message', (
+        _e: any, _level: number, message: string, _line: number, _sourceId: string
+    ) => {
+        const src = _sourceId || '';
+        const file = src.replace(/\\/g, '/').split('/').pop() || src;
+        const head = file && _line ? file + ':' + _line + ' ' : '';
+        _consoleBuffer.push(head + message);
         if (_consoleBuffer.length > _consoleMaxLines) _consoleBuffer.shift();
     });
 

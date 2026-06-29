@@ -495,7 +495,7 @@ var AgentLoop = (function () {
 
                 // ═══ 压缩守护：每间 house 前检查，超阈值则阻塞压缩 ═══
                 if (!self._compressing && !self._compressAttemptedThisFloor) {
-                    var _apiTokens = self._lastApiTotalTokens || self._lastApiPromptTokens || 0;
+                    var _apiTokens = self._lastApiPromptTokens || 0;
                     // ★ 冷启动兜底：磁盘加载 quest 后无 usage，用估算防首轮 400
                     if (_apiTokens === 0) { _apiTokens = self._estimateTotalTokens(); }
                     // ★ 动态读取用户设置的压缩阈值（k → tokens）
@@ -536,7 +536,8 @@ var AgentLoop = (function () {
                                 cacheHitRate: _bill ? _bill.cacheHitRate : -1,
                                 usage: _bill ? _bill.usage : null,
                                 billingSeq: _bill ? _bill.seq : 0,
-                                billingRequestId: _bill ? _bill.requestId : ''
+                                billingRequestId: _bill ? _bill.requestId : '',
+                                tier: self._lastTier ? self._lastTier.label : ''
                             });
                             // ★ 更新右下角 ge 显示示
                             var _aiDivC = self._activeAiDiv;
@@ -545,6 +546,7 @@ var AgentLoop = (function () {
                                 _aiDivC._clockCost._rawGe = (typeof _formatGeRaw === 'function') ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
                                 _aiDivC._clockCost.textContent = (typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2)) + ' ge' + (self._floorFree ? ' Free' : '');
                                 _aiDivC._clockCost.style.display = 'inline';
+                                _aiDivC._clockCost._houses = self._houses;
                             }
                             // ★ 压缩耗时归入 AI 时间（饼图绿色），而非 other（黄色）
                             if (self._floorTiming) {
@@ -684,7 +686,7 @@ var AgentLoop = (function () {
                     }
                     var _bill = self._lastBilling; self._lastBilling = null;
                     var _cd = self._lastCacheDiag; self._lastCacheDiag = null;
-                 self._houses.push({ index: self._houseIndex, type: 'final', tools: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', wgeCost: _bill ? _bill.wgeCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined });
+                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', wgeCost: _bill ? _bill.wgeCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined, tier: self._lastTier ? self._lastTier.label : '' });
                     var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
                     var _lastConv = self.conversation[self.conversation.length - 1];
                     if (_lastConv && _lastConv._truncated && _lastConv._floor === self._ctx.totalFloors) {
@@ -722,7 +724,7 @@ var AgentLoop = (function () {
                     });
                     var _bill2 = self._lastBilling; self._lastBilling = null;
                     var _cd2 = self._lastCacheDiag; self._lastCacheDiag = null;
-               self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', wgeCost: _bill2 ? _bill2.wgeCost : 0, model: _bill2 ? _bill2.model : '', cacheHitRate: _bill2 ? _bill2.cacheHitRate : -1, usage: _bill2 ? _bill2.usage : null, billingSeq: _bill2 ? _bill2.seq : 0, billingRequestId: _bill2 ? _bill2.requestId : '', cacheDiag: _cd2 || undefined });
+                    self._houses.push({ index: self._houseIndex, type: 'tools', tools: _tools, toolResults: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', wgeCost: _bill2 ? _bill2.wgeCost : 0, model: _bill2 ? _bill2.model : '', cacheHitRate: _bill2 ? _bill2.cacheHitRate : -1, usage: _bill2 ? _bill2.usage : null, billingSeq: _bill2 ? _bill2.seq : 0, billingRequestId: _bill2 ? _bill2.requestId : '', cacheDiag: _cd2 || undefined, tier: self._lastTier ? self._lastTier.label : '' });
                     // ★ per-house ge display: 每间 house 即时更新右下角费用时更新右下角费用（纯 DOM，零服务器压力）
                     var _aiDiv5 = self._activeAiDiv;
                     if (_aiDiv5 && _aiDiv5._clockCost) {
@@ -731,6 +733,7 @@ var AgentLoop = (function () {
                         _aiDiv5._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe5) : _rawGe5.toFixed(4);
                         _aiDiv5._clockCost.textContent = _displayGe5 + ' ge' + (self._floorFree ? ' Free' : '');
                         _aiDiv5._clockCost.style.display = 'inline';
+                        _aiDiv5._clockCost._houses = self._houses;
                         if (self._floorFree) {
                             _aiDiv5._clockCost.style.color = '#859900';
                         } else {
@@ -828,7 +831,7 @@ var AgentLoop = (function () {
                     }
                     var _bill3 = self._lastBilling; self._lastBilling = null;
                     var _cd3 = self._lastCacheDiag; self._lastCacheDiag = null;
-             self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ts: new Date().toISOString(), ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '', wgeCost: _bill3 ? _bill3.wgeCost : 0, model: _bill3 ? _bill3.model : '', cacheHitRate: _bill3 ? _bill3.cacheHitRate : -1, usage: _bill3 ? _bill3.usage : null, billingSeq: _bill3 ? _bill3.seq : 0, billingRequestId: _bill3 ? _bill3.requestId : '', cacheDiag: _cd3 || undefined });
+                    self._houses.push({ index: self._houseIndex, type: 'final', tools: [], summary: '(forced)', ts: new Date().toISOString(), ms: Date.now() - _hFinalStart, reasoning: finalResp.reasoning_content || '', answer: finalResp.content || '', wgeCost: _bill3 ? _bill3.wgeCost : 0, model: _bill3 ? _bill3.model : '', cacheHitRate: _bill3 ? _bill3.cacheHitRate : -1, usage: _bill3 ? _bill3.usage : null, billingSeq: _bill3 ? _bill3.seq : 0, billingRequestId: _bill3 ? _bill3.requestId : '', cacheDiag: _cd3 || undefined, tier: self._lastTier ? self._lastTier.label : '' });
                     if (finalResp._ttfbMs !== undefined) {
                         self._floorTiming.networkMs += finalResp._ttfbMs;
                         self._floorTiming.aiMs += finalResp._streamMs;

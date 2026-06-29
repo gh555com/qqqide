@@ -30,7 +30,7 @@
     var CTX_MAX_TOKENS = 1048565;     // 上下文窗口总上限（实测精确值）
     var COMPRESS_THRESHOLD = 200000;  // 压缩触发阈值（200k tokens，约 20% 窗口）
     var MAX_TOKENS_SAFETY = 10000;    // max_tokens 帽安全余量
-    var CHAR_PER_TOKEN = 2.7;         // 统一 chars→tokens 估算比例（2026-06-22 校准: 3.0→2.7）
+    var CHAR_PER_TOKEN = 2.5;         // 统一 chars→tokens 估算比例（2026-06-22 校准: 3.0→2.7）
     // 单专家统一压缩参数（tier 6, 64K max_tokens）
     var COMPACT_MAX_TOKENS = 65536;       // 单专家统一 max_tokens（旧三专家 3×32K 已废弃）
     var ARCHIVE_MAX_CHARS = 1000000;      // archive 硬上限 ~1M chars

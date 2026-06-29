@@ -563,6 +563,7 @@ async function sendMessage() {
                         _targetDiv3._clockCost._rawGe = _formatGeRaw(_rawGe);
                         _targetDiv3._clockCost.textContent = _displayGe + ' ge' + (isFree ? ' Free' : '');
                         _targetDiv3._clockCost.style.display = 'inline';
+                        _targetDiv3._clockCost._houses = _capturedAgent._houses;
                         if (isFree) {
                             _targetDiv3._clockCost.style.color = '#859900';
                         } else {

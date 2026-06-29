@@ -136,6 +136,70 @@ function _formatGeRaw(rawValue) {
     return rawValue.toFixed(6).replace(/\.?0+$/, '') || '0';
 }
 
+// ── 计费明细表格（点击 ge 消费区弹出悬浮层）──
+function _buildBillingTable(houses) {
+    var _i2 = window._i || function (k, f) { return f; };
+    // ★ 列序：编号 → 类型 → 工具数 → AI 等级 → 时间消耗 → wge → 缓存命中率 → prompt_tokens → completion_tokens → total_tokens → 查账凭据
+    var headers = [
+        _i2('ai.billing.number', '编号'),
+        _i2('ai.billing.type', '类型'),
+        _i2('ai.billing.toolCount', '工具数'),
+        _i2('ai.billing.aiLv', 'AI 等级'),
+        _i2('ai.billing.time', '时间消耗'),
+        _i2('ai.billing.wge', 'wge'),
+        _i2('ai.billing.cacheHit', '缓存命中率'),
+        _i2('ai.billing.promptTokens', 'prompt_tokens'),
+        _i2('ai.billing.completionTokens', 'completion_tokens'),
+        _i2('ai.billing.totalTokens', 'total_tokens'),
+        _i2('ai.billing.receipt', '查账凭据')
+    ];
+    // 表头：居中 + 自动换行（overlay 会跳过已设 whiteSpace）
+    var html = '<table><thead><tr>';
+    for (var i = 0; i < headers.length; i++) {
+        html += '<th style="text-align:center;white-space:normal">' + headers[i] + '</th>';
+    }
+    html += '</tr></thead><tbody>';
+    for (var j = 0; j < houses.length; j++) {
+        var h = houses[j];
+        var billingSeq = h.billingSeq || h.index || (j + 1);
+        var type = h.type || '?';
+        // toolCount: 运行时是 tools 数组，恢复后是 toolCount 数字
+        var toolCount = (h.tools && Array.isArray(h.tools)) ? h.tools.length : (typeof h.toolCount === 'number' ? h.toolCount : 0);
+        // AI 等级：从 tier label 提取数字
+        var aiLv = '?';
+        if (h.tier) {
+            var parsed = parseInt(h.tier, 10);
+            if (!isNaN(parsed)) aiLv = String(parsed);
+        }
+        // 时间消耗：ms → 四舍五入到整数 s
+        var ms = h.ms || 0;
+        var timeStr = Math.round(ms / 1000) + 's';
+        var wge = h.wgeCost || 0;
+        // 缓存命中率
+        var cacheHit = h.cacheHitRate >= 0 ? h.cacheHitRate.toFixed(1) + '%' : '?';
+        var usage = h.usage;
+        var promptTokens = usage ? (usage.prompt_tokens || 0) : 0;
+        var completionTokens = usage ? (usage.completion_tokens || 0) : 0;
+        var totalTokens = promptTokens + completionTokens;
+        var receipt = h.billingRequestId || '';
+        html += '<tr>'
+            + '<td>' + billingSeq + '</td>'
+            + '<td>' + type + '</td>'
+            + '<td>' + toolCount + '</td>'
+            + '<td>' + aiLv + '</td>'
+            + '<td>' + timeStr + '</td>'
+            + '<td>' + wge + '</td>'
+            + '<td>' + cacheHit + '</td>'
+            + '<td>' + promptTokens + '</td>'
+            + '<td>' + completionTokens + '</td>'
+            + '<td>' + totalTokens + '</td>'
+            + '<td>' + receipt + '</td>'
+            + '</tr>';
+    }
+    html += '</tbody></table>';
+    return html;
+}
+
 function _initClockBlock(aiDiv) {
     if (aiDiv._clockBlock) return;
     var block = document.createElement('div');
@@ -154,6 +218,16 @@ function _initClockBlock(aiDiv) {
         _showPieTooltip('<span style="color:#fff">' + raw + ' ge</span>', e.clientX, e.clientY);
     });
     clockCost.addEventListener('mouseleave', function () { _hidePieTooltip(); });
+    // ★ 点击 ge 消费区 → 悬浮层打开计费明细表格
+    clockCost.addEventListener('click', function (e) {
+        var houses = clockCost._houses;
+        if (!houses || !houses.length) return;
+        var html = _buildBillingTable(houses);
+        if (html && typeof _postToHost === 'function') {
+            _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: '<div class="msg-ai">' + html + '</div>' });
+        }
+    });
+    clockCost.style.cursor = 'pointer';
     var canvas = aiDiv._clockCanvas;
     canvas.addEventListener('mousemove', function (e) {
         if (!canvas._segments || !canvas._total) { _hidePieTooltip(); return; }
@@ -201,6 +275,7 @@ function startFloorTimer(aiDiv, ag, resume) {
         aiDiv._clockCost.textContent = '0.00 ge';
         aiDiv._clockCost.style.display = 'inline';
         aiDiv._clockCost._rawGe = null;
+        aiDiv._clockCost._houses = null;
     }
     var _pieShown = false;
     var _lastN = 0, _lastD = 0, _lastT = 0;

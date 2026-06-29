@@ -35,7 +35,7 @@
     var TOKEN_BUDGET = _readCompressThreshold();
     var KEEP_RATIO = 0.1;         // 保留最近 10%
     var MIN_FLOORS = 6;           // 最少保留 6 层楼（当前层 + 前 5 层）
-    var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 3.0);
+    var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 2.5);
     // 单专家统一压缩（tier 6, 64K max_tokens）
     var COMPACT_MAX_TOKENS = (typeof ContentGateway !== 'undefined' && ContentGateway.COMPACT_MAX_TOKENS) ? ContentGateway.COMPACT_MAX_TOKENS : 65536;  // 64K
     var ARCHIVE_MAX_CHARS = (typeof ContentGateway !== 'undefined' ? ContentGateway.ARCHIVE_MAX_CHARS : 1000000); // ~1M charshars
@@ -97,8 +97,8 @@
         // ★ Stop 守卫：用户点停止后立即跳过压缩
         if (self._stopCtrl && self._stopCtrl.signal.aborted) return { compressed: false, detail: '用户已停止', beforeTokens: 0, afterTokens: 0, elapsedMs: 0 };
         var totalEst = self._estimateTotalTokens();
-        // ★ 优先用 _lastApiTotalTokens（prompt+completion 精确值），fallback 到 prompt_tokens
-        var dsTokens = self._lastApiTotalTokens || self._lastApiPromptTokens || 0;
+        // ★ 用 prompt_tokens（纯输入），不混入 completion（输出侧数字与背包无关）
+        var dsTokens = self._lastApiPromptTokens || 0;;
         var beforeTokens = Math.max(totalEst, dsTokens);
         var _force = reason && reason.force;
 
@@ -541,26 +541,9 @@
                             self._log('✗ Compact SSE error (suffix=' + _suffix + '): ' + (_parsed.message || JSON.stringify(_parsed).slice(0, 200)));
                             return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
                         }
-                        // ★ billing 事件：从 SSE 流中提取扣费信息（与 _parseSSE 同逻辑）
+                        // ★ billing 事件：统一走 _processBillingEvent（与 _parseSSE 同逻辑）
                         if (_parsed.type === 'billing') {
-                            self._floorCostWge += _parsed.ge_cost || 0;
-                            if (_parsed.free_window) self._floorFree = true;
-                            self._billingSeq++;
-                            self._lastBilling = {
-                                seq: self._billingSeq,
-                                wgeCost: _parsed.ge_cost || 0,
-                                model: _parsed.model || '',
-                                cacheHitRate: (typeof _parsed.cache_hit_rate === 'number') ? _parsed.cache_hit_rate : -1,
-                                usage: _parsed.usage ? {
-                                    prompt_tokens: _parsed.usage.prompt_tokens || 0,
-                                    completion_tokens: _parsed.usage.completion_tokens || 0,
-                                    cached_tokens: _parsed.usage.cached_tokens || 0,
-                                    non_cached_tokens: _parsed.usage.non_cached_tokens || 0
-                                } : null,
-                                freeWindow: _parsed.free_window || false,
-                                requestId: _parsed.request_id || '',
-                                ts: Date.now()
-                            };
+                            self._processBillingEvent(_parsed);
                             continue;
                         }
                         // ★ usage 事件：流尾精确 token 统计
