@@ -11,6 +11,95 @@ import { StateStore } from './state-sqlite';
 import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
 
+// ── 自动版本递增 ──────────────────────────────────────────────────────────
+const AUTO_VERSION_TOGGLE_OFF = 'auto-version-off';
+
+function autoIncrementVersion(portableRoot: string): void {
+    try {
+        // ── 开关: Data/auto-version-off 存在 → 跳过 ──
+        const toggleOff = path.join(portableRoot, 'Data', AUTO_VERSION_TOGGLE_OFF);
+        if (fs.existsSync(toggleOff)) {
+            console.log('[auto-version] OFF (toggle file exists), skip');
+            return;
+        }
+
+        // ── 读取当前版本: 优先 version.ts 源码，否则读 main.js ──
+        const versionTs = path.join(portableRoot, 'shell', 'version.ts');
+        const mainJs = path.join(portableRoot, 'shell-out', 'main.js');
+        const pkgJson = path.join(portableRoot, 'package.json');
+
+        let oldVer = '';
+        const tsExists = fs.existsSync(versionTs);
+
+        if (tsExists) {
+            const ts = fs.readFileSync(versionTs, 'utf8');
+            const m = ts.match(/export const APP_VERSION\s*=\s*'(\d+)\.(\d+)\.(\d+)'/);
+            if (m) oldVer = `${m[1]}.${m[2]}.${m[3]}`;
+        }
+
+        if (!oldVer && fs.existsSync(mainJs)) {
+            const js = fs.readFileSync(mainJs, 'utf8');
+            const m = js.match(/var APP_VERSION\s*=\s*"(\d+)\.(\d+)\.(\d+)"/);
+            if (m) oldVer = `${m[1]}.${m[2]}.${m[3]}`;
+        }
+
+        if (!oldVer) {
+            console.log('[auto-version] cannot read current version, skip');
+            return;
+        }
+
+        const parts = oldVer.split('.');
+        const newPatch = parseInt(parts[2], 10) + 1;
+        const newVer = `${parts[0]}.${parts[1]}.${newPatch}`;
+
+        console.log('[auto-version] ' + oldVer + ' → ' + newVer);
+
+        // ── 更新 shell/version.ts ──
+        if (tsExists) {
+            let ts = fs.readFileSync(versionTs, 'utf8');
+            ts = ts.replace(
+                /export const APP_VERSION\s*=\s*'\d+\.\d+\.\d+'/,
+                `export const APP_VERSION = '${newVer}'`,
+            );
+            fs.writeFileSync(versionTs, ts, 'utf8');
+            console.log('[auto-version] version.ts updated');
+        }
+
+        // ── 更新 shell-out/main.js ──
+        if (fs.existsSync(mainJs)) {
+            let js = fs.readFileSync(mainJs, 'utf8');
+            js = js.replace(
+                /var APP_VERSION\s*=\s*"\d+\.\d+\.\d+"/,
+                `var APP_VERSION = "${newVer}"`,
+            );
+            fs.writeFileSync(mainJs, js, 'utf8');
+            console.log('[auto-version] main.js updated');
+        }
+
+        // ── 更新 package.json ──
+        if (fs.existsSync(pkgJson)) {
+            let pkg = fs.readFileSync(pkgJson, 'utf8');
+            pkg = pkg.replace(
+                /"version"\s*:\s*"\d+\.\d+\.\d+"/,
+                `"version": "${newVer}"`,
+            );
+            fs.writeFileSync(pkgJson, pkg, 'utf8');
+            console.log('[auto-version] package.json updated');
+        }
+
+        // ── 更新运行时版本标记 ──
+        const dataDir = path.join(portableRoot, 'Data');
+        try { fs.mkdirSync(dataDir, { recursive: true }); } catch { /* ignore */ }
+        fs.writeFileSync(path.join(dataDir, 'shell-version'), newVer, 'utf8');
+        fs.writeFileSync(path.join(dataDir, 'webapp-version'), newVer, 'utf8');
+        console.log('[auto-version] Data/shell-version + webapp-version → ' + newVer);
+
+        console.log('[auto-version] done: ' + oldVer + ' → ' + newVer);
+    } catch (err: any) {
+        console.warn('[auto-version] error:', err.message || err);
+    }
+}
+
 // ---- Security hardening ----
 export function hardenSession(): void {
     const ses = session.defaultSession;
@@ -93,6 +182,9 @@ export function registerExitHandlers(
                 _tlFlushNow(db, dbPath, projectRoot);
             } catch (_) { }
         });
+
+        // ④ auto-increment version for next boot cache-busting
+        try { autoIncrementVersion(portableRoot); } catch { /* ignore */ }
 
         app.exit(0);
         setTimeout(() => { process.exit(0); }, 500);

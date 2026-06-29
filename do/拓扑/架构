@@ -427,11 +427,12 @@ AI 上下文窗口防护（三层纵深）
   / MAX_RESPONSE_TOKENS(393216) / CHAR_PER_TOKEN(2.7)
   / COMPACT_MAX_TOKENS(65536) / ARCHIVE_MAX_CHARS(1M)
 
-第一层 — 上下文压缩引擎（主防线，2026-06-27 单专家统一重构）:
-  每 house 前检查 _lastApiTotalTokens > 阈值→阻塞压缩。每层楼最多压一次。
+第一层 — 上下文压缩引擎（主防线，2026-06-27 单专家统一重构，2026-06-29 阈值修正）:
+  每 house 前检查 _lastApiPromptTokens（★ 不再用 total）> 阈值→阻塞压缩。每层楼最多压一次。
   单专家统一压缩（tier 6, thinking=enabled, 64K max_tokens）:
     ★ Narrative-First: 先写 narrative（8K-48K chars）→ 再提取 facts → 最后 floors 摘要
     ★ 冷文本全量送入（不采样）: 模型 1M 窗口装得下 ~900K tokens 冷文本
+  ★ 2026-06-29: prompt_tokens 取代 total_tokens 判断压缩（Completion 是输出，不算背包重量）
   全成功→splice conversation + _shiftConversationIndices 统一平移索引。败→原子回滚
   Facts 后处理: 同 type + 关键词重叠 >50% → 合并
   KEEP_TARGET = min(beforeTokens, budget) × 0.1，最少保留 6 层楼
@@ -441,14 +442,16 @@ AI 上下文窗口防护（三层纵深）
 第二层 — 孤儿tool_calls自愈: _saveAgentQuestData 修复后按 floor 标签重建所有楼层
 第三层 — Go HTTP/1.1 隔离: dsTransport ForceAttemptHTTP2:false，nginx client_max_body_size 6200m
 
-上下文拆解面板（hover 弹出，2026-06-22 v3）:
-  只展示可验证精确数据。单位 tokens（chars/3 估算 ≈）。
-  System Block / User×N / Tool Results×N / Compressed Summary
-  / Completion（API 精确 accumulatedCompletionTokens）/ Available
-  每间 house 后自动刷新。不再展示 Tool Definitions（固定 ~3.2k tokens）
+上下文拆解面板（hover 弹出，2026-06-29 v4）:
+  只展示可验证精确数据。单位 tokens（chars/2.5 估算 ≈）。
+  Permanent System / User×N / AI text×N / AI tool_calls JSON×N（★新增）
+  / Tool Results×N / Compressed Summary / Error messages×N（★新增）
+  / Local estimate total / API prompt_tokens(ref) / Available
+  ★ Completion 行已移除（输出侧数字不属于背包）
+  每间 house 后自动刷新。
 
 
-all.json 写入系统（2026-06-29 共享 agentPool 重构）
+all.json 写入系统（2026-06-29 共享 agentPool 重构 + wgeCost 命名归一）
 ---------------------------------------------
 · ★ agentPool 上移至 parent.__qqq_agentPool（父窗口唯一真理源）
   → 一个 quest 一个 agent，跨面板读同一对象，零多副本竞态
@@ -456,6 +459,16 @@ all.json 写入系统（2026-06-29 共享 agentPool 重构）
 · beforeunload: 三面板均执行 _saveAllBeforeUnload(force=true)，同一 parent pool 幂等写入
 · 跨面板: 任一面板 _getOrCreateAgent(id) → 同一个 agent 对象
   → 建楼面板写 ag._houses → 自动对另两个面板可见 → 切换 quest 不再死卡片
+· all.json houses[].wgeCost: 存 wge 值（1 ge = 10000 wge），与 JS 内部变量统一
+· 计费事件处理统一: _processBillingEvent 为唯一真理源（_parseSSE + _callCompactAPI 共用）
+  累加模式: _lastBilling 已存在 → wgeCost 相加（压缩多次 API 调用），元数据保留最新
+
+★ 三面板隐藏 draft (2026-06-29 审计确认)
+-----------------------------------------------------------------------
+· 每面板各自一个 draft: _draft_p0 / _draft_p1 / _draft_p2（_isDraft(id) 判断）
+· draft 文本+截图: questUIStates[_draftId] 内存 + onlyStore 持久化，切 quest/重启不丢
+· draft agent 也在 parent.__qqq_agentPool 中（per-panel 独立 key），无跨面板冲突
+· draft 发送时 _isDraft → questStore.create('') 升级为真实 quest → card 迁移
 
 
 流式渲染 — 一次渲染 终身不变
@@ -563,6 +576,6 @@ Git Goods + qh 滚动 + 面板 resume
 根治路线图
 ═══════════════════════════════════════════════════════════
 
-  已做 ✅ 2026-06-29: C3/C2/B3/A1+C1
-  下个窗口: A2（各面板独立 renderLoop 绘制时钟/饼图）+ B2（sendMessage 前校验 agent._stopState）
+  已做 ✅ 2026-06-29: C3/C2/B3+A1+C1 + B2(sendMessage agent._stopState 真理校验)
+  下个窗口: A2（各面板独立 renderLoop 绘制时钟/饼图）
   架构演进: A4（auto-save 写者选举）+ A3（网络层与执行层解耦）+ B1（iframe 健康检查+自动复活）

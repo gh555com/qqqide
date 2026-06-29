@@ -116,10 +116,11 @@ export function createWindow(
     win.webContents.on('console-message', (
         _e: any, _level: number, message: string, _line: number, _sourceId: string
     ) => {
-        const src = _sourceId || '';
-        const file = src.replace(/\\/g, '/').split('/').pop() || src;
-        const head = file && _line ? file + ':' + _line + ' ' : '';
-        _consoleBuffer.push(head + message);
+        const src = (_sourceId || '').replace(/\\/g, '/');
+        // 过滤形如 "(index):47" 的 bare identifier（嵌套 iframe 无真实路径）
+        const file = src.split('/').pop() || '';
+        const prefix = file && !file.startsWith('(') && _line ? file + ':' + _line + ' ' : '';
+        _consoleBuffer.push(prefix + message);
         if (_consoleBuffer.length > _consoleMaxLines) _consoleBuffer.shift();
     });
 

@@ -190,7 +190,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 三层防线: ①_restoreAgentFromStore回填 ②空houses+非新楼层→拒绝 ③stopState!=='sending'→拒绝。
 
 §30 面板焦点
-  - 三面板各自独立 agentPool/cardPool。获焦点时 postMessage 通知父窗口。
+  - ★ 三面板共享 parent.__qqq_agentPool（父窗口唯一真理源），各自独立 cardPool。获焦点时 postMessage 通知父窗口。
   - 快捷键(焦点+非编辑区): 1/2上下滚35%, q/w前后楼层跳转。
   - q2单行制: 招牌行 hover展开下拉(2行弹性/默认20条/模糊子序列匹配)，统合搜索+新建。
   - 一个 quest 同时只能在一个面板打开(所有权§32+跨面板同步§28)。

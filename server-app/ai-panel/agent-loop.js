@@ -325,7 +325,7 @@ var AgentLoop = (function () {
         var finalContent = (userContent || '') + visionText;
 
         // 归档：保存用户键入供 generateFloorTxt 写入
-        self._lastUserInput = { text: userContent || '', vision: visionText || '', images: images || [] };;
+        self._lastUserInput = { text: userContent || '', vision: visionText || '', images: images || [] };
 
         // ═══ 持久化 rules 注入（版本追踪，永不压缩） ═══
         var rulesPrefix = await self._refreshRules();
@@ -662,7 +662,7 @@ var AgentLoop = (function () {
                     // ★ 引导在最终回复流式期间到达 → 暂存回复，先处理引导确认，再重新获取最终回复
                     if (self._guidePending && self._guideMessage) {
                         self._log('⚠ final response arrived but guide pending — deferring');
-                        var _deferredMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };;
+                        var _deferredMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
                         self._deferredFinalMsg = _deferredMsg;
                         maxIterations++;  // 不消耗迭代配额
                         continue;

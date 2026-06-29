@@ -98,7 +98,7 @@
         if (self._stopCtrl && self._stopCtrl.signal.aborted) return { compressed: false, detail: '用户已停止', beforeTokens: 0, afterTokens: 0, elapsedMs: 0 };
         var totalEst = self._estimateTotalTokens();
         // ★ 用 prompt_tokens（纯输入），不混入 completion（输出侧数字与背包无关）
-        var dsTokens = self._lastApiPromptTokens || 0;;
+        var dsTokens = self._lastApiPromptTokens || 0;
         var beforeTokens = Math.max(totalEst, dsTokens);
         var _force = reason && reason.force;
 
@@ -476,13 +476,15 @@
             for (var i = _start; i < _cleaned.length; i++) {
                 var _ch = _cleaned[i];
                 if (_ch === '{') _depth++;
-                else if (_ch === '}') { _depth--; if (_depth === 0) {
-                    try {
-                        var _parsed3 = JSON.parse(_cleaned.slice(_start, i + 1));
-                        if (_parsed3 && typeof _parsed3 === 'object') return _parsed3;
-                    } catch (_) { }
-                    break;
-                }}
+                else if (_ch === '}') {
+                    _depth--; if (_depth === 0) {
+                        try {
+                            var _parsed3 = JSON.parse(_cleaned.slice(_start, i + 1));
+                            if (_parsed3 && typeof _parsed3 === 'object') return _parsed3;
+                        } catch (_) { }
+                        break;
+                    }
+                }
             }
         }
 

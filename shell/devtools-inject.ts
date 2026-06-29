@@ -15,13 +15,13 @@ let _saveLock = false;
 
 export function injectDevToolsConsoleButtons(
   wc: WebContents,
-  _getText: () => string,
+  getText: () => string,
   mw: BrowserWindow,
 ): void {
-  _injectJs(wc, mw);
+  _injectJs(wc, getText, mw);
 }
 
-function _injectJs(wc: WebContents, mw: BrowserWindow): void {
+function _injectJs(wc: WebContents, getText: () => string, mw: BrowserWindow): void {
   const tryInject = () => {
     const dwc = (wc as any).devToolsWebContents as WebContents | undefined;
     if (!dwc) return;
@@ -63,7 +63,7 @@ document.getElementById('qqq-dt-copy').onclick=function(){
 document.getElementById('qqq-dt-save').onclick=function(){
   window.__QQQ_CONSOLE_REQUEST_SAVE=true;_toast('\\u6B63\\u5728\\u4FDD\\u5B58...');
 };
-})();`).then(() => { _startPushLoop(wc, dwc, mw); })
+})();`).then(() => { _startPushLoop(wc, dwc, getText, mw); })
       .catch(() => {});
   };
   if ((wc as any).devToolsWebContents) { tryInject(); return; }
@@ -71,16 +71,7 @@ document.getElementById('qqq-dt-save').onclick=function(){
   const t = setInterval(() => { n++; if ((wc as any).devToolsWebContents) { clearInterval(t); tryInject(); } else if (n >= 30) clearInterval(t); }, 500);
 }
 
-// ── 统一读取 renderer __qqq_console_lines ──
-async function _readConsole(wc: WebContents): Promise<string> {
-  try {
-    return await wc.executeJavaScript(
-      '((window.top||window).__qqq_console_lines||[]).join("\\n")'
-    ) || '';
-  } catch { return ''; }
-}
-
-function _startPushLoop(wc: WebContents, dwc: WebContents, mw: BrowserWindow): void {
+function _startPushLoop(wc: WebContents, dwc: WebContents, getText: () => string, mw: BrowserWindow): void {
   if (_pushTimer) clearInterval(_pushTimer);
   _pushTimer = setInterval(async () => {
     if (dwc.isDestroyed() || wc.isDestroyed()) {
@@ -95,7 +86,7 @@ function _startPushLoop(wc: WebContents, dwc: WebContents, mw: BrowserWindow): v
         _saveLock = true;
         dwc.executeJavaScript('window.__QQQ_CONSOLE_REQUEST_SAVE=false').catch(() => {});
         try {
-          const text = await _readConsole(wc);
+          const text = getText();
           if (!text) {
             await dwc.executeJavaScript(
               "var el=document.getElementById('qqq-dt-toast');if(el){el.textContent='\\u65E0\\u5185\\u5BB9';el.style.opacity='1';setTimeout(function(){el.style.opacity='0'},1800)}"
@@ -132,10 +123,12 @@ function _startPushLoop(wc: WebContents, dwc: WebContents, mw: BrowserWindow): v
 
     // ② 推送 base64 到 DevTools
     try {
-      let text = await _readConsole(wc);
+      let text = getText();
       if (!text) text = '';
       if (text.length > 2 * 1024 * 1024) {
-        text = '...(truncated ' + ((text.length - 2*1024*1024) / 1024).toFixed(0) + ' KB from start)\\n' + text.slice(-2*1024*1024);
+        const origLen = text.length;
+        text = text.slice(-2 * 1024 * 1024);
+        text = '...(truncated ' + ((origLen - 2*1024*1024) / 1024).toFixed(0) + ' KB from start)\n' + text;
       }
       const b64 = Buffer.from(text, 'utf-8').toString('base64');
       if (b64.length < 50 * 1024 * 1024) {

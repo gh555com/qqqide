@@ -105,8 +105,7 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
 (function(){var p=new URLSearchParams(location.search);var t=p.get('theme');var dark=t==='dark';if(t)try{localStorage.setItem('qqqide-theme',dark?'dark':'light');}catch(_){}document.documentElement.setAttribute('data-theme',dark?'dark':'light');})();
 </script>
 </head>
-<body>
-<body>
+<body>>
 
 <!-- ★ 标题行 -->
 <div id="title-row">
@@ -168,7 +167,8 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
 
 <script src="/core/qqqide-theme.js"></script>
 <script src="/core/i18n.js"></script>
-<script src="/core/state-sdk.js"></script>
+<script>if (typeof window._i !== 'function') window._i = function(k,f) { return f || k; };</script>
+<script src="/core/state-sdk.js"></script>t>
 <script src="/qqq-app/timeline/diff-window.js"></script>
 <script src="/qqq-app/timeline/diff-versions.js"></script>
 <script src="/qqq-app/timeline/diff-render.js"></script>

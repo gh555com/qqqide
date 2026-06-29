@@ -229,7 +229,7 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 - 面板焦点：_panelFocused + _setPanelFocus → q2 背景金（#e8a030）
   · 快捷键：1/2 上下滚 35%视口、q/w 前后楼层居中（仅焦点+非编辑区）
 - 跨面板去重：switchQuest 检测 owner → focus-request IPC 跳转焦点
-- 沙箱隔离审计通过：agentPool/cardPool/questActiveId 全部 per-iframe，零泄漏
+- 沙箱隔离审计通过：cardPool/questActiveId per-iframe，agentPool 已上移 parent.__qqq_agentPool 父窗口共享
 - A1 行2 持久化：_computeFileStats → floorPayload.fileStats → SQLite → 重启不归零
 - 引导/排队状态栏自清理：guide-status / queue-sending-status 自动移除
 - _initClockBlock 防重复守卫

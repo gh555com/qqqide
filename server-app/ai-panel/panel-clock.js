@@ -142,15 +142,15 @@ function _buildBillingTable(houses) {
     // ★ 列序：编号 → 类型 → 工具数 → AI 等级 → 时间消耗 → wge → 缓存命中率 → prompt_tokens → completion_tokens → total_tokens → 查账凭据
     var headers = [
         _i2('ai.billing.number', '编号'),
-        _i2('ai.billing.type', '类型'),
+        'type',
         _i2('ai.billing.toolCount', '工具数'),
-        _i2('ai.billing.aiLv', 'AI 等级'),
+        'AI Lv',
         _i2('ai.billing.time', '时间消耗'),
         _i2('ai.billing.wge', 'wge'),
         _i2('ai.billing.cacheHit', '缓存命中率'),
-        _i2('ai.billing.promptTokens', 'prompt_tokens'),
-        _i2('ai.billing.completionTokens', 'completion_tokens'),
-        _i2('ai.billing.totalTokens', 'total_tokens'),
+        'prompt_<br>tokens',
+        'completion_<br>tokens',
+        'total_<br>tokens',
         _i2('ai.billing.receipt', '查账凭据')
     ];
     // 表头：居中 + 自动换行（overlay 会跳过已设 whiteSpace）
@@ -183,17 +183,17 @@ function _buildBillingTable(houses) {
         var totalTokens = promptTokens + completionTokens;
         var receipt = h.billingRequestId || '';
         html += '<tr>'
-            + '<td>' + billingSeq + '</td>'
-            + '<td>' + type + '</td>'
-            + '<td>' + toolCount + '</td>'
-            + '<td>' + aiLv + '</td>'
-            + '<td>' + timeStr + '</td>'
-            + '<td>' + wge + '</td>'
-            + '<td>' + cacheHit + '</td>'
-            + '<td>' + promptTokens + '</td>'
-            + '<td>' + completionTokens + '</td>'
-            + '<td>' + totalTokens + '</td>'
-            + '<td>' + receipt + '</td>'
+            + '<td style="text-align:right">' + billingSeq + '</td>'
+            + '<td style="text-align:right">' + type + '</td>'
+            + '<td style="text-align:right">' + toolCount + '</td>'
+            + '<td style="text-align:right">' + aiLv + '</td>'
+            + '<td style="text-align:right">' + timeStr + '</td>'
+            + '<td style="text-align:right">' + wge + '</td>'
+            + '<td style="text-align:right">' + cacheHit + '</td>'
+            + '<td style="text-align:right">' + promptTokens + '</td>'
+            + '<td style="text-align:right">' + completionTokens + '</td>'
+            + '<td style="text-align:right">' + totalTokens + '</td>'
+            + '<td style="text-align:right">' + receipt + '</td>'
             + '</tr>';
     }
     html += '</tbody></table>';
