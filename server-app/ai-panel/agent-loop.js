@@ -129,6 +129,7 @@ var AgentLoop = (function () {
         this._exitReason = '';           // 'ok'|'http_502'|'http_503'|'http_429'|'http_402'|'fetch_error'|'watchdog_stream'|'deadline'|'max_iter'|'unknown'
         this._lastHttpStatus = 0;        // 最后一次 HTTP 状态码
         this._floorFatal = false;        // ★ 致命失败：onError 触发后强制 _stopState='fatal'，防 idle 假恢复
+        this._questErrorGateActive = false;  // ★ 防重复红框：同 quest 同时最多一个红框（跨 floor 持久）
         this._isRecovery = false;        // ★ 恢复模式：下一条用户消息标注 _system:true（继续任务用）
         this._lastFetchError = '';       // 最后一次 fetch 错误消息
         this._lastSseError = '';         // 最后一次 SSE 服务端错误
@@ -373,8 +374,10 @@ var AgentLoop = (function () {
         self._lastGatewayMessage = '';  // ★ 每层楼重置：防错误信息跨 floor 污染
         self._exitReason = '';         // ★ 每层楼重置：防 _buildDiagnosis 误报上楼层原因
         self._floorFatal = false;      // ★ 每层楼重置
-        // ★ 恢复模式检测：opt._isRecovery → 下一条用户消息标 _system:true
-        self._isRecovery = opts._isRecovery || false;
+        // ★ _inRecoverySend: 保留外部已设值（_attemptRecoverySend 预置），正常楼层为 false
+        self._inRecoverySend = self._inRecoverySend || false;
+        // ★ 恢复模式：preserve 已设的 _isRecovery（外部 set 优先于 opts）
+        self._isRecovery = opts._isRecovery || self._isRecovery || false;
         // ★ 终极 Stop 闭环：每层楼创建真理源
         self._stopCtrl = new AbortController();
         self._stopState = 'sending';

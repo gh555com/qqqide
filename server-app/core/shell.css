@@ -364,6 +364,44 @@ body {
   background: rgba(128, 128, 128, 0.15);
 }
 
+/* Login button */
+.qqq-login-btn {
+  -webkit-app-region: no-drag;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  width: auto;
+  min-width: 24px;
+  height: var(--menu-row-h);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  margin-right: 6px;
+  padding: 0 6px;
+  font-weight: bold;
+}
+
+.qqq-login-btn:hover {
+  background: rgba(128, 128, 128, 0.15);
+}
+
+.qqq-phone-btn {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+}
+
+/* GE 余额标签（登录态可见，在手机号左边） */
+.qqq-ge-label {
+  -webkit-app-region: no-drag;
+  font-size: 12px;
+  font-weight: bold;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 /* Settings panel tab bar */
 .qqq-settings-tab {
   cursor: pointer;

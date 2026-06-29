@@ -638,6 +638,9 @@ function _truncateAllTxtToolResults(text, maxLen) {
     return out.join('\n');
 }
 
+// ═══ 审计按钮 — 一键复制偏差审计文本到剪贴板 ═══
+//   粘贴到任意免费 AI 对话框即可获得偏差分析表
+//   4 块数据结构见 do/偏差比 §2-5
 async function _onAuditClick(block) {
     if (_auditBusy) return;
     _auditBusy = true;
@@ -646,47 +649,173 @@ async function _onAuditClick(block) {
     if (btn) { btn.textContent = '\u2026'; btn.disabled = true; }
 
     try {
-        var allTxtPath = block._path;
-        var reasoningPath = allTxtPath.replace(/all\.txt$/, 'reasoning.txt');
+        var questId = block._questId;
+        var floorNum = block._floorNum;
         var bridge = window.parent && window.parent.qqqideBridge;
-        if (!bridge) { _auditBusy = false; if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
+        if (!bridge || !questId) { _auditBusy = false; if (btn) { btn.textContent = origText; btn.disabled = false; } return; }
 
-        var reasoningContent = '';
+        // ★ 获取 agent（共享池中的 live 数据）
+        var agent = parent.__qqq_agentPool && parent.__qqq_agentPool[questId];
 
-        // ★ 主路径：从 all.txt 截断工具结果生成 reasoning.txt
-        try {
-            var allTxtContent = await bridge.fs.read(allTxtPath);
-            if (allTxtContent) {
-                reasoningContent = _truncateAllTxtToolResults(allTxtContent, 300);
+        // ★ 加载全部楼层（用于 Block 3 chart）
+        var allFloors = [];
+        try { allFloors = await questStore.loadAllFloors(questId) || []; } catch (_) {}
+
+        // ═══ 拼接审计文本 ═══
+        var parts = [];
+
+        // ── Block 1: Rules (msg[0]，不含服务端甲壳) ──
+        parts.push('/** BLOCK 1: RULES — msg[0] 规则铁律块（不含服务端甲壳） **/');
+        if (agent && agent.conversation && agent.conversation[0] && agent.conversation[0]._persistent) {
+            parts.push(agent.conversation[0].content);
+        }
+        parts.push('');
+
+        // ── Block 2: Facts（压缩上下文事实）─
+        parts.push('/** BLOCK 2: FACTS — 压缩上下文提取的关键事实 **/');
+        var facts = (agent && agent._ctx && agent._ctx.facts) || [];
+        if (facts.length) {
+            for (var fi = 0; fi < facts.length; fi++) {
+                var f = facts[fi];
+                parts.push('- [' + (f.type || '') + '] ' + (f.content || ''));
             }
-        } catch (_) { /* all.txt 不存在，走降级路径 */ }
+        } else {
+            parts.push('(无压缩事实)');
+        }
+        parts.push('');
 
-        // ★ 降级路径：all.txt 丢失 → 从 all.json conversation 重建（缺推理，工具调用+结果可见）
-        if (!reasoningContent) {
-            var questId = block._questId;
-            var floorNum = block._floorNum;
-            if (questId && floorNum) {
-                var floorData = await questStore.loadFloor(questId, floorNum);
-                if (floorData) {
-                    var questMeta = await questStore.load(questId);
-                    reasoningContent = _generateReasoningTxt(floorData, questMeta, floorNum);
-                    if (reasoningContent) {
-                        reasoningContent = '⚠ all.txt 不存在，以下由 all.json 的 conversation 重建（AI 推理过程缺失，工具调用及结果可见）。\n\n' + reasoningContent;
+        // ── Block 3: Chart（所有楼层的 Q&A 摘要）─
+        parts.push('/** BLOCK 3: CHART — 全部 ' + allFloors.length + ' 层楼的用户问题 + AI 最终回答 **/');
+        for (var fli = 0; fli < allFloors.length; fli++) {
+            var fEntry = allFloors[fli];
+            var fData = fEntry.data;
+            if (!fData) continue;
+            var fn = fEntry.floorNum;
+            var qClean = (fData.question_clean || fData.question || '');
+            // 找该层最后一次 AI 回答
+            var lastAi = '';
+            var conv = fData.conversation || [];
+            for (var ci = conv.length - 1; ci >= 0; ci--) {
+                if (conv[ci].role === 'assistant' && conv[ci].content) {
+                    lastAi = conv[ci].content;
+                    break;
+                }
+            }
+            var marker = (fn === floorNum) ? ' ← 当前审计楼层' : '';
+            parts.push('--- Floor ' + fn + marker + ' ---');
+            parts.push('Q: ' + qClean.slice(0, 600));
+            parts.push('A: ' + lastAi.slice(0, 1000));
+            parts.push('');
+        }
+
+        // ── Block 4: Current（当前楼层的 house 级详情，每项 ≤4KB）─
+        parts.push('/** BLOCK 4: CURRENT — 楼层 ' + floorNum + ' 逐 house 详情 **/');
+        var houses = [];
+        var isLiveFloor = agent && agent._currentFloorNum === floorNum && agent._houses && agent._houses.length > 0;
+        if (isLiveFloor) {
+            houses = agent._houses;
+        } else {
+            // 历史楼层：从 all.json 读
+            try {
+                var _fDat = await questStore.loadFloor(questId, floorNum);
+                if (_fDat && _fDat.houses) houses = _fDat.houses;
+            } catch (_) {}
+        }
+        for (var hi = 0; hi < houses.length; hi++) {
+            var h = houses[hi];
+            parts.push('---- HOUSE ' + (h.index || (hi + 1)) + ' [' + (h.type || 'tools') + '] ----');
+            if (h.reasoning) {
+                var rsn = String(h.reasoning).slice(0, 4096);
+                if (String(h.reasoning).length > 4096) rsn += '\n\u2026 [截断，原始 ' + String(h.reasoning).length + ' chars]';
+                parts.push('<thinking>');
+                parts.push(rsn);
+                parts.push('</thinking>');
+            }
+            if (h.tools && h.tools.length) {
+                for (var ti = 0; ti < h.tools.length; ti++) {
+                    var t = h.tools[ti];
+                    var argsStr = (typeof t.args === 'string') ? t.args : JSON.stringify(t.args || {});
+                    parts.push('  ROOM ' + (h.index || (hi + 1)) + '.' + (ti + 1) + '  ' + t.name + '(' + argsStr.slice(0, 600) + ')');
+                    if (h.toolResults && h.toolResults[ti]) {
+                        var res = String(h.toolResults[ti]).slice(0, 4096);
+                        if (String(h.toolResults[ti]).length > 4096) res += '\n\u2026 [截断，原始 ' + String(h.toolResults[ti]).length + ' chars]';
+                        parts.push(res);
                     }
                 }
             }
+            if (h.type === 'final' && h.answer) {
+                parts.push('  <answer>');
+                parts.push(String(h.answer).slice(0, 4096));
+                parts.push('  </answer>');
+            }
+            parts.push('');
         }
 
-        if (!reasoningContent) {
-            console.warn('[audit] unable to generate reasoning.txt');
-            _auditBusy = false; if (btn) { btn.textContent = origText; btn.disabled = false; } return;
+        // ── 审计指令（粘贴给外部 AI 的 prompt）─
+        parts.push('═══════════════════════════════════════');
+        parts.push('═══ 审计指令 — 粘贴给任意 AI 即可 ═══');
+        parts.push('═══════════════════════════════════════');
+        parts.push('');
+        parts.push('你是代码审计专家。上面 4 个 BLOCK 是一个 AI 智能体在开发过程中的完整上下文：');
+        parts.push('  BLOCK 1 = 发给 AI 的系统规则（不含服务端机密）');
+        parts.push('  BLOCK 2 = 压缩上下文提取的关键事实');
+        parts.push('  BLOCK 3 = 所有历史楼层的用户问题 + AI 回答摘要');
+        parts.push('  BLOCK 4 = 当前楼层（' + floorNum + '）的逐 house 推理和工具调用');
+        parts.push('');
+        parts.push('**你的任务：** 对 BLOCK 4 的每一段 <thinking> 和每一行 ROOM 做偏差审计，生成一个 Markdown 表格。');
+        parts.push('');
+        parts.push('表格 6 列：| # | H | R | 消息摘要(≤25字) | 评分 | 备注 |');
+        parts.push('');
+        parts.push('评分标准（三者选一）：');
+        parts.push('  ✓ 绿 — 推理方向正确，工具选择合理，步骤高效推进目标');
+        parts.push('  ◉ 黄 — 绕路但未出错（读不存在的文件/搜不到关键词后不换策略/深挖非核心细节/比最优路径多走了一步）');
+        parts.push('  ✗ 红 — 明显判断错误（工具假阴性后反复同质查询不 pivot/无视已有信息/方向性错误/理解偏差导致无效工作）。备注必须详细说明错在哪、正确做法是什么。');
+        parts.push('');
+        parts.push('最后计算 **偏差比** = (黄×1 + 红×2) ÷ (可评分消息数×2) × 100%。');
+        parts.push('  可评分 = AI 的 thinking 段 + AI 发起的 tool_calls。');
+        parts.push('  工具返回值本身不评分。系统消息不评分。');
+        parts.push('');
+        parts.push('输出格式（零废话，纯 Markdown）：');
+        parts.push('1. 先输出 ## 偏差审计表');
+        parts.push('2. 再输出表格');
+        parts.push('3. 最后输出 **偏差比: X.X%** + 五档定性');
+        parts.push('   五档: 优秀(<10%) / 值得注意(10-25%) / 存在偏差(25-50%) / 严重偏差(50-75%) / 灾难(>75%)');
+        parts.push('4. 偏差比>0% 时简要定性最大问题');
+
+        var auditText = parts.join('\n');
+
+        // ★ 复制到剪贴板
+        var copied = false;
+        try {
+            await navigator.clipboard.writeText(auditText);
+            copied = true;
+        } catch (_) {
+            try {
+                var ta = document.createElement('textarea');
+                ta.value = auditText;
+                ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                copied = true;
+            } catch (_2) {}
         }
 
-        await bridge.fs.write(reasoningPath, reasoningContent);
-        _postToHost({ type: 'qqq-file-open-right', path: reasoningPath, readOnly: true });
-
-        if (btn) { btn.textContent = '\u2713'; btn.disabled = false; }
-        setTimeout(function () { if (btn) btn.textContent = '\u5ba1\u8ba1'; }, 1500);
+        if (copied) {
+            if (btn) { btn.textContent = '\u2713'; btn.disabled = false; }
+            // qoast 通知
+            var kb = (auditText.length / 1024).toFixed(0);
+            try {
+                if (window.parent && window.parent.qqqideQoast) {
+                    window.parent.qqqideQoast.show('\u5ba1\u8ba1\u6587\u672c\u5df2\u590d\u5236\u5230\u526a\u8d34\u677f (' + kb + ' KB)\uff0c\u53ef\u7c98\u8d34\u5230\u4efb\u610f AI \u5bf9\u8bdd\u6846\u3002', { duration: 5000, type: 'success' });
+                }
+            } catch (_) {}
+            setTimeout(function () { if (btn) btn.textContent = '\u5ba1\u8ba1'; }, 2000);
+        } else {
+            if (btn) { btn.textContent = origText; btn.disabled = false; }
+            console.warn('[audit] clipboard write failed');
+        }
     } catch (e) {
         console.warn('[audit] failed:', e && e.message);
         if (btn) { btn.textContent = origText; btn.disabled = false; }
@@ -811,7 +940,7 @@ async function _translateViaAI(text, targetLang, isIncremental) {
             'Output the COMPLETE file with original structure, only the language parts translated.\n\n' + text;
     }
 
-    var token = getToken();
+    var token = (typeof getLoginToken === 'function') ? getLoginToken() : '';
     if (!token) {
         console.warn('[translate] no token, returning original');
         return text;

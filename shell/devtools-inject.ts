@@ -91,6 +91,7 @@ function _startPushLoop(wc: WebContents, dwc: WebContents, getText: () => string
             await dwc.executeJavaScript(
               "var el=document.getElementById('qqq-dt-toast');if(el){el.textContent='\\u65E0\\u5185\\u5BB9';el.style.opacity='1';setTimeout(function(){el.style.opacity='0'},1800)}"
             ).catch(() => {});
+            _saveLock = false;
             return;
           }
           // 读项目根目录

@@ -128,110 +128,24 @@ document.querySelectorAll('.tier-btn[data-tier]').forEach(function (btn) {
     btn.onclick = function () { selectTier(parseInt(btn.dataset.tier)); };
 });
 
-// ═══ Token / 号池管理 ═══
-var QQQ_KEY_POOL_KEY = 'qqq-ai-keys';  // JSON 数组 [{key, last429, addedAt}]
-var QQQ_KEY_COOLDOWN_MS = 30000;        // 429 后冷却 30 秒
-
-// 读取号池（兼容旧版单 key）
-function _loadKeyPool() {
+// ═══ 登录守卫：无登录不许聊天 ═══
+function _isLoggedIn() {
     try {
-        var raw = localStorage.getItem(QQQ_KEY_POOL_KEY);
-        if (raw) {
-            var arr = JSON.parse(raw);
-            if (Array.isArray(arr) && arr.length) return arr;
+        if (parent && parent.window && parent.window.qqqLogin && parent.window.qqqLogin.isLoggedIn) {
+            return parent.window.qqqLogin.isLoggedIn();
         }
     } catch (_) { }
-    // 兼容旧版：从 qqq-ai-token 迁移
-    var old = localStorage.getItem('qqq-ai-token');
-    if (old && old.trim()) {
-        var pool = [{ key: old.trim(), addedAt: Date.now(), last429: 0 }];
-        _saveKeyPool(pool);
-        localStorage.removeItem('qqq-ai-token');
-        return pool;
-    }
-    return [];
+    return false;
 }
 
-function _saveKeyPool(pool) {
-    try { localStorage.setItem(QQQ_KEY_POOL_KEY, JSON.stringify(pool)); } catch (_) { }
-}
-
-// 获取一个可用的 key（跳过冷却中的 key），返回 { key, index }
-function getTokenInfo() {
-    var pool = _loadKeyPool();
-    if (!pool.length) return { key: '', index: -1 };
-    var now = Date.now();
-    for (var i = 0; i < pool.length; i++) {
-        var entry = pool[i];
-        if (!entry.last429 || (now - entry.last429) >= QQQ_KEY_COOLDOWN_MS) {
-            return { key: entry.key, index: i };
+function getLoginToken() {
+    try {
+        if (parent && parent.window && parent.window.qqqLogin && parent.window.qqqLogin.getAuthToken) {
+            return parent.window.qqqLogin.getAuthToken();
         }
-    }
-    // 全部在冷却中 → 返回冷却剩余最少的那个
-    var bestIdx = 0;
-    var bestRemain = Infinity;
-    for (var j = 0; j < pool.length; j++) {
-        var remain = (pool[j].last429 || 0) + QQQ_KEY_COOLDOWN_MS - now;
-        if (remain < bestRemain) { bestRemain = remain; bestIdx = j; }
-    }
-    return { key: pool[bestIdx].key, index: bestIdx, cooldown: Math.max(0, Math.ceil(bestRemain / 1000)) };
+    } catch (_) { }
+    return '';
 }
-
-// 向后兼容：原有调用方
-function getToken() {
-    return getTokenInfo().key;
-}
-
-// 标记当前 key 被 429（调用方在 _callGateway 中触发）
-function markToken429(token) {
-    var pool = _loadKeyPool();
-    for (var i = 0; i < pool.length; i++) {
-        if (pool[i].key === token) {
-            pool[i].last429 = Date.now();
-            _saveKeyPool(pool);
-            return;
-        }
-    }
-}
-
-// 添加新 key 到号池
-function addKeyToPool(newKey) {
-    var pool = _loadKeyPool();
-    newKey = newKey.trim();
-    if (!newKey) return;
-    // 去重
-    for (var i = 0; i < pool.length; i++) {
-        if (pool[i].key === newKey) return;
-    }
-    pool.push({ key: newKey, addedAt: Date.now(), last429: 0 });
-    _saveKeyPool(pool);
-}
-
-// 移除 key
-function removeKeyFromPool(key) {
-    var pool = _loadKeyPool();
-    var filtered = pool.filter(function (e) { return e.key !== key; });
-    _saveKeyPool(filtered);
-}
-
-function saveToken(t) {
-    addKeyToPool(t);
-}
-
-if ($tokenInput) $tokenInput.value = getToken() ? '••••••••' : '';
-if ($tokenSave) $tokenSave.onclick = function () {
-    if ($tokenInput) {
-        var v = $tokenInput.value.trim();
-        if (v && v !== '••••••••') {
-            // 支持逗号/换行分隔多个 key
-            var keys = v.split(/[,\n]+/).filter(function (k) { return k.trim(); });
-            for (var ki = 0; ki < keys.length; ki++) {
-                addKeyToPool(keys[ki]);
-            }
-            $tokenInput.value = '••••••••';
-        }
-    }
-};
 
 // ── 编辑框自适应高度：始终比内容多一行（最少两行），上限 333px ──
 var _inputLineHeight = 0;

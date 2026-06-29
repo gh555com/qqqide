@@ -322,60 +322,21 @@ async function renameQuest(id, newTitle) {
 }
 
 // \u2500\u2500 Cost / Balance display \u2500\u2500
-function _updateCostDisplay() {
-    $costLabel.textContent = _windowTotalCostGe < 0.0001 ? '0' : _windowTotalCostGe.toFixed(4);
-}
+function _updateCostDisplay() { /* no-op */ }
 
-function _updateBalanceDisplay(balanceGe) {
-    if (balanceGe !== undefined && balanceGe !== null) {
-        $balLabel.textContent = balanceGe;
-    }
-}
+function _updateBalanceDisplay(balanceGe) { /* no-op */ }
 
-function _checkTokenReset() {
-    var tok = getToken();
-    if (tok !== _lastTokenForCost) {
-        _lastTokenForCost = tok;
-        _windowTotalCostGe = 0;
-        _balanceCache = null;
-        _updateCostDisplay();
-        _updateBalanceDisplay('--');
-        _fetchBalanceIfNeeded();
-    }
-}
+function _checkTokenReset() { /* no-op */ }
 
-function _fetchBalanceIfNeeded(force) {
-    var now = Date.now();
-    if (!force && _balanceCache && (now - _balanceCache.ts) < 300000) {
-        _updateBalanceDisplay(_balanceCache.balance_ge);
-        return;
-    }
-    var token = getToken();
-    if (!token) return;
-    fetch('https://direct.gh555.com:8444/api/wallet/balance', {
-        headers: { 'Authorization': 'Bearer ' + token }
-    }).then(function (r) { return r.json(); })
-        .then(function (data) {
-            if (data && data.ok) {
-                _balanceCache = { balance_ge: data.balance_ge, ts: Date.now() };
-                _updateBalanceDisplay(data.balance_ge);
-            }
-        }).catch(function () { });
-}
+function _fetchBalanceIfNeeded(force) { /* no-op */ }
 
-function updateCostDisplay() {
-    _updateCostDisplay();
-}
-
-// \u2500\u2500 \u4e0a\u4e0b\u6587\u8840\u91cf \u2500\u2500
-var CTX_MAX_TOKENS = ContentGateway.CTX_MAX_TOKENS;
-var _estCache = { val: 0, convLen: -1, ctxHash: '', apiVer: '' };
-function estimateTokens() {
-    if (!_activeAgent) return 0;
-    var conv = _activeAgent.conversation;
-    var ctx = _activeAgent._ctx;
+function _estimateOrCacheTokens() {
+    var _ag = _activeAgent;
+    if (!_ag) return 0;
+    var conv = _ag.conversation;
+    var ctx = _ag._ctx;
     var ctxHash = ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '';
-    var apiVer = (_activeAgent._lastApiTotalTokens || 0) + '|' + (_activeAgent._lastApiPromptTokens || 0);
+    var apiVer = (_ag._lastApiTotalTokens || 0) + '|' + (_ag._lastApiPromptTokens || 0);
     if (_estCache.convLen === conv.length && _estCache.ctxHash === ctxHash && _estCache.apiVer === apiVer && _estCache.val > 0) {
         return _estCache.val;
     }
@@ -384,10 +345,10 @@ function estimateTokens() {
 
 // ★ 统一计算：总 token + 拆解，一次遍历，单一缓存（按钮+面板共用）
 // ★★ 架构重构 v4：全面精确分类（2026-06-29）
-//   原则：只展示真实背包内容。单位为 tokens（chars/2.5 估算）。
-//   - 本地精确 chars 统计为主（我们自己发的东西自己知道）
-//   - API prompt_tokens 为参考（晚一回合的服务器精确值）
-//   - Completion 是输出，不在背包，移出拆解面板
+//   - API prompt_tokens 为精确参考值（仅用于本地 vs API 对比展示）
+//   - 展示给用户时，优先使用 API 精确值；本地估算仅用于离线/兜底
+// ★ Completion tokens 不计入上下文血量（输出侧不占背包） 统计为主（我们自己发的东西自己知道）
+//   - API prompfunction updateCostDisplay() { /* no-op */ }板
 //   - assistant.tool_calls JSON 是新发现的最大隐藏格子
 //   - 压缩阈值只用 prompt_tokens（与背包一致）
 function _estimateTokensFull() {
@@ -837,7 +798,7 @@ $guideBtn.onclick = async function () {
     // ═══ 异步视觉分析 ═══
     var visionText = '';
     if (capturedImages.length > 0) {
-        var token = (_activeAgent && _activeAgent._token) || getToken();
+        var token = (_activeAgent && _activeAgent._token) || ((typeof getLoginToken === 'function') ? getLoginToken() : '');
         if (token) {
             try {
                 var visionResults = await _activeAgent._analyzeImages(capturedImages, token, text);
