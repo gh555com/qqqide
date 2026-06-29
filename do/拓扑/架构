@@ -3,6 +3,7 @@ qqq-shell-v2 架构 — 代码若与此冲突，以本文档为准。
 命名规范: Tier1 外宣 qqq IDE / Tier2 编码 qqqide（全小写）
 归一完成: 2026-06-04，shell/ + server-app/ 零旧名残留
 
+
 三层模型
 --------
 ┌──────────────────────────────────────┐
@@ -20,7 +21,7 @@ qqq-shell-v2 架构 — 代码若与此冲突，以本文档为准。
 │ q_win_x64.exe — IO引擎(fs/SQLite/IPC) │
 │ ghrun.exe     — 进程管理(qz)（LSP守护已冻结）│
 │ 兜底: qz-spawn 两层 (ghrun→Node)      │
-│ 新增: Windows Job Object 内存硬限制(B2)│
+│ 新增: Windows Job Object 内存硬限制    │
 └──────────┬───────────────────────────┘
            │ bridge IPC (preload暴露)
 ┌──────────▼───────────────────────────┐
@@ -32,979 +33,536 @@ qqq-shell-v2 架构 — 代码若与此冲突，以本文档为准。
 
 持久化层级 — global → project → quest → floor → house → room
 ------------------------------------------------------------------------
-· global (qgs): 跨项目共享（最近文件夹/主题/语言/剪切板历史）
-· project (qgs.project / qg): 单项目内共享（editor tabs/项目偏好/lock）
+· global (qgs): 跨项目（最近文件夹/主题/语言/剪切板）
+· project (qgs.project / qg): 项目内（editor tabs/偏好/lock）
 · quest (quest.sq3): 一次对话会话
-· floor (楼层): 一次用户回车（可能含多次 API 调用）
-· house (房子): 一次 API 调用（可能含多次 tool call）
-· room (房间): 一次工具调用
+· floor: 一次用户回车（可能含多次 API 调用）
+· house: 一次 API 调用（可能含多次 tool call）
+· room: 一次工具调用
 · 铁律: 变量/字段命名遵循此层级，禁同义词(turn/session/round)。JSON: floor_id 非 turn_id
 
 
-qz spawn 管线 — 两层 + 四重防御（2026-06-04 加固）
+qz spawn 管线 — 两层 + 四重防御
 -------------------------------------------------------
 · 管线: ghrun (Rust, 主力) → Node (child_process, 兜底)
-· runner.py: 代码保留于 engines/runner.py，调用点已从 qz-spawn.ts 删除
+· runner.py 调用点已从 qz-spawn.ts 删除，仅保留代码于 engines/
 
-四重防御纵深（针对 40GB PowerShell 内存爆炸事件）— 2026-06-11 调参:
-  ① 硬超时 2h: SYSTEM_MAX_TIMEOUT=7200000，所有命令统一硬天花板，入口强制 cap
+四重防御（针对 40GB PowerShell 内存爆炸）:
+  ① 硬超时 2h: SYSTEM_MAX_TIMEOUT=7200000，入口强制 cap
   ② 内存守卫: nodeTier 专属，异步 execFile（非阻塞），首检 5s→后续 15s
-     ghrunTier 跳过 JS 守卫（Rust Job Object 已覆盖）
-     execSync→execFile 修复了 0.2-2s UI 冻结 bug
-  ③ ghrun 原生 Job Object: spawn.rs memLimitMb 字段，Windows CreateJobObjectW →
-     SetInformationJobObject(JOB_OBJECT_LIMIT_PROCESS_MEMORY) → AssignProcessToJobObject
+     ghrunTier 跳过 JS 守卫（Rust Job Object 已覆盖）。execSync→execFile 修复 UI 冻结 bug
+  ③ ghrun 原生 Job Object: spawn.rs memLimitMb，Windows CreateJobObjectW / Linux+mac setrlimit(RLIMIT_AS)
   ④ 失速看门狗: stallMs=15min 无输出→杀；output cap=64KB 防 IPC 洪水
-
 · ghrun 反卡死: deadline watchdog + stall watchdog (100ms) + kernel 级进程组隔离
-  Windows: CREATE_NEW_PROCESS_GROUP + CREATE_NO_WINDOW + taskkill /F /T
-  POSIX:   process_group(0) → killpg (SIGTERM→2s宽限→SIGKILL) + cwd 预校验
-· guardMs 修复: 原 timeout=0 时 guard=24h（形同虚设），现恒为 timeout+10s
-· 内存守卫 killReason: 'mem-guard'（新增），与 deadline/stall/disconnect 并列
-· 跨平台(2026-06-11): Win=JobObject / Linux+mac=setrlimit(RLIMIT_AS) via pre_exec
-  JS层异步内存守卫双路径(Win=PowerShell WMI / Unix=ps -o rss)
+  Windows: CREATE_NEW_PROCESS_GROUP + taskkill /F /T
+  POSIX:   process_group(0) → killpg (SIGTERM→2s→SIGKILL)
+· guardMs 修复: 恒为 timeout+10s（原 timeout=0→guard=24h 形同虚设）
+· 内存守卫 killReason: 'mem-guard'（与 deadline/stall/disconnect 并列）
 · ghrun CI: gh555com/qqq-IDE → build-ghrun2.yml → 三端编译
 
 
-AI 网关双线路 + 故障切换引擎（2026-06-13 加固，2026-06-26 全路由覆盖）
+AI 网关双线路 + 故障切换引擎
 ---------------------------------------------
-· 双线路架构:
-  主线路: https://direct.gh555.com:8444 (直连 HTTP/1.1，87ms，无中间人)
-  备用线路: https://gh555.com (CF Worker 透传 → Go → 推理引擎)
+· 双线路:
+  主: https://direct.gh555.com:8444 (直连 HTTP/1.1，87ms)
+  备: https://gh555.com (CF Worker 透传 → Go → 推理引擎)
 · ★ 全路由覆盖（6 个 AI 端点，2026-06-26）
   chat / vision / vision stream / image-gen / image-gen stream / embedding / search
-  所有端点均经 AiGateway._URLS 双 URL 声明 + _postJsonWithFailover/_pollStream 自动切换
+  所有端点经 AiGateway._URLS 双 URL 声明 + _postJsonWithFailover/_pollStream 自动切换
 · 声明位置: ai-gateway.js _URLS（唯一真理源，禁 system-prompt.js 重复声明）
 · CF Worker (gaea/cf/ai-gateway.js): 全路由透传，禁业务逻辑，禁计费
 · 切换引擎: agent-loop.js _callGateway 内建 retry+switch 管线
-  - 同 URL 最多重试 3 次（MAX_RETRIES=3），防瞬态抖动误切
-  - 重试耗尽 → 切线路（主→备或备→主），单次最多切换 2 次（MAX_LINE_SWITCHES=2 防乒乓）
-  - HTTP/2 连接级错误（ERR_HTTP2_PROTOCOL_ERROR / Failed to fetch）优先切线路
-  - 502/503 前半段重试同 URL（可能瞬态恢复），后半段切线路
-  - AI 上游错误: 400/422（孤儿 tool_calls）跳过重试→走 auto-repair; 402（key 欠费）直接切线路; AbortError（超时）切线路恢复
+  - 同 URL 最多重试 3 次（MAX_RETRIES=3）
+  - 重试耗尽→切线路，单次最多 2 次（MAX_LINE_SWITCHES=2 防乒乓）
+  - HTTP/2 连接级错误 优先切线路
+  - 502/503 前半段重试同 URL，后半段切线路
+  - 400/422（孤儿 tool_calls）跳过重试→auto-repair; 402（key 欠费）直接切线路; AbortError 切线路
 · 延迟报错: _callGateway 不直接调 onError，设 _lastGatewayMessage 后返回 null
-  → agent loop 的 auto-repair 先尝试修复 → 成功则继续（用户无感）→ 失败才报错
+  → auto-repair 先尝试修复 → 成功则用户无感 → 失败才报错
 · 跨面板协同: panel-state.js 监听兄弟面板 qqq-gw-status → 自动调整 _gwFallbackAt
 
 服务端甲壳系统提示词（2026-06-27）
 ---------------------------------------------
-· 唯一真理源: gaea/guard/system-prompt.txt（开发者在此编辑甲壳文本）
-· Go 加载: gaea/internal/guard/guard.go 启动时 sync.Once 读取并预序列化，内存缓存，零每请求开销
-· 注入点: handlers_ai_chat.go §6 — sanitizeMessages 之后、aiReq 构建之前，prepend 到 messages[0]
-· 客户端: agent-loop.js _refreshRules() 不再发送 SYSTEM_PROMPT（已从 msg[0] 删除）
-· 甲壳文本固定不变 → AI prefix cache 100% 命中，费用与客户端携带完全等价
-· 安全收益: 客户端网络包中不再出现甲壳文本 → TLS MITM/客户端逆向 无法提取甲壳
-· 部署联动: 改 system-prompt.txt 后只需 ky.py deploy go（纯文件变更，无需重新编译）
+· 唯一真理源: gaea/guard/system-prompt.txt
+· Go 加载: gaea/internal/guard/guard.go sync.Once 读取预序列化，内存缓存，零每请求开销
+· 注入点: handlers_ai_chat.go §6 — sanitizeMessages 之后 prepend 到 messages[0]
+· 客户端: agent-loop.js _refreshRules() 不再发送 SYSTEM_PROMPT
+· 甲壳固定 → AI prefix cache 100% 命中，费用等价
+· 安全: 客户端网络包中不再出现甲壳文本
+· 部署: 改 system-prompt.txt 后只需 ky.py deploy go（无需重新编译）
 
 双 Key 隔离 + JWT 解耦（2026-06-23）
 ---------------------------------------------
-· 两把 API key 完全隔离于服务器 .env（客户端零密钥）:
-  API_KEY_MAIN         → 主线
-  API_KEY_FALLBACK → 备用线
-· 线路→Key 路由: 客户端通过 X-Key-Slot header 告知 Go 选哪把 key
-  主线: X-Key-Slot 不传 → Go PickAIKey()        → 主线消费
-  备线: X-Key-Slot: 1    → Go PickFallbackAIKey() → 备用消费
-· JWT 仅管认证（我是谁+ge扣费），X-Key-Slot 仅管路由（走哪把 key）
-  两个身份体系完全解耦，互不穿透。
-· SSE 402（服务端 key 欠费）→ 自动切线路→另一把 key → 用户无感
+· 两把 API key 隔离于服务器 .env（客户端零密钥）: API_KEY_MAIN / API_KEY_FALLBACK
+· X-Key-Slot header: 不传→PickAIKey()(主线) / 传1→PickFallbackAIKey()(备用)
+· JWT 仅管认证（我是谁+ge扣费），X-Key-Slot 仅管路由（走哪把 key），完全解耦
+· SSE 402（服务端 key 欠费）→ 自动切线路 → 另一把 key → 用户无感
   HTTP 402（用户 ge 不足）→ 直接终止，不浪费线路切换
-  双 key 都欠费 → MAX_LINE_SWITCHES=2 兜底 → "AI 服务暂时不可用"edis 封禁检查 — 已彻底移除（2026-06-23）
----------------------------------------------
-· 旧机制: CF Worker 调 GET /api/v3/ai/check?th=hash → Go 读 Redis banned:th → 永远空(零写入端)
-· 移除: AICheckHandler 函数、路由 /v3/ai/check、CF Worker banned check 段、sha256hex 函数、fix_worker.py
-· 封禁唯一真理源: middleware_ban.go 查 doers.banned_until（PostgreSQL），CF Worker 不做预检
-· 验证: grep 全代码库 banned:th CHECK_URL AICheckHandler → 零匹配
+· Redis 封禁检查 — 已彻底移除（2026-06-23）。旧 CHECK_URL banned:th 永远空。
+  封禁唯一真理源: middleware_ban.go 查 PostgreSQL doers.banned_until
+· CF 来源强制: EnforceCFOrigin 中间件，仅生产环境 /v3/ai/chat 拦截（无 CF-Ray→403）
+  开发环境自动跳过。公共端点（/__lbprobe、/api/time、/px）不受影响
+· 计费幂等: INSERT INTO idempotency_keys ON CONFLICT DO NOTHING
+  同 floor goroutine 重复触发→仅扣费一次。key 格式: ai_turn:{doerID}:{floorID}
 
-CF 来源强制（2026-06-23，P1）
+Nginx 备用线路铁律
 ---------------------------------------------
-· EnforceCFOrigin 中间件 → 仅生产环境(APP_ENV=production)拦截 /v3/ai/chat
-· 无 CF-Ray 头（直连服务器 IP）→ 403 DIRECT_ACCESS_DENIED
-· 开发/测试环境(APP_ENV≠production) → 自动跳过，不拦截
-· 公共端点(/__lbprobe、/api/time、/px) 不受影响
-
-计费幂等（2026-06-23，P0）
----------------------------------------------
-· CheckAITurnIdempotent → INSERT INTO idempotency_keys ON CONFLICT DO NOTHING
-· 同一 floor goroutine 重复触发 → 仅扣费一次（防重放双扣）
-· DB 故障 → 安全降级不扣费（保守安全）
-· key 格式: ai_turn:{doerID}:{floorID}，复用现有 idempotency_keys 表（24h 自动清理）
-
-Nginx 备用线路铁律（2026-06-13）
----------------------------------------------
-· port 8444 必须纯 HTTP/1.1（listen 8444 ssl; 禁 http2 关键字）
-· 原因: Nginx HTTP/2 ↔ Go HTTP/1.1 SSE 长连接存在协议转换 bug → ERR_HTTP2_PROTOCOL_ERROR
-· sites-enabled/ 目录只保留 gh555 一个文件（include * 匹配所有文件，.bak 也会生效）
+· port 8444 必须纯 HTTP/1.1（listen 8444 ssl; 禁 http2）
+· 原因: Nginx HTTP/2 ↔ Go HTTP/1.1 SSE 存在协议转换 bug → ERR_HTTP2_PROTOCOL_ERROR
+· sites-enabled/ 只保留 gh555 一个文件（include * 会匹配 .bak）
 · 验证: openssl s_client -connect :8444 -alpn h2 → "No ALPN negotiated"
 
-ContentGateway 超时常量（唯一真理源，2026-06-13）
+ContentGateway 超时常量（唯一真理源）
 ---------------------------------------------
-· 所有超时数字只在 content-gateway.js 定义，agent-loop.js 全部引用 ContentGateway.*
-· FETCH_DEADLINE_PRIMARY_MS  = 180000 (180s, 直连主线无限制，可调大)
-· FETCH_DEADLINE_FALLBACK_MS = 98000  (98s, CF Worker 备用，CF 100s 留 2s)
-· STREAM_WATCHDOG_MS         = 180000 (180s, 深度推理容忍度)
+· FETCH_DEADLINE_PRIMARY_MS  = 180000 (180s)
+· FETCH_DEADLINE_FALLBACK_MS = 98000  (98s, CF 100s 留 2s)
+· STREAM_WATCHDOG_MS         = 180000 (180s, 深度推理)
 · AI_OUTPUT_WATCHDOG_MS      = 900000 (15min, AI 无产出→死循环)
 · 改超时只改 content-gateway.js 一处。
 
-孤儿 tool_calls 自愈系统（2026-06-14 加固）
+孤儿 tool_calls 自愈系统
 ---------------------------------------------
-· 问题: 模型硬要求 assistant.tool_calls 后紧跟等量 tool 消息，缺→400
-· 自愈: _repairOrphanedToolCalls() 双向扫描 conversation（200 轮，方向 A/B 日志记录）
-  ① 请求前主动预检（_callGateway 开头，conversation 未变则跳过）
-  ② 楼层保存前修复（_saveAgentQuestData → _a4BuildCompleteFloorPayload 归一，发现腐蚀打 [CRITICAL] 日志）
-  ③ 自动保存前修复（auto-save 每 5s，同上））
+· 双向扫描 conversation（200 轮）: ①请求前预检 ②楼层保存前修复 ③自动保存前修复
 · 恢复阶段循环修复至干净（最多 10 轮 × 200 次 = 2000 次扫描）
 · 成功后重置 _floorOnErrorCalled
-· Go 服务端 sanitizeMessages 双向校验（方向 A+B，gaea 源码已更新）
+· Go 服务端 sanitizeMessages 双向校验已同步
 
 
 gaea goods 协议
 -----------------
 A 区宿主: core/gaea-host.js (完整 panel/tabs/services/commands/provides/uses)
 注册接口: window.qqqGaea.register({ id, title, ... })
-goods 切换按钮: 菜单行2 (qqq-goods-bar, 由 gaea-host renderTabBar 渲染)
+已注册: rage / wysiwyg / navigator / paste-image / file-explorer / search / git
 
-已注册 goods (goods/ 下):
-  rage — q3 全部功能 (rage.html A区面板 + Roam tab + 5 Monaco 服务)
-  wysiwyg — 所见即所得面板
-  navigator — 文件导航
-  paste-image — 粘贴图片
-  file-explorer — 文件浏览器
-  search — 高性能项目搜索 (X区tab, ripgrep引擎)
-  git — Git操作 (A区面板 + X区 Git tab)
-
-搜索引擎 — ripgrep 单引擎（2026-06-25）
+搜索引擎 — ripgrep 单引擎
 ---------------------------------------------
 · 引擎: ripgrep 14.1.1 (Rust · mmap · SIMD · PCRE2 JIT)
 · 入口: shell/ipc-search.ts spawn rg.exe --json → 流式解析
 · 查找: _findRipgrep() 三路 (userData/components/ → resourcesPath/ → engines/ripgrep/ → PATH)
 · 打包: package.json build.files 含 engines/**, 打包前 components.py ensure ripgrep
-  发 mac 包 → 在 mac 上跑 pack:mac-arm64, 二进制自动带在 engines/ripgrep/rg 下
-· UI: goods/search/ (search.js 注册 + search-ui.html X区标签), ai-viewport.js 🔍 按钮
-
-Monaco 五件套 (codelens/decoration/paste/viewzone/video) 已搬入 goods/rage/services/。
+· UI: goods/search/ (search.js + search-ui.html X区标签), ai-viewport.js 🔍 按钮
 
 Monaco Worker 加载
 ------------------
-两类 Worker：
-  · 基础 worker (workerMain.js)：自带 AMD loader (Y/J 函数)，用 new Worker('qqq-asset://...') 直接加载 →
-    self.location 正确，importScripts 相对路径正确解析。
-  · 语言 worker (tsWorker/jsWorker/jsonWorker/htmlWorker/cssWorker)：裸 define() 模块，无 loader。
-    走 blob：fetch loader.js + require.config(paths) + worker 代码拼接。
-
-依赖补全：Monaco 0.34.1 min 构建将所有模块捆入 editor.main.js，无独立 AMD 文件可用。
-  · convert_monaco_esm.py：ESM→AMD 转换器，将 esm/vs/ 796 文件转为 AMD define() 格式 → cache/monaco-deps/vs/
-  · shell/main.ts qqq-asset:// 协议：monaco 根先查 node_modules/min/vs/；缺文件时 fallback 到 cache/monaco-deps/vs/
+· 基础 worker (workerMain.js): 自带 AMD loader, new Worker('qqq-asset://...') 直接加载
+· 语言 worker: 裸 define(), 走 blob 拼接
+· 依赖补全: convert_monaco_esm.py ESM→AMD (796 文件 → cache/monaco-deps/vs/)
+· qqq-asset:// 协议: 先查 node_modules/min/vs/ → fallback cache/monaco-deps/vs/
 
 组件管理
 -----------
-外部清单: engines/manifest.json — 5个组件 (ffmpeg/yt-dlp/python/git/ripgrep)
-  改URL不需重编译ghrun（LSP 组件 2026-06-23 已删除）
-三层加载: userData/manifest.json (用户覆盖) → engines/manifest.json (随发布) → manifest.rs 硬编码兜底
-安装脚本: op/components.py — ensure(下载+解压) / upload(灌装CDN) / list(查看状态)
-  ★ ripgrep 安装: python op/components.py ensure ripgrep → 自动下载当前平台二进制
-  ★ 打包: package.json build.files 含 engines/**，打包时自动携带 engines/ripgrep/ 下当前平台二进制
-LSP 相关已冻结（2026-06-23）: 交互面板④/install_lsp.bat/components.py LSP 部分均失效，
-  manifest.json LSP 条目已删除，壳层 lsp-bridge.ts 零引用，仅源码保留于磁盘。
+· 外部清单: engines/manifest.json — 5组件 (ffmpeg/yt-dlp/python/git/ripgrep)
+  三层加载: userData/manifest.json → engines/manifest.json → manifest.rs 硬编码兜底
+· 安装: op/components.py ensure/download/upload/list
+· LSP 已冻结（2026-06-23）: 组件/桥接删除，源码保留于磁盘
+  替代 — 三级语法检查（2026-06-24）:
+    L1 自动（零 ge）: 每次 edit/write/create 后自动 node --check / py_compile / JSON.parse
+      结果拼接到工具返回值 [SYNTAX OK] 或 [SYNTAX ERROR]，代码在 tools-exec-write.js
+    L2 手动（~50 ge）: AI 调用 get_diagnostics 工具
+    L3 全仓（~200 ge）: AI 重大重构后跑 run_command，system-prompt.js prompt 引导
 
-  替代：三级语法检查（2026-06-24 落地）
-    L1 自动（0 ge）：每次 edit_file/write_file/create_file 后系统自动运行 node --check / py_compile / JSON.parse，
-      结果拼接到工具返回值末尾 ([SYNTAX OK] 或 [SYNTAX ERROR])，代码在 tools-exec-write.js _autoSyntaxCheck()
-    L2 手动（~50 ge）：AI 调用 get_diagnostics 工具 → 复用 _autoSyntaxCheck，代码在 tools-exec.js
-    L3 全仓（~200 ge）：AI 重大重构后跑 run_command("find . -name '*.js' -exec node --check {} \;")，prompt 引导在 system-prompt.js
 
-目录结构
+目录骨架
 --------
 qqq-shell-v2/
-├── shell/             壳层TS（入口 main.ts → 13 子模块）
-│   ├── main.ts              入口：组装+启动
-│   ├── boot.ts              启动配置/健康检查/壳层热更/启动序列
-│   ├── window-manager.ts    窗口创建/缩放/边界/全局快捷键
-│   ├── asset-protocol.ts    qqqide-asset:// 协议/资产根/磁盘空闲
-│   ├── ipc-state.ts         共享状态（qwr机器/Python路径/跳过列表）
-│   ├── ipc-boot.ts          启动信息/重试/探测 IPC
-│   ├── ipc-fs.ts            文件系统 IPC（读写列表状态等）
-│   ├── ipc-ai-tools.ts      AI工具 IPC（search_text/find_files/list_files）
-│   ├── ipc-search.ts        搜索引擎 IPC（ripgrep 单引擎，qqqide:search）
-│   ├── ipc-edit.ts          编辑工具 IPC + qwr 保护
-│   ├── ipc-media.ts         已删除（2026-06-22，图像全走 Go 代理）
-│   ├── ipc-timeline.ts      Timeline 版本时间线 + Diff窗口 IPC
-│   ├── ipc-misc.ts          窗口/对话框/资产根/磁盘 IPC
-│   ├── shutdown.ts          安全加固/退出处理器/崩溃兜底
-│   ├── preload.ts           预加载桥
-│   ├── qz-spawn.ts          进程生成（四重防御）
-│   ├── lsp-bridge.ts        LSP 诊断桥（冻结，零引用）
-│   ├── state-sqlite.ts      SQLite 引擎
-│   ├── state-store.ts       状态存储门面
-│   ├── qg.ts                FS 原子写
-│   └── ...                  其他服务（engines/audio/monaco-host 等）
+├── shell/             壳层TS（main.ts + 13 子模块: boot/window/asset/ipc-*/shutdown/qz-spawn/...）
 ├── server-app/        载荷层(热更)
-│   ├── index.html
-│   ├── core/           IDE 平台 (shell/theme/editor/qoast/cooldown-guard/state-sdk/gaea-host/tab-manager/...)
-│   ├── locales/        13 语言文件 (zh.json 唯一真理源)
-│   ├── goods/          goods (rage+navigator+paste-image+wysiwyg+file-explorer+search+git+_shim)
-│   └── ai-panel/       AI面板（模块化拆分，index.html 仅 HTML/CSS 壳）
-│       ├── index.html         壳文件（~400行 HTML+CSS + script src 引用）
-│       ├── panel-state.js     全局状态 + 前向声明 + 同步桥
-│       ├── panel-registry.js  中央建楼状态机（父窗口共享注册表）
-│       ├── panel-search.js    搜索逻辑 + CSS Highlight API
-│       ├── panel-input.js     输入处理 + tier 选择 + 图片粘贴
-│       ├── panel-render.js    消息渲染 + Markdown→DOM
-│       ├── panel-quest.js     quest 生命周期 + 所有权
-│       ├── panel-floor.js     楼层管理 + all.txt 归档触发
-│       ├── panel-quest-ui.js  quest UI 交互 + 下拉列表
-│       ├── panel-clock.js     电子钟 + 饼图 + 自动保存
-│       ├── panel-alltxt.js    all.txt 流写入 + reasoning.txt 审计（从 all.txt 截断生成）
-│       ├── panel-a4.js        A4 文件快照（executeTool 拦截 + 瀑布列表 + 持久化）
-│       ├── panel-send.js      发送逻辑 + 事件绑定 + DOMContentLoaded
-│       ├── panel-floor-indicator.js 滚动楼层指示器（豆腐块+探针）
-│       ├── card-pool.js       Card Queue 引擎（切换零 DOM 销毁，16+1 视口）
-│       ├── quest-store.js     多任务 SQLite 持久化
-│       ├── agent-loop.js      核心 Agentic 循环（send/stop/stall/repair/inject/render, ~1300行）
-│       ├── agent-envelope.js  信封剥离 + UTF-8 截断（_utf8Trunc, EnvelopeStripper）
-│       ├── agent-gateway.js   网关调用（双线路+重试+故障切换, _callGateway）
-│       ├── agent-sse.js       SSE 流解析 + 文本工具调用回生（_parseSSE）
-│       ├── agent-vision.js    视觉预分析（_analyzeImages + _callVision）
-│       ├── agent-exec.js      并行工具执行引擎 + 分层调度（_executeToolCallsParallel等）
-│       ├── agent-context.js   上下文压缩（单专家统一压缩 + Narrative-First, _compressContext）
-│       ├── tools-defs.js       AI 工具定义 + 分类 + 常量 + 辅助函数
-│       ├── tools-exec-write.js WRITE 类工具（edit/write/create/delete）
-│       ├── tools-exec.js       工具调度中心 + READ 类工具（read/search/list/find/diag/fetch）
-│       ├── tools-exec-effect.js EFFECT 类工具（run_command/search_smart/generate/analyze）+ Embedding
-│       ├── embedding-service.js Embedding 向量化服务
-│       ├── content-gateway.js 内容安全网关
-│       ├── ai-gateway.js     统一 AI 模型调用包装器（禁直接调用第三方端点）
-│       ├── only-store.js      项目偏好 SQLite
-      ├── panel-expert.js    E-Flow 引擎（复杂度评估+框架推荐+自动维护）
-      └── expert-template/   标准 expert 文档框架模板
+│   ├── core/          IDE 平台 (shell/theme/editor/qoast/state-sdk/gaea-host/tab-manager/...)
+│   ├── locales/       13 语言 (zh.json 唯一真理源)
+│   ├── goods/         goods (rage+navigator+search+git+...)
+│   └── ai-panel/      AI面板（29 个 JS 模块化拆分）
 ├── engines/           二进制 + manifest.json (5组件: ffmpeg/yt-dlp/python/git/ripgrep)
-│   └── ripgrep/rg.exe  ripgrep 14.1.1 (Windows 已安装; mac/linux 二进制同目录)
-├── op/                运维脚本 (ky.py翻译 + components.py组件 + git_snapshot.bat)
+├── op/                运维脚本
 ├── do/拓扑/           架构文档
 
-
-构建与打包（shell-build/）
+构建与打包
 -----------------------------------
-· 开发: qide-shell.py 按 Q → esbuild build → dev-server :8090 + esbuild watch + electron
-· 编译: shell/*.ts → esbuild → shell-out/（~35ms）。npm run build 一次性编译。
+· 开发: qide-shell.py 按 Q → esbuild build → dev-server :8090 + watch + electron
+· 编译: shell/*.ts → esbuild → shell-out/（~35ms）
 · 打包: npm run pack:win-x64 → dist-pack/qqq-shell-win-x64.zip
-· ★ gh555.com/ = npm run pack 中间产物（Electron 运行时 + resources/app/ 副本）
-  已在 .gitignore。dev 模式完全不经过它。AI 禁止编辑 gh555.com/ 下任何文件。
-· 绿色包 = 最终 zip 包，用户解压即用。pack.js 打包后会自动 rm -rf unpacked 中间目录。
-· 教训: search_replace 跨行替换时需确保匹配文本唯一，否则会合并相邻行损坏代码。
+· ★ gh555.com/ = npm run pack 中间产物，已在 .gitignore，AI 禁止编辑其下任何文件
+· 绿色包 = 最终 zip，pack.js 打包后自动 rm -rf unpacked 中间目录
+
 
 UI 布局 — A/X/AI + 左右翼（三面板）
 -------------------------------------------------------------------------------
-  外嵌 BrowserWindow 僚机已删除。左右翼改为同窗口 iframe（灯泡开关控制）。
-  中区     .qqq-middle        flex row: A区 + X区 + 中AI(389px)
-  A区      #qqq-a-zone       gaea goods 宿主
-  X区      #qqq-x-zone       编辑器 + tab groups + output
-  中AI     #qqq-ai-zone      中面板(panel=1)，始终可见
-  左翼     #qqq-wing-left    左面板(panel=0)，灯泡开关，默认关闭，宽度=AI_W
-  右翼     #qqq-wing-right   右面板(panel=2)，灯泡开关，默认关闭，宽度=AI_W
-  灯泡     #qqq-bulb-1/2     菜单行2 红色圆点，toggle 开关 + 窗口伸缩
+· 中区 .qqq-middle: A区 + X区 + 中AI(389px)
+· A区 #qqq-a-zone: gaea goods 宿主
+· X区 #qqq-x-zone: 编辑器 + tab groups + output
+· 中AI #qqq-ai-zone: 中面板(panel=1)，始终可见
+· 左翼 #qqq-wing-left: 左面板(panel=0)，灯泡开关，默认关闭
+· 右翼 #qqq-wing-right: 右面板(panel=2)，灯泡开关，默认关闭
+· 灯泡 #qqq-bulb-1/2: 菜单行2 红色圆点 toggle
 
-菜单栏 (shell-menu.js + menu-schema.js) — 2026-06-25
+菜单栏 — 2026-06-25
 ----------------------------------------------------------
-· 顶部两菜单："qqq IDE" + "的梦gaea"（无 i18n，纯文本标签）
-· 子菜单 hover 高亮：IIFE 捕获行引用修复闭包 bug（原 var hoist 导致高亮错位到末行）
-· "开新窗口" 行特殊：min-width:210px（比其他行宽 30px），右侧 20×20px ▶ square button
-· hover ▶ → 延迟 200ms 弹出最近主文件夹下拉（数据源=qgs recent_folders，与 AI 视口+号共享）
-· 点击下拉文件夹 → 保存当前窗口快照 → 新窗口以 ?restore=1 模式打开
+· 顶部两菜单: "qqq IDE" + "的梦gaea"（无 i18n）
+· "开新窗口": min-width:210px，hover ▶ → 延迟 200ms 弹出最近主文件夹下拉→新窗口 ?restore=1
 
 窗口快照系统 (win_snap:{normalizedPath} in qgs global) — 2026-06-25
 ------------------------------------------------------------------------
-· 保存时机：beforeunload / file.exit / file.newWindow / 从最近列表打开新窗口前
-· 快照内容：mainFolder + auxFolders[] + editorTabs[{path,groupIdx,active,preview}]
-             + editorPositions{filePath:{lineNumber,column}} + layout + theme
-· AI 面板状态不重复存储——onlyStore (only.sq3) 已完整记录 ai.panel.*.activeQuestId
-  + ai.uiStates.{panelId}，新窗口 initQuests() 自动从 onlyStore 恢复
-· 光标位置：editor.js 新增 getAllEditorPositions() + setEditorPosition(fp,pos) API
-· 还原流程：tab-manager._restoreTabsFromSnapshot 设置 qqqPendingEditorPositions
-  → 分发 qqq-file-open → openInPane 创建 editor 后自动消费 pending 位置
-· URL 参数：bridge.window.new(folderPath) → ?restore=1&folder=xxx（无 folderPath → ?fresh=1）
-· 锁检查：ipc-misc.ts 窗口创建前检查 project lock，已锁 → 返回 locked:true
+· 保存: beforeunload/file.exit/file.newWindow/从最近列表打开前
+· 内容: mainFolder+auxFolders[]+editorTabs+editorPositions+layout+theme
+· AI 面板状态不重复存储——onlyStore 已完整记录，新窗口 initQuests() 自动恢复
+· 还原: tab-manager._restoreTabsFromSnapshot → qqqPendingEditorPositions → openInPane 消费
+· 锁: ipc-misc.ts 窗口创建前检查 project lock
+
 
 Card Queue — 终极 AI 面板架构（2026-06 重构，2026-06-10 加固）
 -------------------------------------------------------------------
 · 一张 quest = 一张 Card（完整 DOM 子树），创建后永不 innerHTML 清空
 · 切换 quest = 纯 CSS display 显隐，零 DOM 销毁，零竞态
-· timer 跑在 agent 上，切 quest 不停 timer，切回零干预（§36）
-· 每张 Card 最多持有 16 层已封顶 + 1 层在建 DOM（FLOOR_CAP_CAPPED=16 / BUILDING=1）
-· 超限 → 最老楼层 DOM remove() 彻底删除（conversation JSON 保留于内存）
-· Card Pool 上限 10 张，LRU 驱逐（CARD_POOL_MAX）
-· 搜索/选中同词高亮 + 滚动条标记叠层（暗红 5px 直角滚动条 + 青绿/黄色刻度线）
-· 滚动：上滚立即停，下滚到底才恢复自动跟；scrollTop = scrollHeight 无 scrollIntoView
-· 楼层 az 区（每层楼底部信息区，从上到下）：
-    A2 财宝块 — 当前楼层 AI 挖掘的 treasures（来自信封），无财宝时隐藏
-    A4 文件快照块 — 实时文件变更瀑布列表（before/after + +N -M），点击开 diff
+· timer 跑在 agent 上，切 quest 不停 timer（§36）
+· 每张 Card: 最多 16 层已封顶 + 1 层在建（FLOOR_CAP_CAPPED=16 / BUILDING=1）
+· 超限→最老楼层 DOM remove()。Card Pool 上限 10 张，LRU 驱逐
+· 搜索: 同词高亮 + 滚动条标记叠层（暗红 5px 滚动条 + 青绿/黄色刻度线）
+· 滚动: 上滚立即停，下滚到底恢复自动跟；scrollTop = scrollHeight 无 scrollIntoView
+· 楼层 az 区（从下到上）:
+    A3 时钟行 — 左=时钟+饼图，右=GE 成本
     A1 楼层统计 — Floor/House/Room 计数 + FILE/ROW 变更 + 审计/翻译按钮
-    A3 时钟行 — 左=时钟+饼图，右=GE 成本（gh555.com 精确扣款）
-· A2 铁律：始终在 A1 上方（_initTreasureBlock → insertBefore(a1Block) 无条件）
-· A1 铁律：始终在 A3 上方（_initA1Block → insertBefore(clockBlock) 无条件）
-· 财宝去重：每条 treasure 以 text 前 80 字符为 key，全局只注入上下文一次
-· A1 行2 持久化：floorPayload.fileStats 入 SQLite，重启不归零
-· q3 楼层导航已删除（翻页需求由 search_quest.txt 全文检索替代）
-· _makeName UTF-8 截断修复（回退到完整序列起点，零乱码）
-· ★ agentPool 已上移父窗口 parent.__qqq_agentPool（2026-06-29）— 三面板共享单一 agent 实例，根治多副本写盘竞态
-· 跨模块引用：questStore↔window.questStore / cardPool↔window.cardPool / agentPool↔parent.__qqq_agentPool
+    A4 文件快照块 — 实时文件变更瀑布列表，点击开 diff
+    A2 财宝块 — AI 挖掘的 treasures，无财宝时隐藏
+· A2 铁律: 始终在 A1 上方（insertBefore(a1Block) 无条件）
+· A1 铁律: 始终在 A3 上方（insertBefore(clockBlock) 无条件）
+· 财宝去重: 每条 treasure 以 text 前 80 字符为 key，全局只注入一次
+· A1 行2 持久化: floorPayload.fileStats 入 SQLite，重启不归零
+· ★ agentPool 已上移父窗口 parent.__qqq_agentPool（2026-06-29）
+  → 三面板共享单一 agent 实例，根治多副本写盘竞态
 · 配置常量位于 card-pool.js 头部，改一处全生效
 
-q2 单行 + hover 展开（2026-06 重构）
+q2 单行 + hover 展开
 -----------------------------------------
-· 招牌行：有 quest → "q{n}.{title}"；无 quest → "~ New quest ~"（斜体灰）
-· hover 展开下拉 → 虚线框 + 效果 q（左金边+渐变+外发光+悬浮层统一流光）
-· 悬浮层流光：单个 .q2-shimmer-overlay DOM 元素覆盖整区，pointer-events:none，零布局干扰
-· 下拉列表：2 行弹性高度、默认 20 条（滚轮扩容 40→60）、模糊子序列匹配
-· 搜索与新建整合进下拉头部（+ 按钮 + 搜索框），不再有独立 q2x 行
-· 三面板各自独立持久化：关闭前 quest/光标/滚动/输入草稿全部保存（ai.uiStates.{panelId}）
-· q2 与面板焦点完全解耦：焦点不改变 q2 任何样式，焦点仅用于快捷键+postMessage 广播
-· 快捷键（仅焦点 + 非编辑区）：1/2 上下滚 35%视口、q/w 前后楼层跳转
-· 统一高亮色：豆腐块 hover/编辑笔 hover/下拉行 hover/搜索框 focus 全用 #fdf6e3（暗 #3f3830）
-· 一个 quest 同时只能在一个面板打开（所有权系统 + 跨面板 sync 广播互斥）
+· 招牌行: 有 quest → "q{n}.{title}"；无 quest → "~ New quest ~"（斜体灰）
+· hover 展开→虚线框 + 左金边+渐变+外发光+悬浮层流光
+· 下拉: 2 行弹性高度、默认 20 条、模糊子序列匹配；搜索+新建整合进下拉头部
+· 三面板各自独立持久化: ai.uiStates.{panelId}
+· 快捷键（焦点 + 非编辑区）: 1/2 上下滚 35%视口、q/w 前后楼层跳转
+· 统一高亮色: #fdf6e3（暗 #3f3830）。一个 quest 同时只能在一个面板打开
+
 
 持久化 — qgs + qgs.simple + qg + qgs.project + onlyStore + qgf 六入口
 ------------------------------------------------------------------------
-渲染层六个独立入口:
-  window.qgs('my-ns')                → SQLite 全局状态（云同步、可 SQL 查询）
-  window.qgs.simple('my-ns')         → 同 qgs 但零配置（省 v/form/cloud 参数，默认 doc）
-  window.qg(rootDir, 'my-ns')        → FS 项目元信息（qqq/qg/ 原子写、零依赖）
-  window.qgs.project(dbPath, ns)     → SQLite 项目级（qqq/alphal/quest.sq3、对话数据）
-  onlyStore (only-store.js)          → SQLite 项目级偏好（qqq/alphal/only.sq3、快照/偏好/状态）
-  window.qgf(rootDir, 'my-ns')       → FS 项目级 KV（qqq/qgf/ 原子写、零依赖、预留未用）
+  window.qgs('my-ns')                → SQLite 全局（云同步）
+  window.qgs.simple('my-ns')         → 同 qgs 但零配置
+  window.qg(rootDir, 'my-ns')        → FS 项目元信息（qqq/qg/ 原子写）
+  window.qgs.project(dbPath, ns)     → SQLite 项目级（quest.sq3）
+  onlyStore (only-store.js)          → SQLite 项目级偏好（only.sq3）
+  window.qgf(rootDir, 'my-ns')       → FS 项目级 KV（qqq/qgf/ 预留）
 
-背后引擎 + 物理路径:
-  · qgs / qgs.simple / qgs.project  (state-sqlite.ts): sql.js WASM → 内存SQLite → 批量落盘
-    全局: Data/alphal/global.sq3 (跨项目共享: 窗口快照/最近文件夹/语言/设置/主题)
-    项目: qqq/alphal/quest.sq3 (AI 对话索引)
-  · qg                              (shell/qg.ts):      tmp+rename 原子写 → JSON/brotli/NDJSON
-  · qgf                             (shell/qgf.ts):     同 qg 引擎，建 qqq/qgf/{ns}.json 原子读写
-  · onlyStore                       (only-store.js):    内存缓存+自动批量刷盘管线
-    物理: qqq/alphal/only.sq3 (项目偏好: 搜索/主题/面板状态/字号)
+背后引擎:
+  qgs/qgs.project (state-sqlite.ts): sql.js WASM → 内存SQLite → 批量落盘
+    全局: Data/alphal/global.sq3。项目: qqq/alphal/quest.sq3
+  qg/qgf (shell/qg.ts ← tmp+rename 原子写): JSON/brotli/NDJSON
+  onlyStore: 内存缓存+自动批量刷盘（500ms空闲→3s强制→beforeunload兜底），物理: qqq/alphal/only.sq3
 
-何时用哪个：
-  · 全局共享、跨项目、云同步                           → qgs
-  · 全局共享、零配置（不关心 v/form/cloud）              → qgs.simple
-  · 项目级元信息、零配置、不想建 DB                      → qg
-  · 项目 AI 对话历史（quest.sq3）                        → qgs.project
-  · 项目偏好/快照/面板状态/编辑器字体大小                  → onlyStore
-  · 项目级 KV、零配置、不让用户看到 DB 文件（预留）        → qgf
-  · ★ 渲染层不要直接用 bridge.state.* / bridge.fs 绕过入口
+何时用哪个: 全局跨项目→qgs。零配置→qgs.simple。项目元信息→qg。AI 对话→qgs.project。偏好→onlyStore
+★ 渲染层不要直接用 bridge.state.* / bridge.fs 绕过入口
 
-onlyStore 管线：set→内存缓存(dirty)→500ms空闲刷盘→3s强制刷盘→beforeunload兜底
-
-已接入: editor tabs (qgs.simple:qqqide) 、shell layout (bridge.state→qgs:qqqide)、
-        rage 剪切板 (qgs:rage.clip)、cache meta (qgs:qqq.cache)、
-        AI quests (qgs.project:qqq.ai)、AI 面板状态 (onlyStore:ai.*)、
-        主题 (onlyStore:theme)、编辑器字体大小 (qgs.simple:qqqide)、
-        ★ 窗口快照 (qgs:qqqide, key=win_snap:{normalizedPath}) — 含主/辅文件夹+editor tabs+光标位置+layout+theme
 
 家目录 — 项目级 ({项目}/qqq/) 与程序级 ({程序}/Data/alphal/)
 -----------------------------------------------------------------------
-  项目级: {project_root}/qqq/（纯项目数据，跟项目走，拷到另一台机器自带）
-  程序级: {appRoot}/Data/alphal/（零 C 盘写入，绿色包解压即在，惰性创建）
-  ★ 项目偏好 (搜索/主题/面板) → {项目}/qqq/alphal/only.sq3
-  ★ 全局共享 (语言/最近文件夹/窗口快照) → {程序}/Data/alphal/global.sq3
-  ★ {程序}/Data/databases/ 是 Chromium 内置 IndexedDB 目录，非本项目产物
+  项目级: {project_root}/qqq/（纯项目数据，跟项目走）
+  程序级: {appRoot}/Data/alphal/（零 C 盘写入，绿色包解压即在）
+  ★ 项目偏好 → {项目}/qqq/alphal/only.sq3；全局共享 → {程序}/Data/alphal/global.sq3
 
   {项目}/qqq/
-    ├── .lock              30s心跳/60s过期文件锁，防多窗口打开同一项目
+    ├── .lock              30s心跳/60s过期文件锁
     └── alphal/
-        ├── quest.sq3         AI 对话索引 SQLite（questStore: 楼层元数据 ~200B/层）
-        ├── only.sq3          项目偏好 SQLite（onlyStore: 搜索偏好/主题/tabs/字号）
-        ├── rule/project.txt  E-Flow custom 模式规则文件
-        ├── expert/           E-Flow standard 模式文档框架（index.md + arch/*.md）
-        └── .lock             项目锁文件
+        ├── quest.sq3         AI 对话索引 SQLite（~200B/层）
+        ├── only.sq3          项目偏好 SQLite
+        ├── rule/project.txt  E-Flow custom 规则
+        └── expert/           E-Flow standard 文档框架
   qqq/quests/             AI 对话正文（FS）
-    ├── _index.json       quest 索引（跨面板共享、30s宽限期防竞态）
-    └── q{n}.{title}/     每个 quest 一个目录
+    ├── _index.json       quest 索引（跨面板共享、30s宽限期）
+    └── q{n}.{title}/
         └── f{n}.{question}/
-            ├── all.json  机器用（conversation + 计费 + 快照 blob_hash）
-            ├── all.txt   人类读（thinking + 工具调用 + 结果 + 回答完整母本）
+            ├── all.json  机器用（conversation + 计费 + blob_hash）
+            ├── all.txt   人类读（完整母本）
             └── reasoning.txt  审计用（all.txt 截断工具结果到300字）
   qqq/timeline/           文件版本时间线
     ├── blobs/{sha256[:2]}/{sha256}.gz  内容不可变（SHA256+gzip）
     ├── timeline.wal       NDJSON 增量日志（≤99行）
     ├── timeline.db        SQLite 全量快照（每100条压缩）
     └── timeline.db.bak    备份（损坏自动恢复）
-  qqq/qg/                 qg 写入目录（JSON/brotli/NDJSON 原子写）
-  qqq/qgf/                qgf 写入目录（预留，零消费者）
-  qqq/genera/             AI 图片生成落盘（gen_img_{日期}_{时间}_{hash}_{序号}.png + _index.json）
+
 
 i18n — 唯一真理国际化机器
 ---------------------------
-语言文件: server-app/locales/{lang}.json (13 种语言)
-唯一真理源: zh.json (开发者只写中文)
-占位符: data-i18n / data-i18n-placeholder / data-i18n-title / data-i18n-html, JS: _i(key, fallback)
-特殊: contenteditable div 用 data-i18n-placeholder-attr (iframe translateUi 处理)
-翻译机器 + 面板: op/qky.py (PySide6 GUI, 翻译模型, 差异翻译, 全并发)
-前端运行时: core/i18n.js (autoload, detectLang -> loadLang -> updateDom)
-英语内嵌兜底: en.json 编译进 _EN_BUILTIN 常量, 离线永不显示 key
-语言持久化: qgs('qqq.i18n').set('lang', code)
-语言切换器: 菜单行1 中字按钮 → 13 语言下拉 → i18n.setLang() + postMessage 同步 AI iframe
-AI iframe 桥接: translateUi() 调用 parent.window.i18n.updateDom(document), 监听 message('qqq-lang-change')
+· 语言: server-app/locales/{lang}.json (13 种)，zh.json 唯一真理源
+· 前端: data-i18n / data-i18n-placeholder / data-i18n-title, JS: _i(key, fallback)
+· 特殊: contenteditable div 用 data-i18n-placeholder-attr
+· 翻译机器: op/qky.py (PySide6 GUI, 差异翻译, 全并发)
+· 运行时: core/i18n.js (autoload, detectLang → loadLang → updateDom)
+· 英语兜底: en.json 编译进 _EN_BUILTIN 常量，离线永不显示 key
+· AI iframe 桥接: translateUi() 调 parent.window.i18n.updateDom(document), 监听 message('qqq-lang-change')
 
-IPC 管线 — 文件操作都在主进程
+
+IPC 管线 + 主进程安全
 ------------------------------
-主进程 handlers: bridge.ai.* (8个工具 + hover)
-  search_text / find_files / list_files  → 主进程 fs (零 IPC 序列化)
-  read_file / edit_file / create_file / delete_file / write_file → 主进程 fs (1 IPC)
-  hover → 主进程 (轻量, 无大文件序列化)
-  fs:remove 静默 ENOENT（文件已不存在=移除目的已达）
-渲染层 fallback: 所有 execute* 优先走 bridge.ai.*，失败回退 fs 直接调用
-engineHost 裁剪: Rust 引擎仅实现 ping，fs.read/write 已移除 engineHost 中转
-read_file 主进程 50MB 守卫: stat()→超限返回错误提示 paginate
-edit_file 三级匹配引擎: L1精确/L1b CRLF归一化/L2空白归一化/L3逐行 —— 主进程+渲染层双份
-编译管道: shell/main.ts (唯一真理源) → esbuild → shell-out/main.js (215KB, 47ms)
-铁律 §20: 禁编译产物混入源码目录，AI 改代码只改 *.ts，改完跑 npm run build
+· 主进程 handlers: bridge.ai.* (8个工具 + hover)
+  search_text/find_files/list_files → 主进程 fs (零 IPC 序列化)
+  read/edit/create/delete/write_file → 主进程 fs (1 IPC)
+· 渲染层 fallback: 优先走 bridge.ai.*，失败回退 fs 直接调用
+· engineHost 裁剪: Rust 引擎仅 ping，fs 操作已移除 engineHost 中转
+· read_file 主进程 50MB 守卫: stat()→超限返回 paginate 提示
+· edit_file 三级匹配引擎: L1精确/L1b CRLF归一化/L2空白归一化/L3逐行 — 主进程+渲染层双份
+· 编译: shell/main.ts → esbuild → shell-out/main.js (215KB, 47ms)
+· 铁律 §20: 禁编译产物混入源码目录，改 *.ts 后跑 npm run build
+· 主进程安全: 所有 webContents.send 前检查 isDestroyed()
+  sync:broadcast / project-path 推送 / state:changed 均已加固
+  global uncaughtException 拦截 Object has been destroyed
 
-主进程窗口安全
---------------
-  所有 webContents.send 调用前检查 win.isDestroyed() + win.webContents.isDestroyed()。
-  sync:broadcast / project-path 推送 / state:changed 推送均已加固。
-  global uncaughtException handler 拦截 Object has been destroyed 防止 crash。
-  fs:remove 静默 ENOENT，不再刷错误日志。
 
-工作空间（Workspace）— 多项目隔离（2026-06-07 重构）
+工作空间（Workspace）— 多项目隔离
 -----------------------------------------------------
-定义: 一个工作空间 = 一个主文件夹 + 其全部运行时状态。同一窗口同一时刻只有一个工作空间。
-唯一标识: _workspaceRoot = 主文件夹路径（normalized）
-生命周期:
-  bindMainProject() → 同 root 跳过 | 不同 root → _teardownWorkspace() → _initWorkspace(root)
-  _teardownWorkspace: 保存 UI 快照 → 释放 quest 所有权 → 销毁 Card Pool → 清空 agentPool
-    → 重置 questStore/onlyStore → 清空 _workspaceRoot → 清理 DOM
-  _initWorkspace: 获取锁 → questStore.setProjectRoot → 新建 Card Pool → 迁移 alphal
-    → 加载 questUIStates → initQuests
-IPC 频道隔离:
-  _syncChannel() = 'qqq-sync:' + sanitize(_workspaceRoot)  // 非字母数字→_
-  _broadcast 和 handleSyncMessage 订阅均走 scoped channel，不同主文件夹物理隔离
-Card Pool: workspace 切换时 destroy() → 中止所有 agent + 移除所有 card DOM + 清空 pool
-questStore: setProjectRoot(null) 清空 _rootDir/_qgs/_index；clearOnChange() 防回调累积
+· _workspaceRoot = 主文件夹路径（normalized），同一窗口同一时刻一个
+· bindMainProject(): 同 root 跳过 | 不同 → _teardown → _init
+· _teardown: 保存快照 → 释放 quest 所有权 → 销毁 Card Pool → 清空 agentPool → 清理 DOM
+· _init: 获取锁 → questStore.setProjectRoot → 新建 Card Pool → 迁移 alphal → initQuests
+· IPC 隔离: _syncChannel() = 'qqq-sync:' + sanitize(_workspaceRoot)
+  _broadcast 和 handleSyncMessage 均走 scoped channel，不同主文件夹物理隔离
 
-跨面板通信 — IPC sync 桥（三面板互斥）
+
+跨面板通信 — IPC sync 桥
 ---------------------------------------------
-  _broadcast 走 parent.qqqideBridge.sync.broadcast → 主进程 relay 到所有窗口。
-  主进程 sync:broadcast 必须发到所有 webContents（含发送者），否则同窗口三面板无法互斥。
-  _handleSyncMessage 第一行过滤 msg.windowId === _windowId 跳过自身广播。
-  三面板 _windowId 必须含 _panelId（sessionStorage key 独立），否则所有权系统失效。
+· _broadcast 走 parent.qqqideBridge.sync.broadcast → 主进程 relay 到所有窗口
+· 主进程 sync:broadcast 发到所有 webContents（含发送者），否则同窗口三面板无法互斥
+· _handleSyncMessage 首行过滤 msg.windowId === _windowId 跳过自身广播
+· _windowId 必须含 _panelId（sessionStorage key 独立），否则所有权系统失效
 
 qwr 机器 — 全局唯一真理写机器
 -------------------------------
-位置: shell/main.ts (源码) / shell-out/main.js (编译产物)
-5层防御:
-  ① per-file 串行队列 (_qw Map<path, Promise链>): 同文件排队，不同文件并行，零轮询
+位置: shell/main.ts。5层防御:
+  ① per-file 串行队列 (_qw Map<path, Promise链>): 同文件排队，不同文件并行
   ② 全局命令屏障 (_co/_ac 双向门): 命令等写完成才执行，写出等命令完成才写
   ③ edit_file CAS 重读: 队列内重新读文件匹配，不依赖 AI 旧快照
   ④ 外部修改检测: read_file 记录 {mtime,size}，write_file 对比不匹配则拒绝
-  ⑤ 快照自更新: edit/create 写入后更新快照，delete 清除快照
+  ⑤ 快照自更新: edit/create→更新快照，delete→清除快照
 命令路径全入 _qgc: qz:spawn / ghrun:exec / engine:invoke(spawn) 3入口统归管
 涉及: edit_file / write_file / create_file / delete_file / run_command (5个)
 保证: 零脏写、零丢失更新、零死锁、零误报
 
-Timeline 文件版本时间线 (2026-06-13 钩子Q+X重构，2026-06-21 终极存储)
+
+Timeline 文件版本时间线
 --------------------------------------------------------------
-独立 BrowserWindow + Monaco Diff Editor。旧系统全部删除。
+· 独立 BrowserWindow + Monaco Diff Editor。旧系统全部删除。
+· 存储: {projectRoot}/qqq/timeline/
+  blobs/{sha256[:2]}/{sha256}.gz — 内容不可变（SHA256 行尾归一化 CRLF/LF/CR→\n）
+  timeline.wal — NDJSON 增量日志（~100B/条，≤99 行）
+  timeline.db — SQLite 全量快照（每 100 条压缩，.bak 同步备份）
+  ★ file_seq: per-file 自增序号，AI 可用 WHERE file_seq=N 直查新快照
+  ★ 恢复: 加载 .db（损坏→.bak→空库）→ 回放 .wal（≤99 行）→ 完整
 
-存储（极简，零延迟）: {projectRoot}/qqq/timeline/
-  blobs/{sha256[:2]}/{sha256}.gz — 内容不可变，永不删除（SHA256 寻址 + gzip，git 内核）
-  timeline.wal — NDJSON 增量日志（每快照追加一行 ~100B，最多 99 行）
-  timeline.db — SQLite 全量快照（每 100 条压缩一次，db.export→.bak 同步备份）
-  timeline.db.bak — 索引备份（压缩后同步更新，.db 损坏时自动恢复）
-  ★ SHA256 行尾归一化（CRLF/LF/CR→\n），同内容必同 hash，零幽灵版本
-  ★ file_seq: per-file 自增序号（2026-06-26 新增），插入时自动计算
-    旧条目为 NULL，diff 下拉降级为 UI 序号。AI 可用 WHERE file_seq=N 直查新快照
-  ★ 写入: 每条快照→内存 INSERT + append .wal（零延迟）；第 100 条→压缩 .db + .bak→清 .wal
-  ★ 恢复: 加载 .db（损坏→.bak→空库）→ 回放 .wal（≤99行）→ 完整
-  ★ 退出时强制压缩一次。无 2s debounce，无 archive 目录，无篡改风险
+触发（5 种时机 3 种 source）:
+  ① 钩子 Q — AI写工具 → source='q'，不走冷却
+  ② 钩子 Q — run_command（用户可开关，默认关）→ source='run-command'
+  ③ 钩子 X — editor blur/Ctrl+S → source='editx'
+  ④ Diff窗口编辑保存 → source='diff-edit'
+  ★ editx + diff-edit 共享主进程真理机: 100s 冷却 + SHA256 去重
 
-触发: 5种时机（3 种 source）—
-  ① 钩子 Q — AI写工具(edit/write/create/delete) → _a4PersistToTimeline，source='q'
-  ② 钩子 Q — run_command → (用户可开关, 默认关) captureChanged → source='run-command'
-  ③ 钩子 X — X区 editor blur / Ctrl+S / 主编辑器 save() → source='editx'
-  ④ Diff窗口编辑保存(blur/Ctrl+S) → source='diff-edit'
-  ★ editx + diff-edit 共享主进程真理机：100s 冷却 + SHA256 去重（改 ipc-timeline.ts 一处全局生效）
-  ★ 钩子 Q（q / run-command）不走冷却
-  ★ 钩子 Q 已记全 before+after，点击 A4 不再补记；楼层完结不再补记
+Diff窗口: 独立 BrowserWindow，一个文件单例（Map），Monaco 0.34.1 side-by-side
+  底部三按钮: ☐仅差异 | 编辑/取消编辑 | ✕关闭
+  编辑模式: 右侧可编辑→保存触发快照(source='diff-edit', 100s冷却+去重)
+  防并发: _renderToken 竞态令牌 + model dispose + 15s 超时
+  偏好: 仅差异模式项目级持久化(only.sq3:qqq.timeline.diffOnly)
 
-Diff窗口: 独立 BrowserWindow，一个文件单例（Map），再次点击复用
-  Monaco 0.34.1 side-by-side + minimap + 手动差异折叠(setHiddenAreas) + 自动换行
-  下拉标签格式: "#N 时间 +N -M xx [first] [before]"，xx=溯源串(q / editx / cmd / diff edit)
-  动作栏+状态栏已删除(2026-06-24)，空间全部给编辑器
-  底部居中有三按钮：☐仅差异 | 编辑/取消编辑 | ✕关闭
-  编辑模式: 右下拉替换为"编辑中 未保存/已保存/已保存 且打快照至：#N"，右侧可编辑，左侧永远只读
-  编辑模式每差异块显示→箭头，点击复制左侧到右侧
-  编辑保存(blur/Ctrl+S)触发快照(source='diff-edit', 100s冷却+去重，主进程真理机)
-  退出编辑模式不保存，取消编辑清空脏标记
-  偏好: 仅差异模式项目级持久化(only.sq3:qqq.timeline.diffOnly)，默认全文对比
-  编辑器极致精简: 零LSP/零波浪线/零智能，只留 tokenization
-  防并发: _renderToken 竞态令牌 + _loading 重入锁 + model 显式 dispose
-  Monaco 加载 15s 超时保护，防永久白屏
-  编辑器极致精简: 零LSP/零波浪线/零智能，只留 tokenization
+跨十年保证: SHA256 blob 不可变 + .wal + .bak 双备份 + 永不删
 
-IPC: qqqide:timeline:{record,versions,content,stat,readCurrent,captureChanged}
-  + qqqide:open-diff-window + qqqide:diff:update
 
-跨十年保证: SHA256 blob 不可变 + .wal 增量日志 + .bak 双备份 + 永不删 → 时间戳/内容永久锁定
-
-AI 工具 (16个) — 2026-06-04 强化，2026-06-10 三项优化，2026-06-16 search_smart
+AI 工具 (16个)
 ------------------------------------------------------------
-文件: read_file, edit_file, create_file, delete_file, write_file (★ 主进程 1 IPC, qwr机器保护)
-搜索: search_text (regex), search_content (多关键词OR, 新增), find_files (glob), list_files,
-      search_smart (★ BM25语义+Embedding混合重排, 三路并行引擎, 新增)
-  · search_text 二进制过滤: SKIP_EXTS 覆盖 70+ 种二进制格式
-  · search_text 目录跳过: SKIP_DIRS 排除 node_modules/.git/dist/__pycache__ 等
-  · search_content: 接收 keywords[] 数组，自动转义拼接为 regex OR，支持 case_sensitive
-    解决 AI 用 PowerShell 搜多关键词的 40GB 问题，route 走 search_text 主进程管线
-  · search_smart: BM25倒排索引 + 符号匹配(定义/导出/引用) + Embedding语义重排
-    三路并行: 文件内容分词搜索 / 符号名精确匹配 / 目录名glob匹配
-    Embedding管道: BM25 top10 → 向量模型 → cosine重排(alpha=0.3) → Hybrid输出
-    符号图: 每个匹配符号附定义文件/导出文件/导入引用关系（P3 符号图引擎）
-    静默降级: Embedding失败→保留BM25结果；无token→纯BM25
+文件: read_file, edit_file, create_file, delete_file, write_file (主进程 1 IPC, qwr保护)
+搜索: search_text (regex), search_content (多关键词OR), find_files (glob), list_files,
+      search_smart (BM25语义+Embedding混合重排, 三路并行)
+  · search_smart: BM25倒排+符号匹配+Embedding语义重排(alpha=0.3)
+    静默降级: Embedding失败→保留BM25结果
 诊断: get_diagnostics (Monaco markers)
-终端: run_command (qz-spawn, 硬超时 2h, stallMs=15min, ★ qwr _qgc 命令屏障保护)
-  · 新增 reason 字段: AI 可选填写使用原因，仅 console.log 审计，不拦截
-网络: fetch_webpage (curl 绕过 CORS, 15s 超时, ≤8000 chars)
-视觉: get_vision_context (★ 并行预分析: 多图片并发视觉模型, Promise.all, 4-12s→3-8s)
-  · 生成: fetch IMAGE_GEN_URL → Go → 模型供应商 → SSE 结果流 → curl 下载
-  · 分析: fetch VISION_URL → Go → 模型供应商 → SSE 结果流
-  · 旧 Python 脚本和 ipc-media.ts 已删除（2026-06-22）
-SSE 复用 (★ 零行代码): fetch 新建流复用已有 ReadableStream· 入口: tools-exec-effect.js search_smart → _tryEmbeddingRerank() → embedding-service.js速度倍数），
-AI 有充分知情权选择最优工具。system-prompt 新增 🔴 FILE SEARCH PRIORITY 铁律段。
+终端: run_command (硬超时 2h, stallMs=15min, qwr _qgc 命令屏障保护)
+网络: fetch_webpage (curl, 15s, ≤8000 chars)
+视觉: get_vision_context (并行预分析: 多图片并发, Promise.all)
+  · 生成/分析: IMAGE_GEN_URL/VISION_URL → Go → 模型供应商 → SSE 流。旧 Python 脚本已删除
+Embedding: BM25+语义混合搜索，双线路(fallback)+归一化+15s超时
 
-Embedding 混合搜索管道 — BM25 + 语义重排（2026-06-16）
---------------------------------------------------------------
-· 入口: tools.js search_smart → _tryEmbeddingRerank() → embedding-service.js
-· 管线: query + BM25 top10 snippets → 向量模型 (1024d) → cosine → alpha=0.3 融合h token / API 失败 / 向量异常 → 保留原始 BM25 结果，用户无体感
-· 开关: window._EMBEDDING_LOG=true 开启全链路日志（DevTools 实时控制），默认关闭零开销
-· 底层: embedding-service.js 双线路(fallback)+归一化+15s超时，暴露 window._qqqEmbedding
-· 符号图: P3 引擎为每个匹配符号提供 defines/exports/imported-by 三向引用（见下文符号图引擎节）
-· 状态: 代码+编译已就绪，待线上验证
 
-Agent 三态状态机 — idle / sending / stopping（2026-06-16）
+Agent 三态状态机 + fatal 恢复
 --------------------------------------------------------------
-· 三态: idle(空闲) → sending(发送中) → stopping(用户点击Stop) → 全部中止后 → idle
-· agent._stopState 单一真理源，agent-loop.js finally 块无条件复位 _stopState='idle'
-· 停止按钮: Stop 点击 → _stopState='stopping' → 中断流+拒绝后续house → finally 复位
-· 防重复: _stopState 已是 stopping 时禁止并发停止操作
-· 启动发送: _callGateway 前检查 _stopState==='stopping' → 直接return，零house创建
+· 三态: idle(空闲) → sending(发送中) → stopping/fatal
+· agent._stopState 单一真理源，agent-loop.js finally 块无条件复位
+· fatal 态（2026-06-28）: onError → _stopState='fatal'（禁止新楼层）
+  100% 落盘: onError 回调火线保存 + finally 兜底
+  唯一出口: "继续任务"链接 → _attemptRecoverySend → sendMessage 完整管线
+  防抖: 20s 冷却（_qqqRecoveryBusy），per-quest 独立
+· 切 quest/面板: restore 时从 _stopState='fatal' 恢复，UI 自动重建
+
+
+AI 面板核心机制
+---------------
+· 楼层模型: 一次回车=floor，多次 API=houses，一次工具调用=room。计费按楼累计，压缩≥6层保底
+· 📎 文件附件截断: 50KB 硬帽，超则保留首尾各 20KB
+· 引导注入: abort 当前 house → 确认回合(Flash/noTools) → AI 回复确认 → 继续工作
+· 排队信封: 最多 50 条，AI 回复完自动消费下一条，_debounceSaveQueue 500ms 合并写盘
+· E-Flow: q1首层楼100%触发，后续10%。四态机(none→pending→standard/custom)
+· 项目锁: onlyStore.claimLock()（30s心跳/60s过期）
+· 楼层归档:
+    all.json → 机器用（conversation[]+计费+快照），禁 reasoning_content
+    all.txt → 人类读（完整母本），建楼每5s流式写盘，完结 generateFloorTxt 覆盖
+    reasoning.txt → 审计用（all.txt 截断工具结果到300字）
+    quest.sq3 → 纯元数据索引（~200B/floor）
+· 饼图+时钟: canvas 112px懒重绘，四字段全等跳过。中断/异常: finally 设停止态
+· 输出截断（content-gateway.js 单一真理源）:
+    OUTPUT_CAP_DEFAULT=200000 / OUTPUT_CAP_MAX=800000 / OUTPUT_CAP_FETCH=8000
+    READ_FILE_CAP_KB=195（system-prompt.js+tools-defs.js 动态引用）
+    安全网（ghrun 65536）远高于 AI 面
 
 AI 悬浮预览层
 --------------
-  表格展开: 两层容器分离（clipBox 固定视口 + wrapper 自然尺寸无 max 约束），
-  zoom 缩放不触发 reflow，保持原始列宽和换行。D-pad 平移在 clipBox 内自由移动。
-  图片展开: transform translate+scale 统一缩放+拖拽。
-  关闭: Esc / 右键 / 点击背景 / 关闭按钮（tooltip 含 i18n）。
-  跨窗口协调: 打开 overlay 时广播，其他窗口自动关闭自己的 overlay。
+· 表格: clipBox+wrapper 双层，zoom 不触发 reflow，D-pad 平移
+· 图片: transform translate+scale 统一缩放+拖拽。关闭: Esc/右键/背景。跨窗口广播关闭
 
-AI 面板增强
------------
-- 楼层模型: 一次回车 = 一栋楼(floor)，楼内多次 API 调用 = 多个房子(house)，
-  房内一次工具调用 = 一个房间(room)。计费按楼累计，压缩按楼层保底(≥6层)。
-- 持久化: 对话→all.json（唯一真理源），索引→quest.sq3（SQLite 轻量索引），偏好/快照→only.sq3
-- 📎 文件附件截断: panel-send.js 内建 50KB 硬帽(MAX_SIZE=50×1024)。
-  超过时保留首尾各 20KB，中间截断标记「... [truncated: X bytes] ...」。
-  二进制文件(.exe/.png/.zip 等 40+ 扩展名)不读内容，只记录 type/size/mtime。
-- E-Flow 文档框架引擎：q1首层楼100%触发，后续楼层10%概率触发。四态机(none→pending→standard/custom)，自动检测并维护每项目的 expert 文档体系。详见 panel-expert.js。
-- 项目锁: onlyStore.claimLock() 统一管理（30s 心跳/60s 过期/自动释放），零维护
-- 无主文件夹守卫: 三层防线（UI capture管线+函数兜底+持久层铁闸），引导蒙版
-- quest 切换防丢: 流式中断回复保存（_fullText+_truncated）+ 互斥锁 + snapshot 副本
-- 引导注入: injectGuide() 立即 abort 当前 house → 确认回合(Flash/noTools) → AI 回复 "✅ 已收到引导" → pop 指令 → 继续工作。不中断楼层，确认来自模型。空闲时降级为普通 inject。
-- 排队信封: 任何时候可添加，AI 回复完自动消费下一条。暂停/继续/清空控制栏。_debounceSaveQueue 500ms 合并写盘。最大 50 条。
-- 楼层归档（2026-06-19 清洁分工）：
-    all.json  →  机器用（conversation[] + 计费元数据 + 文件快照），仅存结构化数据，
-                houses 不含 reasoning/tools/toolResults，禁 reasoning_content 入 conversation
-    all.txt  →  人类读（完整母本：thinking + 工具调用 + 结果 + 回答），建楼期间每5s流式写盘，
-               完结时 generateFloorTxt 最终覆盖写入（含 stats + az 行），前台/后台 agent 均覆盖。
-    reasoning.txt → 审计用（all.txt 截断工具结果到300字），从 all.txt 直接截断生成，不再依赖 SQLite
-    quest.sq3 →  纯元数据索引（question + costWge + _fDir + 时间戳），~200字节/floor，不含正文
-- 悬浮层预览：图片（智能2x尺寸+拖拽+滚轮缩放）+ 表格（transform保持长宽比+十字D-pad+初始适配）
-- 时钟：分钟(48px)+冒号秒(24px)，动态色随 agent._floorTiming 变化
-- 饼图：canvas 112px，懒重绘，数据不到不显示
 
-AI 上下文窗口防护（三层纵深 + 参数集中化，2026-06-10 落地，2026-06-27 单专家统一重构）
+AI 上下文窗口防护（三层纵深）
 --------------------------------------------------------------
-背景：模型硬限制 prompt+completion ≤ 1M tokens，长对话叠加 max_tokens(393K) 超限导致零响应。
+参数唯一真理源 content-gateway.js:
+  CTX_MAX_TOKENS(1,048,565) / COMPRESS_THRESHOLD(200k, 100-900k 可调)
+  / MAX_RESPONSE_TOKENS(393216) / CHAR_PER_TOKEN(2.7)
+  / COMPACT_MAX_TOKENS(65536) / ARCHIVE_MAX_CHARS(1M)
 
-参数唯一真理源：content-gateway.js
-  CTX_MAX_TOKENS(1,048,565) / COMPRESS_THRESHOLD(200k, 用户设置面板 100-900k 可调) / MAX_RESPONSE_TOKENS(393216) / CHAR_PER_TOKEN(2.7)
-  + COMPACT_MAX_TOKENS(65536, 单专家统一 max_tokens) / ARCHIVE_MAX_CHARS(1M) / COMPACT_DEBUG
-  换模型只改这一处。消费方全部引用，不硬编码。
+第一层 — 上下文压缩引擎（主防线，2026-06-27 单专家统一重构）:
+  每 house 前检查 _lastApiTotalTokens > 阈值→阻塞压缩。每层楼最多压一次。
+  单专家统一压缩（tier 6, thinking=enabled, 64K max_tokens）:
+    ★ Narrative-First: 先写 narrative（8K-48K chars）→ 再提取 facts → 最后 floors 摘要
+    ★ 冷文本全量送入（不采样）: 模型 1M 窗口装得下 ~900K tokens 冷文本
+  全成功→splice conversation + _shiftConversationIndices 统一平移索引。败→原子回滚
+  Facts 后处理: 同 type + 关键词重叠 >50% → 合并
+  KEEP_TARGET = min(beforeTokens, budget) × 0.1，最少保留 6 层楼
+  压缩失败→指数退避无限重试（2s→4s→...→60s），永不静默丢弃
+  手动触发: 左下角按钮，≥50k 即可，压缩期间发送按钮⏳+disabled
 
-第一层 — 上下文压缩引擎（主防线，2026-06-27 重构）：
-  · 每间 house 前检查 _lastApiTotalTokens > 用户设置的阈值 → 阻塞压缩。每层楼最多压一次。
-  · 单专家统一压缩（tier 6, thinking=enabled, 64K max_tokens）：合并 facts+narrative+archive 一次调用。
-    ★ Narrative-First：先写 narrative（8K-48K chars 主记录），再从 narrative 提取 facts（索引）→ 最后写 floors 摘要。
-    ★ 冷文本全量送入（不采样）：模型 1M 窗口装得下最大 ~900K tokens 的冷文本，不存在覆盖不足问题。
-    ★ System message: "be thorough, not brief. Incomplete preservation is worse than verbosity."
-  · 经 AiGateway 统一出口（chatFetch compact 路径），token 走 key pool，无超时限制。
-  · 全成功→splice conversation + _shiftConversationIndices 统一平移所有索引。
-  · 任一败→快照回滚（facts/narrative/archives 全原子恢复）。
-  · Facts 后处理：同 type + 关键词重叠 >50% → 合并为一条。
-  · KEEP_TARGET = min(beforeTokens, budget) × 0.1，最少保留 6 层楼（当前层+前 5 层）。
-  · 对话压缩失败 → 指数退避无限重试（2s→4s→8s→...→60s），永不静默丢弃。
-  · 手动/自动共用 _renderCompressStart/_renderCompressResult（唯一真理渲染机器）。
-  · 手动触发：左下角按钮，≥50k 即可，压缩期间发送按钮⏳+disabled。
+第二层 — 孤儿tool_calls自愈: _saveAgentQuestData 修复后按 floor 标签重建所有楼层
+第三层 — Go HTTP/1.1 隔离: dsTransport ForceAttemptHTTP2:false，nginx client_max_body_size 6200m
 
-第二层 — 孤儿tool_calls自愈（持久化根治）：
-  · _saveAgentQuestData 修复后按_floor标签重建所有楼层，逐层saveFloor写回sq3。
-  · 三条防线: ①请求前(agent-gateway.js _callGateway) ②保存前(_saveAgentQuestData) ③自动保存前(auto-save)。
+上下文拆解面板（hover 弹出，2026-06-22 v3）:
+  只展示可验证精确数据。单位 tokens（chars/3 估算 ≈）。
+  System Block / User×N / Tool Results×N / Compressed Summary
+  / Completion（API 精确 accumulatedCompletionTokens）/ Available
+  每间 house 后自动刷新。不再展示 Tool Definitions（固定 ~3.2k tokens）
 
-第三层 — Go 服务端 HTTP/1.1 隔离：
-  · dsTransport 独立Transport，ForceAttemptHTTP2:false，每请求独立TCP。
-  · 序列化后用 len(bodyBytes)/3 估算兜底帽(≥1024)。
-  · 独立 dsTransport(ForceAttemptHTTP2:false) → 每请求独立 TCP，防 RST 级联
-  · nginx client_max_body_size 6200m (8444 端口)
-
-显示：左下角按钮优先用 _lastApiTotalTokens（API 精确值），fallback 到本地 chars/3 估算
-
-上下文占用拆解面板（hover 弹出，2026-06-22 v3）:
-  原则：只展示可验证的精确数据。单位统一为 tokens（chars/3 估算标记 ≈）。
-  顶部标题行：Context Usage: {used}k / {total}k ({pct}%) — used=API total_tokens
-  分类行（全英文，零 i18n）:
-    · Permanent System Block — msg[0] 的 6 子组件（Vision/Time/System Prompt/Global Rules/Project Rules/Reminder）的 chars/3
-    · User × N = XXk — 非 persistent 的 role=user 消息 chars/3
-    · Tool Results × N = XXk — role=tool 消息 chars/3（工具调用返回结果）
-    · Compressed Summary — ctx.narrative + ctx.facts 的 chars/3
-    · Completion (all AI output) — API 精确 accumulatedCompletionTokens（跨所有 house 累计）
-    · Available — CTX_MAX_TOKENS − actualTotalUsed（精确）
-  数据源优先级：API total_tokens > API prompt_tokens > 本地 chars/3
-  每间 house 后自动刷新（updateCtxBtn → renderCtxBreakdown），不依赖 mouseenter
-  _accumulatedCompletionTokens: agent 新增字段，每间 house 累加 completion_tokens（跨楼层）
-  不再展示 Tool Definitions（固定 ~3.2k tokens，无需用户关注）
 
 all.json 写入系统（2026-06-29 共享 agentPool 重构）
 ---------------------------------------------
-· ★ 根治性重构：agentPool 从各面板局部变量上移至 parent.__qqq_agentPool（父窗口唯一真理源）
+· ★ agentPool 上移至 parent.__qqq_agentPool（父窗口唯一真理源）
   → 一个 quest 一个 agent，跨面板读同一对象，零多副本竞态
-  → 所有 P0-P9 跨面板守卫已删除（不再需要）
-· 单写者：仅主面板(panelId=1)执行 auto-save，左/右面板不写盘
-  → _ensureAutoSave 入口加 if(_panelId!==1)return 守卫
+· 单写者: 仅主面板(panelId=1)执行 auto-save，左/右面板不写盘
 · beforeunload: 三面板均执行 _saveAllBeforeUnload(force=true)，同一 parent pool 幂等写入
-· 跨面板：任一面板 _getOrCreateAgent(id) → 同一个 agent 对象（包括 conversation/_houses/_a4Snapshots）
+· 跨面板: 任一面板 _getOrCreateAgent(id) → 同一个 agent 对象
   → 建楼面板写 ag._houses → 自动对另两个面板可见 → 切换 quest 不再死卡片
 
-AI 面板 UI 增强
---------------
-- 编辑器字体大小: 菜单行1, +/- 按钮之间, 等宽字体显示当前字号(如13), 纯展示非交互
-  窗口 UI 永远锁死 1.00。+/- 和 Ctrl+=/Ctrl+-/Ctrl+0 只改 X 区 editor 和
-  Timeline Diff 弹窗 editor 的文字大小（8-48）。
-  持久化: shell.js 存 qgs.simple('qqqide') 的 editorFontSize.{root} key → 每项目独立记忆。
-  主进程广播 qqqide:zoom:changed（值域 [8-48]），editor.js + diff-window.js 实时 updateOptions。
-- q按钮区: 83%原始尺寸, tier-btn 25x25px/10px, sel 12px bold, 上下文血条 53px min-width
-- 编辑框永不禁用: streaming 期间 contentEditable 不变, 用户可边看流式回复边写下一封
-- 引导 streaming 中可用: 立即 abort+确认回合，AI 即时回复确认
-- 排队 streaming 中可用: 随时添加到队列，AI 回复完自动发送
-- 上下文血条: ctx-btn, 固定底板渐变绿(#7d967d)->红(#c28888), --ctx-pct CSS变量控制填充截断, 只显示token数(234k), 右侧未填充叠25%黑遮罩, hover减淡
-- 无进展终止: agent-loop 内置 stall 计数器（见下方"无进展终止"节）
 
-Write-Aware 约束系统 — T1/T2/T3 三层阶梯 + 写入感知（2026-06-17 终极重构）
+流式渲染 — 一次渲染 终身不变
+-----------------------------------------------------------------------
+铁律: 封顶不重建 DOM。流式阶段 appendChild 的节点即为最终节点，永不 innerHTML 替换。
+  · onDone 仅做: 去 stream-para 类 + 移除空 _lastParaEl。零 DOM 重建。
+  · 引导 Ack XML 清洗: 第一个 < 字符处截断（零漏过可能）。
+
+增量解析器（代码围栏感知）:
+  拆分前扫描 ^``` 行首标记奇偶性。奇数→围栏未闭合→禁止拆分，回退 _buf 等待闭合。
+  拆分边界: \n\n = Markdown 段落边界，围栏是唯一例外。
+  _splitCursor 只扫描上次位置后新增内容 + insertBefore(_lastParaEl) → 永远 1234 正序。
+  _doStreamRender + onDone 非围栏路径用 _buf.slice(_splitCursor) 只取尾部未完成段
+  （围栏路径 _buf 已在 onToken 重写为纯围栏内容，仍用全量 _buf）。
+
+双层流看门狗（agent-loop _parseSSE）:
+  · 流看门狗 60s: 无 SSE 数据→abort。产出看门狗 15min: 无 delta.content 或 tool_calls→abort
+  · SSE error 提到 while 外层 throw。usage-only→返回 null→触发正常错误路径
+
+文本工具调用回生:
+  EnvelopeStripper.finalize() 统一解析 XML invoke/自闭合 tag/ReAct 三种格式 → textToolCalls[] → _parseSSE 优先执行
+
+
+Write-Aware 约束系统 — T1/T2/T3 三层阶梯 + 写入感知
 ----------------------------------------------------------------------------
-核心原则：一切约束感知写入操作。对文件 X 的写入使关于 X 的所有旧状态作废。
-不改写架构形状，只补上缺失的「写入感知」——同一套代码适用一万年。
+核心原则: 一切约束感知写入操作。对文件 X 的写入使关于 X 的所有旧状态作废。
 
-三层阶梯分流（agent-loop.js _checkStall, ~100 行）：
-  预判: 本轮工具结果全部 dead（[ALREADY READ]/空/Error/No matches）→跳过 T1，交 T3
-  T1 工具循环: 同工具+同参数连续 3 间 house → 触发；8 次连续 → 终止楼层
-    结果增量检测: 同参数不同结果（相似度 < 70%）→ 有进展 → 重置计数，不进 T1
-    跨非 T1 楼层断链: 中间有进展（不同工具）→ _lastT1Fingerprint 清零，不跨楼累积
-  T2 搜索停滞: 连续 5/10/15 次纯搜索有结果但不读 → L1温和→L2引导→L3终极（永不终止）
+三层阶梯分流（agent-loop.js _checkStall, ~100 行）:
+  预判: 本轮工具结果全部 dead → 跳过 T1，交 T3
+  T1 工具循环: 同工具+同参数连续 3 间 house → 触发；8 次→终止楼层
+    结果增量检测: 同参数不同结果（相似度 < 70%）→ 有进展→重置
+  T2 搜索停滞: 连续 5/10/15 次纯搜索有结果但不读→L1温和→L2引导→L3终极（永不终止）
   T3 真正空转: 全部 dead 累积 5 次→警告, 8 次→强制。有进展立即归零
 
-Read 约束（tools-exec.js executeReadFile, ~90 行）：
-  全文读→全覆盖标记；分段读→区间合并去重。同范围再读阻 2 次后放行（上下文丢失）。
-  硬封顶: 同文件 20 次/楼层。每层楼复位。
-  写入感知: edit_file/create_file/delete_file/write_file 成功后，自动重置该文件追踪。
-  搜索缓存写入感知: READ 工具（search_text/search_content/find_files）结果缓存，
-    写入后自动清除含该路径的缓存 key，防旧结果误导 AI。
+Read 约束: 全文读→全覆盖标记；分段读→区间合并去重。同范围再读阻 2 次后放行。
+  硬封顶: 同文件 20 次/楼层。WRITE 成功后自动重置该文件追踪。
+写入通知: WRITE 成功→删 _qqqReadFilesThisFloor[path] + 遍历 _qqqToolCacheThisFloor 失效含路径 key
 
-写入通知机制（tools-exec.js executeTool, ~17 行）：
-  WRITE 成功 → ① 删 _qqqReadFilesThisFloor[path] ② 遍历 _qqqToolCacheThisFloor 失效含路径 key
-  零侵入：只对 WRITE 类工具生效，run_command 不感知（不确定影响哪些文件）
+502 自动修复 + 降级恢复:
+  · Worker 502/503 → _gwSwitch(true) 瞬间切 Direct → 重试。两条线都死 → 优雅结束楼层
+  · 铁律: 绝不 window.location.reload()。5 分钟后 _gwTryPrimary() 自动回探
 
-502 自动修复 + 降级恢复 (2026-06-11 加固，2026-06-28 fatal 态重构)
-------------------------------------------------------------------------------
-  · Worker 502/503 → _gwSwitch(true) 瞬间切 Direct → 重试。两条线都死 → 优雅结束楼层。
-  · 铁律：绝不 window.location.reload()。网络耗尽只结束当前楼层，DOM 完整保留。
-  · 5 分钟后 _gwTryPrimary() 自动回探 Worker，活了就切回。
-  · 断头楼层看门狗：finally 块检测 onDone/onError 均未触发 → 持久化计时数据 → 提示重发。
-    不再 reload。重启窗口后 A3 时钟/饼图从 clockTiming 恢复，不归零。
 
-致命失败 fatal 态 + "继续任务"恢复 (2026-06-28)
----------------------------------------------
-  · 旧问题：onError → _stopState='idle' 假恢复 → 污染上下文 + 竞态落盘
-  · 新三态: idle | sending | fatal（禁止新楼层，死胡同模式）
-  · 100% 落盘：onError 回调内火线调用 _saveAgentQuestData（不依赖 auto-save 竞态）+ finally 兜底
-  · 唯一出口："继续任务"链接 → 光块动画 → _attemptRecoverySend → 调用 sendMessage 完整管线
-    sendMessage 成功=恢复完成（DOM 自动刷新,fatal 解除）；失败=重新回到 fatal 态
-  · 防抖：20s 冷却（_qqqRecoveryBusy），per-quest 独立计时
-  · 按钮封锁：fatal 态禁用 send/guide/queue（底层 _stopState='fatal' 拦截 + UI 层 disabled）
-· 切 quest/面板：restore 时从 _stopState='fatal' 恢复，UI 自动重建红框+"继续任务"链接
-· 持久化：floorFatal + exitReason 写入 floorPayload → quest.sq3；重启后 _restoreAgentFromStore 自动恢复 fatal 态
-· 恢复消息：气泡"继续"（_system:true），AI 从 conversation[224][225] 获得全部上下文
-· agent 字段：_floorFatal / _isRecovery / _recoveryInProgress / _recoveryStartPerf
-· 恢复中守卫：_recoveryInProgress → _restoreAgentFromStore 跳过（防切换 quest 时覆写）rtPerf
-
-Quest 切换完整性 (2026-06-10 重构，2026-06-21 加固)
-----------------
-  · 切 quest = 纯 display 开关。零 DOM 操作、零 timer 干预。
-  · timer 跑在 agent 上（ag._floorTimerId/ag._floorStartPerf），切 quest 不停 timer。
-  · 后台楼层完结后 generateFloorTxt(ag, questId) 全覆盖写入 all.txt（含 stats + az 行），不再区分前台/后台 agent。
-  · allTxt 状态全部 per-floor：agent._allTxtPath（路径）、aiDiv._allTxtOpenInEditor（编辑器标志）、aiDiv._a1Block（A1 DOM）。
-  · 面板级单例：_allTxtPollTimer / _allTxtBlocked / _sending / streaming。
-    ★ _sending / streaming 必须是 panel-state.js 顶层 var（禁经 _activeAgent defineProperty 重定向），
-    否则切 quest 时 _activeAgent 变更→旧楼层 _sending 栅栏穿透→同面板并发建楼→旧楼层僵尸。
-  · ★ _streaming 持久化顺序：onDone 内 _capturedAgent._streaming = false 必须在 _saveAgentQuestData 之前，否则 all.json 永久记录 _streaming:true。
-  · allTxtPath 精确存入 floor payload，不再事后重建。
-  · 切回时 card 的 DOM 原样保留，无需 resume/重挂/重建。
-  · switchQuest / _unloadQuest 中禁调 stopFloorTimer / completeBuildingFloor。
-  · 时钟持久化: floorPayload.clockTiming，_buildFloorDOM 优先读 fData.clockTiming。
-
-流式渲染 — 一次渲染 终身不变 + 增量解析器（2026-06-11 落地）
------------------------------------------------------------------------
-铁律：封顶不重建 DOM。流式阶段 appendChild 的节点即为最终节点，永不 innerHTML 替换。
-  · onDone 仅做：去 stream-para 类 + 移除空 _lastParaEl。零 DOM 重建。
-  · 引导确认期间：doStreamRender 完全跳过（模型可能输出 XML），
-    仅 agent-loop handler 更新绿条标记。确认结束后清空 _buf/_paras 防污染主回复。
-  · 引导 Ack XML 清洗：第一个 < 字符处截断（零漏过可能）。
-
-增量解析器（代码围栏感知）：
-  · 拆分前扫描 ^``` 行首标记奇偶性。奇数→围栏未闭合→禁止拆分，回退到 _buf 等待闭合。
-  · 围栏内 \n\n 是代码内容，不可拆为段落。闭合后整段推入 _paras。
-  · 流式半成品代码块：_lastParaEl 用 <pre><code> 实时显示（剥离首行围栏标记）。
-  · 拆分边界：\n\n = Markdown 段落边界，围栏是唯一例外，已覆盖。
-
-增量拆分修复（2026-06-23）：
-  · 旧问题：onToken 每轮对 _buf 全量 split → 历史段落重复推入 _paras → 重复渲染。
-    静态段落用 appendChild 追加出现在 _lastParaEl 下方 → 用户看到 4321 倒序跳动。
-  · 修复：_splitCursor 只扫描上次位置后的新增内容 + _doStreamRender 用 insertBefore(_lastParaEl)
-    静态段落始终插入实时打字区上方 → 永远 1234 正序。
-
-_lastParaEl 全量 _buf 致前半重复修复（2026-06-24）：
-  · 旧问题：onToken 完成段 push 到 _paras 后 _buf 不清（保持累加全文），
-    _doStreamRender 用 _rm(_buf) 全量渲染 _lastParaEl → 已完成段落既在独立 div 中又在 _lastParaEl 中→流式时前半重复。
-    onDone flush 同理→完结后 DOM 仍有残影。重启恢复走 _buildConversationFlowHtml 不复现。
-  · 修复：_doStreamRender + onDone 非围栏路径改为 _buf.slice(_splitCursor) 只取尾部未完成段。
-    围栏路径 _buf 已在 onToken 重写为纯围栏内容（splitCursor 跨坐标系失效），仍用全量 _buf。
-
-段缓冲/事件驱动/1fps: 同上。renderMarkdown 列表占位符保护 <ul> 免 <br> <p> 污染。
-
-双层流看门狗（agent-loop _parseSSE）：
-· 流看门狗 60s：无任何 SSE 数据 → abort 死连接。
-· 产出看门狗 15min：无 delta.content 或 tool_calls → AI 思考死循环 → abort。
-    纯 reasoning_content 不重置。
-· SSE error 处理（2026-06-15修）：_sseError提到while外层throw，不再被JSON.parse的catch吞掉。
-· usage-only响应(无type字段)→返回null→触发正常错误路径。
-
-文本工具调用回生引擎（2026-06-13）
---------------------------------
-· 问题：部分模型在 delta.content 中输出工具调用文本（而非原生 delta.tool_calls），旧逻辑剥离丢弃 → 楼层秒完零执行
-· 方案：EnvelopeStripper.finalize() 统一解析三种格式 → 汇入 textToolCalls[] → _parseSSE 优先执行
-· 覆盖格式：· 覆盖格式：XML invoke 块（<invoke name="x"><parameter ...>）、XML 自闭合 tag、ReAct 格式（Action: ...\nAction Input: {...}）转：文本工具调用被回生为可执行 tool_calls，不再丢失
-
-AI 网关 — Worker 纯代理 + Go 权威计费（2026-06-10 设计，06-10 晚强制落地）
+AI 网关 — Worker 纯代理 + Go 权威计费 + US 服务器
 --------------------------------------------------------------------
-线路: Client ──线路: Client ────SSE────▶ Worker(cf edge, 纯透传) ────▶ Go ────▶ 推理引擎  (零计费)              (ban查询+自动failover)   (唯一权威扣款)
+线路: Client ──SSE──▶ Worker(cf edge, 纯透传) ──▶ Go ──▶ 推理引擎
 
-Worker (cf/ai-gateway.js, ~67行):
-  · 禁运查询: fetch CHECK_URL?th=xxx → Go banned 检查，402 直接封
-  · 纯透传: fetch(GO_CHAT_URL) 直连 Go 端口 8444，原样回传 SSE 流
-  · 自动 failover: primary→fallback 域名切换，零感知
-  · 限流废除: 经济账本即唯一限流（ge≤0→禁运），无需并发/速率限制
-  · 铁律: Worker 禁任何计费/模型映射/body 改写。只做 banned 检查+透传。
+Worker: 纯透传 SSE，禁任何计费/模型映射/body 改写
+Go (唯一计费权威): POST /v3/ai/chat (认证+GKLimit+ChargeAITurnWithMeta 单步扣款)
+  /v3/ai/usage /v3/ai/vision /v3/ai/generate-image /v3/search/web (SearXNG Google+Bing 5ge/次)
+  视觉/绘图/搜索: goroutine 后台扣费
 
-Go (唯一计费权威):
-  · POST /v3/ai/chat: 认证 + GKLimit + 直接 ChargeAITurnWithMeta 扣款（单步完成）
-  · GET /v3/ai/check: CF Worker banned 查询（公开端点，无需认证）
-  · GET /v3/ai/usage: 余额查询
-  · POST /v3/ai/vision: 视觉识别 · GET /v3/ai/vision/:id/stream: SSE 结果推送
-  · POST /v3/ai/generate-image: 图像生成 · GET /v3/ai/generate-image/:id/stream: SSE 进度
-  · POST /v3/search/web: 联网搜索 → SearXNG 元搜索 (Google+Bing, 5 ge/次)
-  · 视觉/绘图/搜索: goroutine 后台扣费，独立于聊天计费体系
+US 服务器: nginx 80/443+8444(HTTP/1.1 only) | dgs/server 8080 113MB
+  PostgreSQL 18 5432 ~200MB | Redis 7 6379 23MB | docker searxng 8088 123MB (host网络)
+  ★ searxng 与 Go co-locate，配置: /opt/searxng/ (docker compose)
 
-US 服务器依赖
---------------
-  角色           服务              端口     内存    说明
-  ──────────────────────────────────────────────────────
-  负载均衡        nginx             80/443   ~5MB   SSL 终结 + 反代
-  直达 AI         nginx             8444     -      listen 8444 ssl (HTTP/1.1)
-  应用服务器      dgs/server        8080     113MB  Go 编译二进制
-  数据库          PostgreSQL 18     5432     ~200MB wal+checkpointer+连接池
-  缓存            Redis 7           6379     23MB   会话+限流+缓存
-  网页搜索 ★      docker searxng    8088     123MB  Google+Bing 元搜索 (host网络)
-  搜索容器引擎    containerd+docker -         93MB   searxng 运行时
-  时间同步        systemd-timesyncd -         忽略
 
-  ★ searxng 与 Go co-locate 于 US，nmap 直连 127.0.0.1:8088，零网络延迟。
-    引擎: Google(主力) + Bing(兜底)。DuckDuckGo/Brave/Startpage 均 CAPTCHA 不可用。
-    host 网络模式，docker stats NET I/O=0B 为统计假象（实际走宿主机网栈）。
-    配置: /opt/searxng/ (docker compose)，settings.yml 引擎白名单。
-    含自动 limiter 和每小时 CAPTCHA 引擎临时停用。
-
-计费体系 — project→quest→floor→house→room
-  · Go 为唯一扣款权威，不再有 lodge/flush 双轨计费
-  · 删除: POST /v3/ai/lodge、POST /v3/ai/billing/flush、handlers_ai_lodge.go、LODGE_HMAC_SECRET
-  · 删除: cf/deploy_go.py、cf/go_deploy.py（旧 lodge 一次性部署脚本）
-  · JSON字段: floor_id 不可用 turn_id（命名铁律）
-  · all.json houses[].wgeCost: 存 wge 值（1 ge = 10000 wge），已修正在命名（旧 geCost 误导）
-  · JS 内部: _floorCostWge / _lastBilling.wgeCost / _addToolWgeCost，与字段名一致
-
-饼图 + 时钟
------------
-- 时钟每秒更新: setInterval 1s, fmtTime Xm:Ys 格式
-- 饼图每秒更新: 直接读 agent.- 饼图每秒更新: 直接读 agent._floorTiming (agent-loop 实时累加), 已归因(network橙色/AI绿/tool黄)+未归因(wait灰#888), 零值切片自动跳过不画ming 缓存，四字段全等跳过 drawPie，消灭无效 Canvas 重绘
-- hover tooltip: 2x放大(22px字号, 20px圆点), 4色+时间, 固定黑色半透明底
-
-输出截断体系 — 两层语义（单一真理源）
--------------------------------------
-SAFETY NET 层 (永远不需要改):
-  ghrun spawn.rs:    65536  纯防内存爆炸，非 AI 面限制
-  qz-spawn.ts:        65536  命令输出安全网
-OUTPUT 面 (改 content-gateway.js 一处，消费方全引用):
-  OUTPUT_CAP_DEFAULT   = 200000  AI 视野默认上限（单次工具结果字符数）
-  OUTPUT_CAP_MAX       = 800000  maxOutput 参数上限（AI 可传参突破默认值）
-  OUTPUT_CAP_FETCH     = 8000    网页抓取文本提取
-  OUTPUT_CAP_FETCH_ERR = 500     网页抓取错误信息
-  READ_FILE_CAP_BYTES  = 200000  read_file 单次返回字节上限（~195KB，超则截断+分页提示）
-  READ_FILE_CAP_KB     = 195     system-prompt.js + tools-defs.js 动态读取，AI 自感知
-
-  tools-defs.js 工具描述 + system-prompt.js 系统提示词全动态引用 KB 值，不硬编码。
-  安全网值远高于 AI 面，永不成为短板。
-  OUTPUT_CAP_FETCH 等 tool 描述OUTPUT_CAP_FETCH 等 tool 描述动态引用常量，模型自动感知。timer 跑在 agent 上（ag._floorTimerId/ag._floorStartPerf），每 quest 独立，切 quest 不停 timer。
-· 工作中: startFloorTimer(aiDiv, ag)· 工作中: startFloorTimer(aiDiv, ag) 初始设绿色 (#859900 AI 活跃色) 活跃段切换: AI 活跃→绿 / Tool 活跃→黄 (#e6b800) / Network 活跃→橙 (#cb4b16) 设停止态（亮色#000 / 暗色#fff）
-· 中断/异常: finally 块用 _capturedAgent 属性设停止态，杜绝残留绿色
-· 历史楼层重建: _buildFloorDOM 从 fData.clockTiming 直接恢复，回退 questTimings 数组
-· 饼图: 初始隐藏，数据到后显示；懒重绘（四字段全等跳过）
-
-A4 文件快照 — 每层楼私有文件变更追踪 (2026-06-13 钩子Q+X重构)
+A4 文件快照 — 每层楼私有文件变更追踪
 --------------------------------------
-· 唯一入口: panel-a4.js 钩子 Q（拦截 executeTool） + editor.js 钩子 X
-· 钩子 Q 触发: edit/write/create/delete_file + run_command
-· 钩子 Q 流程: 捕获 before → 执行工具 → 捕获 after → _a4PersistToTimeline(both, trace, diff stats)
-  trace 格式: q{id}/f{num}/h{num}/r{num}（quest/floor/house/room，agent-loop 埋点）
-  ★ floorNum 唯一真理源: ag._currentFloorNum（panel-send.js 创建楼层时分配，panel-floor.js 恢复时从 DB 重建，agent-exec.js 打 trace 时读取）。禁止回退 _ctx.torun_command: ★ 用户可开关（默认关，设置→高级），开启后 → captureChanged 扫描变更 → 噪声过滤(.log/node_modules/__pycache__/VCS/OS垃圾) → 逐文件记录 after（trace 同享）ter（trace 同享）
-· 钩子 X 触发: X区 editor blur (auto-save) / Ctrl+S (manual-save)，60s 冷却
-  流程: 读上一版本内容 → _a4DiffStats 计算 +N -M → timeline.record(content, source, diff stats)
-· 读原始内容: bridge.fs.read（不用 ai.read_file，避免分页头污染）
-· 状态归属: agent._a4Snapshots（§36 体系），内存累积(最早before+最新after)
-· DOM: aiDiv._a4Block（A4 豆腐块，A2 与 A1 之间）
-· UI: 瀑布式文件列表（文件名 + 颜色编码 + +N -M），实时更新
-· 点击: _a4OpenDiff → 读内存 snapEntry.beforeBlobHash/afterBlobHash → openDiffWindow（不补记！钩子 Q 已记全）
-  历史楼层: _a4OpenHistoricalDiff → 读 floor payload 中 blob_hash → openDiffWindow
-· 持久化: 钩子 Q/X 实时写 timeline (SHA256+gzip+SQLite)；floor 完结仅打包内存 blob_hash 入 payload
-· 旧文件系统快照 + _a4IncrementalPersist + gzip 编解码等全部删除
+· 唯一入口: panel-a4.js 钩子 Q（拦截 executeTool）+ editor.js 钩子 X
+· 钩子 Q: 捕获 before → 执行工具 → 捕获 after → _a4PersistToTimeline(both, trace, diff stats)
+  trace 格式: q{id}/f{num}/h{num}/r{num}。★ floorNum 真理源: ag._currentFloorNum
+  run_command: 用户可开关（默认关），开启后→captureChanged→噪声过滤→逐文件记录
+· 钩子 X: editor blur/Ctrl+S，60s 冷却 → timeline.record
+· DOM: aiDiv._a4Block（A4 豆腐块，A2 与 A1 之间），瀑布式文件列表，实时更新
+· 点击→openDiffWindow（钩子 Q 已记全 before+after，不补记）
+· 持久化: 实时写 timeline (SHA256+gzip+SQLite)；floor 完结仅打包 blob_hash 入 payload
 · 容量: 512KB/文件上限，超限只记元数据
 
-Git Goods — 第一方 git 操作
-----------------------------
-· 位置: goods/git/git.js + goods/git/git-ui.html
-· X 区 Git tab: status / diff / stage / unstage / commit / log / branch / stash
-· A 区面板: git 快速状态预览
-· Timeline 已完全迁出至独立 BrowserWindow (server-app/timeline/)
-· git.js 不再监听 A4 消息，不再有 timeline tab，只保留 git tab + panel
-
-
-qh 滚动真理机器 — 接入标准（非独立模块）
+Git Goods + qh 滚动 + 面板 resume
 --------------------------------------
-· 标准文档: do/拓扑/qh滚动真理机器接入标准.md
-· 核心铁律: 滚屏与滑轨必须是兄弟，同挂在一个不滚动父容器下
-· 接入方式: 按文档复制 ~90 行 JS（滑轨+滑块+同步+hover+拖拽+点击跳转）
-· 默认参数: 2px常态/12px展开/距右~10px/亮暗自适应
-· 效果清单: 常态细条 + hover变粗贴边 + 滑轨点击跳转 + 拖拽 + 内容自适应
-· 完整接入者: AI 视口下拉（ai-viewport.js _wrapScrollContainer）+ AI 面板聊天区（panel-quest-ui.js 末尾）
-· qh-scroll.js 已删除，原因: 无法做到对既有 DOM 零侵入的"一行接入"
-
-面板 resume 持久化 — 三面板独立原子 JSON（2026-06-27）
--------------------------------------------------------
-· 存储: `qqq/alphal/panel_re{l|c|r}.json`，三面板物理隔离
-· 写入: `_persistPanelResume(id)` → bridge.fs.write → 主进程 tmp+rename 原子写
-· 读取: `_readPanelResume()` → bridge.fs.read + JSON.parse，initQuests 三级降级
-· 优势: 单写入者（主进程），零 multi-writer 踩踏，断电安全（tmp+rename 原子）
-· 废弃: onlyStore 存 activeQuestId（三面板 sql.js WASM 实例互踩）
+· Git: goods/git/ (X区 tab + A区 panel)，Timeline 已独立 BrowserWindow
+· qh 滚动: 标准文档 do/拓扑/qh滚动真理机器接入标准.md。接入: AI 视口下拉 + AI 面板聊天区
+· 面板 resume: qqq/alphal/panel_re{l|c|r}.json，三面板物理隔离，主进程 tmp+rename 原子写
 
 
 ═══════════════════════════════════════════════════════════
 已知架构漏洞（2026-06-29 审计）
 ═══════════════════════════════════════════════════════════
-以下为架构师视角的系统性风险清单，按严重度排序。
 
-🔴 致命级 — 可能导致数据损坏或服务中断
-──────────────────────────────────────────
+🔴 致命级
+  A1. 卡片断层 — 跨面板不自动刷新 ✅ 已修复(2026-06-29)
+      switchQuest 检测共享 agent._stopState === 'sending' → 强制重载 card
+      （剩余：auto-save 5s 间隔内新 house 不可见）
+  A2. 时钟/饼图跨面板不可见 — timerID 无法跨 iframe 传递
+      根因: startFloorTimer 绑定建楼面板 DOM。缓解: comet 动画
+      根治: 时钟数据写入共享 agent._floorTiming，各面板独立 renderLoop
+  A3. SSE 断线无跨面板自愈 — SSE 连接耦合在建楼面板 iframe 生命周期
+      风险: 建楼面板 crash→SSE 丢失→agent 残留 building 态。缓解: beforeunload 落盘
+  A4. 单点 auto-save — 仅 panelId=1 写盘。主面板 crash→auto-save 停止
+      缓解: beforeunload 全量刷盘。根因: 未实现写者选举
 
-  A1. 卡片断层 — 跨面板不自动刷新 ✅ 零风险修复(2026-06-29)
-     · 修复：switchQuest 切换前检测共享 agent._stopState === 'sending' → 强制重载 card
-       （清空 _contentWrap + 重置 totalFloors=0 → switchTo 触发完整 _loadCardData）
-     · 剩余风险：建楼中新产生的 house（auto-save 5s 间隔内）仍不可见，
-       理想方案为增量 DOM 追加（非零风险，暂不实施）
+🟡 高危级
+  B1. 面板生命周期脆弱 — 三 iframe DOM 事件/timer/observer 无限累积，无健康检查
+  B2. 跨面板仅靠 ownership 互斥，无事务 — sendMessage 前需校验 agent._stopState
+  B3. 面板级变量泄漏 ✅ 已修复(2026-06-29) — sendMessage 加 agent 级 _stopState 真理校验
 
-  A2. 时钟/饼图跨面板不可见
-     · 现状：timer setInterval 跑在建楼面板的原生 iframe 上下文中，
-             timerID 无法跨 iframe 传递，其他面板看不到 live 时钟。
-     · 根因：panel-clock.js 的 startFloorTimer 绑定 agent._activeAiDiv（建楼面板 DOM），
-            另一面板即使拿到 agent 对象，其 _activeAiDiv 也已 rebind 到自身 DOM，
-            但 timer 仍在原面板跑，更新目标仍是原面板 DOM。
-     · 缓解：comet 动画（基于 __qqq_buildingRegistry）提示用户 quest 正在运行。
-     · 根治方向：时钟数据写入共享 agent._floorTiming，各面板独立 renderLoop 轮询绘制。
+🟢 改进级
+  C1. 卡池快照不可变 ✅ 已修复(2026-06-29) — 合并到 A1
+  C2. window.agentPool 隐式依赖 ✅ 已修复(2026-06-29) — 14 处统一显式 parent.__qqq_agentPool
+  C3. tmp/test_replace.txt 残留 ✅ 已删除(2026-06-29)
 
-  A3. SSE 断线无跨面板自愈
-     · 现状：SSE 连接在建楼面板的 agent-loop.js 中建立，断线重试仅在该面板内。
-     · 风险：建楼面板因 OOM/iframe crash 被销毁 → SSE 连接彻底丢失 →
-            agent.__qqq_agentPool 中残留 building 态 → 所有面板无法恢复该 quest。
-     · 缓解：beforeunload 落盘，重启后从 all.json 恢复完整楼层。
-     · 根因：网络 I/O 与 agent executor 耦合在同一 iframe 生命周期。
-
-  A4. 单点 auto-save — 主面板掉线后零持久化
-     · 现状：仅 panelId===1 执行 auto-save。左/右面板不写盘。
-     · 风险：若主面板 iframe 因 OOM/crash 被静默销毁，auto-save 完全停止。
-            用户正在建的 quest 可能丢失数分钟～数十秒进度。
-     · 缓解：beforeunload 所有面板均 save，页面刷新/关闭前强制全量刷盘。
-     · 根因：避免三写一读时采用了极简方案（单写者），未实现写者选举/fallback。
-
-🟡 高危级 — 功能不稳定或体验损害
-──────────────────────────────────────────
-
-  B1. 面板生命周期脆弱
-     · 三个 iframe 依赖父窗口 qqq-ai-viewport 管理显隐（width 切换），
-       iframe 从未被真正销毁，但 DOM 事件/timer/observer 在"隐藏"期间无限累积。
-     · 没有 iframe 健康检查、没有复活机制。
-     · 建议：增加周期性心跳检测（灯号展示 + 自动 reload 死面板）。
-
-  B2. 跨面板同步仅靠 ownership 互斥，无事务
-     · 三面板通过 parent.__qqq_claimQuest / releaseQuest 互斥打开同一 quest。
-     · 但 ownership 与 agent._stopState 无硬关联：
-       面板 B claim → 立即 send → 面板 A 正在建楼的 agent 被共享到 B →
-       面板 B 修改 agent._queue → 面板 A 的排队系统出现意外消费。
-     · 建议：sendMessage 前校验 agent._stopState，拒绝非 idle 态的并发 send。
-
-  B3. 面板级变量泄漏 ✅ 已修复(2026-06-29)
-     · 修复：sendMessage() 在 _sending 面板级守卫之后，新增 agent 级真理校验：
-       if (_activeAgent && _activeAgent._stopState === 'sending') return;
-     · 效果：即使面板 B 的 _sending=false（滞后），共享 agent 的 _stopState='sending' 会阻止并发建楼。
-
-🟢 改进级 — 技术债，暂不致命
-──────────────────────────────────────────
-
-  C1. 卡池快照不可变 ✅ 零风险修复(2026-06-29) — 合并到 A1 修复
-     · 同一修复覆盖 A1+C1：建楼 quest 切回时强制重载 card。
-
-  C2. window.agentPool getter 是隐式依赖 ✅ 已修复(2026-06-29)
-     · 已删除 Object.defineProperty(window, 'agentPool', { get: ... })
-     · 全量 14 处引用统一为显式 parent.__qqq_agentPool，零隐式代理
-
-  C3. tmp/test_replace.txt 残留在工作区 ✅ 已删除(2026-06-29)
 
 ═══════════════════════════════════════════════════════════
-根治路线图（优先级排序）
+根治路线图
 ═══════════════════════════════════════════════════════════
 
-  第一优先（本轮已做 ✅ 2026-06-29）：
-    · C3 ✅ 删除 tmp/test_replace.txt
-    · C2 ✅ grep 全量 agentPool → 全部改为显式 parent.__qqq_agentPool，删 getter
-    · B3 ✅ sendMessage 加 agent._stopState === 'sending' 真理校验
-    · A1+C1 ✅ switchQuest 建楼 quest 强制重载 card（清 DOM + 重置 totalFloors=0）
-
-  第二优先（下个窗口）：
-    · A2 → 各面板独立 renderLoop 绘制时钟/饼图
-    · B2 → sendMessage 前校验 agent._stopState，拒绝非 idle 态并发 send
-
-  第三优先（架构演进）：
-    · A4 → auto-save 写者选举（leader election）
-    · A3 → 网络层与执行层解耦（服务 worker 模式）
-    · B1 → iframe 健康检查 + 自动复活
+  已做 ✅ 2026-06-29: C3/C2/B3/A1+C1
+  下个窗口: A2（各面板独立 renderLoop 绘制时钟/饼图）+ B2（sendMessage 前校验 agent._stopState）
+  架构演进: A4（auto-save 写者选举）+ A3（网络层与执行层解耦）+ B1（iframe 健康检查+自动复活）

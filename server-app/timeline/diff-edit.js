@@ -42,7 +42,7 @@
         }
     }
     async function _exitEditMode() {
-        _editing = false; _e$btnEdit.textContent = _i('timeline.editBtn', '编辑'); $btnEdit.classList.remove('editing');lassList.remove('editing');
+        _editing = false; $btnEdit.textContent = _i('timeline.editBtn', '编辑'); $btnEdit.classList.remove('editing');
         _clearBlockArrows();
         var ddR = document.getElementById('dd-right'); if (ddR) ddR.style.display = '';
         if ($editStatus) $editStatus.classList.remove('visible');

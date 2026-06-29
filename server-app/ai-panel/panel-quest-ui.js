@@ -383,34 +383,28 @@ function estimateTokens() {
 }
 
 // ★ 统一计算：总 token + 拆解，一次遍历，单一缓存（按钮+面板共用）
-// ★★ 架构重构 v3：终极精确分类（2026-06-22）
-//   原则：只展示可验证的精确数据。单位统一为 tokens（chars/3 估算用 ≈ 标记）。
-//   - 按钮、标题行、Available：API total_tokens（唯一真理）
-//   - msg[0] 各组分：精确 chars → ≈tokens
-//   - 对话按 role 分组：精确 chars → ≈tokens
-//   - Completion：API accumulated completion_tokens（精确）
-//   - 不展示 Tool Definitions（固定开销，用户无须关注）
-//   - 全英文，零 i18n 依赖
-//   - CHAR_PER_TOKEN 唯一真理源: content-gateway.js（2.7）
+// ★★ 架构重构 v4：全面精确分类（2026-06-29）
+//   原则：只展示真实背包内容。单位为 tokens（chars/2.5 估算）。
+//   - 本地精确 chars 统计为主（我们自己发的东西自己知道）
+//   - API prompt_tokens 为参考（晚一回合的服务器精确值）
+//   - Completion 是输出，不在背包，移出拆解面板
+//   - assistant.tool_calls JSON 是新发现的最大隐藏格子
+//   - 压缩阈值只用 prompt_tokens（与背包一致）
 function _estimateTokensFull() {
     var _ag = _activeAgent;
     if (!_ag) { _ctxBreakdownData = null; return 0; }
     var conv = _ag.conversation || [];
     var ctx = _ag._ctx || null;
 
-    // ── 1. API 精确值（唯一真理） ──
-    var apiPromptTotal = _ag._lastApiPromptTokens || 0;
-    var apiTotalTokens = _ag._lastApiTotalTokens || 0;
-    var accCompletion = _ag._accumulatedCompletionTokens || 0;
-    // ★ 压缩后 API 值归零时 fallback 到本地估算
-    var actualTotalUsed = (apiTotalTokens > 0) ? apiTotalTokens : (apiPromptTotal > 0 ? apiPromptTotal : 0);
+    // ── 1. API 精确值（参考） ──
+    var apiPrompt = _ag._lastApiPromptTokens || 0;
+    var apiCompletion = _ag._accumulatedCompletionTokens || 0;
 
-    // ── 2. SAFE CPT — 防 ContentGateway 未加载或 CHAR_PER_TOKEN 被异常设为 0 ──
-    var CPT = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN > 0) ? ContentGateway.CHAR_PER_TOKEN : 2.7;
+    // ── 2. CPT — 偏保守（2.5 → 同样字符估算出更多 token，更安全） ──
+    var CPT = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN > 0) ? ContentGateway.CHAR_PER_TOKEN : 2.5;
+    var CTX_MAX = (typeof ContentGateway !== 'undefined' && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
 
-    // ── 3. msg[0] 组分 ★ 优先读全局变量，全空时从 conversation[0] 兜底 ──
-    //   Time Context 不在 msg[0] 中——它嵌在每层用户消息末尾，已计入 userChars
-    //   System Prompt 已移至服务端——客户端不再携带，不在此估算
+    // ── 3. msg[0] 组分（子项为近似拆解，总数以 conv[0].content 为准含分隔符）──
     var visionChars = typeof window.qqqideVisionContext === 'string' ? window.qqqideVisionContext.length : 0;
     var globalRulesChars = typeof window.qqqideRulesContent === 'string' ? window.qqqideRulesContent.length : 0;
     var projectRulesChars = typeof window.qqqideProjectRulesContent === 'string' ? window.qqqideProjectRulesContent.length : 0;
@@ -418,29 +412,43 @@ function _estimateTokensFull() {
     var reminderChars = 0;
     if (panelRoot) {
         panelRoot = panelRoot.replace(/\\/g, '/').replace(/\/$/, '');
-        var reminder = '\n\n════ DEFAULT WORKING DIRECTORY ═══\nMain project: ' + panelRoot + '\nWhen the user does not specify a project, all file operations default to this directory.\n═══════════════════';
+        var reminder = '\n\n═══ DEFAULT WORKING DIRECTORY ═══\nMain project: ' + panelRoot + '\nWhen the user does not specify a project, all file operations default to this directory.\n═══════════════════';
         reminderChars = reminder.length;
     }
-    var msg0TotalChars = visionChars + globalRulesChars + projectRulesChars + reminderChars;
-    // ★ 兜底：全局变量全空时（如刚切 quest），从 conversation[0] 的总 content 长度估计
-    if (msg0TotalChars === 0 && conv.length > 0 && conv[0]._persistent) {
-        msg0TotalChars = (typeof conv[0].content === 'string') ? conv[0].content.length : 0;
-    }
+    // ★ 总数以 conv[0].content 为准（含 join 分隔符 + 真实 reminder 字符串），子项之和为近似值
+    var msg0FromConv = (conv.length > 0 && conv[0]._persistent && typeof conv[0].content === 'string') ? conv[0].content.length : 0;
+    var msg0TotalChars = msg0FromConv > 0 ? msg0FromConv : (visionChars + globalRulesChars + projectRulesChars + reminderChars);
 
-    // ── 4. 对话统计（按 role 分组，精确 chars） ──
+    // ── 4. 对话统计：遍历所有消息，按角色 + 子类别分桶 ──
     var userCount = 0, userChars = 0;
+    var aiCount = 0, aiContentChars = 0, aiToolCallsChars = 0, aiToolCallsCount = 0;
     var toolCount = 0, toolChars = 0;
     var sysCount = 0, sysChars = 0;
+    var errCount = 0, errChars = 0;
     for (var i = 0; i < conv.length; i++) {
         var m = conv[i];
         if (!m || m._persistent) continue;
         var c = typeof m.content === 'string' ? m.content.length : 0;
         if (m.role === 'user') { userCount++; userChars += c; }
+        else if (m.role === 'assistant') {
+            // ★ tool_calls JSON: 序列化后计入（不管是否有 _error，计费事件中也可能有 tool_calls）
+            if (m.tool_calls) {
+                aiToolCallsCount++;
+                try { aiToolCallsChars += JSON.stringify(m.tool_calls).length; } catch (_) { }
+            }
+            // _error 消息不计入 aiContentChars（防重复计数），只进 error 桶
+            if (m._error) {
+                errCount++; errChars += c;
+            } else {
+                aiCount++;
+                aiContentChars += c;
+            }
+        }
         else if (m.role === 'tool') { toolCount++; toolChars += c; }
         else if (m.role === 'system') { sysCount++; sysChars += c; }
     }
 
-    // ── 5. 压缩摘要 ＋ 工具调用声明 ──
+    // ── 5. 压缩摘要 ──
     var narrativeChars = (ctx && ctx.narrative) ? ctx.narrative.length : 0;
     var factsChars = 0;
     if (ctx && ctx.facts && ctx.facts.length > 0) {
@@ -450,52 +458,54 @@ function _estimateTokensFull() {
     }
     var compressedChars = narrativeChars + factsChars;
 
-    // ── 6. 统一换算为 tokens ──
-    var msg0Tok = Math.round(msg0TotalChars / CPT);
-    var userTok = Math.round(userChars / CPT);
-    var toolTok = Math.round(toolChars / CPT);
-    var sysTok = Math.round(sysChars / CPT);
-    var compTok = Math.round(compressedChars / CPT);
-    // ★ actualTotalUsed 兜底：API 无数据时用本地估算
-    if (actualTotalUsed === 0) {
-        actualTotalUsed = msg0Tok + userTok + toolTok + sysTok + compTok + accCompletion;
-    }
+    // ── 6. 换算为 tokens ──
+    function _tok(chars) { return Math.round(chars / CPT); }
+    var msg0Tok = _tok(msg0TotalChars);
+    var userTok = _tok(userChars);
+    var aiTextTok = _tok(aiContentChars);
+    var aiToolCallsTok = _tok(aiToolCallsChars);
+    var toolTok = _tok(toolChars);
+    var sysTok = _tok(sysChars);
+    var errTok = _tok(errChars);
+    var compTok = _tok(compressedChars);
+    var localTotal = msg0Tok + userTok + aiTextTok + aiToolCallsTok + toolTok + sysTok + compTok + errTok;
 
-    console.log('[CTX_BD] apiTotal=' + apiTotalTokens + ' accCompletion=' + accCompletion
-        + ' msg0=' + msg0Tok + ' user=' + userCount + 'x' + userTok + ' tool=' + toolCount + 'x' + toolTok
-        + ' sys=' + sysTok + ' comp=' + compTok + ' CPT=' + CPT + ' used=' + actualTotalUsed);
-
-    // ── 7. Build rows (all tokens, <1k skipped, always/color support) ──
+    // ── 7. Build rows ──
     function _r(label, tok, indent, always, color) {
         return { label: label, tok: tok, indent: indent || 0, always: always || false, color: color || '#2aa198' };
     }
     var rows = [];
-    // msg[0] block — only show sub-components when globals are actually available
+    // msg[0]
     if (msg0TotalChars > 0) {
         rows.push(_r('Permanent System Block', msg0Tok, 0, false, '#268bd2'));
-        if (visionChars > 0) rows.push(_r('  Vision Context', Math.round(visionChars / CPT), 1, false, '#859900'));
-        if (globalRulesChars > 0) rows.push(_r('  Global Rules', Math.round(globalRulesChars / CPT), 1, false, '#6c71c4'));
-        if (projectRulesChars > 0) rows.push(_r('  Project Rules', Math.round(projectRulesChars / CPT), 1, false, '#b58900'));
-        if (reminderChars > 0) rows.push(_r('  Reminder', Math.round(reminderChars / CPT), 1, false, '#cb4b16'));
+        if (visionChars > 0) rows.push(_r('  Vision Context', _tok(visionChars), 1, false, '#859900'));
+        if (globalRulesChars > 0) rows.push(_r('  Global Rules', _tok(globalRulesChars), 1, false, '#6c71c4'));
+        if (projectRulesChars > 0) rows.push(_r('  Project Rules', _tok(projectRulesChars), 1, false, '#b58900'));
+        if (reminderChars > 0) rows.push(_r('  Reminder', _tok(reminderChars), 1, false, '#cb4b16'));
     }
-    // Conversation by role
-    if (userCount > 0) rows.push(_r('User \u00d7 ' + userCount + '  = ' + Math.round(userTok / 1000) + 'k', userTok, 0, false, '#268bd2'));
-    if (toolCount > 0) rows.push(_r('Tool Results \u00d7 ' + toolCount + '  = ' + Math.round(toolTok / 1000) + 'k', toolTok, 0, false, '#dc322f'));
+    // 对话
+    if (userCount > 0) rows.push(_r('User \u00d7 ' + userCount, userTok, 0, false, '#268bd2'));
+    if (aiContentChars > 0) rows.push(_r('AI text \u00d7 ' + aiCount, aiTextTok, 0, false, '#2aa198'));
+    if (aiToolCallsChars > 0) rows.push(_r('AI tool_calls JSON \u00d7 ' + aiToolCallsCount, aiToolCallsTok, 1, false, '#d2991d'));
+    if (toolCount > 0) rows.push(_r('Tool Results \u00d7 ' + toolCount, toolTok, 0, false, '#dc322f'));
     if (sysCount > 0) rows.push(_r('Dynamic System', sysTok, 0, false, '#6c71c4'));
     if (compressedChars > 0) rows.push(_r('Compressed Summary', compTok, 0, false, '#cb4b16'));
-    // Completion = accumulated API exact (always show)
-    rows.push(_r('Completion (all AI output)', accCompletion, 0, true, '#2aa198'));
-    // Available (always show)
-    rows.push(_r('Available', Math.max(0, CTX_MAX_TOKENS - Math.max(actualTotalUsed, accCompletion + msg0Tok)), 0, true, '#859900'));
+    if (errCount > 0) rows.push(_r('Error messages \u00d7 ' + errCount, errTok, 0, false, '#f85149'));
+    // 本地估算总和
+    rows.push(_r('Local estimate total', localTotal, 0, true, '#c9d1d9'));
+    // API prompt_tokens 参考
+    if (apiPrompt > 0) rows.push(_r('API prompt_tokens (ref)', apiPrompt, 0, true, '#3fb950'));
+    // 剩余
+    var _free = Math.max(0, CTX_MAX - localTotal);
+    rows.push(_r('Available', _free, 0, true, '#859900'));
 
     _ctxBreakdownData = {
         rows: rows,
-        apiTotalTokens: actualTotalUsed,
-        accCompletion: accCompletion
+        apiTotalTokens: localTotal,
+        accCompletion: apiCompletion
     };
-    var apiVer = (apiTotalTokens || 0) + '|' + (apiPromptTotal || 0) + '|' + (accCompletion || 0);
-    _estCache = { val: actualTotalUsed, convLen: conv.length, ctxHash: ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '', apiVer: apiVer };
-    return actualTotalUsed;
+    _estCache = { val: localTotal, convLen: conv.length, ctxHash: ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '', apiVer: apiPrompt + '|' + apiCompletion };
+    return localTotal;
 }
 
 function _tkStrStr(n) {
@@ -579,9 +589,8 @@ function updateCtxBtn() {
         return;
     }
     var _ag = _activeAgent;
-    // ★★ 架构重构 v2：单一真理源 = API 精确值（prompt+completion，每间 house 更新）
-    //   不再与本地估算取 max（双轨制已废除）
-    var used = _ag._lastApiTotalTokens > 0 ? _ag._lastApiTotalTokens : (_ag._lastApiPromptTokens > 0 ? _ag._lastApiPromptTokens : estimateTokens());
+    // ★★ 架构重构 v4：本地估算为主（自己发的自己知道），API prompt_tokens 为参考（晚一回合）
+    var used = estimateTokens(); // ← _estimateTokensFull() 返回本地精确统计
     var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
     $ctxBtn.textContent = Math.round(used / 1000) + ' k';
     $ctxBtn.style.setProperty('--ctx-pct', pct + '%');
@@ -729,7 +738,8 @@ document.getElementById('ctx-compress').onclick = async function () {
             cacheHitRate: _bill ? _bill.cacheHitRate : -1,
             usage: _bill ? _bill.usage : null,
             billingSeq: _bill ? _bill.seq : 0,
-            billingRequestId: _bill ? _bill.requestId : ''
+            billingRequestId: _bill ? _bill.requestId : '',
+            tier: _ag._lastTier ? _ag._lastTier.label : ''
         });
         // ★ 更新右下角 ge 显示（压缩后 _floorCostWge 已被 billing 事件填充）
         if (_aiDiv && _aiDiv._clockCost) {
@@ -738,6 +748,7 @@ document.getElementById('ctx-compress').onclick = async function () {
             _aiDiv._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
             _aiDiv._clockCost.textContent = _displayGe + ' ge' + (_ag._floorFree ? ' Free' : '');
             _aiDiv._clockCost.style.display = 'inline';
+            _aiDiv._clockCost._houses = _ag._houses;
         }
 
         // ⑨ 停止计时（aiMs 归因 = 压缩耗时，使饼图绿色而非全黄）

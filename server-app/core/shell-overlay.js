@@ -511,7 +511,7 @@ function bootAiOverlay() {
           c.style.border = '1px solid var(--border-color,#333)';
           if (!c.style.padding) c.style.padding = '4px 8px';
           if (!c.style.textAlign || c.style.textAlign === '') c.style.textAlign = 'left';
-          c.style.whiteSpace = 'nowrap';
+          if (!c.style.whiteSpace || c.style.whiteSpace === '') c.style.whiteSpace = 'nowrap';
         }
         var ths = wrapper.querySelectorAll('th');
         for (var hi = 0; hi < ths.length; hi++) {

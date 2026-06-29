@@ -675,6 +675,7 @@ var CardPool = (function () {
       aiEl._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
       aiEl._clockCost.textContent = _displayGe + ' ge' + (isFree ? ' Free' : '');
       aiEl._clockCost.style.display = 'inline';
+      aiEl._clockCost._houses = fData.houses || [];
       if (isFree) {
         aiEl._clockCost.style.color = '#859900';
       } else {
