@@ -180,9 +180,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-ai a:hover{text-decoration:underline}
 .msg-error{color:var(--red);padding:8px 12px;font-size:12px;background:rgba(220,50,47,0.06);border:1px solid rgba(220,50,47,0.15);border-radius:6px;margin:6px 0;line-height:1.6}
 .msg-err-continue{text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;user-select:none}
-/* ── 致命失败恢复光块：左右横跳动画 ── */
-@keyframes recovery-bounce{0%{transform:translateX(-4px);opacity:0.4}50%{transform:translateX(8px);opacity:1}100%{transform:translateX(-4px);opacity:0.4}}
-.msg-err-recovery-light{display:inline-block;margin-left:8px;font-size:18px;line-height:1;color:#ffd301;animation:recovery-bounce 0.6s ease-in-out infinite;vertical-align:middle;user-select:none;cursor:default}
+/* ── 致命失败恢复光块："继续任务"文字变成光块左右横跳 ── */
+@keyframes recovery-bounce{0%{transform:translateX(-6px);opacity:0.3}50%{transform:translateX(10px);opacity:1}100%{transform:translateX(-6px);opacity:0.3}}
+a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color:#ffffff;animation:recovery-bounce 0.5s ease-in-out infinite;text-decoration:none;cursor:default;user-select:none;margin-left:6px;vertical-align:-1px;pointer-events:none}
 .msg-status{font-size:11px;opacity:.6;padding:2px 0;font-style:italic}
 /* 楼层时钟 + 饼图（嵌在豆腐块内部底部，每个楼层私有） */
 .msg-ai-clock{display:flex;align-items:center;gap:8px;padding:8px 0 0;user-select:none}
@@ -522,9 +522,6 @@ var _orig={};
 })();
 </script>
 <div id="top-bar">
-  <input id="token-input" type="password" placeholder="🔑...">
-  <button id="token-save">💾</button>
-  <span class="label"><span id="cost-label">0</span> ge / <span id="bal-label">--</span> ge</span>
   <button id="rules-edit">RULES</button>
   <button id="search-toggle" title="搜索对话 (Ctrl+F)">🔍</button>
   <button id="quest-rescan" title="刷新 quest 列表">↻</button>

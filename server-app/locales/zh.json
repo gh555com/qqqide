@@ -166,7 +166,7 @@
             "copyImage": "复制图片二进制"
         }
     },
-    "ai": {
+    "login": {"title": "登录","waiting": "等待浏览器登录...","success": "登录成功","timeout": "登录超时，请重试","loggedOut": "已退出登录"},"ai": {
         "title": "AI",
         "send": "发送",
         "stop": "停止",

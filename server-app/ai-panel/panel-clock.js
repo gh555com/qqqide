@@ -141,22 +141,24 @@ function _buildBillingTable(houses) {
     var _i2 = window._i || function (k, f) { return f; };
     // ★ 列序：编号 → 类型 → 工具数 → AI 等级 → 时间消耗 → wge → 缓存命中率 → prompt_tokens → completion_tokens → total_tokens → 查账凭据
     var headers = [
-        _i2('ai.billing.number', '编号'),
+        'House',
         'type',
         _i2('ai.billing.toolCount', '工具数'),
         'AI Lv',
         _i2('ai.billing.time', '时间消耗'),
         _i2('ai.billing.wge', 'wge'),
         _i2('ai.billing.cacheHit', '缓存命中率'),
-        'prompt_<br>tokens',
-        'completion_<br>tokens',
-        'total_<br>tokens',
+        'prompt<br>tokens',
+        'compl<br>tokens',
+        'total<br>tokens',
         _i2('ai.billing.receipt', '查账凭据')
     ];
     // 表头：居中 + 自动换行（overlay 会跳过已设 whiteSpace）
     var html = '<table><thead><tr>';
     for (var i = 0; i < headers.length; i++) {
-        html += '<th style="text-align:center;white-space:normal">' + headers[i] + '</th>';
+        var _thStyle = 'text-align:center;white-space:normal';
+        if (i === 5) _thStyle += ';background:rgba(133,153,0,0.08)';
+        html += '<th style="' + _thStyle + '">' + headers[i] + '</th>';
     }
     html += '</tr></thead><tbody>';
     for (var j = 0; j < houses.length; j++) {
@@ -181,6 +183,8 @@ function _buildBillingTable(houses) {
         var promptTokens = usage ? (usage.prompt_tokens || 0) : 0;
         var completionTokens = usage ? (usage.completion_tokens || 0) : 0;
         var totalTokens = promptTokens + completionTokens;
+        var _cacheStyle = 'text-align:right';
+        if (h.cacheHitRate >= 0 && h.cacheHitRate < 90) _cacheStyle += ';background:rgba(203,75,22,0.10)';
         var receipt = h.billingRequestId || '';
         html += '<tr>'
             + '<td style="text-align:right">' + billingSeq + '</td>'
@@ -188,8 +192,8 @@ function _buildBillingTable(houses) {
             + '<td style="text-align:right">' + toolCount + '</td>'
             + '<td style="text-align:right">' + aiLv + '</td>'
             + '<td style="text-align:right">' + timeStr + '</td>'
-            + '<td style="text-align:right">' + wge + '</td>'
-            + '<td style="text-align:right">' + cacheHit + '</td>'
+            + '<td style="text-align:right;background:rgba(133,153,0,0.08)">' + wge + '</td>'
+            + '<td style="' + _cacheStyle + '">' + cacheHit + '</td>'
             + '<td style="text-align:right">' + promptTokens + '</td>'
             + '<td style="text-align:right">' + completionTokens + '</td>'
             + '<td style="text-align:right">' + totalTokens + '</td>'

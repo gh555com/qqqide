@@ -28,14 +28,14 @@
     // ════════════════════════════════════════════════════
 
     var _URLS = {
-        chatPrimary: 'https://cnk.gh555.com/api/v3/ai/chat',
-        chatFallback: 'https://direct.gh555.com:8444/api/v3/ai/chat',
-        visionPrimary: 'https://cnk.gh555.com/api/v3/ai/vision',
-        visionFallback: 'https://direct.gh555.com:8444/api/v3/ai/vision',
-        imageGenPrimary: 'https://cnk.gh555.com/api/v3/ai/generate-image',
-        imageGenFallback: 'https://direct.gh555.com:8444/api/v3/ai/generate-image',
-        embedPrimary: 'https://cnk.gh555.com/api/v3/ai/embedding',
-        embedFallback: 'https://direct.gh555.com:8444/api/v3/ai/embedding',
+        chatPrimary: 'https://direct-cn.gh555.com/api/v3/ai/chat',
+        chatFallback: 'https://cnk.gh555.com/api/v3/ai/chat',
+        visionPrimary: 'https://direct-cn.gh555.com/api/v3/ai/vision',
+        visionFallback: 'https://cnk.gh555.com/api/v3/ai/vision',
+        imageGenPrimary: 'https://direct-cn.gh555.com/api/v3/ai/generate-image',
+        imageGenFallback: 'https://cnk.gh555.com/api/v3/ai/generate-image',
+        embedPrimary: 'https://direct-cn.gh555.com/api/v3/ai/embedding',
+        embedFallback: 'https://cnk.gh555.com/api/v3/ai/embedding',
         searchPrimary: 'https://direct.gh555.com:8444/api/v3/search/web',
         searchFallback: 'https://cnk.gh555.com/api/v3/search/web',
     };
@@ -55,13 +55,17 @@
         return (tier >= 4) ? 'deep' : 'fast';
     }
 
-    // 取 auth token
+    // 取登录 JWT（跨 IDE 互认，存 ~/.qqq/auth.json）
     function _getToken() {
-        if (typeof getToken === 'function') return getToken();
+        try {
+            if (parent && parent.window && parent.window.qqqLogin && parent.window.qqqLogin.getAuthToken) {
+                return parent.window.qqqLogin.getAuthToken();
+            }
+        } catch (_) { }
         return '';
     }
 
-    // fetch 带超时
+    // fetch 带超时超时
     function _fetchWithTimeout(url, opts, timeoutMs) {
         timeoutMs = timeoutMs || _DEFAULT_TIMEOUT;
         var controller = new AbortController();

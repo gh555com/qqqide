@@ -82,21 +82,57 @@ var Q=INPS[0],RP=INPS[1],SP=INPS[2],IC=INPS[3],EX=INPS[4];
 var bri=window.parent&&window.parent.qqqideBridge;
 if(!bri)setTimeout(function(){bri=window.parent&&window.parent.qqqideBridge;},200);
 
-// ── history dropdown (q2-style: inline absolute, no parent window) ──
+// ── history dropdown (q2-style, only.sq3 via parent.qgs.project) ──
 var _openFid=null,_sel=-1;
-var _hist=[[],[],[],[],[]]; // 5 arrays, JS memory
-var HMAX=15;
+var _hist=[[],[],[],[],[]];
+var HMAX=200;         // store 200, show at most 15
+var SHOWMAX=15;
+var _prjRoot=null,_qdb=null,_dbLoading=false,_dbLoaded=false;
+var _showId=0;        // inc on every _show, blur checks before closing
 
-// load from localStorage (project-scoped by search scope path)
 function _histKey(fid){return 'srch.h'+fid}
-function _ldHist(){
-  for(var i=0;i<5;i++){
-    try{var v=localStorage.getItem(_histKey(i));if(v){_hist[i]=JSON.parse(v);if(!Array.isArray(_hist[i]))_hist[i]=[]}}catch(e){_hist[i]=[]}
+
+function _initDB(){
+  if(_qdb)return true;
+  if(_dbLoading)return false;
+  if(!_prjRoot){
+    try{
+      var vp=window.parent&&window.parent.qqqideViewport;
+      if(vp){var m=vp.getMainProject();if(m&&m.path)_prjRoot=m.path;}
+    }catch(_){}
   }
+  if(!_prjRoot&&SP&&SP.value.trim())_prjRoot=SP.value.trim();
+  if(!_prjRoot)return false;
+  try{
+    _prjRoot=_prjRoot.replace(/\\/g,'/').replace(/\/$/,'');
+    if(!window.parent.qgs||!window.parent.qgs.project)return false;
+    _qdb=window.parent.qgs.project(_prjRoot+'/qqq/alphal/only.sq3','qqq.only',{v:1,form:'doc'});
+    return true;
+  }catch(_){return false}
 }
+
+async function _ldHist(){
+  if(_dbLoaded)return;
+  if(!_initDB())return;
+  _dbLoading=true;
+  for(var i=0;i<5;i++){
+    try{
+      var v=await _qdb.get(_histKey(i));
+      // _decode returns parsed value; handle both array (correct) and string (old double-encoded)
+      if(Array.isArray(v))_hist[i]=v;
+      else if(typeof v==='string'){try{var p=JSON.parse(v);if(Array.isArray(p))_hist[i]=p}catch(_){}}
+    }catch(_){}
+  }
+  _dbLoaded=true;_dbLoading=false;
+}
+
 function _svHist(fid){
-  try{localStorage.setItem(_histKey(fid),JSON.stringify(_hist[fid]))}catch(e){}
+  if(!_qdb){_initDB();if(!_qdb)return}
+  // pass raw array — _encode handles JSON.stringify internally
+  try{_qdb.setNow(_histKey(fid),_hist[fid]).catch(function(){})}catch(_){}
 }
+
+// kick off async load at startup
 _ldHist();
 
 function _add(fid,v){
@@ -105,42 +141,78 @@ function _add(fid,v){
   _hist[fid]=h;_svHist(fid);
 }
 
+// fuzzy match: tokenize query into space-separated parts, all must match
+function _fuzzyMatch(haystack,needle){
+  if(!needle)return true;
+  var parts=needle.toLowerCase().split(/\s+/).filter(Boolean);
+  var low=haystack.toLowerCase();
+  for(var i=0;i<parts.length;i++){if(low.indexOf(parts[i])===-1)return false}
+  return true;
+}
+
 function _show(fid){
-  _close();var dd=DDS[fid],vals=_hist[fid];if(!vals||!vals.length)return;
+  _close();
+  if(!_hist[fid].length&&!_dbLoaded){_ldHist();return}
+  var inp=INPS[fid],qv=(inp.value||'').trim();
+  // filter: if input has text, show matching items; else show all (up to SHOWMAX)
+  var vals=_hist[fid];
+  if(qv){
+    vals=vals.filter(function(x){return _fuzzyMatch(x,qv)});
+  }else{
+    vals=vals.slice(0,SHOWMAX);
+  }
+  if(!vals||!vals.length)return;
+  var dd=DDS[fid];_showId++;
   dd.innerHTML='';_sel=-1;
   for(var i=0;i<vals.length;i++){
     var r=document.createElement('div');r.textContent=vals[i].slice(0,120);
     r.onmousedown=(function(v){return function(e){e.preventDefault();INPS[fid].value=v;_add(fid,v);_close();if(fid===0)dos();else trg()}})(vals[i]);
     dd.appendChild(r);
   }
-  dd.style.display='';_openFid=fid;
+  dd.style.display='block';_openFid=fid;
 }
 function _close(){
   if(_openFid!==null){DDS[_openFid].style.display='none';_openFid=null}
 }
 function _nav(dir){
   if(_openFid===null)return;var dd=DDS[_openFid];_sel+=dir;
-  if(_sel<0)_sel=_hist[_openFid].length-1;if(_sel>=_hist[_openFid].length)_sel=0;
+  if(_sel<0)_sel=dd.childElementCount-1;if(_sel>=dd.childElementCount)_sel=0;
   var rs=dd.querySelectorAll('div');for(var i=0;i<rs.length;i++){rs[i].className=i===_sel?'sel':''}
 }
 function _pick(){
   if(_openFid===null||_sel<0)return;
-  INPS[_openFid].value=_hist[_openFid][_sel];_add(_openFid,_hist[_openFid][_sel]);_close();if(_openFid===0)dos();else trg();
+  var dd=DDS[_openFid],rs=dd.querySelectorAll('div');
+  if(_sel>=rs.length)return;
+  INPS[_openFid].value=rs[_sel].textContent;
+  _add(_openFid,rs[_sel].textContent);_close();if(_openFid===0)dos();else trg();
 }
 
 INPS.forEach(function(inp,fid){
-  inp.addEventListener('focus',function(){if(!inp.value)_show(fid)});
-  inp.addEventListener('blur',function(){setTimeout(function(){
-    if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('.hdd'))return;
-    _close();
-  },150)});
+  var myShowId;
+  inp.addEventListener('focus',function(){
+    // always show on focus — if input has text, filter; if empty, show recent
+    myShowId=++_showId;_show(fid);
+  });
+  inp.addEventListener('blur',function(){
+    var captured=myShowId;
+    setTimeout(function(){
+      if(_showId!==captured)return; // newer show happened, don't close
+      if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('.hdd'))return;
+      _close();
+    },200);
+  });
   inp.addEventListener('keydown',function(e){
-    if(e.key==='ArrowDown'){if(_openFid===null&&!inp.value)_show(fid);e.preventDefault();_nav(1)}
-    else if(e.key==='ArrowUp'){if(_openFid===null&&!inp.value)_show(fid);e.preventDefault();_nav(-1)}
+    if(e.key==='ArrowDown'){e.preventDefault();if(_openFid===null)_show(fid);_nav(1)}
+    else if(e.key==='ArrowUp'){e.preventDefault();if(_openFid===null)_show(fid);_nav(-1)}
     else if(e.key==='Enter'){if(_openFid!==null){e.preventDefault();_pick()}else{if(fid===0)dos();else trg()}}
     else if(e.key==='Escape'){_close()}
   });
-  inp.addEventListener('input',function(){_close()});
+  // on input: refresh filter instead of closing
+  inp.addEventListener('input',function(){
+    if(_openFid===fid){_show(fid);return}
+    // if dropdown is not open but input has text, show filtered results
+    if(inp.value.trim()){_show(fid)}
+  });
 });
 
 // ── search engine ──

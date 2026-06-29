@@ -170,14 +170,6 @@ $messages.addEventListener('scroll', function () {
 
 const $input = document.getElementById('input');
 const $sendBtn = document.getElementById('send-btn');
-const $tokenInput = document.getElementById('token-input');
-const $tokenSave = document.getElementById('token-save');
-const $costLabel = document.getElementById('cost-label');
-const $balLabel = document.getElementById('bal-label');
-var _windowTotalCostGe = 0;       // 窗口生命周期总消耗（切换用户清零）
-var _lastTokenForCost = '';       // 用于检测 token 切换
-var _balanceFetchTimer = null;
-var _balanceCache = null;         // { balance_ge: string, ts: number }
 const $guideBtn = document.getElementById('guide-btn');
 const $queueBtn = document.getElementById('queue-btn');
 const $ctxBtn = document.getElementById('ctx-btn');

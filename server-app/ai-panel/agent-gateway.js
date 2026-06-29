@@ -28,34 +28,6 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
 
     // ★ 号池：从 opts.token 获取初始 key，支持 429 自动切换
     var _currentToken = opts.token || '';
-    var _keyRotated = false;
-    var _triedTokens = {};  // 本轮已尝试过的 token（避免死循环）
-    if (_currentToken) _triedTokens[_currentToken] = true;
-
-    function _rotateKey() {
-        // 备用线不轮转用户 JWT（防无意义重试，key 由服务端 X-Key-Slot 决定）
-        if (GATEWAY_URL === GATEWAY_URL_FALLBACK) return false;
-        // 标记当前 key 被限流
-        if (typeof markToken429 === 'function' && _currentToken) {
-            markToken429(_currentToken);
-        }
-        // 获取下一个可用 key
-        if (typeof getTokenInfo === 'function') {
-            var info = getTokenInfo();
-            if (info.key && info.key !== _currentToken && !_triedTokens[info.key]) {
-                _currentToken = info.key;
-                _triedTokens[_currentToken] = true;
-                _keyRotated = true;
-                if (info.cooldown) {
-                    self._log('  ⚡ key rotated (cooldown ' + info.cooldown + 's remaining)');
-                } else {
-                    self._log('  ⚡ key rotated to next in pool');
-                }
-                return true;
-            }
-        }
-        return false;
-    }
 
     self.abortController = new AbortController();
 

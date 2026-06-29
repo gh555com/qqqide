@@ -23,7 +23,6 @@
 
     function _toggleEdit() { _editing ? _exitEditMode() : _enterEditMode(); }
     async function _enterEditMode() {
-        // ★ 防御：diff 未渲染时，触发渲染后再入编辑
         if (!_diffEditor) { await renderDiff(); }
         if (!_diffEditor) return;
         _editing = true;
