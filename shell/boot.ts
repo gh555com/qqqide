@@ -775,6 +775,12 @@ export async function bootSequence(
     }
     const isLocal = effectiveUrl.startsWith(WEBAPP_PROTOCOL);
 
+    // ── 缓存破坏: 每次启动带上版本号，确保加载最新资源 ──
+    const bootVersion = readLocalWebappVersion(portableRoot) || readLocalShellVersion(portableRoot) || APP_VERSION;
+    const sep = effectiveUrl.includes('?') ? '&' : '?';
+    effectiveUrl = effectiveUrl + sep + '_v=' + encodeURIComponent(bootVersion);
+    bootLog('cache-bust: version=' + bootVersion);
+
     // 1) Show fallback — skip if local (instant boot, no "connecting…" needed)
     if (!isLocal) {
         try {
