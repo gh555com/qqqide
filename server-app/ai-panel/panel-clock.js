@@ -49,12 +49,14 @@ function _saveAgentFloor(ag, questId, force) {
 
 var _AUTOSAVE_INTERVAL = 5000;
 var _autoSaveRunning = false;
-// ★ 面板级持久定时器：启动一次，永不停止，遍历 agentPool 覆盖全部 agent
+// ★ 面板级持久定时器：仅主面板(panelId===1)执行，遍历共享 agentPool
+//   三面板共享 parent.__qqq_agentPool，单一 auto-save 避免三写一读
 function _ensureAutoSave() {
+    if (typeof _panelId !== 'undefined' && _panelId !== 1) return;  // ★ 仅主面板写盘
     if (_autoSaveRunning) return;
     _autoSaveRunning = true;
     _autoSaveTimer = setInterval(function () {
-        var pool = (typeof agentPool !== 'undefined') ? agentPool : null;
+        var pool = parent.__qqq_agentPool;
         if (!pool) return;
         var ids = Object.keys(pool);
         for (var i = 0; i < ids.length; i++) {
@@ -65,7 +67,7 @@ function _ensureAutoSave() {
 
 // ── beforeunload：保存所有在建楼层（防崩溃丢数据）──
 function _saveAllBeforeUnload() {
-    var pool = (typeof agentPool !== 'undefined') ? agentPool : null;
+    var pool = parent.__qqq_agentPool;
     if (!pool) return;
     var ids = Object.keys(pool);
     for (var i = 0; i < ids.length; i++) {
@@ -158,7 +160,7 @@ function _initClockBlock(aiDiv) {
         var parts = [
             { key: 'ai', color: '#859900', label: 'AI' },
             { key: 'network', color: '#cb4b16', label: 'Net' },
-            { key: 'tool', color: '#e6b800', label: 'Tool' }
+            { key: 'other', color: '#e6b800', label: 'Other' }
         ];
         var segs = canvas._segments;
         var map = {};

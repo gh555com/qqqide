@@ -11,7 +11,7 @@ async function switchQuest(id) {
     if (_overlay) _overlay.classList.add('show');
     if ($messages) $messages.classList.add('qqq-switching');
     try {
-        // \u2550\u2550\u2550 \u6240\u6709\u6743\u68c0\u67e5\uff08\u5206\u4e24\u5c42\uff1a\u2460 \u540c\u6b65\u7236\u6ce8\u518c\u8868 \u2461 \u5f02\u6b65 store + broadcast \u515c\u5e95\uff09 \u2550\u2550\u2550
+        // ═══ 所有权检查（同步父注册表） ═══
         var _syncOwnerPanel = _parentGetQuestOwner(id);
         if (_syncOwnerPanel !== undefined && _syncOwnerPanel !== _panelId) {
             _setPanelFocus(false);
@@ -37,16 +37,30 @@ async function switchQuest(id) {
                     await new Promise(function (r) { setTimeout(r, 200); });
                 }
             }
-            if (_activeAgent) {
+            // ★ 仅在建楼中的 agent 才有未保存数据需刷盘；idle agent 的数据已在 onDone 时写入
+            if (_activeAgent && _activeAgent._stopState === 'sending') {
                 await _saveAgentQuestData(questActiveId, _activeAgent, _activeAgent._currentFloorNum);
             }
+            // ★ 释放旧 quest 所有权
             if (!_isDraft(questActiveId)) {
                 _parentReleaseQuest(questActiveId);
                 _broadcast('owner-released', questActiveId);
             }
         }
 
-        // \u2550\u2550\u2550 Card Pool \u5207\u6362\uff08\u7eaf CSS \u663e\u9690\uff0c\u96f6 DOM \u9500\u6bc1\uff09 \u2550\u2550\u2550
+        // ═══ Card Pool 切换（纯 CSS 显隐，零 DOM 销毁） ═══
+        // ★ A1+C1: 共享 agent 正在建楼 → 强制重载 card（避免显示过期快照）
+        var _sharedAg = parent.__qqq_agentPool && parent.__qqq_agentPool[id];
+        if (_sharedAg && _sharedAg._stopState === 'sending') {
+            var _card = cardPool._cards[id];
+            if (_card && _card._contentWrap) {
+                _card._contentWrap.innerHTML = '';
+                _card.floorDOM = {};
+                _card.totalFloors = 0;
+                _card.floors = [];
+                _card._floorMetaMap = {};
+            }
+        }
         await cardPool.switchTo(id);
 
         questActiveId = id;
@@ -241,8 +255,8 @@ function _unloadQuest() {
     }
     questActiveId = _draftId;
     _queueFallback = [];
-    if (unloadId && agentPool[unloadId]) {
-        agentPool[unloadId]._queue = [];
+    if (unloadId && parent.__qqq_agentPool && parent.__qqq_agentPool[unloadId]) {
+        parent.__qqq_agentPool[unloadId]._queue = [];
     }
     if (_queueSaveTimer) { clearTimeout(_queueSaveTimer); _queueSaveTimer = null; }
     renderQueueStrip();
@@ -273,9 +287,9 @@ async function deleteQuest(id) {
     delete questUIStates[id];
     _parentReleaseQuest(id);
     _broadcast('owner-released', id);
-    if (agentPool[id]) {
-        try { agentPool[id].abort(); } catch (_) { }
-        delete agentPool[id];
+    if (parent.__qqq_agentPool && parent.__qqq_agentPool[id]) {
+        try { parent.__qqq_agentPool[id].abort(); } catch (_) { }
+        delete parent.__qqq_agentPool[id];
     }
     cardPool.removeCard(id);
     if (questActiveId === id) {
@@ -653,6 +667,23 @@ document.getElementById('ctx-compress').onclick = async function () {
         _ag._lastFloorTimingRecord = null;
         _ag._floorCostWge = 0;
         _ag._compressFloor = true;
+        // ★ 初始化 agent loop 级别的状态（_callGateway 需要这些）
+        _ag._floorTiming = { startPerf: performance.now(), networkMs: 0, aiMs: 0, otherMs: 0 };
+        _ag._stopCtrl = new AbortController();
+        _ag._stopState = 'sending';
+        _ag._houseIndex = 0;
+        _ag._lastApiPromptTokens = 0;
+        _ag._lastApiTotalTokens = 0;
+        _ag._lastApiCompletionTokens = 0;
+        _ag._accumulatedCompletionTokens = 0;
+        _ag._lastBilling = null;
+        _ag._consecutiveFetchErrors = 0;
+        _ag._sendTerminated = false;
+        _ag._lastGatewayError = 0;
+        _ag._exitReason = '';
+        _ag._lastSseError = '';
+        _ag._lastHttpStatus = 0;
+        _ag._lastFetchError = '';
 
         // ④ 推入用户消息到 conversation
         _ag.conversation.push({ role: 'user', content: '请帮我压缩上下文', _floor: _floorNum });
@@ -674,22 +705,55 @@ document.getElementById('ctx-compress').onclick = async function () {
         if (typeof scrollToBottom === 'function') scrollToBottom(true);
 
         // ⑧ 压缩（渲染卡片在 _aiDiv 内，用户可见）
+        //    通过正常 agent loop 管线（_callCompactAPI → _callGateway）获得 house 计数 + 账单 + 计时归因
         var _reason = 'Manual compress';
         _ag._renderCompressStart(_reason);
+        // ★ 压缩前递增 houseIndex（让压缩成为第 1 间 house）
+        _ag._houseIndex++;
+        var _compressStartMs = performance.now();
         var _result = await _ag._compressContext({ trigger: 'manual', detail: _reason, force: true });
         _ag._renderCompressResult(_result);
 
-        // ⑨ 停止计时
-        var _timing = (typeof stopFloorTimer === 'function') ? stopFloorTimer(null, _ag) : null;
+        // ★ 压缩 house 条目：记录到 _houses 供 house_count / room_count 统计
+        var _bill = _ag._lastBilling; _ag._lastBilling = null;
+        _ag._houses.push({
+            index: _ag._houseIndex,
+            type: 'compress',
+            tools: [],
+            ts: new Date().toISOString(),
+            ms: Math.round(performance.now() - _compressStartMs),
+            reasoning: '',
+            answer: _result.compressed ? _result.detail : '',
+            wgeCost: _bill ? _bill.wgeCost : 0,
+            model: _bill ? _bill.model : '',
+            cacheHitRate: _bill ? _bill.cacheHitRate : -1,
+            usage: _bill ? _bill.usage : null,
+            billingSeq: _bill ? _bill.seq : 0,
+            billingRequestId: _bill ? _bill.requestId : ''
+        });
+        // ★ 更新右下角 ge 显示（压缩后 _floorCostWge 已被 billing 事件填充）
+        if (_aiDiv && _aiDiv._clockCost) {
+            var _rawGe = _ag._floorCostWge / 10000;
+            var _displayGe = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2);
+            _aiDiv._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
+            _aiDiv._clockCost.textContent = _displayGe + ' ge' + (_ag._floorFree ? ' Free' : '');
+            _aiDiv._clockCost.style.display = 'inline';
+        }
+
+        // ⑨ 停止计时（aiMs 归因 = 压缩耗时，使饼图绿色而非全黄）
+        var _elapsed = Math.round(performance.now() - _compressStartMs);
+        var _timing = (typeof stopFloorTimer === 'function')
+            ? stopFloorTimer({ networkMs: 0, aiMs: _elapsed, otherMs: 0 }, _ag)
+            : null;
         if (_timing) {
             _timing.floorIndex = _floorNum;
             _ag._lastFloorTimingRecord = _timing;
         } else {
             _ag._lastFloorTimingRecord = {
                 floorIndex: _floorNum,
-                durationMs: _result.elapsedMs || 0,
+                durationMs: _elapsed,
                 networkMs: 0,
-                aiMs: _result.elapsedMs || 0,
+                aiMs: _elapsed,
                 otherMs: 0,
                 finishedAt: new Date().toISOString()
             };
@@ -722,6 +786,7 @@ document.getElementById('ctx-compress').onclick = async function () {
         updateCtxBtn();
     } finally {
         _ag._compressing = false;
+        _ag._stopState = 'idle';
         window._updateSendBtnForCompress(false);
     }
 };

@@ -143,32 +143,24 @@ function bootAiOverlay() {
     }
   }
 
-  // Copy button
-  var copyBtn = tbBtn('', window._i('shell.overlay.copy', '复制到剪贴板'));
-  copyBtn.setAttribute('data-i18n', 'shell.overlay.copy');
-  copyBtn.textContent = '\uD83D\uDCCB \u590D\u5236';
+  // Copy button — 固定文字，禁止 i18n 覆写和动画（防按钮变宽→焦点窃取→Ctrl+C 失效）
+  var copyBtnLabel = window._i('shell.overlay.copy', '复制到剪贴板');
+  var copyBtn = tbBtn('\uD83D\uDCCB ' + copyBtnLabel, copyBtnLabel);
+  // ★ 不设 data-i18n — i18n updateDom 会覆写 textContent 导致按钮变宽→焦点变化→Ctrl+C 截断
   function doCopy(text) {
-    var ok = false;
-    // Try modern clipboard API first
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function () {
-        copyBtn.textContent = '\u2705 ' + window._i('shell.overlay.copied', '已复制');
-        setTimeout(function () { copyBtn.textContent = '\uD83D\uDCCB ' + window._i('shell.overlay.copy', '复制'); }, 1500);
-      }).catch(function () { fallbackCopy(text); });
+      navigator.clipboard.writeText(text).catch(function () { fallbackCopy(text); });
     } else {
       fallbackCopy(text);
     }
     function fallbackCopy(t) {
-      // execCommand fallback
       var ta = document.createElement('textarea');
       ta.value = t;
       ta.style.cssText = 'position:fixed;left:-9999px';
       document.body.appendChild(ta);
       ta.select();
-      try { document.execCommand('copy'); ok = true; } catch (ex) { }
+      try { document.execCommand('copy'); } catch (_) { }
       document.body.removeChild(ta);
-      copyBtn.textContent = ok ? '\u2705 ' + window._i('shell.overlay.copied', '已复制') : '\u274C ' + window._i('shell.overlay.copyFailed', '失败');
-      setTimeout(function () { copyBtn.textContent = '\uD83D\uDCCB ' + window._i('shell.overlay.copy', '复制'); }, 1500);
     }
   }
   copyBtn.addEventListener('click', function () {
@@ -261,19 +253,18 @@ function bootAiOverlay() {
     if (e.target === overlay) close();
   });
 
+  // ★ 捕获阶段拦截 Ctrl+C — 必须在 key-hook 之前抢到事件（key-hook 也是 capture）
   document.addEventListener('keydown', function (e) {
     if (overlay.style.display === 'none') return;
     if (e.key === 'Escape') { close(); return; }
-    // ★ Ctrl+C / Ctrl+Insert：绕过浏览器焦点路由，直接用剪贴板 API 复制选中文本
     if ((e.key === 'c' || e.key === 'C' || e.key === 'Insert') && (e.ctrlKey || e.metaKey)) {
       var sel = window.getSelection();
       var selText = sel && sel.toString().trim();
       if (selText) {
-        e.preventDefault(); e.stopPropagation();
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
         try {
           if (navigator.clipboard && navigator.clipboard.writeText) {
             navigator.clipboard.writeText(selText).catch(function () {
-              // 静默回退
               var ta = document.createElement('textarea');
               ta.value = selText; ta.style.cssText = 'position:fixed;left:-9999px';
               document.body.appendChild(ta); ta.select();
@@ -284,7 +275,7 @@ function bootAiOverlay() {
         } catch (_) { }
       }
     }
-  });
+  }, true);  // ★ capture phase — 抢先于 key-hook 和 CooldownGuard
 
   // ── 选中高亮全文匹配（CSS Highlight API）──
   overlay.addEventListener('mouseup', function (e) {

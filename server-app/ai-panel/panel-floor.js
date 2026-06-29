@@ -310,10 +310,10 @@ var _switching = false;  // 互斥锁：防止快速双击 tab 导致并发切�
 // ═══ 从 questStore 恢复 agent 全量状态（conversation + metadata） ═══
 async function _restoreAgentFromStore(questId, ag) {
     if (!questId || !ag) return;
-    // ★ 跨面板隔离：agent 正在建楼（stopState='sending'）→ 不覆写内存状态
+    // ★ 跨面板隔离：agent 正在建楼/恢复中 → 不覆写内存状态
     //    agent 持有最新 conversation / _houses / cost / timing，比磁盘数据更权威。
     //    switchQuest 切回时只 rebind _activeAiDiv，不重建 agent 内部状态。
-    if (ag._stopState === 'sending') return;
+    if (ag._stopState === 'sending' || ag._recoveryInProgress) return;
     try {
         var data = await questStore.load(questId);
         var allFloors = await questStore.loadAllFloors(questId);
@@ -397,11 +397,23 @@ async function _restoreAgentFromStore(questId, ag) {
                         }
                         if (_rhData.costWge) ag._floorCostWge = _rhData.costWge;
                         if (_rhData.clockTiming) ag._lastFloorTimingRecord = _rhData.clockTiming;
+                        // ★ 恢复 _lastUserInput（防 switchQuest 重写 all.json 时 question_clean 变空）
+                        if (_rhData.lastUserInput) ag._lastUserInput = _rhData.lastUserInput;
                         // ★ 恢复 _lastAutoSaveLen 防止空 houses 安全网误杀新楼层首存
                         ag._lastAutoSaveLen = (ag.conversation ? ag.conversation.length : 0);
                     }
                     break;
                 }
+            }
+        }
+        // ★ fatal 态持久化恢复：最后一层楼 floorFatal → 死胡同模式
+        if (allFloors && allFloors.length > 0) {
+            var _lastFloor = allFloors[allFloors.length - 1];
+            var _lfData = _lastFloor.data;
+            if (_lfData && _lfData.floorFatal) {
+                ag._stopState = 'fatal';
+                ag._floorFatal = true;
+                ag._exitReason = _lfData.exitReason || '';
             }
         }
         // ★ 崩溃恢复：上次关闭时正在压缩 → 修复可能的半成品状态

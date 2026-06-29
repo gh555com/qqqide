@@ -1,62 +1,44 @@
 // ============================================================================
 // devtools-inject.ts — DevTools Console 悬浮按钮（复制 / 另存为）
-// 架构：直接注入到 DevTools WebContents，读取 DevTools 自身 DOM 获取完整控制台内容
-//       包含已展开对象的全部细节（三角形展开的内容），不再依赖主进程 buffer。
-// 只在 --dev 模式下使用。
+// 数据源: renderer window.top.__qqq_console_lines (深度序列化 + 调用栈)
+// 推送: 每2s → wc.executeJavaScript 读 renderer → base64 → DevTools
+// 另存为: 设 flag → push loop 检测 → Electron dialog.showSaveDialog
 // ============================================================================
 
 import type { WebContents, BrowserWindow } from 'electron';
+import { dialog } from 'electron';
+import * as path from 'path';
+import * as fs from 'fs';
 
-/**
- * @param wc       主渲染进程 WebContents
- * @param _getText 未使用（保留签名兼容）
- * @param _mw      未使用（保留签名兼容）
- */
+let _pushTimer: ReturnType<typeof setInterval> | null = null;
+let _saveLock = false;
+
 export function injectDevToolsConsoleButtons(
   wc: WebContents,
   _getText: () => string,
-  _mw: BrowserWindow,
+  mw: BrowserWindow,
 ): void {
-  _injectJs(wc);
+  _injectJs(wc, mw);
 }
 
-// ── 注入按钮 JS 到 DevTools WebContents ──
-function _injectJs(wc: WebContents): void {
+function _injectJs(wc: WebContents, mw: BrowserWindow): void {
   const tryInject = () => {
     const dwc = (wc as any).devToolsWebContents as WebContents | undefined;
     if (!dwc) return;
     dwc.executeJavaScript(`(function(){
 if(window.__qqq_dt_btns_installed)return;
 window.__qqq_dt_btns_installed=true;
-
-// ── 从 DevTools Console DOM 提取完整控制台文本 ──
-// 使用 .console-view 的 innerText（保留视觉格式，含展开对象细节）
-function _getFullConsoleText() {
-  // 主选择器：DevTools 的 console view 容器
-  var view = document.querySelector('.console-view');
-  if (view) {
-    var t = view.innerText;
-    if (t && t.length > 0) return t;
-  }
-  // 回退：遍历所有 console-message-text 元素（含展开的对象树）
-  var msgs = document.querySelectorAll('[class*="console-message"]');
-  if (msgs.length === 0) return '';
-  var lines = [];
-  for (var i = 0; i < msgs.length; i++) {
-    var txt = msgs[i].innerText;
-    if (txt) lines.push(txt);
-  }
-  return lines.join('\\n');
+function _b64ToUtf8(b64){try{var b=atob(b64),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return new TextDecoder('utf-8').decode(u);}catch(e){return b64;}}
+function _getText(){
+  if(window.__QQQ_CONSOLE_READY&&window.__QQQ_CONSOLE_B64)return _b64ToUtf8(window.__QQQ_CONSOLE_B64);
+  return'';
 }
-
-// ── 生成带时间戳的文件名 ──
-function _makeLogFileName() {
-  var d = new Date();
-  var pad = function(n) { return n < 10 ? '0' + n : String(n); };
-  return 'console_' + d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + '_' + pad(d.getHours()) + '-' + pad(d.getMinutes()) + '-' + pad(d.getSeconds()) + '.log';
+function _toast(m){
+  var el=document.getElementById('qqq-dt-toast');if(!el)return;
+  el.textContent=m;el.style.opacity='1';
+  clearTimeout(_toast._tid);_toast._tid=setTimeout(function(){el.style.opacity='0'},1800);
 }
-
-// ── 样式 ──
+// CSS
 var s=document.createElement('style');
 s.textContent=[
   '#qqq-dt-btns{position:fixed;bottom:8px;right:8px;display:flex;gap:4px;z-index:999999;opacity:0.25;transition:opacity 0.15s}',
@@ -66,77 +48,100 @@ s.textContent=[
   '#qqq-dt-toast{position:fixed;bottom:36px;right:8px;padding:3px 8px;border-radius:3px;background:rgba(0,0,0,0.85);color:#fff;font-size:10px;z-index:999999;pointer-events:none;opacity:0;transition:opacity 0.2s;font-family:system-ui,sans-serif}'
 ].join('\\n');
 document.head.appendChild(s);
-
-var b=document.createElement('div');
-b.id='qqq-dt-btns';
-b.innerHTML='<button id="qqq-dt-copy">\\u{1F4CB} \\u590D\\u5236</button><button id="qqq-dt-save">\\u{1F4BE} \\u53E6\\u5B58\\u4E3A</button>';
-
-var t=document.createElement('div');
-t.id='qqq-dt-toast';
-
-var _tid=0;
-function toast(m){
-  t.textContent=m;t.style.opacity='1';
-  if(_tid)clearTimeout(_tid);
-  _tid=setTimeout(function(){t.style.opacity='0'},1800);
-}
-
-document.body.appendChild(b);
-document.body.appendChild(t);
-
-// ── 复制按钮：读取 DevTools 控制台完整 DOM → 写入剪贴板 ──
+var b=document.createElement('div');b.id='qqq-dt-btns';
+b.innerHTML='<button id="qqq-dt-copy">\\u{1F4CB}\\u590D\\u5236</button><button id="qqq-dt-save">\\u{1F4BE}\\u53E6\\u5B58\\u4E3A</button>';
+var e=document.createElement('div');e.id='qqq-dt-toast';document.body.appendChild(b);document.body.appendChild(e);
+// 复制按钮
 document.getElementById('qqq-dt-copy').onclick=function(){
-  var text = _getFullConsoleText();
-  if (!text) { toast('\\u65E0\\u5185\\u5BB9'); return; }
-  var ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.cssText = 'position:fixed;left:-9999px;top:0';
-  document.body.appendChild(ta);
-  ta.select();
-  try {
-    document.execCommand('copy');
-    var lines = text.split('\\n').length;
-    toast('\\u5DF2\\u590D\\u5236 ' + lines + ' \\u884C');
-  } catch(e) {
-    toast('\\u590D\\u5236\\u5931\\u8D25');
-  }
+  var t=_getText();if(!t){_toast('\\u65E0\\u5185\\u5BB9');return;}
+  var ta=document.createElement('textarea');ta.value=t;ta.style.cssText='position:fixed;left:-9999px;top:0';
+  document.body.appendChild(ta);ta.select();
+  try{document.execCommand('copy');_toast('\\u5DF2\\u590D\\u5236 '+t.split('\\n').length+'\\u884C');}catch(ex){_toast('\\u5931\\u8D25');}
   document.body.removeChild(ta);
 };
-
-// ── 另存为按钮：读取完整 DOM → Blob 下载 ──
+// 另存为按钮 → 设flag，主进程接管
 document.getElementById('qqq-dt-save').onclick=function(){
-  var text = _getFullConsoleText();
-  if (!text) { toast('\\u65E0\\u5185\\u5BB9'); return; }
-  try {
-    var blob = new Blob([text], {type: 'text/plain;charset=utf-8'});
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = _makeLogFileName();
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 500);
-    toast('\\u5DF2\\u4FDD\\u5B58');
-  } catch(e) {
-    toast('\\u4FDD\\u5B58\\u5931\\u8D25');
-  }
+  window.__QQQ_CONSOLE_REQUEST_SAVE=true;_toast('\\u6B63\\u5728\\u4FDD\\u5B58...');
 };
-})();`).catch(() => { /* DevTools not ready */ });
+})();`).then(() => { _startPushLoop(wc, dwc, mw); })
+      .catch(() => {});
   };
+  if ((wc as any).devToolsWebContents) { tryInject(); return; }
+  let n = 0;
+  const t = setInterval(() => { n++; if ((wc as any).devToolsWebContents) { clearInterval(t); tryInject(); } else if (n >= 30) clearInterval(t); }, 500);
+}
 
-  if ((wc as any).devToolsWebContents) {
-    tryInject();
-    return;
-  }
-  let attempts = 0;
-  const pollTimer = setInterval(() => {
-    attempts++;
-    if ((wc as any).devToolsWebContents) {
-      clearInterval(pollTimer);
-      tryInject();
-    } else if (attempts >= 30) {
-      clearInterval(pollTimer);
+// ── 统一读取 renderer __qqq_console_lines ──
+async function _readConsole(wc: WebContents): Promise<string> {
+  try {
+    return await wc.executeJavaScript(
+      '((window.top||window).__qqq_console_lines||[]).join("\\n")'
+    ) || '';
+  } catch { return ''; }
+}
+
+function _startPushLoop(wc: WebContents, dwc: WebContents, mw: BrowserWindow): void {
+  if (_pushTimer) clearInterval(_pushTimer);
+  _pushTimer = setInterval(async () => {
+    if (dwc.isDestroyed() || wc.isDestroyed()) {
+      if (_pushTimer) { clearInterval(_pushTimer); _pushTimer = null; }
+      return;
     }
-  }, 500);
+
+    // ① 另存为
+    try {
+      const ws = await dwc.executeJavaScript('!!window.__QQQ_CONSOLE_REQUEST_SAVE');
+      if (ws && !_saveLock) {
+        _saveLock = true;
+        dwc.executeJavaScript('window.__QQQ_CONSOLE_REQUEST_SAVE=false').catch(() => {});
+        try {
+          const text = await _readConsole(wc);
+          if (!text) {
+            await dwc.executeJavaScript(
+              "var el=document.getElementById('qqq-dt-toast');if(el){el.textContent='\\u65E0\\u5185\\u5BB9';el.style.opacity='1';setTimeout(function(){el.style.opacity='0'},1800)}"
+            ).catch(() => {});
+            return;
+          }
+          // 读项目根目录
+          let pr = '';
+          try { pr = await wc.executeJavaScript('(window._workspaceRoot||"")'); } catch {}
+          const now = new Date();
+          const pf = (n: number) => (n < 10 ? '0' : '') + n;
+          const ts = `${now.getFullYear()}-${pf(now.getMonth()+1)}-${pf(now.getDate())}_${pf(now.getHours())}-${pf(now.getMinutes())}-${pf(now.getSeconds())}`;
+          const defPath = pr ? path.join(pr, 'logs', `console_${ts}.log`) : `console_${ts}.log`;
+          const result = await dialog.showSaveDialog(mw, {
+            title: '保存控制台日志',
+            defaultPath: defPath,
+            filters: [{ name: '日志文件', extensions: ['log'] }]
+          });
+          if (!result.canceled && result.filePath) {
+            fs.mkdirSync(path.dirname(result.filePath), { recursive: true });
+            fs.writeFileSync(result.filePath, text, 'utf-8');
+            await dwc.executeJavaScript(
+              "var el=document.getElementById('qqq-dt-toast');if(el){el.textContent='\\u5DF2\\u4FDD\\u5B58';el.style.opacity='1';setTimeout(function(){el.style.opacity='0'},1800)}"
+            ).catch(() => {});
+          }
+        } catch {
+          await dwc.executeJavaScript(
+            "var el=document.getElementById('qqq-dt-toast');if(el){el.textContent='\\u5931\\u8D25';el.style.opacity='1';setTimeout(function(){el.style.opacity='0'},1800)}"
+          ).catch(() => {});
+        }
+        _saveLock = false;
+      }
+    } catch {}
+
+    // ② 推送 base64 到 DevTools
+    try {
+      let text = await _readConsole(wc);
+      if (!text) text = '';
+      if (text.length > 2 * 1024 * 1024) {
+        text = '...(truncated ' + ((text.length - 2*1024*1024) / 1024).toFixed(0) + ' KB from start)\\n' + text.slice(-2*1024*1024);
+      }
+      const b64 = Buffer.from(text, 'utf-8').toString('base64');
+      if (b64.length < 50 * 1024 * 1024) {
+        dwc.executeJavaScript('window.__QQQ_CONSOLE_B64="'+b64+'";window.__QQQ_CONSOLE_READY=true').catch(() => {});
+      }
+    } catch {}
+  }, 2000);
+  if (_pushTimer && typeof _pushTimer === 'object' && 'unref' in _pushTimer) (_pushTimer as any).unref();
 }

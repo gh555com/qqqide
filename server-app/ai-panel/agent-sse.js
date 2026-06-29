@@ -75,7 +75,7 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
                 self._billingSeq++;
                 self._lastBilling = {
                     seq: self._billingSeq,
-                    geCost: chunk.ge_cost || 0,
+                    wgeCost: chunk.ge_cost || 0,
                     model: chunk.model || '',
                     cacheHitRate: (typeof chunk.cache_hit_rate === 'number') ? chunk.cache_hit_rate : -1,
                     usage: chunk.usage ? {
@@ -138,6 +138,11 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
         if (_sseError) break;  // ★ 跳出 while 循环
     }
 
+    // ★ 捕获 SSE 错误标记（在 _sseError 可能被清空前保存，供后续返回标记用）
+    var _hadSseError = !!_sseError;
+    var _sseErrorCode = _sseError ? (_sseError.code || 0) : 0;
+    var _sseErrorMessage = _sseError ? (_sseError.message || '') : '';
+
     clearTimeout(_streamWatchdog);
 
     // ★ 服务端 SSE 错误 → 向上抛出（不再被 JSON catch 吞掉）
@@ -149,9 +154,9 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
         if (_sseError.code === 400 || _sseError.code === 402 || _sseError.code === 422 || _sseError.code === 502 || _sseError.code === 503) {
             self._lastGatewayError = _sseError.code;
         }
-        // 如果已有部分内容，仍然返回（不丢数据）
+        // 如果已有部分内容，仍然返回（不丢数据），但标记为被截断
         if (stripper.raw && stripper.raw.length > 20) {
-            self._log('  (partial content preserved: ' + stripper.raw.length + ' chars)');
+            self._log('  (partial content preserved: ' + stripper.raw.length + ' chars — will trigger onError after push)');
         } else {
             throw new Error(_errMsg);
         }
@@ -298,13 +303,24 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
                 content += '\n\n⚠️ Response truncated due to token limit. Reply "continue" to get the full content.';
             }
         }
-        return { type: 'message', content: content, reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage, _finishReason: _finishReason };
+        // ★ SSE 服务端错误截断标记：传给 agent-loop 用于判断是否触发 fatal
+        if (_hadSseError) {
+            content += '\n\n⚠️ [Server error ' + (_sseErrorCode || '?') + ': ' + (_sseErrorMessage || 'unknown') + ']';
+        }
+        return { type: 'message', content: content, reasoning_content: reasoningContent || undefined, _streamMs: _streamMs, _usage: _usage, _finishReason: _finishReason, _truncatedByError: _hadSseError, _sseErrorCode: _sseErrorCode };
     }
     // 仅有 usage 无内容 → 上游可能拒绝了请求（上下文超限等）
     if (_usage && _usage.prompt_tokens) {
         var _msg = '⚠ SSE ended with usage only, no content — upstream likely rejected request (prompt_tokens=' + _usage.prompt_tokens + ' total_tokens=' + (_usage.total_tokens || '?') + ' completion_tokens=' + (_usage.completion_tokens || '?') + ')';
         self._log(_msg);
         if (typeof self._writeFileLog === 'function') self._writeFileLog(_msg);
+        // ★ 设 _lastGatewayError=400，触发 agent-loop auto-repair：弹掉最后一组 assistant+tool 减轻上下文后重试
+        self._lastGatewayError = 400;
+        // ★ 用 API 返回的真实 token 数更新计数器，供压缩守护准确判断（不用客户端估算值）
+        self._lastApiPromptTokens = _usage.prompt_tokens;
+        self._lastApiTotalTokens = _usage.total_tokens || (_usage.prompt_tokens + (_usage.completion_tokens || 0));
+        // ★ 立即刷新上下文按钮显示（服务器真理，不等下一次成功调用）
+        if (typeof updateCtxBtn === 'function') updateCtxBtn();
     }
     // ★ 将 SSE 错误传回给 _callGateway，防止 onError 时 _lastGatewayMessage 落空
     if (_sseError) self._sseError = _sseError;

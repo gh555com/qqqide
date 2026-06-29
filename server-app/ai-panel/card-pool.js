@@ -103,11 +103,11 @@ var CardPool = (function () {
     // [silent] evicting card
 
     // abort 该 quest 的 agent（如果还在跑）
-    if (typeof window.agentPool !== 'undefined' && window.agentPool[questId]) {
-      var _evictAgent = window.agentPool[questId];
+    var _evictAgent = parent.__qqq_agentPool && parent.__qqq_agentPool[questId];
+    if (_evictAgent) {
       if (_evictAgent._floorTimerId) { clearInterval(_evictAgent._floorTimerId); _evictAgent._floorTimerId = null; }
       try { _evictAgent.abort(); } catch (_) { }
-      delete window.agentPool[questId];
+      delete parent.__qqq_agentPool[questId];
     }
 
     // 移除 DOM
@@ -544,6 +544,16 @@ var CardPool = (function () {
       var link = e.target.closest('.msg-err-continue');
       if (link) {
         e.preventDefault();
+        // ★ fatal 态恢复：点击"继续任务"触发完整恢复管线
+        var _curAgent = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+        var _curQuestId = (typeof questActiveId !== 'undefined') ? questActiveId : null;
+        if (_curAgent && _curAgent._stopState === 'fatal') {
+          if (!link._qqqRecoveryBusy) {
+            link._qqqRecoveryBusy = true;
+            if (typeof _startRecovery === 'function') _startRecovery(_curQuestId, _curAgent, link);
+          }
+          return;
+        }
         if (typeof $input !== 'undefined' && $input) $input.focus();
         if (typeof scrollToBottom === 'function') scrollToBottom(true);
         return;
@@ -842,10 +852,11 @@ var CardPool = (function () {
   // ═══ 销毁整个 Card Pool（切换 workspace 时用） ═══
   CardPool.prototype.destroy = function () {
     // 1. 中止所有运行中的 agent
-    if (typeof window.agentPool !== 'undefined') {
-      var apIds = Object.keys(window.agentPool);
+    var pool = parent.__qqq_agentPool;
+    if (pool) {
+      var apIds = Object.keys(pool);
       for (var i = 0; i < apIds.length; i++) {
-        var _ag = window.agentPool[apIds[i]];
+        var _ag = pool[apIds[i]];
         if (_ag._floorTimerId) { clearInterval(_ag._floorTimerId); _ag._floorTimerId = null; }
         try { _ag.abort(); } catch (_) { }
       }

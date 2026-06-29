@@ -230,7 +230,7 @@ window.addEventListener('message', function (e) {
 });
 
 // ★ 记账埋点：调试开关（控制台键入 _toggleBillingDebug() 切换）
-//   开启后每层楼完结时打印完整账单明细（geCost + model + token 量 + cache 命中率）
+//   开启后每层楼完结时打印完整账单明细（wgeCost + model + token 量 + cache 命中率）
 //   默认关闭。数据始终存储于 houses[] 中，开关只控制 console.log 噪音
 window._toggleBillingDebug = function () {
     var ag = _activeAgent;

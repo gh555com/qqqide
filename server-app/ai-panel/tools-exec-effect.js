@@ -356,8 +356,8 @@ async function executeGenerateImage(args) {
         }
 
         // ★ 累加显示用计费（Go 已权威记账，此处仅 UI 展示）
-        if (result.ge_cost && typeof _addToolGeCost === 'function') {
-            _addToolGeCost(result.ge_cost);
+        if (result.ge_cost && typeof _addToolWgeCost === 'function') {
+            _addToolWgeCost(result.ge_cost);
         }
 
         // 3. 并行下载图片到本地
@@ -506,8 +506,8 @@ async function executeAnalyzeImage(args) {
         // 缓存命中
         var content = submitResult.description || '';
         if (submitResult.description !== undefined && !submitResult.task_id) {
-            if (submitResult.ge_cost && typeof _addToolGeCost === 'function') {
-                _addToolGeCost(submitResult.ge_cost);
+            if (submitResult.ge_cost && typeof _addToolWgeCost === 'function') {
+                _addToolWgeCost(submitResult.ge_cost);
             }
             if (!content) return 'Image analysis returned empty result';
         } else if (submitResult.task_id) {
@@ -519,8 +519,8 @@ async function executeAnalyzeImage(args) {
             content = pollResult.description;
 
             // ★ 累加显示用计费
-            if (pollResult.ge_cost && typeof _addToolGeCost === 'function') {
-                _addToolGeCost(pollResult.ge_cost);
+            if (pollResult.ge_cost && typeof _addToolWgeCost === 'function') {
+                _addToolWgeCost(pollResult.ge_cost);
             }
         } else {
             return 'Image analysis failed: unexpected response';
@@ -592,8 +592,8 @@ async function executeSearchWeb(args) {
         }
 
         // ★ 累加显示用计费（Go 已权威记账，此处仅 UI 展示）
-        if (data.ge_cost && typeof _addToolGeCost === 'function') {
-            _addToolGeCost(data.ge_cost);
+        if (data.ge_cost && typeof _addToolWgeCost === 'function') {
+            _addToolWgeCost(data.ge_cost);
         }
 
         var results = data.results || [];

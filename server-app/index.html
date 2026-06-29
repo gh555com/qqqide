@@ -4,6 +4,56 @@
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline' data:; script-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline' 'unsafe-eval'; style-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline'; img-src 'self' qqqide-asset: qqqide-webapp: data: blob: file:; font-src 'self' qqqide-asset: qqqide-webapp: data:; connect-src 'self' qqqide-asset: qqqide-webapp: http: https:; worker-src 'self' qqqide-asset: qqqide-webapp: blob:; frame-src 'self' qqqide-asset: qqqide-webapp: http: https: data:">
 <title>qqq</title>
+<!-- ★ console 全量捕获：head第一脚本 → window.top.__qqq_console_lines -->
+<script>
+(function(){
+'use strict';
+var topWin=window.top||window,L=topWin.__qqq_console_lines=topWin.__qqq_console_lines||[],ML=30000;
+function _ser(v,d,s){
+ if(d>10)return'[...]';if(v===null)return'null';if(v===undefined)return'undefined';
+ var t=typeof v;if(t==='string')return v.length>50000?v.slice(0,50000)+'...':v;
+ if(t==='number'||t==='boolean')return String(v);if(t==='bigint')return v.toString()+'n';if(t==='symbol')return v.toString();
+ if(t==='function')return'[fn:'+(v.name||'?')+']';if(!v||typeof v!=='object')return String(v);
+ if(s.has(v))return'[Circular]';s.add(v);
+ try{
+  if(v instanceof Error)return(v.stack||v.message||'').slice(0,50000);
+  if(Array.isArray(v)){var a=v.slice(0,100).map(function(x){return _ser(x,d+1,s)});return'['+a.join(',')+(v.length>100?',...':'')+']';}
+  if(v instanceof Map){var e=[];var i=0;v.forEach(function(v,k){if(++i>50){e.push('...');return;}e.push(_ser(k,d+1,s)+'=>'+_ser(v,d+1,s))});return'Map('+v.size+'){'+e.join(',')+'}';}
+  if(v instanceof Set){var e=[];var i=0;v.forEach(function(x){if(++i>50){e.push('...');return;}e.push(_ser(x,d+1,s))});return'Set('+v.size+'){'+e.join(',')+'}';}
+  var keys=Object.keys(v).slice(0,50);
+  return'{'+keys.map(function(k){return k+':'+_ser(v[k],d+1,s)}).join(',')+(Object.keys(v).length>50?',...':'')+'}';
+ }catch(_){return'[Object]';}
+}
+function _fmt(a){for(var i=0,r=[];i<a.length;i++)r.push(_ser(a[i],0,new WeakSet()));return r.join(' ');}
+function _cln(l){l=l.trim().replace(/^at\s+/,'');
+ // 清理 file:/// 和 http:// URL → 只留文件名
+ l=l.replace(/(?:file:\/\/\/|https?:\/\/[^ )]+?\/)([^ )>:]+)/g,function(_,f){return f.replace(/\\/g,'/').split('/').pop();});
+ var m=l.match(/^(.+)\s+\((.+):(\d+):\d+\)$/);if(m)return m[1]+' @ '+m[2]+':'+m[3];
+ m=l.match(/^(.+):(\d+):\d+$/);if(m)return m[1]+':'+m[2];
+ return l;}
+function _cap(){
+ try{var s=new Error().stack;if(!s)return{head:'?:?',trace:''};var ln=s.split('\n'),hd='',tr='';
+  for(var i=3;i<ln.length;i++){var l=ln[i];if(!l||l.indexOf('(native)')>=0||l.indexOf('index.html')>=0&&l.indexOf('<anonymous>')>=0)continue;
+   var c=_cln(l);if(!c)continue;if(!hd){hd=c;}else{tr+=(tr?'\n':'')+'    '+c;}}
+  return{head:hd||'?:?',trace:tr};}catch(_){return{head:'?:?',trace:''};}
+}
+var _orig={};
+['log','warn','error','info','debug'].forEach(function(m){
+ _orig[m]=console[m];console[m]=function(){
+  var a=Array.prototype.slice.call(arguments);
+  var stk=_cap(),hd=stk.head,txt=_fmt(a);
+  L.push(hd+' '+txt);if(L.length>ML)L.splice(0,L.length-ML);
+  if(m==='warn'||m==='error'){if(stk.trace)L.push(stk.trace);}
+  _orig[m].apply(console,arguments);
+ };
+});
+// 暴露项目根目录给主进程保存对话框
+(function _sr(){
+ try{var r=window._workspaceRoot;if(r){topWin.__qqq_project_root=r;return;}}catch(_){}
+ setTimeout(_sr,1500);
+})();
+})();
+</script>
 <link rel="stylesheet" href="core/shell.css">
 <script src="core/qqqide-theme.js"></script>
 <script src="core/cooldown-guard.js"></script>
@@ -22,34 +72,7 @@
 
 <div id="qqq-brand-banner"><div class="bl1"><span class="bl1-logo"></span><span class="bl1-text"></span></div><div class="bl2"></div></div>
 
-<!-- 控制台捕获：拦截一切 console 输出 → 环形缓冲区（必须在所有脚本之前） -->
-<script>
-(function() {
-  'use strict';
-  var MAX = 5000;
-  var _buf = [];
-  var _orig = {};
-  ['log','warn','error','info','debug'].forEach(function(m) {
-    _orig[m] = console[m];
-    console[m] = function() {
-      var args = Array.prototype.slice.call(arguments);
-      var ts = new Date().toISOString().slice(11,23);
-      var line = ts + ' [' + m.toUpperCase() + ']';
-      for (var i = 0; i < args.length; i++) {
-        try {
-          if (typeof args[i] === 'object') line += ' ' + JSON.stringify(args[i]);
-          else line += ' ' + String(args[i]);
-        } catch(_) { line += ' [unserializable]'; }
-      }
-      _buf.push(line);
-      if (_buf.length > MAX) _buf.shift();
-      _orig[m].apply(console, arguments);
-    };
-  });
-  window.__qqq_console_text = function() { return _buf.join('\n'); };
-  window.__qqq_console_clear = function() { _buf.length = 0; };
-})();
-</script>
+<!-- console 现已由 <head> 中的脚本全量捕获 -->
 
 <div class="qqq-shell">
 

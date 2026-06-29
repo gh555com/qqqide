@@ -792,6 +792,8 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
         ai_html: ai_html,
         house_count: house_count,
         room_count: room_count,
+        floorFatal: !!ag._floorFatal,
+        exitReason: ag._exitReason || '',
         conversation: cleanConv,
         houses: cleanHouses,
         costWge: ag._floorCostWge,
