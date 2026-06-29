@@ -306,14 +306,14 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     // ★ 不在此处 onError / _sendTerminated — 让 agent loop 的 auto-repair 先尝试修复
                     return null;
                 }
-                // ★ 其他 HTTP 错误（401/402/429等）— 终端错误，直接报错
+                // ★ 其他 HTTP 错误（401/402/429等）— 终端错误，统一延迟报错
                 self._lastHttpStatus = resp.status;
                 self._lastGatewayError = resp.status;  // ★ 标记错误码，防 agent-loop 无意义重试
                 self._exitReason = 'http_' + resp.status;
                 clearTimeout(_fetchDeadline);
                 self._sendTerminated = true;  // ★ 标记终止
                 self._lastGatewayMessage = friendly + ' Conversation saved.';
-                onError(friendly);
+                // ★ 不在此处调 onError — 静默返回 null，交给 agent-loop 统一调（防双重报错）
                 return null;
             }
 

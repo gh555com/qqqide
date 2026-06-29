@@ -70,7 +70,7 @@ AI 网关双线路 + 故障切换引擎（2026-06-13 加固，2026-06-26 全路�
 · 双线路架构:
   主线路: https://direct.gh555.com:8444 (直连 HTTP/1.1，87ms，无中间人)
   备用线路: https://gh555.com (CF Worker 透传 → Go → 推理引擎)
-· ★ 全路由覆盖（6 个 AI 端点，2026-06-26）：
+· ★ 全路由覆盖（6 个 AI 端点，2026-06-26）
   chat / vision / vision stream / image-gen / image-gen stream / embedding / search
   所有端点均经 AiGateway._URLS 双 URL 声明 + _postJsonWithFailover/_pollStream 自动切换
 · 声明位置: ai-gateway.js _URLS（唯一真理源，禁 system-prompt.js 重复声明）
@@ -344,7 +344,8 @@ Card Queue — 终极 AI 面板架构（2026-06 重构，2026-06-10 加固）
 · A1 行2 持久化：floorPayload.fileStats 入 SQLite，重启不归零
 · q3 楼层导航已删除（翻页需求由 search_quest.txt 全文检索替代）
 · _makeName UTF-8 截断修复（回退到完整序列起点，零乱码）
-· 所有跨模块引用走 window.*（questStore/agentPool/cardPool/9 个函数）
+· ★ agentPool 已上移父窗口 parent.__qqq_agentPool（2026-06-29）— 三面板共享单一 agent 实例，根治多副本写盘竞态
+· 跨模块引用：questStore↔window.questStore / cardPool↔window.cardPool / agentPool↔parent.__qqq_agentPool
 · 配置常量位于 card-pool.js 头部，改一处全生效
 
 q2 单行 + hover 展开（2026-06 重构）
@@ -669,34 +670,16 @@ AI 上下文窗口防护（三层纵深 + 参数集中化，2026-06-10 落地，
   _accumulatedCompletionTokens: agent 新增字段，每间 house 累加 completion_tokens（跨楼层）
   不再展示 Tool Definitions（固定 ~3.2k tokens，无需用户关注）
 
-all.json 写入系统（2026-06-27 预渲染加固）
+all.json 写入系统（2026-06-29 共享 agentPool 重构）
 ---------------------------------------------
-· ★ 预计算字段（保存时一次性计算，恢复时直接读）：
-  ai_html = _contentWrap.innerHTML（live DOM 优先）|| _buildConversationFlowHtml（回退）
-  question_clean = 剥离 CURRENT TIME + 跳过 _persistent → 用户气泡直接 textContent
-  house_count / room_count → A1 计数直接 DOM
-  clockTiming.otherMs = 总时间 - network - AI（全量重命名自 toolMs）
-· 恢复路径：优先读预计算字段 → innerHTML / textContent 零逻辑；旧数据回退现场渲染。
-· 唯一增量路径: auto-save（面板级持久 timer，_ensureAutoSave 模块加载即启动，永不停止）。
-  _startAutoSave / _stopAutoSave 已彻底删除（面板级单例，不随 quest 切换启停）。
-· beforeunload: _saveAllBeforeUnload → _saveAgentFloor(force=true) 无条件全量刷盘。
-· 数据流: agent._houses(不含 reasoning/tools/toolResults) / _a4Snapshots / _lastFloorTimingRecord ─→ _a4BuildCompleteFloorPayload ─→ all.json
-· 原子写入: bridge.fs.write → ipc-fs.ts _atomicWrite（tmp+rename），进程崩溃零数据损坏。
-· 写后清理: _writeFloorFile 每次写完立即清扫本目录 all.json.tmp.*（_cleanTmpInDir），零累积。
-  兜底: _cleanStaleAllJsonTmp 启动时全量扫描（覆盖进程崩溃残留）。
-· 重启恢复两层防线（2026-06-25）：
-  ① _restoreAgentFromStore 从 allFloors 回填 _houses / _floorCostWge / _lastFloorTimingRecord
-     → 重启后 az 区数据完整恢复
-  ② _saveAgentFloor 安全网：_houses 为空且 _lastAutoSaveLen !== 0 时拒绝写盘
-· 跨面板写保护（2026-06-25）：
-  ③ _saveAgentFloor：ag._stopState !== 'sending' 时拒绝 auto-save（非建楼面板禁止写盘）
-  ④ generateFloorTxt：同守卫（禁止非建楼面板覆写 all.txt）
-  → 三面板独立 agent，只有正在建楼的那个有权写盘。force(=beforeunload) 和
-    floorCompletedCleanly(=刚建完) 例外放行。零跨面板覆写。
-· 跨面板状态隔离（2026-06-25）：
-  _sending 复位加 _activeAgent === _capturedAgent 守卫（后台 agent 不复位前台发送管道）
-  _qqqCurrentTrace questId 改走 ag._questId（per-agent，非全局 questActiveId）
-· 旧 A4 增量刷盘系统（2026-06-23 已删除）：_a4MarkIncrementalDirty→_a4FlushCompleteFloor ~100行
+· ★ 根治性重构：agentPool 从各面板局部变量上移至 parent.__qqq_agentPool（父窗口唯一真理源）
+  → 一个 quest 一个 agent，跨面板读同一对象，零多副本竞态
+  → 所有 P0-P9 跨面板守卫已删除（不再需要）
+· 单写者：仅主面板(panelId=1)执行 auto-save，左/右面板不写盘
+  → _ensureAutoSave 入口加 if(_panelId!==1)return 守卫
+· beforeunload: 三面板均执行 _saveAllBeforeUnload(force=true)，同一 parent pool 幂等写入
+· 跨面板：任一面板 _getOrCreateAgent(id) → 同一个 agent 对象（包括 conversation/_houses/_a4Snapshots）
+  → 建楼面板写 ag._houses → 自动对另两个面板可见 → 切换 quest 不再死卡片
 
 AI 面板 UI 增强
 --------------
@@ -736,13 +719,28 @@ Read 约束（tools-exec.js executeReadFile, ~90 行）：
   WRITE 成功 → ① 删 _qqqReadFilesThisFloor[path] ② 遍历 _qqqToolCacheThisFloor 失效含路径 key
   零侵入：只对 WRITE 类工具生效，run_command 不感知（不确定影响哪些文件）
 
-502 自动修复 + 降级恢复 (2026-06-11 加固)
-----------------------------------------------
+502 自动修复 + 降级恢复 (2026-06-11 加固，2026-06-28 fatal 态重构)
+------------------------------------------------------------------------------
   · Worker 502/503 → _gwSwitch(true) 瞬间切 Direct → 重试。两条线都死 → 优雅结束楼层。
   · 铁律：绝不 window.location.reload()。网络耗尽只结束当前楼层，DOM 完整保留。
   · 5 分钟后 _gwTryPrimary() 自动回探 Worker，活了就切回。
   · 断头楼层看门狗：finally 块检测 onDone/onError 均未触发 → 持久化计时数据 → 提示重发。
     不再 reload。重启窗口后 A3 时钟/饼图从 clockTiming 恢复，不归零。
+
+致命失败 fatal 态 + "继续任务"恢复 (2026-06-28)
+---------------------------------------------
+  · 旧问题：onError → _stopState='idle' 假恢复 → 污染上下文 + 竞态落盘
+  · 新三态: idle | sending | fatal（禁止新楼层，死胡同模式）
+  · 100% 落盘：onError 回调内火线调用 _saveAgentQuestData（不依赖 auto-save 竞态）+ finally 兜底
+  · 唯一出口："继续任务"链接 → 光块动画 → _attemptRecoverySend → 调用 sendMessage 完整管线
+    sendMessage 成功=恢复完成（DOM 自动刷新,fatal 解除）；失败=重新回到 fatal 态
+  · 防抖：20s 冷却（_qqqRecoveryBusy），per-quest 独立计时
+  · 按钮封锁：fatal 态禁用 send/guide/queue（底层 _stopState='fatal' 拦截 + UI 层 disabled）
+· 切 quest/面板：restore 时从 _stopState='fatal' 恢复，UI 自动重建红框+"继续任务"链接
+· 持久化：floorFatal + exitReason 写入 floorPayload → quest.sq3；重启后 _restoreAgentFromStore 自动恢复 fatal 态
+· 恢复消息：气泡"继续"（_system:true），AI 从 conversation[224][225] 获得全部上下文
+· agent 字段：_floorFatal / _isRecovery / _recoveryInProgress / _recoveryStartPerf
+· 恢复中守卫：_recoveryInProgress → _restoreAgentFromStore 跳过（防切换 quest 时覆写）rtPerf
 
 Quest 切换完整性 (2026-06-10 重构，2026-06-21 加固)
 ----------------
@@ -818,13 +816,35 @@ Go (唯一计费权威):
   · GET /v3/ai/usage: 余额查询
   · POST /v3/ai/vision: 视觉识别 · GET /v3/ai/vision/:id/stream: SSE 结果推送
   · POST /v3/ai/generate-image: 图像生成 · GET /v3/ai/generate-image/:id/stream: SSE 进度
-  · 视觉/绘图: goroutine 后台扣费，独立于聊天计费体系
+  · POST /v3/search/web: 联网搜索 → SearXNG 元搜索 (Google+Bing, 5 ge/次)
+  · 视觉/绘图/搜索: goroutine 后台扣费，独立于聊天计费体系
+
+US 服务器依赖
+--------------
+  角色           服务              端口     内存    说明
+  ──────────────────────────────────────────────────────
+  负载均衡        nginx             80/443   ~5MB   SSL 终结 + 反代
+  直达 AI         nginx             8444     -      listen 8444 ssl (HTTP/1.1)
+  应用服务器      dgs/server        8080     113MB  Go 编译二进制
+  数据库          PostgreSQL 18     5432     ~200MB wal+checkpointer+连接池
+  缓存            Redis 7           6379     23MB   会话+限流+缓存
+  网页搜索 ★      docker searxng    8088     123MB  Google+Bing 元搜索 (host网络)
+  搜索容器引擎    containerd+docker -         93MB   searxng 运行时
+  时间同步        systemd-timesyncd -         忽略
+
+  ★ searxng 与 Go co-locate 于 US，nmap 直连 127.0.0.1:8088，零网络延迟。
+    引擎: Google(主力) + Bing(兜底)。DuckDuckGo/Brave/Startpage 均 CAPTCHA 不可用。
+    host 网络模式，docker stats NET I/O=0B 为统计假象（实际走宿主机网栈）。
+    配置: /opt/searxng/ (docker compose)，settings.yml 引擎白名单。
+    含自动 limiter 和每小时 CAPTCHA 引擎临时停用。
 
 计费体系 — project→quest→floor→house→room
   · Go 为唯一扣款权威，不再有 lodge/flush 双轨计费
   · 删除: POST /v3/ai/lodge、POST /v3/ai/billing/flush、handlers_ai_lodge.go、LODGE_HMAC_SECRET
   · 删除: cf/deploy_go.py、cf/go_deploy.py（旧 lodge 一次性部署脚本）
   · JSON字段: floor_id 不可用 turn_id（命名铁律）
+  · all.json houses[].wgeCost: 存 wge 值（1 ge = 10000 wge），已修正在命名（旧 geCost 误导）
+  · JS 内部: _floorCostWge / _lastBilling.wgeCost / _addToolWgeCost，与字段名一致
 
 饼图 + 时钟
 -----------
@@ -898,3 +918,93 @@ qh 滚动真理机器 — 接入标准（非独立模块）
 · 读取: `_readPanelResume()` → bridge.fs.read + JSON.parse，initQuests 三级降级
 · 优势: 单写入者（主进程），零 multi-writer 踩踏，断电安全（tmp+rename 原子）
 · 废弃: onlyStore 存 activeQuestId（三面板 sql.js WASM 实例互踩）
+
+
+═══════════════════════════════════════════════════════════
+已知架构漏洞（2026-06-29 审计）
+═══════════════════════════════════════════════════════════
+以下为架构师视角的系统性风险清单，按严重度排序。
+
+🔴 致命级 — 可能导致数据损坏或服务中断
+──────────────────────────────────────────
+
+  A1. 卡片断层 — 跨面板不自动刷新 ✅ 零风险修复(2026-06-29)
+     · 修复：switchQuest 切换前检测共享 agent._stopState === 'sending' → 强制重载 card
+       （清空 _contentWrap + 重置 totalFloors=0 → switchTo 触发完整 _loadCardData）
+     · 剩余风险：建楼中新产生的 house（auto-save 5s 间隔内）仍不可见，
+       理想方案为增量 DOM 追加（非零风险，暂不实施）
+
+  A2. 时钟/饼图跨面板不可见
+     · 现状：timer setInterval 跑在建楼面板的原生 iframe 上下文中，
+             timerID 无法跨 iframe 传递，其他面板看不到 live 时钟。
+     · 根因：panel-clock.js 的 startFloorTimer 绑定 agent._activeAiDiv（建楼面板 DOM），
+            另一面板即使拿到 agent 对象，其 _activeAiDiv 也已 rebind 到自身 DOM，
+            但 timer 仍在原面板跑，更新目标仍是原面板 DOM。
+     · 缓解：comet 动画（基于 __qqq_buildingRegistry）提示用户 quest 正在运行。
+     · 根治方向：时钟数据写入共享 agent._floorTiming，各面板独立 renderLoop 轮询绘制。
+
+  A3. SSE 断线无跨面板自愈
+     · 现状：SSE 连接在建楼面板的 agent-loop.js 中建立，断线重试仅在该面板内。
+     · 风险：建楼面板因 OOM/iframe crash 被销毁 → SSE 连接彻底丢失 →
+            agent.__qqq_agentPool 中残留 building 态 → 所有面板无法恢复该 quest。
+     · 缓解：beforeunload 落盘，重启后从 all.json 恢复完整楼层。
+     · 根因：网络 I/O 与 agent executor 耦合在同一 iframe 生命周期。
+
+  A4. 单点 auto-save — 主面板掉线后零持久化
+     · 现状：仅 panelId===1 执行 auto-save。左/右面板不写盘。
+     · 风险：若主面板 iframe 因 OOM/crash 被静默销毁，auto-save 完全停止。
+            用户正在建的 quest 可能丢失数分钟～数十秒进度。
+     · 缓解：beforeunload 所有面板均 save，页面刷新/关闭前强制全量刷盘。
+     · 根因：避免三写一读时采用了极简方案（单写者），未实现写者选举/fallback。
+
+🟡 高危级 — 功能不稳定或体验损害
+──────────────────────────────────────────
+
+  B1. 面板生命周期脆弱
+     · 三个 iframe 依赖父窗口 qqq-ai-viewport 管理显隐（width 切换），
+       iframe 从未被真正销毁，但 DOM 事件/timer/observer 在"隐藏"期间无限累积。
+     · 没有 iframe 健康检查、没有复活机制。
+     · 建议：增加周期性心跳检测（灯号展示 + 自动 reload 死面板）。
+
+  B2. 跨面板同步仅靠 ownership 互斥，无事务
+     · 三面板通过 parent.__qqq_claimQuest / releaseQuest 互斥打开同一 quest。
+     · 但 ownership 与 agent._stopState 无硬关联：
+       面板 B claim → 立即 send → 面板 A 正在建楼的 agent 被共享到 B →
+       面板 B 修改 agent._queue → 面板 A 的排队系统出现意外消费。
+     · 建议：sendMessage 前校验 agent._stopState，拒绝非 idle 态的并发 send。
+
+  B3. 面板级变量泄漏 ✅ 已修复(2026-06-29)
+     · 修复：sendMessage() 在 _sending 面板级守卫之后，新增 agent 级真理校验：
+       if (_activeAgent && _activeAgent._stopState === 'sending') return;
+     · 效果：即使面板 B 的 _sending=false（滞后），共享 agent 的 _stopState='sending' 会阻止并发建楼。
+
+🟢 改进级 — 技术债，暂不致命
+──────────────────────────────────────────
+
+  C1. 卡池快照不可变 ✅ 零风险修复(2026-06-29) — 合并到 A1 修复
+     · 同一修复覆盖 A1+C1：建楼 quest 切回时强制重载 card。
+
+  C2. window.agentPool getter 是隐式依赖 ✅ 已修复(2026-06-29)
+     · 已删除 Object.defineProperty(window, 'agentPool', { get: ... })
+     · 全量 14 处引用统一为显式 parent.__qqq_agentPool，零隐式代理
+
+  C3. tmp/test_replace.txt 残留在工作区 ✅ 已删除(2026-06-29)
+
+═══════════════════════════════════════════════════════════
+根治路线图（优先级排序）
+═══════════════════════════════════════════════════════════
+
+  第一优先（本轮已做 ✅ 2026-06-29）：
+    · C3 ✅ 删除 tmp/test_replace.txt
+    · C2 ✅ grep 全量 agentPool → 全部改为显式 parent.__qqq_agentPool，删 getter
+    · B3 ✅ sendMessage 加 agent._stopState === 'sending' 真理校验
+    · A1+C1 ✅ switchQuest 建楼 quest 强制重载 card（清 DOM + 重置 totalFloors=0）
+
+  第二优先（下个窗口）：
+    · A2 → 各面板独立 renderLoop 绘制时钟/饼图
+    · B2 → sendMessage 前校验 agent._stopState，拒绝非 idle 态并发 send
+
+  第三优先（架构演进）：
+    · A4 → auto-save 写者选举（leader election）
+    · A3 → 网络层与执行层解耦（服务 worker 模式）
+    · B1 → iframe 健康检查 + 自动复活

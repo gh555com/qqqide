@@ -468,6 +468,7 @@
             "free": "空闲"
         },
         "error": {
+            "continueTask": "继续任务",
             "noActiveAgent": "请先发送一条消息创建对话",
             "buildingFloor": "AI 正在建楼中，请等待当前楼层完成后再压缩"
         }

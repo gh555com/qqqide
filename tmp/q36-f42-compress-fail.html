@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>q36.f42 — 压缩失败请求解剖</title>
+<style>
+:root{--bg:#0d1117;--fg:#c9d1d9;--accent:#58a6ff;--red:#f85149;--green:#3fb950;--yellow:#d2991d;--orange:#db6d28;--bdr:#30363d;--card:#161b22;--code:#1c2128;--dim:#8b949e}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font-family:Segoe UI,system-ui,sans-serif;line-height:1.6;padding:20px;max-width:1400px;margin:0 auto}
+h1{font-size:24px;color:var(--accent);margin:0 0 4px}
+h2{font-size:18px;color:var(--fg);margin:24px 0 8px;border-bottom:1px solid var(--bdr);padding-bottom:4px}
+h3{font-size:15px;color:var(--accent);margin:16px 0 4px}
+.overview{background:var(--card);border:1px solid var(--bdr);border-radius:8px;padding:16px;margin:12px 0}
+.overview table{width:100%;border-collapse:collapse}
+.overview td{padding:2px 12px 2px 0;font-size:13px}
+.overview td:first-child{color:var(--dim);width:140px}
+.house{border:1px solid var(--bdr);border-radius:8px;margin:16px 0;overflow:hidden}
+.house-hdr{padding:10px 16px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+.house-hdr.fail{background:#3d1313;color:var(--red);border-bottom:1px solid #5c1a1a}
+.house-hdr.ok{background:#0d2b1a;color:var(--green);border-bottom:1px solid #1a4c2a}
+.house-hdr.guide{background:#1a1a3d;color:var(--accent);border-bottom:1px solid #2a2a5c}
+.house-hdr.tools{background:#2d1a0d;color:var(--orange);border-bottom:1px solid #4a2a1a}
+.house-body{padding:16px;background:var(--card)}
+.section{margin:12px 0}
+.section-label{color:var(--dim);font-size:12px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.http-block{border:1px solid var(--bdr);border-radius:6px;overflow:hidden;margin:8px 0}
+.http-method{background:#1a3d2a;color:var(--green);padding:4px 12px;font-family:monospace;font-size:13px;font-weight:700}
+.http-url{background:var(--code);padding:6px 12px;font-family:monospace;font-size:12px;color:var(--accent);word-break:break-all}
+.http-headers{background:var(--code);padding:6px 12px;font-family:monospace;font-size:11px;color:var(--dim)}
+.http-headers span.key{color:#79c0ff}
+.http-headers span.val{color:#a5d6ff}
+.http-headers span.redacted{color:var(--red);font-style:italic}
+.json-block{background:var(--code);border:1px solid var(--bdr);border-radius:6px;padding:12px;font-family:Consolas,monospace;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:600px;overflow-y:auto;margin:8px 0;line-height:1.5}
+.json-block .key{color:#79c0ff}
+.json-block .str{color:#a5d6ff}
+.json-block .num{color:#79c0ff}
+.json-block .bool{color:#ff7b72}
+.json-block .null{color:#8b949e}
+.json-block .comment{color:#484f58;font-style:italic}
+.msg-preview{border:1px solid var(--bdr);border-radius:6px;overflow:hidden;margin:8px 0}
+.msg-preview .role{background:var(--code);padding:4px 12px;font-size:11px;color:var(--dim)}
+.msg-preview .role.user{color:#ffa657}
+.msg-preview .role.assistant{color:var(--green)}
+.msg-preview .role.system{color:var(--accent)}
+.msg-preview .content{padding:8px 12px;font-size:12px;max-height:200px;overflow-y:auto;white-space:pre-wrap}
+.billing{display:inline-flex;gap:12px;flex-wrap:wrap;font-size:12px}
+.billing .stat{background:var(--code);border-radius:4px;padding:2px 8px}
+.billing .stat b{color:var(--yellow)}
+.warn-box{background:#3d1313;border:1px solid var(--red);border-radius:6px;padding:12px;margin:12px 0}
+.warn-box .icon{color:var(--red);font-weight:700}
+.info-box{background:#0d1f2d;border:1px solid var(--accent);border-radius:6px;padding:12px;margin:12px 0}
+.pipeline{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.pipeline .step{background:var(--code);border:1px solid var(--bdr);border-radius:6px;padding:8px 12px;font-size:12px;text-align:center;min-width:100px}
+.pipeline .step .num{font-size:20px;font-weight:700;color:var(--accent)}
+.pipeline .step .label{color:var(--dim);margin-top:2px}
+.tag{display:inline-block;background:var(--code);border-radius:4px;padding:1px 6px;font-size:11px;margin:0 4px}
+.tag.red{color:var(--red);border:1px solid #5c1a1a}
+.tag.green{color:var(--green);border:1px solid #1a4c2a}
+.tag.yellow{color:var(--yellow);border:1px solid #4a3a1a}
+</style>
+</head>
+<body>
+
+<h1>🔬 q36.f42 — 压缩失败 完整请求解剖</h1>
+<div style="color:var(--dim);font-size:13px;margin-bottom:16px">
+  Quest: q36 "goods search" · Floor 42 · 2026-06-28 19:40~19:44 CST<br>
+  <span class="tag red">压缩失败</span>
+  <span class="tag green">自动压缩</span>
+  <span class="tag yellow">已回滚零丢失</span>
+</div>
+
+<!-- ═══ FLOOR OVERVIEW ═══ -->
+<div class="overview">
+  <h3>楼层总览</h3>
+  <table>
+    <tr><td>问题</td><td style="color:#ffa657">我操死你妈 还是没有 这问题为啥这样难？…</td></tr>
+    <tr><td>house_count</td><td>4 间（引导确认 + 压缩 + 工具×2 + 回复）</td></tr>
+    <tr><td>room_count</td><td>2（工具执行：edit_file + write_file）</td></tr>
+    <tr><td>总耗时</td><td>339.4s（5m39s）</td></tr>
+    <tr><td>总 GE 扣费</td><td style="color:var(--yellow)">43,150 wge = 4.3150 ge</td></tr>
+    <tr><td>压缩前 token</td><td style="color:var(--red)">~870k（超 600k 阈值触发）</td></tr>
+    <tr><td>压缩结果</td><td style="color:var(--red)">compact_unified_failed · 原子回滚 · 189.6s</td></tr>
+    <tr><td>AI 等级</td><td>A6（tier 6, deep+thinking+max）</td></tr>
+  </table>
+</div>
+
+<!-- ═══ FLOOR PIPELINE ═══ -->
+<h2>🏗️ 楼层管道</h2>
+<div class="pipeline">
+  <div class="step"><div class="num">①</div><div class="label">用户发送</div></div>
+  <div class="step"><div class="num">G1</div><div class="label">引导确认<br>28.4s</div></div>
+  <div class="step" style="border-color:var(--red)"><div class="num" style="color:var(--red)">3</div><div class="label">压缩<br>189.7s ✗</div></div>
+  <div class="step"><div class="num">4</div><div class="label">工具执行<br>31.7s</div></div>
+  <div class="step"><div class="num">5</div><div class="label">最终回复<br>23.0s</div></div>
+</div>
+
+<!-- ═══ HOUSE G1: GUIDE ACK ═══ -->
+<h2>📨 House G1 — 引导确认回合</h2>
+<div class="house">
+<div class="house-hdr guide">
+  <span>🏠 House G1 · guide_ack</span>
+  <span>28,400ms · noTools</span>
+</div>
+<div class="house-body">
+
+  <div class="section">
+    <div class="section-label">触发</div>
+    <p>用户在流式回复过程中点击「引导」按钮，注入紧急信息。agent loop 检测到 _guidePending → 中断当前流 → 立即发起确认回合。</p>
+  </div>
+
+  <div class="section">
+    <div class="section-label">HTTP 请求</div>
+    <div class="http-block">
+      <div class="http-method">POST</div>
+      <div class="http-url">https://cnk.gh555.com/api/v3/ai/chat</div>
+      <div class="http-headers">
+        <span class="key">Content-Type</span>: <span class="val">application/json</span><br>
+        <span class="key">Authorization</span>: <span class="val">Bearer </span><span class="redacted">[JWT REDACTED]</span><br>
+        <span class="key">X-Key-Slot</span>: <span class="val">0</span> (主线)
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">请求体 JSON 结构</div>
+    <div class="json-block">{
+  <span class="comment">// ★ 固件层（AiGateway.chatFetch 非 compact 路径自动注入）</span>
+  "<span class="key">model</span>": "<span class="str">deep</span>",        <span class="comment">// 客户端 tier=6 → deep</span>
+  "<span class="key">tier</span>": <span class="num">6</span>,                <span class="comment">// 透传给 Go 计费用</span>
+
+  <span class="comment">// ★ 消息数组（完整 conversation + 引导 prompt）</span>
+  "<span class="key">messages</span>": [
+
+    <span class="comment">// msg[0] — 持久规则（由服务端 guard 注入 + 客户端 refreshRules）</span>
+    { "<span class="key">role</span>": "<span class="str">user</span>", "<span class="key">_persistent</span>": <span class="bool">true</span>,
+      "<span class="key">content</span>": "<span class="str">═══ PROJECT FOLDERS ═══
+⭐ qqq-shell-v2 → E:\\s\\wol\\py\\qqq-shell-v2 ← MAIN PROJECT
+...
+═══ CURRENT TIME ═══
+...</span>" },
+
+    <span class="comment">// ★ system 消息 — 压缩后的动态上下文（narrative + facts）</span>
+    { "<span class="key">role</span>": "<span class="str">system</span>", "<span class="key">_dynamic</span>": <span class="bool">true</span>,
+      "<span class="key">content</span>": "<span class="str">[narrative 文本 ~数万字符]
+ALL KNOWN FACTS (N total):
+- [file] ...</span>" },
+
+    <span class="comment">// ★ 真实对话消息 — floor 1~41 的完整历史</span>
+    { "<span class="key">role</span>": "<span class="str">user</span>", "<span class="key">_floor</span>": <span class="num">1</span>, "<span class="key">content</span>": "<span class="str">...</span>" },
+    { "<span class="key">role</span>": "<span class="str">assistant</span>", "<span class="key">_floor</span>": <span class="num">1</span>, "<span class="key">content</span>": "<span class="str">...</span>" },
+    <span class="comment">// ... 中间消息省略 ...</span>
+    { "<span class="key">role</span>": "<span class="str">user</span>", "<span class="key">_floor</span>": <span class="num">42</span>,
+      "<span class="key">content</span>": "<span class="str">我操死你妈 还是没有 这问题为啥这样难？…</span>" },
+
+    <span class="comment">// ★ 引导确认 prompt（最后一个 user 消息）</span>
+    { "<span class="key">role</span>": "<span class="str">user</span>", "<span class="key">_guideAck</span>": <span class="bool">true</span>, "<span class="key">_floor</span>": <span class="num">42</span>,
+      "<span class="key">content</span>": "<span class="str">[GUIDE] 你先啥也不用做了 把你做失败过多少次都列出来做一个表…
+The above is a guide message from the user…
+Acknowledge immediately in one sentence…</span>" }
+  ],
+
+  <span class="comment">// ★ 工具定义（TOOL_DEFINITIONS 全量，~3.2k tokens）</span>
+  "<span class="key">tools</span>": [
+    { "<span class="key">type</span>": "<span class="str">function</span>", "<span class="key">function</span>": { "<span class="key">name</span>": "<span class="str">read_file</span>", ... } },
+    { "<span class="key">type</span>": "<span class="str">function</span>", "<span class="key">function</span>": { "<span class="key">name</span>": "<span class="str">edit_file</span>", ... } },
+    <span class="comment">// ... 14 个工具定义 ...</span>
+  ],
+  "<span class="key">tool_choice</span>": "<span class="str">none</span>",   <span class="comment">// ★ noTools=true → 禁工具调用</span>
+
+  "<span class="key">stream</span>": <span class="bool">true</span>,
+  "<span class="key">stream_options</span>": { "<span class="key">include_usage</span>": <span class="bool">true</span> },
+  "<span class="key">max_tokens</span>": <span class="num">393216</span>,   <span class="comment">// MAX_RESPONSE_TOKENS</span>
+  "<span class="key">floor_id</span>": "<span class="str">t_1782646747187_tumfp2_C</span>",
+  "<span class="key">house_hint</span>": "<span class="str">引导确认</span>",
+  "<span class="key">thinking</span>": { "<span class="key">type</span>": "<span class="str">enabled</span>" },
+  "<span class="key">reasoning_effort</span>": "<span class="str">max</span>"
+}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">结果</div>
+    <div class="billing">
+      <span class="stat">总耗时 <b>28.4s</b></span>
+      <span class="stat">回答 <b>~1200 字</b></span>
+      <span class="stat">账单未单独记录（guide ack 不计入 _lastBilling）</span>
+    </div>
+    <p style="margin-top:8px;font-size:12px;color:var(--dim)">引导确认回合在 agent-loop.js 的专用路径中处理，确认后 pop prompt，推入 AI 确认回复。不走正常 house 管线。</p>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══ HOUSE 3: AUTO COMPRESS (FAILED) ═══ -->
+<h2>💥 House 3 — 自动压缩（失败）</h2>
+<div class="house">
+<div class="house-hdr fail">
+  <span>🏠 House 3 · compress</span>
+  <span>189,660ms · FAILED · compact_unified_failed</span>
+</div>
+<div class="house-body">
+
+  <div class="warn-box">
+    <span class="icon">⚠ 这是压缩失败的那间房子。也是你问题的核心。</span><br>
+    触发：agent-loop.js「压缩守护」检测到 870k tokens 超过用户设置的 600k 阈值。
+  </div>
+
+  <div class="section">
+    <div class="section-label">触发链路</div>
+    <div style="font-size:12px;color:var(--dim)">
+      agent-loop.js send() → while 循环 → house 3 开始前 → 
+      _lastApiTotalTokens=870k > threshold=600k → 
+      _compressAttemptedThisFloor=true → 
+      await _compressContext({trigger:'auto', force:false}) →
+      _digestColdMessages(coldMsgs, lastCompressedFloor) →
+      _callCompactAPI(unifiedPrompt, ':unified', 65536)
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">HTTP 请求 — 压缩专用通道</div>
+    <div class="http-block">
+      <div class="http-method">POST</div>
+      <div class="http-url">https://cnk.gh555.com/api/v3/ai/chat</div>
+      <div class="http-headers">
+        <span class="key">Content-Type</span>: <span class="val">application/json</span><br>
+        <span class="key">Authorization</span>: <span class="val">Bearer </span><span class="redacted">[JWT REDACTED]</span><br>
+        <span class="key">X-Key-Slot</span>: <span class="val">0</span> (主线)<br>
+        <span style="color:var(--dim)">// opts.compact=true → 不走线路切换逻辑，超时 600s</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">请求体 JSON — 完整结构</div>
+    <div class="json-block">{
+  <span class="comment">// ★ 压缩路径：AiGateway.chatFetch 不覆写 model，透传 body</span>
+  "<span class="key">model</span>": "<span class="str">deep</span>",
+  "<span class="key">tier</span>": <span class="num">6</span>,
+  "<span class="key">thinking</span>": { "<span class="key">type</span>": "<span class="str">enabled</span>" },
+  "<span class="key">reasoning_effort</span>": "<span class="str">max</span>",
+  "<span class="key">stream</span>": <span class="bool">true</span>,
+  "<span class="key">max_tokens</span>": <span class="num">65536</span>,
+  "<span class="key">floor_id</span>": "<span class="str">t_1782646747187_tumfp2_C:unified</span>",
+
+  "<span class="key">messages</span>": [
+    {
+      "<span class="key">role</span>": "<span class="str">system</span>",
+      "<span class="key">content</span>": "<span class="str">You are a context compression engine.
+Output ONLY valid JSON — no markdown, no explanation.
+You are the last line of defense for preserving conversation history —
+be thorough, not brief. Your output MUST fully utilize the available
+token budget. Incomplete preservation is worse than verbosity.</span>"
+    },
+    {
+      "<span class="key">role</span>": "<span class="str">user</span>",
+      "<span class="key">content</span>": "<span class="str"><span style="color:var(--orange);font-weight:700">⬇ 下方是完整 unified prompt（= 压缩指令 + 旧 narrative + 旧 facts + 冷文本）</span></span>"
+    }
+  ]
+}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">消息[1].content — 完整压缩 prompt（unified prompt）</div>
+    <div class="info-box">
+      此 prompt 由 agent-context.js <code>_digestColdMessages()</code> 构建。<br>
+      冷文本 = 所有需要压缩的旧消息 <b>全量</b> 拼接（一行一条，[role] content 格式）。<br>
+      <br>
+      <b>本次压缩冷文本规模：</b>
+      <div class="billing" style="margin-top:6px">
+        <span class="stat">prompt_tokens <b style="color:var(--red)">639,823</b></span>
+        <span class="stat">completion_tokens <b>3,444</b></span>
+        <span class="stat">cache_hit <b>62.0%</b></span>
+        <span class="stat">cached <b>3,968</b></span>
+        <span class="stat">non_cached <b style="color:var(--red)">635,855</b></span>
+      </div>
+      <br>
+      <span style="color:var(--red)">639k tokens = ~1.7M 字符 ≈ 一份完整小说的体量。</span>
+      这 639k 字符被塞进一条 user 消息发给模型，要求它在 64K 输出限制内生成合法 JSON。
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Unified Prompt 模板（实际内容填充在下方的折叠区）</div>
+    <div class="json-block" style="max-height:400px">You are a context compression engine. Produce a COMPREHENSIVE compressed context in a SINGLE JSON output.
+
+Your output is the ONLY record of these conversations. If you miss something, it is lost forever.
+Your budget is 64K tokens. USE IT FULLY. Incomplete preservation = failure.
+
+═══════════════════════════════════════════
+OUTPUT ORDER — follow this exactly:
+  STEP 1: Write "narrative" FIRST — the master chronicle. 8000-48000 chars.
+  STEP 2: Extract "facts" FROM the narrative you just wrote — they are an index, not a replacement.
+  STEP 3: Write "floors" — one sentence per floor.
+
+OUTPUT FORMAT — pure JSON, no markdown, no explanation:
+{
+  "narrative": "...",
+  "facts": [{ "type":"...", "content":"...", "keywords":["k1","k2"] }],
+  "floors": [{ "n":&lt;number&gt;, "summary":"1-sentence", "keyFiles":["path"], "keyDecisions":["decision"], "errors":["error"] }]
+}
+
+═══════════════════════════════════════════
+★ NARRATIVE — PRIMARY RECORD (write FIRST, before facts):
+  ★ HARD MINIMUM: 8000 chars. HARD MAXIMUM: 48000 chars.
+  ★ Below 8000 chars = FAILURE — the record is too thin to be useful.
+  ★ Write the narrative FIRST. Only after it is complete, extract facts from it.
+  ★ PRESERVE EVERY sentence from existing narrative (rewording OK, dropping = FAILURE).
+  ★ ALLOCATION guideline for [N] messages across [M] floors:
+    - Each floor → at least 3-5 sentences of narrative.
+    - Recent floors → 1-2 paragraphs each (most detailed).
+    - Early floors → 2-4 sentences each (context + key decisions).
+  ★ Track THREADS end-to-end.
+  ★ Cite exact file paths, function names, error codes.
+
+★ FACTS — INDEX (extract FROM the narrative you just wrote):
+  ★ Target 15-30 facts. Quality > quantity.
+  ★ FACT TYPES: file / decision / error / code_change / preference / goal / blocker / context.
+
+★ FLOORS — optional, may be empty for first compression.
+
+═══════════════════════════════════════════
+EXISTING CONTEXT (must be preserved):
+
+NARRATIVE:
+<span style="color:var(--dim)">[旧 narrative 文本 — 之前压缩累积的对话叙事摘要]</span>
+
+FACTS (N total):
+<span style="color:var(--dim)">[JSON 数组 — 旧 facts 索引]</span>
+
+═══════════════════════════════════════════
+NEW CONVERSATION HISTORY (XXX messages, full text):
+<span style="color:var(--red);font-weight:700">[user] 第一层楼的第一条用户消息内容…
+[assistant] AI 的第一条回复…
+[tool_result] 工具执行结果…
+[user] 第二层楼…
+...
+—— 共 ~639k tokens 的完整对话历史，一字不漏地全部塞入 ——
+—— 这就是击垮模型的那部分 ——</span></div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">模型返回了什么</div>
+    <div class="billing">
+      <span class="stat">completion_tokens <b>3,444</b></span>
+      <span class="stat">≈ 9,300 字符</span>
+    </div>
+    <p style="margin-top:8px;font-size:12px">模型确实回了 3,444 个 token 的文字。但它回的不是合法 JSON。<br>
+    <code>_extractJsonRobust()</code> 三策略（去围栏 parse → 正则 {…} → 括号匹配）全耗尽 → 返回 null → 原子回滚。</p>
+  </div>
+
+  <div class="section">
+    <div class="section-label">失败后发生了什么</div>
+    <div style="font-size:12px">
+      ① <code>_digestColdMessages</code> 抛出 <code>compact_unified_failed</code><br>
+      ② <code>_compressContext</code> catch 块捕获 → 原子回滚（facts/narrative/archives 还原快照）<br>
+      ③ 返回 <code>{compressed:false, detail:'压缩失败: …已回滚，消息未丢失', …}</code><br>
+      ④ <code>_renderCompressResult</code> 渲染失败卡 → 用户看到红条<br>
+      ⑤ agent loop 继续 → 进入 house 4（工具执行）→ <b>带着完整 870k tokens 继续工作</b>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">GE 账单</div>
+    <div class="billing">
+      <span class="stat">geCost <b style="color:var(--red)">40,263 wge</b></span>
+      <span class="stat">模型 <b>deepseek-v4-pro</b></span>
+      <span class="stat">free <b style="color:var(--green)">true</b></span>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══ HOUSE 4: TOOLS ═══ -->
+<h2>🔧 House 4 — 工具调用（编辑搜索框）</h2>
+<div class="house">
+<div class="house-hdr tools">
+  <span>🏠 House 4 · tools（2 个工具调用）</span>
+  <span>31,654ms · edit_file + write_file</span>
+</div>
+<div class="house-body">
+
+  <div class="section">
+    <div class="section-label">HTTP 请求</div>
+    <div class="http-block">
+      <div class="http-method">POST</div>
+      <div class="http-url">https://cnk.gh555.com/api/v3/ai/chat</div>
+      <div class="http-headers">
+        <span class="key">Content-Type</span>: <span class="val">application/json</span><br>
+        <span class="key">Authorization</span>: <span class="val">Bearer </span><span class="redacted">[JWT]</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">请求体</div>
+    <div class="json-block">{
+  "<span class="key">model</span>": "<span class="str">deep</span>",
+  "<span class="key">tier</span>": <span class="num">6</span>,
+  "<span class="key">thinking</span>": { "<span class="key">type</span>": "<span class="str">enabled</span>" },
+  "<span class="key">reasoning_effort</span>": "<span class="str">max</span>",
+  "<span class="key">stream</span>": <span class="bool">true</span>,
+  "<span class="key">stream_options</span>": { "<span class="key">include_usage</span>": <span class="bool">true</span> },
+  "<span class="key">max_tokens</span>": <span class="num">393216</span>,
+  "<span class="key">floor_id</span>": "<span class="str">t_1782646747187_tumfp2_C</span>",
+  "<span class="key">house_hint</span>": "<span class="str">[AI 上一间 house 思考的前 30 字]</span>",
+
+  "<span class="key">messages</span>": [
+    <span class="comment">// msg[0] — 持久规则（同前）</span>
+    { "<span class="key">role</span>": "<span class="str">user</span>", "<span class="key">_persistent</span>": <span class="bool">true</span>, "<span class="key">content</span>": "<span class="str">═══ PROJECT FOLDERS …</span>" },
+    <span class="comment">// system — 动态上下文（narrative + facts）</span>
+    { "<span class="key">role</span>": "<span class="str">system</span>", "<span class="key">_dynamic</span>": <span class="bool">true</span>, "<span class="key">content</span>": "<span class="str">…</span>" },
+    <span class="comment">// 真实对话 — 同 G1 的完整历史 + G1 确认回合 + 压缩失败卡片</span>
+    <span class="comment">// ...（消息数量同 G1，约 1600+ 条）...</span>
+  ],
+
+  "<span class="key">tools</span>": [ <span class="comment">/* 14 个工具定义 */</span> ],
+  <span class="comment">// tool_choice 未设置 → 模型可自由调用工具</span>
+}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">结果</div>
+    <div class="billing">
+      <span class="stat">prompt_tokens <b>868,093</b></span>
+      <span class="stat">completion_tokens <b>125</b></span>
+      <span class="stat">cache_hit <b style="color:var(--green)">98.6%</b></span>
+      <span class="stat">cached <b>856,192</b></span>
+      <span class="stat">non_cached <b>11,901</b></span>
+      <span class="stat">geCost <b>1,208 wge</b></span>
+    </div>
+    <p style="margin-top:4px;font-size:11px;color:var(--dim)">注意：尽管 conversation 有 870k tokens，但缓存命中率 98.6%。实际上只有 11.9k tokens 是新内容，其余全部命中 prefix cache。</p>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══ HOUSE 5: FINAL ═══ -->
+<h2>✅ House 5 — 最终回复</h2>
+<div class="house">
+<div class="house-hdr ok">
+  <span>🏠 House 5 · final</span>
+  <span>22,956ms · 最终回答</span>
+</div>
+<div class="house-body">
+
+  <div class="section">
+    <div class="section-label">请求体 — 同 House 4 结构</div>
+    <div class="json-block">{
+  "<span class="key">model</span>": "<span class="str">deep</span>",
+  "<span class="key">tier</span>": <span class="num">6</span>,
+  <span class="comment">// ... 字段同 House 4 ...</span>
+  "<span class="key">messages</span>": [
+    <span class="comment">// ★ 比 House 4 多了 2 条：
+    //   - assistant (tool_calls: [edit_file, write_file])
+    //   - tool (result of edit_file)
+    //   - tool (result of write_file)</span>
+    <span class="comment">// 总 token 数 ≈ 868k（与前一次几乎相同，因为缓存）</span>
+  ]
+}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">AI 回复（原文）</div>
+    <div class="msg-preview">
+      <div class="role assistant">assistant</div>
+      <div class="content">改了一行。15 条虚假数据硬编码在 JS 里，5 个输入框共享。点搜索框=下拉15行必出。后续真有历史了，真数据替换假数据。Ctrl+R 生效。</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">账单</div>
+    <div class="billing">
+      <span class="stat">prompt_tokens <b>868,288</b></span>
+      <span class="stat">completion_tokens <b>61</b></span>
+      <span class="stat">cache_hit <b style="color:var(--green)">99.98%</b></span>
+      <span class="stat">cached <b>868,096</b></span>
+      <span class="stat">non_cached <b>192</b></span>
+      <span class="stat">geCost <b>472 wge</b></span>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══ DIAGNOSIS ═══ -->
+<h2>🔍 诊断 — 为什么 42 楼压缩失败而 29 楼成功</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0">
+
+  <div style="background:var(--card);border:1px solid var(--red);border-radius:8px;padding:16px">
+    <h3 style="color:var(--red);margin:0 0 8px">q36.f42 — 失败</h3>
+    <table style="width:100%;font-size:12px">
+      <tr><td style="color:var(--dim)">压缩前 token</td><td style="color:var(--red)">870k</td></tr>
+      <tr><td style="color:var(--dim)">冷文本 prompt</td><td style="color:var(--red)">639,823 tokens</td></tr>
+      <tr><td style="color:var(--dim)">≈ 字符数</td><td style="color:var(--red)">~1,700,000 chars</td></tr>
+      <tr><td style="color:var(--dim)">模型返回</td><td>3,444 tokens</td></tr>
+      <tr><td style="color:var(--dim)">JSON 有效？</td><td style="color:var(--red)">✗ 三策略全失败</td></tr>
+      <tr><td style="color:var(--dim)">GE 浪费</td><td style="color:var(--red)">40,263 wge（免费）</td></tr>
+    </table>
+  </div>
+
+  <div style="background:var(--card);border:1px solid var(--green);border-radius:8px;padding:16px">
+    <h3 style="color:var(--green);margin:0 0 8px">q55.f29 — 成功</h3>
+    <table style="width:100%;font-size:12px">
+      <tr><td style="color:var(--dim)">压缩前 token</td><td>296k</td></tr>
+      <tr><td style="color:var(--dim)">冷文本 prompt</td><td>211,281 tokens</td></tr>
+      <tr><td style="color:var(--dim)">≈ 字符数</td><td>~570,000 chars</td></tr>
+      <tr><td style="color:var(--dim)">模型返回</td><td>5,526 tokens</td></tr>
+      <tr><td style="color:var(--dim)">JSON 有效？</td><td style="color:var(--green)">✅</td></tr>
+      <tr><td style="color:var(--dim)">GE 花费</td><td style="color:var(--green)">13,712 wge（免费）</td></tr>
+    </table>
+  </div>
+
+</div>
+
+<div class="warn-box">
+  <span class="icon">💡 结论：</span>
+  根本差异就是 <b>冷文本大小</b>。f42 的 639k tokens（~1.7M chars）全量塞进 prompt，
+  要求模型在 64K 输出内完成压缩并输出合法 JSON——任务过于极端。
+  f29 只有 211k tokens（~570K chars），模型轻松处理。
+  <br><br>
+  修法：冷文本超过 ~400k chars 时自动采样（保留每条消息头 500 字 + 文件名/函数名/错误码），
+  而不是全量送入。或者分片压缩（chunk → parallel）。
+</div>
+
+<div style="color:var(--dim);font-size:11px;margin-top:40px;text-align:center">
+  由 all.json + agent-context.js + agent-gateway.js + ai-gateway.js 源码重建 · 2026-06-28
+</div>
+
+</body>
+</html>

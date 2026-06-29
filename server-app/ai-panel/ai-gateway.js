@@ -28,19 +28,16 @@
     // ════════════════════════════════════════════════════
 
     var _URLS = {
-        chatPrimary: 'https://47.105.67.51/api/v3/ai/chat',
-        chatFallback: 'https://gh555.com/api/v3/ai/chat',
-        chatBackup: 'https://direct.gh555.com:8444/api/v3/ai/chat',
-        visionPrimary: 'https://47.105.67.51/api/v3/ai/vision',
-        visionFallback: 'https://cnk.gh555.com/api/v3/ai/vision',
-        visionBackup: 'https://direct.gh555.com:8444/api/v3/ai/vision',
-        imageGenPrimary: 'https://47.105.67.51/api/v3/ai/generate-image',
-        imageGenFallback: 'https://cnk.gh555.com/api/v3/ai/generate-image',
-        imageGenBackup: 'https://direct.gh555.com:8444/api/v3/ai/generate-image',
-        embedPrimary: 'https://47.105.67.51/api/v3/ai/embedding',
-        embedFallback: 'https://gh555.com/api/v3/ai/embedding',
+        chatPrimary: 'https://cnk.gh555.com/api/v3/ai/chat',
+        chatFallback: 'https://direct.gh555.com:8444/api/v3/ai/chat',
+        visionPrimary: 'https://cnk.gh555.com/api/v3/ai/vision',
+        visionFallback: 'https://direct.gh555.com:8444/api/v3/ai/vision',
+        imageGenPrimary: 'https://cnk.gh555.com/api/v3/ai/generate-image',
+        imageGenFallback: 'https://direct.gh555.com:8444/api/v3/ai/generate-image',
+        embedPrimary: 'https://cnk.gh555.com/api/v3/ai/embedding',
+        embedFallback: 'https://direct.gh555.com:8444/api/v3/ai/embedding',
         searchPrimary: 'https://direct.gh555.com:8444/api/v3/search/web',
-        searchFallback: 'https://gh555.com/api/v3/search/web',
+        searchFallback: 'https://cnk.gh555.com/api/v3/search/web',
     };
 
     var _DEFAULT_TIMEOUT = 30000;

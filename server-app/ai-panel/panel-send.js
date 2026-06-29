@@ -4,8 +4,13 @@
 
 async function sendMessage() {
     if (_sending) return;
+    // ★ B3: 共享 agentPool 下，_sending 可能滞后。加 agent 级真理校验（防跨面板并发建楼）
+    if (_activeAgent && _activeAgent._stopState === 'sending') return;
     // ★ Stop 闭环：STOPPING 态下禁止新发送（等清理完成才能 Send）
     if (_activeAgent && _activeAgent._stopState === 'stopping') return;
+    // ★ fatal 态：死胡同模式，仅"继续任务"链路可解
+    if (_activeAgent && _activeAgent._stopState === 'fatal') return;
+    if (_activeAgent && _activeAgent._recoveryInProgress) return;
     if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
     _checkTokenReset();
     _sending = true;
@@ -577,6 +582,10 @@ async function sendMessage() {
                         _error: true,
                         _floor: _capturedAgent._ctx.totalFloors
                     });
+                    // ★ 100% 落盘保证：错误楼层的用户消息+错误消息强制写盘，不依赖 auto-save 竞态
+                    if (_capturedQuestId && typeof _saveAgentQuestData === 'function') {
+                        _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._currentFloorNum).catch(function () { });
+                    }
                 }
                 // ★ 清理 aiDiv 流式渲染状态，防止 doStreamRender 定时器"诈尸"
                 if (aiDiv) {
@@ -595,7 +604,7 @@ async function sendMessage() {
                         setStreaming(false);
                         return;
                     }
-                    // ★ 统一红框：消息文本 + "继续任务"链接（仅聚焦键入框）
+                    // ★ 致命失败红框：消息文本 + "继续任务"链接（fatal 态下唯一出口）
                     var _errDiv = addMessageEl('error', msg);
                     if (_errDiv) {
                         var _continueLink = document.createElement('a');
@@ -603,20 +612,23 @@ async function sendMessage() {
                         _continueLink.href = '#';
                         _continueLink.className = 'msg-err-continue';
                         _continueLink.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
+                        _continueLink._qqqQuestId = _capturedQuestId;
+                        _continueLink._qqqAgent = _capturedAgent;
                         _continueLink.onclick = function (e) {
                             e.preventDefault();
-                            $input.focus();
-                            scrollToBottom(true);
+                            e.stopPropagation();  // ★ 阻止冒泡：card-pool 事件委托不介入
+                            if (this._qqqRecoveryBusy) return;  // ★ 20s 防抖
+                            this._qqqRecoveryBusy = true;
+                            var _linkEl = this;
+                            _startRecovery(this._qqqQuestId, this._qqqAgent, _linkEl);
                         };
                         _errDiv.appendChild(_continueLink);
                     }
                     _stopAllTxtStream();
                     stopFloorTimer(null, _capturedAgent);
                     setStreaming(false);
-                    // ★ 永不自停：任何错误都继续队列，网络波动不阻断
-                    if (_queue.length > 0) {
-                        _continueQueue();
-                    }
+                    // ★ fatal 态：禁用 send 按钮 + 禁止队列自动排水（死胡同模式）
+                    if ($sendBtn) $sendBtn.disabled = true;
                 } else {
                     // ★ 后台 agent 错误：仍需停 timer + 停 all.txt 流（否则时钟僵尸 + 轮询泄漏）
                     //   running 标记已在上方统一释放，此处不再重复
@@ -648,11 +660,32 @@ async function sendMessage() {
     } catch (err) {
         if (err && err.name !== 'AbortError') {
             addMessageEl('error', err.message || 'Unknown error');
-            _continueQueue();
+            // ★ 异常不可恢复 → fatal（统一归入 fatal 管线，不依赖 auto-save）
+            if (_capturedAgent) {
+                _capturedAgent._floorFatal = true;
+                _capturedAgent._stopState = 'fatal';
+                if (!_capturedAgent._floorOnErrorCalled) {
+                    _capturedAgent.conversation.push({
+                        role: 'assistant',
+                        content: 'Send failed: ' + (err.message || 'Unknown error'),
+                        _error: true,
+                        _floor: _capturedAgent._ctx.totalFloors
+                    });
+                }
+                if (_capturedQuestId && typeof _saveAgentQuestData === 'function') {
+                    _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._currentFloorNum).catch(function () { });
+                }
+            }
+            if ($sendBtn) $sendBtn.disabled = true;
+            if ($guideBtn) $guideBtn.disabled = true;
+            if ($queueBtn) $queueBtn.disabled = true;
+            // ★ fatal 态禁队列排水
         }
     } finally {
         // ★ 一次渲染永久不变：在清理 _activeAiDiv 之前，先保存当前楼层数据（含流式文本）
-        if (_capturedAgent && _capturedQuestId && !_capturedAgent._floorCompletedCleanly && _capturedAgent._stopState === 'sending') {
+        //   sending 态正常保存；fatal 态也保存（belt-and-suspenders：onError 已火线落盘，此处兜底）
+        if (_capturedAgent && _capturedQuestId && !_capturedAgent._floorCompletedCleanly
+            && (_capturedAgent._stopState === 'sending' || _capturedAgent._floorFatal)) {
             try { await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._currentFloorNum); } catch (_) { }
         }
         _stopAllTxtStream();
@@ -775,6 +808,114 @@ function _continueQueue() {
     if (_queuePaused) return;
     if (_activeAgent !== _capturedAgent) return;
     _triggerQueueSend();
+}
+
+// ═══ 致命失败恢复："继续任务"唯一出口 ═══
+// 流程：光块动画 → 反复尝试连接 → 首间 house 返回后"事后上屏"
+// 防抖：20s 内不能重复点击；20s 随服务器心跳重置；最长 3 分钟
+// ★ 所有状态均在 agent 上（per-quest 私有财产），切面板/后台零断链
+var _RECOVERY_COOLDOWN_MS = 20000;   // 基础防抖
+var _RECOVERY_MAX_TOTAL_MS = 180000; // 总上限 3 分钟
+function _startRecovery(questId, agent, linkEl) {
+    if (!questId || !agent || agent._stopState !== 'fatal') return;
+
+    // 1. 标记恢复中
+    agent._recoveryInProgress = true;
+    agent._recoveryStartPerf = performance.now();
+
+    // 2. 替换链接为光块动画
+    if (linkEl && linkEl.parentNode) {
+        linkEl.style.display = 'none';
+        var _lightBlock = document.createElement('span');
+        _lightBlock.className = 'msg-err-recovery-light';
+        _lightBlock.textContent = '▌';
+        _lightBlock._qqqRecoveryLight = true;
+        linkEl.parentNode.insertBefore(_lightBlock, linkEl.nextSibling);
+        linkEl._qqqLightBlock = _lightBlock;
+    }
+
+    // 3. 禁用 send/guide/queue 按钮（fatal 态已禁，此处冗余加固）
+    if ($sendBtn) $sendBtn.disabled = true;
+    if ($guideBtn) $guideBtn.disabled = true;
+    if ($queueBtn) $queueBtn.disabled = true;
+
+    // 4. 启动重连循环
+    _attemptRecoverySend(questId, agent, linkEl);
+}
+
+async function _attemptRecoverySend(questId, agent, linkEl) {
+    var _totalElapsed = performance.now() - agent._recoveryStartPerf;
+    if (_totalElapsed > _RECOVERY_MAX_TOTAL_MS) {
+        _finishRecovery(linkEl, agent, false);
+        return;
+    }
+
+    // ★ 守卫：确认恢复 quest 仍是当前活跃 quest（防用户切换）
+    if (questActiveId !== questId) {
+        _finishRecovery(linkEl, agent, false);
+        return;
+    }
+
+    // ★ 移除旧错误 div（sendMessage 的 onError 会重新创建；成功则不再需要）
+    if (linkEl && linkEl.parentNode) {
+        var _oldErrDiv = linkEl.parentNode.className === 'msg msg-error' ? linkEl.parentNode : null;
+        if (_oldErrDiv) _oldErrDiv.remove();
+    }
+
+    // ★ 保存原输入值，替换为 i18n "继续"
+    var _savedInput = $input.value;
+    $input.value = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续') : '继续';
+
+    // ★ 设置恢复标记：agent-loop 为 userMsg 标 _system:true
+    agent._isRecovery = true;
+
+    // ★ 走完整 sendMessage 管线（floor/Card/all.txt/timer 全链路）
+    try {
+        await sendMessage();
+        // sendMessage 成功 → 恢复完成（onDone 已在 sendMessage 内部处理 UI）
+        _finishRecovery(null, agent, true);
+    } catch (_e) {
+        // sendMessage 同步异常 → 恢复失败，重新进入 fatal
+        agent._stopState = 'fatal';
+        agent._floorFatal = true;
+        agent._recoveryInProgress = false;
+        agent._recoveryStartPerf = 0;
+        if ($sendBtn) $sendBtn.disabled = true;
+    } finally {
+        $input.value = _savedInput;
+    }
+}
+
+function _finishRecovery(linkEl, agent, succeeded) {
+    agent._recoveryInProgress = false;
+    agent._recoveryStartPerf = 0;
+
+    // 移除光块
+    if (linkEl && linkEl._qqqLightBlock) {
+        linkEl._qqqLightBlock.remove();
+        linkEl._qqqLightBlock = null;
+    }
+
+    if (succeeded) {
+        // 成功：移除整个错误条
+        if (linkEl && linkEl.parentNode && linkEl.parentNode.className === 'msg msg-error') {
+            linkEl.parentNode.remove();
+        }
+        // 恢复按钮
+        if ($sendBtn) $sendBtn.disabled = false;
+        if (typeof updateGuideBtn === 'function') updateGuideBtn();
+        if (typeof updateQueueBtn === 'function') updateQueueBtn();
+    } else {
+        // 失败：恢复链接可点击
+        if (linkEl) {
+            linkEl.style.display = '';
+            linkEl._qqqRecoveryBusy = false;
+        }
+        // 保持 fatal 态，按钮继续禁用
+        if ($sendBtn) $sendBtn.disabled = true;
+        if ($guideBtn) $guideBtn.disabled = true;
+        if ($queueBtn) $queueBtn.disabled = true;
+    }
 }
 
 // ---- textarea helpers ----

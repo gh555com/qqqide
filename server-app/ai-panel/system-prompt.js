@@ -60,13 +60,13 @@ function _gwBroadcastDeadFallback() {
     } catch (_) { }
 }
 
-// ★ 工具计费累加（Ge 累计）
-function _addToolGeCost(geCost) {
-    if (!geCost || geCost <= 0) return;
+// ★ 工具计费累加（wge 累计）
+function _addToolWgeCost(wgeCost) {
+    if (!wgeCost || wgeCost <= 0) return;
     try {
         var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
         if (ag && typeof ag._floorCostWge === 'number') {
-            ag._floorCostWge += geCost;
+            ag._floorCostWge += wgeCost;
         }
     } catch (_) { }
 }

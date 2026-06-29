@@ -524,11 +524,13 @@
             }
 
             // ★ Go 始终返回 SSE（即使 stream:false），逐行解析累积 delta.content
+            //   同时提取 billing（扣费）和 usage（token 统计），确保压缩楼层有完整账单
             var _bodyText = await resp.text();
             var _totalMs = performance.now() - _fetchStart;
             var _lines = _bodyText.replace(/\r\n/g, '\n').split('\n');
             var _sseAccum = '';
             var _lastChunk = null;
+            var _compactUsage = null;
             for (var li = 0; li < _lines.length; li++) {
                 if (_lines[li].indexOf('data: ') === 0) {
                     var _d = _lines[li].slice(6);
@@ -538,6 +540,33 @@
                         if (_parsed.type === 'error') {
                             self._log('✗ Compact SSE error (suffix=' + _suffix + '): ' + (_parsed.message || JSON.stringify(_parsed).slice(0, 200)));
                             return { parsed: null, ttfbMs: _ttfbMs, totalMs: _totalMs };
+                        }
+                        // ★ billing 事件：从 SSE 流中提取扣费信息（与 _parseSSE 同逻辑）
+                        if (_parsed.type === 'billing') {
+                            self._floorCostWge += _parsed.ge_cost || 0;
+                            if (_parsed.free_window) self._floorFree = true;
+                            self._billingSeq++;
+                            self._lastBilling = {
+                                seq: self._billingSeq,
+                                wgeCost: _parsed.ge_cost || 0,
+                                model: _parsed.model || '',
+                                cacheHitRate: (typeof _parsed.cache_hit_rate === 'number') ? _parsed.cache_hit_rate : -1,
+                                usage: _parsed.usage ? {
+                                    prompt_tokens: _parsed.usage.prompt_tokens || 0,
+                                    completion_tokens: _parsed.usage.completion_tokens || 0,
+                                    cached_tokens: _parsed.usage.cached_tokens || 0,
+                                    non_cached_tokens: _parsed.usage.non_cached_tokens || 0
+                                } : null,
+                                freeWindow: _parsed.free_window || false,
+                                requestId: _parsed.request_id || '',
+                                ts: Date.now()
+                            };
+                            continue;
+                        }
+                        // ★ usage 事件：流尾精确 token 统计
+                        if (_parsed.usage && _parsed.usage.prompt_tokens) {
+                            _compactUsage = _parsed.usage;
+                            continue;
                         }
                         _lastChunk = _parsed;
                         var _c = _parsed.choices && _parsed.choices[0] && (_parsed.choices[0].delta || _parsed.choices[0].message);

@@ -53,9 +53,8 @@ async function _handleSyncMessage(msg) {
     }
 }
 
-// ═══ Agent Pool: one AgentLoop per quest, simultaneous multi-quest work ═══
-var agentPool = {};       // { questId: AgentLoop }
-window.agentPool = agentPool;  // 暴露给 card-pool.js 驱逐时使用
+
+// ═══ Agent Pool: ★ parent.__qqq_agentPool（父窗口共享，单一真相源） ═══
 var _activeAgent = null;  // current visible quest's agent
 var _capturedAgent = null;   // captured ref for async callbacks (autoSave, onDone)
 var _capturedQuestId = '';   // captured quest id for async callbacks
@@ -72,7 +71,8 @@ Object.defineProperty(window, 'agent', {
 });
 
 function _getOrCreateAgent(questId) {
-    if (!agentPool[questId]) {
+    var pool = parent.__qqq_agentPool;
+    if (!pool[questId]) {
         var ag = new AgentLoop({ log: function (msg) { /* agent-loop: only critical */ if (msg.indexOf('\u2717') >= 0 || msg.indexOf('\u26d4') >= 0 || msg.indexOf('\u26a0') >= 0 && msg.indexOf('\u26a0 guide ack:') < 0) console.warn('[ai-agent:' + questId + ']', msg); } });
         ag._activeAiDiv = null;
         ag._floorTimerId = null;
@@ -83,9 +83,9 @@ function _getOrCreateAgent(questId) {
         ag._queue = [];
         ag._queuePaused = false;
         ag._questId = questId;  // ★ per-agent questId for trace/cross-panel isolation
-        agentPool[questId] = ag;
+        pool[questId] = ag;
     }
-    return agentPool[questId];
+    return pool[questId];
 }
 
 // ---- Quest Management ----
@@ -496,7 +496,7 @@ window.addEventListener('beforeunload', function () {
 });
 
 // ═══ 面板 resume 持久化 — atomic JSON，三面板独立文件，零踩踏 ═══
-var _RESUME_MAP = {0: 'l', 1: 'c', 2: 'r'};
+var _RESUME_MAP = { 0: 'l', 1: 'c', 2: 'r' };
 function _panelResumeKey() {
     return 'panel_re' + (_RESUME_MAP[_panelId] || 'c') + '.json';
 }

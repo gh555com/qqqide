@@ -1,7 +1,9 @@
 'use strict';
 
-// ── 排队按钮状态：有文字即可排队（不管 AI 是否在工作）──
+// ── 排队按钮状态：有文字即可排队（不管 AI 是否在工作；fatal 态禁用）──
 function updateQueueBtn() {
+    var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    if (_ag && _ag._stopState === 'fatal') { $queueBtn.disabled = true; return; }
     var hasText = $input.value.trim().length > 0;
     $queueBtn.disabled = !hasText;
 }

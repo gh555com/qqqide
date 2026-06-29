@@ -224,8 +224,14 @@ function _markQuestRunning(questId, isRunning) {
     _broadcast('quest-running', questId, { isRunning: isRunning });
 }
 
-// ═══ 引导按钮：仅建楼中可用 ═══
+// ═══ 引导按钮：仅建楼中可用（fatal 态禁用） ═══
 function updateGuideBtn() {
+    var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    if (_ag && _ag._stopState === 'fatal') {
+        $guideBtn.disabled = true;
+        $guideBtn.style.opacity = '0.35';
+        return;
+    }
     var building = _sending || streaming;
     $guideBtn.disabled = !building;
     $guideBtn.style.opacity = building ? '1' : '0.35';
@@ -238,19 +244,26 @@ function setStreaming(val) {
     updateGuideBtn();
     // ★ Stop 闭环：三态 UX（IDLE / SENDING / STOPPING）
     //   val=true 表示流式输出中；_stopState 仅用于 STOPPING 覆盖
-    var _state = _activeAgent ? _activeAgent._stopState : 'idle';
+    var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    var _state = _ag ? _ag._stopState : 'idle';
     if (_state === 'stopping') {
         $sendBtn.textContent = '....';
         $sendBtn.className = 'stop';
         $sendBtn.disabled = true;
-    } else if (_activeAgent && _activeAgent._compressing) {
+    } else if (_ag && _ag._compressing) {
         $sendBtn.textContent = '\u23f3';
         $sendBtn.className = 'compressing';
         $sendBtn.disabled = true;
     } else {
         $sendBtn.textContent = val ? 'Stop' : 'Send';
         $sendBtn.className = val ? 'stop' : '';
-        $sendBtn.disabled = false;
+        $sendBtn.disabled = (_ag && _ag._stopState === 'fatal');
+    }
+    // ★ fatal 态：sendBtn 始终保持禁用（覆盖上方的所有分支）
+    if (_ag && _ag._stopState === 'fatal') {
+        $sendBtn.disabled = true;
+        $sendBtn.className = '';
+        $sendBtn.textContent = 'Send';
     }
     updateQueueBtn();
     // ★ 彗星环绕：开始建楼时写入父窗口中心注册表（释放由 onDone/onError/finally 显式处理）
