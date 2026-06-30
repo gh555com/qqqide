@@ -303,5 +303,6 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 主通道: qqqide:// 自定义协议。浏览器 → qqqide://auth → Electron 主进程 → IPC 推送。
   - 轮询仅兜底（协议未注册时），120s 超时，3s 间隔。
   - ide-finalize 必须返回 token（浏览器拿 token 推，服务端 poll 接口为 fallback 保留）。
+  - 持久化: safeStorage OS 级加密 → Data/alphal/auth.enc。启动自动恢复，主动登出才删。
   - 禁新增轮询。新通知机制一律走 push→fallback 双轨。
   - DNS: direct-cn.gh555.com 灰色云直连 CN。cnk.gh555.com 橙色云经 Cloudflare。

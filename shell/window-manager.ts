@@ -5,7 +5,9 @@
 import { BrowserWindow, screen, globalShortcut } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as http from 'http';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
+import { SimpleWebSocket } from './cdp-sniffer';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
 import { StateStore } from './state-sqlite';
@@ -124,6 +126,9 @@ export function createWindow(
         if (_consoleBuffer.length > _consoleMaxLines) _consoleBuffer.shift();
     });
 
+    // ★ CDP 控制台全量捕获 — Log.entryAdded = DevTools 另存为 100% 同源数据
+    _setupCdpConsoleCapture(win).catch(() => {});
+
     win.removeMenu();
 
     win.once('ready-to-show', async () => {
@@ -233,4 +238,106 @@ export function createWindow(
     }
 
     return win;
+}
+
+// ── CDP 控制台全量捕获 — Log.entryAdded = DevTools 另存为 100% 同源数据 ──
+// 原理: Chrome DevTools Protocol Log 域直连 Chromium 内核日志流。
+// Log.entryAdded 包含全量 console 输出 + Chrome 原生消息 + 全量栈帧。
+// 与 DevTools 右键另存为完全同源。
+// 失败时静默降级到 console-message 事件。
+async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
+    const PORT = 8315;
+    let ws: SimpleWebSocket | null = null;
+
+    try {
+        // 发现 WebSocket URL
+        const wsUrl: string = await new Promise<string>((resolve, reject) => {
+            const req = http.get(`http://127.0.0.1:${PORT}/json/version`, (res) => {
+                let data = '';
+                res.on('data', (chunk: string) => data += chunk);
+                res.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (parsed.webSocketDebuggerUrl) resolve(parsed.webSocketDebuggerUrl);
+                        else reject(new Error('No webSocketDebuggerUrl in CDP response'));
+                    } catch (e) { reject(e); }
+                });
+            });
+            req.on('error', reject);
+            req.setTimeout(3000, () => { req.destroy(); reject(new Error('CDP endpoint timeout')); });
+        });
+
+        ws = new SimpleWebSocket(wsUrl);
+
+        ws.on('open', () => {
+            ws!.send(JSON.stringify({ id: 1, method: 'Log.enable' }));
+            // 保持连接活跃（15s heartbeat）
+            setInterval(() => {
+                if (ws) {
+                    try { ws.send(JSON.stringify({ id: 0, method: 'Runtime.getIsolateId' })); } catch {}
+                }
+            }, 15000);
+        });
+
+        ws.on('message', (data: string) => {
+            try {
+                const msg = JSON.parse(data);
+                if (msg.method !== 'Log.entryAdded' || !msg.params?.entry) return;
+                const entry = msg.params.entry;
+                const url = (entry.url || '').replace(/\\/g, '/');
+                const file = url.split('/').pop() || url;
+                const line = entry.lineNumber || 0;
+                const text = entry.text || '';
+                const stackTrace = entry.stackTrace;
+                const callFrames: any[] = stackTrace?.callFrames || [];
+
+                // 格式对齐 DevTools 原生另存为：
+                //   file:line  message
+                //       fn @ file:line  (缩进4格)
+                const lines: string[] = [];
+
+                if (callFrames.length > 0) {
+                    const firstFrame = callFrames[0];
+                    const fUrl = (firstFrame.url || '').replace(/\\/g, '/').split('/').pop() || firstFrame.url;
+                    const fLine = firstFrame.lineNumber || 0;
+                    const head = fUrl && fLine ? fUrl + ':' + fLine + ' ' : '';
+                    lines.push(head + text);
+
+                    // 剩余栈帧
+                    for (let i = 1; i < callFrames.length; i++) {
+                        const cf = callFrames[i];
+                        const fn = cf.functionName || '<anonymous>';
+                        const fu = (cf.url || '').replace(/\\/g, '/').split('/').pop() || cf.url;
+                        const fl = cf.lineNumber || 0;
+                        lines.push('    ' + fn + ' @ ' + fu + ':' + fl);
+                    }
+                } else if (file && line) {
+                    lines.push(file + ':' + line + ' ' + text);
+                } else {
+                    lines.push(text);
+                }
+
+                for (const l of lines) {
+                    _consoleBuffer.push(l);
+                    if (_consoleBuffer.length > _consoleMaxLines) _consoleBuffer.shift();
+                }
+            } catch { /* ignore parse errors */ }
+        });
+
+        ws.on('error', (e: Error) => {
+            // CDP 不可用 → 静默降级到 console-message
+            // console-message 事件在 createMainWindow 中已注册，自动接管
+            try { if (ws) ws.close(); } catch {}
+            ws = null;
+        });
+
+        // 窗口关闭 → 清理 CDP
+        win.on('closed', () => {
+            try { if (ws) ws.close(); } catch {}
+            ws = null;
+        });
+
+    } catch {
+        // CDP 不可用（端口冲突 / 浏览器未启动 / 网络错误）→ 静默降级
+    }
 }

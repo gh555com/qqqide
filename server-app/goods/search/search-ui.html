@@ -161,9 +161,10 @@ function _show(fid){
     vals=vals.slice(0,SHOWMAX);
   }
   if(!vals||!vals.length)return;
-  var dd=DDS[fid];_showId++;
-  dd.inner  if(!vals||!vals.length)return;
-  var dd=DDS[fid];document.createElement('div');r.textContent=vals[i].slice(0,120);
+  var dd=DDS[fid];
+  dd.innerHTML='';_sel=-1;
+  for(var i=0;i<vals.length;i++){
+    var r=document.createElement('div');r.textContent=vals[i].slice(0,120);
     r.onmousedown=(function(v){return function(e){e.preventDefault();INPS[fid].value=v;_add(fid,v);_close();if(fid===0)dos();else trg()}})(vals[i]);
     dd.appendChild(r);
   }

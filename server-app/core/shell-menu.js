@@ -19,8 +19,13 @@ function _shellCloseMenubarPopup() {
 }
 
 function _closeMenuRecentDropdown() {
-  if (_shellMenuRecentDropdown) { try { _shellMenuRecentDropdown.remove(); } catch (_) { } _shellMenuRecentDropdown = null; }
+  if (_shellMenuRecentDropdown) {
+    try { _shellMenuRecentDropdown.remove(); } catch (_) { }
+    _shellMenuRecentDropdown = null;
+  }
   if (_shellMenuRecentHoverTimer) { clearTimeout(_shellMenuRecentHoverTimer); _shellMenuRecentHoverTimer = null; }
+  // 恢复 square button 可见性
+  if (_shellMenuSqBtn && _shellMenuSqBtn._sqRestore) { _shellMenuSqBtn._sqRestore(); }
 }
 
 // ---- 窗口快照：保存到 qgs global，key=win_snap:{normalizedPath} ----
@@ -97,31 +102,23 @@ function _loadWindowSnapshot(folderPath) {
   return bridge.state.get('qqqide', key).catch(function () { return null; });
 }
 
-// ---- 显示 square button 的最近文件夹下拉 ----
-function _showMenuRecentDropdown(anchorEl) {
-  if (_shellMenuRecentDropdown && _shellMenuRecentDropdown._anchor === anchorEl) return;
+// ---- 显示 square button 的最近文件夹下拉（无标题行，直接显示列表）----
+function _showMenuRecentDropdown(sqBtn, leftPx, topPx) {
+  if (_shellMenuRecentDropdown) return;
   _closeMenuRecentDropdown();
-  if (!anchorEl || !anchorEl.isConnected) return;
+  if (!sqBtn || !sqBtn.isConnected) return;
 
-  var rect = anchorEl.getBoundingClientRect();
-  if (rect.width === 0 && rect.height === 0) return;
-  var topPx = rect.bottom;
-  var maxH = Math.max(180, window.innerHeight - topPx - 8);
+  var maxH = Math.max(200, window.innerHeight - topPx - 8);
 
   var dd = document.createElement('div');
   dd.className = 'qqq-menubar-recent-dropdown';
   dd.style.cssText =
     'position:fixed; z-index:100000; ' +
-    'left:' + rect.left + 'px; top:' + topPx + 'px; ' +
+    'left:' + leftPx + 'px; top:' + topPx + 'px; ' +
     'min-width:280px; max-width:420px; max-height:' + maxH + 'px; ' +
     'overflow-y:auto; ' +
     'background:var(--card-bg); border:1px solid var(--border-color); ' +
     'border-radius:3px; box-shadow:0 4px 16px rgba(0,0,0,.18); padding:4px 0;';
-
-  var titleRow = document.createElement('div');
-  titleRow.style.cssText = 'padding:6px 12px; font-size:11px; color:var(--text-muted); border-bottom:1px solid var(--border-color); margin-bottom:2px;';
-  titleRow.textContent = window._i ? window._i('shell.viewport.recentFolders', '最近打开的主文件夹') : '最近打开的主文件夹';
-  dd.appendChild(titleRow);
 
   var bridge = window.qqqideBridge;
   function renderRows(folders) {
@@ -167,6 +164,7 @@ function _showMenuRecentDropdown(anchorEl) {
         e.preventDefault();
         _closeMenuRecentDropdown();
         _shellCloseMenubarPopup();
+        _bumpMenuRecent(f.path);
         _openWindowFromRecent(f.path);
       });
 
@@ -174,15 +172,27 @@ function _showMenuRecentDropdown(anchorEl) {
     });
   }
 
+  // mouseleave → 延迟关闭（允许鼠标从按钮移到下拉）
+  dd.addEventListener('mouseleave', function () {
+    if (_shellMenuRecentHoverTimer) clearTimeout(_shellMenuRecentHoverTimer);
+    _shellMenuRecentHoverTimer = setTimeout(function () {
+      _shellMenuRecentHoverTimer = null;
+      _closeMenuRecentDropdown();
+    }, 200);
+  });
+  dd.addEventListener('mouseenter', function () {
+    if (_shellMenuRecentHoverTimer) { clearTimeout(_shellMenuRecentHoverTimer); _shellMenuRecentHoverTimer = null; }
+  });
+
   if (bridge && bridge.state) {
     bridge.state.get('qqqide', 'recent_folders').then(function (data) {
       if (_shellMenuRecentDropdown !== dd) return;
-      while (dd.children.length > 1) { dd.removeChild(dd.lastChild); }
+      while (dd.firstChild) { dd.removeChild(dd.firstChild); }
       var folders = (data && Array.isArray(data)) ? data.slice(0, 20) : [];
       renderRows(folders);
     }).catch(function () {
       if (_shellMenuRecentDropdown !== dd) return;
-      while (dd.children.length > 1) { dd.removeChild(dd.lastChild); }
+      while (dd.firstChild) { dd.removeChild(dd.firstChild); }
       renderRows([]);
     });
     var loadingRow = document.createElement('div');
@@ -194,7 +204,6 @@ function _showMenuRecentDropdown(anchorEl) {
   }
 
   document.body.appendChild(dd);
-  dd._anchor = anchorEl;
   _shellMenuRecentDropdown = dd;
 }
 
@@ -211,42 +220,53 @@ function _openWindowFromRecent(folderPath) {
   }
 }
 
-// ---- 创建外嵌 square ▶ button（挂载在 popup 右边缘外侧）----
+// ---- 写入最近文件夹到 global.sq3（与 ai-viewport.js 共享同一 key）----
+function _bumpMenuRecent(folderPath) {
+  var bridge = window.qqqideBridge;
+  if (!bridge || !bridge.state) return;
+  var name = '';
+  try {
+    var parts = folderPath.replace(/\\/g, '/').split('/').filter(Boolean);
+    name = parts[parts.length - 1] || folderPath;
+  } catch (_) { name = folderPath; }
+  bridge.state.get('qqqide', 'recent_folders').then(function (data) {
+    var list = (data && Array.isArray(data)) ? data.slice(0, 20) : [];
+    list = list.filter(function (f) { return f.path !== folderPath; });
+    list.unshift({ path: folderPath, name: name, atime: Date.now() });
+    if (list.length > 20) list.length = 20;
+    bridge.state.set('qqqide', 'recent_folders', list).catch(function () { });
+  }).catch(function () { });
+}
+
+// ---- 创建外嵌 square ▶ button（高=行高，hover 即消失→直接展开列表）----
 function _createSqBtn(pop, targetRow, cmd) {
   if (_shellMenuSqBtn) { try { _shellMenuSqBtn.remove(); } catch (_) { } }
   var popRect = pop.getBoundingClientRect();
   var rowRect = targetRow.getBoundingClientRect();
+  var btnH = rowRect.height;
   var sqBtn = document.createElement('span');
   sqBtn.className = 'qqq-menu-sq-btn';
   sqBtn.style.cssText =
     'position:fixed; z-index:100001; ' +
     'display:inline-flex; align-items:center; justify-content:center; ' +
-    'width:22px; height:22px; ' +
+    'width:' + Math.round(btnH * 1.2) + 'px; height:' + btnH + 'px; ' +
     'left:' + popRect.right + 'px; top:' + rowRect.top + 'px; ' +
-    'margin-top:' + ((rowRect.height - 22) / 2) + 'px; ' +
     'border-radius:2px; font-size:10px; color:var(--text-muted); ' +
     'background:var(--card-bg); border:1px solid var(--border-color); ' +
-    'user-select:none;';
+    'user-select:none; cursor:default;';
   sqBtn.textContent = '\u25B6';
-  sqBtn.title = window._i ? window._i('shell.menu.recentFolders', '最近打开的主文件夹') : '最近打开的主文件夹';
 
+  // hover → 按钮消失，直接展开最近文件夹列表
   sqBtn.addEventListener('mouseenter', function (e) {
     e.stopPropagation();
-    if (_shellMenuRecentHoverTimer) clearTimeout(_shellMenuRecentHoverTimer);
-    _shellMenuRecentHoverTimer = setTimeout(function () {
-      _shellMenuRecentHoverTimer = null;
-      _showMenuRecentDropdown(sqBtn);
-    }, 200);
+    sqBtn.style.display = 'none';
+    _showMenuRecentDropdown(sqBtn, popRect.right, rowRect.top);
   });
-  sqBtn.addEventListener('mouseleave', function () {
-    if (_shellMenuRecentHoverTimer) { clearTimeout(_shellMenuRecentHoverTimer); _shellMenuRecentHoverTimer = null; }
-  });
-  sqBtn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    _closeMenuRecentDropdown();
-    _shellCloseMenubarPopup();
-    window._shHandleMenuCmd(cmd);
-  });
+
+  // 恢复回调 — 下拉关闭时调用
+  sqBtn._sqRestore = function () {
+    if (sqBtn.isConnected) sqBtn.style.display = '';
+  };
 
   document.body.appendChild(sqBtn);
   _shellMenuSqBtn = sqBtn;

@@ -22,9 +22,10 @@ process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
 import { applyPortablePaths, getAppRoot } from './portable-paths';
 const portable = applyPortablePaths();
 
-import { app, BrowserWindow, protocol, nativeTheme } from 'electron';
+import { app, BrowserWindow, protocol, nativeTheme, safeStorage, ipcMain } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
+import * as fs from 'fs';
 
 // ── 子模块 ──
 import { loadBootConfig, extractFlags, bootSequence, BootMode, BootConfig } from './boot';
@@ -68,9 +69,17 @@ import { UpdateService } from './update-service';
 app.commandLine.appendSwitch('forced-colors', 'none');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('disable-features', 'ForcedColors,AutoDarkMode');
+// ★ CDP devtools capture: 克隆 DevTools 另存为 100% 输出（Log.entryAdded）
+app.commandLine.appendSwitch('remote-debugging-port', '8315');
 
 // ── 自定义协议 qqqide:// — 浏览器登录成功后 push token 回 IDE（2026-06-29） ──
-app.setAsDefaultProtocolClient('qqqide');
+// dev 模式必须传 app path（否则 Electron 启动默认 app→把 URL 当模块路径→炸）
+// prod 打包后 qqqide.exe 自带 app path，不需要
+if (app.isPackaged) {
+    app.setAsDefaultProtocolClient('qqqide');
+} else {
+    app.setAsDefaultProtocolClient('qqqide', process.execPath, [app.getAppPath()]);
+}
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
@@ -220,6 +229,37 @@ function registerAllIpc(): void {
     registerSmartSearchIpc(indexService);
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
     registerQzSpawnIpc(qzSpawn);
+    registerAuthPersistIpc();
+}
+
+// ── Auth 持久化 IPC — safeStorage 加密存盘，重启自动恢复（2026-06-29） ──
+function registerAuthPersistIpc(): void {
+    const AUTH_FILE = path.join(portable.userData, 'alphal', 'auth.enc');
+
+    ipcMain.handle('qqqide:auth:save', async (_e, auth: { token: string; phone: string; device_name?: string } | null) => {
+        if (!auth || !auth.token || !safeStorage.isEncryptionAvailable()) return false;
+        try {
+            const encrypted = safeStorage.encryptString(JSON.stringify(auth));
+            const dir = path.dirname(AUTH_FILE);
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(AUTH_FILE, new Uint8Array(encrypted));
+            return true;
+        } catch (e) { return false; }
+    });
+
+    ipcMain.handle('qqqide:auth:load', async () => {
+        if (!safeStorage.isEncryptionAvailable()) return null;
+        try {
+            if (!fs.existsSync(AUTH_FILE)) return null;
+            const encrypted = fs.readFileSync(AUTH_FILE);
+            return JSON.parse(safeStorage.decryptString(encrypted));
+        } catch (e) { return null; }
+    });
+
+    ipcMain.handle('qqqide:auth:clear', async () => {
+        try { if (fs.existsSync(AUTH_FILE)) fs.unlinkSync(AUTH_FILE); return true; }
+        catch (e) { return false; }
+    });
 }
 
 // ── App 就绪 ──
@@ -271,8 +311,53 @@ app.whenReady().then(async () => {
         isDevFlag, isOfflineFlag, setLastBootMode, getLastBootMode
     );
 
+    // ★ 多窗口还原：读取上次退出保存的窗口列表，还原额外窗口
+    (async () => {
+        try {
+            const openWindows = await stateStore.get('qqqide', 'open_windows');
+            if (openWindows && Array.isArray(openWindows) && openWindows.length > 1) {
+                let restored = 0;
+                // 跳过第一个窗口（主窗口已创建）
+                for (let i = 1; i < openWindows.length; i++) {
+                    const w = openWindows[i];
+                    if (!w.mainFolder) continue;
+                    const normalized = w.mainFolder.replace(/\\/g, '/').replace(/\/$/, '');
+                    if (!normalized) continue;
+                    // 已在其他窗口打开 → 跳过
+                    if (_projectWindowMap.has(normalized)) continue;
+
+                    const newWin = createWindow(portable.root, portable.cache, APP_VERSION, lspBridge, downloadService, stateStore);
+                    _windowProjectMap.set(newWin.id, normalized);
+                    _projectWindowMap.set(normalized, newWin.id);
+
+                    const url = bootConfig.url + '?restore=1&folder=' + encodeURIComponent(normalized);
+                    newWin.loadURL(url).then(() => {
+                        if (!newWin.isDestroyed()) {
+                            try {
+                                if (w.bounds && typeof w.bounds.w === 'number') {
+                                    if (w.bounds.maximized) { newWin.maximize(); }
+                                    else { newWin.setBounds({ x: w.bounds.x || 0, y: w.bounds.y || 0, width: w.bounds.w, height: w.bounds.h }); }
+                                }
+                            } catch (_) { }
+                            newWin.show();
+                        }
+                    }).catch((err: any) => {
+                        console.warn('[restore] window loadURL failed:', err && err.message);
+                        try { newWin.close(); } catch (_) { }
+                    });
+                    restored++;
+                    // 短暂间隔防并发创建风暴
+                    await new Promise(r => setTimeout(r, 300));
+                }
+                if (restored > 0) console.log('[restore] ' + restored + ' additional window(s) restored');
+            }
+        } catch (e) {
+            console.warn('[restore] multi-window restore failed:', e);
+        }
+    })();
+
     // ★ 异步建语义索引（不阻塞启动）
-    indexService.init();
+    indexService.init();;
 
     // macOS: re-activate → recreate window
     app.on('activate', () => {

@@ -12,7 +12,7 @@ document.getElementById('rules-edit').onclick = async function () {
 
         var appRoot = await bridge.app.root();
         var appRootClean = appRoot.replace(/\\/g, '/').replace(/\/$/, '');
-        var globalPath = appRootClean + '/userData/global.txt';
+        var globalPath = appRootClean + '/Data/global.txt';
         var globalExists = await bridge.fs.exists(globalPath);
         if (!globalExists) {
             await bridge.fs.write(globalPath, '# qqq AI Global Rules\n# Write rules here that apply to ALL projects.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) \u2014 AI remembers them from conversation history.\n');

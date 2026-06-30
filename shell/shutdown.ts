@@ -10,6 +10,7 @@ import { BootConfig } from './boot';
 import { StateStore } from './state-sqlite';
 import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
+import { _windowProjectMap } from './window-manager';
 
 // ── 自动版本递增 ──────────────────────────────────────────────────────────
 const AUTO_VERSION_TOGGLE_OFF = 'auto-version-off';
@@ -100,6 +101,33 @@ function autoIncrementVersion(portableRoot: string): void {
     }
 }
 
+// ── 保存所有打开窗口（退出前调用，供下次启动多窗口还原）──
+export function saveAllOpenWindows(stateStore: StateStore, winProjectMap: Map<number, string>): void {
+    try {
+        const windows: any[] = [];
+        for (const win of BrowserWindow.getAllWindows()) {
+            if (win.isDestroyed()) continue;
+            const mainFolder = winProjectMap.get(win.id) || '';
+            const bounds = win.getBounds();
+            const maximized = win.isMaximized();
+            windows.push({
+                mainFolder,
+                bounds: {
+                    x: bounds.x, y: bounds.y,
+                    w: bounds.width, h: bounds.height,
+                    maximized: maximized
+                }
+            });
+        }
+        if (windows.length > 0) {
+            stateStore.setNow('qqqide', 'open_windows', windows);
+            console.log('[shutdown] saved ' + windows.length + ' open window(s) for next-startup restore');
+        }
+    } catch (e) {
+        console.warn('[shutdown] saveAllOpenWindows failed:', e);
+    }
+}
+
 // ---- Security hardening ----
 export function hardenSession(): void {
     const ses = session.defaultSession;
@@ -185,6 +213,9 @@ export function registerExitHandlers(
 
         // ④ auto-increment version for next boot cache-busting
         try { autoIncrementVersion(portableRoot); } catch { /* ignore */ }
+
+        // ⑤ save open windows for next-startup multi-window restore
+        try { saveAllOpenWindows(stateStore, _windowProjectMap); } catch { /* ignore */ }
 
         app.exit(0);
         setTimeout(() => { process.exit(0); }, 500);

@@ -45,9 +45,13 @@
     g.appendChild(bar);
     g.appendChild(content);
 
-    // Mouse wheel on tab bar -> switch tabs
+    // Mouse wheel on tab bar -> switch tabs (★ throttled 100ms to prevent rapid-fire layout)
+    var _wheelLast = 0;
     bar.addEventListener('wheel', e => {
       e.preventDefault();
+      var now = Date.now();
+      if (now - _wheelLast < 100) return;
+      _wheelLast = now;
       const grp = groups.find(gr => gr.barEl === bar);
       if (!grp || grp.tabs.length < 2) return;
       const curIdx = grp.tabs.findIndex(t => t.id === grp.activeTabId);
@@ -119,6 +123,12 @@
 
   // ---- Activate tab ----
   function activateTab(grp, tabId) {
+    // ★ 暂停旧活跃编辑器 layout（避免 display:none 时 Monaco 做无意义 layout）
+    var oldTab = grp.tabs.find(function (t) { return t.id === grp.activeTabId; });
+    if (oldTab && oldTab.filePath && window.qqqEditor && window.qqqEditor.suspendPaneLayout) {
+      window.qqqEditor.suspendPaneLayout(oldTab.filePath);
+    }
+
     grp.activeTabId = tabId;
     // update bar
     grp.barEl.querySelectorAll('.qqq-tab-btn').forEach(b => {
@@ -128,9 +138,18 @@
     grp.contentEl.querySelectorAll('.qqq-tab-pane').forEach(p => {
       p.classList.toggle('qqq-tab-pane-active', p.dataset.tabId === String(tabId));
     });
+
+    // ★ 恢复新活跃编辑器 layout（等下一帧 DOM 尺寸稳定后再 layout）
+    var newTab = grp.tabs.find(function (t) { return t.id === tabId; });
+    if (newTab && newTab.filePath && window.qqqEditor && window.qqqEditor.resumePaneLayout) {
+      var _fp = newTab.filePath;
+      requestAnimationFrame(function () {
+        window.qqqEditor.resumePaneLayout(_fp);
+      });
+    }
+
     // fire callback
-    const tab = grp.tabs.find(t => t.id === tabId);
-    if (tab && tab.onActivate) tab.onActivate(tab);
+    if (newTab && newTab.onActivate) newTab.onActivate(newTab);
   }
 
   // ---- Close tab ----

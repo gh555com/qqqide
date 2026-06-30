@@ -25,7 +25,7 @@ interface WsListeners {
     error: Array<(e: Error) => void>;
 }
 
-class SimpleWebSocket {
+export class SimpleWebSocket {
     url: string;
     listeners: WsListeners = { open: [], message: [], error: [] };
     socket: any = null;

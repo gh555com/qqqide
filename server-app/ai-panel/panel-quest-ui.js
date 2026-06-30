@@ -356,8 +356,9 @@ function updateCostDisplay() { _updateCostDisplay(); }
 //   - 压缩阈值只用 prompt_tokens（与背包一致）
 function _estimateTokensFull() {
     var _ag = _activeAgent;
-    if (!_ag) { _ctxBreakdownData = null; return 0; }
+    if (!_ag) { console.warn('[ctx-est] _activeAgent is null'); _ctxBreakdownData = null; return 0; }
     var conv = _ag.conversation || [];
+    if (!conv.length) { console.warn('[ctx-est] conversation EMPTY, _ag._floorId=' + (_ag._floorId || '?') + ' _stopState=' + (_ag._stopState || '?')); }
     var ctx = _ag._ctx || null;
 
     // ── 1. API 精确值（参考） ──
@@ -469,6 +470,7 @@ function _estimateTokensFull() {
         accCompletion: apiCompletion
     };
     _estCache = { val: localTotal, convLen: conv.length, ctxHash: ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '', apiVer: apiPrompt + '|' + apiCompletion };
+    if (localTotal === 0) { console.warn('[ctx-est] total=0! convLen=' + conv.length + ' msg0=' + msg0TotalChars + ' user=' + userChars + ' aiTxt=' + aiContentChars + ' aiTC=' + aiToolCallsChars + ' tool=' + toolChars + ' comp=' + compressedChars + ' err=' + errChars); }
     return localTotal;
 }
 
@@ -482,7 +484,7 @@ function _tkStrStr(n) {
 var _ctxBreakdownVisible = false;
 var _ctxBreakdownTimer = null;
 var _ctxBreakdownData = null;
-var _estCache = null;
+var _estCache = { val: 0, convLen: 0, ctxHash: '', apiVer: '' };
 var CTX_MAX_TOKENS = (typeof ContentGateway !== 'undefined' && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
 
 function renderCtxBreakdown() {
@@ -554,9 +556,10 @@ function updateCtxBtn() {
         $ctxBtn.style.setProperty('--ctx-pct', '0%');
         return;
     }
+    if (!_activeAgent.conversation.length) { console.warn('[ctx-btn] _activeAgent.conversation is EMPTY ARRAY, agent._floorId=' + (_activeAgent._floorId || '?')); }
     var _ag = _activeAgent;
-    // ★★ 架构重构 v4：本地估算为主（自己发的自己知道），API prompt_tokens 为参考（晚一回合）
-    var used = _estimateTokensFull(); // 本地精确统计
+    var used = _estimateTokensFull();
+    if (used === 0 && _ag.conversation && _ag.conversation.length) { console.warn('[ctx-btn] used=0 convLen=' + _ag.conversation.length + ' _floorId=' + (_ag._floorId || '?') + ' _stopState=' + (_ag._stopState || '?')); }
     var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
     $ctxBtn.textContent = Math.round(used / 1000) + ' k';
     $ctxBtn.style.setProperty('--ctx-pct', pct + '%');
