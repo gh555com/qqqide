@@ -1101,12 +1101,13 @@ $input.addEventListener('focus', function () {
     }
 });
 
-function insertChipAtCursor(filePath, isDir) {
+function insertChipAtCursor(filePath, isDir, lineRange) {
     if (typeof isDir !== 'boolean') {
         isDir = !filePath.match(/\.[a-zA-Z0-9]+$/);
     }
     var icon = isDir ? '\ud83d\udcc1' : '\ud83d\udcce';
-    var tag = icon + '\u201c' + filePath + '\u201d ';
+    var rangeStr = lineRange ? ' ' + lineRange : '';
+    var tag = icon + '\u201c' + filePath + '\u201d' + rangeStr + ' ';
     $input.focus();
     var start = $input.selectionStart;
     var end = $input.selectionEnd;
@@ -1129,15 +1130,16 @@ window.addEventListener('message', function (e) {
         if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
         var path = e.data.path;
         var isDir = e.data.isDir;
+        var lineRange = e.data.lineRange;
         if (path) {
-            insertChipAtCursor(path, isDir);
+            insertChipAtCursor(path, isDir, lineRange);
         }
     }
 });
 
 document.addEventListener('qqq-ai-attach', function (e) {
     if (e.detail && e.detail.path) {
-        insertChipAtCursor(e.detail.path, e.detail.isDir);
+        insertChipAtCursor(e.detail.path, e.detail.isDir, e.detail.lineRange);
     }
 });
 

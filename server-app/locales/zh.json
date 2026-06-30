@@ -141,7 +141,8 @@
             "paste": "粘贴",
             "selectAll": "全选",
             "undo": "撤销",
-            "redo": "重做"
+            "redo": "重做",
+            "feedToAi": "📎 喂给 AI"
         },
         "undo": "撤销 (Ctrl+Z)",
         "redo": "重做 (Ctrl+Y)",
