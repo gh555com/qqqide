@@ -320,6 +320,9 @@ async function _restoreAgentFromStore(questId, ag) {
 
         // 重建 conversation：聚合所有楼层
         ag.conversation = [];
+        // ★ 从 conversation 重建 _questErrorLog（重启后复原聚合红框）
+        ag._questErrorLog = [];
+        ag._questErrorDiv = null;
         for (var fi = 0; fi < allFloors.length; fi++) {
             var fData = allFloors[fi].data;
             var fConv = fData.conversation;
@@ -328,7 +331,13 @@ async function _restoreAgentFromStore(questId, ag) {
                     ag.conversation.push(fConv[mi]);
                 }
             }
-            // ★ 推理不再注入 conversation（由 Compressed Summary 覆盖历史上下文）
+        }
+        // ★ 扫描所有 _error 消息重建聚合红框日志
+        for (var _eli = 0; _eli < ag.conversation.length; _eli++) {
+            var _em = ag.conversation[_eli];
+            if (_em._error && _em.role === 'assistant' && _em.content) {
+                ag._questErrorLog.push({ time: '', reason: _em.content });
+            }
         }
 
         // ★ 重建 _floorMeta（未可变楼层元数据）

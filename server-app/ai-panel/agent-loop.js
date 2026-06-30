@@ -129,7 +129,8 @@ var AgentLoop = (function () {
         this._exitReason = '';           // 'ok'|'http_502'|'http_503'|'http_429'|'http_402'|'fetch_error'|'watchdog_stream'|'deadline'|'max_iter'|'unknown'
         this._lastHttpStatus = 0;        // 最后一次 HTTP 状态码
         this._floorFatal = false;        // ★ 致命失败：onError 触发后强制 _stopState='fatal'，防 idle 假恢复
-        this._questErrorGateActive = false;  // ★ 防重复红框：同 quest 同时最多一个红框（跨 floor 持久）
+        this._questErrorLog = [];           // ★ 聚合红框：同 quest 所有失败按时间叠到一个框（跨 floor 持久）
+        this._questErrorDiv = null;         //   DOM 引用：恢复时重建
         this._isRecovery = false;        // ★ 恢复模式：下一条用户消息标注 _system:true（继续任务用）
         this._lastFetchError = '';       // 最后一次 fetch 错误消息
         this._lastSseError = '';         // 最后一次 SSE 服务端错误
@@ -138,7 +139,7 @@ var AgentLoop = (function () {
         // ★ 记账埋点：完整 billing 追踪（per-house 粒度）
         this._lastBilling = null;        // { wgeCost, model, usage: {prompt_tokens,completion_tokens,cached_tokens,non_cached_tokens}, freeWindow, requestId }
         this._billingSeq = 0;            // 全局 billing 事件序号（跨 floor 递增）
-        this._billingDebug = false;      // 详细记账日志开关（默认关，减少噪音）
+        this._billingDebug = true;       // 详细记账日志开关（默认开，诊断缓存命中率）
         // ★ 上下文快照：诊断模型缓存命中/未命中根因
         this._lastSentSnapshot = null;   // { msgCount, prefixHash, firstMsgKeys, lastMsgKeys }
         this._lastCacheDiag = null;      // { prevHash, currHash, firstDiffIdx, diffReason, prevMsgKeys, currMsgKeys }
@@ -348,10 +349,12 @@ var AgentLoop = (function () {
         }
         finalContent += _timeCtx;
 
-        self._ctx.totalFloors++;
+        // ★ 恢复模式：不增 totalFloors（恢复追加到同一死胡同楼层，非新楼层）
+        var _isRecoveryMsg = self._isRecovery;
+        if (!_isRecoveryMsg) { self._ctx.totalFloors++; }
         var userMsg = { role: 'user', content: finalContent, _floor: self._ctx.totalFloors };
         // ★ 恢复模式：用户消息标 _system:true，AI 知道这是系统代发而非用户手打
-        if (self._isRecovery) { userMsg._system = true; self._isRecovery = false; }
+        if (_isRecoveryMsg) { userMsg._system = true; self._isRecovery = false; }
         self.conversation.push(userMsg);
 
         self._log('→ user: ' + (userContent || '').slice(0, 80) + (images ? ' +' + images.length + ' images' : '') + (visionText ? ' [vision done]' : ''));
@@ -376,8 +379,6 @@ var AgentLoop = (function () {
         self._floorFatal = false;      // ★ 每层楼重置
         // ★ _inRecoverySend: 保留外部已设值（_attemptRecoverySend 预置），正常楼层为 false
         self._inRecoverySend = self._inRecoverySend || false;
-        // ★ 恢复模式：preserve 已设的 _isRecovery（外部 set 优先于 opts）
-        self._isRecovery = opts._isRecovery || self._isRecovery || false;
         // ★ 终极 Stop 闭环：每层楼创建真理源
         self._stopCtrl = new AbortController();
         self._stopState = 'sending';
@@ -1017,96 +1018,6 @@ var AgentLoop = (function () {
         AgentLoop.prototype._updateSendBtnForCompress = function () { };
     }
 
-    // ★ 上下文快照：对比两次 API 调用发送的消息数组，定位缓存断裂点
-    // 返回 { prevSnapshot, currSnapshot, firstDiffIdx, diffReason, prevMsgKeys, currMsgKeys }
-    function _snapshotMessages(messages, prevSnapshot) {
-        var _makeKeys = function (m) {
-            var keys = [];
-            if (!m) return '(null)';
-            keys.push(m.role || '?');
-            if (m._injected) keys.push('inj');
-            if (m._dynamic) keys.push('dyn');
-            if (m._guideAck) keys.push('ack');
-            if (m._truncated) keys.push('trunc');
-            if (m._floor !== undefined) keys.push('f' + m._floor);
-            var content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '');
-            keys.push('len=' + content.length);
-            if (m.tool_calls) keys.push('tc=' + m.tool_calls.length);
-            if (m.tool_call_id) keys.push('tid');
-            return keys.join('|');
-        };
-
-        var _makeSnapshot = function (msgs) {
-            var count = msgs.length;
-            var firstKeys = [];
-            var lastKeys = [];
-            var prefixParts = [];
-            var n = Math.min(10, count);
-            for (var i = 0; i < n; i++) {
-                var k = _makeKeys(msgs[i]);
-                firstKeys.push(k);
-                prefixParts.push(k);
-            }
-            for (var j = Math.max(0, count - 3); j < count; j++) {
-                lastKeys.push(_makeKeys(msgs[j]));
-            }
-            var prefixHash = prefixParts.join('\n');
-            return {
-                msgCount: count,
-                prefixHash: prefixHash,
-                firstMsgKeys: firstKeys,
-                lastMsgKeys: lastKeys
-            };
-        };
-
-        var curr = _makeSnapshot(messages);
-
-        if (!prevSnapshot) {
-            return { prevSnapshot: null, currSnapshot: curr, firstDiffIdx: null, diffReason: 'first_call', prevMsgKeys: null, currMsgKeys: curr.firstMsgKeys };
-        }
-
-        // 快速路径：prefix hash 相同 → 缓存命中
-        if (curr.prefixHash === prevSnapshot.prefixHash && curr.msgCount === prevSnapshot.msgCount) {
-            return { prevSnapshot: prevSnapshot, currSnapshot: curr, firstDiffIdx: -1, diffReason: 'prefix_match', prevMsgKeys: prevSnapshot.firstMsgKeys, currMsgKeys: curr.firstMsgKeys };
-        }
-
-        // 慢速路径：逐条对比前 50 条消息，找到第一个差异点
-        var maxCmp = Math.min(50, Math.max(curr.msgCount, prevSnapshot.msgCount));
-        var firstDiff = -1;
-        var reason = '';
-        for (var i2 = 0; i2 < maxCmp; i2++) {
-            var prevKey = i2 < prevSnapshot.msgCount ? _makeKeys(messages[i2]) : '(missing)';
-            // Note: messages is the current array; for prev we use prevSnapshot's stored keys
-            var prevStoredKey = (prevSnapshot.firstMsgKeys && i2 < prevSnapshot.firstMsgKeys.length) ? prevSnapshot.firstMsgKeys[i2] : ((i2 < prevSnapshot.msgCount) ? '(msg-' + i2 + ')' : '(eos)');
-            var currKey = i2 < curr.msgCount ? _makeKeys(messages[i2]) : '(eos)';
-            if (prevStoredKey !== currKey) {
-                firstDiff = i2;
-                if (i2 >= curr.msgCount) {
-                    reason = 'msg_removed@' + i2 + ' prev=[' + prevStoredKey + '] curr=(eos)';
-                } else if (i2 >= prevSnapshot.msgCount) {
-                    reason = 'msg_added@' + i2 + ' prev=(eos) curr=[' + currKey + ']';
-                } else if (curr.msgCount !== prevSnapshot.msgCount) {
-                    reason = 'msg_diff@' + i2 + ' count_changed prev=' + prevSnapshot.msgCount + ' curr=' + curr.msgCount;
-                } else {
-                    reason = 'msg_diff@' + i2 + ' prev=[' + prevStoredKey + '] curr=[' + currKey + ']';
-                }
-                break;
-            }
-        }
-        if (firstDiff < 0) {
-            reason = 'diff_beyond_' + maxCmp + ' (msgCount prev=' + prevSnapshot.msgCount + ' curr=' + curr.msgCount + ')';
-        }
-
-        return {
-            prevSnapshot: prevSnapshot,
-            currSnapshot: curr,
-            firstDiffIdx: firstDiff,
-            diffReason: reason,
-            prevMsgKeys: prevSnapshot.firstMsgKeys,
-            currMsgKeys: curr.firstMsgKeys
-        };
-    }
-
     // ★ 记账埋点：调试账单汇总（floor 完结时调用）
     function _logBillingSummary(ag) {
         if (!ag || !ag._houses) return;
@@ -1212,6 +1123,98 @@ var AgentLoop = (function () {
 
     return AgentLoop;
 })();
+
+// ★ 上下文快照：对比两次 API 调用发送的消息数组，定位缓存断裂点
+// 返回 { prevSnapshot, currSnapshot, firstDiffIdx, diffReason, prevMsgKeys, currMsgKeys }
+// ★ 定义在 IIFE 外，供 agent-gateway.js 调用
+function _snapshotMessages(messages, prevSnapshot) {
+    var _makeKeys = function (m) {
+        var keys = [];
+        if (!m) return '(null)';
+        keys.push(m.role || '?');
+        if (m._injected) keys.push('inj');
+        if (m._dynamic) keys.push('dyn');
+        if (m._guideAck) keys.push('ack');
+        if (m._truncated) keys.push('trunc');
+        if (m._floor !== undefined) keys.push('f' + m._floor);
+        var content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content || '');
+        keys.push('len=' + content.length);
+        if (m.tool_calls) keys.push('tc=' + m.tool_calls.length);
+        if (m.tool_call_id) keys.push('tid');
+        return keys.join('|');
+    };
+
+    var _makeSnapshot = function (msgs) {
+        var count = msgs.length;
+        var firstKeys = [];
+        var lastKeys = [];
+        var prefixParts = [];
+        var n = Math.min(10, count);
+        for (var i = 0; i < n; i++) {
+            var k = _makeKeys(msgs[i]);
+            firstKeys.push(k);
+            prefixParts.push(k);
+        }
+        for (var j = Math.max(0, count - 3); j < count; j++) {
+            lastKeys.push(_makeKeys(msgs[j]));
+        }
+        var prefixHash = prefixParts.join('\n');
+        return {
+            msgCount: count,
+            prefixHash: prefixHash,
+            firstMsgKeys: firstKeys,
+            lastMsgKeys: lastKeys
+        };
+    };
+
+    var curr = _makeSnapshot(messages);
+
+    if (!prevSnapshot) {
+        return { prevSnapshot: null, currSnapshot: curr, firstDiffIdx: null, diffReason: 'first_call', prevMsgKeys: null, currMsgKeys: curr.firstMsgKeys };
+    }
+
+    // 快速路径：prefix hash 相同 → 缓存命中
+    // ★ prefix cache 只看前缀，不看总消息数；工具循环每 house 加 2 条消息 msgCount 必定不同
+    if (curr.prefixHash === prevSnapshot.prefixHash) {
+        return { prevSnapshot: prevSnapshot, currSnapshot: curr, firstDiffIdx: -1, diffReason: 'prefix_match', prevMsgKeys: prevSnapshot.firstMsgKeys, currMsgKeys: curr.firstMsgKeys };
+    }
+
+    // 慢速路径：逐条对比前 50 条消息，找到第一个差异点
+    var maxCmp = Math.min(50, Math.max(curr.msgCount, prevSnapshot.msgCount));
+    var firstDiff = -1;
+    var reason = '';
+    for (var i2 = 0; i2 < maxCmp; i2++) {
+        var prevKey = i2 < prevSnapshot.msgCount ? _makeKeys(messages[i2]) : '(missing)';
+        // Note: messages is the current array; for prev we use prevSnapshot's stored keys
+        var prevStoredKey = (prevSnapshot.firstMsgKeys && i2 < prevSnapshot.firstMsgKeys.length) ? prevSnapshot.firstMsgKeys[i2] : ((i2 < prevSnapshot.msgCount) ? '(msg-' + i2 + ')' : '(eos)');
+        var currKey = i2 < curr.msgCount ? _makeKeys(messages[i2]) : '(eos)';
+        if (prevStoredKey !== currKey) {
+            firstDiff = i2;
+            if (i2 >= curr.msgCount) {
+                reason = 'msg_removed@' + i2 + ' prev=[' + prevStoredKey + '] curr=(eos)';
+            } else if (i2 >= prevSnapshot.msgCount) {
+                reason = 'msg_added@' + i2 + ' prev=(eos) curr=[' + currKey + ']';
+            } else if (curr.msgCount !== prevSnapshot.msgCount) {
+                reason = 'msg_diff@' + i2 + ' count_changed prev=' + prevSnapshot.msgCount + ' curr=' + curr.msgCount;
+            } else {
+                reason = 'msg_diff@' + i2 + ' prev=[' + prevStoredKey + '] curr=[' + currKey + ']';
+            }
+            break;
+        }
+    }
+    if (firstDiff < 0) {
+        reason = 'diff_beyond_' + maxCmp + ' (msgCount prev=' + prevSnapshot.msgCount + ' curr=' + curr.msgCount + ')';
+    }
+
+    return {
+        prevSnapshot: prevSnapshot,
+        currSnapshot: curr,
+        firstDiffIdx: firstDiff,
+        diffReason: reason,
+        prevMsgKeys: prevSnapshot.firstMsgKeys,
+        currMsgKeys: curr.firstMsgKeys
+    };
+}
 
 // ═══ 诊断日志：conversation 快照（黑箱暴破） ═══
 AgentLoop.prototype._dumpConversation = function (tag, extra) {

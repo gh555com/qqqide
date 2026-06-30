@@ -179,6 +179,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-ai a{color:var(--blue);text-decoration:none}
 .msg-ai a:hover{text-decoration:underline}
 .msg-error{color:var(--red);padding:8px 12px;font-size:12px;background:rgba(220,50,47,0.06);border:1px solid rgba(220,50,47,0.15);border-radius:6px;margin:6px 0;line-height:1.6}
+/* ── 聚合红框：quest 级多行错误 + 单链接 ── */
+.msg-quest-error{padding:8px 12px;white-space:pre-wrap}
+.qe-row{padding:2px 0;border-bottom:1px solid rgba(220,50,47,0.08)}
 .msg-err-continue{text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;user-select:none}
 /* ── 致命失败恢复光块："继续任务"文字变成光块左右横跳 ── */
 @keyframes recovery-bounce{0%{transform:translateX(-6px);opacity:0.3}50%{transform:translateX(10px);opacity:1}100%{transform:translateX(-6px);opacity:0.3}}

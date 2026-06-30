@@ -13,6 +13,15 @@ const QQQ = {
         quitAll: () => ipcRenderer.invoke('qqqide:app:quitAll'),
     },
 
+    // ---- auth push — 浏览器登录成功通过 qqqide:// 协议推 token（2026-06-29） ----
+    auth: {
+        onAuthPush: (cb: (data: { token: string; phone: string }) => void) => {
+            const handler = (_e: any, data: { token: string; phone: string }) => { try { cb(data); } catch (err) { console.warn('[auth.onAuthPush]', err); } };
+            ipcRenderer.on('qqq-ide-auth', handler);
+            return () => ipcRenderer.removeListener('qqq-ide-auth', handler);
+        },
+    },
+
     // ---- file system (proxied to engine subprocess) ----
     fs: {
         read: (p: string) => ipcRenderer.invoke('qqqide:fs:read', p),
@@ -160,7 +169,7 @@ const QQQ = {
                 const handler = (_e: any, msg: any) => {
                     if (!msg || msg.streamId !== streamId) return;
                     if (msg.type === 'progress') {
-                        try { onChunk(msg.channel || 'stdout', msg.data || ''); } catch {}
+                        try { onChunk(msg.channel || 'stdout', msg.data || ''); } catch { }
                     } else if (msg.type === 'done') {
                         ipcRenderer.removeListener('qqqide:qz:stream', handler);
                         resolve(msg.result);
@@ -245,6 +254,7 @@ const QQQ = {
             pull: () => ipcRenderer.invoke('qqqide:state:cloud:pull'),
             push: () => ipcRenderer.invoke('qqqide:state:cloud:push'),
             sync: () => ipcRenderer.invoke('qqqide:state:cloud:sync'),
+            setAuth: (auth: { phone: string; token: string; device_name?: string } | null) => ipcRenderer.invoke('qqqide:state:cloud:setAuth', auth),
         },
         // Subscribe to any (ns,key) change. Returns an unsubscribe fn.
         onChange: (cb: (msg: { ns: string; key: string; value: any; deleted: boolean }) => void) => {

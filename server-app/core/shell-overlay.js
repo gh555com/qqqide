@@ -144,6 +144,7 @@ function bootAiOverlay() {
   }
 
   // Copy button — 固定文字，禁止 i18n 覆写和动画（防按钮变宽→焦点窃取→Ctrl+C 失效）
+  var _ovSavedRange = null;  // ★ 保存最后选区，点击复制按钮时选区已被浏览器清掉，用此恢复
   var copyBtnLabel = window._i('shell.overlay.copy', '复制到剪贴板');
   var copyBtn = tbBtn('\uD83D\uDCCB ' + copyBtnLabel, copyBtnLabel);
   // ★ 不设 data-i18n — i18n updateDom 会覆写 textContent 导致按钮变宽→焦点变化→Ctrl+C 截断
@@ -163,11 +164,32 @@ function bootAiOverlay() {
       document.body.removeChild(ta);
     }
   }
-  copyBtn.addEventListener('click', function () {
-    // Copy selected text first, fallback to all text
+  copyBtn.addEventListener('mousedown', function (e) {
+    // ★ 在浏览器清掉选区之前，先保存当前 Range（click 事件触发时选区已空）
     var sel = window.getSelection();
-    if (sel && sel.toString().trim()) {
-      doCopy(sel.toString());
+    if (sel && sel.rangeCount > 0 && sel.toString().trim()) {
+      _ovSavedRange = sel.getRangeAt(0).cloneRange();
+    } else {
+      _ovSavedRange = null;
+    }
+  });
+  copyBtn.addEventListener('click', function () {
+    var sel = window.getSelection();
+    var text = sel && sel.toString().trim();
+    // 若当前选区已被清空，回退到 mousedown 时保存的 Range
+    if (!text && _ovSavedRange) {
+      text = _ovSavedRange.toString().trim();
+    }
+    if (text) {
+      doCopy(text);
+      // ★ 复制后恢复选区（黄色高亮不丢）
+      if (_ovSavedRange) {
+        try {
+          var s = window.getSelection();
+          s.removeAllRanges();
+          s.addRange(_ovSavedRange);
+        } catch (_) { }
+      }
       return;
     }
     var img = contentEl.querySelector('img');
@@ -253,39 +275,28 @@ function bootAiOverlay() {
     if (e.target === overlay) close();
   });
 
-  // ★ 捕获阶段拦截 Ctrl+C — 必须在 key-hook 之前抢到事件（key-hook 也是 capture）
+  // ★ Ctrl+C：让浏览器原生处理（tabIndex=-1 防焦点窃取已确保原生复制通路畅通）
+  //    不设自定义拦截 — preventDefault 会阻断浏览器维持选区，导致黄色高亮消失
+  //    Escape 仍然手动处理
   document.addEventListener('keydown', function (e) {
     if (overlay.style.display === 'none') return;
     if (e.key === 'Escape') { close(); return; }
-    if ((e.key === 'c' || e.key === 'C' || e.key === 'Insert') && (e.ctrlKey || e.metaKey)) {
-      var sel = window.getSelection();
-      var selText = sel && sel.toString().trim();
-      if (selText) {
-        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
-        try {
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(selText).catch(function () {
-              var ta = document.createElement('textarea');
-              ta.value = selText; ta.style.cssText = 'position:fixed;left:-9999px';
-              document.body.appendChild(ta); ta.select();
-              try { document.execCommand('copy'); } catch (_) { }
-              document.body.removeChild(ta);
-            });
-          }
-        } catch (_) { }
-      }
-    }
-  }, true);  // ★ capture phase — 抢先于 key-hook 和 CooldownGuard
+  });
 
   // ── 选中高亮全文匹配（CSS Highlight API）──
   overlay.addEventListener('mouseup', function (e) {
     if (overlay.style.display === 'none') return;
     if (e.target.closest('#qqq-ai-overlay-toolbar')) return;
     if (e.target.closest('button')) return;
+    // ★ 保存当前选区 Range（供复制按钮恢复用）
+    var sel = window.getSelection();
+    if (sel && sel.rangeCount > 0 && sel.toString().trim()) {
+      _ovSavedRange = sel.getRangeAt(0).cloneRange();
+    }
     setTimeout(function () {
       if (overlay.style.display === 'none') return;
-      var sel = window.getSelection();
-      var text = sel && sel.toString().trim();
+      var sel2 = window.getSelection();
+      var text = sel2 && sel2.toString().trim();
       if (text && text.length >= 1 && text !== _ovLastMatchText) {
         _ovApplyHighlights(text);
       } else if (!text) {
@@ -296,7 +307,11 @@ function bootAiOverlay() {
 
   overlay.addEventListener('mousedown', function (e) {
     if (overlay.style.display === 'none') return;
+    // 工具栏/D-pad 区域不触发高亮清除（否则点复制按钮会消掉选区）
+    if (e.target.closest('#qqq-ai-overlay-toolbar')) return;
+    if (e.target.closest('button')) return;
     setTimeout(function () {
+      if (overlay.style.display === 'none') return;
       var sel = window.getSelection();
       var newText = sel && sel.toString().trim();
       if (!newText || newText !== _ovLastMatchText) {

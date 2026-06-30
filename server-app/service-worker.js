@@ -119,6 +119,8 @@ self.addEventListener('fetch', evt => {
   if (isAssetScheme(url)) { return; }
   // health: never cache.
   if (isHealth(url)) { return; }
+  // ★ API 调用：不拦截（登录轮询、AI 网关等）
+  if (url.pathname.indexOf('/api/') !== -1) { return; }
 
   if (isHTML(req)) {
     evt.respondWith(networkFirst(req, 2500));

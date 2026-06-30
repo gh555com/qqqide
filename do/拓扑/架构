@@ -63,9 +63,10 @@ qz spawn 管线 — 两层 + 四重防御
 
 AI 网关双线路 + 故障切换引擎
 ---------------------------------------------
-· 双线路:
-  主: https://direct.gh555.com:8444 (直连 HTTP/1.1，87ms)
-  备: https://gh555.com (CF Worker 透传 → Go → 推理引擎)
+· 双线路（2026-06-29 更新）:
+  主: https://direct-cn.gh555.com (直连 CN 47.105.67.51, 中国 ~50ms, 绕过 Cloudflare 延迟)
+  备: https://cnk.gh555.com (Cloudflare CDN → CN nginx → WireGuard → US Go, 全球 DDoS 防护)
+· 旧 US 直连 direct.gh555.com:8444 已弃用 — US 防火墙仅允许 CN 通过 WireGuard 访问
 · ★ 全路由覆盖（6 个 AI 端点，2026-06-26）
   chat / vision / vision stream / image-gen / image-gen stream / embedding / search
   所有端点经 AiGateway._URLS 双 URL 声明 + _postJsonWithFailover/_pollStream 自动切换
@@ -105,9 +106,21 @@ AI 网关双线路 + 故障切换引擎
 · 计费幂等: INSERT INTO idempotency_keys ON CONFLICT DO NOTHING
   同 floor goroutine 重复触发→仅扣费一次。key 格式: ai_turn:{doerID}:{floorID}
 
-Nginx 备用线路铁律
+IDE 登录认证 — 纯内存 JWT + qqqide:// 协议推送（2026-06-29）
 ---------------------------------------------
-· port 8444 必须纯 HTTP/1.1（listen 8444 ssl; 禁 http2）
+· 流程: 浏览器 gh555.com/login → ide-finalize 生成 JWT(DoerID+DeviceID,HS256,10y) → qqqide:// 协议推送
+· 主通道: 浏览器端 window.location → qqqide://auth?token=JWT&phone=xxx → Electron 主进程拦截 → IPC→渲染层
+· 客户端零磁盘: login.js _authData 唯一内存副本，登出即清，重启即失
+· 服务端: authenticateIDEToken 解析 JWT→查 devices 表验证设备存活
+· 兜底: 协议不可用（系统未注册）时自动退化为轮询（最长 120s）
+· 已删除: UUID token、auth.json 磁盘读写、_loadAuthToken/_saveAuthToken 全部旧代码
+· 铁律: 单一路径(qqqide://push→内存→Bearer)，轮询仅兜底
+
+Nginx 备用线路铁律 (US 已隐身, 2026-06-29)
+---------------------------------------------
+· direct.gh555.com:8444 已弃用 — US 防火墙阻止所有外部直连，仅 CN→US WireGuard 可达
+· CN nginx 443 接管 AI 代理: /api/v3/ai/* → http://10.0.0.1:8080 (WireGuard→US Go)
+· port 8444 纯 HTTP/1.1（listen 8444 ssl; 禁 http2）— 保留用于内部 WireGuard 访问
 · 原因: Nginx HTTP/2 ↔ Go HTTP/1.1 SSE 存在协议转换 bug → ERR_HTTP2_PROTOCOL_ERROR
 · sites-enabled/ 只保留 gh555 一个文件（include * 会匹配 .bak）
 · 验证: openssl s_client -connect :8444 -alpn h2 → "No ALPN negotiated"
@@ -512,18 +525,37 @@ Read 约束: 全文读→全覆盖标记；分段读→区间合并去重。同�
   · 铁律: 绝不 window.location.reload()。5 分钟后 _gwTryPrimary() 自动回探
 
 
-AI 网关 — Worker 纯代理 + Go 权威计费 + US 服务器
+AI 网关 — CN 直连 + US 隐身 + 客户端代理 (2026-06-29 加固)
 --------------------------------------------------------------------
-线路: Client ──SSE──▶ Worker(cf edge, 纯透传) ──▶ Go ──▶ 推理引擎
+线路: Client ──(主)──▶ direct-cn.gh555.com ──▶ CN nginx 443 ──▶ WireGuard ──▶ US Go:8080
+       └──(备)──▶ cnk.gh555.com ──▶ Cloudflare CDN ──▶ CN nginx ──▶ WireGuard ──▶ US Go:8080
 
-Worker: 纯透传 SSE，禁任何计费/模型映射/body 改写
-Go (唯一计费权威): POST /v3/ai/chat (认证+GKLimit+ChargeAITurnWithMeta 单步扣款)
-  /v3/ai/usage /v3/ai/vision /v3/ai/generate-image /v3/search/web (SearXNG Google+Bing 5ge/次)
-  视觉/绘图/搜索: goroutine 后台扣费
+CN 服务器 (47.105.67.51, 阿里云 ECS):
+  nginx 443 (通配证书: cnk + direct-cn + *.gh555.com)
+  · /api/v3/ai/* → proxy_pass http://10.0.0.1:8080 (WireGuard → US Go)
+  · / (其他) → proxy_pass http://127.0.0.1:8080 (CN 本地 Go)
+  Go dgs/server 8080 50MB | PostgreSQL 18 | Redis 7
+  阿里云自带 5Gbps DDoS 基础防护（免费，已生效）
 
-US 服务器: nginx 80/443+8444(HTTP/1.1 only) | dgs/server 8080 113MB
-  PostgreSQL 18 5432 ~200MB | Redis 7 6379 23MB | docker searxng 8088 123MB (host网络)
-  ★ searxng 与 Go co-locate，配置: /opt/searxng/ (docker compose)
+US 服务器 (23.254.248.119):
+  ★ 防火墙白名单 (iptables, 2026-06-29): 仅允许 CN(47.105.67.51) + WireGuard(10.0.0.0/24) + wg0 接口
+  全世界其他 IP → DROP。SSH 22 / nginx 8444 / Go 8080 均不可达。
+  重启自恢复: @reboot cron iptables-restore。
+  nginx 8444 (HTTP/1.1 only) | dgs/server 8080 155MB
+  PostgreSQL 18 5432 | Redis 7 6379 | searxng 8088
+
+客户端代理 (proxy/sp_tunnel.py, PyQt5 GUI):
+  本地 SOCKS5 :10808 → SSH双跳(CN→US) → 智能路由
+  · HOST_MAP: cnk.gh555.com → 47.105.67.51:443 (本地绕过 Cloudflare, 30ms)
+  · DIRECT_HOSTS: cnk.gh555.com 等自家域名直连
+  · 监控面板: 客户端 | CN | US 三栏, CPU/mem 滚动平均 600次=100分钟
+  · 系统代理: 写入 Windows ProxyEnable/ProxyServer (127.0.0.1:10808)
+  · 全局开关 + 名单模式 + 自动重连(传输层断开→3s重连)
+
+DNS (Cloudflare, 2026-06-29):
+  direct-cn.gh555.com  A → 47.105.67.51 (灰色云, DNS only)
+  cnk.gh555.com        A → Cloudflare 代理 (橙色云, CDN+DDoS)
+  direct.gh555.com     A → 23.254.248.119 (灰色云, US IP)
 
 
 A4 文件快照 — 每层楼私有文件变更追踪

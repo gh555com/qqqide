@@ -69,6 +69,13 @@ app.commandLine.appendSwitch('forced-colors', 'none');
 app.commandLine.appendSwitch('force-color-profile', 'srgb');
 app.commandLine.appendSwitch('disable-features', 'ForcedColors,AutoDarkMode');
 
+// ── 自定义协议 qqqide:// — 浏览器登录成功后 push token 回 IDE（2026-06-29） ──
+app.setAsDefaultProtocolClient('qqqide');
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+    app.quit();
+}
+
 // ── 自签名证书信任（自建 Nginx 用自签 SSL，必须放行） ──
 app.on('certificate-error', (event, _webContents, _url, _error, certificate, callback) => {
     // 信任 direct.gh555.com 域名下任何证书（自签 / 过期都过）
@@ -85,6 +92,42 @@ app.on('certificate-error', (event, _webContents, _url, _error, certificate, cal
         callback(false);
     }
 });
+
+// ── 自定义协议 qqqide:// — 浏览器登录成功 push token 回 IDE（2026-06-29） ──
+app.on('second-instance', (_event, argv) => {
+    const url = argv.find((a: string) => a.startsWith('qqqide://'));
+    if (url) handleAuthProtocolUrl(url);
+    if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+    }
+});
+
+app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleAuthProtocolUrl(url);
+});
+
+function handleAuthProtocolUrl(url: string): void {
+    try {
+        const parsed = new URL(url);
+        if (parsed.hostname === 'auth') {
+            const token = parsed.searchParams.get('token');
+            const phone = parsed.searchParams.get('phone');
+            if (token && mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('qqq-ide-auth', { token, phone: phone || '' });
+                console.log('[protocol] auth token pushed to renderer, phone=' + (phone || '?'));
+            }
+        }
+    } catch (e) {
+        console.warn('[protocol] bad auth url:', e);
+    }
+}
+
+function checkStartupAuthUrl(): void {
+    const url = process.argv.find((a: string) => a.startsWith('qqqide://'));
+    if (url) handleAuthProtocolUrl(url);
+}
 
 // ── 启动配置 + 标志 ──
 const bootConfig: BootConfig = loadBootConfig(portable.root);
@@ -199,6 +242,9 @@ app.whenReady().then(async () => {
         portable.root, portable.cache, APP_VERSION,
         lspBridge, downloadService, stateStore
     );
+
+    // ★ 检查是否由 qqqide:// 协议启动（登录推送用）
+    checkStartupAuthUrl();
 
     // Main window closed → stop engine + destroy child windows
     mainWindow.on('closed', () => {

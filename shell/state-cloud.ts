@@ -11,8 +11,8 @@
 //     body: { phone, token, device_id, device_name, blobs: { 'ns/key': { data, ts, v, form, deleted } } }
 //     resp: { ok, accepted: [...], rejected: [{ key, reason }] }
 //
-// Auth: read ~/.qqq/auth.json (same file qqq has always used). Missing → return
-// { ok: false, reason: 'no-auth' } gracefully.
+// Auth: set via StateCloud.setAuth() from renderer login module.
+// Not read from disk — zero file I/O, zero stale token risk.
 //
 // data field is the value, JSON-serialisable. For blob form we still send the
 // decoded value (already in memory) — the server stores opaque JSON. Devices
@@ -27,11 +27,13 @@ import * as http from 'http';
 import { URL } from 'url';
 import { StateStore } from './state-sqlite';
 
-const AUTH_FILE = path.join(os.homedir(), '.qqq', 'auth.json');
 const CLOUD_BASE = process.env.QQQ_CLOUD_BASE || 'https://gh555.com';
 const REQ_TIMEOUT_MS = 12000;
 
 interface Auth { phone: string; token: string; device_name?: string; }
+
+// ★ 内存唯一真理源：由 renderer login 模块经 IPC 写入
+let _cachedAuth: Auth | null = null;
 
 interface CloudBlob { data: any; ts: number; v: number; form: string; etag?: string; deleted?: boolean; }
 
@@ -40,12 +42,7 @@ export interface PushResult { ok: boolean; reason?: string; pushed: string[]; fa
 export interface SyncResult { ok: boolean; reason?: string; pull?: PullResult; push?: PushResult; }
 
 function readAuth(): Auth | null {
-    try {
-        if (!fs.existsSync(AUTH_FILE)) { return null; }
-        const j = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf8'));
-        if (!j || !j.phone || !j.token) { return null; }
-        return { phone: String(j.phone), token: String(j.token), device_name: j.device_name || os.hostname() };
-    } catch { return null; }
+    return _cachedAuth;
 }
 
 function httpsPostJson(urlStr: string, body: any): Promise<{ status: number; json: any }> {
@@ -90,9 +87,12 @@ export class StateCloud {
 
     constructor(store: StateStore) {
         this.store = store;
-        // Hook: when a cloud-enabled key gets dirty, we just observe (no auto-push).
-        // The hook exists so we can later add "background staging" without API change.
         this.store.onCloudDirty = (_ns, _key) => { /* manual mode: noop */ };
+    }
+
+    // ★ 登录态变更时由 renderer 经 IPC 调用
+    static setAuth(auth: Auth | null): void {
+        _cachedAuth = auth;
     }
 
     // -----------------------------------------------------------------------

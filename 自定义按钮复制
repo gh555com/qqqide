@@ -1,0 +1,482 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+?_v=0.0.40:47 [login] poll #39 got token, len=239, head=eyJhbGciOiJIUzI..., phone=8615802858204
+?_v=0.0.40:47 [login] success, phone: 8615802858204
+index.html?panel=2:519 ══════ BILLING DEBUG — floor 1 ══════
+  floor_id: t_1782751768515_xynuyz_R
+  total costWge: 1147 (0.1147 ge)
+  free window: NO
+  houses: 1
+  H0: type=final wgeCost=1147 (=0.1147 ge) model=deepseek-v4-pro cacheHit=25.8% billingSeq=1 requestId=t_1782751768515_xynuyz_R_1782751782354803442 prompt=24318 compl=111 cached=6272 noncached=18046
+       cache: 🆕 first call (2 msgs)
+index.html?panel=0:519 ══════ BILLING DEBUG — floor 10 ══════
+  floor_id: t_1782752002966_e5oriu_L
+  total costWge: 7981 (0.7981 ge)
+  free window: NO
+  houses: 6
+  H0: type=tools wgeCost=7081 (=0.7081 ge) model=deepseek-v4-pro cacheHit=17.7% billingSeq=1 requestId=t_1782752002966_e5oriu_L_1782752030608296550 prompt=136505 compl=271 cached=24192 noncached=112313
+       cache: 🆕 first call (143 msgs)
+  H1: type=tools wgeCost=215 (=0.0215 ge) model=deepseek-v4-pro cacheHit=98.9% billingSeq=2 requestId=t_1782752002966_e5oriu_L_1782752042557596624 prompt=138155 compl=424 cached=136704 noncached=1451
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=143 curr=145
+  H2: type=tools wgeCost=154 (=0.0154 ge) model=deepseek-v4-pro cacheHit=99.5% billingSeq=3 requestId=t_1782752002966_e5oriu_L_1782752051479346497 prompt=138789 compl=317 cached=138112 noncached=677
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=145 curr=147
+  H3: type=tools wgeCost=95 (=0.0095 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=4 requestId=t_1782752002966_e5oriu_L_1782752060177879237 prompt=139153 compl=108 cached=139008 noncached=145
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=147 curr=149
+  H4: type=tools wgeCost=276 (=0.0276 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=5 requestId=t_1782752002966_e5oriu_L_1782752086164597038 prompt=139282 compl=1557 cached=139136 noncached=146
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=149 curr=151
+  H5: type=final wgeCost=160 (=0.0160 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=6 requestId=t_1782752002966_e5oriu_L_1782752100124220678 prompt=140872 compl=659 cached=140800 noncached=72
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=151 curr=153
+?_v=0.0.40:47 [ai-viewport] attachToAi target=2 zone=qqq-wing-right file=E:\s\wol\py\qqq-shell-v2\qqq\quests\q71.📎“E__s_wol_py_qqq-shell-v2_qqq_quests_q36.goods search_search_quest.txt” 那个任务我是\f7.继续 isDir=true
+?_v=0.0.40:47 [ai-viewport] qqqideAiAttach OK, panel=2
+?_v=0.0.40:47 [ai-viewport] attachToAi target=2 zone=qqq-wing-right file=E:\s\wol\py\qqq-shell-v2\qqq\quests\q71.📎“E__s_wol_py_qqq-shell-v2_qqq_quests_q36.goods search_search_quest.txt” 那个任务我是\f8.继续 isDir=true
+?_v=0.0.40:47 [ai-viewport] qqqideAiAttach OK, panel=2
+?_v=0.0.40:47 [ai-viewport] attachToAi target=2 zone=qqq-wing-right file=E:\s\wol\py\qqq-shell-v2\qqq\quests\q71.📎“E__s_wol_py_qqq-shell-v2_qqq_quests_q36.goods search_search_quest.txt” 那个任务我是\f9.继续 isDir=true
+?_v=0.0.40:47 [ai-viewport] qqqideAiAttach OK, panel=2
+?_v=0.0.40:47 [ai-viewport] attachToAi target=2 zone=qqq-wing-right file=E:\s\wol\py\qqq-shell-v2\qqq\quests\q71.📎“E__s_wol_py_qqq-shell-v2_qqq_quests_q36.goods search_search_quest.txt” 那个任务我是\f10.继续 isDir=true
+?_v=0.0.40:47 [ai-viewport] qqqideAiAttach OK, panel=2
+?_v=0.0.40:47 [ai-viewport] attachToAi target=2 zone=qqq-wing-right file=E:\s\wol\py\qqq-shell-v2\qqq\quests\q71.📎“E__s_wol_py_qqq-shell-v2_qqq_quests_q36.goods search_search_quest.txt” 那个任务我是\f7.继续 isDir=true
+?_v=0.0.40:47 [ai-viewport] qqqideAiAttach OK, panel=2
+?_v=0.0.40:47 [ai-viewport] attachToAi target=2 zone=qqq-wing-right file=E:\s\wol\py\qqq-shell-v2\qqq\quests\q71.📎“E__s_wol_py_qqq-shell-v2_qqq_quests_q36.goods search_search_quest.txt” 那个任务我是\f8.继续 isDir=true
+?_v=0.0.40:47 [ai-viewport] qqqideAiAttach OK, panel=2
+?_v=0.0.40:47 [ai-viewport] attachToAi target=2 zone=qqq-wing-right file=E:\s\wol\py\qqq-shell-v2\qqq\quests\q71.📎“E__s_wol_py_qqq-shell-v2_qqq_quests_q36.goods search_search_quest.txt” 那个任务我是\f9.继续 isDir=true
+?_v=0.0.40:47 [ai-viewport] qqqideAiAttach OK, panel=2
+?_v=0.0.40:47 [ai-viewport] attachToAi target=2 zone=qqq-wing-right file=E:\s\wol\py\qqq-shell-v2\qqq\quests\q71.📎“E__s_wol_py_qqq-shell-v2_qqq_quests_q36.goods search_search_quest.txt” 那个任务我是\f10.继续 isDir=true
+?_v=0.0.40:47 [ai-viewport] qqqideAiAttach OK, panel=2
+index.html?panel=0:519 ══════ BILLING DEBUG — floor 11 ══════
+  floor_id: t_1782752215242_ilgfwr_L
+  total costWge: 1720 (0.1720 ge)
+  free window: NO
+  houses: 6
+  H0: type=tools wgeCost=901 (=0.0901 ge) model=deepseek-v4-pro cacheHit=98.0% billingSeq=7 requestId=t_1782752215242_ilgfwr_L_1782752293151681107 prompt=139295 compl=5202 cached=136448 noncached=2847
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=153 curr=155
+  H1: type=tools wgeCost=247 (=0.0247 ge) model=deepseek-v4-pro cacheHit=99.6% billingSeq=8 requestId=t_1782752215242_ilgfwr_L_1782752307607583920 prompt=145006 compl=1060 cached=144384 noncached=622
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=155 curr=157
+  H2: type=tools wgeCost=97 (=0.0097 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=9 requestId=t_1782752215242_ilgfwr_L_1782752314657111228 prompt=146098 compl=144 cached=146048 noncached=50
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=157 curr=159
+  H3: type=tools wgeCost=212 (=0.0212 ge) model=deepseek-v4-pro cacheHit=98.8% billingSeq=10 requestId=t_1782752215242_ilgfwr_L_1782752323579534610 prompt=147885 compl=231 cached=146176 noncached=1709
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=159 curr=161
+  H4: type=tools wgeCost=142 (=0.0142 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=11 requestId=t_1782752215242_ilgfwr_L_1782752336471790503 prompt=148157 compl=488 cached=148096 noncached=61
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=161 curr=163
+  H5: type=final wgeCost=121 (=0.0121 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=12 requestId=t_1782752215242_ilgfwr_L_1782752347499165333 prompt=148687 compl=311 cached=148608 noncached=79
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=163 curr=165
+?_v=0.0.40:47 [ai-viewport] attachToAi target=2 zone=qqq-wing-right file=E:\s\wol\py\qqq-shell-v2\qqq\quests\q71.📎“E__s_wol_py_qqq-shell-v2_qqq_quests_q36.goods search_search_quest.txt” 那个任务我是\f10.继续\all.json isDir=false
+?_v=0.0.40:47 [ai-viewport] qqqideAiAttach OK, panel=2
+index.html?panel=2:519 ══════ BILLING DEBUG — floor 5 ══════
+  floor_id: t_1782752512637_mhgms9_R
+  total costWge: 9730 (0.9730 ge)
+  free window: NO
+  houses: 10
+  H0: type=tools wgeCost=6687 (=0.6687 ge) model=deepseek-v4-pro cacheHit=18.5% billingSeq=1 requestId=t_1782752512637_mhgms9_R_1782752551340020121 prompt=130465 compl=144 cached=24192 noncached=106273
+       cache: 🆕 first call (216 msgs)
+  H1: type=tools wgeCost=96 (=0.0096 ge) model=deepseek-v4-pro cacheHit=99.8% billingSeq=2 requestId=t_1782752512637_mhgms9_R_1782752558389640546 prompt=130695 compl=96 cached=130432 noncached=263
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=216 curr=218
+  H2: type=tools wgeCost=245 (=0.0245 ge) model=deepseek-v4-pro cacheHit=98.1% billingSeq=3 requestId=t_1782752512637_mhgms9_R_1782752569519119743 prompt=133239 compl=137 cached=130688 noncached=2551
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=218 curr=220
+  H3: type=tools wgeCost=90 (=0.0090 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=4 requestId=t_1782752512637_mhgms9_R_1782752576639284881 prompt=133462 compl=123 cached=133376 noncached=86
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=220 curr=222
+  H4: type=tools wgeCost=121 (=0.0121 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=5 requestId=t_1782752512637_mhgms9_R_1782752584993064732 prompt=133638 compl=348 cached=133504 noncached=134
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=222 curr=224
+  H5: type=tools wgeCost=108 (=0.0108 ge) model=deepseek-v4-pro cacheHit=99.7% billingSeq=6 requestId=t_1782752512637_mhgms9_R_1782752594223416620 prompt=134236 compl=135 cached=133888 noncached=348
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=224 curr=228
+  H6: type=tools wgeCost=112 (=0.0112 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=7 requestId=t_1782752512637_mhgms9_R_1782752604091788899 prompt=134424 compl=264 cached=134272 noncached=152
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=228 curr=230
+  H7: type=tools wgeCost=106 (=0.0106 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=8 requestId=t_1782752512637_mhgms9_R_1782752613446684451 prompt=134765 compl=238 cached=134656 noncached=109
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=230 curr=232
+  H8: type=tools wgeCost=1118 (=0.1118 ge) model=deepseek-v4-pro cacheHit=99.4% billingSeq=9 requestId=t_1782752512637_mhgms9_R_1782752715397867257 prompt=135769 compl=7937 cached=134912 noncached=857
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=232 curr=234
+  H9: type=final wgeCost=931 (=0.0931 ge) model=deepseek-v4-pro cacheHit=94.0% billingSeq=10 requestId=t_1782752512637_mhgms9_R_1782752754888203810 prompt=144340 compl=2542 cached=135680 noncached=8660
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=234 curr=236
+index.html?panel=2:519 ══════ BILLING DEBUG — floor 6 ══════
+  floor_id: t_1782753059977_zi9mui_R
+  total costWge: 1104 (0.1104 ge)
+  free window: NO
+  houses: 1
+  H0: type=final wgeCost=1104 (=0.1104 ge) model=deepseek-v4-pro cacheHit=94.7% billingSeq=11 requestId=t_1782753059977_zi9mui_R_1782753128748252240 prompt=137743 compl=4620 cached=130432 noncached=7311
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=236 curr=238
+index.html?panel=2:519 ══════ BILLING DEBUG — floor 7 ══════
+  floor_id: t_1782753248693_irttsw_R
+  total costWge: 151 (0.0151 ge)
+  free window: NO
+  houses: 1
+  H0: type=final wgeCost=151 (=0.0151 ge) model=deepseek-v4-pro cacheHit=99.6% billingSeq=12 requestId=t_1782753248693_irttsw_R_1782753262778558186 prompt=138244 compl=377 cached=137728 noncached=516
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=238 curr=240
+index.html?panel=2:519 ══════ BILLING DEBUG — floor 8 ══════
+  floor_id: t_1782753334440_qmi2j2_R
+  total costWge: 299 (0.0299 ge)
+  free window: NO
+  houses: 1
+  H0: type=final wgeCost=299 (=0.0299 ge) model=deepseek-v4-pro cacheHit=99.8% billingSeq=13 requestId=t_1782753334440_qmi2j2_R_1782753364579551057 prompt=138462 compl=1706 cached=138240 noncached=222
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=240 curr=242
+index.html?panel=2:519 ══════ BILLING DEBUG — floor 1 ══════
+  floor_id: t_1782753625393_3bikxu_R
+  total costWge: 39 (0.0039 ge)
+  free window: NO
+  houses: 1
+  H0: type=final wgeCost=39 (=0.0039 ge) model=deepseek-v4-pro cacheHit=99.5% billingSeq=1 requestId=t_1782753625393_3bikxu_R_1782753630962807678 prompt=24318 compl=155 cached=24192 noncached=126
+       cache: 🆕 first call (2 msgs)
+index.html?panel=2:519 ══════ BILLING DEBUG — floor 10 ══════
+  floor_id: t_1782754081632_p9skt7_R
+  total costWge: 8921 (0.8921 ge)
+  free window: NO
+  houses: 1
+  H0: type=final wgeCost=8921 (=0.8921 ge) model=deepseek-v4-pro cacheHit=4.5% billingSeq=1 requestId=t_1782754081632_p9skt7_R_1782754162851762409 prompt=139562 compl=4542 cached=6272 noncached=133290
+       cache: 🆕 first call (245 msgs)
+index.html?panel=2:519 ══════ BILLING DEBUG — floor 11 ══════
+  floor_id: t_1782754238894_wtzi4n_R
+  total costWge: 11281 (1.1281 ge)
+  free window: NO
+  houses: 65
+  H0: type=tools wgeCost=786 (=0.0786 ge) model=deepseek-v4-pro cacheHit=99.4% billingSeq=2 requestId=t_1782754238894_wtzi4n_R_1782754306176771991 prompt=140343 compl=5284 cached=139520 noncached=823
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=245 curr=247
+  H1: type=tools wgeCost=142 (=0.0142 ge) model=deepseek-v4-pro cacheHit=99.4% billingSeq=3 requestId=t_1782754238894_wtzi4n_R_1782754311905287641 prompt=146370 compl=117 cached=145536 noncached=834
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=247 curr=249
+  H2: type=tools wgeCost=236 (=0.0236 ge) model=deepseek-v4-pro cacheHit=99.1% billingSeq=4 requestId=t_1782754238894_wtzi4n_R_1782754322063281805 prompt=147723 compl=629 cached=146432 noncached=1291
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=249 curr=251
+  H3: type=tools wgeCost=201 (=0.0201 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=5 requestId=t_1782754238894_wtzi4n_R_1782754335297744659 prompt=148401 compl=969 cached=148352 noncached=49
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=251 curr=253
+  H4: type=tools wgeCost=103 (=0.0103 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=6 requestId=t_1782754238894_wtzi4n_R_1782754341305022175 prompt=149419 compl=122 cached=149248 noncached=171
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=253 curr=255
+  H5: type=tools wgeCost=142 (=0.0142 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=7 requestId=t_1782754238894_wtzi4n_R_1782754350114509519 prompt=149721 compl=406 cached=149504 noncached=217
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=255 curr=257
+  H6: type=tools wgeCost=131 (=0.0131 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=8 requestId=t_1782754238894_wtzi4n_R_1782754360399222026 prompt=150176 compl=343 cached=150016 noncached=160
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=257 curr=259
+  H7: type=tools wgeCost=125 (=0.0125 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=9 requestId=t_1782754238894_wtzi4n_R_1782754369682118955 prompt=150560 compl=296 cached=150400 noncached=160
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=259 curr=261
+  H8: type=tools wgeCost=366 (=0.0366 ge) model=deepseek-v4-pro cacheHit=98.7% billingSeq=10 requestId=t_1782754238894_wtzi4n_R_1782754387052833192 prompt=152537 compl=1297 cached=150528 noncached=2009
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=261 curr=263
+  H9: type=tools wgeCost=105 (=0.0105 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=11 requestId=t_1782754238894_wtzi4n_R_1782754393187484591 prompt=153876 compl=131 cached=153728 noncached=148
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=263 curr=265
+  H10: type=tools wgeCost=115 (=0.0115 ge) model=deepseek-v4-pro cacheHit=99.8% billingSeq=12 requestId=t_1782754238894_wtzi4n_R_1782754398671004764 prompt=154287 compl=132 cached=153984 noncached=303
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=265 curr=267
+  H11: type=tools wgeCost=98 (=0.0098 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=13 requestId=t_1782754238894_wtzi4n_R_1782754404457180221 prompt=154434 compl=110 cached=154368 noncached=66
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=267 curr=269
+  H12: type=tools wgeCost=108 (=0.0108 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=14 requestId=t_1782754238894_wtzi4n_R_1782754410403711629 prompt=154558 compl=128 cached=154368 noncached=190
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=269 curr=271
+  H13: type=tools wgeCost=220 (=0.0220 ge) model=deepseek-v4-pro cacheHit=99.7% billingSeq=15 requestId=t_1782754238894_wtzi4n_R_1782754422488389281 prompt=155075 compl=889 cached=154624 noncached=451
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=271 curr=273
+  H14: type=tools wgeCost=104 (=0.0104 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=16 requestId=t_1782754238894_wtzi4n_R_1782754428531349703 prompt=156006 compl=134 cached=155904 noncached=102
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=273 curr=275
+  H15: type=tools wgeCost=232 (=0.0232 ge) model=deepseek-v4-pro cacheHit=99.6% billingSeq=17 requestId=t_1782754238894_wtzi4n_R_1782754440169421504 prompt=156668 compl=888 cached=156032 noncached=636
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=275 curr=277
+  H16: type=tools wgeCost=109 (=0.0109 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=18 requestId=t_1782754238894_wtzi4n_R_1782754446322260660 prompt=157598 compl=136 cached=157440 noncached=158
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=277 curr=279
+  H17: type=tools wgeCost=254 (=0.0254 ge) model=deepseek-v4-pro cacheHit=99.4% billingSeq=19 requestId=t_1782754238894_wtzi4n_R_1782754457921543208 prompt=158634 compl=908 cached=157696 noncached=938
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=279 curr=281
+  H18: type=tools wgeCost=105 (=0.0105 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=20 requestId=t_1782754238894_wtzi4n_R_1782754468687962671 prompt=159584 compl=130 cached=159488 noncached=96
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=281 curr=283
+  H19: type=tools wgeCost=193 (=0.0193 ge) model=deepseek-v4-pro cacheHit=99.5% billingSeq=21 requestId=t_1782754238894_wtzi4n_R_1782754479827152555 prompt=160448 compl=466 cached=159616 noncached=832
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=283 curr=285
+  H20: type=tools wgeCost=104 (=0.0104 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=22 requestId=t_1782754238894_wtzi4n_R_1782754486601102471 prompt=160956 compl=134 cached=160896 noncached=60
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=285 curr=287
+  H21: type=tools wgeCost=501 (=0.0501 ge) model=deepseek-v4-pro cacheHit=99.2% billingSeq=23 requestId=t_1782754238894_wtzi4n_R_1782754510064835730 prompt=162337 compl=2679 cached=161024 noncached=1313
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=287 curr=289
+  H22: type=tools wgeCost=106 (=0.0106 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=24 requestId=t_1782754238894_wtzi4n_R_1782754518301926876 prompt=165066 compl=125 cached=164992 noncached=74
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=289 curr=291
+  H23: type=tools wgeCost=304 (=0.0304 ge) model=deepseek-v4-pro cacheHit=99.6% billingSeq=25 requestId=t_1782754238894_wtzi4n_R_1782754533802005960 prompt=165729 compl=1436 cached=165120 noncached=609
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=291 curr=293
+  H24: type=tools wgeCost=112 (=0.0112 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=26 requestId=t_1782754238894_wtzi4n_R_1782754540137426107 prompt=167208 compl=121 cached=167040 noncached=168
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=293 curr=295
+  H25: type=tools wgeCost=174 (=0.0174 ge) model=deepseek-v4-pro cacheHit=99.7% billingSeq=27 requestId=t_1782754238894_wtzi4n_R_1782754548669563537 prompt=167834 compl=427 cached=167296 noncached=538
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=295 curr=297
+  H26: type=tools wgeCost=113 (=0.0113 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=28 requestId=t_1782754238894_wtzi4n_R_1782754554944797039 prompt=168292 compl=157 cached=168192 noncached=100
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=297 curr=299
+  H27: type=tools wgeCost=119 (=0.0119 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=29 requestId=t_1782754238894_wtzi4n_R_1782754560875045344 prompt=168697 compl=124 cached=168448 noncached=249
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=299 curr=301
+  H28: type=tools wgeCost=349 (=0.0349 ge) model=deepseek-v4-pro cacheHit=98.1% billingSeq=30 requestId=t_1782754238894_wtzi4n_R_1782754569993265553 prompt=171904 compl=483 cached=168704 noncached=3200
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=301 curr=303
+  H29: type=tools wgeCost=144 (=0.0144 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=31 requestId=t_1782754238894_wtzi4n_R_1782754578023691649 prompt=172437 compl=361 cached=172288 noncached=149
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=303 curr=305
+  H30: type=tools wgeCost=118 (=0.0118 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=32 requestId=t_1782754238894_wtzi4n_R_1782754588580071772 prompt=172848 compl=137 cached=172672 noncached=176
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=305 curr=307
+  H31: type=tools wgeCost=193 (=0.0193 ge) model=deepseek-v4-pro cacheHit=99.8% billingSeq=33 requestId=t_1782754238894_wtzi4n_R_1782754599735713906 prompt=173203 compl=685 cached=172928 noncached=275
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=307 curr=309
+  H32: type=tools wgeCost=116 (=0.0116 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=34 requestId=t_1782754238894_wtzi4n_R_1782754608039002035 prompt=173938 compl=146 cached=173824 noncached=114
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=309 curr=311
+  H33: type=tools wgeCost=160 (=0.0160 ge) model=deepseek-v4-pro cacheHit=99.5% billingSeq=35 requestId=t_1782754238894_wtzi4n_R_1782754615249202767 prompt=174932 compl=126 cached=174080 noncached=852
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=311 curr=313
+  H34: type=tools wgeCost=112 (=0.0112 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=36 requestId=t_1782754238894_wtzi4n_R_1782754621369701588 prompt=175113 compl=102 cached=174976 noncached=137
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=313 curr=315
+  H35: type=tools wgeCost=261 (=0.0261 ge) model=deepseek-v4-pro cacheHit=99.1% billingSeq=37 requestId=t_1782754238894_wtzi4n_R_1782754631268067187 prompt=176756 compl=530 cached=175104 noncached=1652
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=315 curr=317
+  H36: type=tools wgeCost=123 (=0.0123 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=38 requestId=t_1782754238894_wtzi4n_R_1782754638447895719 prompt=177335 compl=219 cached=177280 noncached=55
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=317 curr=319
+  H37: type=tools wgeCost=265 (=0.0265 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=39 requestId=t_1782754238894_wtzi4n_R_1782754656374066196 prompt=177568 compl=1367 cached=177536 noncached=32
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=319 curr=321
+  H38: type=tools wgeCost=115 (=0.0115 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=40 requestId=t_1782754238894_wtzi4n_R_1782754662665853237 prompt=178950 compl=113 cached=178816 noncached=134
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=321 curr=323
+  H39: type=tools wgeCost=117 (=0.0117 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=41 requestId=t_1782754238894_wtzi4n_R_1782754668382351282 prompt=179078 compl=123 cached=178944 noncached=134
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=323 curr=325
+  H40: type=tools wgeCost=234 (=0.0234 ge) model=deepseek-v4-pro cacheHit=99.8% billingSeq=42 requestId=t_1782754238894_wtzi4n_R_1782754685026418367 prompt=179609 compl=920 cached=179200 noncached=409
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=325 curr=327
+  H41: type=tools wgeCost=148 (=0.0148 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=43 requestId=t_1782754238894_wtzi4n_R_1782754693411457894 prompt=180579 compl=380 cached=180480 noncached=99
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=327 curr=329
+  H42: type=tools wgeCost=183 (=0.0183 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=44 requestId=t_1782754238894_wtzi4n_R_1782754702952174400 prompt=181009 compl=635 cached=180864 noncached=145
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=329 curr=331
+  H43: type=tools wgeCost=118 (=0.0118 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=45 requestId=t_1782754238894_wtzi4n_R_1782754709621983152 prompt=181694 compl=162 cached=181632 noncached=62
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=331 curr=333
+  H44: type=tools wgeCost=120 (=0.0120 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=46 requestId=t_1782754238894_wtzi4n_R_1782754715920334890 prompt=181871 compl=146 cached=181760 noncached=111
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=333 curr=335
+  H45: type=tools wgeCost=110 (=0.0110 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=47 requestId=t_1782754238894_wtzi4n_R_1782754721977796736 prompt=182032 compl=118 cached=182016 noncached=16
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=335 curr=337
+  H46: type=tools wgeCost=112 (=0.0112 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=48 requestId=t_1782754238894_wtzi4n_R_1782754728589054252 prompt=182165 compl=125 cached=182144 noncached=21
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=337 curr=339
+  H47: type=tools wgeCost=120 (=0.0120 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=49 requestId=t_1782754238894_wtzi4n_R_1782754734288600411 prompt=182421 compl=129 cached=182272 noncached=149
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=339 curr=341
+  H48: type=tools wgeCost=113 (=0.0113 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=50 requestId=t_1782754238894_wtzi4n_R_1782754739901593056 prompt=182565 compl=125 cached=182528 noncached=37
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=341 curr=343
+  H49: type=tools wgeCost=130 (=0.0130 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=51 requestId=t_1782754238894_wtzi4n_R_1782754747126109363 prompt=182714 compl=249 cached=182656 noncached=58
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=343 curr=345
+  H50: type=tools wgeCost=114 (=0.0114 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=52 requestId=t_1782754238894_wtzi4n_R_1782754752891652184 prompt=182978 compl=122 cached=182912 noncached=66
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=345 curr=347
+  H51: type=tools wgeCost=115 (=0.0115 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=53 requestId=t_1782754238894_wtzi4n_R_1782754759228505427 prompt=183115 compl=125 cached=183040 noncached=75
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=347 curr=349
+  H52: type=tools wgeCost=117 (=0.0117 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=54 requestId=t_1782754238894_wtzi4n_R_1782754764920184636 prompt=183295 compl=112 cached=183168 noncached=127
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=349 curr=351
+  H53: type=tools wgeCost=240 (=0.0240 ge) model=deepseek-v4-pro cacheHit=99.3% billingSeq=55 requestId=t_1782754238894_wtzi4n_R_1782754773280405136 prompt=184606 compl=498 cached=183296 noncached=1310
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=351 curr=353
+  H54: type=tools wgeCost=117 (=0.0117 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=56 requestId=t_1782754238894_wtzi4n_R_1782754779784322248 prompt=185154 compl=135 cached=185088 noncached=66
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=353 curr=355
+  H55: type=tools wgeCost=210 (=0.0210 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=57 requestId=t_1782754238894_wtzi4n_R_1782754794609387551 prompt=185397 compl=818 cached=185216 noncached=181
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=355 curr=357
+  H56: type=tools wgeCost=132 (=0.0132 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=58 requestId=t_1782754238894_wtzi4n_R_1782754802873210805 prompt=186258 compl=213 cached=186112 noncached=146
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=357 curr=359
+  H57: type=tools wgeCost=139 (=0.0139 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=59 requestId=t_1782754238894_wtzi4n_R_1782754810422435335 prompt=186485 compl=280 cached=186368 noncached=117
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=359 curr=361
+  H58: type=tools wgeCost=115 (=0.0115 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=60 requestId=t_1782754238894_wtzi4n_R_1782754817314278661 prompt=186780 compl=130 cached=186752 noncached=28
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=361 curr=363
+  H59: type=tools wgeCost=135 (=0.0135 ge) model=deepseek-v4-pro cacheHit=99.8% billingSeq=61 requestId=t_1782754238894_wtzi4n_R_1782754823358641939 prompt=187254 compl=119 cached=186880 noncached=374
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=363 curr=365
+  H60: type=tools wgeCost=250 (=0.0250 ge) model=deepseek-v4-pro cacheHit=99.7% billingSeq=62 requestId=t_1782754238894_wtzi4n_R_1782754836771066513 prompt=187811 compl=949 cached=187264 noncached=547
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=365 curr=367
+  H61: type=tools wgeCost=133 (=0.0133 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=63 requestId=t_1782754238894_wtzi4n_R_1782754848090827615 prompt=188803 compl=212 cached=188672 noncached=131
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=367 curr=369
+  H62: type=tools wgeCost=178 (=0.0178 ge) model=deepseek-v4-pro cacheHit=99.9% billingSeq=64 requestId=t_1782754238894_wtzi4n_R_1782754862807576982 prompt=189029 compl=586 cached=188928 noncached=101
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=369 curr=371
+  H63: type=tools wgeCost=200 (=0.0200 ge) model=deepseek-v4-pro cacheHit=100.0% billingSeq=65 requestId=t_1782754238894_wtzi4n_R_1782754878625453767 prompt=189629 compl=777 cached=189568 noncached=61
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=371 curr=373
+  H64: type=final wgeCost=217 (=0.0217 ge) model=deepseek-v4-pro cacheHit=99.5% billingSeq=66 requestId=t_1782754238894_wtzi4n_R_1782754891144278271 prompt=190444 compl=508 cached=189568 noncached=876
+       cache: ❌ MISS @ idx=10 — msg_diff@10 count_changed prev=373 curr=375
+?_v=0.0.40:47 [login] balance fetch error: Failed to fetch
+index.html?panel=2:519 [ai-agent:q72] ✗ gateway 502: <html>
+<head><title>502 Bad Gateway</title></head>
+<body>
+<center><h1>502 Bad Gateway</h1></center>
+<hr><center>nginx/1.22.1</center>
+</body>
+</html>
+<!-- a padding to disable MSIE and Chrome f
+index.html?panel=2:519 [ai-agent:q72] ✗ gateway 502: <!DOCTYPE html>
+<!--[if lt IE 7]> <html class="no-js ie6 oldie" lang="en-US"> <![endif]-->
+<!--[if IE 7]>    <html class="no-js ie7 oldie" lang="en-US"> <![endif]-->
+<!--[if IE 8]>    <html class="no-
+?_v=0.0.40:47 [login] balance fetch error: Unexpected token '<', "<html>
+<h"... is not valid JSON
+index.html?panel=2:519 [ai-agent:q72] ✗ gateway 502: <html>
+<head><title>502 Bad Gateway</title></head>
+<body>
+<center><h1>502 Bad Gateway</h1></center>
+<hr><center>nginx/1.22.1</center>
+</body>
+</html>
+<!-- a padding to disable MSIE and Chrome f
+index.html?panel=2:519 [ai-agent:q72] ✗ SSE error: code=401 msg=AI upstream 401 floor=12 house=2
+index.html?panel=2:519 [ai-agent:q72] ✗ SSE error: code=401 msg=AI upstream 401 floor=12 house=2
+index.html?panel=2:519 [ai-agent:q72] ✗ SSE error: code=401 msg=AI upstream 401 floor=12 house=2
+index.html?panel=2:519 [ai-agent:q72] ✗ SSE error: code=401 msg=AI upstream 401 floor=12 house=2
+index.html?panel=2:519 [ai-agent:q72] ✗ fetch exhausted: AI upstream 401 (consecutive=1, panel=2)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

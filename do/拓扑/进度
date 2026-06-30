@@ -1,6 +1,22 @@
 qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向参考。
 ============================================================
-更新: 2026-06-21
+更新: 2026-06-29
+
+已完成 — 本轮 2026-06-29 (28) D+E 服务器安全加固 + AI 直连提速
+------
+· D 方案 — 中国用户直连 CN 绕过 Cloudflare:
+  DNS: direct-cn.gh555.com A → 47.105.67.51 (灰色云)
+  CN nginx: 通配证书 (cnk + direct-cn + *.gh555.com)
+  ai-gateway.js: primary → direct-cn.gh555.com, fallback → cnk.gh555.com (Cloudflare)
+  效果: 中国用户 ~50ms 直连 CN, 全球用户仍走 Cloudflare DDoS 防护
+· E 方案 — US 服务器隐身:
+  iptables 白名单: 仅 CN(47.105.67.51) + WireGuard(10.0.0.0/24) + wg0 接口
+  规则持久化: /etc/iptables/rules.v4 + @reboot cron iptables-restore
+· 客户端代理 sp_tunnel.py 升级:
+  HOST_MAP: cnk.gh555.com → 47.105.67.51:443 (本地绕过 Cloudflare, ~30ms)
+  CN 服务器监控: SSH直连收集 CPU+内存, 每10秒
+  监控面板双行: 第1行客户端 | 第2行 CN│US│流量
+  CPU 滚动平均 600次=100分钟 (原注释错"6次=60秒"已修正)
 
 已完成 — 本轮 2026-06-21 (27) 跨面板并发建楼僵尸 bug
 ------
