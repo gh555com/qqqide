@@ -121,6 +121,7 @@ body {
   background: var(--background-color);
   padding: 0 8px;
   border-top: 1px solid var(--border-color);
+  -webkit-app-region: no-drag;
 }
 
 .qqq-menubar {
@@ -761,97 +762,65 @@ body {
 }
 
 /* ============================================================================
-   Editor Breadcrumb Bar
+   Editor Breadcrumb Bar — 独立豆腐块（flex item，占真实高度）
    ============================================================================ */
-.qqq-editor-breadcrumb-bar {
+[data-qqq-editor-breadcrumb] {
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  height: 28px;
-  min-height: 28px;
-  padding: 0 8px;
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--border-color);
-  font-size: 12px;
+  padding: 2px 10px;
+  font-size: 11px;
   font-family: ui-monospace, Consolas, Menlo, monospace;
-  user-select: none;
-  -webkit-user-select: none;
-  gap: 6px;
-  z-index: 10;
-}
-
-.qqq-editor-breadcrumb-path {
-  flex: 1 1 auto;
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-.qqq-editor-breadcrumb-seg {
-  flex-shrink: 0;
-  color: var(--text-primary);
-  transition: background 0.1s;
-}
-
-.qqq-editor-breadcrumb-seg:hover {
-  background: var(--background-color);
-}
-
-.qqq-editor-breadcrumb-sep {
-  flex-shrink: 0;
   color: var(--text-secondary);
-  opacity: 0.5;
-  margin: 0 2px;
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  min-height: 18px;
+  /* 可选中/复制，不可编辑 */
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
 }
 
-.qqq-editor-breadcrumb-tools {
-  flex: 0 0 auto;
+/* Monaco 容器（flex:1，position:relative 放悬浮按钮） */
+[data-qqq-editor-monaco] {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+}
+
+/* 悬浮按钮行（absolute 在 Monaco 容器右下角，零重排） */
+[data-qqq-editor-float-btns] {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 100;
   display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
+  gap: 4px;
 }
 
-.qqq-editor-breadcrumb-btn {
-  display: inline-flex;
+.qqq-editor-float-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border: none;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 14px;
-  cursor: default;
-  transition: background 0.1s;
-  padding: 0;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  opacity: 0.70;
+  transition: opacity 0.15s;
   line-height: 1;
+  padding: 0;
 }
 
-.qqq-editor-breadcrumb-btn:hover {
-  background: var(--background-color);
-}
-
-.qqq-editor-breadcrumb-btn:active {
-  background: var(--border-color);
-}
-
-.qqq-editor-monaco-container {
-  flex: 1 1 auto;
-  overflow: hidden;
-  position: relative;
-}
-
-/* 弹出层 */
-.qqq-bc-popup {
-  font-family: ui-monospace, Consolas, Menlo, monospace;
-}
-
-.qqq-bc-popup-item:hover {
-  background: var(--background-color);
+.qqq-editor-float-btn:hover {
+  opacity: 1;
 }
 
 /* ============================================================================

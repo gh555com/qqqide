@@ -127,18 +127,21 @@ function bootStatusbar(boot) {
     if (free) {
       $freeInd.style.display = 'inline-flex';
       if (remaining < 300000) {
-        $freeBadge.textContent = t('shell.free.ending', '🎈免费将结束') + ' ' + fmtHMS(remaining);
+        $freeBadge.textContent = t('shell.free.ending', '🎈免费将结束');
         $freeBadge.className = 'qqq-free-badge qqq-free-ending';
       } else {
-        $freeBadge.textContent = t('shell.free.active', '💎 免费中') + ' ' + fmtHMS(remaining);
+        $freeBadge.textContent = t('shell.free.active', '💎 免费中');
         $freeBadge.className = 'qqq-free-badge qqq-free-on';
       }
+      if ($freeCd) $freeCd.textContent = fmtHMS(remaining);
     } else if (remaining > 0 && remaining < 43200000) {
       $freeInd.style.display = 'inline-flex';
-      $freeBadge.textContent = t('shell.free.soonPrefix', '🤍距离下次免费') + ' ' + fmtHMS(remaining);
+      $freeBadge.textContent = t('shell.free.soonPrefix', '🤍距离下次免费');
       $freeBadge.className = 'qqq-free-badge qqq-free-soon';
+      if ($freeCd) $freeCd.textContent = fmtHMS(remaining);
     } else {
       $freeInd.style.display = 'none';
+      if ($freeCd) $freeCd.textContent = '';
     }
   }
 
@@ -178,16 +181,18 @@ function bootStatusbar(boot) {
   function updateFreeBudgetUI() {
     if (!$freeBudgetBar) return;
     var d = _freeBudgetData;
-    if (d && d.in_free_window && parseFloat(d.remaining_ge) > 0) {
+    if (d && d.in_free_window && parseFloat(d.remaining_ge) >= 0) {
       $freeBudgetBar.style.display = 'inline-flex';
       var budgetGe = parseFloat(d.budget_ge) || 0;
       var remainingGe = parseFloat(d.remaining_ge) || 0;
-      var consumedGe = parseFloat(d.consumed_ge) || 0;
-      var pct = budgetGe > 0 ? (remainingGe / budgetGe * 100) : 0;
-      if ($freeBudgetFill) $freeBudgetFill.style.width = Math.max(pct, 1) + '%';
-      if ($freeBudgetLabel) $freeBudgetLabel.textContent = '💎' + remainingGe.toFixed(1) + '/' + budgetGe.toFixed(1);
-      if (d.season_bonus > 0) {
-        if ($freeBudgetLabel) $freeBudgetLabel.textContent += '(+' + d.season_bonus + ')';
+      if (budgetGe > 0) {
+        var consumedPct = (budgetGe - remainingGe) / budgetGe * 100;
+        if ($freeBudgetFill) $freeBudgetFill.style.width = Math.max(consumedPct, 1) + '%';
+      }
+      if ($freeBudgetLabel) {
+        var lbl = '💎' + remainingGe.toFixed(1) + '/' + budgetGe.toFixed(1);
+        if (d.season_bonus > 0) lbl += '(+' + d.season_bonus + ')';
+        $freeBudgetLabel.textContent = lbl;
       }
     } else {
       $freeBudgetBar.style.display = 'none';

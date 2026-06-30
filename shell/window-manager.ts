@@ -215,9 +215,11 @@ export function createWindow(
 
     // Dev mode extras
     if (extractFlags().isDev) {
+        // ★ DevTools console 按钮注入：用 devtools-opened 事件（可靠，不依赖轮询）
+        win.webContents.on('devtools-opened', () => {
+            injectDevToolsConsoleButtons(win.webContents, () => _consoleBuffer.join('\n'), win);
+        });
         win.webContents.openDevTools({ mode: 'detach' });
-        injectDevToolsConsoleButtons(win.webContents, () => _consoleBuffer.join('\n'), win);
-        // ★ 不再 clearCache() — 保留缓存避免每次启动都重新下载全部资源
         win.webContents.on('before-input-event', (ev, input) => {
             if (input.type !== 'keyDown') { return; }
             if (input.key === 'F5' || (input.control && input.key.toLowerCase() === 'r')) {
@@ -230,11 +232,9 @@ export function createWindow(
                     win.webContents.closeDevTools();
                 } else {
                     win.webContents.openDevTools({ mode: 'detach' });
-                    injectDevToolsConsoleButtons(win.webContents, () => _consoleBuffer.join('\n'), win);
                 }
             }
         });
-        console.log('[main] DEV MODE: DevTools detached, cache cleared, F5/Ctrl+R reload, Ctrl+Shift+I devtools');
     }
 
     return win;

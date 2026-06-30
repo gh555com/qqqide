@@ -140,6 +140,11 @@ async function _cleanStaleAllJsonTmp(root) {
 async function _initWorkspace(root) {
     // [silent] workspace init
     _workspaceRoot = root;
+    // ★ 传播到父窗口（主窗口），供 editor.js 等非 iframe 代码读取主文件夹路径
+    try { parent._workspaceRoot = root; } catch (_) { }
+    if (parent && parent.qqqideBridge && parent.qqqideBridge.sync) {
+      try { parent.qqqideBridge.sync.setProjectPath(root); } catch (_) { }
+    }
 
     // ★ 只有中面板（panelId=1）申请项目锁；左右翼共享
     onlyStore.init(root);
@@ -166,6 +171,7 @@ async function _initWorkspace(root) {
             }
             onlyStore.init(null);
             _workspaceRoot = null;
+            try { parent._workspaceRoot = null; } catch (_) { }
             return;
         }
         // 向主进程注册窗口↔项目映射（仅中面板）

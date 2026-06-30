@@ -677,7 +677,9 @@ var AgentLoop = (function () {
                         var _bill = self._lastBilling; self._lastBilling = null;
                         var _cd = self._lastCacheDiag; self._lastCacheDiag = null;
                         self._houses.push({ index: self._houseIndex, type: 'final', tools: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', wgeCost: _bill ? _bill.wgeCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined });
-                        self.conversation.push({ role: 'assistant', content: response.content, _truncated: true, _floor: self._ctx.totalFloors });
+                        var _truncContent = self._streamingContent || response.content;
+                        self._streamingContent = null;
+                        self.conversation.push({ role: 'assistant', content: _truncContent, _truncated: true, _floor: self._ctx.totalFloors });
                         var _costGe = self._floorCostWge / 10000;
                         self.totalCostGe += _costGe;
                         self._lastCostDisplay = _costGe < 0.001 ? '<0.001' : _costGe.toFixed(4);
@@ -692,7 +694,10 @@ var AgentLoop = (function () {
                     var _bill = self._lastBilling; self._lastBilling = null;
                     var _cd = self._lastCacheDiag; self._lastCacheDiag = null;
                     self._houses.push({ index: self._houseIndex, type: 'final', tools: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', wgeCost: _bill ? _bill.wgeCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined, tier: self._lastTier ? self._lastTier.label : '' });
-                    var assistantMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
+                    // ★ P10/P11 根治：优先用流式累积内容（并发安全），回退到 response.content
+                    var _finalContent = self._streamingContent || response.content;
+                    self._streamingContent = null;
+                    var assistantMsg = { role: 'assistant', content: _finalContent, _floor: self._ctx.totalFloors };
                     var _lastConv = self.conversation[self.conversation.length - 1];
                     if (_lastConv && _lastConv._truncated && _lastConv._floor === self._ctx.totalFloors) {
                         self.conversation[self.conversation.length - 1] = assistantMsg;
@@ -841,7 +846,9 @@ var AgentLoop = (function () {
                         self._floorTiming.networkMs += finalResp._ttfbMs;
                         self._floorTiming.aiMs += finalResp._streamMs;
                     }
-                    self.conversation.push({ role: 'assistant', content: finalResp.content, _floor: self._ctx.totalFloors });
+                    var _finalContent2 = self._streamingContent || finalResp.content;
+                    self._streamingContent = null;
+                    self.conversation.push({ role: 'assistant', content: _finalContent2, _floor: self._ctx.totalFloors });
                     var finalCostGe = self._floorCostWge / 10000;
                     self.totalCostGe += finalCostGe;
                     self._lastCostDisplay = finalCostGe < 0.001 ? '<0.001' : finalCostGe.toFixed(4);
@@ -1098,6 +1105,10 @@ var AgentLoop = (function () {
                 pEl.innerHTML = _rm(para);
                 // ★ 插入 _lastParaEl 之前：保证静态段落在上，实时打字块始终在最底部
                 aiDiv._contentWrap.insertBefore(pEl, aiDiv._lastParaEl);
+                // ★ P10/P11 根治：流式段落同步写入 agent 自身内容缓冲区（脱离 DOM 依赖）
+                this._streamingContent = this._streamingContent || '';
+                if (this._streamingContent) this._streamingContent += '\n\n';
+                this._streamingContent += para;
             }
             paras[rendered] = null;
             rendered++;

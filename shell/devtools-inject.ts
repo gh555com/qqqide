@@ -22,10 +22,14 @@ export function injectDevToolsConsoleButtons(
 }
 
 function _injectJs(wc: WebContents, getText: () => string, mw: BrowserWindow): void {
-  const tryInject = () => {
-    const dwc = (wc as any).devToolsWebContents as WebContents | undefined;
-    if (!dwc) return;
-    dwc.executeJavaScript(`(function(){
+  const dwc = (wc as any).devToolsWebContents as WebContents | undefined;
+  if (!dwc) {
+    console.log('[devtools-inject] devToolsWebContents not available, retrying in 300ms...');
+    setTimeout(() => _injectJs(wc, getText, mw), 300);
+    return;
+  }
+  console.log('[devtools-inject] injecting buttons into DevTools...');
+  dwc.executeJavaScript(`(function(){
 if(window.__qqq_dt_btns_installed)return;
 window.__qqq_dt_btns_installed=true;
 function _b64ToUtf8(b64){try{var b=atob(b64),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return new TextDecoder('utf-8').decode(u);}catch(e){return b64;}}
@@ -64,11 +68,7 @@ document.getElementById('qqq-dt-save').onclick=function(){
   window.__QQQ_CONSOLE_REQUEST_SAVE=true;_toast('\\u6B63\\u5728\\u4FDD\\u5B58...');
 };
 })();`).then(() => { _startPushLoop(wc, dwc, getText, mw); })
-      .catch(() => {});
-  };
-  if ((wc as any).devToolsWebContents) { tryInject(); return; }
-  let n = 0;
-  const t = setInterval(() => { n++; if ((wc as any).devToolsWebContents) { clearInterval(t); tryInject(); } else if (n >= 30) clearInterval(t); }, 500);
+      .catch((err: any) => { console.log('[devtools-inject] executeJavaScript failed:', err?.message || err); });
 }
 
 function _startPushLoop(wc: WebContents, dwc: WebContents, getText: () => string, mw: BrowserWindow): void {

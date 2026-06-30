@@ -78,7 +78,7 @@ function renderMarkdown(src) {
     return s;
 }
 function escHtml(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function formatBytes(n) {
@@ -183,15 +183,16 @@ function addUserMessageEl(content) {
 }
 
 // ═══ 消息 DOM 插入辅助：优先插入活跃 Card 内容区 ═══
-function _appendToCard(el) {
-    if (cardPool && questActiveId) {
-        var card = cardPool.getOrCreate(questActiveId);
+function _appendToCard(el, optQuestId) {
+    var targetId = optQuestId || questActiveId;  // ★ P10：支持显式 questId，用于后台 agent 错误路由
+    if (cardPool && targetId) {
+        var card = cardPool.getOrCreate(targetId);
         if (card && card._contentWrap) {
             card._contentWrap.appendChild(el);
             // 若 card 尚未显示（新创建 quest 首次消息），自动显示
             if (card.dom && card.dom.style.display === 'none') {
                 card.dom.style.display = 'block';
-                cardPool._activeId = questActiveId;
+                cardPool._activeId = targetId;
             }
             return;
         }
@@ -199,7 +200,7 @@ function _appendToCard(el) {
     $messages.appendChild(el);
 }
 
-function addMessageEl(role, content) {
+function addMessageEl(role, content, optQuestId) {
     const div = document.createElement('div');
     div.className = 'msg msg-' + role;
     if (role === 'ai') {
@@ -210,7 +211,7 @@ function addMessageEl(role, content) {
     } else {
         return addUserMessageEl(content);
     }
-    _appendToCard(div);
+    _appendToCard(div, optQuestId);  // ★ P10：支持指定 quest，无则走当前 questActiveId
     if (role === 'ai') _markLongMsg(div, 'ai', content);
     scrollToBottom(role === 'user');
     return div;
