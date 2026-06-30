@@ -437,6 +437,44 @@
     _addMinimapAction(ed, monaco, filePath);
   }
 
+  // ── 喂给 AI：编辑器右键 → 注入 📎"path" L15-L18 到焦点面板输入框 ──
+  var _feedToAiActions = typeof WeakMap !== 'undefined' ? new WeakMap() : new Map();
+
+  function _addFeedToAiAction(ed, monaco, filePath) {
+    if (!ed || !monaco) return;
+    var prev = _feedToAiActions.get(ed);
+    if (prev && prev.disposable) { try { prev.disposable.dispose(); } catch (_) { } }
+
+    var label = '\uD83D\uDCCE \u5582\u7ED9 AI';  // 📎 喂给 AI
+
+    var disposable = ed.addAction({
+      id: 'qqq-feed-to-ai',
+      label: label,
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1.6,
+      run: function () {
+        var fp = filePath;
+        if (!fp && typeof currentFile !== 'undefined') fp = currentFile;
+        if (!fp) return;
+        var lineRange = null;
+        try {
+          var sel = ed.getSelection();
+          if (sel && !sel.isEmpty()) {
+            if (sel.startLineNumber === sel.endLineNumber) {
+              lineRange = 'L' + sel.startLineNumber;
+            } else {
+              lineRange = 'L' + sel.startLineNumber + '-L' + sel.endLineNumber;
+            }
+          }
+        } catch (_) { }
+        if (window.__qqq_aiFeedFile) {
+          window.__qqq_aiFeedFile(fp, false, lineRange);
+        }
+      }
+    });
+    _feedToAiActions.set(ed, { disposable: disposable, filePath: filePath });
+  }
+
   // ---------------- Editor build ----------------
   async function build(host) {
     mountEl = host;
@@ -460,6 +498,7 @@
       // 行号右侧空气墙点击 → 光标跳到第一列
       _installGutterClickFix(ed, monaco);
       _addMinimapAction(ed, monaco, null);
+      _addFeedToAiAction(ed, monaco, null);
       // ── 面包屑导航条（空编辑器：仅工具按钮）──
       if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.create) {
         window.qqqEditorBreadcrumb.create(host, '', ed, monaco);
@@ -493,11 +532,13 @@
       // Wire LSP diagnostics and hover — LSP OFF
       // wireLspDiagnostics(); // LSP OFF
       // wireLspHover(); // LSP OFF
-      // 编辑器销毁时清理 char-undo + 小地图 action + 跟踪列表
+      // 编辑器销毁时清理 char-undo + 小地图 action + 喂 AI action + 跟踪列表
       ed.onDidDispose(function () {
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
         var ma = _minimapActions.get(ed);
         if (ma) { try { ma.disposable.dispose(); } catch (_) { } _minimapActions.delete(ed); }
+        var fa = _feedToAiActions.get(ed);
+        if (fa) { try { fa.disposable.dispose(); } catch (_) { } _feedToAiActions.delete(ed); }
         var idx = _allMonacoEditors.indexOf(ed);
         if (idx >= 0) _allMonacoEditors.splice(idx, 1);
       });
@@ -658,6 +699,7 @@
       _installGutterClickFix(ed, monaco);
 
       _applyMinimapPref(ed, monaco, filePath);
+      _addFeedToAiAction(ed, monaco, filePath);
 
       // ★ #2 延迟上色：大文件先 plaintext 秒开，等编辑器稳定后再切语言触发 tokenization
       if (_deferColoring) {
@@ -769,6 +811,8 @@
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
         var ma = _minimapActions.get(ed);
         if (ma) { try { ma.disposable.dispose(); } catch (_) { } _minimapActions.delete(ed); }
+        var fa = _feedToAiActions.get(ed);
+        if (fa) { try { fa.disposable.dispose(); } catch (_) { } _feedToAiActions.delete(ed); }
         // 从跟踪列表移除
         var idx = _allMonacoEditors.indexOf(ed);
         if (idx >= 0) _allMonacoEditors.splice(idx, 1);

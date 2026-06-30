@@ -390,34 +390,36 @@
   }
 
   // ---- attach to AI: 路由到当前焦点面板（金色 q2 的面板）----
-  function attachToAi(filePath, isDir) {
-    // ★ 读取焦点面板目标（由 AI 面板 postMessage 更新）
-    // 注意：左面板 panelId=0，不能用 || 1（0 是 falsy 会被吞掉）
+  // ★ 唯一真理喂 AI 管线：编辑器右键/视口左键 均走此入口
+  //   参数：filePath 必填，isDir 可选（默认自动判断），lineRange 可选（如 "L15-L18"）
+  //   将来要改目标面板路由/格式，只改这一处
+  function _feedToAiPanel(filePath, isDir, lineRange) {
+    if (typeof isDir !== 'boolean') {
+      isDir = !filePath.match(/\.[a-zA-Z0-9]+$/);
+    }
     var target = typeof window.__qqq_aiTarget === 'number' ? window.__qqq_aiTarget : 1;
     var zoneId = target === 0 ? 'qqq-wing-left' : target === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
-    console.log('[ai-viewport] attachToAi target=' + target + ' zone=' + zoneId + ' file=' + filePath + ' isDir=' + isDir);
-    // ★ 不关闭下拉：用户可连续点击同目录下多个文件附加到 AI
     var zone = document.getElementById(zoneId);
     var aiFrame = zone ? zone.querySelector('iframe') : null;
     if (!aiFrame || !aiFrame.contentWindow) {
-      console.warn('[ai-viewport] no AI iframe for target=' + target + ', falling back to center');
       aiFrame = document.querySelector('#qqq-ai-zone iframe');
-      if (!aiFrame || !aiFrame.contentWindow) {
-        console.warn('[ai-viewport] no AI iframe at all');
-        return;
-      }
+      if (!aiFrame || !aiFrame.contentWindow) return;
     }
     if (typeof aiFrame.contentWindow.qqqideAiAttach === 'function') {
       try {
-        aiFrame.contentWindow.qqqideAiAttach(filePath, isDir);
-        console.log('[ai-viewport] qqqideAiAttach OK, panel=' + target);
-      } catch (e) {
-        console.warn('[ai-viewport] qqqideAiAttach error:', e);
-      }
+        aiFrame.contentWindow.qqqideAiAttach(filePath, isDir, lineRange || null);
+      } catch (e) { console.warn('[ai-viewport] feedToAi error:', e); }
     } else {
-      aiFrame.contentWindow.postMessage({ type: 'qqq-ai-attach', path: filePath, isDir: isDir }, '*');
-      console.log('[ai-viewport] postMessage fallback, panel=' + target);
+      aiFrame.contentWindow.postMessage({
+        type: 'qqq-ai-attach', path: filePath, isDir: isDir,
+        lineRange: lineRange || null
+      }, '*');
     }
+  }
+  window.__qqq_aiFeedFile = _feedToAiPanel;
+
+  function attachToAi(filePath, isDir) {
+    _feedToAiPanel(filePath, isDir, null);
   }
 
   // ---- 滚动容器包装：外层不滚 + 自定义变形滚动条（照抄 q3 Roam）----
