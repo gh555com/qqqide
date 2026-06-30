@@ -197,10 +197,6 @@ export function _tlRecord(
         p: row.file_path, q: fileSeq, t: row.ts, h: row.blob_hash, s: row.source,
         f: row.floor_id || undefined,
         a: row.added_lines ?? undefined, d: row.deleted_lines ?? undefined,
-    }) + '\n'; ine = JSON.stringify({
-        p: row.file_path, t: row.ts, h: row.blob_hash, s: row.source,
-        f: row.floor_id || undefined,
-        a: row.added_lines ?? undefined, d: row.deleted_lines ?? undefined,
     }) + '\n';
 
     const walPath = _tlWalPath(projectRoot);

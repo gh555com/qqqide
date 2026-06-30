@@ -104,10 +104,14 @@ function autoIncrementVersion(portableRoot: string): void {
 // ── 保存所有打开窗口（退出前调用，供下次启动多窗口还原）──
 export function saveAllOpenWindows(stateStore: StateStore, winProjectMap: Map<number, string>): void {
     try {
+        const seen = new Set<string>();
         const windows: any[] = [];
         for (const win of BrowserWindow.getAllWindows()) {
             if (win.isDestroyed()) continue;
-            const mainFolder = winProjectMap.get(win.id) || '';
+            const mainFolder = (winProjectMap.get(win.id) || '').replace(/\\/g, '/').replace(/\/$/, '');
+            // ★ 去重：同主文件夹只保留第一个窗口
+            if (mainFolder && seen.has(mainFolder)) continue;
+            if (mainFolder) seen.add(mainFolder);
             const bounds = win.getBounds();
             const maximized = win.isMaximized();
             windows.push({

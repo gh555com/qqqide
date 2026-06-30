@@ -316,6 +316,15 @@ app.whenReady().then(async () => {
         try {
             const openWindows = await stateStore.get('qqqide', 'open_windows');
             if (openWindows && Array.isArray(openWindows) && openWindows.length > 1) {
+                // ★ 预注册主窗口项目（open_windows[0]），防后续还原重复创建
+                const w0 = openWindows[0];
+                if (w0 && w0.mainFolder) {
+                    var n0 = w0.mainFolder.replace(/\\/g, '/').replace(/\/$/, '');
+                    if (n0) {
+                        _windowProjectMap.set(mainWindow.id, n0);
+                        _projectWindowMap.set(n0, mainWindow.id);
+                    }
+                }
                 let restored = 0;
                 // 跳过第一个窗口（主窗口已创建）
                 for (let i = 1; i < openWindows.length; i++) {

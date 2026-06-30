@@ -333,10 +333,14 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 if (_estChars > 0) {
                     var _estTokens = _estChars / ContentGateway.CHAR_PER_TOKEN;
                     var _actTokens = _result._usage.prompt_tokens;
-                    var _ratio = _estTokens / _actTokens;
-                    if (Math.abs(_ratio - 1) > 0.20) {
-                        var _newCPT = ContentGateway.CHAR_PER_TOKEN / _ratio;
-                        ContentGateway.CHAR_PER_TOKEN = Math.round(_newCPT * 100) / 100;
+                    if (_actTokens > 0 && _estTokens > 0) {
+                        var _ratio = _estTokens / _actTokens;
+                        // ★ 校准仅处理 0.1x ~ 10x 偏差（超过此范围说明 apiMessages 与完整 conversation 不一致，跳过）
+                        if (_ratio > 0.10 && _ratio < 10 && Math.abs(_ratio - 1) > 0.20) {
+                            var _newCPT = ContentGateway.CHAR_PER_TOKEN / _ratio;
+                            // ★ 硬围栏：CPT 永远在 1.0 ~ 5.0 之间
+                            ContentGateway.CHAR_PER_TOKEN = Math.max(1.0, Math.min(5.0, Math.round(_newCPT * 100) / 100));
+                        }
                     }
                 }
             }

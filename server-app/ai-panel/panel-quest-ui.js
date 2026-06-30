@@ -120,6 +120,12 @@ async function switchQuest(id) {
         if (_overlay) _overlay.classList.remove('show');
         if ($messages) $messages.classList.remove('qqq-switching');
         setStreaming(false);  // ★ 切 quest 后刷新按钮状态
+        // ★ 防御：直查 parent.__qqq_buildingRegistry 清彗星（绕过 _getRunningQuestIds 多态不确定性）
+        var _regCheck = parent && parent.__qqq_buildingRegistry;
+        if (_regCheck && questActiveId && !_isDraft(questActiveId) && !_regCheck[questActiveId]) {
+            var _tf = document.getElementById('quest-tofu');
+            if (_tf) _tf.classList.remove('quest-running');
+        }
     }
 }
 
@@ -366,7 +372,11 @@ function _estimateTokensFull() {
     var apiCompletion = _ag._accumulatedCompletionTokens || 0;
 
     // ── 2. CPT — 偏保守（2.5 → 同样字符估算出更多 token，更安全） ──
-    var CPT = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN > 0) ? ContentGateway.CHAR_PER_TOKEN : 2.5;
+    var CPT = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN > 0 && ContentGateway.CHAR_PER_TOKEN < 100) ? ContentGateway.CHAR_PER_TOKEN : 2.5;
+    // ★ 防御：校准发疯导致 CPT 异常→复位到 2.5
+    if (CPT !== 2.5 && typeof ContentGateway !== 'undefined' && (ContentGateway.CHAR_PER_TOKEN < 1 || ContentGateway.CHAR_PER_TOKEN > 100)) {
+        ContentGateway.CHAR_PER_TOKEN = 2.5; CPT = 2.5;
+    }
     var CTX_MAX = (typeof ContentGateway !== 'undefined' && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
 
     // ── 3. msg[0] 组分（子项为近似拆解，总数以 conv[0].content 为准含分隔符）──
@@ -495,16 +505,6 @@ function renderCtxBreakdown() {
     var data = _ctxBreakdownData;
     if (!data || !data.rows) { bd.classList.remove('show'); return; }
     var rowsEl = bd.querySelector('.ctx-bd-rows');
-    var usedEl = bd.querySelector('.ctx-bd-used-num');
-    var freeEl = bd.querySelector('.ctx-bd-free-num');
-    var titleEl = bd.querySelector('.ctx-bd-title');
-    var usedStr = data.apiTotalTokens >= 1000 ? Math.round(data.apiTotalTokens / 1000) + 'k' : String(data.apiTotalTokens);
-    var freeTok = Math.max(0, CTX_MAX_TOKENS - data.apiTotalTokens);
-    var freeStr = freeTok >= 1000 ? Math.round(freeTok / 1000) + 'k' : String(freeTok);
-    var pct = CTX_MAX_TOKENS > 0 ? (data.apiTotalTokens / CTX_MAX_TOKENS * 100).toFixed(1) : 0;
-    if (titleEl) titleEl.textContent = 'Context Usage: ' + usedStr + ' / ' + Math.round(CTX_MAX_TOKENS / 1000) + 'k (' + pct + '%)';
-    if (usedEl) usedEl.textContent = usedStr;
-    if (freeEl) freeEl.textContent = freeStr;
     var BX = 10000;
     var MAX_BLOCKS = 100;
     var html = '';

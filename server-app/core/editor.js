@@ -874,6 +874,7 @@
     getEditorInstance() { return _editorRef; },
     refreshLiveContent,
     isBinaryFile,
+    saveMinimapPref: _saveMinimapPref,
     // ★ Tab 切换优化：暂停/恢复 Monaco automaticLayout（避免隐藏编辑器做无意义 layout）
     suspendPaneLayout: function(filePath) {
       var ed = _paneEditors[filePath];

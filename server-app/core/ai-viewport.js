@@ -124,18 +124,22 @@
   var RECENT_KEY = 'recent_folders';
   var MAX_RECENT = 20;
   var _recentFolders = []; // [{path, name, atime}]
+  var _recentsReady = null; // Promise — resolve 后 _recentFolders 才是真实数据
 
   function _loadRecents() {
-    try {
-      var s = _getShellHandle();
-      if (s) {
-        s.get(RECENT_KEY).then(function (data) {
-          if (data && Array.isArray(data)) {
-            _recentFolders = data.slice(0, MAX_RECENT);
-          }
-        }).catch(function () { });
-      }
-    } catch (_) { }
+    _recentsReady = new Promise(function (resolve) {
+      try {
+        var s = _getShellHandle();
+        if (s) {
+          s.get(RECENT_KEY).then(function (data) {
+            if (data && Array.isArray(data)) {
+              _recentFolders = data.slice(0, MAX_RECENT);
+            }
+            resolve();
+          }).catch(function () { resolve(); });
+        } else { resolve(); }
+      } catch (_) { resolve(); }
+    });
   }
 
   function _saveRecents() {
@@ -148,13 +152,14 @@
   function _bumpRecent(folderPath) {
     var name = basename(folderPath);
     var now = Date.now();
-    // 移除旧条目（若有）
-    _recentFolders = _recentFolders.filter(function (f) { return f.path !== folderPath; });
-    // 插入到最前
-    _recentFolders.unshift({ path: folderPath, name: name, atime: now });
-    // 截断到 MAX_RECENT
-    if (_recentFolders.length > MAX_RECENT) _recentFolders.length = MAX_RECENT;
-    _saveRecents();
+    // ★ 必须先等 load 完成，否则 _saveRecents 会用空数组覆盖 global.sq3
+    var ready = _recentsReady || Promise.resolve();
+    ready.then(function () {
+      _recentFolders = _recentFolders.filter(function (f) { return f.path !== folderPath; });
+      _recentFolders.unshift({ path: folderPath, name: name, atime: now });
+      if (_recentFolders.length > MAX_RECENT) _recentFolders.length = MAX_RECENT;
+      _saveRecents();
+    }).catch(function () { });
   }
 
   // ★ restore 模式：从 qgs 读取窗口快照，还原辅文件夹
@@ -211,27 +216,33 @@
     }, 2000);
   }
 
+  // ★ 项目持久化 key：per-mainFolder 隔离，防多窗口互相覆盖
+  var PROJ_KEY_BASE = 'ai_viewport:';
+  function _projKey() {
+    if (projects.length > 0 && projects[0].path) {
+      return PROJ_KEY_BASE + projects[0].path.replace(/\\/g, '/').replace(/\/$/, '');
+    }
+    return null;
+  }
+
   function loadProjects() {
     // 新窗口（?fresh=1）：强制清空，零项目
     if (window.location.search.indexOf('fresh=1') !== -1) {
       projects = [];
-      // 若有 ?folder= 参数，自动添加为主文件夹
       var m = window.location.search.match(/[?&]folder=([^&]+)/);
       if (m) {
         try {
           var folderPath = decodeURIComponent(m[1]);
           if (folderPath) {
-            // 先添加到 projects（同步，保证 UI 即时响应），然后异步校验锁
             projects.push({ path: folderPath, name: basename(folderPath) });
             _bumpRecent(folderPath);
-            // 异步校验：若主文件夹被其他窗口锁定，立即移除
             _verifyFolderLock(folderPath);
           }
         } catch (_) { }
       }
       return;
     }
-    // ★ restore 模式（?restore=1&folder=xxx）：从 qgs 快照还原辅文件夹
+    // ★ restore 模式（?restore=1&folder=xxx）：读 per-mainFolder key
     if (window.location.search.indexOf('restore=1') !== -1) {
       projects = [];
       var rm = window.location.search.match(/[?&]folder=([^&]+)/);
@@ -242,7 +253,9 @@
             projects.push({ path: rFolderPath, name: basename(rFolderPath) });
             _bumpRecent(rFolderPath);
             _verifyFolderLock(rFolderPath);
-            // 异步读快照 → 恢复辅文件夹
+            // ★ 从 per-mainFolder key 恢复（含辅文件夹）
+            _restoreFromProjKey(rFolderPath);
+            // 同时走 win_snap 兜底（兼容旧数据）
             _restoreFromSnapshot(rFolderPath);
           }
         } catch (_) { }
@@ -251,41 +264,55 @@
       _notifyChanged();
       return;
     }
-    // 优先从 qgs 全局 SQLite 加载（跨重启）
-    try {
-      var s = _getShellHandle();
-      if (s) {
-        s.get('ai_viewport_projects').then(function (data) {
-          if (data && Array.isArray(data) && data.length > 0) {
-            projects = data;
-            render();
-            _notifyChanged();
-          }
-        }).catch(function () { });
-      }
-    } catch (_) { }
-    // 同步回退：localStorage
+    // 同步回退：localStorage（首次启动或无主文件夹时）
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
       if (raw) { var parsed = JSON.parse(raw); if (parsed.length > 0) projects = parsed; }
     } catch (_) { }
   }
-  function saveProjects() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (_) { }
-    // ★ 同步写入 qgs 全局 SQLite（跨重启持久化）
+
+  // ★ 从 per-mainFolder key 恢复辅文件夹（跨窗口跨重启）
+  function _restoreFromProjKey(mainFolderPath) {
+    var key = PROJ_KEY_BASE + mainFolderPath.replace(/\\/g, '/').replace(/\/$/, '');
     try {
-      if (projects.length > 0) {
-        var s = _getShellHandle();
-        if (s) s.set('ai_viewport_projects', projects).catch(function () { });
+      var s = _getShellHandle();
+      if (s) {
+        s.get(key).then(function (data) {
+          if (!data || !Array.isArray(data) || data.length < 2) return;
+          // data[0] 是主文件夹（跳过），data[1..] 是辅文件夹
+          for (var i = 1; i < data.length; i++) {
+            var aux = data[i];
+            var auxPath = typeof aux === 'string' ? aux : aux.path;
+            if (!projects.some(function (p) { return p.path === auxPath; })) {
+              projects.push({ path: auxPath, name: basename(auxPath) });
+            }
+          }
+          saveProjects();
+          render();
+          _notifyChanged();
+        }).catch(function () { });
       }
     } catch (_) { }
   }
-  // 窗口关闭前兜底写入 qgs（防崩溃丢失）
+
+  function saveProjects() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (_) { }
+    // ★ 写入 per-mainFolder key（多窗口隔离）
+    try {
+      var pk = _projKey();
+      if (pk && projects.length > 0) {
+        var s = _getShellHandle();
+        if (s) s.set(pk, projects).catch(function () { });
+      }
+    } catch (_) { }
+  }
+  // 窗口关闭前兜底写入（防崩溃丢失）
   window.addEventListener('beforeunload', function () {
     try {
       var s = _getShellHandle();
       if (s) {
-        if (projects.length > 0) s.setNow('ai_viewport_projects', projects).catch(function () { });
+        var pk = _projKey();
+        if (pk && projects.length > 0) s.setNow(pk, projects).catch(function () { });
         if (_recentFolders.length > 0) s.setNow(RECENT_KEY, _recentFolders).catch(function () { });
       }
     } catch (_) { }
@@ -305,6 +332,26 @@
       activeDropdown = null;
     }
     if (_activeBlockEl) { _activeBlockEl.classList.remove('aiv-block-active'); _activeBlockEl = null; }
+    // ★ 关闭遮罩 + 恢复 iframe 点击（两种下拉共用）
+    _aivRemoveBackdrop();
+    _setAiIframesPointerEvents('');
+  }
+
+  // ---- 透明遮罩：铺满菜单栏以下区域，拦截点击关闭下拉 ----
+  var _aivBackdrop = null;
+  function _aivEnsureBackdrop() {
+    if (_aivBackdrop) return;
+    _aivBackdrop = document.createElement('div');
+    _aivBackdrop.style.cssText = 'position:fixed; left:0; right:0; bottom:0; z-index:99998; background:transparent;';
+    _aivBackdrop.style.top = (container ? container.getBoundingClientRect().bottom : 32) + 'px';
+    _aivBackdrop.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
+      closeDropdown();
+    });
+    document.body.appendChild(_aivBackdrop);
+  }
+  function _aivRemoveBackdrop() {
+    if (_aivBackdrop) { _aivBackdrop.remove(); _aivBackdrop = null; }
   }
 
   function closeAllSubmenus() {
@@ -563,6 +610,9 @@
     _stampDepth(dd, 1);
     document.body.appendChild(dd);
     activeDropdown = dd;
+    // ★ 遮罩 + 冻结 iframe（点击外部关闭）
+    _aivEnsureBackdrop();
+    _setAiIframesPointerEvents('none');
   }
 
   function fileIconFor(name, isDir) {
@@ -1079,6 +1129,9 @@
 
     document.body.appendChild(dd);
     activeDropdown = dd;
+    // ★ 遮罩 + 冻结 iframe（点击外部关闭）
+    _aivEnsureBackdrop();
+    _setAiIframesPointerEvents('none');
   }
 
   async function confirmRemove(proj) {
@@ -1200,39 +1253,8 @@
       closeDropdown();
       document.querySelectorAll('.aiv-block-active').forEach(function (el) { el.classList.remove('aiv-block-active'); });
     }
-    // ★ 关闭策略：遮罩 + iframe pointer-events 切断
-    //   1. 透明遮罩铺满菜单栏以下区域，拦截普通区域点击
-    //   2. iframe 设 pointer-events:none，点击穿透到遮罩 → 关闭
-    //   3. 主进程 blur → executeJavaScript 直接关
-    var _backdrop = null;
-    function _ensureBackdrop() {
-      if (_backdrop) return;
-      _backdrop = document.createElement('div');
-      _backdrop.style.cssText = 'position:fixed; left:0; right:0; bottom:0; z-index:99998; background:transparent;';
-      _backdrop.style.top = (container.getBoundingClientRect().bottom || 32) + 'px';
-      _backdrop.addEventListener('mousedown', function (e) {
-        if (e.button !== 0) return;
-        _dismissDropdown();
-      });
-      document.body.appendChild(_backdrop);
-    }
-    function _removeBackdrop() {
-      if (_backdrop) { _backdrop.remove(); _backdrop = null; }
-    }
-    // 打开下拉时：遮罩 + 冻结 iframe 点击
-    var _origShowDropdown = showDropdown;
-    showDropdown = function (blockEl, project) {
-      _origShowDropdown(blockEl, project);
-      _ensureBackdrop();
-      _setAiIframesPointerEvents('none');
-    };
-    // 关闭下拉时：移除遮罩 + 恢复 iframe 点击
-    var _origCloseDropdown = closeDropdown;
-    closeDropdown = function () {
-      _origCloseDropdown();
-      _removeBackdrop();
-      _setAiIframesPointerEvents('');
-    };
+    // ★ 遮罩已内置到 showDropdown / _showRecentDropdown / closeDropdown（模块级）
+    //    此处不再 monkey-patch，保持单一真理源
     window.qqqideViewport.closeDropdown = closeDropdown;
     // Escape 键关闭（任何情况下都可操作）
     document.addEventListener('keydown', function (e) {

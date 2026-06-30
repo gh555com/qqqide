@@ -232,27 +232,27 @@ async function sendMessage(skipFloorCreation) {
             qDirName2 = await _resolveQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
             fDirName2 = _makeName('f', floorNum, userQuestion);
             var _ensured = await _ensureQuestDir(root2, qDirName2, fDirName2);
-            // ★ 保存图片到楼层目录
-            if (_ensured && _ensured.fDir && pendingImages.length > 0) {
-                var _bridge = window.parent && window.parent.qqqideBridge;
-                if (_bridge && _bridge.fs) {
-                    for (var _imi = 0; _imi < pendingImages.length; _imi++) {
-                        var _pimg = pendingImages[_imi];
+            // ★ 保存图片到楼层目录（二进制落盘，与 all.json/all.txt 同目录）
+            if (_ensured && _ensured.fDir && images && images.length > 0) {
+                var _bridge2 = window.parent && window.parent.qqqideBridge;
+                if (_bridge2 && _bridge2.fs) {
+                    for (var _imi = 0; _imi < images.length; _imi++) {
+                        var _pimg = images[_imi];
                         var _fileName = 'img_' + _pimg.id + '.png';
                         try {
-                            var _binStr = atob(_pimg.base64);
-                            var _bytes = new Uint8Array(_binStr.length);
-                            for (var _bi = 0; _bi < _binStr.length; _bi++) { _bytes[_bi] = _binStr.charCodeAt(_bi); }
-                            if (typeof _bridge.fs.writeBase64 === 'function') {
-                                await _bridge.fs.writeBase64(_ensured.fDir + _fileName, _pimg.base64);
+                            if (typeof _bridge2.fs.writeBase64 === 'function') {
+                                await _bridge2.fs.writeBase64(_ensured.fDir + _fileName, _pimg.base64);
                             } else {
-                                await _bridge.fs.write(_ensured.fDir + _fileName, _pimg.dataUrl);
+                                // 兜底：dataUrl → 去掉前缀写入
+                                var _b64Only = _pimg.base64 || _pimg.dataUrl.split(',')[1] || '';
+                                await _bridge2.fs.writeBase64(_ensured.fDir + _fileName, _b64Only);
                             }
-                            _pimg.fileName = _fileName;
+                            _pimg.fileName = _fileName;  // ★ 回写 fileName 供 conversation/images 持久化
                         } catch (_imgSaveErr) {
                             console.warn('[img-save] failed to save image to disk:', _imgSaveErr);
                         }
                     }
+                    // ★ 已完成落盘，后续 agent.send({images}) 携带 fileName → card 重渲染可从磁盘加载
                 }
             }
         }
@@ -296,10 +296,13 @@ async function sendMessage(skipFloorCreation) {
     _capturedAgent._lastFloorTimingRecord = null;
     _capturedAgent._aiStartTime = '';
     _capturedAgent._aiTierLabel = '';
+    _capturedAgent._streamingContent = null;  // ★ P10/P11 根治：每楼层重置流式缓冲区
     startFloorTimer(aiDiv, _capturedAgent);
     _startAllTxtStream(aiDiv, _allTxtPathLocal, _capturedAgent, floorNum, text, '');
     scrollToBottom(true);
     setStreaming(true);
+    // ★ P10 根治：agent 必须知道自己的新 aiDiv，否则 _doStreamRender 读到旧 quest 的 DOM
+    _capturedAgent._activeAiDiv = aiDiv;
     // ★ 中央建楼状态机：登记 quest 开始建楼
     if (typeof _registerBuilding === 'function') _registerBuilding(_capturedQuestId, typeof _panelId !== 'undefined' ? _panelId : 1);
 
@@ -584,6 +587,18 @@ async function sendMessage(skipFloorCreation) {
 
                 if (cardPool) cardPool.completeBuildingFloor(_capturedQuestId, floorNum);
 
+                // ★ 根治：后台完成时数据已落盘，强制标记 card 待重载。
+                //   否则 cardPool.switchTo 见 totalFloors>0 就不刷新，永远显示建楼中旧 DOM。
+                if (_activeAgent !== _capturedAgent) {
+                    var _qCard = cardPool && cardPool._cards && cardPool._cards[_capturedQuestId];
+                    if (_qCard) {
+                        _qCard._contentWrap && (_qCard._contentWrap.innerHTML = '');
+                        _qCard.totalFloors = 0;
+                        _qCard.floors = [];
+                        _qCard.floorDOM = {};
+                    }
+                }
+
                 if (_activeAgent === _capturedAgent && _divDetached) {
                     console.warn('[onDone] div detached but card pool not available, skipping rebuild');
                 }
@@ -592,7 +607,6 @@ async function sendMessage(skipFloorCreation) {
                 await _finalizeAllTxt(_targetDiv2 || aiDiv, _ftxtPath, _capturedAgent, floorNum, timing);
                 if (_activeAgent === _capturedAgent) {
                     updateCtxBtn();
-                    updateQuestTofu();  // ★ 楼层完成后刷新 tofu（防草稿→正式 quest 后未及时更新）
                     // ═══ E-Flow post-floor auto-detect ═══
                     // After floor completes, check if AI created standard framework files.
                     // If index.md now exists and mode is 'none', auto-set to 'standard'.
@@ -607,10 +621,20 @@ async function sendMessage(skipFloorCreation) {
                         renderQueueStrip();
                     }
                 }
+                // ★ P11 根治：updateQuestTofu 移到守卫外 — 后台 quest 完成后也必须刷新 tofu（彗星消失）
+                updateQuestTofu();
+                // ★ 防御：直查 parent.__qqq_buildingRegistry 确保已删除（绕过 _getRunningQuestIds 多态）
+                var _regAfter = parent && parent.__qqq_buildingRegistry;
+                if (_regAfter && _regAfter[_capturedQuestId]) {
+                    console.warn('[onDone] quest still in registry after unregister, force-deleting:', _capturedQuestId);
+                    delete _regAfter[_capturedQuestId];
+                    if (typeof _broadcastRegistry === 'function') _broadcastRegistry();
+                    updateQuestTofu();
+                }
             },
 
             onGuideAckDone: function () {
-                var _aiDiv3 = _activeAgent._activeAiDiv;
+                var _aiDiv3 = _capturedAgent._activeAiDiv;  // ★ P10：必须用 _capturedAgent，不能用 _activeAgent（可能已切走）
                 if (_aiDiv3) {
                     _aiDiv3._guideMode = false;
                     // 只清流式缓冲，保留已渲染的 DOM 和段落跟踪
@@ -645,6 +669,34 @@ async function sendMessage(skipFloorCreation) {
                 if (_activeAgent === _capturedAgent) _sending = false;  // ★ 仅前台复位，后台 agent 错误不影响前台
                 if (_capturedAgent) {
                     _capturedAgent._floorOnErrorCalled = true;  // ★ 看门狗：标记已处理
+                    // ★ P10/P11 根治：先保存流式内容到 conversation（防 onError 丢数据）
+                    //   优先用 _streamingContent（_doStreamRender 累积），回退到 _paras 残留
+                    var _streamedText = _capturedAgent._streamingContent || '';
+                    // 防重复：若截断路径（agent-loop L680 _truncated）已写 → 跳过
+                    var _lastConv3 = _capturedAgent.conversation[_capturedAgent.conversation.length - 1];
+                    if (_lastConv3 && _lastConv3.role === 'assistant' && _lastConv3._floor === _capturedAgent._ctx.totalFloors && _lastConv3.content) {
+                        _streamedText = '';  // 已由 agent-loop 写入，不重复
+                    }
+                    if (!_streamedText.trim()) {
+                        // 兜底：_doStreamRender 还没跑过 → 从 aiDiv._paras 提取
+                        var _aiDiv3 = _capturedAgent._activeAiDiv;
+                        if (_aiDiv3 && _aiDiv3._paras) {
+                            for (var _si = 0; _si < _aiDiv3._paras.length; _si++) {
+                                if (_aiDiv3._paras[_si]) {
+                                    if (_streamedText) _streamedText += '\n\n';
+                                    _streamedText += _aiDiv3._paras[_si];
+                                }
+                            }
+                        }
+                    }
+                    if (_streamedText.trim()) {
+                        _capturedAgent.conversation.push({
+                            role: 'assistant',
+                            content: _streamedText.trim(),
+                            _floor: _capturedAgent._ctx.totalFloors
+                        });
+                    }
+                    _capturedAgent._streamingContent = null;
                     // ★ 一次渲染永久不变：错误消息推入 conversation 持久化
                     _capturedAgent.conversation.push({
                         role: 'assistant',
@@ -676,7 +728,7 @@ async function sendMessage(skipFloorCreation) {
                     }
                     // ★ 聚合红框：追加错误行到 quest 级错误日志，渲染一个框
                     var _now = new Date();
-                    var _ts = _now.getHours().toString().padStart(2,'0') + ':' + _now.getMinutes().toString().padStart(2,'0');
+                    var _ts = _now.getHours().toString().padStart(2, '0') + ':' + _now.getMinutes().toString().padStart(2, '0');
                     if (_capturedAgent) {
                         _capturedAgent._questErrorLog.push({ time: _ts, reason: msg });
                     }
@@ -719,6 +771,17 @@ async function sendMessage(skipFloorCreation) {
                         error: msg,
                         finishedAt: new Date().toISOString()
                     });
+                    // ★ P11：后台 agent 错误后刷新 tofu + quest 下拉（彗星消失）
+                    updateQuestTofu();
+                    // ★ 防御：直查 registry 确保删除
+                    var _regErr = parent && parent.__qqq_buildingRegistry;
+                    if (_regErr && _regErr[_capturedQuestId]) {
+                        console.warn('[onError] quest still in registry, force-deleting:', _capturedQuestId);
+                        delete _regErr[_capturedQuestId];
+                        if (typeof _broadcastRegistry === 'function') _broadcastRegistry();
+                        updateQuestTofu();
+                    }
+                    if (typeof _questDrop !== 'undefined' && _questDrop && typeof renderQuestDrop === 'function') renderQuestDrop();
                 }
             }
         });
@@ -733,7 +796,7 @@ async function sendMessage(skipFloorCreation) {
                 _capturedAgent._deferredAiDiv = null;
                 _capturedAgent._deferRenderUntilHouse1 = false;
             }
-            addMessageEl('error', err.message || 'Unknown error');
+            addMessageEl('error', err.message || 'Unknown error', _capturedQuestId);  // ★ P10：错误消息记入被捕获 quest 的 card
             // ★ 异常不可恢复 → fatal（统一归入 fatal 管线，不依赖 auto-save）
             if (_capturedAgent) {
                 _capturedAgent._floorFatal = true;

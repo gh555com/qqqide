@@ -2,18 +2,15 @@
 // shell-menu.js — 菜单栏（从 shell.js 拆分）
 // 依赖: window.qqqideBridge, window.qqqDefaultMenuSchema, window._i
 // 导出: window._shHandleMenuCmd (供 shell-rpc.js 的 bootKeyHook 使用)
-// 功能: 菜单弹出/高亮/命令分发 + "开新窗口" 行外嵌 square button + 最近文件夹下拉
+// 功能: 菜单弹出/高亮/命令分发 + "开新窗口" 行 hover 右侧展开最近文件夹下拉
 //       窗口快照保存/恢复 (win_snap:{folderPath} in qgs)
 // ============================================================================
 
 var _shellActiveMenubarPopup = null;
-var _shellMenuRecentDropdown = null;   // square button 的最近文件夹下拉
-var _shellMenuRecentHoverTimer = null; // square button hover → 延迟显示下拉
-var _shellMenuSqBtn = null;            // 外嵌 square ▶ button（挂在 popup 外面）
+var _shellMenuRecentDropdown = null;   // "开新窗口" hover 的最近文件夹下拉
+var _shellMenuRecentHoverTimer = null; // 延迟关闭计时器
 
 function _shellCloseMenubarPopup() {
-  // 移除外嵌 square button
-  if (_shellMenuSqBtn) { try { _shellMenuSqBtn.remove(); } catch (_) { } _shellMenuSqBtn = null; }
   if (_shellActiveMenubarPopup) { try { _shellActiveMenubarPopup.remove(); } catch (_) { } _shellActiveMenubarPopup = null; }
   _closeMenuRecentDropdown();
 }
@@ -24,8 +21,6 @@ function _closeMenuRecentDropdown() {
     _shellMenuRecentDropdown = null;
   }
   if (_shellMenuRecentHoverTimer) { clearTimeout(_shellMenuRecentHoverTimer); _shellMenuRecentHoverTimer = null; }
-  // 恢复 square button 可见性
-  if (_shellMenuSqBtn && _shellMenuSqBtn._sqRestore) { _shellMenuSqBtn._sqRestore(); }
 }
 
 // ---- 窗口快照：保存到 qgs global，key=win_snap:{normalizedPath} ----
@@ -102,11 +97,10 @@ function _loadWindowSnapshot(folderPath) {
   return bridge.state.get('qqqide', key).catch(function () { return null; });
 }
 
-// ---- 显示 square button 的最近文件夹下拉（无标题行，直接显示列表）----
-function _showMenuRecentDropdown(sqBtn, leftPx, topPx) {
+// ---- hover "开新窗口" 行 → 右侧展开最近文件夹列表（无标题行）----
+function _showMenuRecentDropdown(leftPx, topPx) {
   if (_shellMenuRecentDropdown) return;
   _closeMenuRecentDropdown();
-  if (!sqBtn || !sqBtn.isConnected) return;
 
   var maxH = Math.max(200, window.innerHeight - topPx - 8);
 
@@ -114,11 +108,11 @@ function _showMenuRecentDropdown(sqBtn, leftPx, topPx) {
   dd.className = 'qqq-menubar-recent-dropdown';
   dd.style.cssText =
     'position:fixed; z-index:100000; ' +
-    'left:' + leftPx + 'px; top:' + topPx + 'px; ' +
+    'left:' + leftPx + 'px; top:' + (topPx - 46) + 'px; ' +
     'min-width:280px; max-width:420px; max-height:' + maxH + 'px; ' +
     'overflow-y:auto; ' +
     'background:var(--card-bg); border:1px solid var(--border-color); ' +
-    'border-radius:3px; box-shadow:0 4px 16px rgba(0,0,0,.18); padding:4px 0;';
+    'border-radius:3px; box-shadow:0 4px 16px rgba(0,0,0,.18); padding:0;';
 
   var bridge = window.qqqideBridge;
   function renderRows(folders) {
@@ -132,8 +126,8 @@ function _showMenuRecentDropdown(sqBtn, leftPx, topPx) {
     folders.forEach(function (f) {
       var row = document.createElement('div');
       row.style.cssText =
-        'padding:8px 12px; font-size:12px; color:var(--text-primary); ' +
-        'display:flex; align-items:center; gap:6px; white-space:nowrap;';
+        'padding:8px 12px; margin:0; line-height:1.3; font-size:12px; color:var(--text-primary); ' +
+        'display:flex; align-items:center; gap:6px; white-space:nowrap; cursor:default;';
 
       var icon = document.createElement('span');
       icon.textContent = '\uD83D\uDCC1';
@@ -172,13 +166,13 @@ function _showMenuRecentDropdown(sqBtn, leftPx, topPx) {
     });
   }
 
-  // mouseleave → 延迟关闭（允许鼠标从按钮移到下拉）
+  // mouseleave → 延迟关闭（允许鼠标从行移到下拉）
   dd.addEventListener('mouseleave', function () {
     if (_shellMenuRecentHoverTimer) clearTimeout(_shellMenuRecentHoverTimer);
     _shellMenuRecentHoverTimer = setTimeout(function () {
       _shellMenuRecentHoverTimer = null;
       _closeMenuRecentDropdown();
-    }, 200);
+    }, 150);
   });
   dd.addEventListener('mouseenter', function () {
     if (_shellMenuRecentHoverTimer) { clearTimeout(_shellMenuRecentHoverTimer); _shellMenuRecentHoverTimer = null; }
@@ -211,6 +205,32 @@ function _showMenuRecentDropdown(sqBtn, leftPx, topPx) {
 function _openWindowFromRecent(folderPath) {
   var bridge = window.qqqideBridge;
   _saveWindowSnapshot();
+  // ★ 为新窗口种子辅文件夹：将当前窗口的视口项目（除去目标自身）写入目标 key
+  //    新窗口 restore 时 _restoreFromProjKey 会读取并还原辅文件夹
+  try {
+    var curProj = window.qqqideViewport ? window.qqqideViewport.getProjects() : [];
+    if (curProj && curProj.length > 0) {
+      var normalizedTarget = folderPath.replace(/\\/g, '/').replace(/\/$/, '');
+      var seed = [];
+      for (var i = 0; i < curProj.length; i++) {
+        var p = curProj[i];
+        var np = p.path.replace(/\\/g, '/').replace(/\/$/, '');
+        if (np === normalizedTarget) continue; // 目标自身不重复
+        seed.push({ path: np, name: p.name });
+      }
+      // 目标在最前（主文件夹）+ 原窗口其他项目作为辅文件夹
+      var targetProj = [{ path: normalizedTarget, name: '' }];
+      try {
+        var parts = normalizedTarget.split('/').filter(Boolean);
+        targetProj[0].name = parts[parts.length - 1] || normalizedTarget;
+      } catch (_) { targetProj[0].name = normalizedTarget; }
+      var fullSeed = targetProj.concat(seed);
+      if (bridge && bridge.state) {
+        var seedKey = 'ai_viewport:' + normalizedTarget;
+        bridge.state.set('qqqide', seedKey, fullSeed).catch(function () { });
+      }
+    }
+  } catch (_) { }
   if (bridge && bridge.window && bridge.window.new) {
     bridge.window.new(folderPath).then(function (r) {
       if (r && !r.ok) { console.warn('[shell-menu] newWindow failed:', r); }
@@ -238,40 +258,6 @@ function _bumpMenuRecent(folderPath) {
   }).catch(function () { });
 }
 
-// ---- 创建外嵌 square ▶ button（高=行高，hover 即消失→直接展开列表）----
-function _createSqBtn(pop, targetRow, cmd) {
-  if (_shellMenuSqBtn) { try { _shellMenuSqBtn.remove(); } catch (_) { } }
-  var popRect = pop.getBoundingClientRect();
-  var rowRect = targetRow.getBoundingClientRect();
-  var btnH = rowRect.height;
-  var sqBtn = document.createElement('span');
-  sqBtn.className = 'qqq-menu-sq-btn';
-  sqBtn.style.cssText =
-    'position:fixed; z-index:100001; ' +
-    'display:inline-flex; align-items:center; justify-content:center; ' +
-    'width:' + Math.round(btnH * 1.2) + 'px; height:' + btnH + 'px; ' +
-    'left:' + popRect.right + 'px; top:' + rowRect.top + 'px; ' +
-    'border-radius:2px; font-size:10px; color:var(--text-muted); ' +
-    'background:var(--card-bg); border:1px solid var(--border-color); ' +
-    'user-select:none; cursor:default;';
-  sqBtn.textContent = '\u25B6';
-
-  // hover → 按钮消失，直接展开最近文件夹列表
-  sqBtn.addEventListener('mouseenter', function (e) {
-    e.stopPropagation();
-    sqBtn.style.display = 'none';
-    _showMenuRecentDropdown(sqBtn, popRect.right, rowRect.top);
-  });
-
-  // 恢复回调 — 下拉关闭时调用
-  sqBtn._sqRestore = function () {
-    if (sqBtn.isConnected) sqBtn.style.display = '';
-  };
-
-  document.body.appendChild(sqBtn);
-  _shellMenuSqBtn = sqBtn;
-}
-
 function _shellOpenMenubarPopup(anchorEl, item) {
   _shellCloseMenubarPopup();
   if (!item.sub || item.sub.length === 0) return;
@@ -283,9 +269,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
     'left:' + rect.left + 'px; top:' + rect.bottom + 'px; ' +
     'min-width:180px; background:var(--card-bg); ' +
     'border:1px solid var(--border-color); border-radius:3px; ' +
-    'box-shadow:0 4px 16px rgba(0,0,0,.18); padding:4px 0;';
-
-  var hasRecentRow = null; // 记下 hasRecent 行，最后创建外嵌按钮
+    'box-shadow:0 4px 16px rgba(0,0,0,.18); padding:0;';
 
   for (var i = 0; i < item.sub.length; i++) {
     var s = item.sub[i];
@@ -296,11 +280,10 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       continue;
     }
     var row = document.createElement('div');
-    // ★ 统一宽度，不再特殊加宽
     row.style.cssText =
-      'display:flex; align-items:center; padding:5px 14px; ' +
+      'display:flex; align-items:center; padding:5px 14px; margin:0; line-height:1.3; ' +
       'font-size:12px; color:var(--text-primary); ' +
-      'white-space:nowrap; user-select:none;';
+      'white-space:nowrap; user-select:none; cursor:default;';
     var lab = document.createElement('span');
     lab.textContent = (s.i18n && window._i) ? window._i(s.i18n, s.label) : (s.label || '');
     lab.style.cssText = 'flex:1 1 auto;';
@@ -311,37 +294,49 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       acc.style.cssText = 'margin-left:24px; color:var(--base1); font-size:11px;';
       row.appendChild(acc);
     }
-    // ★ FIX: IIFE 捕获 row 引用，修复 hover 高亮偏移 bug
+
     (function (rowEl) {
       rowEl.addEventListener('mouseenter', function () { rowEl.style.background = 'var(--background-color)'; });
       rowEl.addEventListener('mouseleave', function () { rowEl.style.background = ''; });
     })(row);
 
-    // 整行点击 → 执行命令
-    row.addEventListener('click', (function (cmd) {
-      return function (e) {
-        if (e.target && e.target.closest && e.target.closest('.qqq-menu-sq-btn')) return;
-        e.stopPropagation();
-        _shellCloseMenubarPopup();
-        if (cmd) window._shHandleMenuCmd(cmd);
-      };
-    })(s.cmd));
-    pop.appendChild(row);
+    // ★ "开新窗口" 行：hover → 右侧展开最近文件夹列表；点击 → 空白新窗口
+    if (s.hasRecent) {
+      row.addEventListener('mouseenter', function () {
+        if (_shellMenuRecentHoverTimer) clearTimeout(_shellMenuRecentHoverTimer);
+        var popRect = pop.getBoundingClientRect();
+        var rowRect = row.getBoundingClientRect();
+        _showMenuRecentDropdown(popRect.right, rowRect.top);
+      });
+      row.addEventListener('mouseleave', function () {
+        if (_shellMenuRecentHoverTimer) clearTimeout(_shellMenuRecentHoverTimer);
+        _shellMenuRecentHoverTimer = setTimeout(function () {
+          _shellMenuRecentHoverTimer = null;
+          if (_shellMenuRecentDropdown) return; // 鼠标在下拉上，不关
+          _closeMenuRecentDropdown();
+        }, 120);
+      });
 
-    if (s.hasRecent) hasRecentRow = { row: row, cmd: s.cmd };
+      // 点击行 → 空白新窗口（不传 folderPath）
+      row.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _closeMenuRecentDropdown();
+        _shellCloseMenubarPopup();
+        window._shHandleMenuCmd(s.cmd);
+      });
+    } else {
+      row.addEventListener('click', (function (cmd) {
+        return function (e) {
+          e.stopPropagation();
+          _shellCloseMenubarPopup();
+          if (cmd) window._shHandleMenuCmd(cmd);
+        };
+      })(s.cmd));
+    }
+    pop.appendChild(row);
   }
   document.body.appendChild(pop);
   _shellActiveMenubarPopup = pop;
-
-  // ★ 外嵌 square ▶ button：挂在 popup 右边缘外侧，与 hasRecent 行对齐
-  if (hasRecentRow) {
-    // 延迟到下一帧，等 pop 布局完成
-    requestAnimationFrame(function () {
-      if (_shellActiveMenubarPopup === pop && hasRecentRow.row.isConnected) {
-        _createSqBtn(pop, hasRecentRow.row, hasRecentRow.cmd);
-      }
-    });
-  }
 }
 
 // handleMenuCmd — 菜单命令中枢，同时挂到 window 供 shell-rpc.js 的 keyHook 使用
@@ -424,7 +419,6 @@ function _shellRenderMenubarLabels(schema) {
     var span = document.createElement('span');
     span.className = 'qqq-menubar-label';
     span.textContent = (item.i18n && window._i) ? window._i(item.i18n, item.label) : (item.label || '');
-    // ★ 视觉边界：加 subtle outline + 分隔线，明确点击范围
     span.style.cssText =
       'padding:0 10px; color:var(--text-primary); ' +
       'user-select:none; height:100%; display:inline-flex; align-items:center; ' +
@@ -448,20 +442,16 @@ function _shellRenderMenubarLabels(schema) {
     $bar.appendChild(span);
   }
   // ★ 全局 mousedown：点击外部关闭 popup 和下拉
-  //    修复 bug：点击不同 menubar label → 关闭当前 popup（label click handler 会打开新的）
   document.addEventListener('mousedown', function (e) {
     // 先检查最近文件夹下拉
     if (_shellMenuRecentDropdown) {
       if (_shellMenuRecentDropdown.contains(e.target)) return;
-      if (e.target.closest && e.target.closest('.qqq-menu-sq-btn')) return;
       _closeMenuRecentDropdown();
     }
     // 再检查菜单弹出
     if (!_shellActiveMenubarPopup) return;
     if (_shellActiveMenubarPopup.contains(e.target)) return;
-    // ★ 点击外嵌 square button → 不关
-    if (e.target.closest && e.target.closest('.qqq-menu-sq-btn')) return;
-    // ★ 点击 popup 的 anchor label 自身 → 让 label click handler 处理 toggle
+    // ★ 点击 popup 的 anchor label → 让 label click handler 处理 toggle
     if (_shellActiveMenubarPopup._anchor) {
       if (_shellActiveMenubarPopup._anchor === e.target) return;
       if (e.target.closest && e.target.closest('.qqq-menubar-label') === _shellActiveMenubarPopup._anchor) return;
