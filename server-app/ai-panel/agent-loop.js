@@ -139,7 +139,7 @@ var AgentLoop = (function () {
         // ★ 记账埋点：完整 billing 追踪（per-house 粒度）
         this._lastBilling = null;        // { wgeCost, model, usage: {prompt_tokens,completion_tokens,cached_tokens,non_cached_tokens}, freeWindow, requestId }
         this._billingSeq = 0;            // 全局 billing 事件序号（跨 floor 递增）
-        this._billingDebug = true;       // 详细记账日志开关（默认开，诊断缓存命中率）
+        this._billingDebug = false;      // 详细记账日志开关（默认关，减少噪音）
         // ★ 上下文快照：诊断模型缓存命中/未命中根因
         this._lastSentSnapshot = null;   // { msgCount, prefixHash, firstMsgKeys, lastMsgKeys }
         this._lastCacheDiag = null;      // { prevHash, currHash, firstDiffIdx, diffReason, prevMsgKeys, currMsgKeys }
@@ -436,7 +436,8 @@ var AgentLoop = (function () {
                         if (!_cleanAck || _cleanAck.length < 3) _cleanAck = 'Guide received';
                         self.conversation.push({ role: 'assistant', content: _cleanAck, _guideAck: true, _guideText: _guideText, _floor: self._ctx.totalFloors });
                         // 归档
-                        self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString() });
+                        var _billG = self._lastBilling; self._lastBilling = null;
+                        self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString(), wgeCost: _billG ? _billG.wgeCost : 0, model: _billG ? _billG.model : '', cacheHitRate: _billG ? _billG.cacheHitRate : -1, usage: _billG ? _billG.usage : null, billingSeq: _billG ? _billG.seq : 0, billingRequestId: _billG ? _billG.requestId : '', tier: self._lastTier ? self._lastTier.label : '' });
                         // ★ 更新绿条标记：两行格式，✅ 已收到引导 / 确认内容
                         var _aiDiv2 = self._activeAiDiv;
                         var _esc = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };

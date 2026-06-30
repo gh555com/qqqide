@@ -142,11 +142,66 @@ function bootStatusbar(boot) {
     }
   }
 
+  // ═══ 免费预算血条 ═══
+  var $freeBudgetBar = document.getElementById('qqq-status-free-budget');
+  var $freeBudgetFill = document.getElementById('qqq-status-free-budget-fill');
+  var $freeBudgetLabel = document.getElementById('qqq-status-free-budget-label');
+  var _freeBudgetData = null;
+  var _freeBudgetLastFetch = 0;
+
+  function fetchFreeBudget() {
+    var token = '';
+    try {
+      if (window.qqqLogin && window.qqqLogin.getAuthToken) {
+        token = window.qqqLogin.getAuthToken();
+      }
+    } catch (e) { /* ignore */ }
+    if (!token) return;
+
+    var now = Date.now();
+    if (now - _freeBudgetLastFetch < 30000) return; // 30s 冷却
+    _freeBudgetLastFetch = now;
+
+    fetch('https://gh555.com/api/qqq/free-budget', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (data && data.ok) {
+        _freeBudgetData = data;
+        updateFreeBudgetUI();
+      }
+    })
+    .catch(function () { /* ignore */ });
+  }
+
+  function updateFreeBudgetUI() {
+    if (!$freeBudgetBar) return;
+    var d = _freeBudgetData;
+    if (d && d.in_free_window && parseFloat(d.remaining_ge) > 0) {
+      $freeBudgetBar.style.display = 'inline-flex';
+      var budgetGe = parseFloat(d.budget_ge) || 0;
+      var remainingGe = parseFloat(d.remaining_ge) || 0;
+      var consumedGe = parseFloat(d.consumed_ge) || 0;
+      var pct = budgetGe > 0 ? (remainingGe / budgetGe * 100) : 0;
+      if ($freeBudgetFill) $freeBudgetFill.style.width = Math.max(pct, 1) + '%';
+      if ($freeBudgetLabel) $freeBudgetLabel.textContent = '💎' + remainingGe.toFixed(1) + '/' + budgetGe.toFixed(1);
+      if (d.season_bonus > 0) {
+        if ($freeBudgetLabel) $freeBudgetLabel.textContent += '(+' + d.season_bonus + ')';
+      }
+    } else {
+      $freeBudgetBar.style.display = 'none';
+    }
+  }
+
   if ($clk) {
     // 首次校准
     calibrateFromPublicTime();
-    // 每 1 分钟重新校准（请求 worldtimeapi.org，与 gh555.com 无关）
+    // 每 1 分钟重新校准
     setInterval(calibrateFromPublicTime, 60000);
+    // 免费预算每 30s 拉一次
+    setInterval(fetchFreeBudget, 30000);
+    fetchFreeBudget();
 
     var tick = function () {
       pollSseAnchor(); // 每秒检查是否有新的 SSE 时间（最高优先级）

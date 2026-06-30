@@ -94,6 +94,13 @@
     return BINARY_EXTS.has(lower.slice(dot));
   }
 
+  // ★ 大文件阈值：超过此大小先 plaintext 打开，延迟上色（#1 + #2）
+  var PLAINTEXT_SIZE_THRESHOLD = 200 * 1024; // 200KB
+  function _shouldDeferColoring(contentStr, lang) {
+    if (lang === 'plaintext') return false;
+    return contentStr && contentStr.length > PLAINTEXT_SIZE_THRESHOLD;
+  }
+
   // ── 行号右侧空气墙点击 → 光标跳到第一列 (方案1: Monaco onMouseDown + MouseTargetType) ──
   function _installGutterClickFix(ed, monaco) {
     if (!ed || !monaco) return;
@@ -323,14 +330,111 @@
       dragAndDrop: false,
       selectionClipboard: false,
       emptySelectionClipboard: true,
-      contextmenu: false,
+      contextmenu: true,
       roundedSelection: false,
       lineNumbersMinChars: 2,
       lineDecorationsWidth: 10,
       padding: { top: 0, bottom: 0 },
       stickyScroll: { enabled: false },
       find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'selection' },
+      // ★ 大文件优化：跳过超长行 tokenization + 渲染裁剪
+      maxTokenizationLineLength: 1000,
+      stopRenderingLineAfter: 2000,
     };
+  }
+
+  // ── 小地图偏好持久化 + 右键菜单 ──
+  var _minimapStore = null;
+  var _minimapStoreRoot = null;
+
+  async function _getMinimapRoot() {
+    var root = null;
+    // 优先取 window._workspaceRoot（AI iframe 有同步赋值）
+    if (typeof window._workspaceRoot === 'string' && window._workspaceRoot) {
+      root = window._workspaceRoot;
+    } else if (bridge && bridge.sync && bridge.sync.getProjectPath) {
+      try { root = await bridge.sync.getProjectPath(); } catch (_) { }
+    }
+    return root ? root.replace(/\\/g, '/').replace(/\/$/, '') : null;
+  }
+
+  async function _getMinimapStore() {
+    var root = await _getMinimapRoot();
+    if (!root) return null;
+    if (_minimapStoreRoot !== root) {
+      _minimapStore = null;
+      _minimapStoreRoot = root;
+    }
+    if (_minimapStore) return _minimapStore;
+    if (!window.qgs || !window.qgs.project) return null;
+    _minimapStore = window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+    return _minimapStore;
+  }
+
+  function _minimapKey(filePath) {
+    return 'editor.minimap.' + filePath.replace(/\\/g, '/');
+  }
+
+  async function _isInWorkspace(filePath) {
+    if (!filePath) return false;
+    var root = await _getMinimapRoot();
+    if (!root) return false;
+    var fp = filePath.replace(/\\/g, '/');
+    return fp.indexOf(root + '/') === 0 || fp === root;
+  }
+
+  async function _loadMinimapPref(filePath) {
+    if (!filePath || !(await _isInWorkspace(filePath))) return false;
+    var store = await _getMinimapStore();
+    if (!store) return false;
+    try { var v = await store.get(_minimapKey(filePath)); return v === true; }
+    catch (_) { return false; }
+  }
+
+  async function _saveMinimapPref(filePath, enabled) {
+    if (!filePath || !(await _isInWorkspace(filePath))) return;
+    var store = await _getMinimapStore();
+    if (!store) return;
+    store.set(_minimapKey(filePath), enabled).catch(function () { });
+  }
+
+  // WeakMap: editor → { disposable, filePath }
+  var _minimapActions = typeof WeakMap !== 'undefined' ? new WeakMap() : new Map();
+
+  function _addMinimapAction(ed, monaco, filePath) {
+    if (!ed || !monaco) return;
+    var prev = _minimapActions.get(ed);
+    if (prev && prev.disposable) { try { prev.disposable.dispose(); } catch (_) { } }
+
+    var isOn = false;
+    try { isOn = ed.getOption(monaco.editor.EditorOption.minimap).enabled; } catch (_) { }
+    var label = (isOn ? '\u2713 ' : '') + '\u5C0F\u5730\u56FE';
+
+    var disposable = ed.addAction({
+      id: 'qqq-toggle-minimap',
+      label: label,
+      contextMenuGroupId: 'navigation',
+      contextMenuOrder: 1.5,
+      run: function () {
+        var newState = false;
+        try { newState = !ed.getOption(monaco.editor.EditorOption.minimap).enabled; } catch (_) { }
+        ed.updateOptions({ minimap: { enabled: newState } });
+        var fp = filePath;
+        if (!fp && typeof currentFile !== 'undefined') fp = currentFile;
+        if (fp) _saveMinimapPref(fp, newState);
+        _addMinimapAction(ed, monaco, fp);
+      }
+    });
+    _minimapActions.set(ed, { disposable: disposable, filePath: filePath });
+  }
+
+  async function _applyMinimapPref(ed, monaco, filePath) {
+    if (!ed || !filePath) return;
+    var pref = await _loadMinimapPref(filePath);
+    if (pref) {
+      ed.updateOptions({ minimap: { enabled: true } });
+    }
+    _addMinimapAction(ed, monaco, filePath);
   }
 
   // ---------------- Editor build ----------------
@@ -355,6 +459,7 @@
       _applyUndoMode(ed, monaco);
       // 行号右侧空气墙点击 → 光标跳到第一列
       _installGutterClickFix(ed, monaco);
+      _addMinimapAction(ed, monaco, null);
       // ── 面包屑导航条（空编辑器：仅工具按钮）──
       if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.create) {
         window.qqqEditorBreadcrumb.create(host, '', ed, monaco);
@@ -388,9 +493,11 @@
       // Wire LSP diagnostics and hover — LSP OFF
       // wireLspDiagnostics(); // LSP OFF
       // wireLspHover(); // LSP OFF
-      // 编辑器销毁时清理 char-undo 和跟踪列表
+      // 编辑器销毁时清理 char-undo + 小地图 action + 跟踪列表
       ed.onDidDispose(function () {
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
+        var ma = _minimapActions.get(ed);
+        if (ma) { try { ma.disposable.dispose(); } catch (_) { } _minimapActions.delete(ed); }
         var idx = _allMonacoEditors.indexOf(ed);
         if (idx >= 0) _allMonacoEditors.splice(idx, 1);
       });
@@ -398,10 +505,19 @@
         isFallback: false,
         setValue(v, lang) {
           const model = ed.getModel();
-          if (model && lang) { monaco.editor.setModelLanguage(model, lang); }
+          var vStr = v == null ? '' : String(v);
+          // ★ #1 大文件：先 plaintext 设置内容，延迟上色
+          var _defer = _shouldDeferColoring(vStr, lang);
+          if (model && lang && !_defer) { monaco.editor.setModelLanguage(model, lang); }
           if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
-          ed.setValue(v == null ? '' : String(v));
+          ed.setValue(vStr);
           dirty = false; updateTitle();
+          if (_defer && model && lang) {
+            var _m = model, _l = lang, _mon = monaco;
+            setTimeout(function () {
+              try { _mon.editor.setModelLanguage(_m, _l); } catch (_) {}
+            }, 300);
+          }
         },
         getValue() { return ed.getValue(); },
         focus() { ed.focus(); },
@@ -435,6 +551,7 @@
       dirty = false;
       lspLang = null; // LSP OFF
       updateTitle();
+      _applyMinimapPref(_editorRef, _monacoRef, file);
     } catch (e) {
       console.error('[editor] open failed:', e);
       editor.setValue('// failed to open: ' + (e && e.message), 'plaintext');
@@ -498,7 +615,7 @@
       if (window.qqqideTheme) { window.qqqideTheme.defineMonacoThemes(monaco); }
       hookThemeSync(monaco);
       // configureMonacoTypescript(monaco); // LSP OFF
-      const lang = langOf(filePath);
+      var lang = langOf(filePath);
       if (isBinaryFile(filePath)) {
         if (window.qqqideQoast) window.qqqideQoast.show(String.fromCharCode(10060, 32, 20108, 36827, 21046, 25991, 20214, 65292, 26080, 27861, 22312, 32534, 36753, 22120, 20013, 25171, 24320), { duration: 4000 });
         return null;
@@ -507,13 +624,19 @@
       // Use plain file path as URI so Monaco's TS worker can resolve it.
       var plainPath = filePath.replace(/\\/g, '/');
       var fileUri = monaco.Uri.parse(plainPath);
+      var contentStr = content == null ? '' : String(content);
+
+      // ★ #1 大文件：先用 plaintext 创建 model（跳过 tokenizer，秒开）
+      var _deferColoring = _shouldDeferColoring(contentStr, lang);
+      var initialLang = _deferColoring ? 'plaintext' : lang;
+
       var model = monaco.editor.getModel(fileUri);
       if (!model) {
-        model = monaco.editor.createModel(content == null ? '' : String(content), lang, fileUri);
+        model = monaco.editor.createModel(contentStr, initialLang, fileUri);
       } else {
         // Reuse existing model: update language + content
-        monaco.editor.setModelLanguage(model, lang);
-        model.setValue(content == null ? '' : String(content));
+        monaco.editor.setModelLanguage(model, initialLang);
+        model.setValue(contentStr);
       }
 
       const ed = monaco.editor.create(host, Object.assign({
@@ -533,6 +656,17 @@
 
       // 行号右侧空气墙点击 → 光标跳到第一列
       _installGutterClickFix(ed, monaco);
+
+      _applyMinimapPref(ed, monaco, filePath);
+
+      // ★ #2 延迟上色：大文件先 plaintext 秒开，等编辑器稳定后再切语言触发 tokenization
+      if (_deferColoring) {
+        var _monaco = monaco, _model = model, _lang = lang;
+        setTimeout(function () {
+          try { _monaco.editor.setModelLanguage(_model, _lang); }
+          catch (_) {}
+        }, 300);
+      }
 
       // ★ 窗口快照还原：检查是否有待恢复的光标位置
       if (window.qqqPendingEditorPositions && window.qqqPendingEditorPositions[filePath]) {
@@ -633,6 +767,8 @@
         delete _paneEditors[filePath];
         delete _paneFiles[host];
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
+        var ma = _minimapActions.get(ed);
+        if (ma) { try { ma.disposable.dispose(); } catch (_) { } _minimapActions.delete(ed); }
         // 从跟踪列表移除
         var idx = _allMonacoEditors.indexOf(ed);
         if (idx >= 0) _allMonacoEditors.splice(idx, 1);
@@ -694,6 +830,20 @@
     getEditorInstance() { return _editorRef; },
     refreshLiveContent,
     isBinaryFile,
+    // ★ Tab 切换优化：暂停/恢复 Monaco automaticLayout（避免隐藏编辑器做无意义 layout）
+    suspendPaneLayout: function(filePath) {
+      var ed = _paneEditors[filePath];
+      if (ed) { try { ed.updateOptions({ automaticLayout: false }); } catch (_) {} }
+    },
+    resumePaneLayout: function(filePath) {
+      var ed = _paneEditors[filePath];
+      if (ed) {
+        try {
+          ed.layout();
+          ed.updateOptions({ automaticLayout: true });
+        } catch (_) {}
+      }
+    },
     // ★ 窗口快照：获取所有打开 editor 的光标位置
     getAllEditorPositions() {
       var positions = {};

@@ -272,13 +272,21 @@
   }
   function saveProjects() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (_) { }
-  }
-  // 窗口关闭前写入 qgs 全局快照（跨重启恢复）
-  window.addEventListener('beforeunload', function () {
+    // ★ 同步写入 qgs 全局 SQLite（跨重启持久化）
     try {
       if (projects.length > 0) {
         var s = _getShellHandle();
-        if (s) s.setNow('ai_viewport_projects', projects).catch(function () { });
+        if (s) s.set('ai_viewport_projects', projects).catch(function () { });
+      }
+    } catch (_) { }
+  }
+  // 窗口关闭前兜底写入 qgs（防崩溃丢失）
+  window.addEventListener('beforeunload', function () {
+    try {
+      var s = _getShellHandle();
+      if (s) {
+        if (projects.length > 0) s.setNow('ai_viewport_projects', projects).catch(function () { });
+        if (_recentFolders.length > 0) s.setNow(RECENT_KEY, _recentFolders).catch(function () { });
       }
     } catch (_) { }
   });
@@ -1024,12 +1032,6 @@
       'position:fixed; z-index:99999; ' +
       'left:' + rect.left + 'px; top:' + topPx + 'px; ' +
       'min-width:280px; max-width:420px; height:' + maxH + 'px;';
-
-    // 标题行
-    var titleRow = document.createElement('div');
-    titleRow.style.cssText = 'padding:6px 12px; font-size:11px; color:var(--text-muted); border-bottom:1px solid var(--border-color); margin-bottom:2px;';
-    titleRow.textContent = window._i ? window._i('shell.viewport.recentFolders', '最近打开的主文件夹') : '最近打开的主文件夹';
-    dd.appendChild(titleRow);
 
     if (_recentFolders.length === 0) {
       var emptyRow = document.createElement('div');

@@ -2,7 +2,7 @@
 // ipc-misc.ts — 杂项 IPC: 窗口 / 对话框 / 资产根 / 磁盘 / 新窗口
 // ============================================================================
 
-import { ipcMain, BrowserWindow, clipboard, dialog, shell as electronShell } from 'electron';
+import { app, ipcMain, BrowserWindow, clipboard, dialog, shell as electronShell } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { URL } from 'url';
@@ -16,6 +16,7 @@ import { UpdateService } from './update-service';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
 import { _consoleBuffer } from './window-manager';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
+import { saveAllOpenWindows } from './shutdown';
 
 export function registerMiscIpc(
     portableRoot: string,
@@ -110,6 +111,12 @@ export function registerMiscIpc(
             try { stateStore.set('qqqide', 'asset_roots', arr); } catch { /* ignore */ }
         }
         return ok;
+    });
+
+    // ---- app quit (退出全部窗口) ----
+    ipcMain.handle('qqqide:app:quitAll', async () => {
+        try { saveAllOpenWindows(stateStore, _windowProjectMap); } catch { /* ignore */ }
+        app.quit();
     });
 
     // ---- window management ----

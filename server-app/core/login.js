@@ -1,7 +1,7 @@
 // ============================================================================
 // login.js — 登录模块
 //
-// 入口：window.qqqLogin.init() — 自动注入登录按钮/GE余额到菜单行2
+// 入口：window.qqqLogin.init() — 自动注入登录按钮/GE余额/LV经验条/排行榜到菜单行2
 //
 // API：
 //   window.qqqLogin.isLoggedIn()      — 是否已登录
@@ -11,6 +11,7 @@
 //   window.qqqLogin.login()           — 触发登录流程
 //   window.qqqLogin.logout()          — 退出登录
 //   window.qqqLogin.onStateChange(fn) — 监听登录态变更
+//   window.qqqLogin.getLvData()       — 获取当前 LV 数据
 //
 // 铁律：
 //   · token 仅存内存，不写磁盘（零残留、零复活）
@@ -29,9 +30,16 @@
   var _$loginBtn = null;
   var _$phoneBtn = null;
   var _$geLabel = null;
+  var _$lvBar = null;
+  var _$lvLevel = null;
+  var _$lvProgress = null;
+  var _$ldrBtn = null;
   var _balanceGe = null;
   var _balanceLastFetch = 0;
   var _balanceTimer = null;
+  var _lvData = null;          // { level, levelStr, levelFloor, nextLevelGe, progressPct, seasonBonus, seasonId }
+  var _lvLastFetch = 0;
+  var _lvTimer = null;
 
   // ── 常量 ──
   var API_BASE = 'https://gh555.com/api';
@@ -39,6 +47,7 @@
   var POLL_INTERVAL_MS = 3000;
   var POLL_TIMEOUT_MS = 600000; // 10 分钟
   var BALANCE_POLL_MS = 60000;  // 每分钟刷新余额
+  var LV_POLL_MS = 30000;       // 每 30s 刷新 LV
 
   // ── 启动信息缓存 ──
   var _bootInfo = null;
@@ -68,10 +77,38 @@
 
   function _setAuthData(token, phone) {
     _authData = { token: token, phone: phone, device_name: _buildDeviceName(), ts: Date.now() };
+    _persistAuthAsync();
   }
 
   function _clearAuthData() {
     _authData = null;
+  }
+
+  function _persistAuthAsync() {
+    if (!_authData) return;
+    try {
+      if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.saveAuth) {
+        window.qqqideBridge.auth.saveAuth({
+          token: _authData.token,
+          phone: _authData.phone,
+          device_name: _authData.device_name
+        });
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  async function _restoreAuth() {
+    if (_authData && _authData.token) return;
+    try {
+      if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.loadAuth) {
+        var saved = await window.qqqideBridge.auth.loadAuth();
+        if (saved && saved.token && saved.phone) {
+          _authData = saved;
+          _authData.ts = Date.now();
+          console.log('[login] restored auth from storage, phone=***' + saved.phone.slice(-4));
+        }
+      }
+    } catch (e) { /* ignore */ }
   }
 
   async function _httpsGet(urlPath) {
@@ -115,8 +152,8 @@
         headers: { 'Authorization': 'Bearer ' + _authData.token }
       });
       var data = await resp.json();
-      if (data && data.ok && typeof data.balance_ge !== 'undefined') {
-        _balanceGe = data.balance_ge;
+      if (data && data.ok && typeof data.balance !== 'undefined') {
+        _balanceGe = data.balance; // ★ 服务端已做银行家四舍五入
         _updateGeLabel();
       } else {
         console.warn('[login] balance fetch unexpected response:', JSON.stringify(data).slice(0, 200));
@@ -135,6 +172,97 @@
     }
   }
 
+  // ── LV 拉取 ──
+  function _startLvPoll() {
+    _stopLvPoll();
+    _fetchLv(true);
+    _lvTimer = setInterval(function () { _fetchLv(false); }, LV_POLL_MS);
+  }
+
+  function _stopLvPoll() {
+    if (_lvTimer) { clearInterval(_lvTimer); _lvTimer = null; }
+  }
+
+  async function _fetchLv(force) {
+    if (!_authData || !_authData.token) return;
+    var now = Date.now();
+    if (!force && now - _lvLastFetch < LV_POLL_MS) return;
+    _lvLastFetch = now;
+    try {
+      var resp = await fetch(API_BASE + '/qqq/lv', {
+        headers: { 'Authorization': 'Bearer ' + _authData.token }
+      });
+      var data = await resp.json();
+      if (data && data.ok) {
+        _lvData = data;
+        _updateLvUI();
+      }
+    } catch (e) { console.warn('[login] lv fetch error:', e.message); }
+  }
+
+  function _updateLvUI() {
+    if (!_$lvBar) return;
+    var d = _lvData;
+    if (d && d.level >= 0) {
+      _$lvBar.style.display = '';
+      if (_$lvLevel) _$lvLevel.textContent = 'Lv' + d.levelStr;
+      if (_$lvProgress) _$lvProgress.style.width = Math.min(d.progressPct || 0, 100) + '%';
+      if (_$ldrBtn) _$ldrBtn.style.display = '';
+    } else {
+      _$lvBar.style.display = 'none';
+      if (_$ldrBtn) _$ldrBtn.style.display = 'none';
+    }
+  }
+
+  // ── 排行榜窗口 ──
+  function _openLeaderboard() {
+    // 构建排行榜 HTML 页面，通过 data URL 或新建 BrowserWindow
+    var token = _authData && _authData.token ? _authData.token : '';
+    if (!token) return;
+
+    var html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>排行榜</title>' +
+      '<style>body{margin:0;font-family:system-ui,sans-serif;background:#1a1a1a;color:#e8e8e8;}' +
+      '.container{display:flex;height:100vh;}.col{flex:1;padding:16px;overflow-y:auto;}' +
+      '.col+.col{border-left:1px solid #333;}' +
+      'h2{font-size:15px;margin:0 0 12px;color:#999;}' +
+      '.row{display:flex;align-items:center;padding:6px 0;font-size:13px;gap:8px;}' +
+      '.rank{width:28px;color:#888;text-align:right;}.phone{flex:1;}.lv{color:#6c71c4;min-width:60px;text-align:right;}' +
+      '.ge{color:#b58900;min-width:50px;text-align:right;}.days{color:#586e75;min-width:50px;text-align:right;}' +
+      '.flag{width:20px;}' +
+      '.err{color:#dc322f;padding:20px;}' +
+      '</style></head><body>' +
+      '<div class="container">' +
+      '<div class="col" id="allTime"><h2>🏆 历史总排行</h2><div class="err">加载中...</div></div>' +
+      '<div class="col" id="lastSeason"><h2>📅 上赛季排行</h2><div class="err">加载中...</div></div>' +
+      '</div>' +
+      '<script>' +
+      'var t="' + token + '";' +
+      'function render(el,list){el.innerHTML=list.map(function(e){return \'<div class="row"><span class="rank">#\'+e.rank+\'</span><span class="flag">\'+e.flag+\'</span><span class="phone">\'+e.phone+\'</span><span class="days">\'+e.days_alive+\'d</span><span class="ge">\'+e.total_ge+\' ge</span><span class="lv">Lv\'+e.level_str+\'</span></div>\';}).join("");}' +
+      'fetch("https://gh555.com/api/qqq/leaderboard",{headers:{"Authorization":"Bearer "+t}})' +
+      '.then(function(r){return r.json();}).then(function(d){' +
+      'if(d.ok){render(document.getElementById("allTime"),d.all_time);' +
+      'render(document.getElementById("lastSeason"),d.last_season);' +
+      '}else{document.getElementById("allTime").innerHTML=\'<div class="err">加载失败</div>\';}' +
+      '}).catch(function(){' +
+      'document.getElementById("allTime").innerHTML=\'<div class="err">加载失败</div>\';' +
+      '});' +
+      '<\/script></body></html>';
+
+    // 用 Electron BrowserWindow 打开
+    try {
+      if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.loadHtml) {
+        window.qqqideBridge.shell.loadHtml(html, '排行榜 - qqq IDE');
+      } else {
+        // Fallback: data URL
+        var url = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+        window.open(url, '_blank', 'width=700,height=500');
+      }
+    } catch (e) {
+      var url2 = 'data:text/html;charset=utf-8,' + encodeURIComponent(html);
+      window.open(url2, '_blank', 'width=700,height=500');
+    }
+  }
+
   // ── 登录流程 ──
   async function _doLogin() {
     if (_polling) return null;
@@ -147,9 +275,8 @@
       var sessionId = _generateSessionId();
       var deviceName = _buildDeviceName();
       var loginUrl = LOGIN_URL + '?from=ide&session=' + sessionId +
-        '&device_name=' + encodeURIComponent(deviceName) + '&goods=qqq';
+        '&device_name=' + encodeURIComponent(deviceName) + '&goods=qqqide';
 
-      // ★ Push 监听 — 浏览器登录成功通过 qqqide:// 协议即时推 token
       try {
         if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.onAuthPush) {
           _unsubPush = window.qqqideBridge.auth.onAuthPush(function (data) {
@@ -162,14 +289,12 @@
         }
       } catch (e) { /* auth push not available */ }
 
-      // 打开浏览器
       try {
         window.qqqideBridge.shell.openExternal(loginUrl);
       } catch (e) {
         try { window.open(loginUrl, '_blank'); } catch (e2) { /* ignore */ }
       }
 
-      // ★ Poll 兜底 — push 失败时（e.g. 协议未注册）走轮询
       var startTime = Date.now();
       var pollCount = 0;
       while (Date.now() - startTime < POLL_TIMEOUT_MS) {
@@ -177,17 +302,17 @@
         await new Promise(function (r) { setTimeout(r, POLL_INTERVAL_MS); });
         pollCount++;
         try {
-          var resp = await _httpsGet('/gaea/qqq/auth/poll?session=' + sessionId +
+          var resp = await _httpsGet('/gaea/qqqide/auth/poll?session=' + sessionId +
             '&device_name=' + encodeURIComponent(deviceName));
           if (resp && resp.ok && resp.token) {
-            console.log('[login] poll #' + pollCount + ' got token, len=' + resp.token.length + ', head=' + resp.token.substring(0, 15) + '..., phone=' + (resp.phone || '?'));
+            console.log('[login] poll #' + pollCount + ' got token');
             _setAuthData(resp.token, resp.phone || '');
             _notifyStateChange();
             pushDone = true;
             break;
           }
           if (pollCount % 10 === 0) {
-            console.log('[login] poll #' + pollCount + ': waiting (push will be instant if browser supports it)...');
+            console.log('[login] poll #' + pollCount + ': waiting...');
           }
         } catch (e) {
           console.warn('[login] poll #' + pollCount + ' error:', e.message);
@@ -208,7 +333,7 @@
     _updateButtons(isLoggedIn, phoneTail);
     if (isLoggedIn) {
       _startBalancePoll();
-      // ★ 推送 auth 给主进程（cloud sync 用）
+      _startLvPoll();
       try {
         if (window.qqqideBridge && window.qqqideBridge.cloud && window.qqqideBridge.cloud.setAuth) {
           window.qqqideBridge.cloud.setAuth({
@@ -220,9 +345,11 @@
       } catch (e) { /* ignore */ }
     } else {
       _stopBalancePoll();
+      _stopLvPoll();
       _balanceGe = null;
+      _lvData = null;
       _updateGeLabel();
-      // ★ 清除主进程 auth
+      _updateLvUI();
       try {
         if (window.qqqideBridge && window.qqqideBridge.cloud && window.qqqideBridge.cloud.setAuth) {
           window.qqqideBridge.cloud.setAuth(null);
@@ -253,6 +380,40 @@
       return;
     }
 
+    // ── 排行榜按钮（LV bar 左边） ──
+    _$ldrBtn = document.createElement('button');
+    _$ldrBtn.className = 'qqq-ldr-btn';
+    _$ldrBtn.setAttribute('data-i18n-title', 'lv.leaderboard');
+    _$ldrBtn.title = '排行榜';
+    _$ldrBtn.textContent = '🏆';
+    _$ldrBtn.style.cssText = 'font-size:14px;background:transparent;border:1px solid var(--border-color,#444);border-radius:4px;color:var(--text-secondary,#999);cursor:pointer;padding:1px 5px;margin-right:4px;display:none;line-height:1.2;';
+    _$ldrBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      _openLeaderboard();
+    });
+
+    // ── LV 经验条容器 ──
+    _$lvBar = document.createElement('span');
+    _$lvBar.className = 'qqq-lv-bar';
+    _$lvBar.style.cssText = 'display:none;align-items:center;margin-right:6px;gap:3px;font-size:11px;white-space:nowrap;';
+    _$lvBar.title = '赛季等级：每 100 ge 消费升一级';
+
+    _$lvLevel = document.createElement('span');
+    _$lvLevel.className = 'qqq-lv-level';
+    _$lvLevel.style.cssText = 'color:var(--text-primary,#e8e8e8);font-weight:bold;font-variant-numeric:tabular-nums;min-width:50px;text-align:right;';
+
+    var $lvTrack = document.createElement('span');
+    $lvTrack.className = 'qqq-lv-track';
+    $lvTrack.style.cssText = 'display:inline-block;width:60px;height:6px;background:var(--bg-tertiary,#333);border-radius:3px;overflow:hidden;';
+
+    _$lvProgress = document.createElement('span');
+    _$lvProgress.className = 'qqq-lv-fill';
+    _$lvProgress.style.cssText = 'display:block;height:100%;width:0%;background:linear-gradient(90deg,#859900,#b58900);border-radius:3px;transition:width .5s;';
+
+    $lvTrack.appendChild(_$lvProgress);
+    _$lvBar.appendChild(_$lvLevel);
+    _$lvBar.appendChild($lvTrack);
+
     // GE 余额标签（登录态可见，在手机号左边）
     _$geLabel = document.createElement('span');
     _$geLabel.className = 'qqq-ge-label';
@@ -279,7 +440,7 @@
       });
     });
 
-    // 手机号按钮 — 点击弹出下拉菜单
+    // 手机号按钮
     _$phoneBtn = document.createElement('button');
     _$phoneBtn.className = 'qqq-login-btn qqq-phone-btn';
     _$phoneBtn.title = '已登录 — 点击打开菜单';
@@ -287,14 +448,11 @@
     _$phoneBtn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
-      // 如果已有下拉，先关
       var _existing = document.querySelector('.qqq-phone-dropdown');
       if (_existing) { _existing.remove(); return; }
-      // 创建下拉菜单
       var _dd = document.createElement('div');
       _dd.className = 'qqq-phone-dropdown';
       _dd.style.cssText = 'position:absolute;top:100%;right:0;margin-top:4px;background:var(--bg-secondary,#252525);border:1px solid var(--border-color,#444);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:99999;min-width:120px;padding:4px 0;';
-      // 退出登录
       var _logoutItem = document.createElement('div');
       _logoutItem.className = 'qqq-phone-dropdown-item';
       _logoutItem.textContent = '退出登录';
@@ -307,10 +465,8 @@
         api.logout();
       });
       _dd.appendChild(_logoutItem);
-      // 定位：相对于 phoneBtn
       _$phoneBtn.style.position = 'relative';
       _$phoneBtn.appendChild(_dd);
-      // 点击其他地方关闭
       setTimeout(function () {
         var _closeDd = function (ev2) {
           if (!_dd.contains(ev2.target) && ev2.target !== _$phoneBtn) {
@@ -322,7 +478,9 @@
       }, 0);
     });
 
-    // 插入顺序：[GE标签] [手机号] [登录按钮] → refNode（settings/bulbs）
+    // 插入顺序：[排行榜] [LV经验条] [GE标签] [手机号] [登录按钮] → refNode
+    $parent.insertBefore(_$ldrBtn, $refNode);
+    $parent.insertBefore(_$lvBar, $refNode);
     $parent.insertBefore(_$geLabel, $refNode);
     $parent.insertBefore(_$phoneBtn, $refNode);
     $parent.insertBefore(_$loginBtn, $refNode);
@@ -341,6 +499,7 @@
       }
     }
     _updateGeLabel();
+    _updateLvUI();
   }
 
   // ── 公开 API ──
@@ -350,9 +509,13 @@
       _initDone = true;
       _ensureBootInfo().then(function () {
         _injectLoginButton();
-        _notifyStateChange();
+        _restoreAuth().then(function () {
+          _notifyStateChange();
+        });
       }).catch(function () {
-        _notifyStateChange();
+        _restoreAuth().then(function () {
+          _notifyStateChange();
+        });
       });
     },
 
@@ -377,6 +540,10 @@
       return _balanceGe;
     },
 
+    getLvData: function () {
+      return _lvData;
+    },
+
     login: function () {
       return _doLogin();
     },
@@ -384,6 +551,11 @@
     logout: function () {
       _clearAuthData();
       _notifyStateChange();
+      try {
+        if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.clearAuth) {
+          window.qqqideBridge.auth.clearAuth();
+        }
+      } catch (e) { /* ignore */ }
       if (window.qqqideQoast) {
         window.qqqideQoast.show('已退出登录', { duration: 3000 });
       }

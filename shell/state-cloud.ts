@@ -4,10 +4,10 @@
 // nothing is auto-pushed; user must explicitly invoke pull() / push() / sync().
 //
 // Protocol (sympatico with q3/global.js USER_DATA endpoints):
-//   POST https://gh555.com/api/gaea/qqq/state/pull
+//   POST https://gh555.com/api/gaea/qqqide/user-data/pull
 //     body: { phone, token, device_id, device_name, keys: ['ns/key', ...] }
 //     resp: { ok, blobs: { 'ns/key': { data, ts, etag, v, form } } }
-//   POST https://gh555.com/api/gaea/qqq/state/push
+//   POST https://gh555.com/api/gaea/qqqide/user-data
 //     body: { phone, token, device_id, device_name, blobs: { 'ns/key': { data, ts, v, form, deleted } } }
 //     resp: { ok, accepted: [...], rejected: [{ key, reason }] }
 //
@@ -128,7 +128,7 @@ export class StateCloud {
             keys,
         };
         let resp;
-        try { resp = await httpsPostJson(CLOUD_BASE + '/api/gaea/qqq/state/pull', body); }
+        try { resp = await httpsPostJson(CLOUD_BASE + '/api/gaea/qqqide/user-data/pull', body); }
         catch (e: any) { return { ok: false, reason: 'network: ' + (e && e.message), pulled: [], conflicts: [] }; }
         if (resp.status !== 200 || !resp.json || !resp.json.ok) {
             return { ok: false, reason: 'http ' + resp.status + ': ' + (resp.json && resp.json.error), pulled: [], conflicts: [] };
@@ -213,7 +213,7 @@ export class StateCloud {
             blobs,
         };
         let resp;
-        try { resp = await httpsPostJson(CLOUD_BASE + '/api/gaea/qqq/state/push', body); }
+        try { resp = await httpsPostJson(CLOUD_BASE + '/api/gaea/qqqide/user-data', body); }
         catch (e: any) { return { ok: false, reason: 'network: ' + (e && e.message), pushed: [], failed: Object.keys(blobs) }; }
         if (resp.status !== 200 || !resp.json || !resp.json.ok) {
             return { ok: false, reason: 'http ' + resp.status + ': ' + (resp.json && resp.json.error), pushed: [], failed: Object.keys(blobs) };
