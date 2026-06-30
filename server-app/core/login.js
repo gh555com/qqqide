@@ -1,5 +1,5 @@
 // ============================================================================
-// login.js — 登录模块（照搬 q3/global.js 认证流程，适配 Electron 环境）
+// login.js — 登录模块
 //
 // 入口：window.qqqLogin.init() — 自动注入登录按钮/GE余额到菜单行2
 //
@@ -13,7 +13,7 @@
 //   window.qqqLogin.onStateChange(fn) — 监听登录态变更
 //
 // 铁律：
-//   · 认证 token 存 ~/.qqq/auth.json（与 q3 共享，跨 IDE 互认）
+//   · token 仅存内存，不写磁盘（零残留、零复活）
 //   · 颜色走 §3 配色机器
 //   · 不触碰 cursor（§19）
 // ============================================================================
@@ -23,7 +23,6 @@
 
   // ── 状态 ──
   var _authData = null;        // { token, phone, device_name, ts }
-  var _homeDir = null;
   var _initDone = false;
   var _polling = false;
   var _stateListeners = [];
@@ -37,25 +36,12 @@
   // ── 常量 ──
   var API_BASE = 'https://gh555.com/api';
   var LOGIN_URL = 'https://gh555.com/login';
-  var AUTH_FILE = '.qqq/auth.json';
   var POLL_INTERVAL_MS = 3000;
   var POLL_TIMEOUT_MS = 600000; // 10 分钟
   var BALANCE_POLL_MS = 60000;  // 每分钟刷新余额
 
   // ── 启动信息缓存 ──
   var _bootInfo = null;
-
-  function _getHomeDir() {
-    if (_homeDir) return _homeDir;
-    if (window._appHomeDir) return window._appHomeDir;
-    return null;
-  }
-
-  function _authPath() {
-    var h = _getHomeDir();
-    if (!h) return null;
-    return h.replace(/\\/g, '/') + '/' + AUTH_FILE;
-  }
 
   function _buildDeviceName() {
     var info = _bootInfo;
@@ -80,51 +66,12 @@
     return hex;
   }
 
-  async function _loadAuthToken() {
-    var p = _authPath();
-    if (!p) return null;
-    try {
-      var exists = await window.qqqideBridge.fs.exists(p);
-      if (!exists) return null;
-      var raw = await window.qqqideBridge.fs.read(p);
-      if (raw && typeof raw === 'string' && raw.trim()) {
-        var data = JSON.parse(raw);
-        if (data && data.token) {
-          _authData = data;
-          return data;
-        }
-      }
-    } catch (e) { /* ignore */ }
-    return null;
+  function _setAuthData(token, phone) {
+    _authData = { token: token, phone: phone, device_name: _buildDeviceName(), ts: Date.now() };
   }
 
-  async function _saveAuthToken(token, phone) {
-    var h = _getHomeDir();
-    if (!h) return false;
-    try {
-      var authPath = h.replace(/\\/g, '/') + '/' + AUTH_FILE;
-      var data = {
-        token: token,
-        phone: phone,
-        device_name: _buildDeviceName(),
-        ts: Date.now()
-      };
-      _authData = data;
-      await window.qqqideBridge.fs.write(authPath, JSON.stringify(data, null, 2));
-      return true;
-    } catch (e) {
-      console.error('[login] save auth failed:', e);
-      return false;
-    }
-  }
-
-  async function _clearAuthToken() {
+  function _clearAuthData() {
     _authData = null;
-    var p = _authPath();
-    if (!p) return;
-    try {
-      await window.qqqideBridge.fs.remove(p);
-    } catch (e) { /* ignore */ }
   }
 
   async function _httpsGet(urlPath) {
@@ -142,8 +89,6 @@
     try {
       if (window.qqqideBridge && window.qqqideBridge.boot && window.qqqideBridge.boot.getInfo) {
         _bootInfo = await window.qqqideBridge.boot.getInfo();
-        _homeDir = _bootInfo.homedir || _bootInfo.userData || '';
-        window._appHomeDir = _homeDir;
       }
     } catch (e) { /* ignore */ }
     return _bootInfo;
@@ -173,8 +118,10 @@
       if (data && data.ok && typeof data.balance_ge !== 'undefined') {
         _balanceGe = data.balance_ge;
         _updateGeLabel();
+      } else {
+        console.warn('[login] balance fetch unexpected response:', JSON.stringify(data).slice(0, 200));
       }
-    } catch (e) { /* 静默失败 */ }
+    } catch (e) { console.warn('[login] balance fetch error:', e.message); }
   }
 
   function _updateGeLabel() {
@@ -193,46 +140,64 @@
     if (_polling) return null;
     _polling = true;
 
-    try {
-      var existing = await _loadAuthToken();
-      if (existing && existing.token) {
-        _notifyStateChange();
-        return existing;
-      }
+    var pushDone = false;
+    var _unsubPush = null;
 
+    try {
       var sessionId = _generateSessionId();
       var deviceName = _buildDeviceName();
       var loginUrl = LOGIN_URL + '?from=ide&session=' + sessionId +
         '&device_name=' + encodeURIComponent(deviceName) + '&goods=qqq';
 
+      // ★ Push 监听 — 浏览器登录成功通过 qqqide:// 协议即时推 token
+      try {
+        if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.onAuthPush) {
+          _unsubPush = window.qqqideBridge.auth.onAuthPush(function (data) {
+            if (pushDone || !data || !data.token) return;
+            pushDone = true;
+            console.log('[login] token pushed from browser, phone=' + (data.phone || '?'));
+            _setAuthData(data.token, data.phone || '');
+            _notifyStateChange();
+          });
+        }
+      } catch (e) { /* auth push not available */ }
+
+      // 打开浏览器
       try {
         window.qqqideBridge.shell.openExternal(loginUrl);
       } catch (e) {
         try { window.open(loginUrl, '_blank'); } catch (e2) { /* ignore */ }
       }
 
+      // ★ Poll 兜底 — push 失败时（e.g. 协议未注册）走轮询
       var startTime = Date.now();
       var pollCount = 0;
       while (Date.now() - startTime < POLL_TIMEOUT_MS) {
+        if (pushDone) { console.log('[login] push already got token, stop polling'); break; }
         await new Promise(function (r) { setTimeout(r, POLL_INTERVAL_MS); });
         pollCount++;
         try {
           var resp = await _httpsGet('/gaea/qqq/auth/poll?session=' + sessionId +
             '&device_name=' + encodeURIComponent(deviceName));
           if (resp && resp.ok && resp.token) {
-            await _saveAuthToken(resp.token, resp.phone || '');
+            console.log('[login] poll #' + pollCount + ' got token, len=' + resp.token.length + ', head=' + resp.token.substring(0, 15) + '..., phone=' + (resp.phone || '?'));
+            _setAuthData(resp.token, resp.phone || '');
             _notifyStateChange();
-            return { token: resp.token, phone: resp.phone || '' };
+            pushDone = true;
+            break;
+          }
+          if (pollCount % 10 === 0) {
+            console.log('[login] poll #' + pollCount + ': waiting (push will be instant if browser supports it)...');
           }
         } catch (e) {
-          if (pollCount <= 3) {
-            console.warn('[login] poll #' + pollCount + ' error:', e.message);
-          }
+          console.warn('[login] poll #' + pollCount + ' error:', e.message);
         }
       }
 
+      if (pushDone) return { token: _authData.token, phone: _authData.phone };
       return null;
     } finally {
+      if (_unsubPush) { try { _unsubPush(); } catch (e) { /* ignore */ } }
       _polling = false;
     }
   }
@@ -243,10 +208,26 @@
     _updateButtons(isLoggedIn, phoneTail);
     if (isLoggedIn) {
       _startBalancePoll();
+      // ★ 推送 auth 给主进程（cloud sync 用）
+      try {
+        if (window.qqqideBridge && window.qqqideBridge.cloud && window.qqqideBridge.cloud.setAuth) {
+          window.qqqideBridge.cloud.setAuth({
+            phone: _authData.phone,
+            token: _authData.token,
+            device_name: _authData.device_name
+          });
+        }
+      } catch (e) { /* ignore */ }
     } else {
       _stopBalancePoll();
       _balanceGe = null;
       _updateGeLabel();
+      // ★ 清除主进程 auth
+      try {
+        if (window.qqqideBridge && window.qqqideBridge.cloud && window.qqqideBridge.cloud.setAuth) {
+          window.qqqideBridge.cloud.setAuth(null);
+        }
+      } catch (e) { /* ignore */ }
     }
     for (var i = 0; i < _stateListeners.length; i++) {
       try { _stateListeners[i](isLoggedIn, phoneTail, _authData && _authData.phone); } catch (e) { /* ignore */ }
@@ -298,19 +279,47 @@
       });
     });
 
-    // 手机号按钮
+    // 手机号按钮 — 点击弹出下拉菜单
     _$phoneBtn = document.createElement('button');
     _$phoneBtn.className = 'qqq-login-btn qqq-phone-btn';
-    _$phoneBtn.title = '已登录 — 点击打开个人中心';
+    _$phoneBtn.title = '已登录 — 点击打开菜单';
     _$phoneBtn.style.display = 'none';
     _$phoneBtn.addEventListener('click', function (e) {
       e.preventDefault();
-      var url = 'https://gh555.com/gaea/d/qqq?ref=qqqide#profile';
-      try {
-        window.qqqideBridge.shell.openExternal(url);
-      } catch (err) {
-        try { window.open(url, '_blank'); } catch (e2) { /* ignore */ }
-      }
+      e.stopPropagation();
+      // 如果已有下拉，先关
+      var _existing = document.querySelector('.qqq-phone-dropdown');
+      if (_existing) { _existing.remove(); return; }
+      // 创建下拉菜单
+      var _dd = document.createElement('div');
+      _dd.className = 'qqq-phone-dropdown';
+      _dd.style.cssText = 'position:absolute;top:100%;right:0;margin-top:4px;background:var(--bg-secondary,#252525);border:1px solid var(--border-color,#444);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:99999;min-width:120px;padding:4px 0;';
+      // 退出登录
+      var _logoutItem = document.createElement('div');
+      _logoutItem.className = 'qqq-phone-dropdown-item';
+      _logoutItem.textContent = '退出登录';
+      _logoutItem.style.cssText = 'padding:8px 16px;cursor:pointer;font-size:13px;color:var(--text-primary,#e8e8e8);white-space:nowrap;transition:background .15s;';
+      _logoutItem.addEventListener('mouseenter', function () { _logoutItem.style.background = 'var(--hover-bg,#333)'; });
+      _logoutItem.addEventListener('mouseleave', function () { _logoutItem.style.background = ''; });
+      _logoutItem.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        _dd.remove();
+        api.logout();
+      });
+      _dd.appendChild(_logoutItem);
+      // 定位：相对于 phoneBtn
+      _$phoneBtn.style.position = 'relative';
+      _$phoneBtn.appendChild(_dd);
+      // 点击其他地方关闭
+      setTimeout(function () {
+        var _closeDd = function (ev2) {
+          if (!_dd.contains(ev2.target) && ev2.target !== _$phoneBtn) {
+            _dd.remove();
+            document.removeEventListener('click', _closeDd);
+          }
+        };
+        document.addEventListener('click', _closeDd);
+      }, 0);
     });
 
     // 插入顺序：[GE标签] [手机号] [登录按钮] → refNode（settings/bulbs）
@@ -339,11 +348,8 @@
     init: function () {
       if (_initDone) return;
       _initDone = true;
-
       _ensureBootInfo().then(function () {
         _injectLoginButton();
-        return _loadAuthToken();
-      }).then(function () {
         _notifyStateChange();
       }).catch(function () {
         _notifyStateChange();
@@ -376,12 +382,11 @@
     },
 
     logout: function () {
-      return _clearAuthToken().then(function () {
-        _notifyStateChange();
-        if (window.qqqideQoast) {
-          window.qqqideQoast.show('已退出登录', { duration: 3000 });
-        }
-      });
+      _clearAuthData();
+      _notifyStateChange();
+      if (window.qqqideQoast) {
+        window.qqqideQoast.show('已退出登录', { duration: 3000 });
+      }
     },
 
     onStateChange: function (fn) {

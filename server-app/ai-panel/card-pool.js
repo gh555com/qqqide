@@ -200,7 +200,6 @@ var CardPool = (function () {
 
       // 构建视口 DOM：最近 FLOOR_CAP_CAPPED 层
       var startIdx = Math.max(0, card.totalFloors - FLOOR_CAP_CAPPED);
-      // [silent] building DOM for floors
       for (var i = startIdx; i < card.totalFloors; i++) {
         try {
           this._buildFloorDOM(card, card.floors[i], false, questTimings);
@@ -208,6 +207,9 @@ var CardPool = (function () {
           console.error('[card-pool] _buildFloorDOM failed for floor ' + card.floors[i].floorNum + ':', e && (e.message || e));
         }
       }
+
+      // ★ 重启聚合红框：将所有 .msg-err-individual 合并为一个 .msg-quest-error
+      this._aggregateQuestErrors(card);
 
       // [silent] loaded card
     } catch (e) {
@@ -264,9 +266,9 @@ var CardPool = (function () {
           parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">📌</span> 引导信息</div><div class="msg-flow-guide-body">' + _escHtml(_injText) + '</div></div>');
         }
       } else if (m._error && m.role === 'assistant') {
-        // ★ 错误消息持久化：统一红框，一次渲染永久不变
+        // ★ 错误消息：渲染时逐个显示，重启后由 _aggregateQuestErrors 统一聚合
         var _errText = (m.content || '⚠️ 楼层异常中断，对话已保存。');
-        parts.push('<div class="msg msg-error" style="white-space:pre-wrap">' + _escHtml(_errText) + ' <a class="msg-err-continue" href="#" data-i18n="ai.error.continueTask">继续任务</a></div>');
+        parts.push('<div class="msg msg-error msg-err-individual" style="white-space:pre-wrap">' + _escHtml(_errText) + ' <a class="msg-err-continue" href="#" data-i18n="ai.error.continueTask">继续任务</a></div>');
       } else if (m.role === 'assistant' && !m.tool_calls && typeof m.content === 'string' && m.content) {
         // 普通 AI 文字回复（数据已在 EnvelopeStripper 清洗，直接渲染）
         var _rm = window.renderMarkdown;
@@ -281,8 +283,7 @@ var CardPool = (function () {
       parts.push('<div class="msg-status">⏳ 打印中断（已自动保存）</div>');
     }
 
-    // ★ 工具执行总结：若所有 assistant 消息都是 tool_calls（无文本回复）且确有 house 被执行，
-    //   渲染工具执行指示器，防止跨面板加载时 AI 回复区空白
+    // ★ 工具执行总结
     if (parts.length === 0 && fData && fData.houses && fData.houses.length) {
       var _tc = 0;
       for (var _ti = 0; _ti < fData.houses.length; _ti++) {
@@ -1044,6 +1045,57 @@ var CardPool = (function () {
   window.CardPool = CardPool;
   window._buildConversationFlowHtml = _buildConversationFlowHtml;
   window._escHtml = _escHtml;
+
+  // ★ 重启后聚合红框：将所有 .msg-err-individual 合并为一个 .msg-quest-error
+  CardPool.prototype._aggregateQuestErrors = function (card) {
+    if (!card || !card._contentWrap) return;
+    var _all = card._contentWrap.querySelectorAll('.msg-err-individual');
+    if (_all.length <= 1) return;  // 0-1 个无需聚合
+
+    // 收集所有错误文本
+    var _entries = [];
+    for (var i = 0; i < _all.length; i++) {
+      var _div = _all[i];
+      // 提取纯文本（排除链接）
+      var _text = '';
+      for (var _c = _div.firstChild; _c; _c = _c.nextSibling) {
+        if (_c.nodeType === 3) _text += _c.textContent;  // Text node
+        else if (_c.tagName !== 'A') _text += _c.textContent || '';
+      }
+      _entries.push(_text.trim());
+      _div.remove();  // 删除旧的独立红框
+    }
+
+    // 创建聚合红框
+    var _box = document.createElement('div');
+    _box.className = 'msg msg-error msg-quest-error';
+    _box.style.whiteSpace = 'pre-wrap';
+    for (var _ei = 0; _ei < _entries.length; _ei++) {
+      var _row = document.createElement('div');
+      _row.className = 'qe-row';
+      _row.textContent = _entries[_ei];
+      _box.appendChild(_row);
+    }
+    // 单链接
+    var _link = document.createElement('a');
+    _link.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
+    _link.href = '#';
+    _link.className = 'msg-err-continue';
+    _link.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
+    _link._qqqQuestId = card.id;
+    _link._qqqAgent = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    _link.onclick = function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this._qqqRecoveryBusy) return;
+        this._qqqRecoveryBusy = true;
+        if (typeof _startRecovery === 'function') _startRecovery(this._qqqQuestId, this._qqqAgent, this);
+    };
+    _box.appendChild(_link);
+
+    // 插入到最后（在 card content 末尾）
+    card._contentWrap.appendChild(_box);
+  };
 
   // [silent] card-pool ready
 

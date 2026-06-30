@@ -242,6 +242,7 @@ async function createNewQuest() {
         cardPool.removeCard(questActiveId);
     }
     _unloadQuest();
+    restoreQuestUIState(_draftId);  // ★ 恢复 ~New quest~ 草稿（_unloadQuest 清空 input 后立即还原）
 }
 
 function _unloadQuest() {
@@ -267,7 +268,8 @@ function _unloadQuest() {
     updateTierButtons(selectedTier);
     renderImageStrip();
     _activeAgent = null;
-    setStreaming(false);  // ★ 卸载 quest 后刷新按钮状态后刷新按钮状态
+    _sending = false;  // ★ P3 修复：卸载 quest 时清 _sending，防残留阻塞新发送
+    setStreaming(false);  // ★ 卸载 quest 后刷新按钮状态
     updateCostDisplay();
     updateCtxBtn();
     var children = $messages.children;
@@ -348,7 +350,8 @@ function _estimateOrCacheTokens() {
 //   - API prompt_tokens 为精确参考值（仅用于本地 vs API 对比展示）
 //   - 展示给用户时，优先使用 API 精确值；本地估算仅用于离线/兜底
 // ★ Completion tokens 不计入上下文血量（输出侧不占背包） 统计为主（我们自己发的东西自己知道）
-//   - API prompfunction updateCostDisplay() { /* no-op */ }板
+//   - API prompt_tokens 为精确参考
+function updateCostDisplay() { _updateCostDisplay(); }
 //   - assistant.tool_calls JSON 是新发现的最大隐藏格子
 //   - 压缩阈值只用 prompt_tokens（与背包一致）
 function _estimateTokensFull() {
@@ -479,6 +482,8 @@ function _tkStrStr(n) {
 var _ctxBreakdownVisible = false;
 var _ctxBreakdownTimer = null;
 var _ctxBreakdownData = null;
+var _estCache = null;
+var CTX_MAX_TOKENS = (typeof ContentGateway !== 'undefined' && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
 
 function renderCtxBreakdown() {
     var bd = document.getElementById('ctx-breakdown');
@@ -551,7 +556,7 @@ function updateCtxBtn() {
     }
     var _ag = _activeAgent;
     // ★★ 架构重构 v4：本地估算为主（自己发的自己知道），API prompt_tokens 为参考（晚一回合）
-    var used = estimateTokens(); // ← _estimateTokensFull() 返回本地精确统计
+    var used = _estimateTokensFull(); // 本地精确统计
     var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
     $ctxBtn.textContent = Math.round(used / 1000) + ' k';
     $ctxBtn.style.setProperty('--ctx-pct', pct + '%');

@@ -51,6 +51,10 @@ export function registerStateHandlersIpc(
     ipcMain.handle('qqqide:state:cloud:pull', async () => stateCloud.pull());
     ipcMain.handle('qqqide:state:cloud:push', async () => stateCloud.push());
     ipcMain.handle('qqqide:state:cloud:sync', async () => stateCloud.sync());
+    ipcMain.handle('qqqide:state:cloud:setAuth', async (_e, auth: { phone: string; token: string; device_name?: string } | null) => {
+        StateCloud.setAuth(auth);
+        return true;
+    });
 
     // ═══════════════════════════════════════════════════════════════
     // project-level state (quest.sq3 per dbPath)

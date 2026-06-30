@@ -55,7 +55,7 @@
         return (tier >= 4) ? 'deep' : 'fast';
     }
 
-    // 取登录 JWT（跨 IDE 互认，存 ~/.qqq/auth.json）
+    // 取登录 JWT（内存，经 parent.window.qqqLogin）
     function _getToken() {
         try {
             if (parent && parent.window && parent.window.qqqLogin && parent.window.qqqLogin.getAuthToken) {

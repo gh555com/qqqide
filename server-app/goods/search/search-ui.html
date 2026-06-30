@@ -88,7 +88,6 @@ var _hist=[[],[],[],[],[]];
 var HMAX=200;         // store 200, show at most 15
 var SHOWMAX=15;
 var _prjRoot=null,_qdb=null,_dbLoading=false,_dbLoaded=false;
-var _showId=0;        // inc on every _show, blur checks before closing
 
 function _histKey(fid){return 'srch.h'+fid}
 
@@ -163,9 +162,8 @@ function _show(fid){
   }
   if(!vals||!vals.length)return;
   var dd=DDS[fid];_showId++;
-  dd.innerHTML='';_sel=-1;
-  for(var i=0;i<vals.length;i++){
-    var r=document.createElement('div');r.textContent=vals[i].slice(0,120);
+  dd.inner  if(!vals||!vals.length)return;
+  var dd=DDS[fid];document.createElement('div');r.textContent=vals[i].slice(0,120);
     r.onmousedown=(function(v){return function(e){e.preventDefault();INPS[fid].value=v;_add(fid,v);_close();if(fid===0)dos();else trg()}})(vals[i]);
     dd.appendChild(r);
   }
@@ -188,18 +186,18 @@ function _pick(){
 }
 
 INPS.forEach(function(inp,fid){
-  var myShowId;
-  inp.addEventListener('focus',function(){
-    // always show on focus — if input has text, filter; if empty, show recent
-    myShowId=++_showId;_show(fid);
+  // ★ click opens dropdown (handles autofocus case where input already focused)
+  inp.addEventListener('click',function(){
+    if(_openFid===fid){_close();return} // toggle off if already open
+    _show(fid);
   });
+  inp.addEventListener('focus',function(){if(_openFid!==fid)_show(fid)});
   inp.addEventListener('blur',function(){
-    var captured=myShowId;
     setTimeout(function(){
-      if(_showId!==captured)return; // newer show happened, don't close
-      if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('.hdd'))return;
+      var ae=document.activeElement;
+      if(ae&&ae.closest&&ae.closest('.hdd'))return; // focus moved to dropdown
       _close();
-    },200);
+    },250);
   });
   inp.addEventListener('keydown',function(e){
     if(e.key==='ArrowDown'){e.preventDefault();if(_openFid===null)_show(fid);_nav(1)}
@@ -210,9 +208,15 @@ INPS.forEach(function(inp,fid){
   // on input: refresh filter instead of closing
   inp.addEventListener('input',function(){
     if(_openFid===fid){_show(fid);return}
-    // if dropdown is not open but input has text, show filtered results
     if(inp.value.trim()){_show(fid)}
   });
+});
+// global mousedown: close dropdown when clicking outside input+dropdown
+document.addEventListener('mousedown',function(e){
+  if(_openFid===null)return;
+  var t=e.target;
+  if(t.closest&&(t.closest('.iw')||t.closest('.hdd')))return;
+  _close();
 });
 
 // ── search engine ──

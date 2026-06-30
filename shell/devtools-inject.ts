@@ -53,7 +53,7 @@ b.innerHTML='<button id="qqq-dt-copy">\\u{1F4CB}\\u590D\\u5236</button><button i
 var e=document.createElement('div');e.id='qqq-dt-toast';document.body.appendChild(b);document.body.appendChild(e);
 // 复制按钮
 document.getElementById('qqq-dt-copy').onclick=function(){
-  var t=_getText();if(!t){_toast('\\u65E0\\u5185\\u5BB9');return;}
+  var t=_getText().replace(/\s+$/,'');if(!t){_toast('\\u65E0\\u5185\\u5BB9');return;}
   var ta=document.createElement('textarea');ta.value=t;ta.style.cssText='position:fixed;left:-9999px;top:0';
   document.body.appendChild(ta);ta.select();
   try{document.execCommand('copy');_toast('\\u5DF2\\u590D\\u5236 '+t.split('\\n').length+'\\u884C');}catch(ex){_toast('\\u5931\\u8D25');}
@@ -86,7 +86,7 @@ function _startPushLoop(wc: WebContents, dwc: WebContents, getText: () => string
         _saveLock = true;
         dwc.executeJavaScript('window.__QQQ_CONSOLE_REQUEST_SAVE=false').catch(() => {});
         try {
-          const text = getText();
+          let text = getText();
           if (!text) {
             await dwc.executeJavaScript(
               "var el=document.getElementById('qqq-dt-toast');if(el){el.textContent='\\u65E0\\u5185\\u5BB9';el.style.opacity='1';setTimeout(function(){el.style.opacity='0'},1800)}"
