@@ -759,9 +759,23 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
     // ★ 预计算渲染数据 — 一次渲染永久不变
     //   优先取 live DOM HTML（用户实际看到的 _contentWrap.innerHTML），保证所见即所得
     //   仅当 DOM 已销毁（旧楼/异常）才回退到 _buildConversationFlowHtml 从 conversation 重建
+    // ★ 跨面板迁移：flush 所有未渲染段落到 DOM，确保 ai_html 完整捕获
+    if (ag._doStreamRender && ag._activeAiDiv && ag._activeAiDiv._dirty) {
+        try { ag._doStreamRender(); } catch (_) { }
+    }
     var ai_html = '';
     if (ag._activeAiDiv && ag._activeAiDiv._contentWrap) {
         try { ai_html = ag._activeAiDiv._contentWrap.innerHTML; } catch (_) { }
+    }
+    // ★ 跨面板迁移：捕获流式缓冲区状态（_buf/_splitCursor/_codeFenceOpen），
+    //   让接手面板能无缝续接正在打印中的半成品段落
+    var _streamingBuf = '';
+    var _streamingSplitCursor = 0;
+    var _streamingCodeFenceOpen = false;
+    if (ag._activeAiDiv) {
+        _streamingBuf = ag._activeAiDiv._buf || '';
+        _streamingSplitCursor = typeof ag._activeAiDiv._splitCursor === 'number' ? ag._activeAiDiv._splitCursor : 0;
+        _streamingCodeFenceOpen = !!ag._activeAiDiv._codeFenceOpen;
     }
     if (!ai_html && typeof _buildConversationFlowHtml === 'function') {
         try {
@@ -778,17 +792,16 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
         } catch (_) { }
     }
     // ★ 剥离 CURRENT TIME 块
-    var question_clean = (ag._lastUserInput && ag._lastUserInput.text) || '';
-    var _ctIdx2 = question_clean.indexOf('\n\n═══ CURRENT TIME ═══');
-    if (_ctIdx2 > 0) question_clean = question_clean.slice(0, _ctIdx2);
+    var questionClean = (ag._lastUserInput && ag._lastUserInput.text) || '';
+    var _ctIdx2 = questionClean.indexOf('\n\n═══ CURRENT TIME ═══');
+    if (_ctIdx2 > 0) questionClean = questionClean.slice(0, _ctIdx2);
     // ★ house / room 计数
     var house_count = (ag._houses && ag._houses.length) || 0;
     var room_count = 0;
     if (ag._houses) { for (var _hci = 0; _hci < ag._houses.length; _hci++) { room_count += (ag._houses[_hci].tools ? ag._houses[_hci].tools.length : 0); } }
 
     var payload = {
-        question: (ag._lastUserInput && ag._lastUserInput.text) || '',
-        question_clean: question_clean,
+        question: questionClean,
         ai_html: ai_html,
         house_count: house_count,
         room_count: room_count,
@@ -813,7 +826,11 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
         savedAt: Date.now(),
         // ★ 流式持久化：捕获正在打印中的部分 AI 回复文本（仅在流式中断时保留）
         _streamingText: (ag._streaming && ag._activeAiDiv && ag._activeAiDiv._fullText) ? ag._activeAiDiv._fullText : '',
-        _streaming: !!(ag._streaming)
+        _streaming: !!(ag._streaming),
+        // ★ 跨面板迁移：流式缓冲区状态（让接手面板无缝续接）
+        _streamingBuf: _streamingBuf,
+        _streamingSplitCursor: _streamingSplitCursor,
+        _streamingCodeFenceOpen: _streamingCodeFenceOpen
     };
 
     // 附加 a4 快照明数据

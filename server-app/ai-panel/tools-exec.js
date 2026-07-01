@@ -547,12 +547,39 @@ async function executeGetDiagnostics(args) {
 // ============================================================
 // fetch_webpage
 // ============================================================
+// ★ 两条路：主路走 Go 代理（US 服务器端 HTTP，绕过 GFW），兜底走本地 curl
 
 async function executeFetchWebpage(args) {
     var bridge = getBridge();
+
+    // ═══ 主路：走 Go 代理（US 服务器直连，可访问 GitHub 等） ═══
+    if (typeof AiGateway !== 'undefined' && AiGateway.fetchWebpage) {
+        try {
+            var token = '';
+            try {
+                var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+                if (ag && ag._token) token = ag._token;
+            } catch (_) {}
+            if (token) {
+                var data = await AiGateway.fetchWebpage(args.url, { token: token });
+                if (data && data.ok && data.text) {
+                    // ★ 计费
+                    if (data.ge_cost && typeof _addToolWgeCost === 'function') {
+                        _addToolWgeCost(data.ge_cost);
+                    }
+                    return data.text;
+                }
+                // 服务器失败→兜底本地 curl
+                if (typeof console !== 'undefined') console.log('[fetch] Go proxy failed: ' + (data ? data.error : 'no data') + ', fallback to local curl');
+            }
+        } catch (_) {
+            if (typeof console !== 'undefined') console.log('[fetch] Go proxy error, fallback to local curl');
+        }
+    }
+
+    // ═══ 兜底：本地 curl（原有逻辑） ═══
     if (!bridge) return 'Error: bridge not available';
     try {
-        // Route through main process (qz-spawn curl) to bypass CORS.
         var result = await bridge.qz.spawn({
             cmd: 'curl',
             args: ['-sL', '--max-time', '15', '-H', 'User-Agent: qqq-ai/1.0', args.url],

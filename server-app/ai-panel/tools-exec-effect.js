@@ -439,7 +439,126 @@ async function executeGenerateImage(args) {
 
 // ============================================================
 // analyze_image — AI 视觉分析（全走 Go 代理）
+// ★ 2026-07-01 重构：借鉴 openhanako VisionBridge，结构化 prompt + confidence + norm-1000
 // ============================================================
+
+// ═══ MIME 魔术字节检测 — 借鉴 openhanako shared/image-mime.ts ═══
+var _IMAGE_MAGIC = {
+    'image/png':  [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+    'image/jpeg': [0xFF, 0xD8, 0xFF],
+    'image/gif':  [0x47, 0x49, 0x46, 0x38],
+    'image/webp': [0x52, 0x49, 0x46, 0x46]
+};
+var _IMAGE_MIME_NAMES = { 'image/png': 'PNG', 'image/jpeg': 'JPEG', 'image/gif': 'GIF', 'image/webp': 'WebP' };
+
+function _sniffImageMime(b64) {
+    // 从 base64 头几个字符反推 MIME（大文件 base64 不解码全部）
+    if (!b64 || b64.length < 16) return null;
+    try {
+        // base64 的前 12 字符足够覆盖 8 字节魔术
+        var head = atob(b64.slice(0, 12));
+        var bytes = [];
+        for (var i = 0; i < head.length; i++) bytes.push(head.charCodeAt(i) & 0xFF);
+        for (var mime in _IMAGE_MAGIC) {
+            var mag = _IMAGE_MAGIC[mime];
+            if (bytes.length >= mag.length) {
+                var match = true;
+                for (var j = 0; j < mag.length; j++) {
+                    if (bytes[j] !== mag[j]) { match = false; break; }
+                }
+                if (match) return { mime: mime, name: _IMAGE_MIME_NAMES[mime] };
+            }
+        }
+    } catch (_) {}
+    return null;
+}
+
+// ═══ 结构化视觉 prompt 模板 — 借鉴 openhanako formatStructuredVisionNote ═══
+function _buildStructuredDescribePrompt(detail) {
+    var sections = [
+        'image_overview: 整体画面描述（1-2句话概括）',
+        'visible_text: 画面中可见的文字内容（无则写 "none"）',
+        'objects_and_layout: 物体及其空间排列关系',
+        'colors_and_lighting: 主色调、光影特征',
+        'style_and_atmosphere: 风格流派与整体氛围',
+        'charts_or_data: 如有图表/数据，描述关键信息（无则写 "none"）'
+    ];
+    var detailLabel = { brief: '简要', standard: '标准', detailed: '详尽' };
+    var label = detailLabel[detail] || '标准';
+    return '请' + label + '分析这张图片。按以下格式输出，每行以 "field_name: value" 形式：\n\n' +
+        sections.join('\n') + '\n\n只输出上述字段，不要额外解释。';
+}
+
+function _buildLocatePrompt(targets, detail) {
+    var targetsStr = targets.join('、');
+    var isDetailed = detail === 'detailed';
+    return '在这张图片中定位以下物体：' + targetsStr + '。\n' +
+        '坐标使用 norm-1000 归一化坐标系：图片宽高均映射到 0~1000。\n' +
+        'box: [x1, y1, x2, y2]，(x1,y1)=左上角，(x2,y2)=右下角。\n' +
+        (isDetailed ? 'confidence: 0.0~1.0 置信度，表示定位把握程度。\n' : '') +
+        '返回严格 JSON 数组：\n' +
+        '[{"label":"物体名","box":[x1,y1,x2,y2],"confidence":0.0}]\n\n' +
+        '—— 注意 ——\n' +
+        '1. 坐标是 norm-1000，不是像素。图片左上角=(0,0)，右下角=(1000,1000)\n' +
+        '2. confidence 必填，0.0=完全不确定，1.0=绝对确定\n' +
+        '3. 只返回 JSON 数组，不要 markdown 围栅，不要解释文字';
+}
+
+function _buildAskPrompt(question) {
+    return '请基于这张图片回答以下问题：\n\n' + question.trim() + '\n\n' +
+        '如有不确定性请明确说明。如有可定位的物体/区域，用 norm-1000 坐标 (x1,y1,x2,y2) 标注位置。';
+}
+
+// ═══ JSON 清洗 — 借鉴 openhanako extractJsonObject ═══
+function _extractJsonFromVision(output) {
+    var raw = output.trim();
+    // 移除 markdown 围栅
+    var fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenced) raw = fenced[1].trim();
+    try {
+        return JSON.parse(raw);
+    } catch (_) {
+        // 尝试提取最外层 {...} 或 [...]
+        var start = raw.indexOf('{');
+        var end = raw.lastIndexOf('}');
+        var arrStart = raw.indexOf('[');
+        var arrEnd = raw.lastIndexOf(']');
+        if (arrStart !== -1 && arrEnd > arrStart && (arrStart < start || start === -1)) {
+            try { return JSON.parse(raw.slice(arrStart, arrEnd + 1)); } catch (_2) {}
+        }
+        if (start !== -1 && end > start) {
+            try { return JSON.parse(raw.slice(start, end + 1)); } catch (_2) {}
+        }
+        return null;
+    }
+}
+
+function _normalizeLocateBoxes(boxes) {
+    if (!Array.isArray(boxes)) return null;
+    var out = [];
+    for (var i = 0; i < boxes.length; i++) {
+        var b = boxes[i];
+        if (!b || typeof b.label !== 'string') continue;
+        var box = b.box || b.bbox || b.bbox_2d || b.box_2d || [];
+        if (!Array.isArray(box) || box.length < 4) continue;
+        var x1 = Number(box[0]), y1 = Number(box[1]), x2 = Number(box[2]), y2 = Number(box[3]);
+        if (!isFinite(x1) || !isFinite(y1) || !isFinite(x2) || !isFinite(y2)) continue;
+        // 确保 left<right, top<bottom
+        var item = {
+            label: String(b.label),
+            box: [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)]
+        };
+        // 置信度（借鉴 openhanako normalizeConfidence）
+        if (b.confidence !== undefined && b.confidence !== null) {
+            var cf = Number(b.confidence);
+            item.confidence = isFinite(cf) ? Math.max(0, Math.min(1, Math.round(cf * 100) / 100)) : null;
+        }
+        // 识别 grounding 来源（借鉴 openhanako groundingMode）
+        if (b.grounding) item.grounding = String(b.grounding);
+        out.push(item);
+    }
+    return out.length > 0 ? out : null;
+}
 
 async function executeAnalyzeImage(args) {
     var bridge = getBridge();
@@ -470,23 +589,28 @@ async function executeAnalyzeImage(args) {
         var b64 = (b64Result.stdout || '').replace(/\s/g, '');
         if (!b64) return 'Error: could not read or encode image: ' + image;
 
-        // 2. 构建问题
+        // ★ 1b. MIME 魔术字节校验（借鉴 openhanako sniffImageMimeType）
+        var mimeInfo = _sniffImageMime(b64);
+        if (mimeInfo) {
+            // 可选：校验通过，静默。不支持的格式可由 Go 端拒绝
+        }
+        // 不是已知图片格式 → 仍然继续（Go 端有更强校验），但记录警告
+        if (!mimeInfo && b64.length > 100000) {
+            // 大文件无魔术字节 → 可能不是图片
+            return 'Error: file does not appear to be a supported image (PNG/JPEG/GIF/WebP). First 12 base64 chars: ' + b64.slice(0, 12);
+        }
+
+        // 2. 构建问题（★ 借鉴 openhanako 结构化 prompt）
         var question;
         if (action === 'describe') {
-            var prompts = {
-                'brief': '用一句话描述这张图片的内容。',
-                'standard': '描述这张图片的主要内容、风格和构图。',
-                'detailed': '详细描述这张图片：画面元素、色彩、光影、构图、风格、氛围。'
-            };
-            question = prompts[args.detail] || prompts['standard'];
+            question = _buildStructuredDescribePrompt(args.detail);
         } else if (action === 'locate') {
             var targets = (args.targets || '').split(',').map(function (t) { return t.trim(); }).filter(Boolean);
             if (targets.length === 0) return 'Error: --targets required for locate action';
-            var targetsStr = targets.join('、');
-            question = '在这张图片中找到以下物体：' + targetsStr + '。对每个物体，估算它的像素边界框 [x1, y1, x2, y2]。x1,y1 是左上角，x2,y2 是右下角。返回严格的 JSON 数组，格式：[{"label": "物体名", "box": [x1, y1, x2, y2]}]。只返回 JSON，不要任何解释文字。';
+            question = _buildLocatePrompt(targets, args.detail);
         } else if (action === 'ask') {
             if (!args.question) return 'Error: --question required for ask action';
-            question = args.question;
+            question = _buildAskPrompt(args.question);
         } else {
             return 'Error: unknown action: ' + action;
         }
@@ -528,29 +652,14 @@ async function executeAnalyzeImage(args) {
 
         // 5. 按 action 处理结果
         if (action === 'locate') {
-            // 清洗 markdown 围栅
-            var raw = content.trim();
-            if (raw.indexOf('```') === 0) {
-                var mdLines = raw.split('\n');
-                if (mdLines[mdLines.length - 1].indexOf('```') === 0) {
-                    raw = mdLines.slice(1, -1).join('\n');
-                } else {
-                    raw = mdLines.slice(1).join('\n');
+            var parsed = _extractJsonFromVision(content);
+            if (parsed) {
+                var normalized = _normalizeLocateBoxes(Array.isArray(parsed) ? parsed : [parsed]);
+                if (normalized) {
+                    return JSON.stringify({ objects: normalized, coord: 'norm-1000', count: normalized.length }, null, 2);
                 }
             }
-            try {
-                var boxes = JSON.parse(raw);
-                return JSON.stringify(boxes, null, 2);
-            } catch (_) {
-                var match = raw.match(/\[[\s\S]*\]/);
-                if (match) {
-                    try {
-                        boxes = JSON.parse(match[0]);
-                        return JSON.stringify(boxes, null, 2);
-                    } catch (_2) { }
-                }
-                return 'Image locate failed: could not parse bounding boxes from response: ' + raw.slice(0, 500);
-            }
+            return 'Image locate failed: could not parse bounding boxes from response. Raw: ' + content.slice(0, 500);
         }
 
         // describe / ask → 直接返回内容

@@ -16,7 +16,6 @@ import { UpdateService } from './update-service';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
 import { _consoleBuffer } from './window-manager';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
-import { saveAllOpenWindows } from './shutdown';
 
 export function registerMiscIpc(
     portableRoot: string,
@@ -115,7 +114,7 @@ export function registerMiscIpc(
 
     // ---- app quit (退出全部窗口) ----
     ipcMain.handle('qqqide:app:quitAll', async () => {
-        try { saveAllOpenWindows(stateStore, _windowProjectMap); } catch { /* ignore */ }
+        // before-quit handler in shutdown.ts handles saveAllOpenWindows + lock cleanup
         app.quit();
     });
 
@@ -128,7 +127,13 @@ export function registerMiscIpc(
         if (win && !win.isDestroyed()) { win.close(); }
     });
     ipcMain.handle('qqqide:window:isMaximized', (e) => BrowserWindow.fromWebContents(e.sender)?.isMaximized() ?? false);
-    ipcMain.handle('qqqide:window:setTitle', (e, s: string) => { BrowserWindow.fromWebContents(e.sender)?.setTitle(String(s)); });
+    ipcMain.handle('qqqide:window:setTitle', (e, s: string) => {
+        const win = BrowserWindow.fromWebContents(e.sender);
+        if (!win) return;
+        win.setTitle(String(s));
+        // ★ 同步 F12 DevTools 窗口标题为 「🔧」+项目文件夹名
+        _syncDevToolsTitle(win, String(s));
+    });
     ipcMain.handle('qqqide:window:toggleDevTools', (e) => {
         const win = BrowserWindow.fromWebContents(e.sender);
         if (!win || win.isDestroyed()) { return; }
@@ -137,46 +142,37 @@ export function registerMiscIpc(
             wc.closeDevTools();
         } else {
             wc.openDevTools({ mode: 'detach' });
-            injectDevToolsConsoleButtons(wc, () => _consoleBuffer.join('\n'), win);
+            // 按钮注入由 window-manager.ts devtools-opened 事件统一处理
         }
     });
 
     // ---- 新窗口 ----
     ipcMain.handle('qqqide:window:new', async (_e, folderPath?: string) => {
-        console.log('[window:new] called, folderPath:', folderPath);
-        console.log('[window:new] bootConfig.url:', bootConfig.url);
         if (folderPath && typeof folderPath === 'string') {
             const normalized = folderPath.replace(/\\/g, '/').replace(/\/$/, '');
-            console.log('[window:new] normalized:', normalized);
             const existingWinId = _projectWindowMap.get(normalized);
             if (existingWinId != null) {
                 const existingWin = BrowserWindow.fromId(existingWinId);
                 if (existingWin && !existingWin.isDestroyed()) {
                     if (existingWin.isMinimized()) existingWin.restore();
                     existingWin.focus();
-                    console.log('[window:new] existing window restored');
                     return { ok: false, locked: true, existingWindowId: existingWinId };
                 }
                 _projectWindowMap.delete(normalized);
                 _windowProjectMap.delete(existingWinId);
             }
             const lockPath = normalized + '/qqq/alphal/.lock';
-            console.log('[window:new] checking lock:', lockPath);
             try {
                 const lockRaw = fs.readFileSync(lockPath, 'utf-8');
                 const lockData = JSON.parse(lockRaw);
                 const age = Date.now() - (lockData.atime || 0);
-                console.log('[window:new] lock age:', age, 'ms');
                 if (age < 60000) {
-                    console.log('[window:new] locked by active window');
                     return { ok: false, locked: true, existingWindowId: null };
                 }
                 try { fs.unlinkSync(lockPath); } catch (_) { }
             } catch (_) { }
         }
-        console.log('[window:new] creating new window...');
         const newWin = createWindow(portableRoot, portableCache, appVersion, lspBridge, downloadService, stateStore);
-        console.log('[window:new] newWin.id:', newWin.id);
         // 绑定主文件夹
         if (folderPath && typeof folderPath === 'string') {
             const normalized = folderPath.replace(/\\/g, '/').replace(/\/$/, '');
@@ -190,14 +186,11 @@ export function registerMiscIpc(
         } else {
             url = bootConfig.url + '?fresh=1';
         }
-        console.log('[window:new] loadURL:', url);
         newWin.loadURL(url).then(() => {
-            console.log('[window:new] loadURL OK, showing window');
             newWin.show();
         }).catch((err: any) => {
             console.error('[window:new] loadURL FAILED:', err);
         });
-        console.log('[window:new] returning ok, windowId:', newWin.id);
         return { ok: true, windowId: newWin.id };
     });
 
@@ -241,6 +234,8 @@ export function registerMiscIpc(
         }
         _windowProjectMap.set(win.id, normalized);
         _projectWindowMap.set(normalized, win.id);
+        // ★ 项目绑定后同步 DevTools 窗口标题
+        _syncDevToolsTitle(win, path.basename(normalized));
         return true;
     });
 
@@ -297,4 +292,36 @@ export function registerMiscIpc(
         updateService.abort();
         return true;
     });
+}
+
+// ── DevTools 窗口标题同步 ──
+// 优先: executeJavaScript 设 document.title（已知 dwc 可用）
+// 兜底: BrowserWindow.setTitle 找 detached 窗口
+export function _syncDevToolsTitle(mainWin: BrowserWindow, title: string): void {
+    try {
+        const dtTitle = `「🔧」${title}`;
+        // 路线1: 直接从 devToolsWebContents 设 document.title
+        const dwc = (mainWin.webContents as any).devToolsWebContents as Electron.WebContents | undefined;
+        if (dwc && !dwc.isDestroyed()) {
+            dwc.executeJavaScript(`document.title=${JSON.stringify(dtTitle)}`).catch(() => {});
+        }
+        // 路线2: 兜底找 BrowserWindow 设 OS 窗口标题
+        for (const w of BrowserWindow.getAllWindows()) {
+            if (w.id === mainWin.id || w.isDestroyed()) continue;
+            try {
+                const u = w.webContents.getURL();
+                if (u.startsWith('devtools://') || u.startsWith('chrome-devtools://')) {
+                    w.setTitle(dtTitle);
+                    return;
+                }
+            } catch { /* skip */ }
+        }
+        // 路线3: fromWebContents 最后尝试
+        if (dwc && !dwc.isDestroyed()) {
+            const devWin = BrowserWindow.fromWebContents(dwc);
+            if (devWin && !devWin.isDestroyed() && devWin.id !== mainWin.id) {
+                devWin.setTitle(dtTitle);
+            }
+        }
+    } catch (_) { /* ignore */ }
 }

@@ -659,7 +659,7 @@ async function _onAuditClick(block) {
 
         // ★ 加载全部楼层（用于 Block 3 chart）
         var allFloors = [];
-        try { allFloors = await questStore.loadAllFloors(questId) || []; } catch (_) {}
+        try { allFloors = await questStore.loadAllFloors(questId) || []; } catch (_) { }
 
         // ═══ 拼接审计文本 ═══
         var parts = [];
@@ -691,7 +691,7 @@ async function _onAuditClick(block) {
             var fData = fEntry.data;
             if (!fData) continue;
             var fn = fEntry.floorNum;
-            var qClean = (fData.question_clean || fData.question || '');
+            var qClean = (fData.question || '');
             // 找该层最后一次 AI 回答
             var lastAi = '';
             var conv = fData.conversation || [];
@@ -719,7 +719,7 @@ async function _onAuditClick(block) {
             try {
                 var _fDat = await questStore.loadFloor(questId, floorNum);
                 if (_fDat && _fDat.houses) houses = _fDat.houses;
-            } catch (_) {}
+            } catch (_) { }
         }
         for (var hi = 0; hi < houses.length; hi++) {
             var h = houses[hi];
@@ -799,7 +799,7 @@ async function _onAuditClick(block) {
                 document.execCommand('copy');
                 document.body.removeChild(ta);
                 copied = true;
-            } catch (_2) {}
+            } catch (_2) { }
         }
 
         if (copied) {
@@ -810,7 +810,7 @@ async function _onAuditClick(block) {
                 if (window.parent && window.parent.qqqideQoast) {
                     window.parent.qqqideQoast.show('\u5ba1\u8ba1\u6587\u672c\u5df2\u590d\u5236\u5230\u526a\u8d34\u677f (' + kb + ' KB)\uff0c\u53ef\u7c98\u8d34\u5230\u4efb\u610f AI \u5bf9\u8bdd\u6846\u3002', { duration: 5000, type: 'success' });
                 }
-            } catch (_) {}
+            } catch (_) { }
             setTimeout(function () { if (btn) btn.textContent = '\u5ba1\u8ba1'; }, 2000);
         } else {
             if (btn) { btn.textContent = origText; btn.disabled = false; }

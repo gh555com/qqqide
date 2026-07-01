@@ -107,21 +107,26 @@ export function saveAllOpenWindows(stateStore: StateStore, winProjectMap: Map<nu
         const seen = new Set<string>();
         const windows: any[] = [];
         for (const win of BrowserWindow.getAllWindows()) {
-            if (win.isDestroyed()) continue;
-            const mainFolder = (winProjectMap.get(win.id) || '').replace(/\\/g, '/').replace(/\/$/, '');
-            // ★ 去重：同主文件夹只保留第一个窗口
-            if (mainFolder && seen.has(mainFolder)) continue;
-            if (mainFolder) seen.add(mainFolder);
-            const bounds = win.getBounds();
-            const maximized = win.isMaximized();
-            windows.push({
-                mainFolder,
-                bounds: {
-                    x: bounds.x, y: bounds.y,
-                    w: bounds.width, h: bounds.height,
-                    maximized: maximized
-                }
-            });
+            try {
+                if (win.isDestroyed()) continue;
+                const mainFolder = (winProjectMap.get(win.id) || '').replace(/\\/g, '/').replace(/\/$/, '');
+                // ★ 去重：同主文件夹只保留第一个窗口
+                if (mainFolder && seen.has(mainFolder)) continue;
+                if (mainFolder) seen.add(mainFolder);
+                const bounds = win.getBounds();
+                const maximized = win.isMaximized();
+                windows.push({
+                    mainFolder,
+                    bounds: {
+                        x: bounds.x, y: bounds.y,
+                        w: bounds.width, h: bounds.height,
+                        maximized: maximized
+                    }
+                });
+            } catch (e) {
+                // 窗口可能在 isDestroyed() 和 getBounds() 之间被销毁
+                try { console.warn('[shutdown] skip window (destroyed mid-save):', (e as Error).message); } catch (_) { }
+            }
         }
         if (windows.length > 0) {
             stateStore.setNow('qqqide', 'open_windows', windows);
@@ -215,11 +220,16 @@ export function registerExitHandlers(
             } catch (_) { }
         });
 
-        // ④ auto-increment version for next boot cache-busting
-        try { autoIncrementVersion(portableRoot); } catch { /* ignore */ }
-
-        // ⑤ save open windows for next-startup multi-window restore
+        // ④ save open windows for next-startup multi-window restore
         try { saveAllOpenWindows(stateStore, _windowProjectMap); } catch { /* ignore */ }
+
+        // ⑤ clean project lock files — prevent "already open" on next launch
+        for (const [winId, projectRoot] of _windowProjectMap) {
+            try { fs.unlinkSync(projectRoot + '/qqq/alphal/.lock'); } catch (_) { }
+        }
+
+        // ⑥ auto-increment version for next boot cache-busting
+        try { autoIncrementVersion(portableRoot); } catch { /* ignore */ }
 
         app.exit(0);
         setTimeout(() => { process.exit(0); }, 500);
@@ -268,6 +278,7 @@ export function registerExitHandlers(
 
     // All windows closed → quit
     app.on('window-all-closed', () => {
+        console.log('[window-all-closed] FIRED — all windows closed, quitting');
         if (process.platform !== 'darwin') { app.quit(); }
     });
 

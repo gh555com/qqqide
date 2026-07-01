@@ -10,7 +10,6 @@ function bootStatusbar(boot) {
   var $clk = document.getElementById('qqq-status-clock');
   var $freeInd = document.getElementById('qqq-status-free');
   var $freeBadge = document.getElementById('qqq-status-free-badge');
-  var $freeCd = document.getElementById('qqq-status-free-cd');
   if ($ver) $ver.textContent = 'v' + (boot.version || '?');
   if ($eng) $eng.textContent = 'engine: ' + (boot.engineAlive ? 'on' : 'off');
 
@@ -90,7 +89,7 @@ function bootStatusbar(boot) {
     var day = d.getUTCDay();
     if (day === 0) return true; // 周日全天
     var h = d.getUTCHours();
-    return h < 2 || (h >= 12 && h < 14);
+    return (h >= 1 && h < 3) || (h >= 13 && h < 15);
   }
 
   // 下次免费开始/结束时间（UTC ms）
@@ -100,11 +99,11 @@ function bootStatusbar(boot) {
     var h = d.getUTCHours();
     if (isFreeWindow(utcMs)) {
       if (day === 0) { d.setUTCHours(0, 0, 0, 0); d.setUTCDate(d.getUTCDate() + 1); return d.getTime(); }
-      if (h < 2) { d.setUTCHours(2, 0, 0, 0); return d.getTime(); }
-      d.setUTCHours(14, 0, 0, 0); return d.getTime();
+      if (h >= 1 && h < 3) { d.setUTCHours(3, 0, 0, 0); return d.getTime(); }
+      d.setUTCHours(15, 0, 0, 0); return d.getTime();
     }
-    if (h < 12) { d.setUTCHours(12, 0, 0, 0); return d.getTime(); }
-    d.setUTCHours(0, 0, 0, 0); d.setUTCDate(d.getUTCDate() + 1); return d.getTime();
+    if (h < 13) { d.setUTCHours(13, 0, 0, 0); return d.getTime(); }
+    d.setUTCHours(1, 0, 0, 0); d.setUTCDate(d.getUTCDate() + 1); return d.getTime();
   }
 
   function fmtHMS(ms) {
@@ -127,21 +126,18 @@ function bootStatusbar(boot) {
     if (free) {
       $freeInd.style.display = 'inline-flex';
       if (remaining < 300000) {
-        $freeBadge.textContent = t('shell.free.ending', '🎈免费将结束');
+        $freeBadge.textContent = t('shell.free.ending', '🎈免费将结束') + ' ' + fmtHMS(remaining);
         $freeBadge.className = 'qqq-free-badge qqq-free-ending';
       } else {
-        $freeBadge.textContent = t('shell.free.active', '💎 免费中');
+        $freeBadge.textContent = t('shell.free.active', '💎 免费中') + ' ' + fmtHMS(remaining);
         $freeBadge.className = 'qqq-free-badge qqq-free-on';
       }
-      if ($freeCd) $freeCd.textContent = fmtHMS(remaining);
     } else if (remaining > 0 && remaining < 43200000) {
       $freeInd.style.display = 'inline-flex';
-      $freeBadge.textContent = t('shell.free.soonPrefix', '🤍距离下次免费');
+      $freeBadge.textContent = t('shell.free.soonPrefix', '🤍距离下次免费') + ' ' + fmtHMS(remaining);
       $freeBadge.className = 'qqq-free-badge qqq-free-soon';
-      if ($freeCd) $freeCd.textContent = fmtHMS(remaining);
     } else {
       $freeInd.style.display = 'none';
-      if ($freeCd) $freeCd.textContent = '';
     }
   }
 
@@ -186,8 +182,8 @@ function bootStatusbar(boot) {
       var budgetGe = parseFloat(d.budget_ge) || 0;
       var remainingGe = parseFloat(d.remaining_ge) || 0;
       if (budgetGe > 0) {
-        var consumedPct = (budgetGe - remainingGe) / budgetGe * 100;
-        if ($freeBudgetFill) $freeBudgetFill.style.width = Math.max(consumedPct, 1) + '%';
+        var remainingPct = remainingGe / budgetGe * 100;
+        if ($freeBudgetFill) $freeBudgetFill.style.width = Math.max(remainingPct, 1) + '%';
       }
       if ($freeBudgetLabel) {
         var lbl = '💎' + remainingGe.toFixed(1) + '/' + budgetGe.toFixed(1);

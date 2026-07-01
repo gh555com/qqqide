@@ -14,11 +14,17 @@ AgentLoop.prototype._analyzeImages = async function (images, token, userContent)
     // 构造视觉 prompt：把用户问题原文带上，做针对性识别
     var visionPrompt = '';
     if (userContent && typeof userContent === 'string' && userContent.trim()) {
-        visionPrompt = 'The user is asking the following question about this image. ' +
-            'Focus your analysis specifically on what the user is asking about. ' +
-            'Ignore unrelated text/details — only describe what matters for answering the question.\n\n' +
+        // ★ 借鉴 openhanako formatStructuredVisionNote：结构化视觉分析 prompt
+        visionPrompt = 'You are a vision analysis assistant. Analyze this image and answer the following user question.\n' +
+            'Respond in this structured format (one field per line, "field: value"):\n' +
+            '  image_overview: <1-sentence summary>\n' +
+            '  visible_text: <text in the image, or "none">\n' +
+            '  objects_and_layout: <key objects and spatial relationships>\n' +
+            '  user_request_answer: <direct answer to the user question below>\n' +
+            '  evidence: <what in the image supports your answer>\n' +
+            '  uncertainty: <any doubts or "none">\n\n' +
             'USER QUESTION:\n' + userContent.trim() + '\n\n' +
-            'Now describe this image with respect to the question above:';
+            'Now analyze:';
     }
 
     var analyzeOne = async function (img) {

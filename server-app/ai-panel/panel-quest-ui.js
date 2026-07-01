@@ -41,7 +41,7 @@ async function switchQuest(id) {
             if (_activeAgent && _activeAgent._stopState === 'sending') {
                 await _saveAgentQuestData(questActiveId, _activeAgent, _activeAgent._currentFloorNum);
             }
-            // ★ 释放旧 quest 所有权
+            // ★ 释放旧 quest 所有权（流式 buffer 状态已通过 _a4BuildCompleteFloorPayload 落盘，跨面板迁移安全）
             if (!_isDraft(questActiveId)) {
                 _parentReleaseQuest(questActiveId);
                 _broadcast('owner-released', questActiveId);
@@ -49,16 +49,31 @@ async function switchQuest(id) {
         }
 
         // ═══ Card Pool 切换（纯 CSS 显隐，零 DOM 销毁） ═══
-        // ★ A1+C1: 共享 agent 正在建楼 → 强制重载 card（避免显示过期快照）
+        // ★ A1+C1: 共享 agent 状态决定 card 处理策略
+        //   sending + 本面板 aiDiv 活 → 保留实时 DOM（不丢流式内容）
+        //   sending + 无活 aiDiv（其他面板发起）→ 清空从磁盘重载
+        //   非 sending（已完成/已停止）→ 清空从磁盘重载最新数据
         var _sharedAg = parent.__qqq_agentPool && parent.__qqq_agentPool[id];
         if (_sharedAg && _sharedAg._stopState === 'sending') {
             var _card = cardPool._cards[id];
             if (_card && _card._contentWrap) {
-                _card._contentWrap.innerHTML = '';
-                _card.floorDOM = {};
-                _card.totalFloors = 0;
-                _card.floors = [];
-                _card._floorMetaMap = {};
+                var _hasLiveAi = _card.buildingFloor !== null && _card.floorDOM[_card.buildingFloor] && _card.floorDOM[_card.buildingFloor].aiEl;
+                if (!_hasLiveAi) {
+                    _card._contentWrap.innerHTML = '';
+                    _card.floorDOM = {};
+                    _card.totalFloors = 0;
+                    _card.floors = [];
+                    _card._floorMetaMap = {};
+                }
+            }
+        } else {
+            var _card2 = cardPool._cards[id];
+            if (_card2 && _card2.buildingFloor !== null) {
+                _card2._contentWrap.innerHTML = '';
+                _card2.floorDOM = {};
+                _card2.totalFloors = 0;
+                _card2.floors = [];
+                _card2._floorMetaMap = {};
             }
         }
         await cardPool.switchTo(id);
@@ -239,7 +254,8 @@ async function createNewQuest() {
     if (_switching) return;  // ★ quest 切换中
     if (streaming) stopStream();
     saveQuestUIState(questActiveId);
-    if (!_isDraft(questActiveId)) await saveQuestData();
+    // ★ 仅建楼中有未保存数据需刷盘；idle quest 的楼层数据已在 onDone 时完整写入
+    if (!_isDraft(questActiveId) && _activeAgent && _activeAgent._stopState === 'sending') await saveQuestData();
     if (questActiveId && !_isDraft(questActiveId)) {
         _parentReleaseQuest(questActiveId);
         _broadcast('owner-released', questActiveId);
@@ -592,6 +608,74 @@ if (_bdPanel) {
 }
 document.getElementById('ctx-cancel').onclick = function () {
     document.getElementById('ctx-panel').style.display = 'none';
+};
+// ═══ 快照 — 完整 conversation 打快照到 floor 文件夹 ═══
+document.getElementById('ctx-snap').onclick = async function () {
+    document.getElementById('ctx-panel').style.display = 'none';
+    var _ag = _activeAgent;
+    if (!_ag) return;
+    if (!questActiveId || _isDraft(questActiveId)) return;
+
+    try {
+        var _root = questStore.getProjectRoot();
+        if (!_root) return;
+        var _questList = await questStore.list();
+        var _qEntry = _questList.find(function (qx) { return qx.id === questActiveId; });
+        if (!_qEntry) return;
+        var _qTitle = (_qEntry.title && _qEntry.title !== 'New Chat') ? _qEntry.title : '';
+        var _qNumericId = _qEntry.numericId || parseInt(questActiveId.replace('q', ''), 10) || 0;
+        var _qDirName = await _resolveQuestDirName(_root, questActiveId, _qNumericId, _qTitle);
+
+        // ── 找最新楼层目录 ──
+        var _allFloors = await questStore.loadAllFloors(questActiveId);
+        var _targetDir;
+        if (_allFloors && _allFloors.length > 0) {
+            var _latestN = _allFloors[_allFloors.length - 1].floorNum;
+            var _fData = _allFloors[_allFloors.length - 1].data;
+            var _fQuestion = (_fData && _fData.question) ? _fData.question : '';
+            var _fDirName = _makeName('f', _latestN, _fQuestion);
+            _targetDir = _root + '/qqq/quests/' + _qDirName + '/' + _fDirName + '/';
+        } else {
+            _targetDir = _root + '/qqq/quests/' + _qDirName + '/';
+        }
+
+        // ── 构建快照内容 ──
+        var _now = new Date();
+        var _ts = _now.getFullYear() + '-' +
+            String(_now.getMonth() + 1).padStart(2, '0') + '-' +
+            String(_now.getDate()).padStart(2, '0') + '_' +
+            String(_now.getHours()).padStart(2, '0') + '_' +
+            String(_now.getMinutes()).padStart(2, '0') + '_' +
+            String(_now.getSeconds()).padStart(2, '0');
+
+        var _snap = {
+            questId: questActiveId,
+            snapshotTime: _now.toISOString(),
+            conversation: _ag.conversation || [],
+            ctx: _ag._ctx || {},
+            totalCostGe: _ag.totalCostGe || 0,
+            floorCount: _allFloors ? _allFloors.length : 0
+        };
+
+        // ── 原子写入 ──
+        var _bridge = window.parent && window.parent.qqqideBridge;
+        if (!_bridge || !_bridge.fs) return;
+        try { await _bridge.fs.mkdir(_targetDir); } catch (_) { }
+        var _snapPath = _targetDir + 'snapshot_' + _ts + '.json';
+        await _bridge.fs.write(_snapPath, JSON.stringify(_snap, null, 2));
+
+        // ── Toast ──
+        var _iFn = typeof _i === 'function' ? _i : function (k, f) { return f; };
+        if (window.parent && window.parent.qqqideQoast) {
+            window.parent.qqqideQoast.show('📸 ' + _iFn('ai.ctx.snapOk', '快照已保存') + ': snapshot_' + _ts + '.json', { type: 'success', duration: 4000 });
+        }
+    } catch (e) {
+        console.error('[snap]', e);
+        var _iFn2 = typeof _i === 'function' ? _i : function (k, f) { return f; };
+        if (window.parent && window.parent.qqqideQoast) {
+            window.parent.qqqideQoast.show('📸 ' + _iFn2('ai.ctx.snapFail', '快照保存失败') + ': ' + (e.message || 'unknown'), { type: 'error', duration: 4000 });
+        }
+    }
 };
 // ═══ 手动压缩 — 唯一真理机器 ═══
 // 建专属楼层 → 创建 DOM → 渲染压缩卡片 → 执行压缩 → 封顶保存

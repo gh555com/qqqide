@@ -201,7 +201,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'run_command',
-            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default, up to ' + OUTPUT_CAP_MAX + ' with maxOutput. Hard timeout 2h, stall guard 15min. Use cwd to set working directory. ⚠️ PREFER search_text/search_content/find_files for code search — they are 10x faster and memory-safe. Only use run_command when dedicated tools CANNOT do the job.',
+            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default, up to ' + OUTPUT_CAP_MAX + ' with maxOutput. Hard timeout 2h, stall guard 15min. ⚠️ Runs locally (Chinese IP) — curl/wget may be blocked on GitHub, npm, etc. Use fetch_webpage (US proxy) for web content. PREFER search_text/search_content/find_files for code search. Only use run_command when dedicated tools CANNOT do the job.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -248,7 +248,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'fetch_webpage',
-            description: 'Fetch and extract text content from a URL. CORS-bypass via curl backend, 15s timeout. Strips HTML tags, returns plain text ≤8000 chars.',
+            description: 'Fetch and extract text content from a URL. ★ US server proxy (bypasses GFW, can access GitHub/Google), falls back to local curl. 15s timeout, strips HTML tags, returns plain text ≤8000 chars. 1 ge per fetch.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -309,14 +309,14 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'analyze_image',
-            description: 'Analyze an existing image. Can: describe content, locate objects with bounding boxes (for clickable image maps), or answer questions about the image. Use when user wants interactive images or needs to understand generated image content.',
+            description: 'Analyze an existing image. Can: describe content (structured 6-field output), locate objects with norm-1000 bounding boxes + confidence (for clickable image maps), or answer questions about the image. Uses MIME magic-byte validation (PNG/JPEG/GIF/WebP). Coordinates are norm-1000 (0-1000 range, not pixels).',
             parameters: {
                 type: 'object',
                 properties: {
                     image: { type: 'string', description: 'Absolute path to the image file to analyze' },
-                    action: { type: 'string', description: 'Analysis action: "describe" (describe content), "locate" (find objects + return bounding boxes), "ask" (free-form question)' },
-                    detail: { type: 'string', description: 'For action=describe: "brief" (1 sentence), "standard" (paragraph), "detailed" (full analysis)' },
-                    targets: { type: 'string', description: 'For action=locate: comma-separated object names to find, e.g. "frog,lotus,leaf"' },
+                    action: { type: 'string', description: 'Analysis action: "describe" (structured content analysis), "locate" (find objects + return norm-1000 bbox + confidence), "ask" (free-form question with optional coordinate annotations)' },
+                    detail: { type: 'string', description: 'For action=describe: "brief" (1 sentence), "standard" (paragraph), "detailed" (full structured analysis with colors/lighting/style)' },
+                    targets: { type: 'string', description: 'For action=locate: comma-separated object names to find, e.g. "frog,lotus,leaf". Returns norm-1000 boxes with confidence scores.' },
                     question: { type: 'string', description: 'For action=ask: the question to ask about the image' }
                 },
                 required: ['image', 'action']
@@ -327,7 +327,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'search_web',
-            description: 'Search the web. Returns up to 20 results with title, URL, and snippet. ALWAYS follow up with fetch_webpage on the most relevant result URLs to extract full data — search_web alone only gives links, not the actual content you need. After search_web: use fetch_webpage for text (docs, articles) or run_command+curl for structured data (APIs, rankings, prices). 5 ge per search.',
+            description: 'Search the web. Runs on US server (SearXNG, can access sites blocked in China like GitHub). Returns up to 20 results with title, URL, and snippet. ALWAYS follow up with fetch_webpage (US proxy) on the most relevant result URLs to extract full data — search_web alone only gives snippets, not content. For structured data (APIs, rankings, prices), use run_command+curl as fallback. 5 ge per search.',
             parameters: {
                 type: 'object',
                 properties: {

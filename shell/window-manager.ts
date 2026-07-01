@@ -127,7 +127,7 @@ export function createWindow(
     });
 
     // ★ CDP 控制台全量捕获 — Log.entryAdded = DevTools 另存为 100% 同源数据
-    _setupCdpConsoleCapture(win).catch(() => {});
+    _setupCdpConsoleCapture(win).catch(() => { });
 
     win.removeMenu();
 
@@ -137,13 +137,14 @@ export function createWindow(
     });
 
     win.on('closed', () => {
-        if (_boundsSaveTimer) { clearTimeout(_boundsSaveTimer); _boundsSaveTimer = null; }
-        // try { lspBridge.removeTarget(win.webContents); } catch { /* ignore */ } // LSP OFF — 2026-06-23
-        const ownedProject = _windowProjectMap.get(win.id);
-        if (ownedProject) {
-            _windowProjectMap.delete(win.id);
-            _projectWindowMap.delete(ownedProject);
-        }
+        try { if (_boundsSaveTimer) { clearTimeout(_boundsSaveTimer); _boundsSaveTimer = null; } } catch (_) { }
+        try {
+            const ownedProject = _windowProjectMap.get(win.id);
+            if (ownedProject) {
+                _windowProjectMap.delete(win.id);
+                _projectWindowMap.delete(ownedProject);
+            }
+        } catch (_) { }
     });
 
     // Window blur → dismiss AI viewport dropdown
@@ -215,9 +216,13 @@ export function createWindow(
 
     // Dev mode extras
     if (extractFlags().isDev) {
-        // ★ DevTools console 按钮注入：用 devtools-opened 事件（可靠，不依赖轮询）
         win.webContents.on('devtools-opened', () => {
-            injectDevToolsConsoleButtons(win.webContents, () => _consoleBuffer.join('\n'), win);
+            const dwc = (win.webContents as any).devToolsWebContents as WebContents;
+            if (dwc && !dwc.isDestroyed()) {
+                const projPath = _windowProjectMap.get(win.id);
+                const name = projPath ? path.basename(projPath) : 'qqq IDE';
+                injectDevToolsConsoleButtons(dwc, win.webContents, () => _consoleBuffer.join('\n'), win, `「🔧」${name}`);
+            }
         });
         win.webContents.openDevTools({ mode: 'detach' });
         win.webContents.on('before-input-event', (ev, input) => {
@@ -274,7 +279,7 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
             // 保持连接活跃（15s heartbeat）
             setInterval(() => {
                 if (ws) {
-                    try { ws.send(JSON.stringify({ id: 0, method: 'Runtime.getIsolateId' })); } catch {}
+                    try { ws.send(JSON.stringify({ id: 0, method: 'Runtime.getIsolateId' })); } catch { }
                 }
             }, 15000);
         });
@@ -327,13 +332,13 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
         ws.on('error', (e: Error) => {
             // CDP 不可用 → 静默降级到 console-message
             // console-message 事件在 createMainWindow 中已注册，自动接管
-            try { if (ws) ws.close(); } catch {}
+            try { if (ws) ws.close(); } catch { }
             ws = null;
         });
 
         // 窗口关闭 → 清理 CDP
         win.on('closed', () => {
-            try { if (ws) ws.close(); } catch {}
+            try { if (ws) ws.close(); } catch { }
             ws = null;
         });
 
