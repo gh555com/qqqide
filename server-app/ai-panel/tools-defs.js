@@ -326,6 +326,21 @@ var TOOL_DEFINITIONS = [
     {
         type: 'function',
         function: {
+            name: 'remove_background',
+            description: 'Remove background from an image, output RGBA transparent PNG. Auto-detects image dimensions and routes to standard (≤2000px) or HD (≤10000px) model. Upload to OSS Shanghai, process via Aliyun imageseg, return transparent PNG.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    image: { type: 'string', description: 'Absolute path to the image file' },
+                    quality: { type: 'string', enum: ['auto', 'standard', 'hd'], description: 'auto=auto-detect based on image size, standard=fast (≤2000px), hd=high quality (≤10000px). Default: auto' }
+                },
+                required: ['image']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
             name: 'search_web',
             description: 'Search the web. Runs on US server (SearXNG, can access sites blocked in China like GitHub). Returns up to 20 results with title, URL, and snippet. ALWAYS follow up with fetch_webpage (US proxy) on the most relevant result URLs to extract full data — search_web alone only gives snippets, not content. For structured data (APIs, rankings, prices), use run_command+curl as fallback. 5 ge per search.',
             parameters: {
@@ -349,7 +364,7 @@ var TOOL_CATEGORY = {
     get_diagnostics: 'READ',
     edit_file: 'WRITE', create_file: 'WRITE', delete_file: 'WRITE', write_file: 'WRITE',
     run_command: 'EFFECT',
-    generate_image: 'EFFECT', analyze_image: 'EFFECT', search_web: 'EFFECT'
+    generate_image: 'EFFECT', analyze_image: 'EFFECT', remove_background: 'EFFECT', search_web: 'EFFECT'
 };
 
 // ---- getTools 兜底 ----

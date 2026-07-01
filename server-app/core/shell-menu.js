@@ -108,6 +108,14 @@ function _showMenuRecentDropdown(leftPx, topPx) {
   // ★ 先查数据，有记录才弹列表
   bridge.state.get('qqqide', 'recent_folders').then(function (data) {
     var folders = (data && Array.isArray(data)) ? data.slice(0, 20) : [];
+    // 去重：同 path 只保留最靠前的一条
+    var seen = {};
+    folders = folders.filter(function (f) {
+      var p = (f.path || '').replace(/\\/g, '/').replace(/\/$/, '');
+      if (seen[p]) return false;
+      seen[p] = true;
+      return true;
+    });
     if (!folders || folders.length === 0) return; // 无记录 → 不弹
 
     var dd = document.createElement('div');
@@ -124,7 +132,7 @@ function _showMenuRecentDropdown(leftPx, topPx) {
     folders.forEach(function (f) {
       var row = document.createElement('div');
       row.style.cssText =
-        'padding:8px 12px; margin:0; line-height:1.3; font-size:12px; color:var(--text-primary); ' +
+        'padding:14px 12px; margin:0; line-height:1.3; font-size:13px; color:var(--text-primary); ' +
         'display:flex; align-items:center; gap:6px; white-space:nowrap; cursor:default;';
 
       var icon = document.createElement('span');
@@ -259,8 +267,8 @@ function _shellOpenMenubarPopup(anchorEl, item) {
     }
     var row = document.createElement('div');
     row.style.cssText =
-      'display:flex; align-items:center; padding:5px 14px; margin:0; line-height:1.3; ' +
-      'font-size:12px; color:var(--text-primary); ' +
+      'display:flex; align-items:center; padding:11px 14px; margin:0; line-height:1.3; ' +
+      'font-size:13px; color:var(--text-primary); ' +
       'white-space:nowrap; user-select:none; cursor:default;';
     var lab = document.createElement('span');
     lab.textContent = (s.i18n && window._i) ? window._i(s.i18n, s.label) : (s.label || '');

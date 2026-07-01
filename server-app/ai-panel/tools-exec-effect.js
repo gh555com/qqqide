@@ -674,6 +674,95 @@ async function executeAnalyzeImage(args) {
 // search_web — 经 AiGateway 统一代理
 // ============================================================
 
+async function executeRemoveBackground(args) {
+    var bridge = getBridge();
+    if (!bridge) return 'Error: bridge not available';
+
+    var image = args.image || '';
+    if (!image.trim()) return 'Error: image path is required';
+
+    // ★ 经 AiGateway 统一代理
+    var token = (function () {
+        try {
+            var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+            if (ag && ag._token) return ag._token;
+        } catch (_) {}
+        return '';
+    })();
+    if (!token) return 'Error: no auth token';
+
+    var quality = args.quality || 'auto';
+
+    try {
+        // 1. 读取图片 → base64
+        var b64Result = await bridge.qz.spawn({
+            cmd: 'bash',
+            args: ['-c', 'base64 -w0 "' + image.replace(/\\/g, '/') + '" 2>/dev/null || base64 "' + image.replace(/\\/g, '/') + '" 2>/dev/null'],
+            timeout: 15000
+        });
+        var b64 = (b64Result.stdout || '').replace(/\s/g, '');
+        if (!b64) return 'Error: could not read or encode image: ' + image;
+
+        // 2. 调用 AiGateway segment API
+        if (typeof AiGateway === 'undefined' || !AiGateway.segmentSubmit) {
+            // 直接 fetch Go API
+            var segmentUrl = 'https://direct-cn.gh555.com/api/v3/ai/segment';
+            var resp = await fetch(segmentUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ image: b64, quality: quality })
+            });
+            var data = await resp.json();
+            if (!data || !data.image_url) {
+                return 'Remove background failed: ' + (data.error || JSON.stringify(data));
+            }
+            // ★ 累加显示用计费
+            if (data.ge_cost && typeof _addToolWgeCost === 'function') {
+                _addToolWgeCost(data.ge_cost);
+            }
+
+            // 3. 下载结果图片到本地
+            var outDir = '';
+            try {
+                if (typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
+                    outDir = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/genera';
+                }
+            } catch (_) {}
+            if (outDir) {
+                try { await bridge.fs.mkdir(outDir); } catch (_) { }
+            } else {
+                outDir = '.';
+            }
+
+            // 文件名
+            var imgHash = b64.slice(0, 8) + Date.now().toString(36);
+            var fileName = 'remove_bg_' + imgHash + '.png';
+            var outPath = outDir + '/' + fileName;
+
+            // curl 下载
+            var dlResult = await bridge.qz.spawn({
+                cmd: 'curl',
+                args: ['-s', '-o', outPath, '-L', data.image_url],
+                timeout: 30000
+            });
+
+            return 'Background removed successfully. Output: ![](file:///' + outPath.replace(/\\/g, '/') + ')';
+        } else {
+            // 经 AiGateway
+            var result = await AiGateway.segmentSubmit({ image: b64, quality: quality, token: token });
+            if (!result || !result.image_url) {
+                return 'Remove background failed: ' + (result.error || 'no result');
+            }
+            if (result.ge_cost && typeof _addToolWgeCost === 'function') {
+                _addToolWgeCost(result.ge_cost);
+            }
+            return 'Background removed. Result: ' + result.image_url;
+        }
+    } catch (err) {
+        return 'Error removing background: ' + (err.message || err);
+    }
+}
+
 async function executeSearchWeb(args) {
     var query = args.query || '';
     if (!query.trim()) return 'Error: query is required';

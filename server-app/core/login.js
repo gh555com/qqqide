@@ -36,6 +36,26 @@
   var _loginGen = 0;            // 代际计数器：抑制过期 toast
 
   var _bootInfo = null;
+  var _flagCssLoaded = false;
+
+  // ★ 加载 flag-icons CSS（flag-icons@7.2.3，SVG 国旗，跨平台兼容）
+  function _loadFlagCss() {
+    if (_flagCssLoaded) return;
+    _flagCssLoaded = true;
+    // ★ 用 fetch + 内联注入，绕过 CSP style-src 限制（无需改 CSP）
+    var FLAG_CSS_URL = 'https://cdn.jsdelivr.net/npm/flag-icons@7.2.3/css/flag-icons.min.css';
+    fetch(FLAG_CSS_URL).then(function (r) {
+      if (!r.ok) { _flagCssLoaded = false; return; }
+      return r.text();
+    }).then(function (css) {
+      if (!css) { _flagCssLoaded = false; return; }
+      var style = document.createElement('style');
+      style.textContent = css;
+      document.head.appendChild(style);
+    }).catch(function () {
+      _flagCssLoaded = false;  // 静默降级：无国旗，不影响核心功能
+    });
+  }
 
   function _buildDeviceName() {
     var info = _bootInfo;
@@ -57,8 +77,9 @@
     return hex;
   }
 
-  function _setAuthData(token, phone) {
+  function _setAuthData(token, phone, countryIso2) {
     _authData = { token: token, phone: phone, device_name: _buildDeviceName(), ts: Date.now() };
+    if (countryIso2) _authData.countryIso2 = countryIso2;
     _persistAuthAsync();
   }
 
@@ -219,49 +240,86 @@
     }
   }
 
-  // ═══ LV 3 层动画引擎 ═══
-  // 中层 (_$lvGlow): #ffffdd 象牙白，z-index:1
+  // ═══ LV 3 层动画引擎（rAF 驱动，精确时长 + 保证 1px 间隙） ═══
+  // 中层 (_$lvGlow): #ffffdd 象牙白，瞬移，z-index:1
   // 顶层 (_$lvSolid): 追赶中 #8a6410，追上后 #c4b187，z-index:2
   var _$lvGlow = null;
   var _$lvSolid = null;
   var _lvPrevFloor = -1;
+  var _lvAnim = null;      // { startTime, startPct, targetPct, duration, gen }
+  var _lvAnimFrame = null; // rAF id
   var _lvChaseGen = 0;
+  var TRACK_PX = 60;       // 血条总宽 60px
 
-  // 中层瞬间跳到目标
+  // 中层瞬移
   function _lvSnapGlow(pct) {
     if (!_$lvGlow) return;
     _$lvGlow.style.width = pct + '%';
   }
 
-  // 顶层追赶 → 使用 rAF 保证 transition 可靠重启
+  // 顶层 rAF 追赶（每间 house 独立调用）
   function _lvChaseSolid(targetPct, isLevelUp) {
     if (!_$lvSolid) return;
     var gen = ++_lvChaseGen;
-    var dur = isLevelUp ? '0.5s' : '10s';
-    var ease = 'linear';
+    var now = performance.now();
+    var baseDuration = isLevelUp ? 500 : 10000;
 
-    // ① 杀死旧过渡，冻结在当前计算位置
-    _$lvSolid.style.transition = 'none';
-    _$lvSolid.offsetHeight;  // force reflow
+    // 计算当前顶层实际宽度（px）
+    var curPx = parseFloat(_$lvSolid.style.width) || 0;
 
-    // ② 换追赶色
+    // 如果已有动画且代数相邻 → 延长本次追赶（不重置起点）
+    if (_lvAnim && _lvAnim.gen === gen - 1) {
+      var elapsed = now - _lvAnim.startTime;
+      var remain = Math.max(0, _lvAnim.duration - elapsed);
+      // 新时长 = max(基础时长, 剩余时长) —— 永不缩短
+      baseDuration = Math.max(baseDuration, remain);
+      // 起点用当前动画位置
+      curPx = _lvAnim.startPct + (_lvAnim.targetPct - _lvAnim.startPct) * Math.min(elapsed / _lvAnim.duration, 1);
+    }
+
+    // 换追赶色（百分百覆盖旧色）
     _$lvSolid.style.background = '#8a6410';
+    _$lvSolid.style.transition = 'none';
 
-    // ③ rAF 后启动新过渡（保证浏览器已处理完 transition:none）
-    requestAnimationFrame(function () {
-      if (!_$lvSolid) return;
-      if (gen !== _lvChaseGen) return;  // 已有更新一代追赶，放弃
-      _$lvSolid.style.transition = 'width ' + dur + ' ' + ease;
-      _$lvSolid.style.width = targetPct + '%';
-    });
+    _lvAnim = { startTime: now, startPct: curPx, targetPct: targetPct, duration: baseDuration, gen: gen };
+
+    if (!_lvAnimFrame) {
+      _lvAnimFrame = requestAnimationFrame(_lvTick);
+    }
   }
 
-  // transitionend → 追上
-  function _onLvSolidTransitionEnd(e) {
-    if (e.propertyName !== 'width') return;
-    if (!_$lvSolid) return;
-    _$lvSolid.style.background = '#c4b187';
-    _$lvSolid.style.transition = 'none';
+  // rAF 帧
+  function _lvTick() {
+    _lvAnimFrame = null;
+    if (!_lvAnim || !_$lvSolid) return;
+
+    var a = _lvAnim;
+    var now = performance.now();
+    var elapsed = now - a.startTime;
+    var progress = Math.min(elapsed / a.duration, 1);
+
+    // 线性插值
+    var curPct = a.startPct + (a.targetPct - a.startPct) * progress;
+
+    // ★ 保证至少 1px 间隙（60px 轨 = 1.667%），除非已到满时
+    var gapPct = a.targetPct - curPct;
+    var gapPx = gapPct / 100 * TRACK_PX;
+    if (gapPx < 1 && progress < 1) {
+      curPct = a.targetPct - (1 / TRACK_PX * 100);
+    }
+
+    _$lvSolid.style.width = Math.max(0, curPct) + '%';
+
+    if (progress >= 1) {
+      // ★ 追赶结束
+      _$lvSolid.style.background = '#c4b187';
+      _lvAnim = null;
+    } else if (_lvAnim) {
+      // 检查是否被新 billing 覆盖（gen 变了说明 _lvTick 已重启）
+      if (_lvAnim.gen === a.gen) {
+        _lvAnimFrame = requestAnimationFrame(_lvTick);
+      }
+    }
   }
 
   // ★ 动画入口（每间 house 直接调用）
@@ -271,9 +329,9 @@
     if (_$lvLevel) _$lvLevel.textContent = 'Lv' + lvFloor;
     var isLevelUp = (_lvPrevFloor >= 0 && lvFloor > _lvPrevFloor);
     _lvPrevFloor = lvFloor;
-    // ① 中层直达
+    // ① 中层瞬移
     _lvSnapGlow(lvPct);
-    // ② 顶层追赶
+    // ② 顶层 rAF 追赶
     _lvChaseSolid(lvPct, isLevelUp);
     if (_$ldrBtn) _$ldrBtn.style.display = '';
   }
@@ -397,7 +455,7 @@
           _unsubPush = window.qqqideBridge.auth.onAuthPush(function (data) {
             if (pushDone || !data || !data.token) return;
             pushDone = true;
-            _setAuthData(data.token, data.phone || '');
+            _setAuthData(data.token, data.phone || '', data.country_iso2 || '');
             _notifyStateChange();
           });
         }
@@ -424,7 +482,7 @@
           var resp = await _httpsGet('/gaea/qqqide/auth/poll?session=' + sessionId +
             '&device_name=' + encodeURIComponent(deviceName));
           if (resp && resp.ok && resp.token) {
-            _setAuthData(resp.token, resp.phone || '');
+            _setAuthData(resp.token, resp.phone || '', resp.country_iso2 || '');
             _notifyStateChange();
             pushDone = true;
             break;
@@ -590,30 +648,51 @@
     _$phoneBtn = document.createElement('button');
     _$phoneBtn.className = 'qqq-login-btn qqq-phone-btn';
     _$phoneBtn.title = '已登录 — 点击打开菜单';
-    _$phoneBtn.style.cssText = NO_DRAG + 'display:none;';
+    _$phoneBtn.style.cssText = NO_DRAG + 'display:none;position:relative;';
     _$phoneBtn.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
       var ex = document.querySelector('.qqq-phone-dropdown');
       if (ex) { ex.remove(); return; }
       var dd = document.createElement('div');
       dd.className = 'qqq-phone-dropdown';
-      dd.style.cssText = 'position:absolute;top:100%;right:0;margin-top:4px;background:var(--bg-secondary,#252525);border:1px solid var(--border-color,#444);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,.4);z-index:99999;min-width:120px;padding:4px 0;';
-      var li = document.createElement('div');
-      li.className = 'qqq-phone-dropdown-item';
-      li.textContent = '退出登录';
-      li.style.cssText = 'padding:8px 16px;cursor:pointer;font-size:13px;color:var(--text-primary,#e8e8e8);white-space:nowrap;transition:background .15s;';
-      li.addEventListener('mouseenter', function () { li.style.background = 'var(--hover-bg,#333)'; });
-      li.addEventListener('mouseleave', function () { li.style.background = ''; });
-      li.addEventListener('click', function (ev) { ev.stopPropagation(); dd.remove(); api.logout(); });
-      dd.appendChild(li);
-      _$phoneBtn.style.position = 'relative';
+      // ★ 配色与网站 viewer 1.5 区一致：Solarized 主题变量 + 虚线边框
+      dd.style.cssText = 'position:absolute;top:calc(100% + 2px);right:0;background:var(--background-color);border:2px dashed var(--border-color);border-radius:8px 0 6px 6px;box-shadow:0 6px 20px rgba(0,0,0,0.15);z-index:99999;min-width:140px;padding:6px 0;';
+      // GE 流水
+      var flow = document.createElement('a');
+      flow.className = 'qqq-phone-dropdown-item';
+      flow.textContent = 'GE 流水';
+      flow.href = 'https://gh555.com/viewer/geflow';
+      flow.target = '_blank';
+      flow.style.cssText = 'display:block;padding:8px 16px;cursor:pointer;font-size:13px;color:var(--text-primary);white-space:nowrap;text-decoration:none;transition:background .12s;';
+      flow.addEventListener('mouseenter', function () { flow.style.background = 'var(--gold-hover-bg)'; });
+      flow.addEventListener('mouseleave', function () { flow.style.background = ''; });
+      flow.addEventListener('click', function () { dd.remove(); });
+      dd.appendChild(flow);
+      // 分隔线
+      var div = document.createElement('div');
+      div.style.cssText = 'height:1px;background:var(--border-color);margin:4px 8px;';
+      dd.appendChild(div);
+      // 退出登录
+      var logout = document.createElement('div');
+      logout.className = 'qqq-phone-dropdown-item';
+      logout.textContent = '退出登录';
+      logout.style.cssText = 'padding:8px 16px;cursor:pointer;font-size:13px;color:var(--red);white-space:nowrap;transition:background .12s;';
+      logout.addEventListener('mouseenter', function () { logout.style.background = 'var(--gold-hover-bg)'; });
+      logout.addEventListener('mouseleave', function () { logout.style.background = ''; });
+      logout.addEventListener('click', function (ev) { ev.stopPropagation(); dd.remove(); api.logout(); });
+      dd.appendChild(logout);
       _$phoneBtn.appendChild(dd);
-      setTimeout(function () {
-        var closer = function (ev2) {
-          if (!dd.contains(ev2.target) && ev2.target !== _$phoneBtn) { dd.remove(); document.removeEventListener('click', closer); }
-        };
-        document.addEventListener('click', closer);
-      }, 0);
+      // ★ mousedown capture 阶段：点击外部立即关闭（比 click 更快，不受 stopPropagation 影响）
+      var closer = function (ev2) {
+        if (!dd.contains(ev2.target) && ev2.target !== _$phoneBtn) {
+          dd.remove();
+          document.removeEventListener('mousedown', closer, true);
+        }
+      };
+      // requestAnimationFrame 确保当前 mousedown 不会立即关闭刚打开的菜单
+      requestAnimationFrame(function () {
+        document.addEventListener('mousedown', closer, true);
+      });
     });
 
     // 插入: [🏆] [LV] [GE] [手机号] [登录] → refNode
@@ -628,7 +707,14 @@
     if (_$loginBtn) _$loginBtn.style.display = isLoggedIn ? 'none' : '';
     if (_$phoneBtn) {
       if (isLoggedIn && phoneTail) {
-        _$phoneBtn.textContent = phoneTail;
+        // ★ 国旗 + 手机号（flag-icons CSS 库，与网站 viewer 1.5 区统一方案）
+        var cc = (_authData && _authData.countryIso2) ? _authData.countryIso2.toLowerCase() : '';
+        _loadFlagCss();
+        if (cc) {
+          _$phoneBtn.innerHTML = '<span class="fi fi-' + cc + '" style="margin-right:5px;vertical-align:middle;"></span>' + phoneTail;
+        } else {
+          _$phoneBtn.textContent = phoneTail;
+        }
         _$phoneBtn.style.display = 'inline-flex';
       } else {
         _$phoneBtn.style.display = 'none';
@@ -655,6 +741,7 @@
     getAuthToken: function () { return (_authData && _authData.token) ? _authData.token : ''; },
     getPhone: function () { return (_authData && _authData.phone) ? _authData.phone : ''; },
     getPhoneTail: function () { var p = api.getPhone(); return p ? p.slice(-4) : ''; },
+    getCountryIso2: function () { return (_authData && _authData.countryIso2) ? _authData.countryIso2 : ''; },
     getBalanceGe: function () { return _balanceGe; },
     getLvData: function () { return _lvData; },
     login: function () { return _doLogin().then(function (r) { return (r && r._cancelled) ? null : r; }); },

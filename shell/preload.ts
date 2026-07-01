@@ -15,8 +15,8 @@ const QQQ = {
 
     // ---- auth push — 浏览器登录成功通过 qqqide:// 协议推 token（2026-06-29） ----
     auth: {
-        onAuthPush: (cb: (data: { token: string; phone: string }) => void) => {
-            const handler = (_e: any, data: { token: string; phone: string }) => { try { cb(data); } catch (err) { console.warn('[auth.onAuthPush]', err); } };
+onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string }) => void) => {
+            const handler = (_e: any, data: { token: string; phone: string; country_iso2?: string }) => { try { cb(data); } catch (err) { console.warn('[auth.onAuthPush]', err); } };
             ipcRenderer.on('qqq-ide-auth', handler);
             return () => ipcRenderer.removeListener('qqq-ide-auth', handler);
         },

@@ -340,6 +340,31 @@ async function _restoreAgentFromStore(questId, ag) {
             }
         }
 
+        // ★ 恢复 _billingSeq：扫描所有楼层 houses，取最大 billingSeq（重启后累加不中断）
+        ag._billingSeq = 0;
+        for (var _bsfi = 0; _bsfi < allFloors.length; _bsfi++) {
+            var _bsfHouses = allFloors[_bsfi].data && allFloors[_bsfi].data.houses;
+            if (_bsfHouses && _bsfHouses.length) {
+                for (var _bshi = 0; _bshi < _bsfHouses.length; _bshi++) {
+                    var _bs = _bsfHouses[_bshi].billingSeq;
+                    if (_bs > ag._billingSeq) ag._billingSeq = _bs;
+                }
+            }
+        }
+
+
+        // ★ 恢复 _passbyBase：从上一已完成楼层的 passby 快照取基线
+        ag._passbyBaseHouses = 0;
+        ag._passbyBaseWge = 0;
+        for (var _pbfi = 0; _pbfi < allFloors.length; _pbfi++) {
+            var _pbData = allFloors[_pbfi].data;
+            if (_pbData && allFloors[_pbfi].floorNum === ag._currentFloorNum - 1) {
+                if (typeof _pbData.passbyHouses === 'number') ag._passbyBaseHouses = _pbData.passbyHouses;
+                if (typeof _pbData.passbyWge === 'number') ag._passbyBaseWge = _pbData.passbyWge;
+                break;
+            }
+        }
+        ag._passbyBaseFloorNum = ag._passbyBaseHouses > 0 ? (ag._currentFloorNum - 1) : 0;
         // ★ 重建 _floorMeta（未可变楼层元数据）
         ag._floorMeta = {};
         for (var _fmfi = 0; _fmfi < allFloors.length; _fmfi++) {

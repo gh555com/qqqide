@@ -140,6 +140,9 @@ var AgentLoop = (function () {
         this._lastBilling = null;        // { wgeCost, model, usage: {prompt_tokens,completion_tokens,cached_tokens,non_cached_tokens}, freeWindow, requestId }
         this._billingSeq = 0;            // 全局 billing 事件序号（跨 floor 递增）
         this._billingDebug = false;      // 详细记账日志开关（默认关，减少噪音）
+        this._passbyBaseHouses = 0;      // ★ passby 基线：已完成楼层的 house 总数
+        this._passbyBaseWge = 0;         // ★ passby 基线：已完成楼层的 wge 总消费
+        this._passbyBaseFloorNum = 0;    // ★ 已推进至的楼层（防重复累加）
         // ★ 上下文快照：诊断模型缓存命中/未命中根因
         this._lastSentSnapshot = null;   // { msgCount, prefixHash, firstMsgKeys, lastMsgKeys }
         this._lastCacheDiag = null;      // { prevHash, currHash, firstDiffIdx, diffReason, prevMsgKeys, currMsgKeys }
@@ -560,6 +563,7 @@ var AgentLoop = (function () {
                                 _aiDivC._clockCost.style.display = 'inline';
                                 _aiDivC._clockCost._houses = self._houses;
                                 _aiDivC._clockCost._floorNum = self._currentFloorNum;
+                                _aiDivC._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0) };
                             }
                             // ★ 压缩耗时归入 AI 时间（饼图绿色），而非 other（黄色）
                             if (self._floorTiming) {
@@ -753,6 +757,7 @@ var AgentLoop = (function () {
                         _aiDiv5._clockCost.style.display = 'inline';
                         _aiDiv5._clockCost._houses = self._houses;
                         _aiDiv5._clockCost._floorNum = self._currentFloorNum;
+                        _aiDiv5._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0) };
                         if (self._floorFree) {
                             _aiDiv5._clockCost.style.color = '#859900';
                         } else {

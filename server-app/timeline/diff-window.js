@@ -31,7 +31,7 @@
     var _editing = false;
     var _editDirty = false;
     var _editOriginalContent = '';
-    var _editSnapshotBase = '';;
+    var _editSnapshotBase = '';
     var _editSnapshotSeq = 0;
 
     var $titleInput = document.getElementById('title-input');

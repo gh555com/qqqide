@@ -10,13 +10,13 @@ import * as path from 'path';
 import * as fs from 'fs';
 
 let _proc: ChildProcess | null = null;
-let _pending: Map<number, { resolve: (r: any) => void; reject: (e: any) => void }> = new Map();
+let _pending: Map<number, { resolve: (r: any) => void; reject: (e: any) => void; timer: NodeJS.Timeout }> = new Map();
 let _nextId = 1;
-let _readyPromise: Promise<void> | null = null;
-let _buffer = '';
+let _ready = false;
+let _readyError: string | null = null;
+let _buf = '';
 
 function _resolvePyPath(portableRoot: string): string {
-    // 同 ipc-state.ts getPythonExe 逻辑
     const bundled = path.join(portableRoot, 'engines', 'python', 'python.exe');
     if (fs.existsSync(bundled)) return bundled;
     const devPy = 'E:\\s\\d\\python3810\\python.exe';
@@ -30,56 +30,43 @@ export function startPyBroker(portableRoot: string): void {
     const pyExe = _resolvePyPath(portableRoot);
     const scriptPath = path.join(__dirname, 'py-broker.py');
 
+    console.log('[py-broker] starting: py=' + pyExe + ' script=' + scriptPath);
+
     if (!fs.existsSync(scriptPath)) {
-        console.log('[py-broker] script not found:', scriptPath);
+        console.log('[py-broker] FATAL: script not found:', scriptPath);
+        _readyError = 'script not found: ' + scriptPath;
         return;
     }
 
-    _proc = spawn(pyExe, ['-u', scriptPath], {
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
-        windowsHide: true,
-    });
+    try {
+        _proc = spawn(pyExe, ['-u', scriptPath], {
+            stdio: ['pipe', 'pipe', 'pipe'],
+            env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
+            windowsHide: true,
+        });
+    } catch (e: any) {
+        console.log('[py-broker] FATAL: spawn failed:', e.message || e);
+        _readyError = 'spawn failed: ' + (e.message || e);
+        return;
+    }
 
-    _readyPromise = new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-            reject(new Error('py-broker startup timeout'));
-        }, 10000);
+    console.log('[py-broker] spawned pid=' + _proc.pid);
 
-        const onData = (chunk: Buffer) => {
-            _buffer += chunk.toString('utf-8');
-            const nl = _buffer.indexOf('\n');
-            if (nl === -1) return;
-            const line = _buffer.slice(0, nl);
-            _buffer = _buffer.slice(nl + 1);
+    _proc.stdout!.on('data', (chunk: Buffer) => {
+        _buf += chunk.toString('utf-8');
+        let nl: number;
+        while ((nl = _buf.indexOf('\n')) !== -1) {
+            const line = _buf.slice(0, nl);
+            _buf = _buf.slice(nl + 1);
             try {
                 const msg = JSON.parse(line);
                 if (msg.type === 'ready') {
-                    clearTimeout(timeout);
-                    _proc!.stdout!.removeListener('data', onData);
-                    resolve();
-                }
-            } catch { /* wait for next line */ }
-        };
-
-        _proc!.stdout!.on('data', onData);
-        _proc!.on('error', (e) => { clearTimeout(timeout); reject(e); });
-        _proc!.on('exit', (code) => {
-            clearTimeout(timeout);
-            if (code !== 0) reject(new Error(`py-broker exited code=${code}`));
-        });
-    });
-
-    _proc.stdout!.on('data', (chunk: Buffer) => {
-        _buffer += chunk.toString('utf-8');
-        let nl: number;
-        while ((nl = _buffer.indexOf('\n')) !== -1) {
-            const line = _buffer.slice(0, nl);
-            _buffer = _buffer.slice(nl + 1);
-            try {
-                const msg = JSON.parse(line);
-                if (msg.id && _pending.has(msg.id)) {
+                    _ready = true;
+                    _readyError = null;
+                    console.log('[py-broker] ready, platform=' + msg.platform);
+                } else if (msg.id && _pending.has(msg.id)) {
                     const p = _pending.get(msg.id)!;
+                    clearTimeout(p.timer);
                     _pending.delete(msg.id);
                     p.resolve(msg);
                 }
@@ -88,62 +75,59 @@ export function startPyBroker(portableRoot: string): void {
     });
 
     _proc.stderr!.on('data', (chunk: Buffer) => {
-        // py-broker stderr 转发到主进程 console
-        console.log('[py-broker]', chunk.toString('utf-8').trim());
+        console.log('[py-broker:stderr]', chunk.toString('utf-8').trim());
     });
 
-    _proc.on('exit', (code) => {
-        console.log(`[py-broker] exited code=${code}`);
+    _proc.on('error', (e: Error) => {
+        console.log('[py-broker] process error:', e.message || e);
+        _readyError = 'process error: ' + (e.message || e);
+    });
+
+    _proc.on('exit', (code, signal) => {
+        console.log('[py-broker] exited code=' + code + ' signal=' + signal);
+        _ready = false;
+        _readyError = 'exited code=' + code;
         _proc = null;
-        _readyPromise = null;
-        // 拒绝所有挂起的请求
         for (const [id, p] of _pending) {
+            clearTimeout(p.timer);
             p.reject(new Error('py-broker exited'));
         }
         _pending.clear();
     });
-
-    console.log('[py-broker] spawned pid=' + _proc.pid);
 }
 
 function _sendCommand(action: string, params: Record<string, any> = {}): Promise<any> {
     return new Promise((resolve, reject) => {
+        if (!_ready) {
+            reject(new Error('py-broker not ready: ' + (_readyError || 'unknown')));
+            return;
+        }
         if (!_proc || _proc.killed) {
             reject(new Error('py-broker not running'));
             return;
         }
         const id = _nextId++;
-        _pending.set(id, { resolve, reject });
+        const timer = setTimeout(() => {
+            _pending.delete(id);
+            reject(new Error('py-broker timeout: ' + action));
+        }, 10000);
+
+        _pending.set(id, { resolve, reject, timer });
 
         const cmd = JSON.stringify({ action, id, ...params });
-        try {
-            _proc.stdin!.write(cmd + '\n');
-        } catch (e) {
-            _pending.delete(id);
-            reject(e);
-        }
-
-        // 超时
-        setTimeout(() => {
-            if (_pending.has(id)) {
+        _proc.stdin!.write(cmd + '\n', (err: any) => {
+            if (err) {
+                clearTimeout(timer);
                 _pending.delete(id);
-                reject(new Error(`py-broker timeout: ${action}`));
+                reject(err);
             }
-        }, 10000);
+        });
     });
 }
 
-/** 等待 broker 就绪 */
-export function waitPyBroker(): Promise<void> {
-    if (_readyPromise) return _readyPromise;
-    return Promise.reject(new Error('py-broker not started'));
-}
-
-/** 改名 DevTools 窗口。mainWin 用于取 HWND 和 projectPath。 */
+/** 改名 DevTools 窗口 */
 export async function renameDevToolsViaBroker(mainWin: BrowserWindow, projName: string): Promise<void> {
     try {
-        await waitPyBroker();
-
         // 取主窗口 HWND（Windows 用 GW_OWNER 精确匹配）
         let mainHwnd = '0';
         try {
@@ -161,11 +145,13 @@ export async function renameDevToolsViaBroker(mainWin: BrowserWindow, projName: 
             title,
         });
 
-        if (!result.ok) {
-            console.log('[py-broker] rename failed:', result.error);
+        if (result.ok) {
+            console.log('[py-broker] renameDevTools OK: renamed=' + (result.renamed || 1) + ' title=' + title);
+        } else {
+            console.log('[py-broker] renameDevTools FAILED:', result.error);
         }
     } catch (e: any) {
-        console.log('[py-broker] rename error:', e.message || e);
+        console.log('[py-broker] renameDevTools ERROR:', e.message || e);
     }
 }
 
@@ -179,3 +165,6 @@ export function stopPyBroker(): void {
         _proc = null;
     }, 2000);
 }
+
+/** 简单检查：broker 是否可用 */
+export function isPyBrokerReady(): boolean { return _ready; }
