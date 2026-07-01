@@ -40,6 +40,7 @@ function _saveAgentFloor(ag, questId, force) {
             lastUserInput: ag._lastUserInput,
             passbyHouses: (ag._passbyBaseHouses || 0) + (ag._houses ? ag._houses.length : 0),
             passbyWge: (ag._passbyBaseWge || 0) + (ag._floorCostWge || 0),
+            passbyTime: Date.now() + (ag._serverDrift || 0),
             createdAt: Date.now()
         };
     }
@@ -205,16 +206,25 @@ function _buildBillingTable(houses, passby) {
             + '</tr>';
     }
     html += '</tbody></table>';
-    // ★ passby 行：表格下方汇总  如 "q35.f42 passby: 256houses、18943 wge ≈ 1.9 ge"
+    // ★ passby 行：表格下方汇总  如 "q35.f42 passby: 256houses、18943 wge ≈ 1.9 ge  at 2026-06-29 15:42:03"
     if (passby && passby.questId) {
         var _pbHouses = passby.houses || 0;
         var _pbWge = passby.wge || 0;
         var _pbGe = (_pbWge / 10000).toFixed(1);
-        html += '<div class="billing-passby" style="margin-top:8px;font-size:13px;color:var(--text-secondary,#888)">'
-            + passby.questId + '.f' + (passby.floorNum || 0)
+        var _qNum = passby.questId.replace('q', '');
+        var _fNum = passby.floorNum || 0;
+        // ★ 时间：历史楼层用冻结的 passbyTime，活楼用点击时服务器校准时间
+        var _pbServerMs = passby.time || (Date.now() + (passby.drift || 0));
+        var _pbDate = new Date(_pbServerMs);
+        var _pbPad = function (n) { return String(n).padStart(2, '0'); };
+        var _pbTimeStr = _pbDate.getFullYear() + '-' + _pbPad(_pbDate.getMonth() + 1) + '-' + _pbPad(_pbDate.getDate())
+            + ' ' + _pbPad(_pbDate.getHours()) + ':' + _pbPad(_pbDate.getMinutes()) + ':' + _pbPad(_pbDate.getSeconds());
+        html += '<div class="billing-passby" style="margin-top:8px;font-size:13px;color:var(--text-secondary,#888);text-align:center">'
+            + 'q<span style="color:#cb4b16">' + _qNum + '</span>.f<span style="color:#cb4b16">' + _fNum + '</span>'
             + ' passby: ' + _pbHouses + 'houses'
             + '\u3001' + _pbWge + ' wge'
             + ' \u2248 ' + _pbGe + ' ge'
+            + ' <span style="color:var(--text-tertiary,#666)"> at ' + _pbTimeStr + '</span>'
             + '</div>';
     }
     return html;

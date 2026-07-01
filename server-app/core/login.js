@@ -36,25 +36,28 @@
   var _loginGen = 0;            // 代际计数器：抑制过期 toast
 
   var _bootInfo = null;
-  var _flagCssLoaded = false;
+  var _flagCssReady = false;
+  var _flagCssPending = null;  // Promise | null
 
-  // ★ 加载 flag-icons CSS（flag-icons@7.2.3，SVG 国旗，跨平台兼容）
+  // ★ 预加载 flag-icons CSS（fetch→内联注入，绕过 CSP style-src）
   function _loadFlagCss() {
-    if (_flagCssLoaded) return;
-    _flagCssLoaded = true;
-    // ★ 用 fetch + 内联注入，绕过 CSP style-src 限制（无需改 CSP）
+    if (_flagCssReady) return Promise.resolve(true);
+    if (_flagCssPending) return _flagCssPending;
     var FLAG_CSS_URL = 'https://cdn.jsdelivr.net/npm/flag-icons@7.2.3/css/flag-icons.min.css';
-    fetch(FLAG_CSS_URL).then(function (r) {
-      if (!r.ok) { _flagCssLoaded = false; return; }
+    _flagCssPending = fetch(FLAG_CSS_URL).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.text();
     }).then(function (css) {
-      if (!css) { _flagCssLoaded = false; return; }
       var style = document.createElement('style');
       style.textContent = css;
       document.head.appendChild(style);
+      _flagCssReady = true;
+      return true;
     }).catch(function () {
-      _flagCssLoaded = false;  // 静默降级：无国旗，不影响核心功能
+      _flagCssReady = true;  // 静默降级，不再重试
+      return false;
     });
+    return _flagCssPending;
   }
 
   function _buildDeviceName() {
@@ -198,44 +201,38 @@
       var data = await resp.json();
       if (data && data.ok) {
         _lvData = data;
-        var wasNull = (_lvAccWge === null);
+        var firstTime = (_lvAccWge === null);
         var WL = 10 * 10000;
         var servFloor = data.level_floor != null ? data.level_floor : 0;
         var servPct = Math.min(data.progress_pct || 0, 100);
         var servWge = servFloor * WL + (servPct / 100) * WL;
-        // 只前进不后退（防 DB 未提交导致倒退）
+        // 只前进不后退
         if (_lvAccWge === null || servWge > _lvAccWge) {
           _lvAccWge = servWge;
-          // ★ 服务器基准比本地高 → 静默同步中层，不动顶层追赶
-          if (_$lvGlow) { _$lvGlow.style.width = servPct + '%'; }
-          if (_$lvLevel) _$lvLevel.textContent = 'Lv' + servFloor;
-          _lvPrevFloor = servFloor;
         }
         _lvLastGe = data.total_consumed_ge || '';
+        // ★ 首次启动：snap 两层到服务器基准（不播动画，顶层盖住中层）
+        if (firstTime) {
+          _lvDisplaySnap(servPct, servFloor);
+        }
         if (_$lvBar) _$lvBar.style.display = 'inline-flex';
-        // ★ 首次初始化：同步两层到服务器基准
-        if (wasNull) { _lvSyncFromServer(); }
+        if (_$lvLevel && servFloor >= 0) _$lvLevel.textContent = 'Lv' + servFloor;
         if (_$ldrBtn) _$ldrBtn.style.display = '';
       }
     } catch (e) { /* silent */ }
   }
 
-  function _lvSyncFromServer() {
-    // ★ 登录/恢复时一次性同步：中层+顶层直接定位，不播动画
-    var d = _lvData;
-    if (!d || !d.level) return;
-    var WL = 10 * 10000;
-    var servFloor = d.level_floor != null ? d.level_floor : 0;
-    var servPct = Math.min(d.progress_pct || 0, 100);
-    _lvAccWge = servFloor * WL + (servPct / 100) * WL;
+  // ★ 快照定位：中层+顶层同时到位，零过渡，盖上 #c4b187
+  function _lvDisplaySnap(pct, lvFloor) {
     if (_$lvBar) _$lvBar.style.display = 'inline-flex';
-    if (_$lvLevel) _$lvLevel.textContent = 'Lv' + servFloor;
-    _lvPrevFloor = servFloor;
-    _lvLastGe = d.total_consumed_ge || '';
-    if (_$lvGlow) { _$lvGlow.style.width = servPct + '%'; }
+    if (_$lvLevel && lvFloor >= 0) _$lvLevel.textContent = 'Lv' + lvFloor;
+    _lvPrevFloor = lvFloor;
+    _lvAnim = null;
+    if (_lvAnimFrame) { cancelAnimationFrame(_lvAnimFrame); _lvAnimFrame = null; }
+    if (_$lvGlow) _$lvGlow.style.width = pct + '%';
     if (_$lvSolid) {
       _$lvSolid.style.transition = 'none';
-      _$lvSolid.style.width = servPct + '%';
+      _$lvSolid.style.width = pct + '%';
       _$lvSolid.style.background = '#c4b187';
     }
   }
@@ -535,7 +532,12 @@
       _balanceGe = null;
       _lvData = null;
       _updateGeLabel();
-      _updateLvUI();
+      // ★ 登出：隐藏 LV 区域
+      if (_$lvBar) _$lvBar.style.display = 'none';
+      _lvAccWge = null;
+      _lvAnim = null;
+      if (_lvAnimFrame) { cancelAnimationFrame(_lvAnimFrame); _lvAnimFrame = null; }
+      if (_$ldrBtn) _$ldrBtn.style.display = 'none';
       try {
         if (window.qqqideBridge && window.qqqideBridge.cloud && window.qqqideBridge.cloud.setAuth) {
           window.qqqideBridge.cloud.setAuth(null);
@@ -615,8 +617,6 @@
     _$lvSolid = document.createElement('span');
     _$lvSolid.className = 'qqq-lv-solid';
     _$lvSolid.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#c4b187;z-index:2;';
-    _$lvSolid.addEventListener('transitionend', _onLvSolidTransitionEnd);
-
     $lvTrack.appendChild(_$lvGlow);
     $lvTrack.appendChild(_$lvSolid);
     _$lvBar.appendChild(_$lvLevel);
@@ -655,41 +655,34 @@
       if (ex) { ex.remove(); return; }
       var dd = document.createElement('div');
       dd.className = 'qqq-phone-dropdown';
-      // ★ 配色与网站 viewer 1.5 区一致：Solarized 主题变量 + 虚线边框
-      dd.style.cssText = 'position:absolute;top:calc(100% + 2px);right:0;background:var(--background-color);border:2px dashed var(--border-color);border-radius:8px 0 6px 6px;box-shadow:0 6px 20px rgba(0,0,0,0.15);z-index:99999;min-width:140px;padding:6px 0;';
-      // GE 流水
+      // 零空气：padding:0，border-radius 只右上角，虚线边框
+      dd.style.cssText = 'position:absolute;top:calc(100% + 2px);right:0;background:var(--background-color);border:2px dashed var(--border-color);border-radius:0 8px 6px 6px;box-shadow:0 6px 20px rgba(0,0,0,0.15);z-index:99999;min-width:120px;padding:0;overflow:hidden;';
+      // ge 流水
       var flow = document.createElement('a');
-      flow.className = 'qqq-phone-dropdown-item';
-      flow.textContent = 'GE 流水';
+      flow.textContent = 'ge 流水';
       flow.href = 'https://gh555.com/viewer/geflow';
       flow.target = '_blank';
-      flow.style.cssText = 'display:block;padding:8px 16px;cursor:pointer;font-size:13px;color:var(--text-primary);white-space:nowrap;text-decoration:none;transition:background .12s;';
+      flow.style.cssText = 'display:block;height:32px;line-height:32px;padding:0 16px;cursor:pointer;font-size:13px;color:var(--text-primary);white-space:nowrap;text-decoration:none;';
       flow.addEventListener('mouseenter', function () { flow.style.background = 'var(--gold-hover-bg)'; });
       flow.addEventListener('mouseleave', function () { flow.style.background = ''; });
       flow.addEventListener('click', function () { dd.remove(); });
       dd.appendChild(flow);
-      // 分隔线
-      var div = document.createElement('div');
-      div.style.cssText = 'height:1px;background:var(--border-color);margin:4px 8px;';
-      dd.appendChild(div);
-      // 退出登录
+      // 退出登录（零间隙，无分隔线）
       var logout = document.createElement('div');
-      logout.className = 'qqq-phone-dropdown-item';
       logout.textContent = '退出登录';
-      logout.style.cssText = 'padding:8px 16px;cursor:pointer;font-size:13px;color:var(--red);white-space:nowrap;transition:background .12s;';
+      logout.style.cssText = 'display:block;height:32px;line-height:32px;padding:0 16px;cursor:pointer;font-size:13px;color:var(--red);white-space:nowrap;';
       logout.addEventListener('mouseenter', function () { logout.style.background = 'var(--gold-hover-bg)'; });
       logout.addEventListener('mouseleave', function () { logout.style.background = ''; });
       logout.addEventListener('click', function (ev) { ev.stopPropagation(); dd.remove(); api.logout(); });
       dd.appendChild(logout);
       _$phoneBtn.appendChild(dd);
-      // ★ mousedown capture 阶段：点击外部立即关闭（比 click 更快，不受 stopPropagation 影响）
+      // mousedown capture：点击外部立即关闭
       var closer = function (ev2) {
         if (!dd.contains(ev2.target) && ev2.target !== _$phoneBtn) {
           dd.remove();
           document.removeEventListener('mousedown', closer, true);
         }
       };
-      // requestAnimationFrame 确保当前 mousedown 不会立即关闭刚打开的菜单
       requestAnimationFrame(function () {
         document.addEventListener('mousedown', closer, true);
       });
@@ -707,21 +700,27 @@
     if (_$loginBtn) _$loginBtn.style.display = isLoggedIn ? 'none' : '';
     if (_$phoneBtn) {
       if (isLoggedIn && phoneTail) {
-        // ★ 国旗 + 手机号（flag-icons CSS 库，与网站 viewer 1.5 区统一方案）
         var cc = (_authData && _authData.countryIso2) ? _authData.countryIso2.toLowerCase() : '';
-        _loadFlagCss();
-        if (cc) {
-          _$phoneBtn.innerHTML = '<span class="fi fi-' + cc + '" style="margin-right:5px;vertical-align:middle;"></span>' + phoneTail;
-        } else {
-          _$phoneBtn.textContent = phoneTail;
-        }
+        // ★ 先设文字（无国旗），等 CSS 加载完再补国旗
+        _$phoneBtn.textContent = phoneTail;
         _$phoneBtn.style.display = 'inline-flex';
+        _loadFlagCss().then(function (ok) {
+          if (ok && cc && _$phoneBtn) {
+            _$phoneBtn.innerHTML = '<span class="fi fi-' + cc + '" style="margin-right:5px;vertical-align:middle;"></span>' + phoneTail;
+          } else if (!cc && _$phoneBtn) {
+            _$phoneBtn.textContent = phoneTail;
+          }
+        });
       } else {
         _$phoneBtn.style.display = 'none';
       }
     }
     _updateGeLabel();
-    _updateLvUI();
+    // ★ LV 区已由 _fetchLv 管理，此处只需兜底：无数据时隐藏
+    if (!_lvData || !(_lvData.level >= 0)) {
+      if (_$lvBar) _$lvBar.style.display = 'none';
+      if (_$ldrBtn) _$ldrBtn.style.display = 'none';
+    }
   }
 
   // ── 公开 API ──
