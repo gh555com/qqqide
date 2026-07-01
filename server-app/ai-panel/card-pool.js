@@ -147,9 +147,10 @@ var CardPool = (function () {
     // 获取或创建目标 card
     var card = this.getOrCreate(questId);
 
-    // 如果 card 是首次创建（totalFloors === 0 且未尝试过加载），从 questStore 加载
-    // [silent] switchTo check
-    if (card.totalFloors === 0 && qs) {
+    // 如果 card 是首次创建，或 quest 正在建楼（盘面持续更新），从 questStore 加载
+    var _ag = (parent && parent.__qqq_agentPool) ? parent.__qqq_agentPool[questId] : null;
+    var _isBuilding = _ag && _ag._stopState === 'sending';
+    if ((card.totalFloors === 0 || _isBuilding) && qs) {
       await this._loadCardData(card);
     } else if (card.totalFloors === -1) {
       console.warn('[card-pool] card ' + questId + ' previously failed to load, skipping');
@@ -399,8 +400,8 @@ var CardPool = (function () {
     var frag = document.createDocumentFragment();
 
     // ① 渲染用户消息（纯文本，不渲染 Markdown）
-    // ★ 优先 quest.sq3 预计算 question_clean（已剥离 CURRENT TIME + 系统提示词）
-    var _qText = fData.question_clean || fData.question || '';
+    // ★ 优先 quest.sq3 预计算 question（已剥离 CURRENT TIME + 系统提示词）
+    var _qText = fData.question || '';
     if (!_qText) {
       var _conv = fData.conversation || [];
       // ★ 跳过 _persistent 消息（系统提示词/rules），找真正的用户问题
@@ -688,6 +689,22 @@ var CardPool = (function () {
       aiEl.classList.add('card-building');
     }
 
+    // ★ 跨面板迁移：恢复流式缓冲区状态（_buf/_splitCursor/_codeFenceOpen）
+    //   当 fData 含 _streamingBuf 表示此楼层保存时正在流式打印中 → 初始化续接所需变量
+    if (fData._streamingBuf) {
+      aiEl._buf = fData._streamingBuf;
+      aiEl._splitCursor = fData._streamingSplitCursor || 0;
+      aiEl._codeFenceOpen = fData._streamingCodeFenceOpen || false;
+      aiEl._paras = [];
+      aiEl._dirty = false;
+      aiEl._renderScheduled = false;
+      aiEl._renderedCount = 0;
+      aiEl._firstRenderDone = true;
+      aiEl._lastParaEl = document.createElement('div');
+      aiEl._lastParaEl.className = 'stream-para';
+      aiEl._contentWrap.appendChild(aiEl._lastParaEl);
+    }
+
     frag.appendChild(aiEl);
 
     // 存储 floor DOM 引用
@@ -799,6 +816,10 @@ var CardPool = (function () {
       card.buildingFloor = null;
     }
     this._trimCapped(card);
+    // ★ 跨面板通知：此楼层已建完，其他面板需从磁盘重载 card 以获取最终数据
+    if (typeof _broadcast === 'function') {
+      _broadcast('floor-completed', questId, { floorNum: floorNum });
+    }
   };
 
   // ═══ 封顶在建楼 ═══
@@ -1085,11 +1106,11 @@ var CardPool = (function () {
     _link._qqqQuestId = card.id;
     _link._qqqAgent = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     _link.onclick = function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (this._qqqRecoveryBusy) return;
-        this._qqqRecoveryBusy = true;
-        if (typeof _startRecovery === 'function') _startRecovery(this._qqqQuestId, this._qqqAgent, this);
+      e.preventDefault();
+      e.stopPropagation();
+      if (this._qqqRecoveryBusy) return;
+      this._qqqRecoveryBusy = true;
+      if (typeof _startRecovery === 'function') _startRecovery(this._qqqQuestId, this._qqqAgent, this);
     };
     _box.appendChild(_link);
 

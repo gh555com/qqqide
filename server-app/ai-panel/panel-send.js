@@ -300,11 +300,11 @@ async function sendMessage(skipFloorCreation) {
     startFloorTimer(aiDiv, _capturedAgent);
     _startAllTxtStream(aiDiv, _allTxtPathLocal, _capturedAgent, floorNum, text, '');
     scrollToBottom(true);
+    // ★ 中央建楼状态机：登记 quest 开始建楼（必须在 setStreaming 之前，否则 tofu 彗星不显示）
+    if (typeof _registerBuilding === 'function') _registerBuilding(_capturedQuestId, typeof _panelId !== 'undefined' ? _panelId : 1);
     setStreaming(true);
     // ★ P10 根治：agent 必须知道自己的新 aiDiv，否则 _doStreamRender 读到旧 quest 的 DOM
     _capturedAgent._activeAiDiv = aiDiv;
-    // ★ 中央建楼状态机：登记 quest 开始建楼
-    if (typeof _registerBuilding === 'function') _registerBuilding(_capturedQuestId, typeof _panelId !== 'undefined' ? _panelId : 1);
 
     // ═══ E-Flow: Expert Document Framework trigger ═══
     // First floor of first quest (100%) or random 10% on other floors
@@ -360,10 +360,17 @@ async function sendMessage(skipFloorCreation) {
                     }
                     scrollToBottom(true);
                 }
-                // ★ 记录 AI 真正开始干活的时间（仅第一次）
+                // ★ 记录 AI 真正开始干活的时间（仅第一次）+ aq 区指示器
                 if (!_capturedAgent._aiStartTime) {
                     _capturedAgent._aiStartTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
                     _capturedAgent._aiTierLabel = 'A' + (selectedTier || 6);
+                    // ★ aq 区：AI 等级+启动时间，紧贴用户粉色气泡下方，AI 回复上方
+                    if (aiDiv && aiDiv.parentNode) {
+                        var tierEl = document.createElement('div');
+                        tierEl.className = 'msg-tier-indicator';
+                        tierEl.textContent = _capturedAgent._aiTierLabel + ' start in ' + _capturedAgent._aiStartTime;
+                        aiDiv.parentNode.insertBefore(tierEl, aiDiv);
+                    }
                 }
                 var _targetDiv = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
                 if (!_targetDiv) return;

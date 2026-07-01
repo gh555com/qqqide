@@ -38,6 +38,8 @@
         embedFallback: 'https://cnk.gh555.com/api/v3/ai/embedding',
         searchPrimary: 'https://direct.gh555.com:8444/api/v3/search/web',
         searchFallback: 'https://cnk.gh555.com/api/v3/search/web',
+        fetchPrimary: 'https://direct.gh555.com:8444/api/v3/fetch/webpage',
+        fetchFallback: 'https://cnk.gh555.com/api/v3/fetch/webpage',
     };
 
     var _DEFAULT_TIMEOUT = 30000;
@@ -471,7 +473,32 @@
         },
 
         // ──────────────────────────────────────────────
-        // 通用 SSE 流轮询（公共接口）
+        // Web Fetch — US 服务器端代理抓取网页（绕过 GFW）
+        // ──────────────────────────────────────────────
+        fetchWebpage: async function (url, opts) {
+            opts = opts || {};
+            var token = opts.token || _getToken();
+            if (!token) return { ok: false, error: 'No token', text: '' };
+
+            try {
+                var resp = await _fetchWithFailover(_URLS.fetchPrimary, _URLS.fetchFallback, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                    body: JSON.stringify({ url: url, floor_id: opts.floorId || '' }),
+                }, 20000);
+
+                if (!resp || !resp.ok) {
+                    return { ok: false, error: 'HTTP ' + (resp ? resp.status : '?'), text: '' };
+                }
+                var data = await resp.json();
+                return { ok: true, text: data.text || '', ge_cost: data.ge_cost || 0 };
+            } catch (err) {
+                return { ok: false, error: err.message || 'Network error', text: '' };
+            }
+        },
+
+        // ──────────────────────────────────────────────
+        // 通用 SSE 流轮询（公共接口））
         // ──────────────────────────────────────────────
         pollTaskStream: async function (url, token, timeoutMs) {
             return _pollStream(url, token, timeoutMs);

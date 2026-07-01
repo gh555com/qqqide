@@ -257,6 +257,10 @@ Card Queue — 终极 AI 面板架构（2026-06 重构，2026-06-10 加固）
     A1 楼层统计 — Floor/House/Room 计数 + FILE/ROW 变更 + 审计/翻译按钮
     A4 文件快照块 — 实时文件变更瀑布列表，点击开 diff
     A2 财宝块 — AI 挖掘的 treasures，无财宝时隐藏
+· aq 区 — 用户粉色气泡下方、AI 回复上方：AI 等级+启动时间指示器（如 "A6 start in 2026-06-30 14:05:08"）
+  - 建楼时: onToken 首 token 抵达时立即插入 (panel-send.js)
+  - 重载时: _buildFloorDOM 从盘面 aiStartTime/tierLabel 渲染 (card-pool.js)
+  - CSS: .msg-tier-indicator 浅色小字，无特殊定位
 · A2 铁律: 始终在 A1 上方（insertBefore(a1Block) 无条件）
 · A1 铁律: 始终在 A3 上方（insertBefore(clockBlock) 无条件）
 · 财宝去重: 每条 treasure 以 text 前 80 字符为 key，全局只注入一次

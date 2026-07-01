@@ -766,12 +766,12 @@ body {
    ============================================================================ */
 [data-qqq-editor-breadcrumb] {
   flex: 0 0 auto;
-  padding: 2px 10px;
-  font-size: 11px;
+  padding: 2px 10px 5px 10px;
+  font-size: 13px;
   font-family: ui-monospace, Consolas, Menlo, monospace;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   background: var(--bg-primary);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 3px solid #000;
   white-space: normal;
   word-break: break-all;
   overflow-wrap: anywhere;
@@ -783,8 +783,17 @@ body {
   cursor: text;
 }
 
-/* Monaco 容器（flex:1，position:relative 放悬浮按钮） */
-[data-qqq-editor-monaco] {
+[data-qqq-editor-breadcrumb]::selection,
+[data-qqq-editor-breadcrumb] ::selection {
+  background: #ffd301;
+  color: #000;
+}
+
+[data-theme="dark"] [data-qqq-editor-breadcrumb][data-theme="dark"] [data-qqq-editor-breadcrumb] {
+  border-bottom-color: #fff;
+}
+
+/* Monaco 容器itor-monaco] {
   flex: 1 1 auto;
   position: relative;
   overflow: hidden;
@@ -889,13 +898,6 @@ body {
   border: 1px solid #777;
   box-shadow: 0 0 4px #666;
   animation: qqqFreePulse 2s ease-in-out infinite alternate;
-}
-
-.qqq-free-cd {
-  color: inherit;
-  font-family: ui-monospace, monospace;
-  font-size: 10px;
-  opacity: .85;
 }
 
 @keyframes qqqFreePulse {

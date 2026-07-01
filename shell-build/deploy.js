@@ -22,6 +22,8 @@ const has = name => args.includes('--' + name);
 
 const HOST = get('host') || process.env.QQQ_DEPLOY_HOST || '';
 const REMOTE = get('remote') || process.env.QQQ_DEPLOY_REMOTE || '/var/www/qqq-app';
+// MSYS2 converts /opt/... → E:/s/d/git/opt/...; double-slash (UNC-like) prevents this
+const REMOTE_ = isBash ? '/' + REMOTE : REMOTE;
 const KEY = get('key') || process.env.QQQ_DEPLOY_KEY || '';
 const DRY = has('dry-run');
 const PORTABLE = has('include-portable');
@@ -41,6 +43,7 @@ if (!fs.existsSync(SRC)) {
 }
 
 var isWin = process.platform === 'win32';
+var isBash = !!process.env.MSYSTEM;  // Git Bash sets MSYSTEM=MINGW64/UCRT64/...
 function shellQuote(p) {
   // Windows cmd: use double quotes; Unix: single quotes
   if (isWin) return `"${String(p).replace(/"/g, '\\"')}"`;
@@ -50,8 +53,8 @@ function toBashPath(p) {
   // win path -> mingw style (E:\foo -> /e/foo) when running under git-bash
   return String(p).replace(/^([A-Za-z]):\\/, (_, d) => '/' + d.toLowerCase() + '/').replace(/\\/g, '/');
 }
-// Local file paths: keep Windows native (tar on Win10+ uses bsdtar, needs E:\... not /e/...)
-function localPath(p) { return isWin ? String(p) : toBashPath(p); }
+// Use bash paths only when actually running under Git Bash; cmd.exe needs native paths
+function localPath(p) { return isBash ? toBashPath(p) : String(p); }
 
 function run(cmd, cmdArgs) {
   console.log('>', cmd, cmdArgs.join(' '));
@@ -67,40 +70,40 @@ function run(cmd, cmdArgs) {
 function sshOpts() {
   const base = ['-o', 'StrictHostKeyChecking=no', '-o', 'BatchMode=yes'];
   if (KEY) { base.push('-i', KEY); }
+  // US server (23.254.248.119) forbids direct SSH → jump via CN server
+  if (HOST.includes('23.254.248.119')) {
+    base.push('-J', 'q@47.105.67.51');
+  }
   return base;
 }
 
-// 1) tar server-app/ locally (Windows: use bsdtar with native paths)
+// 1) tar server-app/ locally (Git Bash tar needs Unix-style paths)
 const tarPath = path.join(ROOT, '_qqq-app.tar.gz');
 console.log('[deploy] packing server-app/ ->', tarPath);
-if (isWin) {
-  run('tar', ['-czf', shellQuote(tarPath), '-C', shellQuote(SRC), '.']);
-} else {
-  run('tar', ['-czf', shellQuote(toBashPath(tarPath)), '-C', shellQuote(toBashPath(SRC)), '.']);
-}
+const _tp = isBash ? toBashPath(tarPath) : tarPath;
+const _sp = isBash ? toBashPath(SRC) : SRC;
+run('tar', ['-czf', shellQuote(_tp), '-C', shellQuote(_sp), '.']);
 
 // 2) scp to host
 console.log('[deploy] scp ->', HOST + ':' + REMOTE);
-run('ssh', [...sshOpts(), HOST, `"mkdir -p ${REMOTE}"`]);
-run('scp', [...sshOpts(), shellQuote(localPath(tarPath)), `${HOST}:${REMOTE}/_qqq-app.tar.gz`]);
+run('ssh', [...sshOpts(), HOST, `"mkdir -p ${REMOTE_}"`]);
+run('scp', [...sshOpts(), shellQuote(localPath(tarPath)), `${HOST}:${REMOTE_}/_qqq-app.tar.gz`]);
 
 // 3) extract server-app
 console.log('[deploy] extract server-app on remote');
 run('ssh', [...sshOpts(), HOST,
-`"cd ${REMOTE} && tar -xzf _qqq-app.tar.gz && rm _qqq-app.tar.gz"`]);
+`"cd ${REMOTE_} && tar -xzf _qqq-app.tar.gz && rm _qqq-app.tar.gz"`]);
 
 // 3b) pack + upload shell-out/ (for bootstrap hot-update)
 const shellOutSrc = path.join(ROOT, 'shell-out');
 const shellOutTar = path.join(ROOT, '_shell-out.tar.gz');
 if (fs.existsSync(shellOutSrc)) {
   console.log('[deploy] packing shell-out/ ->', shellOutTar);
-  if (isWin) {
-    run('tar', ['-czf', shellQuote(shellOutTar), '-C', shellQuote(shellOutSrc), '.']);
-  } else {
-    run('tar', ['-czf', shellQuote(toBashPath(shellOutTar)), '-C', shellQuote(toBashPath(shellOutSrc)), '.']);
-  }
+  const _otp = isBash ? toBashPath(shellOutTar) : shellOutTar;
+  const _osp = isBash ? toBashPath(shellOutSrc) : shellOutSrc;
+  run('tar', ['-czf', shellQuote(_otp), '-C', shellQuote(_osp), '.']);
   console.log('[deploy] uploading shell-out to remote');
-  run('scp', [...sshOpts(), shellQuote(localPath(shellOutTar)), `${HOST}:${REMOTE}/shell-out.tar.gz`]);
+  run('scp', [...sshOpts(), shellQuote(localPath(shellOutTar)), `${HOST}:${REMOTE_}/shell-out.tar.gz`]);
   try { fs.unlinkSync(shellOutTar); console.log('[deploy] cleanup', shellOutTar); } catch { }
 } else {
   console.log('[deploy] shell-out/ not found, skipping');
@@ -123,20 +126,28 @@ const versionJson = JSON.stringify({
 const tmpVerPath = path.join(ROOT, '_version.json');
 fs.writeFileSync(tmpVerPath, versionJson, 'utf8');
 console.log('[deploy] version.json generated — shell=' + appVersion);
-run('scp', [...sshOpts(), shellQuote(localPath(tmpVerPath)), `${HOST}:${REMOTE}/version.json`]);
+run('scp', [...sshOpts(), shellQuote(localPath(tmpVerPath)), `${HOST}:${REMOTE_}/version.json`]);
 try { fs.unlinkSync(tmpVerPath); } catch { }
 
 // 4b) Package server-app.tar.xz for client offline download (hot-update)
+// Requires xz in PATH; silently skipped when unavailable (tar.gz is primary deploy artifact)
 if (fs.existsSync(SRC)) {
   const xzPath = path.join(ROOT, '_server-app.tar.xz');
-  console.log('[deploy] packing server-app.tar.xz');
-  if (isWin) {
-    run('tar', ['-cJf', shellQuote(xzPath), '-C', shellQuote(SRC), '.']);
+  const _xp = isBash ? toBashPath(xzPath) : xzPath;
+  const _xs = isBash ? toBashPath(SRC) : SRC;
+  let xzOk = false;
+  try {
+    cp.execSync('xz --version', { stdio: 'ignore' });
+    xzOk = true;
+  } catch (_) { }
+  if (xzOk) {
+    console.log('[deploy] packing server-app.tar.xz');
+    run(`tar -cC ${shellQuote(_xs)} . | xz -z > ${shellQuote(_xp)}`, []);
+    run('scp', [...sshOpts(), shellQuote(localPath(xzPath)), `${HOST}:${REMOTE_}/server-app.tar.xz`]);
+    try { fs.unlinkSync(xzPath); console.log('[deploy] cleanup', xzPath); } catch { }
   } else {
-    run('tar', ['-cJf', shellQuote(toBashPath(xzPath)), '-C', shellQuote(toBashPath(SRC)), '.']);
+    console.log('[deploy] xz not found, skipping server-app.tar.xz');
   }
-  run('scp', [...sshOpts(), shellQuote(localPath(xzPath)), `${HOST}:${REMOTE}/server-app.tar.xz`]);
-  try { fs.unlinkSync(xzPath); console.log('[deploy] cleanup', xzPath); } catch { }
 }
 
 // 5) optional portable zips
@@ -144,10 +155,10 @@ if (PORTABLE && fs.existsSync(PKG_DIR)) {
   const zips = fs.readdirSync(PKG_DIR).filter(n => /\.(zip|tar\.gz)$/.test(n));
   if (zips.length) {
     console.log('[deploy] uploading portable packages:', zips.length);
-    run('ssh', [...sshOpts(), HOST, `"mkdir -p ${REMOTE}/portable"`]);
+    run('ssh', [...sshOpts(), HOST, `"mkdir -p ${REMOTE_}/portable"`]);
     for (const z of zips) {
       const src = path.join(PKG_DIR, z);
-      run('scp', [...sshOpts(), shellQuote(localPath(src)), `${HOST}:${REMOTE}/portable/${z}`]);
+      run('scp', [...sshOpts(), shellQuote(localPath(src)), `${HOST}:${REMOTE_}/portable/${z}`]);
     }
   }
 }

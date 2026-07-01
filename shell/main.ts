@@ -81,8 +81,9 @@ if (app.isPackaged) {
     app.setAsDefaultProtocolClient('qqqide', process.execPath, [app.getAppPath()]);
 }
 const gotTheLock = app.requestSingleInstanceLock();
+let _shouldQuitEarly = false;
 if (!gotTheLock) {
-    app.quit();
+    _shouldQuitEarly = true;
 }
 
 // ── 自签名证书信任（自建 Nginx 用自签 SSL，必须放行） ──
@@ -115,6 +116,39 @@ app.on('second-instance', (_event, argv) => {
 app.on('open-url', (event, url) => {
     event.preventDefault();
     handleAuthProtocolUrl(url);
+});
+
+// ── DevTools 窗口标题自动重命名 ──
+// Electron 22 detached DevTools 创建独立 BrowserWindow。
+// browser-window-created 钩子捕获 → 延迟匹配主窗口（devToolsWebContents 可能尚未赋值）。
+// ★ URL 检测 + 标题检测双保险：刚创建时 URL 可能是 about:blank，标题已含 "Developer Tools"。
+app.on('browser-window-created', (_e, bw) => {
+    try {
+        const url = bw.webContents?.getURL?.() || '';
+        const title = bw.getTitle?.() || '';
+        const isDevTools = url.startsWith('devtools://') || title.startsWith('Developer Tools');
+        if (!isDevTools) return;
+        const devWin = bw;
+        // 延迟重试匹配主窗口（devToolsWebContents + _windowProjectMap 可能未就绪）
+        const tryRename = (attempt: number) => {
+            try {
+                if (devWin.isDestroyed()) return;
+                const allWins = BrowserWindow.getAllWindows();
+                for (const mw of allWins) {
+                    if (mw.isDestroyed()) continue;
+                    const dwc = (mw.webContents as any).devToolsWebContents;
+                    if (dwc && !dwc.isDestroyed() && dwc.id === devWin.webContents.id) {
+                        const projPath = _windowProjectMap.get(mw.id);
+                        const name = projPath ? path.basename(projPath) : 'qqq IDE';
+                        devWin.setTitle(`「🔧」${name}`);
+                        return;
+                    }
+                }
+                if (attempt < 5) setTimeout(() => tryRename(attempt + 1), 500);
+            } catch (_) { /* ignore */ }
+        };
+        setTimeout(() => tryRename(0), 400);
+    } catch (_) { /* ignore */ }
 });
 
 function handleAuthProtocolUrl(url: string): void {
@@ -264,6 +298,12 @@ function registerAuthPersistIpc(): void {
 
 // ── App 就绪 ──
 app.whenReady().then(async () => {
+    // ★ If another instance already holds the lock, quit immediately — don't create windows
+    if (_shouldQuitEarly) {
+        app.quit();
+        return;
+    }
+
     // Force light theme
     nativeTheme.themeSource = 'light';
 
@@ -306,6 +346,24 @@ app.whenReady().then(async () => {
     registerExitHandlers(portable.root, portable.logs, stateStore, bootConfig, _qgfInstances);
 
     // Boot
+    // ★ 多窗口还原 — 第一步：确保主窗口加载正确的项目文件夹
+    try {
+        const openWindows = await stateStore.get('qqqide', 'open_windows');
+        if (openWindows && Array.isArray(openWindows) && openWindows.length > 0) {
+            const w0 = openWindows[0];
+            if (w0 && w0.mainFolder) {
+                const n0 = w0.mainFolder.replace(/\\/g, '/').replace(/\/$/, '');
+                if (n0) {
+                    // ★ 注入主窗口 URL — 必须在 loadURL 之前
+                    const sep = bootConfig.url.includes('?') ? '&' : '?';
+                    bootConfig.url = bootConfig.url + sep + 'restore=1&folder=' + encodeURIComponent(n0);
+                    // ★ 预注册，防止 restore 阶段重复创建
+                    _windowProjectMap.set(mainWindow.id, n0);
+                    _projectWindowMap.set(n0, mainWindow.id);
+                }
+            }
+        }
+    } catch (_) { }
     await bootSequence(
         mainWindow, bootConfig, portable.root, portable.cache,
         isDevFlag, isOfflineFlag, setLastBootMode, getLastBootMode

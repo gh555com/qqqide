@@ -1095,7 +1095,7 @@ var QuestStore = (function () {
         // 3) sq3 轻量索引（含预渲染字段：house_count / room_count，不包括 conversation/houses/ai_html）
         var lightRecord = {
             _fDir: _fDir,
-            question: floorData.question_clean || floorData.question || '',
+            question: floorData.question || '',
             house_count: floorData.house_count != null ? floorData.house_count : 0,
             room_count: floorData.room_count != null ? floorData.room_count : 0,
             costWge: floorData.costWge || 0,

@@ -161,13 +161,71 @@
     } catch (e) { console.warn('[login] lv fetch error:', e.message); }
   }
 
+  // ═══ LV 3 层动画引擎 ═══
+  var _$lvGlow = null;
+  var _$lvSolid = null;
+  var _lvLastGe = '';
+  var _lvPrevFloor = -1;
+
+  function _lvGust() {
+    var t = _$lvBar && _$lvBar.querySelector('.qqq-lv-track');
+    if (!t) return;
+    t.style.boxShadow = 'inset 0 0 12px 3px #b58900';
+    t.style.filter = 'brightness(1.4)';
+    setTimeout(function () { t.style.boxShadow = ''; t.style.filter = ''; }, 500);
+  }
+
+  function _lvUpdateGlow(pct) {
+    if (!_$lvGlow) return;
+    _$lvGlow.style.transition = 'none';
+    _$lvGlow.style.width = pct + '%';
+  }
+
+  function _lvChaseSolid(targetPct, isLevelUp) {
+    if (!_$lvSolid) return;
+    _lvClearSolidTimer();
+    if (isLevelUp) {
+      // 升级：闪电填满 → 庆祝 → 复位
+      _$lvSolid.style.transition = 'width 0.25s ease-out';
+      _$lvSolid.style.width = '100%';
+      _lvSolidTimer(300, function () {
+        _$lvSolid.style.transition = 'none';
+        _$lvSolid.style.width = '0%';
+        _lvSolidTimer(100, function () {
+          _$lvSolid.style.transition = 'width 10s linear';
+          _$lvSolid.style.width = targetPct + '%';
+        });
+      });
+    } else {
+      _$lvSolid.style.transition = 'width 10s linear';
+      _$lvSolid.style.width = targetPct + '%';
+    }
+  }
+
+  var _lvSolidTimerId = null;
+  function _lvSolidTimer(ms, fn) {
+    _lvSolidTimerId = setTimeout(function () { _lvSolidTimerId = null; fn(); }, ms);
+  }
+  function _lvClearSolidTimer() {
+    if (_lvSolidTimerId) { clearTimeout(_lvSolidTimerId); _lvSolidTimerId = null; }
+  }
+
   function _updateLvUI() {
     if (!_$lvBar) return;
     var d = _lvData;
     if (d && typeof d.level === 'number' && d.level >= 0) {
       _$lvBar.style.display = 'inline-flex';
-      if (_$lvLevel) _$lvLevel.textContent = 'Lv' + (d.level_floor != null ? d.level_floor : '0');
-      if (_$lvProgress) _$lvProgress.style.width = Math.min(d.progressPct || 0, 100) + '%';
+      var newFloor = d.level_floor != null ? d.level_floor : 0;
+      var newPct = Math.min(d.progress_pct || 0, 100);
+      var newGe = d.total_consumed_ge || '';
+      if (_$lvLevel) _$lvLevel.textContent = 'Lv' + newFloor;
+      if (!newGe || newGe === _lvLastGe) return;
+      _lvLastGe = newGe;
+      var isLevelUp = (_lvPrevFloor >= 0 && newFloor > _lvPrevFloor);
+      _lvPrevFloor = newFloor;
+      _lvGust();
+      _lvUpdateGlow(newPct);
+      _lvChaseSolid(newPct, isLevelUp);
       if (_$ldrBtn) _$ldrBtn.style.display = '';
     } else {
       _$lvBar.style.display = 'none';
@@ -340,21 +398,26 @@
 
   // ── 自定义即时 tooltip（零延迟）──
   var _$lvTip = null;
-  function _lvShowTip() {
+  function _lvShowTip(e) {
     if (!_$lvTip) {
       _$lvTip = document.createElement('div');
       _$lvTip.className = 'qqq-lv-tip';
-      _$lvTip.style.cssText = 'position:fixed;z-index:99999;padding:4px 8px;font-size:11px;color:#fff;background:#333;border:1px solid #555;border-radius:3px;pointer-events:none;white-space:nowrap;display:none;';
+      _$lvTip.style.cssText = 'position:fixed;z-index:99999;padding:4px 10px;font-size:32px;color:#93a1a1;background:rgba(0,0,0,0.88);border:1px solid #444;border-radius:3px;pointer-events:none;white-space:nowrap;display:none;font-weight:300;';
       document.body.appendChild(_$lvTip);
     }
     if (!_$lvBar || !_$lvBar.style.display || _$lvBar.style.display === 'none') return;
     var d = _lvData;
     if (!d) return;
     var rect = _$lvBar.getBoundingClientRect();
-    var progressGe = 100 - (d.next_level_ge || 0);
-    if (progressGe < 0) progressGe = 0;
-    _$lvTip.innerHTML = '<b>' + (d.season_short || '?') + ': ' + (d.total_consumed_ge || '0') + '</b> ge → Lv' + (d.level_str || '0') + ' (' + progressGe + '/100)';
-    _$lvTip.style.left = rect.left + 'px';
+    var sh = (d.season_short || '?');
+    var m = sh.match(/^(\([^)]+\))\s+(.+)$/);
+    if (m) {
+      _$lvTip.innerHTML = '<span>' + m[1] + '</span> <b>' + m[2] + ':</b><span style="color:#b58900;font-size:44px">' + (d.total_consumed_ge || '0') + '</span>';
+    } else {
+      _$lvTip.innerHTML = '<b>' + sh + ':</b><span style="color:#b58900;font-size:44px">' + (d.total_consumed_ge || '0') + '</span>';
+    }
+    var cx = e && e.clientX ? e.clientX : rect.left + rect.width / 2;
+    _$lvTip.style.left = (cx - _$lvTip.offsetWidth / 2) + 'px';
     _$lvTip.style.top = (rect.bottom + 4) + 'px';
     _$lvTip.style.display = '';
   }
@@ -375,29 +438,35 @@
     _$ldrBtn = document.createElement('button');
     _$ldrBtn.className = 'qqq-ldr-btn';
     _$ldrBtn.textContent = '\uD83C\uDFC6';
-    _$ldrBtn.style.cssText = NO_DRAG + 'font-size:14px;background:transparent;border:1px solid var(--border-color,#444);border-radius:4px;color:var(--text-secondary,#999);cursor:pointer;padding:1px 5px;margin-right:1px;display:none;line-height:1.2;';
+    _$ldrBtn.style.cssText = NO_DRAG + 'font-size:14px;background:transparent;border:none;border-radius:4px;color:var(--text-secondary,#999);cursor:pointer;padding:0;margin:0 -5px 0 0;display:none;line-height:1;vertical-align:middle;';
     _$ldrBtn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); _ldrOpen(); });
 
     // LV 经验条
     _$lvBar = document.createElement('span');
     _$lvBar.className = 'qqq-lv-bar';
-    _$lvBar.style.cssText = NO_DRAG + 'display:none;align-items:center;margin-right:6px;gap:3px;font-size:11px;white-space:nowrap;position:relative;';
-    _$lvBar.addEventListener('mouseenter', _lvShowTip);
+      _$lvBar.style.cssText = NO_DRAG + 'display:none;align-items:center;margin-right:12px;gap:3px;font-size:11px;white-space:nowrap;position:relative;';    _$lvBar.addEventListener('mouseenter', _lvShowTip);
+    _$lvBar.addEventListener('mousemove', _lvShowTip);
     _$lvBar.addEventListener('mouseleave', _lvHideTip);
-
     _$lvLevel = document.createElement('span');
     _$lvLevel.className = 'qqq-lv-level';
     _$lvLevel.style.cssText = 'color:var(--text-primary,#e8e8e8);font-weight:bold;font-variant-numeric:tabular-nums;min-width:44px;text-align:right;';
 
     var $lvTrack = document.createElement('span');
     $lvTrack.className = 'qqq-lv-track';
-    $lvTrack.style.cssText = 'display:inline-block;width:60px;height:12px;background:var(--bg-tertiary,#333);overflow:hidden;';
+    $lvTrack.style.cssText = 'display:inline-block;position:relative;width:60px;height:12px;background:var(--bg-tertiary,#555);overflow:hidden;border-radius:1px;';
 
-    _$lvProgress = document.createElement('span');
-    _$lvProgress.className = 'qqq-lv-fill';
-    _$lvProgress.style.cssText = 'display:block;height:100%;width:0%;background:linear-gradient(90deg,#859900,#b58900);transition:width .5s;';
+    // 中间层：高光黄色，瞬间更新
+    _$lvGlow = document.createElement('span');
+    _$lvGlow.className = 'qqq-lv-glow';
+    _$lvGlow.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#b58900;box-shadow:0 0 6px 1px #b58900;z-index:1;';
 
-    $lvTrack.appendChild(_$lvProgress);
+    // 顶层：#aa8d00，慢追
+    _$lvSolid = document.createElement('span');
+    _$lvSolid.className = 'qqq-lv-solid';
+    _$lvSolid.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#aa8d00;z-index:2;';
+
+    $lvTrack.appendChild(_$lvGlow);
+    $lvTrack.appendChild(_$lvSolid);
     _$lvBar.appendChild(_$lvLevel);
     _$lvBar.appendChild($lvTrack);
 

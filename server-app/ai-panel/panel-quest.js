@@ -32,6 +32,27 @@ async function _handleSyncMessage(msg) {
                     updateCtxBtn();
                 }
                 break;
+            case 'floor-completed':
+                // ★ 另一面板楼层建完 → 若本面板有此 quest card 且非建楼发起方，从磁盘重载最终数据
+                {
+                    var _fcCard = cardPool._cards[msg.questId];
+                    if (_fcCard && _fcCard.buildingFloor === null && questStore) {
+                        _fcCard._contentWrap.innerHTML = '';
+                        _fcCard.floorDOM = {};
+                        _fcCard.totalFloors = 0;
+                        _fcCard.floors = [];
+                        _fcCard._floorMetaMap = {};
+                        await cardPool._loadCardData(_fcCard);
+                        // ★ 若为当前活跃 quest，重连 _activeAiDiv
+                        if (msg.questId === questActiveId && _activeAgent) {
+                            var _lastNums = Object.keys(_fcCard.floorDOM || {}).map(Number).sort(function (a, b) { return b - a; });
+                            if (_lastNums.length > 0 && _fcCard.floorDOM[_lastNums[0]].aiEl) {
+                                _activeAgent._activeAiDiv = _fcCard.floorDOM[_lastNums[0]].aiEl;
+                            }
+                        }
+                    }
+                }
+                break;
             case 'owner-claimed':
                 // 另一面板抢走了我们正在看的 quest → 自动卸载，跳回空白
                 if (msg.questId === questActiveId && msg.windowId !== _windowId) {
@@ -143,7 +164,7 @@ async function _initWorkspace(root) {
     // ★ 传播到父窗口（主窗口），供 editor.js 等非 iframe 代码读取主文件夹路径
     try { parent._workspaceRoot = root; } catch (_) { }
     if (parent && parent.qqqideBridge && parent.qqqideBridge.sync) {
-      try { parent.qqqideBridge.sync.setProjectPath(root); } catch (_) { }
+        try { parent.qqqideBridge.sync.setProjectPath(root); } catch (_) { }
     }
 
     // ★ 只有中面板（panelId=1）申请项目锁；左右翼共享
