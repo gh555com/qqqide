@@ -162,6 +162,36 @@ function _markLongMsg(el, role, rawText) {
     if (rawText.length > limit) el.classList.add('msg-long');
 }
 
+// ═══ 用户消息复制按钮（追加到 .msg-user 右上角） ═══
+function _addCopyBtnToUserMsg(el) {
+    var btn = document.createElement('span');
+    btn.className = 'msg-user-copy';
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+    btn.title = typeof _i === 'function' ? _i('qqq.user.copy', '复制') : '复制';
+    btn.onclick = function (e) {
+        e.stopPropagation();
+        var text = el.textContent || '';
+        navigator.clipboard.writeText(text).then(function () {
+            btn.classList.add('copied');
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
+            setTimeout(function () {
+                btn.classList.remove('copied');
+                btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+            }, 1500);
+        }).catch(function () {
+            // fallback: select and execCommand
+            var range = document.createRange();
+            range.selectNodeContents(el);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+            try { document.execCommand('copy'); } catch(_) {}
+            sel.removeAllRanges();
+        });
+    };
+    el.appendChild(btn);
+}
+
 // ═══ 唯一真理机：用户消息 DOM 元素（只有这一处创建用户豆腐块） ═══
 function renderUserMessageEl(content) {
     var div = document.createElement('div');
@@ -170,6 +200,7 @@ function renderUserMessageEl(content) {
     var displayContent = getUserDisplayContent(content);
     var esc = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
     div.textContent = displayContent;
+    _addCopyBtnToUserMsg(div);
     return div;
 }
 

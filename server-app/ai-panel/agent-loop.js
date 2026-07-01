@@ -563,7 +563,7 @@ var AgentLoop = (function () {
                                 _aiDivC._clockCost.style.display = 'inline';
                                 _aiDivC._clockCost._houses = self._houses;
                                 _aiDivC._clockCost._floorNum = self._currentFloorNum;
-                                _aiDivC._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0) };
+                                _aiDivC._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0), drift: self._serverDrift || 0 };
                             }
                             // ★ 压缩耗时归入 AI 时间（饼图绿色），而非 other（黄色）
                             if (self._floorTiming) {
@@ -757,7 +757,7 @@ var AgentLoop = (function () {
                         _aiDiv5._clockCost.style.display = 'inline';
                         _aiDiv5._clockCost._houses = self._houses;
                         _aiDiv5._clockCost._floorNum = self._currentFloorNum;
-                        _aiDiv5._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0) };
+                        _aiDiv5._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0), drift: self._serverDrift || 0 };
                         if (self._floorFree) {
                             _aiDiv5._clockCost.style.color = '#859900';
                         } else {

@@ -660,6 +660,7 @@ async function _saveAgentQuestData(questId, ag, floorNum) {
         var _passbyWge = (ag._passbyBaseWge || 0) + (ag._floorCostWge || 0);
         floorPayload.passbyHouses = _passbyHouses;
         floorPayload.passbyWge = _passbyWge;
+        floorPayload.passbyTime = Date.now() + (ag._serverDrift || 0);
 
         // ═══ A4 快照持久化 ═══
         if (typeof _a4PersistSnapshots === 'function') {

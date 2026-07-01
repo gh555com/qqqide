@@ -103,8 +103,9 @@ AI 网关双线路 + 故障切换引擎
   封禁唯一真理源: middleware_ban.go 查 PostgreSQL doers.banned_until
 · CF 来源强制: EnforceCFOrigin 中间件，仅生产环境 /v3/ai/chat 拦截（无 CF-Ray→403）
   开发环境自动跳过。公共端点（/__lbprobe、/api/time、/px）不受影响
-· 计费幂等: INSERT INTO idempotency_keys ON CONFLICT DO NOTHING
-  同 floor goroutine 重复触发→仅扣费一次。key 格式: ai_turn:{doerID}:{floorID}
+· 计费幂等 (2026-07-01 修): INSERT INTO idempotency_keys ON CONFLICT DO NOTHING
+  同 house 重复触发→仅扣费一次。key 格式: ai_turn:{doerID}:{floorID}:{bodySHA256前4hex}
+  旧缺陷: 用 floor_id 做 key→同楼层的后续 house 全被跳过（已修复）
 
 IDE 登录认证 — 纯内存 JWT + qqqide:// 协议推送 + safeStorage 持久化（2026-06-29）
 ---------------------------------------------

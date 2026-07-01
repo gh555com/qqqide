@@ -114,7 +114,7 @@ async function sendMessage(skipFloorCreation) {
     if (_deferUserBubble) {
         // 仅创建 DOM 元素，不加入 Card（铁律：恢复模式下 house1 未确认前 UI 不变）
         userMsgEl = (typeof renderUserMessageEl === 'function') ? renderUserMessageEl(text) : null;
-        if (!userMsgEl) { userMsgEl = document.createElement('div'); userMsgEl.className = 'msg msg-user'; userMsgEl.style.whiteSpace = 'pre-wrap'; userMsgEl.textContent = text; }
+        if (!userMsgEl) { userMsgEl = document.createElement('div'); userMsgEl.className = 'msg msg-user'; userMsgEl.style.whiteSpace = 'pre-wrap'; userMsgEl.textContent = text; if (typeof _addCopyBtnToUserMsg === 'function') _addCopyBtnToUserMsg(userMsgEl); }
         userMsgEl._floor = agent ? agent._ctx.totalFloors : 0;
         _capturedAgent._deferredUserEl = userMsgEl;
     } else {
@@ -294,8 +294,8 @@ async function sendMessage(skipFloorCreation) {
     _capturedAgent._a4Snapshots = {};
     _capturedAgent._lastAutoSaveLen = 0;
     _capturedAgent._lastFloorTimingRecord = null;
-    _capturedAgent._aiStartTime = '';
-    _capturedAgent._aiTierLabel = '';
+    _capturedAgent._aiStartTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    _capturedAgent._aiTierLabel = 'A' + (selectedTier || 6);
     _capturedAgent._streamingContent = null;  // ★ P10/P11 根治：每楼层重置流式缓冲区
     _capturedAgent._streaming = true;  // ★ aq1/工具执行守卫：标记流式中
     startFloorTimer(aiDiv, _capturedAgent);
@@ -306,6 +306,13 @@ async function sendMessage(skipFloorCreation) {
     setStreaming(true);
     // ★ P10 根治：agent 必须知道自己的新 aiDiv，否则 _doStreamRender 读到旧 quest 的 DOM
     _capturedAgent._activeAiDiv = aiDiv;
+    // ★ aq1：建楼启动即插入 tier 指示器（不等首 token），紧贴用户气泡下方
+    if (aiDiv && aiDiv.parentNode) {
+        var _aq1El = document.createElement('div');
+        _aq1El.className = 'msg-tier-indicator';
+        _aq1El.textContent = _capturedAgent._aiTierLabel + ' start in ' + _capturedAgent._aiStartTime;
+        aiDiv.parentNode.insertBefore(_aq1El, aiDiv);
+    }
 
     // ═══ E-Flow: Expert Document Framework trigger ═══
     // First floor of first quest (100%) or random 10% on other floors
@@ -360,35 +367,6 @@ async function sendMessage(skipFloorCreation) {
                         _capturedAgent._recoveryLinkEl.style.display = 'none';
                     }
                     scrollToBottom(true);
-                }
-                // ★ 记录 AI 真正开始干活的时间（仅第一次）+ aq1 先上屏
-                if (!_capturedAgent._aiStartTime) {
-                    _capturedAgent._aiStartTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
-                    _capturedAgent._aiTierLabel = 'A' + (selectedTier || 6);
-                    // ★ aq1：AI 等级+启动时间，紧贴用户粉色气泡下方，AI 回复上方
-                    if (aiDiv && aiDiv.parentNode) {
-                        var tierEl = document.createElement('div');
-                        tierEl.className = 'msg-tier-indicator';
-                        tierEl.textContent = _capturedAgent._aiTierLabel + ' start in ' + _capturedAgent._aiStartTime;
-                        aiDiv.parentNode.insertBefore(tierEl, aiDiv);
-                    }
-                    // ★ aq1 先 paint：首 chunk 只 buffer 不 render，延迟一帧让 aq1 单独上屏
-                    var _td2 = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
-                    if (_td2) {
-                        _td2._buf = (_td2._buf || '') + chunk;
-                        _td2._fullText = (_td2._fullText || '') + chunk;
-                        scrollToBottom(true);
-                        requestAnimationFrame(function () {
-                            if (_capturedAgent._activeAiDiv) {
-                                _capturedAgent._activeAiDiv._paras = _capturedAgent._activeAiDiv._paras || [];
-                                _capturedAgent._activeAiDiv._dirty = true;
-                                _capturedAgent._activeAiDiv._renderScheduled = false;
-                                _capturedAgent._activeAiDiv._firstRenderDone = false;
-                                doStreamRender(_capturedAgent);
-                            }
-                        });
-                    }
-                    return;
                 }
                 var _targetDiv = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
                 if (!_targetDiv) return;
@@ -683,7 +661,7 @@ async function sendMessage(skipFloorCreation) {
                         _targetDiv3._clockCost.style.display = 'inline';
                         _targetDiv3._clockCost._houses = _capturedAgent._houses;
                         _targetDiv3._clockCost._floorNum = _capturedAgent._currentFloorNum;
-                        _targetDiv3._clockCost._passby = { questId: _capturedQuestId, floorNum: _capturedAgent._currentFloorNum, houses: (_capturedAgent._passbyBaseHouses || 0) + (_capturedAgent._houses ? _capturedAgent._houses.length : 0), wge: (_capturedAgent._passbyBaseWge || 0) + (_capturedAgent._floorCostWge || 0) };
+                        _targetDiv3._clockCost._passby = { questId: _capturedQuestId, floorNum: _capturedAgent._currentFloorNum, houses: (_capturedAgent._passbyBaseHouses || 0) + (_capturedAgent._houses ? _capturedAgent._houses.length : 0), wge: (_capturedAgent._passbyBaseWge || 0) + (_capturedAgent._floorCostWge || 0), drift: _capturedAgent._serverDrift || 0 };
                         if (isFree) {
                             _targetDiv3._clockCost.style.color = '#859900';
                         } else {

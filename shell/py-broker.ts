@@ -39,7 +39,8 @@ export function startPyBroker(portableRoot: string): void {
     }
 
     try {
-        _proc = spawn(pyExe, ['-u', scriptPath], {
+        const logFile = path.join(portableRoot, 'new_log', '_py_broker.log');
+        _proc = spawn(pyExe, ['-u', scriptPath, '--log-file', logFile], {
             stdio: ['pipe', 'pipe', 'pipe'],
             env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
             windowsHide: true,
