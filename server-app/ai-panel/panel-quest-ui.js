@@ -286,7 +286,7 @@ function _unloadQuest() {
     $input.value = '';
     $input._resetUndo();
     pendingImages = [];
-    selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 6;
+    selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3;
     updateTierButtons(selectedTier);
     renderImageStrip();
     _activeAgent = null;

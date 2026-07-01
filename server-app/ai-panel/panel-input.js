@@ -98,7 +98,7 @@ async function _copyAlphalDir(srcDir, dstDir) {
 
 // ── 智能等级选择（per-quest）──
 // ★ 全局默认等级由父窗口 settings 机器提供，兜底 6
-var selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 6;
+var selectedTier = (typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3;
 function updateTierButtons(tierIndex) {
     document.querySelectorAll('.tier-btn').forEach(function (b) { b.classList.remove('sel'); });
     if (tierIndex === null || tierIndex === 0) {
@@ -120,7 +120,7 @@ function selectTier(tierIndex) {
 
 // 初始化选中态
 (function initTierUI() {
-    selectTier((typeof _getDefaultTier === 'function') ? _getDefaultTier() : 6); // default, will be overridden by restoreQuestUIState
+    selectTier((typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3); // default, will be overridden by restoreQuestUIState
 })();
 
 document.getElementById('tier-a').onclick = function () { selectTier(null); };

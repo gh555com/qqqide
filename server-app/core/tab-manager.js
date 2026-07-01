@@ -56,9 +56,8 @@
       if (!grp || grp.tabs.length < 2) return;
       const curIdx = grp.tabs.findIndex(t => t.id === grp.activeTabId);
       if (curIdx < 0) return;
-      const next = e.deltaY > 0
-        ? (curIdx + 1) % grp.tabs.length
-        : (curIdx - 1 + grp.tabs.length) % grp.tabs.length;
+      var next = e.deltaY > 0 ? curIdx + 1 : curIdx - 1;
+      if (next < 0 || next >= grp.tabs.length) return;
       activateTab(grp, grp.tabs[next].id);
     }, { passive: false });
 
@@ -158,11 +157,24 @@
     if (idx < 0) return;
     const tab = grp.tabs[idx];
 
-    // remove DOM
+    // ★ 关闭前暂停旧编辑器 layout（避免 pane.remove 触发 0×0 尺寸的昂贵 layout）
+    if (tab.filePath && window.qqqEditor && window.qqqEditor.suspendPaneLayout) {
+      window.qqqEditor.suspendPaneLayout(tab.filePath);
+    }
+
+    // remove DOM（编辑器已暂停 layout，移除 DOM 不再触发重计算）
     const btn = grp.barEl.querySelector(`[data-tab-id="${tabId}"]`);
     if (btn) btn.remove();
     const pane = grp.contentEl.querySelector(`.qqq-tab-pane[data-tab-id="${tabId}"]`);
     if (pane) pane.remove();
+
+    // ★ 延迟销毁编辑器（放到下一个宏任务，避免同步阻塞 UI）
+    if (tab.filePath && window.qqqEditor && window.qqqEditor.disposePaneEditor) {
+      var _fp = tab.filePath;
+      setTimeout(function () {
+        window.qqqEditor.disposePaneEditor(_fp);
+      }, 0);
+    }
 
     // fire cleanup
     if (tab.onClose) tab.onClose(tab);

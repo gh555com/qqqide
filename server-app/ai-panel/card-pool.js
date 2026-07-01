@@ -284,8 +284,8 @@ var CardPool = (function () {
       parts.push('<div class="msg-status">⏳ 打印中断（已自动保存）</div>');
     }
 
-    // ★ 工具执行总结
-    if (parts.length === 0 && fData && fData.houses && fData.houses.length) {
+    // ★ 工具执行总结（仅正常完成的 tool-only 楼层；fatal/流式中断不显示幽灵文本）
+    if (parts.length === 0 && fData && fData.houses && fData.houses.length && !fData.floorFatal && !fData._streaming) {
       var _tc = 0;
       for (var _ti = 0; _ti < fData.houses.length; _ti++) {
         _tc += (fData.houses[_ti].toolCount || (fData.houses[_ti].tools ? fData.houses[_ti].tools.length : 0));

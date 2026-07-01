@@ -21,16 +21,22 @@
 
 ; (function () {
 
-    // ★ 从用户设置读取压缩阈值（k → tokens），fallback ContentGateway → 200k
+    // ★ 压缩阈值：settings.js → QQQ_DEFAULTS → ContentGateway → 兜底 600k
+    //   改默认值只改 core/defaults.js
     function _readCompressThreshold() {
         try {
             if (typeof parent !== 'undefined' && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
-                var k = parseInt(parent.window.qqqSettings.get('ai.compressThreshold', '200'), 10);
+                var k = parseInt(parent.window.qqqSettings.get('ai.compressThreshold'), 10);
                 if (!isNaN(k) && k >= 100 && k <= 1000) return k * 1000;
             }
         } catch (_) { }
+        try {
+            if (typeof parent !== 'undefined' && parent.window && parent.window.QQQ_DEFAULTS) {
+                return parent.window.QQQ_DEFAULTS['ai.compressThreshold'] * 1000;
+            }
+        } catch (_) { }
         if (typeof ContentGateway !== 'undefined' && ContentGateway.COMPRESS_THRESHOLD) return ContentGateway.COMPRESS_THRESHOLD;
-        return 200000;
+        return 600000;
     }
     var TOKEN_BUDGET = _readCompressThreshold();
     var KEEP_RATIO = 0.1;         // 保留最近 10%
@@ -546,6 +552,8 @@
                         // ★ billing 事件：统一走 _processBillingEvent（与 _parseSSE 同逻辑）
                         if (_parsed.type === 'billing') {
                             self._processBillingEvent(_parsed);
+                            // ★ 通知父窗口：LV/GE/免费预算 全路径事件驱动
+                            try { parent.postMessage({ type: 'qqq-lv-tick', geCost: (_parsed.ge_cost || 0), freeWindow: !!_parsed.free_window }, '*'); } catch (_) { }
                             continue;
                         }
                         // ★ usage 事件：流尾精确 token 统计

@@ -104,17 +104,22 @@ function _getRunningQuestIds() {
     return [];
 }
 
-// ★ 全局默认 AI 等级：读父窗口 settings 机器
-//   返回 1-6 整数，失败兜底 6
+// ★ 全局默认 AI 等级：settings.js → QQQ_DEFAULTS → 兜底 3
+//   改默认值只改 core/defaults.js
 function _getDefaultTier() {
     try {
         if (parent && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
-            var t = parent.window.qqqSettings.get('ai.defaultTier', '6');
+            var t = parent.window.qqqSettings.get('ai.defaultTier');
             var n = parseInt(t, 10);
             if (n >= 1 && n <= 6) return n;
         }
     } catch (_) { }
-    return 6;
+    try {
+        if (parent && parent.window && parent.window.QQQ_DEFAULTS) {
+            return parent.window.QQQ_DEFAULTS['ai.defaultTier'];
+        }
+    } catch (_) { }
+    return 3;
 }
 
 var _panelFocused = false;  // 当前面板是否获得焦点（金光边框 + 快捷键激活）

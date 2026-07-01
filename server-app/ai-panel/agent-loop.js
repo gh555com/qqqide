@@ -503,15 +503,22 @@ var AgentLoop = (function () {
                     var _apiTokens = self._lastApiPromptTokens || 0;
                     // ★ 冷启动兜底：磁盘加载 quest 后无 usage，用估算防首轮 400
                     if (_apiTokens === 0) { _apiTokens = self._estimateTotalTokens(); }
-                    // ★ 动态读取用户设置的压缩阈值（k → tokens）
-                    var _threshold = 200000;
+                    // ★ 压缩阈值：settings.js → QQQ_DEFAULTS → ContentGateway → 兜底 600k
+                    var _threshold = 600000;
                     try {
                         if (typeof parent !== 'undefined' && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
-                            var _k = parseInt(parent.window.qqqSettings.get('ai.compressThreshold', '200'), 10);
+                            var _k = parseInt(parent.window.qqqSettings.get('ai.compressThreshold'), 10);
                             if (!isNaN(_k) && _k >= 100 && _k <= 1000) _threshold = _k * 1000;
                         }
                     } catch (_) { }
-                    if (typeof ContentGateway !== 'undefined' && ContentGateway.COMPRESS_THRESHOLD && _threshold === 200000) {
+                    if (_threshold === 600000) {
+                        try {
+                            if (typeof parent !== 'undefined' && parent.window && parent.window.QQQ_DEFAULTS) {
+                                _threshold = parent.window.QQQ_DEFAULTS['ai.compressThreshold'] * 1000;
+                            }
+                        } catch (_) { }
+                    }
+                    if (typeof ContentGateway !== 'undefined' && ContentGateway.COMPRESS_THRESHOLD && _threshold === 600000) {
                         _threshold = ContentGateway.COMPRESS_THRESHOLD;
                     }
                     if (_apiTokens > 0 && _apiTokens > _threshold) {

@@ -95,12 +95,18 @@
     // Undo ↶
     btns.appendChild(_makeFloatBtn('\u21B6',
       _i('editor.undo', '撤销 (Ctrl+Z)'),
-      function () { try { monacoEditor.trigger('keyboard', 'undo', null); } catch (_) { } }));
+      function () {
+        if (window.qqqCharUndo) { window.qqqCharUndo.undo(monacoEditor); }
+        else { try { monacoEditor.trigger('keyboard', 'undo', null); } catch (_) { } }
+      }));
 
     // Redo ↷
     btns.appendChild(_makeFloatBtn('\u21B7',
       _i('editor.redo', '重做 (Ctrl+Y)'),
-      function () { try { monacoEditor.trigger('keyboard', 'redo', null); } catch (_) { } }));
+      function () {
+        if (window.qqqCharUndo) { window.qqqCharUndo.redo(monacoEditor); }
+        else { try { monacoEditor.trigger('keyboard', 'redo', null); } catch (_) { } }
+      }));
 
     // Minimap toggle
     var mmOn = false;

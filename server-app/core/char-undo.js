@@ -391,6 +391,47 @@
     return !!(state && state.index < state.history.length - 1);
   }
 
+  // ── 执行 undo/redo（Monaco + 原生通用）──
+  function _applySnapshot(el, st) {
+    // Monaco editor (有 getValue/setValue)
+    if (typeof el.getValue === 'function' && typeof el.setValue === 'function') {
+      st.prog = true;
+      var entry = st.history[st.index];
+      try {
+        el.setValue(entry.val);
+        if (entry.pos) {
+          el.setPosition({ lineNumber: entry.pos.line, column: entry.pos.col });
+        }
+        el.setScrollTop(entry.scrollTop || 0);
+      } catch (e) { /* ignore */ }
+      return;
+    }
+    // 原生 input/textarea
+    if (el.tagName) {
+      st.prog = true;
+      var e = st.history[st.index];
+      el.value = e.val;
+      el.setSelectionRange(e.pos, e.pos);
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+
+  function undo(el) {
+    var st = _states.get(el);
+    if (!st || st.index <= 0) return false;
+    st.index--;
+    _applySnapshot(el, st);
+    return true;
+  }
+
+  function redo(el) {
+    var st = _states.get(el);
+    if (!st || st.index >= st.history.length - 1) return false;
+    st.index++;
+    _applySnapshot(el, st);
+    return true;
+  }
+
   // ── 自动扫描挂载 ──
   function autoAttach(root) {
     if (!root) root = document;
@@ -441,6 +482,8 @@
     suppressOnce: suppressOnce,
     canUndo: canUndo,
     canRedo: canRedo,
+    undo: undo,
+    redo: redo,
     autoAttach: autoAttach
   };
 

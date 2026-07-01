@@ -98,7 +98,7 @@
       '--status-row-h': '24px',
       '--panel-min': '123px',
       '--sash-w': '6px',
-      '--tab-bar-h': '30px',
+      '--tab-bar-h': '24px',
     };
   }
 
