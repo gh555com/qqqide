@@ -38,6 +38,8 @@ function _saveAgentFloor(ag, questId, force) {
             houses: (ag._houses || []).slice(),
             costWge: ag._floorCostWge,
             lastUserInput: ag._lastUserInput,
+            passbyHouses: (ag._passbyBaseHouses || 0) + (ag._houses ? ag._houses.length : 0),
+            passbyWge: (ag._passbyBaseWge || 0) + (ag._floorCostWge || 0),
             createdAt: Date.now()
         };
     }
@@ -137,9 +139,9 @@ function _formatGeRaw(rawValue) {
 }
 
 // ── 计费明细表格（点击 ge 消费区弹出悬浮层）──
-function _buildBillingTable(houses, floorNum) {
+function _buildBillingTable(houses, passby) {
     var _i2 = window._i || function (k, f) { return f; };
-    var _fNum = floorNum || 0;
+    var _fNum = passby ? passby.floorNum : 0;
     // ★ 列序：House → type → 工具数 → AI Lv → 时间消耗 → wge → 缓存命中率 → prompt_tokens → completion_tokens → total_tokens → 查账凭据
     var headers = [
         'House',
@@ -152,7 +154,7 @@ function _buildBillingTable(houses, floorNum) {
         'prompt<br>tokens',
         'compl<br>tokens',
         'total<br>tokens',
-        _i2('ai.billing.receipt', '查账凭据（10000wge = 1ge）')
+        _i2('ai.billing.receipt', '查账凭据')
     ];
     // 表头：居中 + 自动换行（overlay 会跳过已设 whiteSpace）
     var html = '<table><thead><tr>';
@@ -164,9 +166,8 @@ function _buildBillingTable(houses, floorNum) {
     html += '</tr></thead><tbody>';
     for (var j = 0; j < houses.length; j++) {
         var h = houses[j];
-        // ★ House 列：累加值_F{楼层}.{楼内序号}  如 26_F4.2
-        var billingSeq = h.billingSeq || h.index || (j + 1);
-        var houseLabel = billingSeq + '_F' + _fNum + '.' + (j + 1);
+        // ★ House 列：本层楼内编号 1 2 3 4 ...
+        var houseLabel = (j + 1);
         var type = h.type || '?';
         // toolCount: 运行时是 tools 数组，恢复后是 toolCount 数字
         var toolCount = (h.tools && Array.isArray(h.tools)) ? h.tools.length : (typeof h.toolCount === 'number' ? h.toolCount : 0);
@@ -204,6 +205,18 @@ function _buildBillingTable(houses, floorNum) {
             + '</tr>';
     }
     html += '</tbody></table>';
+    // ★ passby 行：表格下方汇总  如 "q35.f42 passby: 256houses、18943 wge ≈ 1.9 ge"
+    if (passby && passby.questId) {
+        var _pbHouses = passby.houses || 0;
+        var _pbWge = passby.wge || 0;
+        var _pbGe = (_pbWge / 10000).toFixed(1);
+        html += '<div class="billing-passby" style="margin-top:8px;font-size:13px;color:var(--text-secondary,#888)">'
+            + passby.questId + '.f' + (passby.floorNum || 0)
+            + ' passby: ' + _pbHouses + 'houses'
+            + '\u3001' + _pbWge + ' wge'
+            + ' \u2248 ' + _pbGe + ' ge'
+            + '</div>';
+    }
     return html;
 }
 
@@ -229,7 +242,7 @@ function _initClockBlock(aiDiv) {
     clockCost.addEventListener('click', function (e) {
         var houses = clockCost._houses;
         if (!houses || !houses.length) return;
-        var html = _buildBillingTable(houses, clockCost._floorNum);
+        var html = _buildBillingTable(houses, clockCost._passby);
         if (html && typeof _postToHost === 'function') {
             _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: '<div class="msg-ai">' + html + '</div>' });
         }
@@ -284,6 +297,7 @@ function startFloorTimer(aiDiv, ag, resume) {
         aiDiv._clockCost._rawGe = null;
         aiDiv._clockCost._houses = null;
         aiDiv._clockCost._floorNum = null;
+        aiDiv._clockCost._passby = null;
     }
     var _pieShown = false;
     var _lastN = 0, _lastD = 0, _lastT = 0;

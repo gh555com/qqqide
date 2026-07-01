@@ -129,9 +129,10 @@ function handleAuthProtocolUrl(url: string): void {
         if (parsed.hostname === 'auth') {
             const token = parsed.searchParams.get('token');
             const phone = parsed.searchParams.get('phone');
+            const countryISO2 = parsed.searchParams.get('country_iso2') || '';
             if (token && mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('qqq-ide-auth', { token, phone: phone || '' });
-                console.log('[protocol] auth token pushed to renderer, phone=' + (phone || '?'));
+                mainWindow.webContents.send('qqq-ide-auth', { token, phone: phone || '', country_iso2: countryISO2 });
+                console.log('[protocol] auth token pushed to renderer, phone=' + (phone || '?') + ' cc=' + countryISO2);
             }
         }
     } catch (e) {

@@ -683,6 +683,7 @@ async function sendMessage(skipFloorCreation) {
                         _targetDiv3._clockCost.style.display = 'inline';
                         _targetDiv3._clockCost._houses = _capturedAgent._houses;
                         _targetDiv3._clockCost._floorNum = _capturedAgent._currentFloorNum;
+                        _targetDiv3._clockCost._passby = { questId: _capturedQuestId, floorNum: _capturedAgent._currentFloorNum, houses: (_capturedAgent._passbyBaseHouses || 0) + (_capturedAgent._houses ? _capturedAgent._houses.length : 0), wge: (_capturedAgent._passbyBaseWge || 0) + (_capturedAgent._floorCostWge || 0) };
                         if (isFree) {
                             _targetDiv3._clockCost.style.color = '#859900';
                         } else {

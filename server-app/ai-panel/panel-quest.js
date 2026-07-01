@@ -655,6 +655,12 @@ async function _saveAgentQuestData(questId, ag, floorNum) {
 
         floorPayload._serverFloorId = ag._floorId || '';
 
+        // ★ passby 快照：冻结本楼层完工时的累计值（用于重启后显示历史 passby）
+        var _passbyHouses = (ag._passbyBaseHouses || 0) + (ag._houses ? ag._houses.length : 0);
+        var _passbyWge = (ag._passbyBaseWge || 0) + (ag._floorCostWge || 0);
+        floorPayload.passbyHouses = _passbyHouses;
+        floorPayload.passbyWge = _passbyWge;
+
         // ═══ A4 快照持久化 ═══
         if (typeof _a4PersistSnapshots === 'function') {
             try {
@@ -696,6 +702,13 @@ async function _saveAgentQuestData(questId, ag, floorNum) {
     };
     await questStore.touch(questId);
     await questStore.save(questId, metaPayload);
+
+    // ★ 推进 passby 基线（仅一次，防 _saveAgentQuestData 重复调用累加）
+    if (ag._passbyBaseFloorNum !== ag._currentFloorNum) {
+        ag._passbyBaseHouses = _passbyHouses;
+        ag._passbyBaseWge = _passbyWge;
+        ag._passbyBaseFloorNum = ag._currentFloorNum;
+    }
 }
 
 // ★ saveQuestData 不再接受 floorStartIdx 参数，改为从 _activeAgent 读取 _currentFloorNum

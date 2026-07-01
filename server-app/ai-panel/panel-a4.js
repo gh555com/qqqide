@@ -552,9 +552,36 @@ function _a4RenderLive(ag) {
     block.classList.add('has-files');
 }
 
+// ═══ 判断是否为图片文件 ═══
+function _isImageFile(filePath) {
+    var ext = (filePath || '').split('.').pop().toLowerCase();
+    return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].indexOf(ext) >= 0;
+}
+
+// ═══ 图片文件 → 打开悬浮预览层 ═══
+async function _openImagePreview(filePath) {
+    var bridge = _getBridge();
+    if (!bridge || !bridge.fs) return false;
+    try {
+        var st = await bridge.fs.stat(filePath);
+        if (!st) return false;
+    } catch (_) {
+        return false; // 文件不存在
+    }
+    var fileUrl = 'file:///' + filePath.replace(/\\/g, '/');
+    _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: fileUrl });
+    return true;
+}
+
 // ---- 打开 diff 查看器（独立 BrowserWindow）----
 // ★ 同时传 beforeBlobHash + afterBlobHash：左右各精确选中对应版本
 async function _a4OpenDiff(snap) {
+    // 图片文件特殊处理
+    if (_isImageFile(snap.path)) {
+        if (snap.op === 'delete_file') return; // 已删除→无原文件→不响应
+        var opened = await _openImagePreview(snap.path);
+        if (opened) return; // 已打开预览→不再开 diff
+    }
     var bridge = _getBridge();
     if (bridge && bridge.timeline) {
         var root = await _resolveProjectRoot(snap.path); // ★ 文件自寻主
@@ -700,6 +727,12 @@ function _a4RestoreBlock(aiDiv, a4Meta, questNumericId, floorNum) {
 
 // ---- 历史楼层 diff：唯一路径 bridge.timeline ----
 async function _a4OpenHistoricalDiff(meta, questNumericId, floorNum) {
+    // 图片文件特殊处理
+    if (_isImageFile(meta.path)) {
+        if (meta.op === 'delete_file') return; // 已删除→无原文件→不响应
+        var opened = await _openImagePreview(meta.path);
+        if (opened) return; // 已打开预览→不再开 diff
+    }
     var bridge = getBridge();
     var root = await _resolveProjectRoot(meta.path); // ★ 文件自寻主
 
