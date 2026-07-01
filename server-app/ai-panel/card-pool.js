@@ -181,7 +181,9 @@ var CardPool = (function () {
 
       card.floors = allFloors || [];
       card.totalFloors = card.floors.length;
-      card.buildingFloor = null;  // 初次加载时无在建楼
+      // ★ 保留建楼中楼层的 buildingFloor（_buildFloorDOM → startFloorTimer 依赖此标记不杀 timer）
+      var _ag3 = (parent && parent.__qqq_agentPool) ? parent.__qqq_agentPool[card.id] : null;
+      card.buildingFloor = (_ag3 && _ag3._stopState === 'sending' && _ag3._currentFloorNum && card.totalFloors > 0) ? _ag3._currentFloorNum : null;
 
       // 构建 floorMetaMap
       var root = qs ? qs.getProjectRoot() : null;
@@ -669,7 +671,7 @@ var CardPool = (function () {
         aiEl._clockCost.style.display = 'inline';
         aiEl._clockCost._houses = _liveAg._houses || [];
         aiEl._clockCost._floorNum = fNum;
-        aiEl._clockCost._passby = { questId: card.id, floorNum: fNum, houses: (_liveAg._passbyBaseHouses || 0) + (_liveAg._houses ? _liveAg._houses.length : 0), wge: (_liveAg._passbyBaseWge || 0) + (_liveAg._floorCostWge || 0), drift: _liveAg._serverDrift || 0 };
+        aiEl._clockCost._passby = { questId: card.id, floorNum: fNum, houses: (_liveAg._passbyBaseHouses || 0) + (_liveAg._houses ? _liveAg._houses.length : 0), wge: (_liveAg._passbyBaseWge || 0) + (_liveAg._floorCostWge || 0), drift: _liveAg._serverDrift || 0, city: _liveAg._serverCity || '' };
       }
     } else {
       // 已封顶楼层：始终设时钟为停止态（dark），不管是否找到计时数据
@@ -711,7 +713,7 @@ var CardPool = (function () {
       aiEl._clockCost.style.display = 'inline';
       aiEl._clockCost._houses = fData.houses || [];
       aiEl._clockCost._floorNum = fNum;
-      aiEl._clockCost._passby = { questId: card.id, floorNum: fNum, houses: fData.passbyHouses || 0, wge: fData.passbyWge || 0, time: fData.passbyTime || null };
+      aiEl._clockCost._passby = { questId: card.id, floorNum: fNum, houses: fData.passbyHouses || 0, wge: fData.passbyWge || 0, time: fData.passbyTime || null, city: fData.passbyCity || '' };
       if (isFree) {
         aiEl._clockCost.style.color = '#859900';
       } else {

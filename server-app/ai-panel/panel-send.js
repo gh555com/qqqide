@@ -12,6 +12,9 @@ async function sendMessage(skipFloorCreation) {
     if (_activeAgent && _activeAgent._recoveryInProgress && !skipFloorCreation) return;
     if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
     _sending = true;
+    // ★ 防并发 cross-talk：本地快照 + 递增 ID，finally 块检测是否被新 sendMessage 覆盖
+    var _snapQuestId = questActiveId;
+    var _snapAgent = _activeAgent;
     var _guideStatuses = document.querySelectorAll('.guide-status');
     for (var _gsi = 0; _gsi < _guideStatuses.length; _gsi++) { _guideStatuses[_gsi].remove(); }
     // ═══ 所有权守卫：仅父注册表（唯一真理源） ═══
@@ -661,7 +664,7 @@ async function sendMessage(skipFloorCreation) {
                         _targetDiv3._clockCost.style.display = 'inline';
                         _targetDiv3._clockCost._houses = _capturedAgent._houses;
                         _targetDiv3._clockCost._floorNum = _capturedAgent._currentFloorNum;
-                        _targetDiv3._clockCost._passby = { questId: _capturedQuestId, floorNum: _capturedAgent._currentFloorNum, houses: (_capturedAgent._passbyBaseHouses || 0) + (_capturedAgent._houses ? _capturedAgent._houses.length : 0), wge: (_capturedAgent._passbyBaseWge || 0) + (_capturedAgent._floorCostWge || 0), drift: _capturedAgent._serverDrift || 0 };
+                        _targetDiv3._clockCost._passby = { questId: _capturedQuestId, floorNum: _capturedAgent._currentFloorNum, houses: (_capturedAgent._passbyBaseHouses || 0) + (_capturedAgent._houses ? _capturedAgent._houses.length : 0), wge: (_capturedAgent._passbyBaseWge || 0) + (_capturedAgent._floorCostWge || 0), drift: _capturedAgent._serverDrift || 0, city: _capturedAgent._serverCity || '' };
                         if (isFree) {
                             _targetDiv3._clockCost.style.color = '#859900';
                         } else {
@@ -824,6 +827,12 @@ async function sendMessage(skipFloorCreation) {
             // ★ fatal 态禁队列排水
         }
     } finally {
+        // ★ 防并发 cross-talk：_capturedAgent 被新 sendMessage 覆盖 → 只清理 _sending，跳过（别人的 agent 不归我管）
+        if (_capturedAgent !== _snapAgent || _capturedQuestId !== _snapQuestId) {
+            if (_activeAgent === _snapAgent) _sending = false;  // 仅当被覆盖的 agent 仍是前台时才复位
+            updateQueueBtn();
+            return;
+        }
         // ★ 一次渲染永久不变：在清理 _activeAiDiv 之前，先保存当前楼层数据（含流式文本）
         //   sending 态正常保存；fatal 态也保存（belt-and-suspenders：onError 已火线落盘，此处兜底）
         if (_capturedAgent && _capturedQuestId && !_capturedAgent._floorCompletedCleanly

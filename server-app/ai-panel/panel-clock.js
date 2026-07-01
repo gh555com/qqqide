@@ -1,4 +1,4 @@
-'use strict';
+ 不要用破折号'use strict';
 // \u2550\u2550\u2550 panel-clock.js \u2550\u2550\u2550
 // Floor timer, pie chart, autoSave, quest dropdown, tofu, boot
 
@@ -41,6 +41,7 @@ function _saveAgentFloor(ag, questId, force) {
             passbyHouses: (ag._passbyBaseHouses || 0) + (ag._houses ? ag._houses.length : 0),
             passbyWge: (ag._passbyBaseWge || 0) + (ag._floorCostWge || 0),
             passbyTime: Date.now() + (ag._serverDrift || 0),
+            passbyCity: ag._serverCity || '',
             createdAt: Date.now()
         };
     }
@@ -220,11 +221,12 @@ function _buildBillingTable(houses, passby) {
         var _pbTimeStr = _pbDate.getFullYear() + '-' + _pbPad(_pbDate.getMonth() + 1) + '-' + _pbPad(_pbDate.getDate())
             + ' ' + _pbPad(_pbDate.getHours()) + ':' + _pbPad(_pbDate.getMinutes()) + ':' + _pbPad(_pbDate.getSeconds());
         html += '<div class="billing-passby" style="margin-top:8px;font-size:13px;color:var(--text-secondary,#888);text-align:center">'
-            + 'q<span style="color:#cb4b16">' + _qNum + '</span>.f<span style="color:#cb4b16">' + _fNum + '</span>'
+            + ' <span style="color:var(--text-tertiary,#666)"> at ' + _pbTimeStr + '</span>'
+            + (passby.city ? ' <span style="color:var(--text-tertiary,#666)"> in ' + passby.city + '</span>' : '')
+            + ' \u25b6 q<span style="color:#cb4b16">' + _qNum + '</span>.f<span style="color:#cb4b16">' + _fNum + '</span>'
             + ' passby: ' + _pbHouses + 'houses'
             + '\u3001' + _pbWge + ' wge'
             + ' \u2248 ' + _pbGe + ' ge'
-            + ' <span style="color:var(--text-tertiary,#666)"> at ' + _pbTimeStr + '</span>'
             + '</div>';
     }
     return html;
