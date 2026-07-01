@@ -54,7 +54,7 @@ function stopStream() {
 }
 
 // ═══ All.txt streaming (per-floor) ═══
-var _allTxtPollTimer = null;
+var _allTxtPollTimer = null;  // ★ 仅用于向后兼容；新代码走 agent._allTxtPollTimer
 function _countRooms(houses) {
     if (!houses) return 0;
     var n = 0;
@@ -351,13 +351,14 @@ function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
 }
 
 function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, visionContent) {
-    _stopAllTxtStream();
+    // ★ 只杀该 agent 的旧 timer，不杀面板级（可能属于其他 quest）
+    _stopAllTxtStream(agent);
     _allTxtBlocked = false;
     var lastWriteMs = 0;
     var lastHouseCount = 0;
     var lastRoomCount = 0;
 
-    _allTxtPollTimer = setInterval(function () {
+    var _timerId = setInterval(function () {
         if (document.hidden) return;
         if (!agent._houses) return;
         var hCount = agent._houses.length;
@@ -417,6 +418,9 @@ function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, vis
         }
         _updateA1Row2(a1, agent);
     }, 1000);
+    // ★ 绑定到 agent，跨面板不丢
+    agent._allTxtPollTimer = _timerId;
+    _allTxtPollTimer = _timerId;  // 向后兼容面板级引用
 }
 
 function _updateA1Size(a1, floorNum, hCount, rCount, allTxtPath) {
@@ -433,7 +437,7 @@ async function _finalizeAllTxt(aiDiv, allTxtPath, agent, floorNum, timing) {
     // ★ 先强制刷新 FILE/ROW 计数（_updateA1Row2 有 5s 节流，finalize 必须冲破）
     var a1 = aiDiv._a1Block;
     if (a1 && agent) { _updateA1Row2(a1, agent, true); }
-    _stopAllTxtStream();
+    _stopAllTxtStream(agent);
     if (!allTxtPath) return;
     var bridge = window.parent && window.parent.qqqideBridge;
     if (!bridge) return;
@@ -454,7 +458,12 @@ async function _finalizeAllTxt(aiDiv, allTxtPath, agent, floorNum, timing) {
     }
 }
 
-function _stopAllTxtStream() {
+function _stopAllTxtStream(agent) {
+    // ★ 优先杀 agent 级 timer（跨面板安全）
+    if (agent && agent._allTxtPollTimer) {
+        clearInterval(agent._allTxtPollTimer);
+        agent._allTxtPollTimer = null;
+    }
     if (_allTxtPollTimer) { clearInterval(_allTxtPollTimer); _allTxtPollTimer = null; }
 }
 

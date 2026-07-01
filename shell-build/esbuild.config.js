@@ -41,6 +41,14 @@ async function build() {
     console.log('[esbuild] copied bootstrap.js ->', OUT);
   }
 
+  // Copy py-broker.py (Python broker, not bundled)
+  var brokerSrc = path.join(SRC, 'py-broker.py');
+  var brokerDst = path.join(OUT, 'py-broker.py');
+  if (fs.existsSync(brokerSrc)) {
+    fs.copyFileSync(brokerSrc, brokerDst);
+    console.log('[esbuild] copied py-broker.py ->', OUT);
+  }
+
   if (isWatch) {
     const ctx = await esbuild.context({ ...baseOpts, entryPoints: entries });
     await ctx.watch();

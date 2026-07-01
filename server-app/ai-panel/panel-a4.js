@@ -798,7 +798,14 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
     // ★ house / room 计数
     var house_count = (ag._houses && ag._houses.length) || 0;
     var room_count = 0;
-    if (ag._houses) { for (var _hci = 0; _hci < ag._houses.length; _hci++) { room_count += (ag._houses[_hci].tools ? ag._houses[_hci].tools.length : 0); } }
+    if (ag._houses) {
+        for (var _hci = 0; _hci < ag._houses.length; _hci++) {
+            var _h = ag._houses[_hci];
+            // ★ 优先 toolCount（跨面板恢复结构），降级 tools.length（实时流式）
+            if (typeof _h.toolCount === 'number') room_count += _h.toolCount;
+            else if (_h.tools && _h.tools.length) room_count += _h.tools.length;
+        }
+    }
 
     var payload = {
         question: questionClean,

@@ -802,6 +802,7 @@ document.getElementById('ctx-compress').onclick = async function () {
             _aiDiv._clockCost.textContent = _displayGe + ' ge' + (_ag._floorFree ? ' Free' : '');
             _aiDiv._clockCost.style.display = 'inline';
             _aiDiv._clockCost._houses = _ag._houses;
+            _aiDiv._clockCost._floorNum = _ag._currentFloorNum;
         }
 
         // ⑨ 停止计时（aiMs 归因 = 压缩耗时，使饼图绿色而非全黄）

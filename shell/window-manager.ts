@@ -6,8 +6,8 @@ import { BrowserWindow, screen, globalShortcut } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
-import { exec } from 'child_process';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
+import { renameDevToolsViaBroker } from './py-broker';
 import { SimpleWebSocket } from './cdp-sniffer';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
@@ -221,10 +221,12 @@ export function createWindow(
             const dwc = (win.webContents as any).devToolsWebContents as WebContents;
             if (dwc && !dwc.isDestroyed()) {
                 injectDevToolsConsoleButtons(dwc, win.webContents, () => _consoleBuffer.join('\n'), win);
-                // ★ 幂等：延迟设 DevTools 窗口标题（EnumWindows + SetWindowTextW）
-                // Chromium 在页面加载中异步设 "Developer Tools - http://..."，
-                // 所以 devtools-opened 瞬间标题为空 → 延迟 1.5s 后再扫。
-                _renameDevToolsByEnumWindows(win);
+                // ★ DevTools 窗口标题 → Python broker（跨平台: Win ctypes / Mac osascript / Linux wmctrl）
+                const projPath = _windowProjectMap.get(win.id);
+                const name = projPath ? path.basename(projPath) : 'qqq IDE';
+                // 延迟：Chromium 异步设标题 "Developer Tools - http://..."
+                setTimeout(() => renameDevToolsViaBroker(win, name), 1500);
+                setTimeout(() => renameDevToolsViaBroker(win, name), 3500);
             }
         });
         win.webContents.openDevTools({ mode: 'detach' });
@@ -250,68 +252,6 @@ export function createWindow(
     }
 
     return win;
-}
-
-// ── DevTools 窗口标题改名 — EnumWindows + SetWindowTextW (Win32, via PowerShell P/Invoke) ──
-// Electron 22 detached DevTools 不暴露 BrowserWindow 引用，Electron JS 层不可达。
-// 唯一可行路线: Win32 EnumWindows 枚举所有顶层窗口 → PID 匹配 → SetWindowTextW。
-function _renameDevToolsByEnumWindows(mainWin: BrowserWindow): void {
-    const projPath = _windowProjectMap.get(mainWin.id);
-    const name = projPath ? path.basename(projPath) : 'qqq IDE';
-    const safeName = name.replace(/'/g, "''");
-    const targetPid = process.pid;
-
-    const psScript = `
-Add-Type -TypeDefinition @"
-using System;
-using System.Runtime.InteropServices;
-using System.Text;
-public class QW {
-    public delegate bool EnumWndProc(IntPtr hWnd, IntPtr lParam);
-    [DllImport("user32.dll")]
-    public static extern bool EnumWindows(EnumWndProc lpEnumFunc, IntPtr lParam);
-    [DllImport("user32.dll")]
-    public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-    [DllImport("user32.dll")]
-    public static extern bool SetWindowText(IntPtr hWnd, string lpString);
-    [DllImport("user32.dll")]
-    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-}
-"@
-$targetPid = ${targetPid}
-$newTitle = '「🔧」${safeName}'
-$cb = [QW+EnumWndProc]{
-    param($hWnd, $lParam)
-    $sb = New-Object System.Text.StringBuilder(512)
-    [QW]::GetWindowText($hWnd, $sb, 512) | Out-Null
-    if ($sb.ToString().StartsWith('Developer Tools')) {
-        $p = [uint]0
-        [QW]::GetWindowThreadProcessId($hWnd, [ref]$p) | Out-Null
-        if ($p -eq $targetPid) {
-            [QW]::SetWindowText($hWnd, $newTitle) | Out-Null
-        }
-    }
-    return $true
-}
-[QW]::EnumWindows($cb, [IntPtr]::Zero)
-`.trim();
-
-    const b64 = Buffer.from(psScript, 'utf-16le').toString('base64');
-
-    // ★ 延迟：Chromium 在页面加载中异步设标题 "Developer Tools - http://..."
-    // devtools-opened 瞬间标题为空 → 延迟 1.5s/3s 两次扫（幂等，后扫会覆盖前扫）
-    const run = () => {
-        exec(`powershell -NoProfile -NonInteractive -EncodedCommand ${b64}`,
-            { timeout: 8000, windowsHide: true },
-            (err: any, stdout: string, stderr: string) => {
-                if (err) {
-                    // 静默 — PowerShell 不可用/权限不足均不报
-                }
-            }
-        );
-    };
-    setTimeout(run, 1500);
-    setTimeout(run, 3500);
 }
 
 // ── CDP 控制台全量捕获 — Log.entryAdded = DevTools 另存为 100% 同源数据 ──

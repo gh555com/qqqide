@@ -137,9 +137,10 @@ function _formatGeRaw(rawValue) {
 }
 
 // ── 计费明细表格（点击 ge 消费区弹出悬浮层）──
-function _buildBillingTable(houses) {
+function _buildBillingTable(houses, floorNum) {
     var _i2 = window._i || function (k, f) { return f; };
-    // ★ 列序：编号 → 类型 → 工具数 → AI 等级 → 时间消耗 → wge → 缓存命中率 → prompt_tokens → completion_tokens → total_tokens → 查账凭据
+    var _fNum = floorNum || 0;
+    // ★ 列序：House → type → 工具数 → AI Lv → 时间消耗 → wge → 缓存命中率 → prompt_tokens → completion_tokens → total_tokens → 查账凭据
     var headers = [
         'House',
         'type',
@@ -151,7 +152,7 @@ function _buildBillingTable(houses) {
         'prompt<br>tokens',
         'compl<br>tokens',
         'total<br>tokens',
-        _i2('ai.billing.receipt', '查账凭据')
+        _i2('ai.billing.receipt', '查账凭据（10000wge = 1ge）')
     ];
     // 表头：居中 + 自动换行（overlay 会跳过已设 whiteSpace）
     var html = '<table><thead><tr>';
@@ -163,7 +164,9 @@ function _buildBillingTable(houses) {
     html += '</tr></thead><tbody>';
     for (var j = 0; j < houses.length; j++) {
         var h = houses[j];
+        // ★ House 列：累加值_F{楼层}.{楼内序号}  如 26_F4.2
         var billingSeq = h.billingSeq || h.index || (j + 1);
+        var houseLabel = billingSeq + '_F' + _fNum + '.' + (j + 1);
         var type = h.type || '?';
         // toolCount: 运行时是 tools 数组，恢复后是 toolCount 数字
         var toolCount = (h.tools && Array.isArray(h.tools)) ? h.tools.length : (typeof h.toolCount === 'number' ? h.toolCount : 0);
@@ -187,7 +190,7 @@ function _buildBillingTable(houses) {
         if (h.cacheHitRate >= 0 && h.cacheHitRate < 90) _cacheStyle += ';background:rgba(203,75,22,0.10)';
         var receipt = h.billingRequestId || '';
         html += '<tr>'
-            + '<td style="text-align:right">' + billingSeq + '</td>'
+            + '<td style="text-align:right">' + houseLabel + '</td>'
             + '<td style="text-align:right">' + type + '</td>'
             + '<td style="text-align:right">' + toolCount + '</td>'
             + '<td style="text-align:right">' + aiLv + '</td>'
@@ -226,7 +229,7 @@ function _initClockBlock(aiDiv) {
     clockCost.addEventListener('click', function (e) {
         var houses = clockCost._houses;
         if (!houses || !houses.length) return;
-        var html = _buildBillingTable(houses);
+        var html = _buildBillingTable(houses, clockCost._floorNum);
         if (html && typeof _postToHost === 'function') {
             _postToHost({ type: 'qqqide-overlay', action: 'open-table', html: '<div class="msg-ai">' + html + '</div>' });
         }
@@ -280,6 +283,7 @@ function startFloorTimer(aiDiv, ag, resume) {
         aiDiv._clockCost.style.display = 'inline';
         aiDiv._clockCost._rawGe = null;
         aiDiv._clockCost._houses = null;
+        aiDiv._clockCost._floorNum = null;
     }
     var _pieShown = false;
     var _lastN = 0, _lastD = 0, _lastT = 0;

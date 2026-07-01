@@ -290,34 +290,3 @@ export function registerMiscIpc(
     });
 }
 
-// ── DevTools 窗口标题同步 ──
-// 优先: executeJavaScript 设 document.title（已知 dwc 可用）
-// 兜底: BrowserWindow.setTitle 找 detached 窗口
-export function _syncDevToolsTitle(mainWin: BrowserWindow, title: string): void {
-    try {
-        const dtTitle = `「🔧」${title}`;
-        // 路线1: 直接从 devToolsWebContents 设 document.title
-        const dwc = (mainWin.webContents as any).devToolsWebContents as Electron.WebContents | undefined;
-        if (dwc && !dwc.isDestroyed()) {
-            dwc.executeJavaScript(`document.title=${JSON.stringify(dtTitle)}`).catch(() => {});
-        }
-        // 路线2: 兜底找 BrowserWindow 设 OS 窗口标题
-        for (const w of BrowserWindow.getAllWindows()) {
-            if (w.id === mainWin.id || w.isDestroyed()) continue;
-            try {
-                const u = w.webContents.getURL();
-                if (u.startsWith('devtools://') || u.startsWith('chrome-devtools://')) {
-                    w.setTitle(dtTitle);
-                    return;
-                }
-            } catch { /* skip */ }
-        }
-        // 路线3: fromWebContents 最后尝试
-        if (dwc && !dwc.isDestroyed()) {
-            const devWin = BrowserWindow.fromWebContents(dwc);
-            if (devWin && !devWin.isDestroyed() && devWin.id !== mainWin.id) {
-                devWin.setTitle(dtTitle);
-            }
-        }
-    } catch (_) { /* ignore */ }
-}

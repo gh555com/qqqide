@@ -559,6 +559,7 @@ var AgentLoop = (function () {
                                 _aiDivC._clockCost.textContent = (typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2)) + ' ge' + (self._floorFree ? ' Free' : '');
                                 _aiDivC._clockCost.style.display = 'inline';
                                 _aiDivC._clockCost._houses = self._houses;
+                                _aiDivC._clockCost._floorNum = self._currentFloorNum;
                             }
                             // ★ 压缩耗时归入 AI 时间（饼图绿色），而非 other（黄色）
                             if (self._floorTiming) {
@@ -751,6 +752,7 @@ var AgentLoop = (function () {
                         _aiDiv5._clockCost.textContent = _displayGe5 + ' ge' + (self._floorFree ? ' Free' : '');
                         _aiDiv5._clockCost.style.display = 'inline';
                         _aiDiv5._clockCost._houses = self._houses;
+                        _aiDiv5._clockCost._floorNum = self._currentFloorNum;
                         if (self._floorFree) {
                             _aiDiv5._clockCost.style.color = '#859900';
                         } else {

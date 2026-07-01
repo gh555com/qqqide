@@ -297,6 +297,7 @@ async function sendMessage(skipFloorCreation) {
     _capturedAgent._aiStartTime = '';
     _capturedAgent._aiTierLabel = '';
     _capturedAgent._streamingContent = null;  // ★ P10/P11 根治：每楼层重置流式缓冲区
+    _capturedAgent._streaming = true;  // ★ aq1/工具执行守卫：标记流式中
     startFloorTimer(aiDiv, _capturedAgent);
     _startAllTxtStream(aiDiv, _allTxtPathLocal, _capturedAgent, floorNum, text, '');
     scrollToBottom(true);
@@ -681,6 +682,7 @@ async function sendMessage(skipFloorCreation) {
                         _targetDiv3._clockCost.textContent = _displayGe + ' ge' + (isFree ? ' Free' : '');
                         _targetDiv3._clockCost.style.display = 'inline';
                         _targetDiv3._clockCost._houses = _capturedAgent._houses;
+                        _targetDiv3._clockCost._floorNum = _capturedAgent._currentFloorNum;
                         if (isFree) {
                             _targetDiv3._clockCost.style.color = '#859900';
                         } else {
@@ -766,7 +768,7 @@ async function sendMessage(skipFloorCreation) {
                         _capturedAgent._deferRenderUntilHouse1 = false;
                     }
                     _renderQuestErrorBox(_capturedAgent);
-                    _stopAllTxtStream();
+                    _stopAllTxtStream(_capturedAgent);
                     stopFloorTimer(null, _capturedAgent);
                     setStreaming(false);
                     if ($sendBtn) $sendBtn.disabled = true;
@@ -777,7 +779,7 @@ async function sendMessage(skipFloorCreation) {
                         clearInterval(_capturedAgent._floorTimerId);
                         _capturedAgent._floorTimerId = null;
                     }
-                    _stopAllTxtStream();
+                    _stopAllTxtStream(_capturedAgent);
                     // 后台 agent 的 aiDiv 时钟设为停止态
                     var _bgAiDiv2 = _capturedAgent && _capturedAgent._activeAiDiv;
                     if (_bgAiDiv2 && _bgAiDiv2._clockBlock) {
@@ -849,7 +851,7 @@ async function sendMessage(skipFloorCreation) {
             && (_capturedAgent._stopState === 'sending' || _capturedAgent._floorFatal)) {
             try { await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._currentFloorNum); } catch (_) { }
         }
-        _stopAllTxtStream();
+        _stopAllTxtStream(_capturedAgent);
         // ★ 通用 timer 清理：无论前台/后台，防止僵尸 timer
         if (_capturedAgent && _capturedAgent._floorTimerId) {
             clearInterval(_capturedAgent._floorTimerId);
