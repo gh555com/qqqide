@@ -6,7 +6,7 @@
 // Spawns:
 //   1. esbuild watch (rebuild shell-out/ on save)
 //   2. dev-server   (serve server-app/ on :8080)
-//   3. electron .   (loads http://127.0.0.1:8080/qqq-app/)
+//   3. electron .   (loads http://127.0.0.1:8080/qqqide/)
 //
 // Press Ctrl+C to kill all.
 // ============================================================================
@@ -94,7 +94,7 @@ spawn('build:watch',
     process.platform === 'win32' ? 'node.exe' : 'node',
     [path.join('shell-build', 'esbuild.config.js'), '--watch']);
 
-// (2) dev-server -> http://127.0.0.1:PORT/qqq-app/
+// (2) dev-server -> http://127.0.0.1:PORT/qqqide/
 spawn('dev-server',
     process.platform === 'win32' ? 'node.exe' : 'node',
     [path.join('shell-build', 'dev-server.js'), `--port=${PORT}`]);
@@ -108,12 +108,12 @@ setTimeout(() => {
     delete cleanEnv.ELECTRON_RUN_AS_NODE;
     delete cleanEnv.ELECTRON_NO_ASAR;
     Object.keys(cleanEnv).forEach(k => { if (k.startsWith('VSCODE_')) delete cleanEnv[k]; });
-    spawn('electron', electronBin, ['.', '--dev', `--url=http://127.0.0.1:${PORT}/qqq-app/`], { env: cleanEnv });
+    spawn('electron', electronBin, ['.', '--dev', `--url=http://127.0.0.1:${PORT}/qqqide/`], { env: cleanEnv });
 }, 600);
 
 console.log('============================================================');
 console.log('[dev-launch] dev environment starting');
-console.log('[dev-launch]   dev-server  : http://127.0.0.1:' + PORT + '/qqq-app/');
+console.log('[dev-launch]   dev-server  : http://127.0.0.1:' + PORT + '/qqqide/');
 console.log('[dev-launch]   build:watch : auto-rebuild shell-out/ on save');
 console.log('[dev-launch]   electron    : --dev (DevTools on, no caching)');
 console.log('[dev-launch] edit server-app/* -> reload window (Ctrl+R)');

@@ -1,8 +1,8 @@
 // ============================================================================
-// deploy.js - upload server-app/ to remote http server (qqq-app/)
+// deploy.js - upload server-app/ to remote http server (qqqide/)
 // Mirrors the pattern used by gaea/cf/ky.py (scp + ssh extract).
 //
-//   node shell-build/deploy.js --host=user@host --remote=/var/www/qqq-app
+//   node shell-build/deploy.js --host=user@host --remote=/opt/dgs/web/qqqide
 //
 // Optional flags:
 //   --include-portable  also push dist-pack/*.zip to remote
@@ -21,7 +21,7 @@ const get = name => {
 const has = name => args.includes('--' + name);
 
 const HOST = get('host') || process.env.QQQ_DEPLOY_HOST || '';
-const REMOTE = get('remote') || process.env.QQQ_DEPLOY_REMOTE || '/var/www/qqq-app';
+const REMOTE = get('remote') || process.env.QQQ_DEPLOY_REMOTE || '/opt/dgs/web/qqqide';
 // MSYS2 converts /opt/... → E:/s/d/git/opt/...; double-slash (UNC-like) prevents this
 const REMOTE_ = isBash ? '/' + REMOTE : REMOTE;
 const KEY = get('key') || process.env.QQQ_DEPLOY_KEY || '';
@@ -78,7 +78,7 @@ function sshOpts() {
 }
 
 // 1) tar server-app/ locally (Git Bash tar needs Unix-style paths)
-const tarPath = path.join(ROOT, '_qqq-app.tar.gz');
+const tarPath = path.join(ROOT, '_qqqide.tar.gz');
 console.log('[deploy] packing server-app/ ->', tarPath);
 const _tp = isBash ? toBashPath(tarPath) : tarPath;
 const _sp = isBash ? toBashPath(SRC) : SRC;
@@ -87,12 +87,12 @@ run('tar', ['-czf', shellQuote(_tp), '-C', shellQuote(_sp), '.']);
 // 2) scp to host
 console.log('[deploy] scp ->', HOST + ':' + REMOTE);
 run('ssh', [...sshOpts(), HOST, `"mkdir -p ${REMOTE_}"`]);
-run('scp', [...sshOpts(), shellQuote(localPath(tarPath)), `${HOST}:${REMOTE_}/_qqq-app.tar.gz`]);
+run('scp', [...sshOpts(), shellQuote(localPath(tarPath)), `${HOST}:${REMOTE_}/_qqqide.tar.gz`]);
 
 // 3) extract server-app
 console.log('[deploy] extract server-app on remote');
 run('ssh', [...sshOpts(), HOST,
-`"cd ${REMOTE_} && tar -xzf _qqq-app.tar.gz && rm _qqq-app.tar.gz"`]);
+`"cd ${REMOTE_} && tar -xzf _qqqide.tar.gz && rm _qqqide.tar.gz"`]);
 
 // 3b) pack + upload shell-out/ (for bootstrap hot-update)
 const shellOutSrc = path.join(ROOT, 'shell-out');
@@ -167,4 +167,4 @@ if (PORTABLE && fs.existsSync(PKG_DIR)) {
 try { fs.unlinkSync(tarPath); console.log('[deploy] cleanup', tarPath); } catch (_) { }
 
 console.log('[deploy] done. server-app/ uploaded to', HOST + ':' + REMOTE);
-console.log('[deploy] verify: curl http://<host>/qqq-app/health');
+console.log('[deploy] verify: curl http://<host>/qqqide/health');

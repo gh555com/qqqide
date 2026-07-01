@@ -31,7 +31,7 @@
                 build: function (host) {
                     host.style.cssText = 'width:100%;height:100%;overflow:hidden;';
                     var iframe = document.createElement('iframe');
-                    iframe.src = '/qqq-app/goods/git/git-ui.html?mode=panel';
+                    iframe.src = '/qqqide/goods/git/git-ui.html?mode=panel';
                     iframe.style.cssText = 'width:100%;height:100%;border:none;';
                     iframe.setAttribute('frameborder', '0');
                     host.appendChild(iframe);
@@ -47,7 +47,7 @@
                     build: function (pane) {
                         pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
                         var iframe = document.createElement('iframe');
-                        iframe.src = '/qqq-app/goods/git/git-ui.html?mode=git';
+                        iframe.src = '/qqqide/goods/git/git-ui.html?mode=git';
                         iframe.style.cssText = 'width:100%;height:100%;border:none;';
                         iframe.setAttribute('frameborder', '0');
                         pane.appendChild(iframe);

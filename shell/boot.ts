@@ -38,7 +38,7 @@ function initBootLog(logsDir: string) {
 // ----------------------------------------------------------------------------
 // Constants
 // ----------------------------------------------------------------------------
-export const DEFAULT_REMOTE_URL = 'http://127.0.0.1:8090/qqq-app/';
+const PRODUCTION_URL = 'https://gh555.com/qqqide/';
 
 // ----------------------------------------------------------------------------
 // Boot configuration
@@ -48,37 +48,13 @@ export interface BootConfig {
     healthTimeoutMs: number;
 }
 
-export function loadBootConfig(portableRoot: string): BootConfig {
-    const cfgPath = path.join(portableRoot, 'config.json');
-    let cfg: BootConfig = { url: DEFAULT_REMOTE_URL, healthTimeoutMs: 3000 };
-    // (1) config.json (lowest precedence beyond defaults)
-    if (fs.existsSync(cfgPath)) {
-        try {
-            const j = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-            if (j.url) { cfg.url = j.url; }
-            if (j.healthTimeoutMs) { cfg.healthTimeoutMs = j.healthTimeoutMs; }
-        } catch (e) {
-            console.warn('[main] bad config.json:', e);
-        }
-    } else {
-        // First-run: drop template config.json
-        try {
-            const tpl = {
-                url: DEFAULT_REMOTE_URL,
-                healthTimeoutMs: 3000,
-                _comment: 'qz/VM-snapshot friendly. Edit url to point at your server. NEVER stored in AppData.'
-            };
-            fs.writeFileSync(cfgPath, JSON.stringify(tpl, null, 2), 'utf8');
-            console.log('[main] wrote default config.json ->', cfgPath);
-        } catch (e) {
-            console.warn('[main] could not write default config.json:', e);
-        }
-    }
-    // (2) env override (qz can set this) - beats config.json
+export function loadBootConfig(_portableRoot: string): BootConfig {
+    let cfg: BootConfig = { url: PRODUCTION_URL, healthTimeoutMs: 3000 };
+    // env override (qz can set this)
     if (process.env.QQQIDE_URL) { cfg.url = process.env.QQQIDE_URL; }
-    // (3) CLI override --url=... - highest precedence
+    // CLI override --url=... — highest precedence
     for (const arg of process.argv.slice(1)) {
-        if (arg.startsWith('--url=')) { cfg.url = arg.slice(6); }
+        if (arg.startsWith("--url=")) { cfg.url = arg.slice(6); }
     }
     return cfg;
 }
@@ -299,8 +275,8 @@ function registerWebappProtocol(webappDir: string): void {
         try {
             const u = new URL(request.url);
             let rel = decodeURIComponent(u.pathname);
-            // strip /qqq-app/ prefix if present
-            rel = rel.replace(/^\/qqq-app\//, '/');
+            // strip /qqqide/ prefix
+            rel = rel.replace(/^\/qqqide\//, '/');
             if (rel.startsWith('/')) rel = rel.slice(1);
             if (!rel) rel = 'index.html';
             const abs = path.join(webappDir, rel);
@@ -753,7 +729,7 @@ export async function bootSequence(
     try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
 
     // ★ 开发模式：直连本地 dev-server，不走网络
-    const DEV_URL = 'http://127.0.0.1:8090/qqq-app/';
+    const DEV_URL = 'http://127.0.0.1:8090/qqqide/';
     if (isDev) {
         bootConfig.url = DEV_URL;
         bootConfig.healthTimeoutMs = 500;  // 本地极快，不等
@@ -767,7 +743,7 @@ export async function bootSequence(
         const webappDir = ensureLocalWebapp(portableRoot);
         if (webappDir) {
             registerWebappProtocol(webappDir);
-            effectiveUrl = WEBAPP_PROTOCOL + '://app/qqq-app/index.html';
+            effectiveUrl = WEBAPP_PROTOCOL + '://app/qqqide/index.html';
             bootLog('local: using bundled webapp (no network needed for first boot)');
         } else {
             bootLog('local: no webapp found, will load from remote');
