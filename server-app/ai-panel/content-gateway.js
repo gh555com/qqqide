@@ -28,7 +28,15 @@
 
     // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
     var CTX_MAX_TOKENS = 1048565;     // 上下文窗口总上限（实测精确值）
-    var COMPRESS_THRESHOLD = 200000;  // 压缩触发阈值（200k tokens，约 20% 窗口）
+    // ★ 压缩阈值从父窗口 QQQ_DEFAULTS 读（兜底 600k）；改默认值只改 core/defaults.js
+var COMPRESS_THRESHOLD = (function() {
+    try {
+        if (typeof parent !== 'undefined' && parent.window && parent.window.QQQ_DEFAULTS) {
+            return parent.window.QQQ_DEFAULTS['ai.compressThreshold'] * 1000;
+        }
+    } catch (_) { }
+    return 600000;
+})();
     var MAX_TOKENS_SAFETY = 10000;    // max_tokens 帽安全余量
     var CHAR_PER_TOKEN = 2.5;         // 统一 chars→tokens 估算比例（2026-06-29 校准: 2.7→2.5）
     // 单专家统一压缩参数（tier 6, 64K max_tokens）

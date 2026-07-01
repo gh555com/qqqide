@@ -22,7 +22,6 @@
   var _balanceTimer = null;
   var _lvData = null;
   var _lvLastFetch = 0;
-  var _lvTimer = null;
   var _$ldrOverlay = null;
   var _$ldrPanel = null;
 
@@ -31,7 +30,7 @@
   var POLL_INTERVAL_MS = 3000;
   var POLL_TIMEOUT_MS = 600000;
   var BALANCE_POLL_MS = 60000;
-  var LV_POLL_MS = 10000;
+  var LV_COOLDOWN_MS = 2000;   // 事件驱动下的最小冷却（防密集 billing 轰炸）
   var NO_DRAG = '-webkit-app-region:no-drag;';
 
   var _bootInfo = null;
@@ -136,21 +135,32 @@
     }
   }
 
-  // ── LV ──
-  function _startLvPoll() {
-    _stopLvPoll();
-    _fetchLv(true);
-    _lvTimer = setInterval(function () { _fetchLv(false); }, LV_POLL_MS);
-  }
-
-  function _stopLvPoll() {
-    if (_lvTimer) { clearInterval(_lvTimer); _lvTimer = null; }
+  // ── LV（事件驱动 + REST 兜底）──
+  // ★ 不再轮询。AI SSE billing 事件 → postMessage('qqq-lv-tick') → 立即拉取。
+  // ★ init/登录时 → 主动拉一次作为初始值。
+  function _setupLvListener() {
+    window.addEventListener('message', function (e) {
+      if (e.data && e.data.type === 'qqq-lv-tick') {
+        // ★ 乐观扣减 GE 余额（本地先行，服务器真理定期修正）
+        var costGe = (e.data.geCost || 0) / 10000;
+        if (_balanceGe !== null && _balanceGe !== undefined && costGe > 0) {
+          _balanceGe = Math.max(0, _balanceGe - costGe);
+          _updateGeLabel();
+        }
+        // ★ LV 血条（事件驱动，2s 冷却）
+        _fetchLv(false);
+        // ★ 免费预算：仅在免费窗口消费时刷新（事件驱动，shell-statusbar 自带 30s 冷却）
+        if (e.data.freeWindow) {
+          try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (_) { }
+        }
+      }
+    });
   }
 
   async function _fetchLv(force) {
     if (!_authData || !_authData.token) return;
     var now = Date.now();
-    if (!force && now - _lvLastFetch < LV_POLL_MS) return;
+    if (!force && now - _lvLastFetch < LV_COOLDOWN_MS) return;
     _lvLastFetch = now;
     try {
       var resp = await fetch(API_BASE + '/qqq/lv', {
@@ -166,39 +176,86 @@
   var _$lvSolid = null;
   var _lvLastGe = '';
   var _lvPrevFloor = -1;
+  var _lvChaseGen = 0;          // 追赶代数，只认最新一代完成
+  var _lvUpgradeBusy = false;   // 升级动画进行中
+  var _lvBlockTE = false;       // 屏蔽因 transition:none 取消旧过渡产生的假 transitionend
 
+  // 气流冲击特效：轨道#555 从暗→亮→暗
   function _lvGust() {
     var t = _$lvBar && _$lvBar.querySelector('.qqq-lv-track');
     if (!t) return;
-    t.style.boxShadow = 'inset 0 0 12px 3px #b58900';
-    t.style.filter = 'brightness(1.4)';
-    setTimeout(function () { t.style.boxShadow = ''; t.style.filter = ''; }, 500);
+    t.style.transition = 'box-shadow 0.15s ease-in';
+    t.style.boxShadow = 'inset 0 0 22px 5px #b58900';
+    t.style.filter = 'brightness(1.6)';
+    setTimeout(function () {
+      t.style.transition = 'box-shadow 0.4s ease-out';
+      t.style.boxShadow = '';
+      t.style.filter = '';
+    }, 200);
   }
 
+  // 升级庆祝：整条 LV bar 金色闪光
+  function _lvUpgradeFlash() {
+    if (!_$lvBar) return;
+    _$lvBar.style.transition = 'filter 0.15s ease-out';
+    _$lvBar.style.filter = 'drop-shadow(0 0 8px #b58900) brightness(1.5)';
+    setTimeout(function () {
+      _$lvBar.style.transition = 'filter 0.6s ease-out';
+      _$lvBar.style.filter = '';
+    }, 200);
+  }
+
+  // 中层高光黄：瞬间跳到目标位置（零过渡），永远不透
   function _lvUpdateGlow(pct) {
     if (!_$lvGlow) return;
     _$lvGlow.style.transition = 'none';
+    void _$lvGlow.offsetWidth;
     _$lvGlow.style.width = pct + '%';
   }
 
+  // 顶层追赶：半透明淡绿从左追到右，追完变回不透 #aa8d00
+  // targetPct = 中层（纯白）当前打点位置
   function _lvChaseSolid(targetPct, isLevelUp) {
     if (!_$lvSolid) return;
     _lvClearSolidTimer();
+
+    // ★ 先屏蔽：取消旧过渡会触发假 transitionend，必须拦
+    _lvBlockTE = true;
+
+    // 去皮 → 强制回流 → 顶层冻结在当前计算位置
+    _$lvSolid.style.transition = 'none';
+    void _$lvSolid.offsetWidth;
+
+    // 更新代数
+    var gen = ++_lvChaseGen;
+    _$lvSolid.setAttribute('data-chase-gen', gen);
+
     if (isLevelUp) {
-      // 升级：闪电填满 → 庆祝 → 复位
+      _lvUpgradeBusy = true;
+      _lvUpgradeFlash();
+      // 闪电填满 100%
       _$lvSolid.style.transition = 'width 0.25s ease-out';
       _$lvSolid.style.width = '100%';
-      _lvSolidTimer(300, function () {
+      _lvSolidTimer(350, function () {
         _$lvSolid.style.transition = 'none';
         _$lvSolid.style.width = '0%';
-        _lvSolidTimer(100, function () {
-          _$lvSolid.style.transition = 'width 10s linear';
+        void _$lvSolid.offsetWidth;
+        // 升级后快追：0.5s
+        _lvSolidTimer(80, function () {
+          _lvUpgradeBusy = false;
+          _lvBlockTE = false;
+          _$lvSolid.style.background = 'rgba(160,200,150,0.48)';
+          _$lvSolid.style.transition = 'width 0.5s ease-out';
           _$lvSolid.style.width = targetPct + '%';
         });
       });
     } else {
+      // ★ 半透明追赶：中层白色从下面透过来 → 白色路头可见！
+      _$lvSolid.style.background = 'rgba(160,200,150,0.48)';
       _$lvSolid.style.transition = 'width 10s linear';
       _$lvSolid.style.width = targetPct + '%';
+      // 60ms 后解封（足够让假 transitionend 被拦掉）
+      setTimeout(function () { _lvBlockTE = false; }, 60);
     }
   }
 
@@ -210,6 +267,18 @@
     if (_lvSolidTimerId) { clearTimeout(_lvSolidTimerId); _lvSolidTimerId = null; }
   }
 
+  // transitionend：真的追完才变回不透 #aa8d00
+  function _onLvSolidTransitionEnd(e) {
+    if (e.propertyName !== 'width') return;
+    if (_lvBlockTE) return;          // 假事件（transition:none 取消旧过渡触发）→ 忽略
+    if (_lvUpgradeBusy) return;
+    if (!_$lvSolid) return;
+    var gen = parseInt(_$lvSolid.getAttribute('data-chase-gen') || '0');
+    if (gen !== _lvChaseGen) return; // 旧代完成，新代已启动 → 忽略
+    // ★ 真正追上：变回不透实色 → 黄色路头消失（顶层百分百覆盖中层）
+    _$lvSolid.style.background = '#aa8d00';
+  }
+
   function _updateLvUI() {
     if (!_$lvBar) return;
     var d = _lvData;
@@ -219,7 +288,7 @@
       var newPct = Math.min(d.progress_pct || 0, 100);
       var newGe = d.total_consumed_ge || '';
       if (_$lvLevel) _$lvLevel.textContent = 'Lv' + newFloor;
-      if (!newGe || newGe === _lvLastGe) return;
+      if (newGe === '' || newGe === _lvLastGe) return;
       _lvLastGe = newGe;
       var isLevelUp = (_lvPrevFloor >= 0 && newFloor > _lvPrevFloor);
       _lvPrevFloor = newFloor;
@@ -370,7 +439,7 @@
     _updateButtons(loggedIn, phoneTail);
     if (loggedIn) {
       _startBalancePoll();
-      _startLvPoll();
+      _fetchLv(true);  // ★ 事件驱动：登录时主动拉一次初始值
       // 触发状态栏免费预算刷新
       try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (e) {}
       try {
@@ -380,7 +449,6 @@
       } catch (e) {}
     } else {
       _stopBalancePoll();
-      _stopLvPoll();
       _balanceGe = null;
       _lvData = null;
       _updateGeLabel();
@@ -455,15 +523,16 @@
     $lvTrack.className = 'qqq-lv-track';
     $lvTrack.style.cssText = 'display:inline-block;position:relative;width:60px;height:12px;background:var(--bg-tertiary,#555);overflow:hidden;border-radius:1px;';
 
-    // 中间层：高光黄色，瞬间更新
+    // 中间层：纯白（调试用），瞬间更新
     _$lvGlow = document.createElement('span');
     _$lvGlow.className = 'qqq-lv-glow';
-    _$lvGlow.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#b58900;box-shadow:0 0 6px 1px #b58900;z-index:1;';
+    _$lvGlow.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#ffffff;box-shadow:0 0 6px 1px #ffffff;z-index:1;';
 
     // 顶层：#aa8d00，慢追
     _$lvSolid = document.createElement('span');
     _$lvSolid.className = 'qqq-lv-solid';
     _$lvSolid.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#aa8d00;z-index:2;';
+    _$lvSolid.addEventListener('transitionend', _onLvSolidTransitionEnd);
 
     $lvTrack.appendChild(_$lvGlow);
     $lvTrack.appendChild(_$lvSolid);
@@ -544,6 +613,7 @@
     init: function () {
       if (_initDone) return;
       _initDone = true;
+      _setupLvListener();     // ★ 注册 billing 事件 → LV 拉取监听
       _injectLoginButton(); // ★ 无条件注入 DOM，不受 bootInfo/bridge 影响
       _ensureBootInfo().then(function () {
         _restoreAuth().then(function () { _notifyStateChange(); });

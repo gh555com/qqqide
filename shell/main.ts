@@ -118,38 +118,9 @@ app.on('open-url', (event, url) => {
     handleAuthProtocolUrl(url);
 });
 
-// ── DevTools 窗口标题自动重命名 ──
-// Electron 22 detached DevTools 创建独立 BrowserWindow。
-// browser-window-created 钩子捕获 → 延迟匹配主窗口（devToolsWebContents 可能尚未赋值）。
-// ★ URL 检测 + 标题检测双保险：刚创建时 URL 可能是 about:blank，标题已含 "Developer Tools"。
-app.on('browser-window-created', (_e, bw) => {
-    try {
-        const url = bw.webContents?.getURL?.() || '';
-        const title = bw.getTitle?.() || '';
-        const isDevTools = url.startsWith('devtools://') || title.startsWith('Developer Tools');
-        if (!isDevTools) return;
-        const devWin = bw;
-        // 延迟重试匹配主窗口（devToolsWebContents + _windowProjectMap 可能未就绪）
-        const tryRename = (attempt: number) => {
-            try {
-                if (devWin.isDestroyed()) return;
-                const allWins = BrowserWindow.getAllWindows();
-                for (const mw of allWins) {
-                    if (mw.isDestroyed()) continue;
-                    const dwc = (mw.webContents as any).devToolsWebContents;
-                    if (dwc && !dwc.isDestroyed() && dwc.id === devWin.webContents.id) {
-                        const projPath = _windowProjectMap.get(mw.id);
-                        const name = projPath ? path.basename(projPath) : 'qqq IDE';
-                        devWin.setTitle(`「🔧」${name}`);
-                        return;
-                    }
-                }
-                if (attempt < 5) setTimeout(() => tryRename(attempt + 1), 500);
-            } catch (_) { /* ignore */ }
-        };
-        setTimeout(() => tryRename(0), 400);
-    } catch (_) { /* ignore */ }
-});
+// ── F12 已由 before-input-event 拦截（window-manager.ts），此处无额外逻辑。
+// DevTools 窗口标题改名：Electron 22 detached DevTools 不暴露 BrowserWindow 引用
+// → 尝试记录见 do/解决开发者控制台 复制按钮问题 §尝试10-12。
 
 function handleAuthProtocolUrl(url: string): void {
     try {

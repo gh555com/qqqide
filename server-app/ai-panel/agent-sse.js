@@ -119,6 +119,8 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
 
             if (chunk.type === 'billing') {
                 self._processBillingEvent(chunk);
+                // ★ 通知父窗口：LV/GE/免费预算 全路径事件驱动
+                try { parent.postMessage({ type: 'qqq-lv-tick', geCost: (chunk.ge_cost || 0), freeWindow: !!chunk.free_window }, '*'); } catch (_) { }
                 continue;
             }
             // ★ 服务端 SSE 错误事件（upstream 失败后通过 SSE 通知客户端）

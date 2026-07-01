@@ -6,6 +6,7 @@ import { BrowserWindow, screen, globalShortcut } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as http from 'http';
+import { exec } from 'child_process';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
 import { SimpleWebSocket } from './cdp-sniffer';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
@@ -219,9 +220,11 @@ export function createWindow(
         win.webContents.on('devtools-opened', () => {
             const dwc = (win.webContents as any).devToolsWebContents as WebContents;
             if (dwc && !dwc.isDestroyed()) {
-                const projPath = _windowProjectMap.get(win.id);
-                const name = projPath ? path.basename(projPath) : 'qqq IDE';
-                injectDevToolsConsoleButtons(dwc, win.webContents, () => _consoleBuffer.join('\n'), win, `「🔧」${name}`);
+                injectDevToolsConsoleButtons(dwc, win.webContents, () => _consoleBuffer.join('\n'), win);
+                // ★ 幂等：延迟设 DevTools 窗口标题（EnumWindows + SetWindowTextW）
+                // Chromium 在页面加载中异步设 "Developer Tools - http://..."，
+                // 所以 devtools-opened 瞬间标题为空 → 延迟 1.5s 后再扫。
+                _renameDevToolsByEnumWindows(win);
             }
         });
         win.webContents.openDevTools({ mode: 'detach' });
@@ -239,110 +242,200 @@ export function createWindow(
                     win.webContents.openDevTools({ mode: 'detach' });
                 }
             }
+            // ★ 吃 F12：Chromium 默认 F12=DevTools，IDE 自己不用 F12，阻止窗口被劫持
+            if (input.key === 'F12') {
+                ev.preventDefault();
+            }
         });
     }
 
     return win;
 }
 
+// ── DevTools 窗口标题改名 — EnumWindows + SetWindowTextW (Win32, via PowerShell P/Invoke) ──
+// Electron 22 detached DevTools 不暴露 BrowserWindow 引用，Electron JS 层不可达。
+// 唯一可行路线: Win32 EnumWindows 枚举所有顶层窗口 → PID 匹配 → SetWindowTextW。
+function _renameDevToolsByEnumWindows(mainWin: BrowserWindow): void {
+    const projPath = _windowProjectMap.get(mainWin.id);
+    const name = projPath ? path.basename(projPath) : 'qqq IDE';
+    const safeName = name.replace(/'/g, "''");
+    const targetPid = process.pid;
+
+    const psScript = `
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public class QW {
+    public delegate bool EnumWndProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")]
+    public static extern bool EnumWindows(EnumWndProc lpEnumFunc, IntPtr lParam);
+    [DllImport("user32.dll")]
+    public static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+    [DllImport("user32.dll")]
+    public static extern bool SetWindowText(IntPtr hWnd, string lpString);
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+}
+"@
+$targetPid = ${targetPid}
+$newTitle = '「🔧」${safeName}'
+$cb = [QW+EnumWndProc]{
+    param($hWnd, $lParam)
+    $sb = New-Object System.Text.StringBuilder(512)
+    [QW]::GetWindowText($hWnd, $sb, 512) | Out-Null
+    if ($sb.ToString().StartsWith('Developer Tools')) {
+        $p = [uint]0
+        [QW]::GetWindowThreadProcessId($hWnd, [ref]$p) | Out-Null
+        if ($p -eq $targetPid) {
+            [QW]::SetWindowText($hWnd, $newTitle) | Out-Null
+        }
+    }
+    return $true
+}
+[QW]::EnumWindows($cb, [IntPtr]::Zero)
+`.trim();
+
+    const b64 = Buffer.from(psScript, 'utf-16le').toString('base64');
+
+    // ★ 延迟：Chromium 在页面加载中异步设标题 "Developer Tools - http://..."
+    // devtools-opened 瞬间标题为空 → 延迟 1.5s/3s 两次扫（幂等，后扫会覆盖前扫）
+    const run = () => {
+        exec(`powershell -NoProfile -NonInteractive -EncodedCommand ${b64}`,
+            { timeout: 8000, windowsHide: true },
+            (err: any, stdout: string, stderr: string) => {
+                if (err) {
+                    // 静默 — PowerShell 不可用/权限不足均不报
+                }
+            }
+        );
+    };
+    setTimeout(run, 1500);
+    setTimeout(run, 3500);
+}
+
 // ── CDP 控制台全量捕获 — Log.entryAdded = DevTools 另存为 100% 同源数据 ──
-// 原理: Chrome DevTools Protocol Log 域直连 Chromium 内核日志流。
-// Log.entryAdded 包含全量 console 输出 + Chrome 原生消息 + 全量栈帧。
-// 与 DevTools 右键另存为完全同源。
-// 失败时静默降级到 console-message 事件。
+// ★ v7.1 修复: 改用 /json/list 逐 page target 连接 Log 域
+//   浏览器级 CDP（/json/version）Log.enable 只捕获 browser 进程自身日志，
+//   页面级 console 消息必须连接 page target 的 webSocketDebuggerUrl。
+//   DevTools 右键另存为走的就是这个路径。
 async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
     const PORT = 8315;
-    let ws: SimpleWebSocket | null = null;
+    const allSockets: SimpleWebSocket[] = [];
+
+    const _handleEntry = (entry: any) => {
+        const url = (entry.url || '').replace(/\\/g, '/');
+        const file = url.split('/').pop() || url;
+        const line = entry.lineNumber || 0;
+        const text = entry.text || '';
+        const callFrames: any[] = entry.stackTrace?.callFrames || [];
+        const lines: string[] = [];
+        if (callFrames.length > 0) {
+            const firstFrame = callFrames[0];
+            const fUrl = (firstFrame.url || '').replace(/\\/g, '/').split('/').pop() || firstFrame.url;
+            const fLine = firstFrame.lineNumber || 0;
+            const head = fUrl && fLine ? fUrl + ':' + fLine + ' ' : '';
+            lines.push(head + text);
+            for (let i = 1; i < callFrames.length; i++) {
+                const cf = callFrames[i];
+                const fn = cf.functionName || '<anonymous>';
+                const fu = (cf.url || '').replace(/\\/g, '/').split('/').pop() || cf.url;
+                const fl = cf.lineNumber || 0;
+                lines.push('    ' + fn + ' @ ' + fu + ':' + fl);
+            }
+        } else if (file && line) {
+            lines.push(file + ':' + line + ' ' + text);
+        } else {
+            lines.push(text);
+        }
+        for (const l of lines) {
+            _consoleBuffer.push(l);
+            if (_consoleBuffer.length > _consoleMaxLines) _consoleBuffer.shift();
+        }
+    };
+
+    const _connectTarget = (wsUrl: string) => {
+        try {
+            const ws = new SimpleWebSocket(wsUrl);
+            allSockets.push(ws);
+            ws.on('open', () => {
+                ws.send(JSON.stringify({ id: 1, method: 'Log.enable' }));
+            });
+            ws.on('message', (data: string) => {
+                try {
+                    const msg = JSON.parse(data);
+                    if (msg.method === 'Log.entryAdded' && msg.params?.entry) {
+                        _handleEntry(msg.params.entry);
+                    }
+                } catch { /* ignore */ }
+            });
+            ws.on('error', () => { try { ws.close(); } catch { } });
+        } catch { /* ignore */ }
+    };
 
     try {
-        // 发现 WebSocket URL
-        const wsUrl: string = await new Promise<string>((resolve, reject) => {
+        // ① 获取所有 page target 的 WebSocket URL
+        const targetsJson: string = await new Promise<string>((resolve, reject) => {
+            const req = http.get(`http://127.0.0.1:${PORT}/json/list`, (res) => {
+                let data = '';
+                res.on('data', (chunk: string) => data += chunk);
+                res.on('end', () => resolve(data));
+            });
+            req.on('error', reject);
+            req.setTimeout(3000, () => { req.destroy(); reject(new Error('CDP targets timeout')); });
+        });
+
+        const targets: any[] = JSON.parse(targetsJson);
+        for (const t of targets) {
+            if (t.type === 'page' && t.webSocketDebuggerUrl) {
+                _connectTarget(t.webSocketDebuggerUrl);
+            }
+        }
+
+        // ② 兜底: 浏览器级 CDP 也连一下（capture 进程级日志）
+        const versionJson: string = await new Promise<string>((resolve, reject) => {
             const req = http.get(`http://127.0.0.1:${PORT}/json/version`, (res) => {
                 let data = '';
                 res.on('data', (chunk: string) => data += chunk);
-                res.on('end', () => {
-                    try {
-                        const parsed = JSON.parse(data);
-                        if (parsed.webSocketDebuggerUrl) resolve(parsed.webSocketDebuggerUrl);
-                        else reject(new Error('No webSocketDebuggerUrl in CDP response'));
-                    } catch (e) { reject(e); }
-                });
+                res.on('end', () => resolve(data));
             });
             req.on('error', reject);
-            req.setTimeout(3000, () => { req.destroy(); reject(new Error('CDP endpoint timeout')); });
+            req.setTimeout(2000, () => { req.destroy(); reject(new Error('CDP version timeout')); });
         });
+        const versionInfo = JSON.parse(versionJson);
+        if (versionInfo.webSocketDebuggerUrl) {
+            _connectTarget(versionInfo.webSocketDebuggerUrl);
+        }
 
-        ws = new SimpleWebSocket(wsUrl);
-
-        ws.on('open', () => {
-            ws!.send(JSON.stringify({ id: 1, method: 'Log.enable' }));
-            // 保持连接活跃（15s heartbeat）
-            setInterval(() => {
-                if (ws) {
-                    try { ws.send(JSON.stringify({ id: 0, method: 'Runtime.getIsolateId' })); } catch { }
-                }
-            }, 15000);
-        });
-
-        ws.on('message', (data: string) => {
+        // ③ 监听新 target（动态页面/iframe）并自动连接
+        const _pollTargets = setInterval(async () => {
             try {
-                const msg = JSON.parse(data);
-                if (msg.method !== 'Log.entryAdded' || !msg.params?.entry) return;
-                const entry = msg.params.entry;
-                const url = (entry.url || '').replace(/\\/g, '/');
-                const file = url.split('/').pop() || url;
-                const line = entry.lineNumber || 0;
-                const text = entry.text || '';
-                const stackTrace = entry.stackTrace;
-                const callFrames: any[] = stackTrace?.callFrames || [];
-
-                // 格式对齐 DevTools 原生另存为：
-                //   file:line  message
-                //       fn @ file:line  (缩进4格)
-                const lines: string[] = [];
-
-                if (callFrames.length > 0) {
-                    const firstFrame = callFrames[0];
-                    const fUrl = (firstFrame.url || '').replace(/\\/g, '/').split('/').pop() || firstFrame.url;
-                    const fLine = firstFrame.lineNumber || 0;
-                    const head = fUrl && fLine ? fUrl + ':' + fLine + ' ' : '';
-                    lines.push(head + text);
-
-                    // 剩余栈帧
-                    for (let i = 1; i < callFrames.length; i++) {
-                        const cf = callFrames[i];
-                        const fn = cf.functionName || '<anonymous>';
-                        const fu = (cf.url || '').replace(/\\/g, '/').split('/').pop() || cf.url;
-                        const fl = cf.lineNumber || 0;
-                        lines.push('    ' + fn + ' @ ' + fu + ':' + fl);
+                const resp: string = await new Promise<string>((resolve, reject) => {
+                    const req = http.get(`http://127.0.0.1:${PORT}/json/list`, (res) => {
+                        let data = '';
+                        res.on('data', (chunk: string) => data += chunk);
+                        res.on('end', () => resolve(data));
+                    });
+                    req.on('error', reject);
+                    req.setTimeout(2000, () => { req.destroy(); });
+                });
+                const list: any[] = JSON.parse(resp);
+                const knownUrls = new Set(allSockets.map(s => s.url));
+                for (const t of list) {
+                    if (t.type === 'page' && t.webSocketDebuggerUrl && !knownUrls.has(t.webSocketDebuggerUrl)) {
+                        _connectTarget(t.webSocketDebuggerUrl);
                     }
-                } else if (file && line) {
-                    lines.push(file + ':' + line + ' ' + text);
-                } else {
-                    lines.push(text);
                 }
+            } catch { /* ignore */ }
+        }, 5000);
 
-                for (const l of lines) {
-                    _consoleBuffer.push(l);
-                    if (_consoleBuffer.length > _consoleMaxLines) _consoleBuffer.shift();
-                }
-            } catch { /* ignore parse errors */ }
-        });
-
-        ws.on('error', (e: Error) => {
-            // CDP 不可用 → 静默降级到 console-message
-            // console-message 事件在 createMainWindow 中已注册，自动接管
-            try { if (ws) ws.close(); } catch { }
-            ws = null;
-        });
-
-        // 窗口关闭 → 清理 CDP
         win.on('closed', () => {
-            try { if (ws) ws.close(); } catch { }
-            ws = null;
+            clearInterval(_pollTargets);
+            for (const s of allSockets) { try { s.close(); } catch { } }
+            allSockets.length = 0;
         });
 
     } catch {
-        // CDP 不可用（端口冲突 / 浏览器未启动 / 网络错误）→ 静默降级
+        // CDP 不可用 → 静默降级到 console-message
     }
 }

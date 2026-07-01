@@ -455,7 +455,7 @@
         "diffOnly": "仅差异",
         "editBtn": "编辑",
         "cancelEdit": "取消编辑",
-        "editTooltip": "编辑当前磁盘文件（而非任何一个历史快照）",
+        "editTooltip": "编辑当前磁盘最新文件（而非任何一个历史快照）",
         "editTooltipExit": "退出编辑时不会自动保存",
         "editing": "编辑中",
         "unsaved": "未保存",

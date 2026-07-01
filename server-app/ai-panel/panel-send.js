@@ -360,17 +360,34 @@ async function sendMessage(skipFloorCreation) {
                     }
                     scrollToBottom(true);
                 }
-                // ★ 记录 AI 真正开始干活的时间（仅第一次）+ aq 区指示器
+                // ★ 记录 AI 真正开始干活的时间（仅第一次）+ aq1 先上屏
                 if (!_capturedAgent._aiStartTime) {
                     _capturedAgent._aiStartTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
                     _capturedAgent._aiTierLabel = 'A' + (selectedTier || 6);
-                    // ★ aq 区：AI 等级+启动时间，紧贴用户粉色气泡下方，AI 回复上方
+                    // ★ aq1：AI 等级+启动时间，紧贴用户粉色气泡下方，AI 回复上方
                     if (aiDiv && aiDiv.parentNode) {
                         var tierEl = document.createElement('div');
                         tierEl.className = 'msg-tier-indicator';
                         tierEl.textContent = _capturedAgent._aiTierLabel + ' start in ' + _capturedAgent._aiStartTime;
                         aiDiv.parentNode.insertBefore(tierEl, aiDiv);
                     }
+                    // ★ aq1 先 paint：首 chunk 只 buffer 不 render，延迟一帧让 aq1 单独上屏
+                    var _td2 = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
+                    if (_td2) {
+                        _td2._buf = (_td2._buf || '') + chunk;
+                        _td2._fullText = (_td2._fullText || '') + chunk;
+                        scrollToBottom(true);
+                        requestAnimationFrame(function () {
+                            if (_capturedAgent._activeAiDiv) {
+                                _capturedAgent._activeAiDiv._paras = _capturedAgent._activeAiDiv._paras || [];
+                                _capturedAgent._activeAiDiv._dirty = true;
+                                _capturedAgent._activeAiDiv._renderScheduled = false;
+                                _capturedAgent._activeAiDiv._firstRenderDone = false;
+                                doStreamRender(_capturedAgent);
+                            }
+                        });
+                    }
+                    return;
                 }
                 var _targetDiv = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
                 if (!_targetDiv) return;

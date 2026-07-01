@@ -30,7 +30,8 @@
   var _$panel = null;
   var _$btn = null;
 
-  // ── 设置定义（元数据） ──
+  // ── 设置定义（元数据）── 默认值从 window.QQQ_DEFAULTS 读取 ──
+  var _D = window.QQQ_DEFAULTS || {};
   var SETTINGS_DEF = [
     {
       key: 'editor.undoMode',
@@ -38,7 +39,7 @@
       desc: 'Ctrl+Z 在代码编辑器中撤销的粒度',
       type: 'radio',
       tab: 'general',
-      defaultValue: 'char',
+      defaultValue: _D['editor.undoMode'] || 'char',
       options: [
         { value: 'char', label: '逐字回退', desc: '每按一次 Ctrl+Z 撤销一个字符' },
         { value: 'word', label: '单词回退', desc: 'Monaco 原生撤销，按编辑操作分组（推荐用于代码）' }
@@ -50,7 +51,7 @@
       desc: '数字越大=思考越深、质量越高、越慢、越贵',
       type: 'radio',
       tab: 'general',
-      defaultValue: '6',
+      defaultValue: String(_D['ai.defaultTier'] || 3),
       options: [
         { value: '1', label: '1', desc: '轻量' },
         { value: '2', label: '2', desc: '轻量+推理' },
@@ -66,7 +67,7 @@
       desc: '上下文 token 数超过此值自动触发压缩。单位 k（千 tokens），接收范围 100-1000',
       type: 'number',
       tab: 'general',
-      defaultValue: '200',
+      defaultValue: String(_D['ai.compressThreshold'] || 600),
       min: 100,
       max: 1000,
       unit: 'k'
@@ -77,7 +78,7 @@
       desc: '开启后，AI 执行的 shell 命令修改的文件会自动记录到版本时间线。关闭可减少 timeline 快照噪音。',
       type: 'bool',
       tab: 'advanced',
-      defaultValue: false
+      defaultValue: _D['timeline.trackRunCommand'] || false
     }
   ];
 

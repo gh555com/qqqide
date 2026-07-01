@@ -54,23 +54,16 @@ document.getElementById('qqq-dt-save').onclick=function(){
 /**
  * 注入复制/另存为按钮到 DevTools。
  * dwc 必须已就绪（由外部 devtools-opened 事件保证）。
- * dtTitle: DevTools 窗口标题（null=不改）。
  */
 export function injectDevToolsConsoleButtons(
   dwc: WebContents,     // DevTools WebContents (已就绪)
   wc: WebContents,      // 被检查的渲染进程 WebContents
   getText: () => string, // 获取控制台文本
   mw: BrowserWindow,    // 主窗口 (用于保存对话框)
-  dtTitle?: string | null, // ★ DevTools 窗口标题（设 document.title）
 ): void {
   if (dwc.isDestroyed()) return;
   dwc.executeJavaScript(INJECT_JS)
-    .then(() => {
-      if (dtTitle) {
-        dwc.executeJavaScript(`document.title=${JSON.stringify(dtTitle)}`).catch(() => {});
-      }
-      _startPushLoop(wc, dwc, getText, mw);
-    })
+    .then(() => { _startPushLoop(wc, dwc, getText, mw); })
     .catch((err: any) => { console.log('[devtools-inject] inject failed:', err?.message || err); });
 }
 

@@ -302,7 +302,7 @@
       lineDecorationsWidth: 0,
       renderLineHighlight: 'none',
       renderLineHighlightOnlyWhenFocus: true,
-      occurrencesHighlight: true,
+      occurrencesHighlight: false,
       selectionHighlight: true,
       matchBrackets: 'never',
       bracketPairColorization: { enabled: false },
@@ -499,6 +499,8 @@
       _installGutterClickFix(ed, monaco);
       _addMinimapAction(ed, monaco, null);
       _addFeedToAiAction(ed, monaco, null);
+      // 抹除 Change All Occurrences
+      try { var a = ed.getAction('editor.action.changeAll'); if (a) a._dispose ? a._dispose() : a.dispose ? a.dispose() : null; } catch (_) {}
       // ── 面包屑导航条（空编辑器：仅工具按钮）──
       if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.create) {
         window.qqqEditorBreadcrumb.create(host, '', ed, monaco);
@@ -551,13 +553,18 @@
           var _defer = _shouldDeferColoring(vStr, lang);
           if (model && lang && !_defer) { monaco.editor.setModelLanguage(model, lang); }
           if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
-          ed.setValue(vStr);
+          // ★ 打开文件跳过撤销记录（避免 Ctrl+Z 回到空文件 + 撤销栈存冗余副本）
+          if (model && !model.isDisposed()) {
+            model.applyEdits([{ range: model.getFullModelRange(), text: vStr, forceMoveMarkers: true }]);
+          } else {
+            ed.setValue(vStr);
+          }
           dirty = false; updateTitle();
           if (_defer && model && lang) {
             var _m = model, _l = lang, _mon = monaco;
             setTimeout(function () {
               try { _mon.editor.setModelLanguage(_m, _l); } catch (_) {}
-            }, 300);
+            }, 1300);
           }
         },
         getValue() { return ed.getValue(); },
@@ -677,7 +684,8 @@
       } else {
         // Reuse existing model: update language + content
         monaco.editor.setModelLanguage(model, initialLang);
-        model.setValue(contentStr);
+        // ★ 首次加载跳过撤销记录（避免撤销栈存500KB冗余副本）
+        model.applyEdits([{ range: model.getFullModelRange(), text: contentStr, forceMoveMarkers: true }]);
       }
 
       const ed = monaco.editor.create(host, Object.assign({
@@ -700,6 +708,8 @@
 
       _applyMinimapPref(ed, monaco, filePath);
       _addFeedToAiAction(ed, monaco, filePath);
+      // 抹除 Change All Occurrences
+      try { var a = ed.getAction('editor.action.changeAll'); if (a) a._dispose ? a._dispose() : a.dispose ? a.dispose() : null; } catch (_) {}
 
       // ★ #2 延迟上色：大文件先 plaintext 秒开，等编辑器稳定后再切语言触发 tokenization
       if (_deferColoring) {
@@ -707,7 +717,7 @@
         setTimeout(function () {
           try { _monaco.editor.setModelLanguage(_model, _lang); }
           catch (_) {}
-        }, 300);
+        }, 1300);
       }
 
       // ★ 窗口快照还原：检查是否有待恢复的光标位置
@@ -851,7 +861,11 @@
     try {
       ed._isRefreshing = true;
       if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
-      ed.setValue(content == null ? '' : String(content));
+      // ★ 实时刷新跳过撤销记录（避免每次刷新堆 500KB 到撤销栈）
+      var _rfModel = ed.getModel();
+      if (_rfModel && !_rfModel.isDisposed()) {
+        _rfModel.applyEdits([{ range: _rfModel.getFullModelRange(), text: content == null ? '' : String(content), forceMoveMarkers: true }]);
+      }
       ed._isRefreshing = false;
       return true;
     } catch (e) {
@@ -887,6 +901,22 @@
           ed.layout();
           ed.updateOptions({ automaticLayout: true });
         } catch (_) {}
+      }
+    },
+    // ★ 安全销毁面板编辑器（异步调用，避免大文件 dispose 阻塞 UI）
+    disposePaneEditor: function(filePath) {
+      var ed = _paneEditors[filePath];
+      if (!ed) return;
+      // suspend layout before dispose（已 suspend，二次保险）
+      try { ed.updateOptions({ automaticLayout: false }); } catch (_) {}
+      // get model reference before disposal
+      var model = null;
+      try { model = ed.getModel(); } catch (_) {}
+      // dispose editor（触发 onDidDispose → 清理 _paneEditors/_paneFiles/allMonacoEditors）
+      try { ed.dispose(); } catch (_) {}
+      // dispose model if no other editor references it
+      if (model && !model.isDisposed()) {
+        try { model.dispose(); } catch (_) {}
       }
     },
     // ★ 窗口快照：获取所有打开 editor 的光标位置

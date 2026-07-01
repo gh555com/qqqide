@@ -131,8 +131,6 @@ export function registerMiscIpc(
         const win = BrowserWindow.fromWebContents(e.sender);
         if (!win) return;
         win.setTitle(String(s));
-        // ★ 同步 F12 DevTools 窗口标题为 「🔧」+项目文件夹名
-        _syncDevToolsTitle(win, String(s));
     });
     ipcMain.handle('qqqide:window:toggleDevTools', (e) => {
         const win = BrowserWindow.fromWebContents(e.sender);
@@ -234,8 +232,6 @@ export function registerMiscIpc(
         }
         _windowProjectMap.set(win.id, normalized);
         _projectWindowMap.set(normalized, win.id);
-        // ★ 项目绑定后同步 DevTools 窗口标题
-        _syncDevToolsTitle(win, path.basename(normalized));
         return true;
     });
 

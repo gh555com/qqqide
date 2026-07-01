@@ -366,7 +366,7 @@
     var $btnEditTip = document.getElementById('btn-edit-tip');
     if ($btnEdit && $btnEditTip) {
         $btnEdit.addEventListener('mouseenter', function (e) {
-            $btnEditTip.textContent = _editing ? _i('timeline.editTooltipExit', '退出编辑时不会自动保存') : _i('timeline.editTooltip', '编辑当前磁盘文件（而非任何一个历史快照）');
+            $btnEditTip.textContent = _editing ? _i('timeline.editTooltipExit', '退出编辑时不会自动保存') : _i('timeline.editTooltip', '编辑当前磁盘最新文件（而非任何一个历史快照）');
             $btnEditTip.style.display = '';
             $btnEditTip.style.left = 'auto';
             $btnEditTip.style.right = (window.innerWidth - e.clientX + 14) + 'px';
