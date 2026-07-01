@@ -133,7 +133,15 @@
         if (s) {
           s.get(RECENT_KEY).then(function (data) {
             if (data && Array.isArray(data)) {
-              _recentFolders = data.slice(0, MAX_RECENT);
+              // 去重：同 path 只保留第一条
+              var seen = {};
+              _recentFolders = [];
+              for (var i = 0; i < data.length && _recentFolders.length < MAX_RECENT; i++) {
+                var p = (data[i].path || '').replace(/\\/g, '/').replace(/\/$/, '');
+                if (seen[p]) continue;
+                seen[p] = true;
+                _recentFolders.push(data[i]);
+              }
             }
             resolve();
           }).catch(function () { resolve(); });
@@ -1085,13 +1093,22 @@
       'left:' + rect.left + 'px; top:' + topPx + 'px; ' +
       'min-width:280px; max-width:420px; height:' + maxH + 'px;';
 
-    if (_recentFolders.length === 0) {
+    // 去重：同 path 只保留最靠前
+    var seen = {};
+    var deduped = _recentFolders.filter(function (f) {
+      var p = (f.path || '').replace(/\\/g, '/').replace(/\/$/, '');
+      if (seen[p]) return false;
+      seen[p] = true;
+      return true;
+    });
+
+    if (deduped.length === 0) {
       var emptyRow = document.createElement('div');
       emptyRow.style.cssText = 'padding:10px 12px; font-size:12px; color:var(--text-muted); font-style:italic;';
       emptyRow.textContent = window._i ? window._i('shell.viewport.noRecent', '暂无最近记录，点击 + 选择文件夹') : '暂无最近记录，点击 + 选择文件夹';
       dd.appendChild(emptyRow);
     } else {
-      _recentFolders.forEach(function (f) {
+      deduped.forEach(function (f) {
         var row = document.createElement('div');
         row.className = 'aiv-row aiv-recent-row';
         row.style.cssText = 'padding:8px 12px; cursor:default; font-size:14px; font-weight:300; display:flex; align-items:center; gap:6px;';

@@ -153,9 +153,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 /* ★ 在建楼层禁用 content-visibility，确保时钟行高度被 scrollHeight 精确计入 */
 .msg.card-building{content-visibility:visible}
 /* 用户消息气泡 */
-.msg-user{position:relative;background:#f8e0e0;border-radius:8px;padding:8px 12px;overflow-x:hidden;overflow-wrap:break-word;word-break:break-word}
+.msg-user{position:relative;background:#f8e0e0;border-radius:8px;padding:8px 12px;overflow-wrap:break-word;word-break:break-word}
 [data-theme="dark"] .msg-user{background:#4a2d30;color:#e8d0d0}
-.msg-user-copy{position:absolute;top:2px;right:2px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:3px;cursor:pointer;opacity:0;transition:opacity .15s;color:#a08080;z-index:2}
+.msg-user-copy{position:sticky;top:50%;transform:translateY(-50%);float:right;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:3px;cursor:pointer;opacity:0;transition:opacity .15s;color:#a08080;z-index:2}
 .msg-user:hover .msg-user-copy,.msg-user-copy.copied{opacity:1}
 .msg-user-copy:hover{background:rgba(0,0,0,0.06);color:#705050}
 .msg-user-copy.copied{color:#859900}

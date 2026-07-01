@@ -189,7 +189,12 @@ function _addCopyBtnToUserMsg(el) {
             sel.removeAllRanges();
         });
     };
-    el.appendChild(btn);
+    // ★ 插入为 first child 使 float:right 居于右上角，sticky 在滚动时追踪 50% 视口
+    if (el.firstChild) {
+        el.insertBefore(btn, el.firstChild);
+    } else {
+        el.appendChild(btn);
+    }
 }
 
 // ═══ 唯一真理机：用户消息 DOM 元素（只有这一处创建用户豆腐块） ═══

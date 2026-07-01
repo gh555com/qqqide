@@ -661,6 +661,7 @@ async function _saveAgentQuestData(questId, ag, floorNum) {
         floorPayload.passbyHouses = _passbyHouses;
         floorPayload.passbyWge = _passbyWge;
         floorPayload.passbyTime = Date.now() + (ag._serverDrift || 0);
+        floorPayload.passbyCity = ag._serverCity || '';
 
         // ═══ A4 快照持久化 ═══
         if (typeof _a4PersistSnapshots === 'function') {

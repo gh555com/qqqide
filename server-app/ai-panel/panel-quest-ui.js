@@ -803,7 +803,7 @@ document.getElementById('ctx-compress').onclick = async function () {
             _aiDiv._clockCost.style.display = 'inline';
             _aiDiv._clockCost._houses = _ag._houses;
             _aiDiv._clockCost._floorNum = _ag._currentFloorNum;
-            _aiDiv._clockCost._passby = { questId: questActiveId, floorNum: _ag._currentFloorNum, houses: (_ag._passbyBaseHouses || 0) + (_ag._houses ? _ag._houses.length : 0), wge: (_ag._passbyBaseWge || 0) + (_ag._floorCostWge || 0), drift: _ag._serverDrift || 0 };
+            _aiDiv._clockCost._passby = { questId: questActiveId, floorNum: _ag._currentFloorNum, houses: (_ag._passbyBaseHouses || 0) + (_ag._houses ? _ag._houses.length : 0), wge: (_ag._passbyBaseWge || 0) + (_ag._floorCostWge || 0), drift: _ag._serverDrift || 0, city: _ag._serverCity || '' };
         }
 
         // ⑨ 停止计时（aiMs 归因 = 压缩耗时，使饼图绿色而非全黄）
