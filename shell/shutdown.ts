@@ -195,7 +195,13 @@ export function registerExitHandlers(
         _flushedOnce = true;
         event.preventDefault();
 
-        // ① stop engine
+        // ① stop python broker
+        try {
+            const { stopPyBroker } = require('./py-broker');
+            stopPyBroker();
+        } catch { /* ignore */ }
+
+        // ② stop engine
         try {
             const { EngineHost } = require('./engines');
             // engineHost is handled in main.ts

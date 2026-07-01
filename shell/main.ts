@@ -42,6 +42,7 @@ import { registerTimelineIpc } from './ipc-timeline';
 import { registerSmartSearchIpc, IndexService } from './ipc-smart-search';
 import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
+import { startPyBroker, stopPyBroker } from './py-broker';
 
 // ── 服务 ──
 import { EngineHost } from './engines';
@@ -288,7 +289,10 @@ app.whenReady().then(async () => {
     // Security hardening
     hardenSession();
 
-    // Create main window
+    // ★ 启动 Python broker（跨平台窗口管理常驻子进程）
+    startPyBroker(portable.root);
+
+    // Create main windowdow
     mainWindow = createWindow(
         portable.root, portable.cache, APP_VERSION,
         lspBridge, downloadService, stateStore

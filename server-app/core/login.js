@@ -139,6 +139,7 @@
 
   // ── LV（事件驱动：每间 house 的 billing 都直接触发动画）──
   var _lvAccWge = null;  // 本地累计总 wge（null=未从服务器初始化）
+
   function _setupLvListener() {
     window.addEventListener('message', function (e) {
       if (e.data && e.data.type === 'qqq-lv-tick') {
@@ -157,8 +158,8 @@
           var lvPct = (_lvAccWge % WL) / WL * 100;
           _lvAnimate(lvFloor, lvPct);
         }
-        // 服务器真理后台拉取（无冷却，静默修正基准）
-        _fetchLv(false);
+        // 服务器真理后台静默拉取（只同步 _lvAccWge 基准，不动画）
+        _fetchLv();
         // 免费预算
         if (e.data.freeWindow) {
           try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (_) { }
@@ -167,9 +168,8 @@
     });
   }
 
-  async function _fetchLv(force) {
+  async function _fetchLv() {
     if (!_authData || !_authData.token) return;
-    _lvLastFetch = Date.now();
     try {
       var resp = await fetch(API_BASE + '/qqq/lv', {
         headers: { 'Authorization': 'Bearer ' + _authData.token }
@@ -177,7 +177,7 @@
       var data = await resp.json();
       if (data && data.ok) {
         _lvData = data;
-        // ★ 服务器真理：只设不动画（基准同步）
+        var wasNull = (_lvAccWge === null);
         var WL = 10 * 10000;
         var servFloor = data.level_floor != null ? data.level_floor : 0;
         var servPct = Math.min(data.progress_pct || 0, 100);
@@ -185,166 +185,105 @@
         // 只前进不后退（防 DB 未提交导致倒退）
         if (_lvAccWge === null || servWge > _lvAccWge) {
           _lvAccWge = servWge;
+          // ★ 服务器基准比本地高 → 静默同步中层，不动顶层追赶
+          if (_$lvGlow) { _$lvGlow.style.width = servPct + '%'; }
+          if (_$lvLevel) _$lvLevel.textContent = 'Lv' + servFloor;
+          _lvPrevFloor = servFloor;
         }
-        if (_$lvBar) _$lvBar.style.display = 'inline-flex';
-        if (_$lvLevel) _$lvLevel.textContent = 'Lv' + servFloor;
-        _lvPrevFloor = servFloor;
         _lvLastGe = data.total_consumed_ge || '';
-        if (_$lvSolid) {
-          _$lvSolid.style.transition = 'none';
-          _$lvSolid.style.width = servPct + '%';
-          _$lvSolid.style.background = '#8a6410';
-        }
-        _lvUpdateGlow(servPct);
+        if (_$lvBar) _$lvBar.style.display = 'inline-flex';
+        // ★ 首次初始化：同步两层到服务器基准
+        if (wasNull) { _lvSyncFromServer(); }
         if (_$ldrBtn) _$ldrBtn.style.display = '';
       }
-    } catch (e) { console.warn('[login] lv fetch error:', e.message); }
+    } catch (e) { /* silent */ }
   }
 
-  // ═══ LV 3 层动画引擎 ═══
-  var _$lvGlow = null;
-  var _$lvSolid = null;
-  var _lvLastGe = '';
-  var _lvPrevFloor = -1;
-  var _lvChaseGen = 0;          // 追赶代数，只认最新一代完成
-  var _lvUpgradeBusy = false;   // 升级动画进行中
-  var _lvBlockTE = false;       // 屏蔽因 transition:none 取消旧过渡产生的假 transitionend
-
-  // 气流冲击特效：轨道#555 从暗→亮→暗
-  function _lvGust() {
-    var t = _$lvBar && _$lvBar.querySelector('.qqq-lv-track');
-    if (!t) return;
-    t.style.transition = 'box-shadow 0.15s ease-in';
-    t.style.boxShadow = 'inset 0 0 22px 5px #b58900';
-    t.style.filter = 'brightness(1.6)';
-    setTimeout(function () {
-      t.style.transition = 'box-shadow 0.4s ease-out';
-      t.style.boxShadow = '';
-      t.style.filter = '';
-    }, 200);
-  }
-
-  // 升级庆祝：整条 LV bar 金色闪光
-  function _lvUpgradeFlash() {
-    if (!_$lvBar) return;
-    _$lvBar.style.transition = 'filter 0.15s ease-out';
-    _$lvBar.style.filter = 'drop-shadow(0 0 8px #b58900) brightness(1.5)';
-    setTimeout(function () {
-      _$lvBar.style.transition = 'filter 0.6s ease-out';
-      _$lvBar.style.filter = '';
-    }, 200);
-  }
-
-  // 中层炽金：瞬间跳到目标位置（零过渡），永远不透
-  function _lvUpdateGlow(pct) {
-    if (!_$lvGlow) return;
-    _$lvGlow.style.transition = 'none';
-    void _$lvGlow.offsetWidth;
-    _$lvGlow.style.width = pct + '%';
-  }
-
-  // 顶层追赶：半透明琥珀淡金从左追到右，追完变回不透 #8a6410
-  // targetPct = 中层（炽金）当前打点位置
-  function _lvChaseSolid(targetPct, isLevelUp) {
-    if (!_$lvSolid) return;
-    _lvClearSolidTimer();
-
-    // ★ 先屏蔽：取消旧过渡会触发假 transitionend，必须拦
-    _lvBlockTE = true;
-
-    // 去皮 → 强制回流 → 顶层冻结在当前计算位置
-    _$lvSolid.style.transition = 'none';
-    void _$lvSolid.offsetWidth;
-
-    // 更新代数
-    var gen = ++_lvChaseGen;
-    _$lvSolid.setAttribute('data-chase-gen', gen);
-
-    if (isLevelUp) {
-      _lvUpgradeBusy = true;
-      _lvUpgradeFlash();
-      // 闪电填满 100%
-      _$lvSolid.style.transition = 'width 0.25s ease-out';
-      _$lvSolid.style.width = '100%';
-      _lvSolidTimer(350, function () {
-        _$lvSolid.style.transition = 'none';
-        _$lvSolid.style.width = '0%';
-        void _$lvSolid.offsetWidth;
-        // 升级后快追：0.5s
-        _lvSolidTimer(80, function () {
-          _lvUpgradeBusy = false;
-          _lvBlockTE = false;
-          _$lvSolid.style.background = 'rgba(185,145,75,0.50)';
-          _$lvSolid.style.transition = 'width 0.5s ease-out';
-          _$lvSolid.style.width = targetPct + '%';
-        });
-      });
-    } else {
-      // ★ 半透明追赶：中层炽金从下面透过来 → 金属路头可见
-       _$lvSolid.style.background = 'rgba(185,145,75,0.50)';
-      _$lvSolid.style.transition = 'width 10s linear';
-      _$lvSolid.style.width = targetPct + '%';
-      // 60ms 后解封（足够让假 transitionend 被拦掉）
-      setTimeout(function () { _lvBlockTE = false; }, 60);
+  function _lvSyncFromServer() {
+    // ★ 登录/恢复时一次性同步：中层+顶层直接定位，不播动画
+    var d = _lvData;
+    if (!d || !d.level) return;
+    var WL = 10 * 10000;
+    var servFloor = d.level_floor != null ? d.level_floor : 0;
+    var servPct = Math.min(d.progress_pct || 0, 100);
+    _lvAccWge = servFloor * WL + (servPct / 100) * WL;
+    if (_$lvBar) _$lvBar.style.display = 'inline-flex';
+    if (_$lvLevel) _$lvLevel.textContent = 'Lv' + servFloor;
+    _lvPrevFloor = servFloor;
+    _lvLastGe = d.total_consumed_ge || '';
+    if (_$lvGlow) { _$lvGlow.style.width = servPct + '%'; }
+    if (_$lvSolid) {
+      _$lvSolid.style.transition = 'none';
+      _$lvSolid.style.width = servPct + '%';
+      _$lvSolid.style.background = '#c4b187';
     }
   }
 
-  var _lvSolidTimerId = null;
-  function _lvSolidTimer(ms, fn) {
-    _lvSolidTimerId = setTimeout(function () { _lvSolidTimerId = null; fn(); }, ms);
-  }
-  function _lvClearSolidTimer() {
-    if (_lvSolidTimerId) { clearTimeout(_lvSolidTimerId); _lvSolidTimerId = null; }
+  // ═══ LV 3 层动画引擎 ═══
+  // 中层 (_$lvGlow): #ffffdd 象牙白，z-index:1
+  // 顶层 (_$lvSolid): 追赶中 #8a6410，追上后 #c4b187，z-index:2
+  var _$lvGlow = null;
+  var _$lvSolid = null;
+  var _lvPrevFloor = -1;
+  var _lvChaseGen = 0;
+
+  // 中层瞬间跳到目标
+  function _lvSnapGlow(pct) {
+    if (!_$lvGlow) return;
+    _$lvGlow.style.width = pct + '%';
   }
 
-  // transitionend：真的追完才变回不透 #8a6410
+  // 顶层追赶 → 使用 rAF 保证 transition 可靠重启
+  function _lvChaseSolid(targetPct, isLevelUp) {
+    if (!_$lvSolid) return;
+    var gen = ++_lvChaseGen;
+    var dur = isLevelUp ? '0.5s' : '10s';
+    var ease = 'linear';
+
+    // ① 杀死旧过渡，冻结在当前计算位置
+    _$lvSolid.style.transition = 'none';
+    _$lvSolid.offsetHeight;  // force reflow
+
+    // ② 换追赶色
+    _$lvSolid.style.background = '#8a6410';
+
+    // ③ rAF 后启动新过渡（保证浏览器已处理完 transition:none）
+    requestAnimationFrame(function () {
+      if (!_$lvSolid) return;
+      if (gen !== _lvChaseGen) return;  // 已有更新一代追赶，放弃
+      _$lvSolid.style.transition = 'width ' + dur + ' ' + ease;
+      _$lvSolid.style.width = targetPct + '%';
+    });
+  }
+
+  // transitionend → 追上
   function _onLvSolidTransitionEnd(e) {
     if (e.propertyName !== 'width') return;
-    if (_lvBlockTE) return;          // 假事件（transition:none 取消旧过渡触发）→ 忽略
-    if (_lvUpgradeBusy) return;
     if (!_$lvSolid) return;
-    var gen = parseInt(_$lvSolid.getAttribute('data-chase-gen') || '0');
-    if (gen !== _lvChaseGen) return; // 旧代完成，新代已启动 → 忽略
-    // ★ 真正追上：变回不透实色 → 金属路头消失
-    _$lvSolid.style.background = '#8a6410';
+    _$lvSolid.style.background = '#c4b187';
+    _$lvSolid.style.transition = 'none';
   }
 
-  // ★ 本地动画引擎（每间 house 直接触发，不等服务器）
+  // ★ 动画入口（每间 house 直接调用）
   function _lvAnimate(lvFloor, lvPct) {
     if (!_$lvBar) return;
     _$lvBar.style.display = 'inline-flex';
     if (_$lvLevel) _$lvLevel.textContent = 'Lv' + lvFloor;
     var isLevelUp = (_lvPrevFloor >= 0 && lvFloor > _lvPrevFloor);
     _lvPrevFloor = lvFloor;
-    _lvGust();
-    _lvUpdateGlow(lvPct);
+    // ① 中层直达
+    _lvSnapGlow(lvPct);
+    // ② 顶层追赶
     _lvChaseSolid(lvPct, isLevelUp);
     if (_$ldrBtn) _$ldrBtn.style.display = '';
   }
 
-  // 服务器真理回调（登录/登出时同步基准，不触发动画）
+  // 服务器真理回调（仅登录/登出用——不触发动画）
   function _updateLvUI() {
     if (!_$lvBar) return;
     var d = _lvData;
     if (d && typeof d.level === 'number' && d.level >= 0) {
-      _$lvBar.style.display = 'inline-flex';
-      var servFloor = d.level_floor != null ? d.level_floor : 0;
-      var servPct = Math.min(d.progress_pct || 0, 100);
-      // 初始化本地累计基准（仅在从未设置时）
-      if (_lvAccWge === null) {
-        var WL = 10 * 10000;
-        _lvAccWge = servFloor * WL + (servPct / 100) * WL;
-      }
-      if (_$lvLevel) _$lvLevel.textContent = 'Lv' + servFloor;
-      _lvPrevFloor = servFloor;
-      _lvLastGe = d.total_consumed_ge || '';
-      _lvUpdateGlow(servPct);
-      // 顶层直接定位，不追（登录/登出时不播动画）
-      if (_$lvSolid) {
-        _$lvSolid.style.transition = 'none';
-        _$lvSolid.style.width = servPct + '%';
-        _$lvSolid.style.background = '#aa8d00';  // 强制恢复静止色
-      }
+      _lvSyncFromServer();
       if (_$ldrBtn) _$ldrBtn.style.display = '';
     } else {
       _$lvBar.style.display = 'none';
@@ -525,7 +464,7 @@
     _updateButtons(loggedIn, phoneTail);
     if (loggedIn) {
       _startBalancePoll();
-      _fetchLv(true);  // ★ 事件驱动：登录时主动拉一次初始值
+      _fetchLv();  // ★ 登录时拉服务器基准
       // 触发状态栏免费预算刷新
       try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (e) { }
       try {
@@ -609,15 +548,15 @@
     $lvTrack.className = 'qqq-lv-track';
     $lvTrack.style.cssText = 'display:inline-block;position:relative;width:60px;height:12px;background:var(--bg-tertiary,#555);overflow:hidden;border-radius:1px;';
 
-    // 中间层：炽金琥珀（真理信标），瞬间更新
+    // 中层：象牙白 #ffffdd 真理信标，瞬间更新，z-index:1
     _$lvGlow = document.createElement('span');
     _$lvGlow.className = 'qqq-lv-glow';
-    _$lvGlow.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#e8a020;z-index:1;';
+    _$lvGlow.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#ffffdd;z-index:1;';
 
-    // 顶层：古铜，慢追
+    // 顶层：停止时 #c4b187，追赶时 #8a6410，z-index:2
     _$lvSolid = document.createElement('span');
     _$lvSolid.className = 'qqq-lv-solid';
-    _$lvSolid.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#8a6410;z-index:2;';
+    _$lvSolid.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#c4b187;z-index:2;';
     _$lvSolid.addEventListener('transitionend', _onLvSolidTransitionEnd);
 
     $lvTrack.appendChild(_$lvGlow);

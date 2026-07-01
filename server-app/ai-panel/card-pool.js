@@ -514,8 +514,20 @@ var CardPool = (function () {
 
     // ★ 优先用预渲染 ai_html（quest.sq3 真理源），建楼时已跑过 _buildConversationFlowHtml
     //   仅当 ai_html 为空（旧数据未迁移）时才回退到现场渲染
+    // ★ 幽灵文本清理：老代码 _streaming 未设 true 导致 ai_html 焙入"工具执行完毕"，
+    //   _streaming 真则表明楼未建完（快照），丢弃预渲染 ai_html 换现场重渲
     var conv = fData.conversation || [];
     var flowHtml = fData.ai_html || '';
+    if (fData._streaming && flowHtml.indexOf('msg-flow-tools-done') >= 0) {
+      flowHtml = '';  // ★ 舍弃焙入幽灵的 stale ai_html
+    }
+    // ★ 补充：老代码 _streaming 未设，查 agent pool 确认活楼 → 活楼就留空（不印幽灵）
+    if (flowHtml && flowHtml.indexOf('msg-flow-tools-done') >= 0 && !fData._streaming) {
+      var _liveAg2 = parent.__qqq_agentPool && parent.__qqq_agentPool[card.id];
+      if (_liveAg2 && _liveAg2._stopState === 'sending' && _liveAg2._currentFloorNum === fNum) {
+        flowHtml = '';
+      }
+    }
     if (!flowHtml && typeof _buildConversationFlowHtml === 'function') {
       flowHtml = _buildConversationFlowHtml(conv, fData);
     }
@@ -641,32 +653,50 @@ var CardPool = (function () {
       window._a4RestoreBlock(aiEl, fData.a4Snapshots, _a4NumId, fNum);
     }
 
-    // ⑤ 已封顶楼层：始终设时钟为停止态（dark），不管是否找到计时数据
-    if (aiEl._clockBlock) {
-      aiEl._clockBlock.className = 'msg-ai-clock';
-    }
-    var timing = fData.clockTiming || null;
-    if (!timing) {
-      for (var ti = 0; ti < questTimings.length; ti++) {
-        if (questTimings[ti].floorIndex === fNum) { timing = questTimings[ti]; break; }
+    // ⑤ 时钟渲染：活楼重连 timer，死楼用静态 timing
+    var _liveAg = parent.__qqq_agentPool && parent.__qqq_agentPool[card.id];
+    var _isLiveBuilding = _liveAg && _liveAg._stopState === 'sending' && _liveAg._currentFloorNum === fNum;
+    if (_isLiveBuilding && typeof startFloorTimer === 'function') {
+      // ★ 活楼重连：启动 live timer，不设 dark 态
+      startFloorTimer(aiEl, _liveAg, true);
+      // 恢复成本显示
+      if (_liveAg._floorCostWge && aiEl._clockCost) {
+        var _rawGe = _liveAg._floorCostWge / 10000;
+        var _displayGe = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2);
+        aiEl._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
+        aiEl._clockCost.textContent = _displayGe + ' ge' + (_liveAg._floorFree ? ' Free' : '');
+        aiEl._clockCost.style.display = 'inline';
+        aiEl._clockCost._houses = _liveAg._houses || [];
+        aiEl._clockCost._floorNum = fNum;
       }
-    }
-    if (timing && aiEl._clockMin && aiEl._clockCanvas) {
-      var totalS = Math.floor((timing.durationMs || 0) / 1000);
-      var min = Math.floor(totalS / 60);
-      var sec = totalS % 60;
-      aiEl._clockMin.textContent = min + 'm';
-      aiEl._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
-      var _dp = window.drawPie;
-      if (typeof _dp === 'function') {
-        _dp(aiEl._clockCanvas, {
-          networkMs: timing.networkMs || 0,
-          aiMs: timing.aiMs || 0,
-          otherMs: timing.otherMs || 0,
-          totalMs: timing.durationMs || 0
-        });
+    } else {
+      // 已封顶楼层：始终设时钟为停止态（dark），不管是否找到计时数据
+      if (aiEl._clockBlock) {
+        aiEl._clockBlock.className = 'msg-ai-clock';
       }
-      aiEl._clockCanvas.style.visibility = 'visible';
+      var timing = fData.clockTiming || null;
+      if (!timing) {
+        for (var ti = 0; ti < questTimings.length; ti++) {
+          if (questTimings[ti].floorIndex === fNum) { timing = questTimings[ti]; break; }
+        }
+      }
+      if (timing && aiEl._clockMin && aiEl._clockCanvas) {
+        var totalS = Math.floor((timing.durationMs || 0) / 1000);
+        var min = Math.floor(totalS / 60);
+        var sec = totalS % 60;
+        aiEl._clockMin.textContent = min + 'm';
+        aiEl._clockSec.textContent = ':' + (sec < 10 ? '0' : '') + sec + 's';
+        var _dp = window.drawPie;
+        if (typeof _dp === 'function') {
+          _dp(aiEl._clockCanvas, {
+            networkMs: timing.networkMs || 0,
+            aiMs: timing.aiMs || 0,
+            otherMs: timing.otherMs || 0,
+            totalMs: timing.durationMs || 0
+          });
+        }
+        aiEl._clockCanvas.style.visibility = 'visible';
+      }
     }
 
     // ⑥ 恢复历史楼层成本显示
@@ -678,6 +708,7 @@ var CardPool = (function () {
       aiEl._clockCost.textContent = _displayGe + ' ge' + (isFree ? ' Free' : '');
       aiEl._clockCost.style.display = 'inline';
       aiEl._clockCost._houses = fData.houses || [];
+      aiEl._clockCost._floorNum = fNum;
       if (isFree) {
         aiEl._clockCost.style.color = '#859900';
       } else {

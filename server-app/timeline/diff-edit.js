@@ -30,6 +30,7 @@
         try { if (bridge && bridge.timeline && bridge.timeline.readCurrent) { var cur = await bridge.timeline.readCurrent(FILE_PATH); if (typeof cur === 'string') latestContent = cur; } } catch (_) { }
         _editDirty = false; _editSnapshotSeq = 0;
         _editOriginalContent = latestContent;
+        _editSnapshotBase = latestContent;;
         $btnEdit.textContent = _i('timeline.cancelEdit', '取消编辑'); $btnEdit.classList.add('editing');
         var ddR = document.getElementById('dd-right'); if (ddR) ddR.style.display = 'none';
         if ($editStatus) $editStatus.classList.add('visible');
@@ -111,21 +112,21 @@
         if (!_editing || !_diffEditor) return;
         var content = _lastContent;
         if (!content && _diffEditor.getModifiedEditor()) content = _diffEditor.getModifiedEditor().getModel().getValue();
-        if (!content) return;
-        // 内容与进入编辑时一致 → 不写盘、不打快照
-        if (content === _editOriginalContent) {
+        if (!content)         if (content === _editSnapshotBase) {
             _setEditSnapText(_i('timeline.snapUnchanged', '内容未变，无需打快照'));
+            return;
+        }容未变，无需打快照'));
             return;
         }
         _setEditSnapText(_i('timeline.snapping', '打快照中…'));
         try {
-            await bridge.fs.write(FILE_PATH, content);
-            _lastContent = content; _editDirty = false;
+            awa            _lastContent = content; _editDirty = false;
             _editOriginalContent = content;
+            _editSnapshotBase = content;
             _updateEditStatus();
             var snapOk = false;
             try {
-                var rec = await bridge.timeline.record({ projectRoot: PROJECT_ROOT, filePath: FILE_PATH, content: content, source: 'diff-edit' });
+                var rec = await bridge.timeline.record({ projectRoot: PROJECT_ROOT, filePath: FILE_PATH, content: content, source: 'diff-edit' });ontent: content, source: 'diff-edit' });
                 if (rec && rec.ok && rec.recorded) {
                     _editSnapshotSeq++;
                     var _snapOkTmpl = _i('timeline.snapOk', '已打快照 #{seq} {time} diff edit');
