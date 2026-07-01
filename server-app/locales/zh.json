@@ -285,7 +285,7 @@
             "promptTokens": "prompt_tokens",
             "completionTokens": "completion_tokens",
             "totalTokens": "total_tokens",
-            "receipt": "查账凭据",
+            "receipt": "查账凭据（10000wge = 1ge）",
             "title": "计费明细"
         }
     },

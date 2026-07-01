@@ -37,6 +37,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 
 §6 热更新
   - 载荷: 改 server-app/→Deploy→US→客户端 Ctrl+R 生效。
+  - URL: https://gh555.com/qqqide/（version.json + server-app.tar.xz）。旧 /qqq-app/ 已死，零兼容。
   - 壳层(dev): 改 shell/*.ts→npm run build(2s)→重启 Electron。
   - 壳层(prod): Deploy shell-out.tar.gz→客户端 bootstrap 自动拉取→下次启动生效。
   - 引擎: ghrun upgrade 原子替换。
@@ -306,3 +307,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 持久化: safeStorage OS 级加密 → Data/alphal/auth.enc。启动自动恢复，主动登出才删。
   - 禁新增轮询。新通知机制一律走 push→fallback 双轨。
   - DNS: direct-cn.gh555.com 灰色云直连 CN。cnk.gh555.com 橙色云经 Cloudflare。
+
+§51 零配置 (2026-07-01)
+  - 无 config.json。PRODUCTION_URL 硬编码 shell/boot.ts，仅 env/CLI 覆盖。
+  - 禁新增用户可见配置文件。旧兼容代码删除干净，不给将来埋坑。

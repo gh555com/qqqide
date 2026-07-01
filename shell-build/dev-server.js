@@ -1,11 +1,11 @@
 // ============================================================================
 // dev-server.js - local static server for server-app/
 //
-//   serves:  http://127.0.0.1:8080/qqq-app/...    -> ../server-app/...
-//   health:  http://127.0.0.1:8080/qqq-app/health -> 200 "ok"
+//   serves:  http://127.0.0.1:8080/qqqide/...    -> ../server-app/...
+//   health:  http://127.0.0.1:8080/qqqide/health -> 200 "ok"
 //
 // Designed so that the electron shell's DEFAULT_REMOTE_URL
-// (http://127.0.0.1:8080/qqq-app/) works without any config edit.
+// (http://127.0.0.1:8080/qqqide/) works without any config edit.
 //
 // Usage:
 //   node shell-build/dev-server.js              (port 8080)
@@ -28,7 +28,7 @@ const PORT = parseInt(getArg('port') || process.env.PORT || '8080', 10);
 const HOST = getArg('host') || process.env.HOST || '127.0.0.1';
 const ROOT = path.resolve(__dirname, '..', 'server-app');
 const SHELL_OUT = path.resolve(__dirname, '..', 'shell-out');
-const MOUNT = '/qqq-app';
+const MOUNT = '/qqqide';
 
 const MIME = {
     '.html': 'text/html; charset=utf-8',
@@ -87,12 +87,12 @@ const server = http.createServer((req, res) => {
     // Logging
     console.log(`[dev] ${req.method} ${reqPath}`);
 
-    // Mount root: redirect / to /qqq-app/
+    // Mount root: redirect / to /qqqide/
     if (reqPath === '/' || reqPath === '') {
         return send(res, 302, { Location: MOUNT + '/' });
     }
 
-    // Redirect /qqq-app (no trailing slash) → /qqq-app/ so relative URLs resolve correctly
+    // Redirect /qqqide (no trailing slash) → /qqqide/ so relative URLs resolve correctly
     if (reqPath === MOUNT) {
         return send(res, 301, { Location: MOUNT + '/' });
     }

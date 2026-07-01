@@ -8,7 +8,6 @@
 
   var _authData = null;
   var _initDone = false;
-  var _polling = false;
   var _stateListeners = [];
   var _$loginBtn = null;
   var _$phoneBtn = null;
@@ -30,8 +29,11 @@
   var POLL_INTERVAL_MS = 3000;
   var POLL_TIMEOUT_MS = 600000;
   var BALANCE_POLL_MS = 60000;
-  var LV_COOLDOWN_MS = 2000;   // 事件驱动下的最小冷却（防密集 billing 轰炸）
   var NO_DRAG = '-webkit-app-region:no-drag;';
+
+  // ── 登录并发控制 ──
+  var _loginAbortCtrl = null;   // AbortController：取消旧登录轮询
+  var _loginGen = 0;            // 代际计数器：抑制过期 toast
 
   var _bootInfo = null;
 
@@ -68,7 +70,7 @@
       if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.saveAuth) {
         window.qqqideBridge.auth.saveAuth({ token: _authData.token, phone: _authData.phone, device_name: _authData.device_name });
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   async function _restoreAuth() {
@@ -78,7 +80,7 @@
         var saved = await window.qqqideBridge.auth.loadAuth();
         if (saved && saved.token && saved.phone) { _authData = saved; _authData.ts = Date.now(); }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 
   async function _httpsGet(urlPath) {
@@ -93,7 +95,7 @@
       if (window.qqqideBridge && window.qqqideBridge.boot && window.qqqideBridge.boot.getInfo) {
         _bootInfo = await window.qqqideBridge.boot.getInfo();
       }
-    } catch (e) {}
+    } catch (e) { }
     return _bootInfo;
   }
 
@@ -135,21 +137,29 @@
     }
   }
 
-  // ── LV（事件驱动 + REST 兜底）──
-  // ★ 不再轮询。AI SSE billing 事件 → postMessage('qqq-lv-tick') → 立即拉取。
-  // ★ init/登录时 → 主动拉一次作为初始值。
+  // ── LV（事件驱动：每间 house 的 billing 都直接触发动画）──
+  var _lvAccWge = null;  // 本地累计总 wge（null=未从服务器初始化）
   function _setupLvListener() {
     window.addEventListener('message', function (e) {
       if (e.data && e.data.type === 'qqq-lv-tick') {
-        // ★ 乐观扣减 GE 余额（本地先行，服务器真理定期修正）
-        var costGe = (e.data.geCost || 0) / 10000;
+        var costWge = e.data.geCost || 0;
+        // GE 乐观扣减
+        var costGe = costWge / 10000;
         if (_balanceGe !== null && _balanceGe !== undefined && costGe > 0) {
           _balanceGe = Math.max(0, _balanceGe - costGe);
           _updateGeLabel();
         }
-        // ★ LV 血条（事件驱动，2s 冷却）
+        // ★ LV 本地即时动画（不等服务器！每间 house 独立触发）
+        if (_lvAccWge !== null && costWge > 0) {
+          _lvAccWge += costWge;
+          var WL = 10 * 10000;
+          var lvFloor = Math.floor(_lvAccWge / WL);
+          var lvPct = (_lvAccWge % WL) / WL * 100;
+          _lvAnimate(lvFloor, lvPct);
+        }
+        // 服务器真理后台拉取（无冷却，静默修正基准）
         _fetchLv(false);
-        // ★ 免费预算：仅在免费窗口消费时刷新（事件驱动，shell-statusbar 自带 30s 冷却）
+        // 免费预算
         if (e.data.freeWindow) {
           try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (_) { }
         }
@@ -159,15 +169,35 @@
 
   async function _fetchLv(force) {
     if (!_authData || !_authData.token) return;
-    var now = Date.now();
-    if (!force && now - _lvLastFetch < LV_COOLDOWN_MS) return;
-    _lvLastFetch = now;
+    _lvLastFetch = Date.now();
     try {
       var resp = await fetch(API_BASE + '/qqq/lv', {
         headers: { 'Authorization': 'Bearer ' + _authData.token }
       });
       var data = await resp.json();
-      if (data && data.ok) { _lvData = data; _updateLvUI(); }
+      if (data && data.ok) {
+        _lvData = data;
+        // ★ 服务器真理：只设不动画（基准同步）
+        var WL = 10 * 10000;
+        var servFloor = data.level_floor != null ? data.level_floor : 0;
+        var servPct = Math.min(data.progress_pct || 0, 100);
+        var servWge = servFloor * WL + (servPct / 100) * WL;
+        // 只前进不后退（防 DB 未提交导致倒退）
+        if (_lvAccWge === null || servWge > _lvAccWge) {
+          _lvAccWge = servWge;
+        }
+        if (_$lvBar) _$lvBar.style.display = 'inline-flex';
+        if (_$lvLevel) _$lvLevel.textContent = 'Lv' + servFloor;
+        _lvPrevFloor = servFloor;
+        _lvLastGe = data.total_consumed_ge || '';
+        if (_$lvSolid) {
+          _$lvSolid.style.transition = 'none';
+          _$lvSolid.style.width = servPct + '%';
+          _$lvSolid.style.background = '#8a6410';
+        }
+        _lvUpdateGlow(servPct);
+        if (_$ldrBtn) _$ldrBtn.style.display = '';
+      }
     } catch (e) { console.warn('[login] lv fetch error:', e.message); }
   }
 
@@ -205,7 +235,7 @@
     }, 200);
   }
 
-  // 中层高光黄：瞬间跳到目标位置（零过渡），永远不透
+  // 中层炽金：瞬间跳到目标位置（零过渡），永远不透
   function _lvUpdateGlow(pct) {
     if (!_$lvGlow) return;
     _$lvGlow.style.transition = 'none';
@@ -213,8 +243,8 @@
     _$lvGlow.style.width = pct + '%';
   }
 
-  // 顶层追赶：半透明淡绿从左追到右，追完变回不透 #aa8d00
-  // targetPct = 中层（纯白）当前打点位置
+  // 顶层追赶：半透明琥珀淡金从左追到右，追完变回不透 #8a6410
+  // targetPct = 中层（炽金）当前打点位置
   function _lvChaseSolid(targetPct, isLevelUp) {
     if (!_$lvSolid) return;
     _lvClearSolidTimer();
@@ -244,14 +274,14 @@
         _lvSolidTimer(80, function () {
           _lvUpgradeBusy = false;
           _lvBlockTE = false;
-          _$lvSolid.style.background = 'rgba(160,200,150,0.48)';
+          _$lvSolid.style.background = 'rgba(185,145,75,0.50)';
           _$lvSolid.style.transition = 'width 0.5s ease-out';
           _$lvSolid.style.width = targetPct + '%';
         });
       });
     } else {
-      // ★ 半透明追赶：中层白色从下面透过来 → 白色路头可见！
-      _$lvSolid.style.background = 'rgba(160,200,150,0.48)';
+      // ★ 半透明追赶：中层炽金从下面透过来 → 金属路头可见
+       _$lvSolid.style.background = 'rgba(185,145,75,0.50)';
       _$lvSolid.style.transition = 'width 10s linear';
       _$lvSolid.style.width = targetPct + '%';
       // 60ms 后解封（足够让假 transitionend 被拦掉）
@@ -267,7 +297,7 @@
     if (_lvSolidTimerId) { clearTimeout(_lvSolidTimerId); _lvSolidTimerId = null; }
   }
 
-  // transitionend：真的追完才变回不透 #aa8d00
+  // transitionend：真的追完才变回不透 #8a6410
   function _onLvSolidTransitionEnd(e) {
     if (e.propertyName !== 'width') return;
     if (_lvBlockTE) return;          // 假事件（transition:none 取消旧过渡触发）→ 忽略
@@ -275,29 +305,50 @@
     if (!_$lvSolid) return;
     var gen = parseInt(_$lvSolid.getAttribute('data-chase-gen') || '0');
     if (gen !== _lvChaseGen) return; // 旧代完成，新代已启动 → 忽略
-    // ★ 真正追上：变回不透实色 → 黄色路头消失（顶层百分百覆盖中层）
-    _$lvSolid.style.background = '#aa8d00';
+    // ★ 真正追上：变回不透实色 → 金属路头消失
+    _$lvSolid.style.background = '#8a6410';
   }
 
+  // ★ 本地动画引擎（每间 house 直接触发，不等服务器）
+  function _lvAnimate(lvFloor, lvPct) {
+    if (!_$lvBar) return;
+    _$lvBar.style.display = 'inline-flex';
+    if (_$lvLevel) _$lvLevel.textContent = 'Lv' + lvFloor;
+    var isLevelUp = (_lvPrevFloor >= 0 && lvFloor > _lvPrevFloor);
+    _lvPrevFloor = lvFloor;
+    _lvGust();
+    _lvUpdateGlow(lvPct);
+    _lvChaseSolid(lvPct, isLevelUp);
+    if (_$ldrBtn) _$ldrBtn.style.display = '';
+  }
+
+  // 服务器真理回调（登录/登出时同步基准，不触发动画）
   function _updateLvUI() {
     if (!_$lvBar) return;
     var d = _lvData;
     if (d && typeof d.level === 'number' && d.level >= 0) {
       _$lvBar.style.display = 'inline-flex';
-      var newFloor = d.level_floor != null ? d.level_floor : 0;
-      var newPct = Math.min(d.progress_pct || 0, 100);
-      var newGe = d.total_consumed_ge || '';
-      if (_$lvLevel) _$lvLevel.textContent = 'Lv' + newFloor;
-      if (newGe === '' || newGe === _lvLastGe) return;
-      _lvLastGe = newGe;
-      var isLevelUp = (_lvPrevFloor >= 0 && newFloor > _lvPrevFloor);
-      _lvPrevFloor = newFloor;
-      _lvGust();
-      _lvUpdateGlow(newPct);
-      _lvChaseSolid(newPct, isLevelUp);
+      var servFloor = d.level_floor != null ? d.level_floor : 0;
+      var servPct = Math.min(d.progress_pct || 0, 100);
+      // 初始化本地累计基准（仅在从未设置时）
+      if (_lvAccWge === null) {
+        var WL = 10 * 10000;
+        _lvAccWge = servFloor * WL + (servPct / 100) * WL;
+      }
+      if (_$lvLevel) _$lvLevel.textContent = 'Lv' + servFloor;
+      _lvPrevFloor = servFloor;
+      _lvLastGe = d.total_consumed_ge || '';
+      _lvUpdateGlow(servPct);
+      // 顶层直接定位，不追（登录/登出时不播动画）
+      if (_$lvSolid) {
+        _$lvSolid.style.transition = 'none';
+        _$lvSolid.style.width = servPct + '%';
+        _$lvSolid.style.background = '#aa8d00';  // 强制恢复静止色
+      }
       if (_$ldrBtn) _$ldrBtn.style.display = '';
     } else {
       _$lvBar.style.display = 'none';
+      _lvAccWge = null;
       if (_$ldrBtn) _$ldrBtn.style.display = 'none';
     }
   }
@@ -384,9 +435,17 @@
   }
 
   // ── 登录流程 ──
+  // ★ 二次点击取消旧登录、打开新浏览器、新 sessionID，不给用户任何卡死机会
   async function _doLogin() {
-    if (_polling) return null;
-    _polling = true;
+    // ① 取消上一次登录（如果存在）：中断轮询 + 取消 push 监听
+    if (_loginAbortCtrl) {
+      try { _loginAbortCtrl.abort(); } catch (e) { }
+      _loginAbortCtrl = null;
+    }
+    var myGen = ++_loginGen;        // 代际号，用于抑制过期 toast
+    var ctrl = new AbortController();
+    _loginAbortCtrl = ctrl;
+    var signal = ctrl.signal;
     var pushDone = false, _unsubPush = null;
     try {
       var sessionId = _generateSessionId();
@@ -403,15 +462,24 @@
             _notifyStateChange();
           });
         }
-      } catch (e) {}
+      } catch (e) { }
 
+      // ★ 每次点击都打开新浏览器（新 sessionID），绝不跳过
       try { window.qqqideBridge.shell.openExternal(loginUrl); }
-      catch (e) { try { window.open(loginUrl, '_blank'); } catch (e2) {} }
+      catch (e) { try { window.open(loginUrl, '_blank'); } catch (e2) { } }
+
+      _updateLoginButtonState(true);
 
       var startTime = Date.now(), pollCount = 0;
       while (Date.now() - startTime < POLL_TIMEOUT_MS) {
-        if (pushDone) break;
-        await new Promise(function (r) { setTimeout(r, POLL_INTERVAL_MS); });
+        if (signal.aborted || pushDone) break;
+        // ★ Abortable sleep：abort 时立即跳出
+        await new Promise(function (r) {
+          var t = setTimeout(r, POLL_INTERVAL_MS);
+          var onAbort = function () { clearTimeout(t); r(); };
+          signal.addEventListener('abort', onAbort, { once: true });
+        });
+        if (signal.aborted || pushDone) break;
         pollCount++;
         try {
           var resp = await _httpsGet('/gaea/qqqide/auth/poll?session=' + sessionId +
@@ -423,13 +491,31 @@
             break;
           }
         } catch (e) {
+          if (signal.aborted) break;
           if (pollCount % 10 === 0) console.warn('[login] poll #' + pollCount + ' error:', e.message);
         }
       }
-      return pushDone ? { token: _authData.token, phone: _authData.phone } : null;
+      // ★ 被取消不算超时，返回标记让调用方跳过 toast
+      return pushDone ? { token: _authData.token, phone: _authData.phone } : (signal.aborted ? { _cancelled: true } : null);
     } finally {
-      if (_unsubPush) { try { _unsubPush(); } catch (e) {} }
-      _polling = false;
+      if (_unsubPush) { try { _unsubPush(); } catch (e) { } }
+      _loginAbortCtrl = null;
+      _updateLoginButtonState(false);
+    }
+  }
+
+  function _updateLoginButtonState(active) {
+    if (!_$loginBtn) return;
+    if (active) {
+      _$loginBtn.textContent = '⏳';
+      _$loginBtn.style.cursor = 'wait';
+      _$loginBtn.style.opacity = '0.6';
+      _$loginBtn.title = '登录中，点击重新打开浏览器';
+    } else {
+      _$loginBtn.textContent = '\uD83D\uDD12';
+      _$loginBtn.style.cursor = '';
+      _$loginBtn.style.opacity = '';
+      _$loginBtn.title = '';
     }
   }
 
@@ -441,12 +527,12 @@
       _startBalancePoll();
       _fetchLv(true);  // ★ 事件驱动：登录时主动拉一次初始值
       // 触发状态栏免费预算刷新
-      try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (e) {}
+      try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (e) { }
       try {
         if (window.qqqideBridge && window.qqqideBridge.cloud && window.qqqideBridge.cloud.setAuth) {
           window.qqqideBridge.cloud.setAuth({ phone: _authData.phone, token: _authData.token, device_name: _authData.device_name });
         }
-      } catch (e) {}
+      } catch (e) { }
     } else {
       _stopBalancePoll();
       _balanceGe = null;
@@ -457,10 +543,10 @@
         if (window.qqqideBridge && window.qqqideBridge.cloud && window.qqqideBridge.cloud.setAuth) {
           window.qqqideBridge.cloud.setAuth(null);
         }
-      } catch (e) {}
+      } catch (e) { }
     }
     for (var i = 0; i < _stateListeners.length; i++) {
-      try { _stateListeners[i](loggedIn, phoneTail, _authData && _authData.phone); } catch (e) {}
+      try { _stateListeners[i](loggedIn, phoneTail, _authData && _authData.phone); } catch (e) { }
     }
   }
 
@@ -512,7 +598,7 @@
     // LV 经验条
     _$lvBar = document.createElement('span');
     _$lvBar.className = 'qqq-lv-bar';
-      _$lvBar.style.cssText = NO_DRAG + 'display:none;align-items:center;margin-right:12px;gap:3px;font-size:11px;white-space:nowrap;position:relative;';    _$lvBar.addEventListener('mouseenter', _lvShowTip);
+    _$lvBar.style.cssText = NO_DRAG + 'display:none;align-items:center;margin-right:12px;gap:3px;font-size:11px;white-space:nowrap;position:relative;'; _$lvBar.addEventListener('mouseenter', _lvShowTip);
     _$lvBar.addEventListener('mousemove', _lvShowTip);
     _$lvBar.addEventListener('mouseleave', _lvHideTip);
     _$lvLevel = document.createElement('span');
@@ -523,15 +609,15 @@
     $lvTrack.className = 'qqq-lv-track';
     $lvTrack.style.cssText = 'display:inline-block;position:relative;width:60px;height:12px;background:var(--bg-tertiary,#555);overflow:hidden;border-radius:1px;';
 
-    // 中间层：纯白（调试用），瞬间更新
+    // 中间层：炽金琥珀（真理信标），瞬间更新
     _$lvGlow = document.createElement('span');
     _$lvGlow.className = 'qqq-lv-glow';
-    _$lvGlow.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#ffffff;box-shadow:0 0 6px 1px #ffffff;z-index:1;';
+    _$lvGlow.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#e8a020;z-index:1;';
 
-    // 顶层：#aa8d00，慢追
+    // 顶层：古铜，慢追
     _$lvSolid = document.createElement('span');
     _$lvSolid.className = 'qqq-lv-solid';
-    _$lvSolid.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#aa8d00;z-index:2;';
+    _$lvSolid.style.cssText = 'position:absolute;left:0;top:0;height:100%;width:0%;background:#8a6410;z-index:2;';
     _$lvSolid.addEventListener('transitionend', _onLvSolidTransitionEnd);
 
     $lvTrack.appendChild(_$lvGlow);
@@ -551,7 +637,12 @@
     _$loginBtn.style.cssText = NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;color:var(--text-secondary,#999);cursor:pointer;padding:1px 6px;font-size:13px;';
     _$loginBtn.addEventListener('click', function (e) {
       e.preventDefault();
+      var expectedGen = _loginGen + 1;  // 快照：本轮期望的代际号
       _doLogin().then(function (result) {
+        // ★ 本代已过期（被新点击替代）→ 静默忽略，不弹 toast
+        if (_loginGen !== expectedGen) return;
+        // ★ 被取消 → 不弹 toast（新登录已接管）
+        if (result && result._cancelled) return;
         if (!result && window.qqqideQoast) window.qqqideQoast.show('登录超时，请重试', { duration: 5000 });
       }).catch(function (err) { console.error('[login] error:', err); });
     });
@@ -627,11 +718,11 @@
     getPhoneTail: function () { var p = api.getPhone(); return p ? p.slice(-4) : ''; },
     getBalanceGe: function () { return _balanceGe; },
     getLvData: function () { return _lvData; },
-    login: function () { return _doLogin(); },
+    login: function () { return _doLogin().then(function (r) { return (r && r._cancelled) ? null : r; }); },
     logout: function () {
       _clearAuthData();
       _notifyStateChange();
-      try { if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.clearAuth) window.qqqideBridge.auth.clearAuth(); } catch (e) {}
+      try { if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.clearAuth) window.qqqideBridge.auth.clearAuth(); } catch (e) { }
       if (window.qqqideQoast) window.qqqideQoast.show('已退出登录', { duration: 3000 });
     },
     onStateChange: function (fn) {

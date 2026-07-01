@@ -324,19 +324,7 @@ async function repairUnpacked(unpacked) {
   }
 }
 
-// 3.5) inject root-level config files into unpacked tree
-function injectRootConfig(unpacked) {
-  const items = ['config.json'];
-  for (const rel of items) {
-    const src = path.join(ROOT, rel);
-    if (!fs.existsSync(src)) { continue; }
-    const dst = path.join(unpacked, rel);
-    fs.cpSync(src, dst, { force: true });
-    console.log('[pack] injected', rel, '->', path.basename(unpacked));
-  }
-}
-
-// 3.6) inject native launcher (win only) — moves all Electron runtime to core/, places C splash as qqqide.exe
+// 3.5) inject root-level config files into unpacked // 3.6) inject native launcher (win only) — moves all Electron runtime to core/, places C splash as qqqide.exe
 function injectLauncher(unpacked) {
   if (!target.startsWith('win-')) { return; }
   const launcherSrc = path.join(ROOT, 'launcher', 'qqqide.exe');
@@ -378,13 +366,6 @@ function injectLauncher(unpacked) {
   }
   console.log('[pack] moved Electron runtime -> gh555.com/');
 
-  // ── config.json 也要进 gh555.com/（portableRoot = gh555.com/，boot.ts 从 portableRoot 读） ──
-  const rootCfg = path.join(unpacked, 'config.json');
-  const coreCfg = path.join(coreDir, 'config.json');
-  if (fs.existsSync(rootCfg) && !fs.existsSync(coreCfg)) {
-    fs.cpSync(rootCfg, coreCfg);
-    console.log('[pack] copied config.json -> gh555.com/');
-  }
 
   // ── 复制 C 启动器为根 qqqide.exe ──
   const launcherDst = path.join(unpacked, 'qqqide.exe');
@@ -556,7 +537,6 @@ print('[pack] python zip done:', out)
       console.log('[pack] unpacked tree complete:', unpacked);
     }
   }
-  injectRootConfig(unpacked);
   injectLauncher(unpacked);
   pruneElectron(unpacked);
   pruneNodeModules(unpacked);

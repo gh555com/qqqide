@@ -36,7 +36,7 @@
                     build: function (pane) {
                         pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
                         var iframe = document.createElement('iframe');
-                        iframe.src = '/qqq-app/goods/search/search-ui.html';
+                        iframe.src = '/qqqide/goods/search/search-ui.html';
                         iframe.style.cssText = 'width:100%; height:100%; border:none;';
                         iframe.setAttribute('frameborder', '0');
                         pane.appendChild(iframe);
@@ -71,7 +71,7 @@
                     buildFn = function (pane) {
                         pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
                         var iframe = document.createElement('iframe');
-                        iframe.src = '/qqq-app/goods/search/search-ui.html';
+                        iframe.src = '/qqqide/goods/search/search-ui.html';
                         iframe.style.cssText = 'width:100%; height:100%; border:none;';
                         iframe.setAttribute('frameborder', '0');
                         pane.appendChild(iframe);

@@ -2,7 +2,7 @@
 // update-service.ts — Hot update: pull server-app.tar.xz from gh555.com
 //
 // Flow:
-//   1. check() → GET https://gh555.com/qqq-app/server-app/version.json
+//   1. check() → GET https://gh555.com/qqqide/server-app/version.json
 //   2. download() → GET tar.xz (with Range resume + SHA-256)
 //   3. apply() → extract to cache/staging/ → atomic rename → reload
 //
@@ -23,8 +23,8 @@ import * as crypto from 'crypto';
 import { URL } from 'url';
 import { execSync, spawnSync } from 'child_process';
 
-const UPDATE_MANIFEST_URL = 'https://gh555.com/qqq-app/version.json';
-const UPDATE_TAR_URL = 'https://gh555.com/qqq-app/server-app.tar.xz';
+const UPDATE_MANIFEST_URL = 'https://gh555.com/qqqide/version.json';
+const UPDATE_TAR_URL = 'https://gh555.com/qqqide/server-app.tar.xz';
 
 export interface UpdateState {
     lastCheck: number;       // Date.now() of last check
@@ -215,7 +215,7 @@ export class UpdateService {
             const { status, data } = await this._httpsGet(UPDATE_MANIFEST_URL);
             if (status !== 200) return null;
             const parsed = JSON.parse(data);
-            return parsed.version || null;
+            return parsed.shell || parsed.version || null;
         } catch {
             return null;
         }

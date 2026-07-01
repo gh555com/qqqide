@@ -27,7 +27,7 @@
 
       // ---- A 区主面板 ----
       panel: {
-        url: '/qqq-app/goods/rage/rage.html'
+        url: '/qqqide/goods/rage/rage.html'
       },
 
       // ---- X 区 gaea tab: Roam 资源管理器 ----
@@ -38,7 +38,7 @@
           build: function (pane) {
             pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
             var iframe = document.createElement('iframe');
-            iframe.src = '/qqq-app/goods/file-explorer/q2-roam.html';
+            iframe.src = '/qqqide/goods/file-explorer/q2-roam.html';
             iframe.style.cssText = 'width:100%; height:100%; border:none;';
             iframe.setAttribute('frameborder', '0');
             pane.appendChild(iframe);
