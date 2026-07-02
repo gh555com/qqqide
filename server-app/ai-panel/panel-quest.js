@@ -77,8 +77,6 @@ async function _handleSyncMessage(msg) {
 
 // ═══ Agent Pool: ★ parent.__qqq_agentPool（父窗口共享，单一真相源） ═══
 var _activeAgent = null;  // current visible quest's agent
-var _capturedAgent = null;   // captured ref for async callbacks (autoSave, onDone)
-var _capturedQuestId = '';   // captured quest id for async callbacks
 
 // ═══ Card Pool: 终极 Card Queue 架构 ═══
 var cardPool = null;  // 在 bindMainProject 中初始化（需要 #messages DOM 就绪）
@@ -100,7 +98,6 @@ function _getOrCreateAgent(questId) {
         ag._floorStartPerf = 0;
         ag._floorCurrentTiming = null;
         ag._streaming = false;
-        ag._sending = false;
         ag._queue = [];
         ag._queuePaused = false;
         ag._questId = questId;  // ★ per-agent questId for trace/cross-panel isolation

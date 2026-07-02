@@ -29,17 +29,23 @@ Object.defineProperty(window, '_queue', {
 function renderQueueStrip() { }
 
 // State
-//   _sending = panel-level guard（一个面板同一时刻只能有一个 quest 在发送）
+//   _sending = derived getter（单一真相源：_activeAgent._stopState === 'sending'）
 //   streaming = per-agent proxy（通过 _activeAgent 透明路由，后台 quest 流式不阻塞前台发送）
-var _sendingVar = false;
 Object.defineProperty(window, 'streaming', {
     get: function () { return (typeof _activeAgent !== 'undefined' && _activeAgent) ? _activeAgent._streaming : false; },
     set: function (v) { if (typeof _activeAgent !== 'undefined' && _activeAgent) _activeAgent._streaming = v; },
     enumerable: true, configurable: true
 });
+// ★ 唯一真理机器：_sending 完全由 _activeAgent._stopState 派生，零存储
 Object.defineProperty(window, '_sending', {
-    get: function () { return _sendingVar; },
-    set: function (v) { _sendingVar = v; if (typeof updateGuideBtn === 'function') updateGuideBtn(); },
+    get: function () { return !!(typeof _activeAgent !== 'undefined' && _activeAgent && _activeAgent._stopState === 'sending'); },
+    set: function (v) {
+        // 向后兼容：setter 代理到 agent.setStopState()
+        if (typeof _activeAgent !== 'undefined' && _activeAgent) {
+            _activeAgent.setStopState(v ? 'sending' : 'idle');
+        }
+        if (typeof updateGuideBtn === 'function') updateGuideBtn();
+    },
     enumerable: true, configurable: true
 });
 var _renderPending = false;

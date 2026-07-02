@@ -149,13 +149,30 @@ var AgentLoop = (function () {
         this._lastCacheDiag = null;      // { prevHash, currHash, firstDiffIdx, diffReason, prevMsgKeys, currMsgKeys }
     }
 
+    // ═══ 唯一真理机器：_stopState 状态迁移 ═══
+    // 所有 _stopState 变更必须通过此方法，外部禁止直写
+    AgentLoop.prototype.setStopState = function (newState) {
+        if (this._stopState === newState) return;  // 幂等：同态无操作
+        var valid = {
+            'idle': ['sending', 'fatal'],   // fatal: panel-floor 恢复 fatal quest
+            'sending': ['stopping', 'fatal', 'idle'],
+            'stopping': ['idle', 'fatal'],
+            'fatal': ['sending']             // 仅恢复模式 _isRecovery=true
+        };
+        var allowed = (valid[this._stopState] || []);
+        if (allowed.indexOf(newState) < 0) {
+            console.warn('[agent] unexpected setStopState: ' + this._stopState + ' → ' + newState);
+        }
+        this._stopState = newState;
+    };
+
     // ---- 中止 ----
     // ★ 终极 Stop 闭环：单一真理源 _stopCtrl，仅用户 Stop 时 abort
     //   级联信号：每轮 retry 的 _retryCtrl 通过 addEventListener 监听 _stopCtrl
     //   效果：不管 agent-loop 在哪个重试循环深度，Stop 一掐即停
     AgentLoop.prototype.stop = function () {
         if (this._stopState !== 'sending') return;  // 幂等：非 SENDING 不响应
-        this._stopState = 'stopping';
+        this.setStopState('stopping');
         if (this._stopCtrl) {
             this._stopCtrl.abort();  // ★ 一掐：级联所有 _retryCtrl → 所有 fetch 立即抛 AbortError
         }
@@ -385,7 +402,7 @@ var AgentLoop = (function () {
         self._inRecoverySend = self._inRecoverySend || false;
         // ★ 终极 Stop 闭环：每层楼创建真理源
         self._stopCtrl = new AbortController();
-        self._stopState = 'sending';
+        self.setStopState('sending');
         if (typeof window !== 'undefined') { window._qqqReadFilesThisFloor = {}; window._qqqEnoentCache = {}; window._qqqPathResolve = {}; window._qqqToolCacheThisFloor = {}; }  // ★ WRITE感知复位 + ENOENT + 路径纠错 + 泛化 READ 缓存：每层楼复位
 
         try {
@@ -896,9 +913,9 @@ var AgentLoop = (function () {
         } finally {
             // ★ 状态机闭环：致命失败 → 'fatal'（死胡同，仅"继续任务"可解）
             if (self._floorFatal) {
-                self._stopState = 'fatal';
+                self.setStopState('fatal');
             } else {
-                self._stopState = 'idle';
+                self.setStopState('idle');
             }
         }
     };

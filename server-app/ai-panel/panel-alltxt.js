@@ -898,7 +898,7 @@ async function _onTranslateClick(block) {
             isIncremental = false;
         }
 
-        var translatedPart = await _translateViaAI(toTranslate, lang, isIncremental);
+        var translatedPart = await _translateViaAI(toTranslate, lang, isIncremental, _activeAgent);
 
         var finalTranslated;
         if (isIncremental && cache && cache.translatedContent) {
@@ -925,7 +925,7 @@ async function _onTranslateClick(block) {
     }
 }
 
-async function _translateViaAI(text, targetLang, isIncremental) {
+async function _translateViaAI(text, targetLang, isIncremental, agent) {
     var langNames = {
         'zh': 'Simplified Chinese (\u7b80\u4f53\u4e2d\u6587)', 'zh-tw': 'Traditional Chinese (\u7e41\u9ad4\u4e2d\u6587)',
         'en': 'English', 'ja': 'Japanese (\u65e5\u672c\u8a9e)', 'de': 'German (Deutsch)',
@@ -965,7 +965,7 @@ async function _translateViaAI(text, targetLang, isIncremental) {
             temperature: 0.1,
             thinking: { type: 'disabled' },
             stream: false,
-            floor_id: (typeof _capturedAgent !== 'undefined' && _capturedAgent._floorId) || ''
+            floor_id: (agent && agent._floorId) || ''
         })
     });
 
