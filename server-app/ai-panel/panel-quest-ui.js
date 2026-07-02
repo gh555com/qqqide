@@ -120,8 +120,6 @@ async function switchQuest(id) {
 
         // ★ 切换到 quest 时不再尝试实时修复磁盘目录名
         //   B+ 方案：懒惰重命名扫描只在启动/关闭时由中面板执行
-        // ★ 同步面板级 _sending 到新 active agent（切回未建楼 quest 时允许发送）
-        _sending = _activeAgent && _activeAgent._stopState === 'sending';
 
         restoreQuestUIState(id);
         renderQueueStrip();
@@ -290,7 +288,6 @@ function _unloadQuest() {
     updateTierButtons(selectedTier);
     renderImageStrip();
     _activeAgent = null;
-    _sending = false;  // ★ P3 修复：卸载 quest 时清 _sending，防残留阻塞新发送
     setStreaming(false);  // ★ 卸载 quest 后刷新按钮状态
     updateCostDisplay();
     updateCtxBtn();
@@ -732,7 +729,7 @@ document.getElementById('ctx-compress').onclick = async function () {
         // ★ 初始化 agent loop 级别的状态（_callGateway 需要这些）
         _ag._floorTiming = { startPerf: performance.now(), networkMs: 0, aiMs: 0, otherMs: 0 };
         _ag._stopCtrl = new AbortController();
-        _ag._stopState = 'sending';
+        _ag.setStopState('sending');
         _ag._houseIndex = 0;
         _ag._lastApiPromptTokens = 0;
         _ag._lastApiTotalTokens = 0;
@@ -852,7 +849,7 @@ document.getElementById('ctx-compress').onclick = async function () {
         updateCtxBtn();
     } finally {
         _ag._compressing = false;
-        _ag._stopState = 'idle';
+        _ag.setStopState('idle');
         window._updateSendBtnForCompress(false);
     }
 };

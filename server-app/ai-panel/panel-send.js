@@ -4,50 +4,47 @@
 
 // ★ skipFloorCreation: true=恢复到死胡同楼层（不建新目录/不增 floorNum）
 async function sendMessage(skipFloorCreation) {
-    if (_sending) return;
     if (_activeAgent && _activeAgent._stopState === 'sending') return;
     if (_activeAgent && _activeAgent._stopState === 'stopping') return;
     // ★ recovery+fatal 放行（_isRecovery=true 时允许通过 fatal 闸门）
     if (_activeAgent && _activeAgent._stopState === 'fatal' && !_activeAgent._isRecovery) return;
     if (_activeAgent && _activeAgent._recoveryInProgress && !skipFloorCreation) return;
     if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
-    _sending = true;
-    // ★ 防并发 cross-talk：本地快照 + 递增 ID，finally 块检测是否被新 sendMessage 覆盖
-    var _snapQuestId = questActiveId;
-    var _snapAgent = _activeAgent;
+    // ★ 同步锁：防同一面板并发（agent._stopState 是唯一真理源，_sending 由 getter 派生）
+    _activeAgent.setStopState('sending');
+    // ★ 本地快照：闭包捕获，永不丢失。即使 switchQuest 更换 _activeAgent 也不影响
+    var agent = _activeAgent;
+    var qid = questActiveId;
     var _guideStatuses = document.querySelectorAll('.guide-status');
     for (var _gsi = 0; _gsi < _guideStatuses.length; _gsi++) { _guideStatuses[_gsi].remove(); }
     // ═══ 所有权守卫：仅父注册表（唯一真理源） ═══
-    // ── 快照 quest 上下文（所有 await 之前，防并发切 quest 错位）──
-    _capturedQuestId = questActiveId;
-    _capturedAgent = _activeAgent;
-    if (_capturedQuestId) {
+    if (qid) {
         try {
-            var _ssSyncOwner = _parentGetQuestOwner(_capturedQuestId);
+            var _ssSyncOwner = _parentGetQuestOwner(qid);
             if (_ssSyncOwner !== undefined && _ssSyncOwner !== _panelId) {
                 // 另一面板持有此 quest → 跳转焦点，放弃发送
                 _setPanelFocus(false);
-                _broadcast('focus-request', _capturedQuestId, { targetPanel: _ssSyncOwner });
-                _sending = false;
+                _broadcast('focus-request', qid, { targetPanel: _ssSyncOwner });
+                agent.setStopState('idle');
                 updateQueueBtn();
                 return;
             }
             // 无人持有 → 声明所有权（兜底：新建 quest 时 switchQuest 未调用）
             if (_ssSyncOwner === undefined) {
-                _parentClaimQuest(_capturedQuestId);
-                _broadcast('owner-claimed', _capturedQuestId);
+                _parentClaimQuest(qid);
+                _broadcast('owner-claimed', qid);
             }
         } catch (_) { }
     }
     updateQueueBtn();
     var text = getInputText().trim();
     var chipPaths = getInputChipPaths();
-    if (!text && chipPaths.length === 0) { _sending = false; updateQueueBtn(); return; }
-    if (streaming) { _sending = false; updateQueueBtn(); return; }
+    if (!text && chipPaths.length === 0) { agent.setStopState('idle'); updateQueueBtn(); return; }
+    if (streaming) { agent.setStopState('idle'); updateQueueBtn(); return; }
 
     if (!_isLoggedIn()) {
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在菜单栏点击登录', { type: 'warning', duration: 6000 }); } catch (_) { }
-        _sending = false;
+        agent.setStopState('idle');
         updateQueueBtn();
         return;
     }
@@ -112,14 +109,14 @@ async function sendMessage(skipFloorCreation) {
 
     // \u6784\u5efa\u7528\u6237\u6d88\u606f\u663e\u793a
     // ★ 延迟渲染：恢复模式下用户气泡暂不上屏，等 house1 确认后再补
-    var _deferUserBubble = _capturedAgent && _capturedAgent._deferRenderUntilHouse1;
+    var _deferUserBubble = agent && agent._deferRenderUntilHouse1;
     var userMsgEl;
     if (_deferUserBubble) {
         // 仅创建 DOM 元素，不加入 Card（铁律：恢复模式下 house1 未确认前 UI 不变）
         userMsgEl = (typeof renderUserMessageEl === 'function') ? renderUserMessageEl(text) : null;
         if (!userMsgEl) { userMsgEl = document.createElement('div'); userMsgEl.className = 'msg msg-user'; userMsgEl.style.whiteSpace = 'pre-wrap'; userMsgEl.textContent = text; if (typeof _addCopyBtnToUserMsg === 'function') _addCopyBtnToUserMsg(userMsgEl); }
         userMsgEl._floor = agent ? agent._ctx.totalFloors : 0;
-        _capturedAgent._deferredUserEl = userMsgEl;
+        agent._deferredUserEl = userMsgEl;
     } else {
         userMsgEl = addMessageEl('user', text);
         userMsgEl._floor = agent ? agent._ctx.totalFloors : 0;
@@ -146,7 +143,7 @@ async function sendMessage(skipFloorCreation) {
 
     var images = pendingImages.length > 0 ? pendingImages.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl, fileName: img.fileName || '' }; }) : null;
 
-    saveQuestUIState(_capturedQuestId);
+    saveQuestUIState(qid);
     $input.value = '';
     $input._resetUndo();
     pendingImages = [];
@@ -154,16 +151,16 @@ async function sendMessage(skipFloorCreation) {
     $input.focus();
 
     // \u82e5\u5c1a\u65e0 active quest\uff0c\u521b\u5efa\u5e76\u547d\u540d
-    if (_isDraft(_capturedQuestId)) {
+    if (_isDraft(qid)) {
         try {
             var qId = await questStore.create('');
-            if (!qId) { _sending = false; updateQueueBtn(); return; }
+            if (!qId) { agent.setStopState('idle'); updateQueueBtn(); return; }
             questActiveId = qId;
             // ★ Copy draft's tier preference to real quest (per-quest tier memory)
-            if (questUIStates[_capturedQuestId] && typeof questUIStates[_capturedQuestId].selectedTier === 'number') {
+            if (questUIStates[qid] && typeof questUIStates[qid].selectedTier === 'number') {
                 if (!questUIStates[questActiveId]) questUIStates[questActiveId] = {};
-                questUIStates[questActiveId].selectedTier = questUIStates[_capturedQuestId].selectedTier;
-                selectedTier = questUIStates[_capturedQuestId].selectedTier;
+                questUIStates[questActiveId].selectedTier = questUIStates[qid].selectedTier;
+                selectedTier = questUIStates[qid].selectedTier;
             }
             _activeAgent = _getOrCreateAgent(questActiveId);
             if (_panelId === 1) await questStore.setActiveId(questActiveId);
@@ -199,12 +196,12 @@ async function sendMessage(skipFloorCreation) {
                     cardPool.removeCard(_oldDraftId);
                 }
             }
-            _capturedQuestId = questActiveId;
-            _capturedAgent = _activeAgent;
+            qid = questActiveId;
+            agent = _activeAgent;
         } catch (_draftErr) {
             console.warn('[send] draft->quest creation failed:', _draftErr && _draftErr.message);
             addMessageEl('error', '创建 Quest 失败：' + ((_draftErr && _draftErr.message) || '未知错误'));
-            _sending = false;
+            agent.setStopState('idle');
             updateQueueBtn();
             return;
         }
@@ -225,14 +222,14 @@ async function sendMessage(skipFloorCreation) {
             _allTxtDirLocal = ''; _allTxtPathLocal = '';
         }
     } else {
-        floorNum = await questStore.nextFloorNum(_capturedQuestId);
+        floorNum = await questStore.nextFloorNum(qid);
         if (root2 && floorNum > 0) {
             var userQuestion = text || (userContent || '').split('\n')[0];
             var quests2 = await questStore.list();
-            var qEntry = quests2.find(function (qx) { return qx.id === _capturedQuestId; });
+            var qEntry = quests2.find(function (qx) { return qx.id === qid; });
             var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : '';
-            var qNumericId = (qEntry && qEntry.numericId) ? qEntry.numericId : parseInt(_capturedQuestId.replace('q', ''), 10) || 0;
-            qDirName2 = await _resolveQuestDirName(root2, _capturedQuestId, qNumericId, qTitle2);
+            var qNumericId = (qEntry && qEntry.numericId) ? qEntry.numericId : parseInt(qid.replace('q', ''), 10) || 0;
+            qDirName2 = await _resolveQuestDirName(root2, qid, qNumericId, qTitle2);
             fDirName2 = _makeName('f', floorNum, userQuestion);
             var _ensured = await _ensureQuestDir(root2, qDirName2, fDirName2);
             // ★ 保存图片到楼层目录（二进制落盘，与 all.json/all.txt 同目录）
@@ -284,36 +281,36 @@ async function sendMessage(skipFloorCreation) {
             try { await _bridge.fs.mkdir(_allTxtDirLocal); } catch (_) { }
         }
     }
-    var aiDiv = cardPool.startBuildingFloor(_capturedQuestId, floorNum, _allTxtPathLocal);
-    if (!aiDiv) { _sending = false; updateQueueBtn(); return; }
+    var aiDiv = cardPool.startBuildingFloor(qid, floorNum, _allTxtPathLocal);
+    if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); return; }
     aiDiv._allTxtPath = _allTxtPathLocal;
     // ★ 延迟渲染：恢复模式下 AI 区暂隐藏，等 house1 确认后再显示
     if (_deferUserBubble) {
         aiDiv.style.display = 'none';
-        _capturedAgent._deferredAiDiv = aiDiv;
+        agent._deferredAiDiv = aiDiv;
     }
     // ★ 新楼层开始，清空 agent._houses / _a4Snapshots 防止读到上一楼层残影
-    _capturedAgent._houses = [];
-    _capturedAgent._a4Snapshots = {};
-    _capturedAgent._lastAutoSaveLen = 0;
-    _capturedAgent._lastFloorTimingRecord = null;
-    _capturedAgent._aiStartTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
-    _capturedAgent._aiTierLabel = 'A' + (selectedTier || 6);
-    _capturedAgent._streamingContent = null;  // ★ P10/P11 根治：每楼层重置流式缓冲区
-    _capturedAgent._streaming = true;  // ★ aq1/工具执行守卫：标记流式中
-    startFloorTimer(aiDiv, _capturedAgent);
-    _startAllTxtStream(aiDiv, _allTxtPathLocal, _capturedAgent, floorNum, text, '');
+    agent._houses = [];
+    agent._a4Snapshots = {};
+    agent._lastAutoSaveLen = 0;
+    agent._lastFloorTimingRecord = null;
+    agent._aiStartTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
+    agent._aiTierLabel = 'A' + (selectedTier || 6);
+    agent._streamingContent = null;  // ★ P10/P11 根治：每楼层重置流式缓冲区
+    agent._streaming = true;  // ★ aq1/工具执行守卫：标记流式中
+    startFloorTimer(aiDiv, agent);
+    _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, text, '');
     scrollToBottom(true);
     // ★ 中央建楼状态机：登记 quest 开始建楼（必须在 setStreaming 之前，否则 tofu 彗星不显示）
-    if (typeof _registerBuilding === 'function') _registerBuilding(_capturedQuestId, typeof _panelId !== 'undefined' ? _panelId : 1);
+    if (typeof _registerBuilding === 'function') _registerBuilding(qid, typeof _panelId !== 'undefined' ? _panelId : 1);
     setStreaming(true);
     // ★ P10 根治：agent 必须知道自己的新 aiDiv，否则 _doStreamRender 读到旧 quest 的 DOM
-    _capturedAgent._activeAiDiv = aiDiv;
+    agent._activeAiDiv = aiDiv;
     // ★ aq1：建楼启动即插入 tier 指示器（不等首 token），紧贴用户气泡下方
     if (aiDiv && aiDiv.parentNode) {
         var _aq1El = document.createElement('div');
         _aq1El.className = 'msg-tier-indicator';
-        _aq1El.textContent = _capturedAgent._aiTierLabel + ' start in ' + _capturedAgent._aiStartTime;
+        _aq1El.textContent = agent._aiTierLabel + ' start in ' + agent._aiStartTime;
         aiDiv.parentNode.insertBefore(_aq1El, aiDiv);
     }
 
@@ -350,28 +347,28 @@ async function sendMessage(skipFloorCreation) {
             tier: selectedTier ? TIER_LIST[selectedTier] : null,
             onToken: function (chunk) {
                 // ★ 恢复模式延迟渲染：首 token 抵达 = house1 网已通 → 事后上屏
-                if (_capturedAgent._deferRenderUntilHouse1) {
-                    _capturedAgent._deferRenderUntilHouse1 = false;
+                if (agent._deferRenderUntilHouse1) {
+                    agent._deferRenderUntilHouse1 = false;
                     // 1. 用户粉色气泡「继续」插入 AI 区之前（铁序：用户在上，AI 在下）
-                    if (_capturedAgent._deferredUserEl) {
-                        var _dAiDiv = _capturedAgent._deferredAiDiv;
+                    if (agent._deferredUserEl) {
+                        var _dAiDiv = agent._deferredAiDiv;
                         if (_dAiDiv && _dAiDiv.parentNode) {
-                            _dAiDiv.parentNode.insertBefore(_capturedAgent._deferredUserEl, _dAiDiv);
+                            _dAiDiv.parentNode.insertBefore(agent._deferredUserEl, _dAiDiv);
                         }
-                        _capturedAgent._deferredUserEl = null;
+                        agent._deferredUserEl = null;
                     }
                     // 2. AI 建楼区显示
-                    if (_capturedAgent._deferredAiDiv) {
-                        _capturedAgent._deferredAiDiv.style.display = '';
-                        _capturedAgent._deferredAiDiv = null;
+                    if (agent._deferredAiDiv) {
+                        agent._deferredAiDiv.style.display = '';
+                        agent._deferredAiDiv = null;
                     }
                     // 3. 光块立即消失（_finishRecovery 由 _attemptRecoverySend 事后 finalize）
-                    if (_capturedAgent._recoveryLinkEl) {
-                        _capturedAgent._recoveryLinkEl.style.display = 'none';
+                    if (agent._recoveryLinkEl) {
+                        agent._recoveryLinkEl.style.display = 'none';
                     }
                     scrollToBottom(true);
                 }
-                var _targetDiv = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
+                var _targetDiv = (aiDiv && aiDiv.isConnected) ? aiDiv : (agent._activeAiDiv || aiDiv);
                 if (!_targetDiv) return;
                 _targetDiv._buf = (_targetDiv._buf || '') + chunk;
                 _targetDiv._fullText = (_targetDiv._fullText || '') + chunk;
@@ -399,7 +396,7 @@ async function sendMessage(skipFloorCreation) {
                         if (!_targetDiv._renderScheduled) {
                             _targetDiv._renderScheduled = true;
                             var _rd = _targetDiv._firstRenderDone ? 1000 : 16; _targetDiv._firstRenderDone = true;
-                            setTimeout(function () { doStreamRender(_capturedAgent); }, _rd);
+                            setTimeout(function () { doStreamRender(agent); }, _rd);
                         }
                         return;
                     }
@@ -441,9 +438,9 @@ async function sendMessage(skipFloorCreation) {
                 if (!_targetDiv._renderScheduled) {
                     _targetDiv._renderScheduled = true;
                     var _rd2 = _targetDiv._firstRenderDone ? 1000 : 16; _targetDiv._firstRenderDone = true;
-                    setTimeout(function () { doStreamRender(_capturedAgent); }, _rd2);
+                    setTimeout(function () { doStreamRender(agent); }, _rd2);
                 }
-                if (_activeAgent === _capturedAgent && !_scrollPending) {
+                if (_activeAgent === agent && !_scrollPending) {
                     _scrollPending = true;
                     requestAnimationFrame(function () {
                         scrollToBottom();
@@ -454,29 +451,29 @@ async function sendMessage(skipFloorCreation) {
 
             onDone: async function (content, timing) {
                 // ★ 恢复模式兜底：若 onToken 从未触发（纯 tool_calls 无文本），此处补上屏
-                if (_capturedAgent._deferRenderUntilHouse1) {
-                    _capturedAgent._deferRenderUntilHouse1 = false;
+                if (agent._deferRenderUntilHouse1) {
+                    agent._deferRenderUntilHouse1 = false;
                     // 用户气泡插入 AI 区之前（铁序：用户在上，AI 在下）
-                    if (_capturedAgent._deferredUserEl) {
-                        var _dAiDiv2 = _capturedAgent._deferredAiDiv;
+                    if (agent._deferredUserEl) {
+                        var _dAiDiv2 = agent._deferredAiDiv;
                         if (_dAiDiv2 && _dAiDiv2.parentNode) {
-                            _dAiDiv2.parentNode.insertBefore(_capturedAgent._deferredUserEl, _dAiDiv2);
+                            _dAiDiv2.parentNode.insertBefore(agent._deferredUserEl, _dAiDiv2);
                         }
-                        _capturedAgent._deferredUserEl = null;
+                        agent._deferredUserEl = null;
                     }
-                    if (_capturedAgent._deferredAiDiv) {
-                        _capturedAgent._deferredAiDiv.style.display = '';
-                        _capturedAgent._deferredAiDiv = null;
+                    if (agent._deferredAiDiv) {
+                        agent._deferredAiDiv.style.display = '';
+                        agent._deferredAiDiv = null;
                     }
-                    if (typeof _finishRecovery === 'function' && _capturedAgent._recoveryLinkEl) {
-                        _finishRecovery(_capturedAgent._recoveryLinkEl, _capturedAgent, true);
-                        _capturedAgent._recoveryLinkEl = null;
+                    if (typeof _finishRecovery === 'function' && agent._recoveryLinkEl) {
+                        _finishRecovery(agent._recoveryLinkEl, agent, true);
+                        agent._recoveryLinkEl = null;
                     }
                     scrollToBottom(true);
                 }
                 if (aiDiv) aiDiv._floorCompleted = true;
                 aiDiv._renderScheduled = false;
-                var _targetDiv2 = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
+                var _targetDiv2 = (aiDiv && aiDiv.isConnected) ? aiDiv : (agent._activeAiDiv || aiDiv);
                 if (_targetDiv2 && _targetDiv2._contentWrap) {
                     // ═══ 一次渲染 终身不变：清除流式临时标记，不改 DOM 结构 ═══
                     _targetDiv2._guideMode = false;
@@ -544,26 +541,26 @@ async function sendMessage(skipFloorCreation) {
 
                 var _divDetached = !(aiDiv && aiDiv.isConnected);
 
-                if (_activeAgent === _capturedAgent) {
-                    stopFloorTimer(timing || { networkMs: 0, aiMs: 0, otherMs: 0 }, _capturedAgent);
+                if (_activeAgent === agent) {
+                    stopFloorTimer(timing || { networkMs: 0, aiMs: 0, otherMs: 0 }, agent);
                     scrollToBottom();
                 } else {
                     // ★ 后台 agent 楼层完结：停 timer + 记录 timing（不停 timer 会导致切回后时钟继续走）
-                    if (_capturedAgent._floorTimerId) { clearInterval(_capturedAgent._floorTimerId); _capturedAgent._floorTimerId = null; }
-                    var _elapsed = performance.now() - _capturedAgent._floorStartPerf;
-                    _capturedAgent._floorTimings = _capturedAgent._floorTimings || [];
+                    if (agent._floorTimerId) { clearInterval(agent._floorTimerId); agent._floorTimerId = null; }
+                    var _elapsed = performance.now() - agent._floorStartPerf;
+                    agent._floorTimings = agent._floorTimings || [];
                     var _bgRecord = {
-                        floorIndex: _capturedAgent._ctx.totalFloors,
+                        floorIndex: agent._ctx.totalFloors,
                         durationMs: Math.round(_elapsed),
                         networkMs: (timing && timing.networkMs) || 0,
                         aiMs: (timing && timing.aiMs) || 0,
                         otherMs: (timing && timing.otherMs) || 0,
                         finishedAt: new Date().toISOString()
                     };
-                    _capturedAgent._floorTimings.push(_bgRecord);
-                    _capturedAgent._lastFloorTimingRecord = _bgRecord;
+                    agent._floorTimings.push(_bgRecord);
+                    agent._lastFloorTimingRecord = _bgRecord;
                     // 若后台 agent 的 aiDiv 仍在线（同面板切换未清理），设时钟为停止态
-                    var _bgAiDiv = _capturedAgent._activeAiDiv;
+                    var _bgAiDiv = agent._activeAiDiv;
                     if (_bgAiDiv && _bgAiDiv._clockBlock) {
                         _bgAiDiv._clockBlock.className = 'msg-ai-clock';
                         var _bgDurS = Math.floor(_elapsed / 1000);
@@ -579,24 +576,24 @@ async function sendMessage(skipFloorCreation) {
                 }
 
                 // ★ 必须在保存前清除 _streaming，否则 all.json 永久记录 _streaming:true（僵尸）
-                _capturedAgent._streaming = false;
+                agent._streaming = false;
                 // ★ 释放中心机器 running 标记（setStreaming(false) 不再负责此事）
-                _markQuestRunning(_capturedQuestId, false);
+                _markQuestRunning(qid, false);
                 // ★ 中央建楼状态机：注销 quest 建楼状态
-                if (typeof _unregisterBuilding === 'function') _unregisterBuilding(_capturedQuestId);
-                if (_panelRunningQuestId === _capturedQuestId) _panelRunningQuestId = null;
-                if (_activeAgent === _capturedAgent) {
+                if (typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
+                if (_panelRunningQuestId === qid) _panelRunningQuestId = null;
+                if (_activeAgent === agent) {
                     setStreaming(false);
                 }
 
-                await _saveAgentQuestData(_capturedQuestId, _capturedAgent, floorNum);
+                await _saveAgentQuestData(qid, agent, floorNum);
 
-                if (cardPool) cardPool.completeBuildingFloor(_capturedQuestId, floorNum);
+                if (cardPool) cardPool.completeBuildingFloor(qid, floorNum);
 
                 // ★ 根治：后台完成时数据已落盘，强制标记 card 待重载。
                 //   否则 cardPool.switchTo 见 totalFloors>0 就不刷新，永远显示建楼中旧 DOM。
-                if (_activeAgent !== _capturedAgent) {
-                    var _qCard = cardPool && cardPool._cards && cardPool._cards[_capturedQuestId];
+                if (_activeAgent !== agent) {
+                    var _qCard = cardPool && cardPool._cards && cardPool._cards[qid];
                     if (_qCard) {
                         _qCard._contentWrap && (_qCard._contentWrap.innerHTML = '');
                         _qCard.totalFloors = 0;
@@ -605,13 +602,13 @@ async function sendMessage(skipFloorCreation) {
                     }
                 }
 
-                if (_activeAgent === _capturedAgent && _divDetached) {
+                if (_activeAgent === agent && _divDetached) {
                     console.warn('[onDone] div detached but card pool not available, skipping rebuild');
                 }
 
-                var _ftxtPath = (_targetDiv2 && _targetDiv2._allTxtPath) || _capturedAgent._allTxtPath || '';
-                await _finalizeAllTxt(_targetDiv2 || aiDiv, _ftxtPath, _capturedAgent, floorNum, timing);
-                if (_activeAgent === _capturedAgent) {
+                var _ftxtPath = (_targetDiv2 && _targetDiv2._allTxtPath) || agent._allTxtPath || '';
+                await _finalizeAllTxt(_targetDiv2 || aiDiv, _ftxtPath, agent, floorNum, timing);
+                if (_activeAgent === agent) {
                     updateCtxBtn();
                     // ═══ E-Flow post-floor auto-detect ═══
                     // After floor completes, check if AI created standard framework files.
@@ -631,16 +628,16 @@ async function sendMessage(skipFloorCreation) {
                 updateQuestTofu();
                 // ★ 防御：直查 parent.__qqq_buildingRegistry 确保已删除（绕过 _getRunningQuestIds 多态）
                 var _regAfter = parent && parent.__qqq_buildingRegistry;
-                if (_regAfter && _regAfter[_capturedQuestId]) {
-                    console.warn('[onDone] quest still in registry after unregister, force-deleting:', _capturedQuestId);
-                    delete _regAfter[_capturedQuestId];
+                if (_regAfter && _regAfter[qid]) {
+                    console.warn('[onDone] quest still in registry after unregister, force-deleting:', qid);
+                    delete _regAfter[qid];
                     if (typeof _broadcastRegistry === 'function') _broadcastRegistry();
                     updateQuestTofu();
                 }
             },
 
             onGuideAckDone: function () {
-                var _aiDiv3 = _capturedAgent._activeAiDiv;  // ★ P10：必须用 _capturedAgent，不能用 _activeAgent（可能已切走）
+                var _aiDiv3 = agent._activeAiDiv;  // ★ P10：必须用 agent，不能用 _activeAgent（可能已切走）
                 if (_aiDiv3) {
                     _aiDiv3._guideMode = false;
                     // 只清流式缓冲，保留已渲染的 DOM 和段落跟踪
@@ -649,22 +646,22 @@ async function sendMessage(skipFloorCreation) {
             },
 
             onCost: async function (cost, total, isFree) {
-                if (_activeAgent === _capturedAgent) {
+                if (_activeAgent === agent) {
                     var costNum = parseFloat(cost);
                     if (!isNaN(costNum)) {
                         /* GE 累计已移至父窗口 login.js 管理 */
                     }
                     /* GE 显示已移至父窗口菜单行2 */
-                    var _targetDiv3 = (aiDiv && aiDiv.isConnected) ? aiDiv : (_capturedAgent._activeAiDiv || aiDiv);
+                    var _targetDiv3 = (aiDiv && aiDiv.isConnected) ? aiDiv : (agent._activeAiDiv || aiDiv);
                     if (_targetDiv3 && _targetDiv3._clockCost) {
-                        var _rawGe = _capturedAgent._floorCostWge / 10000;
+                        var _rawGe = agent._floorCostWge / 10000;
                         var _displayGe = _formatGeDisplay(_rawGe);
                         _targetDiv3._clockCost._rawGe = _formatGeRaw(_rawGe);
                         _targetDiv3._clockCost.textContent = _displayGe + ' ge' + (isFree ? ' Free' : '');
                         _targetDiv3._clockCost.style.display = 'inline';
-                        _targetDiv3._clockCost._houses = _capturedAgent._houses;
-                        _targetDiv3._clockCost._floorNum = _capturedAgent._currentFloorNum;
-                        _targetDiv3._clockCost._passby = { questId: _capturedQuestId, floorNum: _capturedAgent._currentFloorNum, houses: (_capturedAgent._passbyBaseHouses || 0) + (_capturedAgent._houses ? _capturedAgent._houses.length : 0), wge: (_capturedAgent._passbyBaseWge || 0) + (_capturedAgent._floorCostWge || 0), drift: _capturedAgent._serverDrift || 0, city: _capturedAgent._serverCity || '' };
+                        _targetDiv3._clockCost._houses = agent._houses;
+                        _targetDiv3._clockCost._floorNum = agent._currentFloorNum;
+                        _targetDiv3._clockCost._passby = { questId: qid, floorNum: agent._currentFloorNum, houses: (agent._passbyBaseHouses || 0) + (agent._houses ? agent._houses.length : 0), wge: (agent._passbyBaseWge || 0) + (agent._floorCostWge || 0), drift: agent._serverDrift || 0, city: agent._serverCity || '' };
                         if (isFree) {
                             _targetDiv3._clockCost.style.color = '#859900';
                         } else {
@@ -674,20 +671,19 @@ async function sendMessage(skipFloorCreation) {
                 }
             },
             onError: function (msg) {
-                if (_activeAgent === _capturedAgent) _sending = false;  // ★ 仅前台复位，后台 agent 错误不影响前台
-                if (_capturedAgent) {
-                    _capturedAgent._floorOnErrorCalled = true;  // ★ 看门狗：标记已处理
+                if (agent) {
+                    agent._floorOnErrorCalled = true;  // ★ 看门狗：标记已处理
                     // ★ P10/P11 根治：先保存流式内容到 conversation（防 onError 丢数据）
                     //   优先用 _streamingContent（_doStreamRender 累积），回退到 _paras 残留
-                    var _streamedText = _capturedAgent._streamingContent || '';
+                    var _streamedText = agent._streamingContent || '';
                     // 防重复：若截断路径（agent-loop L680 _truncated）已写 → 跳过
-                    var _lastConv3 = _capturedAgent.conversation[_capturedAgent.conversation.length - 1];
-                    if (_lastConv3 && _lastConv3.role === 'assistant' && _lastConv3._floor === _capturedAgent._ctx.totalFloors && _lastConv3.content) {
+                    var _lastConv3 = agent.conversation[agent.conversation.length - 1];
+                    if (_lastConv3 && _lastConv3.role === 'assistant' && _lastConv3._floor === agent._ctx.totalFloors && _lastConv3.content) {
                         _streamedText = '';  // 已由 agent-loop 写入，不重复
                     }
                     if (!_streamedText.trim()) {
                         // 兜底：_doStreamRender 还没跑过 → 从 aiDiv._paras 提取
-                        var _aiDiv3 = _capturedAgent._activeAiDiv;
+                        var _aiDiv3 = agent._activeAiDiv;
                         if (_aiDiv3 && _aiDiv3._paras) {
                             for (var _si = 0; _si < _aiDiv3._paras.length; _si++) {
                                 if (_aiDiv3._paras[_si]) {
@@ -698,23 +694,23 @@ async function sendMessage(skipFloorCreation) {
                         }
                     }
                     if (_streamedText.trim()) {
-                        _capturedAgent.conversation.push({
+                        agent.conversation.push({
                             role: 'assistant',
                             content: _streamedText.trim(),
-                            _floor: _capturedAgent._ctx.totalFloors
+                            _floor: agent._ctx.totalFloors
                         });
                     }
-                    _capturedAgent._streamingContent = null;
+                    agent._streamingContent = null;
                     // ★ 一次渲染永久不变：错误消息推入 conversation 持久化
-                    _capturedAgent.conversation.push({
+                    agent.conversation.push({
                         role: 'assistant',
                         content: msg,
                         _error: true,
-                        _floor: _capturedAgent._ctx.totalFloors
+                        _floor: agent._ctx.totalFloors
                     });
                     // ★ 100% 落盘保证：错误楼层的用户消息+错误消息强制写盘，不依赖 auto-save 竞态
-                    if (_capturedQuestId && typeof _saveAgentQuestData === 'function') {
-                        _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._currentFloorNum).catch(function () { });
+                    if (qid && typeof _saveAgentQuestData === 'function') {
+                        _saveAgentQuestData(qid, agent, agent._currentFloorNum).catch(function () { });
                     }
                 }
                 // ★ 清理 aiDiv 流式渲染状态，防止 doStreamRender 定时器"诈尸"
@@ -725,11 +721,11 @@ async function sendMessage(skipFloorCreation) {
                     if (aiDiv._lastParaEl) { aiDiv._lastParaEl.remove(); aiDiv._lastParaEl = null; }
                 }
                 // ★ 释放中心机器 running 标记（setStreaming 不再负责此事）
-                _markQuestRunning(_capturedQuestId, false);
+                _markQuestRunning(qid, false);
                 // ★ 中央建楼状态机：注销 quest 建楼状态
-                if (typeof _unregisterBuilding === 'function') _unregisterBuilding(_capturedQuestId);
-                if (_panelRunningQuestId === _capturedQuestId) _panelRunningQuestId = null;
-                if (_activeAgent === _capturedAgent) {
+                if (typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
+                if (_panelRunningQuestId === qid) _panelRunningQuestId = null;
+                if (_activeAgent === agent) {
                     if (aiDiv && aiDiv._floorCompleted) {
                         setStreaming(false);
                         return;
@@ -737,45 +733,45 @@ async function sendMessage(skipFloorCreation) {
                     // ★ 聚合红框：追加错误行到 quest 级错误日志，渲染一个框
                     var _now = new Date();
                     var _ts = _now.getHours().toString().padStart(2, '0') + ':' + _now.getMinutes().toString().padStart(2, '0');
-                    if (_capturedAgent) {
-                        _capturedAgent._questErrorLog.push({ time: _ts, reason: msg });
+                    if (agent) {
+                        agent._questErrorLog.push({ time: _ts, reason: msg });
                     }
                     // ★ 清理延迟渲染残骸（恢复路径可能有未上屏的 DOM）
-                    if (_capturedAgent) {
-                        _capturedAgent._deferredUserEl = null;
-                        if (_capturedAgent._deferredAiDiv && _capturedAgent._deferredAiDiv.parentNode) {
-                            _capturedAgent._deferredAiDiv.parentNode.removeChild(_capturedAgent._deferredAiDiv);
+                    if (agent) {
+                        agent._deferredUserEl = null;
+                        if (agent._deferredAiDiv && agent._deferredAiDiv.parentNode) {
+                            agent._deferredAiDiv.parentNode.removeChild(agent._deferredAiDiv);
                         }
-                        _capturedAgent._deferredAiDiv = null;
-                        _capturedAgent._deferRenderUntilHouse1 = false;
+                        agent._deferredAiDiv = null;
+                        agent._deferRenderUntilHouse1 = false;
                     }
-                    _renderQuestErrorBox(_capturedAgent);
-                    _stopAllTxtStream(_capturedAgent);
-                    stopFloorTimer(null, _capturedAgent);
+                    _renderQuestErrorBox(agent);
+                    _stopAllTxtStream(agent);
+                    stopFloorTimer(null, agent);
                     setStreaming(false);
                     if ($sendBtn) $sendBtn.disabled = true;
                 } else {
                     // ★ 后台 agent 错误：仍需停 timer + 停 all.txt 流（否则时钟僵尸 + 轮询泄漏）
                     //   running 标记已在上方统一释放，此处不再重复
-                    if (_capturedAgent && _capturedAgent._floorTimerId) {
-                        clearInterval(_capturedAgent._floorTimerId);
-                        _capturedAgent._floorTimerId = null;
+                    if (agent && agent._floorTimerId) {
+                        clearInterval(agent._floorTimerId);
+                        agent._floorTimerId = null;
                     }
-                    _stopAllTxtStream(_capturedAgent);
+                    _stopAllTxtStream(agent);
                     // 后台 agent 的 aiDiv 时钟设为停止态
-                    var _bgAiDiv2 = _capturedAgent && _capturedAgent._activeAiDiv;
+                    var _bgAiDiv2 = agent && agent._activeAiDiv;
                     if (_bgAiDiv2 && _bgAiDiv2._clockBlock) {
                         _bgAiDiv2._clockBlock.className = 'msg-ai-clock';
-                        var _elapsed3 = performance.now() - _capturedAgent._floorStartPerf;
+                        var _elapsed3 = performance.now() - agent._floorStartPerf;
                         var _durS3 = Math.floor(_elapsed3 / 1000);
                         if (_bgAiDiv2._clockMin) _bgAiDiv2._clockMin.textContent = Math.floor(_durS3 / 60) + 'm';
                         if (_bgAiDiv2._clockSec) _bgAiDiv2._clockSec.textContent = ':' + (_durS3 % 60 < 10 ? '0' : '') + (_durS3 % 60) + 's';
                     }
                     // 记录错误 timing
-                    _capturedAgent._floorTimings = _capturedAgent._floorTimings || [];
-                    _capturedAgent._floorTimings.push({
-                        floorIndex: _capturedAgent._ctx ? _capturedAgent._ctx.totalFloors : 0,
-                        durationMs: Math.round(performance.now() - _capturedAgent._floorStartPerf),
+                    agent._floorTimings = agent._floorTimings || [];
+                    agent._floorTimings.push({
+                        floorIndex: agent._ctx ? agent._ctx.totalFloors : 0,
+                        durationMs: Math.round(performance.now() - agent._floorStartPerf),
                         error: msg,
                         finishedAt: new Date().toISOString()
                     });
@@ -783,9 +779,9 @@ async function sendMessage(skipFloorCreation) {
                     updateQuestTofu();
                     // ★ 防御：直查 registry 确保删除
                     var _regErr = parent && parent.__qqq_buildingRegistry;
-                    if (_regErr && _regErr[_capturedQuestId]) {
-                        console.warn('[onError] quest still in registry, force-deleting:', _capturedQuestId);
-                        delete _regErr[_capturedQuestId];
+                    if (_regErr && _regErr[qid]) {
+                        console.warn('[onError] quest still in registry, force-deleting:', qid);
+                        delete _regErr[qid];
                         if (typeof _broadcastRegistry === 'function') _broadcastRegistry();
                         updateQuestTofu();
                     }
@@ -796,29 +792,29 @@ async function sendMessage(skipFloorCreation) {
     } catch (err) {
         if (err && err.name !== 'AbortError') {
             // ★ 延迟渲染残骸清理：同步异常时用户气泡未上屏、AI 区已隐藏 → 全部丢弃
-            if (_capturedAgent) {
-                _capturedAgent._deferredUserEl = null;
-                if (_capturedAgent._deferredAiDiv && _capturedAgent._deferredAiDiv.parentNode) {
-                    _capturedAgent._deferredAiDiv.parentNode.removeChild(_capturedAgent._deferredAiDiv);
+            if (agent) {
+                agent._deferredUserEl = null;
+                if (agent._deferredAiDiv && agent._deferredAiDiv.parentNode) {
+                    agent._deferredAiDiv.parentNode.removeChild(agent._deferredAiDiv);
                 }
-                _capturedAgent._deferredAiDiv = null;
-                _capturedAgent._deferRenderUntilHouse1 = false;
+                agent._deferredAiDiv = null;
+                agent._deferRenderUntilHouse1 = false;
             }
-            addMessageEl('error', err.message || 'Unknown error', _capturedQuestId);  // ★ P10：错误消息记入被捕获 quest 的 card
+            addMessageEl('error', err.message || 'Unknown error', qid);  // ★ P10：错误消息记入被捕获 quest 的 card
             // ★ 异常不可恢复 → fatal（统一归入 fatal 管线，不依赖 auto-save）
-            if (_capturedAgent) {
-                _capturedAgent._floorFatal = true;
-                _capturedAgent._stopState = 'fatal';
-                if (!_capturedAgent._floorOnErrorCalled) {
-                    _capturedAgent.conversation.push({
+            if (agent) {
+                agent._floorFatal = true;
+                agent.setStopState('fatal');
+                if (!agent._floorOnErrorCalled) {
+                    agent.conversation.push({
                         role: 'assistant',
                         content: 'Send failed: ' + (err.message || 'Unknown error'),
                         _error: true,
-                        _floor: _capturedAgent._ctx.totalFloors
+                        _floor: agent._ctx.totalFloors
                     });
                 }
-                if (_capturedQuestId && typeof _saveAgentQuestData === 'function') {
-                    _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._currentFloorNum).catch(function () { });
+                if (qid && typeof _saveAgentQuestData === 'function') {
+                    _saveAgentQuestData(qid, agent, agent._currentFloorNum).catch(function () { });
                 }
             }
             if ($sendBtn) $sendBtn.disabled = true;
@@ -827,59 +823,53 @@ async function sendMessage(skipFloorCreation) {
             // ★ fatal 态禁队列排水
         }
     } finally {
-        // ★ 防并发 cross-talk：_capturedAgent 被新 sendMessage 覆盖 → 只清理 _sending，跳过（别人的 agent 不归我管）
-        if (_capturedAgent !== _snapAgent || _capturedQuestId !== _snapQuestId) {
-            if (_activeAgent === _snapAgent) _sending = false;  // 仅当被覆盖的 agent 仍是前台时才复位
-            updateQueueBtn();
-            return;
-        }
         // ★ 一次渲染永久不变：在清理 _activeAiDiv 之前，先保存当前楼层数据（含流式文本）
         //   sending 态正常保存；fatal 态也保存（belt-and-suspenders：onError 已火线落盘，此处兜底）
-        if (_capturedAgent && _capturedQuestId && !_capturedAgent._floorCompletedCleanly
-            && (_capturedAgent._stopState === 'sending' || _capturedAgent._floorFatal)) {
-            try { await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._currentFloorNum); } catch (_) { }
+        if (agent && qid && !agent._floorCompletedCleanly
+            && (agent._stopState === 'sending' || agent._floorFatal)) {
+            try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { }
         }
-        _stopAllTxtStream(_capturedAgent);
+        _stopAllTxtStream(agent);
         // ★ 通用 timer 清理：无论前台/后台，防止僵尸 timer
-        if (_capturedAgent && _capturedAgent._floorTimerId) {
-            clearInterval(_capturedAgent._floorTimerId);
-            _capturedAgent._floorTimerId = null;
+        if (agent && agent._floorTimerId) {
+            clearInterval(agent._floorTimerId);
+            agent._floorTimerId = null;
         }
         // ★ Stop 闭环：STOPPING 态显式持久化 + 状态机复位
-        if (_capturedAgent && _capturedAgent._stopState === 'stopping') {
+        if (agent && agent._stopState === 'stopping') {
             if (typeof stopFloorTimer === 'function') {
-                stopFloorTimer(_capturedAgent._floorTiming || { networkMs: 0, aiMs: 0, otherMs: 0 }, _capturedAgent);
+                stopFloorTimer(agent._floorTiming || { networkMs: 0, aiMs: 0, otherMs: 0 }, agent);
             }
             setStreaming(false);
             // ★ 永不自停：Stop 不暂停队列，用户手动点暂停才停
             // 保存楼层数据到 sq3
-            if (_capturedQuestId) {
-                try { await _saveAgentQuestData(_capturedQuestId, _capturedAgent, _capturedAgent._currentFloorNum); } catch (_) { }
+            if (qid) {
+                try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { }
             }
-            _capturedAgent._stopState = 'idle';
-            _capturedAgent._stopCtrl = null;
+            agent.setStopState('idle');
+            agent._stopCtrl = null;
         }
         // ★ null guard：draft→quest 创建失败时两者皆 null，跳过时钟清理（零影响）
-        if (_capturedAgent && _activeAgent === _capturedAgent) {
-            if (_capturedAgent._activeAiDiv) {
-                var _elapsed = performance.now() - _capturedAgent._floorStartPerf;
+        if (agent && _activeAgent === agent) {
+            if (agent._activeAiDiv) {
+                var _elapsed = performance.now() - agent._floorStartPerf;
                 var _totalS = Math.floor(_elapsed / 1000);
                 var _min = Math.floor(_totalS / 60);
                 var _sec = _totalS % 60;
-                if (_capturedAgent._activeAiDiv._clockBlock) {
-                    _capturedAgent._activeAiDiv._clockBlock.className = 'msg-ai-clock';
+                if (agent._activeAiDiv._clockBlock) {
+                    agent._activeAiDiv._clockBlock.className = 'msg-ai-clock';
                 }
-                if (_capturedAgent._activeAiDiv._clockMin) {
-                    _capturedAgent._activeAiDiv._clockMin.textContent = _min + 'm';
-                    _capturedAgent._activeAiDiv._clockSec.textContent = ':' + (_sec < 10 ? '0' : '') + _sec + 's';
+                if (agent._activeAiDiv._clockMin) {
+                    agent._activeAiDiv._clockMin.textContent = _min + 'm';
+                    agent._activeAiDiv._clockSec.textContent = ':' + (_sec < 10 ? '0' : '') + _sec + 's';
                 }
-                _capturedAgent._activeAiDiv._renderScheduled = false;
-                _capturedAgent._activeAiDiv = null;
+                agent._activeAiDiv._renderScheduled = false;
+                agent._activeAiDiv = null;
             }
         }
         // ═══ 楼层看门狗：仅当 onDone 和 onError 都未调用时才自动恢复 ═══
         // 铁律：绝不 reload，但必须持久化计时数据（否则重启窗口丢失 A3 时钟/饼图）
-        if (_capturedAgent && !_capturedAgent._floorCompletedCleanly && _capturedAgent._stopState === 'sending' && !_capturedAgent._floorOnErrorCalled) {
+        if (agent && !agent._floorCompletedCleanly && agent._stopState === 'sending' && !agent._floorOnErrorCalled) {
             console.log('[watchdog] floor ended headless — saving timing then yielding');
             // ★ 可点击"重新发送"：用户一键回滚断头楼层并重发
             var _errDiv = document.createElement('div');
@@ -896,9 +886,9 @@ async function sendMessage(skipFloorCreation) {
                 _resendLink.textContent = '正在发送...';
                 // ★ 不滚 conversation、不删 DOM、不减楼层
                 //    模拟用户用原话 + 诊断原因发送一条"继续"消息
-                var _userText = (_capturedAgent._lastUserInput && _capturedAgent._lastUserInput.text) || '';
+                var _userText = (agent._lastUserInput && agent._lastUserInput.text) || '';
                 var _diag = '';
-                try { _diag = (_capturedAgent._buildDiagnosis && _capturedAgent._buildDiagnosis()) || ''; } catch (__) { }
+                try { _diag = (agent._buildDiagnosis && agent._buildDiagnosis()) || ''; } catch (__) { }
                 var _continueMsg = '由于 ' + (_diag || '未知原因') + ' 导致会话中断，请继续。';
                 // ★ 原用户键入 + 中断诊断一起体现
                 var _fullMsg = _continueMsg + '\n\n[原始请求]: ' + _userText;
@@ -912,43 +902,41 @@ async function sendMessage(skipFloorCreation) {
             _errDiv.appendChild(_resendLink);
             _appendToCard(_errDiv);
             // ★ 持久化断头楼层的时钟数据（否则重启窗口后 A3 归零）
-            var _elapsed2 = performance.now() - _capturedAgent._floorStartPerf;
-            var _tm = _capturedAgent._floorTiming || { networkMs: 0, aiMs: 0, otherMs: 0 };
+            var _elapsed2 = performance.now() - agent._floorStartPerf;
+            var _tm = agent._floorTiming || { networkMs: 0, aiMs: 0, otherMs: 0 };
             var _record = {
-                floorIndex: _capturedAgent._ctx ? _capturedAgent._ctx.totalFloors : 0,
+                floorIndex: agent._ctx ? agent._ctx.totalFloors : 0,
                 durationMs: Math.round(_elapsed2),
                 networkMs: _tm.networkMs || 0,
                 aiMs: _tm.aiMs || 0,
                 otherMs: _tm.otherMs || 0,
                 finishedAt: new Date().toISOString()
             };
-            _capturedAgent._lastFloorTimingRecord = _record;
-            _capturedAgent._floorTimings = _capturedAgent._floorTimings || [];
-            _capturedAgent._floorTimings.push(_record);
+            agent._lastFloorTimingRecord = _record;
+            agent._floorTimings = agent._floorTimings || [];
+            agent._floorTimings.push(_record);
             // 触发一次保存（异步，best-effort）
             if (typeof saveQuestData === 'function') {
                 saveQuestData().catch(function () { });
             }
         }
-        if (_capturedAgent) {
-            _capturedAgent._sending = false;
-            _capturedAgent._streaming = false;
+        if (agent) {
+            agent._streaming = false;
         }
         // ★ 中央建楼状态机：确保注销（onDone/onError 已处理，此处兜底看门狗/异常路径）
-        if (_capturedQuestId && typeof _unregisterBuilding === 'function') _unregisterBuilding(_capturedQuestId);
+        if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
         _queueBusy = false;
-        if (_activeAgent === _capturedAgent) _sending = false;  // ★ 仅前台复位
         // ★ 队列自动排水：楼层完结后（onDone 内因 _queueBusy=true 被阻断），此处补排
-        if (_queue && _queue.length > 0 && !_queuePaused && _activeAgent === _capturedAgent) {
+        if (_queue && _queue.length > 0 && !_queuePaused && _activeAgent === agent) {
             _triggerQueueSend();
         }
-        if (_activeAgent === _capturedAgent) {
+        if (_activeAgent === agent) {
             setStreaming(false);
-        } else if (_capturedQuestId && !_capturedAgent._floorCompletedCleanly && !_capturedAgent._floorOnErrorCalled) {
+        } else if (qid && !agent._floorCompletedCleanly && !agent._floorOnErrorCalled) {
             // ★ 后台 agent finally 兜底：onDone/onError 均未触发时才释放 running 标记
             //   （若 onDone/onError 已触发，它们已在上方统一释放，此处不重复）
-            _markQuestRunning(_capturedQuestId, false);
-            if (_panelRunningQuestId === _capturedQuestId) _panelRunningQuestId = null;
+            _markQuestRunning(qid, false);
+            if (_panelRunningQuestId === qid) _panelRunningQuestId = null;
         }
     }
 }
@@ -957,7 +945,7 @@ function _continueQueue() {
     var _qs = document.getElementById('queue-sending-status');
     if (_qs) _qs.remove();
     if (_queuePaused) return;
-    if (_activeAgent !== _capturedAgent) return;
+    if (_activeAgent !== agent) return;
     _triggerQueueSend();
 }
 
@@ -1099,7 +1087,7 @@ async function _attemptRecoverySend(questId, agent, linkEl) {
             _finishRecovery(linkEl, agent, true);
         }
     } catch (_e) {
-        agent._stopState = 'fatal';
+        agent.setStopState('fatal');
         agent._floorFatal = true;
         _finishRecovery(linkEl, agent, false);
     } finally {

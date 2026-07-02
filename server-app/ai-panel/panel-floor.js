@@ -470,7 +470,7 @@ async function _restoreAgentFromStore(questId, ag) {
             var _lastFloor = allFloors[allFloors.length - 1];
             var _lfData = _lastFloor.data;
             if (_lfData && _lfData.floorFatal) {
-                ag._stopState = 'fatal';
+                ag.setStopState('fatal');
                 ag._floorFatal = true;
                 ag._exitReason = _lfData.exitReason || '';
             }
