@@ -442,7 +442,8 @@ Agent 状态机 + 发送管线（2026-06-29 单一真相源重构 v2）
     fatal → [sending]（唯一出口："继续任务"）
   非法转移不阻断但 console.warn。agent-loop.js finally 块无条件复位。
 · _sending: 纯派生 getter（defineProperty 仅 getter，零 setter，零存储）
-  真理：!!(_activeAgent && _activeAgent._stopState === 'sending')
+  真理：!!(_activeAgent && _activeAgent._stopState === 'sending' && !_activeAgent._floorCompletedCleanly)
+  _floorCompletedCleanly 守卫：防后台已完结但 stopState 未复位的 agent 假报 sending（按钮变 Stop）
 · _capturedAgent / _capturedQuestId: 已消灭。一切 agent 引用直读 _activeAgent 或闭包捕获。
 · sendMessage 管线重构（v2）：
   ① gate checks（stopState/stopping/fatal/recovery/主项目）— 纯读操作
@@ -456,6 +457,9 @@ Agent 状态机 + 发送管线（2026-06-29 单一真相源重构 v2）
   onError → _stopState='fatal' + 火线落盘
   落盘兜底：_a4BuildCompleteFloorPayload 检测 cleanConv 为空 + floorFatal → 合成 error 消息
   渲染兜底：_buildConversationFlowHtml 双重 guard（早期返回 + 尾部 _hasErrorRendered 追踪）
+  时钟兜底：finally 块 L860 去 _activeAgent===agent 守卫 → 后台完结也设停止态（变黑）
+  onDone 后台分支：L570-575 已有时钟黑色处理
+  按钮兜底：switchQuest L135 setStreaming(true) 按实际 agent._streaming 刷新（非无脑 false）
   唯一出口："继续任务"链接 → _attemptRecoverySend → sendMessage 完整管线
   防抖: 20s 冷却（_qqqRecoveryBusy），per-quest 独立
 

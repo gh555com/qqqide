@@ -696,7 +696,7 @@ var CardPool = (function () {
         aiEl._clockCost.style.display = 'inline';
         aiEl._clockCost._houses = _liveAg._houses || [];
         aiEl._clockCost._floorNum = fNum;
-        aiEl._clockCost._passby = { questId: card.id, floorNum: fNum, houses: (_liveAg._passbyBaseHouses || 0) + (_liveAg._houses ? _liveAg._houses.length : 0), wge: (_liveAg._passbyBaseWge || 0) + (_liveAg._floorCostWge || 0), drift: _liveAg._serverDrift || 0, city: _liveAg._serverCity || '' };
+        aiEl._clockCost._passby = { questId: card.id, floorNum: fNum, houses: (_liveAg._passbyBaseHouses || 0) + (_liveAg._houses ? _liveAg._houses.length : 0), tokens: (_liveAg._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(_liveAg) : 0), wge: (_liveAg._passbyBaseWge || 0) + (_liveAg._floorCostWge || 0), drift: _liveAg._serverDrift || 0, city: _liveAg._serverCity || '' };
       }
     } else {
       // 已封顶楼层：始终设时钟为停止态（dark），不管是否找到计时数据
@@ -738,7 +738,7 @@ var CardPool = (function () {
       aiEl._clockCost.style.display = 'inline';
       aiEl._clockCost._houses = fData.houses || [];
       aiEl._clockCost._floorNum = fNum;
-      aiEl._clockCost._passby = { questId: card.id, floorNum: fNum, houses: fData.passbyHouses || 0, wge: fData.passbyWge || 0, time: fData.passbyTime || null, city: fData.passbyCity || '' };
+      aiEl._clockCost._passby = { questId: card.id, floorNum: fNum, houses: fData.passbyHouses || 0, tokens: fData.passbyTokens || 0, wge: fData.passbyWge || 0, time: fData.passbyTime || null, city: fData.passbyCity || '' };
       if (isFree) {
         aiEl._clockCost.style.color = '#859900';
       } else {

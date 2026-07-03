@@ -142,6 +142,7 @@ var AgentLoop = (function () {
         this._billingDebug = false;      // 详细记账日志开关（默认关，减少噪音）
         this._passbyBaseHouses = 0;      // ★ passby 基线：已完成楼层的 house 总数
         this._passbyBaseWge = 0;         // ★ passby 基线：已完成楼层的 wge 总消费
+        this._passbyBaseTokens = 0;      // ★ passby 基线：已完成楼层的 tokens 总和
         this._passbyBaseFloorNum = 0;    // ★ 已推进至的楼层（防重复累加）
         this._serverCity = '';           // ★ Cloudflare 透传城市（服务器真理位置）
         // ★ 上下文快照：诊断模型缓存命中/未命中根因
@@ -333,7 +334,7 @@ var AgentLoop = (function () {
                 for (var vi = 0; vi < visionResults.length; vi++) {
                     parts.push('[图#' + visionResults[vi].id + ' 视觉分析]:\n' + visionResults[vi].description);
                 }
-                visionText = '\n\n━━━ VISION ANALYSIS RESULTS (already completed, DO NOT call analyze_image again) ━━━\n' + parts.join('\n\n') + '\n━━━ END VISION RESULTS ━━━';
+                visionText = '\n\n━━━ VISION ANALYSIS RESULTS (already completed, DO NOT call analyze_image again) ━━━\n' + parts.join('\n\n') + '\n━━━ END VISION RESULTS ━━━\n⚠️ 用户如果要求抠图，立即调 remove_background，不要因视觉分析说"已透明"就跳过。棋盘格可能是假透明。';
             }
             // 视觉计费计入本轮
             if (self._visionCostWge > 0) {
@@ -581,7 +582,7 @@ var AgentLoop = (function () {
                                 _aiDivC._clockCost.style.display = 'inline';
                                 _aiDivC._clockCost._houses = self._houses;
                                 _aiDivC._clockCost._floorNum = self._currentFloorNum;
-                                _aiDivC._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0), drift: self._serverDrift || 0, city: self._serverCity || '' };
+                                _aiDivC._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), tokens: (self._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(self) : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0), drift: self._serverDrift || 0, city: self._serverCity || '' };
                             }
                             // ★ 压缩耗时归入 AI 时间（饼图绿色），而非 other（黄色）
                             if (self._floorTiming) {
@@ -775,7 +776,7 @@ var AgentLoop = (function () {
                         _aiDiv5._clockCost.style.display = 'inline';
                         _aiDiv5._clockCost._houses = self._houses;
                         _aiDiv5._clockCost._floorNum = self._currentFloorNum;
-                        _aiDiv5._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0), drift: self._serverDrift || 0, city: self._serverCity || '' };
+                        _aiDiv5._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), tokens: (self._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(self) : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0), drift: self._serverDrift || 0, city: self._serverCity || '' };
                         if (self._floorFree) {
                             _aiDiv5._clockCost.style.color = '#859900';
                         } else {

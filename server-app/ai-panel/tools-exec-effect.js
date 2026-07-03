@@ -694,16 +694,39 @@ async function executeRemoveBackground(args) {
     var quality = args.quality || 'auto';
 
     try {
-        // 1. 读取图片 → base64
-        var b64Result = await bridge.qz.spawn({
-            cmd: 'bash',
-            args: ['-c', 'base64 -w0 "' + image.replace(/\\/g, '/') + '" 2>/dev/null || base64 "' + image.replace(/\\/g, '/') + '" 2>/dev/null'],
-            timeout: 15000
-        });
-        var b64 = (b64Result.stdout || '').replace(/\s/g, '');
-        if (!b64) return 'Error: could not read or encode image: ' + image;
+        // 1. 读取图片 → base64（★ PowerShell 优先，bash 兜底）
+        var b64 = '';
+        // 方法A: PowerShell（Windows 原生，100%可靠）
+        try {
+            var psResult = await bridge.qz.spawn({
+                cmd: 'powershell',
+                args: ['-NoProfile', '-Command', '[Convert]::ToBase64String([IO.File]::ReadAllBytes(\'' + image.replace(/\\/g, '/') + '\'))'],
+                timeout: 15000
+            });
+            b64 = (psResult.stdout || '').replace(/\s/g, '');
+        } catch (_) {}
+        // 方法B: bash+base64（Linux/Mac 兜底）
+        if (!b64) {
+            try {
+                var bashResult = await bridge.qz.spawn({
+                    cmd: 'bash',
+                    args: ['-c', 'base64 -w0 "' + image.replace(/\\/g, '/') + '" 2>/dev/null || base64 "' + image.replace(/\\/g, '/') + '" 2>/dev/null'],
+                    timeout: 15000
+                });
+                b64 = (bashResult.stdout || '').replace(/\s/g, '');
+            } catch (_) {}
+        }
+        if (!b64) {
+            // try ls to debug
+            var ls = '';
+            try {
+                var lsResult = await bridge.qz.spawn({cmd: 'cmd', args: ['/c', 'dir "' + image + '" 2>nul || echo NOT_FOUND'], timeout: 5000});
+                ls = (lsResult.stdout || '').trim();
+            } catch (_) {}
+            return 'Error: could not read image: ' + image + (ls ? ' (dir: ' + ls.slice(0, 200) + ')' : '');
+        }
 
-        // 2. 调用 AiGateway segment API
+        // 2. 调用 Go API
         if (typeof AiGateway === 'undefined' || !AiGateway.segmentSubmit) {
             // 直接 fetch Go API
             var segmentUrl = 'https://direct-cn.gh555.com/api/v3/ai/segment';

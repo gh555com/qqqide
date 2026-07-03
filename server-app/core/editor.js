@@ -727,6 +727,58 @@
         delete window.qqqPendingEditorPositions[filePath];
       }
 
+      // ★ 搜索跳转：从搜索列表点击跳转到指定行/列
+      if (opts && opts.line) {
+        try {
+          var _jumpPos = { lineNumber: opts.line, column: opts.col || 1 };
+          ed.setPosition(_jumpPos);
+          ed.revealPositionInCenter(_jumpPos);
+        } catch (_) {}
+      }
+
+      // ★ 搜索高亮：自动打开查找控件并填入搜索词
+      if (opts && opts.search && opts.search.trim()) {
+        var _srchTerm = opts.search;
+        setTimeout(function () {
+          try {
+            var _fc = ed.getContribution('editor.contrib.findController');
+            if (_fc && _fc.start) {
+              _fc.start({
+                forceRevealReplace: false,
+                seedSearchStringFromSelection: 'none',
+                seedSearchStringFromNonEmptySelection: false,
+                seedSearchStringFromGlobalClipboard: false,
+                shouldFocus: 2,
+                shouldAnimate: true,
+                updateSearchScope: false,
+                loop: true
+              });
+              _fc.getState().change({ searchString: _srchTerm }, false);
+              setTimeout(function () {
+                _fc.getState().change({ searchString: _srchTerm }, false);
+              }, 120);
+            } else {
+              // fallback: 用 action + DOM 写入
+              ed.getAction('actions.find').run();
+              var _dn = ed.getDomNode();
+              if (_dn) {
+                var _at = 0;
+                var _try = function () {
+                  var _fi = _dn.querySelector('.find-widget input[type="text"]') || _dn.querySelector('.find-widget .monaco-inputbox input');
+                  if (_fi) {
+                    var _ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                    _ns.call(_fi, _srchTerm);
+                    _fi.dispatchEvent(new Event('input', { bubbles: true }));
+                  }
+                  if (++_at < 8) setTimeout(_try, 60);
+                };
+                setTimeout(_try, 60);
+              }
+            }
+          } catch (_) {}
+        }, 300);
+      }
+
       // ── 面包屑导航条 ──
       if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.create) {
         window.qqqEditorBreadcrumb.create(host, filePath, ed, monaco);

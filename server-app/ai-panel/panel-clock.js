@@ -39,6 +39,7 @@ function _saveAgentFloor(ag, questId, force) {
             costWge: ag._floorCostWge,
             lastUserInput: ag._lastUserInput,
             passbyHouses: (ag._passbyBaseHouses || 0) + (ag._houses ? ag._houses.length : 0),
+            passbyTokens: (ag._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(ag) : 0),
             passbyWge: (ag._passbyBaseWge || 0) + (ag._floorCostWge || 0),
             passbyTime: Date.now() + (ag._serverDrift || 0),
             passbyCity: ag._serverCity || '',
@@ -207,25 +208,27 @@ function _buildBillingTable(houses, passby) {
             + '</tr>';
     }
     html += '</tbody></table>';
-    // ★ passby 行：表格下方汇总  如 "q35.f42 passby: 256houses、18943 wge ≈ 1.9 ge  at 2026-06-29 15:42:03"
+    // ★ passby 行  "at 2026-07-03 12:23:17  Chengdu  ▶  q64.f12 passby: 6houses, 52k tokens, 9595 wge ≈ 1.0 ge"
     if (passby && passby.questId) {
         var _pbHouses = passby.houses || 0;
+        var _pbTokens = passby.tokens || 0;
         var _pbWge = passby.wge || 0;
         var _pbGe = (_pbWge / 10000).toFixed(1);
         var _qNum = passby.questId.replace('q', '');
         var _fNum = passby.floorNum || 0;
-        // ★ 时间：历史楼层用冻结的 passbyTime，活楼用点击时服务器校准时间
         var _pbServerMs = passby.time || (Date.now() + (passby.drift || 0));
         var _pbDate = new Date(_pbServerMs);
         var _pbPad = function (n) { return String(n).padStart(2, '0'); };
         var _pbTimeStr = _pbDate.getFullYear() + '-' + _pbPad(_pbDate.getMonth() + 1) + '-' + _pbPad(_pbDate.getDate())
             + ' ' + _pbPad(_pbDate.getHours()) + ':' + _pbPad(_pbDate.getMinutes()) + ':' + _pbPad(_pbDate.getSeconds());
+        var _pbTokenStr = _pbTokens >= 1000 ? Math.round(_pbTokens / 1000) + 'k' : String(_pbTokens);
         html += '<div class="billing-passby" style="margin-top:8px;font-size:13px;color:var(--text-secondary,#888);text-align:center">'
-            + ' <span style="color:var(--text-tertiary,#666)"> at ' + _pbTimeStr + '</span>'
-            + (passby.city ? ' <span style="color:var(--text-tertiary,#666)"> in ' + passby.city + '</span>' : '')
-            + ' \u25b6 q<span style="color:#cb4b16">' + _qNum + '</span>.f<span style="color:#cb4b16">' + _fNum + '</span>'
-            + ' passby: ' + _pbHouses + 'houses'
-            + '\u3001' + _pbWge + ' wge'
+            + '<span style="color:var(--text-tertiary,#666)">at ' + _pbTimeStr + '</span>'
+            + (passby.city ? '\u3000<span style="color:var(--text-tertiary,#666)">' + passby.city + '</span>' : '')
+            + '\u3000\u25b6\u3000q <span style="color:#cb4b16">' + _qNum + '</span>.f <span style="color:#cb4b16">' + _fNum + '</span>'
+            + ' passby: ' + _pbHouses + 'houses,\u3000'
+            + _pbTokenStr + ' tokens,\u3000'
+            + _pbWge + ' wge'
             + ' \u2248 ' + _pbGe + ' ge'
             + '</div>';
     }

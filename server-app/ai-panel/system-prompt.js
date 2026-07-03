@@ -4,7 +4,7 @@
 
 // ★ GATEWAY_URL — 保留向后兼容，实际 fetch 已全部经 AiGateway 统一代理
 //    AiGateway 内部持有 URL 唯一真理（ai-gateway.js）
-const GATEWAY_URL_PRIMARY = 'https://direct.gh555.com:8444/api/v3/ai/chat';
+const GATEWAY_URL_PRIMARY = 'https://direct-cn.gh555.com/api/v3/ai/chat';
 const GATEWAY_URL_FALLBACK = 'https://gh555.com/api/v3/ai/chat';
 var GATEWAY_URL = GATEWAY_URL_PRIMARY;
 var _gwUsingFallback = false;
@@ -73,9 +73,9 @@ function _addToolWgeCost(wgeCost) {
 
 // ★ VISION_URL / IMAGE_GEN_URL / SEARCH_WEB_URL — 保留向后兼容
 //    实际调用已经 AiGateway 统一代理
-const VISION_URL = 'https://direct.gh555.com:8444/api/v3/ai/vision';
-const IMAGE_GEN_URL = 'https://direct.gh555.com:8444/api/v3/ai/generate-image';
-const SEARCH_WEB_URL = 'https://direct.gh555.com:8444/api/v3/search/web';
+const VISION_URL = 'https://direct-cn.gh555.com/api/v3/ai/vision';
+const IMAGE_GEN_URL = 'https://direct-cn.gh555.com/api/v3/ai/generate-image';
+const SEARCH_WEB_URL = 'https://direct-cn.gh555.com/api/v3/search/web';
 
 // ★ SYSTEM_PROMPT 已移至服务端 gaea/guard/system-prompt.txt
 //   Go 侧 guard.GuardMessage() 在 handlers_ai_chat.go §6 自动 prepend 到 messages[0]

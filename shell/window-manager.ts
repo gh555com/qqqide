@@ -115,20 +115,26 @@ export function createWindow(
         },
     });
 
-    // ★ Console buffer — 完整捕获 (含 iframe)、与 DevTools 另存为格式一致
-    win.webContents.on('console-message', (
+    // ★ Console buffer — 条件捕获: CDP 激活时禁用 console-message 以免重复
+    let _cdpActive = false;
+    const _cmHandler = (
         _e: any, _level: number, message: string, _line: number, _sourceId: string
     ) => {
+        if (_cdpActive) return;  // CDP 已激活 → 数据更完整, 跳过 console-message
         const src = (_sourceId || '').replace(/\\/g, '/');
-        // 过滤形如 "(index):47" 的 bare identifier（嵌套 iframe 无真实路径）
         const file = src.split('/').pop() || '';
         const prefix = file && !file.startsWith('(') && _line ? file + ':' + _line + ' ' : '';
         _consoleBuffer.push(prefix + message);
         if (_consoleBuffer.length > _consoleMaxLines) _consoleBuffer.shift();
-    });
+    };
+    win.webContents.on('console-message', _cmHandler);
 
-    // ★ CDP 控制台全量捕获 — Log.entryAdded = DevTools 另存为 100% 同源数据
-    _setupCdpConsoleCapture(win).catch(() => { });
+    // CDP 初始化时设置激活标志, 使 console-message 静默
+    const _onCdpActive = () => { _cdpActive = true; };
+
+    // ★ CDP 控制台捕获 — Log.entryAdded (与 DevTools 右键另存为同一数据源)
+    // v12: 过滤 noise source → 与 DevTools Console 显示一致
+    _setupCdpConsoleCapture(win, _onCdpActive).catch(() => {});
 
     win.removeMenu();
 
@@ -255,15 +261,20 @@ export function createWindow(
 }
 
 // ── CDP 控制台全量捕获 — Log.entryAdded = DevTools 另存为 100% 同源数据 ──
-// ★ v7.1 修复: 改用 /json/list 逐 page target 连接 Log 域
-//   浏览器级 CDP（/json/version）Log.enable 只捕获 browser 进程自身日志，
-//   页面级 console 消息必须连接 page target 的 webSocketDebuggerUrl。
-//   DevTools 右键另存为走的就是这个路径。
-async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
+// ★ v8: 延迟启动 + 重试 + 完整覆盖
+async function _setupCdpConsoleCapture(win: BrowserWindow, onActive: () => void): Promise<void> {
     const PORT = 8315;
     const allSockets: SimpleWebSocket[] = [];
+    let _started = false;
+
+    // DevTools Console 默认不显示的 source（intervention=性能建议, rendering=渲染, violation=违规, deprecation=弃用）
+    const _NOISE_SOURCES = new Set(['intervention', 'rendering', 'violation', 'deprecation', 'recommendation']);
 
     const _handleEntry = (entry: any) => {
+        // 跳过 DevTools Console 默认不显示的条目
+        if (!entry || !entry.text) return;
+        if (entry.source && _NOISE_SOURCES.has(entry.source)) return;
+
         const url = (entry.url || '').replace(/\\/g, '/');
         const file = url.split('/').pop() || url;
         const line = entry.lineNumber || 0;
@@ -271,17 +282,15 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
         const callFrames: any[] = entry.stackTrace?.callFrames || [];
         const lines: string[] = [];
         if (callFrames.length > 0) {
-            const firstFrame = callFrames[0];
-            const fUrl = (firstFrame.url || '').replace(/\\/g, '/').split('/').pop() || firstFrame.url;
-            const fLine = firstFrame.lineNumber || 0;
-            const head = fUrl && fLine ? fUrl + ':' + fLine + ' ' : '';
-            lines.push(head + text);
+            const f0 = callFrames[0];
+            const fUrl = ((f0.url || '').replace(/\\/g, '/').split('/').pop()) || f0.url;
+            const fLine = f0.lineNumber || 0;
+            lines.push((fUrl && fLine ? fUrl + ':' + fLine + ' ' : '') + text);
             for (let i = 1; i < callFrames.length; i++) {
                 const cf = callFrames[i];
                 const fn = cf.functionName || '<anonymous>';
-                const fu = (cf.url || '').replace(/\\/g, '/').split('/').pop() || cf.url;
-                const fl = cf.lineNumber || 0;
-                lines.push('    ' + fn + ' @ ' + fu + ':' + fl);
+                const fu = ((cf.url || '').replace(/\\/g, '/').split('/').pop()) || cf.url;
+                lines.push('    ' + fn + ' @ ' + fu + ':' + (cf.lineNumber || 0));
             }
         } else if (file && line) {
             lines.push(file + ':' + line + ' ' + text);
@@ -294,12 +303,13 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
         }
     };
 
-    const _connectTarget = (wsUrl: string) => {
+    const _connectTarget = (wsUrl: string, label: string) => {
         try {
             const ws = new SimpleWebSocket(wsUrl);
             allSockets.push(ws);
             ws.on('open', () => {
-                ws.send(JSON.stringify({ id: 1, method: 'Log.enable' }));
+                ws.send(JSON.stringify({ id: 1, method: 'Log.enable', params: {} }));
+                console.log('[main] CDP Log.enable sent to ' + label);
             });
             ws.on('message', (data: string) => {
                 try {
@@ -307,75 +317,91 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
                     if (msg.method === 'Log.entryAdded' && msg.params?.entry) {
                         _handleEntry(msg.params.entry);
                     }
-                } catch { /* ignore */ }
+                } catch {}
             });
-            ws.on('error', () => { try { ws.close(); } catch { } });
-        } catch { /* ignore */ }
+            ws.on('error', (err: Error) => {
+                console.log('[main] CDP WS error (' + label + '):', err.message);
+                try { ws.close(); } catch {}
+            });
+        } catch (e: any) {
+            console.log('[main] CDP connect failed (' + label + '):', e.message);
+        }
     };
 
-    try {
-        // ① 获取所有 page target 的 WebSocket URL
-        const targetsJson: string = await new Promise<string>((resolve, reject) => {
-            const req = http.get(`http://127.0.0.1:${PORT}/json/list`, (res) => {
-                let data = '';
-                res.on('data', (chunk: string) => data += chunk);
-                res.on('end', () => resolve(data));
+    const _doCapture = async () => {
+        if (_started) return;
+        try {
+            const targetsJson: string = await new Promise<string>((resolve, reject) => {
+                const req = http.get(`http://127.0.0.1:${PORT}/json/list`, (res) => {
+                    let data = '';
+                    res.on('data', (chunk: string) => data += chunk);
+                    res.on('end', () => resolve(data));
+                });
+                req.on('error', reject);
+                req.setTimeout(3000, () => { req.destroy(); reject(new Error('timeout')); });
             });
-            req.on('error', reject);
-            req.setTimeout(3000, () => { req.destroy(); reject(new Error('CDP targets timeout')); });
-        });
-
-        const targets: any[] = JSON.parse(targetsJson);
-        for (const t of targets) {
-            if (t.type === 'page' && t.webSocketDebuggerUrl) {
-                _connectTarget(t.webSocketDebuggerUrl);
+            const targets: any[] = JSON.parse(targetsJson);
+            let pageCount = 0;
+            for (const t of targets) {
+                if (t.type === 'page' && t.webSocketDebuggerUrl) {
+                    _connectTarget(t.webSocketDebuggerUrl, 'page:' + (t.url || '').slice(0, 60));
+                    pageCount++;
+                }
             }
-        }
-
-        // ② 兜底: 浏览器级 CDP 也连一下（capture 进程级日志）
-        const versionJson: string = await new Promise<string>((resolve, reject) => {
-            const req = http.get(`http://127.0.0.1:${PORT}/json/version`, (res) => {
-                let data = '';
-                res.on('data', (chunk: string) => data += chunk);
-                res.on('end', () => resolve(data));
-            });
-            req.on('error', reject);
-            req.setTimeout(2000, () => { req.destroy(); reject(new Error('CDP version timeout')); });
-        });
-        const versionInfo = JSON.parse(versionJson);
-        if (versionInfo.webSocketDebuggerUrl) {
-            _connectTarget(versionInfo.webSocketDebuggerUrl);
-        }
-
-        // ③ 监听新 target（动态页面/iframe）并自动连接
-        const _pollTargets = setInterval(async () => {
+            // 浏览器级 CDP
             try {
-                const resp: string = await new Promise<string>((resolve, reject) => {
-                    const req = http.get(`http://127.0.0.1:${PORT}/json/list`, (res) => {
+                const versionJson: string = await new Promise<string>((resolve, reject) => {
+                    const req = http.get(`http://127.0.0.1:${PORT}/json/version`, (res) => {
                         let data = '';
                         res.on('data', (chunk: string) => data += chunk);
                         res.on('end', () => resolve(data));
                     });
                     req.on('error', reject);
-                    req.setTimeout(2000, () => { req.destroy(); });
+                    req.setTimeout(2000, () => { req.destroy(); reject(new Error('timeout')); });
                 });
-                const list: any[] = JSON.parse(resp);
-                const knownUrls = new Set(allSockets.map(s => s.url));
-                for (const t of list) {
-                    if (t.type === 'page' && t.webSocketDebuggerUrl && !knownUrls.has(t.webSocketDebuggerUrl)) {
-                        _connectTarget(t.webSocketDebuggerUrl);
-                    }
+                const vi = JSON.parse(versionJson);
+                if (vi.webSocketDebuggerUrl) {
+                    _connectTarget(vi.webSocketDebuggerUrl, 'browser');
                 }
-            } catch { /* ignore */ }
-        }, 5000);
+            } catch {}
+            console.log('[main] CDP capture started: ' + pageCount + ' page(s) + browser');
+            _started = true;
+            onActive();  // 通知外部 CDP 已激活, 禁掉 console-message 兜底
 
-        win.on('closed', () => {
-            clearInterval(_pollTargets);
-            for (const s of allSockets) { try { s.close(); } catch { } }
-            allSockets.length = 0;
-        });
+            // 轮询新 target
+            const _poll = setInterval(async () => {
+                try {
+                    const resp: string = await new Promise<string>((resolve, reject) => {
+                        const req = http.get(`http://127.0.0.1:${PORT}/json/list`, (res) => {
+                            let data = '';
+                            res.on('data', (chunk: string) => data += chunk);
+                            res.on('end', () => resolve(data));
+                        });
+                        req.on('error', reject);
+                        req.setTimeout(2000, () => { req.destroy(); });
+                    });
+                    const list: any[] = JSON.parse(resp);
+                    const known = new Set(allSockets.map(s => s.url));
+                    for (const t of list) {
+                        if (t.type === 'page' && t.webSocketDebuggerUrl && !known.has(t.webSocketDebuggerUrl)) {
+                            _connectTarget(t.webSocketDebuggerUrl, 'new:' + (t.url || '').slice(0, 60));
+                        }
+                    }
+                } catch {}
+            }, 8000);
 
-    } catch {
-        // CDP 不可用 → 静默降级到 console-message
-    }
+            win.on('closed', () => {
+                clearInterval(_poll);
+                for (const s of allSockets) { try { s.close(); } catch {} }
+                allSockets.length = 0;
+            });
+        } catch (err: any) {
+            console.log('[main] CDP capture init failed (retry in 2s):', err.message);
+            setTimeout(_doCapture, 2000);
+        }
+    };
+
+    // 延迟启动: CDP 端口在 DevTools open 之后才完全就绪
+    setTimeout(_doCapture, 2000);
+    setTimeout(() => { if (!_started) _doCapture(); }, 5000);
 }

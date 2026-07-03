@@ -2,6 +2,26 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 ============================================================
 更新: 2026-06-29
 
+已完成 — 本轮 2026-06-29 (30) 按钮状态 per-quest + 时钟终结 + _sending 守卫
+------
+· switchQuest L135：setStreaming(false) → setStreaming(!!(_activeAgent && _activeAgent._streaming))
+  旧缺陷：切到建楼中 quest 时按钮仍显示 Send（无脑 false），用户无法停止
+· finally 块 L860：去 _activeAgent===agent 守卫 → 后台完结也设时钟 CSS 为黑色
+  旧缺陷：切走后 floor 完成 → timer 已清但 CSS 仍绿色
+· _sending getter：加 _floorCompletedCleanly 守卫
+  旧缺陷：后台完成 → _stopState 未复位 → _sending 仍 true → 切回后按钮显示 Stop
+· 全量审计：7 处 _activeAgent===agent 守卫均已验证安全。onDone 后台分支 L570-575 已有完备时钟黑色处理
+
+已完成 — 本轮 2026-06-29 (30) 按钮状态 per-quest + 时钟终结 + _sending 守卫
+------
+· switchQuest L135：setStreaming(false) → setStreaming(!!(_activeAgent && _activeAgent._streaming))
+  旧缺陷：切到建楼中 quest 时按钮仍显示 Send（无脑 false），用户无法停止
+· finally 块 L860：去 _activeAgent===agent 守卫 → 后台完结也设时钟 CSS 为黑色
+  旧缺陷：切走后 floor 完成 → timer 已清但 CSS 仍绿色
+· _sending getter：加 _floorCompletedCleanly 守卫
+  旧缺陷：后台完成 → _stopState 未复位 → _sending 仍 true → 切回后按钮显示 Stop
+· 全量审计：7 处 _activeAgent===agent 守卫均已验证安全。onDone 后台分支 L570-575 已有完备时钟黑色处理
+
 已完成 — 本轮 2026-06-29 (29) agent 单一真相源重构 v2
 ------
 · setStopState(newState) 带转移校验表 — agent-loop.js 单一入口，零外部直接 ._stopState = 写入

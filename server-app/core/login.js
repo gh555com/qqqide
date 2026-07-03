@@ -98,13 +98,25 @@
   }
 
   async function _restoreAuth() {
-    if (_authData && _authData.token) return;
+    if (_authData && _authData.token) return true;
     try {
       if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.loadAuth) {
         var saved = await window.qqqideBridge.auth.loadAuth();
-        if (saved && saved.token && saved.phone) { _authData = saved; _authData.ts = Date.now(); }
+        if (saved && saved.token && saved.phone) {
+          _authData = saved; _authData.ts = Date.now();
+          // ★ 立即显示 LV 区域 + 奖杯（零等待）
+          _lvShow();
+          return true;
+        }
       }
     } catch (e) { }
+    return false;
+  }
+
+  // ★ 立即显示 LV 区域（不等待数据）
+  function _lvShow() {
+    if (_$lvBar) _$lvBar.style.display = 'inline-flex';
+    if (_$ldrBtn) _$ldrBtn.style.display = '';
   }
 
   async function _httpsGet(urlPath) {
@@ -239,7 +251,7 @@
 
   // ═══ LV 3 层动画引擎（rAF 驱动，精确时长 + 保证 1px 间隙） ═══
   // 中层 (_$lvGlow): #ffffdd 象牙白，瞬移，z-index:1
-  // 顶层 (_$lvSolid): 追赶中 #8a6410，追上后 #c4b187，z-index:2
+  // 顶层 (_$lvSolid): 始终 #c4b187（调试统一色），追上后变色逻辑保留但暂同色，z-index:2
   var _$lvGlow = null;
   var _$lvSolid = null;
   var _lvPrevFloor = -1;
@@ -254,9 +266,39 @@
     _$lvGlow.style.width = pct + '%';
   }
 
+  // ★ 升级特效：金环爆闪 + LV 文字弹跳
+  function _lvLevelUpBurst() {
+    if (!_$lvBar) return;
+    var track = _$lvBar.querySelector('.qqq-lv-track');
+    // ① 轨道白闪
+    if (track) {
+      track.style.boxShadow = '0 0 18px 4px #fff, 0 0 36px 8px #c4b187';
+      track.style.filter = 'brightness(2)';
+      setTimeout(function () {
+        track.style.boxShadow = '';
+        track.style.filter = '';
+      }, 400);
+    }
+    // ② LV 文字弹跳
+    if (_$lvLevel) {
+      _$lvLevel.style.transform = 'scale(1.5)';
+      _$lvLevel.style.color = '#c4b187';
+      _$lvLevel.style.textShadow = '0 0 12px #c4b187';
+      setTimeout(function () {
+        _$lvLevel.style.transform = '';
+        _$lvLevel.style.color = '';
+        _$lvLevel.style.textShadow = '';
+      }, 500);
+    }
+    // ③ 整条 bar 光晕
+    _$lvBar.style.filter = 'drop-shadow(0 0 14px #c4b187)';
+    setTimeout(function () { _$lvBar.style.filter = ''; }, 600);
+  }
+
   // 顶层 rAF 追赶（每间 house 独立调用）
   function _lvChaseSolid(targetPct, isLevelUp) {
     if (!_$lvSolid) return;
+    if (isLevelUp) _lvLevelUpBurst();
     var gen = ++_lvChaseGen;
     var now = performance.now();
     var baseDuration = isLevelUp ? 500 : 10000;
@@ -274,8 +316,8 @@
       curPx = _lvAnim.startPct + (_lvAnim.targetPct - _lvAnim.startPct) * Math.min(elapsed / _lvAnim.duration, 1);
     }
 
-    // 换追赶色（百分百覆盖旧色）
-    _$lvSolid.style.background = '#8a6410';
+    // 追赶色 = 停止色 #c4b187（调试：统一颜色，看中层透出效果）
+    _$lvSolid.style.background = '#c4b187';
     _$lvSolid.style.transition = 'none';
 
     _lvAnim = { startTime: now, startPct: curPx, targetPct: targetPct, duration: baseDuration, gen: gen };
@@ -295,8 +337,9 @@
     var elapsed = now - a.startTime;
     var progress = Math.min(elapsed / a.duration, 1);
 
-    // 线性插值
-    var curPct = a.startPct + (a.targetPct - a.startPct) * progress;
+    // 赛贝尔变速：前慢后快，t^2.5 曲线
+    var eased = Math.pow(progress, 2.5);  // 50%→17.7%, 75%→49%, 90%→77%
+    var curPct = a.startPct + (a.targetPct - a.startPct) * eased;
 
     // ★ 保证至少 1px 间隙（60px 轨 = 1.667%），除非已到满时
     var gapPct = a.targetPct - curPct;
@@ -319,6 +362,86 @@
     }
   }
 
+  // ── LV 升级特效 ──
+  function _lvLevelUpGlow() {
+    // LV 文字弹跳 + 金色光晕
+    if (_$lvLevel) {
+      _$lvLevel.style.transition = 'none';
+      _$lvLevel.style.transform = 'scale(1.55)';
+      _$lvLevel.style.color = '#ffd700';
+      _$lvLevel.style.textShadow = '0 0 8px #ffd700, 0 0 22px #ff8c00, 0 0 40px #ff4500';
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          _$lvLevel.style.transition = 'transform 0.55s cubic-bezier(0.175,0.885,0.32,1.275), color 0.8s ease-out, text-shadow 1s ease-out';
+          _$lvLevel.style.transform = 'scale(1)';
+          _$lvLevel.style.color = '';
+          _$lvLevel.style.textShadow = '';
+        });
+      });
+      // 动画结束后清理 transition，避免残留
+      setTimeout(function() { if (_$lvLevel) _$lvLevel.style.transition = ''; }, 1200);
+    }
+    // 经验条金色脉冲
+    if (_$lvSolid) {
+      _$lvSolid.style.transition = 'none';
+      _$lvSolid.style.background = '#ffd700';
+      _$lvSolid.style.boxShadow = '0 0 12px #ffd700, 0 0 24px #ff8c00';
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          _$lvSolid.style.transition = 'box-shadow 1.2s ease-out, background 0.7s ease-out';
+          _$lvSolid.style.boxShadow = '';
+          _$lvSolid.style.background = '#c4b187';
+        });
+      });
+      setTimeout(function() { if (_$lvSolid) _$lvSolid.style.transition = ''; }, 1400);
+    }
+  }
+
+  function _lvBurstParticles() {
+    var barRect = _$lvBar.getBoundingClientRect();
+    var cx = barRect.left + barRect.width / 2;
+    var cy = barRect.top + barRect.height / 2;
+    var container = document.createElement('div');
+    container.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:99998;';
+    document.body.appendChild(container);
+    var colors = ['#ffd700', '#ffaa00', '#ff8c00', '#fff8dc', '#ffec8b', '#ffd700', '#fff3b0'];
+    var count = 28;
+    for (var i = 0; i < count; i++) {
+      var p = document.createElement('div');
+      var a = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.35;
+      var d = 25 + Math.random() * 70;
+      var s = 1.5 + Math.random() * 4.5;
+      var dur = 0.45 + Math.random() * 0.8;
+      var color = colors[Math.floor(Math.random() * colors.length)];
+      p.style.cssText = 'position:fixed;left:' + cx + 'px;top:' + cy + 'px;width:' + s + 'px;height:' + s + 'px;background:' + color + ';border-radius:50%;pointer-events:none;z-index:99998;transition:all ' + dur + 's cubic-bezier(0,0.65,0.18,1);opacity:1;box-shadow:0 0 ' + (s * 2) + 'px ' + color + ';';
+      container.appendChild(p);
+      (function(p, a, d, cx, cy) {
+        requestAnimationFrame(function() {
+          p.style.left = (cx + Math.cos(a) * d) + 'px';
+          p.style.top = (cy + Math.sin(a) * d) + 'px';
+          p.style.opacity = '0';
+          p.style.transform = 'scale(0.15)';
+        });
+      })(p, a, d, cx, cy);
+    }
+    setTimeout(function() { container.remove(); }, 2000);
+  }
+
+  function _lvExpandRing() {
+    var barRect = _$lvBar.getBoundingClientRect();
+    var cx = barRect.left + barRect.width / 2;
+    var cy = barRect.top + barRect.height / 2;
+    var r = document.createElement('div');
+    r.style.cssText = 'position:fixed;left:' + (cx - 6) + 'px;top:' + (cy - 6) + 'px;width:12px;height:12px;border-radius:50%;border:2.5px solid #ffd700;pointer-events:none;z-index:99997;transition:all 0.9s cubic-bezier(0,0.45,0.12,1);opacity:0.9;box-shadow:0 0 6px #ffd700;';
+    document.body.appendChild(r);
+    requestAnimationFrame(function() {
+      r.style.left = (cx - 50) + 'px'; r.style.top = (cy - 50) + 'px';
+      r.style.width = '100px'; r.style.height = '100px';
+      r.style.opacity = '0'; r.style.borderWidth = '0.8px';
+    });
+    setTimeout(function() { r.remove(); }, 1100);
+  }
+
   // ★ 动画入口（每间 house 直接调用）
   function _lvAnimate(lvFloor, lvPct) {
     if (!_$lvBar) return;
@@ -331,6 +454,8 @@
     // ② 顶层 rAF 追赶
     _lvChaseSolid(lvPct, isLevelUp);
     if (_$ldrBtn) _$ldrBtn.style.display = '';
+    // ③ 升级特效：金色光晕 + 粒子爆发 + 光环扩散（暂注释，可能与别人重复）
+    // if (isLevelUp) { _lvLevelUpGlow(); _lvBurstParticles(); _lvExpandRing(); }
   }
 
   // 服务器真理回调（仅登录/登出用——不触发动画）
@@ -518,8 +643,9 @@
     var phoneTail = loggedIn && _authData.phone ? _authData.phone.slice(-4) : '';
     _updateButtons(loggedIn, phoneTail);
     if (loggedIn) {
+      _lvShow();            // ★ 立即显示 LV 区域 + 奖杯
       _startBalancePoll();
-      _fetchLv();  // ★ 登录时拉服务器基准
+      _fetchLv();  // ★ 异步拉服务器基准，填入真实数据
       // 触发状态栏免费预算刷新
       try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (e) { }
       try {
@@ -555,7 +681,7 @@
     if (!_$lvTip) {
       _$lvTip = document.createElement('div');
       _$lvTip.className = 'qqq-lv-tip';
-      _$lvTip.style.cssText = 'position:fixed;z-index:99999;padding:4px 10px;font-size:32px;color:#93a1a1;background:rgba(0,0,0,0.88);border:1px solid #444;border-radius:3px;pointer-events:none;white-space:nowrap;display:none;font-weight:300;';
+      _$lvTip.style.cssText = 'position:fixed;z-index:99999;padding:4px 10px;font-size:32px;color:#fbe9bc;font-family:Consolas,monospace;background:rgba(0,0,0,0.88);border:1px solid #444;border-radius:3px;pointer-events:none;white-space:nowrap;display:none;font-weight:300;';
       document.body.appendChild(_$lvTip);
     }
     if (!_$lvBar || !_$lvBar.style.display || _$lvBar.style.display === 'none') return;
@@ -565,9 +691,9 @@
     var sh = (d.season_short || '?');
     var m = sh.match(/^(\([^)]+\))\s+(.+)$/);
     if (m) {
-      _$lvTip.innerHTML = '<span>' + m[1] + '</span> <b>' + m[2] + ':</b><span style="color:#b58900;font-size:44px">' + (d.total_consumed_ge || '0') + '</span>';
+      _$lvTip.innerHTML = '<span style="color:#fbe9bc">' + m[1] + '</span> <b style="color:#fbe9bc">' + m[2] + ':</b><span style="color:#fbe9bc;font-size:44px">' + (d.total_consumed_ge || '0') + '</span>';
     } else {
-      _$lvTip.innerHTML = '<b>' + sh + ':</b><span style="color:#b58900;font-size:44px">' + (d.total_consumed_ge || '0') + '</span>';
+      _$lvTip.innerHTML = '<b style="color:#fbe9bc">' + sh + ':</b><span style="color:#fbe9bc;font-size:44px">' + (d.total_consumed_ge || '0') + '</span>';
     }
     var cx = e && e.clientX ? e.clientX : rect.left + rect.width / 2;
     _$lvTip.style.left = (cx - _$lvTip.offsetWidth / 2) + 'px';
@@ -716,11 +842,8 @@
       }
     }
     _updateGeLabel();
-    // ★ LV 区已由 _fetchLv 管理，此处只需兜底：无数据时隐藏
-    if (!_lvData || !(_lvData.level >= 0)) {
-      if (_$lvBar) _$lvBar.style.display = 'none';
-      if (_$ldrBtn) _$ldrBtn.style.display = 'none';
-    }
+    // ★ LV 区全权由 _fetchLv（REST）或 _lvAnimate（billing）管理显示/隐藏
+    // _updateButtons 不再干预，避免竞态遮盖
   }
 
   // ── 公开 API ──

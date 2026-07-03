@@ -1,8 +1,9 @@
 // ============================================================================
 // devtools-inject.ts — DevTools Console 悬浮按钮（复制 / 另存为）
-// 数据源: getText() = 主进程 _consoleBuffer (console-message 事件，全量)
-// 注入: 由外部在 devtools-opened 事件中调用，此时 dwc 必定就绪
-// 推送: 每2s → base64 → DevTools window.__QQQ_CONSOLE_B64
+//
+// v11 简化: 数据源 = console-message (浏览器原生全量) + renderer __qqq_console_lines (JS深度序列化)
+// 注入: 外部 devtools-opened 事件保证 dwc 已就绪
+// 推送: 每2s → 合并双源 → base64 → DevTools
 // ============================================================================
 
 import type { WebContents, BrowserWindow } from 'electron';
@@ -20,117 +21,8 @@ window.__qqq_dt_btns_installed=true;
 
 function _b64ToUtf8(b64){try{var b=atob(b64),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return new TextDecoder('utf-8').decode(u);}catch(e){return b64;}}
 
-// ★ 数据源选择: 优先 DevTools 内取 ConsoleModel → 兜底主进程推送
-var __QQQ_MODE = 'dt-internal'; // 'dt-internal' | 'ipc-fallback'
-var __QQQ_CONSOLE_FULL = '';
-
-function _toStr(o){try{return JSON.stringify(o)}catch(e){return String(o)}}
-
-// ★★ 方案 A: 直接从 DevTools 内部控制台模型读 —— 100% 内容（同右键另存为）
-function _buildFromDevToolsModel(){
-  try {
-    // Chrome DevTools frontend 内部: SDK.consoleModel.messages()
-    // 但不同版本 API 有差异，多路探测
-    var model = null;
-
-    // 路径1: window.SDK.consoleModel (常用)
-    if (typeof SDK !== 'undefined' && SDK.consoleModel) model = SDK.consoleModel;
-    // 路径2: global scope 中搜索 consoleModel
-    if (!model) {
-      var keys = Object.keys(self);
-      for (var i = 0; i < keys.length; i++) {
-        try {
-          var v = self[keys[i]];
-          if (v && typeof v === 'object' && v.consoleModel && typeof v.consoleModel.messages === 'function') {
-            model = v.consoleModel;
-            break;
-          }
-        } catch (e) {}
-      }
-    }
-    // 路径3: 遍历 window 属性深搜
-    if (!model) {
-      (function _deep(o, depth) {
-        if (!o || depth > 3 || model) return;
-        try {
-          var ks = Object.getOwnPropertyNames(o);
-          for (var j = 0; j < ks.length; j++) {
-            try {
-              var p = o[ks[j]];
-              if (p && typeof p === 'object' && p.consoleModel && typeof p.consoleModel.messages === 'function') {
-                model = p.consoleModel;
-                return;
-              }
-            } catch (e) {}
-          }
-          // shallow recursion
-          for (var k = 0; k < ks.length && !model; k++) {
-            try {
-              var p2 = o[ks[k]];
-              if (p2 && typeof p2 === 'object' && p2 !== o) _deep(p2, depth + 1);
-            } catch (e) {}
-          }
-        } catch (e) {}
-      })(window, 0);
-    }
-
-    if (model && typeof model.messages === 'function') {
-      var msgs = model.messages();
-      if (msgs && msgs.length) {
-        var lines = [];
-        for (var m = 0; m < msgs.length; m++) {
-          var entry = msgs[m];
-          var url = (entry.url || '').replace(/\\\\/g, '/');
-          var file = url.split('/').pop() || url;
-          var line = entry.line || entry.lineNumber || 0;
-          var text = (entry.text || entry.message || entry.category || '');
-          var stack = entry.stackTrace || null;
-          var frames = stack && stack.callFrames ? stack.callFrames : [];
-
-          if (frames.length > 0) {
-            var f0 = frames[0];
-            var fUrl = ((f0.url || '').replace(/\\\\/g, '/').split('/').pop()) || f0.url;
-            var fLine = f0.lineNumber || 0;
-            lines.push((fUrl && fLine ? fUrl + ':' + fLine + ' ' : '') + text);
-            for (var fi = 1; fi < frames.length; fi++) {
-              var cf = frames[fi];
-              var cfUrl = ((cf.url || '').replace(/\\\\/g,'/').split('/').pop()) || cf.url;
-              lines.push('    ' + (cf.functionName || '(anonymous)') + ' @ ' + cfUrl + ':' + (cf.lineNumber || 0));
-            }
-          } else if (file && line) {
-            lines.push(file + ':' + line + ' ' + text);
-          } else {
-            lines.push(text);
-          }
-        }
-        __QQQ_CONSOLE_FULL = lines.join('\\n');
-        __QQQ_MODE = 'dt-internal';
-        return __QQQ_CONSOLE_FULL;
-      }
-    }
-    // 模型不可用 → 降级
-    __QQQ_MODE = 'ipc-fallback';
-    return '';
-  } catch (e) {
-    __QQQ_MODE = 'ipc-fallback';
-    return '';
-  }
-}
-
-// ★ 全局读取函数: 先试 DevTools 内取 → 兜底 IPC
-function _getFullText(){
-  // 优先从 DevTools 内部读（最新版）
-  var dt = _buildFromDevToolsModel();
-  if (dt) return dt;
-  // 兜底: 主进程推送
-  if (window.__QQQ_CONSOLE_READY && window.__QQQ_CONSOLE_B64) {
-    return _b64ToUtf8(window.__QQQ_CONSOLE_B64);
-  }
-  return '';
-}
-
 function _getText(){
-  if (window.__QQQ_CONSOLE_READY && window.__QQQ_CONSOLE_B64) return _b64ToUtf8(window.__QQQ_CONSOLE_B64);
+  if(window.__QQQ_CONSOLE_READY && window.__QQQ_CONSOLE_B64) return _b64ToUtf8(window.__QQQ_CONSOLE_B64);
   return '';
 }
 
@@ -150,54 +42,52 @@ s.textContent=[
 ].join('\\n');
 document.head.appendChild(s);
 
-if (typeof __qqq_dt_debug !== 'undefined') {
-  var _dbg = document.createElement('span');
-  _dbg.id = 'qqq-dt-dbg'; _dbg.style.cssText = 'position:fixed;left:8px;bottom:8px;color:#0f0;font-size:9px;z-index:999999;font-family:monospace';
-  document.body.appendChild(_dbg);
-  setInterval(function(){
-    var el = document.getElementById('qqq-dt-dbg');
-    if (el) el.textContent = 'mode=' + __QQQ_MODE + ' len=' + _getFullText().length + ' SDK=' + (typeof SDK !== 'undefined' ? 'yes' : 'no');
-  }, 3000);
-}
-
 var b=document.createElement('div');b.id='qqq-dt-btns';
 b.innerHTML='<button id="qqq-dt-copy">\\u{1F4CB}\\u590D\\u5236</button><button id="qqq-dt-save">\\u{1F4BE}\\u53E6\\u5B58\\u4E3A</button>';
 var e=document.createElement('div');e.id='qqq-dt-toast';document.body.appendChild(b);document.body.appendChild(e);
 
 document.getElementById('qqq-dt-copy').onclick=function(){
-  var t=_getFullText();if(!t){_toast('\\u65E0\\u5185\\u5BB9');return;}
+  var t=_getText().replace(/\\n+$/,'').replace(/^\\n+/,'');if(!t){_toast('\\u65E0\\u5185\\u5BB9');return;}
   var ta=document.createElement('textarea');ta.value=t;ta.style.cssText='position:fixed;left:-9999px;top:0';
   document.body.appendChild(ta);ta.select();
-  try{document.execCommand('copy');_toast('\\u5DF2\\u590D\\u5236 '+t.split('\\n').length+'\\u884C mode='+__QQQ_MODE);}catch(ex){_toast('\\u5931\\u8D25');}
+  try{document.execCommand('copy');_toast('\\u5DF2\\u590D\\u5236 '+t.split('\\n').length+'\\u884C');}catch(ex){_toast('\\u5931\\u8D25');}
   document.body.removeChild(ta);
 };
 
 document.getElementById('qqq-dt-save').onclick=function(){
-  // ★ 直接取 DevTools 内部控制台模型（不走 IPC 往返）
-  var t = _getFullText();
-  if (!t) { _toast('\\u65E0\\u5185\\u5BB9'); return; }
-  window.__QQQ_CONSOLE_FULL_TEXT = t;
-  window.__QQQ_CONSOLE_REQUEST_SAVE = true;
-  _toast('\\u5DF2\\u6355\\u83B7 '+t.split('\\n').length+'\\u884C mode='+__QQQ_MODE+' \\u6B63\\u5728\\u4FDD\\u5B58...');
+  window.__QQQ_CONSOLE_REQUEST_SAVE=true;_toast('\\u6B63\\u5728\\u4FDD\\u5B58...');
 };
-
-// ★ 定期重建（DevTools 控制台模型在页面完全加载后才可用）
-setTimeout(function(){ _buildFromDevToolsModel(); }, 1000);
-setTimeout(function(){ _buildFromDevToolsModel(); }, 3000);
-setTimeout(function(){ _buildFromDevToolsModel(); }, 8000);
 })();`;
 
-/**
- * 注入复制/另存为按钮到 DevTools。
- * dwc 必须已就绪（由外部 devtools-opened 事件保证）。
- */
+// ── 合并双源: 主源 = _consoleBuffer (CDP Log.entryAdded), 备源 = __qqq_console_lines (JS深度序列化) ──
+async function _mergedText(wc: WebContents, getText: () => string): Promise<string> {
+  // 主源: CDP Log.entryAdded (带全量栈帧 + 浏览器原生消息) → 匹配右键另存为
+  const cdp = getText();
+  if (cdp) {
+    const cdpLines = cdp.split('\n').filter(Boolean);
+    // CDP 有 5+ 行真实数据 → 直接返回（已包含一切）
+    if (cdpLines.length >= 5) return cdp;
+  }
+  // 备源: console-message + renderer __qqq_console_lines (CDP 尚未就绪时的降级)
+  const parts: string[] = [];
+  try {
+    const r = await wc.executeJavaScript(
+      '((window.top||window).__qqq_console_lines||[]).join("\\n")'
+    );
+    if (r) parts.push(r);
+  } catch {}
+  if (cdp) parts.push(cdp);
+  return parts.join('\n');
+}
+
 export function injectDevToolsConsoleButtons(
-  dwc: WebContents,     // DevTools WebContents (已就绪)
-  wc: WebContents,      // 被检查的渲染进程 WebContents
-  getText: () => string, // 获取控制台文本
-  mw: BrowserWindow,    // 主窗口 (用于保存对话框)
+  dwc: WebContents,
+  wc: WebContents,
+  getText: () => string,
+  mw: BrowserWindow,
 ): void {
   if (dwc.isDestroyed()) return;
+  console.log('[devtools-inject] injecting v11 buttons...');
   dwc.executeJavaScript(INJECT_JS)
     .then(() => { _startPushLoop(wc, dwc, getText, mw); })
     .catch((err: any) => { console.log('[devtools-inject] inject failed:', err?.message || err); });
@@ -223,12 +113,7 @@ function _startPushLoop(
         _saveLock = true;
         dwc.executeJavaScript('window.__QQQ_CONSOLE_REQUEST_SAVE=false').catch(() => {});
         try {
-          // ★ 优先取 DevTools 内部控制台模型（100% 内容），兜底 IPC buffer
-          let text = '';
-          try {
-            text = await dwc.executeJavaScript('(window.__QQQ_CONSOLE_FULL_TEXT||"")');
-          } catch {}
-          if (!text) text = getText();
+          const text = await _mergedText(wc, getText);
           if (!text) {
             await dwc.executeJavaScript("document.getElementById('qqq-dt-toast').textContent='\\u65E0\\u5185\\u5BB9';document.getElementById('qqq-dt-toast').style.opacity='1';setTimeout(function(){document.getElementById('qqq-dt-toast').style.opacity='0'},1800)").catch(() => {});
             _saveLock = false;
@@ -257,9 +142,9 @@ function _startPushLoop(
       }
     } catch {}
 
-    // ② push base64
+    // ② push base64 (合并双源)
     try {
-      let text = getText();
+      let text = await _mergedText(wc, getText);
       if (!text) text = '';
       if (text.length > 2 * 1024 * 1024) {
         const origLen = text.length;

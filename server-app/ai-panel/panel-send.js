@@ -668,7 +668,7 @@ async function sendMessage(skipFloorCreation) {
                         _targetDiv3._clockCost.style.display = 'inline';
                         _targetDiv3._clockCost._houses = agent._houses;
                         _targetDiv3._clockCost._floorNum = agent._currentFloorNum;
-                        _targetDiv3._clockCost._passby = { questId: qid, floorNum: agent._currentFloorNum, houses: (agent._passbyBaseHouses || 0) + (agent._houses ? agent._houses.length : 0), wge: (agent._passbyBaseWge || 0) + (agent._floorCostWge || 0), drift: agent._serverDrift || 0, city: agent._serverCity || '' };
+                        _targetDiv3._clockCost._passby = { questId: qid, floorNum: agent._currentFloorNum, houses: (agent._passbyBaseHouses || 0) + (agent._houses ? agent._houses.length : 0), tokens: (agent._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(agent) : 0), wge: (agent._passbyBaseWge || 0) + (agent._floorCostWge || 0), drift: agent._serverDrift || 0, city: agent._serverCity || '' };
                         if (isFree) {
                             _targetDiv3._clockCost.style.color = '#859900';
                         } else {
@@ -856,8 +856,8 @@ async function sendMessage(skipFloorCreation) {
             agent.setStopState('idle');
             agent._stopCtrl = null;
         }
-        // ★ null guard：draft→quest 创建失败时两者皆 null，跳过时钟清理（零影响）
-        if (agent && _activeAgent === agent) {
+        // ★ 时钟收尾：无论 agent 是否当前活跃，楼层完结即设停止态（变黑）
+        if (agent) {
             if (agent._activeAiDiv) {
                 var _elapsed = performance.now() - agent._floorStartPerf;
                 var _totalS = Math.floor(_elapsed / 1000);

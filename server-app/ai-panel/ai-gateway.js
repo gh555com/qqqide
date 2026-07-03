@@ -36,9 +36,9 @@
         imageGenFallback: 'https://cnk.gh555.com/api/v3/ai/generate-image',
         embedPrimary: 'https://direct-cn.gh555.com/api/v3/ai/embedding',
         embedFallback: 'https://cnk.gh555.com/api/v3/ai/embedding',
-        searchPrimary: 'https://direct.gh555.com:8444/api/v3/search/web',
+        searchPrimary: 'https://direct-cn.gh555.com/api/v3/search/web',
         searchFallback: 'https://cnk.gh555.com/api/v3/search/web',
-        fetchPrimary: 'https://direct.gh555.com:8444/api/v3/fetch/webpage',
+        fetchPrimary: 'https://direct-cn.gh555.com/api/v3/fetch/webpage',
         fetchFallback: 'https://cnk.gh555.com/api/v3/fetch/webpage',
     };
 
