@@ -75,7 +75,7 @@ async function sendMessage(skipFloorCreation) {
     // ★ 非恢复路径：强制清除延迟渲染标记（防前次失败恢复残留）
     if (!skipFloorCreation && agent._deferRenderUntilHouse1) {
         agent._deferRenderUntilHouse1 = false;
-    }eId;
+    }
     var _guideStatuses = document.querySelectorAll('.guide-status');
     for (var _gsi = 0; _gsi < _guideStatuses.length; _gsi++) { _guideStatuses[_gsi].remove(); }
     // ═══ 所有权守卫：仅父注册表（唯一真理源） ═══
@@ -377,7 +377,12 @@ async function sendMessage(skipFloorCreation) {
                     scrollToBottom(true);
                 }
                 var _targetDiv = (aiDiv && aiDiv.isConnected) ? aiDiv : (agent._activeAiDiv || aiDiv);
-                if (!_targetDiv) return;;
+                if (!_targetDiv) {
+                    // ★ 后台 agent DOM 脱落：缓冲到 agent._streamingContent（不丢流式数据）
+                    //   agent-loop.js L732 以此为准推入 conversation → 最终落盘
+                    agent._streamingContent = (agent._streamingContent || '') + chunk;
+                    return;
+                }
                 _targetDiv._buf = (_targetDiv._buf || '') + chunk;
                 _targetDiv._fullText = (_targetDiv._fullText || '') + chunk;
                 _targetDiv._paras = _targetDiv._paras || [];

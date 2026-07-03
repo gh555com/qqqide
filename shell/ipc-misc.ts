@@ -235,6 +235,7 @@ export function registerMiscIpc(
         _projectWindowMap.set(normalized, win.id);
         // ★ DevTools 可能已用 fallback "qqq IDE" 改名，项目确认后重新改名
         const projName = path.basename(normalized);
+        console.log('[devtools] claimProject: winId=' + win.id + ' normalized=' + normalized + ' projName=' + projName);
         setTimeout(() => renameDevToolsViaBroker(win, projName), 1500);
         return true;
     });

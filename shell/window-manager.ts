@@ -228,11 +228,19 @@ export function createWindow(
             if (dwc && !dwc.isDestroyed()) {
                 injectDevToolsConsoleButtons(dwc, win.webContents, () => _consoleBuffer.join('\n'), win);
                 // ★ DevTools 窗口标题 → Python broker（跨平台: Win ctypes / Mac osascript / Linux wmctrl）
-                const projPath = _windowProjectMap.get(win.id);
-                const name = projPath ? path.basename(projPath) : 'qqq IDE';
+                // 读取 _windowProjectMap 必须放在 setTimeout 内部，因为首次 devtools-opened
+                // 时 map 可能还没被 renderer 的 claimProject 写入，直接闭包捕获永远是 'qqq IDE'
+                const _doRename = (attempt) => {
+                    const p = _windowProjectMap.get(win.id);
+                    const n = p ? path.basename(p) : 'qqq IDE';
+                    console.log('[devtools] rename attempt=' + attempt + ' winId=' + win.id + ' projPath=' + (p || '(none)') + ' name=' + n);
+                    renameDevToolsViaBroker(win, n);
+                };
                 // 延迟：Chromium 异步设标题 "Developer Tools - http://..."
-                setTimeout(() => renameDevToolsViaBroker(win, name), 1500);
-                setTimeout(() => renameDevToolsViaBroker(win, name), 3500);
+                // 多次重试：1500ms 时 broker 可能未就绪 / map 未填充，持续重试直到成功
+                for (let _ri = 1; _ri <= 8; _ri++) {
+                    setTimeout(() => _doRename(_ri), 1500 * _ri);
+                }
             }
         });
         win.webContents.openDevTools({ mode: 'detach' });

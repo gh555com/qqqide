@@ -31,8 +31,6 @@ function hookFileExplorerToTabs() {
           // Read and display file
           bridge.fs.read(filePath).then(function (content) {
             var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
-            var _search = window._nextSearch; window._nextSearch = null;
-            if (_search) _paneOpts.search = _search;
             window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts);
           }).catch(function (err) {
             pane.textContent = 'Error: ' + (err && err.message);

@@ -313,6 +313,7 @@ var AgentLoop = (function () {
         self._compressing = false;  // ★ 安全重置：防上次异常未清理
         // ★ 存储 token 供 tools.js 调用 Go 端点时使用
         self._token = token;
+        if (typeof window !== 'undefined') { window.__qqq_floorToken = token; }
 
         // 重置本轮计费 + 生成 floor_id（同一轮内所有 gateway 调用共享）
         self._floorCostWge = 0;
