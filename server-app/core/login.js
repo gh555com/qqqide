@@ -266,8 +266,28 @@
     _$lvGlow.style.width = pct + '%';
   }
 
-  // ★ 升级特效：金环爆闪 + LV 文字弹跳
-  function _lvLevelUpBurst() {
+  // ★ 升级音频
+  var _lvAudioRegular = null, _lvAudioMilestone = null;
+  function _lvEnsureAudio() {
+    if (!_lvAudioRegular) {
+      _lvAudioRegular = new Audio('assets/lv-up.mp3');
+      _lvAudioRegular.volume = 0.55;
+    }
+    if (!_lvAudioMilestone) {
+      _lvAudioMilestone = new Audio('assets/lv-up-milestone.mp3');
+      _lvAudioMilestone.volume = 0.65;
+    }
+  }
+
+  // ★ 升级特效：金环爆闪 + LV 文字弹跳 + 音频
+  function _lvLevelUpBurst(lvFloor) {
+    _lvEnsureAudio();
+    var isMilestone = (lvFloor > 0 && lvFloor % 10 === 0);
+    var audio = isMilestone ? _lvAudioMilestone : _lvAudioRegular;
+    if (audio) {
+      audio.currentTime = 0;
+      audio.play().catch(function () { /* 自动播放策略阻止，静默吞掉 */ });
+    }
     if (!_$lvBar) return;
     var track = _$lvBar.querySelector('.qqq-lv-track');
     // ① 轨道白闪
@@ -296,9 +316,9 @@
   }
 
   // 顶层 rAF 追赶（每间 house 独立调用）
-  function _lvChaseSolid(targetPct, isLevelUp) {
+  function _lvChaseSolid(targetPct, isLevelUp, lvFloor) {
     if (!_$lvSolid) return;
-    if (isLevelUp) _lvLevelUpBurst();
+    if (isLevelUp) _lvLevelUpBurst(lvFloor);
     var gen = ++_lvChaseGen;
     var now = performance.now();
     var baseDuration = isLevelUp ? 500 : 10000;
@@ -452,25 +472,13 @@
     // ① 中层瞬移
     _lvSnapGlow(lvPct);
     // ② 顶层 rAF 追赶
-    _lvChaseSolid(lvPct, isLevelUp);
+    _lvChaseSolid(lvPct, isLevelUp, lvFloor);
     if (_$ldrBtn) _$ldrBtn.style.display = '';
     // ③ 升级特效：金色光晕 + 粒子爆发 + 光环扩散（暂注释，可能与别人重复）
     // if (isLevelUp) { _lvLevelUpGlow(); _lvBurstParticles(); _lvExpandRing(); }
   }
 
-  // 服务器真理回调（仅登录/登出用——不触发动画）
-  function _updateLvUI() {
-    if (!_$lvBar) return;
-    var d = _lvData;
-    if (d && typeof d.level === 'number' && d.level >= 0) {
-      _lvSyncFromServer();
-      if (_$ldrBtn) _$ldrBtn.style.display = '';
-    } else {
-      _$lvBar.style.display = 'none';
-      _lvAccWge = null;
-      if (_$ldrBtn) _$ldrBtn.style.display = 'none';
-    }
-  }
+
 
   // ── 排行榜悬浮面板 ──
 
@@ -681,7 +689,7 @@
     if (!_$lvTip) {
       _$lvTip = document.createElement('div');
       _$lvTip.className = 'qqq-lv-tip';
-      _$lvTip.style.cssText = 'position:fixed;z-index:99999;padding:4px 10px;font-size:32px;color:#fbe9bc;font-family:Consolas,monospace;background:rgba(0,0,0,0.88);border:1px solid #444;border-radius:3px;pointer-events:none;white-space:nowrap;display:none;font-weight:300;';
+      _$lvTip.style.cssText = 'position:fixed;z-index:99999;padding:4px 10px;font-size:32px;color:#93a1a1;background:rgba(0,0,0,0.88);border:1px solid #444;border-radius:3px;pointer-events:none;white-space:nowrap;display:none;font-weight:300;';
       document.body.appendChild(_$lvTip);
     }
     if (!_$lvBar || !_$lvBar.style.display || _$lvBar.style.display === 'none') return;
@@ -691,9 +699,9 @@
     var sh = (d.season_short || '?');
     var m = sh.match(/^(\([^)]+\))\s+(.+)$/);
     if (m) {
-      _$lvTip.innerHTML = '<span style="color:#fbe9bc">' + m[1] + '</span> <b style="color:#fbe9bc">' + m[2] + ':</b><span style="color:#fbe9bc;font-size:44px">' + (d.total_consumed_ge || '0') + '</span>';
+      _$lvTip.innerHTML = '<span style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[1] + '</span> <b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[2] + ':</b><span style="color:#b58900;font-size:44px">' + (d.total_consumed_ge || '0') + '</span>';
     } else {
-      _$lvTip.innerHTML = '<b style="color:#fbe9bc">' + sh + ':</b><span style="color:#fbe9bc;font-size:44px">' + (d.total_consumed_ge || '0') + '</span>';
+      _$lvTip.innerHTML = '<b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + sh + ':</b><span style="color:#b58900;font-size:44px">' + (d.total_consumed_ge || '0') + '</span>';
     }
     var cx = e && e.clientX ? e.clientX : rect.left + rect.width / 2;
     _$lvTip.style.left = (cx - _$lvTip.offsetWidth / 2) + 'px';

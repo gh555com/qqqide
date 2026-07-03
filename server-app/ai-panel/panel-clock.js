@@ -226,7 +226,7 @@ function _buildBillingTable(houses, passby) {
             + '<span style="color:var(--text-tertiary,#666)">at ' + _pbTimeStr + '</span>'
             + (passby.city ? '\u3000<span style="color:var(--text-tertiary,#666)">' + passby.city + '</span>' : '')
             + '\u3000\u25b6\u3000q <span style="color:#cb4b16">' + _qNum + '</span>.f <span style="color:#cb4b16">' + _fNum + '</span>'
-            + ' passby: ' + _pbHouses + 'houses,\u3000'
+            + ' passby: ' + _pbHouses + ' houses,\u3000'
             + _pbTokenStr + ' tokens,\u3000'
             + _pbWge + ' wge'
             + ' \u2248 ' + _pbGe + ' ge'

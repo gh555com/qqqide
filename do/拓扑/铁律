@@ -93,6 +93,13 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 每次 _callGateway 前预检。400/422后被动修复+重试。
   - auto-repair 成功后必须重置 _floorOnErrorCalled。
 
+§13f 致命失败恢复 — 同楼层追加制（2026-07-03）
+  - 一个楼层只有一个粉色气泡（原始用户消息）。红框（.msg-quest-error）是楼层 AI div 内部子元素，追加式渲染。
+  - 点击继续任务：链接变光块，不建新 DOM，不新建用户气泡。sendMessage(true) 复用楼层目录和 AI div。
+  - 失败：红框追加一行（时间+原因），光块恢复为可点链接。
+  - 成功（house1 首 token）：链接消失，按钮启封，时钟启动，标准流式接管。
+  - AI conversation 含 _system:true 恢复消息（错误历史），AI 看到完整上下文。_lastUserInput 不覆写。
+
 §13a AI 网关 — Worker 纯代理+Go 权威计费
   - 线路: Client→Worker(CF edge,纯透传)→Go(唯一扣款权威)→模型供应商。
   - Worker 全路由(6端点)纯透传到 Go:8444。禁计费/模型映射/body改写。
@@ -279,7 +286,8 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 §46b 中央建楼状态机 — 跨面板唯一真理源
   - parent.__qqq_buildingRegistry(questId→{stopState,panelId})。
   - ★ agent._stopState 单一真理源：idle→sending→stopping/fatal。setStopState() 带校验表（idle→[sending,fatal], sending→[stopping,fatal,idle], stopping→[idle,fatal], fatal→[sending]）。
-  - ★ _sending 纯派生（defineProperty 仅 getter）：!!(_activeAgent && _activeAgent._stopState === 'sending')。零存储零 setter。
+  - ★ _sending 纯派生（defineProperty 仅 getter）：!!(_activeAgent && _activeAgent._stopState === 'sending' && !_activeAgent._floorCompletedCleanly)。零存储零 setter。
+    _floorCompletedCleanly 守卫防后台已完结 agent 假报 sending。
   - ★ 每quest独立沙箱: _queue/_queuePaused 全部 per-agent。
   - 彗星环绕: _getRunningQuestIds()→updateQuestTofu()→quest-running CSS类。跨面板广播。
   - 生命周期: registerBuilding→unregisterBuilding。finally 块兜底防僵尸。

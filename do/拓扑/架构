@@ -453,15 +453,21 @@ Agent 状态机 + 发送管线（2026-06-29 单一真相源重构 v2）
   ⑤ setStopState('sending') — 同步锁，防同一面板并发
   ⑥ 闭包捕获 agent/qid（防 switchQuest 干扰后续异步操作）
   旧缺陷：草稿处理在 L155 深埋，agent 操作（L16 setStopState）先于草稿升级，_activeAgent=null 崩溃。
-· fatal 态恢复（v2 加固）：
-  onError → _stopState='fatal' + 火线落盘
-  落盘兜底：_a4BuildCompleteFloorPayload 检测 cleanConv 为空 + floorFatal → 合成 error 消息
-  渲染兜底：_buildConversationFlowHtml 双重 guard（早期返回 + 尾部 _hasErrorRendered 追踪）
-  时钟兜底：finally 块 L860 去 _activeAgent===agent 守卫 → 后台完结也设停止态（变黑）
-  onDone 后台分支：L570-575 已有时钟黑色处理
-  按钮兜底：switchQuest L135 setStreaming(true) 按实际 agent._streaming 刷新（非无脑 false）
-  唯一出口："继续任务"链接 → _attemptRecoverySend → sendMessage 完整管线
-  防抖: 20s 冷却（_qqqRecoveryBusy），per-quest 独立
+· fatal 态恢复（2026-07-03 重构）：
+  同楼层追加制（不建新目录/不增 floorNum）。原始用户消息保留（粉色气泡仅一个）。
+  失败：红框追加一行时间+原因，继续任务链接保留可再点。
+  成功（house1 首 token）：继续任务链接消失，按钮启封，时钟启动，标准流式渲染接管。
+  AI 看到完整上下文：原始问题 + _system:true 恢复消息（含全部错误历史）。
+  红框 DOM（.msg-quest-error）是楼层 AI div 的子元素，追加式渲染（不清空 innerHTML）。
+  原子改动列表：
+  · card-pool.js startBuildingFloor 复用已有楼层 DOM+补建时钟
+  · agent-loop.js send() 恢复模式不覆写 _lastUserInput
+  · _buildConversationFlowHtml 聚合 _error 消息为单红框（不逐个渲染）
+  · _buildFloorDOM 致命楼（floorFatal=true）跳过 aq1/时钟/A1/A4渲染
+  · _renderQuestErrorBox 改为 per-floor 追加式（不清空，链接复用）
+  · 新增 _hideRecoveryLink 只隐藏继续任务链接，不删红框历史
+  · _finishRecovery 清除 _deferRenderUntilHouse1 防残留
+  · sendMessage finally 块新增正常完结楼层的 _saveAgentQuestData 调用（确保 all.json 更新）
 
 
 AI 面板核心机制

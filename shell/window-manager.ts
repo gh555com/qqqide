@@ -274,12 +274,55 @@ async function _setupCdpConsoleCapture(win: BrowserWindow, onActive: () => void)
         // 跳过 DevTools Console 默认不显示的条目
         if (!entry || !entry.text) return;
         if (entry.source && _NOISE_SOURCES.has(entry.source)) return;
+        // Log 域 network 条目仅 "Failed to load resource" 缺 URL/方法, Console 域已有完整格式
+        if (entry.source === 'network') return;
 
         const url = (entry.url || '').replace(/\\/g, '/');
         const file = url.split('/').pop() || url;
         const line = entry.lineNumber || 0;
         const text = entry.text || '';
         const callFrames: any[] = entry.stackTrace?.callFrames || [];
+
+        const lines: string[] = [];
+        if (callFrames.length > 0) {
+            const f0 = callFrames[0];
+            const fUrl = ((f0.url || '').replace(/\\/g, '/').split('/').pop()) || f0.url;
+            const fLine = f0.lineNumber || 0;
+            lines.push((fUrl && fLine ? fUrl + ':' + fLine + ' ' : '') + text);
+            for (let i = 1; i < callFrames.length; i++) {
+                const cf = callFrames[i];
+                const fn = cf.functionName || '<anonymous>';
+                const fu = ((cf.url || '').replace(/\\/g, '/').split('/').pop()) || cf.url;
+                lines.push('    ' + fn + ' @ ' + fu + ':' + (cf.lineNumber || 0));
+            }
+        } else if (file && line) {
+            lines.push(file + ':' + line + ' ' + text);
+        } else {
+            lines.push(text);
+        }
+        for (const l of lines) {
+            _consoleBuffer.push(l);
+            if (_consoleBuffer.length > _consoleMaxLines) _consoleBuffer.shift();
+        }
+    };
+
+    // 去重 set: Console message 的 url+line+text 前80字符 作为 dedup key
+    const _consoleDedup = new Set<string>();
+
+    const _handleConsoleMsg = (msg: any) => {
+        if (!msg || !msg.text) return;
+        const url = (msg.url || '').replace(/\\/g, '/');
+        const file = url.split('/').pop() || url;
+        const line = msg.line || 0;
+        const text = msg.text || '';
+        const callFrames: any[] = msg.stackTrace?.callFrames || [];
+
+        // Dedup: same file+line+text prefix within 1s
+        const dedupKey = file + ':' + line + ':' + text.slice(0, 80);
+        if (_consoleDedup.has(dedupKey)) return;
+        _consoleDedup.add(dedupKey);
+        setTimeout(() => _consoleDedup.delete(dedupKey), 1000);
+
         const lines: string[] = [];
         if (callFrames.length > 0) {
             const f0 = callFrames[0];
@@ -308,13 +351,19 @@ async function _setupCdpConsoleCapture(win: BrowserWindow, onActive: () => void)
             const ws = new SimpleWebSocket(wsUrl);
             allSockets.push(ws);
             ws.on('open', () => {
-                ws.send(JSON.stringify({ id: 1, method: 'Log.enable', params: {} }));
-                console.log('[main] CDP Log.enable sent to ' + label);
+                // ★ Console 域 → 完全格式化消息 (含网络错误的 GET URL net::ERR_*)
+                ws.send(JSON.stringify({ id: 1, method: 'Console.enable', params: {} }));
+                // ★ Log 域 → 原始日志引擎消息 (含栈帧, 兜底)
+                ws.send(JSON.stringify({ id: 2, method: 'Log.enable', params: {} }));
+                console.log('[main] CDP Console+Log enabled for ' + label);
             });
             ws.on('message', (data: string) => {
                 try {
                     const msg = JSON.parse(data);
-                    if (msg.method === 'Log.entryAdded' && msg.params?.entry) {
+                    if (msg.method === 'Console.messageAdded' && msg.params?.message) {
+                        // Console 域已含格式化文本, 包含 fetch 错误的 GET URL net::ERR_*
+                        _handleConsoleMsg(msg.params.message);
+                    } else if (msg.method === 'Log.entryAdded' && msg.params?.entry) {
                         _handleEntry(msg.params.entry);
                     }
                 } catch {}

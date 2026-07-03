@@ -13,9 +13,9 @@ input,select{-webkit-user-select:text;user-select:text}
 .tb{padding:6px 10px;border-bottom:1px solid var(--bd);flex-shrink:0}
 .tb-r{display:flex;align-items:center;gap:4px;margin-bottom:4px}
 .tb-r:last-child{margin-bottom:0}
-.inp{flex:1;height:26px;padding:2px 7px;border:1px solid var(--bd);border-radius:3px;background:var(--bg2);color:var(--tx);font:13px Consolas,monospace;outline:none}
+.inp{flex:1;height:26px;padding:2px 7px;border:1px solid #e3dcc8;border-radius:3px;background:#fdf6e3;color:var(--tx);font:13px Consolas,monospace;outline:none}
 .inp:focus{border-color:var(--blu)}.inp::placeholder{color:var(--tx3);opacity:.40}
-.scope{flex:1;height:24px;padding:2px 6px;border:1px solid var(--bd);border-radius:3px;background:var(--bg2);color:var(--tx);font:11px Consolas,monospace;outline:none}
+.scope{flex:1;height:24px;padding:2px 6px;border:1px solid #e3dcc8;border-radius:3px;background:#fdf6e3;color:var(--tx);font:11px Consolas,monospace;outline:none}
 .scope:focus{border-color:var(--blu)}.scope::placeholder{color:var(--tx3);opacity:.40}
 .lbl{font-size:11px;color:var(--tx3);white-space:nowrap;min-width:28px}
 .tog{width:26px;height:26px;border:1px solid var(--bd);border-radius:3px;background:transparent;color:var(--tx3);font:bold 12px Tahoma;text-align:center;cursor:pointer;flex-shrink:0;line-height:26px}
@@ -179,6 +179,23 @@ document.addEventListener('keydown',function(e){
 });
 function _expAll(){var fgs=RC.querySelectorAll('.fg');for(var i=0;i<fgs.length;i++)fgs[i].classList.remove('closed');var ars=RC.querySelectorAll('.fh .ar');for(var i=0;i<ars.length;i++)ars[i].textContent='▼'}
 function _colAll(){var fgs=RC.querySelectorAll('.fg');for(var i=0;i<fgs.length;i++)fgs[i].classList.add('closed');var ars=RC.querySelectorAll('.fh .ar');for(var i=0;i<ars.length;i++)ars[i].textContent='▶'}
+window._expAll=_expAll;window._colAll=_colAll;
+
+// 状态栏组件构建 — 不用 inline onclick 避免 iframe 作用域问题
+function _buildSt(total,fc,ms,fsc,trunc){
+  var frag=document.createDocumentFragment();
+  var b1=document.createElement('button');b1.className='cbtn';b1.textContent='⊞';b1.title='全部展开';
+  b1.style.cssText='margin:0';b1.addEventListener('click',_expAll);frag.appendChild(b1);
+  var b2=document.createElement('button');b2.className='cbtn';b2.textContent='⊟';b2.title='全部折叠';
+  b2.style.cssText='margin:0 4px 0 2px';b2.addEventListener('click',_colAll);frag.appendChild(b2);
+  var sp=document.createElement('span');sp.className='n';sp.textContent=' '+total+' 个匹配';frag.appendChild(sp);
+  var t1=document.createTextNode(' · '+fc+' 个文件 ');frag.appendChild(t1);
+  var sp2=document.createElement('span');sp2.style.cssText='color:var(--tx3);font-size:10px';
+  sp2.textContent='('+ms+'ms / ripgrep / '+fsc+' 文件)';frag.appendChild(sp2);
+  if(trunc){var sp3=document.createElement('span');sp3.style.cssText='color:var(--ora)';
+    sp3.textContent=' · 已截断';frag.appendChild(sp3)}
+  return frag;
+}
 
 async function dos(){
   var q=Q.value;if(!q){clr();STT.textContent='键入关键字开始搜索';return}
@@ -196,7 +213,7 @@ async function dos(){
     if(r.error){STT.textContent='⚠️ '+r.error;clr();return}
     _last=r;_lastQ=q;rdr(r);
     var fc=0;for(var i=0;i<r.results.length;i++){if(i===0||r.results[i].file!==r.results[i-1].file)fc++}
-    ST.innerHTML='<button class="cbtn" onclick="_expAll()" title="全部展开" style="margin:0">⊞</button><button class="cbtn" onclick="_colAll()" title="全部折叠" style="margin:0 4px 0 2px">⊟</button><span class="n"> '+r.total+' 个匹配</span> · '+fc+' 个文件 <span style="color:var(--tx3);font-size:10px">('+r.elapsed+'ms / ripgrep / '+r.filesScanned+' 文件)</span>'+(r.truncated?' · <span style="color:var(--ora)">已截断</span>':'');
+    ST.innerHTML='';ST.appendChild(_buildSt(r.total,fc,r.elapsed,r.filesScanned,r.truncated));
   }catch(e){STT.textContent='⚠️ 搜索出错: '+(e.message||e)}
 }
 function clr(){RC.innerHTML='';EM.style.display='';RC.appendChild(EM);_last=null}
