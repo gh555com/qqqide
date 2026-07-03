@@ -185,7 +185,7 @@ function _addCopyBtnToUserMsg(el) {
             var sel = window.getSelection();
             sel.removeAllRanges();
             sel.addRange(range);
-            try { document.execCommand('copy'); } catch(_) {}
+            try { document.execCommand('copy'); } catch (_) { }
             sel.removeAllRanges();
         });
     };
@@ -220,7 +220,7 @@ function _addCopyBtnToAiMsg(el, rawMarkdown) {
             var sel = window.getSelection();
             sel.removeAllRanges();
             sel.addRange(range);
-            try { document.execCommand('copy'); } catch(_) {}
+            try { document.execCommand('copy'); } catch (_) { }
             sel.removeAllRanges();
         });
     };
@@ -289,14 +289,6 @@ function addMessageEl(role, content, optQuestId) {
     return div;
 }
 
-var _panelRunningQuestId = null;  // 本面板标记为 running 的 quest（配对更新中心机器用）
-
-function _markQuestRunning(questId, isRunning) {
-    if (!questId || _isDraft(questId)) return;
-    try { if (parent && parent.__qqq_setQuestRunning) parent.__qqq_setQuestRunning(questId, isRunning); } catch (_) { }
-    _broadcast('quest-running', questId, { isRunning: isRunning });
-}
-
 // ═══ 引导按钮：仅建楼中可用（fatal 态禁用） ═══
 function updateGuideBtn() {
     var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
@@ -339,22 +331,10 @@ function setStreaming(val) {
         $sendBtn.textContent = 'Send';
     }
     updateQueueBtn();
-    // ★ 彗星环绕：开始建楼时写入父窗口中心注册表（释放由 onDone/onError/finally 显式处理）
-    //   setStreaming(false) 只做 UI 清理，绝不动中心机器（防 switchQuest/_unloadQuest 误写）
-    if (val && questActiveId && !_isDraft(questActiveId)) {
-        if (_panelRunningQuestId && _panelRunningQuestId !== questActiveId) {
-            _markQuestRunning(_panelRunningQuestId, false);
-        }
-        _panelRunningQuestId = questActiveId;
-        _markQuestRunning(questActiveId, true);
+    // ★ 微型电子钟：开始建楼启动，建楼结束停止
+    if (val) {
+        if (typeof _startQuestClock === 'function') _startQuestClock();
+    } else {
+        if (typeof _stopQuestClock === 'function') _stopQuestClock();
     }
-    // 彗星环绕：当前面板 tofu 立即更新（读中心机器，跨面板一致）
-    var tofu = document.getElementById('quest-tofu');
-    if (tofu) {
-        var runningNow = _getRunningQuestIds();
-        if (runningNow.indexOf(questActiveId) >= 0) tofu.classList.add('quest-running');
-        else tofu.classList.remove('quest-running');
-    }
-    // 刷新下拉列表中的彗星标记（如果当前打开）
-    if (typeof _questDrop !== 'undefined' && _questDrop) renderQuestDrop();
 }

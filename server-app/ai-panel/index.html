@@ -37,28 +37,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 [data-theme="dark"] .quest-tofu:hover{background:#3f3830}
 .quest-tofu-text{overflow:hidden;flex:1;color:var(--text-primary);-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 30px),transparent 100%);mask-image:linear-gradient(to right,#000 calc(100% - 30px),transparent 100%)}
 .quest-tofu-prefix{flex:none;color:#e8a030;position:relative;white-space:pre}
-/* ── 彗星环绕动画（quest 运行时围绕编号旋转）── */
-@keyframes comet-orbit-a{0%{transform:translate(-50%,-50%) rotate(0deg) translateX(18px) rotate(0deg)}100%{transform:translate(-50%,-50%) rotate(360deg) translateX(18px) rotate(-360deg)}}
-@keyframes comet-orbit-b{0%{transform:translate(-50%,-50%) rotate(0deg) translateX(14px) rotate(0deg)}100%{transform:translate(-50%,-50%) rotate(-360deg) translateX(14px) rotate(360deg)}}
-.quest-running .quest-tofu-prefix::before,
-.quest-running .quest-tofu-prefix::after,
-.quest-drop-item.running .quest-drop-prefix::before,
-.quest-drop-item.running .quest-drop-prefix::after{
-  content:'';position:absolute;top:50%;left:50%;
-  width:4px;height:4px;border-radius:50%;
-  pointer-events:none;z-index:-1;
-}
-.quest-running .quest-tofu-prefix::before,
-.quest-drop-item.running .quest-drop-prefix::before{
-  background:#e8a030;box-shadow:0 0 6px 2px #e8a030, 0 0 12px 4px rgba(232,160,48,.6);
-  animation:comet-orbit-a 1.2s linear infinite;
-}
-.quest-running .quest-tofu-prefix::after,
-.quest-drop-item.running .quest-drop-prefix::after{
-  background:#ff6b00;box-shadow:0 0 4px 2px #ff6b00, 0 0 8px 3px rgba(255,107,0,.5);
-  animation:comet-orbit-b 1.6s linear infinite;
-}
-.quest-running .quest-tofu-prefix{z-index:1}
+/* 微型电子钟：右下角黑底白字，无模糊实边，只显示秒数 */
+.quest-clock{position:absolute;bottom:2px;right:8px;background:#000;color:#fff;font-family:monospace;font-size:12px;font-weight:700;line-height:1;padding:1px 5px;letter-spacing:0;font-smooth:never;-webkit-font-smoothing:none;-moz-osx-font-smoothing:unset;text-rendering:optimizeSpeed;z-index:3;pointer-events:none}
 /* 白纸面板第一行 "~ New quest ~" 样式 */
 .quest-tofu-new .quest-tofu-text{color:var(--base01);font-style:italic;text-align:center}
 /* 豆腐块内联编辑 */
@@ -138,9 +118,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-drop-item:hover{background:var(--background-color)}
 [data-theme="dark"] .quest-drop-item:hover{background:#3f3830}
 .quest-drop-item.active{font-weight:700;color:var(--primary-color)}
-.quest-drop-item.running{/* overflow:visible removed — caused 3rd line text overlap */}
 /* 下拉前缀 qN. — 加大两号 + 显著色 */
-.quest-drop-prefix{font-size:20px;color:#e8a030;position:relative;white-space:pre}
+.quest-drop-prefix{font-size:20px;color:#e8a030}
 [data-theme="dark"] .quest-drop-prefix{color:#e8a030}
 .quest-drop-title{font-size:16px}
 /* 下拉列表体：滚动由父容器 .quest-drop 统一管理，头部粘滞 */
@@ -552,6 +531,7 @@ var _orig={};
     <span class="quest-tofu-text" id="quest-tofu-text">─</span>
     <input class="quest-tofu-edit" id="quest-tofu-edit" type="text" style="display:none">
     <span class="quest-tofu-pen" id="quest-tofu-pen" title="编辑名称" style="display:none">✏️</span>
+    <span class="quest-clock" id="quest-clock" style="display:none"></span>
   </div>
   <!-- q2x 行已删除：统一走 dropdown 头行（hover q2 才出现） -->
 </div>

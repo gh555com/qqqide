@@ -21,7 +21,7 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string })
             return () => ipcRenderer.removeListener('qqq-ide-auth', handler);
         },
         // ★ 持久化（safeStorage OS 级加密，重启自动恢复，主动登出才删除）
-        saveAuth: (auth: { token: string; phone: string; device_name?: string } | null) => ipcRenderer.invoke('qqqide:auth:save', auth),
+        saveAuth: (auth: { token: string; phone: string; device_name?: string; country_iso2?: string } | null) => ipcRenderer.invoke('qqqide:auth:save', auth),
         loadAuth: () => ipcRenderer.invoke('qqqide:auth:load'),
         clearAuth: () => ipcRenderer.invoke('qqqide:auth:clear'),
     },

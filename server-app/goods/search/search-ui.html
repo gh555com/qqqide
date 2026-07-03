@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <title>Search</title>
 <style>
-:root{--bg:#fdf6e3;--bg2:#fbe9bc;--tx:#7a7874;--tx2:#97978a;--tx3:#a8a6a2;--bd:#eee8d5;--bd2:#a8a6a2;--yel:#b58900;--ora:#cb4b16;--red:#dc322f;--blu:#e8a030;--grn:#859900}
-[data-theme="dark"]{--bg:#1e1e1e;--bg2:#2a2a2a;--tx:#dcd8d0;--tx2:#a8a49c;--tx3:#6a6660;--bd:#333;--bd2:#555}
+:root{--bg:#fdf6e3;--bg2:#fbe9bc;--tx:#7a7874;--tx2:#97978a;--tx3:#a8a6a2;--bd:#eee8d5;--bd2:#a8a6a2;--yel:#b58900;--ora:#cb4b16;--red:#dc322f;--blu:#e8a030;--grn:#859900;--inp-bg:#fdf6e3;--inp-bd:#c9c0aa}
+[data-theme="dark"]{--bg:#1e1e1e;--bg2:#2a2a2a;--tx:#dcd8d0;--tx2:#a8a49c;--tx3:#6a6660;--bd:#333;--bd2:#555;--inp-bg:#282828;--inp-bd:#555}
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{font:13px Tahoma,sans-serif;height:100%;background:var(--bg);color:var(--tx)}
 ::selection{background:rgb(255,211,2)!important;color:#000!important}
@@ -13,10 +13,10 @@ input,select{-webkit-user-select:text;user-select:text}
 .tb{padding:6px 10px;border-bottom:1px solid var(--bd);flex-shrink:0}
 .tb-r{display:flex;align-items:center;gap:4px;margin-bottom:4px}
 .tb-r:last-child{margin-bottom:0}
-.inp{flex:1;height:26px;padding:2px 7px;border:1px solid #e3dcc8;border-radius:3px;background:#fdf6e3;color:var(--tx);font:13px Consolas,monospace;outline:none}
-.inp:focus{border-color:var(--blu)}.inp::placeholder{color:var(--tx3);opacity:.40}
-.scope{flex:1;height:24px;padding:2px 6px;border:1px solid #e3dcc8;border-radius:3px;background:#fdf6e3;color:var(--tx);font:11px Consolas,monospace;outline:none}
-.scope:focus{border-color:var(--blu)}.scope::placeholder{color:var(--tx3);opacity:.40}
+.inp{flex:1;height:26px;padding:2px 7px;border:1px solid var(--inp-bd);border-radius:3px;background:var(--inp-bg);color:var(--tx);font:13px Consolas,monospace;outline:none}
+.inp:focus{border-color:var(--blu)}.inp::placeholder{color:var(--tx3);opacity:.55}
+.scope{flex:1;height:24px;padding:2px 6px;border:1px solid var(--inp-bd);border-radius:3px;background:var(--inp-bg);color:var(--tx);font:12px Consolas,monospace;outline:none}
+.scope:focus{border-color:var(--blu)}.scope::placeholder{color:var(--tx3);opacity:.55}
 .lbl{font-size:11px;color:var(--tx3);white-space:nowrap;min-width:28px}
 .tog{width:26px;height:26px;border:1px solid var(--bd);border-radius:3px;background:transparent;color:var(--tx3);font:bold 12px Tahoma;text-align:center;cursor:pointer;flex-shrink:0;line-height:26px}
 .tog:hover{background:var(--bg2);color:var(--tx)}.tog.on{background:var(--blu);color:#1e1e1e;border-color:var(--blu)}
@@ -24,7 +24,13 @@ input,select{-webkit-user-select:text;user-select:text}
 .btn:hover{background:var(--bg2)}.btn.pri{background:var(--blu);color:#1e1e1e;border-color:var(--blu)}.btn.pri:hover{opacity:.9}
 .chk{font-size:11px;color:var(--tx3);display:flex;align-items:center;gap:3px;margin-left:4px;cursor:pointer;white-space:nowrap}
 .chk input{cursor:pointer}
-.sort{height:24px;padding:0 4px;border:1px solid var(--bd);border-radius:3px;background:transparent;color:var(--tx3);font-size:11px;cursor:pointer;outline:none}
+.sort{height:24px;padding:0 10px 0 4px;border:1px solid var(--bd);border-radius:3px;background:var(--bg);color:var(--tx);font-size:11px;cursor:pointer;outline:none;text-align:left;white-space:nowrap;position:relative}
+.sort::after{content:'▼';font-size:8px;position:absolute;right:3px;top:50%;margin-top:-4px;color:var(--tx3)}
+.sort-wrap{position:relative;display:inline-block}
+.sort-dd{display:none;position:absolute;top:100%;left:0;z-index:9999;background:var(--bg);border:1px solid var(--bd2);box-shadow:0 2px 8px rgba(0,0,0,.18);padding:2px 0;min-width:130px}
+.sort-dd>div{padding:4px 10px;font-size:11px;color:var(--tx);cursor:pointer;white-space:nowrap}
+.sort-dd>div:hover{background:var(--bg2)}
+.sort-dd>div.sel{background:#eee8d5}[data-theme="dark"] .sort-dd>div.sel{background:#383838}
 .iw{position:relative;flex:1;display:flex;min-width:0}
 .iw .inp,.iw .scope{flex:1;min-width:0}
 .hdd{display:none;position:absolute;left:0;top:100%;z-index:9999;background:var(--bg);border:1px solid var(--bd2);box-shadow:0 2px 8px rgba(0,0,0,.18);max-height:240px;overflow-y:auto;overflow-x:hidden;min-width:100%;white-space:nowrap}
@@ -57,7 +63,7 @@ input,select{-webkit-user-select:text;user-select:text}
     <div class="tb-r"><span class="iw"><input class="inp" id="q" placeholder="搜索..." autofocus spellcheck="false"><div class="hdd" id="dd0"></div></span><button class="tog" id="brx" title="正则">.*</button><button class="tog" id="bcs" title="大小写">Aa</button><button class="tog" id="bww" title="全字">ab</button></div>
     <div class="tb-r"><span class="iw"><input class="inp" id="rp" placeholder="替换..." spellcheck="false"><div class="hdd" id="dd1"></div></span><button class="btn pri" id="bra">全部替换</button></div>
     <div class="tb-r"><span class="lbl">范围</span><span class="iw"><input class="scope" id="sp" placeholder="搜索路径（点 🔍 自动填入）" spellcheck="false"><div class="hdd" id="dd2"></div></span></div>
-    <div class="tb-r"><span class="lbl">仅限</span><span class="iw"><input class="scope" id="inc" placeholder="*.js, src/" spellcheck="false"><div class="hdd" id="dd3"></div></span><span class="lbl" style="margin-left:8px">排除</span><span class="iw"><input class="scope" id="exc" value=".git/, *.log" spellcheck="false"><div class="hdd" id="dd4"></div></span><span class="lbl" style="margin-left:8px">排序</span><select class="sort" id="srt"><option value="mtime" selected>修改时间↓</option><option value="mtime-asc">修改时间↑</option><option value="count">匹配数</option><option value="path">路径</option><option value="path-desc">路径倒序</option><option value="birthtime">创建时间↓</option><option value="birthtime-asc">创建时间↑</option><option value="size">大小↓</option><option value="size-asc">大小↑</option></select></div>
+    <div class="tb-r"><span class="lbl">仅限</span><span class="iw"><input class="scope" id="inc" placeholder="*.js, src/" spellcheck="false"><div class="hdd" id="dd3"></div></span><span class="lbl" style="margin-left:8px">排除</span><span class="iw"><input class="scope" id="exc" value=".git/, *.log" spellcheck="false"><div class="hdd" id="dd4"></div></span><span class="lbl" style="margin-left:8px">排序</span><span class="sort-wrap"><button class="sort" id="srt_btn">修改时间↓</button><div class="sort-dd" id="srt_dd"></div></span></div>
     <div class="tb-r"><label class="chk" id="lgi"><input type="checkbox" id="cgi"> 尊重 .gitignore</label></div>
   </div>
   <div class="st" id="st"><span id="stt">键入关键字开始搜索</span></div>
@@ -110,6 +116,8 @@ async function _ldHist(){
     }catch(_){}
   }
   _dbLoaded=true;_dbLoading=false;
+  // Seed factory default for exclude field (fid=4)
+  var defEx='.git/, *.log';if(_hist[4].indexOf(defEx)===-1)_hist[4].unshift(defEx);
 }
 function _svHist(fid){
   if(!_qdb){_initDB();if(!_qdb)return}
@@ -132,7 +140,13 @@ function _show(fid){
   _close();
   if(!_dbLoaded){_ldHist()}
   var inp=INPS[fid],qv=(inp.value||'').trim();
-  var vals=_hist[fid];
+  var vals=_hist[fid].slice();
+  // Exclude field (fid=4): always ensure factory default is visible on top
+  if(fid===4){
+    var defEx='.git/, *.log';
+    vals=vals.filter(function(x){return x!==defEx});
+    vals.unshift(defEx);
+  }
   if(qv){vals=vals.filter(function(x){return _fuzzyMatch(x,qv)})}else{vals=vals.slice(0,SHOWMAX)}
   if(!vals||!vals.length)return;
   var dd=DDS[fid];dd.innerHTML='';_sel=-1;
@@ -147,9 +161,8 @@ function _close(){if(_openFid!==null){DDS[_openFid].style.display='none';_openFi
 function _nav(dir){if(_openFid===null)return;var dd=DDS[_openFid];_sel+=dir;if(_sel<0)_sel=dd.childElementCount-1;if(_sel>=dd.childElementCount)_sel=0;var rs=dd.querySelectorAll('div');for(var i=0;i<rs.length;i++){rs[i].className=i===_sel?'sel':''}}
 function _pick(){if(_openFid===null||_sel<0)return;var dd=DDS[_openFid],rs=dd.querySelectorAll('div');if(_sel>=rs.length)return;INPS[_openFid].value=rs[_sel].textContent;_add(_openFid,rs[_sel].textContent);_close();if(_openFid===0)dos();else trg()}
 INPS.forEach(function(inp,fid){
-  inp.addEventListener('click',function(){if(_openFid===fid){_close();return}_show(fid)});
-  inp.addEventListener('focus',function(){if(_openFid!==fid)_show(fid)});
-  inp.addEventListener('blur',function(){setTimeout(function(){var ae=document.activeElement;if(ae&&ae.closest&&ae.closest('.hdd'))return;_close()},250)});
+  inp.addEventListener('focus',function(){_show(fid)});
+  inp.addEventListener('blur',function(){var cf=fid;setTimeout(function(){var ae=document.activeElement;if(ae&&ae.closest&&ae.closest('.hdd'))return;if(_openFid===cf)_close()},200)});
   inp.addEventListener('keydown',function(e){
     if(e.key==='ArrowDown'){e.preventDefault();if(_openFid===null)_show(fid);_nav(1)}
     else if(e.key==='ArrowUp'){e.preventDefault();if(_openFid===null)_show(fid);_nav(-1)}
@@ -161,11 +174,27 @@ INPS.forEach(function(inp,fid){
 document.addEventListener('mousedown',function(e){if(_openFid===null)return;var t=e.target;if(t.closest&&(t.closest('.iw')||t.closest('.hdd')))return;_close()});
 
 var _rx=false,_cs=false,_ww=false,_tmr=null,_last=null,_lastQ='',_hl=null,_scopePath='';
-var SRT=document.getElementById('srt'),CGI=document.getElementById('cgi'),
+var CGI=document.getElementById('cgi'),
   BRX=document.getElementById('brx'),BCS=document.getElementById('bcs'),BWW=document.getElementById('bww'),
   BRA=document.getElementById('bra'),ST=document.getElementById('st'),STT=document.getElementById('stt'),
   RC=document.getElementById('rc'),EM=document.getElementById('em');
-SRT.onchange=function(){if(_last)rdr(_last)};CGI.onchange=function(){trg()};
+CGI.onchange=function(){trg()};
+
+// Custom sort dropdown
+var SRT_BTN=document.getElementById('srt_btn'),SRT_DD=document.getElementById('srt_dd');
+var _sortOpen=false,_sortVal='mtime';
+var SORT_OPTS=[
+  {v:'mtime',l:'修改时间↓'},{v:'mtime-asc',l:'修改时间↑'},{v:'count',l:'匹配数'},
+  {v:'path',l:'路径'},{v:'path-desc',l:'路径倒序'},{v:'birthtime',l:'创建时间↓'},
+  {v:'birthtime-asc',l:'创建时间↑'},{v:'size',l:'大小↓'},{v:'size-asc',l:'大小↑'}
+];
+function _bldSrt(){SRT_DD.innerHTML='';for(var i=0;i<SORT_OPTS.length;i++){var o=SORT_OPTS[i],d=document.createElement('div');d.textContent=o.l;if(o.v===_sortVal)d.className='sel';d.onmousedown=(function(v,l){return function(e){e.preventDefault();_sortVal=v;SRT_BTN.textContent=l;_clsSrt();if(_last)rdr(_last)}})(o.v,o.l);SRT_DD.appendChild(d)}}
+function _tglSrt(){if(_sortOpen){_clsSrt();return}SRT_DD.style.display='block';_sortOpen=true}
+function _clsSrt(){SRT_DD.style.display='none';_sortOpen=false}
+SRT_BTN.onclick=_tglSrt;
+_bldSrt();
+document.addEventListener('mousedown',function(e){if(_sortOpen&&!e.target.closest('.sort-wrap'))_clsSrt()});
+
 function tg(b,k){return function(){if(k==='rx')_rx=!_rx;if(k==='cs')_cs=!_cs;if(k==='ww')_ww=!_ww;b.classList.toggle('on',k==='rx'?_rx:k==='cs'?_cs:_ww);trg()}}
 BRX.onclick=tg(BRX,'rx');BCS.onclick=tg(BCS,'cs');BWW.onclick=tg(BWW,'ww');
 function trg(){if(_tmr)clearTimeout(_tmr);_tmr=setTimeout(dos,200)}
@@ -181,7 +210,6 @@ function _expAll(){var fgs=RC.querySelectorAll('.fg');for(var i=0;i<fgs.length;i
 function _colAll(){var fgs=RC.querySelectorAll('.fg');for(var i=0;i<fgs.length;i++)fgs[i].classList.add('closed');var ars=RC.querySelectorAll('.fh .ar');for(var i=0;i<ars.length;i++)ars[i].textContent='▶'}
 window._expAll=_expAll;window._colAll=_colAll;
 
-// 状态栏组件构建 — 不用 inline onclick 避免 iframe 作用域问题
 function _buildSt(total,fc,ms,fsc,trunc){
   var frag=document.createDocumentFragment();
   var b1=document.createElement('button');b1.className='cbtn';b1.textContent='⊞';b1.title='全部展开';
@@ -222,7 +250,7 @@ function rdr(d){
   if(!d.results||d.results.length===0){EM.querySelector('.ht').textContent='无匹配结果';EM.style.display='';RC.appendChild(EM);return}
   var grp=new Map();
   for(var i=0;i<d.results.length;i++){var r=d.results[i];if(!grp.has(r.file))grp.set(r.file,[]);grp.get(r.file).push(r)}
-  var sg=Array.from(grp.entries()),fs=d.fileStats||{},sm=SRT.value;
+  var sg=Array.from(grp.entries()),fs=d.fileStats||{},sm=_sortVal;
   sg.sort(function(a,b){
     if(sm==='path')return a[0].localeCompare(b[0]);if(sm==='path-desc')return b[0].localeCompare(a[0]);
     if(sm==='count')return b[1].length-a[1].length||a[0].localeCompare(b[0]);
@@ -237,7 +265,7 @@ function rdr(d){
   for(var gi=0;gi<sg.length;gi++){
     var fp2=sg[gi][0],ms=sg[gi][1],fg=document.createElement('div');fg.className='fg';
     var fh=document.createElement('div'),ar=document.createElement('span'),fnE=document.createElement('span'),fpp=document.createElement('span'),fc2=document.createElement('span');
-    fh.className='fh';ar.className='ar';ar.textContent='▶';fnE.className='fn';fnE.textContent=bn(fp2);
+    fh.className='fh';ar.className='ar';ar.textContent='▶';fnE.className='fn';fnE.innerHTML=hlm(bn(fp2));
     fpp.className='fp';fpp.innerHTML='/'+pq(dn(fp2));fpp.title=fp2;fc2.className='fc';fc2.textContent=ms.length+' 匹配';
     fh.appendChild(ar);fh.appendChild(fnE);fh.appendChild(fpp);fh.appendChild(fc2);
     var fb=document.createElement('div');

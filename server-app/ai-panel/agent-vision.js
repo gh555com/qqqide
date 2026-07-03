@@ -15,15 +15,15 @@ AgentLoop.prototype._analyzeImages = async function (images, token, userContent)
     var visionPrompt = '';
     if (userContent && typeof userContent === 'string' && userContent.trim()) {
         // ★ 借鉴 openhanako formatStructuredVisionNote：结构化视觉分析 prompt
-        visionPrompt = 'You are a vision analysis assistant. Analyze this image and answer the following user question.\n' +
+        visionPrompt = 'You are a vision analysis assistant. Describe this image factually.\n' +
+            'CRITICAL: Do NOT suggest tools, software, or procedures. Only describe what you see.\n' +
             'Respond in this structured format (one field per line, "field: value"):\n' +
-            '  image_overview: <1-sentence summary>\n' +
+            '  image_overview: <1-sentence summary of what this image is>\n' +
             '  visible_text: <text in the image, or "none">\n' +
-            '  objects_and_layout: <key objects and spatial relationships>\n' +
-            '  user_request_answer: <direct answer to the user question below>\n' +
-            '  evidence: <what in the image supports your answer>\n' +
+            '  objects_and_layout: <key objects and their spatial arrangement>\n' +
+            '  subject_isolation: <is the main subject clearly separated from the background? yes/no/partial>\n' +
+            '  background_description: <describe the background: solid color / gradient / complex scene / transparent-checkered>\n' +
             '  uncertainty: <any doubts or "none">\n\n' +
-            'USER QUESTION:\n' + userContent.trim() + '\n\n' +
             'Now analyze:';
     }
 

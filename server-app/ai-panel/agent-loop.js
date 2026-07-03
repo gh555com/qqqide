@@ -144,6 +144,7 @@ var AgentLoop = (function () {
         this._passbyBaseWge = 0;         // ★ passby 基线：已完成楼层的 wge 总消费
         this._passbyBaseTokens = 0;      // ★ passby 基线：已完成楼层的 tokens 总和
         this._passbyBaseFloorNum = 0;    // ★ 已推进至的楼层（防重复累加）
+        this._questKeySlot = 0;          // ★ quest 级 key 钉死：0=主线key, 1=备用key。网络故障只换 URL 不换 key，402 才换 key
         this._serverCity = '';           // ★ Cloudflare 透传城市（服务器真理位置）
         // ★ 上下文快照：诊断模型缓存命中/未命中根因
         this._lastSentSnapshot = null;   // { msgCount, prefixHash, firstMsgKeys, lastMsgKeys }
@@ -335,7 +336,7 @@ var AgentLoop = (function () {
                 for (var vi = 0; vi < visionResults.length; vi++) {
                     parts.push('[图#' + visionResults[vi].id + ' 视觉分析]:\n' + visionResults[vi].description);
                 }
-                visionText = '\n\n━━━ VISION ANALYSIS RESULTS (already completed, DO NOT call analyze_image again) ━━━\n' + parts.join('\n\n') + '\n━━━ END VISION RESULTS ━━━\n⚠️ 用户如果要求抠图，立即调 remove_background，不要因视觉分析说"已透明"就跳过。棋盘格可能是假透明。';
+                visionText = '\n\n━━━ VISION ANALYSIS RESULTS (already completed, DO NOT call analyze_image again) ━━━\n' + parts.join('\n\n') + '\n━━━ END VISION RESULTS ━━━\n[IF user asked for background removal: call remove_background ONCE using the PASTED IMAGES path. DO NOT write Python/image-processing code.]';
             }
             // 视觉计费计入本轮
             if (self._visionCostWge > 0) {
@@ -346,8 +347,32 @@ var AgentLoop = (function () {
         }
         if (_visionStart) self._floorTiming.aiMs += performance.now() - _visionStart;
 
+        // ★ 注入图片路径到 content（避免 AI 花 N 间 house 搜索磁盘）
+        var _imgPathHints = '';
+        if (images && images.length > 0) {
+            var _hints = [];
+            // 从 _floorMeta 获取楼层目录，用来拼完整路径
+            var _fDir = '';
+            try {
+                var _fm = self._floorMeta;
+                if (_fm) {
+                    for (var _fk in _fm) {
+                        if (_fm[_fk] && _fm[_fk]._fDir) { _fDir = _fm[_fk]._fDir; break; }
+                    }
+                }
+            } catch (_) {}
+            for (var _ii = 0; _ii < images.length; _ii++) {
+                var _im = images[_ii];
+                var _bn = _im.fileName || ('img_' + _im.id + '.png');
+                var _fullPath = _fDir ? _fDir + _bn : ('当前楼层目录下的 ' + _bn + '（用 list_files 确认）');
+                _hints.push('图#' + _im.id + ': ' + _fullPath);
+            }
+            if (_hints.length > 0) {
+                _imgPathHints = '\n\n═══ PASTED IMAGES (use these EXACT paths with remove_background/analyze_image) ═══\n' + _hints.join('\n') + '\n═══ END IMAGES ═══';
+            }
+        }
         // 推入用户消息（纯文本）
-        var finalContent = (userContent || '') + visionText;
+        var finalContent = (userContent || '') + _imgPathHints + visionText;
 
         // 归档：保存用户键入供 generateFloorTxt 写入
         // ★ 恢复模式不覆写 _lastUserInput（保留原始用户问题）

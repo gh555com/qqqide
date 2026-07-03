@@ -225,7 +225,9 @@
                 var _fallbackUrl = _URLS.chatFallback;
                 var _url = _isFallback ? _fallbackUrl : _primaryUrl;
                 var _hdrs = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
-                if (_isFallback) _hdrs['X-Key-Slot'] = '1';
+                // ★ keySlot 优先于 isFallback（quest 级固定 key）
+                if (opts.keySlot === 1) _hdrs['X-Key-Slot'] = '1';
+                else if (_isFallback) _hdrs['X-Key-Slot'] = '1';  // 兼容旧调用方
                 // 压缩可能很长（大 prompt + 64K 输出 + deep thinking），用 10min 超时
                 return _fetchWithTimeout(_url, { method: 'POST', headers: _hdrs, body: JSON.stringify(body) }, 600000);
             }
@@ -245,8 +247,9 @@
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + token,
             };
-            if (isFallback) {
-                headers['X-Key-Slot'] = '1';  // ★ Go 端据此选 192 号 key，客户端零密钥暴露
+            // ★ keySlot 决定 key（quest 级固定，不随 URL 线路变化）
+            if (opts.keySlot === 1) {
+                headers['X-Key-Slot'] = '1';  // Go 端据此选备用 key
             }
 
             return _fetchWithTimeout(url, {

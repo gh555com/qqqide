@@ -133,12 +133,8 @@ async function switchQuest(id) {
         if (_overlay) _overlay.classList.remove('show');
         if ($messages) $messages.classList.remove('qqq-switching');
         setStreaming(!!(_activeAgent && _activeAgent._streaming));  // ★ 切 quest 后按实际 agent 状态刷新按钮（不是无条件 false）
-        // ★ 防御：直查 parent.__qqq_buildingRegistry 清彗星（绕过 _getRunningQuestIds 多态不确定性）
-        var _regCheck = parent && parent.__qqq_buildingRegistry;
-        if (_regCheck && questActiveId && !_isDraft(questActiveId) && !_regCheck[questActiveId]) {
-            var _tf = document.getElementById('quest-tofu');
-            if (_tf) _tf.classList.remove('quest-running');
-        }
+        // ★ 切换后同步电子钟状态
+        if (typeof _updateQuestClock === 'function') _updateQuestClock();
     }
 }
 

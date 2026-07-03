@@ -54,7 +54,17 @@ async function sendMessage(skipFloorCreation) {
                     cardPool.removeCard(_dCdOld);
                 }
             }
-            saveQuestUIState(_dOldId);
+            // ★ 草稿已晋升为真实 quest，清除草稿的 UI 记忆
+            //   防止下次 ~New quest~ 携带本次已发送的旧内容（入框文本/图片/tier）
+            delete questUIStates[_dOldId];
+            if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
+                onlyStore.setNow('ai.uiStates.' + _panelId, questUIStates);
+            }
+            // ★ 同步清除池中草稿 agent 的队列
+            //   switchQuest(_draftId) 会重用池中 agent，不对队列清零，产生复活
+            if (parent.__qqq_agentPool && parent.__qqq_agentPool[_dOldId]) {
+                parent.__qqq_agentPool[_dOldId]._queue = [];
+            }
         } catch (_dErr) {
             console.warn('[send] draft creation failed:', _dErr && _dErr.message);
             addMessageEl('error', '创建 Quest 失败：' + ((_dErr && _dErr.message) || '未知错误'));
@@ -315,7 +325,7 @@ async function sendMessage(skipFloorCreation) {
         _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, text, '');
     }
     scrollToBottom(true);
-    // ★ 中央建楼状态机：登记 quest 开始建楼（必须在 setStreaming 之前，否则 tofu 彗星不显示）
+    // ★ 中央建楼状态机：登记 quest 开始建楼
     if (typeof _registerBuilding === 'function') _registerBuilding(qid, typeof _panelId !== 'undefined' ? _panelId : 1);
     setStreaming(true);
     // ★ P10 根治：agent 必须知道自己的新 aiDiv，否则 _doStreamRender 读到旧 quest 的 DOM
@@ -587,11 +597,7 @@ async function sendMessage(skipFloorCreation) {
 
                 // ★ 必须在保存前清除 _streaming，否则 all.json 永久记录 _streaming:true（僵尸）
                 agent._streaming = false;
-                // ★ 释放中心机器 running 标记（setStreaming(false) 不再负责此事）
-                _markQuestRunning(qid, false);
-                // ★ 中央建楼状态机：注销 quest 建楼状态
                 if (typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
-                if (_panelRunningQuestId === qid) _panelRunningQuestId = null;
                 if (_activeAgent === agent) {
                     setStreaming(false);
                 }
@@ -634,16 +640,8 @@ async function sendMessage(skipFloorCreation) {
                         renderQueueStrip();
                     }
                 }
-                // ★ P11 根治：updateQuestTofu 移到守卫外 — 后台 quest 完成后也必须刷新 tofu（彗星消失）
+                // ★ P11 根治：updateQuestTofu 移到守卫外 — 后台 quest 完成后也必须刷新 tofu
                 updateQuestTofu();
-                // ★ 防御：直查 parent.__qqq_buildingRegistry 确保已删除（绕过 _getRunningQuestIds 多态）
-                var _regAfter = parent && parent.__qqq_buildingRegistry;
-                if (_regAfter && _regAfter[qid]) {
-                    console.warn('[onDone] quest still in registry after unregister, force-deleting:', qid);
-                    delete _regAfter[qid];
-                    if (typeof _broadcastRegistry === 'function') _broadcastRegistry();
-                    updateQuestTofu();
-                }
             },
 
             onGuideAckDone: function () {
@@ -730,11 +728,7 @@ async function sendMessage(skipFloorCreation) {
                     aiDiv._guideMode = false;
                     if (aiDiv._lastParaEl) { aiDiv._lastParaEl.remove(); aiDiv._lastParaEl = null; }
                 }
-                // ★ 释放中心机器 running 标记（setStreaming 不再负责此事）
-                _markQuestRunning(qid, false);
-                // ★ 中央建楼状态机：注销 quest 建楼状态
                 if (typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
-                if (_panelRunningQuestId === qid) _panelRunningQuestId = null;
                 if (_activeAgent === agent) {
                     if (aiDiv && aiDiv._floorCompleted) {
                         setStreaming(false);
@@ -782,17 +776,8 @@ async function sendMessage(skipFloorCreation) {
                         error: msg,
                         finishedAt: new Date().toISOString()
                     });
-                    // ★ P11：后台 agent 错误后刷新 tofu + quest 下拉（彗星消失）
+                    // ★ P11：后台 agent 错误后刷新 tofu
                     updateQuestTofu();
-                    // ★ 防御：直查 registry 确保删除
-                    var _regErr = parent && parent.__qqq_buildingRegistry;
-                    if (_regErr && _regErr[qid]) {
-                        console.warn('[onError] quest still in registry, force-deleting:', qid);
-                        delete _regErr[qid];
-                        if (typeof _broadcastRegistry === 'function') _broadcastRegistry();
-                        updateQuestTofu();
-                    }
-                    if (typeof _questDrop !== 'undefined' && _questDrop && typeof renderQuestDrop === 'function') renderQuestDrop();
                 }
             }
         });
@@ -942,10 +927,7 @@ async function sendMessage(skipFloorCreation) {
         if (_activeAgent === agent) {
             setStreaming(false);
         } else if (qid && !agent._floorCompletedCleanly && !agent._floorOnErrorCalled) {
-            // ★ 后台 agent finally 兜底：onDone/onError 均未触发时才释放 running 标记
-            //   （若 onDone/onError 已触发，它们已在上方统一释放，此处不重复）
-            _markQuestRunning(qid, false);
-            if (_panelRunningQuestId === qid) _panelRunningQuestId = null;
+
         }
     }
 }
@@ -966,25 +948,37 @@ function _renderQuestErrorBox(agent, aiDiv) {
     var _log = agent._questErrorLog;
     if (!_log || _log.length === 0) return;
 
-    // ★ 确定目标 AI div
-    var _targetAi = aiDiv || (agent._activeAiDiv);
-    if (!_targetAi || !_targetAi._contentWrap) return;
-
-    // 找或建红框 DOM（在 AI div 的 _contentWrap 内）
-    var _box = _targetAi._errorBox;
-    if (!_box || !_box.isConnected) {
-        var _existing = _targetAi._contentWrap.querySelector('.msg-quest-error');
-        if (_existing) {
-            _box = _existing;
-        } else {
-            _box = document.createElement('div');
-            _box.className = 'msg-quest-error';
-            _targetAi._contentWrap.appendChild(_box);
-        }
-        _targetAi._errorBox = _box;
+    // ★ 跨楼层红框：优先使用 agent._questErrorDiv（封顶楼层引用的红框）
+    var _box = null;
+    if (agent._questErrorDiv && agent._questErrorDiv.isConnected) {
+        _box = agent._questErrorDiv;
     }
+    // ★ 跨楼层搜索：card-pool 重载后缓存的 _questErrorDiv 已断开，
+    //   需搜索所有楼层 DOM 中已有的红框（_buildConversationFlowHtml 静态重建的）
+    if (!_box) {
+        var _card = cardPool && cardPool.getActive();
+        if (_card && _card.floorDOM) {
+            var _fnums = Object.keys(_card.floorDOM).map(Number).sort(function (a, b) { return b - a; });
+            for (var _fi = 0; _fi < _fnums.length && !_box; _fi++) {
+                var _fDom = _card.floorDOM[_fnums[_fi]];
+                if (_fDom && _fDom.aiEl && _fDom.aiEl._contentWrap) {
+                    _box = _fDom.aiEl._contentWrap.querySelector('.msg-quest-error');
+                }
+            }
+        }
+    }
+    // 仍找不到 → 在当前楼层 AI div 内建新红框
+    if (!_box) {
+        var _targetAi = aiDiv || (agent._activeAiDiv);
+        if (!_targetAi || !_targetAi._contentWrap) return;
+        _box = document.createElement('div');
+        _box.className = 'msg-quest-error';
+        _targetAi._contentWrap.appendChild(_box);
+    }
+    // ★ 存储跨楼层引用（铁律：一次渲染永久不变）
+    agent._questErrorDiv = _box;
 
-    // ★ 仅追加新行（不清空，铁律：一次渲染永久不变）
+    // ★ 仅追加新行（不清空）
     var _lastLog = _log[_log.length - 1];
     if (_lastLog) {
         var _row = document.createElement('div');
@@ -996,7 +990,6 @@ function _renderQuestErrorBox(agent, aiDiv) {
     // ★ 更新 / 创建「继续任务」链接（始终在最底部）
     var _link = _box._continueLink;
     if (!_link || !_link.isConnected) {
-        // ★ 优先使用已有的链接元素（innerHTML 渲染的 / 恢复加载的）
         var _existingLink = _box.querySelector('.msg-err-continue');
         if (_existingLink) {
             _link = _existingLink;
@@ -1021,7 +1014,6 @@ function _renderQuestErrorBox(agent, aiDiv) {
         }
         _box._continueLink = _link;
     } else {
-        // ★ 恢复延迟渲染中 → 不重置链接（保持光块状态，由 onToken/_finishRecovery 处理）
         if (!agent._deferRenderUntilHouse1) {
             _link.style.display = '';
             _link.className = 'msg-err-continue';
@@ -1035,15 +1027,15 @@ function _renderQuestErrorBox(agent, aiDiv) {
 function _hideRecoveryLink(agent) {
     if (!agent) return;
     var _link = null;
-    // 路径1：通过 _errorBox._continueLink（live 渲染的红框）
-    if (agent._activeAiDiv && agent._activeAiDiv._errorBox && agent._activeAiDiv._errorBox._continueLink) {
-        _link = agent._activeAiDiv._errorBox._continueLink;
+    // 路径1：跨楼层红框链接
+    if (agent._questErrorDiv && agent._questErrorDiv._continueLink && agent._questErrorDiv._continueLink.isConnected) {
+        _link = agent._questErrorDiv._continueLink;
     }
-    // 路径2：通过 _recoveryLinkEl（重启恢复时由 event delegation 捕获）
+    // 路径2：通过 _recoveryLinkEl
     if (!_link && agent._recoveryLinkEl && agent._recoveryLinkEl.isConnected) {
         _link = agent._recoveryLinkEl;
     }
-    // 路径3：从 _contentWrap 中查找（兜底）
+    // 路径3：从当前 _contentWrap 中查找（兜底）
     if (!_link && agent._activeAiDiv && agent._activeAiDiv._contentWrap) {
         _link = agent._activeAiDiv._contentWrap.querySelector('.msg-err-continue');
     }
@@ -1053,13 +1045,12 @@ function _hideRecoveryLink(agent) {
     }
 }
 
-// ═══ 致命失败恢复败恢复："继续任务"唯一出口 ═══
-// 铁律 §16：一次渲染永久不变 — 红框气泡永不删除、永不隐藏
+// ═══ 致命失败恢复："继续任务"唯一出口 ═══
+// 终极架构（2026-07-03）：
+//   0-house（AI没启动过）→ 同楼层重试，不新增粉色气泡，复用现有 AI div
+//   N-house（建到一半）  → 封顶密封旧楼层，创建新楼层+新粉色气泡，走 0-house 闭环
+//   新楼层失败 → 红框垒行（同一个跨楼层红框），恢复「继续任务」
 // 流程：光块动画 → 网络重连 → house1 抵达时消链 + 启封按钮
-//   · 红框内 "继续任务" 4字 → 变成光块左右横跳（同一 <a> 元素）
-//   · 底层 conversation 追加 _system:true 恢复消息 → AI 看到红框历史 + 原始问题
-//   · house1 抵达 → 光块消失 + 按钮启封（红框历史行保留）
-//   · 失败 → 红框追加新行 + 光块恢复为"继续任务"，用户可再点
 // ★ 所有状态挂在 agent 上（per-quest 私有财产），切面板/后台零断链
 var _RECOVERY_COOLDOWN_MS = 20000;   // 面板级防抖（恢复中不可再点）
 var _RECOVERY_MAX_TOTAL_MS = 180000; // 总上限 3 分钟
@@ -1067,7 +1058,7 @@ var _RECOVERY_MAX_TOTAL_MS = 180000; // 总上限 3 分钟
 function _startRecovery(questId, agent, linkEl) {
     if (!questId || !agent || agent._stopState !== 'fatal') return;
 
-    // 1. 标记恢复中（铁律：不创建新 DOM，复用现有楼层 AI div）
+    // 1. 标记恢复中
     agent._recoveryInProgress = true;
     agent._recoveryStartPerf = performance.now();
     agent._deferRenderUntilHouse1 = true;
@@ -1078,17 +1069,22 @@ function _startRecovery(questId, agent, linkEl) {
         linkEl._qqqRecoveryOrigText = linkEl.textContent;
         linkEl.textContent = '▌';
         linkEl.className = 'msg-err-recovery-light';
-        linkEl.style.cssText = '';  // 清 inline style
+        linkEl.style.cssText = '';
         linkEl._qqqRecoveryBusy = true;
     }
 
-    // 3. 禁用按钮（fatal 态已底层拦截，此处 UI 加固）
+    // 3. 禁用按钮
     if ($sendBtn) $sendBtn.disabled = true;
     if ($guideBtn) $guideBtn.disabled = true;
     if ($queueBtn) $queueBtn.disabled = true;
 
-    // 4. 启动重连
-    _attemptRecoverySend(questId, agent, linkEl);
+    // 4. ★ 分叉：0-house → 同楼层重试 / N-house → 新楼层
+    var _hasHouses = agent._houses && agent._houses.length > 0;
+    if (_hasHouses) {
+        _attemptRecoverySendNewFloor(questId, agent, linkEl);
+    } else {
+        _attemptRecoverySend(questId, agent, linkEl);
+    }
 }
 
 async function _attemptRecoverySend(questId, agent, linkEl) {
@@ -1147,6 +1143,56 @@ async function _attemptRecoverySend(questId, agent, linkEl) {
         agent._inRecoverySend = false;
         // ★ 不恢复 _recoveryInProgress：_finishRecovery 已正确处理（设 false）
         //   若还原旧值（true），agent 将永远卡在恢复中
+        $input.value = _savedInput;
+    }
+}
+
+// ★ N-house 恢复：创建新楼层（封顶旧楼层，新粉色气泡）
+async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
+    var _totalElapsed = performance.now() - agent._recoveryStartPerf;
+    if (_totalElapsed > _RECOVERY_MAX_TOTAL_MS) {
+        _finishRecovery(linkEl, agent, false);
+        return;
+    }
+
+    if (questActiveId !== questId) {
+        _finishRecovery(linkEl, agent, false);
+        return;
+    }
+
+    // ★ 恢复消息：含错误历史让 AI 看到中断原因（_system:true 不入粉色气泡）
+    var _recoveryText = '网络恢复重连。此前楼层中断记录：';
+    if (agent._questErrorLog && agent._questErrorLog.length > 0) {
+        for (var _ei = 0; _ei < agent._questErrorLog.length; _ei++) {
+            _recoveryText += '｜' + agent._questErrorLog[_ei].time + ' ' + agent._questErrorLog[_ei].reason;
+        }
+    }
+    _recoveryText += '｜请基于完整对话上下文继续完成原始任务。';
+
+    // ★ 将恢复消息写入输入框
+    var _savedInput = $input.value;
+    $input.value = _recoveryText;
+
+    // ★ 配置恢复标记：
+    //   _isRecovery → agent-loop 为 userMsg 标 _system:true
+    //   不传 skipFloorCreation → 创建新楼层（新粉色气泡）
+    agent._isRecovery = true;
+    agent._inRecoverySend = false;
+    agent._recoveryInProgress = false;
+
+    try {
+        await sendMessage(false);  // ★ false = 创建新楼层
+        if (agent._stopState === 'fatal') {
+            _finishRecovery(linkEl, agent, false);
+        } else {
+            _finishRecovery(linkEl, agent, true);
+        }
+    } catch (_e) {
+        agent.setStopState('fatal');
+        agent._floorFatal = true;
+        _finishRecovery(linkEl, agent, false);
+    } finally {
+        agent._inRecoverySend = false;
         $input.value = _savedInput;
     }
 }

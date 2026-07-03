@@ -102,6 +102,7 @@ function bootStatusbar(boot) {
       if (h >= 1 && h < 3) { d.setUTCHours(3, 0, 0, 0); return d.getTime(); }
       d.setUTCHours(15, 0, 0, 0); return d.getTime();
     }
+    if (h < 1) { d.setUTCHours(1, 0, 0, 0); return d.getTime(); }
     if (h < 13) { d.setUTCHours(13, 0, 0, 0); return d.getTime(); }
     d.setUTCHours(1, 0, 0, 0); d.setUTCDate(d.getUTCDate() + 1); return d.getTime();
   }

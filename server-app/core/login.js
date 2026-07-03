@@ -40,21 +40,26 @@
   var _flagCssPending = null;  // Promise | null
 
   // ★ 预加载 flag-icons CSS（fetch→内联注入，绕过 CSP style-src）
+  // flag-icons CSS 使用相对 url(../flags/...)，内联后浏览器解析到 localhost。
+  // 此处重写为绝对 CDN URL，无论 dev/prod 都走 jsdelivr CDN。
   function _loadFlagCss() {
     if (_flagCssReady) return Promise.resolve(true);
     if (_flagCssPending) return _flagCssPending;
-    var FLAG_CSS_URL = 'https://cdn.jsdelivr.net/npm/flag-icons@7.2.3/css/flag-icons.min.css';
+    var FLAG_BASE = 'https://cdn.jsdelivr.net/npm/flag-icons@7.2.3';
+    var FLAG_CSS_URL = FLAG_BASE + '/css/flag-icons.min.css';
     _flagCssPending = fetch(FLAG_CSS_URL).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.text();
     }).then(function (css) {
+      // ★ 重写所有相对路径 url(../ → 绝对 CDN 路径
+      css = css.replace(/url\(\.\.\//g, 'url(' + FLAG_BASE + '/');
       var style = document.createElement('style');
       style.textContent = css;
       document.head.appendChild(style);
       _flagCssReady = true;
       return true;
     }).catch(function () {
-      _flagCssReady = true;  // 静默降级，不再重试
+      _flagCssReady = true;
       return false;
     });
     return _flagCssPending;
@@ -92,7 +97,7 @@
     if (!_authData) return;
     try {
       if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.saveAuth) {
-        window.qqqideBridge.auth.saveAuth({ token: _authData.token, phone: _authData.phone, device_name: _authData.device_name });
+        window.qqqideBridge.auth.saveAuth({ token: _authData.token, phone: _authData.phone, device_name: _authData.device_name, country_iso2: _authData.countryIso2 || '' });
       }
     } catch (e) { }
   }
@@ -104,6 +109,8 @@
         var saved = await window.qqqideBridge.auth.loadAuth();
         if (saved && saved.token && saved.phone) {
           _authData = saved; _authData.ts = Date.now();
+          // ★ 从持久化恢复 countryIso2（存储 key 是 country_iso2，JS 用 camelCase）
+          if (saved.country_iso2 && !_authData.countryIso2) _authData.countryIso2 = saved.country_iso2;
           // ★ 立即显示 LV 区域 + 奖杯（零等待）
           _lvShow();
           return true;
@@ -174,30 +181,37 @@
   }
 
   // ── LV（事件驱动：每间 house 的 billing 都直接触发动画）──
-  var _lvAccWge = null;  // 本地累计总 wge（null=未从服务器初始化）
+  var _lvAccWge = null;       // 本地累计总 wge（null=未从服务器初始化）
+  var _lvLastBillingTs = 0;   // 最后一次 billing 时间戳，用于防回退
 
   function _setupLvListener() {
     window.addEventListener('message', function (e) {
       if (e.data && e.data.type === 'qqq-lv-tick') {
         var costWge = e.data.geCost || 0;
-        // GE 乐观扣减
-        var costGe = costWge / 10000;
-        if (_balanceGe !== null && _balanceGe !== undefined && costGe > 0) {
-          _balanceGe = Math.max(0, _balanceGe - costGe);
-          _updateGeLabel();
+        var isFree = !!e.data.freeWindow;
+        // ★ 每次 billing 都触发动画（免费时段可能是部分免费，不能简单跳过）
+        //    服务器真理 /api/qqq/lv 只含真实消费，_fetchLv 会在静默期纠正超标值
+        if (costWge > 0) {
+          _lvLastBillingTs = Date.now();
+          // GE 乐观扣减（超标部分由 60s 轮询修正）
+          var costGe = costWge / 10000;
+          if (_balanceGe !== null && _balanceGe !== undefined && costGe > 0) {
+            _balanceGe = Math.max(0, _balanceGe - costGe);
+            _updateGeLabel();
+          }
+          // LV 动画
+          if (_lvAccWge !== null) {
+            _lvAccWge += costWge;
+            var WL = 10 * 10000;
+            var lvFloor = Math.floor(_lvAccWge / WL);
+            var lvPct = (_lvAccWge % WL) / WL * 100;
+            _lvAnimate(lvFloor, lvPct);
+          }
         }
-        // ★ LV 本地即时动画（不等服务器！每间 house 独立触发）
-        if (_lvAccWge !== null && costWge > 0) {
-          _lvAccWge += costWge;
-          var WL = 10 * 10000;
-          var lvFloor = Math.floor(_lvAccWge / WL);
-          var lvPct = (_lvAccWge % WL) / WL * 100;
-          _lvAnimate(lvFloor, lvPct);
-        }
-        // 服务器真理后台静默拉取（只同步 _lvAccWge 基准，不动画）
+        // 服务器真理拉取（静默修正）
         _fetchLv();
-        // 免费预算
-        if (e.data.freeWindow) {
+        // 免费预算刷新
+        if (isFree) {
           try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (_) { }
         }
       }
@@ -213,14 +227,23 @@
       var data = await resp.json();
       if (data && data.ok) {
         _lvData = data;
+        // ★ 更新 countryIso2（LV API 现在返回 country_iso2）
+        if (data.country_iso2 && (!_authData.countryIso2 || data.country_iso2 !== _authData.countryIso2)) {
+          _authData.countryIso2 = data.country_iso2;
+          _updateButtons(true, _authData.phone.slice(-4));
+        }
         var firstTime = (_lvAccWge === null);
         var WL = 10 * 10000;
         var servFloor = data.level_floor != null ? data.level_floor : 0;
         var servPct = Math.min(data.progress_pct || 0, 100);
         var servWge = servFloor * WL + (servPct / 100) * WL;
-        // 只前进不后退
+        // 服务器值高于本地 → 直接采纳（DB 已更新）
+        // 服务器值低于本地 且 静默 >2s → 纠正超标（如部分免费导致本地虚高）
+        // 服务器值低于本地 且 刚 billing → 忽略（DB 异步写入延迟）
         if (_lvAccWge === null || servWge > _lvAccWge) {
           _lvAccWge = servWge;
+        } else if (servWge < _lvAccWge && Date.now() - _lvLastBillingTs > 2000) {
+          _lvAccWge = servWge;  // ★ 静默期纠正超标
         }
         _lvLastGe = data.total_consumed_ge || '';
         // ★ 首次启动：snap 两层到服务器基准（不播动画，顶层盖住中层）
@@ -270,55 +293,22 @@
   var _lvAudioRegular = null, _lvAudioMilestone = null;
   function _lvEnsureAudio() {
     if (!_lvAudioRegular) {
-      _lvAudioRegular = new Audio('assets/lv-up.mp3');
+      _lvAudioRegular = new Audio('../assets/lv-up.mp3');
       _lvAudioRegular.volume = 0.55;
     }
     if (!_lvAudioMilestone) {
-      _lvAudioMilestone = new Audio('assets/lv-up-milestone.mp3');
+      _lvAudioMilestone = new Audio('../assets/lv-up-milestone.mp3');
       _lvAudioMilestone.volume = 0.65;
     }
-  }
-
-  // ★ 升级特效：金环爆闪 + LV 文字弹跳 + 音频
-  function _lvLevelUpBurst(lvFloor) {
-    _lvEnsureAudio();
-    var isMilestone = (lvFloor > 0 && lvFloor % 10 === 0);
-    var audio = isMilestone ? _lvAudioMilestone : _lvAudioRegular;
-    if (audio) {
-      audio.currentTime = 0;
-      audio.play().catch(function () { /* 自动播放策略阻止，静默吞掉 */ });
-    }
-    if (!_$lvBar) return;
-    var track = _$lvBar.querySelector('.qqq-lv-track');
-    // ① 轨道白闪
-    if (track) {
-      track.style.boxShadow = '0 0 18px 4px #fff, 0 0 36px 8px #c4b187';
-      track.style.filter = 'brightness(2)';
-      setTimeout(function () {
-        track.style.boxShadow = '';
-        track.style.filter = '';
-      }, 400);
-    }
-    // ② LV 文字弹跳
-    if (_$lvLevel) {
-      _$lvLevel.style.transform = 'scale(1.5)';
-      _$lvLevel.style.color = '#c4b187';
-      _$lvLevel.style.textShadow = '0 0 12px #c4b187';
-      setTimeout(function () {
-        _$lvLevel.style.transform = '';
-        _$lvLevel.style.color = '';
-        _$lvLevel.style.textShadow = '';
-      }, 500);
-    }
-    // ③ 整条 bar 光晕
-    _$lvBar.style.filter = 'drop-shadow(0 0 14px #c4b187)';
-    setTimeout(function () { _$lvBar.style.filter = ''; }, 600);
   }
 
   // 顶层 rAF 追赶（每间 house 独立调用）
   function _lvChaseSolid(targetPct, isLevelUp, lvFloor) {
     if (!_$lvSolid) return;
-    if (isLevelUp) _lvLevelUpBurst(lvFloor);
+    // ★ 每次 billing 滴视觉特效（粒子爆发 + 光环扩散，位置在经验条右段随机 X）
+    _lvBurstParticles(); _lvExpandRing();
+    // 升级时额外音频
+    if (isLevelUp) { _lvEnsureAudio(); var isM = (lvFloor > 0 && lvFloor % 10 === 0); var aud = isM ? _lvAudioMilestone : _lvAudioRegular; if (aud) { aud.currentTime = 0; aud.play().catch(function(){}); } }
     var gen = ++_lvChaseGen;
     var now = performance.now();
     var baseDuration = isLevelUp ? 500 : 10000;
@@ -419,7 +409,8 @@
 
   function _lvBurstParticles() {
     var barRect = _$lvBar.getBoundingClientRect();
-    var cx = barRect.left + barRect.width / 2;
+    // ★ 随机 X 在经验条右半段，Y 固定经验条中心
+    var cx = barRect.left + barRect.width * 0.5 + Math.random() * barRect.width * 0.5;
     var cy = barRect.top + barRect.height / 2;
     var container = document.createElement('div');
     container.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:99998;';
@@ -449,7 +440,7 @@
 
   function _lvExpandRing() {
     var barRect = _$lvBar.getBoundingClientRect();
-    var cx = barRect.left + barRect.width / 2;
+    var cx = barRect.left + barRect.width * 0.5 + Math.random() * barRect.width * 0.5;
     var cy = barRect.top + barRect.height / 2;
     var r = document.createElement('div');
     r.style.cssText = 'position:fixed;left:' + (cx - 6) + 'px;top:' + (cy - 6) + 'px;width:12px;height:12px;border-radius:50%;border:2.5px solid #ffd700;pointer-events:none;z-index:99997;transition:all 0.9s cubic-bezier(0,0.45,0.12,1);opacity:0.9;box-shadow:0 0 6px #ffd700;';
@@ -474,8 +465,8 @@
     // ② 顶层 rAF 追赶
     _lvChaseSolid(lvPct, isLevelUp, lvFloor);
     if (_$ldrBtn) _$ldrBtn.style.display = '';
-    // ③ 升级特效：金色光晕 + 粒子爆发 + 光环扩散（暂注释，可能与别人重复）
-    // if (isLevelUp) { _lvLevelUpGlow(); _lvBurstParticles(); _lvExpandRing(); }
+    // ③ 升级特效：金色光晕 + 粒子爆发 + 光环扩散（仅升级时）
+    if (isLevelUp) { _lvLevelUpGlow(); _lvBurstParticles(); _lvExpandRing(); }
   }
 
 

@@ -519,7 +519,7 @@
                 stream: true,
                 max_tokens: _maxTokens,
                 floor_id: (self._floorId || 'compact') + _suffix
-            }, { compact: true });
+            }, { compact: true, keySlot: self._questKeySlot });
 
             var _ttfbMs = performance.now() - _fetchStart;
 
