@@ -370,6 +370,7 @@ async function _restoreAgentFromStore(questId, ag) {
             if (_pbData && allFloors[_pbfi].floorNum === ag._currentFloorNum - 1) {
                 if (typeof _pbData.passbyHouses === 'number') ag._passbyBaseHouses = _pbData.passbyHouses;
                 if (typeof _pbData.passbyWge === 'number') ag._passbyBaseWge = _pbData.passbyWge;
+                if (typeof _pbData.passbyTokens === 'number') ag._passbyBaseTokens = _pbData.passbyTokens;
                 break;
             }
         }
@@ -383,6 +384,7 @@ async function _restoreAgentFromStore(questId, ag) {
             if (_pbData && allFloors[_pbfi].floorNum === ag._currentFloorNum - 1) {
                 if (typeof _pbData.passbyHouses === 'number') ag._passbyBaseHouses = _pbData.passbyHouses;
                 if (typeof _pbData.passbyWge === 'number') ag._passbyBaseWge = _pbData.passbyWge;
+                if (typeof _pbData.passbyTokens === 'number') ag._passbyBaseTokens = _pbData.passbyTokens;
                 break;
             }
         }
@@ -490,13 +492,13 @@ async function _restoreAgentFromStore(questId, ag) {
 }
 
 // ★ 刷新服务器城市（Cloudflare X-Original-City 透传）
+// 直连 gh555.com（不走 direct，防超时）；5s 超时 + 静默失败
 async function _refreshServerCity(ag) {
     try {
-        // ★ 本地 dev 无 Cloudflare → 直连生产服务器（geo 非关键，静默容错）
-        var _geoUrl = (location.hostname === '127.0.0.1' || location.hostname === 'localhost')
-            ? 'https://direct.gh555.com/api/geo'
-            : '/api/geo';
-        var resp = await fetch(_geoUrl);
+        var _ctrl = new AbortController();
+        var _tid = setTimeout(function () { _ctrl.abort(); }, 5000);
+        var resp = await fetch('https://gh555.com/api/geo', { signal: _ctrl.signal });
+        clearTimeout(_tid);
         if (resp && resp.ok) {
             var data = await resp.json();
             if (data && data.city) {
@@ -505,3 +507,15 @@ async function _refreshServerCity(ag) {
         }
     } catch (_) { /* 静默 */ }
 }
+
+// ★ 计算当前楼层 tokens（prompt + completion）
+function _computeFloorTokens(ag) {
+    if (!ag || !ag._houses || !ag._houses.length) return 0;
+    var _sum = 0;
+    for (var i = 0; i < ag._houses.length; i++) {
+        var _u = ag._houses[i].usage;
+        if (_u) _sum += (_u.prompt_tokens || 0) + (_u.completion_tokens || 0);
+    }
+    return _sum;
+}
+

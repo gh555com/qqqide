@@ -37,8 +37,9 @@ Object.defineProperty(window, 'streaming', {
     enumerable: true, configurable: true
 });
 // ★ 唯一真理机器：_sending 完全由 _activeAgent._stopState 派生，零存储，零 setter
+//   _floorCompletedCleanly 守卫：防止已完成但未复位 stopState 的后台 agent 假报 sending
 Object.defineProperty(window, '_sending', {
-    get: function () { return !!(typeof _activeAgent !== 'undefined' && _activeAgent && _activeAgent._stopState === 'sending'); },
+    get: function () { return !!(typeof _activeAgent !== 'undefined' && _activeAgent && _activeAgent._stopState === 'sending' && !_activeAgent._floorCompletedCleanly); },
     enumerable: true, configurable: true
 });
 var _renderPending = false;

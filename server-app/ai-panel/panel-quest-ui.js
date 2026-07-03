@@ -132,7 +132,7 @@ async function switchQuest(id) {
         var _overlay = document.getElementById('qqq-switch-overlay');
         if (_overlay) _overlay.classList.remove('show');
         if ($messages) $messages.classList.remove('qqq-switching');
-        setStreaming(false);  // ★ 切 quest 后刷新按钮状态
+        setStreaming(!!(_activeAgent && _activeAgent._streaming));  // ★ 切 quest 后按实际 agent 状态刷新按钮（不是无条件 false）
         // ★ 防御：直查 parent.__qqq_buildingRegistry 清彗星（绕过 _getRunningQuestIds 多态不确定性）
         var _regCheck = parent && parent.__qqq_buildingRegistry;
         if (_regCheck && questActiveId && !_isDraft(questActiveId) && !_regCheck[questActiveId]) {
@@ -800,7 +800,7 @@ document.getElementById('ctx-compress').onclick = async function () {
             _aiDiv._clockCost.style.display = 'inline';
             _aiDiv._clockCost._houses = _ag._houses;
             _aiDiv._clockCost._floorNum = _ag._currentFloorNum;
-            _aiDiv._clockCost._passby = { questId: questActiveId, floorNum: _ag._currentFloorNum, houses: (_ag._passbyBaseHouses || 0) + (_ag._houses ? _ag._houses.length : 0), wge: (_ag._passbyBaseWge || 0) + (_ag._floorCostWge || 0), drift: _ag._serverDrift || 0, city: _ag._serverCity || '' };
+            _aiDiv._clockCost._passby = { questId: questActiveId, floorNum: _ag._currentFloorNum, houses: (_ag._passbyBaseHouses || 0) + (_ag._houses ? _ag._houses.length : 0), tokens: (_ag._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(_ag) : 0), wge: (_ag._passbyBaseWge || 0) + (_ag._floorCostWge || 0), drift: _ag._serverDrift || 0, city: _ag._serverCity || '' };
         }
 
         // ⑨ 停止计时（aiMs 归因 = 压缩耗时，使饼图绿色而非全黄）

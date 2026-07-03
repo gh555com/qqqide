@@ -657,6 +657,7 @@ async function _saveAgentQuestData(questId, ag, floorNum) {
         var _passbyWge = (ag._passbyBaseWge || 0) + (ag._floorCostWge || 0);
         floorPayload.passbyHouses = _passbyHouses;
         floorPayload.passbyWge = _passbyWge;
+        floorPayload.passbyTokens = (ag._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(ag) : 0);
         floorPayload.passbyTime = Date.now() + (ag._serverDrift || 0);
         floorPayload.passbyCity = ag._serverCity || '';
 
@@ -706,6 +707,7 @@ async function _saveAgentQuestData(questId, ag, floorNum) {
     if (ag._passbyBaseFloorNum !== ag._currentFloorNum) {
         ag._passbyBaseHouses = _passbyHouses;
         ag._passbyBaseWge = _passbyWge;
+        ag._passbyBaseTokens = (ag._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(ag) : 0);
         ag._passbyBaseFloorNum = ag._currentFloorNum;
     }
 }
