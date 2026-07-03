@@ -52,7 +52,7 @@ def _win_rename_devtools(main_hwnd: int, new_title: str) -> dict:
         title = buf.value
         if not title:
             return True
-        if title.startswith("Developer Tools"):
+        if title.startswith("Developer Tools") or title.startswith("\u300c\ud83d\udd27\u300d"):
             all_dev.append((hwnd, title))
             # 尝试 GW_OWNER 匹配（可能返回 0 for detached DevTools）
             try:
@@ -101,7 +101,7 @@ tell application "System Events"
     repeat with appName in appList
         tell process appName
             repeat with w in windows
-                if name of w starts with "Developer Tools" then
+                if name of w starts with "Developer Tools" or name of w starts with "「🔧」" then
                     set name of w to (do shell script "echo $(base64 -d <<< '{encoded}')")
                     return "ok"
                 end if
@@ -129,7 +129,7 @@ def _linux_rename_devtools(new_title: str) -> dict:
     try:
         r = subprocess.run(["wmctrl", "-l"], capture_output=True, text=True, timeout=5)
         for line in r.stdout.splitlines():
-            if "Developer Tools" in line:
+            if "Developer Tools" in line or "「🔧」" in line:
                 wid = line.split()[0]
                 subprocess.run(["wmctrl", "-i", "-r", wid, "-N", new_title], timeout=5)
                 return {"ok": True}

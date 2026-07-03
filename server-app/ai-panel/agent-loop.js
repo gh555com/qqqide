@@ -349,7 +349,10 @@ var AgentLoop = (function () {
         var finalContent = (userContent || '') + visionText;
 
         // 归档：保存用户键入供 generateFloorTxt 写入
-        self._lastUserInput = { text: userContent || '', vision: visionText || '', images: images || [] };
+        // ★ 恢复模式不覆写 _lastUserInput（保留原始用户问题）
+        if (!self._isRecovery) {
+            self._lastUserInput = { text: userContent || '', vision: visionText || '', images: images || [] };
+        }
 
         // ═══ 持久化 rules 注入（版本追踪，永不压缩） ═══
         var rulesPrefix = await self._refreshRules();

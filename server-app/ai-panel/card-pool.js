@@ -232,6 +232,7 @@ var CardPool = (function () {
   //   - role=assistant + content    → 渲染 AI 文字回复
   //   - 其余一律不渲染（工具调用、工具结果、系统消息等）
   function _buildConversationFlowHtml(conv, fData) {
+    var _aggErrors = [];  // ★ 聚合错误行
     if (!conv || !conv.length) {
       // ★ 仅在真正流式中断时展示 _streamingText（_streaming 为 true 才说明是中断，而非正常完成后的残留）
       if (fData && fData._streamingText && fData._streaming) {
@@ -275,9 +276,8 @@ var CardPool = (function () {
           parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">📌</span> 引导信息</div><div class="msg-flow-guide-body">' + _escHtml(_injText) + '</div></div>');
         }
       } else if (m._error && m.role === 'assistant') {
-        // ★ 错误消息：渲染时逐个显示，重启后由 _aggregateQuestErrors 统一聚合
-        var _errText = (m.content || '⚠️ 楼层异常中断，对话已保存。');
-        parts.push('<div class="msg msg-error msg-err-individual" style="white-space:pre-wrap">' + _escHtml(_errText) + ' <a class="msg-err-continue" href="#" data-i18n="ai.error.continueTask">继续任务</a></div>');
+        // ★ 错误消息：聚合到 _aggErrors，最后统一渲染一个红框
+        _aggErrors.push(m.content || '');
         _hasErrorRendered = true;
       } else if (m.role === 'assistant' && !m.tool_calls && typeof m.content === 'string' && m.content) {
         // 普通 AI 文字回复（数据已在 EnvelopeStripper 清洗，直接渲染）
@@ -300,6 +300,16 @@ var CardPool = (function () {
         _tc += (fData.houses[_ti].toolCount || (fData.houses[_ti].tools ? fData.houses[_ti].tools.length : 0));
       }
       parts.push('<div class="msg-flow-tools-done">' + _escHtml('工具执行完毕' + (_tc > 0 ? '（' + _tc + ' 次调用）' : '')) + '</div>');
+    }
+
+    // ★ 聚合错误框：所有 _error 消息合并为一个红框 + 单链接
+    if (_aggErrors.length > 0) {
+      var _aggHtml = '<div class="msg-quest-error">';
+      for (var _aei = 0; _aei < _aggErrors.length; _aei++) {
+        _aggHtml += '<div class="qe-row">' + _escHtml(_aggErrors[_aei]) + '</div>';
+      }
+      _aggHtml += ' <a class="msg-err-continue" href="#" data-i18n="ai.error.continueTask">继续任务</a></div>';
+      parts.push(_aggHtml);
     }
 
     // ★ fatal 楼层兜底：conversation 存在但无 _error 消息 → 强制生成
@@ -515,7 +525,8 @@ var CardPool = (function () {
     }
 
     // ①b AI 等级 + 启动时间指示器（用户消息与 AI 回复之间）
-    if (fData.aiStartTime && fData.tierLabel) {
+    // ★ 致命楼（0 house）不显示 aq1：AI 从未启动过，无启动时间可言
+    if (fData.aiStartTime && fData.tierLabel && !fData.floorFatal) {
       var tierEl = document.createElement('div');
       tierEl.className = 'msg-tier-indicator';
       tierEl.textContent = fData.tierLabel + ' start in ' + fData.aiStartTime;
@@ -626,52 +637,54 @@ var CardPool = (function () {
     if (fData._streamingText) fullText += fData._streamingText;
     aiEl._fullText = fullText;
 
-    // ③ 创建电子钟+饼图（最底部锚点）
-    var _initClk = window._initClockBlock;
-    if (typeof _initClk === 'function') {
-      _initClk(aiEl);
-    }
+    // ★ 致命楼（0 house）不创建时钟/A1豆腐块：AI 未启动，无统计意义
+    if (!fData.floorFatal) {
+      // ③ 创建电子钟+饼图（最底部锚点）
+      var _initClk = window._initClockBlock;
+      if (typeof _initClk === 'function') {
+        _initClk(aiEl);
+      }
 
-    // ④ 创建 A1 豆腐块（clockBlock 已存在，insertBefore 精准插入时钟上方）
-    // 铁律顺序: A4 → A1 → clock，先创建下层锚点
-    var meta = card._floorMetaMap[fNum];
-    var a1El = null;
-    var _a1Path = (meta && meta.allTxtPath) || '';
-    var _initA1 = window._initA1Block;
-    var _updA1 = window._updateA1Row1;
-    var _cntR = window._countRooms;
-    if (typeof _initA1 === 'function') {
-      a1El = _initA1(aiEl, _a1Path, card.id, fNum);
-      if (a1El) {
-        var hCount = (fData.house_count != null) ? fData.house_count : (meta && meta.houses ? meta.houses.length : 0);
-        var _fallbackRc = (typeof _cntR === 'function' && meta && meta.houses) ? _cntR(meta.houses) : 0;
-        var rCount = (fData.room_count != null && fData.room_count > 0) ? fData.room_count : _fallbackRc;
-        if (typeof _updA1 === 'function') {
-          _updA1(a1El, fNum, hCount, rCount);
-        }
-        var _fs = fData.fileStats;
-        if (_fs && a1El._r2a) {
-          a1El._r2a.textContent = 'FILE ' + (_fs.fileCount || 0);
-          a1El._r2b.textContent = '   ROW +' + (_fs.added || 0) + ' -' + (_fs.deleted || 0);
-          if (a1El._r2) {
-            var _hasChg = (_fs.fileCount || 0) > 0 || (_fs.added || 0) > 0 || (_fs.deleted || 0) > 0;
-            a1El._r2.style.display = _hasChg ? '' : 'none';
+      // ④ 创建 A1 豆腐块（clockBlock 已存在，insertBefore 精准插入时钟上方）
+      // 铁律顺序: A4 → A1 → clock，先创建下层锚点
+      var meta = card._floorMetaMap[fNum];
+      var a1El = null;
+      var _a1Path = (meta && meta.allTxtPath) || '';
+      var _initA1 = window._initA1Block;
+      var _updA1 = window._updateA1Row1;
+      var _cntR = window._countRooms;
+      if (typeof _initA1 === 'function') {
+        a1El = _initA1(aiEl, _a1Path, card.id, fNum);
+        if (a1El) {
+          var hCount = (fData.house_count != null) ? fData.house_count : (meta && meta.houses ? meta.houses.length : 0);
+          var _fallbackRc = (typeof _cntR === 'function' && meta && meta.houses) ? _cntR(meta.houses) : 0;
+          var rCount = (fData.room_count != null && fData.room_count > 0) ? fData.room_count : _fallbackRc;
+          if (typeof _updA1 === 'function') {
+            _updA1(a1El, fNum, hCount, rCount);
           }
-        }
-        var bridge2 = window.parent && window.parent.qqqideBridge;
-        if (bridge2 && _a1Path) {
-          bridge2.fs.stat(_a1Path).then(function (st) {
-            if (st && st.size && typeof _updA1 === 'function') {
-              _updA1(a1El, fNum, hCount, rCount, st.size);
+          var _fs = fData.fileStats;
+          if (_fs && a1El._r2a) {
+            a1El._r2a.textContent = 'FILE ' + (_fs.fileCount || 0);
+            a1El._r2b.textContent = '   ROW +' + (_fs.added || 0) + ' -' + (_fs.deleted || 0);
+            if (a1El._r2) {
+              var _hasChg = (_fs.fileCount || 0) > 0 || (_fs.added || 0) > 0 || (_fs.deleted || 0) > 0;
+              a1El._r2.style.display = _hasChg ? '' : 'none';
             }
-          }).catch(function () { });
+          }
+          var bridge2 = window.parent && window.parent.qqqideBridge;
+          if (bridge2 && _a1Path) {
+            bridge2.fs.stat(_a1Path).then(function (st) {
+              if (st && st.size && typeof _updA1 === 'function') {
+                _updA1(a1El, fNum, hCount, rCount, st.size);
+              }
+            }).catch(function () { });
+          }
         }
       }
     }
 
-    // ④b 恢复 A4 文件快照块（在 A1 之前）
-    // A1 已存在，_initA4Block 会 insertBefore(A1) 定位
-    if (typeof window._a4RestoreBlock === 'function' && fData.a4Snapshots && fData.a4Snapshots.length) {
+    // ④b 恢复 A4 文件快照块（仅在时钟存在时，即非致命楼）
+    if (aiEl._clockBlock && typeof window._a4RestoreBlock === 'function' && fData.a4Snapshots && fData.a4Snapshots.length) {
       var _a4NumId = 0;
       if (window.questStore && window.questStore._index) {
         for (var _qi = 0; _qi < window.questStore._index.length; _qi++) {
@@ -682,6 +695,8 @@ var CardPool = (function () {
     }
 
     // ⑤ 时钟渲染：活楼重连 timer，死楼用静态 timing
+    // ★ 致命楼无时钟块，跳过
+    if (!aiEl._clockBlock) { /* skip */ } else {
     var _liveAg = parent.__qqq_agentPool && parent.__qqq_agentPool[card.id];
     var _isLiveBuilding = _liveAg && _liveAg._stopState === 'sending' && _liveAg._currentFloorNum === fNum;
     if (_isLiveBuilding && typeof startFloorTimer === 'function') {
@@ -726,10 +741,10 @@ var CardPool = (function () {
         }
         aiEl._clockCanvas.style.visibility = 'visible';
       }
-    }
+    }}
 
     // ⑥ 恢复历史楼层成本显示
-    if (fData.costWge && aiEl._clockCost) {
+    if (aiEl._clockBlock && fData.costWge && aiEl._clockCost) {
       var _rawGe = fData.costWge / 10000;
       var _displayGe = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2);
       var isFree = fData.floorFree === true;
@@ -786,6 +801,40 @@ var CardPool = (function () {
       }
       this._activeId = questId;
       card.dom.style.display = 'block';
+    }
+
+    // ★ 防重复：若该楼层已有 AI div（恢复路径），直接复用
+    if (card.floorDOM[floorNum] && card.floorDOM[floorNum].aiEl) {
+      var _existingAi = card.floorDOM[floorNum].aiEl;
+      // 封顶其他在建楼
+      if (card.buildingFloor !== null && card.buildingFloor !== floorNum) {
+        this._capFloor(card, card.buildingFloor);
+      }
+      card.buildingFloor = floorNum;
+      // 重置流式状态（新重试，旧 buf 无效）
+      _existingAi._buf = '';
+      _existingAi._paras = [];
+      _existingAi._codeFenceOpen = false;
+      _existingAi._splitCursor = 0;
+      _existingAi._dirty = false;
+      _existingAi._renderScheduled = false;
+      _existingAi._renderedCount = 0;
+      _existingAi._lastParaEl = null;
+      _existingAi._firstRenderDone = false;
+      _existingAi._fullText = '';
+      // ★ 恢复时补建时钟和 A1（若缺失，如从致命楼 reload 后首次恢复）
+      if (!_existingAi._clockBlock) {
+        var _initClkR = window._initClockBlock;
+        if (typeof _initClkR === 'function') _initClkR(_existingAi);
+        var _initA1R = window._initA1Block;
+        if (allTxtPath && typeof _initA1R === 'function') {
+          var _a1El = _initA1R(_existingAi, allTxtPath, questId, floorNum);
+          if (_a1El && typeof window._updateA1Row1 === 'function') {
+            window._updateA1Row1(_a1El, floorNum, 0, 0);
+          }
+        }
+      }
+      return _existingAi;
     }
 
     // 若已有在建楼，先封顶

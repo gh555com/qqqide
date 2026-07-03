@@ -14,6 +14,7 @@ import { StateStore } from './state-sqlite';
 import { DownloadService } from './download-service';
 import { UpdateService } from './update-service';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
+import { renameDevToolsViaBroker } from './py-broker';
 import { _consoleBuffer } from './window-manager';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 
@@ -232,6 +233,9 @@ export function registerMiscIpc(
         }
         _windowProjectMap.set(win.id, normalized);
         _projectWindowMap.set(normalized, win.id);
+        // ★ DevTools 可能已用 fallback "qqq IDE" 改名，项目确认后重新改名
+        const projName = path.basename(normalized);
+        setTimeout(() => renameDevToolsViaBroker(win, projName), 1500);
         return true;
     });
 

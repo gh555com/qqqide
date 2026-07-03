@@ -727,13 +727,15 @@
         delete window.qqqPendingEditorPositions[filePath];
       }
 
-      // ★ 搜索跳转：从搜索列表点击跳转到指定行/列
+      // ★ 搜索跳转：从搜索列表点击跳转到指定行/列（延迟执行，让 Monaco 先完成布局）
       if (opts && opts.line) {
-        try {
-          var _jumpPos = { lineNumber: opts.line, column: opts.col || 1 };
-          ed.setPosition(_jumpPos);
-          ed.revealPositionInCenter(_jumpPos);
-        } catch (_) {}
+        setTimeout(function () {
+          try {
+            var _jumpPos = { lineNumber: opts.line, column: opts.col || 1 };
+            ed.setPosition(_jumpPos);
+            ed.revealPositionInCenter(_jumpPos);
+          } catch (_) {}
+        }, 300);
       }
 
       // ★ 搜索高亮：自动打开查找控件并填入搜索词
