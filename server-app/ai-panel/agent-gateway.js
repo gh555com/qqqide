@@ -168,7 +168,8 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     token: _currentToken,
                     signal: self.abortController.signal,
                     tier: parseInt(tier.label) || 6,
-                    isFallback: GATEWAY_URL === GATEWAY_URL_FALLBACK
+                    isFallback: GATEWAY_URL === GATEWAY_URL_FALLBACK,
+                    keySlot: self._questKeySlot  // ★ quest 级固定 key，不随 URL 线路变化
                 });
             } else {
                 // 兜底：AiGateway 未加载（不应发生）
@@ -217,23 +218,17 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                         continue;
                     }
                 }
-                self._log('✗ gateway ' + resp.status + ': ' + text.slice(0, 200));
-
-                // ★ 备线 402（欠费）：静默切回主线，不曝服务端内部状态给用户
-                if (resp.status === 402 && GATEWAY_URL === GATEWAY_URL_FALLBACK && typeof _gwSwitch === 'function') {
-                    self._log('  fallback depleted — switching back to primary');
-                    _gwSwitch(false);  // → 主线
-                    if (_lineSwitches < MAX_LINE_SWITCHES) {
-                        _lineSwitches++;
+                   // ★ 402（key 欠费）：切换 key slot，不换线路（缓存保留）
+                if (resp.status === 402) {
+                    if (self._questKeySlot === 0) {
+                        self._questKeySlot = 1;
+                        self._log('  key depleted — switched to fallback key (slot 1), cache reset unavoidable');
                         retry = -1;
                         continue;
                     }
-                    // 已达切换上限 → 同 502/503 无线路可用，不曝余额不足给用户
+                    // 两把 key 都欠费
                     self._exitReason = 'http_' + resp.status;
-                    self._lastGatewayMessage = '服务器暂时未可达，所有线路均已耗尽';
-                    if (typeof _gwBroadcastDeadFallback === 'function') {
-                        _gwBroadcastDeadFallback();
-                    }
+                    self._lastGatewayMessage = 'AI 服务暂时未可用，请稍后再试（所有 API key 已耗尽）';
                     return null;
                 }
 
@@ -446,15 +441,21 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 return null;
             }
 
-            // ★ 402（服务端 key 欠费）：不重试同线路，直接切线路（另一把 key 可能有钱）
+            // ★ 402（key 欠费）：切换 key slot
             if (self._lastGatewayError === 402) {
-                self._log('  AI upstream 402 — key depleted, trying line switch');
+                if (self._questKeySlot === 0) {
+                    self._questKeySlot = 1;
+                    self._log('  key depleted — switched to fallback key (slot 1)');
+                    retry = -1;
+                    clearTimeout(_fetchDeadline);
+                    continue;
+                }
+                self._log('  AI upstream 402 — both keys depleted');
                 clearTimeout(_fetchDeadline);
+                self._exitReason = 'http_402';
                 self._lastGatewayMessage = 'AI 服务暂时未可用，请稍后再试';
-                // 跳过 HTTP/2 重试，直接落入下方线路切换逻辑
+                return null;
             } else {
-                // HTTP/2 协议检测：JS 层 fetch() 对 ERR_HTTP2_* 只报 "Failed to fetch"
-                // net::ERR_HTTP2_PROTOCOL_ERROR 仅 DevTools 可见，JS Error.message 拿不到
                 var _isHttp2Like = msg.indexOf("ERR_HTTP2") >= 0
                     || msg.indexOf("ERR_CONNECTION_CLOSED") >= 0
                     || msg === 'Failed to fetch'

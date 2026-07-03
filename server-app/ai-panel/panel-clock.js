@@ -440,11 +440,8 @@ async function renderQuestDrop() {
     body.className = 'quest-drop-body';
     for (var i = 0; i < displayCount; i++) {
         (function (s) {
-            // ★ 彗星标记：读父窗口中心机器，所有正在建楼的 quest 都显示环绕
-            var runningIds = (typeof _getRunningQuestIds === 'function') ? _getRunningQuestIds() : [];
-            var isRunning = runningIds.indexOf(s.id) >= 0;
             var item = document.createElement('div');
-            item.className = 'quest-drop-item' + (s.id === questActiveId ? ' active' : '') + (isRunning ? ' running' : '');
+            item.className = 'quest-drop-item' + (s.id === questActiveId ? ' active' : '');
             var line = document.createElement('span');
             line.className = 'quest-drop-line';
             var prefix = document.createElement('span');
@@ -558,6 +555,46 @@ async function openQuestDrop() {
 }
 var _tofuEntry = null;  // 当前活跃 quest 的 index 条目，供编辑用
 
+// ═══ 微型电子钟：右下角黑底白字，只显示秒数 ═══
+// 唯一真理机器：读 _activeAgent._floorStartPerf（所有面板共享同一 agent）
+// 200ms 滴答 → 楼层封顶消失
+var _questClockTimer = null;
+
+function _startQuestClock() {
+    if (_questClockTimer) return;
+    _updateQuestClock();
+    _questClockTimer = setInterval(_updateQuestClock, 200);
+}
+
+function _updateQuestClock() {
+    var clockEl = document.getElementById('quest-clock');
+    if (!clockEl) return;
+    var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+    if (ag && ag._stopState === 'sending' && ag._floorStartPerf > 0) {
+        var elapsed = performance.now() - ag._floorStartPerf;
+        var seconds = Math.floor(elapsed / 1000);
+        clockEl.textContent = seconds;
+        clockEl.style.display = '';
+        // ★ 确保定时器在跑
+        if (!_questClockTimer) _questClockTimer = setInterval(_updateQuestClock, 200);
+    } else {
+        clockEl.style.display = 'none';
+        if (_questClockTimer) {
+            clearInterval(_questClockTimer);
+            _questClockTimer = null;
+        }
+    }
+}
+
+function _stopQuestClock() {
+    if (_questClockTimer) {
+        clearInterval(_questClockTimer);
+        _questClockTimer = null;
+    }
+    var clockEl = document.getElementById('quest-clock');
+    if (clockEl) clockEl.style.display = 'none';
+}
+
 async function updateQuestTofu() {
     var prefixEl = document.getElementById('quest-tofu-prefix');
     var textEl = document.getElementById('quest-tofu-text');
@@ -571,19 +608,14 @@ async function updateQuestTofu() {
         textEl.textContent = entry.title || '';
         textEl.parentElement.classList.remove('quest-tofu-new');
         if (pen) pen.style.display = '';
-        // ★ 彗星环绕：读父窗口中心机器，所有正在建楼的 quest 均显示
-        var runningIds = (typeof _getRunningQuestIds === 'function') ? _getRunningQuestIds() : [];
-        if (runningIds.indexOf(questActiveId) >= 0) {
-            textEl.parentElement.classList.add('quest-running');
-        } else {
-            textEl.parentElement.classList.remove('quest-running');
-        }
+        // ★ 微型电子钟：建楼中显示，否则隐藏
+        _updateQuestClock();
     } else {
         if (prefixEl) prefixEl.textContent = '';
         textEl.textContent = '~ New quest ~';
         textEl.parentElement.classList.add('quest-tofu-new');
-        textEl.parentElement.classList.remove('quest-running');
         if (pen) pen.style.display = 'none';
+        _updateQuestClock();
     }
     var title = 'qqq IDE';
     var root = questStore.getProjectRoot();

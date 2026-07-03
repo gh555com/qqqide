@@ -2,7 +2,46 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 ============================================================
 更新: 2026-06-29
 
-已完成 — 本轮 2026-06-29 (30) 按钮状态 per-quest + 时钟终结 + _sending 守卫
+已完成 — 本轮 2026-06-29 (35) ~New quest~ 状态泄漏清除 + 红框跨楼层搜索
+------
+· 根因1—草稿 UI 状态泄漏：sendMessage 草稿晋升后 saveQuestUIState(_dOldId) 保存了已发送的输入框文本/图片/tier
+  → 下次 ~New quest~ restoreQuestUIState(_draftId) 还原 → 老内容复活（重启不掉，onlyStore 持久化）
+· 根因2—草稿 agent 池队列泄漏：_getOrCreateAgent 对草稿也建 agent 放 parent.__qqq_agentPool
+  → switchQuest(_draftId) 重用池中 agent → 旧 _queue 数组残留 → 队列背包复活
+· 修复 panel-send.js L57-67（一处改，三重清理）：
+  delete questUIStates[_dOldId] + onlyStore.setNow 同步落盘 + parent.__qqq_agentPool[_dOldId]._queue = []
+· 边界审计—红框重复漏洞：card-pool 重载后 agent._questErrorDiv 断开，
+  _renderQuestErrorBox 又建新框 → 两框并存
+  → 修复：三层搜索链（缓存→跨楼层 static box→新建），从高到低楼层号逐层 querySelector('.msg-quest-error')
+  其他边界均已自愈：_hideRecoveryLink 路径2、事件委托、按钮瞬时态
+------
+
+已完成 — 本轮 2026-07-03 (34) 彗星→微型电子钟
+------
+· 彗星环绕动画全删：
+  index.html：comet-orbit-a/b keyframes + quest-running/quest-drop-item.running CSS + ::before/::after 轨道全删
+  panel-clock.js：updateQuestTofu()/renderQuestDrop() 彗星 class 逻辑全删
+  panel-render.js：_panelRunningQuestId/_markQuestRunning 删除；setStreaming 替换为时钟
+  panel-send.js：_markQuestRunning() 调用全删 + registry defense + _panelRunningQuestId + 彗星注释
+  panel-quest-ui.js/panel-quest.js：registry 彗星防御/broadcast handler 删除
+  panel-registry.js：_getRunningQuestIds/_broadcastRegistry 删除
+  panel-state.js：_getRunningQuestIds 删除
+  零 comet、零 quest-running、零彗星残留
+· 微型电子钟替代：
+  位置：quest-tofu 右下角，黑底白字 monospace 12px（font-smooth:never 无模糊实边）
+  真理：_activeAgent._floorStartPerf（所有面板共享同一 agent）
+  生命周期：建楼中 200ms tick（_startQuestClock）→ 楼层封顶立即消失（_stopQuestClock）
+  只显示秒数数字（如"160"），不显示"s"
+· index.html：新增 .quest-clock CSS + #quest-clock HTML span
+· panel-clock.js：新增 _startQuestClock()/_stopQuestClock()/_updateQuestClock()
+------
+已完成 — 本轮 2026-07-03 (33) 恢复终极架构：封顶密封 + 新楼层
+------
+· 终极架构决策：N-house 续建不可靠—AI API无状态→封顶密封旧楼层→创建新楼层+新粉色气泡→走0-house闭环
+· _startRecovery 分叉：agent._houses.length>0→sendMessage(false)新楼层 / 否则→skipFloorCreation=true同楼层
+· _attemptRecoverySendNewFloor：sendMessage(false)→新粉色气泡→新楼层走 0-house 恢复
+· 跨楼层红框 agent._questErrorDiv：新楼层失败垒行到封顶楼层的同一个红框
+· 向后兼容代码全删：_aggregateQuestErrors(52行)+重启矫正(6行)+持久化净化(7行)+双类事件委托+msg-err-individual全删
 ------
 · switchQuest L135：setStreaming(false) → setStreaming(!!(_activeAgent && _activeAgent._streaming))
   旧缺陷：切到建楼中 quest 时按钮仍显示 Send（无脑 false），用户无法停止

@@ -9,7 +9,7 @@
 //   - 一个 quest 同一时刻只能在一个面板建楼（所有权系统保证）
 //   - 前台/后台由建楼所在面板与当前查询面板比对得出
 //   - "能发消息吗" = 当前 quest 不在建楼 OR 当前 quest 自己正在建楼（引导/排队）
-//   - 彗星环绕 = 所有 stopState='sending' 的 quest 均显示
+//   - 电子钟：建楼中 tick，封顶消失
 
 // ═══ 父窗口共享注册表（跨 iframe 唯一真理源） ═══
 // 挂在父窗口上，三面板共享同一引用
@@ -26,22 +26,14 @@ function _ensureParentRegistry() {
 function _registerBuilding(questId, panelId) {
     var reg = _ensureParentRegistry();
     if (!reg) return;
-    reg[questId] = {
-        stopState: 'sending',
-        panelId: panelId,
-        startedAt: Date.now()
-    };
-    _broadcastRegistry();
+    reg[questId] = { stopState: 'sending', panelId: panelId, startedAt: Date.now() };
 }
 
 // ── 登记一个 quest 停止建楼（完成/错误/手动停止） ──
 function _unregisterBuilding(questId) {
     var reg = _ensureParentRegistry();
     if (!reg) return;
-    if (reg[questId]) {
-        delete reg[questId];
-        _broadcastRegistry();
-    }
+    delete reg[questId];
 }
 
 // ── 查询：某个 quest 是否正在建楼（全局，不限面板） ──
@@ -52,16 +44,6 @@ function _isQuestBuilding(questId) {
 }
 
 // ── 查询：所有正在建楼的 questId 列表 ──
-function _getRunningQuestIds() {
-    var reg = _ensureParentRegistry();
-    if (!reg) return [];
-    var ids = [];
-    var keys = Object.keys(reg);
-    for (var i = 0; i < keys.length; i++) {
-        if (reg[keys[i]].stopState === 'sending') ids.push(keys[i]);
-    }
-    return ids;
-}
 
 // ── 查询：当前面板前台 quest 是否可以发送消息 ──
 //   原则：当前 quest 如果是建楼中的（主动触发引导/排队），允许发
@@ -77,15 +59,8 @@ function _canCurrentQuestSend(questId) {
 }
 
 // ── 面板级通知：告知同窗口其他面板注册表已更新 ──
-function _broadcastRegistry() {
-    try {
-        if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.sync) {
-            window.parent.qqqideBridge.sync.broadcast('qqq-registry-changed', {});
-        }
-    } catch (_) { }
-}
 
-// ★ 监听来自其他面板的注册表更新（彗星环绕刷新）
+// ★ 监听来自其他面板的注册表更新
 if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.sync) {
     try {
         window.parent.qqqideBridge.sync.on('qqq-registry-changed', function () {
@@ -98,5 +73,4 @@ if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.sy
 window._registerBuilding = _registerBuilding;
 window._unregisterBuilding = _unregisterBuilding;
 window._isQuestBuilding = _isQuestBuilding;
-window._getRunningQuestIds = _getRunningQuestIds;
 window._canCurrentQuestSend = _canCurrentQuestSend;

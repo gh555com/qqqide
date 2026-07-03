@@ -97,12 +97,6 @@ function _parentGetQuestOwner(questId) {
     return undefined;
 }
 // ★ 中心机器：读取所有正在建楼的 questId 列表（跨面板共享，只读）
-function _getRunningQuestIds() {
-    try {
-        if (parent && parent.__qqq_getRunningQuests) return parent.__qqq_getRunningQuests();
-    } catch (_) { }
-    return [];
-}
 
 // ★ 全局默认 AI 等级：settings.js → QQQ_DEFAULTS → 兜底 3
 //   改默认值只改 core/defaults.js

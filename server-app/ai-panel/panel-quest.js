@@ -60,11 +60,6 @@ async function _handleSyncMessage(msg) {
                     _unloadQuest();
                 }
                 break;
-            case 'quest-running':
-                // 另一面板 quest 开始/停止建楼 → 刷新彗星标记（下拉+tofu）
-                if (typeof updateQuestTofu === 'function') await updateQuestTofu();
-                if (typeof _questDrop !== 'undefined' && _questDrop && typeof renderQuestDrop === 'function') renderQuestDrop();
-                break;
             case 'owner-released':
                 // 另一面板释放了 quest — 不做任何事（我们不自动加载）
                 break;

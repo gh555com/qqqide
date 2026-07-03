@@ -92,6 +92,7 @@ async function _ripgrepSearch(
     maxResults: number,
     timeoutMs: number,
     respectGitignore: boolean,
+    matchFilenames: boolean,
 ): Promise<SearchResult> {
 
     const rgPath = _findRipgrep();
@@ -111,6 +112,14 @@ async function _ripgrepSearch(
         '--max-depth', String(SEARCH_MAX_DEPTH),
         '--max-filesize', String(SEARCH_MAX_FILE_MB) + 'M',
     ];
+
+    // Multiline detection: query contains \n or actual newline → enable ripgrep -U
+    let actualQuery = query;
+    const hasNewline = query.indexOf('\\n') !== -1 || query.indexOf('\n') !== -1;
+    if (hasNewline) {
+        args.push('--multiline');
+        actualQuery = query.replace(/\\n/g, '\n');
+    }
 
     if (!caseSensitive) args.push('--ignore-case');
     if (wholeWord) args.push('--word-regexp');
@@ -134,7 +143,7 @@ async function _ripgrepSearch(
         args.push('--context', String(contextLines));
     }
 
-    args.push('--regexp', query);
+    args.push('--regexp', actualQuery);
     args.push(searchPath);
 
     return new Promise((resolve) => {
@@ -168,7 +177,7 @@ async function _ripgrepSearch(
             resolve({ error: 'ripgrep 进程错误: ' + err.message, results: [], total: 0, elapsed: 0, filesScanned: 0, truncated: false, fileStats: {} });
         });
 
-        rg.on('close', (code: number | null) => {
+        rg.on('close', async (code: number | null) => {
             clearTimeout(timer);
 
             if (killed || code === null && stdout.length === 0) {
@@ -202,8 +211,116 @@ async function _ripgrepSearch(
                 } catch { /* skip */ }
             }
             parsed.filesScanned = fileSet.size;
+
+            // Filename matching — second pass
+            if (matchFilenames && parsed.results.length < maxResults && !parsed.error) {
+                try {
+                    const fnameMatches = await _rgFilenameSearch(
+                        searchPath, query, isRegex, caseSensitive, wholeWord,
+                        includePattern, excludePattern, respectGitignore,
+                        maxResults - parsed.results.length,
+                    );
+                    const existingFiles = new Set(parsed.results.map(r => r.file));
+                    for (const m of fnameMatches.matches) {
+                        if (!existingFiles.has(m.file)) {
+                            parsed.results.push(m);
+                            existingFiles.add(m.file);
+                        }
+                    }
+                    parsed.total = parsed.results.length;
+                    Object.assign(parsed.fileStats, fnameMatches.fileStats);
+                } catch { /* filename search best-effort */ }
+            }
+
             resolve(parsed);
         });
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Filename search — second pass via rg --files
+// ═══════════════════════════════════════════════════════════════
+async function _rgFilenameSearch(
+    searchPath: string,
+    query: string,
+    isRegex: boolean,
+    caseSensitive: boolean,
+    wholeWord: boolean,
+    includePattern: string | undefined,
+    excludePattern: string | undefined,
+    respectGitignore: boolean,
+    maxResults: number,
+): Promise<{ matches: SearchMatch[]; fileStats: Record<string, { mtime: number; birthtime: number; size: number }> }> {
+    const rgPath = _findRipgrep();
+    if (!rgPath) return { matches: [], fileStats: {} };
+
+    const args: string[] = ['--files', '--no-heading', '--max-depth', String(SEARCH_MAX_DEPTH)];
+    if (!respectGitignore) args.push('--no-ignore');
+    args.push('--glob', '!.git');
+    args.push('--glob', '!node_modules');
+
+    if (includePattern) {
+        for (const p of includePattern.split(',').map(s => s.trim()).filter(Boolean)) {
+            args.push('--glob', p);
+        }
+    }
+    if (excludePattern) {
+        for (const p of excludePattern.split(',').map(s => s.trim()).filter(Boolean)) {
+            args.push('--glob', '!' + p);
+        }
+    }
+    args.push(searchPath);
+
+    return new Promise((resolve) => {
+        let stdout = '';
+        try {
+            const child = spawn(rgPath, args, { cwd: searchPath, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+            const timer = setTimeout(() => { try { child.kill(); } catch {} }, 15000);
+
+            child.stdout!.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf8'); });
+            child.on('close', () => {
+                clearTimeout(timer);
+                const lines = stdout.split('\n').map(s => s.trim()).filter(Boolean);
+                const matches: SearchMatch[] = [];
+                const fileStats: Record<string, { mtime: number; birthtime: number; size: number }> = {};
+
+                // Build filename matcher
+                let fnameMatcher: (name: string) => boolean;
+                if (isRegex) {
+                    try {
+                        const re = new RegExp(query, caseSensitive ? '' : 'i');
+                        fnameMatcher = (n) => re.test(n);
+                    } catch { fnameMatcher = () => false; }
+                } else if (wholeWord) {
+                    const esc = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const re = new RegExp('\\b' + esc + '\\b', caseSensitive ? '' : 'i');
+                    fnameMatcher = (n) => re.test(n);
+                } else {
+                    const q = caseSensitive ? query : query.toLowerCase();
+                    fnameMatcher = (n) => (caseSensitive ? n : n.toLowerCase()).indexOf(q) !== -1;
+                }
+
+                const searchNorm = searchPath.replace(/\\/g, '/').replace(/\/$/, '');
+                for (const rawPath of lines) {
+                    if (matches.length >= maxResults) break;
+                    const relPath = rawPath.replace(/\\/g, '/');
+                    const displayPath = relPath.startsWith(searchNorm + '/') ? relPath.slice(searchNorm.length + 1) : relPath;
+                    const fname = path.basename(displayPath);
+
+                    if (fnameMatcher(fname)) {
+                        const absFp = path.join(searchPath, displayPath);
+                        matches.push({ file: displayPath, line: 1, col: 1, text: fname });
+                        // Quick stat
+                        try {
+                            const st = fs.statSync(absFp);
+                            fileStats[displayPath] = { mtime: st.mtimeMs, birthtime: st.birthtimeMs, size: st.size };
+                        } catch { /* skip */ }
+                    }
+                }
+                resolve({ matches, fileStats });
+            });
+            child.on('error', () => resolve({ matches: [], fileStats: {} }));
+        } catch { resolve({ matches: [], fileStats: {} }); }
     });
 }
 
@@ -323,6 +440,7 @@ export function registerSearchIpc(): void {
         maxResults?: number;
         timeoutMs?: number;
         respectGitignore?: boolean;
+        matchFilenames?: boolean;
     }): Promise<SearchResult> => {
 
         const searchPath = args.searchPath || args.rootDir || '';
@@ -338,6 +456,7 @@ export function registerSearchIpc(): void {
             searchPath, query, isRegex, caseSensitive, wholeWord,
             args.includePattern, args.excludePattern,
             contextLines, maxResults, timeoutMs, respectGitignore,
+            args.matchFilenames !== false,
         );
     });
 
