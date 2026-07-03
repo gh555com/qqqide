@@ -69,14 +69,12 @@ async function _tryEmbeddingRerank(query, structuredResult) {
         return null;
     }
 
-    // 获取 auth token + floor_id
+    // ★ 多源取 token + floor_id（防 _activeAgent 在间 house 切换时丢失）
     var token = '';
     var floorId = '';
-    try {
-        var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-        if (ag && ag._token) token = ag._token;
-        if (ag && ag._floorId) floorId = ag._floorId;
-    } catch (_) { }
+    try { var _ag8 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_ag8 && _ag8._token) token = _ag8._token; if (_ag8 && _ag8._floorId) floorId = _ag8._floorId; } catch (_) { }
+    if (!token && typeof window !== 'undefined' && window.__qqq_floorToken) { token = window.__qqq_floorToken; }
+    if (!token) { try { var _pool4 = (typeof window !== 'undefined' && window.parent && window.parent.__qqq_agentPool) ? window.parent.__qqq_agentPool : null; if (_pool4) { for (var _qId4 in _pool4) { var _ag9 = _pool4[_qId4]; if (_ag9 && _ag9._token) { token = _ag9._token; if (!floorId && _ag9._floorId) floorId = _ag9._floorId; break; } } } } catch (_) { } }
     if (!token) { _embLog('SKIP: no auth token'); return null; }
     _embLog('auth: token=' + (token ? 'yes' : 'no') + ' floor=' + (floorId || '(new quest)'));
 
@@ -316,15 +314,12 @@ async function executeGenerateImage(args) {
         } catch (_) { }
     }
 
-	// ★ 经 AiGateway 统一代理
-	var token = (function () {
-		try {
-			var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-			if (ag && ag._token) return ag._token;
-		} catch (_) {}
-		return '';
-	})();
-    if (!token) return 'Error: no auth token';
+    // ★ 多源取 token（防 _activeAgent 在间 house 切换时丢失）
+    var token = '';
+    try { var _ag4 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_ag4 && _ag4._token) token = _ag4._token; } catch (_) { }
+    if (!token && typeof window !== 'undefined' && window.__qqq_floorToken) { token = window.__qqq_floorToken; }
+    if (!token) { try { var _pool2 = (typeof window !== 'undefined' && window.parent && window.parent.__qqq_agentPool) ? window.parent.__qqq_agentPool : null; if (_pool2) { for (var _qId2 in _pool2) { var _ag5 = _pool2[_qId2]; if (_ag5 && _ag5._token) { token = _ag5._token; break; } } } } catch (_) { } }
+    if (!token) return 'Error: no auth token — try restarting the chat or logging in again';
 
     var outDir = args.out_dir || '';
 
@@ -444,9 +439,9 @@ async function executeGenerateImage(args) {
 
 // ═══ MIME 魔术字节检测 — 借鉴 openhanako shared/image-mime.ts ═══
 var _IMAGE_MAGIC = {
-    'image/png':  [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+    'image/png': [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
     'image/jpeg': [0xFF, 0xD8, 0xFF],
-    'image/gif':  [0x47, 0x49, 0x46, 0x38],
+    'image/gif': [0x47, 0x49, 0x46, 0x38],
     'image/webp': [0x52, 0x49, 0x46, 0x46]
 };
 var _IMAGE_MIME_NAMES = { 'image/png': 'PNG', 'image/jpeg': 'JPEG', 'image/gif': 'GIF', 'image/webp': 'WebP' };
@@ -469,7 +464,7 @@ function _sniffImageMime(b64) {
                 if (match) return { mime: mime, name: _IMAGE_MIME_NAMES[mime] };
             }
         }
-    } catch (_) {}
+    } catch (_) { }
     return null;
 }
 
@@ -524,10 +519,10 @@ function _extractJsonFromVision(output) {
         var arrStart = raw.indexOf('[');
         var arrEnd = raw.lastIndexOf(']');
         if (arrStart !== -1 && arrEnd > arrStart && (arrStart < start || start === -1)) {
-            try { return JSON.parse(raw.slice(arrStart, arrEnd + 1)); } catch (_2) {}
+            try { return JSON.parse(raw.slice(arrStart, arrEnd + 1)); } catch (_2) { }
         }
         if (start !== -1 && end > start) {
-            try { return JSON.parse(raw.slice(start, end + 1)); } catch (_2) {}
+            try { return JSON.parse(raw.slice(start, end + 1)); } catch (_2) { }
         }
         return null;
     }
@@ -569,15 +564,12 @@ async function executeAnalyzeImage(args) {
 
     var action = args.action || 'describe';
 
-    // ★ 经 AiGateway 统一代理
-    var token = (function () {
-        try {
-            var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-            if (ag && ag._token) return ag._token;
-        } catch (_) {}
-        return '';
-    })();
-    if (!token) return 'Error: no auth token';
+    // ★ 多源取 token（防 _activeAgent 在间 house 切换时丢失）
+    var token = '';
+    try { var ag1 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (ag1 && ag1._token) token = ag1._token; } catch (_) { }
+    if (!token && typeof window !== 'undefined' && window.__qqq_floorToken) { token = window.__qqq_floorToken; }
+    if (!token) { try { var pool = (typeof window !== 'undefined' && window.parent && window.parent.__qqq_agentPool) ? window.parent.__qqq_agentPool : null; if (pool) { for (var _qpId in pool) { var _qpAg = pool[_qpId]; if (_qpAg && _qpAg._token) { token = _qpAg._token; break; } } } } catch (_) { } }
+    if (!token) return 'Error: no auth token — try restarting the chat or logging in again';
 
     try {
         // 1. 读取图片 → base64
@@ -681,15 +673,12 @@ async function executeRemoveBackground(args) {
     var image = args.image || '';
     if (!image.trim()) return 'Error: image path is required';
 
-    // ★ 经 AiGateway 统一代理
-    var token = (function () {
-        try {
-            var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-            if (ag && ag._token) return ag._token;
-        } catch (_) {}
-        return '';
-    })();
-    if (!token) return 'Error: no auth token';
+    // ★ 多源取 token（防 _activeAgent 在间 house 切换时丢失）
+    var token = '';
+    try { var _ag2 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_ag2 && _ag2._token) token = _ag2._token; } catch (_) { }
+    if (!token && typeof window !== 'undefined' && window.__qqq_floorToken) { token = window.__qqq_floorToken; }
+    if (!token) { try { var _pool = (typeof window !== 'undefined' && window.parent && window.parent.__qqq_agentPool) ? window.parent.__qqq_agentPool : null; if (_pool) { for (var _qId in _pool) { var _ag3 = _pool[_qId]; if (_ag3 && _ag3._token) { token = _ag3._token; break; } } } } catch (_) { } }
+    if (!token) return 'Error: no auth token — try restarting the chat or logging in again';
 
     var quality = args.quality || 'auto';
 
@@ -704,7 +693,7 @@ async function executeRemoveBackground(args) {
                 timeout: 15000
             });
             b64 = (psResult.stdout || '').replace(/\s/g, '');
-        } catch (_) {}
+        } catch (_) { }
         // 方法B: bash+base64（Linux/Mac 兜底）
         if (!b64) {
             try {
@@ -714,15 +703,15 @@ async function executeRemoveBackground(args) {
                     timeout: 15000
                 });
                 b64 = (bashResult.stdout || '').replace(/\s/g, '');
-            } catch (_) {}
+            } catch (_) { }
         }
         if (!b64) {
             // try ls to debug
             var ls = '';
             try {
-                var lsResult = await bridge.qz.spawn({cmd: 'cmd', args: ['/c', 'dir "' + image + '" 2>nul || echo NOT_FOUND'], timeout: 5000});
+                var lsResult = await bridge.qz.spawn({ cmd: 'cmd', args: ['/c', 'dir "' + image + '" 2>nul || echo NOT_FOUND'], timeout: 5000 });
                 ls = (lsResult.stdout || '').trim();
-            } catch (_) {}
+            } catch (_) { }
             return 'Error: could not read image: ' + image + (ls ? ' (dir: ' + ls.slice(0, 200) + ')' : '');
         }
 
@@ -750,7 +739,7 @@ async function executeRemoveBackground(args) {
                 if (typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
                     outDir = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/genera';
                 }
-            } catch (_) {}
+            } catch (_) { }
             if (outDir) {
                 try { await bridge.fs.mkdir(outDir); } catch (_) { }
             } else {
@@ -790,15 +779,12 @@ async function executeSearchWeb(args) {
     var query = args.query || '';
     if (!query.trim()) return 'Error: query is required';
 
-    // ★ 经 AiGateway 统一代理
-    var token = (function () {
-        try {
-            var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-            if (ag && ag._token) return ag._token;
-        } catch (_) {}
-        return '';
-    })();
-    if (!token) return 'Error: no auth token';
+    // ★ 多源取 token（防 _activeAgent 在间 house 切换时丢失）
+    var token = '';
+    try { var _ag6 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_ag6 && _ag6._token) token = _ag6._token; } catch (_) { }
+    if (!token && typeof window !== 'undefined' && window.__qqq_floorToken) { token = window.__qqq_floorToken; }
+    if (!token) { try { var _pool3 = (typeof window !== 'undefined' && window.parent && window.parent.__qqq_agentPool) ? window.parent.__qqq_agentPool : null; if (_pool3) { for (var _qId3 in _pool3) { var _ag7 = _pool3[_qId3]; if (_ag7 && _ag7._token) { token = _ag7._token; break; } } } } catch (_) { } }
+    if (!token) return 'Error: no auth token — try restarting the chat or logging in again';
 
     try {
         if (typeof AiGateway === 'undefined' || !AiGateway.searchWeb) {

@@ -539,6 +539,7 @@
       const existing = grp.tabs.find(t => t.filePath === filePath);
       if (existing) {
         activateTab(grp, existing.id);
+        _applyPaneOpts(filePath);
         return existing;
       }
     }
@@ -613,6 +614,7 @@
     const existing = targetGrp.tabs.find(t => t.filePath === filePath);
     if (existing) {
       activateTab(targetGrp, existing.id);
+      _applyPaneOpts(filePath);
       // ★ 文件已打开：直接触发 editor 搜索（如果有 _nextSearch）
       if (window._nextSearch) {
         var s = window._nextSearch; window._nextSearch = null;
@@ -697,6 +699,28 @@
         }
       }
     } catch (_) { }
+  }
+
+  // ★ 应用 _nextPaneOpts 的行/列跳转（从搜索列表点击打开已有文件时使用）
+  function _applyPaneOpts(filePath) {
+    var _paneOpts = window._nextPaneOpts || {};
+    if (_paneOpts.line) {
+      var line = _paneOpts.line, col = _paneOpts.col || 1;
+      window._nextPaneOpts = null;
+      setTimeout(function () {
+        var ed = window.qqqEditor && window.qqqEditor.getEditorInstance();
+        if (!ed || !ed.getModel) return;
+        var model = ed.getModel();
+        if (!model) return;
+        try {
+          var _jumpPos = { lineNumber: line, column: col };
+          ed.setPosition(_jumpPos);
+          ed.revealPositionInCenter(_jumpPos);
+        } catch (_) {}
+      }, 400);
+    } else {
+      window._nextPaneOpts = null;
+    }
   }
 
   // ---- Public: open file in left (first) file group ----
