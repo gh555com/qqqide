@@ -492,7 +492,11 @@ async function _restoreAgentFromStore(questId, ag) {
 // ★ 刷新服务器城市（Cloudflare X-Original-City 透传）
 async function _refreshServerCity(ag) {
     try {
-        var resp = await fetch('/gaea/api/geo');
+        // ★ 本地 dev 无 Cloudflare → 直连生产服务器（geo 非关键，静默容错）
+        var _geoUrl = (location.hostname === '127.0.0.1' || location.hostname === 'localhost')
+            ? 'https://direct.gh555.com/api/geo'
+            : '/api/geo';
+        var resp = await fetch(_geoUrl);
         if (resp && resp.ok) {
             var data = await resp.json();
             if (data && data.city) {

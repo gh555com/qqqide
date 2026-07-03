@@ -162,6 +162,15 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 [data-theme="dark"] .msg-user-copy{color:#b09090}
 [data-theme="dark"] .msg-user-copy:hover{background:rgba(255,255,255,0.08);color:#d0b0b0}
 [data-theme="dark"] .msg-user-copy.copied{color:#b8d68a}
+/* AI 消息复制按钮（左侧，复制原始 Markdown） */
+.msg-ai{position:relative}
+.msg-ai-copy{position:sticky;top:50%;transform:translateY(-50%);float:left;margin-left:-28px;width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:3px;cursor:pointer;opacity:0;transition:opacity .15s;color:#7090a0;z-index:2}
+.msg-ai:hover .msg-ai-copy,.msg-ai-copy.copied{opacity:1}
+.msg-ai-copy:hover{background:rgba(0,0,0,0.06);color:#406070}
+.msg-ai-copy.copied{color:#268bd2}
+[data-theme="dark"] .msg-ai-copy{color:#80a0b0}
+[data-theme="dark"] .msg-ai-copy:hover{background:rgba(255,255,255,0.08);color:#a0c0d0}
+[data-theme="dark"] .msg-ai-copy.copied{color:#58a6ff}
 /* AI 等级+启动时间指示器（用户消息与 AI 回复之间） */
 .msg-tier-indicator{font-size:11px;color:var(--base01);padding:2px 0 4px 0;margin-bottom:4px;font-family:ui-monospace,Consolas,monospace;letter-spacing:.02em}
 [data-theme="dark"] .msg-tier-indicator{color:var(--base1)}

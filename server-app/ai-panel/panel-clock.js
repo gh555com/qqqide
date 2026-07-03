@@ -1,4 +1,4 @@
- 不要用破折号'use strict';
+'use strict';
 // \u2550\u2550\u2550 panel-clock.js \u2550\u2550\u2550
 // Floor timer, pie chart, autoSave, quest dropdown, tofu, boot
 
