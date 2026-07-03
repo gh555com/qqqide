@@ -789,6 +789,12 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
         return m;
     });
 
+    // ★ fatal 落盘兜底：conversation 为空时记入错误消息（防重启丢上下文）
+    if (cleanConv.length === 0 && ag._floorFatal) {
+        var _fatalErr3 = '⚠️ 楼层异常中断（' + (ag._exitReason || '未知原因') + '），对话已保存。';
+        cleanConv = [{ role: 'assistant', content: _fatalErr3, _error: true, _floor: floorNum || ag._currentFloorNum || 0 }];
+    }
+
     // ★ 预计算渲染数据 — 一次渲染永久不变
     //   优先取 live DOM HTML（用户实际看到的 _contentWrap.innerHTML），保证所见即所得
     //   仅当 DOM 已销毁（旧楼/异常）才回退到 _buildConversationFlowHtml 从 conversation 重建
@@ -819,7 +825,9 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
                 costWge: ag._floorCostWge,
                 clockTiming: ag._lastFloorTimingRecord || null,
                 _streamingText: (ag._streaming && ag._activeAiDiv && ag._activeAiDiv._fullText) ? ag._activeAiDiv._fullText : '',
-                _streaming: !!(ag._streaming)
+                _streaming: !!(ag._streaming),
+                floorFatal: !!ag._floorFatal,
+                exitReason: ag._exitReason || ''
             };
             ai_html = _buildConversationFlowHtml(cleanConv, _fDataForRender);
         } catch (_) { }

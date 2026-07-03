@@ -120,7 +120,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 数据清洗: EnvelopeStripper.finalize()一次性完成(信封/floor_summary/文本工具调用回生)。
   - 渲染规则用 flag 白名单(§16a)，禁字符串匹配。
   - 流式段缓冲: _buf持当前段,完成段 push _paras, 渲染后原文置null。
-  - 流式渲染代理到 agent._doStreamRender()，调用方传 _capturedAgent 拒绝全局 _activeAgent。
+  - 流式渲染代理到 agent._doStreamRender()。
 
 §16a Flag 白名单 — conversation→显示的唯一判定
   - _guideAck+assistant→渲染 / _injected+user→渲染 / assistant+content+!tool_calls→渲染。
@@ -185,7 +185,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 每Card: 16已封顶+1在建。超限→删最老DOM。Pool上限10,LRU驱逐。
   - _buildConversationFlowHtml 为唯一渲染函数(live+恢复共用)。
   - per-floor 状态归属 agent(禁全局): _floorTimerId/_floorStartPerf/_activeAiDiv/_allTxtPath/_a4Snapshots。
-  - 面板级单例(禁经_activeAgent重定向): _allTxtPollTimer/_allTxtBlocked/_sending/streaming。
+  - 面板级单例(禁经_activeAgent重定向): _allTxtPollTimer/_allTxtBlocked/streaming。
   - A4铁律: insertBefore(a1Block)无条件。A1铁律: insertBefore(clockBlock)无条件。
   - ★ all.json 唯一增量路径=auto-save(面板级持久timer,模块加载即启动,5s间隔)。
   - 三层防线: ①_restoreAgentFromStore回填 ②空houses+非新楼层→拒绝 ③stopState!=='sending'→拒绝。
@@ -278,13 +278,21 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 
 §46b 中央建楼状态机 — 跨面板唯一真理源
   - parent.__qqq_buildingRegistry(questId→{stopState,panelId})。
-  - ★ 每quest独立沙箱: _sending/_queue/_queuePaused 全部 per-agent。
+  - ★ agent._stopState 单一真理源：idle→sending→stopping/fatal。setStopState() 带校验表（idle→[sending,fatal], sending→[stopping,fatal,idle], stopping→[idle,fatal], fatal→[sending]）。
+  - ★ _sending 纯派生（defineProperty 仅 getter）：!!(_activeAgent && _activeAgent._stopState === 'sending')。零存储零 setter。
+  - ★ 每quest独立沙箱: _queue/_queuePaused 全部 per-agent。
   - 彗星环绕: _getRunningQuestIds()→updateQuestTofu()→quest-running CSS类。跨面板广播。
   - 生命周期: registerBuilding→unregisterBuilding。finally 块兜底防僵尸。
 
 §46c 预渲染 all.json — 一次渲染永久不变
   - 新增预计算字段: ai_html(优先_contentWrap.innerHTML)/question_clean/house_count/room_count。
   - 恢复时优先读 ai_html→innerHTML，零重新渲染。旧数据无字段时回退现场渲染。
+
+§46d sendMessage 管线 — 草稿最先原则（2026-06-29 v2）
+  - 执行顺序必须: gate checks → 草稿升级 → null guard → invariant → setStopState。
+  - 草稿处理（_isDraft true）必须在一切 agent 操作之前（_activeAgent 为 null 直到草稿升级完成）。
+  - 草稿升级: questStore.create → _getOrCreateAgent → 改名落盘 → renderTabs → card 迁移。
+  - 此后 _activeAgent 保证非 null，禁在之后放置 _isDraft 分支。旧 L155 块已删除。
 
 §46 开发基础设施 / §47 INFRA OPSEC / §48 AI 图片生成
   - §46: qide-shell.py 一站式(Q=build+dev-server+watch+electron)。

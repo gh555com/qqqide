@@ -237,11 +237,17 @@ var CardPool = (function () {
       if (fData && fData._streamingText && fData._streaming) {
         return '<div class="msg-flow-partial">' + _escHtml(fData._streamingText) + '</div><div class="msg-status">⏳ 打印中断（已自动保存）</div>';
       }
+      // ★ fatal 楼层兜底：conversation 为空时仍显示错误消息 + 继续任务链接
+      if (fData && fData.floorFatal) {
+        var _fatalErrMsg = (fData.exitReason ? '⚠️ 楼层异常中断（' + fData.exitReason + '），对话已保存。' : '⚠️ 楼层异常中断，对话已保存。');
+        return '<div class="msg msg-error msg-err-individual" style="white-space:pre-wrap">' + _escHtml(_fatalErrMsg) + ' <a class="msg-err-continue" href="#" data-i18n="ai.error.continueTask">继续任务</a></div>';
+      }
       return '';
     }
 
     var parts = [];
     var seenFirstUser = false;
+    var _hasErrorRendered = false;  // ★ fatal 兜底追踪
 
     for (var i = 0; i < conv.length; i++) {
       var m = conv[i];
@@ -272,6 +278,7 @@ var CardPool = (function () {
         // ★ 错误消息：渲染时逐个显示，重启后由 _aggregateQuestErrors 统一聚合
         var _errText = (m.content || '⚠️ 楼层异常中断，对话已保存。');
         parts.push('<div class="msg msg-error msg-err-individual" style="white-space:pre-wrap">' + _escHtml(_errText) + ' <a class="msg-err-continue" href="#" data-i18n="ai.error.continueTask">继续任务</a></div>');
+        _hasErrorRendered = true;
       } else if (m.role === 'assistant' && !m.tool_calls && typeof m.content === 'string' && m.content) {
         // 普通 AI 文字回复（数据已在 EnvelopeStripper 清洗，直接渲染）
         var _rm = window.renderMarkdown;
@@ -293,6 +300,12 @@ var CardPool = (function () {
         _tc += (fData.houses[_ti].toolCount || (fData.houses[_ti].tools ? fData.houses[_ti].tools.length : 0));
       }
       parts.push('<div class="msg-flow-tools-done">' + _escHtml('工具执行完毕' + (_tc > 0 ? '（' + _tc + ' 次调用）' : '')) + '</div>');
+    }
+
+    // ★ fatal 楼层兜底：conversation 存在但无 _error 消息 → 强制生成
+    if (fData && fData.floorFatal && !_hasErrorRendered) {
+      var _fatalErrMsg2 = (fData.exitReason ? '⚠️ 楼层异常中断（' + fData.exitReason + '），对话已保存。' : '⚠️ 楼层异常中断，对话已保存。');
+      parts.push('<div class="msg msg-error msg-err-individual" style="white-space:pre-wrap">' + _escHtml(_fatalErrMsg2) + ' <a class="msg-err-continue" href="#" data-i18n="ai.error.continueTask">继续任务</a></div>');
     }
 
     return parts.join('\n\n');
@@ -553,6 +566,18 @@ var CardPool = (function () {
       _twrap.appendChild(_bImg);
     }
     aiEl.appendChild(aiEl._contentWrap);
+    // ★ AI 复制按钮（左侧，复制原始 Markdown）
+    if (typeof _addCopyBtnToAiMsg === 'function') {
+      var _aiRawParts = [];
+      for (var _ci = 0; _ci < conv.length; _ci++) {
+        var _cm = conv[_ci];
+        if (_cm && _cm.role === 'assistant' && !_cm.tool_calls && !_cm._guideAck && !_cm._error && typeof _cm.content === 'string' && _cm.content) {
+          _aiRawParts.push(_cm.content);
+        }
+      }
+      var _aiRaw = _aiRawParts.join('\n\n');
+      _addCopyBtnToAiMsg(aiEl, _aiRaw);
+    }
     // ★ 统一填充所有 .img-info（覆盖新渲染 + 旧格式迁移 + load 委托 + Observer）
     _setupImgSupport(aiEl._contentWrap);
     // ★ 事件委托（点击）：继续任务链接 + 表格/代码块预览

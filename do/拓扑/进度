@@ -2,6 +2,19 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 ============================================================
 更新: 2026-06-29
 
+已完成 — 本轮 2026-06-29 (29) agent 单一真相源重构 v2
+------
+· setStopState(newState) 带转移校验表 — agent-loop.js 单一入口，零外部直接 ._stopState = 写入
+· _sending 纯派生 getter — panel-state.js defineProperty 仅 getter（零 setter，零存储）
+  真理：!!(_activeAgent && _activeAgent._stopState === 'sending')
+· _capturedAgent / _capturedQuestId — 彻底消灭。一切 agent 引用直读 _activeAgent 或闭包捕获
+· sendMessage 管线重构 v2 — draft 处理上移至闸门后第一条（在所有 agent 操作之前）
+  旧缺陷：L16 setStopState 先于 draft 升级，_activeAgent=null → 崩溃。L210-265 死 _isDraft 块删除
+· fatal 落盘兜底 — _a4BuildCompleteFloorPayload cleanConv 为空+floorFatal → 合成 error 消息
+· fatal 渲染兜底 — _buildConversationFlowHtml 双重 guard（早期返回+尾部 _hasErrorRendered）
+· geo 路径修正 — /gaea/api/geo → /api/geo（localhost 走 direct.gh555.com）
+· 死代码清除 — panel-send.js -56行 + panel-state.js -9行
+
 已完成 — 本轮 2026-06-29 (28) D+E 服务器安全加固 + AI 直连提速
 ------
 · D 方案 — 中国用户直连 CN 绕过 Cloudflare:

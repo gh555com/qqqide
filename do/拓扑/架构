@@ -432,15 +432,32 @@ AI 工具 (16个)
 Embedding: BM25+语义混合搜索，双线路(fallback)+归一化+15s超时
 
 
-Agent 三态状态机 + fatal 恢复
+Agent 状态机 + 发送管线（2026-06-29 单一真相源重构 v2）
 --------------------------------------------------------------
-· 三态: idle(空闲) → sending(发送中) → stopping/fatal
-· agent._stopState 单一真理源，agent-loop.js finally 块无条件复位
-· fatal 态（2026-06-28）: onError → _stopState='fatal'（禁止新楼层）
-  100% 落盘: onError 回调火线保存 + finally 兜底
-  唯一出口: "继续任务"链接 → _attemptRecoverySend → sendMessage 完整管线
+· 状态机: idle(空闲) → sending(发送中) → stopping/fatal。agent._stopState 单一真理源。
+· setStopState(newState) — 带状态转移校验表：
+    idle → [sending, fatal]
+    sending → [stopping, fatal, idle]
+    stopping → [idle, fatal]
+    fatal → [sending]（唯一出口："继续任务"）
+  非法转移不阻断但 console.warn。agent-loop.js finally 块无条件复位。
+· _sending: 纯派生 getter（defineProperty 仅 getter，零 setter，零存储）
+  真理：!!(_activeAgent && _activeAgent._stopState === 'sending')
+· _capturedAgent / _capturedQuestId: 已消灭。一切 agent 引用直读 _activeAgent 或闭包捕获。
+· sendMessage 管线重构（v2）：
+  ① gate checks（stopState/stopping/fatal/recovery/主项目）— 纯读操作
+  ② 草稿升级（_isDraft → questStore.create → agent 创建 → 改名落盘 → card 迁移）
+  ③ null guard（此后 _activeAgent 必定非 null）
+  ④ invariant check（_activeAgent 在 agentPool 中匹配 questActiveId）
+  ⑤ setStopState('sending') — 同步锁，防同一面板并发
+  ⑥ 闭包捕获 agent/qid（防 switchQuest 干扰后续异步操作）
+  旧缺陷：草稿处理在 L155 深埋，agent 操作（L16 setStopState）先于草稿升级，_activeAgent=null 崩溃。
+· fatal 态恢复（v2 加固）：
+  onError → _stopState='fatal' + 火线落盘
+  落盘兜底：_a4BuildCompleteFloorPayload 检测 cleanConv 为空 + floorFatal → 合成 error 消息
+  渲染兜底：_buildConversationFlowHtml 双重 guard（早期返回 + 尾部 _hasErrorRendered 追踪）
+  唯一出口："继续任务"链接 → _attemptRecoverySend → sendMessage 完整管线
   防抖: 20s 冷却（_qqqRecoveryBusy），per-quest 独立
-· 切 quest/面板: restore 时从 _stopState='fatal' 恢复，UI 自动重建
 
 
 AI 面板核心机制
@@ -573,11 +590,16 @@ CN 服务器 (47.105.67.51, 阿里云 ECS):
   阿里云自带 5Gbps DDoS 基础防护（免费，已生效）
 
 US 服务器 (23.254.248.119):
-  ★ 防火墙白名单 (iptables, 2026-06-29): 仅允许 CN(47.105.67.51) + WireGuard(10.0.0.0/24) + wg0 接口
-  全世界其他 IP → DROP。SSH 22 / nginx 8444 / Go 8080 均不可达。
-  重启自恢复: @reboot cron iptables-restore。
-  nginx 8444 (HTTP/1.1 only) | dgs/server 8080 155MB
-  PostgreSQL 18 5432 | Redis 7 6379 | searxng 8088
+  ★ 防火墙白名单 (iptables, 2026-07-02 加固): INPUT DROP，仅放行：
+    · CN 公网 SSH (47.105.67.51 → :22)
+    · WG 精确四端口 (10.0.0.2 → :22 SSH / :8080 dgs / :5432 PG / :6379 Redis)
+    · WG UDP（隧道本身）
+    · CF 回源 15 个 CIDR → :80/:443
+    全世界其他 IP → DROP。重启自恢复: @reboot sleep 60 → iptables-restore。
+  ★ searxng 8088: Docker bridge 隔离，仅监听 127.0.0.1，Go 内部调用，不外露
+  ★ sshd 加固: MaxStartups=5:30:20 MaxSessions=8 MaxAuthTries=3 LoginGraceTime=30s
+  nginx 443 (CF CDN→US 直达 Web) | dgs/server 8080
+  PostgreSQL 18 5432 | Redis 7 6379 | searxng (Docker bridge, 127.0.0.1:8088)
 
 客户端代理 (proxy/sp_tunnel.py, PyQt5 GUI):
   本地 SOCKS5 :10808 → SSH双跳(CN→US) → 智能路由
@@ -619,23 +641,21 @@ Git Goods + qh 滚动 + 面板 resume
 🔴 致命级
   A1. 卡片断层 — 跨面板不自动刷新 ✅ 已修复(2026-06-29)
       switchQuest 检测共享 agent._stopState === 'sending' → 强制重载 card
-      （剩余：auto-save 5s 间隔内新 house 不可见）
   A2. 时钟/饼图跨面板不可见 — timerID 无法跨 iframe 传递
-      根因: startFloorTimer 绑定建楼面板 DOM。缓解: comet 动画
       根治: 时钟数据写入共享 agent._floorTiming，各面板独立 renderLoop
   A3. SSE 断线无跨面板自愈 — SSE 连接耦合在建楼面板 iframe 生命周期
-      风险: 建楼面板 crash→SSE 丢失→agent 残留 building 态。缓解: beforeunload 落盘
   A4. 单点 auto-save — 仅 panelId=1 写盘。主面板 crash→auto-save 停止
-      缓解: beforeunload 全量刷盘。根因: 未实现写者选举
 
 🟡 高危级
-  B1. 面板生命周期脆弱 — 三 iframe DOM 事件/timer/observer 无限累积，无健康检查
-  B2. 跨面板仅靠 ownership 互斥，无事务 — sendMessage 前需校验 agent._stopState
-  B3. 面板级变量泄漏 ✅ 已修复(2026-06-29) — sendMessage 加 agent 级 _stopState 真理校验
+  B1. 面板生命周期脆弱 — 三 iframe DOM 事件/timer/observer 无限累积
+  B2. 跨面板仅靠 ownership 互斥，无事务 ✅ 已修复(2026-06-29)
+      sendMessage 前 agent._stopState 真理校验 + setStopState 同步锁
+  B3. 面板级变量泄漏 ✅ 已修复(2026-06-29)
+      _sending 改为纯派生 getter（零存储），_capturedAgent 消灭
 
 🟢 改进级
-  C1. 卡池快照不可变 ✅ 已修复(2026-06-29) — 合并到 A1
-  C2. window.agentPool 隐式依赖 ✅ 已修复(2026-06-29) — 14 处统一显式 parent.__qqq_agentPool
+  C1. 卡池快照不可变 ✅ 已修复(2026-06-29)
+  C2. window.agentPool 隐式依赖 ✅ 已修复(2026-06-29)
   C3. tmp/test_replace.txt 残留 ✅ 已删除(2026-06-29)
 
 
@@ -643,6 +663,6 @@ Git Goods + qh 滚动 + 面板 resume
 根治路线图
 ═══════════════════════════════════════════════════════════
 
-  已做 ✅ 2026-06-29: C3/C2/B3+A1+C1 + B2(sendMessage agent._stopState 真理校验)
+  已做 ✅ 2026-06-29: C3/C2/B3+A1+C1+B2 + agent 单一真相源重构（setStopState 校验表、_sending 派生 getter、draft 管线前置、fatal 双兜底）
   下个窗口: A2（各面板独立 renderLoop 绘制时钟/饼图）
   架构演进: A4（auto-save 写者选举）+ A3（网络层与执行层解耦）+ B1（iframe 健康检查+自动复活）

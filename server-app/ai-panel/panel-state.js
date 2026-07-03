@@ -36,16 +36,9 @@ Object.defineProperty(window, 'streaming', {
     set: function (v) { if (typeof _activeAgent !== 'undefined' && _activeAgent) _activeAgent._streaming = v; },
     enumerable: true, configurable: true
 });
-// ★ 唯一真理机器：_sending 完全由 _activeAgent._stopState 派生，零存储
+// ★ 唯一真理机器：_sending 完全由 _activeAgent._stopState 派生，零存储，零 setter
 Object.defineProperty(window, '_sending', {
     get: function () { return !!(typeof _activeAgent !== 'undefined' && _activeAgent && _activeAgent._stopState === 'sending'); },
-    set: function (v) {
-        // 向后兼容：setter 代理到 agent.setStopState()
-        if (typeof _activeAgent !== 'undefined' && _activeAgent) {
-            _activeAgent.setStopState(v ? 'sending' : 'idle');
-        }
-        if (typeof updateGuideBtn === 'function') updateGuideBtn();
-    },
     enumerable: true, configurable: true
 });
 var _renderPending = false;
