@@ -231,8 +231,17 @@ async function dos(){
   if(!sp){try{var vp=window.parent&&window.parent.qqqideViewport;if(vp){var m=vp.getMainProject();if(m){sp=m.path;SP.value=sp}}}catch(_){}}
   if(!sp){STT.textContent='⚠️ 请指定搜索范围';return}
   _scopePath=sp;_add(0,q);_add(2,sp);_add(3,IC.value);_add(4,EX.value);
-  if(_rx){try{_hl=new RegExp(q,_cs?'g':'gi');Q.classList.remove('err')}catch(e){Q.classList.add('err');STT.textContent='⚠️ 无效正则: '+e.message;_hl=null;return}}
-  else{Q.classList.remove('err');var e2=q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');if(_ww)e2='\\b'+e2+'\\b';_hl=new RegExp(e2,_cs?'g':'gi')}
+  // Notify parent to update tab title
+  try{window.parent.postMessage({type:'qqqide-search-title',path:sp},'*')}catch(_){}
+  // Build highlight regex — handle \n as multiline: split into per-line parts
+  var hlQ=q,hasNl=q.indexOf('\\n')!==-1||q.indexOf('\n')!==-1;
+  if(hasNl){
+    var parts=q.replace(/\\n/g,'\n').split('\n').filter(Boolean);
+    if(_rx){hlQ=parts.join('|')}else{hlQ=parts.map(function(p){return p.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}).join('|')}
+    if(_ww)hlQ='\\b'+hlQ+'\\b'
+  }else if(_rx){hlQ=q}else{hlQ=q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');if(_ww)hlQ='\\b'+hlQ+'\\b'}
+  try{_hl=new RegExp(hlQ,_cs?'g':'gi')}catch(e){Q.classList.add('err');STT.textContent='⚠️ 无效正则: '+e.message;_hl=null;return}
+  Q.classList.remove('err')
   STT.textContent='🔍 搜索中...';
   try{if(!bri)bri=window.parent&&window.parent.qqqideBridge;if(!bri||!bri.search){STT.textContent='⚠️ 搜索引擎未就绪';return}
     var r=await bri.search.query({query:q,searchPath:sp,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,

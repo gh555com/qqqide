@@ -397,21 +397,10 @@ async function _restoreAgentFromStore(questId, ag) {
             }
         }
 
-        // ★ 恢复 _a4Snapshots：从最后一层有 a4Snapshots 的 floor 数据重建
-        //   防止切 quest 回来后 A4 文件快照块消失
-        ag._a4Snapshots = {};
-        for (var _rfi = allFloors.length - 1; _rfi >= 0; _rfi--) {
-            var _rfData = allFloors[_rfi].data;
-            if (_rfData.a4Snapshots && _rfData.a4Snapshots.length) {
-                for (var _rsi = 0; _rsi < _rfData.a4Snapshots.length; _rsi++) {
-                    var _rs = _rfData.a4Snapshots[_rsi];
-                    if (_rs && _rs.path) {
-                        ag._a4Snapshots[_rs.path] = _rs;
-                    }
-                }
-                break;  // 只取最后一层有快照的
-            }
-        }
+        // ★ a4Snapshots 不恢复：每楼层的 a4 块由 card-pool._buildFloorDOM 通过
+        //   _a4RestoreBlock 从 all.json 独立渲染，恢复到 ag 会导致串台——下一楼层
+        //   在 sendMessage 清除 ag._a4Snapshots 之前的 auto-save 竞态窗口内会将
+        //   上楼层 a4 数据误写入本楼层 all.json。
 
         // 恢复 metadata
         if (data) {

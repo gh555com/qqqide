@@ -576,10 +576,11 @@ var CardPool = (function () {
     aiEl.appendChild(aiEl._contentWrap);
     // ★ AI 复制按钮（左侧，复制原始 Markdown）
     if (typeof _addCopyBtnToAiMsg === 'function') {
+      // ★ 只取当前楼层（fNum）的 assistant content，不串全量对话
       var _aiRawParts = [];
       for (var _ci = 0; _ci < conv.length; _ci++) {
         var _cm = conv[_ci];
-        if (_cm && _cm.role === 'assistant' && !_cm.tool_calls && !_cm._guideAck && !_cm._error && typeof _cm.content === 'string' && _cm.content) {
+        if (_cm && _cm.role === 'assistant' && _cm._floor === fNum && !_cm.tool_calls && !_cm._guideAck && !_cm._error && typeof _cm.content === 'string' && _cm.content) {
           _aiRawParts.push(_cm.content);
         }
       }

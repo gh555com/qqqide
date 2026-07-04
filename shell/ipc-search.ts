@@ -113,17 +113,26 @@ async function _ripgrepSearch(
         '--max-filesize', String(SEARCH_MAX_FILE_MB) + 'M',
     ];
 
-    // Multiline detection: query contains \n or actual newline → enable ripgrep -U
+    // Multiline detection: query contains \n or actual newline → enable ripgrep multiline
     let actualQuery = query;
+    let forceRegex = false;
     const hasNewline = query.indexOf('\\n') !== -1 || query.indexOf('\n') !== -1;
     if (hasNewline) {
         args.push('--multiline');
+        args.push('--crlf');
         actualQuery = query.replace(/\\n/g, '\n');
+        // --fixed-strings conflicts with --multiline; force regex mode
+        if (!isRegex) {
+            forceRegex = true;
+            // Escape the fixed string for regex (but preserve actual newlines)
+            actualQuery = actualQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            if (wholeWord) actualQuery = '\\b' + actualQuery + '\\b';
+        }
     }
 
     if (!caseSensitive) args.push('--ignore-case');
-    if (wholeWord) args.push('--word-regexp');
-    if (!isRegex) args.push('--fixed-strings');
+    if (wholeWord && !forceRegex) args.push('--word-regexp');
+    if (!isRegex && !forceRegex) args.push('--fixed-strings');
     if (!respectGitignore) args.push('--no-ignore');
     // Always skip VCS dirs + node_modules
     args.push('--glob', '!.git');

@@ -123,4 +123,31 @@
             }
         }
     }
+
+    // ---- Listen for tab-rename requests from search iframe ----
+    window.addEventListener('message', function (e) {
+        if (e.data && e.data.type === 'qqqide-search-title') {
+            var newPath = e.data.path || '';
+            var folderName = '';
+            if (newPath) {
+                var p = newPath.replace(/\\/g, '/').replace(/\/$/, '');
+                var idx = p.lastIndexOf('/');
+                folderName = idx >= 0 ? p.slice(idx + 1) : p;
+            }
+            var tabTitle = folderName ? '🔍 ' + folderName : '🔍 Search';
+            // Find which pane contains this iframe and rename its tab
+            var srcWindow = e.source;
+            var panes = document.querySelectorAll('.qqq-tab-pane');
+            for (var i = 0; i < panes.length; i++) {
+                var iframe = panes[i]._searchIframe || panes[i].querySelector('iframe[src*="search-ui.html"]');
+                if (iframe && iframe.contentWindow === srcWindow) {
+                    var tabId = parseInt(panes[i].dataset.tabId);
+                    if (tabId && window.qqqTabs && window.qqqTabs.renameGaeaTab) {
+                        window.qqqTabs.renameGaeaTab(tabId, tabTitle);
+                    }
+                    break;
+                }
+            }
+        }
+    });
 })();

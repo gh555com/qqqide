@@ -83,7 +83,8 @@ async function sendMessage(skipFloorCreation) {
     var agent = _activeAgent;
     var qid = questActiveId;
     // ★ 非恢复路径：强制清除延迟渲染标记（防前次失败恢复残留）
-    if (!skipFloorCreation && agent._deferRenderUntilHouse1) {
+    //   恢复路径（_isRecovery=true）由 onToken/onDone 消费，不可提前清除
+    if (!skipFloorCreation && agent._deferRenderUntilHouse1 && !agent._isRecovery) {
         agent._deferRenderUntilHouse1 = false;
     }
     var _guideStatuses = document.querySelectorAll('.guide-status');
@@ -278,6 +279,13 @@ async function sendMessage(skipFloorCreation) {
         agent._floorStartIdx = _floorStartIdx;
     }
     agent._currentFloorNum = floorNum;
+    // ★ 新楼层开始，清空 agent._houses / _a4Snapshots 防止读到上一楼层残影
+    //   MUST 在 _currentFloorNum 赋值后立即执行，关闭 auto-save 竞态窗口
+    //   （_currentFloorNum 已指向新楼层但 _a4Snapshots 尚未清除 → auto-save 串台）
+    agent._houses = [];
+    agent._a4Snapshots = {};
+    agent._lastAutoSaveLen = 0;
+    agent._lastFloorTimingRecord = null;
     // ★ 存储该楼层的未可变元数据（所有保存路径使用此元数据，而非 agent 全局变量）
     if (!agent._floorMeta) agent._floorMeta = {};
     var _projectRoot = root2 || questStore.getProjectRoot();
@@ -309,11 +317,6 @@ async function sendMessage(skipFloorCreation) {
         aiDiv._paras = aiDiv._paras || [];
     }
     // ★ 延迟渲染已废弃（恢复模式不创建新 DOM，旧延迟渲染逻辑移除）
-    // ★ 新楼层开始，清空 agent._houses / _a4Snapshots 防止读到上一楼层残影
-    agent._houses = [];
-    agent._a4Snapshots = {};
-    agent._lastAutoSaveLen = 0;
-    agent._lastFloorTimingRecord = null;
     if (!skipFloorCreation) {
         agent._aiStartTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
         agent._aiTierLabel = 'A' + (selectedTier || 6);
@@ -716,6 +719,14 @@ async function sendMessage(skipFloorCreation) {
                         _error: true,
                         _floor: agent._ctx.totalFloors
                     });
+                    // ★ 中断防护：在清理 DOM 前抓取完整 ai_html 快照（含所有 house 渲染内容）
+                    //   防 _a4BuildCompleteFloorPayload 因 _activeAiDiv 失效而回退到空 conversation
+                    if (agent._doStreamRender && agent._activeAiDiv && agent._activeAiDiv._dirty) {
+                        try { agent._doStreamRender(); } catch (_) { }
+                    }
+                    if (agent._activeAiDiv && agent._activeAiDiv._contentWrap) {
+                        try { agent._emergencyAiHtml = agent._activeAiDiv._contentWrap.innerHTML; } catch (_) { }
+                    }
                     // ★ 100% 落盘保证：错误楼层的用户消息+错误消息强制写盘，不依赖 auto-save 竞态
                     if (qid && typeof _saveAgentQuestData === 'function') {
                         _saveAgentQuestData(qid, agent, agent._currentFloorNum).catch(function () { });
@@ -1023,26 +1034,34 @@ function _renderQuestErrorBox(agent, aiDiv) {
     }
 }
 
-// ★ 隐藏红框中的「继续任务」链接（恢复成功后调用，不删红框历史）
+// ★ 清除红框中的「继续任务」链接/白块（恢复成功后彻底移除，不藏不残留）
 function _hideRecoveryLink(agent) {
     if (!agent) return;
     var _link = null;
     // 路径1：跨楼层红框链接
     if (agent._questErrorDiv && agent._questErrorDiv._continueLink && agent._questErrorDiv._continueLink.isConnected) {
         _link = agent._questErrorDiv._continueLink;
+        agent._questErrorDiv._continueLink = null;
     }
     // 路径2：通过 _recoveryLinkEl
     if (!_link && agent._recoveryLinkEl && agent._recoveryLinkEl.isConnected) {
         _link = agent._recoveryLinkEl;
+        agent._recoveryLinkEl = null;
     }
-    // 路径3：从当前 _contentWrap 中查找（兜底）
+    // 路径3：从当前 _contentWrap 中查找（兜底，搜动画 + 非动画两类 class）
     if (!_link && agent._activeAiDiv && agent._activeAiDiv._contentWrap) {
-        _link = agent._activeAiDiv._contentWrap.querySelector('.msg-err-continue');
+        _link = agent._activeAiDiv._contentWrap.querySelector('.msg-err-recovery-light, .msg-err-continue');
     }
-    if (_link) {
-        _link.style.display = 'none';
-        _link._qqqRecoveryDone = true;
-    }
+    if (!_link) return;
+    // ★ 彻底清除：先杀动画 class → 停 CSS animation → 再删 DOM 节点
+    _link.className = '';
+    _link.style.cssText = '';
+    _link.textContent = '';
+    _link._qqqRecoveryDone = true;
+    _link._qqqRecoveryBusy = false;
+    _link._qqqRecoveryOrigText = '';
+    _link.onclick = null;
+    try { _link.remove(); } catch (_) { _link.parentNode && _link.parentNode.removeChild(_link); }
 }
 
 // ═══ 致命失败恢复："继续任务"唯一出口 ═══
@@ -1203,11 +1222,8 @@ function _finishRecovery(linkEl, agent, succeeded) {
     agent._deferRenderUntilHouse1 = false;  // ★ 核爆清除：防止残留标记导致下一次正常 send 走错路
 
     if (succeeded) {
-        // ★ 成功：光块永久消失（红框历史保留，按钮已在 onToken/onDone 中启封）
-        if (linkEl && linkEl.isConnected) {
-            linkEl._qqqRecoveryDone = true;
-            linkEl.style.display = 'none';
-        }
+        // ★ 成功：彻底清除链接/白块 DOM + 动画 + 引用（由 _hideRecoveryLink 统一处理）
+        if (typeof _hideRecoveryLink === 'function') _hideRecoveryLink(agent);
     } else {
         // ★ 失败：光块恢复为"继续任务"（红框已在 onError 中追加新行）
         if (linkEl && linkEl.isConnected) {
@@ -1219,6 +1235,8 @@ function _finishRecovery(linkEl, agent, succeeded) {
             linkEl._qqqRecoveryBusy = false;
             linkEl._qqqRecoveryOrigText = '';
         }
+        // ★ 清理引用（即使 DOM 已断连也要 null，防僵尸引用）
+        agent._recoveryLinkEl = null;
         if ($sendBtn) $sendBtn.disabled = true;
         if ($guideBtn) $guideBtn.disabled = true;
         if ($queueBtn) $queueBtn.disabled = true;

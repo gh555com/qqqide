@@ -909,6 +909,20 @@
   function getActiveGroup() { return groups[groups.length - 1] || null; }
   function getGaeaGroup() { return groups.find(g => g.type === 'gaea') || null; }
 
+  // ---- Rename a gaea tab (update title in tab object + button DOM) ----
+  function renameGaeaTab(tabId, newTitle) {
+    var grp = getGaeaGroup();
+    if (!grp) return;
+    var tab = grp.tabs.find(function (t) { return t.id === tabId; });
+    if (!tab) return;
+    tab.title = newTitle;
+    var btn = grp.barEl.querySelector('[data-tab-id="' + tabId + '"]');
+    if (btn) {
+      var nameSpan = btn.querySelector('.qqq-tab-name');
+      if (nameSpan) nameSpan.textContent = newTitle;
+    }
+  }
+
   // ---- Listen for tab dirty events from editor ----
   document.addEventListener('qqq-tab-dirty', e => {
     const path = e.detail && e.detail.path;
@@ -927,6 +941,7 @@
     getGroups,
     getActiveGroup,
     getGaeaGroup,
+    renameGaeaTab,
     setTabDirty,
   };
 })();
