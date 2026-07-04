@@ -717,10 +717,15 @@
           r.style.cssText += ';background:' + (dk ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)') + '!important;color:' + (dk ? '#fff' : '#000') + '!important;';
           _ctxMenuRow = r;
         }
-        // 目录+文件：右键 → 打开新搜索标签（多实例）
         if (_ctxMenuRow) _ctxMenuRow.style.cssText = _ctxMenuRow._origRowStyle;
         _setRowHighlight(row);
-        if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath, true);
+        if (ent.isDir) {
+          // 文件夹：右键 → 打开新搜索标签（多实例）
+          if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath, true);
+        } else {
+          // 文件：右键 → 弹出文件上下文菜单
+          showFileContextMenu(e, fullPath, projectRoot);
+        }
       });
 
       parentEl.appendChild(row);

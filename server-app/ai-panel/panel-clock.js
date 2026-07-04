@@ -657,13 +657,27 @@ async function updateQuestTofu() {
         textEl.textContent = entry.title || '';
         textEl.parentElement.classList.remove('quest-tofu-new');
         if (pen) pen.style.display = '';
-        // ★ 彗星电子钟：读取中央真理机器，建楼中在 prefix 右下角显示
-        var poolAgent = parent.__qqq_agentPool && parent.__qqq_agentPool[questActiveId];
-        if (poolAgent && poolAgent._stopState === 'sending') {
-            _insertCometClock(prefixEl, questActiveId);
-        } else {
-            _removeCometClock(prefixEl);
+        // ★ 彗星电子钟：扫描中央真理池中所有 agent，只要有任何 quest 建楼
+        //   就在 prefix 右下角显示时钟（不限当前 active quest，跨面板感知）
+        var pool = parent && parent.__qqq_agentPool;
+        var foundBuilding = false;
+        if (pool) {
+            var poolAgent = pool[questActiveId];
+            if (poolAgent && poolAgent._stopState === 'sending') {
+                _insertCometClock(prefixEl, questActiveId);
+                foundBuilding = true;
+            } else {
+                for (var qid in pool) {
+                    var ag2 = pool[qid];
+                    if (ag2 && ag2._stopState === 'sending') {
+                        _insertCometClock(prefixEl, qid);
+                        foundBuilding = true;
+                        break;
+                    }
+                }
+            }
         }
+        if (!foundBuilding) _removeCometClock(prefixEl);
         _updateQuestClock();
     } else {
         if (prefixEl) prefixEl.textContent = '';

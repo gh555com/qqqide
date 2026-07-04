@@ -34,7 +34,15 @@ function bootstrapLog(msg) {
 function applyPendingUpdate() {
     try {
         var appDir = __dirname; // shell-out/
-        var stagingDir = path.join(appDir, '..', 'cache', 'staging', 'shell-out-next');
+        var rootDir = path.dirname(process.execPath);
+
+        // Staging lives under Data/Cache/ (portable-paths.ts), NOT under resources/app/cache/
+        var stagingDir = path.join(rootDir, 'Data', 'Cache', 'staging', 'shell-out-next');
+
+        if (!fs.existsSync(stagingDir)) {
+            // backward compat: also check old path under resources/app/cache/
+            stagingDir = path.join(appDir, '..', 'cache', 'staging', 'shell-out-next');
+        }
 
         if (!fs.existsSync(stagingDir)) {
             return false;
