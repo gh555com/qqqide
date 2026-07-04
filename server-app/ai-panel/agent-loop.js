@@ -336,7 +336,7 @@ var AgentLoop = (function () {
                 for (var vi = 0; vi < visionResults.length; vi++) {
                     parts.push('[图#' + visionResults[vi].id + ' 视觉分析]:\n' + visionResults[vi].description);
                 }
-                visionText = '\n\n━━━ VISION ANALYSIS RESULTS (already completed, DO NOT call analyze_image again) ━━━\n' + parts.join('\n\n') + '\n━━━ END VISION RESULTS ━━━\n[IF user asked for background removal: call remove_background ONCE using the PASTED IMAGES path. DO NOT write Python/image-processing code.]';
+                visionText = '\n\n━━━ VISION ANALYSIS RESULTS (already completed, DO NOT call analyze_image again) ━━━\n' + parts.join('\n\n') + '\n━━━ END VISION RESULTS ━━━\n[person_identity field above identifies who is in the image. Use it.\n IF user asked for background removal: call remove_background ONCE using the PASTED IMAGES path. DO NOT write Python/image-processing code.]';
             }
             // 视觉计费计入本轮
             if (self._visionCostWge > 0) {

@@ -1,7 +1,7 @@
 qqq-shell-v2 架构 — 代码若与此冲突，以本文档为准。
 ===========================================================
 命名规范: Tier1 外宣 qqq IDE / Tier2 编码 qqqide（全小写）
-归一完成: 2026-07-01，qqq-app→qqqide 全链路消灭，零旧兼容
+归一完成: 2026-07-03，qqq-app→qqqide 全链路消灭，零旧兼容
 
 
 三层模型
@@ -117,27 +117,31 @@ IDE 登录认证 — 纯内存 JWT + qqqide:// 协议推送 + safeStorage 持久
 · 已删除: UUID token、auth.json 磁盘读写、_loadAuthToken/_saveAuthToken 全部旧代码
 · 铁律: 单一路径(qqqide://push→内存→Bearer)，轮询仅兜底
 
-LV 赛季系统 + 免费预算引擎（2026-06-30）
----------------------------------------------
+LV 赛季系统 + 免费预算引擎（2026-06-30，2026-07-03 客户端重构）
+-----------------------------------------------------------------
 · 赛季: UTC 周，周一00:00起。赛季 ID 格式 "2026-W27"
-· LV 升级: 每 100 ge 非免费实际消费 = 1 level，精度 NUMERIC(8,4)（lv47.8552）
-· ★ 免费冲正不计入 LV（仅 ChargeAITurnWithMetaAndLv 被 AddConsumed）
-· 免费时段改为随机预算制（不再无限免费）:
-    2h 窗口: 0.1%→[1,1000] | 1%→[1,100] | 33%→[1,13] | ~65.9%→[3,7]
-    24h 窗口: 0.1%→[1,1000] | 1%→[1,100] | 33%→[2,26] | ~65.9%→[6,14]
-· ★ 上赛季等级向下取整 → 所有区块统一加成(如 lv8→+8 ge)
-· 免费预算窗口结束→剩余额自动作废（expires_at > NOW() 硬检查）
-· 客户端: 菜单行2 排行榜按钮+LV经验条(GE余额左边) / 状态栏免费金额血条
-· 排行榜: 左=历史总排行25名 / 右=上赛季排行25名 / 脱敏复用 util.MaskPhone
-· ★ 2026-06-30 原子性加固（根治4漏洞）:
-    ① chargeAITurnOnceMaybeLv: 扣费+LV 同一 serializable 事务（根治 A）
-    ② chargeAITurnFreeWithBudgetOnce: 预算消费+冲正 FOR UPDATE 同一事务（根治 B+C+D）
-    ③ 首次 AI 请求自动摇号创建预算（FOR UPDATE + INSERT 同一事务，无 TOCTOU）
-    ④ AllTimeLeaderboard 过滤 level>0（根治 F）
-· 数据: doer_lv_seasons / doer_free_budgets (0107 migration) / 服务端 lv_engine.go
+· LV 升级: 每 10 ge 非免费消费 = 1 level。精度 NUMERIC(8,4)
+· ★ 免费冲正不计入 LV（仅 ChargeAITurnWithMetaAndLv 调 AddConsumed）
+· ★ 部分免费: Go 先 ClaimFreeBudget → 剩余→ChargeAITurnWithMetaAndLv，LV 只记真实部分
+· 免费时段随机预算制:
+    2h: 0.1%[1,1000] | 1%[1,100] | 33%[1,13] | ~66%[3,7]
+    24h: 0.1%[1,1000] | 1%[1,100] | 33%[2,26] | ~66%[6,14]
+· 上赛季等级向下取整 → 加成。窗口过期→未用完作废
+· 原子性: chargeAITurnOnceMaybeLv 同一 serializable 事务；ClaimFreeBudget FOR UPDATE + INSERT
+
+客户端 LV 3 层血条 + 事件驱动（2026-07-03 终极架构，login.js）
+-----------------------------------------------------------------
+· 不再轮询。SSE billing → _processBillingEvent → postMessage(qqq-lv-tick) → 驱动三条管线:
+  ① _lvAccWge 本地累加 → _lvAnimate → rAF 10s 赛贝尔追赶（t²·⁵，前慢后快，保证 ≥1px 间隙）
+  ② _balanceGe 乐观扣减 → 60s _fetchBalance 真理覆盖
+  ③ _fetchLv → /api/qqq/lv → 2s 静默后纠正超标（部分免费时 billing ge_cost 虚高）
+· 3 层血条: #555 轨道 → #ffffdd 中层(瞬间) → #c4b187 顶层(10s 追) / #8a6410(追赶中)
+· 每次 billing 触发粒子爆发 + 光环扩散 + 升级时音频（assets/lv-up.mp3 / 里程碑 lv-up-milestone.mp3）
+· 启动立即显示 LV 区（_lvShow），零等待服务器数据
+· 免费预算也走事件驱动（billing free_window=true → fetchFreeBudget()）
+· hover tooltip: 2026_27W0: Consolas #fbe9bc/80%；金额 #b58900 44px（服务器真理核心）
+· 排行榜: 左=历史总排行25名 / 右=上赛季排行25名
 · API: /api/qqq/lv /api/qqq/free-budget /api/qqq/leaderboard
-· GE 余额: WalletBalance 银行家四舍五入取整（math.Round）
-· 所有 AI 端点(chat/vision/image/embedding/search)免费时段先消费预算→不够走真实扣费
 
 Nginx 备用线路铁律 (US 已隐身, 2026-06-29)
 ---------------------------------------------

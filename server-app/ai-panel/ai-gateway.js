@@ -40,6 +40,8 @@
         searchFallback: 'https://cnk.gh555.com/api/v3/search/web',
         fetchPrimary: 'https://direct-cn.gh555.com/api/v3/fetch/webpage',
         fetchFallback: 'https://cnk.gh555.com/api/v3/fetch/webpage',
+        segmentPrimary: 'https://direct-cn.gh555.com/api/v3/ai/segment',
+        segmentFallback: 'https://cnk.gh555.com/api/v3/ai/segment',
     };
 
     var _DEFAULT_TIMEOUT = 30000;
@@ -501,6 +503,36 @@
         },
 
         // ──────────────────────────────────────────────
+        // 抠图提交（同步返回 image_url，经双线路 failover）
+        // ──────────────────────────────────────────────
+        segmentSubmit: async function (opts) {
+            opts = opts || {};
+            var token = opts.token || _getToken();
+            if (!token) return { ok: false, error: 'No token' };
+
+            var reqBody = { image: opts.image, quality: opts.quality || 'auto' };
+            if (opts.floorId) reqBody.floor_id = opts.floorId;
+
+            try {
+                var resp = await _postJsonWithFailover(_URLS.segmentPrimary, _URLS.segmentFallback, reqBody, token);
+                if (!resp || !resp.ok) {
+                    var errText = '';
+                    try { errText = await resp.text(); } catch (_) {}
+                    return { ok: false, error: 'HTTP ' + (resp ? resp.status : '?') + ': ' + errText.slice(0, 200) };
+                }
+                var data = await resp.json();
+                if (!data.ok || !data.image_url) {
+                    return { ok: false, error: data.error || data.code || 'no image_url' };
+                }
+                return { ok: true, image_url: data.image_url, width: data.width, height: data.height, model: data.model, ge_cost: data.ge_cost || 0 };
+            } catch (err) {
+                return { ok: false, error: err.message || 'Network error' };
+            }
+        },
+
+        // ──────────────────────────────────────────────
+        // 通用 SSE 流轮询（公共接口））
+        // ──────────────────────────────────────────────     // ──────────────────────────────────────────────
         // 通用 SSE 流轮询（公共接口））
         // ──────────────────────────────────────────────
         pollTaskStream: async function (url, token, timeoutMs) {

@@ -81,6 +81,11 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string })
         adjustBounds: (deltaLeft: number, deltaRight: number) => ipcRenderer.invoke('qqqide:window:adjust-bounds', deltaLeft, deltaRight),
     },
 
+    // ---- devtools bridge (renderer → main process) ----
+    devtools: {
+        rename: (projectRoot: string) => ipcRenderer.invoke('qqqide:devtools:rename', projectRoot),
+    },
+
     // ---- zoom (UI scale) ----
     zoom: {
         get: () => ipcRenderer.invoke('qqqide:zoom:get'),

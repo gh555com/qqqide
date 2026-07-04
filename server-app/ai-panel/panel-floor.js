@@ -362,30 +362,23 @@ async function _restoreAgentFromStore(questId, ag) {
         }
 
 
-        // ★ 恢复 _passbyBase：从上一已完成楼层的 passby 快照取基线
+        // ★ 恢复 _passbyBase：优先从 quest 元数据（已持久化），降级到上楼层快照
         ag._passbyBaseHouses = 0;
         ag._passbyBaseWge = 0;
-        for (var _pbfi = 0; _pbfi < allFloors.length; _pbfi++) {
-            var _pbData = allFloors[_pbfi].data;
-            if (_pbData && allFloors[_pbfi].floorNum === ag._currentFloorNum - 1) {
-                if (typeof _pbData.passbyHouses === 'number') ag._passbyBaseHouses = _pbData.passbyHouses;
-                if (typeof _pbData.passbyWge === 'number') ag._passbyBaseWge = _pbData.passbyWge;
-                if (typeof _pbData.passbyTokens === 'number') ag._passbyBaseTokens = _pbData.passbyTokens;
-                break;
-            }
-        }
-        ag._passbyBaseFloorNum = ag._passbyBaseHouses > 0 ? (ag._currentFloorNum - 1) : 0;
-
-        // ★ 恢复 _passbyBase：从上一已完成楼层的 passby 快照取基线
-        ag._passbyBaseHouses = 0;
-        ag._passbyBaseWge = 0;
-        for (var _pbfi = 0; _pbfi < allFloors.length; _pbfi++) {
-            var _pbData = allFloors[_pbfi].data;
-            if (_pbData && allFloors[_pbfi].floorNum === ag._currentFloorNum - 1) {
-                if (typeof _pbData.passbyHouses === 'number') ag._passbyBaseHouses = _pbData.passbyHouses;
-                if (typeof _pbData.passbyWge === 'number') ag._passbyBaseWge = _pbData.passbyWge;
-                if (typeof _pbData.passbyTokens === 'number') ag._passbyBaseTokens = _pbData.passbyTokens;
-                break;
+        ag._passbyBaseTokens = 0;
+        if (data && typeof data.passbyBaseHouses === 'number') {
+            ag._passbyBaseHouses = data.passbyBaseHouses;
+            ag._passbyBaseWge = data.passbyBaseWge || 0;
+            ag._passbyBaseTokens = data.passbyBaseTokens || 0;
+        } else {
+            for (var _pbfi = 0; _pbfi < allFloors.length; _pbfi++) {
+                var _pbData = allFloors[_pbfi].data;
+                if (_pbData && allFloors[_pbfi].floorNum === ag._currentFloorNum - 1) {
+                    if (typeof _pbData.passbyHouses === 'number') ag._passbyBaseHouses = _pbData.passbyHouses;
+                    if (typeof _pbData.passbyWge === 'number') ag._passbyBaseWge = _pbData.passbyWge;
+                    if (typeof _pbData.passbyTokens === 'number') ag._passbyBaseTokens = _pbData.passbyTokens;
+                    break;
+                }
             }
         }
         ag._passbyBaseFloorNum = ag._passbyBaseHouses > 0 ? (ag._currentFloorNum - 1) : 0;

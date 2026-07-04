@@ -63,6 +63,12 @@ async function _handleSyncMessage(msg) {
             case 'owner-released':
                 // 另一面板释放了 quest — 不做任何事（我们不自动加载）
                 break;
+            case 'building-changed':
+                // ★ 跨面板彗星电子钟同步：另一面板建楼状态变化 → 本面板更新豆腐时钟
+                //   读中央真理 parent.__qqq_agentPool，零脑分裂
+                if (typeof updateQuestTofu === 'function') updateQuestTofu();
+                if (typeof _updateQuestClock === 'function') _updateQuestClock();
+                break;
         }
     } catch (e) {
         console.warn('[quests] _handleSyncMessage error:', e && e.message);
@@ -190,6 +196,10 @@ async function _initWorkspace(root) {
         // 向主进程注册窗口↔项目映射（仅中面板）
         if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.window) {
             try { window.parent.qqqideBridge.window.claimProject(root).catch(function () { }); } catch (_) { }
+        }
+        // ★ 项目绑定后立即改 DevTools 标题（特别是 fresh 窗口后来加主文件夹的场景）
+        if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.devtools) {
+            try { window.parent.qqqideBridge.devtools.rename(root).catch(function () { }); } catch (_) { }
         }
     }
 
@@ -693,7 +703,11 @@ async function _saveAgentQuestData(questId, ag, floorNum) {
         queue: ag._queue || [],
         rulesVersion: ag._rulesVersion || '',
         persistentCount: ag._persistentCount || 0,
-        currentFloorNum: ag._currentFloorNum || 0
+        currentFloorNum: ag._currentFloorNum || 0,
+        // ★ passby 基线持久化（quest 级，防楼层数据缺失导致累加断裂）
+        passbyBaseHouses: ag._passbyBaseHouses || 0,
+        passbyBaseWge: ag._passbyBaseWge || 0,
+        passbyBaseTokens: ag._passbyBaseTokens || 0
     };
     await questStore.touch(questId);
     await questStore.save(questId, metaPayload);

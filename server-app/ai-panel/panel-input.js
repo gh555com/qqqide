@@ -44,11 +44,11 @@ async function _triggerSelectMainProject() {
 }
 
 // ═══ 统一守卫管线：无主项目时直接弹文件夹选择 ═══
-// ① 所有鼠标点击 → 在 #input-area 或 #top-bar 内直接触发
+// ① 所有鼠标点击 → 在 #input-area 内直接触发
 document.addEventListener('mousedown', function (e) {
     if (_hasMainProject() || _selectingProject) return;
     var el = e.target;
-    if (el.closest('#input-area') || el.closest('#top-bar')) {
+    if (el.closest('#input-area')) {
         _triggerSelectMainProject();
         e.stopImmediatePropagation();
         e.preventDefault();

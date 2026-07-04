@@ -27,6 +27,8 @@ function _registerBuilding(questId, panelId) {
     var reg = _ensureParentRegistry();
     if (!reg) return;
     reg[questId] = { stopState: 'sending', panelId: panelId, startedAt: Date.now() };
+    // ★ 跨面板同步：建楼开始 → 所有面板更新豆腐时钟
+    if (typeof _broadcast === 'function') _broadcast('building-changed', questId);
 }
 
 // ── 登记一个 quest 停止建楼（完成/错误/手动停止） ──
@@ -34,6 +36,8 @@ function _unregisterBuilding(questId) {
     var reg = _ensureParentRegistry();
     if (!reg) return;
     delete reg[questId];
+    // ★ 跨面板同步：建楼结束 → 所有面板更新豆腐时钟（隐藏彗星电子钟）
+    if (typeof _broadcast === 'function') _broadcast('building-changed', questId);
 }
 
 // ── 查询：某个 quest 是否正在建楼（全局，不限面板） ──

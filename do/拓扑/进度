@@ -2,6 +2,17 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 ============================================================
 更新: 2026-06-29
 
+已完成 — 本轮 2026-06-29 (36) 彗星电子钟 v2：中央真理 + 每行独立 + 三面板一致
+------
+· 定位修正：从 quest-tofu 全局右下角 → quest-tofu-prefix / quest-drop-prefix 右下角（z 矩形豆腐块内）
+· 中央真理：不再读 _activeAgent，改读 parent.__qqq_agentPool[questId]（左中右面板完全一致，零脑分裂）
+· 每行建楼时钟：renderQuestDrop 下拉每一行建楼 quest 均在 prefix 右下角插入 .comet-clock
+· 招牌行时钟：updateQuestTofu 建楼中 quest 在 prefix 右下角插入 .comet-clock，停建则移除
+· index.html：.quest-clock → .comet-clock（bottom:0;right:0 贴合 prefix 右下角）；.quest-drop-prefix 加 position:relative；删除静态 #quest-clock span
+· panel-clock.js：_tickCometClocks() 扫描全页 .comet-clock 读 pool；_insertCometClock/_removeCometClock 管理插入/移除；_ensureCometClockTicking 启动/自停定时器
+· 函数签名不变：_startQuestClock/_stopQuestClock/_updateQuestClock 兼容旧调用点
+------
+
 已完成 — 本轮 2026-06-29 (35) ~New quest~ 状态泄漏清除 + 红框跨楼层搜索
 ------
 · 根因1—草稿 UI 状态泄漏：sendMessage 草稿晋升后 saveQuestUIState(_dOldId) 保存了已发送的输入框文本/图片/tier

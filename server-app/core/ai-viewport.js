@@ -718,10 +718,10 @@
           _ctxMenuRow = r;
         }
         if (ent.isDir) {
-          // 目录：先清除旧行高亮，再设新行，最后打开搜索
+          // 目录：右键 → 打开新搜索标签（多实例）
           if (_ctxMenuRow) _ctxMenuRow.style.cssText = _ctxMenuRow._origRowStyle;
           _setRowHighlight(row);
-          if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath);
+          if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath, true);
         } else {
           // 文件：先打开菜单（内部 closeCtxMenu 会恢复旧行），再设高亮
           showFileContextMenu(e, fullPath, projectRoot);

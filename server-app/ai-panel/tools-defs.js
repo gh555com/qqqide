@@ -309,7 +309,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'analyze_image',
-            description: 'Analyze an existing image. Can: describe content (structured 6-field output), locate objects with norm-1000 bounding boxes + confidence (for clickable image maps), or answer questions about the image. Uses MIME magic-byte validation (PNG/JPEG/GIF/WebP). Coordinates are norm-1000 (0-1000 range, not pixels).',
+            description: 'Analyze an existing image. Can: describe content (structured output), locate objects with norm-1000 bounding boxes + confidence (for clickable image maps), or answer questions about the image. Uses MIME magic-byte validation (PNG/JPEG/GIF/WebP). Coordinates are norm-1000 (0-1000 range, not pixels). IMPORTANT: person identity is already provided by pre-analysis (person_identity field in vision results above), so only call this tool for additional details not covered there.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -327,7 +327,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'remove_background',
-            description: 'Remove background from an image, output RGBA transparent PNG. Auto-detects image dimensions and routes to standard (≤2000px) or HD (≤10000px) model. Upload to OSS Shanghai, process via Aliyun imageseg, return transparent PNG.',
+            description: 'Remove background from an image, output RGBA transparent PNG. Auto-detects image dimensions and routes to standard (≤2000px) or HD (≤10000px) model. Processed via cloud segmentation service, returns transparent PNG.',
             parameters: {
                 type: 'object',
                 properties: {

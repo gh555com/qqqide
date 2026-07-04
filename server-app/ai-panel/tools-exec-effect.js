@@ -314,11 +314,7 @@ async function executeGenerateImage(args) {
         } catch (_) { }
     }
 
-    // ★ 多源取 token（防 _activeAgent 在间 house 切换时丢失）
-    var token = '';
-    try { var _ag4 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_ag4 && _ag4._token) token = _ag4._token; } catch (_) { }
-    if (!token && typeof window !== 'undefined' && window.__qqq_floorToken) { token = window.__qqq_floorToken; }
-    if (!token) { try { var _pool2 = (typeof window !== 'undefined' && window.parent && window.parent.__qqq_agentPool) ? window.parent.__qqq_agentPool : null; if (_pool2) { for (var _qId2 in _pool2) { var _ag5 = _pool2[_qId2]; if (_ag5 && _ag5._token) { token = _ag5._token; break; } } } } catch (_) { } }
+    var token = _getAuthToken();
     if (!token) return 'Error: no auth token — try restarting the chat or logging in again';
 
     var outDir = args.out_dir || '';
@@ -564,31 +560,16 @@ async function executeAnalyzeImage(args) {
 
     var action = args.action || 'describe';
 
-    // ★ 多源取 token（防 _activeAgent 在间 house 切换时丢失）
-    var token = '';
-    try { var ag1 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (ag1 && ag1._token) token = ag1._token; } catch (_) { }
-    if (!token && typeof window !== 'undefined' && window.__qqq_floorToken) { token = window.__qqq_floorToken; }
-    if (!token) { try { var pool = (typeof window !== 'undefined' && window.parent && window.parent.__qqq_agentPool) ? window.parent.__qqq_agentPool : null; if (pool) { for (var _qpId in pool) { var _qpAg = pool[_qpId]; if (_qpAg && _qpAg._token) { token = _qpAg._token; break; } } } } catch (_) { } }
+    var token = _getAuthToken();
     if (!token) return 'Error: no auth token — try restarting the chat or logging in again';
 
     try {
-        // 1. 读取图片 → base64
-        var b64Result = await bridge.qz.spawn({
-            cmd: 'bash',
-            args: ['-c', 'base64 -w0 "' + image.replace(/\\/g, '/') + '" 2>/dev/null || base64 "' + image.replace(/\\/g, '/') + '" 2>/dev/null'],
-            timeout: 15000
-        });
-        var b64 = (b64Result.stdout || '').replace(/\s/g, '');
-        if (!b64) return 'Error: could not read or encode image: ' + image;
+        var b64 = await _readImageBase64(bridge, image);
+        if (!b64) return 'Error: could not read image: ' + image;
 
         // ★ 1b. MIME 魔术字节校验（借鉴 openhanako sniffImageMimeType）
         var mimeInfo = _sniffImageMime(b64);
-        if (mimeInfo) {
-            // 可选：校验通过，静默。不支持的格式可由 Go 端拒绝
-        }
-        // 不是已知图片格式 → 仍然继续（Go 端有更强校验），但记录警告
         if (!mimeInfo && b64.length > 100000) {
-            // 大文件无魔术字节 → 可能不是图片
             return 'Error: file does not appear to be a supported image (PNG/JPEG/GIF/WebP). First 12 base64 chars: ' + b64.slice(0, 12);
         }
 
@@ -666,6 +647,54 @@ async function executeAnalyzeImage(args) {
 // search_web — 经 AiGateway 统一代理
 // ============================================================
 
+// ★ 多源取 auth token（防 _activeAgent 在间 house 切换时丢失）
+function _getAuthToken() {
+    try { var _a = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_a && _a._token) return _a._token; } catch (_) {}
+    if (typeof window !== 'undefined' && window.__qqq_floorToken) return window.__qqq_floorToken;
+    try {
+        var _p = (typeof window !== 'undefined' && window.parent && window.parent.__qqq_agentPool) ? window.parent.__qqq_agentPool : null;
+        if (_p) { for (var _k in _p) { var _ag = _p[_k]; if (_ag && _ag._token) return _ag._token; } }
+    } catch (_) {}
+    return '';
+}
+
+// ★ 读图片 → base64（bridge.fs.readBase64 走主进程 1 IPC，绕过 ghrun 64KB 硬截断）
+async function _readImageBase64(bridge, image) {
+    try {
+        if (typeof bridge.fs.readBase64 === 'function') {
+            var _b64 = await bridge.fs.readBase64(image);
+            if (_b64) return _b64;
+        }
+    } catch (_) {}
+    try {
+        var raw = await bridge.fs.read(image);
+        if (raw && raw.length > 0) return _binaryToBase64(raw);
+    } catch (_) {}
+    return '';
+}
+
+// ★ binary → base64（绕过 ghrun 64KB IPC 截断）
+function _binaryToBase64(bytes) {
+    if (!bytes || bytes.length === 0) return '';
+    // bytes 可能是 ArrayBuffer / Uint8Array / Array-like
+    var arr = new Uint8Array(bytes.buffer || bytes, bytes.byteOffset || 0, bytes.length);
+    var len = arr.length;
+    var chars = [];
+    for (var i = 0; i < len; i += 3) {
+        var a = arr[i];
+        var b = i + 1 < len ? arr[i + 1] : 0;
+        var c = i + 2 < len ? arr[i + 2] : 0;
+        var n = (a << 16) | (b << 8) | c;
+        chars.push(
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'[(n >> 18) & 63],
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'[(n >> 12) & 63],
+            i + 1 < len ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'[(n >> 6) & 63] : '=',
+            i + 2 < len ? 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'[n & 63] : '='
+        );
+    }
+    return chars.join('');
+}
+
 async function executeRemoveBackground(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
@@ -673,103 +702,65 @@ async function executeRemoveBackground(args) {
     var image = args.image || '';
     if (!image.trim()) return 'Error: image path is required';
 
-    // ★ 多源取 token（防 _activeAgent 在间 house 切换时丢失）
-    var token = '';
-    try { var _ag2 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_ag2 && _ag2._token) token = _ag2._token; } catch (_) { }
-    if (!token && typeof window !== 'undefined' && window.__qqq_floorToken) { token = window.__qqq_floorToken; }
-    if (!token) { try { var _pool = (typeof window !== 'undefined' && window.parent && window.parent.__qqq_agentPool) ? window.parent.__qqq_agentPool : null; if (_pool) { for (var _qId in _pool) { var _ag3 = _pool[_qId]; if (_ag3 && _ag3._token) { token = _ag3._token; break; } } } } catch (_) { } }
+    var token = _getAuthToken();
     if (!token) return 'Error: no auth token — try restarting the chat or logging in again';
 
     var quality = args.quality || 'auto';
 
     try {
-        // 1. 读取图片 → base64（★ PowerShell 优先，bash 兜底）
-        var b64 = '';
-        // 方法A: PowerShell（Windows 原生，100%可靠）
-        try {
-            var psResult = await bridge.qz.spawn({
-                cmd: 'powershell',
-                args: ['-NoProfile', '-Command', '[Convert]::ToBase64String([IO.File]::ReadAllBytes(\'' + image.replace(/\\/g, '/') + '\'))'],
-                timeout: 15000
-            });
-            b64 = (psResult.stdout || '').replace(/\s/g, '');
-        } catch (_) { }
-        // 方法B: bash+base64（Linux/Mac 兜底）
-        if (!b64) {
-            try {
-                var bashResult = await bridge.qz.spawn({
-                    cmd: 'bash',
-                    args: ['-c', 'base64 -w0 "' + image.replace(/\\/g, '/') + '" 2>/dev/null || base64 "' + image.replace(/\\/g, '/') + '" 2>/dev/null'],
-                    timeout: 15000
-                });
-                b64 = (bashResult.stdout || '').replace(/\s/g, '');
-            } catch (_) { }
-        }
-        if (!b64) {
-            // try ls to debug
-            var ls = '';
-            try {
-                var lsResult = await bridge.qz.spawn({ cmd: 'cmd', args: ['/c', 'dir "' + image + '" 2>nul || echo NOT_FOUND'], timeout: 5000 });
-                ls = (lsResult.stdout || '').trim();
-            } catch (_) { }
-            return 'Error: could not read image: ' + image + (ls ? ' (dir: ' + ls.slice(0, 200) + ')' : '');
-        }
+        var b64 = await _readImageBase64(bridge, image);
+        if (!b64) return 'Error: could not read image: ' + image;
 
-        // 2. 调用 Go API
-        if (typeof AiGateway === 'undefined' || !AiGateway.segmentSubmit) {
-            // 直接 fetch Go API
-            var segmentUrl = 'https://direct-cn.gh555.com/api/v3/ai/segment';
-            var resp = await fetch(segmentUrl, {
+        // 2. 调用 Go API（★ 经 AiGateway 双线路 failover）
+        var segResult = null;
+        if (typeof AiGateway !== 'undefined' && typeof AiGateway.segmentSubmit === 'function') {
+            segResult = await AiGateway.segmentSubmit({ image: b64, quality: quality, token: token });
+        } else {
+            // 兜底：直接 fetch（AiGateway 未加载时）
+            var resp = await fetch('https://direct-cn.gh555.com/api/v3/ai/segment', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
                 body: JSON.stringify({ image: b64, quality: quality })
             });
             var data = await resp.json();
-            if (!data || !data.image_url) {
-                return 'Remove background failed: ' + (data.error || JSON.stringify(data));
-            }
-            // ★ 累加显示用计费
-            if (data.ge_cost && typeof _addToolWgeCost === 'function') {
-                _addToolWgeCost(data.ge_cost);
-            }
-
-            // 3. 下载结果图片到本地
-            var outDir = '';
-            try {
-                if (typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
-                    outDir = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/genera';
-                }
-            } catch (_) { }
-            if (outDir) {
-                try { await bridge.fs.mkdir(outDir); } catch (_) { }
-            } else {
-                outDir = '.';
-            }
-
-            // 文件名
-            var imgHash = b64.slice(0, 8) + Date.now().toString(36);
-            var fileName = 'remove_bg_' + imgHash + '.png';
-            var outPath = outDir + '/' + fileName;
-
-            // curl 下载
-            var dlResult = await bridge.qz.spawn({
-                cmd: 'curl',
-                args: ['-s', '-o', outPath, '-L', data.image_url],
-                timeout: 30000
-            });
-
-            return 'Background removed successfully. Output: ![](file:///' + outPath.replace(/\\/g, '/') + ')';
-        } else {
-            // 经 AiGateway
-            var result = await AiGateway.segmentSubmit({ image: b64, quality: quality, token: token });
-            if (!result || !result.image_url) {
-                return 'Remove background failed: ' + (result.error || 'no result');
-            }
-            if (result.ge_cost && typeof _addToolWgeCost === 'function') {
-                _addToolWgeCost(result.ge_cost);
-            }
-            return 'Background removed. Result: ' + result.image_url;
+            segResult = { ok: data.ok, image_url: data.image_url, width: data.width, height: data.height, model: data.model, ge_cost: data.ge_cost || 0, error: data.error || data.code };
         }
+
+        if (!segResult || !segResult.ok || !segResult.image_url) {
+            return 'Remove background failed: ' + ((segResult && segResult.error) || 'no result');
+        }
+
+        // ★ 累加显示用计费
+        if (segResult.ge_cost && typeof _addToolWgeCost === 'function') {
+            _addToolWgeCost(segResult.ge_cost);
+        }
+
+        // 3. 下载结果图片到本地
+        var outDir = '';
+        try {
+            if (typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
+                outDir = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/genera';
+            }
+        } catch (_) { }
+        if (outDir) {
+            try { await bridge.fs.mkdir(outDir); } catch (_) { }
+        } else {
+            outDir = '.';
+        }
+
+        var imgHash = b64.slice(0, 8) + Date.now().toString(36);
+        var fileName = 'remove_bg_' + imgHash + '.png';
+        var outPath = outDir + '/' + fileName;
+
+        // curl 下载
+        var dlResult = await bridge.qz.spawn({
+            cmd: 'curl',
+            args: ['-s', '-o', outPath, '-L', segResult.image_url],
+            timeout: 30000
+        });
+
+        return 'Background removed successfully. Output: ![](file:///' + outPath.replace(/\\/g, '/') + ')';
+
     } catch (err) {
         return 'Error removing background: ' + (err.message || err);
     }
@@ -779,11 +770,7 @@ async function executeSearchWeb(args) {
     var query = args.query || '';
     if (!query.trim()) return 'Error: query is required';
 
-    // ★ 多源取 token（防 _activeAgent 在间 house 切换时丢失）
-    var token = '';
-    try { var _ag6 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_ag6 && _ag6._token) token = _ag6._token; } catch (_) { }
-    if (!token && typeof window !== 'undefined' && window.__qqq_floorToken) { token = window.__qqq_floorToken; }
-    if (!token) { try { var _pool3 = (typeof window !== 'undefined' && window.parent && window.parent.__qqq_agentPool) ? window.parent.__qqq_agentPool : null; if (_pool3) { for (var _qId3 in _pool3) { var _ag7 = _pool3[_qId3]; if (_ag7 && _ag7._token) { token = _ag7._token; break; } } } } catch (_) { } }
+    var token = _getAuthToken();
     if (!token) return 'Error: no auth token — try restarting the chat or logging in again';
 
     try {

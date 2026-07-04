@@ -193,14 +193,19 @@
 
     document.getElementById('search-close').onclick = _closeSearch;
 
-    document.getElementById('search-toggle').onclick = function () {
-        if ($searchBar.classList.contains('show')) _closeSearch(); else _openSearch();
-    };
+    // ★ 右键菜单 → 搜索（移植自已删除的 q1 搜索按钮）
+    $messages.addEventListener('contextmenu', function (e) {
+        // 已有选区时不拦截（用户可能想复制），仅无选区时弹出搜索
+        var sel = window.getSelection();
+        if (sel && sel.toString().trim().length > 0) return;
+        e.preventDefault();
+        _openSearch();
+    });
 
     document.addEventListener('keydown', function (e) {
         if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); e.stopPropagation(); _openSearch(); }
         if (e.key === 'Escape' && $searchBar.classList.contains('show')) { e.preventDefault(); _closeSearch(); }
-    });
+    });;
 })();
 
 // ═══ VS Code 风格选中同词高亮 ═══
