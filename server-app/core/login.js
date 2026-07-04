@@ -120,7 +120,7 @@
     return false;
   }
 
-  // ★ 立即显示 LV 区域 + 有数据就渲染（不等服务器）
+  // ★ 立即显示 LV 区域 + 渲染（有旧数据用旧数据，无数据渲染零）
   function _lvShow() {
     if (_$lvBar) _$lvBar.style.display = 'inline-flex';
     if (_$ldrBtn) _$ldrBtn.style.display = '';
@@ -131,6 +131,10 @@
       var p = Math.min(d.progress_pct || 0, 100);
       _lvDisplaySnap(p, f);
       _lvAccWge = f * WL + (p / 100) * WL;
+    } else if (_lvAccWge === null) {
+      // ★ 无数据时也渲染零值（保证启动时有 LV 区域可见）
+      _lvDisplaySnap(0, 0);
+      _lvAccWge = 0;
     }
   }
 
@@ -235,7 +239,6 @@
       var data = await resp.json();
       if (data && data.ok) {
         _lvData = data;
-        // ★ 更新 countryIso2（LV API 现在返回 country_iso2）
         if (data.country_iso2 && (!_authData.countryIso2 || data.country_iso2 !== _authData.countryIso2)) {
           _authData.countryIso2 = data.country_iso2;
           _updateButtons(true, _authData.phone.slice(-4));
@@ -250,15 +253,25 @@
           _lvAccWge = servWge;
         }
         _lvLastGe = data.total_consumed_ge || '';
-        // ★ 只要有真实数据就 snap（覆盖可能的中层空白/billing 未渲染）
-        if (!_lvAnim) {
-          _lvDisplaySnap(servPct, servFloor);
-        }
+        if (!_lvAnim) { _lvDisplaySnap(servPct, servFloor); }
         if (_$lvBar) _$lvBar.style.display = 'inline-flex';
         if (_$lvLevel && servFloor >= 0) _$lvLevel.textContent = 'Lv' + servFloor;
         if (_$ldrBtn) _$ldrBtn.style.display = '';
       }
-    } catch (e) { /* silent */ }
+    } catch (e) {
+      // ★ 网络失败→有旧数据或零值保证 LV 区可渲染
+      if (!_lvAnim) {
+        var d = _lvData;
+        if (d && typeof d.level === 'number' && d.level >= 0) {
+          var w = 10 * 10000, f = d.level_floor != null ? d.level_floor : 0, p = Math.min(d.progress_pct || 0, 100);
+          _lvDisplaySnap(p, f);
+          if (_lvAccWge === null) _lvAccWge = f * w + (p / 100) * w;
+        } else if (_lvAccWge === null) {
+          _lvDisplaySnap(0, 0);
+          _lvAccWge = 0;
+        }
+      }
+    }
   }
 
   // ★ 快照定位：中层+顶层同时到位，零过渡，盖上 #c4b187
@@ -375,89 +388,65 @@
     }
   }
 
-  // ── LV 升级特效 ──
+  // ── LV 升级流光特效（3 阶段：放大 2× → 金色流光 5s → 还原）──
+  var _lvGlowGen = 0;
+  var _lvShimmerStyle = null;
+
+  function _lvInjectShimmer() {
+    if (_lvShimmerStyle) return;
+    _lvShimmerStyle = document.createElement('style');
+    _lvShimmerStyle.textContent = '@keyframes qq-lv-shimmer{0%{background-position:200% 0}100%{background-position:-100% 0}}';
+    document.head.appendChild(_lvShimmerStyle);
+  }
+
   function _lvLevelUpGlow() {
-    // LV 文字弹跳 + 金色光晕
-    if (_$lvLevel) {
-      _$lvLevel.style.transition = 'none';
-      _$lvLevel.style.transform = 'scale(1.55)';
-      _$lvLevel.style.color = '#ffd700';
-      _$lvLevel.style.textShadow = '0 0 8px #ffd700, 0 0 22px #ff8c00, 0 0 40px #ff4500';
-      requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
-          _$lvLevel.style.transition = 'transform 0.55s cubic-bezier(0.175,0.885,0.32,1.275), color 0.8s ease-out, text-shadow 1s ease-out';
-          _$lvLevel.style.transform = 'scale(1)';
-          _$lvLevel.style.color = '';
-          _$lvLevel.style.textShadow = '';
-        });
-      });
-      // 动画结束后清理 transition，避免残留
-      setTimeout(function() { if (_$lvLevel) _$lvLevel.style.transition = ''; }, 1200);
-    }
-    // 经验条金色脉冲
-    if (_$lvSolid) {
-      _$lvSolid.style.transition = 'none';
-      _$lvSolid.style.background = '#ffd700';
-      _$lvSolid.style.boxShadow = '0 0 12px #ffd700, 0 0 24px #ff8c00';
-      requestAnimationFrame(function() {
-        requestAnimationFrame(function() {
-          _$lvSolid.style.transition = 'box-shadow 1.2s ease-out, background 0.7s ease-out';
-          _$lvSolid.style.boxShadow = '';
-          _$lvSolid.style.background = '#c4b187';
-        });
-      });
-      setTimeout(function() { if (_$lvSolid) _$lvSolid.style.transition = ''; }, 1400);
-    }
-  }
+    if (!_$lvLevel) return;
+    _lvInjectShimmer();
+    var gen = ++_lvGlowGen;
 
-  function _lvBurstParticles() {
-    var track = _$lvBar && _$lvBar.querySelector('.qqq-lv-track');
-    if (!track) return;
-    var r = track.getBoundingClientRect();
-    // ★ 右半段随机 X（只用 60px 轨道坐标），Y 轨道中心
-    var cx = r.left + r.width * 0.5 + Math.random() * r.width * 0.5;
-    var cy = r.top + r.height / 2;
-    var container = document.createElement('div');
-    container.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:99998;';
-    document.body.appendChild(container);
-    var colors = ['#ffd700', '#ffaa00', '#ff8c00', '#fff8dc', '#ffec8b', '#ffd700', '#fff3b0'];
-    var count = 28;
-    for (var i = 0; i < count; i++) {
-      var p = document.createElement('div');
-      var a = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.35;
-      var d = 25 + Math.random() * 70;
-      var s = 1.5 + Math.random() * 4.5;
-      var dur = 0.45 + Math.random() * 0.8;
-      var color = colors[Math.floor(Math.random() * colors.length)];
-      p.style.cssText = 'position:fixed;left:' + cx + 'px;top:' + cy + 'px;width:' + s + 'px;height:' + s + 'px;background:' + color + ';border-radius:50%;pointer-events:none;z-index:99998;transition:all ' + dur + 's cubic-bezier(0,0.65,0.18,1);opacity:1;box-shadow:0 0 ' + (s * 2) + 'px ' + color + ';';
-      container.appendChild(p);
-      (function(p, a, d, cx, cy) {
-        requestAnimationFrame(function() {
-          p.style.left = (cx + Math.cos(a) * d) + 'px';
-          p.style.top = (cy + Math.sin(a) * d) + 'px';
-          p.style.opacity = '0';
-          p.style.transform = 'scale(0.15)';
-        });
-      })(p, a, d, cx, cy);
-    }
-    setTimeout(function() { container.remove(); }, 2000);
-  }
+    // 读取当前主题文本色
+    var baseColor = '#e8e8e8';
+    try { var c = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim(); if (c) baseColor = c; } catch(e){}
 
-  function _lvExpandRing() {
-    var track = _$lvBar && _$lvBar.querySelector('.qqq-lv-track');
-    if (!track) return;
-    var r2 = track.getBoundingClientRect();
-    var cx = r2.left + r2.width * 0.5 + Math.random() * r2.width * 0.5;
-    var cy = r2.top + r2.height / 2;
-    var r = document.createElement('div');
-    r.style.cssText = 'position:fixed;left:' + (cx - 6) + 'px;top:' + (cy - 6) + 'px;width:12px;height:12px;border-radius:50%;border:2.5px solid #ffd700;pointer-events:none;z-index:99997;transition:all 0.9s cubic-bezier(0,0.45,0.12,1);opacity:0.9;box-shadow:0 0 6px #ffd700;';
-    document.body.appendChild(r);
+    // Phase 1: 字体放大两倍 + 金色
+    _$lvLevel.style.transition = 'none';
+    _$lvLevel.style.transform = 'scale(2)';
+    _$lvLevel.style.transformOrigin = 'right center';
+    _$lvLevel.style.color = '#ffd700';
+    _$lvLevel.style.textShadow = '0 0 8px #ffd700, 0 0 25px #ff8c00, 0 0 50px #ff4500';
+
+    // Phase 2: 金色流光循环 ~5s
     requestAnimationFrame(function() {
-      r.style.left = (cx - 50) + 'px'; r.style.top = (cy - 50) + 'px';
-      r.style.width = '100px'; r.style.height = '100px';
-      r.style.opacity = '0'; r.style.borderWidth = '0.8px';
+      requestAnimationFrame(function() {
+        if (_lvGlowGen !== gen) return;
+        _$lvLevel.style.transition = 'none';
+        _$lvLevel.style.backgroundImage = 'linear-gradient(90deg, ' + baseColor + ' 35%, ' + baseColor + ' 42%, #ffd700 46%, #fff8dc 50%, #ffd700 54%, ' + baseColor + ' 58%, ' + baseColor + ' 65%)';
+        _$lvLevel.style.backgroundSize = '200% 100%';
+        _$lvLevel.style.backgroundClip = 'text';
+        _$lvLevel.style.webkitBackgroundClip = 'text';
+        _$lvLevel.style.color = 'transparent';
+        _$lvLevel.style.animation = 'qq-lv-shimmer 1.25s linear infinite';
+
+        // Phase 3: 5s 后还原
+        setTimeout(function() {
+          if (_lvGlowGen !== gen) return;
+          _$lvLevel.style.animation = '';
+          _$lvLevel.style.transition = 'all 0.7s ease-out';
+          _$lvLevel.style.backgroundImage = '';
+          _$lvLevel.style.backgroundSize = '';
+          _$lvLevel.style.backgroundClip = '';
+          _$lvLevel.style.webkitBackgroundClip = '';
+          _$lvLevel.style.color = '';
+          _$lvLevel.style.transform = 'scale(1)';
+          _$lvLevel.style.transformOrigin = '';
+          _$lvLevel.style.textShadow = '';
+          setTimeout(function() {
+            if (_lvGlowGen !== gen) return;
+            _$lvLevel.style.transition = '';
+          }, 800);
+        }, 5000);
+      });
     });
-    setTimeout(function() { r.remove(); }, 1100);
   }
 
   // ★ 动画入口（每间 house 直接调用）
@@ -472,10 +461,9 @@
     // ② 顶层 rAF 追赶
     _lvChaseSolid(lvPct, isLevelUp, lvFloor);
     if (_$ldrBtn) _$ldrBtn.style.display = '';
-    // ③ TODO 临时：每次 billing 都触发特效（调试用，下一波还原为仅升级时）
-    _lvLevelUpGlow(); _lvBurstParticles(); _lvExpandRing();
+    // ③ 金色流光特效（测试阶段每 billing 触发，后续还原为仅升级时）
+    _lvLevelUpGlow();
   }
-
 
 
   // ── 排行榜悬浮面板 ──

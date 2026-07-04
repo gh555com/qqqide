@@ -199,13 +199,15 @@ function _addCopyBtnToUserMsg(el) {
 
 // ═══ AI 消息复制按钮（左侧，复制原始 Markdown） ═══
 function _addCopyBtnToAiMsg(el, rawMarkdown) {
+    // ★ 把原始 Markdown 存到元素上，click 时总能取到（各调用路径统一）
+    el._rawMarkdown = rawMarkdown || '';
     var btn = document.createElement('span');
     btn.className = 'msg-ai-copy';
     btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
     btn.title = typeof _i === 'function' ? _i('qqq.ai.copy', '复制 Markdown') : '复制 Markdown';
     btn.onclick = function (e) {
         e.stopPropagation();
-        var text = rawMarkdown || el.textContent || '';
+        var text = el._rawMarkdown || el.textContent || '';
         navigator.clipboard.writeText(text).then(function () {
             btn.classList.add('copied');
             btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';

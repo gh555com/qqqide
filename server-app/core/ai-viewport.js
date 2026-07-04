@@ -717,18 +717,10 @@
           r.style.cssText += ';background:' + (dk ? 'rgba(255,255,255,0.16)' : 'rgba(0,0,0,0.12)') + '!important;color:' + (dk ? '#fff' : '#000') + '!important;';
           _ctxMenuRow = r;
         }
-        if (ent.isDir) {
-          // 目录：右键 → 打开新搜索标签（多实例）
-          if (_ctxMenuRow) _ctxMenuRow.style.cssText = _ctxMenuRow._origRowStyle;
-          _setRowHighlight(row);
-          if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath, true);
-        } else {
-          // 文件：先打开菜单（内部 closeCtxMenu 会恢复旧行），再设高亮
-          showFileContextMenu(e, fullPath, projectRoot);
-          // ★ closeCtxMenu 已执行完毕，旧行已恢复，现在安全设新行高亮
-          if (_ctxMenuRow) _ctxMenuRow.style.cssText = _ctxMenuRow._origRowStyle;
-          _setRowHighlight(row);
-        }
+        // 目录+文件：右键 → 打开新搜索标签（多实例）
+        if (_ctxMenuRow) _ctxMenuRow.style.cssText = _ctxMenuRow._origRowStyle;
+        _setRowHighlight(row);
+        if (window.qqqideOpenSearch) window.qqqideOpenSearch(fullPath, true);
       });
 
       parentEl.appendChild(row);
@@ -977,22 +969,6 @@
     name.className = 'aiv-block-name';
     name.textContent = truncName(proj.name);
 
-    // ★ 放大镜搜索按钮 — 点击打开 X 区搜索标签并自动填入此文件夹
-    const searchBtn = document.createElement('span');
-    searchBtn.className = 'aiv-block-search';
-    searchBtn.textContent = '🔍';
-    searchBtn.title = window._i ? window._i('shell.viewport.searchFolder', '搜索此文件夹') : '搜索此文件夹';
-    searchBtn.style.cssText = 'cursor:pointer;font-size:12px;padding:0 4px;margin-left:2px;border-radius:3px;opacity:0.6;transition:opacity 0.15s;';
-    searchBtn.addEventListener('mouseenter', function () { searchBtn.style.opacity = '1'; });
-    searchBtn.addEventListener('mouseleave', function () { searchBtn.style.opacity = '0.6'; });
-    searchBtn.addEventListener('click', function (e) {
-      e.stopPropagation();
-      // 打开搜索标签并设置搜索范围
-      if (window.qqqideOpenSearch) {
-        window.qqqideOpenSearch(proj.path);
-      }
-    });
-
     const rmBtn = document.createElement('span');
     rmBtn.className = 'aiv-block-rm';
     if (idx === 0) {
@@ -1014,7 +990,6 @@
 
     block.appendChild(icon);
     block.appendChild(name);
-    block.appendChild(searchBtn);
     block.appendChild(rmBtn);
 
     // hover → 150ms 防抖后展开下拉（防止光标掠过误触 + 限制 readdir 频率）
@@ -1035,6 +1010,12 @@
     block.addEventListener('click', () => {
       if (_blockHoverTimer) { clearTimeout(_blockHoverTimer); _blockHoverTimer = null; }
       showDropdown(block, proj);
+    });
+    // 右键 → 打开新搜索标签（多实例）
+    block.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (window.qqqideOpenSearch) window.qqqideOpenSearch(proj.path, true);
     });
 
     return block;

@@ -803,7 +803,12 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
         try { ag._doStreamRender(); } catch (_) { }
     }
     var ai_html = '';
-    if (ag._activeAiDiv && ag._activeAiDiv._contentWrap) {
+    // ★ 中断恢复：优先用紧急快照（onError 在清理前抓取），防 DOM 已变
+    if (ag._emergencyAiHtml) {
+        ai_html = ag._emergencyAiHtml;
+        ag._emergencyAiHtml = null;  // 一次性消费
+    }
+    if (!ai_html && ag._activeAiDiv && ag._activeAiDiv._contentWrap) {
         try { ai_html = ag._activeAiDiv._contentWrap.innerHTML; } catch (_) { }
     }
     // ★ 跨面板迁移：捕获流式缓冲区状态（_buf/_splitCursor/_codeFenceOpen），
