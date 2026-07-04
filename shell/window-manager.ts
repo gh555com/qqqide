@@ -115,12 +115,10 @@ export function createWindow(
         },
     });
 
-    // ★ Console buffer — 条件捕获: CDP 激活时禁用 console-message 以免重复
-    let _cdpActive = false;
+    // ★ console-message 始终运行 — 捕获全量消息 (CDP 不再阻塞, 仅作补充)
     const _cmHandler = (
         _e: any, _level: number, message: string, _line: number, _sourceId: string
     ) => {
-        if (_cdpActive) return;  // CDP 已激活 → 数据更完整, 跳过 console-message
         const src = (_sourceId || '').replace(/\\/g, '/');
         const file = src.split('/').pop() || '';
         const prefix = file && !file.startsWith('(') && _line ? file + ':' + _line + ' ' : '';
@@ -129,12 +127,8 @@ export function createWindow(
     };
     win.webContents.on('console-message', _cmHandler);
 
-    // CDP 初始化时设置激活标志, 使 console-message 静默
-    const _onCdpActive = () => { _cdpActive = true; };
-
-    // ★ CDP 控制台捕获 — Log.entryAdded (与 DevTools 右键另存为同一数据源)
-    // v12: 过滤 noise source → 与 DevTools Console 显示一致
-    _setupCdpConsoleCapture(win, _onCdpActive).catch(() => {});
+    // ★ CDP 作为补充 (网络错误调用栈等) — 静默失败不影响 console-message 主线
+    _setupCdpConsoleCapture(win).catch(() => {});
 
     win.removeMenu();
 
@@ -270,7 +264,7 @@ export function createWindow(
 
 // ── CDP 控制台全量捕获 — Log.entryAdded = DevTools 另存为 100% 同源数据 ──
 // ★ v8: 延迟启动 + 重试 + 完整覆盖
-async function _setupCdpConsoleCapture(win: BrowserWindow, onActive: () => void): Promise<void> {
+async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
     const PORT = 8315;
     const allSockets: SimpleWebSocket[] = [];
     let _started = false;
@@ -369,7 +363,6 @@ async function _setupCdpConsoleCapture(win: BrowserWindow, onActive: () => void)
                 try {
                     const msg = JSON.parse(data);
                     if (msg.method === 'Console.messageAdded' && msg.params?.message) {
-                        // Console 域已含格式化文本, 包含 fetch 错误的 GET URL net::ERR_*
                         _handleConsoleMsg(msg.params.message);
                     } else if (msg.method === 'Log.entryAdded' && msg.params?.entry) {
                         _handleEntry(msg.params.entry);
@@ -423,7 +416,7 @@ async function _setupCdpConsoleCapture(win: BrowserWindow, onActive: () => void)
             } catch {}
             console.log('[main] CDP capture started: ' + pageCount + ' page(s) + browser');
             _started = true;
-            onActive();  // 通知外部 CDP 已激活, 禁掉 console-message 兜底
+            // 不在此处 onActive — 等首条 CDP 数据到达才激活 (防中间空窗导致丢消息)
 
             // 轮询新 target
             const _poll = setInterval(async () => {

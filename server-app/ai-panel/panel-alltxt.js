@@ -2,51 +2,6 @@
 // \u2550\u2550\u2550 panel-alltxt.js \u2550\u2550\u2550
 // Rules edit, stopStream, all.txt streaming, A1 block, audit, translate
 
-// \u2500\u2500 Rules edit button \u2500\u2500
-var _rulesBtnBusy = false;
-document.getElementById('rules-edit').onclick = async function () {
-    if (_rulesBtnBusy) return;
-    _rulesBtnBusy = true;
-    try {
-        var bridge = _getBridge();
-
-        var appRoot = await bridge.app.root();
-        var appRootClean = appRoot.replace(/\\/g, '/').replace(/\/$/, '');
-        var globalPath = appRootClean + '/Data/global.txt';
-        var globalExists = await bridge.fs.exists(globalPath);
-        if (!globalExists) {
-            await bridge.fs.write(globalPath, '# qqq AI Global Rules\n# Write rules here that apply to ALL projects.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) \u2014 AI remembers them from conversation history.\n');
-        }
-        _postToHost({ type: 'qqq-file-open', path: globalPath });
-
-        var projRoot = questStore.getProjectRoot();
-        if (projRoot) {
-            var projRootClean = projRoot.replace(/\\/g, '/').replace(/\/$/, '');
-            var projDir = projRootClean + '/qqq/alphal/rule';
-            var projPath = projDir + '/project.txt';
-            var projExists = await bridge.fs.exists(projPath);
-            if (!projExists) {
-                try { await bridge.fs.mkdir(projDir, { recursive: true }); } catch (_) { }
-                await bridge.fs.write(projPath, '# You may optionally add must-read files or folders below.\n# Format: rule"<path>" \u2014 <path> is an absolute file or folder path.\n# Total lines across all added items combined are preferably under ~2000.\n# Suggest adding core architecture / iron-rule docs, like:\n# rule"D:\\your\\project\\docs\\rules.txt"\n');
-            }
-            _postToHost({ type: 'qqq-file-open-right', path: projPath });
-        }
-
-        setTimeout(function () {
-            loadQqqideRules();
-            if (typeof loadQqqideProjectRules === 'function') {
-                loadQqqideProjectRules(projRoot);
-            }
-            if (typeof buildQqqideVisionContext === 'function') {
-                buildQqqideVisionContext();
-            }
-        }, 3000);
-    } catch (e) {
-        console.warn('[rules] edit error:', e);
-    }
-    _rulesBtnBusy = false;
-};
-
 function stopStream() {
     // ★ 终极 Stop 闭环：单一入口 agent.stop() → _stopCtrl 级联中断一切 async 操作
     //   UX (按钮/A3时钟/队列/持久化) 由 panel-send.js finally 块统一处理

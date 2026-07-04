@@ -465,11 +465,13 @@
     }
     if (!gaeaGrp) return null;
 
-    // check duplicate
-    const existing = gaeaGrp.tabs.find(t => t.gaeaId === id);
-    if (existing) {
-      activateTab(gaeaGrp, existing.id);
-      return existing;
+    // check duplicate (skip if multi-instance)
+    if (!(opts && opts.multi)) {
+      const existing = gaeaGrp.tabs.find(t => t.gaeaId === id);
+      if (existing) {
+        activateTab(gaeaGrp, existing.id);
+        return existing;
+      }
     }
 
     const tabId = _nextTabId++;

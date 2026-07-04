@@ -333,7 +333,7 @@ var QuestStore = (function () {
     //   ① 磁盘有、索引无 → 自动发现（备份还原 / 手动复制 quest 目录）
     //   ② 索引有、磁盘无 → 自动清除（手动删文件夹）
     //   ③ 同编号多目录 → 警告 + 仅保留一条（其余需手动 repairDuplicateIds）
-    var _syncLock = null;  // ★ 防并发（rescan 与 _ensureIndex 未可同时跑）
+    var _syncLock = null;  // ★ 防并发（_ensureIndex 与手动调用未可同时跑）
     QuestStore.prototype._syncIndexFromFs = async function () {
         if (_syncLock) return _syncLock;
         _syncLock = (async () => {
@@ -475,15 +475,6 @@ var QuestStore = (function () {
             }
         })();
         return _syncLock;
-    };
-
-    // ★ 手动触发双向对账（备份还原 / 手动复制目录后调用）
-    //   仅主面板执行磁盘扫描（侧面板通过中心大脑 + IPC sync 获取更新，避免多面板并发扫盘竞态）
-    QuestStore.prototype.rescan = async function () {
-        await this._ensureIndex();
-        if (_isMainPanel) {
-            await this._syncIndexFromFs();
-        }
     };
 
     // ★ 修复同编号重复 quest：扫描磁盘，将多余目录重命名到新 ID

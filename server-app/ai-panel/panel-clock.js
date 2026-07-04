@@ -221,13 +221,13 @@ function _buildBillingTable(houses, passby) {
         var _pbPad = function (n) { return String(n).padStart(2, '0'); };
         var _pbTimeStr = _pbDate.getFullYear() + '-' + _pbPad(_pbDate.getMonth() + 1) + '-' + _pbPad(_pbDate.getDate())
             + ' ' + _pbPad(_pbDate.getHours()) + ':' + _pbPad(_pbDate.getMinutes()) + ':' + _pbPad(_pbDate.getSeconds());
-        var _pbTokenStr = _pbTokens >= 1000 ? Math.round(_pbTokens / 1000) + 'k' : String(_pbTokens);
+        var _pbTokenStr = String(_pbTokens);
         html += '<div class="billing-passby" style="margin-top:8px;font-size:13px;color:var(--text-secondary,#888);text-align:center">'
             + '<span style="color:var(--text-tertiary,#666)">at ' + _pbTimeStr + '</span>'
             + (passby.city ? '\u3000<span style="color:var(--text-tertiary,#666)">' + passby.city + '</span>' : '')
-            + '\u3000\u25b6\u3000q <span style="color:#cb4b16">' + _qNum + '</span>.f <span style="color:#cb4b16">' + _fNum + '</span>'
-            + ' passby: ' + _pbHouses + ' houses,\u3000'
-            + _pbTokenStr + ' tokens,\u3000'
+            + '\u3000\u25b6\u3000q <span style="color:#cb4b16">' + _qNum + '</span> f <span style="color:#cb4b16">' + _fNum + '</span>'
+            + ' passby: ' + _pbHouses + ' houses;\u3000'
+            + _pbTokenStr + ' tokens;\u3000'
             + _pbWge + ' wge'
             + ' \u2248 ' + _pbGe + ' ge'
             + '</div>';
@@ -453,6 +453,11 @@ async function renderQuestDrop() {
             line.appendChild(prefix);
             line.appendChild(title);
             item.appendChild(line);
+            // ★ 彗星电子钟：读取中央真理机器 parent.__qqq_agentPool
+            var poolAgent = parent.__qqq_agentPool && parent.__qqq_agentPool[s.id];
+            if (poolAgent && poolAgent._stopState === 'sending') {
+                _insertCometClock(prefix, s.id);
+            }
             item.onclick = function (e) { e.stopPropagation(); closeQuestDrop(); switchQuest(s.id); };
             body.appendChild(item);
         })(filtered[i]);
@@ -555,44 +560,88 @@ async function openQuestDrop() {
 }
 var _tofuEntry = null;  // 当前活跃 quest 的 index 条目，供编辑用
 
-// ═══ 微型电子钟：右下角黑底白字，只显示秒数 ═══
-// 唯一真理机器：读 _activeAgent._floorStartPerf（所有面板共享同一 agent）
+// ═══ 彗星电子钟：唯一真理机器驱动 ═══
+// 中央真理：读 parent.__qqq_agentPool（所有面板读同一池），零脑分裂
+// 位置：quest-tofu-prefix（招牌行）+ quest-drop-prefix（下拉每行）右下角
 // 200ms 滴答 → 楼层封顶消失
-var _questClockTimer = null;
+var _cometClockTimer = null;
 
-function _startQuestClock() {
-    if (_questClockTimer) return;
-    _updateQuestClock();
-    _questClockTimer = setInterval(_updateQuestClock, 200);
-}
-
-function _updateQuestClock() {
-    var clockEl = document.getElementById('quest-clock');
-    if (!clockEl) return;
-    var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-    if (ag && ag._stopState === 'sending' && ag._floorStartPerf > 0) {
-        var elapsed = performance.now() - ag._floorStartPerf;
-        var seconds = Math.floor(elapsed / 1000);
-        clockEl.textContent = seconds;
-        clockEl.style.display = '';
-        // ★ 确保定时器在跑
-        if (!_questClockTimer) _questClockTimer = setInterval(_updateQuestClock, 200);
-    } else {
-        clockEl.style.display = 'none';
-        if (_questClockTimer) {
-            clearInterval(_questClockTimer);
-            _questClockTimer = null;
+function _tickCometClocks() {
+    var clocks = document.querySelectorAll('.comet-clock');
+    var pool = parent && parent.__qqq_agentPool;
+    if (!pool) return;
+    var now = performance.now();
+    var hasVisible = false;
+    for (var i = 0; i < clocks.length; i++) {
+        var clk = clocks[i];
+        var qid = clk.getAttribute('data-qid');
+        var ag = pool[qid];
+        if (ag && ag._stopState === 'sending' && ag._floorStartPerf > 0) {
+            var elapsed = now - ag._floorStartPerf;
+            clk.textContent = Math.floor(elapsed / 1000);
+            clk.style.display = '';
+            hasVisible = true;
+        } else {
+            clk.style.display = 'none';
         }
     }
+    // 无可显示时钟 → 停定时器
+    if (!hasVisible && _cometClockTimer) {
+        clearInterval(_cometClockTimer);
+        _cometClockTimer = null;
+    }
+}
+
+function _ensureCometClockTicking() {
+    if (!_cometClockTimer) {
+        _cometClockTimer = setInterval(_tickCometClocks, 200);
+        _tickCometClocks();
+    }
+}
+
+// ★ 在 prefix 元素内插入彗星电子钟（如已存在则跳过）
+function _insertCometClock(prefixEl, qid) {
+    if (!prefixEl) return;
+    var existing = prefixEl.querySelector('.comet-clock');
+    if (existing) {
+        existing.setAttribute('data-qid', qid);
+        return;
+    }
+    var clk = document.createElement('span');
+    clk.className = 'comet-clock';
+    clk.setAttribute('data-qid', qid);
+    clk.style.display = 'none';
+    prefixEl.appendChild(clk);
+    _ensureCometClockTicking();
+}
+
+// ★ 从 prefix 移除彗星电子钟
+function _removeCometClock(prefixEl) {
+    if (!prefixEl) return;
+    var clk = prefixEl.querySelector('.comet-clock');
+    if (clk) clk.remove();
+}
+
+function _startQuestClock() {
+    _ensureCometClockTicking();
 }
 
 function _stopQuestClock() {
-    if (_questClockTimer) {
-        clearInterval(_questClockTimer);
-        _questClockTimer = null;
+    if (_cometClockTimer) {
+        clearInterval(_cometClockTimer);
+        _cometClockTimer = null;
     }
-    var clockEl = document.getElementById('quest-clock');
-    if (clockEl) clockEl.style.display = 'none';
+    // 隐藏所有彗星电子钟（下拉关闭后 DOM 没了无所谓，豆腐块残留需清）
+    var clocks = document.querySelectorAll('.comet-clock');
+    for (var i = 0; i < clocks.length; i++) {
+        clocks[i].style.display = 'none';
+    }
+}
+
+// ★ 兼容旧调用：_updateQuestClock 由 updateQuestTofu/switchQuest 调用
+function _updateQuestClock() {
+    _tickCometClocks();
+    _ensureCometClockTicking();
 }
 
 async function updateQuestTofu() {
@@ -604,17 +653,24 @@ async function updateQuestTofu() {
     _tofuEntry = entry || null;
     if (entry) {
         var num = entry.numericId || '?';
-        if (prefixEl) prefixEl.textContent = 'q' + num + '.  ';
+        if (prefixEl) prefixEl.textContent = 'q' + num + '.\u00a0 ';
         textEl.textContent = entry.title || '';
         textEl.parentElement.classList.remove('quest-tofu-new');
         if (pen) pen.style.display = '';
-        // ★ 微型电子钟：建楼中显示，否则隐藏
+        // ★ 彗星电子钟：读取中央真理机器，建楼中在 prefix 右下角显示
+        var poolAgent = parent.__qqq_agentPool && parent.__qqq_agentPool[questActiveId];
+        if (poolAgent && poolAgent._stopState === 'sending') {
+            _insertCometClock(prefixEl, questActiveId);
+        } else {
+            _removeCometClock(prefixEl);
+        }
         _updateQuestClock();
     } else {
         if (prefixEl) prefixEl.textContent = '';
         textEl.textContent = '~ New quest ~';
         textEl.parentElement.classList.add('quest-tofu-new');
         if (pen) pen.style.display = 'none';
+        _removeCometClock(prefixEl);
         _updateQuestClock();
     }
     var title = 'qqq IDE';
@@ -720,7 +776,4 @@ async function renderTabs() { await updateQuestTofu(); }
 (async function () {
     loadQqqideRules();
     await bindMainProject();
-    // ★ q1 行 ↻ 按钮 — 从磁盘重新扫描 quest 列表
-    var _qrsBtn = document.getElementById('quest-rescan');
-    if (_qrsBtn) _qrsBtn.onclick = function () { questStore.rescan().then(function () { renderQuestDrop(); }); };
 })();

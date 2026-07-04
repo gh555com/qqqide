@@ -14,7 +14,7 @@ import { StateStore } from './state-sqlite';
 import { DownloadService } from './download-service';
 import { UpdateService } from './update-service';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
-import { renameDevToolsViaBroker } from './py-broker';
+import { renameDevToolsViaBroker, isPyBrokerReady } from './py-broker';
 import { _consoleBuffer } from './window-manager';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 
@@ -249,6 +249,18 @@ export function registerMiscIpc(
             _windowProjectMap.delete(win.id);
             _projectWindowMap.delete(normalized);
         }
+        return true;
+    });
+
+    // ★ renderer 可直接调用改 DevTools 标题（项目绑定完成后立即触发）
+    ipcMain.handle('qqqide:devtools:rename', (_e, projectRoot: string) => {
+        const win = BrowserWindow.fromWebContents(_e.sender);
+        if (!win) return false;
+        const normalized = projectRoot.replace(/\\/g, '/').replace(/\/$/, '');
+        const projName = path.basename(normalized);
+        console.log('[devtools] direct-rename: winId=' + win.id + ' projName=' + projName + ' brokerReady=' + isPyBrokerReady());
+        // 不延迟 — renderer 调用时项目已绑定，broker 已就绪
+        renameDevToolsViaBroker(win, projName);
         return true;
     });
 

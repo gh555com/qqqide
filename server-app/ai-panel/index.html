@@ -24,11 +24,7 @@ html{forced-color-adjust:none!important;width:100%}
 /* ── 选中高亮：固定 #ffd301（金），暗主题同色 ── */
 ::selection{background:#ffd301;color:#000}
 [data-theme="dark"] ::selection{background:#ffd301;color:#000}
-body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text-primary);background:var(--background-color);width:100%;height:100vh;display:grid;grid-template-columns:100%;grid-template-rows:auto auto 1fr auto;overflow-x:hidden}
-#top-bar{padding:4px 8px;border-bottom:1px solid var(--border-color);display:flex;align-items:center;gap:5px;font-size:11px;flex-wrap:nowrap;overflow-x:hidden}
-#top-bar .label{opacity:.7}
-#top-bar input{width:22px;flex:none;padding:1px 4px;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:3px;font-size:10px}
-#top-bar button{padding:1px 6px;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);font-size:10px;white-space:nowrap;flex-shrink:0}
+body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text-primary);background:var(--background-color);width:100%;height:100vh;display:grid;grid-template-columns:100%;grid-template-rows:auto 1fr auto;overflow-x:hidden}
 /* q2 quest 豆腐块 — 无边框贴合 q1 */
 #quest-bar{position:relative;margin:0;padding:0;border:none}
 .quest-tofu{display:flex;align-items:center;padding:8px 0 8px 14px;border:2px solid transparent;border-radius:0;font-size:22px;font-weight:700;white-space:nowrap;user-select:none;background:#ebe3ca;width:100%;cursor:default;box-sizing:border-box;position:relative}
@@ -37,8 +33,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 [data-theme="dark"] .quest-tofu:hover{background:#3f3830}
 .quest-tofu-text{overflow:hidden;flex:1;color:var(--text-primary);-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 30px),transparent 100%);mask-image:linear-gradient(to right,#000 calc(100% - 30px),transparent 100%)}
 .quest-tofu-prefix{flex:none;color:#e8a030;position:relative;white-space:pre}
-/* 微型电子钟：右下角黑底白字，无模糊实边，只显示秒数 */
-.quest-clock{position:absolute;bottom:2px;right:8px;background:#000;color:#fff;font-family:monospace;font-size:12px;font-weight:700;line-height:1;padding:1px 5px;letter-spacing:0;font-smooth:never;-webkit-font-smoothing:none;-moz-osx-font-smoothing:unset;text-rendering:optimizeSpeed;z-index:3;pointer-events:none}
+/* 彗星电子钟：prefix 右下角黑底白字，无模糊实边，只显示秒数 */
+.comet-clock{position:absolute;bottom:0;right:0;background:#000;color:#fff;font-family:monospace;font-size:11px;font-weight:700;line-height:1;padding:0 3px;letter-spacing:0;font-smooth:never;-webkit-font-smoothing:none;-moz-osx-font-smoothing:unset;text-rendering:optimizeSpeed;z-index:3;pointer-events:none}
 /* 白纸面板第一行 "~ New quest ~" 样式 */
 .quest-tofu-new .quest-tofu-text{color:var(--base01);font-style:italic;text-align:center}
 /* 豆腐块内联编辑 */
@@ -46,7 +42,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-tofu-pen{position:absolute;right:0;top:0;bottom:0;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:0;cursor:pointer;padding:0 14px;z-index:2;background:transparent;transition:opacity .15s,background .15s;line-height:1}
 [data-theme="dark"] .quest-tofu-pen{background:transparent}
 .quest-tofu-pen:hover{opacity:1!important;background:var(--background-color)!important}
-[data-theme="dark"] .quest-tofu-pen:hover{background:#3f3830}
+[data-theme="dark"] .quest-tofu-pen:hover{background:#3f3830!important}
 .quest-tofu:hover .quest-tofu-pen{opacity:1}
 /* q2x 行已删除（统一走 dropdown hover，单一真理源）*/
 /* ── q2 展开：虚线框 + 渐变背景 ── */
@@ -119,7 +115,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 [data-theme="dark"] .quest-drop-item:hover{background:#3f3830}
 .quest-drop-item.active{font-weight:700;color:var(--primary-color)}
 /* 下拉前缀 qN. — 加大两号 + 显著色 */
-.quest-drop-prefix{font-size:20px;color:#e8a030}
+.quest-drop-prefix{font-size:20px;color:#e8a030;position:relative}
 [data-theme="dark"] .quest-drop-prefix{color:#e8a030}
 .quest-drop-title{font-size:16px}
 /* 下拉列表体：滚动由父容器 .quest-drop 统一管理，头部粘滞 */
@@ -518,12 +514,6 @@ var _orig={};
 });
 })();
 </script>
-<div id="top-bar">
-  <button id="rules-edit">RULES</button>
-  <button id="search-toggle" title="搜索对话 (Ctrl+F)">🔍</button>
-  <button id="quest-rescan" title="刷新 quest 列表">↻</button>
-  <div style="flex:1"></div>
-</div>
 <div id="quest-bar">
   <!-- 第一行：招牌行 -->
   <div class="quest-tofu" id="quest-tofu">
@@ -531,7 +521,6 @@ var _orig={};
     <span class="quest-tofu-text" id="quest-tofu-text">─</span>
     <input class="quest-tofu-edit" id="quest-tofu-edit" type="text" style="display:none">
     <span class="quest-tofu-pen" id="quest-tofu-pen" title="编辑名称" style="display:none">✏️</span>
-    <span class="quest-clock" id="quest-clock" style="display:none"></span>
   </div>
   <!-- q2x 行已删除：统一走 dropdown 头行（hover q2 才出现） -->
 </div>

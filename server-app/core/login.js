@@ -120,10 +120,18 @@
     return false;
   }
 
-  // ★ 立即显示 LV 区域（不等待数据）
+  // ★ 立即显示 LV 区域 + 有数据就渲染（不等服务器）
   function _lvShow() {
     if (_$lvBar) _$lvBar.style.display = 'inline-flex';
     if (_$ldrBtn) _$ldrBtn.style.display = '';
+    var d = _lvData;
+    if (d && typeof d.level === 'number' && d.level >= 0) {
+      var WL = 10 * 10000;
+      var f = d.level_floor != null ? d.level_floor : 0;
+      var p = Math.min(d.progress_pct || 0, 100);
+      _lvDisplaySnap(p, f);
+      _lvAccWge = f * WL + (p / 100) * WL;
+    }
   }
 
   async function _httpsGet(urlPath) {
@@ -232,22 +240,18 @@
           _authData.countryIso2 = data.country_iso2;
           _updateButtons(true, _authData.phone.slice(-4));
         }
-        var firstTime = (_lvAccWge === null);
         var WL = 10 * 10000;
         var servFloor = data.level_floor != null ? data.level_floor : 0;
         var servPct = Math.min(data.progress_pct || 0, 100);
         var servWge = servFloor * WL + (servPct / 100) * WL;
-        // 服务器值高于本地 → 直接采纳（DB 已更新）
-        // 服务器值低于本地 且 静默 >2s → 纠正超标（如部分免费导致本地虚高）
-        // 服务器值低于本地 且 刚 billing → 忽略（DB 异步写入延迟）
         if (_lvAccWge === null || servWge > _lvAccWge) {
           _lvAccWge = servWge;
         } else if (servWge < _lvAccWge && Date.now() - _lvLastBillingTs > 2000) {
-          _lvAccWge = servWge;  // ★ 静默期纠正超标
+          _lvAccWge = servWge;
         }
         _lvLastGe = data.total_consumed_ge || '';
-        // ★ 首次启动：snap 两层到服务器基准（不播动画，顶层盖住中层）
-        if (firstTime) {
+        // ★ 只要有真实数据就 snap（覆盖可能的中层空白/billing 未渲染）
+        if (!_lvAnim) {
           _lvDisplaySnap(servPct, servFloor);
         }
         if (_$lvBar) _$lvBar.style.display = 'inline-flex';
@@ -293,12 +297,11 @@
   var _lvAudioRegular = null, _lvAudioMilestone = null;
   function _lvEnsureAudio() {
     if (!_lvAudioRegular) {
-      _lvAudioRegular = new Audio('../assets/lv-up.mp3');
+      _lvAudioRegular = new Audio('assets/lv-up.mp3');
       _lvAudioRegular.volume = 0.55;
     }
     if (!_lvAudioMilestone) {
-      _lvAudioMilestone = new Audio('../assets/lv-up-milestone.mp3');
-      _lvAudioMilestone.volume = 0.65;
+       _lvAudioMilestone = new Audio('assets/lv-up-milestone.mp3');      _lvAudioMilestone.volume = 0.65;
     }
   }
 
@@ -408,10 +411,12 @@
   }
 
   function _lvBurstParticles() {
-    var barRect = _$lvBar.getBoundingClientRect();
-    // ★ 随机 X 在经验条右半段，Y 固定经验条中心
-    var cx = barRect.left + barRect.width * 0.5 + Math.random() * barRect.width * 0.5;
-    var cy = barRect.top + barRect.height / 2;
+    var track = _$lvBar && _$lvBar.querySelector('.qqq-lv-track');
+    if (!track) return;
+    var r = track.getBoundingClientRect();
+    // ★ 右半段随机 X（只用 60px 轨道坐标），Y 轨道中心
+    var cx = r.left + r.width * 0.5 + Math.random() * r.width * 0.5;
+    var cy = r.top + r.height / 2;
     var container = document.createElement('div');
     container.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;pointer-events:none;z-index:99998;';
     document.body.appendChild(container);
@@ -439,9 +444,11 @@
   }
 
   function _lvExpandRing() {
-    var barRect = _$lvBar.getBoundingClientRect();
-    var cx = barRect.left + barRect.width * 0.5 + Math.random() * barRect.width * 0.5;
-    var cy = barRect.top + barRect.height / 2;
+    var track = _$lvBar && _$lvBar.querySelector('.qqq-lv-track');
+    if (!track) return;
+    var r2 = track.getBoundingClientRect();
+    var cx = r2.left + r2.width * 0.5 + Math.random() * r2.width * 0.5;
+    var cy = r2.top + r2.height / 2;
     var r = document.createElement('div');
     r.style.cssText = 'position:fixed;left:' + (cx - 6) + 'px;top:' + (cy - 6) + 'px;width:12px;height:12px;border-radius:50%;border:2.5px solid #ffd700;pointer-events:none;z-index:99997;transition:all 0.9s cubic-bezier(0,0.45,0.12,1);opacity:0.9;box-shadow:0 0 6px #ffd700;';
     document.body.appendChild(r);
@@ -465,8 +472,8 @@
     // ② 顶层 rAF 追赶
     _lvChaseSolid(lvPct, isLevelUp, lvFloor);
     if (_$ldrBtn) _$ldrBtn.style.display = '';
-    // ③ 升级特效：金色光晕 + 粒子爆发 + 光环扩散（仅升级时）
-    if (isLevelUp) { _lvLevelUpGlow(); _lvBurstParticles(); _lvExpandRing(); }
+    // ③ TODO 临时：每次 billing 都触发特效（调试用，下一波还原为仅升级时）
+    _lvLevelUpGlow(); _lvBurstParticles(); _lvExpandRing();
   }
 
 
@@ -813,12 +820,50 @@
       });
     });
 
-    // 插入: [🏆] [LV] [GE] [手机号] [登录] → refNode
+    // ★ RULES 按钮 — 编辑全局/项目规则文件
+    var _$rulesBtn = document.createElement('button');
+    _$rulesBtn.className = 'qqq-rules-btn';
+    _$rulesBtn.textContent = 'RULES';
+    _$rulesBtn.style.cssText = NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;color:var(--text-secondary,#999);cursor:pointer;padding:1px 6px;font-size:13px;margin-right:6px;';
+    _$rulesBtn.addEventListener('click', async function (e) {
+      e.preventDefault();
+      try {
+        var bridge = window.qqqideBridge;
+        if (!bridge) return;
+        var appRoot = await bridge.app.root();
+        var appRootClean = appRoot.replace(/\\/g, '/').replace(/\/$/, '');
+        var globalPath = appRootClean + '/Data/global.txt';
+        var globalExists = await bridge.fs.exists(globalPath);
+        if (!globalExists) {
+          await bridge.fs.write(globalPath, '# qqq AI Global Rules\n# Write rules here that apply to ALL projects.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) \u2014 AI remembers them from conversation history.\n');
+        }
+        document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: globalPath } }));
+        var projRoot = window._workspaceRoot;
+        if (projRoot) {
+          var projRootClean = projRoot.replace(/\\/g, '/').replace(/\/$/, '');
+          var projDir = projRootClean + '/qqq/alphal/rule';
+          var projPath = projDir + '/project.txt';
+          var projExists = await bridge.fs.exists(projPath);
+          if (!projExists) {
+            try { await bridge.fs.mkdir(projDir, { recursive: true }); } catch (_) { }
+            await bridge.fs.write(projPath, '# You may optionally add must-read files or folders below.\n# Format: rule"<path>" \u2014 <path> is an absolute file or folder path.\n# Total lines across all added items combined are preferably under ~2000.\n# Suggest adding core architecture / iron-rule docs, like:\n# rule"D:\\your\\project\\docs\\rules.txt"\n');
+          }
+          if (window.qqqTabs && window.qqqTabs.openFileInRightGroup) {
+            window.qqqTabs.openFileInRightGroup(projPath);
+          } else {
+            document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: projPath } }));
+          }
+        }
+      } catch (_e) { console.warn('[rules] edit error:', _e); }
+    });
+
+    // 插入: [🏆] [LV] [GE] [手机号] [登录] [RULES] → refNode
     $parent.insertBefore(_$ldrBtn, $refNode);
     $parent.insertBefore(_$lvBar, $refNode);
     $parent.insertBefore(_$geLabel, $refNode);
     $parent.insertBefore(_$phoneBtn, $refNode);
     $parent.insertBefore(_$loginBtn, $refNode);
+    $parent.insertBefore(_$rulesBtn, $refNode);
   }
 
   function _updateButtons(isLoggedIn, phoneTail) {

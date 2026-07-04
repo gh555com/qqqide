@@ -21,6 +21,7 @@ AgentLoop.prototype._analyzeImages = async function (images, token, userContent)
             '  image_overview: <1-sentence summary of what this image is>\n' +
             '  visible_text: <text in the image, or "none">\n' +
             '  objects_and_layout: <key objects and their spatial arrangement>\n' +
+            '  person_identity: <who is the person? full name if recognizable (celebrity/politician/athlete/historical figure). if no known person or unsure, say "none">\n' +
             '  subject_isolation: <is the main subject clearly separated from the background? yes/no/partial>\n' +
             '  background_description: <describe the background: solid color / gradient / complex scene / transparent-checkered>\n' +
             '  uncertainty: <any doubts or "none">\n\n' +
