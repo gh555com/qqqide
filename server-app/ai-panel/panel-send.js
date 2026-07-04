@@ -721,11 +721,52 @@ async function sendMessage(skipFloorCreation) {
                     });
                     // ★ 中断防护：在清理 DOM 前抓取完整 ai_html 快照（含所有 house 渲染内容）
                     //   防 _a4BuildCompleteFloorPayload 因 _activeAiDiv 失效而回退到空 conversation
-                    if (agent._doStreamRender && agent._activeAiDiv && agent._activeAiDiv._dirty) {
-                        try { agent._doStreamRender(); } catch (_) { }
-                    }
-                    if (agent._activeAiDiv && agent._activeAiDiv._contentWrap) {
-                        try { agent._emergencyAiHtml = agent._activeAiDiv._contentWrap.innerHTML; } catch (_) { }
+                    //   ⚠ 不用 _doStreamRender()：1fps 节流，网络中断可能发生在两次 tick 之间，
+                    //      _buf 尾巴未入 DOM 就丢。手动 flush _paras + _buf 到 DOM 再抓 innerHTML。
+                    var _onErrDiv = agent._activeAiDiv;
+                    if (_onErrDiv && _onErrDiv._contentWrap) {
+                        var _rendered2 = _onErrDiv._renderedCount || 0;
+                        var _pending2 = _onErrDiv._paras || [];
+                        var _rm2 = typeof renderMarkdown === 'function' ? renderMarkdown : function (s) { return s; };
+                        while (_rendered2 < _pending2.length) {
+                            var _pp2 = _pending2[_rendered2];
+                            if (_pp2 && _pp2.trim()) {
+                                var _pDiv2 = document.createElement('div');
+                                _pDiv2.innerHTML = _rm2(_pp2);
+                                _onErrDiv._contentWrap.appendChild(_pDiv2);
+                            }
+                            _pending2[_rendered2] = null;
+                            _rendered2++;
+                        }
+                        _onErrDiv._renderedCount = _rendered2;
+                        if (_onErrDiv._codeFenceOpen && _onErrDiv._buf) {
+                            var _fc2 = _onErrDiv._buf;
+                            var _fnl2 = _fc2.indexOf('\n');
+                            if (_fnl2 > 0 && /^```/.test(_fc2)) _fc2 = _fc2.slice(_fnl2 + 1);
+                            if (_fc2.trim()) {
+                                var _fDiv2 = document.createElement('div');
+                                _fDiv2.innerHTML = '<pre><code>' + (typeof escHtml === 'function' ? escHtml(_fc2) : _fc2) + '</code></pre>';
+                                _onErrDiv._contentWrap.appendChild(_fDiv2);
+                            }
+                        } else {
+                            var _trailStart3 = _onErrDiv._splitCursor || 0;
+                            var _trailing3 = _onErrDiv._buf ? _onErrDiv._buf.slice(_trailStart3) : '';
+                            if (_trailing3 && _trailing3.trim()) {
+                                var _tDiv2 = document.createElement('div');
+                                _tDiv2.innerHTML = _rm2(_trailing3);
+                                _onErrDiv._contentWrap.appendChild(_tDiv2);
+                            }
+                        }
+                        if (_onErrDiv._lastParaEl) {
+                            _onErrDiv._lastParaEl.remove();
+                            _onErrDiv._lastParaEl = null;
+                        }
+                        var _spAll2 = _onErrDiv._contentWrap.querySelectorAll('.stream-para');
+                        for (var _spi2 = 0; _spi2 < _spAll2.length; _spi2++) {
+                            _spAll2[_spi2].classList.remove('stream-para');
+                        }
+                        _onErrDiv._dirty = false;
+                        try { agent._emergencyAiHtml = _onErrDiv._contentWrap.innerHTML; } catch (_) { }
                     }
                     // ★ 100% 落盘保证：错误楼层的用户消息+错误消息强制写盘，不依赖 auto-save 竞态
                     if (qid && typeof _saveAgentQuestData === 'function') {

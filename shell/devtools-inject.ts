@@ -61,11 +61,62 @@ function _probeOnce(){
   if(_cm){
     window.__QQQ_DIAG.found=true; window.__QQQ_DIAG.path=_cmPath;
     window.__QQQ_CM_FOUND=true; window.__QQQ_CM_PATH=_cmPath;
+    console.log('[qqq-dt] ConsoleModel FOUND at probe#'+_probes+' path='+_cmPath+' msgs='+_cm.messages().length);
+    // ★ Dump first 10 message structures (keys + source + sample fields)
+    _dumpMsgStructs();
+    // ★ Dump Console panel structure
+    _dumpPanelStruct();
     return;
   }
   window.__QQQ_CM_FOUND=false;
   if(_probes<60) setTimeout(_probeOnce, 500);
+  else console.log('[qqq-dt] ConsoleModel NOT FOUND after 60 probes. sdkKeys='+JSON.stringify(window.__QQQ_DIAG.sdkKeys)+' hasSave='+window.__QQQ_DIAG.hasSave);
 }
+
+function _dumpMsgStructs(){
+  try{
+    var ms=_cm.messages();
+    var structs=[];
+    for(var i=0;i<Math.min(ms.length,10);i++){
+      var m=ms[i],keys=[],vals={};
+      try{for(var k in m){try{keys.push(k);var v=m[k];vals[k]=typeof v==='string'?v.slice(0,120):typeof v==='number'?v:typeof v==='boolean'?v:typeof v==='object'?(Array.isArray(v)?'Array['+v.length+']':'Object{'+Object.keys(v||{}).join(',')+'}'):typeof v;}catch(e){}}}catch(e){}
+      structs.push({i:i,source:m.source,level:m.level,keys:keys.slice(0,25),vals:vals,rawText:(m.messageText||'').slice(0,150)});
+    }
+    window.__QQQ_MSG_STRUCTS=structs;
+    console.log('[qqq-dt] msg structs: '+JSON.stringify(structs,null,0));
+  }catch(e){window.__QQQ_MSG_STRUCTS=['err: '+(e.message||e)];}
+}
+
+function _dumpPanelStruct(){
+  try{
+    var info={};
+    if(self.UI&&self.UI.inspectorView){
+      var iv=self.UI.inspectorView;
+      try{info._panels=Object.keys(iv._panels||{}).join(',');}catch(e){}
+      try{info._panelOrder=(iv._panelOrder||[]).map(function(p){return p._panelName||p.name||'';}).join(',');}catch(e){}
+    }
+    // Try to find Console panel
+    try{
+      var cp=self.UI.panels&&self.UI.panels.console;
+      if(cp){info.consolePanel=true;info.consolePanelKeys=Object.keys(cp).slice(0,20).join(',');}
+    }catch(e){}
+    // Try console view
+    try{
+      for(var pk in (self.UI.inspectorView._panels||{})){
+        try{
+          var p=self.UI.inspectorView._panels[pk];
+          if(p&&p._view){
+            var vk=Object.keys(p._view).slice(0,30).join(',');
+            info['panel_'+pk+'_viewKeys']=vk;
+          }
+        }catch(e){}
+      }
+    }catch(e){}
+    window.__QQQ_PANEL_INFO=info;
+    console.log('[qqq-dt] panel info: '+JSON.stringify(info,null,0));
+  }catch(e){window.__QQQ_PANEL_INFO=['err: '+(e.message||e)];}
+}
+
 _probeOnce();
 
 // ── 终极兜底: 劫持 InspectorFrontendHost.save ──
@@ -251,13 +302,32 @@ function _startPushLoop(
         const diag = await dwc.executeJavaScript('window.__QQQ_DIAG&&JSON.stringify(window.__QQQ_DIAG)');
         if (diag) {
           const d = JSON.parse(diag);
-          console.log('[devtools-inject] diag: probes=' + d.probes +
+          const logLine = '[devtools-inject] diag: probes=' + d.probes +
             ' found=' + d.found + ' path="' + (d.path||'') + '"' +
             ' sdkKeys=[' + (d.sdkKeys||[]).slice(0,15).join(',') + ']' +
             ' uiKeys=[' + (d.uiKeys||[]).slice(0,10).join(',') + ']' +
-            ' hijack=' + (d.hijackInstalled?'installed':'FAIL')
-          );
-          if (d.hijackError) console.log('[devtools-inject] hijack error: ' + d.hijackError);
+            ' hijack=' + (d.hijackInstalled?'installed':'FAIL') +
+            (d.hasSave!==undefined?' hasSave='+d.hasSave:'') +
+            (d.hijackError?' hijackErr='+d.hijackError:'');
+          console.log(logLine);
+          // 同时写入文件供 AI 读取
+          try {
+            const outPath = path.join('E:/s/wol/py/qqq-shell-v2/qqq/logs', 'devtools-diag.json');
+            fs.mkdirSync(path.dirname(outPath), { recursive: true });
+            fs.writeFileSync(outPath, JSON.stringify(d, null, 2), 'utf-8');
+            console.log('[devtools-inject] diag written');
+            // 同时读取 DevTools 消息结构体信息
+            const msgStructs = await dwc.executeJavaScript('window.__QQQ_MSG_STRUCTS&&JSON.stringify(window.__QQQ_MSG_STRUCTS)');
+            if (msgStructs) {
+              fs.writeFileSync(path.join('E:/s/wol/py/qqq-shell-v2/qqq/logs', 'devtools-msg-structs.json'), msgStructs, 'utf-8');
+            }
+            const panelInfo = await dwc.executeJavaScript('window.__QQQ_PANEL_INFO&&JSON.stringify(window.__QQQ_PANEL_INFO)');
+            if (panelInfo) {
+              fs.writeFileSync(path.join('E:/s/wol/py/qqq-shell-v2/qqq/logs', 'devtools-panel-info.json'), panelInfo, 'utf-8');
+            }
+          } catch {}
+        } else {
+          console.log('[devtools-inject] diag: NULL (inject may have failed)');
         }
       } catch {}
     }

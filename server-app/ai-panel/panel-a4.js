@@ -799,8 +799,56 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
     //   优先取 live DOM HTML（用户实际看到的 _contentWrap.innerHTML），保证所见即所得
     //   仅当 DOM 已销毁（旧楼/异常）才回退到 _buildConversationFlowHtml 从 conversation 重建
     // ★ 跨面板迁移：flush 所有未渲染段落到 DOM，确保 ai_html 完整捕获
-    if (ag._doStreamRender && ag._activeAiDiv && ag._activeAiDiv._dirty) {
-        try { ag._doStreamRender(); } catch (_) { }
+    //   ⚠ 不用 ag._doStreamRender()：它内部有 _stopState !== 'sending' 守卫，
+    //      在 onDone 后 _stopState 已非 sending 时会直接 return，吞掉未渲染段落。
+    //      改为手动 flush，无论 stopState 为何都把 _paras 和 _buf 渲染入 DOM。
+    var _aiDiv = ag._activeAiDiv;
+    if (_aiDiv && _aiDiv._contentWrap) {
+        // --- flush _paras（按 \n\n 分割的已完成段落） ---
+        var _rendered = _aiDiv._renderedCount || 0;
+        var _pending = _aiDiv._paras || [];
+        var _rm = typeof renderMarkdown === 'function' ? renderMarkdown : function (s) { return s; };
+        while (_rendered < _pending.length) {
+            var _pp = _pending[_rendered];
+            if (_pp && _pp.trim()) {
+                var _pDiv = document.createElement('div');
+                _pDiv.innerHTML = _rm(_pp);
+                _aiDiv._contentWrap.appendChild(_pDiv);
+            }
+            _pending[_rendered] = null;
+            _rendered++;
+        }
+        _aiDiv._renderedCount = _rendered;
+        // --- flush _buf（未完成的尾部，如代码块末尾） ---
+        if (_aiDiv._codeFenceOpen && _aiDiv._buf) {
+            var _fc = _aiDiv._buf;
+            var _fnl = _fc.indexOf('\n');
+            if (_fnl > 0 && /^```/.test(_fc)) _fc = _fc.slice(_fnl + 1);
+            if (_fc.trim()) {
+                var _fDiv = document.createElement('div');
+                _fDiv.innerHTML = '<pre><code>' + (typeof escHtml === 'function' ? escHtml(_fc) : _fc) + '</code></pre>';
+                _aiDiv._contentWrap.appendChild(_fDiv);
+            }
+        } else {
+            var _trailStart = _aiDiv._splitCursor || 0;
+            var _trailing = _aiDiv._buf ? _aiDiv._buf.slice(_trailStart) : '';
+            if (_trailing && _trailing.trim()) {
+                var _tDiv = document.createElement('div');
+                _tDiv.innerHTML = _rm(_trailing);
+                _aiDiv._contentWrap.appendChild(_tDiv);
+            }
+        }
+        // --- 移除 _lastParaEl（流式临时打字块） ---
+        if (_aiDiv._lastParaEl) {
+            _aiDiv._lastParaEl.remove();
+            _aiDiv._lastParaEl = null;
+        }
+        // --- 去掉所有 stream-para 类 ---
+        var _spAll = _aiDiv._contentWrap.querySelectorAll('.stream-para');
+        for (var _spi = 0; _spi < _spAll.length; _spi++) {
+            _spAll[_spi].classList.remove('stream-para');
+        }
+        _aiDiv._dirty = false;
     }
     var ai_html = '';
     // ★ 中断恢复：优先用紧急快照（onError 在清理前抓取），防 DOM 已变

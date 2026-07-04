@@ -197,17 +197,34 @@ function _addCopyBtnToUserMsg(el) {
     }
 }
 
-// ═══ AI 消息复制按钮（左侧，复制原始 Markdown） ═══
+// ═══ AI 消息复制按钮（左侧，复制原始 Markdown + az 区统计） ═══
 function _addCopyBtnToAiMsg(el, rawMarkdown) {
-    // ★ 把原始 Markdown 存到元素上，click 时总能取到（各调用路径统一）
-    el._rawMarkdown = rawMarkdown || '';
+    // ★ 把原始 Markdown 存到元素上（不为空时覆盖，为空时不擦已有数据）
+    if (rawMarkdown) el._rawMarkdown = rawMarkdown;
     var btn = document.createElement('span');
     btn.className = 'msg-ai-copy';
     btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
     btn.title = typeof _i === 'function' ? _i('qqq.ai.copy', '复制 Markdown') : '复制 Markdown';
     btn.onclick = function (e) {
         e.stopPropagation();
-        var text = el._rawMarkdown || el.textContent || '';
+        // ★ Markdown：优先从 _rawMarkdown，兜底 _fullText（流式缓冲区），再兜底 textContent
+        var markdown = el._rawMarkdown || el._fullText || '';
+        // ★ az 区：搜集 _contentWrap 之后所有兄弟块的文字（时钟/A1/A4/文件快照）
+        var azLines = [];
+        if (el._contentWrap) {
+            var pastCw = false;
+            for (var ci = 0; ci < el.children.length; ci++) {
+                var child = el.children[ci];
+                if (child === el._contentWrap) { pastCw = true; continue; }
+                if (!pastCw) continue;
+                if (child.classList.contains('msg-ai-copy')) continue;
+                var t = child.textContent.trim();
+                if (t) azLines.push(t);
+            }
+        }
+        var text = markdown;
+        if (azLines.length > 0) text += '\n\n' + azLines.join('\n');
+        if (!text.trim()) text = el.textContent || '';
         navigator.clipboard.writeText(text).then(function () {
             btn.classList.add('copied');
             btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
@@ -216,7 +233,6 @@ function _addCopyBtnToAiMsg(el, rawMarkdown) {
                 btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
             }, 1500);
         }).catch(function () {
-            // fallback: select and execCommand
             var range = document.createRange();
             range.selectNodeContents(el);
             var sel = window.getSelection();
@@ -226,7 +242,6 @@ function _addCopyBtnToAiMsg(el, rawMarkdown) {
             sel.removeAllRanges();
         });
     };
-    // 插入为 first child，float:left 居于左侧
     if (el.firstChild) {
         el.insertBefore(btn, el.firstChild);
     } else {

@@ -276,8 +276,34 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
         // 跳过 DevTools Console 默认不显示的条目
         if (!entry || !entry.text) return;
         if (entry.source && _NOISE_SOURCES.has(entry.source)) return;
-        // Log 域 network 条目仅 "Failed to load resource" 缺 URL/方法, Console 域已有完整格式
-        if (entry.source === 'network') return;
+        // Log 域 network 条目: 用 entry.url 补全文本
+        // Console 域不覆盖网络错误 → Log 域是唯一来源
+        if (entry.source === 'network') {
+            const nUrl = (entry.url || '').replace(/\\/g, '/');
+            const nFile = nUrl.split('/').pop() || nUrl;
+            const nText = (entry.text || '');
+            const nCallFrames: any[] = entry.stackTrace?.callFrames || [];
+            const nLines: string[] = [];
+            if (nCallFrames.length > 0) {
+                const f0 = nCallFrames[0];
+                const fUrl = ((f0.url || '').replace(/\\/g, '/').split('/').pop()) || f0.url;
+                const fLine = f0.lineNumber || 0;
+                nLines.push((fUrl && fLine ? fUrl + ':' + fLine + ' ' : '') + nUrl + ' ' + nText);
+                for (let i = 1; i < nCallFrames.length; i++) {
+                    const cf = nCallFrames[i];
+                    const fn = cf.functionName || '<anonymous>';
+                    const fu = ((cf.url || '').replace(/\\/g, '/').split('/').pop()) || cf.url;
+                    nLines.push('    ' + fn + ' @ ' + fu + ':' + (cf.lineNumber || 0));
+                }
+            } else {
+                nLines.push(nUrl + ' ' + nText);
+            }
+            for (const l of nLines) {
+                _consoleBuffer.push(l);
+                if (_consoleBuffer.length > _consoleMaxLines) _consoleBuffer.shift();
+            }
+            return;
+        }
 
         const url = (entry.url || '').replace(/\\/g, '/');
         const file = url.split('/').pop() || url;
@@ -313,6 +339,8 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
 
     const _handleConsoleMsg = (msg: any) => {
         if (!msg || !msg.text) return;
+        // Console 域 network 消息无 URL — 由 Log 域 _handleEntry 处理
+        if (msg.source === 'network') return;
         const url = (msg.url || '').replace(/\\/g, '/');
         const file = url.split('/').pop() || url;
         const line = msg.line || 0;

@@ -321,8 +321,6 @@
   // 顶层 rAF 追赶（每间 house 独立调用）
   function _lvChaseSolid(targetPct, isLevelUp, lvFloor) {
     if (!_$lvSolid) return;
-    // ★ 每次 billing 滴视觉特效（粒子爆发 + 光环扩散，位置在经验条右段随机 X）
-    _lvBurstParticles(); _lvExpandRing();
     // 升级时额外音频
     if (isLevelUp) { _lvEnsureAudio(); var isM = (lvFloor > 0 && lvFloor % 10 === 0); var aud = isM ? _lvAudioMilestone : _lvAudioRegular; if (aud) { aud.currentTime = 0; aud.play().catch(function(){}); } }
     var gen = ++_lvChaseGen;
@@ -395,7 +393,7 @@
   function _lvInjectShimmer() {
     if (_lvShimmerStyle) return;
     _lvShimmerStyle = document.createElement('style');
-    _lvShimmerStyle.textContent = '@keyframes qq-lv-shimmer{0%{background-position:200% 0}100%{background-position:-100% 0}}';
+    _lvShimmerStyle.textContent = '@keyframes qq-lv-sweep{0%{background-position:200% 0}100%{background-position:-200% 0}}';
     document.head.appendChild(_lvShimmerStyle);
   }
 
@@ -404,30 +402,43 @@
     _lvInjectShimmer();
     var gen = ++_lvGlowGen;
 
-    // 读取当前主题文本色
     var baseColor = '#e8e8e8';
     try { var c = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim(); if (c) baseColor = c; } catch(e){}
+    // 渐变色全覆盖 0%-100%，流光在 80-88% 处，background-size: 300% 彻底消灭回头路
+    var grad = 'linear-gradient(90deg, ' + baseColor + ' 0%, ' + baseColor + ' 76%, #ffd700 80%, #fff8dc 84%, #ffd700 88%, ' + baseColor + ' 92%, ' + baseColor + ' 100%)';
 
-    // Phase 1: 字体放大两倍 + 金色
+    // Phase 1: 放大两倍 + 右移上移 + 金色
     _$lvLevel.style.transition = 'none';
-    _$lvLevel.style.transform = 'scale(2)';
+    _$lvLevel.style.transform = 'scale(2) translate(50px, -3px)';
     _$lvLevel.style.transformOrigin = 'right center';
     _$lvLevel.style.color = '#ffd700';
     _$lvLevel.style.textShadow = '0 0 8px #ffd700, 0 0 25px #ff8c00, 0 0 50px #ff4500';
 
-    // Phase 2: 金色流光循环 ~5s
+    // Phase 2: 单次横扫 × N（不循环，每根独立发射）
     requestAnimationFrame(function() {
       requestAnimationFrame(function() {
         if (_lvGlowGen !== gen) return;
         _$lvLevel.style.transition = 'none';
-        _$lvLevel.style.backgroundImage = 'linear-gradient(90deg, ' + baseColor + ' 35%, ' + baseColor + ' 42%, #ffd700 46%, #fff8dc 50%, #ffd700 54%, ' + baseColor + ' 58%, ' + baseColor + ' 65%)';
-        _$lvLevel.style.backgroundSize = '200% 100%';
+        _$lvLevel.style.backgroundImage = grad;
+        _$lvLevel.style.backgroundSize = '300% 100%';
         _$lvLevel.style.backgroundClip = 'text';
         _$lvLevel.style.webkitBackgroundClip = 'text';
         _$lvLevel.style.color = 'transparent';
-        _$lvLevel.style.animation = 'qq-lv-shimmer 1.25s linear infinite';
 
-        // Phase 3: 5s 后还原
+        var sweepIdx = 0;
+        var maxSweeps = 9;  // ~9 根流光，每根 550ms
+        function fireSweep() {
+          if (_lvGlowGen !== gen || sweepIdx >= maxSweeps) return;
+          // 重置动画→强制 reflow→发射新一根
+          _$lvLevel.style.animation = 'none';
+          void _$lvLevel.offsetWidth;  // 强制回流，让 none 生效
+          _$lvLevel.style.animation = 'qq-lv-sweep 0.5s linear';
+          sweepIdx++;
+          setTimeout(fireSweep, 530);
+        }
+        fireSweep();
+
+        // Phase 3: ~5s 后还原
         setTimeout(function() {
           if (_lvGlowGen !== gen) return;
           _$lvLevel.style.animation = '';
@@ -437,14 +448,14 @@
           _$lvLevel.style.backgroundClip = '';
           _$lvLevel.style.webkitBackgroundClip = '';
           _$lvLevel.style.color = '';
-          _$lvLevel.style.transform = 'scale(1)';
+          _$lvLevel.style.transform = 'translateY(-1px)';
           _$lvLevel.style.transformOrigin = '';
           _$lvLevel.style.textShadow = '';
           setTimeout(function() {
             if (_lvGlowGen !== gen) return;
             _$lvLevel.style.transition = '';
           }, 800);
-        }, 5000);
+        }, 5100);
       });
     });
   }
@@ -722,7 +733,7 @@
     _$lvBar.addEventListener('mouseleave', _lvHideTip);
     _$lvLevel = document.createElement('span');
     _$lvLevel.className = 'qqq-lv-level';
-    _$lvLevel.style.cssText = 'color:var(--text-primary,#e8e8e8);font-weight:bold;font-variant-numeric:tabular-nums;min-width:44px;text-align:right;';
+    _$lvLevel.style.cssText = 'color:var(--text-primary,#e8e8e8);font-weight:bold;font-variant-numeric:tabular-nums;min-width:44px;text-align:right;transform:translateY(-1px);';
 
     var $lvTrack = document.createElement('span');
     $lvTrack.className = 'qqq-lv-track';

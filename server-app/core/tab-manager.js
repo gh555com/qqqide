@@ -162,18 +162,23 @@
       window.qqqEditor.suspendPaneLayout(tab.filePath);
     }
 
-    // remove DOM（编辑器已暂停 layout，移除 DOM 不再触发重计算）
+    // remove tab button（轻量，无 DOM 依赖问题）
     const btn = grp.barEl.querySelector(`[data-tab-id="${tabId}"]`);
     if (btn) btn.remove();
-    const pane = grp.contentEl.querySelector(`.qqq-tab-pane[data-tab-id="${tabId}"]`);
-    if (pane) pane.remove();
 
-    // ★ 延迟销毁编辑器（放到下一个宏任务，避免同步阻塞 UI）
+    // ★ 延迟销毁编辑器 + 移除 pane DOM（放到下一个宏任务，避免同步阻塞 UI）
+    //   MUST 先 dispose 编辑器再移除 pane：Monaco 内部 _detachModel 需要 DOM 父子关系完整，
+    //   否则 removeChild 报 "not a child of this node"
+    const pane = grp.contentEl.querySelector(`.qqq-tab-pane[data-tab-id="${tabId}"]`);
     if (tab.filePath && window.qqqEditor && window.qqqEditor.disposePaneEditor) {
       var _fp = tab.filePath;
+      var _pane2 = pane;
       setTimeout(function () {
         window.qqqEditor.disposePaneEditor(_fp);
+        if (_pane2 && _pane2.parentNode) _pane2.remove();
       }, 0);
+    } else if (pane) {
+      pane.remove();
     }
 
     // fire cleanup
@@ -718,7 +723,7 @@
           var _jumpPos = { lineNumber: line, column: col };
           ed.setPosition(_jumpPos);
           ed.revealPositionInCenter(_jumpPos);
-        } catch (_) {}
+        } catch (_) { }
       }, 400);
     } else {
       window._nextPaneOpts = null;
