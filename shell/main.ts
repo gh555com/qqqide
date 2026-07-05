@@ -44,6 +44,7 @@ import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
+import { startKopeA, stopKopeA, isKopeARunning, getKopeAPid, cleanupKopeA } from './kope-a';
 
 // ── 服务 ──
 import { EngineHost } from './engines';
@@ -238,9 +239,10 @@ function registerAllIpc(): void {
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
     registerQzSpawnIpc(qzSpawn);
     registerAuthPersistIpc();
+    registerKopeAIpc();
 }
 
-// ── Auth 持久化 IPC — safeStorage 加密存盘，重启自动恢复（2026-06-29） ──
+// ── Auth 持久化 IPCPC — safeStorage 加密存盘，重启自动恢复（2026-06-29） ──
 function registerAuthPersistIpc(): void {
     const AUTH_FILE = path.join(portable.userData, 'alphal', 'auth.enc');
 
@@ -270,7 +272,41 @@ function registerAuthPersistIpc(): void {
     });
 }
 
-// ── App 就绪 ──
+// ── kope-a IPC — 剪贴板监控工具（rank1 gaea 扩展）（2026-07-05）──
+function registerKopeAIpc(): void {
+    const KOPE_A_SCRIPT = 'E:\\s\\wol\\py\\kope\\q3.py';
+    const AUTO_START_NS = 'qqqide';
+    const AUTO_START_KEY = 'kope-a.autoStart';
+
+    ipcMain.handle('qqqide:kope-a:start', async (_e, scriptPath: string) => {
+        const sp = scriptPath || KOPE_A_SCRIPT;
+        return startKopeA(portable.root, sp);
+    });
+
+    ipcMain.handle('qqqide:kope-a:stop', async () => {
+        return stopKopeA();
+    });
+
+    ipcMain.handle('qqqide:kope-a:status', async () => {
+        return { running: isKopeARunning(), pid: getKopeAPid() };
+    });
+
+    ipcMain.handle('qqqide:kope-a:get-auto-start', async () => {
+        try {
+            const val = await stateStore.get(AUTO_START_NS, AUTO_START_KEY);
+            return !!val;
+        } catch (e) { return false; }
+    });
+
+    ipcMain.handle('qqqide:kope-a:set-auto-start', async (_e, v: boolean) => {
+        try {
+            await stateStore.setNow(AUTO_START_NS, AUTO_START_KEY, v);
+            return true;
+        } catch (e) { return false; }
+    });
+}
+
+// ── App 就绪 ── 就绪 ──
 app.whenReady().then(async () => {
     // ★ If another instance already holds the lock, quit immediately — don't create windows
     if (_shouldQuitEarly) {
@@ -297,6 +333,22 @@ app.whenReady().then(async () => {
     // ★ Python broker: 仅当已安装时启动（未安装则下次启动自动下载后再启）
     startPyBroker(portable.root);
 
+    // ★ kope-a auto-start: 检查全局设置，若开启则自动启动
+    (async () => {
+        try {
+            const autoStart = await stateStore.get('qqqide', 'kope-a.autoStart');
+            if (autoStart) {
+                const KOPE_A_SCRIPT = 'E:\\s\\wol\\py\\kope\\q3.py';
+                const result = startKopeA(portable.root, KOPE_A_SCRIPT);
+                if (result.ok) {
+                    console.log('[kope-a] auto-started pid=' + result.pid);
+                } else {
+                    console.log('[kope-a] auto-start failed:', result.error);
+                }
+            }
+        } catch (e) { /* ignore */ }
+    })();
+
     // Create main windowdow
     mainWindow = createWindow(
         portable.root, portable.cache, APP_VERSION,
@@ -316,6 +368,7 @@ app.whenReady().then(async () => {
         } catch { /* ignore */ }
         try { engineHost.stop(); } catch { /* ignore */ }
         try { audioEngine.stop(); } catch { /* ignore */ }
+        try { cleanupKopeA(); } catch { /* ignore */ }
         mainWindow = null;
     });
 

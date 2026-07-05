@@ -265,6 +265,114 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       pop.appendChild(sep);
       continue;
     }
+
+    // ★ kope-a 行：自定义渲染（标签 + 启动/停止按钮 + 自动启动勾选框）
+    if (s.hasKopeA) {
+      var kopeRow = document.createElement('div');
+      kopeRow.style.cssText =
+        'display:flex; align-items:center; padding:8px 14px; margin:0; line-height:1.3; ' +
+        'font-size:13px; color:var(--text-primary); ' +
+        'white-space:nowrap; user-select:none; cursor:default; gap:8px;';
+
+      var kopeLab = document.createElement('span');
+      kopeLab.textContent = (s.i18n && window._i) ? window._i(s.i18n, s.label) : (s.label || '');
+      kopeLab.style.cssText = 'flex:0 0 auto; font-weight:600;';
+      kopeRow.appendChild(kopeLab);
+
+      // 启动 / 停止按钮
+      var kopeBtn = document.createElement('button');
+      kopeBtn.style.cssText =
+        'padding:2px 10px; border:1px solid var(--border-color); border-radius:3px; ' +
+        'background:var(--card-bg); color:var(--text-primary); font-size:11px; cursor:default; ' +
+        'min-width:56px;';
+
+      function _refreshKopeBtn() {
+        var br = window.qqqideBridge;
+        if (br && br.kopeA) {
+          br.kopeA.status().then(function (st) {
+            if (st && st.running) {
+              kopeBtn.textContent = '停止';
+              kopeBtn.style.background = 'var(--primary-color)';
+              kopeBtn.style.color = '#1e1e1e';
+            } else {
+              kopeBtn.textContent = '启动';
+              kopeBtn.style.background = 'var(--card-bg)';
+              kopeBtn.style.color = 'var(--text-primary)';
+            }
+          }).catch(function () {
+            kopeBtn.textContent = '启动';
+          });
+        }
+      }
+      _refreshKopeBtn();
+
+      kopeBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        var br = window.qqqideBridge;
+        if (!br || !br.kopeA) return;
+        if (kopeBtn.textContent === '停止') {
+          br.kopeA.stop().then(function () { _refreshKopeBtn(); }).catch(function () {});
+        } else {
+          br.kopeA.start().then(function (r) {
+            if (r && r.ok) {
+              _refreshKopeBtn();
+            } else {
+              var errMsg = (r && r.error) || '启动失败';
+              if (br.dialog && br.dialog.message) {
+                br.dialog.message({ type: 'info', title: 'kope-a', message: errMsg });
+              } else {
+                alert('kope-a: ' + errMsg);
+              }
+            }
+          }).catch(function (e2) {
+            alert('kope-a 启动失败: ' + (e2 && e2.message || e2));
+          });
+        }
+      });
+      kopeRow.appendChild(kopeBtn);
+
+      // 自动启动勾选框
+      var kopeCb = document.createElement('input');
+      kopeCb.type = 'checkbox';
+      kopeCb.style.cssText = 'margin:0 0 0 4px; cursor:default;';
+      var _kopeCbReady = false;
+      (function () {
+        var br = window.qqqideBridge;
+        if (br && br.kopeA) {
+          br.kopeA.getAutoStart().then(function (v) {
+            kopeCb.checked = !!v;
+            _kopeCbReady = true;
+          }).catch(function () { kopeCb.checked = false; _kopeCbReady = true; });
+        }
+      })();
+
+      kopeCb.addEventListener('change', function (e) {
+        e.stopPropagation();
+        if (!_kopeCbReady) return;
+        var br = window.qqqideBridge;
+        if (br && br.kopeA) {
+          br.kopeA.setAutoStart(kopeCb.checked).catch(function () {});
+        }
+      });
+      kopeCb.addEventListener('click', function (e) { e.stopPropagation(); });
+
+      var kopeAutoLab = document.createElement('span');
+      kopeAutoLab.textContent = '自启';
+      kopeAutoLab.style.cssText = 'font-size:11px; color:var(--text-muted);';
+
+      kopeRow.appendChild(kopeCb);
+      kopeRow.appendChild(kopeAutoLab);
+
+      (function (rEl) {
+        rEl.addEventListener('mouseenter', function () { rEl.style.background = 'var(--background-color)'; });
+        rEl.addEventListener('mouseleave', function () { rEl.style.background = ''; });
+      })(kopeRow);
+
+      pop.appendChild(kopeRow);
+      continue;
+    }
+
     var row = document.createElement('div');
     row.style.cssText =
       'display:flex; align-items:center; padding:11px 14px; margin:0; line-height:1.3; ' +
@@ -300,7 +408,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         if (_shellMenuRecentHoverTimer) clearTimeout(_shellMenuRecentHoverTimer);
         _shellMenuRecentHoverTimer = setTimeout(function () {
           _shellMenuRecentHoverTimer = null;
-          if (_shellMenuRecentDropdown) return; // 鼠标在下拉上，不关
+          if (_shellMenuRecentDropdown) return;
           _closeMenuRecentDropdown();
         }, 120);
       });

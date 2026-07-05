@@ -201,6 +201,12 @@ export function registerExitHandlers(
             stopPyBroker();
         } catch { /* ignore */ }
 
+        // ①b stop kope-a
+        try {
+            const { cleanupKopeA } = require('./kope-a');
+            cleanupKopeA();
+        } catch { /* ignore */ }
+
         // ② stop engine
         try {
             const { EngineHost } = require('./engines');

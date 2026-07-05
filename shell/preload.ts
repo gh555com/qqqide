@@ -389,6 +389,15 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string })
         retry: () => ipcRenderer.invoke('qqqide:boot:retry'),
         probe: () => ipcRenderer.invoke('qqqide:boot:probe'),
     },
+
+    // ---- kope-a (剪贴板监控工具，rank1 gaea 扩展) ----
+    kopeA: {
+        start: (scriptPath: string) => ipcRenderer.invoke('qqqide:kope-a:start', scriptPath),
+        stop: () => ipcRenderer.invoke('qqqide:kope-a:stop'),
+        status: () => ipcRenderer.invoke('qqqide:kope-a:status'),
+        getAutoStart: () => ipcRenderer.invoke('qqqide:kope-a:get-auto-start'),
+        setAutoStart: (v: boolean) => ipcRenderer.invoke('qqqide:kope-a:set-auto-start', v),
+    },
 };
 
 contextBridge.exposeInMainWorld('qqqideBridge', QQQ);
