@@ -705,7 +705,7 @@ var CardPool = (function () {
           var _rawGe = _liveAg._floorCostWge / 10000;
           var _displayGe = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2);
           aiEl._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
-          aiEl._clockCost.textContent = _displayGe + ' ge' + ((_liveAg._floorHadBilling && _liveAg._floorFree) ? ' Free' : '');
+          aiEl._clockCost.textContent = _displayGe + ' ge' + ((_liveAg._floorHadBilling && _liveAg._floorCostWge === 0) ? ' Free' : '');
           aiEl._clockCost.style.display = 'inline';
           aiEl._clockCost._houses = _liveAg._houses || [];
           aiEl._clockCost._floorNum = fNum;

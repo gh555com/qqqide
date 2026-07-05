@@ -156,6 +156,71 @@ function onWindowResize() {
 }
 
 // ---- Window controls ----
+var _closeConfirmOverlay = null;
+var _closeConfirmActive = false;
+
+function showCloseConfirm() {
+  if (_closeConfirmActive) return;
+  _closeConfirmActive = true;
+  var bridge = _shBridge;
+
+  var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  var bg = isDark ? '#1e1e1e' : '#fdf6e3';
+  var text = isDark ? '#dcd8d0' : '#656360';
+  var border = isDark ? '#333333' : '#d3c6aa';
+  var red = isDark ? '#ff4444' : '#dc322f';
+
+  _closeConfirmOverlay = document.createElement('div');
+  _closeConfirmOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:999999;display:flex;align-items:center;justify-content:center;';
+  _closeConfirmOverlay.addEventListener('click', function (e) {
+    if (e.target === _closeConfirmOverlay) hideCloseConfirm();
+  });
+
+  var panel = document.createElement('div');
+  panel.style.cssText = 'width:300px;max-width:90vw;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);padding:24px;text-align:center;background:' + bg + ';color:' + text + ';';
+  panel.innerHTML =
+    '<div style="font-size:16px;margin-bottom:20px;color:' + text + ';">确认退出？</div>' +
+    '<div style="display:flex;gap:8px;">' +
+    '<button id="qqq-exit-cancel" style="flex:1;padding:10px 0;border:1px solid ' + border + ';border-radius:4px;background:transparent;color:' + text + ';font-size:13px;">取消</button>' +
+    '<button id="qqq-exit-confirm" style="flex:1;padding:10px 0;border:none;border-radius:4px;background:' + red + ';color:#fff;font-size:13px;font-weight:bold;">确认退出</button>' +
+    '</div>';
+
+  _closeConfirmOverlay.appendChild(panel);
+  document.body.appendChild(_closeConfirmOverlay);
+
+  // 默认聚焦确认按钮，回车即退出
+  var $confirm = document.getElementById('qqq-exit-confirm');
+  var $cancel = document.getElementById('qqq-exit-cancel');
+  if ($confirm) {
+    $confirm.focus();
+    $confirm.addEventListener('click', function () {
+      hideCloseConfirm();
+      if (bridge.window && bridge.window.closeConfirmed) {
+        bridge.window.closeConfirmed();
+      }
+    });
+  }
+  if ($cancel) {
+    $cancel.addEventListener('click', hideCloseConfirm);
+  }
+
+  // Esc 关闭
+  document.addEventListener('keydown', _onCloseConfirmEsc);
+}
+
+function hideCloseConfirm() {
+  _closeConfirmActive = false;
+  if (_closeConfirmOverlay) {
+    _closeConfirmOverlay.remove();
+    _closeConfirmOverlay = null;
+  }
+  document.removeEventListener('keydown', _onCloseConfirmEsc);
+}
+
+function _onCloseConfirmEsc(e) {
+  if (e.key === 'Escape') hideCloseConfirm();
+}
+
 function bootWindowControls() {
   var bridge = _shBridge;
   var $min = document.getElementById('qqq-wc-min');
@@ -167,6 +232,11 @@ function bootWindowControls() {
     if (isMax) bridge.window.unmaximize(); else bridge.window.maximize();
   });
   if ($close) $close.addEventListener('click', function () { bridge.window.close(); });
+
+  // ★ 监听主进程的关闭确认请求（Alt+F4 / 点击 X → main 发 IPC）
+  if (bridge.window && bridge.window.onCloseConfirm) {
+    bridge.window.onCloseConfirm(showCloseConfirm);
+  }
 }
 
 // ---- Theme toggle (委托唯一真理配色机器) ----

@@ -313,6 +313,18 @@ q2 单行 + hover 展开
 · 快捷键（焦点 + 非编辑区）: 1/2 上下滚 35%视口、q/w 前后楼层跳转
 · 统一高亮色: #fdf6e3（暗 #3f3830）。一个 quest 同时只能在一个面板打开
 
+彗星电子钟 — 跨面板建楼计时器（2026-07-05 修复）
+-------------------------------------------------------------------
+· 中央真理: 读 parent.__qqq_agentPool（共享 agent 实例），200ms 滴答
+· 豆腐块（招牌行）: 仅当本面板 questActiveId 对应 agent 正在 sending 时显示时钟
+  → 不跨面板串号：左面板(q1)不会因 q2 盖楼而显示时钟
+· 下拉列表（hover）: 每个 quest 独立插入时钟，data-qid 绑定各自 questId
+  → _tickCometClocks 读 data-qid → pool[qid]._floorStartPerf → 各算各的秒数
+· _insertCometClock(prefixEl, qid): 如已存在同 qid 时钟→跳过；不同 qid→先 remove 再重建
+  → 防静默覆盖 data-qid 导致"q2 显示 q81 的计时器"
+· _tickCometClocks: agent 不存在或非 sending → 隐藏时钟（防 quest 删除后残影不消）
+· 位置: panel-clock.js（_insertCometClock / _removeCometClock / _tickCometClocks / _ensureCometClockTicking）
+
 
 持久化 — qgs + qgs.simple + qg + qgs.project + onlyStore + qgf 六入口
 ------------------------------------------------------------------------
@@ -452,10 +464,20 @@ AI 工具 (16个)
     静默降级: Embedding失败→保留BM25结果
 诊断: get_diagnostics (Monaco markers)
 终端: run_command (硬超时 2h, stallMs=15min, qwr _qgc 命令屏障保护)
+  · ssh/sshJump 参数: 远端命令自然书写，base64编码消除三层引号地狱。shell:false arg数组
 网络: fetch_webpage (curl, 15s, ≤8000 chars)
 视觉: get_vision_context (并行预分析: 多图片并发, Promise.all)
   · 生成/分析: IMAGE_GEN_URL/VISION_URL → Go → 模型供应商 → SSE 流。旧 Python 脚本已删除
 Embedding: BM25+语义混合搜索，双线路(fallback)+归一化+15s超时
+
+
+零摩擦原则（2026-07-05）
+------------------------
+· IDE 职责: 消除工具摩擦，不教 AI 思考
+· AI 想做什么→工具干净执行一次成功。不搞「答案已找到」提示、不搞语义循环检测
+· 反面: SSH 三层引号地狱让一次 DB 查询失败 28 次——工具添堵，不是 AI 蠢
+· 正确: run_command 加 ssh 参数→base64 编码→零转义，AI 写远端命令和本地一样自然
+· 判断标准: 新功能是在消除摩擦还是在教 AI 怎么做事？后者不做
 
 
 Agent 状态机 + 发送管线（2026-06-29 单一真相源重构 v2）
@@ -557,6 +579,7 @@ all.json 写入系统（2026-06-29 共享 agentPool 重构 + wgeCost 命名归�
 · ★ agentPool 上移至 parent.__qqq_agentPool（父窗口唯一真理源）
   → 一个 quest 一个 agent，跨面板读同一对象，零多副本竞态
 · 单写者: 仅主面板(panelId=1)执行 auto-save，左/右面板不写盘
+· ★ skipDomFlush（2026-07-05）: auto-save 时传 { skipDomFlush: true } 跳过 DOM 冲刷，防流式渲染中断。仅 onDone/onError 完结路径允许冲刷
 · beforeunload: 三面板均执行 _saveAllBeforeUnload(force=true)，同一 parent pool 幂等写入
 · 跨面板: 任一面板 _getOrCreateAgent(id) → 同一个 agent 对象
   → 建楼面板写 ag._houses → 自动对另两个面板可见 → 切换 quest 不再死卡片
@@ -591,26 +614,6 @@ all.json 写入系统（2026-06-29 共享 agentPool 重构 + wgeCost 命名归�
 
 文本工具调用回生:
   EnvelopeStripper.finalize() 统一解析 XML invoke/自闭合 tag/ReAct 三种格式 → textToolCalls[] → _parseSSE 优先执行
-
-
-Write-Aware 约束系统 — T1/T2/T3 三层阶梯 + 写入感知
-----------------------------------------------------------------------------
-核心原则: 一切约束感知写入操作。对文件 X 的写入使关于 X 的所有旧状态作废。
-
-三层阶梯分流（agent-loop.js _checkStall, ~100 行）:
-  预判: 本轮工具结果全部 dead → 跳过 T1，交 T3
-  T1 工具循环: 同工具+同参数连续 3 间 house → 触发；8 次→终止楼层
-    结果增量检测: 同参数不同结果（相似度 < 70%）→ 有进展→重置
-  T2 搜索停滞: 连续 5/10/15 次纯搜索有结果但不读→L1温和→L2引导→L3终极（永不终止）
-  T3 真正空转: 全部 dead 累积 5 次→警告, 8 次→强制。有进展立即归零
-
-Read 约束: 全文读→全覆盖标记；分段读→区间合并去重。同范围再读阻 2 次后放行。
-  硬封顶: 同文件 20 次/楼层。WRITE 成功后自动重置该文件追踪。
-写入通知: WRITE 成功→删 _qqqReadFilesThisFloor[path] + 遍历 _qqqToolCacheThisFloor 失效含路径 key
-
-502 自动修复 + 降级恢复:
-  · Worker 502/503 → _gwSwitch(true) 瞬间切 Direct → 重试。两条线都死 → 优雅结束楼层
-  · 铁律: 绝不 window.location.reload()。5 分钟后 _gwTryPrimary() 自动回探
 
 
 AI 网关 — CN 直连 + US 隐身 + 客户端代理 (2026-06-29 加固)

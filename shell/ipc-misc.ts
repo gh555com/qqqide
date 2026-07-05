@@ -131,6 +131,14 @@ export function registerMiscIpc(
         const win = BrowserWindow.fromWebContents(e.sender);
         if (win && !win.isDestroyed()) { win.close(); }
     });
+    // ★ 关闭确认回调：renderer 弹窗确认后调用，绕过 close 事件
+    ipcMain.handle('qqqide:window:close-confirmed', (e) => {
+        const win = BrowserWindow.fromWebContents(e.sender);
+        if (win && !win.isDestroyed()) {
+            bypassCloseConfirm(win);
+            win.destroy();
+        }
+    });
     ipcMain.handle('qqqide:window:isMaximized', (e) => BrowserWindow.fromWebContents(e.sender)?.isMaximized() ?? false);
     ipcMain.handle('qqqide:window:setTitle', (e, s: string) => {
         const win = BrowserWindow.fromWebContents(e.sender);
@@ -309,5 +317,6 @@ export function registerMiscIpc(
         updateService.abort();
         return true;
     });
+    ipcMain.handle('qqqide:update:upgrade-shell', async () => updateService.upgradeShell());
 }
 

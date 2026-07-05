@@ -201,12 +201,14 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'run_command',
-            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default, up to ' + OUTPUT_CAP_MAX + ' with maxOutput. Hard timeout 2h, stall guard 15min. ⚠️ Runs locally (Chinese IP) — curl/wget may be blocked on GitHub, npm, etc. Use fetch_webpage (US proxy) for web content. PREFER search_text/search_content/find_files for code search. Only use run_command when dedicated tools CANNOT do the job.',
+            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default, up to ' + OUTPUT_CAP_MAX + ' with maxOutput. Hard timeout 2h, stall guard 15min. ⚠️ Runs locally (Chinese IP) — curl/wget may be blocked on GitHub, npm, etc. Use fetch_webpage (US proxy) for web content. PREFER search_text/search_content/find_files for code search. Only use run_command when dedicated tools CANNOT do the job. ⚠️ When ssh is set: command runs on the remote host. Write the remote command naturally — ALL quoting/escaping is handled automatically (base64 transport). Do NOT manually escape nested quotes for SSH.',
             parameters: {
                 type: 'object',
                 properties: {
-                    command: { type: 'string', description: 'Command to execute' },
-                    cwd: { type: 'string', description: 'Working directory (optional)' },
+                    command: { type: 'string', description: 'Command to execute. When ssh is set, write as if running directly on the remote host — do NOT add ssh/quoting wrappers yourself.' },
+                    cwd: { type: 'string', description: 'Working directory (optional). When ssh is set, applied on remote host.' },
+                    ssh: { type: 'string', description: 'Optional: SSH destination in user@host or user@host:port format. When set, the command runs on this remote host via SSH with automatic base64 escaping (zero quoting hell). Example: "q@47.105.67.51" or "q@23.254.248.119:2222"' },
+                    sshJump: { type: 'string', description: 'Optional: SSH jump host (ProxyJump) when the target is behind a bastion. Example: "q@47.105.67.51". Only meaningful when ssh is also set.' },
                     maxOutput: { type: 'number', description: 'Override output char limit (default ' + OUTPUT_CAP_DEFAULT + ', max ' + OUTPUT_CAP_MAX + '). Use only when certain you need the full output.' },
                     reason: { type: 'string', description: 'Optional: briefly explain why dedicated tools (search_text/search_content/find_files) cannot do this job. Used only for audit logging.' }
                 },

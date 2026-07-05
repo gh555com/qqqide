@@ -392,9 +392,18 @@
 
   function _lvLevelUpGlow() {
     if (!_$lvLevel) return;
+    // 先清理旧特效残留（防快速升级时 gen 取消导致 color:transparent 残留）
+    _$lvLevel.style.animation = '';
+    _$lvLevel.style.backgroundImage = '';
+    _$lvLevel.style.backgroundSize = '';
+    _$lvLevel.style.backgroundClip = '';
+    _$lvLevel.style.webkitBackgroundClip = '';
+    _$lvLevel.style.color = '';
+    _$lvLevel.style.transition = '';
+
     var gen = ++_lvGlowGen;
 
-    // 缓存主题色（仅主题切换时刷新 getComputedStyle，避免每 billing 触发重排）
+    // 缓存主题色（仅主题切换时刷新 getComputedStyle）
     var theme = document.documentElement.getAttribute('data-theme') || '';
     if (_lvCachedKey !== theme) {
       _lvCachedKey = theme;
@@ -449,11 +458,8 @@
     _lvSnapGlow(lvPct);
     // ② 顶层 rAF 追赶
     _lvChaseSolid(lvPct, isLevelUp, lvFloor);
-    // ③ 金色流光特效（测试阶段每 billing 触发）
-    _lvLevelUpGlow();
-    // ④ 音效测试：每次 billing 播放普通音效
-    _lvEnsureAudio();
-    if (_lvAudioRegular) { _lvAudioRegular.currentTime = 0; _lvAudioRegular.play().catch(function () { }); }
+    // ③ 升级流光特效（仅升级时触发）
+    if (isLevelUp) _lvLevelUpGlow();
   }
 
   var LDR_ROW_HTML = '<div style="display:flex;align-items:center;padding:5px 0;font-size:12px;gap:6px;">' +

@@ -158,11 +158,6 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 §22 输出截断
   - 64KB IPC截断是§2四重防御第四环。AI面限制: tools-defs.js 4个常量，工具描述动态引用。
 
-§23 Write-Aware 约束系统
-  - T1工具循环: 同工具+同参数3间house→触发,8次→终止。结果增量检测(相似度<70%→有进展)。
-  - T2搜索停滞: 连续搜索有结果不读→L1(5)→L2(10)→L3(15)引导,永不终止。
-  - T3空转: 全部dead 5次→警告,8次→强制。写入感知: WRITE成功→重置追踪+失效缓存。
-
 §26 三面板架构（左中右 iframe，同窗口）
   - 左翼(panel=0)+中(panel=1)+右翼(panel=2)，各自独立 iframe。
   - 左/右翼灯泡开关控制，默认关闭。开关时窗口自动伸缩。
@@ -289,7 +284,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - ★ _sending 纯派生（defineProperty 仅 getter）：!!(_activeAgent && _activeAgent._stopState === 'sending' && !_activeAgent._floorCompletedCleanly)。零存储零 setter。
     _floorCompletedCleanly 守卫防后台已完结 agent 假报 sending。
   - ★ 每quest独立沙箱: _queue/_queuePaused 全部 per-agent。
-  - 彗星环绕: _getRunningQuestIds()→updateQuestTofu()→quest-running CSS类。跨面板广播。
+  - 彗星电子钟: 读 parent.__qqq_agentPool，200ms 滴答。_tickCometClocks 以 data-qid 定位 pool[qid]。豆腐块仅显 questActiveId 对应 agent 时钟（不跨面板串号），下拉各 quest 各算各秒数
   - 生命周期: registerBuilding→unregisterBuilding。finally 块兜底防僵尸。
 
 §46c 预渲染 all.json — 一次渲染永久不变
@@ -345,7 +340,14 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 汇率：fx.go 每 6 小时自动更新。上游定价：无 API 可查，人工定期核对官网手动更新 billing.go。
   - 违者即返工。
 
-§54 组件系统 — 服务器驱动、客户端全自动 (2026-07-04)
+§54 零摩擦原则 — IDE 不教 AI 做事 (2026-07-05)
+  - IDE 唯一职责: 消除工具摩擦。AI 想做什么→工具干净执行，一次成功。
+  - 不做: 「答案已找到」提示、语义循环检测、行为微调提示词——那是模型的事，模型越聪明自然解决。
+  - 反面教材: SSH 三层引号 → 一条 SQL 试 28 次。不是 AI 蠢，是工具添堵。
+  - 判断标准: 新功能是在消除摩擦还是试图教 AI 怎么做？后者不做。
+  - 违者即返工。
+
+§55 组件系统 — 服务器驱动、客户端全自动 (2026-07-04)
   - 唯一真理源: engines/manifest.json。组件定义(install_to/bin/verify_args/srcs)全在此文件。
   - 分两级: rank0(IDE 自动下载: ripgrep+python) / rank1(用户手动: ffmpeg+yt-dlp+git)。
   - 运行时: shell/component-checker.ts。启动→读 manifest→逐 rank0 检查→缺了顺序尝试 srcs。
