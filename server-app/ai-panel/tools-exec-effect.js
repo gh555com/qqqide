@@ -319,6 +319,18 @@ async function executeGenerateImage(args) {
 
     var outDir = args.out_dir || '';
 
+    // ★ 图生图：读取参考图片 → base64
+    var imagesBase64 = [];
+    var images = args.images;
+    if (images && Array.isArray(images) && images.length > 0) {
+        for (var im = 0; im < images.length; im++) {
+            try {
+                var b64 = await _readImageBase64(bridge, images[im]);
+                if (b64) imagesBase64.push(b64);
+            } catch (_) { }
+        }
+    }
+
     try {
         // 1. 经 AiGateway 创建绘图任务
         if (typeof AiGateway === 'undefined' || !AiGateway.imageGenSubmit) {
@@ -328,6 +340,7 @@ async function executeGenerateImage(args) {
             style: args.style,
             size: args.size,
             n: args.n,
+            images: imagesBase64.length > 0 ? imagesBase64 : undefined,
             token: token
         });
         if (!submitResult || !submitResult.task_id) {
@@ -346,9 +359,16 @@ async function executeGenerateImage(args) {
             return 'Image generation failed: no image URLs returned';
         }
 
-        // ★ 累加显示用计费（Go 已权威记账，此处仅 UI 展示）
+        // ★ 累加显示用计费 + 推送 effect house（Go 已权威记账，此处仅 UI 展示）
         if (result.ge_cost && typeof _addToolWgeCost === 'function') {
             _addToolWgeCost(result.ge_cost);
+            try {
+                var _ag12 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+                if (_ag12) {
+                    _ag12._effectCostStore = _ag12._effectCostStore || {};
+                    _ag12._effectCostStore['generate_image'] = { wgeCost: result.ge_cost, ts: new Date().toISOString() };
+                }
+            } catch (_) { }
         }
 
         // 3. 并行下载图片到本地
@@ -605,6 +625,13 @@ async function executeAnalyzeImage(args) {
         if (submitResult.description !== undefined && !submitResult.task_id) {
             if (submitResult.ge_cost && typeof _addToolWgeCost === 'function') {
                 _addToolWgeCost(submitResult.ge_cost);
+                try {
+                    var _ag13 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+                    if (_ag13) {
+                        _ag13._effectCostStore = _ag13._effectCostStore || {};
+                        _ag13._effectCostStore['analyze_image'] = { wgeCost: submitResult.ge_cost, ts: new Date().toISOString() };
+                    }
+                } catch (_) { }
             }
             if (!content) return 'Image analysis returned empty result';
         } else if (submitResult.task_id) {
@@ -615,9 +642,16 @@ async function executeAnalyzeImage(args) {
             }
             content = pollResult.description;
 
-            // ★ 累加显示用计费
+            // ★ 累加显示用计费 + 推送 effect house
             if (pollResult.ge_cost && typeof _addToolWgeCost === 'function') {
                 _addToolWgeCost(pollResult.ge_cost);
+                try {
+                    var _ag14 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+                    if (_ag14) {
+                        _ag14._effectCostStore = _ag14._effectCostStore || {};
+                        _ag14._effectCostStore['analyze_image'] = { wgeCost: pollResult.ge_cost, ts: new Date().toISOString() };
+                    }
+                } catch (_) { }
             }
         } else {
             return 'Image analysis failed: unexpected response';
@@ -649,12 +683,12 @@ async function executeAnalyzeImage(args) {
 
 // ★ 多源取 auth token（防 _activeAgent 在间 house 切换时丢失）
 function _getAuthToken() {
-    try { var _a = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_a && _a._token) return _a._token; } catch (_) {}
+    try { var _a = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_a && _a._token) return _a._token; } catch (_) { }
     if (typeof window !== 'undefined' && window.__qqq_floorToken) return window.__qqq_floorToken;
     try {
         var _p = (typeof window !== 'undefined' && window.parent && window.parent.__qqq_agentPool) ? window.parent.__qqq_agentPool : null;
         if (_p) { for (var _k in _p) { var _ag = _p[_k]; if (_ag && _ag._token) return _ag._token; } }
-    } catch (_) {}
+    } catch (_) { }
     return '';
 }
 
@@ -665,11 +699,11 @@ async function _readImageBase64(bridge, image) {
             var _b64 = await bridge.fs.readBase64(image);
             if (_b64) return _b64;
         }
-    } catch (_) {}
+    } catch (_) { }
     try {
         var raw = await bridge.fs.read(image);
         if (raw && raw.length > 0) return _binaryToBase64(raw);
-    } catch (_) {}
+    } catch (_) { }
     return '';
 }
 
@@ -712,9 +746,11 @@ async function executeRemoveBackground(args) {
         if (!b64) return 'Error: could not read image: ' + image;
 
         // 2. 调用 Go API（★ 经 AiGateway 双线路 failover）
+        var floorId = '';
+        try { var _ag10 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null; if (_ag10 && _ag10._floorId) floorId = _ag10._floorId; } catch (_) { }
         var segResult = null;
         if (typeof AiGateway !== 'undefined' && typeof AiGateway.segmentSubmit === 'function') {
-            segResult = await AiGateway.segmentSubmit({ image: b64, quality: quality, token: token });
+            segResult = await AiGateway.segmentSubmit({ image: b64, quality: quality, token: token, floorId: floorId });
         } else {
             // 兜底：直接 fetch（AiGateway 未加载时）
             var resp = await fetch('https://direct-cn.gh555.com/api/v3/ai/segment', {
@@ -730,9 +766,16 @@ async function executeRemoveBackground(args) {
             return 'Remove background failed: ' + ((segResult && segResult.error) || 'no result');
         }
 
-        // ★ 累加显示用计费
+        // ★ 累加显示用计费 + 推送 effect house
         if (segResult.ge_cost && typeof _addToolWgeCost === 'function') {
             _addToolWgeCost(segResult.ge_cost);
+            try {
+                var _ag11 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+                if (_ag11) {
+                    _ag11._effectCostStore = _ag11._effectCostStore || {};
+                    _ag11._effectCostStore['remove_background'] = { wgeCost: segResult.ge_cost, ts: new Date().toISOString() };
+                }
+            } catch (_) { }
         }
 
         // 3. 下载结果图片到本地
@@ -785,9 +828,16 @@ async function executeSearchWeb(args) {
             return 'Search failed: ' + (data.error || 'unknown error');
         }
 
-        // ★ 累加显示用计费（Go 已权威记账，此处仅 UI 展示）
+        // ★ 累加显示用计费 + 推送 effect house（Go 已权威记账，此处仅 UI 展示）
         if (data.ge_cost && typeof _addToolWgeCost === 'function') {
             _addToolWgeCost(data.ge_cost);
+            try {
+                var _ag15 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+                if (_ag15) {
+                    _ag15._effectCostStore = _ag15._effectCostStore || {};
+                    _ag15._effectCostStore['search_web'] = { wgeCost: data.ge_cost, ts: new Date().toISOString() };
+                }
+            } catch (_) { }
         }
 
         var results = data.results || [];

@@ -90,8 +90,8 @@ AgentLoop.prototype._callVision = async function (base64, token, prompt, userCon
 
     // 缓存命中
     if (result.description !== undefined) {
-        if (result.ge_cost) { self._visionCostWge += result.ge_cost; }
-        self._log('  ✓ vision done (cached)');
+        self._visionCostWge += (result.ge_cost || 0);
+        self._log('  ✓ vision done (cached, cost=' + (result.ge_cost || 0) + 'wge)');
         return result.description || '[Vision returned empty description]';
     }
 
@@ -105,8 +105,8 @@ AgentLoop.prototype._callVision = async function (base64, token, prompt, userCon
     // ═══ Step 2: SSE 轮询（经 AiGateway） ═══
     var pollResult = await AiGateway.visionPoll(result.task_id, token);
     if (pollResult && pollResult.description) {
-        if (pollResult.ge_cost) { self._visionCostWge += pollResult.ge_cost; }
-        self._log('  ✓ vision done (SSE)');
+        self._visionCostWge += (pollResult.ge_cost || 0);
+        self._log('  ✓ vision done (SSE, cost=' + (pollResult.ge_cost || 0) + 'wge)');
         return pollResult.description;
     }
 

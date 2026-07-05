@@ -171,7 +171,7 @@ function _buildBillingTable(houses, passby) {
         var h = houses[j];
         // ★ House 列：本层楼内编号 1 2 3 4 ...
         var houseLabel = (j + 1);
-        var type = h.type || '?';
+        var type = h.type === 'effect' ? (h.effectType || 'effect') : (h.type || '?');
         // toolCount: 运行时是 tools 数组，恢复后是 toolCount 数字
         var toolCount = (h.tools && Array.isArray(h.tools)) ? h.tools.length : (typeof h.toolCount === 'number' ? h.toolCount : 0);
         // AI 等级：从 tier label 提取数字

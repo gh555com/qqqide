@@ -291,15 +291,16 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'generate_image',
-            description: 'Generate high-quality PNG images. Supports multiple styles (~15-40s). Images auto-render inline in chat via Markdown ![](path). Returns file: paths that display immediately.',
+            description: 'Generate or edit images. Text-to-image: describe the image. Image editing: pass reference image(s) + an editing instruction (e.g. "replace the man with a woman", "change style to watercolor", "remove the watermark"). Supports multiple styles (~15-40s). Images auto-render inline in chat via Markdown ![](path). 4K only for text-to-image; image editing max 2K.',
             parameters: {
                 type: 'object',
                 properties: {
-                    prompt: { type: 'string', description: 'Image description in natural language (Chinese or English)' },
-                    style: { type: 'string', description: 'Style tag: 写实(photorealistic)/插画(illustration)/3d(3D render)/二次元(anime)/水彩(watercolor)/国风(Chinese trad)/极简(minimalist)/电商(e-commerce product)/自然(nature photo)' },
-                    size: { type: 'string', description: 'Image size: "1K"=1024*1024, "2K"=2048*2048 (default), "4K"=4096*4096, or custom "W*H" e.g. "720*1280", "640*640". 4K only for pure text-to-image (no reference images).' },
+                    prompt: { type: 'string', description: 'Image description (text-to-image) or editing instruction (image editing). Natural language, Chinese or English.' },
+                    images: { type: 'array', items: { type: 'string' }, description: 'Reference image paths (absolute paths). For image editing: the image(s) to edit. Omit for pure text-to-image.' },
+                    style: { type: 'string', description: 'Style tag (text-to-image only): 写实(photorealistic)/插画(illustration)/3d(3D render)/二次元(anime)/水彩(watercolor)/国风(Chinese trad)/极简(minimalist)/电商(e-commerce product)/自然(nature photo)' },
+                    size: { type: 'string', description: 'Image size: "1K"=1024*1024, "2K"=2048*2048 (default), "4K"=4096*4096, or custom "W*H". 4K only for text-to-image; image editing max 2K.' },
                     n: { type: 'number', description: 'Number of images to generate (1-4, default 1)' },
-                    out_dir: { type: 'string', description: 'Output directory for generated images (absolute path). Default: current project\'s qqq/genera/' }
+                    out_dir: { type: 'string', description: 'Output directory (absolute path). Default: qqq/genera/' }
                 },
                 required: ['prompt']
             }

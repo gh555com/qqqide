@@ -119,6 +119,8 @@ export function createWindow(
     const _cmHandler = (
         _e: any, _level: number, message: string, _line: number, _sourceId: string
     ) => {
+        // _level 0=verbose → 过滤（DevTools save 不显示 verbose）
+        if (_level === 0) return;
         const src = (_sourceId || '').replace(/\\/g, '/');
         const file = src.split('/').pop() || '';
         const prefix = file && !file.startsWith('(') && _line ? file + ':' + _line + ' ' : '';
@@ -215,26 +217,26 @@ export function createWindow(
         }
     });
 
+    // ★ 控制台按钮注入 — 无论 dev/prod，DevTools 打开就注入
+    win.webContents.on('devtools-opened', () => {
+        const dwc = (win.webContents as any).devToolsWebContents as WebContents;
+        if (dwc && !dwc.isDestroyed()) {
+            injectDevToolsConsoleButtons(dwc, win.webContents, () => _consoleBuffer.join('\n'), win);
+        }
+    });
+
     // Dev mode extras
     if (extractFlags().isDev) {
         win.webContents.on('devtools-opened', () => {
-            const dwc = (win.webContents as any).devToolsWebContents as WebContents;
-            if (dwc && !dwc.isDestroyed()) {
-                injectDevToolsConsoleButtons(dwc, win.webContents, () => _consoleBuffer.join('\n'), win);
-                // ★ DevTools 窗口标题 → Python broker（跨平台: Win ctypes / Mac osascript / Linux wmctrl）
-                // 读取 _windowProjectMap 必须放在 setTimeout 内部，因为首次 devtools-opened
-                // 时 map 可能还没被 renderer 的 claimProject 写入，直接闭包捕获永远是 'qqq IDE'
-                const _doRename = (attempt) => {
-                    const p = _windowProjectMap.get(win.id);
-                    const n = p ? path.basename(p) : 'qqq IDE';
-                    console.log('[devtools] rename attempt=' + attempt + ' winId=' + win.id + ' projPath=' + (p || '(none)') + ' name=' + n);
-                    renameDevToolsViaBroker(win, n);
-                };
-                // 延迟：Chromium 异步设标题 "Developer Tools - http://..."
-                // 多次重试：1500ms 时 broker 可能未就绪 / map 未填充，持续重试直到成功
-                for (let _ri = 1; _ri <= 8; _ri++) {
-                    setTimeout(() => _doRename(_ri), 1500 * _ri);
-                }
+            // ★ DevTools 窗口标题 → Python broker（跨平台: Win ctypes / Mac osascript / Linux wmctrl）
+            const _doRename = (attempt: number) => {
+                const p = _windowProjectMap.get(win.id);
+                const n = p ? path.basename(p) : 'qqq IDE';
+                console.log('[devtools] rename attempt=' + attempt + ' winId=' + win.id + ' projPath=' + (p || '(none)') + ' name=' + n);
+                renameDevToolsViaBroker(win, n);
+            };
+            for (let _ri = 1; _ri <= 8; _ri++) {
+                setTimeout(() => _doRename(_ri), 1500 * _ri);
             }
         });
         win.webContents.openDevTools({ mode: 'detach' });
@@ -275,6 +277,7 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
     const _handleEntry = (entry: any) => {
         // 跳过 DevTools Console 默认不显示的条目
         if (!entry || !entry.text) return;
+        if (entry.level === 'verbose') return;
         if (entry.source && _NOISE_SOURCES.has(entry.source)) return;
         // Log 域 network 条目: 用 entry.url 补全文本
         // Console 域不覆盖网络错误 → Log 域是唯一来源
@@ -339,6 +342,8 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
 
     const _handleConsoleMsg = (msg: any) => {
         if (!msg || !msg.text) return;
+        if (msg.level === 'verbose') return;
+        if (msg.source && _NOISE_SOURCES.has(msg.source)) return;
         // Console 域 network 消息无 URL — 由 Log 域 _handleEntry 处理
         if (msg.source === 'network') return;
         const url = (msg.url || '').replace(/\\/g, '/');

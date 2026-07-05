@@ -205,8 +205,8 @@
     document.addEventListener('keydown', function (e) {
         if ((e.ctrlKey || e.metaKey) && e.key === 'f') { e.preventDefault(); e.stopPropagation(); _openSearch(); }
         if (e.key === 'Escape' && $searchBar.classList.contains('show')) { e.preventDefault(); _closeSearch(); }
-    });;
-})();
+    });
+})();;
 
 // ═══ VS Code 风格选中同词高亮 ═══
 (function () {

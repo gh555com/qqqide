@@ -308,7 +308,14 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
             }
         });
 
-        const baseUrl = bootConfig.url.replace(/\/*$/, '/');
+        // ★ 绿色包/离线模式: 优先用本地 webapp 协议加载 diff-window.html
+        var diffBaseUrl = bootConfig.url.replace(/\/*$/, '/');
+        try {
+            var webappIndex = path.join(portableRoot, 'Data', 'webapp', 'index.html');
+            if (fs.existsSync(webappIndex)) {
+                diffBaseUrl = 'qqqide-webapp://app/qqqide/';
+            }
+        } catch (_) { }
         let _isDark = true;
         try {
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -317,7 +324,7 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
                 );
             }
         } catch (_) { }
-        const diffUrl = baseUrl + 'timeline/diff-window.html' +
+        const diffUrl = diffBaseUrl + 'timeline/diff-window.html' +
             '?path=' + encodeURIComponent(filePath) +
             '&projectRoot=' + encodeURIComponent(projectRoot) +
             '&theme=' + (_isDark ? 'dark' : 'light') +

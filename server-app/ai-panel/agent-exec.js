@@ -130,6 +130,34 @@ AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assis
             allResults.push(results[ri]);
         }
     }
+    // ★ 工具执行完毕后，刷新 effect house（remove_background/generate_image/analyze_image/search_web 等）
+    var effectStore = self._effectCostStore;
+    if (effectStore) {
+        for (var ek in effectStore) {
+            if (!effectStore.hasOwnProperty(ek)) continue;
+            var ec = effectStore[ek];
+            self._houseIndex++;
+            self._houses.push({
+                index: self._houseIndex,
+                type: 'effect',
+                effectType: ek,
+                tools: [],
+                toolResults: [],
+                ts: ec.ts,
+                ms: 0,
+                reasoning: '',
+                answer: '',
+                wgeCost: ec.wgeCost,
+                model: '',
+                cacheHitRate: -1,
+                usage: null,
+                billingSeq: 0,
+                billingRequestId: '',
+                tier: self._lastTier ? self._lastTier.label : ''
+            });
+        }
+        self._effectCostStore = null;
+    }
     return { allResults: allResults, assistantMsg: assistantMsg };
 };
 

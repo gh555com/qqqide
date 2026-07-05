@@ -377,7 +377,11 @@
                 size: opts.size || '1024*1024',
                 n: opts.n || 1,
             };
-            var resp = await _postJsonWithFailover(_URLS.imageGenPrimary, _URLS.imageGenFallback, reqBody, token);
+            // ★ 图生图：参考图片数组
+            if (opts.images && Array.isArray(opts.images) && opts.images.length > 0) {
+                reqBody.images = opts.images;
+            }
+            var resp = await _postJsonWithFailoverr(_URLS.imageGenPrimary, _URLS.imageGenFallback, reqBody, token);
             if (!resp || !resp.ok) return null;
             var data = await resp.json();
             if (!data.ok || !data.task_id) return null;

@@ -42,6 +42,7 @@ import { registerTimelineIpc } from './ipc-timeline';
 import { registerSmartSearchIpc, IndexService } from './ipc-smart-search';
 import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
+import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
 
 // ── 服务 ──
@@ -290,7 +291,10 @@ app.whenReady().then(async () => {
     // Security hardening
     hardenSession();
 
-    // ★ 启动 Python broker（跨平台窗口管理常驻子进程）
+    // ★ 组件自检: 缺了 rank0 组件自动后台下载（不阻塞启动）
+    checkRank0Components(portable.root);
+
+    // ★ Python broker: 仅当已安装时启动（未安装则下次启动自动下载后再启）
     startPyBroker(portable.root);
 
     // Create main windowdow

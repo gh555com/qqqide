@@ -180,7 +180,7 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
         var _errFull = '✗ SSE error: code=' + (_sseError.code || '?') + ' msg=' + _errMsg + ' floor=' + (self._ctx ? self._ctx.totalFloors : '?') + ' house=' + (self._houseIndex || '?');
         self._log(_errFull);
         if (typeof self._writeFileLog === 'function') self._writeFileLog(_errFull);
-        if (_sseError.code === 400 || _sseError.code === 402 || _sseError.code === 422 || _sseError.code === 502 || _sseError.code === 503) {
+        if (ContentGateway.HttpError.shouldCaptureAsGatewayError(_sseError.code)) {
             self._lastGatewayError = _sseError.code;
         }
         // 如果已有部分内容，仍然返回（不丢数据），但标记为被截断

@@ -829,6 +829,8 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
                 _fDiv.innerHTML = '<pre><code>' + (typeof escHtml === 'function' ? escHtml(_fc) : _fc) + '</code></pre>';
                 _aiDiv._contentWrap.appendChild(_fDiv);
             }
+            // ★ 推进 _splitCursor 防重复追加：后续 auto-save 不应再追加同一段内容
+            if (_aiDiv._buf) _aiDiv._splitCursor = _aiDiv._buf.length;
         } else {
             var _trailStart = _aiDiv._splitCursor || 0;
             var _trailing = _aiDiv._buf ? _aiDiv._buf.slice(_trailStart) : '';
@@ -837,6 +839,8 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
                 _tDiv.innerHTML = _rm(_trailing);
                 _aiDiv._contentWrap.appendChild(_tDiv);
             }
+            // ★ 推进 _splitCursor 防重复追加：后续 auto-save 不应再追加同一段内容
+            if (_aiDiv._buf) _aiDiv._splitCursor = _aiDiv._buf.length;
         }
         // --- 移除 _lastParaEl（流式临时打字块） ---
         if (_aiDiv._lastParaEl) {

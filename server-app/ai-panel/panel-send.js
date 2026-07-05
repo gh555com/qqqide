@@ -511,8 +511,10 @@ async function sendMessage(skipFloorCreation) {
                             _pDiv.innerHTML = (typeof renderMarkdown === 'function') ? renderMarkdown(_pp) : escHtml(_pp);
                             _targetDiv2._contentWrap.appendChild(_pDiv);
                         }
+                        _pendingParas[_rendered] = null;
                         _rendered++;
                     }
+                    _targetDiv2._renderedCount = _rendered;
                     // 冲洗 _buf（未闭合代码块末尾 / 最后一段未完成文本）
                     // ★ 只冲 _splitCursor 之后的尾部：已完成段落已在 _doStreamRender 或上方 flush 中入 DOM，
                     //   全量冲 _buf 会把前半部分再印一遍（_buf 从未被截断，始终累加全文）
@@ -1182,6 +1184,8 @@ async function _attemptRecoverySend(questId, agent, linkEl) {
     agent._isRecovery = true;
     agent._inRecoverySend = false;
     agent._recoveryInProgress = false;
+    // ★ 启封按钮：退出 fatal 态 → sendMessage 内 setStreaming(true) 可正确启用 Stop 按钮
+    agent.setStopState('sending');
 
     try {
         await sendMessage(true);
@@ -1239,6 +1243,11 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
     agent._isRecovery = true;
     agent._inRecoverySend = false;
     agent._recoveryInProgress = false;
+    // ★ N-house 恢复：新楼层必须创建粉色气泡，解除 _deferRenderUntilHouse1
+    //   该 flag 仅为 0-house 恢复设计（复用已有气泡），N-house 新建楼层不适用
+    agent._deferRenderUntilHouse1 = false;
+    // ★ 启封按钮：退出 fatal 态 → sendMessage 内 setStreaming(true) 可正确启用 Stop 按钮
+    agent.setStopState('sending');
 
     try {
         await sendMessage(false);  // ★ false = 创建新楼层
@@ -1445,18 +1454,32 @@ window.drawPie = drawPie;
 window._showPieTooltip = _showPieTooltip;
 window._hidePieTooltip = _hidePieTooltip;
 
-// ═══ 崩溃防护：窗口关闭前尽力保存当前楼层/压缩状态 ═══
-window.addEventListener('beforeunload', function () {
+// ═══ 崩溃防护：窗口关闭前阻塞等待楼层数据写盘完成 ═══
+//   ⚠ 不用 fire-and-forget：之前 _saveAgentQuestData 是 async，不 await 的话
+//     主进程 500ms 后 process.exit(0) 可能截断 JSON 写入，导致 all.json 半截。
+//     改为 e.preventDefault() 挡住窗口销毁，等 save 完成或 2 秒超时才放行。
+window.addEventListener('beforeunload', function (e) {
     var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     var _qid = (typeof questActiveId !== 'undefined') ? questActiveId : null;
     if (!_ag || !_qid) return;
-    // fire-and-forget 保存（不 await，浏览器会尽力完成 IPC）
-    if (typeof _saveAgentQuestData === 'function') {
-        try { _saveAgentQuestData(_qid, _ag, _ag._currentFloorNum || 0).catch(function () { }); } catch (_) { }
-    }
-    // 压缩中 → 尽力回滚快照（不保证完成），标记异常供下次启动修复
+    // 压缩中 → 标记异常供下次启动修复
     if (_ag._compressing && _ag._ctx) {
         _ag._uncleanShutdown = true;
         try { console.warn('[beforeunload] agent was compressing — marked unclean'); } catch (_) { }
     }
+    // 阻挡窗口销毁直到保存完成（或超时）
+    e.preventDefault();
+    e.returnValue = '';  // Chrome 要求
+    var _closed = false;
+    var _finish = function () {
+        if (_closed) return;
+        _closed = true;
+        try { window.close(); } catch (_) { }
+    };
+    if (typeof _saveAgentQuestData === 'function') {
+        _saveAgentQuestData(_qid, _ag, _ag._currentFloorNum || 0).then(_finish).catch(_finish);
+    } else {
+        _finish();
+    }
+    setTimeout(_finish, 2000);
 });

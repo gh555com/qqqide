@@ -199,9 +199,9 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                         continue;
                     }
                 }
-                if ((resp.status === 429 || resp.status === 502 || resp.status === 503) && retry < MAX_RETRIES) {
-                    // ★ 502/503: retry 前半段重试同 URL（可能瞬态），后半段切线路
-                    if (resp.status === 502 || resp.status === 503) {
+                if (ContentGateway.HttpError.isRetryable(resp.status) && retry < MAX_RETRIES) {
+                    // ★ 502/503/504: retry 前半段重试同 URL（可能瞬态），后半段切线路
+                    if (ContentGateway.HttpError.isGatewayDown(resp.status)) {
                         if (retry < Math.floor(MAX_RETRIES / 2)) {
                             var waitMsGw = 2000 * Math.pow(2, retry);
                             self._log('  gateway ' + resp.status + ' retry #' + (retry + 1) + ' in ' + waitMsGw + 'ms (transient?)');
@@ -218,7 +218,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                         continue;
                     }
                 }
-                   // ★ 402（key 欠费）：切换 key slot，不换线路（缓存保留）
+                // ★ 402（key 欠费）：切换 key slot，不换线路（缓存保留）
                 if (resp.status === 402) {
                     if (self._questKeySlot === 0) {
                         self._questKeySlot = 1;
@@ -235,12 +235,11 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 var friendly = resp.status === 401 ? '认证失败，请检查 Token'
                     : resp.status === 402 ? 'ge 余额不足，请充值'
                         : resp.status === 429 ? '请求过于频繁，请稍后再试'
-                            : resp.status === 502 ? '服务器暂时未可达 (502)'
-                                : resp.status === 503 ? '服务器暂时未可达 (503)'
-                                    : 'Server error (' + resp.status + ')';
+                            : ContentGateway.HttpError.isGatewayDown(resp.status) ? '服务器暂时未可达 (' + resp.status + ')'
+                                : 'Server error (' + resp.status + ')';
                 try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(friendly, { type: resp.status === 429 ? 'warning' : 'error' }); } catch (_) { }
-                // ★ 502/503: 切线路（带防 ping-pong）
-                if (resp.status === 502 || resp.status === 503) {
+                // ★ 502/503/504: 切线路（带防 ping-pong）
+                if (ContentGateway.HttpError.isGatewayDown(resp.status)) {
                     self._lastGatewayError = resp.status;
                     clearTimeout(_fetchDeadline);
                     var _didSwitch502 = false;
