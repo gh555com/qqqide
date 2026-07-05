@@ -817,7 +817,7 @@
     var _$rulesBtn = document.createElement('button');
     _$rulesBtn.className = 'qqq-rules-btn';
     _$rulesBtn.textContent = 'RULES';
-    _$rulesBtn.style.cssText = NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;color:var(--text-secondary,#999);cursor:pointer;padding:1px 6px;font-size:13px;margin-right:6px;';
+    _$rulesBtn.style.cssText = NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;color:#a855f7;cursor:pointer;padding:1px 6px;font-size:10px;margin-right:6px;';
     _$rulesBtn.addEventListener('click', async function (e) {
       e.preventDefault();
       try {
