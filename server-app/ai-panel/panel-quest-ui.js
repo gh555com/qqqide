@@ -540,14 +540,11 @@ function renderCtxBreakdown() {
     var BX = 10000;
     var MAX_BLOCKS = 100;
     var html = '';
-    // ★ 统计可见行 tok 之和（本地审计）
-    var visibleSum = 0;
     for (var i = 0; i < data.rows.length; i++) {
         var r = data.rows[i];
         if (r.tok <= 0) continue;
         var _isSum = r.label === 'Local sum' || r.label === 'API prompt_tokens';
         var _isFree = r.label === 'Free';
-        if (!_isSum && !_isFree) visibleSum += r.tok;
         var c = r.color || '#2aa198';
         var n = Math.min(MAX_BLOCKS, Math.max(0, Math.round(r.tok / BX)));
         var bar = '';
@@ -557,10 +554,11 @@ function renderCtxBreakdown() {
             bar += '</span>';
         }
         var valStr = r.tok >= 1000 ? Math.round(r.tok / 1000) + 'k' : String(r.tok);
+        var padLeft = (r.indent || 0) * 14 + 'px';
         var labelHtml = _isSum ? '<b>' + r.label + '</b>' : (_isFree ? '<span style="color:#859900">' + r.label + '</span>' : r.label);
-        html += '<div class="ctx-bd-row">' +
+        html += '<div class="ctx-bd-row" style="padding-left:' + padLeft + '">' +
             bar +
-            '<span class="ctx-bd-label" style="color:' + c + '">' + (r.tree || '') + labelHtml + '</span>' +
+            '<span class="ctx-bd-label" style="color:' + c + '">' + labelHtml + '</span>' +
             '<span class="ctx-bd-num" style="color:' + c + '">' + valStr + '</span></div>';
     }
     rowsEl.innerHTML = html;
