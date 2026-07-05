@@ -33,8 +33,8 @@
                     const result = await bridge.update.upgradeShell();
                     if (result && result.success) {
                         btn.textContent = '\u2713';
-                        btn.title = '壳层已更新，正在重启...';
-                        // ghrun 会自动替换 shell-out/ 并重启 Electron
+                        btn.title = '壳层已更新到 ' + (result.version || '') + '，重启后生效';
+                        setTimeout(() => { btn.textContent = '\u21BB'; btn.disabled = false; }, 5000);
                     } else {
                         btn.textContent = '\u2717';
                         btn.title = (result && result.error) || '壳层更新失败';
@@ -45,10 +45,8 @@
                 const result = await bridge.update.apply();
                 if (result && result.success) {
                     btn.textContent = '\u2713';
-                    btn.title = window.i18n.t('shell.update.updatedTo', { version: result.version }) || ('已更新到 ' + result.version + '，即将重载...');
-                    setTimeout(() => {
-                        if (bridge.window) bridge.window.close();
-                    }, 1500);
+                    btn.title = '载荷已更新到 ' + (result.version || '') + '，重启后生效';
+                    setTimeout(() => { btn.textContent = '\u21BB'; btn.disabled = false; }, 5000);
                 } else {
                     btn.textContent = '\u2717';
                     btn.title = (result && result.error) || window._i('shell.update.failed', '更新失败');
@@ -78,7 +76,7 @@
                 btn.style.display = '';
                 btn.style.color = 'var(--red)';
                 btn.dataset.mode = 'shell';
-                btn.title = '壳层新版本 ' + (result.latestShellVersion || '?') + ' 可用（将重启 IDE）';
+                btn.title = '壳层新版本 ' + (result.latestShellVersion || '?') + ' 可用（点击更新，重启生效）';
                 return;
             }
             btn.dataset.mode = '';

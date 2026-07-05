@@ -341,13 +341,13 @@ async function backgroundCheckWebappUpdate(
         }
         bootLog('webapp-update: hot-update — local=' + localVersion + ' server=' + latestVersion);
 
-        // 3) Download server-app.tar.xz
-        const dlUrl = baseUrl + 'server-app.tar.xz';
+        // 3) Download server-app.tar.gz (gzip, works everywhere; xz not available on Windows)
+        const dlUrl = baseUrl + 'server-app.tar.gz';
         bootLog('webapp-update: downloading ' + dlUrl);
         const lib = dlUrl.startsWith('https') ? https : http;
         const dlDir = path.join(portableRoot, 'Data', 'webapp-dl');
         try { fs.mkdirSync(dlDir, { recursive: true }); } catch { }
-        const tarPath = path.join(dlDir, 'server-app.tar.xz');
+        const tarPath = path.join(dlDir, 'server-app.tar.gz');
 
         writeBootStatus(portableRoot, '0|下载载荷更新…');
         const dlOk = await new Promise<boolean>((resolve) => {
@@ -377,7 +377,7 @@ async function backgroundCheckWebappUpdate(
         const stagingDir = path.join(portableRoot, 'Data', 'webapp-staging');
         try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
         try { fs.mkdirSync(stagingDir, { recursive: true }); } catch { }
-        const extractResult = spawnSync('tar', ['-xJf', tarPath, '-C', stagingDir], {
+        const extractResult = spawnSync('tar', ['-xzf', tarPath, '-C', stagingDir], {
             stdio: 'pipe', timeout: 30000,
         });
         if (extractResult.status !== 0) {

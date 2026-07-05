@@ -334,10 +334,10 @@ export class UpdateService {
         });
     }
 
-    private _extractTarXz(tarPath: string, destDir: string): boolean {
+    private _extractTarGz(tarPath: string, destDir: string): boolean {
         try {
             try { fs.mkdirSync(destDir, { recursive: true }); } catch { }
-            const result = spawnSync('tar', ['-xJf', tarPath, '-C', destDir], {
+            const result = spawnSync('tar', ['-xzf', tarPath, '-C', destDir], {
                 stdio: 'pipe',
                 timeout: 30000,
             });

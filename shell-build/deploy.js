@@ -89,10 +89,10 @@ console.log('[deploy] scp ->', HOST + ':' + REMOTE);
 run('ssh', [...sshOpts(), HOST, `"mkdir -p ${REMOTE_}"`]);
 run('scp', [...sshOpts(), shellQuote(localPath(tarPath)), `${HOST}:${REMOTE_}/_qqqide.tar.gz`]);
 
-// 3) extract server-app
-console.log('[deploy] extract server-app on remote');
+// 3) Keep a copy as server-app.tar.gz for client hot-update, then extract
+console.log('[deploy] saving server-app.tar.gz for client hot-update');
 run('ssh', [...sshOpts(), HOST,
-`"cd ${REMOTE_} && tar -xzf _qqqide.tar.gz && rm _qqqide.tar.gz"`]);
+`"cd ${REMOTE_} && cp _qqqide.tar.gz server-app.tar.gz && tar -xzf _qqqide.tar.gz && rm _qqqide.tar.gz"`]);
 
 // 3b) pack + upload shell-out/ (for bootstrap hot-update)
 const shellOutSrc = path.join(ROOT, 'shell-out');
