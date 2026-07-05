@@ -427,13 +427,9 @@ async function executeGenerateImage(args) {
         }
 
         // ★ 文件名格式：gen_img_{年月日}_{时分秒}_{promptHash8}_{序号}.png
-        var _now = new Date();
-        var _dateStr = _now.getFullYear() +
-            ('0' + (_now.getMonth() + 1)).slice(-2) +
-            ('0' + _now.getDate()).slice(-2);
-        var _timeStr = ('0' + _now.getHours()).slice(-2) +
-            ('0' + _now.getMinutes()).slice(-2) +
-            ('0' + _now.getSeconds()).slice(-2);
+        var _ts = _fmtTime(new Date()).replace(/[- :]/g, '');
+        var _dateStr = _ts.slice(0, 8);
+        var _timeStr = _ts.slice(8, 14);
         var _phash8 = _hashPrompt8(prompt);
 
         var dlPromises = result.urls.map(function (url, u) {

@@ -34,13 +34,7 @@ async function generateFloorTxt(ag, questId) {
         if (!(window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.fs)) return;
         var bridge = window.parent.qqqideBridge;
         await bridge.fs.mkdir(dir);
-        var now = new Date();
-        var pad = function (n) { return String(n).padStart(2, '0'); };
-        var ts = function (d) {
-            if (!d) d = now;
-            return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
-        };
-        var timing = ag._floorTiming;
+        var timing = ag._floorTiming;iming;
         var lines = [];
 
         // ═══ 计算 body size ═══
@@ -74,7 +68,7 @@ async function generateFloorTxt(ag, questId) {
 
         // ═══ floor 头 ═══
         var floorTs = timing && timing.floorStartServerMs ? new Date(timing.floorStartServerMs) : now;
-        lines.push('floor.' + floorNum + '   ' + ts(floorTs));
+        lines.push('floor.' + floorNum + '   ' + _fmtTime(floorTs));
         lines.push('');
         lines.push('(body ' + fmtK(totalBytes) + ': ask ' + fmtK(askBytes) + ' + rule ' + fmtK(ruleBytes) + ' + Source code ' + fmtK(sourceBytes) + ' + prompt ' + fmtK(promptBytes) + ' + memory ' + fmtK(memoryBytes) + ')');
         lines.push('');
@@ -85,7 +79,7 @@ async function generateFloorTxt(ag, questId) {
         for (var hi = 0; hi < houses.length; hi++) {
             var h = houses[hi];
             var houseTs = h.ts ? new Date(h.ts) : now;
-            lines.push('\u2550\u2550\u2550\u2550 HOUSE ' + h.index + ' \u2550\u2550\u2550\u2550 ' + ts(houseTs) + ' [' + h.ms + 'ms] \u2550\u2550\u2550\u2550');
+            lines.push('\u2550\u2550\u2550\u2550 HOUSE ' + h.index + ' \u2550\u2550\u2550\u2550 ' + _fmtTime(houseTs) + ' [' + h.ms + 'ms] \u2550\u2550\u2550\u2550');
 
 
             if (h.reasoning) {
@@ -245,9 +239,7 @@ async function _appendToSearchQuest(questId, floorNum) {
 
         // 提取时间戳
         var now = new Date();
-        var pad2 = function (n) { return String(n).padStart(2, '0'); };
-        var ts = function (d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()); };
-        var floorTs = now;
+        var floorTs = now;ow;
         if (questMeta && questMeta.floorTimings) {
             for (var ti = 0; ti < questMeta.floorTimings.length; ti++) {
                 var ft = questMeta.floorTimings[ti];
@@ -282,7 +274,7 @@ async function _appendToSearchQuest(questId, floorNum) {
         // 构建条目
         var lines = [];
         if (existing) lines.push('');  // 与上一楼层间隔一行
-        lines.push(marker + '   ' + ts(floorTs));
+        lines.push(marker + '   ' + _fmtTime(floorTs));
         var cleanQuestion = (floorData.question || '').replace(/\[File: [^\]]+\]\s*\n```[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim();
         lines.push('\u25a0 Q: ' + cleanQuestion);
         lines.push('\u25a0 A: ' + (answer || '(no answer)'));

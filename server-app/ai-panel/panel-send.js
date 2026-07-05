@@ -319,8 +319,8 @@ async function sendMessage(skipFloorCreation) {
     }
     // ★ 延迟渲染已废弃（恢复模式不创建新 DOM，旧延迟渲染逻辑移除）
     if (!skipFloorCreation) {
-        agent._aiStartTime = new Date().toISOString().replace('T', ' ').slice(0, 19);
-        agent._aiTierLabel = 'A' + (selectedTier || 6);
+        agent._aiStartTime = _fmtTime(new Date());
+        agent._aiTierLabel = 'A' + (selectedTier || 6);;
     }
     agent._streamingContent = null;  // ★ P10/P11 根治：每楼层重置流式缓冲区
     agent._streaming = true;  // ★ aq1/工具执行守卫：标记流式中

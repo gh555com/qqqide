@@ -288,7 +288,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - ★ _sending 纯派生（defineProperty 仅 getter）：!!(_activeAgent && _activeAgent._stopState === 'sending' && !_activeAgent._floorCompletedCleanly)。零存储零 setter。
     _floorCompletedCleanly 守卫防后台已完结 agent 假报 sending。
   - ★ 每quest独立沙箱: _queue/_queuePaused 全部 per-agent。
-  - 彗星电子钟: 判定读 parent.__qqq_buildingRegistry（跨面板唯一真理），计时读 parent.__qqq_agentPool._floorStartPerf（缺失 fallback registry.startedAt）。200ms 滴答。_tickCometClocks 以 data-qid 定位。插入/存在/渲染三处判断全部用 registry，agent pool 只取耗时数据，禁用于逻辑分支。豆腐块仅显 questActiveId，下拉各 quest 独立计时。
+  - 彗星电子钟: 广播同步本地状态 + 注册表兜底。计时读 agent pool。豆腐块仅显 questActiveId，下拉各 quest 独立。
   - 生命周期: registerBuilding→unregisterBuilding。finally 块兜底防僵尸。
 
 §46c 预渲染 all.json — 一次渲染永久不变

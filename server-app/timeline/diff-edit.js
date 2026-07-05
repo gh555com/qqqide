@@ -132,7 +132,7 @@
                 if (rec && rec.ok && rec.recorded) {
                     _editSnapshotSeq++;
                     var _snapOkTmpl = _i('timeline.snapOk', '已打快照 #{seq} {time} diff edit');
-                    _setEditSnapText(_snapOkTmpl.replace('{seq}', _editSnapshotSeq).replace('{time}', _formatTimestamp(Date.now())));
+                    _setEditSnapText(_snapOkTmpl.replace('{seq}', _editSnapshotSeq).replace('{time}', _fmtTime(Date.now())));
                     snapOk = true;
                 } else {
                     _setEditSnapText(_i('timeline.snapNoNew', '未生成新快照，可能内容未变或冷却中'));
@@ -275,16 +275,7 @@
     }
 
     // ═══ 工具 ═══
-    function formatTs(ts) {
-        if (!ts) return '—';
-        var d = new Date(ts);
-        return d.getFullYear() + '-' +
-            String(d.getMonth() + 1).padStart(2, '0') + '-' +
-            String(d.getDate()).padStart(2, '0') + ' ' +
-            String(d.getHours()).padStart(2, '0') + ':' +
-            String(d.getMinutes()).padStart(2, '0') + ':' +
-            String(d.getSeconds()).padStart(2, '0');
-    }
+    function formatTs(ts) { return _fmtTime(ts) || '—'; }
 
     function langOf(fp) {
         var ext = (fp || '').split('.').pop().toLowerCase();

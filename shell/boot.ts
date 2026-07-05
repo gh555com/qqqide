@@ -38,7 +38,8 @@ function initBootLog(logsDir: string) {
 // ----------------------------------------------------------------------------
 // Constants
 // ----------------------------------------------------------------------------
-const PRODUCTION_URL = 'https://gh555.com/qqqide/';
+/** ★ 唯一真理源：IDE 部署根 URL。所有下载/检查路径从此派生。 */
+export const PRODUCTION_URL = 'https://gh555.com/qqqide/';
 
 // ----------------------------------------------------------------------------
 // Boot configuration

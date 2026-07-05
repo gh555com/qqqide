@@ -21,16 +21,10 @@ function _countRooms(houses) {
     return n;
 }
 
-var _pad2 = function (n) { return String(n).padStart(2, '0'); };
-function _ts(d) {
-    if (!d) d = new Date();
-    return d.getFullYear() + '-' + _pad2(d.getMonth() + 1) + '-' + _pad2(d.getDate()) + ' ' + _pad2(d.getHours()) + ':' + _pad2(d.getMinutes()) + ':' + _pad2(d.getSeconds());
-}
-
 function _buildFloorHeaderLines(agent, floorNum, userInput, visionInput, timing) {
     var lines = [];
     var floorTs = timing && timing.floorStartServerMs ? new Date(timing.floorStartServerMs) : new Date();
-    lines.push('floor.' + floorNum + '   ' + _ts(floorTs));
+    lines.push('floor.' + floorNum + '   ' + _fmtTime(floorTs));
     lines.push('');
     var fmtK = function (bytes) { return (bytes / 1024).toFixed(3) + 'k'; };
     var askBytes = userInput ? new TextEncoder().encode(userInput).length : 0;
@@ -69,7 +63,7 @@ function _buildHouseLines(h, maxToolResultLen) {
     if (h._lines && !maxToolResultLen) return h._lines;
     var lines = [];
     var houseTs = h.ts ? new Date(h.ts) : new Date();
-    lines.push('\u2550\u2550\u2550\u2550 HOUSE ' + h.index + ' \u2550\u2550\u2550\u2550 ' + _ts(houseTs) + ' [' + h.ms + 'ms] \u2550\u2550\u2550\u2550');
+    lines.push('\u2550\u2550\u2550\u2550 HOUSE ' + h.index + ' \u2550\u2550\u2550\u2550 ' + _fmtTime(houseTs) + ' [' + h.ms + 'ms] \u2550\u2550\u2550\u2550');
     if (h.reasoning) {
         lines.push('<thinking>');
         lines.push(h.reasoning);
@@ -524,8 +518,6 @@ var _auditLastLang = null;
 function _generateReasoningTxt(floorData, questMeta, floorNum) {
     var lines = [];
     var now = new Date();
-    var pad2 = function (n) { return String(n).padStart(2, '0'); };
-    var ts = function (d) { return d ? d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds()) : ts(now); };
 
     var floorTs = now;
     var timing = null;
@@ -540,7 +532,7 @@ function _generateReasoningTxt(floorData, questMeta, floorNum) {
             }
         }
     }
-    lines.push('floor.' + floorNum + '   ' + ts(floorTs));
+    lines.push('floor.' + floorNum + '   ' + _fmtTime(floorTs));
     lines.push('');
 
     var question = (floorData && floorData.question) || '';
