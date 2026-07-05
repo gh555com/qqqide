@@ -30,7 +30,7 @@ function _saveAgentFloor(ag, questId, force) {
     }
     var payload;
     if (typeof window._a4BuildCompleteFloorPayload === 'function') {
-        payload = window._a4BuildCompleteFloorPayload(ag, floorNum);
+        payload = window._a4BuildCompleteFloorPayload(ag, floorNum, { skipDomFlush: true });
     } else {
         payload = {
             question: (ag._lastUserInput && ag._lastUserInput.text) || '',
@@ -184,14 +184,22 @@ function _buildBillingTable(houses, passby) {
         var ms = h.ms || 0;
         var timeStr = Math.round(ms / 1000) + 's';
         var wge = h.wgeCost || 0;
-        // 缓存命中率
-        var cacheHit = h.cacheHitRate >= 0 ? h.cacheHitRate.toFixed(1) + '%' : '?';
+        // 缓存命中率 / tokens / 查账凭据：effect 类型无 LLM 概念，统一 —
+        var isEffect = h.type === 'effect';
+        var cacheHit = isEffect ? '-' : (h.cacheHitRate >= 0 ? h.cacheHitRate.toFixed(1) + '%' : '?');
         var usage = h.usage;
-        var promptTokens = usage ? (usage.prompt_tokens || 0) : 0;
-        var completionTokens = usage ? (usage.completion_tokens || 0) : 0;
-        var totalTokens = promptTokens + completionTokens;
+        var promptTokens, completionTokens, totalTokens;
+        if (isEffect) {
+            promptTokens = '-';
+            completionTokens = '-';
+            totalTokens = '-';
+        } else {
+            promptTokens = usage ? (usage.prompt_tokens || 0) : 0;
+            completionTokens = usage ? (usage.completion_tokens || 0) : 0;
+            totalTokens = promptTokens + completionTokens;
+        }
         var _cacheStyle = 'text-align:right';
-        if (h.cacheHitRate >= 0 && h.cacheHitRate < 90) _cacheStyle += ';background:rgba(203,75,22,0.10)';
+        if (!isEffect && h.cacheHitRate >= 0 && h.cacheHitRate < 90) _cacheStyle += ';background:rgba(203,75,22,0.10)';
         var receipt = h.billingRequestId || '';
         html += '<tr>'
             + '<td style="text-align:right">' + houseLabel + '</td>'
@@ -204,7 +212,7 @@ function _buildBillingTable(houses, passby) {
             + '<td style="text-align:right">' + promptTokens + '</td>'
             + '<td style="text-align:right">' + completionTokens + '</td>'
             + '<td style="text-align:right">' + totalTokens + '</td>'
-            + '<td style="text-align:right">' + receipt + '</td>'
+            + '<td style="text-align:left">' + receipt + '</td>'
             + '</tr>';
     }
     html += '</tbody></table>';
@@ -576,13 +584,14 @@ function _tickCometClocks() {
         var clk = clocks[i];
         var qid = clk.getAttribute('data-qid');
         var ag = pool[qid];
-        if (ag && ag._stopState === 'sending' && ag._floorStartPerf > 0) {
+        // ★ agent 不存在或已非 sending → 隐藏（防 quest 删除后残影不消）
+        if (!ag || ag._stopState !== 'sending' || ag._floorStartPerf <= 0) {
+            clk.style.display = 'none';
+        } else {
             var elapsed = now - ag._floorStartPerf;
             clk.textContent = Math.floor(elapsed / 1000);
             clk.style.display = '';
             hasVisible = true;
-        } else {
-            clk.style.display = 'none';
         }
     }
     // 无可显示时钟 → 停定时器
@@ -599,13 +608,14 @@ function _ensureCometClockTicking() {
     }
 }
 
-// ★ 在 prefix 元素内插入彗星电子钟（如已存在则跳过）
+// ★ 在 prefix 元素内插入彗星电子钟
+//   如已存在且 qid 不同 → 移除旧钟重建（防 data-qid 串号）
 function _insertCometClock(prefixEl, qid) {
     if (!prefixEl) return;
     var existing = prefixEl.querySelector('.comet-clock');
     if (existing) {
-        existing.setAttribute('data-qid', qid);
-        return;
+        if (existing.getAttribute('data-qid') === qid) return;  // 同 quest，无需重建
+        existing.remove();  // 不同 quest → 移除旧钟
     }
     var clk = document.createElement('span');
     clk.className = 'comet-clock';
@@ -657,27 +667,15 @@ async function updateQuestTofu() {
         textEl.textContent = entry.title || '';
         textEl.parentElement.classList.remove('quest-tofu-new');
         if (pen) pen.style.display = '';
-        // ★ 彗星电子钟：扫描中央真理池中所有 agent，只要有任何 quest 建楼
-        //   就在 prefix 右下角显示时钟（不限当前 active quest，跨面板感知）
+        // ★ 彗星电子钟：仅当本面板当前活跃 quest 正在建楼才显示时钟
+        //   下拉列表中各 quest 各显各的时钟（renderQuestDrop），不在此处跨面板感知
         var pool = parent && parent.__qqq_agentPool;
-        var foundBuilding = false;
-        if (pool) {
-            var poolAgent = pool[questActiveId];
-            if (poolAgent && poolAgent._stopState === 'sending') {
-                _insertCometClock(prefixEl, questActiveId);
-                foundBuilding = true;
-            } else {
-                for (var qid in pool) {
-                    var ag2 = pool[qid];
-                    if (ag2 && ag2._stopState === 'sending') {
-                        _insertCometClock(prefixEl, qid);
-                        foundBuilding = true;
-                        break;
-                    }
-                }
-            }
+        var poolAgent = pool && pool[questActiveId];
+        if (poolAgent && poolAgent._stopState === 'sending') {
+            _insertCometClock(prefixEl, questActiveId);
+        } else {
+            _removeCometClock(prefixEl);
         }
-        if (!foundBuilding) _removeCometClock(prefixEl);
         _updateQuestClock();
     } else {
         if (prefixEl) prefixEl.textContent = '';

@@ -12,7 +12,8 @@ AgentLoop.prototype._processBillingEvent = function (parsed) {
     var self = this;
     var cost = parsed.ge_cost || 0;
     self._floorCostWge += cost;
-    if (parsed.free_window) self._floorFree = true;
+    if (parsed.free_window === false) self._floorFree = false;
+    self._floorHadBilling = true;
     self._billingSeq++;
     if (self._lastBilling) {
         // ★ 累加模式（压缩路径多次 API 调用）

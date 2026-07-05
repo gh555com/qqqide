@@ -45,6 +45,11 @@
     border-radius: 50%; animation: __qqq_spin .8s linear infinite;
   }
   .connecting .box { background: transparent; border: 0; }
+  .progress-wrap { margin: 16px auto 0; max-width: 280px; }
+  .bar-bg { background: #eee8d5; border-radius: 6px; height: 6px; overflow: hidden; }
+  .bar-fg { background: linear-gradient(90deg, #268bd2, #2aa198); height: 100%; width: 0%; transition: width .4s ease; border-radius: 6px; }
+  .pct-text { color: #93a1a1; font-size: 11px; margin-top: 4px; text-align: center; }
+  .stage-text { color: #586e75; font-size: 13px; margin: 12px 0 4px; min-height: 18px; }
 </style>
 </head>
 <body>
@@ -70,8 +75,21 @@
       document.body.className = 'connecting';
       document.getElementById('box').innerHTML =
         '<div class="spinner"></div>' +
-        '<p class="connecting-msg" style="font-size:15px;color:#586e75;margin:0">正在连接服务器</p>' +
+        '<p class="stage-text" id="boot-stage">正在连接服务器…</p>' +
+        '<div class="progress-wrap">' +
+        '<div class="bar-bg"><div class="bar-fg" id="boot-bar"></div></div>' +
+        '<div class="pct-text" id="boot-pct">0%</div>' +
+        '</div>' +
         '<p style="font-size:12px;color:#93a1a1;margin:8px 0 0">首次连接可能需要稍等…</p>';
+      // ★ 监听主进程注入的进度更新
+      window.__qqqBootUpdate = function(stage, pct) {
+        var sEl = document.getElementById('boot-stage');
+        var bEl = document.getElementById('boot-bar');
+        var pEl = document.getElementById('boot-pct');
+        if (sEl) sEl.textContent = stage;
+        if (bEl) bEl.style.width = pct + '%';
+        if (pEl) pEl.textContent = pct + '%';
+      };
       return;
     }
 

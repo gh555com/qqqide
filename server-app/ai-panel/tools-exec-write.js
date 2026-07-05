@@ -69,6 +69,13 @@ function _findMatch(content, find) {
         }
     }
 
+    // L1c: real \n → escaped \n (AI sent literal \n via JSON, became real newline; file has literal backslash-n)
+    if (find.indexOf('\n') !== -1) {
+        var escaped = find.replace(/\n/g, '\\n');
+        var idx1c = content.indexOf(escaped);
+        if (idx1c !== -1) return { start: idx1c, end: idx1c + escaped.length, matchLevel: 1 };
+    }
+
     // L2: 空白归一化匹配
     var nf = _normalizeWhitespace(find);
     var nc = _normalizeWhitespace(content);
@@ -100,6 +107,24 @@ function _findMatch(content, find) {
             }
         }
     }
+    // L4: raw byte match (Buffer.indexOf, zero processing, last resort)
+    try {
+        var findBuf = new TextEncoder().encode(find);
+        var contentBuf = new TextEncoder().encode(content);
+        var idx4 = -1;
+        for (var bi = 0; bi <= contentBuf.length - findBuf.length; bi++) {
+            var ok = true;
+            for (var bj = 0; bj < findBuf.length; bj++) { if (contentBuf[bi + bj] !== findBuf[bj]) { ok = false; break; } }
+            if (ok) { idx4 = bi; break; }
+        }
+        if (idx4 !== -1) {
+            var s = '';
+            for (var ci = 0; ci < idx4; ci++) s += String.fromCharCode(contentBuf[ci]);
+            var e = s;
+            for (var cj = 0; cj < findBuf.length; cj++) e += String.fromCharCode(contentBuf[idx4 + cj]);
+            return { start: s.length, end: e.length, matchLevel: 4 };
+        }
+    } catch (_) {}
     return null;
 }
 
@@ -147,8 +172,16 @@ async function executeEditFile(args) {
                         break;
                     }
                 }
-                var _err = 'Error: edit #' + (i + 1) + ' match failed — text not found in ' + (args.path.split(/[\\/]/).pop()) + '.' + hint;
-                return _maybeHintBackslashN(_err, args.edits);
+                // ★ Auto-fix: real \n → literal \n (AI sent literal \n via JSON, became real newline; file has literal backslash-n)
+                if (edit.find.indexOf('\n') !== -1) {
+                    var esc = edit.find.replace(/\n/g, '\\n');
+                    var m2 = _findMatch(content, esc);
+                    if (m2) { edit.find = esc; m = m2; }
+                }
+                if (!m) {
+                    var _err = 'Error: edit #' + (i + 1) + ' match failed — text not found in ' + (args.path.split(/[\\/]/).pop()) + '.' + hint;
+                    return _maybeHintBackslashN(_err, args.edits);
+                }
             }
             matchPlan.push({ edit: edit, match: m, index: i });
         }
@@ -159,6 +192,7 @@ async function executeEditFile(args) {
             var ed = plan.edit;
             if (ed.replace_all) {
                 var count = content.split(ed.find).length - 1;
+                if (count === 0 && ed.find.indexOf('\n') !== -1) { var esc2 = ed.find.replace(/\n/g, '\\n'); var count2 = content.split(esc2).length - 1; if (count2 > 0) { ed.find = esc2; count = count2; } }
                 content = content.split(ed.find).join(ed.replace);
                 results.push('#' + (pi + 1) + ': all (' + count + 'x, L' + plan.match.matchLevel + ')');
                 totalApplied += count;

@@ -139,10 +139,35 @@ window.addEventListener('blur', function () { _setPanelFocus(false); });
 document.addEventListener('mousedown', function () { _setPanelFocus(true); });
 // ★ 互斥焦点：收到父窗口 defocus 通知时撤除金色边框
 window.addEventListener('message', function (e) {
-    if (e.data && e.data.type === 'qqq-ai-panel-defocus') {
+    if (!e.data) return;
+    if (e.data.type === 'qqq-ai-panel-defocus') {
         _setPanelFocus(false);
     }
+    // ★★ conv goods → 新对话
+    if (e.data.type === 'qqq-conv-new-quest' && e.data.panelId === _panelId) {
+        _handleConvNewQuest(e.data);
+    }
 });
+
+async function _handleConvNewQuest(data) {
+    var ctx = data.context || '';
+    if (!ctx) return;
+    // defer: questStore / switchQuest 定义在 panel-quest.js / panel-quest-ui.js，
+    // 本文件加载更早，postMessage 事件触发时它们已就绪
+    var qs = window.questStore;
+    if (!qs || !qs.create) { console.warn('[conv-new-quest] questStore not ready'); return; }
+    if (typeof switchQuest !== 'function') { console.warn('[conv-new-quest] switchQuest not ready'); return; }
+    try {
+        var newId = await qs.create('');
+        if (!newId) return;
+        if (!questUIStates[newId]) questUIStates[newId] = {};
+        questUIStates[newId].inputValue = '请基于以下上下文回答问题：\n\n' + ctx;
+        if (_panelId === 1) await qs.setActiveId(newId);
+        switchQuest(newId);
+    } catch (e) {
+        console.warn('[conv-new-quest]', e);
+    }
+}
 
 // 通用 postMessage
 var _fwSeq = 0;

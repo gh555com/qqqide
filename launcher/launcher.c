@@ -165,42 +165,40 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
 
         // ── 读取 Electron 写入的进度文件 ──
         // 格式：每行 "N|文字" 或 "ready"
-        WCHAR statusPath[MAX_PATH];
+        WCHAR candidates[2][MAX_PATH];
         {
             WCHAR myDir[MAX_PATH];
             GetModuleFileNameW(NULL, myDir, MAX_PATH);
             WCHAR *slash = wcsrchr(myDir, L'\\');
             if (slash) *slash = L'\0';
-            swprintf(statusPath, MAX_PATH, L"%s\\gh555.com\\loading-status", myDir);
+            swprintf(candidates[0], MAX_PATH, L"%s\\gh555.com\\loading-status", myDir);
+            swprintf(candidates[1], MAX_PATH, L"%s\\loading-status", myDir);
         }
 
-        HANDLE hFile = CreateFileW(statusPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
-            NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-        if (hFile != INVALID_HANDLE_VALUE) {
+        int readOk2 = 0;
+        for (int ci = 0; ci < 2 && !readOk2; ci++) {
+            HANDLE hFile = CreateFileW(candidates[ci], GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            if (hFile == INVALID_HANDLE_VALUE) continue;
             char buf[256] = {0};
-            DWORD read = 0;
-            ReadFile(hFile, buf, sizeof(buf) - 1, &read, NULL);
+            DWORD rd2 = 0;
+            ReadFile(hFile, buf, sizeof(buf) - 1, &rd2, NULL);
             CloseHandle(hFile);
-            if (read > 0) {
-                buf[read] = '\0';
-                // 去掉换行
-                char *nl = strchr(buf, '\n');
-                if (nl) *nl = '\0';
-                nl = strchr(buf, '\r');
-                if (nl) *nl = '\0';
-                if (strcmp(buf, "ready") == 0) {
-                    // ★ Electron 已就绪，关闭启动器
-                    g_phase = PHASE_DONE;
-                    PostMessageW(hwnd, WM_CLOSE, 0, 0);
-                    return 0;
-                }
-                // 解析 "N|文字"
-                char *pipe = strchr(buf, '|');
-                if (pipe) {
-                    *pipe = '\0';
-                    g_pct = atoi(buf);
-                    strncpy(g_stage, pipe + 1, sizeof(g_stage) - 1);
-                }
+            if (rd2 == 0) continue;
+            buf[rd2] = '\0';
+            char *nl2 = strchr(buf, '\n'); if (nl2) *nl2 = '\0';
+            nl2 = strchr(buf, '\r'); if (nl2) *nl2 = '\0';
+            if (strcmp(buf, "ready") == 0) {
+                g_phase = PHASE_DONE;
+                PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                return 0;
+            }
+            char *pipe2 = strchr(buf, '|');
+            if (pipe2) {
+                *pipe2 = '\0';
+                g_pct = atoi(buf);
+                strncpy(g_stage, pipe2 + 1, sizeof(g_stage) - 1);
+                readOk2 = 1;
             }
         }
 
@@ -301,6 +299,8 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
         if (slash) *slash = L'\0';
         swprintf(cleanPath, MAX_PATH, L"%s\\gh555.com\\loading-status", myDir);
         DeleteFileW(cleanPath);
+        swprintf(cleanPath, MAX_PATH, L"%s\\loading-status", myDir);
+        DeleteFileW(cleanPath);;
     }
 
     // 初始状态

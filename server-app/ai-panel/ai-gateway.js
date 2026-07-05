@@ -337,7 +337,7 @@
 
             // 缓存命中 → 直接返回描述
             if (data.status === 'done') {
-                return { description: data.description, ge_cost: data.ge_cost || 0 };
+                return { description: data.description, ge_cost: data.ge_cost || 0, billing_request_id: data.billing_request_id || 0 };
             }
             if (data.task_id) {
                 return { task_id: data.task_id };
@@ -358,7 +358,7 @@
             };
             var evt = await _pollStream(urls, token, 120000);
             if (evt && evt.status === 'done') {
-                return { description: evt.description, ge_cost: evt.ge_cost || 0 };
+                return { description: evt.description, ge_cost: evt.ge_cost || 0, billing_request_id: evt.billing_request_id || 0 };
             }
             return null;
         },
@@ -381,7 +381,7 @@
             if (opts.images && Array.isArray(opts.images) && opts.images.length > 0) {
                 reqBody.images = opts.images;
             }
-            var resp = await _postJsonWithFailoverr(_URLS.imageGenPrimary, _URLS.imageGenFallback, reqBody, token);
+            var resp = await _postJsonWithFailover(_URLS.imageGenPrimary, _URLS.imageGenFallback, reqBody, token);
             if (!resp || !resp.ok) return null;
             var data = await resp.json();
             if (!data.ok || !data.task_id) return null;
@@ -401,7 +401,7 @@
             };
             var evt = await _pollStream(urls, token, 180000);
             if (evt && evt.status === 'done') {
-                return { urls: evt.urls, ge_cost: evt.ge_cost || 0 };
+                return { urls: evt.urls, ge_cost: evt.ge_cost || 0, billing_request_id: evt.billing_request_id || 0 };
             }
             if (evt && evt.status === 'error') {
                 return { error: evt.error };
@@ -475,7 +475,7 @@
                     return { ok: false, error: 'HTTP ' + (resp ? resp.status : '?'), results: [] };
                 }
                 var data = await resp.json();
-                return { ok: true, results: data.results || [], ge_cost: data.ge_cost || 0 };
+                return { ok: true, results: data.results || [], ge_cost: data.ge_cost || 0, billing_request_id: data.billing_request_id || 0 };
             } catch (err) {
                 return { ok: false, error: err.message || 'Network error', results: [] };
             }
@@ -521,14 +521,14 @@
                 var resp = await _postJsonWithFailover(_URLS.segmentPrimary, _URLS.segmentFallback, reqBody, token);
                 if (!resp || !resp.ok) {
                     var errText = '';
-                    try { errText = await resp.text(); } catch (_) {}
+                    try { errText = await resp.text(); } catch (_) { }
                     return { ok: false, error: 'HTTP ' + (resp ? resp.status : '?') + ': ' + errText.slice(0, 200) };
                 }
                 var data = await resp.json();
                 if (!data.ok || !data.image_url) {
                     return { ok: false, error: data.error || data.code || 'no image_url' };
                 }
-                return { ok: true, image_url: data.image_url, width: data.width, height: data.height, model: data.model, ge_cost: data.ge_cost || 0 };
+                return { ok: true, image_url: data.image_url, width: data.width, height: data.height, model: data.model, ge_cost: data.ge_cost || 0, billing_request_id: data.billing_request_id || 0 };
             } catch (err) {
                 return { ok: false, error: err.message || 'Network error' };
             }

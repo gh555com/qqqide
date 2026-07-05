@@ -758,7 +758,8 @@ function _a4ClearCurrent(ag) {
 // 增量持久化 — 统一入口（覆盖 a1/a2/a3/a4 全部豆腐块）
 // ── 构建完整 floor payload（与 _saveAgentQuestData 同构）──
 //   可选 floorNum: 若传入则使用 ag._floorMeta[floorNum] 中的未可变元数据
-function _a4BuildCompleteFloorPayload(ag, floorNum) {
+function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
+    opts = opts || {};
     // ★ 查询该楼层的未可变元数据（如传入了 floorNum 且有 _floorMeta）
     var meta = (floorNum && ag._floorMeta && ag._floorMeta[floorNum]) ? ag._floorMeta[floorNum] : null;
     var floorStartIdx = meta ? meta.floorStartIdx : (typeof ag._floorStartIdx === "number" ? ag._floorStartIdx : 0);
@@ -803,7 +804,8 @@ function _a4BuildCompleteFloorPayload(ag, floorNum) {
     //      在 onDone 后 _stopState 已非 sending 时会直接 return，吞掉未渲染段落。
     //      改为手动 flush，无论 stopState 为何都把 _paras 和 _buf 渲染入 DOM。
     var _aiDiv = ag._activeAiDiv;
-    if (_aiDiv && _aiDiv._contentWrap) {
+    // ★ switchQuest 中途保存：跳过 DOM 冲刷（agent 后台继续流式，不应干扰其渲染状态）
+    if (!opts.skipDomFlush && _aiDiv && _aiDiv._contentWrap) {
         // --- flush _paras（按 \n\n 分割的已完成段落） ---
         var _rendered = _aiDiv._renderedCount || 0;
         var _pending = _aiDiv._paras || [];

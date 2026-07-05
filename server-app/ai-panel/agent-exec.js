@@ -132,27 +132,26 @@ AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assis
     }
     // ★ 工具执行完毕后，刷新 effect house（remove_background/generate_image/analyze_image/search_web 等）
     var effectStore = self._effectCostStore;
-    if (effectStore) {
-        for (var ek in effectStore) {
-            if (!effectStore.hasOwnProperty(ek)) continue;
-            var ec = effectStore[ek];
+    if (effectStore && effectStore.length) {
+        for (var ei = 0; ei < effectStore.length; ei++) {
+            var ec = effectStore[ei];
             self._houseIndex++;
             self._houses.push({
                 index: self._houseIndex,
                 type: 'effect',
-                effectType: ek,
+                effectType: ec.effectType,
                 tools: [],
                 toolResults: [],
                 ts: ec.ts,
                 ms: 0,
                 reasoning: '',
                 answer: '',
-                wgeCost: ec.wgeCost,
+                wgeCost: ec.wgeCost || 0,
                 model: '',
                 cacheHitRate: -1,
                 usage: null,
                 billingSeq: 0,
-                billingRequestId: '',
+                billingRequestId: String(ec.billingRequestId || self._floorId || ''),
                 tier: self._lastTier ? self._lastTier.label : ''
             });
         }

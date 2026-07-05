@@ -91,7 +91,8 @@ AgentLoop.prototype._callVision = async function (base64, token, prompt, userCon
     // 缓存命中
     if (result.description !== undefined) {
         self._visionCostWge += (result.ge_cost || 0);
-        self._log('  ✓ vision done (cached, cost=' + (result.ge_cost || 0) + 'wge)');
+        if (result.billing_request_id) self._visionBillingRequestId = result.billing_request_id;
+        self._log('  ✓ vision done (cached, cost=' + (result.ge_cost || 0) + 'wge, receipt=' + (result.billing_request_id || 0) + ')');
         return result.description || '[Vision returned empty description]';
     }
 
@@ -106,7 +107,8 @@ AgentLoop.prototype._callVision = async function (base64, token, prompt, userCon
     var pollResult = await AiGateway.visionPoll(result.task_id, token);
     if (pollResult && pollResult.description) {
         self._visionCostWge += (pollResult.ge_cost || 0);
-        self._log('  ✓ vision done (SSE, cost=' + (pollResult.ge_cost || 0) + 'wge)');
+        if (pollResult.billing_request_id) self._visionBillingRequestId = pollResult.billing_request_id;
+        self._log('  ✓ vision done (SSE, cost=' + (pollResult.ge_cost || 0) + 'wge, receipt=' + (pollResult.billing_request_id || 0) + ')');
         return pollResult.description;
     }
 
