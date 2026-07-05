@@ -64,6 +64,8 @@ function _probeOnce(){
     console.log('[qqq-dt] ConsoleModel FOUND at probe#'+_probes+' path='+_cmPath+' msgs='+_cm.messages().length);
     // ★ Dump first 10 message structures (keys + source + sample fields)
     _dumpMsgStructs();
+    // ★ Dump network messages specifically
+    _dumpNetMsg();
     // ★ Dump Console panel structure
     _dumpPanelStruct();
     return;
@@ -117,6 +119,22 @@ function _dumpPanelStruct(){
   }catch(e){window.__QQQ_PANEL_INFO=['err: '+(e.message||e)];}
 }
 
+function _dumpNetMsg(){
+  try{
+    var ms=_cm.messages(),nets=[];
+    for(var i=0;i<ms.length;i++){
+      var m=ms[i];
+      if(m.source!=='network')continue;
+      var p=[];
+      try{var params=m.parameters||[];for(var j=0;j<params.length;j++)p.push({t:typeof params[j].value,v:(params[j].value||'').slice(0,80)});}catch(e){}
+      nets.push({i:i,text:(m.messageText||'').slice(0,200),url:(m.url||'').slice(0,200),line:m.line,level:m.level,params:p,stackTrace:!!(m.stackTrace&&m.stackTrace.callFrames&&m.stackTrace.callFrames.length)});
+      if(nets.length>=10)break;
+    }
+    window.__QQQ_NET_MSGS=nets;
+    console.log('[qqq-dt] network msgs: '+JSON.stringify(nets,null,0));
+  }catch(e){window.__QQQ_NET_MSGS=['err: '+(e.message||e)];}
+}
+
 _probeOnce();
 
 // ── 终极兜底: 劫持 InspectorFrontendHost.save ──
@@ -142,8 +160,28 @@ _probeOnce();
 // ── 格式化单条 ConsoleMessage ──
 function _fmtMsg(m){
   if(!m)return'';
+  // 过滤 DevTools Console 默认不显示的（与右键另存为对齐）
+  if(m.level==='verbose')return'';
+  if(m.source==='violation'||m.source==='deprecation'||m.source==='recommendation'||m.source==='intervention')return'';
   var lines=[],txt=m.messageText||'';
   var cfs=(m.stackTrace&&m.stackTrace.callFrames)?m.stackTrace.callFrames:[];
+  // Network 错误特殊处理：调用栈首帧=源文件位置，m.url=请求URL，m.parameters[0]=HTTP方法
+  if(m.source==='network'){
+    var nUrl=(m.url||'').replace(/\\\\/g,'/');
+    var srcFile='',srcLine=0;
+    if(cfs.length>0){var f0=cfs[0];srcFile=((f0.url||'').replace(/\\\\/g,'/').split('/').pop())||f0.url;srcLine=f0.lineNumber||0;}
+    if(!srcFile){var uu=(m.url||'').replace(/\\\\/g,'/');srcFile=uu.split('/').pop()||uu;}
+    var method='';
+    try{var params=m.parameters||[];for(var pi=0;pi<params.length;pi++){var pv=params[pi];if(pv&&typeof pv.value==='string'&&/^(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)$/i.test(pv.value)){method=pv.value+' ';break;}}}catch(e){}
+    // 尝试从 messageText 提取方法（CDP 后端可能把方法嵌在文本里）
+    if(!method){var mm=txt.match(/^(GET|POST|PUT|DELETE|PATCH)\s/);if(mm)method=mm[1]+' ';}
+    lines.push((srcFile&&srcLine?srcFile+':'+srcLine+' ':'')+method+nUrl+' '+txt);
+    for(var ni=0;ni<cfs.length;ni++){
+      var ncf=cfs[ni];
+      lines.push('    '+(ncf.functionName||'(anonymous)')+' @ '+(((ncf.url||'').replace(/\\\\/g,'/').split('/').pop())||ncf.url)+':'+(ncf.lineNumber||0));
+    }
+    return lines.join('\\n');
+  }
   if(cfs.length>0){
     var f0=cfs[0];
     var fu=((f0.url||'').replace(/\\\\/g,'/').split('/').pop())||f0.url;
@@ -162,7 +200,21 @@ function _fmtMsg(m){
 // ── 全量格式化 — 按钮和主进程都调这个 ──
 window._qqqGetConsoleText=function(){
   // ① ConsoleModel (最佳: 同右键另存为)
-  if(_cm){try{var ms=_cm.messages();if(ms&&ms.length){var out=[];for(var i=0;i<ms.length;i++)out.push(_fmtMsg(ms[i]));return out.join('\\n\\n');}}catch(e){return'// CM err: '+(e.message||e);}}
+  if(_cm){try{var ms=_cm.messages();if(ms&&ms.length){var total=ms.length,pass=0,skipV=0,skipS=0;var out=[];
+    for(var i=0;i<ms.length;i++){var m=ms[i];
+      var r=_fmtMsg(ms[i]);
+      if(r){out.push(r);pass++;}else{if(m.level==='verbose')skipV++;else skipS++;}
+    }
+    window.__QQQ_CM_STATS={total:total,pass:pass,skipVerbose:skipV,skipSource:skipS,netCount:0};
+    // 计数 network 消息
+    try{for(var ni=0;ni<ms.length;ni++){if(ms[ni].source==='network')window.__QQQ_CM_STATS.netCount++;}}catch(e){}
+    // ★ 如果过滤后太少（<3 条），dump 前 20 条原始 source+level 供调试
+    if(pass<3&&total>0){
+      var raw=[];
+      for(var ri=0;ri<Math.min(ms.length,20);ri++){var rm=ms[ri];raw.push(ri+':'+rm.source+'/'+rm.level+' t='+(rm.messageText||'').slice(0,60));}
+      window.__QQQ_CM_RAW=raw;
+    }
+    return out.join('\\n\\n');}}catch(e){return'// CM err: '+(e.message||e);}}
   // ② 劫持捕获 (用户触发过一次右键另存为)
   if(window.__QQQ_HIJACK_CONTENT) return window.__QQQ_HIJACK_CONTENT;
   // ③ 主进程 base64 推送 (CDP/console-message 降级)
@@ -324,6 +376,19 @@ function _startPushLoop(
             const panelInfo = await dwc.executeJavaScript('window.__QQQ_PANEL_INFO&&JSON.stringify(window.__QQQ_PANEL_INFO)');
             if (panelInfo) {
               fs.writeFileSync(path.join('E:/s/wol/py/qqq-shell-v2/qqq/logs', 'devtools-panel-info.json'), panelInfo, 'utf-8');
+            }
+            const netMsgs = await dwc.executeJavaScript('window.__QQQ_NET_MSGS&&JSON.stringify(window.__QQQ_NET_MSGS)');
+            if (netMsgs) {
+              fs.writeFileSync(path.join('E:/s/wol/py/qqq-shell-v2/qqq/logs', 'devtools-net-msgs.json'), netMsgs, 'utf-8');
+            }
+            // ★ v14.3: ConsoleModel 过滤统计 + 原始消息摘要
+            const cmStats = await dwc.executeJavaScript('window.__QQQ_CM_STATS&&JSON.stringify(window.__QQQ_CM_STATS)');
+            if (cmStats) {
+              fs.writeFileSync(path.join('E:/s/wol/py/qqq-shell-v2/qqq/logs', 'devtools-cm-stats.json'), cmStats, 'utf-8');
+            }
+            const cmRaw = await dwc.executeJavaScript('window.__QQQ_CM_RAW&&JSON.stringify(window.__QQQ_CM_RAW)');
+            if (cmRaw) {
+              fs.writeFileSync(path.join('E:/s/wol/py/qqq-shell-v2/qqq/logs', 'devtools-cm-raw.json'), cmRaw, 'utf-8');
             }
           } catch {}
         } else {

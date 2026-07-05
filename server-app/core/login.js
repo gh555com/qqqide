@@ -314,7 +314,7 @@
       _lvAudioRegular.volume = 0.55;
     }
     if (!_lvAudioMilestone) {
-       _lvAudioMilestone = new Audio('assets/lv-up-milestone.mp3');      _lvAudioMilestone.volume = 0.65;
+      _lvAudioMilestone = new Audio('assets/lv-up-milestone.mp3'); _lvAudioMilestone.volume = 0.65;
     }
   }
 
@@ -322,7 +322,7 @@
   function _lvChaseSolid(targetPct, isLevelUp, lvFloor) {
     if (!_$lvSolid) return;
     // 升级时额外音频
-    if (isLevelUp) { _lvEnsureAudio(); var isM = (lvFloor > 0 && lvFloor % 10 === 0); var aud = isM ? _lvAudioMilestone : _lvAudioRegular; if (aud) { aud.currentTime = 0; aud.play().catch(function(){}); } }
+    if (isLevelUp) { _lvEnsureAudio(); var isM = (lvFloor > 0 && lvFloor % 10 === 0); var aud = isM ? _lvAudioMilestone : _lvAudioRegular; if (aud) { aud.currentTime = 0; aud.play().catch(function () { }); } }
     var gen = ++_lvChaseGen;
     var now = performance.now();
     var baseDuration = isLevelUp ? 500 : 10000;
@@ -395,26 +395,27 @@
     _lvShimmerStyle = document.createElement('style');
     _lvShimmerStyle.textContent = '@keyframes qq-lv-shimmer{0%{background-position:200% 0}100%{background-position:-100% 0}}';
     document.head.appendChild(_lvShimmerStyle);
-  }  function _lvLevelUpGlow() {
+  }
+
+  function _lvLevelUpGlow() {
     if (!_$lvLevel) return;
     _lvInjectShimmer();
     var gen = ++_lvGlowGen;
 
     var baseColor = '#e8e8e8';
-    try { var c = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim(); if (c) baseColor = c; } catch(e){}
-    // 渐变色 300% 宽，首尾同色→无缝循环，流光在 45-55% 细条
-    var grad = 'linear-gradient(90deg, ' + baseColor + ' 0%, ' + baseColor + ' 40%, #ffd700 46%, #fff8dc 50%, #ffd700 54%, ' + baseColor + ' 60%, ' + baseColor + ' 100%)';
+    try { var c = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim(); if (c) baseColor = c; } catch (e) { }
+    var grad = 'linear-gradient(90deg, ' + baseColor + ' 0%, ' + baseColor + ' 38%, #ffd700 46%, #fff8dc 50%, #ffd700 54%, ' + baseColor + ' 62%, ' + baseColor + ' 100%)';
 
-    // Phase 1: 放大两倍，左对齐锚点向右展开（无泛光无移位）
+    // Phase 1: 以中心为锚点放大 1.5× + 上移 1px
     _$lvLevel.style.transition = 'none';
-    _$lvLevel.style.transform = 'scale(2)';
-    _$lvLevel.style.transformOrigin = 'left center';
+    _$lvLevel.style.transform = 'scale(1.5) translateY(-1px)';
+    _$lvLevel.style.transformOrigin = 'center center';
     _$lvLevel.style.position = 'relative';
     _$lvLevel.style.zIndex = '3';
 
-    // Phase 2: 金色流光持续循环，300% 宽无缝走到底 ~5s
-    requestAnimationFrame(function() {
-      requestAnimationFrame(function() {
+    // Phase 2: 金色流光循环 ~5s
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
         if (_lvGlowGen !== gen) return;
         _$lvLevel.style.transition = 'none';
         _$lvLevel.style.backgroundImage = grad;
@@ -422,10 +423,10 @@
         _$lvLevel.style.backgroundClip = 'text';
         _$lvLevel.style.webkitBackgroundClip = 'text';
         _$lvLevel.style.color = 'transparent';
-        _$lvLevel.style.animation = 'qq-lv-shimmer 0.85s linear infinite';
+        _$lvLevel.style.animation = 'qq-lv-shimmer 1.6s linear infinite';
 
         // Phase 3: 5s 后还原
-        setTimeout(function() {
+        setTimeout(function () {
           if (_lvGlowGen !== gen) return;
           _$lvLevel.style.animation = '';
           _$lvLevel.style.transition = 'all 0.7s ease-out';
@@ -438,7 +439,7 @@
           _$lvLevel.style.transformOrigin = '';
           _$lvLevel.style.position = '';
           _$lvLevel.style.zIndex = '';
-          setTimeout(function() {
+          setTimeout(function () {
             if (_lvGlowGen !== gen) return;
             _$lvLevel.style.transition = '';
           }, 800);
@@ -618,12 +619,12 @@
   function _updateLoginButtonState(active) {
     if (!_$loginBtn) return;
     if (active) {
-      _$loginBtn.textContent = '⏳';
+      _$loginBtn.textContent = '\u23F3 \u767B\u5F55\u4E2D';
       _$loginBtn.style.cursor = 'wait';
       _$loginBtn.style.opacity = '0.6';
-      _$loginBtn.title = '登录中，点击重新打开浏览器';
+      _$loginBtn.title = '\u767B\u5F55\u4E2D\uFF0C\u70B9\u51FB\u91CD\u65B0\u6253\u5F00\u6D4F\u89C8\u5668';
     } else {
-      _$loginBtn.textContent = '\uD83D\uDD12';
+      _$loginBtn.textContent = '\uD83D\uDD12 \u767B\u5F55';
       _$loginBtn.style.cursor = '';
       _$loginBtn.style.opacity = '';
       _$loginBtn.title = '';
@@ -748,8 +749,8 @@
     // 登录按钮
     _$loginBtn = document.createElement('button');
     _$loginBtn.className = 'qqq-login-btn';
-    _$loginBtn.textContent = '\uD83D\uDD12';
-    _$loginBtn.style.cssText = NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;color:var(--text-secondary,#999);cursor:pointer;padding:1px 6px;font-size:13px;';
+    _$loginBtn.textContent = '\uD83D\uDD12 \u767B\u5F55';
+    _$loginBtn.style.cssText = NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;color:var(--text-secondary,#999);cursor:pointer;padding:1px 20px;font-size:13px;';
     _$loginBtn.addEventListener('click', function (e) {
       e.preventDefault();
       var expectedGen = _loginGen + 1;  // 快照：本轮期望的代际号

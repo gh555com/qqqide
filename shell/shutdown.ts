@@ -237,6 +237,11 @@ export function registerExitHandlers(
         // ⑥ auto-increment version for next boot cache-busting
         try { autoIncrementVersion(portableRoot); } catch { /* ignore */ }
 
+        // ⑦ 最后一枪：兜底 sync flush（防 async flush→exit 之间写入的数据丢失）
+        //    will-quit 不适用于此（app.exit 会跳过 will-quit），改用双写锁保险。
+        try { _flushStateSync('exit'); } catch { /* ignore */ }
+        try { _flushQgfSync('exit'); } catch { /* ignore */ }
+
         app.exit(0);
         setTimeout(() => { process.exit(0); }, 500);
     });

@@ -51,16 +51,17 @@ export function _qgc(): () => void {
     };
 }
 
-// Python executable path
+// Python executable — 唯一真理源: engines/manifest.json via component-checker
 let __pythonExe = '';
 
 export function getPythonExe(portableRoot: string): string {
     if (__pythonExe) return __pythonExe;
-    const bundled = path.join(portableRoot, 'engines', 'python', 'python.exe');
-    if (fs.existsSync(bundled)) { __pythonExe = bundled; return __pythonExe; }
-    const devPy = 'E:\\s\\d\\python3810\\python.exe';
-    if (fs.existsSync(devPy)) { __pythonExe = devPy; return __pythonExe; }
-    __pythonExe = 'python';
+    try {
+        const { getComponentBin } = require('./component-checker');
+        const bin = getComponentBin(portableRoot, 'python');
+        if (bin) { __pythonExe = bin; return __pythonExe; }
+    } catch {}
+    __pythonExe = '';
     return __pythonExe;
 }
 

@@ -39,7 +39,7 @@ var AgentLoop = (function () {
         this.abortController = null;
         this._log = opts.log || function () { };
         this.log = this._log;          // alias for context engine
-        // ★ 文件日志：写入 new_log/ 目录（持久化诊断，不依赖 Console）
+        // ★ 文件日志：写入 qqq/new_log/ 目录（持久化诊断，不依赖 Console）
         this._fileLogBuffer = [];
         this._fileLogTimer = null;
         var _self = this;
@@ -65,7 +65,7 @@ var AgentLoop = (function () {
                 var today = new Date().toISOString().slice(0, 10);
                 var root = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
                 if (!root) return;
-                var logDir = root.replace(/\\/g, '/') + '/new_log';  // new_log/ 在项目根目录内
+                var logDir = root.replace(/\\/g, '/') + '/qqq/new_log';  // new_log/ 在 qqq/ 子目录内
                 var logPath = logDir + '/agent-' + today + '.log';
                 var bridge = window.parent && window.parent.qqqideBridge;
                 if (bridge && bridge.fs) {
@@ -126,7 +126,7 @@ var AgentLoop = (function () {
         this._stopCtrl = null;          // AbortController（仅用户 Stop 时 abort，永不重建）
         this._stopState = 'idle';       // 'idle' | 'sending' | 'stopping'
         // ★ 错误诊断探针（用于构建"继续"消息中的中断原因）
-        this._exitReason = '';           // 'ok'|'http_502'|'http_503'|'http_429'|'http_402'|'fetch_error'|'watchdog_stream'|'deadline'|'max_iter'|'unknown'
+        this._exitReason = '';           // 'ok'|'http_502'|'http_503'|'http_504'|'http_429'|'http_402'|'http_400'|'http_422'|'fetch_error'|'watchdog_stream'|'deadline'|'max_iter'|'unknown'
         this._lastHttpStatus = 0;        // 最后一次 HTTP 状态码
         this._floorFatal = false;        // ★ 致命失败：onError 触发后强制 _stopState='fatal'，防 idle 假恢复
         this._questErrorLog = [];           // ★ 聚合红框：同 quest 所有失败按时间叠到一个框（跨 floor 持久）
@@ -201,6 +201,7 @@ var AgentLoop = (function () {
         switch (this._exitReason) {
             case 'http_502': parts.push('服务器返回502(Bad Gateway)'); break;
             case 'http_503': parts.push('服务器返回503(Service Unavailable)'); break;
+            case 'http_504': parts.push('服务器返回504(Gateway Timeout)'); break;
             case 'http_429': parts.push('请求过于频繁(429限流)'); break;
             case 'http_400': parts.push('AI接口返回400(请求格式错误，可能是孤儿tool消息)'); break;
             case 'http_422': parts.push('AI接口返回422(参数错误)'); break;
@@ -220,8 +221,8 @@ var AgentLoop = (function () {
                 if (this._lastHttpStatus) parts.push('HTTP ' + this._lastHttpStatus + '错误');
                 break;
         }
-        // 补充：服务端SSE错误消息
-        if (this._lastSseError && this._exitReason !== 'http_502' && this._exitReason !== 'http_503') {
+        // 补充：服务端SSE错误消息（网关错误已有诊断，不重复）
+        if (this._lastSseError && !ContentGateway.HttpError.isGatewayExitReason(this._exitReason)) {
             parts.push('服务端: ' + this._lastSseError);
         }
         // 补充：连续失败次数
@@ -338,10 +339,29 @@ var AgentLoop = (function () {
                 }
                 visionText = '\n\n━━━ VISION ANALYSIS RESULTS (already completed, DO NOT call analyze_image again) ━━━\n' + parts.join('\n\n') + '\n━━━ END VISION RESULTS ━━━\n[person_identity field above identifies who is in the image. Use it.\n IF user asked for background removal: call remove_background ONCE using the PASTED IMAGES path. DO NOT write Python/image-processing code.]';
             }
-            // 视觉计费计入本轮
-            if (self._visionCostWge > 0) {
+            // 视觉计费计入本轮 → 建 house（含缓存命中 0 费用）
+            if (visionResults.length > 0) {
+                var _visionMs = Math.round(performance.now() - _visionStart);
                 self._floorCostWge += self._visionCostWge;
-                self._log('💰 vision cost: ' + (self._visionCostWge / 10000).toFixed(4) + ' ge');
+                self._houseIndex++;
+                self._houses.push({
+                    index: self._houseIndex,
+                    type: 'effect',
+                    effectType: 'analyze_image',
+                    tools: [], toolResults: [],
+                    ts: new Date().toISOString(),
+                    ms: _visionMs,
+                    reasoning: '',
+                    answer: visionResults.map(function (r) { return r.description || ''; }).join('\n'),
+                    wgeCost: self._visionCostWge,
+                    model: '',
+                    cacheHitRate: -1,
+                    usage: null,
+                    billingSeq: 0,
+                    billingRequestId: '',
+                    tier: self._lastTier ? self._lastTier.label : ''
+                });
+                self._log('💰 vision cost: ' + (self._visionCostWge / 10000).toFixed(4) + ' ge (' + visionResults.length + ' image(s))');
                 self._visionCostWge = 0;
             }
         }
@@ -360,7 +380,7 @@ var AgentLoop = (function () {
                         if (_fm[_fk] && _fm[_fk]._fDir) { _fDir = _fm[_fk]._fDir; break; }
                     }
                 }
-            } catch (_) {}
+            } catch (_) { }
             for (var _ii = 0; _ii < images.length; _ii++) {
                 var _im = images[_ii];
                 var _bn = _im.fileName || ('img_' + _im.id + '.png');
@@ -667,8 +687,8 @@ var AgentLoop = (function () {
                             continue;
                         }
                     }
-                    // 400/422/502/503 自动修复：弹掉最后一组 assistant+tool，重试
-                    if ((self._lastGatewayError === 400 || self._lastGatewayError === 422 || self._lastGatewayError === 502 || self._lastGatewayError === 503) && !opts._repairAttempted) {
+                    // 自动修复：弹掉最后一组 assistant+tool，重试（分类真理源：ContentGateway.HttpError.isAutoRepairable）
+                    if (ContentGateway.HttpError.isAutoRepairable(self._lastGatewayError) && !opts._repairAttempted) {
                         self._lastGatewayError = 0;
                         // ★ 找到最后一个 assistant(tool_calls)，截断其后所有消息
                         var conv2 = self.conversation;
@@ -1297,7 +1317,7 @@ AgentLoop.prototype._dumpConversation = function (tag, extra) {
     var today = new Date().toISOString().slice(0, 10);
     var root = (typeof questStore !== "undefined" && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
     if (!root) return;
-    var logDir = root.replace(/\\/g, "/") + "/new_log";
+    var logDir = root.replace(/\\/g, "/") + "/qqq/new_log";
     var fname = tag + "-f" + self._ctx.totalFloors + "-h" + self._houseIndex + ".json";
     var logPath = logDir + "/" + fname;
 

@@ -344,3 +344,16 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 最终 geCost = 基础USD × random × tier × 汇率 × 10000。tier 1-3→Flash, tier 4-6→Pro。
   - 汇率：fx.go 每 6 小时自动更新。上游定价：无 API 可查，人工定期核对官网手动更新 billing.go。
   - 违者即返工。
+
+§54 组件系统 — 服务器驱动、客户端全自动 (2026-07-04)
+  - 唯一真理源: engines/manifest.json。组件定义(install_to/bin/verify_args/srcs)全在此文件。
+  - 分两级: rank0(IDE 自动下载: ripgrep+python) / rank1(用户手动: ffmpeg+yt-dlp+git)。
+  - 运行时: shell/component-checker.ts。启动→读 manifest→逐 rank0 检查→缺了顺序尝试 srcs。
+  - 验证: spawnSync 直接调嵌入式二进制 + verify_args，禁 shell:true（防注入+误判）。
+  - 原子写: _writeJson 走 tmp+rename，断电不丢。manifest 内存缓存，启动后零 IO。
+  - 下载冷却: .downloads.json 记录成败。失败后 5min 冷却。成功则永不再下（除非版本升级）。
+  - 目录迁移: 服务器改 install_to→客户端比较 .versions.json 旧值→fs.rename 原子重组。
+    新目录已存在→旧内容合并移入，不覆盖不丢数据。
+  - Python 铁律: 只用内嵌。getComponentBin('python') 唯一入口。
+    无内嵌→py-broker 跳过(IDE 正常启动，下次启动自动装上)。永不 fallback 系统 Python。
+  - 违者即返工。

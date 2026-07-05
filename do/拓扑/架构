@@ -189,29 +189,51 @@ Monaco Worker 加载
 · 依赖补全: convert_monaco_esm.py ESM→AMD (796 文件 → cache/monaco-deps/vs/)
 · qqq-asset:// 协议: 先查 node_modules/min/vs/ → fallback cache/monaco-deps/vs/
 
-组件管理
------------
-· 外部清单: engines/manifest.json — 5组件 (ffmpeg/yt-dlp/python/git/ripgrep)
-  三层加载: userData/manifest.json → engines/manifest.json → manifest.rs 硬编码兜底
-· 安装: op/components.py ensure/download/upload/list
-· LSP 已冻结（2026-06-23）: 组件/桥接删除，源码保留于磁盘
-  替代 — 三级语法检查（2026-06-24）:
-    L1 自动（零 ge）: 每次 edit/write/create 后自动 node --check / py_compile / JSON.parse
-      结果拼接到工具返回值 [SYNTAX OK] 或 [SYNTAX ERROR]，代码在 tools-exec-write.js
+组件系统 — 服务器驱动，全自动（2026-07-04 重构）
+------------------------------------------------------------------------
+· ★ 唯一真理源: engines/manifest.json（server-driven，改一行客户端自动重组）
+· 加载器: shell/component-checker.ts（启动时读 manifest → 检查 → 下载 → 验证 → 目录迁移）
+· 持久化: engines/.versions.json（per-component: version + install_to + verified_at）
+· 下载日志: engines/.downloads.json（成败记录 + 5min 冷却，成功则永不再下除非版本升级）
+· 原子写: 全部 JSON 走 tmp+rename，断电不丢。manifest 内存缓存，启动后零 IO
+· 验证: spawnSync 直调二进制 + verify_args（禁 shell:true，防注入+误判）
+
+等级分类:
+  rank0 — IDE 自动管理。缺了静默后台下载，不阻塞启动。
+          包含: ripgrep*, python。*bundled=true(绿色包自带,启动跳过)
+  rank1 — 用户手动触发。不自动检查。
+          包含: ffmpeg / yt-dlp / git
+
+下载: 每个组件声明 srcs[]（URL 列表，顺序尝试）。
+  ① CDN(gh555.com) → ② npm mirror → ③ python.org/github 官方
+
+目录迁移 — 服务器改 install_to 字段→客户端物理重组目录:
+  · _ensureOne 比较 .versions.json 旧 install_to 与 manifest 新值
+  · 不一致→fs.rename(oldDir→newDir) 原子迁移；新目录已存在→旧内容合并移入
+  · 效果: 服务器改一行 JSON，所有已部署客户端自动重组，不重新下载
+
+Python: rank0，不阻塞启动。py-broker 启动时 getComponentBin('python')→已安装→启动，
+  未安装→跳过。零 fallback 到系统 Python。唯一入口 getComponentBin。
+
+查询: getComponentBin(name)/getComponentDir(name) 都是从 manifest 读路径，
+  不硬编码。服务器改 install_to 所有调用处自动跟随。
+
+LSP 已冻结 → 三级语法检查:
+    L1 自动（零 ge）: 每次 edit/write/create 后 node --check / py_compile / JSON.parse
     L2 手动（~50 ge）: AI 调用 get_diagnostics 工具
-    L3 全仓（~200 ge）: AI 重大重构后跑 run_command，system-prompt.js prompt 引导
+    L3 全仓（~200 ge）: AI 重大重构后跑 run_command
 
 
 目录骨架
 --------
 qqq-shell-v2/
-├── shell/             壳层TS（main.ts + 13 子模块: boot/window/asset/ipc-*/shutdown/qz-spawn/...）
+├── shell/             壳层TS（main.ts + component-checker + 12 子模块）
 ├── server-app/        载荷层(热更)
 │   ├── core/          IDE 平台 (shell/theme/editor/qoast/state-sdk/gaea-host/tab-manager/...)
 │   ├── locales/       13 语言 (zh.json 唯一真理源)
 │   ├── goods/         goods (rage+navigator+search+git+...)
 │   └── ai-panel/      AI面板（29 个 JS 模块化拆分）
-├── engines/           二进制 + manifest.json (5组件: ffmpeg/yt-dlp/python/git/ripgrep)
+├── engines/           二进制组件(rank0:ripgrep+python / rank1:ffmpeg+yt-dlp+git) + manifest.json(服务器驱动)
 ├── op/                运维脚本
 ├── do/拓扑/           架构文档
 

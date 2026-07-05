@@ -29,14 +29,14 @@
     // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
     var CTX_MAX_TOKENS = 1048565;     // 上下文窗口总上限（实测精确值）
     // ★ 压缩阈值从父窗口 QQQ_DEFAULTS 读（兜底 600k）；改默认值只改 core/defaults.js
-var COMPRESS_THRESHOLD = (function() {
-    try {
-        if (typeof parent !== 'undefined' && parent.window && parent.window.QQQ_DEFAULTS) {
-            return parent.window.QQQ_DEFAULTS['ai.compressThreshold'] * 1000;
-        }
-    } catch (_) { }
-    return 600000;
-})();
+    var COMPRESS_THRESHOLD = (function () {
+        try {
+            if (typeof parent !== 'undefined' && parent.window && parent.window.QQQ_DEFAULTS) {
+                return parent.window.QQQ_DEFAULTS['ai.compressThreshold'] * 1000;
+            }
+        } catch (_) { }
+        return 600000;
+    })();
     var MAX_TOKENS_SAFETY = 10000;    // max_tokens 帽安全余量
     var CHAR_PER_TOKEN = 2.5;         // 统一 chars→tokens 估算比例（2026-06-29 校准: 2.7→2.5）
     // 单专家统一压缩参数（tier 6, 64K max_tokens）
@@ -91,10 +91,32 @@ var COMPRESS_THRESHOLD = (function() {
         return { safe: str, flags: flags };
     }
 
+    // ═══ HTTP 错误码分类（单一真理源：所有网关/重试/修复逻辑收口于此） ═══
+    // 铁律：新增 HTTP 错误处理策略只需改这里，下游零散硬编码一律废除
+    var HttpError = {
+        // 上游网关不可达（502 Bad Gateway / 503 Service Unavailable / 504 Gateway Timeout）
+        isGatewayDown: function (code) { return code === 502 || code === 503 || code === 504; },
+        // 客户端请求格式错误（400 Bad Request / 422 Unprocessable — 可弹 tool_calls 自动修复）
+        isClientError: function (code) { return code === 400 || code === 422; },
+        // 网关层应重试（含退避和线路切换）：429 限流 + 上游不可达
+        isRetryable: function (code) { return code === 429 || HttpError.isGatewayDown(code); },
+        // 可弹 tool_calls 自动修复：客户端错误 + 上游不可达
+        isAutoRepairable: function (code) { return HttpError.isClientError(code) || HttpError.isGatewayDown(code); },
+        // SSE 层应标记为网关错误（供上层 auto-repair 处置）
+        shouldCaptureAsGatewayError: function (code) { return HttpError.isClientError(code) || code === 402 || HttpError.isGatewayDown(code); },
+        // 根据 _exitReason 字符串判断是否为网关错误
+        isGatewayExitReason: function (reason) {
+            if (!reason || typeof reason !== 'string') return false;
+            var m = reason.match(/^http_(\d+)$/);
+            return m ? HttpError.isGatewayDown(parseInt(m[1], 10)) : false;
+        }
+    };
+
     // ═══ 暴露到全局 ═══
     window.ContentGateway = {
         process: process,
         detectBinary: detectBinary,
+        HttpError: HttpError,  // ★ HTTP 错误码分类（单一真理源）
         // 常量暴露（只读参考）
         MAX_STORAGE_CHARS: MAX_STORAGE_CHARS,
         MAX_BINARY_NULLS: MAX_BINARY_NULLS,
