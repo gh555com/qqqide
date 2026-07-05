@@ -115,15 +115,12 @@ window.getTimeContext = function () {
     var tzMin = Math.abs(tzOffset) % 60;
     var tzStr = 'UTC' + tzSign + tzHours + (tzMin ? ':' + String(tzMin).padStart(2, '0') : '');
 
-    var y = d.getFullYear();
-    var mo = String(d.getMonth() + 1).padStart(2, '0');
-    var dd = String(d.getDate()).padStart(2, '0');
-    var h = String(d.getHours()).padStart(2, '0');
-    var mi = String(d.getMinutes()).padStart(2, '0');
-    var s = String(d.getSeconds()).padStart(2, '0');
+    var _now = _fmtTime(d);
+    var datePart = _now.slice(0, 10);
+    var timePart = _now.slice(11);
 
     return '\n\n═══ CURRENT TIME ═══\n' +
-        'Right now it is ' + y + '-' + mo + '-' + dd + ' (' + dayName + ') ' + h + ':' + mi + ':' + s + ' ' + tzStr + '.\n' +
+        'Right now it is ' + datePart + ' (' + dayName + ') ' + timePart + ' ' + tzStr + '.\n' +
         'Always use this as the authoritative current time. The user may refer to "today", "now", "currently", or specific dates — resolve them relative to this timestamp.\n' +
         '═══════════════';
 };

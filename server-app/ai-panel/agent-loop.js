@@ -1010,8 +1010,7 @@ var AgentLoop = (function () {
     AgentLoop.prototype._renderCompressStart = function (reason) {
         var _aiDiv = this._activeAiDiv;
         var _escHtml = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
-        var _now = new Date();
-        var _ts = _now.getFullYear() + '-' + String(_now.getMonth() + 1).padStart(2, '0') + '-' + String(_now.getDate()).padStart(2, '0') + ' ' + String(_now.getHours()).padStart(2, '0') + ':' + String(_now.getMinutes()).padStart(2, '0') + ':' + String(_now.getSeconds()).padStart(2, '0');
+        var _ts = _fmtTime(new Date());
         // ★ auto 压缩卡片（仅在活跃楼层渲染，不推 conversation——手动压缩已用专用楼层）
         if (_aiDiv && _aiDiv._contentWrap) {
             var _startCard = document.createElement('div');

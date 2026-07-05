@@ -676,13 +676,7 @@ document.getElementById('ctx-snap').onclick = async function () {
         }
 
         // ── 构建快照内容 ──
-        var _now = new Date();
-        var _ts = _now.getFullYear() + '-' +
-            String(_now.getMonth() + 1).padStart(2, '0') + '-' +
-            String(_now.getDate()).padStart(2, '0') + '_' +
-            String(_now.getHours()).padStart(2, '0') + '_' +
-            String(_now.getMinutes()).padStart(2, '0') + '_' +
-            String(_now.getSeconds()).padStart(2, '0');
+        var _ts = _fmtTime(new Date()).replace(' ', '_').replace(/:/g, '_');
 
         var _snap = {
             questId: questActiveId,

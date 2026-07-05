@@ -64,10 +64,14 @@ async function _handleSyncMessage(msg) {
                 // 另一面板释放了 quest — 不做任何事（我们不自动加载）
                 break;
             case 'building-changed':
-                // ★ 跨面板彗星电子钟同步：另一面板建楼状态变化 → 本面板更新豆腐时钟
-                //   读中央真理 parent.__qqq_agentPool，零脑分裂
+                // ★ 跨面板彗星电子钟同步：另一面板建楼状态变化 → 更新本地集合 + 豆腐时钟
+                //   本地集合通过 IPC 消息同步（不依赖 parent.__qqq_buildingRegistry 跨 iframe 属性共享）
+                (window.__qqq_localBuildingQuests = window.__qqq_localBuildingQuests || {})[msg.questId] = !!msg.building;
+                console.log('[comet] building-changed recv: qid=' + msg.questId + ' building=' + !!msg.building + ' panel=' + _panelId);
                 if (typeof updateQuestTofu === 'function') updateQuestTofu();
                 if (typeof _updateQuestClock === 'function') _updateQuestClock();
+                // ★ 关闭已打开的下拉 → 下次 hover 全新渲染（含新的建楼状态）
+                if (typeof closeQuestDrop === 'function') closeQuestDrop();
                 break;
         }
     } catch (e) {
@@ -391,7 +395,8 @@ function restoreQuestUIState(id) {
         $input.value = state.inputValue || '';
         $input._resetUndo();
         pendingImages = state.pendingImages || [];
-        selectedTier = state.selectedTier;
+        // ★ 旧数据可能为 null（A 已改为信息弹窗），回退默认
+        selectedTier = (state.selectedTier != null) ? state.selectedTier : ((typeof _getDefaultTier === 'function') ? _getDefaultTier() : 3);
         updateTierButtons(selectedTier);
         renderImageStrip();
         updateQueueBtn();

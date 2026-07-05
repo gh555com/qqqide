@@ -1,15 +1,12 @@
 // ============================================================================
-// update-service.ts — Hot update: pull server-app.tar.gz from gh555.com
-//
-// Flow:
-//   1. check() → GET version.json → compare shell + webapp separately
-//   2. apply() → download server-app.tar.gz → extract to Data/webapp-staging/
-//   3. upgradeShell() → download shell-out.tar.gz → stage for bootstrap
+// update-service.ts — 双轨热更新统一入口（唯一真理源：PRODUCTION_URL + APP_VERSION）
 //
 // 铁律:
+//   - 下载 URL 全部派生自 boot.ts 的 PRODUCTION_URL，改一处全改
+//   - 版本检查统一走 version.ts 的 fetchServerVersionInfo
 //   - _shellVersion = APP_VERSION（main.js 硬编码，bootstrap 替换后自动更新）
 //   - _state.currentVersion = webapp 本地版本（Data/webapp-version 或 '0.0.0'）
-//   - 两套版本互不干扰，check() 独立比较
+//   两套版本互不干扰，check() 独立比较
 // ============================================================================
 
 import * as http from 'http';
@@ -18,10 +15,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { URL } from 'url';
 import { spawnSync } from 'child_process';
+import { PRODUCTION_URL } from './boot';
+import { fetchServerVersionInfo } from './version';
 
-const UPDATE_MANIFEST_URL = 'https://gh555.com/qqqide/version.json';
-const UPDATE_TAR_URL = 'https://gh555.com/qqqide/server-app.tar.gz';
-const SHELL_TAR_URL = 'https://gh555.com/qqqide/shell-out.tar.gz';
+// ★ 三条 URL 全部从 PRODUCTION_URL 派生（唯一真理源）
+const UPDATE_MANIFEST_URL = PRODUCTION_URL + 'version.json';
+const UPDATE_TAR_URL = PRODUCTION_URL + 'server-app.tar.gz';
+const SHELL_TAR_URL = PRODUCTION_URL + 'shell-out.tar.gz';
 
 export interface UpdateState {
     lastCheck: number;
@@ -48,7 +48,7 @@ export interface ApplyResult {
 export class UpdateService {
     private _appRoot: string;
     private _statePath: string;
-    /** Shell 版本号 = APP_VERSION（main.js 硬编码，bootstrap 替换壳后自动更新） */
+    /** Shell 版本号 = APP_VERSION（唯一真理源，bootstrap 替换壳后自动更新） */
     private _shellVersion: string;
     private _state: UpdateState;
     private _abortController: AbortController | null = null;
@@ -64,7 +64,7 @@ export class UpdateService {
 
     /** Check for updates (both shell + webapp). */
     async check(): Promise<CheckResult> {
-        const info = await this._fetchVersionInfo();
+        const info = await fetchServerVersionInfo(PRODUCTION_URL);
         this._state.lastCheck = Date.now();
         if (info) {
             this._state.lastVersion = info.shell || info.webapp || '';
@@ -95,7 +95,8 @@ export class UpdateService {
         this._abortController = new AbortController();
 
         try {
-            const latestVersion = this._state.lastVersion || await this._fetchVersionDirect();
+            const info = await fetchServerVersionInfo(PRODUCTION_URL);
+            const latestVersion = info?.webapp || info?.shell || '';
             if (!latestVersion) {
                 return { success: false, version: '', error: 'Failed to fetch latest version' };
             }
@@ -122,9 +123,7 @@ export class UpdateService {
 
             try { fs.unlinkSync(tarPath); } catch { }
 
-            // Write webapp version marker
             this._writeWebappVersion(latestVersion);
-
             this._state.currentVersion = latestVersion;
             this._state.lastApplied = latestVersion;
             this._saveState();
@@ -172,7 +171,6 @@ export class UpdateService {
 
             try { fs.unlinkSync(tarPath); } catch { }
 
-            // Write shell version marker
             const versionFile = path.join(this._appRoot, 'Data', 'shell-version');
             const shellVersion = this._state.lastVersion || this._shellVersion;
             try { fs.writeFileSync(versionFile, shellVersion, 'utf8'); } catch { }
@@ -234,41 +232,9 @@ export class UpdateService {
         } catch { /* ignore */ }
     }
 
-    // ---- HTTP helpers ----
+    // ---- low-level I/O ----
 
-    private _httpsGet(url: string): Promise<{ status: number; data: string }> {
-        return new Promise((resolve, reject) => {
-            const u = new URL(url);
-            const get = u.protocol === 'https:' ? https.get : http.get;
-            const opts: any = { timeout: 15000 };
-            if (u.protocol === 'https:') { opts.rejectUnauthorized = false; }
-            const req = get(url, opts, (res) => {
-                let data = '';
-                res.setEncoding('utf8');
-                res.on('data', (chunk: string) => data += chunk);
-                res.on('end', () => resolve({ status: res.statusCode || 0, data }));
-            });
-            req.on('error', reject);
-            req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-        });
-    }
-
-    /** Fetch full version.json from server. */
-    private async _fetchVersionInfo(): Promise<{ shell: string; webapp: string } | null> {
-        try {
-            const { status, data } = await this._httpsGet(UPDATE_MANIFEST_URL);
-            if (status !== 200) return null;
-            const parsed = JSON.parse(data);
-            return {
-                shell: parsed.shell || parsed.version || '',
-                webapp: parsed.webapp || parsed.version || '',
-            };
-        } catch {
-            return null;
-        }
-    }
-
-    /** Read local webapp version from Data/webapp-version. boot.ts 的 ensureLocalWebapp 确保该文件存在。 */
+    /** Read local webapp version from Data/webapp-version. boot.ts 的 ensureLocalWebapp 确保初始存在。 */
     private _readWebappVersion(): string {
         try {
             const p = path.join(this._appRoot, 'Data', 'webapp-version');
@@ -284,15 +250,7 @@ export class UpdateService {
         } catch { /* ignore */ }
     }
 
-    private async _fetchVersion(): Promise<string | null> {
-        const info = await this._fetchVersionInfo();
-        return info?.shell || null;
-    }
-
-    private async _fetchVersionDirect(): Promise<string | null> {
-        return this._fetchVersion();
-    }
-
+    /** Download a file from url to dest, with timeout + redirect + abort support. */
     private _downloadFile(url: string, dest: string, signal: AbortSignal): Promise<boolean> {
         return new Promise((resolve) => {
             const u = new URL(url);
@@ -329,6 +287,7 @@ export class UpdateService {
         });
     }
 
+    /** Extract .tar.gz to destDir. */
     private _extractTarGz(tarPath: string, destDir: string): boolean {
         try {
             try { fs.mkdirSync(destDir, { recursive: true }); } catch { }

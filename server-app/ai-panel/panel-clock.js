@@ -225,10 +225,7 @@ function _buildBillingTable(houses, passby) {
         var _qNum = passby.questId.replace('q', '');
         var _fNum = passby.floorNum || 0;
         var _pbServerMs = passby.time || (Date.now() + (passby.drift || 0));
-        var _pbDate = new Date(_pbServerMs);
-        var _pbPad = function (n) { return String(n).padStart(2, '0'); };
-        var _pbTimeStr = _pbDate.getFullYear() + '-' + _pbPad(_pbDate.getMonth() + 1) + '-' + _pbPad(_pbDate.getDate())
-            + ' ' + _pbPad(_pbDate.getHours()) + ':' + _pbPad(_pbDate.getMinutes()) + ':' + _pbPad(_pbDate.getSeconds());
+        var _pbTimeStr = _fmtTime(new Date(_pbServerMs));
         var _pbTokenStr = String(_pbTokens);
         html += '<div class="billing-passby" style="margin-top:8px;font-size:13px;color:var(--text-secondary,#888);text-align:center">'
             + '<span style="color:var(--text-tertiary,#666)">at ' + _pbTimeStr + '</span>'
@@ -461,10 +458,10 @@ async function renderQuestDrop() {
             line.appendChild(prefix);
             line.appendChild(title);
             item.appendChild(line);
-            // ★ 彗星电子钟：读中央真理 parent.__qqq_buildingRegistry（非 agent pool）
-            //   其他面板上可能未创建该 agent，pool[s.id] 为 undefined → 假阴性
-            //   registry 是跨面板唯一真理源，所有面板读到的是同一份数据
-            if (typeof _isQuestBuilding === 'function' && _isQuestBuilding(s.id)) {
+            // ★ 彗星电子钟：本地集合（IPC同步）为主
+            var _bq = window.__qqq_localBuildingQuests || {};
+            if (_bq[s.id]) {
+                console.log('[comet] renderQuestDrop insert clock: qid=' + s.id + ' panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?'));
                 _insertCometClock(prefix, s.id);
             }
             item.onclick = function (e) { e.stopPropagation(); closeQuestDrop(); switchQuest(s.id); };
@@ -577,16 +574,19 @@ var _cometClockTimer = null;
 
 function _tickCometClocks() {
     var clocks = document.querySelectorAll('.comet-clock');
-    var pool = parent && parent.__qqq_agentPool;
-    var reg = parent && parent.__qqq_buildingRegistry;  // ★ 中央真理：跨面板唯一建楼状态
+    var pool = window.parent && window.parent.__qqq_agentPool;
+    var reg = window.parent && window.parent.__qqq_buildingRegistry;  // 兜底用
+    var localBQ = window.__qqq_localBuildingQuests || {};   // ★ IPC 同步的本地集合，优先
     var now = performance.now();
     var hasVisible = false;
     for (var i = 0; i < clocks.length; i++) {
         var clk = clocks[i];
         var qid = clk.getAttribute('data-qid');
-        // ★ 读中央真理 registry 判定在建楼（非 agent._stopState，防其他面板 agent 状态不一致）
-        var isBuilding = reg && reg[qid] && reg[qid].stopState === 'sending';
+        // ★ 本地集合为主（IPC 可靠同步），注册表兜底（面板重启等错过广播场景）
+        var isBuilding = localBQ[qid] || (reg && reg[qid] && reg[qid].stopState === 'sending');
         if (!pool || !isBuilding) {
+            if (isBuilding) console.log('[comet] _tickCometClocks HIDE (no pool): qid=' + qid + ' panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?'));
+            else console.log('[comet] _tickCometClocks HIDE: qid=' + qid + ' localBQ=' + !!localBQ[qid] + ' reg=' + !!(reg && reg[qid] && reg[qid].stopState === 'sending') + ' panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?'));
             clk.style.display = 'none';
             continue;
         }
@@ -675,9 +675,9 @@ async function updateQuestTofu() {
         textEl.textContent = entry.title || '';
         textEl.parentElement.classList.remove('quest-tofu-new');
         if (pen) pen.style.display = '';
-        // ★ 彗星电子钟：读中央真理 parent.__qqq_buildingRegistry（非 agent stopState）
-        //   registry 是跨面板唯一真理源，建楼面板在 _registerBuilding 时写入
-        var isBuilding = (typeof _isQuestBuilding === 'function') && _isQuestBuilding(questActiveId);
+        // ★ 彗星电子钟：本地集合（IPC同步）为主，注册表兜底
+        var _bq2 = window.__qqq_localBuildingQuests || {};
+        var isBuilding = _bq2[questActiveId];
         if (isBuilding) {
             _insertCometClock(prefixEl, questActiveId);
         } else {
