@@ -338,44 +338,43 @@ async function renameQuest(id, newTitle) {
     await renderTabs();
 }
 
-// \u2500\u2500 Cost / Balance display \u2500\u2500
-function _updateCostDisplay() { /* no-op */ }
+function updateCostDisplay() {}  // no-op — retained for backward compat with panel-quest.js
 
-function _updateBalanceDisplay(balanceGe) { /* no-op */ }
-
-function _checkTokenReset() { /* no-op */ }
-
-function _fetchBalanceIfNeeded(force) { /* no-op */ }
-
-// ★ 统一计算：总 token + 拆解，一次遍历，所有格子无一遗漏。
-// ★ API prompt_tokens 为精确参考；本地子项之和用于审计 / 漏项检测。
+// ★ _estimateTokensFull — 穷举每一个会进入 API body 的字节，逐字符计量，chars÷2.7 得 token 估值。
+// ★ API prompt_tokens 是服务端返回的精确 token 数（权威），本地 sum 用于审计 / 发现漏格子。
+// ★ 分类原则：按 API 看到的消息数组顺序 + 顶层 body 字段完整覆盖，零漏项。
 function _estimateTokensFull() {
     var _ag = _activeAgent;
     if (!_ag) { console.warn('[ctx-est] _activeAgent is null'); _ctxBreakdownData = null; return 0; }
     var conv = _ag.conversation || [];
-    if (!conv.length) { console.warn('[ctx-est] conversation EMPTY, _ag._floorId=' + (_ag._floorId || '?') + ' _stopState=' + (_ag._stopState || '?')); }
+    if (!conv.length) { console.warn('[ctx-est] conversation EMPTY'); }
     var ctx = _ag._ctx || null;
 
-    // ── 0. 缓存（仅当一切输入未变时复用，含 msg[0] 内容哈希） ──
+    // ── cache ──
     var _msg0HashNow = (conv.length > 0 && typeof conv[0].content === 'string') ? conv[0].content.slice(0, 80) + '|' + conv[0].content.slice(-80) : '';
-    var _apiVerNow = (_ag._lastApiPromptTokens || 0) + '|' + (_ag._accumulatedCompletionTokens || 0);
+    var _apiPrompt = _ag._lastApiPromptTokens || 0;
+    var _apiCompletion = _ag._accumulatedCompletionTokens || 0;
+    var _apiVerNow = _apiPrompt + '|' + _apiCompletion;
     var _ctxHashNow = ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '';
     if (_estCache.convLen === conv.length && _estCache.ctxHash === _ctxHashNow && _estCache.apiVer === _apiVerNow && _estCache.msg0Hash === _msg0HashNow && _estCache.val > 0) {
         return _estCache.val;
     }
 
-    // ── 1. API 精确值（参考） ──
-    var apiPrompt = _ag._lastApiPromptTokens || 0;
-    var apiCompletion = _ag._accumulatedCompletionTokens || 0;
-
-    // ── 2. CPT ──
-    var CPT = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN > 0 && ContentGateway.CHAR_PER_TOKEN < 100) ? ContentGateway.CHAR_PER_TOKEN : 2.5;
-    if (CPT !== 2.5 && typeof ContentGateway !== 'undefined' && (ContentGateway.CHAR_PER_TOKEN < 1 || ContentGateway.CHAR_PER_TOKEN > 100)) {
-        ContentGateway.CHAR_PER_TOKEN = 2.5; CPT = 2.5;
-    }
+    var CPT = 2.7;  // chars-per-token 估算比率（2026-07-05 校准: 2.5→2.7）
     var CTX_MAX = (typeof ContentGateway !== 'undefined' && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
+    function _tk(chars) { return Math.round(chars / CPT); }
 
-    // ── 3. msg[0] 组分 ──
+    // ═══════════════════════════════════════════
+    // 第一部分：messages 数组（API 看到的消息列表）
+    // ═══════════════════════════════════════════
+
+    // ── 1. 服务端甲壳（Go handler 注入到 messages[0] 之前，role=system）──
+    //     内容: gaea/guard/system-prompt.txt，14964 字符 (utf-8 bytes on disk)
+    //     JSON 开销: {"role":"system","content":"…"}，约 30 字符
+    var guardChars = 14964;
+    var guardTok = _tk(guardChars);
+
+    // ── 2. msg[0] — 客户端 persistent 系统消息（规则 + 架构文档 + 提醒）──
     var visionChars = typeof window.qqqideVisionContext === 'string' ? window.qqqideVisionContext.length : 0;
     var globalRulesChars = typeof window.qqqideRulesContent === 'string' ? window.qqqideRulesContent.length : 0;
     var projectRulesChars = typeof window.qqqideProjectRulesContent === 'string' ? window.qqqideProjectRulesContent.length : 0;
@@ -383,18 +382,38 @@ function _estimateTokensFull() {
     var reminderChars = 0;
     if (panelRoot) {
         panelRoot = panelRoot.replace(/\\/g, '/').replace(/\/$/, '');
-        var reminder = '\n\n═══ DEFAULT WORKING DIRECTORY ═══\nMain project: ' + panelRoot + '\nWhen the user does not specify a project, all file operations default to this directory.\n═══════════════════';
-        reminderChars = reminder.length;
+        var _rText = '\n\n═══ DEFAULT WORKING DIRECTORY ═══\nMain project: ' + panelRoot + '\nWhen the user does not specify a project, all file operations default to this directory.\n═══════════════════';
+        reminderChars = _rText.length;
     }
     var msg0FromConv = (conv.length > 0 && conv[0]._persistent && typeof conv[0].content === 'string') ? conv[0].content.length : 0;
     var msg0TotalChars = msg0FromConv > 0 ? msg0FromConv : (visionChars + globalRulesChars + projectRulesChars + reminderChars);
+    var msg0Tok = _tk(msg0TotalChars);
 
-    // ── 4. 对话统计：全字段遍历，零遗漏 ──
+    // ── 3. 动态压缩上下文（_buildDynamicContext 产物）──
+    //     每次 API 调用时，_callGateway 从 self._ctx 读取 narrative + facts，
+    //     格式化为一条 role=system 消息插入 apiMessages（不在 self.conversation 中）
+    var narrativeChars = (ctx && ctx.narrative) ? ctx.narrative.length : 0;
+    var factsChars = 0;
+    var factCount = (ctx && ctx.facts) ? ctx.facts.length : 0;
+    if (ctx && ctx.facts && ctx.facts.length > 0) {
+        for (var fi = 0; fi < ctx.facts.length; fi++) {
+            factsChars += ((ctx.facts[fi].content || '') + ' [' + (ctx.facts[fi].type || '') + ']').length;
+        }
+    }
+    var compressedBodyChars = narrativeChars + factsChars;
+    // _buildDynamicContext 产生的 wrapper 文字
+    var compWrapperChars = 0;
+    if (narrativeChars > 0 && factCount > 0) compWrapperChars = ('\n\nALL KNOWN FACTS (' + factCount + ' total):\n').length;
+    var compTotalChars = compressedBodyChars + compWrapperChars;
+    var compTok = _tk(compTotalChars);
+
+    // ── 4. conversation 遍历（non-persistent 消息）──
     var userCount = 0, userChars = 0;
-    var aiCount = 0, aiContentChars = 0, aiToolCallsChars = 0, aiToolCallsCount = 0;
-    var toolCount = 0, toolChars = 0;
-    var sysCount = 0, sysChars = 0;
-    var errCount = 0, errChars = 0;
+    var aiCount = 0, aiContentChars = 0;       // AI text（不含 tool_calls-only 消息）
+    var aiToolCallsCount = 0, aiToolCallsChars = 0;  // AI tool_calls JSON
+    var toolCount = 0, toolChars = 0;           // 工具结果（含 content + tool_call_id + name）
+    var sysCount = 0, sysChars = 0;             // 其他 system 消息（引导确认、时间注入等）
+    var errCount = 0, errChars = 0;             // AI _error 消息
     for (var i = 0; i < conv.length; i++) {
         var m = conv[i];
         if (!m || m._persistent) continue;
@@ -405,94 +424,101 @@ function _estimateTokensFull() {
                 aiToolCallsCount++;
                 try { aiToolCallsChars += JSON.stringify(m.tool_calls).length; } catch (_) { }
             }
-            if (m._error) {
-                errCount++; errChars += c;
-            } else {
-                if (c > 0) { aiCount++; aiContentChars += c; }
-            }
+            if (m._error) { errCount++; errChars += c; }
+            else { if (c > 0) { aiCount++; aiContentChars += c; } }
         }
         else if (m.role === 'tool') {
             toolCount++;
             toolChars += c;
-            // ★ tool_call_id + name 也进 API（role 之外的结构字段），client 必须计
             if (typeof m.tool_call_id === 'string') toolChars += m.tool_call_id.length;
             if (typeof m.name === 'string') toolChars += m.name.length;
         }
         else if (m.role === 'system') { sysCount++; sysChars += c; }
     }
 
-    // ── 5. 压缩摘要 ──
-    var narrativeChars = (ctx && ctx.narrative) ? ctx.narrative.length : 0;
-    var factsChars = 0;
-    if (ctx && ctx.facts && ctx.facts.length > 0) {
-        for (var fi = 0; fi < ctx.facts.length; fi++) {
-            factsChars += ((ctx.facts[fi].content || '') + ' [' + (ctx.facts[fi].type || '') + ']').length;
-        }
-    }
-    var compressedChars = narrativeChars + factsChars;
+    // ── 5. 消息 JSON 结构开销 ──
+    //     每条消息在 API body 中是完整 JSON 对象，除 content/tool_calls 外还有：
+    //     {"role":"...","content":"..."} ≈ 30 字/条
+    //     tool 消息额外: "tool_call_id":"..." 键 ≈ 18 字, "name":"..." 键 ≈ 9 字
+    //     assistant（含 tool_calls）额外: "tool_calls":[...] 键 ≈ 16 字
+    var msgCount = userCount + aiCount + aiToolCallsCount + toolCount + sysCount + errCount;
+    var jsonOverheadChars = msgCount * 31;  // 基础 JSON 骨架
+    jsonOverheadChars += toolCount * 27;     // tool_call_id + name 键
+    jsonOverheadChars += aiToolCallsCount * 16;  // tool_calls 键
+    // guard + msg[0] 两条 system 消息的 JSON 开销
+    jsonOverheadChars += 62;  // 两条 system 消息各 ~31 字
+    // 动态压缩上下文是一条 system 消息（有内容才计）
+    if (compTotalChars > 0) jsonOverheadChars += 31;
+    var jsonOverheadTok = _tk(jsonOverheadChars);
 
-    // ── 5b. 工具定义（body.tools，每 house 发送一次）──
+    // ═══════════════════════════════════════════
+    // 第二部分：body 顶层字段（不在 messages 数组中）
+    // ═══════════════════════════════════════════
+
+    // ── 6. 工具定义（body.tools）──
+    //     getTools() 返回值序列化为 JSON 数组，每条 tool 含 name/description/parameters
     var toolsChars = 0;
     try {
         var _tools = (typeof getTools === 'function') ? getTools() : null;
         if (_tools && _tools.length) toolsChars = JSON.stringify(_tools).length;
     } catch (_) { }
+    var toolsTok = _tk(toolsChars);
 
-    // ── 5c. 服务端甲壳（Go guards inject → byte-exact from disk）──
-    var guardChars = 14964;  // gaea/guard/system-prompt.txt precise length
+    // ── 7. body 常量字段 ──
+    //     stream, stream_options, max_tokens, floor_id, house_hint, thinking, tool_choice
+    //     这些字段每次请求都存在，约 150 字符
+    var bodyConstChars = 150;
+    var bodyConstTok = _tk(bodyConstChars);
 
-    // ── 6. chars → tokens ──
-    function _tok(chars) { return Math.round(chars / CPT); }
-    var msg0Tok = _tok(msg0TotalChars);
-    var userTok = _tok(userChars);
-    var aiTextTok = _tok(aiContentChars);
-    var aiToolCallsTok = _tok(aiToolCallsChars);
-    var toolTok = _tok(toolChars);
-    var sysTok = _tok(sysChars);
-    var errTok = _tok(errChars);
-    var compTok = _tok(compressedChars);
-    var toolsTok = _tok(toolsChars);
-    var guardTok = _tok(guardChars);
-    // ★ 全量：客户端可见 + 工具定义 + 服务端甲壳
-    var localTotal = msg0Tok + userTok + aiTextTok + aiToolCallsTok + toolTok + sysTok + compTok + errTok + toolsTok + guardTok;
+    // ═══════════════════════════════════════════
+    // 求和
+    // ═══════════════════════════════════════════
+    var userTok = _tk(userChars);
+    var aiTextTok = _tk(aiContentChars);
+    var aiToolCallsTok = _tk(aiToolCallsChars);
+    var toolTok = _tk(toolChars);
+    var sysTok = _tk(sysChars);
+    var errTok = _tk(errChars);
+    var localTotal = guardTok + msg0Tok + compTok + userTok + aiTextTok + aiToolCallsTok + toolTok + sysTok + errTok + jsonOverheadTok + toolsTok + bodyConstTok;
 
-    // ── 7. Rows（API 看到从顶到底的顺序）──
-    function _r(label, tok, indent, always, color) {
-        return { label: label, tok: tok, indent: indent || 0, always: always || false, color: color || '#2aa198' };
-    }
+    // ═══════════════════════════════════════════
+    // 构建行
+    // ═══════════════════════════════════════════
     var rows = [];
-    rows.push(_r('Server guard (est.)', guardTok, 0, false, '#6c71c4'));
+    function _r(label, tok, indent, color) {
+        rows.push({ label: label, tok: tok, indent: indent || 0, color: color || '#839496' });
+    }
+    // --- messages[0..N] ---
+    _r('Server guard', guardTok, 0, '#6c71c4');
     if (msg0TotalChars > 0) {
-        rows.push(_r('Client rules & docs', msg0Tok, 0, false, '#268bd2'));
-        if (visionChars > 0) rows.push(_r('  Vision Context', _tok(visionChars), 1, false, '#859900'));
-        if (globalRulesChars > 0) rows.push(_r('  Global Rules', _tok(globalRulesChars), 1, false, '#6c71c4'));
-        if (projectRulesChars > 0) rows.push(_r('  Project Rules', _tok(projectRulesChars), 1, false, '#b58900'));
-        if (reminderChars > 0) rows.push(_r('  Reminder', _tok(reminderChars), 1, false, '#cb4b16'));
+        _r('Client rules & docs', msg0Tok, 0, '#268bd2');
+        if (visionChars > 0) _r('  Vision Context', _tk(visionChars), 1, '#859900');
+        if (globalRulesChars > 0) _r('  Global Rules', _tk(globalRulesChars), 1, '#6c71c4');
+        if (projectRulesChars > 0) _r('  Project Rules', _tk(projectRulesChars), 1, '#b58900');
+        if (reminderChars > 0) _r('  Reminder', _tk(reminderChars), 1, '#cb4b16');
     }
-    if (userCount > 0) rows.push(_r('User \u00d7 ' + userCount, userTok, 0, false, '#268bd2'));
-    if (aiContentChars > 0) rows.push(_r('AI text \u00d7 ' + aiCount, aiTextTok, 0, false, '#2aa198'));
-    if (aiToolCallsChars > 0) rows.push(_r('AI tool_calls JSON \u00d7 ' + aiToolCallsCount, aiToolCallsTok, 1, false, '#d2991d'));
-    if (toolCount > 0) rows.push(_r('Tool Results \u00d7 ' + toolCount, toolTok, 0, false, '#dc322f'));
-    if (sysCount > 0) rows.push(_r('Dynamic System', sysTok, 0, false, '#6c71c4'));
-    if (compressedChars > 0) rows.push(_r('Compressed Summary', compTok, 0, false, '#cb4b16'));
-    if (errCount > 0) rows.push(_r('Error messages \u00d7 ' + errCount, errTok, 0, false, '#f85149'));
-    if (toolsChars > 0) rows.push(_r('Tools definition', toolsTok, 0, false, '#b58900'));
+    if (compTotalChars > 0) _r('Compressed context', compTok, 0, '#6c71c4');
+    if (userCount > 0) _r('User × ' + userCount, userTok, 0, '#268bd2');
+    if (aiCount > 0) _r('AI text × ' + aiCount, aiTextTok, 0, '#2aa198');
+    if (aiToolCallsCount > 0) _r('  AI tool_calls × ' + aiToolCallsCount, aiToolCallsTok, 1, '#d2991d');
+    if (toolCount > 0) _r('Tool Results × ' + toolCount, toolTok, 0, '#dc322f');
+    if (sysCount > 0) _r('System messages × ' + sysCount, sysTok, 0, '#6c71c4');
+    if (errCount > 0) _r('Error messages × ' + errCount, errTok, 0, '#f85149');
+    // --- JSON 结构开销 ---
+    _r('JSON overhead (' + msgCount + ' msgs + 2 sys)', jsonOverheadTok, 0, '#586e75');
+    // --- body 顶层 ---
+    if (toolsChars > 0) _r('Tools definition JSON', toolsTok, 0, '#b58900');
+    _r('Body fields (stream, max_tokens, …)', bodyConstTok, 0, '#586e75');
     // --- 汇总 ---
-    var displayTotal = apiPrompt > 0 ? apiPrompt : localTotal;
-    if (apiPrompt > 0) {
-        rows.push(_r('API prompt_tokens (ref)', apiPrompt, 0, true, '#3fb950'));
-    } else {
-        rows.push(_r('Local estimate total', localTotal, 0, true, '#c9d1d9'));
-    }
+    var displayTotal = _apiPrompt > 0 ? _apiPrompt : localTotal;
+    _r('Local sum', localTotal, 0, '#c9d1d9');
+    if (_apiPrompt > 0) _r('API prompt_tokens', _apiPrompt, 0, '#3fb950');
     var _free = Math.max(0, CTX_MAX - displayTotal);
-    rows.push(_r('Available', _free, 0, true, '#859900'));
+    _r('Free', _free, 0, '#859900');
 
-    _ctxBreakdownData = {
-        rows: rows, apiTotalTokens: displayTotal, apiPromptTokens: apiPrompt,
-        localTotal: localTotal, accCompletion: apiCompletion
-    };
+    _ctxBreakdownData = { rows: rows, displayTotal: displayTotal, apiPrompt: _apiPrompt, localTotal: localTotal, accCompletion: _apiCompletion };
     _estCache = { val: displayTotal, convLen: conv.length, ctxHash: _ctxHashNow, apiVer: _apiVerNow, msg0Hash: _msg0HashNow };
-    if (localTotal === 0) { console.warn('[ctx-est] total=0! convLen=' + conv.length + ' msg0=' + msg0TotalChars + ' user=' + userChars + ' aiTxt=' + aiContentChars + ' aiTC=' + aiToolCallsChars + ' tool=' + toolChars + ' comp=' + compressedChars + ' err=' + errChars + ' tools=' + toolsChars + ' guard=' + guardChars); }
+    if (localTotal === 0) console.warn('[ctx-est] total=0 convLen=' + conv.length + ' guard=' + guardChars + ' msg0=' + msg0TotalChars + ' user=' + userChars + ' aiTxt=' + aiContentChars + ' aiTC=' + aiToolCallsChars + ' tool=' + toolChars + ' sys=' + sysChars + ' comp=' + compTotalChars + ' err=' + errChars + ' jOver=' + jsonOverheadChars + ' tools=' + toolsChars);
     return displayTotal;
 }
 
@@ -500,7 +526,7 @@ function _estimateTokensFull() {
 var _ctxBreakdownVisible = false;
 var _ctxBreakdownTimer = null;
 var _ctxBreakdownData = null;
-var _estCache = { val: 0, convLen: 0, ctxHash: '', apiVer: '' };
+var _estCache = { val: 0, convLen: 0, ctxHash: '', apiVer: '', msg0Hash: '' };
 var CTX_MAX_TOKENS = (typeof ContentGateway !== 'undefined' && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
 
 function renderCtxBreakdown() {
@@ -514,11 +540,14 @@ function renderCtxBreakdown() {
     var BX = 10000;
     var MAX_BLOCKS = 100;
     var html = '';
+    // ★ 统计可见行 tok 之和（本地审计）
+    var visibleSum = 0;
     for (var i = 0; i < data.rows.length; i++) {
         var r = data.rows[i];
-        if (!r.always && r.tok < 1000) continue;
-        var indent = r.indent || 0;
-        var padLeft = indent ? (12 + (indent - 1) * 14) + 'px' : '0';
+        if (r.tok <= 0) continue;
+        var _isSum = r.label === 'Local sum' || r.label === 'API prompt_tokens';
+        var _isFree = r.label === 'Free';
+        if (!_isSum && !_isFree) visibleSum += r.tok;
         var c = r.color || '#2aa198';
         var n = Math.min(MAX_BLOCKS, Math.max(0, Math.round(r.tok / BX)));
         var bar = '';
@@ -528,9 +557,10 @@ function renderCtxBreakdown() {
             bar += '</span>';
         }
         var valStr = r.tok >= 1000 ? Math.round(r.tok / 1000) + 'k' : String(r.tok);
-        html += '<div class="ctx-bd-row" style="padding-left:' + padLeft + '">' +
+        var labelHtml = _isSum ? '<b>' + r.label + '</b>' : (_isFree ? '<span style="color:#859900">' + r.label + '</span>' : r.label);
+        html += '<div class="ctx-bd-row">' +
             bar +
-            '<span class="ctx-bd-label" style="color:' + c + '">' + r.label + '</span>' +
+            '<span class="ctx-bd-label" style="color:' + c + '">' + (r.tree || '') + labelHtml + '</span>' +
             '<span class="ctx-bd-num" style="color:' + c + '">' + valStr + '</span></div>';
     }
     rowsEl.innerHTML = html;
@@ -807,7 +837,7 @@ document.getElementById('ctx-compress').onclick = async function () {
             var _rawGe = _ag._floorCostWge / 10000;
             var _displayGe = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2);
             _aiDiv._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
-            _aiDiv._clockCost.textContent = _displayGe + ' ge' + ((_ag._floorHadBilling && _ag._floorFree) ? ' Free' : '');
+            _aiDiv._clockCost.textContent = _displayGe + ' ge' + ((_ag._floorHadBilling && _ag._floorCostWge === 0) ? ' Free' : '');
             _aiDiv._clockCost.style.display = 'inline';
             _aiDiv._clockCost._houses = _ag._houses;
             _aiDiv._clockCost._floorNum = _ag._currentFloorNum;

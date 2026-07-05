@@ -12,7 +12,7 @@ AgentLoop.prototype._processBillingEvent = function (parsed) {
     var self = this;
     var cost = parsed.ge_cost || 0;
     self._floorCostWge += cost;
-    if (parsed.free_window === false) self._floorFree = false;
+    // (free label logic moved to _floorCostWge===0 check)
     self._floorHadBilling = true;
     self._billingSeq++;
     if (self._lastBilling) {

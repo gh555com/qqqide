@@ -917,7 +917,7 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
         conversation: cleanConv,
         houses: cleanHouses,
         costWge: ag._floorCostWge,
-        floorFree: ag._floorFree || false,
+        floorFree: ag._floorCostWge === 0,
         lastUserInput: ag._lastUserInput,
         allTxtPath: allTxtPath,
         fileStats: (typeof _computeFileStats === 'function') ? _computeFileStats(ag._houses, ag._a4Snapshots) : { fileCount: 0, added: 0, deleted: 0 },

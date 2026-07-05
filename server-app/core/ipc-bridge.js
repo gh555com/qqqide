@@ -28,7 +28,8 @@
     },
     window: {
       minimize: () => { }, maximize: () => { }, unmaximize: () => { },
-      close: () => window.close(), isMaximized: () => Promise.resolve(false),
+      close: () => window.close(), closeConfirmed: () => { window.close(); }, onCloseConfirm: () => () => {},
+      isMaximized: () => Promise.resolve(false),
       setTitle: s => { document.title = s; },
     },
     menu: {

@@ -191,41 +191,80 @@ async function executeRunCommand(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
     try {
-        // Parse command into cmd + args for proper spawn
-        var cmd = args.command || '';
-        var cmdArgs = [];
-        var useShell = false;
-        if (cmd.includes(' ')) {
-            // Split respecting quotes
-            var parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [cmd];
-            cmd = parts[0];
-            cmdArgs = parts.slice(1).map(function (s) {
-                if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-                    return s.slice(1, -1);
-                }
-                return s;
+        // ═══ SSH wrapping: base64-encode remote commands to eliminate quoting hell ═══
+        // When args.ssh is set, the command runs on the remote host.
+        // The AI writes the remote command naturally — ALL quoting/escaping is automatic.
+        // We build a shell script, base64-encode it (A-Za-z0-9+/= only, zero shell-special chars),
+        // then SSH it as a single arg: ssh host "echo B64 | base64 -d | sh"
+        // shell:false because the pipe belongs to the remote shell, not the local one.
+        var _sshMode = !!(args.ssh);
+        var _b64 = '';
+        if (_sshMode) {
+            var _sshDest = args.ssh.trim();
+            var _sshPort = '';
+            var _portMatch = _sshDest.match(/^(.+):(\d+)$/);
+            if (_portMatch) { _sshDest = _portMatch[1]; _sshPort = _portMatch[2]; }
+
+            // Build a self-contained shell script: cd → command
+            var _script = '#!/bin/sh\n';
+            if (args.cwd) {
+                // cwd is inside double quotes; only " needs escaping for the shell script
+                _script += 'cd "' + args.cwd.replace(/"/g, '\\"') + '" 2>/dev/null || true\n';
+            }
+            _script += (args.command || 'true') + '\n';
+            // UTF-8 → base64 (no shell-special chars: only A-Za-z0-9+/=)
+            // btoa(unescape(encodeURIComponent(s))) handles all Unicode correctly
+            _b64 = btoa(unescape(encodeURIComponent(_script)));
+        }
+
+        var result;
+        if (_sshMode) {
+            // Build args array: shell:false ensures local shell does NOT interpret | < > etc.
+            var _sshArgs = ['-o', 'StrictHostKeyChecking=no', '-o', 'ConnectTimeout=10'];
+            if (args.sshJump) { _sshArgs.push('-J', args.sshJump.trim()); }
+            if (_sshPort) { _sshArgs.push('-p', _sshPort); }
+            _sshArgs.push(_sshDest);
+            _sshArgs.push('echo ' + _b64 + ' | base64 -d | sh');
+
+            result = await bridge.qz.spawn({
+                cmd: 'ssh',
+                args: _sshArgs,
+                cwd: '',
+                timeout: 0,
+                stallMs: 900000,
+                shell: false
+            });
+        } else {
+            // Normal (non-SSH) mode: parse command into cmd + args for proper spawn
+            var cmd = args.command || '';
+            var cmdArgs = [];
+            var useShell = false;
+            if (cmd.includes(' ')) {
+                // Split respecting quotes
+                var parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [cmd];
+                cmd = parts[0];
+                cmdArgs = parts.slice(1).map(function (s) {
+                    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+                        return s.slice(1, -1);
+                    }
+                    return s;
+                });
+            }
+            // On Windows, built-in commands (dir/type/echo etc.) are wrapped
+            // transparently by qz-spawn.ts; here we just detect platform for shell mode.
+            var isWin = (typeof navigator !== 'undefined' && /Win/.test(navigator.platform || ''))
+                || (typeof process !== 'undefined' && process.platform === 'win32');
+            if (isWin) useShell = true;
+
+            result = await bridge.qz.spawn({
+                cmd: cmd,
+                args: cmdArgs,
+                cwd: args.cwd || '',
+                timeout: 0,
+                stallMs: 900000,
+                shell: useShell
             });
         }
-        // On Windows, built-in commands (dir/type/echo etc.) are wrapped
-        // transparently by qz-spawn.ts; here we just detect platform for shell mode.
-        var isWin = (typeof navigator !== 'undefined' && /Win/.test(navigator.platform || ''))
-            || (typeof process !== 'undefined' && process.platform === 'win32');
-        if (isWin) {
-            useShell = true;
-        }
-        // Use qz spawn (ghrun → node fallback)
-        // [silent] run_command
-        // timeout=0 → 系统层自动 cap 为 SYSTEM_MAX_TIMEOUT (唯一真理源: qz-spawn.ts)
-        // stallMs 唯一真理在此（tools.js），系统层默认 0（关闭）
-        var cmdStart = Date.now();
-        var result = await bridge.qz.spawn({
-            cmd: cmd,
-            args: cmdArgs,
-            cwd: args.cwd || '',
-            timeout: 0,           // 不设限，交给系统天花板 (2h)
-            stallMs: 900000,      // 15min 无输出即杀
-            shell: useShell
-        });
 
         // ★ 钩子 Q（_a4WrappedExecuteTool）统一处理 run_command 的扫描+记录
         // 此处不再重复 captureChanged + _a4RecordSnapshot

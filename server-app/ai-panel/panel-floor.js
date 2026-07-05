@@ -121,7 +121,7 @@ async function generateFloorTxt(ag, questId) {
             lines.push('\u2550\u2550\u2550\u2550 floor ' + floorNum + ' stats \u2550\u2550\u2550\u2550');
             lines.push('network: ' + (timing.networkMs ? timing.networkMs.toFixed(0) : '0') + 'ms  AI: ' + (timing.aiMs ? timing.aiMs.toFixed(0) : '0') + 'ms  tool: ' + (timing.otherMs ? timing.otherMs.toFixed(0) : '0') + 'ms  cost: ' + (ag._floorCostWge / 10000).toFixed(4) + ' ge');
             // az 区文本化
-            var _floorDataForAz = { houses: houses, allTxtPath: ag._allTxtPath || '', costWge: ag._floorCostWge, floorFree: ag._floorFree || false, a4Snapshots: ag._a4Snapshots || {} };
+            var _floorDataForAz = { houses: houses, allTxtPath: ag._allTxtPath || '', costWge: ag._floorCostWge, floorFree: ag._floorCostWge === 0, a4Snapshots: ag._a4Snapshots || {} };
             var _questMetaForAz = { floorTimings: ag._floorTimings || [] };
             var _azLines2 = _buildAzText(floorNum, _floorDataForAz, _questMetaForAz);
             for (var _azi2 = 0; _azi2 < _azLines2.length; _azi2++) {

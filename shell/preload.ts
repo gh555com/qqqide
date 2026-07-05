@@ -72,6 +72,8 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string })
         maximize: () => ipcRenderer.invoke('qqqide:window:maximize'),
         unmaximize: () => ipcRenderer.invoke('qqqide:window:unmaximize'),
         close: () => ipcRenderer.invoke('qqqide:window:close'),
+        closeConfirmed: () => ipcRenderer.invoke('qqqide:window:close-confirmed'),
+        onCloseConfirm: (cb: () => void) => { const h = () => { try { cb(); } catch (_) {} }; ipcRenderer.on('qqqide:confirm-close', h); return () => ipcRenderer.removeListener('qqqide:confirm-close', h); },
         isMaximized: () => ipcRenderer.invoke('qqqide:window:isMaximized'),
         setTitle: (s: string) => ipcRenderer.invoke('qqqide:window:setTitle', s),
         toggleDevTools: () => ipcRenderer.invoke('qqqide:window:toggleDevTools'),

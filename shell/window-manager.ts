@@ -144,32 +144,15 @@ export function createWindow(
         // ★ 不在 ready-to-show 就 show() — 等 boot 完成加载面板到 100% 才由 boot.ts 调用 show()
     });
 
-    // ★ 关闭确认：Alt+F4 / 右上角 X → 弹确认框；菜单退出 → 跳过
-    //    用 destroy() 而非 close() 避免 preventDefault 循环
+    // ★ 关闭确认：Alt+F4 / 右上角 X → 通知 renderer 弹自定义确认框；菜单退出 → 跳过
     win.on('close', (e) => {
         if ((win as any).__qqqCloseBypass) {
             return; // 菜单退出已设旁路，直接放行
         }
         e.preventDefault();
-        try {
-            var { dialog } = require('electron');
-            dialog.showMessageBox(win, {
-                type: 'question',
-                buttons: ['取消', '确认退出'],
-                defaultId: 1,
-                cancelId: 0,
-                title: 'qqq IDE',
-                message: '确认退出？',
-            }).then(function (result: any) {
-                if (result && result.response === 1) {
-                    (win as any).__qqqCloseBypass = true;
-                    win.destroy();  // 跳过 close 事件，直通 closed → window-all-closed → app.quit()
-                }
-            });
-        } catch (_) {
-            // 如果 require 或 dialog 出错，直接放行
-            (win as any).__qqqCloseBypass = true;
-            win.destroy();
+        // 通知 renderer 弹出确认框（renderer 样式同设置面板）
+        if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+            try { win.webContents.send('qqqide:confirm-close'); } catch (_) { }
         }
     });
 

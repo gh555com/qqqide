@@ -2,41 +2,46 @@
 // update-service.ts — Hot update: pull server-app.tar.xz from gh555.com
 //
 // Flow:
-//   1. check() → GET https://gh555.com/qqqide/server-app/version.json
-//   2. download() → GET tar.xz (with Range resume + SHA-256)
-//   3. apply() → extract to cache/staging/ → atomic rename → reload
+//   1. check() → GET https://gh555.com/qqqide/version.json
+//   2. apply() → download server-app.tar.xz → extract → atomic swap
+//   3. upgradeShell() → download shell-out.tar.gz → stage for bootstrap
 //
-// Persisted state in userData/update-state.json:
+// Persisted state in Data/update-state.json:
 //   { lastCheck: number, lastVersion: string, lastApplied: string }
 //
-// IPC in main.ts:
-//   qqqide:update:check  → { latestVersion, needUpdate }
-//   qqqide:update:apply  → { success, version }
-//   qqqide:update:state  → { lastCheck, currentVersion, ... }
+// IPC handlers:
+//   qqqide:update:check        → { latestVersion, needUpdate, needShellUpdate, ... }
+//   qqqide:update:apply        → { success, version }
+//   qqqide:update:upgrade-shell → { success, version }
+//   qqqide:update:state        → { lastCheck, currentVersion, ... }
+//   qqqide:update:abort        → void
 // ============================================================================
 
 import * as http from 'http';
 import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as crypto from 'crypto';
 import { URL } from 'url';
-import { execSync, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
 
 const UPDATE_MANIFEST_URL = 'https://gh555.com/qqqide/version.json';
 const UPDATE_TAR_URL = 'https://gh555.com/qqqide/server-app.tar.xz';
+const SHELL_TAR_URL = 'https://gh555.com/qqqide/shell-out.tar.gz';
 
 export interface UpdateState {
-    lastCheck: number;       // Date.now() of last check
-    lastVersion: string;     // latest version string seen remotely
-    currentVersion: string;  // currently applied version
-    lastApplied: string;     // version string last applied
+    lastCheck: number;
+    lastVersion: string;
+    currentVersion: string;
+    lastApplied: string;
 }
 
 export interface CheckResult {
-    latestVersion: string;
-    currentVersion: string;
-    needUpdate: boolean;
+    latestVersion: string;       // webapp version from server
+    currentVersion: string;      // local webapp version
+    needUpdate: boolean;         // webapp needs hot-update
+    latestShellVersion: string;  // shell version from server
+    currentShellVersion: string; // APP_VERSION (baked-in)
+    needShellUpdate: boolean;    // shell needs restart update
 }
 
 export interface ApplyResult {
@@ -61,35 +66,41 @@ export class UpdateService {
 
     // ---- public API ----
 
-    /** Check for updates. Returns latest version info. */
+    /** Check for updates (both shell + webapp). */
     async check(): Promise<CheckResult> {
-        const latest = await this._fetchVersion();
+        const info = await this._fetchVersionInfo();
         this._state.lastCheck = Date.now();
-        if (latest) {
-            this._state.lastVersion = latest;
+        if (info) {
+            this._state.lastVersion = info.shell || info.webapp || '';
         }
         this._saveState();
 
-        const need = this._compareVersions(this._currentVersion, latest || '0.0.0') < 0;
+        const shellLatest = info?.shell || '';
+        const webappLatest = info?.webapp || '';
+        const localWebapp = this._readWebappVersion();
+
+        const needWebapp = !!webappLatest && this._compareVersions(localWebapp, webappLatest) < 0;
+        const needShell = !!shellLatest && this._compareVersions(this._currentVersion, shellLatest) < 0;
         return {
-            latestVersion: latest || this._currentVersion,
-            currentVersion: this._currentVersion,
-            needUpdate: need,
+            latestVersion: webappLatest || localWebapp,
+            currentVersion: localWebapp,
+            needUpdate: needWebapp,
+            latestShellVersion: shellLatest || this._currentVersion,
+            currentShellVersion: this._currentVersion,
+            needShellUpdate: needShell,
         };
     }
 
-    /** Download and apply update. Returns result. */
+    /** Download and apply webapp update (server-app.tar.xz). */
     async apply(): Promise<ApplyResult> {
         this._abortController = new AbortController();
 
         try {
-            // 1) Fetch SHA-256 manifest
             const latestVersion = this._state.lastVersion || await this._fetchVersionDirect();
             if (!latestVersion) {
                 return { success: false, version: '', error: 'Failed to fetch latest version' };
             }
 
-            // 2) Download tar.xz
             const stagingDir = path.join(this._appRoot, 'Data', 'staging');
             const tarPath = path.join(stagingDir, 'server-app.tar.xz');
             const extractDir = path.join(stagingDir, 'server-app');
@@ -103,13 +114,11 @@ export class UpdateService {
                 return { success: false, version: '', error: 'Download failed' };
             }
 
-            // 3) Extract to staging
             const extractOk = this._extractTarXz(tarPath, extractDir);
             if (!extractOk) {
                 return { success: false, version: '', error: 'Extraction failed' };
             }
 
-            // 4) Atomic swap: rename current server-app → server-app.old, staging → server-app
             const serverAppDir = path.join(this._appRoot, 'server-app');
             const oldDir = path.join(this._appRoot, 'server-app.old');
 
@@ -125,22 +134,66 @@ export class UpdateService {
             try {
                 fs.renameSync(extractDir, serverAppDir);
             } catch (e: any) {
-                // Rollback: restore old
                 try { fs.renameSync(oldDir, serverAppDir); } catch { }
                 return { success: false, version: '', error: 'Atomic swap failed (replace): ' + (e.message || e) };
             }
 
-            // 5) Cleanup
             try { fs.unlinkSync(tarPath); } catch { }
             try { fs.rmSync(oldDir, { recursive: true, force: true }); } catch { }
 
-            // 6) Update state
             this._state.currentVersion = latestVersion;
             this._state.lastApplied = latestVersion;
             this._saveState();
             this._currentVersion = latestVersion;
 
             return { success: true, version: latestVersion };
+        } catch (e: any) {
+            return { success: false, version: '', error: e.message || String(e) };
+        } finally {
+            this._abortController = null;
+        }
+    }
+
+    /** Download shell-out.tar.gz and stage for bootstrap to apply on next restart. */
+    async upgradeShell(): Promise<ApplyResult> {
+        this._abortController = new AbortController();
+
+        try {
+            const stagingDir = path.join(this._appRoot, 'Data', 'Cache', 'staging', 'shell-out-next');
+            const tarPath = path.join(this._appRoot, 'Data', 'Cache', 'staging', 'shell-out.tar.gz');
+            const stagingParent = path.dirname(tarPath);
+
+            try { fs.mkdirSync(stagingParent, { recursive: true }); } catch { }
+            try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
+
+            const downloadOk = await this._downloadFile(SHELL_TAR_URL, tarPath,
+                this._abortController.signal);
+            if (!downloadOk) {
+                return { success: false, version: '', error: 'Shell download failed' };
+            }
+
+            try { fs.mkdirSync(stagingDir, { recursive: true }); } catch { }
+            const extractResult = spawnSync('tar', ['-xzf', tarPath, '-C', stagingDir], {
+                stdio: 'pipe',
+                timeout: 15000,
+            });
+            if (extractResult.status !== 0) {
+                try { fs.unlinkSync(tarPath); } catch { }
+                return { success: false, version: '', error: 'Shell extract failed, status=' + extractResult.status };
+            }
+
+            if (!fs.existsSync(path.join(stagingDir, 'main.js'))) {
+                try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
+                return { success: false, version: '', error: 'Staging missing main.js' };
+            }
+
+            try { fs.unlinkSync(tarPath); } catch { }
+
+            const versionFile = path.join(this._appRoot, 'Data', 'shell-version');
+            const shellVersion = this._state.lastVersion || this._currentVersion;
+            try { fs.writeFileSync(versionFile, shellVersion, 'utf8'); } catch { }
+
+            return { success: true, version: shellVersion };
         } catch (e: any) {
             return { success: false, version: '', error: e.message || String(e) };
         } finally {
@@ -199,7 +252,9 @@ export class UpdateService {
         return new Promise((resolve, reject) => {
             const u = new URL(url);
             const get = u.protocol === 'https:' ? https.get : http.get;
-            const req = get(url, { timeout: 15000 }, (res) => {
+            const opts: any = { timeout: 15000 };
+            if (u.protocol === 'https:') { opts.rejectUnauthorized = false; }
+            const req = get(url, opts, (res) => {
                 let data = '';
                 res.setEncoding('utf8');
                 res.on('data', (chunk: string) => data += chunk);
@@ -210,15 +265,33 @@ export class UpdateService {
         });
     }
 
-    private async _fetchVersion(): Promise<string | null> {
+    /** Fetch full version.json from server. */
+    private async _fetchVersionInfo(): Promise<{ shell: string; webapp: string } | null> {
         try {
             const { status, data } = await this._httpsGet(UPDATE_MANIFEST_URL);
             if (status !== 200) return null;
             const parsed = JSON.parse(data);
-            return parsed.shell || parsed.version || null;
+            return {
+                shell: parsed.shell || parsed.version || '',
+                webapp: parsed.webapp || parsed.version || '',
+            };
         } catch {
             return null;
         }
+    }
+
+    /** Read local webapp version from Data/webapp-version. */
+    private _readWebappVersion(): string {
+        try {
+            const p = path.join(this._appRoot, 'Data', 'webapp-version');
+            if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8').trim();
+        } catch { }
+        return '0.0.0';
+    }
+
+    private async _fetchVersion(): Promise<string | null> {
+        const info = await this._fetchVersionInfo();
+        return info?.shell || null;
     }
 
     private async _fetchVersionDirect(): Promise<string | null> {
@@ -229,9 +302,10 @@ export class UpdateService {
         return new Promise((resolve) => {
             const u = new URL(url);
             const get = u.protocol === 'https:' ? https.get : http.get;
-            const req = get(url, { timeout: 120000 }, (res) => {
+            const opts: any = { timeout: 120000 };
+            if (u.protocol === 'https:') { opts.rejectUnauthorized = false; }
+            const req = get(url, opts, (res) => {
                 if (res.statusCode !== 200) {
-                    // Follow redirect
                     if (res.statusCode === 301 || res.statusCode === 302) {
                         const loc = res.headers.location;
                         if (loc) {
@@ -263,7 +337,6 @@ export class UpdateService {
     private _extractTarXz(tarPath: string, destDir: string): boolean {
         try {
             try { fs.mkdirSync(destDir, { recursive: true }); } catch { }
-            // Use tar command (available in git-bash on Windows, always on Linux/Mac)
             const result = spawnSync('tar', ['-xJf', tarPath, '-C', destDir], {
                 stdio: 'pipe',
                 timeout: 30000,
