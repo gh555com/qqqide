@@ -708,11 +708,12 @@
     } catch (_) { }
   }
 
-  // ★ 应用 _nextPaneOpts 的行/列跳转（从搜索列表点击打开已有文件时使用）
+  // ★ 应用 _nextPaneOpts 的行/列跳转+搜索高亮+行背景（已有文件点击搜索列表时使用）
+  var _tabJumpLineStyleInjected = false;
   function _applyPaneOpts(filePath) {
     var _paneOpts = window._nextPaneOpts || {};
     if (_paneOpts.line) {
-      var line = _paneOpts.line, col = _paneOpts.col || 1;
+      var line = _paneOpts.line, col = _paneOpts.col || 1, search = _paneOpts.search || '';
       window._nextPaneOpts = null;
       setTimeout(function () {
         var ed = window.qqqEditor && window.qqqEditor.getEditorInstance();
@@ -723,6 +724,41 @@
           var _jumpPos = { lineNumber: line, column: col };
           ed.setPosition(_jumpPos);
           ed.revealPositionInCenter(_jumpPos);
+          // 行背景高亮（4s 自消）
+          if (!_tabJumpLineStyleInjected) {
+            _tabJumpLineStyleInjected = true;
+            var style = document.createElement('style');
+            style.textContent = '.qqq-jump-line{background:rgba(181,137,0,0.18)!important}[data-theme="dark"] .qqq-jump-line{background:rgba(181,137,0,0.25)!important}';
+            document.head.appendChild(style);
+          }
+          var monaco = window.qqqEditor.getMonaco();
+          if (monaco) {
+            var deco = ed.deltaDecorations([], [{
+              range: new monaco.Range(line, 1, line, 1),
+              options: { isWholeLine: true, className: 'qqq-jump-line' }
+            }]);
+            setTimeout(function () { try { ed.deltaDecorations(deco, []); } catch (_) {} }, 4000);
+          }
+          // 搜索高亮：打开查找控件
+          if (search && search.trim()) {
+            setTimeout(function () {
+              try {
+                var fc = ed.getContribution('editor.contrib.findController');
+                if (fc && fc.start) {
+                  fc.start({
+                    forceRevealReplace: false,
+                    seedSearchStringFromSelection: 'none',
+                    seedSearchStringFromNonEmptySelection: false,
+                    seedSearchStringFromGlobalClipboard: false,
+                    shouldFocus: 2, shouldAnimate: true,
+                    updateSearchScope: false, loop: true
+                  });
+                  fc.getState().change({ searchString: search }, false);
+                  setTimeout(function () { fc.getState().change({ searchString: search }, false); }, 120);
+                }
+              } catch (_) {}
+            }, 200);
+          }
         } catch (_) { }
       }, 400);
     } else {

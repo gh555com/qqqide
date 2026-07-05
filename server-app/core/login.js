@@ -376,12 +376,12 @@
     }
   }
 
-  // ── LV 升级流光特效（3 阶段：放大 2× → 金色流光 5s → 还原）──
-  var _lvGlowGen = 0;
+  // ── LV 流光特效（放大 1.5× → 金色流光 5s → 还原）──
+  var _lvGlowTimer = null;   // 共享还原定时器（每次 billing 重置，保证文字永不消失）
   var _lvShimmerStyle = null;
   var _lvCachedBaseColor = '';
   var _lvCachedGrad = '';
-  var _lvCachedKey = '';
+  var _lvCachedKey = null;
 
   function _lvInjectShimmer() {
     if (_lvShimmerStyle) return;
@@ -392,7 +392,9 @@
 
   function _lvLevelUpGlow() {
     if (!_$lvLevel) return;
-    // 先清理旧特效残留（防快速升级时 gen 取消导致 color:transparent 残留）
+
+    // ★ 取消旧还原定时器 + 立即清除旧流光残留（防文字永久消失）
+    if (_lvGlowTimer) { clearTimeout(_lvGlowTimer); _lvGlowTimer = null; }
     _$lvLevel.style.animation = '';
     _$lvLevel.style.backgroundImage = '';
     _$lvLevel.style.backgroundSize = '';
@@ -401,9 +403,7 @@
     _$lvLevel.style.color = '';
     _$lvLevel.style.transition = '';
 
-    var gen = ++_lvGlowGen;
-
-    // 缓存主题色（仅主题切换时刷新 getComputedStyle）
+    // 缓存主题色
     var theme = document.documentElement.getAttribute('data-theme') || '';
     if (_lvCachedKey !== theme) {
       _lvCachedKey = theme;
@@ -413,13 +413,11 @@
     }
 
     // Phase 1: 放大 1.5× + 上移 1px
-    _$lvLevel.style.transition = 'none';
     _$lvLevel.style.transform = 'scale(1.5) translateY(-1px)';
     _$lvLevel.style.transformOrigin = 'center center';
 
-    // Phase 2: 单 rAF 启动流光
+    // Phase 2: rAF 启动流光
     requestAnimationFrame(function () {
-      if (_lvGlowGen !== gen) return;
       _$lvLevel.style.backgroundImage = _lvCachedGrad;
       _$lvLevel.style.backgroundSize = '300% 100%';
       _$lvLevel.style.backgroundClip = 'text';
@@ -427,9 +425,9 @@
       _$lvLevel.style.color = 'transparent';
       _$lvLevel.style.animation = 'qq-lv-shimmer 1.6s linear infinite';
 
-      // Phase 3: 5s 后还原（只清除流光+缩放，保留 base 样式）
-      setTimeout(function () {
-        if (_lvGlowGen !== gen) return;
+      // Phase 3: 5s 后还原（共享定时器，无条件执行）
+      _lvGlowTimer = setTimeout(function () {
+        _lvGlowTimer = null;
         _$lvLevel.style.animation = '';
         _$lvLevel.style.backgroundImage = '';
         _$lvLevel.style.backgroundSize = '';
@@ -440,7 +438,6 @@
         _$lvLevel.style.transform = '';
         _$lvLevel.style.transformOrigin = '';
         setTimeout(function () {
-          if (_lvGlowGen !== gen) return;
           _$lvLevel.style.transition = '';
         }, 800);
       }, 5000);
@@ -814,10 +811,16 @@
     });
 
     // ★ RULES 按钮 — 编辑全局/项目规则文件
+    if (!document.getElementById('qqq-rules-btn-style')) {
+      var _rs = document.createElement('style');
+      _rs.id = 'qqq-rules-btn-style';
+      _rs.textContent = '.qqq-rules-btn{color:#4a0d0d;font-weight:bold}[data-theme="dark"] .qqq-rules-btn{color:#f87171}';
+      document.head.appendChild(_rs);
+    }
     var _$rulesBtn = document.createElement('button');
     _$rulesBtn.className = 'qqq-rules-btn';
     _$rulesBtn.textContent = 'RULES';
-    _$rulesBtn.style.cssText = NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;color:#4a0d0d;font-weight:bold;cursor:pointer;padding:1px 6px;font-size:10px;margin-right:6px;';
+    _$rulesBtn.style.cssText = NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;cursor:pointer;padding:1px 6px;font-size:10px;margin-right:6px;';
     _$rulesBtn.addEventListener('click', async function (e) {
       e.preventDefault();
       try {

@@ -20,18 +20,28 @@ function hookFileExplorerToTabs() {
         // Use Monaco editor to render file
         if (window.qqqEditor) {
           pane.style.cssText = 'position:relative; width:100%; height:100%;';
-          var editorMount = document.createElement('div');
-          editorMount.style.cssText = 'position:absolute; inset:0 0 4px 0;';
-          pane.appendChild(editorMount);
           // Binary guard: prevent freeze on mp3/mp4/exe etc.
           if (window.qqqEditor && window.qqqEditor.isBinaryFile && window.qqqEditor.isBinaryFile(filePath)) {
             if (window.qqqideQoast) window.qqqideQoast.show('\u274C \u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u65E0\u6CD5\u5728\u7F16\u8F91\u5668\u4E2D\u6253\u5F00', { duration: 4000 });
             return;
           }
+          // ★ 立现占位：显示文件名，避免空白闪烁
+          var _fileName = filePath.split(/[\\/]/).pop() || filePath;
+          var _placeholder = document.createElement('div');
+          _placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx3);font:13px Tahoma,sans-serif;user-select:none;';
+          _placeholder.textContent = _fileName;
+          pane.appendChild(_placeholder);
           // Read and display file
           bridge.fs.read(filePath).then(function (content) {
-            var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
-            window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts);
+            // ★ rAF 让浏览器先渲一帧（占位符可见），再切 Monaco（避免 UI 冻住）
+            requestAnimationFrame(function () {
+              pane.textContent = '';
+              var editorMount = document.createElement('div');
+              editorMount.style.cssText = 'position:absolute; inset:0 0 4px 0;';
+              pane.appendChild(editorMount);
+              var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
+              window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts);
+            });
           }).catch(function (err) {
             pane.textContent = 'Error: ' + (err && err.message);
           });

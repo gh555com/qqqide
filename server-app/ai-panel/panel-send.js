@@ -331,6 +331,11 @@ async function sendMessage(skipFloorCreation) {
     scrollToBottom(true);
     // ★ 中央建楼状态机：登记 quest 开始建楼
     if (typeof _registerBuilding === 'function') _registerBuilding(qid, typeof _panelId !== 'undefined' ? _panelId : 1);
+    // ★ 彗星电子钟：建楼面板自己的豆腐块必须立即显示时钟
+    //   _registerBuilding 广播 building-changed → 其他面板收到会更新，但发送面板跳过自己的广播
+    //   所以发送面板需直接调 updateQuestTofu + _updateQuestClock
+    if (typeof updateQuestTofu === 'function') updateQuestTofu();
+    if (typeof _updateQuestClock === 'function') _updateQuestClock();
     setStreaming(true);
     // ★ P10 根治：agent 必须知道自己的新 aiDiv，否则 _doStreamRender 读到旧 quest 的 DOM
     agent._activeAiDiv = aiDiv;

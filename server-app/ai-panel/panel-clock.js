@@ -461,9 +461,10 @@ async function renderQuestDrop() {
             line.appendChild(prefix);
             line.appendChild(title);
             item.appendChild(line);
-            // ★ 彗星电子钟：读取中央真理机器 parent.__qqq_agentPool
-            var poolAgent = parent.__qqq_agentPool && parent.__qqq_agentPool[s.id];
-            if (poolAgent && poolAgent._stopState === 'sending') {
+            // ★ 彗星电子钟：读中央真理 parent.__qqq_buildingRegistry（非 agent pool）
+            //   其他面板上可能未创建该 agent，pool[s.id] 为 undefined → 假阴性
+            //   registry 是跨面板唯一真理源，所有面板读到的是同一份数据
+            if (typeof _isQuestBuilding === 'function' && _isQuestBuilding(s.id)) {
                 _insertCometClock(prefix, s.id);
             }
             item.onclick = function (e) { e.stopPropagation(); closeQuestDrop(); switchQuest(s.id); };
@@ -577,22 +578,29 @@ var _cometClockTimer = null;
 function _tickCometClocks() {
     var clocks = document.querySelectorAll('.comet-clock');
     var pool = parent && parent.__qqq_agentPool;
-    if (!pool) return;
+    var reg = parent && parent.__qqq_buildingRegistry;  // ★ 中央真理：跨面板唯一建楼状态
     var now = performance.now();
     var hasVisible = false;
     for (var i = 0; i < clocks.length; i++) {
         var clk = clocks[i];
         var qid = clk.getAttribute('data-qid');
-        var ag = pool[qid];
-        // ★ agent 不存在或已非 sending → 隐藏（防 quest 删除后残影不消）
-        if (!ag || ag._stopState !== 'sending' || ag._floorStartPerf <= 0) {
+        // ★ 读中央真理 registry 判定在建楼（非 agent._stopState，防其他面板 agent 状态不一致）
+        var isBuilding = reg && reg[qid] && reg[qid].stopState === 'sending';
+        if (!pool || !isBuilding) {
             clk.style.display = 'none';
-        } else {
-            var elapsed = now - ag._floorStartPerf;
-            clk.textContent = Math.floor(elapsed / 1000);
-            clk.style.display = '';
-            hasVisible = true;
+            continue;
         }
+        var ag = pool[qid];
+        // 计时：优先 agent._floorStartPerf，缺失则 fallback registry.startedAt
+        var startMs = (ag && ag._floorStartPerf > 0) ? ag._floorStartPerf : (reg[qid].startedAt || 0);
+        if (startMs <= 0) {
+            clk.style.display = 'none';
+            continue;
+        }
+        var elapsed = (startMs === reg[qid].startedAt) ? (Date.now() - startMs) : (now - startMs);
+        clk.textContent = Math.floor(elapsed / 1000);
+        clk.style.display = '';
+        hasVisible = true;
     }
     // 无可显示时钟 → 停定时器
     if (!hasVisible && _cometClockTimer) {
@@ -667,11 +675,10 @@ async function updateQuestTofu() {
         textEl.textContent = entry.title || '';
         textEl.parentElement.classList.remove('quest-tofu-new');
         if (pen) pen.style.display = '';
-        // ★ 彗星电子钟：仅当本面板当前活跃 quest 正在建楼才显示时钟
-        //   下拉列表中各 quest 各显各的时钟（renderQuestDrop），不在此处跨面板感知
-        var pool = parent && parent.__qqq_agentPool;
-        var poolAgent = pool && pool[questActiveId];
-        if (poolAgent && poolAgent._stopState === 'sending') {
+        // ★ 彗星电子钟：读中央真理 parent.__qqq_buildingRegistry（非 agent stopState）
+        //   registry 是跨面板唯一真理源，建楼面板在 _registerBuilding 时写入
+        var isBuilding = (typeof _isQuestBuilding === 'function') && _isQuestBuilding(questActiveId);
+        if (isBuilding) {
             _insertCometClock(prefixEl, questActiveId);
         } else {
             _removeCometClock(prefixEl);

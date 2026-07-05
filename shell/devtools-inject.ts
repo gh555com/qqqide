@@ -133,7 +133,7 @@ function _fmtMsg(m){
     // C: messageText 开头
     if(!method){var _mt=txt.match(/^(GET|POST|PUT|DELETE|PATCH)\\s/);if(_mt)method=_mt[1]+' ';}
     // D: 兜底推断（/api/ 路径多为 POST）
-    if(!method)method=/\/api\//i.test(nUrl)?'POST ':'GET ';
+    if(!method)method='GET ';
 
     // 源文件帧: 跳过帧名为 HTTP 方法的帧
     var srcFile='',srcLine=0;

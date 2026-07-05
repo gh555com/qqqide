@@ -291,7 +291,8 @@
       overviewRulerBorder: false,
       hideCursorInOverviewRuler: true,
       wordWrap: 'on',
-      wrappingStrategy: 'advanced',
+      wrappingStrategy: 'simple',
+      stopRenderingLineAfter: 2000,
       tabSize: 4,
       breadcrumbs: { enabled: false },
       smoothScrolling: false,
@@ -655,6 +656,24 @@
   let _editorRef = null;   // raw monaco IStandaloneCodeEditor
   let _paneFiles = {};      // editor dom node → filePath (reverse lookup for dispose cleanup)
   let _paneEditors = {};    // filePath → editor instance (for live refresh)
+  let _jumpLineStyleInjected = false;
+
+  // ★ 搜索跳转行高亮：给目标行加背景色，4s 自动消失
+  function _highlightJumpLine(ed, monaco, lineNumber) {
+    if (!_jumpLineStyleInjected) {
+      _jumpLineStyleInjected = true;
+      var style = document.createElement('style');
+      style.textContent = '.qqq-jump-line{background:rgba(181,137,0,0.18)!important}[data-theme="dark"] .qqq-jump-line{background:rgba(181,137,0,0.25)!important}';
+      document.head.appendChild(style);
+    }
+    try {
+      var deco = ed.deltaDecorations([], [{
+        range: new monaco.Range(lineNumber, 1, lineNumber, 1),
+        options: { isWholeLine: true, className: 'qqq-jump-line' }
+      }]);
+      setTimeout(function () { try { ed.deltaDecorations(deco, []); } catch (_) {} }, 4000);
+    } catch (_) {}
+  }
 
   // ---- openInPane: create a Monaco editor inside a tab pane for a specific file ----
   async function openInPane(host, filePath, content, opts) {
@@ -720,13 +739,6 @@
         }, 1300);
       }
 
-      // ★ 窗口快照还原：检查是否有待恢复的光标位置
-      if (window.qqqPendingEditorPositions && window.qqqPendingEditorPositions[filePath]) {
-        var _pendPos = window.qqqPendingEditorPositions[filePath];
-        try { ed.setPosition(_pendPos); ed.revealPositionInCenter(_pendPos); } catch (_) {}
-        delete window.qqqPendingEditorPositions[filePath];
-      }
-
       // ★ 搜索跳转：从搜索列表点击跳转到指定行/列（延迟执行，让 Monaco 先完成布局）
       if (opts && opts.line) {
         setTimeout(function () {
@@ -734,8 +746,16 @@
             var _jumpPos = { lineNumber: opts.line, column: opts.col || 1 };
             ed.setPosition(_jumpPos);
             ed.revealPositionInCenter(_jumpPos);
+            _highlightJumpLine(ed, monaco, opts.line);
           } catch (_) {}
         }, 300);
+      }
+
+      // ★ 窗口快照还原：检查是否有待恢复的光标位置
+      if (window.qqqPendingEditorPositions && window.qqqPendingEditorPositions[filePath]) {
+        var _pendPos = window.qqqPendingEditorPositions[filePath];
+        try { ed.setPosition(_pendPos); ed.revealPositionInCenter(_pendPos); } catch (_) {}
+        delete window.qqqPendingEditorPositions[filePath];
       }
 
       // ★ 搜索高亮：自动打开查找控件并填入搜索词

@@ -345,7 +345,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'search_web',
-            description: 'Search the web. Runs on US server (SearXNG, can access sites blocked in China like GitHub). Returns up to 20 results with title, URL, and snippet. ALWAYS follow up with fetch_webpage (US proxy) on the most relevant result URLs to extract full data — search_web alone only gives snippets, not content. For structured data (APIs, rankings, prices), use run_command+curl as fallback. 5 ge per search.',
+            description: 'Search the web. Runs on US server (SearXNG, can access sites blocked in China like GitHub). Returns up to 20 results with title, URL, and snippet. ALWAYS follow up with fetch_webpage (US proxy) on the most relevant result URLs to extract full data — search_web alone only gives snippets, not content. For structured data (APIs, rankings, prices), use run_command+curl as fallback.',
             parameters: {
                 type: 'object',
                 properties: {

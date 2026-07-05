@@ -190,24 +190,6 @@ window.loadQqqideProjectRules = async function (projectRoot) {
             var _re = /rule"((?:[A-Za-z]:[\\\/]|\/)[^"]+)"/g;
             var _m;
 
-            function _collectFiles(dirPath, _depth) {
-                if (_depth > 6) return Promise.resolve([]);
-                return bridge.fs.list(dirPath).then(function (entries) {
-                    if (!entries || !entries.length) return [];
-                    var _promises = entries.map(function (e) {
-                        if (!e || !e.name || e.name.startsWith('.') || e.name === 'node_modules') return Promise.resolve([]);
-                        var _full = dirPath.replace(/\\/g, '/').replace(/\/$/, '') + '/' + e.name;
-                        if (e.isDir) return _collectFiles(_full, _depth + 1);
-                        return Promise.resolve([_full]);
-                    });
-                    return Promise.all(_promises).then(function (_arrs) {
-                        var _flat = [];
-                        for (var _i = 0; _i < _arrs.length; _i++) { _flat = _flat.concat(_arrs[_i]); }
-                        return _flat.sort();
-                    });
-                }).catch(function () { return []; });
-            }
-
             while ((_m = _re.exec(_cleanLines)) !== null) {
                 var _fp = _m[1];
                 if (!_fp || _seen[_fp]) continue;
@@ -215,21 +197,7 @@ window.loadQqqideProjectRules = async function (projectRoot) {
                 try {
                     var _st = await bridge.fs.stat(_fp).catch(function () { return null; });
                     if (!_st) continue;
-                    if (_st.isDir) {
-                        var _files = await _collectFiles(_fp, 0);
-                        var _chunks = [];
-                        for (var _fi = 0; _fi < _files.length; _fi++) {
-                            try {
-                                var _fc = await bridge.fs.read(_files[_fi]);
-                                if (_fc && _fc.length > 20) {
-                                    _chunks.push('\n--- ' + _files[_fi] + ' ---\n' + _fc.replace(/\r\n/g, '\n'));
-                                }
-                            } catch (_) { }
-                        }
-                        if (_chunks.length > 0) {
-                            _injected.push('\n═══ AUTO-LOADED DIR: ' + _fp + ' (' + _chunks.length + ' files) ═══' + _chunks.join(''));
-                        }
-                    } else {
+                    if (!_st.isDir) {
                         var _fc = await bridge.fs.read(_fp);
                         if (_fc && _fc.length > 50) {
                             _injected.push('\n═══ AUTO-LOADED: ' + _fp + ' ═══\n' + _fc.replace(/\r\n/g, '\n'));

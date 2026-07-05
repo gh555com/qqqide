@@ -1,20 +1,15 @@
 // ============================================================================
-// update-service.ts — Hot update: pull server-app.tar.xz from gh555.com
+// update-service.ts — Hot update: pull server-app.tar.gz from gh555.com
 //
 // Flow:
-//   1. check() → GET https://gh555.com/qqqide/version.json
-//   2. apply() → download server-app.tar.xz → extract → atomic swap
+//   1. check() → GET version.json → compare shell + webapp separately
+//   2. apply() → download server-app.tar.gz → extract to Data/webapp-staging/
 //   3. upgradeShell() → download shell-out.tar.gz → stage for bootstrap
 //
-// Persisted state in Data/update-state.json:
-//   { lastCheck: number, lastVersion: string, lastApplied: string }
-//
-// IPC handlers:
-//   qqqide:update:check        → { latestVersion, needUpdate, needShellUpdate, ... }
-//   qqqide:update:apply        → { success, version }
-//   qqqide:update:upgrade-shell → { success, version }
-//   qqqide:update:state        → { lastCheck, currentVersion, ... }
-//   qqqide:update:abort        → void
+// 铁律:
+//   - _shellVersion = APP_VERSION（main.js 硬编码，bootstrap 替换后自动更新）
+//   - _state.currentVersion = webapp 本地版本（Data/webapp-version 或 '0.0.0'）
+//   - 两套版本互不干扰，check() 独立比较
 // ============================================================================
 
 import * as http from 'http';
@@ -25,7 +20,7 @@ import { URL } from 'url';
 import { spawnSync } from 'child_process';
 
 const UPDATE_MANIFEST_URL = 'https://gh555.com/qqqide/version.json';
-const UPDATE_TAR_URL = 'https://gh555.com/qqqide/server-app.tar.xz';
+const UPDATE_TAR_URL = 'https://gh555.com/qqqide/server-app.tar.gz';
 const SHELL_TAR_URL = 'https://gh555.com/qqqide/shell-out.tar.gz';
 
 export interface UpdateState {
@@ -53,13 +48,14 @@ export interface ApplyResult {
 export class UpdateService {
     private _appRoot: string;
     private _statePath: string;
-    private _currentVersion: string;
+    /** Shell 版本号 = APP_VERSION（main.js 硬编码，bootstrap 替换壳后自动更新） */
+    private _shellVersion: string;
     private _state: UpdateState;
     private _abortController: AbortController | null = null;
 
-    constructor(appRoot: string, currentVersion: string) {
+    constructor(appRoot: string, shellVersion: string) {
         this._appRoot = appRoot;
-        this._currentVersion = currentVersion || '0.0.0';
+        this._shellVersion = shellVersion || '0.0.0';
         this._statePath = path.join(appRoot, 'Data', 'update-state.json');
         this._state = this._loadState();
     }
@@ -80,18 +76,21 @@ export class UpdateService {
         const localWebapp = this._readWebappVersion();
 
         const needWebapp = !!webappLatest && this._compareVersions(localWebapp, webappLatest) < 0;
-        const needShell = !!shellLatest && this._compareVersions(this._currentVersion, shellLatest) < 0;
+        const needShell = !!shellLatest && this._compareVersions(this._shellVersion, shellLatest) < 0;
         return {
             latestVersion: webappLatest || localWebapp,
             currentVersion: localWebapp,
             needUpdate: needWebapp,
-            latestShellVersion: shellLatest || this._currentVersion,
-            currentShellVersion: this._currentVersion,
+            latestShellVersion: shellLatest || this._shellVersion,
+            currentShellVersion: this._shellVersion,
             needShellUpdate: needShell,
         };
     }
 
-    /** Download and apply webapp update (server-app.tar.xz). */
+    /**
+     * Download and stage webapp update (server-app.tar.gz).
+     * 下载到 Data/webapp-staging/，下次启动 ensureLocalWebapp 自动替换。
+     */
     async apply(): Promise<ApplyResult> {
         this._abortController = new AbortController();
 
@@ -101,12 +100,12 @@ export class UpdateService {
                 return { success: false, version: '', error: 'Failed to fetch latest version' };
             }
 
-            const stagingDir = path.join(this._appRoot, 'Data', 'staging');
-            const tarPath = path.join(stagingDir, 'server-app.tar.xz');
-            const extractDir = path.join(stagingDir, 'server-app');
+            const stagingDir = path.join(this._appRoot, 'Data', 'webapp-staging');
+            const dlDir = path.join(this._appRoot, 'Data', 'webapp-dl');
+            const tarPath = path.join(dlDir, 'server-app.tar.gz');
 
-            try { fs.mkdirSync(stagingDir, { recursive: true }); } catch { }
-            try { fs.rmSync(extractDir, { recursive: true, force: true }); } catch { }
+            try { fs.mkdirSync(dlDir, { recursive: true }); } catch { }
+            try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
 
             const downloadOk = await this._downloadFile(UPDATE_TAR_URL, tarPath,
                 this._abortController.signal);
@@ -114,37 +113,21 @@ export class UpdateService {
                 return { success: false, version: '', error: 'Download failed' };
             }
 
-            const extractOk = this._extractTarXz(tarPath, extractDir);
+            try { fs.mkdirSync(stagingDir, { recursive: true }); } catch { }
+            const extractOk = this._extractTarGz(tarPath, stagingDir);
             if (!extractOk) {
+                try { fs.unlinkSync(tarPath); } catch { }
                 return { success: false, version: '', error: 'Extraction failed' };
             }
 
-            const serverAppDir = path.join(this._appRoot, 'server-app');
-            const oldDir = path.join(this._appRoot, 'server-app.old');
-
-            try { fs.rmSync(oldDir, { recursive: true, force: true }); } catch { }
-            try {
-                if (fs.existsSync(serverAppDir)) {
-                    fs.renameSync(serverAppDir, oldDir);
-                }
-            } catch (e: any) {
-                return { success: false, version: '', error: 'Atomic swap failed (backup): ' + (e.message || e) };
-            }
-
-            try {
-                fs.renameSync(extractDir, serverAppDir);
-            } catch (e: any) {
-                try { fs.renameSync(oldDir, serverAppDir); } catch { }
-                return { success: false, version: '', error: 'Atomic swap failed (replace): ' + (e.message || e) };
-            }
-
             try { fs.unlinkSync(tarPath); } catch { }
-            try { fs.rmSync(oldDir, { recursive: true, force: true }); } catch { }
+
+            // Write webapp version marker
+            this._writeWebappVersion(latestVersion);
 
             this._state.currentVersion = latestVersion;
             this._state.lastApplied = latestVersion;
             this._saveState();
-            this._currentVersion = latestVersion;
 
             return { success: true, version: latestVersion };
         } catch (e: any) {
@@ -189,8 +172,9 @@ export class UpdateService {
 
             try { fs.unlinkSync(tarPath); } catch { }
 
+            // Write shell version marker
             const versionFile = path.join(this._appRoot, 'Data', 'shell-version');
-            const shellVersion = this._state.lastVersion || this._currentVersion;
+            const shellVersion = this._state.lastVersion || this._shellVersion;
             try { fs.writeFileSync(versionFile, shellVersion, 'utf8'); } catch { }
 
             return { success: true, version: shellVersion };
@@ -216,11 +200,15 @@ export class UpdateService {
 
     // ---- internal ----
 
+    /**
+     * 加载本地持久化状态。
+     * 铁律：_state.currentVersion 只反映 webapp 版本，shell 版本始终以 _shellVersion 为准。
+     */
     private _loadState(): UpdateState {
         const defaults: UpdateState = {
             lastCheck: 0,
-            lastVersion: this._currentVersion,
-            currentVersion: this._currentVersion,
+            lastVersion: '',
+            currentVersion: this._readWebappVersion(),
             lastApplied: '',
         };
         try {
@@ -229,8 +217,8 @@ export class UpdateService {
             const parsed = JSON.parse(raw);
             return {
                 lastCheck: typeof parsed.lastCheck === 'number' ? parsed.lastCheck : 0,
-                lastVersion: typeof parsed.lastVersion === 'string' ? parsed.lastVersion : this._currentVersion,
-                currentVersion: typeof parsed.currentVersion === 'string' ? parsed.currentVersion : this._currentVersion,
+                lastVersion: typeof parsed.lastVersion === 'string' ? parsed.lastVersion : '',
+                currentVersion: typeof parsed.currentVersion === 'string' ? parsed.currentVersion : this._readWebappVersion(),
                 lastApplied: typeof parsed.lastApplied === 'string' ? parsed.lastApplied : '',
             };
         } catch {
@@ -280,13 +268,20 @@ export class UpdateService {
         }
     }
 
-    /** Read local webapp version from Data/webapp-version. */
+    /** Read local webapp version from Data/webapp-version. boot.ts 的 ensureLocalWebapp 确保该文件存在。 */
     private _readWebappVersion(): string {
         try {
             const p = path.join(this._appRoot, 'Data', 'webapp-version');
             if (fs.existsSync(p)) return fs.readFileSync(p, 'utf8').trim();
         } catch { }
         return '0.0.0';
+    }
+
+    /** Write Data/webapp-version. */
+    private _writeWebappVersion(v: string): void {
+        try {
+            fs.writeFileSync(path.join(this._appRoot, 'Data', 'webapp-version'), v, 'utf8');
+        } catch { /* ignore */ }
     }
 
     private async _fetchVersion(): Promise<string | null> {

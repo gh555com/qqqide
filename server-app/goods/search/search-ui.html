@@ -22,8 +22,10 @@ input,select{-webkit-user-select:text;user-select:text}
 .tog:hover{background:var(--bg2);color:var(--tx)}.tog.on{background:var(--blu);color:#1e1e1e;border-color:var(--blu)}
 .btn{height:26px;padding:0 10px;border:1px solid var(--bd);border-radius:3px;background:transparent;color:var(--tx);font-size:11px;cursor:pointer;white-space:nowrap}
 .btn:hover{background:var(--bg2)}.btn.pri{background:var(--blu);color:#1e1e1e;border-color:var(--blu)}.btn.pri:hover{opacity:.9}
-.chk{font-size:11px;color:var(--tx3);display:flex;align-items:center;gap:3px;margin-left:4px;cursor:pointer;white-space:nowrap}
-.chk input{cursor:pointer}
+.chk{font-size:11px;color:var(--tx3);display:flex;align-items:center;gap:3px;margin-left:6px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.chk input{display:none}
+.chk .ckb{width:15px;height:15px;border:1.5px solid var(--tx3);border-radius:3px;flex-shrink:0;position:relative}
+.chk.on .ckb::after{content:'✓';position:absolute;top:-1px;left:2px;font-size:12px;font-weight:bold;color:var(--tx)}[data-theme="dark"] .chk.on .ckb::after{color:#dcd8d0}
 .sort{height:24px;padding:0 10px 0 4px;border:1px solid var(--bd);border-radius:3px;background:var(--bg);color:var(--tx);font-size:11px;cursor:pointer;outline:none;text-align:left;white-space:nowrap;position:relative}
 .sort::after{content:'▼';font-size:8px;position:absolute;right:3px;top:50%;margin-top:-4px;color:var(--tx3)}
 .sort-wrap{position:relative;display:inline-block}
@@ -62,9 +64,8 @@ input,select{-webkit-user-select:text;user-select:text}
   <div class="tb">
     <div class="tb-r"><span class="iw"><input class="inp" id="q" placeholder="搜索..." autofocus spellcheck="false"><div class="hdd" id="dd0"></div></span><button class="tog" id="brx" title="正则">.*</button><button class="tog" id="bcs" title="大小写">Aa</button><button class="tog" id="bww" title="全字">ab</button></div>
     <div class="tb-r"><span class="iw"><input class="inp" id="rp" placeholder="替换..." spellcheck="false"><div class="hdd" id="dd1"></div></span><button class="btn pri" id="bra">全部替换</button></div>
-    <div class="tb-r"><span class="lbl">范围</span><span class="iw"><input class="scope" id="sp" placeholder="搜索路径（点 🔍 自动填入）" spellcheck="false"><div class="hdd" id="dd2"></div></span></div>
+    <div class="tb-r"><span class="lbl">范围</span><span class="iw"><input class="scope" id="sp" placeholder="搜索路径（点 🔍 自动填入）" spellcheck="false"><div class="hdd" id="dd2"></div></span><label class="chk" id="lgi"><input type="checkbox" id="cgi"><span class="ckb"></span> .gitignore</label></div>
     <div class="tb-r"><span class="lbl">仅限</span><span class="iw"><input class="scope" id="inc" placeholder="*.js, src/" spellcheck="false"><div class="hdd" id="dd3"></div></span><span class="lbl" style="margin-left:8px">排除</span><span class="iw"><input class="scope" id="exc" value=".git/, *.log" spellcheck="false"><div class="hdd" id="dd4"></div></span><span class="lbl" style="margin-left:8px">排序</span><span class="sort-wrap"><button class="sort" id="srt_btn">修改时间↓</button><div class="sort-dd" id="srt_dd"></div></span></div>
-    <div class="tb-r"><label class="chk" id="lgi"><input type="checkbox" id="cgi"> 尊重 .gitignore</label></div>
   </div>
   <div class="st" id="st"><span id="stt">键入关键字开始搜索</span></div>
   <div class="rs" id="rc"><div class="emp" id="em"><span class="ic">🔍</span><span class="ht">键入关键字开始搜索</span></div></div>
@@ -174,11 +175,11 @@ INPS.forEach(function(inp,fid){
 document.addEventListener('mousedown',function(e){if(_openFid===null)return;var t=e.target;if(t.closest&&(t.closest('.iw')||t.closest('.hdd')))return;_close()});
 
 var _rx=false,_cs=false,_ww=false,_tmr=null,_last=null,_lastQ='',_hl=null,_scopePath='';
-var CGI=document.getElementById('cgi'),
+var CGI=document.getElementById('cgi'),LGI=document.getElementById('lgi'),
   BRX=document.getElementById('brx'),BCS=document.getElementById('bcs'),BWW=document.getElementById('bww'),
   BRA=document.getElementById('bra'),ST=document.getElementById('st'),STT=document.getElementById('stt'),
   RC=document.getElementById('rc'),EM=document.getElementById('em');
-CGI.onchange=function(){trg()};
+LGI.onclick=function(e){e.preventDefault();CGI.checked=!CGI.checked;LGI.classList.toggle('on',CGI.checked);trg()};
 
 // Custom sort dropdown
 var SRT_BTN=document.getElementById('srt_btn'),SRT_DD=document.getElementById('srt_dd');
@@ -294,7 +295,7 @@ function eh(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,
 function pq(s){return s.replace(/([qf]\d+)\./g,'<span class="pq">$1.</span>')}
 function bn(p){var x=p.replace(/\\/g,'/').split('/');return x[x.length-1]||p}
 function dn(p){var n=p.replace(/\\/g,'/');var i=n.lastIndexOf('/');return i>0?n.slice(0,i):''}
-function opn(fp,l,c){try{var abs=_scopePath?(_scopePath.replace(/[\\/]$/,'')+'/'+fp.replace(/^[\\/]+/,'').replace(/\\/g,'/')):fp;window.parent._nextPaneOpts={line:l,col:c};window.parent.document.dispatchEvent(new CustomEvent('qqq-file-open',{detail:{path:abs}}))}catch(e){console.error('[search] openFile failed:',e)}}
+function opn(fp,l,c){try{var abs=_scopePath?(_scopePath.replace(/[\\/]$/,'')+'/'+fp.replace(/^[\\/]+/,'').replace(/\\/g,'/')):fp;window.parent._nextPaneOpts={line:l,col:c,search:_lastQ};window.parent.document.dispatchEvent(new CustomEvent('qqq-file-open',{detail:{path:abs}}))}catch(e){console.error('[search] openFile failed:',e)}}
 BRA.onclick=async function(){
   if(!_last||!_last.results||_last.results.length===0)return;var rt=RP.value;
   if(!bri)bri=window.parent&&window.parent.qqqideBridge;if(!bri||!bri.search)return;
