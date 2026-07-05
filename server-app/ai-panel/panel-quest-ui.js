@@ -39,7 +39,7 @@ async function switchQuest(id) {
             }
             // ★ 仅在建楼中的 agent 才有未保存数据需刷盘；idle agent 的数据已在 onDone 时写入
             if (_activeAgent && _activeAgent._stopState === 'sending') {
-                await _saveAgentQuestData(questActiveId, _activeAgent, _activeAgent._currentFloorNum);
+                await _saveAgentQuestData(questActiveId, _activeAgent, _activeAgent._currentFloorNum, { skipDomFlush: true });
             }
             // ★ 释放旧 quest 所有权（流式 buffer 状态已通过 _a4BuildCompleteFloorPayload 落盘，跨面板迁移安全）
             if (!_isDraft(questActiveId)) {
@@ -347,28 +347,8 @@ function _checkTokenReset() { /* no-op */ }
 
 function _fetchBalanceIfNeeded(force) { /* no-op */ }
 
-function _estimateOrCacheTokens() {
-    var _ag = _activeAgent;
-    if (!_ag) return 0;
-    var conv = _ag.conversation;
-    var ctx = _ag._ctx;
-    var ctxHash = ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '';
-    var apiVer = (_ag._lastApiTotalTokens || 0) + '|' + (_ag._lastApiPromptTokens || 0);
-    if (_estCache.convLen === conv.length && _estCache.ctxHash === ctxHash && _estCache.apiVer === apiVer && _estCache.val > 0) {
-        return _estCache.val;
-    }
-    return _estimateTokensFull();
-}
-
-// ★ 统一计算：总 token + 拆解，一次遍历，单一缓存（按钮+面板共用）
-// ★★ 架构重构 v4：全面精确分类（2026-06-29）
-//   - API prompt_tokens 为精确参考值（仅用于本地 vs API 对比展示）
-//   - 展示给用户时，优先使用 API 精确值；本地估算仅用于离线/兜底
-// ★ Completion tokens 不计入上下文血量（输出侧不占背包） 统计为主（我们自己发的东西自己知道）
-//   - API prompt_tokens 为精确参考
-function updateCostDisplay() { _updateCostDisplay(); }
-//   - assistant.tool_calls JSON 是新发现的最大隐藏格子
-//   - 压缩阈值只用 prompt_tokens（与背包一致）
+// ★ 统一计算：总 token + 拆解，一次遍历，所有格子无一遗漏。
+// ★ API prompt_tokens 为精确参考；本地子项之和用于审计 / 漏项检测。
 function _estimateTokensFull() {
     var _ag = _activeAgent;
     if (!_ag) { console.warn('[ctx-est] _activeAgent is null'); _ctxBreakdownData = null; return 0; }
@@ -376,19 +356,26 @@ function _estimateTokensFull() {
     if (!conv.length) { console.warn('[ctx-est] conversation EMPTY, _ag._floorId=' + (_ag._floorId || '?') + ' _stopState=' + (_ag._stopState || '?')); }
     var ctx = _ag._ctx || null;
 
+    // ── 0. 缓存（仅当一切输入未变时复用，含 msg[0] 内容哈希） ──
+    var _msg0HashNow = (conv.length > 0 && typeof conv[0].content === 'string') ? conv[0].content.slice(0, 80) + '|' + conv[0].content.slice(-80) : '';
+    var _apiVerNow = (_ag._lastApiPromptTokens || 0) + '|' + (_ag._accumulatedCompletionTokens || 0);
+    var _ctxHashNow = ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '';
+    if (_estCache.convLen === conv.length && _estCache.ctxHash === _ctxHashNow && _estCache.apiVer === _apiVerNow && _estCache.msg0Hash === _msg0HashNow && _estCache.val > 0) {
+        return _estCache.val;
+    }
+
     // ── 1. API 精确值（参考） ──
     var apiPrompt = _ag._lastApiPromptTokens || 0;
     var apiCompletion = _ag._accumulatedCompletionTokens || 0;
 
-    // ── 2. CPT — 偏保守（2.5 → 同样字符估算出更多 token，更安全） ──
+    // ── 2. CPT ──
     var CPT = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN > 0 && ContentGateway.CHAR_PER_TOKEN < 100) ? ContentGateway.CHAR_PER_TOKEN : 2.5;
-    // ★ 防御：校准发疯导致 CPT 异常→复位到 2.5
     if (CPT !== 2.5 && typeof ContentGateway !== 'undefined' && (ContentGateway.CHAR_PER_TOKEN < 1 || ContentGateway.CHAR_PER_TOKEN > 100)) {
         ContentGateway.CHAR_PER_TOKEN = 2.5; CPT = 2.5;
     }
     var CTX_MAX = (typeof ContentGateway !== 'undefined' && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
 
-    // ── 3. msg[0] 组分（子项为近似拆解，总数以 conv[0].content 为准含分隔符）──
+    // ── 3. msg[0] 组分 ──
     var visionChars = typeof window.qqqideVisionContext === 'string' ? window.qqqideVisionContext.length : 0;
     var globalRulesChars = typeof window.qqqideRulesContent === 'string' ? window.qqqideRulesContent.length : 0;
     var projectRulesChars = typeof window.qqqideProjectRulesContent === 'string' ? window.qqqideProjectRulesContent.length : 0;
@@ -399,11 +386,10 @@ function _estimateTokensFull() {
         var reminder = '\n\n═══ DEFAULT WORKING DIRECTORY ═══\nMain project: ' + panelRoot + '\nWhen the user does not specify a project, all file operations default to this directory.\n═══════════════════';
         reminderChars = reminder.length;
     }
-    // ★ 总数以 conv[0].content 为准（含 join 分隔符 + 真实 reminder 字符串），子项之和为近似值
     var msg0FromConv = (conv.length > 0 && conv[0]._persistent && typeof conv[0].content === 'string') ? conv[0].content.length : 0;
     var msg0TotalChars = msg0FromConv > 0 ? msg0FromConv : (visionChars + globalRulesChars + projectRulesChars + reminderChars);
 
-    // ── 4. 对话统计：遍历所有消息，按角色 + 子类别分桶 ──
+    // ── 4. 对话统计：全字段遍历，零遗漏 ──
     var userCount = 0, userChars = 0;
     var aiCount = 0, aiContentChars = 0, aiToolCallsChars = 0, aiToolCallsCount = 0;
     var toolCount = 0, toolChars = 0;
@@ -415,20 +401,23 @@ function _estimateTokensFull() {
         var c = typeof m.content === 'string' ? m.content.length : 0;
         if (m.role === 'user') { userCount++; userChars += c; }
         else if (m.role === 'assistant') {
-            // ★ tool_calls JSON: 序列化后计入（不管是否有 _error，计费事件中也可能有 tool_calls）
             if (m.tool_calls) {
                 aiToolCallsCount++;
                 try { aiToolCallsChars += JSON.stringify(m.tool_calls).length; } catch (_) { }
             }
-            // _error 消息不计入 aiContentChars（防重复计数），只进 error 桶
             if (m._error) {
                 errCount++; errChars += c;
             } else {
-                aiCount++;
-                aiContentChars += c;
+                if (c > 0) { aiCount++; aiContentChars += c; }
             }
         }
-        else if (m.role === 'tool') { toolCount++; toolChars += c; }
+        else if (m.role === 'tool') {
+            toolCount++;
+            toolChars += c;
+            // ★ tool_call_id + name 也进 API（role 之外的结构字段），client 必须计
+            if (typeof m.tool_call_id === 'string') toolChars += m.tool_call_id.length;
+            if (typeof m.name === 'string') toolChars += m.name.length;
+        }
         else if (m.role === 'system') { sysCount++; sysChars += c; }
     }
 
@@ -442,7 +431,17 @@ function _estimateTokensFull() {
     }
     var compressedChars = narrativeChars + factsChars;
 
-    // ── 6. 换算为 tokens ──
+    // ── 5b. 工具定义（body.tools，每 house 发送一次）──
+    var toolsChars = 0;
+    try {
+        var _tools = (typeof getTools === 'function') ? getTools() : null;
+        if (_tools && _tools.length) toolsChars = JSON.stringify(_tools).length;
+    } catch (_) { }
+
+    // ── 5c. 服务端甲壳（Go guards inject → byte-exact from disk）──
+    var guardChars = 14964;  // gaea/guard/system-prompt.txt precise length
+
+    // ── 6. chars → tokens ──
     function _tok(chars) { return Math.round(chars / CPT); }
     var msg0Tok = _tok(msg0TotalChars);
     var userTok = _tok(userChars);
@@ -452,22 +451,24 @@ function _estimateTokensFull() {
     var sysTok = _tok(sysChars);
     var errTok = _tok(errChars);
     var compTok = _tok(compressedChars);
-    var localTotal = msg0Tok + userTok + aiTextTok + aiToolCallsTok + toolTok + sysTok + compTok + errTok;
+    var toolsTok = _tok(toolsChars);
+    var guardTok = _tok(guardChars);
+    // ★ 全量：客户端可见 + 工具定义 + 服务端甲壳
+    var localTotal = msg0Tok + userTok + aiTextTok + aiToolCallsTok + toolTok + sysTok + compTok + errTok + toolsTok + guardTok;
 
-    // ── 7. Build rows ──
+    // ── 7. Rows（API 看到从顶到底的顺序）──
     function _r(label, tok, indent, always, color) {
         return { label: label, tok: tok, indent: indent || 0, always: always || false, color: color || '#2aa198' };
     }
     var rows = [];
-    // msg[0]
+    rows.push(_r('Server guard (est.)', guardTok, 0, false, '#6c71c4'));
     if (msg0TotalChars > 0) {
-        rows.push(_r('Permanent System Block', msg0Tok, 0, false, '#268bd2'));
+        rows.push(_r('Client rules & docs', msg0Tok, 0, false, '#268bd2'));
         if (visionChars > 0) rows.push(_r('  Vision Context', _tok(visionChars), 1, false, '#859900'));
         if (globalRulesChars > 0) rows.push(_r('  Global Rules', _tok(globalRulesChars), 1, false, '#6c71c4'));
         if (projectRulesChars > 0) rows.push(_r('  Project Rules', _tok(projectRulesChars), 1, false, '#b58900'));
         if (reminderChars > 0) rows.push(_r('  Reminder', _tok(reminderChars), 1, false, '#cb4b16'));
     }
-    // 对话
     if (userCount > 0) rows.push(_r('User \u00d7 ' + userCount, userTok, 0, false, '#268bd2'));
     if (aiContentChars > 0) rows.push(_r('AI text \u00d7 ' + aiCount, aiTextTok, 0, false, '#2aa198'));
     if (aiToolCallsChars > 0) rows.push(_r('AI tool_calls JSON \u00d7 ' + aiToolCallsCount, aiToolCallsTok, 1, false, '#d2991d'));
@@ -475,28 +476,24 @@ function _estimateTokensFull() {
     if (sysCount > 0) rows.push(_r('Dynamic System', sysTok, 0, false, '#6c71c4'));
     if (compressedChars > 0) rows.push(_r('Compressed Summary', compTok, 0, false, '#cb4b16'));
     if (errCount > 0) rows.push(_r('Error messages \u00d7 ' + errCount, errTok, 0, false, '#f85149'));
-    // 本地估算总和
-    rows.push(_r('Local estimate total', localTotal, 0, true, '#c9d1d9'));
-    // API prompt_tokens 参考
-    if (apiPrompt > 0) rows.push(_r('API prompt_tokens (ref)', apiPrompt, 0, true, '#3fb950'));
-    // 剩余
-    var _free = Math.max(0, CTX_MAX - localTotal);
+    if (toolsChars > 0) rows.push(_r('Tools definition', toolsTok, 0, false, '#b58900'));
+    // --- 汇总 ---
+    var displayTotal = apiPrompt > 0 ? apiPrompt : localTotal;
+    if (apiPrompt > 0) {
+        rows.push(_r('API prompt_tokens (ref)', apiPrompt, 0, true, '#3fb950'));
+    } else {
+        rows.push(_r('Local estimate total', localTotal, 0, true, '#c9d1d9'));
+    }
+    var _free = Math.max(0, CTX_MAX - displayTotal);
     rows.push(_r('Available', _free, 0, true, '#859900'));
 
     _ctxBreakdownData = {
-        rows: rows,
-        apiTotalTokens: localTotal,
-        accCompletion: apiCompletion
+        rows: rows, apiTotalTokens: displayTotal, apiPromptTokens: apiPrompt,
+        localTotal: localTotal, accCompletion: apiCompletion
     };
-    _estCache = { val: localTotal, convLen: conv.length, ctxHash: ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '', apiVer: apiPrompt + '|' + apiCompletion };
-    if (localTotal === 0) { console.warn('[ctx-est] total=0! convLen=' + conv.length + ' msg0=' + msg0TotalChars + ' user=' + userChars + ' aiTxt=' + aiContentChars + ' aiTC=' + aiToolCallsChars + ' tool=' + toolChars + ' comp=' + compressedChars + ' err=' + errChars); }
-    return localTotal;
-}
-
-function _tkStrStr(n) {
-    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'm';
-    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
-    return String(n);
+    _estCache = { val: displayTotal, convLen: conv.length, ctxHash: _ctxHashNow, apiVer: _apiVerNow, msg0Hash: _msg0HashNow };
+    if (localTotal === 0) { console.warn('[ctx-est] total=0! convLen=' + conv.length + ' msg0=' + msg0TotalChars + ' user=' + userChars + ' aiTxt=' + aiContentChars + ' aiTC=' + aiToolCallsChars + ' tool=' + toolChars + ' comp=' + compressedChars + ' err=' + errChars + ' tools=' + toolsChars + ' guard=' + guardChars); }
+    return displayTotal;
 }
 
 // ═══ 上下文占用拆解面板（hover ctx-btn 弹出） ═════
@@ -558,7 +555,7 @@ function hideCtxBreakdown() {
     if (bd) bd.classList.remove('show');
 }
 
-// \u2500\u2500 \u4e0a\u4e0b\u6587\u6309\u94ae \u2500\u2500
+// ── 上下文按钮 ──
 function updateCtxBtn() {
     if (!_activeAgent || !_activeAgent.conversation) {
         $ctxBtn.textContent = '--';
@@ -569,8 +566,9 @@ function updateCtxBtn() {
     var _ag = _activeAgent;
     var used = _estimateTokensFull();
     if (used === 0 && _ag.conversation && _ag.conversation.length) { console.warn('[ctx-btn] used=0 convLen=' + _ag.conversation.length + ' _floorId=' + (_ag._floorId || '?') + ' _stopState=' + (_ag._stopState || '?')); }
-    var pct = Math.min(100, Math.round(used / CTX_MAX_TOKENS * 100));
-    $ctxBtn.textContent = Math.round(used / 1000) + ' k';
+    var displayUsed = (_ag._lastApiPromptTokens > 0) ? _ag._lastApiPromptTokens : used;
+    var pct = Math.min(100, Math.round(displayUsed / CTX_MAX_TOKENS * 100));
+    $ctxBtn.textContent = Math.round(displayUsed / 1000) + ' k';
     $ctxBtn.style.setProperty('--ctx-pct', pct + '%');
     // ★★ 强制刷新面板（house 级别同步）：检查面板 DOM 是否真正显示
     try {
@@ -602,6 +600,23 @@ if (_bdPanel) {
 document.getElementById('ctx-cancel').onclick = function () {
     document.getElementById('ctx-panel').style.display = 'none';
 };
+// ★★ 管理按钮 — 打开 Conversation 上下文检查器 goods
+var _ctxManageBtn = document.getElementById('ctx-manage');
+if (_ctxManageBtn) {
+    _ctxManageBtn.onclick = function () {
+        document.getElementById('ctx-panel').style.display = 'none';
+        try {
+            // 传递当前 quest ID 给 goods 面板
+            if (window.parent) {
+                window.parent.__qqq_convQuestId = questActiveId || '';
+                window.parent.__qqq_convPanelId = (typeof _panelId !== 'undefined') ? _panelId : 1;
+                if (window.parent.qqqGaea && window.parent.qqqGaea.show) {
+                    window.parent.qqqGaea.show('conv');
+                }
+            }
+        } catch (e) { console.warn('[ctx-manage]', e); }
+    };
+}
 // ═══ 快照 — 完整 conversation 打快照到 floor 文件夹 ═══
 document.getElementById('ctx-snap').onclick = async function () {
     document.getElementById('ctx-panel').style.display = 'none';
@@ -792,7 +807,7 @@ document.getElementById('ctx-compress').onclick = async function () {
             var _rawGe = _ag._floorCostWge / 10000;
             var _displayGe = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2);
             _aiDiv._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
-            _aiDiv._clockCost.textContent = _displayGe + ' ge' + (_ag._floorFree ? ' Free' : '');
+            _aiDiv._clockCost.textContent = _displayGe + ' ge' + ((_ag._floorHadBilling && _ag._floorFree) ? ' Free' : '');
             _aiDiv._clockCost.style.display = 'inline';
             _aiDiv._clockCost._houses = _ag._houses;
             _aiDiv._clockCost._floorNum = _ag._currentFloorNum;

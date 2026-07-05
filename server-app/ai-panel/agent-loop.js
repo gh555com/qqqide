@@ -100,6 +100,7 @@ var AgentLoop = (function () {
         // 视觉缓存: MD5(base64) → {description, ge_cost}
         this._visionCache = new Map();
         this._visionCostWge = 0;
+        this._visionBillingRequestId = 0;
         // 计费 flush
         this._floorId = '';
         this._currentFloorSummary = '';
@@ -312,6 +313,9 @@ var AgentLoop = (function () {
 
         if (!token) { onError('No token'); return null; }
 
+        // ★ 刷新服务器城市（Cloudflare 透传，用于 passby 地理位置展示）
+        if (typeof _refreshServerCity === 'function') _refreshServerCity(self);
+
         self._compressing = false;  // ★ 安全重置：防上次异常未清理
         // ★ 存储 token 供 tools.js 调用 Go 端点时使用
         self._token = token;
@@ -319,7 +323,8 @@ var AgentLoop = (function () {
 
         // 重置本轮计费 + 生成 floor_id（同一轮内所有 gateway 调用共享）
         self._floorCostWge = 0;
-        self._floorFree = false;
+        self._floorFree = true;
+        self._floorHadBilling = false;
         self._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ((typeof _panelId !== 'undefined') ? ['_L', '_C', '_R'][_panelId] || '' : '');
         self._currentFloorSummary = (userContent || '').replace(/\s+/g, ' ').trim().slice(0, 200);
         self._floorTiming = { networkMs: 0, aiMs: 0, floorStartPerf: performance.now(), floorStartServerMs: Date.now() + (self._serverDrift || 0) };
@@ -358,7 +363,7 @@ var AgentLoop = (function () {
                     cacheHitRate: -1,
                     usage: null,
                     billingSeq: 0,
-                    billingRequestId: '',
+                    billingRequestId: String(self._visionBillingRequestId || self._floorId || ''),
                     tier: self._lastTier ? self._lastTier.label : ''
                 });
                 self._log('💰 vision cost: ' + (self._visionCostWge / 10000).toFixed(4) + ' ge (' + visionResults.length + ' image(s))');
@@ -561,7 +566,7 @@ var AgentLoop = (function () {
                         var _costGe = self._floorCostWge / 10000;
                         self.totalCostGe += _costGe;
                         self._lastCostDisplay = _costGe < 0.001 ? '<0.001' : _costGe.toFixed(4);
-                        onCost(self._lastCostDisplay, self.totalCostGe, self._floorFree);
+                        onCost(self._lastCostDisplay, self.totalCostGe, (self._floorHadBilling && self._floorFree));
                         self._floorCompletedCleanly = true;
                         onDone(_restoredContent, self._floorTiming);
                         return _restoredContent;
@@ -627,7 +632,7 @@ var AgentLoop = (function () {
                             if (_aiDivC && _aiDivC._clockCost) {
                                 var _rawGe = self._floorCostWge / 10000;
                                 _aiDivC._clockCost._rawGe = (typeof _formatGeRaw === 'function') ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
-                                _aiDivC._clockCost.textContent = (typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2)) + ' ge' + (self._floorFree ? ' Free' : '');
+                                _aiDivC._clockCost.textContent = (typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2)) + ' ge' + ((self._floorHadBilling && self._floorFree) ? ' Free' : '');
                                 _aiDivC._clockCost.style.display = 'inline';
                                 _aiDivC._clockCost._houses = self._houses;
                                 _aiDivC._clockCost._floorNum = self._currentFloorNum;
@@ -763,7 +768,7 @@ var AgentLoop = (function () {
                         var _costGe = self._floorCostWge / 10000;
                         self.totalCostGe += _costGe;
                         self._lastCostDisplay = _costGe < 0.001 ? '<0.001' : _costGe.toFixed(4);
-                        onCost(self._lastCostDisplay, self.totalCostGe, self._floorFree);
+                        onCost(self._lastCostDisplay, self.totalCostGe, (self._floorHadBilling && self._floorFree));
                         self._floorFatal = true;
                         var _truncErr = 'AI response truncated: server error ' + (response._sseErrorCode || '?') + '. Partial content preserved.';
                         self._lastGatewayMessage = _truncErr;
@@ -787,7 +792,7 @@ var AgentLoop = (function () {
                     var costGe = self._floorCostWge / 10000;
                     self.totalCostGe += costGe;
                     self._lastCostDisplay = costGe < 0.001 ? '<0.001' : costGe.toFixed(4);
-                    onCost(self._lastCostDisplay, self.totalCostGe, self._floorFree);
+                    onCost(self._lastCostDisplay, self.totalCostGe, (self._floorHadBilling && self._floorFree));
                     if (self._billingDebug) { _logBillingSummary(self); }
                     self._floorCompletedCleanly = true;  // ★ 看门狗：AI 正常回复
                     onDone(response.content, self._floorTiming);
@@ -821,12 +826,12 @@ var AgentLoop = (function () {
                         var _rawGe5 = self._floorCostWge / 10000;
                         var _displayGe5 = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe5) : _rawGe5.toFixed(2);
                         _aiDiv5._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe5) : _rawGe5.toFixed(4);
-                        _aiDiv5._clockCost.textContent = _displayGe5 + ' ge' + (self._floorFree ? ' Free' : '');
+                        _aiDiv5._clockCost.textContent = _displayGe5 + ' ge' + ((self._floorHadBilling && self._floorFree) ? ' Free' : '');
                         _aiDiv5._clockCost.style.display = 'inline';
                         _aiDiv5._clockCost._houses = self._houses;
                         _aiDiv5._clockCost._floorNum = self._currentFloorNum;
                         _aiDiv5._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), tokens: (self._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(self) : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0), drift: self._serverDrift || 0, city: self._serverCity || '' };
-                        if (self._floorFree) {
+                        if ((self._floorHadBilling && self._floorFree)) {
                             _aiDiv5._clockCost.style.color = '#859900';
                         } else {
                             _aiDiv5._clockCost.style.color = '';
@@ -934,7 +939,7 @@ var AgentLoop = (function () {
                     var finalCostGe = self._floorCostWge / 10000;
                     self.totalCostGe += finalCostGe;
                     self._lastCostDisplay = finalCostGe < 0.001 ? '<0.001' : finalCostGe.toFixed(4);
-                    onCost(self._lastCostDisplay, self.totalCostGe, self._floorFree);
+                    onCost(self._lastCostDisplay, self.totalCostGe, (self._floorHadBilling && self._floorFree));
                     self._floorCompletedCleanly = true;  // ★ 看门狗：强制回答成功
                     onDone(finalResp.content, self._floorTiming);
                     return finalResp.content;

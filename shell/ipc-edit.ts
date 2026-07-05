@@ -34,7 +34,13 @@ export function registerEditIpc(): void {
                 for (let i = 0; i < args.edits.length; i++) {
                     const ed = args.edits[i];
                     if (ed.replace_all) {
-                        const count = content.split(ed.find).length - 1;
+                        let count = content.split(ed.find).length - 1;
+                        // ★ Auto-fix: real \n → literal \n (AI sent literal \n via JSON, became real newline)
+                        if (count === 0 && ed.find.indexOf('\n') !== -1) {
+                            const escaped = ed.find.replace(/\n/g, '\\n');
+                            const count2 = content.split(escaped).length - 1;
+                            if (count2 > 0) { ed.find = escaped; count = count2; }
+                        }
                         if (count === 0) {
                             return `Error: edit #${i + 1} match failed — text not found in ${args.path.split(/[\\/]/).pop()}. (checked exact match)`;
                         }
@@ -61,6 +67,12 @@ export function registerEditIpc(): void {
                             matchLevel = 2;
                         }
                     }
+                    // L1c: real \n → escaped \n (AI sent literal \n via JSON, became real newline; file has literal backslash-n)
+                    if (idx === -1 && ed.find.indexOf('\n') !== -1) {
+                        const escaped = ed.find.replace(/\n/g, '\\n');
+                        idx = content.indexOf(escaped);
+                        if (idx !== -1) matchLevel = 1;
+                    }
                     // L2: whitespace normalization
                     if (idx === -1) {
                         const nf = aiNormalizeWhitespace(ed.find);
@@ -78,26 +90,23 @@ export function registerEditIpc(): void {
                             matchLevel = 3;
                         }
                     }
-                    // L3: line-by-line
+                    // L4: raw byte match (Buffer.indexOf, zero processing, last resort)
                     if (idx === -1) {
-                        const findLines = ed.find.split('\n');
-                        const contentLines = content.split('\n');
-                        for (let cl = 0; cl <= contentLines.length - findLines.length; cl++) {
-                            let allMatch = true;
-                            for (let fl = 0; fl < findLines.length; fl++) {
-                                if (contentLines[cl + fl].trim() !== findLines[fl].trim()) { allMatch = false; break; }
-                            }
-                            if (allMatch) {
-                                idx = contentLines.slice(0, cl).join('\n').length + (cl > 0 ? 1 : 0);
-                                matchLevel = 4;
-                                break;
-                            }
-                        }
+                        const findBuf = Buffer.from(ed.find, 'utf8');
+                        const contentBuf = Buffer.from(content, 'utf8');
+                        idx = contentBuf.indexOf(findBuf);
+                        if (idx !== -1) matchLevel = 5;
                     }
                     if (idx === -1) {
-                        let hint = '';
-                        if (ed.find.length > 80) hint = ' (long text — try shorter match)';
-                        return `Error: edit #${i + 1} match failed — text not found in ${args.path.split(/[\\/]/).pop()}.${hint}`;
+                        var _h = '';
+                        if (ed.find.length > 80) _h = ' (long text — try shorter match)';
+                        var _f20 = ed.find.slice(0, 40);
+                        var _pos = content.indexOf(_f20);
+                        if (_pos !== -1) {
+                            var _ln = (content.slice(0, _pos).match(/\n/g) || []).length + 1;
+                            _h += '\n💡 Find starts: "' + _f20.replace(/\n/g,'\\n') + '"... Occurs at line ' + _ln + '. Check whitespace/escaping difference.';
+                        }
+                        return `Error: edit #${i + 1} match failed — text not found in ${args.path.split(/[\\/]/).pop()}.${_h}`;
                     }
                     matchPlan.push({ edit: ed, match: { start: idx, end: idx + ed.find.length, matchLevel }, index: i });
                 }

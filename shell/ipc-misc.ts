@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import { URL } from 'url';
 import { BootConfig } from './boot';
 import { addAssetRoot, _assetFileWorkspaceRoots, diskFreeBatch } from './asset-protocol';
-import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize } from './window-manager';
+import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm } from './window-manager';
 import { StateStore } from './state-sqlite';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
@@ -113,8 +113,12 @@ export function registerMiscIpc(
         return ok;
     });
 
-    // ---- app quit (退出全部窗口) ----
+    // ---- app quit (退出全部窗口) — 菜单退出，跳过关闭确认 ——
     ipcMain.handle('qqqide:app:quitAll', async () => {
+        // ★ 给所有窗口打旁路标签，跳过 close 事件确认框
+        BrowserWindow.getAllWindows().forEach(function (w) {
+            if (!w.isDestroyed()) bypassCloseConfirm(w);
+        });
         // before-quit handler in shutdown.ts handles saveAllOpenWindows + lock cleanup
         app.quit();
     });

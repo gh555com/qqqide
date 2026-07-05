@@ -298,6 +298,25 @@ function _hashPrompt8(p) {
     return ('0000000' + Math.abs(h).toString(36)).slice(-8);
 }
 
+// ★ effect house 统一入口（数组 push，防同批次覆盖；0-cost 也建 house）
+function _addEffectCost(effectType, geCost, billingRequestId) {
+    if (geCost && typeof _addToolWgeCost === 'function') {
+        _addToolWgeCost(geCost);
+    }
+    try {
+        var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+        if (_ag) {
+            _ag._effectCostStore = _ag._effectCostStore || [];
+            _ag._effectCostStore.push({
+                effectType: effectType,
+                wgeCost: geCost || 0,
+                billingRequestId: billingRequestId || 0,
+                ts: new Date().toISOString()
+            });
+        }
+    } catch (_) { }
+}
+
 async function executeGenerateImage(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
@@ -359,17 +378,7 @@ async function executeGenerateImage(args) {
             return 'Image generation failed: no image URLs returned';
         }
 
-        // ★ 累加显示用计费 + 推送 effect house（Go 已权威记账，此处仅 UI 展示）
-        if (result.ge_cost && typeof _addToolWgeCost === 'function') {
-            _addToolWgeCost(result.ge_cost);
-            try {
-                var _ag12 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-                if (_ag12) {
-                    _ag12._effectCostStore = _ag12._effectCostStore || {};
-                    _ag12._effectCostStore['generate_image'] = { wgeCost: result.ge_cost, ts: new Date().toISOString() };
-                }
-            } catch (_) { }
-        }
+        _addEffectCost('generate_image', result.ge_cost || 0, result.billing_request_id || 0);
 
         // 3. 并行下载图片到本地
         if (outDir) {
@@ -623,16 +632,7 @@ async function executeAnalyzeImage(args) {
         // 缓存命中
         var content = submitResult.description || '';
         if (submitResult.description !== undefined && !submitResult.task_id) {
-            if (submitResult.ge_cost && typeof _addToolWgeCost === 'function') {
-                _addToolWgeCost(submitResult.ge_cost);
-                try {
-                    var _ag13 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-                    if (_ag13) {
-                        _ag13._effectCostStore = _ag13._effectCostStore || {};
-                        _ag13._effectCostStore['analyze_image'] = { wgeCost: submitResult.ge_cost, ts: new Date().toISOString() };
-                    }
-                } catch (_) { }
-            }
+            _addEffectCost('analyze_image', submitResult.ge_cost || 0, submitResult.billing_request_id || 0);
             if (!content) return 'Image analysis returned empty result';
         } else if (submitResult.task_id) {
             // 4. 经 AiGateway 轮询 SSE 结果
@@ -642,17 +642,7 @@ async function executeAnalyzeImage(args) {
             }
             content = pollResult.description;
 
-            // ★ 累加显示用计费 + 推送 effect house
-            if (pollResult.ge_cost && typeof _addToolWgeCost === 'function') {
-                _addToolWgeCost(pollResult.ge_cost);
-                try {
-                    var _ag14 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-                    if (_ag14) {
-                        _ag14._effectCostStore = _ag14._effectCostStore || {};
-                        _ag14._effectCostStore['analyze_image'] = { wgeCost: pollResult.ge_cost, ts: new Date().toISOString() };
-                    }
-                } catch (_) { }
-            }
+            _addEffectCost('analyze_image', pollResult.ge_cost || 0, pollResult.billing_request_id || 0);
         } else {
             return 'Image analysis failed: unexpected response';
         }
@@ -766,17 +756,7 @@ async function executeRemoveBackground(args) {
             return 'Remove background failed: ' + ((segResult && segResult.error) || 'no result');
         }
 
-        // ★ 累加显示用计费 + 推送 effect house
-        if (segResult.ge_cost && typeof _addToolWgeCost === 'function') {
-            _addToolWgeCost(segResult.ge_cost);
-            try {
-                var _ag11 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-                if (_ag11) {
-                    _ag11._effectCostStore = _ag11._effectCostStore || {};
-                    _ag11._effectCostStore['remove_background'] = { wgeCost: segResult.ge_cost, ts: new Date().toISOString() };
-                }
-            } catch (_) { }
-        }
+        _addEffectCost('remove_background', segResult.ge_cost || 0, segResult.billing_request_id || 0);
 
         // 3. 下载结果图片到本地
         var outDir = '';
@@ -828,17 +808,7 @@ async function executeSearchWeb(args) {
             return 'Search failed: ' + (data.error || 'unknown error');
         }
 
-        // ★ 累加显示用计费 + 推送 effect house（Go 已权威记账，此处仅 UI 展示）
-        if (data.ge_cost && typeof _addToolWgeCost === 'function') {
-            _addToolWgeCost(data.ge_cost);
-            try {
-                var _ag15 = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
-                if (_ag15) {
-                    _ag15._effectCostStore = _ag15._effectCostStore || {};
-                    _ag15._effectCostStore['search_web'] = { wgeCost: data.ge_cost, ts: new Date().toISOString() };
-                }
-            } catch (_) { }
-        }
+        _addEffectCost('search_web', data.ge_cost || 0, data.billing_request_id || 0);
 
         var results = data.results || [];
         if (results.length === 0) {

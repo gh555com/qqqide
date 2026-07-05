@@ -95,6 +95,18 @@ export function healthCheck(urlStr: string, timeoutMs: number, isOffline: boolea
     });
 }
 
+// ═══ 启动进度报告 — C 语言启动器通过此文件读取进度 ═══
+// portableRoot = {extractRoot}/gh555.com/ (绿色包 Electron 的 app root)
+// C 启动器读取: {extractRoot}/gh555.com/loading-status
+// 因此: path.join(portableRoot, 'loading-status') = C 启动器读的路径 ✅
+// 格式: "N|文字" (进度%|阶段描述) 或 "ready" (启动完成)
+function writeBootStatus(portableRoot: string, line: string): void {
+    if (!portableRoot) return;
+    try {
+        fs.writeFileSync(path.join(portableRoot, 'loading-status'), line, 'utf-8');
+    } catch (_) { }
+}
+
 // ----------------------------------------------------------------------------
 // Shell hot-update: download shell-out.tar.gz from remote, stage for bootstrap
 // ----------------------------------------------------------------------------
@@ -134,8 +146,24 @@ export async function checkAndDownloadShellUpdate(
         console.log('[shell-update] downloading', updateUrl);
         try { fs.mkdirSync(path.dirname(tarPath), { recursive: true }); } catch { }
 
+        writeBootStatus(portableRoot, '0|检查壳层更新…');
         const downloadOk = await new Promise<boolean>((resolve) => {
-            const dlopts: any = { timeout: 30000 };
+            var _trackDownload = function (resp: any, label: string) {
+                var total = parseInt(resp.headers['content-length'] || '0', 10);
+                var downloaded = 0;
+                var lastPct = 0;
+                var fstream = fs.createWriteStream(tarPath);
+                resp.on('data', function (chunk: any) {
+                    downloaded += chunk.length;
+                    if (total > 0) {
+                        var pct = Math.round(downloaded / total * 100);
+                        if (pct !== lastPct) { lastPct = pct; writeBootStatus(portableRoot, pct + '|' + label); }
+                    }
+                });
+                resp.pipe(fstream);
+                return fstream;
+            };
+            const dlopts: any = { timeout: 60000 };
             if (updateUrl.startsWith('https')) { dlopts.rejectUnauthorized = false; }
             const req = lib.get(updateUrl, dlopts, (res) => {
                 if (res.statusCode !== 200) {
@@ -143,14 +171,13 @@ export async function checkAndDownloadShellUpdate(
                         const loc = res.headers.location;
                         if (loc) {
                             const lib2 = loc.startsWith('https') ? https : http;
-                            const redirOpts: any = { timeout: 30000 };
+                            const redirOpts: any = { timeout: 60000 };
                             if (loc.startsWith('https')) { redirOpts.rejectUnauthorized = false; }
                             const req2 = lib2.get(loc, redirOpts, (res2) => {
                                 if (res2.statusCode !== 200) { resolve(false); return; }
-                                const file = fs.createWriteStream(tarPath);
-                                res2.pipe(file);
-                                file.on('finish', () => resolve(true));
-                                file.on('error', () => resolve(false));
+                                var f2 = _trackDownload(res2, '下载壳层更新…');
+                                f2.on('finish', () => resolve(true));
+                                f2.on('error', () => resolve(false));
                             });
                             req2.on('error', () => resolve(false));
                             req2.on('timeout', () => { req2.destroy(); resolve(false); });
@@ -160,10 +187,9 @@ export async function checkAndDownloadShellUpdate(
                     resolve(false);
                     return;
                 }
-                const file = fs.createWriteStream(tarPath);
-                res.pipe(file);
-                file.on('finish', () => resolve(true));
-                file.on('error', () => resolve(false));
+                var f1 = _trackDownload(res, '下载壳层更新…');
+                f1.on('finish', () => resolve(true));
+                f1.on('error', () => resolve(false));
             });
             req.on('error', () => resolve(false));
             req.on('timeout', () => { req.destroy(); resolve(false); });
@@ -323,10 +349,21 @@ async function backgroundCheckWebappUpdate(
         try { fs.mkdirSync(dlDir, { recursive: true }); } catch { }
         const tarPath = path.join(dlDir, 'server-app.tar.xz');
 
+        writeBootStatus(portableRoot, '0|下载载荷更新…');
         const dlOk = await new Promise<boolean>((resolve) => {
             const req = lib.get(dlUrl, { timeout: 120000 }, (res) => {
                 if (res.statusCode !== 200) { resolve(false); return; }
+                var total = parseInt(res.headers['content-length'] || '0', 10);
+                var downloaded = 0;
+                var lastPct = 0;
                 const file = fs.createWriteStream(tarPath);
+                res.on('data', function (chunk: any) {
+                    downloaded += chunk.length;
+                    if (total > 0) {
+                        var pct = Math.round(downloaded / total * 100);
+                        if (pct !== lastPct) { lastPct = pct; writeBootStatus(portableRoot, pct + '|下载载荷更新…'); }
+                    }
+                });
                 res.pipe(file);
                 file.on('finish', () => resolve(true));
                 file.on('error', () => resolve(false));
@@ -414,10 +451,8 @@ export async function loadRemoteWithCacheGuard(
         let panelTimer: NodeJS.Timeout | null = null;
         let progressTickId: NodeJS.Timeout | null = null;
         const PANEL_MAX_MS = 30000;     // 加载面板最多撑 30s
-        const LOADING_STATUS_PATH = portableRoot ? path.join(portableRoot, 'loading-status') : '';
         const writeLoadingStatus = (line: string) => {
-            if (!LOADING_STATUS_PATH) { return; }
-            try { fs.writeFileSync(LOADING_STATUS_PATH, line, 'utf-8'); } catch (_) { }
+            writeBootStatus(portableRoot, line);
         };
 
         // ── 资源追踪（进度条用）+ 耗时统计 + 冷却期 ──
@@ -727,6 +762,7 @@ export async function bootSequence(
     const bootT0 = Date.now();
     initBootLog(path.join(portableRoot, 'Data', 'Logs'));
     try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
+    writeBootStatus(portableRoot, '0|正在启动…');
 
     // ★ 开发模式：直连本地 dev-server，不走网络
     const DEV_URL = 'http://127.0.0.1:8090/qqqide/';

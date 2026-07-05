@@ -624,7 +624,7 @@ window._computeFileStats = _computeFileStats;
 //   floorNum 来自创建楼层时由 questStore.nextFloorNum() 分配的值，永久不变。
 //   ag._floorMeta[floorNum] 保存该楼层的未可变元数据（allTxtPath/floorStartIdx）。
 //   所有调用方必须传 floorNum，auto-save 传 ag._currentFloorNum，onDone 传完成的楼层号。
-async function _saveAgentQuestData(questId, ag, floorNum) {
+async function _saveAgentQuestData(questId, ag, floorNum, opts) {
     if (!questId || !ag) return;
     if (!floorNum) floorNum = ag._currentFloorNum;
 
@@ -642,7 +642,7 @@ async function _saveAgentQuestData(questId, ag, floorNum) {
 
         // ★ 统一 payload 构建（使用该楼层自己的 startIdx，非 ag._floorStartIdx 可能已变化）
         var floorPayload = (typeof window._a4BuildCompleteFloorPayload === 'function')
-            ? window._a4BuildCompleteFloorPayload(ag, floorNum)
+            ? window._a4BuildCompleteFloorPayload(ag, floorNum, opts)
             : {
                 question: (ag._lastUserInput && ag._lastUserInput.text) || '',
                 conversation: ag.conversation ? ag.conversation.slice(meta.floorStartIdx || 0) : [],

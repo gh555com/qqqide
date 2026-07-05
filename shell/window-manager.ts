@@ -82,6 +82,11 @@ export function registerGlobalKey(accel: string, id: string, mainWindow: Browser
 export const _windowProjectMap = new Map<number, string>();
 export const _projectWindowMap = new Map<string, number>();
 
+// ★ 关闭确认旁路：菜单退出时设置，跳过 Alt+F4 确认框
+export function bypassCloseConfirm(win: BrowserWindow): void {
+    (win as any).__qqqCloseBypass = true;
+}
+
 // ---- createWindow ----
 export function createWindow(
     portableRoot: string,
@@ -137,6 +142,35 @@ export function createWindow(
     win.once('ready-to-show', async () => {
         await restoreWindowBounds(win, stateStore);
         // ★ 不在 ready-to-show 就 show() — 等 boot 完成加载面板到 100% 才由 boot.ts 调用 show()
+    });
+
+    // ★ 关闭确认：Alt+F4 / 右上角 X → 弹确认框；菜单退出 → 跳过
+    //    用 destroy() 而非 close() 避免 preventDefault 循环
+    win.on('close', (e) => {
+        if ((win as any).__qqqCloseBypass) {
+            return; // 菜单退出已设旁路，直接放行
+        }
+        e.preventDefault();
+        try {
+            var { dialog } = require('electron');
+            dialog.showMessageBox(win, {
+                type: 'question',
+                buttons: ['取消', '确认退出'],
+                defaultId: 1,
+                cancelId: 0,
+                title: 'qqq IDE',
+                message: '确认退出？',
+            }).then(function (result: any) {
+                if (result && result.response === 1) {
+                    (win as any).__qqqCloseBypass = true;
+                    win.destroy();  // 跳过 close 事件，直通 closed → window-all-closed → app.quit()
+                }
+            });
+        } catch (_) {
+            // 如果 require 或 dialog 出错，直接放行
+            (win as any).__qqqCloseBypass = true;
+            win.destroy();
+        }
     });
 
     win.on('closed', () => {

@@ -14,7 +14,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 // ── 单一定义（唯一真理源）──────────────────────────────────────────────────
-export const APP_VERSION = '0.1.16';
+export const APP_VERSION = '0.1.22';
 
 export interface Semver {
     major: number;

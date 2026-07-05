@@ -4,7 +4,8 @@
 
 // ★ skipFloorCreation: true=恢复到死胡同楼层（不建新目录/不增 floorNum）
 async function sendMessage(skipFloorCreation) {
-    if (_activeAgent && _activeAgent._stopState === 'sending') return;
+    // ★ recovery 放行：_isRecovery=true 时允许通过 sending/fatal 闸门
+    if (_activeAgent && _activeAgent._stopState === 'sending' && !_activeAgent._isRecovery) return;
     if (_activeAgent && _activeAgent._stopState === 'stopping') return;
     // ★ recovery+fatal 放行（_isRecovery=true 时允许通过 fatal 闸门）
     if (_activeAgent && _activeAgent._stopState === 'fatal' && !_activeAgent._isRecovery) return;
@@ -538,6 +539,8 @@ async function sendMessage(skipFloorCreation) {
                             _targetDiv2._contentWrap.appendChild(_fDiv);
                         }
                     }
+                    // ★ 推进 _splitCursor 防 _a4BuildCompleteFloorPayload 重复追加同一段 _buf 尾巴
+                    if (_targetDiv2._buf) _targetDiv2._splitCursor = _targetDiv2._buf.length;
 
                     // 去掉所有 stream-para 类（流式临时标记，成品不需要）
                     var _spParas = _targetDiv2._contentWrap.querySelectorAll('.stream-para');
@@ -1181,11 +1184,11 @@ async function _attemptRecoverySend(questId, agent, linkEl) {
 
     // ★ 配置恢复标记：
     //   _isRecovery → agent-loop 为 userMsg 标 _system:true + 不增 totalFloors（同楼层追加）
+    //   ★ 不在此处设 setStopState('sending')：sendMessage 入口有 sending 闸门，
+    //     保持 fatal 态让 _isRecovery=true 通过闸门，sendMessage 内部统一 setStopState('sending')
     agent._isRecovery = true;
     agent._inRecoverySend = false;
     agent._recoveryInProgress = false;
-    // ★ 启封按钮：退出 fatal 态 → sendMessage 内 setStreaming(true) 可正确启用 Stop 按钮
-    agent.setStopState('sending');
 
     try {
         await sendMessage(true);
@@ -1246,8 +1249,8 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
     // ★ N-house 恢复：新楼层必须创建粉色气泡，解除 _deferRenderUntilHouse1
     //   该 flag 仅为 0-house 恢复设计（复用已有气泡），N-house 新建楼层不适用
     agent._deferRenderUntilHouse1 = false;
-    // ★ 启封按钮：退出 fatal 态 → sendMessage 内 setStreaming(true) 可正确启用 Stop 按钮
-    agent.setStopState('sending');
+    // ★ 不在此处设 setStopState('sending')：sendMessage 入口有 sending 闸门，
+    //   保持 fatal 态让 _isRecovery=true 通过闸门，sendMessage 内部统一 setStopState
 
     try {
         await sendMessage(false);  // ★ false = 创建新楼层

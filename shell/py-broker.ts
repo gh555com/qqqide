@@ -3,6 +3,9 @@
 // 启动时 spawn py-broker.py 作为常驻子进程，stdin/stdout JSON 行协议通信。
 // 用途：跨平台窗口标题改名（Win: ctypes / Mac: osascript / Linux: wmctrl）
 // Python 路径唯一真理源: engines/manifest.json → getComponentBin('python')
+//
+// ★ node-broker 优先：如果 koffi 可用（Windows），先走 node-broker 零子进程路径。
+//   失败回退 Python broker。
 // ============================================================================
 
 import { ChildProcess, spawn } from 'child_process';
@@ -10,6 +13,7 @@ import { BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { getComponentBin } from './component-checker';
+import { isNodeBrokerAvailable, renameDevToolsViaNodeBroker } from './node-broker';
 
 let _proc: ChildProcess | null = null;
 let _pending: Map<number, { resolve: (r: any) => void; reject: (e: any) => void; timer: NodeJS.Timeout }> = new Map();
@@ -124,8 +128,16 @@ function _sendCommand(action: string, params: Record<string, any> = {}): Promise
     });
 }
 
-/** 改名 DevTools 窗口 */
+/** 改名 DevTools 窗口 — node-broker 优先（koffi），失败回退 Python broker */
 export async function renameDevToolsViaBroker(mainWin: BrowserWindow, projName: string): Promise<void> {
+    // ── 路径 A: node-broker（koffi → Win32 API，零子进程）──
+    if (isNodeBrokerAvailable()) {
+        const ok = renameDevToolsViaNodeBroker(mainWin, projName);
+        if (ok) return;
+        console.log('[py-broker] node-broker failed, falling back to Python broker');
+    }
+
+    // ── 路径 B: Python broker（跨平台）──
     try {
         let mainHwnd = '0';
         try {
@@ -140,12 +152,12 @@ export async function renameDevToolsViaBroker(mainWin: BrowserWindow, projName: 
         const title = `「🔧」${projName}`;
         const result = await _sendCommand('rename-devtools', { mainHwnd, title });
         if (result.ok) {
-            console.log('[py-broker] renameDevTools OK: renamed=' + (result.renamed || 1) + ' title=' + title);
+            console.log('[py-broker] renameDevTools (py) OK: renamed=' + (result.renamed || 1) + ' title=' + title);
         } else {
-            console.log('[py-broker] renameDevTools FAILED:', result.error);
+            console.log('[py-broker] renameDevTools (py) FAILED:', result.error);
         }
     } catch (e: any) {
-        console.log('[py-broker] renameDevTools ERROR:', e.message || e);
+        console.log('[py-broker] renameDevTools (py) ERROR:', e.message || e);
     }
 }
 
@@ -160,4 +172,8 @@ export function stopPyBroker(): void {
     }, 2000);
 }
 
-export function isPyBrokerReady(): boolean { return _ready; }
+export function isPyBrokerReady(): boolean {
+    // node-broker 可用 → 总是就绪（不依赖 Python broker 启动）
+    if (isNodeBrokerAvailable()) return true;
+    return _ready;
+}
