@@ -3,11 +3,6 @@
   "bindings": [
     {
       "id": "tools.toggleDevTools",
-      "accel": "F12",
-      "scope": "window"
-    },
-    {
-      "id": "tools.toggleDevTools",
       "accel": "Ctrl+Shift+I",
       "scope": "window"
     },
