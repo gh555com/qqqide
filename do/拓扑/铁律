@@ -35,12 +35,16 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 核心层级: project→quest→floor→house→room。JSON: floor_id/quest_id。
   - 禁: qqqIde/qqqIDE/qqq-ide/qqq_ide/QQQ/turn_id/session_id。
 
-§6 热更新
-  - 载荷: 改 server-app/→Deploy→US→客户端 Ctrl+R 生效。
-  - URL: https://gh555.com/qqqide/（version.json + server-app.tar.xz）。旧 /qqq-app/ 已死，零兼容。
-  - 壳层(dev): 改 shell/*.ts→npm run build(2s)→重启 Electron。
-  - 壳层(prod): Deploy shell-out.tar.gz→客户端 bootstrap 自动拉取→下次启动生效。
-  - 引擎: ghrun upgrade 原子替换。
+§6 双轨自动热更新
+  - 壳层冷更: bootSequence→checkAndDownloadShellUpdate 自动下载 shell-out.tar.gz
+    → Data/Cache/staging/shell-out-next/ → 下次启动 bootstrap.js 原子替换 shell-out/
+  - 载荷热更: boot 完成 20s 后 backgroundCheckWebappUpdate 自动下载 server-app.tar.gz
+    → Data/webapp-staging/ → 下次启动 ensureLocalWebapp 原子替换 Data/webapp/
+  - 按钮更新: update-ui.js + bridge.update.upgradeShell()/apply() 走同一管线
+  - 版本跟踪: 两文件独立持久化 — Data/shell-version + Data/webapp-version。
+    check() 用 _shellVersion(APP_VERSION) vs server shell，_readWebappVersion() vs server webapp
+  - 服务器产物: Deploy→version.json + shell-out.tar.gz + server-app.tar.gz
+  - deploy.js 第4步从 version.ts 读 APP_VERSION 生成 version.json，cp 一份为 server-app.tar.gz
 
 §7 环境 / §8 便携
   - dev端口8090。启动清除 ELECTRON_RUN_AS_NODE/VSCODE_* 环境变量。
@@ -284,7 +288,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - ★ _sending 纯派生（defineProperty 仅 getter）：!!(_activeAgent && _activeAgent._stopState === 'sending' && !_activeAgent._floorCompletedCleanly)。零存储零 setter。
     _floorCompletedCleanly 守卫防后台已完结 agent 假报 sending。
   - ★ 每quest独立沙箱: _queue/_queuePaused 全部 per-agent。
-  - 彗星电子钟: 读 parent.__qqq_agentPool，200ms 滴答。_tickCometClocks 以 data-qid 定位 pool[qid]。豆腐块仅显 questActiveId 对应 agent 时钟（不跨面板串号），下拉各 quest 各算各秒数
+  - 彗星电子钟: 判定读 parent.__qqq_buildingRegistry（跨面板唯一真理），计时读 parent.__qqq_agentPool._floorStartPerf（缺失 fallback registry.startedAt）。200ms 滴答。_tickCometClocks 以 data-qid 定位。插入/存在/渲染三处判断全部用 registry，agent pool 只取耗时数据，禁用于逻辑分支。豆腐块仅显 questActiveId，下拉各 quest 独立计时。
   - 生命周期: registerBuilding→unregisterBuilding。finally 块兜底防僵尸。
 
 §46c 预渲染 all.json — 一次渲染永久不变

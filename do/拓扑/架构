@@ -31,6 +31,17 @@ qqq-shell-v2 架构 — 代码若与此冲突，以本文档为准。
 └──────────────────────────────────────┘
 
 
+双轨自动更新系统 — shell 冷更 + webapp 热更
+---------------------------------------------------------------------
+· 壳层冷更: bootstrap.js 启动前检查 staging/shell-out-next/ → 原子替换 shell-out/
+  触发: bootSequence→checkAndDownloadShellUpdate 自动下载到 Data/Cache/staging/
+· 载荷热更: bootSequence 完成后 20s → backgroundCheckWebappUpdate → 下载 server-app.tar.gz
+  → 解压到 Data/webapp-staging/ → 下次启动 ensureLocalWebapp 原子替换 Data/webapp/
+· 按钮更新: update-ui.js 手动触发 upgradeShell() / apply()（同一条管线）
+· 版本跟踪: shell-version / webapp-version 两文件独立持久化
+· 版本比较: version.ts decideUpdate 语义比较，防降级
+
+
 持久化层级 — global → project → quest → floor → house → room
 ------------------------------------------------------------------------
 · global (qgs): 跨项目（最近文件夹/主题/语言/剪切板）

@@ -267,10 +267,15 @@ function ensureLocalWebapp(portableRoot: string): string | null {
 
     // Already exists (from previous boot or copy)
     if (fs.existsSync(path.join(localDir, 'index.html'))) {
+        // ★ 确保 webapp-version 存在（新便携包首次启动时 bootstrap 已替换壳，但 webapp 标记可能缺失）
+        const verPath = path.join(portableRoot, 'Data', 'webapp-version');
+        if (!fs.existsSync(verPath)) {
+            try { fs.writeFileSync(verPath, APP_VERSION, 'utf8'); } catch { }
+        }
         return localDir;
     }
 
-    // Copy from package (resources/app/webapp/ or resources/app/server-app/)
+    // Copy from packagege (resources/app/webapp/ or resources/app/server-app/)
     const candidates: string[] = [
         path.join(portableRoot, 'resources', 'app', 'webapp'),
         path.join(portableRoot, 'resources', 'app', 'server-app'),
@@ -279,9 +284,11 @@ function ensureLocalWebapp(portableRoot: string): string | null {
     ];
     for (const src of candidates) {
         if (fs.existsSync(path.join(src, 'index.html'))) {
-            try {
+               try {
                 fs.cpSync(src, localDir, { recursive: true });
                 bootLog('webapp: copied from package → ' + localDir);
+                // ★ 写入 webapp-version 标记，确保 update-service 能读到正确本地版本
+                try { fs.writeFileSync(path.join(portableRoot, 'Data', 'webapp-version'), APP_VERSION, 'utf8'); } catch { }
                 return localDir;
             } catch (e: any) {
                 bootLog('webapp: copy failed — ' + (e.message || e));
