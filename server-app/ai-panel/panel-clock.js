@@ -458,14 +458,17 @@ async function renderQuestDrop() {
             line.appendChild(prefix);
             line.appendChild(title);
             item.appendChild(line);
-            // ★ 彗星电子钟：本地集合（IPC同步）为主
+            item.onclick = function (e) { e.stopPropagation(); closeQuestDrop(); switchQuest(s.id); };
+            body.appendChild(item);
+            // ★ 彗星电子钟：必须在 body.appendChild 之后插入，确保时钟在 document 中。
+            //    否则 _tickCometClocks 在 _ensureCometClockTicking 的首次 tick 中 querySelectorAll 找不到。
             var _bq = window.__qqq_localBuildingQuests || {};
-            if (_bq[s.id]) {
+            var _reg = window.parent && window.parent.__qqq_buildingRegistry;
+            var _isBld = _bq[s.id] || (_reg && _reg[s.id] && _reg[s.id].stopState === 'sending');
+            if (_isBld) {
                 console.log('[comet] renderQuestDrop insert clock: qid=' + s.id + ' panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?'));
                 _insertCometClock(prefix, s.id);
             }
-            item.onclick = function (e) { e.stopPropagation(); closeQuestDrop(); switchQuest(s.id); };
-            body.appendChild(item);
         })(filtered[i]);
     }
     if (displayCount < filtered.length) {
@@ -602,21 +605,39 @@ function _tickCometClocks() {
         clk.style.display = '';
         hasVisible = true;
     }
-    // 无可显示时钟 → 停定时器
-    if (!hasVisible && _cometClockTimer) {
-        clearInterval(_cometClockTimer);
-        _cometClockTimer = null;
-    }
+    // ★ 定时器不再自动停止。由 _maybeStopCometClockTimer 基于建楼状态显式管理。
+    //    旧自动停止逻辑：无可显示时钟→停定时器，但时钟可能因 DOM 未挂载而暂时不可见，
+    //    导致定时器永久死亡（_ensureCometClockTicking 的 gate 已过，无人重启）。
 }
 
 function _ensureCometClockTicking() {
     if (!_cometClockTimer) {
         _cometClockTimer = setInterval(_tickCometClocks, 200);
-        _tickCometClocks();
+        // ★ 延迟 50ms 首次 tick：给 DOM 挂载留时间（renderQuestDrop 先插钟后挂 body）。
+        //    tofu 路径（已挂载）50ms 延迟肉眼无感。
+        setTimeout(_tickCometClocks, 50);
     }
 }
 
-// ★ 在 prefix 元素内插入彗星电子钟
+// ★ 检查是否还有建楼中的 quest，没有则停止彗星电子钟定时器
+function _maybeStopCometClockTimer() {
+    var localBQ = window.__qqq_localBuildingQuests || {};
+    var reg = window.parent && window.parent.__qqq_buildingRegistry;
+    var hasAny = false;
+    for (var k in localBQ) {
+        if (localBQ[k]) { hasAny = true; break; }
+    }
+    if (!hasAny && reg) {
+        for (var k2 in reg) {
+            if (reg[k2] && reg[k2].stopState === 'sending') { hasAny = true; break; }
+        }
+    }
+    if (!hasAny) {
+        _stopQuestClock();
+    }
+}
+
+// ★ 在 prefix 元素内插入彗星电子钟子钟
 //   如已存在且 qid 不同 → 移除旧钟重建（防 data-qid 串号）
 function _insertCometClock(prefixEl, qid) {
     if (!prefixEl) return;
@@ -677,7 +698,8 @@ async function updateQuestTofu() {
         if (pen) pen.style.display = '';
         // ★ 彗星电子钟：本地集合（IPC同步）为主，注册表兜底
         var _bq2 = window.__qqq_localBuildingQuests || {};
-        var isBuilding = _bq2[questActiveId];
+        var _reg2 = window.parent && window.parent.__qqq_buildingRegistry;
+        var isBuilding = _bq2[questActiveId] || (_reg2 && _reg2[questActiveId] && _reg2[questActiveId].stopState === 'sending');
         if (isBuilding) {
             _insertCometClock(prefixEl, questActiveId);
         } else {

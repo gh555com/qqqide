@@ -407,6 +407,10 @@
   function _syncTheme() {
     if (!_$panel || _$panel.style.display === 'none') return;
     _renderPanel(); // 重绘以获取最新主题色
+    // 同时刷新 tier info 弹出窗（如果打开）
+    if (_tierOverlay && _tierOverlay.style.display !== 'none' && _tierOverlay.style.display !== '') {
+      _renderTierPopup();
+    }
   }
 
   // ── 初始化 ──
@@ -430,6 +434,121 @@
     });
   } else {
     setTimeout(init, 50);
+  }
+
+  // ════════════════════════════════════════════════════
+  // Tier Info 弹出窗（AI 面板 A 按钮触发，居中窗口）
+  // ════════════════════════════════════════════════════
+
+  var _tierOverlay = null, _tierPanel = null, _tierExpanded = false;
+
+  function _ensureTierPopup() {
+    if (_tierOverlay) return;
+    _tierOverlay = document.createElement('div');
+    _tierOverlay.style.cssText = 'display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.45); z-index:9998;';
+    _tierOverlay.addEventListener('click', function(e) {
+      if (e.target === _tierOverlay) _closeTierPopup();
+    });
+    _tierPanel = document.createElement('div');
+    _tierOverlay.appendChild(_tierPanel);
+    document.body.appendChild(_tierOverlay);
+  }
+
+  window.openTierPopup = function() {
+    _ensureTierPopup();
+    _tierExpanded = false;
+    _renderTierPopup();
+    _tierOverlay.style.display = '';
+    document.addEventListener('keydown', _tierOnEsc);
+  };
+
+  function _closeTierPopup() {
+    if (_tierOverlay) _tierOverlay.style.display = 'none';
+    document.removeEventListener('keydown', _tierOnEsc);
+  }
+
+  function _tierOnEsc(e) {
+    if (e.key === 'Escape') _closeTierPopup();
+  }
+
+  function _expandTierPopup() {
+    _tierExpanded = true;
+    _renderTierPopup();
+    _tierPanel.scrollTop = 0;
+  }
+
+  function _renderTierPopup() {
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var bg = isDark ? '#1e1e1e' : '#fdf6e3';
+    var text = isDark ? '#dcd8d0' : '#656360';
+    var textDim = isDark ? '#6a6660' : '#a8a6a2';
+    var border = isDark ? '#333333' : '#d3c6aa';
+    var accent = isDark ? '#d4a017' : '#e8a030';
+    var red = isDark ? '#ff4444' : '#dc322f';
+
+    var _w = _tierExpanded ? '1040px' : '520px';
+    _tierPanel.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:' + _w + '; max-width:92vw; max-height:82vh; overflow-y:auto; z-index:9999; padding:0; border-radius:6px; box-shadow:0 8px 32px rgba(0,0,0,0.35); background:' + bg + ';';
+
+    var html = '';
+    // 标题行
+    html += '<div style="padding:14px 20px; border-bottom:1px solid ' + border + '; display:flex; align-items:center; justify-content:space-between;">';
+    html += '<span style="font-size:15px; font-weight:bold; color:' + text + ';">AI 等级说明</span>';
+    html += '<button id="tier-popup-close" style="width:24px; height:24px; border:1px solid ' + border + '; border-radius:3px; background:transparent; color:' + textDim + '; font-size:14px; line-height:22px; text-align:center; cursor:pointer;">✕</button>';
+    html += '</div>';
+
+    html += '<div style="padding:16px 20px; font-size:13px; line-height:1.9; color:' + text + ';">';
+
+    if (!_tierExpanded) {
+      // ── 收拢态 ──
+      html += '<div style="margin-bottom:12px;"><b style="color:' + accent + ';">1档：</b>最低智能，快、便宜。</div>';
+      html += '<div style="margin-bottom:14px;"><b style="color:' + accent + ';">6档：</b>最高智能，慢、贵。</div>';
+      html += '<div style="margin-bottom:4px;">qqqide 不再提供自动换档功能，';
+      html += '<span id="tier-reason-link" style="color:' + red + '; text-decoration:underline; cursor:pointer;">理由</span>';
+      html += '</div>';
+    } else {
+      // ── 展开态：完整说明 ──
+      html += '<div style="margin-bottom:10px;"><b style="color:' + accent + ';">1档：</b>最低智能，快、便宜。</div>';
+      html += '<div style="margin-bottom:14px;"><b style="color:' + accent + ';">6档：</b>最高智能，慢、贵。</div>';
+      html += '<div style="margin-bottom:10px;">qqqide 不再提供自动换档功能，理由：</div>';
+
+      html += '<div style="color:' + textDim + '; line-height:1.8;">';
+      html += '<p style="margin-top:0;">为了方便你理解，我们划分出了如下架构：</p>';
+      html += '<p style="text-align:center; font-weight:bold; color:' + text + ';">project → quest → floor → house → room</p>';
+      html += '<p>一个 project 就是一个项目你也可以理解为就是一个文件夹，一个 quest 就是一个任务，你可以在一个任务里盖多层楼，你每发送出去一次消息就等于是盖了一层楼，也就是一个 floor，那你同时可以开多个任务（quest），每一个任务又可以盖多层楼，这很好理解。</p>';
+      html += '<p>而在你看不到的后台，其实每一层楼都会跟服务器往返多次消息，也就是表面上你只按了一次发送，但实际上会做多次发送、和接收。</p>';
+      html += '<p>为什么会那样？假想一种情况，比如你让服务器改一个超大项目的代码，服务器大概会多次返回查询指定代码的指令，以尽可能地了解你的本地代码，服务器的这种要求可以并行也可以串行，对于串行，服务器发送一个指令回来，你本地接收指令、按指令查询指令要求的代码（结果），再将结果发送回服务器，这样的一来一回我们叫做一个 <b>house</b>。</p>';
+      html += '<p>而实际上，服务器可以一次提出多个要求，也就是服务器送回一次消息，你本地会「并行地」去执行多个指令，那么每一个指令我们叫他一个 <b>room</b>，每一个 room 返回一个结果，那看上去「多间 room」就组成了一个 house（对应了跟服务器的一来一回）。但非常重要的一点是，表面上看你只按了一次发送按钮：house 和 room 都是静默、自动地进行的（与服务器的交互）。</p>';
+      html += '<p>最终看上去，一个 project 可以包含多个 quest，一个 quest 可以包含多个 floor，一个 floor 可以包含多个 house，一个 house 可以包含多个 room。</p>';
+      html += '<p style="margin-top:18px;"><b style="color:' + text + ';">你可以休息一会儿，因为接下来就是重点。</b></p>';
+      html += '<p>首先，你最难接受但必须接受的一个事实是：</p>';
+      html += '<p style="font-weight:bold; border-left:3px solid ' + red + '; padding-left:12px; color:' + text + ';">别说 project 和 quest，哪怕是同一个 floor 里面的不同 house（对应物理上的一次服务器往返），它们请求的可能都是物理隔绝的服务器（大模型），简单讲就是，服务器那边即便有缓存，但你也要假设服务器那边根本不会存在任何关于你本次任务（project、quest 或 floor）的任何记忆，也就是你首先必须要颠覆的一点认知是：<span style="color:' + red + ';">AI 根本不存在记忆。</span></p>';
+      html += '<p>那你可能好奇，AI 是怎么记住 50 层楼之前你们的聊天内容的？你很难接受但必须接受的事实是：每一间 house，也就是哪怕是最细分的一次服务器往返，你发送给服务器的，都尽可能地带上了你之前每一层楼的所有对话、甚至工具查询结果，注意，每一次最细分的服务器往返，代表你即便不是按发送按钮而是后台自动静默的 house 级别的往返，都会尽量带上之前的一切，更别说 floor 级别的发送。而「一切」是指从第一层楼到现在的一切对话、工具调用结果，那样的一个集合也就是「上下文」。</p>';
+      html += '<p>你的第一个问题是，那为什么没有盖两层楼就把 1M 的上下文总空间撑爆，主要原因是，根据 IDE 的策略选择不同，即便最保守的 AI IDE，也不会把 200KB 的源代码查询结果直接放进上下文，实际上大概只会截取里面 2KB 的关键行代码，而其他的工具结果，比如日志，基本都会被做成摘要，同样回到 KB 级别。</p>';
+      html += '<p>而且 AI IDE 基本都会有自己的压缩策略，qqqide 的压缩策略是保留最近 6 层楼的完整信息，假设压缩时在最近 6 层楼之前有 200 层楼，那那 200 层楼会被压缩成最大 32KB 的摘要。压缩是一次专门的 AI 请求，就比如给 AI 1M 的文本（上下文），要求 AI 总结，返回不超过 32KB 的文本。</p>';
+      html += '<p>我希望这就解释了，为什么在一个 quest 里，当你楼修到第 5 层，你放着不管过半年回来，你再按一次发送按钮，AI 还能跟你接着聊（似乎之前的一切它都记得），即便过了半年、模型早已更新换代……因为大模型是无状态的（不会保存关于你的任何记录），而你每一次都会发送完整上下文（它们不是储存在你本地硬盘，就是储存在中转服务器的硬盘里）。</p>';
+      html += '<p>你可能还有一点不相信：「AI（大模型）总应该记得些什么？」。没有，什么都不记得。你认为的那些「记得」，只是你本地硬盘或者中转服务器偷偷在记的「小本本」，下次按发送按钮小本本会一起发给 AI。</p>';
+      html += '<p style="margin-top:18px;">ok，有了上面的认知，你可以得到第一个让你放心的结论：</p>';
+      html += '<p style="font-weight:bold; border-left:3px solid ' + accent + '; padding-left:12px; color:' + text + ';">「无论怎样切换模型档位都不会导致记忆丢失」</p>';
+      html += '<p>即：在任何时间点切换模型档位 → 记忆不会丢失 → 但会左右中间推论的质量。</p>';
+      html += '<p style="margin-top:18px;">回到最原始的问题：qqqide 为什么不再提供自动换档功能。</p>';
+      html += '<p>答案有两点：</p>';
+      html += '<p><b>1、</b>不能保证「用最高的智能去写最重要的代码」，我们知道这一点至关重要，但总会有边界情况。</p>';
+      html += '<p><b>2、</b>自动换档本质上是让最高智能的 AI 来评估问题复杂度（再来选择实际干活的 AI），但长远来看，每一层楼都会凭空增加至少一次「最高智能 AI」的调用，这是一笔长远账单，但如果反之，我们不用最高智能去做评估，又会增加第一点对应的风险。</p>';
+      html += '<p style="font-weight:bold; margin-top:16px;">最终 qqqide 决定做一个更好用的换档杆，将换档权，百分百地只交在你手里。</p>';
+      html += '</div>';
+    }
+
+    html += '</div>';
+    _tierPanel.innerHTML = html;
+    _tierPanel.style.backgroundColor = bg;
+
+    // 绑定事件
+    var $close = document.getElementById('tier-popup-close');
+    if ($close) $close.addEventListener('click', _closeTierPopup);
+    if (!_tierExpanded) {
+      var link = document.getElementById('tier-reason-link');
+      if (link) link.addEventListener('click', _expandTierPopup);
+    }
   }
 
   // ── 导出 API ──

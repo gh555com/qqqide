@@ -111,6 +111,9 @@ function _fmtMsg(m){
   if(m.level==='verbose')return'';
   if(m.source==='violation'||m.source==='deprecation'||m.source==='recommendation'||m.source==='intervention')return'';
   var txt=m.messageText||'';
+  // ★ 提取状态码（在参数拼接之前，原始 txt 最可靠）
+  var _statusCode='';
+  var _cms=txt.match(/status of\s+(\d+)/i);if(_cms)_statusCode=_cms[1];
   // 拼接所有参数
   try{var pm=m.parameters||[];for(var pi=1;pi<pm.length;pi++){var pv=pm[pi];var pvs=typeof pv.value==='string'?pv.value:typeof pv==='string'?pv:'';if(pvs)txt+=' '+pvs;}}catch(e){}
   // 递归展开栈帧（parent 链含异步帧）
@@ -146,8 +149,8 @@ function _fmtMsg(m){
 
     // 清洗文本: 不同错误类型不同格式
     var cleanTxt=txt;
-    if(/^Failed to load resource:\\s*/i.test(txt)){cleanTxt=txt.replace(/^Failed to load resource:\\s*/i,'');}
-    else{var _sc=txt.match(/status of\\s+(\\d+)/i);if(_sc)cleanTxt=_sc[1];}
+    if(/^Failed to load resource:\s*/i.test(txt)){cleanTxt=txt.replace(/^Failed to load resource:\s*/i,'');}
+    else if(_statusCode){cleanTxt=_statusCode;}
 
     lines.push((srcFile&&srcLine?srcFile+':'+srcLine+'          ':'')+method+nUrl+' '+cleanTxt);
     for(var ni=0;ni<cfs.length;ni++){
@@ -161,9 +164,13 @@ function _fmtMsg(m){
     var f0=cfs[0];
     var fu=((f0.url||'').replace(/\\\\/g,'/').split('/').pop())||f0.url;
     lines.push((fu?fu+':'+(f0.lineNumber||0)+' ':'')+txt);
-    for(var i=1;i<cfs.length;i++){
-      var cf=cfs[i];
-      lines.push('    '+(cf.functionName||'(anonymous)')+' @ '+(((cf.url||'').replace(/\\\\/g,'/').split('/').pop())||cf.url)+':'+(cf.lineNumber||0));
+    // 仅 warning/error 输出完整栈帧（与参考对齐：log/info 不输出栈）
+    var _lv=(m.level||'').toLowerCase();
+    if(_lv==='warning'||_lv==='error'||_lv==='warn'){
+      for(var i=1;i<cfs.length;i++){
+        var cf=cfs[i];
+        lines.push('    '+(cf.functionName||'(anonymous)')+' @ '+(((cf.url||'').replace(/\\\\/g,'/').split('/').pop())||cf.url)+':'+(cf.lineNumber||0));
+      }
     }
   }else{
     var uu=(m.url||'').replace(/\\\\/g,'/'),file=uu.split('/').pop()||uu,ln=m.line||0;

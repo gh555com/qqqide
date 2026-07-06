@@ -18,6 +18,19 @@ async function _handleSyncMessage(msg) {
         if (typeof closeQuestDrop === 'function') closeQuestDrop();  // ★ 关闭旧下拉，确保下次 hover 全新渲染含新 quest
         return;
     }
+    // ★ 彗星电子钟：跨面板建楼状态同步 — 必须在 _isDraft 检查之前
+    //   否则 draft 面板的广播全被拦截，永远收不到其他面板的建楼通知
+    if (msg.type === 'building-changed') {
+        (window.__qqq_localBuildingQuests = window.__qqq_localBuildingQuests || {})[msg.questId] = !!msg.building;
+        console.log('[comet] building-changed recv: qid=' + msg.questId + ' building=' + !!msg.building + ' panel=' + _panelId);
+        if (typeof updateQuestTofu === 'function') updateQuestTofu();
+        if (typeof _updateQuestClock === 'function') _updateQuestClock();
+        // ★ 关闭已打开的下拉 → 下次 hover 全新渲染（含新的建楼状态）
+        if (typeof closeQuestDrop === 'function') closeQuestDrop();
+        // ★ 建楼结束后检查是否还有活跃建楼 quest，没有则停止彗星电子钟定时器
+        if (!msg.building && typeof _maybeStopCometClockTimer === 'function') _maybeStopCometClockTimer();
+        return;
+    }
     if (_isDraft(questActiveId)) return;
     // [silent] sync recv
     try {
@@ -62,16 +75,6 @@ async function _handleSyncMessage(msg) {
                 break;
             case 'owner-released':
                 // 另一面板释放了 quest — 不做任何事（我们不自动加载）
-                break;
-            case 'building-changed':
-                // ★ 跨面板彗星电子钟同步：另一面板建楼状态变化 → 更新本地集合 + 豆腐时钟
-                //   本地集合通过 IPC 消息同步（不依赖 parent.__qqq_buildingRegistry 跨 iframe 属性共享）
-                (window.__qqq_localBuildingQuests = window.__qqq_localBuildingQuests || {})[msg.questId] = !!msg.building;
-                console.log('[comet] building-changed recv: qid=' + msg.questId + ' building=' + !!msg.building + ' panel=' + _panelId);
-                if (typeof updateQuestTofu === 'function') updateQuestTofu();
-                if (typeof _updateQuestClock === 'function') _updateQuestClock();
-                // ★ 关闭已打开的下拉 → 下次 hover 全新渲染（含新的建楼状态）
-                if (typeof closeQuestDrop === 'function') closeQuestDrop();
                 break;
         }
     } catch (e) {
