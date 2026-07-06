@@ -8,7 +8,7 @@ import * as fs from 'fs';
 import { URL } from 'url';
 import { BootConfig } from './boot';
 import { addAssetRoot, _assetFileWorkspaceRoots, diskFreeBatch } from './asset-protocol';
-import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm } from './window-manager';
+import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm, updateWingMinSize } from './window-manager';
 import { StateStore } from './state-sqlite';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
@@ -132,11 +132,12 @@ export function registerMiscIpc(
         if (win && !win.isDestroyed()) { win.close(); }
     });
     // ★ 关闭确认回调：renderer 弹窗确认后调用，绕过 close 事件
+    // ★ 仅关闭当前窗口，不影响其他项目窗口
     ipcMain.handle('qqqide:window:close-confirmed', (e) => {
         const win = BrowserWindow.fromWebContents(e.sender);
         if (win && !win.isDestroyed()) {
             bypassCloseConfirm(win);
-            win.destroy();
+            win.close(); // 走正常关闭管线，__qqqCloseBypass 已设，不会再次弹确认框
         }
     });
     ipcMain.handle('qqqide:window:isMaximized', (e) => BrowserWindow.fromWebContents(e.sender)?.isMaximized() ?? false);
@@ -285,18 +286,24 @@ export function registerMiscIpc(
         win.setBounds({ x: newX, y: b.y, width: newW, height: b.height });
     });
 
+    // ---- wing state: renderer tells main process which wings are open → update min size ----
+    ipcMain.handle('qqqide:wing:state', async (e, leftOpen: boolean, rightOpen: boolean) => {
+        const win = BrowserWindow.fromWebContents(e.sender);
+        updateWingMinSize(win, leftOpen, rightOpen);
+    });
+
     // ---- editor font size (was zoom — now controls text size, not window scale) ----
     // adjust is the hot path (every repeat tick) — no persist, just memory + broadcast
     ipcMain.handle('qqqide:zoom:get', () => editorFontSize);
     ipcMain.handle('qqqide:zoom:set', (_e, size: number) => {
-        const s = Math.max(6, Math.min(128, Math.round(Number(size))));
+        const s = Math.max(1, Math.min(128, Math.round(Number(size))));
         setEditorFontSize(s);
         saveEditorFontSize(stateStore);
         broadcastEditorFontSize(s);
         return s;
     });
     ipcMain.handle('qqqide:zoom:adjust', (_e, delta: number) => {
-        const next = Math.max(6, Math.min(128, Math.round(editorFontSize + Number(delta))));
+        const next = Math.max(1, Math.min(128, Math.round(editorFontSize + Number(delta))));
         setEditorFontSize(next);
         // ★ no saveEditorFontSize here — every adjust tick must be FAST (memory + broadcast only)
         broadcastEditorFontSize(next);

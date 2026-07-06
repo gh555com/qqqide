@@ -10,7 +10,7 @@
   const SCHEMA = {
     items: [
       {
-        label: 'qqq IDE',
+        label: 'qqqide',
         sub: [
           { label: '开新窗口', i18n: 'shell.menu.fileNewWindow', cmd: 'file.newWindow', hasRecent: true },
           { label: '开发者工具', i18n: 'shell.menu.devTools', cmd: 'tools.toggleDevTools' },

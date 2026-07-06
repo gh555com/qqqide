@@ -349,8 +349,9 @@ async function sendMessage(skipFloorCreation) {
 
     // ═══ E-Flow:ow: Expert Document Framework trigger ═══
     // First floor of first quest (100%) or random 10% on other floors
+    // ★ Only center panel (panel=1, main project) triggers. Wings never trigger.
     try {
-        if (typeof ExpertFlow !== 'undefined' && root2) {
+        if (typeof ExpertFlow !== 'undefined' && root2 && typeof _panelId !== 'undefined' && _panelId === 1) {
             var _firstQuest = false;
             try {
                 var _allQuests = await questStore.list();

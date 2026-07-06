@@ -518,6 +518,7 @@ function _shellRenderMenubarLabels(schema) {
     span.style.cssText =
       'padding:0 10px; color:var(--text-primary); ' +
       'user-select:none; height:100%; display:inline-flex; align-items:center; ' +
+      'white-space:nowrap; flex-shrink:0; ' +
       'border-right:1px solid var(--border-color); ' +
       'outline:1px solid transparent; outline-offset:-1px;';
     (function (sp) {

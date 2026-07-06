@@ -34,7 +34,7 @@ async function generateFloorTxt(ag, questId) {
         if (!(window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.fs)) return;
         var bridge = window.parent.qqqideBridge;
         await bridge.fs.mkdir(dir);
-        var timing = ag._floorTiming;iming;
+        var timing = ag._floorTiming;
         var lines = [];
 
         // ═══ 计算 body size ═══
@@ -239,8 +239,7 @@ async function _appendToSearchQuest(questId, floorNum) {
 
         // 提取时间戳
         var now = new Date();
-        var floorTs = now;ow;
-        if (questMeta && questMeta.floorTimings) {
+        var flvar floorTs = now;    if (questMeta && questMeta.floorTimings) {
             for (var ti = 0; ti < questMeta.floorTimings.length; ti++) {
                 var ft = questMeta.floorTimings[ti];
                 if (ft.floorIndex === floorNum && ft.finishedAt) {

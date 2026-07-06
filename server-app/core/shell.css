@@ -129,7 +129,15 @@ body {
   align-items: center;
   height: 100%;
   padding-left: 0;
+  flex-shrink: 0;
+  min-width: fit-content;
   -webkit-app-region: no-drag;
+}
+
+/* 菜单标签 — 永不变形、永不换行 */
+.qqq-menubar-label {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* 菜单行1 分割空气墙（8px）— 可拖拽窗口 */

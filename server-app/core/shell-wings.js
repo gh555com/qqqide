@@ -115,6 +115,13 @@ function bootBulbs() {
       }
     } catch (e) { console.warn('[wings] adjustBounds error:', e); }
 
+    // ★ 通知主进程更新最小窗口尺寸（防止拖拽缩小到中间面板阈值以下）
+    try {
+      if (bridge && bridge.window && bridge.window.setWingState) {
+        bridge.window.setWingState(_shellBulbState.left, _shellBulbState.right);
+      }
+    } catch (e) { console.warn('[wings] setWingState error:', e); }
+
     // ③ 窗口已就位，下一帧统一批处理 CSS，再等一帧收遮罩
     requestAnimationFrame(function () {
       _applyWings();
@@ -136,4 +143,11 @@ function bootBulbs() {
   _applyWings();
   // 预初始化左右翼 iframe（width:0 容器内静默加载）
   _preinitWings();
+
+  // ★ 启动时同步翼状态到主进程，确保最小窗口尺寸正确
+  try {
+    if (bridge && bridge.window && bridge.window.setWingState) {
+      bridge.window.setWingState(_shellBulbState.left, _shellBulbState.right);
+    }
+  } catch (e) { console.warn('[wings] init setWingState error:', e); }
 }
