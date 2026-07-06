@@ -158,7 +158,7 @@
         if (!$esSnap) return;
         $esSnap.textContent = snapLabel || '';
     }
-    function updateDiffStatsfStats() {
+    function updateDiffStats() {
         // 仅内部使用，不再显示状态栏
     }
 

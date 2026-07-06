@@ -39,6 +39,18 @@ export function broadcastEditorFontSize(size: number): void {
     }
 }
 
+// ---- Wing panel constants (must match shell-wings.js _shAiW) ----
+export const WING_WIDTH = 389;
+export const CENTER_MIN_W = 1100;
+export const CENTER_MIN_H = 800;
+
+/** Update window minimum size based on which wings are open */
+export function updateWingMinSize(win: BrowserWindow, leftOpen: boolean, rightOpen: boolean): void {
+    if (!win || win.isDestroyed()) return;
+    const wingW = (leftOpen ? WING_WIDTH : 0) + (rightOpen ? WING_WIDTH : 0);
+    win.setMinimumSize(CENTER_MIN_W + wingW, CENTER_MIN_H);
+}
+
 // ---- Window bounds ----
 export async function restoreWindowBounds(win: BrowserWindow, stateStore: StateStore): Promise<void> {
     try {
@@ -101,8 +113,8 @@ export function createWindow(
     const win = new BrowserWindow({
         width: 1400,
         height: 900,
-        minWidth: 1100,
-        minHeight: 800,
+        minWidth: CENTER_MIN_W,
+        minHeight: CENTER_MIN_H,
         show: false,
         frame: false,
         backgroundColor: '#fdf6e3',
@@ -223,7 +235,7 @@ export function createWindow(
             broadcastEditorFontSize(editorFontSize);
         } else if (k === '-' || k === '_') {
             ev.preventDefault();
-            editorFontSize = Math.max(6, editorFontSize - 1);
+            editorFontSize = Math.max(1, editorFontSize - 1);
             saveEditorFontSize(stateStore);
             broadcastEditorFontSize(editorFontSize);
         } else if (k === '0') {

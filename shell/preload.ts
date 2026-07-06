@@ -81,6 +81,7 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string })
         claimProject: (projectRoot: string) => ipcRenderer.invoke('qqqide:window:claimProject', projectRoot),
         releaseProject: (projectRoot: string) => ipcRenderer.invoke('qqqide:window:releaseProject', projectRoot),
         adjustBounds: (deltaLeft: number, deltaRight: number) => ipcRenderer.invoke('qqqide:window:adjust-bounds', deltaLeft, deltaRight),
+        setWingState: (leftOpen: boolean, rightOpen: boolean) => ipcRenderer.invoke('qqqide:wing:state', leftOpen, rightOpen),
     },
 
     // ---- devtools bridge (renderer → main process) ----

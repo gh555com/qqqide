@@ -178,6 +178,7 @@
       if (s) {
         s.get(key).then(function (snap) {
           if (!snap || !snap.auxFolders || !Array.isArray(snap.auxFolders)) return;
+          _dedupProjects(); // ★ 先去重，再添加
           for (var i = 0; i < snap.auxFolders.length; i++) {
             var aux = snap.auxFolders[i];
             if (!projects.some(function (p) { return p.path === aux; })) {
@@ -287,6 +288,8 @@
       if (s) {
         s.get(key).then(function (data) {
           if (!data || !Array.isArray(data) || data.length < 2) return;
+          // ★ 先去重，防磁盘脏数据
+          _dedupProjects();
           // data[0] 是主文件夹（跳过），data[1..] 是辅文件夹
           for (var i = 1; i < data.length; i++) {
             var aux = data[i];
@@ -303,7 +306,24 @@
     } catch (_) { }
   }
 
+  // ★ 去重兜底：确保 projects 中无重复路径
+  function _dedupProjects() {
+    var seen = {};
+    var clean = [];
+    for (var i = 0; i < projects.length; i++) {
+      var p = projects[i].path;
+      if (!seen[p]) { seen[p] = true; clean.push(projects[i]); }
+    }
+    if (clean.length !== projects.length) {
+      console.warn('[ai-viewport] dedup: ' + projects.length + ' → ' + clean.length);
+      projects = clean;
+      return true;
+    }
+    return false;
+  }
+
   function saveProjects() {
+    _dedupProjects();
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (_) { }
     // ★ 写入 per-mainFolder key（多窗口隔离）
     try {
@@ -950,6 +970,7 @@
   function render() {
     if (!container) return;
     container.innerHTML = '';
+    _dedupProjects(); // ★ 兜底：渲染前强制去重，防异步竞态导入重复项目
 
     // each existing project → solid block
     projects.forEach((proj, idx) => {
@@ -1176,6 +1197,7 @@
   // ---- public API ----
   function addProject(folderPath) {
     const name = basename(folderPath);
+    _dedupProjects(); // ★ 先去重，再判断重复
     // no duplicates
     if (projects.some(p => p.path === folderPath)) return;
     // 当视口为空时（即将成为主文件夹），异步校验锁

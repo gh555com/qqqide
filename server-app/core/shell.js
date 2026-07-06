@@ -158,10 +158,12 @@ function onWindowResize() {
 // ---- Window controls ----
 var _closeConfirmOverlay = null;
 var _closeConfirmActive = false;
+var _closeConfirmUnblockAt = 0; // 1s 防抖：此时间之前不能取消/关闭遮罩
 
 function showCloseConfirm() {
   if (_closeConfirmActive) return;
   _closeConfirmActive = true;
+  _closeConfirmUnblockAt = Date.now() + 1000; // 1s 内只能点确认，不能取消
   var bridge = _shBridge;
 
   var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -169,6 +171,7 @@ function showCloseConfirm() {
   var text = isDark ? '#dcd8d0' : '#656360';
   var border = isDark ? '#333333' : '#d3c6aa';
   var red = isDark ? '#ff4444' : '#dc322f';
+  var muted = isDark ? '#555555' : '#bbb';
 
   _closeConfirmOverlay = document.createElement('div');
   _closeConfirmOverlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:999999;display:flex;align-items:center;justify-content:center;';
@@ -181,7 +184,7 @@ function showCloseConfirm() {
   panel.innerHTML =
     '<div style="font-size:16px;margin-bottom:20px;color:' + text + ';">确认退出？</div>' +
     '<div style="display:flex;gap:8px;">' +
-    '<button id="qqq-exit-cancel" style="flex:1;padding:10px 0;border:1px solid ' + border + ';border-radius:4px;background:transparent;color:' + text + ';font-size:13px;">取消</button>' +
+    '<button id="qqq-exit-cancel" style="flex:1;padding:10px 0;border:1px solid ' + muted + ';border-radius:4px;background:transparent;color:' + muted + ';font-size:13px;cursor:default;">取消</button>' +
     '<button id="qqq-exit-confirm" style="flex:1;padding:10px 0;border:none;border-radius:4px;background:' + red + ';color:#fff;font-size:13px;font-weight:bold;">确认退出</button>' +
     '</div>';
 
@@ -204,11 +207,22 @@ function showCloseConfirm() {
     $cancel.addEventListener('click', hideCloseConfirm);
   }
 
-  // Esc 关闭
+  // 1s 后解封取消按钮 + Esc + 遮罩点击
+  setTimeout(function () {
+    if ($cancel) {
+      $cancel.style.color = text;
+      $cancel.style.borderColor = border;
+      $cancel.style.cursor = '';
+    }
+  }, 1000);
+
+  // Esc 关闭（但受 1s 防抖限制）
   document.addEventListener('keydown', _onCloseConfirmEsc);
 }
 
 function hideCloseConfirm() {
+  // ★ 1s 防抖：刚弹出时不能取消，只能点确认
+  if (Date.now() < _closeConfirmUnblockAt) return;
   _closeConfirmActive = false;
   if (_closeConfirmOverlay) {
     _closeConfirmOverlay.remove();
@@ -283,6 +297,7 @@ function _efsStartRepeat(delta) {
   _efsStopped = false;
   _efsRepeatDelta = delta;
   _efsDelay = 160;
+  _efsLastSize = 0; // ★ reset — prevent stale value from bouncing back in stopRepeat race
   if (_efsRepeatTimer) { clearTimeout(_efsRepeatTimer); _efsRepeatTimer = 0; }
   _efsRepeatTick();
   _efsRepeatTimer = setTimeout(function () {
@@ -297,17 +312,18 @@ async function _efsRepeatTickChained() {
   var bridge = _shBridge;
   if (!bridge || !bridge.zoom) return;
   try {
-    var s = await bridge.zoom.adjust(_efsRepeatDelta);
+    // ★ Hold jump: delta ×10 to reduce Monaco pressure, e.g. 17→18→28→38 instead of 17→18→19→20
+    var s = await bridge.zoom.adjust(_efsRepeatDelta * 10);
     _efsLastSize = s;
     applyFontSizeLabel(s);
   } catch (_) { }
   if (_efsStopped) return;
-  _efsDelay = Math.max(25, _efsDelay * 0.88);
+  // Fixed 200ms debounce for hold repeat (no acceleration)
   _efsRepeatTimer = setTimeout(function () {
     _efsRepeatTimer = 0;
     if (_efsStopped) return;
     _efsRepeatTickChained();
-  }, _efsDelay);
+  }, 200);
 }
 
 async function _efsRepeatTick() {

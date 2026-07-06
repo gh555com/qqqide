@@ -459,29 +459,147 @@
     if (isLevelUp) _lvLevelUpGlow();
   }
 
+  // ── 排行榜缓存（同赛季缓存，跨赛季自动失效）──
+  var _ldrCache = null;  // { all_time: { data, seasonId, ts }, last_season: { data, seasonId, ts } }
+  var _ldrFetching = false;
+
+  function _getCurrentSeasonId() {
+    var d = new Date();
+    // ISO week: Mon=1 ... Sun=7
+    var day = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - day);
+    var yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    var weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    return d.getUTCFullYear() + '-W' + String(weekNo).padStart(2, '0');
+  }
+
   var LDR_ROW_HTML = '<div style="display:flex;align-items:center;padding:5px 0;font-size:12px;gap:6px;">' +
     '<span style="width:24px;color:var(--text-dim,#888);text-align:right;">#{rank}</span>' +
     '<span style="width:18px;">{flag}</span>' +
     '<span style="flex:1;">{phone}</span>' +
-    '<span style="min-width:40px;color:var(--text-dim,#888);text-align:right;">{days}d</span>' +
-    '<span style="min-width:44px;color:#b58900;text-align:right;">{ge} ge</span>' +
-    '<span style="min-width:60px;color:#6c71c4;text-align:right;font-weight:bold;">Lv{lv}</span>' +
+    '<span style="min-width:70px;color:#b58900;text-align:right;font-weight:bold;">Lv{lv}</span>' +
     '</div>';
-  var LDR_ERR_HTML = '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">加载失败</div>';
-  var LDR_LOAD_HTML = '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">加载中...</div>';
 
   function _ldrBuildRows(list) {
     var s = '';
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
+      var lvNum = parseFloat(e.level_str);
+      var lvDisplay = isNaN(lvNum) ? e.level_str : (lvNum * 10).toFixed(4);
       s += LDR_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', e.flag).replace('{phone}', e.phone)
-        .replace('{days}', e.days_alive).replace('{ge}', e.total_ge).replace('{lv}', e.level_str);
+        .replace('{lv}', lvDisplay);
     }
     return s;
   }
 
+  var LDR_ERR_HTML = '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">加载失败</div>';
+  var LDR_LOAD_HTML = '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">加载中...</div>';
+
   function _ldrClose() {
     if (_$ldrOverlay) _$ldrOverlay.style.display = 'none';
+  }
+
+  // 后台静默拉取（不显示 loading，不覆盖已有内容）
+  function _ldrFetch(silent) {
+    if (_ldrFetching) return;
+    _ldrFetching = true;
+    var token = _authData && _authData.token ? _authData.token : '';
+    var $left = document.getElementById('qqq-ldr-left');
+    var $right = document.getElementById('qqq-ldr-right');
+    var seasonId = _getCurrentSeasonId();
+
+    fetch(API_BASE + '/qqq/leaderboard', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.ok) {
+        _ldrCache = {
+          all_time: { data: d.all_time, seasonId: seasonId, ts: Date.now() },
+          last_season: { data: d.last_season, seasonId: seasonId, ts: Date.now() }
+        };
+        // 非静默模式 OR 面板仍开着 → 渲染
+        if (!silent || (_$ldrOverlay && _$ldrOverlay.style.display !== 'none')) {
+          if ($left) $left.innerHTML = _ldrBuildRows(d.all_time);
+          if ($right) $right.innerHTML = _ldrBuildRows(d.last_season);
+        }
+      } else if (!silent) {
+        if ($left) $left.innerHTML = LDR_ERR_HTML;
+      }
+    }).catch(function () {
+      if (!silent && $left) $left.innerHTML = LDR_ERR_HTML;
+    }).finally(function () {
+      _ldrFetching = false;
+    });
+  }
+
+  // 构建排行榜头部：个人赛季统计
+  function _ldrUpdateHeader() {
+    var $hdr = document.getElementById('qqq-ldr-header-text');
+    if (!$hdr) return;
+    var d = _lvData;
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var titleClr = isDark ? '#dcd8d0' : '#656360';
+
+    // 上周最终等级 = last_season_level × 10，4 位小数
+    var lastLv = (d && typeof d.last_season_level === 'number' && d.last_season_level > 0)
+      ? 'lv' + (d.last_season_level * 10).toFixed(4) : '--';
+    // 本周基座升高 = last_season_level（结算等级 ÷ 10），四舍五入 1 位小数
+    var baseRise = (d && typeof d.last_season_level === 'number' && d.last_season_level > 0)
+      ? d.last_season_level.toFixed(1) : '--';
+    // 预计下周基座升高 = 本周到目前为止总消费 ÷ 100，1 位小数
+    var projected = '--';
+    if (d && d.total_consumed_ge) {
+      var totalGe = parseFloat(d.total_consumed_ge);
+      if (!isNaN(totalGe) && totalGe > 0) {
+        projected = (totalGe / 100).toFixed(1);
+      }
+    }
+
+    $hdr.innerHTML = '我上周最终等级: <b style="color:#b58900;">' + lastLv
+      + '</b>，本周基座升高: <b style="color:#b58900;">' + baseRise
+      + 'ge</b>。 预计下周基座将升高: <b style="color:#b58900;">' + projected + 'ge</b>'
+      + '<span id="qqq-ldr-help" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:20px;margin-left:6px;cursor:help;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;color:' + titleClr + ';">?</span>';
+
+    // ★ 绑定 help tooltip
+    var $help = document.getElementById('qqq-ldr-help');
+    if ($help) {
+      $help.addEventListener('mouseenter', _ldrHelpShow);
+      $help.addEventListener('mousemove', _ldrHelpShow);
+      $help.addEventListener('mouseleave', _ldrHelpHide);
+    }
+  }
+
+  // 免费预算规则 tooltip
+  var _$ldrHelpTip = null;
+  function _ldrHelpShow(e) {
+    if (!_$ldrHelpTip) {
+      _$ldrHelpTip = document.createElement('div');
+      _$ldrHelpTip.style.cssText = 'position:fixed;z-index:99999;padding:12px 16px;font-size:13px;line-height:1.7;color:#93a1a1;background:rgba(0,0,0,0.92);border:1px solid #444;border-radius:4px;pointer-events:none;white-space:pre-wrap;max-width:400px;display:none;font-family:sans-serif;';
+      document.body.appendChild(_$ldrHelpTip);
+    }
+    var rect = e && e.target ? e.target.getBoundingClientRect() : null;
+    if (!rect) return;
+    _$ldrHelpTip.innerHTML =
+      '<b style="color:#b58900;">🏆 免费额度规则</b><br><br>'
+      + '一周共 13 个免费时段：<br>'
+      + '• 周一至周六 × 12 个 2 小时段<br>'
+      + '• 周日 × 1 个 24 小时段<br><br>'
+      + '<b>每个时段的免费额度</b><br>'
+      + '= 随机值 + <b>本周基座</b><br><br>'
+      + '<b>本周基座</b> 仅由上赛季最终消费决定：<br>'
+      + '基座 = 上赛季总消费 ÷ 100<br>'
+      + '若上赛季消费 100ge → 本周基座 = 1<br><br>'
+      + '• 周一至周六：随机 + 基座 × 1<br>'
+      + '• 周日：随机 + 基座 × 2（双倍）<br><br>'
+      + '<b>等级</b> = 总消费 ÷ 10<br>'
+      + '<b>等级 × 10</b> = 显示的结算等级<br>'
+      + '<b>基座升高</b> = 结算等级 ÷ 10<br>'
+      + '<b>预计下周基座</b> = 本周已消费 ÷ 100';
+    _$ldrHelpTip.style.left = (rect.left + rect.width / 2 - 200) + 'px';
+    _$ldrHelpTip.style.top = (rect.bottom + 4) + 'px';
+    _$ldrHelpTip.style.display = '';
+  }
+  function _ldrHelpHide() {
+    if (_$ldrHelpTip) _$ldrHelpTip.style.display = 'none';
   }
 
   function _ldrOpen() {
@@ -490,24 +608,28 @@
     if (!token) return;
 
     _initLdr();
+    _ldrUpdateHeader();
     var $left = document.getElementById('qqq-ldr-left');
     var $right = document.getElementById('qqq-ldr-right');
-    if ($left) $left.innerHTML = LDR_LOAD_HTML;
-    if ($right) $right.innerHTML = LDR_LOAD_HTML;
     _$ldrOverlay.style.display = '';
 
-    fetch(API_BASE + '/qqq/leaderboard', {
-      headers: { 'Authorization': 'Bearer ' + token }
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      if (d.ok) {
-        if ($left) $left.innerHTML = _ldrBuildRows(d.all_time);
-        if ($right) $right.innerHTML = _ldrBuildRows(d.last_season);
-      } else {
-        if ($left) $left.innerHTML = LDR_ERR_HTML;
+    var seasonId = _getCurrentSeasonId();
+    var hasCache = _ldrCache && _ldrCache.all_time && _ldrCache.all_time.seasonId === seasonId;
+
+    if (hasCache) {
+      // ★ 同赛季命中 → 即时渲染缓存，零闪烁
+      if ($left) $left.innerHTML = _ldrBuildRows(_ldrCache.all_time.data);
+      if ($right) $right.innerHTML = _ldrBuildRows(_ldrCache.last_season.data);
+      // 超过 30 分钟 → 后台静默刷新
+      if (Date.now() - _ldrCache.all_time.ts > 30 * 60 * 1000) {
+        _ldrFetch(true);
       }
-    }).catch(function () {
-      if ($left) $left.innerHTML = LDR_ERR_HTML;
-    });
+    } else {
+      // ★ 无缓存或跨赛季 → 显示加载中，拉取新数据
+      if ($left) $left.innerHTML = LDR_LOAD_HTML;
+      if ($right) $right.innerHTML = LDR_LOAD_HTML;
+      _ldrFetch(false);
+    }
   }
 
   var _ldrInited = false;
@@ -529,7 +651,7 @@
     _$ldrPanel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;max-width:94vw;max-height:80vh;overflow-y:auto;z-index:9999;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:' + bg + ';';
     _$ldrPanel.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid ' + border + ';">' +
-      '<span style="font-size:15px;font-weight:bold;color:' + titleClr + ';">🏆 排行榜</span>' +
+      '<span id="qqq-ldr-header-text" style="font-size:13px;color:' + titleClr + ';"></span>' +
       '<button id="qqq-ldr-close" style="width:22px;height:22px;border:1px solid ' + border + ';border-radius:3px;background:transparent;color:' + titleClr + ';font-size:13px;line-height:20px;text-align:center;cursor:pointer;">✕</button>' +
       '</div>' +
       '<div style="display:flex;min-height:300px;">' +
@@ -842,7 +964,7 @@
           var projExists = await bridge.fs.exists(projPath);
           if (!projExists) {
             try { await bridge.fs.mkdir(projDir, { recursive: true }); } catch (_) { }
-            await bridge.fs.write(projPath, '# You may optionally add must-read files or folders below.\n# Format: rule"<path>" \u2014 <path> is an absolute file or folder path.\n# Total lines across all added items combined are preferably under ~2000.\n# Suggest adding core architecture / iron-rule docs, like:\n# rule"D:\\your\\project\\docs\\rules.txt"\n');
+            await bridge.fs.write(projPath, '# You may optionally add must-read files below.\n# Format: rule"<path>" \u2014 <path> is an absolute file path (files only, directories not supported).\n# Total lines across all added items combined are preferably under ~2000.\n# You can clearly see the space they occupy in the context backpack. Loading on demand is better than carrying too much weight from the start.\n# You can add core architecture, iron rules, skill documents or indexes, for example:\n# rule"D:\\your\\project\\docs\\rules.md"\n# For the latest changes, see: https://www.gh555.com/gaea/d/qqqide#docs\n# Once you are comfortable using this, you may delete the instruction paragraph up to this point.\n');
           }
           if (window.qqqTabs && window.qqqTabs.openFileInRightGroup) {
             window.qqqTabs.openFileInRightGroup(projPath);
