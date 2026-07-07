@@ -174,7 +174,7 @@
             "cost": "Cost:",
             "costText": "Conversations older than the last six levels will be compressed and lose details; AI will only retain summaries. The last six levels are preserved in full.",
             "whatIf": "What if I never manually compress?",
-            "auto": "qqq IDE automatically compresses using an optimal strategy, which is usually better than manual compression.",
+            "auto": "qqqide automatically compresses using an optimal strategy, which is usually better than manual compression.",
             "noLoss": "Regardless of whether you compress or who does it, AI memory will neither overflow nor lose data.",
             "complex": "Better suited for complex programming tasks, giving AI a maximum memory length.",
             "compress": "Compress",

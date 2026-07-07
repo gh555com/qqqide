@@ -125,18 +125,19 @@ async function _appendToFile(path, text) {
 }
 
 var _ALL_TXT_MAX_MB = 4;
-var _allTxtBlocked = false;
 var _allTxtBlockedQoastTs = 0;
 
-function _guardAllTxtSize(lines) {
-    if (_allTxtBlocked) return false;
+// ★ _allTxtBlocked 已迁移到 agent._allTxtBlocked（per-agent，非模块级毒丸）
+function _guardAllTxtSize(lines, agent) {
+    var _blocked = agent && agent._allTxtBlocked;
+    if (_blocked) return false;
     var content = lines.join('\n');
     var sizeBytes = new Blob([content]).size;
     var sizeMB = sizeBytes / (1024 * 1024);
     if (sizeMB <= _ALL_TXT_MAX_MB) return true;
 
-    _allTxtBlocked = true;
-    console.error('[all-txt] BLOCKED: ' + sizeMB.toFixed(1) + 'MB exceeds ' + _ALL_TXT_MAX_MB + 'MB limit \u2014 archive paused this floor');
+    // ★ 仅拒绝本次写入，不设全局毒丸（下一轮 5s 窗口仍可写，finalize 绕过守卫）
+    console.error('[all-txt] SKIPPED: ' + sizeMB.toFixed(1) + 'MB exceeds ' + _ALL_TXT_MAX_MB + 'MB limit \u2014 skipped this round');
     var now = Date.now();
     if (now - _allTxtBlockedQoastTs > 30000) {
         _allTxtBlockedQoastTs = now;
@@ -150,10 +151,10 @@ function _guardAllTxtSize(lines) {
     return false;
 }
 
-async function _safeWriteAllTxt(path, lines, lastMtime) {
+async function _safeWriteAllTxt(path, lines, lastMtime, agent) {
     var bridge = window.parent && window.parent.qqqideBridge;
     if (!bridge) return false;
-    if (!_guardAllTxtSize(lines)) return false;
+    if (!_guardAllTxtSize(lines, agent)) return false;
     try {
         var content = lines.join('\n');
         var stat = await bridge.fs.stat(path).catch(function () { return null; });
@@ -302,13 +303,12 @@ function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
 function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, visionContent) {
     // ★ 只杀该 agent 的旧 timer，不杀面板级（可能属于其他 quest）
     _stopAllTxtStream(agent);
-    _allTxtBlocked = false;
+    if (agent) agent._allTxtBlocked = false;  // ★ per-agent，非模块级毒丸
     var lastWriteMs = 0;
     var lastHouseCount = 0;
     var lastRoomCount = 0;
 
     var _timerId = setInterval(function () {
-        if (document.hidden) return;
         if (!agent._houses) return;
         var hCount = agent._houses.length;
         var rCount = _countRooms(agent._houses);
@@ -351,7 +351,7 @@ function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, vis
                     }
                 }
             }
-            _safeWriteAllTxt(allTxtPath, allLines, 0).then(function (ok) {
+            _safeWriteAllTxt(allTxtPath, allLines, 0, agent).then(function (ok) {
                 if (ok) {
                     _updateA1Size(a1, floorNum, hCount, rCount, allTxtPath);
                     if (aiDiv._allTxtOpenInEditor) {
@@ -382,10 +382,52 @@ function _updateA1Size(a1, floorNum, hCount, rCount, allTxtPath) {
     }).catch(function () { });
 }
 
+// ★ 强制写盘：onError 或 finalize 时用，绕过大小守卫直接落盘
+function _forceFlushAllTxt(agent, allTxtPath) {
+    if (!agent || !allTxtPath) return;
+    var bridge = window.parent && window.parent.qqqideBridge;
+    if (!bridge) return;
+    var houses = agent._houses;
+    if (!houses || houses.length === 0) return;
+    try {
+        var _userText = (agent._lastUserInput && agent._lastUserInput.text) || '';
+        var _floorNum = agent._currentFloorNum || 0;
+        var _timing = agent._floorTiming;
+        var headerLines = _buildFloorHeaderLines(agent, _floorNum, _userText.replace(/\n/g, ' ').trim(), '', _timing);
+        var allLines = headerLines.slice();
+        for (var hi = 0; hi < houses.length; hi++) {
+            allLines = allLines.concat(_buildHouseLines(houses[hi]));
+        }
+        var statsLines = _buildFloorStatsLines(_timing, _floorNum, agent);
+        allLines = allLines.concat(statsLines);
+        bridge.fs.write(allTxtPath, allLines.join('\n')).catch(function () { });
+    } catch (_) { /* best-effort */ }
+}
+
 async function _finalizeAllTxt(aiDiv, allTxtPath, agent, floorNum, timing) {
     // ★ 先强制刷新 FILE/ROW 计数（_updateA1Row2 有 5s 节流，finalize 必须冲破）
     var a1 = aiDiv._a1Block;
     if (a1 && agent) { _updateA1Row2(a1, agent, true); }
+
+    // ★ 最终全量写盘：捕获 5s 窗口外的 houses/answers（此前永久丢失）
+    if (allTxtPath && agent && agent._houses && agent._houses.length > 0) {
+        var _bridge2 = window.parent && window.parent.qqqideBridge;
+        if (_bridge2) {
+            try {
+                var _userText = (agent._lastUserInput && agent._lastUserInput.text) || '';
+                var _headerLines = _buildFloorHeaderLines(agent, floorNum, _userText.replace(/\n/g, ' ').trim(), '', timing || agent._floorTiming);
+                var _allLines = _headerLines.slice();
+                var _houses = agent._houses;
+                for (var _hi = 0; _hi < _houses.length; _hi++) {
+                    _allLines = _allLines.concat(_buildHouseLines(_houses[_hi]));
+                }
+                var _statsLines = _buildFloorStatsLines(timing || agent._floorTiming, floorNum, agent);
+                _allLines = _allLines.concat(_statsLines);
+                await _bridge2.fs.write(allTxtPath, _allLines.join('\n'));
+            } catch (_) { /* best-effort final write */ }
+        }
+    }
+
     _stopAllTxtStream(agent);
     if (!allTxtPath) return;
     var bridge = window.parent && window.parent.qqqideBridge;

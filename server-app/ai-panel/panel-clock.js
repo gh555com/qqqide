@@ -714,7 +714,7 @@ async function updateQuestTofu() {
         _removeCometClock(prefixEl);
         _updateQuestClock();
     }
-    var title = 'qqq IDE';
+    var title = 'qqqide';
     var root = questStore.getProjectRoot();
     if (root) {
         var parts = root.replace(/\\/g, '/').split('/');

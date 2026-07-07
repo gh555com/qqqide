@@ -170,7 +170,7 @@
             "cost": "Chi phí:",
             "costText": "Các cuộc hội thoại trước sáu tầng gần nhất sẽ bị nén và mất chi tiết, AI chỉ ghi nhớ phần tóm tắt. Sáu tầng gần nhất sẽ được lưu đầy đủ.",
             "whatIf": "Nếu không bao giờ nén thủ công?",
-            "auto": "qqq IDE tự động nén bằng chiến lược tối ưu, thường tốt hơn nén thủ công.",
+            "auto": "qqqide tự động nén bằng chiến lược tối ưu, thường tốt hơn nén thủ công.",
             "noLoss": "Dù thế nào (có nén hay không, ai thực hiện nén) cũng sẽ không làm tràn bộ nhớ AI hoặc gây mất dữ liệu bộ nhớ AI.",
             "complex": "Phù hợp hơn cho các tác vụ lập trình phức tạp, AI sẽ có không gian bộ nhớ với độ dài giới hạn.",
             "compress": "Nén",

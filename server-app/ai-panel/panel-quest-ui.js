@@ -121,6 +121,15 @@ async function switchQuest(id) {
         // ★ 切换到 quest 时不再尝试实时修复磁盘目录名
         //   B+ 方案：懒惰重命名扫描只在启动/关闭时由中面板执行
 
+        // ★ 重建楼层间红框：对每个 fatal 楼层，从 agent._questErrorLogByFloor 恢复
+        if (_activeAgent && _activeAgent._questErrorLogByFloor) {
+            var _rebuildFloors = Object.keys(_activeAgent._questErrorLogByFloor).map(Number);
+            for (var _rfi = 0; _rfi < _rebuildFloors.length; _rfi++) {
+                var _rebuildFn = _rebuildFloors[_rfi];
+                if (typeof _renderQuestErrorBox === 'function') _renderQuestErrorBox(_activeAgent, null, _rebuildFn);
+            }
+        }
+
         restoreQuestUIState(id);
         renderQueueStrip();
         updateCostDisplay();
@@ -338,7 +347,7 @@ async function renameQuest(id, newTitle) {
     await renderTabs();
 }
 
-function updateCostDisplay() {}  // no-op — retained for backward compat with panel-quest.js
+function updateCostDisplay() { }  // no-op — retained for backward compat with panel-quest.js
 
 // ★ _estimateTokensFull — 穷举每一个会进入 API body 的字节，逐字符计量，chars÷2.7 得 token 估值。
 // ★ API prompt_tokens 是服务端返回的精确 token 数（权威），本地 sum 用于审计 / 发现漏格子。

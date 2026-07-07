@@ -264,7 +264,7 @@ export function registerExitHandlers(
         _ueInHandler = true;
         try {
             const _msg = (err && (err as any).message) || '';
-            if (_msg.indexOf('EPIPE') >= 0 || _msg.indexOf('broken pipe') >= 0) {
+            if (_msg.indexOf('EPIPE') >= 0 || _msg.indexOf('broken pipe') >= 0 || _msg.indexOf('ECONNRESET') >= 0) {
                 return;
             }
             if (err && err.message === 'Object has been destroyed') {

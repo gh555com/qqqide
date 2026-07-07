@@ -434,12 +434,12 @@ export async function loadStaticFallback(
             } catch (e) {
                 bootLog('fallback: loadFile crashed — ' + (e && (e as Error).message || String(e)));
                 // 最后的最后的兜底：data URL
-                try { await mainWindow.loadURL('data:text/html,<h1>qqq IDE offline</h1><p>请重启应用</p>'); } catch (_) { }
+                try { await mainWindow.loadURL('data:text/html,<h1>qqqide offline</h1><p>请重启应用</p>'); } catch (_) { }
             }
             return 'fallback';
         }
     }
-    try { await mainWindow.loadURL('data:text/html,<h1>qqq IDE offline</h1><p>请重启应用</p>'); } catch (_) { }
+    try { await mainWindow.loadURL('data:text/html,<h1>qqqide offline</h1><p>请重启应用</p>'); } catch (_) { }
     return 'fallback';
 }
 

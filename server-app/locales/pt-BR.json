@@ -170,7 +170,7 @@
             "cost": "Custo:",
             "costText": "As conversas anteriores às últimas seis camadas serão comprimidas e perderão detalhes; a IA lembrará apenas dos resumos. As últimas seis camadas serão preservadas integralmente.",
             "whatIf": "E se eu nunca comprimir manualmente?",
-            "auto": "O qqq IDE comprime automaticamente com a melhor estratégia, geralmente melhor que a compressão manual.",
+            "auto": "O qqqide comprime automaticamente com a melhor estratégia, geralmente melhor que a compressão manual.",
             "noLoss": "De qualquer forma (com ou sem compressão, quem comprime), isso não causará estouro nem perda de memória da IA.",
             "complex": "Mais adequado para tarefas de programação complexas, onde a IA terá um espaço de memória de comprimento limitado.",
             "compress": "Comprimir",

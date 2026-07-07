@@ -130,9 +130,17 @@ var AgentLoop = (function () {
         this._exitReason = '';           // 'ok'|'http_502'|'http_503'|'http_504'|'http_429'|'http_402'|'http_400'|'http_422'|'fetch_error'|'watchdog_stream'|'deadline'|'max_iter'|'unknown'
         this._lastHttpStatus = 0;        // 最后一次 HTTP 状态码
         this._floorFatal = false;        // ★ 致命失败：onError 触发后强制 _stopState='fatal'，防 idle 假恢复
-        this._questErrorLog = [];           // ★ 聚合红框：同 quest 所有失败按时间叠到一个框（跨 floor 持久）
-        this._questErrorDiv = null;         //   DOM 引用：恢复时重建
+        this._questErrorLogByFloor = {};   // ★ 分楼层聚合红框: floorNum → [{time, reason}]
+        this._questErrorDivByFloor = {};   //   DOM 引用：floorNum → div（恢复时重建）
         this._isRecovery = false;        // ★ 恢复模式：下一条用户消息标注 _system:true（继续任务用）
+        // ★ 统一状态元数据（T3 新增）：存储恢复流程散落标记，随 transition() 原子切换
+        this._stateMeta = {
+            isRecovery: false,           // 对应旧 _isRecovery
+            recoveryInProgress: false,   // 对应旧 _recoveryInProgress
+            deferRenderUntilHouse1: false, // 对应旧 _deferRenderUntilHouse1
+            recoveryLinkEl: null,        // 恢复链接 DOM 引用
+            inRecoverySend: false,       // 对应旧 _inRecoverySend
+        };
         this._lastFetchError = '';       // 最后一次 fetch 错误消息
         this._lastSseError = '';         // 最后一次 SSE 服务端错误
         this._lastGatewayMessage = '';   // ★ 延迟报错消息（_callGateway 设，agent loop 读）
@@ -154,19 +162,60 @@ var AgentLoop = (function () {
 
     // ═══ 唯一真理机器：_stopState 状态迁移 ═══
     // 所有 _stopState 变更必须通过此方法，外部禁止直写
+    // ★ 状态图（T3 扩展：+ streaming + done）：
+    //   idle → sending | fatal
+    //   sending → streaming | stopping | fatal | idle
+    //   streaming → done | fatal
+    //   stopping → idle | fatal
+    //   fatal → sending（仅恢复模式）
+    //   done → idle
     AgentLoop.prototype.setStopState = function (newState) {
         if (this._stopState === newState) return;  // 幂等：同态无操作
         var valid = {
-            'idle': ['sending', 'fatal'],   // fatal: panel-floor 恢复 fatal quest
-            'sending': ['stopping', 'fatal', 'idle'],
+            'idle': ['sending', 'fatal'],
+            'sending': ['streaming', 'stopping', 'fatal', 'idle', 'done'],
+            'streaming': ['done', 'fatal'],
             'stopping': ['idle', 'fatal'],
-            'fatal': ['sending']             // 仅恢复模式 _isRecovery=true
+            'fatal': ['sending'],
+            'done': ['idle']
         };
         var allowed = (valid[this._stopState] || []);
         if (allowed.indexOf(newState) < 0) {
             console.warn('[agent] unexpected setStopState: ' + this._stopState + ' → ' + newState);
         }
         this._stopState = newState;
+    };
+
+    // ★ transition() — 原子状态迁移 + 元数据管理（T3 新增）
+    // 替代散落各处的 boolean 直写，确保状态与标记同步
+    // opts: { isRecovery, recoveryInProgress, deferRenderUntilHouse1, recoveryLinkEl, inRecoverySend }
+    AgentLoop.prototype.transition = function (newState, opts) {
+        opts = opts || {};
+        // ★ 同步恢复标记到 _stateMeta（真理源）
+        if (opts.isRecovery !== undefined) {
+            this._isRecovery = opts.isRecovery;
+            this._stateMeta.isRecovery = opts.isRecovery;
+        }
+        if (opts.recoveryInProgress !== undefined) {
+            this._recoveryInProgress = opts.recoveryInProgress;
+            this._stateMeta.recoveryInProgress = opts.recoveryInProgress;
+        }
+        if (opts.deferRenderUntilHouse1 !== undefined) {
+            this._deferRenderUntilHouse1 = opts.deferRenderUntilHouse1;
+            this._stateMeta.deferRenderUntilHouse1 = opts.deferRenderUntilHouse1;
+        }
+        if (opts.recoveryLinkEl !== undefined) {
+            this._recoveryLinkEl = opts.recoveryLinkEl;
+            this._stateMeta.recoveryLinkEl = opts.recoveryLinkEl;
+        }
+        if (opts.inRecoverySend !== undefined) {
+            this._inRecoverySend = opts.inRecoverySend;
+            this._stateMeta.inRecoverySend = opts.inRecoverySend;
+        }
+        // ★ fatal 进入/退出自动同步 _floorFatal
+        if (newState === 'fatal') this._floorFatal = true;
+        if (newState === 'idle' || newState === 'sending') this._floorFatal = false;
+        this.setStopState(newState);
     };
 
     // ---- 中止 ----
@@ -456,7 +505,7 @@ var AgentLoop = (function () {
         self._inRecoverySend = self._inRecoverySend || false;
         // ★ 终极 Stop 闭环：每层楼创建真理源
         self._stopCtrl = new AbortController();
-        self.setStopState('sending');
+        self.transition('sending');
         if (typeof window !== 'undefined') { window._qqqReadFilesThisFloor = {}; window._qqqEnoentCache = {}; window._qqqPathResolve = {}; window._qqqToolCacheThisFloor = {}; }  // ★ WRITE感知复位 + ENOENT + 路径纠错 + 泛化 READ 缓存：每层楼复位
 
         try {
@@ -964,10 +1013,11 @@ var AgentLoop = (function () {
             return null;
         } finally {
             // ★ 状态机闭环：致命失败 → 'fatal'（死胡同，仅"继续任务"可解）
+            //   transition() 自动同步 _floorFatal 与 _stopState
             if (self._floorFatal) {
-                self.setStopState('fatal');
+                self.transition('fatal');
             } else {
-                self.setStopState('idle');
+                self.transition('idle');
             }
         }
     };

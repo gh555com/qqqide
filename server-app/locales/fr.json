@@ -170,7 +170,7 @@
             "cost": "Coût :",
             "costText": "Les conversations antérieures aux six derniers niveaux seront compressées et perdront leurs détails ; l'IA ne conservera que leur résumé. Les six derniers niveaux seront intégralement conservés.",
             "whatIf": "Que se passe-t-il si je ne compresse jamais manuellement ?",
-            "auto": "qqq IDE compresse automatiquement avec la stratégie optimale, généralement mieux que la compression manuelle.",
+            "auto": "qqqide compresse automatiquement avec la stratégie optimale, généralement mieux que la compression manuelle.",
             "noLoss": "Dans tous les cas (avec ou sans compression, quel que soit l'auteur), cela ne saturera ni ne fera perdre la mémoire de l'IA.",
             "complex": "Plus adapté aux tâches de programmation complexes, où l'IA disposera d'un espace mémoire de longueur limitée.",
             "compress": "Compresser",

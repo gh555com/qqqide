@@ -510,11 +510,36 @@ function _shellRenderMenubarLabels(schema) {
   var $bar = document.getElementById('qqq-menubar');
   if (!$bar || !schema) return;
   $bar.innerHTML = '';
+
+  // ★ 更新菜单图标颜色（响应主题切换）
+  function _updateMenuIcon() {
+    var icon = document.getElementById('qqq-menu-icon');
+    if (!icon) return;
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    icon.style.filter = isDark ? 'invert(1)' : 'none';
+  }
+
   for (var i = 0; i < (schema.items || []).length; i++) {
     var item = schema.items[i];
     var span = document.createElement('span');
     span.className = 'qqq-menubar-label';
-    span.textContent = (item.i18n && window._i) ? window._i(item.i18n, item.label) : (item.label || '');
+
+    // ★ 第一个菜单按钮：图标 + 文字
+    if (i === 0 && item.label === 'qqqide') {
+      var iconImg = document.createElement('img');
+      iconImg.id = 'qqq-menu-icon';
+      iconImg.src = 'assets/qqqide.png';
+      iconImg.style.cssText = 'width:16px; height:16px; margin-right:5px; vertical-align:middle;';
+      var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      iconImg.style.filter = isDark ? 'invert(1)' : 'none';
+      span.appendChild(iconImg);
+
+      var textNode = document.createTextNode((item.i18n && window._i) ? window._i(item.i18n, item.label) : (item.label || ''));
+      span.appendChild(textNode);
+    } else {
+      span.textContent = (item.i18n && window._i) ? window._i(item.i18n, item.label) : (item.label || '');
+    }
+
     span.style.cssText =
       'padding:0 10px; color:var(--text-primary); ' +
       'user-select:none; height:100%; display:inline-flex; align-items:center; ' +
@@ -538,6 +563,10 @@ function _shellRenderMenubarLabels(schema) {
     })(span, item));
     $bar.appendChild(span);
   }
+
+  // ★ 监听主题切换 → 更新图标滤镜
+  var _themeObs = new MutationObserver(function () { _updateMenuIcon(); });
+  _themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   // ★ 全局 mousedown：点击外部关闭 popup 和下拉
   document.addEventListener('mousedown', function (e) {
     // 先检查最近文件夹下拉

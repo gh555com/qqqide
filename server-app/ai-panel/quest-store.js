@@ -828,7 +828,7 @@ var QuestStore = (function () {
     QuestStore.prototype.list = async function () {
         await this._ensureIndex();
         var idx = _idx() || [];
-        return idx.slice().sort(function (a, b) { return b.lastActiveAt - a.lastActiveAt; });
+        return idx.slice().sort(function (a, b) { return a.lastActiveAt - b.lastActiveAt; });
     };
 
     // ═══════════════════════════════════════════════════════════════
