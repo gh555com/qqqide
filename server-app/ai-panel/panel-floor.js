@@ -275,7 +275,7 @@ async function _appendToSearchQuest(questId, floorNum) {
         var lines = [];
         if (existing) lines.push('');  // 与上一楼层间隔一行
         lines.push(marker + '   ' + _fmtTime(floorTs));
-        var cleanQuestion = (floorData.question || '').replace(/\[File: [^\]]+\]\s*\n```[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim(); lines.push('\u25a0 Q: ' + cleanQuestion);
+        var cleanQuestion = (floorData.question || '').replace(/\[File: [^\]]+\]\s*\x0A\`\`\`[\s\S]*?\`\`\`/g, '').replace(/\x0A{3,}/g, '\x0A\x0A').trim(); lines.push('\u25a0 Q: ' + cleanQuestion);
         lines.push('\u25a0 A: ' + (answer || '(no answer)'));
 
         // ═══ az 区文本化（每层楼私有 A1 + 时钟数据） ═══
@@ -442,6 +442,39 @@ async function _restoreAgentFromStore(questId, ag) {
                 }
             }
         }
+        // ★ B3: 检测「无 house 1」僵尸楼层（agent.send() 未产出 house 1）
+        //   统一处理：无 house 1 → 合成 error log → 红字框 + 继续任务（同楼层 0-house 重试）
+        if (ag._currentFloorNum > 0 && (!ag._houses || ag._houses.length === 0)) {
+            var _hasUserMsg3 = false;
+            var _lastUserContent3 = '';
+            for (var _mcj = ag.conversation.length - 1; _mcj >= 0; _mcj--) {
+                var _mc3 = ag.conversation[_mcj];
+                if (_mc3._floor === ag._currentFloorNum) {
+                    if (_mc3.role === 'user') {
+                        _hasUserMsg3 = true;
+                        _lastUserContent3 = _mc3.content || '';
+                        break;
+                    }
+                }
+                if (_mc3._floor < ag._currentFloorNum) break;
+            }
+            if (_hasUserMsg3) {
+                // ★ 恢复 _lastUserMsg（0-house 恢复需要原消息）
+                if (_lastUserContent3) ag._lastUserMsg = _lastUserContent3;
+                // ★ 若无已有 error log → 合成一条（让红框有内容可渲染）
+                if (!ag._questErrorLogByFloor[ag._currentFloorNum] || ag._questErrorLogByFloor[ag._currentFloorNum].length === 0) {
+                    if (!ag._questErrorLogByFloor[ag._currentFloorNum]) ag._questErrorLogByFloor[ag._currentFloorNum] = [];
+                    ag._questErrorLogByFloor[ag._currentFloorNum].push({
+                        time: '',
+                        reason: '未收到 AI 回复'
+                    });
+                }
+                // ★ 设置 fatal 态（使 panel-quest-ui 重建循环能渲染红框）
+                ag._floorFatal = true;
+                ag.setStopState('fatal');
+                ag._exitReason = ag._exitReason || '未收到 AI 回复';
+            }
+        }
         // ★ fatal 态持久化恢复：最后一层楼 floorFatal → 死胡同模式
         if (allFloors && allFloors.length > 0) {
             var _lastFloor = allFloors[allFloors.length - 1];
@@ -493,4 +526,3 @@ function _computeFloorTokens(ag) {
     }
     return _sum;
 }
-

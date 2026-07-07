@@ -238,7 +238,7 @@ LSP 已冻结 → 三级语法检查:
 目录骨架
 --------
 qqq-shell-v2/
-├── shell/             壳层TS（main.ts + component-checker + 12 子模块）
+├── shell/             壳层TS（main.ts + component-checker + wq-ping + 13 子模块）
 ├── server-app/        载荷层(热更)
 │   ├── core/          IDE 平台 (shell/theme/editor/qoast/state-sdk/gaea-host/tab-manager/...)
 │   ├── locales/       13 语言 (zh.json 唯一真理源)
@@ -480,6 +480,18 @@ AI 工具 (16个)
   · 生成/分析: IMAGE_GEN_URL/VISION_URL → Go → 模型供应商 → SSE 流。旧 Python 脚本已删除
 Embedding: BM25+语义混合搜索，双线路(fallback)+归一化+15s超时
 
+
+统计上报（2026-07-07）
+---------------------------------------------
+· 文件: shell/wq-ping.ts（主进程模块，不阻塞 UI）
+· 上报: POST /api/wq/ping → cnk.gh555.com
+· 身份: good_slg='qqqide', pkg_publisher='gh555.com', ide_family='qqqide'
+· device_id: UUID v4 持久化到 Data/alphal/device_id
+· 时长: 基于进程存活 wall-clock
+· 调度: 首次 30~120s 随机抖动，后续按服务端 min_next_ping_at 或 12h 兜底
+· 失败退避: 60s → 2m → 4m → ... → 1h max
+· 启动: main.ts app.whenReady() 末尾异步启动
+· 停止: mainWindow 'closed' 事件中 stopWqPing()
 
 零摩擦原则（2026-07-05）
 ------------------------

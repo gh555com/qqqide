@@ -616,7 +616,7 @@ var AgentLoop = (function () {
                         self._lastCostDisplay = _costGe < 0.001 ? '<0.001' : _costGe.toFixed(4);
                         onCost(self._lastCostDisplay, self.totalCostGe, (self._floorHadBilling && self._floorCostWge === 0));
                         self._floorCompletedCleanly = true;
-                        onDone(_restoredContent, self._floorTiming);
+                        await onDone(_restoredContent, self._floorTiming);
                         return _restoredContent;
                     }
                     continue;
@@ -842,7 +842,7 @@ var AgentLoop = (function () {
                     onCost(self._lastCostDisplay, self.totalCostGe, (self._floorHadBilling && self._floorCostWge === 0));
                     if (self._billingDebug) { _logBillingSummary(self); }
                     self._floorCompletedCleanly = true;  // ★ 看门狗：AI 正常回复
-                    onDone(response.content, self._floorTiming);
+                    await onDone(response.content, self._floorTiming);
                     return response.content;
                 }
 
@@ -948,7 +948,7 @@ var AgentLoop = (function () {
                 var _fallbackMsg = '⚠ AI returned an unexpected response type. Conversation preserved. You can continue or retry.';
                 self.conversation.push({ role: 'assistant', content: _fallbackMsg, _floor: self._ctx.totalFloors });
                 self._floorCompletedCleanly = true;  // ★ 看门狗：虽非理想但已给出可读结束
-                onDone(_fallbackMsg, self._floorTiming);
+                await onDone(_fallbackMsg, self._floorTiming);
                 return _fallbackMsg;
             }
 
@@ -969,7 +969,7 @@ var AgentLoop = (function () {
                         self.conversation.push({ role: 'user', content: '[System: The previous forced final answer was deferred. Now give your final answer after acknowledging the guide.]', _floor: self._ctx.totalFloors });
                         // 不在循环内，不能用 continue → 直接 return，引导会在下次 send 时触发确认回合
                         self._floorCompletedCleanly = true;
-                        onDone('(deferred for guide)', self._floorTiming);
+                        await onDone('(deferred for guide)', self._floorTiming);
                         return '(deferred for guide)';
                     }
                     var _bill3 = self._lastBilling; self._lastBilling = null;
@@ -985,16 +985,16 @@ var AgentLoop = (function () {
                     var finalCostGe = self._floorCostWge / 10000;
                     self.totalCostGe += finalCostGe;
                     self._lastCostDisplay = finalCostGe < 0.001 ? '<0.001' : finalCostGe.toFixed(4);
-                    onCost(self._lastCostDisplay, self.totalCostGe, (self._floorHadBilling && self._floorCostWge === 0));
+                                        onCost(self._lastCostDisplay, self.totalCostGe, (self._floorHadBilling && self._floorCostWge === 0));
                     self._floorCompletedCleanly = true;  // ★ 看门狗：强制回答成功
-                    onDone(finalResp.content, self._floorTiming);
+                    await onDone(finalResp.content, self._floorTiming);
                     return finalResp.content;
                 }
                 // 强制回答也失败 → 优雅降级，不丢上下文
                 var _exhaustedMsg = '⚠ 已达到最大工具调用次数 (200)，但 AI 未能生成最终回答。对话上下文已保留，你可以继续提问。';
                 self.conversation.push({ role: 'assistant', content: _exhaustedMsg, _floor: self._ctx.totalFloors });
                 self._floorCompletedCleanly = true;  // ★ 看门狗：已给出降级消息
-                onDone(_exhaustedMsg, self._floorTiming);
+                await onDone(_exhaustedMsg, self._floorTiming);
                 return _exhaustedMsg;
             }
 

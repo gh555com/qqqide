@@ -28,7 +28,7 @@ import * as os from 'os';
 import * as fs from 'fs';
 
 // ── 子模块 ──
-import { loadBootConfig, extractFlags, bootSequence, BootMode, BootConfig } from './boot';
+import { loadBootConfig, extractFlags, bootSequence, getWebappBaseUrl, BootMode, BootConfig } from './boot';
 import { APP_VERSION } from './version';
 import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap } from './window-manager';
 import { initAssetProtocol, hydrateAssetRootsFromState } from './asset-protocol';
@@ -45,6 +45,7 @@ import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
 import { startKopeA, stopKopeA, isKopeARunning, getKopeAPid, cleanupKopeA } from './kope-a';
+import { startWqPing, stopWqPing } from './wq-ping';
 
 // ── 服务 ──
 import { EngineHost } from './engines';
@@ -370,6 +371,7 @@ app.whenReady().then(async () => {
         try { engineHost.stop(); } catch { /* ignore */ }
         try { audioEngine.stop(); } catch { /* ignore */ }
         try { cleanupKopeA(); } catch { /* ignore */ }
+        try { stopWqPing(); } catch { /* ignore */ }
         mainWindow = null;
     });
 
@@ -431,7 +433,8 @@ app.whenReady().then(async () => {
                     _windowProjectMap.set(newWin.id, normalized);
                     _projectWindowMap.set(normalized, newWin.id);
 
-                    const url = bootConfig.url + '?restore=1&folder=' + encodeURIComponent(normalized);
+                    const baseUrl = getWebappBaseUrl(portable.root, bootConfig, isDevFlag);
+                    const url = baseUrl + '?restore=1&folder=' + encodeURIComponent(normalized);
                     newWin.loadURL(url).then(() => {
                         if (!newWin.isDestroyed()) {
                             try {
@@ -458,7 +461,10 @@ app.whenReady().then(async () => {
     })();
 
     // ★ 异步建语义索引（不阻塞启动）
-    indexService.init();;
+    indexService.init();
+
+    // ★ 统计上报机（不阻塞启动，首次 ping 30-120s 随机延迟）
+    startWqPing();;
 
     // macOS: re-activate → recreate window
     app.on('activate', () => {

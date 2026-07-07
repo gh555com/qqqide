@@ -22,7 +22,8 @@ var BOOTSTRAP_VERSION = '1.0.0';
 
 function bootstrapLog(msg) {
     try {
-        var logDir = path.join(process.cwd(), 'cache');
+        var rootDir = path.dirname(process.execPath);
+        var logDir = path.join(rootDir, 'Data', 'Logs');
         fs.mkdirSync(logDir, { recursive: true });
         var ts = new Date().toISOString();
         fs.appendFileSync(path.join(logDir, 'bootstrap.log'), '[' + ts + '] ' + msg + '\n');
@@ -36,13 +37,8 @@ function applyPendingUpdate() {
         var appDir = __dirname; // shell-out/
         var rootDir = path.dirname(process.execPath);
 
-        // Staging lives under Data/Cache/ (portable-paths.ts), NOT under resources/app/cache/
+        // Staging lives under Data/Cache/
         var stagingDir = path.join(rootDir, 'Data', 'Cache', 'staging', 'shell-out-next');
-
-        if (!fs.existsSync(stagingDir)) {
-            // backward compat: also check old path under resources/app/cache/
-            stagingDir = path.join(appDir, '..', 'cache', 'staging', 'shell-out-next');
-        }
 
         if (!fs.existsSync(stagingDir)) {
             return false;
@@ -59,7 +55,7 @@ function applyPendingUpdate() {
         bootstrapLog('bootstrap: applying pending shell-out update...');
 
         // Backup current shell-out
-        var backupDir = path.join(appDir, '..', 'cache', 'staging', 'shell-out-old');
+        var backupDir = path.join(rootDir, 'Data', 'Cache', 'staging', 'shell-out-old');
         try { fs.rmSync(backupDir, { recursive: true, force: true }); } catch (e) {}
         try {
             fs.cpSync(appDir, backupDir, { recursive: true });

@@ -6,12 +6,46 @@
 function bootStatusbar(boot) {
   var bridge = window.qqqideBridge;
   var $ver = document.getElementById('qqq-status-version');
+  var $onl = document.getElementById('qqq-status-online');
   var $eng = document.getElementById('qqq-status-engine');
   var $clk = document.getElementById('qqq-status-clock');
   var $freeInd = document.getElementById('qqq-status-free');
   var $freeBadge = document.getElementById('qqq-status-free-badge');
   if ($ver) $ver.textContent = 'v' + (boot.version || '?');
   if ($eng) $eng.textContent = 'engine: ' + (boot.engineAlive ? 'on' : 'off');
+  if ($onl) $onl.textContent = '\u25A0'; // 占位方块，等 SSE 推送覆盖
+
+  // ═══ 全球在线人数 — 搭车已有 SSE 广播（零额外请求）═══
+  // 服务器每 5 分钟通过 /api/events/public 广播 good_stats
+  // 包含所有已注册 goods 的 active_12h（在线人数），零边际成本
+  var _onlEventSource = null;
+  function startOnlineSse() {
+    if (!$onl || _onlEventSource) return;
+    _onlEventSource = new EventSource('https://gh555.com/api/events/public');
+    _onlEventSource.addEventListener('good_stats', function(e) {
+      try {
+        var data = JSON.parse(e.data);
+        if (data && data.goods) {
+          for (var i = 0; i < data.goods.length; i++) {
+            if (data.goods[i].slg === 'qqqide') {
+              var online = data.goods[i].stats.active_12h || 0;
+              var totalSold = data.goods[i].stats.total_sold || 0;
+              var t = window._i || function(k,d){return d;};
+              if (online > 0) {
+                $onl.textContent = '\uD83D\uDC65 ' + online.toLocaleString() + ' ' + t('shell.status.online','\u5728\u7EBF');
+              } else {
+                $onl.textContent = '';
+              }
+              break;
+            }
+          }
+        }
+      } catch (err) { /* 静默 */ }
+    });
+    // EventSource 自动重连，无需额外代码
+    _onlEventSource.onerror = function() { /* 自动重连 */ };
+  }
+  startOnlineSse();
 
   // ═══ 单调时钟锚点（变速齿轮免疫，三保险） ═══
   // 优先级：SSE(gh555.com) > Cloudflare trace > timeapi.io
