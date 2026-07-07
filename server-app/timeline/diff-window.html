@@ -109,7 +109,7 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
 #btn-snap:hover{border-color:var(--yellow)}
 </style>
 <script>
-(function(){var p=new URLSearchParams(location.search);var t=p.get('theme');var dark=t==='dark';if(t)try{localStorage.setItem('qqqide-theme',dark?'dark':'light');}catch(_){}document.documentElement.setAttribute('data-theme',dark?'dark':'light');})();
+(function(){var p=new URLSearchParams(location.search);var t=p.get('theme');var dark=t==='dark';if(t)document.documentElement.setAttribute('data-theme',dark?'dark':'light');})();
 </script>
 </head>
 <body>

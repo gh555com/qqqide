@@ -12,8 +12,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 
 /* header */
 .header{display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;min-height:30px}
-.header .repo{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.header .repo{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);cursor:pointer}
+.header .repo:hover{color:var(--blue)}
 .header .branch{font-size:11px;color:var(--green);font-weight:700;font-family:ui-monospace,monospace}
+.header .pulls{font-size:10px;color:var(--blue);font-family:ui-monospace,monospace;margin-left:4px}
 
 /* toolbar */
 .toolbar{display:flex;gap:4px;padding:5px 8px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;flex-wrap:wrap}
@@ -40,17 +42,19 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .badge.U{background:var(--orange)}
 .badge.R{background:var(--cyan)}
 .file-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.file-actions{display:flex;gap:3px;margin-left:auto;flex-shrink:0}
 
 /* inline diff */
 .inline-diff{margin:4px 0 8px 0;border:1px solid var(--border);border-radius:3px;overflow:hidden;display:none}
 .inline-diff .diff-header{padding:4px 8px;background:var(--card);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-family:ui-monospace,monospace;font-size:11px}
 .inline-diff .diff-header .dpath{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
-.inline-diff .diff-body{max-height:300px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.4}
+.inline-diff .diff-body{max-height:360px;overflow:auto;font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:1.4}
 .inline-diff .dline{display:flex;min-height:16px;white-space:pre}
 .inline-diff .dline .dl{color:var(--green)}
 .inline-diff .dline .dr{color:var(--red)}
 .inline-diff .dline .dc{color:var(--base01)}
 .inline-diff .dline .dh{color:var(--blue);font-weight:700}
+.inline-diff .dline .hunk-sep{border-top:1px dashed var(--border);margin:4px 0}
 
 /* commit form */
 .commit-form{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
@@ -58,8 +62,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .commit-form .commit-row{display:flex;align-items:center;gap:8px}
 .commit-form .commit-row button{padding:4px 14px;border:1px solid var(--border);border-radius:4px;background:var(--green);color:#fff;font-weight:700;cursor:pointer;font-size:12px}
 .commit-form .commit-row button:hover{opacity:.9}
-.amend-row{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--base01);margin-bottom:2px}
-.amend-row input[type=checkbox]{accent-color:var(--blue)}
+.commit-options{display:flex;align-items:center;gap:12px;font-size:11px;color:var(--base01);margin-bottom:2px;flex-wrap:wrap}
+.commit-options label{display:flex;align-items:center;gap:3px;cursor:pointer}
+.commit-options input[type=checkbox]{accent-color:var(--blue)}
 
 /* log */
 .log-item{padding:3px 6px;border-bottom:1px solid var(--border);cursor:pointer;font-family:ui-monospace,monospace;font-size:11px}
@@ -93,6 +98,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .btn-mini:hover{background:var(--blue);color:#fff;border-color:var(--blue)}
 .btn-mini.danger{color:var(--red);border-color:var(--red)}
 .btn-mini.danger:hover{background:var(--red);color:#fff}
+.btn-mini.staged{background:var(--green);color:#fff;border-color:var(--green)}
 
 /* scrollbar */
 ::-webkit-scrollbar{width:5px;height:5px}
@@ -107,6 +113,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 <div class="header" id="header">
   <span class="repo" id="repo-name">Git</span>
   <span class="branch" id="branch-name"></span>
+  <span class="pulls" id="pulls-info"></span>
 </div>
 
 <div class="progress" id="progress"></div>
@@ -139,9 +146,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 
   <div id="status-view">
     <div class="commit-form">
-      <div class="amend-row">
-        <input type="checkbox" id="amend-check">
-        <label for="amend-check">修正上一次提交 (amend)</label>
+      <div class="commit-options">
+        <label><input type="checkbox" id="amend-check"> 修正上一次提交 (amend)</label>
+        <label><input type="checkbox" id="signoff-check"> 签名 (sign-off)</label>
       </div>
       <textarea id="commit-msg" placeholder="提交信息..."></textarea>
       <div class="commit-row">
@@ -233,18 +240,32 @@ async function _initGitExe() {
   if (_gitExeResolved) return _gitExePath;
   _gitExeResolved = true;
   if (!bridge || !bridge.qz) { _gitExePath = 'git'; return _gitExePath; }
-  var userData = '';
-  try { userData = (parent.qqqBootInfo || {}).userData || ''; } catch(_) {}
-  if (userData) {
-    var embedded = userData.replace(/\\/g, '/') + '/components/git/cmd/git.exe';
+
+  // 1. 尝试 bridge.components.getBin（主进程唯一真理源）
+  if (bridge.components && bridge.components.getBin) {
     try {
-      var probe = await bridge.qz.spawn({ cmd: embedded, args: ['--version'], timeout: 4000 });
-      if (probe.exitCode === 0 && (probe.stdout||'').indexOf('git version') >= 0) {
-        _gitExePath = embedded;
-        return _gitExePath;
+      var bin = await bridge.components.getBin('git');
+      if (bin) {
+        var probe = await bridge.qz.spawn({ cmd: bin, args: ['--version'], timeout: 4000 });
+        if (probe.exitCode === 0 && (probe.stdout||'').indexOf('git version') >= 0) {
+          _gitExePath = bin;
+          _gitAvailable = true;
+          return _gitExePath;
+        }
       }
     } catch(_) {}
   }
+
+  // 2. 尝试系统 PATH
+  try {
+    var probe2 = await bridge.qz.spawn({ cmd: 'git', args: ['--version'], timeout: 4000 });
+    if (probe2.exitCode === 0 && (probe2.stdout||'').indexOf('git version') >= 0) {
+      _gitExePath = 'git';
+      _gitAvailable = true;
+      return _gitExePath;
+    }
+  } catch(_) {}
+
   _gitExePath = 'git';
   return _gitExePath;
 }
@@ -278,6 +299,8 @@ var _gitRoot = '';
 var _gitAvailable = null;
 var _gitProgressEl = null;
 var _autoRefreshTimer = null;
+var _currentDiffFile = null;   // file currently shown in inline diff
+var _currentDiffStaged = false;
 
 // ═══ PROGRESS ═══
 function _showProgress(label) {
@@ -339,15 +362,26 @@ async function _refreshGitStatus() {
   var sr = await _gitCmd(['status', '--porcelain=v2', '--branch']);
   var lines = (sr.stdout || '').split('\n').filter(Boolean);
 
-  var branchName = '';
+  var branchName = '', ahead = '', behind = '';
   for (var i = 0; i < lines.length; i++) {
-    if (lines[i].startsWith('# branch.head ')) {
-      branchName = lines[i].slice('# branch.head '.length).trim();
+    var line = lines[i];
+    if (line.startsWith('# branch.head ')) {
+      branchName = line.slice('# branch.head '.length).trim();
       if (branchName === '(detached)') branchName = 'HEAD detached';
-      break;
+    }
+    if (line.startsWith('# branch.ab ')) {
+      var abParts = line.slice('# branch.ab '.length).trim().split(' ');
+      ahead = abParts[0] ? abParts[0] : '';
+      behind = abParts[1] ? abParts[1] : '';
     }
   }
   document.getElementById('branch-name').textContent = branchName || 'HEAD detached';
+
+  // Show ahead/behind info
+  var pulls = [];
+  if (ahead) pulls.push('↑' + ahead);
+  if (behind) pulls.push('↓' + behind);
+  document.getElementById('pulls-info').textContent = pulls.join(' ');
 
   var staged = [], unstaged = [], untracked = [];
   for (var i = 0; i < lines.length; i++) {
@@ -363,11 +397,11 @@ async function _refreshGitStatus() {
         var rpaths = parts.slice(9).join(' ').split('\t');
         fpath = rpaths[rpaths.length - 1] || fpath;
       }
-      if (xy[0] !== '.') staged.push({ status: xy[0], path: fpath });
-      if (xy[1] !== '.') unstaged.push({ status: xy[1], path: fpath });
+      if (xy[0] !== '.') staged.push({ status: xy[0], path: fpath, xy: xy });
+      if (xy[1] !== '.') unstaged.push({ status: xy[1], path: fpath, xy: xy });
     } else if (line.startsWith('u')) {
       var uparts = line.split(' ');
-      unstaged.push({ status: 'U', path: uparts.slice(10).join(' ') });
+      unstaged.push({ status: 'U', path: uparts.slice(10).join(' '), xy: 'UU' });
     }
   }
 
@@ -397,10 +431,44 @@ function _renderFileList(elId, files, isStaged) {
     li.appendChild(badge);
     li.appendChild(pathEl);
 
-    // Click: stage/unstage + show inline diff
+    // Actions for unstaged files: discard
+    if (!isStaged && f.status !== '?') {
+      var acts = document.createElement('span');
+      acts.className = 'file-actions';
+      var discardBtn = document.createElement('button');
+      discardBtn.className = 'btn-mini danger';
+      discardBtn.textContent = '丢弃';
+      (function(fp) {
+        discardBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          _discardFile(fp);
+        });
+      })(f.path);
+      acts.appendChild(discardBtn);
+      li.appendChild(acts);
+    }
+    // Actions for untracked files: stage
+    if (f.status === '?') {
+      var acts2 = document.createElement('span');
+      acts2.className = 'file-actions';
+      var addBtn = document.createElement('button');
+      addBtn.className = 'btn-mini';
+      addBtn.textContent = '跟踪';
+      (function(fp) {
+        addBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          _gitCmd(['add', '--', fp]).then(function() { _refreshGitStatus(); });
+        });
+      })(f.path);
+      acts2.appendChild(addBtn);
+      li.appendChild(acts2);
+    }
+
+    // Click: toggle + show diff
     (function(fp, staged) {
-      li.addEventListener('click', function() {
-        _toggleFileStage(fp, staged);
+      li.addEventListener('click', function(e) {
+        if (e.target.tagName === 'BUTTON') return;
+        _toggleShowDiff(fp, staged);
       });
     })(f.path, isStaged);
 
@@ -414,21 +482,36 @@ function _renderFileList(elId, files, isStaged) {
   }
 }
 
-// ═══ FILE STAGE/UNSTAGE + INLINE DIFF ═══
-async function _toggleFileStage(filePath, isStaged) {
+// ═══ FILE DISCARD ═══
+async function _discardFile(filePath) {
+  if (!confirm('丢弃对 ' + filePath + ' 的修改？（不可恢复）')) return;
+  await _gitCmd(['checkout', '--', filePath]);
+  _refreshGitStatus();
+  document.getElementById('inline-diff').style.display = 'none';
+}
+
+// ═══ SHOW DIFF + HUNK STAGING ═══
+async function _toggleShowDiff(filePath, isStaged) {
+  // Toggle staging
   if (isStaged) {
     await _gitCmd(['reset', 'HEAD', '--', filePath]);
   } else {
     await _gitCmd(['add', '--', filePath]);
   }
   _refreshGitStatus();
-  // Show inline diff after staging changes
-  _showInlineDiff(filePath);
+  // After toggle, show the appropriate diff
+  // Now re-check whether the file is staged
+  var sr2 = await _gitCmd(['diff', '--cached', '--name-only', '--', filePath]);
+  var nowStaged = !!(sr2.stdout && sr2.stdout.trim());
+
+  _currentDiffFile = filePath;
+  _currentDiffStaged = nowStaged;
+  _renderInlineDiff(filePath, nowStaged);
 }
 
-async function _showInlineDiff(filePath) {
-  var stagedR = await _gitCmd(['diff', '--cached', '-U3', '--', filePath]);
-  var unstagedR = await _gitCmd(['diff', '-U3', '--', filePath]);
+async function _renderInlineDiff(filePath, staged) {
+  var args = staged ? ['diff', '--cached', '-U3', '--', filePath] : ['diff', '-U3', '--', filePath];
+  var r = await _gitCmd(args);
 
   var diffEl = document.getElementById('inline-diff');
   var pathEl = document.getElementById('inline-diff-path');
@@ -437,46 +520,160 @@ async function _showInlineDiff(filePath) {
   pathEl.textContent = filePath;
   bodyEl.innerHTML = '';
 
-  // Show staged diff if exists, else unstaged
-  var diffOut = stagedR.stdout || unstagedR.stdout || '';
+  var diffOut = r.stdout || '';
   if (!diffOut.trim()) {
     bodyEl.innerHTML = '<div style="padding:8px;color:var(--base01);">无差异</div>';
   } else {
-    var dlines = diffOut.split('\n');
-    for (var i = 0; i < dlines.length; i++) {
-      var l = dlines[i];
-      var div = document.createElement('div');
-      div.className = 'dline';
-      if (l.startsWith('@@')) {
-        div.innerHTML = '<span class="dh">' + _esc(l) + '</span>';
-      } else if (l.startsWith('+')) {
-        div.innerHTML = '<span class="dl">' + _esc(l) + '</span>';
-      } else if (l.startsWith('-')) {
-        div.innerHTML = '<span class="dr">' + _esc(l) + '</span>';
-      } else if (l.startsWith('diff ') || l.startsWith('index ') || l.startsWith('---') || l.startsWith('+++')) {
-        div.innerHTML = '<span class="dh">' + _esc(l) + '</span>';
-      } else {
-        div.innerHTML = '<span class="dc">' + _esc(l) + '</span>';
+    // Parse hunks and render with stage buttons
+    var hunks = _parseHunks(diffOut.split('\n'));
+    var html = '';
+
+    for (var h = 0; h < hunks.length; h++) {
+      var hunk = hunks[h];
+      // Hunk separator with stage button
+      if (h > 0) {
+        html += '<div class="dline hunk-sep"></div>';
       }
-      bodyEl.appendChild(div);
+      // Hunk header line
+      html += '<div class="dline" style="display:flex;align-items:center;">' +
+        '<span class="dh">' + _esc(hunk.header || '@@ ...') + '</span>' +
+        '<span style="margin-left:auto;">' +
+        '<button class="btn-mini hunk-stage-btn" data-hunk="' + h + '" data-path="' + _esc(filePath) + '">' +
+        (staged ? '取消暂存此块' : '暂存此块') + '</button></span></div>';
+
+      for (var i = 0; i < hunk.lines.length; i++) {
+        var l = hunk.lines[i];
+        var cls = 'dc';
+        if (l.startsWith('+')) cls = 'dl';
+        else if (l.startsWith('-')) cls = 'dr';
+        html += '<div class="dline"><span class="' + cls + '">' + _esc(l) + '</span></div>';
+      }
+    }
+
+    bodyEl.innerHTML = html;
+
+    // Wire up hunk stage buttons
+    var btns = bodyEl.querySelectorAll('.hunk-stage-btn');
+    for (var b = 0; b < btns.length; b++) {
+      (function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var hIdx = parseInt(btn.getAttribute('data-hunk'), 10);
+          var fp = btn.getAttribute('data-path');
+          _stageHunk(fp, hIdx, hunks[hIdx], btn);
+        });
+      })(btns[b]);
     }
   }
   diffEl.style.display = '';
 }
 
+// ─── HUNK PARSING ───
+function _parseHunks(diffLines) {
+  var hunks = [];
+  var cur = null;
+
+  for (var i = 0; i < diffLines.length; i++) {
+    var l = diffLines[i];
+    if (l.startsWith('@@')) {
+      if (cur) hunks.push(cur);
+      cur = { header: l, lines: [] };
+    } else if (cur && (l.startsWith('+') || l.startsWith('-') || l.startsWith(' '))) {
+      cur.lines.push(l);
+    }
+    // Skip diff/index/---/+++/Binary lines
+  }
+  if (cur) hunks.push(cur);
+  return hunks;
+}
+
+// ─── HUNK STAGING ───
+// Strategy: write the hunk as a patch, apply --cached (stage) or apply --cached --reverse (unstage)
+// Fallback: if patch apply fails, unstage the whole file and re-stage remaining hunks
+async function _stageHunk(filePath, hunkIdx, hunk, btn) {
+  btn.disabled = true;
+  btn.textContent = '...';
+
+  var patch = 'diff --git a/' + filePath + ' b/' + filePath + '\n';
+  patch += '--- a/' + filePath + '\n';
+  patch += '+++ b/' + filePath + '\n';
+  patch += hunk.header + '\n';
+  for (var i = 0; i < hunk.lines.length; i++) {
+    patch += hunk.lines[i] + '\n';
+  }
+
+  try {
+    var tmpPath = _gitRoot + '/.git/tmp-hunk.patch';
+    var tmpPathNorm = tmpPath.replace(/\\/g, '/');
+
+    // Write patch via bridge.fs (main process atomic write)
+    if (bridge && bridge.fs && bridge.fs.write) {
+      await bridge.fs.write(tmpPathNorm, patch);
+    } else {
+      btn.disabled = false;
+      btn.textContent = '失败';
+      return;
+    }
+
+    var r;
+    if (_currentDiffStaged) {
+      // Unstage: apply reverse to index
+      r = await _gitCmd(['apply', '--cached', '--reverse', tmpPathNorm]);
+      if (r.exitCode !== 0) {
+        // Fallback: unstage entire file, then re-add all hunks except this one
+        await _gitCmd(['reset', 'HEAD', '--', filePath]);
+        // Re-stage all original hunks except the one being removed
+        var allHunks = _parseHunks((await _gitCmd(['diff', '-U3', '--', filePath])).stdout.split('\n'));
+        for (var h = 0; h < allHunks.length; h++) {
+          if (h === hunkIdx) continue;
+          var hp = 'diff --git a/' + filePath + ' b/' + filePath + '\n';
+          hp += '--- a/' + filePath + '\n+++ b/' + filePath + '\n';
+          hp += allHunks[h].header + '\n';
+          for (var li = 0; li < allHunks[h].lines.length; li++) hp += allHunks[h].lines[li] + '\n';
+          await bridge.fs.write(tmpPathNorm, hp);
+          await _gitCmd(['apply', '--cached', tmpPathNorm]);
+        }
+      }
+    } else {
+      // Stage: apply to index
+      r = await _gitCmd(['apply', '--cached', tmpPathNorm]);
+    }
+
+    // Clean up temp patch
+    try { if (bridge && bridge.fs && bridge.fs.delete) bridge.fs.delete(tmpPathNorm); } catch(_) {}
+
+    _refreshGitStatus();
+    setTimeout(function() {
+      // Re-fetch status to know whether file is now staged
+      _gitCmd(['diff', '--cached', '--name-only', '--', filePath]).then(function(sr) {
+        var nowStaged = !!(sr.stdout && sr.stdout.trim());
+        _renderInlineDiff(filePath, nowStaged);
+      });
+    }, 300);
+  } catch(e) {
+    try { if (bridge && bridge.fs && bridge.fs.delete) bridge.fs.delete((_gitRoot + '/.git/tmp-hunk.patch').replace(/\\/g, '/')); } catch(_) {}
+    btn.disabled = false;
+    btn.textContent = '失败';
+    btn.style.color = 'var(--red)';
+  }
+}
+
 document.getElementById('btn-close-diff').addEventListener('click', function() {
   document.getElementById('inline-diff').style.display = 'none';
+  _currentDiffFile = null;
 });
 
 // ═══ COMMIT ═══
 document.getElementById('btn-commit').addEventListener('click', async function() {
   var msg = document.getElementById('commit-msg').value.trim();
   if (!msg) return;
-  var isAmend = document.getElementById('amend-check').checked;
-  var args = isAmend ? ['commit', '--amend', '-m', msg] : ['commit', '-m', msg];
+  var args = ['commit', '-m', msg];
+  if (document.getElementById('amend-check').checked) args.unshift('--amend');
+  if (document.getElementById('signoff-check').checked) args.push('--signoff');
   await _gitCmd(args);
   document.getElementById('commit-msg').value = '';
   document.getElementById('amend-check').checked = false;
+  document.getElementById('signoff-check').checked = false;
   _refreshGitStatus();
   document.getElementById('inline-diff').style.display = 'none';
 });
@@ -603,11 +800,10 @@ async function _showCommitDetail(fullHash) {
   var firstLine = ((r.stdout || '').split('\n')[0] || '').slice(0, 80);
   document.getElementById('repo-name').textContent = 'Commit ' + fullHash.slice(0, 8) + ': ' + firstLine;
 
-  // Show diff inline
   var diffR = await _gitCmd(['diff', fullHash + '~1', fullHash]);
+  var diffEl = document.getElementById('inline-diff');
   var pathEl = document.getElementById('inline-diff-path');
   var bodyEl = document.getElementById('inline-diff-body');
-  var diffEl = document.getElementById('inline-diff');
   pathEl.textContent = 'commit ' + fullHash.slice(0, 8);
   bodyEl.innerHTML = '';
   var diffOut = diffR.stdout || '';
@@ -633,7 +829,6 @@ async function _showCommitDetail(fullHash) {
   }
   diffEl.style.display = '';
 
-  // Switch back to status view to show the diff
   document.getElementById('log-view').classList.add('hidden');
   document.getElementById('status-view').classList.remove('hidden');
 }
@@ -662,7 +857,7 @@ async function _showBranches() {
   document.getElementById('branch-view').classList.remove('hidden');
   document.getElementById('stash-view').classList.add('hidden');
 
-  var r = await _gitCmd(['branch', '-a', '--format=%(refname:short)|%(objectname:short)|%(upstream:short)']);
+  var r = await _gitCmd(['branch', '-a', '--format=%(refname:short)|%(objectname:short)|%(upstream:short)|%(authorname)']);
   var list = document.getElementById('branch-list');
   list.innerHTML = '';
   var lines = (r.stdout || '').split('\n').filter(Boolean);
@@ -676,7 +871,11 @@ async function _showBranches() {
   for (var i = 0; i < lines.length; i++) {
     var parts = lines[i].split('|');
     var name = parts[0] || '';
+    var hash = parts[1] || '';
+    var upstream = parts[2] || '';
+    var author = parts[3] || '';
     var isCurrent = (name === currentBranch);
+    var isRemote = name.startsWith('origin/');
 
     var li = document.createElement('li');
     var nameEl = document.createElement('span');
@@ -684,6 +883,7 @@ async function _showBranches() {
     nameEl.textContent = name;
     if (isCurrent) nameEl.style.cssText = 'color:var(--green);font-weight:700;';
     li.appendChild(nameEl);
+    li.title = (hash ? hash.slice(0, 8) : '') + (upstream ? ' → ' + upstream : '') + (author ? ' (' + author + ')' : '');
 
     if (isCurrent) {
       var curBadge = document.createElement('span');
@@ -691,7 +891,7 @@ async function _showBranches() {
       curBadge.textContent = '●';
       li.appendChild(curBadge);
       li.style.cursor = 'default';
-    } else if (!name.startsWith('origin/')) {
+    } else if (!isRemote) {
       var acts = document.createElement('span');
       acts.className = 'branch-actions';
       var switchBtn = document.createElement('button');
@@ -699,11 +899,18 @@ async function _showBranches() {
       switchBtn.textContent = '切换';
       (function(b) { switchBtn.addEventListener('click', function(e) { e.stopPropagation(); _switchBranch(b); }); })(name);
       acts.appendChild(switchBtn);
-      var delBtn = document.createElement('button');
-      delBtn.className = 'btn-mini danger';
-      delBtn.textContent = '删除';
-      (function(b) { delBtn.addEventListener('click', function(e) { e.stopPropagation(); _deleteBranch(b); }); })(name);
-      acts.appendChild(delBtn);
+      var mergeBtn = document.createElement('button');
+      mergeBtn.className = 'btn-mini';
+      mergeBtn.textContent = '合并';
+      (function(b) { mergeBtn.addEventListener('click', function(e) { e.stopPropagation(); _mergeBranch(b); }); })(name);
+      acts.appendChild(mergeBtn);
+      if (name !== 'main' && name !== 'master') {
+        var delBtn = document.createElement('button');
+        delBtn.className = 'btn-mini danger';
+        delBtn.textContent = '删除';
+        (function(b) { delBtn.addEventListener('click', function(e) { e.stopPropagation(); _deleteBranch(b); }); })(name);
+        acts.appendChild(delBtn);
+      }
       li.appendChild(acts);
       li.style.cursor = 'default';
     } else {
@@ -717,6 +924,14 @@ async function _switchBranch(name) {
   var r = await _gitCmd(['switch', name]);
   if (r.exitCode === 0) { _refreshGitStatus(); _showBranches(); }
   else _showProgress('切换失败: ' + (r.stderr || '').slice(0, 100));
+}
+
+async function _mergeBranch(name) {
+  if (!confirm('将 ' + name + ' 合并到当前分支？')) return;
+  _showProgress('合并 ' + name + ' ...');
+  var r = await _gitCmd(['merge', name]);
+  if (r.exitCode === 0) { _hideProgress(); _refreshGitStatus(); _showBranches(); }
+  else { _showProgress('✕ 合并失败: ' + (r.stderr || '').slice(0, 200)); document.getElementById('progress').style.color = 'var(--red)'; }
 }
 
 async function _deleteBranch(name) {
@@ -747,7 +962,7 @@ document.getElementById('btn-stash').addEventListener('click', function() {
 });
 
 document.getElementById('btn-stash-save').addEventListener('click', async function() {
-  await _gitCmd(['stash']);
+  await _gitCmd(['stash', 'push', '-m', 'Quick stash ' + new Date().toLocaleString()]);
   _refreshGitStatus();
   _showStashes();
 });
@@ -906,7 +1121,6 @@ async function _resolveConflict(filePath, strategy) {
 }
 
 // ═══ BACK TO STATUS ═══
-// When clicking the repo name in header, go back to status view
 document.getElementById('repo-name').addEventListener('click', function() {
   document.getElementById('status-view').classList.remove('hidden');
   document.getElementById('log-view').classList.add('hidden');

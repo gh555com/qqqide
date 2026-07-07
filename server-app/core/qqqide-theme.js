@@ -153,17 +153,57 @@
   // §4 状态
   // ==========================================================================
   const ROOT = document.documentElement;
-  const STORE_KEY = 'qqqide-theme';
   let _dark = false;
   const _listeners = [];
 
-  function _persist() {
-    try { localStorage.setItem(STORE_KEY, _dark ? 'dark' : 'light'); } catch (_) { }
+  // ★ 主题持久化 → only.sq3（项目资产，唯一真理源）
+  function _onlyDb() {
+    var root = window._workspaceRoot;
+    if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
+    return window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
   }
 
-  function _load() {
-    try { return localStorage.getItem(STORE_KEY); } catch (_) { return null; }
+  function _persist() {
+    var db = _onlyDb();
+    if (db) db.set('theme', _dark ? 'dark' : 'light').catch(function () { });
   }
+
+  // ★ 从 only.sq3 同步主题（项目切换/首次绑定主文件夹时调用）
+  function syncFromProject() {
+    var db = _onlyDb();
+    if (!db) return;
+    db.get('theme').then(function (v) {
+      if (v === 'dark' || v === 'light') {
+        var target = v === 'dark';
+        if (target !== _dark) apply(target);
+      }
+    }).catch(function () { });
+  }
+
+  // ★ 监听 _workspaceRoot 出现，自动同步项目主题
+  var _themeWatchTimer = null;
+  var _themeRootSynced = false;
+  function _watchRoot() {
+    if (_themeRootSynced) return;
+    if (typeof window._workspaceRoot === 'string' && window._workspaceRoot) {
+      _themeRootSynced = true;
+      if (_themeWatchTimer) { clearInterval(_themeWatchTimer); _themeWatchTimer = null; }
+      syncFromProject();
+      return;
+    }
+    if (!_themeWatchTimer) {
+      _themeWatchTimer = setInterval(function () {
+        if (typeof window._workspaceRoot === 'string' && window._workspaceRoot) {
+          clearInterval(_themeWatchTimer);
+          _themeWatchTimer = null;
+          _themeRootSynced = true;
+          syncFromProject();
+        }
+      }, 300);
+    }
+  }
+  // 启动监听
+  _watchRoot();
 
   // ==========================================================================
   // §5 CSS 变量批量注入（一次性 innerHTML，零回流）
@@ -358,17 +398,8 @@
   // §7 初始化
   // ==========================================================================
   function init() {
-    // 首次注入 CSS
     _injectCSS(SOLARIZED_DARK, SOLARIZED_LIGHT);
-
-    // 恢复持久化状态
-    const saved = _load();
-    _dark = saved === 'dark';
-    if (_dark) {
-      ROOT.setAttribute('data-theme', 'dark');
-    } else {
-      ROOT.removeAttribute('data-theme');
-    }
+    // 默认亮色；_workspaceRoot 就绪后 _watchRoot 自动读取 only.sq3 覆盖
   }
 
   init();
@@ -380,6 +411,7 @@
     get PALETTE() { return getCurrentPalette(); },
     isDark,
     apply,
+    syncFromProject,
     onChange,
     getMonacoTheme,
     defineMonacoThemes,

@@ -685,7 +685,8 @@ document.getElementById('ctx-snap').onclick = async function () {
         }
 
         // ── 构建快照内容 ──
-        var _ts = _fmtTime(new Date()).replace(' ', '_').replace(/:/g, '_');
+        var _now = new Date();
+        var _ts = _fmtTime(_now).replace(' ', '_').replace(/:/g, '_');
 
         var _snap = {
             questId: questActiveId,
@@ -1120,6 +1121,8 @@ function renderQueueStrip() {
                 if (card.classList.contains('bk-expanded')) return;
                 card.classList.add('bk-expanded');
                 var _i2 = window._i || function (k, f) { return f; };
+                // ★ 快照原始文本，取消时还原
+                var originalText = q.text;
                 // 保留 row1/row2，追加编辑区
                 var editArea = document.createElement('div');
                 editArea.className = 'bk-edit';
@@ -1174,6 +1177,7 @@ function renderQueueStrip() {
                 cancelBtn.textContent = _i2('ai.queue.cancel', '取消');
                 cancelBtn.onclick = function (e) {
                     e.stopPropagation();
+                    q.text = originalText;
                     renderQueueStrip();
                 };
                 var delBtn = document.createElement('button');

@@ -39,7 +39,7 @@ var AgentLoop = (function () {
         this.abortController = null;
         this._log = opts.log || function () { };
         this.log = this._log;          // alias for context engine
-        // ★ 文件日志：写入 qqq/new_log/ 目录（持久化诊断，不依赖 Console）
+        // ★ 文件日志：写入 qqq/logs/ 目录（持久化诊断，不依赖 Console）
         this._fileLogBuffer = [];
         this._fileLogTimer = null;
         var _self = this;
@@ -65,7 +65,7 @@ var AgentLoop = (function () {
                 var today = new Date().toISOString().slice(0, 10);
                 var root = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
                 if (!root) return;
-                var logDir = root.replace(/\\/g, '/') + '/qqq/new_log';  // new_log/ 在 qqq/ 子目录内
+                var logDir = root.replace(/\\/g, '/') + '/qqq/logs';  // ★ 唯一日志目录
                 var logPath = logDir + '/agent-' + today + '.log';
                 var bridge = window.parent && window.parent.qqqideBridge;
                 if (bridge && bridge.fs) {
@@ -1049,9 +1049,18 @@ var AgentLoop = (function () {
     // ---- 并行工具执行 ----
     // 返回 { allResults, assistantMsg }，由调用方原子推入 conversation
     // 避免 auto-save 在 tool_calls 与 tool 结果之间捕获断裂状态（校验：tool_calls 后必须紧跟 tool 消息）
-    AgentLoop.prototype.inject = function (message) {
-        this.conversation.push({ role: 'user', content: message, _injected: true, _floor: this._ctx.totalFloors });
-        this._log('→ injected: ' + message.slice(0, 60));
+    // opts._system=true → AI-visible only, NOT rendered in UI (E-Flow trigger, stale warnings, etc.)
+    // opts._system unset/false → legacy _injected mode (rendered as guide block)
+    AgentLoop.prototype.inject = function (message, opts) {
+        opts = opts || {};
+        var msg = { role: 'user', content: message, _floor: this._ctx.totalFloors };
+        if (opts._system) {
+            msg._system = true;
+        } else {
+            msg._injected = true;
+        }
+        this.conversation.push(msg);
+        this._log('→ injected' + (opts._system ? ' [_system]' : '') + ': ' + message.slice(0, 60));
         return true;
     };
 
@@ -1368,7 +1377,7 @@ AgentLoop.prototype._dumpConversation = function (tag, extra) {
     var today = new Date().toISOString().slice(0, 10);
     var root = (typeof questStore !== "undefined" && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
     if (!root) return;
-    var logDir = root.replace(/\\/g, "/") + "/qqq/new_log";
+    var logDir = root.replace(/\\/g, "/") + "/qqq/logs";
     var fname = tag + "-f" + self._ctx.totalFloors + "-h" + self._houseIndex + ".json";
     var logPath = logDir + "/" + fname;
 

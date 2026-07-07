@@ -360,8 +360,8 @@ async function _executeSend(intent) {
         if (typeof ExpertFlow !== 'undefined' && ExpertFlow.shouldTrigger(_firstQuest, floorNum)) {
             ExpertFlow.markTriggered();
             ExpertFlow.setMode(ExpertFlow.MODE_PENDING);
-            var _eMsg = ExpertFlow.buildInjectMessage(questStore.getProjectRoot());
-            agent.inject(_eMsg);
+            // ★ _system:true → AI sees it, UI does NOT render it (unlike _injected guide blocks)
+            agent.inject('[E-FLOW trigger]', { _system: true });
         }
     } catch (_) { }
 
@@ -499,19 +499,22 @@ async function _executeSend(intent) {
                     _targetDiv2._splitCursor = 0;
                     _targetDiv2._codeFenceOpen = false;
 
-                    // ★ P14 最终安全网：用 `content`（完整 AI 回复）补全丢失的尾段
-                    //   `_buf`/`_paras` 是流式过程中按 \n\n 切分的半成品，边界条件易丢最后一截。
-                    //   `content` 是 finalize 过的完整文本，以此为准做尾段补全。
+                    // ★ P14 安全网：`content` 可能含 EnvelopeStripper.finalize() 清理出
+                    //   的额外文本（如 <invoke> 内嵌内容），从未经 onToken 到达 _buf。
+                    //   用前缀去重：仅追加 content 中超出已渲染 DOM 内容长度的后缀。
+                    //   ★ 关键：只追加缺失尾部，不重复渲染整个 content（防内容重复）。
                     if (content && typeof content === 'string' && content.trim()) {
                         var _domText = _targetDiv2._contentWrap.textContent || '';
-                        var _domTail = _domText.slice(-300).replace(/\s+/g, ' ').trim();
-                        var _contentTail = content.slice(-300).replace(/\s+/g, ' ').trim();
-                        if (_contentTail && _domTail !== _contentTail && !_domTail.endsWith(_contentTail.slice(-100))) {
-                            var _finalP = document.createElement('div');
-                            _finalP.className = 'msg-ai-p msg-ai-final';
-                            var _rm = typeof renderMarkdown === 'function' ? renderMarkdown : function (s) { return s; };
-                            _finalP.innerHTML = _rm(content);
-                            _targetDiv2._contentWrap.appendChild(_finalP);
+                        // 宽松容忍：允许渲染后的 HTML 有 ±80 字符偏差（Markdown→HTML 会引入空格/换行差异）
+                        if (content.length > _domText.length + 80) {
+                            var _suffix = content.slice(_domText.length);
+                            if (_suffix.trim()) {
+                                var _finalP = document.createElement('div');
+                                _finalP.className = 'msg-ai-p msg-ai-final';
+                                var _rm = typeof renderMarkdown === 'function' ? renderMarkdown : function (s) { return s; };
+                                _finalP.innerHTML = _rm(_suffix);
+                                _targetDiv2._contentWrap.appendChild(_finalP);
+                            }
                         }
                     }
                 }
