@@ -260,6 +260,38 @@ function bootRpcForwarder() {
       }
     }
 
+    // ★ Handle store.* RPC: persistence bridge (global.sq3 + only.sq3)
+    if (e.data.type === 'qqq-rpc' && e.data.method && (e.data.method === 'store.get' || e.data.method === 'store.set' || e.data.method === 'store.getLocal' || e.data.method === 'store.setLocal')) {
+      var method = e.data.method, params = e.data.params, id = e.data.id;
+      try {
+        var _roamDb = window.qgs('roam');
+        var result;
+        if (method === 'store.get') {
+          result = await _roamDb.get(params);
+        } else if (method === 'store.set') {
+          var _setArg = params; // { key, value }
+          await _roamDb.set(_setArg.key, _setArg.value);
+          result = true;
+        } else if (method === 'store.getLocal') {
+          var _root = window._workspaceRoot;
+          if (!_root) throw new Error('_workspaceRoot not ready');
+          var _onlyDb = window.qgs.project(_root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+          result = await _onlyDb.get(params);
+        } else if (method === 'store.setLocal') {
+          var _root2 = window._workspaceRoot;
+          if (!_root2) throw new Error('_workspaceRoot not ready');
+          var _onlyDb2 = window.qgs.project(_root2 + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+          var _setArg2 = params; // { key, value }
+          await _onlyDb2.set(_setArg2.key, _setArg2.value);
+          result = true;
+        }
+        if (e.source) e.source.postMessage({ type: 'qqq-rpc-reply', id: id, result: result, error: null }, '*');
+      } catch (err) {
+        if (e.source) e.source.postMessage({ type: 'qqq-rpc-reply', id: id, result: null, error: { message: String(err) } }, '*');
+      }
+      return;
+    }
+
     // Handle generic RPC: iframe calls bridge methods
     // params 默认整体当成单一参数（数组也是单一参数，修正 diskFree 当前 bug）
     // 显式 spread: { __spread: true, args: [...] } 才解包）
