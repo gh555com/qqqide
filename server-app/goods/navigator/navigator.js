@@ -2,7 +2,7 @@
 // qoods/navigator/navigator.js
 // Quick-jump file navigator. Press Ctrl+P to open, type to fuzzy-filter
 // recent files, Enter to open in editor.
-// Recent list is kept in localStorage (no fs writes from this qood).
+// Recent list persisted to only.sq3 (项目资产，随项目迁移).
 // ============================================================================
 
 (function () {
@@ -10,19 +10,41 @@
   if (!globalThis.qoods) { console.warn('[navigator] qoods shim missing'); return; }
   const Q = globalThis.qoods;
 
-  const KEY_RECENT = 'qqq.navigator.recent';
   const MAX_RECENT = 50;
+  var _recentCache = []; // sync cache, lazy-loaded from only.sq3
+  var _recentLoaded = false;
 
-  function getRecent() {
-    try { return JSON.parse(localStorage.getItem(KEY_RECENT) || '[]'); }
-    catch { return []; }
+  function _onlyDb() {
+    var root = window._workspaceRoot;
+    if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
+    return window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
   }
+
+  // 异步初始化：从 only.sq3 加载缓存
+  (async function _initRecent() {
+    var db = _onlyDb();
+    if (!db) return;
+    try {
+      var v = await db.get('navigator.recent');
+      if (Array.isArray(v)) _recentCache = v;
+    } catch (_) { }
+    _recentLoaded = true;
+  })();
+
+  function getRecent() { return _recentCache; }
+
+  function _saveRecent(list) {
+    _recentCache = list;
+    var db = _onlyDb();
+    if (db) db.set('navigator.recent', list).catch(function () { });
+  }
+
   function pushRecent(p) {
-    if (!p) { return; }
-    const list = getRecent().filter(x => x !== p);
+    if (!p) return;
+    var list = _recentCache.filter(function (x) { return x !== p; });
     list.unshift(p);
-    if (list.length > MAX_RECENT) { list.length = MAX_RECENT; }
-    try { localStorage.setItem(KEY_RECENT, JSON.stringify(list)); } catch { }
+    if (list.length > MAX_RECENT) list.length = MAX_RECENT;
+    _saveRecent(list);
   }
 
   // Hook file-open events so navigator records files automatically.

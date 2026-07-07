@@ -17,52 +17,35 @@ var _shLayoutState = {
   outputVisible: false,
 };
 
+// ---- Layout persistence → only.sq3 (项目资产) ----
+function _shOnlyDb() {
+  var root = window._workspaceRoot;
+  if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
+  return window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+}
+
 async function loadState() {
-  var bridge = _shBridge;
-  // ★ restore 模式：优先从 qgs 窗口快照读取 layout
-  if (window.location.search.indexOf('restore=1') !== -1) {
+  // ★ 真理源: only.sq3（项目资产）。如 _workspaceRoot 未就绪，从 qgs 旧数据兜底一次。
+  var db = _shOnlyDb();
+  if (db) {
     try {
-      var m = window.location.search.match(/[?&]folder=([^&]+)/);
-      if (m && bridge && bridge.state && bridge.state.get) {
-        var key = 'win_snap:' + decodeURIComponent(m[1]).replace(/\\/g, '/').replace(/\/$/, '');
-        var snap = await bridge.state.get('qqqide', key).catch(function () { return null; });
-        if (snap && snap.layout && typeof snap.layout === 'object') {
-          if (typeof snap.layout.aZoneW === 'number') _shLayoutState.aZoneW = snap.layout.aZoneW;
-          if (typeof snap.layout.outputH === 'number') _shLayoutState.outputH = snap.layout.outputH;
-          if (typeof snap.layout.outputVisible === 'boolean') _shLayoutState.outputVisible = snap.layout.outputVisible;
-          _shLayoutState.aZoneW = Math.max(_shMin, _shLayoutState.aZoneW || 220);
-          _shLayoutState.outputH = Math.max(_shMin, _shLayoutState.outputH || 200);
-          // 也写回 layout_v2 确保下次正常启动也能拿到
-          if (bridge.state.set) bridge.state.set('qqqide', 'layout_v2', _shLayoutState).catch(function () { });
-          return; // 快照成功 → 退出，不再走下面的逻辑
-        }
-      }
-    } catch (_) { /* fall through */ }
-  }
-  // 1) try StateStore first
-  try {
-    if (bridge && bridge.state && bridge.state.get) {
-      var v = await bridge.state.get('qqqide', 'layout_v2');
+      var v = await db.get('layout');
       if (v && typeof v === 'object') {
         if (typeof v.aZoneW === 'number') _shLayoutState.aZoneW = v.aZoneW;
         if (typeof v.outputH === 'number') _shLayoutState.outputH = v.outputH;
         if (typeof v.outputVisible === 'boolean') _shLayoutState.outputVisible = v.outputVisible;
       }
-    }
-  } catch (_) { /* fall through to defaults */ }
-  // 2) migration: if StateStore had no value, try old localStorage key
-  var _stillDefault = _shLayoutState.aZoneW === 220 && _shLayoutState.outputH === 200 && !_shLayoutState.outputVisible;
-  if (_stillDefault) {
+    } catch (_) { }
+  }
+  // only.sq3 无数据 → 从 global.sq3 旧 layout_v2 迁移一次（过渡期）
+  var stillDefault = _shLayoutState.aZoneW === 220 && _shLayoutState.outputH === 200 && !_shLayoutState.outputVisible;
+  if (stillDefault && window.qqqideBridge && window.qqqideBridge.state && window.qqqideBridge.state.get) {
     try {
-      var raw = localStorage.getItem('qqq-layout-v2');
-      if (raw) {
-        var old = JSON.parse(raw);
+      var old = await window.qqqideBridge.state.get('qqqide', 'layout_v2');
+      if (old && typeof old === 'object') {
         if (typeof old.aZoneW === 'number') _shLayoutState.aZoneW = old.aZoneW;
         if (typeof old.outputH === 'number') _shLayoutState.outputH = old.outputH;
         if (typeof old.outputVisible === 'boolean') _shLayoutState.outputVisible = old.outputVisible;
-        // one-time migrate: push to StateStore, remove localStorage
-        try { localStorage.removeItem('qqq-layout-v2'); } catch (_) { }
-        try { if (bridge && bridge.state && bridge.state.set) bridge.state.set('qqqide', 'layout_v2', _shLayoutState); } catch (_) { }
       }
     } catch (_) { }
   }
@@ -71,17 +54,15 @@ async function loadState() {
 }
 
 function persistState() {
-  var bridge = _shBridge;
-  // Authoritative: StateStore (debounced, atomic, cloud=true via qqqide).
+  var db = _shOnlyDb();
+  if (!db) return;
   try {
-    if (bridge && bridge.state && bridge.state.set) {
-      bridge.state.set('qqqide', 'layout_v2', {
-        aZoneW: _shLayoutState.aZoneW,
-        outputH: _shLayoutState.outputH,
-        outputVisible: _shLayoutState.outputVisible,
-      }).catch(function () { });
-    }
-  } catch (_) { /* ignore */ }
+    db.set('layout', {
+      aZoneW: _shLayoutState.aZoneW,
+      outputH: _shLayoutState.outputH,
+      outputVisible: _shLayoutState.outputVisible,
+    }).catch(function () { });
+  } catch (_) { }
 }
 
 // ---- CSS variable helpers ----

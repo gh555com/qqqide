@@ -2,8 +2,8 @@
 // shell-menu.js — 菜单栏（从 shell.js 拆分）
 // 依赖: window.qqqideBridge, window.qqqDefaultMenuSchema, window._i
 // 导出: window._shHandleMenuCmd (供 shell-rpc.js 的 bootKeyHook 使用)
-// 功能: 菜单弹出/高亮/命令分发 + "开新窗口" 行 hover 右侧展开最近文件夹下拉
-//       窗口快照保存/恢复 (win_snap:{folderPath} in qgs)
+// 功能: 菜单弹出/高亮/命令分发 + "开新窗口" hover 最近文件夹下拉
+//       项目资产持久化 → only.sq3 (tab-manager + shell.js 各自负责)
 // ============================================================================
 
 var _shellActiveMenubarPopup = null;
@@ -23,69 +23,20 @@ function _closeMenuRecentDropdown() {
   if (_shellMenuRecentHoverTimer) { clearTimeout(_shellMenuRecentHoverTimer); _shellMenuRecentHoverTimer = null; }
 }
 
-// ---- 窗口快照：保存到 qgs global，key=win_snap:{normalizedPath} ----
-function _saveWindowSnapshot() {
-  var bridge = window.qqqideBridge;
-  if (!bridge || !bridge.state) return;
-  var root = (window._workspaceRoot || '');
-  root = root.replace(/\\/g, '/').replace(/\/$/, '');
-  if (!root) return;
-
-  var snap = { mainFolder: root, atime: Date.now() };
-
-  // editor tabs (from qqqtabs)
-  if (window.qqqTabs && window.qqqTabs.getGroups) {
-    var groups = window.qqqTabs.getGroups();
-    snap.editorTabs = [];
-    for (var gi = 0; gi < groups.length; gi++) {
-      var g = groups[gi];
-      if (g.type !== 'file') continue;
-      for (var ti = 0; ti < g.tabs.length; ti++) {
-        var t = g.tabs[ti];
-        if (t.filePath) {
-          snap.editorTabs.push({
-            path: t.filePath,
-            groupIdx: g.idx,
-            active: t.id === g.activeTabId,
-            preview: !!t.preview
-          });
-        }
-      }
+// ---- 项目资产刷新：确保 only.sq3 同步落盘 ----
+function _flushProjectAssets() {
+  if (window.qqqTabs && window.qqqTabs.flushOpenTabs) window.qqqTabs.flushOpenTabs();
+  if (typeof persistState === 'function') persistState();
+  // recent folders → global.sq3（跨项目）
+  try {
+    var bridge = window.qqqideBridge;
+    if (bridge && bridge.state) {
+      bridge.state.get('qqqide', 'recent_folders').then(function (data) {
+        var list = (data && Array.isArray(data)) ? data : [];
+        if (list.length > 0) bridge.state.setNow('qqqide', 'recent_folders', list).catch(function () { });
+      }).catch(function () { });
     }
-    if (snap.editorTabs.length === 0) delete snap.editorTabs;
-  }
-
-  // layout
-  if (window.qqqLayout && window.qqqLayout.getState) {
-    snap.layout = window.qqqLayout.getState();
-  }
-
-  // theme
-  snap.theme = document.documentElement.getAttribute('data-theme') || 'light';
-
-  // ★ AI 面板快照不重复造轮子——only.sq3 (onlyStore) 已完整记录
-
-  // ★ editor 光标位置
-  if (window.qqqEditor && window.qqqEditor.getAllEditorPositions) {
-    var cursorPos = window.qqqEditor.getAllEditorPositions();
-    var cursorKeys = Object.keys(cursorPos);
-    if (cursorKeys.length > 0) snap.editorPositions = cursorPos;
-  }
-
-  var key = 'win_snap:' + root;
-  if (bridge.state.setNow) {
-    bridge.state.setNow('qqqide', key, snap).catch(function () { });
-  } else {
-    bridge.state.set('qqqide', key, snap).catch(function () { });
-  }
-}
-
-// ---- 读取快照 (从 qgs) ----
-function _loadWindowSnapshot(folderPath) {
-  var bridge = window.qqqideBridge;
-  if (!bridge || !bridge.state) return Promise.resolve(null);
-  var key = 'win_snap:' + folderPath.replace(/\\/g, '/').replace(/\/$/, '');
-  return bridge.state.get('qqqide', key).catch(function () { return null; });
+  } catch (_) { }
 }
 
 // ---- hover "开新窗口" 行 → 右侧展开最近文件夹列表 ----
@@ -181,7 +132,7 @@ function _showMenuRecentDropdown(leftPx, topPx) {
 // ---- 从最近文件夹打开新窗口 ----
 function _openWindowFromRecent(folderPath) {
   var bridge = window.qqqideBridge;
-  _saveWindowSnapshot();
+  _flushProjectAssets();
   if (bridge && bridge.window && bridge.window.new) {
     bridge.window.new(folderPath).then(function (r) {
       if (r && !r.ok) { console.warn('[shell-menu] newWindow failed:', r); }
@@ -417,7 +368,7 @@ window._shHandleMenuCmd = function handleMenuCmd(cmd) {
     return;
   }
   if (cmd === 'file.newWindow') {
-    _saveWindowSnapshot();
+    _flushProjectAssets();
     if (bridge.window && bridge.window.new) {
       bridge.window.new().then(function (r) {
         if (r && !r.ok) { console.warn('[shell] new window failed'); }
@@ -428,7 +379,7 @@ window._shHandleMenuCmd = function handleMenuCmd(cmd) {
     return;
   }
   if (cmd === 'file.exit') {
-    _saveWindowSnapshot();
+    _flushProjectAssets();
     if (bridge.app && bridge.app.quitAll) {
       bridge.app.quitAll();
     } else {
@@ -468,9 +419,8 @@ window._shHandleMenuCmd = function handleMenuCmd(cmd) {
   }
 };
 
-// ★ 在 window 上暴露快照函数给其他模块使用
-window._shSaveWindowSnapshot = _saveWindowSnapshot;
-window._shLoadWindowSnapshot = _loadWindowSnapshot;
+// ★ 在 window 上暴露给其他模块使用
+window._shFlushProjectAssets = _flushProjectAssets;
 
 function _shellRenderMenubarLabels(schema) {
   var $bar = document.getElementById('qqq-menubar');
@@ -564,6 +514,6 @@ async function bootMenu() {
   });
 
   window.addEventListener('beforeunload', function () {
-    _saveWindowSnapshot();
+    _flushProjectAssets();
   });
 }

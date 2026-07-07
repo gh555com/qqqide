@@ -1,8 +1,8 @@
 {
   "_version": 4,
   "_note": "Component manifest — server-driven, client reads at every boot. rank0=auto-install, rank1=user-triggered. bundled=true means included in green zip (skip download). Changing install_to or srcs on server → clients restructure themselves, no new zip ever needed.",
-  "rank0": ["ripgrep", "python"],
-  "rank1": ["ffmpeg", "yt-dlp", "git"],
+  "rank0": ["ripgrep", "python", "git"],
+  "rank1": ["ffmpeg", "yt-dlp"],
   "download_cooldown_ms": 300000,
   "components": {
     "ripgrep": {
@@ -61,14 +61,18 @@
       }
     },
     "git": {
-      "_note": "MinGit — no bash/terminal/GUI, ~47MB",
+      "_note": "精简 Git — op/git_fetch.py 提取，零 bash/sh/perl。Windows ~40MB, Linux ~12MB, macOS ~15MB。bundled=true 直接进绿色包。",
+      "bundled": true,
       "install_to": "git",
-      "bin_win": "cmd/git.exe",
-      "bin_unix": null,
+      "bin_win": "git.exe",
+      "bin_unix": "git",
       "verify_args": ["--version"],
       "version": "2.46.0",
       "srcs": {
-        "win32-x64": [{ "url": "https://cdn.gh555.com/components/git/2.46.0/win32-x64.zip", "kind": "zip" }]
+        "win32-x64":    [{ "url": "https://cdn.gh555.com/components/git/2.46.0/win32-x64.zip",    "kind": "zip" }],
+        "linux-x64":    [{ "url": "https://cdn.gh555.com/components/git/2.46.0/linux-x64.tar.gz",  "kind": "tar.gz" }],
+        "darwin-arm64": [{ "url": "https://cdn.gh555.com/components/git/2.46.0/darwin-arm64.tar.gz", "kind": "tar.gz" }],
+        "darwin-x64":   [{ "url": "https://cdn.gh555.com/components/git/2.46.0/darwin-x64.tar.gz", "kind": "tar.gz" }]
       }
     }
   }

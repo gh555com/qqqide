@@ -353,10 +353,7 @@ window.addEventListener('message', function (e) {
     if (e.data && e.data.type === 'qqq-ai-viewport-changed') {
         bindMainProject();
     }
-    // 主题变更 → 同步到 only.sq3（per-project 主题记忆）
-    if (e.data && e.data.type === 'qqqide-theme-change' && typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
-        onlyStore.set('theme', e.data.dark ? 'dark' : 'light');
-    }
+    // 主题变更由父窗口 qqqide-theme.js 统一持久化到 only.sq3
 });
 
 var _draftId = '_draft_p' + _panelId;

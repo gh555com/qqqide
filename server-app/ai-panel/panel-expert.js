@@ -199,25 +199,9 @@ var ExpertFlow = (function () {
     }
   }
 
-  // ---- build E-flow injection message (pushed into conversation) ----
+  // ---- build E-flow injection message — single-line trigger, full protocol lives in server shell ----
   function buildInjectMessage(projectRoot) {
-    var root = _normRoot(projectRoot);
-    return [
-      '[E-FLOW TASK — Expert Document Framework Protocol]',
-      'Execute §E1-E5 from your system prompt for this project.',
-      'Project root: ' + root,
-      'Standard framework dir: ' + _standardDir(root),
-      'Current mode: ' + _storeGet(KEY_MODE, MODE_NONE),
-      '',
-      'Steps:',
-      '1. Assess project complexity (score 0-8 points): ≥3 languages + ≥2 platforms + custom binaries + external services + ≥2 build systems + ≥5 top-level dirs + ≥50 source files. Score <4 → low/medium → EXIT silently.',
-      '2. If score ≥4: check msg[0] for existing topology docs. If present, score them (0-100): entry format 20pts + path validity 15pts + structure 15pts + coverage 20pts + accuracy 15pts + condensation 15pts.',
-      '3. If existing docs score ≤30 or no docs: embed the recommendation block from §E4 in your reply (alongside answering the user).',
-      '4. If user chooses an option, handle per §E5.',
-      '',
-      'Important: DO NOT mention "E-Flow" or "expert framework" by name in user-facing output. The recommendation block template uses natural language. See §E4 for exact phrasing.',
-      '[/E-FLOW TASK]'
-    ].join('\n');
+    return '[E-FLOW trigger]';
   }
 
   // ---- check if project has custom docs (rule"..." entries in project.txt) ----

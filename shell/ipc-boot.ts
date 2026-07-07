@@ -4,6 +4,7 @@
 
 import { ipcMain, BrowserWindow } from 'electron';
 import { BootConfig, BootMode, healthCheck, loadStaticFallback, loadRemoteWithCacheGuard, isBootCompleted } from './boot';
+import { getComponentBin } from './component-checker';
 
 export function registerBootIpc(
     portableRoot: string,
@@ -17,6 +18,10 @@ export function registerBootIpc(
     getMainWindow: () => BrowserWindow | null,
 ): void {
     ipcMain.handle('qqqide:app:root', () => portableRoot);
+
+    ipcMain.handle('qqqide:components:getBin', (_e, name: string) => {
+        return getComponentBin(portableRoot, name);
+    });
 
     ipcMain.handle('qqqide:boot:info', () => ({
         url: bootConfig.url,

@@ -15,10 +15,50 @@ function bootBulbs() {
   var d2 = document.getElementById('qqq-bulb-2');
   if (!d1 || !d2) return;
 
-  try {
-    var saved = localStorage.getItem('qqq-ai-bulbs');
-    if (saved) { var p = JSON.parse(saved); _shellBulbState.left = !!p.left; _shellBulbState.right = !!p.right; }
-  } catch (_) { }
+  // ★ 灯泡持久化 → only.sq3（项目资产）
+  function _onlyDb() {
+    var root = window._workspaceRoot;
+    if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
+    return window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+  }
+  function _persistBulbs() {
+    var db = _onlyDb();
+    if (db) db.set('wings.bulbs', { left: _shellBulbState.left, right: _shellBulbState.right }).catch(function () { });
+  }
+  function _restoreBulbs() {
+    var db = _onlyDb();
+    if (!db) return;
+    db.get('wings.bulbs').then(function (v) {
+      if (v && typeof v === 'object') {
+        if (typeof v.left === 'boolean') _shellBulbState.left = v.left;
+        if (typeof v.right === 'boolean') _shellBulbState.right = v.right;
+        if (_shellBulbState.left) d1.classList.add('on'); else d1.classList.remove('on');
+        if (_shellBulbState.right) d2.classList.add('on'); else d2.classList.remove('on');
+        _applyWings();
+        try { if (bridge && bridge.window && bridge.window.setWingState) bridge.window.setWingState(_shellBulbState.left, _shellBulbState.right); } catch (_) { }
+      }
+    }).catch(function () { });
+  }
+  // 启动时工作空间未就绪→监听它出现后恢复
+  var _bulbsWatchTimer = null;
+  var _bulbsRestored = false;
+  (function _watchBulbsRoot() {
+    if (_bulbsRestored) return;
+    if (typeof window._workspaceRoot === 'string' && window._workspaceRoot) {
+      _bulbsRestored = true;
+      if (_bulbsWatchTimer) { clearInterval(_bulbsWatchTimer); _bulbsWatchTimer = null; }
+      _restoreBulbs();
+      return;
+    }
+    if (!_bulbsWatchTimer) _bulbsWatchTimer = setInterval(function () {
+      if (typeof window._workspaceRoot === 'string' && window._workspaceRoot) {
+        clearInterval(_bulbsWatchTimer);
+        _bulbsWatchTimer = null;
+        _bulbsRestored = true;
+        _restoreBulbs();
+      }
+    }, 300);
+  })();
 
   var _main = document.getElementById('qqq-main');
   var _wl = document.getElementById('qqq-wing-left');
@@ -125,7 +165,7 @@ function bootBulbs() {
     // ③ 窗口已就位，下一帧统一批处理 CSS，再等一帧收遮罩
     requestAnimationFrame(function () {
       _applyWings();
-      try { localStorage.setItem('qqq-ai-bulbs', JSON.stringify(_shellBulbState)); } catch (_) { }
+      _persistBulbs();
       requestAnimationFrame(function () {
         clearTimeout(safetyTimer);
         _hideMask();

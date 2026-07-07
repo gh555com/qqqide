@@ -814,99 +814,68 @@
     closeTabById(grp, tabId);
   }
 
-  // ---- Persistence: save/restore open file tabs ----
-  const TAB_STATE_NS = 'qqqide';
-  const TAB_STATE_KEY = 'open_tabs';
-  let _restored = false;
-  let _tabStateHandle = null;   // cached handle — NEVER call qgs.simple() more than once
-  let _persistTimer = null;     // trailing debounce (250ms)
+  // ---- Persistence: editor tabs + cursor positions → only.sq3 (项目资产) ----
+  var _restored = false;
+  var _persistTimer = null;
 
-  function _tabState() {
-    if (_tabStateHandle) return _tabStateHandle;
-    if (!window.qgs || !window.qgs.simple) return null;
-    _tabStateHandle = window.qgs.simple(TAB_STATE_NS);
-    return _tabStateHandle;
+  function _onlyDb() {
+    var root = window._workspaceRoot;
+    if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
+    return window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
   }
 
   function persistOpenTabs() {
     if (!_restored) return;
-    // Trailing debounce: collapse rapid calls (restore 17 tabs → 1 write)
     if (_persistTimer) clearTimeout(_persistTimer);
     _persistTimer = setTimeout(_doPersistOpenTabs, 250);
   }
 
   function _doPersistOpenTabs() {
     _persistTimer = null;
-    const state = _tabState();
-    if (!state) return;
-    const tabs = [];
-    for (const grp of groups) {
+    var db = _onlyDb();
+    if (!db) return;
+    var tabs = [];
+    for (var gi = 0; gi < groups.length; gi++) {
+      var grp = groups[gi];
       if (grp.type !== 'file') continue;
-      for (const t of grp.tabs) {
+      for (var ti = 0; ti < grp.tabs.length; ti++) {
+        var t = grp.tabs[ti];
         if (t.filePath) {
-          tabs.push({
-            path: t.filePath,
-            groupIdx: grp.idx,
-            active: t.id === grp.activeTabId,
-            preview: !!t.preview,
-          });
+          tabs.push({ path: t.filePath, groupIdx: grp.idx, active: t.id === grp.activeTabId, preview: !!t.preview });
         }
       }
     }
+    // ★ 同时持久化光标位置
+    if (window.qqqEditor && window.qqqEditor.getAllEditorPositions) {
+      var pos = window.qqqEditor.getAllEditorPositions();
+      if (Object.keys(pos).length > 0) db.set('editor.positions', pos).catch(function () { });
+      else db.set('editor.positions', null).catch(function () { });
+    }
     if (tabs.length === 0) {
-      state.del(TAB_STATE_KEY).catch(() => { });
+      db.set('editor.tabs', null).catch(function () { });
     } else {
-      state.set(TAB_STATE_KEY, tabs).catch(() => { });
+      db.set('editor.tabs', tabs).catch(function () { });
     }
   }
 
   async function restoreOpenTabs() {
     _restored = true;
-    // 新窗口（?fresh=1）：X 区空，不继承任何 editor tab
     if (window.location.search.indexOf('fresh=1') !== -1) return;
-    // ★ restore 模式：从 qgs 窗口快照读取 editor tabs
-    if (window.location.search.indexOf('restore=1') !== -1) {
-      await _restoreTabsFromSnapshot();
-      return;
-    }
-    const state = _tabState();
-    if (!state) return;
+    var db = _onlyDb();
+    if (!db) return;
     try {
-      const tabs = await state.get(TAB_STATE_KEY);
+      var tabs = await db.get('editor.tabs');
       if (!Array.isArray(tabs) || tabs.length === 0) return;
-      for (const t of tabs) {
+      // 恢复光标位置
+      var pos = await db.get('editor.positions').catch(function () { return null; });
+      if (pos && typeof pos === 'object') { window.qqqPendingEditorPositions = pos; }
+      for (var i = 0; i < tabs.length; i++) {
+        var t = tabs[i];
         if (t.path) {
           document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: t.path, groupIdx: t.groupIdx, preview: !!t.preview } }));
         }
       }
-    } catch (e) { /* ignore */ }
-  }
-
-  // ★ 从 qgs 窗口快照还原 editor tabs
-  async function _restoreTabsFromSnapshot() {
-    var m = window.location.search.match(/[?&]folder=([^&]+)/);
-    if (!m) return;
-    var folderPath = decodeURIComponent(m[1]);
-    var key = 'win_snap:' + folderPath.replace(/\\/g, '/').replace(/\/$/, '');
-    try {
-      var bridge = window.qqqideBridge;
-      if (!bridge || !bridge.state) return;
-      var snap = await bridge.state.get('qqqide', key).catch(function () { return null; });
-      if (!snap || !snap.editorTabs || !Array.isArray(snap.editorTabs)) return;
-      // ★ 填充待恢复光标位置（editor.js openInPane 创建 editor 后自动消费）
-      if (snap.editorPositions && typeof snap.editorPositions === 'object') {
-        window.qqqPendingEditorPositions = snap.editorPositions;
-      }
-      for (var i = 0; i < snap.editorTabs.length; i++) {
-        var t = snap.editorTabs[i];
-        if (t.path) {
-          document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: t.path, groupIdx: t.groupIdx, preview: !!t.preview } }));
-        }
-      }
-      // 延迟清理：给 editor 创建+消费留够时间
-      setTimeout(function () {
-        window.qqqPendingEditorPositions = null;
-      }, 4000);
+      setTimeout(function () { window.qqqPendingEditorPositions = null; }, 4000);
     } catch (e) { /* ignore */ }
   }
 
@@ -984,5 +953,7 @@
     getGaeaGroup,
     renameGaeaTab,
     setTabDirty,
+    persistOpenTabs,
+    flushOpenTabs: function () { if (_persistTimer) { clearTimeout(_persistTimer); _doPersistOpenTabs(); } },
   };
 })();

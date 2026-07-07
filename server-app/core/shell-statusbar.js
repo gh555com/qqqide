@@ -13,39 +13,30 @@ function bootStatusbar(boot) {
   var $freeBadge = document.getElementById('qqq-status-free-badge');
   if ($ver) $ver.textContent = 'v' + (boot.version || '?');
   if ($eng) $eng.textContent = 'engine: ' + (boot.engineAlive ? 'on' : 'off');
-  if ($onl) $onl.textContent = '\u25A0'; // 占位方块，等 SSE 推送覆盖
+  if ($onl) $onl.textContent = '\u25A0'; // 占位方块，等首次数据到达后覆盖
 
-  // ═══ 全球在线人数 — 搭车已有 SSE 广播（零额外请求）═══
-  // 服务器每 5 分钟通过 /api/events/public 广播 good_stats
-  // 包含所有已注册 goods 的 active_12h（在线人数），零边际成本
-  var _onlEventSource = null;
-  function startOnlineSse() {
-    if (!$onl || _onlEventSource) return;
-    _onlEventSource = new EventSource('https://gh555.com/api/events/public');
-    _onlEventSource.addEventListener('good_stats', function(e) {
-      try {
-        var data = JSON.parse(e.data);
-        if (data && data.goods) {
-          for (var i = 0; i < data.goods.length; i++) {
-            if (data.goods[i].slg === 'qqqide') {
-              var online = data.goods[i].stats.active_12h || 0;
-              var totalSold = data.goods[i].stats.total_sold || 0;
-              var t = window._i || function(k,d){return d;};
-              if (online > 0) {
-                $onl.textContent = '\uD83D\uDC65 ' + online.toLocaleString() + ' ' + t('shell.status.online','\u5728\u7EBF');
-              } else {
-                $onl.textContent = '';
-              }
-              break;
-            }
+  // ═══ 全球在线人数 — fetch 极轻轮询（30字节/5分钟，跨窗口稳定）═══
+  // 之前用 EventSource 但多窗口环境下第二个窗口起被 CORS 静默拦截
+  // 而 online-total 端点是纯公开 GET + CF Edge Cache，真零成本
+  (function() {
+    if (!$onl) return;
+    var _onlLastFetch = 0;
+    function fetchOnline() {
+      var now = Date.now();
+      if (now - _onlLastFetch < 240000) return; // 4min 冷却
+      _onlLastFetch = now;
+      fetch('https://gh555.com/api/goods/qqqide/online-total', { cache: 'no-cache' })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data && data.ok && typeof data.total === 'number') {
+            $onl.textContent = data.total > 0 ? data.total.toLocaleString() : '0';
           }
-        }
-      } catch (err) { /* 静默 */ }
-    });
-    // EventSource 自动重连，无需额外代码
-    _onlEventSource.onerror = function() { /* 自动重连 */ };
-  }
-  startOnlineSse();
+        })
+        .catch(function() { /* 静默 */ });
+    }
+    fetchOnline();
+    setInterval(fetchOnline, 300000); // 5 分钟（对齐服务器刷新周期）
+  })();
 
   // ═══ 单调时钟锚点（变速齿轮免疫，三保险） ═══
   // 优先级：SSE(gh555.com) > Cloudflare trace > timeapi.io

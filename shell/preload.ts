@@ -13,6 +13,11 @@ const QQQ = {
         quitAll: () => ipcRenderer.invoke('qqqide:app:quitAll'),
     },
 
+    // ---- component binaries ----
+    components: {
+        getBin: (name: string) => ipcRenderer.invoke('qqqide:components:getBin', name),
+    },
+
     // ---- auth push — 浏览器登录成功通过 qqqide:// 协议推 token（2026-06-29） ----
     auth: {
 onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string }) => void) => {

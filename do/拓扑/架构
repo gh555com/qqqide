@@ -277,15 +277,6 @@ UI 布局 — A/X/AI + 左右翼（三面板）
 ----------------------------------------------------------
 · 顶部两菜单: "qqq I· 顶部两菜单: "qqqide" + "的梦gaea"（无 i18n）width:210px，hover ▶ → 延迟 200ms 弹出最近主文件夹下拉→新窗口 ?restore=1
 
-窗口快照系统 (win_snap:{normalizedPath} in qgs global) — 2026-06-25
-------------------------------------------------------------------------
-· 保存: beforeunload/file.exit/file.newWindow/从最近列表打开前
-· 内容: mainFolder+auxFolders[]+editorTabs+editorPositions+layout+theme
-· AI 面板状态不重复存储——onlyStore 已完整记录，新窗口 initQuests() 自动恢复
-· 还原: tab-manager._restoreTabsFromSnapshot → qqqPendingEditorPositions → openInPane 消费
-· 锁: ipc-misc.ts 窗口创建前检查 project lock
-
-
 Card Queue — 终极 AI 面板架构（2026-06 重构，2026-06-10 加固）
 -------------------------------------------------------------------
 · 一张 quest = 一张 Card（完整 DOM 子树），创建后永不 innerHTML 清空
@@ -351,7 +342,8 @@ q2 单行 + hover 展开
   qg/qgf (shell/qg.ts ← tmp+rename 原子写): JSON/brotli/NDJSON
   onlyStore: 内存缓存+自动批量刷盘（500ms空闲→3s强制→beforeunload兜底），物理: qqq/alphal/only.sq3
 
-何时用哪个: 全局跨项目→qgs。零配置→qgs.simple。项目元信息→qg。AI 对话→qgs.project。偏好→onlyStore
+何时用哪个: 全局跨项目→qgs。零配置→qgs.simple。项目元信息→qg。AI 对话→qgs.project。项目资产(阵营/布局/编辑器tabs/光标)→only.sq3。偏好→onlyStore
+★ only.sq3 项目资产 key: ai.formation / layout / editor.tabs / editor.positions
 ★ 渲染层不要直接用 bridge.state.* / bridge.fs 绕过入口
 
 
@@ -359,13 +351,13 @@ q2 单行 + hover 展开
 -----------------------------------------------------------------------
   项目级: {project_root}/qqq/（纯项目数据，跟项目走）
   程序级: {appRoot}/Data/alphal/（零 C 盘写入，绿色包解压即在）
-  ★ 项目偏好 → {项目}/qqq/alphal/only.sq3；全局共享 → {程序}/Data/alphal/global.sq3
+  ★ 项目资产（阵营/布局/tabs/光标）→ {项目}/qqq/alphal/only.sq3；全局共享 → {程序}/Data/alphal/global.sq3
 
   {项目}/qqq/
     ├── .lock              30s心跳/60s过期文件锁
     └── alphal/
         ├── quest.sq3         AI 对话索引 SQLite（~200B/层）
-        ├── only.sq3          项目偏好 SQLite
+        ├── only.sq3          项目资产 SQLite（ai.formation / layout / editor.tabs / editor.positions）
         ├── rule/project.txt  E-Flow custom 规则
         └── expert/           E-Flow standard 文档框架
   qqq/quests/             AI 对话正文（FS）
@@ -413,7 +405,7 @@ IPC 管线 + 主进程安全
 -----------------------------------------------------
 · _workspaceRoot = 主文件夹路径（normalized），同一窗口同一时刻一个
 · bindMainProject(): 同 root 跳过 | 不同 → _teardown → _init
-· _teardown: 保存快照 → 释放 quest 所有权 → 销毁 Card Pool → 清空 agentPool → 清理 DOM
+· _teardown: flush 项目资产 → 释放 quest 所有权 → 销毁 Card Pool → 清空 agentPool → 清理 DOM
 · _init: 获取锁 → questStore.setProjectRoot → 新建 Card Pool → 迁移 alphal → initQuests
 · IPC 隔离: _syncChannel() = 'qqq-sync:' + sanitize(_workspaceRoot)
   _broadcast 和 handleSyncMessage 均走 scoped channel，不同主文件夹物理隔离

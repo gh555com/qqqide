@@ -3,9 +3,13 @@
 //
 // 提供：
 //   ① A 区面板: Git 快速状态
-//   ② X 区 Git tab: git 操作（status/stage/commit/push/pull/log/branch/stash/clone）
+//   ② X 区 Git tab: 全功能 git 操作
 //
-// Timeline 已独立为 BrowserWindow (timeline/diff-window.js)，Git goods 不再包含 diff 查看。
+// 功能: status / stage+unstage / hunk staging / commit+amend+signoff /
+//       push+pull+fetch (流式) / log --graph / cherry-pick+revert /
+//       branch manage+merge / stash / clone / conflict resolve / 15s auto-refresh
+//
+// Timeline 已独立为 BrowserWindow (timeline/diff-window.js)，Git goods 不包含 diff viewer。
 // ============================================================================
 (function () {
     'use strict';
@@ -23,7 +27,7 @@
         window.qqqGaea.register({
             id: 'git',
             title: 'Git',
-            version: '1.1.0',
+            version: '1.2.0',
             protoVer: 2,
 
             // A 区面板: Git 快速状态
