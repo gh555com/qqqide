@@ -67,7 +67,7 @@
       "bin_win": "git.exe",
       "bin_unix": "git",
       "verify_args": ["--version"],
-      "version": "2.46.0",
+      "version": "2.51.0",
       "srcs": {
         "win32-x64":    [{ "url": "https://cdn.gh555.com/components/git/2.46.0/win32-x64.zip",    "kind": "zip" }],
         "linux-x64":    [{ "url": "https://cdn.gh555.com/components/git/2.46.0/linux-x64.tar.gz",  "kind": "tar.gz" }],

@@ -492,18 +492,16 @@
     return s;
   }
 
-  var LDR_ERR_HTML = '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">加载失败</div>';
-  var LDR_LOAD_HTML = '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">加载中...</div>';
-
-  function _ldrClose() {
-    if (_$ldrOverlay) _$ldrOverlay.style.display = 'none';
-  }
-
-  // 后台静默拉取（不显示 loading，不覆盖已有内容）
+  var LDR_FREEBIE_ROW_HTML = '<div style="display:flex;align-items:center;padding:5px 0;font-size:12px;gap:6px;">' +
+    '<span style="width:24px;color:var(--text-dim,#888);text-align:right;">#{rank}</span>' +
+    '<span style="width:18px;">{flag}</span>' +
+    '<span style="flex:1;">{phone}</span>' +
+      // 后台静默拉取（不显示 loading，不覆盖已有内容）
   function _ldrFetch(silent) {
     if (_ldrFetching) return;
     _ldrFetching = true;
     var token = _authData && _authData.token ? _authData.token : '';
+    var $freebie = document.getElementById('qqq-ldr-freebie');
     var $left = document.getElementById('qqq-ldr-left');
     var $right = document.getElementById('qqq-ldr-right');
     var seasonId = _getCurrentSeasonId();
@@ -513,11 +511,14 @@
     }).then(function (r) { return r.json(); }).then(function (d) {
       if (d.ok) {
         _ldrCache = {
+          freebie: { data: d.freebie, seasonId: seasonId, ts: Date.now() },
           all_time: { data: d.all_time, seasonId: seasonId, ts: Date.now() },
           last_season: { data: d.last_season, seasonId: seasonId, ts: Date.now() }
         };
         // 非静默模式 OR 面板仍开着 → 渲染
         if (!silent || (_$ldrOverlay && _$ldrOverlay.style.display !== 'none')) {
+          if ($freebie && d.freebie) $freebie.innerHTML = _ldrBuildFreebieRows(d.freebie);
+          else if ($freebie) $freebie.innerHTML = LDR_LOAD_HTML;
           if ($left) $left.innerHTML = _ldrBuildRows(d.all_time);
           if ($right) $right.innerHTML = _ldrBuildRows(d.last_season);
         }
@@ -609,6 +610,7 @@
 
     _initLdr();
     _ldrUpdateHeader();
+    var $freebie = document.getElementById('qqq-ldr-freebie');
     var $left = document.getElementById('qqq-ldr-left');
     var $right = document.getElementById('qqq-ldr-right');
     _$ldrOverlay.style.display = '';
@@ -618,6 +620,7 @@
 
     if (hasCache) {
       // ★ 同赛季命中 → 即时渲染缓存，零闪烁
+      if ($freebie && _ldrCache.freebie) $freebie.innerHTML = _ldrBuildFreebieRows(_ldrCache.freebie.data);
       if ($left) $left.innerHTML = _ldrBuildRows(_ldrCache.all_time.data);
       if ($right) $right.innerHTML = _ldrBuildRows(_ldrCache.last_season.data);
       // 超过 30 分钟 → 后台静默刷新
@@ -626,6 +629,7 @@
       }
     } else {
       // ★ 无缓存或跨赛季 → 显示加载中，拉取新数据
+      if ($freebie) $freebie.innerHTML = LDR_LOAD_HTML;
       if ($left) $left.innerHTML = LDR_LOAD_HTML;
       if ($right) $right.innerHTML = LDR_LOAD_HTML;
       _ldrFetch(false);
@@ -648,13 +652,16 @@
 
     _$ldrPanel = document.createElement('div');
     _$ldrPanel.className = 'qqq-ldr-panel';
-    _$ldrPanel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;max-width:94vw;max-height:80vh;overflow-y:auto;z-index:9999;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:' + bg + ';';
+    _$ldrPanel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:850px;max-width:94vw;max-height:80vh;overflow-y:auto;z-index:9999;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:' + bg + ';';
     _$ldrPanel.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid ' + border + ';">' +
       '<span id="qqq-ldr-header-text" style="font-size:13px;color:' + titleClr + ';"></span>' +
       '<button id="qqq-ldr-close" style="width:22px;height:22px;border:1px solid ' + border + ';border-radius:3px;background:transparent;color:' + titleClr + ';font-size:13px;line-height:20px;text-align:center;cursor:pointer;">✕</button>' +
       '</div>' +
       '<div style="display:flex;min-height:300px;">' +
+      '<div style="flex:1;padding:10px 12px;border-right:1px solid ' + border + ';">' +
+      '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">🍀 白嫖榜</div>' +
+      '<div id="qqq-ldr-freebie"></div></div>' +
       '<div style="flex:1;padding:10px 12px;border-right:1px solid ' + border + ';">' +
       '<div style="font-size:13px;font-weight:bold;color:' + titleClr + ';margin-bottom:8px;">🏆 历史总排行</div>' +
       '<div id="qqq-ldr-left"></div></div>' +

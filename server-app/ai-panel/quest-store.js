@@ -829,10 +829,13 @@ var QuestStore = (function () {
         await this._ensureIndex();
         var idx = _idx() || [];
         return idx.slice().sort(function (a, b) {
-        var na = a.numericId || 0;
-        var nb = b.numericId || 0;
-        return nb - na;
-    });
+            var ta = a.lastActiveAt || 0;
+            var tb = b.lastActiveAt || 0;
+            if (ta !== tb) return tb - ta;
+            var na = a.numericId || 0;
+            var nb = b.numericId || 0;
+            return nb - na;
+        });
     };
 
     // ═══════════════════════════════════════════════════════════════

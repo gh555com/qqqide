@@ -213,7 +213,7 @@ function bootStatusbar(boot) {
       }
       if ($freeBudgetLabel) {
         var lbl = '💎' + remainingGe.toFixed(1) + '/' + budgetGe.toFixed(1);
-        if (d.season_bonus > 0) lbl += '(+' + d.season_bonus + ')';
+        if (d.season_bonus > 0) lbl += '(+' + parseFloat(d.season_bonus).toFixed(1) + ')';
         $freeBudgetLabel.textContent = lbl;
       }
     } else {
