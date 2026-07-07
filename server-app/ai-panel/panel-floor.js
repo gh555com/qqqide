@@ -201,14 +201,14 @@ function _buildAzText(floorNum, floorData, questMeta) {
 async function _appendToSearchQuest(questId, floorNum) {
     if (!questId || !floorNum) return;
     var root = questStore.getProjectRoot();
-    if (!root) return;
+    if (!root) { console.error('[search_quest] no project root'); return; }
     var bridge = window.parent && window.parent.qqqideBridge;
-    if (!bridge) return;
+    if (!bridge) { console.error('[search_quest] no bridge'); return; }
 
     try {
         // 读 floor 数据（唯一真理 SQLite）
         var floorData = await questStore.loadFloor(questId, floorNum);
-        if (!floorData) return;
+        if (!floorData) { console.error('[search_quest] loadFloor returned null for q=' + questId + ' f=' + floorNum); return; }
         var questMeta = await questStore.load(questId);
 
         // 解析 quest 目录路径：优先从 floor 数据推导，回退到磁盘搜索
@@ -239,7 +239,8 @@ async function _appendToSearchQuest(questId, floorNum) {
 
         // 提取时间戳
         var now = new Date();
-        var flvar floorTs = now;    if (questMeta && questMeta.floorTimings) {
+        var floorTs = now;
+        if (questMeta && questMeta.floorTimings) {
             for (var ti = 0; ti < questMeta.floorTimings.length; ti++) {
                 var ft = questMeta.floorTimings[ti];
                 if (ft.floorIndex === floorNum && ft.finishedAt) {
@@ -274,8 +275,7 @@ async function _appendToSearchQuest(questId, floorNum) {
         var lines = [];
         if (existing) lines.push('');  // 与上一楼层间隔一行
         lines.push(marker + '   ' + _fmtTime(floorTs));
-        var cleanQuestion = (floorData.question || '').replace(/\[File: [^\]]+\]\s*\n```[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim();
-        lines.push('\u25a0 Q: ' + cleanQuestion);
+        var cleanQuestion = (floorData.question || '').replace(/\[File: [^\]]+\]\s*\n```[\s\S]*?```/g, '').replace(/\n{3,}/g, '\n\n').trim(); lines.push('\u25a0 Q: ' + cleanQuestion);
         lines.push('\u25a0 A: ' + (answer || '(no answer)'));
 
         // ═══ az 区文本化（每层楼私有 A1 + 时钟数据） ═══
@@ -311,9 +311,9 @@ async function _restoreAgentFromStore(questId, ag) {
 
         // 重建 conversation：聚合所有楼层
         ag.conversation = [];
-        // ★ 从 conversation 重建 _questErrorLog（重启后复原聚合红框）
-        ag._questErrorLog = [];
-        ag._questErrorDiv = null;
+        // ★ 从 conversation 重建 _questErrorLogByFloor（重启后复原分楼层聚合红框）
+        ag._questErrorLogByFloor = {};
+        ag._questErrorDivByFloor = {};
         for (var fi = 0; fi < allFloors.length; fi++) {
             var fData = allFloors[fi].data;
             var fConv = fData.conversation;
@@ -323,11 +323,13 @@ async function _restoreAgentFromStore(questId, ag) {
                 }
             }
         }
-        // ★ 扫描所有 _error 消息重建聚合红框日志
+        // ★ 扫描所有 _error 消息重建分楼层错误日志
         for (var _eli = 0; _eli < ag.conversation.length; _eli++) {
             var _em = ag.conversation[_eli];
             if (_em._error && _em.role === 'assistant' && _em.content) {
-                ag._questErrorLog.push({ time: '', reason: _em.content });
+                var _efn = _em._floor || 0;
+                if (!ag._questErrorLogByFloor[_efn]) ag._questErrorLogByFloor[_efn] = [];
+                ag._questErrorLogByFloor[_efn].push({ time: '', reason: _em.content });
             }
         }
 

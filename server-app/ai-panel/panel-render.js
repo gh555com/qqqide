@@ -339,7 +339,10 @@ function setStreaming(val) {
     } else {
         $sendBtn.textContent = val ? 'Stop' : 'Send';
         $sendBtn.className = val ? 'stop' : '';
-        $sendBtn.disabled = (_ag && _ag._stopState === 'fatal');
+        // ★ fatal 守卫：agent 处于 fatal 态且非恢复中 → 按钮永不自动解锁
+        //   恢复中（_recoveryInProgress）时按钮由 _startRecovery/_finishRecovery 管理
+        var _isFatalLocked = _ag && _ag._stopState === 'fatal' && !_ag._recoveryInProgress;
+        $sendBtn.disabled = _isFatalLocked;
     }
     // ★ fatal 态：sendBtn 始终保持禁用（覆盖上方的所有分支）
     if (_ag && _ag._stopState === 'fatal') {

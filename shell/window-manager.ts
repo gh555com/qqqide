@@ -118,7 +118,7 @@ export function createWindow(
         show: false,
         frame: false,
         backgroundColor: '#fdf6e3',
-        title: 'qqq IDE',
+        title: 'qqqide',
         webPreferences: {
             preload: preloadPath,
             contextIsolation: true,
@@ -260,7 +260,7 @@ export function createWindow(
             // ★ DevTools 窗口标题 → Python broker（跨平台: Win ctypes / Mac osascript / Linux wmctrl）
             const _doRename = (attempt: number) => {
                 const p = _windowProjectMap.get(win.id);
-                const n = p ? path.basename(p) : 'qqq IDE';
+                const n = p ? path.basename(p) : 'qqqide';
                 console.log('[devtools] rename attempt=' + attempt + ' winId=' + win.id + ' projPath=' + (p || '(none)') + ' name=' + n);
                 renameDevToolsViaBroker(win, n);
             };

@@ -170,7 +170,7 @@
             "cost": "Coste:",
             "costText": "Las conversaciones anteriores a las últimas seis capas se comprimirán y perderán detalles; la IA solo recordará los resúmenes. Las últimas seis capas se guardarán completas.",
             "whatIf": "¿Qué pasa si nunca comprimo manualmente?",
-            "auto": "qqq IDE comprime automáticamente con la mejor estrategia, generalmente mejor que la compresión manual.",
+            "auto": "qqqide comprime automáticamente con la mejor estrategia, generalmente mejor que la compresión manual.",
             "noLoss": "En cualquier caso (con o sin compresión, quienquiera que comprima) no se saturará la memoria de la IA ni se perderá información.",
             "complex": "Más adecuado para tareas de programación complejas, donde la IA tendrá un espacio de memoria de longitud limitada.",
             "compress": "Comprimir",

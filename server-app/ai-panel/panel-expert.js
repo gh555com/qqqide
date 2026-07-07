@@ -13,7 +13,7 @@
 //
 // Framework modes:
 //   'none'     — no framework active (default)
-//   'standard' — AI maintains qqq/alphal/expert/ (qqq IDE standard framework)
+//   'standard' — AI maintains qqq/alphal/expert/ (qqqide standard framework)
 //   'custom'   — AI follows user's own doc paths (from project.txt rule"..." entries)
 //
 // Standard framework structure:

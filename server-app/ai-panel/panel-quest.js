@@ -693,7 +693,7 @@ async function _saveAgentQuestData(questId, ag, floorNum, opts) {
         await questStore.saveFloor(questId, floorNum, floorPayload);
 
         await generateFloorTxt(ag, questId).catch(function () { });
-        _appendToSearchQuest(questId, floorNum).catch(function () { });
+        _appendToSearchQuest(questId, floorNum).catch(function (e) { console.error('[search_quest] inner fail for q=' + questId + ' f=' + floorNum + ':', e && e.message); });
     }
 
     // ═══ 2) 无论是否有楼层号，都写 quest 级元数据 ═══

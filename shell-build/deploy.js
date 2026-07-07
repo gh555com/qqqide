@@ -22,7 +22,9 @@ const has = name => args.includes('--' + name);
 
 const HOST = get('host') || process.env.QQQ_DEPLOY_HOST || '';
 const REMOTE = get('remote') || process.env.QQQ_DEPLOY_REMOTE || '/opt/dgs/web/qqqide';
-// MSYS2 converts /opt/... → E:/s/d/git/opt/...; double-slash (UNC-like) prevents this
+// MSYS2 converts /opt/... → E:/s/d/git/opt/... in shell:true spawn.
+// Double-slash (UNC-like) prevents this for remote SSH commands.
+// For SCP destination paths, use raw REMOTE — SCP dest must be exact POSIX.
 const REMOTE_ = isBash ? '/' + REMOTE : REMOTE;
 const KEY = get('key') || process.env.QQQ_DEPLOY_KEY || '';
 const DRY = has('dry-run');
@@ -67,6 +69,15 @@ function run(cmd, cmdArgs) {
   if (r.status !== 0) { throw new Error(`failed: ${cmd}`); }
 }
 
+function effectiveHost() {
+  // US server: route through WG tunnel (10.0.0.1) to avoid Pacific public-SSH
+  // unreliability for large files. WG now has MSS clamping (2026-07-06).
+  if (HOST.includes('23.254.248.119')) {
+    return 'q@10.0.0.1';
+  }
+  return HOST;
+}
+
 function sshOpts() {
   const base = ['-o', 'StrictHostKeyChecking=no', '-o', 'BatchMode=yes'];
   if (KEY) { base.push('-i', KEY); }
@@ -85,13 +96,13 @@ const _sp = isBash ? toBashPath(SRC) : SRC;
 run('tar', ['-czf', shellQuote(_tp), '-C', shellQuote(_sp), '.']);
 
 // 2) scp to host
-console.log('[deploy] scp ->', HOST + ':' + REMOTE);
-run('ssh', [...sshOpts(), HOST, `"mkdir -p ${REMOTE_}"`]);
-run('scp', [...sshOpts(), shellQuote(localPath(tarPath)), `${HOST}:${REMOTE_}/_qqqide.tar.gz`]);
+console.log('[deploy] scp ->', effectiveHost() + ':' + REMOTE);
+run('ssh', [...sshOpts(), effectiveHost(), `"mkdir -p ${REMOTE_}"`]);
+run('scp', [...sshOpts(), shellQuote(localPath(tarPath)), `${effectiveHost()}:${REMOTE}/_qqqide.tar.gz`]);
 
 // 3) Keep a copy as server-app.tar.gz for client hot-update, then extract
 console.log('[deploy] saving server-app.tar.gz for client hot-update');
-run('ssh', [...sshOpts(), HOST,
+run('ssh', [...sshOpts(), effectiveHost(),
 `"cd ${REMOTE_} && cp _qqqide.tar.gz server-app.tar.gz && tar -xzf _qqqide.tar.gz && rm _qqqide.tar.gz"`]);
 
 // 3b) pack + upload shell-out/ (for bootstrap hot-update)
@@ -103,7 +114,7 @@ if (fs.existsSync(shellOutSrc)) {
   const _osp = isBash ? toBashPath(shellOutSrc) : shellOutSrc;
   run('tar', ['-czf', shellQuote(_otp), '-C', shellQuote(_osp), '.']);
   console.log('[deploy] uploading shell-out to remote');
-  run('scp', [...sshOpts(), shellQuote(localPath(shellOutTar)), `${HOST}:${REMOTE_}/shell-out.tar.gz`]);
+  run('scp', [...sshOpts(), shellQuote(localPath(shellOutTar)), `${effectiveHost()}:${REMOTE}/shell-out.tar.gz`]);
   try { fs.unlinkSync(shellOutTar); console.log('[deploy] cleanup', shellOutTar); } catch { }
 } else {
   console.log('[deploy] shell-out/ not found, skipping');
@@ -126,7 +137,7 @@ const versionJson = JSON.stringify({
 const tmpVerPath = path.join(ROOT, '_version.json');
 fs.writeFileSync(tmpVerPath, versionJson, 'utf8');
 console.log('[deploy] version.json generated — shell=' + appVersion);
-run('scp', [...sshOpts(), shellQuote(localPath(tmpVerPath)), `${HOST}:${REMOTE_}/version.json`]);
+run('scp', [...sshOpts(), shellQuote(localPath(tmpVerPath)), `${effectiveHost()}:${REMOTE}/version.json`]);
 try { fs.unlinkSync(tmpVerPath); } catch { }
 
 // 4b) Package server-app.tar.xz for client offline download (hot-update)
@@ -143,7 +154,7 @@ if (fs.existsSync(SRC)) {
   if (xzOk) {
     console.log('[deploy] packing server-app.tar.xz');
     run(`tar -cC ${shellQuote(_xs)} . | xz -z > ${shellQuote(_xp)}`, []);
-    run('scp', [...sshOpts(), shellQuote(localPath(xzPath)), `${HOST}:${REMOTE_}/server-app.tar.xz`]);
+    run('scp', [...sshOpts(), shellQuote(localPath(xzPath)), `${effectiveHost()}:${REMOTE}/server-app.tar.xz`]);
     try { fs.unlinkSync(xzPath); console.log('[deploy] cleanup', xzPath); } catch { }
   } else {
     console.log('[deploy] xz not found, skipping server-app.tar.xz');
@@ -155,10 +166,10 @@ if (PORTABLE && fs.existsSync(PKG_DIR)) {
   const zips = fs.readdirSync(PKG_DIR).filter(n => /\.(zip|tar\.gz)$/.test(n));
   if (zips.length) {
     console.log('[deploy] uploading portable packages:', zips.length);
-    run('ssh', [...sshOpts(), HOST, `"mkdir -p ${REMOTE_}/portable"`]);
+    run('ssh', [...sshOpts(), effectiveHost(), `"mkdir -p ${REMOTE_}/portable"`]);
     for (const z of zips) {
       const src = path.join(PKG_DIR, z);
-      run('scp', [...sshOpts(), shellQuote(localPath(src)), `${HOST}:${REMOTE_}/portable/${z}`]);
+      run('scp', [...sshOpts(), shellQuote(localPath(src)), `${effectiveHost()}:${REMOTE}/portable/${z}`]);
     }
   }
 }
@@ -166,5 +177,5 @@ if (PORTABLE && fs.existsSync(PKG_DIR)) {
 // 6) cleanup local tar
 try { fs.unlinkSync(tarPath); console.log('[deploy] cleanup', tarPath); } catch (_) { }
 
-console.log('[deploy] done. server-app/ uploaded to', HOST + ':' + REMOTE);
+console.log('[deploy] done. server-app/ uploaded to', effectiveHost() + ':' + REMOTE);
 console.log('[deploy] verify: curl http://<host>/qqqide/health');

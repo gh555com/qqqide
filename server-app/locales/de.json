@@ -170,7 +170,7 @@
             "cost": "Kosten:",
             "costText": "Konversationen, die älter als die letzten sechs Ebenen sind, werden komprimiert, wobei Details verloren gehen; die AI behält nur Zusammenfassungen. Die letzten sechs Ebenen bleiben vollständig erhalten.",
             "whatIf": "Was passiert, wenn ich nie manuell komprimiere?",
-            "auto": "qqq IDE komprimiert automatisch mit der optimalen Strategie, was in der Regel besser ist als eine manuelle Komprimierung.",
+            "auto": "qqqide komprimiert automatisch mit der optimalen Strategie, was in der Regel besser ist als eine manuelle Komprimierung.",
             "noLoss": "Unabhängig davon, ob und wie komprimiert wird, führt dies weder zu einer Überlastung noch zu einem Verlust des AI-Gedächtnisses.",
             "complex": "Geeigneter für komplexe Programmieraufgaben, da die AI über einen begrenzten Speicherplatz verfügt.",
             "compress": "Komprimieren",

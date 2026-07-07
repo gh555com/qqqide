@@ -132,12 +132,12 @@ export function registerMiscIpc(
         if (win && !win.isDestroyed()) { win.close(); }
     });
     // ★ 关闭确认回调：renderer 弹窗确认后调用，绕过 close 事件
-    // ★ 仅关闭当前窗口，不影响其他项目窗口
+    // ★ win.destroy() 只销毁当前窗口，不影响其他项目窗口（每个 BrowserWindow 独立）
     ipcMain.handle('qqqide:window:close-confirmed', (e) => {
         const win = BrowserWindow.fromWebContents(e.sender);
         if (win && !win.isDestroyed()) {
             bypassCloseConfirm(win);
-            win.close(); // 走正常关闭管线，__qqqCloseBypass 已设，不会再次弹确认框
+            win.destroy();
         }
     });
     ipcMain.handle('qqqide:window:isMaximized', (e) => BrowserWindow.fromWebContents(e.sender)?.isMaximized() ?? false);
@@ -192,11 +192,13 @@ export function registerMiscIpc(
             _projectWindowMap.set(normalized, newWin.id);
         }
         // Build URL: 有 folderPath → restore 模式；无 folderPath → fresh 模式
+        // ★ 加上 _v 缓存破坏参数（与初次启动 bootSequence 一致），防新窗口加载旧缓存
+        const cacheBust = '&_v=' + encodeURIComponent(appVersion);
         let url: string;
         if (folderPath && typeof folderPath === 'string') {
-            url = bootConfig.url + '?restore=1&folder=' + encodeURIComponent(folderPath);
+            url = bootConfig.url + '?restore=1&folder=' + encodeURIComponent(folderPath) + cacheBust;
         } else {
-            url = bootConfig.url + '?fresh=1';
+            url = bootConfig.url + '?fresh=1' + cacheBust;
         }
         newWin.loadURL(url).then(() => {
             newWin.show();
@@ -246,7 +248,7 @@ export function registerMiscIpc(
         }
         _windowProjectMap.set(win.id, normalized);
         _projectWindowMap.set(normalized, win.id);
-        // ★ DevTools 可能已用 fallback "qqq IDE" 改名，项目确认后重新改名
+        // ★ DevTools 可能已用 fallback "qqqide" 改名，项目确认后重新改名
         const projName = path.basename(normalized);
         console.log('[devtools] claimProject: winId=' + win.id + ' normalized=' + normalized + ' projName=' + projName);
         setTimeout(() => renameDevToolsViaBroker(win, projName), 1500);

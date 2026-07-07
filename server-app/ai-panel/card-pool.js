@@ -65,6 +65,27 @@ var CardPool = (function () {
     // 内部内容容器
     this._contentWrap = document.createElement('div');
     this._contentWrap.className = 'card-content';
+    // ★ 卡级点击委托：处理 floor-gap 中的「继续任务」链接
+    var _card = this;
+    this._contentWrap.addEventListener('click', function (e) {
+      var link = e.target.closest('.msg-err-continue');
+      if (!link || link.classList.contains('msg-err-resolved')) return;  // 已恢复链接不可点
+      // 检查链接是否在 floor-gap 内（aiEl._contentWrap 内的由 per-aiEl 委托处理）
+      var inFloorGap = link.closest('.floor-gap');
+      if (!inFloorGap) return;
+      e.preventDefault();
+      var _curAgent = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+      var _curQuestId = (typeof questActiveId !== 'undefined') ? questActiveId : null;
+      if (_curAgent && _curAgent._stopState === 'fatal') {
+        if (!link._qqqRecoveryBusy) {
+          link._qqqRecoveryBusy = true;
+          if (typeof _startRecovery === 'function') _startRecovery(_curQuestId, _curAgent, link);
+        }
+        return;
+      }
+      if (typeof $input !== 'undefined' && $input) $input.focus();
+      if (typeof scrollToBottom === 'function') scrollToBottom(true);
+    });
     this.dom.appendChild(this._contentWrap);
   };
 
@@ -229,23 +250,20 @@ var CardPool = (function () {
   //   - role=assistant + content    → 渲染 AI 文字回复
   //   - 其余一律不渲染（工具调用、工具结果、系统消息等）
   function _buildConversationFlowHtml(conv, fData) {
-    var _aggErrors = [];  // ★ 聚合错误行
     if (!conv || !conv.length) {
       // ★ 仅在真正流式中断时展示 _streamingText（_streaming 为 true 才说明是中断，而非正常完成后的残留）
       if (fData && fData._streamingText && fData._streaming) {
         return '<div class="msg-flow-partial">' + _escHtml(fData._streamingText) + '</div><div class="msg-status">⏳ 打印中断（已自动保存）</div>';
       }
-      // ★ fatal 楼层兜底：conversation 为空时仍显示错误消息 + 继续任务链接
+      // ★ fatal 楼层兜底：conversation 为空时显示简要状态（红框由 floor-gap DOM 层单独渲染）
       if (fData && fData.floorFatal) {
-        var _fatalErrMsg = (fData.exitReason ? '⚠️ 楼层异常中断（' + fData.exitReason + '），对话已保存。' : '⚠️ 楼层异常中断，对话已保存。');
-        return '<div class="msg-quest-error"><div class="qe-row">' + _escHtml(_fatalErrMsg) + '</div> <a class="msg-err-continue" href="#" data-i18n="ai.error.continueTask">继续任务</a></div>';
+        return '<div class="msg-status">⚠️ 楼层异常中断，对话已保存。</div>';
       }
       return '';
     }
 
     var parts = [];
     var seenFirstUser = false;
-    var _hasErrorRendered = false;  // ★ fatal 兜底追踪
 
     for (var i = 0; i < conv.length; i++) {
       var m = conv[i];
@@ -273,9 +291,7 @@ var CardPool = (function () {
           parts.push('<div class="msg-flow-guide-inject"><div class="msg-flow-guide-hdr"><span class="msg-flow-icon">📌</span> 引导信息</div><div class="msg-flow-guide-body">' + _escHtml(_injText) + '</div></div>');
         }
       } else if (m._error && m.role === 'assistant') {
-        // ★ 错误消息：聚合到 _aggErrors，最后统一渲染一个红框
-        _aggErrors.push(m.content || '');
-        _hasErrorRendered = true;
+        // ★ 错误消息：跳过不渲染（红框由 DOM 层 floor-gap 单独管理）
       } else if (m.role === 'assistant' && !m.tool_calls && typeof m.content === 'string' && m.content) {
         // 普通 AI 文字回复（数据已在 EnvelopeStripper 清洗，直接渲染）
         var _rm = window.renderMarkdown;
@@ -299,21 +315,7 @@ var CardPool = (function () {
       parts.push('<div class="msg-flow-tools-done">' + _escHtml('工具执行完毕' + (_tc > 0 ? '（' + _tc + ' 次调用）' : '')) + '</div>');
     }
 
-    // ★ 聚合错误框：所有 _error 消息合并为一个红框 + 单链接
-    if (_aggErrors.length > 0) {
-      var _aggHtml = '<div class="msg-quest-error">';
-      for (var _aei = 0; _aei < _aggErrors.length; _aei++) {
-        _aggHtml += '<div class="qe-row">' + _escHtml(_aggErrors[_aei]) + '</div>';
-      }
-      _aggHtml += ' <a class="msg-err-continue" href="#" data-i18n="ai.error.continueTask">继续任务</a></div>';
-      parts.push(_aggHtml);
-    }
-
-    // ★ fatal 楼层兜底：conversation 存在但无 _error 消息 → 强制生成
-    if (fData && fData.floorFatal && !_hasErrorRendered) {
-      var _fatalErrMsg2 = (fData.exitReason ? '⚠️ 楼层异常中断（' + fData.exitReason + '），对话已保存。' : '⚠️ 楼层异常中断，对话已保存。');
-      parts.push('<div class="msg-quest-error"><div class="qe-row">' + _escHtml(_fatalErrMsg2) + '</div> <a class="msg-err-continue" href="#" data-i18n="ai.error.continueTask">继续任务</a></div>');
-    }
+    // ★ 红框不再由 _buildConversationFlowHtml 渲染 — 由 floor-gap DOM 层单独管理
 
     return parts.join('\n\n');
   }
@@ -781,6 +783,14 @@ var CardPool = (function () {
     }
 
     frag.appendChild(aiEl);
+
+    // ★ 致命楼层：插入 floor-gap 容器（红框将在楼层间渲染）
+    if (fData.floorFatal) {
+      var _floorGap = document.createElement('div');
+      _floorGap.className = 'floor-gap';
+      _floorGap._floorNum = fNum;
+      frag.appendChild(_floorGap);
+    }
 
     // 存储 floor DOM 引用
     card.floorDOM[fNum] = { userEl: userEl, aiEl: aiEl, a1El: a1El, clockEl: aiEl._clockBlock };

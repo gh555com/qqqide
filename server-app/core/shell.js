@@ -197,9 +197,14 @@ function showCloseConfirm() {
   if ($confirm) {
     $confirm.focus();
     $confirm.addEventListener('click', function () {
-      hideCloseConfirm();
+      hideCloseConfirm(true); // force: 确认退出不触发防抖
+      // ★ 双保险：优先 closeConfirmed，fallback close（防止 IPC 未注册等边缘情况）
       if (bridge.window && bridge.window.closeConfirmed) {
-        bridge.window.closeConfirmed();
+        try { bridge.window.closeConfirmed(); } catch (e) {
+          if (bridge.window.close) bridge.window.close();
+        }
+      } else if (bridge.window && bridge.window.close) {
+        bridge.window.close();
       }
     });
   }
@@ -220,9 +225,10 @@ function showCloseConfirm() {
   document.addEventListener('keydown', _onCloseConfirmEsc);
 }
 
-function hideCloseConfirm() {
-  // ★ 1s 防抖：刚弹出时不能取消，只能点确认
-  if (Date.now() < _closeConfirmUnblockAt) return;
+function hideCloseConfirm(force) {
+  // ★ 1s 防抖：刚弹出时不能取消（取消/Esc/遮罩点击），只能点确认
+  //   force=true → 确认退出，绕过防抖，直接关闭
+  if (!force && Date.now() < _closeConfirmUnblockAt) return;
   _closeConfirmActive = false;
   if (_closeConfirmOverlay) {
     _closeConfirmOverlay.remove();
@@ -277,7 +283,8 @@ function bootAiViewport() {
 }
 
 // ---- Editor font size (was zoom; window UI locked at 1.00) ----
-// Press-and-hold: mousedown fires immediately, then a 300ms pause, then accel repeat.
+// Press-and-hold: mousedown fires immediately (§43: first tick ±1), then 300ms pause,
+//   then repeat at 200ms with ×10 jump (e.g. 17→18→28→38) to reduce Monaco pressure.
 //   Single click = one immediate fire only (mouseup before 300ms → no repeat).
 //   Persistence: fast path (adjust) does NOT save. Only on mouseup we call set() once.
 var _efsRepeatTimer = 0;
@@ -285,6 +292,7 @@ var _efsRepeatDelta = 0;
 var _efsDelay = 0;
 var _efsStopped = false;
 var _efsLastSize = 0;
+var _efsRepeatGen = 0; // ★ per-click generation — stale async results discarded
 
 function applyFontSizeLabel(size) {
   var $label = document.getElementById('qqq-zoom-label');
@@ -296,41 +304,44 @@ function _efsStartRepeat(delta) {
   if (!bridge || !bridge.zoom) return;
   _efsStopped = false;
   _efsRepeatDelta = delta;
-  _efsDelay = 160;
-  _efsLastSize = 0; // ★ reset — prevent stale value from bouncing back in stopRepeat race
+  _efsLastSize = 0;
+  _efsRepeatGen++; // ★ new gen — all in-flight async calls from previous clicks become stale
+  var gen = _efsRepeatGen;
   if (_efsRepeatTimer) { clearTimeout(_efsRepeatTimer); _efsRepeatTimer = 0; }
-  _efsRepeatTick();
+  _efsRepeatTick(gen);
   _efsRepeatTimer = setTimeout(function () {
     _efsRepeatTimer = 0;
     if (_efsStopped) return;
-    _efsRepeatTickChained();
+    _efsRepeatTickChained(gen);
   }, 300);
 }
 
-async function _efsRepeatTickChained() {
-  if (_efsStopped) return;
+async function _efsRepeatTickChained(gen) {
+  if (_efsStopped || _efsRepeatGen !== gen) return;
   var bridge = _shBridge;
   if (!bridge || !bridge.zoom) return;
   try {
     // ★ Hold jump: delta ×10 to reduce Monaco pressure, e.g. 17→18→28→38 instead of 17→18→19→20
     var s = await bridge.zoom.adjust(_efsRepeatDelta * 10);
+    if (_efsRepeatGen !== gen) return; // stale gen — discard
     _efsLastSize = s;
     applyFontSizeLabel(s);
   } catch (_) { }
-  if (_efsStopped) return;
-  // Fixed 200ms debounce for hold repeat (no acceleration)
+  if (_efsStopped || _efsRepeatGen !== gen) return;
   _efsRepeatTimer = setTimeout(function () {
     _efsRepeatTimer = 0;
     if (_efsStopped) return;
-    _efsRepeatTickChained();
+    _efsRepeatTickChained(gen);
   }, 200);
 }
 
-async function _efsRepeatTick() {
+async function _efsRepeatTick(gen) {
+  if (_efsRepeatGen !== gen) return; // stale — another click started before async resolved
   var bridge = _shBridge;
   if (!bridge || !bridge.zoom) return;
   try {
     var s = await bridge.zoom.adjust(_efsRepeatDelta);
+    if (_efsRepeatGen !== gen) return; // stale after await — discard
     _efsLastSize = s;
     applyFontSizeLabel(s);
   } catch (_) { }

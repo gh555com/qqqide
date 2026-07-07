@@ -319,10 +319,11 @@ app.whenReady().then(async () => {
 
     // Init asset protocol + roots
     initAssetProtocol(portable.root, portable.cache, portable.userData);
-    await hydrateAssetRootsFromState(stateStore);
 
-    // Register shell state
+    // Register shell state (must be before hydrateAssetRootsFromState — needs qqqide ns)
     registerShellState();
+
+    await hydrateAssetRootsFromState(stateStore);
 
     // Security hardening
     hardenSession();

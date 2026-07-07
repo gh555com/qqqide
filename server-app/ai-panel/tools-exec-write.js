@@ -21,16 +21,37 @@ function _autoSyntaxCheck(filePath) {
         }).catch(function () { return ''; });
     }
 
-    var cmd, args;
+    var cmd, args, cwd, timeout, _isTs;
     if (ext === 'js' || ext === 'mjs' || ext === 'cjs') { cmd = 'node'; args = ['--check', filePath]; }
     else if (ext === 'py') { cmd = 'python'; args = ['-m', 'py_compile', filePath]; }
+    else if (ext === 'ts' || ext === 'tsx') {
+        // TypeScript: npx tsc --noEmit. Let tsc walk up to find tsconfig.json.
+        var _dir = filePath.replace(/\\/g, '/');
+        var _lastSep = _dir.lastIndexOf('/');
+        if (_lastSep > 0) _dir = _dir.substring(0, _lastSep);
+        cmd = 'npx'; args = ['tsc', '--noEmit', '--pretty', 'false']; cwd = _dir;
+        _isTs = true;
+    }
     else { return Promise.resolve(''); }
 
-    return bridge.qz.spawn({ cmd: cmd, args: args, timeout: 5000 }).then(function (r) {
+    timeout = _isTs ? 12000 : 5000;
+    return bridge.qz.spawn({ cmd: cmd, args: args, timeout: timeout, cwd: cwd || '' }).then(function (r) {
         if (r.code === 0) return '\n[SYNTAX OK] ' + ext;
+        var output = (r.stderr || '') + '\n' + (r.stdout || '');
+        if (_isTs) {
+            // Filter: only errors referencing this file (not other files in project)
+            var lines = output.split('\n');
+            var relevant = [];
+            for (var i = 0; i < lines.length; i++) {
+                if (lines[i].indexOf(filePath) !== -1) relevant.push(lines[i]);
+            }
+            if (relevant.length === 0) return '\n[SYNTAX OK] ts';
+            return '\n[SYNTAX ERROR] ts: ' + relevant.slice(0, 3).join('\n');
+        }
         var errMsg = (r.stderr || r.stdout || '').split('\n').slice(0, 3).join(' ');
         return '\n[SYNTAX ERROR] ' + ext + ': ' + errMsg;
     }).catch(function (e) {
+        if (_isTs) return ''; // tsc not available → silent degrade
         return '\n[SYNTAX CHECK FAILED] ' + ext + ' — ' + (e.message || e);
     });
 }

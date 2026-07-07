@@ -31,7 +31,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - Worker: 基础走 qqqide-asset:// URL，语言走 blob+loader.js。
 
 §5 命名（永不可逆）
-  - 变量名禁含 "su"。Tier1外宣 qqq IDE / Tier2编码 qqqide(全小写无空格)。
+  - 变量名禁含 "su"。统一 qqqide(全小写无空格)，不再区分 Tier。
   - 核心层级: project→quest→floor→house→room。JSON: floor_id/quest_id。
   - 禁: qqqIde/qqqIDE/qqq-ide/qqq_ide/QQQ/turn_id/session_id。
 

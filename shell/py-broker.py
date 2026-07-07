@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""py-broker.py — 跨平台窗口管理 broker for qqq IDE.
+"""py-broker.py — 跨平台窗口管理 broker for qqqide.
 常驻子进程。stdin 读 JSON 行命令，stdout 返回 JSON 行响应。
 日志: 写入 {appRoot}/Data/Logs/_py_broker.log
 """
