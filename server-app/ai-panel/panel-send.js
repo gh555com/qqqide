@@ -98,7 +98,7 @@ function _renderQuestErrorBox(agent, aiDiv, floorNum) {
     if (agent._questErrorDivByFloor) {
         for (var _fn in agent._questErrorDivByFloor) {
             var _fnNum = parseInt(_fn);
-            if (isNaN(_fnNum) || _fnNum >= _floorNum) continue;
+            if (isNaN(_fnNum) || _fnNum !== _floorNum) continue;
             var _oldBox = agent._questErrorDivByFloor[_fn];
             if (!_oldBox || !_oldBox.isConnected) continue;
             var _oldLink = _oldBox._continueLink;
@@ -371,7 +371,6 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
     agent._isRecovery = true;
     agent._inRecoverySend = false;
     agent._recoveryInProgress = false;
-    agent._deferRenderUntilHouse1 = false;
 
     try {
         var _intent = _buildSendIntent(questId, _recoveryText, {
@@ -405,15 +404,50 @@ function _finishRecovery(linkEl, agent, succeeded) {
         // ★ 成功：彻底清除链接/白块 DOM + 动画 + 引用（由 _hideRecoveryLink 统一处理）
         if (typeof _hideRecoveryLink === 'function') _hideRecoveryLink(agent);
     } else {
-        // ★ 失败：光块恢复为"继续任务"（红框已在 onError 中追加新行）
-        if (linkEl && linkEl.isConnected) {
-            linkEl._qqqRecoveryDone = false;
-            linkEl.textContent = linkEl._qqqRecoveryOrigText ||
-                ((typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务');
-            linkEl.className = 'msg-err-continue';
-            linkEl.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
-            linkEl._qqqRecoveryBusy = false;
-            linkEl._qqqRecoveryOrigText = '';
+        // ★ 失败：恢复链接
+        // ★ 核心：若已有更新楼层（N-house 恢复已建了新楼层并挂了新红框），
+        //   则此旧链接应灰化而非重激活，防止同一 quest 出现两个「继续任务」
+        var _newerFloorExists = false;
+        if (agent._questErrorDivByFloor) {
+            var _curFloor2 = agent._currentFloorNum;
+            for (var _fn2 in agent._questErrorDivByFloor) {
+                if (parseInt(_fn2) > _curFloor2) { _newerFloorExists = true; break; }
+            }
+        }
+        if (_newerFloorExists) {
+            // N-house 恢复：新楼层已有红框+链接，旧链接灰化
+            if (linkEl && linkEl.isConnected) {
+                linkEl.className = 'msg-err-continue msg-err-resolved';
+                linkEl.style.cssText = 'text-decoration:none;cursor:default;color:var(--muted);margin-left:4px;opacity:0.5;';
+                linkEl.textContent = (typeof _i === 'function') ? _i('ai.error.floorRecovered', '已恢复') : '已恢复';
+                linkEl.onclick = function (e) { e.preventDefault(); };
+                linkEl._qqqRecoveryDone = true;
+                linkEl._qqqRecoveryBusy = false;
+            }
+            // ★ 防御：灰化所有非当前楼层链接
+            if (agent._questErrorDivByFloor) {
+                for (var _fn3 in agent._questErrorDivByFloor) {
+                    if (parseInt(_fn3) === _curFloor2) continue;
+                    var _bx3 = agent._questErrorDivByFloor[_fn3];
+                    if (_bx3 && _bx3.isConnected && _bx3._continueLink && _bx3._continueLink.isConnected && !_bx3._continueLink.classList.contains('msg-err-resolved')) {
+                        _bx3._continueLink.className = 'msg-err-continue msg-err-resolved';
+                        _bx3._continueLink.style.cssText = 'text-decoration:none;cursor:default;color:var(--muted);margin-left:4px;opacity:0.5;';
+                        _bx3._continueLink.textContent = (typeof _i === 'function') ? _i('ai.error.floorRecovered', '已恢复') : '已恢复';
+                        _bx3._continueLink.onclick = function (e) { e.preventDefault(); };
+                    }
+                }
+            }
+        } else {
+            // 0-house 恢复：同楼层重试，恢复链接为可点击
+            if (linkEl && linkEl.isConnected) {
+                linkEl._qqqRecoveryDone = false;
+                linkEl.textContent = linkEl._qqqRecoveryOrigText ||
+                    ((typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务');
+                linkEl.className = 'msg-err-continue';
+                linkEl.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
+                linkEl._qqqRecoveryBusy = false;
+                linkEl._qqqRecoveryOrigText = '';
+            }
         }
         // ★ 清理引用（即使 DOM 已断连也要 null，防僵尸引用）
         agent._recoveryLinkEl = null;

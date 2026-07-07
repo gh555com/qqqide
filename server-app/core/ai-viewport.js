@@ -31,6 +31,67 @@
   let _hoverTimer = null;
   function cancelHover() { if (_hoverTimer) { clearTimeout(_hoverTimer); _hoverTimer = null; } }
 
+  // ★ 模糊匹配：空格 = AND，逐字符顺序匹配
+  function _fuzzyMatch(query, target) {
+    var lower = target.toLowerCase();
+    var pos = 0;
+    for (var i = 0; i < query.length; i++) {
+      pos = lower.indexOf(query[i], pos);
+      if (pos === -1) return false;
+      pos++;
+    }
+    return true;
+  }
+
+  // ★ 每目录独立快照 + 滚动位置
+  var _lastHoveredSubdirByPath = {};
+  var _scrollPosByPath = {};
+  var SNAPSHOT_MAX_ENTRIES = 500;
+
+  function _setSnapshot(parentDir, childName) {
+    _lastHoveredSubdirByPath[parentDir] = childName;
+    var keys = Object.keys(_lastHoveredSubdirByPath);
+    if (keys.length > SNAPSHOT_MAX_ENTRIES) { delete _lastHoveredSubdirByPath[keys[0]]; }
+  }
+
+  // ★ 筛选框：模糊匹配+空格AND，筛选时清除子列表
+  function _createFilterBar(scrollContainer) {
+    var bar = document.createElement('div');
+    bar.className = 'aiv-filter-bar';
+    bar.style.cssText = 'display:flex; padding:4px 6px; flex-shrink:0; border-bottom:1px solid var(--border-color);';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'aiv-filter-input';
+    input.placeholder = '\u7b5b\u9009...';
+    input.style.cssText =
+      'width:100%; background:var(--base2); border:1px solid var(--border-color); ' +
+      'border-radius:2px; padding:4px 6px; font-size:12px; color:var(--text-primary); ' +
+      'outline:none; box-sizing:border-box;';
+    input.addEventListener('input', function () {
+      var val = this.value;
+      var outer = scrollContainer._outer || scrollContainer.parentElement;
+      _closeDescendantSubmenus(outer);
+      var rows = scrollContainer.querySelectorAll(':scope > .aiv-dd-row');
+      if (!val) {
+        rows.forEach(function (r) { r.style.display = ''; });
+        return;
+      }
+      var tokens = val.toLowerCase().split(/\s+/).filter(Boolean);
+      rows.forEach(function (row) {
+        var name = (row.dataset.name || '').toLowerCase();
+        var match = tokens.every(function (t) { return _fuzzyMatch(t, name); });
+        row.style.display = match ? '' : 'none';
+      });
+    });
+    bar.appendChild(input);
+    return bar;
+  }
+
+  function _closeDescendantSubmenus(outer) {
+    if (!outer) return;
+    if (outer._childSub) { closeSubmenuTree(outer._childSub); outer._childSub = null; }
+  }
+
   // ---- 树展开快照：每个顶层文件夹记住关闭前的完整路径链 ----
   var _treeSnapshots = {}; // projectPath → [relPath1, relPath2, ...]
   // relPath = dirPath.substring(projectRoot.length)，如 ["src", "src/app", "src/app/components"]
@@ -108,32 +169,26 @@
     }
   }
 
-  // ---- persist (localStorage — fast sync; qgs backup on unload) ----
-  var STORAGE_KEY = 'qqq-ai-viewport-projects';
-  var _shellHandle = null;  // cached — NEVER call qgs.ns() more than once
-
-  function _getShellHandle() {
-    if (_shellHandle) return _shellHandle;
-    if (window.qgs && typeof window.qgs.ns === 'function') {
-      _shellHandle = window.qgs.ns('qqqide', { v: 1, form: 'doc' });
-    }
-    return _shellHandle;
-  }
-
   // ---- recent folders (global, max 20, qgs persisted) ----
   var RECENT_KEY = 'recent_folders';
   var MAX_RECENT = 20;
   var _recentFolders = []; // [{path, name, atime}]
   var _recentsReady = null; // Promise — resolve 后 _recentFolders 才是真实数据
 
+  function _qgsNs() {
+    if (window.qgs && typeof window.qgs.ns === 'function') {
+      return window.qgs.ns('qqqide', { v: 1, form: 'doc' });
+    }
+    return null;
+  }
+
   function _loadRecents() {
     _recentsReady = new Promise(function (resolve) {
       try {
-        var s = _getShellHandle();
+        var s = _qgsNs();
         if (s) {
           s.get(RECENT_KEY).then(function (data) {
             if (data && Array.isArray(data)) {
-              // 去重：同 path 只保留第一条
               var seen = {};
               _recentFolders = [];
               for (var i = 0; i < data.length && _recentFolders.length < MAX_RECENT; i++) {
@@ -152,7 +207,7 @@
 
   function _saveRecents() {
     try {
-      var s = _getShellHandle();
+      var s = _qgsNs();
       if (s) s.set(RECENT_KEY, _recentFolders).catch(function () { });
     } catch (_) { }
   }
@@ -168,29 +223,6 @@
       if (_recentFolders.length > MAX_RECENT) _recentFolders.length = MAX_RECENT;
       _saveRecents();
     }).catch(function () { });
-  }
-
-  // ★ restore 模式：从 qgs 读取窗口快照，还原辅文件夹
-  function _restoreFromSnapshot(folderPath) {
-    var key = 'win_snap:' + folderPath.replace(/\\/g, '/').replace(/\/$/, '');
-    try {
-      var s = _getShellHandle();
-      if (s) {
-        s.get(key).then(function (snap) {
-          if (!snap || !snap.auxFolders || !Array.isArray(snap.auxFolders)) return;
-          _dedupProjects(); // ★ 先去重，再添加
-          for (var i = 0; i < snap.auxFolders.length; i++) {
-            var aux = snap.auxFolders[i];
-            if (!projects.some(function (p) { return p.path === aux; })) {
-              projects.push({ path: aux, name: basename(aux) });
-            }
-          }
-          saveProjects();
-          render();
-          _notifyChanged();
-        }).catch(function () { });
-      }
-    } catch (_) { }
   }
 
   // 异步校验主文件夹锁：若该项目已被其他窗口锁定，从视口移除
@@ -225,15 +257,6 @@
     }, 2000);
   }
 
-  // ★ 项目持久化 key：per-mainFolder 隔离，防多窗口互相覆盖
-  var PROJ_KEY_BASE = 'ai_viewport:';
-  function _projKey() {
-    if (projects.length > 0 && projects[0].path) {
-      return PROJ_KEY_BASE + projects[0].path.replace(/\\/g, '/').replace(/\/$/, '');
-    }
-    return null;
-  }
-
   function loadProjects() {
     // 新窗口（?fresh=1）：强制清空，零项目
     if (window.location.search.indexOf('fresh=1') !== -1) {
@@ -251,7 +274,7 @@
       }
       return;
     }
-    // ★ restore 模式（?restore=1&folder=xxx）：读 per-mainFolder key
+    // restore 模式（?restore=1&folder=xxx）：从 URL 取主文件夹，only.sq3 恢复阵营
     if (window.location.search.indexOf('restore=1') !== -1) {
       projects = [];
       var rm = window.location.search.match(/[?&]folder=([^&]+)/);
@@ -262,10 +285,7 @@
             projects.push({ path: rFolderPath, name: basename(rFolderPath) });
             _bumpRecent(rFolderPath);
             _verifyFolderLock(rFolderPath);
-            // ★ 从 per-mainFolder key 恢复（含辅文件夹）
-            _restoreFromProjKey(rFolderPath);
-            // 同时走 win_snap 兜底（兼容旧数据）
-            _restoreFromSnapshot(rFolderPath);
+            _restoreFormationFromOnlyStore(rFolderPath);
           }
         } catch (_) { }
       }
@@ -273,36 +293,45 @@
       _notifyChanged();
       return;
     }
-    // 同步回退：localStorage（首次启动或无主文件夹时）
+  }
+
+  // ★ 出战阵营持久化：写入主项目的 only.sq3（项目级资产，随目录迁移）
+  function _saveFormationToOnlyStore() {
+    var mainProj = projects[0];
+    if (!mainProj || !mainProj.path) return;
     try {
-      var raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) { var parsed = JSON.parse(raw); if (parsed.length > 0) projects = parsed; }
+      if (!window.qgs || typeof window.qgs.project !== 'function') return;
+      var onlyPath = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/only.sq3';
+      var auxPaths = [];
+      for (var i = 1; i < projects.length; i++) {
+        auxPaths.push(projects[i].path);
+      }
+      var onlyDb = window.qgs.project(onlyPath, 'qqq.only', { v: 1, form: 'doc' });
+      if (onlyDb) onlyDb.set('ai.formation', auxPaths).catch(function () { });
     } catch (_) { }
   }
 
-  // ★ 从 per-mainFolder key 恢复辅文件夹（跨窗口跨重启）
-  function _restoreFromProjKey(mainFolderPath) {
-    var key = PROJ_KEY_BASE + mainFolderPath.replace(/\\/g, '/').replace(/\/$/, '');
+  // ★ 从主项目 only.sq3 恢复出战阵营（项目级资产，跨重启/跨迁移）
+  function _restoreFormationFromOnlyStore(mainFolderPath) {
     try {
-      var s = _getShellHandle();
-      if (s) {
-        s.get(key).then(function (data) {
-          if (!data || !Array.isArray(data) || data.length < 2) return;
-          // ★ 先去重，防磁盘脏数据
-          _dedupProjects();
-          // data[0] 是主文件夹（跳过），data[1..] 是辅文件夹
-          for (var i = 1; i < data.length; i++) {
-            var aux = data[i];
-            var auxPath = typeof aux === 'string' ? aux : aux.path;
-            if (!projects.some(function (p) { return p.path === auxPath; })) {
-              projects.push({ path: auxPath, name: basename(auxPath) });
-            }
+      if (!window.qgs || typeof window.qgs.project !== 'function') return;
+      var onlyPath = mainFolderPath.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/only.sq3';
+      var onlyDb = window.qgs.project(onlyPath, 'qqq.only', { v: 1, form: 'doc' });
+      if (!onlyDb) return;
+      onlyDb.get('ai.formation').then(function (auxPaths) {
+        if (!auxPaths || !Array.isArray(auxPaths) || auxPaths.length === 0) return;
+        _dedupProjects();
+        for (var i = 0; i < auxPaths.length; i++) {
+          var aux = auxPaths[i];
+          if (typeof aux !== 'string' || !aux) continue;
+          if (!projects.some(function (p) { return p.path === aux; })) {
+            projects.push({ path: aux, name: basename(aux) });
           }
-          saveProjects();
-          render();
-          _notifyChanged();
-        }).catch(function () { });
-      }
+        }
+        saveProjects();
+        render();
+        _notifyChanged();
+      }).catch(function () { });
     } catch (_) { }
   }
 
@@ -324,24 +353,24 @@
 
   function saveProjects() {
     _dedupProjects();
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(projects)); } catch (_) { }
-    // ★ 写入 per-mainFolder key（多窗口隔离）
-    try {
-      var pk = _projKey();
-      if (pk && projects.length > 0) {
-        var s = _getShellHandle();
-        if (s) s.set(pk, projects).catch(function () { });
-      }
-    } catch (_) { }
+    _saveFormationToOnlyStore();
   }
-  // 窗口关闭前兜底写入（防崩溃丢失）
+  // beforeunload：阵营 + recent 同步刷盘
   window.addEventListener('beforeunload', function () {
     try {
-      var s = _getShellHandle();
-      if (s) {
-        var pk = _projKey();
-        if (pk && projects.length > 0) s.setNow(pk, projects).catch(function () { });
-        if (_recentFolders.length > 0) s.setNow(RECENT_KEY, _recentFolders).catch(function () { });
+      // 最近文件夹 → global.sq3
+      if (_recentFolders.length > 0) {
+        var s = _qgsNs();
+        if (s) s.setNow(RECENT_KEY, _recentFolders).catch(function () { });
+      }
+      // 阵营 → only.sq3
+      var mainProj = projects[0];
+      if (mainProj && mainProj.path && window.qgs && typeof window.qgs.project === 'function') {
+        var onlyPath = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/only.sq3';
+        var auxPaths = [];
+        for (var i = 1; i < projects.length; i++) { auxPaths.push(projects[i].path); }
+        var onlyDb = window.qgs.project(onlyPath, 'qqq.only', { v: 1, form: 'doc' });
+        if (onlyDb && onlyDb.setNow) onlyDb.setNow('ai.formation', auxPaths);
       }
     } catch (_) { }
   });
@@ -546,7 +575,10 @@
       sbThumb.style.height = thumbH + 'px';
       sbThumb.style.top = ((inner.scrollTop / (sh - ch)) * maxTop) + 'px';
     }
-    inner.addEventListener('scroll', _syncSB);
+    inner.addEventListener('scroll', function () {
+      _syncSB();
+      if (inner._dirPath) { _scrollPosByPath[inner._dirPath] = inner.scrollTop; }
+    });
     sbOuter.addEventListener('mousedown', function (e) {
       if (e.target === sbThumb || e.button !== 0) return;
       var sh = inner.scrollHeight, ch = inner.clientHeight;
@@ -629,6 +661,9 @@
 
     dd._projectRoot = project.path;
     var ddScroll = _wrapScrollContainer(dd, 1);
+    // ★ 最顶层列表也加筛选框
+    var filterBar = _createFilterBar(ddScroll);
+    dd.insertBefore(filterBar, dd.firstChild);
     // ★ 快照还原：检查该目录是否有保存的展开链
     var snap = _treeSnapshots[project.path];
     if (snap && snap.length > 0) {
@@ -660,6 +695,7 @@
   }
 
   async function loadDirInto(parentEl, dirPath, projectRoot) {
+    parentEl._dirPath = dirPath;  // ★ 标记路径，供滚动保存+快照还原
     const entries = await listDir(dirPath);
     if (entries.length === 0) {
       const empty = document.createElement('div');
@@ -698,12 +734,13 @@
         var depth = (parentEl._depth || 0) + 1;
         var subPath = pathJoin(dirPath, ent.name);
         var outer = parentEl._outer || parentEl; // inner scroll wrapper → outer container
-        _hoverTimer = setTimeout(() => {
+           _hoverTimer = setTimeout(() => {
           _hoverTimer = null;
           if (!row._hovered) return; // 光标已离开，跳过
           if (outer._childSub) { closeSubmenuTree(outer._childSub); outer._childSub = null; }
-          const sub = openSubmenu(row, subPath, depth, projectRoot);
-          if (sub) {
+          // ★ 每目录快照：记住最后展开的子目录
+          _lastHoveredSubdirByPath[dirPath] = ent.name;
+          const sub = openSubmenu(row, subPath, depth, projectRoot);        if (sub) {
             sub._justOpened = Date.now();
             outer._childSub = sub;
           }
@@ -787,8 +824,49 @@
           }
         }
       }
+      parentEl._pendingChainRestored = true;  // ★ 标记旧系统已完成还原
       // 无论是否找到匹配行，清理链防止残留
       parentEl._pendingChain = null;
+    }
+    // ★ 每目录独立快照还原：旧系统未处理时，按每个目录自己记忆的最终子目录展开
+    if (!parentEl._pendingChainRestored) {
+      var savedChild = _lastHoveredSubdirByPath[dirPath];
+      if (savedChild && (parentEl._depth || 0) < 20) {
+        var rows5 = parentEl.querySelectorAll(':scope > .aiv-dd-row');
+        for (var ri5 = 0; ri5 < rows5.length; ri5++) {
+          if (rows5[ri5].dataset.isDir === 'true' && rows5[ri5].dataset.name === savedChild &&
+              rows5[ri5].style.display !== 'none') {
+            var subPath5 = pathJoin(dirPath, savedChild);
+            var depth5 = (parentEl._depth || 0) + 1;
+            var outer5 = parentEl._outer || parentEl;
+            if (outer5._childSub) { closeSubmenuTree(outer5._childSub); }
+            outer5._childSub = null;
+            var sub5 = openSubmenu(rows5[ri5], subPath5, depth5, projectRoot);
+            if (sub5) {
+              sub5._justOpened = Date.now();
+              outer5._childSub = sub5;
+              // ★ 还原下级列表的滚动位置
+              if (_scrollPosByPath[subPath5] !== undefined) {
+                var si5 = sub5.querySelector('.aiv-scroll-inner');
+                if (si5) {
+                  var c5 = setInterval(function () {
+                    if (si5.scrollHeight > _scrollPosByPath[subPath5] || si5.scrollHeight <= si5.clientHeight) {
+                      si5.scrollTop = Math.min(_scrollPosByPath[subPath5], si5.scrollHeight);
+                      clearInterval(c5);
+                    }
+                  }, 50);
+                  setTimeout(function () { clearInterval(c5); }, 2000);
+                }
+              }
+            }
+            break;
+          }
+        }
+      }
+    }
+    // ★ 还原本列表的滚动位置
+    if (_scrollPosByPath[dirPath] !== undefined) {
+      parentEl.scrollTop = Math.min(_scrollPosByPath[dirPath], parentEl.scrollHeight || 0);
     }
   }
 
@@ -945,6 +1023,9 @@
     sub._parentRow = rowEl;
 
     var subScroll = _wrapScrollContainer(sub, sub._depth);
+    // ★ 子列表也加筛选框
+    var filterBar2 = _createFilterBar(subScroll);
+    sub.insertBefore(filterBar2, sub.firstChild);
     _stampDepth(sub, sub._depth);
     document.body.appendChild(sub);
     activeSubmenus.push(sub);
@@ -1317,5 +1398,10 @@
   };
   // （attachToAi 在模块顶部统一定义，此处不再重复）
 
-  window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject, closeDropdown };
+  // ★ 暴露清除所有快照的入口
+  function clearSnapshots() {
+    _lastHoveredSubdirByPath = {};
+    _scrollPosByPath = {};
+  }
+  window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject, closeDropdown, clearSnapshots };
 })();

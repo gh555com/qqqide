@@ -6,7 +6,7 @@ import { app, ipcMain, BrowserWindow, clipboard, dialog, shell as electronShell 
 import * as path from 'path';
 import * as fs from 'fs';
 import { URL } from 'url';
-import { BootConfig } from './boot';
+import { BootConfig, getWebappBaseUrl } from './boot';
 import { addAssetRoot, _assetFileWorkspaceRoots, diskFreeBatch } from './asset-protocol';
 import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm, updateWingMinSize } from './window-manager';
 import { StateStore } from './state-sqlite';
@@ -191,14 +191,14 @@ export function registerMiscIpc(
             _windowProjectMap.set(newWin.id, normalized);
             _projectWindowMap.set(normalized, newWin.id);
         }
-        // Build URL: 有 folderPath → restore 模式；无 folderPath → fresh 模式
-        // ★ 加上 _v 缓存破坏参数（与初次启动 bootSequence 一致），防新窗口加载旧缓存
+        // ★ 使用本地 webapp 加载新窗口（与首次启动 bootSequence 一致）
+        const baseUrl = getWebappBaseUrl(portableRoot, bootConfig, isDevFlag);
         const cacheBust = '&_v=' + encodeURIComponent(appVersion);
         let url: string;
         if (folderPath && typeof folderPath === 'string') {
-            url = bootConfig.url + '?restore=1&folder=' + encodeURIComponent(folderPath) + cacheBust;
+            url = baseUrl + '?restore=1&folder=' + encodeURIComponent(folderPath) + cacheBust;
         } else {
-            url = bootConfig.url + '?fresh=1' + cacheBust;
+            url = baseUrl + '?fresh=1' + cacheBust;
         }
         newWin.loadURL(url).then(() => {
             newWin.show();

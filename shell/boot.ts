@@ -232,11 +232,11 @@ export async function checkAndDownloadShellUpdate(
 // ----------------------------------------------------------------------------
 // Webapp local loading: bundle server-app/ as webapp/ → first boot instant + offline
 // ----------------------------------------------------------------------------
-const WEBAPP_PROTOCOL = 'qqqide-webapp';
+export const WEBAPP_PROTOCOL = 'qqqide-webapp';
 let _webappProtocolRegistered = false;
 
 /** Find or create local webapp/ at portableRoot/Data level. Returns dir path or null. */
-function ensureLocalWebapp(portableRoot: string): string | null {
+export function ensureLocalWebapp(portableRoot: string): string | null {
     const localDir = path.join(portableRoot, 'Data', 'webapp');
 
     // ── Swap staged update if present (from previous background download) ──
@@ -300,7 +300,7 @@ function ensureLocalWebapp(portableRoot: string): string | null {
 }
 
 /** Register qqqide-webapp:// protocol to serve local webapp files. */
-function registerWebappProtocol(webappDir: string): void {
+export function registerWebappProtocol(webappDir: string): void {
     if (_webappProtocolRegistered) return;
     _webappProtocolRegistered = true;
     // Lazy-load protocol from electron (available after app.whenReady)
@@ -756,6 +756,23 @@ export async function loadRemoteWithCacheGuard(
 // ----------------------------------------------------------------------------
 // Boot orchestrator
 // ----------------------------------------------------------------------------
+
+/**
+ * Compute the effective base URL for loading the webapp.
+ * Priority: local webapp bundle (qqqide-webapp://) > remote URL.
+ */
+export function getWebappBaseUrl(portableRoot: string, bootConfig: BootConfig, isDev: boolean): string {
+    if (isDev) {
+        return 'http://127.0.0.1:8090/qqqide/';
+    }
+    const webappDir = ensureLocalWebapp(portableRoot);
+    if (webappDir) {
+        registerWebappProtocol(webappDir);
+        return WEBAPP_PROTOCOL + '://app/qqqide/index.html';
+    }
+    return bootConfig.url;
+}
+
 export async function bootSequence(
     mainWindow: BrowserWindow | null,
     bootConfig: BootConfig,
@@ -782,16 +799,11 @@ export async function bootSequence(
     bootLog('url: ' + bootConfig.url);
 
     // ★★ 本地 webapp 优先：首次免网秒开，后续从本地加载 + 后台静默更新
-    let effectiveUrl = bootConfig.url;
-    if (!isDev) {
-        const webappDir = ensureLocalWebapp(portableRoot);
-        if (webappDir) {
-            registerWebappProtocol(webappDir);
-            effectiveUrl = WEBAPP_PROTOCOL + '://app/qqqide/index.html';
-            bootLog('local: using bundled webapp (no network needed for first boot)');
-        } else {
-            bootLog('local: no webapp found, will load from remote');
-        }
+    let effectiveUrl = getWebappBaseUrl(portableRoot, bootConfig, isDev);
+    if (effectiveUrl.startsWith(WEBAPP_PROTOCOL)) {
+        bootLog('local: using bundled webapp (no network needed for first boot)');
+    } else {
+        bootLog('local: no webapp found, will load from remote');
     }
     const isLocal = effectiveUrl.startsWith(WEBAPP_PROTOCOL);
 

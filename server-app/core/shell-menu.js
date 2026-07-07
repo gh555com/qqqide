@@ -33,15 +33,6 @@ function _saveWindowSnapshot() {
 
   var snap = { mainFolder: root, atime: Date.now() };
 
-  // aux folders (from ai-viewport)
-  if (window.qqqideViewport && window.qqqideViewport.getProjects) {
-    var allProj = window.qqqideViewport.getProjects();
-    snap.auxFolders = [];
-    for (var pi = 1; pi < allProj.length; pi++) {
-      snap.auxFolders.push(allProj[pi].path);
-    }
-  }
-
   // editor tabs (from qqqtabs)
   if (window.qqqTabs && window.qqqTabs.getGroups) {
     var groups = window.qqqTabs.getGroups();
@@ -123,7 +114,7 @@ function _showMenuRecentDropdown(leftPx, topPx) {
     var maxH = Math.max(200, window.innerHeight - topPx - 8);
     dd.style.cssText =
       'position:fixed; z-index:100000; ' +
-      'left:' + leftPx + 'px; top:' + (topPx - 38) + 'px; ' +
+      'left:' + leftPx + 'px; top:' + topPx + 'px; ' +
       'min-width:280px; max-width:420px; max-height:' + maxH + 'px; ' +
       'overflow-y:auto; ' +
       'background:var(--card-bg); border:1px solid var(--border-color); ' +
@@ -191,32 +182,6 @@ function _showMenuRecentDropdown(leftPx, topPx) {
 function _openWindowFromRecent(folderPath) {
   var bridge = window.qqqideBridge;
   _saveWindowSnapshot();
-  // ★ 为新窗口种子辅文件夹：将当前窗口的视口项目（除去目标自身）写入目标 key
-  //    新窗口 restore 时 _restoreFromProjKey 会读取并还原辅文件夹
-  try {
-    var curProj = window.qqqideViewport ? window.qqqideViewport.getProjects() : [];
-    if (curProj && curProj.length > 0) {
-      var normalizedTarget = folderPath.replace(/\\/g, '/').replace(/\/$/, '');
-      var seed = [];
-      for (var i = 0; i < curProj.length; i++) {
-        var p = curProj[i];
-        var np = p.path.replace(/\\/g, '/').replace(/\/$/, '');
-        if (np === normalizedTarget) continue; // 目标自身不重复
-        seed.push({ path: np, name: p.name });
-      }
-      // 目标在最前（主文件夹）+ 原窗口其他项目作为辅文件夹
-      var targetProj = [{ path: normalizedTarget, name: '' }];
-      try {
-        var parts = normalizedTarget.split('/').filter(Boolean);
-        targetProj[0].name = parts[parts.length - 1] || normalizedTarget;
-      } catch (_) { targetProj[0].name = normalizedTarget; }
-      var fullSeed = targetProj.concat(seed);
-      if (bridge && bridge.state) {
-        var seedKey = 'ai_viewport:' + normalizedTarget;
-        bridge.state.set('qqqide', seedKey, fullSeed).catch(function () { });
-      }
-    }
-  } catch (_) { }
   if (bridge && bridge.window && bridge.window.new) {
     bridge.window.new(folderPath).then(function (r) {
       if (r && !r.ok) { console.warn('[shell-menu] newWindow failed:', r); }
@@ -401,15 +366,16 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       row.addEventListener('mouseenter', function () {
         if (_shellMenuRecentHoverTimer) clearTimeout(_shellMenuRecentHoverTimer);
         var popRect = pop.getBoundingClientRect();
-        var rowRect = row.getBoundingClientRect();
-        _showMenuRecentDropdown(popRect.right, rowRect.top);
+        _showMenuRecentDropdown(popRect.right, popRect.top);
       });
       row.addEventListener('mouseleave', function () {
         if (_shellMenuRecentHoverTimer) clearTimeout(_shellMenuRecentHoverTimer);
         _shellMenuRecentHoverTimer = setTimeout(function () {
           _shellMenuRecentHoverTimer = null;
-          if (_shellMenuRecentDropdown) return;
-          _closeMenuRecentDropdown();
+          // ★ 光标离开行 + 未进入 dropdown → 自动关闭
+          if (_shellMenuRecentDropdown) {
+            _closeMenuRecentDropdown();
+          }
         }, 120);
       });
 

@@ -201,6 +201,7 @@ async function _executeSend(intent) {
     if (_deferUserBubble) {
         userMsgEl = null;
         agent._deferredUserEl = null;
+        agent._deferredUserText = '继续';  // ★ B2: 恢复消息气泡只显示「继续」
     } else {
         userMsgEl = addMessageEl('user', text);
         if (userMsgEl) userMsgEl._floor = agent._ctx.totalFloors;
@@ -227,8 +228,8 @@ async function _executeSend(intent) {
 
     var _images = pendingImages && pendingImages.length > 0 ? pendingImages.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl, fileName: img.fileName || '' }; }) : null;
 
-    // ★ $input 清理：仅 normal 类型清除（恢复由调用方管理）
-    if (sendType === 'normal') {
+    // ★ $input 清理：仅 normal 类型且当前活跃 quest 才清除（防队列/后台发送误清）
+    if (sendType === 'normal' && qid === questActiveId) {
         $input.value = '';
         $input._resetUndo();
         pendingImages = [];
@@ -236,7 +237,7 @@ async function _executeSend(intent) {
         $input.focus();
     }
 
-    // ── 楼层分配 ──
+    // ── 楼层分配 ── ──
     var floorNum;
     var root2 = questStore.getProjectRoot();
     var qDirName2, fDirName2, _allTxtDirLocal, _allTxtPathLocal;
@@ -323,6 +324,21 @@ async function _executeSend(intent) {
     if (sendType !== 'recovery-0house') {
         if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent);
         if (typeof _startAllTxtStream === 'function') _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, text, '');
+        // ★ aq1 tier indicator: insert between user bubble and AI reply (live building path)
+        if (agent._aiStartTime && agent._aiTierLabel) {
+            var _tCard = cardPool._cards[qid];
+            if (_tCard && aiDiv && aiDiv.parentNode) {
+                var _prev = aiDiv.previousElementSibling;
+                if (!_prev || !_prev.classList.contains('msg-tier-indicator')) {
+                    var tierEl = document.createElement('div');
+                    tierEl.className = 'msg-tier-indicator';
+                    tierEl.textContent = agent._aiTierLabel + ' start in ' + agent._aiStartTime;
+                    aiDiv.parentNode.insertBefore(tierEl, aiDiv);
+                }
+            }
+        }
+        // ★ 即时启用引导按钮（此时 _streaming=true, _stopState=sending, updateGuideBtn 才能读到）
+        if (typeof updateGuideBtn === 'function') updateGuideBtn();
     }
     scrollToBottom(true);
 
@@ -359,6 +375,11 @@ async function _executeSend(intent) {
             onToken: function (chunk) {
                 if (agent._deferRenderUntilHouse1) {
                     agent._deferRenderUntilHouse1 = false;
+                    // ★ B2: 恢复成功，创建「继续」用户气泡（不显示完整恢复诊断文本）
+                    var _recBubbleText = agent._deferredUserText || '继续';
+                    agent._deferredUserText = null;
+                    var _recBubble = addMessageEl('user', _recBubbleText);
+                    if (_recBubble) _recBubble._floor = agent._currentFloorNum;
                     agent._deferredUserEl = null;
                     agent._deferredAiDiv = null;
                     if (typeof _hideRecoveryLink === 'function') _hideRecoveryLink(agent);
@@ -434,6 +455,11 @@ async function _executeSend(intent) {
             onDone: async function (content, timing) {
                 if (agent._deferRenderUntilHouse1) {
                     agent._deferRenderUntilHouse1 = false;
+                    // ★ B2: 恢复成功，创建「继续」用户气泡（不显示完整恢复诊断文本）
+                    var _recBubbleText = agent._deferredUserText || '继续';
+                    agent._deferredUserText = null;
+                    var _recBubble = addMessageEl('user', _recBubbleText);
+                    if (_recBubble) _recBubble._floor = agent._currentFloorNum;
                     agent._deferredUserEl = null;
                     agent._deferredAiDiv = null;
                     if (typeof _hideRecoveryLink === 'function') _hideRecoveryLink(agent);
@@ -449,9 +475,17 @@ async function _executeSend(intent) {
                 var _targetDiv2 = (aiDiv && aiDiv.isConnected) ? aiDiv : (agent._activeAiDiv || aiDiv);
                 if (_targetDiv2 && _targetDiv2._contentWrap) {
                     _targetDiv2._guideMode = false;
+                    // ★ Flush _buf trailing content into _paras BEFORE removing _lastParaEl
+                    //   (otherwise the incomplete paragraph in _buf is silently discarded)
+                    if (_targetDiv2._buf && (_targetDiv2._splitCursor || 0) < _targetDiv2._buf.length) {
+                        var _trailing = _targetDiv2._codeFenceOpen ? _targetDiv2._buf : _targetDiv2._buf.slice(_targetDiv2._splitCursor || 0);
+                        if (_trailing && _trailing.trim()) {
+                            if (!_targetDiv2._paras) _targetDiv2._paras = [];
+                            _targetDiv2._paras.push(_trailing);
+                        }
+                    }
                     if (_targetDiv2._lastParaEl) { _targetDiv2._lastParaEl.remove(); _targetDiv2._lastParaEl = null; }
                     var _rendered = _targetDiv2._renderedCount || 0;
-                    // (renderMarkdown 等省略，保持原逻辑等价)
                     var _allParas = _targetDiv2._paras || [];
                     for (var _ai = _rendered; _ai < _allParas.length; _ai++) {
                         var _pEl = document.createElement('div');
@@ -462,10 +496,36 @@ async function _executeSend(intent) {
                     _targetDiv2._renderedCount = _allParas.length;
                     _targetDiv2._paras = [];
                     _targetDiv2._buf = '';
+                    _targetDiv2._splitCursor = 0;
+                    _targetDiv2._codeFenceOpen = false;
+
+                    // ★ P14 最终安全网：用 `content`（完整 AI 回复）补全丢失的尾段
+                    //   `_buf`/`_paras` 是流式过程中按 \n\n 切分的半成品，边界条件易丢最后一截。
+                    //   `content` 是 finalize 过的完整文本，以此为准做尾段补全。
+                    if (content && typeof content === 'string' && content.trim()) {
+                        var _domText = _targetDiv2._contentWrap.textContent || '';
+                        var _domTail = _domText.slice(-300).replace(/\s+/g, ' ').trim();
+                        var _contentTail = content.slice(-300).replace(/\s+/g, ' ').trim();
+                        if (_contentTail && _domTail !== _contentTail && !_domTail.endsWith(_contentTail.slice(-100))) {
+                            var _finalP = document.createElement('div');
+                            _finalP.className = 'msg-ai-p msg-ai-final';
+                            var _rm = typeof renderMarkdown === 'function' ? renderMarkdown : function (s) { return s; };
+                            _finalP.innerHTML = _rm(content);
+                            _targetDiv2._contentWrap.appendChild(_finalP);
+                        }
+                    }
                 }
                 agent._floorCompletedCleanly = true;
                 agent._floorTiming = timing;
                 agent._floorOnErrorCalled = false;
+                // ★ Clear building floor state (was never cleared after onDone,
+                //   causing switchQuest to treat capped floor as still-building →
+                //   card cleared & reloaded on re-switch → first-render DOM lost)
+                var _cardDone = cardPool._cards[qid];
+                if (_cardDone && _cardDone.buildingFloor === floorNum) {
+                    _cardDone.buildingFloor = null;
+                    if (aiDiv) aiDiv.classList.remove('card-building');
+                }
                 if (typeof _finalizeAllTxt === 'function') await _finalizeAllTxt(aiDiv, _allTxtPathLocal, agent, floorNum, timing);
                 if (typeof stopFloorTimer === 'function') stopFloorTimer(timing, agent);
                 setStreaming(false);
@@ -607,7 +667,10 @@ async function _executeSend(intent) {
             _triggerQueueSend();
         }
         if (_activeAgent === agent) {
-            setStreaming(false);
+            streaming = false;
+            // ★ 楼层正常完结时 onDone 已正确设置按钮状态（含 guide 按钮启用），
+            //   updateGuideBtn 此时 _stopState 已不在 sending → 会误禁用 → 跳过
+            if (!agent._floorCompletedCleanly) updateGuideBtn();
         }
     }
 
