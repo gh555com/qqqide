@@ -477,9 +477,55 @@ async function initQuests() {
     if (questActiveId && !_isDraft(questActiveId)) {
         // [silent] loading data for quest
         _activeAgent = _getOrCreateAgent(questActiveId);
+        // ★ 清除 Ctrl+R 重载后 parent.__qqq_agentPool 中残留的旧 sending 态
+        //   否则 _restoreAgentFromStore 的守卫 (stopState==='sending') 会跳过恢复
+        if (_activeAgent._stopState !== 'idle') {
+            _activeAgent.setStopState('idle');
+            _activeAgent._streaming = false;
+            _activeAgent._floorCompletedCleanly = false;
+        }
         await cardPool.switchTo(questActiveId);
         // ★ 恢复 agent 全量状态（conversation + metadata）
         await _restoreAgentFromStore(questActiveId, _activeAgent);
+
+        // ★ 绑定 _activeAiDiv — 与 switchQuest 一致（init 缺此 → 红框无锚点插入）
+        var _initCard = cardPool.getCard(questActiveId);
+        if (_initCard) {
+            var _initFloorNums = Object.keys(_initCard.floorDOM || {}).map(Number).sort(function (a, b) { return b - a; });
+            for (var _ifi = 0; _ifi < _initFloorNums.length; _ifi++) {
+                var _ifDom = _initCard.floorDOM[_initFloorNums[_ifi]];
+                if (_ifDom && _ifDom.aiEl) {
+                    _activeAgent._activeAiDiv = _ifDom.aiEl;
+                    if (_activeAgent._floorTimerId) {
+                        clearInterval(_activeAgent._floorTimerId);
+                        _activeAgent._floorTimerId = null;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // ★ 重建楼层间红框：对每个 fatal 楼层渲染恢复框（init 缺此 → 重启后无「继续任务」）
+        if (_activeAgent && _activeAgent._questErrorLogByFloor) {
+            var _rebuildFloors = Object.keys(_activeAgent._questErrorLogByFloor).map(Number);
+            for (var _rfi = 0; _rfi < _rebuildFloors.length; _rfi++) {
+                var _rebuildFn = _rebuildFloors[_rfi];
+                if (typeof _renderQuestErrorBox === 'function') _renderQuestErrorBox(_activeAgent, null, _rebuildFn);
+            }
+        }
+        if (_activeAgent && _activeAgent._floorFatal) {
+            var _fn3 = _activeAgent._currentFloorNum;
+            if (_fn3 > 0) {
+                var _card3 = cardPool && cardPool.getActive();
+                if (_card3 && _card3.floorDOM && _card3.floorDOM[_fn3] && _card3.floorDOM[_fn3].aiEl) {
+                    if (typeof _renderQuestErrorBox === 'function') _renderQuestErrorBox(_activeAgent, _card3.floorDOM[_fn3].aiEl, _fn3);
+                }
+            }
+        }
+
+        // ★ 刷新按钮状态（init 缺此 → restart 后 fatal 态按钮未被锁死且无视觉反馈）
+        if (typeof setStreaming === 'function') setStreaming(!!(_activeAgent && _activeAgent._streaming));
+
         restoreQuestUIState(questActiveId);
         // ★ 延迟恢复滚动位置（等 DOM 布局完成后）
         // 自动恢复标记：连接中断自愈 reload 后强制滚到底

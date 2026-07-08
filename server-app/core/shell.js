@@ -18,8 +18,17 @@ var _shLayoutState = {
 };
 
 // ---- Layout persistence → only.sq3 (项目资产) ----
+function _shFolderFromUrl() {
+  var m = window.location.search.match(/[?&]folder=([^&]+)/);
+  if (m) {
+    try { return decodeURIComponent(m[1]).replace(/\\/g, '/').replace(/\/$/, ''); }
+    catch (_) { }
+  }
+  return null;
+}
+
 function _shOnlyDb() {
-  var root = window._workspaceRoot;
+  var root = window._workspaceRoot || _shFolderFromUrl();
   if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
   return window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
 }

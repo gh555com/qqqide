@@ -483,6 +483,27 @@ async function _restoreAgentFromStore(questId, ag) {
                 ag.setStopState('fatal');
                 ag._floorFatal = true;
                 ag._exitReason = _lfData.exitReason || '';
+                // ★ 确保 currentFloorNum 指向 fatal 楼层（metadata 可能为 0）
+                if (!ag._currentFloorNum || ag._currentFloorNum < _lastFloor.floorNum) {
+                    ag._currentFloorNum = _lastFloor.floorNum;
+                }
+            }
+        }
+        // ★ 闭环恢复: 遍历所有楼层，对 floorFatal 的楼层从 exitReason 合成 error log
+        //   补上「运行时 onError 未写 _error 消息到 conversation」导致的磁盘断层
+        if (allFloors && allFloors.length > 0) {
+            for (var _erfi = 0; _erfi < allFloors.length; _erfi++) {
+                var _erFloorNum = allFloors[_erfi].floorNum;
+                var _erData = allFloors[_erfi].data;
+                if (_erData && _erData.floorFatal && _erData.exitReason) {
+                    if (!ag._questErrorLogByFloor[_erFloorNum]) ag._questErrorLogByFloor[_erFloorNum] = [];
+                    if (ag._questErrorLogByFloor[_erFloorNum].length === 0) {
+                        ag._questErrorLogByFloor[_erFloorNum].push({
+                            time: '',
+                            reason: _erData.exitReason
+                        });
+                    }
+                }
             }
         }
         // ★ 崩溃恢复：上次关闭时正在压缩 → 修复可能的半成品状态

@@ -561,6 +561,13 @@ async function _executeSend(intent) {
                             if (!agent._questErrorLogByFloor) agent._questErrorLogByFloor = {};
                             if (!agent._questErrorLogByFloor[_errFloorNum]) agent._questErrorLogByFloor[_errFloorNum] = [];
                             agent._questErrorLogByFloor[_errFloorNum].push({ time: _ts, reason: msg });
+                            // ★ 闭环恢复: 同步写入 _error 消息到 conversation（重启后磁盘重建）
+                            agent.conversation.push({
+                                role: 'assistant',
+                                content: msg,
+                                _error: true,
+                                _floor: _errFloorNum
+                            });
                         }
                         if (agent) { agent._deferredUserEl = null; agent._deferredAiDiv = null; }
                         _renderQuestErrorBox(agent, aiDiv);
