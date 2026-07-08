@@ -4,7 +4,7 @@
 //
 // 核心机制：
 //   1. _compressContext() — 阻塞式：token 超阈值 → 保留 10% 最近楼层（≥6层），压 90%
-//   2. _digestColdMessages() — 单专家 tier 6 统一压缩（facts+narrative+archive 合一，64K max_tokens）
+//   2. _digestColdMessages() — 单专家 tier 2 统一压缩（无 thinking，64K 全给输出）
 //   3. _buildDynamicContext() — 注入叙事 + 相关事实到 API 消息末尾
 //
 // 关键设计（铁律）：
@@ -14,7 +14,7 @@
 //   - 单专家 = 1 次 API 调用 → 一致性天然保证，不必 cross-check
 //   - 冷文本全量送入（不采样），模型 1M 窗口完全装得下
 //   - facts 后处理自动合并同话题事实（keyword 重叠 >50%）
-//   - 压缩失败 → 指数退避无限重试（2s/4s/8s/.../60s），永不静默丢弃0s），永不静默丢弃
+//   - 压缩失败 → 指数退避无限重试（2s/4s/8s/.../60s），永不静默丢弃
 //
 // 依赖：GATEWAY_URL（由 system-prompt.js 提供），AgentLoop（由 agent-loop.js 提供）
 // ============================================================================
@@ -252,19 +252,18 @@
         self._log('  ║ coldText: ' + coldText.length + ' chars sent in full (no sampling)');
 
         // ── 单专家统一 prompt — Narrative-First 架构 ──
-        //   1. 先写 Narrative（8K-48K chars，主记录）
+        //   1. 先写 Narrative（24K-96K chars，主记录）
         //   2. 再从 Narrative 提取 Facts（索引）
         //   3. 最后生成 Floors（每层一句摘要）
         var _existingNarrative = _oldNarrative || '(empty — this is the first compression)';
         var _unifiedPrompt = [
-            'You are a context compression engine. Produce a COMPREHENSIVE compressed context in a SINGLE JSON output.',
+            'You are a DETAILED CONTEXT PRESERVATION engine. EXPAND the conversation into a DETAILED record.',
             '',
-            'Your output is the ONLY record of these conversations. If you miss something, it is lost forever.',
-            'Your budget is 64K tokens. USE IT FULLY. Incomplete preservation = failure.',
+            'Your output is the ONLY record of these conversations. If you omit a detail, it is lost forever.',
+            'Your budget is 64K tokens. USE THEM ALL. Incomplete preservation = FAILURE.',
             '',
-            '═══════════════════════════════════════════',
-            'OUTPUT ORDER — follow this exactly:',
-            '  STEP 1: Write "narrative" FIRST — the master chronicle. 8000-48000 chars.',
+            '═══════════════════════════════════════════',            'OUTPUT ORDER — follow this exactly:',
+            '  STEP 1: Write "narrative" FIRST — the master chronicle. 24K-96K chars.',
             '  STEP 2: Extract "facts" FROM the narrative you just wrote — they are an index, not a replacement.',
             '  STEP 3: Write "floors" — one sentence per floor.',
             '',
@@ -277,17 +276,17 @@
             '',
             '═══════════════════════════════════════════',
             '★ NARRATIVE — PRIMARY RECORD (write FIRST, before facts):',
-            '  ★ HARD MINIMUM: 8000 chars. HARD MAXIMUM: 48000 chars.',
-            '  ★ Below 8000 chars = FAILURE — the record is too thin to be useful.',
-            '  ★ Above 48000 chars = wasteful — you are repeating yourself.',
+            '  ★ HARD MINIMUM: 24000 chars. HARD MAXIMUM: 96000 chars.',
+            '  ★ Below 24000 chars = FAILURE — the record is too thin to be useful.',
+            '  ★ Use the full 64K token budget. Write expansively, not concisely.',
             '  ★ This is the master chronicle. Facts are DERIVED from it, not the other way around.',
             '  ★ Write the narrative FIRST. Only after it is complete, extract facts from it.',
             '  ★ PRESERVE EVERY sentence from existing narrative (rewording OK, dropping = FAILURE).',
             '  ★ ALLOCATION guideline for ' + coldMsgs.length + ' messages across ' + (self._ctx.totalFloors - (lastCompressedFloor || 0)) + ' new floors:',
-            '    - Each floor → at least 3-5 sentences of narrative.',
-            '    - Recent floors → 1-2 paragraphs each (most detailed, AI will reference these first).',
-            '    - Early floors → 2-4 sentences each (context + key decisions).',
-            '    - Middle floors → brief transitions (1-2 sentences) linking early decisions to recent outcomes.',
+            '    - Each floor → at least 1500-3000 chars of narrative (multiple paragraphs).',
+            '    - Recent floors → 2-3 paragraphs each (most detailed, AI will reference these first).',
+            '    - Early floors → 1-2 paragraphs each (context + key decisions).',
+            '    - Middle floors → brief transitions (1 paragraph) linking early decisions to recent outcomes.',
             '  ★ Track THREADS end-to-end: if a topic spans multiple floors, trace it as one continuous story.',
             '  ★ Cite exact file paths, function names, error codes. No vague hand-waving.',
             '  ★ If you have existing narrative in the EXISTING CONTEXT section below, preserve ALL of it.',
@@ -499,7 +498,8 @@
     }
 
     // ═══ 调用 API 做精简（经 AiGateway 统一出口 §14b） ═══
-    // ★ 固定 tier 6 + reasoning_effort max + thinking enabled，压缩质量优先
+    // ★ 压缩用 tier 2（Flash 无 thinking），64K 全给内容输出
+    //   tier 6 的 thinking 吃太多输出预算导致 JSON 截断
     AgentLoop.prototype._callCompactAPI = async function (prompt, suffix, maxTokens) {
         var self = this;
         var _fetchStart = performance.now();
@@ -508,12 +508,9 @@
 
         try {
             var resp = await AiGateway.chatFetch({
-                model: 'deep',
-                tier: 6,
-                thinking: { type: 'enabled' },
-                reasoning_effort: 'max',
+                tier: 2,
                 messages: [
-                    { role: 'system', content: 'You are a context compression engine. Output ONLY valid JSON — no markdown, no explanation. You are the last line of defense for preserving conversation history — be thorough, not brief. Your output MUST fully utilize the available token budget. Incomplete preservation is worse than verbosity.' },
+                    { role: 'system', content: 'You are a context preservation engine. Output ONLY valid JSON — no markdown, no explanation. Every detail must be preserved. Incomplete preservation is worse than verbosity.' },
                     { role: 'user', content: prompt }
                 ],
                 stream: true,

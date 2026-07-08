@@ -82,12 +82,13 @@ function _renderQuestErrorBox(agent, aiDiv, floorNum) {
 
     // ★ 仅追加新行（不清空）。track 已追加行数防重复
     _box._renderedCount = _box._renderedCount || 0;
+    var _link = _box._continueLink;  // ★ 提前取引用，插入新行时需放在链接上方
     while (_box._renderedCount < _log.length) {
         var _entry = _log[_box._renderedCount];
         var _row = document.createElement('div');
         _row.className = 'qe-row';
         _row.textContent = (_entry.time || '') + '  ' + (_entry.reason || '');
-        _box.appendChild(_row);
+        _box.insertBefore(_row, _link || null);  // ★ 始终在链接上方
         _box._renderedCount++;
     }
 
@@ -115,7 +116,7 @@ function _renderQuestErrorBox(agent, aiDiv, floorNum) {
     var _card3 = cardPool && cardPool.getActive();
     if (_card3 && _card3.floorDOM && _card3.floorDOM[_floorNum + 1]) _hasNextFloor = true;
 
-    var _link = _box._continueLink;
+    _link = _box._continueLink;
     if (!_link || !_link.isConnected) {
         var _existingLink = _box.querySelector('.msg-err-continue');
         if (_existingLink) {
