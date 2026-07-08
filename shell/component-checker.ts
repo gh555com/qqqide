@@ -167,7 +167,12 @@ async function _checkAll(
     for (const name of manifest.rank0) {
         const def = manifest.components[name];
         if (!def) { console.log('[components] ' + name + ': not in manifest'); continue; }
-        if (def.bundled) continue;
+        // bundled: 绿色包自带。若本地不存在 → fall through 到下载逻辑（旧客户端升级场景）
+        if (def.bundled) {
+            const bp = _binPath(portableRoot, def);
+            if (bp && fs.existsSync(bp)) continue;
+            console.log('[components] ' + name + ': bundled but missing on disk, downloading...');
+        }
 
         try {
             await _ensureOne(portableRoot, name, def, pk, versions, manifest);

@@ -490,7 +490,7 @@ async function _executeSend(intent) {
                     for (var _ai = _rendered; _ai < _allParas.length; _ai++) {
                         var _pEl = document.createElement('div');
                         _pEl.className = 'msg-ai-p';
-                        renderMarkdown(_allParas[_ai], _pEl, agent);
+                        _pEl.innerHTML = renderMarkdown(_allParas[_ai]);
                         _targetDiv2._contentWrap.appendChild(_pEl);
                     }
                     _targetDiv2._renderedCount = _allParas.length;
@@ -499,14 +499,12 @@ async function _executeSend(intent) {
                     _targetDiv2._splitCursor = 0;
                     _targetDiv2._codeFenceOpen = false;
 
-                    // ★ P14 安全网：`content` 可能含 EnvelopeStripper.finalize() 清理出
-                    //   的额外文本（如 <invoke> 内嵌内容），从未经 onToken 到达 _buf。
-                    //   用前缀去重：仅追加 content 中超出已渲染 DOM 内容长度的后缀。
-                    //   ★ 关键：只追加缺失尾部，不重复渲染整个 content（防内容重复）。
+                    // ★ P14 安全网：已渲染文本明显短于原始 content → 追加缺失尾部
+                    //   容忍 ±10 字符偏差（Markdown→HTML 空格/换行差异），
+                    //   短回复（如 "你好 👋"）不受旧 80 高容忍误杀
                     if (content && typeof content === 'string' && content.trim()) {
                         var _domText = _targetDiv2._contentWrap.textContent || '';
-                        // 宽松容忍：允许渲染后的 HTML 有 ±80 字符偏差（Markdown→HTML 会引入空格/换行差异）
-                        if (content.length > _domText.length + 80) {
+                        if (content.length > _domText.length + 10 && content.length - _domText.length > 5) {
                             var _suffix = content.slice(_domText.length);
                             if (_suffix.trim()) {
                                 var _finalP = document.createElement('div');
@@ -530,7 +528,11 @@ async function _executeSend(intent) {
                     if (aiDiv) aiDiv.classList.remove('card-building');
                 }
                 if (typeof _finalizeAllTxt === 'function') await _finalizeAllTxt(aiDiv, _allTxtPathLocal, agent, floorNum, timing);
-                if (typeof stopFloorTimer === 'function') stopFloorTimer(timing, agent);
+                // ★ onDone 强制刷新 A1 第二行（FILE/ROW），防 all.txt 轮询漏掉
+                if (aiDiv && aiDiv._a1Block && typeof _updateA1Row2 === 'function') {
+                    try { _updateA1Row2(aiDiv._a1Block, agent, true); } catch (_) { }
+                }
+                if (typeof stopFloorTimer === 'function') stopFloorTimer(timing, agent);;
                 setStreaming(false);
                 agent.setStopState('done');
                 if (typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
