@@ -337,6 +337,7 @@ var _fineScm = {};         // { normalizedPath: {szMode,sortBy,filesOnTop,ts} }
 var _cmdHistory = { address: [], fileFilter: [] };
 var _lineSpacing = -2;
 var FINE_SCM_MAX = 500;
+var sessionSizeCache = {};
 
 // ---- Persistence helpers ----
 function _normPath(p) { return (p || '').toLowerCase().replace(/\//g, '\\').replace(/[\\]+$/, ''); }

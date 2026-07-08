@@ -220,17 +220,21 @@
             var token = opts.token || _getToken();
             if (!token) throw new Error('No token');
 
-            // ★ 压缩路径：不覆写 model，透传 body，但必须带超时（裸 fetch 仅 ~30s 不够）
+            // ★ 压缩路径：映射 tier→model（与主路径一致），长超时
             if (opts.compact) {
                 var _isFallback = opts.isFallback || false;
                 var _primaryUrl = _URLS.chatPrimary;
                 var _fallbackUrl = _URLS.chatFallback;
                 var _url = _isFallback ? _fallbackUrl : _primaryUrl;
+                // ★ 统一 tier→model 映射（与主路径一致）
+                if (!body.model) {
+                    var _compactTier = body.tier || opts.tier || 2;
+                    body.model = _tierToModel(_compactTier);
+                }
+                if (body.tier === undefined) body.tier = opts.tier || 2;
                 var _hdrs = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
-                // ★ keySlot 优先于 isFallback（quest 级固定 key）
                 if (opts.keySlot === 1) _hdrs['X-Key-Slot'] = '1';
-                else if (_isFallback) _hdrs['X-Key-Slot'] = '1';  // 兼容旧调用方
-                // 压缩可能很长（大 prompt + 64K 输出 + deep thinking），用 10min 超时
+                else if (_isFallback) _hdrs['X-Key-Slot'] = '1';
                 return _fetchWithTimeout(_url, { method: 'POST', headers: _hdrs, body: JSON.stringify(body) }, 600000);
             }
 

@@ -25,6 +25,60 @@
   let activeDropdown = null; // currently visible dropdown element
   let activeSubmenus = [];   // all open submenu elements
 
+  // ── Git 未提交计数 badge ──
+  var _gitBadgeCache = {};       // path → { count, error }
+  var _gitBadgeEls = {};         // path → badge DOM element (direct reference)
+  var _gitBadgeTimer = null;
+  var _gitBadgePollMs = 15000;
+
+  function _pollGitBadges() {
+    if (!projects.length) return;
+    var idx = 0;
+    function next() {
+      if (idx >= projects.length) return;
+      var p = projects[idx++];
+      _checkOneGitBadge(p).finally(next);
+    }
+    next();
+  }
+
+  async function _checkOneGitBadge(proj) {
+    try {
+      var gitBin = 'git';
+      if (bridge.components && bridge.components.getBin) {
+        try { var bin = await bridge.components.getBin('git'); if (bin) gitBin = bin; } catch(_) {}
+      }
+      var r = await bridge.qz.spawn({
+        cmd: gitBin,
+        args: ['-C', proj.path, 'status', '--porcelain'],
+        timeout: 8000
+      });
+      if (r.exitCode !== 0) { _gitBadgeCache[proj.path] = { error: true }; return; }
+      var count = (r.stdout || '').split('\n').filter(Boolean).length;
+      _gitBadgeCache[proj.path] = { count: count, error: false };
+      _updateBadgeDOM(proj.path, count);
+    } catch (e) {
+      _gitBadgeCache[proj.path] = { error: true };
+    }
+  }
+
+  function _updateBadgeDOM(path, count) {
+    var el = _gitBadgeEls[path];
+    if (!el) return;
+    if (count > 0) {
+      el.style.display = '';
+      el.textContent = count > 99 ? '99+' : String(count);
+    } else {
+      el.style.display = 'none';
+    }
+  }
+
+  function _startGitBadgePolling() {
+    if (_gitBadgeTimer) return;
+    _pollGitBadges();
+    _gitBadgeTimer = setInterval(_pollGitBadges, _gitBadgePollMs);
+  }
+
   // ---- module-level state (dropdown stays forever until explicit dismiss) ----
   let _activeBlockEl = null;
   let _dirCache = new Map(); // per-dropdown cache: key=dirPath, value=entries[]
@@ -1097,6 +1151,15 @@
 
     block.appendChild(icon);
     block.appendChild(name);
+
+    // Git uncommitted badge
+    var badge = document.createElement('span');
+    badge.className = 'aiv-git-badge';
+    badge.style.display = 'none';
+    badge.textContent = '';
+    _gitBadgeEls[proj.path] = badge;
+    block.appendChild(badge);
+
     block.appendChild(rmBtn);
 
     // hover → 150ms 防抖后展开下拉（防止光标掠过误触 + 限制 readdir 频率）
@@ -1362,6 +1425,9 @@
     // ★ 遮罩已内置到 showDropdown / _showRecentDropdown / closeDropdown（模块级）
     //    此处不再 monkey-patch，保持单一真理源
     window.qqqideViewport.closeDropdown = closeDropdown;
+
+    // ★ Git badge 轮询
+    _startGitBadgePolling();
     // Escape 键关闭（任何情况下都可操作）
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape' && activeDropdown) _dismissDropdown();

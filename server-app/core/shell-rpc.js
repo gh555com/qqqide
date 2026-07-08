@@ -264,7 +264,7 @@ function bootRpcForwarder() {
     if (e.data.type === 'qqq-rpc' && e.data.method && (e.data.method === 'store.get' || e.data.method === 'store.set' || e.data.method === 'store.getLocal' || e.data.method === 'store.setLocal')) {
       var method = e.data.method, params = e.data.params, id = e.data.id;
       try {
-        var _roamDb = window.qgs('roam');
+        var _roamDb = window.qgs.simple('roam');
         var result;
         if (method === 'store.get') {
           result = await _roamDb.get(params);
