@@ -18,6 +18,9 @@ import { renameDevToolsViaBroker, isPyBrokerReady } from './py-broker';
 import { _consoleBuffer } from './window-manager';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 
+// ═══ 跨窗口脏文件快照（主进程内存，所有窗口共享） ═══
+const _dirtySnapshots = new Map<string, string>();  // normalizedPath → latest dirty content
+
 export function registerMiscIpc(
     portableRoot: string,
     portableCache: string,
@@ -321,9 +324,22 @@ export function registerMiscIpc(
     // ---- update ----
     ipcMain.handle('qqqide:update:check', async () => updateService.check());
     ipcMain.handle('qqqide:update:apply', async () => updateService.apply());
-    ipcMain.handle('qqqide:update:state', async () => updateService.getState());
-    ipcMain.handle('qqqide:update:abort', async () => {
-        updateService.abort();
+    ipcMain.handle('qqqide:update:state', async () => updateService.g    ipcMain.handle('qqqide:update:upgrade-shell', async () => updateService.upgradeShell());
+
+    // ═══ 编辑器脏快照 — 跨窗口共享（Layer 2: IDE 领域内视觉一致） ═══
+    ipcMain.handle('qqqide:dirty:set', (_e, filePath: string, content: string) => {
+        _dirtySnapshots.set(filePath.replace(/\\/g, '/'), content);
+    });
+    ipcMain.handle('qqqide:dirty:get', (_e, filePath: string) => {
+        return _dirtySnapshots.get(filePath.replace(/\\/g, '/')) || null;
+    });
+    ipcMain.handle('qqqide:dirty:remove', (_e, filePath: string) => {
+        _dirtySnapshots.delete(filePath.replace(/\\/g, '/'));
+    });
+    ipcMain.handle('qqqide:dirty:list', () => {
+        return [..._dirtySnapshots.keys()];
+    });
+}t();
         return true;
     });
     ipcMain.handle('qqqide:update:upgrade-shell', async () => updateService.upgradeShell());

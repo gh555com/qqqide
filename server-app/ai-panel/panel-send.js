@@ -537,11 +537,11 @@ document.addEventListener('keydown', function (e) {
         e.preventDefault();
         // ★ 用户主动上滚 → 立即停自动跟滚
         if (cardPool) { var _c1 = cardPool.getActive(); if (_c1) _c1._userScrolledUp = true; }
-        $messages.scrollBy({ top: -$messages.clientHeight * 0.35, behavior: 'smooth' });
+        $messages.scrollBy({ top: -$messages.clientHeight * 0.175, behavior: 'smooth' });
         _showFloorIndicatorBriefly();
     } else if (key === '2') {
         e.preventDefault();
-        $messages.scrollBy({ top: $messages.clientHeight * 0.35, behavior: 'smooth' });
+       $messages.scrollBy({ top: $messages.clientHeight * 0.175, behavior: 'smooth' });;
         _showFloorIndicatorBriefly();
     } else if (key === 'q' || key === 'w') {
         e.preventDefault();

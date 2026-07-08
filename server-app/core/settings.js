@@ -31,7 +31,7 @@
   var _$btn = null;
 
   // ── 设置定义（元数据）── 默认值从 window.QQQ_DEFAULTS 读取 ──
-  var _D = window.QQQ_DEFAULTS || {};
+  var _D = window.qqqideDefaults || {};
   var SETTINGS_DEF = [
     {
       key: 'editor.undoMode',
@@ -180,6 +180,14 @@
         close();
       } else {
         open();
+      }
+    });
+    // ★ 右键齿轮按钮 → 打开开发者工具
+    _$btn.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+      var bridge = window.qqqideBridge;
+      if (bridge && bridge.window && bridge.window.toggleDevTools) {
+        bridge.window.toggleDevTools();
       }
     });
     $bulbs.parentNode.insertBefore(_$btn, $bulbs);

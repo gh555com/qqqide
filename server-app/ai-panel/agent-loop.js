@@ -643,7 +643,7 @@ var AgentLoop = (function () {
                     var _apiTokens = self._lastApiPromptTokens || 0;
                     // ★ 冷启动兜底：磁盘加载 quest 后无 usage，用估算防首轮 400
                     if (_apiTokens === 0) { _apiTokens = self._estimateTotalTokens(); }
-                    // ★ 压缩阈值：settings.js → QQQ_DEFAULTS → ContentGateway → 兜底 600k
+                    // ★ 压缩阈值：settings.js → qqqideDefaults → ContentGateway → 兜底 600k
                     var _threshold = 600000;
                     try {
                         if (typeof parent !== 'undefined' && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
@@ -653,8 +653,8 @@ var AgentLoop = (function () {
                     } catch (_) { }
                     if (_threshold === 600000) {
                         try {
-                            if (typeof parent !== 'undefined' && parent.window && parent.window.QQQ_DEFAULTS) {
-                                _threshold = parent.window.QQQ_DEFAULTS['ai.compressThreshold'] * 1000;
+                            if (typeof parent !== 'undefined' && parent.window &parent.window.qqqideDefaults) {
+                                _threshold = parent.window.qqqideDefaults['ai.compressThreshold'] * 1000;0;
                             }
                         } catch (_) { }
                     }
@@ -856,6 +856,15 @@ var AgentLoop = (function () {
                     self.totalCostGe += costGe;
                     self._lastCostDisplay = costGe < 0.001 ? '<0.001' : costGe.toFixed(4);
                     onCost(self._lastCostDisplay, self.totalCostGe, (self._floorHadBilling && self._floorCostWge === 0));
+                    // ★ 最终回复也需更新时钟 GE 显示（之前仅 tool_calls 路径有）
+                    var _aiDivF = self._activeAiDiv;
+                    if (_aiDivF && _aiDivF._clockCost) {
+                        _aiDivF._clockCost._rawGe = costGe.toFixed(4);
+                        _aiDivF._clockCost.textContent = costGe.toFixed(2) + ' ge' + ((self._floorHadBilling && self._floorCostWge === 0) ? ' Free' : '');
+                        _aiDivF._clockCost._houses = self._houses;
+                        _aiDivF._clockCost._floorNum = self._currentFloorNum;
+                        _aiDivF._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), tokens: (self._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(self) : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0), drift: self._serverDrift || 0, city: self._serverCity || '' };
+                    }
                     if (self._billingDebug) { _logBillingSummary(self); }
                     self._floorCompletedCleanly = true;  // ★ 看门狗：AI 正常回复
                     await onDone(response.content, self._floorTiming);
@@ -1001,7 +1010,15 @@ var AgentLoop = (function () {
                     var finalCostGe = self._floorCostWge / 10000;
                     self.totalCostGe += finalCostGe;
                     self._lastCostDisplay = finalCostGe < 0.001 ? '<0.001' : finalCostGe.toFixed(4);
-                                        onCost(self._lastCostDisplay, self.totalCostGe, (self._floorHadBilling && self._floorCostWge === 0));
+                    onCost(self._lastCostDisplay, self.totalCostGe, (self._floorHadBilling && self._floorCostWge === 0));
+                    var _aiDivF2 = self._activeAiDiv;
+                    if (_aiDivF2 && _aiDivF2._clockCost) {
+                        _aiDivF2._clockCost._rawGe = finalCostGe.toFixed(4);
+                        _aiDivF2._clockCost.textContent = finalCostGe.toFixed(2) + ' ge' + ((self._floorHadBilling && self._floorCostWge === 0) ? ' Free' : '');
+                        _aiDivF2._clockCost._houses = self._houses;
+                        _aiDivF2._clockCost._floorNum = self._currentFloorNum;
+                        _aiDivF2._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), tokens: (self._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(self) : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0), drift: self._serverDrift || 0, city: self._serverCity || '' };
+                    }
                     self._floorCompletedCleanly = true;  // ★ 看门狗：强制回答成功
                     await onDone(finalResp.content, self._floorTiming);
                     return finalResp.content;

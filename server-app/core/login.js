@@ -172,6 +172,7 @@
       var resp = await fetch(API_BASE + '/wallet/balance', {
         headers: { 'Authorization': 'Bearer ' + _authData.token }
       });
+      if (!resp.ok) return;
       var data = await resp.json();
       if (data && data.ok && typeof data.balance !== 'undefined') {
         _balanceGe = data.balance;

@@ -513,12 +513,10 @@
       ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => save());
       ed.onDidChangeModelContent(function (e) {
         dirty = true; updateTitle();
-        // dispatch for tab-manager if currentFile is set
         if (currentFile) {
           document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: currentFile, dirty: true } }));
+          _pushDirtyDebounced(currentFile, ed.getValue());
         }
-        // LSP OFF — no LSP change notifications
-        if (!lspLang || !currentFile) return;
       });
       // Auto-save on blur
       ed.onDidBlurEditorWidget(() => {
@@ -613,12 +611,11 @@
     if (!editor || !currentFile) { return false; }
     const v = editor.getValue();
     try {
+      await _captureExternalBefore(currentFile);
       await bridge.fs.write(currentFile, v);
       dirty = false; updateTitle();
-
-      // ★ 触发 timeline 快照（冷却+去重在主进程真理机）
       _maybeRecordTimeline(currentFile, v);
-
+      _removeDirty(currentFile);
       return true;
     } catch (e) {
       console.error('[editor] save failed:', e);
@@ -819,7 +816,12 @@
         document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: d } }));
       }
 
-      ed.onDidChangeModelContent(function () { if (!ed._isRefreshing) _markDirty(); });
+      ed.onDidChangeModelContent(function () {
+        if (!ed._isRefreshing) {
+          _markDirty();
+          _pushDirtyDebounced(filePath, ed.getValue());
+        }
+      });
 
       // ── 钩子 X 快照（冷却+去重已移至主进程 ipc-timeline.ts 真理机）──
       async function _xHookRecord(fp, content, source) {
@@ -856,9 +858,11 @@
         if (_paneDirty && filePath && !(opts && opts.readOnly)) {
           try {
             var content = ed.getValue();
+            await _captureExternalBefore(filePath);
             await bridge.fs.write(filePath, content);
             _markClean();
             _xHookRecord(filePath, content, 'editx');
+            _removeDirty(filePath);
           } catch (err) {
             console.error('[editor] auto-save failed:', filePath, err && err.message);
           }
@@ -869,18 +873,14 @@
       ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
         try {
           var val = ed.getValue();
+          await _captureExternalBefore(filePath);
           await bridge.fs.write(filePath, val);
           _markClean();
           _xHookRecord(filePath, val, 'editx');
+          _removeDirty(filePath);
         } catch (e) {
           console.error('[editor] save failed:', e);
         }
-      });
-
-      // When this editor gains focus, update refs
-      ed.onDidFocusEditorWidget(() => {
-        _editorRef = ed;
-        currentFile = filePath;
       });
 
       // q1 三件套 attach for this pane editor
@@ -949,6 +949,86 @@
     }
   }
 
+  // ── 脏文件快照：debounced push 到主进程（Layer 2: IDE 领域内视觉一致） ──
+  var _dirtyPushTimers = {};
+  function _pushDirtyDebounced(filePath, content) {
+    if (!filePath || !isElectron || !bridge || !bridge.dirty) return;
+    var key = filePath.replace(/\\/g, '/');
+    if (_dirtyPushTimers[key]) clearTimeout(_dirtyPushTimers[key]);
+    _dirtyPushTimers[key] = setTimeout(function () {
+      bridge.dirty.set(key, content);
+      delete _dirtyPushTimers[key];
+    }, 500);
+  }
+
+  function _removeDirty(filePath) {
+    if (!filePath || !isElectron || !bridge || !bridge.dirty) return;
+    bridge.dirty.remove(filePath.replace(/\\/g, '/'));
+  }
+
+  // 从主进程拉取脏快照并更新 Monaco model（被切入 tab / 窗口聚焦时调用）
+  async function _checkDirtyAndRefreshPane(filePath, ed) {
+    if (!filePath || !isElectron || !bridge || !bridge.dirty || !ed) return;
+    // 用户正在此编辑器里编辑 → 不覆盖
+    try { if (ed.hasTextFocus()) return; } catch (_) {}
+    try {
+      var dirtyContent = await bridge.dirty.get(filePath);
+      if (!dirtyContent) return;
+      var m = ed.getModel();
+      if (!m || m.isDisposed()) return;
+      var cur = ed.getValue();
+      if (cur === dirtyContent) return;
+      ed._isRefreshing = true;
+      if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
+      m.applyEdits([{ range: m.getFullModelRange(), text: String(dirtyContent), forceMoveMarkers: true }]);
+      ed._isRefreshing = false;
+      document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: false } }));
+    } catch (_) {}
+  }
+
+  // 窗口聚焦：遍历所有打开的 editor，从主进程拉取脏快照刷新
+  function _onWindowFocusRefreshAll() {
+    if (!isElectron || !bridge || !bridge.dirty) return;
+    // 遍历 pane editors
+    var fpKeys = Object.keys(_paneEditors);
+    for (var i = 0; i < fpKeys.length; i++) {
+      var fp = fpKeys[i];
+      var ed = _paneEditors[fp];
+      if (ed) _checkDirtyAndRefreshPane(fp, ed);
+    }
+    // 主编辑器
+    if (currentFile && _editorRef) {
+      _checkDirtyAndRefreshPane(currentFile, _editorRef);
+    }
+  }
+
+  if (isElectron) {
+    window.addEventListener('focus', _onWindowFocusRefreshAll);
+  }
+
+  // ── 外部修改检测：写盘前对比磁盘与 timeline 上一版本 — 不同则捕获 before 快照 ──
+  async function _captureExternalBefore(filePath) {
+    if (!bridge || !bridge.fs || !bridge.timeline) return;
+    var root = (typeof _workspaceRoot !== 'undefined' && _workspaceRoot)
+      ? _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') : null;
+    if (!root) return;
+    try {
+      var diskContent = await bridge.fs.read(filePath);
+      if (diskContent == null) return;
+      var versions = await bridge.timeline.versions({ projectRoot: root, filePath: filePath });
+      if (!versions || versions.length === 0) return;
+      var lastVer = versions[versions.length - 1];
+      var prevContent = await bridge.timeline.content({ projectRoot: root, blobHash: lastVer.blob_hash });
+      if (typeof prevContent === 'string' && diskContent !== prevContent) {
+        // 外部修改！捕获磁盘版本到 timeline（source≠editx，不走 100s 冷却）
+        await bridge.timeline.record({
+          projectRoot: root, filePath: filePath, content: diskContent,
+          source: 'editx-before'
+        });
+      }
+    } catch (_) {}
+  }
+
   window.qqqEditor = {
     build,
     open,
@@ -975,6 +1055,8 @@
           ed.layout();
           ed.updateOptions({ automaticLayout: true });
         } catch (_) {}
+        // ★ Tab 激活时：从主进程拉取脏快照，确保多窗口编辑一致
+        _checkDirtyAndRefreshPane(filePath, ed);
       }
     },
     // ★ 安全销毁面板编辑器（异步调用，避免大文件 dispose 阻塞 UI）

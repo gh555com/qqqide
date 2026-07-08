@@ -89,7 +89,7 @@ function collectPingBody(): string {
         event_time:      nowSec,
         ide_family:      'qqqide',
         client_ver:      APP_VERSION,
-        pkg_name:        'qqq-ide',
+        pkg_name:        'qqqide',
         pkg_display_name: 'qqqide',
         pkg_publisher:   'gh555.com',
         os_platform:     os.platform(),       // win32 | darwin | linux
