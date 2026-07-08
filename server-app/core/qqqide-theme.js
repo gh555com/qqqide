@@ -157,8 +157,17 @@
   const _listeners = [];
 
   // ★ 主题持久化 → only.sq3（项目资产，唯一真理源）
+  function _themeFolderFromUrl() {
+    var m = window.location.search.match(/[?&]folder=([^&]+)/);
+    if (m) {
+      try { return decodeURIComponent(m[1]).replace(/\\/g, '/').replace(/\/$/, ''); }
+      catch (_) { }
+    }
+    return null;
+  }
+
   function _onlyDb() {
-    var root = window._workspaceRoot;
+    var root = window._workspaceRoot || _themeFolderFromUrl();
     if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
     return window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
   }

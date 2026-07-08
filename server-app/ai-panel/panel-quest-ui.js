@@ -132,6 +132,16 @@ async function switchQuest(id) {
                 if (typeof _renderQuestErrorBox === 'function') _renderQuestErrorBox(_activeAgent, null, _rebuildFn);
             }
         }
+        // ★ 兜底: fatal 楼层即使 error log 为空，只要有 floorDOM 就渲染红框
+        if (_activeAgent && _activeAgent._floorFatal) {
+            var _fn3 = _activeAgent._currentFloorNum;
+            if (_fn3 > 0) {
+                var _card3 = cardPool && cardPool.getActive();
+                if (_card3 && _card3.floorDOM && _card3.floorDOM[_fn3] && _card3.floorDOM[_fn3].aiEl) {
+                    if (typeof _renderQuestErrorBox === 'function') _renderQuestErrorBox(_activeAgent, _card3.floorDOM[_fn3].aiEl, _fn3);
+                }
+            }
+        }
 
         restoreQuestUIState(id);
         renderQueueStrip();

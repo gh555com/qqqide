@@ -311,6 +311,33 @@
     }, 2000);
   }
 
+  // ★ 持久化"上次主文件夹"到 global.sq3（供空白启动恢复）
+  function _persistLastMainFolder() {
+    if (projects.length === 0 || !projects[0].path) return;
+    try {
+      var s = _qgsNs();
+      if (s) s.set('last_main_folder', projects[0].path).catch(function () { });
+    } catch (_) { }
+  }
+
+  function _restoreLastMainFolder() {
+    try {
+      var s = _qgsNs();
+      if (!s) return;
+      s.get('last_main_folder').then(function (folderPath) {
+        if (!folderPath || typeof folderPath !== 'string') return;
+        folderPath = folderPath.replace(/\\/g, '/').replace(/\/$/, '');
+        if (projects.some(function (p) { return p.path === folderPath; })) return;
+        projects.push({ path: folderPath, name: basename(folderPath) });
+        _bumpRecent(folderPath);
+        _restoreFormationFromOnlyStore(folderPath);
+        saveProjects();
+        render();
+        _notifyChanged();
+      }).catch(function () { });
+    } catch (_) { }
+  }
+
   function loadProjects() {
     // 新窗口（?fresh=1）：强制清空，零项目
     if (window.location.search.indexOf('fresh=1') !== -1) {
@@ -347,6 +374,8 @@
       _notifyChanged();
       return;
     }
+    // ★ 空白启动：从 global.sq3 恢复上次主文件夹
+    _restoreLastMainFolder();
   }
 
   // ★ 出战阵营持久化：写入主项目的 only.sq3（项目级资产，随目录迁移）
@@ -408,15 +437,16 @@
   function saveProjects() {
     _dedupProjects();
     _saveFormationToOnlyStore();
+    _persistLastMainFolder();
   }
-  // beforeunload：阵营 + recent 同步刷盘
+  // beforeunload：阵营 + recent + 上次主文件夹同步刷盘
   window.addEventListener('beforeunload', function () {
     try {
-      // 最近文件夹 → global.sq3
       if (_recentFolders.length > 0) {
         var s = _qgsNs();
         if (s) s.setNow(RECENT_KEY, _recentFolders).catch(function () { });
       }
+      _persistLastMainFolder();
       // 阵营 → only.sq3
       var mainProj = projects[0];
       if (mainProj && mainProj.path && window.qgs && typeof window.qgs.project === 'function') {

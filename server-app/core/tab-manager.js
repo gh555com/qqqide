@@ -818,8 +818,19 @@
   var _restored = false;
   var _persistTimer = null;
 
+  // ★ URL 参数兜底：_workspaceRoot 由 AI 面板异步设置，tab-manager 启动更早
+  //   新窗口 ?folder=xxx 可直取 URL 参数找到 only.sq3
+  function _folderFromUrl() {
+    var m = window.location.search.match(/[?&]folder=([^&]+)/);
+    if (m) {
+      try { return decodeURIComponent(m[1]).replace(/\\/g, '/').replace(/\/$/, ''); }
+      catch (_) { }
+    }
+    return null;
+  }
+
   function _onlyDb() {
-    var root = window._workspaceRoot;
+    var root = window._workspaceRoot || _folderFromUrl();
     if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
     return window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
   }
