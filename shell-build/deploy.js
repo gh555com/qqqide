@@ -70,22 +70,22 @@ function run(cmd, cmdArgs) {
 }
 
 function effectiveHost() {
-  // 2026-07-08: WG tunnel 吞吐仅 4 KB/s → 8.5MB 部署要 35 分钟。
-  // 改走 CN→US 公网 SSH（47→23:22），CN 已有密钥授权，速度远快于 WG。
-  // 原注释：avoid Pacific public-SSH unreliability — 实际 WG 更不可靠。
+  // 2026-07-08: 不论 WG 还是公网，CN→US 跨太平洋都巨慢（4 KB/s）
+  // 改为两步：① SCP 到 CN（3 MB/s 秒传）② CN→US 后台异步
+  // host flag 仍然指向 US，但 SCP 目标改为 CN
   if (HOST.includes('23.254.248.119')) {
-    return 'q@23.254.248.119';
+    return 'q@47.105.67.51';  // SCP to CN first
   }
   return HOST;
+}
+
+function isUSDeploy() {
+  return HOST.includes('23.254.248.119');
 }
 
 function sshOpts() {
   const base = ['-o', 'StrictHostKeyChecking=no', '-o', 'BatchMode=yes'];
   if (KEY) { base.push('-i', KEY); }
-  // US server (23.254.248.119) forbids direct SSH → jump via CN server
-  if (HOST.includes('23.254.248.119')) {
-    base.push('-J', 'q@47.105.67.51');
-  }
   return base;
 }
 
@@ -102,9 +102,12 @@ run('ssh', [...sshOpts(), effectiveHost(), `"mkdir -p ${REMOTE_}"`]);
 run('scp', [...sshOpts(), shellQuote(localPath(tarPath)), `${effectiveHost()}:${REMOTE}/_qqqide.tar.gz`]);
 
 // 3) Keep a copy as server-app.tar.gz for client hot-update, then extract
+// ★ US deploy: keep _qqqide.tar.gz for end-of-script background CN→US sync
 console.log('[deploy] saving server-app.tar.gz for client hot-update');
-run('ssh', [...sshOpts(), effectiveHost(),
-`"cd ${REMOTE_} && cp _qqqide.tar.gz server-app.tar.gz && tar -xzf _qqqide.tar.gz && rm _qqqide.tar.gz"`]);
+const extractAndKeep = isUSDeploy()
+  ? `"cd ${REMOTE_} && cp _qqqide.tar.gz server-app.tar.gz && tar -xzf _qqqide.tar.gz"`
+  : `"cd ${REMOTE_} && cp _qqqide.tar.gz server-app.tar.gz && tar -xzf _qqqide.tar.gz && rm _qqqide.tar.gz"`;
+run('ssh', [...sshOpts(), effectiveHost(), extractAndKeep]);
 
 // 3b) pack + upload shell-out/ (for bootstrap hot-update)
 const shellOutSrc = path.join(ROOT, 'shell-out');
@@ -177,6 +180,26 @@ if (PORTABLE && fs.existsSync(PKG_DIR)) {
 
 // 6) cleanup local tar
 try { fs.unlinkSync(tarPath); console.log('[deploy] cleanup', tarPath); } catch (_) { }
+
+// 7) ★ US deploy: background CN→US sync via WireGuard (all files already on CN)
+if (isUSDeploy()) {
+  console.log('[deploy] CN→US background sync via WireGuard (may take 10-30 min)');
+  const usHost = 'q@10.0.0.1';
+  // Generate sync script locally → scp to CN → execute in bg (avoids shell quoting issues)
+  const syncScript = [
+    '#!/bin/bash',
+    'echo "[sync] $(date) CN→US qqqide start"',
+    `scp -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=30 -o ServerAliveInterval=15 -r ${REMOTE}/ ${usHost}:$(dirname ${REMOTE})/`,
+    `ssh -o StrictHostKeyChecking=no -o BatchMode=yes ${usHost} "cd ${REMOTE} && [ -f _qqqide.tar.gz ] && cp _qqqide.tar.gz server-app.tar.gz && tar -xzf _qqqide.tar.gz && rm _qqqide.tar.gz; echo ok"`,
+    'echo "[sync] $(date) done"',
+  ].join('\n');
+  const syncPath = path.join(ROOT, '_deploy_sync.sh');
+  fs.writeFileSync(syncPath, syncScript, 'utf8');
+  run('scp', [...sshOpts(), shellQuote(localPath(syncPath)), `${effectiveHost()}:/tmp/_deploy_sync.sh`]);
+  try { fs.unlinkSync(syncPath); } catch (_) { }
+  run('ssh', [...sshOpts(), effectiveHost(), '"chmod +x /tmp/_deploy_sync.sh && nohup bash /tmp/_deploy_sync.sh > /tmp/_deploy_sync.log 2>&1 & echo sync_launched"']);
+  console.log('[deploy] ✓ CN deploy complete. US sync in background, check: ssh q@47.105.67.51 tail /tmp/_deploy_sync.log');
+}
 
 console.log('[deploy] done. server-app/ uploaded to', effectiveHost() + ':' + REMOTE);
 console.log('[deploy] verify: curl http://<host>/qqqide/health');

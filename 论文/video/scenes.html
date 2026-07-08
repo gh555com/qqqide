@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=1920, height=1080">
+<title>将用户上下文及其使用权还给用户</title>
+<style>
+:root {
+  --bg:#faf7f2;--bg2:#f5f0e8;--text:#3d3a35;--text2:#6b6660;
+  --blue:#8dbcd4;--pink:#e8b4c0;--mint:#b8d8c8;--lavender:#c4b8d4;
+  --peach:#f0d4b8;--coral:#f0a8a0;--gold:#d4a854;--qqqide:#ff6b00;
+  --card:#ffffff;--shadow:0 4px 24px rgba(60,50,40,0.08);
+  --sub-bg:rgba(30,28,24,0.85);--sub-text:#f5f0e8;--sub-active:#ffd080;
+  --red:#d4686c;--green:#7aac80;--divider:#e8e2d8;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{width:1920px;height:1080px;overflow:hidden;background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;-webkit-font-smoothing:antialiased}
+
+.brand-bar{position:fixed;top:0;left:0;z-index:200;background:var(--card);padding:10px 22px;border-radius:0 0 14px 0;box-shadow:var(--shadow);display:flex;align-items:center;gap:8px}
+.brand-bar .icon{width:28px;height:28px;background:var(--qqqide);border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:16px}
+.brand-bar .url{font-size:15px;font-weight:600;color:var(--text2);letter-spacing:.5px}
+.brand-bar .url span{color:var(--qqqide)}
+
+.scene{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transform:translateY(24px);transition:opacity .55s cubic-bezier(.4,0,.2,1),transform .55s cubic-bezier(.4,0,.2,1);pointer-events:none;padding:60px 80px 110px}
+.scene.active{opacity:1;transform:translateY(0);pointer-events:auto}
+.scene-inner{max-width:1400px;width:100%;text-align:center}
+
+.scene-title{font-size:56px;font-weight:800;color:var(--text);margin-bottom:28px;letter-spacing:1px;line-height:1.3}
+.scene-title.coral{color:var(--coral)}.scene-title.gold{color:var(--gold)}.scene-title.big{font-size:68px}
+.scene-body{font-size:30px;line-height:1.75;color:var(--text2);max-width:1100px;margin:0 auto}
+.scene-body em{color:var(--gold);font-style:normal;font-weight:700}
+.scene-body strong{color:var(--coral);font-weight:700}
+.scene-body .brand{color:var(--qqqide);font-weight:700}
+
+.card{background:var(--card);border-radius:18px;padding:32px 40px;box-shadow:var(--shadow);margin:16px auto;max-width:1000px;text-align:left;border-left:4px solid var(--blue)}
+.card.coral{border-left-color:var(--coral)}.card.gold{border-left-color:var(--gold)}.card.mint{border-left-color:var(--mint)}
+.card .card-title{font-size:22px;color:var(--text2);text-transform:uppercase;letter-spacing:3px;margin-bottom:10px}
+.card .card-text{font-size:28px;line-height:1.7;color:var(--text)}
+.card .card-path{font-family:Consolas,monospace;font-size:20px;color:var(--mint);background:rgba(184,216,200,.15);padding:10px 16px;border-radius:8px;margin-top:12px;display:inline-block}
+
+.iron-laws{display:flex;gap:24px;justify-content:center;margin:24px 0}
+.iron-law{background:var(--card);border-radius:16px;padding:28px 24px;width:300px;text-align:center;box-shadow:var(--shadow)}
+.iron-law .num{font-size:56px;color:var(--coral);font-weight:900}
+.iron-law .label{font-size:26px;color:var(--text);font-weight:700;margin-top:6px}
+.iron-law .status{font-size:20px;color:var(--text2);margin-top:12px;line-height:1.5}
+
+.cmp-table{margin:20px auto;border-collapse:collapse;font-size:22px;background:var(--card);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+.cmp-table th{background:var(--bg2);padding:14px 22px;font-weight:700;color:var(--text);border-bottom:1px solid var(--divider)}
+.cmp-table td{padding:12px 22px;text-align:center;border-bottom:1px solid var(--divider)}
+.cmp-table .fail{color:var(--red)}.cmp-table .pass{color:var(--green);font-weight:700}
+.cmp-table tr.us{background:rgba(122,172,128,.08)}.cmp-table tr.us td{color:var(--green);font-weight:600}
+
+.vs-container{display:flex;gap:40px;justify-content:center;align-items:center;margin:20px 0}
+.vs-side{flex:1;max-width:500px;padding:28px;border-radius:16px;text-align:left;box-shadow:var(--shadow)}
+.vs-side.cloud{background:rgba(212,104,108,.06);border:1px solid rgba(212,104,108,.2)}
+.vs-side.local{background:rgba(122,172,128,.06);border:1px solid rgba(122,172,128,.2)}
+.vs-side h3{font-size:28px;margin-bottom:14px}.vs-side.cloud h3{color:var(--red)}.vs-side.local h3{color:var(--green)}
+.vs-side ul{list-style:none;padding:0}.vs-side li{font-size:21px;line-height:2;color:var(--text2);padding-left:28px;position:relative}
+.vs-side.cloud li::before{content:'✗';color:var(--red);position:absolute;left:0;font-weight:700}
+.vs-side.local li::before{content:'✓';color:var(--green);position:absolute;left:0;font-weight:700}
+.vs-between{font-size:36px;font-weight:900;color:var(--divider)}
+
+.flow-row{display:flex;gap:14px;justify-content:center;align-items:center;margin:16px 0;flex-wrap:wrap}
+.flow-box{background:var(--card);border:1px solid var(--divider);border-radius:10px;padding:14px 22px;font-size:20px;color:var(--text);font-weight:600;box-shadow:var(--shadow)}
+.flow-arrow{font-size:24px;color:var(--text2)}
+
+.materials-grid{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px;max-width:1200px;margin:16px auto}
+.material-item{background:var(--card);border-radius:12px;padding:18px;text-align:center;box-shadow:var(--shadow);border-top:3px solid var(--mint)}
+.material-item .mat-name{font-size:19px;color:var(--text);font-family:Consolas,monospace;font-weight:600}
+.material-item .mat-use{font-size:16px;color:var(--text2);margin-top:6px}
+
+.big-quote{font-size:38px;font-weight:700;color:var(--gold);line-height:1.5;max-width:1100px;margin:16px auto;position:relative}
+.big-quote::before{content:'"';font-size:70px;color:rgba(212,168,84,.2);position:absolute;left:-40px;top:-18px}
+.big-quote::after{content:'"';font-size:70px;color:rgba(212,168,84,.2);position:absolute;right:-40px;bottom:-50px}
+
+.progress-bar{position:fixed;bottom:0;left:0;height:3px;background:linear-gradient(90deg,var(--blue),var(--mint),var(--gold));transition:width .3s;z-index:100}
+.scene-indicator{position:fixed;top:30px;right:30px;font-size:16px;color:var(--text2);z-index:100;background:var(--card);padding:6px 14px;border-radius:20px;box-shadow:var(--shadow)}
+
+.subtitle-bar{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:150;max-width:1600px;width:90%;text-align:center;max-height:130px;overflow:hidden}
+.sub-cn{font-size:18px;font-weight:700;color:var(--sub-text);background:var(--sub-bg);display:inline;padding:5px 12px;border-radius:6px;line-height:1.4;letter-spacing:.5px;box-decoration-break:clone;-webkit-box-decoration-break:clone;white-space:normal}
+.sub-cn .word{display:inline;transition:color .12s ease;color:rgba(255,255,255,.4)}
+.sub-cn .word.active{color:var(--sub-active)}
+.sub-cn .word.qqqide{color:var(--qqqide);font-weight:800}
+.sub-cn .word.qqqide.active{color:#ff9944}
+.sub-en{font-size:12px;color:rgba(255,255,255,.6);margin-top:2px;font-style:italic;letter-spacing:.3px}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.anim-up{animation:fadeUp .6s cubic-bezier(.4,0,.2,1) forwards;opacity:0}
+.anim-up.d1{animation-delay:.15s}.anim-up.d2{animation-delay:.35s}.anim-up.d3{animation-delay:.55s}.anim-up.d4{animation-delay:.75s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.anim-in{animation:fadeIn .45s ease-out forwards;opacity:0}
+.anim-in.d1{animation-delay:.2s}.anim-in.d2{animation-delay:.4s}.anim-in.d3{animation-delay:.6s}
+.s-even{background:linear-gradient(180deg,#f8f4ef 0%,var(--bg) 100%)}
+.s-odd{background:linear-gradient(180deg,var(--bg) 0%,#f8f3ec 100%)}
+</style>
+</head>
+<body>
+
+<div class="brand-bar"><div class="icon">Q</div><div class="url">gh555.com/<span>qqqide</span></div></div>
+<div class="progress-bar" id="progressBar" style="width:0%"></div>
+<div class="scene-indicator" id="sceneIndicator"></div>
+<div class="subtitle-bar" id="subtitleBar" style="display:none"><div class="sub-cn" id="subCn"></div><div class="sub-en" id="subEn"></div></div>
+
+<div class="scene s-odd" id="scene1"><div class="scene-inner"><div class="scene-title big gold anim-up">你创造了上下文<br>但你并不拥有它</div><div class="scene-body anim-up d2" style="margin-top:24px;font-size:34px">你跟AI聊了三个月，帮它理解你的代码架构、命名习惯、技术栈<br>然后你换了一个AI工具 — <strong>一切归零</strong></div></div></div>
+
+<div class="scene s-even" id="scene2"><div class="scene-inner"><div class="scene-title anim-up">上下文 = AI时代最稀缺的生产资料</div><div class="card gold anim-up d1"><div class="card-text" style="font-size:30px;text-align:center">代码可以重写。但AI的推理链、踩过的坑 — <em>一旦丢失，无法重建。</em></div></div><div class="scene-body anim-up d2" style="margin-top:16px">当今所有主流AI编程助手的共同架构：<br>对话历史存储在<strong>服务商的云服务器</strong>上。<br><em>你是租客，不是房东。</em></div></div></div>
+
+<div class="scene s-odd" id="scene3"><div class="scene-inner"><div class="scene-title coral anim-up">ChatGPT</div><div style="max-width:900px;margin:0 auto;text-align:left"><div class="card coral anim-up d1" style="margin:8px 0"><div class="card-text" style="font-size:26px">只能搜标题 — <strong>不能全文检索</strong>对话内容</div></div><div class="card coral anim-up d2" style="margin:8px 0"><div class="card-text" style="font-size:26px">导出是一次性JSON dump — <strong>没有工具链消费</strong></div></div><div class="card coral anim-up d3" style="margin:8px 0"><div class="card-text" style="font-size:26px">跨会话引用？<strong>不存在</strong>。只能复制粘贴</div></div></div><div class="card gold anim-in d3" style="margin-top:16px;max-width:900px"><div class="card-text" style="text-align:center">上下文是活的，持续生长 — ChatGPT把它当<em>死的静态列表</em></div></div></div></div>
+
+<div class="scene s-even" id="scene4"><div class="scene-inner"><div class="scene-title anim-up">Claude · Copilot</div><div style="display:flex;gap:30px;justify-content:center"><div class="card anim-up d1" style="flex:1;max-width:460px"><div class="card-title">Claude</div><div class="card-text" style="font-size:24px">Projects上传文件作为背景知识<br>但对话历史<strong>不可全文检索</strong><br>知识库需手动维护<br>上下文管理负担转嫁用户</div></div><div class="card anim-up d2" style="flex:1;max-width:460px"><div class="card-title">Copilot</div><div class="card-text" style="font-size:24px">聊天面板有历史记录<br>但<strong>仅限当前会话</strong><br>每次对话从零开始<br>上下文瞬时，不持久化</div></div></div></div></div>
+
+<div class="scene s-odd" id="scene5"><div class="scene-inner"><div class="scene-title anim-up">Cursor · JetBrains AI</div><div style="display:flex;gap:30px;justify-content:center"><div class="card anim-up d1" style="flex:1;max-width:460px"><div class="card-title">Cursor</div><div class="card-text" style="font-size:24px">代码库索引最先进<br>但聊天历史<strong>不支持全文检索</strong><br>上下文不可导出、不可迁移</div></div><div class="card anim-up d2" style="flex:1;max-width:460px"><div class="card-title">JetBrains AI</div><div class="card-text" style="font-size:24px">完全绑定JetBrains生态<br><strong>你拥有的是访问权<br>不是所有权</strong></div></div></div></div></div>
+
+<div class="scene s-even" id="scene6"><div class="scene-inner"><div class="scene-title coral anim-up">三条铁律 — 全部违反</div><div class="iron-laws"><div class="iron-law anim-up d1"><div class="num">①</div><div class="label">可检索</div><div class="status">全文检索所有历史上下文<br>无一做到</div></div><div class="iron-law anim-up d2"><div class="num">②</div><div class="label">可迁移</div><div class="status">开放格式可导入其他工具<br>无一做到</div></div><div class="iron-law anim-up d3"><div class="num">③</div><div class="label">可复用</div><div class="status">新会话自动引用旧上下文<br>无一做到</div></div></div><div class="card coral anim-in d3" style="max-width:900px;margin-top:16px"><div class="card-text" style="text-align:center;font-size:26px">所有方案假设：上下文是<strong>服务商的资产</strong>，用户只是被授权访问</div></div></div></div>
+
+<div class="scene s-odd" id="scene7"><div class="scene-inner"><div class="card anim-up"><div class="card-title">Step 1</div><div class="card-text" style="font-size:38px;font-weight:700">上下文存在哪里？→ <em>本地文件系统</em></div><div class="card-text" style="margin-top:10px">三个追问：用户能随时拿到原始数据吗？格式谁定义？服务停止后还在吗？<br><strong>答案全部否定。</strong>结论：上下文必须和代码放在一起。</div><div class="card-path">{项目}/qqq/quests/ &nbsp;← 拷贝即迁移</div></div></div></div>
+
+<div class="scene s-even" id="scene8"><div class="scene-inner"><div class="card anim-up"><div class="card-title">Step 2</div><div class="card-text" style="font-size:38px;font-weight:700">存什么格式？→ <em>双轨制</em></div></div><div style="display:flex;gap:20px;justify-content:center;margin-top:12px"><div class="material-item anim-up d1" style="flex:1;max-width:320px;border-top-color:var(--blue)"><div class="mat-name" style="font-size:26px">all.json</div><div class="mat-use" style="font-size:18px">结构化 conversation<br>计费元数据 · 快照引用<br>→ 给AI加载</div></div><div class="material-item anim-up d2" style="flex:1;max-width:320px;border-top-color:var(--mint)"><div class="mat-name" style="font-size:26px">all.txt</div><div class="mat-use" style="font-size:18px">纯文本 Markdown<br>对话 + 工具调用<br>→ 给人阅读·grep搜索</div></div><div class="material-item anim-up d3" style="flex:1;max-width:320px;border-top-color:var(--lavender)"><div class="mat-name" style="font-size:26px">reasoning.txt</div><div class="mat-use" style="font-size:18px">all.txt 截断版<br>工具结果 ≤ 300 字<br>→ 快速审计用</div></div></div></div></div>
+
+<div class="scene s-odd" id="scene9"><div class="scene-inner"><div class="card anim-up"><div class="card-title">Step 3</div><div class="card-text" style="font-size:38px;font-weight:700">怎么组织？→ <em>层级目录</em></div><div class="card-text" style="margin-top:10px">quest（对话） → floor（回车） → house（API调用） → room（工具调用）</div></div><div class="card-path anim-up d1" style="font-size:19px;margin-top:12px">q1.搭建架构/ f1.设计/ {all.json,all.txt,reasoning.txt}<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;f2.调试/ {all.json,all.txt,reasoning.txt}<br>q2.重构API/ f1.开始/ {all.json,all.txt,reasoning.txt}</div><div class="card mint anim-up d2" style="margin-top:12px"><div class="card-text" style="text-align:center;font-size:26px"><em>每层楼是独立可寻址的最小单元</em> — 为跨任务知识引用奠定基础</div></div></div></div>
+
+<div class="scene s-even" id="scene10"><div class="scene-inner"><div class="card anim-up"><div class="card-title">Step 4</div><div class="card-text" style="font-size:38px;font-weight:700">怎么快速找？→ <em>ripgrep 全文检索</em></div></div><table class="cmp-table anim-up d1"><tr><th></th><th>ChatGPT</th><th>Claude</th><th>Copilot</th><th>Cursor</th><th style="color:var(--green)"><span class="brand">qqqide</span></th></tr><tr><td style="text-align:left;font-weight:600">搜索范围</td><td class="fail">标题</td><td class="fail">标题</td><td class="fail">无</td><td class="fail">标题</td><td class="pass us">全文</td></tr><tr><td style="text-align:left;font-weight:600">搜索速度</td><td class="fail">云端不定</td><td class="fail">云端不定</td><td class="fail">N/A</td><td class="fail">云端</td><td class="pass us">本地毫秒</td></tr><tr><td style="text-align:left;font-weight:600">离线可用</td><td class="fail">❌</td><td class="fail">❌</td><td class="fail">❌</td><td class="fail">❌</td><td class="pass us">✅</td></tr><tr><td style="text-align:left;font-weight:600">正则支持</td><td class="fail">❌</td><td class="fail">❌</td><td class="fail">❌</td><td class="fail">❌</td><td class="pass us">✅</td></tr></table><div class="card mint anim-up d2" style="margin-top:12px"><div class="card-text" style="text-align:center;font-size:26px">不是更好的搜索框 — 是把AI对话从<em>聊天软件</em>变成了<em>私人知识库</em></div></div></div></div>
+
+<div class="scene s-odd" id="scene11"><div class="scene-inner"><div class="card anim-up"><div class="card-title">Step 5</div><div class="card-text" style="font-size:38px;font-weight:700">代码和对话什么关系？→ <em>Timeline 因果链</em></div><div class="card-text" style="margin-top:10px">每次AI工具调用自动捕获文件快照，打上trace标记：<code style="color:var(--mint);font-size:22px">q{quest}/f{floor}/h{house}/r{room}</code></div></div><div class="flow-row anim-up d1"><div class="flow-box">代码变更</div><div class="flow-arrow">→</div><div class="flow-box">trace标记</div><div class="flow-arrow">→</div><div class="flow-box">对话楼层</div><div class="flow-arrow">→</div><div class="flow-box">AI的完整推理</div></div><div class="card gold anim-up d2" style="margin-top:12px"><div class="card-text" style="text-align:center;font-size:26px">Git blame知道<em>谁、什么时候</em>改的。<br>Trace知道<em>为什么</em>这样改 — 代码和推理链永久绑定。</div></div></div></div>
+
+<div class="scene s-even" id="scene12"><div class="scene-inner"><div class="card anim-up"><div class="card-title">Step 6</div><div class="card-text" style="font-size:38px;font-weight:700">跨任务上下文协作</div><div class="card-text" style="margin-top:10px;font-size:26px">① ripgrep全文检索 → ② 毫秒定位历史楼层 → ③ 提取该层成果<br>④ 注入新任务 → ⑤ AI看到完整上下文，知道约束、决策、踩过的坑<br>— 或者直接<strong>开分支</strong>：基于旧任务全部成果尝试新方向</div></div><div class="big-quote anim-in d2" style="font-size:30px;margin-top:14px">「参考那个设计继续 — 换成MySQL引擎」</div></div></div>
+
+<div class="scene s-odd" id="scene13"><div class="scene-inner"><div class="card anim-up"><div class="card-title">Step 7</div><div class="card-text" style="font-size:38px;font-weight:700">消除摩擦 → <em>预渲染</em></div><div class="card-text" style="margin-top:10px">流式渲染完成 → 序列化DOM为ai_html → 持久化到all.json<br>重启时直接innerHTML → <strong>零重新渲染，零等待</strong></div></div><div class="card mint anim-up d1" style="margin-top:12px"><div class="card-text" style="text-align:center;font-size:26px">你拥有的不仅是对话内容 — 还有对话的<em>完整视觉呈现</em></div></div></div></div>
+
+<div class="scene s-even" id="scene14"><div class="scene-inner"><div class="scene-title gold anim-up">核心突破：一切原料</div><div class="materials-grid"><div class="material-item anim-up d1"><div class="mat-name">all.json</div><div class="mat-use">AI加载上下文窗口</div></div><div class="material-item anim-up d1"><div class="mat-name">all.txt</div><div class="mat-use">全文检索 · 快速浏览</div></div><div class="material-item anim-up d1"><div class="mat-name">reasoning.txt</div><div class="mat-use">快速审计摘要</div></div><div class="material-item anim-up d1"><div class="mat-name">blobs/</div><div class="mat-use">代码不可变快照</div></div><div class="material-item anim-up d2"><div class="mat-name">timeline.db</div><div class="mat-use">文件变更索引</div></div><div class="material-item anim-up d2"><div class="mat-name">trace标记</div><div class="mat-use">代码↔对话双向追溯</div></div><div class="material-item anim-up d2"><div class="mat-name">ai_html</div><div class="mat-use">重启即时恢复</div></div><div class="material-item anim-up d2"><div class="mat-name">_index.json</div><div class="mat-use">O(1)列出所有对话</div></div></div><div class="big-quote anim-in d3" style="font-size:28px;margin-top:10px">云方案最多给你<strong style="color:var(--red)">2项</strong>。<span class="brand">qqqide</span>给你<strong style="color:var(--green)">全部8项</strong>。<br><em>能力差异的根源：不是我们做得更好 — 而是我们拥有原料。</em></div></div></div>
+
+<div class="scene s-odd" id="scene15"><div class="scene-inner"><div class="scene-title anim-up">两种上下文哲学</div><div class="vs-container anim-up d1"><div class="vs-side cloud"><h3>☁️ 云哲学</h3><ul><li>上下文是服务的附属品</li><li>付费获得访问权</li><li>数据在远端，API控制粒度</li><li>格式封闭，不可迁移</li><li>服务终止 = 上下文蒸发</li></ul></div><div class="vs-between">VS</div><div class="vs-side local"><h3>💻 本地哲学</h3><ul><li>上下文是你的财产</li><li>你创造、你拥有、你控制</li><li>数据在本地，开放格式</li><li>拷贝文件夹 = 完整迁移</li><li>工具只是帮你管理它</li></ul></div></div></div></div>
+
+<div class="scene s-even" id="scene16"><div class="scene-inner"><div class="scene-title big gold anim-up">上下文 = AI时代的源代码</div><div class="scene-body anim-up d1" style="margin-top:16px;font-size:28px">代码开源运动用了三十年让「代码属于写它的人」成为共识<br>AI时代 — 资产从<strong>「代码」</strong>变成了<strong>「上下文」</strong></div><div class="card coral anim-up d2" style="margin-top:16px;max-width:1000px"><div class="card-text" style="text-align:center;font-size:26px">所有AI工具用免费服务<strong>换取你的上下文数据</strong>。<br>越用积累越多 → 迁移成本越高 → 你越离不开。<br><em>这不是技术选择，这是商业锁定。</em></div></div></div></div>
+
+<div class="scene s-odd" id="scene17"><div class="scene-inner"><div class="scene-title big anim-up" style="color:var(--qqqide)">将用户上下文<br>及其使用权还给用户</div><div class="scene-body anim-up d1" style="margin-top:20px;font-size:26px"><strong>七步递进</strong>：本地存储 → 双轨格式 → 层级目录 → 全文检索 → 因果链 → 跨任务协作 → 预渲染</div><div class="big-quote anim-in d2" style="font-size:34px;margin-top:18px">核心洞察只有一个：<br><em>你只有拥有一切原料，才能真正使用它们。</em></div><div class="scene-body anim-in d3" style="margin-top:16px;font-size:24px;color:var(--qqqide);font-weight:700">全文检索 · 跨任务引用 · 因果追溯 · 任务分支<br>— 不是高级功能，是用户对自己数据的基本权利</div></div></div>
+
+<script>
+var SCENES = /*SCENES_JSON_PLACEHOLDER*/;
+var TOTAL_DURATION = /*TOTAL_DURATION_PLACEHOLDER*/;
+var currentSceneIdx = -1, currentTimer = null, subTimer = null;
+window.__autoPlayStarted = false; window.__allScenesDone = false;
+
+var subBar = document.getElementById("subtitleBar"), subCn = document.getElementById("subCn"), subEn = document.getElementById("subEn");
+
+function buildSubChars(cnText) {
+  var chars = [], i = 0;
+  while (i < cnText.length) {
+    var rest = cnText.substring(i);
+    var m = rest.match(/^(qqqide)/i);
+    if (m) { chars.push({text:m[1],isQ:true}); i+=m[1].length; continue; }
+    var ch = cnText[i];
+    if (/[\u4e00-\u9fff\u3000-\u303f\uff00-\uffef]/.test(ch)) { chars.push({text:ch,isQ:false}); i++; }
+    else if (/[a-zA-Z0-9]/.test(ch)) {
+      var w=''; while(i<cnText.length&&/[a-zA-Z0-9]/.test(cnText[i])){w+=cnText[i];i++}
+      chars.push({text:w,isQ:false});
+    } else { chars.push({text:ch,isQ:false}); i++; }
+  }
+  return chars;
+}
+
+function renderSub(scene, progress) {
+  if (!scene.cn) { subBar.style.display="none"; return; }
+  subBar.style.display="block";
+  var chars = buildSubChars(scene.cn);
+  var n = Math.floor(progress * chars.length); if (n > chars.length) n = chars.length;
+  var h = '';
+  for (var j=0;j<chars.length;j++) {
+    var cls = (j<n) ? 'active' : '';
+    if (chars[j].isQ) cls += ' qqqide';
+    h += '<span class="word '+cls+'">'+chars[j].text+'</span>';
+  }
+  subCn.innerHTML = h;
+  subEn.textContent = scene.en || '';
+}
+
+function showScene(idx) {
+  if (idx >= SCENES.length) {
+    window.__allScenesDone = true;
+    document.getElementById("progressBar").style.width = "100%";
+    subBar.style.display = "none";
+    return;
+  }
+  if (currentSceneIdx >= 0) {
+    var old = document.getElementById("scene" + (currentSceneIdx + 1));
+    if (old) old.classList.remove("active");
+  }
+  currentSceneIdx = idx;
+  var scene = SCENES[idx];
+  var el = document.getElementById("scene" + scene.id);
+  if (el) el.classList.add("active");
+  document.getElementById("sceneIndicator").textContent = (idx+1)+" / "+SCENES.length;
+  document.getElementById("progressBar").style.width = (scene.start/TOTAL_DURATION*100).toFixed(1)+"%";
+
+  var startT = performance.now(), dur = scene.duration;
+  if (subTimer) cancelAnimationFrame(subTimer);
+  function animSub() {
+    var p = Math.min((performance.now()-startT)/1000/dur, 1);
+    renderSub(scene, p);
+    if (p<1 && currentSceneIdx===idx) subTimer = requestAnimationFrame(animSub);
+  }
+  animSub();
+
+  var ms = (dur - 0.35)*1000; if (ms<300) ms=300;
+  if (currentTimer) clearTimeout(currentTimer);
+  currentTimer = setTimeout(function(){showScene(idx+1);}, ms);
+}
+
+function start() {
+  window.__autoPlayStarted = true;
+  setTimeout(function(){showScene(0);}, 600);
+}
+if (SCENES && SCENES.length>0) { setTimeout(start, 400); }
+</script>
+</body>
+</html>

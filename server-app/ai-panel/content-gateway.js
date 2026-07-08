@@ -28,11 +28,11 @@
 
     // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
     var CTX_MAX_TOKENS = 1048565;     // 上下文窗口总上限（实测精确值）
-    // ★ 压缩阈值从父窗口 QQQ_DEFAULTS 读（兜底 600k）；改默认值只改 core/defaults.js
+    // ★ 压缩阈值从父窗口 qqqideDefaults 读（兜底 600k）；改默认值只改 core/defaults.js
     var COMPRESS_THRESHOLD = (function () {
         try {
-            if (typeof parent !== 'undefined' && parent.window && parent.window.QQQ_DEFAULTS) {
-                return parent.window.QQQ_DEFAULTS['ai.compressThreshold'] * 1000;
+            if (typeof parent !== 'undefined' && parent.window &parent.window.qqqideDefaults) {
+                return parent.window.qqqideDefaults['ai.compressThreshold'] * 1000;0;
             }
         } catch (_) { }
         return 600000;

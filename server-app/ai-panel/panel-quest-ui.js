@@ -1017,9 +1017,11 @@ function _triggerQueueSend() {
     var _q = _queue;
     if (!_q || _q.length === 0) { renderQueueStrip(); return; }
     var inputText = ($input.value || '').trim();
-    // ★ 永不自停：即使键入框有文字也不暂停，交给用户手动控制
+    // ★ 输入框有文字时暂停队列，保护用户正在编辑的内容不被覆盖
     if (inputText) {
-        _queuePaused = false;
+        _queuePaused = true;
+        renderQueueStrip();
+        return;
     }
     var next = _q.shift();
     renderQueueStrip();

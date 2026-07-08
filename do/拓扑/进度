@@ -340,7 +340,7 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
   · 下拉列表：2 行弹性、默认 20 条滚轮扩容 40→60、模糊子序列匹配
 - 翼面板 = 空白起点：_panelId≠1 → initQuests 强制空白
 - 面板焦点：_panelFocused + _setPanelFocus → q2 背景金（#e8a030）
-  · 快捷键：1/2 上下滚 35%视口、q/w 前后楼层居中（仅焦点+非编辑区）
+  · 快捷键：1/2 上下滚 17.5%视口、q/w 前后楼层居中（仅焦点+非编辑区）
 - 跨面板去重：switchQuest 检测 owner → focus-request IPC 跳转焦点
 - 沙箱隔离审计通过：cardPool/questActiveId per-iframe，agentPool 已上移 parent.__qqq_agentPool 父窗口共享
 - A1 行2 持久化：_computeFileStats → floorPayload.fileStats → SQLite → 重启不归零

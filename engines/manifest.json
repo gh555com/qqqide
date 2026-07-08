@@ -70,11 +70,11 @@
       "version": "2.51.0",
       "srcs": {
         "win32-x64": [
-          { "url": "https://cdn.gh555.com/components/git/2.51.0/win32-x64.zip", "kind": "zip" },
-          { "url": "https://github.com/git-for-windows/git/releases/download/v2.46.0.windows.1/MinGit-2.46.0-64-bit.zip", "kind": "zip" }
+          { "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/FTQWMZALLX7CO.zip",  "kind": "zip" },
+          { "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/OJHH77X5FT6HW.zip",  "kind": "zip" }
         ],
         "linux-x64": [
-          { "url": "https://cdn.gh555.com/components/git/2.51.0/linux-x64.tar.gz", "kind": "tar.gz" }
+          { "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/WWJCJGF4LJWUS.gz",  "kind": "tar.gz" }
         ],
         "darwin-arm64": [
           { "url": "https://cdn.gh555.com/components/git/2.51.0/darwin-arm64.tar.gz", "kind": "tar.gz" }

@@ -477,50 +477,16 @@ async function _executeSend(intent) {
                 var _targetDiv2 = (aiDiv && aiDiv.isConnected) ? aiDiv : (agent._activeAiDiv || aiDiv);
                 if (_targetDiv2 && _targetDiv2._contentWrap) {
                     _targetDiv2._guideMode = false;
-                    // ★ B 重构：flush agent 流状态到 DOM。content（API 完整回复）为权威源。
-                    
-                    // Step 1: flush agent._streamBuf tail into agent._streamParas
-                    if (agent._streamBuf && (agent._streamSplitCursor || 0) < agent._streamBuf.length) {
-                        var _trailing = agent._streamCodeFenceOpen ? agent._streamBuf : agent._streamBuf.slice(agent._streamSplitCursor || 0);
-                        if (_trailing && _trailing.trim()) {
-                            agent._streamParas.push(_trailing);
-                        }
-                    }
-                    // Step 2: remove live _lastParaEl (replaced by static paragraphs below)
+                    // ★ C 重构：content = API 完整回复 = 唯一权威真理源
+                    //   流式阶段（onToken→_doStreamRender）仅为实时预览。
+                    //   _contentWrap 仅含 AI 段落，aq1/时钟/A1/A4 均在外部，零副作用。
+                    //   不再做 _buf/_paras flush、尾段补丁、textContent 对比——全删。
                     if (_targetDiv2._lastParaEl) { _targetDiv2._lastParaEl.remove(); _targetDiv2._lastParaEl = null; }
-                    // Step 3: render remaining agent._streamParas into DOM
-                    var _rendered = agent._streamRenderedCount || 0;
-                    var _allParas = agent._streamParas;
-                    for (var _ai = _rendered; _ai < _allParas.length; _ai++) {
-                        var _pEl = document.createElement('div');
-                        _pEl.className = 'msg-ai-p';
-                        _pEl.innerHTML = renderMarkdown(_allParas[_ai]);
-                        _targetDiv2._contentWrap.appendChild(_pEl);
-                    }
-                    // Step 4: 尾段检测 — 用 raw text 对比，非 textContent（textContent 丢格式字符）
-                    //   agent._streamFullText = onToken 累积的 raw text
-                    //   content = API 返回的完整最终文本
-                    //   若 content 比 _streamFullText 长，尾部未进入 onToken → 用 content 补上
                     if (content && typeof content === 'string' && content.trim()) {
-                        var _streamedLen = (agent._streamFullText || '').length;
-                        if (content.length > _streamedLen) {
-                            var _missing = content.slice(_streamedLen);
-                            if (_missing.trim()) {
-                                var _finalP = document.createElement('div');
-                                _finalP.className = 'msg-ai-p';
-                                _finalP.innerHTML = renderMarkdown(_missing);
-                                _targetDiv2._contentWrap.appendChild(_finalP);
-                            }
-                        }
+                        _targetDiv2._contentWrap.innerHTML = renderMarkdown(content);
                     }
-                    // Step 5: clear agent stream state
-                    agent._streamBuf = '';
-                    agent._streamParas = [];
-                    agent._streamSplitCursor = 0;
-                    agent._streamCodeFenceOpen = false;
-                    agent._streamRenderedCount = 0;
-                    agent._streamFullText = '';
-                    agent._streamFirstRenderDone = false;
+                    _targetDiv2._dirty = false;
+                    _targetDiv2._renderScheduled = false;
                 }
                 agent._floorCompletedCleanly = true;
                 agent._floorTiming = timing;

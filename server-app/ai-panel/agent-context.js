@@ -21,7 +21,7 @@
 
 ; (function () {
 
-    // ★ 压缩阈值：settings.js → QQQ_DEFAULTS → ContentGateway → 兜底 600k
+    // ★ 压缩阈值：settings.js → qqqideDefaults → ContentGateway → 兜底 600k
     //   改默认值只改 core/defaults.js
     function _readCompressThreshold() {
         try {
@@ -31,8 +31,8 @@
             }
         } catch (_) { }
         try {
-            if (typeof parent !== 'undefined' && parent.window && parent.window.QQQ_DEFAULTS) {
-                return parent.window.QQQ_DEFAULTS['ai.compressThreshold'] * 1000;
+            if (typeof parent !== 'undefined' && parent.window &parent.window.qqqideDefaults) {
+                return parent.window.qqqideDefaults['ai.compressThreshold'] * 1000;0;
             }
         } catch (_) { }
         if (typeof ContentGateway !== 'undefined' && ContentGateway.COMPRESS_THRESHOLD) return ContentGateway.COMPRESS_THRESHOLD;
@@ -514,6 +514,7 @@
                     { role: 'user', content: prompt }
                 ],
                 stream: true,
+                response_format: { type: 'json_object' },
                 max_tokens: _maxTokens,
                 floor_id: (self._floorId || 'compact') + _suffix
             }, { compact: true, keySlot: self._questKeySlot });

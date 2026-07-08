@@ -69,7 +69,7 @@ qz spawn 管线 — 两层 + 四重防御
   POSIX:   process_group(0) → killpg (SIGTERM→2s→SIGKILL)
 · guardMs 修复: 恒为 timeout+10s（原 timeout=0→guard=24h 形同虚设）
 · 内存守卫 killReason: 'mem-guard'（与 deadline/stall/disconnect 并列）
-· ghrun CI: gh555com/qqq-IDE → build-ghrun2.yml → 三端编译
+· ghrun CI: gh555com/qqqide → build-ghrun2.yml → 三端编译
 
 
 AI 网关双线路 + 故障切换引擎
@@ -311,7 +311,7 @@ q2 单行 + hover 展开
 · hover 展开→虚线框 + 左金边+渐变+外发光+悬浮层流光
 · 下拉: 2 行弹性高度、默认 20 条、模糊子序列匹配；搜索+新建整合进下拉头部
 · 三面板各自独立持久化: ai.uiStates.{panelId}
-· 快捷键（焦点 + 非编辑区）: 1/2 上下滚 35%视口、q/w 前后楼层跳转
+· 快捷键（焦点 + 非编辑区）: 1/2 上下滚 17.5%视口、q/w 前后楼层跳转
 · 统一高亮色: #fdf6e3（暗 #3f3830）。一个 quest 同时只能在一个面板打开
 
 彗星电子钟 — 跨面板建楼计时器（2026-07-05 修复）

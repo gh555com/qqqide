@@ -130,7 +130,9 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - live onDone 与重启恢复共用 _buildConversationFlowHtml(唯一函数)。
   - 数据清洗: EnvelopeStripper.finalize()一次性完成(信封/floor_summary/文本工具调用回生)。
   - 渲染规则用 flag 白名单(§16a)，禁字符串匹配。
-  - 流式段缓冲: _buf持当前段,完成段 push _paras, 渲染后原文置null。
+  - ★ c 重构(2026-07-08): content(API完整回复)为唯一真理。onDone→innerHTML直接替换。
+    流式(onToken→_doStreamRender)仅为实时预览，封顶时 content 覆盖，零调和补丁。
+    流状态(_streamBuf/_streamParas等)归 agent 持有，跨面板共享。
   - 流式渲染代理到 agent._doStreamRender()。
 
 §16a Flag 白名单 — conversation→显示的唯一判定
@@ -198,7 +200,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 
 §30 面板焦点
   - ★ 三面板共享 parent.__qqq_agentPool（父窗口唯一真理源），各自独立 cardPool。获焦点时 postMessage 通知父窗口。
-  - 快捷键(焦点+非编辑区): 1/2上下滚35%, q/w前后楼层跳转。
+  - 快捷键(焦点+非编辑区): 1/2上下滚17.5%, q/w前后楼层跳转。
   - q2单行制: 招牌行 hover展开下拉(2行弹性/默认20条/模糊子序列匹配)，统合搜索+新建。
   - 一个 quest 同时只能在一个面板打开(所有权§32+跨面板同步§28)。
 

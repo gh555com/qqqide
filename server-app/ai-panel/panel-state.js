@@ -98,7 +98,7 @@ function _parentGetQuestOwner(questId) {
 }
 // ★ 中心机器：读取所有正在建楼的 questId 列表（跨面板共享，只读）
 
-// ★ 全局默认 AI 等级：settings.js → QQQ_DEFAULTS → 兜底 3
+// ★ 全局默认 AI 等级：settings.js → qqqideDefaults → 兜底 3
 //   改默认值只改 core/defaults.js
 function _getDefaultTier() {
     try {
@@ -109,8 +109,8 @@ function _getDefaultTier() {
         }
     } catch (_) { }
     try {
-        if (parent && parent.window && parent.window.QQQ_DEFAULTS) {
-            return parent.window.QQQ_DEFAULTS['ai.defaultTier'];
+        if (parent && parent.window &parent.window.qqqideDefaults) {
+            return parent.window.qqqideDefaults['ai.defaultTier'];
         }
     } catch (_) { }
     return 3;

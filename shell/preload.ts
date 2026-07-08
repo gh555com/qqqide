@@ -22,9 +22,8 @@ const QQQ = {
     auth: {
 onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string }) => void) => {
             const handler = (_e: any, data: { token: string; phone: string; country_iso2?: string }) => { try { cb(data); } catch (err) { console.warn('[auth.onAuthPush]', err); } };
-            ipcRenderer.on('qqq-ide-auth', handler);
-            return () => ipcRenderer.removeListener('qqq-ide-auth', handler);
-        },
+            ipcRenderer.on('qqqide-auth', handler);
+            return () => iipcRenderer.removeListener('qqqide-auth', handler);        },
         // ★ 持久化（safeStorage OS 级加密，重启自动恢复，主动登出才删除）
         saveAuth: (auth: { token: string; phone: string; device_name?: string; country_iso2?: string } | null) => ipcRenderer.invoke('qqqide:auth:save', auth),
         loadAuth: () => ipcRenderer.invoke('qqqide:auth:load'),
@@ -340,6 +339,14 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string })
             ipcRenderer.on('qqqide:diff:update', handler);
             return () => ipcRenderer.removeListener('qqqide:diff:update', handler);
         },
+    },
+
+    // ---- dirty snapshots (跨窗口脏文件共享，Layer 2: IDE 领域内视觉一致) ----
+    dirty: {
+        set: (filePath: string, content: string) => ipcRenderer.invoke('qqqide:dirty:set', filePath, content).catch(() => {}),
+        get: (filePath: string) => ipcRenderer.invoke('qqqide:dirty:get', filePath),
+        remove: (filePath: string) => ipcRenderer.invoke('qqqide:dirty:remove', filePath).catch(() => {}),
+        list: () => ipcRenderer.invoke('qqqide:dirty:list'),
     },
 
     // ---- hash (xxh64 fast + sha256 strong, with mtime cache) ----
