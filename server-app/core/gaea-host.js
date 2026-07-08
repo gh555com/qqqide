@@ -176,7 +176,45 @@ undefined
 
     _activeId = id;
     renderTabBar();
+    _persistActive();
   }
+
+  function _folderFromUrl() {
+    var m = window.location.search.match(/[?&]folder=([^&]+)/);
+    if (m) {
+      try { return decodeURIComponent(m[1]).replace(/\\/g, '/').replace(/\/$/, ''); }
+      catch (_) { }
+    }
+    return null;
+  }
+
+  function _persistActive() {
+    try {
+      var root = window._workspaceRoot || _folderFromUrl();
+      if (!root || !_activeId || !window.qgs || typeof window.qgs.project !== 'function') return;
+      var db = window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+      if (db) db.set('editor.aZoneActive', _activeId).catch(function () { });
+    } catch (_) { }
+  }
+
+  function _restoreActive() {
+    try {
+      var root = window._workspaceRoot || _folderFromUrl();
+      if (!root || !window.qgs || typeof window.qgs.project !== 'function') return;
+      var db = window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+      if (!db) return;
+      db.get('editor.aZoneActive').then(function (savedId) {
+        if (savedId && typeof savedId === 'string' && goods.has(savedId)) {
+          show(savedId);
+        }
+      }).catch(function () { });
+    } catch (_) { }
+  }
+
+  // 监听 A 区活性恢复事件（tab-manager 完成 restore 后触发）
+  document.addEventListener('qqq-a-zone-restore', function () {
+    setTimeout(_restoreActive, 500);
+  });
 
   // ---- Register ----
   function register(def) {

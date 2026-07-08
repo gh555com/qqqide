@@ -496,7 +496,28 @@
     '<span style="width:24px;color:var(--text-dim,#888);text-align:right;">#{rank}</span>' +
     '<span style="width:18px;">{flag}</span>' +
     '<span style="flex:1;">{phone}</span>' +
-      // 后台静默拉取（不显示 loading，不覆盖已有内容）
+    '<span style="min-width:60px;color:#859900;text-align:right;font-weight:bold;">{ge} ge</span>' +
+    '</div>';
+
+  function _ldrBuildFreebieRows(list) {
+    var s = '';
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i];
+      var ge = typeof e.freebie_ge === 'number' ? e.freebie_ge.toFixed(1) : '0.0';
+      s += LDR_FREEBIE_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', e.flag).replace('{phone}', e.phone)
+        .replace('{ge}', ge);
+    }
+    return s;
+  }
+
+  var LDR_ERR_HTML = '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">加载失败</div>';
+  var LDR_LOAD_HTML = '<div style="color:var(--text-dim,#888);padding:20px;text-align:center;">加载中...</div>';
+
+  function _ldrClose() {
+    if (_$ldrOverlay) _$ldrOverlay.style.display = 'none';
+  }
+
+  // 后台静默拉取（不显示 loading，不覆盖已有内容）
   function _ldrFetch(silent) {
     if (_ldrFetching) return;
     _ldrFetching = true;

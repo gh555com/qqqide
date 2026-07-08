@@ -325,15 +325,9 @@ function startFloorTimer(aiDiv, ag, resume) {
     // ★ 防御：先清除可能残存的旧 timer（防止重复 start 产生僵尸）
     if (ag._floorTimerId) { clearInterval(ag._floorTimerId); ag._floorTimerId = null; }
     ag._floorTimerId = setInterval(function () {
-        // ★ 守卫1：楼层已干净完结 → 自停（防僵尸 timer）
-        if (_ag._floorCompletedCleanly) {
-            clearInterval(_ag._floorTimerId);
-            _ag._floorTimerId = null;
-            return;
-        }
-        // ★ 守卫2：DOM 有效性 — 若 aiDiv 已脱离 DOM（Card 被驱逐/重建），停止 timer
-        var _curDiv = _ag._activeAiDiv;
-        if (!_curDiv || !_curDiv._clockBlock || !_curDiv._clockBlock.isConnected) {
+        // ★ 守卫：用本地闭包 aiDiv 而非 _ag._activeAiDiv，防压缩/恢复路径篡改
+        //   若 aiDiv 已脱离 DOM（Card 被驱逐），自停 timer
+        if (!aiDiv || !aiDiv._clockBlock || !aiDiv._clockBlock.isConnected) {
             clearInterval(_ag._floorTimerId);
             _ag._floorTimerId = null;
             return;

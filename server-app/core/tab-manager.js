@@ -814,12 +814,11 @@
     closeTabById(grp, tabId);
   }
 
-  // ---- Persistence: editor tabs + cursor positions → only.sq3 (项目资产) ----
+  // ---- Persistence: editor tabs + gaea tabs + cursor positions → only.sq3 (项目资产) ----
   var _restored = false;
   var _persistTimer = null;
+  var _restoreRetryTimer = null;
 
-  // ★ URL 参数兜底：_workspaceRoot 由 AI 面板异步设置，tab-manager 启动更早
-  //   新窗口 ?folder=xxx 可直取 URL 参数找到 only.sq3
   function _folderFromUrl() {
     var m = window.location.search.match(/[?&]folder=([^&]+)/);
     if (m) {
@@ -835,74 +834,124 @@
     return window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
   }
 
-  function persistOpenTabs() {
-    if (!_restored) return;
-    if (_persistTimer) clearTimeout(_persistTimer);
-    _persistTimer = setTimeout(_doPersistOpenTabs, 250);
-  }
-
-  function _doPersistOpenTabs() {
-    _persistTimer = null;
-    var db = _onlyDb();
-    if (!db) return;
-    var tabs = [];
+  // ★ 收集 file tabs + gaea 活跃 tab ID + A 区活跃 good ID
+  function _collectAllTabs() {
+    var all = [];
     for (var gi = 0; gi < groups.length; gi++) {
       var grp = groups[gi];
       if (grp.type !== 'file') continue;
       for (var ti = 0; ti < grp.tabs.length; ti++) {
         var t = grp.tabs[ti];
         if (t.filePath) {
-          tabs.push({ path: t.filePath, groupIdx: grp.idx, active: t.id === grp.activeTabId, preview: !!t.preview });
+          all.push({ path: t.filePath, groupIdx: grp.idx, active: t.id === grp.activeTabId, preview: !!t.preview });
         }
       }
     }
-    // ★ 同时持久化光标位置
+    return all;
+  }
+
+  function persistOpenTabs() {
+    if (!_restored) return;
+    if (_persistTimer) clearTimeout(_persistTimer);
+    _persistTimer = setTimeout(_doPersist, 250);
+  }
+
+  function _doPersist() {
+    _persistTimer = null;
+    var db = _onlyDb();
+    if (!db) return;
+    var all = _collectAllTabs();
     if (window.qqqEditor && window.qqqEditor.getAllEditorPositions) {
       var pos = window.qqqEditor.getAllEditorPositions();
-      if (Object.keys(pos).length > 0) db.set('editor.positions', pos).catch(function () { });
-      else db.set('editor.positions', null).catch(function () { });
+      db.set('editor.positions', Object.keys(pos).length > 0 ? pos : null).catch(function () { });
     }
-    if (tabs.length === 0) {
-      db.set('editor.tabs', null).catch(function () { });
-    } else {
-      db.set('editor.tabs', tabs).catch(function () { });
+    if (all.length > 0) {
+      db.set('editor.tabs', all).catch(function () { });
+    }
+    // ★ gaea 分组活跃 tab
+    var gaeaGrp = getGaeaGroup();
+    if (gaeaGrp && gaeaGrp.activeTabId) {
+      var gaeaActive = null;
+      for (var gi = 0; gi < gaeaGrp.tabs.length; gi++) {
+        var t = gaeaGrp.tabs[gi];
+        if (t.id === gaeaGrp.activeTabId) {
+          gaeaActive = { gaeaId: t.gaeaId || t.id, title: t.title };
+          break;
+        }
+      }
+      if (gaeaActive) db.set('editor.gaeaActiveTab', gaeaActive).catch(function () { });
     }
   }
 
-  async function restoreOpenTabs() {
-    _restored = true;
-    if (window.location.search.indexOf('fresh=1') !== -1) return;
-    var db = _onlyDb();
-    if (!db) return;
-    try {
-      var tabs = await db.get('editor.tabs');
-      if (!Array.isArray(tabs) || tabs.length === 0) return;
-      // 恢复光标位置
-      var pos = await db.get('editor.positions').catch(function () { return null; });
-      if (pos && typeof pos === 'object') { window.qqqPendingEditorPositions = pos; }
-      for (var i = 0; i < tabs.length; i++) {
-        var t = tabs[i];
-        if (t.path) {
-          document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: t.path, groupIdx: t.groupIdx, preview: !!t.preview } }));
-        }
+  // ★ 重试恢复：等 _workspaceRoot 就绪
+  function _scheduleRestoreRetry() {
+    if (_restoreRetryTimer) return;
+    _restoreRetryTimer = setInterval(function () {
+      if (_restored) { clearInterval(_restoreRetryTimer); _restoreRetryTimer = null; return; }
+      if (_onlyDb()) {
+        clearInterval(_restoreRetryTimer);
+        _restoreRetryTimer = null;
+        _doRestore();
       }
-      setTimeout(function () { window.qqqPendingEditorPositions = null; }, 4000);
+    }, 300);
+  }
+
+  async function _doRestore() {
+    var db = _onlyDb();
+    if (!db) { _scheduleRestoreRetry(); return; }
+    try {
+      // ★ 恢复 file tabs
+      var all = await db.get('editor.tabs');
+      if (Array.isArray(all) && all.length > 0) {
+        var pos = await db.get('editor.positions').catch(function () { return null; });
+        if (pos && typeof pos === 'object') { window.qqqPendingEditorPositions = pos; }
+        for (var i = 0; i < all.length; i++) {
+          var item = all[i];
+          if (item.path) {
+            document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: item.path, groupIdx: item.groupIdx, preview: !!item.preview } }));
+          }
+        }
+        setTimeout(function () { window.qqqPendingEditorPositions = null; }, 4000);
+      }
     } catch (e) { /* ignore */ }
+    _restored = true;
+
+    // ★ 延迟恢复 gaea 分组活跃 tab（等 goods 注册完毕）
+    db.get('editor.gaeaActiveTab').then(function (gaeaTab) {
+      if (!gaeaTab || !gaeaTab.gaeaId) return;
+      setTimeout(function () {
+        var grp = getGaeaGroup();
+        if (!grp) return;
+        for (var i = 0; i < grp.tabs.length; i++) {
+          var t = grp.tabs[i];
+          if ((t.gaeaId === gaeaTab.gaeaId || t.id === gaeaTab.gaeaId) && window.qqqTabs) {
+            window.qqqTabs.activateTab(grp, t.id);
+            break;
+          }
+        }
+      }, 800);
+    }).catch(function () { });
+
+    // ★ 触发 A 区活性恢复
+    document.dispatchEvent(new CustomEvent('qqq-a-zone-restore'));
+  }
+
+  function restoreOpenTabs() {
+    // ★ fresh=1 永不恢复
+    if (window.location.search.indexOf('fresh=1') !== -1) { _restored = true; return; }
+    _doRestore();
   }
 
   // ---- Public: init ----
   function init(host) {
     hostEl = host;
     hostEl.innerHTML = '';
-    // Listen for host resize (covers window resize + A-zone sash drag)
     if (window.ResizeObserver) {
       new ResizeObserver(() => _onGroupResize()).observe(hostEl);
     }
     window.addEventListener('resize', _onGroupResize);
-    // gaea group is always created on init
     addGroup('gaea');
-    // Restore previously open file tabs
-    setTimeout(() => restoreOpenTabs(), 100);
+    setTimeout(function () { restoreOpenTabs(); }, 100);
   }
 
   // Hook: save after every tab change

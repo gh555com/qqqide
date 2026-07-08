@@ -61,7 +61,7 @@
       }
     },
     "git": {
-      "_note": "精简 Git — op/git_fetch.py 提取，零 bash/sh/perl。Windows ~40MB, Linux ~12MB, macOS ~15MB。bundled=true 直接进绿色包。",
+      "_note": "Git (bundled=true → 绿色包自带。旧客户端自动降级到 MinGit 下载，功能一致但无 bash)。Windows ~28MB, Linux ~12MB, macOS ~15MB。",
       "bundled": true,
       "install_to": "git",
       "bin_win": "git.exe",
@@ -69,10 +69,19 @@
       "verify_args": ["--version"],
       "version": "2.51.0",
       "srcs": {
-        "win32-x64":    [{ "url": "https://cdn.gh555.com/components/git/2.46.0/win32-x64.zip",    "kind": "zip" }],
-        "linux-x64":    [{ "url": "https://cdn.gh555.com/components/git/2.46.0/linux-x64.tar.gz",  "kind": "tar.gz" }],
-        "darwin-arm64": [{ "url": "https://cdn.gh555.com/components/git/2.46.0/darwin-arm64.tar.gz", "kind": "tar.gz" }],
-        "darwin-x64":   [{ "url": "https://cdn.gh555.com/components/git/2.46.0/darwin-x64.tar.gz", "kind": "tar.gz" }]
+        "win32-x64": [
+          { "url": "https://cdn.gh555.com/components/git/2.51.0/win32-x64.zip", "kind": "zip" },
+          { "url": "https://github.com/git-for-windows/git/releases/download/v2.46.0.windows.1/MinGit-2.46.0-64-bit.zip", "kind": "zip" }
+        ],
+        "linux-x64": [
+          { "url": "https://cdn.gh555.com/components/git/2.51.0/linux-x64.tar.gz", "kind": "tar.gz" }
+        ],
+        "darwin-arm64": [
+          { "url": "https://cdn.gh555.com/components/git/2.51.0/darwin-arm64.tar.gz", "kind": "tar.gz" }
+        ],
+        "darwin-x64": [
+          { "url": "https://cdn.gh555.com/components/git/2.51.0/darwin-x64.tar.gz", "kind": "tar.gz" }
+        ]
       }
     }
   }

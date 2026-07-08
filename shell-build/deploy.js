@@ -70,10 +70,11 @@ function run(cmd, cmdArgs) {
 }
 
 function effectiveHost() {
-  // US server: route through WG tunnel (10.0.0.1) to avoid Pacific public-SSH
-  // unreliability for large files. WG now has MSS clamping (2026-07-06).
+  // 2026-07-08: WG tunnel 吞吐仅 4 KB/s → 8.5MB 部署要 35 分钟。
+  // 改走 CN→US 公网 SSH（47→23:22），CN 已有密钥授权，速度远快于 WG。
+  // 原注释：avoid Pacific public-SSH unreliability — 实际 WG 更不可靠。
   if (HOST.includes('23.254.248.119')) {
-    return 'q@10.0.0.1';
+    return 'q@23.254.248.119';
   }
   return HOST;
 }
