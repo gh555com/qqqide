@@ -766,17 +766,11 @@ var CardPool = (function () {
       aiEl.classList.add('card-building');
     }
 
-    // ★ 跨面板迁移：恢复流式缓冲区状态（_buf/_splitCursor/_codeFenceOpen）
-    //   当 fData 含 _streamingBuf 表示此楼层保存时正在流式打印中 → 初始化续接所需变量
+    // ★ B 重构：跨面板流式状态已在共享 agent 上（parent.__qqq_agentPool），
+    //   aiEl 仅需建立 _lastParaEl DOM 锚点，_doStreamRender 自会从 agent 读取
     if (fData._streamingBuf) {
-      aiEl._buf = fData._streamingBuf;
-      aiEl._splitCursor = fData._streamingSplitCursor || 0;
-      aiEl._codeFenceOpen = fData._streamingCodeFenceOpen || false;
-      aiEl._paras = [];
       aiEl._dirty = false;
       aiEl._renderScheduled = false;
-      aiEl._renderedCount = 0;
-      aiEl._firstRenderDone = true;
       aiEl._lastParaEl = document.createElement('div');
       aiEl._lastParaEl.className = 'stream-para';
       aiEl._contentWrap.appendChild(aiEl._lastParaEl);
@@ -820,17 +814,10 @@ var CardPool = (function () {
         this._capFloor(card, card.buildingFloor);
       }
       card.buildingFloor = floorNum;
-      // 重置流式状态（新重试，旧 buf 无效）
-      _existingAi._buf = '';
-      _existingAi._paras = [];
-      _existingAi._codeFenceOpen = false;
-      _existingAi._splitCursor = 0;
+      // ★ B 重构：流式状态在 agent 上，aiDiv 仅保留 DOM 调度
       _existingAi._dirty = false;
       _existingAi._renderScheduled = false;
-      _existingAi._renderedCount = 0;
       _existingAi._lastParaEl = null;
-      _existingAi._firstRenderDone = false;
-      _existingAi._fullText = '';
       // ★ 恢复时补建时钟和 A1（若缺失，如从致命楼 reload 后首次恢复）
       if (!_existingAi._clockBlock) {
         var _initClkR = window._initClockBlock;
@@ -881,15 +868,10 @@ var CardPool = (function () {
     });
     // ★ 图片分辨率支持（load 委托 + 扫描 + Observer）
     _setupImgSupport(aiEl._contentWrap);
-    aiEl._fullText = '';
-    aiEl._buf = '';
-    aiEl._paras = [];
-    aiEl._codeFenceOpen = false;
+    // ★ B 重构：流式数据（_buf/_paras 等）归 agent，aiEl 仅保留 DOM 调度
     aiEl._dirty = false;
     aiEl._renderScheduled = false;
-    aiEl._renderedCount = 0;
     aiEl._lastParaEl = null;
-    aiEl._firstRenderDone = false;  // ★ 每层楼首次渲染不节流，16ms 即刻落地
     // A1 块（必须在电子钟之前）
     var _initA1b = window._initA1Block;
     var _updA1b = window._updateA1Row1;
