@@ -324,7 +324,8 @@ export function registerMiscIpc(
     // ---- update ----
     ipcMain.handle('qqqide:update:check', async () => updateService.check());
     ipcMain.handle('qqqide:update:apply', async () => updateService.apply());
-    ipcMain.handle('qqqide:update:state', async () => updateService.g    ipcMain.handle('qqqide:update:upgrade-shell', async () => updateService.upgradeShell());
+    ipcMain.handle('qqqide:update:state', async () => updateService.getState());
+    ipcMain.handle('qqqide:update:upgrade-shell', async () => updateService.upgradeShell());
 
     // ═══ 编辑器脏快照 — 跨窗口共享（Layer 2: IDE 领域内视觉一致） ═══
     ipcMain.handle('qqqide:dirty:set', (_e, filePath: string, content: string) => {
@@ -339,9 +340,5 @@ export function registerMiscIpc(
     ipcMain.handle('qqqide:dirty:list', () => {
         return [..._dirtySnapshots.keys()];
     });
-}t();
-        return true;
-    });
-    ipcMain.handle('qqqide:update:upgrade-shell', async () => updateService.upgradeShell());
 }
 

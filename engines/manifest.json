@@ -77,10 +77,10 @@
           { "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/WWJCJGF4LJWUS.gz",  "kind": "tar.gz" }
         ],
         "darwin-arm64": [
-          { "url": "https://cdn.gh555.com/components/git/2.51.0/darwin-arm64.tar.gz", "kind": "tar.gz" }
+          { "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/MXAAZ7SOOPX32.gz", "kind": "tar.gz" }
         ],
         "darwin-x64": [
-          { "url": "https://cdn.gh555.com/components/git/2.51.0/darwin-x64.tar.gz", "kind": "tar.gz" }
+          { "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/MXAAZ7SOOPX32.gz", "kind": "tar.gz" }
         ]
       }
     }
