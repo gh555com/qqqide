@@ -123,6 +123,14 @@ var AgentLoop = (function () {
         this._floorCompletedCleanly = false;
         this._floorOnErrorCalled = false;
         this._sendTerminated = false;  // ★ onError 后强制终止 send() while 循环
+        // ★ 流式渲染状态（B 重构：agent 持有，非 DOM 持有）
+        this._streamBuf = '';
+        this._streamParas = [];
+        this._streamSplitCursor = 0;
+        this._streamCodeFenceOpen = false;
+        this._streamRenderedCount = 0;
+        this._streamFullText = '';
+        this._streamFirstRenderDone = false;
         // ★ 终极 Stop 闭环：单一真理源 + 级联信号
         this._stopCtrl = null;          // AbortController（仅用户 Stop 时 abort，永不重建）
         this._stopState = 'idle';       // 'idle' | 'sending' | 'stopping'
@@ -495,6 +503,14 @@ var AgentLoop = (function () {
         self._compressAttemptedThisFloor = false;
         self._floorKilled = false;  // ★ 看门狗：用户点停止才置 true
         self._floorCompletedCleanly = false;  // ★ 看门狗：只有 onDone 路径才置 true
+        // ★ 重置流式状态（per-floor，B 重构：agent 持有）
+        self._streamBuf = '';
+        self._streamParas = [];
+        self._streamSplitCursor = 0;
+        self._streamCodeFenceOpen = false;
+        self._streamRenderedCount = 0;
+        self._streamFullText = '';
+        self._streamFirstRenderDone = false;
         self._floorOnErrorCalled = false;  // ★ 看门狗：onError 回调已处理，不重复恢复
         self._sendTerminated = false;  // ★ 终止旗：onError 后强制退出 while
         self._lastGatewayError = 0;   // ★ 每层楼重置：防跨 floor 虚假 auto-repair
@@ -1225,13 +1241,13 @@ var AgentLoop = (function () {
         if (!aiDiv._dirty) { aiDiv._renderScheduled = false; return; }
         aiDiv._renderScheduled = false;
         if (aiDiv._guideMode) {
-            aiDiv._renderedCount = (aiDiv._paras || []).length;
-            for (var _gpi = 0; _gpi < (aiDiv._paras || []).length; _gpi++) aiDiv._paras[_gpi] = null;
+            this._streamRenderedCount = (this._streamParas || []).length;
+            for (var _gpi = 0; _gpi < (this._streamParas || []).length; _gpi++) this._streamParas[_gpi] = null;
             aiDiv._dirty = false;
             return;
         }
-        var rendered = aiDiv._renderedCount || 0;
-        var paras = aiDiv._paras || [];
+        var rendered = this._streamRenderedCount || 0;
+        var paras = this._streamParas || [];
         var _rm = typeof renderMarkdown === 'function' ? renderMarkdown : function (s) { return s; };
         // ★ 确保 _lastParaEl 存在（创建时自然在末尾），后续静态段落插在它之前
         if (!aiDiv._lastParaEl) {
@@ -1255,9 +1271,9 @@ var AgentLoop = (function () {
             paras[rendered] = null;
             rendered++;
         }
-        aiDiv._renderedCount = rendered;
-        if (aiDiv._codeFenceOpen && aiDiv._buf) {
-            var _codeContent = aiDiv._buf;
+        this._streamRenderedCount = rendered;
+        if (this._streamCodeFenceOpen && this._streamBuf) {
+            var _codeContent = this._streamBuf;
             var _firstNL = _codeContent.indexOf('\n');
             if (_firstNL > 0 && /^```/.test(_codeContent)) _codeContent = _codeContent.slice(_firstNL + 1);
             var _esc = typeof escHtml === 'function' ? escHtml : function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
@@ -1266,8 +1282,8 @@ var AgentLoop = (function () {
             // ★ 只渲染 _buf 中 _splitCursor 之后的尾部（未完成段落），
             //   已完成段落已作为独立 div 渲染在 _lastParaEl 上方，
             //   全量渲染 _buf 会导致前半部分重复出现两次
-            var _trailStart = aiDiv._splitCursor || 0;
-            var _trailing = aiDiv._buf ? aiDiv._buf.slice(_trailStart) : '';
+            var _trailStart = this._streamSplitCursor || 0;
+            var _trailing = this._streamBuf ? this._streamBuf.slice(_trailStart) : '';
             aiDiv._lastParaEl.innerHTML = _rm(_trailing);
         }
         aiDiv._dirty = false;

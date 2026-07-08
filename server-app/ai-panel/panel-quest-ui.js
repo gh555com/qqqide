@@ -972,8 +972,8 @@ $guideBtn.onclick = async function () {
     // ══ 注入引导到当前活跃楼层 ══
     var _aiDiv = _activeAgent._activeAiDiv;
     if (_aiDiv && _aiDiv._contentWrap) {
-        _aiDiv._buf = '';
-        _aiDiv._codeFenceOpen = false;
+        _activeAgent._streamBuf = '';
+        _activeAgent._streamCodeFenceOpen = false;
         _aiDiv._dirty = false;
         _aiDiv._lastParaEl = null;
         _aiDiv._guideMode = true;

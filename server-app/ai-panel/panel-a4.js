@@ -806,9 +806,10 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
     var _aiDiv = ag._activeAiDiv;
     // ★ switchQuest 中途保存：跳过 DOM 冲刷（agent 后台继续流式，不应干扰其渲染状态）
     if (!opts.skipDomFlush && _aiDiv && _aiDiv._contentWrap) {
+        // ★ B 重构：流式数据从 agent 读取
         // --- flush _paras（按 \n\n 分割的已完成段落） ---
-        var _rendered = _aiDiv._renderedCount || 0;
-        var _pending = _aiDiv._paras || [];
+        var _rendered = ag._streamRenderedCount || 0;
+        var _pending = ag._streamParas || [];
         var _rm = typeof renderMarkdown === 'function' ? renderMarkdown : function (s) { return s; };
         while (_rendered < _pending.length) {
             var _pp = _pending[_rendered];
@@ -820,10 +821,10 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
             _pending[_rendered] = null;
             _rendered++;
         }
-        _aiDiv._renderedCount = _rendered;
+        ag._streamRenderedCount = _rendered;
         // --- flush _buf（未完成的尾部，如代码块末尾） ---
-        if (_aiDiv._codeFenceOpen && _aiDiv._buf) {
-            var _fc = _aiDiv._buf;
+        if (ag._streamCodeFenceOpen && ag._streamBuf) {
+            var _fc = ag._streamBuf;
             var _fnl = _fc.indexOf('\n');
             if (_fnl > 0 && /^```/.test(_fc)) _fc = _fc.slice(_fnl + 1);
             if (_fc.trim()) {
@@ -831,18 +832,18 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
                 _fDiv.innerHTML = '<pre><code>' + (typeof escHtml === 'function' ? escHtml(_fc) : _fc) + '</code></pre>';
                 _aiDiv._contentWrap.appendChild(_fDiv);
             }
-            // ★ 推进 _splitCursor 防重复追加：后续 auto-save 不应再追加同一段内容
-            if (_aiDiv._buf) _aiDiv._splitCursor = _aiDiv._buf.length;
+            // ★ 推进 _splitCursor 防重复追加
+            if (ag._streamBuf) ag._streamSplitCursor = ag._streamBuf.length;
         } else {
-            var _trailStart = _aiDiv._splitCursor || 0;
-            var _trailing = _aiDiv._buf ? _aiDiv._buf.slice(_trailStart) : '';
+            var _trailStart = ag._streamSplitCursor || 0;
+            var _trailing = ag._streamBuf ? ag._streamBuf.slice(_trailStart) : '';
             if (_trailing && _trailing.trim()) {
                 var _tDiv = document.createElement('div');
                 _tDiv.innerHTML = _rm(_trailing);
                 _aiDiv._contentWrap.appendChild(_tDiv);
             }
-            // ★ 推进 _splitCursor 防重复追加：后续 auto-save 不应再追加同一段内容
-            if (_aiDiv._buf) _aiDiv._splitCursor = _aiDiv._buf.length;
+            // ★ 推进 _splitCursor 防重复追加
+            if (ag._streamBuf) ag._streamSplitCursor = ag._streamBuf.length;
         }
         // --- 移除 _lastParaEl（流式临时打字块） ---
         if (_aiDiv._lastParaEl) {
@@ -865,16 +866,10 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
     if (!ai_html && ag._activeAiDiv && ag._activeAiDiv._contentWrap) {
         try { ai_html = ag._activeAiDiv._contentWrap.innerHTML; } catch (_) { }
     }
-    // ★ 跨面板迁移：捕获流式缓冲区状态（_buf/_splitCursor/_codeFenceOpen），
-    //   让接手面板能无缝续接正在打印中的半成品段落
-    var _streamingBuf = '';
-    var _streamingSplitCursor = 0;
-    var _streamingCodeFenceOpen = false;
-    if (ag._activeAiDiv) {
-        _streamingBuf = ag._activeAiDiv._buf || '';
-        _streamingSplitCursor = typeof ag._activeAiDiv._splitCursor === 'number' ? ag._activeAiDiv._splitCursor : 0;
-        _streamingCodeFenceOpen = !!ag._activeAiDiv._codeFenceOpen;
-    }
+    // ★ B 重构：流式状态从 agent 读取（共享，非 aiDiv 持有）
+    var _streamingBuf = ag._streamBuf || '';
+    var _streamingSplitCursor = ag._streamSplitCursor || 0;
+    var _streamingCodeFenceOpen = !!ag._streamCodeFenceOpen;
     if (!ai_html && typeof _buildConversationFlowHtml === 'function') {
         try {
             var _fDataForRender = {
@@ -883,7 +878,7 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
                 houses: cleanHouses,
                 costWge: ag._floorCostWge,
                 clockTiming: ag._lastFloorTimingRecord || null,
-                _streamingText: (ag._streaming && ag._activeAiDiv && ag._activeAiDiv._fullText) ? ag._activeAiDiv._fullText : '',
+                _streamingText: (ag._streaming && ag._streamFullText) ? ag._streamFullText : '',
                 _streaming: !!(ag._streaming),
                 floorFatal: !!ag._floorFatal,
                 exitReason: ag._exitReason || ''
@@ -932,7 +927,7 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
         createdAt: ag._floorCreatedAt || Date.now(),
         savedAt: Date.now(),
         // ★ 流式持久化：捕获正在打印中的部分 AI 回复文本（仅在流式中断时保留）
-        _streamingText: (ag._streaming && ag._activeAiDiv && ag._activeAiDiv._fullText) ? ag._activeAiDiv._fullText : '',
+        _streamingText: (ag._streaming && ag._streamFullText) ? ag._streamFullText : '',
         _streaming: !!(ag._streaming),
         // ★ 跨面板迁移：流式缓冲区状态（让接手面板无缝续接）
         _streamingBuf: _streamingBuf,

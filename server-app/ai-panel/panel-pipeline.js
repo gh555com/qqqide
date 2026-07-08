@@ -312,8 +312,9 @@ async function _executeSend(intent) {
     if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); return; }
     aiDiv._allTxtPath = _allTxtPathLocal;
     if (sendType === 'recovery-0house') {
-        aiDiv._buf = aiDiv._buf || '';
-        aiDiv._paras = aiDiv._paras || [];
+        // ★ B 重构：流式状态在 agent 上，非 aiDiv
+        agent._streamBuf = agent._streamBuf || '';
+        agent._streamParas = agent._streamParas || [];
     }
     if (sendType !== 'recovery-0house') {
         agent._aiStartTime = _fmtTime(new Date());
@@ -395,32 +396,33 @@ async function _executeSend(intent) {
                     agent._streamingContent = (agent._streamingContent || '') + chunk;
                     return;
                 }
-                _targetDiv._buf = (_targetDiv._buf || '') + chunk;
-                _targetDiv._fullText = (_targetDiv._fullText || '') + chunk;
-                _targetDiv._paras = _targetDiv._paras || [];
-                if (typeof _targetDiv._splitCursor !== 'number') _targetDiv._splitCursor = 0;
-                if (_targetDiv._codeFenceOpen) {
-                    var _allFences = _targetDiv._buf.match(/^```/gm);
+                // ★ B 重构：流式状态写 agent，非 aiDiv
+                agent._streamBuf = (agent._streamBuf || '') + chunk;
+                agent._streamFullText = (agent._streamFullText || '') + chunk;
+                agent._streamParas = agent._streamParas || [];
+                if (typeof agent._streamSplitCursor !== 'number') agent._streamSplitCursor = 0;
+                if (agent._streamCodeFenceOpen) {
+                    var _allFences = agent._streamBuf.match(/^```/gm);
                     var _allFc = _allFences ? _allFences.length : 0;
                     if (_allFc % 2 === 0 && _allFc > 0) {
-                        if (_targetDiv._buf.trim()) _targetDiv._paras.push(_targetDiv._buf);
-                        _targetDiv._buf = '';
-                        _targetDiv._splitCursor = 0;
-                        _targetDiv._codeFenceOpen = false;
+                        if (agent._streamBuf.trim()) agent._streamParas.push(agent._streamBuf);
+                        agent._streamBuf = '';
+                        agent._streamSplitCursor = 0;
+                        agent._streamCodeFenceOpen = false;
                     } else {
                         _targetDiv._dirty = true;
                         if (!_targetDiv._renderScheduled) {
                             _targetDiv._renderScheduled = true;
-                            var _rd = _targetDiv._firstRenderDone ? 1000 : 16; _targetDiv._firstRenderDone = true;
+                            var _rd = agent._streamFirstRenderDone ? 1000 : 16; agent._streamFirstRenderDone = true;
                             setTimeout(function () { doStreamRender(agent); }, _rd);
                         }
                         return;
                     }
                 }
-                var _newRegion = _targetDiv._buf.slice(_targetDiv._splitCursor);
-                var _lookback = _targetDiv._buf.lastIndexOf('\n\n', _targetDiv._splitCursor - 1);
+                var _newRegion = agent._streamBuf.slice(agent._streamSplitCursor);
+                var _lookback = agent._streamBuf.lastIndexOf('\n\n', agent._streamSplitCursor - 1);
                 var _scanStart = _lookback >= 0 ? _lookback + 2 : 0;
-                var _scanText = _targetDiv._buf.slice(_scanStart);
+                var _scanText = agent._streamBuf.slice(_scanStart);
                 var parts = _scanText.split('\n\n');
                 var _safeParas = [];
                 var _stopped = false;
@@ -430,24 +432,24 @@ async function _executeSend(intent) {
                     if (_fenceCount % 2 === 0) {
                         if (_part.trim()) _safeParas.push(_part);
                     } else {
-                        _targetDiv._buf = parts.slice(pi).join('\n\n');
-                        _targetDiv._splitCursor = _scanStart + parts.slice(0, pi).join('\n\n').length + (pi > 0 ? 2 : 0);
-                        _targetDiv._codeFenceOpen = true;
+                        agent._streamBuf = parts.slice(pi).join('\n\n');
+                        agent._streamSplitCursor = _scanStart + parts.slice(0, pi).join('\n\n').length + (pi > 0 ? 2 : 0);
+                        agent._streamCodeFenceOpen = true;
                         _stopped = true;
                         break;
                     }
                 }
                 if (!_stopped) {
-                    _targetDiv._splitCursor = _targetDiv._buf.length - (parts[parts.length - 1] || '').length;
+                    agent._streamSplitCursor = agent._streamBuf.length - (parts[parts.length - 1] || '').length;
                 }
-                for (var _sp = 0; _sp < _safeParas.length; _sp++) { _targetDiv._paras.push(_safeParas[_sp]); }
+                for (var _sp = 0; _sp < _safeParas.length; _sp++) { agent._streamParas.push(_safeParas[_sp]); }
                 _targetDiv._dirty = true;
                 if (!_targetDiv._renderScheduled) {
                     _targetDiv._renderScheduled = true;
-                    var _rd2 = _targetDiv._firstRenderDone ? 1000 : 16; _targetDiv._firstRenderDone = true;
+                    var _rd2 = agent._streamFirstRenderDone ? 1000 : 16; agent._streamFirstRenderDone = true;
                     setTimeout(function () { doStreamRender(agent); }, _rd2);
                 }
-                if (_activeAgent === agent && !_scrollPending) {
+                if (_activeAgent === agentt && !_scrollPending) {
                     _scrollPending = true;
                     requestAnimationFrame(function () { scrollToBottom(); _scrollPending = false; });
                 }
@@ -475,46 +477,50 @@ async function _executeSend(intent) {
                 var _targetDiv2 = (aiDiv && aiDiv.isConnected) ? aiDiv : (agent._activeAiDiv || aiDiv);
                 if (_targetDiv2 && _targetDiv2._contentWrap) {
                     _targetDiv2._guideMode = false;
-                    // ★ Flush _buf trailing content into _paras BEFORE removing _lastParaEl
-                    //   (otherwise the incomplete paragraph in _buf is silently discarded)
-                    if (_targetDiv2._buf && (_targetDiv2._splitCursor || 0) < _targetDiv2._buf.length) {
-                        var _trailing = _targetDiv2._codeFenceOpen ? _targetDiv2._buf : _targetDiv2._buf.slice(_targetDiv2._splitCursor || 0);
+                    // ★ B 重构：flush agent 流状态到 DOM。content（API 完整回复）为权威源。
+                    
+                    // Step 1: flush agent._streamBuf tail into agent._streamParas
+                    if (agent._streamBuf && (agent._streamSplitCursor || 0) < agent._streamBuf.length) {
+                        var _trailing = agent._streamCodeFenceOpen ? agent._streamBuf : agent._streamBuf.slice(agent._streamSplitCursor || 0);
                         if (_trailing && _trailing.trim()) {
-                            if (!_targetDiv2._paras) _targetDiv2._paras = [];
-                            _targetDiv2._paras.push(_trailing);
+                            agent._streamParas.push(_trailing);
                         }
                     }
+                    // Step 2: remove live _lastParaEl (replaced by static paragraphs below)
                     if (_targetDiv2._lastParaEl) { _targetDiv2._lastParaEl.remove(); _targetDiv2._lastParaEl = null; }
-                    var _rendered = _targetDiv2._renderedCount || 0;
-                    var _allParas = _targetDiv2._paras || [];
+                    // Step 3: render remaining agent._streamParas into DOM
+                    var _rendered = agent._streamRenderedCount || 0;
+                    var _allParas = agent._streamParas;
                     for (var _ai = _rendered; _ai < _allParas.length; _ai++) {
                         var _pEl = document.createElement('div');
                         _pEl.className = 'msg-ai-p';
                         _pEl.innerHTML = renderMarkdown(_allParas[_ai]);
                         _targetDiv2._contentWrap.appendChild(_pEl);
                     }
-                    _targetDiv2._renderedCount = _allParas.length;
-                    _targetDiv2._paras = [];
-                    _targetDiv2._buf = '';
-                    _targetDiv2._splitCursor = 0;
-                    _targetDiv2._codeFenceOpen = false;
-
-                    // ★ P14 安全网：已渲染文本明显短于原始 content → 追加缺失尾部
-                    //   容忍 ±10 字符偏差（Markdown→HTML 空格/换行差异），
-                    //   短回复（如 "你好 👋"）不受旧 80 高容忍误杀
+                    // Step 4: 尾段检测 — 用 raw text 对比，非 textContent（textContent 丢格式字符）
+                    //   agent._streamFullText = onToken 累积的 raw text
+                    //   content = API 返回的完整最终文本
+                    //   若 content 比 _streamFullText 长，尾部未进入 onToken → 用 content 补上
                     if (content && typeof content === 'string' && content.trim()) {
-                        var _domText = _targetDiv2._contentWrap.textContent || '';
-                        if (content.length > _domText.length + 10 && content.length - _domText.length > 5) {
-                            var _suffix = content.slice(_domText.length);
-                            if (_suffix.trim()) {
+                        var _streamedLen = (agent._streamFullText || '').length;
+                        if (content.length > _streamedLen) {
+                            var _missing = content.slice(_streamedLen);
+                            if (_missing.trim()) {
                                 var _finalP = document.createElement('div');
-                                _finalP.className = 'msg-ai-p msg-ai-final';
-                                var _rm = typeof renderMarkdown === 'function' ? renderMarkdown : function (s) { return s; };
-                                _finalP.innerHTML = _rm(_suffix);
+                                _finalP.className = 'msg-ai-p';
+                                _finalP.innerHTML = renderMarkdown(_missing);
                                 _targetDiv2._contentWrap.appendChild(_finalP);
                             }
                         }
                     }
+                    // Step 5: clear agent stream state
+                    agent._streamBuf = '';
+                    agent._streamParas = [];
+                    agent._streamSplitCursor = 0;
+                    agent._streamCodeFenceOpen = false;
+                    agent._streamRenderedCount = 0;
+                    agent._streamFullText = '';
+                    agent._streamFirstRenderDone = false;
                 }
                 agent._floorCompletedCleanly = true;
                 agent._floorTiming = timing;
@@ -532,7 +538,7 @@ async function _executeSend(intent) {
                 if (aiDiv && aiDiv._a1Block && typeof _updateA1Row2 === 'function') {
                     try { _updateA1Row2(aiDiv._a1Block, agent, true); } catch (_) { }
                 }
-                if (typeof stopFloorTimer === 'function') stopFloorTimer(timing, agent);;
+                if (typeof stopFloorTimer === 'function') stopFloorTimer(timing, agent);
                 setStreaming(false);
                 agent.setStopState('done');
                 if (typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);

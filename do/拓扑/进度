@@ -2,6 +2,20 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 ============================================================
 更新: 2026-06-29
 
+已完成 — 本轮 2026-06-29 (37) 408 致命楼层闭环恢复 — 三重根因修复
+------
+· 问题: q1/q15/q23/q21 重启后 send 按钮永久不可用、无"继续任务"红框。此前数轮数据修复(加 _error、删 _system)和代码修复(T1-T4)均无效。
+· 根因1(致命): initQuests 缺失红框渲染 — 仅 switchQuest 有 _renderQuestErrorBox，重启初始化路径直接跳过
+  → panel-quest.js L482 后补齐: _activeAiDiv 绑定 + _questErrorLogByFloor 逐楼层红框重建 + floorFatal 兜底 + setStreaming
+· 根因2: _currentFloorNum 为 0 — 旧 quest metadata 缺此字段，致命楼层恢复只设 _floorFatal 不补 currentFloorNum
+  → panel-floor.js L486 落定: lastFloor.floorFatal → 取 _lastFloor.floorNum 补全 currentFloorNum
+· 根因3(关键): Ctrl+R 后 parent.__qqq_agentPool 残留 stale agent — _getOrCreateAgent 返回池中旧 agent(stopState=sending)
+  → _restoreAgentFromStore L307 守卫检测到 sending→直接返回，agent 永久卡在假 sending。按钮 visible enabled 但 pipeline L38 拦截。
+  → panel-quest.js L482 前: 检测 stale 态 → setStopState('idle') → 清零 streaming/floorCompletedCleanly
+· 失败教训: 数据修 all.json 是死胡同(磁盘正确≠逻辑正确)；switchQuest 与 initQuests 两条路径必须对齐；
+  Ctrl+R 不是真重启(父窗口持久 agentPool)；fatal 闭环需四步齐备(状态机→日志重建→红框渲染→按钮锁定)
+------
+
 已完成 — 本轮 2026-06-29 (36) 彗星电子钟 v2：中央真理 + 每行独立 + 三面板一致
 ------
 · 定位修正：从 quest-tofu 全局右下角 → quest-tofu-prefix / quest-drop-prefix 右下角（z 矩形豆腐块内）
