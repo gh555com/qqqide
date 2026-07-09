@@ -15,12 +15,12 @@
         "loading": "読み込み中...",
         "copied": "コピーしました",
         "failed": "失敗",
-        "more": "その他",
+        "more": "もっと見る",
         "back": "戻る",
         "next": "次へ",
         "open": "開く",
         "edit": "編集",
-        "rename": "名前の変更",
+        "rename": "名前を変更",
         "download": "ダウンロード",
         "refresh": "更新",
         "preview": "プレビュー",
@@ -55,17 +55,17 @@
             "close": "閉じる"
         },
         "zoom": {
-            "in": "UIを拡大 (Ctrl+=)",
-            "out": "UIを縮小 (Ctrl+-)",
+            "in": "UIを拡大（Ctrl+=）",
+            "out": "UIを縮小（Ctrl+-）",
             "reset": "ズームをリセット"
         },
         "theme": {
-            "toggle": "ライト/ダークテーマの切り替え",
-            "switchToLight": "ライトテーマに切り替え",
-            "switchToDark": "ダークテーマに切り替え"
+            "toggle": "ライト/ダークテーマ切替",
+            "switchToLight": "ライトテーマへ切替",
+            "switchToDark": "ダークテーマへ切替"
         },
         "lang": {
-            "switch": "言語を切り替え"
+            "switch": "言語切替"
         },
         "status": {
             "version": "バージョン",
@@ -78,47 +78,52 @@
         },
         "update": {
             "check": "更新を確認",
-            "updatedTo": "{version} に更新されました。まもなく再読み込みします...",
-            "failed": "更新に失敗しました",
-            "failedWith": "更新に失敗しました",
-            "newVersion": "新しいバージョン {latest} が利用可能です (現在: {current})"
+            "updatedTo": "{version} に更新完了。まもなく再読み込み...",
+            "failed": "更新失敗",
+            "failedWith": "更新失敗",
+            "newVersion": "新バージョン {latest} が利用可能 (現在 {current})"
         },
         "overlay": {
             "copy": "クリップボードにコピー",
-            "copied": "コピーしました",
-            "copyFailed": "コピーに失敗しました",
+            "copied": "コピー済み",
+            "copyFailed": "コピー失敗",
             "zoomIn": "拡大",
             "zoomOut": "縮小",
-            "close": "閉じる (Esc)",
+            "close": "閉じる (Esc または右クリック)",
             "resetPosition": "位置をリセット"
         },
         "about": {
             "title": "qqq について",
             "version": "qqq-shell v2",
-            "desc": "ポータブル / Win7+ / サーバーホットアップデート"
+            "desc": "ポータブル / Win7+ / サーバーホットアップデート対応"
         },
         "tab": {
-            "openRight": "右側に新規タブを開く",
-            "openLeft": "左側に新規タブを開く"
+            "openRight": "右側に新規タブ",
+            "openLeft": "左側に新規タブ"
         },
         "viewport": {
-            "mainFolder": "メインフォルダ（削除未可）",
+            "mainFolder": "メインフォルダー（削除不可）",
             "removeProject": "このプロジェクトを削除",
-            "addProject": "プロジェクトフォルダを AI ビューポートに追加",
-            "selectFolder": "AI ビューポートに追加するフォルダを選択",
-            "searchFolder": "このフォルダ内を検索",
-            "recentFolders": "最近開いたメインフォルダ",
-            "noRecent": "最近の記録はありません。+ をクリックしてフォルダを選択してください"
+            "addProject": "AI ビューポートにプロジェクトフォルダーを追加",
+            "selectFolder": "AI ビューポートに追加するフォルダーを選択",
+            "searchFolder": "このフォルダー内を検索",
+            "recentFolders": "最近開いたメインフォルダー",
+            "noRecent": "最近の記録はありません。「+」をクリックしてフォルダーを選択",
+            "editx": "ファイルを編集",
+            "openInOs": "OS で開く",
+            "timeline": "タイムライン",
+            "copyPath": "パスをコピー"
         },
-        "dev": "開発モード",
-        "gaeaHostLoading": "gaea host 読み込み中...",
+        "dev": "開発者モード",
+        "gaeaHostLoading": "gaea host を読み込み中...",
         "free": {
-            "active": "💎 無料利用中",
-            "ending": "🎈 無料利用終了間近",
-            "soonPrefix": "🤍 次の無料利用まで"
+            "active": "💎 無料プラン有効",
+            "ending": "🎈 無料プラン終了間近",
+            "soonPrefix": "🤍 次の無料期間まで"
         }
     },
     "editor": {
+        "minimap": "ミニマップ",
         "tabs": {
             "close": "タブを閉じる",
             "closeOthers": "他のタブを閉じる",
@@ -137,7 +142,8 @@
             "paste": "貼り付け",
             "selectAll": "すべて選択",
             "undo": "元に戻す",
-            "redo": "やり直し"
+            "redo": "やり直し",
+            "feedToAi": "📎 AI に送信"
         },
         "undo": "元に戻す (Ctrl+Z)",
         "redo": "やり直し (Ctrl+Y)",
@@ -157,38 +163,142 @@
         "readOnly": "読み取り専用",
         "codelens": {
             "openFile": "ファイルを開く",
-            "openFolder": "フォルダーを開く",
+            "openFolder": "フォルダを開く",
             "copyPath": "パスをコピー",
-            "copyImage": "画像バイナリをコピー"
+            "copyImage": "画像のバイナリデータをコピー"
         }
     },
+    "login": {
+        "title": "ログイン",
+        "waiting": "ブラウザでのログインを待機中...",
+        "success": "ログイン成功",
+        "timeout": "ログインがタイムアウトしました。再試行してください",
+        "loggedOut": "ログアウトしました"
+    },
     "ai": {
-        "ctx": {
-            "title": "コンテキストを圧縮することを選択できます",
-            "benefit": "唯一の利点：",
-            "benefitText": "次回の対話からコストが削減されます。",
-            "cost": "コスト：",
-            "costText": "直近6レベルより前の会話の詳細は圧縮により失われ、AI はその要約のみを保持します。直近6レベルは完全に保存されます。",
-            "whatIf": "手動で圧縮し続けなかった場合は？",
-            "auto": "qqqide は最適な戦略で自動的に圧縮を行い、通常は手動圧縮よりも優れています。",
-            "noLoss": "圧縮の有無や実行主体に関わらず、AI のメモリが溢れたり、記憶が失われたりすることはありません。",
-            "complex": "複雑なプログラミングタスクに最適で、AI は限界までの長さの記憶空間を持つことになります。",
-            "compress": "圧縮",
+        "title": "AI",
+        "send": "送信",
+        "stop": "停止",
+        "guide": "ガイド",
+        "queue": {
+            "full": "キューの上限は3です。前のメッセージの送信が完了するまでお待ちください。",
+            "save": "保存",
+            "delete": "削除",
             "cancel": "キャンセル",
+            "pause": "一時停止",
+            "resume": "再開",
+            "clear": "クリア",
+            "header": "キュー",
+            "editTitle": "クリックして編集または削除"
+        },
+        "context": "コンテキスト",
+        "compress": "圧縮",
+        "snap": "スナップショット",
+        "error": {
+            "continueTask": "タスクを続行",
+            "noActiveAgent": "会話を開始するには、まずメッセージを送信してください",
+            "buildingFloor": "AI が階層を構築中です。現在の階層が完了するまで待ってから圧縮してください"
+        },
+        "compressing": "🧠 圧縮中...",
+        "compressSuccess": "✅ 圧縮完了",
+        "compressFail": "✗ 圧縮失敗",
+        "ctx": {
+            "title": "コンテキストを圧縮できます",
+            "benefit": "メリット：",
+            "benefitText": "次回の会話からコストを削減；AI が現在の問題に集中し、ハルシネーションを減らすのに役立ちます。",
+            "cost": "デメリット：",
+            "costText": "直近6階層より前の対話は圧縮され、詳細が失われます。AI は要約のみを記憶します。直近6階層は完全に保存されます。",
+            "whatIf": "手動で圧縮しない場合は？",
+            "auto": "qqqide は最適な戦略で自動的に圧縮を行うため、通常は手動圧縮よりも優れています。",
+            "noLoss": "いずれの場合でも（圧縮の有無や実行主体に関わらず）、AI のメモリが溢れたり、記憶が失われたりすることはありません。",
+            "compress": "圧縮",
+            "snap": "スナップショット",
             "breakdown": "コンテキスト使用量",
             "used": "使用中",
-            "free": "空き"
+            "free": "空き",
+            "snapOk": "スナップショットを保存しました",
+            "snapFail": "スナップショットの保存に失敗しました"
         },
-        "error": {
-            "noActiveAgent": "会話を開始するには、まずメッセージを送信してください",
-            "buildingFloor": "AI が処理中です。現在の処理が完了するまでお待ちください"
+        "inputPlaceholder": "qqq AI に質問... (Ctrl+V で画像を貼り付け)",
+        "inputLimitWarn": "入力上限（58KB）に達したため、これ以上入力できません",
+        "embedImage": "埋め込み",
+        "level": {
+            "a": "保守的",
+            "1": "軽度",
+            "2": "中程度",
+            "3": "スマート",
+            "4": "強力",
+            "5": "極限",
+            "6": "Pro Max"
         },
-        "level": {},
-        "tools": {},
-        "output": {},
-        "rules": {},
-        "quest": {},
-        "lock": {}
+        "floor": "階層",
+        "house": "ハウス",
+        "room": "ルーム",
+        "ttfb": "ネットワーク待機時間",
+        "work": "処理時間",
+        "total": "合計",
+        "tokens": "Token 消費量",
+        "confirmConnect": "接続を確認",
+        "thinking": "思考中...",
+        "streaming": "生成中...",
+        "tools": {
+            "readFile": "ファイルを読み取る",
+            "editFile": "ファイルを編集",
+            "createFile": "ファイルを作成",
+            "deleteFile": "ファイルを削除",
+            "writeFile": "ファイルに書き込む",
+            "searchText": "テキストを検索",
+            "findFiles": "ファイルを探す",
+            "listFiles": "ファイル一覧",
+            "getDiagnostics": "診断情報を取得",
+            "runCommand": "コマンド実行",
+            "fetchWebpage": "ウェブページを取得",
+            "getVision": "視覚コンテキストを取得"
+        },
+        "output": {
+            "empty": "入力待ち...",
+            "compressInProgress": "圧縮中...",
+            "compressDone": "圧縮完了",
+            "tokenLimit": "トークン上限に達しました"
+        },
+        "rules": {
+            "title": "プロジェクトルール",
+            "edit": "ルールを編集",
+            "empty": "ルールなし",
+            "globalRule": "グローバルルール (.qqq-rules.txt)",
+            "projectRule": "プロジェクトルール (project.txt)"
+        },
+        "quest": {
+            "switch": "プロジェクトを切り替え",
+            "newQuest": "新規チャット",
+            "history": "履歴",
+            "noHistory": "履歴なし",
+            "saveFailed": "保存に失敗しました"
+        },
+        "lock": {
+            "locked": "このプロジェクトは他のウィンドウで開かれています",
+            "stale": "ロックの有効期限が切れました",
+            "heartbeat": "ハートビート"
+        },
+        "onboarding": {
+            "selectFolder": "まずメインフォルダを選択してください！",
+            "selectFolderTitle": "メインフォルダを選択"
+        },
+        "guideBtnTooltip": "新しいスレッドを開始せず、現在のメッセージでAIをガイドします！",
+        "billing": {
+            "number": "番号",
+            "type": "タイプ",
+            "toolCount": "ツール数",
+            "time": "所要時間",
+            "wge": "wge",
+            "aiLv": "AIレベル",
+            "cacheHit": "キャッシュヒット率",
+            "promptTokens": "prompt_tokens",
+            "completionTokens": "completion_tokens",
+            "totalTokens": "total_tokens",
+            "receipt": "課金明細（10000wge = 1ge）",
+            "title": "課金詳細"
+        }
     },
     "goods": {
         "bar": {
@@ -204,32 +314,32 @@
             "size": "サイズ",
             "modified": "更新日時",
             "type": "種類",
-            "folder": "フォルダー",
+            "folder": "フォルダ",
             "file": "ファイル",
             "empty": "空のディレクトリ",
             "loading": "読み込み中...",
-            "loadFailed": "読み込みに失敗しました",
-            "noAccess": "アクセス権限がありません"
+            "loadFailed": "読み込み失敗",
+            "noAccess": "アクセス権限なし"
         },
         "navigator": {
-            "title": "ナビゲーター",
+            "title": "ナビゲーション",
             "explorer": "エクスプローラー",
-            "search": "ファイル検索",
+            "search": "ファイルを検索",
             "openEditors": "開いているエディター",
             "outline": "アウトライン",
             "timeline": "タイムライン",
-            "inputPlaceholder": "パスの一部を入力し、Enter で開く / Esc で閉じる",
+            "inputPlaceholder": "パスの一部を入力し、Enterで開く / Escで閉じる",
             "noRecent": "最近のファイルはありません。まずファイルツリーでいくつかのファイルを開いてください",
-            "noMatch": "一致する項目がありません"
+            "noMatch": "一致する項目なし"
         },
         "pasteImage": {
             "title": "画像を貼り付け",
             "pasteHint": "Ctrl+V で画像を貼り付け",
             "pasting": "貼り付け中...",
             "pasteOk": "画像を貼り付けました",
-            "pasteFailed": "貼り付けに失敗しました",
+            "pasteFailed": "貼り付け失敗",
             "saveFailed": "貼り付けた画像の保存に失敗しました",
-            "saved": "画像を保存しました：",
+            "saved": "画像を保存しました: ",
             "noImage": "クリップボードに画像がありません"
         },
         "wysiwyg": {
@@ -247,7 +357,7 @@
             "link": "リンク",
             "image": "画像",
             "table": "表",
-            "horizontalRule": "水平線",
+            "horizontalRule": "区切り線",
             "clearFormat": "書式をクリア",
             "undo": "元に戻す",
             "redo": "やり直し"
@@ -272,17 +382,17 @@
             },
             "captain": {
                 "paste": "貼り付け",
-                "roam": "ローミング",
+                "roam": "移動",
                 "video": "動画",
                 "weave": "編成",
                 "exportDoc": "ドキュメントをエクスポート",
-                "pure": "プレーン",
+                "pure": "ピュア",
                 "exportZip": "ZIPアーカイブをエクスポート",
-                "audio": "音声"
+                "audio": "オーディオ"
             },
             "search": {
                 "hint": "複数キーワード AND 検索",
-                "noResults": "一致する結果はありません"
+                "noResults": "一致する結果がありません"
             }
         }
     },
@@ -317,7 +427,7 @@
         "ctrlN": "新規ファイル",
         "ctrlO": "ファイルを開く",
         "ctrlW": "タブを閉じる",
-        "ctrlShiftE": "ファイルエクスプローラーを表示",
+        "ctrlShiftE": "ファイルブラウザを表示",
         "ctrlShiftF": "ファイルを検索",
         "ctrlBackslash": "右に分割",
         "ctrlPlus": "拡大",
@@ -338,7 +448,7 @@
         "maximize": "最大化",
         "full": "📋 全文",
         "diff": "📌 差分",
-        "acceptLeft": "← 左側を採用",
+        "acceptLeft": "← 右へ移動",
         "save": "💾 保存",
         "changes": "{n} 件の変更",
         "modeFull": "全文",
@@ -346,12 +456,25 @@
         "loading": "読み込み中…",
         "noVersions": "このファイルには履歴バージョンがありません",
         "missingParams": "パラメータが不足しています",
-        "loadingVersions": "バージョンリストを読み込み中…",
+        "loadingVersions": "バージョンリストを読み込んでいます…",
         "monacoTimeout": "Monaco の読み込みがタイムアウトしました。ネットワークを確認するか、ウィンドウを再起動してください",
         "monacoFailed": "Monaco の読み込みに失敗しました",
         "saved": "保存済み",
         "saveFailed": "保存に失敗しました",
         "copyRow": "この行のテキストをコピー",
-        "closeHint": "= 右クリックで閉じる"
+        "closeHint": "= 右クリックで閉じる",
+        "diffOnly": "差分のみ",
+        "editBtn": "編集",
+        "cancelEdit": "編集をキャンセル",
+        "editTooltip": "現在のディスク上の最新ファイルを編集します（履歴スナップショットではありません）",
+        "editTooltipExit": "編集を終了しても自動保存されません",
+        "editing": "編集中",
+        "unsaved": "未保存",
+        "snapshot": "📸 スナップショットを作成",
+        "snapUnchanged": "内容に変更がないため、スナップショットは不要です",
+        "snapping": "スナップショットを作成中…",
+        "snapOk": "スナップショット #{seq} {time} diff edit を作成しました",
+        "snapNoNew": "新しいスナップショットは生成されませんでした。内容に変更がないか、クールダウン中の可能性があります",
+        "snapFailed": "スナップショットの作成に失敗しました"
     }
 }

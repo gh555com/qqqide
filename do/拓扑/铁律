@@ -233,10 +233,12 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - AI基础: content-gateway→system-prompt→embedding→ai-gateway→tools-defs。
   - 新增文件必须同步更新 index.html script顺序+service-worker缓存版本。
 
-§35b Service Worker — 禁拦截 /api/ 请求
-  - SW fetch handler 必须跳过 pathname 含 /api/ 的请求（直接 return，不 respondWith）。
-  - 拦截跨域 API 导致登录轮询静默失败（net::ERR_FAILED）→ token 拿不到。
-  - 违规即返工。SW 只应管理自身同源静态资源缓存。
+§35b SW 缓存失效 — 改静态文件必须升 CACHE_NAME (2026-07-10)
+  - ★ 改 i18n/HTML/CSS/JS 等静态文件后，必须同步升 service-worker.js 的 CACHE_NAME（如 v12→v13）。
+    否则重启不生效——SW 是 Chromium 持久化缓存，重启 Electron 也不清。
+  - 调试确认: 看 DevTools Network 面板是否 from ServiceWorker，是则版本号没升。
+  - fetch handler 必须跳过 pathname 含 /api/ 的请求（直接 return）。禁拦截跨域 API。
+  - 违规即返工。
 
 §36 Per-Agent 状态 — 禁全局 timer/A1 变量
   - _floorTimerId/_floorStartPerf/_floorCurrentTiming/_activeAiDiv 已移入 agent 对象。

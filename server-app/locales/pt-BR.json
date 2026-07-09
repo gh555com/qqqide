@@ -14,7 +14,7 @@
         "no": "Não",
         "loading": "Carregando...",
         "copied": "Copiado",
-        "failed": "Falhou",
+        "failed": "Falha",
         "more": "Mais",
         "back": "Voltar",
         "next": "Próximo",
@@ -55,8 +55,8 @@
             "close": "Fechar"
         },
         "zoom": {
-            "in": "Aumentar zoom da UI (Ctrl+=)",
-            "out": "Diminuir zoom da UI (Ctrl+-)",
+            "in": "Aumentar zoom da interface (Ctrl+=)",
+            "out": "Diminuir zoom da interface (Ctrl+-)",
             "reset": "Redefinir zoom"
         },
         "theme": {
@@ -89,40 +89,45 @@
             "copyFailed": "Falha ao copiar",
             "zoomIn": "Aumentar zoom",
             "zoomOut": "Diminuir zoom",
-            "close": "Fechar (Esc)",
+            "close": "Fechar (Esc ou clique direito)",
             "resetPosition": "Redefinir posição"
         },
         "about": {
             "title": "Sobre o qqq",
             "version": "qqq-shell v2",
-            "desc": "Portátil / Win7+ / Atualização dinâmica no servidor"
+            "desc": "Portátil / Win7+ / Atualização quente do servidor"
         },
         "tab": {
             "openRight": "Abrir à direita",
             "openLeft": "Abrir à esquerda"
         },
         "viewport": {
-            "mainFolder": "Pasta principal (não pode ser removida)",
+            "mainFolder": "Pasta principal (não removível)",
             "removeProject": "Remover este projeto",
-            "addProject": "Adicionar pasta do projeto à visão de IA",
-            "selectFolder": "Selecionar pasta para adicionar à visão de IA",
+            "addProject": "Adicionar pasta do projeto à viewport da IA",
+            "selectFolder": "Selecionar pasta para adicionar à viewport da IA",
             "searchFolder": "Pesquisar nesta pasta",
-            "recentFolders": "Pastas principais abertas recentemente",
-            "noRecent": "Nenhum registro recente. Clique em + para selecionar uma pasta"
+            "recentFolders": "Pastas principais recentes",
+            "noRecent": "Nenhum registro recente, clique em + para selecionar uma pasta",
+            "editx": "Editar arquivo",
+            "openInOs": "Abrir no sistema",
+            "timeline": "Linha do tempo",
+            "copyPath": "Copiar caminho"
         },
         "dev": "Modo de desenvolvimento",
-        "gaeaHostLoading": "Carregando host gaea...",
+        "gaeaHostLoading": "Carregando gaea host...",
         "free": {
             "active": "💎 Gratuito ativo",
-            "ending": "🎈 A gratuitidade está acabando",
-            "soonPrefix": "🤍 Até a próxima gratuitidade"
+            "ending": "🎈 Período gratuito terminando",
+            "soonPrefix": "🤍 Até o próximo período gratuito"
         }
     },
     "editor": {
+        "minimap": "Minimapa",
         "tabs": {
             "close": "Fechar aba",
             "closeOthers": "Fechar outras",
-            "closeRight": "Fechar à direita",
+            "closeRight": "Fechar abas à direita",
             "closeAll": "Fechar todas",
             "closeSaved": "Fechar salvas",
             "revealInExplorer": "Mostrar no explorador de arquivos",
@@ -137,7 +142,8 @@
             "paste": "Colar",
             "selectAll": "Selecionar tudo",
             "undo": "Desfazer",
-            "redo": "Refazer"
+            "redo": "Refazer",
+            "feedToAi": "📎 Enviar para IA"
         },
         "undo": "Desfazer (Ctrl+Z)",
         "redo": "Refazer (Ctrl+Y)",
@@ -146,7 +152,7 @@
         "saving": "Salvando...",
         "saveFailed": "Falha ao salvar",
         "fileTooLarge": "Arquivo muito grande",
-        "binaryFile": "Arquivo binário, não editável",
+        "binaryFile": "Arquivo binário, não é possível editar",
         "line": "Linha",
         "col": "Coluna",
         "spaces": "Espaços",
@@ -162,42 +168,146 @@
             "copyImage": "Copiar binário da imagem"
         }
     },
+    "login": {
+        "title": "Entrar",
+        "waiting": "Aguardando login no navegador...",
+        "success": "Login realizado com sucesso",
+        "timeout": "Tempo de login esgotado, tente novamente",
+        "loggedOut": "Desconectado"
+    },
     "ai": {
+        "title": "IA",
+        "send": "Enviar",
+        "stop": "Parar",
+        "guide": "Guia",
+        "queue": {
+            "full": "Limite da fila é 3, aguarde o envio da mensagem anterior.",
+            "save": "Salvar",
+            "delete": "Excluir",
+            "cancel": "Cancelar",
+            "pause": "Pausar",
+            "resume": "Continuar",
+            "clear": "Limpar",
+            "header": "Fila",
+            "editTitle": "Clique para editar ou excluir"
+        },
+        "context": "Contexto",
+        "compress": "Comprimir",
+        "snap": "Instantâneo",
+        "error": {
+            "continueTask": "Continuar tarefa",
+            "noActiveAgent": "Por favor, envie uma mensagem primeiro para criar uma conversa",
+            "buildingFloor": "A IA está construindo o andar. Aguarde a conclusão do andar atual antes de comprimir."
+        },
+        "compressing": "🧠 Comprimindo...",
+        "compressSuccess": "✅ Compressão concluída",
+        "compressFail": "✗ Falha na compressão",
         "ctx": {
             "title": "Você pode optar por comprimir o contexto",
-            "benefit": "Único benefício:",
-            "benefitText": "Reduz os custos a partir da próxima conversa.",
-            "cost": "Custo:",
-            "costText": "As conversas anteriores às últimas seis camadas serão comprimidas e perderão detalhes; a IA lembrará apenas dos resumos. As últimas seis camadas serão preservadas integralmente.",
+            "benefit": "Benefícios:",
+            "benefitText": "Reduz os custos a partir da próxima conversa; ajuda a IA a focar melhor no problema atual e reduz alucinações.",
+            "cost": "Custos:",
+            "costText": "As conversas anteriores aos últimos seis andares serão comprimidas, perdendo detalhes; a IA lembrará apenas dos resumos. Os últimos seis andares serão preservados integralmente.",
             "whatIf": "E se eu nunca comprimir manualmente?",
-            "auto": "O qqqide comprime automaticamente com a melhor estratégia, geralmente melhor que a compressão manual.",
-            "noLoss": "De qualquer forma (com ou sem compressão, quem comprime), isso não causará estouro nem perda de memória da IA.",
-            "complex": "Mais adequado para tarefas de programação complexas, onde a IA terá um espaço de memória de comprimento limitado.",
+            "auto": "O qqqide usa a estratégia ótima para compressão automática, geralmente superior à compressão manual.",
+            "noLoss": "De qualquer forma (com ou sem compressão, independentemente de quem comprime), isso não causará sobrecarga nem perda de memória da IA.",
             "compress": "Comprimir",
-            "cancel": "Cancelar",
+            "snap": "Instantâneo",
             "breakdown": "Uso do contexto",
-            "used": "Utilizado",
-            "free": "Disponível"
+            "used": "Usado",
+            "free": "Livre",
+            "snapOk": "Instantâneo salvo",
+            "snapFail": "Falha ao salvar instantâneo"
         },
-        "error": {
-            "noActiveAgent": "Envie uma mensagem primeiro para criar uma conversa",
-            "buildingFloor": "A IA está processando. Aguarde a conclusão atual antes de compactar"
+        "inputPlaceholder": "Pergunte à IA do qqq... (Ctrl+V para colar imagem)",
+        "inputLimitWarn": "Limite de digitação atingido (58 KB). Não é possível continuar digitando.",
+        "embedImage": "Incorporar",
+        "level": {
+            "a": "Conservador",
+            "1": "Leve",
+            "2": "Moderado",
+            "3": "Inteligente",
+            "4": "Forte",
+            "5": "Extremo",
+            "6": "Pro Max"
         },
-        "level": {},
-        "tools": {},
-        "output": {},
-        "rules": {},
-        "quest": {},
-        "lock": {}
+        "floor": "Andar",
+        "house": "Casa",
+        "room": "Sala",
+        "ttfb": "Espera de rede",
+        "work": "Tempo de processamento",
+        "total": "Total",
+        "tokens": "Consumo de Tokens",
+        "confirmConnect": "Confirmar conexão",
+        "thinking": "Pensando...",
+        "streaming": "Gerando...",
+        "tools": {
+            "readFile": "Ler arquivo",
+            "editFile": "Editar arquivo",
+            "createFile": "Criar arquivo",
+            "deleteFile": "Excluir arquivo",
+            "writeFile": "Gravar arquivo",
+            "searchText": "Pesquisar texto",
+            "findFiles": "Localizar arquivos",
+            "listFiles": "Listar arquivos",
+            "getDiagnostics": "Obter diagnósticos",
+            "runCommand": "Executar comando",
+            "fetchWebpage": "Buscar página web",
+            "getVision": "Obter contexto visual"
+        },
+        "output": {
+            "empty": "Aguardando digitação...",
+            "compressInProgress": "Compactando...",
+            "compressDone": "Compactação concluída",
+            "tokenLimit": "Limite de tokens atingido"
+        },
+        "rules": {
+            "title": "Regras do projeto",
+            "edit": "Editar regras",
+            "empty": "Nenhuma regra no momento",
+            "globalRule": "Regra global (.qqq-rules.txt)",
+            "projectRule": "Regra do projeto (project.txt)"
+        },
+        "quest": {
+            "switch": "Alternar projeto",
+            "newQuest": "Nova conversa",
+            "history": "Histórico",
+            "noHistory": "Sem histórico",
+            "saveFailed": "Falha ao salvar"
+        },
+        "lock": {
+            "locked": "Projeto já aberto em outra janela",
+            "stale": "Bloqueio expirado",
+            "heartbeat": "Sinal de atividade"
+        },
+        "onboarding": {
+            "selectFolder": "Por favor, selecione uma pasta principal primeiro!",
+            "selectFolderTitle": "Selecione uma pasta principal"
+        },
+        "guideBtnTooltip": "Guie a IA com a mensagem atual sem iniciar um novo nível!",
+        "billing": {
+            "number": "Número",
+            "type": "Tipo",
+            "toolCount": "Qtd. de ferramentas",
+            "time": "Tempo gasto",
+            "wge": "wge",
+            "aiLv": "Nível da IA",
+            "cacheHit": "Taxa de acerto do cache",
+            "promptTokens": "prompt_tokens",
+            "completionTokens": "completion_tokens",
+            "totalTokens": "total_tokens",
+            "receipt": "Comprovante de cobrança (10000wge = 1ge)",
+            "title": "Detalhes de cobrança"
+        }
     },
     "goods": {
         "bar": {
-            "title": "Alternar funcionalidades"
+            "title": "Alternar funcionalidade"
         },
         "fileExplorer": {
             "title": "Explorador de arquivos",
             "openFile": "Abrir arquivo",
-            "openInIde": "Abrir na IDE",
+            "openInIde": "Abrir no IDE",
             "refresh": "Atualizar diretório",
             "parentDir": "Diretório pai",
             "name": "Nome",
@@ -213,17 +323,17 @@
         },
         "navigator": {
             "title": "Navegação",
-            "explorer": "Explorador",
+            "explorer": "Explorador de Arquivos",
             "search": "Pesquisar arquivos",
-            "openEditors": "Editores abertos",
+            "openEditors": "Editores Abertos",
             "outline": "Estrutura",
-            "timeline": "Linha do tempo",
-            "inputPlaceholder": "Digite um trecho do caminho, Enter para abrir / Esc para fechar",
-            "noRecent": "Ainda não há arquivos recentes. Abra alguns arquivos na árvore de arquivos primeiro.",
+            "timeline": "Linha do Tempo",
+            "inputPlaceholder": "Digite um caminho, Enter para abrir / Esc para fechar",
+            "noRecent": "Nenhum arquivo recente. Abra alguns arquivos na árvore de diretórios primeiro.",
             "noMatch": "Nenhum resultado encontrado"
         },
         "pasteImage": {
-            "title": "Colar imagem",
+            "title": "Colar Imagem",
             "pasteHint": "Ctrl+V para colar imagem",
             "pasting": "Colando...",
             "pasteOk": "Imagem colada",
@@ -241,27 +351,27 @@
             "heading": "Título",
             "paragraph": "Parágrafo",
             "list": "Lista",
-            "orderedList": "Lista ordenada",
+            "orderedList": "Lista Numerada",
             "quote": "Citação",
             "code": "Código",
             "link": "Link",
             "image": "Imagem",
             "table": "Tabela",
-            "horizontalRule": "Linha horizontal",
-            "clearFormat": "Limpar formatação",
+            "horizontalRule": "Linha Horizontal",
+            "clearFormat": "Limpar Formatação",
             "undo": "Desfazer",
             "redo": "Refazer"
         },
         "rage": {
-            "title": "Área de transferência",
+            "title": "Área de Transferência",
             "clip": {
-                "title": "Histórico da área de transferência",
-                "empty": "Nenhum conteúdo copiado",
+                "title": "Histórico da Área de Transferência",
+                "empty": "Nenhum conteúdo copiado no momento",
                 "search": "Pesquisar na área de transferência...",
                 "pin": "Fixar",
-                "unpin": "Desfixar",
+                "unpin": "Desafixar",
                 "delete": "Excluir",
-                "clearAll": "Limpar tudo",
+                "clearAll": "Limpar Tudo",
                 "count": "{n} itens",
                 "text": "Texto",
                 "image": "Imagem",
@@ -274,14 +384,14 @@
                 "paste": "Colar",
                 "roam": "Navegar",
                 "video": "Vídeo",
-                "weave": "Tecelagem",
+                "weave": "Compor",
                 "exportDoc": "Exportar documento",
                 "pure": "Puro",
-                "exportZip": "Exportar ZIP",
+                "exportZip": "Exportar arquivo ZIP",
                 "audio": "Áudio"
             },
             "search": {
-                "hint": "Pesquisa AND com múltiplas palavras-chave",
+                "hint": "Pesquisa com múltiplas palavras-chave (AND)",
                 "noResults": "Nenhum resultado encontrado"
             }
         }
@@ -290,7 +400,7 @@
         "about": {
             "title": "Sobre o qqq",
             "message": "qqq-shell v2",
-            "detail": "Portátil / Win7+ / Atualização dinâmica no servidor"
+            "detail": "Portátil / Win7+ / Atualização automática do servidor"
         },
         "confirmDelete": {
             "title": "Confirmar exclusão",
@@ -317,8 +427,8 @@
         "ctrlN": "Novo arquivo",
         "ctrlO": "Abrir arquivo",
         "ctrlW": "Fechar aba",
-        "ctrlShiftE": "Mostrar explorador de arquivos",
-        "ctrlShiftF": "Pesquisar arquivos",
+        "ctrlShiftE": "Exibir explorador de arquivos",
+        "ctrlShiftF": "Pesquisar arquivo",
         "ctrlBackslash": "Dividir à direita",
         "ctrlPlus": "Aumentar zoom",
         "ctrlMinus": "Diminuir zoom",
@@ -336,22 +446,35 @@
         "searchHistory": "Histórico de pesquisa",
         "dragHandle": "Arraste para mover a janela",
         "maximize": "Maximizar",
-        "full": "📋 Texto completo",
+        "full": "📋 Texto Completo",
         "diff": "📌 Diferenças",
         "acceptLeft": "← Mover para a direita",
         "save": "💾 Salvar",
         "changes": "{n} alteração(ões)",
-        "modeFull": "Texto completo",
+        "modeFull": "Texto Completo",
         "modeDiff": "Diferenças",
         "loading": "Carregando…",
-        "noVersions": "Este arquivo não possui versões anteriores",
+        "noVersions": "Este arquivo não possui versões históricas",
         "missingParams": "Parâmetros ausentes",
         "loadingVersions": "Carregando lista de versões…",
-        "monacoTimeout": "Tempo esgotado ao carregar o Monaco. Verifique sua conexão ou reinicie a janela",
+        "monacoTimeout": "Tempo esgotado ao carregar o Monaco. Verifique a rede ou reinicie a janela",
         "monacoFailed": "Falha ao carregar o Monaco",
         "saved": "Salvo",
         "saveFailed": "Falha ao salvar",
         "copyRow": "Copiar texto desta linha",
-        "closeHint": "= Clique com o botão direito para fechar"
+        "closeHint": "= Clique com o botão direito para fechar",
+        "diffOnly": "Apenas diferenças",
+        "editBtn": "Editar",
+        "cancelEdit": "Cancelar edição",
+        "editTooltip": "Editar o arquivo mais recente no disco (não uma das capturas históricas)",
+        "editTooltipExit": "Não salva automaticamente ao sair do modo de edição",
+        "editing": "Editando",
+        "unsaved": "Não salvo",
+        "snapshot": "📸 Criar captura",
+        "snapUnchanged": "Conteúdo inalterado, não é necessário criar captura",
+        "snapping": "Criando captura…",
+        "snapOk": "Captura #{seq} criada {time} diff edit",
+        "snapNoNew": "Nenhuma nova captura gerada; possível conteúdo inalterado ou em período de espera",
+        "snapFailed": "Falha ao criar captura"
     }
 }

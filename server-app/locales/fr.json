@@ -60,9 +60,9 @@
             "reset": "Réinitialiser le zoom"
         },
         "theme": {
-            "toggle": "Basculer thème clair/sombre",
-            "switchToLight": "Passer au thème clair",
-            "switchToDark": "Passer au thème sombre"
+            "toggle": "Basculer mode clair/sombre",
+            "switchToLight": "Passer au mode clair",
+            "switchToDark": "Passer au mode sombre"
         },
         "lang": {
             "switch": "Changer de langue"
@@ -89,7 +89,7 @@
             "copyFailed": "Échec de la copie",
             "zoomIn": "Zoom avant",
             "zoomOut": "Zoom arrière",
-            "close": "Fermer (Échap)",
+            "close": "Fermer (Échap ou clic droit)",
             "resetPosition": "Réinitialiser la position"
         },
         "about": {
@@ -104,21 +104,26 @@
         "viewport": {
             "mainFolder": "Dossier principal (non supprimable)",
             "removeProject": "Supprimer ce projet",
-            "addProject": "Ajouter le dossier du projet à la vue IA",
+            "addProject": "Ajouter un dossier de projet à la vue IA",
             "selectFolder": "Sélectionner le dossier à ajouter à la vue IA",
             "searchFolder": "Rechercher dans ce dossier",
-            "recentFolders": "Dossiers principaux récemment ouverts",
-            "noRecent": "Aucun historique récent, cliquez sur + pour sélectionner un dossier"
+            "recentFolders": "Dossiers principaux récents",
+            "noRecent": "Aucun historique récent, cliquez sur + pour sélectionner un dossier",
+            "editx": "Modifier le fichier",
+            "openInOs": "Ouvrir dans le système",
+            "timeline": "Chronologie",
+            "copyPath": "Copier le chemin"
         },
         "dev": "Mode développeur",
         "gaeaHostLoading": "Chargement de gaea host...",
         "free": {
             "active": "💎 Gratuit actif",
             "ending": "🎈 La période gratuite se termine",
-            "soonPrefix": "🤍 Prochain accès gratuit dans"
+            "soonPrefix": "🤍 Jusqu'à la prochaine gratuité"
         }
     },
     "editor": {
+        "minimap": "Minimap",
         "tabs": {
             "close": "Fermer l'onglet",
             "closeOthers": "Fermer les autres",
@@ -128,8 +133,8 @@
             "revealInExplorer": "Afficher dans l'explorateur de fichiers",
             "copyPath": "Copier le chemin",
             "copyRelativePath": "Copier le chemin relatif",
-            "splitRight": "Diviser à droite",
-            "splitDown": "Diviser vers le bas"
+            "splitRight": "Fractionner à droite",
+            "splitDown": "Fractionner en bas"
         },
         "contextMenu": {
             "cut": "Couper",
@@ -137,13 +142,14 @@
             "paste": "Coller",
             "selectAll": "Tout sélectionner",
             "undo": "Annuler",
-            "redo": "Rétablir"
+            "redo": "Rétablir",
+            "feedToAi": "📎 Envoyer à l'IA"
         },
         "undo": "Annuler (Ctrl+Z)",
         "redo": "Rétablir (Ctrl+Y)",
         "unsaved": "Non enregistré",
         "saved": "Enregistré",
-        "saving": "Enregistrement...",
+        "saving": "Enregistrement en cours...",
         "saveFailed": "Échec de l'enregistrement",
         "fileTooLarge": "Fichier trop volumineux",
         "binaryFile": "Fichier binaire, édition impossible",
@@ -159,47 +165,151 @@
             "openFile": "Ouvrir le fichier",
             "openFolder": "Ouvrir le dossier",
             "copyPath": "Copier le chemin",
-            "copyImage": "Copier l'image binaire"
+            "copyImage": "Copier l'image en binaire"
         }
     },
+    "login": {
+        "title": "Connexion",
+        "waiting": "En attente de la connexion via le navigateur...",
+        "success": "Connexion réussie",
+        "timeout": "Délai de connexion dépassé, veuillez réessayer",
+        "loggedOut": "Déconnecté"
+    },
     "ai": {
+        "title": "IA",
+        "send": "Envoyer",
+        "stop": "Arrêter",
+        "guide": "Guide",
+        "queue": {
+            "full": "La file d'attente est limitée à 3 éléments, veuillez attendre que le message précédent soit envoyé.",
+            "save": "Enregistrer",
+            "delete": "Supprimer",
+            "cancel": "Annuler",
+            "pause": "Pause",
+            "resume": "Reprendre",
+            "clear": "Vider",
+            "header": "File d'attente",
+            "editTitle": "Cliquez pour modifier ou supprimer"
+        },
+        "context": "Contexte",
+        "compress": "Compresser",
+        "snap": "Instantané",
+        "error": {
+            "continueTask": "Continuer la tâche",
+            "noActiveAgent": "Veuillez d'abord envoyer un message pour créer une conversation",
+            "buildingFloor": "L'IA est en train de construire l'étage, veuillez attendre que l'étage actuel soit terminé avant de compresser"
+        },
+        "compressing": "🧠 Compression en cours...",
+        "compressSuccess": "✅ Compression terminée",
+        "compressFail": "✗ Échec de la compression",
         "ctx": {
             "title": "Vous pouvez choisir de compresser le contexte",
-            "benefit": "Seul avantage :",
-            "benefitText": "Réduction des coûts à partir de la prochaine conversation.",
-            "cost": "Coût :",
-            "costText": "Les conversations antérieures aux six derniers niveaux seront compressées et perdront leurs détails ; l'IA ne conservera que leur résumé. Les six derniers niveaux seront intégralement conservés.",
+            "benefit": "Avantages :",
+            "benefitText": "Réduit les coûts dès la prochaine conversation ; permet à l'IA de se concentrer davantage sur le problème actuel et de réduire les hallucinations.",
+            "cost": "Inconvénients :",
+            "costText": "Les conversations antérieures aux six derniers étages seront compressées et perdront leurs détails ; l'IA ne conservera que leur résumé. Les six derniers étages seront conservés intégralement.",
             "whatIf": "Que se passe-t-il si je ne compresse jamais manuellement ?",
-            "auto": "qqqide compresse automatiquement avec la stratégie optimale, généralement mieux que la compression manuelle.",
-            "noLoss": "Dans tous les cas (avec ou sans compression, quel que soit l'auteur), cela ne saturera ni ne fera perdre la mémoire de l'IA.",
-            "complex": "Plus adapté aux tâches de programmation complexes, où l'IA disposera d'un espace mémoire de longueur limitée.",
+            "auto": "qqqide utilise une stratégie optimale pour la compression automatique, généralement plus efficace que la compression manuelle.",
+            "noLoss": "Dans tous les cas (avec ou sans compression, quel que soit l'auteur), cela ne provoquera ni saturation ni perte de la mémoire de l'IA.",
             "compress": "Compresser",
-            "cancel": "Annuler",
+            "snap": "Instantané",
             "breakdown": "Utilisation du contexte",
             "used": "Utilisé",
-            "free": "Libre"
+            "free": "Disponible",
+            "snapOk": "Instantané enregistré",
+            "snapFail": "Échec de l'enregistrement de l'instantané"
         },
-        "error": {
-            "noActiveAgent": "Veuillez d'abord envoyer un message pour créer une conversation",
-            "buildingFloor": "L'IA est en train de construire, veuillez attendre que l'étage actuel soit terminé avant de compresser"
+        "inputPlaceholder": "Demander à qqq AI... (Ctrl+V pour coller une image)",
+        "inputLimitWarn": "Limite de saisie atteinte (58 Ko), impossible de continuer à saisir",
+        "embedImage": "Intégrer",
+        "level": {
+            "a": "Prudent",
+            "1": "Léger",
+            "2": "Modéré",
+            "3": "Intelligent",
+            "4": "Puissant",
+            "5": "Extrême",
+            "6": "Pro Max"
         },
-        "level": {},
-        "tools": {},
-        "output": {},
-        "rules": {},
-        "quest": {},
-        "lock": {}
+        "floor": "Étage",
+        "house": "Maison",
+        "room": "Pièce",
+        "ttfb": "Attente réseau",
+        "work": "Temps de traitement",
+        "total": "Total",
+        "tokens": "Consommation de tokens",
+        "confirmConnect": "Confirmer la connexion",
+        "thinking": "Réflexion en cours...",
+        "streaming": "Génération en cours...",
+        "tools": {
+            "readFile": "Lire le fichier",
+            "editFile": "Modifier le fichier",
+            "createFile": "Créer un fichier",
+            "deleteFile": "Supprimer le fichier",
+            "writeFile": "Écrire dans le fichier",
+            "searchText": "Rechercher du texte",
+            "findFiles": "Trouver des fichiers",
+            "listFiles": "Lister les fichiers",
+            "getDiagnostics": "Obtenir le diagnostic",
+            "runCommand": "Exécuter la commande",
+            "fetchWebpage": "Récupérer la page web",
+            "getVision": "Obtenir le contexte visuel"
+        },
+        "output": {
+            "empty": "En attente de saisie...",
+            "compressInProgress": "Compression en cours...",
+            "compressDone": "Compression terminée",
+            "tokenLimit": "Limite de tokens atteinte"
+        },
+        "rules": {
+            "title": "Règles du projet",
+            "edit": "Modifier les règles",
+            "empty": "Aucune règle pour le moment",
+            "globalRule": "Règle globale (.qqq-rules.txt)",
+            "projectRule": "Règle du projet (project.txt)"
+        },
+        "quest": {
+            "switch": "Changer de projet",
+            "newQuest": "Nouvelle conversation",
+            "history": "Historique",
+            "noHistory": "Aucun historique",
+            "saveFailed": "Échec de l'enregistrement"
+        },
+        "lock": {
+            "locked": "Le projet est déjà ouvert dans une autre fenêtre",
+            "stale": "Verrou expiré",
+            "heartbeat": "Signal de présence"
+        },
+        "onboarding": {
+            "selectFolder": "Veuillez d'abord sélectionner un dossier principal !",
+            "selectFolderTitle": "Veuillez sélectionner un dossier principal"
+        },
+        "guideBtnTooltip": "Guider l'IA avec le message actuel sans créer de nouveau niveau !",
+        "billing": {
+            "number": "Numéro",
+            "type": "Type",
+            "toolCount": "Nombre d'outils",
+            "time": "Temps écoulé",
+            "wge": "wge",
+            "aiLv": "Niveau IA",
+            "cacheHit": "Taux de succès du cache",
+            "promptTokens": "prompt_tokens",
+            "completionTokens": "completion_tokens",
+            "totalTokens": "total_tokens",
+            "receipt": "Reçu de facturation (10000 wge = 1 ge)",
+            "title": "Détails de facturation"
+        }
     },
     "goods": {
         "bar": {
-            "title": "Changement de fonctionnalité"
+            "title": "Basculer la fonction"
         },
         "fileExplorer": {
             "title": "Explorateur de fichiers",
             "openFile": "Ouvrir le fichier",
             "openInIde": "Ouvrir dans l'IDE",
             "refresh": "Actualiser le répertoire",
-            "parentDir": "Dossier parent",
+            "parentDir": "Répertoire parent",
             "name": "Nom",
             "size": "Taille",
             "modified": "Date de modification",
@@ -213,17 +323,17 @@
         },
         "navigator": {
             "title": "Navigation",
-            "explorer": "Explorateur",
+            "explorer": "Explorateur de fichiers",
             "search": "Rechercher des fichiers",
             "openEditors": "Éditeurs ouverts",
             "outline": "Plan",
             "timeline": "Chronologie",
             "inputPlaceholder": "Saisissez un fragment de chemin, Entrée pour ouvrir / Échap pour fermer",
             "noRecent": "Aucun fichier récent. Ouvrez d'abord quelques fichiers dans l'arborescence.",
-            "noMatch": "Aucun résultat correspondant"
+            "noMatch": "Aucun résultat"
         },
         "pasteImage": {
-            "title": "Coller l'image",
+            "title": "Coller une image",
             "pasteHint": "Ctrl+V pour coller l'image",
             "pasting": "Collage en cours...",
             "pasteOk": "Image collée",
@@ -248,7 +358,7 @@
             "image": "Image",
             "table": "Tableau",
             "horizontalRule": "Ligne horizontale",
-            "clearFormat": "Effacer le formatage",
+            "clearFormat": "Effacer la mise en forme",
             "undo": "Annuler",
             "redo": "Rétablir"
         },
@@ -256,7 +366,7 @@
             "title": "Presse-papiers",
             "clip": {
                 "title": "Historique du presse-papiers",
-                "empty": "Aucun contenu copié",
+                "empty": "Aucun contenu copié pour le moment",
                 "search": "Rechercher dans le presse-papiers...",
                 "pin": "Épingler",
                 "unpin": "Détacher",
@@ -272,16 +382,16 @@
             },
             "captain": {
                 "paste": "Coller",
-                "roam": "Itinérance",
+                "roam": "Navigation libre",
                 "video": "Vidéo",
                 "weave": "Tissage",
                 "exportDoc": "Exporter le document",
-                "pure": "Pur",
+                "pure": "Épuré",
                 "exportZip": "Exporter en archive ZIP",
                 "audio": "Audio"
             },
             "search": {
-                "hint": "Recherche AND multi-mots-clés",
+                "hint": "Recherche multi-mots-clés (ET)",
                 "noResults": "Aucun résultat correspondant"
             }
         }
@@ -318,10 +428,10 @@
         "ctrlO": "Ouvrir un fichier",
         "ctrlW": "Fermer l'onglet",
         "ctrlShiftE": "Afficher l'explorateur de fichiers",
-        "ctrlShiftF": "Rechercher des fichiers",
-        "ctrlBackslash": "Diviser à droite",
-        "ctrlPlus": "Zoom avant",
-        "ctrlMinus": "Zoom arrière",
+        "ctrlShiftF": "Rechercher un fichier",
+        "ctrlBackslash": "Fractionner vers la droite",
+        "ctrlPlus": "Zoomer",
+        "ctrlMinus": "Dézoomer",
         "ctrl0": "Réinitialiser le zoom",
         "f12": "Outils de développement",
         "f1": "Palette de commandes",
@@ -344,14 +454,27 @@
         "modeFull": "Texte intégral",
         "modeDiff": "Différences",
         "loading": "Chargement…",
-        "noVersions": "Aucune version historique pour ce fichier",
+        "noVersions": "Ce fichier n'a pas d'historique de versions",
         "missingParams": "Paramètres manquants",
         "loadingVersions": "Chargement de la liste des versions…",
         "monacoTimeout": "Délai d'attente dépassé pour le chargement de Monaco, veuillez vérifier votre connexion ou redémarrer la fenêtre",
         "monacoFailed": "Échec du chargement de Monaco",
         "saved": "Enregistré",
         "saveFailed": "Échec de l'enregistrement",
-        "copyRow": "Copier cette ligne",
-        "closeHint": "= Clic droit pour fermer"
+        "copyRow": "Copier le texte de cette ligne",
+        "closeHint": "= Clic droit pour fermer",
+        "diffOnly": "Différences uniquement",
+        "editBtn": "Modifier",
+        "cancelEdit": "Annuler la modification",
+        "editTooltip": "Modifier le fichier actuel sur le disque (et non un instantané historique)",
+        "editTooltipExit": "Les modifications ne sont pas enregistrées automatiquement à la sortie du mode édition",
+        "editing": "Modification en cours",
+        "unsaved": "Non enregistré",
+        "snapshot": "📸 Créer un instantané",
+        "snapUnchanged": "Le contenu n'a pas changé, aucun instantané nécessaire",
+        "snapping": "Création de l'instantané…",
+        "snapOk": "Instantané #{seq} créé {time} diff edit",
+        "snapNoNew": "Aucun nouvel instantané généré, le contenu est peut-être inchangé ou en période de refroidissement",
+        "snapFailed": "Échec de la création de l'instantané"
     }
 }

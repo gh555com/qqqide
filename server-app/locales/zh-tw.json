@@ -55,9 +55,9 @@
             "close": "關閉"
         },
         "zoom": {
-            "in": "放大 UI（Ctrl+=）",
-            "out": "縮小 UI（Ctrl+-）",
-            "reset": "重置縮放"
+            "in": "放大介面（Ctrl+=）",
+            "out": "縮小介面（Ctrl+-）",
+            "reset": "重設縮放"
         },
         "theme": {
             "toggle": "切換亮色/暗色",
@@ -81,7 +81,7 @@
             "updatedTo": "已更新至 {version}，即將重新載入...",
             "failed": "更新失敗",
             "failedWith": "更新失敗",
-            "newVersion": "有新版本 {latest} 可供使用（目前為 {current}）"
+            "newVersion": "有新版本 {latest} 可用（目前為 {current}）"
         },
         "overlay": {
             "copy": "複製到剪貼簿",
@@ -89,36 +89,41 @@
             "copyFailed": "複製失敗",
             "zoomIn": "放大",
             "zoomOut": "縮小",
-            "close": "關閉 (Esc)",
-            "resetPosition": "重置位置"
+            "close": "關閉（Esc 或滑鼠右鍵）",
+            "resetPosition": "重設位置"
         },
         "about": {
             "title": "關於 qqq",
             "version": "qqq-shell v2",
-            "desc": "免安裝 / Win7+ / 伺服器熱更新"
+            "desc": "便攜 / Win7+ / 伺服器熱更新"
         },
         "tab": {
             "openRight": "在右側開啟新分頁",
             "openLeft": "在左側開啟新分頁"
         },
         "viewport": {
-            "mainFolder": "主要資料夾（未可移除）",
+            "mainFolder": "主資料夾（不可移除）",
             "removeProject": "移除此專案",
-            "addProject": "將專案資料夾新增至 AI 視窗",
-            "selectFolder": "選擇要新增至 AI 視窗的資料夾",
+            "addProject": "將專案資料夾加入 AI 視窗",
+            "selectFolder": "選擇要加入 AI 視窗的資料夾",
             "searchFolder": "搜尋此資料夾",
-            "recentFolders": "最近開啟的主要資料夾",
-            "noRecent": "尚無近期記錄，點擊 + 選擇資料夾"
+            "recentFolders": "最近開啟的主資料夾",
+            "noRecent": "尚無近期記錄，點擊 + 選擇資料夾",
+            "editx": "編輯檔案",
+            "openInOs": "在系統中開啟",
+            "timeline": "時間軸",
+            "copyPath": "複製路徑"
         },
         "dev": "開發模式",
         "gaeaHostLoading": "gaea host 載入中...",
         "free": {
-            "active": "💎 免費方案使用中",
-            "ending": "🎈免費即將結束",
-            "soonPrefix": "🤍距離下次免費"
+            "active": "💎 免費使用中",
+            "ending": "🎈 免費即將結束",
+            "soonPrefix": "🤍 距離下次免費"
         }
     },
     "editor": {
+        "minimap": "縮圖導覽",
         "tabs": {
             "close": "關閉分頁",
             "closeOthers": "關閉其他分頁",
@@ -137,7 +142,8 @@
             "paste": "貼上",
             "selectAll": "全選",
             "undo": "復原",
-            "redo": "重做"
+            "redo": "重做",
+            "feedToAi": "📎 提供給 AI"
         },
         "undo": "復原 (Ctrl+Z)",
         "redo": "重做 (Ctrl+Y)",
@@ -145,10 +151,10 @@
         "saved": "已儲存",
         "saving": "儲存中...",
         "saveFailed": "儲存失敗",
-        "fileTooLarge": "檔案過大",
+        "fileTooLarge": "檔案太大",
         "binaryFile": "二進位檔案，無法編輯",
         "line": "行",
-        "col": "列",
+        "col": "欄",
         "spaces": "空格",
         "indent": "縮排",
         "encoding": "編碼",
@@ -162,33 +168,137 @@
             "copyImage": "複製圖片二進位資料"
         }
     },
+    "login": {
+        "title": "登入",
+        "waiting": "等待瀏覽器登入...",
+        "success": "登入成功",
+        "timeout": "登入逾時，請重試",
+        "loggedOut": "已登出"
+    },
     "ai": {
+        "title": "AI",
+        "send": "傳送",
+        "stop": "停止",
+        "guide": "引導",
+        "queue": {
+            "full": "佇列限制為 3，請等待上一則訊息送出。",
+            "save": "儲存",
+            "delete": "刪除",
+            "cancel": "取消",
+            "pause": "暫停",
+            "resume": "繼續",
+            "clear": "清空",
+            "header": "佇列",
+            "editTitle": "點擊以編輯或刪除"
+        },
+        "context": "上下文",
+        "compress": "壓縮",
+        "snap": "快照",
+        "error": {
+            "continueTask": "繼續任務",
+            "noActiveAgent": "請先傳送一條訊息以建立對話",
+            "buildingFloor": "AI 正在建構樓層，請等待當前樓層完成後再進行壓縮"
+        },
+        "compressing": "🧠 壓縮中...",
+        "compressSuccess": "✅ 壓縮完成",
+        "compressFail": "✗ 壓縮失敗",
         "ctx": {
             "title": "您可以選擇壓縮上下文",
-            "benefit": "唯一好處：",
-            "benefitText": "從下次對話開始降低費用。",
+            "benefit": "好處：",
+            "benefitText": "從下次對話開始降低費用；有助於讓 AI 更專注於當前問題、減少幻覺。",
             "cost": "代價：",
-            "costText": "較早的對話內容會被壓縮而遺失細節，AI 僅會保留摘要。最近的六層對話將完整保存。",
+            "costText": "最近六層樓之前的對話會被壓縮而遺失細節，AI 只會記住其中的摘要。最近六層樓會被完整保存。",
             "whatIf": "如果一直不手動壓縮？",
-            "auto": "qqqide 會以最佳策略自動壓縮，效果通常優於手動壓縮。",
-            "noLoss": "無論是否壓縮或由誰壓縮，都不會導致 AI 記憶溢位或遺失。",
-            "complex": "更適合複雜的程式設計任務，AI 將擁有有限長度的記憶空間。",
+            "auto": "qqqide 會使用最佳策略自動壓縮，通常優於手動壓縮。",
+            "noLoss": "無論如何（是否壓縮、由誰壓縮）都不會導致 AI 記憶體爆滿，也不會導致 AI 記憶遺失。",
             "compress": "壓縮",
-            "cancel": "取消",
+            "snap": "快照",
             "breakdown": "上下文佔用",
-            "used": "已使用",
-            "free": "閒置"
+            "used": "已用",
+            "free": "閒置",
+            "snapOk": "快照已儲存",
+            "snapFail": "快照儲存失敗"
         },
-        "error": {
-            "noActiveAgent": "請先傳送一則訊息以建立對話",
-            "buildingFloor": "AI 正在建構中，請等待當前步驟完成後再進行壓縮"
+        "inputPlaceholder": "詢問 qqq AI... (Ctrl+V 貼上圖片)",
+        "inputLimitWarn": "輸入已達上限 58KB，無法繼續輸入",
+        "embedImage": "嵌入",
+        "level": {
+            "a": "保守",
+            "1": "輕度",
+            "2": "中等",
+            "3": "智慧",
+            "4": "強力",
+            "5": "極限",
+            "6": "Pro Max"
         },
-        "level": {},
-        "tools": {},
-        "output": {},
-        "rules": {},
-        "quest": {},
-        "lock": {}
+        "floor": "樓層",
+        "house": "房子",
+        "room": "房間",
+        "ttfb": "網路等待",
+        "work": "工作時間",
+        "total": "總計",
+        "tokens": "Token 消耗",
+        "confirmConnect": "確認連線",
+        "thinking": "思考中...",
+        "streaming": "生成中...",
+        "tools": {
+            "readFile": "讀取檔案",
+            "editFile": "編輯檔案",
+            "createFile": "建立檔案",
+            "deleteFile": "刪除檔案",
+            "writeFile": "寫入檔案",
+            "searchText": "搜尋文字",
+            "findFiles": "尋找檔案",
+            "listFiles": "列出檔案",
+            "getDiagnostics": "取得診斷資訊",
+            "runCommand": "執行命令",
+            "fetchWebpage": "擷取網頁",
+            "getVision": "取得視覺上下文"
+        },
+        "output": {
+            "empty": "等待輸入...",
+            "compressInProgress": "壓縮中...",
+            "compressDone": "壓縮完成",
+            "tokenLimit": "已達 Token 上限"
+        },
+        "rules": {
+            "title": "專案規則",
+            "edit": "編輯規則",
+            "empty": "尚無規則",
+            "globalRule": "全域規則 (.qqq-rules.txt)",
+            "projectRule": "專案規則 (project.txt)"
+        },
+        "quest": {
+            "switch": "切換專案",
+            "newQuest": "新增對話",
+            "history": "歷史記錄",
+            "noHistory": "尚無歷史記錄",
+            "saveFailed": "儲存失敗"
+        },
+        "lock": {
+            "locked": "專案已被其他視窗開啟",
+            "stale": "鎖定已過期",
+            "heartbeat": "心跳訊號"
+        },
+        "onboarding": {
+            "selectFolder": "請先選擇一個主資料夾！",
+            "selectFolderTitle": "請選擇一個主資料夾"
+        },
+        "guideBtnTooltip": "立即使用當前訊息引導 AI，而不新增對話層級！",
+        "billing": {
+            "number": "編號",
+            "type": "類型",
+            "toolCount": "工具數量",
+            "time": "時間消耗",
+            "wge": "wge",
+            "aiLv": "AI 等級",
+            "cacheHit": "快取命中率",
+            "promptTokens": "prompt_tokens",
+            "completionTokens": "completion_tokens",
+            "totalTokens": "total_tokens",
+            "receipt": "帳務憑證（10000wge = 1ge）",
+            "title": "計費明細"
+        }
     },
     "goods": {
         "bar": {
@@ -213,23 +323,23 @@
         },
         "navigator": {
             "title": "導覽",
-            "explorer": "資源管理器",
+            "explorer": "檔案總管",
             "search": "搜尋檔案",
             "openEditors": "已開啟的編輯器",
             "outline": "大綱",
             "timeline": "時間軸",
             "inputPlaceholder": "輸入路徑片段，按 Enter 開啟 / Esc 關閉",
-            "noRecent": "尚無最近檔案，請先在檔案樹中開啟幾個檔案",
-            "noMatch": "無相符項目"
+            "noRecent": "尚無最近使用的檔案，請先在檔案樹狀結構中開啟幾個檔案",
+            "noMatch": "無符合項目"
         },
         "pasteImage": {
             "title": "貼上圖片",
-            "pasteHint": "按 Ctrl+V 貼上圖片",
+            "pasteHint": "Ctrl+V 貼上圖片",
             "pasting": "貼上中...",
             "pasteOk": "圖片已貼上",
             "pasteFailed": "貼上失敗",
-            "saveFailed": "貼上圖片儲存失敗",
-            "saved": "已將圖片儲存至",
+            "saveFailed": "儲存貼上的圖片失敗",
+            "saved": "圖片已儲存至",
             "noImage": "剪貼簿中沒有圖片"
         },
         "wysiwyg": {
@@ -241,7 +351,7 @@
             "heading": "標題",
             "paragraph": "段落",
             "list": "清單",
-            "orderedList": "有序清單",
+            "orderedList": "編號清單",
             "quote": "引用",
             "code": "程式碼",
             "link": "連結",
@@ -255,17 +365,17 @@
         "rage": {
             "title": "剪貼簿",
             "clip": {
-                "title": "剪貼簿歷史",
-                "empty": "尚無剪貼內容",
+                "title": "剪貼簿歷史記錄",
+                "empty": "暫無剪貼內容",
                 "search": "搜尋剪貼簿...",
                 "pin": "釘選",
                 "unpin": "取消釘選",
                 "delete": "刪除",
-                "clearAll": "全部清空",
+                "clearAll": "全部清除",
                 "count": "{n} 筆",
                 "text": "文字",
                 "image": "圖片",
-                "html": "富文字",
+                "html": "豐富文字",
                 "link": "連結",
                 "file": "檔案",
                 "unknown": "未知類型"
@@ -276,13 +386,13 @@
                 "video": "影片",
                 "weave": "編織",
                 "exportDoc": "匯出文件",
-                "pure": "純淨模式",
+                "pure": "純淨",
                 "exportZip": "匯出壓縮檔",
                 "audio": "音訊"
             },
             "search": {
                 "hint": "多關鍵字 AND 搜尋",
-                "noResults": "無符合結果"
+                "noResults": "無相符結果"
             }
         }
     },
@@ -294,7 +404,7 @@
         },
         "confirmDelete": {
             "title": "確認刪除",
-            "message": "確定要刪除嗎？此動作無法復原。"
+            "message": "確定要刪除嗎？此操作無法復原。"
         },
         "unsaved": {
             "title": "未儲存的變更",
@@ -325,20 +435,20 @@
         "ctrl0": "重置縮放",
         "f12": "開發者工具",
         "f1": "命令面板",
-        "altLeft": "後退",
-        "altRight": "前進"
+        "altLeft": "上一頁",
+        "altRight": "下一頁"
     },
     "wings": {
-        "redrawing": "重繪中"
+        "redrawing": "重新繪製中"
     },
     "timeline": {
         "filePathPlaceholder": "檔案路徑…",
         "searchHistory": "搜尋歷史",
-        "dragHandle": "拖曳移動視窗",
+        "dragHandle": "拖曳以移動視窗",
         "maximize": "最大化",
         "full": "📋 全文",
         "diff": "📌 差異",
-        "acceptLeft": "← 移至右側",
+        "acceptLeft": "← 移到右",
         "save": "💾 儲存",
         "changes": "{n} 處修改",
         "modeFull": "全文",
@@ -352,6 +462,19 @@
         "saved": "已儲存",
         "saveFailed": "儲存失敗",
         "copyRow": "複製此行文字",
-        "closeHint": "= 右鍵點擊關閉"
+        "closeHint": "= 右鍵點擊關閉",
+        "diffOnly": "僅差異",
+        "editBtn": "編輯",
+        "cancelEdit": "取消編輯",
+        "editTooltip": "編輯目前磁碟上的最新檔案（而非任何歷史快照）",
+        "editTooltipExit": "結束編輯時不會自動儲存",
+        "editing": "編輯中",
+        "unsaved": "未儲存",
+        "snapshot": "📸 建立快照",
+        "snapUnchanged": "內容未變更，無需建立快照",
+        "snapping": "建立快照中…",
+        "snapOk": "已建立快照 #{seq} {time} diff edit",
+        "snapNoNew": "未產生新快照，可能內容未變更或處於冷卻期",
+        "snapFailed": "建立快照失敗"
     }
 }
