@@ -220,18 +220,16 @@
             var token = opts.token || _getToken();
             if (!token) throw new Error('No token');
 
-            // ★ 压缩路径：映射 tier→model（与主路径一致），长超时
+            // ★ 压缩路径：锁死 tier 4（与 agent-context.js COMPACT_TIER 一致），长超时
             if (opts.compact) {
                 var _isFallback = opts.isFallback || false;
                 var _primaryUrl = _URLS.chatPrimary;
                 var _fallbackUrl = _URLS.chatFallback;
                 var _url = _isFallback ? _fallbackUrl : _primaryUrl;
-                // ★ 统一 tier→model 映射（与主路径一致）
-                if (!body.model) {
-                    var _compactTier = body.tier || opts.tier || 2;
-                    body.model = _tierToModel(_compactTier);
-                }
-                if (body.tier === undefined) body.tier = opts.tier || 2;
+                // ★ 统一 tier→model 映射（锁死 tier 4）
+                var _compactTier = body.tier || opts.tier || 4;
+                body.tier = _compactTier;
+                if (!body.model) body.model = _tierToModel(_compactTier);
                 var _hdrs = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token };
                 if (opts.keySlot === 1) _hdrs['X-Key-Slot'] = '1';
                 else if (_isFallback) _hdrs['X-Key-Slot'] = '1';

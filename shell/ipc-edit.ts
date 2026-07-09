@@ -1,6 +1,17 @@
 // ============================================================================
 // ipc-edit.ts — 编辑工具 IPC: edit_file / create_file / delete_file / write_file
 // 含 qwr 机器保护 (_sn / _qe)
+//
+// edit_file 三级匹配引擎:
+//   L1 — 精确匹配
+//   L1b — CRLF 归一化（\r\n→\n, \r→\n）
+//   L2  — 空白归一化（[\t ]+→' ', [\r\n]+→\n）
+//   L5  — 原始字节匹配（Buffer.indexOf，不做任何处理）
+//
+// ★ 2026-07-09 空白安全加固:
+//   L1b/L2 匹配后用 measureMatchSpan() 测量原文实际 span，而非 trust find.length。
+//   根除因 whitespace compression 导致 find.length ≠ 实际原文 span
+//   从而切错位置、文件损坏的 bug。适用于一切语言、一切场景，零代价。
 // ============================================================================
 
 import { ipcMain } from 'electron';
@@ -8,12 +19,26 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { _sn, _qe, aiNormalizeWhitespace, aiNormalizeCRLF } from './ipc-state';
 
+// ── 空白匹配 span 测量 ──────────────────────────────────────────────────────
+// 在归一化匹配成功后，用原始 find 文本的归一化版本，在原始内容中从 start 向后
+// 逐字节推进 → 每次归一化 [start, end) → 与 normFind 比较 → 相等时返回 span 长度。
+// 这是唯一正确的方式：不依赖 find.length，只认原文的实际归一化结果。
+function measureMatchSpan(orig: string, start: number, findText: string,
+    normFn: (s: string) => string): number {
+    const normFind = normFn(findText);
+    for (let end = start + 1; end <= orig.length; end++) {
+        if (normFn(orig.slice(start, end)) === normFind) {
+            return end - start;
+        }
+    }
+    // 兜底：如果归一化后永远不等（理论上不可能），fallback 到这里
+    return findText.length;
+}
+
 export function registerEditIpc(): void {
-    // edit_file — 三级匹配引擎 (L1精确/L1b CRLF归一化/L2空白归一化/L3逐行)
     ipcMain.handle('qqqide:ai:edit_file', async (_e, args: { path: string; edits: Array<{ find: string; replace: string; replace_all?: boolean }> }) => {
         return _qe(args.path, async () => {
             try {
-                // ★ qwr CAS: 检查 _sn 快照 — 若 AI 读后文件被外部修改，拒绝编辑
                 const snap = _sn[args.path];
                 if (snap) {
                     try {
@@ -35,7 +60,6 @@ export function registerEditIpc(): void {
                     const ed = args.edits[i];
                     if (ed.replace_all) {
                         let count = content.split(ed.find).length - 1;
-                        // ★ Auto-fix: real \n → literal \n (AI sent literal \n via JSON, became real newline)
                         if (count === 0 && ed.find.indexOf('\n') !== -1) {
                             const escaped = ed.find.replace(/\n/g, '\\n');
                             const count2 = content.split(escaped).length - 1;
@@ -47,80 +71,108 @@ export function registerEditIpc(): void {
                         matchPlan.push({ edit: ed, match: { start: 0, end: 0, matchLevel: 1 }, index: i });
                         continue;
                     }
+
+                    let matchStart = -1;
+                    let matchSpan = ed.find.length; // L1 精确匹配：find.length 就是实际 span
+                    let matchLevel = 1;
+
                     // L1: exact match
                     let idx = content.indexOf(ed.find);
-                    let matchLevel = 1;
+                    if (idx !== -1) {
+                        matchStart = idx;
+                        matchLevel = 1;
+                    }
+
                     // L1b: CRLF normalization
-                    if (idx === -1) {
+                    if (matchStart === -1) {
                         const findNorm = aiNormalizeCRLF(ed.find);
                         const contentNorm = aiNormalizeCRLF(content);
-                        idx = contentNorm.indexOf(findNorm);
-                        if (idx !== -1) {
-                            // Map back to original content
-                            let origIdx = 0, normIdx = 0;
-                            while (normIdx < idx) {
-                                if (content[origIdx] === '\r' && content[origIdx + 1] === '\n') { origIdx += 2; normIdx++; }
-                                else if (content[origIdx] === '\r') { origIdx++; normIdx++; }
-                                else { origIdx++; normIdx++; }
+                        const normIdx = contentNorm.indexOf(findNorm);
+                        if (normIdx !== -1) {
+                            // 映射归一化下标 → 原文下标
+                            let oi = 0, ni = 0;
+                            while (ni < normIdx && oi < content.length) {
+                                if (content[oi] === '\r' && content[oi + 1] === '\n') { oi += 2; ni++; }
+                                else if (content[oi] === '\r') { oi++; ni++; }
+                                else { oi++; ni++; }
                             }
-                            idx = origIdx;
+                            matchStart = oi;
+                            matchSpan = measureMatchSpan(content, oi, ed.find, aiNormalizeCRLF);
                             matchLevel = 2;
                         }
                     }
-                    // L1c: real \n → escaped \n (AI sent literal \n via JSON, became real newline; file has literal backslash-n)
-                    if (idx === -1 && ed.find.indexOf('\n') !== -1) {
+
+                    // L1c: real \n → escaped \n
+                    if (matchStart === -1 && ed.find.indexOf('\n') !== -1) {
                         const escaped = ed.find.replace(/\n/g, '\\n');
                         idx = content.indexOf(escaped);
-                        if (idx !== -1) matchLevel = 1;
+                        if (idx !== -1) {
+                            matchStart = idx;
+                            matchLevel = 1;
+                        }
                     }
+
                     // L2: whitespace normalization
-                    if (idx === -1) {
+                    if (matchStart === -1) {
                         const nf = aiNormalizeWhitespace(ed.find);
                         const nc = aiNormalizeWhitespace(content);
-                        idx = nc.indexOf(nf);
-                        if (idx !== -1) {
-                            let origIdx = 0, normIdx = 0;
-                            while (normIdx < idx && origIdx < content.length) {
-                                if (content[origIdx] === ' ' || content[origIdx] === '\t' || content[origIdx] === '\r' || content[origIdx] === '\n') {
-                                    if (nc[normIdx] === ' ' || nc[normIdx] === '\n') { origIdx++; normIdx++; }
-                                    else origIdx++;
-                                } else { origIdx++; normIdx++; }
+                        const normIdx = nc.indexOf(nf);
+                        if (normIdx !== -1) {
+                            // 映射归一化下标 → 原文下标
+                            let oi = 0, ni = 0;
+                            while (ni < normIdx && oi < content.length) {
+                                const c = content[oi];
+                                if (c === ' ' || c === '\t' || c === '\r' || c === '\n') {
+                                    const ncChar = nc[ni];
+                                    if (ncChar === ' ' || ncChar === '\n') { oi++; ni++; }
+                                    else oi++;
+                                } else { oi++; ni++; }
                             }
-                            idx = origIdx;
+                            matchStart = oi;
+                            matchSpan = measureMatchSpan(content, oi, ed.find, aiNormalizeWhitespace);
                             matchLevel = 3;
                         }
                     }
-                    // L4: raw byte match (Buffer.indexOf, zero processing, last resort)
-                    if (idx === -1) {
+
+                    // L5: raw byte match (Buffer.indexOf)
+                    if (matchStart === -1) {
                         const findBuf = Buffer.from(ed.find, 'utf8');
                         const contentBuf = Buffer.from(content, 'utf8');
-                        idx = contentBuf.indexOf(findBuf);
-                        if (idx !== -1) matchLevel = 5;
+                        const bufIdx = contentBuf.indexOf(findBuf);
+                        if (bufIdx !== -1) {
+                            matchStart = bufIdx;
+                            matchSpan = findBuf.length;
+                            matchLevel = 5;
+                        }
                     }
-                    if (idx === -1) {
-                        var _h = '';
+
+                    if (matchStart === -1) {
+                        let _h = '';
                         if (ed.find.length > 80) _h = ' (long text — try shorter match)';
-                        var _f20 = ed.find.slice(0, 40);
-                        var _pos = content.indexOf(_f20);
+                        const _f20 = ed.find.slice(0, 40);
+                        const _pos = content.indexOf(_f20);
                         if (_pos !== -1) {
-                            var _ln = (content.slice(0, _pos).match(/\n/g) || []).length + 1;
-                            _h += '\n💡 Find starts: "' + _f20.replace(/\n/g,'\\n') + '"... Occurs at line ' + _ln + '. Check whitespace/escaping difference.';
+                            const _ln = (content.slice(0, _pos).match(/\n/g) || []).length + 1;
+                            _h += `\n💡 Find starts: "${_f20.replace(/\n/g, '\\n')}"... Occurs at line ${_ln}. Check whitespace/escaping difference.`;
                         }
                         return `Error: edit #${i + 1} match failed — text not found in ${args.path.split(/[\\/]/).pop()}.${_h}`;
                     }
-                    matchPlan.push({ edit: ed, match: { start: idx, end: idx + ed.find.length, matchLevel }, index: i });
+
+                    matchPlan.push({
+                        edit: ed,
+                        match: { start: matchStart, end: matchStart + matchSpan, matchLevel },
+                        index: i
+                    });
                 }
 
-                // Pass 2: apply edits
+                // Pass 2: apply edits (保持提交顺序，AI 依赖顺序语义)
                 const editLines: string[] = [];
                 for (let pi = 0; pi < matchPlan.length; pi++) {
                     const plan = matchPlan[pi];
                     const ed = plan.edit;
-                    const preContent = content.slice(0, plan.match.start);
-                    const lineNum = (preContent.match(/\n/g) || []).length + 1;
                     if (ed.replace_all) {
                         const count = content.split(ed.find).length - 1;
-                        let allLines: number[] = [];
+                        const allLines: number[] = [];
                         let pos = 0;
                         while (pos < content.length) {
                             const idx2 = content.indexOf(ed.find, pos);
@@ -133,7 +185,9 @@ export function registerEditIpc(): void {
                         editLines.push(`#${pi + 1}: lines ${allLines.join(',')} (${count}x replace_all)`);
                         totalApplied += count;
                     } else {
-                        content = content.slice(0, plan.match.start) + ed.replace + content.slice(plan.match.start + ed.find.length);
+                        const preContent = content.slice(0, plan.match.start);
+                        const lineNum = (preContent.match(/\n/g) || []).length + 1;
+                        content = content.slice(0, plan.match.start) + ed.replace + content.slice(plan.match.end);
                         results.push(`L${plan.match.matchLevel} @L${lineNum}`);
                         editLines.push(`#${pi + 1}: L${lineNum} (L${plan.match.matchLevel})`);
                         totalApplied++;
@@ -151,7 +205,7 @@ export function registerEditIpc(): void {
                         let pos = 0;
                         while ((pos = nc.indexOf(nf, pos)) !== -1) { count++; pos++; }
                         if (count > 1) {
-                            multiWarn += ` ⚠️ edit #${pi + 1}: ${count} candidates found, applied to first (L${plan.match.matchLevel})`;
+                            multiWarn += ` ⚠️ edit #${plan.match.index + 1}: ${count} candidates found, applied to first (L${plan.match.matchLevel})`;
                         }
                     }
                 }
@@ -159,9 +213,9 @@ export function registerEditIpc(): void {
                 try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
                 await fs.promises.writeFile(args.path, content);
                 try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
-                const matchInfo = results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1 || r.indexOf('L4') !== -1)
+                const matchInfo = results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1 || r.indexOf('L5') !== -1)
                     ? ' (whitespace-tolerant match used)' : '';
-                let lineInfo = editLines.length > 0 ? ' [' + editLines.join(', ') + ']' : '';
+                const lineInfo = editLines.length > 0 ? ' [' + editLines.join(', ') + ']' : '';
                 return `\u2713 ${totalApplied} edit(s) applied to ${args.path.split(/[\\/]/).pop()}${lineInfo}${matchInfo}${multiWarn}`;
             } catch (err: any) {
                 return 'Error editing file: ' + (err.message || err);
