@@ -886,9 +886,9 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
             ai_html = _buildConversationFlowHtml(cleanConv, _fDataForRender);
         } catch (_) { }
     }
-    // ★ 剥离 CURRENT TIME 块
+    // ★ 剥离 [CURRENT TIME: ...] 块
     var questionClean = (ag._lastUserInput && ag._lastUserInput.text) || '';
-    var _ctIdx2 = questionClean.indexOf('\n\n═══ CURRENT TIME ═══');
+    var _ctIdx2 = questionClean.indexOf('\n\n[CURRENT TIME:');
     if (_ctIdx2 > 0) questionClean = questionClean.slice(0, _ctIdx2);
     // ★ house / room 计数
     var house_count = (ag._houses && ag._houses.length) || 0;
