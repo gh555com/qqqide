@@ -122,11 +122,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-drop-body{/* max-height/overflow 已移至父 .quest-drop */}
 /* q3 floor 导航行已删除（card-pool 架构）*/
 #messages-wrap{position:relative;min-height:0;overflow:hidden;display:flex;flex-direction:column}
-#messages{overflow-y:auto;overflow-x:hidden;padding:12px 13px 12px 8px;min-height:0;position:relative;flex:1;scrollbar-width:none}
+#messages{overflow-y:scroll;overflow-x:hidden;padding:12px 13px 12px 8px;min-height:0;position:relative;flex:1;scrollbar-width:none}
 #messages::-webkit-scrollbar{display:none;width:0;height:0}
-.msg{margin-bottom:10px;line-height:1.5;content-visibility:auto;contain-intrinsic-size:auto 200px}
-/* ★ 在建楼层禁用 content-visibility，确保时钟行高度被 scrollHeight 精确计入 */
-.msg.card-building{content-visibility:visible}
+.msg{margin-bottom:10px;line-height:1.5}
 /* 用户消息气泡 */
 .msg-user{position:relative;background:#f8e0e0;border-radius:8px;padding:8px 12px;overflow-wrap:break-word;word-break:break-word}
 [data-theme="dark"] .msg-user{background:#4a2d30;color:#e8d0d0}
@@ -375,13 +373,33 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 .scroll-key-q{top:38%}
 .scroll-key-w{top:58%}
 .scroll-key-bot{bottom:12%}
-/* ── 搜索栏 ── */
-#search-bar{display:none;position:sticky;top:0;z-index:100;background:var(--card-bg);border-bottom:1px solid var(--border-color);padding:4px 8px;align-items:center;gap:6px}
+/* ── 搜索栏（独立配色 + 紧凑不越界）── */
+#search-bar{display:none;position:sticky;top:0;z-index:100;background:var(--base2);border-left:3px solid var(--yellow);border-bottom:1px solid var(--border-color);padding:7px 12px;align-items:center;gap:8px;margin-bottom:6px}
 #search-bar.show{display:flex}
-#search-bar input{flex:1;padding:3px 8px;border:1px solid var(--border-color);border-radius:3px;background:var(--background-color);color:var(--text-primary);font-size:12px;outline:none}
-#search-bar .search-nav{font-size:11px;color:var(--base01);white-space:nowrap}
-#search-bar button{padding:2px 8px;font-size:11px;border:1px solid var(--border-color);border-radius:3px;background:var(--card-bg);color:var(--text-primary);cursor:pointer}
-#search-bar button:hover{background:var(--base3)}
+.search-input-wrap{position:relative;flex:1;min-width:0;display:flex;align-items:center}
+.search-input-wrap textarea{flex:1;min-width:0;padding:6px 28px 6px 12px;border:1px solid var(--border-color);border-radius:4px;background:var(--background-color);color:var(--text-primary);font-size:14px;font-family:inherit;line-height:1.5;outline:none;resize:none;overflow:hidden;white-space:pre-wrap;word-wrap:break-word;transition:border-color .15s;max-height:180px}
+.search-input-wrap textarea:focus{border-color:var(--yellow);box-shadow:0 0 0 2px rgba(181,137,0,0.15)}
+.search-input-wrap .search-clear{position:absolute;right:3px;top:50%;transform:translateY(-50%);padding:2px 6px;border:none;border-radius:3px;background:transparent;color:var(--base01);font-size:13px;cursor:pointer;line-height:1;opacity:0;pointer-events:none;transition:opacity .12s}
+.search-input-wrap .search-clear.visible{opacity:.65;pointer-events:auto}
+.search-input-wrap .search-clear:hover{opacity:1;color:var(--red);background:rgba(220,50,47,0.08)}
+.search-tog{flex-shrink:0;padding:4px 8px;font-size:12px;font-weight:bold;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--base01);cursor:pointer;user-select:none;line-height:1.3;min-width:30px;text-align:center}
+.search-tog:hover{background:var(--base3);color:var(--text-primary)}
+.search-tog.on{background:var(--yellow);color:#000;border-color:var(--yellow)}
+#search-bar .search-nav{font-size:12px;color:var(--base01);white-space:nowrap;flex-shrink:0;min-width:52px;text-align:center;user-select:none}
+#search-bar button:not(.search-clear):not(.search-tog){flex-shrink:0;padding:5px 12px;font-size:14px;border:1px solid var(--border-color);border-radius:4px;background:var(--card-bg);color:var(--text-primary);cursor:pointer;user-select:none;line-height:1.2}
+#search-bar button:not(.search-clear):not(.search-tog):hover{background:var(--base3);border-color:var(--base1)}
+#search-bar button:not(.search-clear):not(.search-tog):active{background:var(--yellow);color:#000;border-color:var(--yellow)}
+[data-theme="dark"] #search-bar{background:var(--base02)}
+[data-theme="dark"] .search-tog:hover{background:var(--base03);color:var(--text-primary)}
+[data-theme="dark"] #search-bar button:not(.search-clear):not(.search-tog):hover{background:var(--base03);border-color:var(--base01)}
+[data-theme="dark"] #search-bar button:not(.search-clear):not(.search-tog):active{background:var(--yellow);color:#000;border-color:var(--yellow)}
+[data-theme="dark"] .search-input-wrap .search-clear:hover{background:rgba(220,50,47,0.15)}
+/* ── 右键搜索菜单 ── */
+#search-ctx-menu{position:fixed;z-index:99999;background:var(--card-bg);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.18);padding:4px 0;min-width:260px;font-size:13px}
+#search-ctx-menu .ctx-row{padding:8px 16px;cursor:pointer;white-space:nowrap;color:var(--text-primary)}
+#search-ctx-menu .ctx-row:hover{background:var(--base3)}
+[data-theme="dark"] #search-ctx-menu{box-shadow:0 4px 16px rgba(0,0,0,0.45)}
+[data-theme="dark"] #search-ctx-menu .ctx-row:hover{background:var(--base02)}
 .search-mark{background:#ff6b00;color:#fff;border-radius:2px;padding:0 1px}
 .search-mark-active{background:#ffd301;color:#000}
 [data-theme="dark"] .search-mark{background:#ff9e40;color:#000}
@@ -530,7 +548,11 @@ var _orig={};
 <div id="scroll-mark-layer"></div>
 <div id="messages">
 <div id="search-bar">
-  <input id="search-input" type="text" placeholder="搜索对话... (↑↓ 跳转 · Esc 关闭)">
+  <span class="search-input-wrap">
+    <textarea id="search-input" rows="1" placeholder="搜索对话... (↑↓ 跳转 · 支持多行粘贴)" spellcheck="false"></textarea>
+    <button id="search-clear" class="search-clear" title="清除">✕</button>
+  </span>
+  <button id="search-case" class="search-tog" title="区分大小写">Aa</button>
   <span class="search-nav" id="search-nav"></span>
   <button id="search-prev">▲</button>
   <button id="search-next">▼</button>

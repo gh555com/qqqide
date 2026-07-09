@@ -197,7 +197,7 @@ if (isUSDeploy()) {
   fs.writeFileSync(syncPath, syncScript, 'utf8');
   run('scp', [...sshOpts(), shellQuote(localPath(syncPath)), `${effectiveHost()}:/tmp/_deploy_sync.sh`]);
   try { fs.unlinkSync(syncPath); } catch (_) { }
-  run('ssh', [...sshOpts(), effectiveHost(), '"chmod +x /tmp/_deploy_sync.sh && nohup bash /tmp/_deploy_sync.sh > /tmp/_deploy_sync.log 2>&1 & echo sync_launched"']);
+  run('ssh', [...sshOpts(), effectiveHost(), '"chmod +x /tmp/_deploy_sync.sh && nohup bash /tmp/_deploy_sync.sh > /tmp/_deploy_sync.log 2>&1 < /dev/null & echo sync_launched"']);
   console.log('[deploy] ✓ CN deploy complete. US sync in background, check: ssh q@203.0.113.10 tail /tmp/_deploy_sync.log');
 }
 

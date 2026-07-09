@@ -375,6 +375,20 @@ async function _restoreAgentFromStore(questId, ag) {
             }
         }
         ag._passbyBaseFloorNum = ag._passbyBaseHouses > 0 ? (ag._currentFloorNum - 1) : 0;
+        // ★ 自愈：从实际楼层数据重算 passby 基线（防元数据残留致 AZ 与账单表不一致）
+        var _recalcHouses = 0, _recalcWge = 0;
+        for (var _rfi = 0; _rfi < allFloors.length; _rfi++) {
+            var _rfData = allFloors[_rfi].data;
+            if (_rfData && allFloors[_rfi].floorNum < ag._currentFloorNum) {
+                _recalcHouses += (_rfData.houses ? _rfData.houses.length : 0);
+                _recalcWge += (_rfData.costWge || 0);
+            }
+        }
+        if (_recalcHouses !== ag._passbyBaseHouses || _recalcWge !== ag._passbyBaseWge) {
+            ag._passbyBaseHouses = _recalcHouses;
+            ag._passbyBaseWge = _recalcWge;
+            ag._passbyBaseFloorNum = _recalcHouses > 0 ? (ag._currentFloorNum - 1) : 0;
+        }
         // ★ 重建 _floorMeta（未可变楼层元数据）
         ag._floorMeta = {};
         for (var _fmfi = 0; _fmfi < allFloors.length; _fmfi++) {
