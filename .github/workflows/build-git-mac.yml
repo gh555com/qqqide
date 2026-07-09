@@ -1,0 +1,108 @@
+# build-git-mac.yml — 在 macOS runner 上编译 universal git
+# 触发: 手动 (workflow_dispatch)
+# 产出: git-universal.tar.gz (x86_64 + arm64 合体，静态)
+#
+# 用法:
+#   1. GitHub 仓库 → Actions → build-git-mac → Run workflow
+#   2. 下载 artifact → 上传到 CDN
+# ============================================================================
+
+name: build-git-mac
+
+on:
+  workflow_dispatch:
+    inputs:
+      git_version:
+        description: 'Git version to build'
+        required: true
+        default: '2.46.0'
+
+jobs:
+  build:
+    runs-on: macos-12
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
+    steps:
+      - name: Install dependencies
+        run: |
+          brew install pkg-config gettext
+
+      - name: Download git source
+        run: |
+          VERSION=${{ github.event.inputs.git_version }}
+          curl -sS -L --connect-timeout 15 --max-time 300 \
+            -o /tmp/git-$VERSION.tar.xz \
+            "https://www.kernel.org/pub/software/scm/git/git-$VERSION.tar.xz"
+          tar xf /tmp/git-$VERSION.tar.xz -C /tmp
+          echo "source=/tmp/git-$VERSION" >> $GITHUB_ENV
+
+      - name: Configure + make
+        run: |
+          cd ${{ env.source }}
+          # Intel build
+          make configure
+          ./configure --prefix=/usr \
+            CFLAGS="-O2 -arch ${{ matrix.arch }} -mmacosx-version-min=11.0" \
+            LDFLAGS="-arch ${{ matrix.arch }}" \
+            --with-curl --with-expat
+          make -j$(sysctl -n hw.logicalcpu) all
+
+      - name: Strip + package
+        run: |
+          cd ${{ env.source }}
+          make install DESTDIR=/tmp/git-staging
+          cd /tmp/git-staging/usr/bin
+          strip git git-shell git-credential-osxkeychain 2>/dev/null || true
+          tar czf /tmp/git-${{ matrix.arch }}.tar.gz \
+            git git-receive-pack git-shell git-upload-archive git-upload-pack \
+            git-credential-osxkeychain
+
+      - name: Upload artifact (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: git-${{ matrix.arch }}
+          path: /tmp/git-${{ matrix.arch }}.tar.gz
+
+  merge:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download both architectures
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/artifacts
+
+      - name: Create universal binary via lipo
+        run: |
+          # Extract both tarballs
+          mkdir -p /tmp/x64 /tmp/arm64
+          tar xzf /tmp/artifacts/git-x86_64/git-x86_64.tar.gz -C /tmp/x64
+          tar xzf /tmp/artifacts/git-arm64/git-arm64.tar.gz -C /tmp/arm64
+
+          # Use lipo to create universal binary
+          mkdir -p /tmp/universal
+          for bin in git git-shell git-credential-osxkeychain; do
+            if [ -f /tmp/x64/$bin ] && [ -f /tmp/arm64/$bin ]; then
+              lipo -create -output /tmp/universal/$bin /tmp/x64/$bin /tmp/arm64/$bin
+            elif [ -f /tmp/x64/$bin ]; then
+              cp /tmp/x64/$bin /tmp/universal/$bin
+            fi
+          done
+          # Symlinks
+          for link in git-receive-pack git-upload-archive git-upload-pack; do
+            ln -sf git /tmp/universal/$link
+          done
+
+          # Package
+          cd /tmp/universal
+          tar czf /tmp/git-universal.tar.gz *
+          echo "Created universal git:"
+          file git
+          lipo -info git
+
+      - name: Upload final universal artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: git-universal
+          path: /tmp/git-universal.tar.gz
