@@ -108,7 +108,11 @@
             "selectFolder": "选择要添加到 AI 视口的文件夹",
             "searchFolder": "搜索此文件夹",
             "recentFolders": "最近打开的主文件夹",
-            "noRecent": "暂无最近记录，点击 + 选择文件夹"
+            "noRecent": "暂无最近记录，点击 + 选择文件夹",
+            "editx": "编辑文件",
+            "openInOs": "在系统中打开",
+            "timeline": "时间线",
+            "copyPath": "复制路径"
         },
         "dev": "开发模式",
         "gaeaHostLoading": "gaea host 加载中...",
@@ -119,6 +123,7 @@
         }
     },
     "editor": {
+        "minimap": "小地图",
         "tabs": {
             "close": "关闭标签",
             "closeOthers": "关闭其他",
@@ -137,7 +142,8 @@
             "paste": "粘贴",
             "selectAll": "全选",
             "undo": "撤销",
-            "redo": "重做"
+            "redo": "重做",
+            "feedToAi": "📎 喂给 AI"
         },
         "undo": "撤销 (Ctrl+Z)",
         "redo": "重做 (Ctrl+Y)",
@@ -162,26 +168,136 @@
             "copyImage": "复制图片二进制"
         }
     },
+    "login": {
+        "title": "登录",
+        "waiting": "等待浏览器登录...",
+        "success": "登录成功",
+        "timeout": "登录超时，请重试",
+        "loggedOut": "已退出登录"
+    },
     "ai": {
+        "title": "AI",
+        "send": "发送",
+        "stop": "停止",
+        "guide": "引导",
+        "queue": {
+            "full": "队列限宽3，请等待上一条消息发出。",
+            "save": "保存",
+            "delete": "删除",
+            "cancel": "取消",
+            "pause": "暂停",
+            "resume": "继续",
+            "clear": "清空",
+            "header": "队列",
+            "editTitle": "点击编辑或删除"
+        },
+        "context": "上下文",
+        "compress": "压缩",
+        "snap": "快照",
+        "error": {
+            "continueTask": "继续任务",
+            "noActiveAgent": "请先发送一条消息创建对话",
+            "buildingFloor": "AI 正在建楼中，请等待当前楼层完成后再压缩"
+        },
+        "compressing": "🧠 压缩中...",
+        "compressSuccess": "✅ 压缩完成",
+        "compressFail": "✗ 压缩失败",
         "ctx": {
             "title": "你可以选择压缩上下文",
-            "benefit": "唯一好处：",
-            "benefitText": "从下次对话开始降低费用。",
+            "benefit": "好处：",
+            "benefitText": "从下次对话开始降低费用；有利于让 AI 更专注于当前问题、减少幻觉。",
             "cost": "代价：",
             "costText": "最近六层楼之前滴对话会被压缩而丢失细节，AI 只会记住其中摘要。最近六层楼会被完整保存。",
             "whatIf": "如果一直不手动压缩？",
             "auto": "qqqide 用最优策略自动压缩，通常好于手动压缩。",
             "noLoss": "无论如何（压缩与否、谁来压缩）都既不会导致 AI 记忆撑爆，也不会导致 AI 记忆丢失。",
-            "complex": "更适合复杂滴编程任务，AI 将会有极限长度滴记忆空间。",
             "compress": "压缩",
-            "cancel": "取消",
+            "snap": "快照",
             "breakdown": "上下文占用",
             "used": "已用",
-            "free": "空闲"
+            "free": "空闲",
+            "snapOk": "快照已保存",
+            "snapFail": "快照保存失败"
         },
-        "error": {
-            "noActiveAgent": "请先发送一条消息创建对话",
-            "buildingFloor": "AI 正在建楼中，请等待当前楼层完成后再压缩"
+        "inputPlaceholder": "Ask qqq AI... (Ctrl+V 粘贴图片)",
+        "inputLimitWarn": "键入已达上限 58KB，无法继续键入",
+        "embedImage": "嵌入",
+        "level": {
+            "a": "保守",
+            "1": "轻度",
+            "2": "中等",
+            "3": "智能",
+            "4": "强力",
+            "5": "极限",
+            "6": "Pro Max"
+        },
+        "floor": "楼层",
+        "house": "房子",
+        "room": "房间",
+        "ttfb": "网络等待",
+        "work": "工作时间",
+        "total": "总计",
+        "tokens": "Token 消耗",
+        "confirmConnect": "确认连接",
+        "thinking": "思考中...",
+        "streaming": "生成中...",
+        "tools": {
+            "readFile": "读取文件",
+            "editFile": "编辑文件",
+            "createFile": "创建文件",
+            "deleteFile": "删除文件",
+            "writeFile": "写入文件",
+            "searchText": "搜索文本",
+            "findFiles": "查找文件",
+            "listFiles": "列出文件",
+            "getDiagnostics": "获取诊断",
+            "runCommand": "运行命令",
+            "fetchWebpage": "抓取网页",
+            "getVision": "获取视觉上下文"
+        },
+        "output": {
+            "empty": "等待键入...",
+            "compressInProgress": "压缩中...",
+            "compressDone": "压缩完成",
+            "tokenLimit": "达到 Token 上限"
+        },
+        "rules": {
+            "title": "项目规则",
+            "edit": "编辑规则",
+            "empty": "暂无规则",
+            "globalRule": "全局规则 (.qqq-rules.txt)",
+            "projectRule": "项目规则 (project.txt)"
+        },
+        "quest": {
+            "switch": "切换项目",
+            "newQuest": "新建对话",
+            "history": "历史记录",
+            "noHistory": "暂无历史",
+            "saveFailed": "保存失败"
+        },
+        "lock": {
+            "locked": "项目已被其他窗口打开",
+            "stale": "锁已过期",
+            "heartbeat": "心跳"
+        },
+        "onboarding": {
+            "selectFolder": "请先选择一个主文件夹！",
+            "selectFolderTitle": "请选择一个主文件夹"
+        },
+        "guideBtnTooltip": "立即用当下消息引导 AI 而不起新楼层！",
+        "billing": {
+            "number": "编号",
+            "type": "类型",
+            "toolCount": "工具数",
+            "time": "时间消耗",
+            "wge": "wge",
+            "aiLv": "AI 等级",
+            "cacheHit": "缓存命中率",
+            "promptTokens": "prompt_tokens",
+            "completionTokens": "completion_tokens",
+            "totalTokens": "total_tokens",
+            "receipt": "查账凭据（10000wge = 1ge）",
+            "title": "计费明细"
         }
     },
     "goods": {
@@ -346,6 +462,19 @@
         "saved": "已保存",
         "saveFailed": "保存失败",
         "copyRow": "复制此行文本",
-        "closeHint": "= 右键单击关闭"
+        "closeHint": "= 右键单击关闭",
+        "diffOnly": "仅差异",
+        "editBtn": "编辑",
+        "cancelEdit": "取消编辑",
+        "editTooltip": "编辑当前磁盘最新文件（而非任何一个历史快照）",
+        "editTooltipExit": "退出编辑时不会自动保存",
+        "editing": "编辑中",
+        "unsaved": "未保存",
+        "snapshot": "📸 打快照",
+        "snapUnchanged": "内容未变，无需打快照",
+        "snapping": "打快照中…",
+        "snapOk": "已打快照 #{seq} {time} diff edit",
+        "snapNoNew": "未生成新快照，可能内容未变或冷却中",
+        "snapFailed": "打快照失败"
     }
 }

@@ -337,10 +337,10 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 .ctx-panel-body p{margin:0 0 8px}
 .ctx-panel-body ol{margin:4px 0 8px 20px}
 .ctx-panel-body li{margin:2px 0}
-.ctx-panel-actions{display:flex;gap:24px;justify-content:flex-end;margin-top:16px;f.ctx-panel-actions button{padding:6px 18px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;white-space:nowrap}er-radius:4px;}
+.ctx-panel-actions{display:flex;gap:24px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+.ctx-panel-actions button{padding:6px 18px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;white-space:nowrap}
 #ctx-compress{background:var(--yellow);color:#fff;border-color:var(--yellow)}
-#ctx-manage{background:var(--blue);coloancel{background:var(--card-bg)}
-
+#ctx-manage{background:var(--blue);color:#fff;border-color:var(--blue)}
 /* ── 上下文占用拆解面板（hover ctx-btn 弹出） ── */
 #ctx-breakdown{position:fixed;z-index:10001;display:none;bottom:60px;right:10px}
 #ctx-breakdown.show{display:block}
@@ -607,7 +607,7 @@ var _orig={};
       <button id="ctx-compress" data-i18n="ai.ctx.compress">压缩</button>
       <button id="ctx-snap" data-i18n="ai.ctx.snap">快照</button>
       <button id="ctx-manage">管理</button>
-      </div>
+    </div>
   </div>
 </div>
 
