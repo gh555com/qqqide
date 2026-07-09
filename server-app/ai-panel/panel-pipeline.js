@@ -285,6 +285,14 @@ async function _executeSend(intent) {
         var _floorStartIdx = agent.conversation.length;
         agent._floorStartIdx = _floorStartIdx;
     }
+    // ★ 推进 passby 基线：新楼层开始时，将刚完成的上一楼层计入基线（仅楼层号变化时推进）
+    var _oldFloorNum2 = agent._currentFloorNum;
+    if (sendType !== 'recovery-0house' && _oldFloorNum2 && _oldFloorNum2 !== floorNum) {
+        agent._passbyBaseHouses = (agent._passbyBaseHouses || 0) + (agent._houses ? agent._houses.length : 0);
+        agent._passbyBaseWge = (agent._passbyBaseWge || 0) + (agent._floorCostWge || 0);
+        agent._passbyBaseTokens = (agent._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(agent) : 0);
+        agent._passbyBaseFloorNum = _oldFloorNum2;
+    }
     agent._currentFloorNum = floorNum;
     agent._houses = [];
     agent._a4Snapshots = {};
@@ -449,7 +457,7 @@ async function _executeSend(intent) {
                     var _rd2 = agent._streamFirstRenderDone ? 1000 : 16; agent._streamFirstRenderDone = true;
                     setTimeout(function () { doStreamRender(agent); }, _rd2);
                 }
-                if (_activeAgent === agentt && !_scrollPending) {
+                if (_activeAgent === agent && !_scrollPending) {
                     _scrollPending = true;
                     requestAnimationFrame(function () { scrollToBottom(); _scrollPending = false; });
                 }
@@ -487,6 +495,14 @@ async function _executeSend(intent) {
                     }
                     _targetDiv2._dirty = false;
                     _targetDiv2._renderScheduled = false;
+                    // ★ C 重构：innerHTML 已覆盖，清 agent 流状态防 _a4BuildCompleteFloorPayload DOM flush 重复追加
+                    agent._streamBuf = '';
+                    agent._streamParas = [];
+                    agent._streamSplitCursor = 0;
+                    agent._streamCodeFenceOpen = false;
+                    agent._streamRenderedCount = 0;
+                    agent._streamFullText = '';
+                    agent._streamFirstRenderDone = false;
                 }
                 agent._floorCompletedCleanly = true;
                 agent._floorTiming = timing;

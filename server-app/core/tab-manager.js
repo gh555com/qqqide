@@ -667,6 +667,7 @@
     if (!searchText) return;
     var ed = window.qqqEditor && window.qqqEditor.getEditorInstance();
     if (!ed) return;
+    var realSearch = (searchText === '__FIND__') ? '' : searchText;
     try {
       var fc = ed.getContribution('editor.contrib.findController');
       if (fc && fc.start) {
@@ -681,28 +682,32 @@
           updateSearchScope: false,
           loop: true
         });
-        // 设置搜索词
-        fc.getState().change({ searchString: searchText }, false);
-        // 延迟二次确认
-        setTimeout(function () {
-          fc.getState().change({ searchString: searchText }, false);
-        }, 120);
+        // 有搜索词时设置搜索词
+        if (realSearch) {
+          fc.getState().change({ searchString: realSearch }, false);
+          // 延迟二次确认
+          setTimeout(function () {
+            fc.getState().change({ searchString: realSearch }, false);
+          }, 120);
+        }
       } else {
         // fallback：直接用 action + DOM 写入
         ed.getAction('actions.find').run();
-        var domNode = ed.getDomNode();
-        if (domNode) {
-          var _att = 0;
-          var _try = function () {
-            var fi = domNode.querySelector('.find-widget input[type="text"]') || domNode.querySelector('.find-widget .monaco-inputbox input');
-            if (fi) {
-              var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-              ns.call(fi, searchText);
-              fi.dispatchEvent(new Event('input', { bubbles: true }));
-            }
-            if (++_att < 8) setTimeout(_try, 60);
-          };
-          setTimeout(_try, 60);
+        if (realSearch) {
+          var domNode = ed.getDomNode();
+          if (domNode) {
+            var _att = 0;
+            var _try = function () {
+              var fi = domNode.querySelector('.find-widget input[type="text"]') || domNode.querySelector('.find-widget .monaco-inputbox input');
+              if (fi) {
+                var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                ns.call(fi, realSearch);
+                fi.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+              if (++_att < 8) setTimeout(_try, 60);
+            };
+            setTimeout(_try, 60);
+          }
         }
       }
     } catch (_) { }
@@ -737,7 +742,7 @@
               range: new monaco.Range(line, 1, line, 1),
               options: { isWholeLine: true, className: 'qqq-jump-line' }
             }]);
-            setTimeout(function () { try { ed.deltaDecorations(deco, []); } catch (_) {} }, 4000);
+            setTimeout(function () { try { ed.deltaDecorations(deco, []); } catch (_) { } }, 4000);
           }
           // 搜索高亮：打开查找控件
           if (search && search.trim()) {
@@ -756,7 +761,7 @@
                   fc.getState().change({ searchString: search }, false);
                   setTimeout(function () { fc.getState().change({ searchString: search }, false); }, 120);
                 }
-              } catch (_) {}
+              } catch (_) { }
             }, 200);
           }
         } catch (_) { }
@@ -1008,6 +1013,7 @@
     openFileInLeftGroup,
     splitRight,
     closeTab,
+    activateTab,
     getGroups,
     getActiveGroup,
     getGaeaGroup,

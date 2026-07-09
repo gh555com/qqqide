@@ -755,21 +755,15 @@ async function _saveAgentQuestData(questId, ag, floorNum, opts) {
         rulesVersion: ag._rulesVersion || '',
         persistentCount: ag._persistentCount || 0,
         currentFloorNum: ag._currentFloorNum || 0,
-        // ★ passby 基线持久化（quest 级，防楼层数据缺失导致累加断裂）
-        passbyBaseHouses: ag._passbyBaseHouses || 0,
-        passbyBaseWge: ag._passbyBaseWge || 0,
+        // ★ passby 基线持久化：始终存当前楼层之前所有已完成楼层之和（防元数据残留）
+        passbyBaseHouses: Math.max(0, _passbyHouses - (ag._houses ? ag._houses.length : 0)),
+        passbyBaseWge: Math.max(0, _passbyWge - (ag._floorCostWge || 0)),
         passbyBaseTokens: ag._passbyBaseTokens || 0
     };
     await questStore.touch(questId);
     await questStore.save(questId, metaPayload);
 
-    // ★ 推进 passby 基线（仅一次，防 _saveAgentQuestData 重复调用累加）
-    if (ag._passbyBaseFloorNum !== ag._currentFloorNum) {
-        ag._passbyBaseHouses = _passbyHouses;
-        ag._passbyBaseWge = _passbyWge;
-        ag._passbyBaseTokens = (ag._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(ag) : 0);
-        ag._passbyBaseFloorNum = ag._currentFloorNum;
-    }
+    // ★ passby 基线推进已移至 _executeSend / 手动压缩 的新楼层开始处（panel-pipeline.js / panel-quest-ui.js）
 }
 
 // ★ saveQuestData 不再接受 floorStartIdx 参数，改为从 _activeAgent 读取 _currentFloorNum

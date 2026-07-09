@@ -61,7 +61,8 @@ function hookFileExplorerToTabs() {
       editorMount.style.cssText = 'position:absolute; inset:0 0 4px 0;';
       pane.appendChild(editorMount);
       var _search = window._nextSearch; window._nextSearch = null;
-      // Binary guard: prevent freeze on mp3/mp4/exe etc.
+      var _realSearch = (_search === '__FIND__') ? '' : _search;
+      // Binary guard: prevent freeze on mp3/mp4/exe etc..
       if (window.qqqEditor && window.qqqEditor.isBinaryFile && window.qqqEditor.isBinaryFile(filePath)) {
         if (window.qqqideQoast) window.qqqideQoast.show('\u274C \u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u65E0\u6CD5\u5728\u7F16\u8F91\u5668\u4E2D\u6253\u5F00', { duration: 4000 });
         return;
@@ -74,7 +75,6 @@ function hookFileExplorerToTabs() {
               try {
                 var fc = ed.getContribution('editor.contrib.findController');
                 if (fc && fc.start) {
-                  // 用 start() 打开搜索框，seedSearchStringFromSelection:'none' 防止从光标抓词
                   fc.start({
                     forceRevealReplace: false,
                     seedSearchStringFromSelection: 'none',
@@ -85,28 +85,29 @@ function hookFileExplorerToTabs() {
                     updateSearchScope: false,
                     loop: true
                   });
-                  // 设置搜索词
-                  fc.getState().change({ searchString: _search }, false);
-                  // 延迟二次确认
-                  setTimeout(function () {
-                    fc.getState().change({ searchString: _search }, false);
-                  }, 120);
+                  if (_realSearch) {
+                    fc.getState().change({ searchString: _realSearch }, false);
+                    setTimeout(function () {
+                      fc.getState().change({ searchString: _realSearch }, false);
+                    }, 120);
+                  }
                 } else {
-                  // fallback：直接用 action + DOM 写入
                   ed.getAction('actions.find').run();
-                  var domNode = ed.getDomNode();
-                  if (domNode) {
-                    var _att = 0;
-                    var _try = function () {
-                      var fi = domNode.querySelector('.find-widget input[type="text"]') || domNode.querySelector('.find-widget .monaco-inputbox input');
-                      if (fi) {
-                        var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                        ns.call(fi, _search);
-                        fi.dispatchEvent(new Event('input', { bubbles: true }));
-                      }
-                      if (++_att < 8) setTimeout(_try, 60);
-                    };
-                    setTimeout(_try, 60);
+                  if (_realSearch) {
+                    var domNode = ed.getDomNode();
+                    if (domNode) {
+                      var _att = 0;
+                      var _try = function () {
+                        var fi = domNode.querySelector('.find-widget input[type="text"]') || domNode.querySelector('.find-widget .monaco-inputbox input');
+                        if (fi) {
+                          var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                          ns.call(fi, _realSearch);
+                          fi.dispatchEvent(new Event('input', { bubbles: true }));
+                        }
+                        if (++_att < 8) setTimeout(_try, 60);
+                      };
+                      setTimeout(_try, 60);
+                    }
                   }
                 }
               } catch (_) { }

@@ -751,6 +751,14 @@ document.getElementById('ctx-compress').onclick = async function () {
     try {
         // ① 分配楼层号（questStore 原子自增，不碰 _ctx.totalFloors）
         _floorNum = await questStore.nextFloorNum(questActiveId);
+        // ★ 推进 passby 基线：新楼层开始，将刚完成的上一楼层计入基线
+        var _oldFn3 = _ag._currentFloorNum;
+        if (_oldFn3 && _oldFn3 !== _floorNum) {
+            _ag._passbyBaseHouses = (_ag._passbyBaseHouses || 0) + (_ag._houses ? _ag._houses.length : 0);
+            _ag._passbyBaseWge = (_ag._passbyBaseWge || 0) + (_ag._floorCostWge || 0);
+            _ag._passbyBaseTokens = (_ag._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(_ag) : 0);
+            _ag._passbyBaseFloorNum = _oldFn3;
+        }
         _ag._currentFloorNum = _floorNum;
         _ag._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ((typeof _panelId !== 'undefined') ? ['_L', '_C', '_R'][_panelId] || '' : '');
 
