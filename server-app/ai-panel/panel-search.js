@@ -39,6 +39,8 @@
     function _doSearch(text) {
         _clearMarks();
         if (!text || text.length < 1) { _updateNav(); return; }
+        // Normalize CRLF → LF (Windows clipboard paste has \r\n, DOM text has \n)
+        text = text.replace(/\r/g, '');
         _searchText = text;
         var card = cardPool ? cardPool.getActive() : null;
         var root = card && card._contentWrap ? card._contentWrap : $messages;

@@ -108,17 +108,43 @@
     if (keys.length > SNAPSHOT_MAX_ENTRIES) { delete _lastHoveredSubdirByPath[keys[0]]; }
   }
 
-  // ★ 筛选框：模糊匹配+空格AND，筛选时清除子列表
-  function _createFilterBar(scrollContainer) {
+  // ★ 每目录排序偏好：'n'=文件名倒序(默认), 'm'=修改时间倒序
+  var _sortPrefByPath = {};
+  var SORT_PREFS_KEY = 'ai.viewport.sortPrefs';
+
+  function _getOnlyDb() {
+    var mainProj = projects[0];
+    if (!mainProj || !mainProj.path) return null;
+    if (!window.qgs || typeof window.qgs.project !== 'function') return null;
+    var onlyPath = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/only.sq3';
+    return window.qgs.project(onlyPath, 'qqq.only', { v: 1, form: 'doc' });
+  }
+
+  function _loadSortPrefs() {
+    var db = _getOnlyDb();
+    if (!db) return;
+    db.get(SORT_PREFS_KEY).then(function (data) {
+      if (data && typeof data === 'object') { _sortPrefByPath = data; }
+    }).catch(function () { });
+  }
+
+  function _saveSortPrefs() {
+    var db = _getOnlyDb();
+    if (!db) return;
+    db.set(SORT_PREFS_KEY, _sortPrefByPath).catch(function () { });
+  }
+
+  // ★ 筛选框：模糊匹配+空格AND，筛选时清除子列表。右边 N/M 排序按钮。
+  function _createFilterBar(scrollContainer, dirPath) {
     var bar = document.createElement('div');
     bar.className = 'aiv-filter-bar';
-    bar.style.cssText = 'display:flex; padding:4px 6px; flex-shrink:0; border-bottom:1px solid var(--border-color);';
+    bar.style.cssText = 'display:flex; padding:4px 6px; flex-shrink:0; border-bottom:1px solid var(--border-color); align-items:center; gap:4px;';
     var input = document.createElement('input');
     input.type = 'text';
     input.className = 'aiv-filter-input';
     input.placeholder = '\u7b5b\u9009...';
     input.style.cssText =
-      'width:100%; background:var(--base2); border:1px solid var(--border-color); ' +
+      'flex:1; background:var(--base2); border:1px solid var(--border-color); ' +
       'border-radius:2px; padding:4px 6px; font-size:12px; color:var(--text-primary); ' +
       'outline:none; box-sizing:border-box;';
     input.addEventListener('input', function () {
@@ -138,6 +164,46 @@
       });
     });
     bar.appendChild(input);
+
+    // ---- N / M 排序按钮 ----
+    function _makeSortBtn(label, mode) {
+      var btn = document.createElement('button');
+      btn.className = 'aiv-sort-btn';
+      btn.textContent = label;
+      btn.title = mode === 'n' ? '\u6309\u6587\u4ef6\u540d\u6392\u5e8f' : '\u6309\u4fee\u6539\u65f6\u95f4\u6392\u5e8f';
+      btn.style.cssText =
+        'width:24px; height:24px; border:1px solid var(--border-color); border-radius:2px; ' +
+        'background:var(--bg-color); color:var(--text-primary); font-size:12px; font-weight:bold; ' +
+        'cursor:pointer; padding:0; line-height:22px; text-align:center; flex-shrink:0;';
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        var cur = _sortPrefByPath[dirPath] || 'n';
+        if (cur === mode) return;
+        _sortPrefByPath[dirPath] = mode;
+        _saveSortPrefs();
+        _dirCache.delete(dirPath + '|n');
+        _dirCache.delete(dirPath + '|m');
+        _dirCache.delete(dirPath);  // 清理旧 key（无 mode 后缀）
+        // ★ 重新渲染本列表：清空 + 重新 loadDirInto
+        var outer = scrollContainer._outer || scrollContainer.parentElement;
+        _closeDescendantSubmenus(outer);
+        while (scrollContainer.firstChild) { scrollContainer.removeChild(scrollContainer.firstChild); }
+        loadDirInto(scrollContainer, dirPath, outer._projectRoot);
+      });
+      return btn;
+    }
+    var nBtn = _makeSortBtn('N', 'n');
+    var mBtn = _makeSortBtn('M', 'm');
+    var curMode = _sortPrefByPath[dirPath] || 'n';
+    if (curMode === 'n') {
+      nBtn.style.background = 'var(--gold-accent-bg)';
+    } else {
+      mBtn.style.background = 'var(--gold-accent-bg)';
+    }
+    bar.appendChild(nBtn);
+    bar.appendChild(mBtn);
+
     return bar;
   }
 
@@ -207,16 +273,22 @@
   }
 
   var CACHE_TTL = 10000;  // 缓存 10 秒后过期，下次 hover 重新读盘
-  async function listDir(p) {
-    var cached = _dirCache.get(p);
+  async function listDir(p, sortMode) {
+    var mode = sortMode || _sortPrefByPath[p] || 'n';
+    var cacheKey = p + '|' + mode;
+    var cached = _dirCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.entries;
     try {
       const entries = await bridge.fs.list(p);
       entries.sort((x, y) => {
         if (x.isDir !== y.isDir) return x.isDir ? -1 : 1;
-        return naturalCompare(x.name, y.name);
+        if (mode === 'm') {
+          return (y.mtime || 0) - (x.mtime || 0);
+        }
+        // 默认 'n'：文件名倒序（数字大的在上）
+        return naturalCompare(y.name, x.name);
       });
-      _dirCache.set(p, { entries, ts: Date.now() });
+      _dirCache.set(cacheKey, { entries, ts: Date.now() });
       return entries;
     } catch (e) {
       return [];
@@ -746,7 +818,7 @@
     dd._projectRoot = project.path;
     var ddScroll = _wrapScrollContainer(dd, 1);
     // ★ 最顶层列表也加筛选框
-    var filterBar = _createFilterBar(ddScroll);
+    var filterBar = _createFilterBar(ddScroll, project.path);
     dd.insertBefore(filterBar, dd.firstChild);
     // ★ 快照还原：检查该目录是否有保存的展开链
     var snap = _treeSnapshots[project.path];
@@ -1105,10 +1177,11 @@
     // breadcrumb: mark the parent row so the path stays highlighted
     rowEl.classList.add('aiv-breadcrumb');
     sub._parentRow = rowEl;
+    sub._projectRoot = projectRoot;  // ★ 必须在 filterBar 之前设置，sort 按钮需要
 
     var subScroll = _wrapScrollContainer(sub, sub._depth);
     // ★ 子列表也加筛选框
-    var filterBar2 = _createFilterBar(subScroll);
+    var filterBar2 = _createFilterBar(subScroll, dirPath);
     sub.insertBefore(filterBar2, sub.firstChild);
     _stampDepth(sub, sub._depth);
     document.body.appendChild(sub);
@@ -1127,7 +1200,6 @@
     }
 
     loadDirInto(subScroll, dirPath, projectRoot);
-    sub._projectRoot = projectRoot;
     return sub;
   }
 
@@ -1438,6 +1510,7 @@
     container.className = 'aiv-container';
     _loadRecents();
     loadProjects();
+    _loadSortPrefs();
     render();
     // ★ 关闭下拉：左键点击列表外任何位置（窗口内+窗口外）
     function _isOutsideDropdown(target) {

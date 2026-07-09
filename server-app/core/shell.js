@@ -150,6 +150,23 @@ var _closeConfirmOverlay = null;
 var _closeConfirmActive = false;
 var _closeConfirmUnblockAt = 0; // 1s 防抖：此时间之前不能取消/关闭遮罩
 
+// ★ 执行关闭确认：关闭当前窗口，不影响其他窗口
+function _executeCloseConfirm() {
+  var bridge = _shBridge;
+  // ★ 先关弹窗再关窗口，顺序不重要（destroy 是最终操作）
+  hideCloseConfirm(true);
+  // ★ 优先 closeConfirmed → win.destroy()（只关当前窗口）
+  //   绝不 fallback 到 quitAll（那会关所有窗口）
+  if (bridge.window && bridge.window.closeConfirmed) {
+    try { bridge.window.closeConfirmed(); } catch (_) {
+      // IPC 同步抛异常才 fallback（极少见）
+      if (bridge.window.close) bridge.window.close();
+    }
+  } else if (bridge.window && bridge.window.close) {
+    bridge.window.close();
+  }
+}
+
 function showCloseConfirm() {
   if (_closeConfirmActive) return;
   _closeConfirmActive = true;
@@ -175,44 +192,36 @@ function showCloseConfirm() {
     '<div style="font-size:16px;margin-bottom:20px;color:' + text + ';">确认退出？</div>' +
     '<div style="display:flex;gap:8px;">' +
     '<button id="qqq-exit-cancel" style="flex:1;padding:10px 0;border:1px solid ' + muted + ';border-radius:4px;background:transparent;color:' + muted + ';font-size:13px;cursor:default;">取消</button>' +
-    '<button id="qqq-exit-confirm" style="flex:1;padding:10px 0;border:none;border-radius:4px;background:' + red + ';color:#fff;font-size:13px;font-weight:bold;">确认退出</button>' +
+    '<button id="qqq-exit-confirm" data-no-cd style="flex:1;padding:10px 0;border:none;border-radius:4px;background:' + red + ';color:#fff;font-size:13px;font-weight:bold;">确认退出</button>' +
     '</div>';
 
   _closeConfirmOverlay.appendChild(panel);
   document.body.appendChild(_closeConfirmOverlay);
 
-  // 默认聚焦确认按钮，回车即退出
   var $confirm = document.getElementById('qqq-exit-confirm');
   var $cancel = document.getElementById('qqq-exit-cancel');
   if ($confirm) {
+    // ★ 立即聚焦，用户可直接按回车退出（data-no-cd 绕过冷却护盾）
     $confirm.focus();
     $confirm.addEventListener('click', function () {
-      hideCloseConfirm(true); // force: 确认退出不触发防抖
-      // ★ 双保险：优先 closeConfirmed，fallback close（防止 IPC 未注册等边缘情况）
-      if (bridge.window && bridge.window.closeConfirmed) {
-        try { bridge.window.closeConfirmed(); } catch (e) {
-          if (bridge.window.close) bridge.window.close();
-        }
-      } else if (bridge.window && bridge.window.close) {
-        bridge.window.close();
-      }
+      _executeCloseConfirm();
     });
   }
   if ($cancel) {
     $cancel.addEventListener('click', hideCloseConfirm);
   }
 
-  // 1s 后解封取消按钮 + Esc + 遮罩点击
+  // 1s 后解封取消按钮样式
   setTimeout(function () {
-    if ($cancel) {
+    if ($cancel && _closeConfirmActive) {
       $cancel.style.color = text;
       $cancel.style.borderColor = border;
       $cancel.style.cursor = '';
     }
   }, 1000);
 
-  // Esc 关闭（但受 1s 防抖限制）
-  document.addEventListener('keydown', _onCloseConfirmEsc);
+  // ★ 键盘：Enter=确认退出 / Escape=取消
+  document.addEventListener('keydown', _onCloseConfirmKey);
 }
 
 function hideCloseConfirm(force) {
@@ -224,11 +233,12 @@ function hideCloseConfirm(force) {
     _closeConfirmOverlay.remove();
     _closeConfirmOverlay = null;
   }
-  document.removeEventListener('keydown', _onCloseConfirmEsc);
+  document.removeEventListener('keydown', _onCloseConfirmKey);
 }
 
-function _onCloseConfirmEsc(e) {
-  if (e.key === 'Escape') hideCloseConfirm();
+function _onCloseConfirmKey(e) {
+  if (e.key === 'Escape') { hideCloseConfirm(); }
+  else if (e.key === 'Enter') { _executeCloseConfirm(); }
 }
 
 function bootWindowControls() {

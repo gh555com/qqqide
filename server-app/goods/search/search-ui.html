@@ -9,20 +9,18 @@
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{font:13px Tahoma,sans-serif;height:100%;background:var(--bg);color:var(--tx)}
 ::selection{background:rgb(255,211,2)!important;color:#000!important}
-input,select,textarea{-webkit-user-select:text;user-select:text}
+input,select{-webkit-user-select:text;user-select:text}
 .tb{padding:6px 10px;border-bottom:1px solid var(--bd);flex-shrink:0}
 .tb-r{display:flex;align-items:center;gap:4px;margin-bottom:4px}
 .tb-r:last-child{margin-bottom:0}
 .inp{flex:1;height:26px;padding:2px 7px;border:1px solid var(--inp-bd);border-radius:3px;background:var(--inp-bg);color:var(--tx);font:13px Consolas,monospace;outline:none}
 .inp:focus{border-color:var(--blu)}.inp::placeholder{color:var(--tx3);opacity:.55}
-.inp-ta{height:auto;min-height:26px;max-height:62px;resize:none;overflow-y:auto;white-space:pre-wrap;word-break:break-all;line-height:18px;padding-top:3px;padding-bottom:3px;scrollbar-width:thin}
-.inp-ta::-webkit-scrollbar{width:4px}.inp-ta::-webkit-scrollbar-thumb{background:var(--tx3);border-radius:2px}
 .scope{flex:1;height:24px;padding:2px 6px;border:1px solid var(--inp-bd);border-radius:3px;background:var(--inp-bg);color:var(--tx);font:12px Consolas,monospace;outline:none}
 .scope:focus{border-color:var(--blu)}.scope::placeholder{color:var(--tx3);opacity:.55}
 .lbl{font-size:11px;color:var(--tx3);white-space:nowrap;min-width:28px}
-.tog{width:22px;height:22px;border:1px solid var(--bd);border-radius:3px;background:transparent;color:var(--tx3);font:bold 11px Tahoma;text-align:center;cursor:pointer;flex-shrink:0;line-height:22px}
+.tog{width:26px;height:26px;border:1px solid var(--bd);border-radius:3px;background:transparent;color:var(--tx3);font:bold 12px Tahoma;text-align:center;cursor:pointer;flex-shrink:0;line-height:26px}
 .tog:hover{background:var(--bg2);color:var(--tx)}.tog.on{background:var(--blu);color:#1e1e1e;border-color:var(--blu)}
-.btn{height:22px;padding:0 6px;border:1px solid var(--bd);border-radius:3px;background:transparent;color:var(--tx);font-size:11px;cursor:pointer;white-space:nowrap}
+.btn{height:26px;padding:0 10px;border:1px solid var(--bd);border-radius:3px;background:transparent;color:var(--tx);font-size:11px;cursor:pointer;white-space:nowrap}
 .btn:hover{background:var(--bg2)}.btn.pri{background:var(--blu);color:#1e1e1e;border-color:var(--blu)}.btn.pri:hover{opacity:.9}
 .chk{font-size:11px;color:var(--tx3);display:flex;align-items:center;gap:3px;margin-left:6px;cursor:pointer;white-space:nowrap;flex-shrink:0}
 .chk input{display:none}
@@ -64,8 +62,8 @@ input,select,textarea{-webkit-user-select:text;user-select:text}
 <body>
 <div style="display:flex;flex-direction:column;height:100%">
   <div class="tb">
-    <div class="tb-r"><span class="iw"><textarea class="inp inp-ta" id="q"  autofocus spellcheck="false" rows="1"></textarea><div class="hdd" id="dd0"></div></span><button class="tog" id="brx" title="正则">.*</button><button class="tog" id="bcs" title="大小写">Aa</button><button class="tog" id="bww" title="全字">ab</button></div>
-    <div class="tb-r"><span class="iw"><textarea class="inp inp-ta" id="rp"  spellcheck="false" rows="1"></textarea><div class="hdd" id="dd1"></div></span><button class="btn pri" id="bra">全部替换</button></div>
+    <div class="tb-r"><span class="iw"><input class="inp" id="q" placeholder="搜索..." autofocus spellcheck="false"><div class="hdd" id="dd0"></div></span><button class="tog" id="brx" title="正则">.*</button><button class="tog" id="bcs" title="大小写">Aa</button><button class="tog" id="bww" title="全字">ab</button></div>
+    <div class="tb-r"><span class="iw"><input class="inp" id="rp" placeholder="替换..." spellcheck="false"><div class="hdd" id="dd1"></div></span><button class="btn pri" id="bra">全部替换</button></div>
     <div class="tb-r"><span class="lbl">范围</span><span class="iw"><input class="scope" id="sp" placeholder="搜索路径（点 🔍 自动填入）" spellcheck="false"><div class="hdd" id="dd2"></div></span><label class="chk" id="lgi"><input type="checkbox" id="cgi"><span class="ckb"></span> .gitignore</label></div>
     <div class="tb-r"><span class="lbl">仅限</span><span class="iw"><input class="scope" id="inc" placeholder="*.js, src/" spellcheck="false"><div class="hdd" id="dd3"></div></span><span class="lbl" style="margin-left:8px">排除</span><span class="iw"><input class="scope" id="exc" value=".git/, *.log, *.json" spellcheck="false"><div class="hdd" id="dd4"></div></span><span class="lbl" style="margin-left:8px">排序</span><span class="sort-wrap"><button class="sort" id="srt_btn">修改时间↓</button><div class="sort-dd" id="srt_dd"></div></span></div>
   </div>
@@ -170,7 +168,7 @@ INPS.forEach(function(inp,fid){
   inp.addEventListener('keydown',function(e){
     if(e.key==='ArrowDown'){e.preventDefault();if(_openFid===null)_show(fid);_nav(1)}
     else if(e.key==='ArrowUp'){e.preventDefault();if(_openFid===null)_show(fid);_nav(-1)}
-    else if(e.key==='Enter'){if(_openFid!==null){e.preventDefault();_pick()}else if(!e.shiftKey){e.preventDefault();if(fid===0)dos();else trg()}}
+    else if(e.key==='Enter'){if(_openFid!==null){e.preventDefault();_pick()}else{if(fid===0)dos();else trg()}}
     else if(e.key==='Escape'){_close()}
   });
   inp.addEventListener('input',function(){if(_openFid===fid){_show(fid);return}if(inp.value.trim()){_show(fid)}});
@@ -202,7 +200,7 @@ document.addEventListener('mousedown',function(e){if(_sortOpen&&!e.target.closes
 function tg(b,k){return function(){if(k==='rx')_rx=!_rx;if(k==='cs')_cs=!_cs;if(k==='ww')_ww=!_ww;b.classList.toggle('on',k==='rx'?_rx:k==='cs'?_cs:_ww);trg()}}
 BRX.onclick=tg(BRX,'rx');BCS.onclick=tg(BCS,'cs');BWW.onclick=tg(BWW,'ww');
 function trg(){if(_tmr)clearTimeout(_tmr);_tmr=setTimeout(dos,200)}
-Q.onkeydown=function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(_tmr)clearTimeout(_tmr);dos()}};
+Q.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();if(_tmr)clearTimeout(_tmr);dos()}};
 IC.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();dos()}};
 EX.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();dos()}};
 SP.onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();_scopePath=SP.value.trim();dos()}};
@@ -234,12 +232,10 @@ async function dos(){
   var sp=SP.value.trim();
   if(!sp){try{var vp=window.parent&&window.parent.qqqideViewport;if(vp){var m=vp.getMainProject();if(m){sp=m.path;SP.value=sp}}}catch(_){}}
   if(!sp){STT.textContent='⚠️ 请指定搜索范围';return}
-  // Normalize query: strip \r (CRLF→LF), convert literal \\n to actual newlines
-  var searchQ=q.replace(/\r/g,'').replace(/\\n/g,'\n');
-  _scopePath=sp;_add(0,searchQ);_add(2,sp);_add(3,IC.value);_add(4,EX.value);
+  _scopePath=sp;_add(0,q);_add(2,sp);_add(3,IC.value);_add(4,EX.value);
   // Notify parent to update tab title
   try{window.parent.postMessage({type:'qqqide-search-title',path:sp},'*')}catch(_){}
-  // Build highlight regex — handle newlines: split into per-line parts for OR matching
+  // Build highlight regex — handle \n as multiline: split into per-line parts
   var hlQ=q,hasNl=q.indexOf('\\n')!==-1||q.indexOf('\n')!==-1;
   if(hasNl){
     var parts=q.replace(/\\n/g,'\n').split('\n').filter(Boolean);
@@ -250,11 +246,11 @@ async function dos(){
   Q.classList.remove('err')
   STT.textContent='🔍 搜索中...';
   try{if(!bri)bri=window.parent&&window.parent.qqqideBridge;if(!bri||!bri.search){STT.textContent='⚠️ 搜索引擎未就绪';return}
-    var r=await bri.search.query({query:searchQ,searchPath:sp,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,
+    var r=await bri.search.query({query:q,searchPath:sp,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,
       includePattern:IC.value.trim()||undefined,excludePattern:EX.value.trim()||undefined,
       contextLines:0,maxResults:5000,timeoutMs:60000,respectGitignore:CGI.checked});
     if(r.error){STT.textContent='⚠️ '+r.error;clr();return}
-    _last=r;_lastQ=searchQ;rdr(r);
+    _last=r;_lastQ=q;rdr(r);
     var fc=0;for(var i=0;i<r.results.length;i++){if(i===0||r.results[i].file!==r.results[i-1].file)fc++}
     ST.innerHTML='';ST.appendChild(_buildSt(r.total,fc,r.elapsed,r.filesScanned,r.truncated));
   }catch(e){STT.textContent='⚠️ 搜索出错: '+(e.message||e)}

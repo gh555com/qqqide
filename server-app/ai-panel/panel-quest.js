@@ -22,7 +22,6 @@ async function _handleSyncMessage(msg) {
     //   否则 draft 面板的广播全被拦截，永远收不到其他面板的建楼通知
     if (msg.type === 'building-changed') {
         (window.__qqq_localBuildingQuests = window.__qqq_localBuildingQuests || {})[msg.questId] = !!msg.building;
-        console.log('[comet] building-changed recv: qid=' + msg.questId + ' building=' + !!msg.building + ' panel=' + _panelId);
         if (typeof updateQuestTofu === 'function') updateQuestTofu();
         if (typeof _updateQuestClock === 'function') _updateQuestClock();
         // ★ 关闭已打开的下拉 → 下次 hover 全新渲染（含新的建楼状态）

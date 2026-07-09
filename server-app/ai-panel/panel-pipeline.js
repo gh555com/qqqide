@@ -330,6 +330,8 @@ async function _executeSend(intent) {
     }
     agent._streamingContent = null;
     agent._streaming = true;
+    // ★ 即时同步按钮 UI：建楼开始 → 按钮变红 Stop（必须在 agent._streaming 之后）
+    setStreaming(true);
     if (sendType !== 'recovery-0house') {
         if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent);
         if (typeof _startAllTxtStream === 'function') _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, text, '');
@@ -366,7 +368,8 @@ async function _executeSend(intent) {
                 _firstQuest = _checkFirstQuestFlag(questStore.getProjectRoot());
             }
         } catch (_) { }
-        if (typeof ExpertFlow !== 'undefined' && ExpertFlow.shouldTrigger(_firstQuest, floorNum)) {
+        // ★ Only center panel (main project) triggers E-Flow
+        if (typeof ExpertFlow !== 'undefined' && ExpertFlow.shouldTrigger(_firstQuest, floorNum) && typeof _panelId !== 'undefined' && _panelId === 1) {
             ExpertFlow.markTriggered();
             ExpertFlow.setMode(ExpertFlow.MODE_PENDING);
             // ★ _system:true → AI sees it, UI does NOT render it (unlike _injected guide blocks)

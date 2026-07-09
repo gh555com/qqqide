@@ -29,7 +29,6 @@ function _registerBuilding(questId, panelId) {
     reg[questId] = { stopState: 'sending', panelId: panelId, startedAt: Date.now() };
     // ★ 本地集合：建楼面板跳过自己的广播，直接写入本地
     (window.__qqq_localBuildingQuests = window.__qqq_localBuildingQuests || {})[questId] = true;
-    console.log('[comet] _registerBuilding: qid=' + questId + ' panel=' + panelId + ' localKeys=' + Object.keys(window.__qqq_localBuildingQuests).join(','));
     // ★ 跨面板同步：建楼开始 → 所有面板更新豆腐时钟（带 building:true）
     if (typeof _broadcast === 'function') _broadcast('building-changed', questId, { building: true });
 }
