@@ -120,8 +120,7 @@ async function _ripgrepSearch(
     if (hasNewline) {
         args.push('--multiline');
         args.push('--crlf');
-        // Strip \r (CRLF→LF), convert literal \\n to actual newlines
-        actualQuery = query.replace(/\r/g, '').replace(/\\n/g, '\n');
+        actualQuery = query.replace(/\\n/g, '\n');
         // --fixed-strings conflicts with --multiline; force regex mode
         if (!isRegex) {
             forceRegex = true;

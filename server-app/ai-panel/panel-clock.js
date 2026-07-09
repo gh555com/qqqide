@@ -460,7 +460,6 @@ async function renderQuestDrop() {
             var _reg = window.parent && window.parent.__qqq_buildingRegistry;
             var _isBld = _bq[s.id] || (_reg && _reg[s.id] && _reg[s.id].stopState === 'sending');
             if (_isBld) {
-                console.log('[comet] renderQuestDrop insert clock: qid=' + s.id + ' panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?'));
                 _insertCometClock(prefix, s.id);
             }
         })(filtered[i]);
@@ -582,8 +581,6 @@ function _tickCometClocks() {
         // ★ 本地集合为主（IPC 可靠同步），注册表兜底（面板重启等错过广播场景）
         var isBuilding = localBQ[qid] || (reg && reg[qid] && reg[qid].stopState === 'sending');
         if (!pool || !isBuilding) {
-            if (isBuilding) console.log('[comet] _tickCometClocks HIDE (no pool): qid=' + qid + ' panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?'));
-            else console.log('[comet] _tickCometClocks HIDE: qid=' + qid + ' localBQ=' + !!localBQ[qid] + ' reg=' + !!(reg && reg[qid] && reg[qid].stopState === 'sending') + ' panel=' + (typeof _panelId !== 'undefined' ? _panelId : '?'));
             clk.style.display = 'none';
             continue;
         }

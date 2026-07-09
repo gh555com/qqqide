@@ -1,6 +1,17 @@
 qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向参考。
 ============================================================
-更新: 2026-06-29
+更新: 2026-07-08
+
+已完成 — 本轮 2026-07-08 C 架构落地 + 3 修复
+------
+· C 架构渲染模型落地：onDone → content(API完整回复) → renderMarkdown → _contentWrap.innerHTML 一次性覆盖流式预览。
+  流式阶段（onToken→_doStreamRender）仅为实时预览，onDone 后以 content 为唯一真理源。
+· tab-manager.js：activateTab 加入 window.qqqTabs public API，修复 _doRestore 崩溃（Uncaught TypeError）
+· index.html：.msg 移除 content-visibility:auto + .card-building{content-visibility:visible}。content-visibility:auto 与 qh 滚动条冲突：
+  内容替换时 layout 重算 → 重置 hover 状态 → 滑块 2px↔12px 无限闪烁
+· 流式双重保障：onDone 清空 _streamBuf/_streamParas/_streamSplitCursor → _a4BuildCompleteFloorPayload DOM flush 读到空数组零操作
+· 崩溃恢复保留：beforeunload → skipDomFlush=false → DOM flush 落盘（仅在 onDone 前崩溃时有用，正常路径无害）
+· 架构 doc：流式渲染 节 B→C 更新；qh滚动 doc：新增防坑禁 content-visibility:auto
 
 已完成 — 本轮 2026-06-29 (37) 408 致命楼层闭环恢复 — 三重根因修复
 ------
@@ -370,7 +381,7 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
   · _appendToCard 路由新消息到活跃 Card
   · _restoreAgentFromStore 从 SQLite 恢复 agent 全量状态（三处调用）
   · GPU 加速 A1 动画：scale3d + will-change + translateZ(0)
-  · .msg 添加 content-visibility:auto（浏览器跳过屏外 layout）
+  · .msg 添加 content-visibility:auto（浏览器跳过屏外 layout）→ ★ 2026-07-08 已回退：与 qh 滚动条冲突导致 hover 闪烁
   · 搜索高亮 → 滚动条标记叠层对接（_doSearch → cardPool.showMarks）
   · 选中同词高亮（双击 + VS Code 风格）→ <mark> 包裹 + 标记叠层
   · 7 处 if(cardPool){}else{} fallback 全部剥离
@@ -467,7 +478,7 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 ------
 - §19 光标铁律：全站禁止改 cursor（shell.css/js, gaea-host.js, sash.js, ai-panel/index.html 全部清空）
 - §18 CooldownGuard 默认冷却值同步
-- content-visibility:auto 消息虚拟化：.msg 加 CSS 属性，屏外跳过渲染
+- content-visibility:auto 消息虚拟化：.msg 加 CSS 属性，屏外跳过渲染 → ★ 2026-07-08 已回退：与 qh 滚动条冲突导致 hover 闪烁
 - Quest IO 并行化：touch + save 改 Promise.all（不同 key 互不依赖）
 - AI 输入框滚动条：3px 高对比度无圆角
 - shell.css: overflow:hidden 从 html,body 移至 .qqq-shell（释放 body 直系 fixed 不被裁切）

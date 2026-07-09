@@ -271,8 +271,12 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 
 §42 E-Flow — 专家文档框架
   - 入口: panel-expert.js(四态机: none→pending→standard/custom)。
-  - q1首层100%触发，其余10%。防抖5min。自动检测 expert/index.md 或 project.txt。
+  - q1首层100%触发，其余10%。防抖5min。仅中面板(panel=1)触发。
+  - 触发信号: inject('[E-FLOW trigger]', {_system:true}) — AI可见，用户不可见。
+  - 协议全文存服务器壳(system-prompt.txt)，客户端只发一行触发词。
   - 持久化: onlyStore.qqq.expert.mode。已锁定模式永不回退。
+  - AUTO-DETECT: autoDetect扫描 project.txt rule条目→custom / expert/index.md→standard。
+    仅启动+楼层开始时扫描，AI不写only.sq3(§E-a 只写project.txt)。
 
 §43-44 窗口缩放/项目资产
   - §43: 窗口UI锁死1.00 zoom。+/-/Ctrl+=只改editor fontSize(1-128)。按住=首tick ±1后跃10（18→28→38...），200ms定频防抖。

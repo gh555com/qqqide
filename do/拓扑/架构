@@ -272,6 +272,15 @@ UI 布局 — A/X/AI + 左右翼（三面板）
 · 左翼 #qqq-wing-left: 左面板(panel=0)，灯泡开关，默认关闭
 · 右翼 #qqq-wing-right: 右面板(panel=2)，灯泡开关，默认关闭
 · 灯泡 #qqq-bulb-1/2: 菜单行2 红色圆点 toggle
+· 翼面板宽: 389px (_shAiW=WING_WIDTH)。窗口最小尺寸动态调整：
+  中间面板 ≥1100×800 + 左翼开 +389px + 右翼开 +389px
+  实现: shell/window-manager.ts updateWingMinSize() + shell-wings.js setWingState()
+
+窗口最小尺寸 (2026-07-09)
+-----------------------------------
+· 中间面板最小 1100×800 (CENTER_MIN_W × CENTER_MIN_H)，窗口创建时硬设
+· 翼面板开关时同步 IPC → setMinimumSize(CENTER_MIN_W + wingW, CENTER_MIN_H)
+· 翼面板宽度 389px 为真理源: shell-wings.js _shAiW = window-manager.ts WING_WIDTH
 
 菜单栏 — 2026-06-25
 ----------------------------------------------------------
@@ -609,18 +618,22 @@ all.json 写入系统（2026-06-29 共享 agentPool 重构 + wgeCost 命名归�
 · draft 发送时 _isDraft → questStore.create('') 升级为真实 quest → card 迁移
 
 
-流式渲染 — 一次渲染 终身不变
------------------------------------------------------------------------
-铁律: 封顶不重建 DOM。流式阶段 appendChild 的节点即为最终节点，永不 innerHTML 替换。
-  · onDone 仅做: 去 stream-para 类 + 移除空 _lastParaEl。零 DOM 重建。
-  · 引导 Ack XML 清洗: 第一个 < 字符处截断（零漏过可能）。
-
-增量解析器（代码围栏感知）:
-  拆分前扫描 ^``` 行首标记奇偶性。奇数→围栏未闭合→禁止拆分，回退 _buf 等待闭合。
-  拆分边界: \n\n = Markdown 段落边界，围栏是唯一例外。
-  _splitCursor 只扫描上次位置后新增内容 + insertBefore(_lastParaEl) → 永远 1234 正序。
-  _doStreamRender + onDone 非围栏路径用 _buf.slice(_splitCursor) 只取尾部未完成段
-  （围栏路径 _buf 已在 onToken 重写为纯围栏内容，仍用全量 _buf）。
+流式渲染 — 双层模型（C 架构，2026-07-08）
+------------------------------------------------------------------------
+铁律: content（API 完整回复）为唯一真理源。流式预览仅提供实时反馈。
+  ① 流式阶段（onToken → _doStreamRender）:
+     · 以 \n\n 为段落边界，代码围栏感知拆分
+     · 拆分前扫描 ^``` 行首标记奇偶性。奇数→围栏未闭合→禁止拆分
+     · appendChild + insertBefore(_lastParaEl) 增量追加 &lt;div class="stream-para"&gt;
+     · 永不 innerHTML，仅追加。_streamParas / _streamBuf 累积在 agent 上
+  ② 完结阶段（onDone）:
+     · content → renderMarkdown → _contentWrap.innerHTML 一次性覆盖（替换所有流式预览 DOM）
+     · 清空 _streamBuf / _streamParas / _streamSplitCursor 等全量流状态
+     · 防 _a4BuildCompleteFloorPayload DOM flush 重复追加（读到空数组→零操作）
+  ③ 崩溃恢复（beforeunload → _a4BuildCompleteFloorPayload）:
+     · skipDomFlush=false 路径 → flush 未渲染的 _streamParas/_streamBuf 到 DOM
+     · 然后捕获 _contentWrap.innerHTML 为 ai_html → 落盘 all.json
+     · onDone 后此路径无害（stream 已清），仅在崩溃时有用
 
 双层流看门狗（agent-loop _parseSSE）:
   · 流看门狗 60s: 无 SSE 数据→abort。产出看门狗 15min: 无 delta.content 或 tool_calls→abort
