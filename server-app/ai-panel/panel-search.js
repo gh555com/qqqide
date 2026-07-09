@@ -45,10 +45,16 @@
         var card = cardPool ? cardPool.getActive() : null;
         var root = card && card._contentWrap ? card._contentWrap : $messages;
 
-        // ── 多行搜索：用连续文本找匹配，再映射回各文本节点 ──
+        // ── 多行搜索：用连续文本找匹配，块级元素间插 \n 再映射回各文本节点 ──
+        var BLOCK_TAGS = { P:1, DIV:1, LI:1, PRE:1, H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, BLOCKQUOTE:1, SECTION:1, ARTICLE:1, UL:1, OL:1, TABLE:1, TR:1, HR:1, BR:1 };
+        function _blockAncestor(el) {
+            while (el) { if (BLOCK_TAGS[el.tagName]) return el; el = el.parentElement; }
+            return null;
+        }
         var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null, false);
         var textNodes = [];
         var fullText = '';
+        var prevBlock = null;
         while (walker.nextNode()) {
             var node = walker.currentNode;
             if (!node.textContent) continue;
@@ -58,8 +64,14 @@
                 if (node.parentElement && node.parentElement.closest('.search-mark')) continue;
                 if (node.parentElement && node.parentElement.closest('.sel-match')) continue;
             }
+            var curBlock = _blockAncestor(node.parentElement);
+            // 不同块级元素之间插入 \n 使跨行搜索命中块边界
+            if (prevBlock && curBlock !== prevBlock && fullText.length > 0 && fullText[fullText.length - 1] !== '\n') {
+                fullText += '\n';
+            }
             textNodes.push({ node: node, start: fullText.length });
             fullText += node.textContent;
+            prevBlock = curBlock;
         }
 
         var tNeedle = _caseSensitive ? text : text.toLowerCase();

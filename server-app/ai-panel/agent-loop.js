@@ -669,6 +669,7 @@ var AgentLoop = (function () {
                             // ★ 统一管线（同手动压缩）：压缩 = 一间 house，完整追踪账单+计时
                             self._houseIndex++;
                             var _compressStart = performance.now();
+                            self._aiTierLabel = 'A4';  // 压缩锁死 tier 4
                             var _reason = 'Auto-compress (' + Math.round(_apiTokens / 1000) + 'k / ' + Math.round(_threshold / 1000) + 'k)';
                             self._renderCompressStart(_reason);
                             var _result = await self._compressContext({ trigger: 'auto', detail: _reason });
@@ -682,14 +683,14 @@ var AgentLoop = (function () {
                                 ts: new Date().toISOString(),
                                 ms: Math.round(performance.now() - _compressStart),
                                 reasoning: '',
-                                answer: _result.compressed ? _result.detail : '',
+                                answer: _result.compressed ? _result.detail : ('FAIL: ' + (_result.detail || '') + '\n' + (self._lastRawFactsText ? 'RAW FACTS (' + self._lastRawFactsText.length + 'c): ' + self._lastRawFactsText.slice(0, 500) : '')),
                                 wgeCost: _bill ? _bill.wgeCost : 0,
                                 model: _bill ? _bill.model : '',
                                 cacheHitRate: _bill ? _bill.cacheHitRate : -1,
                                 usage: _bill ? _bill.usage : null,
                                 billingSeq: _bill ? _bill.seq : 0,
                                 billingRequestId: _bill ? _bill.requestId : '',
-                                tier: self._lastTier ? self._lastTier.label : ''
+                                tier: '4-Pro (compress)'
                             });
                             // ★ 更新右下角 ge 显示示
                             var _aiDivC = self._activeAiDiv;

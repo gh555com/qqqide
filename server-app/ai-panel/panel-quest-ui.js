@@ -647,9 +647,7 @@ if (_bdPanel) {
         hideCtxBreakdown();
     });
 }
-document.getElementById('ctx-cancel').onclick = function () {
-    document.getElementById('ctx-panel').style.display = 'none';
-};
+
 // ★★ 管理按钮 — 打开 Conversation 上下文检查器 goods
 var _ctxManageBtn = document.getElementById('ctx-manage');
 if (_ctxManageBtn) {
@@ -829,6 +827,8 @@ document.getElementById('ctx-compress').onclick = async function () {
 
         // ⑧ 压缩（渲染卡片在 _aiDiv 内，用户可见）
         //    通过正常 agent loop 管线（_callCompactAPI → _callGateway）获得 house 计数 + 账单 + 计时归因
+        _ag._aiTierLabel = 'A4';  // 压缩锁死 tier 4，UI 显示固定
+        _ag._compressing = true;  // ★ 阻止 auto-save 在压缩中间态污染 _ctx
         var _reason = 'Manual compress';
         _ag._renderCompressStart(_reason);
         // ★ 压缩前递增 houseIndex（让压缩成为第 1 间 house）
@@ -846,14 +846,14 @@ document.getElementById('ctx-compress').onclick = async function () {
             ts: new Date().toISOString(),
             ms: Math.round(performance.now() - _compressStartMs),
             reasoning: '',
-            answer: _result.compressed ? _result.detail : '',
+            answer: _result.compressed ? _result.detail : ('FAIL: ' + (_result.detail || '') + '\n' + (_ag._lastRawFactsText ? 'RAW FACTS (' + _ag._lastRawFactsText.length + 'c): ' + _ag._lastRawFactsText.slice(0, 500) : '')),
             wgeCost: _bill ? _bill.wgeCost : 0,
             model: _bill ? _bill.model : '',
             cacheHitRate: _bill ? _bill.cacheHitRate : -1,
             usage: _bill ? _bill.usage : null,
             billingSeq: _bill ? _bill.seq : 0,
             billingRequestId: _bill ? _bill.requestId : '',
-            tier: _ag._lastTier ? _ag._lastTier.label : ''
+            tier: '4-Pro (compress)'
         });
         // ★ 更新右下角 ge 显示（压缩后 _floorCostWge 已被 billing 事件填充）
         if (_aiDiv && _aiDiv._clockCost) {

@@ -670,10 +670,9 @@ async function _executeSend(intent) {
             _triggerQueueSend();
         }
         if (_activeAgent === agent) {
-            streaming = false;
-            // ★ 楼层正常完结时 onDone 已正确设置按钮状态（含 guide 按钮启用），
-            //   updateGuideBtn 此时 _stopState 已不在 sending → 会误禁用 → 跳过
-            if (!agent._floorCompletedCleanly) updateGuideBtn();
+            // ★ 无条件同步按钮 UI：无论正常完成/停止/报错，finally 做最后一次按钮刷新
+            //   setStreaming(false) 内部已含 updateGuideBtn，下方不再重复调用
+            setStreaming(false);
         }
     }
 

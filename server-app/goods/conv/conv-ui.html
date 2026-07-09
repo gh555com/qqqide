@@ -244,18 +244,37 @@ function buildCells(ag) {
     });
 
     // ═══ 工具定义 ═══
-    var toolsChars = 0, toolsContent = '';
+    // goods iframe 的 parent 就是 AI 面板，直接调 getTools() 即可
+    // 旧代码用 document.getElementById('qqq-ai-iframe-pN') 找主窗口元素 → 永远找不到
+    var toolsChars = 0, toolsContent = '', toolsCount = 0;
     try {
-        var aiFrame = window.parent.document.getElementById('qqq-ai-iframe-p' + _panelId);
-        if (aiFrame && aiFrame.contentWindow && typeof aiFrame.contentWindow.getTools === 'function') {
-            var tools = aiFrame.contentWindow.getTools();
-            if (tools && tools.length) { toolsContent = JSON.stringify(tools, null, 2); toolsChars = toolsContent.length; }
+        var _toolsFn = null;
+        // ① 直接 from parent（goods iframe 嵌在 AI 面板内）
+        if (window.parent && typeof window.parent.getTools === 'function') {
+            _toolsFn = window.parent.getTools;
+        }
+        // ② 兜底：通过主窗口找 AI iframe（旧路径，也修了）
+        if (!_toolsFn) {
+            var _topWin = window.top || window.parent;
+            var _aiIframe = _topWin.document.getElementById('qqq-ai-iframe-p' + _panelId);
+            if (_aiIframe && _aiIframe.contentWindow && typeof _aiIframe.contentWindow.getTools === 'function') {
+                _toolsFn = _aiIframe.contentWindow.getTools;
+            }
+        }
+        if (_toolsFn) {
+            var tools = _toolsFn();
+            if (tools && tools.length) {
+                toolsContent = JSON.stringify(tools, null, 2);
+                toolsChars = toolsContent.length;
+                toolsCount = tools.length;
+            }
         }
     } catch (_) {}
     cells.push({
         id: 'toolsdef', type: 'toolsdef', role: 'toolsdef',
-        label: 'Tools Definition', group: '注入',
-        content: toolsContent || '[无法读取工具定义]', chars: toolsChars
+        label: (toolsCount > 0) ? ('Tools Definition (' + toolsCount + ' tools)') : 'Tools Definition',
+        group: '注入',
+        content: toolsContent || '[工具定义尚未加载，请稍后刷新]', chars: toolsChars || 4200
     });
 
     // ═══ 对话消息 ═══
@@ -543,10 +562,23 @@ window.addEventListener('message', function (e) {
     if (e.data && e.data.type === 'qqq-conv-refresh') refresh();
 });
 
-// 定时检查 agent 变化
+// 定时检查 agent 变化 + 工具定义就绪
+var _toolsReady = false;
 setInterval(function () {
     var ag = getAgent();
-    if (ag !== _agent) { _agent = ag; _cells = buildCells(_agent); render(); }
+    var needsRebuild = (ag !== _agent);
+    // 工具定义首次加载时可能还没就绪，定时重试
+    if (!_toolsReady && !needsRebuild) {
+        var hasTools = false;
+        try {
+            if (window.parent && typeof window.parent.getTools === 'function') {
+                var t = window.parent.getTools();
+                if (t && t.length) hasTools = true;
+            }
+        } catch (_) {}
+        if (hasTools) { _toolsReady = true; needsRebuild = true; }
+    }
+    if (needsRebuild) { _agent = ag; _cells = buildCells(_agent); render(); }
 }, 2000);
 </script>
 </body>

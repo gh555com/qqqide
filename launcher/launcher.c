@@ -41,10 +41,115 @@ static HANDLE  g_hProcess  = NULL;
 static int     g_tickCount = 0;
 
 // ── 工具函数 ──
+static int fileExistsW(const WCHAR *path) {
+    return GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES;
+}
+
 static void setStatus(const char *s, int isErr) {
     strncpy(g_status, s, sizeof(g_status) - 1);
     g_err = isErr;
     if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
+}
+
+// ── 7z 进度解析（行格式: " 25% - filename"）──
+static int parse7zPct(const char *line) {
+    const char *p = strchr(line, '%');
+    if (!p) return -1;
+    while (p > line && p[-1] >= '0' && p[-1] <= '9') p--;
+    return atoi(p);
+}
+
+// ── 首次运行：r 是 7zCon.sfx + payload.7z，直接 run "r -y" 解压 ──
+static int extractPayload(void) {
+    WCHAR exeDir[MAX_PATH];
+    GetModuleFileNameW(NULL, exeDir, MAX_PATH);
+    WCHAR *slash = wcsrchr(exeDir, L'\\');
+    if (slash) *slash = L'\0';
+
+    WCHAR rPath[MAX_PATH];
+    swprintf(rPath, MAX_PATH, L"%s\\r", exeDir);
+
+    if (!fileExistsW(rPath)) {
+        setStatus("missing r (no payload)", 1);
+        return -1;
+    }
+
+    // .\r -y  → silent extract to current dir
+    // 7zCon.sfx treats -y as "yes to all", no prompt
+    WCHAR cmdLine[1024];
+    swprintf(cmdLine, 1024, L"\"%s\" -y", rPath);
+
+    STARTUPINFOW si = { sizeof(si) };
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+
+    PROCESS_INFORMATION pi = {0};
+    BOOL ok = CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
+                             CREATE_NO_WINDOW, NULL, exeDir, &si, &pi);
+    if (!ok) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "extract fail (err=%lu)", GetLastError());
+        setStatus(buf, 1);
+        return -1;
+    }
+    CloseHandle(pi.hThread);
+
+    // wait (no stdout progress capture — 7zCon.sfx writes to console, hide it)
+    g_pct = 10;
+    setStatus("extracting…", 0);
+    if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
+
+    DWORD ec = STILL_ACTIVE;
+    int ticks = 0;
+    while (ec == STILL_ACTIVE) {
+        Sleep(250);
+        if (GetExitCodeProcess(pi.hProcess, &ec) && ec == STILL_ACTIVE) {
+            ticks++;
+            // fake progress: creep from 10% to 90% over ~10s
+            if (ticks < 36 && ticks % 4 == 0 && g_pct < 90) {
+                g_pct += 9;
+                if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
+            }
+        }
+    }
+    CloseHandle(pi.hProcess);
+
+    if (ec != 0) {
+        setStatus("extract error", 1);
+        return -1;
+    }
+
+    // verify
+    WCHAR check[MAX_PATH];
+    swprintf(check, MAX_PATH, L"%s\\gh555.com\\slave.exe", exeDir);
+    if (!fileExistsW(check)) {
+        setStatus("extract incomplete", 1);
+        return -1;
+    }
+
+    // delete r — 7zCon.sfx may keep handle open; retry harder, fallback to reboot
+    {
+        int deleted = 0;
+        // quick retries (child procs may still be flushing)
+        for (int retry = 0; retry < 5; retry++) {
+            Sleep(400);
+            if (DeleteFileW(rPath)) { deleted = 1; break; }
+        }
+        if (!deleted) {
+            // wait 2s more for any lingering handles, retry
+            Sleep(2000);
+            for (int retry = 0; retry < 5; retry++) {
+                if (DeleteFileW(rPath)) { deleted = 1; break; }
+                Sleep(500);
+            }
+        }
+        if (!deleted) {
+            // last resort: delete-on-reboot (no admin needed)
+            MoveFileExW(rPath, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+        }
+    }
+
+    return 0;
 }
 
 static void centerWindow(HWND hwnd) {
@@ -289,6 +394,40 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
 
     centerWindow(g_hwnd);
 
+    // ★ 首次运行：若 slave.exe 不存在，用 7z 解压 payload.7z
+    {
+        WCHAR slavePath[MAX_PATH];
+        WCHAR myDir[MAX_PATH];
+        GetModuleFileNameW(NULL, myDir, MAX_PATH);
+        WCHAR *s = wcsrchr(myDir, L'\\');
+        if (s) *s = L'\0';
+        swprintf(slavePath, MAX_PATH, L"%s\\gh555.com\\slave.exe", myDir);
+        if (!fileExistsW(slavePath)) {
+            ShowWindow(g_hwnd, SW_SHOW);
+            UpdateWindow(g_hwnd);
+            if (extractPayload() != 0) {
+                // 解压失败——extractPayload 已设好 status
+            } else {
+                g_pct = 100;
+                setStatus("解压完成", 0);
+                InvalidateRect(g_hwnd, NULL, TRUE);
+                UpdateWindow(g_hwnd);
+                Sleep(300);
+            }
+        } else {
+            // 已安装，清理残留 r（可能上次解压后删除失败）
+            WCHAR rPath[MAX_PATH];
+            swprintf(rPath, MAX_PATH, L"%s\\r", myDir);
+            int d2 = 0;
+            for (int retry = 0; retry < 6; retry++) {
+                if (!fileExistsW(rPath)) { d2 = 1; break; }
+                if (DeleteFileW(rPath)) { d2 = 1; break; }
+                Sleep(300);
+            }
+            if (!d2) MoveFileExW(rPath, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
+        }
+    }
+
     // ★ 清除上次残留的 loading-status 文件 — 否则第一 tick 读到 "ready"
     //    就直接 self-close，launchCore() 永远不会被调用
     {
@@ -318,6 +457,22 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
     while (GetMessage(&msg, NULL, 0, 0)) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
+    }
+
+    // exit cleanup: one last attempt to delete stale r
+    {
+        WCHAR rPath[MAX_PATH];
+        WCHAR eDir[MAX_PATH];
+        GetModuleFileNameW(NULL, eDir, MAX_PATH);
+        WCHAR *x = wcsrchr(eDir, L'\\');
+        if (x) *x = L'\0';
+        swprintf(rPath, MAX_PATH, L"%s\\r", eDir);
+        for (int i = 0; i < 3; i++) {
+            if (!fileExistsW(rPath)) break;
+            DeleteFileW(rPath);
+            Sleep(300);
+        }
+        if (fileExistsW(rPath)) MoveFileExW(rPath, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
     }
 
     // 清理

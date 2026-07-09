@@ -10,12 +10,23 @@
 body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column}
 ::selection{background:#ffd301;color:#000}
 
-/* header */
+/* header + repo picker */
 .header{display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;min-height:30px}
-.header .repo{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);cursor:pointer}
+.header .repo-wrap{position:relative;flex:1;min-width:0}
+.header .repo{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:4px;max-width:100%}
 .header .repo:hover{color:var(--blue)}
+.header .repo .caret{font-size:8px;margin-left:2px;opacity:.5}
+.header .repo .git-badge-sm{font-size:9px;font-weight:700;min-width:15px;height:15px;border-radius:8px;background:var(--red);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
 .header .branch{font-size:11px;color:var(--green);font-weight:700;font-family:ui-monospace,monospace}
 .header .pulls{font-size:10px;color:var(--blue);font-family:ui-monospace,monospace;margin-left:4px}
+.repo-dropdown{display:none;position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:4px;z-index:10;max-height:240px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.15)}
+.repo-dropdown.open{display:block}
+.repo-dropdown .rd-item{display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:pointer;font-family:ui-monospace,monospace;font-size:11px;border-bottom:1px solid var(--border)}
+.repo-dropdown .rd-item:hover{background:var(--base2)}
+.repo-dropdown .rd-item.active{background:var(--added);font-weight:700}
+.repo-dropdown .rd-item .rd-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.repo-dropdown .rd-item .rd-badge{font-size:9px;min-width:16px;height:14px;border-radius:7px;background:var(--red);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;font-weight:700}
+.repo-dropdown .rd-item .rd-nogit{font-size:9px;color:var(--base01)}
 
 /* toolbar */
 .toolbar{display:flex;gap:4px;padding:5px 8px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;flex-wrap:wrap}
@@ -66,13 +77,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .commit-options label{display:flex;align-items:center;gap:3px;cursor:pointer}
 .commit-options input[type=checkbox]{accent-color:var(--blue)}
 
-/* log */
-.log-item{padding:3px 6px;border-bottom:1px solid var(--border);cursor:pointer;font-family:ui-monospace,monospace;font-size:11px}
-.log-item:hover{background:var(--base2)}
-.log-hash{color:var(--yellow);font-weight:700}
-.log-msg{margin-left:6px}
-.log-date{color:var(--base01);font-size:10px;margin-left:6px}
-
 /* branch */
 .branch-actions{display:flex;gap:3px;margin-left:auto}
 
@@ -80,6 +84,15 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .stash-item{display:flex;align-items:center;gap:6px;font-family:ui-monospace,monospace;font-size:11px;padding:2px 6px}
 .stash-ref{color:var(--yellow);font-weight:700;flex-shrink:0}
 .stash-msg{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* repo bar (footer) */
+.repo-bar{display:flex;gap:2px;padding:4px 8px;border-top:1px solid var(--border);background:var(--card);flex-shrink:0;overflow-x:auto}
+.repo-bar .rbitem{display:flex;align-items:center;gap:3px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:ui-monospace,monospace;font-size:10px;white-space:nowrap;border:1px solid transparent;flex-shrink:0}
+.repo-bar .rbitem:hover{border-color:var(--border);background:var(--base2)}
+.repo-bar .rbitem.active{border-color:var(--blue);background:var(--added)}
+.repo-bar .rbitem .rb-name{max-width:100px;overflow:hidden;text-overflow:ellipsis}
+.repo-bar .rbitem .rb-badge{font-size:8px;min-width:14px;height:13px;border-radius:7px;background:var(--red);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0 3px;font-weight:700}
+.repo-bar .rbitem .rb-nogit{font-size:8px;color:var(--base01)}
 
 /* clone */
 .clone-dialog{display:none;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:4px;margin-bottom:8px}
@@ -130,7 +143,10 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 </head>
 <body>
 <div class="header" id="header">
-  <span class="repo" id="repo-name">Git</span>
+  <div class="repo-wrap" id="repo-wrap">
+    <span class="repo" id="repo-name">选择仓库 <span class="caret">▼</span></span>
+    <div class="repo-dropdown" id="repo-dropdown"></div>
+  </div>
   <span class="branch" id="branch-name"></span>
   <span class="pulls" id="pulls-info"></span>
 </div>
@@ -196,6 +212,8 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
       </div>
       <div class="diff-body" id="inline-diff-body"></div>
     </div>
+
+    <div class="repo-bar" id="repo-bar"></div>
   </div>
 
   <div id="log-view" class="hidden">
@@ -269,34 +287,24 @@ async function _initGitExe() {
   if (_gitExeResolved) return _gitExePath;
   _gitExeResolved = true;
   if (!bridge || !bridge.qz) { _gitExePath = 'git'; return _gitExePath; }
-
-  // 1. 尝试 bridge.components.getBin（主进程唯一真理源）
   if (bridge.components && bridge.components.getBin) {
     try {
       var bin = await bridge.components.getBin('git');
       if (bin) {
         var probe = await bridge.qz.spawn({ cmd: bin, args: ['--version'], timeout: 4000 });
         if (probe.exitCode === 0 && (probe.stdout||'').indexOf('git version') >= 0) {
-          _gitExePath = bin;
-          _gitAvailable = true;
-          return _gitExePath;
+          _gitExePath = bin; _gitAvailable = true; return _gitExePath;
         }
       }
     } catch(_) {}
   }
-
-  // 2. 尝试系统 PATH
   try {
     var probe2 = await bridge.qz.spawn({ cmd: 'git', args: ['--version'], timeout: 4000 });
     if (probe2.exitCode === 0 && (probe2.stdout||'').indexOf('git version') >= 0) {
-      _gitExePath = 'git';
-      _gitAvailable = true;
-      return _gitExePath;
+      _gitExePath = 'git'; _gitAvailable = true; return _gitExePath;
     }
   } catch(_) {}
-
-  _gitExePath = 'git';
-  return _gitExePath;
+  _gitExePath = 'git'; return _gitExePath;
 }
 
 // ═══ CORE GIT SPAWN ═══
@@ -306,18 +314,12 @@ async function _gitCmd(args, opts) {
   try {
     var result = await bridge.qz.spawn({
       cmd: _gitExePath || (await _initGitExe()),
-      args: args,
-      cwd: opts.cwd || _gitRoot,
-      timeout: opts.timeout || 30000
+      args: args, cwd: opts.cwd || _gitRoot, timeout: opts.timeout || 30000
     });
     return result;
   } catch(e) {
     if (_gitExePath.indexOf('/components/git/') >= 0) {
-      try {
-        return await bridge.qz.spawn({
-          cmd: 'git', args: args, cwd: opts.cwd || _gitRoot, timeout: opts.timeout || 30000
-        });
-      } catch(e2) {}
+      try { return await bridge.qz.spawn({ cmd: 'git', args: args, cwd: opts.cwd || _gitRoot, timeout: opts.timeout || 30000 }); } catch(e2) {}
     }
     return { stdout: '', stderr: e.message || String(e), exitCode: 1 };
   }
@@ -328,8 +330,10 @@ var _gitRoot = '';
 var _gitAvailable = null;
 var _gitProgressEl = null;
 var _autoRefreshTimer = null;
-var _currentDiffFile = null;   // file currently shown in inline diff
+var _currentDiffFile = null;
 var _currentDiffStaged = false;
+var _allProjects = [];
+var _repoStatusMap = {};
 
 // ═══ PROGRESS ═══
 function _showProgress(label) {
@@ -359,79 +363,144 @@ async function _checkGitAvailable() {
 function _showGitUnavailable() {
   document.getElementById('toolbar').style.display = 'none';
   document.getElementById('main-content').innerHTML =
-    '<div class="empty">' +
-    '<span style="font-size:48px;">&#128256;</span>' +
+    '<div class="empty"><span style="font-size:48px;">&#128256;</span>' +
     '<span>未检测到 Git</span>' +
-    '<span style="font-size:11px;color:var(--base01);">内嵌 MinGit 未安装且系统 PATH 中找不到 git。</span>' +
-    '<span style="font-size:10px;color:var(--base01);">运行: <code style="background:var(--card);padding:2px 6px;border-radius:3px;">python op/components.py ensure git</code></span>' +
-    '</div>';
+    '<span style="font-size:11px;color:var(--base01);">内嵌 git 未安装且系统 PATH 中找不到。</span></div>';
 }
 
-// ═══ DETECT GIT ROOT ═══
-async function _detectGitRoot() {
+// ═══ MULTI-REPO DETECTION ═══
+function _getAllProjects() {
   try {
     if (parent.qqqideViewport) {
       var ps = parent.qqqideViewport.getProjects();
-      if (ps && ps.length > 0) _gitRoot = ps[0].path.replace(/\\/g, '/');
+      if (ps && ps.length) return ps.map(function(p) {
+        return { path: p.path.replace(/\\/g, '/'), name: p.name || p.path.split(/[\\/]/).pop() };
+      });
     }
   } catch(_) {}
-  if (!_gitRoot) return;
-  var r = await _gitCmd(['rev-parse', '--show-toplevel']);
-  if (r.exitCode === 0) {
-    _gitRoot = r.stdout.trim().replace(/\\/g, '/');
-    document.getElementById('repo-name').textContent = _gitRoot.split('/').pop() || _gitRoot;
+  return [];
+}
+
+async function _scanRepoStatus(projPath) {
+  var r = await _gitCmd(['rev-parse', '--show-toplevel'], { cwd: projPath, timeout: 5000 });
+  if (r.exitCode !== 0) { _repoStatusMap[projPath] = { isGit: false, badge: 0 }; return; }
+  var root = r.stdout.trim().replace(/\\/g, '/');
+  var sr = await _gitCmd(['status', '--porcelain'], { cwd: root, timeout: 8000 });
+  var lines = (sr.stdout || '').split('\n').filter(Boolean);
+  var count = 0;
+  for (var i = 0; i < lines.length; i++) { if (lines[i].trim()) count++; }
+  var br = await _gitCmd(['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: root, timeout: 5000 });
+  _repoStatusMap[projPath] = { isGit: true, root: root, badge: count, branch: (br.stdout || '').trim() || 'HEAD' };
+}
+
+async function _detectAllRepos() {
+  _allProjects = _getAllProjects();
+  if (!_allProjects.length) return;
+  var tasks = _allProjects.map(function(p) { return _scanRepoStatus(p.path).catch(function(){}); });
+  await Promise.all(tasks);
+  for (var i = 0; i < _allProjects.length; i++) {
+    var s = _repoStatusMap[_allProjects[i].path];
+    if (s && s.isGit) { _gitRoot = s.root; break; }
+  }
+  if (!_gitRoot && _allProjects.length) _gitRoot = _allProjects[0].path;
+}
+
+function _pickRepo(path) {
+  var s = _repoStatusMap[path];
+  _gitRoot = (s && s.root) ? s.root : path;
+  _currentDiffFile = null;
+  _expandedCommit = null;
+  document.getElementById('inline-diff').style.display = 'none';
+  document.getElementById('status-view').classList.remove('hidden');
+  document.getElementById('log-view').classList.add('hidden');
+  document.getElementById('branch-view').classList.add('hidden');
+  document.getElementById('stash-view').classList.add('hidden');
+  _refreshGitStatus();
+  _buildRepoUI();
+}
+
+function _buildRepoUI() {
+  var projName = 'Git', badgeCount = 0;
+  for (var i = 0; i < _allProjects.length; i++) {
+    var s = _repoStatusMap[_allProjects[i].path];
+    if (s && s.isGit && s.root === _gitRoot) { projName = _allProjects[i].name; badgeCount = s.badge || 0; break; }
+  }
+  if (projName === 'Git' && _allProjects.length) projName = _allProjects[0].name;
+  var badgeHtml = badgeCount > 0 ? '<span class="git-badge-sm">' + badgeCount + '</span>' : '';
+  document.getElementById('repo-name').innerHTML = _esc(projName) + badgeHtml + ' <span class="caret">▼</span>';
+
+  // Dropdown
+  var dd = document.getElementById('repo-dropdown'), ddHtml = '';
+  for (var i = 0; i < _allProjects.length; i++) {
+    var p = _allProjects[i], s = _repoStatusMap[p.path];
+    var active = (_gitRoot && s && s.root === _gitRoot);
+    var bdg = '';
+    if (s && s.isGit) { bdg = s.badge > 0 ? '<span class="rd-badge">' + s.badge + '</span>' : ''; }
+    else { bdg = '<span class="rd-nogit">非仓库</span>'; }
+    ddHtml += '<div class="rd-item' + (active ? ' active' : '') + '" data-path="' + _esc(p.path) + '">' +
+      '<span class="rd-name">' + _esc(p.name) + '</span>' + bdg + '</div>';
+  }
+  dd.innerHTML = ddHtml;
+  var items = dd.querySelectorAll('.rd-item');
+  for (var j = 0; j < items.length; j++) {
+    (function(el, path) {
+      el.addEventListener('click', function(e) { e.stopPropagation(); _pickRepo(path); dd.classList.remove('open'); });
+    })(items[j], items[j].getAttribute('data-path'));
+  }
+
+  // Toggle dropdown
+  var rn = document.getElementById('repo-name');
+  if (!rn._ddWired) {
+    rn._ddWired = true;
+    rn.addEventListener('click', function(e) { e.stopPropagation(); dd.classList.toggle('open'); });
+    document.addEventListener('click', function() { dd.classList.remove('open'); });
+  }
+
+  // Footer repo bar
+  var rb = document.getElementById('repo-bar'), rbHtml = '';
+  for (var k = 0; k < _allProjects.length; k++) {
+    var p2 = _allProjects[k], s2 = _repoStatusMap[p2.path];
+    var active2 = (_gitRoot && s2 && s2.root === _gitRoot);
+    var bdg2 = '';
+    if (s2 && s2.isGit) { bdg2 = s2.badge > 0 ? '<span class="rb-badge">' + s2.badge + '</span>' : ''; }
+    else { bdg2 = '<span class="rb-nogit">×</span>'; }
+    rbHtml += '<div class="rbitem' + (active2 ? ' active' : '') + '" data-path="' + _esc(p2.path) + '">' +
+      '<span class="rb-name">' + (s2 && s2.isGit && s2.branch ? s2.branch + '@' : '') + _esc(p2.name) + '</span>' + bdg2 + '</div>';
+  }
+  rb.innerHTML = rbHtml;
+  var rbs = rb.querySelectorAll('.rbitem');
+  for (var m = 0; m < rbs.length; m++) {
+    (function(el, path) { el.addEventListener('click', function() { _pickRepo(path); }); })(rbs[m], rbs[m].getAttribute('data-path'));
   }
 }
 
 // ═══ REFRESH STATUS ═══
 async function _refreshGitStatus() {
-  if (!_gitRoot) { await _detectGitRoot(); }
   if (!_gitRoot) return;
-
   var sr = await _gitCmd(['status', '--porcelain=v2', '--branch']);
   var lines = (sr.stdout || '').split('\n').filter(Boolean);
-
   var branchName = '', ahead = '', behind = '';
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
-    if (line.startsWith('# branch.head ')) {
-      branchName = line.slice('# branch.head '.length).trim();
-      if (branchName === '(detached)') branchName = 'HEAD detached';
-    }
-    if (line.startsWith('# branch.ab ')) {
-      var abParts = line.slice('# branch.ab '.length).trim().split(' ');
-      ahead = abParts[0] ? abParts[0] : '';
-      behind = abParts[1] ? abParts[1] : '';
-    }
+    if (line.startsWith('# branch.head ')) { branchName = line.slice('# branch.head '.length).trim(); if (branchName === '(detached)') branchName = 'HEAD detached'; }
+    if (line.startsWith('# branch.ab ')) { var abParts = line.slice('# branch.ab '.length).trim().split(' '); ahead = abParts[0] || ''; behind = abParts[1] || ''; }
   }
   document.getElementById('branch-name').textContent = branchName || 'HEAD detached';
-
-  // Show ahead/behind info
   var pulls = [];
-  if (ahead) pulls.push('↑' + ahead);
-  if (behind) pulls.push('↓' + behind);
+  if (ahead) pulls.push('↑' + ahead); if (behind) pulls.push('↓' + behind);
   document.getElementById('pulls-info').textContent = pulls.join(' ');
 
   var staged = [], unstaged = [], untracked = [];
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
     if (line.startsWith('#')) continue;
-    if (line.startsWith('?')) {
-      untracked.push({ status: '?', path: line.slice(2) });
-    } else if (line.startsWith('1') || line.startsWith('2')) {
-      var parts = line.split(' ');
-      var xy = parts[1] || '..';
-      var fpath = parts.slice(8).join(' ');
-      if (line.startsWith('2')) {
-        var rpaths = parts.slice(9).join(' ').split('\t');
-        fpath = rpaths[rpaths.length - 1] || fpath;
-      }
+    if (line.startsWith('?')) { untracked.push({ status: '?', path: line.slice(2) }); }
+    else if (line.startsWith('1') || line.startsWith('2')) {
+      var parts = line.split(' '), xy = parts[1] || '..', fpath = parts.slice(8).join(' ');
+      if (line.startsWith('2')) { var rpaths = parts.slice(9).join(' ').split('\t'); fpath = rpaths[rpaths.length - 1] || fpath; }
       if (xy[0] !== '.') staged.push({ status: xy[0], path: fpath, xy: xy });
       if (xy[1] !== '.') unstaged.push({ status: xy[1], path: fpath, xy: xy });
-    } else if (line.startsWith('u')) {
-      var uparts = line.split(' ');
-      unstaged.push({ status: 'U', path: uparts.slice(10).join(' '), xy: 'UU' });
-    }
+    } else if (line.startsWith('u')) { var uparts = line.split(' '); unstaged.push({ status: 'U', path: uparts.slice(10).join(' '), xy: 'UU' }); }
   }
 
   _renderFileList('staged-list', staged, true);
@@ -440,74 +509,44 @@ async function _refreshGitStatus() {
   document.getElementById('staged-count').textContent = staged.length ? '(' + staged.length + ')' : '';
   document.getElementById('unstaged-count').textContent = unstaged.length ? '(' + unstaged.length + ')' : '';
   document.getElementById('untracked-count').textContent = untracked.length ? '(' + untracked.length + ')' : '';
-
   _detectConflicts();
+  _buildRepoUI();
 }
 
 function _renderFileList(elId, files, isStaged) {
-  var ul = document.getElementById(elId);
-  ul.innerHTML = '';
+  var ul = document.getElementById(elId); ul.innerHTML = '';
   for (var i = 0; i < files.length; i++) {
-    var f = files[i];
-    var li = document.createElement('li');
+    var f = files[i], li = document.createElement('li');
     var badge = document.createElement('span');
     badge.className = 'badge ' + (f.status === '?' ? 'U' : f.status);
     badge.textContent = f.status === '?' ? 'U' : f.status;
     var pathEl = document.createElement('span');
-    pathEl.className = 'file-path';
-    pathEl.textContent = f.path;
-    pathEl.title = f.path;
-    li.appendChild(badge);
-    li.appendChild(pathEl);
+    pathEl.className = 'file-path'; pathEl.textContent = f.path; pathEl.title = f.path;
+    li.appendChild(badge); li.appendChild(pathEl);
 
-    // Actions for unstaged files: discard
     if (!isStaged && f.status !== '?') {
-      var acts = document.createElement('span');
-      acts.className = 'file-actions';
+      var acts = document.createElement('span'); acts.className = 'file-actions';
       var discardBtn = document.createElement('button');
-      discardBtn.className = 'btn-mini danger';
-      discardBtn.textContent = '丢弃';
-      (function(fp) {
-        discardBtn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          _discardFile(fp);
-        });
-      })(f.path);
-      acts.appendChild(discardBtn);
-      li.appendChild(acts);
+      discardBtn.className = 'btn-mini danger'; discardBtn.textContent = '丢弃';
+      (function(fp) { discardBtn.addEventListener('click', function(e) { e.stopPropagation(); _discardFile(fp); }); })(f.path);
+      acts.appendChild(discardBtn); li.appendChild(acts);
     }
-    // Actions for untracked files: stage
     if (f.status === '?') {
-      var acts2 = document.createElement('span');
-      acts2.className = 'file-actions';
+      var acts2 = document.createElement('span'); acts2.className = 'file-actions';
       var addBtn = document.createElement('button');
-      addBtn.className = 'btn-mini';
-      addBtn.textContent = '跟踪';
-      (function(fp) {
-        addBtn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          _gitCmd(['add', '--', fp]).then(function() { _refreshGitStatus(); });
-        });
-      })(f.path);
-      acts2.appendChild(addBtn);
-      li.appendChild(acts2);
+      addBtn.className = 'btn-mini'; addBtn.textContent = '跟踪';
+      (function(fp) { addBtn.addEventListener('click', function(e) { e.stopPropagation(); _gitCmd(['add', '--', fp]).then(function() { _refreshGitStatus(); }); }); })(f.path);
+      acts2.appendChild(addBtn); li.appendChild(acts2);
     }
 
-    // Click: toggle + show diff
     (function(fp, staged) {
-      li.addEventListener('click', function(e) {
-        if (e.target.tagName === 'BUTTON') return;
-        _toggleShowDiff(fp, staged);
-      });
+      li.addEventListener('click', function(e) { if (e.target.tagName === 'BUTTON') return; _toggleShowDiff(fp, staged); });
     })(f.path, isStaged);
-
     ul.appendChild(li);
   }
   if (files.length === 0) {
-    var empty = document.createElement('li');
-    empty.style.cssText = 'color:var(--base01);cursor:default;';
-    empty.textContent = '(空)';
-    ul.appendChild(empty);
+    var empty = document.createElement('li'); empty.style.cssText = 'color:var(--base01);cursor:default;';
+    empty.textContent = '(空)'; ul.appendChild(empty);
   }
 }
 
@@ -521,74 +560,43 @@ async function _discardFile(filePath) {
 
 // ═══ SHOW DIFF + HUNK STAGING ═══
 async function _toggleShowDiff(filePath, isStaged) {
-  // Toggle staging
-  if (isStaged) {
-    await _gitCmd(['reset', 'HEAD', '--', filePath]);
-  } else {
-    await _gitCmd(['add', '--', filePath]);
-  }
+  if (isStaged) { await _gitCmd(['reset', 'HEAD', '--', filePath]); }
+  else { await _gitCmd(['add', '--', filePath]); }
   _refreshGitStatus();
-  // After toggle, show the appropriate diff
-  // Now re-check whether the file is staged
   var sr2 = await _gitCmd(['diff', '--cached', '--name-only', '--', filePath]);
   var nowStaged = !!(sr2.stdout && sr2.stdout.trim());
-
-  _currentDiffFile = filePath;
-  _currentDiffStaged = nowStaged;
+  _currentDiffFile = filePath; _currentDiffStaged = nowStaged;
   _renderInlineDiff(filePath, nowStaged);
 }
 
 async function _renderInlineDiff(filePath, staged) {
   var args = staged ? ['diff', '--cached', '-U3', '--', filePath] : ['diff', '-U3', '--', filePath];
   var r = await _gitCmd(args);
-
-  var diffEl = document.getElementById('inline-diff');
-  var pathEl = document.getElementById('inline-diff-path');
-  var bodyEl = document.getElementById('inline-diff-body');
-
-  pathEl.textContent = filePath;
-  bodyEl.innerHTML = '';
-
+  var diffEl = document.getElementById('inline-diff'), pathEl = document.getElementById('inline-diff-path'), bodyEl = document.getElementById('inline-diff-body');
+  pathEl.textContent = filePath; bodyEl.innerHTML = '';
   var diffOut = r.stdout || '';
-  if (!diffOut.trim()) {
-    bodyEl.innerHTML = '<div style="padding:8px;color:var(--base01);">无差异</div>';
-  } else {
-    // Parse hunks and render with stage buttons
-    var hunks = _parseHunks(diffOut.split('\n'));
-    var html = '';
-
+  if (!diffOut.trim()) { bodyEl.innerHTML = '<div style="padding:8px;color:var(--base01);">无差异</div>'; }
+  else {
+    var hunks = _parseHunks(diffOut.split('\n')), html = '';
     for (var h = 0; h < hunks.length; h++) {
       var hunk = hunks[h];
-      // Hunk separator with stage button
-      if (h > 0) {
-        html += '<div class="dline hunk-sep"></div>';
-      }
-      // Hunk header line
+      if (h > 0) html += '<div class="dline hunk-sep"></div>';
       html += '<div class="dline" style="display:flex;align-items:center;">' +
         '<span class="dh">' + _esc(hunk.header || '@@ ...') + '</span>' +
-        '<span style="margin-left:auto;">' +
-        '<button class="btn-mini hunk-stage-btn" data-hunk="' + h + '" data-path="' + _esc(filePath) + '">' +
+        '<span style="margin-left:auto;"><button class="btn-mini hunk-stage-btn" data-hunk="' + h + '" data-path="' + _esc(filePath) + '">' +
         (staged ? '取消暂存此块' : '暂存此块') + '</button></span></div>';
-
       for (var i = 0; i < hunk.lines.length; i++) {
-        var l = hunk.lines[i];
-        var cls = 'dc';
-        if (l.startsWith('+')) cls = 'dl';
-        else if (l.startsWith('-')) cls = 'dr';
+        var l = hunk.lines[i], cls = 'dc';
+        if (l.startsWith('+')) cls = 'dl'; else if (l.startsWith('-')) cls = 'dr';
         html += '<div class="dline"><span class="' + cls + '">' + _esc(l) + '</span></div>';
       }
     }
-
     bodyEl.innerHTML = html;
-
-    // Wire up hunk stage buttons
     var btns = bodyEl.querySelectorAll('.hunk-stage-btn');
     for (var b = 0; b < btns.length; b++) {
       (function(btn) {
-        btn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          var hIdx = parseInt(btn.getAttribute('data-hunk'), 10);
-          var fp = btn.getAttribute('data-path');
+        btn.addEventListener('click', function(e) { e.stopPropagation();
+          var hIdx = parseInt(btn.getAttribute('data-hunk'), 10), fp = btn.getAttribute('data-path');
           _stageHunk(fp, hIdx, hunks[hIdx], btn);
         });
       })(btns[b]);
@@ -597,105 +605,55 @@ async function _renderInlineDiff(filePath, staged) {
   diffEl.style.display = '';
 }
 
-// ─── HUNK PARSING ───
 function _parseHunks(diffLines) {
-  var hunks = [];
-  var cur = null;
-
+  var hunks = [], cur = null;
   for (var i = 0; i < diffLines.length; i++) {
     var l = diffLines[i];
-    if (l.startsWith('@@')) {
-      if (cur) hunks.push(cur);
-      cur = { header: l, lines: [] };
-    } else if (cur && (l.startsWith('+') || l.startsWith('-') || l.startsWith(' '))) {
-      cur.lines.push(l);
-    }
-    // Skip diff/index/---/+++/Binary lines
+    if (l.startsWith('@@')) { if (cur) hunks.push(cur); cur = { header: l, lines: [] }; }
+    else if (cur && (l.startsWith('+') || l.startsWith('-') || l.startsWith(' '))) { cur.lines.push(l); }
   }
   if (cur) hunks.push(cur);
   return hunks;
 }
 
-// ─── HUNK STAGING ───
-// Strategy: write the hunk as a patch, apply --cached (stage) or apply --cached --reverse (unstage)
-// Fallback: if patch apply fails, unstage the whole file and re-stage remaining hunks
 async function _stageHunk(filePath, hunkIdx, hunk, btn) {
-  btn.disabled = true;
-  btn.textContent = '...';
-
-  var patch = 'diff --git a/' + filePath + ' b/' + filePath + '\n';
-  patch += '--- a/' + filePath + '\n';
-  patch += '+++ b/' + filePath + '\n';
-  patch += hunk.header + '\n';
-  for (var i = 0; i < hunk.lines.length; i++) {
-    patch += hunk.lines[i] + '\n';
-  }
-
+  btn.disabled = true; btn.textContent = '...';
+  var patch = 'diff --git a/' + filePath + ' b/' + filePath + '\n--- a/' + filePath + '\n+++ b/' + filePath + '\n' + hunk.header + '\n';
+  for (var i = 0; i < hunk.lines.length; i++) patch += hunk.lines[i] + '\n';
   try {
-    var tmpPath = _gitRoot + '/.git/tmp-hunk.patch';
-    var tmpPathNorm = tmpPath.replace(/\\/g, '/');
-
-    // Write patch via bridge.fs (main process atomic write)
-    if (bridge && bridge.fs && bridge.fs.write) {
-      await bridge.fs.write(tmpPathNorm, patch);
-    } else {
-      btn.disabled = false;
-      btn.textContent = '失败';
-      return;
-    }
-
-    var r;
+    var tmpPath = (_gitRoot + '/.git/tmp-hunk.patch').replace(/\\/g, '/');
+    if (bridge && bridge.fs && bridge.fs.write) await bridge.fs.write(tmpPath, patch);
+    else { btn.disabled = false; btn.textContent = '失败'; return; }
     if (_currentDiffStaged) {
-      // Unstage: apply reverse to index
-      r = await _gitCmd(['apply', '--cached', '--reverse', tmpPathNorm]);
+      var r = await _gitCmd(['apply', '--cached', '--reverse', tmpPath]);
       if (r.exitCode !== 0) {
-        // Fallback: unstage entire file, then re-add all hunks except this one
         await _gitCmd(['reset', 'HEAD', '--', filePath]);
-        // Re-stage all original hunks except the one being removed
         var allHunks = _parseHunks((await _gitCmd(['diff', '-U3', '--', filePath])).stdout.split('\n'));
         for (var h = 0; h < allHunks.length; h++) {
           if (h === hunkIdx) continue;
-          var hp = 'diff --git a/' + filePath + ' b/' + filePath + '\n';
-          hp += '--- a/' + filePath + '\n+++ b/' + filePath + '\n';
-          hp += allHunks[h].header + '\n';
+          var hp = 'diff --git a/' + filePath + ' b/' + filePath + '\n--- a/' + filePath + '\n+++ b/' + filePath + '\n' + allHunks[h].header + '\n';
           for (var li = 0; li < allHunks[h].lines.length; li++) hp += allHunks[h].lines[li] + '\n';
-          await bridge.fs.write(tmpPathNorm, hp);
-          await _gitCmd(['apply', '--cached', tmpPathNorm]);
+          await bridge.fs.write(tmpPath, hp); await _gitCmd(['apply', '--cached', tmpPath]);
         }
       }
-    } else {
-      // Stage: apply to index
-      r = await _gitCmd(['apply', '--cached', tmpPathNorm]);
-    }
-
-    // Clean up temp patch
-    try { if (bridge && bridge.fs && bridge.fs.delete) bridge.fs.delete(tmpPathNorm); } catch(_) {}
-
+    } else { await _gitCmd(['apply', '--cached', tmpPath]); }
+    try { if (bridge && bridge.fs && bridge.fs.delete) bridge.fs.delete(tmpPath); } catch(_) {}
     _refreshGitStatus();
     setTimeout(function() {
-      // Re-fetch status to know whether file is now staged
       _gitCmd(['diff', '--cached', '--name-only', '--', filePath]).then(function(sr) {
-        var nowStaged = !!(sr.stdout && sr.stdout.trim());
-        _renderInlineDiff(filePath, nowStaged);
+        _renderInlineDiff(filePath, !!(sr.stdout && sr.stdout.trim()));
       });
     }, 300);
-  } catch(e) {
-    try { if (bridge && bridge.fs && bridge.fs.delete) bridge.fs.delete((_gitRoot + '/.git/tmp-hunk.patch').replace(/\\/g, '/')); } catch(_) {}
-    btn.disabled = false;
-    btn.textContent = '失败';
-    btn.style.color = 'var(--red)';
-  }
+  } catch(e) { btn.disabled = false; btn.textContent = '失败'; btn.style.color = 'var(--red)'; }
 }
 
 document.getElementById('btn-close-diff').addEventListener('click', function() {
-  document.getElementById('inline-diff').style.display = 'none';
-  _currentDiffFile = null;
+  document.getElementById('inline-diff').style.display = 'none'; _currentDiffFile = null;
 });
 
 // ═══ COMMIT ═══
 document.getElementById('btn-commit').addEventListener('click', async function() {
-  var msg = document.getElementById('commit-msg').value.trim();
-  if (!msg) return;
+  var msg = document.getElementById('commit-msg').value.trim(); if (!msg) return;
   var args = ['commit', '-m', msg];
   if (document.getElementById('amend-check').checked) args.unshift('--amend');
   if (document.getElementById('signoff-check').checked) args.push('--signoff');
@@ -708,25 +666,36 @@ document.getElementById('btn-commit').addEventListener('click', async function()
 });
 
 // ═══ STAGE/UNSTAGE ALL ═══
-document.getElementById('btn-stage-all').addEventListener('click', async function() {
-  await _gitCmd(['add', '-A']);
-  _refreshGitStatus();
-});
-document.getElementById('btn-unstage-all').addEventListener('click', async function() {
-  await _gitCmd(['reset', 'HEAD']);
-  _refreshGitStatus();
-});
+document.getElementById('btn-stage-all').addEventListener('click', async function() { await _gitCmd(['add', '-A']); _refreshGitStatus(); });
+document.getElementById('btn-unstage-all').addEventListener('click', async function() { await _gitCmd(['reset', 'HEAD']); _refreshGitStatus(); });
+
+// ═══ PUSH/PULL/FETCH ═══
+async function _gitLongOp(args, label) {
+  _showProgress(label);
+  try {
+    var useStream = !!(bridge && bridge.qz && bridge.qz.spawnStream), result;
+    if (useStream) {
+      result = await bridge.qz.spawnStream({
+        cmd: _gitExePath || (await _initGitExe()), args: args, cwd: _gitRoot, timeout: 300000
+      }, function(channel, data) {
+        var lines = data.split('\n').filter(Boolean), last = lines[lines.length - 1] || '';
+        var prog = document.getElementById('progress'); if (prog && last) prog.textContent = '⏳ ' + last.slice(0, 160);
+      });
+    } else { result = await _gitCmd(args, { timeout: 300000 }); }
+    if (result.exitCode !== 0 && result.stderr) { _showProgress('✕ ' + label + ': ' + (result.stderr || '').slice(0, 200)); document.getElementById('progress').style.color = 'var(--red)'; return; }
+    _hideProgress(); _refreshGitStatus();
+  } catch(e) { _showProgress('✕ ' + label + ': ' + (e.message || '').slice(0, 200)); document.getElementById('progress').style.color = 'var(--red)'; }
+}
+document.getElementById('btn-pull').addEventListener('click', async function() { if (!(await _checkGitAvailable())) return; _gitLongOp(['pull', '--ff-only'], 'git pull'); });
+document.getElementById('btn-push').addEventListener('click', async function() { if (!(await _checkGitAvailable())) return; _gitLongOp(['push'], 'git push'); });
+document.getElementById('btn-fetch').addEventListener('click', async function() { if (!(await _checkGitAvailable())) return; _gitLongOp(['fetch', '--all', '--prune'], 'git fetch'); });
+document.getElementById('btn-refresh').addEventListener('click', async function() { if (await _checkGitAvailable()) _refreshGitStatus(); });
 
 // ═══ GIT LOG WITH CANVAS GRAPH ═══
 document.getElementById('btn-log').addEventListener('click', _showGitLog);
 
-var _commitData = [];
-var _commitGraph = [];
-var _expandedCommit = null;
-var _logPalette = [
-  '#859900','#268bd2','#dc322f','#b58900','#6c71c4','#2aa198','#d33682','#cb4b16',
-  '#5c8a00','#1a6fb5','#c01c28','#a07400','#5551a4','#1d8e82','#b82e6c','#a04000'
-];
+var _commitData = [], _commitGraph = [], _expandedCommit = null;
+var _logPalette = ['#859900','#268bd2','#dc322f','#b58900','#6c71c4','#2aa198','#d33682','#cb4b16','#5c8a00','#1a6fb5','#c01c28','#a07400','#5551a4','#1d8e82','#b82e6c','#a04000'];
 
 async function _showGitLog() {
   document.getElementById('status-view').classList.add('hidden');
@@ -736,75 +705,41 @@ async function _showGitLog() {
   document.getElementById('conflict-view').classList.add('hidden');
 
   var useAll = document.getElementById('log-all-branches') ? document.getElementById('log-all-branches').checked : true;
-  var args = ['log', '--graph', '--date=short', '--format=__G__%H__G__%P__G__%s__G__%ai__G__%an__G__%D', '-300'];
+  var args = ['log', '--graph', '--date=short', '--format=__G__%H__G__%s__G__%ai__G__%an__G__%D', '-300'];
   if (useAll) args.splice(1, 0, '--all');
-
   var r = await _gitCmd(args);
   var lines = (r.stdout || '').split('\n').filter(Boolean);
-
-  _commitData = [];
-  _commitGraph = [];
-  _expandedCommit = null;
+  _commitData = []; _commitGraph = []; _expandedCommit = null;
 
   for (var i = 0; i < lines.length; i++) {
-    var line = lines[i];
-    var idx = line.indexOf('__G__');
-    if (idx < 0) continue;
-    var graph = line.slice(0, idx);
-    var data = line.slice(idx + 5);
-    var parts = data.split('__G__');
-    if (parts.length < 5) continue;
+    var line = lines[i], idx = line.indexOf('__G__'); if (idx < 0) continue;
+    var graph = line.slice(0, idx), data = line.slice(idx + 5), parts = data.split('__G__');
+    if (parts.length < 4) continue;
     _commitGraph.push(graph);
-    _commitData.push({
-      hash: parts[0].trim(),
-      parents: parts[1].trim(),
-      msg: parts[2].trim(),
-      date: parts[3].trim(),
-      author: parts[4].trim(),
-      refs: parts[5] ? parts[5].trim() : ''
-    });
+    _commitData.push({ hash: parts[0].trim(), msg: parts[1].trim(), date: parts[2].trim(), author: parts[3].trim(), refs: parts[4] ? parts[4].trim() : '' });
   }
-
   document.getElementById('log-count').textContent = '(' + _commitData.length + ')';
-
   if (_commitData.length === 0) {
-    document.getElementById('graph-rows').innerHTML = '<div style="padding:20px;color:var(--base01);text-align:center;">暂无提交</div>';
-    return;
+    document.getElementById('graph-rows').innerHTML = '<div style="padding:20px;color:var(--base01);text-align:center;">暂无提交</div>'; return;
   }
 
-  // Compute graph dimensions
-  var maxCol = 0;
-  for (var i = 0; i < _commitGraph.length; i++) {
-    if (_commitGraph[i].length > maxCol) maxCol = _commitGraph[i].length;
-  }
-  var colW = 14, rowH = 28;
-  var canvasW = (maxCol + 1) * colW + 6;
-  var canvasH = _commitData.length * rowH;
-
-  // Setup canvas
-  var canvas = document.getElementById('graph-canvas');
-  var dpr = window.devicePixelRatio || 1;
-  canvas.width = canvasW * dpr;
-  canvas.height = canvasH * dpr;
-  canvas.style.width = canvasW + 'px';
-  canvas.style.height = canvasH + 'px';
-
-  var ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  var maxCol = 0, colW = 14, rowH = 28;
+  for (var i = 0; i < _commitGraph.length; i++) { if (_commitGraph[i].length > maxCol) maxCol = _commitGraph[i].length; }
+  var canvasW = (maxCol + 1) * colW + 6, canvasH = _commitData.length * rowH;
+  var canvas = document.getElementById('graph-canvas'), dpr = window.devicePixelRatio || 1;
+  canvas.width = canvasW * dpr; canvas.height = canvasH * dpr;
+  canvas.style.width = canvasW + 'px'; canvas.style.height = canvasH + 'px';
+  var ctx = canvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   _drawGitGraph(ctx, _commitGraph, colW, rowH);
 
-  // Build DOM rows
-  var rowsEl = document.getElementById('graph-rows');
-  rowsEl.innerHTML = '';
-  var html = '';
+  var rowsEl = document.getElementById('graph-rows'), html = '';
   for (var i = 0; i < _commitData.length; i++) {
     var c = _commitData[i];
     var refsHtml = '';
-    if (c.refs && c.refs !== 'HEAD') {
+    if (c.refs) {
       var refTokens = c.refs.split(',').map(function(s) { return s.trim(); }).filter(Boolean);
       for (var ri = 0; ri < refTokens.length; ri++) {
-        var refStr = refTokens[ri];
-        var label = refStr, bg = 'var(--blue)';
+        var refStr = refTokens[ri], label = refStr, bg = 'var(--blue)';
         if (refStr.startsWith('tag: ')) { label = refStr.slice(5); bg = 'var(--cyan)'; }
         else if (refStr.startsWith('HEAD -> ')) { label = refStr.slice(7); bg = 'var(--green)'; }
         else if (refStr.indexOf('/') >= 0) { bg = 'var(--orange)'; }
@@ -812,18 +747,14 @@ async function _showGitLog() {
       }
     }
     var dateStr = c.date.slice(0, 10);
-    html +=
-      '<div class="graph-row" style="margin-left:' + canvasW + 'px;" data-i="' + i + '" title="' +
-      _esc(c.hash.slice(0, 8) + ': ' + c.msg + '\nCtrl+Click: Cherry-pick | Alt+Click: Revert') + '">' +
-      '<span class="g-hash">' + _esc(c.hash.slice(0, 8)) + '</span>' +
-      refsHtml +
+    html += '<div class="graph-row" style="margin-left:' + canvasW + 'px;" data-i="' + i + '" title="' +
+      _esc(c.hash.slice(0,8) + ': ' + c.msg + '\nCtrl+Click: Cherry-pick | Alt+Click: Revert') + '">' +
+      '<span class="g-hash">' + _esc(c.hash.slice(0,8)) + '</span>' + refsHtml +
       '<span class="g-msg">' + _esc(c.msg.slice(0, 120)) + '</span>' +
       '<span class="g-author">' + _esc((c.author || '').split(' ')[0].slice(0, 15)) + '</span>' +
       '<span class="g-date">' + _esc(dateStr) + '</span></div>';
   }
   rowsEl.innerHTML = html;
-
-  // Wire up click handlers
   var rows = rowsEl.querySelectorAll('.graph-row');
   for (var ri = 0; ri < rows.length; ri++) {
     (function(row, hash) {
@@ -834,524 +765,254 @@ async function _showGitLog() {
       });
     })(rows[ri], _commitData[parseInt(rows[ri].getAttribute('data-i'))].hash);
   }
-
-  // Wire up "all branches" checkbox
   var cb = document.getElementById('log-all-branches');
   if (cb && !cb._wired) { cb._wired = true; cb.addEventListener('change', _showGitLog); }
 }
 
 function _drawGitGraph(ctx, graphRows, colW, rowH) {
-  var palette = _logPalette;
-  var hw = colW / 2, hh = rowH / 2;
+  var palette = _logPalette, hw = colW / 2, hh = rowH / 2;
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-
   for (var r = 0; r < graphRows.length; r++) {
-    var graph = graphRows[r];
-    var cy = r * rowH + hh;
+    var graph = graphRows[r], cy = r * rowH + hh;
     for (var c = 0; c < graph.length; c++) {
-      var ch = graph[c];
-      if (ch === ' ') continue;
-      var cx = c * colW + hw;
-      var color = palette[c % palette.length];
-      ctx.strokeStyle = color;
-      ctx.fillStyle = color;
-      ctx.lineWidth = 1.5;
-
-      if (ch === '*') {
-        ctx.beginPath();
-        ctx.arc(cx, cy, 4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      } else if (ch === '|') {
-        ctx.beginPath();
-        ctx.moveTo(cx, cy - hh);
-        ctx.lineTo(cx, cy + hh);
-        ctx.stroke();
-      } else if (ch === '/') {
-        ctx.beginPath();
-        ctx.moveTo(cx + hw, cy - hh);
-        ctx.lineTo(cx - hw, cy + hh);
-        ctx.stroke();
-      } else if (ch === '\\') {
-        ctx.beginPath();
-        ctx.moveTo(cx - hw, cy - hh);
-        ctx.lineTo(cx + hw, cy + hh);
-        ctx.stroke();
-      } else if (ch === '-' || ch === '_') {
-        ctx.beginPath();
-        ctx.moveTo(cx - hw, cy);
-        ctx.lineTo(cx + hw, cy);
-        ctx.stroke();
-      }
+      var ch = graph[c]; if (ch === ' ') continue;
+      var cx = c * colW + hw, color = palette[c % palette.length];
+      ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.5;
+      if (ch === '*') { ctx.beginPath(); ctx.arc(cx, cy, 4, 0, Math.PI*2); ctx.fill(); ctx.stroke(); }
+      else if (ch === '|') { ctx.beginPath(); ctx.moveTo(cx, cy-hh); ctx.lineTo(cx, cy+hh); ctx.stroke(); }
+      else if (ch === '/') { ctx.beginPath(); ctx.moveTo(cx+hw, cy-hh); ctx.lineTo(cx-hw, cy+hh); ctx.stroke(); }
+      else if (ch === '\\') { ctx.beginPath(); ctx.moveTo(cx-hw, cy-hh); ctx.lineTo(cx+hw, cy+hh); ctx.stroke(); }
+      else if (ch === '-' || ch === '_') { ctx.beginPath(); ctx.moveTo(cx-hw, cy); ctx.lineTo(cx+hw, cy); ctx.stroke(); }
     }
   }
 }
 
 async function _toggleCommitDetail(hash, rowEl) {
-  // Remove previous detail
   if (_expandedCommit) {
     var old = document.getElementById('cd-' + _expandedCommit);
     if (old) old.remove();
     if (_expandedCommit === hash) { _expandedCommit = null; return; }
   }
-
   var detail = document.createElement('div');
-  detail.className = 'commit-detail';
-  detail.id = 'cd-' + hash;
+  detail.className = 'commit-detail'; detail.id = 'cd-' + hash;
   detail.innerHTML = '<div style="padding:4px;color:var(--base01);">⏳ 加载中...</div>';
   rowEl.insertAdjacentElement('afterend', detail);
   _expandedCommit = hash;
-
   try {
     var statR = await _gitCmd(['show', '--numstat', '--format=', hash]);
     var statLines = (statR.stdout || '').split('\n').filter(function(l) { return l.trim(); });
-
     var files = [];
     for (var i = 0; i < statLines.length; i++) {
       var parts = statLines[i].split('\t');
       if (parts.length >= 3) files.push({ added: parts[0], deleted: parts[1], path: parts[2] });
     }
-
     var totalAdd = 0, totalDel = 0;
     for (var i = 0; i < files.length; i++) {
       if (files[i].added !== '-') totalAdd += parseInt(files[i].added) || 0;
       if (files[i].deleted !== '-') totalDel += parseInt(files[i].deleted) || 0;
     }
-
-    var h = '<div class="cd-header">' +
-      '<span>' + files.length + ' 个文件</span>' +
-      '<span class="cd-added">+' + totalAdd + '</span>' +
-      '<span class="cd-deleted">-' + totalDel + '</span>' +
-      '<span style="margin-left:auto;">' +
-      '<button class="btn-mini cd-view-diff">查看完整 diff</button>' +
-      '</span></div>';
-
+    var h = '<div class="cd-header"><span>' + files.length + ' 个文件</span>' +
+      '<span class="cd-added">+' + totalAdd + '</span><span class="cd-deleted">-' + totalDel + '</span>' +
+      '<span style="margin-left:auto;"><button class="btn-mini cd-view-diff">查看完整 diff</button></span></div>';
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
-      h += '<div class="cd-file">' +
-        '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">' + _esc(f.path) + '</span>' +
-        '<span class="cd-stat cd-added">+' + _esc(f.added) + '</span>' +
-        '<span class="cd-stat cd-deleted">-' + _esc(f.deleted) + '</span></div>';
+      h += '<div class="cd-file"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">' +
+        _esc(f.path) + '</span><span class="cd-stat cd-added">+' + f.added + '</span>' +
+        '<span class="cd-stat cd-deleted">-' + f.deleted + '</span></div>';
     }
-
     detail.innerHTML = h;
-
     var diffBtn = detail.querySelector('.cd-view-diff');
-    if (diffBtn) {
-      (function(hashVal) {
-        diffBtn.addEventListener('click', function(e) {
-          e.stopPropagation();
-          _showCommitDetail(hashVal);
-        });
-      })(hash);
-    }
-  } catch(e) {
-    detail.innerHTML = '<div style="padding:4px;color:var(--red);">加载失败: ' + _esc(e.message || String(e)) + '</div>';
-  }
+    if (diffBtn) { (function(hv) { diffBtn.addEventListener('click', function(e) { e.stopPropagation(); _showCommitDetail(hv); }); })(hash); }
+  } catch(e) { detail.innerHTML = '<div style="padding:4px;color:var(--red);">加载失败</div>'; }
 }
 
 async function _showCommitDetail(fullHash) {
   var diffR = await _gitCmd(['show', '--format=%B', fullHash]);
+  var firstLine = ((diffR.stdout || '').split('\n')[0] || '').slice(0, 80);
+  document.getElementById('repo-name').textContent = 'Commit ' + fullHash.slice(0,8) + ': ' + firstLine;
+  var diffEl = document.getElementById('inline-diff'), pathEl = document.getElementById('inline-diff-path'), bodyEl = document.getElementById('inline-diff-body');
+  pathEl.textContent = 'commit ' + fullHash.slice(0,8); bodyEl.innerHTML = '';
   var diffOut = diffR.stdout || '';
-  var firstLine = (diffOut.split('\n')[0] || '').slice(0, 80);
-
-  document.getElementById('repo-name').textContent = 'Commit ' + fullHash.slice(0, 8) + ': ' + firstLine;
-
-  var diffEl = document.getElementById('inline-diff');
-  var pathEl = document.getElementById('inline-diff-path');
-  var bodyEl = document.getElementById('inline-diff-body');
-  pathEl.textContent = 'commit ' + fullHash.slice(0, 8);
-  bodyEl.innerHTML = '';
-
-  if (!diffOut.trim()) {
-    bodyEl.innerHTML = '<div style="padding:8px;color:var(--base01);">无差异</div>';
-  } else {
+  if (!diffOut.trim()) { bodyEl.innerHTML = '<div style="padding:8px;color:var(--base01);">无差异</div>'; }
+  else {
     var dlines = diffOut.split('\n');
     for (var i = 0; i < dlines.length; i++) {
-      var l = dlines[i];
-      var div = document.createElement('div');
-      div.className = 'dline';
-      if (l.startsWith('@@') || l.startsWith('diff ') || l.startsWith('index ') || l.startsWith('---') || l.startsWith('+++')) {
-        div.innerHTML = '<span class="dh">' + _esc(l) + '</span>';
-      } else if (l.startsWith('+')) {
-        div.innerHTML = '<span class="dl">' + _esc(l) + '</span>';
-      } else if (l.startsWith('-')) {
-        div.innerHTML = '<span class="dr">' + _esc(l) + '</span>';
-      } else {
-        div.innerHTML = '<span class="dc">' + _esc(l) + '</span>';
-      }
+      var l = dlines[i], div = document.createElement('div'); div.className = 'dline';
+      if (l.startsWith('@@') || l.startsWith('diff ') || l.startsWith('index ') || l.startsWith('---') || l.startsWith('+++')) div.innerHTML = '<span class="dh">' + _esc(l) + '</span>';
+      else if (l.startsWith('+')) div.innerHTML = '<span class="dl">' + _esc(l) + '</span>';
+      else if (l.startsWith('-')) div.innerHTML = '<span class="dr">' + _esc(l) + '</span>';
+      else div.innerHTML = '<span class="dc">' + _esc(l) + '</span>';
       bodyEl.appendChild(div);
     }
   }
   diffEl.style.display = '';
+  _backToStatus();
+}
 
+function _backToStatus() {
   document.getElementById('log-view').classList.add('hidden');
   document.getElementById('status-view').classList.remove('hidden');
 }
 
 async function _cherryPick(hash) {
-  _showProgress('Cherry-pick ' + hash.slice(0, 8));
+  _showProgress('Cherry-pick ' + hash.slice(0,8));
   var r = await _gitCmd(['cherry-pick', hash]);
   if (r.exitCode === 0) { _hideProgress(); _refreshGitStatus(); }
-  else { _showProgress('✕ cherry-pick 失败: ' + (r.stderr || '').slice(0, 200)); document.getElementById('progress').style.color = 'var(--red)'; }
+  else { _showProgress('✕ 失败'); document.getElementById('progress').style.color = 'var(--red)'; }
 }
 
 async function _revertCommit(hash) {
-  if (!confirm('Revert ' + hash.slice(0, 8) + '？（将创建反向提交）')) return;
-  _showProgress('Revert ' + hash.slice(0, 8));
+  if (!confirm('Revert ' + hash.slice(0,8) + '？（将创建反向提交）')) return;
+  _showProgress('Revert ' + hash.slice(0,8));
   var r = await _gitCmd(['revert', '--no-edit', hash]);
   if (r.exitCode === 0) { _hideProgress(); _refreshGitStatus(); }
-  else { _showProgress('✕ revert 失败: ' + (r.stderr || '').slice(0, 200)); document.getElementById('progress').style.color = 'var(--red)'; }
-}h.slice(0, 8) + ': ' + firstLine;
-
-  var diffR = await _gitCmd(['diff', fullHash + '~1', fullHash]);
-  var diffEl = document.getElementById('inline-diff');
-  var pathEl = document.getElementById('inline-diff-path');
-  var bodyEl = document.getElementById('inline-diff-body');
-  pathEl.textContent = 'commit ' + fullHash.slice(0, 8);
-  bodyEl.innerHTML = '';
-  var diffOut = diffR.stdout || '';
-  if (!diffOut.trim()) {
-    bodyEl.innerHTML = '<div style="padding:8px;color:var(--base01);">无差异</div>';
-  } else {
-    var dlines = diffOut.split('\n');
-    for (var i = 0; i < dlines.length; i++) {
-      var l = dlines[i];
-      var div = document.createElement('div');
-      div.className = 'dline';
-      if (l.startsWith('@@') || l.startsWith('diff ') || l.startsWith('index ') || l.startsWith('---') || l.startsWith('+++')) {
-        div.innerHTML = '<span class="dh">' + _esc(l) + '</span>';
-      } else if (l.startsWith('+')) {
-        div.innerHTML = '<span class="dl">' + _esc(l) + '</span>';
-      } else if (l.startsWith('-')) {
-        div.innerHTML = '<span class="dr">' + _esc(l) + '</span>';
-      } else {
-        div.innerHTML = '<span class="dc">' + _esc(l) + '</span>';
-      }
-      bodyEl.appendChild(div);
-    }
-  }
-  diffEl.style.display = '';
-
-  document.getElementById('log-view').classList.add('hidden');
-  document.getElementById('status-view').classList.remove('hidden');
-}
-
-async function _cherryPick(hash) {
-  _showProgress('Cherry-pick ' + hash.slice(0, 8));
-  var r = await _gitCmd(['cherry-pick', hash]);
-  if (r.exitCode === 0) { _hideProgress(); _refreshGitStatus(); }
-  else { _showProgress('✕ cherry-pick 失败: ' + (r.stderr || '').slice(0, 200)); document.getElementById('progress').style.color = 'var(--red)'; }
-}
-
-async function _revertCommit(hash) {
-  if (!confirm('Revert ' + hash.slice(0, 8) + '？（将创建反向提交）')) return;
-  _showProgress('Revert ' + hash.slice(0, 8));
-  var r = await _gitCmd(['revert', '--no-edit', hash]);
-  if (r.exitCode === 0) { _hideProgress(); _refreshGitStatus(); }
-  else { _showProgress('✕ revert 失败: ' + (r.stderr || '').slice(0, 200)); document.getElementById('progress').style.color = 'var(--red)'; }
+  else { _showProgress('✕ 失败'); document.getElementById('progress').style.color = 'var(--red)'; }
 }
 
 // ═══ BRANCH MANAGEMENT ═══
 document.getElementById('btn-branch').addEventListener('click', _showBranches);
 
 async function _showBranches() {
-  document.getElementById('status-view').classList.add('hidden');
-  document.getElementById('log-view').classList.add('hidden');
-  document.getElementById('branch-view').classList.remove('hidden');
-  document.getElementById('stash-view').classList.add('hidden');
-
+  _hideAllViews('branch-view');
   var r = await _gitCmd(['branch', '-a', '--format=%(refname:short)|%(objectname:short)|%(upstream:short)|%(authorname)']);
-  var list = document.getElementById('branch-list');
-  list.innerHTML = '';
+  var list = document.getElementById('branch-list'); list.innerHTML = '';
   var lines = (r.stdout || '').split('\n').filter(Boolean);
-
   var sr = await _gitCmd(['status', '--porcelain=v2', '--branch']);
   var currentBranch = '';
-  (sr.stdout || '').split('\n').forEach(function(l) {
-    if (l.startsWith('# branch.head ')) currentBranch = l.slice('# branch.head '.length).trim();
-  });
-
+  (sr.stdout || '').split('\n').forEach(function(l) { if (l.startsWith('# branch.head ')) currentBranch = l.slice('# branch.head '.length).trim(); });
   for (var i = 0; i < lines.length; i++) {
-    var parts = lines[i].split('|');
-    var name = parts[0] || '';
-    var hash = parts[1] || '';
-    var upstream = parts[2] || '';
-    var author = parts[3] || '';
-    var isCurrent = (name === currentBranch);
-    var isRemote = name.startsWith('origin/');
-
-    var li = document.createElement('li');
-    var nameEl = document.createElement('span');
-    nameEl.className = 'file-path';
-    nameEl.textContent = name;
+    var parts = lines[i].split('|'), name = parts[0] || '', hash = parts[1] || '', upstream = parts[2] || '', author = parts[3] || '';
+    var isCurrent = (name === currentBranch), isRemote = name.startsWith('origin/');
+    var li = document.createElement('li'), nameEl = document.createElement('span');
+    nameEl.className = 'file-path'; nameEl.textContent = name;
     if (isCurrent) nameEl.style.cssText = 'color:var(--green);font-weight:700;';
     li.appendChild(nameEl);
-    li.title = (hash ? hash.slice(0, 8) : '') + (upstream ? ' → ' + upstream : '') + (author ? ' (' + author + ')' : '');
-
-    if (isCurrent) {
-      var curBadge = document.createElement('span');
-      curBadge.style.cssText = 'font-size:9px;color:var(--green);font-weight:700;';
-      curBadge.textContent = '●';
-      li.appendChild(curBadge);
-      li.style.cursor = 'default';
-    } else if (!isRemote) {
-      var acts = document.createElement('span');
-      acts.className = 'branch-actions';
-      var switchBtn = document.createElement('button');
-      switchBtn.className = 'btn-mini';
-      switchBtn.textContent = '切换';
+    li.title = (hash ? hash.slice(0,8) : '') + (upstream ? ' → ' + upstream : '') + (author ? ' (' + author + ')' : '');
+    if (isCurrent) { var curBadge = document.createElement('span'); curBadge.style.cssText = 'font-size:9px;color:var(--green);font-weight:700;'; curBadge.textContent = '●'; li.appendChild(curBadge); li.style.cursor = 'default'; }
+    else if (!isRemote) {
+      var acts = document.createElement('span'); acts.className = 'branch-actions';
+      var switchBtn = document.createElement('button'); switchBtn.className = 'btn-mini'; switchBtn.textContent = '切换';
       (function(b) { switchBtn.addEventListener('click', function(e) { e.stopPropagation(); _switchBranch(b); }); })(name);
       acts.appendChild(switchBtn);
-      var mergeBtn = document.createElement('button');
-      mergeBtn.className = 'btn-mini';
-      mergeBtn.textContent = '合并';
+      var mergeBtn = document.createElement('button'); mergeBtn.className = 'btn-mini'; mergeBtn.textContent = '合并';
       (function(b) { mergeBtn.addEventListener('click', function(e) { e.stopPropagation(); _mergeBranch(b); }); })(name);
       acts.appendChild(mergeBtn);
       if (name !== 'main' && name !== 'master') {
-        var delBtn = document.createElement('button');
-        delBtn.className = 'btn-mini danger';
-        delBtn.textContent = '删除';
+        var delBtn = document.createElement('button'); delBtn.className = 'btn-mini danger'; delBtn.textContent = '删除';
         (function(b) { delBtn.addEventListener('click', function(e) { e.stopPropagation(); _deleteBranch(b); }); })(name);
         acts.appendChild(delBtn);
       }
-      li.appendChild(acts);
-      li.style.cursor = 'default';
-    } else {
-      li.style.cursor = 'default';
-    }
+      li.appendChild(acts); li.style.cursor = 'default';
+    } else { li.style.cursor = 'default'; }
     list.appendChild(li);
   }
 }
 
-async function _switchBranch(name) {
-  var r = await _gitCmd(['switch', name]);
-  if (r.exitCode === 0) { _refreshGitStatus(); _showBranches(); }
-  else _showProgress('切换失败: ' + (r.stderr || '').slice(0, 100));
-}
-
-async function _mergeBranch(name) {
-  if (!confirm('将 ' + name + ' 合并到当前分支？')) return;
-  _showProgress('合并 ' + name + ' ...');
-  var r = await _gitCmd(['merge', name]);
-  if (r.exitCode === 0) { _hideProgress(); _refreshGitStatus(); _showBranches(); }
-  else { _showProgress('✕ 合并失败: ' + (r.stderr || '').slice(0, 200)); document.getElementById('progress').style.color = 'var(--red)'; }
-}
-
-async function _deleteBranch(name) {
-  if (!confirm('删除分支 ' + name + '？（仅删指针，不删提交）')) return;
-  var r = await _gitCmd(['branch', '-d', name]);
-  if (r.exitCode === 0) _showBranches();
-  else _showProgress('删除失败: ' + (r.stderr || '').slice(0, 100));
-}
+async function _switchBranch(name) { var r = await _gitCmd(['switch', name]); if (r.exitCode === 0) { _refreshGitStatus(); _showBranches(); } else _showProgress('切换失败'); }
+async function _mergeBranch(name) { if (!confirm('将 ' + name + ' 合并到当前分支？')) return; _showProgress('合并中...'); var r = await _gitCmd(['merge', name]); if (r.exitCode === 0) { _hideProgress(); _refreshGitStatus(); _showBranches(); } else _showProgress('✕ 合并失败'); }
+async function _deleteBranch(name) { if (!confirm('删除分支 ' + name + '？')) return; var r = await _gitCmd(['branch', '-d', name]); if (r.exitCode === 0) _showBranches(); else _showProgress('删除失败'); }
 
 document.getElementById('btn-create-branch').addEventListener('click', async function() {
-  var name = document.getElementById('new-branch-name').value.trim();
-  if (!name) return;
+  var name = document.getElementById('new-branch-name').value.trim(); if (!name) return;
   var r = await _gitCmd(['checkout', '-b', name]);
-  if (r.exitCode === 0) {
-    document.getElementById('new-branch-name').value = '';
-    _refreshGitStatus();
-    _showBranches();
-  } else _showProgress('新建失败: ' + (r.stderr || '').slice(0, 100));
+  if (r.exitCode === 0) { document.getElementById('new-branch-name').value = ''; _refreshGitStatus(); _showBranches(); }
+  else _showProgress('新建失败');
 });
 
-// ═══ STASH MANAGEMENT ═══
-document.getElementById('btn-stash').addEventListener('click', function() {
-  document.getElementById('status-view').classList.add('hidden');
-  document.getElementById('log-view').classList.add('hidden');
-  document.getElementById('branch-view').classList.add('hidden');
-  document.getElementById('stash-view').classList.remove('hidden');
-  _showStashes();
-});
-
-document.getElementById('btn-stash-save').addEventListener('click', async function() {
-  await _gitCmd(['stash', 'push', '-m', 'Quick stash ' + new Date().toLocaleString()]);
-  _refreshGitStatus();
-  _showStashes();
-});
+// ═══ STASH ═══
+document.getElementById('btn-stash').addEventListener('click', function() { _hideAllViews('stash-view'); _showStashes(); });
+document.getElementById('btn-stash-save').addEventListener('click', async function() { await _gitCmd(['stash', 'push', '-m', 'Quick stash ' + new Date().toLocaleString()]); _refreshGitStatus(); _showStashes(); });
 
 async function _showStashes() {
-  var r = await _gitCmd(['stash', 'list']);
-  var list = document.getElementById('stash-list');
-  list.innerHTML = '';
+  var r = await _gitCmd(['stash', 'list']), list = document.getElementById('stash-list'); list.innerHTML = '';
   var lines = (r.stdout || '').split('\n').filter(Boolean);
-
-  if (lines.length === 0) {
-    list.innerHTML = '<div style="color:var(--base01);font-size:11px;padding:4px 6px;">(空)</div>';
-    return;
-  }
-
+  if (lines.length === 0) { list.innerHTML = '<div style="color:var(--base01);font-size:11px;padding:4px 6px;">(空)</div>'; return; }
   for (var i = 0; i < lines.length; i++) {
-    var line = lines[i];
-    var match = line.match(/^(stash@\{\d+\}):\s*(.*)/);
-    var ref = match ? match[1] : line;
-    var desc = match ? match[2] : '';
-
-    var item = document.createElement('div');
-    item.className = 'stash-item';
+    var line = lines[i], match = line.match(/^(stash@\{\d+\}):\s*(.*)/), ref = match ? match[1] : line, desc = match ? match[2] : '';
+    var item = document.createElement('div'); item.className = 'stash-item';
     item.innerHTML = '<span class="stash-ref">' + _esc(ref) + '</span><span class="stash-msg" title="' + _esc(desc) + '">' + _esc(desc.slice(0, 80)) + '</span>';
-
-    var applyBtn = document.createElement('button');
-    applyBtn.className = 'btn-mini'; applyBtn.textContent = '应用';
-    (function(n) { applyBtn.addEventListener('click', function(e) { e.stopPropagation(); _applyStash(n); }); })(ref);
-    item.appendChild(applyBtn);
-
-    var popBtn = document.createElement('button');
-    popBtn.className = 'btn-mini'; popBtn.textContent = '弹出';
-    (function(n) { popBtn.addEventListener('click', function(e) { e.stopPropagation(); _popStash(n); }); })(ref);
-    item.appendChild(popBtn);
-
-    var dropBtn = document.createElement('button');
-    dropBtn.className = 'btn-mini danger'; dropBtn.textContent = '丢弃';
-    (function(n) { dropBtn.addEventListener('click', function(e) { e.stopPropagation(); _dropStash(n); }); })(ref);
-    item.appendChild(dropBtn);
-
+    var applyBtn = document.createElement('button'); applyBtn.className = 'btn-mini'; applyBtn.textContent = '应用';
+    (function(n) { applyBtn.addEventListener('click', function(e) { e.stopPropagation(); _applyStash(n); }); })(ref); item.appendChild(applyBtn);
+    var popBtn = document.createElement('button'); popBtn.className = 'btn-mini'; popBtn.textContent = '弹出';
+    (function(n) { popBtn.addEventListener('click', function(e) { e.stopPropagation(); _popStash(n); }); })(ref); item.appendChild(popBtn);
+    var dropBtn = document.createElement('button'); dropBtn.className = 'btn-mini danger'; dropBtn.textContent = '丢弃';
+    (function(n) { dropBtn.addEventListener('click', function(e) { e.stopPropagation(); _dropStash(n); }); })(ref); item.appendChild(dropBtn);
     list.appendChild(item);
   }
 }
 
-async function _applyStash(ref) {
-  var r = await _gitCmd(['stash', 'apply', ref]);
-  if (r.exitCode === 0) { _refreshGitStatus(); _showStashes(); }
-  else _showProgress('应用失败: ' + (r.stderr || '').slice(0, 100));
-}
-
-async function _popStash(ref) {
-  var r = await _gitCmd(['stash', 'pop', ref]);
-  if (r.exitCode === 0) { _refreshGitStatus(); _showStashes(); }
-  else _showProgress('弹出失败: ' + (r.stderr || '').slice(0, 100));
-}
-
-async function _dropStash(ref) {
-  if (!confirm('丢弃 ' + ref + '？')) return;
-  var r = await _gitCmd(['stash', 'drop', ref]);
-  if (r.exitCode === 0) _showStashes();
-  else _showProgress('丢弃失败: ' + (r.stderr || '').slice(0, 100));
-}
+async function _applyStash(ref) { var r = await _gitCmd(['stash', 'apply', ref]); if (r.exitCode === 0) { _refreshGitStatus(); _showStashes(); } else _showProgress('应用失败'); }
+async function _popStash(ref) { var r = await _gitCmd(['stash', 'pop', ref]); if (r.exitCode === 0) { _refreshGitStatus(); _showStashes(); } else _showProgress('弹出失败'); }
+async function _dropStash(ref) { if (!confirm('丢弃 ' + ref + '？')) return; var r = await _gitCmd(['stash', 'drop', ref]); if (r.exitCode === 0) _showStashes(); else _showProgress('丢弃失败'); }
 
 // ═══ CLONE ═══
-document.getElementById('btn-clone').addEventListener('click', function() {
-  document.getElementById('clone-dialog').style.display = '';
-});
-document.getElementById('clone-cancel').addEventListener('click', function() {
-  document.getElementById('clone-dialog').style.display = 'none';
-  document.getElementById('clone-url').value = '';
-  document.getElementById('clone-dir').value = '';
-});
+document.getElementById('btn-clone').addEventListener('click', function() { document.getElementById('clone-dialog').style.display = ''; });
+document.getElementById('clone-cancel').addEventListener('click', function() { document.getElementById('clone-dialog').style.display = 'none'; document.getElementById('clone-url').value = ''; document.getElementById('clone-dir').value = ''; });
 document.getElementById('clone-start').addEventListener('click', async function() {
-  var url = document.getElementById('clone-url').value.trim();
-  if (!url) return;
+  var url = document.getElementById('clone-url').value.trim(); if (!url) return;
   var dirName = document.getElementById('clone-dir').value.trim() || url.split('/').pop().replace('.git', '');
   var parentDir = _gitRoot ? _gitRoot.replace(/\/[^\/]+$/, '') : '.';
   var targetPath = parentDir + '/' + dirName;
-
   _showProgress('克隆 ' + url + ' → ' + targetPath);
   document.getElementById('clone-dialog').style.display = 'none';
-
   try {
     var result;
     if (bridge && bridge.qz && bridge.qz.spawnStream) {
-      result = await bridge.qz.spawnStream({
-        cmd: _gitExePath || (await _initGitExe()),
-        args: ['clone', '--progress', url, targetPath],
-        cwd: parentDir,
-        timeout: 600000
-      }, function(channel, data) {
-        var lines = data.split('\n').filter(Boolean);
-        var last = lines[lines.length - 1] || '';
-        var prog = document.getElementById('progress');
-        if (prog && last.trim()) prog.textContent = '⏳ ' + last.trim().slice(0, 160);
-      });
-    } else {
-      result = await _gitCmd(['clone', url, targetPath], { timeout: 600000 });
-    }
-
-    if (result.exitCode === 0) {
-      _hideProgress();
-      _gitRoot = targetPath;
-      document.getElementById('clone-url').value = '';
-      document.getElementById('clone-dir').value = '';
-      _refreshGitStatus();
-    } else {
-      _showProgress('✕ 克隆失败: ' + (result.stderr || '').slice(0, 200));
-      document.getElementById('progress').style.color = 'var(--red)';
-    }
-  } catch(e) {
-    _showProgress('✕ 克隆失败: ' + (e.message || String(e)).slice(0, 200));
-    document.getElementById('progress').style.color = 'var(--red)';
-  }
+      result = await bridge.qz.spawnStream({ cmd: _gitExePath || (await _initGitExe()), args: ['clone', '--progress', url, targetPath], cwd: parentDir, timeout: 600000 },
+        function(channel, data) { var lines = data.split('\n').filter(Boolean), last = lines[lines.length-1]||''; var prog = document.getElementById('progress'); if (prog && last.trim()) prog.textContent = '⏳ ' + last.trim().slice(0,160); });
+    } else { result = await _gitCmd(['clone', url, targetPath], { timeout: 600000 }); }
+    if (result.exitCode === 0) { _hideProgress(); _gitRoot = targetPath; document.getElementById('clone-url').value = ''; document.getElementById('clone-dir').value = ''; _refreshGitStatus(); }
+    else { _showProgress('✕ 克隆失败: ' + (result.stderr || '').slice(0,200)); document.getElementById('progress').style.color = 'var(--red)'; }
+  } catch(e) { _showProgress('✕ 克隆失败: ' + (e.message || '').slice(0,200)); document.getElementById('progress').style.color = 'var(--red)'; }
 });
 
-// ═══ CONFLICT DETECTION ═══
+// ═══ CONFLICT ═══
 async function _detectConflicts() {
-  var r = await _gitCmd(['diff', '--name-only', '--diff-filter=U']);
-  var files = (r.stdout || '').split('\n').filter(Boolean);
-  var view = document.getElementById('conflict-view');
-  var list = document.getElementById('conflict-list');
+  var r = await _gitCmd(['diff', '--name-only', '--diff-filter=U']), files = (r.stdout || '').split('\n').filter(Boolean);
+  var view = document.getElementById('conflict-view'), list = document.getElementById('conflict-list');
   if (files.length === 0) { view.classList.add('hidden'); return; }
-  view.classList.remove('hidden');
-  list.innerHTML = '';
+  view.classList.remove('hidden'); list.innerHTML = '';
   for (var i = 0; i < files.length; i++) {
-    var f = files[i];
-    var li = document.createElement('li');
+    var f = files[i], li = document.createElement('li');
     li.style.cssText = 'display:flex;align-items:center;gap:4px;cursor:default;';
-    var pathEl = document.createElement('span');
-    pathEl.className = 'file-path';
-    pathEl.textContent = f;
-    pathEl.title = f;
+    var pathEl = document.createElement('span'); pathEl.className = 'file-path'; pathEl.textContent = f; pathEl.title = f;
     li.appendChild(pathEl);
-
-    var oursBtn = document.createElement('button');
-    oursBtn.className = 'btn-mini'; oursBtn.textContent = '用本地';
-    (function(file) { oursBtn.addEventListener('click', function(e) { e.stopPropagation(); _resolveConflict(file, 'ours'); }); })(f);
-    li.appendChild(oursBtn);
-
-    var theirsBtn = document.createElement('button');
-    theirsBtn.className = 'btn-mini'; theirsBtn.textContent = '用远端';
-    (function(file) { theirsBtn.addEventListener('click', function(e) { e.stopPropagation(); _resolveConflict(file, 'theirs'); }); })(f);
-    li.appendChild(theirsBtn);
-
+    var oursBtn = document.createElement('button'); oursBtn.className = 'btn-mini'; oursBtn.textContent = '用本地';
+    (function(file) { oursBtn.addEventListener('click', function(e) { e.stopPropagation(); _resolveConflict(file, 'ours'); }); })(f); li.appendChild(oursBtn);
+    var theirsBtn = document.createElement('button'); theirsBtn.className = 'btn-mini'; theirsBtn.textContent = '用远端';
+    (function(file) { theirsBtn.addEventListener('click', function(e) { e.stopPropagation(); _resolveConflict(file, 'theirs'); }); })(f); li.appendChild(theirsBtn);
     list.appendChild(li);
   }
 }
 
 async function _resolveConflict(filePath, strategy) {
   var r = await _gitCmd(['checkout', '--' + strategy, '--', filePath]);
-  if (r.exitCode === 0) {
-    await _gitCmd(['add', '--', filePath]);
-    _refreshGitStatus();
-  } else _showProgress('解决冲突失败: ' + (r.stderr || '').slice(0, 100));
+  if (r.exitCode === 0) { await _gitCmd(['add', '--', filePath]); _refreshGitStatus(); }
+  else _showProgress('解决冲突失败');
 }
 
-// ═══ BACK TO STATUS ═══
-document.getElementById('repo-name').addEventListener('click', function() {
-  document.getElementById('status-view').classList.remove('hidden');
-  document.getElementById('log-view').classList.add('hidden');
-  document.getElementById('branch-view').classList.add('hidden');
-  document.getElementById('stash-view').classList.add('hidden');
-  document.getElementById('repo-name').textContent = _gitRoot.split('/').pop() || 'Git';
-});
+// ═══ HELPERS ═══
+function _hideAllViews(showId) {
+  var ids = ['status-view','log-view','branch-view','stash-view','conflict-view'];
+  for (var i = 0; i < ids.length; i++) { var el = document.getElementById(ids[i]); if (el) el.classList.add('hidden'); }
+  var show = document.getElementById(showId); if (show) show.classList.remove('hidden');
+}
 
 // ═══ AUTO-REFRESH ═══
 function _startAutoRefresh() {
   if (_autoRefreshTimer) return;
-  _autoRefreshTimer = setInterval(function() {
-    if (_gitRoot && _gitAvailable) _refreshGitStatus();
-  }, 15000);
+  _autoRefreshTimer = setInterval(function() { if (_gitRoot && _gitAvailable) _refreshGitStatus(); }, 15000);
 }
 
 // ═══ INIT ═══
 function _init() {
-  _detectGitRoot().then(function() {
-    if (_gitRoot) {
-      _checkGitAvailable().then(function(ok) {
-        if (ok) { _refreshGitStatus(); _startAutoRefresh(); }
-      });
-    } else {
-      document.getElementById('repo-name').textContent = '非 Git 仓库';
-      document.getElementById('branch-name').textContent = '';
-    }
+  _checkGitAvailable().then(function(ok) {
+    if (!ok) return;
+    _detectAllRepos().then(function() {
+      _buildRepoUI();
+      if (_gitRoot) { _refreshGitStatus(); _startAutoRefresh(); }
+      else { document.getElementById('branch-name').textContent = ''; }
+    });
   });
 }
 

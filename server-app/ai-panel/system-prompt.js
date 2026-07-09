@@ -119,10 +119,8 @@ window.getTimeContext = function () {
     var datePart = _now.slice(0, 10);
     var timePart = _now.slice(11);
 
-    return '\n\n═══ CURRENT TIME ═══\n' +
-        'Right now it is ' + datePart + ' (' + dayName + ') ' + timePart + ' ' + tzStr + '.\n' +
-        'Always use this as the authoritative current time. The user may refer to "today", "now", "currently", or specific dates — resolve them relative to this timestamp.\n' +
-        '═══════════════';
+    // ★ 短格式：仅时间戳。约束文本在服务端甲壳 system-prompt.txt 开头（一次注入，零重复）
+    return '\n\n[CURRENT TIME: ' + datePart + ' (' + dayName + ') ' + timePart + ' ' + tzStr + ']';
 };
 
 // Export

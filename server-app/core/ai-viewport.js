@@ -185,6 +185,10 @@
         _dirCache.delete(dirPath + '|n');
         _dirCache.delete(dirPath + '|m');
         _dirCache.delete(dirPath);  // 清理旧 key（无 mode 后缀）
+        // ★ 切换按钮高亮
+        var allBtns = bar.querySelectorAll('.aiv-sort-btn');
+        allBtns.forEach(function (b) { b.style.background = ''; });
+        btn.style.background = 'var(--gold-accent-bg)';
         // ★ 重新渲染本列表：清空 + 重新 loadDirInto
         var outer = scrollContainer._outer || scrollContainer.parentElement;
         _closeDescendantSubmenus(outer);
@@ -279,8 +283,19 @@
     var cached = _dirCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.entries;
     try {
-      const entries = await bridge.fs.list(p);
-      entries.sort((x, y) => {
+      var entries = await bridge.fs.list(p);
+      if (mode === 'm') {
+        // ★ M 排需要 mtime，bridge.fs.list 不返回，逐个 stat
+        entries = await Promise.all(entries.map(async function (e) {
+          var full = pathJoin(p, e.name);
+          try {
+            var st = await bridge.fs.stat(full);
+            if (st) e.mtime = st.mtimeMs || 0;
+          } catch (_) { e.mtime = 0; }
+          return e;
+        }));
+      }
+      entries.sort(function (x, y) {
         if (x.isDir !== y.isDir) return x.isDir ? -1 : 1;
         if (mode === 'm') {
           return (y.mtime || 0) - (x.mtime || 0);

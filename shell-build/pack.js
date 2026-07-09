@@ -28,6 +28,8 @@ function getArg(name) {
 }
 
 const target = getArg('target') || 'win-x64';
+const doSfx = args.includes('--sfx');
+const doFlat = args.includes('--flat');
 
 const TARGET_MAP = {
   // unpackedDir = electron-builder's output sub-directory name
@@ -41,14 +43,19 @@ const TARGET_MAP = {
   'mac-arm64': { plat: '--mac', arch: '--arm64', tarExt: '.tar.gz', unpackedDir: 'mac-arm64', ebPlat: 'darwin-arm64' },
 };
 
-const cfg = TARGET_MAP[target];
-if (!cfg) {
+// resolve target — supports win-x64-sfx shorthand
+const isSfx = doSfx || target.endsWith('-sfx');
+const baseTarget = isSfx ? target.replace(/-sfx$/, '') : target;
+const baseCfg = TARGET_MAP[baseTarget];
+if (!baseCfg) {
   console.error('unknown target:', target);
-  console.error('valid:', Object.keys(TARGET_MAP).join(', '));
+  console.error('valid:', Object.keys(TARGET_MAP).join(', ') + (isSfx ? '' : ', win-x64-sfx, win-arm64-sfx'));
   process.exit(1);
 }
+const cfg = baseCfg; // unified — cfg always refers to the base platform config
+const isWin = baseTarget.startsWith('win-');
 
-console.log('[pack] target =', target);
+console.log('[pack] target =', target, isSfx ? '(SFX self-extracting exe)' : '');
 
 function run(cmd, args, opts = {}) {
   console.log('>', cmd, args.join(' '));
@@ -398,7 +405,8 @@ function pruneElectron(unpacked) {
   }
 
   // ── 只保留中英文语言包（55→2，省~25MB） ──
-  const locDir = path.join(unpacked, 'locales');
+  // ★ injectLauncher 已把 locales/ 搬进 gh555.com/，修剪必须跟进去
+  const locDir = path.join(unpacked, 'gh555.com', 'locales');
   if (fs.existsSync(locDir)) {
     const keep = new Set(['en-US.pak', 'zh-CN.pak']);
     for (const f of fs.readdirSync(locDir)) {
@@ -432,16 +440,119 @@ function pruneNodeModules(unpacked) {
   if (!target.startsWith('win-')) { return; }
   const appDir = appResourcesDir(unpacked);
   if (!appDir || !fs.existsSync(appDir)) { return; }
+  const nmDir = path.join(appDir, 'node_modules');
 
-  // monaco-editor/dev/ (~35MB) — development build, never used at runtime
-  const monacoDev = path.join(appDir, 'node_modules', 'monaco-editor', 'dev');
+  // monaco-editor/dev/ — development build, never used at runtime
+  const monacoDev = path.join(nmDir, 'monaco-editor', 'dev');
   if (fs.existsSync(monacoDev)) {
     fs.rmSync(monacoDev, { recursive: true, force: true });
-    console.log('[pack] pruned monaco-editor/dev/ (35MB)');
+    console.log('[pack] pruned monaco-editor/dev/');
+  }
+  // monaco-editor/esm/ — ESM source (~18MB), never used at runtime
+  const monacoEsm = path.join(nmDir, 'monaco-editor', 'esm');
+  if (fs.existsSync(monacoEsm)) {
+    fs.rmSync(monacoEsm, { recursive: true, force: true });
+    console.log('[pack] pruned monaco-editor/esm/ (18MB)');
+  }
+  // monaco-editor/min-maps/ — source maps (~12MB), never used at runtime
+  const monacoMaps = path.join(nmDir, 'monaco-editor', 'min-maps');
+  if (fs.existsSync(monacoMaps)) {
+    fs.rmSync(monacoMaps, { recursive: true, force: true });
+    console.log('[pack] pruned monaco-editor/min-maps/ (12MB)');
+  }
+
+  // sql.js — keep only sql-wasm.js + worker.sql-wasm.js + sql-wasm.wasm (~2MB);
+  // drop debug builds + asm fallback + zipped archives (~17MB)
+  const sqlDist = path.join(nmDir, 'sql.js', 'dist');
+  if (fs.existsSync(sqlDist)) {
+    const keepSql = new Set(['sql-wasm.js', 'sql-wasm.wasm', 'worker.sql-wasm.js', 'package.json']);
+    let sqlBytes = 0;
+    for (const f of fs.readdirSync(sqlDist)) {
+      if (!keepSql.has(f)) {
+        const fp = path.join(sqlDist, f);
+        if (fs.statSync(fp).isFile()) { sqlBytes += fs.statSync(fp).size; }
+        fs.rmSync(fp, { recursive: true, force: true });
+      }
+    }
+    console.log('[pack] pruned sql.js (kept 3 files, saved ' + Math.round(sqlBytes / 1024 / 1024) + 'MB)');
+  }
+
+  // rcedit — dev-only Windows resource editor, never used at runtime (~2.2MB)
+  const rceditDir = path.join(nmDir, 'rcedit');
+  if (fs.existsSync(rceditDir)) {
+    fs.rmSync(rceditDir, { recursive: true, force: true });
+    console.log('[pack] pruned rcedit/ (dev-only, 2.2MB)');
   }
 }
 
-// 3.9) clean runtime-generated directories from unpacked tree (should not be in zip)
+// 3.9) prune cross-platform engine binaries — keep only target-platform ones
+function pruneEngines(unpacked) {
+  if (!target.startsWith('win-')) { return; }
+  const appDir = appResourcesDir(unpacked);
+  if (!appDir || !fs.existsSync(appDir)) { return; }
+  const engDir = path.join(appDir, 'engines');
+  if (!fs.existsSync(engDir)) { return; }
+
+  // non-Windows binaries to strip (ripgrep lives in engDir/ripgrep/)
+  const rgDir = path.join(engDir, 'ripgrep');
+  const nonWinRg = ['rg-linux-x64', 'rg-mac-x64', 'rg-mac-arm64'];
+  const nonWinRoot = ['q_linux_x64', 'q_mac_x64', 'q_mac_arm64', 'ghrun'];
+  let stripped = 0;
+  if (fs.existsSync(rgDir)) {
+    for (const f of nonWinRg) {
+      const fp = path.join(rgDir, f);
+      if (fs.existsSync(fp)) { stripped += fs.statSync(fp).size; fs.rmSync(fp); }
+    }
+  }
+  for (const f of nonWinRoot) {
+    const fp = path.join(engDir, f);
+    if (fs.existsSync(fp)) { stripped += fs.statSync(fp).size; fs.rmSync(fp); }
+  }
+  if (stripped > 0) {
+    console.log('[pack] pruned non-win engines (' + Math.round(stripped / 1024 / 1024) + 'MB)');
+  }
+}
+
+// 3.10) prune server-app — remove generated AI images from bundle
+function pruneServerApp(unpacked) {
+  const appDir = appResourcesDir(unpacked);
+  if (!appDir || !fs.existsSync(appDir)) { return; }
+  const genDir = path.join(appDir, 'server-app', 'generated');
+  if (fs.existsSync(genDir)) {
+    let genBytes = 0;
+    for (const f of fs.readdirSync(genDir)) {
+      const fp = path.join(genDir, f);
+      if (fs.statSync(fp).isFile()) {
+        genBytes += fs.statSync(fp).size;
+        fs.rmSync(fp);
+      }
+    }
+    if (genBytes > 0) {
+      console.log('[pack] pruned server-app/generated/ (' + Math.round(genBytes / 1024 / 1024) + 'MB)');
+    }
+  }
+}
+
+// 3.11) prune shell-out — remove .js.map source maps from bundle
+function pruneShellOut(unpacked) {
+  const appDir = appResourcesDir(unpacked);
+  if (!appDir || !fs.existsSync(appDir)) { return; }
+  const soDir = path.join(appDir, 'shell-out');
+  if (!fs.existsSync(soDir)) { return; }
+  let mapBytes = 0;
+  for (const f of fs.readdirSync(soDir)) {
+    if (f.endsWith('.js.map')) {
+      const fp = path.join(soDir, f);
+      mapBytes += fs.statSync(fp).size;
+      fs.rmSync(fp);
+    }
+  }
+  if (mapBytes > 0) {
+    console.log('[pack] pruned shell-out .js.map files (' + Math.round(mapBytes / 1024 / 1024) + 'MB)');
+  }
+}
+
+// 3.12) clean runtime-generated directories from unpacked tree (should not be in zip)
 function cleanRuntimeDirs(unpacked) {
   // Old flat structure (for cleanup of existing trees)
   const oldFlat = ['cache', 'crashDumps', 'temp', 'logs'];
@@ -479,17 +590,56 @@ function cleanRuntimeDirs(unpacked) {
   }
 }
 
-// 4) compress
-function packDir(unpacked) {
+// 4) two-layer compression: inner LZMA2 payload + outer deflate zip
+//    C launcher extracts payload.7z on first run, subsequent runs skip.
+function find7z() {
+  const candidates = [
+    'C:\\Program Files\\7-Zip\\7z.exe',
+    'C:\\Program Files (x86)\\7-Zip\\7z.exe',
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  const r = cp.spawnSync('where', ['7z'], { stdio: 'pipe', shell: true });
+  if (r.status === 0) {
+    const line = r.stdout.toString().trim().split('\n')[0];
+    if (line && fs.existsSync(line)) return line.trim();
+  }
+  return null;
+}
+
+function compileLauncher() {
+  if (!target.startsWith('win-')) return;
+  const gccCandidates = [
+    path.join(ROOT, '..', '..', '..', 'd', 'gw', 'mingw64', 'bin', 'gcc.exe'),
+  ];
+  let gcc = null;
+  for (const c of gccCandidates) { if (fs.existsSync(c)) { gcc = c; break; } }
+  if (!gcc) { console.warn('[pack] gcc not found, using existing launcher binary'); return; }
+  const src = path.join(ROOT, 'launcher', 'launcher.c');
+  const exe = path.join(ROOT, 'launcher', 'qqqide.exe');
+  if (!fs.existsSync(src)) { console.warn('[pack] launcher.c not found'); return; }
+  console.log('[pack] compiling launcher...');
+  const r = cp.spawnSync(gcc, ['-mwindows', '-O2', '-s', '-o', exe, src, '-lcomctl32'],
+    { stdio: 'inherit' });
+  if (r.status !== 0) throw new Error('gcc compile failed');
+  console.log('[pack] launcher compiled:', exe, '(' + fs.statSync(exe).size + 'B)');
+}
+
+function packDir(unpacked, flatOnly) {
   const distRoot = path.join(ROOT, 'dist-pack');
-  const outName = `qqqide-${target}${cfg.tarExt}`;
+  const outName = `qqqide-${baseTarget}${cfg.tarExt}`;
   const out = path.join(distRoot, outName);
   if (fs.existsSync(out)) { fs.rmSync(out); }
-  console.log('[pack] zipping', path.basename(unpacked), '->', out);
-  if (cfg.tarExt === '.zip') {
-    if (process.platform === 'win32') {
-      // Python zipfile 比 PowerShell Compress-Archive 可靠得多（PS 经常生成损坏 zip）
-      // 写临时脚本避免多行 shell 转义问题
+
+  const sz7 = find7z();
+  if (flatOnly || !sz7 || !isWin) {
+    // single-layer (flat or fallback)
+    console.log('[pack] compressing (single-layer deflate mx=9)', path.basename(unpacked), '->', out);
+    if (sz7 && cfg.tarExt === '.zip') {
+      const r7 = cp.spawnSync(sz7, ['a', '-tzip', '-mx=9', '-mmt=on', '-mfb=258', '-mpass=15', out, '.'], { stdio: 'inherit', cwd: unpacked });
+      if (r7.status !== 0) throw new Error('7z failed: ' + r7.status);
+    } else {
       const scriptPath = path.join(ROOT, 'shell-build', '_zip_worker.py');
       const script = `import zipfile, os
 srcdir = r'${unpacked.replace(/\\/g, '\\\\')}'
@@ -503,29 +653,117 @@ with zipfile.ZipFile(out, 'w', zipfile.ZIP_DEFLATED, allowZip64=True) as z:
 print('[pack] python zip done:', out)
 `;
       fs.writeFileSync(scriptPath, script, 'utf8');
-      try {
-        run('python', [scriptPath]);
-      } finally {
-        try { fs.rmSync(scriptPath); } catch (_) { }
-      }
-    } else {
-      run('zip', ['-r', '-9', out, '.'], { cwd: unpacked });
+      try { run('python', [scriptPath]); }
+      finally { try { fs.rmSync(scriptPath); } catch (_) { } }
     }
-  } else {
-    // tar from inside the unpacked dir to avoid windows path C:\ issues
-    run('tar', ['-czf', `../${outName}`, '.'], { cwd: unpacked });
+    return;
   }
+
+  // ── Two-layer: inner LZMA2 + outer deflate zip ──
+  console.log('[pack] building two-layer package...');
+
+  const sz7Dir = path.dirname(sz7);
+  const sfxCon = path.join(sz7Dir, '7zCon.sfx');
+  if (!fs.existsSync(sfxCon)) throw new Error('7zCon.sfx not found');
+
+  // Inner: payload.7z
+  const p7z = path.join(distRoot, '_p.7z');
+  if (fs.existsSync(p7z)) fs.rmSync(p7z);
+  console.log('[pack]   payload LZMA2...');
+  {
+    const r = cp.spawnSync(sz7, ['a', '-t7z', '-mx=9', '-md=128m', '-mmt=off', '-ms=on', p7z, '.'],
+      { stdio: 'inherit', cwd: unpacked });
+    if (r.status !== 0) throw new Error('7z failed');
+  }
+
+  // Combine 7zCon.sfx + payload.7z → r (self-extracting blob)
+  const rFile = path.join(distRoot, 'r');
+  console.log('[pack]   assembling r (7zCon.sfx + payload)...');
+  cp.spawnSync('cmd', ['/c', 'copy', '/b', sfxCon, '+', p7z, rFile], { stdio: 'inherit' });
+  fs.rmSync(p7z);
+
+  // Stage: qqqide.exe + r
+  const stageDir = path.join(distRoot, '_stage');
+  if (fs.existsSync(stageDir)) fs.rmSync(stageDir, { recursive: true, force: true });
+  fs.mkdirSync(stageDir, { recursive: true });
+  const launcherSrc = path.join(ROOT, 'launcher', 'qqqide.exe');
+  if (fs.existsSync(launcherSrc)) fs.cpSync(launcherSrc, path.join(stageDir, 'qqqide.exe'));
+  fs.renameSync(rFile, path.join(stageDir, 'r'));
+
+  // outer zip: deflate mx=9
+  console.log('[pack]   outer zip (deflate mx=9)...');
+  {
+    const r = cp.spawnSync(sz7, ['a', '-tzip', '-mx=9', '-mmt=on', '-mfb=258', '-mpass=15', out, '.'],
+      { stdio: 'inherit', cwd: stageDir });
+    if (r.status !== 0) throw new Error('7z outer zip failed: ' + r.status);
+  }
+
+  fs.rmSync(stageDir, { recursive: true, force: true });
+  const finalMb = Math.round(fs.statSync(out).size / 1024 / 1024);
+  console.log('[pack] two-layer done:', finalMb, 'MB ->', out);
+}
+
+// 4b) SFX self-extracting exe — single-file distribution
+// 4b) SFX — 2-file zip (qqqide.exe + r) renamed to .exe
+//     r = 7zCon.sfx + payload.7z, C launcher runs "r -y" for silent extract
+function packSfx(unpacked) {
+  const distRoot = path.join(ROOT, 'dist-pack');
+  const outName = `qqqide-${baseTarget}.exe`;
+  const out = path.join(distRoot, outName);
+  if (fs.existsSync(out)) fs.rmSync(out);
+
+  const sz7 = find7z();
+  if (!sz7) throw new Error('7z required');
+  const sz7Dir = path.dirname(sz7);
+  const sfxCon = path.join(sz7Dir, '7zCon.sfx');
+  if (!fs.existsSync(sfxCon)) throw new Error('7zCon.sfx not found');
+
+  // build payload.7z
+  const p7z = path.join(distRoot, '_p.7z');
+  if (fs.existsSync(p7z)) fs.rmSync(p7z);
+  console.log('[pack]   payload LZMA2...');
+  {
+    const r = cp.spawnSync(sz7, ['a', '-t7z', '-mx=9', '-md=128m', '-mmt=off', '-ms=on', p7z, '.'],
+      { stdio: 'inherit', cwd: unpacked });
+    if (r.status !== 0) throw new Error('7z failed');
+  }
+
+  // combine 7zCon.sfx + payload.7z → r
+  const rFile = path.join(distRoot, 'r');
+  console.log('[pack]   assembling r (7zCon.sfx + payload)...');
+  cp.spawnSync('cmd', ['/c', 'copy', '/b', sfxCon, '+', p7z, rFile], { stdio: 'inherit' });
+  fs.rmSync(p7z);
+
+  // stage: qqqide.exe + r → zip → rename to .exe
+  const stage = path.join(distRoot, '_sfx');
+  if (fs.existsSync(stage)) fs.rmSync(stage, { recursive: true, force: true });
+  fs.mkdirSync(stage, { recursive: true });
+  const launcherSrc = path.join(ROOT, 'launcher', 'qqqide.exe');
+  if (fs.existsSync(launcherSrc)) fs.cpSync(launcherSrc, path.join(stage, 'qqqide.exe'));
+  fs.renameSync(rFile, path.join(stage, 'r'));
+
+  console.log('[pack]   deflate zip → .exe');
+  const rz = cp.spawnSync(sz7, ['a', '-tzip', '-mx=9', '-mmt=on', '-mfb=258', '-mpass=15', out, '.'],
+    { stdio: 'inherit', cwd: stage });
+  if (rz.status !== 0) throw new Error('7z zip failed');
+  fs.rmSync(stage, { recursive: true, force: true });
+  console.log('[pack] SFX done:', Math.round(fs.statSync(out).size / 1024 / 1024), 'MB ->', out);
 }
 
 (async () => {
   ensureEngineBinary();
   // mac builds on non-mac hosts must use manual assembly (electron-builder refuses)
-  const isCrossMac = target.startsWith('mac-') && process.platform !== 'darwin';
+  const isCrossMac = baseTarget.startsWith('mac-') && process.platform !== 'darwin';
+  // SFX only for win locals
+  if (isSfx && !isWin) { console.error('SFX only supported for win targets'); process.exit(1); }
   let unpacked;
   if (isCrossMac) {
     unpacked = await manualAssemble();
   } else {
-    builderDir();
+    // electron-builder needs baseTarget (not -sfx variant)
+    const ebPlat = TARGET_MAP[baseTarget].plat;
+    const ebArch = TARGET_MAP[baseTarget].arch;
+    run('npx', ['electron-builder', ebPlat, ebArch, '--dir', '--config.compression=store']);
     unpacked = findUnpackedDir();
     if (!unpacked) {
       console.error('[pack] electron-builder produced no unpacked dir, aborting');
@@ -537,11 +775,19 @@ print('[pack] python zip done:', out)
       console.log('[pack] unpacked tree complete:', unpacked);
     }
   }
+  compileLauncher();
   injectLauncher(unpacked);
   pruneElectron(unpacked);
   pruneNodeModules(unpacked);
+  pruneEngines(unpacked);
+  pruneServerApp(unpacked);
+  pruneShellOut(unpacked);
   cleanRuntimeDirs(unpacked);
-  packDir(unpacked);
+  if (isSfx) {
+    packSfx(unpacked);
+  } else {
+    packDir(unpacked, doFlat);
+  }
   // ★ 删掉解压目录，避免和源代码混淆
   fs.rmSync(unpacked, { recursive: true, force: true });
   console.log('[pack] cleaned staging:', unpacked);

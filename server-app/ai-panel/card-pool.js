@@ -436,9 +436,9 @@ var CardPool = (function () {
         }
       }
     }
-    // ★ 剥离尾部 CURRENT TIME 块（兜底：旧数据可能未预处理）
+    // ★ 剥离尾部 [CURRENT TIME: ...] 块
     if (_qText) {
-      var _ctIdx = _qText.indexOf('\n\n═══ CURRENT TIME ═══');
+      var _ctIdx = _qText.indexOf('\n\n[CURRENT TIME:');
       if (_ctIdx > 0) _qText = _qText.slice(0, _ctIdx);
     }
     var userEl = null;
