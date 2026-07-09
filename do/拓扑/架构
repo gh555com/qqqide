@@ -482,17 +482,21 @@ AI 工具 (16个)
 Embedding: BM25+语义混合搜索，双线路(fallback)+归一化+15s超时
 
 
-统计上报（2026-07-07）
+统计上报（2026-07-09 doer 中心模型）
 ---------------------------------------------
 · 文件: shell/wq-ping.ts（主进程模块，不阻塞 UI）
 · 上报: POST /api/wq/ping → cnk.gh555.com
-· 身份: good_slg='qqqide', pkg_publisher='gh555.com', ide_family='qqqide'
-· device_id: UUID v4 持久化到 Data/alphal/device_id
-· 时长: 基于进程存活 wall-clock
+· 身份: good_slg='qqqide', distribution='gh555.com'（硬编码）
+· 装机: 一手机号一生一次（doer_stats.install_count=1），登录后触发
+· 在线: 按 doer_id 去重（15min 窗口），非设备维度
+· 陪伴: MAX(total_seconds) per doer（取最长设备），跨重启 file 持久化 cumulative_seconds
+· 出厂版本: green pack 构建时 APP_VERSION → Data/alphal/factory_version → 首次上报后永不改
+· device_id: UUID v4 → Data/alphal/device_id
+· doer_id: auth.enc 解密 phone_e164（登录后才有，未登录不上报）
 · 调度: 首次 30~120s 随机抖动，后续按服务端 min_next_ping_at 或 12h 兜底
 · 失败退避: 60s → 2m → 4m → ... → 1h max
 · 启动: main.ts app.whenReady() 末尾异步启动
-· 停止: mainWindow 'closed' 事件中 stopWqPing()
+· 停止: mainWindow 'closed' 事件中 stopWqPing()（退出前持久化 cumulative_seconds）
 
 零摩擦原则（2026-07-05）
 ------------------------

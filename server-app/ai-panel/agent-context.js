@@ -1,49 +1,74 @@
 // ============================================================================
 // agent-context.js — 上下文压缩引擎（三专家并行，tier 4 纯文本，原子操作）
+// VER: COMPACT-V2-20260709  ← 版本标记，每次改代码更新此行
 //
 // 核心机制：
-//   1. _compressContext() — 阻塞式压缩：token 超阈值 → splice 旧消息 → 保留 ≥6 层
-//   2. _digestColdMessages() — 三专家 Promise.all 并行：
-//      ① Narrative（叙事，逐层详细记录）
-//      ② Facts（事实，从原始冷文本直接提取）
-//      ③ Archive（归档，逐层一句话摘要，仅用于灾难恢复）
-//   3. _buildDynamicContext() — 注入叙事 + 事实到 API 消息末尾
+//   1. _compressContext() — 阻塞式压缩
+//   2. _digestColdMessages() — 三专家 Promise.all 并行
+//      ① Narrative  ② Facts  ③ Archive
+//   3. _buildDynamicContext() — 注入叙事 + 事实到上下文
 //
-// 关键设计（铁律）：
-//   - tier 4 锁定，零分支零切换
-//   - 全部纯文本输出（零 JSON），客户端自行解析
-//   - 三专家取同一份截断冷文本（非蒸馏），任一失败 → 整体原子回滚
-//   - 回滚：_ctx.facts/narrative/floorArchives 恢复旧值，conversation 不动
-//   - 缩水保护：叙事 < 旧值 50% → 从 Archive 重建
-//   - 压缩失败 → 指数退避无限重试（2s→4s→8s→...→60s）
+// 质量保障：
+//   - 三专家产出经过断言校验，不合格→重试（最多2轮）
+//   - 全部纯文本输出，客户端自行解析，零 JSON 风险
+//   - 每轮压缩写入日志到 qqq/logs/compress-*.json
 //
-// 依赖：ContentGateway 常量，AiGateway.chatFetch
+// 铁律：
+//   - COMPACT_TIER = 4 锁死，零分支
+//   - 任一专家失败 → 整体原子回滚
+//   - 缩水 >50% → 从 Archive 重建
 // ============================================================================
 
 ; (function () {
 
-    // ════════════════════════════════════════════════
-    // 常量 — 改配置只改此处
-    // ════════════════════════════════════════════════
-    var COMPACT_TIER     = 4;       // 锁死 tier 4
-    var TOOL_CAP         = 6000;    // 工具结果最大 chars（首尾各半）
-    var MSG_CAP          = 10000;   // 普通消息最大 chars
-    var KEEP_RATIO       = 0.1;     // 保留最近 10%
-    var MIN_FLOORS       = 6;       // 最少保留层数
-    var MIN_MANUAL_TOKENS = 50000;  // 手动压缩最低门槛
+    // ═══ 版本标记 — 每次修改递增 ═══
+    var COMPACT_VERSION = 'COMPACT-V2-20260709-a';
+
+    // ═══ 常量 ═══
+    var COMPACT_TIER      = 4;
+    var TOOL_CAP          = 6000;
+    var MSG_CAP           = 10000;
+    var KEEP_RATIO        = 0.1;
+    var MIN_FLOORS        = 6;
+    var MIN_MANUAL_TOKENS = 50000;
     var COMPACT_RETRY_BASE_MS = 2000;
-    var COMPACT_RETRY_MAX_MS   = 60000;
     var MAX_COMPACT_RETRIES    = 2;
+    var MAX_QUALITY_RETRIES    = 2;  // 质量不合格最多重试轮数
+
+    // 质量门槛
+    var NARR_MIN_CHARS     = 5000;   // 叙事最低 chars
+    var NARR_SHRINK_RATIO  = 0.5;    // 缩水检测阈值
+    var FACTS_MIN_COUNT    = 10;     // facts 最少条数
+    var FACTS_MIN_KEYWORDS = 1.5;    // facts 平均关键词数下限
+    var ARCH_MIN_FLOORS    = 0.7;    // archive 最少覆盖楼层比例
 
     var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 2.5);
     var COMPACT_MAX_TOKENS = (typeof ContentGateway !== 'undefined' && ContentGateway.COMPACT_MAX_TOKENS) ? ContentGateway.COMPACT_MAX_TOKENS : 65536;
     var ARCHIVE_MAX_CHARS  = (typeof ContentGateway !== 'undefined' ? ContentGateway.ARCHIVE_MAX_CHARS : 1000000);
     var COMPACT_DEBUG      = (typeof ContentGateway !== 'undefined' ? ContentGateway.COMPACT_DEBUG : true);
 
-    // ════════════════════════════════════════════════
-    // 工具函数
-    // ════════════════════════════════════════════════
+    // ═══ 压缩日志 ═══
+    function _compressLog(self, event, data) {
+        if (!COMPACT_DEBUG) return;
+        var _entry = {
+            ts: new Date().toISOString(),
+            version: COMPACT_VERSION,
+            quest: (self._questId || '?'),
+            floor: (self._floorId || '?'),
+            event: event,
+            data: data
+        };
+        // 写文件（异步，不阻塞主流程）
+        try {
+            if (typeof parent !== 'undefined' && parent.window && parent.window.qqqideBridge && parent.window.qqqideBridge.fs) {
+                var _logDir = (parent.__qqq_workspaceRoot || '') + '/qqq/logs';
+                var _logFile = _logDir + '/compress-' + new Date().toISOString().slice(0, 10) + '.jsonl';
+                parent.window.qqqideBridge.fs.appendFile(_logFile, JSON.stringify(_entry) + '\n').catch(function(){});
+            }
+        } catch (_) { }
+    }
 
+    // ═══ 工具函数 ═══
     function _readCompressThreshold() {
         try {
             if (typeof parent !== 'undefined' && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
@@ -91,9 +116,6 @@
         }
     };
 
-    // ════════════════════════════════════════════════
-    // 构建冷文本（按楼层分组 + 截断）
-    // ════════════════════════════════════════════════
     function _buildColdText(coldMsgs) {
         var _floorGroups = {};
         for (var i = 0; i < coldMsgs.length; i++) {
@@ -123,14 +145,12 @@
         return { text: _floorParts.join('\n\n'), floorKeys: _floorKeys, count: _floorKeys.length };
     }
 
-    // ════════════════════════════════════════════════
-    // 兜底重试包装器
-    // ════════════════════════════════════════════════
     async function _retryCompact(self, label, fn) {
         for (var _r = 0; _r < MAX_COMPACT_RETRIES; _r++) {
             try { return await fn(); } catch (_e) {
                 if (_r < MAX_COMPACT_RETRIES - 1) {
                     self.log('⚠ ' + label + ' retry ' + (_r + 1));
+                    _compressLog(self, 'retry', { expert: label, attempt: _r + 1, error: (_e.message || '') });
                     await new Promise(function(r2) { setTimeout(r2, COMPACT_RETRY_BASE_MS * Math.pow(2, _r)); });
                 } else { throw _e; }
             }
@@ -138,7 +158,7 @@
     }
 
     // ════════════════════════════════════════════════
-    // _callCompactAPI — 统一 API 调用（纯文本模式）
+    // _callCompactAPI — 统一 API 调用
     // ════════════════════════════════════════════════
     AgentLoop.prototype._callCompactAPI = async function (prompt, suffix, maxTokens, opts) {
         var self = this;
@@ -219,7 +239,12 @@
     // ════════════════════════════════════════════════
     AgentLoop.prototype._compressContext = async function (reason) {
         var self = this;
-        if (self._stopCtrl && self._stopCtrl.signal.aborted) return { compressed: false, detail: '用户已停止', beforeTokens: 0, afterTokens: 0, elapsedMs: 0 };
+        _compressLog(self, 'start', { reason: reason ? reason.trigger : 'unknown', version: COMPACT_VERSION });
+
+        if (self._stopCtrl && self._stopCtrl.signal.aborted) {
+            _compressLog(self, 'skip', { reason: 'user_stopped' });
+            return { compressed: false, detail: '用户已停止', beforeTokens: 0, afterTokens: 0, elapsedMs: 0 };
+        }
 
         var totalEst = self._estimateTotalTokens();
         var dsTokens = self._lastApiPromptTokens || 0;
@@ -268,53 +293,96 @@
 
         var _compressStart = performance.now();
         self.log('\u25C6 Context: compress ' + coldMsgs.length + ' msgs (~' + Math.round(coldTokenEst) + 'tok) \u2192 keep ' + (self.conversation.length - hotStart) + ' msgs (' + floorCount + ' floors)');
+        _compressLog(self, 'compress_begin', { coldMsgs: coldMsgs.length, coldTokens: coldTokenEst, keepFloors: floorCount });
 
-        // 快照旧值（原子回滚）
         var _oldFacts = (self._ctx.facts || []).slice();
         var _oldNarrative = self._ctx.narrative || '';
         var _oldArchives = (self._ctx.floorArchives || []).slice();
         var _lastCompressed = self._ctx.lastCompressedFloor || 0;
 
-        try {
-            await self._digestColdMessages(coldMsgs, _lastCompressed);
-            var _removedCount = hotStart - self._persistentCount;
-            self.conversation.splice(self._persistentCount, _removedCount);
-            self._shiftConversationIndices(_removedCount, hotStart);
-            self._ctx.lastCompressedFloor = self._ctx.totalFloors;
-            self._lastApiPromptTokens = 0;
-            self._lastApiTotalTokens = 0;
-            self._lastApiCompletionTokens = 0;
-            var _newCompTokens = 0;
-            for (var _ci = self._persistentCount; _ci < self.conversation.length; _ci++) {
-                if (self.conversation[_ci].role === 'assistant') _newCompTokens += self._estimateMsgTokens(self.conversation[_ci]);
+        // ★ 带质量断言的重试循环
+        var _succeeded = false;
+        var _lastErr = null;
+        for (var _qr = 0; _qr < MAX_QUALITY_RETRIES; _qr++) {
+            try {
+                var _qc = await self._digestColdMessages(coldMsgs, _lastCompressed);
+                if (_qc.passed) {
+                    _succeeded = true;
+                    _compressLog(self, 'quality_pass', { attempt: _qr + 1, scores: _qc.scores });
+                    break;
+                } else {
+                    self.log('⚠ Quality check failed (attempt ' + (_qr + 1) + '/' + MAX_QUALITY_RETRIES + '): ' + JSON.stringify(_qc.scores));
+                    _compressLog(self, 'quality_fail', { attempt: _qr + 1, scores: _qc.scores });
+                    if (_qr < MAX_QUALITY_RETRIES - 1) {
+                        // 恢复旧值后重试整个 digest
+                        self._ctx.facts = _oldFacts.slice();
+                        self._ctx.narrative = _oldNarrative;
+                        self._ctx.floorArchives = _oldArchives.slice();
+                        self._ctx.lastCompressedFloor = _lastCompressed;
+                        await new Promise(function(r) { setTimeout(r, COMPACT_RETRY_BASE_MS * Math.pow(2, _qr)); });
+                    } else {
+                        _lastErr = new Error('quality_failed: ' + JSON.stringify(_qc.scores));
+                    }
+                }
+            } catch (digestErr) {
+                self._ctx.facts = _oldFacts.slice();
+                self._ctx.narrative = _oldNarrative;
+                self._ctx.floorArchives = _oldArchives.slice();
+                self._ctx.lastCompressedFloor = _lastCompressed;
+                _lastErr = digestErr;
+                if (_qr < MAX_QUALITY_RETRIES - 1) {
+                    self.log('⚠ Digest retry round ' + (_qr + 1) + ': ' + (digestErr.message || digestErr));
+                    _compressLog(self, 'digest_fail', { attempt: _qr + 1, error: (digestErr.message || '') });
+                    await new Promise(function(r) { setTimeout(r, COMPACT_RETRY_BASE_MS * Math.pow(2, _qr)); });
+                }
             }
-            self._accumulatedCompletionTokens = _newCompTokens;
-            var _elapsed = Math.round(performance.now() - _compressStart);
-            var _afterEst = self._estimateTotalTokens();
-            var _saved = beforeTokens - _afterEst;
-            self.log('\u25C6 Context: done — ' + self.conversation.length + ' msgs kept');
-            return {
-                compressed: true,
-                detail: '压缩 ' + coldMsgs.length + ' 条消息 → ' + self.conversation.length + ' 条保留\n上下文: ' + Math.round(beforeTokens / 1000) + 'k → ' + Math.round(_afterEst / 1000) + 'k (节省 ' + Math.round(_saved / 1000) + 'k)\nFacts: ' + self._ctx.facts.length + ' 条 | Narrative: ' + (self._ctx.narrative ? self._ctx.narrative.length : 0) + ' chars\n耗时: ' + (_elapsed / 1000).toFixed(1) + 's',
-                beforeTokens: beforeTokens, afterTokens: _afterEst, elapsedMs: _elapsed
-            };
-        } catch (digestErr) {
-            self._ctx.facts = _oldFacts;
-            self._ctx.narrative = _oldNarrative;
-            self._ctx.floorArchives = _oldArchives;
-            self._ctx.lastCompressedFloor = _lastCompressed;
-            if (digestErr && digestErr.name === 'AbortError') throw digestErr;
-            self.log('\u2717 Context: compress FAILED — ' + (digestErr.message || digestErr) + ' — rolled back');
+        }
+
+        if (!_succeeded) {
+            var _elapsed2 = Math.round(performance.now() - _compressStart);
+            self.log('\u2717 Context: compress FAILED after ' + MAX_QUALITY_RETRIES + ' rounds — ' + (_lastErr ? _lastErr.message : 'unknown'));
+            _compressLog(self, 'compress_fail', { rounds: MAX_QUALITY_RETRIES, error: (_lastErr ? _lastErr.message : ''), elapsedMs: _elapsed2 });
             return {
                 compressed: false,
-                detail: '压缩失败: ' + (digestErr.message || '未知错误') + '\n已回滚，消息未丢失\n耗时: ' + (Math.round(performance.now() - _compressStart) / 1000).toFixed(1) + 's',
-                beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: Math.round(performance.now() - _compressStart)
+                detail: '压缩失败: ' + (_lastErr ? _lastErr.message : '未知错误') + '\n已回滚，消息未丢失\n耗时: ' + (_elapsed2 / 1000).toFixed(1) + 's',
+                beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: _elapsed2
             };
         }
+
+        // 全成功 → splice conversation
+        var _removedCount = hotStart - self._persistentCount;
+        self.conversation.splice(self._persistentCount, _removedCount);
+        self._shiftConversationIndices(_removedCount, hotStart);
+        self._ctx.lastCompressedFloor = self._ctx.totalFloors;
+        self._lastApiPromptTokens = 0;
+        self._lastApiTotalTokens = 0;
+        self._lastApiCompletionTokens = 0;
+        var _newCompTokens = 0;
+        for (var _ci = self._persistentCount; _ci < self.conversation.length; _ci++) {
+            if (self.conversation[_ci].role === 'assistant') _newCompTokens += self._estimateMsgTokens(self.conversation[_ci]);
+        }
+        self._accumulatedCompletionTokens = _newCompTokens;
+        var _elapsed = Math.round(performance.now() - _compressStart);
+        var _afterEst = self._estimateTotalTokens();
+        var _saved = beforeTokens - _afterEst;
+        self.log('\u25C6 Context: done — ' + self.conversation.length + ' msgs kept');
+        _compressLog(self, 'compress_done', {
+            removedMsgs: coldMsgs.length, keptMsgs: self.conversation.length,
+            beforeTokens: beforeTokens, afterTokens: _afterEst, saved: _saved,
+            facts: self._ctx.facts.length, narrative: (self._ctx.narrative ? self._ctx.narrative.length : 0),
+            elapsedMs: _elapsed
+        });
+        return {
+            compressed: true,
+            detail: '压缩 ' + coldMsgs.length + ' 条消息 → ' + self.conversation.length + ' 条保留\n上下文: ' + Math.round(beforeTokens / 1000) + 'k → ' + Math.round(_afterEst / 1000) + 'k (节省 ' + Math.round(_saved / 1000) + 'k)\nFacts: ' + self._ctx.facts.length + ' 条 | Narrative: ' + (self._ctx.narrative ? self._ctx.narrative.length : 0) + ' chars\n耗时: ' + (_elapsed / 1000).toFixed(1) + 's',
+            beforeTokens: beforeTokens, afterTokens: _afterEst, elapsedMs: _elapsed
+        };
     };
 
     // ════════════════════════════════════════════════
-    // _digestColdMessages — 三专家并行压缩
+    // _digestColdMessages — 三专家并行 + 质量断言
+    // 返回: { passed: bool, scores: {...} }
+    // 只有 passed=true 时调用方才提交
     // ════════════════════════════════════════════════
     AgentLoop.prototype._digestColdMessages = async function (coldMsgs, lastCompressedFloor) {
         var self = this;
@@ -325,9 +393,9 @@
 
         var _oldNarrative = self._ctx.narrative || '';
         var _oldArchives = (self._ctx.floorArchives || []).slice();
-        self._log('  ║ coldText: ' + coldText.length + ' chars, ' + _floorKeys.length + ' floors → 3 experts (tier ' + COMPACT_TIER + ')');
+        self._log('  ║ coldText: ' + coldText.length + ' chars, ' + _floorKeys.length + ' floors → 3 experts (tier ' + COMPACT_TIER + ', v=' + COMPACT_VERSION + ')');
 
-        // ════════════ 专家1: Narrative — 叙事 ════════════
+        // ════════════ 专家1: Narrative ════════════
         var _narrPrompt = [
             '下面有' + _floorKeys.length + '层对话。请为每一层写详细的历史记录。',
             '严格按照以下格式输出（不要任何引言或结尾，直接从第1层开始）：',
@@ -350,7 +418,7 @@
             coldText
         ].join('\n');
 
-        // ════════════ 专家2: Facts — 事实 ════════════
+        // ════════════ 专家2: Facts ════════════
         var _factsPrompt = [
             '分析以下对话，提取所有关键事实。每条事实独立一行。',
             '严格按照此格式（每条一行，用 | 分隔字段）：',
@@ -360,14 +428,19 @@
             '类型:错误 | 内容:boot.ts第239行双花括号语法错误导致构建失败 | 关键词:boot.ts,语法错误,esbuild',
             '',
             '类型只能是: 文件/决策/错误/代码改动/偏好/目标/阻碍/上下文',
-            '至少25条。宁可多提取，不可遗漏。每条事实必须独立、原子化。',
-            '不要引言，不要结尾。直接列出事实。',
+            '至少25条事实。每行必须以"类型:"开头。不要写markdown表格、代码块、或任何其他格式。',
+            '错误示例（禁止）: | 方案 | 体积 | — 这是表格格式，不要用。',
+            '错误示例（禁止）: **方案 A** — 这是markdown格式，不要用。',
+            '错误示例（禁止）: ```powershell — 这是代码块，不要用。',
+            '正确格式: 类型:决策 | 内容:xxx | 关键词:xxx,yyy',
+            '',
+            '不要引言，不要结尾。直接按格式列出事实。',
             '',
             '对话：',
             coldText
         ].join('\n');
 
-        // ════════════ 专家3: Archive — 归档 ════════════
+        // ════════════ 专家3: Archive ════════════
         var _archivePrompt = [
             '为以下' + _floorKeys.length + '层对话各写一句话摘要。',
             '严格按此格式（每层一行）：',
@@ -375,6 +448,7 @@
             '第2层: [一句话摘要]',
             '（以此类推）',
             '不要引言，不要结尾。',
+            '不要写"第1层: 用户...AI..."这种啰嗦格式，直接写摘要内容。',
             '',
             '对话：',
             coldText
@@ -382,6 +456,7 @@
 
         // ════════════ Promise.all 并行 ════════════
         var _narrResult = null, _factsResult = null, _archiveResult = null;
+        var _expertStart = performance.now();
         try {
             var _results = await Promise.all([
                 _retryCompact(self, 'Narrative', function() {
@@ -390,11 +465,11 @@
                 }),
                 _retryCompact(self, 'Facts', function() {
                     return self._callCompactAPI(_factsPrompt, ':facts', 32768,
-                        { systemPrompt: '你是一个事实提取器。从对话中提取关键事实，每条一行，绝不简略。' });
+                        { systemPrompt: '你是一个事实提取器。严格按格式输出，每行以"类型:"开头。禁止使用markdown表格、代码块、或其他格式。' });
                 }),
                 _retryCompact(self, 'Archive', function() {
                     return self._callCompactAPI(_archivePrompt, ':archive', 32768,
-                        { systemPrompt: '你是一个摘要器。为每层对话写一句话摘要。' });
+                        { systemPrompt: '你是一个摘要器。为每层对话写一句话摘要。严格按格式输出。' });
                 })
             ]);
             _narrResult = _results[0];
@@ -402,8 +477,10 @@
             _archiveResult = _results[2];
         } catch (_parallelErr) {
             self._log('✗ Three-expert parallel FAILED — ' + (_parallelErr.message || _parallelErr));
+            _compressLog(self, 'parallel_fail', { error: (_parallelErr.message || '') });
             throw new Error('three_expert_failed: ' + (_parallelErr.message || 'unknown'));
         }
+        var _expertMs = performance.now() - _expertStart;
 
         // ════════════ 校验产出 ════════════
         if (!_narrResult || !_narrResult.text) throw new Error('narrative_empty');
@@ -413,20 +490,17 @@
         var _newNarrative = _narrResult.text.trim();
         var _factsText = _factsResult.text.trim();
         var _archiveText = _archiveResult.text.trim();
-        self._log('  ◆ Narrative: ' + _newNarrative.length + 'c | Facts: ' + _factsText.length + 'c | Archive: ' + _archiveText.length + 'c');
+        self._log('  ◆ Narrative: ' + _newNarrative.length + 'c | Facts raw: ' + _factsText.length + 'c | Archive: ' + _archiveText.length + 'c');
 
-        // ── 叙事：缩水检测 → 从 Archive 重建 ──
-        if (_newNarrative.length < 8000) {
-            self.log('⚠ narrative short: ' + _newNarrative.length + ' chars');
-        }
-        if (_oldNarrative && _newNarrative.length < _oldNarrative.length * 0.5) {
+        // ── 叙事处理 ──
+        if (_oldNarrative && _newNarrative.length < _oldNarrative.length * NARR_SHRINK_RATIO) {
             self.log('⚠ narrative shrunk ' + _oldNarrative.length + '→' + _newNarrative.length + ' chars, rebuilding...');
             var _rebuilt = await self._rebuildNarrativeFromArchives();
             if (_rebuilt) { _newNarrative = _rebuilt; self.log('  ◆ Rebuilt: ' + _newNarrative.length + ' chars'); }
         }
         self._ctx.narrative = _newNarrative;
 
-        // ── 事实解析：类型:XX | 内容:YY | 关键词:ZZ ──
+        // ── 事实解析 ──
         var _parsedFacts = [];
         var _lines = _factsText.split('\n');
         for (var li = 0; li < _lines.length; li++) {
@@ -438,16 +512,6 @@
                 var _content = _fm[2].trim();
                 var _kws = _fm[3] ? _fm[3].split(/[,，]/).map(function(k){return k.trim();}).filter(Boolean) : [];
                 if (_content) _parsedFacts.push({ type: _type, content: _content, keywords: _kws, floor: self._ctx.totalFloors });
-            }
-        }
-        // 兜底：解析太少 → 每行当一条
-        if (_parsedFacts.length < 5) {
-            self.log('⚠ facts parsed only ' + _parsedFacts.length + ' — using raw lines');
-            for (var lj = 0; lj < _lines.length; lj++) {
-                var _rl = _lines[lj].trim();
-                if (_rl && _rl.length > 10 && _rl.indexOf('类型') === -1 && _rl.indexOf('格式') === -1) {
-                    _parsedFacts.push({ type: 'context', content: _rl, keywords: [], floor: self._ctx.totalFloors });
-                }
             }
         }
         // 合并同话题
@@ -476,12 +540,9 @@
             }
             _mergedFacts.push(_merged);
         }
-        if (_mergedFacts.length < _parsedFacts.length) {
-            self._log('  ║ facts merged: ' + _parsedFacts.length + ' → ' + _mergedFacts.length);
-        }
         self._ctx.facts = _mergedFacts;
 
-        // ── Archive 解析：第N层: 摘要 ──
+        // ── Archive 解析 ──
         var _newArchives = [];
         var _archLines = _archiveText.split('\n');
         for (var ali = 0; ali < _archLines.length; ali++) {
@@ -500,26 +561,54 @@
         }
         self._ctx.floorArchives = _allArchives;
 
+        // ════════════ 质量断言 ════════════
+        var _scores = {
+            narr_chars: _newNarrative.length,
+            narr_ok: _newNarrative.length >= NARR_MIN_CHARS,
+            facts_count: _mergedFacts.length,
+            facts_ok: _mergedFacts.length >= FACTS_MIN_COUNT,
+            facts_avg_kw: _mergedFacts.length > 0 ? (_mergedFacts.reduce(function(s,f){return s+(f.keywords||[]).length;},0) / _mergedFacts.length) : 0,
+            facts_kw_ok: _mergedFacts.length > 0 && (_mergedFacts.reduce(function(s,f){return s+(f.keywords||[]).length;},0) / _mergedFacts.length) >= FACTS_MIN_KEYWORDS,
+            arch_count: _newArchives.length,
+            arch_ok: _newArchives.length >= _floorKeys.length * ARCH_MIN_FLOORS,
+            expertMs: Math.round(_expertMs)
+        };
+        _scores.passed = _scores.narr_ok && _scores.facts_ok && _scores.facts_kw_ok && _scores.arch_ok;
+
+        _compressLog(self, 'quality_check', { scores: _scores, floorKeys: _floorKeys.length });
+
+        if (!_scores.passed) {
+            var _fails = [];
+            if (!_scores.narr_ok) _fails.push('narrative_too_short(' + _newNarrative.length + '<' + NARR_MIN_CHARS + ')');
+            if (!_scores.facts_ok) _fails.push('facts_too_few(' + _mergedFacts.length + '<' + FACTS_MIN_COUNT + ')');
+            if (!_scores.facts_kw_ok) _fails.push('facts_low_kw(' + _scores.facts_avg_kw.toFixed(1) + '<' + FACTS_MIN_KEYWORDS + ')');
+            if (!_scores.arch_ok) _fails.push('archive_low(' + _newArchives.length + '/' + _floorKeys.length + '<' + Math.round(ARCH_MIN_FLOORS*100) + '%)');
+            self.log('✗ Quality FAIL: ' + _fails.join(', '));
+        }
+
         // 调试埋点
         if (COMPACT_DEBUG) {
             self._compactTraces = self._compactTraces || [];
             self._compactTraces.push({
                 ts: new Date().toISOString(),
+                version: COMPACT_VERSION,
                 input: { floors: (lastCompressedFloor || 0) + '→' + self._ctx.totalFloors, msgs: coldMsgs.length },
                 experts: {
-                    narrative: { ok: true, ms: _narrResult.totalMs, len: _newNarrative.length },
-                    facts: { ok: true, ms: _factsResult.totalMs, len: _factsText.length, count: _mergedFacts.length },
-                    archive: { ok: true, ms: _archiveResult.totalMs, len: _archiveText.length, count: _newArchives.length }
-                }
+                    narrative: { ok: _scores.narr_ok, ms: _narrResult.totalMs, len: _newNarrative.length },
+                    facts: { ok: _scores.facts_ok, ms: _factsResult.totalMs, count: _mergedFacts.length, avgKw: _scores.facts_avg_kw },
+                    archive: { ok: _scores.arch_ok, ms: _archiveResult.totalMs, count: _newArchives.length }
+                },
+                passed: _scores.passed
             });
             if (self._compactTraces.length > 10) self._compactTraces = self._compactTraces.slice(-10);
         }
 
-        self.log('◆ Context (3 experts): +' + _mergedFacts.length + ' facts, narrative=' + _newNarrative.length + 'c, archives=' + _newArchives.length);
+        self.log('◆ Context (3 experts): +' + _mergedFacts.length + ' facts, narrative=' + _newNarrative.length + 'c, archives=' + _newArchives.length + ', passed=' + _scores.passed);
+        return { passed: _scores.passed, scores: _scores };
     };
 
     // ════════════════════════════════════════════════
-    // _rebuildNarrativeFromArchives — 从归档重建叙事
+    // _rebuildNarrativeFromArchives
     // ════════════════════════════════════════════════
     AgentLoop.prototype._rebuildNarrativeFromArchives = async function () {
         var self = this;
@@ -547,7 +636,7 @@
     };
 
     // ════════════════════════════════════════════════
-    // _buildDynamicContext — 注入叙事 + 事实到上下文
+    // _buildDynamicContext
     // ════════════════════════════════════════════════
     AgentLoop.prototype._buildDynamicContext = function () {
         var ctx = '';

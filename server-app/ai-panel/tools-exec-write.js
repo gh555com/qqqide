@@ -62,7 +62,17 @@ function _autoSyntaxCheck(filePath) {
 // ============================================================
 
 function _normalizeWhitespace(text) {
-    return text.replace(/[^\S\n]+/g, ' ').replace(/ +$/gm, '').replace(/^ +/gm, function (m) { return m.length > 0 ? ' ' : ''; });
+    return text.replace(/[\t ]+/g, ' ').replace(/[\r\n]+/g, '\n').replace(/^ +| +$/gm, '');
+}
+
+// ★ 空白匹配 span 精确测量：从原文 start 位置逐字节推进，归一化后与 normFind 比较。
+// 不依赖 find.length，不依赖行号 → 适用于一切场景，零边界漏洞。
+function _measureNormSpan(orig, start, findText, normFn) {
+    var normFind = normFn(findText);
+    for (var end = start + 1; end <= orig.length; end++) {
+        if (normFn(orig.slice(start, end)) === normFind) return end - start;
+    }
+    return findText.length; // 兜底
 }
 
 function _findMatch(content, find) {
@@ -70,46 +80,47 @@ function _findMatch(content, find) {
     var idx1 = content.indexOf(find);
     if (idx1 !== -1) return { start: idx1, end: idx1 + find.length, matchLevel: 1 };
 
-    // L1b: CRLF 归一化重试
-    if (content.indexOf('\r\n') !== -1) {
-        var normContent = content.replace(/\r\n/g, '\n');
-        var normFind = find.replace(/\r\n/g, '\n');
-        if (normContent !== content || normFind !== find) {
-            var idx1b = normContent.indexOf(normFind);
-            if (idx1b !== -1) {
-                var origPos = 0;
-                for (var np = 0; np < idx1b; np++, origPos++) {
-                    if (content[origPos] === '\r' && content[origPos + 1] === '\n') origPos++;
-                }
-                var origStart = origPos;
-                for (np = idx1b; np < idx1b + normFind.length; np++, origPos++) {
-                    if (content[origPos] === '\r' && content[origPos + 1] === '\n') origPos++;
-                }
-                return { start: origStart, end: origPos, matchLevel: 1 };
-            }
+    // L1b: CRLF 归一化 (\r\n→\n, \r→\n)
+    var normCRLF = function (s) { return s.replace(/\r\n/g, '\n').replace(/\r/g, '\n'); };
+    var nfCRLF = normCRLF(find);
+    var ncCRLF = normCRLF(content);
+    var idxCRLF = ncCRLF.indexOf(nfCRLF);
+    if (idxCRLF !== -1) {
+        // 映射归一化下标 → 原文起始
+        var oi = 0, ni = 0;
+        while (ni < idxCRLF && oi < content.length) {
+            if (content[oi] === '\r' && content[oi + 1] === '\n') { oi += 2; ni++; }
+            else if (content[oi] === '\r') { oi++; ni++; }
+            else { oi++; ni++; }
         }
+        var spanCRLF = _measureNormSpan(content, oi, find, normCRLF);
+        return { start: oi, end: oi + spanCRLF, matchLevel: 1 };
     }
 
-    // L1c: real \n → escaped \n (AI sent literal \n via JSON, became real newline; file has literal backslash-n)
+    // L1c: real \n → escaped \n (AI sent literal \n via JSON)
     if (find.indexOf('\n') !== -1) {
         var escaped = find.replace(/\n/g, '\\n');
         var idx1c = content.indexOf(escaped);
         if (idx1c !== -1) return { start: idx1c, end: idx1c + escaped.length, matchLevel: 1 };
     }
 
-    // L2: 空白归一化匹配
+    // L2: 空白归一化（[\t ]+→' ', [\r\n]+→\n）
     var nf = _normalizeWhitespace(find);
     var nc = _normalizeWhitespace(content);
     var idx2 = nc.indexOf(nf);
     if (idx2 !== -1) {
-        var normBefore = nc.slice(0, idx2);
-        var normAfter = nc.slice(0, idx2 + nf.length);
-        var startLine = (normBefore.match(/\n/g) || []).length;
-        var endLine = (normAfter.match(/\n/g) || []).length;
-        var lines = content.split('\n');
-        var oStart = lines.slice(0, startLine).join('\n').length + (startLine > 0 ? 1 : 0);
-        var oEnd = lines.slice(0, endLine + 1).join('\n').length;
-        return { start: oStart, end: oEnd, matchLevel: 2 };
+        // 映射归一化下标 → 原文起始
+        var oi2 = 0, ni2 = 0;
+        while (ni2 < idx2 && oi2 < content.length) {
+            var c = content[oi2];
+            if (c === ' ' || c === '\t' || c === '\r' || c === '\n') {
+                var ncChar = nc[ni2];
+                if (ncChar === ' ' || ncChar === '\n') { oi2++; ni2++; }
+                else oi2++;
+            } else { oi2++; ni2++; }
+        }
+        var spanWS = _measureNormSpan(content, oi2, find, _normalizeWhitespace);
+        return { start: oi2, end: oi2 + spanWS, matchLevel: 2 };
     }
 
     // L3: 行级匹配
