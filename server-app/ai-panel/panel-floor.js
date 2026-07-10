@@ -212,30 +212,43 @@ async function _appendToSearchQuest(questId, floorNum) {
         if (!floorData) { console.error('[search_quest] loadFloor returned null for q=' + questId + ' f=' + floorNum); return; }
         var questMeta = await questStore.load(questId);
 
-        // 解析 quest 目录路径：优先从 floor 数据推导，回退到磁盘搜索
+        // ★ 解析 quest 目录路径（V8 修复：磁盘扫描为主，allTxtPath 为备）
+        //   旧逻辑 allTxtPath 优先 → quest 改名后路径过期 → 写到旧目录/重造旧目录
+        var questsDir = root.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/quests/';
         var questDir = '';
-        if (floorData.allTxtPath) {
-            // 从 all.txt 路径反推：.../quests/q{n}.xxx/f{n}.xxx/all.txt → .../quests/q{n}.xxx/
+        var questDirSource = '';
+
+        // ① 主路径：磁盘扫描 questId 前缀（改名后仍准确）
+        try {
+            var entries = await bridge.fs.list(questsDir);
+            for (var ei = 0; ei < entries.length; ei++) {
+                if (entries[ei].name.startsWith(questId + '.') && entries[ei].isDir) {
+                    questDir = questsDir + entries[ei].name + '/';
+                    questDirSource = 'disk-scan';
+                    break;
+                }
+            }
+        } catch (_) { }
+
+        // ② 备路径：从 allTxtPath 反推（仅当磁盘扫描失败，且路径校验通过）
+        if (!questDir && floorData.allTxtPath) {
             var parts = floorData.allTxtPath.replace(/\\/g, '/').split('/');
             var questIdx = parts.indexOf('quests');
             if (questIdx >= 0 && questIdx + 1 < parts.length) {
-                questDir = parts.slice(0, questIdx + 2).join('/') + '/';
+                var derivedDir = parts.slice(0, questIdx + 2).join('/') + '/';
+                // ★ 校验：目录名必须以 questId 开头
+                var dirName = parts[questIdx + 1];
+                if (dirName.indexOf(questId) === 0) {
+                    questDir = derivedDir;
+                    questDirSource = 'allTxtPath';
+                }
             }
         }
+
         if (!questDir) {
-            // 回退：磁盘搜索以 questId 为前缀的目录
-            var questsDir = root + '/qqq/quests/';
-            try {
-                var entries = await bridge.fs.list(questsDir);
-                for (var ei = 0; ei < entries.length; ei++) {
-                    if (entries[ei].name.startsWith(questId + '.') && entries[ei].isDir) {
-                        questDir = questsDir + entries[ei].name + '/';
-                        break;
-                    }
-                }
-            } catch (_) { }
+            console.warn('[search_quest] quest dir not found for q=' + questId + ' f=' + floorNum);
+            return;
         }
-        if (!questDir) return;  // 无法解析目录，静默跳过
         var searchPath = questDir + 'search_quest.txt';
 
         // 提取时间戳
@@ -295,6 +308,80 @@ async function _appendToSearchQuest(questId, floorNum) {
         // [silent] search_quest appended
     } catch (e) {
         console.warn('[search_quest] failed:', e && e.message);
+    }
+}
+
+// ── 全量重建 search_quest.txt（quest 改名后调用，修正旧路径污染） ──
+async function _rebuildSearchQuest(questId) {
+    if (!questId) return;
+    var root = questStore.getProjectRoot();
+    if (!root) return;
+    var bridge = window.parent && window.parent.qqqideBridge;
+    if (!bridge) return;
+
+    try {
+        var questMeta = await questStore.load(questId);
+        if (!questMeta) return;
+        var allFloors = await questStore.loadAllFloors(questId);
+        if (!allFloors || allFloors.length === 0) return;
+
+        // 用磁盘扫描找 quest 目录（最可靠）
+        var questsDir = root.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/quests/';
+        var questDir = '';
+        try {
+            var entries = await bridge.fs.list(questsDir);
+            for (var ei = 0; ei < entries.length; ei++) {
+                if (entries[ei].name.startsWith(questId + '.') && entries[ei].isDir) {
+                    questDir = questsDir + entries[ei].name + '/';
+                    break;
+                }
+            }
+        } catch (_) { }
+        if (!questDir) return;
+        var searchPath = questDir + 'search_quest.txt';
+
+        // 收集所有楼层数据
+        var lines = [];
+        for (var fi = 0; fi < allFloors.length; fi++) {
+            var fData = allFloors[fi].data;
+            var fn = allFloors[fi].floorNum || (fi + 1);
+            var houses = fData.houses || [];
+            var answer = '';
+            for (var hi = houses.length - 1; hi >= 0; hi--) {
+                if (houses[hi].type === 'final' && houses[hi].answer) {
+                    answer = houses[hi].answer;
+                    break;
+                }
+            }
+            var now = new Date();
+            var floorTs = now;
+            if (questMeta.floorTimings) {
+                for (var ti = 0; ti < questMeta.floorTimings.length; ti++) {
+                    var ft = questMeta.floorTimings[ti];
+                    if (ft.floorIndex === fn && ft.finishedAt) {
+                        floorTs = new Date(new Date(ft.finishedAt).getTime() - (ft.durationMs || 0));
+                        break;
+                    }
+                }
+            }
+            var marker = '\u2550\u2550\u2550\u2550\u2550 Floor ' + fn + ' \u2550\u2550\u2550\u2550\u2550';
+            if (fi > 0) lines.push('');
+            lines.push(marker + '   ' + _fmtTime(floorTs));
+            var cleanQ = (fData.question || '').replace(/\[File: [^\]]+\]\s*\x0A\`\`\`[\s\S]*?\`\`\`/g, '').replace(/\x0A{3,}/g, '\x0A\x0A').trim();
+            lines.push('\u25a0 Q: ' + cleanQ);
+            lines.push('\u25a0 A: ' + (answer || '(no answer)'));
+            var _azLines = _buildAzText(fn, fData, questMeta);
+            for (var _azi = 0; _azi < _azLines.length; _azi++) {
+                lines.push(_azLines[_azi]);
+            }
+            lines.push('');
+        }
+
+        var newContent = lines.join('\n');
+        await bridge.fs.write(searchPath, newContent);
+        console.log('[search_quest] rebuilt for q=' + questId + ' (' + allFloors.length + ' floors, ' + newContent.length + ' chars)');
+    } catch (e) {
+        console.warn('[search_quest] rebuild failed:', e && e.message);
     }
 }
 

@@ -6,6 +6,7 @@ import { ipcMain } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { _sn } from './ipc-state';
+import { _tlBlobPath, _gunzipSync } from './timeline-store';
 
 const READ_FILE_MAX = 50 * 1024 * 1024; // 50MB guard
 
@@ -126,8 +127,38 @@ export function registerFsIpc(): void {
     });
 
     // ★ read_file — 主进程直接读，1 IPC，50MB 守卫 + qwr 快照
-    ipcMain.handle('qqqide:ai:read_file', async (_e, args: { path: string; start_line?: number; end_line?: number }) => {
+    //   可选 sha256：读 timeline 中该文件的历史版本
+    ipcMain.handle('qqqide:ai:read_file', async (_e, args: { path: string; start_line?: number; end_line?: number; sha256?: string }) => {
         try {
+            // ── sha256 路径：读 timeline blob ──
+            if (args.sha256) {
+                // 从文件路径向上找到项目根（有 qqq/timeline/blobs/ 的目录）
+                let root = path.dirname(args.path);
+                while (root && root !== path.dirname(root)) {
+                    if (fs.existsSync(path.join(root, 'qqq', 'timeline', 'blobs'))) break;
+                    root = path.dirname(root);
+                }
+                if (!root || root === path.dirname(root)) {
+                    return 'Error: cannot find project root (no qqq/timeline/blobs/) from ' + args.path;
+                }
+                const blobPath = _tlBlobPath(root, args.sha256);
+                if (!fs.existsSync(blobPath)) {
+                    return 'Error: blob not found for sha256 ' + args.sha256.slice(0, 12) + '... in ' + root;
+                }
+                const gzBuf = fs.readFileSync(blobPath);
+                let content = _gunzipSync(gzBuf);
+                // Line-range pagination (same as normal path)
+                if (args.start_line != null || args.end_line != null) {
+                    const lines = content.split('\n');
+                    const start = Math.max(0, (args.start_line || 1) - 1);
+                    const end = args.end_line != null ? Math.min(args.end_line, lines.length) : lines.length;
+                    const header = '[paginated ' + (start + 1) + '-' + end + ' of ' + lines.length + ' lines]\n';
+                    return header + lines.slice(start, end).join('\n');
+                }
+                return content;
+            }
+
+            // ── 正常路径：读磁盘文件 ──
             const st = await fs.promises.stat(args.path);
             if (st.size > READ_FILE_MAX) {
                 return 'Error: file ' + path.basename(args.path) + ' is ' + (st.size / 1024 / 1024).toFixed(1) + 'MB. Use start_line/end_line to paginate.';

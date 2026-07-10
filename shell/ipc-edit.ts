@@ -140,8 +140,10 @@ export function registerEditIpc(): void {
                         const contentBuf = Buffer.from(content, 'utf8');
                         const bufIdx = contentBuf.indexOf(findBuf);
                         if (bufIdx !== -1) {
-                            matchStart = bufIdx;
-                            matchSpan = findBuf.length;
+                            // bufIdx is byte offset → decode prefix to get character offset
+                            matchStart = contentBuf.subarray(0, bufIdx).toString('utf8').length;
+                            // find is a JS string, .length = character count (correct span)
+                            matchSpan = ed.find.length;
                             matchLevel = 5;
                         }
                     }

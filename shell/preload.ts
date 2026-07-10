@@ -235,7 +235,7 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string })
         search_text: (args: { query: string; paths?: string[]; path?: string; maxResults?: number; timeoutMs?: number }) => ipcRenderer.invoke('qqqide:ai:search_text', args),
         find_files: (args: { pattern: string; paths?: string[]; path?: string; maxResults?: number; timeoutMs?: number }) => ipcRenderer.invoke('qqqide:ai:find_files', args),
         list_files: (args: { path: string; maxResults?: number; timeoutMs?: number }) => ipcRenderer.invoke('qqqide:ai:list_files', args),
-        read_file: (args: { path: string; start_line?: number; end_line?: number }) => ipcRenderer.invoke('qqqide:ai:read_file', args),
+        read_file: (args: { path: string; start_line?: number; end_line?: number; sha256?: string }) => ipcRenderer.invoke('qqqide:ai:read_file', args),
         edit_file: (args: { path: string; edits: Array<{ find: string; replace: string; replace_all?: boolean }> }) => ipcRenderer.invoke('qqqide:ai:edit_file', args),
         create_file: (args: { path: string; content: string }) => ipcRenderer.invoke('qqqide:ai:create_file', args),
         delete_file: (args: { path: string }) => ipcRenderer.invoke('qqqide:ai:delete_file', args),

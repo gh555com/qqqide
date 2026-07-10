@@ -379,6 +379,12 @@ async function _a4WrappedExecuteTool(name, args, ownerAgent) {
     // ---- 4. 记录快照（钩子 Q：记 both before+after 到 timeline）----
     await _a4RecordSnapshot(filePath, name, beforeContent, afterContent, beforeBlobHash, _capturedAg);
 
+    // ★ 将 afterBlobHash 追加到返回值，供 AI 后续通过 read_file sha256 读取历史版本
+    var snapEntry = _capturedAg._a4Snapshots && _capturedAg._a4Snapshots[filePath];
+    if (snapEntry && snapEntry.afterBlobHash) {
+        result = result + ' [sha256: ' + snapEntry.afterBlobHash + ']';
+    }
+
     return result;
 }
 
