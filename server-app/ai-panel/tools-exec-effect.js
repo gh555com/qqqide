@@ -8,6 +8,10 @@ async function executeSearchSmart(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
+    // ★ 参数别名
+    args.query = args.query || args.q || '';
+    args.path = args.path || args.directory || null;
+
     var query = args.query || '';
     if (!query) return 'Error: query is required';
 
@@ -190,6 +194,11 @@ async function _tryEmbeddingRerank(query, structuredResult) {
 async function executeRunCommand(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
+
+    // ★ 参数别名
+    args.command = args.command || args.cmd || '';
+    args.cwd = args.cwd || args.workdir || '';
+
     try {
         // ═══ SSH wrapping: base64-encode remote commands to eliminate quoting hell ═══
         // When args.ssh is set, the command runs on the remote host.
@@ -825,6 +834,9 @@ async function executeRemoveBackground(args) {
 }
 
 async function executeSearchWeb(args) {
+    // ★ 参数别名
+    args.query = args.query || args.q || '';
+
     var query = args.query || '';
     if (!query.trim()) return 'Error: query is required';
 

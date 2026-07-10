@@ -150,11 +150,10 @@ function _findMatch(content, find) {
             if (ok) { idx4 = bi; break; }
         }
         if (idx4 !== -1) {
-            var s = '';
-            for (var ci = 0; ci < idx4; ci++) s += String.fromCharCode(contentBuf[ci]);
-            var e = s;
-            for (var cj = 0; cj < findBuf.length; cj++) e += String.fromCharCode(contentBuf[idx4 + cj]);
-            return { start: s.length, end: e.length, matchLevel: 4 };
+            // idx4 is byte offset → decode prefix to get character offset
+            var prefix = new TextDecoder().decode(contentBuf.slice(0, idx4));
+            var matchStr = new TextDecoder().decode(contentBuf.slice(idx4, idx4 + findBuf.length));
+            return { start: prefix.length, end: prefix.length + matchStr.length, matchLevel: 4 };
         }
     } catch (_) {}
     return null;
@@ -163,9 +162,9 @@ function _findMatch(content, find) {
 async function executeEditFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
+    // ★ 参数别名
+    args.edits = args.edits || args.replacements || [];
     if (!args.edits || args.edits.length === 0) return 'Error: no edits provided.';
-
-    // ★ 参数名兼容：模型可能用 filePath 而非 path
     args.path = args.path || args.filePath || '';
     var _p = args.path;
     if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
@@ -261,6 +260,8 @@ async function executeWriteFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
+    // ★ 参数别名
+    args.content = args.content || args.data || args.contents || '';
     args.path = args.path || args.filePath || '';
     var _p = args.path;
     if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
@@ -295,6 +296,8 @@ async function executeCreateFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
+    // ★ 参数别名
+    args.content = args.content || args.data || args.contents || '';
     args.path = args.path || args.filePath || '';
     var _p = args.path;
     if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {

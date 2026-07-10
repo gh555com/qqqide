@@ -87,13 +87,14 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'read_file',
-            description: 'Read file contents. Returns up to ~' + _RFCKB_D + 'KB per call. If truncated (marked [TRUNCATED L1-N]), next call MUST use start_line: N+1 to continue. You may read any file at any time — the system trusts your judgment.',
+            description: 'Read file contents. Returns up to ~' + _RFCKB_D + 'KB per call. Use start_line/end_line for pagination. Pass sha256 to read a historical version from timeline.',
             parameters: {
                 type: 'object',
                 properties: {
                     path: { type: 'string', description: 'Absolute path to the file' },
                     start_line: { type: 'number', description: 'Start line number (1-based, default 1)' },
-                    end_line: { type: 'number', description: 'End line number (inclusive, default start+3000)' }
+                    end_line: { type: 'number', description: 'End line number (inclusive, default start+3000)' },
+                    sha256: { type: 'string', description: 'Optional SHA256 hash to read a historical version from timeline (as returned by edit_file/write_file)' }
                 },
                 required: ['path']
             }

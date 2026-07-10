@@ -357,6 +357,8 @@ $input.addEventListener('focus', function () {
 });
 
 function insertChipAtCursor(filePath, isDir, lineRange) {
+    // ★ 去重：同一文件路径已在编辑框中→跳过，不重复注入
+    if ($input.value.indexOf('\u201c' + filePath + '\u201d') !== -1) return;
     if (typeof isDir !== 'boolean') {
         isDir = !filePath.match(/\.[a-zA-Z0-9]+$/);
     }

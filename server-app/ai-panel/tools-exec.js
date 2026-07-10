@@ -91,8 +91,9 @@ async function executeReadFile(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
-    // ★ 参数名兼容：模型可能用 filePath 而非 path
+    // ★ 参数名兼容
     args.path = args.path || args.filePath || '';
+    args.end_line = args.end_line || args.limit || undefined;
     // ★ 路径合理性校验：防止 AI 将中文文本当作文件路径
     var _p = args.path;
     if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
@@ -191,34 +192,29 @@ async function executeReadFile(args) {
         }
         return _errMsg;
     }
-    // ★ read_file 截断（单一真理: ContentGateway.READ_FILE_CAP_BYTES，默认 ~200KB）
+    // ★ read_file 截断（单一真理: ContentGateway.READ_FILE_CAP_BYTES，默认 ~195KB）
+    //   策略：≤上限全文返回；>上限返回前缀 + 准确分页提示，AI 用 start_line 继续
     if (typeof _readResult === 'string' && _readResult.indexOf('[BINARY FILE]') !== 0 && _readResult.indexOf('[IS DIRECTORY]') !== 0) {
         var _maxSrcBytes = (typeof ContentGateway !== 'undefined' && ContentGateway.READ_FILE_CAP_BYTES) ? ContentGateway.READ_FILE_CAP_BYTES : 200000;
-        var _srcBytes = 0;
-        // 计算字节数（优先 TextEncoder，兼容旧环境）
-        if (typeof TextEncoder !== 'undefined') {
-            _srcBytes = new TextEncoder().encode(_readResult).length;
-        } else {
-            // 粗略估算：ASCII 1字节/字符，非ASCII ⩽3字节/字符
-            _srcBytes = _readResult.length + _readResult.replace(/[\x00-\x7f]/g, '').length * 2;
-        }
+        var _enc = new TextEncoder();
+        var _srcBytes = _enc.encode(_readResult).length;
         if (_srcBytes > _maxSrcBytes) {
-            var _truncated = '';
-            var _usedBytes = 0;
-            if (typeof TextEncoder !== 'undefined') {
-                for (var _ci = 0; _ci < _readResult.length; _ci++) {
-                    var _cb = new TextEncoder().encode(_readResult[_ci]).length;
-                    if (_usedBytes + _cb > _maxSrcBytes) break;
-                    _truncated += _readResult[_ci];
-                    _usedBytes += _cb;
+            // 二分搜索最大合法前缀（O(log N) 次 encode，非逐字符循环）
+            var _lo = 0, _hi = _readResult.length;
+            while (_lo < _hi) {
+                var _mid = Math.ceil((_lo + _hi) / 2);
+                if (_enc.encode(_readResult.substring(0, _mid)).length <= _maxSrcBytes) {
+                    _lo = _mid;
+                } else {
+                    _hi = _mid - 1;
                 }
-            } else {
-                _truncated = _readResult.slice(0, Math.floor(_maxSrcBytes / 2));
             }
+            var _truncated = _readResult.substring(0, _lo);
             var _totalKB = Math.round(_srcBytes / 1024);
+            var _shownKB = Math.round(_enc.encode(_truncated).length / 1024);
+            var _totalLines = _readResult.split('\n').length;
             var _shownLines = _truncated.split('\n').length;
-            var _nextStart = _shownLines + 1;
-            _readResult = '[TRUNCATED L1-' + _shownLines + '] 原文 ' + _totalKB + 'KB，仅返回前 ~4KB（' + _shownLines + ' 行）。\n\n🔴 下一轮必须用 start_line: ' + _nextStart + ' 继续。禁止从头读！\n\n' + _truncated;
+            _readResult = '[TRUNCATED L1-' + _shownLines + '] ' + _totalLines + ' lines total, ' + _shownLines + ' shown (~' + _shownKB + 'KB of ' + _totalKB + 'KB).\n\n' + _truncated;
         }
     }
     // ★ 追加预加载软提示（不拦截，仅告知）
@@ -254,6 +250,11 @@ function _guardBinaryResult(result) {
 async function executeSearchText(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
+
+    // ★ 参数别名
+    args.query = args.query || args.pattern || '';
+    args.path = args.path || args.directory || '';
+    args.max_results = args.max_results || args.limit || 30;
 
     var searchDirs = [];
     if (args.path) {
@@ -337,6 +338,11 @@ async function executeSearchText(args) {
 async function executeSearchContent(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
+
+    // ★ 参数别名
+    args.path = args.path || args.directory || '';
+    args.max_results = args.max_results || args.limit || 30;
+
     // ★ 兼容：模型可能把 keywords 发成 JSON 字符串而非数组
     if (typeof args.keywords === 'string') {
         try { args.keywords = JSON.parse(args.keywords); } catch (_) { }
@@ -474,8 +480,12 @@ async function executeFindFiles(args) {
     var bridge = getBridge();
     if (!bridge) return 'Error: bridge not available';
 
+    // ★ 参数别名
+    args.pattern = args.pattern || args.glob || '';
+    args.max_results = args.max_results || args.limit || 50;
+
     var searchDirs = [];
-    var _findPath = args.path || args.filePath || '';
+    var _findPath = args.path || args.filePath || args.directory || '';
     if (_findPath) {
         searchDirs = [_findPath];
     } else {
@@ -552,6 +562,9 @@ async function executeGetDiagnostics(args) {
 
 async function executeFetchWebpage(args) {
     var bridge = getBridge();
+
+    // ★ 参数别名
+    args.url = args.url || args.link || '';
 
     // ═══ 主路：走 Go 代理（US 服务器直连，可访问 GitHub 等） ═══
     if (typeof AiGateway !== 'undefined' && AiGateway.fetchWebpage) {

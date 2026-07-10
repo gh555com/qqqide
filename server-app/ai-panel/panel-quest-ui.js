@@ -357,6 +357,10 @@ async function renameQuest(id, newTitle) {
     var oldTitle = entry.title;
     if (oldTitle === newTitle) return;
     await questStore.rename(id, newTitle, entry.numericId);
+    // ★ 改名后重建 search_quest.txt（旧路径可能指向改名前的目录名）
+    if (typeof _rebuildSearchQuest === 'function') {
+        _rebuildSearchQuest(id).catch(function(){});
+    }
     await renderTabs();
 }
 

@@ -181,7 +181,7 @@ async function _executeSend(intent) {
                             if (fc.length > MAX_SIZE) {
                                 var head = fc.substring(0, 20 * 1024);
                                 var tail = fc.substring(fc.length - 20 * 1024);
-                                fc = head + '\n\n... [truncated: ' + fc.length + ' bytes total, showing first/last 20KB] ...\n\n' + tail;
+                                fc = head + '\n\n... [truncated: ' + fc.length + ' chars total, showing first/last 20K chars] ...\n\n' + tail;
                             }
                             contentParts.push('[File: ' + p + ']\n```\n' + fc + '\n```');
                         } catch (e) { contentParts.push('[File: ' + p + ']\n(read error: ' + e.message + ')'); }
