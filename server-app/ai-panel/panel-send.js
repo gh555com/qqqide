@@ -2,18 +2,11 @@
 // \u2550\u2550\u2550 panel-send.js \u2550\u2550\u2550
 // sendMessage, input helpers, event handlers, window exports
 
-// ★ skipFloorCreation: true=恢复到死胡同楼层（不建新目录/不增 floorNum）
+// ★ 管线入口：统一构建 SendIntent → _executeSend
 async function sendMessage(content, opts) {
-    // ★ 管线入口：统一构建 SendIntent → _executeSend
-    //   兼容旧调用: sendMessage() / sendMessage(true) / sendMessage(false)
-    if (content === undefined || content === true || content === false) {
-        var legacySkip = (content === true);
+    if (content === undefined) {
         content = getInputText().trim();
-        opts = {
-            type: legacySkip ? 'recovery-0house' : 'normal',
-            images: null,  // pendingImages 由 _executeSend 内部处理
-            tierIndex: selectedTier
-        };
+        opts = { type: 'normal', images: null, tierIndex: selectedTier };
     }
     opts = opts || {};
     var intent = _buildSendIntent(questActiveId, content, opts);
@@ -92,30 +85,29 @@ function _renderQuestErrorBox(agent, aiDiv, floorNum) {
         _box._renderedCount++;
     }
 
-    // ★ 更新 / 创建「继续任务」链接（始终在红框底部）
-    //   若下一楼层已存在（floorNum+1 有DOM）→ 链接变灰只读（历史记录）
-
-    // ★ 全局唯一：先灰化本 quest 所有旧楼层的活跃链接（防多链接同时出现）
-    if (agent._questErrorDivByFloor) {
-        for (var _fn in agent._questErrorDivByFloor) {
-            var _fnNum = parseInt(_fn);
-            if (isNaN(_fnNum) || _fnNum !== _floorNum) continue;
-            var _oldBox = agent._questErrorDivByFloor[_fn];
-            if (!_oldBox || !_oldBox.isConnected) continue;
-            var _oldLink = _oldBox._continueLink;
-            if (_oldLink && _oldLink.isConnected && !_oldLink.classList.contains('msg-err-resolved')) {
-                _oldLink.className = 'msg-err-continue msg-err-resolved';
-                _oldLink.style.cssText = 'text-decoration:none;cursor:default;color:var(--muted);margin-left:4px;opacity:0.5;';
-                _oldLink.textContent = (typeof _i === 'function') ? _i('ai.error.floorRecovered', '已恢复') : '已恢复';
-                _oldLink.onclick = function (e) { e.preventDefault(); };
-            }
+    // ★ 若 _capped → 不创建/更新链接（封顶红框无尾行）
+    if (_box._capped) {
+        if (_box._continueLink && _box._continueLink.isConnected) {
+            _box._continueLink.remove();
         }
+        _box._continueLink = null;
+        return;
     }
 
+    // ★ 封顶检测：下一楼层 DOM 已存在 且 非恢复中 → 自动 capped
     var _hasNextFloor = false;
     var _card3 = cardPool && cardPool.getActive();
     if (_card3 && _card3.floorDOM && _card3.floorDOM[_floorNum + 1]) _hasNextFloor = true;
+    if (_hasNextFloor && !agent._deferRenderUntilHouse1 && !agent._recoveryInProgress) {
+        _box._capped = true;
+        if (_box._continueLink && _box._continueLink.isConnected) {
+            _box._continueLink.remove();
+        }
+        _box._continueLink = null;
+        return;
+    }
 
+    // ★ 创建/更新「继续任务」链接（始终在红框底部）
     _link = _box._continueLink;
     if (!_link || !_link.isConnected) {
         var _existingLink = _box.querySelector('.msg-err-continue');
@@ -127,97 +119,65 @@ function _renderQuestErrorBox(agent, aiDiv, floorNum) {
             _link.className = 'msg-err-continue';
             _link.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
         }
-        if (_hasNextFloor) {
-            _link.className = 'msg-err-continue msg-err-resolved';
-            _link.style.cssText = 'text-decoration:none;cursor:default;color:var(--muted);margin-left:4px;opacity:0.5;';
-            _link.textContent = (typeof _i === 'function') ? _i('ai.error.floorRecovered', '已恢复') : '已恢复';
-            _link.onclick = function (e) { e.preventDefault(); };  // 无操作
-        } else {
-            _link.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
-            _link._qqqQuestId = questActiveId;
-            _link._qqqAgent = agent;
-            _link.onclick = function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (this._qqqRecoveryBusy) return;
-                this._qqqRecoveryBusy = true;
-                _startRecovery(this._qqqQuestId, this._qqqAgent, this);
-            };
-        }
+        _link.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
+        _link._qqqQuestId = questActiveId;
+        _link._qqqAgent = agent;
+        _link.onclick = function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (this._qqqRecoveryBusy) return;
+            this._qqqRecoveryBusy = true;
+            _startRecovery(this._qqqQuestId, this._qqqAgent, this);
+        };
         if (!_link.isConnected) {
             _box.appendChild(_link);
         }
         _box._continueLink = _link;
     } else {
-        // 已存在链接 — 检查是否需要更新（从活跃变已恢复 或 从恢复中恢复）
+        // 已存在链接 — 恢复中不更新（保持光块/恢复态）
         if (!agent._deferRenderUntilHouse1) {
-            if (_hasNextFloor) {
-                _link.className = 'msg-err-continue msg-err-resolved';
-                _link.style.cssText = 'text-decoration:none;cursor:default;color:var(--muted);margin-left:4px;opacity:0.5;';
-                _link.textContent = (typeof _i === 'function') ? _i('ai.error.floorRecovered', '已恢复') : '已恢复';
-                _link.onclick = function (e) { e.preventDefault(); };
-            } else {
-                _link.style.display = '';
-                _link.className = 'msg-err-continue';
-                _link._qqqRecoveryBusy = false;
-                _link.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
-            }
+            _link.style.display = '';
+            _link.className = 'msg-err-continue';
+            _link._qqqRecoveryBusy = false;
+            _link.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
         }
     }
 }
 
-// ★ 清除红框中的「继续任务」链接/白块（恢复成功后转为"已恢复"灰色不可点，不删） ═══
-// ★ floorNum: 可选，显式传入时使用，否则回退 agent._currentFloorNum
-function _hideRecoveryLink(agent, floorNum) {
+// ★ 封顶红框中的「继续任务」链接（整行 DOM 移除，不灰化不留字） ═══
+// ★ floorNum: 可选，显式传入时使用，否则回退 agent._recoveryOriginFloor → _currentFloorNum
+function _capRecoveryLink(agent, floorNum) {
     if (!agent) return;
-    var _link = null;
-    var _floorNum = (floorNum != null) ? floorNum : agent._currentFloorNum;
-    // 路径1：分楼层红框链接
-    if (agent._questErrorDivByFloor && agent._questErrorDivByFloor[_floorNum] && agent._questErrorDivByFloor[_floorNum]._continueLink && agent._questErrorDivByFloor[_floorNum]._continueLink.isConnected) {
-        _link = agent._questErrorDivByFloor[_floorNum]._continueLink;
-    }
-    // 路径2：通过 _recoveryLinkEl
-    if (!_link && agent._recoveryLinkEl && agent._recoveryLinkEl.isConnected) {
-        _link = agent._recoveryLinkEl;
-        agent._recoveryLinkEl = null;
-    }
-    // 路径3：从当前楼层 gap 中查找（兜底，搜动画 + 非动画两类 class）
-    if (!_link && _floorNum) {
-        var _card = cardPool && cardPool.getActive();
-        if (_card && _card.floorDOM && _card.floorDOM[_floorNum] && _card.floorDOM[_floorNum].aiEl) {
-            var _next = _card.floorDOM[_floorNum].aiEl.nextElementSibling;
-            while (_next) {
-                if (_next.classList && _next.classList.contains('floor-gap')) {
-                    _link = _next.querySelector('.msg-err-recovery-light, .msg-err-continue');
-                    break;
-                }
-                _next = _next.nextElementSibling;
-            }
+    var _fn = (floorNum != null) ? floorNum : (agent._recoveryOriginFloor || agent._currentFloorNum);
+    if (!_fn) return;
+
+    var _box = agent._questErrorDivByFloor && agent._questErrorDivByFloor[_fn];
+    // 路径2：兜底遍历找未 capped 的活跃红框
+    if ((!_box || !_box.isConnected) && agent._questErrorDivByFloor) {
+        for (var _f in agent._questErrorDivByFloor) {
+            var _b = agent._questErrorDivByFloor[_f];
+            if (_b && _b.isConnected && !_b._capped) { _box = _b; _fn = parseInt(_f); break; }
         }
     }
-    // 路径4：遍历所有楼层 errorDiv（兜底：_currentFloorNum 可能已变更为新楼层）
-    if (!_link && agent._questErrorDivByFloor) {
-        for (var _fn4 in agent._questErrorDivByFloor) {
-            var _bx4 = agent._questErrorDivByFloor[_fn4];
-            if (_bx4 && _bx4.isConnected && _bx4._continueLink && _bx4._continueLink.isConnected && !_bx4._continueLink.classList.contains('msg-err-resolved')) {
-                _link = _bx4._continueLink;
-                break;
-            }
+    if (!_box || !_box.isConnected) {
+        // 路径3：通过 _recoveryLinkEl
+        if (agent._recoveryLinkEl && agent._recoveryLinkEl.isConnected) {
+            agent._recoveryLinkEl.remove();
+            agent._recoveryLinkEl = null;
         }
+        return;
     }
-    if (!_link) return;
-    // ★ 转为"已恢复"灰色不可点（保留红框历史，不删除）
-    _link.className = 'msg-err-continue msg-err-resolved';
-    _link.style.cssText = 'text-decoration:none;cursor:default;color:var(--muted);margin-left:4px;opacity:0.5;';
-    _link.textContent = (typeof _i === 'function') ? _i('ai.error.floorRecovered', '已恢复') : '已恢复';
-    _link._qqqRecoveryDone = true;
-    _link._qqqRecoveryBusy = false;
-    _link._qqqRecoveryOrigText = '';
-    _link.onclick = function (e) { e.preventDefault(); };
-    // ★ 清理引用
-    if (agent._questErrorDivByFloor && agent._questErrorDivByFloor[_floorNum]) {
-        agent._questErrorDivByFloor[_floorNum]._continueLink = null;
+
+    // 移除链接 DOM
+    if (_box._continueLink && _box._continueLink.isConnected) {
+        _box._continueLink.remove();
     }
+    _box._continueLink = null;
+    _box._capped = true;
+    if (agent._questErrorDivByFloor && agent._questErrorDivByFloor[_fn]) {
+        agent._questErrorDivByFloor[_fn]._capped = true;
+    }
+    agent._recoveryLinkEl = null;
 }
 
 // ═══ 致命失败恢复："继续任务"唯一出口 ═══
@@ -233,108 +193,40 @@ var _RECOVERY_MAX_TOTAL_MS = 180000; // 总上限 3 分钟
 function _startRecovery(questId, agent, linkEl) {
     if (!questId || !agent || agent._stopState !== 'fatal') return;
 
-    // 1. 标记恢复中
+    // 1. ★ 记录原始 fatal 楼层号 + 预封顶所有更旧的红框
+    agent._recoveryOriginFloor = agent._currentFloorNum;
+    if (agent._questErrorDivByFloor) {
+        for (var _fn in agent._questErrorDivByFloor) {
+            if (parseInt(_fn) < agent._recoveryOriginFloor && typeof _capRecoveryLink === 'function') {
+                _capRecoveryLink(agent, parseInt(_fn));
+            }
+        }
+    }
+
+    // 2. 标记恢复中
     agent._recoveryInProgress = true;
     agent._recoveryStartPerf = performance.now();
     agent._deferRenderUntilHouse1 = true;
     agent._recoveryLinkEl = linkEl;
 
-    // 2. "继续任务"文字 → 光块（同一 <a> 元素，不删不隐）
+    // 3. "继续任务"文字 → 光块（同一 <a> 元素，不删不隐）
     if (linkEl) {
         linkEl._qqqRecoveryOrigText = linkEl.textContent;
-        linkEl.textContent = '▌';
+        linkEl.textContent = '';
         linkEl.className = 'msg-err-recovery-light';
         linkEl.style.cssText = '';
         linkEl._qqqRecoveryBusy = true;
     }
 
-    // 3. 禁用按钮
-    if ($sendBtn) $sendBtn.disabled = true;
+    // 4. ★ 永不锁按钮：恢复期间 guide/queue 禁用但 send 不锁
     if ($guideBtn) $guideBtn.disabled = true;
     if ($queueBtn) $queueBtn.disabled = true;
 
-    // 4. ★ 分叉：0-house → 同楼层重试 / N-house → 新楼层
-    var _hasHouses = agent._houses && agent._houses.length > 0;
-    if (_hasHouses) {
-        _attemptRecoverySendNewFloor(questId, agent, linkEl);
-    } else {
-        _attemptRecoverySend(questId, agent, linkEl);
-    }
+    // 5. ★ 统一路径：一律封顶旧楼层 + 建新楼层
+    _attemptRecoverySendNewFloor(questId, agent, linkEl);
 }
 
-async function _attemptRecoverySend(questId, agent, linkEl) {
-    var _totalElapsed = performance.now() - agent._recoveryStartPerf;
-    if (_totalElapsed > _RECOVERY_MAX_TOTAL_MS) {
-        _finishRecovery(linkEl, agent, false);
-        return;
-    }
-
-    // ★ 守卫：当前 quest 切走了 → 放弃
-    if (questActiveId !== questId) {
-        _finishRecovery(linkEl, agent, false);
-        return;
-    }
-
-    // ★ 保存原始 _lastUserInput（agent.send 会覆写，恢复后需还原）
-    var _savedLastUserInput = agent._lastUserInput;
-
-    // ★ 恢复消息：含错误历史让 AI 看到中断原因（_system:true 不入粉色气泡）
-    var _recoveryText = '网络已恢复，请继续。';
-    var _allLogs = [];
-    if (agent._questErrorLogByFloor) {
-        for (var _fn in agent._questErrorLogByFloor) {
-            var _fl = agent._questErrorLogByFloor[_fn];
-            for (var _ei = 0; _ei < _fl.length; _ei++) {
-                _allLogs.push(_fl[_ei]);
-            }
-        }
-    }
-    if (_allLogs.length > 0) {
-        _recoveryText = '网络恢复重连。此前中断记录：';
-        for (var _ei2 = 0; _ei2 < _allLogs.length; _ei2++) {
-            _recoveryText += '｜' + _allLogs[_ei2].time + ' ' + _allLogs[_ei2].reason;
-        }
-        _recoveryText += '｜请基于上下文继续完成原始任务。';
-    }
-
-    // ★ 保存用户原文（零 $input 污染：恢复消息走管线 content 参数）
-    var _savedInput = $input.value;
-
-    // ★ 配置恢复标记：
-    agent._isRecovery = true;
-    agent._inRecoverySend = false;
-    agent._recoveryInProgress = false;
-
-    try {
-        // ★ 直接通过管线发送，显式传入恢复消息（零 $input 污染）
-        var _intent = _buildSendIntent(questId, _recoveryText, {
-            type: 'recovery-0house',
-            isRecovery: true,
-            savedLastUserInput: _savedLastUserInput,
-        });
-        await _executeSend(_intent);
-        // ★ 恢复 _lastUserInput（agent.send 在 recovery 时不覆写，此乃兜底）
-        if (agent._lastUserInput && agent._lastUserInput.text === _recoveryText) {
-            agent._lastUserInput = _savedLastUserInput;
-        }
-        if (agent._stopState === 'fatal') {
-            _finishRecovery(linkEl, agent, false);
-        } else {
-            _finishRecovery(linkEl, agent, true);
-        }
-    } catch (_e) {
-        agent._lastUserInput = _savedLastUserInput;
-        agent.setStopState('fatal');
-        agent._floorFatal = true;
-        _finishRecovery(linkEl, agent, false);
-    } finally {
-        agent._inRecoverySend = false;
-        $input.value = _savedInput;
-        if (typeof saveQuestUIState === 'function') saveQuestUIState(questId);
-    }
-}
-
-// ★ N-house 恢复：创建新楼层（封顶旧楼层，新粉色气泡）
+// ★ 统一恢复：封顶旧楼层，创建新楼层（含错误历史 + 粉色气泡「继续」）
 async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
     var _totalElapsed = performance.now() - agent._recoveryStartPerf;
     if (_totalElapsed > _RECOVERY_MAX_TOTAL_MS) {
@@ -347,7 +239,7 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
         return;
     }
 
-    // ★ 恢复消息：含错误历史让 AI 看到中断原因（_system:true 不入粉色气泡）
+    // ★ 恢复消息：含错误历史让 AI 看到中断原因（含时间戳）
     var _recoveryText = '网络恢复重连。此前楼层中断记录：';
     var _allLogs2 = [];
     if (agent._questErrorLogByFloor) {
@@ -365,17 +257,15 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
     }
     _recoveryText += '｜请基于完整对话上下文继续完成原始任务。';
 
-    // ★ 保存用户原文（零 $input 污染）
     var _savedInput = $input.value;
 
-    // ★ 配置恢复标记：
     agent._isRecovery = true;
     agent._inRecoverySend = false;
     agent._recoveryInProgress = false;
 
     try {
         var _intent = _buildSendIntent(questId, _recoveryText, {
-            type: 'recovery-nhouse',
+            type: 'recovery',
             isRecovery: true,
         });
         await _executeSend(_intent);
@@ -391,7 +281,6 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
     } finally {
         agent._inRecoverySend = false;
         $input.value = _savedInput;
-        // ★ 持久化用户原文（同 _attemptRecoverySend）
         if (typeof saveQuestUIState === 'function') saveQuestUIState(questId);
     }
 }
@@ -399,63 +288,45 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
 function _finishRecovery(linkEl, agent, succeeded) {
     agent._recoveryInProgress = false;
     agent._recoveryStartPerf = 0;
-    agent._deferRenderUntilHouse1 = false;  // ★ 核爆清除：防止残留标记导致下一次正常 send 走错路
+    agent._deferRenderUntilHouse1 = false;
 
     if (succeeded) {
-        // ★ 成功：彻底清除链接/白块 DOM + 动画 + 引用（由 _hideRecoveryLink 统一处理）
-        if (typeof _hideRecoveryLink === 'function') _hideRecoveryLink(agent);
+        // ★ 成功：整行移除链接 DOM（不灰化不留字）
+        agent._recoveryOriginFloor = 0;
+        if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent);
     } else {
-        // ★ 失败：恢复链接
-        // ★ 核心：若已有更新楼层（N-house 恢复已建了新楼层并挂了新红框），
-        //   则此旧链接应灰化而非重激活，防止同一 quest 出现两个「继续任务」
-        var _newerFloorExists = false;
-        if (agent._questErrorDivByFloor) {
-            var _curFloor2 = agent._currentFloorNum;
-            for (var _fn2 in agent._questErrorDivByFloor) {
-                if (parseInt(_fn2) > _curFloor2) { _newerFloorExists = true; break; }
-            }
+        // ★ 失败：恢复链接为可点击（同一红框垒行后用户可重试）
+        if (linkEl && linkEl.isConnected) {
+            linkEl._qqqRecoveryDone = false;
+            linkEl.textContent = linkEl._qqqRecoveryOrigText ||
+                ((typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务');
+            linkEl.className = 'msg-err-continue';
+            linkEl.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
+            linkEl._qqqRecoveryBusy = false;
+            linkEl._qqqRecoveryOrigText = '';
         }
-        if (_newerFloorExists) {
-            // N-house 恢复：新楼层已有红框+链接，旧链接灰化
-            if (linkEl && linkEl.isConnected) {
-                linkEl.className = 'msg-err-continue msg-err-resolved';
-                linkEl.style.cssText = 'text-decoration:none;cursor:default;color:var(--muted);margin-left:4px;opacity:0.5;';
-                linkEl.textContent = (typeof _i === 'function') ? _i('ai.error.floorRecovered', '已恢复') : '已恢复';
-                linkEl.onclick = function (e) { e.preventDefault(); };
-                linkEl._qqqRecoveryDone = true;
-                linkEl._qqqRecoveryBusy = false;
-            }
-            // ★ 防御：灰化所有非当前楼层链接
-            if (agent._questErrorDivByFloor) {
-                for (var _fn3 in agent._questErrorDivByFloor) {
-                    if (parseInt(_fn3) === _curFloor2) continue;
-                    var _bx3 = agent._questErrorDivByFloor[_fn3];
-                    if (_bx3 && _bx3.isConnected && _bx3._continueLink && _bx3._continueLink.isConnected && !_bx3._continueLink.classList.contains('msg-err-resolved')) {
-                        _bx3._continueLink.className = 'msg-err-continue msg-err-resolved';
-                        _bx3._continueLink.style.cssText = 'text-decoration:none;cursor:default;color:var(--muted);margin-left:4px;opacity:0.5;';
-                        _bx3._continueLink.textContent = (typeof _i === 'function') ? _i('ai.error.floorRecovered', '已恢复') : '已恢复';
-                        _bx3._continueLink.onclick = function (e) { e.preventDefault(); };
-                    }
-                }
-            }
-        } else {
-            // 0-house 恢复：同楼层重试，恢复链接为可点击
-            if (linkEl && linkEl.isConnected) {
-                linkEl._qqqRecoveryDone = false;
-                linkEl.textContent = linkEl._qqqRecoveryOrigText ||
-                    ((typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务');
-                linkEl.className = 'msg-err-continue';
-                linkEl.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
-                linkEl._qqqRecoveryBusy = false;
-                linkEl._qqqRecoveryOrigText = '';
-            }
-        }
-        // ★ 清理引用（即使 DOM 已断连也要 null，防僵尸引用）
         agent._recoveryLinkEl = null;
-        if ($sendBtn) $sendBtn.disabled = true;
-        if ($guideBtn) $guideBtn.disabled = true;
-        if ($queueBtn) $queueBtn.disabled = true;
+        // ★ 永不锁按钮
     }
+}
+
+// ★ Stop 按钮在 fatal+活跃红框态 → 封顶所有活跃红框 → idle
+function _capRedBoxAndSeal() {
+    var ag = _activeAgent;
+    if (!ag || ag._stopState !== 'fatal') return;
+    if (ag._questErrorDivByFloor) {
+        for (var _fn in ag._questErrorDivByFloor) {
+            var _bx = ag._questErrorDivByFloor[_fn];
+            if (_bx && _bx.isConnected && !_bx._capped) {
+                if (typeof _capRecoveryLink === 'function') _capRecoveryLink(ag, parseInt(_fn));
+            }
+        }
+    }
+    ag.setStopState('idle');
+    ag._floorFatal = false;
+    ag._recoveryOriginFloor = 0;
+    ag._recoveryInProgress = false;
+    if (typeof setStreaming === 'function') setStreaming(false);
 }
 
 // ---- textarea helpers ----s ----
@@ -541,7 +412,7 @@ document.addEventListener('keydown', function (e) {
         _showFloorIndicatorBriefly();
     } else if (key === '2') {
         e.preventDefault();
-       $messages.scrollBy({ top: $messages.clientHeight * 0.175, behavior: 'smooth' });;
+        $messages.scrollBy({ top: $messages.clientHeight * 0.175, behavior: 'smooth' });;
         _showFloorIndicatorBriefly();
     } else if (key === 'q' || key === 'w') {
         e.preventDefault();

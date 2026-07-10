@@ -315,6 +315,13 @@ $input.addEventListener('paste', function (e) {
 $sendBtn.onclick = function () {
     if (_switching) return;  // ★ quest 切换中 → 禁止一切操作
     if (_activeAgent && _activeAgent._compressing) return;  // 压缩中 → 不响应
+
+    // ★ 红框 ACTIVE 态：Stop 按钮含义 = 封顶所有活跃红框 → idle
+    if (_activeAgent && _activeAgent._stopState === 'fatal' && !streaming) {
+        if (typeof _capRedBoxAndSeal === 'function') _capRedBoxAndSeal();
+        return;
+    }
+
     if (streaming) { stopStream(); }
     // ★ 安全网：_streaming 为 false 但 agent 仍在 sending → 可能是按钮状态未同步，拒发防重复建楼
     else if (_activeAgent && _activeAgent._stopState === 'sending') { return; }

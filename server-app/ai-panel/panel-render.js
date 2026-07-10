@@ -339,16 +339,27 @@ function setStreaming(val) {
     } else {
         $sendBtn.textContent = val ? 'Stop' : 'Send';
         $sendBtn.className = val ? 'stop' : '';
-        // ★ fatal 守卫：agent 处于 fatal 态且非恢复中 → 按钮永不自动解锁
-        //   恢复中（_recoveryInProgress）时按钮由 _startRecovery/_finishRecovery 管理
-        var _isFatalLocked = _ag && _ag._stopState === 'fatal' && !_ag._recoveryInProgress;
-        $sendBtn.disabled = _isFatalLocked;
+        // ★ 永不锁按钮
+        $sendBtn.disabled = false;
     }
-    // ★ fatal 态：sendBtn 始终保持禁用（覆盖上方的所有分支）
+    // ★ 红框 ACTIVE 态：按钮保持 Stop（红色可点），用户可选「继续任务」或 Stop
     if (_ag && _ag._stopState === 'fatal') {
-        $sendBtn.disabled = true;
-        $sendBtn.className = '';
-        $sendBtn.textContent = 'Send';
+        var _hasActive = false;
+        if (_ag._questErrorDivByFloor) {
+            for (var _fn in _ag._questErrorDivByFloor) {
+                var _bx = _ag._questErrorDivByFloor[_fn];
+                if (_bx && _bx.isConnected && !_bx._capped && _bx._continueLink && _bx._continueLink.isConnected) {
+                    _hasActive = true; break;
+                }
+            }
+        }
+        if (_hasActive) {
+            $sendBtn.textContent = 'Stop';
+            $sendBtn.className = 'stop';
+            $sendBtn.disabled = false;
+            return;
+        }
+        // 无活跃红框（已封顶）→ 按钮正常走 val-based 逻辑（Send）
     }
     updateQueueBtn();
     // ★ 微型电子钟：开始建楼启动，建楼结束停止

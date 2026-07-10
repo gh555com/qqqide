@@ -13,6 +13,7 @@
         label: 'qqqide',
         sub: [
           { label: '开新窗口', i18n: 'shell.menu.fileNewWindow', cmd: 'file.newWindow', hasRecent: true },
+          { label: '激活', i18n: 'shell.menu.activate', cmd: 'file.activate', hasActivation: true },
           { label: '退出', i18n: 'shell.menu.fileExit', cmd: 'file.exit' },
         ],
       },
