@@ -202,6 +202,70 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       continue;
     }
 
+    // ★ 激活行：动态标签 + 状态检测
+    if (s.hasActivation) {
+      var actRow = document.createElement('div');
+      actRow.style.cssText =
+        'display:flex; align-items:center; padding:11px 14px; margin:0; line-height:1.3; ' +
+        'font-size:13px; color:var(--text-primary); ' +
+        'white-space:nowrap; user-select:none; cursor:default;';
+
+      var actLab = document.createElement('span');
+      actLab.textContent = (s.i18n && window._i) ? window._i(s.i18n, s.label) : (s.label || '');
+      actLab.style.cssText = 'flex:1 1 auto;';
+      actRow.appendChild(actLab);
+
+      // 异步检测登录 + 激活状态，更新标签
+      (function (labelEl) {
+        var isLoggedIn = window.qqqLogin && window.qqqLogin.isLoggedIn();
+        if (isLoggedIn) {
+          fetch('/api/goods/qqqide/stats').then(function (r) { return r.json(); }).then(function (d) {
+            if (d && d.ok && d.total_installations > 0) {
+              labelEl.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
+            }
+          }).catch(function () {});
+        }
+      })(actLab);
+
+      (function (rEl) {
+        rEl.addEventListener('mouseenter', function () { rEl.style.background = 'var(--background-color)'; });
+        rEl.addEventListener('mouseleave', function () { rEl.style.background = ''; });
+      })(actRow);
+
+      actRow.addEventListener('click', function (e) {
+        e.stopPropagation();
+        _shellCloseMenubarPopup();
+        var bridge = window.qqqideBridge;
+        var isLoggedIn = window.qqqLogin && window.qqqLogin.isLoggedIn();
+        var token = window.qqqLogin && window.qqqLogin.getAuthToken();
+        if (isLoggedIn && token) {
+          // 已登录: 检测激活状态
+          fetch('/api/goods/qqqide/stats').then(function (r) { return r.json(); }).then(function (d) {
+            if (d && d.ok && d.total_installations > 0) {
+              if (bridge && bridge.shell && bridge.shell.openExternal) {
+                bridge.shell.openExternal('https://www.gh555.com/gaea/d/qqqide?lang=zh#profile');
+              }
+            } else {
+              if (bridge && bridge.shell && bridge.shell.openExternal) {
+                bridge.shell.openExternal('https://www.gh555.com/gaea/d/qqqide?lang=zh#price');
+              }
+            }
+          }).catch(function () {
+            if (bridge && bridge.shell && bridge.shell.openExternal) {
+              bridge.shell.openExternal('https://www.gh555.com/gaea/d/qqqide?lang=zh#price');
+            }
+          });
+        } else {
+          // 未登录: 直接跳转 price
+          if (bridge && bridge.shell && bridge.shell.openExternal) {
+            bridge.shell.openExternal('https://www.gh555.com/gaea/d/qqqide?lang=zh#price');
+          }
+        }
+      });
+      pop.appendChild(actRow);
+      continue;
+    }
+
     // ★ kope-a 行：自定义渲染（标签 + 启动/停止按钮 + 自动启动勾选框）
     if (s.hasKopeA) {
       var kopeRow = document.createElement('div');

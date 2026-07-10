@@ -34,7 +34,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-tofu-text{overflow:hidden;flex:1;color:var(--text-primary);-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 30px),transparent 100%);mask-image:linear-gradient(to right,#000 calc(100% - 30px),transparent 100%)}
 .quest-tofu-prefix{flex:none;color:#e8a030;position:relative;white-space:pre}
 /* 彗星电子钟：prefix 右下角黑底白字，无模糊实边，只显示秒数 */
-.comet-clock{position:absolute;bottom:0;right:0;background:#000;color:#fff;font-family:monospace;font-size:11px;font-weight:700;line-height:1;padding:0 3px;letter-spacing:0;font-smooth:never;-webkit-font-smoothing:none;-moz-osx-font-smoothing:unset;text-rendering:optimizeSpeed;z-index:3;pointer-events:none}
+.comet-clock{position:absolute;bottom:-5px;right:0;background:#000;color:#fff;font-family:Arial,sans-serif;font-size:11px;font-weight:700;line-height:1;padding:1px 3px;letter-spacing:0;font-smooth:never;-webkit-font-smoothing:none;-moz-osx-font-smoothing:unset;text-rendering:optimizeSpeed;z-index:3;pointer-events:none}
 /* 白纸面板第一行 "~ New quest ~" 样式 */
 .quest-tofu-new .quest-tofu-text{color:var(--base01);font-style:italic;text-align:center}
 /* 豆腐块内联编辑 */
@@ -599,7 +599,7 @@ var _orig={};
       <p><strong data-i18n="ai.ctx.cost">代价：</strong><span data-i18n="ai.ctx.costText">最近六层楼之前滴对话会被压缩而丢失细节，AI 只会记住其中摘要。最近六层楼会被完整保存。</span></p>
       <p data-i18n="ai.ctx.whatIf">如果一直不手动压缩？</p>
       <ol>
-        <li data-i18n="ai.ctx.auto">qqqide 用最优策略自动压缩，通常好于手动压缩。</li>
+        <li data-i18n="ai.ctx.auto">qqqide 会自动压缩，默认阀值是 600k，可点右上角 &lt;设置&gt; 改默认值。</li>
         <li data-i18n="ai.ctx.noLoss">无论如何（压缩与否、谁来压缩）都既不会导致 AI 记忆撑爆，也不会导致 AI 记忆丢失。</li>
       </ol>
     </div>

@@ -19,14 +19,14 @@
 ; (function () {
     'use strict';
 
-    var COMPACT_VERSION = 'COMPACT-V5-20260710';  // ★ V5: preserve tool_calls+tool_call_id, fix 242 empty msgs bug
+    var COMPACT_VERSION = 'COMPACT-V6-20260710';  // ★ V6: reduce cold msgs, more aggressive caps, prefix message
 
     // ═══ 常量 ═══
     var COMPACT_TIER      = 4;
-    var TOOL_CAP          = 6000;
-    var MSG_CAP           = 10000;
+    var TOOL_CAP          = 2000;   // ↓ V6: 6k→2k, tool results truncated harder
+    var MSG_CAP           = 8000;   // ↓ V6: 10k→8k
     var KEEP_RATIO        = 0.1;
-    var MIN_FLOORS        = 6;
+    var MIN_FLOORS        = 4;      // ↓ V6: 6→4
     var MIN_MANUAL_TOKENS = 50000;
     var COMPACT_RETRY_BASE_MS = 2000;
     var MAX_COMPACT_RETRIES    = 2;
@@ -121,12 +121,17 @@
         }
     };
 
-    // ── 构建冷消息数组（V5: 保留 tool_calls + tool_call_id，API 格式合法）──
-    var MAX_COLD_MSGS = 500;  // 硬帽，防止 JSON body 过大
-    var TC_ARG_CAP = 2000;    // tool_calls arguments 截断
+    // ── 构建冷消息数组（V6: 激进截断 + 前缀 + 去元讨论）──
+    var MAX_COLD_MSGS = 200;  // ↓ V6: 500→200, ~80K tokens max
+    var TC_ARG_CAP = 500;     // ↓ V6: 2000→500, tool args truncated hard
     function _buildColdMessages(coldMsgs) {
         var _msgs = [];
         var _floorKeys = [];
+        // ★ V6: 前缀 system 消息，防止模型复述压缩讨论
+        _msgs.push({
+            role: 'system',
+            content: 'The following messages are archived IDE conversations. They document real file operations, code changes, and decisions. Extract facts and write narrative based SOLELY on the actual work done (files edited, bugs fixed, features added). DO NOT quote, repeat, or discuss the archive itself. DO NOT mention compression, prompts, or meta-analysis of these messages.'
+        });
         for (var i = 0; i < coldMsgs.length && _msgs.length < MAX_COLD_MSGS; i++) {
             var m = coldMsgs[i];
             var role = m.role || 'user';
@@ -139,11 +144,11 @@
                 _msg.tool_call_id = m.tool_call_id;
                 if (typeof m.name === 'string') _msg.name = m.name;
                 if (content.length > TOOL_CAP) {
-                    content = content.slice(0, TOOL_CAP / 2) + '\n...[truncated ' + (content.length - TOOL_CAP) + ' chars]...\n' + content.slice(-TOOL_CAP / 2);
+                    content = content.slice(0, TOOL_CAP / 2) + '\n...[trunc ' + (content.length - TOOL_CAP) + 'c]...\n' + content.slice(-TOOL_CAP / 2);
                 }
                 _msg.content = content;
             }
-            // ★ assistant 消息：保留 tool_calls（截断 arguments）
+            // ★ assistant 消息：保留 tool_calls（激进截断 arguments，只留函数名）
             else if (role === 'assistant' && m.tool_calls && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
                 _msg.content = content || null;
                 _msg.tool_calls = m.tool_calls.map(function(tc) {
@@ -152,23 +157,23 @@
                         _tc.function = { name: tc.function.name };
                         var args = tc.function.arguments || '';
                         var argsStr = typeof args === 'string' ? args : JSON.stringify(args);
+                        // ★ V6: 只保留参数的首 500 chars（文件名+关键路径，丢弃大部参数）
                         _tc.function.arguments = argsStr.length > TC_ARG_CAP
-                            ? argsStr.slice(0, TC_ARG_CAP / 2) + '\n...[truncated ' + (argsStr.length - TC_ARG_CAP) + ' chars]...\n' + argsStr.slice(-TC_ARG_CAP / 2)
+                            ? argsStr.slice(0, TC_ARG_CAP)
                             : argsStr;
                     }
                     return _tc;
                 });
             }
-            // ★ 普通消息（user/system/assistant 无 tool_calls）
+            // ★ 普通消息
             else {
                 if (typeof content === 'string' && content.length > MSG_CAP) {
-                    content = content.slice(0, MSG_CAP / 2) + '\n...[truncated]...\n' + content.slice(-MSG_CAP / 2);
+                    content = content.slice(0, MSG_CAP / 2) + '\n...[trunc]...\n' + content.slice(-MSG_CAP / 2);
                 }
                 _msg.content = content || '';
             }
 
             _msgs.push(_msg);
-            // 追踪楼层
             var _fn = m._floor || 0;
             if (_floorKeys.indexOf(_fn) < 0) _floorKeys.push(_fn);
         }

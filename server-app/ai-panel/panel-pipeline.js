@@ -4,21 +4,18 @@
 // SendIntent 替代 skipFloorCreation boolean 分叉
 
 // ── SendIntent 工厂 ──
-// type: 'normal' | 'recovery-0house' | 'recovery-nhouse'
+// type: 'normal' | 'recovery'
 //   normal: 正常发送，创建新楼层
-//   recovery-0house: 0-house 恢复，复用当前楼层
-//   recovery-nhouse: N-house 恢复，封顶旧楼层后创建新楼层
+//   recovery: 恢复发送，封顶旧楼层后创建新楼层
 function _buildSendIntent(questId, content, opts) {
     opts = opts || {};
     return {
         questId: questId,
-        content: content,                    // ★ 显式传入，不读 $input
+        content: content,
         images: opts.images || null,
         tierIndex: opts.tierIndex != null ? opts.tierIndex : selectedTier,
         type: opts.type || 'normal',
-        // 恢复专用
         isRecovery: opts.isRecovery || false,
-        savedLastUserInput: opts.savedLastUserInput || null,
     };
 }
 
@@ -237,57 +234,48 @@ async function _executeSend(intent) {
         $input.focus();
     }
 
-    // ── 楼层分配 ── ──
+    // ── 楼层分配 ── (recovery 和 normal 都走新楼层)
     var floorNum;
     var root2 = questStore.getProjectRoot();
     var qDirName2, fDirName2, _allTxtDirLocal, _allTxtPathLocal;
-    if (sendType === 'recovery-0house') {
-        floorNum = agent._currentFloorNum;
-        if (agent._floorMeta && agent._floorMeta[floorNum]) {
-            _allTxtDirLocal = agent._floorMeta[floorNum]._fDir || '';
-            _allTxtPathLocal = agent._floorMeta[floorNum].allTxtPath || '';
-        }
-        if (!_allTxtPathLocal && root2) { _allTxtDirLocal = ''; _allTxtPathLocal = ''; }
-    } else {
-        // normal 或 recovery-nhouse → 新楼层
-        floorNum = await questStore.nextFloorNum(qid);
-        if (root2 && floorNum > 0) {
-            var userQuestion = text || (userContent || '').split('\n')[0];
-            var quests2 = await questStore.list();
-            var qEntry = quests2.find(function (qx) { return qx.id === qid; });
-            var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : '';
-            var qNumericId = (qEntry && qEntry.numericId) ? qEntry.numericId : parseInt(qid.replace('q', ''), 10) || 0;
-            qDirName2 = await _resolveQuestDirName(root2, qid, qNumericId, qTitle2);
-            fDirName2 = _makeName('f', floorNum, userQuestion);
-            var _ensured = await _ensureQuestDir(root2, qDirName2, fDirName2);
-            if (_ensured && _ensured.fDir && _images && _images.length > 0) {
-                var _bridge2 = window.parent && window.parent.qqqideBridge;
-                if (_bridge2 && _bridge2.fs) {
-                    for (var _imi = 0; _imi < _images.length; _imi++) {
-                        var _pimg = _images[_imi];
-                        var _fileName = 'img_' + _pimg.id + '.png';
-                        try {
-                            if (typeof _bridge2.fs.writeBase64 === 'function') {
-                                await _bridge2.fs.writeBase64(_ensured.fDir + _fileName, _pimg.base64);
-                            } else {
-                                var _b64Only = _pimg.base64 || _pimg.dataUrl.split(',')[1] || '';
-                                await _bridge2.fs.writeBase64(_ensured.fDir + _fileName, _b64Only);
-                            }
-                            _pimg.fileName = _fileName;
-                        } catch (_imgSaveErr) { console.warn('[img-save] failed:', _imgSaveErr); }
-                    }
+    // ★ 统一：一律通过 nextFloorNum() 创建新楼层
+    floorNum = await questStore.nextFloorNum(qid);
+    if (root2 && floorNum > 0) {
+        var userQuestion = text || (userContent || '').split('\n')[0];
+        var quests2 = await questStore.list();
+        var qEntry = quests2.find(function (qx) { return qx.id === qid; });
+        var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : '';
+        var qNumericId = (qEntry && qEntry.numericId) ? qEntry.numericId : parseInt(qid.replace('q', ''), 10) || 0;
+        qDirName2 = await _resolveQuestDirName(root2, qid, qNumericId, qTitle2);
+        fDirName2 = _makeName('f', floorNum, userQuestion);
+        var _ensured = await _ensureQuestDir(root2, qDirName2, fDirName2);
+        if (_ensured && _ensured.fDir && _images && _images.length > 0) {
+            var _bridge2 = window.parent && window.parent.qqqideBridge;
+            if (_bridge2 && _bridge2.fs) {
+                for (var _imi = 0; _imi < _images.length; _imi++) {
+                    var _pimg = _images[_imi];
+                    var _fileName = 'img_' + _pimg.id + '.png';
+                    try {
+                        if (typeof _bridge2.fs.writeBase64 === 'function') {
+                            await _bridge2.fs.writeBase64(_ensured.fDir + _fileName, _pimg.base64);
+                        } else {
+                            var _b64Only = _pimg.base64 || _pimg.dataUrl.split(',')[1] || '';
+                            await _bridge2.fs.writeBase64(_ensured.fDir + _fileName, _b64Only);
+                        }
+                        _pimg.fileName = _fileName;
+                    } catch (_imgSaveErr) { console.warn('[img-save] failed:', _imgSaveErr); }
                 }
             }
         }
     }
 
-    if (sendType !== 'recovery-0house') {
+    if (sendType !== 'recovery') {
         var _floorStartIdx = agent.conversation.length;
         agent._floorStartIdx = _floorStartIdx;
     }
     // ★ 推进 passby 基线：新楼层开始时，将刚完成的上一楼层计入基线（仅楼层号变化时推进）
     var _oldFloorNum2 = agent._currentFloorNum;
-    if (sendType !== 'recovery-0house' && _oldFloorNum2 && _oldFloorNum2 !== floorNum) {
+    if (sendType !== 'recovery' && _oldFloorNum2 && _oldFloorNum2 !== floorNum) {
         agent._passbyBaseHouses = (agent._passbyBaseHouses || 0) + (agent._houses ? agent._houses.length : 0);
         agent._passbyBaseWge = (agent._passbyBaseWge || 0) + (agent._floorCostWge || 0);
         agent._passbyBaseTokens = (agent._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(agent) : 0);
@@ -305,7 +293,7 @@ async function _executeSend(intent) {
     }
     if (!_allTxtPathLocal) _allTxtPathLocal = _allTxtDirLocal ? _allTxtDirLocal + 'all.txt' : '';
     agent._allTxtPath = _allTxtPathLocal;
-    if (sendType !== 'recovery-0house') {
+    if (sendType !== 'recovery') {
         agent._floorMeta[floorNum] = {
             floorStartIdx: agent._floorStartIdx,
             allTxtPath: _allTxtPathLocal,
@@ -319,12 +307,10 @@ async function _executeSend(intent) {
     var aiDiv = cardPool.startBuildingFloor(qid, floorNum, _allTxtPathLocal);
     if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); return; }
     aiDiv._allTxtPath = _allTxtPathLocal;
-    if (sendType === 'recovery-0house') {
-        // ★ B 重构：流式状态在 agent 上，非 aiDiv
-        agent._streamBuf = agent._streamBuf || '';
-        agent._streamParas = agent._streamParas || [];
-    }
-    if (sendType !== 'recovery-0house') {
+    // ★ recovery: 流式状态已在 agent 上，直接复用
+    agent._streamBuf = agent._streamBuf || '';
+    agent._streamParas = agent._streamParas || [];
+    if (sendType !== 'recovery') {
         agent._aiStartTime = _fmtTime(new Date());
         agent._aiTierLabel = 'A' + (selectedTier || 6);
     }
@@ -332,7 +318,7 @@ async function _executeSend(intent) {
     agent._streaming = true;
     // ★ 即时同步按钮 UI：建楼开始 → 按钮变红 Stop（必须在 agent._streaming 之后）
     setStreaming(true);
-    if (sendType !== 'recovery-0house') {
+    if (sendType !== 'recovery') {
         if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent);
         if (typeof _startAllTxtStream === 'function') _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, text, '');
         // ★ aq1 tier indicator: insert between user bubble and AI reply (live building path)
@@ -353,9 +339,14 @@ async function _executeSend(intent) {
     }
     scrollToBottom(true);
 
-    // 封顶旧楼层红框
-    if (sendType !== 'recovery-0house' && floorNum > 1 && agent._questErrorLogByFloor && agent._questErrorLogByFloor[floorNum - 1]) {
-        if (typeof _hideRecoveryLink === 'function') _hideRecoveryLink(agent, floorNum - 1);
+    // 封顶所有旧楼层红框（normal send 需遍历，recovery 等成功后封）
+    if (sendType !== 'recovery' && agent._questErrorDivByFloor) {
+        for (var _fn in agent._questErrorDivByFloor) {
+            var _fnNum = parseInt(_fn);
+            if (_fnNum < floorNum && typeof _capRecoveryLink === 'function') {
+                _capRecoveryLink(agent, _fnNum);
+            }
+        }
     }
     if (typeof _registerBuilding === 'function') _registerBuilding(qid, typeof _panelId !== 'undefined' ? _panelId : 1);
     if (typeof updateQuestTofu === 'function') updateQuestTofu();
@@ -394,7 +385,7 @@ async function _executeSend(intent) {
                     if (_recBubble) _recBubble._floor = agent._currentFloorNum;
                     agent._deferredUserEl = null;
                     agent._deferredAiDiv = null;
-                    if (typeof _hideRecoveryLink === 'function') _hideRecoveryLink(agent);
+                    if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent);
                     if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent);
                     if (typeof _startAllTxtStream === 'function') _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, '', '');
                     if ($sendBtn) $sendBtn.disabled = false;
@@ -475,7 +466,7 @@ async function _executeSend(intent) {
                     if (_recBubble) _recBubble._floor = agent._currentFloorNum;
                     agent._deferredUserEl = null;
                     agent._deferredAiDiv = null;
-                    if (typeof _hideRecoveryLink === 'function') _hideRecoveryLink(agent);
+                    if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent);
                     if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent);
                     if (typeof _startAllTxtStream === 'function') _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, '', '');
                     if ($sendBtn) $sendBtn.disabled = false;
@@ -550,7 +541,8 @@ async function _executeSend(intent) {
                         var _now = new Date();
                         var _ts = _now.getHours().toString().padStart(2, '0') + ':' + _now.getMinutes().toString().padStart(2, '0');
                         if (agent) {
-                            var _errFloorNum = agent._currentFloorNum;
+                            // ★ 恢复中：错误归因到原始 fatal 楼层，非新楼层
+                            var _errFloorNum = agent._recoveryOriginFloor || agent._currentFloorNum;
                             if (!agent._questErrorLogByFloor) agent._questErrorLogByFloor = {};
                             if (!agent._questErrorLogByFloor[_errFloorNum]) agent._questErrorLogByFloor[_errFloorNum] = [];
                             agent._questErrorLogByFloor[_errFloorNum].push({ time: _ts, reason: msg });
@@ -559,11 +551,15 @@ async function _executeSend(intent) {
                                 role: 'assistant',
                                 content: msg,
                                 _error: true,
-                                _floor: _errFloorNum
+                                _floor: agent._currentFloorNum
                             });
                         }
-                        if (agent) { agent._deferredUserEl = null; agent._deferredAiDiv = null; }
-                        _renderQuestErrorBox(agent, aiDiv);
+                        if (agent) {
+                            agent._deferredUserEl = null;
+                            agent._deferredAiDiv = null;
+                            agent._deferRenderUntilHouse1 = false;
+                        }
+                        _renderQuestErrorBox(agent, null, agent._recoveryOriginFloor || agent._currentFloorNum);
                         var _errTxtPath = aiDiv && aiDiv._allTxtPath;
                         if (_errTxtPath && agent && agent._houses && agent._houses.length > 0) {
                             try { if (typeof _forceFlushAllTxt === 'function') _forceFlushAllTxt(agent, _errTxtPath); } catch (_) { }
@@ -571,7 +567,7 @@ async function _executeSend(intent) {
                         _stopAllTxtStream(agent);
                         stopFloorTimer(null, agent);
                         setStreaming(false);
-                        if ($sendBtn) $sendBtn.disabled = true;
+                        // ★ 永不锁按钮
                     } else {
                         if (agent && agent._floorTimerId) { clearInterval(agent._floorTimerId); agent._floorTimerId = null; }
                         var _errTxtPath2 = agent._allTxtPath;
@@ -622,7 +618,6 @@ async function _executeSend(intent) {
                     _saveAgentQuestData(qid, agent, agent._currentFloorNum).catch(function () { });
                 }
             }
-            if ($sendBtn) $sendBtn.disabled = true;
             if ($guideBtn) $guideBtn.disabled = true;
             if ($queueBtn) $queueBtn.disabled = true;
         }

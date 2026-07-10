@@ -33,7 +33,8 @@ async function generateFloorTxt(ag, questId) {
     try {
         if (!(window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.fs)) return;
         var bridge = window.parent.qqqideBridge;
-        await bridge.fs.mkdir(dir);
+        // ★ 目录可能已存在（_ensureQuestDir 提前创建），mkdir EEXIST 不应阻断写入
+        try { await bridge.fs.mkdir(dir); } catch (_) { }
         var timing = ag._floorTiming;
         var lines = [];
 
