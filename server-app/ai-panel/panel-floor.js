@@ -272,27 +272,25 @@ async function _appendToSearchQuest(questId, floorNum) {
         // 标记行，用于去重检测
         var marker = '\u2550\u2550\u2550\u2550\u2550 Floor ' + floorNum + ' \u2550\u2550\u2550\u2550\u2550';
 
-        // 读已有内容（若存在），检查是否已写过本层楼
+        // 读已有内容（若存在）
         var existing = '';
         var fileExists = await bridge.fs.exists(searchPath);
         if (fileExists) {
             try { existing = await bridge.fs.read(searchPath); } catch (_) { }
         }
-        if (existing.indexOf(marker) >= 0) return;  // 已存在，跳过
 
-        // 提取 AI 最终回答（最后一个 final 类型 house 的 answer）
-        var houses = floorData.houses || [];
+        // ★ 提取 AI 最终回答（从 conversation 取最后一个 assistant 消息，非 houses[].answer 冗余副本）
+        var conv = floorData.conversation || [];
         var answer = '';
-        for (var hi = houses.length - 1; hi >= 0; hi--) {
-            if (houses[hi].type === 'final' && houses[hi].answer) {
-                answer = houses[hi].answer;
+        for (var ci = conv.length - 1; ci >= 0; ci--) {
+            if (conv[ci].role === 'assistant' && !conv[ci].tool_calls && typeof conv[ci].content === 'string' && conv[ci].content && !conv[ci]._error) {
+                answer = conv[ci].content;
                 break;
             }
         }
 
         // 构建条目
         var lines = [];
-        if (existing) lines.push('');  // 与上一楼层间隔一行
         lines.push(marker + '   ' + _fmtTime(floorTs));
         var cleanQuestion = (floorData.question || '').replace(/\[File: [^\]]+\]\s*\x0A\`\`\`[\s\S]*?\`\`\`/g, '').replace(/\x0A{3,}/g, '\x0A\x0A').trim(); lines.push('\u25a0 Q: ' + cleanQuestion);
         lines.push('\u25a0 A: ' + (answer || '(no answer)'));
@@ -302,14 +300,27 @@ async function _appendToSearchQuest(questId, floorNum) {
         for (var _azi = 0; _azi < _azLines.length; _azi++) {
             lines.push(_azLines[_azi]);
         }
-        lines.push('');
+
+        var newBlock = lines.join('\n');
+
+        // ★ 盖写式：若旧 marker 存在则替换整个 block，否则追加
+        var markerIdx = existing.indexOf(marker);
+        if (markerIdx >= 0) {
+            // 找到本 block 结束位置（下一个 "═════" 或 EOF）
+            var nextMarkerIdx = existing.indexOf('\n\u2550\u2550\u2550\u2550\u2550', markerIdx + marker.length);
+            if (nextMarkerIdx < 0) nextMarkerIdx = existing.length;
+            // 替换旧 block，保持楼层次序
+            existing = existing.slice(0, markerIdx) + newBlock + existing.slice(nextMarkerIdx);
+        } else {
+            // 全新楼层：追加
+            if (existing) existing += '\n';
+            existing += newBlock;
+        }
 
         // 确保目录存在
         try { await bridge.fs.mkdir(questDir); } catch (_) { }
 
-        // 追加写入
-        var newContent = existing + lines.join('\n');
-        await bridge.fs.write(searchPath, newContent);
+        await bridge.fs.write(searchPath, existing);
         // [silent] search_quest appended
     } catch (e) {
         console.warn('[search_quest] failed:', e && e.message);
@@ -350,11 +361,12 @@ async function _rebuildSearchQuest(questId) {
         for (var fi = 0; fi < allFloors.length; fi++) {
             var fData = allFloors[fi].data;
             var fn = allFloors[fi].floorNum || (fi + 1);
-            var houses = fData.houses || [];
+            // ★ 提取 AI 最终回答（从 conversation，非 houses[].answer 冗余副本）
+            var conv = fData.conversation || [];
             var answer = '';
-            for (var hi = houses.length - 1; hi >= 0; hi--) {
-                if (houses[hi].type === 'final' && houses[hi].answer) {
-                    answer = houses[hi].answer;
+            for (var ci = conv.length - 1; ci >= 0; ci--) {
+                if (conv[ci].role === 'assistant' && !conv[ci].tool_calls && typeof conv[ci].content === 'string' && conv[ci].content && !conv[ci]._error) {
+                    answer = conv[ci].content;
                     break;
                 }
             }
@@ -404,17 +416,35 @@ async function _restoreAgentFromStore(questId, ag) {
 
         // 重建 conversation：聚合所有楼层
         ag.conversation = [];
-        // ★ 从 conversation 重建 _questErrorLogByFloor（重启后复原分楼层聚合红框）
         ag._questErrorLogByFloor = {};
         ag._questErrorDivByFloor = {};
+
+        // ★ 压缩恢复：先读 lastCompressedFloor（需在 conversation 之前）
+        var _restoredLastCompressedFloor = (data && data.ctx && data.ctx.lastCompressedFloor) || 0;
+        var _restoredBiscuit = (data && data.ctx && data.ctx.narrative) || '';
+        var _hasBiscuit = _restoredLastCompressedFloor > 0 && _restoredBiscuit.indexOf('═══ COMPRESSED FLOORS') === 0;
+
         for (var fi = 0; fi < allFloors.length; fi++) {
             var fData = allFloors[fi].data;
             var fConv = fData.conversation;
             if (fConv && fConv.length) {
                 for (var mi = 0; mi < fConv.length; mi++) {
-                    ag.conversation.push(fConv[mi]);
+                    var _msg = fConv[mi];
+                    // ★ 饼干恢复：跳过已压缩楼层的原始消息（饼干已存 ctx.narrative）
+                    if (_hasBiscuit && _msg._floor > 0 && _msg._floor <= _restoredLastCompressedFloor) {
+                        continue;
+                    }
+                    // ★ 跳过 floor conversation 中残留的 _compressed 消息（每层快照含全量 conversation，
+                    //    压缩后所有后续楼层快照都含饼干副本 → 恢复时去重，只靠 ctx.narrative 注入一次）
+                    if (_msg._compressed) continue;
+                    ag.conversation.push(_msg);
                 }
             }
+        }
+
+        // ★ 注入压缩饼干：在 conversation 开头（persistent 之后、第一层非压缩楼层之前）
+        if (_hasBiscuit) {
+            ag.conversation.unshift({ role: 'system', content: _restoredBiscuit, _compressed: true, _dynamic: true });
         }
         // ★ 扫描所有 _error 消息重建分楼层错误日志
         for (var _eli = 0; _eli < ag.conversation.length; _eli++) {
@@ -483,13 +513,19 @@ async function _restoreAgentFromStore(questId, ag) {
             ag._passbyBaseFloorNum = _recalcHouses > 0 ? (ag._currentFloorNum - 1) : 0;
         }
         // ★ 重建 _floorMeta（未可变楼层元数据）
+        // ★ 压缩恢复：用 conversation 实际索引覆盖磁盘旧值（旧 floorStartIdx 在跳过压缩层后偏移）
+        var _actualFloorStarts = {};
+        for (var _sci = 0; _sci < ag.conversation.length; _sci++) {
+            var _scf = ag.conversation[_sci]._floor || 0;
+            if (_scf > 0 && !(_scf in _actualFloorStarts)) _actualFloorStarts[_scf] = _sci;
+        }
         ag._floorMeta = {};
         for (var _fmfi = 0; _fmfi < allFloors.length; _fmfi++) {
             var _fmfData = allFloors[_fmfi].data;
             if (_fmfData) {
                 var _fmfn = allFloors[_fmfi].floorNum;
                 ag._floorMeta[_fmfn] = {
-                    floorStartIdx: _fmfData._floorStartIdx,
+                    floorStartIdx: (_fmfn in _actualFloorStarts) ? _actualFloorStarts[_fmfn] : (_fmfData._floorStartIdx || 0),
                     allTxtPath: _fmfData.allTxtPath || '',
                     _fDir: _fmfData._fDir || '',
                     createdAt: _fmfData.createdAt || Date.now()

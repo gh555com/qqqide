@@ -65,7 +65,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 
 §11 LSP — 全部禁用
   - Monaco 内置诊断全禁(renderValidationDecorations:'off')，零红色波浪线/hover/补全。
-  - 仅保留 tokenization+selectionHighlight+occurrencesHighlight。matchBrackets:'never'。
+  - 仅保留 tokenization+selectionHighlight+occurrencesHighlight+matchBrackets('near')。括号匹配作为纯视觉辅助保留。
   - lsp-bridge.ts 零引用零加载。manifest.json LSP条目已删除。
   - 替代: 三级语法检查—L1自动 node--check(0ge)+L2 get_diagnostics(~50ge)+L3全仓(~200ge)。
 

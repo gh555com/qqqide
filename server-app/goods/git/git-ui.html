@@ -7,41 +7,41 @@
 :root{--bg:#fdf6e3;--card:#eee8d5;--text:#595754;--border:#d3c6aa;--green:#859900;--red:#dc322f;--yellow:#b58900;--blue:#4078a0;--cyan:#2a9a78;--orange:#cb4b16;--base01:#777;--base1:#a8a6a2;--base2:#eee8d2;--base3:#fdf6e3;--added:rgba(133,153,0,0.08);--deleted:rgba(220,50,47,0.08)}
 [data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--blue:#60a0d0;--cyan:#5ab890;--orange:#e07020;--base01:#97978a;--base1:#6a6660;--base2:#2a2a2a;--base3:#1e1e1e;--added:rgba(143,188,90,0.1);--deleted:rgba(255,68,68,0.1)}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column}
 ::selection{background:#ffd301;color:#000}
 
 /* header = tofu bar */
 .header{display:flex;align-items:center;gap:3px;padding:4px 8px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;min-height:28px;flex-wrap:nowrap}
-.tofu-bar{display:flex;gap:3px;flex:1;min-width:0;overflow-x:auto;flex-wrap:nowrap}
-.header .tofu{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:ui-monospace,monospace;font-size:10px;white-space:nowrap;border:1px solid transparent;flex-shrink:0}
+.tofu-bar{display:flex;gap:3px;flex:1;min-width:0;flex-wrap:wrap}
+.header .tofu{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:ui-monospace,monospace;font-size:11px;white-space:nowrap;border:1px solid transparent}
 .header .tofu:hover{border-color:var(--border);background:var(--base2)}
 .header .tofu.active{border-color:var(--blue);background:var(--added)}
 .header .tofu .tf-name{max-width:120px;overflow:hidden;text-overflow:ellipsis}
-.header .tofu .tf-badge{font-size:8px;min-width:14px;height:13px;border-radius:7px;background:var(--red);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0 3px;font-weight:700}
-.header .tofu .tf-nogit{font-size:8px;color:var(--base01)}
-.header .branch{font-size:11px;color:var(--green);font-weight:700;font-family:ui-monospace,monospace;flex-shrink:0}
-.header .pulls{font-size:10px;color:var(--blue);font-family:ui-monospace,monospace;margin-left:4px;flex-shrink:0}
+.header .tofu .tf-badge{font-size:9px;min-width:15px;height:14px;border-radius:7px;background:var(--red);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0 3px;font-weight:700}
+.header .tofu .tf-nogit{font-size:9px;color:var(--base01)}
+.header .branch{font-size:12px;color:var(--green);font-weight:700;font-family:ui-monospace,monospace;flex-shrink:0}
+.header .pulls{font-size:11px;color:var(--blue);font-family:ui-monospace,monospace;margin-left:4px;flex-shrink:0}
 
 /* toolbar */
 .toolbar{display:flex;gap:4px;padding:5px 8px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;flex-wrap:wrap}
-.toolbar button{font-size:11px;padding:3px 10px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);cursor:pointer;font-family:ui-monospace,monospace}
+.toolbar button{font-size:12px;padding:3px 10px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);cursor:pointer;font-family:ui-monospace,monospace}
 .toolbar button:hover{background:var(--base2)}
 .toolbar .sep{width:1px;background:var(--border);margin:0 4px}
 
 /* content */
 .content{flex:1;overflow:auto;padding:8px 12px}
-#log-view:not(.hidden){display:flex!important;flex-direction:column;height:100%}
+
 
 /* sections */
 .section{margin-bottom:10px}
-.section h3{font-size:12px;font-weight:700;margin-bottom:4px;color:var(--text);display:flex;align-items:center;gap:6px}
-.section h3 .count{font-size:10px;color:var(--base01);font-weight:400}
+.section h3{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--text);display:flex;align-items:center;gap:6px}
+.section h3 .count{font-size:11px;color:var(--base01);font-weight:400}
 
 /* file list */
 .file-list{list-style:none}
-.file-list li{padding:3px 6px;font-family:ui-monospace,monospace;font-size:12px;border-radius:3px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.file-list li{padding:3px 6px;font-family:ui-monospace,monospace;font-size:13px;border-radius:3px;cursor:pointer;display:flex;align-items:center;gap:6px}
 .file-list li:hover{background:var(--base2)}
-.badge{font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;color:#fff;flex-shrink:0;min-width:18px;text-align:center}
+.badge{font-size:11px;font-weight:700;padding:1px 5px;border-radius:3px;color:#fff;flex-shrink:0;min-width:18px;text-align:center}
 .badge.M{background:var(--yellow)}
 .badge.A{background:var(--green)}
 .badge.D{background:var(--red)}
@@ -62,15 +62,15 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .inline-diff .dline .dh{color:var(--blue);font-weight:700}
 .inline-diff .dline .hunk-sep{border-top:1px dashed var(--border);margin:4px 0}
 
-/* commit form */
-.commit-form{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
-.commit-form textarea{width:100%;height:52px;resize:vertical;font-family:ui-monospace,monospace;font-size:12px;padding:6px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)}
-.commit-form .commit-row{display:flex;align-items:center;gap:8px}
-.commit-form .commit-row button{padding:4px 14px;border:1px solid var(--border);border-radius:4px;background:var(--green);color:#fff;font-weight:700;cursor:pointer;font-size:12px}
-.commit-form .commit-row button:hover{opacity:.9}
-.commit-options{display:flex;align-items:center;gap:12px;font-size:11px;color:var(--base01);margin-bottom:2px;flex-wrap:wrap}
-.commit-options label{display:flex;align-items:center;gap:3px;cursor:pointer}
-.commit-options input[type=checkbox]{accent-color:var(--blue)}
+/* commit form — single row: textarea left, options+button right */
+.commit-form{display:flex;gap:8px;margin-bottom:10px;align-items:stretch}
+.commit-form textarea{flex:1;min-width:0;height:52px;resize:none;font-family:ui-monospace,monospace;font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)}
+.commit-form .commit-right{display:flex;flex-direction:column;gap:4px;justify-content:space-between;flex-shrink:0;min-width:110px}
+.commit-form .commit-right button{padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--green);color:#fff;font-weight:700;cursor:pointer;font-size:12px;white-space:nowrap}
+.commit-form .commit-right button:hover{opacity:.9}
+.commit-options{display:flex;flex-direction:column;gap:2px;font-size:10px;color:var(--base01)}
+.commit-options label{display:flex;align-items:center;gap:2px;cursor:pointer;white-space:nowrap}
+.commit-options input[type=checkbox]{accent-color:var(--blue);width:12px;height:12px}
 
 /* branch */
 .branch-actions{display:flex;gap:3px;margin-left:auto}
@@ -165,12 +165,12 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 
   <div id="status-view">
     <div class="commit-form">
-      <div class="commit-options">
-        <label><input type="checkbox" id="amend-check"> 修正上一次提交 (amend)</label>
-        <label><input type="checkbox" id="signoff-check"> 签名 (sign-off)</label>
-      </div>
       <textarea id="commit-msg" placeholder="提交信息..."></textarea>
-      <div class="commit-row">
+      <div class="commit-right">
+        <div class="commit-options">
+          <label><input type="checkbox" id="amend-check">amend</label>
+          <label><input type="checkbox" id="signoff-check">sign-off</label>
+        </div>
         <button id="btn-commit">提交</button>
       </div>
     </div>
@@ -392,7 +392,7 @@ function _pickRepo(path) {
   _expandedCommit = null;
   document.getElementById('inline-diff').style.display = 'none';
   document.getElementById('status-view').classList.remove('hidden');
-  document.getElementById('log-view').classList.add('hidden');
+
   document.getElementById('branch-view').classList.add('hidden');
   document.getElementById('stash-view').classList.add('hidden');
   _refreshGitStatus();
@@ -453,7 +453,24 @@ async function _refreshGitStatus() {
   document.getElementById('unstaged-count').textContent = unstaged.length ? '(' + unstaged.length + ')' : '';
   document.getElementById('untracked-count').textContent = untracked.length ? '(' + untracked.length + ')' : '';
   _detectConflicts();
+  // Update repo status map for active repo so tofu badge refreshes
+  var total = staged.length + unstaged.length + untracked.length;
+  for (var j = 0; j < _allProjects.length; j++) {
+    var s2 = _repoStatusMap[_allProjects[j].path];
+    if (s2 && s2.root === _gitRoot) { s2.badge = total; s2.branch = branchName; break; }
+  }
   _buildRepoUI();
+  // Also refresh badges for other repos (fire-and-forget, lightweight)
+  for (var j = 0; j < _allProjects.length; j++) {
+    var pj = _allProjects[j].path, sj = _repoStatusMap[pj];
+    if (!sj || !sj.root || sj.root === _gitRoot) continue;
+    (function(s, root) {
+      _gitCmd(['status', '--porcelain'], { cwd: root, timeout: 5000 }).then(function(r) {
+        s.badge = (r.stdout || '').split('\n').filter(Boolean).length;
+        _buildRepoUI();
+      }).catch(function(){});
+    })(sj, sj.root);
+  }
 }
 
 function _renderFileList(elId, files, isStaged) {
@@ -787,8 +804,7 @@ async function _showCommitDetail(fullHash) {
 }
 
 function _backToStatus() {
-  document.getElementById('log-view').classList.add('hidden');
-  document.getElementById('status-view').classList.remove('hidden');
+  document.getElementById('inline-diff').style.display = 'none';
 }
 
 async function _cherryPick(hash) {
@@ -930,7 +946,7 @@ async function _resolveConflict(filePath, strategy) {
 
 // ═══ HELPERS ═══
 function _hideAllViews(showId) {
-  var ids = ['status-view','log-view','branch-view','stash-view','conflict-view'];
+  var ids = ['branch-view','stash-view','conflict-view'];
   for (var i = 0; i < ids.length; i++) { var el = document.getElementById(ids[i]); if (el) el.classList.add('hidden'); }
   var show = document.getElementById(showId); if (show) show.classList.remove('hidden');
 }
@@ -946,6 +962,10 @@ function _init() {
   _checkGitAvailable().then(function(ok) {
     if (!ok) return;
     _detectAndBuild();
+  });
+  // Persistent listener: when AI viewport folders change, rebuild tofu bar
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'qqq-ai-viewport-changed') { _detectAndBuild(); }
   });
 }
 

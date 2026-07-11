@@ -180,10 +180,10 @@ function autoResizeInput() {
         el.style.overflowY = 'hidden';
     }
     _updateInputProgress();
-    // 安全网：直设原生 value
-    var cap = (typeof ContentGateway !== 'undefined') ? ContentGateway.EDITOR_CAP_CHARS : 16000;
-    if (el.value.length > cap) {
-        el.value = el.value.substring(0, cap);
+    // 安全网：原生 setter 直设，防绕过 paste 处理器的异常路径
+    if (el.value.length > INPUT_CAP_CHARS) {
+        var _ns = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+        _ns.call(el, el.value.substring(0, INPUT_CAP_CHARS));
         _updateInputProgress();
     }
 }
@@ -209,9 +209,8 @@ window.addEventListener('resize', function () { _inputLineHeight = 0; autoResize
 function _updateInputProgress() {
     var fill = document.getElementById('input-progress-fill');
     if (!fill) return;
-    var cap = (typeof ContentGateway !== 'undefined') ? ContentGateway.EDITOR_CAP_CHARS : 16000;
     var len = $input.value.length;
-    var pct = Math.min(len / cap * 100, 100);
+    var pct = Math.min(len / INPUT_CAP_CHARS * 100, 100);
     fill.style.width = pct + '%';
     // 触顶才弹 qoast（防抖 3s）
     if (pct >= 100) _limitQoast('typed');
@@ -222,13 +221,11 @@ var _lastLimitQoastTs = 0;
 var _LIMIT_QOAST_COOLDOWN = 3000;
 function _limitQoast(reason) {
     var now = Date.now();
-    // paste 截断 → 跳过冷却，必弹一次
     if (reason !== 'paste-truncated' && reason !== 'paste-full') {
         if (now - _lastLimitQoastTs < _LIMIT_QOAST_COOLDOWN) return;
     }
     _lastLimitQoastTs = now;
-    var cap = (typeof ContentGateway !== 'undefined') ? ContentGateway.EDITOR_CAP_CHARS : 16000;
-    var msg = '输入已达上限 ' + (cap / 1000) + 'K 字符';
+    var msg = '输入已达上限 ' + (INPUT_CAP_CHARS / 1000).toFixed(1) + 'K 字符';
     if (reason === 'paste-truncated') msg += '，多余内容已截断';
     try {
         if (parent && parent.window && parent.window.qqqideQoast) {
@@ -241,8 +238,7 @@ function _limitQoast(reason) {
 $input.addEventListener('keydown', function (e) {
     // 可打印字符：key.length===1 且非修饰键；Backspace/Delete/Enter/方向键等 length>1 放行
     if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
-    var cap = (typeof ContentGateway !== 'undefined') ? ContentGateway.EDITOR_CAP_CHARS : 16000;
-    if ($input.value.length >= cap) {
+    if ($input.value.length >= INPUT_CAP_CHARS) {
         e.preventDefault();
         _limitQoast('typed');
     }
@@ -316,68 +312,92 @@ function renderImageStrip() {
     });
 }
 
+// ═══ 编辑框硬上限（字符数 = str.length；唯一真理源 content-gateway.js EDITOR_CAP_CHARS）══
+var INPUT_CAP_CHARS = 16000;
+// 尝试从 ContentGateway 同步（如果有），但本地 16000 是硬兜底
+if (typeof ContentGateway !== 'undefined' && typeof ContentGateway.EDITOR_CAP_CHARS === 'number') {
+    INPUT_CAP_CHARS = ContentGateway.EDITOR_CAP_CHARS;
+}
+
 // 粘贴图片（> 2MB 自动压缩至 2048px 宽）/ 纯文本粘贴
 $input.addEventListener('paste', function (e) {
-    // 纯文本粘贴：如果有文本，先获取纯文本再处理图片
-    var plainText = '';
-    try {
-        plainText = (e.clipboardData || window.clipboardData).getData('text/plain');
-    } catch (_) { }
+    // ★ 铁律：任何粘贴一律先阻止原生行为，再由我们手动插入
+    e.preventDefault();
 
-    // 检查是否有图片
+    var plainText = '';
     var hasImage = false;
-    var items = (e.clipboardData || e.originalEvent.clipboardData).items;
-    for (var i = 0; i < items.length; i++) {
-        var item = items[i];
-        if (item.type.indexOf('image/') === 0) {
-            hasImage = true;
-            e.preventDefault();
-            var file = item.getAsFile();
-            var reader = new FileReader();
-            reader.onload = function (ev) {
-                var dataUrl = ev.target.result;
-                if (file.size > 2 * 1024 * 1024) {
-                    var img = new Image();
-                    img.onload = function () {
-                        var MAX_W = 2048;
-                        var scale = img.width > MAX_W ? MAX_W / img.width : 1;
-                        var canvas = document.createElement('canvas');
-                        canvas.width = Math.round(img.width * scale);
-                        canvas.height = Math.round(img.height * scale);
-                        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                        var compressed = canvas.toDataURL('image/jpeg', 0.85);
-                        addImage(compressed, compressed.split(',')[1]);
-                    };
-                    img.src = dataUrl;
-                } else {
-                    addImage(dataUrl, dataUrl.split(',')[1]);
+    var imageFile = null;
+
+    // 读取剪贴板（try-catch 全包裹，任何异常都安全退出）
+    try {
+        var cd = e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData);
+        if (!cd) return;
+        plainText = cd.getData('text/plain') || '';
+        var items = cd.items;
+        if (items) {
+            for (var i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image/') === 0) {
+                    hasImage = true;
+                    imageFile = items[i].getAsFile();
+                    break;
                 }
-            };
-            reader.readAsDataURL(file);
-            break;
+            }
         }
+    } catch (_) { return; }
+
+    // 图片分支
+    if (hasImage && imageFile) {
+        var reader = new FileReader();
+        reader.onload = function (ev) {
+            var dataUrl = ev.target.result;
+            if (imageFile.size > 2 * 1024 * 1024) {
+                var img = new Image();
+                img.onload = function () {
+                    var scale = img.width > 2048 ? 2048 / img.width : 1;
+                    var canvas = document.createElement('canvas');
+                    canvas.width = Math.round(img.width * scale);
+                    canvas.height = Math.round(img.height * scale);
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                    addImage(canvas.toDataURL('image/jpeg', 0.85), canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+                };
+                img.src = dataUrl;
+            } else {
+                addImage(dataUrl, dataUrl.split(',')[1]);
+            }
+        };
+        reader.readAsDataURL(imageFile);
+        return;
     }
-    // 无图片粘贴：强制纯文本（阻止富文本）+ 硬上限保护
-    if (!hasImage && plainText) {
-        e.preventDefault();
-        var cap = (typeof ContentGateway !== 'undefined') ? ContentGateway.EDITOR_CAP_CHARS : 16000;
-        var selStart = $input.selectionStart || 0;
-        var selEnd = $input.selectionEnd || 0;
-        // 直接读原生 value（无自定义 setter 干扰）
-        var cur = $input.value;
-        var before = cur.substring(0, selStart);
-        var after = cur.substring(selEnd);
-        var available = cap - before.length - after.length;
-        if (available <= 0) { _limitQoast('paste-full'); return; }
-        var wasTruncated = plainText.length > available;
-        var insertText = wasTruncated ? plainText.substring(0, available) : plainText;
-        // 直设原生 value + 手动触发 input→autoResizeInput 安全网也在此覆盖
-        $input.value = before + insertText + after;
-        $input.setSelectionRange(selStart + insertText.length, selStart + insertText.length);
-        $input.dispatchEvent(new Event('input', { bubbles: true }));
-        _updateInputProgress();
-        if (wasTruncated) _limitQoast('paste-truncated');
+
+    // 纯文本分支：硬上限保护
+    if (!plainText) return;
+
+    // ★ 直接用原生 getter 读当前值（绕过自定义属性，绝对可靠）
+    var nativeGet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').get;
+    var nativeSet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    var cur = nativeGet.call($input);
+    var selStart = $input.selectionStart || 0;
+    var selEnd = $input.selectionEnd || 0;
+    var before = cur.substring(0, selStart);
+    var after = cur.substring(selEnd);
+    var available = INPUT_CAP_CHARS - before.length - after.length;
+
+    if (available <= 0) {
+        _limitQoast('paste-full');
+        return;
     }
+
+    var wasTruncated = plainText.length > available;
+    var insertText = wasTruncated ? plainText.substring(0, available) : plainText;
+    var newVal = before + insertText + after;
+
+    // ★ 用原生 setter 直设值，然后手动触发 resize + progress
+    nativeSet.call($input, newVal);
+    $input.setSelectionRange(selStart + insertText.length, selStart + insertText.length);
+    autoResizeInput();
+    _updateInputProgress();
+
+    if (wasTruncated) _limitQoast('paste-truncated');
 });
 $sendBtn.onclick = function () {
     if (_switching) return;  // ★ quest 切换中 → 禁止一切操作
