@@ -580,7 +580,7 @@
     $hdr.innerHTML = '我上周最终等级: <b style="color:#b58900;">' + lastLv
       + '</b>，本周基座升高: <b style="color:#b58900;">' + baseRise
       + 'ge</b>。 预计下周基座将升高: <b style="color:#b58900;">' + projected + 'ge</b>'
-      + '<span id="qqq-ldr-help" style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:20px;margin-left:6px;cursor:help;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;color:' + titleClr + ';">?</span>';
+      + '<span id="qqq-ldr-help" style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;margin-left:8px;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;border:1px solid var(--border-color,#555);border-radius:3px;padding:0 6px;pointer-events:auto;top:-1px;">?</span>';
 
     // ★ 绑定 help tooltip
     var $help = document.getElementById('qqq-ldr-help');
@@ -602,20 +602,21 @@
     var rect = e && e.target ? e.target.getBoundingClientRect() : null;
     if (!rect) return;
     _$ldrHelpTip.innerHTML =
-      '<b style="color:#b58900;">🏆 免费额度规则</b><br><br>'
+      '<b style="color:#b58900;">等级及免费额度规则</b><br><br>'
       + '一周共 13 个免费时段：<br>'
       + '• 周一至周六 × 12 个 2 小时段<br>'
       + '• 周日 × 1 个 24 小时段<br><br>'
       + '<b>每个时段的免费额度</b><br>'
-      + '= 随机值 + <b>本周基座</b><br><br>'
+      + '= 随机值（最大 1000 ge）+ <b>本周基座</b><br><br>'
+      + 'UTC 时间一周作为一个赛季，<br>'
+      + '例如：2026_28W1 代表 2026 年第 28 周，<br>'
+      + '其对应总观历史滴第一个赛季即：W1。<br><br>'
       + '<b>本周基座</b> 仅由上赛季最终消费决定：<br>'
       + '基座 = 上赛季总消费 ÷ 100<br>'
-      + '若上赛季消费 100ge → 本周基座 = 1<br><br>'
+      + '若上赛季消费 100 ge → 本周基座 = 1<br><br>'
       + '• 周一至周六：随机 + 基座 × 1<br>'
       + '• 周日：随机 + 基座 × 2（双倍）<br><br>'
       + '<b>等级</b> = 总消费 ÷ 10<br>'
-      + '<b>等级 × 10</b> = 显示的结算等级<br>'
-      + '<b>基座升高</b> = 结算等级 ÷ 10<br>'
       + '<b>预计下周基座</b> = 本周已消费 ÷ 100';
     _$ldrHelpTip.style.left = (rect.left + rect.width / 2 - 200) + 'px';
     _$ldrHelpTip.style.top = (rect.bottom + 4) + 'px';

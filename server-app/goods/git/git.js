@@ -1,15 +1,6 @@
 // ============================================================================
 // goods/git/git.js — Git Goods Manifest
-//
-// 提供：
-//   ① A 区面板: Git 快速状态
-//   ② X 区 Git tab: 全功能 git 操作
-//
-// 功能: status / stage+unstage / hunk staging / commit+amend+signoff /
-//       push+pull+fetch (流式) / log --graph / cherry-pick+revert /
-//       branch manage+merge / stash / clone / conflict resolve / 15s auto-refresh
-//
-// Timeline 已独立为 BrowserWindow (timeline/diff-window.js)，Git goods 不包含 diff viewer。
+// X 区 Git tab: 全功能 git 操作（不参与 A 区面板）
 // ============================================================================
 (function () {
     'use strict';
@@ -27,22 +18,10 @@
         window.qqqGaea.register({
             id: 'git',
             title: 'Git',
-            version: '1.2.0',
+            version: '1.2.1',
             protoVer: 2,
 
-            // A 区面板: Git 快速状态
-            panel: {
-                build: function (host) {
-                    host.style.cssText = 'width:100%;height:100%;overflow:hidden;';
-                    var iframe = document.createElement('iframe');
-                    iframe.src = '/qqqide/goods/git/git-ui.html';
-                    iframe.style.cssText = 'width:100%;height:100%;border:none;';
-                    iframe.setAttribute('frameborder', '0');
-                    host.appendChild(iframe);
-                }
-            },
-
-            // X 区 tabs
+            // X 区 tabs only — 不在 A 区
             tabs: {
                 git: {
                     title: '🔀 Git',

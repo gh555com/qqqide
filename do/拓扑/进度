@@ -2,6 +2,23 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 ============================================================
 更新: 2026-07-08
 
+已完成 — 本轮 2026-07-08 红字框恢复逻辑全域修正 + 引导块持久化修复
+------
+· 红字框二态模型 ACTIVE/CAPPED 落地：
+  - ACTIVE：链接可见，可累积错误行。CAPPED：链接整行 DOM 移除，一字不留。
+  - 消灭 0-house 同楼层重试（删除 _attemptRecoverySend ~70 行），统一 recovery 类型走新楼层
+  - _capRecoveryLink 替换 _hideRecoveryLink：移除链接 DOM 设 _capped=true，不灰化不留字
+  - 错误归因到原始楼层 _recoveryOriginFloor，恢复失败垒行到同一红框
+· 两条铁律：
+  铁律1 — 红字框仅 ACTIVE/CAPPED 两种形态，零"已恢复"灰字残留
+  铁律2 — $sendBtn.disabled=true 在 fatal/红框路径中零出现。fatal+ACTIVE→Stop(可点)；fatal+CAPPED→Send(正常)
+· _capRedBoxAndSeal：Stop 按钮在 fatal+ACTIVE 红框态→遍历封顶所有活跃红框→agent→idle→按钮→Send
+· 多框封顶遍历：正常发送/恢复入口前遍历所有 < floorNum 的旧红框逐一 _capRecoveryLink
+· _deferRenderUntilHouse1 清理：onError 中追加置 false 防残留
+· 引导块持久化修复：_restoreGuideBlocksToContentWrap 辅助函数→onDone innerHTML 覆写后恢复引导块→_buildFloorDOM 重建后恢复引导块（带去重检测）
+· 涉及 6 个文件：panel-send.js(核心)、panel-pipeline.js、panel-render.js、panel-input.js、card-pool.js、agent-loop.js
+------
+
 已完成 — 本轮 2026-07-08 C 架构落地 + 3 修复
 ------
 · C 架构渲染模型落地：onDone → content(API完整回复) → renderMarkdown → _contentWrap.innerHTML 一次性覆盖流式预览。

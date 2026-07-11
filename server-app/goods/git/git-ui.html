@@ -10,23 +10,17 @@
 body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column}
 ::selection{background:#ffd301;color:#000}
 
-/* header + repo picker */
-.header{display:flex;align-items:center;gap:8px;padding:5px 10px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;min-height:30px}
-.header .repo-wrap{position:relative;flex:1;min-width:0}
-.header .repo{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);cursor:pointer;display:inline-flex;align-items:center;gap:4px;max-width:100%}
-.header .repo:hover{color:var(--blue)}
-.header .repo .caret{font-size:8px;margin-left:2px;opacity:.5}
-.header .repo .git-badge-sm{font-size:9px;font-weight:700;min-width:15px;height:15px;border-radius:8px;background:var(--red);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
-.header .branch{font-size:11px;color:var(--green);font-weight:700;font-family:ui-monospace,monospace}
-.header .pulls{font-size:10px;color:var(--blue);font-family:ui-monospace,monospace;margin-left:4px}
-.repo-dropdown{display:none;position:absolute;top:100%;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:4px;z-index:10;max-height:240px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,0.15)}
-.repo-dropdown.open{display:block}
-.repo-dropdown .rd-item{display:flex;align-items:center;gap:6px;padding:4px 8px;cursor:pointer;font-family:ui-monospace,monospace;font-size:11px;border-bottom:1px solid var(--border)}
-.repo-dropdown .rd-item:hover{background:var(--base2)}
-.repo-dropdown .rd-item.active{background:var(--added);font-weight:700}
-.repo-dropdown .rd-item .rd-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.repo-dropdown .rd-item .rd-badge{font-size:9px;min-width:16px;height:14px;border-radius:7px;background:var(--red);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;font-weight:700}
-.repo-dropdown .rd-item .rd-nogit{font-size:9px;color:var(--base01)}
+/* header = tofu bar */
+.header{display:flex;align-items:center;gap:3px;padding:4px 8px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;min-height:28px;flex-wrap:nowrap}
+.tofu-bar{display:flex;gap:3px;flex:1;min-width:0;overflow-x:auto;flex-wrap:nowrap}
+.header .tofu{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:ui-monospace,monospace;font-size:10px;white-space:nowrap;border:1px solid transparent;flex-shrink:0}
+.header .tofu:hover{border-color:var(--border);background:var(--base2)}
+.header .tofu.active{border-color:var(--blue);background:var(--added)}
+.header .tofu .tf-name{max-width:120px;overflow:hidden;text-overflow:ellipsis}
+.header .tofu .tf-badge{font-size:8px;min-width:14px;height:13px;border-radius:7px;background:var(--red);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0 3px;font-weight:700}
+.header .tofu .tf-nogit{font-size:8px;color:var(--base01)}
+.header .branch{font-size:11px;color:var(--green);font-weight:700;font-family:ui-monospace,monospace;flex-shrink:0}
+.header .pulls{font-size:10px;color:var(--blue);font-family:ui-monospace,monospace;margin-left:4px;flex-shrink:0}
 
 /* toolbar */
 .toolbar{display:flex;gap:4px;padding:5px 8px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;flex-wrap:wrap}
@@ -36,6 +30,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 
 /* content */
 .content{flex:1;overflow:auto;padding:8px 12px}
+#log-view:not(.hidden){display:flex!important;flex-direction:column;height:100%}
 
 /* sections */
 .section{margin-bottom:10px}
@@ -84,15 +79,6 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .stash-item{display:flex;align-items:center;gap:6px;font-family:ui-monospace,monospace;font-size:11px;padding:2px 6px}
 .stash-ref{color:var(--yellow);font-weight:700;flex-shrink:0}
 .stash-msg{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-/* repo bar (footer) */
-.repo-bar{display:flex;gap:2px;padding:4px 8px;border-top:1px solid var(--border);background:var(--card);flex-shrink:0;overflow-x:auto}
-.repo-bar .rbitem{display:flex;align-items:center;gap:3px;padding:2px 8px;border-radius:3px;cursor:pointer;font-family:ui-monospace,monospace;font-size:10px;white-space:nowrap;border:1px solid transparent;flex-shrink:0}
-.repo-bar .rbitem:hover{border-color:var(--border);background:var(--base2)}
-.repo-bar .rbitem.active{border-color:var(--blue);background:var(--added)}
-.repo-bar .rbitem .rb-name{max-width:100px;overflow:hidden;text-overflow:ellipsis}
-.repo-bar .rbitem .rb-badge{font-size:8px;min-width:14px;height:13px;border-radius:7px;background:var(--red);color:#fff;display:inline-flex;align-items:center;justify-content:center;padding:0 3px;font-weight:700}
-.repo-bar .rbitem .rb-nogit{font-size:8px;color:var(--base01)}
 
 /* clone */
 .clone-dialog{display:none;padding:10px;background:var(--card);border:1px solid var(--border);border-radius:4px;margin-bottom:8px}
@@ -143,10 +129,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 </head>
 <body>
 <div class="header" id="header">
-  <div class="repo-wrap" id="repo-wrap">
-    <span class="repo" id="repo-name">选择仓库 <span class="caret">▼</span></span>
-    <div class="repo-dropdown" id="repo-dropdown"></div>
-  </div>
+  <div class="tofu-bar" id="tofu-bar"></div>
   <span class="branch" id="branch-name"></span>
   <span class="pulls" id="pulls-info"></span>
 </div>
@@ -213,21 +196,18 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
       <div class="diff-body" id="inline-diff-body"></div>
     </div>
 
-    <div class="repo-bar" id="repo-bar"></div>
-  </div>
+    <div class="section">
+      <h3>提交历史 <span class="count" id="log-count"></span>
+        <label style="font-size:10px;margin-left:8px;display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-weight:400;">
+          <input type="checkbox" id="log-all-branches" checked> 全部分支
+        </label>
+      </h3>
+      <div class="graph-wrap" id="graph-wrap">
+        <canvas id="graph-canvas"></canvas>
+        <div class="graph-rows" id="graph-rows"></div>
+      </div>
+    </div>
 
-  <div id="log-view" class="hidden">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:0 4px;flex-shrink:0;">
-      <h3 style="margin:0;">提交历史</h3>
-      <span style="font-size:10px;color:var(--base01);" id="log-count"></span>
-      <label style="font-size:10px;margin-left:auto;display:flex;align-items:center;gap:3px;cursor:pointer;">
-        <input type="checkbox" id="log-all-branches" checked> 全部分支
-      </label>
-    </div>
-    <div class="graph-wrap" id="graph-wrap">
-      <canvas id="graph-canvas"></canvas>
-      <div class="graph-rows" id="graph-rows"></div>
-    </div>
   </div>
 
   <div id="branch-view" class="hidden">
@@ -291,7 +271,7 @@ async function _initGitExe() {
     try {
       var bin = await bridge.components.getBin('git');
       if (bin) {
-        var probe = await bridge.qz.spawn({ cmd: bin, args: ['--version'], timeout: 4000 });
+        var probe = await bridge.qz.spawn({ cmd: bin, args: ['--version'], timeout: 4000, shell: false });
         if (probe.exitCode === 0 && (probe.stdout||'').indexOf('git version') >= 0) {
           _gitExePath = bin; _gitAvailable = true; return _gitExePath;
         }
@@ -299,7 +279,7 @@ async function _initGitExe() {
     } catch(_) {}
   }
   try {
-    var probe2 = await bridge.qz.spawn({ cmd: 'git', args: ['--version'], timeout: 4000 });
+    var probe2 = await bridge.qz.spawn({ cmd: 'git', args: ['--version'], timeout: 4000, shell: false });
     if (probe2.exitCode === 0 && (probe2.stdout||'').indexOf('git version') >= 0) {
       _gitExePath = 'git'; _gitAvailable = true; return _gitExePath;
     }
@@ -314,12 +294,12 @@ async function _gitCmd(args, opts) {
   try {
     var result = await bridge.qz.spawn({
       cmd: _gitExePath || (await _initGitExe()),
-      args: args, cwd: opts.cwd || _gitRoot, timeout: opts.timeout || 30000
+      args: args, cwd: opts.cwd || _gitRoot, timeout: opts.timeout || 30000, shell: false
     });
     return result;
   } catch(e) {
     if (_gitExePath.indexOf('/components/git/') >= 0) {
-      try { return await bridge.qz.spawn({ cmd: 'git', args: args, cwd: opts.cwd || _gitRoot, timeout: opts.timeout || 30000 }); } catch(e2) {}
+      try { return await bridge.qz.spawn({ cmd: 'git', args: args, cwd: opts.cwd || _gitRoot, timeout: opts.timeout || 30000, shell: false }); } catch(e2) {}
     }
     return { stdout: '', stderr: e.message || String(e), exitCode: 1 };
   }
@@ -420,57 +400,20 @@ function _pickRepo(path) {
 }
 
 function _buildRepoUI() {
-  var projName = 'Git', badgeCount = 0;
-  for (var i = 0; i < _allProjects.length; i++) {
-    var s = _repoStatusMap[_allProjects[i].path];
-    if (s && s.isGit && s.root === _gitRoot) { projName = _allProjects[i].name; badgeCount = s.badge || 0; break; }
-  }
-  if (projName === 'Git' && _allProjects.length) projName = _allProjects[0].name;
-  var badgeHtml = badgeCount > 0 ? '<span class="git-badge-sm">' + badgeCount + '</span>' : '';
-  document.getElementById('repo-name').innerHTML = _esc(projName) + badgeHtml + ' <span class="caret">▼</span>';
-
-  // Dropdown
-  var dd = document.getElementById('repo-dropdown'), ddHtml = '';
+  var bar = document.getElementById('tofu-bar'), html = '';
   for (var i = 0; i < _allProjects.length; i++) {
     var p = _allProjects[i], s = _repoStatusMap[p.path];
     var active = (_gitRoot && s && s.root === _gitRoot);
     var bdg = '';
-    if (s && s.isGit) { bdg = s.badge > 0 ? '<span class="rd-badge">' + s.badge + '</span>' : ''; }
-    else { bdg = '<span class="rd-nogit">非仓库</span>'; }
-    ddHtml += '<div class="rd-item' + (active ? ' active' : '') + '" data-path="' + _esc(p.path) + '">' +
-      '<span class="rd-name">' + _esc(p.name) + '</span>' + bdg + '</div>';
+    if (s && s.isGit) { bdg = s.badge > 0 ? '<span class="tf-badge">' + s.badge + '</span>' : ''; }
+    else { bdg = '<span class="tf-nogit">×</span>'; }
+    html += '<div class="tofu' + (active ? ' active' : '') + '" data-path="' + _esc(p.path) + '">' +
+      '<span class="tf-name">' + (s && s.isGit && s.branch ? _esc(s.branch) + '@' : '') + _esc(p.name) + '</span>' + bdg + '</div>';
   }
-  dd.innerHTML = ddHtml;
-  var items = dd.querySelectorAll('.rd-item');
+  bar.innerHTML = html;
+  var items = bar.querySelectorAll('.tofu');
   for (var j = 0; j < items.length; j++) {
-    (function(el, path) {
-      el.addEventListener('click', function(e) { e.stopPropagation(); _pickRepo(path); dd.classList.remove('open'); });
-    })(items[j], items[j].getAttribute('data-path'));
-  }
-
-  // Toggle dropdown
-  var rn = document.getElementById('repo-name');
-  if (!rn._ddWired) {
-    rn._ddWired = true;
-    rn.addEventListener('click', function(e) { e.stopPropagation(); dd.classList.toggle('open'); });
-    document.addEventListener('click', function() { dd.classList.remove('open'); });
-  }
-
-  // Footer repo bar
-  var rb = document.getElementById('repo-bar'), rbHtml = '';
-  for (var k = 0; k < _allProjects.length; k++) {
-    var p2 = _allProjects[k], s2 = _repoStatusMap[p2.path];
-    var active2 = (_gitRoot && s2 && s2.root === _gitRoot);
-    var bdg2 = '';
-    if (s2 && s2.isGit) { bdg2 = s2.badge > 0 ? '<span class="rb-badge">' + s2.badge + '</span>' : ''; }
-    else { bdg2 = '<span class="rb-nogit">×</span>'; }
-    rbHtml += '<div class="rbitem' + (active2 ? ' active' : '') + '" data-path="' + _esc(p2.path) + '">' +
-      '<span class="rb-name">' + (s2 && s2.isGit && s2.branch ? s2.branch + '@' : '') + _esc(p2.name) + '</span>' + bdg2 + '</div>';
-  }
-  rb.innerHTML = rbHtml;
-  var rbs = rb.querySelectorAll('.rbitem');
-  for (var m = 0; m < rbs.length; m++) {
-    (function(el, path) { el.addEventListener('click', function() { _pickRepo(path); }); })(rbs[m], rbs[m].getAttribute('data-path'));
+    (function(el, path) { el.addEventListener('click', function() { _pickRepo(path); }); })(items[j], items[j].getAttribute('data-path'));
   }
 }
 
@@ -676,7 +619,7 @@ async function _gitLongOp(args, label) {
     var useStream = !!(bridge && bridge.qz && bridge.qz.spawnStream), result;
     if (useStream) {
       result = await bridge.qz.spawnStream({
-        cmd: _gitExePath || (await _initGitExe()), args: args, cwd: _gitRoot, timeout: 300000
+        cmd: _gitExePath || (await _initGitExe()), args: args, cwd: _gitRoot, timeout: 300000, shell: false
       }, function(channel, data) {
         var lines = data.split('\n').filter(Boolean), last = lines[lines.length - 1] || '';
         var prog = document.getElementById('progress'); if (prog && last) prog.textContent = '⏳ ' + last.slice(0, 160);
@@ -692,18 +635,12 @@ document.getElementById('btn-fetch').addEventListener('click', async function() 
 document.getElementById('btn-refresh').addEventListener('click', async function() { if (await _checkGitAvailable()) _refreshGitStatus(); });
 
 // ═══ GIT LOG WITH CANVAS GRAPH ═══
-document.getElementById('btn-log').addEventListener('click', _showGitLog);
+document.getElementById('btn-log').addEventListener('click', function() { _showGitLog(); var el = document.getElementById('graph-wrap'); if (el) el.scrollIntoView({behavior:'smooth',block:'start'}); });
 
 var _commitData = [], _commitGraph = [], _expandedCommit = null;
 var _logPalette = ['#859900','#268bd2','#dc322f','#b58900','#6c71c4','#2aa198','#d33682','#cb4b16','#5c8a00','#1a6fb5','#c01c28','#a07400','#5551a4','#1d8e82','#b82e6c','#a04000'];
 
 async function _showGitLog() {
-  document.getElementById('status-view').classList.add('hidden');
-  document.getElementById('log-view').classList.remove('hidden');
-  document.getElementById('branch-view').classList.add('hidden');
-  document.getElementById('stash-view').classList.add('hidden');
-  document.getElementById('conflict-view').classList.add('hidden');
-
   var useAll = document.getElementById('log-all-branches') ? document.getElementById('log-all-branches').checked : true;
   var args = ['log', '--graph', '--date=short', '--format=__G__%H__G__%s__G__%ai__G__%an__G__%D', '-300'];
   if (useAll) args.splice(1, 0, '--all');
@@ -718,7 +655,7 @@ async function _showGitLog() {
     _commitGraph.push(graph);
     _commitData.push({ hash: parts[0].trim(), msg: parts[1].trim(), date: parts[2].trim(), author: parts[3].trim(), refs: parts[4] ? parts[4].trim() : '' });
   }
-  document.getElementById('log-count').textContent = '(' + _commitData.length + ')';
+  var el = document.getElementById('log-count'); if (el) el.textContent = ' (' + _commitData.length + ')';
   if (_commitData.length === 0) {
     document.getElementById('graph-rows').innerHTML = '<div style="padding:20px;color:var(--base01);text-align:center;">暂无提交</div>'; return;
   }
@@ -829,7 +766,7 @@ async function _toggleCommitDetail(hash, rowEl) {
 async function _showCommitDetail(fullHash) {
   var diffR = await _gitCmd(['show', '--format=%B', fullHash]);
   var firstLine = ((diffR.stdout || '').split('\n')[0] || '').slice(0, 80);
-  document.getElementById('repo-name').textContent = 'Commit ' + fullHash.slice(0,8) + ': ' + firstLine;
+  document.getElementById('branch-name').textContent = 'commit ' + fullHash.slice(0,8) + ': ' + _esc(firstLine);
   var diffEl = document.getElementById('inline-diff'), pathEl = document.getElementById('inline-diff-path'), bodyEl = document.getElementById('inline-diff-body');
   pathEl.textContent = 'commit ' + fullHash.slice(0,8); bodyEl.innerHTML = '';
   var diffOut = diffR.stdout || '';
@@ -958,7 +895,7 @@ document.getElementById('clone-start').addEventListener('click', async function(
   try {
     var result;
     if (bridge && bridge.qz && bridge.qz.spawnStream) {
-      result = await bridge.qz.spawnStream({ cmd: _gitExePath || (await _initGitExe()), args: ['clone', '--progress', url, targetPath], cwd: parentDir, timeout: 600000 },
+      result = await bridge.qz.spawnStream({ cmd: _gitExePath || (await _initGitExe()), args: ['clone', '--progress', url, targetPath], cwd: parentDir, timeout: 600000, shell: false },
         function(channel, data) { var lines = data.split('\n').filter(Boolean), last = lines[lines.length-1]||''; var prog = document.getElementById('progress'); if (prog && last.trim()) prog.textContent = '⏳ ' + last.trim().slice(0,160); });
     } else { result = await _gitCmd(['clone', url, targetPath], { timeout: 600000 }); }
     if (result.exitCode === 0) { _hideProgress(); _gitRoot = targetPath; document.getElementById('clone-url').value = ''; document.getElementById('clone-dir').value = ''; _refreshGitStatus(); }
@@ -1001,19 +938,36 @@ function _hideAllViews(showId) {
 // ═══ AUTO-REFRESH ═══
 function _startAutoRefresh() {
   if (_autoRefreshTimer) return;
-  _autoRefreshTimer = setInterval(function() { if (_gitRoot && _gitAvailable) _refreshGitStatus(); }, 15000);
+  _autoRefreshTimer = setInterval(function() { if (_gitRoot && _gitAvailable) { _refreshGitStatus(); _showGitLog(); } }, 15000);
 }
 
 // ═══ INIT ═══
 function _init() {
   _checkGitAvailable().then(function(ok) {
     if (!ok) return;
-    _detectAllRepos().then(function() {
-      _buildRepoUI();
-      if (_gitRoot) { _refreshGitStatus(); _startAutoRefresh(); }
-      else { document.getElementById('branch-name').textContent = ''; }
-    });
+    _detectAndBuild();
   });
+}
+
+async function _detectAndBuild() {
+  for (var attempt = 0; attempt < 10; attempt++) {
+    _allProjects = _getAllProjects();
+    if (_allProjects.length > 0) break;
+    await new Promise(function(r) { setTimeout(r, 500); });
+  }
+  if (!_allProjects.length) {
+    window.addEventListener('message', function _onVp(e) {
+      if (e.data && e.data.type === 'qqq-ai-viewport-changed') {
+        window.removeEventListener('message', _onVp);
+        _detectAndBuild();
+      }
+    });
+    return;
+  }
+  await _detectAllRepos();
+  _buildRepoUI();
+  if (_gitRoot) { _refreshGitStatus().then(function(){ _showGitLog(); }); _startAutoRefresh(); }
+  else { document.getElementById('branch-name').textContent = ''; }
 }
 
 _init();

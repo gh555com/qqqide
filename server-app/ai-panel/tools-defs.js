@@ -27,11 +27,11 @@ function _notifyFileModified(filePath) {
 //
 // ============================================================
 // ★ AI-facing output caps — 唯一真理在 ContentGateway（content-gateway.js）
-//   此处为兼容旧引用的别名；所有新代码应直接使用 ContentGateway.OUTPUT_CAP_*
+//   统一内容门: ContentGateway.CTX_CAP_CHARS (50K)
 //   fetch 相关常量仅在 web fetch 场景使用，独立于 ContentGateway
 // ============================================================
-var OUTPUT_CAP_DEFAULT = (typeof ContentGateway !== 'undefined' ? ContentGateway.OUTPUT_CAP_DEFAULT : 8000);
-var OUTPUT_CAP_MAX = (typeof ContentGateway !== 'undefined' ? ContentGateway.OUTPUT_CAP_MAX : 65536);
+var OUTPUT_CAP_DEFAULT = (typeof ContentGateway !== 'undefined' ? ContentGateway.CTX_CAP_CHARS : 50000);
+var OUTPUT_CAP_MAX = OUTPUT_CAP_DEFAULT;  // 不再区分 default/max，统一门
 var OUTPUT_CAP_FETCH = 8000;     // web fetch text extraction limit (fetch 专用)
 var OUTPUT_CAP_FETCH_ERR = 500;  // web fetch error message limit (fetch 专用)
 var FILE_LINE_WARN = 1500;       // warn AI when edited/created file exceeds this threshold
@@ -81,7 +81,7 @@ function _maybeHintBackslashN(result, edits) {
 // 工具定义（OpenAI function calling format）
 // ============================================================
 
-var _RFCKB_D = typeof ContentGateway !== "undefined" ? ContentGateway.READ_FILE_CAP_KB : 195;
+var _RFCKB_D = typeof ContentGateway !== "undefined" ? Math.round(ContentGateway.CTX_CAP_CHARS / 1024) : 50;
 var TOOL_DEFINITIONS = [
     {
         type: 'function',
@@ -202,7 +202,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'run_command',
-            description: 'Run a shell command. Returns stdout+stderr. Output truncated to ' + OUTPUT_CAP_DEFAULT + ' chars by default, up to ' + OUTPUT_CAP_MAX + ' with maxOutput. Hard timeout 2h, stall guard 15min. ⚠️ Runs locally (Chinese IP) — curl/wget may be blocked on GitHub, npm, etc. Use fetch_webpage (US proxy) for web content. PREFER search_text/search_content/find_files for code search. Only use run_command when dedicated tools CANNOT do the job. ⚠️ When ssh is set: command runs on the remote host. Write the remote command naturally — ALL quoting/escaping is handled automatically (base64 transport). Do NOT manually escape nested quotes for SSH.',
+            description: 'Run a shell command. Returns stdout+stderr. Hard timeout 2h, stall guard 15min. ⚠️ Runs locally (Chinese IP) — curl/wget may be blocked on GitHub, npm, etc. Use fetch_webpage (US proxy) for web content. PREFER search_text/search_content/find_files for code search. Only use run_command when dedicated tools CANNOT do the job. ⚠️ When ssh is set: command runs on the remote host. Write the remote command naturally — ALL quoting/escaping is handled automatically (base64 transport). Do NOT manually escape nested quotes for SSH.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -210,7 +210,6 @@ var TOOL_DEFINITIONS = [
                     cwd: { type: 'string', description: 'Working directory (optional). When ssh is set, applied on remote host.' },
                     ssh: { type: 'string', description: 'Optional: SSH destination in user@host or user@host:port format. When set, the command runs on this remote host via SSH with automatic base64 escaping (zero quoting hell). Example: "q@47.105.67.51" or "q@23.254.248.119:2222"' },
                     sshJump: { type: 'string', description: 'Optional: SSH jump host (ProxyJump) when the target is behind a bastion. Example: "q@47.105.67.51". Only meaningful when ssh is also set.' },
-                    maxOutput: { type: 'number', description: 'Override output char limit (default ' + OUTPUT_CAP_DEFAULT + ', max ' + OUTPUT_CAP_MAX + '). Use only when certain you need the full output.' },
                     reason: { type: 'string', description: 'Optional: briefly explain why dedicated tools (search_text/search_content/find_files) cannot do this job. Used only for audit logging.' }
                 },
                 required: ['command']

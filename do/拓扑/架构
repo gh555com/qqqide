@@ -528,21 +528,20 @@ Agent 状态机 + 发送管线（2026-06-29 单一真相源重构 v2）
   ⑤ setStopState('sending') — 同步锁，防同一面板并发
   ⑥ 闭包捕获 agent/qid（防 switchQuest 干扰后续异步操作）
   旧缺陷：草稿处理在 L155 深埋，agent 操作（L16 setStopState）先于草稿升级，_activeAgent=null 崩溃。
-· fatal 态恢复（2026-07-03 重构）：
-  同楼层追加制（不建新目录/不增 floorNum）。原始用户消息保留（粉色气泡仅一个）。
-  失败：红框追加一行时间+原因，继续任务链接保留可再点。
-  成功（house1 首 token）：继续任务链接消失，按钮启封，时钟启动，标准流式渲染接管。
-  AI 看到完整上下文：原始问题 + _system:true 恢复消息（含全部错误历史）。
-  红框 DOM（.msg-quest-error）是楼层 AI div 的子元素，追加式渲染（不清空 innerHTML）。
-  原子改动列表：
-  · card-pool.js startBuildingFloor 复用已有楼层 DOM+补建时钟
-  · agent-loop.js send() 恢复模式不覆写 _lastUserInput
-  · _buildConversationFlowHtml 聚合 _error 消息为单红框（不逐个渲染）
-  · _buildFloorDOM 致命楼（floorFatal=true）跳过 aq1/时钟/A1/A4渲染
-  · _renderQuestErrorBox 改为 per-floor 追加式（不清空，链接复用）
-  · 新增 _hideRecoveryLink 只隐藏继续任务链接，不删红框历史
-  · _finishRecovery 清除 _deferRenderUntilHouse1 防残留
-  · sendMessage finally 块新增正常完结楼层的 _saveAgentQuestData 调用（确保 all.json 更新）
+· fatal 态恢复（2026-07-08 全域修正 — ACTIVE/CAPPED 二态模型）：
+  **旧模型（2026-07-03，已废弃）**：同楼层追加制（不建新目录/不增 floorNum），原始用户消息保留（粉色气泡仅一个）。
+  **新模型铁律**：红字框仅两种形态——ACTIVE（链接"继续任务"可见，可累积错误行）和 CAPPED（链接整行 DOM 移除，一字不留）。
+  任意楼层中断 → 立即封顶密封，永不再建（不论 house 数）。点击"继续任务" → 永远创建 `nextFloorNum()` 新楼层，粉色气泡只显示"继续"。
+  失败恢复：错误垒行到同一原始 fatal 楼层红框（`_recoveryOriginFloor`），链接恢复为 ACTIVE 可重试。
+  成功恢复（house1 首 token）：`_capRecoveryLink` 移除链接 DOM 设 `_capped=true`，按钮正常 Send。
+  Stop 按钮在 fatal+ACTIVE 态：`_capRedBoxAndSeal` 封顶所有活跃红框 → agent→idle → 用户自由操作。
+  **永不锁死 Send 按钮**：`$sendBtn.disabled = true` 在 fatal/红框路径中零出现。
+  红框 DOM（.msg-quest-error）位于 AI div 与下一楼层 user 气泡之间的 .floor-gap 容器，与 AI 内容物理隔离。
+  · 删除 _hideRecoveryLink → _capRecoveryLink（整行 DOM 移除，不灰化不留字）
+  · 删除 _attemptRecoverySend（同楼层重试 ~70 行），统一 recovery 类型创建新楼层
+  · 错误归因到 _recoveryOriginFloor（非新楼层），失败垒行到同一红框
+  · _renderQuestErrorBox 新增 _capped 检测 + 自动封顶检测
+  · _finishRecovery 简化：成功→_capRecoveryLink；失败→链接恢复可点击
 
 
 AI 面板核心机制
@@ -559,9 +558,9 @@ AI 面板核心机制
     reasoning.txt → 审计用（all.txt 截断工具结果到300字）
     quest.sq3 → 纯元数据索引（~200B/floor）
 · 饼图+时钟: canvas 112px懒重绘，四字段全等跳过。中断/异常: finally 设停止态
-· 输出截断（content-gateway.js 单一真理源）:
-    OUTPUT_CAP_DEFAULT=200000 / OUTPUT_CAP_MAX=800000 / OUTPUT_CAP_FETCH=8000
-    READ_FILE_CAP_KB=195（system-prompt.js+tools-defs.js 动态引用）
+· 统一内容门（content-gateway.js 单一真理源，2026-07-11 重构）:
+    ContentGateway.gate() — 一切工具结果+附件注入过此门。零自截断。
+    ≤50K chars → 全文 / >50K chars → 首20K+尾20K（CTX_CAP_CHARS=50000）
     安全网（ghrun 65536）远高于 AI 面
 
 AI 悬浮预览层

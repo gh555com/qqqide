@@ -17,9 +17,14 @@ async function generateFloorTxt(ag, questId) {
     var meta = (floorNum && ag._floorMeta && ag._floorMeta[floorNum]) ? ag._floorMeta[floorNum] : null;
     var allTxtPath = meta ? meta.allTxtPath : (ag._allTxtPath || '');
     var dir = '';
+    // ★ 路径校验：quest 改名后 allTxtPath 指向旧目录 → 目录不存在 → 走磁盘扫描
     if (allTxtPath) {
         dir = allTxtPath.replace(/\/all\.txt$/, '/');
-    } else {
+        var dirExists = false;
+        try { dirExists = !!(window.parent && window.parent.qqqideBridge && await window.parent.qqqideBridge.fs.exists(dir)); } catch (_) { }
+        if (!dirExists) allTxtPath = '';  // 失效 → 降级到磁盘扫描
+    }
+    if (!allTxtPath) {
         var quests = await questStore.list();
         var questEntry = quests.find(function (q) { return q.id === questId; }) || null;
         var rawQTitle = (questEntry && questEntry.title && questEntry.title !== 'New Chat') ? questEntry.title : '';

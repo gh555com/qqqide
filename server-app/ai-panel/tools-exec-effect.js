@@ -278,15 +278,11 @@ async function executeRunCommand(args) {
         // ★ 钩子 Q（_a4WrappedExecuteTool）统一处理 run_command 的扫描+记录
         // 此处不再重复 captureChanged + _a4RecordSnapshot
 
-        // [silent] run_command result
-        // AI-facing output cap (single source: OUTPUT_CAP_DEFAULT / OUTPUT_CAP_MAX)
-        var cap = Math.min(args.maxOutput || OUTPUT_CAP_DEFAULT, OUTPUT_CAP_MAX);
+        // ★ 零自截断：统一内容门 ContentGateway.gate() 处理
         if (result.exitCode === 0) {
-            var out = (result.stdout || '') + (result.stderr || '');
-            return out.length > cap ? out.slice(0, cap) + '\n... (truncated at ' + cap + ' chars)' : (out || '(no output)');
+            return (result.stdout || '') + (result.stderr || '') || '(no output)';
         } else {
-            var errOut = (result.stdout || '') + (result.stderr || '');
-            return 'Command failed (exit ' + result.exitCode + '):\n' + (errOut.length > cap ? errOut.slice(0, cap) + '\n... (truncated at ' + cap + ' chars)' : errOut);
+            return 'Command failed (exit ' + result.exitCode + '):\n' + ((result.stdout || '') + (result.stderr || ''));
         }
     } catch (err) {
         return 'Error running command: ' + (err.message || err);

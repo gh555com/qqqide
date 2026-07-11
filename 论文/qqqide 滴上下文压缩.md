@@ -1,6 +1,6 @@
 # qqqide 上下文压缩 — 概念定义与架构
 
-状态：V8 已落地。本地机械筛方案三生效。零网络，零费用。
+状态：V9 已落地。本地机械筛，零网络，零费用。
 
 ---
 
@@ -10,9 +10,10 @@
 ┌──────────────────────────────────────────────────────────────┐
 │  🔴 压缩 = 背包重构。成功前不写盘，失败原子回滚。            │
 │  🔴 零网络调用。一切在客户端完成。                           │
-│  🔴 消息正文永不被截断（user/AI/system 全量保留）。          │
-│  🔴 [File: ...] 注入块在 Q 行剥离，工具结果仅摘要。          │
-│  🔴 W6 保证 ≥ 10% 总 token + ≥ 4 层完整楼层。               │
+│  🔴 仅保留「当前在建楼层」原始。楼层完结→即刻机械筛。       │
+│  🔴 Q/A/S 全量保留，不截断。工具结果仅摘要。                 │
+│  🔴 run_command 输出完整保留（唯一不能从磁盘恢复的工具结果）。│
+│  🔴 [File: ...] 注入块在 Q 行剥离。CURRENT TIME 剥离。       │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -21,95 +22,108 @@
 ## §2 基础定义
 
 ### 背包
-AI 对话的完整上下文。即 `agent.conversation[]` 数组。每条消息含 `{role, content, tool_calls?, tool_call_id?, _floor}`。
+AI 对话的完整上下文。`agent.conversation[]` 数组。每条消息 `{role, content, tool_calls?, tool_call_id?, _floor}`。
 
 ### Z（注入物）
-背包中每次请求都会携带但**不是对话内容**的消息集合，压缩时必须剥离：
-
-| 条目 | 来源 |
-|------|------|
-| msg[0]（persistent） | Vision context + global/project rules |
-| toolsdef | 15 个工具定义，body 顶层字段 |
-| guard | Go 服务端注入 system-prompt.txt |
-| CURRENT TIME | 每条 user 消息末尾的时间戳 |
-| `_system` 恢复消息 | 系统注入的错误历史 |
-| 压缩元信息 | "压缩失败: 已回滚" 等 |
-
-### D（全量）
-从上次压缩结束至今，背包中**所有尚未被压缩的原始消息**。
-
-```
-D = |W6| + |比 W6 更新的所有消息|
-```
-
-每次压缩成功后，D 重新从 W6 起算。
+每次请求携带但非对话内容的消息，压缩时剥离：
+msg[0]（规则）、toolsdef、guard、CURRENT TIME、_system 恢复消息、压缩元信息。
 
 ### 压缩原料 X
-D 中落在断点之前的消息。
-
-```
-X = D - 断点
-```
-
-性质：原始 OpenAI messages 格式的对话历史，已剥离 Z。
-
-### 断点
-一个整数消息索引，标定"保留"和"压缩"的分界线。断点后 = W6（原始保留），断点前 = X（原料）。
-
-**计算规则**：
-1. 从最后一条消息往回找最近 4+ 层完整楼层 → 起始锚点
-2. 对锚点内消息称重（`_estimateMsgTokens`）
-3. 若总重 < 总 token × 10%，向前扩展直到满足
-4. 对齐到楼层边界（user 消息开头）
-
-### W6（热消息）
-断点之后保留不压的原始消息。保持 OpenAI messages 原样留在 conversation 中。
+待压缩的原始消息（已完结楼层）。剥离 Z 后送入机械筛。
 
 ### 压缩饼干
-原料 X 经机械筛（方案三）直接产出的纯文本。**不再经过 AI 二次加工。**
-
-包含：逐层 Q&A 缩略 + 工具调用行 + 工具返回摘要。整块作为一条 `{role:"system", _compressed:true}` 注入 conversation。
+原料 X 经机械筛产出的纯文本。逐层 Q&A 缩略 + 工具调用行 + 工具摘要 + run_command 完整输出。作为 `{role:"system", _compressed:true}` 注入 conversation。
 
 ---
 
-## §3 压缩流水线（V8 现状）
+## §3 压缩流水线（V9）
 
 ```
-1. 剥离 Z — 标 _isZ() 的消息跳过不处理
-2. 找断点 — _findBreakpoint(conv, totalTokens)
-3. 提取 X — 断点前的非 Z 消息数组
-4. 机械筛 — _buildCompressedBiscuit(X) → 纯文本饼干
-5. splice — conversation 移除 X，注入饼干消息
-6. 新 D = W6（断点位置）
+楼层完结
+  ↓
+机械筛：该楼层消息 → 纯文本饼干
+  ↓
+splice conversation：移除该楼层原始消息 → 注入饼干
+  ↓
+当前在建楼层 = 新楼层（原始保留）
 ```
 
-**零网络调用。零费用。零失败概率。**
+**零阈值。零触发。零临界点。零 W6。零 AI 网络压缩。**
+每层楼建完即压。背包永远只含：sg0 + 压缩饼干 + 当前在建楼层原始消息。
 
 ---
 
 ## §4 机械筛（方案三：楼层摘要式）
 
-### V8 规则
+### 转换规则
 
 | 原始消息 | 格式 |
 |---------|------|
-| user | `Q: [全量内容，不截断]` |
-| assistant 仅 text | `A: [全量内容，不截断]` |
-| assistant 仅 tool_calls | `[A → tool_name] file1, file2` |
-| assistant text + tool_calls | 先 A 行，再工具行 |
-| tool 返回 | 摘要追加到上一工具行（✓ L:N/M / ✓ N处 / ✓ / ✗） |
-| system | `[S] [全量内容，不截断]` |
+| user | `Q: [全量内容]` |
+| assistant 纯文本 | `A: [全量内容]` |
+| assistant 含 tool_calls | 先 `A:` 行，再 `[A → xxx] file1, file2` |
+| tool 返回（非 run_command） | 摘要追加到上一工具行 |
+| **tool 返回（run_command）** | **摘要追加上一行 + 完整输出另起缩进块** |
+| system | `[S] [全量内容]` |
 
-### 增项（V8 修）
+### 工具摘要规则
 
-- Q 行：正则剥离 `[File: ...] ```...``` ` 注入块（保留文件名路径引用，丢弃代码正文）
-- Q 行：剥离 `[CURRENT TIME: ...]` 时间戳
-- 工具行：正确提取 `tc.function.name`（旧 bug 读 `tc.name` 导致永远为空）
+| 工具 | 摘要 |
+|------|------|
+| read_file | `✓ L:N/M` |
+| edit_file | `✓ N处` / `✗ [原因]` |
+| write_file / create_file | `✓ 已写入` |
+| delete_file | `✓` |
+| **run_command** | `✓ Nc` / `✗ exit N` + **完整输出（≤8000 chars）** |
+| get_diagnostics | `✓ OK` / `✗` |
+| search_text / search_content | `✓ N处匹配` |
+| list_files / find_files | `✓ N项` |
+
+### 产出示例
+
+```
+=== F17 ===
+Q: 还是失败了，看看有没有日志
+[A → read_file] f16/all.json ✓ L:80/80
+A: 找到两个新bug。Bug1: auto-save在半路写盘污染_ctx。
+   已修复：加_compressing检查。
+[A → edit_file] panel-clock.js, panel-quest-ui.js ✓ 3处
+
+=== F18 ===
+Q: 查一下数据库里的用户数量
+[A → run_command] run_command ✓ 43c
+  │  count
+  │ ───────
+  │    142
+  │ (1 row)
+A: 当前有142个用户。
+```
 
 ---
 
-## §5 未解决的问题
+## §5 为什么 run_command 输出要保留
 
-1. **多轮压叠加** — 第 2 轮压缩时旧饼干是替换还是合并？当前是追加 system 消息
-2. **极端大消息** — 用户粘贴 50K 纯文本日志（无 `[File:]` 标记）→ 全量保留，饼干可能膨胀
-3. **search_quest.txt 归因** — _appendToSearchQuest 的目录推导在 quest 改名后过期（已修）
+| 工具 | 能从磁盘恢复吗 | 做法 |
+|------|:---:|------|
+| read_file | ✅ re-read 磁盘 | 摘要 |
+| edit_file | ✅ 磁盘已更新 | 摘要 |
+| search_text | ✅ 重新 search | 摘要 |
+| **run_command** | **❌ 一次性** | **完整保留** |
+
+`git log`、`psql` 查询、`curl` API 返回、构建错误——这些内容只在那个时刻存在，丢了永远没了。其余工具的结果都在磁盘上，AI 随时可重读。
+
+---
+
+## §6 与之前版本的本质区别
+
+```
+旧：W6（保留6层原始）+ 阈值触发 → AI 网络压缩 → 三专家并行 → 扣费 → 经常失败
+新：仅保留当前在建楼层 → 楼层完结即刻本地机械筛 → 零网络 → 零费用 → 永不失"
+```
+
+---
+
+## §7 未解决的问题
+
+1. **极端大消息** — 用户粘贴 50K 纯文本日志（无 `[File:]` 标记）→ 全量保留，饼干膨胀。改进方向：检测到疑似日志块时截断并标记
+2. **多轮压叠加** — 当前追加 system 消息。极端长对话（>200层）时饼干可能 >30K chars → 需要二次机械筛或合并旧饼干

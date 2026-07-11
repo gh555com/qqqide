@@ -97,12 +97,13 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 每次 _callGateway 前预检。400/422后被动修复+重试。
   - auto-repair 成功后必须重置 _floorOnErrorCalled。
 
-§13f 致命失败恢复 — 同楼层追加制（2026-07-03）
-  - 一个楼层只有一个粉色气泡（原始用户消息）。红框（.msg-quest-error）是楼层 AI div 内部子元素，追加式渲染。
-  - 点击继续任务：链接变光块，不建新 DOM，不新建用户气泡。sendMessage(true) 复用楼层目录和 AI div。
-  - 失败：红框追加一行（时间+原因），光块恢复为可点链接。
-  - 成功（house1 首 token）：链接消失，按钮启封，时钟启动，标准流式接管。
-  - AI conversation 含 _system:true 恢复消息（错误历史），AI 看到完整上下文。_lastUserInput 不覆写。
+§13f 致命失败恢复 — ACTIVE/CAPPED 二态模型（2026-07-08 全域修正，废弃旧 2026-07-03 同楼层追加制）
+  - **铁律1**：红字框仅 ACTIVE（链接"继续任务"可见，可累积错误行）和 CAPPED（链接整行 DOM 移除，一字不留）两种形态。不存在"已恢复"灰字。
+  - **铁律2**：$sendBtn.disabled = true 在 fatal/红框相关路径中零出现。按钮永远可点。
+  - 任意楼层中断 → 立即封顶密封，永不再建（不论 house 数）。红框位于 .floor-gap 容器（AI div 与下一楼层 user 气泡之间）。
+  - 点击"继续任务"：永远创建 `nextFloorNum()` 新楼层，粉色气泡只显示"继续"。错误垒行到同一原始 fatal 楼层红框（`_recoveryOriginFloor`）。
+  - 失败：红框追加一行（时间+原因），链接恢复为可点。成功（house1 首 token）：`_capRecoveryLink` 移除链接 DOM，按钮正常 Send。
+  - Stop 按钮在 fatal+ACTIVE 态：`_capRedBoxAndSeal` 封顶所有活跃红框 → agent→idle → 用户自由打字发送。
 
 §13a AI 网关 — Worker 纯代理+Go 权威计费
   - 线路: Client→Worker(CF edge,纯透传)→Go(唯一扣款权威)→模型供应商。
@@ -162,7 +163,9 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - Electron 二进制永不更新(§17锁定)。
 
 §22 输出截断
-  - 64KB IPC截断是§2四重防御第四环。AI面限制: tools-defs.js 4个常量，工具描述动态引用。
+  - 64KB IPC截断是§2四重防御第四环。
+  - AI面统一内容门: ContentGateway.gate()（≤50K全文/首20K+尾20K），一切工具+附件归一。
+  - 改截断大小只改 CTX_CAP_CHARS 一处。
 
 §26 三面板架构（左中右 iframe，同窗口）
   - 左翼(panel=0)+中(panel=1)+右翼(panel=2)，各自独立 iframe。

@@ -481,7 +481,36 @@ window.addEventListener('beforeunload', function () {
     }
 });
 
-// \u2550\u2550\u2550 \u66b4\u9732\u7ed9 card-pool.js \u8de8\u6a21\u5757\u8bbf\u95ee \u2550\u2550\u2550
+// ═══ 引导块恢复：扫描 conversation 中 _guideAck 消息，重建 DOM 引导块 ═══
+// ★ 方案 C 根治：onDone 的 innerHTML=renderMarkdown(content) 会摧毁建楼期间 DOM 追加的引导块；
+//    ai_html 保存的也是摧毁后的 DOM → 重启后引导块 100% 丢失。
+//    此函数同时在 onDone 和 _buildFloorDOM 两处调用，确保引导块永不丢失。
+function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
+    if (!contentWrap || !conv || !conv.length) return;
+    // ★ 去重：引导块已存在则跳过（_buildConversationFlowHtml 已含时不重复追加）
+    if (contentWrap.querySelector('.msg-flow-guide-inject') || contentWrap.querySelector('.msg-flow-guide-ack')) return;
+    var escFn = window._escHtml || function (s) { return String(s).replace(/</g, '&lt;').replace(/>/g, '&gt;'); };
+    for (var i = 0; i < conv.length; i++) {
+        var m = conv[i];
+        if (!m || !m._guideAck) continue;
+        if (m._floor !== floorNum) continue;
+        // 引导注入块（⚡）
+        if (m._guideText) {
+            var injectEl = document.createElement('div');
+            injectEl.className = 'msg-flow-guide-inject';
+            injectEl.innerHTML = '<div class="msg-flow-guide-hdr"><span class="msg-flow-icon">\u26a1</span> \u5f15\u5bfc\u4fe1\u606f</div><div class="msg-flow-guide-body">' + escFn(m._guideText) + '</div>';
+            contentWrap.insertBefore(injectEl, contentWrap.firstChild);
+        }
+        // 引导确认块（✅）
+        var ackText = (m.content || '\u5df2\u6536\u5230\u5f15\u5bfc').replace(/^\u2705\s*/, '').trim();
+        var ackEl = document.createElement('div');
+        ackEl.className = 'msg-flow-guide-ack';
+        ackEl.innerHTML = '<div class="msg-flow-guide-ack-hdr"><span class="msg-flow-icon">\u2705</span> Guide received</div><div class="msg-flow-guide-ack-body">' + escFn(ackText || '\u5df2\u6536\u5230\u5f15\u5bfc') + '</div>';
+        contentWrap.insertBefore(ackEl, contentWrap.firstChild);
+    }
+}
+
+// ═══ 暴露给 card-pool.js 跨模块访问 ═══
 window._initA1Block = _initA1Block;
 window._initClockBlock = _initClockBlock;
 window.renderMarkdown = renderMarkdown;
@@ -491,6 +520,7 @@ window._updateA1Row1 = _updateA1Row1;
 window.drawPie = drawPie;
 window._showPieTooltip = _showPieTooltip;
 window._hidePieTooltip = _hidePieTooltip;
+window._restoreGuideBlocksToContentWrap = _restoreGuideBlocksToContentWrap;
 
 // ═══ 崩溃防护：窗口关闭前阻塞等待楼层数据写盘完成 ═══
 //   ⚠ 不用 fire-and-forget：之前 _saveAgentQuestData 是 async，不 await 的话
