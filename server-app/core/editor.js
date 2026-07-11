@@ -307,7 +307,7 @@
       renderLineHighlightOnlyWhenFocus: true,
       occurrencesHighlight: false,
       selectionHighlight: true,
-      matchBrackets: 'always',
+      matchBrackets: 'never',
       autoClosingBrackets: 'never',
       autoClosingQuotes: 'never',
       autoIndent: 'none',
@@ -500,6 +500,8 @@
       _installGutterClickFix(ed, monaco);
       _addMinimapAction(ed, monaco, null);
       _addFeedToAiAction(ed, monaco, null);
+      // 括号匹配（自实现）
+      _installBracketMatcher(ed, monaco);
       // 抹除 Change All Occurrences
       try { var a = ed.getAction('editor.action.changeAll'); if (a) a._dispose ? a._dispose() : a.dispose ? a.dispose() : null; } catch (_) {}
       // ── 面包屑导航条（空编辑器：仅工具按钮）──
@@ -653,9 +655,132 @@
   let _editorRef = null;   // raw monaco IStandaloneCodeEditor
   let _paneFiles = {};      // editor dom node → filePath (reverse lookup for dispose cleanup)
   let _paneEditors = {};    // filePath → editor instance (for live refresh)
-  let _jumpLineStyleInjected = false;
+   let _jumpLineStyleInjected = false;
 
-  // ★ 搜索跳转行高亮：给目标行加背景色，4s 自动消失
+  // ── 括号匹配 — 自实现，零 LSP 依赖 ──
+  var _bracketStyleInjected = false;
+  var _BR_PAIRS = { '(': ')', '[': ']', '{': '}' };
+  var _BR_REV   = { ')': '(', ']': '[', '}': '{' };
+  var _BR_OPEN  = new Set(['(', '[', '{']);
+  var _BR_CLOSE = new Set([')', ']', '}']);
+  var _BR_MAX_SCAN = 50000; // 单方向最大扫描字符数，防大文件卡死
+
+  function _installBracketMatcher(ed, monaco) {
+    if (!_bracketStyleInjected) {
+      _bracketStyleInjected = true;
+      var s = document.createElement('style');
+      s.textContent = '.qqq-bracket-match{background:rgba(181,137,0,0.25)!important;outline:1px solid rgba(181,137,0,0.6)}[data-theme="dark"] .qqq-bracket-match{background:rgba(181,137,0,0.35)!important;outline:1px solid rgba(181,137,0,0.7)}';
+      document.head.appendChild(s);
+    }
+
+    var _bDecos = [];
+    var _bTimer = 0;
+
+    function _clearDecos() {
+      if (_bDecos.length > 0) {
+        try { _bDecos = ed.deltaDecorations(_bDecos, []); } catch (_) {}
+      }
+    }
+
+    // per-line token cache: 避免同一行反复调 getLineTokens
+    var _bTok = {};
+
+    function _inStrOrCmt(model, line, col) {
+      var toks = _bTok[line];
+      if (toks === undefined) {
+        try {
+          var raw = model.getLineTokens(line);
+          toks = raw && raw.getTokens ? raw.getTokens() : (raw && raw.tokens ? raw.tokens : []);
+        } catch (_) { toks = []; }
+        _bTok[line] = toks;
+      }
+      for (var i = 0; i < toks.length; i++) {
+        var t = toks[i];
+        var off = t.offset, len = t.text ? t.text.length : 0;
+        if (col >= off + 1 && col < off + 1 + len) {
+          return t.type.indexOf('string') === 0 || t.type.indexOf('comment') === 0;
+        }
+      }
+      return false;
+    }
+
+    function _findMatch(model, lines, startLine, startCol, isOpen) {
+      var totalLines = lines.length;
+      _bTok = {}; // 每轮新匹配清 token 缓存
+
+      if (isOpen) {
+        var openCh = model.getValueInRange({ startLineNumber: startLine, startColumn: startCol, endLineNumber: startLine, endColumn: startCol + 1 });
+        var closeCh = _BR_PAIRS[openCh];
+        if (!closeCh) return null;
+        var stack = 1, line = startLine, col = startCol + 1, scanned = 0;
+        while (line <= totalLines && scanned < _BR_MAX_SCAN) {
+          var ln = lines[line - 1];
+          while (col <= ln.length && scanned < _BR_MAX_SCAN) {
+            var ch = ln[col - 1];
+            if (ch === openCh && !_inStrOrCmt(model, line, col)) { stack++; }
+            else if (ch === closeCh && !_inStrOrCmt(model, line, col)) { stack--; if (stack === 0) return { line: line, col: col }; }
+            col++; scanned++;
+          }
+          line++; col = 1;
+        }
+      } else {
+        var closeCh2 = model.getValueInRange({ startLineNumber: startLine, startColumn: startCol, endLineNumber: startLine, endColumn: startCol + 1 });
+        var openCh2 = _BR_REV[closeCh2];
+        if (!openCh2) return null;
+        var stack = 1, line = startLine, col = startCol - 1, scanned = 0;
+        while (line >= 1 && scanned < _BR_MAX_SCAN) {
+          var ln = lines[line - 1];
+          while (col >= 1 && scanned < _BR_MAX_SCAN) {
+            var ch = ln[col - 1];
+            if (ch === closeCh2 && !_inStrOrCmt(model, line, col)) { stack++; }
+            else if (ch === openCh2 && !_inStrOrCmt(model, line, col)) { stack--; if (stack === 0) return { line: line, col: col }; }
+            col--; scanned++;
+          }
+          line--;
+          if (line >= 1) col = lines[line - 1].length;
+        }
+      }
+      return null;
+    }
+
+    function _highlight(a, b) {
+      _clearDecos();
+      try {
+        _bDecos = ed.deltaDecorations([], [
+          { range: new monaco.Range(a.line, a.col, a.line, a.col + 1), options: { className: 'qqq-bracket-match' } },
+          { range: new monaco.Range(b.line, b.col, b.line, b.col + 1), options: { className: 'qqq-bracket-match' } }
+        ]);
+      } catch (_) {}
+    }
+
+    ed.onDidChangeCursorPosition(function (e) {
+      clearTimeout(_bTimer);
+      _bTimer = setTimeout(function () {
+        _clearDecos();
+        try {
+          var model = ed.getModel(); if (!model) return;
+          var pos = e.position;
+          // 优先取光标处字符，其次取光标左侧字符
+          var chAt = model.getValueInRange({ startLineNumber: pos.lineNumber, startColumn: pos.column, endLineNumber: pos.lineNumber, endColumn: pos.column + 1 });
+          var line = pos.lineNumber, col = pos.column;
+          if (!_BR_OPEN.has(chAt) && !_BR_CLOSE.has(chAt) && pos.column > 1) {
+            chAt = model.getValueInRange({ startLineNumber: pos.lineNumber, startColumn: pos.column - 1, endLineNumber: pos.lineNumber, endColumn: pos.column });
+            col = pos.column - 1;
+          }
+          if (!_BR_OPEN.has(chAt) && !_BR_CLOSE.has(chAt)) return;
+
+          var lines = model.getValue().split('\n');
+          var match = _findMatch(model, lines, line, col, _BR_OPEN.has(chAt));
+          if (match) _highlight({ line: line, col: col }, match);
+        } catch (_) {}
+      }, 120);
+    });
+
+    ed.onDidBlurEditorWidget(function () { _clearDecos(); });
+    ed.onDidDispose(function () { _clearDecos(); });
+  }
+
+  // ★ 搜索跳转行高亮给目标行加背景色，4s 自动消失
   function _highlightJumpLine(ed, monaco, lineNumber) {
     if (!_jumpLineStyleInjected) {
       _jumpLineStyleInjected = true;
@@ -724,6 +849,8 @@
 
       _applyMinimapPref(ed, monaco, filePath);
       _addFeedToAiAction(ed, monaco, filePath);
+      // 括号匹配（自实现）
+      _installBracketMatcher(ed, monaco);
       // 抹除 Change All Occurrences
       try { var a = ed.getAction('editor.action.changeAll'); if (a) a._dispose ? a._dispose() : a.dispose ? a.dispose() : null; } catch (_) {}
 
