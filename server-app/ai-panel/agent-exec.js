@@ -108,22 +108,14 @@ AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assis
                 var truncated = resultStr.length > 2000;
                 onToolResult(item.name, truncated ? resultStr.slice(0, 2000) + '\n... (truncated)' : resultStr, truncated);
             }
-            var _aiCap = (typeof ContentGateway !== 'undefined' ? ContentGateway.OUTPUT_CAP_DEFAULT : 8000);
-            var trimmed = resultStr.length > _aiCap
-                ? resultStr.slice(0, _aiCap) + '\n... (' + resultStr.length + ' chars, truncated)'
-                : resultStr;
-            return { call: item.call, content: trimmed, rawContent: resultStr };
+            // ★ 统一内容门：上下文+落盘同一函数
+            var gated = (typeof ContentGateway !== 'undefined' && ContentGateway.gate) ? ContentGateway.gate(resultStr) : resultStr;
+            return { call: item.call, content: gated, rawContent: resultStr };
         });
         var results = await Promise.all(promises);
-        // 所有工具结果经内容安全网关处理后才进入存储/UI（单一真理入口）
         var lastHouse = self._houses[self._houses.length - 1];
         if (lastHouse && lastHouse.type === 'tools') {
-            lastHouse.toolResults = results.map(function (r) {
-                var gated = (typeof ContentGateway !== 'undefined' && ContentGateway.process)
-                    ? ContentGateway.process(r.rawContent)
-                    : { safe: r.rawContent || '' };
-                return gated.safe;
-            });
+            lastHouse.toolResults = results.map(function (r) { return r.content; });
             lastHouse._lines = null;  // 使 UI 端 _buildHouseLines 缓存失效
         }
         for (var ri = 0; ri < results.length; ri++) {

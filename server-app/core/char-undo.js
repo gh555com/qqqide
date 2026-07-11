@@ -29,7 +29,7 @@
 
   // ── 配置常量 ──
   var NATIVE_MAX_HISTORY = 200;
-  var NATIVE_CEIL_CHARS = 10000;   // 超过此长度的值不记历史
+  var NATIVE_CEIL_CHARS = 20000;   // 超过此长度的值不记历史（≥ EDITOR_CAP_CHARS 16K 保证全量覆盖）
   var MONACO_MAX_HISTORY = 50;
   var MONACO_CEIL_CHARS = 500000;  // 500KB
 

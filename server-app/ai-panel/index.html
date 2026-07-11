@@ -253,7 +253,11 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 .msg-flow-compress-fail-hdr{display:flex;align-items:center;gap:4px;font-weight:700;color:#dc322f;font-size:13px}
 .msg-flow-compress-fail-body{font-size:13px;line-height:1.5;word-break:break-word;white-space:pre-wrap}
 .msg-status{font-size:10px;color:var(--base01);padding:4px 0;font-style:italic}
-#input-area{border-top:1px solid var(--border-color);padding:8px;display:flex;flex-direction:column;gap:6px;background:var(--card-bg)}
+/* ── 开放厨房输入区：右侧留16px给兔子按钮 ── */
+#input-area{border-top:1px solid var(--border-color);padding:8px 24px 4px 8px;display:flex;flex-direction:column;gap:6px;background:var(--card-bg);position:relative}
+/* ── 兔子按钮：绝对定位，从顶拉到底，右贴边 ── */
+#rabbit-btn{position:absolute;right:0;top:0;bottom:0;width:16px;border:none;border-left:1px solid var(--border-color);background:transparent;cursor:pointer;padding:0;margin:0;display:flex;align-items:center;justify-content:center;outline:none}#rabbit-btn:hover{background:rgba(255,61,0,0.08)}#rabbit-btn:active{background:rgba(255,61,0,0.15)}
+#rabbit-btn svg{width:10px;height:auto;display:block;color:var(--text-primary)}
 #image-strip{display:none;overflow-x:hidden;flex-wrap:wrap;padding:4px 0;gap:6px}
 #image-strip::-webkit-scrollbar{height:4px}
 #image-strip::-webkit-scrollbar-thumb{background:var(--base01);border-radius:2px}
@@ -267,22 +271,27 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 .msg-img-wrap img{max-height:120px;border-radius:4px;margin:0}
 .msg-img-badge{position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.75);color:#fff;font-size:10px;font-weight:bold;padding:2px 6px;border-radius:3px;user-select:none;z-index:1}
 .msg-img-badge:hover{background:var(--green)}
-#input-row{display:flex;gap:6px;overflow:hidden}
-#input{flex:1;min-width:0;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:333px;overflow-y:hidden;overflow-x:hidden;resize:none;outline:none;scrollbar-width:thin;scrollbar-color:var(--base01) transparent;line-height:1.5}#input::-webkit-scrollbar{width:3px}#input::-webkit-scrollbar-track{background:transparent;border:none}#input::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}#input::-webkit-scrollbar-button{display:none}#input::-webkit-scrollbar-corner{background:transparent}
-#input:focus{outline:1px solid var(--blue)}
+#input-row{display:flex;gap:0;overflow:hidden;margin:0 -8px 0 -8px}
+/* ── 开放厨房：输入框无边框，仅底边进度条 ── */
+#input-wrap{position:relative;flex:1;min-width:0}
+#input{display:block;width:100%;background:var(--card-bg);color:var(--text-primary);border:none;border-radius:0;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:333px;overflow-y:hidden;overflow-x:hidden;resize:none;outline:none;scrollbar-width:thin;scrollbar-color:var(--base01) transparent;line-height:1.5}#input::-webkit-scrollbar{width:3px}#input::-webkit-scrollbar-track{background:transparent;border:none}#input::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}#input::-webkit-scrollbar-button{display:none}#input::-webkit-scrollbar-corner{background:transparent}
+/* ── 输入进度条：底部 2px 单线填色，颜色 #ff3d00 ── */
+#input-progress{position:absolute;left:0;right:0;bottom:0;height:2px;pointer-events:none;z-index:1;overflow:hidden}
+#input-progress-fill{height:100%;width:0;background:#ff3d00;transition:width 0.12s ease;will-change:width}
 #input-limit-warn{display:none;background:var(--red);color:#fff;font-size:13px;font-weight:700;padding:8px 12px;border-radius:4px;text-align:center;animation:_warnPulse .6s infinite alternate}@keyframes _warnPulse{from{opacity:1}to{opacity:.7}}
 #input-limit-warn.show{display:block}
 #input::placeholder{color:var(--base01);opacity:.5}
-#btn-row{display:flex;gap:3px;align-items:center;flex-wrap:nowrap;overflow-x:hidden}
+#btn-row{display:flex;gap:3px;align-items:center;flex-wrap:nowrap;overflow-x:hidden;margin-left:-3px}
 #btn-row button{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:3px 7px;font-size:12px;height:25px;white-space:nowrap;flex-shrink:0}
 #btn-row button:hover{background:var(--base3)}
 #btn-row button:disabled{opacity:.3;}
 #send-btn.stop{background:var(--red);color:#fff;border-color:var(--red);opacity:1}
-#send-btn{min-width:44px;text-align:center}
 #guide-btn,#queue-btn{padding:3px 5px}
-#guide-btn{margin-left:-2px}
+#guide-btn{margin-left:-5px}
+#queue-btn{margin-left:-3px}
 #guide-btn:disabled{opacity:0.35}
-#send-btn{margin-left:6px}
+#send-btn{min-width:44px;text-align:center;margin-left:0}
+#ctx-btn{margin-left:-6px}
 #btn-row #ctx-btn{position:relative;overflow:hidden;min-width:53px;background:linear-gradient(to right,transparent var(--ctx-pct),var(--card-bg) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
 #btn-row #ctx-btn:hover{background:linear-gradient(to right,transparent var(--ctx-pct),var(--base3) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
 #guide-btn svg,#queue-btn svg{display:block;width:13px;height:13px}
@@ -563,11 +572,15 @@ var _orig={};
 <div id="floor-indicator"><span class="floor-ind-tofu">-</span><span class="floor-ind-needle"></span></div>
 </div>
 <div id="input-area">
+  <button id="rabbit-btn" title="兔子"><svg viewBox="0 0 24 34" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="7" cy="7" rx="2.5" ry="9"/><ellipse cx="17" cy="7" rx="2.5" ry="9"/><circle cx="12" cy="19" r="4.5"/><circle cx="10" cy="18" r="0.8"/><circle cx="14" cy="18" r="0.8"/><path d="M10.5 20.5 Q12 22 12 19"/><path d="M13.5 20.5 Q12 22 12 19"/><ellipse cx="12" cy="28" rx="5.5" ry="5"/></svg></button>
   <div id="image-strip"></div>
   <div id="queue-strip"></div>
   <div id="input-limit-warn" data-i18n="ai.inputLimitWarn">键入已达上限 58KB，无法继续键入</div>
   <div id="input-row">
-    <textarea id="input" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" placeholder="Ask qqq AI... (Ctrl+V 粘贴图片)" data-i18n-placeholder-attr="ai.inputPlaceholder" rows="2"></textarea>
+    <div id="input-wrap">
+      <textarea id="input" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" placeholder="Ask qqq AI... (Ctrl+V 粘贴图片)" data-i18n-placeholder-attr="ai.inputPlaceholder" rows="2"></textarea>
+      <div id="input-progress"><div id="input-progress-fill"></div></div>
+    </div>
   </div>
   <div id="btn-row">
     <div class="tier-group">

@@ -192,33 +192,9 @@ async function executeReadFile(args) {
         }
         return _errMsg;
     }
-    // ★ read_file 截断（单一真理: ContentGateway.READ_FILE_CAP_BYTES，默认 ~195KB）
-    //   策略：≤上限全文返回；>上限返回前缀 + 准确分页提示，AI 用 start_line 继续
-    if (typeof _readResult === 'string' && _readResult.indexOf('[BINARY FILE]') !== 0 && _readResult.indexOf('[IS DIRECTORY]') !== 0) {
-        var _maxSrcBytes = (typeof ContentGateway !== 'undefined' && ContentGateway.READ_FILE_CAP_BYTES) ? ContentGateway.READ_FILE_CAP_BYTES : 200000;
-        var _enc = new TextEncoder();
-        var _srcBytes = _enc.encode(_readResult).length;
-        if (_srcBytes > _maxSrcBytes) {
-            // 二分搜索最大合法前缀（O(log N) 次 encode，非逐字符循环）
-            var _lo = 0, _hi = _readResult.length;
-            while (_lo < _hi) {
-                var _mid = Math.ceil((_lo + _hi) / 2);
-                if (_enc.encode(_readResult.substring(0, _mid)).length <= _maxSrcBytes) {
-                    _lo = _mid;
-                } else {
-                    _hi = _mid - 1;
-                }
-            }
-            var _truncated = _readResult.substring(0, _lo);
-            var _totalKB = Math.round(_srcBytes / 1024);
-            var _shownKB = Math.round(_enc.encode(_truncated).length / 1024);
-            var _totalLines = _readResult.split('\n').length;
-            var _shownLines = _truncated.split('\n').length;
-            _readResult = '[TRUNCATED L1-' + _shownLines + '] ' + _totalLines + ' lines total, ' + _shownLines + ' shown (~' + _shownKB + 'KB of ' + _totalKB + 'KB).\n\n' + _truncated;
-        }
-    }
+    // ★ 统一内容门：一切过 ContentGateway.gate()，零自截断
     // ★ 追加预加载软提示（不拦截，仅告知）
-    if (_preloadHint && typeof _readResult === 'string' && _readResult.indexOf('[BINARY FILE]') !== 0 && _readResult.indexOf('[TRUNCATED]') !== 0) {
+    if (_preloadHint && typeof _readResult === 'string' && _readResult.indexOf('[BINARY FILE]') !== 0) {
         _readResult += _preloadHint;
     }
     return _readResult;

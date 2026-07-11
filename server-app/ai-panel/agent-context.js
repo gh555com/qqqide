@@ -1,6 +1,6 @@
 // ============================================================================
 // agent-context.js — 上下文压缩引擎（本地机械筛，零网络调用）
-// VER: COMPACT-V8-20260710  ← V8: fix biscuit garbling (tool_calls output before pending)
+// VER: COMPACT-V9-20260711  ← V9: preserve run_command output (only non-recoverable tool result)
 //
 // 架构（论文: 论文/qqqide 滴上下文压缩.md §3）:
 //   1. 找断点 — W6 至少6层楼 + >= 10% token 重量
@@ -322,13 +322,17 @@
                     if (lines.length > 0) {
                         lines[lines.length - 1] += summary;
                     }
+                    // ★ run_command: 保留完整输出（唯一不能从磁盘恢复的）
+                    if (matchedTc.function && matchedTc.function.name === 'run_command' && content) {
+                        var cmdOut = content;
+                        if (cmdOut.length > 8000) {
+                            cmdOut = cmdOut.slice(0, 4000) + '\n…[截断 ' + (content.length - 8000) + ' chars]…\n' + cmdOut.slice(-4000);
+                        }
+                        var indentLines = cmdOut.split('\n').map(function(l) { return '  │ ' + l; }).join('\n');
+                        lines.push(indentLines);
+                    }
                 } else {
                     lines.push('  [T] ✓');
-                }
-                // 如果所有 tool_calls 都有结果了，清空
-                var allDone = true;
-                for (var tu = 0; tu < pendingToolCalls.length; tu++) {
-                    // 简单判断：pending 行还在就不清（同一轮的 tool calls）
                 }
                 continue;
             }

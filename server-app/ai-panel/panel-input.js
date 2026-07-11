@@ -153,7 +153,7 @@ function getLoginToken() {
     return '';
 }
 
-// ── 编辑框自适应高度：始终比内容多一行（最少两行），上限 333px ──
+// ── 编辑框自适应高度：双路径（空→rows=2原生高 / 非空→rows=1+scrollHeight），零抖动 ═══
 var _inputLineHeight = 0;
 var _inputMaxHeight = 333;
 function autoResizeInput() {
@@ -161,14 +161,13 @@ function autoResizeInput() {
     if (!_inputLineHeight) {
         _inputLineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
     }
-    // 空键入 → 恢复默认两行高
     if (!el.value) {
         el.rows = 2;
         el.style.height = '';
         el.style.overflowY = 'hidden';
+        _updateInputProgress();
         return;
     }
-    // 强制 rows=1 再 auto，让 scrollHeight = 真实内容高度（不被 rows 地板抬高）
     el.rows = 1;
     el.style.height = 'auto';
     var sh = el.scrollHeight;
@@ -180,22 +179,74 @@ function autoResizeInput() {
         el.style.height = newH + 'px';
         el.style.overflowY = 'hidden';
     }
+    _updateInputProgress();
+    // 安全网：直设原生 value
+    var cap = (typeof ContentGateway !== 'undefined') ? ContentGateway.EDITOR_CAP_CHARS : 16000;
+    if (el.value.length > cap) {
+        el.value = el.value.substring(0, cap);
+        _updateInputProgress();
+    }
 }
 $input.addEventListener('input', autoResizeInput);
-// 兜底：程序改 value 时不触发 input 事件，劫持 value setter 自动调 autoResize
-(function () {
-    var _origValueDesc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-    if (_origValueDesc && _origValueDesc.set) {
-        var _origSet = _origValueDesc.set;
+// 兜底：程序改 value 时触发 autoResizeInput（发完消息清空/切 quest 恢复）
+(function(){
+    var _desc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+    if (_desc && _desc.set) {
         Object.defineProperty($input, 'value', {
-            get: function () { return _origValueDesc.get.call(this); },
-            set: function (v) { _origSet.call(this, v); autoResizeInput(); },
-            configurable: true, enumerable: true
+            get: function() { return _desc.get.call(this); },
+            set: function(v) {
+                _desc.set.call(this, v);
+                autoResizeInput();
+            },
+            configurable: true
         });
     }
 })();
 // 窗口大小变化或主题切换可能导致行高变化，重新计算
 window.addEventListener('resize', function () { _inputLineHeight = 0; autoResizeInput(); });
+
+// ═══ 输入进度条 — 底部 2px 单线填色 #ff3d00 ═══
+function _updateInputProgress() {
+    var fill = document.getElementById('input-progress-fill');
+    if (!fill) return;
+    var cap = (typeof ContentGateway !== 'undefined') ? ContentGateway.EDITOR_CAP_CHARS : 16000;
+    var len = $input.value.length;
+    var pct = Math.min(len / cap * 100, 100);
+    fill.style.width = pct + '%';
+    // 触顶才弹 qoast（防抖 3s）
+    if (pct >= 100) _limitQoast('typed');
+}
+
+// ═══ 上限 qoast 防抖（3s 冷却）══
+var _lastLimitQoastTs = 0;
+var _LIMIT_QOAST_COOLDOWN = 3000;
+function _limitQoast(reason) {
+    var now = Date.now();
+    // paste 截断 → 跳过冷却，必弹一次
+    if (reason !== 'paste-truncated' && reason !== 'paste-full') {
+        if (now - _lastLimitQoastTs < _LIMIT_QOAST_COOLDOWN) return;
+    }
+    _lastLimitQoastTs = now;
+    var cap = (typeof ContentGateway !== 'undefined') ? ContentGateway.EDITOR_CAP_CHARS : 16000;
+    var msg = '输入已达上限 ' + (cap / 1000) + 'K 字符';
+    if (reason === 'paste-truncated') msg += '，多余内容已截断';
+    try {
+        if (parent && parent.window && parent.window.qqqideQoast) {
+            parent.window.qqqideQoast.show(msg, { duration: 3500, type: 'warning' });
+        }
+    } catch (_) {}
+}
+
+// ═══ 硬上限键前拦截：已达上限且键入可打印字符→阻止（防字母先入再截）══
+$input.addEventListener('keydown', function (e) {
+    // 可打印字符：key.length===1 且非修饰键；Backspace/Delete/Enter/方向键等 length>1 放行
+    if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) return;
+    var cap = (typeof ContentGateway !== 'undefined') ? ContentGateway.EDITOR_CAP_CHARS : 16000;
+    if ($input.value.length >= cap) {
+        e.preventDefault();
+        _limitQoast('typed');
+    }
+}, true);
 
 // Enter to send
 $input.addEventListener('keydown', function (e) {
@@ -306,10 +357,26 @@ $input.addEventListener('paste', function (e) {
             break;
         }
     }
-    // 无图片粘贴：强制纯文本（阻止富文本）
+    // 无图片粘贴：强制纯文本（阻止富文本）+ 硬上限保护
     if (!hasImage && plainText) {
         e.preventDefault();
-        document.execCommand('insertText', false, plainText);
+        var cap = (typeof ContentGateway !== 'undefined') ? ContentGateway.EDITOR_CAP_CHARS : 16000;
+        var selStart = $input.selectionStart || 0;
+        var selEnd = $input.selectionEnd || 0;
+        // 直接读原生 value（无自定义 setter 干扰）
+        var cur = $input.value;
+        var before = cur.substring(0, selStart);
+        var after = cur.substring(selEnd);
+        var available = cap - before.length - after.length;
+        if (available <= 0) { _limitQoast('paste-full'); return; }
+        var wasTruncated = plainText.length > available;
+        var insertText = wasTruncated ? plainText.substring(0, available) : plainText;
+        // 直设原生 value + 手动触发 input→autoResizeInput 安全网也在此覆盖
+        $input.value = before + insertText + after;
+        $input.setSelectionRange(selStart + insertText.length, selStart + insertText.length);
+        $input.dispatchEvent(new Event('input', { bubbles: true }));
+        _updateInputProgress();
+        if (wasTruncated) _limitQoast('paste-truncated');
     }
 });
 $sendBtn.onclick = function () {

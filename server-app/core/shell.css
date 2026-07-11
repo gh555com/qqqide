@@ -33,7 +33,7 @@ body {
   position: relative;
 }
 
-/* ---- 中间固定块 —— 菜单+中区+状态栏（left/right 随 wings 调整，内部永不变） ---- */
+/* ---- 中间固定�?—�?菜单+中区+状态栏（left/right �?wings 调整，内部永不变�?---- */
 .qqq-main {
   position: absolute;
   top: 0;
@@ -45,7 +45,7 @@ body {
   overflow: hidden;
 }
 
-/* ---- 左右翼 —— 全高 iframe，无菜单无状态栏 ---- */
+/* ---- 左右�?—�?全高 iframe，无菜单无状态栏 ---- */
 .qqq-wing {
   position: absolute;
   top: 0;
@@ -56,7 +56,7 @@ body {
   background: var(--card-bg);
 }
 
-/* ---- 翼板魔术遮罩：toggle 期间覆盖全窗口，阻塞一切交互 ---- */
+/* ---- 翼板魔术遮罩：toggle 期间覆盖全窗口，阻塞一切交�?---- */
 .qqq-wing-mask {
   position: fixed;
   inset: 0;
@@ -134,13 +134,13 @@ body {
   -webkit-app-region: no-drag;
 }
 
-/* 菜单标签 — 永不变形、永不换行 */
+/* 菜单标签 �?永不变形、永不换�?*/
 .qqq-menubar-label {
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-/* 菜单行1 分割空气墙（8px）— 可拖拽窗口 */
+/* 菜单�? 分割空气墙（8px）�?可拖拽窗�?*/
 .qqq-drag-gap {
   width: 8px;
   height: 100%;
@@ -197,7 +197,7 @@ body {
   transition: background 100ms, border-color 100ms, box-shadow 100ms;
 }
 
-/* 点击框放大到 32×32 矩形，视觉保持 12px 圆点 */
+/* 点击框放大到 32×32 矩形，视觉保�?12px 圆点 */
 .qqq-bulb-dot::after {
   content: '';
   position: absolute;
@@ -401,7 +401,7 @@ body {
   letter-spacing: 0.05em;
 }
 
-/* GE 余额标签（登录态可见，在手机号左边） */
+/* GE 余额标签（登录态可见，在手机号左边�?*/
 .qqq-ge-label {
   -webkit-app-region: no-drag;
   font-size: 12px;
@@ -523,7 +523,7 @@ body {
   color: var(--text-primary);
 }
 
-/* ---- AI Zone (fixed 389px, in flex flow — 中面板) ---- */
+/* ---- AI Zone (fixed 389px, in flex flow �?中面�? ---- */
 .qqq-ai-zone {
   flex: 0 0 var(--ai-zone-w);
   width: var(--ai-zone-w);
@@ -726,13 +726,13 @@ body {
   background: transparent !important;
 }
 
-/* overview ruler 内的 canvas 也不要边框 */
+/* overview ruler 内的 canvas 也不要边�?*/
 .monaco-editor .overviewRuler canvas {
   border: none !important;
   outline: none !important;
 }
 
-/* ── 光标：禁用平滑动画，纯闪现 ── */
+/* ── 光标：禁用平滑动画，纯闪�?── */
 .monaco-editor .cursor {
   transition: none !important;
   animation: none !important;
@@ -780,8 +780,7 @@ body {
 }
 
 /* ============================================================================
-   Editor Breadcrumb Bar — 独立豆腐块（flex item，占真实高度）
-   ============================================================================ */
+   Editor Breadcrumb Bar �?独立豆腐块（flex item，占真实高度�?   ============================================================================ */
 [data-qqq-editor-breadcrumb] {
   flex: 0 0 auto;
   padding: 2px 10px 2px 16px;
@@ -796,7 +795,7 @@ body {
   overflow-wrap: anywhere;
   line-height: 1.4;
   min-height: 18px;
-  /* 可选中/复制，不可编辑 */
+  /* 可选中/复制，不可编�?*/
   user-select: text;
   -webkit-user-select: text;
   cursor: text;
@@ -820,7 +819,7 @@ body {
 }
 
 /* ============================================================================
-   Monaco 右键菜单 — Solarized 配色
+   Monaco 右键菜单 �?Solarized 配色
    ============================================================================ */
 /* 菜单容器 */
 .monaco-menu .monaco-action-bar {
@@ -829,7 +828,7 @@ body {
   box-shadow: 0 2px 8px rgba(0,0,0,0.18) !important;
 }
 
-/* 菜单项 */
+/* 菜单�?*/
 .monaco-menu .action-item {
   color: var(--text-primary) !important;
 }
@@ -838,23 +837,23 @@ body {
   color: var(--text-primary) !important;
 }
 
-/* 分隔线 */
+/* 分隔�?*/
 .monaco-menu .monaco-action-bar .action-item.menu-separator {
   border-bottom-color: var(--border-color) !important;
 }
 
-/* 快捷键提示 */
+/* 快捷键提�?*/
 .monaco-menu .keybinding {
   color: var(--text-secondary) !important;
 }
 
-/* 禁用项 */
+/* 禁用�?*/
 .monaco-menu .action-item.disabled .action-label {
   color: var(--base1) !important;
   opacity: 0.5;
 }
 
-/* 悬浮/聚焦项 — 金色替代默认蓝色 */
+/* 悬浮/聚焦�?�?金色替代默认蓝色 */
 .monaco-menu .action-item.focused {
   background: #ffd301 !important;
   color: #000 !important;
@@ -868,7 +867,7 @@ body {
   color: #555 !important;
 }
 
-/* 悬浮按钮行（absolute 在 Monaco 容器右下角，零重排） */
+/* 悬浮按钮行（absolute �?Monaco 容器右下角，零重排） */
 [data-qqq-editor-float-btns] {
   position: absolute;
   bottom: 8px;
@@ -1033,10 +1032,12 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 100%;
-  padding: 0 8px;
+  height: auto;
+  min-height: 28px;
+  padding: 2px 8px;
   overflow-x: auto;
   overflow-y: hidden;
+  flex-wrap: wrap;
   -webkit-app-region: no-drag;
   scrollbar-width: none;
 }
@@ -1055,6 +1056,7 @@ body {
   font-size: 11px;
   white-space: nowrap;
   flex-shrink: 0;
+  margin-bottom: 1px;
   transition: border-color 100ms, background 100ms;
 }
 
@@ -1129,7 +1131,7 @@ body {
   background: rgba(220, 50, 47, 0.1);
 }
 
-/* ── AI 视口下拉/子菜单共享样式 ── */
+/* ── AI 视口下拉/子菜单共享样�?── */
 .aiv-dropdown,
 .aiv-submenu,
 .aiv-recent-dropdown {
@@ -1140,7 +1142,7 @@ body {
   overflow-x: hidden !important;
 }
 
-/* 内层滚动容器：百分百消除原生滚动条，仅显示 qh 自定义滑轨 */
+/* 内层滚动容器：百分百消除原生滚动条，仅显�?qh 自定义滑�?*/
 .aiv-scroll-inner {
   scrollbar-width: none;
   /* Firefox */
@@ -1161,7 +1163,7 @@ body {
   border-color: var(--border-color) !important;
 }
 
-/* ── hover 高亮：文件/文件夹统一，文字纯黑(亮)/纯白(暗)，更显眼 ── */
+/* ── hover 高亮：文�?文件夹统一，文字纯�?�?/纯白(�?，更显眼 ── */
 .aiv-dd-row:hover,
 .aiv-recent-row:hover {
   background: rgba(0, 0, 0, 0.12) !important;
@@ -1174,7 +1176,7 @@ body {
   color: #fff !important;
 }
 
-/* ── 面包屑：比 hover 更深的高亮背景，文字色与 hover 一致 ── */
+/* ── 面包屑：�?hover 更深的高亮背景，文字色与 hover 一�?── */
 .aiv-breadcrumb {
   background: rgba(0, 0, 0, 0.20) !important;
   color: #000 !important;
@@ -1401,7 +1403,7 @@ body {
   flex: 0 1 auto;
 }
 
-/* ★ 悬浮展开�?�代码块/表格渲染 — 与 AI 面板外观一致 */
+/* �?悬浮展开�?�代码块/表格渲染 �?�?AI 面板外观一�?*/
 .qqq-overlay-table-wrapper .msg-ai pre {
   background: var(--card-bg);
   color: var(--text-primary);
@@ -1443,16 +1445,16 @@ body {
   margin: 2px 0;
 }
 
-/* ═══ Monaco find-widget 搜索框配色覆写（仅改搜索框控件，不动 editor 正文区） ═══ */
+/* ══�?Monaco find-widget 搜索框配色覆写（仅改搜索框控件，不动 editor 正文区） ══�?*/
 
-/* 搜索框整体容器 → 跟随 solarized 主题 */
+/* 搜索框整体容�?�?跟随 solarized 主题 */
 .monaco-editor .find-widget {
   background-color: var(--card-bg) !important;
   border-color: var(--border-color) !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
 }
 
-/* 键入框背景/文字 */
+/* 键入框背�?文字 */
 .monaco-editor .find-widget .monaco-inputbox {
   background-color: var(--background-color) !important;
   border-color: var(--border-color) !important;
@@ -1463,7 +1465,7 @@ body {
   color: var(--text-primary) !important;
 }
 
-/* 选中文字背景色 → 金色（不要蓝色）— 核弹级覆盖 */
+/* 选中文字背景�?�?金色（不要蓝色）�?核弹级覆�?*/
 .monaco-editor .find-widget .monaco-inputbox input::selection {
   background-color: #ffd301 !important;
   background: #ffd301 !important;
@@ -1480,7 +1482,7 @@ body {
   -webkit-text-fill-color: #000 !important;
 }
 
-/* 焦点边框 → Solarized yellow（替代默认蓝色） */
+/* 焦点边框 �?Solarized yellow（替代默认蓝色） */
 .monaco-editor .find-widget .monaco-inputbox.synthetic-focus,
 .monaco-editor .find-widget .monaco-inputbox.focused,
 .monaco-editor .find-widget .monaco-inputbox:focus-within {
@@ -1512,7 +1514,7 @@ body {
   border-color: var(--yellow) !important;
 }
 
-/* ── 网关线路状态指示点（状态栏内 L/C/R 三点） ── */
+/* ── 网关线路状态指示点（状态栏�?L/C/R 三点�?── */
 .qqq-gw-dots {
   display: inline-flex;
   gap: 5px;

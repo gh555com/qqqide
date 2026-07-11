@@ -177,12 +177,8 @@ async function _executeSend(intent) {
                         try {
                             var fc = await _bridgeChip.fs.read(p);
                             if (!fc && fc !== '') { contentParts.push('[File: ' + p + ']\n(read error: null result)'); continue; }
-                            var MAX_SIZE = 50 * 1024;
-                            if (fc.length > MAX_SIZE) {
-                                var head = fc.substring(0, 20 * 1024);
-                                var tail = fc.substring(fc.length - 20 * 1024);
-                                fc = head + '\n\n... [truncated: ' + fc.length + ' chars total, showing first/last 20K chars] ...\n\n' + tail;
-                            }
+                            // ★ 统一内容门
+                            fc = (typeof ContentGateway !== 'undefined' && ContentGateway.gate) ? ContentGateway.gate(fc) : fc;
                             contentParts.push('[File: ' + p + ']\n```\n' + fc + '\n```');
                         } catch (e) { contentParts.push('[File: ' + p + ']\n(read error: ' + e.message + ')'); }
                     }
@@ -486,6 +482,10 @@ async function _executeSend(intent) {
                     if (_targetDiv2._lastParaEl) { _targetDiv2._lastParaEl.remove(); _targetDiv2._lastParaEl = null; }
                     if (content && typeof content === 'string' && content.trim()) {
                         _targetDiv2._contentWrap.innerHTML = renderMarkdown(content);
+                    }
+                    // ★ 方案 C：innerHTML 覆写摧毁了建楼期间 DOM 追加的引导块 → 从 conversation 恢复
+                    if (typeof _restoreGuideBlocksToContentWrap === 'function') {
+                        _restoreGuideBlocksToContentWrap(_targetDiv2._contentWrap, agent.conversation, floorNum);
                     }
                     _targetDiv2._dirty = false;
                     _targetDiv2._renderScheduled = false;

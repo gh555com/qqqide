@@ -171,6 +171,23 @@ undefined
 
     // Show target
     const inst = instances.get(id);
+
+    // ★ 重建已关闭的 X 区 gaea tabs（用户关闭 gaea tab 后需重建）
+    if (window.qqqTabs && inst.tabs && inst.tabs.size > 0) {
+      const def = goods.get(id);
+      const gaeaGrp = window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : null;
+      inst.tabs.forEach((oldTab, tabId) => {
+        const stillExists = gaeaGrp && gaeaGrp.tabs && gaeaGrp.tabs.some(t => t.gaeaId === tabId);
+        if (!stillExists && def && def.tabs && def.tabs[tabId]) {
+          const tabDef = def.tabs[tabId];
+          if (typeof tabDef.build === 'function') {
+            const newTab = window.qqqTabs.addGaeaTab(tabId, tabDef.title || tabId, tabDef.build, { closable: tabDef.closable !== false });
+            if (newTab) inst.tabs.set(tabId, newTab);
+          }
+        }
+      });
+    }
+
     if (inst.iframe) inst.iframe.style.display = '';
     if (inst.el) inst.el.style.display = '';
 

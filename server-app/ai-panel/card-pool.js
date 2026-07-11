@@ -558,6 +558,10 @@ var CardPool = (function () {
       flowHtml = _buildConversationFlowHtml(conv, fData);
     }
     aiEl._contentWrap.innerHTML = flowHtml;
+    // ★ 方案 C：ai_html 不含引导块（onDone innerHTML 覆写时丢失），从 conversation 恢复
+    if (typeof window._restoreGuideBlocksToContentWrap === 'function') {
+      window._restoreGuideBlocksToContentWrap(aiEl._contentWrap, conv, fNum);
+    }
     // ★ 后处理：将裸 <img>（旧格式缓存/回退渲染）统一包裹为 .table-wrap.img-wrap
     var _bareImgs = aiEl._contentWrap.querySelectorAll('img');
     for (var _bi = 0; _bi < _bareImgs.length; _bi++) {

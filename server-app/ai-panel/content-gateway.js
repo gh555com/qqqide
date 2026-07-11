@@ -1,48 +1,46 @@
 // ============================================================================
-// content-gateway.js — 内容安全网关
-// 所有工具执行结果必须经过此网关后才能进入存储/UI/归档系统。
-// 单一真理源：所有截断、二进制检测、大小限制的常量都在这里定义。
-//
-// 架构铁律：
-//   • 网关是工具结果进入系统的唯一入口（agent-loop.js 调用）
-//   • 下游（all.txt / UI / conversation）信任网关输出，不再重复检测
-//   • tools.js 的 read_file 二进制检测保留，但那是 AI 友好提示，不影响存储安全
+// content-gateway.js — 内容安全网关 v2
+// 一切工具结果、附件内容、进上下文/落盘前必须过此门。
+// 单一真理源：改截断大小只改 CTX_CAP_CHARS 一处。
 // ============================================================================
 
 ; (function () {
     'use strict';
 
-    // ═══ 单一真理常量 ═══
-    var MAX_STORAGE_CHARS = 100000;   // 存储截断上限（all.txt / conversation / UI）
-    var MAX_BINARY_NULLS = 3;         // NULL 字节阈值：前 4000 字符中出现 >3 个 → 二进制
-    var MAX_BINARY_RATIO = 0.3;       // 非打印字符占比阈值（不含 \n \r \t）
-    var BINARY_SAMPLE_LEN = 4000;     // 二进制检测采样长度
-    var OUTPUT_CAP_DEFAULT = 200000;    // AI 视野默认上限（单次工具结果 AI 最多看到这些字符）
-    var OUTPUT_CAP_MAX = 800000;       // AI 视野最大上限（AI 传 maxOutput 时可突破到）
-    var MAX_RESPONSE_TOKENS = 393216; // AI 回答最大 tokens（上限 393216，唯一真理在此）
-    var READ_FILE_CAP_BYTES = 200000;  // read_file 单次返回字节上限（～200KB，超过则截断+分页提示）
-    // ═══ 网络超时参数（单一真理源：改一处全局生效） ═══
-    var FETCH_DEADLINE_PRIMARY_MS = 1000000;   // 主线直连（绕过 CF），对齐 Nginx+Go 1000s，仅作兜底天花板
-    var FETCH_DEADLINE_FALLBACK_MS = 1000000;  // 备线走 CF Worker，实测 CF Proxy 有心跳流不掐 100s
-    var STREAM_WATCHDOG_MS = 60000;           // SSE 流看门狗 60s（Go 心跳 25~30s，2 轮心跳未复位即判死）
+    // ═══ 上下文截断 — 唯一真理 ═══
+    var CTX_CAP_CHARS = 50000;    // 单条工具结果上限（字符数 = str.length）
+    var CTX_HEAD_CHARS = 20000;   // 截断时保留开头字符数
+    var CTX_TAIL_CHARS = 20000;   // 截断时保留结尾字符数
 
-    // ═══ 模型上下文窗口参数（换模型只需改这里） ═══
-    var CTX_MAX_TOKENS = 1048565;     // 上下文窗口总上限（实测精确值）
-    // ★ 压缩阈值从父窗口 qqqideDefaults 读（兜底 600k）；改默认值只改 core/defaults.js
+    // ═══ 编辑框硬上限 — 唯一真理 ═══
+    var EDITOR_CAP_CHARS = 16000;  // AI面板编辑框输入上限（字符数 = str.length）
+
+    // ═══ 二进制检测 ═══
+    var MAX_BINARY_NULLS = 3;
+    var MAX_BINARY_RATIO = 0.3;
+    var BINARY_SAMPLE_LEN = 4000;
+
+    // ═══ 网络超时参数（唯一真理源：改一处全局生效） ═══
+    var FETCH_DEADLINE_PRIMARY_MS = 1000000;
+    var FETCH_DEADLINE_FALLBACK_MS = 1000000;
+    var STREAM_WATCHDOG_MS = 60000;
+
+    // ═══ 模型上下文窗口参数 ═══
+    var CTX_MAX_TOKENS = 1048565;
     var COMPRESS_THRESHOLD = (function () {
         try {
-            if (typeof parent !== 'undefined' && parent.window &parent.window.qqqideDefaults) {
-                return parent.window.qqqideDefaults['ai.compressThreshold'] * 1000;0;
+            if (typeof parent !== 'undefined' && parent.window && parent.window.qqqideDefaults) {
+                return parent.window.qqqideDefaults['ai.compressThreshold'] * 1000;
             }
         } catch (_) { }
         return 600000;
     })();
-    var MAX_TOKENS_SAFETY = 10000;    // max_tokens 帽安全余量
-    var CHAR_PER_TOKEN = 2.7;         // 统一 chars→tokens 估算比例（2026-07-05 校准: 2.5→2.7）
-    // 单专家统一压缩参数（tier 6, 64K max_tokens）
-    var COMPACT_MAX_TOKENS = 65536;       // 单专家统一 max_tokens（旧三专家 3×32K 已废弃）
-    var ARCHIVE_MAX_CHARS = 1000000;      // archive 硬上限 ~1M chars
-    var COMPACT_DEBUG = true;            // 压缩埋点开关（调试期开，稳定后关）
+    var MAX_TOKENS_SAFETY = 10000;
+    var CHAR_PER_TOKEN = 2.7;
+    var COMPACT_MAX_TOKENS = 65536;
+    var ARCHIVE_MAX_CHARS = 1000000;
+    var COMPACT_DEBUG = true;
+    var MAX_RESPONSE_TOKENS = 393216;
 
     // ═══ 二进制检测 ═══
     function detectBinary(str) {
@@ -58,53 +56,31 @@
         return nullCount > MAX_BINARY_NULLS || (nonPrintable / sampleLen > MAX_BINARY_RATIO);
     }
 
-    // ═══ 主入口：处理工具结果 → 返回安全版本 ═══
-    // 键入：工具执行的原始字符串结果
-    // 返回：{ safe: string, flags: { binary, truncated, originalSize } }
-    function process(rawResult) {
-        if (rawResult == null) {
-            return { safe: '', flags: { binary: false, truncated: false, originalSize: 0 } };
-        }
-        var str = typeof rawResult === 'string' ? rawResult : String(rawResult);
-        var flags = { binary: false, truncated: false, originalSize: str.length };
+    // ═══ 统一内容门 ═══
+    // 一切工具结果、附件内容过此门。AB 管道合一，上下文和落盘同尺寸。
+    // ≤50K chars → 全文。>50K chars → 首20K + 尾20K。
+    function gate(rawStr) {
+        if (rawStr == null) return '';
+        var str = typeof rawStr === 'string' ? rawStr : String(rawStr);
 
-        // ① 二进制检测 — 脏数据直接替换为短标记
         if (detectBinary(str)) {
-            flags.binary = true;
-            return {
-                safe: '[BINARY DATA SKIPPED] ' + str.length + ' bytes — not stored to all.txt',
-                flags: flags
-            };
+            return '[BINARY DATA — ' + str.length + ' chars]';
         }
 
-        // ② 存储截断 — 单条结果不超过 MAX_STORAGE_CHARS
-        if (str.length > MAX_STORAGE_CHARS) {
-            flags.truncated = true;
-            return {
-                safe: str.slice(0, MAX_STORAGE_CHARS) +
-                    '\n…[TRUNCATED: ' + str.length + ' chars total, ' + MAX_STORAGE_CHARS + ' saved]',
-                flags: flags
-            };
-        }
+        if (str.length <= CTX_CAP_CHARS) return str;
 
-        // ③ 通过
-        return { safe: str, flags: flags };
+        var head = str.substring(0, CTX_HEAD_CHARS);
+        var tail = str.substring(str.length - CTX_TAIL_CHARS);
+        return head + '\n\n... [' + str.length + ' chars total, showing first ' + CTX_HEAD_CHARS + ' + last ' + CTX_TAIL_CHARS + ' chars] ...\n\n' + tail;
     }
 
-    // ═══ HTTP 错误码分类（单一真理源：所有网关/重试/修复逻辑收口于此） ═══
-    // 铁律：新增 HTTP 错误处理策略只需改这里，下游零散硬编码一律废除
+    // ═══ HTTP 错误码分类（单一真理源） ═══
     var HttpError = {
-        // 上游网关不可达（502 Bad Gateway / 503 Service Unavailable / 504 Gateway Timeout）
         isGatewayDown: function (code) { return code === 502 || code === 503 || code === 504; },
-        // 客户端请求格式错误（400 Bad Request / 422 Unprocessable — 可弹 tool_calls 自动修复）
         isClientError: function (code) { return code === 400 || code === 422; },
-        // 网关层应重试（含退避和线路切换）：429 限流 + 上游不可达
         isRetryable: function (code) { return code === 429 || HttpError.isGatewayDown(code); },
-        // 可弹 tool_calls 自动修复：客户端错误 + 上游不可达
         isAutoRepairable: function (code) { return HttpError.isClientError(code) || HttpError.isGatewayDown(code); },
-        // SSE 层应标记为网关错误（供上层 auto-repair 处置）
         shouldCaptureAsGatewayError: function (code) { return HttpError.isClientError(code) || code === 402 || HttpError.isGatewayDown(code); },
-        // 根据 _exitReason 字符串判断是否为网关错误
         isGatewayExitReason: function (reason) {
             if (!reason || typeof reason !== 'string') return false;
             var m = reason.match(/^http_(\d+)$/);
@@ -114,33 +90,31 @@
 
     // ═══ 暴露到全局 ═══
     window.ContentGateway = {
-        process: process,
+        gate: gate,
         detectBinary: detectBinary,
-        HttpError: HttpError,  // ★ HTTP 错误码分类（单一真理源）
-        // 常量暴露（只读参考）
-        MAX_STORAGE_CHARS: MAX_STORAGE_CHARS,
+        HttpError: HttpError,
+        // 上下文截断
+        CTX_CAP_CHARS: CTX_CAP_CHARS,
+        CTX_HEAD_CHARS: CTX_HEAD_CHARS,
+        CTX_TAIL_CHARS: CTX_TAIL_CHARS,
+        EDITOR_CAP_CHARS: EDITOR_CAP_CHARS,
+        // 二进制检测
         MAX_BINARY_NULLS: MAX_BINARY_NULLS,
         MAX_BINARY_RATIO: MAX_BINARY_RATIO,
-        OUTPUT_CAP_DEFAULT: OUTPUT_CAP_DEFAULT,
-        OUTPUT_CAP_MAX: OUTPUT_CAP_MAX,
-        MAX_RESPONSE_TOKENS: MAX_RESPONSE_TOKENS,
-        READ_FILE_CAP_BYTES: READ_FILE_CAP_BYTES,
-        READ_FILE_CAP_KB: Math.round(READ_FILE_CAP_BYTES / 1024),
-        COMPACT_MAX_TOKENS: COMPACT_MAX_TOKENS,
-        // 网络超时参数
+        // 网络超时
         FETCH_DEADLINE_PRIMARY_MS: FETCH_DEADLINE_PRIMARY_MS,
         FETCH_DEADLINE_FALLBACK_MS: FETCH_DEADLINE_FALLBACK_MS,
         STREAM_WATCHDOG_MS: STREAM_WATCHDOG_MS,
-        // 模型上下文窗口参数
+        // 模型上下文
         CTX_MAX_TOKENS: CTX_MAX_TOKENS,
         COMPRESS_THRESHOLD: COMPRESS_THRESHOLD,
         MAX_TOKENS_SAFETY: MAX_TOKENS_SAFETY,
         CHAR_PER_TOKEN: CHAR_PER_TOKEN,
-        // 单专家统一阀值
         COMPACT_MAX_TOKENS: COMPACT_MAX_TOKENS,
         ARCHIVE_MAX_CHARS: ARCHIVE_MAX_CHARS,
-        COMPACT_DEBUG: COMPACT_DEBUG
+        COMPACT_DEBUG: COMPACT_DEBUG,
+        MAX_RESPONSE_TOKENS: MAX_RESPONSE_TOKENS
     };
 
-    // [silent] content-gateway ready
+    // [silent] content-gateway v2 ready
 })();
