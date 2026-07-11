@@ -781,6 +781,7 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
         var c = Object.assign({}, h);
         delete c._lines;
         delete c.reasoning;
+        delete c.answer;            // ★ 去除冗余：与 conversation 中 assistant.content 完全重复
         // ★ 保存工具调用次数（room 计数用），再删除 tools 数组
         c.toolCount = (c.tools && c.tools.length) || 0;
         delete c.tools;

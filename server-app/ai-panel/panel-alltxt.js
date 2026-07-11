@@ -592,8 +592,20 @@ function _generateReasoningTxt(floorData, questMeta, floorNum) {
     lines.push('');
 
     var houses = (floorData && floorData.houses) || [];
+    // ★ 从 conversation 注入 answer（houses 已不再冗余存储）
+    var _convAiIdx = 0;
     for (var hi = 0; hi < houses.length; hi++) {
-        var houseLines = _buildHouseLines(houses[hi], 300);
+        var h = houses[hi];
+        if ((h.type === 'final' || h.type === 'guide_ack') && !h.answer) {
+            while (_convAiIdx < conv.length) {
+                var cm = conv[_convAiIdx]; _convAiIdx++;
+                if (cm && cm.role === 'assistant' && !cm.tool_calls && typeof cm.content === 'string' && cm.content) {
+                    h.answer = cm.content;
+                    break;
+                }
+            }
+        }
+        var houseLines = _buildHouseLines(h, 300);
         for (var hli = 0; hli < houseLines.length; hli++) {
             lines.push(houseLines[hli]);
         }
@@ -718,6 +730,33 @@ async function _onAuditClick(block) {
                 var _fDat = await questStore.loadFloor(questId, floorNum);
                 if (_fDat && _fDat.houses) houses = _fDat.houses;
             } catch (_) { }
+        }
+        // ★ 从 conversation 注入 answer（houses 已不再冗余存储）
+        var _auditConv = houses.length ? (function () {
+            if (isLiveFloor) return agent.conversation || [];
+            try {
+                for (var _afi = 0; _afi < allFloors.length; _afi++) {
+                    if (allFloors[_afi].floorNum === floorNum) {
+                        return (allFloors[_afi].data && allFloors[_afi].data.conversation) || [];
+                    }
+                }
+            } catch (_) { }
+            return [];
+        })() : [];
+        if (_auditConv.length) {
+            var _auditCi = 0;
+            for (var hi = 0; hi < houses.length; hi++) {
+                var h = houses[hi];
+                if ((h.type === 'final' || h.type === 'guide_ack') && !h.answer) {
+                    while (_auditCi < _auditConv.length) {
+                        var cm = _auditConv[_auditCi]; _auditCi++;
+                        if (cm && cm.role === 'assistant' && !cm.tool_calls && typeof cm.content === 'string' && cm.content) {
+                            h.answer = cm.content;
+                            break;
+                        }
+                    }
+                }
+            }
         }
         for (var hi = 0; hi < houses.length; hi++) {
             var h = houses[hi];

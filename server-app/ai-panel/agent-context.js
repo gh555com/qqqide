@@ -498,7 +498,9 @@
             self._shiftConversationIndices(removedCount - 1, breakpoint);
 
             // ── 更新 _ctx ──
-            self._ctx.lastCompressedFloor = self._ctx.totalFloors;
+            // ★ lastCompressedFloor = 实际被压缩的最大楼层号（不是 totalFloors），
+            //    排除压缩楼层自身（压缩楼层消息保留在 W6，其 _floor > 被压楼层）
+            self._ctx.lastCompressedFloor = floorNums.length > 0 ? floorNums[floorNums.length - 1] : self._ctx.totalFloors;
             // 从压缩饼干中提取简单的事实（供 _buildDynamicContext 使用）
             self._ctx.facts = floorNums.map(function(fn) {
                 return { type: 'floor', content: 'F' + fn + ' compressed', keywords: [], floor: fn };
