@@ -6,6 +6,9 @@ import { ipcMain, BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
 import { _timelineDbs, _diffWindows, _tlDir, _tlBlobPath, _tlOpenDb, _tlRecord, _tlFlushNow, _sha256, _gzipSync, _gunzipSync, _tlWriteBlob } from './timeline-store';
+
+// Dedicated map for git diff windows (key: filePath|commitHash)
+const _gitDiffWindows: Map<string, BrowserWindow> = new Map();
 import { BootConfig } from './boot';
 import { APP_VERSION } from './version';
 
@@ -333,6 +336,92 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         diffWin.loadURL(diffUrl).catch(err => {
             console.warn('[diff-window] loadURL failed:', err && err.message);
             _diffWindows.delete(normalizedPath);
+        });
+        return { ok: true, windowId: diffWin.id };
+    });
+
+    // ═══ GIT DIFF WINDOW ═══
+    ipcMain.handle('qqqide:git:open-diff', async (e, args: { filePath: string; projectRoot: string; commitHash?: string; mode?: string; staged?: boolean }) => {
+        const { filePath, projectRoot, commitHash, mode, staged } = args;
+        const winKey = filePath.replace(/\\/g, '/') + '|' + (commitHash || 'working');
+        const normalizedPath = filePath.replace(/\\/g, '/');
+
+        // Reuse existing window for same file+commit
+        const existingWin = _gitDiffWindows.get(winKey);
+        if (existingWin && !existingWin.isDestroyed()) {
+            try {
+                existingWin.webContents.send('qqqide:git-diff:update', { filePath: normalizedPath, commitHash, mode, staged });
+                if (existingWin.isMinimized()) existingWin.restore();
+                existingWin.focus();
+            } catch (_) { }
+            return { ok: true, windowId: existingWin.id, reused: true };
+        }
+
+        const _parentWin = BrowserWindow.fromWebContents(e.sender);
+        let mainRect = { x: 0, y: 0, width: 1200, height: 700 };
+        const mainWindow = BrowserWindow.getAllWindows()[0] || null;
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            try {
+                const wb = mainWindow.getBounds();
+                mainRect = { x: wb.x, y: wb.y, width: wb.width, height: wb.height };
+            } catch (_) { }
+        }
+        const diffWin = new BrowserWindow({
+            x: mainRect.x + 40,
+            y: mainRect.y + 40,
+            width: Math.max(1100, mainRect.width - 80),
+            height: Math.max(800, mainRect.height - 80),
+            minWidth: 800,
+            minHeight: 600,
+            frame: false,
+            title: 'Git Diff — ' + (filePath.split(/[\\/]/).pop() || filePath),
+            backgroundColor: '#1e1e1e',
+            parent: _parentWin || undefined,
+            modal: false,
+            resizable: true,
+            webPreferences: {
+                preload: path.join(__dirname, 'preload.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+                sandbox: false,
+                webSecurity: false,
+                additionalArguments: [
+                    `--qqqide-root=${portableRoot}`,
+                    `--qqqide-version=${APP_VERSION}`,
+                ],
+            },
+        });
+        diffWin.removeMenu();
+        diffWin.on('closed', () => {
+            _gitDiffWindows.delete(winKey);
+        });
+        _gitDiffWindows.set(winKey, diffWin);
+
+        var diffBaseUrl = bootConfig.url.replace(/\/*$/, '/');
+        try {
+            var webappIndex = path.join(portableRoot, 'Data', 'webapp', 'index.html');
+            if (fs.existsSync(webappIndex)) {
+                diffBaseUrl = 'qqqide-webapp://app/qqqide/';
+            }
+        } catch (_) { }
+        let _isDark = true;
+        try {
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                _isDark = await mainWindow.webContents.executeJavaScript(
+                    'document.documentElement.getAttribute("data-theme") === "dark"'
+                );
+            }
+        } catch (_) { }
+        const diffUrl = diffBaseUrl + 'goods/git/git-diff-window.html' +
+            '?filePath=' + encodeURIComponent(filePath) +
+            '&projectRoot=' + encodeURIComponent(projectRoot) +
+            '&theme=' + (_isDark ? 'dark' : 'light') +
+            '&mode=' + (mode || 'working') +
+            (commitHash ? '&commitHash=' + encodeURIComponent(commitHash) : '') +
+            (staged ? '&staged=1' : '');
+        diffWin.loadURL(diffUrl).catch(err => {
+            console.warn('[git-diff-window] loadURL failed:', err && err.message);
+            _gitDiffWindows.delete(winKey);
         });
         return { ok: true, windowId: diffWin.id };
     });

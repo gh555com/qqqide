@@ -341,6 +341,11 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string })
         },
     },
 
+        // ---- git diff window (独立 BrowserWindow Monaco diff, read-only) ----
+    git: {
+        openDiff: (args: { filePath: string; projectRoot: string; commitHash?: string; mode?: string; staged?: boolean }) => ipcRenderer.invoke('qqqide:git:open-diff', args),
+    },
+
     // ---- dirty snapshots (跨窗口脏文件共享，Layer 2: IDE 领域内视觉一致) ----
     dirty: {
         set: (filePath: string, content: string) => ipcRenderer.invoke('qqqide:dirty:set', filePath, content).catch(() => {}),

@@ -250,7 +250,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'fetch_webpage',
-            description: 'Fetch and extract text content from a URL. ★ US server proxy (bypasses GFW, can access GitHub/Google), falls back to local curl. 15s timeout, strips HTML tags, returns plain text ≤8000 chars. 1 ge per fetch.',
+            description: 'Fetch and extract text content from a URL. ★ US server proxy (bypasses GFW, can access GitHub/Google), falls back to local curl. 15s timeout, strips HTML tags. 1 ge per fetch.',
             parameters: {
                 type: 'object',
                 properties: {

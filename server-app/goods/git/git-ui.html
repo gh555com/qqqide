@@ -484,6 +484,14 @@ function _renderFileList(elId, files, isStaged) {
     pathEl.className = 'file-path'; pathEl.textContent = f.path; pathEl.title = f.path;
     li.appendChild(badge); li.appendChild(pathEl);
 
+    // Diff button — opens external Monaco diff window
+    var acts0 = document.createElement('span'); acts0.className = 'file-actions';
+    var diffBtn = document.createElement('button');
+    diffBtn.className = 'btn-mini'; diffBtn.textContent = 'diff';
+    var absPath = _gitRoot + '/' + f.path;
+    (function(fp, staged) { diffBtn.addEventListener('click', function(e) { e.stopPropagation(); _gitOpenDiff(fp, '', 'working', staged); }); })(absPath, isStaged);
+    acts0.appendChild(diffBtn); li.appendChild(acts0);
+
     if (!isStaged && f.status !== '?') {
       var acts = document.createElement('span'); acts.className = 'file-actions';
       var discardBtn = document.createElement('button');
@@ -770,14 +778,22 @@ async function _toggleCommitDetail(hash, rowEl) {
       '<span style="margin-left:auto;"><button class="btn-mini cd-view-diff">查看完整 diff</button></span></div>';
     for (var i = 0; i < files.length; i++) {
       var f = files[i];
-      h += '<div class="cd-file"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">' +
+      h += '<div class="cd-file" data-hash="' + _esc(hash) + '" data-path="' + _esc(f.path) + '" style="cursor:pointer;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">' +
         _esc(f.path) + '</span><span class="cd-stat cd-added">+' + f.added + '</span>' +
-        '<span class="cd-stat cd-deleted">-' + f.deleted + '</span></div>';
-    }
-    detail.innerHTML = h;
-    var diffBtn = detail.querySelector('.cd-view-diff');
+        '<span class    var diffBtn = detail.querySelector('.cd-view-diff');
     if (diffBtn) { (function(hv) { diffBtn.addEventListener('click', function(e) { e.stopPropagation(); _showCommitDetail(hv); }); })(hash); }
-  } catch(e) { detail.innerHTML = '<div style="padding:4px;color:var(--red);">加载失败</div>'; }
+    var fileEls = detail.querySelectorAll('.cd-file');
+    for (var j = 0; j < fileEls.length; j++) {
+      (function(el) {
+        el.addEventListener('click', function(e) {
+          e.stopPropagation();
+          var fp = _gitRoot + '/' + el.getAttribute('data-path');
+          var ch = el.getAttribute('data-hash');
+          _gitOpenDiff(fp, ch, 'commit');
+        });
+      })(fileEls[j]);
+    }
+  } catch(e) { detail.innerHTML = '<div style="padding:4px;color:var(--red);">加载失败</div>'; }catch(e) { detail.innerHTML = '<div style="padding:4px;color:var(--red);">加载失败</div>'; }
 }
 
 async function _showCommitDetail(fullHash) {
@@ -805,6 +821,17 @@ async function _showCommitDetail(fullHash) {
 
 function _backToStatus() {
   document.getElementById('inline-diff').style.display = 'none';
+}
+
+function _gitOpenDiff(filePath, commitHash, mode, staged) {
+  if (!bridge || !bridge.git || !bridge.git.openDiff) { _showProgress('Diff 窗口不可用 (需要壳层更新)'); return; }
+  bridge.git.openDiff({
+    filePath: filePath,
+    projectRoot: _gitRoot,
+    commitHash: commitHash || undefined,
+    mode: mode || 'working',
+    staged: !!staged
+  }).catch(function(e) { _showProgress('打开 Diff 失败: ' + (e.message || e)); });
 }
 
 async function _cherryPick(hash) {
