@@ -257,7 +257,8 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 #input-area{border-top:1px solid var(--border-color);padding:8px 24px 4px 8px;display:flex;flex-direction:column;gap:6px;background:var(--card-bg);position:relative}
 /* ── 子弹按钮：绝对定位，从顶拉到底，右贴边 ── */
 #bullet-btn{position:absolute;right:0;top:0;bottom:0;width:16px;border:none;border-left:1px solid var(--border-color);background:transparent;cursor:pointer;padding:0;margin:0;display:flex;align-items:center;justify-content:center;outline:none}#bullet-btn:hover{background:rgba(255,61,0,0.08)}#bullet-btn:active{background:rgba(255,61,0,0.15)}
-#bullet-btn svg{width:10px;height:auto;display:block;color:var(--text-primary)}
+#bullet-btn img{width:auto;height:auto;display:block}
+[data-theme="dark"] #bullet-btn img{filter:invert(1)}
 #image-strip{display:none;overflow-x:hidden;flex-wrap:wrap;padding:4px 0;gap:6px}
 #image-strip::-webkit-scrollbar{height:4px}
 #image-strip::-webkit-scrollbar-thumb{background:var(--base01);border-radius:2px}
@@ -572,7 +573,7 @@ var _orig={};
 <div id="floor-indicator"><span class="floor-ind-tofu">-</span><span class="floor-ind-needle"></span></div>
 </div>
 <div id="input-area">
-  <button id="bullet-btn" title="子弹"><svg viewBox="0 0 10 24" fill="currentColor" stroke="none"><polygon points="5,0 3.5,5 3.5,14 3,18 5,20 7,18 6.5,14 6.5,5" transform="rotate(-8 5 12)"/></svg></button>
+  <button id="bullet-btn" title="子弹"><img src="../img/zd4.png" alt="子弹"></button>
   <div id="image-strip"></div>
   <div id="queue-strip"></div>
   <div id="input-limit-warn" data-i18n="ai.inputLimitWarn">键入已达上限 58KB，无法继续键入</div>

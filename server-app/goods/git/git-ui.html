@@ -247,19 +247,18 @@ try { bridge = parent.qqqideBridge; } catch(_) {}
 if (!bridge) { try { bridge = window.top.qqqideBridge; } catch(_) {} }
 
 (function() {
-  // Try to inherit parent theme
-  try {
-    var pt = parent.document.documentElement.getAttribute('data-theme');
-    if (pt) document.documentElement.setAttribute('data-theme', pt);
-    else document.documentElement.setAttribute('data-theme', 'dark'); // default dark
-  } catch(_){
-    document.documentElement.setAttribute('data-theme', 'dark');
-  }
+  // Default dark — bridge.sync will correct this asynchronously
+  document.documentElement.setAttribute('data-theme', 'dark');
   window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'qqqide-theme-change') {
-      document.documentElement.setAttribute('data-theme', e.data.theme || 'dark');
+      document.documentElement.setAttribute('data-theme', (e.data.dark) ? 'dark' : 'light');
     }
   });
+  // Also try to read from parent synchronously (works if same-origin)
+  try {
+    var pt = parent.document.documentElement.getAttribute('data-theme');
+    if (pt === 'light' || pt === 'dark') document.documentElement.setAttribute('data-theme', pt);
+  } catch(_) {}
 })();
 
 function _esc(s) {
