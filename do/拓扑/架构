@@ -11,7 +11,7 @@
 │ Electron 22.3.27 · Win7+ · frame:false│
 │ 入口: bootstrap.js → main.js          │
 │ 职责: 窗口 + IPC + bridge + 热更新检查 │
-│ 源码: main.ts + 11 子模块 (≤290行/个)  │
+│ 源码: main.ts + 12 子模块 (≤290行/个，含 ipc-git-diff)  │
 │ 产物: shell-out/ (esbuild ~35ms)      │
 │ 热更: bootstrap 启动时原子替换 shell-out/ │
 └──────────┬───────────────────────────┘
@@ -695,11 +695,11 @@ A4 文件快照 — 每层楼私有文件变更追踪
 · DOM: aiDiv._a4Block（A4 豆腐块，A2 与 A1 之间），瀑布式文件列表，实时更新
 · 点击→openDiffWindow（钩子 Q 已记全 before+after，不补记）
 · 持久化: 实时写 timeline (SHA256+gzip+SQLite)；floor 完结仅打包 blob_hash 入 payload
-· 容量: 512KB/文件上限，超限只记元数据
-
-Git Goods + qh 滚动 + 面板 resume
+· 容量: 512KBGit Goods + qh 滚动 + 面板 resume
 --------------------------------------
-· Git: goods/git/ (X区 tab + A区 panel)，Timeline 已独立 BrowserWindow
+· Git: goods/git/ (X区 tab only，不在 A 区)。多仓库 tofu bar + Canvas 日志图 + 图标按钮
+· Git Diff 窗口: 独立 BrowserWindow，Monaco Solarized。IPC: shell/ipc-git-diff.ts (与 Timeline 的 ipc-timeline.ts 分离)
+  UI: goods/git/git-diff-window.html，主进程传 gitBin 参数，_git() 直接 spawn git show立 BrowserWindow
 · qh 滚动: 标准文档 do/拓扑/qh滚动真理机器接入标准.md。接入: AI 视口下拉 + AI 面板聊天区
 · 面板 resume: qqq/alphal/panel_re{l|c|r}.json，三面板物理隔离，主进程 tmp+rename 原子写
 

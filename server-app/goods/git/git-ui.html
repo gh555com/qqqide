@@ -247,13 +247,17 @@ try { bridge = parent.qqqideBridge; } catch(_) {}
 if (!bridge) { try { bridge = window.top.qqqideBridge; } catch(_) {} }
 
 (function() {
+  // Try to inherit parent theme
   try {
     var pt = parent.document.documentElement.getAttribute('data-theme');
     if (pt) document.documentElement.setAttribute('data-theme', pt);
-  } catch(_){}
+    else document.documentElement.setAttribute('data-theme', 'dark'); // default dark
+  } catch(_){
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }
   window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'qqqide-theme-change') {
-      document.documentElement.setAttribute('data-theme', e.data.theme || '');
+      document.documentElement.setAttribute('data-theme', e.data.theme || 'dark');
     }
   });
 })();
@@ -665,22 +669,19 @@ document.getElementById('btn-unstage-all').addEventListener('click', async funct
 async function _gitLongOp(args, label) {
   _showProgress(label);
   try {
-    var useStream = !!(bridge && bridge.qz && bridge.qz.spawnStream), result;
-    if (useStream) {
-      result = await bridge.qz.spawnStream({
-        cmd: _gitExePath || (await _initGitExe()), args: args, cwd: _gitRoot, timeout: 300000, shell: false
-      }, function(channel, data) {
-        var lines = data.split('\n').filter(Boolean), last = lines[lines.length - 1] || '';
-        var prog = document.getElementById('progress'); if (prog && last) prog.textContent = '⏳ ' + last.slice(0, 160);
-      });
-    } else { result = await _gitCmd(args, { timeout: 300000 }); }
-    if (result.exitCode !== 0 && result.stderr) { _showProgress('✕ ' + label + ': ' + (result.stderr || '').slice(0, 200)); document.getElementById('progress').style.color = 'var(--red)'; return; }
+    var result = await _gitCmd(args, { timeout: 300000 });
+    if (result.exitCode !== 0) {
+      var errMsg = (result.stderr || result.stdout || '').trim().slice(0, 200) || '未知错误';
+      _showProgress('✕ ' + label + ': ' + errMsg);
+      document.getElementById('progress').style.color = 'var(--red)';
+      return;
+    }
     _hideProgress(); _refreshGitStatus();
-  } catch(e) { _showProgress('✕ ' + label + ': ' + (e.message || '').slice(0, 200)); document.getElementById('progress').style.color = 'var(--red)'; }
+  } catch(e) { _showProgress('✕ ' + label + ': ' + ((e.message || '').slice(0, 200))); document.getElementById('progress').style.color = 'var(--red)'; }
 }
-document.getElementById('btn-pull').addEventListener('click', async function() { if (!(await _checkGitAvailable())) return; _gitLongOp(['pull', '--ff-only'], 'git pull'); });
-document.getElementById('btn-push').addEventListener('click', async function() { if (!(await _checkGitAvailable())) return; _gitLongOp(['push'], 'git push'); });
-document.getElementById('btn-fetch').addEventListener('click', async function() { if (!(await _checkGitAvailable())) return; _gitLongOp(['fetch', '--all', '--prune'], 'git fetch'); });
+document.getElementById('btn-pull').addEventListener('click', async function() { if (!(await _checkGitAvailable())) { _showProgress('Git 不可用'); return; } _gitLongOp(['pull', '--ff-only'], 'git pull'); });
+document.getElementById('btn-push').addEventListener('click', async function() { if (!(await _checkGitAvailable())) { _showProgress('Git 不可用'); return; } _gitLongOp(['push'], 'git push'); });
+document.getElementById('btn-fetch').addEventListener('click', async function() { if (!(await _checkGitAvailable())) { _showProgress('Git 不可用'); return; } _gitLongOp(['fetch', '--all', '--prune'], 'git fetch'); });
 document.getElementById('btn-refresh').addEventListener('click', async function() { if (await _checkGitAvailable()) _refreshGitStatus(); });
 
 // ═══ GIT LOG WITH CANVAS GRAPH ═══
