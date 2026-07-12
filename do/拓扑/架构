@@ -163,13 +163,14 @@ Nginx 备用线路铁律 (US 已隐身, 2026-06-29)
 · sites-enabled/ 只保留 gh555 一个文件（include * 会匹配 .bak）
 · 验证: openssl s_client -connect :8444 -alpn h2 → "No ALPN negotiated"
 
-ContentGateway 超时常量（唯一真理源）
----------------------------------------------
-· FETCH_DEADLINE_PRIMARY_MS  = 180000 (180s)
-· FETCH_DEADLINE_FALLBACK_MS = 98000  (98s, CF 100s 留 2s)
-· STREAM_WATCHDOG_MS         = 180000 (180s, 深度推理)
-· AI_OUTPUT_WATCHDOG_MS      = 900000 (15min, AI 无产出→死循环)
-· 改超时只改 content-gateway.js 一处。
+ContentGateway 唯一真理源（content-gateway.js，2026-07-11 重构）
+---------------------------------------------------------------------
+· 统一内容门: ContentGateway.gate() — 一切工具+附件→同一扇门，零自截断
+· 截断: ≤50K chars全文 / >50K chars首20K+尾20K（CTX_CAP_CHARS=50000）
+· bypassCap: read_file显式指定行范围→跳过截断，信任AI意图
+· 超时: FETCH_DEADLINE_{PRIMARY,FALLBACK}_MS=1,000,000 / STREAM_WATCHDOG_MS=60000
+· 改截断/超时只改 content-gateway.js 一处。
+· 旧 OUTPUT_CAP_* / READ_FILE_CAP_BYTES / MAX_STORAGE_CHARS 已全部删除
 
 孤儿 tool_calls 自愈系统
 ---------------------------------------------

@@ -59,13 +59,18 @@
     // ═══ 统一内容门 ═══
     // 一切工具结果、附件内容过此门。AB 管道合一，上下文和落盘同尺寸。
     // ≤50K chars → 全文。>50K chars → 首20K + 尾20K。
-    function gate(rawStr) {
+    // opts.bypassCap=true → 跳过截断（仅二进制检测保留），用于 read_file 显式指定行号范围。
+    function gate(rawStr, opts) {
+        opts = opts || {};
         if (rawStr == null) return '';
         var str = typeof rawStr === 'string' ? rawStr : String(rawStr);
 
         if (detectBinary(str)) {
             return '[BINARY DATA — ' + str.length + ' chars]';
         }
+
+        // ★ 跳过截断：AI 显式指定了范围（如 read_file start_line/end_line），信任 AI 的意图
+        if (opts.bypassCap) return str;
 
         if (str.length <= CTX_CAP_CHARS) return str;
 

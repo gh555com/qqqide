@@ -219,14 +219,28 @@ function _updateInputProgress() {
 // ═══ 上限 qoast 防抖（3s 冷却）══
 var _lastLimitQoastTs = 0;
 var _LIMIT_QOAST_COOLDOWN = 3000;
+function _i18nQ(key, fallback) {
+    try {
+        if (parent && parent._i) return parent._i(key, fallback);
+    } catch (_) {}
+    return fallback;
+}
+
 function _limitQoast(reason) {
     var now = Date.now();
     if (reason !== 'paste-truncated' && reason !== 'paste-full') {
         if (now - _lastLimitQoastTs < _LIMIT_QOAST_COOLDOWN) return;
     }
     _lastLimitQoastTs = now;
-    var msg = '输入已达上限 ' + (INPUT_CAP_CHARS / 1000).toFixed(1) + 'K 字符';
-    if (reason === 'paste-truncated') msg += '，多余内容已截断';
+    var msg;
+    if (reason === 'paste-full') {
+        msg = _i18nQ('ai.inputLimitQoastFull', '已达编辑框字符上限，无法继续粘贴');
+    } else if (reason === 'paste-truncated') {
+        msg = _i18nQ('ai.inputLimitQoastTruncated', '已达编辑框字符上限，多余内容已截断');
+    } else {
+        msg = _i18nQ('ai.inputLimitQoastCap', '已达编辑框字符上限（约 {0}K 字符，非文件字节）');
+        msg = msg.replace('{0}', (INPUT_CAP_CHARS / 1000).toFixed(1));
+    }
     try {
         if (parent && parent.window && parent.window.qqqideQoast) {
             parent.window.qqqideQoast.show(msg, { duration: 3500, type: 'warning' });

@@ -109,7 +109,11 @@ AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assis
                 onToolResult(item.name, truncated ? resultStr.slice(0, 2000) + '\n... (truncated)' : resultStr, truncated);
             }
             // ★ 统一内容门：上下文+落盘同一函数
-            var gated = (typeof ContentGateway !== 'undefined' && ContentGateway.gate) ? ContentGateway.gate(resultStr) : resultStr;
+            //   read_file 显式指定行号范围 → bypassCap，信任 AI 意图
+            var _bypass = item.name === 'read_file' && item.args && item.args.start_line && item.args.end_line;
+            var gated = (typeof ContentGateway !== 'undefined' && ContentGateway.gate)
+                ? ContentGateway.gate(resultStr, { bypassCap: _bypass })
+                : resultStr;
             return { call: item.call, content: gated, rawContent: resultStr };
         });
         var results = await Promise.all(promises);

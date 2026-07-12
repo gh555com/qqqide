@@ -1,6 +1,6 @@
 // ============================================================================
 // agent-context.js — 上下文压缩引擎（本地机械筛，零网络调用）
-// VER: COMPACT-V9-20260711  ← V9: preserve run_command output (only non-recoverable tool result)
+// VER: COMPACT-V10-20260711 ← V10: all irrecoverable tools (fetch_webpage/search_web/analyze_image/generate_image/remove_background) output preserved
 //
 // 架构（论文: 论文/qqqide 滴上下文压缩.md §3）:
 //   1. 找断点 — W6 至少6层楼 + >= 10% token 重量
@@ -27,9 +27,10 @@
     var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 2.5);
 
     // ═══ 工具返回摘要规则（方案三 §4）═══
+    // 摘要规则：摘要文本追加上一行工具调用行。
+    // run_command / fetch_webpage / analyze_image 等不可恢复数据：摘要 + 完整输出另起块保留。
     var TOOL_SUMMARIES = {
         read_file: function(args, result) {
-            // result 开头可能是 "[paginated X-Y of Z lines]"
             if (typeof result === 'string') {
                 var pm = result.match(/\[paginated (\d+)-(\d+) of (\d+) lines\]/);
                 if (pm) return 'L:' + pm[1] + '-' + pm[2] + '/' + pm[3];
@@ -94,6 +95,40 @@
             }
             return '?';
         },
+        // ★ 不可恢复数据：摘要 + 完整输出保留
+        fetch_webpage: function(args, result) {
+            return typeof result === 'string' ? result.length + 'c' : '?';
+        },
+        search_web: function(args, result) {
+            if (typeof result === 'string') {
+                var wlines = result.split('\n').filter(function(l) { return l.trim(); });
+                return wlines.length + '条结果';
+            }
+            return '?';
+        },
+        analyze_image: function(args, result) {
+            return typeof result === 'string' ? result.length + 'c' : '?';
+        },
+        get_vision_context: function(args, result) {
+            return typeof result === 'string' ? result.length + 'c' : '?';
+        },
+        generate_image: function(args, result) {
+            return typeof result === 'string' ? result.length + 'c' : '?';
+        },
+        remove_background: function(args, result) {
+            return typeof result === 'string' ? result.length + 'c' : '?';
+        },
+    };
+
+    // ★ 不可恢复工具：结果不能从磁盘 re-read → 完整输出保留（与 run_command 同规则）
+    var IRRECOVERABLE_TOOLS = {
+        run_command: true,
+        fetch_webpage: true,
+        search_web: true,
+        analyze_image: true,
+        get_vision_context: true,
+        generate_image: true,
+        remove_background: true
     };
 
     // ═══ 快照工具 ═══
@@ -322,8 +357,9 @@
                     if (lines.length > 0) {
                         lines[lines.length - 1] += summary;
                     }
-                    // ★ run_command: 保留完整输出（唯一不能从磁盘恢复的）
-                    if (matchedTc.function && matchedTc.function.name === 'run_command' && content) {
+                    // ★ 不可恢复工具：保留完整输出（不能从磁盘 re-read）
+                    var _tcName2 = matchedTc.function && matchedTc.function.name;
+                    if (_tcName2 && IRRECOVERABLE_TOOLS[_tcName2] && content) {
                         var cmdOut = content;
                         if (cmdOut.length > 8000) {
                             cmdOut = cmdOut.slice(0, 4000) + '\n…[截断 ' + (content.length - 8000) + ' chars]…\n' + cmdOut.slice(-4000);

@@ -203,7 +203,10 @@
             "snapFail": "快照保存失败"
         },
         "inputPlaceholder": "Ask qqq AI... (Ctrl+V 粘贴图片)",
-        "inputLimitWarn": "键入已达上限 58KB，无法继续键入",
+        "inputLimitWarn": "键入已达编辑框字符上限（非文件字节大小）",
+        "inputLimitQoastCap": "已达编辑框字符上限（约 {0}K 字符，非文件字节）",
+        "inputLimitQoastFull": "已达编辑框字符上限，无法继续粘贴",
+        "inputLimitQoastTruncated": "已达编辑框字符上限，多余内容已截断",
         "embedImage": "嵌入",
         "level": {
             "a": "保守",

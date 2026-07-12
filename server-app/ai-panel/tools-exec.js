@@ -587,7 +587,7 @@ async function executeFetchWebpage(args) {
             .replace(/<[^>]+>/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
-        return text.length > OUTPUT_CAP_FETCH ? text.slice(0, OUTPUT_CAP_FETCH) + '\n... (truncated)' : text;
+        return text;
     } catch (err) {
         return 'Fetch error: ' + (err.message || err);
     }

@@ -1,6 +1,6 @@
 # qqqide 上下文压缩 — 概念定义与架构
 
-状态：V9 已落地。本地机械筛，零网络，零费用。
+状态：V10 已落地。本地机械筛，零网络，零费用。
 
 ---
 
@@ -10,10 +10,12 @@
 ┌──────────────────────────────────────────────────────────────┐
 │  🔴 压缩 = 背包重构。成功前不写盘，失败原子回滚。            │
 │  🔴 零网络调用。一切在客户端完成。                           │
-│  🔴 仅保留「当前在建楼层」原始。楼层完结→即刻机械筛。       │
+│  🔴 仅保留当前在建楼层原始。楼层完结→即刻机械筛。           │
 │  🔴 Q/A/S 全量保留，不截断。工具结果仅摘要。                 │
-│  🔴 run_command 输出完整保留（唯一不能从磁盘恢复的工具结果）。│
-│  🔴 [File: ...] 注入块在 Q 行剥离。CURRENT TIME 剥离。       │
+│  🔴 不可恢复工具（run_command/fetch_webpage/search_web/      │
+│     analyze_image等）输出完整保留。                           │
+│  🔴 [File: ...] 注入块剥离。CURRENT TIME 剥离。              │
+│  🔴 压缩前后快照 + 恢复路径：重启不反弹。                    │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -22,34 +24,31 @@
 ## §2 基础定义
 
 ### 背包
-AI 对话的完整上下文。`agent.conversation[]` 数组。每条消息 `{role, content, tool_calls?, tool_call_id?, _floor}`。
+AI 对话的完整上下文。`agent.conversation[]` 数组。
 
 ### Z（注入物）
-每次请求携带但非对话内容的消息，压缩时剥离：
-msg[0]（规则）、toolsdef、guard、CURRENT TIME、_system 恢复消息、压缩元信息。
+每次请求携带但非对话内容的消息：msg[0]（规则）、toolsdef、guard、CURRENT TIME、_system 恢复消息。
 
 ### 压缩原料 X
-待压缩的原始消息（已完结楼层）。剥离 Z 后送入机械筛。
+已完结楼层的原始消息，剥离 Z。
 
 ### 压缩饼干
-原料 X 经机械筛产出的纯文本。逐层 Q&A 缩略 + 工具调用行 + 工具摘要 + run_command 完整输出。作为 `{role:"system", _compressed:true}` 注入 conversation。
+X 经机械筛产出的纯文本。逐层 Q&A 缩略 + 工具调用行 + 摘要 + 不可恢复工具完整输出。作为 `{role:"system", _compressed:true}` 注入 conversation。
 
 ---
 
-## §3 压缩流水线（V9）
+## §3 触发机制
 
-```
-楼层完结
-  ↓
-机械筛：该楼层消息 → 纯文本饼干
-  ↓
-splice conversation：移除该楼层原始消息 → 注入饼干
-  ↓
-当前在建楼层 = 新楼层（原始保留）
-```
+### 自动压缩
+每间 house 完成后检查 `_lastApiPromptTokens > COMPRESS_THRESHOLD`（默认 200k tokens，设置→高级可调 100k-1000k）。
 
-**零阈值。零触发。零临界点。零 W6。零 AI 网络压缩。**
-每层楼建完即压。背包永远只含：sg0 + 压缩饼干 + 当前在建楼层原始消息。
+触发后：原地执行 `_compressContext` → splice conversation → 移除非 W6 楼层消息 → 注入饼干。
+
+### 手动压缩
+左下角按钮。不检查阈值，强制压缩。`_compressContext({force:true})`。
+
+### W6 保留
+`_findBreakpoint` 保证断点后至少 4 层完整原始楼层（≥10% 总 token）。W6 永不压缩。
 
 ---
 
@@ -59,71 +58,64 @@ splice conversation：移除该楼层原始消息 → 注入饼干
 
 | 原始消息 | 格式 |
 |---------|------|
-| user | `Q: [全量内容]` |
+| user | `Q: [全量内容]`（剥离 [File:] 注入块和 CURRENT TIME） |
 | assistant 纯文本 | `A: [全量内容]` |
 | assistant 含 tool_calls | 先 `A:` 行，再 `[A → xxx] file1, file2` |
-| tool 返回（非 run_command） | 摘要追加到上一工具行 |
-| **tool 返回（run_command）** | **摘要追加上一行 + 完整输出另起缩进块** |
+| tool 返回（可恢复） | 摘要追加到上一工具行 |
+| **tool 返回（不可恢复）** | **摘要上追一行 + 完整输出另起缩进块** |
 | system | `[S] [全量内容]` |
 
-### 工具摘要规则
+### 工具分类
 
-| 工具 | 摘要 |
-|------|------|
-| read_file | `✓ L:N/M` |
-| edit_file | `✓ N处` / `✗ [原因]` |
-| write_file / create_file | `✓ 已写入` |
-| delete_file | `✓` |
-| **run_command** | `✓ Nc` / `✗ exit N` + **完整输出（≤8000 chars）** |
-| get_diagnostics | `✓ OK` / `✗` |
-| search_text / search_content | `✓ N处匹配` |
-| list_files / find_files | `✓ N项` |
+| 可恢复（仅摘要） | 不可恢复（摘要+完整输出保留） |
+|---|---|
+| read_file / edit_file / write_file | **run_command** |
+| create_file / delete_file | **fetch_webpage** |
+| search_text / search_content | **search_web** |
+| list_files / find_files | **analyze_image** |
+| get_diagnostics | **get_vision_context** |
+| | **generate_image** |
+| | **remove_background** |
 
-### 产出示例
+**不可恢复 = 结果在磁盘上找不到。** 例如 `psql` 查询、`curl` API 返回、网页抓取、图像分析——这些内容只在那个时刻存在。
 
-```
-=== F17 ===
-Q: 还是失败了，看看有没有日志
-[A → read_file] f16/all.json ✓ L:80/80
-A: 找到两个新bug。Bug1: auto-save在半路写盘污染_ctx。
-   已修复：加_compressing检查。
-[A → edit_file] panel-clock.js, panel-quest-ui.js ✓ 3处
+### 视觉识别特殊说明
+用户粘贴图片时，预分析结果（`VISION ANALYSIS RESULTS`）注入到 user 消息内容中。Q 行全量保留→预分析不丢失。
 
-=== F18 ===
-Q: 查一下数据库里的用户数量
-[A → run_command] run_command ✓ 43c
-  │  count
-  │ ───────
-  │    142
-  │ (1 row)
-A: 当前有142个用户。
-```
+AI 主动调 `analyze_image` 的结果：属于不可恢复工具→完整输出另起缩进块保留。
 
 ---
 
-## §5 为什么 run_command 输出要保留
+## §5 恢复路径（防反弹）
 
-| 工具 | 能从磁盘恢复吗 | 做法 |
-|------|:---:|------|
-| read_file | ✅ re-read 磁盘 | 摘要 |
-| edit_file | ✅ 磁盘已更新 | 摘要 |
-| search_text | ✅ 重新 search | 摘要 |
-| **run_command** | **❌ 一次性** | **完整保留** |
+```
+压缩时：
+  ① conversation splice → 饼干入内存
+  ② ctx.narrative = 饼干全文 → 随 agent metadata 落盘 sq3
+  ③ ctx.lastCompressedFloor = 被压最大楼层号
 
-`git log`、`psql` 查询、`curl` API 返回、构建错误——这些内容只在那个时刻存在，丢了永远没了。其余工具的结果都在磁盘上，AI 随时可重读。
+重启/切 quest 时（_restoreAgentFromStore）：
+  ① 读 ctx.lastCompressedFloor + ctx.narrative
+  ② 聚合楼层 conversation，跳过 _floor <= lastCompressedFloor 的原始消息
+  ③ unshift 饼干到 conversation 头部
+  ④ 用实际 conversation 索引覆盖 _floorMeta.floorStartIdx
+  ⑤ 去重 _compressed 消息（各楼层快照中的饼干副本）
+```
 
 ---
 
 ## §6 与之前版本的本质区别
 
 ```
-旧：W6（保留6层原始）+ 阈值触发 → AI 网络压缩 → 三专家并行 → 扣费 → 经常失败
-新：仅保留当前在建楼层 → 楼层完结即刻本地机械筛 → 零网络 → 零费用 → 永不失"
+V1-V6: 网络 AI 压缩（三专家并行→扣费→经常失败→回滚）
+V7-V8: 本地机械筛（零网络→零费用→100%成功 但是 W6 过多）
+V9:    +run_command 完整输出
+V10:   +所有不可恢复工具完整输出 + 恢复路径（重启不反弹）
 ```
 
 ---
 
-## §7 未解决的问题
+## §7 未解决问题
 
-1. **极端大消息** — 用户粘贴 50K 纯文本日志（无 `[File:]` 标记）→ 全量保留，饼干膨胀。改进方向：检测到疑似日志块时截断并标记
-2. **多轮压叠加** — 当前追加 system 消息。极端长对话（>200层）时饼干可能 >30K chars → 需要二次机械筛或合并旧饼干
+1. **极端大消息** — 用户粘贴 50K 纯文本日志→全量保留→饼干膨胀
+2. **多轮叠加** — >200层对话时旧饼干需二次压缩
