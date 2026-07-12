@@ -108,9 +108,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-drop-search::placeholder{color:var(--base01);opacity:.6}
 [data-theme="dark"] .quest-drop-search::placeholder{color:#7a7670}
 /* 下拉条目 */
-.quest-drop-item{padding:6px 12px;font-size:16px;color:var(--text-primary);white-space:normal;overflow:visible;cursor:default;line-height:1.45;max-height:calc(1.45em * 2 + 14px);margin-bottom:4px;display:flex;align-items:flex-start}
+.quest-drop-item{padding:6px 12px;font-size:16px;color:var(--text-primary);white-space:normal;overflow:hidden;cursor:default;line-height:1.45;margin-bottom:4px;display:flex;align-items:flex-start}
 .quest-drop-item:last-child{margin-bottom:0}
-.quest-drop-line{overflow:visible}
+.quest-drop-line{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere;max-width:100%}
 .quest-drop-item:hover{background:var(--background-color)}
 [data-theme="dark"] .quest-drop-item:hover{background:#3f3830}
 .quest-drop-item.active{font-weight:700;color:var(--primary-color)}
@@ -274,10 +274,10 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 #input-row{display:flex;gap:0;overflow:hidden;margin:0 -8px 0 -8px}
 /* ── 开放厨房：输入框无边框，仅底边进度条 ── */
 #input-wrap{position:relative;flex:1;min-width:0}
-#input{display:block;width:100%;background:var(--card-bg);color:var(--text-primary);border:none;border-radius:0;padding:8px 10px;font-size:13px;font-family:inherit;min-height:36px;max-height:333px;overflow-y:hidden;overflow-x:hidden;resize:none;outline:none;scrollbar-width:thin;scrollbar-color:var(--base01) transparent;line-height:1.5}#input::-webkit-scrollbar{width:3px}#input::-webkit-scrollbar-track{background:transparent;border:none}#input::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}#input::-webkit-scrollbar-button{display:none}#input::-webkit-scrollbar-corner{background:transparent}
-/* ── 输入进度条：底部 2px 单线填色，颜色 #ff3d00 ── */
-#input-progress{position:absolute;left:0;right:0;bottom:0;height:2px;pointer-events:none;z-index:1;overflow:hidden}
-#input-progress-fill{height:100%;width:0;background:#ff3d00;transition:width 0.12s ease;will-change:width}
+#input{display:block;width:100%;background:var(--card-bg);color:var(--text-primary);border:none;border-radius:0;padding:5px 10px;font-size:13px;font-family:inherit;min-height:33px;max-height:333px;overflow-y:hidden;overflow-x:hidden;resize:none;outline:none;scrollbar-width:thin;scrollbar-color:var(--base01) transparent;line-height:1.5}#input::-webkit-scrollbar{width:3px}#input::-webkit-scrollbar-track{background:transparent;border:none}#input::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}#input::-webkit-scrollbar-button{display:none}#input::-webkit-scrollbar-corner{background:transparent}
+/* ── 输入进度条：悬浮在按钮行上方，从面板左边界延伸到兔子按钮 ── */
+#input-progress{height:0;overflow:visible;pointer-events:none;position:relative;margin-left:-8px;margin-right:-8px}
+#input-progress-fill{position:absolute;top:3px;left:0;height:2px;width:0;background:#ff3d00;transition:width 0.12s ease;will-change:width}
 #input-limit-warn{display:none;background:var(--red);color:#fff;font-size:13px;font-weight:700;padding:8px 12px;border-radius:4px;text-align:center;animation:_warnPulse .6s infinite alternate}@keyframes _warnPulse{from{opacity:1}to{opacity:.7}}
 #input-limit-warn.show{display:block}
 #input::placeholder{color:var(--base01);opacity:.5}
@@ -579,9 +579,9 @@ var _orig={};
   <div id="input-row">
     <div id="input-wrap">
       <textarea id="input" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" placeholder="Ask qqq AI... (Ctrl+V 粘贴图片)" data-i18n-placeholder-attr="ai.inputPlaceholder" rows="2"></textarea>
-      <div id="input-progress"><div id="input-progress-fill"></div></div>
     </div>
   </div>
+  <div id="input-progress"><div id="input-progress-fill"></div></div>
   <div id="btn-row">
     <div class="tier-group">
       <button class="tier-btn tier-a" id="tier-a">A</button>

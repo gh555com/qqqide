@@ -39,9 +39,11 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 
 /* file list */
 .file-list{list-style:none}
-.file-list li{padding:3px 6px;font-family:ui-monospace,monospace;font-size:13px;border-radius:3px;cursor:pointer;display:flex;align-items:center;gap:6px}
+.file-list li{padding:2px 4px;font-family:Tahoma,ui-monospace,monospace;font-size:12px;border-radius:3px;cursor:pointer;display:flex;align-items:center;gap:4px}
+.icon-btn{background:none;border:none;cursor:pointer;padding:2px 1px;display:inline-flex;align-items:center;justify-content:center;color:var(--text);opacity:.65;border-radius:3px;width:20px;height:20px}
+.icon-btn:hover{opacity:1;background:var(--base2)}
 .file-list li:hover{background:var(--base2)}
-.badge{font-size:11px;font-weight:700;padding:1px 5px;border-radius:3px;color:#fff;flex-shrink:0;min-width:18px;text-align:center}
+.badge{font-size:10px;font-weight:700;padding:1px 4px;border-radius:3px;color:#fff;flex-shrink:0;min-width:16px;text-align:center;line-height:14px}
 .badge.M{background:var(--yellow)}
 .badge.A{background:var(--green)}
 .badge.D{background:var(--red)}
@@ -242,6 +244,7 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 // ═══ BRIDGE + THEME ═══
 var bridge = null;
 try { bridge = parent.qqqideBridge; } catch(_) {}
+if (!bridge) { try { bridge = window.top.qqqideBridge; } catch(_) {} }
 
 (function() {
   try {
@@ -473,6 +476,21 @@ async function _refreshGitStatus() {
   }
 }
 
+function _makeIconBtn(svgHtml, title, clickFn) {
+  var btn = document.createElement('button');
+  btn.className = 'icon-btn';
+  btn.title = title;
+  btn.innerHTML = svgHtml;
+  btn.addEventListener('click', function(e) { e.stopPropagation(); clickFn(e); });
+  return btn;
+}
+
+// Icon SVGs (currentColor = text color, auto-adapts to theme)
+var _ICON_STAGE = '<svg viewBox="0 0 14 14" width="14" height="14"><path d="M7 13V3M3 7l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var _ICON_UNSTAGE = '<svg viewBox="0 0 14 14" width="14" height="14"><path d="M7 1v10M3 7l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var _ICON_DISCARD = '<svg viewBox="0 0 14 14" width="13" height="13"><path d="M2 3h10M5 3V2a1 1 0 011-1h2a1 1 0 011 1v1M3.5 3l.5 9a1 1 0 001 .9h4a1 1 0 001-.9l.5-9M5.5 6v4M8.5 6v4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var _ICON_ADD = '<svg viewBox="0 0 14 14" width="13" height="13"><path d="M7 2v10M2 7h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>';
+
 function _renderFileList(elId, files, isStaged) {
   var ul = document.getElementById(elId); ul.innerHTML = '';
   for (var i = 0; i < files.length; i++) {
@@ -484,32 +502,38 @@ function _renderFileList(elId, files, isStaged) {
     pathEl.className = 'file-path'; pathEl.textContent = f.path; pathEl.title = f.path;
     li.appendChild(badge); li.appendChild(pathEl);
 
-    // Diff button — opens external Monaco diff window
-    var acts0 = document.createElement('span'); acts0.className = 'file-actions';
-    var diffBtn = document.createElement('button');
-    diffBtn.className = 'btn-mini'; diffBtn.textContent = 'diff';
-    var absPath = _gitRoot + '/' + f.path;
-    (function(fp, staged) { diffBtn.addEventListener('click', function(e) { e.stopPropagation(); _gitOpenDiff(fp, '', 'working', staged); }); })(absPath, isStaged);
-    acts0.appendChild(diffBtn); li.appendChild(acts0);
-
-    if (!isStaged && f.status !== '?') {
+    if (isStaged) {
+      // Staged file: unstage button (move back to working tree)
       var acts = document.createElement('span'); acts.className = 'file-actions';
-      var discardBtn = document.createElement('button');
-      discardBtn.className = 'btn-mini danger'; discardBtn.textContent = '丢弃';
-      (function(fp) { discardBtn.addEventListener('click', function(e) { e.stopPropagation(); _discardFile(fp); }); })(f.path);
-      acts.appendChild(discardBtn); li.appendChild(acts);
-    }
-    if (f.status === '?') {
-      var acts2 = document.createElement('span'); acts2.className = 'file-actions';
-      var addBtn = document.createElement('button');
-      addBtn.className = 'btn-mini'; addBtn.textContent = '跟踪';
-      (function(fp) { addBtn.addEventListener('click', function(e) { e.stopPropagation(); _gitCmd(['add', '--', fp]).then(function() { _refreshGitStatus(); }); }); })(f.path);
-      acts2.appendChild(addBtn); li.appendChild(acts2);
+      var uBtn = _makeIconBtn(_ICON_UNSTAGE, '移回工作区', function(e) {
+        _gitCmd(['reset', 'HEAD', '--', f.path]).then(function() { _refreshGitStatus(); });
+      });
+      acts.appendChild(uBtn); li.appendChild(acts);
+    } else if (f.status !== '?') {
+      // Unstaged modified file: stage + discard buttons
+      var acts = document.createElement('span'); acts.className = 'file-actions';
+      var sBtn = _makeIconBtn(_ICON_STAGE, '移至暂存区', function(e) {
+        _gitCmd(['add', '--', f.path]).then(function() { _refreshGitStatus(); });
+      });
+      acts.appendChild(sBtn);
+      var dBtn = _makeIconBtn(_ICON_DISCARD, '放弃更改', function(e) {
+        if (!confirm('丢弃对 ' + f.path + ' 的修改？（不可恢复）')) return;
+        _gitCmd(['checkout', '--', f.path]).then(function() { _refreshGitStatus(); document.getElementById('inline-diff').style.display = 'none'; });
+      });
+      acts.appendChild(dBtn); li.appendChild(acts);
+    } else {
+      // Untracked file: add/track button
+      var acts = document.createElement('span'); acts.className = 'file-actions';
+      var aBtn = _makeIconBtn(_ICON_ADD, '跟踪此文件', function(e) {
+        _gitCmd(['add', '--', f.path]).then(function() { _refreshGitStatus(); });
+      });
+      acts.appendChild(aBtn); li.appendChild(acts);
     }
 
+    var absFile = _gitRoot + '/' + f.path;
     (function(fp, staged) {
-      li.addEventListener('click', function(e) { if (e.target.tagName === 'BUTTON') return; _toggleShowDiff(fp, staged); });
-    })(f.path, isStaged);
+      li.addEventListener('click', function(e) { if (e.target.tagName === 'BUTTON') return; _gitOpenDiff(fp, '', 'working', staged); });
+    })(absFile, isStaged);
     ul.appendChild(li);
   }
   if (files.length === 0) {
@@ -780,7 +804,10 @@ async function _toggleCommitDetail(hash, rowEl) {
       var f = files[i];
       h += '<div class="cd-file" data-hash="' + _esc(hash) + '" data-path="' + _esc(f.path) + '" style="cursor:pointer;"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">' +
         _esc(f.path) + '</span><span class="cd-stat cd-added">+' + f.added + '</span>' +
-        '<span class    var diffBtn = detail.querySelector('.cd-view-diff');
+        '<span class="cd-stat cd-deleted">-' + f.deleted + '</span></div>';
+    }
+    detail.innerHTML = h;
+    var diffBtn = detail.querySelector('.cd-view-diff');
     if (diffBtn) { (function(hv) { diffBtn.addEventListener('click', function(e) { e.stopPropagation(); _showCommitDetail(hv); }); })(hash); }
     var fileEls = detail.querySelectorAll('.cd-file');
     for (var j = 0; j < fileEls.length; j++) {
@@ -793,7 +820,7 @@ async function _toggleCommitDetail(hash, rowEl) {
         });
       })(fileEls[j]);
     }
-  } catch(e) { detail.innerHTML = '<div style="padding:4px;color:var(--red);">加载失败</div>'; }catch(e) { detail.innerHTML = '<div style="padding:4px;color:var(--red);">加载失败</div>'; }
+  } catch(e) { detail.innerHTML = '<div style="padding:4px;color:var(--red);">加载失败</div>'; }
 }
 
 async function _showCommitDetail(fullHash) {
@@ -820,11 +847,15 @@ async function _showCommitDetail(fullHash) {
 }
 
 function _backToStatus() {
-  document.getElementById('inline-diff').style.display = 'none';
+  var el = document.getElementById('inline-diff');
+  if (el) el.style.display = 'none';
 }
 
 function _gitOpenDiff(filePath, commitHash, mode, staged) {
-  if (!bridge || !bridge.git || !bridge.git.openDiff) { _showProgress('Diff 窗口不可用 (需要壳层更新)'); return; }
+  console.log('[git] _gitOpenDiff called', filePath, commitHash, mode, staged);
+  if (!bridge) { _showProgress('Bridge 未连接 — 请重启 IDE'); return; }
+  if (!bridge.git) { _showProgress('bridge.git 未找到 — 请重启 IDE'); return; }
+  if (!bridge.git.openDiff || typeof bridge.git.openDiff !== 'function') { _showProgress('bridge.git.openDiff 缺失 — 请重启 IDE'); return; }
   bridge.git.openDiff({
     filePath: filePath,
     projectRoot: _gitRoot,

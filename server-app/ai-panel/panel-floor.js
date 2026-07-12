@@ -73,7 +73,7 @@ async function generateFloorTxt(ag, questId) {
         var totalBytes = askBytes + sourceBytes + promptBytes + ruleBytes + memoryBytes;
 
         // ═══ floor 头 ═══
-        var floorTs = timing && timing.floorStartServerMs ? new Date(timing.floorStartServerMs) : now;
+        var floorTs = timing && timing.floorStartServerMs ? new Date(timing.floorStartServerMs) : new Date();
         lines.push('floor.' + floorNum + '   ' + _fmtTime(floorTs));
         lines.push('');
         lines.push('(body ' + fmtK(totalBytes) + ': ask ' + fmtK(askBytes) + ' + rule ' + fmtK(ruleBytes) + ' + Source code ' + fmtK(sourceBytes) + ' + prompt ' + fmtK(promptBytes) + ' + memory ' + fmtK(memoryBytes) + ')');

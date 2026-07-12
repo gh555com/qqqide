@@ -4,9 +4,8 @@
 <meta charset="UTF-8">
 <title>Git Diff</title>
 <style>
-/* ═══ 配色 ═══ */
-:root{--bg:#fdf6e3;--card:#eee8d5;--text:#073642;--border:#d3cbb7;--green:#859900;--red:#dc322f;--yellow:#b58900;--accent:#cb4b16;--base01:#97978a;--base2:#eee8d5;--base3:#fdf6e3;--hover-bg:rgba(0,0,0,0.035)}
-[data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--accent:#b58900;--base01:#97978a;--base2:#2a2a2a;--base3:#1e1e1e;--hover-bg:rgba(255,255,255,0.05)}
+:root{--bg:#fdf6e3;--card:#eee8d5;--text:#073642;--border:#d3cbb7;--green:#859900;--red:#dc322f;--yellow:#b58900;--accent:#cb4b16;--base01:#97978a;--base2:#eee8d5;--base3:#fdf6e3}
+[data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--accent:#b58900;--base01:#97978a;--base2:#2a2a2a;--base3:#1e1e1e}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Tahoma,system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column}
 ::-webkit-scrollbar{width:4px;height:4px}
@@ -14,26 +13,21 @@ body{font-family:Tahoma,system-ui,-apple-system,sans-serif;font-size:13px;color:
 ::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}
 ::selection{background:#ffd301;color:#000}
 
-/* ═══ TITLE ROW ═══ */
-#title-row{height:40px;background:var(--card);display:flex;align-items:center;padding:0 10px;gap:8px;border-bottom:1px solid var(--border);flex-shrink:0;-webkit-app-region:drag}
+#title-row{height:38px;background:var(--card);display:flex;align-items:center;padding:0 10px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0;-webkit-app-region:drag}
 #title-row .title-text{flex:1;font-size:12px;font-family:ui-monospace,Consolas,monospace;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-#title-row .title-text .path{color:var(--text)}
-#title-row .title-text .sep{color:var(--red);font-weight:700}
 #title-row .win-btn{-webkit-app-region:no-drag;width:28px;height:26px;border:none;background:transparent;color:var(--base01);font-size:14px;cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 #title-row .win-btn:hover{background:var(--border)}
 
-/* ═══ DIFF CONTAINER ═══ */
 #diff-container{flex:1;overflow:hidden;position:relative}
-#empty-state{display:flex;align-items:center;justify-content:center;height:100%;color:var(--base01);font-size:13px}
+#empty-state{display:flex;align-items:center;justify-content:center;height:100%;color:var(--base01);font-size:13px;text-align:center;padding:20px}
 
-/* ═══ BOTTOM BUTTONS ═══ */
-#big-close{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:56px;height:56px;border-radius:50%;border:2px solid var(--red);background:var(--card);color:var(--red);font-size:24px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;line-height:1;outline:none}
-#big-close:hover{background:var(--red);color:#fff;transform:translateX(-50%) scale(1.1)}
-
-#btn-diff-only{position:fixed;bottom:calc(16px + 4px);left:50%;transform:translateX(calc(-50% - 28px - 120px));height:48px;padding:0 20px;border-radius:6px;border:2px solid #4a4a4a;background:var(--card);color:var(--text);font-size:13px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap;outline:none}
-#btn-diff-only:hover{background:var(--bg)}
-#btn-diff-only.on{font-weight:800}
-#btn-diff-only.on::after{content:'';display:inline-block;width:5px;height:10px;border:solid var(--text);border-width:0 2px 2px 0;transform:rotate(45deg);margin-left:8px;margin-bottom:2px}
+#bottom-bar{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:999}
+#bottom-bar button{height:48px;border-radius:6px;border:2px solid #4a4a4a;background:var(--card);color:var(--text);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;font-family:Tahoma,system-ui,sans-serif;white-space:nowrap;outline:none;padding:0 16px}
+#bottom-bar button:hover{background:var(--bg)}
+#bottom-bar button.on{font-weight:800}
+#bottom-bar button.on::after{content:'';display:inline-block;width:5px;height:10px;border:solid var(--text);border-width:0 2px 2px 0;transform:rotate(45deg);margin-left:8px;margin-bottom:2px}
+#bottom-bar button.close-btn{border-color:var(--red);color:var(--red);width:56px;border-radius:50%;font-size:24px;padding:0}
+#bottom-bar button.close-btn:hover{background:var(--red);color:#fff}
 </style>
 <script>
 (function(){var p=new URLSearchParams(location.search);var t=p.get('theme');if(t)document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');})();
@@ -43,111 +37,46 @@ body{font-family:Tahoma,system-ui,-apple-system,sans-serif;font-size:13px;color:
 
 <div id="title-row">
   <span style="font-size:13px;flex-shrink:0;-webkit-app-region:no-drag">📄</span>
-  <div class="title-text">
-    <span class="path" id="path-label">—</span>
-    <span class="sep" id="commit-label"></span>
-  </div>
-  <button class="win-btn" id="btn-close" style="font-size:18px" title="关闭 (Esc)">✕</button>
+  <div class="title-text" id="path-label">—</div>
+  <button class="win-btn" id="btn-close" style="font-size:18px">✕</button>
 </div>
 
 <div id="diff-container"></div>
 <div id="empty-state">加载中…</div>
 
-<button id="btn-diff-only">仅差异</button>
-<button id="big-close">✕</button>
+<div id="bottom-bar">
+  <button id="btn-diff-only">仅差异</button>
+  <button class="close-btn" id="big-close">✕</button>
+</div>
 
-<script src="../../min/vs/loader.js"></script>
 <script>
 'use strict';
 
-// ═══ PARSE PARAMS ═══
 var _params = new URLSearchParams(location.search);
 var _filePath = _params.get('filePath') || '';
 var _projectRoot = _params.get('projectRoot') || '';
 var _commitHash = _params.get('commitHash') || '';
-var _mode = _params.get('mode') || 'working'; // 'working' | 'commit'
+var _mode = _params.get('mode') || 'working';
 var _staged = _params.get('staged') === '1';
-var _fileName = _filePath.split(/[\\/]/).pop() || _filePath;
+var _fileName = _filePath.replace(/[\\/]/g, '/').split('/').pop() || _filePath;
+var _relPath = '';
+if (_projectRoot) {
+  var r = _projectRoot.replace(/[\\/]/g, '/');
+  var a = _filePath.replace(/[\\/]/g, '/');
+  if (a.startsWith(r + '/')) _relPath = a.slice(r.length + 1);
+  else _relPath = a;
+} else { _relPath = _filePath; }
 
-// ═══ BRIDGE ═══
+// Bridge
 var _bridge = null;
 try { _bridge = window.qqqideBridge; } catch(_) {}
-if (!_bridge) {
-  try { _bridge = parent.qqqideBridge; } catch(_) {}
-}
+if (!_bridge) { try { _bridge = parent.qqqideBridge; } catch(_) {} }
 
-// ═══ GIT HELPERS ═══
-var _gitBin = null;
-async function _getGit() {
-  if (_gitBin) return _gitBin;
-  if (_bridge && _bridge.components) {
-    try { _gitBin = await _bridge.components.getBin('git'); } catch(_) {}
-  }
-  if (!_gitBin) _gitBin = 'git';
-  return _gitBin;
-}
-
-async function _git(args, opts) {
-  opts = opts || {};
-  var bin = await _getGit();
-  try {
-    if (_bridge && _bridge.qz) {
-      return await _bridge.qz.spawn({ cmd: bin, args: args, cwd: opts.cwd || _projectRoot, timeout: opts.timeout || 15000, shell: false });
-    }
-  } catch(e) {}
-  return { exitCode: -1, stdout: '', stderr: e.message || '' };
-}
-
-function _relPath(absPath) {
-  if (!_projectRoot) return absPath;
-  var r = _projectRoot.replace(/\\/g, '/');
-  var a = absPath.replace(/\\/g, '/');
-  if (a.startsWith(r + '/')) return a.slice(r.length + 1);
-  return a;
-}
-
-async function _getBeforeContent() {
-  var rel = _relPath(_filePath);
-  if (_mode === 'commit' && _commitHash) {
-    var r = await _git(['show', _commitHash + '^:' + rel]);
-    return r.exitCode === 0 ? r.stdout : '';
-  }
-  if (_staged) {
-    var r = await _git(['show', 'HEAD:' + rel]);
-    return r.exitCode === 0 ? r.stdout : '';
-  }
-  // unstaged: try HEAD, empty if untracked
-  var r = await _git(['show', 'HEAD:' + rel]);
-  return r.exitCode === 0 ? r.stdout : '';
-}
-
-async function _getAfterContent() {
-  var rel = _relPath(_filePath);
-  if (_mode === 'commit' && _commitHash) {
-    var r = await _git(['show', _commitHash + ':' + rel]);
-    return r.exitCode === 0 ? r.stdout : '';
-  }
-  if (_staged) {
-    var r = await _git(['show', ':0:' + rel]);
-    return r.exitCode === 0 ? r.stdout : '';
-  }
-  // unstaged: git show :relPath gives working tree version
-  var r = await _git(['show', ':' + rel]);
-  return r.exitCode === 0 ? r.stdout : '';
-}
-
-// ═══ UI ═══
-document.getElementById('path-label').textContent = _fileName;
-if (_commitHash) {
-  document.getElementById('commit-label').textContent = ' @ ' + _commitHash.slice(0, 8);
-}
-
-// ═══ CLOSE ═══
-document.getElementById('big-close').addEventListener('click', function() { window.close(); });
+document.getElementById('path-label').textContent = _fileName + (_commitHash ? ' @ ' + _commitHash.slice(0,8) : (_staged ? ' (staged)' : ''));
 document.getElementById('btn-close').addEventListener('click', function() { window.close(); });
+document.getElementById('big-close').addEventListener('click', function() { window.close(); });
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') window.close(); });
 
-// ═══ DIFF ONLY TOGGLE ═══
 var _diffOnly = false;
 var _btnDO = document.getElementById('btn-diff-only');
 _btnDO.addEventListener('click', function() {
@@ -156,30 +85,113 @@ _btnDO.addEventListener('click', function() {
   if (_editor) _editor.updateOptions({ renderSideBySide: !_diffOnly });
 });
 
-// ═══ MONACO DIFF ═══
-var _editor = null;
-require(['vs/editor/editor.main'], function() {
-  initDiff();
-});
+function _git(args, opts) {
+  opts = opts || {};
+  if (!_bridge || !_bridge.qz) return Promise.resolve({ exitCode: -1, stdout: '', stderr: '' });
+  return _bridge.qz.spawn({ cmd: 'git', args: args, cwd: opts.cwd || _projectRoot, timeout: opts.timeout || 15000, shell: false })
+    .then(function(r) { return r; })
+    .catch(function(e) { return { exitCode: -1, stdout: '', stderr: String(e) }; });
+}
 
-async function initDiff() {
-  var container = document.getElementById('diff-container');
-  var empty = document.getElementById('empty-state');
-  empty.textContent = '读取 Git 数据…';
+async function _getBeforeContent() {
+  if (_mode === 'commit' && _commitHash) {
+    var r = await _git(['show', _commitHash + '^:' + _relPath]);
+    if (r.exitCode === 0 && r.stdout.trim()) return r.stdout;
+    return ''; // first commit → empty left
+  }
+  if (_staged) {
+    var r = await _git(['show', 'HEAD:' + _relPath]);
+    if (r.exitCode === 0 && r.stdout.trim()) return r.stdout;
+    var r2 = await _git(['show', ':0:' + _relPath]);
+    return r2.exitCode === 0 ? r2.stdout : '';
+  }
+  // unstaged
+  var r = await _git(['show', 'HEAD:' + _relPath]);
+  if (r.exitCode === 0 && r.stdout.trim()) return r.stdout;
+  var r2 = await _git(['show', ':' + _relPath]);
+  if (r2.exitCode === 0 && r2.stdout.trim()) return r2.stdout;
+  return '';
+}
 
+async function _getAfterContent() {
+  if (_mode === 'commit' && _commitHash) {
+    var r = await _git(['show', _commitHash + ':' + _relPath]);
+    if (r.exitCode === 0 && r.stdout.trim()) return r.stdout;
+    return '';
+  }
+  if (_staged) {
+    var r = await _git(['show', ':0:' + _relPath]);
+    if (r.exitCode === 0 && r.stdout.trim()) return r.stdout;
+    var r2 = await _git(['show', 'HEAD:' + _relPath]);
+    return r2.exitCode === 0 ? r2.stdout : '';
+  }
+  // unstaged: read from disk
+  if (_bridge && _bridge.fs) {
+    try {
+      var c = await _bridge.fs.read(_filePath);
+      if (typeof c === 'string' && c.trim()) return c;
+    } catch(e) {}
+  }
+  // fallback: git show :path
+  var r = await _git(['show', ':' + _relPath]);
+  return r.exitCode === 0 ? r.stdout : '';
+}
+
+// Monaco
+var _editor = null, _monacoLoaded = false;
+
+function _loadMonaco() {
+  return new Promise(function(resolve) {
+    if (_monacoLoaded && window.monaco) { resolve(); return; }
+    var baseUrl = 'qqqide-asset://monaco/vs';
+    var s = document.createElement('script');
+    s.src = baseUrl + '/loader.js';
+    s.onload = function() {
+      require.config({ paths: { vs: baseUrl } });
+      window.MonacoEnvironment = {
+        getWorker: function() { return new Worker('qqqide-asset://monaco/vs/base/worker/workerMain.js'); }
+      };
+      require(['vs/editor/editor.main'], function() {
+        _monacoLoaded = true;
+        resolve();
+      }, function(err) {
+        document.getElementById('empty-state').textContent = 'Monaco 加载失败';
+        resolve();
+      });
+    };
+    s.onerror = function() {
+      document.getElementById('empty-state').textContent = 'Monaco 加载失败';
+      resolve();
+    };
+    document.head.appendChild(s);
+  });
+}
+
+async function _initDiff() {
+  var emptyEl = document.getElementById('empty-state');
+  emptyEl.textContent = '读取 Git 数据…';
   var before = await _getBeforeContent();
   var after = await _getAfterContent();
+  if (!before) before = '';
+  if (!after) after = '';
 
   if (!before && !after) {
-    empty.textContent = '无内容可比较';
+    emptyEl.textContent = '无内容可比较';
     return;
   }
 
-  empty.style.display = 'none';
+  await _loadMonaco();
+  if (!_monacoLoaded || !window.monaco) {
+    emptyEl.textContent = 'Monaco 加载失败';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  var container = document.getElementById('diff-container');
   container.style.display = '';
 
-  var original = monaco.editor.createModel(before || '', 'plaintext');
-  var modified = monaco.editor.createModel(after || '', 'plaintext');
+  var original = monaco.editor.createModel(before, 'plaintext');
+  var modified = monaco.editor.createModel(after, 'plaintext');
 
   _editor = monaco.editor.createDiffEditor(container, {
     readOnly: true,
@@ -198,6 +210,8 @@ async function initDiff() {
   _editor.getOriginalEditor().updateOptions({ readOnly: true });
   _editor.getModifiedEditor().updateOptions({ readOnly: true });
 }
+
+_initDiff();
 </script>
 </body>
 </html>

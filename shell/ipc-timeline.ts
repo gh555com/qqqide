@@ -277,7 +277,7 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
             frame: false,
             title: 'Timeline Diff — ' + (filePath.split(/[\\/]/).pop() || filePath),
             backgroundColor: '#1e1e1e',
-            parent: _parentWin || undefined,
+            parent: mainWin || undefined,
             modal: false,
             resizable: true,
             webPreferences: {
@@ -321,8 +321,8 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         } catch (_) { }
         let _isDark = true;
         try {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                _isDark = await mainWindow.webContents.executeJavaScript(
+            if (mainWin && !mainWin.isDestroyed()) {
+                _isDark = await mainWin.webContents.executeJavaScript(
                     'document.documentElement.getAttribute("data-theme") === "dark"'
                 );
             }
@@ -357,20 +357,36 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
             return { ok: true, windowId: existingWin.id, reused: true };
         }
 
-        const _parentWin = BrowserWindow.fromWebContents(e.sender);
+        // Use the sender's window (main IDE window) as positioning reference
+        const mainWin = BrowserWindow.fromWebContents(e.sender);
         let mainRect = { x: 0, y: 0, width: 1200, height: 700 };
-        const mainWindow = BrowserWindow.getAllWindows()[0] || null;
-        if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWin && !mainWin.isDestroyed()) {
             try {
-                const wb = mainWindow.getBounds();
+                const wb = mainWin.getBounds();
                 mainRect = { x: wb.x, y: wb.y, width: wb.width, height: wb.height };
             } catch (_) { }
         }
+        // Calculate position: right-aligned, 2/3 width, fills between menu row 1 and status bar
+        let menuBarH = 0, statusBarH = 0;
+        try {
+            if (mainWin && !mainWin.isDestroyed()) {
+                menuBarH = await mainWin.webContents.executeJavaScript(
+                    '(document.getElementById("qqq-menu-row")?.offsetHeight || 28)'
+                );
+                statusBarH = await mainWin.webContents.executeJavaScript(
+                    '(document.getElementById("qqq-status-bar")?.offsetHeight || 24)'
+                );
+            }
+        } catch (_) { }
+        const diffW = Math.floor(mainRect.width * 2 / 3);
+        const diffH = mainRect.height - menuBarH - statusBarH;
+        const diffX = mainRect.x + (mainRect.width - diffW);
+        const diffY = mainRect.y + menuBarH;
         const diffWin = new BrowserWindow({
-            x: mainRect.x + 40,
-            y: mainRect.y + 40,
-            width: Math.max(1100, mainRect.width - 80),
-            height: Math.max(800, mainRect.height - 80),
+            x: diffX,
+            y: diffY,
+            width: Math.max(800, diffW),
+            height: Math.max(600, diffH),
             minWidth: 800,
             minHeight: 600,
             frame: false,

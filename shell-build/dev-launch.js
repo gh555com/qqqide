@@ -89,10 +89,10 @@ function shutdown(code) {
 process.on('SIGINT',  () => shutdown(0));
 process.on('SIGTERM', () => shutdown(0));
 
-// (1) esbuild watch -> rebuild shell-out/ on TS save (~30ms)
-spawn('build:watch',
-    process.platform === 'win32' ? 'node.exe' : 'node',
-    [path.join('shell-build', 'esbuild.config.js'), '--watch']);
+// (1) esbuild watch — 已禁用（虚存泄漏）。改 shell/*.ts 后手动 npm run build
+// spawn('build:watch',
+//     process.platform === 'win32' ? 'node.exe' : 'node',
+//     [path.join('shell-build', 'esbuild.config.js'), '--watch']);
 
 // (2) dev-server -> http://127.0.0.1:PORT/qqqide/
 spawn('dev-server',
@@ -114,7 +114,7 @@ setTimeout(() => {
 console.log('============================================================');
 console.log('[dev-launch] dev environment starting');
 console.log('[dev-launch]   dev-server  : http://127.0.0.1:' + PORT + '/qqqide/');
-console.log('[dev-launch]   build:watch : auto-rebuild shell-out/ on save');
+console.log('[dev-lau   build:watch : [disabled] manual npm run build for shell changessave');
 console.log('[dev-launch]   electron    : --dev (DevTools on, no caching)');
 console.log('[dev-launch] edit server-app/* -> reload window (Ctrl+R)');
 console.log('[dev-launch] edit shell/*.ts   -> exit (Ctrl+C) & re-run "npm run dev"');
