@@ -39,6 +39,7 @@ import { registerSearchIpc } from './ipc-search';
 import { registerEditIpc } from './ipc-edit';
 import { registerMiscIpc } from './ipc-misc';
 import { registerTimelineIpc } from './ipc-timeline';
+import { registerGitDiffIpc } from './ipc-git-diff';
 import { registerSmartSearchIpc, IndexService } from './ipc-smart-search';
 import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
@@ -236,6 +237,7 @@ function registerAllIpc(): void {
         updateService, () => mainWindow, bootConfig  // lspBridge=null (LSP OFF)
     );
     registerTimelineIpc(portable.root, bootConfig);
+    registerGitDiffIpc(portable.root, bootConfig);
     registerSmartSearchIpc(indexService);
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
     registerQzSpawnIpc(qzSpawn);
