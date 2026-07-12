@@ -81,12 +81,23 @@ export function registerFsIpc(): void {
         const MAX = 3000;
         try {
             const names = await fs.promises.readdir(p, { withFileTypes: true });
-            const result: string[] = [];
-            for (let i = 0; i < names.length && i < MAX; i++) {
-                result.push(names[i].isDirectory() ? names[i].name + '/' : names[i].name);
-            }
+            const entries = names.slice(0, MAX);
+            // ★ 并行 stat 获取 mtime/size，零额外 IPC
+            const stats = await Promise.all(entries.map(function (e) {
+                return fs.promises.stat(path.join(p, e.name)).catch(function () { return null; });
+            }));
+            const result = entries.map(function (e, i) {
+                var st = stats[i];
+                return {
+                    name: e.name,
+                    isDir: e.isDirectory(),
+                    mtimeMs: st ? st.mtimeMs : 0,
+                    ctimeMs: st ? st.ctimeMs : 0,
+                    size: st ? st.size : 0,
+                };
+            });
             if (names.length > MAX) {
-                console.warn('[fs:list] TRUNCATED:', p, `returned ${MAX}/${names.length} entries`);
+                console.warn('[fs:list] TRUNCATED:', p, 'returned ' + MAX + '/' + names.length + ' entries');
             }
             return result;
         } catch (e: any) {

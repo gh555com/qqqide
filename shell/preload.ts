@@ -38,7 +38,10 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string })
         writeBase64: (p: string, base64: string) => ipcRenderer.invoke('qqqide:fs:writeBase64', p, base64),
         append: (p: string, content: string) => ipcRenderer.invoke('qqqide:fs:append', p, content),
         list: async (p: string) => {
-            const result: string[] = await ipcRenderer.invoke('qqqide:fs:list', p, new Error('fs.list caller').stack);
+            var result: any = await ipcRenderer.invoke('qqqide:fs:list', p, new Error('fs.list caller').stack);
+            // 新格式（带 stat）：直接返回
+            if (Array.isArray(result) && result.length > 0 && typeof result[0] === 'object') return result;
+            // 旧兼容（字符串格式）
             if (Array.isArray(result) && result.length > 0 && typeof result[0] === 'string') {
                 return result.map((s: string) => ({
                     name: s.endsWith('/') ? s.slice(0, -1) : s,

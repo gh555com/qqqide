@@ -174,7 +174,8 @@
       btn.style.cssText =
         'width:24px; height:24px; border:1px solid var(--border-color); border-radius:2px; ' +
         'color:var(--text-primary); font-size:12px; font-weight:bold; ' +
-        'cursor:pointer; padding:0; line-height:22px; text-align:center; flex-shrink:0;';
+        'cursor:pointer; padding:0; line-height:22px; text-align:center; flex-shrink:0; ' +
+        'transition:none;';
       btn.style.background = 'transparent';
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -186,9 +187,9 @@
         _dirCache.delete(dirPath + '|n');
         _dirCache.delete(dirPath + '|m');
         _dirCache.delete(dirPath);  // 清理旧 key（无 mode 后缀）
-        // ★ 切换按钮高亮
+        // ★ 切换按钮高亮：只有 mode 匹配的亮，其余透明
         var allBtns = bar.querySelectorAll('.aiv-sort-btn');
-        allBtns.forEach(function (b) { b.style.background = ''; });
+        allBtns.forEach(function (b) { b.style.background = 'transparent'; });
         btn.style.background = 'var(--gold-accent-bg)';
         // ★ 重新渲染本列表：清空 + 重新 loadDirInto
         var outer = scrollContainer._outer || scrollContainer.parentElement;
@@ -284,22 +285,12 @@
     var cached = _dirCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.entries;
     try {
+      // ★ bridge.fs.list 主进程已并行 stat，直接返回 mtimeMs
       var entries = await bridge.fs.list(p);
-      if (mode === 'm') {
-        // ★ M 排需要 mtime，bridge.fs.list 不返回，逐个 stat
-        entries = await Promise.all(entries.map(async function (e) {
-          var full = pathJoin(p, e.name);
-          try {
-            var st = await bridge.fs.stat(full);
-            if (st) e.mtime = st.mtimeMs || 0;
-          } catch (_) { e.mtime = 0; }
-          return e;
-        }));
-      }
       entries.sort(function (x, y) {
         if (x.isDir !== y.isDir) return x.isDir ? -1 : 1;
         if (mode === 'm') {
-          return (y.mtime || 0) - (x.mtime || 0);
+          return (y.mtimeMs || 0) - (x.mtimeMs || 0);
         }
         // 默认 'n'：文件名倒序（数字大的在上）
         return naturalCompare(y.name, x.name);
