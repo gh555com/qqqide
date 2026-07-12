@@ -4,24 +4,38 @@
 <meta charset="UTF-8">
 <title>Git Diff</title>
 <style>
-:root{--bg:#fdf6e3;--card:#eee8d5;--text:#073642;--border:#d3cbb7;--green:#859900;--red:#dc322f;--yellow:#b58900;--base01:#97978a;--base2:#eee8d5}
-[data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--base01:#97978a;--base2:#2a2a2a}
+:root{--bg:#fdf6e3;--card:#eee8d5;--text:#073642;--border:#d3cbb7;--green:#859900;--red:#dc322f;--yellow:#b58900;--accent:#cb4b16;--base01:#97978a;--base2:#eee8d5;--base3:#fdf6e3;--hover-bg:rgba(0,0,0,0.035);--sel-bg:rgba(0,0,0,0.07)}
+[data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--accent:#b58900;--base01:#97978a;--base2:#2a2a2a;--base3:#1e1e1e;--hover-bg:rgba(255,255,255,0.05);--sel-bg:rgba(255,255,255,0.10)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Tahoma,system-ui,sans-serif;font-size:13px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+body{font-family:Tahoma,system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}
-#title-row{height:36px;background:var(--card);display:flex;align-items:center;padding:0 8px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0;-webkit-app-region:drag}
-#title-row span.file{flex:1;font-size:12px;font-family:ui-monospace,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-#title-row .btn-close{-webkit-app-region:no-drag;width:26px;height:24px;border:none;background:none;color:var(--red);font-size:16px;cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-#title-row .btn-close:hover{background:var(--red);color:#fff}
+::selection{background:#ffd301;color:#000}
+[data-theme="dark"] ::selection{background:#ffd301;color:#000}
+
+#title-row{height:40px;background:var(--card);display:flex;align-items:center;padding:0 8px;gap:6px;border-bottom:1px solid var(--border);flex-shrink:0;-webkit-app-region:drag}
+#input-wrap{flex:1;position:relative;display:flex;align-items:center;min-width:0;-webkit-app-region:no-drag}
+.title-input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px;font-family:Tahoma,ui-monospace,Consolas,monospace;outline:none;min-width:0;white-space:pre;overflow:hidden;line-height:1.6;caret-color:var(--text)}
+.title-input:hover{border-color:var(--yellow)}
+.title-input:focus{border-color:var(--yellow);outline:none}
+#drag-handle{width:56px;height:100%;display:flex;align-items:center;justify-content:center;opacity:.55;flex-shrink:0;padding-top:1px;-webkit-app-region:no-drag}
+#drag-handle:hover{opacity:1}
+#btn-max{width:40px;height:36px;font-size:20px;-webkit-app-region:no-drag;border:none;background:transparent;color:var(--base01);cursor:pointer;border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0;align-self:center}
+#btn-max:hover{background:var(--border)}
+
 #diff-container{flex:1;overflow:hidden;position:relative}
-#status-msg{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--base01);font-size:13px;text-align:center;max-width:80%;line-height:1.6}
-#bottom-bar{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:999}
-#bottom-bar button{height:40px;border-radius:6px;border:2px solid #666;background:var(--card);color:var(--text);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);font-family:Tahoma,sans-serif;padding:0 14px}
-#bottom-bar button.on{font-weight:800;border-color:var(--green)}
-#bottom-bar button.close-btn{border-color:var(--red);color:var(--red);width:44px;border-radius:50%;font-size:22px;padding:0}
-#bottom-bar button.close-btn:hover{background:var(--red);color:#fff}
+#empty-state{display:flex;align-items:center;justify-content:center;height:100%;color:var(--base01);font-size:13px;text-align:center;max-width:80%;margin:0 auto;line-height:1.6}
+
+#big-close{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:56px;height:56px;border-radius:50%;border:2px solid var(--red);background:var(--card);color:var(--red);font-size:24px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;line-height:1;outline:none}
+#big-close:hover{background:var(--red);color:#fff;transform:translateX(-50%) scale(1.1)}
+
+#btn-diff-only{position:fixed;bottom:calc(16px + 4px);left:50%;transform:translateX(calc(-50% - 28px - 144px));height:48px;padding:0 24px;border-radius:6px;border:2px solid #4a4a4a;background:var(--card);color:var(--text);font-size:14px;cursor:pointer;z-index:999;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 16px rgba(0,0,0,0.5);transition:all .15s;font-family:Tahoma,system-ui,-apple-system,sans-serif;white-space:nowrap;outline:none}
+#btn-diff-only:hover{background:var(--bg)}
+#btn-diff-only.checked{font-weight:800}
+#btn-diff-only.checked::after{content:'';display:inline-block;width:5px;height:10px;border:solid var(--text);border-width:0 2px 2px 0;transform:rotate(45deg);margin-left:8px;margin-bottom:2px}
+
+#btn-close-tip{position:fixed;display:none;z-index:9999;background:#000;color:#ffd301;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;font-family:Tahoma,sans-serif;pointer-events:none;white-space:nowrap;border:2px solid #ffd301;box-shadow:0 2px 12px rgba(0,0,0,0.8);line-height:1.4}
 </style>
 <script>
 (function(){var p=new URLSearchParams(location.search);var t=p.get('theme');if(t)document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light');})();
@@ -30,280 +44,240 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:13px;color:var(--text);ba
 <body>
 
 <div id="title-row">
-  <span style="flex-shrink:0;font-size:13px">📄</span>
-  <span class="file" id="label">—</span>
-  <button class="btn-close" id="btn-x" title="关闭 (Esc)">✕</button>
+  <span style="font-size:13px;flex-shrink:0;align-self:center;margin-top:2px;-webkit-app-region:no-drag">📄</span>
+  <div id="input-wrap">
+    <div class="title-input" id="title-input" contenteditable="true" spellcheck="false">—</div>
+  </div>
+  <div id="drag-handle" title="拖拽移动窗口">
+    <svg width="22" height="22" viewBox="0 0 22 22" style="pointer-events:none;display:block">
+      <line x1="4" y1="11" x2="18" y2="11" stroke="var(--base01)" stroke-width="1.8" stroke-linecap="round"/>
+      <line x1="11" y1="4" x2="11" y2="18" stroke="var(--base01)" stroke-width="1.8" stroke-linecap="round"/>
+      <polyline points="6,8 4,11 6,14" fill="none" stroke="var(--base01)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <polyline points="16,8 18,11 16,14" fill="none" stroke="var(--base01)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <polyline points="8,6 11,4 14,6" fill="none" stroke="var(--base01)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <polyline points="8,16 11,18 14,16" fill="none" stroke="var(--base01)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </div>
+  <button id="btn-max" title="最大化">□</button>
 </div>
 
 <div id="diff-container">
-  <div id="status-msg">正在读取 Git 数据…</div>
+  <div id="empty-state">正在读取 Git 数据…</div>
 </div>
 
-<div id="bottom-bar">
-  <button id="btn-diff-only">仅差异</button>
-  <button class="close-btn" id="btn-big-close" title="关闭 (Esc)">✕</button>
-</div>
+<button id="btn-diff-only">仅差异</button>
+<button id="big-close">✕</button>
+<div id="btn-close-tip">= 右键也可关闭</div>
 
 <script>
 'use strict';
 
-// ═══ Close ═══
-document.getElementById('btn-x').addEventListener('click',function(){window.close();});
-document.getElementById('btn-big-close').addEventListener('click',function(){window.close();});
-document.addEventListener('keydown',function(e){if(e.key==='Escape')window.close();});
-
-// ═══ Params ═══
 var _p=new URLSearchParams(location.search);
 var _filePath=_p.get('filePath')||'';
 var _projectRoot=_p.get('projectRoot')||'';
 var _commitHash=_p.get('commitHash')||'';
 var _mode=_p.get('mode')||'working';
 var _staged=_p.get('staged')==='1';
-var _gitBin=_p.get('gitBin')||'git'; // embedded git binary path from main process
+var _gitBin=_p.get('gitBin')||'git';
 var _fileName=_filePath.replace(/[\\\/]/g,'/').split('/').pop()||_filePath;
-var _msg=document.getElementById('status-msg');
-document.getElementById('label').textContent=_fileName+(_commitHash?' @ '+_commitHash.slice(0,8):'');
-console.log('[git-diff] init filePath='+_filePath+' projectRoot='+_projectRoot+' gitBin='+_gitBin+' commitHash='+_commitHash+' mode='+_mode+' staged='+_staged);
+var _msg=document.getElementById('empty-state');
+var _titleEl=document.getElementById('title-input');
+_titleEl.textContent=_filePath;
 
-// ═══ Bridge ═══
 var _bridge=null;
 try{_bridge=window.qqqideBridge;}catch(_){}
 if(!_bridge)try{_bridge=window.top.qqqideBridge;}catch(_){}
-console.log('[git-diff] bridge:',!!_bridge,Object.keys(_bridge||{}).join(','));
 
-// ═══ Git spawn ═══
+function _closeWin(){window.close();}
+document.getElementById('big-close').addEventListener('click',_closeWin);
+document.addEventListener('keydown',function(e){if(e.key==='Escape')_closeWin();});
+document.addEventListener('contextmenu',function(e){e.preventDefault();_closeWin();});
+
+var $bigClose=document.getElementById('big-close'),$tip=document.getElementById('btn-close-tip');
+if($bigClose&&$tip){$bigClose.addEventListener('mouseenter',function(e){$tip.style.display='';$tip.style.left=(e.clientX+14)+'px';$tip.style.top=(e.clientY-28)+'px';});$bigClose.addEventListener('mousemove',function(e){$tip.style.left=(e.clientX+14)+'px';$tip.style.top=(e.clientY-28)+'px';});$bigClose.addEventListener('mouseleave',function(){ $tip.style.display='none';});}
+
+document.getElementById('btn-max').addEventListener('click',function(){
+  if(_bridge&&_bridge.window){_bridge.window.isMaximized().then(function(m){if(m)_bridge.window.unmaximize();else _bridge.window.maximize();});}
+});
+document.getElementById('title-row').addEventListener('dblclick',function(e){
+  if(e.target.closest('#input-wrap')||e.target.closest('#drag-handle')||e.target.closest('#btn-max'))return;
+  if(_bridge&&_bridge.window){_bridge.window.isMaximized().then(function(m){if(m)_bridge.window.unmaximize();else _bridge.window.maximize();});}
+});
+_titleEl.addEventListener('dblclick',function(e){
+  e.stopPropagation();
+  var sel=window.getSelection();var range=document.createRange();
+  range.selectNodeContents(_titleEl);sel.removeAllRanges();sel.addRange(range);
+});
+_titleEl.addEventListener('keydown',function(e){if(e.key==='Enter')e.preventDefault();});
+
 async function _git(args){
-  if(!_bridge||!_bridge.qz){
-    console.log('[git-diff] _git FAIL: no bridge.qz');
-    return {exitCode:-1,stdout:'',stderr:'bridge.qz missing'};
-  }
-  try{
-    console.log('[git-diff] spawn:',_gitBin,args.join(' '),'cwd='+_projectRoot);
-    var r=await _bridge.qz.spawn({cmd:_gitBin,args:args,cwd:_projectRoot,timeout:15000,shell:false});
-    console.log('[git-diff] result exitCode='+r.exitCode+' stdoutLen='+(r.stdout||'').length+' stderrLen='+(r.stderr||'').length);
-    if(r.stderr) console.log('[git-diff] stderr:',r.stderr.substring(0,200));
-    return r;
-  }catch(e){
-    console.log('[git-diff] _git exception:',e&&e.message||e);
-    return {exitCode:-1,stdout:'',stderr:String(e)};
-  }
+  if(!_bridge||!_bridge.qz||typeof _bridge.qz.spawn!=='function')return{exitCode:-1,stdout:'',stderr:'bridge.qz.spawn missing'};
+  try{return await _bridge.qz.spawn({cmd:_gitBin,args:args,cwd:_projectRoot,timeout:15000,shell:false});}
+  catch(e){return{exitCode:-1,stdout:'',stderr:String(e)};}
 }
 
-// ═══ Resolve git root (run rev-parse once, cache it) ═══
 var _gitRoot=null;
 async function _resolveGitRoot(){
   if(_gitRoot)return _gitRoot;
   var r=await _git(['rev-parse','--show-toplevel']);
-  console.log('[git-diff] rev-parse --show-toplevel exitCode='+r.exitCode+' stdout='+((r.stdout||'').trim()));
-  if(r.exitCode===0&&r.stdout&&r.stdout.trim()){
-    _gitRoot=r.stdout.trim().replace(/[\\\/]/g,'/').replace(/\/+$/,'');
-    return _gitRoot;
-  }
-  // Fallback: use passed _projectRoot
-  _gitRoot=_projectRoot.replace(/[\\\/]/g,'/').replace(/\/+$/,'');
-  return _gitRoot;
+  if(r.exitCode===0&&r.stdout&&r.stdout.trim()){_gitRoot=r.stdout.trim().replace(/[\\\/]/g,'/').replace(/\/+$/,'');return _gitRoot;}
+  _gitRoot=_projectRoot.replace(/[\\\/]/g,'/').replace(/\/+$/,'');return _gitRoot;
 }
-
-// ═══ Compute relative path from git root ═══
 async function _relPath(){
   var root=await _resolveGitRoot();
   var fp=_filePath.replace(/[\\\/]/g,'/');
-  var rootLow=root.toLowerCase();
-  var fpLow=fp.toLowerCase();
-  if(fpLow.startsWith(rootLow+'/')){
-    var rel=fp.slice(root.length+1);
-    console.log('[git-diff] _relPath root='+root+' fp='+fp+' -> rel='+rel);
-    return rel;
-  }
-  console.log('[git-diff] _relPath root='+root+' fp='+fp+' -> NO MATCH, using basename');
-  // Fallback: just use the basename (last resort)
+  if(fp.toLowerCase().startsWith(root.toLowerCase()+'/'))return fp.slice(root.length+1);
   return _fileName;
 }
 
-// ═══ Get file content from git ═══
-async function _gitCat(gitRef){
+async function _gitCat(ref){
   var rel=await _relPath();
-  var ref=gitRef+':'+rel;
-  console.log('[git-diff] _gitCat ref='+ref);
-  var r=await _git(['show',ref]);
-  if(r.exitCode===0)return r.stdout||'';
-  // Try without ref prefix (e.g. :0:path for staged)
-  if(gitRef==='HEAD'){
-    r=await _git(['show',':'+rel]);
-    if(r.exitCode===0)return r.stdout||'';
-  }
-  console.log('[git-diff] _gitCat FAILED for '+ref+': exitCode='+r.exitCode);
-  return '';
+  var r=await _git(['show',ref+':'+rel]);
+  return r.exitCode===0?(r.stdout||''):'';
 }
 
 async function _getBefore(){
-  if(_mode==='commit'&&_commitHash){
-    // Before = parent commit
-    var c=await _gitCat(_commitHash+'^');
-    if(c)return c;
-    // First commit: empty before is correct
-    return '';
-  }
-  // Working tree or staged: before = HEAD version
+  if(_mode==='commit'&&_commitHash){var c=await _gitCat(_commitHash+'^');return c||'';}
+  if(_staged){var c=await _gitCat('HEAD');return c||'';}
   return await _gitCat('HEAD');
 }
-
 async function _getAfter(){
-  if(_mode==='commit'&&_commitHash){
-    // After = the commit itself
-    return await _gitCat(_commitHash);
-  }
-  if(_staged){
-    // Staged: after = index (:0)
-    return await _gitCat(':0');
-  }
-  // Unstaged: read from disk
-  if(_bridge&&_bridge.fs){
-    try{
-      var c=await _bridge.fs.read(_filePath);
-      console.log('[git-diff] fs.read len='+(typeof c==='string'?c.length:'NOT STRING'));
-      if(typeof c==='string'&&c)return c;
-    }catch(e){console.log('[git-diff] fs.read error:',e);}
-  }
-  // Fallback: index version
+  if(_mode==='commit'&&_commitHash)return await _gitCat(_commitHash);
+  if(_staged){var c=await _gitCat(':0');return c||await _gitCat('HEAD');}
+  if(_bridge&&_bridge.fs){try{var c=await _bridge.fs.read(_filePath);if(typeof c==='string'&&c)return c;}catch(e){}}
   return await _gitCat(':0');
 }
 
-// ═══ Language detection ═══
 function _langOf(fp){
-  var n=fp.toLowerCase();
-  if(/\.(js|mjs|cjs)$/.test(n))return'javascript';
-  if(/\.(ts|tsx)$/.test(n))return'typescript';
-  if(/\.(json)$/.test(n))return'json';
-  if(/\.(html|htm)$/.test(n))return'html';
-  if(/\.(css|scss|less)$/.test(n))return'css';
-  if(/\.(md|markdown)$/.test(n))return'markdown';
-  if(/\.(py)$/.test(n))return'python';
-  if(/\.(go)$/.test(n))return'go';
-  if(/\.(rs)$/.test(n))return'rust';
-  if(/\.(sh|bash|zsh)$/.test(n))return'shell';
-  if(/\.(bat|cmd)$/.test(n))return'bat';
-  if(/\.(yml|yaml)$/.test(n))return'yaml';
-  if(/\.(xml|svg)$/.test(n))return'xml';
-  if(/\.(sql)$/.test(n))return'sql';
-  if(/\.(java)$/.test(n))return'java';
-  if(/\.(c|h)$/.test(n))return'c';
-  if(/\.(cpp|cxx|cc|hpp)$/.test(n))return'cpp';
-  return'plaintext';
+  var m={js:'javascript',mjs:'javascript',ts:'typescript',tsx:'typescript',json:'json',md:'markdown',py:'python',rs:'rust',go:'go',java:'java',c:'c',h:'cpp',cpp:'cpp',html:'html',htm:'html',css:'css',scss:'scss',xml:'xml',yml:'yaml',yaml:'yaml',sh:'shell',bash:'shell',sql:'sql',bat:'bat',lua:'lua',rb:'ruby',php:'php',swift:'swift',kt:'kotlin',r:'r'};
+  return m[(fp||'').split('.').pop().toLowerCase()]||'plaintext';
 }
 
-// ═══ Solarized Monaco Theme (matches qqqide-theme.js) ═══
-function _defineSolarizedThemes(monaco){
-  if(!monaco)return;
-  try{monaco.editor.defineTheme('solarized-dark',{
-    base:'vs-dark',inherit:true,
-    rules:[
-      {token:'comment',foreground:'586e75',fontStyle:'italic'},
-      {token:'keyword',foreground:'859900'},{token:'string',foreground:'2aa198'},
-      {token:'number',foreground:'d33682'},{token:'type',foreground:'b58900'},
-      {token:'function',foreground:'268bd2'},{token:'variable',foreground:'839496'},
-      {token:'constant',foreground:'d33682'},{token:'regexp',foreground:'dc322f'},
-    ],
-    colors:{'editor.background':'#002b36','editor.foreground':'#839496','editor.lineHighlightBackground':'#073642'}
+function _defineMonacoThemes(monaco){
+  if(!monaco||!monaco.editor)return;
+  try{monaco.editor.defineTheme('solarized-light',{base:'vs',inherit:false,
+    colors:{'editor.background':'#FDF6E3','editor.foreground':'#5c7060','editor.lineHighlightBackground':'#EEE8D5','editorLineNumber.foreground':'#777777','editorCursor.foreground':'#58685e','editor.selectionBackground':'#E8A090','editor.inactiveSelectionBackground':'#E8C8B8','editorOverviewRuler.border':'#00000000','focusBorder':'#b58900'},
+    rules:[{token:'',foreground:'5c7060',background:'FDF6E3'},{token:'comment',foreground:'95958a',fontStyle:'italic'},{token:'string',foreground:'2a9a78'},{token:'string.regexp',foreground:'DC322F'},{token:'number',foreground:'c83070'},{token:'variable',foreground:'4078a0'},{token:'keyword',foreground:'859900'},{token:'storage',foreground:'58685e',fontStyle:'bold'},{token:'type',foreground:'CB4B16'},{token:'function',foreground:'4078a0'},{token:'constant',foreground:'CB4B16'},{token:'tag',foreground:'4078a0'},{token:'invalid',foreground:'DC322F'}]
   });}catch(_){}
-  try{monaco.editor.defineTheme('solarized-light',{
-    base:'vs',inherit:true,
-    rules:[
-      {token:'comment',foreground:'93a1a1',fontStyle:'italic'},
-      {token:'keyword',foreground:'859900'},{token:'string',foreground:'2aa198'},
-      {token:'number',foreground:'d33682'},{token:'type',foreground:'b58900'},
-      {token:'function',foreground:'268bd2'},{token:'variable',foreground:'657b83'},
-      {token:'constant',foreground:'d33682'},{token:'regexp',foreground:'dc322f'},
-    ],
-    colors:{'editor.background':'#fdf6e3','editor.foreground':'#657b83','editor.lineHighlightBackground':'#eee8d5'}
+  try{monaco.editor.defineTheme('solarized-dark',{base:'vs-dark',inherit:false,
+    colors:{'editor.background':'#1e1e1e','editor.foreground':'#dcd8d0','editor.lineHighlightBackground':'#2a2a2a','editorLineNumber.foreground':'#97978a','editorCursor.foreground':'#c8c4b8','editor.selectionBackground':'#5a3a2a','editor.inactiveSelectionBackground':'#4a3020','editorOverviewRuler.border':'#00000000','focusBorder':'#d4a017'},
+    rules:[{token:'',foreground:'dcd8d0',background:'1e1e1e'},{token:'comment',foreground:'6a6660',fontStyle:'italic'},{token:'string',foreground:'8fbc5a'},{token:'string.regexp',foreground:'ff4444'},{token:'number',foreground:'b85872'},{token:'variable',foreground:'d4a017'},{token:'keyword',foreground:'8fbc5a'},{token:'storage',foreground:'c8c4b8',fontStyle:'bold'},{token:'type',foreground:'e07020'},{token:'function',foreground:'d4a017'},{token:'constant',foreground:'e07020'},{token:'tag',foreground:'e07020'},{token:'invalid',foreground:'ff4444'}]
   });}catch(_){}
 }
 
-// ═══ Monaco ═══
-var _editor=null,_diffOnly=false;
+function _stripEditor(editor){
+  if(!editor)return;
+  try{editor.updateOptions({
+    scrollbar:{vertical:'hidden',horizontal:'hidden'},scrollBeyondLastLine:20,cursorBlinking:'solid',smoothScrolling:false,
+    minimap:{enabled:false},glyphMargin:false,lineDecorationsWidth:0,renderLineHighlight:'none',
+    occurrencesHighlight:false,selectionHighlight:false,matchBrackets:'never',bracketPairColorization:{enabled:false},
+    renderValidationDecorations:'off',quickSuggestions:false,hover:{enabled:false},links:false,codeLens:false,
+    folding:false,renderWhitespace:'none',contextmenu:false,dragAndDrop:false,
+    lineNumbersMinChars:2,lineDecorationsWidth:10,padding:{top:0,bottom:0},stickyScroll:{enabled:false}
+  });}catch(_){}
+}
+
+function _scrollToFirstChange(){
+  if(!_editor)return;
+  var changes=_editor.getLineChanges();if(!changes||!changes.length)return;
+  var first=changes[0],line=first.originalStartLineNumber>0?first.originalStartLineNumber:first.modifiedStartLineNumber;
+  if(!line||line<=0)return;
+  try{_editor.getOriginalEditor().revealLineInCenter(line);}catch(_){}
+}
+
+var _HIDE_CONTEXT=3,_HIDE_MIN=3;
+function _applyHiddenAreas(){
+  if(!_editor)return;
+  var oE=_editor.getOriginalEditor(),mE=_editor.getModifiedEditor();
+  if(!_diffOnly){try{oE.setHiddenAreas([]);}catch(_){}try{mE.setHiddenAreas([]);}catch(_){}return;}
+  var changes=_editor.getLineChanges();if(!changes||!changes.length)return;
+  var mc=window.monaco;if(!mc)return;
+  var oM=oE.getModel(),mM=mE.getModel();var oT=oM?oM.getLineCount():0,mT=mM?mM.getLineCount():0;
+  var oC=[],mC=[];
+  for(var i=0;i<changes.length;i++){var c=changes[i];if(c.originalEndLineNumber>0)oC.push({start:c.originalStartLineNumber,end:c.originalEndLineNumber});if(c.modifiedEndLineNumber>0)mC.push({start:c.modifiedStartLineNumber,end:c.modifiedEndLineNumber});}
+  function inv(ch,total){if(!total||total<=0)return[];var r=[],cur=1;for(var j=0;j<ch.length;j++){if(ch[j].start>cur)r.push({start:cur,end:ch[j].start-1});cur=ch[j].end+1;}if(cur<=total)r.push({start:cur,end:total});return r;}
+  function shrink(rr){var out=[];for(var k=0;k<rr.length;k++){var r=rr[k],len=r.end-r.start+1;if(len<_HIDE_MIN)continue;if(len<=_HIDE_CONTEXT*2)continue;out.push({start:r.start+_HIDE_CONTEXT,end:r.end-_HIDE_CONTEXT});}return out;}
+  var oU=shrink(inv(oC,oT)),mU=shrink(inv(mC,mT));
+  function toR(arr){return arr.map(function(r){return new mc.Range(r.start,1,r.end,1);});}
+  try{oE.setHiddenAreas(toR(oU));}catch(_){}try{mE.setHiddenAreas(toR(mU));}catch(_){}
+}
+
+var _editor=null,_monacoLoaded=false,_diffOnly=false,_editorFontSize=13;
 document.getElementById('btn-diff-only').addEventListener('click',function(){
   _diffOnly=!_diffOnly;
-  this.classList.toggle('on',_diffOnly);
-  if(_editor)_editor.updateOptions({renderSideBySide:!_diffOnly});
+  var btn=document.getElementById('btn-diff-only');if(_diffOnly)btn.classList.add('checked');else btn.classList.remove('checked');
+  _applyHiddenAreas();setTimeout(function(){_scrollToFirstChange();},50);
 });
 
 function _loadMonaco(){
   return new Promise(function(resolve){
-    if(window.monaco){resolve();return;}
+    if(_monacoLoaded&&window.monaco){resolve();return;}
     var base='qqqide-asset://monaco/vs';
-    var s=document.createElement('script');
-    s.src=base+'/loader.js';
+    var s=document.createElement('script');s.src=base+'/loader.js';
     s.onload=function(){
       require.config({paths:{vs:base}});
       window.MonacoEnvironment={getWorker:function(){return new Worker('qqqide-asset://monaco/vs/base/worker/workerMain.js');}};
-      require(['vs/editor/editor.main'],function(){
-        _defineSolarizedThemes(window.monaco);
-        resolve();
-      },function(err){_msg.textContent='Monaco 加载失败: '+(err&&err.message||'unknown');resolve();});
+      require(['vs/editor/editor.main'],function(){_monacoLoaded=true;_defineMonacoThemes(window.monaco);resolve();},function(){_msg.textContent='Monaco 加载失败';resolve();});
     };
     s.onerror=function(){_msg.textContent='Monaco 加载失败';resolve();};
     document.head.appendChild(s);
   });
 }
 
-// ═══ Init ═══
 (async function(){
-  _msg.textContent='读取 Git 数据…';
-
-  // Resolve git root first (validates git works)
-  var root=await _resolveGitRoot();
-  console.log('[git-diff] resolved git root:',root);
-
-  var before=await _getBefore();
-  var after=await _getAfter();
-  console.log('[git-diff] beforeLen='+before.length+' afterLen='+after.length);
-
-  if(!before&&!after){
-    var extra='';
-    if(_mode!=='commit'){
-      extra='\n(文件可能未被 Git 跟踪，或不在仓库中)';
-    }
-    _msg.textContent='无差异内容可显示\n\n'+_fileName+extra;
+  if(!_bridge||!_bridge.qz||typeof _bridge.qz.spawn!=='function'){
+    _msg.textContent='Bridge 未就绪\n\n请完全关闭 IDE 再打开';
     return;
   }
 
-  _msg.textContent='加载 Monaco…';
-  await _loadMonaco();
-  if(!window.monaco){_msg.textContent='Monaco 加载失败 — 请关闭重试';return;}
+  try{
+    _msg.textContent='读取 Git 数据…';
+    await _resolveGitRoot();
 
-  _msg.style.display='none';
-  var container=document.getElementById('diff-container');
-  var isDark=document.documentElement.getAttribute('data-theme')==='dark';
-  var theme=isDark?'solarized-dark':'solarized-light';
-  var lang=_langOf(_fileName);
+    var before='',after='';
+    try{before=await _getBefore()||'';}catch(e){before='';}
+    try{after=await _getAfter()||'';}catch(e){after='';}
 
-  var m1=monaco.editor.createModel(before||'',lang);
-  var m2=monaco.editor.createModel(after||'',lang);
+    if(!before&&!after){_msg.textContent='无差异内容可显示\n\n'+_fileName+(_mode!=='commit'?'\n(文件可能未被 Git 跟踪)':'');return;}
 
-  _editor=monaco.editor.createDiffEditor(container,{
-    renderSideBySide:true,
-    readOnly:true,
-    originalEditable:false,
-    automaticLayout:true,
-    minimap:{enabled:true,showSlider:'mouseover'},
-    scrollbar:{vertical:'hidden',horizontal:'hidden'},
-    wordWrap:'on',
-    wordWrapColumn:0,
-    renderIndicators:false,
-    renderOverviewRuler:true,
-    fontSize:14,
-    lineNumbers:'on',
-    lineNumbersMinChars:2,
-    lineDecorationsWidth:10,
-    scrollBeyondLastLine:20,
-    theme:theme,
-    enableSplitViewResizing:false
-  });
-  _editor.setModel({original:m1,modified:m2});
-  _editor.getOriginalEditor().updateOptions({readOnly:true});
-  _editor.getModifiedEditor().updateOptions({readOnly:true});
-  _msg.style.display='none';
-})();
+    _msg.textContent='加载 Monaco…';
+    await _loadMonaco();
+    if(!window.monaco){_msg.textContent='Monaco 加载失败 — 请关闭重试';return;}
+
+    _msg.style.display='none';
+    var container=document.getElementById('diff-container');
+    var isDark=document.documentElement.getAttribute('data-theme')==='dark';
+    var theme=isDark?'solarized-dark':'solarized-light';
+    var lang=_langOf(_fileName);
+
+    try{if(_bridge&&_bridge.zoom){var sz=await _bridge.zoom.get();if(typeof sz==='number')_editorFontSize=Math.round(sz);}}catch(_){}
+
+    var m1=monaco.editor.createModel(before||'',lang);
+    var m2=monaco.editor.createModel(after||'',lang);
+
+    _editor=monaco.editor.createDiffEditor(container,{
+      renderSideBySide:true,readOnly:true,originalEditable:false,automaticLayout:true,
+      minimap:{enabled:true,showSlider:'mouseover'},scrollbar:{vertical:'hidden',horizontal:'hidden'},
+      wordWrap:'on',wordWrapColumn:0,renderIndicators:false,renderOverviewRuler:true,
+      fontSize:_editorFontSize,lineNumbers:'on',lineNumbersMinChars:2,lineDecorationsWidth:10,
+      scrollBeyondLastLine:20,theme:theme
+    });
+    _editor.setModel({original:m1,modified:m2});
+    _stripEditor(_editor.getOriginalEditor());
+    _stripEditor(_editor.getModifiedEditor());
+
+    var _firstDiff=false;
+    _editor.onDidUpdateDiff(function(){
+      _applyHiddenAreas();
+      if(!_firstDiff){_firstDiff=true;_scrollToFirstChange();}
+    });
+
+    if(_bridge&&_bridge.sync&&_bridge.sync.onMessage){_bridge.sync.onMessage(function(ch,data){if(ch!=='theme-change')return;var d=!!(data&&data.dark);var t=d?'solarized-dark':'solarized-light';document.documentElement.setAttribute('data-theme',d?'dark':'light');if(_editor)try{_editor.updateOptions({theme:t});}catch(_){}});}
+    if(_bridge&&_bridge.zoom&&_bridge.zoom.onChanged){_bridge.zoom.onChanged(function(s){if(typeof s==='number'){_editorFontSize=Math.round(s);if(_editor)try{_editor.updateOptions({fontSize:_editorFontSize});}catch(_){}}});}
+
+    _msg.style.display='none';
+  }catch(e){_msg.textContent='渲染失败: '+(e&&e.message||e);}
+})().catch(function(e){_msg.textContent='初始化崩溃: '+(e&&e.message||e);});
 </script>
 </body>
 </html>
