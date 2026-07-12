@@ -8,7 +8,7 @@
 // Cache version bumps on each shell.css/js change.
 // ============================================================================
 
-const CACHE_NAME = 'qqq-shell-v35';
+const CACHE_NAME = 'qqq-shell-v42';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -25,6 +25,9 @@ const PRECACHE_URLS = [
   './core/editor.js',
   './core/editor-breadcrumb.js',
   './goods/file-explorer/file-explorer.js',
+  './goods/git/git-diff-window.html',
+  './goods/git/git-ui.html',
+  './goods/git/git.js',
 ];
 
 // ----------------------------------------------------------------------------
