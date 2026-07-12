@@ -413,18 +413,88 @@ $input.addEventListener('paste', function (e) {
 
     if (wasTruncated) _limitQoast('paste-truncated');
 });
-$sendBtn.onclick = function () {
-    if (_switching) return;  // ★ quest 切换中 → 禁止一切操作
-    if (_activeAgent && _activeAgent._compressing) return;  // 压缩中 → 不响应
 
-    // ★ 红框 ACTIVE 态：Stop 按钮含义 = 封顶所有活跃红框 → idle
+// ═══ 右键菜单：Copy / Paste（无障碍，替代 Ctrl+C/Ctrl+V）══
+var _inputCtxMenu = null;
+function _closeInputCtxMenu() {
+    if (_inputCtxMenu) { _inputCtxMenu.remove(); _inputCtxMenu = null; }
+}
+$input.addEventListener('contextmenu', function (e) {
+    e.preventDefault();
+    _closeInputCtxMenu();
+
+    var menu = document.createElement('div');
+    menu.id = 'input-ctx-menu';
+    // 先贴在远处测高，再移位到光标上方
+    menu.style.cssText = 'position:fixed;z-index:99999;visibility:hidden;background:var(--card-bg,#eee8d5);border:1px solid var(--border-color,#d3c6aa);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.18);padding:0;min-width:120px;font-size:13px;';
+    menu.style.left = '-9999px'; menu.style.top = '-9999px';
+    document.body.appendChild(menu);
+    _inputCtxMenu = menu;
+
+    function _addRow(label, action) {
+        var row = document.createElement('div');
+        row.textContent = label;
+        // padding 上下 6px（原8px减20%）
+        row.style.cssText = 'padding:6px 16px;cursor:pointer;white-space:nowrap;color:var(--text-primary,#656360);';
+        row.addEventListener('mouseenter', function () { row.style.background = 'var(--base3,#fdf6e3)'; });
+        row.addEventListener('mouseleave', function () { row.style.background = ''; });
+        row.addEventListener('mousedown', function (ev) { ev.preventDefault(); ev.stopPropagation(); _closeInputCtxMenu(); action(); });
+        menu.appendChild(row);
+    }
+
+    _addRow('Ctrl+C', function () {
+        $input.focus();
+        if ($input.selectionStart === $input.selectionEnd) $input.select();
+        try { document.execCommand('copy'); } catch (_) {}
+    });
+
+    _addRow('Ctrl+V', function () {
+        $input.focus();
+        // 优先 navigator.clipboard.readText，兜底 execCommand('paste')
+        try {
+            navigator.clipboard.readText().then(function (txt) {
+                if (!txt) return;
+                var nd = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+                var cur = nd.get.call($input);
+                var ss = $input.selectionStart || 0, se = $input.selectionEnd || 0;
+                var avail = INPUT_CAP_CHARS - cur.substring(0,ss).length - cur.substring(se).length;
+                if (avail <= 0) { _limitQoast('paste-full'); return; }
+                var ins = txt.length > avail ? txt.substring(0, avail) : txt;
+                nd.set.call($input, cur.substring(0,ss) + ins + cur.substring(se));
+                $input.setSelectionRange(ss + ins.length, ss + ins.length);
+                autoResizeInput(); _updateInputProgress();
+                if (txt.length > avail) _limitQoast('paste-truncated');
+            }).catch(function () {});
+        } catch (_) {
+            try { document.execCommand('paste'); } catch (_) {}
+        }
+    });
+
+    // 测高后移到光标上方
+    var mh = menu.getBoundingClientRect().height || 56;
+    menu.style.visibility = 'visible';
+    menu.style.left = Math.max(4, e.clientX) + 'px';
+    menu.style.top = Math.max(4, e.clientY - mh / 2) + 'px';
+});
+
+// 点击外部或 Esc 关闭
+document.addEventListener('mousedown', function (e) {
+    if (_inputCtxMenu && !_inputCtxMenu.contains(e.target)) _closeInputCtxMenu();
+}, true);
+$input.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') _closeInputCtxMenu();
+});
+
+$sendBtn.onclick = function () {
+    if (_switching) return;
+    if (_activeAgent && _activeAgent._compressing) return;
+
     if (_activeAgent && _activeAgent._stopState === 'fatal' && !streaming) {
         if (typeof _capRedBoxAndSeal === 'function') _capRedBoxAndSeal();
         return;
     }
 
     if (streaming) { stopStream(); }
-    // ★ 安全网：_streaming 为 false 但 agent 仍在 sending → 可能是按钮状态未同步，拒发防重复建楼
     else if (_activeAgent && _activeAgent._stopState === 'sending') { return; }
     else { sendMessage(); }
 };
