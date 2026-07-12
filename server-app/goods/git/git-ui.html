@@ -31,7 +31,6 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 /* content */
 .content{flex:1;overflow:auto;padding:8px 12px}
 
-
 /* sections */
 .section{margin-bottom:10px}
 .section h3{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--text);display:flex;align-items:center;gap:6px}
@@ -64,15 +63,17 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 .inline-diff .dline .dh{color:var(--blue);font-weight:700}
 .inline-diff .dline .hunk-sep{border-top:1px dashed var(--border);margin:4px 0}
 
-/* commit form — single row: textarea left, options+button right */
+/* commit form */
 .commit-form{display:flex;gap:8px;margin-bottom:10px;align-items:stretch}
 .commit-form textarea{flex:1;min-width:0;height:52px;resize:none;font-family:ui-monospace,monospace;font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)}
 .commit-form .commit-right{display:flex;flex-direction:column;gap:4px;justify-content:space-between;flex-shrink:0;min-width:110px}
 .commit-form .commit-right button{padding:4px 10px;border:1px solid var(--border);border-radius:4px;background:var(--green);color:#fff;font-weight:700;cursor:pointer;font-size:12px;white-space:nowrap}
 .commit-form .commit-right button:hover{opacity:.9}
 .commit-options{display:flex;flex-direction:column;gap:2px;font-size:10px;color:var(--base01)}
-.commit-options label{display:flex;align-items:center;gap:2px;cursor:pointer;white-space:nowrap}
-.commit-options input[type=checkbox]{accent-color:var(--blue);width:12px;height:12px}
+.commit-options label{display:flex;align-items:center;gap:3px;cursor:pointer;white-space:nowrap}
+.commit-options input[type=checkbox]{display:none}
+.commit-options .so-cb{width:14px;height:14px;border:1.5px solid var(--base01);border-radius:3px;flex-shrink:0;position:relative;display:inline-block}
+.commit-options label.on .so-cb::after{content:'✓';position:absolute;top:-2px;left:2px;font-size:12px;font-weight:bold;color:var(--text)}
 
 /* branch */
 .branch-actions{display:flex;gap:3px;margin-left:auto}
@@ -109,13 +110,13 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 
 .hidden{display:none!important}
 
-/* ═══ COMMIT GRAPH ═══ */
+/* commit graph */
 .graph-wrap{position:relative;flex:1;overflow:auto;min-height:0}
 .graph-wrap canvas{position:absolute;top:0;left:0;z-index:1;pointer-events:none}
 .graph-rows{position:relative;z-index:2;min-height:100%}
 .graph-row{display:flex;align-items:center;height:28px;padding:0 8px;cursor:pointer;border-bottom:1px solid var(--border);font-family:ui-monospace,Consolas,monospace;font-size:11px;line-height:28px;white-space:nowrap}
 .graph-row:hover{background:var(--base2)}
-.graph-row .g-hash{color:var(--yellow);font-weight:700;min-width:64px;margin-right:6px;flex-shrink:0}
+.graph-row .g-hash{color:var(--yellow);font-weight:700;min-width:0;margin-right:4px;flex-shrink:0;font-size:10px}
 .graph-row .g-refs{display:flex;gap:2px;margin-right:5px;flex-shrink:0;align-items:center}
 .graph-row .g-ref{font-size:9px;padding:1px 4px;border-radius:3px;font-weight:700;line-height:13px}
 .graph-row .g-msg{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
@@ -127,6 +128,15 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 .commit-detail .cd-file .cd-stat{font-size:10px;min-width:36px;text-align:right}
 .cd-added{color:var(--green)}
 .cd-deleted{color:var(--red)}
+
+/* branch filter — Solarized checkbox (matches goods/search), tofu border unchanged */
+.branch-filter{display:inline-flex;flex-wrap:wrap;gap:3px;margin-left:6px;font-size:10px;font-weight:400;vertical-align:middle}
+.branch-filter label{font-size:10px;display:inline-flex;align-items:center;gap:3px;cursor:pointer;padding:1px 6px;border-radius:3px;border:1px solid var(--border);white-space:nowrap;user-select:none;max-width:140px;overflow:hidden;text-overflow:ellipsis}
+.branch-filter label:hover{background:var(--base2)}
+.branch-filter label input{display:none}
+.branch-filter label .bf-cb{width:14px;height:14px;border:1.5px solid var(--base01);border-radius:3px;flex-shrink:0;position:relative}
+.branch-filter label.on{border-color:var(--green);background:var(--added)}
+.branch-filter label.on .bf-cb::after{content:'✓';position:absolute;top:-2px;left:1px;font-size:12px;font-weight:bold;color:var(--text)}
 </style>
 </head>
 <body>
@@ -170,8 +180,8 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
       <textarea id="commit-msg" placeholder="提交信息..."></textarea>
       <div class="commit-right">
         <div class="commit-options">
-          <label><input type="checkbox" id="amend-check">amend</label>
-          <label><input type="checkbox" id="signoff-check">sign-off</label>
+          <label id="amend-lbl"><input type="checkbox" id="amend-check"><span class="so-cb"></span>amend</label>
+          <label id="signoff-lbl"><input type="checkbox" id="signoff-check"><span class="so-cb"></span>sign-off</label>
         </div>
         <button id="btn-commit">提交</button>
       </div>
@@ -200,16 +210,15 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
 
     <div class="section">
       <h3>提交历史 <span class="count" id="log-count"></span>
-        <label style="font-size:10px;margin-left:8px;display:inline-flex;align-items:center;gap:3px;cursor:pointer;font-weight:400;">
-          <input type="checkbox" id="log-all-branches" checked> 全部分支
-        </label>
+        <span class="branch-filter" id="branch-filter">
+          <label class="on" id="bf-all-lbl"><input type="checkbox" id="bf-all" checked><span class="bf-cb"></span>全部分支</label>
+        </span>
       </h3>
       <div class="graph-wrap" id="graph-wrap">
         <canvas id="graph-canvas"></canvas>
         <div class="graph-rows" id="graph-rows"></div>
       </div>
     </div>
-
   </div>
 
   <div id="branch-view" class="hidden">
@@ -247,22 +256,28 @@ try { bridge = parent.qqqideBridge; } catch(_) {}
 if (!bridge) { try { bridge = window.top.qqqideBridge; } catch(_) {} }
 
 (function() {
-  // Default dark — bridge.sync will correct this asynchronously
-  document.documentElement.setAttribute('data-theme', 'dark');
+  // 1. Try parent synchronously (instant, same-origin)
+  try {
+    var pt = parent.document.documentElement.getAttribute('data-theme');
+    if (pt === 'light' || pt === 'dark') document.documentElement.setAttribute('data-theme', pt);
+    else document.documentElement.setAttribute('data-theme', 'dark');
+  } catch(_) { document.documentElement.setAttribute('data-theme', 'dark'); }
+  // 2. Listen for theme-change broadcasts from parent
   window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'qqqide-theme-change') {
       document.documentElement.setAttribute('data-theme', (e.data.dark) ? 'dark' : 'light');
     }
   });
-  // Also try to read from parent synchronously (works if same-origin)
-  try {
-    var pt = parent.document.documentElement.getAttribute('data-theme');
-    if (pt === 'light' || pt === 'dark') document.documentElement.setAttribute('data-theme', pt);
-  } catch(_) {}
+  // 3. Also request current theme from parent (in case sync read failed due to timing)
+  parent.postMessage({ type: 'qqqide-theme-request' }, '*');
 })();
 
 function _esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function _escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 // ═══ GIT BINARY RESOLUTION ═══
@@ -398,7 +413,6 @@ function _pickRepo(path) {
   _expandedCommit = null;
   document.getElementById('inline-diff').style.display = 'none';
   document.getElementById('status-view').classList.remove('hidden');
-
   document.getElementById('branch-view').classList.add('hidden');
   document.getElementById('stash-view').classList.add('hidden');
   _refreshGitStatus();
@@ -459,14 +473,12 @@ async function _refreshGitStatus() {
   document.getElementById('unstaged-count').textContent = unstaged.length ? '(' + unstaged.length + ')' : '';
   document.getElementById('untracked-count').textContent = untracked.length ? '(' + untracked.length + ')' : '';
   _detectConflicts();
-  // Update repo status map for active repo so tofu badge refreshes
   var total = staged.length + unstaged.length + untracked.length;
   for (var j = 0; j < _allProjects.length; j++) {
     var s2 = _repoStatusMap[_allProjects[j].path];
     if (s2 && s2.root === _gitRoot) { s2.badge = total; s2.branch = branchName; break; }
   }
   _buildRepoUI();
-  // Also refresh badges for other repos (fire-and-forget, lightweight)
   for (var j = 0; j < _allProjects.length; j++) {
     var pj = _allProjects[j].path, sj = _repoStatusMap[pj];
     if (!sj || !sj.root || sj.root === _gitRoot) continue;
@@ -488,7 +500,6 @@ function _makeIconBtn(svgHtml, title, clickFn) {
   return btn;
 }
 
-// Icon SVGs (currentColor = text color, auto-adapts to theme)
 var _ICON_STAGE = '<svg viewBox="0 0 14 14" width="14" height="14"><path d="M7 13V3M3 7l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 var _ICON_UNSTAGE = '<svg viewBox="0 0 14 14" width="14" height="14"><path d="M7 1v10M3 7l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 var _ICON_DISCARD = '<svg viewBox="0 0 14 14" width="13" height="13"><path d="M2 3h10M5 3V2a1 1 0 011-1h2a1 1 0 011 1v1M3.5 3l.5 9a1 1 0 001 .9h4a1 1 0 001-.9l.5-9M5.5 6v4M8.5 6v4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -506,14 +517,12 @@ function _renderFileList(elId, files, isStaged) {
     li.appendChild(badge); li.appendChild(pathEl);
 
     if (isStaged) {
-      // Staged file: unstage button (move back to working tree)
       var acts = document.createElement('span'); acts.className = 'file-actions';
       var uBtn = _makeIconBtn(_ICON_UNSTAGE, '移回工作区', function(e) {
         _gitCmd(['reset', 'HEAD', '--', f.path]).then(function() { _refreshGitStatus(); });
       });
       acts.appendChild(uBtn); li.appendChild(acts);
     } else if (f.status !== '?') {
-      // Unstaged modified file: stage + discard buttons
       var acts = document.createElement('span'); acts.className = 'file-actions';
       var sBtn = _makeIconBtn(_ICON_STAGE, '移至暂存区', function(e) {
         _gitCmd(['add', '--', f.path]).then(function() { _refreshGitStatus(); });
@@ -525,7 +534,6 @@ function _renderFileList(elId, files, isStaged) {
       });
       acts.appendChild(dBtn); li.appendChild(acts);
     } else {
-      // Untracked file: add/track button
       var acts = document.createElement('span'); acts.className = 'file-actions';
       var aBtn = _makeIconBtn(_ICON_ADD, '跟踪此文件', function(e) {
         _gitCmd(['add', '--', f.path]).then(function() { _refreshGitStatus(); });
@@ -647,15 +655,20 @@ document.getElementById('btn-close-diff').addEventListener('click', function() {
 });
 
 // ═══ COMMIT ═══
+var _amendCb = document.getElementById('amend-check');
+var _signoffCb = document.getElementById('signoff-check');
+_amendCb.addEventListener('change', function() { document.getElementById('amend-lbl').classList.toggle('on', this.checked); });
+_signoffCb.addEventListener('change', function() { document.getElementById('signoff-lbl').classList.toggle('on', this.checked); });
+
 document.getElementById('btn-commit').addEventListener('click', async function() {
   var msg = document.getElementById('commit-msg').value.trim(); if (!msg) return;
   var args = ['commit', '-m', msg];
-  if (document.getElementById('amend-check').checked) args.unshift('--amend');
-  if (document.getElementById('signoff-check').checked) args.push('--signoff');
+  if (_amendCb.checked) args.unshift('--amend');
+  if (_signoffCb.checked) args.push('--signoff');
   await _gitCmd(args);
   document.getElementById('commit-msg').value = '';
-  document.getElementById('amend-check').checked = false;
-  document.getElementById('signoff-check').checked = false;
+  _amendCb.checked = false; document.getElementById('amend-lbl').classList.remove('on');
+  _signoffCb.checked = false; document.getElementById('signoff-lbl').classList.remove('on');
   _refreshGitStatus();
   document.getElementById('inline-diff').style.display = 'none';
 });
@@ -683,6 +696,84 @@ document.getElementById('btn-push').addEventListener('click', async function() {
 document.getElementById('btn-fetch').addEventListener('click', async function() { if (!(await _checkGitAvailable())) { _showProgress('Git 不可用'); return; } _gitLongOp(['fetch', '--all', '--prune'], 'git fetch'); });
 document.getElementById('btn-refresh').addEventListener('click', async function() { if (await _checkGitAvailable()) _refreshGitStatus(); });
 
+// ═══ BRANCH FILTER ═══
+var _branchBuilt = false;
+async function _buildBranches() {
+  if (_branchBuilt) return;
+  var el = document.getElementById('branch-filter'); if (!el) return;
+  try {
+    var r = await _gitCmd(['branch']);
+    var lines = (r.stdout || '').split('\n');
+    var branches = [];
+    for (var i = 0; i < lines.length; i++) {
+      var name = lines[i].replace(/^\*?\s+/, '').trim();
+      if (name) branches.push(name);
+    }
+    if (branches.length === 0) { _branchBuilt = true; return; }
+    // Inject branch tofu labels after bf-all-lbl
+    var html = '';
+    for (var i = 0; i < branches.length; i++) {
+      html += '<label class="on"><input type="checkbox" value="' + _escAttr(branches[i]) + '" checked><span class="bf-cb"></span>' + _esc(branches[i]) + '</label>';
+    }
+    el.insertAdjacentHTML('beforeend', html);
+
+    var allLbl = document.getElementById('bf-all-lbl');
+    var all    = document.getElementById('bf-all');
+    var lbls   = el.querySelectorAll('label:not(#bf-all-lbl)');
+
+    // _syncAll: if every branch is checked → check "全部分支"; else uncheck it
+    function _syncAll() {
+      var ok = true;
+      for (var j = 0; j < lbls.length; j++) { if (!lbls[j].querySelector('input').checked) { ok = false; break; } }
+      all.checked = ok;
+      allLbl.classList.toggle('on', ok);
+    }
+    // _syncBr: set every branch to match "全部分支"
+    function _syncBr() {
+      var v = all.checked;
+      for (var j = 0; j < lbls.length; j++) {
+        lbls[j].querySelector('input').checked = v;
+        lbls[j].classList.toggle('on', v);
+      }
+    }
+
+    // "全部分支" — change handler (browser fires this when label click toggles checkbox)
+    all.addEventListener('change', function() {
+      allLbl.classList.toggle('on', all.checked);
+      _syncBr();
+      _refreshLogDebounced();
+    });
+    // Individual branch labels — browser click→input→change, so only need change handler
+    for (var j = 0; j < lbls.length; j++) {
+      (function(lbl, cb) {
+        cb.addEventListener('change', function() {
+          lbl.classList.toggle('on', cb.checked);
+          _syncAll();
+          _refreshLogDebounced();
+        });
+      })(lbls[j], lbls[j].querySelector('input'));
+    }
+  } catch(e) {}
+  _branchBuilt = true;
+}
+
+// ═══ DEBOUNCED LOG REFRESH (blocks UI to prevent race) ═══
+var _logBusy = false, _logPending = false;
+function _refreshLogDebounced() {
+  if (_logBusy) { _logPending = true; return; }
+  _logBusy = true; _logPending = false;
+  _showProgress('刷新提交历史...');
+  _showGitLog().then(function() {
+    _hideProgress();
+    _logBusy = false;
+    if (_logPending) { _logPending = false; _refreshLogDebounced(); }
+  }).catch(function() {
+    _hideProgress();
+    _logBusy = false;
+    if (_logPending) { _logPending = false; _refreshLogDebounced(); }
+  });
+}
+
 // ═══ GIT LOG WITH CANVAS GRAPH ═══
 document.getElementById('btn-log').addEventListener('click', function() { _showGitLog(); var el = document.getElementById('graph-wrap'); if (el) el.scrollIntoView({behavior:'smooth',block:'start'}); });
 
@@ -690,9 +781,14 @@ var _commitData = [], _commitGraph = [], _expandedCommit = null;
 var _logPalette = ['#859900','#268bd2','#dc322f','#b58900','#6c71c4','#2aa198','#d33682','#cb4b16','#5c8a00','#1a6fb5','#c01c28','#a07400','#5551a4','#1d8e82','#b82e6c','#a04000'];
 
 async function _showGitLog() {
-  var useAll = document.getElementById('log-all-branches') ? document.getElementById('log-all-branches').checked : true;
+  await _buildBranches();
+  var bfAll = document.getElementById('bf-all');
+  var useAll = bfAll ? bfAll.checked : true;
   var args = ['log', '--graph', '--date=short', '--format=__G__%H__G__%s__G__%ai__G__%an__G__%D', '-300'];
-  if (useAll) args.splice(1, 0, '--all');
+  if (!useAll) {
+    var lbls = document.getElementById('branch-filter').querySelectorAll('label:not(#bf-all-lbl) input:checked');
+    for (var bi = 0; bi < lbls.length; bi++) { args.splice(1, 0, lbls[bi].value); }
+  } else { args.splice(1, 0, '--all'); }
   var r = await _gitCmd(args);
   var lines = (r.stdout || '').split('\n').filter(Boolean);
   _commitData = []; _commitGraph = []; _expandedCommit = null;
@@ -751,8 +847,6 @@ async function _showGitLog() {
       });
     })(rows[ri], _commitData[parseInt(rows[ri].getAttribute('data-i'))].hash);
   }
-  var cb = document.getElementById('log-all-branches');
-  if (cb && !cb._wired) { cb._wired = true; cb.addEventListener('change', _showGitLog); }
 }
 
 function _drawGitGraph(ctx, graphRows, colW, rowH) {
@@ -852,7 +946,6 @@ function _backToStatus() {
 }
 
 function _gitOpenDiff(filePath, commitHash, mode, staged) {
-  console.log('[git] _gitOpenDiff called', filePath, commitHash, mode, staged);
   if (!bridge) { _showProgress('Bridge 未连接 — 请重启 IDE'); return; }
   if (!bridge.git) { _showProgress('bridge.git 未找到 — 请重启 IDE'); return; }
   if (!bridge.git.openDiff || typeof bridge.git.openDiff !== 'function') { _showProgress('bridge.git.openDiff 缺失 — 请重启 IDE'); return; }
@@ -1021,7 +1114,6 @@ function _init() {
     if (!ok) return;
     _detectAndBuild();
   });
-  // Persistent listener: when AI viewport folders change, rebuild tofu bar
   window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'qqq-ai-viewport-changed') { _detectAndBuild(); }
   });
@@ -1044,6 +1136,7 @@ async function _detectAndBuild() {
   }
   await _detectAllRepos();
   _buildRepoUI();
+  _buildBranches(); // build branch filter on init (fire-and-forget)
   if (_gitRoot) { _refreshGitStatus().then(function(){ _showGitLog(); }); _startAutoRefresh(); }
   else { document.getElementById('branch-name').textContent = ''; }
 }

@@ -173,8 +173,9 @@
       btn.title = mode === 'n' ? '\u6309\u6587\u4ef6\u540d\u6392\u5e8f' : '\u6309\u4fee\u6539\u65f6\u95f4\u6392\u5e8f';
       btn.style.cssText =
         'width:24px; height:24px; border:1px solid var(--border-color); border-radius:2px; ' +
-        'background:var(--bg-color); color:var(--text-primary); font-size:12px; font-weight:bold; ' +
+        'color:var(--text-primary); font-size:12px; font-weight:bold; ' +
         'cursor:pointer; padding:0; line-height:22px; text-align:center; flex-shrink:0;';
+      btn.style.background = 'transparent';
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
         e.preventDefault();
