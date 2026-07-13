@@ -732,11 +732,17 @@ document.getElementById('ctx-snap').onclick = async function () {
         }
     }
 };
-// ═══ 手动压缩 — 唯一真理机器 ═══
-// 建专属楼层 → 创建 DOM → 渲染压缩卡片 → 执行压缩 → 封顶保存
-// 渲染用 _renderCompressStart / _renderCompressResult（与 auto 共用）
+// ═══ 手动压缩 — V11 已自动化 ═══
+// V11: 压缩已改为每层楼完结自动重组（_rebuildBackpack），无需手动触发。
+// 按钮保留供将来 AI 驱动的 facts 格子使用。
 document.getElementById('ctx-compress').onclick = async function () {
     document.getElementById('ctx-panel').style.display = 'none';
+    // V11: 压缩已自动化，每层楼完结自动重组背包
+    if (window.parent && window.parent.qqqideQoast) {
+        window.parent.qqqideQoast.show('V11: 压缩已自动化，每层楼完结自动重组背包。零费用，零网络。', { type: 'info', duration: 5000 });
+    }
+    return;
+    /* === V10 旧代码保留 ===
     var _ag = _activeAgent;
     if (!_ag) return;
     if (_sending) return;
@@ -920,6 +926,7 @@ document.getElementById('ctx-compress').onclick = async function () {
         _ag.setStopState('idle');
         window._updateSendBtnForCompress(false);
     }
+    === V10 旧代码结束 === */
 };
 document.querySelector('#ctx-panel .ctx-panel-overlay').onclick = function () {
     document.getElementById('ctx-panel').style.display = 'none';

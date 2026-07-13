@@ -514,6 +514,10 @@ async function _executeSend(intent) {
                 if (aiDiv && aiDiv._a1Block && typeof _updateA1Row2 === 'function') {
                     try { _updateA1Row2(aiDiv._a1Block, agent, true); } catch (_) { }
                 }
+                // ★ V11: 楼层完结 → 自动重组背包（机械筛 → 追加饼干 + DE）
+                if (typeof agent._rebuildBackpack === 'function') {
+                    try { await agent._rebuildBackpack(); } catch (_) { /* 压缩失败不阻断楼层完结 */ }
+                }
                 if (typeof stopFloorTimer === 'function') stopFloorTimer(timing, agent);
                 setStreaming(false);
                 agent.setStopState('done');

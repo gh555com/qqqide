@@ -462,7 +462,7 @@ async function renderQuestDrop() {
             var _reg = window.parent && window.parent.__qqq_buildingRegistry;
             var _isBld = _bq[s.id] || (_reg && _reg[s.id] && _reg[s.id].stopState === 'sending');
             if (_isBld) {
-                _insertCometClock(prefix, s.id);
+                _insertCometClock(prefix, s.id, item);
             }
         })(filtered[i]);
     }
@@ -632,9 +632,10 @@ function _maybeStopCometClockTimer() {
 
 // ★ 在 prefix 元素内插入彗星电子钟子钟
 //   如已存在且 qid 不同 → 移除旧钟重建（防 data-qid 串号）
-function _insertCometClock(prefixEl, qid) {
+function _insertCometClock(prefixEl, qid, container) {
     if (!prefixEl) return;
-    var existing = prefixEl.querySelector('.comet-clock');
+    var parent = container || prefixEl;
+    var existing = parent.querySelector('.comet-clock');
     if (existing) {
         if (existing.getAttribute('data-qid') === qid) return;  // 同 quest，无需重建
         existing.remove();  // 不同 quest → 移除旧钟
@@ -643,7 +644,7 @@ function _insertCometClock(prefixEl, qid) {
     clk.className = 'comet-clock';
     clk.setAttribute('data-qid', qid);
     clk.style.display = 'none';
-    prefixEl.appendChild(clk);
+    parent.appendChild(clk);
     _ensureCometClockTicking();
 }
 
