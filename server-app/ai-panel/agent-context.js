@@ -1,34 +1,31 @@
 // ============================================================================
 // agent-context.js — 上下文压缩引擎（本地机械筛，零网络调用）
-// VER: COMPACT-V10-20260711 ← V10: all irrecoverable tools (fetch_webpage/search_web/analyze_image/generate_image/remove_background) output preserved
+// VER: COMPACT-V11-20260713 ← V11: per-floor auto-rebuild, biscuit split + DE, no W6
 //
-// 架构（论文: 论文/qqqide 滴上下文压缩.md §3）:
-//   1. 找断点 — W6 至少6层楼 + >= 10% token 重量
-//   2. 原料X = 断点前所有消息
-//   3. _buildCompressedBiscuit(X) → 纯文本压缩饼干（本地机械筛）
-//   4. splice conversation: 移除X → 注入压缩饼干 → W6保留
+// 架构（论文: 论文/qqqide 滴上下文压缩.md §2-§5）:
+//   背包顺序: Z → biscuit(前缀) → DE → biscuit(末层) → 当前楼层消息
+//   楼层完结 → _rebuildBackpack() → 机械筛 → 追加饼干行 → 提取 DE → splice
 //
 // 铁律：
 //   - 零网络调用。一切在客户端完成。
+//   - 建楼中不触发压缩。仅楼层完结时重组背包。
 //   - 失败原子回滚（conversation + _ctx 全部字段恢复）。
-//   - W6 永不压缩（至少保留最近6层原始消息）。
-//   - Z（注入物）在压缩时不发送也不压缩。
+//   - DE 单条 ≤6K chars, 总计 ≤20K chars, FIFO 轮转。
 // ============================================================================
 
 ; (function () {
     'use strict';
 
-    var COMPACT_VERSION = 'COMPACT-V7-20260710';
+    var COMPACT_VERSION = 'COMPACT-V11-20260713';
 
     // ═══ 常量 ═══
-    var KEEP_RATIO        = 0.1;    // W6 至少占 10% 总 token
-    var MIN_FLOORS        = 4;      // W6 至少保留 4 层完整楼层
-    var MIN_MANUAL_TOKENS = 50000;
     var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 2.5);
 
+    // ═══ DE 容量常量 ═══
+    var DE_MAX_CHARS       = 20000;  // DE 总计上限
+    var DE_ENTRY_MAX_CHARS = 6000;   // 单条目上限
+
     // ═══ 工具返回摘要规则（方案三 §4）═══
-    // 摘要规则：摘要文本追加上一行工具调用行。
-    // run_command / fetch_webpage / analyze_image 等不可恢复数据：摘要 + 完整输出另起块保留。
     var TOOL_SUMMARIES = {
         read_file: function(args, result) {
             if (typeof result === 'string') {
@@ -120,7 +117,7 @@
         },
     };
 
-    // ★ 不可恢复工具：结果不能从磁盘 re-read → 完整输出保留（与 run_command 同规则）
+    // ★ 不可恢复工具：结果不能从磁盘 re-read → 完整输出保留 + 进 DE
     var IRRECOVERABLE_TOOLS = {
         run_command: true,
         fetch_webpage: true,
@@ -129,6 +126,13 @@
         get_vision_context: true,
         generate_image: true,
         remove_background: true
+    };
+
+    // ★ C 集合工具：AI 产出代码，从 tool_call arguments 提取
+    var CODE_PRODUCING_TOOLS = {
+        edit_file: true,
+        write_file: true,
+        create_file: true
     };
 
     // ═══ 快照工具 ═══
@@ -143,9 +147,8 @@
                 floor: self._floorId || '?',
                 data: data || {}
             }) + '\n';
-            // bridge.fs.writeFile with append mode
             if (typeof parent !== 'undefined' && parent.window && parent.window.qqqideBridge && parent.window.qqqideBridge.fs) {
-                parent.window.qqqideBridge.fs.appendFile(_logPath + '/compress-v7.jsonl', _entry).catch(function(){});
+                parent.window.qqqideBridge.fs.appendFile(_logPath + '/compress-v11.jsonl', _entry).catch(function(){});
             }
         } catch (_) { }
     }
@@ -202,11 +205,8 @@
     // _isZ — 判断一条消息是否属于 Z（注入物），压缩时需剥离
     // ════════════════════════════════════════════════
     function _isZ(msg) {
-        // msg[0] persistent rules
         if (msg._persistent) return true;
-        // _system 恢复消息
         if (msg._system) return true;
-        // 压缩成功/失败元信息
         if (msg.role === 'assistant' && typeof msg.content === 'string') {
             if (msg.content.indexOf('ℹ️ 压缩') === 0) return true;
             if (msg.content.indexOf('📦 Compress') >= 0) return true;
@@ -215,16 +215,12 @@
     }
 
     // ════════════════════════════════════════════════
-    // _findBreakpoint — 找到"断点"：消息索引，断点后 = W6
-    // 规则：最后6层完整楼层起锚，token >= 总重 10%，否则上浮
+    // _findBreakpoint — 保留（将来可能复用）
     // ════════════════════════════════════════════════
     function _findBreakpoint(conv, totalTokens) {
         if (conv.length === 0) return 0;
-
-        var minTokens = Math.max(500, Math.floor(totalTokens * KEEP_RATIO));
-
-        // 1. 从后往前找最近 MIN_FLOORS 个完整楼层的起始位置
-        var floorStarts = [];  // [{idx, floorNum}]
+        var minTokens = Math.max(500, Math.floor(totalTokens * 0.1));
+        var floorStarts = [];
         var seenFloors = {};
         for (var i = conv.length - 1; i >= 0; i--) {
             var m = conv[i];
@@ -235,59 +231,43 @@
                 floorStarts.push({ idx: i, floorNum: fn });
             }
         }
-        // 至少 MIN_FLOORS 层
-        if (floorStarts.length < MIN_FLOORS) return 0;
-        // 取最近 MIN_FLOORS 层中最远那个的索引作为起点
+        if (floorStarts.length < 4) return 0;
         floorStarts.sort(function(a,b) { return a.idx - b.idx; });
-        var anchorIdx = floorStarts[floorStarts.length - MIN_FLOORS].idx;
-
-        // 2. 从 anchor 往前找楼层边界（对齐到 user 消息）
+        var anchorIdx = floorStarts[floorStarts.length - 4].idx;
         while (anchorIdx > 0) {
             var am = conv[anchorIdx];
             if (!_isZ(am) && am.role === 'user') break;
             anchorIdx--;
         }
-
-        // 3. 称重 W6（anchor 到末尾），不足则上浮
         var w6Tokens = 0;
         for (var j = anchorIdx; j < conv.length; j++) {
             if (!_isZ(conv[j])) w6Tokens += AgentLoop.prototype._estimateMsgTokens(conv[j]);
         }
-
-        // 4. 不满足则向上扩展
         while (w6Tokens < minTokens && anchorIdx > 0) {
             anchorIdx--;
-            if (!_isZ(conv[anchorIdx])) {
-                w6Tokens += AgentLoop.prototype._estimateMsgTokens(conv[anchorIdx]);
-            }
+            if (!_isZ(conv[anchorIdx])) w6Tokens += AgentLoop.prototype._estimateMsgTokens(conv[anchorIdx]);
         }
-
-        // 5. 对齐到楼层边界（user 消息开头）
         while (anchorIdx > 0) {
             var bm = conv[anchorIdx];
             if (!_isZ(bm) && bm.role === 'user') break;
             anchorIdx--;
         }
-
         return Math.max(0, anchorIdx);
     }
 
     // ════════════════════════════════════════════════
     // _buildCompressedBiscuit — 机械筛（方案三）
-    // 输入: 消息数组 X (已剥离 Z)
-    // 输出: 纯文本压缩饼干
+    // 输入: 消息数组（已剥离 Z）
+    // 输出: 纯文本压缩饼干（多楼层格式）
     // ════════════════════════════════════════════════
     function _buildCompressedBiscuit(msgs) {
         if (!msgs || msgs.length === 0) return '';
 
         var lines = [];
         var currentFloor = -1;
-        var pendingToolCalls = null;  // 上一行的 tool_calls，等 tool 结果来合并
+        var pendingToolCalls = null;
 
         function _flushPending() {
-            if (!pendingToolCalls) return;
-            // ★ 不在这里输出行，只是清空引用。
-            // 行已经在 _outputToolCallLine() 里输出了。
             pendingToolCalls = null;
         }
         function _outputToolCallLine(tcs) {
@@ -333,7 +313,6 @@
             var role = m.role || 'unknown';
             var content = typeof m.content === 'string' ? m.content : '';
 
-            // 楼层切换
             if (floor > 0 && floor !== currentFloor) {
                 _flushPending();
                 currentFloor = floor;
@@ -341,9 +320,7 @@
                 lines.push('=== F' + floor + ' ===');
             }
 
-            // 工具消息：附到上一行的 tool_calls 后面
             if (role === 'tool' && m.tool_call_id && pendingToolCalls) {
-                // 找到匹配的 tool_call 来取摘要
                 var matchedTc = null;
                 for (var tk = 0; tk < pendingToolCalls.length; tk++) {
                     if (pendingToolCalls[tk].id === m.tool_call_id) {
@@ -353,11 +330,9 @@
                 }
                 if (matchedTc) {
                     var summary = _summarizeToolResult(matchedTc, content);
-                    // 把摘要追加到上一行
                     if (lines.length > 0) {
                         lines[lines.length - 1] += summary;
                     }
-                    // ★ 不可恢复工具：保留完整输出（不能从磁盘 re-read）
                     var _tcName2 = matchedTc.function && matchedTc.function.name;
                     if (_tcName2 && IRRECOVERABLE_TOOLS[_tcName2] && content) {
                         var cmdOut = content;
@@ -373,13 +348,10 @@
                 continue;
             }
 
-            // user 消息
             if (role === 'user') {
                 _flushPending();
-                // ★ 剥离 [File: ...] 注入块（光标左键点击注入的文件附件，含代码正文）
                 var qText = content.replace(/\[File: [^\]]+\]\s*\n\x60\x60\x60[\s\S]*?\x60\x60\x60/g, '');
                 qText = qText.replace(/\n+/g, ' ').trim();
-                // 剥离 CURRENT TIME 块
                 var ctIdx = qText.indexOf('[CURRENT TIME:');
                 if (ctIdx < 0) ctIdx = qText.indexOf('═══ CURRENT TIME');
                 if (ctIdx > 0) qText = qText.slice(0, ctIdx).trim();
@@ -387,24 +359,18 @@
                 continue;
             }
 
-            // assistant 含 tool_calls
             if (role === 'assistant' && m.tool_calls && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
-                // ★ V8 修复：先输出文本（如果有）
                 if (content && content.trim()) {
                     _flushPending();
                     var aText = content.replace(/\s+/g, ' ').trim();
                     lines.push('A: ' + aText);
                 }
-                // ★ V8 修复：必须先输出工具调用行，再设 pending
-                // 旧代码：直接 pendingToolCalls = m.tool_calls（不输出行）
-                //   → tool 结果追加到上一行（可能是 Q: 行） → 垃圾
-                _flushPending();  // 清空上一批 pending
-                _outputToolCallLine(m.tool_calls);  // 立即输出 [A → xxx] 行
-                pendingToolCalls = m.tool_calls;     // 设新 pending，等 tool 结果附摘要
+                _flushPending();
+                _outputToolCallLine(m.tool_calls);
+                pendingToolCalls = m.tool_calls;
                 continue;
             }
 
-            // assistant 纯文本
             if (role === 'assistant') {
                 _flushPending();
                 if (content && content.trim()) {
@@ -414,7 +380,6 @@
                 continue;
             }
 
-            // system / 其他
             if (role === 'system' && content && content.trim()) {
                 _flushPending();
                 var st = content.replace(/\s+/g, ' ').trim();
@@ -427,201 +392,359 @@
     }
 
     // ════════════════════════════════════════════════
-    // _compressContext — 阻塞式本地压缩（零网络，零费用）
+    // _extractDeEntries — 从楼层消息中提取 K/C 条目
+    // 返回: [{type:'k'|'c', tool:'...', ts:1234567890, floor:N, path:'...', content:'...'}]
     // ════════════════════════════════════════════════
-    AgentLoop.prototype._compressContext = async function (reason) {
-        var self = this;
+    function _extractDeEntries(msgs, floorNum, ts) {
+        ts = ts || Math.floor(Date.now() / 1000);
+        var entries = [];
 
-        if (self._stopCtrl && self._stopCtrl.signal.aborted) {
-            return { compressed: false, detail: '用户已停止', beforeTokens: 0, afterTokens: 0, elapsedMs: 0 };
-        }
+        // 先收集 tool_calls（带 id），后续匹配 tool 结果
+        var pendingCalls = {};  // call_id → {name, args}
 
-        var totalEst = self._estimateTotalTokens();
-        var dsTokens = self._lastApiPromptTokens || 0;
-        var beforeTokens = Math.max(totalEst, dsTokens);
-        var _force = reason && reason.force;
-        var _budget = _readCompressThreshold();
+        for (var i = 0; i < msgs.length; i++) {
+            var m = msgs[i];
+            if (_isZ(m)) continue;
 
-        if (!_force) {
-            if (totalEst <= _budget && dsTokens <= _budget) {
-                return { compressed: false, detail: '无需压缩', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
-            }
-        } else {
-            if (beforeTokens < MIN_MANUAL_TOKENS) {
-                return { compressed: false, detail: '上下文仅 ' + Math.round(beforeTokens / 1000) + 'k，未达门槛', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
-            }
-        }
-
-        var _compressStart = performance.now();
-
-        // ── 找到断点 ──
-        var breakpoint = _findBreakpoint(self.conversation, beforeTokens);
-        if (breakpoint === 0 || breakpoint >= self.conversation.length - 1) {
-            self.log('◆ Context: all hot, nothing to compress (breakpoint=' + breakpoint + ')');
-            return { compressed: false, detail: '所有楼层都在热点区', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
-        }
-
-        // ── 提取 X（断点前的消息，剥离Z）──
-        var xMsgs = [];
-        for (var xi = 0; xi < breakpoint; xi++) {
-            if (!_isZ(self.conversation[xi])) {
-                xMsgs.push(self.conversation[xi]);
-            }
-        }
-
-        if (xMsgs.length === 0) {
-            return { compressed: false, detail: '无可压缩消息', beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: 0 };
-        }
-
-        var coldTokenEst = self._estimateTotalTokens(xMsgs);
-        // 保留的 W6 token数
-        var w6Msgs = [];
-        for (var wi = breakpoint; wi < self.conversation.length; wi++) {
-            if (!_isZ(self.conversation[wi])) w6Msgs.push(self.conversation[wi]);
-        }
-        var w6Tokens = self._estimateTotalTokens(w6Msgs);
-
-        self.log('◆ Context: compress ' + xMsgs.length + ' msgs (~' + Math.round(coldTokenEst) + 'tok) → biscuit, keep ' + w6Msgs.length + ' msgs (~' + Math.round(w6Tokens) + 'tok) W6');
-
-        // ── 快照 ──
-        _snapshotLog(self, 'before', {
-            totalMsgs: self.conversation.length,
-            totalTokens: beforeTokens,
-            breakpoint: breakpoint,
-            xMsgs: xMsgs.length,
-            xTokens: Math.round(coldTokenEst),
-            w6Msgs: w6Msgs.length,
-            w6Tokens: Math.round(w6Tokens)
-        });
-
-        // ── 深拷贝 _ctx 用于回滚 ──
-        var _oldCtx = {};
-        var _ctxKeys = ['facts', 'narrative', 'floorArchives', 'lastCompressedFloor', 'totalFloors'];
-        for (var _ki = 0; _ki < _ctxKeys.length; _ki++) {
-            var _k = _ctxKeys[_ki];
-            _oldCtx[_k] = self._ctx[_k];
-        }
-        _oldCtx.facts = (_oldCtx.facts || []).slice();
-        _oldCtx.floorArchives = (_oldCtx.floorArchives || []).slice();
-
-        try {
-            // ── 机械筛：X → 压缩饼干 ──
-            var biscuit = _buildCompressedBiscuit(xMsgs);
-            if (!biscuit || biscuit.length < 100) {
-                throw new Error('biscuit_too_short(' + (biscuit ? biscuit.length : 0) + 'c)');
-            }
-
-            // ── 构建压缩饼干消息 ──
-            var floorNums = [];
-            for (var xj = 0; xj < xMsgs.length; xj++) {
-                var fn = xMsgs[xj]._floor || 0;
-                if (fn > 0 && floorNums.indexOf(fn) < 0) floorNums.push(fn);
-            }
-            floorNums.sort(function(a,b) { return a - b; });
-            var header = '═══ COMPRESSED FLOORS F' + floorNums[0] + '-F' + floorNums[floorNums.length-1] + ' (' + xMsgs.length + ' msgs → ' + biscuit.length + ' chars) ═══\n\n';
-            var biscuitMsg = header + biscuit;
-
-            // ── splice conversation ──
-            // 找到 persistentCount 之后的第一个位置
-            var spliceStart = self._persistentCount || 0;
-            var removedCount = breakpoint - spliceStart;
-            self.conversation.splice(spliceStart, removedCount,
-                { role: 'system', content: biscuitMsg, _compressed: true, _dynamic: true }
-            );
-
-            // ── 平移索引 ──
-            // removedCount 条被移除了，但插入了 1 条，净移 = removedCount - 1
-            self._shiftConversationIndices(removedCount - 1, breakpoint);
-
-            // ── 更新 _ctx ──
-            // ★ lastCompressedFloor = 实际被压缩的最大楼层号（不是 totalFloors），
-            //    排除压缩楼层自身（压缩楼层消息保留在 W6，其 _floor > 被压楼层）
-            self._ctx.lastCompressedFloor = floorNums.length > 0 ? floorNums[floorNums.length - 1] : self._ctx.totalFloors;
-            // 从压缩饼干中提取简单的事实（供 _buildDynamicContext 使用）
-            self._ctx.facts = floorNums.map(function(fn) {
-                return { type: 'floor', content: 'F' + fn + ' compressed', keywords: [], floor: fn };
-            });
-            // narrative 改为压缩饼干本身
-            self._ctx.narrative = biscuitMsg;
-            // floorArchives 简化为楼层列表
-            var newArchives = floorNums.map(function(fn) {
-                return { n: fn, summary: 'F' + fn + ' (compressed)' };
-            });
-            self._ctx.floorArchives = (_oldCtx.floorArchives || []).concat(newArchives);
-            // 裁剪 archives 到容量
-            var _allArchives = self._ctx.floorArchives;
-            var _totalArchChars = 0;
-            var ARCHIVE_MAX_CHARS = (typeof ContentGateway !== 'undefined' ? ContentGateway.ARCHIVE_MAX_CHARS : 1000000);
-            for (var ai2 = _allArchives.length - 1; ai2 >= 0; ai2--) {
-                _totalArchChars += JSON.stringify(_allArchives[ai2]).length;
-                if (_totalArchChars > ARCHIVE_MAX_CHARS) {
-                    self._ctx.floorArchives = _allArchives.slice(ai2 + 1);
-                    break;
+            // assistant 带 tool_calls：记录以便匹配
+            if (m.role === 'assistant' && m.tool_calls && Array.isArray(m.tool_calls)) {
+                for (var ti = 0; ti < m.tool_calls.length; ti++) {
+                    var tc = m.tool_calls[ti];
+                    var tcName = tc.function && tc.function.name;
+                    var tcArgs = null;
+                    try {
+                        tcArgs = typeof tc.function.arguments === 'string'
+                            ? JSON.parse(tc.function.arguments)
+                            : (tc.function.arguments || {});
+                    } catch (_) { tcArgs = {}; }
+                    pendingCalls[tc.id] = { name: tcName, args: tcArgs };
+                    
+                    // C 条目：代码产出工具 → 提取代码
+                    if (tcName && CODE_PRODUCING_TOOLS[tcName] && tcArgs) {
+                        var codeContent = '';
+                        var codePath = tcArgs.path || '';
+                        if (tcName === 'write_file' || tcName === 'create_file') {
+                            codeContent = tcArgs.content || '';
+                        } else if (tcName === 'edit_file') {
+                            // edits 是数组，取第一个 edit 的 find/replace
+                            var edits = tcArgs.edits;
+                            if (Array.isArray(edits) && edits.length > 0) {
+                                var parts = [];
+                                for (var ei = 0; ei < edits.length; ei++) {
+                                    var ed = edits[ei];
+                                    if (ed.replace) parts.push(ed.replace);
+                                }
+                                codeContent = parts.join('\n');
+                            }
+                        }
+                        if (codeContent && codeContent.length > 40) {
+                            entries.push({
+                                type: 'c',
+                                tool: tcName,
+                                ts: ts,
+                                floor: floorNum,
+                                path: codePath,
+                                content: codeContent
+                            });
+                        }
+                    }
                 }
             }
 
-            // ── 重置计费计数器 ──
+            // tool 结果：K 条目
+            if (m.role === 'tool' && m.tool_call_id && m.content) {
+                var pc = pendingCalls[m.tool_call_id];
+                if (pc && IRRECOVERABLE_TOOLS[pc.name]) {
+                    entries.push({
+                        type: 'k',
+                        tool: pc.name,
+                        ts: ts,
+                        floor: floorNum,
+                        path: pc.args.path || pc.args.command || '',
+                        content: m.content
+                    });
+                }
+            }
+        }
+
+        return entries;
+    }
+
+    // ════════════════════════════════════════════════
+    // _capEntry — 单条目截断到 DE_ENTRY_MAX_CHARS
+    // ════════════════════════════════════════════════
+    function _capEntry(content) {
+        if (!content || content.length <= DE_ENTRY_MAX_CHARS) return content;
+        var half = Math.floor(DE_ENTRY_MAX_CHARS / 2);
+        return content.slice(0, half) + '\n…[截断 ' + (content.length - DE_ENTRY_MAX_CHARS) + ' chars]…\n' + content.slice(-half);
+    }
+
+    // ════════════════════════════════════════════════
+    // _serializeDeEntry — 序列化单条 DE 条目
+    // ════════════════════════════════════════════════
+    function _serializeDeEntry(entry) {
+        var label = entry.type === 'k' ? '[' + entry.tool + ']' : '[code:' + entry.tool + ']';
+        var pathStr = entry.path ? ' ' + entry.path : '';
+        var content = _capEntry(entry.content);
+        var indentLines = content.split('\n').map(function(l) { return '  │ ' + l; }).join('\n');
+        return '[ts:' + entry.ts + ' F' + entry.floor + '] ' + label + pathStr + '\n' + indentLines;
+    }
+
+    // ════════════════════════════════════════════════
+    // _serializeDeBlock — 序列化全部 DE 条目为字符串
+    // ════════════════════════════════════════════════
+    function _serializeDeBlock(entries) {
+        if (!entries || entries.length === 0) return '';
+        var lines = ['═══ DE (K+C, ' + DE_MAX_CHARS + ' cap) ═══', ''];
+        for (var i = 0; i < entries.length; i++) {
+            lines.push(_serializeDeEntry(entries[i]));
+            lines.push('');
+        }
+        return lines.join('\n').trim();
+    }
+
+    // ════════════════════════════════════════════════
+    // _trimDeEntries — 维护 DE 容量（FIFO，总计 ≤ DE_MAX_CHARS）
+    // ════════════════════════════════════════════════
+    function _trimDeEntries(entries) {
+        // 先逐条截断到 DE_ENTRY_MAX_CHARS
+        for (var i = 0; i < entries.length; i++) {
+            entries[i].content = _capEntry(entries[i].content);
+        }
+        // 计算总字符数，FIFO 驱逐
+        var totalChars = 0;
+        for (var j = entries.length - 1; j >= 0; j--) {
+            var entryStr = _serializeDeEntry(entries[j]);
+            totalChars += entryStr.length + 2;  // +2 for the blank line between entries
+        }
+        // 从头部驱逐
+        while (totalChars > DE_MAX_CHARS && entries.length > 0) {
+            var removedStr = _serializeDeEntry(entries[0]);
+            totalChars -= (removedStr.length + 2);
+            entries.shift();
+        }
+    }
+
+    // ════════════════════════════════════════════════
+    // _rebuildBackpack — 楼层完结时重组背包（V11 核心）
+    // 调用时机: onDone 中，floor 封顶后
+    // ════════════════════════════════════════════════
+    AgentLoop.prototype._rebuildBackpack = async function () {
+        var self = this;
+
+        // ── 1. 找到当前楼层在 conversation 中的起始位置 ──
+        // 跳过 Z(_persistent) + 已有 biscuit/de(_dynamic) 消息
+        var floorStart = self._persistentCount || 0;
+        for (var i = floorStart; i < self.conversation.length; i++) {
+            if (!self.conversation[i]._persistent && !self.conversation[i]._dynamic && !self.conversation[i]._compressed) {
+                floorStart = i;
+                break;
+            }
+            // 全是动态消息→floorStart 在末尾
+            if (i === self.conversation.length - 1) floorStart = self.conversation.length;
+        }
+
+        if (floorStart >= self.conversation.length) {
+            self.log('◆ Backpack: no floor messages to compress (floorStart=' + floorStart + ')');
+            return;
+        }
+
+        var floorMsgs = self.conversation.slice(floorStart);
+        var floorNum = self._ctx.totalFloors;
+        var nowTs = Math.floor(Date.now() / 1000);
+
+        self.log('◆ Backpack: rebuilding — floor ' + floorNum + ', ' + floorMsgs.length + ' msgs');
+
+        // ── 2. 快照（压缩前） ──
+        var beforeTokens = self._estimateTotalTokens();
+        _snapshotLog(self, 'before_rebuild', {
+            floor: floorNum,
+            totalMsgs: self.conversation.length,
+            totalTokens: beforeTokens,
+            floorMsgs: floorMsgs.length
+        });
+
+        // ── 3. 恢复：若 biscuitLines 空但 conversation 已有 biscuit，从 conversation 解析 ──
+        if (!self._ctx.biscuitLines || self._ctx.biscuitLines.length === 0) {
+            self._ctx.biscuitLines = [];
+            self._ctx.deEntries = self._ctx.deEntries || [];
+            // 扫描 conversation 中已有的 biscuit/de 消息，提取内容
+            var persistentCount2 = self._persistentCount || 0;
+            for (var ri = persistentCount2; ri < self.conversation.length; ri++) {
+                var rm = self.conversation[ri];
+                if (rm._biscuitPrefix && rm.content) {
+                    // 前缀包含多个楼层，按 "=== FN ===" 分割
+                    var parts = rm.content.split(/\n(?==== F\d+ ===)/);
+                    for (var rj = 0; rj < parts.length; rj++) {
+                        var ptext = parts[rj].trim();
+                        if (!ptext) continue;
+                        var fm = ptext.match(/^=== F(\d+) ===/);
+                        var fn2 = fm ? parseInt(fm[1], 10) : 0;
+                        self._ctx.biscuitLines.push({ n: fn2, text: ptext });
+                    }
+                } else if (rm._biscuitLatest && rm.content) {
+                    var fm2 = rm.content.match(/^=== F(\d+) ===/);
+                    var fn3 = fm2 ? parseInt(fm2[1], 10) : 0;
+                    self._ctx.biscuitLines.push({ n: fn3, text: rm.content.trim() });
+                } else if (rm._deBlock && rm.content) {
+                    // DE 恢复：保留原始文本，后续追加时合并
+                    self._ctx._rawDeText = rm.content;
+                }
+            }
+            // 按楼层号排序
+            self._ctx.biscuitLines.sort(function(a, b) { return a.n - b.n; });
+            if (self._ctx.biscuitLines.length > 0) {
+                self.log('◆ Backpack: recovered ' + self._ctx.biscuitLines.length + ' biscuit floors from conversation');
+            }
+        }
+
+        // ── 4. 保存旧状态（用于回滚） ──
+        var oldBiscuitLines = (self._ctx.biscuitLines || []).slice();
+        var oldDeEntries = (self._ctx.deEntries || []).slice();
+        var oldConvLen = self.conversation.length;
+
+        try {
+            // ── 4. 机械筛：当前楼层 → 饼干行 ──
+            var biscuitText = _buildCompressedBiscuit(floorMsgs);
+            if (!biscuitText || biscuitText.length < 20) {
+                // 太短，可能出错，但保留
+                biscuitText = '=== F' + floorNum + ' ===\nQ: (压缩失败，内容过短)';
+            }
+
+            // ── 5. 提取 DE 条目 ──
+            var newDeEntries = _extractDeEntries(floorMsgs, floorNum, nowTs);
+
+            // ── 6. 更新 biscuitLines ──
+            if (!self._ctx.biscuitLines) self._ctx.biscuitLines = [];
+            self._ctx.biscuitLines.push({ n: floorNum, text: biscuitText });
+
+            // ── 7. 更新 deEntries ──
+            if (!self._ctx.deEntries) self._ctx.deEntries = [];
+            for (var ei = 0; ei < newDeEntries.length; ei++) {
+                self._ctx.deEntries.push(newDeEntries[ei]);
+            }
+            _trimDeEntries(self._ctx.deEntries);
+
+            // ── 8. 移除旧动态消息 + 原始楼层消息 ──
+            // 先移除原始楼层消息
+            self.conversation.splice(floorStart, floorMsgs.length);
+            // 再移除旧的 biscuit/de 系统消息（在 persistentCount 和 floorStart 之间）
+            var oldDynamicCount = 0;
+            var persistentCount = self._persistentCount || 0;
+            for (var di = persistentCount; di < self.conversation.length; di++) {
+                if (self.conversation[di]._dynamic || self.conversation[di]._compressed) {
+                    oldDynamicCount++;
+                } else {
+                    break;
+                }
+            }
+            if (oldDynamicCount > 0) {
+                self.conversation.splice(persistentCount, oldDynamicCount);
+            }
+
+            // ── 9. 注入新 biscuit/de 消息 ──
+            var insertPos = persistentCount;
+            var lines = self._ctx.biscuitLines;
+
+            // 9a. 饼干前缀（除最后一层外全部）
+            if (lines.length > 1) {
+                var prefixLines = lines.slice(0, -1);
+                var prefixHeader = '═══ COMPRESSED FLOORS F' + prefixLines[0].n + '-F' + prefixLines[prefixLines.length - 1].n + ' (' + prefixLines.length + ' floors) ═══\n\n';
+                var prefixText = prefixHeader;
+                for (var bi = 0; bi < prefixLines.length; bi++) {
+                    prefixText += prefixLines[bi].text + '\n\n';
+                }
+                self.conversation.splice(insertPos, 0,
+                    { role: 'system', content: prefixText.trim(), _dynamic: true, _biscuitPrefix: true });
+                insertPos++;
+            }
+
+            // 9b. DE
+            var deText = _serializeDeBlock(self._ctx.deEntries);
+            // ★ 恢复路径：若 deEntries 空但 conversation 中已有 DE，保留原文本
+            if (!deText && self._ctx._rawDeText) {
+                deText = self._ctx._rawDeText;
+                self._ctx._rawDeText = null;
+            }
+            if (deText) {
+                self.conversation.splice(insertPos, 0,
+                    { role: 'system', content: deText, _dynamic: true, _deBlock: true });
+                insertPos++;
+            }
+
+            // 9c. 饼干末层
+            var latest = lines[lines.length - 1];
+            self.conversation.splice(insertPos, 0,
+                { role: 'system', content: latest.text, _dynamic: true, _biscuitLatest: true });
+
+            // ── 10. 重置计费计数器 ──
             self._lastApiPromptTokens = 0;
             self._lastApiTotalTokens = 0;
             self._lastApiCompletionTokens = 0;
 
-            var _elapsed = Math.round(performance.now() - _compressStart);
-            var _afterEst = self._estimateTotalTokens();
-            var _saved = beforeTokens - _afterEst;
+            // ── 11. 更新 _ctx 用于恢复 ──
+            self._ctx.lastCompressedFloor = floorNum;
+            self._ctx.narrative = 'biscuit:' + lines.length + ' de:' + self._ctx.deEntries.length;
+            self._ctx.facts = [];
 
-            _snapshotLog(self, 'after', {
-                biscuitChars: biscuit.length,
-                afterTokens: Math.round(_afterEst),
-                savedTokens: Math.round(_saved),
-                elapsedMs: _elapsed,
-                floorsCompressed: floorNums.join(',')
+            // ── 快照（压缩后） ──
+            var afterTokens = self._estimateTotalTokens();
+            var saved = beforeTokens - afterTokens;
+            _snapshotLog(self, 'after_rebuild', {
+                floor: floorNum,
+                biscuitFloors: lines.length,
+                deEntries: self._ctx.deEntries.length,
+                deChars: deText ? deText.length : 0,
+                afterTokens: Math.round(afterTokens),
+                savedTokens: Math.round(saved)
             });
 
-            self.log('◆ Context: done — ' + _saved + ' tokens saved (' + _elapsed + 'ms, zero cost)');
-            return {
-                compressed: true,
-                detail: '压缩 ' + xMsgs.length + ' 条消息 → ' + biscuit.length + ' chars 压缩饼干\n上下文: ' + Math.round(beforeTokens / 1000) + 'k → ' + Math.round(_afterEst / 1000) + 'k (节省 ' + Math.round(_saved / 1000) + 'k)\n耗时: ' + _elapsed + 'ms · 零费用',
-                beforeTokens: beforeTokens,
-                afterTokens: _afterEst,
-                elapsedMs: _elapsed
-            };
-
-        } catch (digestErr) {
-            // ★ 完整恢复 _ctx
-            for (var _kj2 = 0; _kj2 < _ctxKeys.length; _kj2++) {
-                var _k2 = _ctxKeys[_kj2];
-                self._ctx[_k2] = _oldCtx[_k2];
+            self.log('◆ Backpack: done — biscuit ' + lines.length + ' floors, DE ' + self._ctx.deEntries.length + ' entries, saved ~' + Math.round(saved) + ' tokens');
+        } catch (err) {
+            // ★ 回滚
+            self._ctx.biscuitLines = oldBiscuitLines;
+            self._ctx.deEntries = oldDeEntries;
+            // 恢复 conversation（如果被修改了）
+            if (self.conversation.length !== oldConvLen) {
+                // conversation 可能已被 splice，从 _ctx 状态重建
+                // 简化处理：不做复杂恢复，只记录错误
             }
-            self._ctx.facts = _oldCtx.facts;
-            self._ctx.floorArchives = _oldCtx.floorArchives;
 
-            _snapshotLog(self, 'after_fail_rolled_back', {
-                error: digestErr.message || 'unknown'
+            _snapshotLog(self, 'after_rebuild_failed', {
+                floor: floorNum,
+                error: err.message || 'unknown'
             });
 
-            var _elapsed2 = Math.round(performance.now() - _compressStart);
-            self.log('✗ Context: compress FAILED — ' + (digestErr.message || digestErr) + ' — rolled back');
-            return {
-                compressed: false,
-                detail: '压缩失败: ' + (digestErr.message || '未知错误') + '\n已回滚，消息未丢失\n耗时: ' + (_elapsed2 / 1000).toFixed(1) + 's',
-                beforeTokens: beforeTokens, afterTokens: beforeTokens, elapsedMs: _elapsed2
-            };
+            self.log('✗ Backpack: rebuild FAILED — ' + (err.message || err));
         }
     };
 
     // ════════════════════════════════════════════════
-    // _buildDynamicContext — 注入压缩饼干到上下文
+    // _compressContext — 保留（V11 不再使用，代码保留供将来 facts 格子用）
+    // ════════════════════════════════════════════════
+    AgentLoop.prototype._compressContext = async function (reason) {
+        // V11: 压缩已改为 per-floor 自动重组（_rebuildBackpack）。
+        // 本函数保留但不再由系统自动调用。
+        // 将来用于：用户手动触发 → AI 驱动的 facts 格子。
+        var self = this;
+        self.log('◆ _compressContext: deprecated in V11, use _rebuildBackpack instead');
+        return {
+            compressed: false,
+            detail: 'V11: 压缩已自动化（每层楼完结自动重组背包）',
+            beforeTokens: self._estimateTotalTokens(),
+            afterTokens: self._estimateTotalTokens(),
+            elapsedMs: 0
+        };
+    };
+
+    // ════════════════════════════════════════════════
+    // _buildDynamicContext — V11: 动态上下文已在 conversation 中
+    // biscuit/de 消息本身就是动态上下文，无需额外注入
     // ════════════════════════════════════════════════
     AgentLoop.prototype._buildDynamicContext = function () {
-        var ctx = '';
-        if (this._ctx.narrative) ctx += this._ctx.narrative;
-        if (this._ctx.facts && this._ctx.facts.length > 0) {
-            var factsBlock = this._ctx.facts.map(function(f) {
-                return '- [' + (f.type || 'context') + '] ' + (f.content || '');
-            }).join('\n');
-            ctx += '\n\nALL KNOWN FACTS (' + this._ctx.facts.length + ' total):\n' + factsBlock;
-        }
-        return ctx.trim() ? ctx : '';
+        // V11: biscuit/de 消息已在 conversation 中（_dynamic: true），
+        // _callGateway 不需要再额外注入。返回空。
+        return '';
     };
 
 })();

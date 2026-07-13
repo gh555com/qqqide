@@ -624,6 +624,18 @@ function compileLauncher() {
     { stdio: 'inherit' });
   if (r.status !== 0) throw new Error('gcc compile failed');
   console.log('[pack] launcher compiled:', exe, '(' + fs.statSync(exe).size + 'B)');
+
+  // ★ 注入图标 — 用 rcedit 将 shell/icon.ico 写入 PE 资源
+  const rcedit = path.join(ROOT, 'node_modules', 'rcedit', 'bin', 'rcedit-x64.exe');
+  const icon = path.join(ROOT, 'shell', 'icon.ico');
+  if (fs.existsSync(rcedit) && fs.existsSync(icon)) {
+    console.log('[pack] setting launcher icon...');
+    const r2 = cp.spawnSync(rcedit, [exe, '--set-icon', icon], { stdio: 'inherit' });
+    if (r2.status !== 0) throw new Error('rcedit set-icon failed');
+    console.log('[pack] launcher icon set');
+  } else {
+    console.warn('[pack] rcedit or icon.ico not found, skipping icon');
+  }
 }
 
 function packDir(unpacked, flatOnly) {

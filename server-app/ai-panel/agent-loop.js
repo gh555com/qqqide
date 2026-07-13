@@ -638,8 +638,8 @@ var AgentLoop = (function () {
                     continue;
                 }
 
-                // ═══ 压缩守护：每间 house 前检查，超阈值则阻塞压缩 ═══
-                if (!self._compressing && !self._compressAttemptedThisFloor) {
+                // V11: 压缩守护已移除。建楼中不触发压缩。每层楼完结时自动 _rebuildBackpack()。
+                if (false) { // V11: mid-building compress removed, use _rebuildBackpack on floor completion
                     var _apiTokens = self._lastApiPromptTokens || 0;
                     // ★ 冷启动兜底：磁盘加载 quest 后无 usage，用估算防首轮 400
                     if (_apiTokens === 0) { _apiTokens = self._estimateTotalTokens(); }
