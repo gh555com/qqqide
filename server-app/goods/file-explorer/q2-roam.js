@@ -34,6 +34,20 @@
 (function() {
 'use strict';
 
+// ★ 二进制文件扩展名（从 q3 移植，.ts 已排除避免误伤 TypeScript）
+var BINARY_EXTS = {
+	'.exe':1,'.dll':1,'.bin':1,'.dat':1,'.iso':1,'.msi':1,'.bat':1,'.cmd':1,'.ps1':1,
+	'.zip':1,'.rar':1,'.7z':1,'.tar':1,'.gz':1,'.bz2':1,
+	'.png':1,'.jpg':1,'.jpeg':1,'.gif':1,'.bmp':1,'.webp':1,'.ico':1,'.tiff':1,'.tif':1,'.svg':1,'.ai':1,'.eps':1,'.cdr':1,'.psd':1,
+	'.mp4':1,'.mkv':1,'.webm':1,'.avi':1,'.mov':1,'.wmv':1,'.flv':1,'.rmvb':1,'.mpeg':1,'.mpg':1,'.3gp':1,'.m4v':1,'.f4v':1,'.mts':1,'.m2ts':1,'.vob':1,
+	'.mp3':1,'.wav':1,'.flac':1,'.m4a':1,'.aac':1,'.ogg':1,'.wma':1,
+	'.pdf':1
+};
+function isBinaryFile(p) {
+	var ext = p.substring(p.lastIndexOf('.')).toLowerCase();
+	return !!BINARY_EXTS[ext];
+}
+
 // ---- RPC helper: call parent bridge methods via postMessage ----
 let _rpcId = 0;
 const _rpcPending = {};
@@ -55,7 +69,7 @@ window.addEventListener('message', function(e) {
 		return;
 	}
     // 主题同步（来自父窗口 qqq-theme.js 唯一真理配色机器）
-    if (e.data && e.data.type === 'qqq-theme-change') {
+    if (e.data && (e.data.type === 'qqqide-theme-change' || e.data.type === 'qqq-theme-change')) {
       if (e.data.dark) document.documentElement.setAttribute('data-theme', 'dark');
       else document.documentElement.removeAttribute('data-theme');
     }
@@ -127,7 +141,7 @@ var bridge = {
       var t = parent.document.documentElement.getAttribute('data-theme');
       if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
     }
-  } catch(e) { parent.postMessage({ type: 'qqq-theme-request' }, '*'); }
+  } catch(e) { parent.postMessage({ type: 'qqqide-theme-request' }, '*'); }
 })();
 
 // ---- Persistent state (loaded async on boot) ----
@@ -143,7 +157,7 @@ var sidebarW = 160;
 var _qqiq = [];           // [{path,type}]
 var _pinnedDirs = [];      // [path]
 var _fineScm = {};         // { normalizedPath: {szMode,sortBy,filesOnTop,ts} }
-var _cmdHistory = { address: [], fileFilter: [] };
+var _cmdHistory = { address: [], fileFilter: [], qqFilter: [] };
 var _lineSpacing = -2;
 var FINE_SCM_MAX = 500;
 var sessionSizeCache = {};
@@ -249,8 +263,8 @@ function getSzContent(entry) {
 		if (info.gbPart) return '<span style="color:' + SZ_GB_COLOR + '">' + info.gbPart + '</span>' + info.restPart + ' ';
 		return info.text + ' ';
 	}
-	if (szMode === 'ctime') return formatDateTime(entry.ctime) + ' ';
-	if (szMode === 'mtime') return formatDateTime(entry.mtime) + ' ';
+	if (szMode === 'ctime') return formatDateTime(entry.ctimeMs) + ' ';
+	if (szMode === 'mtime') return formatDateTime(entry.mtimeMs) + ' ';
 	return '';
 }
 
@@ -300,7 +314,7 @@ function navigateTo(p, opts) {
 	addressInput.value = p;
 	updateAddressDisplay(p);
 	loadFileList(p);
-	recordDirHistory(p);
+	// ★ 简单导航不记录历史——只有创建/编辑/打开等动作才进 qq 区
 	_historySave();
 }
 
@@ -420,7 +434,9 @@ async function resolveLnkTarget(lnkPath) {
 }
 
 // ---- qqiq & pinnedDirs (client-side, persisted via store) ----
-var QQ_IQ_MAX = 100, QQ_PIN_MAX = 6;
+var QQ_IQ_DISPLAY = 33;   // 默认显示条数
+var QQ_IQ_MAX = 400;       // 数据库保存上限（find 从这 400 条里搜）
+var QQ_PIN_MAX = 6;
 
 function _qqiqKey(p) { return _normPath(p); }
 
@@ -494,25 +510,51 @@ function renderQqiqSection() {
 	var driveList = document.getElementById('driveList');
 	// Remove old
 	var oldDiv = driveList.querySelector('.divider'); if (oldDiv) oldDiv.remove();
+	var oldFc = driveList.querySelector('.qq-filter-container'); if (oldFc) oldFc.remove();
 	var oldSec = driveList.querySelector('.qq-iq-section'); if (oldSec) oldSec.remove();
 	if (_qqiq.length === 0) return;
 	// Divider
 	var divEl = document.createElement('div'); divEl.className = 'divider'; driveList.appendChild(divEl);
-	// QQ section
+	// ★ 筛选框永远显示
+	var fc = document.createElement('div');
+	fc.className = 'qq-filter-container';
+	fc.innerHTML = '<input type="text" class="qq-filter-input" id="qqFilterInput" placeholder="find" spellcheck="false"><div id="qqFilterHistoryDropdown" class="history-dropdown"></div>';
+	driveList.appendChild(fc);
+	// ★ 渲染全部条目（上限 QQ_IQ_MAX），超出 QQ_IQ_DISPLAY 的初始隐藏
+	//    筛选时由 applyqqiqFilter 在 DOM 内原地 show/hide，不重建输入框
 	var sec = document.createElement('div'); sec.className = 'qq-iq-section';
-	for (var i = 0; i < _qqiq.length; i++) {
-		sec.appendChild(buildQqiqItem(_qqiq[i]));
+	var total = Math.min(_qqiq.length, QQ_IQ_MAX);
+	for (var i = 0; i < total; i++) {
+		var itemEl = buildQqiqItem(_qqiq[i]);
+		if (i >= QQ_IQ_DISPLAY) itemEl.style.display = 'none';
+		sec.appendChild(itemEl);
 	}
 	driveList.appendChild(sec);
 }
 
+function _escAttr(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
 function buildQqiqItem(item) {
 	var el = document.createElement('div');
 	el.className = 'qq-item ' + (item.type === 'file' ? 'qq-file' : 'qq-dir');
+	el.setAttribute('data-fullpath', item.path);
 	if (item.type === 'file') {
 		var fileName = item.path.replace(/^.*[\\/]/, '');
+		// ★ 文件 tooltip: 黑色背景白色文字，最后反斜杠红色加粗
+		var lastBS = item.path.lastIndexOf('\\');
+		var tooltipHtml;
+		if (lastBS !== -1) {
+			tooltipHtml = _escAttr(item.path.substring(0, lastBS))
+				+ ' <span style="font-weight:bold;color:#dc322f;">\\</span> '
+				+ _escAttr(item.path.substring(lastBS + 1));
+		} else {
+			tooltipHtml = _escAttr(item.path);
+		}
+		el.setAttribute('data-tooltip', tooltipHtml);
+		el.setAttribute('data-use-html', 'true');
+
 		var text = document.createElement('span');
-		text.className = 'qq-text'; text.textContent = fileName; text.title = item.path;
+		text.className = 'qq-text'; text.textContent = fileName;
 		el.appendChild(text);
 		el.addEventListener('click', function() {
 			parent.postMessage({ type: 'qqq-file-open', path: item.path }, '*');
@@ -520,17 +562,124 @@ function buildQqiqItem(item) {
 		});
 	} else {
 		var text2 = document.createElement('span');
-		text2.className = 'qq-text'; text2.textContent = item.path; text2.title = item.path;
+		text2.className = 'qq-text'; text2.textContent = item.path;
 		el.appendChild(text2);
 		var pin = document.createElement('span');
 		pin.className = 'pin-icon';
 		pin.innerHTML = '<svg viewBox="0 0 20 20" width="14" height="14"><path d="M5 17 L15 5 M15 5 L5 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
-		pin.title = 'Pin';
 		pin.addEventListener('click', function(e) { e.stopPropagation(); pinDirectory(item.path); });
 		el.appendChild(pin);
 		text2.addEventListener('click', function() { navigateTo(item.path); });
 	}
 	return el;
+}
+
+// ★ qq 筛选器：原地过滤 DOM（不重建，不破坏输入框焦点）；AND 多词模糊匹配
+function applyqqiqFilter(keyword) {
+	var section = document.querySelector('.qq-iq-section');
+	if (!section) return;
+	var kw = (keyword || '').trim().toLowerCase();
+	var terms = kw ? kw.split(/\s+/).filter(Boolean) : [];
+	var items = section.querySelectorAll('.qq-item');
+	for (var i = 0; i < items.length; i++) {
+		var item = items[i];
+		if (terms.length === 0) {
+			// 无筛选：前 QQ_IQ_DISPLAY 显示，其余隐藏
+			item.style.display = (i < QQ_IQ_DISPLAY) ? '' : 'none';
+			continue;
+		}
+		// AND 多词模糊匹配：在 data-fullpath + textContent 中搜索
+		var fullpath = (item.getAttribute('data-fullpath') || '').toLowerCase();
+		var text = (item.textContent || '').toLowerCase();
+		var hay = fullpath + ' ' + text;
+		var match = true;
+		for (var t = 0; t < terms.length; t++) {
+			if (hay.indexOf(terms[t]) === -1) { match = false; break; }
+		}
+		item.style.display = match ? '' : 'none';
+	}
+}
+
+// ---- 下拉框工具函数 ----
+function hideAllDropdowns() {
+	var dds = document.querySelectorAll('.history-dropdown');
+	for (var i = 0; i < dds.length; i++) dds[i].style.display = 'none';
+}
+
+function showFilterHistory(inputEl, key) {
+	hideAllDropdowns();
+	if (document.activeElement !== inputEl) return;
+	var hist = _cmdHistory[key] || [];
+	if (!hist.length) return;
+	var dd = document.getElementById(key === 'qqFilter' ? 'qqFilterHistoryDropdown' : 'fileFilterHistoryDropdown');
+	if (!dd) return;
+	dd.innerHTML = '';
+	for (var i = 0; i < hist.length; i++) {
+		var div = document.createElement('div');
+		div.className = 'history-dropdown-item';
+		div.textContent = hist[i];
+		dd.appendChild(div);
+	}
+	dd.style.display = 'block';
+}
+
+// ★ 初始化 qq 筛选框事件
+function initQqFilter() {
+	var sidebar = document.querySelector('.sidebar');
+	if (!sidebar) return;
+
+	// input → 筛选 + 隐藏下拉
+	sidebar.addEventListener('input', function(e) {
+		var t = e.target;
+		if (!t || t.id !== 'qqFilterInput') return;
+		hideAllDropdowns();
+		applyqqiqFilter(t.value);
+		if (t.value === '') showFilterHistory(t, 'qqFilter');
+	});
+
+	// focus → 空时显示历史
+	sidebar.addEventListener('focusin', function(e) {
+		var t = e.target;
+		if (!t || t.id !== 'qqFilterInput') return;
+		if (t.value === '') showFilterHistory(t, 'qqFilter');
+	});
+
+	// blur → 隐藏下拉
+	sidebar.addEventListener('focusout', function(e) {
+		var t = e.target;
+		if (!t || t.id !== 'qqFilterInput') return;
+		setTimeout(function() { hideAllDropdowns(); }, 120);
+	});
+
+	// mousedown on dropdown → 防失焦
+	sidebar.addEventListener('mousedown', function(e) {
+		if (e.target && e.target.closest && e.target.closest('#qqFilterHistoryDropdown')) e.preventDefault();
+	});
+
+	// keydown → Enter/Escape
+	sidebar.addEventListener('keydown', function(e) {
+		var t = e.target;
+		if (!t || t.id !== 'qqFilterInput') return;
+		if (e.key === 'Enter') {
+			var val = t.value.trim();
+			if (val) {
+				var arr = _cmdHistory.qqFilter.filter(function(x) { return x !== val; });
+				arr.unshift(val); if (arr.length > 20) arr.length = 20;
+				_cmdHistory.qqFilter = arr; _cmdHistorySave();
+			}
+			hideAllDropdowns(); t.blur();
+		} else if (e.key === 'Escape') {
+			t.value = ''; applyqqiqFilter(''); hideAllDropdowns(); t.blur();
+		}
+	});
+
+	// click on dropdown item
+	sidebar.addEventListener('click', function(e) {
+		var item = e.target && e.target.closest && e.target.closest('.history-dropdown-item');
+		if (!item) return;
+		var input = document.getElementById('qqFilterInput');
+		if (input) { input.value = item.textContent; applyqqiqFilter(item.textContent); hideAllDropdowns(); input.focus(); }
+	});
 }
 
 function renderPinnedDirs() {
@@ -544,7 +693,7 @@ function renderPinnedDirs() {
 			del.className = 'delete-button'; del.textContent = '\u00d7';
 			del.addEventListener('click', function(e) { e.stopPropagation(); unpinDirectory(dir); });
 			el.appendChild(del);
-			var sp = document.createElement('span'); sp.textContent = dir; sp.title = dir;
+			var sp = document.createElement('span'); sp.textContent = dir;
 			el.appendChild(sp);
 			var moveGrp = document.createElement('span');
 			moveGrp.className = 'pin-move-group';
@@ -600,7 +749,7 @@ async function loadFileList(p) {
 			var parentDir = parts.join(p.includes('\\') ? '\\' : '/');
 			if (p.includes('\\') && parentDir.length === 2 && parentDir.endsWith(':')) parentDir += '\\';
 			if (!parentDir && !p.includes('\\')) parentDir = '/';
-			var parentEntry = { name: '..', isDir: true, size: 0, ctime: 0, mtime: 0 };
+			var parentEntry = { name: '..', isDir: true, size: 0, ctimeMs: 0, mtimeMs: 0 };
 			fileList.appendChild(buildFileItem(parentEntry, parentDir));
 		}
 
@@ -648,14 +797,17 @@ function buildFileItem(entry, fullPath) {
 	}
 	item.appendChild(sz);
 
+	// file-select-area (sz-area + icon, same for folders & files — q3 structure)
+	var selectArea = document.createElement('div');
+	selectArea.className = 'file-select-area';
+	var icon = document.createElement('span');
+	icon.className = 'file-icon';
+	icon.textContent = entry.isDir ? '📁' : '🗈';
+	selectArea.appendChild(icon);
+	item.appendChild(selectArea);
+
+	// name area
 	if (entry.isDir) {
-		var selectArea = document.createElement('div');
-		selectArea.className = 'file-select-area';
-		var icon = document.createElement('span');
-		icon.className = 'file-icon';
-		icon.textContent = '📁';
-		selectArea.appendChild(icon);
-		item.appendChild(selectArea);
 		var nameArea = document.createElement('div');
 		nameArea.className = 'folder-name-area';
 		nameArea.textContent = entry.name;
@@ -663,12 +815,8 @@ function buildFileItem(entry, fullPath) {
 	} else {
 		var nameArea2 = document.createElement('div');
 		nameArea2.className = 'file-name-area';
-		var icon2 = document.createElement('span');
-		icon2.className = 'file-icon';
-		icon2.textContent = '📄';
-		nameArea2.appendChild(icon2);
 		var nameSpan = document.createElement('span');
-		nameSpan.textContent = ' ' + entry.name;
+		nameSpan.textContent = entry.name;
 		nameArea2.appendChild(nameSpan);
 		item.appendChild(nameArea2);
 	}
@@ -689,7 +837,7 @@ function buildFileItem(entry, fullPath) {
 	item.addEventListener('dblclick', function(e) {
 		if (!entry.isDir) {
 			parent.postMessage({ type: 'qqq-file-open', path: fullPath }, '*');
-			recordFileHistory(fullPath);
+			recordDirHistory(currentPath);
 		}
 	});
 
@@ -841,7 +989,7 @@ function commitRename(itemEl, oldPath, itemType, newName) {
 	if (newName && newName !== oldName) {
 		var dir = oldPath.substring(0, oldPath.length - oldName.length);
 		bridge.fs.rename(oldPath, pathJoin(dir, newName)).then(function() {
-			if (currentPath) loadFileList(currentPath);
+			if (currentPath) { recordDirHistory(currentPath); loadFileList(currentPath); }
 		}).catch(function() {
 			cancelRename(itemEl, itemEl.dataset.originalContent);
 		});
@@ -890,8 +1038,18 @@ function showContextMenu(x, y, path, entry) {
 	ctxTarget = path;
 	ctxEntry = entry;
 	ctxMenu.style.display = 'flex';
-	ctxMenu.style.left = x + 'px';
-	ctxMenu.style.top = y + 'px';
+	// ★ 补正 CSS zoom: 0.85（html 缩放）→ 固定定位需反向缩放
+	var z = 0.85;
+	var left = x / z, top = y / z;
+	// 边界保护：菜单不超出视口右/下边界
+	var mw = ctxMenu.offsetWidth || 150, mh = ctxMenu.offsetHeight || 120;
+	var vw = window.innerWidth / z, vh = window.innerHeight / z;
+	if (left + mw > vw) left = vw - mw - 4;
+	if (top + mh > vh) top = y / z - mh - 4;
+	if (left < 4) left = 4;
+	if (top < 4) top = 4;
+	ctxMenu.style.left = left + 'px';
+	ctxMenu.style.top = top + 'px';
 }
 
 document.addEventListener('click', function() { ctxMenu.style.display = 'none'; });
@@ -902,15 +1060,25 @@ ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 		if (!ctxTarget) return;
 		switch (action) {
 			case 'code':
+				// ★ 二进制文件保护：阻止在编辑器中打开 mp3/图片/视频等
+				if (isBinaryFile(ctxTarget)) {
+					alert('Binary file — cannot open in editor');
+					break;
+				}
 				parent.postMessage({ type: 'qqq-file-open', path: ctxTarget }, '*');
+				recordFileHistory(ctxTarget);
 				break;
-				case 'open':
-				if (ctxEntry && ctxEntry.isDir) navigateTo(ctxTarget);
-				else parent.postMessage({ type: 'qqq-file-open', path: ctxTarget }, '*');
+			case 'open':
+				if (ctxEntry && ctxEntry.isDir) { navigateTo(ctxTarget); }
+				else {
+					// ★ w=系统默认打开（非编辑器）
+					bridge.shell.openPath(ctxTarget).catch(function() {});
+					recordDirHistory(currentPath);
+				}
 				break;
 			case 'delete':
 				if (confirm('Delete ' + baseName(ctxTarget) + '?')) {
-					bridge.fs.remove(ctxTarget).then(function() { loadFileList(currentPath); });
+					bridge.fs.remove(ctxTarget).then(function() { recordDirHistory(currentPath); loadFileList(currentPath); });
 				}
 				break;
 			case 'rename':
@@ -918,8 +1086,8 @@ ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 				startRename(ctxTarget, baseName(ctxTarget), ctxEntry.isDir ? 'folder' : 'file');
 				break;
 			case 'copyPath':
-				bridge.clipboard.writeText(ctxTarget).catch(() => {
-					if (navigator.clipboard) navigator.clipboard.writeText(ctxTarget).catch(() => {});
+				bridge.clipboard.writeText(ctxTarget).catch(function() {
+					if (navigator.clipboard) navigator.clipboard.writeText(ctxTarget).catch(function() {});
 				});
 				break;
 		}
@@ -1227,7 +1395,6 @@ async function updateDriveDisplay() {
 			if (lnkJumpFromPath) {
 				var srcPath = lnkJumpFromPath;
 				lnkJumpFromPath = null;
-				// 验证来源目录仍存在
 				bridge.fs.list(srcPath).then(function() { navigateTo(srcPath); }).catch(function() {
 					lnkJumpFromPath = null;
 					goUpOneLevel();
@@ -1242,28 +1409,32 @@ async function updateDriveDisplay() {
 		var si = selectedItem;
 		if (k === 'q') {
 			e.preventDefault();
+			// ★ 二进制文件保护（.ts 不在列表中，不会被误伤）
+			if (isBinaryFile(si.path)) {
+				alert('Binary file — cannot open in editor');
+				return;
+			}
 			parent.postMessage({ type: 'qqq-file-open', path: si.path }, '*');
-			// ★ q=编辑：文件及父目录入 qq 区
 			recordFileHistory(si.path);
 		} else if (k === 'w') {
 			e.preventDefault();
 			if (si.type === 'folder') { navigateTo(si.path); }
 			else if (si.path && /\.lnk$/i.test(si.path)) {
-				// ★ .lnk 快捷方式：异步解析目标，若指向文件夹则在 Roam 内导航
 				var srcDir = currentPath;
 				resolveLnkTarget(si.path).then(function(target) {
 					if (target) {
-						// 先导航到目标，再设 lnkJumpFromPath（navigateTo 会清除它）
 						navigateTo(target);
 						lnkJumpFromPath = srcDir;
 					} else {
-						// 解析失败→按普通文件打开
-						parent.postMessage({ type: 'qqq-file-open', path: si.path }, '*');
-						recordFileHistory(si.path);
+						bridge.shell.openPath(si.path).catch(function() {});
+						recordDirHistory(currentPath);
 					}
 				});
 			}
-			else { parent.postMessage({ type: 'qqq-file-open', path: si.path }, '*'); recordFileHistory(si.path); }
+			else {
+				bridge.shell.openPath(si.path).catch(function() {});
+				recordDirHistory(currentPath);
+			}
 		} else if (k === 'd') {
 			e.preventDefault();
 			var targets = selectedItems.filter(function(s) { return s.name !== '..'; });
@@ -1274,7 +1445,7 @@ async function updateDriveDisplay() {
 				if (el) { el.style.opacity = '0.5'; el.style.pointerEvents = 'none'; }
 			});
 			Promise.all(targets.map(function(t) { return bridge.fs.remove(t.path).catch(function(){}); }))
-				.then(function() { if (currentPath) loadFileList(currentPath); });
+				.then(function() { if (currentPath) { recordDirHistory(currentPath); loadFileList(currentPath); } });
 			cancelSelection();
 		} else if (k === 'e') {
 			e.preventDefault();
@@ -1331,6 +1502,7 @@ function doCreateFile() {
 		filenameInput.value = '';
 		// Reset char-undo history
 		if (window.qqqCharUndo && window.qqqCharUndo.reset) window.qqqCharUndo.reset(filenameInput);
+		recordDirHistory(currentPath);
 		loadFileList(currentPath);
 		// Open in editor + focus
 		parent.postMessage({ type: 'qqq-file-open', path: fullPath }, '*');
@@ -1349,6 +1521,7 @@ function doCreateFolder() {
 	bridge.fs.mkdir(fullPath).then(function() {
 		filenameInput.value = '';
 		if (window.qqqCharUndo && window.qqqCharUndo.reset) window.qqqCharUndo.reset(filenameInput);
+		recordDirHistory(currentPath);
 		loadFileList(currentPath);
 	}).catch(function(err) {
 		alert('Failed to create folder: ' + (err.message || err));
@@ -1475,6 +1648,7 @@ function calculateAndAdjustScroll() {
 	await loadDrives();
 	renderQqiqSection();
 	renderPinnedDirs();
+	initQqFilter();
 	navigateTo(root);
 	updateSCMButtons();
 
@@ -1496,6 +1670,153 @@ function calculateAndAdjustScroll() {
 		// Best-effort: dispatch as window event so feature handlers below can react.
 		document.dispatchEvent(new CustomEvent('qqq-roam-cmd', { detail: { cmd: cmd } }));
 	});
+
+	// ---- 全局自定义 tooltip（从 q3 百分百移植）----
+	(function bootGlobalTooltip() {
+		var gt = document.getElementById('globalTooltip');
+		if (!gt) return;
+		var _currentTarget = null;
+
+		// mouseenter → 显示 tooltip（data-tooltip）
+		document.addEventListener('mouseenter', function(e) {
+			var t = e.target;
+			if (!t || !t.closest) return;
+			var target = t.closest('[data-tooltip]');
+			if (!target) { _currentTarget = null; gt.style.display = 'none'; return; }
+			_currentTarget = target;
+			var text = target.getAttribute('data-tooltip');
+			if (!text) { gt.style.display = 'none'; return; }
+
+			var pageW = window.innerWidth;
+			gt.style.whiteSpace = 'pre-wrap';
+			gt.style.maxWidth = (pageW - 20) + 'px';
+
+			if (target.getAttribute('data-use-html') === 'true') {
+				gt.innerHTML = text;
+			} else {
+				gt.textContent = text;
+			}
+			gt.style.display = 'block';
+		}, true);
+
+		// mousemove → 定位 + 边缘回避
+		document.addEventListener('mousemove', function(e) {
+			if (gt.style.display !== 'block' || !_currentTarget) return;
+
+			var pageW = window.innerWidth;
+			var vh = window.innerHeight;
+			var padL = 10, padR = 0;
+			gt.style.whiteSpace = 'pre-wrap';
+			gt.style.maxWidth = (pageW - padL - padR) + 'px';
+
+			// ★ 判断是左侧按钮（scm S/C/M）还是右侧按钮
+			var isLeftBtn = _currentTarget.classList.contains('scm-btn') && _currentTarget.closest('#szModeGroup');
+			var isOpenBtn = _currentTarget.classList.contains('open-btn');
+			var isRightBtn = _currentTarget.classList.contains('save-button') || _currentTarget.classList.contains('cancel-button')
+				|| (_currentTarget.classList.contains('scm-btn') && _currentTarget.closest('#sortByGroup'));
+
+			// 垂直定位：save/cancel 向上偏移
+			if (_currentTarget.classList.contains('save-button') || _currentTarget.classList.contains('cancel-button')) {
+				gt.style.top = (e.clientY - 44) + 'px';
+			} else {
+				gt.style.top = (e.clientY + 22) + 'px';
+			}
+
+			var tw = gt.offsetWidth;
+			var leftPos;
+			if (isLeftBtn || isOpenBtn) {
+				leftPos = e.clientX - 11;
+			} else if (isRightBtn) {
+				leftPos = e.clientX - tw + 11;
+			} else {
+				// ★ qq item / recent item / 通用元素：居中，然后做边界保护
+				leftPos = e.clientX - tw / 2;
+			}
+
+			// 边界保护
+			if (leftPos + tw > pageW - padR) leftPos = pageW - tw - padR;
+			if (leftPos < padL) leftPos = padL;
+
+			gt.style.left = leftPos + 'px';
+		}, true);
+
+		// mouseleave → 隐藏
+		document.addEventListener('mouseleave', function(e) {
+			var t = e.target;
+			if (!t || !t.closest) return;
+			var target = t.closest('[data-tooltip]');
+			if (target) {
+				_currentTarget = null;
+				gt.style.display = 'none';
+			}
+		}, true);
+	})();
+
+	// ---- path-tooltip（白底黑字，文件夹/盘符/最近项超长截断时使用）----
+	var _ptEl = null, _ptVisible = false;
+	function _ensurePathTooltip() {
+		if (_ptEl) return;
+		_ptEl = document.getElementById('pathTooltip');
+		if (!_ptEl) { _ptEl = document.createElement('div'); _ptEl.className = 'path-tooltip'; _ptEl.style.display = 'none'; document.body.appendChild(_ptEl); }
+	}
+	function hidePathTooltip() { if (_ptEl) _ptEl.style.display = 'none'; _ptVisible = false; }
+	function _isEllipsis(el) {
+		if (!el) return false;
+		if (el.scrollWidth > el.clientWidth + 1) return true;
+		try {
+			var r = document.createRange(); r.selectNodeContents(el);
+			var cs = getComputedStyle(el);
+			return r.getBoundingClientRect().width > el.clientWidth - parseFloat(cs.paddingLeft||0) - parseFloat(cs.paddingRight||0) + 1;
+		} catch(_) { return false; }
+	}
+	function showPathTooltip(text, cx, cy) {
+		if (!text) { hidePathTooltip(); return; }
+		_ensurePathTooltip();
+		_ptEl.textContent = text;
+		var margin = 8, vw = window.innerWidth, vh = window.innerHeight;
+		_ptEl.style.whiteSpace = 'nowrap'; _ptEl.style.maxWidth = 'none'; _ptEl.style.display = 'block'; _ptVisible = true;
+		var nw = _ptEl.scrollWidth, maxW = vw - 20;
+		if (nw > maxW) {
+			_ptEl.style.whiteSpace = 'pre-wrap'; _ptEl.style.wordBreak = 'break-all'; _ptEl.style.maxWidth = maxW + 'px';
+			var l = Math.max(4, Math.min(cx - maxW / 2, vw - maxW - 4));
+			_ptEl.style.left = l + 'px';
+		} else {
+			var okL = (cx + margin + nw) <= vw - 4, okR = (cx - margin - nw) >= 4;
+			_ptEl.style.whiteSpace = 'nowrap'; _ptEl.style.maxWidth = 'none'; _ptEl.style.wordBreak = '';
+			_ptEl.style.left = (okL ? cx + margin : okR ? cx - margin - nw : Math.max(4, (vw - nw) / 2)) + 'px';
+		}
+		_ptEl.style.top = (cy + margin) + 'px';
+		var rect = _ptEl.getBoundingClientRect();
+		if (rect.bottom > vh - 4) _ptEl.style.top = Math.max(4, vh - rect.height - 4) + 'px';
+	}
+	function handlePathTooltipHover(e) {
+		var t = e.target; if (!t || !t.closest) return;
+		// 盘符按钮
+		var ni = t.closest('.nav-item');
+		if (ni) { _isEllipsis(ni) ? showPathTooltip(ni.textContent.trim(), e.clientX, e.clientY) : hidePathTooltip(); return; }
+		// qq 文件夹
+		var qi = t.closest('.qq-item');
+		if (qi) {
+			if (qi.classList.contains('qq-file')) { hidePathTooltip(); return; }
+			var qtx = qi.querySelector('.qq-text');
+			var tip = qi.getAttribute('data-fullpath') || (qtx ? qtx.textContent : qi.textContent || '').trim();
+			_isEllipsis(qtx || qi) ? showPathTooltip(tip, e.clientX, e.clientY) : hidePathTooltip();
+			return;
+		}
+		// 最近项
+		var ri = t.closest('.recent-item');
+		if (ri) {
+			var rsp = ri.querySelector('span:not(.delete-button):not(.pin-move-btn)');
+			_isEllipsis(rsp || ri) ? showPathTooltip(rsp ? rsp.textContent.trim() : ri.textContent.trim(), e.clientX, e.clientY) : hidePathTooltip();
+			return;
+		}
+		hidePathTooltip();
+	}
+	var _sideEl = document.querySelector('.sidebar');
+	if (_sideEl) { _sideEl.addEventListener('mousemove', handlePathTooltipHover); _sideEl.addEventListener('mouseleave', hidePathTooltip); }
+	var _kyEl = document.getElementById('kyContent');
+	if (_kyEl) { _kyEl.addEventListener('mousemove', handlePathTooltipHover); _kyEl.addEventListener('mouseleave', hidePathTooltip); }
+
 })();
 
 })();

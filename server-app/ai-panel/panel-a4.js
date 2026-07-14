@@ -887,6 +887,12 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
             ai_html = _buildConversationFlowHtml(cleanConv, _fDataForRender);
         } catch (_) { }
     }
+    // ★ 流式 DOM 快照（onDone 覆盖前抓取，防流失）
+    if (!ai_html && ag._preOverwriteAiHtml) {
+        ai_html = ag._preOverwriteAiHtml;
+        ag._preOverwriteAiHtml = null;  // 一次性消费
+        console.log('[a4] using _preOverwriteAiHtml snapshot, len=' + ai_html.length);
+    }
     if (!ai_html && ag._activeAiDiv && ag._activeAiDiv._contentWrap) {
         try { ai_html = ag._activeAiDiv._contentWrap.innerHTML; } catch (_) { }
     }

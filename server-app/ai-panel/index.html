@@ -258,8 +258,8 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 /* ── 开放厨房输入区：右侧留16px给子弹按钮 ── */
 #input-area{border-top:1px solid var(--border-color);padding:8px 24px 4px 8px;display:flex;flex-direction:column;gap:6px;background:var(--card-bg);position:relative}
 /* ── 子弹按钮：绝对定位，从顶拉到底，右贴边 ── */
-#bullet-btn{position:absolute;right:0;top:0;bottom:0;width:16px;border:none;border-left:1px solid var(--border-color);background:transparent;cursor:pointer;padding:0;margin:0;display:flex;align-items:center;justify-content:center;outline:none}#bullet-btn:hover{background:rgba(255,61,0,0.08)}#bullet-btn:active{background:rgba(255,61,0,0.15)}
-#bullet-btn img{width:auto;height:auto;display:block}
+#bullet-btn{position:absolute;right:0;top:0;bottom:0;width:16px;border:none;border-left:1px solid var(--border-color);background:transparent;cursor:pointer;padding:0;margin:0;outline:none;overflow:hidden}#bullet-btn:hover{background:rgba(255,61,0,0.08)}#bullet-btn:active{background:rgba(255,61,0,0.15)}
+#bullet-btn img{position:absolute;top:60%;left:50%;transform:translate(-50%,-50%);width:auto;height:auto;display:block}
 [data-theme="dark"] #bullet-btn img{filter:invert(1)}
 
 #image-strip{display:none;overflow-x:hidden;flex-wrap:wrap;padding:4px 0;gap:6px}
@@ -671,5 +671,6 @@ if (!window.parent.__qqq_agentPool) window.parent.__qqq_agentPool = {};
 <script src="panel-floor-indicator.js"></script>
 <script src="panel-pipeline.js"></script>
 <script src="panel-send.js"></script>
+<script src="panel-health.js"></script>
 </body>
 </html>

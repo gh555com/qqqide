@@ -119,40 +119,51 @@ function _getDefaultTier() {
 var _panelFocused = false;  // 当前面板是否获得焦点（金光边框 + 快捷键激活）
 
 // ═══ 焦点边框：通知父窗口添加/移除金光 ═══
+// ★ _panelFocused 仅管视觉（金光边框+快捷键）。子弹金色独立于焦点，由 _setBulletGold 管理。
 function _setPanelFocus(on) {
     if (_panelFocused === on) return;
     _panelFocused = on;
-    // 焦点视觉：body 级别 class 控制滑轨显隐
     if (on) {
         document.body.classList.add('panel-focused');
     } else {
         document.body.classList.remove('panel-focused');
     }
-    // 广播焦点状态给父窗口（AI 视口用于文件附加目标）
     if (on) {
         try { parent.postMessage({ type: 'qqq-ai-panel-focused', panel: _panelId }, '*'); } catch (_) { }
     }
-    // ★ 焦点面板：子弹图标纯金色。先 invert(1) 统一为白色基底，再上金色滤镜
+}
+
+// ★ 子弹金色：与面板焦点解耦。代表「视口文件注入目标」，非窗口焦点。
+// 获取焦点时自动设金、blur 不褪、仅当另一面板接管（defocus 消息）才褪金。
+function _setBulletGold(on) {
     try {
         var _bi = document.querySelector('#bullet-btn img');
         if (_bi) {
             if (on) {
-                _bi.style.cssText = 'filter: invert(1) sepia(1) saturate(30) hue-rotate(335deg) !important';
+                if (document.documentElement.getAttribute('data-theme') === 'dark') {
+                    // 暗主题：亮金
+                    _bi.style.cssText = 'filter: invert(1) sepia(1) saturate(40) hue-rotate(350deg) brightness(1.1) !important';
+                } else {
+                    // 浅主题：暗金 #d0a350，加深补偿透明度
+                    _bi.style.cssText = 'filter: invert(1) sepia(1) saturate(80) hue-rotate(350deg) brightness(0.65) contrast(1.3) !important';
+                }
             } else {
                 _bi.style.cssText = '';
             }
         }
     } catch(_) {}
 }
-// 点击/按键 → 获得焦点
-window.addEventListener('focus', function () { _setPanelFocus(true); });
-window.addEventListener('blur', function () { _setPanelFocus(false); });
-document.addEventListener('mousedown', function () { _setPanelFocus(true); });
+
+// 点击/按键 → 获得焦点，同时成为视口注入目标（设金色子弹）
+window.addEventListener('focus', function () { _setPanelFocus(true); _setBulletGold(true); });
+window.addEventListener('blur', function () { _setPanelFocus(false); /* 保持子弹金色，不解绑 */ });
+document.addEventListener('mousedown', function () { _setPanelFocus(true); _setBulletGold(true); });
 // ★ 互斥焦点：收到父窗口 defocus 通知时撤除金色边框
 window.addEventListener('message', function (e) {
     if (!e.data) return;
     if (e.data.type === 'qqq-ai-panel-defocus') {
         _setPanelFocus(false);
+        _setBulletGold(false);  // ★ 另一面板接管：褪去子弹金色
     }
     // ★★ conv goods → 新对话
     if (e.data.type === 'qqq-conv-new-quest' && e.data.panelId === _panelId) {

@@ -528,7 +528,12 @@
         // 从头部驱逐
         while (totalChars > DE_MAX_CHARS && entries.length > 0) {
             var removedStr = _serializeDeEntry(entries[0]);
-           // ════════════════════════════════════════════════
+            totalChars -= removedStr.length + 2;
+            entries.shift();
+        }
+    }
+
+    // ════════════════════════════════════════════════
     // _parseBiscuitFromContent — 从 biscuit 消息 content 解析楼层行
     // ════════════════════════════════════════════════
     function _parseBiscuitFromContent(content) {
@@ -544,6 +549,40 @@
         }
         lines.sort(function(a, b) { return a.n - b.n; });
         return lines;
+    }
+
+    // ════════════════════════════════════════════════
+    // _parseDeBlock — 从 DE 消息 content 解析回条目数组（重启恢复用）
+    // ════════════════════════════════════════════════
+    function _parseDeBlock(content) {
+        if (!content) return [];
+        var entries = [];
+        var lines = content.split('\n');
+        var i = 0;
+        // 跳过头部 "═══ DE (K+C, ..."
+        while (i < lines.length && !/^\[ts:/.test(lines[i])) i++;
+        while (i < lines.length) {
+            var hdr = lines[i].match(/^\[ts:(\d+) F(\d+)\] \[(code:)?(\w+)\]\s*(.*)/);
+            if (!hdr) { i++; continue; }
+            var entry = {
+                type: hdr[3] ? 'c' : 'k',
+                tool: hdr[4],
+                ts: parseInt(hdr[1], 10),
+                floor: parseInt(hdr[2], 10),
+                path: (hdr[5] || '').trim(),
+                content: ''
+            };
+            i++;
+            var cl = [];
+            while (i < lines.length && /^  │ /.test(lines[i])) {
+                cl.push(lines[i].replace(/^  │ /, ''));
+                i++;
+            }
+            entry.content = cl.join('\n');
+            entries.push(entry);
+            while (i < lines.length && lines[i].trim() === '') i++;
+        }
+        return entries;
     }
 
     // ════════════════════════════════════════════════
@@ -680,6 +719,14 @@
             }
         }
 
+        // ★ DE 恢复：从 _rawDeText 解析条目（重启后 deEntries 可能空，需从 DE 消息重建）
+        if ((!self._ctx.deEntries || self._ctx.deEntries.length === 0) && self._ctx._rawDeText) {
+            self._ctx.deEntries = _parseDeBlock(self._ctx._rawDeText);
+            if (self._ctx.deEntries.length > 0) {
+                self.log('◆ Backpack: recovered ' + self._ctx.deEntries.length + ' DE entries from conversation');
+            }
+        }
+
         // ── 4. 保存旧状态（用于回滚） ──
         var oldBiscuitLines = (self._ctx.biscuitLines || []).slice();
         var oldDeEntries = (self._ctx.deEntries || []).slice();
@@ -697,7 +744,21 @@
 
             // ── 7. 更新内存状态 ──
             if (!self._ctx.biscuitLines) self._ctx.biscuitLines = [];
-            self._ctx.biscuitLines.push({ n: floorNum, text: biscuitText });
+            // ★ 解析多楼层 biscuitText → 逐楼层入 biscuitLines（去重+排序）
+            var _newLines = _parseBiscuitFromContent(biscuitText);
+            var _existMap = {};
+            for (var _bi = 0; _bi < self._ctx.biscuitLines.length; _bi++) {
+                _existMap[self._ctx.biscuitLines[_bi].n] = _bi;
+            }
+            for (var _nbi = 0; _nbi < _newLines.length; _nbi++) {
+                var _nl = _newLines[_nbi];
+                if (_existMap.hasOwnProperty(_nl.n)) {
+                    self._ctx.biscuitLines[_existMap[_nl.n]] = _nl;
+                } else {
+                    self._ctx.biscuitLines.push(_nl);
+                }
+            }
+            self._ctx.biscuitLines.sort(function(a, b) { return a.n - b.n; });
 
             if (!self._ctx.deEntries) self._ctx.deEntries = [];
             for (var ei = 0; ei < newDeEntries.length; ei++) {
@@ -721,10 +782,15 @@
             if (biscuitFound) {
                 // ★ 原地追加：消息对象不变 → 前缀缓存命中
                 biscuitFound.msg.content = biscuitFound.msg.content + '\n\n' + biscuitText;
+                // ★ 重排序：按楼层号升序重排整个 biscuit 内容
+                var _allSorted = _parseBiscuitFromContent(biscuitFound.msg.content);
+                biscuitFound.msg.content = _allSorted.map(function(l) { return l.text; }).join('\n\n');
             } else {
-                // 首次：创建 biscuit 消息
+                // 首次：创建 biscuit 消息（多楼层时先排序）
+                var _sortedLines = _parseBiscuitFromContent(biscuitText);
+                var _sortedText = _sortedLines.map(function(l) { return l.text; }).join('\n\n');
                 self.conversation.splice(persistentCount, 0,
-                    { role: 'system', content: biscuitText, _dynamic: true, _biscuit: true });
+                    { role: 'system', content: _sortedText, _dynamic: true, _biscuit: true });
             }
 
             // ── 10. ★ 找已有 DE 消息 → 原地更新 content ──
@@ -788,8 +854,6 @@
             });
 
             self.log('✗ Backpack: rebuild FAILED — ' + (err.message || err));
-        }
-    };        self.log('✗ Backpack: rebuild FAILED — ' + (err.message || err));
         }
     };
 

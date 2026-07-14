@@ -392,3 +392,23 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 上限: 单文件 3MB 硬帽（超则取首尾各1.5MB），目录 20MB FIFO 轮转（mtime 升序删最老）。
   - 饼干: [File: ...]```...``` 块已被 _buildCompressedBiscuit 正则全局剥离→子弹原文不进下一层楼。
   - 违者即返工。
+
+§58 模块健康检查 — 启动时全量校验，静默失败→可见告警（2026-07-14）
+  - 入口: panel-health.js（index.html 最后加载）。
+  - 检查: 所有关键模块的预期导出（AgentLoop.prototype 扩展、全局单例）是否存在。
+  - 失败: 红色横幅置顶告警，列出失败模块名。用户 Ctrl+R 热重载修复。
+  - agent-loop.js 内置兜底 stub（_rebuildBackpack/_compressContext 等），防 typeof === 'function' 静默降级。
+  - 违者即返工。
+
+§59 自动语法门 — edit/create/write_file 后端内置 node--check（2026-07-14）
+  - 位置: shell/ipc-edit.ts checkSyntax()。
+  - 触发: 每次 edit/create/write_file 写盘后自动跑。JS→node--check，JSON→JSON.parse，其他跳过。
+  - 失败: 还原文件（有原内容→还原，新文件→删除），返回语法错误信息。5s 超时。
+  - 效果: AI 工具产出腐化代码→当场拒绝+还原，不落盘。根除 edit_file 空白匹配到错误位置导致括号失衡。
+  - 违者即返工。
+
+§60 Goods 清单驱动路由 — qqqGaea.open() 统一入口（2026-07-14）
+  - 入口: gaea-host.js open(id, opts)。
+  - 路由: 查 manifest→有 panel→show(A区) / 有 tabs→ensure+activate(X区) / 动态 tab(provides:'tab:xxx')→消费者自行 addGaeaTab。
+  - 消费者: 统一调 qqqGaea.open(id)，不再硬编码 show()/addGaeaTab()。goods 改注册形态→消费者自动跟随。
+  - 违者即返工。

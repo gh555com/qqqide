@@ -542,6 +542,110 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
     var _bulletBtn = document.getElementById('bullet-btn');
     if (!_bulletBtn) return;
 
+    // ★ 子弹音效 — 预掷骰子，qa必播 → 1/3 qx(1~2s后) → 1/2 qs(qa结束后0.5~1.5s)
+    function _bulletPlaySound() {
+        var ASSET = '../assets/bullet/';
+        var rollQx = Math.random() < 1/3;
+        var rollQs = Math.random() < 0.5;
+        var qxDelay = rollQx ? (1000 + Math.random() * 1000) : 0;
+        var qsGap   = rollQs ? (500 + Math.random() * 1000) : 0;
+        var qxFile  = '';
+        if (rollQx) {
+            var qxPool = ['ric_conc-1.wav','ric_conc-2.wav','ric_metal-1.wav'];
+            qxFile = ASSET + qxPool[Math.floor(Math.random() * 3)];
+        }
+        var qaFile = Math.random() < 0.5 ? ASSET + 'scout_fire-1.wav' : ASSET + 'g3sg1-fire-2.wav';
+        var qaStart = Date.now();
+        var qaAudio = new Audio(qaFile);
+        qaAudio.play().catch(function(){});
+        if (rollQx) {
+            setTimeout(function() {
+                try { new Audio(qxFile).play().catch(function(){}); } catch(_) {}
+            }, qxDelay);
+        }
+        if (rollQs) {
+            var onQaEnd = function() {
+                setTimeout(function() {
+                    try { new Audio(ASSET + 'p90_boltpull.wav').play().catch(function(){}); } catch(_) {}
+                }, qsGap);
+            };
+            if (qaAudio.ended) { onQaEnd(); }
+            else { qaAudio.addEventListener('ended', onQaEnd, { once: true }); }
+        }
+    }
+
+    // ★ 子弹动画 — 射出(50ms,3弹拖尾) → 装填滑入(350ms,塞贝尔变速)
+    var _bulletAnimating = false;
+    function _bulletAnimate() {
+        if (_bulletAnimating) return;
+        _bulletAnimating = true;
+        var btn = _bulletBtn;
+        var img = btn.querySelector('img');
+        if (!img) { _bulletAnimating = false; return; }
+        var btnH = btn.offsetHeight;
+        if (btnH < 20) { _bulletAnimating = false; return; }
+
+        var startPct = 60;
+        var startY = btnH * startPct / 100;   // 2/5 位置
+        var endY = -30;                        // 射出顶端
+        var travelDist = startY - endY;
+        var gap = Math.max(travelDist / 3, 6); // 3弹间隔
+
+        var src = img.src;
+        var baseOpacity = img.style.opacity || '0.75';
+        var baseFilter = img.style.filter || '';
+
+        // ── Phase 1: 射出 (50ms, 3弹拖尾) ──
+        var clones = [];
+        for (var i = 1; i <= 2; i++) {
+            var c = document.createElement('img');
+            c.src = src;
+            c.style.cssText = 'position:absolute;left:50%;transform:translate(-50%,-50%);width:auto;height:auto;pointer-events:none;z-index:5;';
+            c.style.top = (startY - gap * i) + 'px';
+            c.style.opacity = (0.55 - i * 0.18);
+            if (baseFilter) c.style.filter = baseFilter;
+            btn.appendChild(c);
+            c.animate([
+                { top: (startY - gap * i) + 'px', opacity: parseFloat(c.style.opacity) },
+                { top: (endY - gap * i) + 'px', opacity: 0 }
+            ], { duration: 50, easing: 'linear', fill: 'forwards' });
+            clones.push(c);
+        }
+
+        // 主弹射出
+        var shootAnim = img.animate([
+            { top: startY + 'px', opacity: baseOpacity },
+            { top: endY + 'px', opacity: 0 }
+        ], { duration: 50, easing: 'linear', fill: 'forwards' });
+
+        // ── Phase 2: 装填滑入 (350ms, 塞贝尔变速) ──
+        setTimeout(function() {
+            // 清理拖尾克隆
+            for (var k = 0; k < clones.length; k++) {
+                if (clones[k].parentNode) clones[k].parentNode.removeChild(clones[k]);
+            }
+            // 取消射出动画，复位 img 到下方
+            shootAnim.cancel();
+            img.style.top = (btnH + 16) + 'px';
+            img.style.opacity = '0.25';
+
+            var reloadAnim = img.animate([
+                { top: (btnH + 16) + 'px', opacity: 0.25 },
+                { top: startY + 'px', opacity: baseOpacity }
+            ], {
+                duration: 350,
+                easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
+                fill: 'forwards'
+            });
+            reloadAnim.onfinish = function() {
+                img.style.top = '';
+                img.style.opacity = baseOpacity;
+                img.style.transform = '';
+                _bulletAnimating = false;
+            };
+        }, 60);
+    }
+
     _bulletBtn.onclick = async function() {
         if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
 
@@ -628,10 +732,14 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
             // 7. 注入编辑框 — 走已有 insertChipAtCursor → 📎"path" 格式
             if (typeof insertChipAtCursor === 'function') insertChipAtCursor(filePath, false);
 
-            // 8. Qoast
+            // 8. 音效 + 动画
+            _bulletPlaySound();
+            _bulletAnimate();
+
+            // 9. Qoast
             var sizeKB = Math.round(clipText.length / 1024);
             var sizeStr = sizeKB >= 1024 ? (sizeKB / 1024).toFixed(1) + 'MB' : sizeKB + 'KB';
-            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('子弹已上膛 ' + sizeStr + ' → ' + filename, { type: 'success', duration: 3500 }); } catch(_) {}
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('子弹已射出 ' + sizeStr + ' → ' + filename, { type: 'success', duration: 3500 }); } catch(_) {}
 
         } catch(err) {
             try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('子弹写入失败: ' + (err.message || err), { type: 'error', duration: 5000 }); } catch(_) {}

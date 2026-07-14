@@ -495,6 +495,16 @@ async function _executeSend(intent) {
                             if (typeof _logRenderEvent === 'function') {
                                 _logRenderEvent('before_overwrite', qid, floorNum, _targetDiv2._contentWrap.innerHTML || '');
                             }
+                            // ★ 在覆盖前抓取流式 DOM 快照（清洗后存 agent，供 ai_html 持久化用）
+                            var _snapClone2 = _targetDiv2._contentWrap.cloneNode(true);
+                            var _snapSp2 = _snapClone2.querySelectorAll('.stream-para');
+                            for (var _snapSpI2 = 0; _snapSpI2 < _snapSp2.length; _snapSpI2++) {
+                                _snapSp2[_snapSpI2].classList.remove('stream-para');
+                            }
+                            var _snapLastP2 = _snapClone2.querySelector('[data-last-para]');
+                            if (_snapLastP2) _snapLastP2.remove();
+                            agent._preOverwriteAiHtml = _snapClone2.innerHTML;
+                            _snapClone2 = null;
                             _targetDiv2._contentWrap.innerHTML = _rendered;
                             _targetDiv2._firstHouseDone = true;
                         }
@@ -651,6 +661,11 @@ async function _executeSend(intent) {
             //    + 重启后 ai_html 空 → 屏幕只剩「工具执行完毕」。
             if (typeof agent._rebuildBackpack === 'function') {
                 try { await agent._rebuildBackpack(); } catch (_) { /* 压缩失败不阻断楼层完结 */ }
+            }
+            // ★ V12 fix: 压缩后 ag._ctx.biscuitLines/deEntries 已在内存更新，必须落盘
+            //   旧版仅存于内存 → 重启/切 quest 后 ctx 读到空数组 → 每层都走恢复路径解析对话消息
+            if (typeof questStore !== 'undefined' && questStore.save) {
+                try { await questStore.save(qid, { ctx: agent._ctx }); } catch (_) { }
             }
         }
         if (agent && qid && !agent._floorCompletedCleanly && (agent._stopState === 'sending' || agent._floorFatal)) {
