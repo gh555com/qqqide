@@ -624,20 +624,64 @@ if (_bdPanel) {
     });
 }
 
-// ★★ 管理按钮 — 打开 Conversation 上下文检查器 goods
+// ★★ 管理按钮 — 打开上下文背包 X 区 gaea 标签（每 quest 独立标签）
 var _ctxManageBtn = document.getElementById('ctx-manage');
 if (_ctxManageBtn) {
     _ctxManageBtn.onclick = function () {
         document.getElementById('ctx-panel').style.display = 'none';
         try {
-            // 传递当前 quest ID 给 goods 面板
-            if (window.parent) {
-                window.parent.__qqq_convQuestId = questActiveId || '';
-                window.parent.__qqq_convPanelId = (typeof _panelId !== 'undefined') ? _panelId : 1;
-                if (window.parent.qqqGaea && window.parent.qqqGaea.show) {
-                    window.parent.qqqGaea.show('conv');
+            var p = window.parent;
+            if (!p) return;
+            var qid = questActiveId || '';
+            if (!qid) return;
+            var panelId = (typeof _panelId !== 'undefined') ? _panelId : 1;
+            var gaeaId = 'conv-' + qid;
+
+            // 设置全局变量供 conv-ui.html 兜底读取
+            p.__qqq_convQuestId = qid;
+            p.__qqq_convPanelId = panelId;
+
+            var qqTabs = p.qqqTabs;
+            if (!qqTabs) return;
+
+            var gaeaGrp = qqTabs.getGaeaGroup();
+
+            // ① 已有同 quest 标签 → 激活 + 刷新
+            if (gaeaGrp) {
+                var existing = gaeaGrp.tabs.find(function (t) { return t.gaeaId === gaeaId; });
+                if (existing) {
+                    qqTabs.activateTab(gaeaGrp, existing.id);
+                    // 向 iframe 发送刷新消息（pane 在主窗口 DOM 中）
+                    var existingPane = p.document.querySelector('[data-tab-id="' + existing.id + '"]');
+                    if (!existingPane && gaeaGrp && gaeaGrp.contentEl) existingPane = gaeaGrp.contentEl.querySelector('[data-tab-id="' + existing.id + '"]');
+                    if (existingPane) {
+                        var existingIframe = existingPane.querySelector('iframe');
+                        if (existingIframe && existingIframe.contentWindow) {
+                            existingIframe.contentWindow.postMessage({ type: 'qqq-conv-refresh', questId: qid, panelId: panelId }, '*');
+                        }
+                    }
+                    return;
                 }
             }
+
+            // ② 新标签：创建 quest 专属背包标签
+            var questLabel = qid;
+            try {
+                if (typeof questStore !== 'undefined' && questStore.getTitle) {
+                    var t = questStore.getTitle(qid);
+                    if (t && t !== 'New Chat') questLabel = qid + ' ' + t;
+                }
+            } catch (_) {}
+
+            qqTabs.addGaeaTab(gaeaId, '📋 ' + questLabel, function (pane, tab) {
+                pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
+                var iframe = document.createElement('iframe');
+                iframe.src = '/qqqide/goods/conv/conv-ui.html?quest=' + encodeURIComponent(qid) + '&panel=' + panelId;
+                iframe.style.cssText = 'width:100%;height:100%;border:none;';
+                iframe.setAttribute('frameborder', '0');
+                pane.appendChild(iframe);
+            }, { closable: true });
+
         } catch (e) { console.warn('[ctx-manage]', e); }
     };
 }

@@ -495,7 +495,22 @@ async function _executeSend(intent) {
                             if (typeof _logRenderEvent === 'function') {
                                 _logRenderEvent('before_overwrite', qid, floorNum, _targetDiv2._contentWrap.innerHTML || '');
                             }
-                            _targetDiv2._contentWrap.innerHTML = _rendered;
+                            // ★ V12 fix：首 house 保留流式内容，不下死手 innerHTML 覆盖
+                            //   agent._streamFullText 非空 = 流式已渲染了内容 → 保留它
+                            //   仅去掉 stream-para class + 清理 _lastParaEl
+                            //   流式为空（纯 tool 调用无文本等）→ 回退 _rendered
+                            if (agent._streamFullText && agent._streamFullText.trim()) {
+                                var _spAll2 = _targetDiv2._contentWrap.querySelectorAll('.stream-para');
+                                for (var _spi2 = 0; _spi2 < _spAll2.length; _spi2++) {
+                                    _spAll2[_spi2].classList.remove('stream-para');
+                                }
+                                if (_targetDiv2._lastParaEl) {
+                                    _targetDiv2._lastParaEl.remove();
+                                    _targetDiv2._lastParaEl = null;
+                                }
+                            } else {
+                                _targetDiv2._contentWrap.innerHTML = _rendered;
+                            }
                             _targetDiv2._firstHouseDone = true;
                         }
                         // ★ 临时诊断：记录 onDone 渲染内容

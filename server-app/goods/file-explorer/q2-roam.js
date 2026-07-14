@@ -67,6 +67,7 @@ var bridge = {
 	fs: {
 		list: (p) => rpc('fs.list', p),
 		read: (p) => rpc('fs.read', p),
+		readBase64: (p) => rpc('fs.readBase64', p),
 		write: (p, c) => rpc('fs.write', { __spread: true, args: [p, c] }),
 		mkdir: (p) => rpc('fs.mkdir', p),
 		remove: (p) => rpc('fs.remove', p),
@@ -103,6 +104,7 @@ var currentPath = '';
 var selectedItems = [];
 var selectedItem = null;
 var lastSelectedItem = null;
+var lnkJumpFromPath = null; // ★ 从 .lnk 快捷方式跳转时记录来源目录，返回时回到这里而非上层
 var sortBy = 'name', _globalSortBy = 'name';
 var szMode = 'size', _globalSzMode = 'size';
 var filesOnTop = false;
@@ -258,7 +260,10 @@ document.getElementById('addressCopyBtn').addEventListener('click', function() {
 });
 
 // ---- Navigate ----
-function navigateTo(p) {
+function navigateTo(p, opts) {
+	opts = opts || {};
+	// ★ 正常导航时清除 lnkJumpFromPath（lnk 跳转在调用后重新设置）
+	if (!opts.keepLnkJump) lnkJumpFromPath = null;
 	currentPath = p;
 	applyFineScm(p);
 	addressInput.value = p;
@@ -266,6 +271,121 @@ function navigateTo(p) {
 	loadFileList(p);
 	recordDirHistory(p);
 	_historySave();
+}
+
+// 返回上一层目录
+function goUpOneLevel() {
+	if (!currentPath) return;
+	var parts = currentPath.replace(/[\\/]+$/, '').split(/[\\/]/);
+	if (parts.length > 1) {
+		parts.pop();
+		var parent = parts.join(currentPath.indexOf('\\') >= 0 ? '\\' : '/');
+		// Windows 盘符根目录补反斜杠（如 C: → C:\）
+		if (currentPath.indexOf('\\') >= 0 && parent.length === 2 && parent[1] === ':') parent += '\\';
+		navigateTo(parent);
+	}
+}
+
+// ---- Windows .lnk 快捷方式解析（纯 JS，从 q3 移植）----
+// 规范: MS-SHLLINK (Shell Link Binary File Format)
+// 输入: base64 编码的 .lnk 文件内容
+// 输出: 目标路径或 null
+function parseLnkTargetFromBase64(base64) {
+	try {
+		var raw = atob(base64);
+		var buf = new Uint8Array(raw.length);
+		for (var i = 0; i < raw.length; i++) buf[i] = raw.charCodeAt(i);
+
+		function uint32LE(off) { return buf[off] | (buf[off+1]<<8) | (buf[off+2]<<16) | (buf[off+3]<<24); }
+		function uint16LE(off) { return buf[off] | (buf[off+1]<<8); }
+
+		// 最小有效 .lnk 大小: 76 字节头
+		if (buf.length < 76) return null;
+		// 验证魔数: 4C 00 00 00
+		if (uint32LE(0) !== 0x4C) return null;
+
+		var linkFlags = uint32LE(0x14);
+		var hasLinkTargetIDList = (linkFlags & 0x01) !== 0;
+		var hasLinkInfo = (linkFlags & 0x02) !== 0;
+
+		var offset = 76;
+		// 跳过 LinkTargetIDList
+		if (hasLinkTargetIDList) {
+			if (offset + 2 > buf.length) return null;
+			var idListSize = uint16LE(offset);
+			offset += 2 + idListSize;
+		}
+
+		var ansiPath = null;
+		// 从 LinkInfo 提取路径
+		if (hasLinkInfo) {
+			if (offset + 28 <= buf.length) {
+				var linkInfoStart = offset;
+				var linkInfoSize = uint32LE(offset);
+				var linkInfoHeaderSize = uint32LE(offset + 4);
+				var linkInfoFlags = uint32LE(offset + 8);
+				var hasVolumeIDAndLocalBasePath = (linkInfoFlags & 0x01) !== 0;
+
+				if (hasVolumeIDAndLocalBasePath && linkInfoSize >= 28) {
+					var localBasePathOffset = uint32LE(offset + 16);
+
+					// 先试 Unicode 路径（header size >= 0x24）
+					if (linkInfoHeaderSize >= 0x24 && offset + 32 <= buf.length) {
+						var unicodeOffset = uint32LE(offset + 28);
+						if (unicodeOffset > 0 && unicodeOffset < linkInfoSize) {
+							var uStart = linkInfoStart + unicodeOffset;
+							var uEnd = uStart;
+							while (uEnd + 1 < buf.length && !(buf[uEnd] === 0 && buf[uEnd + 1] === 0)) uEnd += 2;
+							if (uEnd > uStart) {
+								var utf16 = '';
+								for (var j = uStart; j < uEnd; j += 2) utf16 += String.fromCharCode(buf[j] | (buf[j+1]<<8));
+								if (utf16 && utf16.length > 2) return utf16;
+							}
+						}
+					}
+
+					// 再试 ANSI 路径
+					if (localBasePathOffset > 0 && localBasePathOffset < linkInfoSize) {
+						var aStart = linkInfoStart + localBasePathOffset;
+						var aEnd = aStart;
+						while (aEnd < buf.length && buf[aEnd] !== 0) aEnd++;
+						if (aEnd > aStart) {
+							ansiPath = '';
+							for (var k = aStart; k < aEnd; k++) ansiPath += String.fromCharCode(buf[k]);
+							if (ansiPath && ansiPath.length > 2) return ansiPath;
+						}
+					}
+				}
+			}
+		}
+
+		// 兜底: 扫描整个文件找 Unicode 路径模式 "X:\"（[A-Z] 00 3A 00 5C 00）
+		for (var s = 0; s < buf.length - 10; s++) {
+			var b0 = buf[s];
+			if (b0 >= 0x41 && b0 <= 0x5A && buf[s+1] === 0 &&
+			    buf[s+2] === 0x3A && buf[s+3] === 0 &&
+			    buf[s+4] === 0x5C && buf[s+5] === 0) {
+				var e = s;
+				while (e + 1 < buf.length && !(buf[e] === 0 && buf[e+1] === 0)) e += 2;
+				if (e > s + 4) {
+					var path16 = '';
+					for (var j = s; j < e; j += 2) path16 += String.fromCharCode(buf[j] | (buf[j+1]<<8));
+					if (path16 && path16.length > 3 && /^[A-Z]:\.+/.test(path16)) return path16;
+				}
+			}
+		}
+
+		return ansiPath;
+	} catch(_) { return null; }
+}
+
+// 异步解析 .lnk 文件，返回目标路径或 null
+async function resolveLnkTarget(lnkPath) {
+	try {
+		var b64 = await bridge.fs.readBase64(lnkPath);
+		if (!b64) return null;
+		return parseLnkTargetFromBase64(b64);
+	} catch(_) { return null; }
 }
 
 // ---- qqiq & pinnedDirs (client-side, persisted via store) ----
@@ -1070,6 +1190,22 @@ async function updateDriveDisplay() {
 		if (isInputActive()) return;
 		var k = (e.key || '').toLowerCase();
 		if (e.ctrlKey || e.metaKey) return;
+		// ★ Backspace: 返回上层目录；若从 .lnk 跳转而来则回到来源目录
+		if (k === 'backspace') {
+			e.preventDefault();
+			if (lnkJumpFromPath) {
+				var srcPath = lnkJumpFromPath;
+				lnkJumpFromPath = null;
+				// 验证来源目录仍存在
+				bridge.fs.list(srcPath).then(function() { navigateTo(srcPath); }).catch(function() {
+					lnkJumpFromPath = null;
+					goUpOneLevel();
+				});
+			} else {
+				goUpOneLevel();
+			}
+			return;
+		}
 		if (k === 'escape') { cancelSelection(); return; }
 		if (!selectedItem) return;
 		var si = selectedItem;
@@ -1079,6 +1215,21 @@ async function updateDriveDisplay() {
 		} else if (k === 'w') {
 			e.preventDefault();
 			if (si.type === 'folder') { navigateTo(si.path); }
+			else if (si.path && /\.lnk$/i.test(si.path)) {
+				// ★ .lnk 快捷方式：异步解析目标，若指向文件夹则在 Roam 内导航
+				var srcDir = currentPath;
+				resolveLnkTarget(si.path).then(function(target) {
+					if (target) {
+						// 先导航到目标，再设 lnkJumpFromPath（navigateTo 会清除它）
+						navigateTo(target);
+						lnkJumpFromPath = srcDir;
+					} else {
+						// 解析失败→按普通文件打开
+						parent.postMessage({ type: 'qqq-file-open', path: si.path }, '*');
+						recordFileHistory(si.path);
+					}
+				});
+			}
 			else { parent.postMessage({ type: 'qqq-file-open', path: si.path }, '*'); recordFileHistory(si.path); }
 		} else if (k === 'd') {
 			e.preventDefault();
@@ -1182,17 +1333,7 @@ filenameInput.addEventListener('keydown', function(e) {
 document.getElementById('btnNewFile').addEventListener('click', doCreateFile);
 document.getElementById('btnNewFolder').addEventListener('click', doCreateFolder);
 
-// ---- Sidebar header (close/go up) ----
-document.getElementById('sidebarHeader').addEventListener('click', function() {
-	if (!currentPath) return;
-	var parts = currentPath.replace(/[\\/]+$/, '').split(/[\\/]/);
-	if (parts.length > 1) {
-		parts.pop();
-		var parentDir = parts.join(currentPath.includes('\\') ? '\\' : '/');
-		if (currentPath.includes('\\') && parentDir.length === 2) parentDir += '\\';
-		navigateTo(parentDir);
-	}
-});
+
 
 // ---- Responsive layout (buttons retreat when window narrows) ----
 var MIN_ADDRESS_RW = 340;  // below: hide sortBy + filter + filesOnTop
