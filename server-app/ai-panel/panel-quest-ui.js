@@ -295,7 +295,10 @@ function _unloadQuest() {
     questActiveId = _draftId;
     _queueFallback = [];
     if (unloadId && parent.__qqq_agentPool && parent.__qqq_agentPool[unloadId]) {
-        parent.__qqq_agentPool[unloadId]._queue = [];
+        var _oldAg = parent.__qqq_agentPool[unloadId];
+        _oldAg._queue = [];
+        // ★ V6 fix: 清理红框 DOM 引用防内存泄漏
+        _oldAg._questErrorDivByFloor = {};
     }
     if (_queueSaveTimer) { clearTimeout(_queueSaveTimer); _queueSaveTimer = null; }
     renderQueueStrip();
@@ -371,188 +374,151 @@ function updateCostDisplay() { }  // no-op — retained for backward compat with
 // ★ 分类原则：按 API 看到的消息数组顺序 + 顶层 body 字段完整覆盖，零漏项。
 function _estimateTokensFull() {
     var _ag = _activeAgent;
-    if (!_ag) { console.warn('[ctx-est] _activeAgent is null'); _ctxBreakdownData = null; return 0; }
+    if (!_ag) { console.warn("[ctx-est] _activeAgent is null"); _ctxBreakdownData = null; return 0; }
     var conv = _ag.conversation || [];
-    if (!conv.length) { console.warn('[ctx-est] conversation EMPTY'); }
+    if (!conv.length) { console.warn("[ctx-est] conversation EMPTY"); }
     var ctx = _ag._ctx || null;
 
     // ── cache ──
-    var _msg0HashNow = (conv.length > 0 && typeof conv[0].content === 'string') ? conv[0].content.slice(0, 80) + '|' + conv[0].content.slice(-80) : '';
+    var _msg0HashNow = (conv.length > 0 && typeof conv[0].content === "string") ? conv[0].content.slice(0, 80) + "|" + conv[0].content.slice(-80) : "";
     var _apiPrompt = _ag._lastApiPromptTokens || 0;
     var _apiCompletion = _ag._accumulatedCompletionTokens || 0;
-    var _apiVerNow = _apiPrompt + '|' + _apiCompletion;
-    var _ctxHashNow = ctx ? (ctx.totalFloors + '|' + (ctx.facts ? ctx.facts.length : 0)) : '';
-    if (_estCache.convLen === conv.length && _estCache.ctxHash === _ctxHashNow && _estCache.apiVer === _apiVerNow && _estCache.msg0Hash === _msg0HashNow && _estCache.val > 0) {
+    var _apiVerNow = _apiPrompt + "|" + _apiCompletion;
+    var _ctxHashNow = ctx ? ((ctx.biscuitLines ? ctx.biscuitLines.length : 0) + "|" + (ctx.deEntries ? ctx.deEntries.length : 0)) : "";
+    if (typeof _estCache !== 'undefined' && _estCache && _estCache.convLen === conv.length && _estCache.ctxHash === _ctxHashNow && _estCache.apiVer === _apiVerNow && _estCache.msg0Hash === _msg0HashNow && _estCache.val > 0) {
         return _estCache.val;
     }
 
-    var CPT = 2.7;  // chars-per-token 估算比率（2026-07-05 校准: 2.5→2.7）
-    var CTX_MAX = (typeof ContentGateway !== 'undefined' && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
+    var CPT = 2.7;
+    var CTX_MAX = (typeof ContentGateway !== "undefined" && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
     function _tk(chars) { return Math.round(chars / CPT); }
 
-    // ═══════════════════════════════════════════
-    // 第一部分：messages 数组（API 看到的消息列表）
-    // ═══════════════════════════════════════════
+    // ═══ 第一部分：messages 数组 ═══
 
-    // ── 1. 服务端甲壳（Go handler 注入到 messages[0] 之前，role=system）──
-    //     内容: gaea/guard/system-prompt.txt，14964 字符 (utf-8 bytes on disk)
-    //     JSON 开销: {"role":"system","content":"…"}，约 30 字符
+    // ── 1. 服务端甲壳 ──
     var guardChars = 14964;
     var guardTok = _tk(guardChars);
 
-    // ── 2. msg[0] — 客户端 persistent 系统消息（规则 + 架构文档 + 提醒）──
-    var visionChars = typeof window.qqqideVisionContext === 'string' ? window.qqqideVisionContext.length : 0;
-    var globalRulesChars = typeof window.qqqideRulesContent === 'string' ? window.qqqideRulesContent.length : 0;
-    var projectRulesChars = typeof window.qqqideProjectRulesContent === 'string' ? window.qqqideProjectRulesContent.length : 0;
-    var panelRoot = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : '';
+    // ── 2. msg[0] — 客户端 persistent 系统消息 ──
+    var visionChars = typeof window.qqqideVisionContext === "string" ? window.qqqideVisionContext.length : 0;
+    var globalRulesChars = typeof window.qqqideRulesContent === "string" ? window.qqqideRulesContent.length : 0;
+    var projectRulesChars = typeof window.qqqideProjectRulesContent === "string" ? window.qqqideProjectRulesContent.length : 0;
+    var panelRoot = (typeof questStore !== "undefined" && questStore.getProjectRoot) ? questStore.getProjectRoot() : "";
     var reminderChars = 0;
     if (panelRoot) {
-        panelRoot = panelRoot.replace(/\\/g, '/').replace(/\/$/, '');
-        var _rText = '\n\n═══ DEFAULT WORKING DIRECTORY ═══\nMain project: ' + panelRoot + '\nWhen the user does not specify a project, all file operations default to this directory.\n═══════════════════';
+        panelRoot = panelRoot.replace(/\\/g, "/").replace(/\/$/, "");
+        var _rText = "\n\n═══ DEFAULT WORKING DIRECTORY ═══\nMain project: " + panelRoot + "\nWhen the user does not specify a project, all file operations default to this directory.\n═══════════════════";
         reminderChars = _rText.length;
     }
-    var msg0FromConv = (conv.length > 0 && conv[0]._persistent && typeof conv[0].content === 'string') ? conv[0].content.length : 0;
+    var msg0FromConv = (conv.length > 0 && conv[0]._persistent && typeof conv[0].content === "string") ? conv[0].content.length : 0;
     var msg0TotalChars = msg0FromConv > 0 ? msg0FromConv : (visionChars + globalRulesChars + projectRulesChars + reminderChars);
     var msg0Tok = _tk(msg0TotalChars);
 
-    // ── 3. 动态压缩上下文（_buildDynamicContext 产物）──
-    //     每次 API 调用时，_callGateway 从 self._ctx 读取 narrative + facts，
-    //     格式化为一条 role=system 消息插入 apiMessages（不在 self.conversation 中）
-    var narrativeChars = (ctx && ctx.narrative) ? ctx.narrative.length : 0;
-    var factsChars = 0;
-    var factCount = (ctx && ctx.facts) ? ctx.facts.length : 0;
-    if (ctx && ctx.facts && ctx.facts.length > 0) {
-        for (var fi = 0; fi < ctx.facts.length; fi++) {
-            factsChars += ((ctx.facts[fi].content || '') + ' [' + (ctx.facts[fi].type || '') + ']').length;
-        }
-    }
-    var compressedBodyChars = narrativeChars + factsChars;
-    // _buildDynamicContext 产生的 wrapper 文字
-    var compWrapperChars = 0;
-    if (narrativeChars > 0 && factCount > 0) compWrapperChars = ('\n\nALL KNOWN FACTS (' + factCount + ' total):\n').length;
-    var compTotalChars = compressedBodyChars + compWrapperChars;
-    var compTok = _tk(compTotalChars);
+    // ── 3. V12 压缩上下文（biscuit + DE，已在 conversation 中）──
+    var biscuitChars = 0, biscuitFloorCount = (ctx && ctx.biscuitLines) ? ctx.biscuitLines.length : 0;
+    var deChars = 0, deEntryCount = (ctx && ctx.deEntries) ? ctx.deEntries.length : 0;
 
     // ── 4. conversation 遍历（non-persistent 消息）──
     var userCount = 0, userChars = 0;
-    var aiCount = 0, aiContentChars = 0;       // AI text（不含 tool_calls-only 消息）
-    var aiToolCallsCount = 0, aiToolCallsChars = 0;  // AI tool_calls JSON
-    var toolCount = 0, toolChars = 0;           // 工具结果（含 content + tool_call_id + name）
-    var sysCount = 0, sysChars = 0;             // 其他 system 消息（引导确认、时间注入等）
-    var errCount = 0, errChars = 0;             // AI _error 消息
+    var aiCount = 0, aiContentChars = 0;
+    var aiToolCallsCount = 0, aiToolCallsChars = 0;
+    var toolCount = 0, toolChars = 0;
+    var sysCount = 0, sysChars = 0;
+    var errCount = 0, errChars = 0;
     for (var i = 0; i < conv.length; i++) {
         var m = conv[i];
         if (!m || m._persistent) continue;
-        var c = typeof m.content === 'string' ? m.content.length : 0;
-        if (m.role === 'user') { userCount++; userChars += c; }
-        else if (m.role === 'assistant') {
+        var cn = typeof m.content === "string" ? m.content.length : 0;
+        if (m._biscuit) { biscuitChars += cn; }
+        else if (m._deBlock) { deChars += cn; }
+        else if (m.role === "user") { userCount++; userChars += cn; }
+        else if (m.role === "assistant") {
             if (m.tool_calls) {
                 aiToolCallsCount++;
                 try { aiToolCallsChars += JSON.stringify(m.tool_calls).length; } catch (_) { }
             }
-            if (m._error) { errCount++; errChars += c; }
-            else { if (c > 0) { aiCount++; aiContentChars += c; } }
+            if (m._error) { errCount++; errChars += cn; }
+            else { if (cn > 0) { aiCount++; aiContentChars += cn; } }
         }
-        else if (m.role === 'tool') {
+        else if (m.role === "tool") {
             toolCount++;
-            toolChars += c;
-            if (typeof m.tool_call_id === 'string') toolChars += m.tool_call_id.length;
-            if (typeof m.name === 'string') toolChars += m.name.length;
+            toolChars += cn;
+            if (typeof m.tool_call_id === "string") toolChars += m.tool_call_id.length;
+            if (typeof m.name === "string") toolChars += m.name.length;
         }
-        else if (m.role === 'system') { sysCount++; sysChars += c; }
+        else if (m.role === "system") { sysCount++; sysChars += cn; }
     }
 
-    // ── 5. 消息 JSON 结构开销 ──
-    //     每条消息在 API body 中是完整 JSON 对象，除 content/tool_calls 外还有：
-    //     {"role":"...","content":"..."} ≈ 30 字/条
-    //     tool 消息额外: "tool_call_id":"..." 键 ≈ 18 字, "name":"..." 键 ≈ 9 字
-    //     assistant（含 tool_calls）额外: "tool_calls":[...] 键 ≈ 16 字
+    // ── 5. JSON 结构开销 ──
     var msgCount = userCount + aiCount + aiToolCallsCount + toolCount + sysCount + errCount;
-    var jsonOverheadChars = msgCount * 31;  // 基础 JSON 骨架
-    jsonOverheadChars += toolCount * 27;     // tool_call_id + name 键
-    jsonOverheadChars += aiToolCallsCount * 16;  // tool_calls 键
-    // guard + msg[0] 两条 system 消息的 JSON 开销
-    jsonOverheadChars += 62;  // 两条 system 消息各 ~31 字
-    // 动态压缩上下文是一条 system 消息（有内容才计）
-    if (compTotalChars > 0) jsonOverheadChars += 31;
+    var jsonOverheadChars = msgCount * 31;
+    jsonOverheadChars += toolCount * 27;
+    jsonOverheadChars += aiToolCallsCount * 16;
+    jsonOverheadChars += 62;
+    if (biscuitChars > 0) jsonOverheadChars += 31;
+    if (deChars > 0) jsonOverheadChars += 31;
     var jsonOverheadTok = _tk(jsonOverheadChars);
 
-    // ═══════════════════════════════════════════
-    // 第二部分：body 顶层字段（不在 messages 数组中）
-    // ═══════════════════════════════════════════
+    // ═══ 第二部分：body 顶层字段 ═══
 
-    // ── 6. 工具定义（body.tools）──
-    //     getTools() 返回值序列化为 JSON 数组，每条 tool 含 name/description/parameters
+    // ── 6. 工具定义 ──
     var toolsChars = 0;
     try {
-        var _tools = (typeof getTools === 'function') ? getTools() : null;
+        var _tools = (typeof getTools === "function") ? getTools() : null;
         if (_tools && _tools.length) toolsChars = JSON.stringify(_tools).length;
     } catch (_) { }
     var toolsTok = _tk(toolsChars);
 
     // ── 7. body 常量字段 ──
-    //     stream, stream_options, max_tokens, floor_id, house_hint, thinking, tool_choice
-    //     这些字段每次请求都存在，约 150 字符
     var bodyConstChars = 150;
     var bodyConstTok = _tk(bodyConstChars);
 
-    // ═══════════════════════════════════════════
-    // 求和
-    // ═══════════════════════════════════════════
+    // ═══ 求和 ═══
+    var biscuitTok = _tk(biscuitChars);
+    var deTok = _tk(deChars);
     var userTok = _tk(userChars);
     var aiTextTok = _tk(aiContentChars);
     var aiToolCallsTok = _tk(aiToolCallsChars);
     var toolTok = _tk(toolChars);
     var sysTok = _tk(sysChars);
     var errTok = _tk(errChars);
-    var localTotal = guardTok + msg0Tok + compTok + userTok + aiTextTok + aiToolCallsTok + toolTok + sysTok + errTok + jsonOverheadTok + toolsTok + bodyConstTok;
+    var localTotal = guardTok + msg0Tok + biscuitTok + deTok + userTok + aiTextTok + aiToolCallsTok + toolTok + sysTok + errTok + jsonOverheadTok + toolsTok + bodyConstTok;
 
-    // ═══════════════════════════════════════════
-    // 构建行
-    // ═══════════════════════════════════════════
+    // ═══ 构建行 ═══
     var rows = [];
     function _r(label, tok, indent, color) {
-        rows.push({ label: label, tok: tok, indent: indent || 0, color: color || '#839496' });
+        rows.push({ label: label, tok: tok, indent: indent || 0, color: color || "#839496" });
     }
-    // --- messages[0..N] ---
-    _r('Server guard', guardTok, 0, '#6c71c4');
+    _r("Server guard", guardTok, 0, "#6c71c4");
     if (msg0TotalChars > 0) {
-        _r('Client rules & docs', msg0Tok, 0, '#268bd2');
-        if (visionChars > 0) _r('  Vision Context', _tk(visionChars), 1, '#859900');
-        if (globalRulesChars > 0) _r('  Global Rules', _tk(globalRulesChars), 1, '#6c71c4');
-        if (projectRulesChars > 0) _r('  Project Rules', _tk(projectRulesChars), 1, '#b58900');
-        if (reminderChars > 0) _r('  Reminder', _tk(reminderChars), 1, '#cb4b16');
+        _r("Client rules & docs", msg0Tok, 0, "#268bd2");
+        if (visionChars > 0) _r("  Vision Context", _tk(visionChars), 1, "#859900");
+        if (globalRulesChars > 0) _r("  Global Rules", _tk(globalRulesChars), 1, "#6c71c4");
+        if (projectRulesChars > 0) _r("  Project Rules", _tk(projectRulesChars), 1, "#b58900");
+        if (reminderChars > 0) _r("  Reminder", _tk(reminderChars), 1, "#cb4b16");
     }
-    if (compTotalChars > 0) _r('Compressed context', compTok, 0, '#6c71c4');
-    if (userCount > 0) _r('User × ' + userCount, userTok, 0, '#268bd2');
-    if (aiCount > 0) _r('AI text × ' + aiCount, aiTextTok, 0, '#2aa198');
-    if (aiToolCallsCount > 0) _r('  AI tool_calls × ' + aiToolCallsCount, aiToolCallsTok, 1, '#d2991d');
-    if (toolCount > 0) _r('Tool Results × ' + toolCount, toolTok, 0, '#dc322f');
-    if (sysCount > 0) _r('System messages × ' + sysCount, sysTok, 0, '#6c71c4');
-    if (errCount > 0) _r('Error messages × ' + errCount, errTok, 0, '#f85149');
-    // --- JSON 结构开销 ---
-    _r('JSON overhead (' + msgCount + ' msgs + 2 sys)', jsonOverheadTok, 0, '#586e75');
-    // --- body 顶层 ---
-    if (toolsChars > 0) _r('Tools definition JSON', toolsTok, 0, '#b58900');
-    _r('Body fields (stream, max_tokens, …)', bodyConstTok, 0, '#586e75');
-    // --- 汇总 ---
+    if (biscuitChars > 0) _r("压缩饼干 × " + biscuitFloorCount + " floors", biscuitTok, 0, "#859900");
+    if (deChars > 0) _r("DE 格子 × " + deEntryCount + " entries", deTok, 0, "#b58900");
+    if (userCount > 0) _r("User × " + userCount, userTok, 0, "#268bd2");
+    if (aiCount > 0) _r("AI text × " + aiCount, aiTextTok, 0, "#2aa198");
+    if (aiToolCallsCount > 0) _r("  AI tool_calls × " + aiToolCallsCount, aiToolCallsTok, 1, "#d2991d");
+    if (toolCount > 0) _r("Tool Results × " + toolCount, toolTok, 0, "#dc322f");
+    if (sysCount > 0) _r("System messages × " + sysCount, sysTok, 0, "#6c71c4");
+    if (errCount > 0) _r("Error messages × " + errCount, errTok, 0, "#f85149");
+    _r("JSON overhead (" + msgCount + " msgs + 2 sys)", jsonOverheadTok, 0, "#586e75");
+    if (toolsChars > 0) _r("Tools definition JSON", toolsTok, 0, "#b58900");
+    _r("Body fields (stream, max_tokens, …)", bodyConstTok, 0, "#586e75");
     var displayTotal = _apiPrompt > 0 ? _apiPrompt : localTotal;
-    _r('Local sum', localTotal, 0, '#c9d1d9');
-    if (_apiPrompt > 0) _r('API prompt_tokens', _apiPrompt, 0, '#3fb950');
+    _r("Local sum", localTotal, 0, "#c9d1d9");
+    if (_apiPrompt > 0) _r("API prompt_tokens", _apiPrompt, 0, "#3fb950");
     var _free = Math.max(0, CTX_MAX - displayTotal);
-    _r('Free', _free, 0, '#859900');
+    _r("Free", _free, 0, "#859900");
 
     _ctxBreakdownData = { rows: rows, displayTotal: displayTotal, apiPrompt: _apiPrompt, localTotal: localTotal, accCompletion: _apiCompletion };
     _estCache = { val: displayTotal, convLen: conv.length, ctxHash: _ctxHashNow, apiVer: _apiVerNow, msg0Hash: _msg0HashNow };
-    if (localTotal === 0) console.warn('[ctx-est] total=0 convLen=' + conv.length + ' guard=' + guardChars + ' msg0=' + msg0TotalChars + ' user=' + userChars + ' aiTxt=' + aiContentChars + ' aiTC=' + aiToolCallsChars + ' tool=' + toolChars + ' sys=' + sysChars + ' comp=' + compTotalChars + ' err=' + errChars + ' jOver=' + jsonOverheadChars + ' tools=' + toolsChars);
+    if (localTotal === 0) console.warn("[ctx-est] total=0 convLen=" + conv.length + " guard=" + guardChars + " msg0=" + msg0TotalChars + " biscuit=" + biscuitChars + " de=" + deChars + " user=" + userChars + " aiTxt=" + aiContentChars + " aiTC=" + aiToolCallsChars + " tool=" + toolChars + " sys=" + sysChars + " err=" + errChars + " jOver=" + jsonOverheadChars + " tools=" + toolsChars);
     return displayTotal;
 }
-
-// ═══ 上下文占用拆解面板（hover ctx-btn 弹出） ═════
-var _ctxBreakdownVisible = false;
-var _ctxBreakdownTimer = null;
-var _ctxBreakdownData = null;
-var _estCache = { val: 0, convLen: 0, ctxHash: '', apiVer: '', msg0Hash: '' };
 var CTX_MAX_TOKENS = (typeof ContentGateway !== 'undefined' && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
 
 function renderCtxBreakdown() {
@@ -732,202 +698,9 @@ document.getElementById('ctx-snap').onclick = async function () {
         }
     }
 };
-// ═══ 手动压缩 — V11 已自动化 ═══
-// V11: 压缩已改为每层楼完结自动重组（_rebuildBackpack），无需手动触发。
-// 按钮保留供将来 AI 驱动的 facts 格子使用。
-document.getElementById('ctx-compress').onclick = async function () {
-    document.getElementById('ctx-panel').style.display = 'none';
-    // V11: 压缩已自动化，每层楼完结自动重组背包
-    if (window.parent && window.parent.qqqideQoast) {
-        window.parent.qqqideQoast.show('V11: 压缩已自动化，每层楼完结自动重组背包。零费用，零网络。', { type: 'info', duration: 5000 });
-    }
-    return;
-    /* === V10 旧代码保留 ===
-    var _ag = _activeAgent;
-    if (!_ag) return;
-    if (_sending) return;
-    if (_ag._compressing) return;
-
-    // ★ 所有权检查
-    var _ownerPanel = _parentGetQuestOwner(questActiveId);
-    if (_ownerPanel !== undefined && _ownerPanel !== _panelId) return;
-
-    _ag._compressing = true;
-    window._updateSendBtnForCompress(true);
-    var _floorNum = 0;
-    var _aiDiv = null;
-    try {
-        // ① 分配楼层号（questStore 原子自增，不碰 _ctx.totalFloors）
-        _floorNum = await questStore.nextFloorNum(questActiveId);
-        // ★ 推进 passby 基线：新楼层开始，将刚完成的上一楼层计入基线
-        var _oldFn3 = _ag._currentFloorNum;
-        if (_oldFn3 && _oldFn3 !== _floorNum) {
-            _ag._passbyBaseHouses = (_ag._passbyBaseHouses || 0) + (_ag._houses ? _ag._houses.length : 0);
-            _ag._passbyBaseWge = (_ag._passbyBaseWge || 0) + (_ag._floorCostWge || 0);
-            _ag._passbyBaseTokens = (_ag._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(_ag) : 0);
-            _ag._passbyBaseFloorNum = _oldFn3;
-        }
-        _ag._currentFloorNum = _floorNum;
-        _ag._floorId = 't_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ((typeof _panelId !== 'undefined') ? ['_L', '_C', '_R'][_panelId] || '' : '');
-
-        // ② 计算 floor 目录路径（同 panel-send.js 管线）
-        var _root = questStore.getProjectRoot();
-        var _questList = await questStore.list();
-        var _qEntry = _questList.find(function (qx) { return qx.id === questActiveId; });
-        var _qTitle = (_qEntry && _qEntry.title && _qEntry.title !== 'New Chat') ? _qEntry.title : '';
-        var _qNumericId = (_qEntry && _qEntry.numericId) ? _qEntry.numericId : parseInt(questActiveId.replace('q', ''), 10) || 0;
-        var _qDirName = await _resolveQuestDirName(_root, questActiveId, _qNumericId, _qTitle);
-        var _fDirName = _makeName('f', _floorNum, '请帮我压缩上下文');
-        var _ensured = await _ensureQuestDir(_root, _qDirName, _fDirName);
-        var _allTxtDir = _ensured && _ensured.fDir ? _ensured.fDir : (_root + '/qqq/quests/' + _qDirName + '/' + _fDirName + '/');
-        var _allTxtPath = _allTxtDir + 'all.txt';
-
-        // ③ 设置 agent 未可变元数据
-        _ag._floorStartIdx = _ag.conversation.length;
-        if (!_ag._floorMeta) _ag._floorMeta = {};
-        _ag._floorMeta[_floorNum] = {
-            floorStartIdx: _ag._floorStartIdx,
-            allTxtPath: _allTxtPath,
-            _fDir: _allTxtDir,
-            createdAt: Date.now()
-        };
-        _ag._allTxtPath = _allTxtPath;
-        _ag._houses = [];
-        _ag._a4Snapshots = {};
-        _ag._lastAutoSaveLen = 0;
-        _ag._lastFloorTimingRecord = null;
-        _ag._floorCostWge = 0;
-        _ag._compressFloor = true;
-        // ★ 初始化 agent loop 级别的状态（_callGateway 需要这些）
-        _ag._floorTiming = { startPerf: performance.now(), networkMs: 0, aiMs: 0, otherMs: 0 };
-        _ag._stopCtrl = new AbortController();
-        _ag.setStopState('sending');
-        _ag._houseIndex = 0;
-        _ag._lastApiPromptTokens = 0;
-        _ag._lastApiTotalTokens = 0;
-        _ag._lastApiCompletionTokens = 0;
-        _ag._accumulatedCompletionTokens = 0;
-        _ag._lastBilling = null;
-        _ag._consecutiveFetchErrors = 0;
-        _ag._sendTerminated = false;
-        _ag._lastGatewayError = 0;
-        _ag._exitReason = '';
-        _ag._lastSseError = '';
-        _ag._lastHttpStatus = 0;
-        _ag._lastFetchError = '';
-
-        // ④ 推入用户消息到 conversation
-        _ag.conversation.push({ role: 'user', content: '请帮我压缩上下文', _floor: _floorNum });
-        _ag._lastUserInput = { text: '请帮我压缩上下文', vision: '' };
-
-        // ⑤ 渲染用户消息气泡（粉色背景，必须在 startBuildingFloor 之前）
-        if (typeof addUserMessageEl === 'function') {
-            addUserMessageEl('请帮我压缩上下文');
-        }
-
-        // ⑥ 创建楼层 DOM（A1 + 时钟 + 内容区）
-        _aiDiv = cardPool.startBuildingFloor(questActiveId, _floorNum, _allTxtPath);
-        if (!_aiDiv) throw new Error('startBuildingFloor returned null');
-        _aiDiv._allTxtPath = _allTxtPath;
-        _ag._activeAiDiv = _aiDiv;
-
-        // ⑦ 启动楼层计时器 + 滚动到底
-        if (typeof startFloorTimer === 'function') startFloorTimer(_aiDiv, _ag);
-        if (typeof scrollToBottom === 'function') scrollToBottom(true);
-
-        // ⑧ 压缩（渲染卡片在 _aiDiv 内，用户可见）
-        //    通过正常 agent loop 管线（_callCompactAPI → _callGateway）获得 house 计数 + 账单 + 计时归因
-        _ag._aiTierLabel = 'A4';  // 压缩锁死 tier 4，UI 显示固定
-        _ag._compressing = true;  // ★ 阻止 auto-save 在压缩中间态污染 _ctx
-        var _reason = 'Manual compress';
-        _ag._renderCompressStart(_reason);
-        // ★ 压缩前递增 houseIndex（让压缩成为第 1 间 house）
-        _ag._houseIndex++;
-        var _compressStartMs = performance.now();
-        var _result = await _ag._compressContext({ trigger: 'manual', detail: _reason, force: true });
-        _ag._renderCompressResult(_result);
-
-        // ★ 压缩 house 条目：记录到 _houses 供 house_count / room_count 统计
-        var _bill = _ag._lastBilling; _ag._lastBilling = null;
-        _ag._houses.push({
-            index: _ag._houseIndex,
-            type: 'compress',
-            tools: [],
-            ts: new Date().toISOString(),
-            ms: Math.round(performance.now() - _compressStartMs),
-            reasoning: '',
-            answer: _result.compressed ? _result.detail : ('FAIL: ' + (_result.detail || '') + '\n' + (_ag._lastRawFactsText ? 'RAW FACTS (' + _ag._lastRawFactsText.length + 'c): ' + _ag._lastRawFactsText.slice(0, 500) : '')),
-            wgeCost: _bill ? _bill.wgeCost : 0,
-            model: _bill ? _bill.model : '',
-            cacheHitRate: _bill ? _bill.cacheHitRate : -1,
-            usage: _bill ? _bill.usage : null,
-            billingSeq: _bill ? _bill.seq : 0,
-            billingRequestId: _bill ? _bill.requestId : '',
-            tier: '4-Pro (compress)'
-        });
-        // ★ 更新右下角 ge 显示（压缩后 _floorCostWge 已被 billing 事件填充）
-        if (_aiDiv && _aiDiv._clockCost) {
-            var _rawGe = _ag._floorCostWge / 10000;
-            var _displayGe = typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2);
-            _aiDiv._clockCost._rawGe = typeof _formatGeRaw === 'function' ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
-            _aiDiv._clockCost.textContent = _displayGe + ' ge' + ((_ag._floorHadBilling && _ag._floorCostWge === 0) ? ' Free' : '');
-            _aiDiv._clockCost.style.display = 'inline';
-            _aiDiv._clockCost._houses = _ag._houses;
-            _aiDiv._clockCost._floorNum = _ag._currentFloorNum;
-            _aiDiv._clockCost._passby = { questId: questActiveId, floorNum: _ag._currentFloorNum, houses: (_ag._passbyBaseHouses || 0) + (_ag._houses ? _ag._houses.length : 0), tokens: (_ag._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(_ag) : 0), wge: (_ag._passbyBaseWge || 0) + (_ag._floorCostWge || 0), drift: _ag._serverDrift || 0, city: _ag._serverCity || '' };
-        }
-
-        // ⑨ 停止计时（aiMs 归因 = 压缩耗时，使饼图绿色而非全黄）
-        var _elapsed = Math.round(performance.now() - _compressStartMs);
-        var _timing = (typeof stopFloorTimer === 'function')
-            ? stopFloorTimer({ networkMs: 0, aiMs: _elapsed, otherMs: 0 }, _ag)
-            : null;
-        if (_timing) {
-            _timing.floorIndex = _floorNum;
-            _ag._lastFloorTimingRecord = _timing;
-        } else {
-            _ag._lastFloorTimingRecord = {
-                floorIndex: _floorNum,
-                durationMs: _elapsed,
-                networkMs: 0,
-                aiMs: _elapsed,
-                otherMs: 0,
-                finishedAt: new Date().toISOString()
-            };
-        }
-
-        // ⑩ 推入 AI 回复
-        var _assistantMsg = _result.compressed
-            ? ('✅ Compress completed\n' + _result.detail)
-            : ('ℹ️ ' + (_result.detail || 'No compression needed'));
-        _ag.conversation.push({ role: 'assistant', content: _assistantMsg, _floor: _floorNum });
-
-        // ⑪ 封顶 + 保存 + all.txt
-        cardPool.completeBuildingFloor(questActiveId, _floorNum);
-        if (typeof _saveAgentQuestData === 'function') {
-            await _saveAgentQuestData(questActiveId, _ag, _floorNum).catch(function () { });
-        }
-        if (typeof generateFloorTxt === 'function') {
-            generateFloorTxt(_ag, questActiveId).catch(function () { });
-        }
-        updateCtxBtn();
-    } catch (e) {
-        if (_floorNum > 0) {
-            _ag.conversation.push({ role: 'assistant', content: '✗ Compress failed: ' + (e.message || 'unknown'), _floor: _floorNum });
-            // ★ 失败时也有 DOM（步骤⑤之后失败），必须封顶防僵尸
-            try { cardPool.completeBuildingFloor(questActiveId, _floorNum); } catch (_) { }
-            if (typeof _saveAgentQuestData === 'function') {
-                await _saveAgentQuestData(questActiveId, _ag, _floorNum).catch(function () { });
-            }
-        }
-        updateCtxBtn();
-    } finally {
-        _ag._compressing = false;
-        _ag.setStopState('idle');
-        window._updateSendBtnForCompress(false);
-    }
-    === V10 旧代码结束 === */
-};
+// ═══ 手动压缩 — V12 已移除 ═══
+// V12: 压缩已全自动化（每层楼完结 _rebuildBackpack），ctx-compress 按钮已从 HTML 移除。
+// 旧手动压缩代码（~200 行 V10 逻辑）已删除，不再保留。
 document.querySelector('#ctx-panel .ctx-panel-overlay').onclick = function () {
     document.getElementById('ctx-panel').style.display = 'none';
 };

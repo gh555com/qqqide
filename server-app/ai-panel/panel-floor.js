@@ -303,6 +303,17 @@ async function _appendToSearchQuest(questId, floorNum) {
 
         var newBlock = lines.join('\n');
 
+        // ★ V12 完整性守卫：文件内 floor 标记数若远超 quest 实际楼层数 → 串楼污染 → 全量重建
+        var _markerMatches = existing.match(/\u2550\u2550\u2550\u2550\u2550 Floor \d+ \u2550\u2550\u2550\u2550\u2550/g);
+        var _markerCount = _markerMatches ? _markerMatches.length : 0;
+        var _actualFloorCount = (questMeta && questMeta.floors && questMeta.floors.length) || 999;
+        if (_markerCount > _actualFloorCount + 2) {
+            // 串楼污染（如 q56 的 search_quest.txt 含 q47 的 19 个楼层）
+            console.warn('[search_quest] contamination detected for q=' + questId + ': markers=' + _markerCount + ' vs actualFloors=' + _actualFloorCount + ' → rebuilding');
+            await _rebuildSearchQuest(questId);
+            return;
+        }
+
         // ★ 盖写式：若旧 marker 存在则替换整个 block，否则追加
         var markerIdx = existing.indexOf(marker);
         if (markerIdx >= 0) {
@@ -446,13 +457,41 @@ async function _restoreAgentFromStore(questId, ag) {
         if (_hasBiscuit) {
             ag.conversation.unshift({ role: 'system', content: _restoredBiscuit, _compressed: true, _dynamic: true });
         }
-        // ★ 扫描所有 _error 消息重建分楼层错误日志
+        // ★ 扫描所有 _error 消息重建分楼层错误日志（跳过已恢复的）
         for (var _eli = 0; _eli < ag.conversation.length; _eli++) {
             var _em = ag.conversation[_eli];
-            if (_em._error && _em.role === 'assistant' && _em.content) {
+            if (_em._error && _em.role === 'assistant' && _em.content && !_em._recovered) {
                 var _efn = _em._floor || 0;
                 if (!ag._questErrorLogByFloor[_efn]) ag._questErrorLogByFloor[_efn] = [];
-                ag._questErrorLogByFloor[_efn].push({ time: '', reason: _em.content });
+                ag._questErrorLogByFloor[_efn].push({ time: _em._errorTime || '', reason: _em.content });  // ★ V9 fix: 恢复持久化的时间戳
+            }
+        }
+        // ★ V2 fix: 扫描 biscuit 消息中的 [ERR] 标记（压缩时保留的错误信息）
+        for (var _bli = 0; _bli < ag.conversation.length; _bli++) {
+            var _bmsg = ag.conversation[_bli];
+            if (_bmsg._biscuit && _bmsg.content) {
+                var _blines = _bmsg.content.split('\n');
+                var _curBiscuitFloor = 0;
+                for (var _blj = 0; _blj < _blines.length; _blj++) {
+                    var _bl = _blines[_blj];
+                    var _fm = _bl.match(/^=== F(\d+) ===/);
+                    if (_fm) { _curBiscuitFloor = parseInt(_fm[1], 10); continue; }
+                    // ★ V8 fix: 解析 biscuit [ERR] 行，提取时间戳和原因
+                    if (_bl.indexOf('[ERR]') === 0 && _curBiscuitFloor > 0) {
+                        if (!ag._questErrorLogByFloor[_curBiscuitFloor]) ag._questErrorLogByFloor[_curBiscuitFloor] = [];
+                        var _errRest = _bl.slice(5).trim();  // 去掉 '[ERR]'
+                        var _errTime = '';
+                        var _tmMatch = _errRest.match(/^\[(\d{2}:\d{2})\]\s*/);
+                        if (_tmMatch) {
+                            _errTime = _tmMatch[1];
+                            _errRest = _errRest.slice(_tmMatch[0].length);
+                        }
+                        ag._questErrorLogByFloor[_curBiscuitFloor].push({
+                            time: _errTime,
+                            reason: _errRest
+                        });
+                    }
+                }
             }
         }
 

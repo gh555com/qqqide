@@ -538,8 +538,8 @@ var CardPool = (function () {
     aiEl._floor = fNum;
     aiEl._contentWrap = document.createElement('div');
 
-    // ★ 优先用预渲染 ai_html（quest.sq3 真理源），建楼时已跑过 _buildConversationFlowHtml
-    //   仅当 ai_html 为空（旧数据未迁移）时才回退到现场渲染
+    // ★ V12：ai_html 由 _buildConversationFlowHtml(conv) 全量重建（含所有 house + 引导块）
+    //   仅当 ai_html 为空时才回退到现场渲染
     // ★ 幽灵文本清理：老代码 _streaming 未设 true 导致 ai_html 焙入"工具执行完毕"，
     //   _streaming 真则表明楼未建完（快照），丢弃预渲染 ai_html 换现场重渲
     var conv = fData.conversation || [];
@@ -558,7 +558,11 @@ var CardPool = (function () {
       flowHtml = _buildConversationFlowHtml(conv, fData);
     }
     aiEl._contentWrap.innerHTML = flowHtml;
-    // ★ 方案 C：ai_html 不含引导块（onDone innerHTML 覆写时丢失），从 conversation 恢复
+    // ★ 临时诊断：记录 card-pool 从 all.json 重建渲染
+    if (typeof _logRenderEvent === 'function') {
+      _logRenderEvent('card_rebuild', card.id, fNum, flowHtml || '');
+    }
+    // ★ V12：ai_html 由 _buildConversationFlowHtml 重建（含引导块），_restoreGuideBlocksToContentWrap 仅作 DOM 级去重兜底
     if (typeof window._restoreGuideBlocksToContentWrap === 'function') {
       window._restoreGuideBlocksToContentWrap(aiEl._contentWrap, conv, fNum);
     }

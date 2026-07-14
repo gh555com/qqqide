@@ -349,7 +349,6 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 .ctx-panel-body li{margin:2px 0}
 .ctx-panel-actions{display:flex;gap:24px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
 .ctx-panel-actions button{padding:6px 18px;font-size:12px;border:1px solid var(--border-color);border-radius:4px;white-space:nowrap}
-#ctx-compress{background:var(--yellow);color:#fff;border-color:var(--yellow)}
 #ctx-manage{background:var(--blue);color:#fff;border-color:var(--blue)}
 /* ── 上下文占用拆解面板（hover ctx-btn 弹出） ── */
 #ctx-breakdown{position:fixed;z-index:10001;display:none;bottom:60px;right:10px}
@@ -608,19 +607,14 @@ var _orig={};
   <div class="ctx-panel-overlay"></div>
   <div class="ctx-panel-box">
     <div class="ctx-panel-body">
-      <p data-i18n="ai.ctx.title">你可以选择压缩上下文</p>
-      <p><strong data-i18n="ai.ctx.benefit">好处：</strong><span data-i18n="ai.ctx.benefitText">从下次对话开始降低费用；有利于让 AI 更专注于当前问题、减少幻觉。</span></p>
-      <p><strong data-i18n="ai.ctx.cost">代价：</strong><span data-i18n="ai.ctx.costText">最近六层楼之前滴对话会被压缩而丢失细节，AI 只会记住其中摘要。最近六层楼会被完整保存。</span></p>
-      <p data-i18n="ai.ctx.whatIf">如果一直不手动压缩？</p>
-      <ol>
-        <li data-i18n="ai.ctx.auto">qqqide 会自动压缩，默认阀值是 600k，可点右上角 &lt;设置&gt; 改默认值。</li>
-        <li data-i18n="ai.ctx.noLoss">无论如何（压缩与否、谁来压缩）都既不会导致 AI 记忆撑爆，也不会导致 AI 记忆丢失。</li>
-      </ol>
+      <p><strong>上下文压缩 — V12 全自动</strong></p>
+      <p>每层楼完结自动重组背包：本地机械筛（零网络、零费用）→ 压缩饼干 + DE 格子。</p>
+      <p>压缩饼干：逐层 Q&A + 工具痕迹 + 错误标记。DE 格子：不可恢复工具结果 + AI 代码。</p>
+      <p>前缀缓存命中 ~90%，每层实际计费 ~2-4K tokens。背包轻量，永不膨胀。</p>
     </div>
     <div class="ctx-panel-actions">
-      <button id="ctx-compress" data-i18n="ai.ctx.compress">压缩</button>
-      <button id="ctx-snap" data-i18n="ai.ctx.snap">快照</button>
-      <button id="ctx-manage">管理</button>
+      <button id="ctx-snap">📸 快照</button>
+      <button id="ctx-manage">📋 管理</button>
     </div>
   </div>
 </div>

@@ -870,13 +870,7 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
         ai_html = ag._emergencyAiHtml;
         ag._emergencyAiHtml = null;  // 一次性消费
     }
-    if (!ai_html && ag._activeAiDiv && ag._activeAiDiv._contentWrap) {
-        try { ai_html = ag._activeAiDiv._contentWrap.innerHTML; } catch (_) { }
-    }
-    // ★ B 重构：流式状态从 agent 读取（共享，非 aiDiv 持有）
-    var _streamingBuf = ag._streamBuf || '';
-    var _streamingSplitCursor = ag._streamSplitCursor || 0;
-    var _streamingCodeFenceOpen = !!ag._streamCodeFenceOpen;
+    // ★ V12：conversation 重建为主源（全量精确，永不丢 house），DOM 仅作备胎
     if (!ai_html && typeof _buildConversationFlowHtml === 'function') {
         try {
             var _fDataForRender = {
@@ -893,6 +887,13 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
             ai_html = _buildConversationFlowHtml(cleanConv, _fDataForRender);
         } catch (_) { }
     }
+    if (!ai_html && ag._activeAiDiv && ag._activeAiDiv._contentWrap) {
+        try { ai_html = ag._activeAiDiv._contentWrap.innerHTML; } catch (_) { }
+    }
+    // ★ 流式状态从 agent 读取（共享，非 aiDiv 持有）
+    var _streamingBuf = ag._streamBuf || '';
+    var _streamingSplitCursor = ag._streamSplitCursor || 0;
+    var _streamingCodeFenceOpen = !!ag._streamCodeFenceOpen;
     // ★ 剥离 [CURRENT TIME: ...] 块
     var questionClean = (ag._lastUserInput && ag._lastUserInput.text) || '';
     var _ctIdx2 = questionClean.indexOf('\n\n[CURRENT TIME:');
@@ -959,6 +960,11 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
             }
             payload.a4Snapshots = a4Meta;
         }
+    }
+
+    // ★ 临时诊断：记录 save payload 的 ai_html 内容
+    if (typeof _logRenderEvent === 'function') {
+        _logRenderEvent('save_payload', ag._questId || '', floorNum || ag._currentFloorNum, ai_html || '');
     }
 
     return payload;

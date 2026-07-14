@@ -547,7 +547,7 @@ Agent 状态机 + 发送管线（2026-06-29 单一真相源重构 v2）
 
 AI 面板核心机制
 ---------------
-· 楼层模型: 一次回车=floor，多次 API=houses，一次工具调用=room。计费按楼累计，压缩≥6层保底
+· 楼层模型: 一次回车=floor，多次 API=houses，一次工具调用=room。每层封顶自动压缩(机械筛,零网络零费用)
 · 📎 文件附件截断: 50KB 硬帽，超则保留首尾各 20KB
 · 引导注入: abort 当前 house → 确认回合(Flash/noTools) → AI 回复确认 → 继续工作
 · 排队信封: 最多 50 条，AI 回复完自动消费下一条，_debounceSaveQueue 500ms 合并写盘
@@ -570,35 +570,34 @@ AI 悬浮预览层
 · 图片: transform translate+scale 统一缩放+拖拽。关闭: Esc/右键/背景。跨窗口广播关闭
 
 
-AI 上下文窗口防护（三层纵深）
---------------------------------------------------------------
-参数唯一真理源 content-gateway.js:
-  CTX_MAX_TOKENS(1,048,565) / COMPRESS_THRESHOLD(200k, 100-900k 可调)
-  / MAX_RESPONSE_TOKENS(393216) / CHAR_PER_TOKEN(2.7)
-  / COMPACT_MAX_TOKENS(65536) / ARCHIVE_MAX_CHARS(1M)
+上下文压缩 — V12 本地机械筛 + 原地追加（2026-07-14 落地，零网络零费用）
+---------------------------------------------------------------------
+· ★ 触发: 每层楼封顶(onDone)→_rebuildBackpack()。建楼中不触发。旧阈值触发+手动压缩+AI压缩全部移除。
+· 机械筛（方案三）: 纯本地、纯确定性。消息→Q/A/工具摘要行。代码正文不进饼干，AI改前必re-read(§54)。
+· K集合(不可恢复工具): run_command/fetch_webpage/search_web/analyze_image/get_vision_context/generate_image/remove_background → 完整输出保留(≤8000 chars/条,超取首尾各4000)。
+· 压缩饼干(biscuit): 单条_biscuit消息，content尾部追加(零splice)。格式: === FN === + Q/A/工具摘要行 + [ERR] [HH:MM]原因。
+· DE格子: 单条_deBlock消息，K集合+代码块混合，按时间/楼层升序。20K chars硬帽，6K/条，FIFO轮转驱逐。
+· 错误保留: 未恢复fatal楼层→不进饼干(原始消息保留)。已恢复→[ERR] [HH:MM]原因格式进饼干。重启扫描biscuit重建错误日志。
+· 背包定序: Z → biscuit(1条msg,原地追加) → DE(1条msg,原地更新) → 当前楼层消息。仅splice-remove原始楼层消息。
+· 缓存: Z 100%命中 / biscuit前缀命中(仅最后一行新) / DE大部命中。每层实际计费~2-4K tokens。
+· 旧AI压缩(V3-V10)全删: 三专家并行/JSON提取/thinking吃预算/缓存毒化/回滚漏洞→~5ge测试费→结论: JSON+大输入=死路。
+· UI: 右下角ctx-btn显示当前消耗(本地估算+API真理)。hover弹出Context Usage拆解面板(biscuit/DE独立行)。
+  点击弹出对话框(仅快照+管理)。ctx-compress按钮已移除(压缩全自动)。
+  goods/conv/上下文管理页已适配V12: biscuit/DE消息带专用标签+分组，ctx.biscuitLines/deEntries摘要。
+· ★ 饼干自动剥离 [File: ...]```...``` 块：_buildCompressedBiscuit 正则全局匹配替换为空。
+  无论文件路径（含 bullet/），附件内容不进饼干，仅保留 Q 文本。子弹文件自然"用完即抛"。
 
-第一层 — 上下文压缩引擎（主防线，2026-06-27 单专家统一重构，2026-06-29 阈值修正）:
-  每 house 前检查 _lastApiPromptTokens（★ 不再用 total）> 阈值→阻塞压缩。每层楼最多压一次。
-  单专家统一压缩（tier 6, thinking=enabled, 64K max_tokens）:
-    ★ Narrative-First: 先写 narrative（8K-48K chars）→ 再提取 facts → 最后 floors 摘要
-    ★ 冷文本全量送入（不采样）: 模型 1M 窗口装得下 ~900K tokens 冷文本
-  ★ 2026-06-29: prompt_tokens 取代 total_tokens 判断压缩（Completion 是输出，不算背包重量）
-  全成功→splice conversation + _shiftConversationIndices 统一平移索引。败→原子回滚
-  Facts 后处理: 同 type + 关键词重叠 >50% → 合并
-  KEEP_TARGET = min(beforeTokens, budget) × 0.1，最少保留 6 层楼
-  压缩失败→指数退避无限重试（2s→4s→...→60s），永不静默丢弃
-  手动触发: 左下角按钮，≥50k 即可，压缩期间发送按钮⏳+disabled
+子弹按钮 — 粘贴板→磁盘→编辑框 📎（2026-07-14）
+---------------------------------------------------------------------
+· 按钮: #bullet-btn，编辑框右侧 16px 竖条。点击→读粘贴板→写 {project}/qqq/bullet/。
+· 文件: bullet_{YYYYMMDD_HHMMSS}_{questId}_f{floorNum}.txt，本地时区时间戳。
+· 上限: 单文件 3MB 硬帽（超则取首尾各1.5MB），目录 20MB FIFO 轮转（mtime 升序删最老）。
+· 注入: 写盘后自动 insertChipAtCursor → 📎"path" → 走已有附件管线 → ContentGateway 截断 → 喂给 AI。
+· 生命周期: 子弹文件在活跃楼层 conversation 中存在（经 ContentGateway 截断至 ~50KB），楼层封顶后饼干剥离 [File: ...] 块 → 原文不进下一层楼。
+· 轮转保证用完即抛：20MB 目录上限 + FIFO 自动淘汰，旧子弹自然被新子弹挤出。
 
-第二层 — 孤儿tool_calls自愈: _saveAgentQuestData 修复后按 floor 标签重建所有楼层
-第三层 — Go HTTP/1.1 隔离: dsTransport ForceAttemptHTTP2:false，nginx client_max_body_size 6200m
-
-上下文拆解面板（hover 弹出，2026-06-29 v4）:
-  只展示可验证精确数据。单位 tokens（chars/2.5 估算 ≈）。
-  Permanent System / User×N / AI text×N / AI tool_calls JSON×N（★新增）
-  / Tool Results×N / Compressed Summary / Error messages×N（★新增）
-  / Local estimate total / API prompt_tokens(ref) / Available
-  ★ Completion 行已移除（输出侧数字不属于背包）
-  每间 house 后自动刷新。
+孤儿tool_calls自愈 — 保留为独立防线
+  _repairOrphanedToolCalls() 双向扫描(最多20轮)。每次_callGateway前预检。Go侧sanitizeMessages同步校验。
 
 
 all.json 写入系统（2026-06-29 共享 agentPool 重构 + wgeCost 命名归一）
@@ -630,14 +629,18 @@ all.json 写入系统（2026-06-29 共享 agentPool 重构 + wgeCost 命名归�
      · 拆分前扫描 ^``` 行首标记奇偶性。奇数→围栏未闭合→禁止拆分
      · appendChild + insertBefore(_lastParaEl) 增量追加 &lt;div class="stream-para"&gt;
      · 永不 innerHTML，仅追加。_streamParas / _streamBuf 累积在 agent 上
-  ② 完结阶段（onDone）:
-     · content → renderMarkdown → _contentWrap.innerHTML 一次性覆盖（替换所有流式预览 DOM）
+  ② 完结阶段（onDone，V12 追加式渲染）:
+     · 首 house: content → renderMarkdown → _contentWrap.innerHTML 一次性覆盖（替换所有流式预览 DOM）
+     · 后续 house: 追加 <hr> 分隔条 + 新渲染内容 div（_firstHouseDone 标记控制），不复写前面 house
      · 清空 _streamBuf / _streamParas / _streamSplitCursor 等全量流状态
      · 防 _a4BuildCompleteFloorPayload DOM flush 重复追加（读到空数组→零操作）
-  ③ 崩溃恢复（beforeunload → _a4BuildCompleteFloorPayload）:
-     · skipDomFlush=false 路径 → flush 未渲染的 _streamParas/_streamBuf 到 DOM
-     · 然后捕获 _contentWrap.innerHTML 为 ai_html → 落盘 all.json
-     · onDone 后此路径无害（stream 已清），仅在崩溃时有用
+     · ★ 引导块：仅首 house 通过 _restoreGuideBlocksToContentWrap 从 conversation 恢复
+       后续 house 引导块已存在于 DOM，内置去重跳过（querySelector 检测）
+  ③ V12 存档（_a4BuildCompleteFloorPayload）:
+     · ai_html 优先源: _buildConversationFlowHtml(conv) 从 conversation 全量重建（含所有 house + 引导块）
+     · 备胎: _contentWrap.innerHTML（仅当 conversation 为空或无渲染函数时）
+     · 崩溃恢复: skipDomFlush=false 路径 → flush 未渲染的 _streamParas/_streamBuf 到 DOM
+     · onDone 正常完结后此路径无害（stream 已清），仅在崩溃时有用
 
 双层流看门狗（agent-loop _parseSSE）:
   · 流看门狗 60s: 无 SSE 数据→abort。产出看门狗 15min: 无 delta.content 或 tool_calls→abort

@@ -375,3 +375,20 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - Python 铁律: 只用内嵌。getComponentBin('python') 唯一入口。
     无内嵌→py-broker 跳过(IDE 正常启动，下次启动自动装上)。永不 fallback 系统 Python。
   - 违者即返工。
+
+§56 上下文压缩 — 每层封顶自动重组（V12, 2026-07-14 落地）
+  - 触发: 每层楼完结(onDone)→_rebuildBackpack()。建楼中不触发。旧阈值+手动+AI压缩全移除。
+  - 机械筛: 纯本地确定性转换(方案三)。消息→Q/A/工具摘要行。零网络，零费用。
+  - K集合: 不可恢复工具(run_command/fetch_webpage/search_web/analyze_image等7个)→完整输出保留在饼干+DE。
+  - 饼干: 单条_biscuit系统消息原地追加，对象永不变。仅content尾部增长→前缀缓存命中。
+  - DE格子: 单条_deBlock消息，K+C混合按时间升序。20K chars硬帽，6K/条，FIFO驱逐。
+  - 背包定序: Z→biscuit(1条msg)→DE(1条msg)→当前楼层消息。禁splice biscuit/DE(仅删原始楼层)。
+  - 错误: 未恢复fatal楼层不进饼干(原始消息保留)。已恢复→[ERR] [HH:MM]格式进饼干。_errorTime持久化→重启精确恢复。
+  - 违者即返工。
+
+§57 子弹按钮 — 粘贴板→磁盘→编辑框，用完即抛（2026-07-14）
+  - 按钮: #bullet-btn，编辑框右侧 16px 竖条。
+  - 流程: 点击→读粘贴板→写 {project}/qqq/bullet/bullet_{时间戳}_{quest}_f{floor}.txt → insertChipAtCursor 注入 📎"path"。
+  - 上限: 单文件 3MB 硬帽（超则取首尾各1.5MB），目录 20MB FIFO 轮转（mtime 升序删最老）。
+  - 饼干: [File: ...]```...``` 块已被 _buildCompressedBiscuit 正则全局剥离→子弹原文不进下一层楼。
+  - 违者即返工。
