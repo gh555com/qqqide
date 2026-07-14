@@ -34,7 +34,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-tofu-text{overflow:hidden;flex:1;color:var(--text-primary);-webkit-mask-image:linear-gradient(to right,#000 calc(100% - 30px),transparent 100%);mask-image:linear-gradient(to right,#000 calc(100% - 30px),transparent 100%)}
 .quest-tofu-prefix{flex:none;color:#e8a030;position:relative;white-space:pre}
 /* 彗星电子钟：prefix 右下角黑底白字，无模糊实边，只显示秒数 */
-.comet-clock{position:absolute;bottom:15px;right:0;background:#000;color:#fff;font-family:Arial,sans-serif;font-size:11px;font-weight:700;line-height:1;padding:1px 3px;letter-spacing:0;font-smooth:never;-webkit-font-smoothing:none;-moz-osx-font-smoothing:unset;text-rendering:optimizeSpeed;z-index:3;pointer-events:none}
+.comet-clock{position:absolute;bottom:-5px;right:0;background:#000;color:#fff;font-family:Arial,sans-serif;font-size:11px;font-weight:700;line-height:1;padding:1px 3px;letter-spacing:0;font-smooth:never;-webkit-font-smoothing:none;-moz-osx-font-smoothing:unset;text-rendering:optimizeSpeed;z-index:3;pointer-events:none}
 /* 白纸面板第一行 "~ New quest ~" 样式 */
 .quest-tofu-new .quest-tofu-text{color:var(--base01);font-style:italic;text-align:center}
 /* 豆腐块内联编辑 */
@@ -119,7 +119,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 [data-theme="dark"] .quest-drop-prefix{color:#e8a030}
 .quest-drop-title{font-size:16px}
 /* 彗星钟在下拉里挂 item 上，用 left 定位到 prefix 区域，不被 line-clamp 裁切 */
-.quest-drop-item .comet-clock{left:12px;right:auto}
+.quest-drop-item .comet-clock{left:12px;right:auto;bottom:21px}
 /* 下拉列表体：滚动由父容器 .quest-drop 统一管理，头部粘滞 */
 .quest-drop-body{/* max-height/overflow 已移至父 .quest-drop */}
 /* q3 floor 导航行已删除（card-pool 架构）*/
@@ -259,10 +259,9 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 #input-area{border-top:1px solid var(--border-color);padding:8px 24px 4px 8px;display:flex;flex-direction:column;gap:6px;background:var(--card-bg);position:relative}
 /* ── 子弹按钮：绝对定位，从顶拉到底，右贴边 ── */
 #bullet-btn{position:absolute;right:0;top:0;bottom:0;width:16px;border:none;border-left:1px solid var(--border-color);background:transparent;cursor:pointer;padding:0;margin:0;display:flex;align-items:center;justify-content:center;outline:none}#bullet-btn:hover{background:rgba(255,61,0,0.08)}#bullet-btn:active{background:rgba(255,61,0,0.15)}
-#bullet-btn img{width:auto;height:auto;display:block;transition:filter .3s}
+#bullet-btn img{width:auto;height:auto;display:block}
 [data-theme="dark"] #bullet-btn img{filter:invert(1)}
-/* ★ 焦点面板：子弹图标纯金色，不分主题 */
-body.panel-focused #bullet-btn img{filter:brightness(0) sepia(1) hue-rotate(5deg) saturate(5)}
+
 #image-strip{display:none;overflow-x:hidden;flex-wrap:wrap;padding:4px 0;gap:6px}
 #image-strip::-webkit-scrollbar{height:4px}
 #image-strip::-webkit-scrollbar-thumb{background:var(--base01);border-radius:2px}
