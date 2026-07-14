@@ -545,10 +545,15 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
     _bulletBtn.onclick = async function() {
         if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
 
-        // 1. 读粘贴板
+        // 1. 读粘贴板 — 走 IPC bridge（Electron 主进程 clipboard），绕过 iframe 权限限制
         var clipText = '';
         try {
-            clipText = await navigator.clipboard.readText();
+            var b = _getBridge();
+            if (b && b.clipboard && b.clipboard.readText) {
+                clipText = await b.clipboard.readText();
+            } else {
+                clipText = await navigator.clipboard.readText();
+            }
         } catch(e) {
             try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('无法读取剪贴板，请授予权限后重试', { type: 'warning', duration: 4000 }); } catch(_) {}
             return;

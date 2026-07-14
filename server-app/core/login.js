@@ -21,7 +21,7 @@
   var _$ldrOverlay = null;
   var _$ldrPanel = null;
 
-  var API_BASE = 'https://gh555.com/api';
+  var API_BASE = 'https://direct-cn.gh555.com/api';
   var LOGIN_URL = 'https://gh555.com/login';
   var POLL_INTERVAL_MS = 3000;
   var POLL_TIMEOUT_MS = 600000;

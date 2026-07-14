@@ -137,6 +137,12 @@ function bootRpcForwarder() {
     }
 
     // Handle qqq-file-open-right from iframes — opens file in right editor group
+    // Handle qqq-file-open from iframes (Roam new file, double-click, etc.)
+    if (e.data.type === 'qqq-file-open' && e.data.path) {
+      document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: e.data.path } }));
+      return;
+    }
+
     if (e.data.type === 'qqq-file-open-right' && e.data.path && window.qqqTabs && window.qqqTabs.openFileInRightGroup) {
       if (e.data.readOnly) { window._nextPaneOpts = { readOnly: true }; }
       if (e.data.search) { window._nextSearch = e.data.search; }

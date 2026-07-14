@@ -473,5 +473,32 @@
         "snapOk": "已打快照 #{seq} {time} diff edit",
         "snapNoNew": "未生成新快照，可能内容未变或冷却中",
         "snapFailed": "打快照失败"
+    },
+    "goods": {
+        "conv": {
+            "title": "上下文背包",
+            "cells": "格子",
+            "chars": "字符",
+            "estimate": "估算",
+            "api": "API",
+            "refresh": "刷新",
+            "selectAll": "全选",
+            "clearSel": "取消",
+            "expandAll": "全部展开",
+            "collapseAll": "全部折叠",
+            "searchPlaceholder": "搜索格子…",
+            "openNewQuest": "选中格子 → 新对话",
+            "selCount": "已选",
+            "gridUnit": "格",
+            "hint": "勾选格子 → 「选中格子→新对话」会把格子内容作为新对话上下文",
+            "noData": "没有格子数据",
+            "noDataHint": "打开对话后，点击 AI 面板右下角「上下文」→「管理」",
+            "copyCell": "复制此格",
+            "singleGo": "单格开新对话",
+            "toastCopied": "已复制",
+            "toastNewQuest": "已创建新对话，切换到 AI 面板查看",
+            "toastSent": "已发送（切换到 AI 面板查看）",
+            "toastFailed": "失败"
+        }
     }
 }

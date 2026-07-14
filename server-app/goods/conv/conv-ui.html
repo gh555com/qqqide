@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>上下文背包</title>
+<title data-i18n="goods.conv.title">上下文背包</title>
 <style>
 :root {
     --bg: #fdf6e3; --bg2: #eee8d5; --fg: #586e75; --fg2: #839496;
@@ -153,37 +153,44 @@ body {
 <body>
 
 <div class="topbar" id="topbar">
-    <span class="topbar-title">📋 上下文格子</span>
-    <span class="topbar-stat" id="stat-cells">格子: <b>0</b></span>
-    <span class="topbar-stat" id="stat-chars">字符: <b>0</b></span>
-    <span class="topbar-stat" id="stat-tokens">估算: <b>0</b>k</span>
-    <span class="topbar-stat" id="stat-api">API: <b>--</b></span>
-    <button onclick="refresh()">🔄 刷新</button>
+    <span class="topbar-title">📋 <span data-i18n="goods.conv.title">上下文背包</span></span>
+    <span class="topbar-stat" id="stat-cells"><span data-i18n="goods.conv.cells">格子</span>: <b>0</b></span>
+    <span class="topbar-stat" id="stat-chars"><span data-i18n="goods.conv.chars">字符</span>: <b>0</b></span>
+    <span class="topbar-stat" id="stat-tokens"><span data-i18n="goods.conv.estimate">估算</span>: <b>0</b>k</span>
+    <span class="topbar-stat" id="stat-api"><span data-i18n="goods.conv.api">API</span>: <b>--</b></span>
+    <button onclick="refresh()">🔄 <span data-i18n="goods.conv.refresh">刷新</span></button>
 </div>
 
 <div class="toolbar" id="toolbar">
-    <button onclick="selectAll()">☑ 全选</button>
-    <button onclick="clearSelection()">☐ 取消</button>
+    <button onclick="selectAll()">☑ <span data-i18n="goods.conv.selectAll">全选</span></button>
+    <button onclick="clearSelection()">☐ <span data-i18n="goods.conv.clearSel">取消</span></button>
     <span class="sep"></span>
-    <button onclick="expandAll()">▸ 全部展开</button>
-    <button onclick="collapseAll()">▹ 全部折叠</button>
+    <button onclick="expandAll()">▸ <span data-i18n="goods.conv.expandAll">全部展开</span></button>
+    <button onclick="collapseAll()">▹ <span data-i18n="goods.conv.collapseAll">全部折叠</span></button>
     <span class="sep"></span>
-    <input type="text" id="searchInput" placeholder="搜索格子…" oninput="onSearch(this.value)">
+    <input type="text" id="searchInput" data-i18n-placeholder="goods.conv.searchPlaceholder" placeholder="搜索格子…" oninput="onSearch(this.value)">
     <span class="sep"></span>
-    <button class="primary" id="btnNewQuest" disabled onclick="openNewQuest()">🚀 选中格子 → 新对话</button>
+    <button class="primary" id="btnNewQuest" disabled onclick="openNewQuest()">🚀 <span data-i18n="goods.conv.openNewQuest">选中格子 → 新对话</span></button>
 </div>
 
 <div class="cells" id="cells"></div>
 
 <div class="bottombar">
     <span class="count" id="selCount">已选 <b>0</b> 格</span>
-    <span style="font-size:10px;color:var(--fg2)">💡 勾选格子 → 「选中格子→新对话」会把格子内容作为新对话上下文</span>
+    <span style="font-size:10px;color:var(--fg2)">💡 <span data-i18n="goods.conv.hint">勾选格子 → 「选中格子→新对话」会把格子内容作为新对话上下文</span></span>
 </div>
 
 <div class="toast" id="toast"></div>
 
 <script>
 'use strict';
+
+// ── i18n helper ──
+function _i(key, fallback) {
+    try { if (parent && parent._i) return parent._i(key, fallback); } catch (_) {}
+    try { if (parent && parent.parent && parent.parent._i) return parent.parent._i(key, fallback); } catch (_) {}
+    return fallback;
+}
 
 var CPT = 2.5;
 var _cells = [];
@@ -325,8 +332,10 @@ function buildCells(ag) {
                 group = m._dynamic ? '压缩上下文' : '系统消息';
                 label = 'System #' + (i + 1) + (m._dynamic ? ' (动态)' : '');
             }
-        } else {
-      // ═══ V12 压缩摘要 ═══
+        }
+    }
+
+    // ═══ V12 压缩摘要 ═══
     if (ctx) {
         if (ctx.biscuitLines && ctx.biscuitLines.length > 0) {
             var blSummary = ctx.biscuitLines.length + ' floors compressed, ';
@@ -352,14 +361,17 @@ function buildCells(ag) {
                 content: ctx.deEntries.length + ' entries, ~' + Math.round(deChars / 1000) + 'k chars. See DE message for full content.', chars: 80
             });
         }
-    }';
-            }
-            cells.push({
-                id: 'comp-facts', type: 'system', role: 'system',
-                label: '压缩 · 事实 × ' + ctx.facts.length, group: '压缩上下文',
-                content: ft, chars: ft.length
-            });
+    }
+    if (ctx && ctx.facts && ctx.facts.length) {
+        var ft = '';
+        for (var fi = 0; fi < ctx.facts.length; fi++) {
+            ft += (fi > 0 ? '\n' : '') + ctx.facts[fi];
         }
+        cells.push({
+            id: 'comp-facts', type: 'system', role: 'system',
+            label: '压缩 · 事实 × ' + ctx.facts.length, group: '压缩上下文',
+            content: ft, chars: ft.length
+        });
     }
 
     return cells;
@@ -375,13 +387,13 @@ function render() {
         totalTok += Math.round(_cells[i].chars / CPT);
     }
 
-    document.getElementById('stat-cells').innerHTML = '格子: <b>' + _cells.length + '</b>';
-    document.getElementById('stat-chars').innerHTML = '字符: <b>' + fmtNum(totalChars) + '</b>';
-    document.getElementById('stat-tokens').innerHTML = '估算: <b>' + fmtNum(totalTok) + '</b>';
-    document.getElementById('stat-api').innerHTML = 'API: <b>' + (apiPrompt > 0 ? fmtNum(apiPrompt) : '--') + '</b>';
+    document.getElementById('stat-cells').innerHTML = _i('goods.conv.cells', '格子') + ': <b>' + _cells.length + '</b>';
+    document.getElementById('stat-chars').innerHTML = _i('goods.conv.chars', '字符') + ': <b>' + fmtNum(totalChars) + '</b>';
+    document.getElementById('stat-tokens').innerHTML = _i('goods.conv.estimate', '估算') + ': <b>' + fmtNum(totalTok) + '</b>';
+    document.getElementById('stat-api').innerHTML = _i('goods.conv.api', 'API') + ': <b>' + (apiPrompt > 0 ? fmtNum(apiPrompt) : '--') + '</b>';
 
     if (_cells.length === 0) {
-        container.innerHTML = '<div class="empty"><span class="empty-icon">📭</span><span>没有格子数据</span><span style="font-size:11px">打开对话后，点击 AI 面板右下角「上下文」→「管理」</span></div>';
+        container.innerHTML = '<div class="empty"><span class="empty-icon">📭</span><span>' + _i('goods.conv.noData', '没有格子数据') + '</span><span style="font-size:11px">' + _i('goods.conv.noDataHint', '打开对话后，点击 AI 面板右下角「上下文」→「管理」') + '</span></div>';
         return;
     }
 
@@ -413,8 +425,8 @@ function render() {
         html += '<div class="cell-body">';
         html += '<div class="cell-content">' + esc(cell.content) + '</div>';
         html += '<div class="cell-actions">';
-        html += '<button onclick="event.stopPropagation();copyCell(\'' + cell.id + '\')">📋 复制此格</button>';
-        html += '<button onclick="event.stopPropagation();selectAndGo(\'' + cell.id + '\')">🚀 单格开新对话</button>';
+        html += '<button onclick="event.stopPropagation();copyCell(\'' + cell.id + '\')">📋 ' + _i('goods.conv.copyCell', '复制此格') + '</button>';
+        html += '<button onclick="event.stopPropagation();selectAndGo(\'' + cell.id + '\')">🚀 ' + _i('goods.conv.singleGo', '单格开新对话') + '</button>';
         html += '</div>';
         html += '</div></div>';
     }
@@ -444,7 +456,7 @@ function collapseAll() { _expanded = {}; render(); }
 
 function copyCell(id) {
     var cell = findCell(id); if (!cell) return;
-    copyText(cell.content); toast('已复制');
+    copyText(cell.content); toast(_i('goods.conv.toastCopied', '已复制'));
 }
 
 function selectAndGo(id) {
@@ -512,16 +524,16 @@ function openNewQuest() {
                 context: lines.join('\n'),
                 questId: _questId
             }, '*');
-            toast('已创建新对话，切换到 AI 面板查看');
+            toast(_i('goods.conv.toastNewQuest', '已创建新对话，切换到 AI 面板查看'));
         } else {
             window.parent.__qqq_convNewQuestCtx = lines.join('\n');
             window.parent.postMessage({
                 type: 'qqq-conv-new-quest', panelId: _panelId,
                 context: lines.join('\n'), questId: _questId
             }, '*');
-            toast('已发送（切换到 AI 面板查看）');
+            toast(_i('goods.conv.toastSent', '已发送（切换到 AI 面板查看）'));
         }
-    } catch (e) { toast('失败: ' + e.message); }
+    } catch (e) { toast(_i('goods.conv.toastFailed', '失败') + ': ' + e.message); }{ toast('失败: ' + e.message); }
 }
 
 function copyText(text) {
@@ -558,6 +570,8 @@ function refresh() {
 
 // ── 初始化 ──
 syncTheme();
+// i18n DOM 更新
+try { if (parent && parent.window && parent.window.i18n && parent.window.i18n.updateDom) parent.window.i18n.updateDom(document); } catch (_) {}
 _agent = getAgent();
 _cells = buildCells(_agent);
 render();

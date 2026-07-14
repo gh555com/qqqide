@@ -362,12 +362,18 @@ async function renameQuest(id, newTitle) {
     await questStore.rename(id, newTitle, entry.numericId);
     // ★ 改名后重建 search_quest.txt（旧路径可能指向改名前的目录名）
     if (typeof _rebuildSearchQuest === 'function') {
-        _rebuildSearchQuest(id).catch(function(){});
+        _rebuildSearchQuest(id).catch(function () { });
     }
     await renderTabs();
 }
 
 function updateCostDisplay() { }  // no-op — retained for backward compat with panel-quest.js
+
+// ★ _estimateTokensFull 缓存变量
+var _estCache = null;
+var _ctxBreakdownData = null;
+var _ctxBreakdownTimer = null;
+var _ctxBreakdownVisible = false;
 
 // ★ _estimateTokensFull — 穷举每一个会进入 API body 的字节，逐字符计量，chars÷2.7 得 token 估值。
 // ★ API prompt_tokens 是服务端返回的精确 token 数（权威），本地 sum 用于审计 / 发现漏格子。
