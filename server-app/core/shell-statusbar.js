@@ -187,7 +187,7 @@ function bootStatusbar(boot) {
     if (now - _freeBudgetLastFetch < 30000) return; // 30s 冷却
     _freeBudgetLastFetch = now;
 
-    fetch('https://gh555.com/api/qqq/free-budget', {
+    fetch('https://direct-cn.gh555.com/api/qqq/free-budget', {
       headers: { 'Authorization': 'Bearer ' + token }
     })
       .then(function (r) { if (!r.ok) return null; return r.json(); })

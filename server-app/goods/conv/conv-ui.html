@@ -153,7 +153,7 @@ body {
 <body>
 
 <div class="topbar" id="topbar">
-    <span class="topbar-title">📋 <span data-i18n="goods.conv.title">上下文背包</span></span>
+    <span class="topbar-title">📋 <span data-i18n="goods.conv.title">上下文背包</span> <span id="quest-label"></span></span>
     <span class="topbar-stat" id="stat-cells"><span data-i18n="goods.conv.cells">格子</span>: <b>0</b></span>
     <span class="topbar-stat" id="stat-chars"><span data-i18n="goods.conv.chars">字符</span>: <b>0</b></span>
     <span class="topbar-stat" id="stat-tokens"><span data-i18n="goods.conv.estimate">估算</span>: <b>0</b>k</span>
@@ -200,6 +200,19 @@ var _questId = '';
 var _panelId = 1;
 var _agent = null;
 
+// ── 从 URL 参数读 questId ──
+(function() {
+    try {
+        var qs = location.search.substring(1);
+        var parts = qs.split('&');
+        for (var pi = 0; pi < parts.length; pi++) {
+            var kv = parts[pi].split('=');
+            if (kv[0] === 'quest') { _questId = decodeURIComponent(kv[1] || ''); }
+            if (kv[0] === 'panel') { _panelId = parseInt(kv[1], 10) || 1; }
+        }
+    } catch(_) {}
+})();
+
 // ── 主题同步 ──
 function syncTheme() {
     try {
@@ -221,10 +234,11 @@ function syncTheme() {
 function getAgent() {
     try {
         var pool = window.parent.__qqq_agentPool;
-        var qid = window.parent.__qqq_convQuestId || '';
+        // ★ 优先 URL 参数，兜底全局变量
+        var qid = _questId || window.parent.__qqq_convQuestId || '';
         if (!pool || !qid) return null;
-        _questId = qid;
-        _panelId = window.parent.__qqq_convPanelId || 1;
+        if (!_questId) _questId = qid;
+        if (!_panelId) _panelId = window.parent.__qqq_convPanelId || 1;
         var ag = pool[qid];
         if (!ag) {
             for (var k in pool) {
@@ -251,21 +265,17 @@ function buildCells(ag) {
     });
 
     // ═══ 工具定义 ═══
-    // goods iframe 的 parent 就是 AI 面板，直接调 getTools() 即可
-    // 旧代码用 document.getElementById('qqq-ai-iframe-pN') 找主窗口元素 → 永远找不到
+    // X 区 iframe 的 parent 是主窗口，getTools 在 AI iframe 里
     var toolsChars = 0, toolsContent = '', toolsCount = 0;
     try {
         var _toolsFn = null;
-        // ① 直接 from parent（goods iframe 嵌在 AI 面板内）
-        if (window.parent && typeof window.parent.getTools === 'function') {
-            _toolsFn = window.parent.getTools;
-        }
-        // ② 兜底：通过主窗口找 AI iframe（旧路径，也修了）
-        if (!_toolsFn) {
-            var _topWin = window.top || window.parent;
-            var _aiIframe = _topWin.document.getElementById('qqq-ai-iframe-p' + _panelId);
+        var _topWin = window.top || window.parent;
+        // 先按 _panelId 找，找不到则遍历所有面板
+        for (var pid = _panelId; pid >= 0; pid--) {
+            var _aiIframe = _topWin.document.getElementById('qqq-ai-iframe-p' + pid);
             if (_aiIframe && _aiIframe.contentWindow && typeof _aiIframe.contentWindow.getTools === 'function') {
                 _toolsFn = _aiIframe.contentWindow.getTools;
+                break;
             }
         }
         if (_toolsFn) {
@@ -318,7 +328,6 @@ function buildCells(ag) {
         } else if (role === 'tool') {
             group = '工具结果';
             label = 'Tool Result #' + (i + 1);
-            // ★ tool_call_id + name 计入字符
             if (typeof m.tool_call_id === 'string') chars += m.tool_call_id.length;
             if (typeof m.name === 'string') chars += m.name.length;
         } else if (role === 'system') {
@@ -333,6 +342,12 @@ function buildCells(ag) {
                 label = 'System #' + (i + 1) + (m._dynamic ? ' (动态)' : '');
             }
         }
+        // ★ 推入格子
+        cells.push({
+            id: cellId, type: role, role: role,
+            label: label, group: group,
+            content: content, chars: chars
+        });
     }
 
     // ═══ V12 压缩摘要 ═══
@@ -565,6 +580,9 @@ function refresh() {
     _cells = buildCells(_agent);
     _selected = {};
     syncTheme();
+    // 更新标题栏 quest 标签
+    var ql = document.getElementById('quest-label');
+    if (ql) ql.textContent = _questId ? ('· ' + _questId) : '';
     render();
 }
 
@@ -582,9 +600,13 @@ try {
         .observe(window.parent.document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 } catch (e) {}
 
-// 刷新消息
+// 刷新消息（支持 questId 更新 — 同一 tab 切到不同 quest）
 window.addEventListener('message', function (e) {
-    if (e.data && e.data.type === 'qqq-conv-refresh') refresh();
+    if (!e.data) return;
+    if (e.data.type === 'qqq-conv-refresh') {
+        if (e.data.questId) { _questId = e.data.questId; if (e.data.panelId) _panelId = e.data.panelId; }
+        refresh();
+    }
 });
 
 // 定时检查 agent 变化 + 工具定义就绪

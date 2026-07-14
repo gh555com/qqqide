@@ -44,9 +44,7 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .sidebar-resizer { width: var(--sidebar-resizer-width); background-color: var(--base2); position: fixed; left: 160px; top: 0; bottom: 60px; z-index: 30; cursor: ew-resize; transition: background-color 0.2s, width 0.2s; border: none; }
 .sidebar-resizer:hover { background-color: var(--base1); width: calc(var(--sidebar-resizer-width) * 1.5); }
 .sidebar-resizer.active { background-color: var(--base00); width: calc(var(--sidebar-resizer-width) * 1.5); }
-.sidebar-header { padding: 0; height: 51px; background-color: var(--gold-accent); color: var(--text-primary); display: flex; align-items: center; justify-content: center; cursor: pointer; }
-.sidebar-header:hover { background-color: var(--gold-accent-hover); }
-.sidebar-header .close-icon { font-size: 24px; line-height: 1; }
+
 .nav-item { padding: 8px 10px; border: none; background: none; width: 100%; text-align: left; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; display: block; font-family: Tahoma; font-size: 13px; }
 .nav-item:hover { background-color: var(--bg-highlight); }
 .nav-item.active { background-color: var(--base1); color: var(--base3); }
@@ -146,9 +144,6 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 <body>
 <div class="container">
 	<div class="sidebar" id="sidebar">
-		<div class="sidebar-header" id="sidebarHeader">
-			<span class="close-icon">✕</span>
-		</div>
 		<div class="qq-iq-section" id="driveList"></div>
 	</div>
 	<div class="sidebar-resizer" id="sidebarResizer"></div>
@@ -218,6 +213,6 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 	<div class="context-menu-item" data-action="rename"><span>rename</span><span class="context-menu-shortcut">= "e"</span></div>
 	<div class="context-menu-item" data-action="copyPath"><span>copy path</span><span class="context-menu-shortcut">= "z"</span></div>
 </div>
-<div id="globalTooltip" class="drop<div id="globalTooltip" class="dropdown-item-tooltip"></div>
+<div id="globalTooltip" class="dropdown-item-tooltip"></div>
 <script src="q2-roam.js"></script>
 </body>

@@ -68,6 +68,10 @@
 
     const pending = _pendingShow.splice(0);
     pending.forEach(id => show(id));
+    // ★ 确保 Roam tab 在 gaea 分组中存在（rage 已完成注册）
+    if (window.qqqTabs && window.qqqTabs.ensureRoamTab) {
+      window.qqqTabs.ensureRoamTab();
+    }
   }
 
   // ---- Tab bar (renders into menu row 2 toolbar) ----
@@ -75,6 +79,8 @@
     if (!_tabBarEl) return;
     _tabBarEl.innerHTML = '';
     goods.forEach((def, id) => {
+      // ★ rage 不显示按钮（Roam 永远直接显示）
+      if (id === 'rage') return;
       const btn = document.createElement('button');
       btn.className = 'gaea-tab-btn qqq-goods-btn';
       btn.textContent = def.title || id;
@@ -84,7 +90,6 @@
         'height:22px; padding:0 10px; margin:0 1px; border:1px solid var(--border-color); border-radius:3px;' +
         'background:' + (id === _activeId ? 'var(--primary-color)' : 'transparent') + ';' +
         'color:' + (id === _activeId ? '#1e1e1e' : 'var(--text-primary)') + ';' +
-undefined
         'transition: background 0.15s;';
       btn.addEventListener('click', () => show(id));
       _tabBarEl.appendChild(btn);
@@ -172,20 +177,21 @@ undefined
     // Show target
     const inst = instances.get(id);
 
-    // ★ 重建已关闭的 X 区 gaea tabs（用户关闭 gaea tab 后需重建）
-    if (window.qqqTabs && inst.tabs && inst.tabs.size > 0) {
-      const def = goods.get(id);
-      const gaeaGrp = window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : null;
-      inst.tabs.forEach((oldTab, tabId) => {
-        const stillExists = gaeaGrp && gaeaGrp.tabs && gaeaGrp.tabs.some(t => t.gaeaId === tabId);
-        if (!stillExists && def && def.tabs && def.tabs[tabId]) {
-          const tabDef = def.tabs[tabId];
+    // ★ 确保 X 区 gaea tabs 存在（首次注册 / 被关闭后重建 / 竞态修复）
+    if (window.qqqTabs) {
+      const def2 = goods.get(id);
+      if (def2 && def2.tabs && typeof def2.tabs === 'object') {
+        const gaeaGrp = window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : null;
+        Object.keys(def2.tabs).forEach(tabId => {
+          const alreadyInDOM = gaeaGrp && gaeaGrp.tabs && gaeaGrp.tabs.some(function(t) { return t.gaeaId === tabId; });
+          if (alreadyInDOM) return;
+          const tabDef = def2.tabs[tabId];
           if (typeof tabDef.build === 'function') {
-            const newTab = window.qqqTabs.addGaeaTab(tabId, tabDef.title || tabId, tabDef.build, { closable: tabDef.closable !== false });
-            if (newTab) inst.tabs.set(tabId, newTab);
+            var ct = window.qqqTabs.addGaeaTab(tabId, tabDef.title || tabId, tabDef.build, { closable: tabDef.closable !== false });
+            if (ct) inst.tabs.set(tabId, ct);
           }
-        }
-      });
+        });
+      }
     }
 
     if (inst.iframe) inst.iframe.style.display = '';

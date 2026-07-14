@@ -972,16 +972,19 @@
   function ensureRoamTab() {
     var gaeaGrp = getGaeaGroup();
     if (!gaeaGrp) return;
-    // Check if a roam tab already exists
     var hasRoam = gaeaGrp.tabs.some(function(t) { return t.gaeaId === 'roam'; });
     if (hasRoam) return;
-    // Create one via gaea-host if rage is registered
-    if (window.qqqGaea && window.qqqGaea._createRoamTab) {
-      window.qqqGaea._createRoamTab();
-    } else if (window.qqqGaea && window.qqqGaea.get && window.qqqGaea.active) {
-      // Fallback: if rage has a roam tab defined, re-show the active goods (rage) to re-create it
+    // Two paths to create roam tab:
+    // 1) rage goods is active → re-show triggers tab creation in show()
+    // 2) rage is registered but not active → show it explicitly
+    if (window.qqqGaea) {
       var activeId = window.qqqGaea.active();
-      if (activeId) window.qqqGaea.show(activeId);
+      if (activeId) {
+        window.qqqGaea.show(activeId);
+      } else if (window.qqqGaea.list) {
+        var rageGoods = window.qqqGaea.list().find(function(g) { return g.id === 'rage'; });
+        if (rageGoods) window.qqqGaea.show('rage');
+      }
     }
   }
 
