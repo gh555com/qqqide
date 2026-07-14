@@ -132,6 +132,17 @@ function _setPanelFocus(on) {
     if (on) {
         try { parent.postMessage({ type: 'qqq-ai-panel-focused', panel: _panelId }, '*'); } catch (_) { }
     }
+    // ★ 焦点面板：子弹图标纯金色。先 invert(1) 统一为白色基底，再上金色滤镜
+    try {
+        var _bi = document.querySelector('#bullet-btn img');
+        if (_bi) {
+            if (on) {
+                _bi.style.cssText = 'filter: invert(1) sepia(1) saturate(30) hue-rotate(335deg) !important';
+            } else {
+                _bi.style.cssText = '';
+            }
+        }
+    } catch(_) {}
 }
 // 点击/按键 → 获得焦点
 window.addEventListener('focus', function () { _setPanelFocus(true); });

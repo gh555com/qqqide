@@ -968,24 +968,24 @@
     _doRestore();
   }
 
-  // ---- Public: init ----
+  // ★ Roam 硬创建函数：零依赖 goods/gaea-host，零异步
+  function _createRoamTabHard() {
+    addGaeaTab('roam', 'Roam', function (pane) {
+      pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
+      var iframe = document.createElement('iframe');
+      iframe.src = '/qqqide/goods/file-explorer/q2-roam.html';
+      iframe.style.cssText = 'width:100%; height:100%; border:none;';
+      iframe.setAttribute('frameborder', '0');
+      pane.appendChild(iframe);
+    }, { closable: false });
+  }
+
   function ensureRoamTab() {
     var gaeaGrp = getGaeaGroup();
     if (!gaeaGrp) return;
     var hasRoam = gaeaGrp.tabs.some(function(t) { return t.gaeaId === 'roam'; });
     if (hasRoam) return;
-    // Two paths to create roam tab:
-    // 1) rage goods is active → re-show triggers tab creation in show()
-    // 2) rage is registered but not active → show it explicitly
-    if (window.qqqGaea) {
-      var activeId = window.qqqGaea.active();
-      if (activeId) {
-        window.qqqGaea.show(activeId);
-      } else if (window.qqqGaea.list) {
-        var rageGoods = window.qqqGaea.list().find(function(g) { return g.id === 'rage'; });
-        if (rageGoods) window.qqqGaea.show('rage');
-      }
-    }
+    _createRoamTabHard();
   }
 
   function init(host) {
@@ -999,16 +999,9 @@
     }
     window.addEventListener('resize', _onGroupResize);
     addGroup('gaea');
+    // ★ Roam 永远是 gaea 分组的第一个标签，在所有持久化/异步逻辑之前同步创建
+    _createRoamTabHard();
     setTimeout(function () { restoreOpenTabs(); }, 100);
-    // Keep roaming: ensure roam tab exists every 500ms until it does
-    var _roamGuard = setInterval(function() {
-      ensureRoamTab();
-      var gaeaGrp = getGaeaGroup();
-      if (gaeaGrp && gaeaGrp.tabs.some(function(t) { return t.gaeaId === 'roam'; })) {
-        clearInterval(_roamGuard);
-      }
-    }, 500);
-    setTimeout(function() { clearInterval(_roamGuard); }, 15000);
   }
 
   // ---- closeTabById override: re-create Roam if closed + persist ----

@@ -219,7 +219,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       (function (labelEl) {
         var isLoggedIn = window.qqqLogin && window.qqqLogin.isLoggedIn();
         if (isLoggedIn) {
-          fetch('/api/goods/qqqide/stats').then(function (r) { return r.json(); }).then(function (d) {
+          fetch('https://direct-cn.gh555.com/api/goods/qqqide/stats').then(function (r) { return r.json(); }).then(function (d) {
             if (d && d.ok && d.total_installations > 0) {
               labelEl.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
             }

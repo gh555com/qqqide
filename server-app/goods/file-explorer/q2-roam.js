@@ -61,6 +61,37 @@ window.addEventListener('message', function(e) {
     }
 });
 
+// ★ 直连 parent.qgs.simple('roam') — 绕过 postMessage RPC，零超时零丢包
+//   与 shell-rpc.js 的 store.* RPC handler 读写同一 global.sq3 namespace
+var _roamDbDirect = null;
+function _roamDb() {
+	if (_roamDbDirect) return _roamDbDirect;
+	try {
+		if (parent && parent.qgs && parent.qgs.simple) {
+			_roamDbDirect = parent.qgs.simple('roam');
+			return _roamDbDirect;
+		}
+	} catch(e) {}
+	return null;
+}
+async function _roamGet(key) {
+	var db = _roamDb();
+	if (db) {
+		try { return await db.get(key); } catch(e) { console.warn('[roam] direct get failed:', key, e); }
+	}
+	// 降级到 RPC
+	try { return await bridge.store.get(key); } catch(e) { return null; }
+}
+function _roamSet(key, value) {
+	var db = _roamDb();
+	if (db) {
+		db.set(key, value).catch(function(e) { console.warn('[roam] direct set failed:', key, e); });
+		return;
+	}
+	// 降级到 RPC
+	bridge.store.set(key, value);
+}
+
 // RPC-based bridge proxy
 // Single args pass directly; multi-args use { __spread: true, args: [...] }
 var bridge = {
@@ -127,17 +158,17 @@ function _fineScmSave() {
 		var toRemove = sorted.slice(0, keys.length - FINE_SCM_MAX);
 		for (var i = 0; i < toRemove.length; i++) delete _fineScm[toRemove[i]];
 	}
-	bridge.store.set('roam.fineScm', _fineScm);
+	_roamSet('roam.fineScm', _fineScm);
 }
 function _prefsSave() {
-	bridge.store.set('roam.prefs', {
+	_roamSet('roam.prefs', {
 		lineSpacing: _lineSpacing, globalSzMode: _globalSzMode, globalSortBy: _globalSortBy
 	});
 }
-function _qqiqSave() { bridge.store.set('roam.qqiq', _qqiq); }
-function _pinnedSave() { bridge.store.set('roam.pinnedDirs', _pinnedDirs); }
-function _historySave() { bridge.store.set('roam.lastVisitedDir', currentPath); }
-function _cmdHistorySave() { bridge.store.set('roam.cmdHistory', _cmdHistory); }
+function _qqiqSave() { _roamSet('roam.qqiq', _qqiq); }
+function _pinnedSave() { _roamSet('roam.pinnedDirs', _pinnedDirs); }
+function _historySave() { _roamSet('roam.lastVisitedDir', currentPath); }
+function _cmdHistorySave() { _roamSet('roam.cmdHistory', _cmdHistory); }
 function _sidebarSave() { bridge.store.setLocal('roam.sidebarWidth', sidebarW); }
 function applySidebarWidth() {
 	var sb = document.getElementById('sidebar');
@@ -1212,6 +1243,8 @@ async function updateDriveDisplay() {
 		if (k === 'q') {
 			e.preventDefault();
 			parent.postMessage({ type: 'qqq-file-open', path: si.path }, '*');
+			// ★ q=编辑：文件及父目录入 qq 区
+			recordFileHistory(si.path);
 		} else if (k === 'w') {
 			e.preventDefault();
 			if (si.type === 'folder') { navigateTo(si.path); }
@@ -1411,27 +1444,17 @@ function calculateAndAdjustScroll() {
 
 // ---- Boot ----
 (async function boot() {
-	// ---- Load persisted state from global.sq3 + only.sq3 ----
-	try {
-		var f = await bridge.store.get('roam.fineScm'); if (f && typeof f === 'object') _fineScm = f;
-	} catch(e) {}
-	try {
-		var q = await bridge.store.get('roam.qqiq'); if (Array.isArray(q)) _qqiq = q;
-	} catch(e) {}
-	try {
-		var p = await bridge.store.get('roam.pinnedDirs'); if (Array.isArray(p)) _pinnedDirs = p;
-	} catch(e) {}
-	try {
-		var h = await bridge.store.get('roam.cmdHistory'); if (h && typeof h === 'object') _cmdHistory = h;
-	} catch(e) {}
-	try {
-		var prefs = await bridge.store.get('roam.prefs');
-		if (prefs && typeof prefs === 'object') {
-			if (typeof prefs.lineSpacing === 'number') _lineSpacing = prefs.lineSpacing;
-			if (prefs.globalSzMode) _globalSzMode = prefs.globalSzMode;
-			if (prefs.globalSortBy) _globalSortBy = prefs.globalSortBy;
-		}
-	} catch(e) {}
+	// ★ 直连 parent.qgs 读取持久化数据（绕过 RPC，零超时零丢包）
+	var f = await _roamGet('roam.fineScm'); if (f && typeof f === 'object') _fineScm = f;
+	var q = await _roamGet('roam.qqiq'); if (Array.isArray(q)) _qqiq = q;
+	var p = await _roamGet('roam.pinnedDirs'); if (Array.isArray(p)) _pinnedDirs = p;
+	var h = await _roamGet('roam.cmdHistory'); if (h && typeof h === 'object') _cmdHistory = h;
+	var prefs = await _roamGet('roam.prefs');
+	if (prefs && typeof prefs === 'object') {
+		if (typeof prefs.lineSpacing === 'number') _lineSpacing = prefs.lineSpacing;
+		if (prefs.globalSzMode) _globalSzMode = prefs.globalSzMode;
+		if (prefs.globalSortBy) _globalSortBy = prefs.globalSortBy;
+	}
 	try {
 		var sw = await bridge.store.getLocal('roam.sidebarWidth');
 		if (typeof sw === 'number' && sw > 50 && sw < 500) { sidebarW = sw; applySidebarWidth(); }
@@ -1444,13 +1467,10 @@ function calculateAndAdjustScroll() {
 	}
 	// Determine start directory
 	var root = bootInfo.cwd || bootInfo.workingDir || '.';
-	try {
-		var lastDir = await bridge.store.get('roam.lastVisitedDir');
-		if (lastDir && typeof lastDir === 'string') {
-			// Verify it exists by trying to list it
-			try { await bridge.fs.list(lastDir); root = lastDir; } catch(e) {}
-		}
-	} catch(e) {}
+	var lastDir = await _roamGet('roam.lastVisitedDir');
+	if (lastDir && typeof lastDir === 'string') {
+		try { await bridge.fs.list(lastDir); root = lastDir; } catch(e) {}
+	}
 
 	await loadDrives();
 	renderQqiqSection();
