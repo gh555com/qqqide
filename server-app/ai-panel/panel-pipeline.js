@@ -481,9 +481,25 @@ async function _executeSend(intent) {
                     //   不再做 _buf/_paras flush、尾段补丁、textContent 对比——全删。
                     if (_targetDiv2._lastParaEl) { _targetDiv2._lastParaEl.remove(); _targetDiv2._lastParaEl = null; }
                     if (content && typeof content === 'string' && content.trim()) {
-                        _targetDiv2._contentWrap.innerHTML = renderMarkdown(content);
+                        var _rendered = renderMarkdown(content);
+                        if (_targetDiv2._firstHouseDone) {
+                            // ★ V12：多 house 楼层 — 追加分隔条 + 新内容，不复写前面 house
+                            var _sep = document.createElement('div');
+                            _sep.className = 'msg-flow-house-sep';
+                            _targetDiv2._contentWrap.appendChild(_sep);
+                            var _newDiv = document.createElement('div');
+                            _newDiv.innerHTML = _rendered;
+                            _targetDiv2._contentWrap.appendChild(_newDiv);
+                        } else {
+                            _targetDiv2._contentWrap.innerHTML = _rendered;
+                            _targetDiv2._firstHouseDone = true;
+                        }
+                        // ★ 临时诊断：记录 onDone 渲染内容
+                        if (typeof _logRenderEvent === 'function') {
+                            _logRenderEvent('ondone_render', qid, floorNum, _rendered || '');
+                        }
                     }
-                    // ★ 方案 C：innerHTML 覆写摧毁了建楼期间 DOM 追加的引导块 → 从 conversation 恢复
+                    // ★ 方案 C：仅首 house 恢复引导块（后续 house 引导块已存在，_restoreGuideBlocksToContentWrap 内置去重）
                     if (typeof _restoreGuideBlocksToContentWrap === 'function') {
                         _restoreGuideBlocksToContentWrap(_targetDiv2._contentWrap, agent.conversation, floorNum);
                     }
@@ -513,10 +529,6 @@ async function _executeSend(intent) {
                 // ★ onDone 强制刷新 A1 第二行（FILE/ROW），防 all.txt 轮询漏掉
                 if (aiDiv && aiDiv._a1Block && typeof _updateA1Row2 === 'function') {
                     try { _updateA1Row2(aiDiv._a1Block, agent, true); } catch (_) { }
-                }
-                // ★ V11: 楼层完结 → 自动重组背包（机械筛 → 追加饼干 + DE）
-                if (typeof agent._rebuildBackpack === 'function') {
-                    try { await agent._rebuildBackpack(); } catch (_) { /* 压缩失败不阻断楼层完结 */ }
                 }
                 if (typeof stopFloorTimer === 'function') stopFloorTimer(timing, agent);
                 setStreaming(false);
@@ -555,7 +567,8 @@ async function _executeSend(intent) {
                                 role: 'assistant',
                                 content: msg,
                                 _error: true,
-                                _floor: agent._currentFloorNum
+                                _floor: agent._currentFloorNum,
+                                _errorTime: _ts  // ★ V9 fix: 时间戳持久化，重启后红框显示精确时间
                             });
                         }
                         if (agent) {
@@ -628,6 +641,13 @@ async function _executeSend(intent) {
     } finally {
         if (agent && qid && agent._floorCompletedCleanly) {
             try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { }
+            // ★ V12: 楼层完结 → 自动重组背包（原地追加饼干 + DE，零 splice，前缀缓存命中）
+            //    必须在 _saveAgentQuestData 之后运行！压缩会从 conversation 中删除原楼层消息，
+            //    若先压缩再保存 → all.json 丢失全部 assistant 消息 → search_quest 显示 (no answer)
+            //    + 重启后 ai_html 空 → 屏幕只剩「工具执行完毕」。
+            if (typeof agent._rebuildBackpack === 'function') {
+                try { await agent._rebuildBackpack(); } catch (_) { /* 压缩失败不阻断楼层完结 */ }
+            }
         }
         if (agent && qid && !agent._floorCompletedCleanly && (agent._stopState === 'sending' || agent._floorFatal)) {
             try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { }

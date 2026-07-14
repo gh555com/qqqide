@@ -315,33 +315,44 @@ function buildCells(ag) {
             if (typeof m.tool_call_id === 'string') chars += m.tool_call_id.length;
             if (typeof m.name === 'string') chars += m.name.length;
         } else if (role === 'system') {
-            group = m._dynamic ? '压缩上下文' : '系统消息';
-            label = 'System #' + (i + 1) + (m._dynamic ? ' (动态)' : '');
+            if (m._biscuit) {
+                group = '压缩上下文';
+                label = '压缩饼干 (biscuit)';
+            } else if (m._deBlock) {
+                group = '压缩上下文';
+                label = 'DE 格子 (K+C)';
+            } else {
+                group = m._dynamic ? '压缩上下文' : '系统消息';
+                label = 'System #' + (i + 1) + (m._dynamic ? ' (动态)' : '');
+            }
         } else {
-            group = '其他'; label = role + ' #' + (i + 1);
-        }
-
-        cells.push({
-            id: cellId, type: role, role: role,
-            label: label, content: content, chars: chars,
-            group: group, _msg: m, _index: i
-        });
-    }
-
-    // ═══ 压缩摘要 ═══
+      // ═══ V12 压缩摘要 ═══
     if (ctx) {
-        if ((ctx.narrative || '').length > 0) {
+        if (ctx.biscuitLines && ctx.biscuitLines.length > 0) {
+            var blSummary = ctx.biscuitLines.length + ' floors compressed, ';
+            var totalChars = 0;
+            for (var bi = 0; bi < ctx.biscuitLines.length; bi++) {
+                totalChars += (ctx.biscuitLines[bi].text || '').length;
+            }
+            blSummary += '~' + Math.round(totalChars / 1000) + 'k chars total. See biscuit message in conversation for full content.';
             cells.push({
-                id: 'comp-narrative', type: 'system', role: 'system',
-                label: '压缩 · 叙事', group: '压缩上下文',
-                content: ctx.narrative, chars: ctx.narrative.length
+                id: 'comp-biscuit', type: 'system', role: 'system',
+                label: '压缩饼干 × ' + ctx.biscuitLines.length + ' floors', group: '压缩上下文',
+                content: blSummary, chars: blSummary.length
             });
         }
-        if (ctx.facts && ctx.facts.length > 0) {
-            var ft = '';
-            for (var fi = 0; fi < ctx.facts.length; fi++) {
-                var f = ctx.facts[fi];
-                ft += '[' + (f.type || 'fact') + '] ' + (f.content || '') + '\n';
+        if (ctx.deEntries && ctx.deEntries.length > 0) {
+            var deChars = 0;
+            for (var di = 0; di < ctx.deEntries.length; di++) {
+                deChars += (ctx.deEntries[di].text || '').length;
+            }
+            cells.push({
+                id: 'comp-de', type: 'system', role: 'system',
+                label: 'DE 格子 × ' + ctx.deEntries.length + ' entries', group: '压缩上下文',
+                content: ctx.deEntries.length + ' entries, ~' + Math.round(deChars / 1000) + 'k chars. See DE message for full content.', chars: 80
+            });
+        }
+    }';
             }
             cells.push({
                 id: 'comp-facts', type: 'system', role: 'system',

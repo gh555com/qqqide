@@ -58,7 +58,16 @@ function _renderQuestErrorBox(agent, aiDiv, floorNum) {
     // ★ 仍找不到 → 在楼层间创建 floor-gap + 红框
     if (!_box) {
         var _targetAi = aiDiv || (agent._activeAiDiv);
-        if (!_targetAi || !_targetAi.parentNode) return;
+        if (!_targetAi || !_targetAi.parentNode) {
+            // ★ V4 fix: DOM 未就绪 → 延迟重试（最多 5 次，每 200ms）
+            var _retryKey = '_errbox_retry_' + _floorNum;
+            var _retryCount = (agent[_retryKey] || 0);
+            if (_retryCount < 5) {
+                agent[_retryKey] = _retryCount + 1;
+                setTimeout(function() { _renderQuestErrorBox(agent, aiDiv, _floorNum); }, 200);
+            }
+            return;
+        }
         // 找或创建 .floor-gap 容器（位于 aiDiv 之后）
         var _gap = _targetAi.nextElementSibling;
         if (!_gap || !_gap.classList || !_gap.classList.contains('floor-gap')) {
@@ -280,6 +289,7 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
         _finishRecovery(linkEl, agent, false);
     } finally {
         agent._inRecoverySend = false;
+        agent._deferRenderUntilHouse1 = false;  // ★ V7 fix: 防极端异常路径残留
         $input.value = _savedInput;
         if (typeof saveQuestUIState === 'function') saveQuestUIState(questId);
     }
@@ -291,8 +301,22 @@ function _finishRecovery(linkEl, agent, succeeded) {
     agent._deferRenderUntilHouse1 = false;
 
     if (succeeded) {
-        // ★ 成功：整行移除链接 DOM（不灰化不留字）
+        // ★ V1 fix: 保存原始 fatal 楼层号，清除 _error 消息防重启假复活
+        var _originFloor = agent._recoveryOriginFloor || 0;
         agent._recoveryOriginFloor = 0;
+        if (_originFloor > 0 && agent.conversation) {
+            for (var _rci = 0; _rci < agent.conversation.length; _rci++) {
+                var _rcm = agent.conversation[_rci];
+                if (_rcm._error && _rcm._floor === _originFloor) {
+                    _rcm._recovered = true;
+                }
+            }
+            // 清除内存错误日志（防 _renderQuestErrorBox 重复渲染）
+            if (agent._questErrorLogByFloor && agent._questErrorLogByFloor[_originFloor]) {
+                delete agent._questErrorLogByFloor[_originFloor];
+            }
+        }
+        // ★ 成功：整行移除链接 DOM（不灰化不留字）
         if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent);
     } else {
         // ★ 失败：恢复链接为可点击（同一红框垒行后用户可重试）
@@ -509,6 +533,106 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
         }
     }
 }
+
+// ═══ 子弹按钮 — 粘贴板→磁盘文件→编辑框 📎 注入 ═══
+// 子弹文件目录: {project}/qqq/bullet/  上限 20MB FIFO 轮转
+// 文件名: bullet_{本地时间戳}_{questId}_f{floorNum}.txt
+// 写入后自动 insertChipAtCursor → 走已有附件管线 → ContentGateway 截断 → 饼干自动剥离
+(function() {
+    var _bulletBtn = document.getElementById('bullet-btn');
+    if (!_bulletBtn) return;
+
+    _bulletBtn.onclick = async function() {
+        if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
+
+        // 1. 读粘贴板
+        var clipText = '';
+        try {
+            clipText = await navigator.clipboard.readText();
+        } catch(e) {
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('无法读取剪贴板，请授予权限后重试', { type: 'warning', duration: 4000 }); } catch(_) {}
+            return;
+        }
+        if (!clipText || !clipText.trim()) {
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('剪贴板为空，请先复制内容', { type: 'info', duration: 3000 }); } catch(_) {}
+            return;
+        }
+
+        // 2. 硬帽 3MB，超则取首尾各1.5MB
+        var MAX_BULLET = 3 * 1024 * 1024;
+        if (clipText.length > MAX_BULLET) {
+            var HALF = MAX_BULLET / 2;
+            clipText = clipText.slice(0, HALF) + '\n\n... [中间已截断, 原始 ' + Math.round(clipText.length / 1024) + 'KB] ...\n\n' + clipText.slice(-HALF);
+        }
+
+        // 3. 项目路径
+        var root = '';
+        try { if (typeof questStore !== 'undefined' && questStore.getProjectRoot) root = questStore.getProjectRoot(); } catch(_) {}
+        if (!root && typeof _workspaceRoot !== 'undefined') root = _workspaceRoot;
+        if (!root) return;
+        root = root.replace(/\\/g, '/').replace(/\/$/, '');
+
+        // 4. 文件名：本地时区时间戳 + quest + floor
+        var now = new Date();
+        var _p2 = function(n) { return n < 10 ? '0' + n : '' + n; };
+        var ts = now.getFullYear() + _p2(now.getMonth()+1) + _p2(now.getDate())
+            + '_' + _p2(now.getHours()) + _p2(now.getMinutes()) + _p2(now.getSeconds());
+        var qid = (typeof questActiveId !== 'undefined' && questActiveId) ? questActiveId : 'draft';
+        var floorNum = 0;
+        try { if (typeof _activeAgent !== 'undefined' && _activeAgent && _activeAgent._currentFloorNum) floorNum = _activeAgent._currentFloorNum; } catch(_) {}
+        var filename = 'bullet_' + ts + '_' + qid + '_f' + floorNum + '.txt';
+        var bulletDir = root + '/qqq/bullet';
+        var filePath = bulletDir + '/' + filename;
+
+        // 5. Bridge
+        var bridge = _getBridge();
+        if (!bridge) return;
+
+        try {
+            // 确保目录
+            var dirExists = false;
+            try { await bridge.fs.stat(bulletDir); dirExists = true; } catch(_) {}
+            if (!dirExists) await bridge.fs.mkdir(bulletDir);
+
+            // 轮转：20MB FIFO，mtime 升序删最老
+            var BULLET_CAP = 20 * 1024 * 1024;
+            try {
+                var entries = await bridge.fs.list(bulletDir);
+                var files = [];
+                var totalSize = 0;
+                for (var ei = 0; ei < entries.length; ei++) {
+                    var ent = entries[ei];
+                    if (ent.isDir) continue;
+                    var fp = bulletDir + '/' + ent.name;
+                    try {
+                        var st = await bridge.fs.stat(fp);
+                        files.push({ path: fp, size: st.size || 0, mtime: st.mtime || 0 });
+                        totalSize += st.size || 0;
+                    } catch(_) {}
+                }
+                files.sort(function(a, b) { return a.mtime - b.mtime; });
+                while (files.length > 0 && totalSize + clipText.length > BULLET_CAP) {
+                    var oldest = files.shift();
+                    try { await bridge.fs.remove(oldest.path); totalSize -= oldest.size; } catch(_) {}
+                }
+            } catch(_) {}
+
+            // 6. 原子写
+            await bridge.fs.write(filePath, clipText);
+
+            // 7. 注入编辑框 — 走已有 insertChipAtCursor → 📎"path" 格式
+            if (typeof insertChipAtCursor === 'function') insertChipAtCursor(filePath, false);
+
+            // 8. Qoast
+            var sizeKB = Math.round(clipText.length / 1024);
+            var sizeStr = sizeKB >= 1024 ? (sizeKB / 1024).toFixed(1) + 'MB' : sizeKB + 'KB';
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('子弹已上膛 ' + sizeStr + ' → ' + filename, { type: 'success', duration: 3500 }); } catch(_) {}
+
+        } catch(err) {
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('子弹写入失败: ' + (err.message || err), { type: 'error', duration: 5000 }); } catch(_) {}
+        }
+    };
+})();
 
 // ═══ 暴露给 card-pool.js 跨模块访问 ═══
 window._initA1Block = _initA1Block;

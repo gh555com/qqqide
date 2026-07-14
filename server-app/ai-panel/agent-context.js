@@ -1,14 +1,15 @@
 // ============================================================================
 // agent-context.js — 上下文压缩引擎（本地机械筛，零网络调用）
-// VER: COMPACT-V11-20260713 ← V11: per-floor auto-rebuild, biscuit split + DE, no W6
+// VER: COMPACT-V12-20260714 ← V12: in-place append, zero splice for biscuit/DE, prefix cache hits
 //
 // 架构（论文: 论文/qqqide 滴上下文压缩.md §2-§5）:
-//   背包顺序: Z → biscuit(前缀) → DE → biscuit(末层) → 当前楼层消息
-//   楼层完结 → _rebuildBackpack() → 机械筛 → 追加饼干行 → 提取 DE → splice
+//   背包顺序: Z → biscuit(1条msg,原地追加) → DE(1条msg,原地更新) → 当前楼层消息
+//   楼层完结 → _rebuildBackpack() → 机械筛 → biscuit行追加到已有msg.content → DE重建 → 仅删原始楼层
 //
 // 铁律：
 //   - 零网络调用。一切在客户端完成。
 //   - 建楼中不触发压缩。仅楼层完结时重组背包。
+//   - biscuit/DE 消息对象不变 → 前缀缓存跨楼层命中。仅 content 尾部增长。
 //   - 失败原子回滚（conversation + _ctx 全部字段恢复）。
 //   - DE 单条 ≤6K chars, 总计 ≤20K chars, FIFO 轮转。
 // ============================================================================
@@ -16,7 +17,7 @@
 ; (function () {
     'use strict';
 
-    var COMPACT_VERSION = 'COMPACT-V11-20260713';
+    var COMPACT_VERSION = 'COMPACT-V12-20260714b';
 
     // ═══ 常量 ═══
     var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 2.5);
@@ -375,7 +376,14 @@
                 _flushPending();
                 if (content && content.trim()) {
                     var at = content.replace(/\s+/g, ' ').trim();
-                    lines.push('A: ' + at);
+                    // ★ V8 fix: 所有 fatal 楼层（含已恢复）标记 [ERR]，带时间戳
+                    if (m._error) {
+                        var errPrefix = '[ERR]';
+                        if (m._errorTime) errPrefix += ' [' + m._errorTime + ']';
+                        lines.push(errPrefix + ' ' + at);
+                    } else {
+                        lines.push('A: ' + at);
+                    }
                 }
                 continue;
             }
@@ -520,37 +528,90 @@
         // 从头部驱逐
         while (totalChars > DE_MAX_CHARS && entries.length > 0) {
             var removedStr = _serializeDeEntry(entries[0]);
-            totalChars -= (removedStr.length + 2);
-            entries.shift();
+           // ════════════════════════════════════════════════
+    // _parseBiscuitFromContent — 从 biscuit 消息 content 解析楼层行
+    // ════════════════════════════════════════════════
+    function _parseBiscuitFromContent(content) {
+        var lines = [];
+        if (!content) return lines;
+        var parts = content.split(/\n(?==== F\d+ ===)/);
+        for (var i = 0; i < parts.length; i++) {
+            var ptext = parts[i].trim();
+            if (!ptext) continue;
+            var fm = ptext.match(/^=== F(\d+) ===/);
+            var fn = fm ? parseInt(fm[1], 10) : 0;
+            if (fn > 0) lines.push({ n: fn, text: ptext });
         }
+        lines.sort(function(a, b) { return a.n - b.n; });
+        return lines;
     }
 
     // ════════════════════════════════════════════════
-    // _rebuildBackpack — 楼层完结时重组背包（V11 核心）
+    // _findDynamicMsg — 在 conversation 中查找指定 tag 的动态消息
+    // ════════════════════════════════════════════════
+    function _findDynamicMsg(conv, startIdx, tag) {
+        for (var i = startIdx; i < conv.length; i++) {
+            if (conv[i][tag]) return { msg: conv[i], idx: i };
+            if (!conv[i]._dynamic) break;
+        }
+        return null;
+    }
+
+    // ════════════════════════════════════════════════
+    // _rebuildBackpack — 楼层完结时重组背包（V12 核心：原地追加，零 splice）
     // 调用时机: onDone 中，floor 封顶后
     // ════════════════════════════════════════════════
     AgentLoop.prototype._rebuildBackpack = async function () {
         var self = this;
+        var persistentCount = self._persistentCount || 0;
 
         // ── 1. 找到当前楼层在 conversation 中的起始位置 ──
-        // 跳过 Z(_persistent) + 已有 biscuit/de(_dynamic) 消息
-        var floorStart = self._persistentCount || 0;
-        for (var i = floorStart; i < self.conversation.length; i++) {
-            if (!self.conversation[i]._persistent && !self.conversation[i]._dynamic && !self.conversation[i]._compressed) {
+        var floorStart = persistentCount;
+        for (var i = persistentCount; i < self.conversation.length; i++) {
+            if (!self.conversation[i]._persistent && !self.conversation[i]._dynamic) {
                 floorStart = i;
                 break;
             }
-            // 全是动态消息→floorStart 在末尾
             if (i === self.conversation.length - 1) floorStart = self.conversation.length;
         }
 
-        if (floorStart >= self.conversation.length) {
-            self.log('◆ Backpack: no floor messages to compress (floorStart=' + floorStart + ')');
-            return;
-        }
+        if (floorStart >= self.conversation.length) return;
 
-        var floorMsgs = self.conversation.slice(floorStart);
+        // ★ V2 fix: 仅压缩当前楼层的消息，不压缩更早的楼层（含未恢复的 fatal 楼层）
+        var floorMsgs = [];
         var floorNum = self._ctx.totalFloors;
+        // 收集所有待压缩的楼层消息（分组处理）
+        var _allRawMsgs = self.conversation.slice(floorStart);
+        var _floorGroups = {};  // floorNum → msgs[]
+        for (var _fi = 0; _fi < _allRawMsgs.length; _fi++) {
+            var _fm2 = _allRawMsgs[_fi];
+            var _ffn = _fm2._floor || 0;
+            if (_ffn > 0) {
+                if (!_floorGroups[_ffn]) _floorGroups[_ffn] = [];
+                _floorGroups[_ffn].push(_fm2);
+            }
+        }
+        // 当前楼层消息（必定压缩）
+        floorMsgs = _floorGroups[floorNum] || [];
+        // 更早的楼层：仅压缩已全部恢复或无错误的楼层
+        var _olderFloorNums = Object.keys(_floorGroups).map(Number).filter(function(fn) { return fn < floorNum; }).sort(function(a,b){return a-b;});
+        for (var _ofi = 0; _ofi < _olderFloorNums.length; _ofi++) {
+            var _ofn = _olderFloorNums[_ofi];
+            var _ofMsgs = _floorGroups[_ofn];
+            var _hasActiveErrors = false;
+            for (var _omi = 0; _omi < _ofMsgs.length; _omi++) {
+                if (_ofMsgs[_omi]._error && !_ofMsgs[_omi]._recovered) {
+                    _hasActiveErrors = true;
+                    break;
+                }
+            }
+            if (!_hasActiveErrors) {
+                // 合并到待压缩消息中
+                for (var _omi2 = 0; _omi2 < _ofMsgs.length; _omi2++) {
+                    floorMsgs.push(_ofMsgs[_omi2]);
+                }
+            }
+        }
         var nowTs = Math.floor(Date.now() / 1000);
 
         self.log('◆ Backpack: rebuilding — floor ' + floorNum + ', ' + floorMsgs.length + ' msgs');
@@ -564,16 +625,20 @@
             floorMsgs: floorMsgs.length
         });
 
-        // ── 3. 恢复：若 biscuitLines 空但 conversation 已有 biscuit，从 conversation 解析 ──
+        // ── 3. 恢复：若 biscuitLines 空，从 conversation 解析已有 biscuit/de ──
         if (!self._ctx.biscuitLines || self._ctx.biscuitLines.length === 0) {
             self._ctx.biscuitLines = [];
             self._ctx.deEntries = self._ctx.deEntries || [];
-            // 扫描 conversation 中已有的 biscuit/de 消息，提取内容
-            var persistentCount2 = self._persistentCount || 0;
-            for (var ri = persistentCount2; ri < self.conversation.length; ri++) {
+            var v11Cleanup = [];  // V11→V12 升级：需移除的旧消息索引
+            for (var ri = persistentCount; ri < self.conversation.length; ri++) {
                 var rm = self.conversation[ri];
+                // V12: 单条 _biscuit 消息
+                if (rm._biscuit && rm.content) {
+                    self._ctx.biscuitLines = _parseBiscuitFromContent(rm.content);
+                    break;  // 找到 V12 格式即停
+                }
+                // V11 兼容：_biscuitPrefix + _biscuitLatest（需清理）
                 if (rm._biscuitPrefix && rm.content) {
-                    // 前缀包含多个楼层，按 "=== FN ===" 分割
                     var parts = rm.content.split(/\n(?==== F\d+ ===)/);
                     for (var rj = 0; rj < parts.length; rj++) {
                         var ptext = parts[rj].trim();
@@ -582,16 +647,33 @@
                         var fn2 = fm ? parseInt(fm[1], 10) : 0;
                         self._ctx.biscuitLines.push({ n: fn2, text: ptext });
                     }
-                } else if (rm._biscuitLatest && rm.content) {
+                    v11Cleanup.push(ri);
+                    continue;
+                }
+                if (rm._biscuitLatest && rm.content) {
                     var fm2 = rm.content.match(/^=== F(\d+) ===/);
                     var fn3 = fm2 ? parseInt(fm2[1], 10) : 0;
                     self._ctx.biscuitLines.push({ n: fn3, text: rm.content.trim() });
-                } else if (rm._deBlock && rm.content) {
-                    // DE 恢复：保留原始文本，后续追加时合并
+                    v11Cleanup.push(ri);
+                    continue;
+                }
+                if (rm._deBlock && rm.content) {
                     self._ctx._rawDeText = rm.content;
+                    // V11 DE 消息也需标记清理（后续会用 V12 格式重建）
+                    if (v11Cleanup.length > 0) v11Cleanup.push(ri);
                 }
             }
-            // 按楼层号排序
+            // ★ V11→V12 升级：移除旧格式消息（从后往前删，索引不乱）
+            for (var ci = v11Cleanup.length - 1; ci >= 0; ci--) {
+                self.conversation.splice(v11Cleanup[ci], 1);
+            }
+            // 去重 + 排序
+            var seen = {};
+            self._ctx.biscuitLines = self._ctx.biscuitLines.filter(function(l) {
+                if (seen[l.n]) return false;
+                seen[l.n] = true;
+                return true;
+            });
             self._ctx.biscuitLines.sort(function(a, b) { return a.n - b.n; });
             if (self._ctx.biscuitLines.length > 0) {
                 self.log('◆ Backpack: recovered ' + self._ctx.biscuitLines.length + ' biscuit floors from conversation');
@@ -604,87 +686,82 @@
         var oldConvLen = self.conversation.length;
 
         try {
-            // ── 4. 机械筛：当前楼层 → 饼干行 ──
+            // ── 5. 机械筛：当前楼层 → 饼干行 ──
             var biscuitText = _buildCompressedBiscuit(floorMsgs);
             if (!biscuitText || biscuitText.length < 20) {
-                // 太短，可能出错，但保留
                 biscuitText = '=== F' + floorNum + ' ===\nQ: (压缩失败，内容过短)';
             }
 
-            // ── 5. 提取 DE 条目 ──
+            // ── 6. 提取 DE 条目 ──
             var newDeEntries = _extractDeEntries(floorMsgs, floorNum, nowTs);
 
-            // ── 6. 更新 biscuitLines ──
+            // ── 7. 更新内存状态 ──
             if (!self._ctx.biscuitLines) self._ctx.biscuitLines = [];
             self._ctx.biscuitLines.push({ n: floorNum, text: biscuitText });
 
-            // ── 7. 更新 deEntries ──
             if (!self._ctx.deEntries) self._ctx.deEntries = [];
             for (var ei = 0; ei < newDeEntries.length; ei++) {
                 self._ctx.deEntries.push(newDeEntries[ei]);
             }
             _trimDeEntries(self._ctx.deEntries);
 
-            // ── 8. 移除旧动态消息 + 原始楼层消息 ──
-            // 先移除原始楼层消息
-            self.conversation.splice(floorStart, floorMsgs.length);
-            // 再移除旧的 biscuit/de 系统消息（在 persistentCount 和 floorStart 之间）
-            var oldDynamicCount = 0;
-            var persistentCount = self._persistentCount || 0;
-            for (var di = persistentCount; di < self.conversation.length; di++) {
-                if (self.conversation[di]._dynamic || self.conversation[di]._compressed) {
-                    oldDynamicCount++;
-                } else {
-                    break;
+            // ── 8. ★ 删已压缩的楼层消息（精确匹配，保留未压缩的 fatal 楼层） ──
+            //    V2 fix: floorMsgs 可能不连续（跳过了有活跃错误的楼层），逐条删除
+            for (var _ci = self.conversation.length - 1; _ci >= floorStart; _ci--) {
+                for (var _fi2 = 0; _fi2 < floorMsgs.length; _fi2++) {
+                    if (self.conversation[_ci] === floorMsgs[_fi2]) {
+                        self.conversation.splice(_ci, 1);
+                        break;
+                    }
                 }
             }
-            if (oldDynamicCount > 0) {
-                self.conversation.splice(persistentCount, oldDynamicCount);
+
+            // ── 9. ★ 找已有 biscuit 消息 → 原地追加 content ──
+            var biscuitFound = _findDynamicMsg(self.conversation, persistentCount, '_biscuit');
+            if (biscuitFound) {
+                // ★ 原地追加：消息对象不变 → 前缀缓存命中
+                biscuitFound.msg.content = biscuitFound.msg.content + '\n\n' + biscuitText;
+            } else {
+                // 首次：创建 biscuit 消息
+                self.conversation.splice(persistentCount, 0,
+                    { role: 'system', content: biscuitText, _dynamic: true, _biscuit: true });
             }
 
-            // ── 9. 注入新 biscuit/de 消息 ──
-            var insertPos = persistentCount;
-            var lines = self._ctx.biscuitLines;
-
-            // 9a. 饼干前缀（除最后一层外全部）
-            if (lines.length > 1) {
-                var prefixLines = lines.slice(0, -1);
-                var prefixHeader = '═══ COMPRESSED FLOORS F' + prefixLines[0].n + '-F' + prefixLines[prefixLines.length - 1].n + ' (' + prefixLines.length + ' floors) ═══\n\n';
-                var prefixText = prefixHeader;
-                for (var bi = 0; bi < prefixLines.length; bi++) {
-                    prefixText += prefixLines[bi].text + '\n\n';
-                }
-                self.conversation.splice(insertPos, 0,
-                    { role: 'system', content: prefixText.trim(), _dynamic: true, _biscuitPrefix: true });
-                insertPos++;
-            }
-
-            // 9b. DE
+            // ── 10. ★ 找已有 DE 消息 → 原地更新 content ──
             var deText = _serializeDeBlock(self._ctx.deEntries);
-            // ★ 恢复路径：若 deEntries 空但 conversation 中已有 DE，保留原文本
+            // 恢复路径：deEntries 空但 conversation 中有 DE（V11 升级场景）
             if (!deText && self._ctx._rawDeText) {
                 deText = self._ctx._rawDeText;
                 self._ctx._rawDeText = null;
             }
-            if (deText) {
-                self.conversation.splice(insertPos, 0,
+
+            var deFound = _findDynamicMsg(self.conversation, persistentCount, '_deBlock');
+            if (deFound) {
+                if (deText) {
+                    // ★ 原地更新：DE 条目仅尾部追加时 → 前缀缓存命中
+                    //    FIFO 驱逐时前缀会变 → 仅 DE 缓存 miss（罕见）
+                    deFound.msg.content = deText;
+                } else {
+                    // DE 空 → 移除消息
+                    self.conversation.splice(deFound.idx, 1);
+                }
+            } else if (deText) {
+                // 首次：插入 DE 消息（在 biscuit 之后）
+                var biscuitIdx = persistentCount;
+                var bf2 = _findDynamicMsg(self.conversation, persistentCount, '_biscuit');
+                if (bf2) biscuitIdx = bf2.idx;
+                self.conversation.splice(biscuitIdx + 1, 0,
                     { role: 'system', content: deText, _dynamic: true, _deBlock: true });
-                insertPos++;
             }
 
-            // 9c. 饼干末层
-            var latest = lines[lines.length - 1];
-            self.conversation.splice(insertPos, 0,
-                { role: 'system', content: latest.text, _dynamic: true, _biscuitLatest: true });
-
-            // ── 10. 重置计费计数器 ──
+            // ── 11. 重置计费计数器 ──
             self._lastApiPromptTokens = 0;
             self._lastApiTotalTokens = 0;
             self._lastApiCompletionTokens = 0;
 
-            // ── 11. 更新 _ctx 用于恢复 ──
+            // ── 12. 更新 _ctx ──
             self._ctx.lastCompressedFloor = floorNum;
-            self._ctx.narrative = 'biscuit:' + lines.length + ' de:' + self._ctx.deEntries.length;
+            self._ctx.narrative = 'biscuit:' + self._ctx.biscuitLines.length + ' de:' + self._ctx.deEntries.length;
             self._ctx.facts = [];
 
             // ── 快照（压缩后） ──
@@ -692,23 +769,18 @@
             var saved = beforeTokens - afterTokens;
             _snapshotLog(self, 'after_rebuild', {
                 floor: floorNum,
-                biscuitFloors: lines.length,
+                biscuitFloors: self._ctx.biscuitLines.length,
                 deEntries: self._ctx.deEntries.length,
                 deChars: deText ? deText.length : 0,
                 afterTokens: Math.round(afterTokens),
                 savedTokens: Math.round(saved)
             });
 
-            self.log('◆ Backpack: done — biscuit ' + lines.length + ' floors, DE ' + self._ctx.deEntries.length + ' entries, saved ~' + Math.round(saved) + ' tokens');
+            self.log('◆ Backpack: done — biscuit ' + self._ctx.biscuitLines.length + ' floors, DE ' + self._ctx.deEntries.length + ' entries, saved ~' + Math.round(saved) + ' tokens');
         } catch (err) {
             // ★ 回滚
             self._ctx.biscuitLines = oldBiscuitLines;
             self._ctx.deEntries = oldDeEntries;
-            // 恢复 conversation（如果被修改了）
-            if (self.conversation.length !== oldConvLen) {
-                // conversation 可能已被 splice，从 _ctx 状态重建
-                // 简化处理：不做复杂恢复，只记录错误
-            }
 
             _snapshotLog(self, 'after_rebuild_failed', {
                 floor: floorNum,
@@ -716,6 +788,8 @@
             });
 
             self.log('✗ Backpack: rebuild FAILED — ' + (err.message || err));
+        }
+    };        self.log('✗ Backpack: rebuild FAILED — ' + (err.message || err));
         }
     };
 

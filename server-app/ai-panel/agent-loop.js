@@ -85,7 +85,7 @@ var AgentLoop = (function () {
         // 上下文引擎
         this._compressing = false;
         this._compressAttemptedThisFloor = false;
-        this._ctx = { narrative: '', facts: [], totalFloors: 0, lastCompressedFloor: 0, floorArchives: [] };
+        this._ctx = { narrative: '', facts: [], totalFloors: 0, lastCompressedFloor: 0, floorArchives: [], biscuitLines: [], deEntries: [] };
         this._compactTraces = [];  // 埋点日志（最近 10 条）
 
         // 计费
@@ -638,8 +638,8 @@ var AgentLoop = (function () {
                     continue;
                 }
 
-                // V11: 压缩守护已移除。建楼中不触发压缩。每层楼完结时自动 _rebuildBackpack()。
-                if (false) { // V11: mid-building compress removed, use _rebuildBackpack on floor completion
+                // V12: 压缩守护已移除。建楼中不触发压缩。每层楼完结时自动 _rebuildBackpack()。
+                if (false) { // V12: mid-building compress removed, use _rebuildBackpack on floor completion
                     var _apiTokens = self._lastApiPromptTokens || 0;
                     // ★ 冷启动兜底：磁盘加载 quest 后无 usage，用估算防首轮 400
                     if (_apiTokens === 0) { _apiTokens = self._estimateTotalTokens(); }
@@ -653,8 +653,8 @@ var AgentLoop = (function () {
                     } catch (_) { }
                     if (_threshold === 600000) {
                         try {
-                            if (typeof parent !== 'undefined' && parent.window &parent.window.qqqideDefaults) {
-                                _threshold = parent.window.qqqideDefaults['ai.compressThreshold'] * 1000;0;
+                            if (typeof parent !== 'undefined' && parent.window & parent.window.qqqideDefaults) {
+                                _threshold = parent.window.qqqideDefaults['ai.compressThreshold'] * 1000; 0;
                             }
                         } catch (_) { }
                     }
@@ -843,8 +843,8 @@ var AgentLoop = (function () {
                     var _bill = self._lastBilling; self._lastBilling = null;
                     var _cd = self._lastCacheDiag; self._lastCacheDiag = null;
                     self._houses.push({ index: self._houseIndex, type: 'final', tools: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', wgeCost: _bill ? _bill.wgeCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined, tier: self._lastTier ? self._lastTier.label : '' });
-                    // ★ P10/P11 根治：优先用流式累积内容（并发安全），回退到 response.content
-                    var _finalContent = self._streamingContent || response.content;
+                    // ★ P10/P11 根治：优先用 API 完整返回（权威），流式累积为备
+                    var _finalContent = response.content || self._streamingContent;
                     self._streamingContent = null;
                     var assistantMsg = { role: 'assistant', content: _finalContent, _floor: self._ctx.totalFloors };
                     var _lastConv = self.conversation[self.conversation.length - 1];
@@ -1005,7 +1005,8 @@ var AgentLoop = (function () {
                         self._floorTiming.networkMs += finalResp._ttfbMs;
                         self._floorTiming.aiMs += finalResp._streamMs;
                     }
-                    var _finalContent2 = self._streamingContent || finalResp.content;
+                    // ★ 优先用 API 完整返回（权威），流式累积为备
+                    var _finalContent2 = finalResp.content || self._streamingContent;
                     self._streamingContent = null;
                     self.conversation.push({ role: 'assistant', content: _finalContent2, _floor: self._ctx.totalFloors });
                     var finalCostGe = self._floorCostWge / 10000;
