@@ -18,21 +18,21 @@ function bootStatusbar(boot) {
   // ═══ 全球在线人数 — fetch 极轻轮询（30字节/5分钟，跨窗口稳定）═══
   // 之前用 EventSource 但多窗口环境下第二个窗口起被 CORS 静默拦截
   // 而 online-total 端点是纯公开 GET + CF Edge Cache，真零成本
-  (function() {
+  (function () {
     if (!$onl) return;
     var _onlLastFetch = 0;
     function fetchOnline() {
       var now = Date.now();
       if (now - _onlLastFetch < 240000) return; // 4min 冷却
       _onlLastFetch = now;
-      fetch('https://gh555.com/api/goods/qqqide/online-total', { cache: 'no-cache' })
-        .then(function(r) { if (!r.ok) return null; return r.json(); })
-        .then(function(data) {
+      fetch('https://direct-cn.gh555.com/api/goods/qqqide/online-total', { cache: 'no-cache' })
+        .then(function (r) { if (!r.ok) return null; return r.json(); })
+        .then(function (data) {
           if (data && data.ok && typeof data.total === 'number') {
             $onl.textContent = data.total > 0 ? data.total.toLocaleString() : '0';
           }
         })
-        .catch(function() { /* 静默 */ });
+        .catch(function () { /* 静默 */ });
     }
     fetchOnline();
     setInterval(fetchOnline, 300000); // 5 分钟（对齐服务器刷新周期）
@@ -190,14 +190,14 @@ function bootStatusbar(boot) {
     fetch('https://gh555.com/api/qqq/free-budget', {
       headers: { 'Authorization': 'Bearer ' + token }
     })
-    .then(function (r) { if (!r.ok) return null; return r.json(); })
-    .then(function (data) {
-      if (data && data.ok) {
-        _freeBudgetData = data;
-        updateFreeBudgetUI();
-      }
-    })
-    .catch(function () { /* ignore */ });
+      .then(function (r) { if (!r.ok) return null; return r.json(); })
+      .then(function (data) {
+        if (data && data.ok) {
+          _freeBudgetData = data;
+          updateFreeBudgetUI();
+        }
+      })
+      .catch(function () { /* ignore */ });
   }
 
   function updateFreeBudgetUI() {

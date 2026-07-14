@@ -491,6 +491,10 @@ async function _executeSend(intent) {
                             _newDiv.innerHTML = _rendered;
                             _targetDiv2._contentWrap.appendChild(_newDiv);
                         } else {
+                            // ★ 临时诊断：记录覆盖前内容（流式阶段渲染的内容）
+                            if (typeof _logRenderEvent === 'function') {
+                                _logRenderEvent('before_overwrite', qid, floorNum, _targetDiv2._contentWrap.innerHTML || '');
+                            }
                             _targetDiv2._contentWrap.innerHTML = _rendered;
                             _targetDiv2._firstHouseDone = true;
                         }

@@ -489,11 +489,33 @@
       onClose: null,
     };
 
-    const btn = createTabBtn(tab, gaeaGrp);
-    gaeaGrp.barEl.appendChild(btn);
+    // Non-closable tabs always at front (leftmost)
+    var btn = createTabBtn(tab, gaeaGrp);
+    var pane = createTabPane(tab);
 
-    const pane = createTabPane(tab);
-    gaeaGrp.contentEl.appendChild(pane);
+    if (tab.closable === false) {
+      // Insert at position 0: before any closable tabs
+      var firstClosableBtn = null;
+      var firstClosablePane = null;
+      for (var i = 0; i < gaeaGrp.barEl.children.length; i++) {
+        var child = gaeaGrp.barEl.children[i];
+        var tid = child.dataset && child.dataset.tabId;
+        if (tid) {
+          var t = gaeaGrp.tabs.find(function(tab) { return tab.id == tid; });
+          if (t && t.closable !== false) { firstClosableBtn = child; break; }
+        }
+      }
+      var paneIdx = firstClosableBtn ? Array.from(gaeaGrp.contentEl.children).indexOf(gaeaGrp.contentEl.querySelector('[data-tab-id="' + firstClosableBtn.dataset.tabId + '"]')) : -1;
+      firstClosablePane = paneIdx >= 0 ? gaeaGrp.contentEl.children[paneIdx] : null;
+
+      gaeaGrp.barEl.insertBefore(btn, firstClosableBtn);
+      gaeaGrp.contentEl.insertBefore(pane, firstClosablePane);
+      gaeaGrp.tabs.unshift(tab);
+    } else {
+      gaeaGrp.barEl.appendChild(btn);
+      gaeaGrp.contentEl.appendChild(pane);
+      gaeaGrp.tabs.push(tab);
+    }
 
     // render content
     if (renderFn) {
@@ -501,7 +523,6 @@
       catch (e) { pane.textContent = 'render error: ' + (e && e.message); }
     }
 
-    gaeaGrp.tabs.push(tab);
     activateTab(gaeaGrp, tabId);
     return tab;
   }
@@ -948,34 +969,66 @@
   }
 
   // ---- Public: init ----
+  function ensureRoamTab() {
+    var gaeaGrp = getGaeaGroup();
+    if (!gaeaGrp) return;
+    // Check if a roam tab already exists
+    var hasRoam = gaeaGrp.tabs.some(function(t) { return t.gaeaId === 'roam'; });
+    if (hasRoam) return;
+    // Create one via gaea-host if rage is registered
+    if (window.qqqGaea && window.qqqGaea._createRoamTab) {
+      window.qqqGaea._createRoamTab();
+    } else if (window.qqqGaea && window.qqqGaea.get && window.qqqGaea.active) {
+      // Fallback: if rage has a roam tab defined, re-show the active goods (rage) to re-create it
+      var activeId = window.qqqGaea.active();
+      if (activeId) window.qqqGaea.show(activeId);
+    }
+  }
+
   function init(host) {
     hostEl = host;
     hostEl.innerHTML = '';
     if (window.ResizeObserver) {
-      new ResizeObserver(() => _onGroupResize()).observe(hostEl);
+      new ResizeObserver(function() {
+        _onGroupResize();
+        ensureRoamTab();
+      }).observe(hostEl);
     }
     window.addEventListener('resize', _onGroupResize);
     addGroup('gaea');
     setTimeout(function () { restoreOpenTabs(); }, 100);
+    // Keep roaming: ensure roam tab exists every 500ms until it does
+    var _roamGuard = setInterval(function() {
+      ensureRoamTab();
+      var gaeaGrp = getGaeaGroup();
+      if (gaeaGrp && gaeaGrp.tabs.some(function(t) { return t.gaeaId === 'roam'; })) {
+        clearInterval(_roamGuard);
+      }
+    }, 500);
+    setTimeout(function() { clearInterval(_roamGuard); }, 15000);
   }
 
+  // ---- closeTabById override: re-create Roam if closed + persist ----
+  var _closeTabByIdHook = closeTabById;
+  closeTabById = function (grp, tabId) {
+    _closeTabByIdHook(grp, tabId);
+    if (grp && grp.type === 'gaea') {
+      setTimeout(function() { ensureRoamTab(); }, 50);
+    }
+    persistOpenTabs();
+  };
+
   // Hook: save after every tab change
-  const _origOpenFile = openFile;
+  var _origOpenFile = openFile;
   openFile = function (filePath, opts) {
     const result = _origOpenFile(filePath, opts);
     persistOpenTabs();
     return result;
   };
 
-  const _origActivateTab = activateTab;
+  var _origActivateTab = activateTab;
   activateTab = function (grp, tabId) {
     _origActivateTab(grp, tabId);
-    persistOpenTabs();
-  };
-
-  const _origCloseTabById = closeTabById;
-  closeTabById = function (grp, tabId) {
-    _origCloseTabById(grp, tabId);
     persistOpenTabs();
   };
 
