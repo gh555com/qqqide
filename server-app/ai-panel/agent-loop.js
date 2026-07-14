@@ -1202,6 +1202,12 @@ var AgentLoop = (function () {
     if (!AgentLoop.prototype._updateSendBtnForCompress) {
         AgentLoop.prototype._updateSendBtnForCompress = function () { };
     }
+    if (!AgentLoop.prototype._rebuildBackpack) {
+        AgentLoop.prototype._rebuildBackpack = async function () { };
+    }
+    if (!AgentLoop.prototype._compressContext) {
+        AgentLoop.prototype._compressContext = async function () { return { compressed: false, reason: 'module not loaded' }; };
+    }
 
     // ★ 记账埋点：调试账单汇总（floor 完结时调用）
     function _logBillingSummary(ag) {

@@ -17,6 +17,7 @@
 import { ipcMain } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
+import { execFile } from 'child_process';
 import { _sn, _qe, aiNormalizeWhitespace, aiNormalizeCRLF } from './ipc-state';
 
 // ── 空白匹配 span 测量 ──────────────────────────────────────────────────────
@@ -33,6 +34,49 @@ function measureMatchSpan(orig: string, start: number, findText: string,
     }
     // 兜底：如果归一化后永远不等（理论上不可能），fallback 到这里
     return findText.length;
+}
+
+// ── 自动语法门（§19 L1 自动检查，2026-07-14 落地）────────────────────────
+// 每次 edit/create/write 后自动跑语法检查。不通过→拒绝提交+还原文件。
+// JS→node--check, JSON→JSON.parse, 其他跳过。5s 超时。
+async function checkSyntax(filePath: string, originalContent: string | null): Promise<string | null> {
+    const ext = path.extname(filePath).toLowerCase();
+
+    if (ext === '.js' || ext === '.mjs' || ext === '.cjs') {
+        try {
+            await new Promise<void>((resolve, reject) => {
+                execFile(process.execPath, ['--check', filePath],
+                    { timeout: 5000, windowsHide: true },
+                    (err, _stdout, stderr) => {
+                        if (err) reject(new Error(stderr || err.message));
+                        else resolve();
+                    });
+            });
+        } catch (syntaxErr: any) {
+            const msg = (syntaxErr.message || String(syntaxErr)).replace(/\n/g, ' ').substring(0, 200);
+            if (originalContent !== null) {
+                try { await fs.promises.writeFile(filePath, originalContent); } catch (_) {}
+            } else {
+                try { await fs.promises.unlink(filePath); } catch (_) {}
+            }
+            return 'Error: syntax check failed after edit — ' + msg + '. File reverted.';
+        }
+    } else if (ext === '.json') {
+        try {
+            const jsonContent = await fs.promises.readFile(filePath, 'utf8');
+            JSON.parse(jsonContent);
+        } catch (jsonErr: any) {
+            const msg = (jsonErr.message || String(jsonErr)).replace(/\n/g, ' ').substring(0, 200);
+            if (originalContent !== null) {
+                try { await fs.promises.writeFile(filePath, originalContent); } catch (_) {}
+            } else {
+                try { await fs.promises.unlink(filePath); } catch (_) {}
+            }
+            return 'Error: JSON syntax check failed after edit — ' + msg + '. File reverted.';
+        }
+    }
+
+    return null; // OK
 }
 
 export function registerEditIpc(): void {
@@ -214,6 +258,9 @@ export function registerEditIpc(): void {
 
                 try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
                 await fs.promises.writeFile(args.path, content);
+                // ★ 自动语法门（§19 L1）: JS/JSON 语法不过→还原+报错
+                const syntaxErr = await checkSyntax(args.path, originalContent);
+                if (syntaxErr) return syntaxErr;
                 try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
                 const matchInfo = results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1 || r.indexOf('L5') !== -1)
                     ? ' (whitespace-tolerant match used)' : '';
@@ -232,6 +279,9 @@ export function registerEditIpc(): void {
                 try { await fs.promises.access(args.path); return `Error: file already exists: ${args.path}. Use edit_file to modify existing files.`; } catch { /* doesn't exist, proceed */ }
                 try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
                 await fs.promises.writeFile(args.path, args.content);
+                // ★ 自动语法门
+                const syntaxErr2 = await checkSyntax(args.path, null);
+                if (syntaxErr2) return syntaxErr2;
                 try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
                 return `File created: ${args.path} (${args.content.length} chars)`;
             } catch (err: any) {
@@ -267,8 +317,14 @@ export function registerEditIpc(): void {
                         }
                     } catch (_) { }
                 }
+                // 捕获原始内容（用于语法检查失败时还原）
+                let origContent: string | null = null;
+                try { origContent = await fs.promises.readFile(args.path, 'utf8'); } catch (_) {}
                 try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
                 await fs.promises.writeFile(args.path, args.content);
+                // ★ 自动语法门
+                const syntaxErr3 = await checkSyntax(args.path, origContent);
+                if (syntaxErr3) return syntaxErr3;
                 try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
                 return `File written: ${args.path} (${args.content.length} chars)`;
             } catch (err: any) {

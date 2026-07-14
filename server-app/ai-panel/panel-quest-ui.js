@@ -1226,24 +1226,44 @@ $queueBtn.onclick = function () {
     // 主题切换 → 立即刷滑块色 + 滑轨底色 + 粒子色
     var themeObs = new MutationObserver(function () {
         var co2 = _qhColors();
-        track.style.background = co2.trackBg;
         thumb.style.background = co2.c;
         for (var i = 0; i < _bubbles.length; i++) {
             _bubbles[i].style.background = co2.bubbleC;
         }
+        // trackBg 复用 _updateBubbles 的统一判定（panel-focused + 非编辑态）
+        _updateBubbles();
     });
     themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-    // 焦点切换 → 水箱显隐 + 粒子显隐
-    var focusObs = new MutationObserver(function () {
-        var on = document.body.classList.contains('panel-focused');
-        track.style.background = _qhColors().trackBg;
+    // ★ 是否在编辑框内（输入法/编辑时 12qw 键不响应滚动 → 水箱粒子隐藏）
+    function _isEditingFocus() {
+        var ae = document.activeElement;
+        if (!ae) return false;
+        return ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable;
+    }
+    function _trackBg(on) {
+        if (!on) return 'transparent';
+        var dk = document.documentElement.getAttribute('data-theme') === 'dark';
+        return dk
+            ? 'linear-gradient(to bottom, rgba(95,105,45,0.12), rgba(145,155,80,0.45))'
+            : 'linear-gradient(to bottom, rgba(75,85,30,0.15), rgba(115,125,60,0.5))';
+    }
+    function _updateBubbles() {
+        var on = document.body.classList.contains('panel-focused') && !_isEditingFocus();
+        track.style.background = _trackBg(on);
         _setBubbles(on);
-    });
+    }
+
+    // 焦点切换 → 水箱显隐 + 粒子显隐
+    var focusObs = new MutationObserver(_updateBubbles);
     focusObs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
+    // 编辑框焦点进出 → 水箱粒子联动（12qw 键不可用时不显示）
+    document.addEventListener('focusin', _updateBubbles);
+    document.addEventListener('focusout', _updateBubbles);
+
     // 初始焦点状态
-    if (document.body.classList.contains('panel-focused')) _setBubbles(true);
+    if (document.body.classList.contains('panel-focused') && !_isEditingFocus()) _setBubbles(true);
 
     host.appendChild(track);
     host.appendChild(thumb);

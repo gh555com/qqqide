@@ -223,7 +223,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
             if (d && d.ok && d.total_installations > 0) {
               labelEl.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
             }
-          }).catch(function () {});
+          }).catch(function () { });
         }
       })(actLab);
 
@@ -312,7 +312,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         var br = window.qqqideBridge;
         if (!br || !br.kopeA) return;
         if (kopeBtn.textContent === '停止') {
-          br.kopeA.stop().then(function () { _refreshKopeBtn(); }).catch(function () {});
+          br.kopeA.stop().then(function () { _refreshKopeBtn(); }).catch(function () { });
         } else {
           br.kopeA.start().then(function (r) {
             if (r && r.ok) {
@@ -352,7 +352,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         if (!_kopeCbReady) return;
         var br = window.qqqideBridge;
         if (br && br.kopeA) {
-          br.kopeA.setAutoStart(kopeCb.checked).catch(function () {});
+          br.kopeA.setAutoStart(kopeCb.checked).catch(function () { });
         }
       });
       kopeCb.addEventListener('click', function (e) { e.stopPropagation(); });

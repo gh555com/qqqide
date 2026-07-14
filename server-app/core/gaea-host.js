@@ -202,6 +202,50 @@
     _persistActive();
   }
 
+  // ---- Open (manifest-driven routing, 2026-07-14) ----
+  // 统一入口：根据 goods manifest 自动路由到 panel(A区) 或 tabs(X区)。
+  // 消费者只需调 qqqGaea.open(id, opts)，不再硬编码 show()/addGaeaTab()。
+  // opts.questId / opts.panelId — 透传给动态 tab 创建（如 conv 每 quest 独立标签）。
+  function open(id, opts) {
+    opts = opts || {};
+    if (!goods.has(id)) return false;
+    var def = goods.get(id);
+
+    // ① Panel 路由（A 区）
+    if (def.panel && (def.panel.build || def.panel.url || def.panel.render)) {
+      show(id);
+    }
+
+    // ② Tab 路由（X 区 gaea 分组）— 静态 tabs（manifest 声明）
+    if (def.tabs && typeof def.tabs === 'object' && window.qqqTabs) {
+      var gaeaGrp = window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : null;
+      var tabIds = Object.keys(def.tabs);
+      for (var ti = 0; ti < tabIds.length; ti++) {
+        var tid = tabIds[ti];
+        var already = gaeaGrp && gaeaGrp.tabs && gaeaGrp.tabs.some(function (t) { return t.gaeaId === tid; });
+        if (already) continue;
+        var tabDef = def.tabs[tid];
+        if (typeof tabDef.build === 'function') {
+          window.qqqTabs.addGaeaTab(tid, tabDef.title || tid, tabDef.build, { closable: tabDef.closable !== false });
+        }
+      }
+      // 激活第一个 tab
+      if (tabIds.length > 0 && gaeaGrp) {
+        var g2 = window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : gaeaGrp;
+        var ft = g2 && g2.tabs && g2.tabs.find(function (t) { return t.gaeaId === tabIds[0]; });
+        if (ft && g2.activeTabId !== ft.id) {
+          window.qqqTabs.activateTab(g2, ft.id);
+        }
+      }
+    }
+
+    // ③ 动态 tab（provides 声明 'tab:xxx'，每 quest 独立标签）
+    //    由消费者（如 AI 面板「管理」按钮）自行调用 addGaeaTab，
+    //    本函数仅做路由提示。
+
+    return true;
+  }
+
   function _folderFromUrl() {
     var m = window.location.search.match(/[?&]folder=([^&]+)/);
     if (m) {
@@ -355,5 +399,5 @@
   });
 
   // ---- Expose ----
-  window.qqqGaea = { build, register, remove, show, list, active, get, next, prev, syncTheme };
+  window.qqqGaea = { build, register, remove, show, open, list, active, get, next, prev, syncTheme };
 })();
