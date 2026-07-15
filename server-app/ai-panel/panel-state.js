@@ -141,11 +141,11 @@ function _setBulletGold(on) {
         if (_bi) {
             if (on) {
                 if (document.documentElement.getAttribute('data-theme') === 'dark') {
-                    // 暗主题：亮金
-                    _bi.style.cssText = 'filter: invert(1) sepia(1) saturate(40) hue-rotate(350deg) brightness(1.1) !important';
+                    // 暗主题：亮金（还原最初 OK 版本）
+                    _bi.style.cssText = 'filter: invert(1) sepia(1) saturate(30) hue-rotate(335deg) !important';
                 } else {
-                    // 浅主题：暗金 #d0a350，加深补偿透明度
-                    _bi.style.cssText = 'filter: invert(1) sepia(1) saturate(80) hue-rotate(350deg) brightness(0.65) contrast(1.3) !important';
+                    // 浅主题：深黄暗金，白底清晰
+                    _bi.style.cssText = 'filter: invert(1) sepia(1) saturate(70) hue-rotate(330deg) brightness(0.55) !important';
                 }
             } else {
                 _bi.style.cssText = '';
@@ -158,6 +158,10 @@ function _setBulletGold(on) {
 window.addEventListener('focus', function () { _setPanelFocus(true); _setBulletGold(true); });
 window.addEventListener('blur', function () { _setPanelFocus(false); /* 保持子弹金色，不解绑 */ });
 document.addEventListener('mousedown', function () { _setPanelFocus(true); _setBulletGold(true); });
+// ★ 主题切换 → 重绘子弹金色
+var _themeWatchObs = new MutationObserver(function(){if(_panelFocused)_setBulletGold(true);});
+try{_themeWatchObs.observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});}catch(e){}
+
 // ★ 互斥焦点：收到父窗口 defocus 通知时撤除金色边框
 window.addEventListener('message', function (e) {
     if (!e.data) return;

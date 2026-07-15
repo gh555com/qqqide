@@ -2,10 +2,11 @@
 // ipc-edit.ts — 编辑工具 IPC: edit_file / create_file / delete_file / write_file
 // 含 qwr 机器保护 (_sn / _qe)
 //
-// edit_file 三级匹配引擎:
+// edit_file 五级匹配引擎:
 //   L1 — 精确匹配
 //   L1b — CRLF 归一化（\r\n→\n, \r→\n）
 //   L2  — 空白归一化（[\t ]+→' ', [\r\n]+→\n）
+//   L3  — 行级匹配（逐行trim后序列比对）
 //   L5  — 原始字节匹配（Buffer.indexOf，不做任何处理）
 //
 // ★ 2026-07-09 空白安全加固:
@@ -17,7 +18,7 @@
 import { ipcMain } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { execFile } from 'child_process';
+import * as vm from 'vm';
 import { _sn, _qe, aiNormalizeWhitespace, aiNormalizeCRLF } from './ipc-state';
 
 // ── 空白匹配 span 测量 ──────────────────────────────────────────────────────
@@ -36,43 +37,53 @@ function measureMatchSpan(orig: string, start: number, findText: string,
     return findText.length;
 }
 
-// ── 自动语法门（§19 L1 自动检查，2026-07-14 落地）────────────────────────
+// ── 自动语法门（§59，2026-07-14 落地）────────────────────────
 // 每次 edit/create/write 后自动跑语法检查。不通过→拒绝提交+还原文件。
-// JS→node--check, JSON→JSON.parse, 其他跳过。5s 超时。
-async function checkSyntax(filePath: string, originalContent: string | null): Promise<string | null> {
+// ★ 使用 vm.Script 同进程解析（零 spawn，秒级完成，无 Electron 二进制兼容问题）。
+//   vm.Script 与 node --check 用同一 V8 解析器，等效。
+//   ES module 文件（.mjs/.cjs）跳过 vm.Script，改为 try/catch new Function 降级检查。
+function checkSyntaxSync(filePath: string, originalContent: string | null, matchCtx?: string): string | null {
     const ext = path.extname(filePath).toLowerCase();
 
-    if (ext === '.js' || ext === '.mjs' || ext === '.cjs') {
+    if (ext === '.js') {
         try {
-            await new Promise<void>((resolve, reject) => {
-                execFile(process.execPath, ['--check', filePath],
-                    { timeout: 5000, windowsHide: true },
-                    (err, _stdout, stderr) => {
-                        if (err) reject(new Error(stderr || err.message));
-                        else resolve();
-                    });
-            });
+            const content = fs.readFileSync(filePath, 'utf8');
+            new vm.Script(content, { filename: filePath });
         } catch (syntaxErr: any) {
-            const msg = (syntaxErr.message || String(syntaxErr)).replace(/\n/g, ' ').substring(0, 200);
+            const msg = (syntaxErr.message || String(syntaxErr)).replace(/\n/g, ' ').substring(0, 250);
             if (originalContent !== null) {
-                try { await fs.promises.writeFile(filePath, originalContent); } catch (_) {}
+                try { fs.writeFileSync(filePath, originalContent); } catch (_) {}
             } else {
-                try { await fs.promises.unlink(filePath); } catch (_) {}
+                try { fs.unlinkSync(filePath); } catch (_) {}
             }
-            return 'Error: syntax check failed after edit — ' + msg + '. File reverted.';
+            let hint = matchCtx ? ' (' + matchCtx + ')' : '';
+            return 'Error: your edit produced invalid JS syntax — ' + msg + hint + '. File reverted unchanged. ⚠ Your find string likely matched at the WRONG location. Re-read the file, then use a LONGER / more unique find string (add surrounding context lines).';
+        }
+    } else if (ext === '.mjs' || ext === '.cjs') {
+        try {
+            const content = fs.readFileSync(filePath, 'utf8');
+            new Function(content);
+        } catch (syntaxErr: any) {
+            const msg = (syntaxErr.message || String(syntaxErr)).replace(/\n/g, ' ').substring(0, 250);
+            if (originalContent !== null) {
+                try { fs.writeFileSync(filePath, originalContent); } catch (_) {}
+            } else {
+                try { fs.unlinkSync(filePath); } catch (_) {}
+            }
+            return 'Error: your edit produced invalid ES module syntax — ' + msg + '. File reverted unchanged. Re-read the file and use a more precise find string.';
         }
     } else if (ext === '.json') {
         try {
-            const jsonContent = await fs.promises.readFile(filePath, 'utf8');
+            const jsonContent = fs.readFileSync(filePath, 'utf8');
             JSON.parse(jsonContent);
         } catch (jsonErr: any) {
-            const msg = (jsonErr.message || String(jsonErr)).replace(/\n/g, ' ').substring(0, 200);
+            const msg = (jsonErr.message || String(jsonErr)).replace(/\n/g, ' ').substring(0, 250);
             if (originalContent !== null) {
-                try { await fs.promises.writeFile(filePath, originalContent); } catch (_) {}
+                try { fs.writeFileSync(filePath, originalContent); } catch (_) {}
             } else {
-                try { await fs.promises.unlink(filePath); } catch (_) {}
+                try { fs.unlinkSync(filePath); } catch (_) {}
             }
-            return 'Error: JSON syntax check failed after edit — ' + msg + '. File reverted.';
+            return 'Error: your edit produced invalid JSON — ' + msg + '. File reverted unchanged. Check bracket/brace balance in your replace text.';
         }
     }
 
@@ -156,13 +167,15 @@ export function registerEditIpc(): void {
                         }
                     }
 
-                    // L2: whitespace normalization
+                    // L2: whitespace normalization (with context verification for short finds)
                     if (matchStart === -1) {
                         const nf = aiNormalizeWhitespace(ed.find);
                         const nc = aiNormalizeWhitespace(content);
-                        const normIdx = nc.indexOf(nf);
-                        if (normIdx !== -1) {
-                            // 映射归一化下标 → 原文下标
+                        let normIdx = -1;
+                        let searchFrom = 0;
+                        // For short normalized finds (<30 chars), verify line-anchoring
+                        // to avoid matching at wrong position when find appears many times
+                        while ((normIdx = nc.indexOf(nf, searchFrom)) !== -1) {
                             let oi = 0, ni = 0;
                             while (ni < normIdx && oi < content.length) {
                                 const c = content[oi];
@@ -172,9 +185,48 @@ export function registerEditIpc(): void {
                                     else oi++;
                                 } else { oi++; ni++; }
                             }
-                            matchStart = oi;
-                            matchSpan = measureMatchSpan(content, oi, ed.find, aiNormalizeWhitespace);
+                            // Verification: for short finds, match must be at line start
+                            if (nf.length >= 30) break; // long finds: first match is fine
+                            if (oi === 0 || content[oi - 1] === '\n') break; // line start: accept
+                            // Also accept if preceded by whitespace and find starts with non-structural char
+                            const firstChar = nf[0];
+                            if (firstChar !== '}' && firstChar !== ')' && firstChar !== ';' && firstChar !== ']') break;
+                            searchFrom = normIdx + 1;
+                        }
+                        if (normIdx !== -1) {
+                            // Re-map from final normIdx
+                            let oi2 = 0, ni2 = 0;
+                            while (ni2 < normIdx && oi2 < content.length) {
+                                const c = content[oi2];
+                                if (c === ' ' || c === '\t' || c === '\r' || c === '\n') {
+                                    const ncChar = nc[ni2];
+                                    if (ncChar === ' ' || ncChar === '\n') { oi2++; ni2++; }
+                                    else oi2++;
+                                } else { oi2++; ni2++; }
+                            }
+                            matchStart = oi2;
+                            matchSpan = measureMatchSpan(content, oi2, ed.find, aiNormalizeWhitespace);
                             matchLevel = 3;
+                        }
+                    }
+
+                    // L3: line-level matching (trim each line, match sequence)
+                    if (matchStart === -1) {
+                        const fl = ed.find.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+                        if (fl.length >= 2) {
+                            const cl2 = content.split('\n');
+                            for (let li = 0; li <= cl2.length - fl.length; li++) {
+                                let ok = true;
+                                for (let lj = 0; lj < fl.length; lj++) {
+                                    if (cl2[li + lj].trim() !== fl[lj]) { ok = false; break; }
+                                }
+                                if (ok) {
+                                    matchStart = cl2.slice(0, li).join('\n').length + (li > 0 ? 1 : 0);
+                                    matchSpan = cl2.slice(0, li + fl.length).join('\n').length - matchStart;
+                                    matchLevel = 4;
+                                    break;
+                                }
+                            }
                         }
                     }
 
@@ -258,11 +310,12 @@ export function registerEditIpc(): void {
 
                 try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
                 await fs.promises.writeFile(args.path, content);
-                // ★ 自动语法门（§19 L1）: JS/JSON 语法不过→还原+报错
-                const syntaxErr = await checkSyntax(args.path, originalContent);
+                // ★ 自动语法门（§59）: JS/JSON 语法不过→还原+报错
+                const syntaxCtx = multiWarn || (results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1 || r.indexOf('L4') !== -1 || r.indexOf('L5') !== -1) ? 'whitespace-tolerant matching used — higher mismatch risk' : '');
+                const syntaxErr = checkSyntaxSync(args.path, originalContent, syntaxCtx || undefined);
                 if (syntaxErr) return syntaxErr;
                 try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
-                const matchInfo = results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1 || r.indexOf('L5') !== -1)
+                const matchInfo = results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1 || r.indexOf('L4') !== -1 || r.indexOf('L5') !== -1)
                     ? ' (whitespace-tolerant match used)' : '';
                 const lineInfo = editLines.length > 0 ? ' [' + editLines.join(', ') + ']' : '';
                 return `\u2713 ${totalApplied} edit(s) applied to ${args.path.split(/[\\/]/).pop()}${lineInfo}${matchInfo}${multiWarn}`;
@@ -276,11 +329,11 @@ export function registerEditIpc(): void {
     ipcMain.handle('qqqide:ai:create_file', async (_e, args: { path: string; content: string }) => {
         return _qe(args.path, async () => {
             try {
-                try { await fs.promises.access(args.path); return `Error: file already exists: ${args.path}. Use edit_file to modify existing files.`; } catch { /* doesn't exist, proceed */ }
+                try { await fs.promises.access(args.path); return `Error: file already exists: ${args.path}. Use edit_file to modify existing files.`; } catch { /* doesn\x27t exist, proceed */ }
                 try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
                 await fs.promises.writeFile(args.path, args.content);
                 // ★ 自动语法门
-                const syntaxErr2 = await checkSyntax(args.path, null);
+                const syntaxErr2 = checkSyntaxSync(args.path, null, undefined);
                 if (syntaxErr2) return syntaxErr2;
                 try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
                 return `File created: ${args.path} (${args.content.length} chars)`;
@@ -323,7 +376,7 @@ export function registerEditIpc(): void {
                 try { await fs.promises.mkdir(path.dirname(args.path), { recursive: true }); } catch { /* ignore */ }
                 await fs.promises.writeFile(args.path, args.content);
                 // ★ 自动语法门
-                const syntaxErr3 = await checkSyntax(args.path, origContent);
+                const syntaxErr3 = checkSyntaxSync(args.path, origContent, undefined);
                 if (syntaxErr3) return syntaxErr3;
                 try { const st2 = await fs.promises.stat(args.path); _sn[args.path] = { mtimeMs: st2.mtimeMs, size: st2.size }; } catch { /* ignore */ }
                 return `File written: ${args.path} (${args.content.length} chars)`;

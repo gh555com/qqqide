@@ -62,7 +62,7 @@ function _autoSyntaxCheck(filePath) {
 // ============================================================
 
 function _normalizeWhitespace(text) {
-    return text.replace(/[\t ]+/g, ' ').replace(/[\r\n]+/g, '\n').replace(/^ +| +$/gm, '');
+    return text.replace(/[\t ]+/g, ' ').replace(/[\r\n]+/g, '\n').trim();
 }
 
 // ★ 空白匹配 span 精确测量：从原文 start 位置逐字节推进，归一化后与 normFind 比较。
@@ -104,11 +104,12 @@ function _findMatch(content, find) {
         if (idx1c !== -1) return { start: idx1c, end: idx1c + escaped.length, matchLevel: 1 };
     }
 
-    // L2: 空白归一化（[\t ]+→' ', [\r\n]+→\n）
+    // L2: 空白归一化（[\t ]+→' ', [\r\n]+→\n），含上下文验证防短串错位
     var nf = _normalizeWhitespace(find);
     var nc = _normalizeWhitespace(content);
-    var idx2 = nc.indexOf(nf);
-    if (idx2 !== -1) {
+    var idx2 = -1;
+    var searchFrom = 0;
+    while ((idx2 = nc.indexOf(nf, searchFrom)) !== -1) {
         // 映射归一化下标 → 原文起始
         var oi2 = 0, ni2 = 0;
         while (ni2 < idx2 && oi2 < content.length) {
@@ -119,8 +120,26 @@ function _findMatch(content, find) {
                 else oi2++;
             } else { oi2++; ni2++; }
         }
-        var spanWS = _measureNormSpan(content, oi2, find, _normalizeWhitespace);
-        return { start: oi2, end: oi2 + spanWS, matchLevel: 2 };
+        // 验证：短串（<30 chars）必须位于行首或首字符非结构符
+        if (nf.length >= 30) break;
+        if (oi2 === 0 || content[oi2 - 1] === '\n') break;
+        var firstChar = nf[0];
+        if (firstChar !== '}' && firstChar !== ')' && firstChar !== ';' && firstChar !== ']') break;
+        searchFrom = idx2 + 1;
+    }
+    if (idx2 !== -1) {
+        // 从最终 idx2 重映射
+        var _oi3 = 0, _ni3 = 0;
+        while (_ni3 < idx2 && _oi3 < content.length) {
+            var _c2 = content[_oi3];
+            if (_c2 === ' ' || _c2 === '\t' || _c2 === '\r' || _c2 === '\n') {
+                var _ncChar2 = nc[_ni3];
+                if (_ncChar2 === ' ' || _ncChar2 === '\n') { _oi3++; _ni3++; }
+                else _oi3++;
+            } else { _oi3++; _ni3++; }
+        }
+        var spanWS = _measureNormSpan(content, _oi3, find, _normalizeWhitespace);
+        return { start: _oi3, end: _oi3 + spanWS, matchLevel: 2 };
     }
 
     // L3: 行级匹配
@@ -171,12 +190,16 @@ async function executeEditFile(args) {
         return 'Error: invalid path "' + _p + '" — provide an absolute path.';
     }
 
+// ★ 电路断路器: 连续 edit_file 失败计数器（per-floor，防无限重试烧 ge）
+
+
     // ★ 优先走主进程 (1 IPC, 替代 read+write 2 IPC)
     if (bridge.ai && bridge.ai.edit_file) {
         try {
             var _r = await bridge.ai.edit_file({ path: args.path, edits: args.edits });
             if (_r && _r.indexOf('Error') !== 0) _notifyFileModified(args.path);
             _r = _maybeHintBackslashN(_r, args.edits);
+            // ★ 电路断路器：连续 edit_file 失败计数器（per-floor，防无限重试烧 ge）
             return await _checkFileSizeWarn(_r, args.path);
         } catch (_) { /* fallback */ }
     }

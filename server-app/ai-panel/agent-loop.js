@@ -882,10 +882,17 @@ var AgentLoop = (function () {
                             // L1: 去末尾逗号（},] 前的逗号是 JSON 语法错误，去掉不改语义）
                             try {
                                 var _sanitized = tc.function.arguments.replace(/,\s*([}\]])/g, '$1');
-                                return { name: _name, args: JSON.parse(_sanitized) };
+                                try { return { name: _name, args: JSON.parse(_sanitized) }; } catch (_e2a) {
+                                    // L1.5: 去除控制字符（JSON 字符串中非法）
+                                    var _noCtrl = _sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+                                    try { return { name: _name, args: JSON.parse(_noCtrl) }; } catch (_e2b) {
+                                        // L2: 全部失败 → 空 object 降级
+                                        self._log('⚠ JSON parse failed for ' + _name + ' args (len=' + tc.function.arguments.length + '): ' + _e1.message.slice(0, 80) + ' → fallback {}');
+                                        return { name: _name, args: {} };
+                                    }
+                                }
                             } catch (_e2) {
-                                // L2: 全部失败 → 空 object 降级，工具缺参会报错让 AI 重试
-                                self._log('⚠ JSON parse failed for ' + _name + ' args (len=' + tc.function.arguments.length + '): ' + _e1.message.slice(0, 80) + ' → fallback {}');
+                                self._log('⚠ JSON parse ANOMALY for ' + _name + ' args: ' + (_e2.message || '').slice(0, 60));
                                 return { name: _name, args: {} };
                             }
                         }

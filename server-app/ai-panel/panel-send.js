@@ -362,7 +362,7 @@ function getInputPlainText() {
 }
 function getInputChipPaths() {
     var paths = [];
-    var re = /[\ud83d\udcce\ud83d\udcc1]\u201c([^\u201d]+)\u201d/g;
+    var re = /[\ud83d\udcce\ud83d\udcc1]"([^"]+)"/g;
     var m;
     while ((m = re.exec($input.value)) !== null) {
         paths.push(m[1]);
@@ -382,13 +382,13 @@ $input.addEventListener('focus', function () {
 
 function insertChipAtCursor(filePath, isDir, lineRange) {
     // ★ 去重：同一文件路径已在编辑框中→跳过，不重复注入
-    if ($input.value.indexOf('\u201c' + filePath + '\u201d') !== -1) return;
+    if ($input.value.indexOf('"' + filePath + '"') !== -1) return;
     if (typeof isDir !== 'boolean') {
         isDir = !filePath.match(/\.[a-zA-Z0-9]+$/);
     }
     var icon = isDir ? '\ud83d\udcc1' : '\ud83d\udcce';
     var rangeStr = lineRange ? ' ' + lineRange : '';
-    var tag = icon + '\u201c' + filePath + '\u201d' + rangeStr + ' ';
+    var tag = icon + '"' + filePath + '"' + rangeStr + ' ';
     $input.focus();
     var start = $input.selectionStart;
     var end = $input.selectionEnd;
@@ -542,13 +542,13 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
     var _bulletBtn = document.getElementById('bullet-btn');
     if (!_bulletBtn) return;
 
-    // ★ 子弹音效 — 预掷骰子，qa必播 → 1/3 qx(1~2s后) → 1/2 qs(qa结束后0.5~1.5s)
+    // ★ 子弹音效 — 预掷骰子，qa必播 → 1/3 qx(0.4~0.8s后) → 1/2 qs(qa结束后0.4~1s)
     function _bulletPlaySound() {
         var ASSET = '../assets/bullet/';
         var rollQx = Math.random() < 1/3;
         var rollQs = Math.random() < 0.5;
-        var qxDelay = rollQx ? (1000 + Math.random() * 1000) : 0;
-        var qsGap   = rollQs ? (500 + Math.random() * 1000) : 0;
+        var qxDelay = rollQx ? (400 + Math.random() * 400) : 0;
+        var qsGap   = rollQs ? (400 + Math.random() * 600) : 0;
         var qxFile  = '';
         if (rollQx) {
             var qxPool = ['ric_conc-1.wav','ric_conc-2.wav','ric_metal-1.wav'];
@@ -576,6 +576,28 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
 
     // ★ 子弹动画 — 射出(50ms,3弹拖尾) → 装填滑入(350ms,塞贝尔变速)
     var _bulletAnimating = false;
+    var _bulletClones = [];       // 拖尾克隆 DOM，供取消时清理
+    var _bulletShootAnim = null;  // 射出 Web Animation
+    var _bulletReloadTimer = null;// 装填 setTimeout id
+    var _bulletReloadAnim = null; // 装填 Web Animation
+
+    function _cancelBulletAnimation() {
+        if (_bulletReloadTimer) { clearTimeout(_bulletReloadTimer); _bulletReloadTimer = null; }
+        if (_bulletReloadAnim) { _bulletReloadAnim.cancel(); _bulletReloadAnim = null; }
+        if (_bulletShootAnim) { _bulletShootAnim.cancel(); _bulletShootAnim = null; }
+        for (var k = 0; k < _bulletClones.length; k++) {
+            if (_bulletClones[k].parentNode) _bulletClones[k].parentNode.removeChild(_bulletClones[k]);
+        }
+        _bulletClones = [];
+        var img = _bulletBtn.querySelector('img');
+        if (img) {
+            img.style.top = '';
+            img.style.opacity = '';
+            img.style.transform = '';
+        }
+        _bulletAnimating = false;
+    }
+
     function _bulletAnimate() {
         if (_bulletAnimating) return;
         _bulletAnimating = true;
@@ -585,18 +607,18 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
         var btnH = btn.offsetHeight;
         if (btnH < 20) { _bulletAnimating = false; return; }
 
-        var startPct = 60;
-        var startY = btnH * startPct / 100;   // 2/5 位置
-        var endY = -30;                        // 射出顶端
+        var startPct = 60;                     // CSS top:60% = 靠下 2/5
+        var startY = btnH * startPct / 100;
+        var endY = -30;
         var travelDist = startY - endY;
-        var gap = Math.max(travelDist / 3, 6); // 3弹间隔
+        var gap = Math.max(travelDist / 3, 6);
 
         var src = img.src;
         var baseOpacity = img.style.opacity || '0.75';
         var baseFilter = img.style.filter || '';
 
         // ── Phase 1: 射出 (50ms, 3弹拖尾) ──
-        var clones = [];
+        _bulletClones = [];
         for (var i = 1; i <= 2; i++) {
             var c = document.createElement('img');
             c.src = src;
@@ -609,35 +631,42 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
                 { top: (startY - gap * i) + 'px', opacity: parseFloat(c.style.opacity) },
                 { top: (endY - gap * i) + 'px', opacity: 0 }
             ], { duration: 50, easing: 'linear', fill: 'forwards' });
-            clones.push(c);
+            _bulletClones.push(c);
         }
 
-        // 主弹射出
-        var shootAnim = img.animate([
+        _bulletShootAnim = img.animate([
             { top: startY + 'px', opacity: baseOpacity },
             { top: endY + 'px', opacity: 0 }
         ], { duration: 50, easing: 'linear', fill: 'forwards' });
 
         // ── Phase 2: 装填滑入 (350ms, 塞贝尔变速) ──
-        setTimeout(function() {
+        _bulletReloadTimer = setTimeout(function() {
+            _bulletReloadTimer = null;
             // 清理拖尾克隆
-            for (var k = 0; k < clones.length; k++) {
-                if (clones[k].parentNode) clones[k].parentNode.removeChild(clones[k]);
+            for (var k = 0; k < _bulletClones.length; k++) {
+                if (_bulletClones[k].parentNode) _bulletClones[k].parentNode.removeChild(_bulletClones[k]);
             }
+            _bulletClones = [];
             // 取消射出动画，复位 img 到下方
-            shootAnim.cancel();
-            img.style.top = (btnH + 16) + 'px';
+            if (_bulletShootAnim) { _bulletShootAnim.cancel(); _bulletShootAnim = null; }
+            // ★ 重读 btnH：编辑框高度可能在动画期间变化了
+            var curH = btn.offsetHeight;
+            var curStartY = curH * startPct / 100;
+            img.style.top = (curH + 16) + 'px';
             img.style.opacity = '0.25';
 
-            var reloadAnim = img.animate([
-                { top: (btnH + 16) + 'px', opacity: 0.25 },
-                { top: startY + 'px', opacity: baseOpacity }
+            _bulletReloadAnim = img.animate([
+                { top: (curH + 16) + 'px', opacity: 0.25 },
+                { top: curStartY + 'px', opacity: baseOpacity }
             ], {
                 duration: 350,
                 easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
                 fill: 'forwards'
             });
-            reloadAnim.onfinish = function() {
+            _bulletReloadAnim.onfinish = function() {
+                //  取消动画释放 fill-mode  CSS top:60% 重新生效
+                if (_bulletReloadAnim) { _bulletReloadAnim.cancel(); }
+                _bulletReloadAnim = null;
                 img.style.top = '';
                 img.style.opacity = baseOpacity;
                 img.style.transform = '';
@@ -646,6 +675,21 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
         }, 60);
     }
 
+    // ★ ResizeObserver：编辑框高度变化 → 子弹位置恒定在 2/5
+    //   非动画时 CSS top:60% 自动处理；动画中则取消并重启动画以适配新高度
+    var _lastBulletBtnH = _bulletBtn.offsetHeight;
+    var _bulletResizeObs = new ResizeObserver(function() {
+        var newH = _bulletBtn.offsetHeight;
+        if (newH === _lastBulletBtnH) return;
+        _lastBulletBtnH = newH;
+        if (_bulletAnimating) {
+            _cancelBulletAnimation();
+            // 等 DOM 稳定后重启动画（微小延迟防连续 resize 抖动）
+            setTimeout(function() { _bulletAnimate(); }, 30);
+        }
+        // 非动画时：CSS top:60% 自动跟随，无需 JS 干预
+    });
+    _bulletResizeObs.observe(_bulletBtn);
     _bulletBtn.onclick = async function() {
         if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
 

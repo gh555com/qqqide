@@ -1181,24 +1181,37 @@ var QuestStore = (function () {
     QuestStore.prototype.loadAllFloors = async function (questId) {
         var qData = await _get(QUEST_NS + '.' + questId);
         var floorList = (qData && qData.floors) || [];
-        var floorListFromFs = false;  // ★ 是否从文件系统兜底扫描（sq3 缺失）
+        var floorListFromFs = false;  // ★ 是否从文件系统兜底扫描（sq3 缺失或有新增楼层）
 
-        // ★ 备份还原 / 新发现 quest → sq3 无 floors 列表 → 文件系统兜底扫描
-        if (!floorList.length && _rootDir) {
-            var qDirName = await _resolveQuestDirName(questId);
-            if (qDirName) {
-                var bf = _bridgeFs();
-                if (bf) {
+        // ★ 始终与文件系统对账：发现 sq3 未索引的楼层时自动补入（治 P9 跨 quest 切换时建楼丢失）
+        if (_rootDir) {
+            var qDirName2 = await _resolveQuestDirName(questId);
+            if (qDirName2) {
+                var bf2 = _bridgeFs();
+                if (bf2) {
                     try {
-                        var entries = await bf.list(_rootDir + '/qqq/quests/' + qDirName);
-                        for (var ei = 0; ei < entries.length; ei++) {
-                            if (entries[ei].isDir) {
-                                var fm = entries[ei].name.match(/^f(\d+)\./);
-                                if (fm) floorList.push({ n: parseInt(fm[1], 10) });
+                        var _fsEntries = await bf2.list(_rootDir + '/qqq/quests/' + qDirName2);
+                        var _sq3Set = {};
+                        for (var _si = 0; _si < floorList.length; _si++) { _sq3Set[floorList[_si].n] = true; }
+                        var _added = false;
+                        for (var _ei = 0; _ei < _fsEntries.length; _ei++) {
+                            if (_fsEntries[_ei].isDir) {
+                                var _fm = _fsEntries[_ei].name.match(/^f(\d+)\./);
+                                if (_fm) {
+                                    var _fn = parseInt(_fm[1], 10);
+                                    if (!_sq3Set[_fn]) {
+                                        floorList.push({ n: _fn });
+                                        _sq3Set[_fn] = true;
+                                        _added = true;
+                                        console.log('[quest-store] loadAllFloors: discovered unindexed floor.' + questId + '.' + _fn + ' from filesystem');
+                                    }
+                                }
                             }
                         }
-                        floorList.sort(function (a, b) { return a.n - b.n; });
-                        floorListFromFs = true;
+                        if (_added) {
+                            floorList.sort(function (a, b) { return a.n - b.n; });
+                            floorListFromFs = true;
+                        }
                     } catch (_) { }
                 }
             }

@@ -156,7 +156,7 @@ async function _executeSend(intent) {
                 if (!_bridgeChip) { contentParts.push('[Attached: ' + p + ']\n(bridge unavailable)'); continue; }
                 var isDir = false;
                 var statInfo = null;
-                try { statInfo = await _bridgeChip.fs.stat(p); if (statInfo && statInfo.isDir) isDir = true; } catch (e) { }
+                try { statInfo = await _bridgeChip.fs.stat(p); if (statInfo && statInfo.isDir) isDir = true; } catch (e) { continue; }
                 if (isDir) {
                     try {
                         var entries = await _bridgeChip.fs.list(p);
@@ -311,6 +311,7 @@ async function _executeSend(intent) {
         agent._aiTierLabel = 'A' + (selectedTier || 6);
     }
     agent._streamingContent = null;
+    agent._floorStreamText = '';  // ★ 跨 house 累积流式文本（治 P19: onDone 清空 _streamFullText 前留存）
     agent._streaming = true;
     // ★ 即时同步按钮 UI：建楼开始 → 按钮变红 Stop（必须在 agent._streaming 之后）
     setStreaming(true);
@@ -496,14 +497,41 @@ async function _executeSend(intent) {
                                 _logRenderEvent('before_overwrite', qid, floorNum, _targetDiv2._contentWrap.innerHTML || '');
                             }
                             // ★ 在覆盖前抓取流式 DOM 快照（清洗后存 agent，供 ai_html 持久化用）
+                            // ★ 先强制 flush 所有未渲染段落到 DOM（_a4BuildCompleteFloorPayload 的 flush
+                            //    把 _dirty 置 false → _doStreamRender 被拦截 → 新段落在 _streamParas 里但未入 DOM）
+                            var _flushRnd = agent._streamRenderedCount || 0;
+                            var _flushPas = agent._streamParas || [];
+                            var _rm = typeof renderMarkdown === 'function' ? renderMarkdown : function (s) { return s; };
+                            while (_flushRnd < _flushPas.length) {
+                                var _fp = _flushPas[_flushRnd];
+                                if (_fp && _fp.trim()) {
+                                    var _fDiv = document.createElement('div');
+                                    _fDiv.className = 'stream-para';
+                                    _fDiv.innerHTML = _rm(_fp);
+                                    _targetDiv2._contentWrap.appendChild(_fDiv);
+                                }
+                                _flushPas[_flushRnd] = null;
+                                _flushRnd++;
+                            }
+                            agent._streamRenderedCount = _flushRnd;
                             var _snapClone2 = _targetDiv2._contentWrap.cloneNode(true);
                             var _snapSp2 = _snapClone2.querySelectorAll('.stream-para');
                             for (var _snapSpI2 = 0; _snapSpI2 < _snapSp2.length; _snapSpI2++) {
                                 _snapSp2[_snapSpI2].classList.remove('stream-para');
                             }
+                            // ★ 清洗 _lastParaEl：保留其内容（当前打字段落），去掉 data-last-para 属性和光标元素
                             var _snapLastP2 = _snapClone2.querySelector('[data-last-para]');
-                            if (_snapLastP2) _snapLastP2.remove();
+                            if (_snapLastP2) {
+                                _snapLastP2.removeAttribute('data-last-para');
+                                _snapLastP2.classList.remove('stream-para');
+                                // 移除 typo 光标 / 闪烁元素
+                                var _snapCursors = _snapLastP2.querySelectorAll('.typo-cursor, .blink-cursor, .stream-cursor');
+                                for (var _sci = 0; _sci < _snapCursors.length; _sci++) {
+                                    _snapCursors[_sci].remove();
+                                }
+                            }
                             agent._preOverwriteAiHtml = _snapClone2.innerHTML;
+                            console.log('[pipeline] SET _preOverwriteAiHtml, len=' + agent._preOverwriteAiHtml.length + ' q=' + qid + ' f=' + floorNum);
                             _snapClone2 = null;
                             _targetDiv2._contentWrap.innerHTML = _rendered;
                             _targetDiv2._firstHouseDone = true;
@@ -525,6 +553,8 @@ async function _executeSend(intent) {
                     agent._streamSplitCursor = 0;
                     agent._streamCodeFenceOpen = false;
                     agent._streamRenderedCount = 0;
+                    // ★ 清空前留存到 floor 级缓冲区（跨 house 累积，治 P19 流式分析文本丢失）
+                    if (agent._streamFullText) agent._floorStreamText += agent._streamFullText;
                     agent._streamFullText = '';
                     agent._streamFirstRenderDone = false;
                 }
