@@ -55,6 +55,9 @@ async function executeTool(name, args, ownerAgent) {
         case 'search_smart': _result = executeSearchSmart(args); break;
         case 'remove_background': _result = executeRemoveBackground(args); break;
         case 'search_web': _result = executeSearchWeb(args); break;
+        case 'timeline_versions': _result = executeTimelineVersions(args); break;
+        case 'revert_file': _result = executeRevertFile(args); break;
+        case 'diff_versions': _result = executeDiffVersions(args); break;
         default: _result = 'Unknown tool: ' + name; break;
     }
     _result = await _result;
@@ -591,4 +594,435 @@ async function executeFetchWebpage(args) {
     } catch (err) {
         return 'Fetch error: ' + (err.message || err);
     }
+}
+
+// ============================================================
+// timeline_versions — 列出文件在 project timeline 中的所有版本
+// ============================================================
+
+async function executeTimelineVersions(args) {
+    var bridge = getBridge();
+    if (!bridge) return 'Error: bridge not available';
+
+    args.path = args.path || args.filePath || '';
+    var _p = args.path;
+    if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
+        return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+    }
+
+    if (!bridge.timeline || !bridge.timeline.versions) {
+        return 'Error: timeline system not available (bridge.timeline missing)';
+    }
+
+    // ★ 解析项目根目录（向上找 qqq/timeline 或 .git）
+    var root = await _resolveTimelineRoot(_p);
+    if (!root) {
+        return 'Error: could not resolve project root for "' + _p + '". No qqq/timeline or .git found in parent directories.';
+    }
+
+    try {
+        var versions = await bridge.timeline.versions({ projectRoot: root, filePath: _p });
+        if (!versions || versions.length === 0) {
+            return 'No timeline versions found for: ' + _p;
+        }
+        // ★ floor_num 过滤（floor_id 格式: q{id}/f{N}/h{N}/r{N}）
+        var floorNum = args.floor_num;
+        if (floorNum != null && typeof floorNum === 'number') {
+            var needle = '/f' + floorNum + '/';
+            versions = versions.filter(function(v) {
+                return v.floor_id && v.floor_id.indexOf(needle) >= 0;
+            });
+            if (versions.length === 0) {
+                return 'No timeline versions found for floor ' + floorNum + ' in: ' + _p;
+            }
+        }
+        // 格式化输出：每行一条，关键字段
+        var lines = ['Timeline versions for: ' + _p, 'Project root: ' + root, ''];
+        if (floorNum != null) lines[0] += ' (floor ' + floorNum + ' only)';
+        for (var i = 0; i < versions.length; i++) {
+            var v = versions[i];
+            var ts = v.ts ? new Date(v.ts).toISOString().replace('T', ' ').slice(0, 19) : '?';
+            var add = v.added_lines != null ? ('+' + v.added_lines) : '?';
+            var del = v.deleted_lines != null ? ('-' + v.deleted_lines) : '?';
+            var trace = v.floor_id || '';
+            lines.push('  #' + v.file_seq + ' | ' + ts + ' | ' + add + '/' + del + ' | ' + (v.source || '?') + (trace ? ' | trace=' + trace : '') + ' | sha=' + (v.blob_hash || '').slice(0, 12));
+        }
+        lines.push('');
+        lines.push('Use diff_versions(path, from_seq, to_seq) to compare any two versions, or revert_file(path, file_seq) to restore.');
+        return lines.join('\n');
+    } catch (err) {
+        return 'Error querying timeline: ' + (err.message || err);
+    }
+}
+
+// ============================================================
+// revert_file — 一键回退文件到指定 timeline 版本
+// ============================================================
+
+async function executeRevertFile(args) {
+    var bridge = getBridge();
+    if (!bridge) return 'Error: bridge not available';
+
+    args.path = args.path || args.filePath || '';
+    var _p = args.path;
+    if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
+        return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+    }
+    var fileSeq = args.file_seq;
+    if (fileSeq == null || typeof fileSeq !== 'number') {
+        return 'Error: file_seq (number) required. Use timeline_versions first to find the version.';
+    }
+
+    if (!bridge.timeline || !bridge.timeline.versions || !bridge.timeline.content) {
+        return 'Error: timeline system not available';
+    }
+
+    // ★ 解析项目根目录
+    var root = await _resolveTimelineRoot(_p);
+    if (!root) {
+        return 'Error: could not resolve project root for "' + _p + '"';
+    }
+
+    try {
+        // ① 查找目标版本的 blob_hash
+        var versions = await bridge.timeline.versions({ projectRoot: root, filePath: _p });
+        var target = null;
+        for (var i = 0; i < versions.length; i++) {
+            if (versions[i].file_seq === fileSeq) { target = versions[i]; break; }
+        }
+        if (!target) {
+            return 'Error: file_seq ' + fileSeq + ' not found for "' + _p + '". Available: ' +
+                versions.map(function(v) { return v.file_seq; }).join(', ');
+        }
+
+        // ② 读取历史内容
+        var content = await bridge.timeline.content({ projectRoot: root, blobHash: target.blob_hash });
+        if (content === null || content === undefined) {
+            return 'Error: blob not found for hash ' + target.blob_hash + ' (blob file may be missing)';
+        }
+
+        // ③ 写回文件（优先主进程 1 IPC，fallback renderer）
+        if (bridge.ai && bridge.ai.write_file) {
+            var _wr = await bridge.ai.write_file({ path: _p, content: content });
+            if (_wr && _wr.indexOf('Error') === 0) return _wr;
+        } else {
+            try { await bridge.fs.mkdir(_p.replace(/[/\\][^/\\]+$/, '')); } catch (_) { }
+            await bridge.fs.write(_p, content);
+        }
+
+        // ④ 通知 + 语法检查（A4 钩子自动记录 timeline 快照，无需手动 record）
+        _notifyFileModified(_p);
+        var result = 'Reverted ' + _p + ' to version #' + fileSeq +
+            ' (blob ' + target.blob_hash.slice(0, 12) + ', ' +
+            new Date(target.ts).toISOString().replace('T', ' ').slice(0, 19) + ')';
+        return await _checkFileSizeWarn(result, _p);
+    } catch (err) {
+        return 'Error reverting file: ' + (err.message || err);
+    }
+}
+
+// ============================================================
+// diff_versions — 计算两个 timeline 版本之间的 unified diff
+// ============================================================
+
+async function executeDiffVersions(args) {
+    var bridge = getBridge();
+    if (!bridge) return 'Error: bridge not available';
+
+    args.path = args.path || args.filePath || '';
+    var _p = args.path;
+    if (!/[\\/]/.test(_p) || !/^[A-Za-z]:[\\/]|^[\\/]/.test(_p.trim())) {
+        return 'Error: invalid path "' + _p + '" — provide an absolute path.';
+    }
+    var fromSeq = args.from_seq;
+    if (fromSeq == null || typeof fromSeq !== 'number') {
+        return 'Error: from_seq (number) required. Use timeline_versions first.';
+    }
+    var toSeq = args.to_seq; // optional — defaults to current disk
+
+    if (!bridge.timeline || !bridge.timeline.versions || !bridge.timeline.content) {
+        return 'Error: timeline system not available';
+    }
+
+    var root = await _resolveTimelineRoot(_p);
+    if (!root) {
+        return 'Error: could not resolve project root for "' + _p + '"';
+    }
+
+    try {
+        // ① 获取所有版本
+        var versions = await bridge.timeline.versions({ projectRoot: root, filePath: _p });
+        if (!versions || versions.length === 0) {
+            return 'No timeline versions found for: ' + _p;
+        }
+
+        // ② 查找 from 版本
+        var fromVer = null;
+        for (var i = 0; i < versions.length; i++) {
+            if (versions[i].file_seq === fromSeq) { fromVer = versions[i]; break; }
+        }
+        if (!fromVer) {
+            return 'Error: file_seq ' + fromSeq + ' not found. Available: ' +
+                versions.map(function(v) { return v.file_seq; }).join(', ');
+        }
+
+        // ③ 获取 from 内容
+        var fromContent = await bridge.timeline.content({ projectRoot: root, blobHash: fromVer.blob_hash });
+        if (fromContent === null || fromContent === undefined) {
+            return 'Error: blob not found for from_seq ' + fromSeq + ' (hash ' + fromVer.blob_hash.slice(0, 12) + ')';
+        }
+
+        // ④ 获取 to 内容（可选：默认当前磁盘）
+        var toContent, toLabel;
+        if (toSeq != null) {
+            var toVer = null;
+            for (var j = 0; j < versions.length; j++) {
+                if (versions[j].file_seq === toSeq) { toVer = versions[j]; break; }
+            }
+            if (!toVer) {
+                return 'Error: file_seq ' + toSeq + ' not found. Available: ' +
+                    versions.map(function(v) { return v.file_seq; }).join(', ');
+            }
+            toContent = await bridge.timeline.content({ projectRoot: root, blobHash: toVer.blob_hash });
+            if (toContent === null || toContent === undefined) {
+                return 'Error: blob not found for to_seq ' + toSeq;
+            }
+            toLabel = '#' + toSeq + ' ' + new Date(toVer.ts).toISOString().replace('T', ' ').slice(0, 19);
+        } else {
+            // 读当前磁盘
+            try {
+                if (bridge.ai && bridge.ai.read_file) {
+                    toContent = await bridge.ai.read_file({ path: _p, start_line: 1, end_line: 99999 });
+                } else {
+                    toContent = await bridge.fs.read(_p);
+                }
+            } catch (_) {
+                return 'Error: cannot read current disk content for ' + _p;
+            }
+            toLabel = 'current disk';
+        }
+
+        // ⑤ 计算 unified diff
+        var fromLines = fromContent.split('\n');
+        var toLines = toContent.split('\n');
+        // 行尾归一化
+        for (var fi = 0; fi < fromLines.length; fi++) {
+            if (fromLines[fi].charCodeAt(fromLines[fi].length - 1) === 13) fromLines[fi] = fromLines[fi].slice(0, -1);
+        }
+        for (var ti = 0; ti < toLines.length; ti++) {
+            if (toLines[ti].charCodeAt(toLines[ti].length - 1) === 13) toLines[ti] = toLines[ti].slice(0, -1);
+        }
+
+        var fromTs = new Date(fromVer.ts).toISOString().replace('T', ' ').slice(0, 19);
+        var header = '--- ' + _p + '\t(version #' + fromSeq + ', ' + fromTs + ')\n' +
+            '+++ ' + _p + '\t(' + toLabel + ')\n';
+        var diff = _computeUnifiedDiff(fromLines, toLines, 3);
+
+        if (!diff || diff.trim() === '') return header + '(no differences)';
+        return header + diff;
+    } catch (err) {
+        return 'Error computing diff: ' + (err.message || err);
+    }
+}
+
+// ---- 简单 unified diff（基于行数组，context=3）----
+function _computeUnifiedDiff(a, b, context) {
+    context = context || 3;
+    // 计算 LCS 表
+    var m = a.length, n = b.length;
+    // ★ 大文件保护：超过 5000 行走近似 diff
+    if (m * n > 25000000) {
+        return _computeApproxDiff(a, b);
+    }
+    var lcs = _computeLcsTable(a, b);
+    // 回溯产生编辑序列
+    var edits = _backtrackEdits(lcs, a, b, m, n);
+    // 生成 unified diff hunks
+    return _formatHunks(edits, context);
+}
+
+function _computeLcsTable(a, b) {
+    var m = a.length, n = b.length;
+    var dp = new Array(m + 1);
+    for (var i = 0; i <= m; i++) { dp[i] = new Array(n + 1).fill(0); }
+    for (var i = 1; i <= m; i++) {
+        for (var j = 1; j <= n; j++) {
+            if (a[i - 1] === b[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            } else {
+                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+            }
+        }
+    }
+    return dp;
+}
+
+function _backtrackEdits(dp, a, b, i, j) {
+    var edits = []; // {type:'eq'|'del'|'add', line:string}
+    while (i > 0 || j > 0) {
+        if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
+            edits.unshift({ type: 'eq', line: a[i - 1] });
+            i--; j--;
+        } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+            edits.unshift({ type: 'add', line: b[j - 1] });
+            j--;
+        } else {
+            edits.unshift({ type: 'del', line: a[i - 1] });
+            i--;
+        }
+    }
+    return edits;
+}
+
+function _formatHunks(edits, context) {
+    // 找出所有差异块
+    var diffIdxs = [];
+    for (var i = 0; i < edits.length; i++) {
+        if (edits[i].type !== 'eq') diffIdxs.push(i);
+    }
+    if (diffIdxs.length === 0) return '';
+
+    // 扩展 context
+    var hunkRanges = [];
+    var start = Math.max(0, diffIdxs[0] - context);
+    var end = Math.min(edits.length - 1, diffIdxs[0] + context);
+    for (var d = 1; d < diffIdxs.length; d++) {
+        if (diffIdxs[d] - context <= end + context + 1) {
+            // merge overlapping
+            end = Math.min(edits.length - 1, diffIdxs[d] + context);
+        } else {
+            hunkRanges.push([start, end]);
+            start = Math.max(0, diffIdxs[d] - context);
+            end = Math.min(edits.length - 1, diffIdxs[d] + context);
+        }
+    }
+    hunkRanges.push([start, end]);
+
+    var result = '';
+    var aLine = 1, bLine = 1;
+    var prevEnd = 0;
+    for (var h = 0; h < hunkRanges.length; h++) {
+        var hs = hunkRanges[h][0], he = hunkRanges[h][1];
+        // count a/b line numbers up to hs
+        for (var k = prevEnd; k < hs; k++) {
+            if (edits[k].type !== 'add') aLine++;
+            if (edits[k].type !== 'del') bLine++;
+        }
+        prevEnd = hs;
+
+        // compute hunk header stats
+        var haStart = aLine, hbStart = bLine;
+        var haCount = 0, hbCount = 0;
+        for (var k = hs; k <= he; k++) {
+            if (edits[k].type !== 'add') haCount++;
+            if (edits[k].type !== 'del') hbCount++;
+        }
+        result += '@@ -' + haStart + ',' + haCount + ' +' + hbStart + ',' + hbCount + ' @@\n';
+
+        for (var k = hs; k <= he; k++) {
+            if (edits[k].type === 'eq') {
+                result += ' ' + edits[k].line + '\n';
+                aLine++; bLine++;
+            } else if (edits[k].type === 'del') {
+                result += '-' + edits[k].line + '\n';
+                aLine++;
+            } else {
+                result += '+' + edits[k].line + '\n';
+                bLine++;
+            }
+        }
+    }
+    return result;
+}
+
+// ---- 大文件近似 diff（>5000 行，用唯一行匹配代替 DP）----
+function _computeApproxDiff(a, b) {
+    var bSet = {};
+    for (var i = 0; i < b.length; i++) { bSet[b[i]] = (bSet[b[i]] || 0) + 1; }
+    var aOnly = [], bOnly = [];
+    var bUsed = {};
+    for (var i = 0; i < a.length; i++) {
+        if (bSet[a[i]] && bSet[a[i]] > (bUsed[a[i]] || 0)) {
+            bUsed[a[i]] = (bUsed[a[i]] || 0) + 1;
+        } else {
+            aOnly.push(i);
+        }
+    }
+    var aUsed = {};
+    for (var j = 0; j < a.length; j++) {
+        if (bSet[a[j]]) aUsed[a[j]] = (aUsed[a[j]] || 0) + 1;
+    }
+    for (var j = 0; j < b.length; j++) {
+        if (!aUsed[b[j]] || aUsed[b[j]] <= 0) {
+            bOnly.push(j);
+        } else {
+            aUsed[b[j]]--;
+        }
+    }
+
+    // 简化输出：合并连续行
+    var lines = '';
+    var ai = 0, bi = 0, aOnlyIdx = 0, bOnlyIdx = 0;
+    while (ai < a.length || bi < b.length) {
+        // 跳过 a 中不在 b 中的连续行 → -
+        var delStart = ai;
+        while (aOnlyIdx < aOnly.length && aOnly[aOnlyIdx] === ai) { ai++; aOnlyIdx++; }
+        if (ai > delStart) {
+            lines += '@@ -' + (delStart + 1) + ',' + (ai - delStart) + ' +' + (bi + 1) + ',0 @@\n';
+            for (var d = delStart; d < ai; d++) lines += '-' + a[d] + '\n';
+        }
+        // 跳过 b 中不在 a 中的连续行 → +
+        var addStart = bi;
+        while (bOnlyIdx < bOnly.length && bOnly[bOnlyIdx] === bi) { bi++; bOnlyIdx++; }
+        if (bi > addStart) {
+            lines += '@@ -' + (ai + 1) + ',0 +' + (addStart + 1) + ',' + (bi - addStart) + ' @@\n';
+            for (var ad = addStart; ad < bi; ad++) lines += '+' + b[ad] + '\n';
+        }
+        // 公共行
+        if (ai < a.length && bi < b.length && a[ai] === b[bi]) {
+            ai++; bi++;
+        } else if (ai < a.length && bi < b.length) {
+            // 不对齐→各自前进一行（近似）
+            lines += '@@ -' + (ai + 1) + ',1 +' + (bi + 1) + ',1 @@\n';
+            lines += '-' + a[ai] + '\n';
+            lines += '+' + b[bi] + '\n';
+            ai++; bi++;
+        } else if (ai < a.length) {
+            lines += '@@ -' + (ai + 1) + ',' + (a.length - ai) + ' +' + (bi + 1) + ',0 @@\n';
+            while (ai < a.length) { lines += '-' + a[ai] + '\n'; ai++; }
+        } else if (bi < b.length) {
+            lines += '@@ -' + (ai + 1) + ',0 +' + (bi + 1) + ',' + (b.length - bi) + ' @@\n';
+            while (bi < b.length) { lines += '+' + b[bi] + '\n'; bi++; }
+        }
+    }
+    return lines;
+}
+
+// ═══ 辅助：从文件路径向上解析项目根目录（找 qqq/timeline 或 .git） ═══
+var __tlRootCache = {};
+async function _resolveTimelineRoot(filePath) {
+    if (!filePath) {
+        return (typeof questStore !== 'undefined' && questStore.getProjectRoot)
+            ? questStore.getProjectRoot().replace(/\\/g, '/').replace(/\/$/, '') : null;
+    }
+    var fp = filePath.replace(/\\/g, '/');
+    if (__tlRootCache[fp]) return __tlRootCache[fp];
+
+    var bridge = getBridge();
+    var dir = fp.replace(/\/[^\/]*$/, '');
+    for (var depth = 0; depth < 12 && dir && dir.length > 3; depth++) {
+        try {
+            var st = await bridge.fs.stat(dir + '/qqq/timeline');
+            if (st && st.isDir) { __tlRootCache[fp] = dir; return dir; }
+        } catch (_) { }
+        try {
+            var st2 = await bridge.fs.stat(dir + '/.git');
+            if (st2 && st2.isDir) { __tlRootCache[fp] = dir; return dir; }
+        } catch (_) { }
+        dir = dir.replace(/\/[^\/]*$/, '');
+    }
+    var fallback = (typeof questStore !== 'undefined' && questStore.getProjectRoot)
+        ? questStore.getProjectRoot().replace(/\\/g, '/').replace(/\/$/, '') : null;
+    __tlRootCache[fp] = fallback;
+    return fallback;
 }

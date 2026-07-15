@@ -503,7 +503,7 @@
       // 括号匹配（自实现）
       _installBracketMatcher(ed, monaco);
       // 抹除 Change All Occurrences
-      try { var a = ed.getAction('editor.action.changeAll'); if (a) a._dispose ? a._dispose() : a.dispose ? a.dispose() : null; } catch (_) {}
+      try { var a = ed.getAction('editor.action.changeAll'); if (a) a._dispose ? a._dispose() : a.dispose ? a.dispose() : null; } catch (_) { }
       // ── 面包屑导航条（空编辑器：仅工具按钮）──
       if (window.qqqEditorBreadcrumb && window.qqqEditorBreadcrumb.create) {
         window.qqqEditorBreadcrumb.create(host, '', ed, monaco);
@@ -564,7 +564,7 @@
           if (_defer && model && lang) {
             var _m = model, _l = lang, _mon = monaco;
             setTimeout(function () {
-              try { _mon.editor.setModelLanguage(_m, _l); } catch (_) {}
+              try { _mon.editor.setModelLanguage(_m, _l); } catch (_) { }
             }, 1300);
           }
         },
@@ -655,13 +655,13 @@
   let _editorRef = null;   // raw monaco IStandaloneCodeEditor
   let _paneFiles = {};      // editor dom node → filePath (reverse lookup for dispose cleanup)
   let _paneEditors = {};    // filePath → editor instance (for live refresh)
-   let _jumpLineStyleInjected = false;
+  let _jumpLineStyleInjected = false;
 
   // ── 括号匹配 — 自实现，零 LSP 依赖 ──
   var _bracketStyleInjected = false;
   var _BR_PAIRS = { '(': ')', '[': ']', '{': '}' };
-  var _BR_REV   = { ')': '(', ']': '[', '}': '{' };
-  var _BR_OPEN  = new Set(['(', '[', '{']);
+  var _BR_REV = { ')': '(', ']': '[', '}': '{' };
+  var _BR_OPEN = new Set(['(', '[', '{']);
   var _BR_CLOSE = new Set([')', ']', '}']);
   var _BR_MAX_SCAN = 50000; // 单方向最大扫描字符数，防大文件卡死
 
@@ -678,7 +678,7 @@
 
     function _clearDecos() {
       if (_bDecos.length > 0) {
-        try { _bDecos = ed.deltaDecorations(_bDecos, []); } catch (_) {}
+        try { _bDecos = ed.deltaDecorations(_bDecos, []); } catch (_) { }
       }
     }
 
@@ -750,7 +750,7 @@
           { range: new monaco.Range(a.line, a.col, a.line, a.col + 1), options: { className: 'qqq-bracket-match' } },
           { range: new monaco.Range(b.line, b.col, b.line, b.col + 1), options: { className: 'qqq-bracket-match' } }
         ]);
-      } catch (_) {}
+      } catch (_) { }
     }
 
     ed.onDidChangeCursorPosition(function (e) {
@@ -772,7 +772,7 @@
           var lines = model.getValue().split('\n');
           var match = _findMatch(model, lines, line, col, _BR_OPEN.has(chAt));
           if (match) _highlight({ line: line, col: col }, match);
-        } catch (_) {}
+        } catch (_) { }
       }, 120);
     });
 
@@ -793,8 +793,8 @@
         range: new monaco.Range(lineNumber, 1, lineNumber, 1),
         options: { isWholeLine: true, className: 'qqq-jump-line' }
       }]);
-      setTimeout(function () { try { ed.deltaDecorations(deco, []); } catch (_) {} }, 4000);
-    } catch (_) {}
+      setTimeout(function () { try { ed.deltaDecorations(deco, []); } catch (_) { } }, 4000);
+    } catch (_) { }
   }
 
   // ---- openInPane: create a Monaco editor inside a tab pane for a specific file ----
@@ -842,7 +842,7 @@
       // 唯一真理逐字回退机器：按设置决定是否挂载
       _applyUndoMode(ed, monaco);
       // 防滚动条贴底：Monaco 内部 scrollable 底部留 1px
-      try { var _se = host.querySelector('.monaco-scrollable-element'); if (_se) _se.style.marginBottom = '1px'; } catch (_) {}
+      try { var _se = host.querySelector('.monaco-scrollable-element'); if (_se) _se.style.marginBottom = '1px'; } catch (_) { }
 
       // 行号右侧空气墙点击 → 光标跳到第一列
       _installGutterClickFix(ed, monaco);
@@ -852,14 +852,14 @@
       // 括号匹配（自实现）
       _installBracketMatcher(ed, monaco);
       // 抹除 Change All Occurrences
-      try { var a = ed.getAction('editor.action.changeAll'); if (a) a._dispose ? a._dispose() : a.dispose ? a.dispose() : null; } catch (_) {}
+      try { var a = ed.getAction('editor.action.changeAll'); if (a) a._dispose ? a._dispose() : a.dispose ? a.dispose() : null; } catch (_) { }
 
       // ★ #2 延迟上色：大文件先 plaintext 秒开，等编辑器稳定后再切语言触发 tokenization
       if (_deferColoring) {
         var _monaco = monaco, _model = model, _lang = lang;
         setTimeout(function () {
           try { _monaco.editor.setModelLanguage(_model, _lang); }
-          catch (_) {}
+          catch (_) { }
         }, 1300);
       }
 
@@ -871,14 +871,14 @@
             ed.setPosition(_jumpPos);
             ed.revealPositionInCenter(_jumpPos);
             _highlightJumpLine(ed, monaco, opts.line);
-          } catch (_) {}
+          } catch (_) { }
         }, 300);
       }
 
       // ★ 窗口快照还原：检查是否有待恢复的光标位置
       if (window.qqqPendingEditorPositions && window.qqqPendingEditorPositions[filePath]) {
         var _pendPos = window.qqqPendingEditorPositions[filePath];
-        try { ed.setPosition(_pendPos); ed.revealPositionInCenter(_pendPos); } catch (_) {}
+        try { ed.setPosition(_pendPos); ed.revealPositionInCenter(_pendPos); } catch (_) { }
         delete window.qqqPendingEditorPositions[filePath];
       }
 
@@ -921,7 +921,7 @@
                 setTimeout(_try, 60);
               }
             }
-          } catch (_) {}
+          } catch (_) { }
         }, 300);
       }
 
@@ -959,24 +959,24 @@
         // ★ 计算 +N -M：对比上一版本内容
         var addedLines = null, deletedLines = null;
         try {
-            var versions = await bridge.timeline.versions({ projectRoot: root, filePath: fp });
-            if (versions && versions.length > 0) {
-                var lastVer = versions[versions.length - 1];
-                var prevContent = await bridge.timeline.content({ projectRoot: root, blobHash: lastVer.blob_hash });
-                if (typeof prevContent === 'string') {
-                    var diffFn = (typeof window._a4DiffStats === 'function') ? window._a4DiffStats : null;
-                    if (diffFn) {
-                        var stats = diffFn(prevContent, content);
-                        addedLines = stats.added;
-                        deletedLines = stats.deleted;
-                    }
-                }
+          var versions = await bridge.timeline.versions({ projectRoot: root, filePath: fp });
+          if (versions && versions.length > 0) {
+            var lastVer = versions[versions.length - 1];
+            var prevContent = await bridge.timeline.content({ projectRoot: root, blobHash: lastVer.blob_hash });
+            if (typeof prevContent === 'string') {
+              var diffFn = (typeof window._a4DiffStats === 'function') ? window._a4DiffStats : null;
+              if (diffFn) {
+                var stats = diffFn(prevContent, content);
+                addedLines = stats.added;
+                deletedLines = stats.deleted;
+              }
             }
+          }
         } catch (_) { }
 
         bridge.timeline.record({
-            projectRoot: root, filePath: fp, content: content,
-            source: source, addedLines: addedLines, deletedLines: deletedLines
+          projectRoot: root, filePath: fp, content: content,
+          source: source, addedLines: addedLines, deletedLines: deletedLines
         }).catch(function () { });
       }
 
@@ -1097,7 +1097,7 @@
   async function _checkDirtyAndRefreshPane(filePath, ed) {
     if (!filePath || !isElectron || !bridge || !bridge.dirty || !ed) return;
     // 用户正在此编辑器里编辑 → 不覆盖
-    try { if (ed.hasTextFocus()) return; } catch (_) {}
+    try { if (ed.hasTextFocus()) return; } catch (_) { }
     try {
       var dirtyContent = await bridge.dirty.get(filePath);
       if (!dirtyContent) return;
@@ -1110,7 +1110,7 @@
       m.applyEdits([{ range: m.getFullModelRange(), text: String(dirtyContent), forceMoveMarkers: true }]);
       ed._isRefreshing = false;
       document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: false } }));
-    } catch (_) {}
+    } catch (_) { }
   }
 
   // 窗口聚焦：遍历所有打开的 editor，从主进程拉取脏快照刷新
@@ -1153,7 +1153,7 @@
           source: 'editx-before'
         });
       }
-    } catch (_) {}
+    } catch (_) { }
   }
 
   window.qqqEditor = {
@@ -1171,35 +1171,45 @@
     isBinaryFile,
     saveMinimapPref: _saveMinimapPref,
     // ★ Tab 切换优化：暂停/恢复 Monaco automaticLayout（避免隐藏编辑器做无意义 layout）
-    suspendPaneLayout: function(filePath) {
+    suspendPaneLayout: function (filePath) {
       var ed = _paneEditors[filePath];
-      if (ed) { try { ed.updateOptions({ automaticLayout: false }); } catch (_) {} }
+      if (ed) { try { ed.updateOptions({ automaticLayout: false }); } catch (_) { } }
     },
-    resumePaneLayout: function(filePath) {
+    resumePaneLayout: function (filePath) {
       var ed = _paneEditors[filePath];
       if (ed) {
         try {
           ed.layout();
           ed.updateOptions({ automaticLayout: true });
-        } catch (_) {}
+        } catch (_) { }
         // ★ Tab 激活时：从主进程拉取脏快照，确保多窗口编辑一致
         _checkDirtyAndRefreshPane(filePath, ed);
       }
     },
     // ★ 安全销毁面板编辑器（异步调用，避免大文件 dispose 阻塞 UI）
-    disposePaneEditor: function(filePath) {
+    disposePaneEditor: function (filePath) {
       var ed = _paneEditors[filePath];
       if (!ed) return;
+      // ★ 守卫：若编辑器 DOM 已被外部移除（如 tab 组整组清空），跳过 dispose
+      //   否则 Monaco 内部 removeChild 会抛 "not a child of this node"
+      try {
+        var domNode = ed.getDomNode();
+        if (domNode && !domNode.parentNode) {
+          // DOM 已脱离文档树 — 跳过 Monaco dispose，直接清理引用
+          delete _paneEditors[filePath];
+          return;
+        }
+      } catch (_) { }
       // suspend layout before dispose（已 suspend，二次保险）
-      try { ed.updateOptions({ automaticLayout: false }); } catch (_) {}
+      try { ed.updateOptions({ automaticLayout: false }); } catch (_) { }
       // get model reference before disposal
       var model = null;
-      try { model = ed.getModel(); } catch (_) {}
+      try { model = ed.getModel(); } catch (_) { }
       // dispose editor（触发 onDidDispose → 清理 _paneEditors/_paneFiles/allMonacoEditors）
-      try { ed.dispose(); } catch (_) {}
+      try { ed.dispose(); } catch (_) { }
       // dispose model if no other editor references it
       if (model && !model.isDisposed()) {
-        try { model.dispose(); } catch (_) {}
+        try { model.dispose(); } catch (_) { }
       }
     },
     // ★ 窗口快照：获取所有打开 editor 的光标位置
@@ -1213,7 +1223,7 @@
             var p = _editorRef.getPosition();
             if (p) positions[currentFile] = { lineNumber: p.lineNumber, column: p.column };
           }
-        } catch (_) {}
+        } catch (_) { }
       }
       // 面板编辑器（split groups）
       var fpKeys = Object.keys(_paneEditors);
@@ -1225,7 +1235,7 @@
             var p = ed.getPosition();
             if (p) positions[fp] = { lineNumber: p.lineNumber, column: p.column };
           }
-        } catch (_) {}
+        } catch (_) { }
       }
       return positions;
     },

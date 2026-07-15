@@ -14,7 +14,7 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 // ── 单一定义（唯一真理源）──────────────────────────────────────────────────
-export const APP_VERSION = '0.1.344';
+export const APP_VERSION = '0.1.365';
 
 export interface Semver {
     major: number;
@@ -170,22 +170,37 @@ function writeFileSyncRecursive(filePath: string, data: string): void {
 const https = require('https');
 const http = require('http');
 
+async function _httpGet(url: string, redirects: number = 3): Promise<{ status: number; data: string }> {
+    const lib = url.startsWith('https') ? https : http;
+    return new Promise((resolve, reject) => {
+        const opts: any = { timeout: 8000 };
+        if (url.startsWith('https')) { opts.rejectUnauthorized = false; }
+        const req = lib.get(url, opts, (res: any) => {
+            // Follow redirects (Node.js http.get doesn't auto-follow)
+            if ((res.statusCode === 301 || res.statusCode === 302 || res.statusCode === 307 || res.statusCode === 308) && redirects > 0) {
+                const loc = res.headers.location;
+                res.resume(); // Drain response body
+                if (loc) {
+                    _httpGet(loc, redirects - 1).then(resolve, reject);
+                } else {
+                    resolve({ status: res.statusCode, data: '' });
+                }
+                return;
+            }
+            let data = '';
+            res.setEncoding('utf8');
+            res.on('data', (c: string) => data += c);
+            res.on('end', () => resolve({ status: res.statusCode || 0, data }));
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    });
+}
+
 export async function fetchServerVersionInfo(baseUrl: string): Promise<VersionInfo | null> {
     try {
         const versionUrl = (baseUrl.endsWith('/') ? baseUrl : baseUrl + '/') + 'version.json';
-        const lib = versionUrl.startsWith('https') ? https : http;
-        const vResp = await new Promise<{ status: number; data: string }>((resolve, reject) => {
-            const opts: any = { timeout: 8000 };
-            if (versionUrl.startsWith('https')) { opts.rejectUnauthorized = false; }
-            const req = lib.get(versionUrl, opts, (res: any) => {
-                let data = '';
-                res.setEncoding('utf8');
-                res.on('data', (c: string) => data += c);
-                res.on('end', () => resolve({ status: res.statusCode || 0, data }));
-            });
-            req.on('error', reject);
-            req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-        });
+        const vResp = await _httpGet(versionUrl);
         if (vResp.status !== 200) return null;
         const v = JSON.parse(vResp.data);
 
@@ -198,4 +213,17 @@ export async function fetchServerVersionInfo(baseUrl: string): Promise<VersionIn
     } catch {
         return null;
     }
+}
+
+/** fetchServerVersionInfo with fallback: try primary URL first, then fallback. */
+export async function fetchServerVersionInfoWithFallback(
+    primaryUrl: string,
+    fallbackUrl: string
+): Promise<VersionInfo | null> {
+    const primary = await fetchServerVersionInfo(primaryUrl);
+    if (primary) return primary;
+    if (fallbackUrl) {
+        return await fetchServerVersionInfo(fallbackUrl);
+    }
+    return null;
 }

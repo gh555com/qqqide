@@ -336,4 +336,24 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         });
         return { ok: true, windowId: diffWin.id };
     });
+
+    // ═══ op 按钮：在 X 区 editor 打开文件 ═══
+    ipcMain.on('qqqide:timeline:open-in-editor', (_e, filePath: string) => {
+        if (!filePath) return;
+        const mw = BrowserWindow.getAllWindows()[0];
+        if (!mw || mw.isDestroyed()) return;
+        mw.webContents.executeJavaScript(
+            `(function(){ if(window.qqqTabs&&window.qqqTabs.openFile) window.qqqTabs.openFile(${JSON.stringify(filePath)}); })()`
+        ).catch(() => {});
+    });
+
+    // ═══ op 按钮：喂给 AI ═══
+    ipcMain.on('qqqide:timeline:feed-to-ai', (_e, filePath: string) => {
+        if (!filePath) return;
+        const mw = BrowserWindow.getAllWindows()[0];
+        if (!mw || mw.isDestroyed()) return;
+        mw.webContents.executeJavaScript(
+            `(function(){ if(window.__qqq_aiFeedFile) window.__qqq_aiFeedFile(${JSON.stringify(filePath)},false,null); })()`
+        ).catch(() => {});
+    });
 }

@@ -24,10 +24,10 @@ html{forced-color-adjust:none!important;width:100%}
 /* ── 选中高亮：固定 #ffd301（金），暗主题同色 ── */
 ::selection{background:#ffd301;color:#000}
 [data-theme="dark"] ::selection{background:#ffd301;color:#000}
-body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text-primary);background:var(--background-color);width:100%;height:100vh;display:grid;grid-template-columns:100%;grid-template-rows:auto 1fr auto;overflow-x:hidden}
+body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:var(--text-primary);background:var(--background-color);width:100%;height:100vh;display:grid;grid-template-columns:100%;grid-template-rows:auto 1fr auto;overflow-x:hidden}
 /* q2 quest 豆腐块 — 无边框贴合 q1 */
 #quest-bar{position:relative;margin:0;padding:0;border:none}
-.quest-tofu{display:flex;align-items:center;padding:8px 0 8px 14px;border:2px solid transparent;border-radius:0;font-size:22px;font-weight:700;white-space:nowrap;user-select:none;background:#ebe3ca;width:100%;cursor:default;box-sizing:border-box;position:relative}
+.quest-tofu{display:flex;align-items:center;padding:11px 0 8px 8px;border:2px solid transparent;border-radius:0;font-size:22px;font-weight:700;white-space:nowrap;user-select:none;background:#ebe3ca;width:100%;cursor:default;box-sizing:border-box;position:relative}
 [data-theme="dark"] .quest-tofu{background:#211f1c}
 .quest-tofu:hover{background:var(--background-color)}
 [data-theme="dark"] .quest-tofu:hover{background:#3f3830}
@@ -70,6 +70,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
   background:linear-gradient(105deg,transparent 25%,rgba(255,255,255,.02) 40%,rgba(255,255,255,.05) 46%,rgba(255,255,255,.08) 50%,rgba(255,255,255,.05) 54%,rgba(255,255,255,.02) 60%,transparent 75%);
 }
 #quest-bar.quest-expanded .quest-drop{
+  top:100%;
   border:2px dashed var(--yellow);
   border-top:none;
   background:linear-gradient(90deg,rgba(255,211,2,.14) 0%,rgba(255,211,2,.05) 35%,transparent 70%),#ebe3ca!important;
@@ -87,8 +88,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 [data-theme="dark"] #quest-bar.quest-expanded .quest-drop-head{background:linear-gradient(90deg,rgba(255,211,2,.16) 0%,rgba(255,211,2,.06) 35%,transparent 70%),#211f1c}
 [data-theme="dark"] #quest-bar.quest-expanded .quest-drop-search{background:transparent}
 [data-theme="dark"] #quest-bar.quest-expanded .quest-drop-search:focus{background:#3f3830}
-/* quest 下拉 — 与豆腐块齐宽、无缝隙，最大高度=AI面板2/3，层级仅次于qoast */
-.quest-drop{position:absolute;top:100%;left:0;width:100%;z-index:99990;max-height:66.67vh;overflow-y:auto;overflow-x:hidden;background:#ebe3ca;border:none;border-radius:0;box-shadow:0 4px 12px rgba(0,0,0,0.22);display:none;scrollbar-width:thin}
+/* quest 下拉 — 与豆腐块齐宽、无缝隙，最大高度=AI面板2/3，层级仅次于qoast */.quest-drop{position:absolute;top:calc(100% + 5px);left:0;width:100%;z-index:99990;max-height:66.67vh;overflow-y:auto;overflow-x:hidden;background:#ebe3ca;border:none;border-radius:0;box-shadow:0 4px 12px rgba(0,0,0,0.22);display:none;scrollbar-width:thin}}
 [data-theme="dark"] .quest-drop{background:#211f1c;box-shadow:0 4px 12px rgba(0,0,0,0.55)}
 .quest-drop::-webkit-scrollbar{width:4px}
 .quest-drop::-webkit-scrollbar-thumb{background:var(--base01);border-radius:2px}
@@ -111,8 +111,7 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .quest-drop-item{padding:6px 12px;font-size:16px;color:var(--text-primary);white-space:normal;overflow:visible;cursor:default;line-height:1.45;margin-bottom:4px;display:flex;align-items:flex-start;position:relative}
 .quest-drop-item:last-child{margin-bottom:0}
 .quest-drop-line{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere;max-width:100%}
-.quest-drop-item:hover{background:var(--background-color)}
-[data-theme="dark"] .quest-drop-item:hover{background:#3f3830}
+.quest-drop-item:hover{background:var(--background-color);p[data-theme="dark"] .quest-drop-item:hover{background:#3f3830;padding-left:3px}ckground:#3f3830}
 .quest-drop-item.active{font-weight:700;color:var(--primary-color)}
 /* 下拉前缀 qN. — 加大两号 + 显著色 */
 .quest-drop-prefix{font-size:20px;color:#e8a030;position:relative}
@@ -154,9 +153,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:var(--t
 .msg-ai{padding:8px 0;word-break:break-word;overflow-x:hidden}
 .msg-ai h1,.msg-ai h2,.msg-ai h3{margin:8px 0 4px;line-height:1.3}
 .msg-ai h1{font-size:1.25em}.msg-ai h2{font-size:1.12em}.msg-ai h3{font-size:1.05em}
-.msg-ai p{margin:4px 0}
+.msg-ai p{margin:6px 0}
 .msg-ai ul,.msg-ai ol{margin:4px 0 4px 20px}
-.msg-ai li{margin:2px 0}
+.msg-ai li{margin:3px 0}
 .msg-ai code{background:var(--card-bg);color:var(--text-primary);padding:1px 4px;border-radius:3px;font-family:ui-monospace,Consolas,monospace;font-size:.9em;border:1px solid var(--border-color);word-break:break-all;overflow-wrap:break-word}
 .msg-ai table{border-collapse:collapse;width:100%;margin:6px 0;font-size:13px}
 .msg-ai th,.msg-ai td{border:1px solid var(--border-color);padding:4px 8px;text-align:left}
@@ -294,7 +293,7 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 #guide-btn{margin-left:-6px}
 #queue-btn{margin-left:-1px}
 #guide-btn:disabled{opacity:0.35}
-#send-btn{min-width:44px;text-align:center;margin-left:1px}
+#send-btn{min-width:42px;text-align:center;margin-left:1px}
 #ctx-btn{margin-left:4px}
 #btn-row #ctx-btn{position:relative;overflow:hidden;min-width:53px;background:linear-gradient(to right,transparent var(--ctx-pct),var(--card-bg) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
 #btn-row #ctx-btn:hover{background:linear-gradient(to right,transparent var(--ctx-pct),var(--base3) var(--ctx-pct)),linear-gradient(to right,rgba(133,153,0,0.3),rgba(180,55,55,0.3))}
