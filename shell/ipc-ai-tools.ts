@@ -28,6 +28,7 @@ export function registerAiToolsIpc(): void {
                 let entries: fs.Dirent[];
                 try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); }
                 catch { return; }
+                entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
                 for (const ent of entries) {
                     if (matches.length >= maxResults) break;
                     if (ent.name.startsWith('.') && ent.isDirectory()) continue;
@@ -81,6 +82,7 @@ export function registerAiToolsIpc(): void {
                 let entries: fs.Dirent[];
                 try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); }
                 catch { return; }
+                entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
                 for (const ent of entries) {
                     if (matches.length >= maxResults) break;
                     if (ent.name.startsWith('.')) continue;
@@ -117,6 +119,7 @@ export function registerAiToolsIpc(): void {
                 let entries: fs.Dirent[];
                 try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); }
                 catch { return; }
+                entries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
                 for (const ent of entries) {
                     if (matches.length >= maxResults) break;
                     if (ent.name.startsWith('.')) continue;

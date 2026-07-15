@@ -23,8 +23,8 @@
     var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 2.5);
 
     // ═══ DE 容量常量 ═══
-    var DE_MAX_CHARS       = 20000;  // DE 总计上限
-    var DE_ENTRY_MAX_CHARS = 6000;   // 单条目上限
+    var DE_MAX_CHARS       = 60000;  // DE 总计上限（≈20K tokens，按 ~3 chars/token）
+    var DE_ENTRY_MAX_CHARS = 18000;   // 单条目上限（≈6K tokens，按 ~3 chars/token）
 
     // ═══ 工具返回摘要规则（方案三 §4）═══
     var TOOL_SUMMARIES = {
@@ -786,8 +786,12 @@
                 var _allSorted = _parseBiscuitFromContent(biscuitFound.msg.content);
                 biscuitFound.msg.content = _allSorted.map(function(l) { return l.text; }).join('\n\n');
             } else {
-                // 首次：创建 biscuit 消息（多楼层时先排序）
-                var _sortedLines = _parseBiscuitFromContent(biscuitText);
+                // ★ 首次创建 biscuit：优先用 ctx.biscuitLines（重启后 ctx 已从 quest.sq3 恢复全量），
+                //    仅当 ctx 为空时才用 biscuitText（当前楼层的单层饼干）
+                var _biscuitSrc = (self._ctx.biscuitLines && self._ctx.biscuitLines.length > 0)
+                    ? self._ctx.biscuitLines.map(function(l) { return l.text; }).join('\n\n')
+                    : biscuitText;
+                var _sortedLines = _parseBiscuitFromContent(_biscuitSrc);
                 var _sortedText = _sortedLines.map(function(l) { return l.text; }).join('\n\n');
                 self.conversation.splice(persistentCount, 0,
                     { role: 'system', content: _sortedText, _dynamic: true, _biscuit: true });
@@ -884,5 +888,8 @@
         // _callGateway 不需要再额外注入。返回空。
         return '';
     };
+
+    // ★ 导出供 panel-floor.js _restoreAgentFromStore 使用（Bug #4 修复 — 重启后重建 DE）
+    AgentLoop._serializeDeBlock = _serializeDeBlock;
 
 })();

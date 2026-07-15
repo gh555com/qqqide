@@ -31,7 +31,7 @@
         _editDirty = false; _editSnapshotSeq = 0;
         _editOriginalContent = latestContent;
         _editSnapshotBase = latestContent;
-        $btnEdit.textContent = _i('timeline.cancelEdit', '取消编辑'); $btnEdit.classList.add('editing');
+        $btnEdit.textContent = _i('timeline.cancelEdit', '退出编辑'); $btnEdit.classList.add('editing');
         var ddR = document.getElementById('dd-right'); if (ddR) ddR.style.display = 'none';
         if ($editStatus) $editStatus.classList.add('visible');
         var $btnSnap2 = document.getElementById('btn-snap'); if ($btnSnap2) $btnSnap2.style.display = '';

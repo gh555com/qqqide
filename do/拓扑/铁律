@@ -413,3 +413,11 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 路由: 查 manifest→有 panel→show(A区) / 有 tabs→ensure+activate(X区) / 动态 tab(provides:'tab:xxx')→消费者自行 addGaeaTab。
   - 消费者: 统一调 qqqGaea.open(id)，不再硬编码 show()/addGaeaTab()。goods 改注册形态→消费者自动跟随。
   - 违者即返工。
+
+§61 iframe 主题切换 — CSS 选择器优先原则（2026-07-15）
+  - 管线: 父窗口 postMessage(theme-change) → iframe JS 监听→设/删 data-theme 属性→CSS [data-theme="dark"] 生效。
+  - ★ 核心教训: CSS 选择器语法错（如 `-[data-theme="dark"]` 多了个 `-`）→整个暗色块被浏览器静默丢弃。
+    此前多次 AI 修主题失败，皆因去查 JS 消息管线/初始化时序，未先验证 CSS 规则是否有效。
+  - 方法论: iframe 主题问题→第一步 F12 看暗色 CSS 块是否被浏览器解析（不是看 JS 消息是否到达）。
+    选择器只要有一个字符错，浏览器零报错直接跳过整个 { } 块。
+  - 违者即返工。

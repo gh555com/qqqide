@@ -336,6 +336,10 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string })
         openDiffWindow: (args: { filePath: string; beforeBlobHash?: string; afterBlobHash?: string; projectRoot: string }) => ipcRenderer.invoke('qqqide:open-diff-window', args),
         // 用户在 diff 窗口内切换文件时更新主进程映射
         setPath: (newPath: string) => ipcRenderer.send('qqqide:diff:set-path', newPath),
+        // op 按钮：在 X 区 editor 打开文件
+        openInEditor: (filePath: string) => ipcRenderer.send('qqqide:timeline:open-in-editor', filePath),
+        // op 按钮：喂给 AI
+        feedToAi: (filePath: string) => ipcRenderer.send('qqqide:timeline:feed-to-ai', filePath),
         // 监听主进程推送的 diff 更新（复用已有窗口时触发）
         onDiffUpdate: (cb: (data: { beforeBlobHash?: string; afterBlobHash?: string }) => void) => {
             const handler = (_e: any, data: any) => { try { cb(data); } catch (err) { console.warn('[timeline.onDiffUpdate]', err); } };

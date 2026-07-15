@@ -1052,7 +1052,7 @@ body {
   gap: 3px;
   height: 24px;
   padding: 1px 8px;
-  border-radius: 3px;
+  border-radius: 0;
   font-size: 11px;
   white-space: nowrap;
   flex-shrink: 0;

@@ -8,7 +8,7 @@
 // Cache version bumps on each shell.css/js change.
 // ============================================================================
 
-const CACHE_NAME = 'qqq-shell-v89';
+const CACHE_NAME = 'qqq-shell-v108';
 const PRECACHE_URLS = [
   './',
   './index.html',

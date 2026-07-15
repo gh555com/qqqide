@@ -708,42 +708,17 @@ A4 文件快照 — 每层楼私有文件变更追踪
 
 
 ═══════════════════════════════════════════════════════════
-已知架构漏洞（2026-07-03 审计追加）
+已知架构漏洞（2026-07-15 审计）
 ═══════════════════════════════════════════════════════════
 
-D1. search-ui.html iframe inline onclick — 状态栏按钮用 onclick="_expAll()" 在 iframe 内
-    可能因作用域问题报 ReferenceError。已修复（2026-07-03）：改用 addEventListener + DOM API
-    构建状态栏，每次搜索不 innerHTML 覆盖而是 appendChild 替换。
-
-═══════════════════════════════════════════════════════════
-已知架构漏洞（2026-06-29 审计）
-═══════════════════════════════════════════════════════════
-
-🔴 致命级
-  A1. 卡片断层 — 跨面板不自动刷新 ✅ 已修复(2026-06-29)
-      switchQuest 检测共享 agent._stopState === 'sending' → 强制重载 card
+🔴 待修复
   A2. 时钟/饼图跨面板不可见 — timerID 无法跨 iframe 传递
       根治: 时钟数据写入共享 agent._floorTiming，各面板独立 renderLoop
   A3. SSE 断线无跨面板自愈 — SSE 连接耦合在建楼面板 iframe 生命周期
   A4. 单点 auto-save — 仅 panelId=1 写盘。主面板 crash→auto-save 停止
 
-🟡 高危级
+🟡 待修复
   B1. 面板生命周期脆弱 — 三 iframe DOM 事件/timer/observer 无限累积
-  B2. 跨面板仅靠 ownership 互斥，无事务 ✅ 已修复(2026-06-29)
-      sendMessage 前 agent._stopState 真理校验 + setStopState 同步锁
-  B3. 面板级变量泄漏 ✅ 已修复(2026-06-29)
-      _sending 改为纯派生 getter（零存储），_capturedAgent 消灭
 
-🟢 改进级
-  C1. 卡池快照不可变 ✅ 已修复(2026-06-29)
-  C2. window.agentPool 隐式依赖 ✅ 已修复(2026-06-29)
-  C3. tmp/test_replace.txt 残留 ✅ 已删除(2026-06-29)
-
-
-═══════════════════════════════════════════════════════════
-根治路线图
-═══════════════════════════════════════════════════════════
-
-  已做 ✅ 2026-06-29: C3/C2/B3+A1+C1+B2 + agent 单一真相源重构（setStopState 校验表、_sending 派生 getter、draft 管线前置、fatal 双兜底）
-  下个窗口: A2（各面板独立 renderLoop 绘制时钟/饼图）
-  架构演进: A4（auto-save 写者选举）+ A3（网络层与执行层解耦）+ B1（iframe 健康检查+自动复活）
+🟢 已修复
+  A1, B2, B3, C1, C2, C3, D1 — 均已修复，条目已清理

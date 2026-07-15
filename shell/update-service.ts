@@ -15,13 +15,17 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { URL } from 'url';
 import { spawnSync } from 'child_process';
-import { PRODUCTION_URL } from './boot';
-import { fetchServerVersionInfo } from './version';
+import { PRODUCTION_URL, UPDATE_BASE_URL, UPDATE_FALLBACK_URL } from './boot';
+import { fetchServerVersionInfo, fetchServerVersionInfoWithFallback } from './version';
 
-// ★ 三条 URL 全部从 PRODUCTION_URL 派生（唯一真理源）
-const UPDATE_MANIFEST_URL = PRODUCTION_URL + 'version.json';
-const UPDATE_TAR_URL = PRODUCTION_URL + 'server-app.tar.gz';
-const SHELL_TAR_URL = PRODUCTION_URL + 'shell-out.tar.gz';
+// ★ 三条 URL 全部从 UPDATE_BASE_URL 派生（CF Worker → 302 OSS/R2）
+const UPDATE_MANIFEST_URL = UPDATE_BASE_URL + 'version.json';
+const UPDATE_TAR_URL = UPDATE_BASE_URL + 'server-app.tar.gz';
+const SHELL_TAR_URL = UPDATE_BASE_URL + 'shell-out.tar.gz';
+
+// ★ 兜底 URL（OSS 上海直连，绕过 CF）
+const UPDATE_TAR_FALLBACK_URL = UPDATE_FALLBACK_URL + 'server-app.tar.gz';
+const SHELL_TAR_FALLBACK_URL = UPDATE_FALLBACK_URL + 'shell-out.tar.gz';
 
 export interface UpdateState {
     lastCheck: number;
@@ -64,8 +68,8 @@ export class UpdateService {
 
     /** Check for updates (both shell + webapp). */
     async check(): Promise<CheckResult> {
-        const info = await fetchServerVersionInfo(PRODUCTION_URL);
-        this._state.lastCheck = Date.now();
+        const info = await fetchServerVersionInfoWithFallback(UPDATE_BASE_URL, UPDATE_FALLBACK_URL);
+        this._state.lastCheck = Date.now();   this._state.lastCheck = Date.now();
         if (info) {
             this._state.lastVersion = info.shell || info.webapp || '';
         }
@@ -93,9 +97,8 @@ export class UpdateService {
      */
     async apply(): Promise<ApplyResult> {
         this._abortController = new AbortController();
-
         try {
-            const info = await fetchServerVersionInfo(PRODUCTION_URL);
+            const info = await fetchServerVersionInfoWithFallback(UPDATE_BASE_URL, UPDATE_FALLBACK_URL);
             const latestVersion = info?.webapp || info?.shell || '';
             if (!latestVersion) {
                 return { success: false, version: '', error: 'Failed to fetch latest version' };
@@ -108,8 +111,13 @@ export class UpdateService {
             try { fs.mkdirSync(dlDir, { recursive: true }); } catch { }
             try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
 
-            const downloadOk = await this._downloadFile(UPDATE_TAR_URL, tarPath,
+            // Try primary URL first, then fallback
+            let downloadOk = await this._downloadFile(UPDATE_TAR_URL, tarPath,
                 this._abortController.signal);
+            if (!downloadOk) {
+                downloadOk = await this._downloadFile(UPDATE_TAR_FALLBACK_URL, tarPath,
+                    this._abortController.signal);
+            }
             if (!downloadOk) {
                 return { success: false, version: '', error: 'Download failed' };
             }
@@ -148,8 +156,13 @@ export class UpdateService {
             try { fs.mkdirSync(stagingParent, { recursive: true }); } catch { }
             try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
 
-            const downloadOk = await this._downloadFile(SHELL_TAR_URL, tarPath,
+            // Try primary URL first, then fallback
+            let downloadOk = await this._downloadFile(SHELL_TAR_URL, tarPath,
                 this._abortController.signal);
+            if (!downloadOk) {
+                downloadOk = await this._downloadFile(SHELL_TAR_FALLBACK_URL, tarPath,
+                    this._abortController.signal);
+            }
             if (!downloadOk) {
                 return { success: false, version: '', error: 'Shell download failed' };
             }

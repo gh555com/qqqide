@@ -354,6 +354,52 @@ var TOOL_DEFINITIONS = [
                 required: ['query']
             }
         }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'timeline_versions',
+            description: 'List all tracked versions of a file from the project timeline (qqq/timeline). Returns file_seq, blob_hash, timestamp, added/deleted lines, source, and trace (quest/floor/house/room) for each version — ordered oldest→newest. Optionally filter by floor_num to see only changes from a specific floor. Use this to find the version you want, then call revert_file or diff_versions.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'Absolute path to the file' },
+                    floor_num: { type: 'number', description: 'Optional: filter to only show versions from a specific floor number (e.g. 5 to see only floor 5 changes)' }
+                },
+                required: ['path']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'revert_file',
+            description: 'Revert a file to a historical version from the project timeline. Single call: looks up the blob by file_seq, restores content atomically, and records the revert as a new version. Use timeline_versions first to pick the right file_seq, then call this once — no manual DB/blob gymnastics needed.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'Absolute path to the file' },
+                    file_seq: { type: 'number', description: 'Version number to revert to (from timeline_versions output)' }
+                },
+                required: ['path', 'file_seq']
+            }
+        }
+    },
+    {
+        type: 'function',
+        function: {
+            name: 'diff_versions',
+            description: 'Compute a unified diff between two historical versions of a file (or one version vs current disk). Returns standard unified diff format with @@ headers. Use timeline_versions first to find file_seq numbers, then diff any pair. If to_seq is omitted, compares from_seq against current disk content.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    path: { type: 'string', description: 'Absolute path to the file' },
+                    from_seq: { type: 'number', description: 'Older version number (from timeline_versions output)' },
+                    to_seq: { type: 'number', description: 'Newer version number (optional, defaults to current disk content)' }
+                },
+                required: ['path', 'from_seq']
+            }
+        }
     }
 ];
 
@@ -364,8 +410,10 @@ var TOOL_DEFINITIONS = [
 var TOOL_CATEGORY = {
     read_file: 'READ', search_text: 'READ', search_content: 'READ', list_files: 'READ',
     find_files: 'READ', get_vision_context: 'READ', fetch_webpage: 'READ',
-    get_diagnostics: 'READ',
+    get_diagnostics: 'READ', timeline_versions: 'READ',
     edit_file: 'WRITE', create_file: 'WRITE', delete_file: 'WRITE', write_file: 'WRITE',
+    revert_file: 'WRITE',
+    diff_versions: 'READ',
     run_command: 'EFFECT',
     generate_image: 'EFFECT', analyze_image: 'EFFECT', remove_background: 'EFFECT', search_web: 'EFFECT'
 };

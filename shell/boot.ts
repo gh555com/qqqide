@@ -10,7 +10,7 @@ import * as https from 'https';
 import { URL } from 'url';
 import { spawnSync } from 'child_process';
 import { BrowserWindow } from 'electron';
-import { APP_VERSION, decideUpdate, fetchServerVersionInfo, readLocalShellVersion, writeLocalShellVersion, readLocalWebappVersion, writeLocalWebappVersion } from './version';
+import { APP_VERSION, decideUpdate, fetchServerVersionInfo, fetchServerVersionInfoWithFallback, readLocalShellVersion, writeLocalShellVersion, readLocalWebappVersion, writeLocalWebappVersion } from './version';
 
 // ── 全局启动锁：一旦 bootSequence 成功完成，绝不允许 fallback 再入侵窗口 ──
 let bootCompleted = false;
@@ -38,8 +38,14 @@ function initBootLog(logsDir: string) {
 // ----------------------------------------------------------------------------
 // Constants
 // ----------------------------------------------------------------------------
-/** ★ 唯一真理源：IDE 部署根 URL。所有下载/检查路径从此派生。 */
+/** ★ 唯一真理源：IDE 部署根 URL。webapp 加载路径。 */
 export const PRODUCTION_URL = 'https://gh555.com/qqqide/';
+
+/** ★ 热更新 CDN 路由 (CF Worker → 302 OSS/R2)。版本检查/下载走此 URL。 */
+export const UPDATE_BASE_URL = 'https://gh555.com/dl/qqqide-update/';
+
+/** ★ 热更新兜底 URL (OSS 上海直连，绕过 CF)。当主 URL 不可达时使用。 */
+export const UPDATE_FALLBACK_URL = 'https://gh555-shanghai.oss-cn-shanghai.aliyuncs.com/qqqide-update/';
 
 // ----------------------------------------------------------------------------
 // Boot configuration
@@ -126,12 +132,11 @@ export async function checkAndDownloadShellUpdate(
     const tarPath = path.join(portableCache, 'staging', 'shell-out.tar.gz');
 
     try {
-        const baseUrl = bootConfig.url.endsWith('/') ? bootConfig.url : bootConfig.url + '/';
-        const updateUrl = baseUrl + SHELL_UPDATE_URL;
+        const updateUrl = UPDATE_BASE_URL + SHELL_UPDATE_URL;
         const lib = updateUrl.startsWith('https') ? https : http;
 
         // Fetch server version info — 工业级语义比较，防降级
-        const versionInfo = await fetchServerVersionInfo(bootConfig.url);
+        const versionInfo = await fetchServerVersionInfoWithFallback(UPDATE_BASE_URL, UPDATE_FALLBACK_URL);
         const latestVersion = versionInfo?.shell || '';
         if (!latestVersion) return false;
 
@@ -332,10 +337,8 @@ async function backgroundCheckWebappUpdate(
     portableRoot: string,
 ): Promise<void> {
     try {
-        const baseUrl = bootConfig.url.endsWith('/') ? bootConfig.url : bootConfig.url + '/';
-
         // 1) Fetch server version info — 工业级语义比较
-        const versionInfo = await fetchServerVersionInfo(bootConfig.url);
+        const versionInfo = await fetchServerVersionInfoWithFallback(UPDATE_BASE_URL, UPDATE_FALLBACK_URL);
         if (!versionInfo) { bootLog('webapp-update: version check failed'); return; }
         const latestVersion = versionInfo.webapp || '';
         if (!latestVersion) { bootLog('webapp-update: no version info on server'); return; }
@@ -350,7 +353,7 @@ async function backgroundCheckWebappUpdate(
         bootLog('webapp-update: hot-update — local=' + localVersion + ' server=' + latestVersion);
 
         // 3) Download server-app.tar.gz (gzip, works everywhere; xz not available on Windows)
-        const dlUrl = baseUrl + 'server-app.tar.gz';
+        const dlUrl = UPDATE_BASE_URL + 'server-app.tar.gz';
         bootLog('webapp-update: downloading ' + dlUrl);
         const lib = dlUrl.startsWith('https') ? https : http;
         const dlDir = path.join(portableRoot, 'Data', 'webapp-dl');

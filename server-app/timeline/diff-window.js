@@ -330,6 +330,54 @@
         });
     }
 
+    // ═══ OP 按钮 — 操作下拉 ═══
+    var $btnOp = document.getElementById('btn-op');
+    var $opDropdown = document.getElementById('op-dropdown');
+    var _opVisible = false;
+
+    function _showOpDropdown() {
+        _opVisible = true;
+        $opDropdown.style.display = '';
+    }
+    function _hideOpDropdown() {
+        _opVisible = false;
+        $opDropdown.style.display = 'none';
+    }
+
+    if ($btnOp) {
+        $btnOp.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (_opVisible) { _hideOpDropdown(); } else { _showOpDropdown(); }
+        });
+    }
+
+    // op 下拉项点击
+    if ($opDropdown) {
+        $opDropdown.addEventListener('click', function (e) {
+            e.stopPropagation();
+            var item = e.target.closest('.op-item');
+            if (!item) return;
+            var action = item.dataset.action;
+            var fp = FILE_PATH || _titleGetText().trim();
+            if (!fp) return;
+            if (action === 'open') {
+                // 在 X 区 editor 打开文件
+                try { if (bridge && bridge.timeline && bridge.timeline.openInEditor) bridge.timeline.openInEditor(fp); } catch (_) { }
+            } else if (action === 'feed') {
+                // 喂给 AI
+                try { if (bridge && bridge.timeline && bridge.timeline.feedToAi) bridge.timeline.feedToAi(fp); } catch (_) { }
+            }
+            _hideOpDropdown();
+        });
+    }
+
+    // 点击外部关闭 op 下拉
+    document.addEventListener('click', function (e) {
+        if (_opVisible && $btnOp && !$btnOp.contains(e.target) && $opDropdown && !$opDropdown.contains(e.target)) {
+            _hideOpDropdown();
+        }
+    });
+
     // ═══ 窗口控制 ═══
     var $btnMax = document.getElementById('btn-max');
     if ($btnMax) $btnMax.addEventListener('click', function () {

@@ -432,8 +432,12 @@ async function _restoreAgentFromStore(questId, ag) {
 
         // ★ 压缩恢复：先读 lastCompressedFloor（需在 conversation 之前）
         var _restoredLastCompressedFloor = (data && data.ctx && data.ctx.lastCompressedFloor) || 0;
-        var _restoredBiscuit = (data && data.ctx && data.ctx.narrative) || '';
-        var _hasBiscuit = _restoredLastCompressedFloor > 0 && _restoredBiscuit.indexOf('═══ COMPRESSED FLOORS') === 0;
+        var _restoredNarrative = (data && data.ctx && data.ctx.narrative) || '';
+        // V10/V11: ctx.narrative 存完整饼干文本
+        // V12:     ctx.narrative 是摘要(biscuit:X de:Y)，饼干在 conversation 的 _biscuit/_deBlock 消息
+        var _isV10Biscuit = _restoredLastCompressedFloor > 0 && _restoredNarrative.indexOf('═══ COMPRESSED FLOORS') === 0;
+        var _isV12Biscuit = _restoredLastCompressedFloor > 0 && _restoredNarrative.indexOf('biscuit:') === 0;
+        var _hasBiscuit = _isV10Biscuit || _isV12Biscuit;
 
         for (var fi = 0; fi < allFloors.length; fi++) {
             var fData = allFloors[fi].data;
@@ -453,9 +457,34 @@ async function _restoreAgentFromStore(questId, ag) {
             }
         }
 
-        // ★ 注入压缩饼干：在 conversation 开头（persistent 之后、第一层非压缩楼层之前）
-        if (_hasBiscuit) {
-            ag.conversation.unshift({ role: 'system', content: _restoredBiscuit, _compressed: true, _dynamic: true });
+        // ★ 注入压缩饼干：V10 从 ctx.narrative 注入；V12 从 ctx.biscuitLines/deEntries 重建消息
+        if (_isV10Biscuit) {
+            ag.conversation.unshift({ role: 'system', content: _restoredNarrative, _compressed: true, _dynamic: true });
+        }
+        // ★ V12 恢复：biscuit/DE 消息不存在于 all.json（Bug #4 根因—落盘在压缩之前），
+        //    但 ctx.biscuitLines/deEntries 已从 quest.sq3 正确恢复。在此重建消息注入 conversation。
+        if (_isV12Biscuit) {
+            var _hasBiscuitMsg = false, _hasDeMsg = false;
+            for (var _scmi = 0; _scmi < ag.conversation.length; _scmi++) {
+                if (ag.conversation[_scmi]._biscuit) _hasBiscuitMsg = true;
+                if (ag.conversation[_scmi]._deBlock) _hasDeMsg = true;
+            }
+            if (!_hasBiscuitMsg && ag._ctx.biscuitLines && ag._ctx.biscuitLines.length > 0) {
+                var _rebuildBiscuit = ag._ctx.biscuitLines.map(function(l) { return l.text; }).join('\n\n');
+                ag.conversation.splice(ag._persistentCount || 0, 0,
+                    { role: 'system', content: _rebuildBiscuit, _dynamic: true, _biscuit: true });
+            }
+            if (!_hasDeMsg && ag._ctx.deEntries && ag._ctx.deEntries.length > 0) {
+                var _rebuildDe = (typeof AgentLoop !== 'undefined' && typeof AgentLoop._serializeDeBlock === 'function')
+                    ? AgentLoop._serializeDeBlock(ag._ctx.deEntries)
+                    : '═══ DE (K+C, 60000 cap) ═══\n';
+                var _biscuitIdx = ag._persistentCount || 0;
+                for (var _bmfi = 0; _bmfi < ag.conversation.length; _bmfi++) {
+                    if (ag.conversation[_bmfi]._biscuit) { _biscuitIdx = _bmfi; break; }
+                }
+                ag.conversation.splice(_biscuitIdx + 1, 0,
+                    { role: 'system', content: _rebuildDe, _dynamic: true, _deBlock: true });
+            }
         }
         // ★ 扫描所有 _error 消息重建分楼层错误日志（跳过已恢复的）
         for (var _eli = 0; _eli < ag.conversation.length; _eli++) {
@@ -592,6 +621,9 @@ async function _restoreAgentFromStore(questId, ag) {
             if (data.ctx && data.ctx.narrative) ag._ctx.narrative = data.ctx.narrative;
             if (data.ctx && data.ctx.facts) ag._ctx.facts = data.ctx.facts;
             if (data.ctx && data.ctx.treasures) ag._ctx.treasures = data.ctx.treasures;
+            // V12 fix: 重启后恢复 biscuitLines/deEntries（防 ctx 与 conversation 脱节致背包暴涨）
+            if (data.ctx && data.ctx.biscuitLines) ag._ctx.biscuitLines = data.ctx.biscuitLines;
+            if (data.ctx && data.ctx.deEntries) ag._ctx.deEntries = data.ctx.deEntries;
             ag._floorTimings = data.floorTimings || [];
             ag._serverDrift = data.serverDrift || 0;
             ag._queue = data.queue || [];

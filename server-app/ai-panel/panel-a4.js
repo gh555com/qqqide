@@ -222,7 +222,7 @@ if (typeof window !== 'undefined') {
 // ═══ executeTool 拦截器：文件修改前后自动捕获快照 ═══
 var _a4OriginalExecuteTool = (typeof executeTool === 'function') ? executeTool : null;
 
-var _WRITE_TOOLS = ['edit_file', 'create_file', 'write_file', 'delete_file', 'run_command'];
+var _WRITE_TOOLS = ['edit_file', 'create_file', 'write_file', 'delete_file', 'run_command', 'revert_file'];
 
 // ── 编辑前基线：确保 before 进入 timeline ──
 // ① 无版本 → 记录当前内容（建立基线）
@@ -761,37 +761,6 @@ function _a4ClearCurrent(ag) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 从 conversation 重建 HTML — 零 DOM 依赖，零竞态，根治 ai_html 丢失
-// ── 替代 DOM 快照方案（_contentWrap.innerHTML），因为 DOM 被多次改写
-//    导致流式内容灭失（自动保存 flush → _dirty=false → _doStreamRender 卡死）
-//    conversation 是所有对话消息的单一真理源，永不丢失。
-function _buildConversationFlowHtml(conversation, fData) {
-    conversation = conversation || [];
-    fData = fData || {};
-    var _rm = typeof renderMarkdown === 'function' ? renderMarkdown : function (s) { return s; };
-    var parts = [];
-    for (var i = 0; i < conversation.length; i++) {
-        var msg = conversation[i];
-        // 只取 assistant 的非空 content（tool call 的 content 是 null，跳过）
-        if (msg && msg.role === 'assistant' && msg.content && !msg._error) {
-            parts.push(_rm(msg.content));
-        }
-    }
-    // 流式文本（跨 house 累积，含 tool call 前的分析文本）
-    if (fData._streamingText) {
-        if (parts.length > 0) parts.push('<div class="msg-flow-house-sep"></div>');
-        parts.push(_rm(fData._streamingText));
-    }
-    // fatal 地板：显示错误消息
-    if (fData.floorFatal && parts.length === 0) {
-        return _rm('⚠️ ' + (fData.exitReason || '楼层异常中断'));
-    }
-    return parts.length > 1
-        ? parts.join('<div class="msg-flow-house-sep"></div>')
-        : (parts[0] || '');
-}
-
-// ═══════════════════════════════════════════════════════════════
 // 增量持久化 — 统一入口（覆盖 a1/a2/a3/a4 全部豆腐块）
 // ── 构建完整 floor payload（与 _saveAgentQuestData 同构）──
 //   可选 floorNum: 若传入则使用 ag._floorMeta[floorNum] 中的未可变元数据
@@ -836,7 +805,6 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
 
     // ★ 预计算渲染数据 — 一次渲染永久不变
     //   优先取 live DOM HTML（用户实际看到的 _contentWrap.innerHTML），保证所见即所得
-    //   仅当 DOM 已销毁（旧楼/异常）才回退到 _buildConversationFlowHtml 从 conversation 重建
     // ★ 跨面板迁移：flush 所有未渲染段落到 DOM，确保 ai_html 完整捕获
     //   ⚠ 不用 ag._doStreamRender()：它内部有 _stopState !== 'sending' 守卫，
     //      在 onDone 后 _stopState 已非 sending 时会直接 return，吞掉未渲染段落。
@@ -896,37 +864,10 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
         _aiDiv._dirty = false;
     }
     var ai_html = '';
-    // ★ 诊断：打印所有来源状态
-    var _dbgQid = ag._questId || '';
-    var _dbgFloor = floorNum || ag._currentFloorNum || 0;
-    console.log('[a4] PAYLOAD START q=' + _dbgQid + ' f=' + _dbgFloor + ' emergency=' + (ag._emergencyAiHtml ? ag._emergencyAiHtml.length : 0) + ' preOverwrite=' + (ag._preOverwriteAiHtml ? ag._preOverwriteAiHtml.length : 0) + ' domCapture=' + (ag._activeAiDiv && ag._activeAiDiv._contentWrap ? ag._activeAiDiv._contentWrap.innerHTML.length : 0));
     // ★ 中断恢复：优先用紧急快照（onError 在清理前抓取），防 DOM 已变
     if (ag._emergencyAiHtml) {
         ai_html = ag._emergencyAiHtml;
         ag._emergencyAiHtml = null;  // 一次性消费
-    }
-    // ★ V12：conversation 重建为主源（全量精确，永不丢 house），DOM 仅作备胎
-    if (!ai_html && typeof _buildConversationFlowHtml === 'function') {
-        try {
-            var _fDataForRender = {
-                question: (ag._lastUserInput && ag._lastUserInput.text) || '',
-                conversation: cleanConv,
-                houses: cleanHouses,
-                costWge: ag._floorCostWge,
-                clockTiming: ag._lastFloorTimingRecord || null,
-                _streamingText: ag._floorStreamText || '',
-                _streaming: !!(ag._streaming),
-                floorFatal: !!ag._floorFatal,
-                exitReason: ag._exitReason || ''
-            };
-            ai_html = _buildConversationFlowHtml(cleanConv, _fDataForRender);
-        } catch (_) { }
-    }
-    // ★ 流式 DOM 快照（onDone 覆盖前抓取，防流失）
-    if (!ai_html && ag._preOverwriteAiHtml) {
-        ai_html = ag._preOverwriteAiHtml;
-        ag._preOverwriteAiHtml = null;  // 一次性消费
-        console.log('[a4] using _preOverwriteAiHtml snapshot, len=' + ai_html.length);
     }
     if (!ai_html && ag._activeAiDiv && ag._activeAiDiv._contentWrap) {
         try { ai_html = ag._activeAiDiv._contentWrap.innerHTML; } catch (_) { }
@@ -975,8 +916,8 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
         _fDir: fDir,
         createdAt: ag._floorCreatedAt || Date.now(),
         savedAt: Date.now(),
-        // ★ 流式持久化：捕获正在打印中的部分 AI 回复文本（跨 house 累积）
-        _streamingText: ag._floorStreamText || '',
+        // ★ 流式持久化：捕获正在打印中的部分 AI 回复文本
+        _streamingText: (ag._streaming && ag._streamFullText) ? ag._streamFullText : '',
         _streaming: !!(ag._streaming),
         // ★ 跨面板迁移：流式缓冲区状态（让接手面板无缝续接）
         _streamingBuf: _streamingBuf,
@@ -1003,16 +944,10 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
         }
     }
 
-    // ★ 临时诊断：记录 save payload 的 ai_html 内容
-    if (typeof _logRenderEvent === 'function') {
-        _logRenderEvent('save_payload', ag._questId || '', floorNum || ag._currentFloorNum, ai_html || '');
-    }
-
     return payload;
 }
 
 // ═══ 导出到 window（跨模块引用 §29） ═══
-window._buildConversationFlowHtml = _buildConversationFlowHtml;
 window._a4BuildCompleteFloorPayload = _a4BuildCompleteFloorPayload;
 window._a4PersistSnapshots = _a4PersistSnapshots;
 window._a4RestoreBlock = _a4RestoreBlock;
