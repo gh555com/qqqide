@@ -268,10 +268,10 @@ async function _resolveQuestDirName(root, questId, numericId, title) {
 
 async function createNewQuest() {
     if (_switching) return;  // ★ quest 切换中
-    if (streaming) stopStream();
     saveQuestUIState(questActiveId);
-    // ★ 仅建楼中有未保存数据需刷盘；idle quest 的楼层数据已在 onDone 时完整写入
+    // ★ 先保存再停流：stopStream() 会改变 _stopState，保存必须在此之前
     if (!_isDraft(questActiveId) && _activeAgent && _activeAgent._stopState === 'sending') await saveQuestData();
+    if (streaming) stopStream();
     if (questActiveId && !_isDraft(questActiveId)) {
         _parentReleaseQuest(questActiveId);
         _broadcast('owner-released', questActiveId);
@@ -671,7 +671,7 @@ if (_ctxManageBtn) {
                     var t = questStore.getTitle(qid);
                     if (t && t !== 'New Chat') questLabel = qid + ' ' + t;
                 }
-            } catch (_) {}
+            } catch (_) { }
 
             qqTabs.addGaeaTab(gaeaId, '📋 ' + questLabel, function (pane, tab) {
                 pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
@@ -1170,13 +1170,25 @@ $queueBtn.onclick = function () {
         'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
 
     // hover 展开：填满水箱 + 左侧多出1px
-    track.addEventListener('mouseenter', function () {
+    // ★ track 和 thumb 是兄弟节点，thumb 展开后 z-index 更高会覆盖 track，
+    // 导致 mouseleave 误触发 → 闪烁。用 relatedTarget 互认避免。
+    function _expandThumb() {
         thumb.style.width = '10px'; thumb.style.right = '-1px';
         thumb.style.background = _qhColors().c;
-    });
-    track.addEventListener('mouseleave', function () {
+    }
+    function _shrinkThumb() {
         thumb.style.width = '2px'; thumb.style.right = '8px';
         thumb.style.background = _qhColors().c;
+    }
+    track.addEventListener('mouseenter', _expandThumb);
+    track.addEventListener('mouseleave', function (e) {
+        if (e.relatedTarget === thumb) return;  // 移到 thumb 上，不缩
+        _shrinkThumb();
+    });
+    thumb.addEventListener('mouseenter', _expandThumb);
+    thumb.addEventListener('mouseleave', function (e) {
+        if (e.relatedTarget === track) return;  // 移到 track 上，不缩
+        _shrinkThumb();
     });
 
     // 同步

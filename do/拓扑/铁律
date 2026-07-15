@@ -69,8 +69,9 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - lsp-bridge.ts 零引用零加载。manifest.json LSP条目已删除。
   - 替代: 三级语法检查—L1自动 node--check(0ge)+L2 get_diagnostics(~50ge)+L3全仓(~200ge)。
 
-§12 qoast 唯一真理弹窗机
-  - 唯一入口: core/qqqide-qoast.js。一切通知走 qqqideQoast.show()。
+§12 qoast 唯一真理弹窗机 
+  - 通 知唯一真理: qoast。全仓代码/文档/注释/变量名/UI标签禁出现 "toast" 这 个单词。
+  - 唯一入口: core/qqqide-qoast.js。一切通 知走 qqqideQoast.show()。
   - API: show(message,{duration,type,action})。默认9s，0=不关。
   - AI面板在iframe内→走 window.parent.qqqideQoast。
 
@@ -400,11 +401,11 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - agent-loop.js 内置兜底 stub（_rebuildBackpack/_compressContext 等），防 typeof === 'function' 静默降级。
   - 违者即返工。
 
-§59 自动语法门 — edit/create/write_file 后端内置 node--check（2026-07-14）
-  - 位置: shell/ipc-edit.ts checkSyntax()。
-  - 触发: 每次 edit/create/write_file 写盘后自动跑。JS→node--check，JSON→JSON.parse，其他跳过。
-  - 失败: 还原文件（有原内容→还原，新文件→删除），返回语法错误信息。5s 超时。
-  - 效果: AI 工具产出腐化代码→当场拒绝+还原，不落盘。根除 edit_file 空白匹配到错误位置导致括号失衡。
+§59 自动语法门 — edit/create/write_file 后端内置语法检查（2026-07-14，2026-07-15 加固）
+  - 位置: shell/ipc-edit.ts checkSyntaxSync()。JS→vm.Script（零spawn，100%可靠），JSON→JSON.parse。
+  - L2 上下文验证: 空白归一化匹配后，短串（<30 chars）需位于行首或首字符非结构符（} ) ; ]），
+    防 nc.indexOf(nf) 取首匹配错位。主进程+渲染层双份一致。
+  - 失败: 还原文件（有原内容→还原，新文件→删除），返回语法错误。
   - 违者即返工。
 
 §60 Goods 清单驱动路由 — qqqGaea.open() 统一入口（2026-07-14）
