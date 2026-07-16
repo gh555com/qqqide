@@ -85,7 +85,7 @@ var AgentLoop = (function () {
         // 上下文引擎
         this._compressing = false;
         this._compressAttemptedThisFloor = false;
-        this._ctx = { narrative: '', facts: [], totalFloors: 0, lastCompressedFloor: 0, floorArchives: [], biscuitLines: [], deEntries: [] };
+        this._ctx = { narrative: '', facts: [], totalFloors: 0, lastCompressedFloor: 0, floorArchives: [], biscuitLines: [] };
         this._compactTraces = [];  // 埋点日志（最近 10 条）
 
         // 计费
@@ -638,80 +638,19 @@ var AgentLoop = (function () {
                     continue;
                 }
 
-                // V12: 压缩守护已移除。建楼中不触发压缩。每层楼完结时自动 _rebuildBackpack()。
-                if (false) { // V12: mid-building compress removed, use _rebuildBackpack on floor completion
-                    var _apiTokens = self._lastApiPromptTokens || 0;
-                    // ★ 冷启动兜底：磁盘加载 quest 后无 usage，用估算防首轮 400
-                    if (_apiTokens === 0) { _apiTokens = self._estimateTotalTokens(); }
-                    // ★ 压缩阈值：settings.js → qqqideDefaults → ContentGateway → 兜底 600k
-                    var _threshold = 600000;
-                    try {
-                        if (typeof parent !== 'undefined' && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
-                            var _k = parseInt(parent.window.qqqSettings.get('ai.compressThreshold'), 10);
-                            if (!isNaN(_k) && _k >= 100 && _k <= 1000) _threshold = _k * 1000;
-                        }
-                    } catch (_) { }
-                    if (_threshold === 600000) {
-                        try {
-                            if (typeof parent !== 'undefined' && parent.window & parent.window.qqqideDefaults) {
-                                _threshold = parent.window.qqqideDefaults['ai.compressThreshold'] * 1000; 0;
-                            }
-                        } catch (_) { }
+                // V13: 阀值压缩 — 建楼中饼干超阈值自动剥离 ╔K...╚ 绝对包装盒体部
+                //   零网络零费用，纯本地正则操作。保留头行，仅移除体部。
+                var _apiTokens = self._lastApiPromptTokens || 0;
+                if (_apiTokens === 0) { _apiTokens = self._estimateTotalTokens(); }
+                var _threshold = 600000;
+                try {
+                    if (typeof parent !== 'undefined' && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
+                        var _k = parseInt(parent.window.qqqSettings.get('ai.compressThreshold'), 10);
+                        if (!isNaN(_k) && _k >= 100 && _k <= 1000) _threshold = _k * 1000;
                     }
-                    if (typeof ContentGateway !== 'undefined' && ContentGateway.COMPRESS_THRESHOLD && _threshold === 600000) {
-                        _threshold = ContentGateway.COMPRESS_THRESHOLD;
-                    }
-                    if (_apiTokens > 0 && _apiTokens > _threshold) {
-                        self._compressAttemptedThisFloor = true;
-                        self._compressing = true;
-                        window._updateSendBtnForCompress(true);
-                        try {
-                            // ★ 统一管线（同手动压缩）：压缩 = 一间 house，完整追踪账单+计时
-                            self._houseIndex++;
-                            var _compressStart = performance.now();
-                            self._aiTierLabel = 'A4';  // 压缩锁死 tier 4
-                            var _reason = 'Auto-compress (' + Math.round(_apiTokens / 1000) + 'k / ' + Math.round(_threshold / 1000) + 'k)';
-                            self._renderCompressStart(_reason);
-                            var _result = await self._compressContext({ trigger: 'auto', detail: _reason });
-                            self._renderCompressResult(_result);
-                            // ★ house 条目：账单由 _callCompactAPI 从 SSE billing 事件提取
-                            var _bill = self._lastBilling; self._lastBilling = null;
-                            self._houses.push({
-                                index: self._houseIndex,
-                                type: 'compress',
-                                tools: [],
-                                ts: new Date().toISOString(),
-                                ms: Math.round(performance.now() - _compressStart),
-                                reasoning: '',
-                                answer: _result.compressed ? _result.detail : ('FAIL: ' + (_result.detail || '') + '\n' + (self._lastRawFactsText ? 'RAW FACTS (' + self._lastRawFactsText.length + 'c): ' + self._lastRawFactsText.slice(0, 500) : '')),
-                                wgeCost: _bill ? _bill.wgeCost : 0,
-                                model: _bill ? _bill.model : '',
-                                cacheHitRate: _bill ? _bill.cacheHitRate : -1,
-                                usage: _bill ? _bill.usage : null,
-                                billingSeq: _bill ? _bill.seq : 0,
-                                billingRequestId: _bill ? _bill.requestId : '',
-                                tier: '4-Pro (compress)'
-                            });
-                            // ★ 更新右下角 ge 显示示
-                            var _aiDivC = self._activeAiDiv;
-                            if (_aiDivC && _aiDivC._clockCost) {
-                                var _rawGe = self._floorCostWge / 10000;
-                                _aiDivC._clockCost._rawGe = (typeof _formatGeRaw === 'function') ? _formatGeRaw(_rawGe) : _rawGe.toFixed(4);
-                                _aiDivC._clockCost.textContent = (typeof _formatGeDisplay === 'function' ? _formatGeDisplay(_rawGe) : _rawGe.toFixed(2)) + ' ge' + ((self._floorHadBilling && self._floorCostWge === 0) ? ' Free' : ''); _aiDivC._clockCost.style.display = 'inline';
-                                _aiDivC._clockCost._houses = self._houses;
-                                _aiDivC._clockCost._floorNum = self._currentFloorNum;
-                                _aiDivC._clockCost._passby = { questId: self._questId, floorNum: self._currentFloorNum, houses: (self._passbyBaseHouses || 0) + (self._houses ? self._houses.length : 0), tokens: (self._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(self) : 0), wge: (self._passbyBaseWge || 0) + (self._floorCostWge || 0), drift: self._serverDrift || 0, city: self._serverCity || '' };
-                            }
-                            // ★ 压缩耗时归入 AI 时间（饼图绿色），而非 other（黄色）
-                            if (self._floorTiming) {
-                                self._floorTiming.aiMs += Math.round(performance.now() - _compressStart);
-                            }
-                        } finally {
-                            self._compressing = false;
-                            self._lastGatewayError = 0;  // ★ 压缩的网关错误不污染后续 house
-                            window._updateSendBtnForCompress(false);
-                        }
-                    }
+                } catch (_) { }
+                if (_apiTokens > 0 && _apiTokens > _threshold && typeof self._tryAutoValveCompress === 'function') {
+                    self._tryAutoValveCompress(_threshold);
                 }
 
                 self._houseIndex++;
@@ -1319,8 +1258,8 @@ var AgentLoop = (function () {
             aiDiv._lastParaEl.innerHTML = _rm(_trailing);
         }
         aiDiv._dirty = false;
-        // ★ 渲染后立即滚到底：新 DOM 已落地，scrollHeight 已更新，确保时钟行等底部元素可见
-        if (typeof scrollToBottom === 'function') scrollToBottom(true);
+        // ★ 渲染后滚到底（尊重用户手动上滚，不用 force）
+        if (typeof scrollToBottom === 'function') scrollToBottom();
     };
 
     return AgentLoop;

@@ -5,7 +5,7 @@
 // ★ GATEWAY_URL — 保留向后兼容，实际 fetch 已全部经 AiGateway 统一代理
 //    AiGateway 内部持有 URL 唯一真理（ai-gateway.js）
 const GATEWAY_URL_PRIMARY = 'https://direct-cn.gh555.com/api/v3/ai/chat';
-const GATEWAY_URL_FALLBACK = 'https://gh555.com/api/v3/ai/chat';
+const GATEWAY_URL_FALLBACK = 'https://direct.gh555.com/api/v3/ai/chat';
 var GATEWAY_URL = GATEWAY_URL_PRIMARY;
 var _gwUsingFallback = false;
 var _gwFallbackAt = 0;

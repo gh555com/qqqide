@@ -55,12 +55,29 @@ async function _handleSyncMessage(msg) {
                 {
                     var _fcCard = cardPool._cards[msg.questId];
                     if (_fcCard && _fcCard.buildingFloor === null && questStore) {
+                        // ★ 保存滚动位置（清卡会触发 DOM 坍缩，scrollTop 丢失）
+                        var _fcScrollTop = 0;
+                        try {
+                            var _fcContainer = _fcCard.dom && _fcCard.dom.parentNode;
+                            if (_fcContainer) _fcScrollTop = _fcContainer.scrollTop;
+                        } catch (_) { }
                         _fcCard._contentWrap.innerHTML = '';
                         _fcCard.floorDOM = {};
                         _fcCard.totalFloors = 0;
                         _fcCard.floors = [];
                         _fcCard._floorMetaMap = {};
                         await cardPool._loadCardData(_fcCard);
+                        // ★ 恢复滚动位置（跨面板重建卡片后用户不应被打断）
+                        try {
+                            var _fcContainer2 = _fcCard.dom && _fcCard.dom.parentNode;
+                            if (_fcContainer2) {
+                                _fcContainer2.scrollTop = _fcScrollTop;
+                                // 递进兜底：渲染帧落地后再设一次
+                                requestAnimationFrame(function () {
+                                    if (_fcContainer2) _fcContainer2.scrollTop = _fcScrollTop;
+                                });
+                            }
+                        } catch (_) { }
                         // ★ 若为当前活跃 quest，重连 _activeAiDiv
                         if (msg.questId === questActiveId && _activeAgent) {
                             var _lastNums = Object.keys(_fcCard.floorDOM || {}).map(Number).sort(function (a, b) { return b - a; });
@@ -750,8 +767,7 @@ function _writeCtxJson(questId, ctx) {
                 narrative: ctx.narrative || '',
                 facts: ctx.facts || [],
                 treasures: ctx.treasures || [],
-                biscuitLines: ctx.biscuitLines || [],
-                deEntries: ctx.deEntries || []
+                biscuitLines: ctx.biscuitLines || []
             };
             var dest = qDir + 'ctx.json';
             var tmp = dest + '.tmp.' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);

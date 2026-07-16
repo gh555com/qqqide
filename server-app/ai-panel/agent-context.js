@@ -1,30 +1,40 @@
 // ============================================================================
 // agent-context.js — 上下文压缩引擎（本地机械筛，零网络调用）
-// VER: COMPACT-V12-20260714 ← V12: in-place append, zero splice for biscuit/DE, prefix cache hits
+// VER: COMPACT-V13-20260716 ← V13: DE 消除，╔K...╚ 融入饼干，阀值压缩，sha256 考古
 //
-// 架构（论文: 论文/qqqide 滴上下文压缩.md §2-§5）:
-//   背包顺序: Z → biscuit(1条msg,原地追加) → DE(1条msg,原地更新) → 当前楼层消息
-//   楼层完结 → _rebuildBackpack() → 机械筛 → biscuit行追加到已有msg.content → DE重建 → 仅删原始楼层
+// 架构:
+//   背包顺序: Z → biscuit(1条msg,原地追加) → 当前楼层消息
+//   楼层完结 → _rebuildBackpack() → 机械筛 → biscuit行追加到已有msg.content → 仅删原始楼层
 //
 // 铁律：
 //   - 零网络调用。一切在客户端完成。
 //   - 建楼中不触发压缩。仅楼层完结时重组背包。
-//   - biscuit/DE 消息对象不变 → 前缀缓存跨楼层命中。仅 content 尾部增长。
+//   - biscuit 消息对象不变 → 前缀缓存跨楼层命中。仅 content 尾部增长。
 //   - 失败原子回滚（conversation + _ctx 全部字段恢复）。
-//   - DE 单条 ≤6K chars, 总计 ≤20K chars, FIFO 轮转。
+//   - 绝对包装盒（5工具）╔K...╚ 融入饼干，阀值压缩时整盒移除。
+//   - 每层格式: === FN YYYY-MM-DD HH:MM:SS UTC+8 === → Q → 包装盒 → A
 // ============================================================================
 
 ; (function () {
     'use strict';
 
-    var COMPACT_VERSION = 'COMPACT-V12-20260714b';
+    var COMPACT_VERSION = 'COMPACT-V13-20260716';
 
     // ═══ 常量 ═══
     var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 2.5);
 
-    // ═══ DE 容量常量 ═══
-    var DE_MAX_CHARS       = 60000;  // DE 总计上限（≈20K tokens，按 ~3 chars/token）
-    var DE_ENTRY_MAX_CHARS = 18000;   // 单条目上限（≈6K tokens，按 ~3 chars/token）
+    // ═══ 绝对包装盒容量常量（融入饼干，阀值压缩时整盒移除）═══
+    var ABS_BODY_CAP = 16384;   // 绝对包装盒体部上限（16K chars）
+    var ABS_HEAD_CAP = 80;      // 绝对包装盒头行上限
+
+    // ═══ 绝对工具集合（5 个，╔K...╚ 包裹，阀值压缩时整盒移除）═══
+    var ABSOLUTE_TOOLS = {
+        run_command: true,
+        generate_image: true,
+        remove_background: true,
+        analyze_image: true,
+        get_vision_context: true
+    };
 
     // ═══ 工具返回摘要规则（方案三 §4）═══
     var TOOL_SUMMARIES = {
@@ -116,24 +126,30 @@
         remove_background: function(args, result) {
             return typeof result === 'string' ? result.length + 'c' : '?';
         },
-    };
-
-    // ★ 不可恢复工具：结果不能从磁盘 re-read → 完整输出保留 + 进 DE
-    var IRRECOVERABLE_TOOLS = {
-        run_command: true,
-        fetch_webpage: true,
-        search_web: true,
-        analyze_image: true,
-        get_vision_context: true,
-        generate_image: true,
-        remove_background: true
-    };
-
-    // ★ C 集合工具：AI 产出代码，从 tool_call arguments 提取
-    var CODE_PRODUCING_TOOLS = {
-        edit_file: true,
-        write_file: true,
-        create_file: true
+        diff_versions: function(args, result) {
+            if (typeof result === 'string') {
+                var am = result.match(/\+N=(\d+) -M=(\d+)/);
+                if (am) return '+' + am[1] + '/-' + am[2];
+                return result.length + 'c';
+            }
+            return '?';
+        },
+        timeline_versions: function(args, result) {
+            if (typeof result === 'string') {
+                var vm = result.match(/(\d+) version/);
+                if (vm) return vm[1] + ' versions';
+                return result.length + 'c';
+            }
+            return '?';
+        },
+        revert_file: function(args, result) {
+            if (typeof result === 'string') {
+                if (result.indexOf('Reverted') >= 0) return '✓';
+                if (result.indexOf('Error') >= 0) return '✗';
+                return '✓';
+            }
+            return '?';
+        },
     };
 
     // ═══ 快照工具 ═══
@@ -277,19 +293,67 @@
             for (var ti = 0; ti < tcs.length; ti++) {
                 var name = (tcs[ti].function && tcs[ti].function.name) || '?';
                 tcNames.push(name);
-                var fn = _extractArgPath(tcs[ti]);
+                var fn = _extractToolDisplay(tcs[ti]);
                 if (fn) fileNames.push(fn);
             }
             var display = fileNames.length > 0 ? fileNames.join(', ') : tcNames.join(', ');
             lines.push('[A → ' + tcNames.join('+') + '] ' + display);
         }
 
-        function _extractArgPath(tc) {
+        // ★ _extractToolDisplay — extract the most informative arg for biscuit head line
+        //   Gentle tools: per-tool caps. Absolute box tools: unified ABS_HEAD_CAP=80 (single truth).
+        //   Covers all 20 tools. Falls back to path/image for unknown tools.
+        function _extractToolDisplay(tc) {
             try {
+                var ABS_HEAD_CAP = 80; // ★ Single source of truth — absolute box header truncation
                 var args = tc.function && tc.function.arguments;
                 if (!args) return null;
                 var obj = typeof args === 'string' ? JSON.parse(args) : args;
-                return obj.path || obj.image || null;
+                var name = (tc.function && tc.function.name) || '';
+                // Project-relative path shortening
+                function _shortPath(p) {
+                    if (!p || typeof p !== 'string') return p;
+                    var root = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot().replace(/\\/g, '/').replace(/\/$/, '') : null;
+                    if (root && p.indexOf(root) === 0) return p.slice(root.length);
+                    return p;
+                }
+                function _trunc(s, max) {
+                    if (!s) return '';
+                    if (s.length <= max) return s;
+                    return s.slice(0, max - 1) + '…';
+                }
+                // ★ sha256 archaeology tag — append @sha=xxx when reading a historical blob
+                function _shaTag(o) {
+                    if (o && o.sha256 && typeof o.sha256 === 'string' && o.sha256.length >= 12) {
+                        return ' @sha=' + o.sha256.slice(0, 12);
+                    }
+                    return '';
+                }
+                switch (name) {
+                    // ── Gentle box (15 tools) ──
+                    case 'read_file':       return (_shortPath(obj.path) || null) + _shaTag(obj);
+                    case 'edit_file':       return _shortPath(obj.path) || null;
+                    case 'write_file':      return _shortPath(obj.path) || null;
+                    case 'create_file':     return _shortPath(obj.path) || null;
+                    case 'delete_file':     return _shortPath(obj.path) || null;
+                    case 'get_diagnostics': return (_shortPath(obj.path) || null) + _shaTag(obj);
+                    case 'list_files':      return _shortPath(obj.path) || null;
+                    case 'timeline_versions': return _shortPath(obj.path) || null;
+                    case 'diff_versions':   return _shortPath(obj.path) || null;
+                    case 'revert_file':     return _shortPath(obj.path) || null;
+                    case 'search_text':     return '"' + _trunc(obj.query || '', 110) + '"' + _shaTag(obj);
+                    case 'search_content':  return '[' + (obj.keywords || []).join(',') + ']' + _shaTag(obj);
+                    case 'find_files':      return _trunc(obj.pattern || '', 80);
+                    case 'fetch_webpage':   return _trunc(obj.url || '', 100);
+                    case 'search_web':      return '"' + _trunc(obj.query || '', 110) + '"';
+                    // ── Absolute box (5 tools, ABS_HEAD_CAP unified) ──
+                    case 'run_command':     return _trunc(obj.command || '', ABS_HEAD_CAP);
+                    case 'generate_image':  return _trunc(obj.prompt || '', ABS_HEAD_CAP) || (obj.images && obj.images[0] ? _shortPath(obj.images[0]) : null);
+                    case 'remove_background': return _shortPath(obj.image || '') || null;
+                    case 'analyze_image':   return _shortPath(obj.image || '') + (obj.action ? ' ' + obj.action : '');
+                    case 'get_vision_context': return null;
+                    default:                return (_shortPath(obj.path) || _shortPath(obj.image) || obj.url || obj.query || obj.pattern || null) + _shaTag(obj);
+                }
             } catch (_) { return null; }
         }
 
@@ -297,13 +361,19 @@
             var name = tc.function && tc.function.name;
             if (!name) return '';
             var summarizer = TOOL_SUMMARIES[name];
+            var summary = '';
             if (summarizer) {
                 var args = tc.function && tc.function.arguments;
                 var argsObj = null;
                 try { argsObj = typeof args === 'string' ? JSON.parse(args) : args; } catch (_) {}
-                return ' ' + summarizer(argsObj || {}, resultContent || '');
+                summary = ' ' + summarizer(argsObj || {}, resultContent || '');
             }
-            return '';
+            // ★ Extract sha256 from result for write tools + fetch/search_web (land-to-floor)
+            if (resultContent && typeof resultContent === 'string') {
+                var sm = resultContent.match(/\[sha256: ([a-f0-9]{12})/);
+                if (sm) summary += ' \u279c sha=' + sm[1];
+            }
+            return summary;
         }
 
         for (var i = 0; i < msgs.length; i++) {
@@ -317,8 +387,16 @@
             if (floor > 0 && floor !== currentFloor) {
                 _flushPending();
                 currentFloor = floor;
+                // ★ V13: datetime in floor header
+                var _now = new Date();
+                var _dt = _now.getFullYear() + '-' +
+                    String(_now.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(_now.getDate()).padStart(2, '0') + ' ' +
+                    String(_now.getHours()).padStart(2, '0') + ':' +
+                    String(_now.getMinutes()).padStart(2, '0') + ':' +
+                    String(_now.getSeconds()).padStart(2, '0') + ' UTC+8';
                 lines.push('');
-                lines.push('=== F' + floor + ' ===');
+                lines.push('=== F' + floor + '  ' + _dt + ' ===');
             }
 
             if (role === 'tool' && m.tool_call_id && pendingToolCalls) {
@@ -330,13 +408,22 @@
                     }
                 }
                 if (matchedTc) {
+                    var tcName = matchedTc.function && matchedTc.function.name;
                     var summary = _summarizeToolResult(matchedTc, content);
                     if (lines.length > 0) {
                         lines[lines.length - 1] += summary;
                     }
-                    // ★ BugFix #2: K 集合工具的完整输出仅进 DE（_extractDeEntries），
-                    //    饼干只保留摘要行。旧代码在此同时写入完整输出（≤8000 chars）→
-                    //    同一份 psql/curl 输出在饼干 + DE 两份 → token 翻倍。
+                    // ★ V13: 绝对包装盒 → ╔K...╚ 包裹完整输出，融入饼干
+                    if (tcName && ABSOLUTE_TOOLS[tcName] && content && content.trim()) {
+                        var body = content;
+                        if (body.length > ABS_BODY_CAP) {
+                            var h = Math.floor(ABS_BODY_CAP / 2);
+                            body = body.slice(0, h) + '\n…[trunc ' + (content.length - ABS_BODY_CAP) + ' chars]…\n' + body.slice(-h);
+                        }
+                        lines.push('╔K');
+                        lines.push(body.trimEnd());
+                        lines.push('╚');
+                    }
                 } else {
                     lines.push('  [T] ✓');
                 }
@@ -395,189 +482,23 @@
     }
 
     // ════════════════════════════════════════════════
-    // _extractDeEntries — 从楼层消息中提取 K/C 条目
-    // 返回: [{type:'k'|'c', tool:'...', ts:1234567890, floor:N, path:'...', content:'...'}]
-    // ════════════════════════════════════════════════
-    function _extractDeEntries(msgs, floorNum, ts) {
-        ts = ts || Math.floor(Date.now() / 1000);
-        var entries = [];
-
-        // 先收集 tool_calls（带 id），后续匹配 tool 结果
-        var pendingCalls = {};  // call_id → {name, args}
-
-        for (var i = 0; i < msgs.length; i++) {
-            var m = msgs[i];
-            if (_isZ(m)) continue;
-
-            // assistant 带 tool_calls：记录以便匹配
-            if (m.role === 'assistant' && m.tool_calls && Array.isArray(m.tool_calls)) {
-                for (var ti = 0; ti < m.tool_calls.length; ti++) {
-                    var tc = m.tool_calls[ti];
-                    var tcName = tc.function && tc.function.name;
-                    var tcArgs = null;
-                    try {
-                        tcArgs = typeof tc.function.arguments === 'string'
-                            ? JSON.parse(tc.function.arguments)
-                            : (tc.function.arguments || {});
-                    } catch (_) { tcArgs = {}; }
-                    pendingCalls[tc.id] = { name: tcName, args: tcArgs };
-                    
-                    // C 条目：代码产出工具 → 提取代码
-                    if (tcName && CODE_PRODUCING_TOOLS[tcName] && tcArgs) {
-                        var codeContent = '';
-                        var codePath = tcArgs.path || '';
-                        if (tcName === 'write_file' || tcName === 'create_file') {
-                            codeContent = tcArgs.content || '';
-                        } else if (tcName === 'edit_file') {
-                            // edits 是数组，取第一个 edit 的 find/replace
-                            var edits = tcArgs.edits;
-                            if (Array.isArray(edits) && edits.length > 0) {
-                                var parts = [];
-                                for (var ei = 0; ei < edits.length; ei++) {
-                                    var ed = edits[ei];
-                                    if (ed.replace) parts.push(ed.replace);
-                                }
-                                codeContent = parts.join('\n');
-                            }
-                        }
-                        if (codeContent && codeContent.length > 40) {
-                            entries.push({
-                                type: 'c',
-                                tool: tcName,
-                                ts: ts,
-                                floor: floorNum,
-                                path: codePath,
-                                content: codeContent
-                            });
-                        }
-                    }
-                }
-            }
-
-            // tool 结果：K 条目
-            if (m.role === 'tool' && m.tool_call_id && m.content) {
-                var pc = pendingCalls[m.tool_call_id];
-                if (pc && IRRECOVERABLE_TOOLS[pc.name]) {
-                    entries.push({
-                        type: 'k',
-                        tool: pc.name,
-                        ts: ts,
-                        floor: floorNum,
-                        path: pc.args.path || pc.args.command || '',
-                        content: m.content
-                    });
-                }
-            }
-        }
-
-        return entries;
-    }
-
-    // ════════════════════════════════════════════════
-    // _capEntry — 单条目截断到 DE_ENTRY_MAX_CHARS
-    // ════════════════════════════════════════════════
-    function _capEntry(content) {
-        if (!content || content.length <= DE_ENTRY_MAX_CHARS) return content;
-        var half = Math.floor(DE_ENTRY_MAX_CHARS / 2);
-        return content.slice(0, half) + '\n…[trunc ' + (content.length - DE_ENTRY_MAX_CHARS) + ' chars]…\n' + content.slice(-half);
-    }
-
-    // ════════════════════════════════════════════════
-    // _serializeDeEntry — 序列化单条 DE 条目
-    // ════════════════════════════════════════════════
-    function _serializeDeEntry(entry) {
-        var label = entry.type === 'k' ? '[' + entry.tool + ']' : '[code:' + entry.tool + ']';
-        var pathStr = entry.path ? ' ' + entry.path : '';
-        var content = _capEntry(entry.content);
-        var indentLines = content.split('\n').map(function(l) { return '  │ ' + l; }).join('\n');
-        return '[ts:' + entry.ts + ' F' + entry.floor + '] ' + label + pathStr + '\n' + indentLines;
-    }
-
-    // ════════════════════════════════════════════════
-    // _serializeDeBlock — 序列化全部 DE 条目为字符串
-    // ════════════════════════════════════════════════
-    function _serializeDeBlock(entries) {
-        if (!entries || entries.length === 0) return '';
-        var lines = ['═══ DE (K+C, ' + DE_MAX_CHARS + ' cap) ═══', ''];
-        for (var i = 0; i < entries.length; i++) {
-            lines.push(_serializeDeEntry(entries[i]));
-            lines.push('');
-        }
-        return lines.join('\n').trim();
-    }
-
-    // ════════════════════════════════════════════════
-    // _trimDeEntries — 维护 DE 容量（FIFO，总计 ≤ DE_MAX_CHARS）
-    // ════════════════════════════════════════════════
-    function _trimDeEntries(entries) {
-        // 先逐条截断到 DE_ENTRY_MAX_CHARS
-        for (var i = 0; i < entries.length; i++) {
-            entries[i].content = _capEntry(entries[i].content);
-        }
-        // 计算总字符数，FIFO 驱逐
-        var totalChars = 0;
-        for (var j = entries.length - 1; j >= 0; j--) {
-            var entryStr = _serializeDeEntry(entries[j]);
-            totalChars += entryStr.length + 2;  // +2 for the blank line between entries
-        }
-        // 从头部驱逐
-        while (totalChars > DE_MAX_CHARS && entries.length > 0) {
-            var removedStr = _serializeDeEntry(entries[0]);
-            totalChars -= removedStr.length + 2;
-            entries.shift();
-        }
-    }
-
-    // ════════════════════════════════════════════════
     // _parseBiscuitFromContent — 从 biscuit 消息 content 解析楼层行
+    //   V13: 支持新格式 === FN YYYY-MM-DD HH:MM:SS UTC+8 ===
     // ════════════════════════════════════════════════
     function _parseBiscuitFromContent(content) {
         var lines = [];
         if (!content) return lines;
-        var parts = content.split(/\n(?==== F\d+ ===)/);
+        // ★ V13: 支持新格式 === FN YYYY-MM-DD HH:MM:SS UTC+8 === 和旧格式 === FN ===
+        var parts = content.split(/\n(?==== F\d+ )/);
         for (var i = 0; i < parts.length; i++) {
             var ptext = parts[i].trim();
             if (!ptext) continue;
-            var fm = ptext.match(/^=== F(\d+) ===/);
+            var fm = ptext.match(/^=== F(\d+)/);
             var fn = fm ? parseInt(fm[1], 10) : 0;
             if (fn > 0) lines.push({ n: fn, text: ptext });
         }
         lines.sort(function(a, b) { return a.n - b.n; });
         return lines;
-    }
-
-    // ════════════════════════════════════════════════
-    // _parseDeBlock — 从 DE 消息 content 解析回条目数组（重启恢复用）
-    // ════════════════════════════════════════════════
-    function _parseDeBlock(content) {
-        if (!content) return [];
-        var entries = [];
-        var lines = content.split('\n');
-        var i = 0;
-        // 跳过头部 "═══ DE (K+C, ..."
-        while (i < lines.length && !/^\[ts:/.test(lines[i])) i++;
-        while (i < lines.length) {
-            var hdr = lines[i].match(/^\[ts:(\d+) F(\d+)\] \[(code:)?(\w+)\]\s*(.*)/);
-            if (!hdr) { i++; continue; }
-            var entry = {
-                type: hdr[3] ? 'c' : 'k',
-                tool: hdr[4],
-                ts: parseInt(hdr[1], 10),
-                floor: parseInt(hdr[2], 10),
-                path: (hdr[5] || '').trim(),
-                content: ''
-            };
-            i++;
-            var cl = [];
-            while (i < lines.length && /^  │ /.test(lines[i])) {
-                cl.push(lines[i].replace(/^  │ /, ''));
-                i++;
-            }
-            entry.content = cl.join('\n');
-            entries.push(entry);
-            while (i < lines.length && lines[i].trim() === '') i++;
-        }
-        return entries;
     }
 
     // ════════════════════════════════════════════════
@@ -659,25 +580,22 @@
             floorMsgs: floorMsgs.length
         });
 
-        // ── 3. 恢复：若 biscuitLines 空，从 conversation 解析已有 biscuit/de ──
+        // ── 3. 恢复：若 biscuitLines 空，从 conversation 解析已有 biscuit ──
         if (!self._ctx.biscuitLines || self._ctx.biscuitLines.length === 0) {
             self._ctx.biscuitLines = [];
-            self._ctx.deEntries = self._ctx.deEntries || [];
             var v11Cleanup = [];  // V11→V12 升级：需移除的旧消息索引
             for (var ri = persistentCount; ri < self.conversation.length; ri++) {
                 var rm = self.conversation[ri];
-                // V12: 单条 _biscuit 消息
                 if (rm._biscuit && rm.content) {
                     self._ctx.biscuitLines = _parseBiscuitFromContent(rm.content);
-                    break;  // 找到 V12 格式即停
+                    break;
                 }
-                // V11 兼容：_biscuitPrefix + _biscuitLatest（需清理）
                 if (rm._biscuitPrefix && rm.content) {
-                    var parts = rm.content.split(/\n(?==== F\d+ ===)/);
+                    var parts = rm.content.split(/\n(?==== F\d+ )/);
                     for (var rj = 0; rj < parts.length; rj++) {
                         var ptext = parts[rj].trim();
                         if (!ptext) continue;
-                        var fm = ptext.match(/^=== F(\d+) ===/);
+                        var fm = ptext.match(/^=== F(\d+)/);
                         var fn2 = fm ? parseInt(fm[1], 10) : 0;
                         self._ctx.biscuitLines.push({ n: fn2, text: ptext });
                     }
@@ -685,23 +603,20 @@
                     continue;
                 }
                 if (rm._biscuitLatest && rm.content) {
-                    var fm2 = rm.content.match(/^=== F(\d+) ===/);
+                    var fm2 = rm.content.match(/^=== F(\d+)/);
                     var fn3 = fm2 ? parseInt(fm2[1], 10) : 0;
                     self._ctx.biscuitLines.push({ n: fn3, text: rm.content.trim() });
                     v11Cleanup.push(ri);
                     continue;
                 }
-                if (rm._deBlock && rm.content) {
-                    self._ctx._rawDeText = rm.content;
-                    // V11 DE 消息也需标记清理（后续会用 V12 格式重建）
-                    if (v11Cleanup.length > 0) v11Cleanup.push(ri);
+                // ★ V13: 清除旧 DE 消息（DE 概念已消除）
+                if (rm._deBlock) {
+                    v11Cleanup.push(ri);
                 }
             }
-            // ★ V11→V12 升级：移除旧格式消息（从后往前删，索引不乱）
             for (var ci = v11Cleanup.length - 1; ci >= 0; ci--) {
                 self.conversation.splice(v11Cleanup[ci], 1);
             }
-            // 去重 + 排序
             var seen = {};
             self._ctx.biscuitLines = self._ctx.biscuitLines.filter(function(l) {
                 if (seen[l.n]) return false;
@@ -714,32 +629,21 @@
             }
         }
 
-        // ★ DE 恢复：从 _rawDeText 解析条目（重启后 deEntries 可能空，需从 DE 消息重建）
-        if ((!self._ctx.deEntries || self._ctx.deEntries.length === 0) && self._ctx._rawDeText) {
-            self._ctx.deEntries = _parseDeBlock(self._ctx._rawDeText);
-            if (self._ctx.deEntries.length > 0) {
-                self.log('◆ Backpack: recovered ' + self._ctx.deEntries.length + ' DE entries from conversation');
-            }
-        }
-
         // ── 4. 保存旧状态（用于回滚） ──
         var oldBiscuitLines = (self._ctx.biscuitLines || []).slice();
-        var oldDeEntries = (self._ctx.deEntries || []).slice();
         var oldConvLen = self.conversation.length;
 
         try {
             // ── 5. 机械筛：当前楼层 → 饼干行 ──
             var biscuitText = _buildCompressedBiscuit(floorMsgs);
             if (!biscuitText || biscuitText.length < 20) {
-                biscuitText = '=== F' + floorNum + ' ===\nQ: (压缩失败，内容过短)';
+                var _now2 = new Date();
+                var _dt2 = _now2.getFullYear() + '-' + String(_now2.getMonth()+1).padStart(2,'0') + '-' + String(_now2.getDate()).padStart(2,'0') + ' ' + String(_now2.getHours()).padStart(2,'0') + ':' + String(_now2.getMinutes()).padStart(2,'0') + ':' + String(_now2.getSeconds()).padStart(2,'0') + ' UTC+8';
+                biscuitText = '=== F' + floorNum + '  ' + _dt2 + ' ===\nQ: (压缩失败，内容过短)';
             }
 
-            // ── 6. 提取 DE 条目 ──
-            var newDeEntries = _extractDeEntries(floorMsgs, floorNum, nowTs);
-
-            // ── 7. 更新内存状态 ──
+            // ── 6. 更新内存状态（V13: 无 DE，仅 biscuitLines）──
             if (!self._ctx.biscuitLines) self._ctx.biscuitLines = [];
-            // ★ 解析多楼层 biscuitText → 逐楼层入 biscuitLines（去重+排序）
             var _newLines = _parseBiscuitFromContent(biscuitText);
             var _existMap = {};
             for (var _bi = 0; _bi < self._ctx.biscuitLines.length; _bi++) {
@@ -755,13 +659,7 @@
             }
             self._ctx.biscuitLines.sort(function(a, b) { return a.n - b.n; });
 
-            if (!self._ctx.deEntries) self._ctx.deEntries = [];
-            for (var ei = 0; ei < newDeEntries.length; ei++) {
-                self._ctx.deEntries.push(newDeEntries[ei]);
-            }
-            _trimDeEntries(self._ctx.deEntries);
-
-            // ── 8. ★ 删已压缩的楼层消息（精确匹配，保留未压缩的 fatal 楼层） ──
+            // ── 7. ★ 删已压缩的楼层消息（精确匹配，保留未压缩的 fatal 楼层） ──
             //    V2 fix: floorMsgs 可能不连续（跳过了有活跃错误的楼层），逐条删除
             for (var _ci = self.conversation.length - 1; _ci >= floorStart; _ci--) {
                 for (var _fi2 = 0; _fi2 < floorMsgs.length; _fi2++) {
@@ -792,34 +690,14 @@
                     { role: 'system', content: _sortedText, _dynamic: true, _biscuit: true });
             }
 
-            // ── 10. ★ 找已有 DE 消息 → 原地更新 content ──
-            var deText = _serializeDeBlock(self._ctx.deEntries);
-            // 恢复路径：deEntries 空但 conversation 中有 DE（V11 升级场景）
-            if (!deText && self._ctx._rawDeText) {
-                deText = self._ctx._rawDeText;
-                self._ctx._rawDeText = null;
-            }
-
-            var deFound = _findDynamicMsg(self.conversation, persistentCount, '_deBlock');
-            if (deFound) {
-                if (deText) {
-                    // ★ 原地更新：DE 条目仅尾部追加时 → 前缀缓存命中
-                    //    FIFO 驱逐时前缀会变 → 仅 DE 缓存 miss（罕见）
-                    deFound.msg.content = deText;
-                } else {
-                    // DE 空 → 移除消息
-                    self.conversation.splice(deFound.idx, 1);
+            // ★ V13: 清除旧 DE 消息（DE 概念已消除）──
+            for (var _dci = self.conversation.length - 1; _dci >= 0; _dci--) {
+                if (self.conversation[_dci]._deBlock) {
+                    self.conversation.splice(_dci, 1);
                 }
-            } else if (deText) {
-                // 首次：插入 DE 消息（在 biscuit 之后）
-                var biscuitIdx = persistentCount;
-                var bf2 = _findDynamicMsg(self.conversation, persistentCount, '_biscuit');
-                if (bf2) biscuitIdx = bf2.idx;
-                self.conversation.splice(biscuitIdx + 1, 0,
-                    { role: 'system', content: deText, _dynamic: true, _deBlock: true });
             }
 
-            // ── 11. 重置计费计数器 ──
+            // ── 10. 重置计费计数器 ──
             self._lastApiPromptTokens = 0;
             self._lastApiTotalTokens = 0;
             self._lastApiCompletionTokens = 0;
@@ -828,7 +706,7 @@
 
             // ── 12. 更新 _ctx ──
             self._ctx.lastCompressedFloor = floorNum;
-            self._ctx.narrative = 'biscuit:' + self._ctx.biscuitLines.length + ' de:' + self._ctx.deEntries.length;
+            self._ctx.narrative = 'biscuit:' + self._ctx.biscuitLines.length;
             self._ctx.facts = [];
 
             // ── 快照（压缩后） ──
@@ -837,17 +715,14 @@
             _snapshotLog(self, 'after_rebuild', {
                 floor: floorNum,
                 biscuitFloors: self._ctx.biscuitLines.length,
-                deEntries: self._ctx.deEntries.length,
-                deChars: deText ? deText.length : 0,
                 afterTokens: Math.round(afterTokens),
                 savedTokens: Math.round(saved)
             });
 
-            self.log('◆ Backpack: done — biscuit ' + self._ctx.biscuitLines.length + ' floors, DE ' + self._ctx.deEntries.length + ' entries, saved ~' + Math.round(saved) + ' tokens');
+            self.log('◆ Backpack: done — biscuit ' + self._ctx.biscuitLines.length + ' floors, saved ~' + Math.round(saved) + ' tokens');
         } catch (err) {
             // ★ 回滚
             self._ctx.biscuitLines = oldBiscuitLines;
-            self._ctx.deEntries = oldDeEntries;
 
             _snapshotLog(self, 'after_rebuild_failed', {
                 floor: floorNum,
@@ -877,16 +752,60 @@
     };
 
     // ════════════════════════════════════════════════
-    // _buildDynamicContext — V11: 动态上下文已在 conversation 中
-    // biscuit/de 消息本身就是动态上下文，无需额外注入
+    // _buildDynamicContext — V13: 动态上下文已在 conversation 中
+    // biscuit 消息本身就是动态上下文，无需额外注入
     // ════════════════════════════════════════════════
     AgentLoop.prototype._buildDynamicContext = function () {
-        // V11: biscuit/de 消息已在 conversation 中（_dynamic: true），
+        // V13: biscuit 消息已在 conversation 中（_dynamic: true），
         // _callGateway 不需要再额外注入。返回空。
         return '';
     };
 
-    // ★ 导出供 panel-floor.js _restoreAgentFromStore 使用（Bug #4 修复 — 重启后重建 DE）
-    AgentLoop._serializeDeBlock = _serializeDeBlock;
+    // ════════════════════════════════════════════════
+    // _stripAbsoluteBoxes — 阀值压缩：剥离所有 ╔K...╚ 绝对包装盒体部
+    //   保留头行（[A → run_command] "cmd" 2318c）和温柔包装盒，仅移除体部。
+    //   正则 ╔K[\s\S]*?\n╚\n 锚定行首 ╚，非贪婪，绝不跨越到下一盒子。
+    //   可用于手动触发或自动（饼干超阈值）。
+    // ════════════════════════════════════════════════
+    AgentLoop.prototype._stripAbsoluteBoxes = function (biscuitContent) {
+        if (!biscuitContent || typeof biscuitContent !== 'string') return biscuitContent;
+        // 剥离 ╔K...╚ 块（体部），保留头行
+        // 非贪婪匹配 ╔K 到行首 ╚——永不跨越到下一盒子
+        return biscuitContent.replace(/\n╔K\n[\s\S]*?\n╚\n/g, '\n');
+    };
+
+    // ════════════════════════════════════════════════
+    // _tryAutoValveCompress — 自动/手动阀值压缩入口
+    //   threshold=0 → 强制剥离（手动触发），否则仅当 _lastApiPromptTokens > threshold 时剥离
+    //   找 biscuit 消息 → 剥离 ╔K...╚ 体部 → 更新 ctx.biscuitLines
+    // ════════════════════════════════════════════════
+    AgentLoop.prototype._tryAutoValveCompress = function (threshold) {
+        var self = this;
+        for (var i = 0; i < self.conversation.length; i++) {
+            var m = self.conversation[i];
+            if (m._biscuit && m.content) {
+                var before = m.content.length;
+                m.content = self._stripAbsoluteBoxes(m.content);
+                var after = m.content.length;
+                if (after < before) {
+                    self._ctx.biscuitLines = _parseBiscuitFromContent(m.content);
+                    self.log('◆ Valve: stripped ' + (before - after) + ' chars from ╔K...╚ boxes, biscuit ' + self._ctx.biscuitLines.length + ' floors');
+                    return true;
+                }
+                break;
+            }
+        }
+        return false;
+    };
+
+    // ★ 阀值压缩入口：传入 biscuit 文本，返回剥离后的文本
+    //   暴露为全局函数供 UI 按钮调用
+    if (typeof window !== 'undefined') {
+        window._stripAbsoluteBoxes = function (text) {
+            return AgentLoop.prototype._stripAbsoluteBoxes(text);
+        };
+    }
+
+    // ★ V13: DE 概念消除，不再需要 _serializeDeBlock 导出。biscuit 包含一切。
 
 })();

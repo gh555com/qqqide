@@ -96,6 +96,76 @@ async function _checkOneVersion(bridge, root, v, ext) {
     } catch (_) { return null; }
 }
 
+// ══════════════════════════════════════════════════════════════
+// Land-to-floor: write fetch_webpage/search_web results to floor dir,
+//   record to timeline, return sha256+trace stamp for biscuit reference.
+//   Makes these tools "one-line gentle box" compatible.
+// ══════════════════════════════════════════════════════════════
+async function _landToFloorDir(content, prefix, ownerAgent) {
+    if (!ownerAgent || !content) return '';
+    var floorNum = ownerAgent._currentFloorNum;
+    if (!floorNum) return '';
+    var meta = ownerAgent._floorMeta && ownerAgent._floorMeta[floorNum];
+    var fDir = meta ? meta._fDir : null;
+    if (!fDir) {
+        // Fallback: compute from project root
+        var root = (typeof questStore !== 'undefined' && questStore.getProjectRoot)
+            ? questStore.getProjectRoot().replace(/\\/g, '/').replace(/\/$/, '') : null;
+        if (!root) return '';
+        var qInfo = ownerAgent._questInfo || {};
+        var qDir = qInfo.dirName || ('q' + (ownerAgent._questId || '').replace(/^q/i, ''));
+        var fDirName = 'f' + floorNum;
+        fDir = root + '/qqq/quests/' + qDir + '/' + fDirName + '/';
+    }
+
+    // Counter: stored on agent per-floor
+    var ck = '_' + prefix + 'N_' + floorNum;
+    if (!ownerAgent[ck]) ownerAgent[ck] = 1;
+    var n = ownerAgent[ck]++;
+    var filePath = fDir + prefix + '_' + n + '.txt';
+
+    var bridge = getBridge();
+    if (!bridge) return '';
+
+    // Write to disk
+    try {
+        await bridge.fs.write(filePath, content);
+    } catch (_) {
+        return '';
+    }
+
+    // Record to timeline (get blob_hash)
+    var blobHash = null;
+    try {
+        var root2 = await _resolveTimelineRoot(filePath);
+        if (root2 && bridge.timeline && bridge.timeline.record) {
+            var traceObj = (typeof window !== 'undefined' && window._qqqCurrentTrace) ? window._qqqCurrentTrace : null;
+            var floorId = null;
+            if (traceObj && traceObj.questId && traceObj.floorNum) {
+                floorId = 'q' + String(traceObj.questId).replace(/^q/i, '') + '/f' + traceObj.floorNum +
+                    '/h' + (traceObj.houseIdx || 0) + '/r' + (traceObj.roomIdx || 0);
+            }
+            var rec = await bridge.timeline.record({
+                projectRoot: root2, filePath: filePath, content: content,
+                source: 'q', floorId: floorId,
+                addedLines: content.split('\n').length, deletedLines: 0
+            });
+            if (rec && rec.ok && rec.blob_hash) blobHash = rec.blob_hash;
+        }
+    } catch (_) { }
+
+    // Build stamp
+    var stamp = '';
+    if (blobHash) {
+        stamp += ' [sha256: ' + blobHash + ']';
+    }
+    var tr = (typeof window !== 'undefined' && window._qqqCurrentTrace) ? window._qqqCurrentTrace : null;
+    if (tr && tr.questId && tr.floorNum) {
+        stamp += ' @q' + String(tr.questId).replace(/^q/i, '') + 'f' + tr.floorNum + 'h' + (tr.houseIdx || 0) + 'r' + (tr.roomIdx || 0);
+    }
+    return stamp;
+}
+
 // Layer 5: Find best clean version (last ✅ before any ⚠️)
 function _findBestClean(versions, tagMap) {
     var best = null;
@@ -165,14 +235,14 @@ async function executeTool(name, args, ownerAgent) {
         case 'run_command': _result = executeRunCommand(args); break;
         case 'delete_file': _result = executeDeleteFile(args); break;
         case 'find_files': _result = executeFindFiles(args); break;
-        case 'fetch_webpage': _result = executeFetchWebpage(args); break;
+        case 'fetch_webpage': _result = executeFetchWebpage(args, ownerAgent); break;
         case 'get_diagnostics': _result = executeGetDiagnostics(args); break;
         case 'write_file': _result = executeWriteFile(args); break;
         case 'generate_image': _result = executeGenerateImage(args); break;
         case 'analyze_image': _result = executeAnalyzeImage(args); break;
         case 'search_smart': _result = executeSearchSmart(args); break;
         case 'remove_background': _result = executeRemoveBackground(args); break;
-        case 'search_web': _result = executeSearchWeb(args); break;
+        case 'search_web': _result = executeSearchWeb(args, ownerAgent); break;
         case 'timeline_versions': _result = executeTimelineVersions(args); break;
         case 'revert_file': _result = executeRevertFile(args); break;
         case 'diff_versions': _result = executeDiffVersions(args); break;
@@ -749,7 +819,7 @@ async function executeGetDiagnostics(args) {
 // ============================================================
 // ★ 两条路：主路走 Go 代理（US 服务器端 HTTP，绕过 GFW），兜底走本地 curl
 
-async function executeFetchWebpage(args) {
+async function executeFetchWebpage(args, ownerAgent) {
     var bridge = getBridge();
 
     // ★ 参数别名
@@ -760,7 +830,7 @@ async function executeFetchWebpage(args) {
         try {
             var token = '';
             try {
-                var ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
+                var ag = ownerAgent || ((typeof _activeAgent !== 'undefined') ? _activeAgent : null);
                 if (ag && ag._token) token = ag._token;
             } catch (_) {}
             if (token) {
@@ -770,7 +840,9 @@ async function executeFetchWebpage(args) {
                     if (data.ge_cost && typeof _addToolWgeCost === 'function') {
                         _addToolWgeCost(data.ge_cost);
                     }
-                    return data.text;
+                    // ★ Land to floor dir → sha256 reference for biscuit
+                    var _stamp = await _landToFloorDir(data.text, 'web_fetch', ownerAgent);
+                    return data.text + _stamp;
                 }
                 // 服务器失败→兜底本地 curl
                 if (typeof console !== 'undefined') console.log('[fetch] Go proxy failed: ' + (data ? data.error : 'no data') + ', fallback to local curl');
@@ -800,7 +872,9 @@ async function executeFetchWebpage(args) {
             .replace(/<[^>]+>/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
-        return text;
+        // ★ Land to floor dir → sha256 reference for biscuit
+        var _stamp2 = await _landToFloorDir(text, 'web_fetch', ownerAgent);
+        return text + _stamp2;
     } catch (err) {
         return 'Fetch error: ' + (err.message || err);
     }
@@ -1144,8 +1218,20 @@ async function executeDiffVersions(args) {
             '+++ ' + _p + '\t(' + toLabel + ')\n';
         var diff = _computeUnifiedDiff(fromLines, toLines, 3);
 
-        if (!diff || diff.trim() === '') return header + '(no differences)';
-        return header + diff;
+        // ★ ± line count summary for biscuit
+        var addedLines = 0, deletedLines = 0;
+        if (diff) {
+            var dlines = diff.split('\n');
+            for (var di = 0; di < dlines.length; di++) {
+                var ch0 = dlines[di].charAt(0);
+                if (ch0 === '+' && dlines[di].charAt(1) !== '+') addedLines++;
+                else if (ch0 === '-' && dlines[di].charAt(1) !== '-') deletedLines++;
+            }
+        }
+        var statLine = '+N=' + addedLines + ' -M=' + deletedLines;
+
+        if (!diff || diff.trim() === '') return header + '(no differences)\n' + statLine;
+        return header + diff + '\n' + statLine;
     } catch (err) {
         return 'Error computing diff: ' + (err.message || err);
     }

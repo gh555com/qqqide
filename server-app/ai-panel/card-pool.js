@@ -624,7 +624,8 @@ var CardPool = (function () {
         var wrap = btn.closest('.table-wrap');
         if (wrap) {
           var img = wrap.querySelector(':scope > img');
-          if (img && img.src && typeof _postToHost === 'function') {
+          // ★ 仅 .img-wrap 走图片路径，代码块内含 <img>（渲染管线误判）不走 open-image
+          if (img && img.src && wrap.classList.contains('img-wrap') && typeof _postToHost === 'function') {
             _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: img.src });
           } else {
             var pre = wrap.querySelector(':scope > pre');
@@ -863,7 +864,8 @@ var CardPool = (function () {
       var wrap = btn.closest('.table-wrap');
       if (!wrap) return;
       var img = wrap.querySelector(':scope > img');
-      if (img && img.src && typeof _postToHost === 'function') {
+      // ★ 仅 .img-wrap 走图片路径，代码块内含 <img>（渲染管线误判）不走 open-image
+      if (img && img.src && wrap.classList.contains('img-wrap') && typeof _postToHost === 'function') {
         _postToHost({ type: 'qqqide-overlay', action: 'open-image', src: img.src });
       } else {
         var pre = wrap.querySelector(':scope > pre');
@@ -1012,6 +1014,8 @@ var CardPool = (function () {
   CardPool.prototype.scrollActiveToBottom = function (force) {
     var card = this.getActive();
     if (!card || !card.dom) return;
+    // ★ 滚动屏障：用户手动上滚后 200ms 内，即使 force=true 也拦截（防跨面板污染 + 渲染帧强制滚动）
+    if (card._userScrollBarrier && (Date.now() - card._userScrollBarrier < 200)) return;
     if (force || !card._userScrolledUp) {
       var container = card.dom.parentNode;
       if (!container) return;
@@ -1042,10 +1046,13 @@ var CardPool = (function () {
     if (atBottom) {
       // 用户在底部 → 恢复自动滚动
       card._userScrolledUp = false;
+      card._userScrollBarrier = 0;
     } else {
       // ★ 不在底部 → 立即停止自动跟滚（无 250ms 窗口：流式时 auto-scroll 每帧刷新 _lastAutoScroll，
       //   窗口永远不触发，导致键盘/拖滚条上滚无效。wheel 事件已由 onUserWheel 立即处理）
       card._userScrolledUp = true;
+      // ★ 滚动屏障：200ms 内连 force=true 也拦（防 _doStreamRender 等渲染帧强制碾过）
+      card._userScrollBarrier = Date.now();
     }
   };
 
@@ -1056,6 +1063,8 @@ var CardPool = (function () {
     if (e.deltaY < 0) {
       // 用户向上滚 → 立即停止自动滚动
       card._userScrolledUp = true;
+      // ★ 滚动屏障：200ms 内连 force=true 也拦
+      card._userScrollBarrier = Date.now();
     }
     // 下滚不立即恢复，等 scroll 事件检测到底部
   };

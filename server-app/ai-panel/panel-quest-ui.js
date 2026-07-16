@@ -397,7 +397,7 @@ function _estimateTokensFull() {
     var _apiPrompt = _ag._lastApiPromptTokens || 0;
     var _apiCompletion = _ag._accumulatedCompletionTokens || 0;
     var _apiVerNow = _apiPrompt + "|" + _apiCompletion;
-    var _ctxHashNow = ctx ? ((ctx.biscuitLines ? ctx.biscuitLines.length : 0) + "|" + (ctx.deEntries ? ctx.deEntries.length : 0)) : "";
+    var _ctxHashNow = ctx ? ((ctx.biscuitLines ? ctx.biscuitLines.length : 0) + "|0") : "";
     if (typeof _estCache !== 'undefined' && _estCache && _estCache.convLen === conv.length && _estCache.ctxHash === _ctxHashNow && _estCache.apiVer === _apiVerNow && _estCache.msg0Hash === _msg0HashNow && _estCache.val > 0) {
         return _estCache.val;
     }
@@ -429,7 +429,7 @@ function _estimateTokensFull() {
 
     // ── 3. V12 压缩上下文（biscuit + DE，已在 conversation 中）──
     var biscuitChars = 0, biscuitFloorCount = (ctx && ctx.biscuitLines) ? ctx.biscuitLines.length : 0;
-    var deChars = 0, deEntryCount = (ctx && ctx.deEntries) ? ctx.deEntries.length : 0;
+    var deChars = 0;  // V13: DE 概念消除
 
     // ── 4. conversation 遍历（non-persistent 消息）──
     var userCount = 0, userChars = 0;
@@ -443,7 +443,7 @@ function _estimateTokensFull() {
         if (!m || m._persistent) continue;
         var cn = typeof m.content === "string" ? m.content.length : 0;
         if (m._biscuit) { biscuitChars += cn; }
-        else if (m._deBlock) { deChars += cn; }
+        // ★ V13: _deBlock 已消除，DE 融入 biscuit
         else if (m.role === "user") { userCount++; userChars += cn; }
         else if (m.role === "assistant") {
             if (m.tool_calls) {
@@ -755,9 +755,29 @@ document.getElementById('ctx-snap').onclick = async function () {
         }
     }
 };
-// ═══ 手动压缩 — V12 已移除 ═══
-// V12: 压缩已全自动化（每层楼完结 _rebuildBackpack），ctx-compress 按钮已从 HTML 移除。
-// 旧手动压缩代码（~200 行 V10 逻辑）已删除，不再保留。
+// ═══ 阀值压缩 — V13 手动/自动阀门 ═══
+// V13: 阀值压缩剥离 ╔K...╚ 绝对包装盒体部，保留头行和温柔包装盒。
+// 手动触发：ctx-panel 的 🗜️ 阀值压缩 按钮。自动触发：建楼中饼干超阈值。
+var _ctxValveBtn = document.getElementById('ctx-valve');
+if (_ctxValveBtn) {
+    _ctxValveBtn.onclick = function () {
+        document.getElementById('ctx-panel').style.display = 'none';
+        var _ag = _activeAgent;
+        if (!_ag) return;
+        if (typeof _ag._tryAutoValveCompress === 'function') {
+            var _did = _ag._tryAutoValveCompress(0);
+            if (typeof updateCtxBtn === 'function') updateCtxBtn();
+            var _iFn = typeof _i === 'function' ? _i : function (k, f) { return f; };
+            if (window.parent && window.parent.qqqideQoast) {
+                if (_did) {
+                    window.parent.qqqideQoast.show('🗜️ ' + _iFn('ai.ctx.valveOk', '绝对包装盒已剥离'), { type: 'success', duration: 3000 });
+                } else {
+                    window.parent.qqqideQoast.show('🗜️ ' + _iFn('ai.ctx.valveNone', '无绝对包装盒可剥离'), { type: 'info', duration: 2000 });
+                }
+            }
+        }
+    };
+}
 document.querySelector('#ctx-panel .ctx-panel-overlay').onclick = function () {
     document.getElementById('ctx-panel').style.display = 'none';
 };

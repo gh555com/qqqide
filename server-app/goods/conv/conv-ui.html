@@ -334,9 +334,6 @@ function buildCells(ag) {
             if (m._biscuit) {
                 group = '压缩上下文';
                 label = '压缩饼干 (biscuit)';
-            } else if (m._deBlock) {
-                group = '压缩上下文';
-                label = 'DE 格子 (K+C)';
             } else {
                 group = m._dynamic ? '压缩上下文' : '系统消息';
                 label = 'System #' + (i + 1) + (m._dynamic ? ' (动态)' : '');
@@ -365,17 +362,7 @@ function buildCells(ag) {
                 content: blSummary, chars: blSummary.length
             });
         }
-        if (ctx.deEntries && ctx.deEntries.length > 0) {
-            var deChars = 0;
-            for (var di = 0; di < ctx.deEntries.length; di++) {
-                deChars += (ctx.deEntries[di].content || '').length;
-            }
-            cells.push({
-                id: 'comp-de', type: 'system', role: 'system',
-                label: 'DE 格子 × ' + ctx.deEntries.length + ' entries', group: '压缩上下文',
-                content: ctx.deEntries.length + ' entries, ~' + Math.round(deChars / 1000) + 'k chars. See DE message for full content.', chars: 80
-            });
-        }
+        // ★ V13: DE 概念消除，不再显示 DE 格子
     }
     if (ctx && ctx.facts && ctx.facts.length) {
         var ft = '';

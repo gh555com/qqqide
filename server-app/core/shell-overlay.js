@@ -192,10 +192,14 @@ function bootAiOverlay() {
       }
       return;
     }
+    // ★ 文本优先 — img.src 仅当无文本内容时兜底（防代码块内含 <img> 时复制 file:// URL）
+    var wrapper = contentEl.querySelector('.qqq-overlay-table-wrapper') || contentEl.querySelector('div');
+    if (wrapper) {
+      var txt = wrapper.innerText || wrapper.textContent || '';
+      if (txt.trim()) { doCopy(txt); return; }
+    }
     var img = contentEl.querySelector('img');
     if (img) { doCopy(img.src); return; }
-    var wrapper = contentEl.querySelector('.qqq-overlay-table-wrapper') || contentEl.querySelector('div');
-    if (wrapper) { doCopy(wrapper.innerText || wrapper.textContent); }
   });
 
   // Zoom out（跳过冷却护盾，准许快速连按）
