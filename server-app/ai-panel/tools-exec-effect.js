@@ -829,7 +829,7 @@ async function executeRemoveBackground(args) {
     }
 }
 
-async function executeSearchWeb(args) {
+async function executeSearchWeb(args, ownerAgent) {
     // ★ 参数别名
     args.query = args.query || args.q || '';
 
@@ -867,7 +867,13 @@ async function executeSearchWeb(args) {
             lines.push('');
         }
         lines.push('── ' + results.length + ' results ──');
-        return lines.join('\n');
+        var text = lines.join('\n');
+        // ★ Land to floor dir → sha256 reference for biscuit
+        if (typeof _landToFloorDir === 'function') {
+            var _stamp = await _landToFloorDir(text, 'web_search', ownerAgent);
+            text = text + _stamp;
+        }
+        return text;
 
     } catch (err) {
         return 'Error searching web: ' + (err.message || err);

@@ -467,20 +467,45 @@ Diff窗口: 独立 BrowserWindow，一个文件单例（Map），Monaco 0.34.1 s
 跨十年保证: SHA256 blob 不可变 + .wal + .bak 双备份 + 永不删
 
 
-AI 工具 (16个)
+AI 工具 (20个) — 2026-07-16 Timeline 全集成 · 双包装盒体系
 ------------------------------------------------------------
-文件: read_file, edit_file, create_file, delete_file, write_file (主进程 1 IPC, qwr保护)
-搜索: search_text (regex), search_content (多关键词OR), find_files (glob), list_files,
-      search_smart (BM25语义+Embedding混合重排, 三路并行)
-  · search_smart: BM25倒排+符号匹配+Embedding语义重排(alpha=0.3)
-    静默降级: Embedding失败→保留BM25结果
-诊断: get_diagnostics (Monaco markers)
-终端: run_command (硬超时 2h, stallMs=15min, qwr _qgc 命令屏障保护)
-  · ssh/sshJump 参数: 远端命令自然书写，base64编码消除三层引号地狱。shell:false arg数组
-网络: fetch_webpage (curl, 15s, ≤8000 chars)
-视觉: get_vision_context (并行预分析: 多图片并发, Promise.all)
-  · 生成/分析: IMAGE_GEN_URL/VISION_URL → Go → 模型供应商 → SSE 流。旧 Python 脚本已删除
-Embedding: BM25+语义混合搜索，双线路(fallback)+归一化+15s超时
+★ 路径: 16个工具支持项目相对路径(/server-app/foo.js)，_resolveProjectPath统一解析
+★ sha256+trace(tr): 5个写工具返回值注入 [sha256:xxx] @qNfNhNrN — AI可随时考古
+★ sha256参数: read_file/search_text/search_content/get_diagnostics 支持读历史blob
+
+── 双包装盒体系（2026-07-16 定案）──
+
+温柔包装盒（Gentle Box）— 15个工具，biscuit仅一行头，永不清理
+  成员: read/search/find/list/diag(6) + edit/write/create/delete/revert(5)
+       + timeline_versions/diff_versions(2) + fetch_webpage/search_web(2)
+  理由: 结果可从磁盘重读、参数重跑、或 sha256 引用复现。无需在背包保留原文
+  · fetch_webpage/search_web 原本不可复现→落地成文(写楼层目录+sha256)→归入温柔派
+
+绝对包装盒（Absolute Box）— 5个工具，╔K...╚ 包裹头+体，阀门压缩时仅剥离体部，头行保留
+  成员: run_command / generate_image / remove_background / analyze_image / get_vision_context
+  理由: 结果不可精确复现(终端输出/模型随机/云端处理)。必须保留原文但可弃
+  标记: ╔K(U+2554+K)开 / ╚(U+255A)闭，单占一行。正则 ╔K[\s\S]*?\n╚\n 精准剥离
+  转义: ╔K→╔K\ / ╚→╚\ (碰撞概率→0，零常态开销)
+  真理源: 头行截断 ABS_HEAD_CAP=80(agent-context.js)
+          体容量 ABS_BODY_CAP=16384(timeline-tool-integration.md §8压缩: 手动阀门触发→逐层剥离绝对盒体部(╔K...╚)，头行保留。温柔盒毫发无损柔盒毫发无损
+
+── 温柔派 15 个 ──
+文件: read_file, edit_file, create_file, delete_file, write_file, revert_file (6个)
+  写工具返回值: ✓ 3chg [sha256: bdf18b5043c9] @q1f3h2r1 — sha256+trace自动注入
+  路径: 全部支持项目相对路径(/server-app/foo.js)，_resolveProjectPath入口统一解析
+搜索: search_text (regex), search_content (多关键词OR), find_files (glob), list_files (4个)
+  新增 sha256 参数: 传blob_hash→在历史版本blob中搜索，不读磁盘
+  search_smart: BM25倒排+符号匹配+Embedding语义重排(alpha=0.3)
+诊断: get_diagnostics — 新增 sha256 参数，可检查历史blob语法 (1个)
+网络: fetch_webpage (US代理,15s) + search_web (US SearXNG) (2个)
+  · ★ 成功返回→自动写楼层目录(web_fetch_N.txt/web_search_N.txt)→sha256引用→温柔一行
+Timeline: timeline_versions(235级联) + diff_versions(+N/-M摘要) + revert_file(L5报告) (3个)
+  · diff_versions 输出末行: +N=5 -M=4(增减行统计,供biscuit用)
+
+── 绝对派 5 个 ──
+终端: run_command (硬超时 2h, stallMs=15min, qwr保护) — stdout进╔K...╚体 (1个)
+  · ssh/sshJump 参数: 远端命令自然书写，base64编码消除三层引号地狱
+视觉: get_vision_context + analyze_image + generate_image + remove_background (4个)
 
 
 统计上报（2026-07-09 doer 中心模型）
@@ -570,23 +595,20 @@ AI 悬浮预览层
 · 图片: transform translate+scale 统一缩放+拖拽。关闭: Esc/右键/背景。跨窗口广播关闭
 
 
-上下文压缩 — V12 本地机械筛 + 原地追加（2026-07-14 落地，2026-07-15 三 Bug 修复，零网络零费用）
+上下文压缩 — V13 本地机械筛 + ╔K...╚ 绝对包装盒（2026-07-16 DE 消除，阀值压缩落地，sha256 考古）
 ---------------------------------------------------------------------
 · ★ 触发: 每层楼封顶(onDone)→_rebuildBackpack()。建楼中不触发。旧阈值触发+手动压缩+AI压缩全部移除。
-· 机械筛（方案三）: 纯本地、纯确定性。消息→Q/A/工具摘要行。代码正文不进饼干，AI改前必re-read(§54)。
-· K集合(不可恢复工具): run_command/fetch_webpage/search_web/analyze_image/get_vision_context/generate_image/remove_background → 摘要进饼干，完整输出仅进DE(≤8000 chars/条)。2026-07-15 去重修复：旧代码同时写入饼干+DE致token翻倍。
-· 压缩饼干(biscuit): 单条_biscuit消息，content尾部追加(零splice)。格式: === FN === + Q/A/工具摘要行 + [ERR] [HH:MM]原因。
-· DE格子: 单条_deBlock消息，K集合+代码块混合，按时间/楼层升序。20K chars硬帽，6K/条，FIFO轮转驱逐。
-· ★ ctx 持久化(B方案, 2026-07-16): per-quest ctx.json(原子tmp+rename)替代 quest.sq3 存 ctx。单 quest 隔离，单文件损坏不波及其他。ctx.json 损坏/丢失→D 路径(_rebuildBackpack 扫描 conversation)自愈。
-· 错误保留: 未恢复fatal楼层→不进饼干(原始消息保留)。已恢复→[ERR] [HH:MM]原因格式进饼干。重启扫描biscuit重建错误日志。
-· 背包定序: Z → biscuit(1条msg,原地追加) → DE(1条msg,原地更新) → 当前楼层消息。仅splice-remove原始楼层消息。
-· 缓存: Z 100%命中 / biscuit前缀命中(仅最后一行新) / DE大部命中。每层实际计费~2-4K tokens。
+· 机械筛（方案三）: 纯本地、纯确定性。消息→Q/A/工具摘要行。零网络，零费用。
+· 包装盒体系(20工具): 15温柔(可复现,摘要一行)+5绝对(run_command/generate_image/remove_background/analyze_image/get_vision_context,╔K...╚包裹,16K硬帽)。
+· sha256 考古: 读工具(args.sha256)→biscuit头行 @sha=xxx(12位)；写/落地工具(result [sha256:])→➜ sha=xxx。AI可随时用 sha256= 参数回读历史版本。
+· ★ DE 概念消除(V13): 不再有_deBlock消息/deEntries字段。绝对包装盒融入饼干。旧DE消息自动清除。阀值压缩时整盒移除(正则 ╔K[\s\S]*?\n╚\n)。
+· 压缩饼干(biscuit): 单条_biscuit消息，content尾部追加(零splice)。每层格式: === FN YYYY-MM-DD HH:MM:SS UTC+8 === → Q → 包装盒(头行+可选╔K...╚体) → A。
+· ★ ctx 持久化: per-quest ctx.json(原子tmp+rename)。ctx.json 损坏/丢失→D 路径(_rebuildBackpack 扫描 conversation)自愈。
+· 背包定序: Z → biscuit(1条msg,原地追加) → 当前楼层消息。仅splice-remove原始楼层消息。
+· 缓存: Z 100%命中 / biscuit前缀命中(仅最后一行新)。每层实际计费~2-4K tokens。
+· 阀值压缩: _tryAutoValveCompress(threshold)→剥离 ╔K...╚ 体部。手动(🗜️按钮,threshold=0强制)/自动(建楼中_lastApiPromptTokens>设定阈值)。阈值设定: 齿轮→设置→自动压缩阈值(100-1000k)。ctx-panel 三按钮: 📸快照 📋管理 🗜️阀值压缩。
 · 旧AI压缩(V3-V10)全删: 三专家并行/JSON提取/thinking吃预算/缓存毒化/回滚漏洞→~5ge测试费→结论: JSON+大输入=死路。
-· UI: 右下角ctx-btn显示当前消耗(本地估算+API真理)。hover弹出Context Usage拆解面板(biscuit/DE独立行)。
-  点击弹出对话框(仅快照+管理)。ctx-compress按钮已移除(压缩全自动)。
-  goods/conv/上下文管理页已适配V12: biscuit/DE消息带专用标签+分组，ctx.biscuitLines/deEntries摘要。
-· ★ 饼干自动剥离 [File: ...]```...``` 块：_buildCompressedBiscuit 正则全局匹配替换为空。
-  无论文件路径（含 bullet/），附件内容不进饼干，仅保留 Q 文本。子弹文件自然"用完即抛"。
+· ★ 饼干自动剥离 [File: ...]```...``` 块：_buildCompressedBiscuit 正则全局匹配替换为空。子弹文件自然"用完即抛"。
 
 子弹按钮 — 粘贴板→磁盘→编辑框 📎（2026-07-14）
 ---------------------------------------------------------------------

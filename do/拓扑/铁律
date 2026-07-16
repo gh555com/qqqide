@@ -377,14 +377,16 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
     无内嵌→py-broker 跳过(IDE 正常启动，下次启动自动装上)。永不 fallback 系统 Python。
   - 违者即返工。
 
-§56 上下文压缩 — 每层封顶自动重组（V12, 2026-07-14 落地，2026-07-15 三 Bug 修复，2026-07-16 ctx.json 迁出 sq3）
-  - 触发: 每层楼完结(onDone)→_rebuildBackpack()。建楼中不触发。旧阈值+手动+AI压缩全移除。
+§56 上下文压缩 — 每层封顶自动重组（V13, 2026-07-16 DE 消除，╔K...╚ 融入饼干，阀值压缩，sha256 考古）
+  - 触发: 每层楼完结(onDone)→_rebuildBackpack()。建楼中不触发。阀值压缩在建楼中自动触发。
   - 机械筛: 纯本地确定性转换(方案三)。消息→Q/A/工具摘要行。零网络，零费用。
-  - K集合: 不可恢复工具(run_command/fetch_webpage/search_web/analyze_image等7个)→摘要行进饼干，完整输出仅进DE(2026-07-15 去重)。
-  - 饼干: 单条_biscuit系统消息原地追加，对象永不变。仅content尾部增长→前缀缓存命中。
-  - DE格子: 单条_deBlock消息，K+C混合按时间升序。20K chars硬帽，6K/条，FIFO驱逐。
-  - 背包定序: Z→biscuit(1条msg)→DE(1条msg)→当前楼层消息。禁splice biscuit/DE(仅删原始楼层)。
-  - 持久化: ctx(biscuitLines/deEntries/narrative等)存 per-quest ctx.json(原子tmp+rename)，不再写 quest.sq3。ctx.json 损坏→D 路径(_rebuildBackpack 扫描 conversation)自愈。
+  - 包装盒: 15温柔(可复现工具,摘要一行)+5绝对(run_command/generate_image/remove_background/analyze_image/get_vision_context,╔K...╚包裹,16K硬帽)。
+  - sha256 考古: 读工具(args有sha256)→@sha=xxx；写/落地工具(result有[sha256:])→➜ sha=xxx。12位hex，零额外IO。
+  - 饼干: 单条_biscuit系统消息原地追加，对象永不变。仅content尾部增长→前缀缓存命中。每层格式: === FN YYYY-MM-DD HH:MM:SS UTC+8 === → Q → 包装盒 → A。
+  - ★ DE 概念消除(V13): 不再有_deBlock消息/deEntries字段。绝对包装盒融入饼干。旧DE消息自动清除。
+  - 阀值压缩: _tryAutoValveCompress(threshold)→剥离 ╔K...╚ 体部。手动(🗜️按钮,threshold=0强制)/自动(建楼中_lastApiPromptTokens>设定阈值)。阈值设定: 齿轮→设置→自动压缩阈值(100-1000k,默认600k)。
+  - 背包定序: Z→biscuit(1条msg)→当前楼层消息。禁splice biscuit(仅删原始楼层)。
+  - 持久化: ctx(biscuitLines/narrative等)存 per-quest ctx.json(原子tmp+rename)，不再写 quest.sq3。ctx.json 损坏→D 路径(_rebuildBackpack 扫描 conversation)自愈。
   - 错误: 未恢复fatal楼层不进饼干(原始消息保留)。已恢复→[ERR] [HH:MM]格式进饼干。_errorTime持久化→重启精确恢复。
   - 违者即返工。
 

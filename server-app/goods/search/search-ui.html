@@ -175,7 +175,7 @@ INPS.forEach(function(inp,fid){
 });
 document.addEventListener('mousedown',function(e){if(_openFid===null)return;var t=e.target;if(t.closest&&(t.closest('.iw')||t.closest('.hdd')))return;_close()});
 
-var _rx=false,_cs=false,_ww=false,_tmr=null,_last=null,_lastQ='',_hl=null,_scopePath='';
+var _rx=false,_cs=false,_ww=false,_tmr=null,_last=null,_lastQ='',_hl=null,_scopePath='',_lastQuery='';
 var CGI=document.getElementById('cgi'),LGI=document.getElementById('lgi'),
   BRX=document.getElementById('brx'),BCS=document.getElementById('bcs'),BWW=document.getElementById('bww'),
   BRA=document.getElementById('bra'),ST=document.getElementById('st'),STT=document.getElementById('stt'),
@@ -233,8 +233,9 @@ async function dos(){
   if(!sp){try{var vp=window.parent&&window.parent.qqqideViewport;if(vp){var m=vp.getMainProject();if(m){sp=m.path;SP.value=sp}}}catch(_){}}
   if(!sp){STT.textContent='⚠️ 请指定搜索范围';return}
   _scopePath=sp;_add(0,q);_add(2,sp);_add(3,IC.value);_add(4,EX.value);
-  // Notify parent to update tab title
-  try{window.parent.postMessage({type:'qqqide-search-title',path:sp},'*')}catch(_){}
+  _lastQuery=q;
+  // Notify parent to update tab title (with query)
+  try{window.parent.postMessage({type:'qqqide-search-title',path:sp,query:q},'*')}catch(_){}
   // Build highlight regex — handle \n as multiline: split into per-line parts
   var hlQ=q,hasNl=q.indexOf('\\n')!==-1||q.indexOf('\n')!==-1;
   if(hasNl){
@@ -311,7 +312,13 @@ BRA.onclick=async function(){
 (function ts(){try{var pt=window.parent.document.documentElement.getAttribute('data-theme');if(pt)document.documentElement.setAttribute('data-theme',pt)}catch(_){}})();
 window.addEventListener('message',function(e){
   if(e.data&&e.data.type==='qqqide-theme-change'){var t=e.data.theme||e.data.dark;if(t!==undefined)document.documentElement.setAttribute('data-theme',t?'dark':'');else ts()}
-  if(e.data&&e.data.type==='qqqide-search-set-scope'){SP.value=e.data.path||'';_scopePath=SP.value.trim();if(e.data.query){Q.value=e.data.query;_add(0,e.data.query);trg()}if(Q.value)trg();Q.focus()}
+  if(e.data&&e.data.type==='qqqide-search-set-scope'){
+    var newPath=e.data.path||'';
+    if(newPath&&newPath!==SP.value){SP.value=newPath;_scopePath=newPath.trim();_lastQuery='';
+      try{window.parent.postMessage({type:'qqqide-search-title',path:newPath.trim(),query:''},'*')}catch(_){}}
+    if(e.data.query){Q.value=e.data.query;_add(0,e.data.query);trg()}
+    if(Q.value)trg();Q.focus()
+  }
 });
 setTimeout(function(){try{var vp=window.parent&&window.parent.qqqideViewport;if(vp){var m=vp.getMainProject();if(m){if(!SP.value)SP.value=m.path;_prjRoot=m.path.replace(/\\/g,'/').replace(/\/$/,'');_ldHist()}}}catch(_){}},200);
 })();

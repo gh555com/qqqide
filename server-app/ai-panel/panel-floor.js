@@ -437,12 +437,11 @@ async function _restoreAgentFromStore(questId, ag) {
         // ★ 压缩恢复：先读 lastCompressedFloor（需在 conversation 之前）
         var _restoredLastCompressedFloor = _ctxData.lastCompressedFloor || 0;
         var _restoredNarrative = _ctxData.narrative || '';
-        // ★ BugFix #1: ctx.biscuitLines/deEntries 必须在 V12 注入之前恢复，
-        //    否则 ag._ctx.biscuitLines 为空 → 注入跳过 → 重启后 backpack 只有 Z 消息。
+        // ★ BugFix #1: ctx.biscuitLines 必须在 V12 注入之前恢复
         if (_ctxData.biscuitLines) ag._ctx.biscuitLines = _ctxData.biscuitLines;
-        if (_ctxData.deEntries) ag._ctx.deEntries = _ctxData.deEntries;
+        // V13: DE 概念消除，不再恢复 deEntries
         // V10/V11: ctx.narrative 存完整饼干文本
-        // V12:     ctx.narrative 是摘要(biscuit:X de:Y)，饼干在 conversation 的 _biscuit/_deBlock 消息
+        // V12:     ctx.narrative 是摘要(biscuit:X)，饼干在 conversation 的 _biscuit 消息
         var _isV10Biscuit = _restoredLastCompressedFloor > 0 && _restoredNarrative.indexOf('═══ COMPRESSED FLOORS') === 0;
         var _isV12Biscuit = _restoredLastCompressedFloor > 0 && _restoredNarrative.indexOf('biscuit:') === 0;
         var _hasBiscuit = _isV10Biscuit || _isV12Biscuit;
@@ -473,33 +472,20 @@ async function _restoreAgentFromStore(questId, ag) {
 
         // ★ BugFix #3 v2: _persistentCount 已在循环中处理，不再重置
 
-        // ★ 注入压缩饼干：V10 从 ctx.narrative 注入；V12 从 ctx.biscuitLines/deEntries 重建消息
+        // ★ 注入压缩饼干：V10 从 ctx.narrative 注入；V13 从 ctx.biscuitLines 重建消息
         if (_isV10Biscuit) {
             ag.conversation.unshift({ role: 'system', content: _restoredNarrative, _compressed: true, _dynamic: true });
         }
-        // ★ V12 恢复：biscuit/DE 消息不存在于 all.json（Bug #4 根因—落盘在压缩之前），
-        //    但 ctx.biscuitLines/deEntries 已从 ctx.json 正确恢复。在此重建消息注入 conversation。
+        // ★ V13 恢复：biscuit 消息从 ctx.biscuitLines 重建注入（DE 概念已消除）
         if (_isV12Biscuit) {
-            var _hasBiscuitMsg = false, _hasDeMsg = false;
+            var _hasBiscuitMsg = false;
             for (var _scmi = 0; _scmi < ag.conversation.length; _scmi++) {
                 if (ag.conversation[_scmi]._biscuit) _hasBiscuitMsg = true;
-                if (ag.conversation[_scmi]._deBlock) _hasDeMsg = true;
             }
             if (!_hasBiscuitMsg && ag._ctx.biscuitLines && ag._ctx.biscuitLines.length > 0) {
                 var _rebuildBiscuit = ag._ctx.biscuitLines.map(function(l) { return l.text; }).join('\n\n');
                 ag.conversation.splice(ag._persistentCount || 0, 0,
                     { role: 'system', content: _rebuildBiscuit, _dynamic: true, _biscuit: true });
-            }
-            if (!_hasDeMsg && ag._ctx.deEntries && ag._ctx.deEntries.length > 0) {
-                var _rebuildDe = (typeof AgentLoop !== 'undefined' && typeof AgentLoop._serializeDeBlock === 'function')
-                    ? AgentLoop._serializeDeBlock(ag._ctx.deEntries)
-                    : '═══ DE (K+C, 60000 cap) ═══\n';
-                var _biscuitIdx = ag._persistentCount || 0;
-                for (var _bmfi = 0; _bmfi < ag.conversation.length; _bmfi++) {
-                    if (ag.conversation[_bmfi]._biscuit) { _biscuitIdx = _bmfi; break; }
-                }
-                ag.conversation.splice(_biscuitIdx + 1, 0,
-                    { role: 'system', content: _rebuildDe, _dynamic: true, _deBlock: true });
             }
         }
         // ★ 扫描所有 _error 消息重建分楼层错误日志（跳过已恢复的）
@@ -637,7 +623,7 @@ async function _restoreAgentFromStore(questId, ag) {
             if (_ctxData.narrative) ag._ctx.narrative = _ctxData.narrative;
             if (_ctxData.facts) ag._ctx.facts = _ctxData.facts;
             if (_ctxData.treasures) ag._ctx.treasures = _ctxData.treasures;
-            // ★ biscuitLines/deEntries 已提前恢复（BugFix #1：必须在 V12 注入之前）
+            // ★ biscuitLines 已提前恢复（BugFix #1：必须在 V12 注入之前）
             ag._floorTimings = data.floorTimings || [];
             ag._serverDrift = data.serverDrift || 0;
             ag._queue = data.queue || [];
