@@ -1,5 +1,5 @@
 // ============================================================================
-// q2-roam.js �?Roam file explorer logic
+// q2-roam.js — Roam file explorer logic
 // Extracted from q2-roam.html to keep HTML under size limits.
 // ============================================================================
 
@@ -32,21 +32,7 @@
 
 // ---- Main Roam logic ----
 (function() {
-// 'use strict';
-
-// �?二进制文件扩展名（从 q3 移植�?ts 已排除避免误�?TypeScript�?
-var BINARY_EXTS = {
-	'.exe':1,'.dll':1,'.bin':1,'.dat':1,'.iso':1,'.msi':1,'.bat':1,'.cmd':1,'.ps1':1,
-	'.zip':1,'.rar':1,'.7z':1,'.tar':1,'.gz':1,'.bz2':1,
-	'.png':1,'.jpg':1,'.jpeg':1,'.gif':1,'.bmp':1,'.webp':1,'.ico':1,'.tiff':1,'.tif':1,'.svg':1,'.ai':1,'.eps':1,'.cdr':1,'.psd':1,
-	'.mp4':1,'.mkv':1,'.webm':1,'.avi':1,'.mov':1,'.wmv':1,'.flv':1,'.rmvb':1,'.mpeg':1,'.mpg':1,'.3gp':1,'.m4v':1,'.f4v':1,'.mts':1,'.m2ts':1,'.vob':1,
-	'.mp3':1,'.wav':1,'.flac':1,'.m4a':1,'.aac':1,'.ogg':1,'.wma':1,
-	'.pdf':1
-};
-function isBinaryFile(p) {
-	var ext = p.substring(p.lastIndexOf('.')).toLowerCase();
-	return !!BINARY_EXTS[ext];
-}
+'use strict';
 
 // ---- RPC helper: call parent bridge methods via postMessage ----
 let _rpcId = 0;
@@ -68,15 +54,15 @@ window.addEventListener('message', function(e) {
 		else p.ok(e.data.result);
 		return;
 	}
-// Theme sync
-    if (e.data && (e.data.type === 'qqqide-theme-change' || e.data.type === 'qqq-theme-change')) {
+    // 主题同步（来自父窗口 qqq-theme.js 唯一真理配色机器）
+    if (e.data && e.data.type === 'qqqide-theme-change') {
       if (e.data.dark) document.documentElement.setAttribute('data-theme', 'dark');
       else document.documentElement.removeAttribute('data-theme');
     }
 });
 
-// �?直连 pa
-// parent.qgs.simple('roam') �?绕过 postMessage RPC，零超时零丢�?//   �?shell-rpc.js �?store.* RPC handler 读写同一 global.sq3 namespace
+// ★ 直连 parent.qgs.simple('roam') — 绕过 postMessage RPC，零超时零丢包
+//   与 shell-rpc.js 的 store.* RPC handler 读写同一 global.sq3 namespace
 var _roamDbDirect = null;
 function _roamDb() {
 	if (_roamDbDirect) return _roamDbDirect;
@@ -93,7 +79,7 @@ async function _roamGet(key) {
 	if (db) {
 		try { return await db.get(key); } catch(e) { console.warn('[roam] direct get failed:', key, e); }
 	}
-	// 降级�?RPC
+	// 降级到 RPC
 	try { return await bridge.store.get(key); } catch(e) { return null; }
 }
 function _roamSet(key, value) {
@@ -102,7 +88,7 @@ function _roamSet(key, value) {
 		db.set(key, value).catch(function(e) { console.warn('[roam] direct set failed:', key, e); });
 		return;
 	}
-	// 降级�?RPC
+	// 降级到 RPC
 	bridge.store.set(key, value);
 }
 
@@ -149,7 +135,7 @@ var currentPath = '';
 var selectedItems = [];
 var selectedItem = null;
 var lastSelectedItem = null;
-var lnkJumpFromPath = null; // �?�?.lnk 快捷方式跳转时记录来源目录，返回时回到这里而非上层
+var lnkJumpFromPath = null; // ★ 从 .lnk 快捷方式跳转时记录来源目录，返回时回到这里而非上层
 var sortBy = 'name', _globalSortBy = 'name';
 var szMode = 'size', _globalSzMode = 'size';
 var filesOnTop = false;
@@ -176,7 +162,7 @@ function _fineScmSave() {
 }
 function _prefsSave() {
 	_roamSet('roam.prefs', {
-// 		lineSpacing: _lineSpacing, globalSzMode: _globalSzMode, globalSortBy: _globalSortBy
+		lineSpacing: _lineSpacing, globalSzMode: _globalSzMode, globalSortBy: _globalSortBy
 	});
 }
 function _qqiqSave() { _roamSet('roam.qqiq', _qqiq); }
@@ -275,7 +261,7 @@ var addressDisplay = document.getElementById('addressDisplay');
 function updateAddressDisplay(p) {
 	if (!addressDisplay) return;
 	var parts = p.split(/[\\/]/).filter(Boolean);
-	addressDisplay.innerHTML = parts.map(function(s) { return '<span>' + escHtml(s) + '</span>'; }).join('<span class="path-sep">�?/span>');
+	addressDisplay.innerHTML = parts.map(function(s) { return '<span>' + escHtml(s) + '</span>'; }).join('<span class="path-sep">›</span>');
 }
 function escHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
@@ -307,33 +293,34 @@ document.getElementById('addressCopyBtn').addEventListener('click', function() {
 // ---- Navigate ----
 function navigateTo(p, opts) {
 	opts = opts || {};
-// �?正常导航时清�?lnkJumpFromPath（lnk 跳转在调用后重新设置�?
-if (!opts.keepLnkJump) lnkJumpFromPath = null;
+	// ★ 正常导航时清除 lnkJumpFromPath（lnk 跳转在调用后重新设置）
+	if (!opts.keepLnkJump) lnkJumpFromPath = null;
 	currentPath = p;
 	applyFineScm(p);
 	addressInput.value = p;
 	updateAddressDisplay(p);
 	loadFileList(p);
-	// �?简单导航不记录历史——只有创�?编辑/打开等动作才�?qq �?	_historySave();
+	recordDirHistory(p);
+	_historySave();
 }
 
-// Go up one level
+// 返回上一层目录
 function goUpOneLevel() {
 	if (!currentPath) return;
 	var parts = currentPath.replace(/[\\/]+$/, '').split(/[\\/]/);
 	if (parts.length > 1) {
 		parts.pop();
 		var parent = parts.join(currentPath.indexOf('\\') >= 0 ? '\\' : '/');
-// Windows 盘符根目录补反斜杠（�?C: �?C:\�?
-if (currentPath.indexOf('\\') >= 0 && parent.length === 2 && parent[1] === ':') parent += '\\';
+		// Windows 盘符根目录补反斜杠（如 C: → C:\）
+		if (currentPath.indexOf('\\') >= 0 && parent.length === 2 && parent[1] === ':') parent += '\\';
 		navigateTo(parent);
 	}
 }
 
-// ---- Windows .lnk 快捷方式解析（纯 JS，从 q3 移植�?---
+// ---- Windows .lnk 快捷方式解析（纯 JS，从 q3 移植）----
 // 规范: MS-SHLLINK (Shell Link Binary File Format)
-// 输入: base64 编码�?.lnk 文件内容
-// 输出: 目标路径�?null
+// 输入: base64 编码的 .lnk 文件内容
+// 输出: 目标路径或 null
 function parseLnkTargetFromBase64(base64) {
 	try {
 		var raw = atob(base64);
@@ -343,8 +330,8 @@ function parseLnkTargetFromBase64(base64) {
 		function uint32LE(off) { return buf[off] | (buf[off+1]<<8) | (buf[off+2]<<16) | (buf[off+3]<<24); }
 		function uint16LE(off) { return buf[off] | (buf[off+1]<<8); }
 
-// 最小有�?.lnk 大小: 76 字节�?
-if (buf.length < 76) return null;
+		// 最小有效 .lnk 大小: 76 字节头
+		if (buf.length < 76) return null;
 		// 验证魔数: 4C 00 00 00
 		if (uint32LE(0) !== 0x4C) return null;
 
@@ -361,7 +348,7 @@ if (buf.length < 76) return null;
 		}
 
 		var ansiPath = null;
-		// �?LinkInfo 提取路径
+		// 从 LinkInfo 提取路径
 		if (hasLinkInfo) {
 			if (offset + 28 <= buf.length) {
 				var linkInfoStart = offset;
@@ -373,8 +360,8 @@ if (buf.length < 76) return null;
 				if (hasVolumeIDAndLocalBasePath && linkInfoSize >= 28) {
 					var localBasePathOffset = uint32LE(offset + 16);
 
-// 先试 Unicode 路径（header size >= 0x24�?
-if (linkInfoHeaderSize >= 0x24 && offset + 32 <= buf.length) {
+					// 先试 Unicode 路径（header size >= 0x24）
+					if (linkInfoHeaderSize >= 0x24 && offset + 32 <= buf.length) {
 						var unicodeOffset = uint32LE(offset + 28);
 						if (unicodeOffset > 0 && unicodeOffset < linkInfoSize) {
 							var uStart = linkInfoStart + unicodeOffset;
@@ -403,7 +390,7 @@ if (linkInfoHeaderSize >= 0x24 && offset + 32 <= buf.length) {
 			}
 		}
 
-// Fallback: scan entire file for Unicode path pattern X:\
+		// 兜底: 扫描整个文件找 Unicode 路径模式 "X:\"（[A-Z] 00 3A 00 5C 00）
 		for (var s = 0; s < buf.length - 10; s++) {
 			var b0 = buf[s];
 			if (b0 >= 0x41 && b0 <= 0x5A && buf[s+1] === 0 &&
@@ -514,13 +501,14 @@ function renderQqiqSection() {
 	if (_qqiq.length === 0) return;
 	// Divider
 	var divEl = document.createElement('div'); divEl.className = 'divider'; driveList.appendChild(divEl);
-	// �?筛选框永远显示
+	// ★ 筛选框永远显示
 	var fc = document.createElement('div');
 	fc.className = 'qq-filter-container';
 	fc.innerHTML = '<input type="text" class="qq-filter-input" id="qqFilterInput" placeholder="find" spellcheck="false"><div id="qqFilterHistoryDropdown" class="history-dropdown"></div>';
 	driveList.appendChild(fc);
-	// Render all entries, filter uses show/hide in-place
-	var sec=document.createElement("div");sec.className="qq-iq-section";
+	// ★ 渲染全部条目（上限 QQ_IQ_MAX），超出 QQ_IQ_DISPLAY 的初始隐藏
+	//    筛选时由 applyqqiqFilter 在 DOM 内原地 show/hide，不重建输入框
+	var sec = document.createElement('div'); sec.className = 'qq-iq-section';
 	var total = Math.min(_qqiq.length, QQ_IQ_MAX);
 	for (var i = 0; i < total; i++) {
 		var itemEl = buildQqiqItem(_qqiq[i]);
@@ -538,7 +526,7 @@ function buildQqiqItem(item) {
 	el.setAttribute('data-fullpath', item.path);
 	if (item.type === 'file') {
 		var fileName = item.path.replace(/^.*[\\/]/, '');
-		// �?文件 tooltip: 黑色背景白色文字，最后反斜杠红色加粗
+		// ★ 文件 tooltip: 黑色背景白色文字，最后反斜杠红色加粗
 		var lastBS = item.path.lastIndexOf('\\');
 		var tooltipHtml;
 		if (lastBS !== -1) {
@@ -572,7 +560,7 @@ function buildQqiqItem(item) {
 	return el;
 }
 
-// �?qq 筛选器：原地过�?DOM（不重建，不破坏输入框焦点）；AND 多词模糊匹配
+// ★ qq 筛选器：原地过滤 DOM（不重建，不破坏输入框焦点）；AND 多词模糊匹配
 function applyqqiqFilter(keyword) {
 	var section = document.querySelector('.qq-iq-section');
 	if (!section) return;
@@ -582,12 +570,12 @@ function applyqqiqFilter(keyword) {
 	for (var i = 0; i < items.length; i++) {
 		var item = items[i];
 		if (terms.length === 0) {
-			// No filter: show first QQ_IQ_DISPLAY, hide rest
+			// 无筛选：前 QQ_IQ_DISPLAY 显示，其余隐藏
 			item.style.display = (i < QQ_IQ_DISPLAY) ? '' : 'none';
 			continue;
 		}
-		// AND multi-keyword fuzzy match
-		var fullpath=(item.getAttribute("data-fullpath")||"").toLowerCase();
+		// AND 多词模糊匹配：在 data-fullpath + textContent 中搜索
+		var fullpath = (item.getAttribute('data-fullpath') || '').toLowerCase();
 		var text = (item.textContent || '').toLowerCase();
 		var hay = fullpath + ' ' + text;
 		var match = true;
@@ -598,7 +586,7 @@ function applyqqiqFilter(keyword) {
 	}
 }
 
-// ---- 下拉框工具函�?----
+// ---- 下拉框工具函数 ----
 function hideAllDropdowns() {
 	var dds = document.querySelectorAll('.history-dropdown');
 	for (var i = 0; i < dds.length; i++) dds[i].style.display = 'none';
@@ -621,12 +609,12 @@ function showFilterHistory(inputEl, key) {
 	dd.style.display = 'block';
 }
 
-// �?初始�?qq 筛选框事件
+// ★ 初始化 qq 筛选框事件
 function initQqFilter() {
 	var sidebar = document.querySelector('.sidebar');
 	if (!sidebar) return;
 
-	// input �?筛�?+ 隐藏下拉
+	// input → 筛选 + 隐藏下拉
 	sidebar.addEventListener('input', function(e) {
 		var t = e.target;
 		if (!t || t.id !== 'qqFilterInput') return;
@@ -635,25 +623,26 @@ function initQqFilter() {
 		if (t.value === '') showFilterHistory(t, 'qqFilter');
 	});
 
-	// focus �?空时显示历史
+	// focus → 空时显示历史
 	sidebar.addEventListener('focusin', function(e) {
 		var t = e.target;
 		if (!t || t.id !== 'qqFilterInput') return;
 		if (t.value === '') showFilterHistory(t, 'qqFilter');
 	});
 
-	// blur �?隐藏下拉
+	// blur → 隐藏下拉
 	sidebar.addEventListener('focusout', function(e) {
 		var t = e.target;
 		if (!t || t.id !== 'qqFilterInput') return;
 		setTimeout(function() { hideAllDropdowns(); }, 120);
 	});
-		// mousedown prevent blur
+
+	// mousedown on dropdown → 防失焦
 	sidebar.addEventListener('mousedown', function(e) {
 		if (e.target && e.target.closest && e.target.closest('#qqFilterHistoryDropdown')) e.preventDefault();
 	});
 
-	// keydown: Enter/Escape
+	// keydown → Enter/Escape
 	sidebar.addEventListener('keydown', function(e) {
 		var t = e.target;
 		if (!t || t.id !== 'qqFilterInput') return;
@@ -708,7 +697,7 @@ function renderPinnedDirs() {
 	}
 }
 
-// Natural sort
+// ★ 自然排序：数字部分按数值比较，大小写不敏感（匹配 Windows readdir 原生顺序）
 function naturalCompare(a, b) {
 	var re = /(\d+)|(\D+)/g;
 	var aParts = String(a).match(re) || [];
@@ -722,6 +711,9 @@ function naturalCompare(a, b) {
 		if (!isNaN(aNum) && !isNaN(bNum)) {
 			if (aNum !== bNum) return aNum - bNum;
 		} else {
+			var apLower = ap.toLowerCase();
+			var bpLower = bp.toLowerCase();
+			if (apLower !== bpLower) return apLower < bpLower ? -1 : 1;
 			if (ap !== bp) return ap < bp ? -1 : 1;
 		}
 	}
@@ -736,7 +728,7 @@ async function loadFileList(p) {
 	selectedItem = null;
 	lastSelectedItem = null;
 	try {
-		// �?Parent directory ".." entry
+		// ★ Parent directory ".." entry
 		var isRoot = false;
 		if (p.includes('\\')) { isRoot = /^[A-Za-z]:\\$/.test(p); }
 		else { isRoot = (p === '/' || p === ''); }
@@ -747,7 +739,7 @@ async function loadFileList(p) {
 			if (p.includes('\\') && parentDir.length === 2 && parentDir.endsWith(':')) parentDir += '\\';
 			if (!parentDir && !p.includes('\\')) parentDir = '/';
 			var parentEntry = { name: '..', isDir: true, size: 0, ctimeMs: 0, mtimeMs: 0 };
-			fileList.appendChild(buildFileItem(parentEntry, parentDir));
+		fileList.appendChild(buildFileItem(parentEntry, parentDir));
 		}
 
 		var entries = await bridge.fs.list(p);
@@ -760,10 +752,10 @@ async function loadFileList(p) {
 				if (!a.isDir && b.isDir) return 1;
 			}
 			switch (sortBy) {
-				case 'size': return (b.size||0) - (a.size||0);
-				case 'ctime': return (b.ctimeMs||0) - (a.ctimeMs||0);
-				case 'mtime': return (b.mtimeMs||0) - (a.mtimeMs||0);
-				default: return naturalCompare(String(a.name), String(b.name));
+			case 'size': return (b.size||0) - (a.size||0);
+			case 'ctime': return (b.ctimeMs||0) - (a.ctimeMs||0);
+			case 'mtime': return (b.mtimeMs||0) - (a.mtimeMs||0);
+			default: return naturalCompare(String(a.name), String(b.name));
 			}
 		});
 		for (var i = 0; i < entries.length; i++) {
@@ -781,7 +773,7 @@ function buildFileItem(entry, fullPath) {
 	item.dataset.type = entry.isDir ? 'folder' : 'file';
 	item.dataset.name = entry.name;
 
-	// sz area (size/date) �?HTML mode for red GB
+	// sz area (size/date) — HTML mode for red GB
 	var sz = document.createElement('div');
 	sz.className = 'sz-area';
 	var szHtml = getSzContent(entry);
@@ -794,17 +786,14 @@ function buildFileItem(entry, fullPath) {
 	}
 	item.appendChild(sz);
 
-	// file-select-area (sz-area + icon, same for folders & files �?q3 structure)
-	var selectArea = document.createElement('div');
-	selectArea.className = 'file-select-area';
-	var icon = document.createElement('span');
-	icon.className = 'file-icon';
-	icon.textContent = entry.isDir ? '📁' : '🗈';
-	selectArea.appendChild(icon);
-	item.appendChild(selectArea);
-
-	// name area
 	if (entry.isDir) {
+		var selectArea = document.createElement('div');
+		selectArea.className = 'file-select-area';
+		var icon = document.createElement('span');
+		icon.className = 'file-icon';
+		icon.textContent = '📁';
+		selectArea.appendChild(icon);
+		item.appendChild(selectArea);
 		var nameArea = document.createElement('div');
 		nameArea.className = 'folder-name-area';
 		nameArea.textContent = entry.name;
@@ -812,13 +801,17 @@ function buildFileItem(entry, fullPath) {
 	} else {
 		var nameArea2 = document.createElement('div');
 		nameArea2.className = 'file-name-area';
+		var icon2 = document.createElement('span');
+		icon2.className = 'file-icon';
+		icon2.textContent = '📄';
+		nameArea2.appendChild(icon2);
 		var nameSpan = document.createElement('span');
-		nameSpan.textContent = entry.name;
+		nameSpan.textContent = ' ' + entry.name;
 		nameArea2.appendChild(nameSpan);
 		item.appendChild(nameArea2);
 	}
 
-	// Click: selection-aware
+	// Click — selection-aware
 	item.addEventListener('click', function(e) {
 		// ".." parent entry always navigates
 		if (entry.name === '..') { navigateTo(fullPath); return; }
@@ -830,11 +823,11 @@ function buildFileItem(entry, fullPath) {
 		selectFileItem(item, e.shiftKey);
 	});
 
-	// Double-click on file �?open
+	// Double-click on file → open
 	item.addEventListener('dblclick', function(e) {
 		if (!entry.isDir) {
 			parent.postMessage({ type: 'qqq-file-open', path: fullPath }, '*');
-			recordDirHistory(currentPath);
+			recordFileHistory(fullPath);
 		}
 	});
 
@@ -866,7 +859,7 @@ function selectFileItem(fileItem, shiftKey) {
 		selectedItems = [selectedItem];
 		lastSelectedItem = fileItem;
 	} else {
-		// Shift range select �?save lastSelectedItem before clearing selection
+		// Shift range select — save lastSelectedItem before clearing selection
 		var _last = lastSelectedItem;
 		cancelSelection();
 		var all = Array.from(document.querySelectorAll('#fileList .file-item'));
@@ -986,7 +979,7 @@ function commitRename(itemEl, oldPath, itemType, newName) {
 	if (newName && newName !== oldName) {
 		var dir = oldPath.substring(0, oldPath.length - oldName.length);
 		bridge.fs.rename(oldPath, pathJoin(dir, newName)).then(function() {
-			if (currentPath) { recordDirHistory(currentPath); loadFileList(currentPath); }
+			if (currentPath) loadFileList(currentPath);
 		}).catch(function() {
 			cancelRename(itemEl, itemEl.dataset.originalContent);
 		});
@@ -1035,18 +1028,8 @@ function showContextMenu(x, y, path, entry) {
 	ctxTarget = path;
 	ctxEntry = entry;
 	ctxMenu.style.display = 'flex';
-	// �?补正 CSS zoom: 0.85（html 缩放）→ 固定定位需反向缩放
-	// Boundary protection
-	var z = 0.85, mw = ctxMenu.offsetWidth || 150, mh = ctxMenu.offsetHeight || 120;
-	var left = x / z, top = y / z;
-	var vw = window.innerWidth / z, vh = window.innerHeight / z;
-	// Boundary protection — keep menu within viewport
-	if (left + mw > vw) left = vw - mw - 4;
-	if (top + mh > vh) top = y / z - mh - 4;
-	if (left < 4) left = 4;
-	if (top < 4) top = 4;
-	ctxMenu.style.left = left + 'px';
-	ctxMenu.style.top = top + 'px';
+	ctxMenu.style.left = x + 'px';
+	ctxMenu.style.top = y + 'px';
 }
 
 document.addEventListener('click', function() { ctxMenu.style.display = 'none'; });
@@ -1057,25 +1040,15 @@ ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 		if (!ctxTarget) return;
 		switch (action) {
 			case 'code':
-// �?二进制文件保护：阻止在编辑器中打开 mp3/图片/视频�?
-if (isBinaryFile(ctxTarget)) {
-					alert('Binary file �?cannot open in editor');
-					break;
-				}
 				parent.postMessage({ type: 'qqq-file-open', path: ctxTarget }, '*');
-				recordFileHistory(ctxTarget);
 				break;
-			case 'open':
-				if (ctxEntry && ctxEntry.isDir) { navigateTo(ctxTarget); }
-				else {
-					// �?w=系统默认打开（非编辑器）
-					bridge.shell.openPath(ctxTarget).catch(function() {});
-					recordDirHistory(currentPath);
-				}
+				case 'open':
+				if (ctxEntry && ctxEntry.isDir) navigateTo(ctxTarget);
+				else parent.postMessage({ type: 'qqq-file-open', path: ctxTarget }, '*');
 				break;
 			case 'delete':
 				if (confirm('Delete ' + baseName(ctxTarget) + '?')) {
-					bridge.fs.remove(ctxTarget).then(function() { recordDirHistory(currentPath); loadFileList(currentPath); });
+					bridge.fs.remove(ctxTarget).then(function() { loadFileList(currentPath); });
 				}
 				break;
 			case 'rename':
@@ -1083,8 +1056,8 @@ if (isBinaryFile(ctxTarget)) {
 				startRename(ctxTarget, baseName(ctxTarget), ctxEntry.isDir ? 'folder' : 'file');
 				break;
 			case 'copyPath':
-				bridge.clipboard.writeText(ctxTarget).catch(function() {
-					if (navigator.clipboard) navigator.clipboard.writeText(ctxTarget).catch(function() {});
+				bridge.clipboard.writeText(ctxTarget).catch(() => {
+					if (navigator.clipboard) navigator.clipboard.writeText(ctxTarget).catch(() => {});
 				});
 				break;
 		}
@@ -1198,7 +1171,8 @@ async function loadDrives() {
 	driveList.appendChild(recycleBtn);
 
 	// Fetch disk free info
-	// (a) 立即触发一次（rpc forwarder 修了后立刻生效；200ms �?iframe 先挂载完�?	setTimeout(updateDriveDisplay, 200);
+	// (a) 立即触发一次（rpc forwarder 修了后立刻生效；200ms 让 iframe 先挂载完）
+	setTimeout(updateDriveDisplay, 200);
 	// (b) 30s 轮询
 	if (_drivePollingTimer) clearInterval(_drivePollingTimer);
 	_drivePollingTimer = setInterval(updateDriveDisplay, 30000);
@@ -1357,20 +1331,37 @@ async function updateDriveDisplay() {
 		hovered = null;
 	});
 
-	// Keys 1/2: scroll to top/bottom
+	// Keys 1/2: scroll to top/bottom (split jump based on midpoint)
 	document.addEventListener('keydown', function(e) {
 		var active = document.activeElement;
-		if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+		if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+		var maxScroll = container.scrollHeight - container.clientHeight;
+		var midPoint = maxScroll / 2;
+		var currentPos = container.scrollTop;
+		var tolerance = 10;
 		if (e.key === '1') {
-			var maxScroll = container.scrollHeight - container.clientHeight;
-			if (container.scrollTop <= maxScroll / 2 + 10) container.scrollTop = 0;
-			else container.scrollTop = maxScroll / 2;
+			e.preventDefault();
+			if (currentPos <= midPoint + tolerance) container.scrollTop = 0;
+			else container.scrollTop = midPoint;
 		} else if (e.key === '2') {
-			var maxScroll = container.scrollHeight - container.clientHeight;
-			if (container.scrollTop >= maxScroll / 2 - 10) container.scrollTop = maxScroll;
-			else container.scrollTop = maxScroll / 2;
+			e.preventDefault();
+			if (currentPos >= midPoint - tolerance) container.scrollTop = maxScroll;
+			else container.scrollTop = midPoint;
 		}
 	}, true);
+
+	// Idle repaint: clear artifacts after scroll/mousemove
+	var idleHandle = null;
+	function scheduleIdleRepaint() {
+		if (idleHandle) return;
+		idleHandle = requestIdleCallback(function() {
+			idleHandle = null;
+			container.style.willChange = 'transform';
+			requestAnimationFrame(function() { container.style.willChange = ''; });
+		});
+	}
+	container.addEventListener('scroll', scheduleIdleRepaint);
+	container.addEventListener('mousemove', scheduleIdleRepaint);
 })();
 
 // ---- Keyboard shortcuts (Q/W/D/E/Z/Escape/F2) ----
@@ -1385,12 +1376,13 @@ async function updateDriveDisplay() {
 		if (isInputActive()) return;
 		var k = (e.key || '').toLowerCase();
 		if (e.ctrlKey || e.metaKey) return;
-// �?Backspace: 返回上层目录；若�?.lnk 跳转而来则回到来源目�?
-if (k === 'backspace') {
+		// ★ Backspace: 返回上层目录；若从 .lnk 跳转而来则回到来源目录
+		if (k === 'backspace') {
 			e.preventDefault();
 			if (lnkJumpFromPath) {
 				var srcPath = lnkJumpFromPath;
 				lnkJumpFromPath = null;
+				// 验证来源目录仍存在
 				bridge.fs.list(srcPath).then(function() { navigateTo(srcPath); }).catch(function() {
 					lnkJumpFromPath = null;
 					goUpOneLevel();
@@ -1401,70 +1393,32 @@ if (k === 'backspace') {
 			return;
 		}
 		if (k === 'escape') { cancelSelection(); return; }
-		// Space: sRequest �?忽略偏好，直接请求所有选中�?当前目录全部文件 size
-		if (k === ' ' || e.key === ' ') {
-			e.preventDefault();
-			var _lr = [];
-			if (selectedItems.length > 0) {
-				_lr = selectedItems.filter(function(s) { return s.name !== '..'; }).map(function(s) { return { path: s.path, type: s.type }; });
-			} else {
-				var _aitems = document.querySelectorAll('#fileList .file-item');
-				for (var _j = 0; _j < _aitems.length; _j++) {
-					var _it = _aitems[_j];
-					if (_it.dataset.name === '..') continue;
-					_lr.push({ path: _it.dataset.path, type: _it.dataset.type });
-				}
-			}
-			for (var _k = 0; _k < _lr.length; _k++) {
-				var _el2 = findItemByPath(_lr[_k].path);
-				var _sz2 = _el2 ? _el2.querySelector('.sz-area') : null;
-				if (_sz2) _sz2.textContent = '    \u2022    ';
-				(function(_p) {
-					rpc('fs.stat', _p).then(function(_s) {
-						if (!_s || _s.size === undefined) return;
-						var _info = formatFileSizeEx(_s.size);
-						sessionSizeCache[_p] = { text: _info.text + ' ', gbPart: _info.gbPart, restPart: _info.restPart };
-						var _el3 = findItemByPath(_p);
-						if (!_el3) return;
-						var _sz3 = _el3.querySelector('.sz-area');
-						if (!_sz3) return;
-						if (_info.gbPart) _sz3.innerHTML = '<span style="color:' + SZ_GB_COLOR + '">' + _info.gbPart + '</span>' + _info.restPart + ' ';
-						else _sz3.textContent = _info.text + ' ';
-					}).catch(function() {});
-				})(_lr[_k].path);
-			}
-			return;
-		}
 		if (!selectedItem) return;
 		var si = selectedItem;
 		if (k === 'q') {
 			e.preventDefault();
-			// �?二进制文件保护（.ts 不在列表中，不会被误伤）
-			if (isBinaryFile(si.path)) {
-				alert('Binary file �?cannot open in editor');
-				return;
-			}
 			parent.postMessage({ type: 'qqq-file-open', path: si.path }, '*');
+			// ★ q=编辑：文件及父目录入 qq 区
 			recordFileHistory(si.path);
 		} else if (k === 'w') {
 			e.preventDefault();
 			if (si.type === 'folder') { navigateTo(si.path); }
 			else if (si.path && /\.lnk$/i.test(si.path)) {
+				// ★ .lnk 快捷方式：异步解析目标，若指向文件夹则在 Roam 内导航
 				var srcDir = currentPath;
 				resolveLnkTarget(si.path).then(function(target) {
 					if (target) {
+						// 先导航到目标，再设 lnkJumpFromPath（navigateTo 会清除它）
 						navigateTo(target);
 						lnkJumpFromPath = srcDir;
 					} else {
-						bridge.shell.openPath(si.path).catch(function() {});
-						recordDirHistory(currentPath);
+						// 解析失败→按普通文件打开
+						parent.postMessage({ type: 'qqq-file-open', path: si.path }, '*');
+						recordFileHistory(si.path);
 					}
 				});
 			}
-			else {
-				bridge.shell.openPath(si.path).catch(function() {});
-				recordDirHistory(currentPath);
-			}
+			else { parent.postMessage({ type: 'qqq-file-open', path: si.path }, '*'); recordFileHistory(si.path); }
 		} else if (k === 'd') {
 			e.preventDefault();
 			var targets = selectedItems.filter(function(s) { return s.name !== '..'; });
@@ -1475,7 +1429,7 @@ if (k === 'backspace') {
 				if (el) { el.style.opacity = '0.5'; el.style.pointerEvents = 'none'; }
 			});
 			Promise.all(targets.map(function(t) { return bridge.fs.remove(t.path).catch(function(){}); }))
-				.then(function() { if (currentPath) { recordDirHistory(currentPath); loadFileList(currentPath); } });
+				.then(function() { if (currentPath) loadFileList(currentPath); });
 			cancelSelection();
 		} else if (k === 'e') {
 			e.preventDefault();
@@ -1532,7 +1486,6 @@ function doCreateFile() {
 		filenameInput.value = '';
 		// Reset char-undo history
 		if (window.qqqCharUndo && window.qqqCharUndo.reset) window.qqqCharUndo.reset(filenameInput);
-		recordDirHistory(currentPath);
 		loadFileList(currentPath);
 		// Open in editor + focus
 		parent.postMessage({ type: 'qqq-file-open', path: fullPath }, '*');
@@ -1551,7 +1504,6 @@ function doCreateFolder() {
 	bridge.fs.mkdir(fullPath).then(function() {
 		filenameInput.value = '';
 		if (window.qqqCharUndo && window.qqqCharUndo.reset) window.qqqCharUndo.reset(filenameInput);
-		recordDirHistory(currentPath);
 		loadFileList(currentPath);
 	}).catch(function(err) {
 		alert('Failed to create folder: ' + (err.message || err));
@@ -1574,8 +1526,8 @@ document.getElementById('btnNewFolder').addEventListener('click', doCreateFolder
 // ---- Responsive layout (buttons retreat when window narrows) ----
 var MIN_ADDRESS_RW = 340;  // below: hide sortBy + filter + filesOnTop
 var MIN_SZ_RW = 200;       // below: hide szMode group
-var MIN_FOOTER_W = 240;   // below: hide new-file button �?narrow
-var MIN_FOOTER_EXTREME = 170; // below: hide new-folder button �?extreme
+var MIN_FOOTER_W = 240;   // below: hide new-file button → narrow
+var MIN_FOOTER_EXTREME = 170; // below: hide new-folder button → extreme
 
 function checkAndApplyResponsive() {
 	var container = document.querySelector('.container');
@@ -1595,7 +1547,7 @@ function checkAndApplyResponsive() {
 		footer.classList.toggle('responsive-extreme', pageW < MIN_FOOTER_EXTREME);
 	}
 
-	// Address bar row �?based on right panel width (kyContent)
+	// Address bar row — based on right panel width (kyContent)
 	if (kyContent) {
 		var rw = kyContent.clientWidth;
 		var sortByGroup = document.getElementById('sortByGroup');
@@ -1634,7 +1586,7 @@ function calculateAndAdjustScroll() {
 	recentSection.style.display = (editorHeight < needHeight) ? 'none' : '';
 }
 
-// ResizeObserver �?fire on container resize
+// ResizeObserver — fire on container resize
 (function() {
 	var container = document.querySelector('.container');
 	if (!container) return;
@@ -1647,7 +1599,7 @@ function calculateAndAdjustScroll() {
 
 // ---- Boot ----
 (async function boot() {
-// �?直连 parent.qgs 读取持久化数据（绕过 RPC，零超时零丢包）
+	// ★ 直连 parent.qgs 读取持久化数据（绕过 RPC，零超时零丢包）
 	var f = await _roamGet('roam.fineScm'); if (f && typeof f === 'object') _fineScm = f;
 	var q = await _roamGet('roam.qqiq'); if (Array.isArray(q)) _qqiq = q;
 	var p = await _roamGet('roam.pinnedDirs'); if (Array.isArray(p)) _pinnedDirs = p;
@@ -1693,7 +1645,7 @@ function calculateAndAdjustScroll() {
 		}
 	} catch(e) { console.warn('[q2-roam] keyhook adapter attach failed:', e); }
 
-	// ---- Listen for parent �?iframe cmd dispatch ----
+	// ---- Listen for parent → iframe cmd dispatch ----
 	window.addEventListener('message', function(e) {
 		if (!e.data || e.data.type !== 'qqq-roam-cmd') return;
 		var cmd = e.data.cmd;
@@ -1701,13 +1653,13 @@ function calculateAndAdjustScroll() {
 		document.dispatchEvent(new CustomEvent('qqq-roam-cmd', { detail: { cmd: cmd } }));
 	});
 
-	// ---- 全局自定�?tooltip（从 q3 百分百移植）----
+	// ---- 全局自定义 tooltip（从 q3 百分百移植）----
 	(function bootGlobalTooltip() {
 		var gt = document.getElementById('globalTooltip');
 		if (!gt) return;
 		var _currentTarget = null;
 
-		// mouseenter: show tooltip
+		// mouseenter → 显示 tooltip（data-tooltip）
 		document.addEventListener('mouseenter', function(e) {
 			var t = e.target;
 			if (!t || !t.closest) return;
@@ -1729,7 +1681,7 @@ function calculateAndAdjustScroll() {
 			gt.style.display = 'block';
 		}, true);
 
-		// mousemove �?定位 + 边缘回避
+		// mousemove → 定位 + 边缘回避
 		document.addEventListener('mousemove', function(e) {
 			if (gt.style.display !== 'block' || !_currentTarget) return;
 
@@ -1738,8 +1690,9 @@ function calculateAndAdjustScroll() {
 			var padL = 10, padR = 0;
 			gt.style.whiteSpace = 'pre-wrap';
 			gt.style.maxWidth = (pageW - padL - padR) + 'px';
-// 判断是左侧按钮（scm S/C/M）还是右侧按钮
-		var isLeftBtn = _currentTarget.classList.contains('scm-btn') && _currentTarget.closest('#szModeGroup');
+
+			// ★ 判断是左侧按钮（scm S/C/M）还是右侧按钮
+			var isLeftBtn = _currentTarget.classList.contains('scm-btn') && _currentTarget.closest('#szModeGroup');
 			var isOpenBtn = _currentTarget.classList.contains('open-btn');
 			var isRightBtn = _currentTarget.classList.contains('save-button') || _currentTarget.classList.contains('cancel-button')
 				|| (_currentTarget.classList.contains('scm-btn') && _currentTarget.closest('#sortByGroup'));
@@ -1758,7 +1711,8 @@ function calculateAndAdjustScroll() {
 			} else if (isRightBtn) {
 				leftPos = e.clientX - tw + 11;
 			} else {
-				// �?qq item / recent item / 通用元素：居中，然后做边界保�?				leftPos = e.clientX - tw / 2;
+				// ★ qq item / recent item / 通用元素：居中，然后做边界保护
+				leftPos = e.clientX - tw / 2;
 			}
 
 			// 边界保护
@@ -1768,7 +1722,7 @@ function calculateAndAdjustScroll() {
 			gt.style.left = leftPos + 'px';
 		}, true);
 
-		// mouseleave �?隐藏
+		// mouseleave → 隐藏
 		document.addEventListener('mouseleave', function(e) {
 			var t = e.target;
 			if (!t || !t.closest) return;
@@ -1780,7 +1734,7 @@ function calculateAndAdjustScroll() {
 		}, true);
 	})();
 
-	// ---- path-tooltip（白底黑字，文件�?盘符/最近项超长截断时使用）----
+	// ---- path-tooltip（白底黑字，文件夹/盘符/最近项超长截断时使用）----
 	var _ptEl = null, _ptVisible = false;
 	function _ensurePathTooltip() {
 		if (_ptEl) return;
@@ -1822,7 +1776,7 @@ function calculateAndAdjustScroll() {
 		// 盘符按钮
 		var ni = t.closest('.nav-item');
 		if (ni) { _isEllipsis(ni) ? showPathTooltip(ni.textContent.trim(), e.clientX, e.clientY) : hidePathTooltip(); return; }
-		// qq file
+		// qq 文件夹
 		var qi = t.closest('.qq-item');
 		if (qi) {
 			if (qi.classList.contains('qq-file')) { hidePathTooltip(); return; }
@@ -1846,4 +1800,5 @@ function calculateAndAdjustScroll() {
 	if (_kyEl) { _kyEl.addEventListener('mousemove', handlePathTooltipHover); _kyEl.addEventListener('mouseleave', hidePathTooltip); }
 
 })();
+
 })();

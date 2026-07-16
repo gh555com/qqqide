@@ -39,7 +39,7 @@
         edit_file: function(args, result) {
             if (typeof result === 'string') {
                 var em = result.match(/✓ (\d+) edit/);
-                if (em) return em[1] + '处';
+                if (em) return em[1] + 'chg';
                 if (result.indexOf('✓') >= 0) return '✓';
                 if (result.indexOf('Error') >= 0 || result.indexOf('✗') >= 0) return '✗';
             }
@@ -68,28 +68,28 @@
         search_text: function(args, result) {
             if (typeof result === 'string') {
                 var lines = result.split('\n').filter(function(l) { return l.trim(); });
-                return lines.length + '处匹配';
+                return lines.length + ' hits';
             }
             return '?';
         },
         search_content: function(args, result) {
             if (typeof result === 'string') {
                 var lines = result.split('\n').filter(function(l) { return l.trim(); });
-                return lines.length + '处匹配';
+                return lines.length + ' hits';
             }
             return '?';
         },
         list_files: function(args, result) {
             if (typeof result === 'string') {
                 var lines = result.split('\n').filter(function(l) { return l.trim(); });
-                return lines.length + '项';
+                return lines.length + ' items';
             }
             return '?';
         },
         find_files: function(args, result) {
             if (typeof result === 'string') {
                 var lines = result.split('\n').filter(function(l) { return l.trim(); });
-                return lines.length + '项';
+                return lines.length + ' items';
             }
             return '?';
         },
@@ -100,7 +100,7 @@
         search_web: function(args, result) {
             if (typeof result === 'string') {
                 var wlines = result.split('\n').filter(function(l) { return l.trim(); });
-                return wlines.length + '条结果';
+                return wlines.length + ' results';
             }
             return '?';
         },
@@ -334,15 +334,9 @@
                     if (lines.length > 0) {
                         lines[lines.length - 1] += summary;
                     }
-                    var _tcName2 = matchedTc.function && matchedTc.function.name;
-                    if (_tcName2 && IRRECOVERABLE_TOOLS[_tcName2] && content) {
-                        var cmdOut = content;
-                        if (cmdOut.length > 8000) {
-                            cmdOut = cmdOut.slice(0, 4000) + '\n…[截断 ' + (content.length - 8000) + ' chars]…\n' + cmdOut.slice(-4000);
-                        }
-                        var indentLines = cmdOut.split('\n').map(function(l) { return '  │ ' + l; }).join('\n');
-                        lines.push(indentLines);
-                    }
+                    // ★ BugFix #2: K 集合工具的完整输出仅进 DE（_extractDeEntries），
+                    //    饼干只保留摘要行。旧代码在此同时写入完整输出（≤8000 chars）→
+                    //    同一份 psql/curl 输出在饼干 + DE 两份 → token 翻倍。
                 } else {
                     lines.push('  [T] ✓');
                 }
@@ -351,6 +345,7 @@
 
             if (role === 'user') {
                 _flushPending();
+                // Q 文本 = 编辑框原文一字不差（仅剥离系统注入的 [File:] 块和 [CURRENT TIME:] 块）
                 var qText = content.replace(/\[File: [^\]]+\]\s*\n\x60\x60\x60[\s\S]*?\x60\x60\x60/g, '');
                 qText = qText.replace(/\n+/g, ' ').trim();
                 var ctIdx = qText.indexOf('[CURRENT TIME:');
@@ -484,7 +479,7 @@
     function _capEntry(content) {
         if (!content || content.length <= DE_ENTRY_MAX_CHARS) return content;
         var half = Math.floor(DE_ENTRY_MAX_CHARS / 2);
-        return content.slice(0, half) + '\n…[截断 ' + (content.length - DE_ENTRY_MAX_CHARS) + ' chars]…\n' + content.slice(-half);
+        return content.slice(0, half) + '\n…[trunc ' + (content.length - DE_ENTRY_MAX_CHARS) + ' chars]…\n' + content.slice(-half);
     }
 
     // ════════════════════════════════════════════════
@@ -786,7 +781,7 @@
                 var _allSorted = _parseBiscuitFromContent(biscuitFound.msg.content);
                 biscuitFound.msg.content = _allSorted.map(function(l) { return l.text; }).join('\n\n');
             } else {
-                // ★ 首次创建 biscuit：优先用 ctx.biscuitLines（重启后 ctx 已从 quest.sq3 恢复全量），
+                // ★ 首次创建 biscuit：优先用 ctx.biscuitLines（重启后 ctx 已从 ctx.json 恢复全量），
                 //    仅当 ctx 为空时才用 biscuitText（当前楼层的单层饼干）
                 var _biscuitSrc = (self._ctx.biscuitLines && self._ctx.biscuitLines.length > 0)
                     ? self._ctx.biscuitLines.map(function(l) { return l.text; }).join('\n\n')
@@ -828,6 +823,8 @@
             self._lastApiPromptTokens = 0;
             self._lastApiTotalTokens = 0;
             self._lastApiCompletionTokens = 0;
+            // ★ 立即刷新 ctx-btn（否则显示压缩前僵尸值，如 80k→实际已压缩到 ~52k 本地估算）
+            if (typeof updateCtxBtn === 'function') updateCtxBtn();
 
             // ── 12. 更新 _ctx ──
             self._ctx.lastCompressedFloor = floorNum;

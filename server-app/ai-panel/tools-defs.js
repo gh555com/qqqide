@@ -8,6 +8,34 @@ function getBridge() {
     try { return parent.qqqideBridge; } catch (_) { return null; }
 }
 
+// ══════════════════════════════════════════════════════════════
+// Path resolution: project-relative → absolute
+//   Accepts: /server-app/foo.js  |  {project}/server-app/foo.js  |  E:/full/path
+//   Files outside project root MUST use full absolute paths.
+// ══════════════════════════════════════════════════════════════
+var __projectRootCache = null;
+function _getProjectRoot() {
+    if (__projectRootCache) return __projectRootCache;
+    if (typeof questStore !== 'undefined' && questStore.getProjectRoot) {
+        __projectRootCache = questStore.getProjectRoot().replace(/\\/g, '/').replace(/\/$/, '');
+        return __projectRootCache;
+    }
+    return null;
+}
+function _resolveProjectPath(p) {
+    if (!p || typeof p !== 'string') return p;
+    // Already absolute (Windows drive letter or UNC)
+    if (/^[A-Za-z]:[\\\/]/.test(p) || /^\\\\/.test(p)) return p;
+    var root = _getProjectRoot();
+    if (!root) return p; // can't resolve without project root
+    // {project} or {p} prefix
+    if (p.indexOf('{project}') === 0) return root + p.substring(9);
+    if (p.indexOf('{p}') === 0) return root + p.substring(3);
+    // Leading / means relative to project root
+    if (p.charAt(0) === '/' || p.charAt(0) === '\\') return root + p;
+    return p; // plain relative — pass through, let downstream handle
+}
+
 // ---- 跨面板写通知：写成功后登记到父窗口环形缓冲区 ----
 function _notifyFileModified(filePath) {
     try {
@@ -87,14 +115,14 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'read_file',
-            description: 'Read file contents. Returns up to ~' + _RFCKB_D + 'KB per call. Use start_line/end_line for pagination. Pass sha256 to read a historical version from timeline.',
+            description: 'Read file contents. Returns up to ~' + _RFCKB_D + 'KB per call. Use start_line/end_line for pagination. Pass sha256 to read a historical version from timeline (from edit_file return [sha256:...] or timeline_versions sha=...).',
             parameters: {
                 type: 'object',
                 properties: {
-                    path: { type: 'string', description: 'Absolute path to the file' },
+                    path: { type: 'string', description: 'Path. Absolute or project-relative (/server-app/foo.js)' },
                     start_line: { type: 'number', description: 'Start line number (1-based, default 1)' },
                     end_line: { type: 'number', description: 'End line number (inclusive, default start+3000)' },
-                    sha256: { type: 'string', description: 'Optional SHA256 hash to read a historical version from timeline (as returned by edit_file/write_file)' }
+                    sha256: { type: 'string', description: 'Optional SHA256 hash to read a historical version from timeline (from edit_file/write_file/create_file return values [sha256:...], or blob_hash from timeline_versions output)' }
                 },
                 required: ['path']
             }
@@ -108,7 +136,7 @@ var TOOL_DEFINITIONS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    path: { type: 'string', description: 'Absolute path to the file' },
+                    path: { type: 'string', description: 'Path. Absolute or project-relative (/server-app/foo.js)' },
                     edits: {
                         type: 'array',
                         description: 'Array of edit operations, applied in order',
@@ -131,13 +159,14 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'search_text',
-            description: 'Search for text across workspace files using regex pattern. 10x faster and memory-safe vs shell commands. Supports | for OR (e.g. "foo|bar|baz"). Use this instead of run_command for any code search.',
+            description: 'Regex search across workspace files. 10x faster than shell. Supports | for OR. Pass sha256 for historical blob search. For literal-only search, use search_content.',
             parameters: {
                 type: 'object',
                 properties: {
                     query: { type: 'string', description: 'Search pattern (regex supported)' },
-                    path: { type: 'string', description: 'Directory to search in (optional)' },
-                    max_results: { type: 'number', description: 'Max results to return (default 30)' }
+                    path: { type: 'string', description: 'Directory to search in. Absolute or project-relative (optional)' },
+                    max_results: { type: 'number', description: 'Max results to return (default 30)' },
+                    sha256: { type: 'string', description: 'Optional: SHA256 blob_hash from timeline (edit_file return value or timeline_versions output) — searches inside that historical version instead of disk' }
                 },
                 required: ['query']
             }
@@ -147,14 +176,15 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'search_content',
-            description: 'Multi-keyword OR search. Takes an array of literal strings, auto-escapes them, and searches all at once. Case-insensitive by default; set case_sensitive=true for exact-case matching. 10x faster and memory-safe vs shell. Use this when you need to find any of several keywords (e.g. ["qqqideBridge", "QQQIDE_URL", "qqqShell"]).',
+            description: 'Multi-keyword OR search. Case-insensitive by default. Keywords MUST be JSON array ["foo","bar"]. 10x faster than shell. Pass sha256 for historical blob search.',
             parameters: {
                 type: 'object',
                 properties: {
                     keywords: { type: 'array', items: { type: 'string' }, description: 'Array of literal keywords to search for (OR-combined)' },
-                    path: { type: 'string', description: 'Directory to search in (optional)' },
+                    path: { type: 'string', description: 'Directory to search in. Absolute or project-relative (optional)' },
                     max_results: { type: 'number', description: 'Max results to return (default 30)' },
-                    case_sensitive: { type: 'boolean', description: 'Enable case-sensitive matching (default false = case-insensitive)' }
+                    case_sensitive: { type: 'boolean', description: 'Enable case-sensitive matching (default false = case-insensitive)' },
+                    sha256: { type: 'string', description: 'Optional: SHA256 blob_hash from timeline — searches inside that historical version instead of disk' }
                 },
                 required: ['keywords']
             }
@@ -168,7 +198,7 @@ var TOOL_DEFINITIONS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    path: { type: 'string', description: 'Absolute path to directory' },
+                    path: { type: 'string', description: 'Path. Absolute or project-relative (/server-app/foo)' },
                     recursive: { type: 'boolean', description: 'List recursively (default false)' }
                 },
                 required: ['path']
@@ -191,7 +221,7 @@ var TOOL_DEFINITIONS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    path: { type: 'string', description: 'Absolute path for the new file' },
+                    path: { type: 'string', description: 'Path. Absolute or project-relative (/server-app/foo.js)' },
                     content: { type: 'string', description: 'File content to write' }
                 },
                 required: ['path', 'content']
@@ -202,7 +232,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'run_command',
-            description: 'Run a shell command. Returns stdout+stderr. Hard timeout 2h, stall guard 15min. ⚠️ Runs locally (Chinese IP) — curl/wget may be blocked on GitHub, npm, etc. Use fetch_webpage (US proxy) for web content. PREFER search_text/search_content/find_files for code search. Only use run_command when dedicated tools CANNOT do the job. ⚠️ When ssh is set: command runs on the remote host. Write the remote command naturally — ALL quoting/escaping is handled automatically (base64 transport). Do NOT manually escape nested quotes for SSH.',
+            description: 'Run a shell command. Returns stdout+stderr. Timeout 2h, stall 15min. Prefer search_text/search_content/find_files for code search. Use fetch_webpage for web content. SSH: base64 auto-escape, write commands naturally.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -224,7 +254,7 @@ var TOOL_DEFINITIONS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    path: { type: 'string', description: 'Absolute path to the file to delete' }
+                    path: { type: 'string', description: 'Path. Absolute or project-relative (/server-app/foo.js)' }
                 },
                 required: ['path']
             }
@@ -234,12 +264,12 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'find_files',
-            description: 'Search for files by name pattern (glob like *.js, config/*.json). Memory-safe, 10x faster than shell. Returns matching file paths. Default 50 max results.',
+            description: 'Find files by glob pattern (*.js, config/*.json). 10x faster than shell. Default 50 max.',
             parameters: {
                 type: 'object',
                 properties: {
                     pattern: { type: 'string', description: 'Glob pattern to match filenames' },
-                    path: { type: 'string', description: 'Directory to search in (optional)' },
+                    path: { type: 'string', description: 'Directory to search in. Absolute or project-relative (optional)' },
                     max_results: { type: 'number', description: 'Max results (default 50)' }
                 },
                 required: ['pattern']
@@ -250,7 +280,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'fetch_webpage',
-            description: 'Fetch and extract text content from a URL. ★ US server proxy (bypasses GFW, can access GitHub/Google), falls back to local curl. 15s timeout, strips HTML tags. 1 ge per fetch.',
+            description: 'Fetch URL text via US proxy (bypasses GFW). 15s timeout. Strips HTML.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -264,11 +294,12 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'get_diagnostics',
-            description: 'Run a lightweight syntax check on a file (JS: node --check, PY: py_compile, JSON: JSON.parse). Returns [SYNTAX OK] or [SYNTAX ERROR] with details. Use after editing files, or to verify any file at any time.',
+            description: 'Syntax check (JS/PY/JSON). Returns OK or ERROR. Pass sha256 for historical blob check.',
             parameters: {
                 type: 'object',
                 properties: {
-                    path: { type: 'string', description: 'Absolute path to the file to check' }
+                    path: { type: 'string', description: 'Path. Absolute or project-relative. Also used to infer file extension for historical checks' },
+                    sha256: { type: 'string', description: 'Optional: SHA256 blob_hash from timeline — checks syntax of that historical version instead of disk' }
                 },
                 required: ['path']
             }
@@ -282,7 +313,7 @@ var TOOL_DEFINITIONS = [
             parameters: {
                 type: 'object',
                 properties: {
-                    path: { type: 'string', description: 'Absolute path to the file' },
+                    path: { type: 'string', description: 'Path. Absolute or project-relative (/server-app/foo.js)' },
                     content: { type: 'string', description: 'New file content' }
                 },
                 required: ['path', 'content']
@@ -293,16 +324,16 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'generate_image',
-            description: 'Generate or edit images. Text-to-image: describe the image. Image editing: pass reference image(s) + an editing instruction (e.g. "replace the man with a woman", "change style to watercolor", "remove the watermark"). Supports multiple styles (~15-40s). Images auto-render inline in chat via Markdown ![](path). 4K only for text-to-image; image editing max 2K.',
+            description: 'Generate or edit images via AI. Text-to-image or image editing. Styles: 写实/插画/3d/二次元/水彩/国风/极简/电商/自然. 4K only for text-to-image; editing max 2K.',
             parameters: {
                 type: 'object',
                 properties: {
                     prompt: { type: 'string', description: 'Image description (text-to-image) or editing instruction (image editing). Natural language, Chinese or English.' },
-                    images: { type: 'array', items: { type: 'string' }, description: 'Reference image paths (absolute paths). For image editing: the image(s) to edit. Omit for pure text-to-image.' },
+                    images: { type: 'array', items: { type: 'string' }, description: 'Reference image paths. Absolute or project-relative. For image editing: the image(s) to edit. Omit for pure text-to-image.' },
                     style: { type: 'string', description: 'Style tag (text-to-image only): 写实(photorealistic)/插画(illustration)/3d(3D render)/二次元(anime)/水彩(watercolor)/国风(Chinese trad)/极简(minimalist)/电商(e-commerce product)/自然(nature photo)' },
                     size: { type: 'string', description: 'Image size: "1K"=1024*1024, "2K"=2048*2048 (default), "4K"=4096*4096, or custom "W*H". 4K only for text-to-image; image editing max 2K.' },
                     n: { type: 'number', description: 'Number of images to generate (1-4, default 1)' },
-                    out_dir: { type: 'string', description: 'Output directory (absolute path). Default: qqq/genera/' }
+                    out_dir: { type: 'string', description: 'Output directory. Absolute or project-relative. Default: qqq/genera/' }
                 },
                 required: ['prompt']
             }
@@ -312,11 +343,11 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'analyze_image',
-            description: 'Analyze an existing image. Can: describe content (structured output), locate objects with norm-1000 bounding boxes + confidence (for clickable image maps), or answer questions about the image. Uses MIME magic-byte validation (PNG/JPEG/GIF/WebP). Coordinates are norm-1000 (0-1000 range, not pixels). IMPORTANT: person identity is already provided by pre-analysis (person_identity field in vision results above), so only call this tool for additional details not covered there.',
+            description: 'Analyze image: describe, locate objects (norm-1000 bbox), or answer questions. MIME validated (PNG/JPEG/GIF/WebP). Person identity already in vision context — only call for extra details.',
             parameters: {
                 type: 'object',
                 properties: {
-                    image: { type: 'string', description: 'Absolute path to the image file to analyze' },
+                    image: { type: 'string', description: 'Path to image. Absolute or project-relative' },
                     action: { type: 'string', description: 'Analysis action: "describe" (structured content analysis), "locate" (find objects + return norm-1000 bbox + confidence), "ask" (free-form question with optional coordinate annotations)' },
                     detail: { type: 'string', description: 'For action=describe: "brief" (1 sentence), "standard" (paragraph), "detailed" (full structured analysis with colors/lighting/style)' },
                     targets: { type: 'string', description: 'For action=locate: comma-separated object names to find, e.g. "frog,lotus,leaf". Returns norm-1000 boxes with confidence scores.' },
@@ -330,11 +361,11 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'remove_background',
-            description: 'Remove background from an image, output RGBA transparent PNG. Auto-detects image dimensions and routes to standard (≤2000px) or HD (≤10000px) model. Processed via cloud segmentation service, returns transparent PNG.',
+            description: 'Remove background → RGBA transparent PNG. Auto-routes standard/HD by image size.',
             parameters: {
                 type: 'object',
                 properties: {
-                    image: { type: 'string', description: 'Absolute path to the image file' },
+                    image: { type: 'string', description: 'Path to image. Absolute or project-relative' },
                     quality: { type: 'string', enum: ['auto', 'standard', 'hd'], description: 'auto=auto-detect based on image size, standard=fast (≤2000px), hd=high quality (≤10000px). Default: auto' }
                 },
                 required: ['image']
@@ -345,7 +376,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'search_web',
-            description: 'Search the web. Runs on US server (SearXNG, can access sites blocked in China like GitHub). Returns up to 20 results with title, URL, and snippet. ALWAYS follow up with fetch_webpage (US proxy) on the most relevant result URLs to extract full data — search_web alone only gives snippets, not content. For structured data (APIs, rankings, prices), use run_command+curl as fallback.',
+            description: 'Web search via US server. Returns 20 results (title+URL+snippet). Follow with fetch_webpage for full content.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -359,12 +390,13 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'timeline_versions',
-            description: 'List all tracked versions of a file from the project timeline (qqq/timeline). Returns file_seq, blob_hash, timestamp, added/deleted lines, source, and trace (quest/floor/house/room) for each version — ordered oldest→newest. Optionally filter by floor_num to see only changes from a specific floor. Use this to find the version you want, then call revert_file or diff_versions.',
+            description: 'List all tracked versions of a file from the project timeline (qqq/timeline). Returns file_seq, blob_hash, timestamp, +/-lines, source, trace (quest/floor/house/room), and quality tags for each version. Uses 235 cascade: L2 heuristic tags (🏁 final / ⚠️ mid-edit) always shown; L3 syntax check (✅ clean / ⚠️ error) on-demand via check_syntax=true; L5 best-clean-version recommendation in footer. Ordered oldest→newest. Filter by floor_num to scope to one floor.',
             parameters: {
                 type: 'object',
                 properties: {
-                    path: { type: 'string', description: 'Absolute path to the file' },
-                    floor_num: { type: 'number', description: 'Optional: filter to only show versions from a specific floor number (e.g. 5 to see only floor 5 changes)' }
+                    path: { type: 'string', description: 'Path. Absolute or project-relative (/server-app/foo.js)' },
+                    floor_num: { type: 'number', description: 'Optional: filter to only show versions from a specific floor number (e.g. 5 to see only floor 5 changes)' },
+                    check_syntax: { type: 'boolean', description: 'Optional: run syntax check on final + recent versions (JS/JSON only). Results cached forever by blob_hash. Default false (heuristic-only, instant).' }
                 },
                 required: ['path']
             }
@@ -374,11 +406,11 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'revert_file',
-            description: 'Revert a file to a historical version from the project timeline. Single call: looks up the blob by file_seq, restores content atomically, and records the revert as a new version. Use timeline_versions first to pick the right file_seq, then call this once — no manual DB/blob gymnastics needed.',
+            description: 'Revert a file to a historical version from the project timeline. Single call: looks up the blob by file_seq, restores content atomically, and records the revert as a new version. Returns syntax status of restored version + count of later versions + best-clean-version hint (L5 recommendation cascade). Syntax issues never block — AI should fix afterwards. Use timeline_versions first to pick the right file_seq.',
             parameters: {
                 type: 'object',
                 properties: {
-                    path: { type: 'string', description: 'Absolute path to the file' },
+                    path: { type: 'string', description: 'Path. Absolute or project-relative (/server-app/foo.js)' },
                     file_seq: { type: 'number', description: 'Version number to revert to (from timeline_versions output)' }
                 },
                 required: ['path', 'file_seq']
@@ -389,11 +421,11 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'diff_versions',
-            description: 'Compute a unified diff between two historical versions of a file (or one version vs current disk). Returns standard unified diff format with @@ headers. Use timeline_versions first to find file_seq numbers, then diff any pair. If to_seq is omitted, compares from_seq against current disk content.',
+            description: 'Compute a unified diff between two historical versions of a file (or one version vs current disk). Returns standard unified diff format with @@ headers + L3 syntax preamble showing quality of both sides. Use timeline_versions first to find file_seq numbers, then diff any pair. If to_seq is omitted, compares from_seq against current disk content.',
             parameters: {
                 type: 'object',
                 properties: {
-                    path: { type: 'string', description: 'Absolute path to the file' },
+                    path: { type: 'string', description: 'Path. Absolute or project-relative (/server-app/foo.js)' },
                     from_seq: { type: 'number', description: 'Older version number (from timeline_versions output)' },
                     to_seq: { type: 'number', description: 'Newer version number (optional, defaults to current disk content)' }
                 },

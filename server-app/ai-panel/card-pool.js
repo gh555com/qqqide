@@ -1043,10 +1043,9 @@ var CardPool = (function () {
       // 用户在底部 → 恢复自动滚动
       card._userScrolledUp = false;
     } else {
-      // ★ 不在底部且非程序自动滚动（拖拽滚动条 / 键盘上翻等）→ 立即停自动跟滚
-      if (!card._lastAutoScroll || Date.now() - card._lastAutoScroll > 250) {
-        card._userScrolledUp = true;
-      }
+      // ★ 不在底部 → 立即停止自动跟滚（无 250ms 窗口：流式时 auto-scroll 每帧刷新 _lastAutoScroll，
+      //   窗口永远不触发，导致键盘/拖滚条上滚无效。wheel 事件已由 onUserWheel 立即处理）
+      card._userScrolledUp = true;
     }
   };
 

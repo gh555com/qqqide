@@ -7,6 +7,112 @@
 var SKIP_DIRS = ['node_modules', '.git', '__pycache__', '.venv', 'vendor', 'backup', 'build', 'out', '.next', '.nuxt', '.cache', 'coverage', 'target', 'logs', 'cache', 'temp', 'crashDumps'];
 var SKIP_EXTS = ['.exe', '.dll', '.so', '.dylib', '.bin', '.pyd', '.pyc', '.pyo', '.class', '.o', '.obj', '.lib', '.a', '.sys', '.drv', '.ocx', '.scr', '.cab', '.msi', '.msc', '.cpl', '.lnk', '.dat', '.pak', '.res', '.resources', '.rom', '.elf', '.ko', '.mod', '.dex', '.jar', '.war', '.ear', '.apk', '.ipa', '.iso', '.img', '.dmg', '.pkg', '.deb', '.rpm', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp', '.svgz', '.mp3', '.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv', '.webm', '.zip', '.tar', '.gz', '.xz', '.bz2', '.7z', '.rar', '.woff', '.woff2', '.ttf', '.eot', '.ico', '.icns', '.vsix', '.lock', '.wasm', '.map', '.tsbuildinfo', '.sq3', '.db', '.sqlite', '.sqlite3', '.sdb'];
 
+// ══════════════════════════════════════════════════════════════
+// 235 Cascade — 3-layer version quality assessment for timeline tools
+//   L2 Heuristic: floor_id metadata → 🏁final/⚠️mid-edit (zero cost, always on)
+//   L3 Syntax: vm.Script(node)/JSON.parse → ✅clean/⚠️{err} (on-demand, cached by blob_hash)
+//   L5 Recommendation: best clean version + post-revert adjacent analysis
+// ══════════════════════════════════════════════════════════════
+var _synCache = {}; // blob_hash → {ok:bool, msg:string} — immutable blobs, cache forever
+var _SYN_CHECK_MAX = 20; // max versions to syntax-check per call
+
+// Layer 2: Heuristic tag from floor_id metadata (zero cost)
+//   floor_id format: "q{id}/f{N}/h{N}/r{N}"
+//   Last version per floor → 🏁 final. Earlier versions from same floor → ⚠️ mid-edit.
+//   O(n) via pre-built floor→max_seq map (not O(n²)).
+function _buildFloorMaxSeq(versions) {
+    var map = {}; // floorN → max file_seq
+    for (var i = 0; i < versions.length; i++) {
+        var v = versions[i];
+        if (!v.floor_id) continue;
+        var m = v.floor_id.match(/\/f(\d+)\//);
+        if (!m) continue;
+        var fn = parseInt(m[1], 10);
+        if (map[fn] === undefined || v.file_seq > map[fn]) map[fn] = v.file_seq;
+    }
+    return map;
+}
+function _heuristicTag(v, floorMaxSeq) {
+    if (!v.floor_id) return '';
+    var m = v.floor_id.match(/\/f(\d+)\//);
+    if (!m) return '';
+    var floorN = parseInt(m[1], 10);
+    var maxSeq = floorMaxSeq[floorN];
+    if (maxSeq !== undefined && v.file_seq < maxSeq) return '⚠️ mid-edit';
+    return '🏁 final';
+}
+
+// Layer 3: Syntax check for JS/JSON content (cached by blob_hash)
+//   Uses require('vm').Script if nodeIntegration available (zero-spawn, ~1ms)
+//   Falls back to bridge.qz.spawn node --check (one batch per call)
+function _syntaxCheckInline(content, ext) {
+    if (ext === 'js' || ext === 'mjs' || ext === 'cjs') {
+        try {
+            if (typeof require !== 'undefined') {
+                var vm = require('vm');
+                new vm.Script(content);
+                return { ok: true, msg: 'clean' };
+            }
+        } catch (e) {
+            if (e.code === 'MODULE_NOT_FOUND' || (e.message && e.message.indexOf('require') >= 0)) {
+                return null; // vm not available — caller should fall back to spawn
+            }
+            return { ok: false, msg: e.message.split('\n')[0] };
+        }
+        return null; // require not available
+    }
+    if (ext === 'json') {
+        try { JSON.parse(content); return { ok: true, msg: 'clean' }; }
+        catch (e) { return { ok: false, msg: e.message.split('\n')[0] }; }
+    }
+    return null; // unsupported extension
+}
+
+// Layer 3 async wrapper: read blob → check → cache
+async function _checkOneVersion(bridge, root, v, ext) {
+    if (!v.blob_hash) return null;
+    // Cache hit
+    if (_synCache[v.blob_hash]) return _synCache[v.blob_hash];
+    // Not a checkable type
+    if (ext !== 'js' && ext !== 'mjs' && ext !== 'cjs' && ext !== 'json') return null;
+    try {
+        var content = await bridge.timeline.content({ projectRoot: root, blobHash: v.blob_hash });
+        if (content === null || content === undefined) return null;
+        var r = _syntaxCheckInline(content, ext);
+        if (r) { _synCache[v.blob_hash] = r; return r; }
+        // Fallback: node --check via child_process stdin (zero temp files, no orphans)
+        try {
+            var cp = require('child_process');
+            cp.execFileSync('node', ['--check'], { input: content, timeout: 3000 });
+            r = { ok: true, msg: 'clean' };
+        } catch (e) {
+            if (e.code === 'MODULE_NOT_FOUND') return null;
+            var errOut = (e.stderr || e.message || '') + '';
+            var ok = (e.status === 0);
+            r = { ok: ok, msg: errOut.split('\n').slice(0, 2).join(' ').slice(0, 80) };
+        }
+        _synCache[v.blob_hash] = r;
+        return r;
+    } catch (_) { return null; }
+}
+
+// Layer 5: Find best clean version (last ✅ before any ⚠️)
+function _findBestClean(versions, tagMap) {
+    var best = null;
+    for (var i = versions.length - 1; i >= 0; i--) {
+        var t = tagMap[versions[i].file_seq];
+        if (t && t.indexOf('✅') >= 0) { best = versions[i]; break; }
+    }
+    if (!best) {
+        // Fallback: last version with 🏁 final tag
+        for (var i = versions.length - 1; i >= 0; i--) {
+            var t = tagMap[versions[i].file_seq];
+            if (t && t.indexOf('🏁') >= 0) { best = versions[i]; break; }
+        }
+    }
+    return best;
+}
+
 // ============================================================
 // 工具执行分发
 // ============================================================
@@ -34,6 +140,18 @@ async function executeTool(name, args, ownerAgent) {
         var __shouldCache = true;
         var __cacheKey = _cacheKey;
     }
+
+    // ★ Path resolution: resolve project-relative paths to absolute
+    //   Applies to ALL path-like arguments across all tools.
+    //   /server-app/foo.js → E:/project/server-app/foo.js
+    //   {project}/server-app/foo.js → E:/project/server-app/foo.js
+    //   Full absolute paths pass through unchanged.
+    if (args.path) args.path = _resolveProjectPath(args.path);
+    if (args.filePath) args.filePath = _resolveProjectPath(args.filePath);
+    if (args.image) args.image = _resolveProjectPath(args.image);
+    if (args.images && Array.isArray(args.images)) args.images = args.images.map(_resolveProjectPath);
+    if (args.out_dir) args.out_dir = _resolveProjectPath(args.out_dir);
+    if (args.cwd) args.cwd = _resolveProjectPath(args.cwd);
 
     var _result;
     switch (name) {
@@ -235,6 +353,34 @@ async function executeSearchText(args) {
     args.path = args.path || args.directory || '';
     args.max_results = args.max_results || args.limit || 30;
 
+    // ★ sha256: 在历史版本 blob 中搜索（Timeline 集成）
+    if (args.sha256) {
+        args.path = args.path || args.filePath || '';
+        var _p2 = args.path;
+        if (!_p2) return 'Error: path required when using sha256 for search_text';
+        var root2 = await _resolveTimelineRoot(_p2);
+        if (!root2) return 'Error: could not resolve project root for "' + _p2 + '"';
+        if (!bridge.timeline || !bridge.timeline.content) return 'Error: timeline content not available';
+        try {
+            var blobContent = await bridge.timeline.content({ projectRoot: root2, blobHash: args.sha256 });
+            if (blobContent === null || blobContent === undefined) return 'Error: blob not found for hash ' + args.sha256;
+            var reFlags2 = args.case_sensitive ? '' : 'i';
+            var regex2;
+            try { regex2 = new RegExp(args.query, reFlags2); }
+            catch (_) { regex2 = new RegExp(args.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), reFlags2); }
+            var blobLines = blobContent.split('\n');
+            var blobMatches = [];
+            var maxR2 = args.max_results || 30;
+            for (var bli = 0; bli < blobLines.length && blobMatches.length < maxR2; bli++) {
+                if (regex2.test(blobLines[bli])) {
+                    blobMatches.push('L' + (bli + 1) + ': ' + blobLines[bli].trim().slice(0, 200));
+                }
+            }
+            var prefix2 = '[Historical blob sha=' + args.sha256.slice(0, 12) + '] ';
+            return blobMatches.length > 0 ? prefix2 + '\n' + blobMatches.join('\n') : prefix2 + 'No matches found.';
+        } catch (e) { return 'Error searching historical blob: ' + (e.message || e); }
+    }
+
     var searchDirs = [];
     if (args.path) {
         searchDirs = [args.path];
@@ -262,11 +408,13 @@ async function executeSearchText(args) {
 
     // ---- fallback: renderer walk (legacy) ----
     var regex;
+    var _regexHint = '';
     var reFlags = args.case_sensitive ? '' : 'i';
     try {
         regex = new RegExp(args.query, reFlags);
     } catch (_) {
         regex = new RegExp(args.query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), reFlags);
+        _regexHint = '⚠️ Regex syntax error in "' + args.query + '", fell back to literal search.\n';
     }
 
     var MAX_FILE_SIZE = 2 * 1024 * 1024;
@@ -307,7 +455,8 @@ async function executeSearchText(args) {
         await walk(searchDirs[d], 0);
     }
 
-    return matches.length > 0 ? matches.join('\n') : 'No matches found.';
+    var _result = matches.length > 0 ? matches.join('\n') : 'No matches found.';
+    return _regexHint ? _regexHint + _result : _result;
 }
 
 // ============================================================
@@ -322,9 +471,49 @@ async function executeSearchContent(args) {
     args.path = args.path || args.directory || '';
     args.max_results = args.max_results || args.limit || 30;
 
+    // ★ sha256: 在历史版本 blob 中搜索（Timeline 集成）
+    if (args.sha256) {
+        args.path = args.path || args.filePath || '';
+        var _p3 = args.path;
+        if (!_p3) return 'Error: path required when using sha256 for search_content';
+        var root3 = await _resolveTimelineRoot(_p3);
+        if (!root3) return 'Error: could not resolve project root for "' + _p3 + '"';
+        if (!bridge.timeline || !bridge.timeline.content) return 'Error: timeline content not available';
+        try {
+            var blobC = await bridge.timeline.content({ projectRoot: root3, blobHash: args.sha256 });
+            if (blobC === null || blobC === undefined) return 'Error: blob not found for hash ' + args.sha256;
+            // Normalize keywords
+            if (typeof args.keywords === 'string') {
+                try { args.keywords = JSON.parse(args.keywords); } catch (_) {
+                    if (args.keywords.includes('|')) args.keywords = args.keywords.split('|').map(function(s){return s.trim();}).filter(Boolean);
+                }
+            }
+            if (!args.keywords || !Array.isArray(args.keywords) || args.keywords.length === 0) return 'Error: no keywords provided.';
+            var escRe = function(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); };
+            var pat3 = args.keywords.map(escRe).join('|');
+            var flags3 = args.case_sensitive ? '' : 'i';
+            var re3 = new RegExp(pat3, flags3);
+            var bLines = blobC.split('\n');
+            var bMatches = [];
+            var maxR3 = args.max_results || 30;
+            for (var bli = 0; bli < bLines.length && bMatches.length < maxR3; bli++) {
+                if (re3.test(bLines[bli])) {
+                    bMatches.push('L' + (bli + 1) + ': ' + bLines[bli].trim().slice(0, 200));
+                }
+            }
+            var pre3 = '[Historical blob sha=' + args.sha256.slice(0, 12) + '] ';
+            return bMatches.length > 0 ? pre3 + '\n' + bMatches.join('\n') : pre3 + 'No matches found.';
+        } catch (e) { return 'Error searching historical blob: ' + (e.message || e); }
+    }
+
     // ★ 兼容：模型可能把 keywords 发成 JSON 字符串而非数组
     if (typeof args.keywords === 'string') {
-        try { args.keywords = JSON.parse(args.keywords); } catch (_) { }
+        try { args.keywords = JSON.parse(args.keywords); } catch (_) {
+            // 兼容管道符分隔: "foo|bar|baz" → ["foo","bar","baz"]
+            if (args.keywords.includes('|')) {
+                args.keywords = args.keywords.split('|').map(function(s) { return s.trim(); }).filter(Boolean);
+            }
+        }
     }
     if (!args.keywords || !Array.isArray(args.keywords) || args.keywords.length === 0) return 'Error: no keywords provided.';
 
@@ -522,6 +711,27 @@ async function executeFindFiles(args) {
 
 async function executeGetDiagnostics(args) {
     var path = args.path || args.filePath || '';
+
+    // ★ sha256: 检查历史版本 blob 的语法（Timeline 集成）
+    if (args.sha256) {
+        if (!path) return 'Error: path required when using sha256 for get_diagnostics';
+        var bridge = getBridge();
+        if (!bridge) return 'Error: bridge not available';
+        var root = await _resolveTimelineRoot(path);
+        if (!root) return 'Error: could not resolve project root for "' + path + '"';
+        if (!bridge.timeline || !bridge.timeline.content) return 'Error: timeline content not available';
+        try {
+            var blobC = await bridge.timeline.content({ projectRoot: root, blobHash: args.sha256 });
+            if (blobC === null || blobC === undefined) return 'Error: blob not found for hash ' + args.sha256;
+            var ext = path.split('.').pop().toLowerCase();
+            var syn = _syntaxCheckInline(blobC, ext);
+            if (syn) {
+                return '[Historical blob sha=' + args.sha256.slice(0, 12) + '] ' + (syn.ok ? '✅ SYNTAX OK' : '⚠️ SYNTAX ERROR: ' + syn.msg);
+            }
+            return '[Historical blob sha=' + args.sha256.slice(0, 12) + '] No syntax check available for .' + ext + ' files';
+        } catch (e) { return 'Error checking historical blob: ' + (e.message || e); }
+    }
+
     if (!path) return 'Error: path required for get_diagnostics';
     if (typeof _autoSyntaxCheck === 'function') {
         try {
@@ -614,7 +824,6 @@ async function executeTimelineVersions(args) {
         return 'Error: timeline system not available (bridge.timeline missing)';
     }
 
-    // ★ 解析项目根目录（向上找 qqq/timeline 或 .git）
     var root = await _resolveTimelineRoot(_p);
     if (!root) {
         return 'Error: could not resolve project root for "' + _p + '". No qqq/timeline or .git found in parent directories.';
@@ -625,7 +834,6 @@ async function executeTimelineVersions(args) {
         if (!versions || versions.length === 0) {
             return 'No timeline versions found for: ' + _p;
         }
-        // ★ floor_num 过滤（floor_id 格式: q{id}/f{N}/h{N}/r{N}）
         var floorNum = args.floor_num;
         if (floorNum != null && typeof floorNum === 'number') {
             var needle = '/f' + floorNum + '/';
@@ -636,16 +844,81 @@ async function executeTimelineVersions(args) {
                 return 'No timeline versions found for floor ' + floorNum + ' in: ' + _p;
             }
         }
-        // 格式化输出：每行一条，关键字段
+
+        // ═══ Layer 2: Heuristic tags (always on, zero cost) ═══
+        var ext = _p.split('.').pop().toLowerCase();
+        var floorMaxSeq = _buildFloorMaxSeq(versions);
+        var l2Tags = {}; // file_seq → heuristic tag
+        for (var i = 0; i < versions.length; i++) {
+            var tag = _heuristicTag(versions[i], floorMaxSeq);
+            if (tag) l2Tags[versions[i].file_seq] = tag;
+        }
+
+        // ═══ Layer 3: Syntax check (opt-in via check_syntax=true) ═══
+        var checkSyntax = args.check_syntax === true;
+        var l3Tags = {}; // file_seq → syntax tag
+        if (checkSyntax && (ext === 'js' || ext === 'mjs' || ext === 'cjs' || ext === 'json')) {
+            // Only check last N versions + all 🏁 final versions
+            var toCheck = [];
+            var seen = {};
+            // Always include 🏁 final versions
+            for (var i = 0; i < versions.length; i++) {
+                if (l2Tags[versions[i].file_seq] === '🏁 final') { toCheck.push(versions[i]); seen[versions[i].file_seq] = true; }
+            }
+            // Fill up to _SYN_CHECK_MAX with most recent
+            for (var i = versions.length - 1; i >= 0 && toCheck.length < _SYN_CHECK_MAX; i--) {
+                if (!seen[versions[i].file_seq]) { toCheck.push(versions[i]); seen[versions[i].file_seq] = true; }
+            }
+            // Check in parallel (each reads its own blob)
+            var checkResults = await Promise.all(toCheck.map(function(v) {
+                return _checkOneVersion(bridge, root, v, ext).then(function(r) {
+                    return { seq: v.file_seq, result: r };
+                });
+            }));
+            for (var ci = 0; ci < checkResults.length; ci++) {
+                var cr = checkResults[ci];
+                if (cr && cr.result && cr.result.msg) {
+                    l3Tags[cr.seq] = cr.result.ok ? '✅ clean' : '⚠️ ' + cr.result.msg.slice(0, 60);
+                }
+            }
+        }
+
+        // ═══ Build output ═══
         var lines = ['Timeline versions for: ' + _p, 'Project root: ' + root, ''];
         if (floorNum != null) lines[0] += ' (floor ' + floorNum + ' only)';
+        var header = '#\ttime\t+/-\tquality\tsrc\ttrace\tsha';
+        lines.push(header);
+
+        var allTags = {}; // file_seq → combined tag
         for (var i = 0; i < versions.length; i++) {
             var v = versions[i];
+            var seq = v.file_seq;
+            var parts = [];
+            if (l2Tags[seq]) parts.push(l2Tags[seq]);
+            if (l3Tags[seq]) parts.push(l3Tags[seq]);
+            allTags[seq] = parts.join(' ');
+
             var ts = v.ts ? new Date(v.ts).toISOString().replace('T', ' ').slice(0, 19) : '?';
             var add = v.added_lines != null ? ('+' + v.added_lines) : '?';
             var del = v.deleted_lines != null ? ('-' + v.deleted_lines) : '?';
             var trace = v.floor_id || '';
-            lines.push('  #' + v.file_seq + ' | ' + ts + ' | ' + add + '/' + del + ' | ' + (v.source || '?') + (trace ? ' | trace=' + trace : '') + ' | sha=' + (v.blob_hash || '').slice(0, 12));
+            lines.push('#' + seq + '\t' + ts + '\t' + add + '/' + del + '\t' + (allTags[seq] || '') + '\t' + (v.source || '?') + '\t' + (trace ? 'trace=' + trace : '—') + '\tsha=' + (v.blob_hash || '').slice(0, 12));
+        }
+        lines.push('');
+
+        // ═══ Layer 5: Recommendation footer ═══
+        var bestClean = _findBestClean(versions, allTags);
+        if (bestClean) {
+            var suffix = checkSyntax ? ' (syntax-verified)' : ' (heuristic — use check_syntax=true for accuracy)';
+            lines.push('Best clean version: #' + bestClean.file_seq + suffix);
+        }
+        var badCount = 0;
+        for (var i = 0; i < versions.length; i++) {
+            var t = allTags[versions[i].file_seq];
+            if (t && t.indexOf('⚠️') >= 0) badCount++;
+        }
+        if (badCount > 0) {
+            lines.push(badCount + ' version(s) with ⚠️ quality issues detected.');
         }
         lines.push('');
         lines.push('Use diff_versions(path, from_seq, to_seq) to compare any two versions, or revert_file(path, file_seq) to restore.');
@@ -701,21 +974,62 @@ async function executeRevertFile(args) {
             return 'Error: blob not found for hash ' + target.blob_hash + ' (blob file may be missing)';
         }
 
-        // ③ 写回文件（优先主进程 1 IPC，fallback renderer）
-        if (bridge.ai && bridge.ai.write_file) {
-            var _wr = await bridge.ai.write_file({ path: _p, content: content });
-            if (_wr && _wr.indexOf('Error') === 0) return _wr;
-        } else {
-            try { await bridge.fs.mkdir(_p.replace(/[/\\][^/\\]+$/, '')); } catch (_) { }
-            await bridge.fs.write(_p, content);
-        }
+        // ③ 写回文件 — 直接用 bridge.fs.write（跳过 IPC 语法门）。
+        //    revert 允许恢复语法不完整的中间态 blob，AI 自己修复。
+        try { await bridge.fs.mkdir(_p.replace(/[/\\][^/\\]+$/, '')); } catch (_) { }
+        await bridge.fs.write(_p, content);
 
-        // ④ 通知 + 语法检查（A4 钩子自动记录 timeline 快照，无需手动 record）
+        // ④ 通知 + 警告级语法检查（不阻止，A4 钩子自动记录 timeline 快照）
         _notifyFileModified(_p);
         var result = 'Reverted ' + _p + ' to version #' + fileSeq +
             ' (blob ' + target.blob_hash.slice(0, 12) + ', ' +
             new Date(target.ts).toISOString().replace('T', ' ').slice(0, 19) + ')';
-        return await _checkFileSizeWarn(result, _p);
+
+        // 文件大小警告（内联，不调 _checkFileSizeWarn 以避免其内置语法检查）
+        try {
+            var lineCount = content.split('\n').length;
+            if (lineCount > FILE_LINE_WARN) {
+                result += '\n\n⚠️ FILE SIZE WARNING: This file now has ' + lineCount + ' lines (project limit: ' + FILE_LINE_WARN + '). Suggest splitting into smaller modules.';
+            }
+        } catch (_) { }
+
+        // ═══ Layer 5: Post-revert quality report ═══
+        // Check syntax of restored content inline + report adjacent versions
+        var ext = _p.split('.').pop().toLowerCase();
+        var synResult = _syntaxCheckInline(content, ext);
+        if (synResult) {
+            _synCache[target.blob_hash] = synResult;
+            result += '\nSyntax: ' + (synResult.ok ? '✅ clean' : '⚠️ ' + synResult.msg.slice(0, 60));
+        }
+        // Heuristic tags for adjacent versions
+        var floorMaxSeq = _buildFloorMaxSeq(versions);
+        var laterCount = 0;
+        var laterIssues = [];
+        for (var vi = 0; vi < versions.length; vi++) {
+            if (versions[vi].file_seq > fileSeq) {
+                laterCount++;
+                var l2 = _heuristicTag(versions[vi], floorMaxSeq);
+                if (l2 && l2.indexOf('⚠️') >= 0) laterIssues.push('#' + versions[vi].file_seq + ' ' + l2);
+            }
+        }
+        if (laterCount > 0) {
+            result += '\nLater versions: ' + laterCount + ' total';
+            if (laterIssues.length > 0) result += ' — issues: ' + laterIssues.join(', ');
+        }
+        // Best clean version hint
+        var allTags = {};
+        for (var vi = 0; vi < versions.length; vi++) {
+            var l2 = _heuristicTag(versions[vi], floorMaxSeq);
+            if (l2) {
+                var syn = _synCache[versions[vi].blob_hash];
+                allTags[versions[vi].file_seq] = l2 + (syn ? (syn.ok ? ' ✅ clean' : ' ⚠️ ' + syn.msg.slice(0, 30)) : '');
+            }
+        }
+        var best = _findBestClean(versions, allTags);
+        if (best && best.file_seq !== fileSeq) {
+            result += '\nHint: A cleaner version exists — #' + best.file_seq;
+        }
+        return result;
     } catch (err) {
         return 'Error reverting file: ' + (err.message || err);
     }
@@ -813,8 +1127,20 @@ async function executeDiffVersions(args) {
             if (toLines[ti].charCodeAt(toLines[ti].length - 1) === 13) toLines[ti] = toLines[ti].slice(0, -1);
         }
 
+        // ═══ Layer 3: Syntax preamble ═══
+        var ext = _p.split('.').pop().toLowerCase();
+        var synPreamble = '';
+        if (ext === 'js' || ext === 'mjs' || ext === 'cjs' || ext === 'json') {
+            var fromSyn = _syntaxCheckInline(fromContent, ext);
+            if (fromSyn) { _synCache[fromVer.blob_hash] = fromSyn; synPreamble += '## Syntax #' + fromSeq + ': ' + (fromSyn.ok ? '✅ clean' : '⚠️ ' + fromSyn.msg.slice(0, 60)) + '\n'; }
+            if (toSeq != null && toVer && toContent !== null) {
+                var toSyn = _syntaxCheckInline(toContent, ext);
+                if (toSyn) { _synCache[toVer.blob_hash] = toSyn; synPreamble += '## Syntax #' + toSeq + ': ' + (toSyn.ok ? '✅ clean' : '⚠️ ' + toSyn.msg.slice(0, 60)) + '\n'; }
+            }
+        }
+
         var fromTs = new Date(fromVer.ts).toISOString().replace('T', ' ').slice(0, 19);
-        var header = '--- ' + _p + '\t(version #' + fromSeq + ', ' + fromTs + ')\n' +
+        var header = synPreamble + '--- ' + _p + '\t(version #' + fromSeq + ', ' + fromTs + ')\n' +
             '+++ ' + _p + '\t(' + toLabel + ')\n';
         var diff = _computeUnifiedDiff(fromLines, toLines, 3);
 

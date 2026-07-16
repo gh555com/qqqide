@@ -30,6 +30,12 @@ async function _handleSyncMessage(msg) {
         if (!msg.building && typeof _maybeStopCometClockTimer === 'function') _maybeStopCometClockTimer();
         return;
     }
+    // ★ 豆沙包：草稿状态同步 — 来自其他面板的 draft-changed 广播
+    if (msg.type === 'draft-changed') {
+        // 关闭已打开的下拉 → 下次 hover 全新渲染（含新豆沙包状态）
+        if (typeof closeQuestDrop === 'function') closeQuestDrop();
+        return;
+    }
     if (_isDraft(questActiveId)) return;
     // [silent] sync recv
     try {
@@ -245,6 +251,29 @@ async function _initWorkspace(root) {
         questUIStates = savedStates;
         // [silent] restored questUIStates
     }
+    // ★ 豆沙包：启动时从 onlyStore 扫描三面板草稿，初始化 parent.__qqq_draftFlags
+    //   仅中面板执行（避免三面板重复扫描）；侧面板等中面板初始化完成后读共享对象
+    if (_panelId === 1 && parent) {
+        parent.__qqq_draftFlags = parent.__qqq_draftFlags || {};
+        var _panels = [0, 1, 2];
+        for (var _pi = 0; _pi < _panels.length; _pi++) {
+            var _pid = _panels[_pi];
+            var _states = (_pid === _panelId) ? questUIStates : await onlyStore.getAsync('ai.uiStates.' + _pid);
+            if (_states && typeof _states === 'object') {
+                var _keys = Object.keys(_states);
+                for (var _ki = 0; _ki < _keys.length; _ki++) {
+                    var _qid = _keys[_ki];
+                    if (_isDraft(_qid)) continue;
+                    var _st = _states[_qid];
+                    if (_st && _st.inputValue && _st.inputValue.trim().length > 0) {
+                        if (!parent.__qqq_draftFlags[_qid]) parent.__qqq_draftFlags[_qid] = {};
+                        parent.__qqq_draftFlags[_qid]['p' + _pid] = true;
+                    }
+                }
+            }
+        }
+        // [silent] draftFlags initialized
+    }
 
     // ★ IPC sync & onChange 必须在 initQuests 之前注册，
     //   否则 _syncIndexFromFs 发现的 quest 无法广播到其他面板
@@ -360,6 +389,33 @@ var questActiveId = _draftId;
 var _questsInited = false;
 function _isDraft(id) { return typeof id === 'string' && id.indexOf('_draft_') === 0; }
 
+// ★ 豆沙包：更新父窗口 draftFlags 中央注册表（跨三面板唯一真理源）
+function _updateDraftFlag(id) {
+    if (!id || _isDraft(id)) return;
+    if (!parent) return;
+    var flags = parent.__qqq_draftFlags;
+    if (!flags) { parent.__qqq_draftFlags = {}; flags = parent.__qqq_draftFlags; }
+    var state = questUIStates[id];
+    var hasText = state && state.inputValue && state.inputValue.trim().length > 0;
+    if (!flags[id]) flags[id] = {};
+    var oldVal = flags[id]['p' + _panelId];
+    flags[id]['p' + _panelId] = hasText;
+    // 全为 false → 清理
+    var any = flags[id].p0 || flags[id].p1 || flags[id].p2;
+    if (!any) delete flags[id];
+    // 仅变化时广播
+    if (oldVal !== hasText) {
+        _broadcast('draft-changed', id);
+    }
+}
+
+// ★ 检查某 quest 是否有草稿（任一 panel 有未发送文本）
+function _hasDraftFlag(id) {
+    if (!id || !parent || !parent.__qqq_draftFlags) return false;
+    var f = parent.__qqq_draftFlags[id];
+    return !!(f && (f.p0 || f.p1 || f.p2));
+}
+
 // ═══ per-quest UI memory state（零开销快照，quest 切换时同步读写） ═══
 var questUIStates = {};
 
@@ -386,6 +442,8 @@ function saveQuestUIState(id) {
     if (id && !_isDraft(id)) {
         _persistPanelResume(id);
     }
+    // ★ 豆沙包：更新父窗口 draftFlags 中央注册表
+    _updateDraftFlag(id);
 }
 
 function restoreQuestUIState(id) {
@@ -674,6 +732,52 @@ window._computeFileStats = _computeFileStats;
 //   floorNum 来自创建楼层时由 questStore.nextFloorNum() 分配的值，永久不变。
 //   ag._floorMeta[floorNum] 保存该楼层的未可变元数据（allTxtPath/floorStartIdx）。
 //   所有调用方必须传 floorNum，auto-save 传 ag._currentFloorNum，onDone 传完成的楼层号。
+
+// ═══ ctx.json 持久化 — D 路径兜底 ═══
+// ★ B 方案: per-quest ctx.json 替代 quest.sq3 存 ctx。原子 tmp+rename 写，单 quest 隔离。
+//   ctx.json 损坏/丢失 → D 路径(_rebuildBackpack 扫描 conversation)自愈。
+function _writeCtxJson(questId, ctx) {
+    return (async function () {
+        try {
+            var qDir = await questStore.resolveQuestDir(questId);
+            if (!qDir) return false;
+            var bridge = _getBridge();
+            if (!bridge || !bridge.fs) return false;
+            var payload = {
+                lastCompressedFloor: ctx.lastCompressedFloor || 0,
+                floorArchives: ctx.floorArchives || [],
+                totalFloors: ctx.totalFloors || 0,
+                narrative: ctx.narrative || '',
+                facts: ctx.facts || [],
+                treasures: ctx.treasures || [],
+                biscuitLines: ctx.biscuitLines || [],
+                deEntries: ctx.deEntries || []
+            };
+            var dest = qDir + 'ctx.json';
+            var tmp = dest + '.tmp.' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+            await bridge.fs.write(tmp, JSON.stringify(payload));
+            await bridge.fs.rename(tmp, dest);
+            return true;
+        } catch (_) {
+            return false;
+        }
+    })();
+}
+
+async function _readCtxJson(questId) {
+    try {
+        var qDir = await questStore.resolveQuestDir(questId);
+        if (!qDir) return null;
+        var bridge = _getBridge();
+        if (!bridge || !bridge.fs) return null;
+        var raw = await bridge.fs.read(qDir + 'ctx.json');
+        if (!raw || typeof raw !== 'string') return null;
+        return JSON.parse(raw);
+    } catch (_) {
+        return null;
+    }
+}
+
 async function _saveAgentQuestData(questId, ag, floorNum, opts) {
     if (!questId || !ag) return;
     if (!floorNum) floorNum = ag._currentFloorNum;
@@ -740,7 +844,7 @@ async function _saveAgentQuestData(questId, ag, floorNum, opts) {
 
     // ═══ 2) 无论是否有楼层号，都写 quest 级元数据 ═══
     var metaPayload = {
-        ctx: ag._ctx,
+        // ★ ctx 已迁至 ctx.json（_writeCtxJson），不再写 quest.sq3
         totalCostGe: ag.totalCostGe,
         lastApiPromptTokens: ag._lastApiPromptTokens || 0,
         lastApiTotalTokens: ag._lastApiTotalTokens || 0,

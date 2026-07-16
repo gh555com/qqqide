@@ -464,6 +464,13 @@ async function renderQuestDrop() {
             if (_isBld) {
                 _insertCometClock(prefix, s.id, item);
             }
+            // ★ 豆沙包：未发送草稿标记，item 最右侧
+            if (typeof _hasDraftFlag === 'function' && _hasDraftFlag(s.id)) {
+                var bean = document.createElement('span');
+                bean.className = 'quest-drop-draft-bean';
+                bean.title = (typeof _i === 'function') ? _i('ai.draftBean', '有未发送的编辑内容') : '有未发送的编辑内容';
+                item.appendChild(bean);
+            }
         })(filtered[i]);
     }
     if (displayCount < filtered.length) {

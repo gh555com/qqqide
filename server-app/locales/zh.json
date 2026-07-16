@@ -271,6 +271,7 @@
             "selectFolderTitle": "请选择一个主文件夹"
         },
         "guideBtnTooltip": "立即用当下消息引导 AI 而不起新楼层！",
+    "draftBean": "有未发送的编辑内容",
         "queue": {
             "full": "队列限宽3，请等待上一条消息发出。",
             "save": "保存",
