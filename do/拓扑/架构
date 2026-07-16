@@ -570,13 +570,14 @@ AI 悬浮预览层
 · 图片: transform translate+scale 统一缩放+拖拽。关闭: Esc/右键/背景。跨窗口广播关闭
 
 
-上下文压缩 — V12 本地机械筛 + 原地追加（2026-07-14 落地，零网络零费用）
+上下文压缩 — V12 本地机械筛 + 原地追加（2026-07-14 落地，2026-07-15 三 Bug 修复，零网络零费用）
 ---------------------------------------------------------------------
 · ★ 触发: 每层楼封顶(onDone)→_rebuildBackpack()。建楼中不触发。旧阈值触发+手动压缩+AI压缩全部移除。
 · 机械筛（方案三）: 纯本地、纯确定性。消息→Q/A/工具摘要行。代码正文不进饼干，AI改前必re-read(§54)。
-· K集合(不可恢复工具): run_command/fetch_webpage/search_web/analyze_image/get_vision_context/generate_image/remove_background → 完整输出保留(≤8000 chars/条,超取首尾各4000)。
+· K集合(不可恢复工具): run_command/fetch_webpage/search_web/analyze_image/get_vision_context/generate_image/remove_background → 摘要进饼干，完整输出仅进DE(≤8000 chars/条)。2026-07-15 去重修复：旧代码同时写入饼干+DE致token翻倍。
 · 压缩饼干(biscuit): 单条_biscuit消息，content尾部追加(零splice)。格式: === FN === + Q/A/工具摘要行 + [ERR] [HH:MM]原因。
 · DE格子: 单条_deBlock消息，K集合+代码块混合，按时间/楼层升序。20K chars硬帽，6K/条，FIFO轮转驱逐。
+· ★ ctx 持久化(B方案, 2026-07-16): per-quest ctx.json(原子tmp+rename)替代 quest.sq3 存 ctx。单 quest 隔离，单文件损坏不波及其他。ctx.json 损坏/丢失→D 路径(_rebuildBackpack 扫描 conversation)自愈。
 · 错误保留: 未恢复fatal楼层→不进饼干(原始消息保留)。已恢复→[ERR] [HH:MM]原因格式进饼干。重启扫描biscuit重建错误日志。
 · 背包定序: Z → biscuit(1条msg,原地追加) → DE(1条msg,原地更新) → 当前楼层消息。仅splice-remove原始楼层消息。
 · 缓存: Z 100%命中 / biscuit前缀命中(仅最后一行新) / DE大部命中。每层实际计费~2-4K tokens。
@@ -722,3 +723,6 @@ A4 文件快照 — 每层楼私有文件变更追踪
 
 🟢 已修复
   A1, B2, B3, C1, C2, C3, D1 — 均已修复，条目已清理
+  D2. V12 重启背包丢失 — ctx.biscuitLines 恢复晚于 V12 注入（2026-07-15 修复）
+  D3. 饼干+DE 重叠 — K集合工具输出在饼干和DE各存一份致token翻倍（2026-07-15 修复）
+  D4. Z消息重复注入 — 每层楼 all.json 各含一份 persistent → 恢复时 N 份拼接（2026-07-15 修复）

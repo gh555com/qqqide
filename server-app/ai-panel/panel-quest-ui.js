@@ -38,7 +38,8 @@ async function switchQuest(id) {
                 }
             }
             // ★ 仅在建楼中的 agent 才有未保存数据需刷盘；idle agent 的数据已在 onDone 时写入
-            if (_activeAgent && _activeAgent._stopState === 'sending') {
+            // ★ 治根：0 houses 时不落盘（无有效数据。agent 后台继续运行，完结后自然保存）
+            if (_activeAgent && _activeAgent._stopState === 'sending' && _activeAgent._houses && _activeAgent._houses.length > 0) {
                 await _saveAgentQuestData(questActiveId, _activeAgent, _activeAgent._currentFloorNum, { skipDomFlush: true });
             }
             // ★ 释放旧 quest 所有权（流式 buffer 状态已通过 _a4BuildCompleteFloorPayload 落盘，跨面板迁移安全）
@@ -68,7 +69,8 @@ async function switchQuest(id) {
             }
         } else {
             var _card2 = cardPool._cards[id];
-            if (_card2 && _card2.buildingFloor !== null) {
+            // ★ 治根：fatal 楼层保留卡片（含 error 态 DOM），仅清非 fatal 的僵尸 buildingFloor
+            if (_card2 && _card2.buildingFloor !== null && !_sharedAg._floorFatal) {
                 _card2._contentWrap.innerHTML = '';
                 _card2.floorDOM = {};
                 _card2.totalFloors = 0;
@@ -327,6 +329,11 @@ async function deleteQuest(id) {
     if (quests.length <= 1) { await createNewQuest(); return; }
     await questStore.deleteQuest(id);
     delete questUIStates[id];
+    // ★ 豆沙包：删除 quest 时清理 draft flag
+    if (parent && parent.__qqq_draftFlags && parent.__qqq_draftFlags[id]) {
+        delete parent.__qqq_draftFlags[id];
+        _broadcast('draft-changed', id);
+    }
     _parentReleaseQuest(id);
     _broadcast('owner-released', id);
     if (parent.__qqq_agentPool && parent.__qqq_agentPool[id]) {

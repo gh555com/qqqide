@@ -379,10 +379,15 @@ async function _a4WrappedExecuteTool(name, args, ownerAgent) {
     // ---- 4. 记录快照（钩子 Q：记 both before+after 到 timeline）----
     await _a4RecordSnapshot(filePath, name, beforeContent, afterContent, beforeBlobHash, _capturedAg);
 
-    // ★ 将 afterBlobHash 追加到返回值，供 AI 后续通过 read_file sha256 读取历史版本
+    // ★ 将 afterBlobHash + trace 追加到返回值，供 AI 后续通过 read_file sha256 读取历史版本
     var snapEntry = _capturedAg._a4Snapshots && _capturedAg._a4Snapshots[filePath];
     if (snapEntry && snapEntry.afterBlobHash) {
-        result = result + ' [sha256: ' + snapEntry.afterBlobHash + ']';
+        var _stamp = ' [sha256: ' + snapEntry.afterBlobHash + ']';
+        var _tr = (typeof window !== 'undefined' && window._qqqCurrentTrace) ? window._qqqCurrentTrace : null;
+        if (_tr && _tr.questId && _tr.floorNum) {
+            _stamp += ' @q' + String(_tr.questId).replace(/^q/i, '') + 'f' + _tr.floorNum + 'h' + (_tr.houseIdx || 0) + 'r' + (_tr.roomIdx || 0);
+        }
+        result = result + _stamp;
     }
 
     return result;

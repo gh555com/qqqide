@@ -82,6 +82,11 @@ async function _executeSend(intent) {
                 }
             }
             delete questUIStates[_dOldId];
+            // ★ 豆沙包：草稿晋升后清除旧 draft flag
+            if (parent && parent.__qqq_draftFlags && parent.__qqq_draftFlags[_dOldId]) {
+                delete parent.__qqq_draftFlags[_dOldId];
+                if (typeof _broadcast === 'function') _broadcast('draft-changed', _dOldId);
+            }
             if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) {
                 onlyStore.setNow('ai.uiStates.' + _panelId, questUIStates);
             }
@@ -228,6 +233,11 @@ async function _executeSend(intent) {
         pendingImages = [];
         renderImageStrip();
         $input.focus();
+        // ★ 豆沙包：发送后清除当前 quest 的草稿标记
+        if (parent && parent.__qqq_draftFlags && parent.__qqq_draftFlags[qid]) {
+            delete parent.__qqq_draftFlags[qid];
+            if (typeof _broadcast === 'function') _broadcast('draft-changed', qid);
+        }
     }
 
     // ── 楼层分配 ── (recovery 和 normal 都走新楼层)
@@ -588,6 +598,14 @@ async function _executeSend(intent) {
                             try { if (typeof _forceFlushAllTxt === 'function') _forceFlushAllTxt(agent, _errTxtPath2); } catch (_) { }
                         }
                         _stopAllTxtStream(agent);
+                        // ★ 治根：后台 agent 失败时清理 buildingFloor（防切回时 switchQuest L69
+                        //   因 buildingFloor!==null 清空卡片 → restore 读空数据 → fatal）
+                        var _bgCard = cardPool._cards[qid];
+                        if (_bgCard && _bgCard.buildingFloor === floorNum) {
+                            _bgCard.buildingFloor = null;
+                            var _bgAiEl = _bgCard.floorDOM && _bgCard.floorDOM[floorNum] ? _bgCard.floorDOM[floorNum].aiEl : null;
+                            if (_bgAiEl) _bgAiEl.classList.remove('card-building');
+                        }
                         var _bgAiDiv2 = agent && agent._activeAiDiv;
                         if (_bgAiDiv2 && _bgAiDiv2._clockBlock) {
                             _bgAiDiv2._clockBlock.className = 'msg-ai-clock';
@@ -644,10 +662,9 @@ async function _executeSend(intent) {
             if (typeof agent._rebuildBackpack === 'function') {
                 try { await agent._rebuildBackpack(); } catch (_) { /* 压缩失败不阻断楼层完结 */ }
             }
-            // ★ V12 fix: 压缩后 ag._ctx.biscuitLines/deEntries 已在内存更新，必须落盘
-            //   旧版仅存于内存 → 重启/切 quest 后 ctx 读到空数组 → 每层都走恢复路径解析对话消息
-            if (typeof questStore !== 'undefined' && questStore.save) {
-                try { await questStore.save(qid, { ctx: agent._ctx }); } catch (_) { }
+            // ★ ctx 已迁至 ctx.json（B 方案）。D 路径兜底：ctx.json 损坏时 _rebuildBackpack 自愈。
+            if (typeof _writeCtxJson === 'function') {
+                try { await _writeCtxJson(qid, agent._ctx); } catch (_) { }
             }
         }
         if (agent && qid && !agent._floorCompletedCleanly && (agent._stopState === 'sending' || agent._floorFatal)) {

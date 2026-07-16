@@ -35,6 +35,8 @@
   // ── 主入口 ──
   function create(hostPane, filePath, monacoEditor, monaco) {
     // 清理旧元素
+    var oldCopyRow = hostPane.querySelector('.qqq-breadcrumb-copy-row');
+    if (oldCopyRow) oldCopyRow.remove();
     var oldBar = hostPane.querySelector('[data-qqq-editor-breadcrumb]');
     if (oldBar) oldBar.remove();
     var oldMc = hostPane.querySelector('[data-qqq-editor-monaco]');
@@ -49,16 +51,63 @@
     var oldBtns = hostPane.querySelector('[data-qqq-editor-float-btns]');
     if (oldBtns) oldBtns.remove();
 
-    // hostPane 设为 flex 列布局：面包屑在上 → Monaco 容器在下
+    // hostPane 设为 flex 列布局：复制行 → 面包屑 → Monaco 容器
     hostPane.style.display = 'flex';
     hostPane.style.flexDirection = 'column';
     hostPane.style.overflow = 'hidden';
 
-    // ═══ 1. 面包屑豆腐块（独立占高，可选可复制，不可编辑）═══
+    // ═══ 1. 悬浮复制行（hover 面包屑时显示，独立 flex 行，不挡任何东西）═══
+    var copyRow = document.createElement('div');
+    copyRow.className = 'qqq-breadcrumb-copy-row';
+
+    var copyBtn = document.createElement('button');
+    copyBtn.className = 'qqq-breadcrumb-copy-btn';
+    copyBtn.textContent = '📋 ' + (filePath || '');
+    copyBtn.title = _i('editor.copyPath', '点击复制完整路径');
+    copyBtn.setAttribute('data-no-cd', '');
+    copyBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var text = filePath || '';
+      try {
+        navigator.clipboard.writeText(text);
+      } catch (_) {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      var orig = copyBtn.textContent;
+      copyBtn.textContent = '✓ 已复制';
+      setTimeout(function () { copyBtn.textContent = '📋 ' + (filePath || ''); }, 800);
+    });
+    copyRow.appendChild(copyBtn);
+    hostPane.appendChild(copyRow);
+
+    // ═══ 2. 面包屑豆腐块 ═══
     var bar = document.createElement('div');
     bar.setAttribute('data-qqq-editor-breadcrumb', '1');
     bar.textContent = filePath || '';
     hostPane.appendChild(bar);
+
+    // hover 面包屑或复制行 → 显示复制行；离开两者 → 隐藏
+    var _hideTimer = null;
+    function _showCopyRow() {
+      if (_hideTimer) { clearTimeout(_hideTimer); _hideTimer = null; }
+      copyRow.style.display = 'flex';
+    }
+    function _hideCopyRow() {
+      _hideTimer = setTimeout(function () {
+        copyRow.style.display = 'none';
+      }, 200);
+    }
+    bar.addEventListener('mouseenter', _showCopyRow);
+    bar.addEventListener('mouseleave', _hideCopyRow);
+    copyRow.addEventListener('mouseenter', _showCopyRow);
+    copyRow.addEventListener('mouseleave', _hideCopyRow);
 
     // ═══ 2. Monaco 容器（包含编辑器 + 悬浮按钮）═══
     var mc = document.createElement('div');

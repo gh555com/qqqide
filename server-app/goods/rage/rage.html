@@ -223,7 +223,7 @@ body {
             return;
         }
         // 主题同步（来自父窗口 qqq-theme.js 唯一真理配色机器）
-        if (e.data && e.data.type === 'qqq-theme-change') {
+        if (e.data && e.data.type === 'qqqide-theme-change') {
             if (e.data.dark) document.documentElement.setAttribute('data-theme', 'dark');
             else document.documentElement.removeAttribute('data-theme');
         }
@@ -238,7 +238,7 @@ body {
                 var t = parent.document.documentElement.getAttribute('data-theme');
                 if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
             }
-        } catch(e) { parent.postMessage({ type: 'qqq-theme-request' }, '*'); }
+     } catch(e) { parent.postMessage({ type: 'qqqide-theme-request' }, '*'); }; }
     })();
 
     // Card click -> postMessage to parent

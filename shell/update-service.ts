@@ -41,6 +41,8 @@ export interface CheckResult {
     latestShellVersion: string;  // shell version from server
     currentShellVersion: string; // APP_VERSION (baked-in)
     needShellUpdate: boolean;    // shell needs restart update
+    shellStaged: boolean;        // shell-out-next/ already staged (auto-download done)
+    webappStaged: boolean;       // webapp-staging/ already staged (auto-download done)
 }
 
 export interface ApplyResult {
@@ -69,7 +71,10 @@ export class UpdateService {
     /** Check for updates (both shell + webapp). */
     async check(): Promise<CheckResult> {
         const info = await fetchServerVersionInfoWithFallback(UPDATE_BASE_URL, UPDATE_FALLBACK_URL);
-        this._state.lastCheck = Date.now();   this._state.lastCheck = Date.now();
+        // ★ 每次 check 都从磁盘刷新 currentVersion，防 "0.0.0" 毒化持久化
+        const localWebapp = this._readWebappVersion();
+        this._state.currentVersion = localWebapp;
+        this._state.lastCheck = Date.now();
         if (info) {
             this._state.lastVersion = info.shell || info.webapp || '';
         }
@@ -77,10 +82,15 @@ export class UpdateService {
 
         const shellLatest = info?.shell || '';
         const webappLatest = info?.webapp || '';
-        const localWebapp = this._readWebappVersion();
 
         const needWebapp = !!webappLatest && this._compareVersions(localWebapp, webappLatest) < 0;
         const needShell = !!shellLatest && this._compareVersions(this._shellVersion, shellLatest) < 0;
+        // ★ 检测自动下载是否已 staging（shell-out-next/ 有 main.js → 已就绪）
+        const shellStagingMain = path.join(this._appRoot, 'Data', 'Cache', 'staging', 'shell-out-next', 'main.js');
+        const shellStaged = fs.existsSync(shellStagingMain);
+        // ★ webapp-staging/ 有 index.html → 已就绪
+        const webappStagingIndex = path.join(this._appRoot, 'Data', 'webapp-staging', 'index.html');
+        const webappStaged = fs.existsSync(webappStagingIndex);
         return {
             latestVersion: webappLatest || localWebapp,
             currentVersion: localWebapp,
@@ -88,6 +98,8 @@ export class UpdateService {
             latestShellVersion: shellLatest || this._shellVersion,
             currentShellVersion: this._shellVersion,
             needShellUpdate: needShell,
+            shellStaged,
+            webappStaged,
         };
     }
 
@@ -174,6 +186,8 @@ export class UpdateService {
             });
             if (extractResult.status !== 0) {
                 try { fs.unlinkSync(tarPath); } catch { }
+                // ★ 清理半残 staging，防止下次启动误 swap
+                try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
                 return { success: false, version: '', error: 'Shell extract failed, status=' + extractResult.status };
             }
 
@@ -216,20 +230,26 @@ export class UpdateService {
      * 铁律：_state.currentVersion 只反映 webapp 版本，shell 版本始终以 _shellVersion 为准。
      */
     private _loadState(): UpdateState {
+        const diskVersion = this._readWebappVersion();
         const defaults: UpdateState = {
             lastCheck: 0,
             lastVersion: '',
-            currentVersion: this._readWebappVersion(),
+            currentVersion: diskVersion,
             lastApplied: '',
         };
         try {
             if (!fs.existsSync(this._statePath)) return defaults;
             const raw = fs.readFileSync(this._statePath, 'utf8');
             const parsed = JSON.parse(raw);
+            // ★ 防 "0.0.0" 毒化：如果存储值是无意义的零版本号，回退到磁盘真实版本
+            let storedVer = typeof parsed.currentVersion === 'string' ? parsed.currentVersion : '';
+            if (!storedVer || storedVer === '0.0.0') {
+                storedVer = diskVersion;
+            }
             return {
                 lastCheck: typeof parsed.lastCheck === 'number' ? parsed.lastCheck : 0,
                 lastVersion: typeof parsed.lastVersion === 'string' ? parsed.lastVersion : '',
-                currentVersion: typeof parsed.currentVersion === 'string' ? parsed.currentVersion : this._readWebappVersion(),
+                currentVersion: storedVer,
                 lastApplied: typeof parsed.lastApplied === 'string' ? parsed.lastApplied : '',
             };
         } catch {
@@ -308,8 +328,14 @@ export class UpdateService {
                 stdio: 'pipe',
                 timeout: 30000,
             });
-            return result.status === 0;
+            if (result.status !== 0) {
+                // ★ 清理半残目录，防止下次启动误 swap
+                try { fs.rmSync(destDir, { recursive: true, force: true }); } catch { }
+                return false;
+            }
+            return true;
         } catch {
+            try { fs.rmSync(destDir, { recursive: true, force: true }); } catch { }
             return false;
         }
     }

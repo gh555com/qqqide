@@ -18,7 +18,7 @@
 //   ⑥ 双向对账 — 启动时磁盘 ↔ sq3 索引同步（发现新目录 + 清除幽灵条目）
 //   ⑦ 彻底删除 — deleteQuest 同时清理 sq3 条目 + 文件系统目录
 //   ⑧ 路径缓存预热 — rebuildIndexFromFiles / _syncIndexFromFs 扫描时填充缓存
-//   ⑨ 元数据自愈 — sq3 缺失时从 all.json 重建 totalCostGe / floorTimings / ctx
+//   ⑨ 元数据自愈 — sq3 缺失时从 all.json 重建 totalCostGe / floorTimings
 //   ⑩ 重复编号修复 — repairDuplicateIds() 扫描并重命名同编号 quest/floor 目录
 //      楼层改名时 all.json 无需同步改名，零重命名失败风险
 //
@@ -863,11 +863,9 @@ var QuestStore = (function () {
         if (existing.floors && !data.floors) {
             data.floors = existing.floors;
         }
-        if (data.ctx && existing.ctx && typeof existing.ctx.totalFloors === 'number') {
-            data.ctx.totalFloors = Math.max(data.ctx.totalFloors || 0, existing.ctx.totalFloors);
-        }
         await _setNow(QUEST_NS + '.' + id, data);
-        _notify(this, 'quest-saved', id, { floorNum: data.ctx ? data.ctx.totalFloors : undefined });
+        var _fnForNotify = data.currentFloorNum || undefined;
+        _notify(this, 'quest-saved', id, { floorNum: _fnForNotify });
     };
 
     QuestStore.prototype.load = async function (id) {
@@ -1119,8 +1117,6 @@ var QuestStore = (function () {
             floors.sort(function (a, b) { return a.n - b.n; });
         }
         qData.floors = floors;
-        if (!qData.ctx) qData.ctx = { narrative: '', facts: [], treasures: [], totalFloors: 0 };
-        qData.ctx.totalFloors = Math.max(qData.ctx.totalFloors || 0, floors.length);
         qData.savedAt = Date.now();
         await _setNow(QUEST_NS + '.' + questId, qData);
 
@@ -1136,6 +1132,13 @@ var QuestStore = (function () {
     //   暴露私有函数 _resolveFloorDir 给 card-pool.js 等外部模块
     QuestStore.prototype.resolveFloorDir = async function (questId, floorNum) {
         return await _resolveFloorDir(questId, floorNum);
+    };
+
+    // ★ 解析 quest 目录完整路径（ctx.json 持久化用）
+    QuestStore.prototype.resolveQuestDir = async function (questId) {
+        var qDirName = await _resolveQuestDirName(questId);
+        if (!qDirName) return null;
+        return _rootDir + '/qqq/quests/' + qDirName + '/';
     };
 
     // ★ 从已加载的 all.json 数据重建 sq3 quest 元数据（备份还原 / 改名编号后自愈）
@@ -1162,7 +1165,6 @@ var QuestStore = (function () {
             rebuiltFloors.push({ n: floors[fi].floorNum, savedAt: floors[fi].data ? floors[fi].data.savedAt : Date.now(), _fDir: '' });
         }
         var qData = {
-            ctx: existing.ctx || { narrative: '', facts: [], treasures: [], totalFloors: 0 },
             totalCostGe: totalCostGe,
             floorTimings: floorTimings,
             serverDrift: existing.serverDrift || 0,       // ★ 保活；全新 quest 默认 0
@@ -1171,13 +1173,12 @@ var QuestStore = (function () {
             createdAt: oldestTs < Infinity ? oldestTs : (existing.createdAt || Date.now()),
             savedAt: newestTs > 0 ? newestTs : Date.now()
         };
-        qData.ctx.totalFloors = totalFloors;
         await _setNow(QUEST_NS + '.' + questId, qData);
         console.log('[quest-store] _rebuildQuestMeta: rebuilt quest.' + questId + ' from ' + totalFloors + ' floors (totalCostGe=' + totalCostGe + ')');
     }
 
     // 加载全部楼层 — 并行读取，N 层楼 = 1 个 await（而非 N 个排队）
-    //   sq3 缺失时自动从 all.json 重建 quest 元数据（totalCostGe / floorTimings / ctx）
+    //   sq3 缺失时自动从 all.json 重建 quest 元数据（totalCostGe / floorTimings）
     QuestStore.prototype.loadAllFloors = async function (questId) {
         var qData = await _get(QUEST_NS + '.' + questId);
         var floorList = (qData && qData.floors) || [];

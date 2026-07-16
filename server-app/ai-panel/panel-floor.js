@@ -430,9 +430,17 @@ async function _restoreAgentFromStore(questId, ag) {
         ag._questErrorLogByFloor = {};
         ag._questErrorDivByFloor = {};
 
+        // ★ ctx.json 优先 → 失败走 D 路径纯重建兜底
+        var _ctxJson = (typeof _readCtxJson === 'function') ? (await _readCtxJson(questId)) : null;
+        var _ctxData = _ctxJson || {};
+
         // ★ 压缩恢复：先读 lastCompressedFloor（需在 conversation 之前）
-        var _restoredLastCompressedFloor = (data && data.ctx && data.ctx.lastCompressedFloor) || 0;
-        var _restoredNarrative = (data && data.ctx && data.ctx.narrative) || '';
+        var _restoredLastCompressedFloor = _ctxData.lastCompressedFloor || 0;
+        var _restoredNarrative = _ctxData.narrative || '';
+        // ★ BugFix #1: ctx.biscuitLines/deEntries 必须在 V12 注入之前恢复，
+        //    否则 ag._ctx.biscuitLines 为空 → 注入跳过 → 重启后 backpack 只有 Z 消息。
+        if (_ctxData.biscuitLines) ag._ctx.biscuitLines = _ctxData.biscuitLines;
+        if (_ctxData.deEntries) ag._ctx.deEntries = _ctxData.deEntries;
         // V10/V11: ctx.narrative 存完整饼干文本
         // V12:     ctx.narrative 是摘要(biscuit:X de:Y)，饼干在 conversation 的 _biscuit/_deBlock 消息
         var _isV10Biscuit = _restoredLastCompressedFloor > 0 && _restoredNarrative.indexOf('═══ COMPRESSED FLOORS') === 0;
@@ -452,17 +460,25 @@ async function _restoreAgentFromStore(questId, ag) {
                     // ★ 跳过 floor conversation 中残留的 _compressed 消息（每层快照含全量 conversation，
                     //    压缩后所有后续楼层快照都含饼干副本 → 恢复时去重，只靠 ctx.narrative 注入一次）
                     if (_msg._compressed) continue;
+                    // ★ BugFix #3 v2: 保留首条 _persistent 消息（去重），其余跳过。
+                    //    留一份 Z 防快照/重建时丢失。后续 send 时 _refreshRules 原地更新。
+                    if (_msg._persistent) {
+                        if (!ag._persistentCount) { ag.conversation.push(_msg); ag._persistentCount = 1; }
+                        continue;
+                    }
                     ag.conversation.push(_msg);
                 }
             }
         }
+
+        // ★ BugFix #3 v2: _persistentCount 已在循环中处理，不再重置
 
         // ★ 注入压缩饼干：V10 从 ctx.narrative 注入；V12 从 ctx.biscuitLines/deEntries 重建消息
         if (_isV10Biscuit) {
             ag.conversation.unshift({ role: 'system', content: _restoredNarrative, _compressed: true, _dynamic: true });
         }
         // ★ V12 恢复：biscuit/DE 消息不存在于 all.json（Bug #4 根因—落盘在压缩之前），
-        //    但 ctx.biscuitLines/deEntries 已从 quest.sq3 正确恢复。在此重建消息注入 conversation。
+        //    但 ctx.biscuitLines/deEntries 已从 ctx.json 正确恢复。在此重建消息注入 conversation。
         if (_isV12Biscuit) {
             var _hasBiscuitMsg = false, _hasDeMsg = false;
             for (var _scmi = 0; _scmi < ag.conversation.length; _scmi++) {
@@ -615,20 +631,18 @@ async function _restoreAgentFromStore(questId, ag) {
             ag._accumulatedCompletionTokens = data.accumulatedCompletionTokens || 0;
             ag._lastTier = data.lastTier || null;
             ag._uncleanShutdown = data.uncleanShutdown || false;
-            ag._ctx.lastCompressedFloor = (data.ctx && data.ctx.lastCompressedFloor) || 0;
-            ag._ctx.floorArchives = (data.ctx && data.ctx.floorArchives) || [];
-            ag._ctx.totalFloors = (data.ctx && data.ctx.totalFloors) || 0;
-            if (data.ctx && data.ctx.narrative) ag._ctx.narrative = data.ctx.narrative;
-            if (data.ctx && data.ctx.facts) ag._ctx.facts = data.ctx.facts;
-            if (data.ctx && data.ctx.treasures) ag._ctx.treasures = data.ctx.treasures;
-            // V12 fix: 重启后恢复 biscuitLines/deEntries（防 ctx 与 conversation 脱节致背包暴涨）
-            if (data.ctx && data.ctx.biscuitLines) ag._ctx.biscuitLines = data.ctx.biscuitLines;
-            if (data.ctx && data.ctx.deEntries) ag._ctx.deEntries = data.ctx.deEntries;
+            ag._ctx.lastCompressedFloor = _ctxData.lastCompressedFloor || 0;
+            ag._ctx.floorArchives = _ctxData.floorArchives || [];
+            ag._ctx.totalFloors = _ctxData.totalFloors || 0;
+            if (_ctxData.narrative) ag._ctx.narrative = _ctxData.narrative;
+            if (_ctxData.facts) ag._ctx.facts = _ctxData.facts;
+            if (_ctxData.treasures) ag._ctx.treasures = _ctxData.treasures;
+            // ★ biscuitLines/deEntries 已提前恢复（BugFix #1：必须在 V12 注入之前）
             ag._floorTimings = data.floorTimings || [];
             ag._serverDrift = data.serverDrift || 0;
             ag._queue = data.queue || [];
             ag._rulesVersion = data.rulesVersion || '';
-            ag._persistentCount = data.persistentCount || 0;
+            // ★ BugFix #3 v2: _persistentCount 已在恢复循环中处理，不强制清零
             // ★ 恢复楼层计数器（旧 quest 无此字段时回退到已保存楼层数）
             ag._currentFloorNum = data.currentFloorNum || 0;
         }

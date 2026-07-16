@@ -811,6 +811,36 @@ body {
   border-left-color: #999;
 }
 
+/* 面包屑复制行（独立 flex 行，hover 面包屑时 JS 显示） */
+.qqq-breadcrumb-copy-row {
+  flex: 0 0 auto;
+  display: none;
+  align-items: center;
+  padding: 1px 10px 1px 16px;
+  font-size: 11px;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border-color);
+  border-left: 3px solid var(--gold-accent, #b58900);
+  min-height: 20px;
+}
+
+.qqq-breadcrumb-copy-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: ui-monospace, Consolas, Menlo, monospace;
+  padding: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.qqq-breadcrumb-copy-btn:hover {
+  color: var(--text-primary);
+}
+
 /* Monaco 容器 */
 [data-qqq-editor-monaco] {
   flex: 1 1 auto;

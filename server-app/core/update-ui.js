@@ -71,7 +71,15 @@
             const btn = getBtn();
             if (!btn) return;
 
-            // 壳层更新优先
+            // ★ 壳层已 staging → 绿色，无需点击（自动下载已完成）
+            if (result && result.needShellUpdate && result.shellStaged) {
+                btn.style.display = '';
+                btn.style.color = 'var(--green)';
+                btn.dataset.mode = '';
+                btn.title = '壳层已就绪，重启后生效 (' + (result.latestShellVersion || '?') + ')';
+                return;
+            }
+            // ★ 壳层需要更新但未 staging → 红色，可点击手动下载
             if (result && result.needShellUpdate) {
                 btn.style.display = '';
                 btn.style.color = 'var(--red)';
@@ -80,6 +88,14 @@
                 return;
             }
             btn.dataset.mode = '';
+            // ★ 载荷已 staging → 绿色
+            if (result && result.needUpdate && result.webappStaged) {
+                btn.style.display = '';
+                btn.style.color = 'var(--green)';
+                btn.title = '载荷已就绪，重启后生效 (' + (result.latestVersion || '?') + ')';
+                return;
+            }
+            // ★ 载荷需要更新但未 staging → 黄色
             if (result && result.needUpdate) {
                 btn.style.display = '';
                 btn.style.color = 'var(--yellow)';

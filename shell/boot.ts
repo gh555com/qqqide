@@ -219,6 +219,8 @@ export async function checkAndDownloadShellUpdate(
         if (extractResult.status !== 0) {
             console.log('[shell-update] extract failed, status:', extractResult.status);
             try { fs.rmSync(tarPath); } catch { }
+            // ★ 清理半残 staging，防止下次启动 bootstrap 误 swap 进去
+            try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
             return false;
         }
 
@@ -247,27 +249,29 @@ export function ensureLocalWebapp(portableRoot: string): string | null {
     // ── Swap staged update if present (from previous background download) ──
     const stagingDir = path.join(portableRoot, 'Data', 'webapp-staging');
     if (fs.existsSync(stagingDir)) {
-        bootLog('webapp: staged update detected, swapping…');
-        try {
-            const oldDir = localDir + '.old';
-            // Step 1: rename current → .old (atomic)
-            if (fs.existsSync(localDir)) { fs.renameSync(localDir, oldDir); }
-            // Step 2: rename staging → target (atomic)
-            fs.renameSync(stagingDir, localDir);
-            // Step 3: cleanup old
-            if (fs.existsSync(oldDir)) { fs.rmSync(oldDir, { recursive: true, force: true }); }
-            bootLog('webapp: staged update swapped → ' + localDir);
-        } catch (e: any) {
-            bootLog('webapp: swap failed — ' + (e.message || e));
-            // Rollback: restore .old if target is missing
+        // ★ 完整性校验：staging 必须有 index.html，否则是半残目录，直接删除
+        if (!fs.existsSync(path.join(stagingDir, 'index.html'))) {
+            bootLog('webapp: staging is incomplete (no index.html), discarding');
+            try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
+        } else {
+            bootLog('webapp: staged update detected, swapping…');
             try {
                 const oldDir = localDir + '.old';
-                if (fs.existsSync(oldDir) && !fs.existsSync(localDir)) {
-                    fs.renameSync(oldDir, localDir);
-                    bootLog('webapp: rolled back .old → target');
-                }
-            } catch (_) { }
-            try { if (fs.existsSync(stagingDir)) fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (_) { }
+                if (fs.existsSync(localDir)) { fs.renameSync(localDir, oldDir); }
+                fs.renameSync(stagingDir, localDir);
+                if (fs.existsSync(oldDir)) { fs.rmSync(oldDir, { recursive: true, force: true }); }
+                bootLog('webapp: staged update swapped → ' + localDir);
+            } catch (e: any) {
+                bootLog('webapp: swap failed — ' + (e.message || e));
+                try {
+                    const oldDir = localDir + '.old';
+                    if (fs.existsSync(oldDir) && !fs.existsSync(localDir)) {
+                        fs.renameSync(oldDir, localDir);
+                        bootLog('webapp: rolled back .old → target');
+                    }
+                } catch (_) { }
+                try { if (fs.existsSync(stagingDir)) fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (_) { }
+            }
         }
     }
 
@@ -382,7 +386,12 @@ async function backgroundCheckWebappUpdate(
             req.on('error', () => resolve(false));
             req.on('timeout', () => { req.destroy(); resolve(false); });
         });
-        if (!dlOk) { bootLog('webapp-update: download failed'); return; }
+        if (!dlOk) {
+            bootLog('webapp-update: download failed');
+            // ★ 清理 loading-status 防止 C 启动器显示僵尸进度
+            try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
+            return;
+        }
 
         // 4) Extract to staging
         const stagingDir = path.join(portableRoot, 'Data', 'webapp-staging');
@@ -394,6 +403,9 @@ async function backgroundCheckWebappUpdate(
         if (extractResult.status !== 0) {
             bootLog('webapp-update: extract failed, status=' + extractResult.status);
             try { fs.rmSync(tarPath); } catch { }
+            // ★ 清理半残 staging，防止下次启动 ensureLocalWebapp 误 swap 进去
+            try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
+            try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
             return;
         }
         try { fs.unlinkSync(tarPath); } catch { }
@@ -401,9 +413,14 @@ async function backgroundCheckWebappUpdate(
         // 5) Write version marker
         writeLocalWebappVersion(portableRoot, latestVersion);
 
+        // ★ 清理 loading-status（成功完成）
+        try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
+
         bootLog('webapp-update: staged for next restart — ' + stagingDir);
     } catch (e: any) {
         bootLog('webapp-update: error — ' + (e.message || e));
+        // ★ 异常也清理 loading-status
+        try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
     }
 }
 

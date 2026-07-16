@@ -1,31 +1,48 @@
 # 自研 Timeline Diff 基础设施对 AI 能力的提升
 
-状态：已落地。2026-07-15 更新（五工具闭环）。
+状态：已落地。2026-07-16 更新（235 级联架构）。
 
 ---
 
-## 0. 五工具闭环（总览）
+## 0. 235 级联架构 + 五工具闭环（总览）
 
-Timeline 从"为人设计的版本历史"升级为"AI 原生可编程版本系统"。五工具形成完整闭环：
+Timeline 从"为人设计的版本历史"升级为"AI 原生可编程版本系统"。
+2026-07-16 引入 235 三级级联质量评估：
 
 ```
-timeline_versions   →  列出文件所有版本（可按楼层过滤 + 查看 trace 归因）
+Layer 2 (Heuristic) — Always on, zero cost
+  Parse floor_id → tag each version: 🏁 final / ⚠️ mid-edit
+  Logic: version is "mid-edit" if a later version from the same floor exists
+
+Layer 3 (Syntax) — On-demand, cached forever by blob_hash
+  JS/JSON: require('vm').Script (zero-spawn, ~1ms) or node --check fallback
+  Tags: ✅ clean / ⚠️ {error_msg}
+  Activated by: check_syntax=true in timeline_versions, or auto in diff_versions
+
+Layer 5 (Recommendation) — Always on in footer/return values
+  timeline_versions footer: "Best clean version: #40"
+  revert_file return: syntax status + later version count + best-clean hint
+  diff_versions preamble: syntax status of both sides
+```
+
+五工具形成完整闭环：
+
+```
+timeline_versions   →  列出文件所有版本 + L2/L3 quality tags + L5 best-clean
        ↓
-diff_versions       →  计算任意两个版本间的 unified diff（或 vs 当前磁盘）
+diff_versions       →  unified diff + L3 syntax preamble for both sides
        ↓
 read_file(sha256)   →  读任意历史版本的完整内容
        ↓
-revert_file         →  一键回退到任意版本
+revert_file         →  一键回退 + L5 enhanced return (syntax + adjacent analysis)
 ```
-
-加上 `panel-a4.js` 钩子 Q 在每个写工具返回值追加 `[sha256: xxx]`，AI 在自然使用中自己发现这个能力。
 
 | 工具 | 类别 | 作用 | 代价 |
 |------|------|------|------|
-| `timeline_versions` | READ | 列版本 + 按楼层过滤 + trace 归因 | 0 ge（本地） |
-| `diff_versions` | READ | 计算两个版本 unified diff | 0 ge（本地） |
-| `read_file(sha256)` | READ | 读历史版本完整内容 | 0 ge（本地） |
-| `revert_file` | WRITE | 回退到指定版本 | 触发 A4 钩子，等同于一次 write_file |
+| `timeline_versions` | READ | 列版本 + L2 heuristic tags + L3 syntax (opt-in) + L5 recommendation | 0 ge（纯本地） |
+| `diff_versions` | READ | unified diff + L3 syntax preamble | 0 ge（纯本地） |
+| `read_file(sha256)` | READ | 读历史版本完整内容 | 0 ge（纯本地） |
+| `revert_file` | WRITE | 回退 + L5 enhanced return (syntax + adjacent analysis) | 触发 A4 钩子 |
 | 钩子 Q 返回值 | 自动 | 每次 write 后追加 `[sha256: xxx]` | 0 成本（管线副产物） |
 
 ---
@@ -148,10 +165,35 @@ AI 改 A.js 时引用了 B.js 的一个函数签名。3 层楼后 B.js 被重构
 
 ---
 
-## 5. 总结
+## 5. 235 级联：让 AI 看清版本质量
+
+### 5.1 问题
+F14 审计发现：11 次 `revert_file` 中 4 次因 blob 语法错误被拒。
+AI 在调用 `revert_file` 前完全不知道目标版本是干净还是残缺——只能猜或试错。
+
+### 5.2 解决方案：三级级联
+
+| Layer | Name | Cost | What |
+|-------|------|------|------|
+| L2 | Heuristic | Zero | Parse floor_id → tag 🏁final/⚠️mid-edit |
+| L3 | Syntax | ~1ms/blo | vm.Script/JSON.parse → ✅clean/⚠️{err}. Cached by blob_hash forever |
+| L5 | Recommend | Zero | Best-clean version + post-revert adjacent analysis |
+
+L2 always on. L3 opt-in (`check_syntax=true`). L5 always in footer/return values.
+
+### 5.3 效果
+```
+timeline_versions path check_syntax=true
+  #34 | 🏁 final ✅ clean  |  ← AI sees: this is safe
+  #35 | ⚠️ mid-edit        |  ← AI sees: skip this
+  #68 | 🏁 final ⚠️ err... |  ← AI sees: last but broken
+  Best clean version: #34  ← AI knows exactly which to revert to
+```
+
+## 6. 总结
 
 不需要知识库、不需要向量检索、不需要 git、不需要教 AI 做事。
 
-**钩子 Q 已经做了捕获 + 持久化。我们只是把已经存在的 sha256 从内存搬到返回值里，然后加了三个纯本地、零费用的工具（timeline_versions / diff_versions / revert_file），让 AI 可以自己探索 timeline。**
+**钩子 Q 已经做了捕获 + 持久化。我们只是把已经存在的 sha256 从内存搬到返回值里，然后加了三个纯本地、零费用的工具（timeline_versions / diff_versions / revert_file），再叠加三级级联质量评估（L2 heuristic + L3 syntax + L5 recommendation），让 AI 可以自己探索 timeline 并精准判断版本质量。**
 
-五工具形成完整闭环：列版本 → 看差异 → 读内容 → 回退。AI 自己发现、自己使用、零额外教学成本。
+五工具 + 235 级联形成完整闭环：列版本 → 看质量 → 看差异 → 读内容 → 回退。AI 自己发现、自己使用、零额外教学成本。
