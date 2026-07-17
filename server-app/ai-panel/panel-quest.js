@@ -579,20 +579,24 @@ async function initQuests() {
             }
         }
 
-        // ★ 重建楼层间红框：对每个 fatal 楼层渲染恢复框（init 缺此 → 重启后无「继续任务」）
-        if (_activeAgent && _activeAgent._questErrorLogByFloor) {
-            var _rebuildFloors = Object.keys(_activeAgent._questErrorLogByFloor).map(Number);
-            for (var _rfi = 0; _rfi < _rebuildFloors.length; _rfi++) {
-                var _rebuildFn = _rebuildFloors[_rfi];
-                if (typeof _renderQuestErrorBox === 'function') _renderQuestErrorBox(_activeAgent, null, _rebuildFn);
-            }
+        // ★ V14: 数据驱动重建红框（_renderAllErrorBoxes 从 _questErrorState 全量渲染）
+        if (_activeAgent && _activeAgent._questErrorState && typeof _renderAllErrorBoxes === 'function') {
+            _renderAllErrorBoxes(_activeAgent);
         }
-        if (_activeAgent && _activeAgent._floorFatal) {
-            var _fn3 = _activeAgent._currentFloorNum;
-            if (_fn3 > 0) {
-                var _card3 = cardPool && cardPool.getActive();
-                if (_card3 && _card3.floorDOM && _card3.floorDOM[_fn3] && _card3.floorDOM[_fn3].aiEl) {
-                    if (typeof _renderQuestErrorBox === 'function') _renderQuestErrorBox(_activeAgent, _card3.floorDOM[_fn3].aiEl, _fn3);
+        // ★ V14: 重建粉色「继续」气泡（持久化到 _questErrorState 中，card 重建后 restore）
+        if (_activeAgent && _activeAgent._questErrorState) {
+            var _bubbleFloors = Object.keys(_activeAgent._questErrorState).map(Number).sort(function(a,b){return a-b;});
+            for (var _bfi = 0; _bfi < _bubbleFloors.length; _bfi++) {
+                var _bfn = _bubbleFloors[_bfi];
+                var _bst = _activeAgent._questErrorState[_bfn];
+                if (!_bst || !_bst.bubbleText) continue;
+                var _bCard = cardPool && cardPool.getActive();
+                if (!_bCard || !_bCard.floorDOM || !_bCard.floorDOM[_bfn] || !_bCard.floorDOM[_bfn].aiEl) continue;
+                var _bubbleEl = addMessageEl('user', _bst.bubbleText);
+                if (_bubbleEl) {
+                    _bubbleEl._floor = _bfn;
+                    var _bAiEl = _bCard.floorDOM[_bfn].aiEl;
+                    if (_bAiEl && _bAiEl.parentNode) _bAiEl.parentNode.insertBefore(_bubbleEl, _bAiEl);
                 }
             }
         }
@@ -874,10 +878,12 @@ async function _saveAgentQuestData(questId, ag, floorNum, opts) {
         rulesVersion: ag._rulesVersion || '',
         persistentCount: ag._persistentCount || 0,
         currentFloorNum: ag._currentFloorNum || 0,
-        // ★ passby 基线持久化：始终存当前楼层之前所有已完成楼层之和（防元数据残留）
+        // ★ passby 基线持久化：从 agent 内存值计算（restore 已用 all.json 自愈，此处仅打快照）
+        //   注意：passbyBase = 当前楼层之前所有已完成楼层之和。
+        //   _passbyWge - floorCostWge = passbyBaseWge（恒等变换），不再做无效运算。
         passbyBaseHouses: Math.max(0, _passbyHouses - (ag._houses ? ag._houses.length : 0)),
         passbyBaseWge: Math.max(0, _passbyWge - (ag._floorCostWge || 0)),
-        passbyBaseTokens: ag._passbyBaseTokens || 0
+        passbyBaseTokens: 0
     };
     await questStore.touch(questId);
     await questStore.save(questId, metaPayload);

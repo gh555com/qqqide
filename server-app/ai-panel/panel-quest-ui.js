@@ -126,13 +126,9 @@ async function switchQuest(id) {
         // ★ 切换到 quest 时不再尝试实时修复磁盘目录名
         //   B+ 方案：懒惰重命名扫描只在启动/关闭时由中面板执行
 
-        // ★ 重建楼层间红框：对每个 fatal 楼层，从 agent._questErrorLogByFloor 恢复
-        if (_activeAgent && _activeAgent._questErrorLogByFloor) {
-            var _rebuildFloors = Object.keys(_activeAgent._questErrorLogByFloor).map(Number);
-            for (var _rfi = 0; _rfi < _rebuildFloors.length; _rfi++) {
-                var _rebuildFn = _rebuildFloors[_rfi];
-                if (typeof _renderQuestErrorBox === 'function') _renderQuestErrorBox(_activeAgent, null, _rebuildFn);
-            }
+        // ★ V14: 数据驱动重建红框（_renderAllErrorBoxes 从 _questErrorState 全量渲染）
+        if (_activeAgent && _activeAgent._questErrorState && typeof _renderAllErrorBoxes === 'function') {
+            _renderAllErrorBoxes(_activeAgent);
         }
         // ★ 兜底: fatal 楼层即使 error log 为空，只要有 floorDOM 就渲染红框
         if (_activeAgent && _activeAgent._floorFatal) {
@@ -1150,10 +1146,15 @@ $queueBtn.onclick = function () {
         };
     }
 
-    // 滑轨（水箱）
+    // ★ 容器 — 包裹 track+thumb，hover 挂在容器上保证永不闪烁
+    // 关键：sync() 频繁移 thumb，只有容器不动的 mouseenter/leave 才可靠
+    var wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:absolute; right:-1px; top:0; bottom:0; width:12px; z-index:50;';
+
+    // 滑轨（水箱）— wrapper 子元素
     var track = document.createElement('div');
     var co0 = _qhColors();
-    track.style.cssText = 'position:absolute; right:-1px; top:0; bottom:0; width:9px; z-index:50; ' +
+    track.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:9px; ' +
         'background:' + co0.trackBg + '; overflow:hidden;';
 
     // ★ 冒泡粒子：18 个小圆点，随机大小/位置/速度，从下往上冒
@@ -1189,34 +1190,24 @@ $queueBtn.onclick = function () {
     // 初始状态
     if (document.body.classList.contains('panel-focused')) _setBubbles(true);
 
-    // 滑块（独立渲染，贴合水箱左侧，与水箱零交合）
+    // 滑块（独立渲染，贴合水箱左侧，与水箱零交合）— wrapper 子元素
     var thumb = document.createElement('div');
     var co = _qhColors();
-    thumb.style.cssText = 'position:absolute; right:8px; width:2px; min-height:24px; border-radius:0; z-index:52; ' +
+    thumb.style.cssText = 'position:absolute; right:9px; width:2px; min-height:24px; border-radius:0; z-index:2; ' +
         'display:none; background:' + co.c + '; cursor:pointer; ' +
         'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
 
-    // hover 展开：填满水箱 + 左侧多出1px
-    // ★ track 和 thumb 是兄弟节点，thumb 展开后 z-index 更高会覆盖 track，
-    // 导致 mouseleave 误触发 → 闪烁。用 relatedTarget 互认避免。
+    // hover 展开/收缩 — 挂在 wrapper 上，容器永不动，sync() 再频繁也不触发 mouseleave
     function _expandThumb() {
-        thumb.style.width = '10px'; thumb.style.right = '-1px';
+        thumb.style.width = '10px'; thumb.style.right = '0px';
         thumb.style.background = _qhColors().c;
     }
     function _shrinkThumb() {
-        thumb.style.width = '2px'; thumb.style.right = '8px';
+        thumb.style.width = '2px'; thumb.style.right = '9px';
         thumb.style.background = _qhColors().c;
     }
-    track.addEventListener('mouseenter', _expandThumb);
-    track.addEventListener('mouseleave', function (e) {
-        if (e.relatedTarget === thumb) return;  // 移到 thumb 上，不缩
-        _shrinkThumb();
-    });
-    thumb.addEventListener('mouseenter', _expandThumb);
-    thumb.addEventListener('mouseleave', function (e) {
-        if (e.relatedTarget === track) return;  // 移到 track 上，不缩
-        _shrinkThumb();
-    });
+    wrapper.addEventListener('mouseenter', _expandThumb);
+    wrapper.addEventListener('mouseleave', _shrinkThumb);
 
     // 同步
     function sync() {
@@ -1304,6 +1295,7 @@ $queueBtn.onclick = function () {
     // 初始焦点状态
     if (document.body.classList.contains('panel-focused') && !_isEditingFocus()) _setBubbles(true);
 
-    host.appendChild(track);
-    host.appendChild(thumb);
+    wrapper.appendChild(track);
+    wrapper.appendChild(thumb);
+    host.appendChild(wrapper);
 })();

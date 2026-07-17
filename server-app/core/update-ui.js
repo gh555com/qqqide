@@ -95,11 +95,12 @@
                 btn.title = '载荷已就绪，重启后生效 (' + (result.latestVersion || '?') + ')';
                 return;
             }
-            // ★ 载荷需要更新但未 staging → 黄色
+            // ★ 载荷需要更新但未 staging → 黄色（如果壳层已是最新则标注「载荷」）
             if (result && result.needUpdate) {
                 btn.style.display = '';
                 btn.style.color = 'var(--yellow)';
-                btn.title = window.i18n.t('shell.update.newVersion', { latest: result.latestVersion, current: result.currentVersion }) || ('新版本 ' + result.latestVersion + ' 可用 (当前 ' + result.currentVersion + ')');
+                var label = (!result.needShellUpdate) ? '载荷更新 ' + result.latestVersion + ' 可用 (当前 ' + result.currentVersion + ')' : ('新版本 ' + result.latestVersion + ' 可用 (当前 ' + result.currentVersion + ')');
+                btn.title = window.i18n.t('shell.update.newVersion', { latest: result.latestVersion, current: result.currentVersion }) || label;
             } else {
                 btn.style.display = 'none';
             }

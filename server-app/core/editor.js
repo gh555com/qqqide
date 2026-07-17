@@ -337,12 +337,60 @@
       lineDecorationsWidth: 16,
       padding: { top: 0, bottom: 0 },
       stickyScroll: { enabled: false },
-      find: { addExtraSpaceOnTop: false, autoFindInSelection: 'never', seedSearchStringFromSelection: 'selection' },
+      find: { addExtraSpaceOnTop: true, autoFindInSelection: 'never', seedSearchStringFromSelection: 'selection' },
       // ★ 大文件优化：跳过超长行 tokenization + 渲染裁剪
       maxTokenizationLineLength: 1000,
       stopRenderingLineAfter: 2000,
     };
   }
+
+  // ═══ Monaco 右键菜单边缘躲避 ═══
+  var _lastEditorContextMenuEvent = null;
+  var _editorContextMenuObserver = null;
+
+  function _ensureContextMenuGuard() {
+    if (_editorContextMenuObserver) return;
+    _editorContextMenuObserver = new MutationObserver(function (mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        var addedNodes = mutations[i].addedNodes;
+        for (var j = 0; j < addedNodes.length; j++) {
+          var node = addedNodes[j];
+          if (node.nodeType === 1 && node.classList && node.classList.contains('monaco-menu-container')) {
+            _clampContextMenu(node);
+          }
+        }
+      }
+    });
+    _editorContextMenuObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function _clampContextMenu(menuEl) {
+    if (!_lastEditorContextMenuEvent) return;
+    var ev = _lastEditorContextMenuEvent;
+    // 让 Monaco 先完成定位，下一帧再修正
+    requestAnimationFrame(function () {
+      var rect = menuEl.getBoundingClientRect();
+      var mw = rect.width || 200;
+      var mh = rect.height || 100;
+      var l = ev.clientX, t = ev.clientY;
+      // 太靠右 → 移到光标左边
+      if (l + mw > window.innerWidth - 4) {
+        l = Math.max(4, ev.clientX - mw);
+      }
+      // 太靠下 → 上移
+      if (t + mh > window.innerHeight - 4) {
+        t = Math.max(4, window.innerHeight - mh - 4);
+      }
+      menuEl.style.left = Math.max(4, l) + 'px';
+      menuEl.style.top = Math.max(4, t) + 'px';
+    });
+  }
+
+  // 全局安装一次 contextmenu 捕获（Monaco 菜单渲染在 body，需在捕获阶段拿坐标）
+  document.addEventListener('contextmenu', function (e) {
+    _lastEditorContextMenuEvent = e;
+  }, true);
+  _ensureContextMenuGuard();
 
   // ── 小地图偏好持久化 + 右键菜单 ──
   var _minimapStore = null;
@@ -847,6 +895,7 @@
       // 行号右侧空气墙点击 → 光标跳到第一列
       _installGutterClickFix(ed, monaco);
 
+ 
       _applyMinimapPref(ed, monaco, filePath);
       _addFeedToAiAction(ed, monaco, filePath);
       // 括号匹配（自实现）

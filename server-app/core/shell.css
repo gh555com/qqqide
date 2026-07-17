@@ -782,8 +782,10 @@ body {
 /* ============================================================================
    Editor Breadcrumb Bar �?独立豆腐块（flex item，占真实高度�?   ============================================================================ */
 [data-qqq-editor-breadcrumb] {
+  position: relative;
   flex: 0 0 auto;
-  padding: 2px 10px 2px 16px;
+  padding: 2px 16px; /* 按钮 absolute 悬浮，不预留额外空间 */
+  outline: none;
   font-size: 12px;
   font-family: ui-monospace, Consolas, Menlo, monospace;
   color: var(--text-primary);
@@ -801,6 +803,33 @@ body {
   cursor: text;
 }
 
+/* 面包屑复制按钮 — hover 时在右侧浮现，垂直居中 */
+.qqq-breadcrumb-copy-btn {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  transform: translateY(-50%);
+  z-index: 5;
+  display: none;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 22px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+[data-qqq-editor-breadcrumb]:hover .qqq-breadcrumb-copy-btn {
+  display: block;
+}
+
+.qqq-breadcrumb-copy-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--yellow);
+}
+
 [data-qqq-editor-breadcrumb]::selection,
 [data-qqq-editor-breadcrumb] ::selection {
   background: #ffd301;
@@ -811,36 +840,6 @@ body {
   border-left-color: #999;
 }
 
-/* 面包屑复制行（独立 flex 行，hover 面包屑时 JS 显示） */
-.qqq-breadcrumb-copy-row {
-  flex: 0 0 auto;
-  display: none;
-  align-items: center;
-  padding: 1px 10px 1px 16px;
-  font-size: 11px;
-  background: var(--card-bg);
-  border-bottom: 1px solid var(--border-color);
-  border-left: 3px solid var(--gold-accent, #b58900);
-  min-height: 20px;
-}
-
-.qqq-breadcrumb-copy-btn {
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-family: ui-monospace, Consolas, Menlo, monospace;
-  padding: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 100%;
-}
-
-.qqq-breadcrumb-copy-btn:hover {
-  color: var(--text-primary);
-}
-
 /* Monaco 容器 */
 [data-qqq-editor-monaco] {
   flex: 1 1 auto;
@@ -849,52 +848,78 @@ body {
 }
 
 /* ============================================================================
-   Monaco 右键菜单 �?Solarized 配色
+   Monaco 右键菜单 — Solarized 配色 + 边缘躲避
    ============================================================================ */
-/* 菜单容器 */
-.monaco-menu .monaco-action-bar {
-  background: var(--card-bg) !important;
-  border: 1px solid var(--border-color) !important;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.18) !important;
+/* 外层容器 — 去 Monaco 默认白底阴影 */
+.monaco-menu-container {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.22) !important;
+}
+[data-theme="dark"] .monaco-menu-container {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.55) !important;
 }
 
-/* 菜单�?*/
+/* 菜单本体 — Solarized 背景 */
+.monaco-menu-container .monaco-menu,
+.monaco-menu {
+  background: var(--card-bg) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 6px !important;
+}
+
+/* action bar — 背景透明，继承菜单 */
+.monaco-menu .monaco-action-bar {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* 菜单项 */
 .monaco-menu .action-item {
   color: var(--text-primary) !important;
+  background: transparent !important;
 }
 
 .monaco-menu .action-label {
   color: var(--text-primary) !important;
 }
 
-/* 分隔�?*/
-.monaco-menu .monaco-action-bar .action-item.menu-separator {
+/* 分隔线 */
+.monaco-menu .action-item.menu-separator {
   border-bottom-color: var(--border-color) !important;
 }
 
-/* 快捷键提�?*/
+/* 快捷键提示 */
 .monaco-menu .keybinding {
   color: var(--text-secondary) !important;
 }
 
-/* 禁用�?*/
+/* 禁用项 */
 .monaco-menu .action-item.disabled .action-label {
   color: var(--base1) !important;
   opacity: 0.5;
 }
 
-/* 悬浮/聚焦�?�?金色替代默认蓝色 */
+/* ★ 悬浮/聚焦 — Solarized 金色替代默认蓝色 */
 .monaco-menu .action-item.focused {
   background: #ffd301 !important;
   color: #000 !important;
 }
-
 .monaco-menu .action-item.focused .action-label {
   color: #000 !important;
 }
-
 .monaco-menu .action-item.focused .keybinding {
   color: #555 !important;
+}
+
+/* 暗色主题 — 深金 */
+[data-theme="dark"] .monaco-menu .action-item.focused {
+  background: #b58900 !important;
+  color: #002b36 !important;
+}
+[data-theme="dark"] .monaco-menu .action-item.focused .action-label {
+  color: #002b36 !important;
+}
+[data-theme="dark"] .monaco-menu .action-item.focused .keybinding {
+  color: #073642 !important;
 }
 
 /* 悬浮按钮行（absolute �?Monaco 容器右下角，零重排） */
@@ -1483,6 +1508,7 @@ body {
   border-color: var(--border-color) !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
 }
+
 
 /* 键入框背�?文字 */
 .monaco-editor .find-widget .monaco-inputbox {
