@@ -21,6 +21,11 @@ const https = require('https');
 const ROOT = path.resolve(__dirname, '..');
 const ELECTRON_VERSION = '22.3.27';
 
+// Read APP_VERSION from shell/version.ts (single source of truth)
+const versionTs = fs.readFileSync(path.join(ROOT, 'shell', 'version.ts'), 'utf8');
+const vm = versionTs.match(/export const APP_VERSION\s*=\s*'(\d+\.\d+\.\d+)'/);
+const APP_VERSION = vm ? vm[1] : '0.0.0';
+
 const args = process.argv.slice(2);
 function getArg(name) {
   const a = args.find(s => s.startsWith('--' + name + '='));
@@ -361,18 +366,22 @@ function injectLauncher(unpacked) {
       fs.renameSync(src, dst);
     }
   }
-  // rename whatever binary ended up in gh555.com/ to slave.exe
-  const coreExe = path.join(coreDir, 'slave.exe');
+  // rename whatever binary ended up in gh555.com/ to joker.exe
+  const coreExe = path.join(coreDir, 'joker.exe');
   for (const candidate of ['electron.exe', 'qqqide.exe']) {
     const bin = path.join(coreDir, candidate);
     if (fs.existsSync(bin) && !fs.existsSync(coreExe)) {
       fs.renameSync(bin, coreExe);
-      console.log('[pack] renamed ' + candidate + ' -> slave.exe');
+      console.log('[pack] renamed ' + candidate + ' -> joker.exe');
       break;
     }
   }
   console.log('[pack] moved Electron runtime -> gh555.com/');
 
+  // ★ 写入 .version → C 启动器 hot-update 版本比对唯一真理源
+  const versionFile = path.join(coreDir, '.version');
+  fs.writeFileSync(versionFile, APP_VERSION, 'utf8');
+  console.log('[pack] wrote .version =', APP_VERSION);
 
   // ── 复制 C 启动器为根 qqqide.exe ──
   const launcherDst = path.join(unpacked, 'qqqide.exe');
@@ -620,7 +629,7 @@ function compileLauncher() {
   const exe = path.join(ROOT, 'launcher', 'qqqide.exe');
   if (!fs.existsSync(src)) { console.warn('[pack] launcher.c not found'); return; }
   console.log('[pack] compiling launcher...');
-  const r = cp.spawnSync(gcc, ['-mwindows', '-O2', '-s', '-o', exe, src, '-lcomctl32'],
+  const r = cp.spawnSync(gcc, ['-mwindows', '-O2', '-s', '-o', exe, src, '-lcomctl32', '-lwinhttp'],
     { stdio: 'inherit' });
   if (r.status !== 0) throw new Error('gcc compile failed');
   console.log('[pack] launcher compiled:', exe, '(' + fs.statSync(exe).size + 'B)');
@@ -694,13 +703,18 @@ print('[pack] python zip done:', out)
   cp.spawnSync('cmd', ['/c', 'copy', '/b', sfxCon, '+', p7z, rFile], { stdio: 'inherit' });
   fs.rmSync(p7z);
 
+  // ★ Keep r + latest.txt for launcher update system (rFile already at dist-root)
+  const latestTxt = path.join(distRoot, 'latest.txt');
+  fs.writeFileSync(latestTxt, APP_VERSION, 'utf8');
+  console.log('[pack] kept r + latest.txt for launcher update');
+
   // Stage: qqqide.exe + r
   const stageDir = path.join(distRoot, '_stage');
   if (fs.existsSync(stageDir)) fs.rmSync(stageDir, { recursive: true, force: true });
   fs.mkdirSync(stageDir, { recursive: true });
   const launcherSrc = path.join(ROOT, 'launcher', 'qqqide.exe');
   if (fs.existsSync(launcherSrc)) fs.cpSync(launcherSrc, path.join(stageDir, 'qqqide.exe'));
-  fs.renameSync(rFile, path.join(stageDir, 'r'));
+  fs.copyFileSync(rFile, path.join(stageDir, 'r'));
 
   // outer zip: deflate mx=9
   console.log('[pack]   outer zip (deflate mx=9)...');
@@ -746,13 +760,18 @@ function packSfx(unpacked) {
   cp.spawnSync('cmd', ['/c', 'copy', '/b', sfxCon, '+', p7z, rFile], { stdio: 'inherit' });
   fs.rmSync(p7z);
 
+  // ★ Keep r + latest.txt for launcher update system (rFile already at dist-root)
+  const latestTxt = path.join(distRoot, 'latest.txt');
+  fs.writeFileSync(latestTxt, APP_VERSION, 'utf8');
+  console.log('[pack] kept r + latest.txt for launcher update');
+
   // stage: qqqide.exe + r → zip → rename to .exe
   const stage = path.join(distRoot, '_sfx');
   if (fs.existsSync(stage)) fs.rmSync(stage, { recursive: true, force: true });
   fs.mkdirSync(stage, { recursive: true });
   const launcherSrc = path.join(ROOT, 'launcher', 'qqqide.exe');
   if (fs.existsSync(launcherSrc)) fs.cpSync(launcherSrc, path.join(stage, 'qqqide.exe'));
-  fs.renameSync(rFile, path.join(stage, 'r'));
+  fs.copyFileSync(rFile, path.join(stage, 'r'));
 
   console.log('[pack]   deflate zip → .exe');
   const rz = cp.spawnSync(sz7, ['a', '-tzip', '-mx=9', '-mmt=on', '-mfb=258', '-mpass=15', out, '.'],

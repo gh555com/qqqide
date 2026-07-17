@@ -258,110 +258,115 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       continue;
     }
 
-    // ★ kope-a 行：自定义渲染（标签 + 启动/停止按钮 + 自动启动勾选框）
-    if (s.hasKopeA) {
-      var kopeRow = document.createElement('div');
-      kopeRow.style.cssText =
+    // ★ Gaea Process 行：通用渲染（标签 + 启动/停止按钮 + 自动启动勾选框）
+    if (s.hasGaeaProcess) {
+      const gpId = s.hasGaeaProcess;
+      const gpRow = document.createElement('div');
+      gpRow.style.cssText =
         'display:flex; align-items:center; padding:8px 14px; margin:0; line-height:1.3; ' +
         'font-size:13px; color:var(--text-primary); ' +
         'white-space:nowrap; user-select:none; cursor:default; gap:8px;';
 
-      var kopeLab = document.createElement('span');
-      kopeLab.textContent = (s.i18n && window._i) ? window._i(s.i18n, s.label) : (s.label || '');
-      kopeLab.style.cssText = 'flex:0 0 auto; font-weight:600;';
-      kopeRow.appendChild(kopeLab);
+      const gpLab = document.createElement('span');
+      gpLab.textContent = (s.i18n && window._i) ? window._i(s.i18n, s.label) : (s.label || gpId);
+      gpLab.style.cssText = 'flex:0 0 auto; font-weight:600;';
+      gpRow.appendChild(gpLab);
 
       // 启动 / 停止按钮
-      var kopeBtn = document.createElement('button');
-      kopeBtn.style.cssText =
+      const gpBtn = document.createElement('button');
+      gpBtn.style.cssText =
         'padding:2px 10px; border:1px solid var(--border-color); border-radius:3px; ' +
         'background:var(--card-bg); color:var(--text-primary); font-size:11px; cursor:default; ' +
         'min-width:56px;';
 
-      function _refreshKopeBtn() {
+      function _refreshGpBtn() {
         var br = window.qqqideBridge;
-        if (br && br.kopeA) {
-          br.kopeA.status().then(function (st) {
+        if (br && br.gaeaProcess) {
+          br.gaeaProcess.status(gpId).then(function (st) {
             if (st && st.running) {
-              kopeBtn.textContent = '停止';
-              kopeBtn.style.background = 'var(--primary-color)';
-              kopeBtn.style.color = '#1e1e1e';
+              gpBtn.textContent = '停止';
+              gpBtn.style.background = 'var(--primary-color)';
+              gpBtn.style.color = '#1e1e1e';
             } else {
-              kopeBtn.textContent = '启动';
-              kopeBtn.style.background = 'var(--card-bg)';
-              kopeBtn.style.color = 'var(--text-primary)';
+              gpBtn.textContent = '启动';
+              gpBtn.style.background = 'var(--card-bg)';
+              gpBtn.style.color = 'var(--text-primary)';
             }
           }).catch(function () {
-            kopeBtn.textContent = '启动';
+            gpBtn.textContent = '启动';
           });
         }
       }
-      _refreshKopeBtn();
+      _refreshGpBtn();
 
-      kopeBtn.addEventListener('click', function (e) {
+      // capture script/runtime from schema item
+      const gpScript = s.gpScript || '';
+      const gpRuntime = s.gpRuntime || 'python';
+
+      gpBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         e.preventDefault();
         var br = window.qqqideBridge;
-        if (!br || !br.kopeA) return;
-        if (kopeBtn.textContent === '停止') {
-          br.kopeA.stop().then(function () { _refreshKopeBtn(); }).catch(function () { });
+        if (!br || !br.gaeaProcess) return;
+        if (gpBtn.textContent === '停止') {
+          br.gaeaProcess.stop(gpId).then(function () { _refreshGpBtn(); }).catch(function () { });
         } else {
-          br.kopeA.start().then(function (r) {
+          br.gaeaProcess.start(gpId, gpScript, gpRuntime).then(function (r) {
             if (r && r.ok) {
-              _refreshKopeBtn();
+              _refreshGpBtn();
             } else {
               var errMsg = (r && r.error) || '启动失败';
               if (br.dialog && br.dialog.message) {
-                br.dialog.message({ type: 'info', title: 'kope-a', message: errMsg });
+                br.dialog.message({ type: 'info', title: gpId, message: errMsg });
               } else {
-                alert('kope-a: ' + errMsg);
+                alert(gpId + ': ' + errMsg);
               }
             }
           }).catch(function (e2) {
-            alert('kope-a 启动失败: ' + (e2 && e2.message || e2));
+            alert(gpId + ' 启动失败: ' + (e2 && e2.message || e2));
           });
         }
       });
-      kopeRow.appendChild(kopeBtn);
+      gpRow.appendChild(gpBtn);
 
       // 自动启动勾选框
-      var kopeCb = document.createElement('input');
-      kopeCb.type = 'checkbox';
-      kopeCb.style.cssText = 'margin:0 0 0 4px; cursor:default;';
-      var _kopeCbReady = false;
+      const gpCb = document.createElement('input');
+      gpCb.type = 'checkbox';
+      gpCb.style.cssText = 'margin:0 0 0 4px; cursor:default;';
+      let _gpCbReady = false;
       (function () {
         var br = window.qqqideBridge;
-        if (br && br.kopeA) {
-          br.kopeA.getAutoStart().then(function (v) {
-            kopeCb.checked = !!v;
-            _kopeCbReady = true;
-          }).catch(function () { kopeCb.checked = false; _kopeCbReady = true; });
+        if (br && br.gaeaProcess) {
+          br.gaeaProcess.getAutoStart(gpId).then(function (v) {
+            gpCb.checked = !!v;
+            _gpCbReady = true;
+          }).catch(function () { gpCb.checked = false; _gpCbReady = true; });
         }
       })();
 
-      kopeCb.addEventListener('change', function (e) {
+      gpCb.addEventListener('change', function (e) {
         e.stopPropagation();
-        if (!_kopeCbReady) return;
+        if (!_gpCbReady) return;
         var br = window.qqqideBridge;
-        if (br && br.kopeA) {
-          br.kopeA.setAutoStart(kopeCb.checked).catch(function () { });
+        if (br && br.gaeaProcess) {
+          br.gaeaProcess.setAutoStart(gpId, gpCb.checked).catch(function () { });
         }
       });
-      kopeCb.addEventListener('click', function (e) { e.stopPropagation(); });
+      gpCb.addEventListener('click', function (e) { e.stopPropagation(); });
 
-      var kopeAutoLab = document.createElement('span');
-      kopeAutoLab.textContent = '自启';
-      kopeAutoLab.style.cssText = 'font-size:11px; color:var(--text-muted);';
+      const gpAutoLab = document.createElement('span');
+      gpAutoLab.textContent = '自启';
+      gpAutoLab.style.cssText = 'font-size:11px; color:var(--text-muted);';
 
-      kopeRow.appendChild(kopeCb);
-      kopeRow.appendChild(kopeAutoLab);
+      gpRow.appendChild(gpCb);
+      gpRow.appendChild(gpAutoLab);
 
       (function (rEl) {
         rEl.addEventListener('mouseenter', function () { rEl.style.background = 'var(--background-color)'; });
         rEl.addEventListener('mouseleave', function () { rEl.style.background = ''; });
-      })(kopeRow);
+      })(gpRow);
 
-      pop.appendChild(kopeRow);
+      pop.appendChild(gpRow);
       continue;
     }
 

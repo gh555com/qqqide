@@ -414,13 +414,13 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
         probe: () => ipcRenderer.invoke('qqqide:boot:probe'),
     },
 
-    // ---- kope-a (剪贴板监控工具，rank1 gaea 扩展) ----
-    kopeA: {
-        start: (scriptPath: string) => ipcRenderer.invoke('qqqide:kope-a:start', scriptPath),
-        stop: () => ipcRenderer.invoke('qqqide:kope-a:stop'),
-        status: () => ipcRenderer.invoke('qqqide:kope-a:status'),
-        getAutoStart: () => ipcRenderer.invoke('qqqide:kope-a:get-auto-start'),
-        setAutoStart: (v: boolean) => ipcRenderer.invoke('qqqide:kope-a:set-auto-start', v),
+    // ---- gaeaProcess (通用 gaea process-type goods 进程管理) ----
+    gaeaProcess: {
+        start: (goodsId: string, scriptPath: string, runtime?: string) => ipcRenderer.invoke('qqqide:gaea-process:start', goodsId, scriptPath, runtime),
+        stop: (goodsId: string) => ipcRenderer.invoke('qqqide:gaea-process:stop', goodsId),
+        status: (goodsId: string) => ipcRenderer.invoke('qqqide:gaea-process:status', goodsId),
+        getAutoStart: (goodsId: string) => ipcRenderer.invoke('qqqide:gaea-process:get-auto-start', goodsId),
+        setAutoStart: (goodsId: string, v: boolean) => ipcRenderer.invoke('qqqide:gaea-process:set-auto-start', goodsId, v),
     },
 };
 

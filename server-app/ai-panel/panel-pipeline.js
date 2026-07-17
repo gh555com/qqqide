@@ -321,6 +321,10 @@ async function _executeSend(intent) {
     var aiDiv = cardPool.startBuildingFloor(qid, floorNum, _allTxtPathLocal);
     if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); return; }
     aiDiv._allTxtPath = _allTxtPathLocal;
+    // ★ Path B: recovery 时楼层对用户不可见，house 1 到达时才揭示（防空楼闪出）
+    if (sendType === 'recovery') {
+        aiDiv.style.display = 'none';
+    }
     // ★ recovery: 流式状态已在 agent 上，直接复用
     agent._streamBuf = agent._streamBuf || '';
     agent._streamParas = agent._streamParas || [];
@@ -392,22 +396,37 @@ async function _executeSend(intent) {
             onToken: function (chunk) {
                 if (agent._deferRenderUntilHouse1) {
                     agent._deferRenderUntilHouse1 = false;
-                    // ★ B2: 恢复成功，创建「继续」用户气泡（不显示完整恢复诊断文本）
+                    // ★ Path B: 揭示之前隐藏的楼层（仅在 house 1 到达时展示）
+                    if (aiDiv && aiDiv.style.display === 'none') {
+                        aiDiv.style.display = '';
+                        if (sendType === 'recovery' && agent._aiStartTime && agent._aiTierLabel) {
+                            var _tCard2 = cardPool._cards[qid];
+                            if (_tCard2 && aiDiv && aiDiv.parentNode) {
+                                var _prev2 = aiDiv.previousElementSibling;
+                                if (!_prev2 || !_prev2.classList.contains('msg-tier-indicator')) {
+                                    var tierEl2 = document.createElement('div');
+                                    tierEl2.className = 'msg-tier-indicator';
+                                    tierEl2.textContent = agent._aiTierLabel + ' start in ' + agent._aiStartTime;
+                                    aiDiv.parentNode.insertBefore(tierEl2, aiDiv);
+                                }
+                            }
+                        }
+                    }
+                    // ★ B2: 恢复成功，创建「继续」用户气泡
                     var _recBubbleText = agent._deferredUserText || '继续';
                     agent._deferredUserText = null;
                     var _recBubble = addMessageEl('user', _recBubbleText);
                     if (_recBubble) {
                         _recBubble._floor = agent._currentFloorNum;
-                        // ★ 插入到新 aiDiv 之前（红字框 → 粉色气泡 → 新楼层，非 红字框 → 新楼层 → 粉色气泡）
                         if (aiDiv && aiDiv.parentNode) aiDiv.parentNode.insertBefore(_recBubble, aiDiv);
                     }
-                    // ★ V14: 持久化粉泡到 _questErrorState（切面板/重启后 _renderAllErrorBoxes 重建）
+                    // ★ V14: 持久化粉泡
                     if (!agent._questErrorState) agent._questErrorState = {};
                     if (!agent._questErrorState[floorNum]) agent._questErrorState[floorNum] = { log: [], capped: false, bubbleText: null };
                     agent._questErrorState[floorNum].bubbleText = _recBubbleText;
                     agent._deferredUserEl = null;
                     agent._deferredAiDiv = null;
-                    if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent);
+                    // ★ Path B: 不在此封顶 — onToken 只揭示，onDone 才 cap 原楼层
                     if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent);
                     if (typeof _startAllTxtStream === 'function') _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, '', '');
                     if ($sendBtn) $sendBtn.disabled = false;
@@ -481,21 +500,37 @@ async function _executeSend(intent) {
             onDone: async function (content, timing) {
                 if (agent._deferRenderUntilHouse1) {
                     agent._deferRenderUntilHouse1 = false;
-                    // ★ B2: 恢复成功，创建「继续」用户气泡（不显示完整恢复诊断文本）
+                    // ★ Path B: 揭示之前隐藏的楼层（仅在 house 1 到达时展示）
+                    if (aiDiv && aiDiv.style.display === 'none') {
+                        aiDiv.style.display = '';
+                        if (sendType === 'recovery' && agent._aiStartTime && agent._aiTierLabel) {
+                            var _tCard2 = cardPool._cards[qid];
+                            if (_tCard2 && aiDiv && aiDiv.parentNode) {
+                                var _prev2 = aiDiv.previousElementSibling;
+                                if (!_prev2 || !_prev2.classList.contains('msg-tier-indicator')) {
+                                    var tierEl2 = document.createElement('div');
+                                    tierEl2.className = 'msg-tier-indicator';
+                                    tierEl2.textContent = agent._aiTierLabel + ' start in ' + agent._aiStartTime;
+                                    aiDiv.parentNode.insertBefore(tierEl2, aiDiv);
+                                }
+                            }
+                        }
+                    }
+                    // ★ B2: 恢复成功，创建「继续」用户气泡
                     var _recBubbleText = agent._deferredUserText || '继续';
                     agent._deferredUserText = null;
                     var _recBubble = addMessageEl('user', _recBubbleText);
                     if (_recBubble) {
                         _recBubble._floor = agent._currentFloorNum;
-                        // ★ 插入到新 aiDiv 之前（红字框 → 粉色气泡 → 新楼层，非 红字框 → 新楼层 → 粉色气泡）
                         if (aiDiv && aiDiv.parentNode) aiDiv.parentNode.insertBefore(_recBubble, aiDiv);
                     }
-                    // ★ V14: 持久化粉泡到 _questErrorState（切面板/重启后 _renderAllErrorBoxes 重建）
+                    // ★ V14: 持久化粉泡
                     if (!agent._questErrorState) agent._questErrorState = {};
                     if (!agent._questErrorState[floorNum]) agent._questErrorState[floorNum] = { log: [], capped: false, bubbleText: null };
                     agent._questErrorState[floorNum].bubbleText = _recBubbleText;
                     agent._deferredUserEl = null;
                     agent._deferredAiDiv = null;
+                    // ★ Path B: 全量内容已收到 → 封顶原楼层红框
                     if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent);
                     if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent);
                     if (typeof _startAllTxtStream === 'function') _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, '', '');

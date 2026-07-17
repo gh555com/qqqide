@@ -45,7 +45,7 @@ import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
-import { startKopeA, stopKopeA, isKopeARunning, getKopeAPid, cleanupKopeA } from './kope-a';
+import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses } from './gaea-process';
 import { startWqPing, stopWqPing } from './wq-ping';
 
 // ── 服务 ──
@@ -242,8 +242,8 @@ function registerAllIpc(): void {
     registerSmartSearchIpc(indexService);
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
     registerQzSpawnIpc(qzSpawn);
+    registerGaeaProcessIpc();
     registerAuthPersistIpc();
-    registerKopeAIpc();
 }
 
 // ── Auth 持久化 IPCPC — safeStorage 加密存盘，重启自动恢复（2026-06-29） ──
@@ -276,35 +276,30 @@ function registerAuthPersistIpc(): void {
     });
 }
 
-// ── kope-a IPC — 剪贴板监控工具（rank1 gaea 扩展）（2026-07-05）──
-function registerKopeAIpc(): void {
-    const KOPE_A_SCRIPT = 'E:\\s\\wol\\py\\kope\\q3.py';
-    const AUTO_START_NS = 'qqqide';
-    const AUTO_START_KEY = 'kope-a.autoStart';
-
-    ipcMain.handle('qqqide:kope-a:start', async (_e, scriptPath: string) => {
-        const sp = scriptPath || KOPE_A_SCRIPT;
-        return startKopeA(portable.root, sp);
+// ── Gaea Process IPC — 通用 gaea process-type goods 进程管理 ──
+function registerGaeaProcessIpc(): void {
+    ipcMain.handle('qqqide:gaea-process:start', async (_e, goodsId: string, scriptPath: string, runtime?: string) => {
+        return startGaeaProcess(portable.root, goodsId, scriptPath, runtime || 'python');
     });
 
-    ipcMain.handle('qqqide:kope-a:stop', async () => {
-        return stopKopeA();
+    ipcMain.handle('qqqide:gaea-process:stop', async (_e, goodsId: string) => {
+        return stopGaeaProcess(goodsId);
     });
 
-    ipcMain.handle('qqqide:kope-a:status', async () => {
-        return { running: isKopeARunning(), pid: getKopeAPid() };
+    ipcMain.handle('qqqide:gaea-process:status', async (_e, goodsId: string) => {
+        return { running: isGaeaProcessRunning(goodsId), pid: getGaeaProcessPid(goodsId) };
     });
 
-    ipcMain.handle('qqqide:kope-a:get-auto-start', async () => {
+    ipcMain.handle('qqqide:gaea-process:get-auto-start', async (_e, goodsId: string) => {
         try {
-            const val = await stateStore.get(AUTO_START_NS, AUTO_START_KEY);
+            const val = await stateStore.get('qqqide', goodsId + '.autoStart');
             return !!val;
         } catch (e) { return false; }
     });
 
-    ipcMain.handle('qqqide:kope-a:set-auto-start', async (_e, v: boolean) => {
+    ipcMain.handle('qqqide:gaea-process:set-auto-start', async (_e, goodsId: string, v: boolean) => {
         try {
-            await stateStore.setNow(AUTO_START_NS, AUTO_START_KEY, v);
+            await stateStore.setNow('qqqide', goodsId + '.autoStart', v);
             return true;
         } catch (e) { return false; }
     });
@@ -338,18 +333,25 @@ app.whenReady().then(async () => {
     // ★ Python broker: 仅当已安装时启动（未安装则下次启动自动下载后再启）
     startPyBroker(portable.root);
 
-    // ★ kope-a auto-start: 检查全局设置，若开启则自动启动
+    // ★ Gaea process auto-start: 遍历所有注册的 process-type goods
     (async () => {
         try {
-            const autoStart = await stateStore.get('qqqide', 'kope-a.autoStart');
-            if (autoStart) {
-                const KOPE_A_SCRIPT = 'E:\\s\\wol\\py\\kope\\q3.py';
-                const result = startKopeA(portable.root, KOPE_A_SCRIPT);
-                if (result.ok) {
-                    console.log('[kope-a] auto-started pid=' + result.pid);
-                } else {
-                    console.log('[kope-a] auto-start failed:', result.error);
-                }
+            const processGoods = [
+                { id: 'kope-a', script: 'goods/kope-a/q3.py', runtime: 'python' },
+                { id: 'window-there', script: 'goods/window-there/q3.py', runtime: 'python' },
+            ];
+            for (const g of processGoods) {
+                try {
+                    const autoStart = await stateStore.get('qqqide', g.id + '.autoStart');
+                    if (autoStart) {
+                        const result = startGaeaProcess(portable.root, g.id, g.script, g.runtime);
+                        if (result.ok) {
+                            console.log('[' + g.id + '] auto-started pid=' + result.pid);
+                        } else {
+                            console.log('[' + g.id + '] auto-start failed:', result.error);
+                        }
+                    }
+                } catch (e) { /* skip this goods */ }
             }
         } catch (e) { /* ignore */ }
     })();
@@ -373,7 +375,7 @@ app.whenReady().then(async () => {
         } catch { /* ignore */ }
         try { engineHost.stop(); } catch { /* ignore */ }
         try { audioEngine.stop(); } catch { /* ignore */ }
-        try { cleanupKopeA(); } catch { /* ignore */ }
+        try { cleanupAllGaeaProcesses(); } catch { /* ignore */ }
         try { stopWqPing(); } catch { /* ignore */ }
         mainWindow = null;
     });

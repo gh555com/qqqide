@@ -201,10 +201,10 @@ export function registerExitHandlers(
             stopPyBroker();
         } catch { /* ignore */ }
 
-        // ①b stop kope-a
+        // ①b cleanup gaea processes
         try {
-            const { cleanupKopeA } = require('./kope-a');
-            cleanupKopeA();
+            const { cleanupAllGaeaProcesses } = require('./gaea-process');
+            cleanupAllGaeaProcesses();
         } catch { /* ignore */ }
 
         // ② stop engine

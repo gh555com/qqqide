@@ -355,7 +355,7 @@
         var addedNodes = mutations[i].addedNodes;
         for (var j = 0; j < addedNodes.length; j++) {
           var node = addedNodes[j];
-          if (node.nodeType === 1 && node.classList && node.classList.contains('monaco-menu-container')) {
+          if (node.nodeType === 1 && node.classList && node.classList.contains('context-view')) {
             _clampContextMenu(node);
           }
         }

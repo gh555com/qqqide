@@ -394,7 +394,14 @@ function _estimateTokensFull() {
     var _apiCompletion = _ag._accumulatedCompletionTokens || 0;
     var _apiVerNow = _apiPrompt + "|" + _apiCompletion;
     var _ctxHashNow = ctx ? ((ctx.biscuitLines ? ctx.biscuitLines.length : 0) + "|0") : "";
-    if (typeof _estCache !== 'undefined' && _estCache && _estCache.convLen === conv.length && _estCache.ctxHash === _ctxHashNow && _estCache.apiVer === _apiVerNow && _estCache.msg0Hash === _msg0HashNow && _estCache.val > 0) {
+    // ★ 快速 biscuit 内容指纹（首尾各 40 字符），用于检测阀值压缩等原地修改
+    var _biscuitHashNow = '';
+    for (var _bi = 0; _bi < conv.length; _bi++) {
+        if (conv[_bi]._biscuit && typeof conv[_bi].content === 'string') {
+            var _bc = conv[_bi].content; _biscuitHashNow = _bc.slice(0,40) + '|' + _bc.slice(-40); break;
+        }
+    }
+    if (typeof _estCache !== 'undefined' && _estCache && _estCache.convLen === conv.length && _estCache.ctxHash === _ctxHashNow && _estCache.apiVer === _apiVerNow && _estCache.msg0Hash === _msg0HashNow && _estCache.biscuitHash === _biscuitHashNow && _estCache.val > 0) {
         return _estCache.val;
     }
 
@@ -426,6 +433,7 @@ function _estimateTokensFull() {
     // ── 3. V12 压缩上下文（biscuit + DE，已在 conversation 中）──
     var biscuitChars = 0, biscuitFloorCount = (ctx && ctx.biscuitLines) ? ctx.biscuitLines.length : 0;
     var deChars = 0;  // V13: DE 概念消除
+    var biscuitText = '';  // ★ 用于子统计解析（绝对包装盒/Q/A/温柔盒）
 
     // ── 4. conversation 遍历（non-persistent 消息）──
     var userCount = 0, userChars = 0;
@@ -438,7 +446,7 @@ function _estimateTokensFull() {
         var m = conv[i];
         if (!m || m._persistent) continue;
         var cn = typeof m.content === "string" ? m.content.length : 0;
-        if (m._biscuit) { biscuitChars += cn; }
+        if (m._biscuit) { biscuitChars += cn; biscuitText = m.content || ''; }
         // ★ V13: _deBlock 已消除，DE 融入 biscuit
         else if (m.role === "user") { userCount++; userChars += cn; }
         else if (m.role === "assistant") {
@@ -467,6 +475,64 @@ function _estimateTokensFull() {
     if (biscuitChars > 0) jsonOverheadChars += 31;
     if (deChars > 0) jsonOverheadChars += 31;
     var jsonOverheadTok = _tk(jsonOverheadChars);
+
+    // ── 5b. 压缩饼干子统计（绝对包装盒/Q/A/温柔盒）──
+    var absToolCounts = {}, absToolSizes = {};  // {toolname: count, chars}
+    var qBiscuitCount = 0, qBiscuitChars = 0;
+    var aBiscuitCount = 0, aBiscuitChars = 0;
+    var gentleBiscuitCount = 0, gentleBiscuitChars = 0;
+    var ABS_TOOL_NAMES = ['run_command','generate_image','remove_background','analyze_image','get_vision_context'];
+    if (biscuitText) {
+        // 按楼层分割
+        var floorParts = biscuitText.split(/\n(?=== F\d+ )/);
+        for (var fi = 0; fi < floorParts.length; fi++) {
+            var fp = floorParts[fi];
+            // Q 段: 'Q: ' 到下一个 '\n[A →' 或 '\n╔K' 或 '\nA: ' 或 floor 尾
+            var qIdx = fp.indexOf('\nQ: ');
+            if (qIdx >= 0) {
+                qIdx++; var qStart = qIdx;
+                var afterQ = fp.slice(qStart + 3);
+                var qEndMatch = afterQ.search(/\n(?:\[A \u2192|\u2554K|A: |$)/);
+                var qEnd = qEndMatch >= 0 ? qStart + 3 + qEndMatch : fp.length;
+                qBiscuitCount++; qBiscuitChars += qEnd - qStart;
+            }
+            // A 段: 最后一个 '\nA: ' 到 floor 尾
+            var aIdx = fp.lastIndexOf('\nA: ');
+            if (aIdx >= 0) { aBiscuitCount++; aBiscuitChars += fp.length - aIdx; }
+            // 工具行: [A → xxx]
+            var toolRe = /\[A \u2192 (\w+(?:\+\w+)*)\]([^\n]*)/g;
+            var tm;
+            while ((tm = toolRe.exec(fp)) !== null) {
+                var toolName = tm[1];
+                var afterPos = tm.index + tm[0].length;
+                var after80 = fp.slice(afterPos, afterPos + 80);
+                var isAbs = after80.indexOf('\u2554K') >= 0;
+                if (isAbs) {
+                    var boxStart = fp.indexOf('\u2554K', afterPos);
+                    if (boxStart >= 0) {
+                        var boxEnd = fp.indexOf('\n\u255a', boxStart);
+                        if (boxEnd >= 0) {
+                            var bodyStart = boxStart + 2;
+                            if (fp.charAt(bodyStart) === '\n') bodyStart++;
+                            var bodyLen = boxEnd - bodyStart;
+                            if (!absToolCounts[toolName]) { absToolCounts[toolName] = 0; absToolSizes[toolName] = 0; }
+                            absToolCounts[toolName]++; absToolSizes[toolName] += bodyLen;
+                        }
+                    }
+                } else {
+                    gentleBiscuitCount++;
+                    var lineEnd = fp.indexOf('\n', afterPos);
+                    if (lineEnd === -1) lineEnd = fp.length;
+                    gentleBiscuitChars += lineEnd - tm.index;
+                }
+            }
+        }
+    }
+    var absToolTok = {}; var absToolTotalTok = 0;
+    for (var tk in absToolCounts) { absToolTok[tk] = _tk(absToolSizes[tk]); absToolTotalTok += absToolTok[tk]; }
+    var qBiscuitTok = _tk(qBiscuitChars);
+    var aBiscuitTok = _tk(aBiscuitChars);
+    var gentleBiscuitTok = _tk(gentleBiscuitChars);
 
     // ═══ 第二部分：body 顶层字段 ═══
 
@@ -506,7 +572,20 @@ function _estimateTokensFull() {
         if (projectRulesChars > 0) _r("  Project Rules", _tk(projectRulesChars), 1, "#b58900");
         if (reminderChars > 0) _r("  Reminder", _tk(reminderChars), 1, "#cb4b16");
     }
-    if (biscuitChars > 0) _r("压缩饼干 × " + biscuitFloorCount + " floors", biscuitTok, 0, "#859900");
+    if (biscuitChars > 0) {
+        _r("压缩饼干 × " + biscuitFloorCount + " floors", biscuitTok, 0, "#859900");
+        // ★ 绝对包装盒子统计（仅统计有数据的工具）
+        for (var ati = 0; ati < ABS_TOOL_NAMES.length; ati++) {
+            var atn = ABS_TOOL_NAMES[ati];
+            if (absToolCounts[atn] && absToolCounts[atn] > 0) {
+                _r("  \u2554K " + atn + " × " + absToolCounts[atn], absToolTok[atn], 1, "#cb4b16");
+            }
+        }
+        // ★ Q / A / 温柔盒子统计
+        if (qBiscuitCount > 0) _r("  Q × " + qBiscuitCount, qBiscuitTok, 1, "#268bd2");
+        if (aBiscuitCount > 0) _r("  A × " + aBiscuitCount, aBiscuitTok, 1, "#2aa198");
+        if (gentleBiscuitCount > 0) _r("  Gentle × " + gentleBiscuitCount, gentleBiscuitTok, 1, "#b58900");
+    }
     if (deChars > 0) _r("DE 格子 × " + deEntryCount + " entries", deTok, 0, "#b58900");
     if (userCount > 0) _r("User × " + userCount, userTok, 0, "#268bd2");
     if (aiCount > 0) _r("AI text × " + aiCount, aiTextTok, 0, "#2aa198");
@@ -524,7 +603,7 @@ function _estimateTokensFull() {
     _r("Free", _free, 0, "#859900");
 
     _ctxBreakdownData = { rows: rows, displayTotal: displayTotal, apiPrompt: _apiPrompt, localTotal: localTotal, accCompletion: _apiCompletion };
-    _estCache = { val: displayTotal, convLen: conv.length, ctxHash: _ctxHashNow, apiVer: _apiVerNow, msg0Hash: _msg0HashNow };
+    _estCache = { val: displayTotal, convLen: conv.length, ctxHash: _ctxHashNow, apiVer: _apiVerNow, msg0Hash: _msg0HashNow, biscuitHash: _biscuitHashNow };
     if (localTotal === 0) console.warn("[ctx-est] total=0 convLen=" + conv.length + " guard=" + guardChars + " msg0=" + msg0TotalChars + " biscuit=" + biscuitChars + " de=" + deChars + " user=" + userChars + " aiTxt=" + aiContentChars + " aiTC=" + aiToolCallsChars + " tool=" + toolChars + " sys=" + sysChars + " err=" + errChars + " jOver=" + jsonOverheadChars + " tools=" + toolsChars);
     return displayTotal;
 }
@@ -712,6 +791,9 @@ document.getElementById('ctx-snap').onclick = async function () {
             var _latestN = _allFloors[_allFloors.length - 1].floorNum;
             var _fData = _allFloors[_allFloors.length - 1].data;
             var _fQuestion = (_fData && _fData.question) ? _fData.question : '';
+            // ★ 剥离 [File:] 注入块，确保快照目录名与建楼时一致（防双目录 Bug）
+            var _fqStripIdx = _fQuestion.search(/\n\n\[File: /);
+            if (_fqStripIdx >= 0) _fQuestion = _fQuestion.slice(0, _fqStripIdx);
             var _fDirName = _makeName('f', _latestN, _fQuestion);
             _targetDir = _root + '/qqq/quests/' + _qDirName + '/' + _fDirName + '/';
         } else {
@@ -759,9 +841,20 @@ if (_ctxValveBtn) {
     _ctxValveBtn.onclick = function () {
         document.getElementById('ctx-panel').style.display = 'none';
         var _ag = _activeAgent;
-        if (!_ag) return;
+        if (!_ag) {
+            var _iFn0 = typeof _i === 'function' ? _i : function (k, f) { return f; };
+            if (window.parent && window.parent.qqqideQoast) {
+                window.parent.qqqideQoast.show('⚠️ ' + _iFn0('ai.ctx.noAgent', 'Agent 不可用，请先打开对应 quest 楼层'), { type: 'error', duration: 4000 });
+            }
+            return;
+        }
         if (typeof _ag._tryAutoValveCompress === 'function') {
             var _did = _ag._tryAutoValveCompress(0);
+            // ★ 立即持久化 ctx.json，防止剥离结果因未保存而丢失
+            if (_did && typeof _writeCtxJson === 'function') {
+                // ★ V14 fix: _writeCtxJson 返回 Promise，try/catch 抓不到 rejection → 用 .catch() 处理
+                _writeCtxJson(questActiveId, _ag._ctx).catch(function(_) {});
+            }
             if (typeof updateCtxBtn === 'function') updateCtxBtn();
             var _iFn = typeof _i === 'function' ? _i : function (k, f) { return f; };
             if (window.parent && window.parent.qqqideQoast) {

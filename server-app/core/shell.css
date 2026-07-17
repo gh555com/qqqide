@@ -849,76 +849,76 @@ body {
 
 /* ============================================================================
    Monaco 右键菜单 — Solarized 配色 + 边缘躲避
+   Monaco 0.34.1 用 .context-view 容器（非新版 .monaco-menu-container）
    ============================================================================ */
-/* 外层容器 — 去 Monaco 默认白底阴影 */
-.monaco-menu-container {
+/* 外层容器 — 去默认白底，Solarized 阴影 */
+.context-view {
   box-shadow: 0 4px 16px rgba(0,0,0,0.22) !important;
+  border-radius: 6px !important;
 }
-[data-theme="dark"] .monaco-menu-container {
+[data-theme="dark"] .context-view {
   box-shadow: 0 4px 16px rgba(0,0,0,0.55) !important;
 }
 
 /* 菜单本体 — Solarized 背景 */
-.monaco-menu-container .monaco-menu,
-.monaco-menu {
+.context-view .monaco-menu {
   background: var(--card-bg) !important;
   border: 1px solid var(--border-color) !important;
   border-radius: 6px !important;
 }
 
-/* action bar — 背景透明，继承菜单 */
-.monaco-menu .monaco-action-bar {
+/* action bar — 背景透明 */
+.context-view .monaco-menu .monaco-action-bar {
   background: transparent !important;
-  border: none !important;
 }
 
 /* 菜单项 */
-.monaco-menu .action-item {
+.context-view .monaco-menu .action-item {
   color: var(--text-primary) !important;
   background: transparent !important;
 }
 
-.monaco-menu .action-label {
+.context-view .monaco-menu .action-label {
   color: var(--text-primary) !important;
 }
 
 /* 分隔线 */
-.monaco-menu .action-item.menu-separator {
+.context-view .monaco-menu .action-item.menu-separator {
   border-bottom-color: var(--border-color) !important;
 }
 
 /* 快捷键提示 */
-.monaco-menu .keybinding {
+.context-view .monaco-menu .keybinding {
   color: var(--text-secondary) !important;
 }
 
 /* 禁用项 */
-.monaco-menu .action-item.disabled .action-label {
+.context-view .monaco-menu .action-item.disabled .action-label {
   color: var(--base1) !important;
   opacity: 0.5;
 }
 
-/* ★ 悬浮/聚焦 — Solarized 金色替代默认蓝色 */
-.monaco-menu .action-item.focused {
+/* ★ 悬浮/聚焦 — Solarized 金色替代 Monaco 默认蓝色 */
+.context-view .monaco-menu .action-item.focused {
   background: #ffd301 !important;
   color: #000 !important;
 }
-.monaco-menu .action-item.focused .action-label {
+.context-view .monaco-menu .action-item.focused .action-label {
   color: #000 !important;
 }
-.monaco-menu .action-item.focused .keybinding {
+.context-view .monaco-menu .action-item.focused .keybinding {
   color: #555 !important;
 }
 
 /* 暗色主题 — 深金 */
-[data-theme="dark"] .monaco-menu .action-item.focused {
+[data-theme="dark"] .context-view .monaco-menu .action-item.focused {
   background: #b58900 !important;
   color: #002b36 !important;
 }
-[data-theme="dark"] .monaco-menu .action-item.focused .action-label {
+[data-theme="dark"] .context-view .monaco-menu .action-item.focused .action-label {
   color: #002b36 !important;
 }
-[data-theme="dark"] .monaco-menu .action-item.focused .keybinding {
+[data-theme="dark"] .context-view .monaco-menu .action-item.focused .keybinding {
   color: #073642 !important;
 }
 

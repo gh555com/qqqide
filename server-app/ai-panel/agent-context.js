@@ -567,9 +567,9 @@
                 _floorGroups[_ffn].push(_fm2);
             }
         }
-        // 当前楼层消息（必定压缩）
-        floorMsgs = _floorGroups[floorNum] || [];
-        // 更早的楼层：仅压缩已全部恢复或无错误的楼层
+        // ★ V14 fix: 老楼层在前、当前楼层在后 → biscuitText 天生升序
+        floorMsgs = [];
+        // 更早的楼层：先收集（升序）
         var _olderFloorNums = Object.keys(_floorGroups).map(Number).filter(function(fn) { return fn < floorNum; }).sort(function(a,b){return a-b;});
         for (var _ofi = 0; _ofi < _olderFloorNums.length; _ofi++) {
             var _ofn = _olderFloorNums[_ofi];
@@ -582,11 +582,15 @@
                 }
             }
             if (!_hasActiveErrors) {
-                // 合并到待压缩消息中
                 for (var _omi2 = 0; _omi2 < _ofMsgs.length; _omi2++) {
                     floorMsgs.push(_ofMsgs[_omi2]);
                 }
             }
+        }
+        // 当前楼层消息（必定压缩）— 放在最后
+        var _curMsgs = _floorGroups[floorNum] || [];
+        for (var _cmi = 0; _cmi < _curMsgs.length; _cmi++) {
+            floorMsgs.push(_curMsgs[_cmi]);
         }
         var nowTs = Math.floor(Date.now() / 1000);
 
@@ -694,11 +698,23 @@
             // ── 9. ★ 找已有 biscuit 消息 → 原地追加 content ──
             var biscuitFound = _findDynamicMsg(self.conversation, persistentCount, '_biscuit');
             if (biscuitFound) {
-                // ★ 原地追加：消息对象不变 → 前缀缓存命中
-                biscuitFound.msg.content = biscuitFound.msg.content + '\n\n' + biscuitText;
-                // ★ 重排序：按楼层号升序重排整个 biscuit 内容
-                var _allSorted = _parseBiscuitFromContent(biscuitFound.msg.content);
-                biscuitFound.msg.content = _allSorted.map(function(l) { return l.text; }).join('\n\n');
+                // ★ V14 fix: 判断新楼层是否全在已有之后 → 纯追加 vs 合并重排
+                var _newFirstFloor = 0;
+                var _nfm = biscuitText.match(/^=== F(\d+)/m);
+                if (_nfm) _newFirstFloor = parseInt(_nfm[1], 10);
+                var _existLastFloor = 0;
+                var _existLines = _parseBiscuitFromContent(biscuitFound.msg.content);
+                for (var _eli = 0; _eli < _existLines.length; _eli++) {
+                    if (_existLines[_eli].n > _existLastFloor) _existLastFloor = _existLines[_eli].n;
+                }
+                if (_newFirstFloor > _existLastFloor) {
+                    // 常见路径：纯追加，零缓存破坏 → 前缀缓存 ~90% 命中
+                    biscuitFound.msg.content = biscuitFound.msg.content + '\n\n' + biscuitText;
+                } else {
+                    // 罕见路径：旧楼层恢复需插入中间 → 合并重排（缓存从插入点断，但罕见）
+                    var _allSorted = _parseBiscuitFromContent(biscuitFound.msg.content + '\n\n' + biscuitText);
+                    biscuitFound.msg.content = _allSorted.map(function(l) { return l.text; }).join('\n\n');
+                }
             } else {
                 // ★ 首次创建 biscuit：优先用 ctx.biscuitLines（重启后 ctx 已从 ctx.json 恢复全量），
                 //    仅当 ctx 为空时才用 biscuitText（当前楼层的单层饼干）
@@ -790,9 +806,8 @@
     // ════════════════════════════════════════════════
     AgentLoop.prototype._stripAbsoluteBoxes = function (biscuitContent) {
         if (!biscuitContent || typeof biscuitContent !== 'string') return biscuitContent;
-        // 剥离 ╔K...╚ 块（体部），保留头行
-        // 非贪婪匹配 ╔K 到行首 ╚——永不跨越到下一盒子
-        return biscuitContent.replace(/\n╔K\n[\s\S]*?\n╚\n/g, '\n');
+        // ★ V14 fix: (?=\n|$) 前瞻不吞 \n，防相邻 ╚\n╔K 共享 \n 被吃掉导致漏网 (6/63=9.5%)
+        return biscuitContent.replace(/\n╔K\n[\s\S]*?\n╚(?=\n|$)/g, '\n');
     };
 
     // ════════════════════════════════════════════════
@@ -810,6 +825,9 @@
                 var after = m.content.length;
                 if (after < before) {
                     self._ctx.biscuitLines = _parseBiscuitFromContent(m.content);
+                    // ★ V14 fix: 同步更新 lastCompressedFloor + narrative，防止 ctx.json 持久化脏数据
+                    self._ctx.lastCompressedFloor = self._ctx.totalFloors || self._ctx.biscuitLines.length || 0;
+                    self._ctx.narrative = 'biscuit:' + self._ctx.biscuitLines.length;
                     self.log('◆ Valve: stripped ' + (before - after) + ' chars from ╔K...╚ boxes, biscuit ' + self._ctx.biscuitLines.length + ' floors');
                     return true;
                 }

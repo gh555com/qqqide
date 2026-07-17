@@ -1,0 +1,142 @@
+{
+    "Chrome_WidgetWin_1": {
+        "3840x2160": [
+            {
+                "key": "20251029100413",
+                "title": "window there - FONT: LXGW WenKai Mono GB Screen - THEME: Solarized Light [Administrator]",
+                "class_name": "Chrome_WidgetWin_1",
+                "x": 592,
+                "y": 667,
+                "width": 2109,
+                "height": 1441,
+                "desktop_width": 3840,
+                "desktop_height": 2160
+            },
+            {
+                "key": "20251029100441",
+                "title": "window there - FONT: LXGW WenKai Mono GB Screen - THEME: Solarized Light [Administrator]",
+                "class_name": "Chrome_WidgetWin_1",
+                "x": 592,
+                "y": 667,
+                "width": 2109,
+                "height": 1441,
+                "desktop_width": 3840,
+                "desktop_height": 2160
+            },
+            {
+                "key": "20251029130305",
+                "title": "window there - FONT: LXGW WenKai Mono GB Screen - THEME: Solarized Light [Administrator]",
+                "class_name": "Chrome_WidgetWin_1",
+                "x": 592,
+                "y": 667,
+                "width": 2109,
+                "height": 1441,
+                "desktop_width": 3840,
+                "desktop_height": 2160
+            },
+            {
+                "key": "20251029130311",
+                "title": "window there - FONT: LXGW WenKai Mono GB Screen - THEME: Solarized Light [Administrator]",
+                "class_name": "Chrome_WidgetWin_1",
+                "x": 592,
+                "y": 667,
+                "width": 2109,
+                "height": 1441,
+                "desktop_width": 3840,
+                "desktop_height": 2160
+            },
+            {
+                "key": "20251029130311",
+                "title": "window there - FONT: LXGW WenKai Mono GB Screen - THEME: Solarized Light [Administrator]",
+                "class_name": "Chrome_WidgetWin_1",
+                "x": 592,
+                "y": 667,
+                "width": 2109,
+                "height": 1441,
+                "desktop_width": 3840,
+                "desktop_height": 2160
+            },
+            {
+                "key": "20251029130312",
+                "title": "window there - FONT: LXGW WenKai Mono GB Screen - THEME: Solarized Light [Administrator]",
+                "class_name": "Chrome_WidgetWin_1",
+                "x": 592,
+                "y": 667,
+                "width": 2109,
+                "height": 1441,
+                "desktop_width": 3840,
+                "desktop_height": 2160
+            }
+        ]
+    },
+    "Progman": {
+        "3840x2160": [
+            {
+                "key": "20251029110438",
+                "title": "Program Manager",
+                "class_name": "Progman",
+                "x": 0,
+                "y": 0,
+                "width": 3840,
+                "height": 2160,
+                "desktop_width": 3840,
+                "desktop_height": 2160
+            },
+            {
+                "key": "20251029110443",
+                "title": "Program Manager",
+                "class_name": "Progman",
+                "x": 0,
+                "y": 0,
+                "width": 3840,
+                "height": 2160,
+                "desktop_width": 3840,
+                "desktop_height": 2160
+            },
+            {
+                "key": "20251029130124",
+                "title": "Program Manager",
+                "class_name": "Progman",
+                "x": 0,
+                "y": 0,
+                "width": 3840,
+                "height": 2160,
+                "desktop_width": 3840,
+                "desktop_height": 2160
+            },
+            {
+                "key": "20251029130131",
+                "title": "Program Manager",
+                "class_name": "Progman",
+                "x": 0,
+                "y": 0,
+                "width": 3840,
+                "height": 2160,
+                "desktop_width": 3840,
+                "desktop_height": 2160
+            },
+            {
+                "key": "20251029130136",
+                "title": "Program Manager",
+                "class_name": "Progman",
+                "x": 0,
+                "y": 0,
+                "width": 3840,
+                "height": 2160,
+                "desktop_width": 3840,
+                "desktop_height": 2160
+            },
+            {
+                "key": "20251029130141",
+                "title": "Program Manager",
+                "class_name": "Progman",
+                "x": 0,
+                "y": 0,
+                "width": 3840,
+                "height": 2160,
+                "desktop_width": 3840,
+                "desktop_height": 2160
+            }
+        ]
+    }
+}

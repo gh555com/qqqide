@@ -585,7 +585,7 @@ async function initQuests() {
         }
         // ★ V14: 重建粉色「继续」气泡（持久化到 _questErrorState 中，card 重建后 restore）
         if (_activeAgent && _activeAgent._questErrorState) {
-            var _bubbleFloors = Object.keys(_activeAgent._questErrorState).map(Number).sort(function(a,b){return a-b;});
+            var _bubbleFloors = Object.keys(_activeAgent._questErrorState).map(Number).sort(function (a, b) { return a - b; });
             for (var _bfi = 0; _bfi < _bubbleFloors.length; _bfi++) {
                 var _bfn = _bubbleFloors[_bfi];
                 var _bst = _activeAgent._questErrorState[_bfn];

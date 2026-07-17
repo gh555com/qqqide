@@ -353,12 +353,10 @@ function setStreaming(val) {
     // ★ 红框 ACTIVE 态：按钮保持 Stop（红色可点），用户可选「继续任务」或 Stop
     if (_ag && _ag._stopState === 'fatal') {
         var _hasActive = false;
-        if (_ag._questErrorDivByFloor) {
-            for (var _fn in _ag._questErrorDivByFloor) {
-                var _bx = _ag._questErrorDivByFloor[_fn];
-                if (_bx && _bx.isConnected && !_bx._capped && _bx._continueLink && _bx._continueLink.isConnected) {
-                    _hasActive = true; break;
-                }
+        // ★ V14: 从 _questErrorState 判断是否有未封顶红框
+        if (_ag._questErrorState) {
+            for (var _fn in _ag._questErrorState) {
+                if (!_ag._questErrorState[_fn].capped) { _hasActive = true; break; }
             }
         }
         if (_hasActive) {
