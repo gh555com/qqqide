@@ -4,16 +4,23 @@
 归一完成: 2026-07-07，qqqide→qqqide 全链路消灭，零旧兼容
 
 
-三层模型
+四层模型（2026-07-17 新增 C 启动器层）
 --------
-┌──────────────────────────────────────┐
+┌──────────────────┌──────────────────────────────────────┐
+│ C 启动器 (launcher/qqqide.exe)        │
+│ Win32 原生 · ~38KB · 零外部依赖       │
+│ 职责: 100% 托管更新 + 启动 joker.exe  │
+│ 流程: latest.txt → 下载 r → 删旧目录  │
+│       → 解压覆盖 → 100% 精确一致      │
+└──────────┬───────────────────────────┘
+           │ CreateProcess
+┌──────────▼───────────────────────────┐
 │ 壳 (shell/)                          │
-│ Electron 22.3.27 · Win7+ · frame:false│
+│ Electron 22.3.27 · joker.exe         │
 │ 入口: bootstrap.js → main.js          │
 │ 职责: 窗口 + IPC + bridge + 热更新检查 │
-│ 源码: main.ts + 12 子模块 (≤290行/个，含 ipc-git-diff)  │
-│ 产物: shell-out/ (esbuild ~35ms)      │
-│ 热更: bootstrap 启动时原子替换 shell-out/ │
+│ 源码: main.ts + 12 子模块             │
+│ 产物: shell-out/ (esbuild ~35ms)      │p 启动时原子替换 shell-out/ │
 └──────────┬───────────────────────────┘
            │ spawn at boot (×2)
 ┌──────────▼───────────────────────────┐
@@ -21,21 +28,22 @@
 │ q_win_x64.exe — IO引擎(fs/SQLite/IPC) │
 │ ghrun.exe     — 进程管理(qz)（LSP守护已冻结）│
 │ 兜底: qz-spawn 两层 (ghrun→Node)      │
-│ 新增: Windows Job Object 内存硬限制    │
-└──────────┬───────────────────────────┘
-           │ bridge IPC (preload暴露)
-┌──────────▼───────────────────────────┐
-│ 载荷 (server-app/)                    │
-│ 纯前端: HTML+CSS+JS · Monaco 0.34.1   │
-│ 热更: Deploy→服务器→客户端自动拉取     │
-└──────────────────────────────────────┘
-
-
-双轨自动更新系统 — shell 冷更 + webapp 热更
+│ 新增: WindoC 启动器 非阻塞 100% 托管更新（2026-07-17 v2）
 ---------------------------------------------------------------------
-· 壳层冷更: bootstrap.js 启动前检查 staging/shell-out-next/ → 原子替换 shell-out/
-  触发: bootSequence→checkAndDownloadShellUpdate 自动下载到 Data/Cache/staging/
-· 载荷热更: bootSequence 完成后 20s → backgroundCheckWebappUpdate → 下载 server-app.tar.gz
+· 永不阻塞用户。先起程序先用着，后台下载，重启时应用。
+· 启动流程:
+  ① 应用暂存更新（若 r.next+.version-next 存在）→ 删旧 gh555.com/→解压→写 .version
+  ② 立即启动 joker.exe（不检查服务器，不等下载）
+  ③ 后台线程: WinHTTP GET latest.txt→比对→下载 r.next→写 .version-next
+  ④ 下次启动→①检测暂存→自动应用→100% 精确一致
+· 覆盖范围: 整个 gh555.com/（二进制/shell-out/engines/webapp/DLL）
+· 失败兜底: 网络不通→跳过用本地版。下载中断→下次重试。断网可用。
+
+壳层冷更 + 载荷热更（Electron 启动后）
+---------------------------------------------------------------------
+· 壳层冷更: bootstrap.js 检查 staging/shell-out-next/ → 原子替换
+· 载荷热更: bootSequence 20s 后 backgroundCheckWebappUpdate
+· 版本跟踪: shell-version / webapp-version 独立持久化热更: bootSequence 完成后 20s → backgroundCheckWebappUpdate → 下载 server-app.tar.gz
   → 解压到 Data/webapp-staging/ → 下次启动 ensureLocalWebapp 原子替换 Data/webapp/
 · 按钮更新: update-ui.js 手动触发 upgradeShell() / apply()（同一条管线）
 · 版本跟踪: shell-version / webapp-version 两文件独立持久化
@@ -236,26 +244,45 @@ LSP 已冻结 → 三级语法检查:
     L3 全仓（~200 ge）: AI 重大重构后跑 run_command
 
 
-目录骨架
+目录骨架（源码）
 --------
 qqq-shell-v2/
+├── launcher/          C 启动器（launcher.c → qqqide.exe, ~38KB）
 ├── shell/             壳层TS（main.ts + component-checker + wq-ping + 13 子模块）
 ├── server-app/        载荷层(热更)
-│   ├── core/          IDE 平台 (shell/theme/editor/qoast/state-sdk/gaea-host/tab-manager/...)
+│   ├── core/          IDE 平台
 │   ├── locales/       13 语言 (zh.json 唯一真理源)
-│   ├── goods/         goods (rage+navigator+search+git+...)
+│   ├── goods/         goods 自包含（.js注册 + .py脚本同目录，u管线热更）
 │   └── ai-panel/      AI面板（29 个 JS 模块化拆分）
-├── engines/           二进制组件(rank0:ripgrep+python / rank1:ffmpeg+yt-dlp+git) + manifest.json(服务器驱动)
-├── op/                运维脚本
+├── engines/           二进制组件(rank0:ripgrep+python+pyside2 / rank1:ffmpeg+yt-dlp+git)
+│   └── manifest.json  组件真理源(服务器驱动)
+├── shell-build/       打包脚本(pack.js)
 ├── do/拓扑/           架构文档
+
+绿色包解压目录（2026-07-17 终版）
+--------
+qqqide-win-x64/
+├── qqqide.exe         C 启动器（唯一入口，双击即启动）
+├── r                  7zCon.sfx + payload.7z（首次运行自解压，更新时从CDN下载新r）
+└── gh555.com/         ★ 100% 托管目录（C 启动器管理，零手动操作）
+    ├── joker.exe      Electron 22.3.27 二进制
+    ├── .version       本地版本号（C 启动器读写，与服务器 latest.txt 比对）
+    ├── *.dll           Electron 依赖
+    ├── resources/app/
+    │   ├── shell-out/ 壳层 JS
+    │   ├── engines/   运行时+组件（python/pyside2/ripgrep）
+    │   └── webapp/    载荷层（server-app 副本，首次离线可用）
+    └── Data/
+        └── webapp/goods/   goods 自包含脚本（u 管线热更，非 r 覆盖）
 
 构建与打包
 -----------------------------------
 · 开发: qide-shell.py 按 Q → esbuild build → dev-server :8090 + watch + electron
-· 编译: shell/*.ts → esbuild → shell-out/（~35ms）
-· 打包: npm run pack:win-x64 → dist-pack/qqq-shell-win-x64.zip
-· ★ gh555.com/ = npm run pack 中间产物，已在 .gitignore，AI 禁止编辑其下任何文件
-· 绿色包 = 最终 zip，pack.js 打包后自动 rm -rf unpacked 中间目录
+· 编译 launcher: gcc -mwindows -O2 -s launcher.c -lcomctl32 -lwinhttp → qqqide.exe
+· 编译 shell: shell/*.ts → esbuild → shell-out/（~35ms）
+· 打包: npm run pack:win-x64 → dist-pack/qqqide-win-x64.zip
+· ★ gh555.com/ = npm run pack 中间产物，已在 .gitignore
+· 绿色包 = 最终 zip（qqqide.exe + r），pack.js 打包后自动 rm -rf unpacked 中间目录
 
 零配置 + URL 路径归一 (2026-07-01)
 -----------------------------------

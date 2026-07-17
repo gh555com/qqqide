@@ -58,7 +58,7 @@ function _ensureErrorBoxDOM(agent, floorNum) {
 // ═══ V14: 统一数据驱动渲染 — 从 agent._questErrorState 重建全部红框 ═══
 function _renderAllErrorBoxes(agent) {
     if (!agent || !agent._questErrorState) return;
-    var _floors = Object.keys(agent._questErrorState).map(Number).sort(function(a,b){return a-b;});
+    var _floors = Object.keys(agent._questErrorState).map(Number).sort(function (a, b) { return a - b; });
     for (var _fi = 0; _fi < _floors.length; _fi++) {
         var _fn = _floors[_fi];
         var _st = agent._questErrorState[_fn];
@@ -90,9 +90,14 @@ function _renderAllErrorBoxes(agent) {
             continue;
         }
 
-        // ★ 封顶检测：下一楼层 DOM 已存在且非恢复中
+        // ★ V14: 封顶检测：下一楼层 DOM 已存在且可见且非恢复中
         var _card2 = cardPool && cardPool.getActive();
-        var _hasNextFloor = _card2 && _card2.floorDOM && !!_card2.floorDOM[_fn + 1];
+        var _hasNextFloor = false;
+        if (_card2 && _card2.floorDOM && _card2.floorDOM[_fn + 1]) {
+            var _nextAi = _card2.floorDOM[_fn + 1].aiEl;
+            // ★ Path B: recovery 隐藏楼层不算（display:none 表示还未揭示给用户）
+            if (_nextAi && _nextAi.style.display !== 'none' && _nextAi.offsetParent !== null) _hasNextFloor = true;
+        }
         if (_hasNextFloor && !agent._stateMeta.deferRenderUntilHouse1 && !agent._stateMeta.recoveryInProgress) {
             _st.capped = true;
             _box._capped = true;
@@ -182,8 +187,12 @@ function _renderQuestErrorBox(agent, aiDiv, floorNum) {
     }
 
     var _card2 = cardPool && cardPool.getActive();
-    var _hasNextFloor = _card2 && _card2.floorDOM && !!_card2.floorDOM[_floorNum + 1];
-    if (_hasNextFloor && !agent._stateMeta.deferRenderUntilHouse1 && !agent._stateMeta.recoveryInProgress) {
+    var _hasNextFloor2 = false;
+    if (_card2 && _card2.floorDOM && _card2.floorDOM[_floorNum + 1]) {
+        var _nextAi2 = _card2.floorDOM[_floorNum + 1].aiEl;
+        if (_nextAi2 && _nextAi2.style.display !== 'none' && _nextAi2.offsetParent !== null) _hasNextFloor2 = true;
+    }
+    if (_hasNextFloor2 && !agent._stateMeta.deferRenderUntilHouse1 && !agent._stateMeta.recoveryInProgress) {
         _st.capped = true;
         _box._capped = true;
         if (_box._continueLink && _box._continueLink.isConnected) _box._continueLink.remove();
@@ -271,9 +280,9 @@ function _startRecovery(questId, agent, linkEl) {
 
     // 1. ★ 记录原始 fatal 楼层号 + 预封顶所有更旧的红框
     agent._recoveryOriginFloor = agent._currentFloorNum;
-    if (agent._questErrorDivByFloor) {
-        for (var _fn in agent._questErrorDivByFloor) {
-            if (parseInt(_fn) < agent._recoveryOriginFloor && typeof _capRecoveryLink === 'function') {
+    if (agent._questErrorState) {
+        for (var _fn in agent._questErrorState) {
+            if (parseInt(_fn) < agent._recoveryOriginFloor && !agent._questErrorState[_fn].capped && typeof _capRecoveryLink === 'function') {
                 _capRecoveryLink(agent, parseInt(_fn));
             }
         }
@@ -383,8 +392,8 @@ function _finishRecovery(linkEl, agent, succeeded) {
                 delete agent._questErrorLogByFloor[_originFloor];
             }
         }
-        // ★ 成功：整行移除链接 DOM（不灰化不留字）
-        if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent);
+        // ★ V14 fix: 传 _originFloor 防 _recoveryOriginFloor 已清零导致误伤新楼层
+        if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent, _originFloor);
     } else {
         // ★ 失败：恢复链接为可点击（同一红框垒行后用户可重试）
         if (linkEl && linkEl.isConnected) {
@@ -405,10 +414,10 @@ function _finishRecovery(linkEl, agent, succeeded) {
 function _capRedBoxAndSeal() {
     var ag = _activeAgent;
     if (!ag || ag._stopState !== 'fatal') return;
-    if (ag._questErrorDivByFloor) {
-        for (var _fn in ag._questErrorDivByFloor) {
-            var _bx = ag._questErrorDivByFloor[_fn];
-            if (_bx && _bx.isConnected && !_bx._capped) {
+    // ★ V14: 从 _questErrorState 遍历未封顶楼层
+    if (ag._questErrorState) {
+        for (var _fn in ag._questErrorState) {
+            if (!ag._questErrorState[_fn].capped) {
                 if (typeof _capRecoveryLink === 'function') _capRecoveryLink(ag, parseInt(_fn));
             }
         }
@@ -605,35 +614,35 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
 // 子弹文件目录: {project}/qqq/bullet/  上限 20MB FIFO 轮转
 // 文件名: bullet_{本地时间戳}_{questId}_f{floorNum}.txt
 // 写入后自动 insertChipAtCursor → 走已有附件管线 → ContentGateway 截断 → 饼干自动剥离
-(function() {
+(function () {
     var _bulletBtn = document.getElementById('bullet-btn');
     if (!_bulletBtn) return;
 
     // ★ 子弹音效 — 预掷骰子，qa必播 → 1/3 qx(0.4~0.8s后) → 1/2 qs(qa结束后0.4~1s)
     function _bulletPlaySound() {
         var ASSET = '../assets/bullet/';
-        var rollQx = Math.random() < 1/3;
+        var rollQx = Math.random() < 1 / 3;
         var rollQs = Math.random() < 0.5;
         var qxDelay = rollQx ? (400 + Math.random() * 400) : 0;
-        var qsGap   = rollQs ? (400 + Math.random() * 600) : 0;
-        var qxFile  = '';
+        var qsGap = rollQs ? (400 + Math.random() * 600) : 0;
+        var qxFile = '';
         if (rollQx) {
-            var qxPool = ['ric_conc-1.wav','ric_conc-2.wav','ric_metal-1.wav'];
+            var qxPool = ['ric_conc-1.wav', 'ric_conc-2.wav', 'ric_metal-1.wav'];
             qxFile = ASSET + qxPool[Math.floor(Math.random() * 3)];
         }
         var qaFile = Math.random() < 0.5 ? ASSET + 'scout_fire-1.wav' : ASSET + 'g3sg1-fire-2.wav';
         var qaStart = Date.now();
         var qaAudio = new Audio(qaFile);
-        qaAudio.play().catch(function(){});
+        qaAudio.play().catch(function () { });
         if (rollQx) {
-            setTimeout(function() {
-                try { new Audio(qxFile).play().catch(function(){}); } catch(_) {}
+            setTimeout(function () {
+                try { new Audio(qxFile).play().catch(function () { }); } catch (_) { }
             }, qxDelay);
         }
         if (rollQs) {
-            var onQaEnd = function() {
-                setTimeout(function() {
-                    try { new Audio(ASSET + 'p90_boltpull.wav').play().catch(function(){}); } catch(_) {}
+            var onQaEnd = function () {
+                setTimeout(function () {
+                    try { new Audio(ASSET + 'p90_boltpull.wav').play().catch(function () { }); } catch (_) { }
                 }, qsGap);
             };
             if (qaAudio.ended) { onQaEnd(); }
@@ -707,7 +716,7 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
         ], { duration: 50, easing: 'linear', fill: 'forwards' });
 
         // ── Phase 2: 装填滑入 (350ms, 塞贝尔变速) ──
-        _bulletReloadTimer = setTimeout(function() {
+        _bulletReloadTimer = setTimeout(function () {
             _bulletReloadTimer = null;
             // 清理拖尾克隆
             for (var k = 0; k < _bulletClones.length; k++) {
@@ -730,7 +739,7 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
                 easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
                 fill: 'forwards'
             });
-            _bulletReloadAnim.onfinish = function() {
+            _bulletReloadAnim.onfinish = function () {
                 //  取消动画释放 fill-mode  CSS top:60% 重新生效
                 if (_bulletReloadAnim) { _bulletReloadAnim.cancel(); }
                 _bulletReloadAnim = null;
@@ -745,19 +754,19 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
     // ★ ResizeObserver：编辑框高度变化 → 子弹位置恒定在 2/5
     //   非动画时 CSS top:60% 自动处理；动画中则取消并重启动画以适配新高度
     var _lastBulletBtnH = _bulletBtn.offsetHeight;
-    var _bulletResizeObs = new ResizeObserver(function() {
+    var _bulletResizeObs = new ResizeObserver(function () {
         var newH = _bulletBtn.offsetHeight;
         if (newH === _lastBulletBtnH) return;
         _lastBulletBtnH = newH;
         if (_bulletAnimating) {
             _cancelBulletAnimation();
             // 等 DOM 稳定后重启动画（微小延迟防连续 resize 抖动）
-            setTimeout(function() { _bulletAnimate(); }, 30);
+            setTimeout(function () { _bulletAnimate(); }, 30);
         }
         // 非动画时：CSS top:60% 自动跟随，无需 JS 干预
     });
     _bulletResizeObs.observe(_bulletBtn);
-    _bulletBtn.onclick = async function() {
+    _bulletBtn.onclick = async function () {
         if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
 
         // 1. 读粘贴板 — 走 IPC bridge（Electron 主进程 clipboard），绕过 iframe 权限限制
@@ -769,12 +778,12 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
             } else {
                 clipText = await navigator.clipboard.readText();
             }
-        } catch(e) {
-            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('无法读取剪贴板，请授予权限后重试', { type: 'warning', duration: 4000 }); } catch(_) {}
+        } catch (e) {
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('无法读取剪贴板，请授予权限后重试', { type: 'warning', duration: 4000 }); } catch (_) { }
             return;
         }
         if (!clipText || !clipText.trim()) {
-            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('剪贴板为空，请先复制内容', { type: 'info', duration: 3000 }); } catch(_) {}
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('剪贴板为空，请先复制内容', { type: 'info', duration: 3000 }); } catch (_) { }
             return;
         }
 
@@ -787,19 +796,19 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
 
         // 3. 项目路径
         var root = '';
-        try { if (typeof questStore !== 'undefined' && questStore.getProjectRoot) root = questStore.getProjectRoot(); } catch(_) {}
+        try { if (typeof questStore !== 'undefined' && questStore.getProjectRoot) root = questStore.getProjectRoot(); } catch (_) { }
         if (!root && typeof _workspaceRoot !== 'undefined') root = _workspaceRoot;
         if (!root) return;
         root = root.replace(/\\/g, '/').replace(/\/$/, '');
 
         // 4. 文件名：本地时区时间戳 + quest + floor
         var now = new Date();
-        var _p2 = function(n) { return n < 10 ? '0' + n : '' + n; };
-        var ts = now.getFullYear() + _p2(now.getMonth()+1) + _p2(now.getDate())
+        var _p2 = function (n) { return n < 10 ? '0' + n : '' + n; };
+        var ts = now.getFullYear() + _p2(now.getMonth() + 1) + _p2(now.getDate())
             + '_' + _p2(now.getHours()) + _p2(now.getMinutes()) + _p2(now.getSeconds());
         var qid = (typeof questActiveId !== 'undefined' && questActiveId) ? questActiveId : 'draft';
         var floorNum = 0;
-        try { if (typeof _activeAgent !== 'undefined' && _activeAgent && _activeAgent._currentFloorNum) floorNum = _activeAgent._currentFloorNum; } catch(_) {}
+        try { if (typeof _activeAgent !== 'undefined' && _activeAgent && _activeAgent._currentFloorNum) floorNum = _activeAgent._currentFloorNum; } catch (_) { }
         var filename = 'bullet_' + ts + '_' + qid + '_f' + floorNum + '.txt';
         var bulletDir = root + '/qqq/bullet';
         var filePath = bulletDir + '/' + filename;
@@ -811,7 +820,7 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
         try {
             // 确保目录
             var dirExists = false;
-            try { await bridge.fs.stat(bulletDir); dirExists = true; } catch(_) {}
+            try { await bridge.fs.stat(bulletDir); dirExists = true; } catch (_) { }
             if (!dirExists) await bridge.fs.mkdir(bulletDir);
 
             // 轮转：20MB FIFO，mtime 升序删最老
@@ -828,14 +837,14 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
                         var st = await bridge.fs.stat(fp);
                         files.push({ path: fp, size: st.size || 0, mtime: st.mtime || 0 });
                         totalSize += st.size || 0;
-                    } catch(_) {}
+                    } catch (_) { }
                 }
-                files.sort(function(a, b) { return a.mtime - b.mtime; });
+                files.sort(function (a, b) { return a.mtime - b.mtime; });
                 while (files.length > 0 && totalSize + clipText.length > BULLET_CAP) {
                     var oldest = files.shift();
-                    try { await bridge.fs.remove(oldest.path); totalSize -= oldest.size; } catch(_) {}
+                    try { await bridge.fs.remove(oldest.path); totalSize -= oldest.size; } catch (_) { }
                 }
-            } catch(_) {}
+            } catch (_) { }
 
             // 6. 原子写
             await bridge.fs.write(filePath, clipText);
@@ -850,10 +859,10 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
             // 9. Qoast
             var sizeKB = Math.round(clipText.length / 1024);
             var sizeStr = sizeKB >= 1024 ? (sizeKB / 1024).toFixed(1) + 'MB' : sizeKB + 'KB';
-            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('子弹已射出 ' + sizeStr + ' → ' + filename, { type: 'success', duration: 3500 }); } catch(_) {}
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('子弹已射出 ' + sizeStr + ' → ' + filename, { type: 'success', duration: 3500 }); } catch (_) { }
 
-        } catch(err) {
-            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('子弹写入失败: ' + (err.message || err), { type: 'error', duration: 5000 }); } catch(_) {}
+        } catch (err) {
+            try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('子弹写入失败: ' + (err.message || err), { type: 'error', duration: 5000 }); } catch (_) { }
         }
     };
 })();

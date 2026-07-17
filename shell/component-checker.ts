@@ -73,11 +73,19 @@ function _cmdOk(binPath: string, args: string[]): boolean {
     } catch { return false; }
 }
 
+// ── engines 根目录解析（packaged 模式下 engines 在 resources/app/ 下，dev 模式下在项目根） ──
+
+function _enginesRoot(portableRoot: string): string {
+    const resApp = path.join(portableRoot, 'resources', 'app');
+    return fs.existsSync(path.join(resApp, 'engines')) ? resApp : portableRoot;
+}
+
 // ── 清单加载（缓存） ──
 
 function _loadManifest(portableRoot: string): Manifest | null {
     if (_manifestCache && _manifestRoot === portableRoot) return _manifestCache;
-    const p = path.join(portableRoot, 'engines', 'manifest.json');
+    const engRoot = _enginesRoot(portableRoot);
+    const p = path.join(engRoot, 'engines', 'manifest.json');
     const m = _readJson<Manifest | null>(p, null);
     if (m && m._version >= 3) {
         _manifestCache = m;
@@ -99,14 +107,16 @@ function _binRel(def: ComponentDef): string | null {
 function _binPath(portableRoot: string, def: ComponentDef): string | null {
     const br = _binRel(def);
     if (!br) return null;
-    const dir = def.install_to ? path.join(portableRoot, 'engines', def.install_to) : path.join(portableRoot, 'engines');
+    const engRoot = _enginesRoot(portableRoot);
+    const dir = def.install_to ? path.join(engRoot, 'engines', def.install_to) : path.join(engRoot, 'engines');
     return path.join(dir, br);
 }
 
 // ── 下载冷却 ──
 
 function _dlLogPath(portableRoot: string): string {
-    return path.join(portableRoot, 'engines', '.downloads.json');
+    const engRoot = _enginesRoot(portableRoot);
+    return path.join(engRoot, 'engines', '.downloads.json');
 }
 
 function _isInCooldown(portableRoot: string, name: string, manifest: Manifest): boolean {
@@ -149,7 +159,8 @@ export function checkRank0Components(portableRoot: string): void {
         return;
     }
 
-    const versPath = path.join(portableRoot, 'engines', '.versions.json');
+    const engRoot = _enginesRoot(portableRoot);
+    const versPath = path.join(engRoot, 'engines', '.versions.json');
     const versions = _readJson<VersionsFile>(versPath, {});
 
     _checkAll(portableRoot, manifest, versions, versPath).catch(e => {
@@ -193,7 +204,8 @@ async function _ensureOne(
     versions: VersionsFile,
     manifest: Manifest,
 ): Promise<void> {
-    const enginesDir = path.join(portableRoot, 'engines');
+    const engRoot = _enginesRoot(portableRoot);
+    const enginesDir = path.join(engRoot, 'engines');
     const binRel = _binRel(def);
     if (!binRel) { console.log('[components] ' + name + ': no binary for this platform'); return; }
 

@@ -6,8 +6,10 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 只写100%确定事实。未落地不写，落地立刻写。
   - 同一件事只存一处。过时直接删，不留注释/废弃标记。
 
-§1 三层不可逆
-  - 壳(Electron 22) = 窗口+IPC+spawn ghrun。不做业务。
+§1 四层不可逆（2026-07-17 新增 C 启动器层）
+  - C 启动器(launcher/qqqide.exe) = 100% 托管更新。跑在一切之前，所有文件解锁可删可换。
+    启动前检查 latest.txt → 下载 r → 删旧 gh555.com/ → 解压覆盖 → 100% 精确一致。
+  - 壳(Electron 22, joker.exe) = 窗口+IPC+spawn ghrun。不做业务。
   - ghrun(Rust) = 进程管理+热更新+下载校验。OS单例。
   - 载荷(server-app/) = 全部UI+业务逻辑+Monaco。热更Ctrl+R生效。
   - 归属有疑问→归载荷层。
@@ -31,18 +33,19 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - Worker: 基础走 qqqide-asset:// URL，语言走 blob+loader.js。
 
 §5 命名（永不可逆）
-  - 变量名禁含 "su"。统一 qqqide(全小写无空格)，不再区分 Tier。
-  - 核心层级: project→quest→floor→house→room。JSON: floor_id/quest_id。
-  - 禁: qqqIde/qqqIDE/qqq-ide/qqq_ide/QQQ/turn_id/session_id。
-
-§6 双轨自动热更新
-  - 壳层冷更: bootSequence→checkAndDownloadShellUpdate 自动下载 shell-out.tar.gz
-    → Data/Cache/staging/shell-out-next/ → 下次启动 bootstrap.js 原子替换 shell-out/
-  - 载荷热更: boot 完成 20s 后 backgroundCheckWebappUpdate 自动下载 server-app.tar.gz
-    → Data/webapp-staging/ → 下次启动 ensureLocalWebapp 原子替换 Data/webapp/
-  - 按钮更新: update-ui.js + bridge.update.upgradeShell()/apply() 走同一管线
-  - 版本跟踪: 两文件独立持久化 — Data/shell-version + Data/webapp-version。
-    check() 用 _shellVersion(APP_VERSION) vs server shell，_readWebappVersion() vs server webapp
+  - 变量名禁含 "su§6 C 启动器 100% 托管更新 + 壳层冷更 + 载荷热更（2026-07-17）
+  - ★ C 启动器（第一道门）: qqqide.exe 跑在一切之前 → WinHTTP 下载 latest.txt
+    → 比对 gh555.com/.version → 版本不同 → 下载 r（7zCon.sfx+payload.7z）
+    → 删除旧 gh555.com/ → 解压 r -y → 写 .version → 启动 joker.exe
+    → 覆盖整个 gh555.com/（二进制/shell-out/engines/webapp/DLL），100% 精确
+    → 失败兜底: 保留旧版继续启动
+  - 壳层冷更（第二道门）: bootstrap.js 启动时检查 staging/shell-out-next/
+    → 原子替换 shell-out/（shell 增量更新，无需重下载整个 r）
+  - 载荷热更: boot 完成 20s 后 backgroundCheckWebappUpdate → server-app.tar.gz
+  - 按钮更新: update-ui.js 手动触发
+  - 版本跟踪: gh555.com/.version（C 启动器）+ Data/shell-version + Data/webapp-version
+  - 服务器产物: Deploy → version.json + r（全量）+ shell-out.tar.gz + server-app.tar.gz
+  - latest.txt: 仅含版本号，CDN 边缘缓存友好bapp
   - 服务器产物: Deploy→version.json + shell-out.tar.gz + server-app.tar.gz
   - deploy.js 第4步从 version.ts 读 APP_VERSION 生成 version.json，cp 一份为 server-app.tar.gz
 

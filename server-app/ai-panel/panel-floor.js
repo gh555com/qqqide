@@ -491,7 +491,7 @@ async function _restoreAgentFromStore(questId, ag) {
                 if (ag.conversation[_scmi]._biscuit) _hasBiscuitMsg = true;
             }
             if (!_hasBiscuitMsg && ag._ctx.biscuitLines && ag._ctx.biscuitLines.length > 0) {
-                var _rebuildBiscuit = ag._ctx.biscuitLines.map(function(l) { return l.text; }).join('\n\n');
+                var _rebuildBiscuit = ag._ctx.biscuitLines.map(function (l) { return l.text; }).join('\n\n');
                 ag.conversation.splice(ag._persistentCount || 0, 0,
                     { role: 'system', content: _rebuildBiscuit, _dynamic: true, _biscuit: true });
             }
