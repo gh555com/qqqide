@@ -787,8 +787,8 @@ var CardPool = (function () {
 
     frag.appendChild(aiEl);
 
-    // ★ 致命楼层：插入 floor-gap 容器（红框将在楼层间渲染）
-    if (fData.floorFatal) {
+    // ★ V14: 每个楼层后都创建 floor-gap（红框锚点，_renderAllErrorBoxes 填充内容）
+    {
       var _floorGap = document.createElement('div');
       _floorGap.className = 'floor-gap';
       _floorGap._floorNum = fNum;

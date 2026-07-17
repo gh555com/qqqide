@@ -134,8 +134,9 @@ function handleAuthProtocolUrl(url: string): void {
             const token = parsed.searchParams.get('token');
             const phone = parsed.searchParams.get('phone');
             const countryISO2 = parsed.searchParams.get('country_iso2') || '';
+            const purchased = parsed.searchParams.get('purchased') === '1';
             if (token && mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('qqqide-auth', { token, phone: phone || '', country_iso2: countryISO2 });
+                mainWindow.webContents.send('qqqide-auth', { token, phone: phone || '', country_iso2: countryISO2, purchased: purchased });
                 console.log('[protocol] auth token pushed to renderer, phone=' + (phone || '?') + ' cc=' + countryISO2);
             }
         }

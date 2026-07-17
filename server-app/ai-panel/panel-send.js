@@ -24,169 +24,236 @@ function _continueQueue() {
 // ★ 铁律：红框在楼层间（floor N az 之后、floor N+1 user 气泡之前），不在 _contentWrap 内
 //   aiDiv: 可选，不传则自动从活跃 agent 的 _activeAiDiv 获取
 // ★ floorNum: 可选，显式传入时使用
-function _renderQuestErrorBox(agent, aiDiv, floorNum) {
-    if (!agent || !questActiveId) return;
-    var _floorNum = (floorNum != null) ? floorNum : agent._currentFloorNum;
-    if (!_floorNum) return;
-    if (!agent._questErrorLogByFloor) agent._questErrorLogByFloor = {};
-    var _log = agent._questErrorLogByFloor[_floorNum];
-    if (!_log || _log.length === 0) return;
+// ═══ V14: 纯定位 — 在指定楼层创建/定位 floor-gap + .msg-quest-error DOM ═══
+// 返回 box DOM 元素，不处理内容填充。锚点严格用 card.floorDOM[floorNum].aiEl
+function _ensureErrorBoxDOM(agent, floorNum) {
+    if (!agent || !cardPool) return null;
+    var _card = cardPool.getActive();
+    if (!_card || !_card.floorDOM) return null;
+    var _fDom = _card.floorDOM[floorNum];
+    if (!_fDom || !_fDom.aiEl) return null;
 
-    // ★ 分楼层红框缓存
-    if (!agent._questErrorDivByFloor) agent._questErrorDivByFloor = {};
-    var _box = agent._questErrorDivByFloor[_floorNum];
-    if (_box && !_box.isConnected) _box = null;
-
-    // ★ 楼层间搜索：在 card 中找 floor-gap 容器
-    if (!_box) {
-        var _card2 = cardPool && cardPool.getActive();
-        if (_card2 && _card2.floorDOM) {
-            var _fDom2 = _card2.floorDOM[_floorNum];
-            if (_fDom2 && _fDom2.aiEl) {
-                // 找 aiEl 之后的 .floor-gap 容器
-                var _nextSib = _fDom2.aiEl.nextElementSibling;
-                while (_nextSib && !_box) {
-                    if (_nextSib.classList && _nextSib.classList.contains('floor-gap')) {
-                        _box = _nextSib.querySelector('.msg-quest-error');
-                    }
-                    _nextSib = _nextSib.nextElementSibling;
-                }
-            }
-        }
+    var _aiEl = _fDom.aiEl;
+    // 找或建 floor-gap（紧接 aiEl 之后）
+    var _gap = _aiEl.nextElementSibling;
+    while (_gap && _gap.nodeType === 1 && !_gap.classList.contains('floor-gap')) {
+        _gap = _gap.nextElementSibling;
     }
-
-    // ★ 仍找不到 → 在楼层间创建 floor-gap + 红框
+    if (!_gap || !_gap.classList || !_gap.classList.contains('floor-gap')) {
+        _gap = document.createElement('div');
+        _gap.className = 'floor-gap';
+        _aiEl.parentNode.insertBefore(_gap, _aiEl.nextSibling);
+    }
+    // 找或建 .msg-quest-error
+    var _box = _gap.querySelector('.msg-quest-error');
     if (!_box) {
-        var _targetAi = aiDiv || (agent._activeAiDiv);
-        if (!_targetAi || !_targetAi.parentNode) {
-            // ★ V4 fix: DOM 未就绪 → 延迟重试（最多 5 次，每 200ms）
-            var _retryKey = '_errbox_retry_' + _floorNum;
-            var _retryCount = (agent[_retryKey] || 0);
-            if (_retryCount < 5) {
-                agent[_retryKey] = _retryCount + 1;
-                setTimeout(function() { _renderQuestErrorBox(agent, aiDiv, _floorNum); }, 200);
-            }
-            return;
-        }
-        // 找或创建 .floor-gap 容器（位于 aiDiv 之后）
-        var _gap = _targetAi.nextElementSibling;
-        if (!_gap || !_gap.classList || !_gap.classList.contains('floor-gap')) {
-            _gap = document.createElement('div');
-            _gap.className = 'floor-gap';
-            _targetAi.parentNode.insertBefore(_gap, _targetAi.nextSibling);
-        }
         _box = document.createElement('div');
         _box.className = 'msg-quest-error';
         _gap.appendChild(_box);
-        _box._floorNum = _floorNum;
     }
-    agent._questErrorDivByFloor[_floorNum] = _box;
+    _box._floorNum = floorNum;
+    return _box;
+}
 
-    // ★ 仅追加新行（不清空）。track 已追加行数防重复
+// ═══ V14: 统一数据驱动渲染 — 从 agent._questErrorState 重建全部红框 ═══
+function _renderAllErrorBoxes(agent) {
+    if (!agent || !agent._questErrorState) return;
+    var _floors = Object.keys(agent._questErrorState).map(Number).sort(function(a,b){return a-b;});
+    for (var _fi = 0; _fi < _floors.length; _fi++) {
+        var _fn = _floors[_fi];
+        var _st = agent._questErrorState[_fn];
+        if (!_st || !_st.log || _st.log.length === 0) continue;
+
+        var _box = _ensureErrorBoxDOM(agent, _fn);
+        if (!_box) continue;
+
+        // ★ 同步 state 到 DOM 标记
+        _box._capped = !!_st.capped;
+
+        // ★ 全量重建行（清空 → 从 state.log 重建）
+        var _link = _box._continueLink;
+        _box.innerHTML = '';
+        _box._renderedCount = 0;
+
+        for (var _li = 0; _li < _st.log.length; _li++) {
+            var _entry = _st.log[_li];
+            var _row = document.createElement('div');
+            _row.className = 'qe-row';
+            _row.textContent = (_entry.time || '') + '  ' + (_entry.reason || '');
+            _box.appendChild(_row);
+            _box._renderedCount++;
+        }
+
+        // ★ capped → 不渲染链接
+        if (_st.capped) {
+            _box._continueLink = null;
+            continue;
+        }
+
+        // ★ 封顶检测：下一楼层 DOM 已存在且非恢复中
+        var _card2 = cardPool && cardPool.getActive();
+        var _hasNextFloor = _card2 && _card2.floorDOM && !!_card2.floorDOM[_fn + 1];
+        if (_hasNextFloor && !agent._stateMeta.deferRenderUntilHouse1 && !agent._stateMeta.recoveryInProgress) {
+            _st.capped = true;
+            _box._capped = true;
+            _box._continueLink = null;
+            continue;
+        }
+
+        // ★ 创建「继续任务」链接
+        var _existingLink = _box._continueLink;
+        if (!_existingLink || !_existingLink.isConnected) {
+            _existingLink = document.createElement('a');
+            _existingLink.href = '#';
+            _existingLink.className = 'msg-err-continue';
+            _existingLink.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
+            _existingLink._qqqQuestId = questActiveId;
+            _existingLink._qqqAgent = agent;
+            _existingLink.onclick = function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (this._qqqRecoveryBusy) return;
+                this._qqqRecoveryBusy = true;
+                _startRecovery(this._qqqQuestId, this._qqqAgent, this);
+            };
+        }
+        _existingLink.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
+        if (!_existingLink.isConnected) _box.appendChild(_existingLink);
+        _box._continueLink = _existingLink;
+    }
+
+    // ★ 清理 state 中已不存在 DOM 的楼层（card 被清后 floorDOM 无对应 aiEl）
+    var _card3 = cardPool && cardPool.getActive();
+    if (_card3) {
+        var _newState = {};
+        for (var _fn2 in agent._questErrorState) {
+            if (_card3.floorDOM && _card3.floorDOM[_fn2] && _card3.floorDOM[_fn2].aiEl) {
+                _newState[_fn2] = agent._questErrorState[_fn2];
+            }
+        }
+        agent._questErrorState = _newState;
+    }
+}
+
+// ═══ @deprecated 旧 _renderQuestErrorBox — 兼容包装，逐步迁移到 _renderAllErrorBoxes ═══
+function _renderQuestErrorBox(agent, aiDiv, floorNum) {
+    // ★ V14: 忽略 aiDiv 参数，统一走数据驱动渲染
+    var _floorNum = (floorNum != null) ? floorNum : (agent && agent._currentFloorNum);
+    if (!agent || !_floorNum) return;
+
+    // ★ 同步旧 _questErrorLogByFloor 到 _questErrorState（过渡期）
+    if (!agent._questErrorState) agent._questErrorState = {};
+    if (agent._questErrorLogByFloor && agent._questErrorLogByFloor[_floorNum]) {
+        if (!agent._questErrorState[_floorNum]) {
+            agent._questErrorState[_floorNum] = {
+                log: agent._questErrorLogByFloor[_floorNum],
+                capped: false,
+                bubbleText: null
+            };
+        }
+    }
+
+    // ★ 若 state 中无此楼层数据则跳过
+    var _st = agent._questErrorState[_floorNum];
+    if (!_st || !_st.log || _st.log.length === 0) return;
+
+    var _box = _ensureErrorBoxDOM(agent, _floorNum);
+    if (!_box) return;
+
+    _box._capped = !!_st.capped;
+
+    // 追加新行（兼容增量调用）
     _box._renderedCount = _box._renderedCount || 0;
-    var _link = _box._continueLink;  // ★ 提前取引用，插入新行时需放在链接上方
-    while (_box._renderedCount < _log.length) {
-        var _entry = _log[_box._renderedCount];
+    while (_box._renderedCount < _st.log.length) {
+        var _entry = _st.log[_box._renderedCount];
         var _row = document.createElement('div');
         _row.className = 'qe-row';
         _row.textContent = (_entry.time || '') + '  ' + (_entry.reason || '');
-        _box.insertBefore(_row, _link || null);  // ★ 始终在链接上方
+        var _cLink = _box._continueLink;
+        _box.insertBefore(_row, _cLink || null);
         _box._renderedCount++;
     }
 
-    // ★ 若 _capped → 不创建/更新链接（封顶红框无尾行）
-    if (_box._capped) {
-        if (_box._continueLink && _box._continueLink.isConnected) {
-            _box._continueLink.remove();
-        }
+    // capped + link 逻辑
+    if (_st.capped) {
+        if (_box._continueLink && _box._continueLink.isConnected) _box._continueLink.remove();
         _box._continueLink = null;
         return;
     }
 
-    // ★ 封顶检测：下一楼层 DOM 已存在 且 非恢复中 → 自动 capped
-    var _hasNextFloor = false;
-    var _card3 = cardPool && cardPool.getActive();
-    if (_card3 && _card3.floorDOM && _card3.floorDOM[_floorNum + 1]) _hasNextFloor = true;
-    if (_hasNextFloor && !agent._deferRenderUntilHouse1 && !agent._recoveryInProgress) {
+    var _card2 = cardPool && cardPool.getActive();
+    var _hasNextFloor = _card2 && _card2.floorDOM && !!_card2.floorDOM[_floorNum + 1];
+    if (_hasNextFloor && !agent._stateMeta.deferRenderUntilHouse1 && !agent._stateMeta.recoveryInProgress) {
+        _st.capped = true;
         _box._capped = true;
-        if (_box._continueLink && _box._continueLink.isConnected) {
-            _box._continueLink.remove();
-        }
+        if (_box._continueLink && _box._continueLink.isConnected) _box._continueLink.remove();
         _box._continueLink = null;
         return;
     }
 
-    // ★ 创建/更新「继续任务」链接（始终在红框底部）
-    _link = _box._continueLink;
-    if (!_link || !_link.isConnected) {
-        var _existingLink = _box.querySelector('.msg-err-continue');
-        if (_existingLink) {
-            _link = _existingLink;
-        } else {
-            _link = document.createElement('a');
-            _link.href = '#';
-            _link.className = 'msg-err-continue';
-            _link.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
+    var _link2 = _box._continueLink;
+    if (!_link2 || !_link2.isConnected) {
+        _link2 = _box.querySelector('.msg-err-continue');
+        if (!_link2) {
+            _link2 = document.createElement('a');
+            _link2.href = '#';
+            _link2.className = 'msg-err-continue';
+            _link2.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
+            _link2._qqqQuestId = questActiveId;
+            _link2._qqqAgent = agent;
+            _link2.onclick = function (e) {
+                e.preventDefault(); e.stopPropagation();
+                if (this._qqqRecoveryBusy) return;
+                this._qqqRecoveryBusy = true;
+                _startRecovery(this._qqqQuestId, this._qqqAgent, this);
+            };
         }
-        _link.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
-        _link._qqqQuestId = questActiveId;
-        _link._qqqAgent = agent;
-        _link.onclick = function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (this._qqqRecoveryBusy) return;
-            this._qqqRecoveryBusy = true;
-            _startRecovery(this._qqqQuestId, this._qqqAgent, this);
-        };
-        if (!_link.isConnected) {
-            _box.appendChild(_link);
-        }
-        _box._continueLink = _link;
-    } else {
-        // 已存在链接 — 恢复中不更新（保持光块/恢复态）
-        if (!agent._deferRenderUntilHouse1) {
-            _link.style.display = '';
-            _link.className = 'msg-err-continue';
-            _link._qqqRecoveryBusy = false;
-            _link.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
-        }
+        _link2.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
+        if (!_link2.isConnected) _box.appendChild(_link2);
+        _box._continueLink = _link2;
+    } else if (!agent._stateMeta.deferRenderUntilHouse1) {
+        _link2.style.display = '';
+        _link2.className = 'msg-err-continue';
+        _link2._qqqRecoveryBusy = false;
+        _link2.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
     }
 }
 
 // ★ 封顶红框中的「继续任务」链接（整行 DOM 移除，不灰化不留字） ═══
-// ★ floorNum: 可选，显式传入时使用，否则回退 agent._recoveryOriginFloor → _currentFloorNum
+// ★ V14: 数据驱动版 — 设 _questErrorState[fn].capped=true 后统一渲染
 function _capRecoveryLink(agent, floorNum) {
     if (!agent) return;
     var _fn = (floorNum != null) ? floorNum : (agent._recoveryOriginFloor || agent._currentFloorNum);
     if (!_fn) return;
 
-    var _box = agent._questErrorDivByFloor && agent._questErrorDivByFloor[_fn];
-    // 路径2：兜底遍历找未 capped 的活跃红框
-    if ((!_box || !_box.isConnected) && agent._questErrorDivByFloor) {
-        for (var _f in agent._questErrorDivByFloor) {
-            var _b = agent._questErrorDivByFloor[_f];
-            if (_b && _b.isConnected && !_b._capped) { _box = _b; _fn = parseInt(_f); break; }
+    // ★ V14: 数据驱动 — 找 _questErrorState 中未 capped 的楼层
+    if (!agent._questErrorState) return;
+    var _st = agent._questErrorState[_fn];
+    if (!_st || _st.capped) {
+        // 兜底遍历找未 capped 的活跃楼层
+        for (var _f in agent._questErrorState) {
+            if (!agent._questErrorState[_f].capped) { _st = agent._questErrorState[_f]; _fn = parseInt(_f); break; }
         }
     }
-    if (!_box || !_box.isConnected) {
-        // 路径3：通过 _recoveryLinkEl
-        if (agent._recoveryLinkEl && agent._recoveryLinkEl.isConnected) {
-            agent._recoveryLinkEl.remove();
-            agent._recoveryLinkEl = null;
+    if (!_st || _st.capped) {
+        if (agent._stateMeta && agent._stateMeta.recoveryLinkEl && agent._stateMeta.recoveryLinkEl.isConnected) {
+            agent._stateMeta.recoveryLinkEl.remove();
+            agent._stateMeta.recoveryLinkEl = null;
         }
         return;
     }
 
-    // 移除链接 DOM
-    if (_box._continueLink && _box._continueLink.isConnected) {
-        _box._continueLink.remove();
+    _st.capped = true;
+
+    // ★ DOM 层：找红框 DOM 移除链接 + 标记 capped
+    var _box = _ensureErrorBoxDOM(agent, _fn);
+    if (_box) {
+        if (_box._continueLink && _box._continueLink.isConnected) _box._continueLink.remove();
+        _box._continueLink = null;
+        _box._capped = true;
     }
-    _box._continueLink = null;
-    _box._capped = true;
-    if (agent._questErrorDivByFloor && agent._questErrorDivByFloor[_fn]) {
-        agent._questErrorDivByFloor[_fn]._capped = true;
-    }
-    agent._recoveryLinkEl = null;
+
+    if (agent._stateMeta) agent._stateMeta.recoveryLinkEl = null;
 }
 
 // ═══ 致命失败恢复："继续任务"唯一出口 ═══

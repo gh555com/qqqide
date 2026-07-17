@@ -292,7 +292,11 @@ async function _appendToSearchQuest(questId, floorNum) {
         // 构建条目
         var lines = [];
         lines.push(marker + '   ' + _fmtTime(floorTs));
-        var cleanQuestion = (floorData.question || '').replace(/\[File: [^\]]+\]\s*\x0A\`\`\`[\s\S]*?\`\`\`/g, '').replace(/\x0A{3,}/g, '\x0A\x0A').trim(); lines.push('\u25a0 Q: ' + cleanQuestion);
+        // ★ V14 fix: [File:] 剥离改用 \n\n[File: 截断，防文件内容含 ``` 导致泄露
+        var _qContent = floorData.question || '';
+        var _fileIdx = _qContent.search(/\n\n\[File: /);
+        var cleanQuestion = (_fileIdx >= 0 ? _qContent.slice(0, _fileIdx) : _qContent).replace(/\x0A{3,}/g, '\x0A\x0A').trim();
+        lines.push('\u25a0 Q: ' + cleanQuestion);
         lines.push('\u25a0 A: ' + (answer || '(no answer)'));
 
         // ═══ az 区文本化（每层楼私有 A1 + 时钟数据） ═══
@@ -395,7 +399,10 @@ async function _rebuildSearchQuest(questId) {
             var marker = '\u2550\u2550\u2550\u2550\u2550 Floor ' + fn + ' \u2550\u2550\u2550\u2550\u2550';
             if (fi > 0) lines.push('');
             lines.push(marker + '   ' + _fmtTime(floorTs));
-            var cleanQ = (fData.question || '').replace(/\[File: [^\]]+\]\s*\x0A\`\`\`[\s\S]*?\`\`\`/g, '').replace(/\x0A{3,}/g, '\x0A\x0A').trim();
+            // ★ V14 fix: [File:] 剥离改用 \n\n[File: 截断
+            var _qContent2 = fData.question || '';
+            var _fileIdx2 = _qContent2.search(/\n\n\[File: /);
+            var cleanQ = (_fileIdx2 >= 0 ? _qContent2.slice(0, _fileIdx2) : _qContent2).replace(/\x0A{3,}/g, '\x0A\x0A').trim();
             lines.push('\u25a0 Q: ' + cleanQ);
             lines.push('\u25a0 A: ' + (answer || '(no answer)'));
             var _azLines = _buildAzText(fn, fData, questMeta);
@@ -429,6 +436,7 @@ async function _restoreAgentFromStore(questId, ag) {
         ag.conversation = [];
         ag._questErrorLogByFloor = {};
         ag._questErrorDivByFloor = {};
+        ag._questErrorState = {};
 
         // ★ ctx.json 优先 → 失败走 D 路径纯重建兜底
         var _ctxJson = (typeof _readCtxJson === 'function') ? (await _readCtxJson(questId)) : null;
@@ -548,40 +556,32 @@ async function _restoreAgentFromStore(questId, ag) {
         }
 
 
-        // ★ 恢复 _passbyBase：优先从 quest 元数据（已持久化），降级到上楼层快照
-        ag._passbyBaseHouses = 0;
-        ag._passbyBaseWge = 0;
-        ag._passbyBaseTokens = 0;
-        if (data && typeof data.passbyBaseHouses === 'number') {
-            ag._passbyBaseHouses = data.passbyBaseHouses;
-            ag._passbyBaseWge = data.passbyBaseWge || 0;
-            ag._passbyBaseTokens = data.passbyBaseTokens || 0;
-        } else {
-            for (var _pbfi = 0; _pbfi < allFloors.length; _pbfi++) {
-                var _pbData = allFloors[_pbfi].data;
-                if (_pbData && allFloors[_pbfi].floorNum === ag._currentFloorNum - 1) {
-                    if (typeof _pbData.passbyHouses === 'number') ag._passbyBaseHouses = _pbData.passbyHouses;
-                    if (typeof _pbData.passbyWge === 'number') ag._passbyBaseWge = _pbData.passbyWge;
-                    if (typeof _pbData.passbyTokens === 'number') ag._passbyBaseTokens = _pbData.passbyTokens;
-                    break;
-                }
-            }
-        }
-        ag._passbyBaseFloorNum = ag._passbyBaseHouses > 0 ? (ag._currentFloorNum - 1) : 0;
-        // ★ 自愈：从实际楼层数据重算 passby 基线（防元数据残留致 AZ 与账单表不一致）
-        var _recalcHouses = 0, _recalcWge = 0;
+        // ★ 恢复 _passbyBase：唯一真理源 = all.json 实际数据（从不信任 quest 元数据或上楼层快照）
+        //   旧 passbyBase 持久化字段已废弃——quest 元数据 passbyBaseWge 公式是恒等变换（no-op），
+        //   上楼层 passbyWge 也可能因历史 bug 而错误。必须从每一层的 costWge 重算。
+        //   步骤：① 扫描找最大楼层号 → ② 兜底修复 _currentFloorNum → ③ 重算基线
+        var _maxFloorFromData = 0;
         for (var _rfi = 0; _rfi < allFloors.length; _rfi++) {
-            var _rfData = allFloors[_rfi].data;
-            if (_rfData && allFloors[_rfi].floorNum < ag._currentFloorNum) {
+            var _rffn = allFloors[_rfi].floorNum;
+            if (_rffn > _maxFloorFromData) _maxFloorFromData = _rffn;
+        }
+        // ★ 兜底：若 quest 元数据无 currentFloorNum（从未保存），从 all.json 回退
+        if (!ag._currentFloorNum && _maxFloorFromData > 0) {
+            ag._currentFloorNum = _maxFloorFromData;
+        }
+        // ★ 现在 _currentFloorNum 已就绪，从已完成楼层重算基线
+        var _recalcHouses = 0, _recalcWge = 0;
+        for (var _rfi2 = 0; _rfi2 < allFloors.length; _rfi2++) {
+            var _rfData = allFloors[_rfi2].data;
+            if (_rfData && allFloors[_rfi2].floorNum < ag._currentFloorNum) {
                 _recalcHouses += (_rfData.houses ? _rfData.houses.length : 0);
                 _recalcWge += (_rfData.costWge || 0);
             }
         }
-        if (_recalcHouses !== ag._passbyBaseHouses || _recalcWge !== ag._passbyBaseWge) {
-            ag._passbyBaseHouses = _recalcHouses;
-            ag._passbyBaseWge = _recalcWge;
-            ag._passbyBaseFloorNum = _recalcHouses > 0 ? (ag._currentFloorNum - 1) : 0;
-        }
+        ag._passbyBaseHouses = _recalcHouses;
+        ag._passbyBaseWge = _recalcWge;
+        ag._passbyBaseTokens = 0; // tokens 无可靠磁盘源，每次重算时归零
+        ag._passbyBaseFloorNum = _recalcHouses > 0 ? (ag._currentFloorNum - 1) : 0;
         // ★ 重建 _floorMeta（未可变楼层元数据）
         // ★ 压缩恢复：用 conversation 实际索引覆盖磁盘旧值（旧 floorStartIdx 在跳过压缩层后偏移）
         var _actualFloorStarts = {};
@@ -727,6 +727,19 @@ async function _restoreAgentFromStore(questId, ag) {
         }
         // ★ 刷新服务器城市（Cloudflare 透传，用于 passby 地理位置展示）
         _refreshServerCity(ag);
+
+        // ★ V14: 同步旧 _questErrorLogByFloor → 新 _questErrorState（数据驱动渲染）
+        if (ag._questErrorLogByFloor) {
+            for (var _sfn in ag._questErrorLogByFloor) {
+                var _slog = ag._questErrorLogByFloor[_sfn];
+                if (_slog && _slog.length > 0) {
+                    if (!ag._questErrorState[_sfn]) ag._questErrorState[_sfn] = { log: [], capped: false, bubbleText: null };
+                    if (ag._questErrorState[_sfn].log.length === 0) {
+                        ag._questErrorState[_sfn].log = _slog.slice();
+                    }
+                }
+            }
+        }
 
         // [silent] restored agent state
     } catch (e) {

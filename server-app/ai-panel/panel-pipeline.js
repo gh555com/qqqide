@@ -281,6 +281,14 @@ async function _executeSend(intent) {
     }
     // ★ 推进 passby 基线：新楼层开始时，将刚完成的上一楼层计入基线（仅楼层号变化时推进）
     var _oldFloorNum2 = agent._currentFloorNum;
+    // ★ 自愈守卫：若 passbyBaseFloorNum 为 0 但有多层历史（元数据未初始化），
+    //   说明上次启动时 quest 元数据未保存，基线处于出厂状态。此时不能信任
+    //   _passbyBaseWge（可能为 0），直接从 _oldFloorNum2 推断：上楼层 passby
+    //   已冻结在 all.json 中，push 应增量加当前 houses/costWge。
+    //   但若 _passbyBaseFloorNum === 0 且 _oldFloorNum2 > 1，说明基线从未初始化，
+    //   此时 _passbyBaseWge 可能为 0，增量加是对的（0+上楼层=上楼层）。
+    //   真正的问题是：基线为 0 时 _oldFloorNum2 也为 0（元数据缺失），已被
+    //   _restoreAgentFromStore 兜底修复。此处仅做安全网。
     if (sendType !== 'recovery' && _oldFloorNum2 && _oldFloorNum2 !== floorNum) {
         agent._passbyBaseHouses = (agent._passbyBaseHouses || 0) + (agent._houses ? agent._houses.length : 0);
         agent._passbyBaseWge = (agent._passbyBaseWge || 0) + (agent._floorCostWge || 0);
@@ -345,11 +353,11 @@ async function _executeSend(intent) {
     }
     scrollToBottom(true);
 
-    // 封顶所有旧楼层红框（normal send 需遍历，recovery 等成功后封）
-    if (sendType !== 'recovery' && agent._questErrorDivByFloor) {
-        for (var _fn in agent._questErrorDivByFloor) {
+    // ★ V14: 封顶所有旧楼层红框（normal send 需遍历 _questErrorState）
+    if (sendType !== 'recovery' && agent._questErrorState) {
+        for (var _fn in agent._questErrorState) {
             var _fnNum = parseInt(_fn);
-            if (_fnNum < floorNum && typeof _capRecoveryLink === 'function') {
+            if (_fnNum < floorNum && !agent._questErrorState[_fn].capped && typeof _capRecoveryLink === 'function') {
                 _capRecoveryLink(agent, _fnNum);
             }
         }
@@ -388,7 +396,15 @@ async function _executeSend(intent) {
                     var _recBubbleText = agent._deferredUserText || '继续';
                     agent._deferredUserText = null;
                     var _recBubble = addMessageEl('user', _recBubbleText);
-                    if (_recBubble) _recBubble._floor = agent._currentFloorNum;
+                    if (_recBubble) {
+                        _recBubble._floor = agent._currentFloorNum;
+                        // ★ 插入到新 aiDiv 之前（红字框 → 粉色气泡 → 新楼层，非 红字框 → 新楼层 → 粉色气泡）
+                        if (aiDiv && aiDiv.parentNode) aiDiv.parentNode.insertBefore(_recBubble, aiDiv);
+                    }
+                    // ★ V14: 持久化粉泡到 _questErrorState（切面板/重启后 _renderAllErrorBoxes 重建）
+                    if (!agent._questErrorState) agent._questErrorState = {};
+                    if (!agent._questErrorState[floorNum]) agent._questErrorState[floorNum] = { log: [], capped: false, bubbleText: null };
+                    agent._questErrorState[floorNum].bubbleText = _recBubbleText;
                     agent._deferredUserEl = null;
                     agent._deferredAiDiv = null;
                     if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent);
@@ -469,7 +485,15 @@ async function _executeSend(intent) {
                     var _recBubbleText = agent._deferredUserText || '继续';
                     agent._deferredUserText = null;
                     var _recBubble = addMessageEl('user', _recBubbleText);
-                    if (_recBubble) _recBubble._floor = agent._currentFloorNum;
+                    if (_recBubble) {
+                        _recBubble._floor = agent._currentFloorNum;
+                        // ★ 插入到新 aiDiv 之前（红字框 → 粉色气泡 → 新楼层，非 红字框 → 新楼层 → 粉色气泡）
+                        if (aiDiv && aiDiv.parentNode) aiDiv.parentNode.insertBefore(_recBubble, aiDiv);
+                    }
+                    // ★ V14: 持久化粉泡到 _questErrorState（切面板/重启后 _renderAllErrorBoxes 重建）
+                    if (!agent._questErrorState) agent._questErrorState = {};
+                    if (!agent._questErrorState[floorNum]) agent._questErrorState[floorNum] = { log: [], capped: false, bubbleText: null };
+                    agent._questErrorState[floorNum].bubbleText = _recBubbleText;
                     agent._deferredUserEl = null;
                     agent._deferredAiDiv = null;
                     if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent);
@@ -539,6 +563,9 @@ async function _executeSend(intent) {
                 if (typeof stopFloorTimer === 'function') stopFloorTimer(timing, agent);
                 setStreaming(false);
                 agent.setStopState('done');
+                // ★ 每层完工后保存 quest 元数据（currentFloorNum / passbyBase 等），
+                //   防重启时元数据缺失导致 _restoreAgentFromStore 无法正确恢复基线
+                if (typeof saveQuestData === 'function') saveQuestData().catch(function () { });
                 if (typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
                 if (typeof updateQueueBtn === 'function') updateQueueBtn();
                 if (typeof updateGuideBtn === 'function') updateGuideBtn();
@@ -568,6 +595,10 @@ async function _executeSend(intent) {
                             if (!agent._questErrorLogByFloor) agent._questErrorLogByFloor = {};
                             if (!agent._questErrorLogByFloor[_errFloorNum]) agent._questErrorLogByFloor[_errFloorNum] = [];
                             agent._questErrorLogByFloor[_errFloorNum].push({ time: _ts, reason: msg });
+                            // ★ V14: 同步写入 _questErrorState（数据驱动渲染的真理源）
+                            if (!agent._questErrorState) agent._questErrorState = {};
+                            if (!agent._questErrorState[_errFloorNum]) agent._questErrorState[_errFloorNum] = { log: [], capped: false, bubbleText: null };
+                            agent._questErrorState[_errFloorNum].log.push({ time: _ts, reason: msg });
                             // ★ 闭环恢复: 同步写入 _error 消息到 conversation（重启后磁盘重建）
                             agent.conversation.push({
                                 role: 'assistant',

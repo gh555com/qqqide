@@ -139,7 +139,8 @@ var AgentLoop = (function () {
         this._lastHttpStatus = 0;        // 最后一次 HTTP 状态码
         this._floorFatal = false;        // ★ 致命失败：onError 触发后强制 _stopState='fatal'，防 idle 假恢复
         this._questErrorLogByFloor = {};   // ★ 分楼层聚合红框: floorNum → [{time, reason}]
-        this._questErrorDivByFloor = {};   //   DOM 引用：floorNum → div（恢复时重建）
+        this._questErrorDivByFloor = {};   // @deprecated DOM 引用 → 用 _questErrorState
+        this._questErrorState = {};        // ★ V14: 纯数据驱动 floorNum→{log,capped,bubbleText}
         this._isRecovery = false;        // ★ 恢复模式：下一条用户消息标注 _system:true（继续任务用）
         // ★ 统一状态元数据（T3 新增）：存储恢复流程散落标记，随 transition() 原子切换
         this._stateMeta = {

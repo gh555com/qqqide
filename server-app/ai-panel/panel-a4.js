@@ -323,6 +323,12 @@ async function _a4WrappedExecuteTool(name, args, ownerAgent) {
 
     // ═══ 文件写工具：edit/write/create/delete_file ═══
     var filePath = args.path || '';
+    // ★ 解析项目相对路径为绝对路径（原始 executeTool 也会做此事，但它是在我们之后执行。
+    //    我们必须自己先解析，否则 before/after 捕获时 bridge.fs.read 会因路径不是绝对而失败）
+    if (filePath && typeof _resolveProjectPath === 'function') {
+        filePath = _resolveProjectPath(filePath);
+        args.path = filePath; // 同步 args.path，原始 executeTool 的解析变成无操作
+    }
     var bridge = getBridge();
     var beforeContent = null;
     var beforeBlobHash = null; // ★ 编辑前基线 blob_hash

@@ -1,6 +1,6 @@
 // ============================================================================
 // agent-context.js — 上下文压缩引擎（本地机械筛，零网络调用）
-// VER: COMPACT-V13-20260716 ← V13: DE 消除，╔K...╚ 融入饼干，阀值压缩，sha256 考古
+// VER: COMPACT-V14-20260717 ← V14: 配对修复 + 智能截断命令，多工具行 per-file 配对
 //
 // 架构:
 //   背包顺序: Z → biscuit(1条msg,原地追加) → 当前楼层消息
@@ -285,19 +285,31 @@
         var pendingToolCalls = null;
 
         function _flushPending() {
+            if (!pendingToolCalls || pendingToolCalls.length === 0) { pendingToolCalls = null; return; }
+            var tcNames = [];
+            var parts = [];
+            for (var ti = 0; ti < pendingToolCalls.length; ti++) {
+                var pt = pendingToolCalls[ti];
+                tcNames.push(pt.name);
+                parts.push(pt.display + pt.summary);
+            }
+            lines.push('[A → ' + tcNames.join('+') + '] ' + parts.join(', '));
+            for (var ti = 0; ti < pendingToolCalls.length; ti++) {
+                if (pendingToolCalls[ti].absBody) {
+                    lines.push('╔K');
+                    lines.push(pendingToolCalls[ti].absBody.trimEnd());
+                    lines.push('╚');
+                }
+            }
             pendingToolCalls = null;
         }
-        function _outputToolCallLine(tcs) {
-            var tcNames = [];
-            var fileNames = [];
+        function _saveToolCallLine(tcs) {
+            pendingToolCalls = [];
             for (var ti = 0; ti < tcs.length; ti++) {
                 var name = (tcs[ti].function && tcs[ti].function.name) || '?';
-                tcNames.push(name);
-                var fn = _extractToolDisplay(tcs[ti]);
-                if (fn) fileNames.push(fn);
+                var display = _extractToolDisplay(tcs[ti]) || name;
+                pendingToolCalls.push({ tc: tcs[ti], name: name, display: display, summary: '', absBody: '' });
             }
-            var display = fileNames.length > 0 ? fileNames.join(', ') : tcNames.join(', ');
-            lines.push('[A → ' + tcNames.join('+') + '] ' + display);
         }
 
         // ★ _extractToolDisplay — extract the most informative arg for biscuit head line
@@ -321,6 +333,13 @@
                     if (!s) return '';
                     if (s.length <= max) return s;
                     return s.slice(0, max - 1) + '…';
+                }
+                function _truncCmd(s, max) {
+                    if (!s || s.length <= max) return s;
+                    var tail = Math.min(Math.floor(max * 0.4), 30);
+                    if (tail < 5) return s.slice(0, max - 1) + '…';
+                    var head = max - tail - 1;
+                    return s.slice(0, head) + '…' + s.slice(-tail);
                 }
                 // ★ sha256 archaeology tag — append @sha=xxx when reading a historical blob
                 function _shaTag(o) {
@@ -347,7 +366,7 @@
                     case 'fetch_webpage':   return _trunc(obj.url || '', 100);
                     case 'search_web':      return '"' + _trunc(obj.query || '', 110) + '"';
                     // ── Absolute box (5 tools, ABS_HEAD_CAP unified) ──
-                    case 'run_command':     return _trunc(obj.command || '', ABS_HEAD_CAP);
+                    case 'run_command':     return _truncCmd(obj.command || '', ABS_HEAD_CAP);
                     case 'generate_image':  return _trunc(obj.prompt || '', ABS_HEAD_CAP) || (obj.images && obj.images[0] ? _shortPath(obj.images[0]) : null);
                     case 'remove_background': return _shortPath(obj.image || '') || null;
                     case 'analyze_image':   return _shortPath(obj.image || '') + (obj.action ? ' ' + obj.action : '');
@@ -402,27 +421,27 @@
             if (role === 'tool' && m.tool_call_id && pendingToolCalls) {
                 var matchedTc = null;
                 for (var tk = 0; tk < pendingToolCalls.length; tk++) {
-                    if (pendingToolCalls[tk].id === m.tool_call_id) {
-                        matchedTc = pendingToolCalls[tk];
+                    if (pendingToolCalls[tk].tc.id === m.tool_call_id) {
+                        matchedTc = pendingToolCalls[tk].tc;
                         break;
                     }
                 }
                 if (matchedTc) {
                     var tcName = matchedTc.function && matchedTc.function.name;
                     var summary = _summarizeToolResult(matchedTc, content);
-                    if (lines.length > 0) {
-                        lines[lines.length - 1] += summary;
-                    }
-                    // ★ V13: 绝对包装盒 → ╔K...╚ 包裹完整输出，融入饼干
-                    if (tcName && ABSOLUTE_TOOLS[tcName] && content && content.trim()) {
-                        var body = content;
-                        if (body.length > ABS_BODY_CAP) {
-                            var h = Math.floor(ABS_BODY_CAP / 2);
-                            body = body.slice(0, h) + '\n…[trunc ' + (content.length - ABS_BODY_CAP) + ' chars]…\n' + body.slice(-h);
+                    for (var pi = 0; pi < pendingToolCalls.length; pi++) {
+                        if (pendingToolCalls[pi].tc.id === m.tool_call_id) {
+                            pendingToolCalls[pi].summary = summary;
+                            if (tcName && ABSOLUTE_TOOLS[tcName] && content && content.trim()) {
+                                var body = content;
+                                if (body.length > ABS_BODY_CAP) {
+                                    var h = Math.floor(ABS_BODY_CAP / 2);
+                                    body = body.slice(0, h) + '\n…[trunc ' + (content.length - ABS_BODY_CAP) + ' chars]…\n' + body.slice(-h);
+                                }
+                                pendingToolCalls[pi].absBody = body;
+                            }
+                            break;
                         }
-                        lines.push('╔K');
-                        lines.push(body.trimEnd());
-                        lines.push('╚');
                     }
                 } else {
                     lines.push('  [T] ✓');
@@ -432,8 +451,11 @@
 
             if (role === 'user') {
                 _flushPending();
-                // Q 文本 = 编辑框原文一字不差（仅剥离系统注入的 [File:] 块和 [CURRENT TIME:] 块）
-                var qText = content.replace(/\[File: [^\]]+\]\s*\n\x60\x60\x60[\s\S]*?\x60\x60\x60/g, '');
+                // Q 文本 = 编辑框原文一字不差（剥离系统注入的 [File:] 块和 [CURRENT TIME:] 块）
+                // ★ V14 fix: 旧正则 /\[File: ...\]\n```[\s\S]*?```/ 在文件内容含 ``` 时
+                //   过早截断→后半内容泄露进 Q 行。改用 \n\n[File: 截断（注入块永远在末尾）。
+                var _fileIdx = content.search(/\n\n\[File: /);
+                var qText = _fileIdx >= 0 ? content.slice(0, _fileIdx) : content;
                 qText = qText.replace(/\n+/g, ' ').trim();
                 var ctIdx = qText.indexOf('[CURRENT TIME:');
                 if (ctIdx < 0) ctIdx = qText.indexOf('═══ CURRENT TIME');
@@ -449,8 +471,7 @@
                     lines.push('A: ' + aText);
                 }
                 _flushPending();
-                _outputToolCallLine(m.tool_calls);
-                pendingToolCalls = m.tool_calls;
+                _saveToolCallLine(m.tool_calls);
                 continue;
             }
 

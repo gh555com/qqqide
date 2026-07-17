@@ -32,7 +32,11 @@ function renderMarkdown(src) {
     s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
     // Images — must run BEFORE links to prevent ![alt](url) being caught as [alt](url)
-    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<div class="table-wrap img-wrap"><span class="table-view-btn">▶ 展开</span><span class="img-info"></span><img src="$2" alt="$1" style="max-width:100%;display:block;" onerror="this.style.display=\'none\'"></div>');
+    // ★ 过滤明显占位/截断路径（含 ... 的 file:/// URL），避免浏览器 404
+    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, function (m, alt, url) {
+        if (/^file:\/\/\/.*\.\.\./.test(url)) { return '<em>[' + (alt || 'image') + ']</em>'; }
+        return '<div class="table-wrap img-wrap"><span class="table-view-btn">▶ 展开</span><span class="img-info"></span><img src="' + url + '" alt="' + alt + '" style="max-width:100%;display:block;" onerror="this.style.display=\'none\'"></div>';
+    });
     // Links
     s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
     // Tables (must run before lists to avoid confusing | with list markers)

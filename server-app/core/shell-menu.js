@@ -215,15 +215,11 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       actLab.style.cssText = 'flex:1 1 auto;';
       actRow.appendChild(actLab);
 
-      // 异步检测登录 + 激活状态，更新标签
+      // ★ 同步检测登录 + 激活状态（per-user，非全局装机量）
       (function (labelEl) {
         var isLoggedIn = window.qqqLogin && window.qqqLogin.isLoggedIn();
-        if (isLoggedIn) {
-          fetch('https://direct-cn.gh555.com/api/goods/qqqide/stats').then(function (r) { return r.json(); }).then(function (d) {
-            if (d && d.ok && d.total_installations > 0) {
-              labelEl.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
-            }
-          }).catch(function () { });
+        if (isLoggedIn && window.qqqLogin.isPurchased()) {
+          labelEl.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
         }
       })(actLab);
 
@@ -237,11 +233,11 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         _shellCloseMenubarPopup();
         var bridge = window.qqqideBridge;
         var isLoggedIn = window.qqqLogin && window.qqqLogin.isLoggedIn();
-        var token = window.qqqLogin && window.qqqLogin.getAuthToken();
-        if (isLoggedIn && token) {
-          // 已登录: 检测激活状态
-          fetch('/api/goods/qqqide/stats').then(function (r) { return r.json(); }).then(function (d) {
-            if (d && d.ok && d.total_installations > 0) {
+        if (isLoggedIn) {
+          // ★ 已登录: 先服务端同步检测购买状态（窗口生命周期只查一次），再决定跳转目标
+          var login = window.qqqLogin;
+          login.checkPurchased().then(function(purchased) {
+            if (purchased) {
               if (bridge && bridge.shell && bridge.shell.openExternal) {
                 bridge.shell.openExternal('https://www.gh555.com/gaea/d/qqqide?lang=zh#profile');
               }
@@ -249,10 +245,6 @@ function _shellOpenMenubarPopup(anchorEl, item) {
               if (bridge && bridge.shell && bridge.shell.openExternal) {
                 bridge.shell.openExternal('https://www.gh555.com/gaea/d/qqqide?lang=zh#price');
               }
-            }
-          }).catch(function () {
-            if (bridge && bridge.shell && bridge.shell.openExternal) {
-              bridge.shell.openExternal('https://www.gh555.com/gaea/d/qqqide?lang=zh#price');
             }
           });
         } else {

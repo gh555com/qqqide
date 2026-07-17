@@ -333,24 +333,7 @@ function _startAllTxtStream(aiDiv, allTxtPath, agent, floorNum, userContent, vis
             for (var hi = 0; hi < houses.length; hi++) {
                 allLines = allLines.concat(_buildHouseLines(houses[hi]));
             }
-            // ★ 扫描 conversation 中未入 houses 的特殊消息（guide、DYNAMIC CONTEXT）
-            var conv = agent.conversation;
-            if (conv && conv.length) {
-                var _sysAdded = false;
-                for (var ci = 0; ci < conv.length; ci++) {
-                    var cm = conv[ci];
-                    if (!cm || !cm.content) continue;
-                    var isDynamicCtx = cm._dynamic && cm.role === 'system';
-                    var isGuide = cm.role === 'user' && cm.content.indexOf('[Guide]') === 0;
-                    if (isDynamicCtx || isGuide) {
-                        if (!_sysAdded) { allLines.push(''); allLines.push('\u2550\u2550\u2550 SYSTEM INJECTIONS \u2550\u2550\u2550'); _sysAdded = true; }
-                        var label = isDynamicCtx ? '\u{1F4E6} DYNAMIC CONTEXT' : '\u{1F4AC} GUIDE';
-                        allLines.push(label + ' (floor ' + (cm._floor || '?') + '):');
-                        allLines.push(cm.content);
-                        allLines.push('');
-                    }
-                }
-            }
+
             _safeWriteAllTxt(allTxtPath, allLines, 0, agent).then(function (ok) {
                 if (ok) {
                     _updateA1Size(a1, floorNum, hCount, rCount, allTxtPath);

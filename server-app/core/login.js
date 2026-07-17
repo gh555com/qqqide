@@ -82,9 +82,10 @@
     return hex;
   }
 
-  function _setAuthData(token, phone, countryIso2) {
+  function _setAuthData(token, phone, countryIso2, purchased) {
     _authData = { token: token, phone: phone, device_name: _buildDeviceName(), ts: Date.now() };
     if (countryIso2) _authData.countryIso2 = countryIso2;
+    if (purchased) _authData.purchased = true;
     _persistAuthAsync();
   }
 
@@ -94,7 +95,7 @@
     if (!_authData) return;
     try {
       if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.saveAuth) {
-        window.qqqideBridge.auth.saveAuth({ token: _authData.token, phone: _authData.phone, device_name: _authData.device_name, country_iso2: _authData.countryIso2 || '' });
+        window.qqqideBridge.auth.saveAuth({ token: _authData.token, phone: _authData.phone, device_name: _authData.device_name, country_iso2: _authData.countryIso2 || '', purchased: !!_authData.purchased });
       }
     } catch (e) { }
   }
@@ -108,6 +109,8 @@
           _authData = saved; _authData.ts = Date.now();
           // ★ 从持久化恢复 countryIso2（存储 key 是 country_iso2，JS 用 camelCase）
           if (saved.country_iso2 && !_authData.countryIso2) _authData.countryIso2 = saved.country_iso2;
+          // ★ 恢复 purchased 标志
+          if (saved.purchased) _authData.purchased = true;
           // ★ 立即显示 LV 区域 + 奖杯（零等待）
           _lvShow();
           return true;
@@ -721,7 +724,7 @@
           _unsubPush = window.qqqideBridge.auth.onAuthPush(function (data) {
             if (pushDone || !data || !data.token) return;
             pushDone = true;
-            _setAuthData(data.token, data.phone || '', data.country_iso2 || '');
+            _setAuthData(data.token, data.phone || '', data.country_iso2 || '', data.purchased);
             _notifyStateChange();
           });
         }
@@ -748,7 +751,7 @@
           var resp = await _httpsGet('/gaea/qqqide/auth/poll?session=' + sessionId +
             '&device_name=' + encodeURIComponent(deviceName));
           if (resp && resp.ok && resp.token) {
-            _setAuthData(resp.token, resp.phone || '', resp.country_iso2 || '');
+            _setAuthData(resp.token, resp.phone || '', resp.country_iso2 || '', resp.purchased);
             _notifyStateChange();
             pushDone = true;
             break;
@@ -1048,6 +1051,31 @@
       });
     },
     isLoggedIn: function () { return !!(_authData && _authData.token); },
+    isPurchased: function () { return !!(_authData && _authData.purchased); },
+    // ★ 服务端同步购买状态（每次窗口生命周期最多查一次，点击菜单时触发）
+    _purchasedServerChecked: false,
+    checkPurchased: function () {
+      var self = this;
+      if (self._purchasedServerChecked) return Promise.resolve(self.isPurchased());
+      if (!self.isLoggedIn()) return Promise.resolve(false);
+      return fetch('https://www.gh555.com/api/me/goods', {
+        headers: { 'Authorization': 'Bearer ' + self.getAuthToken() }
+      }).then(function(r) { return r.json(); }).then(function(d) {
+        self._purchasedServerChecked = true;
+        if (d.ok && Array.isArray(d.goods)) {
+          for (var i = 0; i < d.goods.length; i++) {
+            if (d.goods[i].Slg === 'qqqide' || d.goods[i].slg === 'qqqide') {
+              if (_authData) _authData.purchased = true;
+              return true;
+            }
+          }
+        }
+        return self.isPurchased();
+      }).catch(function() {
+        self._purchasedServerChecked = true;
+        return self.isPurchased();
+      });
+    },
     getAuthToken: function () { return (_authData && _authData.token) ? _authData.token : ''; },
     getPhone: function () { return (_authData && _authData.phone) ? _authData.phone : ''; },
     getPhoneTail: function () { var p = api.getPhone(); return p ? p.slice(-4) : ''; },

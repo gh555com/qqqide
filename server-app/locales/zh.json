@@ -123,6 +123,7 @@
         }
     },
     "editor": {
+        "copyPath": "复制路径",
         "minimap": "小地图",
         "tabs": {
             "close": "关闭标签",

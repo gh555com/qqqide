@@ -365,26 +365,58 @@ async function backgroundCheckWebappUpdate(
         const tarPath = path.join(dlDir, 'server-app.tar.gz');
 
         writeBootStatus(portableRoot, '0|下载载荷更新…');
+        // ★ 302 重定向跟随 + OSS 兜底（对齐 checkAndDownloadShellUpdate，否则 CF Worker 302 直接失败）
+        const fallbackDlUrl = UPDATE_FALLBACK_URL + 'server-app.tar.gz';
         const dlOk = await new Promise<boolean>((resolve) => {
-            const req = lib.get(dlUrl, { timeout: 120000 }, (res) => {
-                if (res.statusCode !== 200) { resolve(false); return; }
-                var total = parseInt(res.headers['content-length'] || '0', 10);
+            var _trackW = function (resp: any) {
+                var total = parseInt(resp.headers['content-length'] || '0', 10);
                 var downloaded = 0;
                 var lastPct = 0;
-                const file = fs.createWriteStream(tarPath);
-                res.on('data', function (chunk: any) {
+                var fstream = fs.createWriteStream(tarPath);
+                resp.on('data', function (chunk: any) {
                     downloaded += chunk.length;
                     if (total > 0) {
                         var pct = Math.round(downloaded / total * 100);
                         if (pct !== lastPct) { lastPct = pct; writeBootStatus(portableRoot, pct + '|下载载荷更新…'); }
                     }
                 });
-                res.pipe(file);
-                file.on('finish', () => resolve(true));
-                file.on('error', () => resolve(false));
-            });
-            req.on('error', () => resolve(false));
-            req.on('timeout', () => { req.destroy(); resolve(false); });
+                resp.pipe(fstream);
+                return fstream;
+            };
+            var _doW = function (url: string, isFallback: boolean) {
+                var lib3 = url.startsWith('https') ? https : http;
+                var dopts: any = { timeout: 120000 };
+                if (url.startsWith('https')) { dopts.rejectUnauthorized = false; }
+                var r = lib3.get(url, dopts, function (res2) {
+                    if (res2.statusCode !== 200) {
+                        if (res2.statusCode === 301 || res2.statusCode === 302 || res2.statusCode === 307 || res2.statusCode === 308) {
+                            var loc = res2.headers.location;
+                            if (loc) { _doW(loc, isFallback); return; }
+                        }
+                        if (!isFallback) {
+                            bootLog('webapp-update: primary failed (status=' + res2.statusCode + '), trying OSS fallback…');
+                            _doW(fallbackDlUrl, true);
+                            return;
+                        }
+                        bootLog('webapp-update: download failed (status=' + res2.statusCode + ')');
+                        resolve(false);
+                        return;
+                    }
+                    var f2 = _trackW(res2);
+                    f2.on('finish', function () { resolve(true); });
+                    f2.on('error', function () { resolve(false); });
+                });
+                r.on('error', function (e: any) {
+                    if (!isFallback) {
+                        bootLog('webapp-update: primary error ' + (e && e.message || e) + ', trying OSS fallback…');
+                        _doW(fallbackDlUrl, true);
+                        return;
+                    }
+                    resolve(false);
+                });
+                r.on('timeout', function () { r.destroy(); if (!isFallback) { _doW(fallbackDlUrl, true); } else { resolve(false); } });
+            };
+            _doW(dlUrl, false);
         });
         if (!dlOk) {
             bootLog('webapp-update: download failed');

@@ -448,33 +448,41 @@ $input.addEventListener('contextmenu', function (e) {
         try { document.execCommand('copy'); } catch (_) {}
     });
 
-    _addRow('Ctrl+V', function () {
+    _addRow('Ctrl+V', async function () {
         $input.focus();
-        // 优先 navigator.clipboard.readText，兜底 execCommand('paste')
+        var txt = '';
+        // ★ 走 IPC bridge（Electron 主进程 clipboard），绕过 iframe 权限限制
         try {
-            navigator.clipboard.readText().then(function (txt) {
-                if (!txt) return;
-                var nd = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-                var cur = nd.get.call($input);
-                var ss = $input.selectionStart || 0, se = $input.selectionEnd || 0;
-                var avail = INPUT_CAP_CHARS - cur.substring(0,ss).length - cur.substring(se).length;
-                if (avail <= 0) { _limitQoast('paste-full'); return; }
-                var ins = txt.length > avail ? txt.substring(0, avail) : txt;
-                nd.set.call($input, cur.substring(0,ss) + ins + cur.substring(se));
-                $input.setSelectionRange(ss + ins.length, ss + ins.length);
-                autoResizeInput(); _updateInputProgress();
-                if (txt.length > avail) _limitQoast('paste-truncated');
-            }).catch(function () {});
-        } catch (_) {
-            try { document.execCommand('paste'); } catch (_) {}
-        }
+            var b = _getBridge();
+            if (b && b.clipboard && b.clipboard.readText) {
+                txt = await b.clipboard.readText();
+            } else {
+                txt = await navigator.clipboard.readText();
+            }
+        } catch (_) { return; }
+        if (!txt) return;
+        var nd = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+        var cur = nd.get.call($input);
+        var ss = $input.selectionStart || 0, se = $input.selectionEnd || 0;
+        var avail = INPUT_CAP_CHARS - cur.substring(0,ss).length - cur.substring(se).length;
+        if (avail <= 0) { _limitQoast('paste-full'); return; }
+        var ins = txt.length > avail ? txt.substring(0, avail) : txt;
+        nd.set.call($input, cur.substring(0,ss) + ins + cur.substring(se));
+        $input.setSelectionRange(ss + ins.length, ss + ins.length);
+        autoResizeInput(); _updateInputProgress();
+        if (txt.length > avail) _limitQoast('paste-truncated');
     });
 
-    // 测高后移到光标上方
-    var mh = menu.getBoundingClientRect().height || 56;
+    // 测宽高 → 避开屏幕边缘
+    var mr = menu.getBoundingClientRect();
+    var mw = mr.width || 120, mh = mr.height || 56;
+    var l = e.clientX, t = e.clientY - mh / 2;
+    // 太靠右 → 移到光标左边；太靠下 → 上移
+    if (l + mw > window.innerWidth - 4) l = e.clientX - mw;
+    if (t + mh > window.innerHeight - 4) t = window.innerHeight - mh - 4;
     menu.style.visibility = 'visible';
-    menu.style.left = Math.max(4, e.clientX) + 'px';
-    menu.style.top = Math.max(4, e.clientY - mh / 2) + 'px';
+    menu.style.left = Math.max(4, l) + 'px';
+    menu.style.top = Math.max(4, t) + 'px';
 });
 
 // 点击外部或 Esc 关闭

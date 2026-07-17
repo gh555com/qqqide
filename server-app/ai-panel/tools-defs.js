@@ -115,7 +115,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'read_file',
-            description: 'Read file contents. Returns up to ~' + _RFCKB_D + 'KB per call. Use start_line/end_line for pagination. Pass sha256 to read a historical version from timeline (from edit_file return [sha256:...] or timeline_versions sha=...).',
+            description: 'Read file contents. Returns up to ~' + _RFCKB_D + 'KB per call. Use start_line/end_line for pagination. Returns pagination header [paginated X-Y of Z lines]. Pass sha256 to read a historical version from timeline (from edit_file return [sha256:...] or timeline_versions sha=...).',
             parameters: {
                 type: 'object',
                 properties: {
