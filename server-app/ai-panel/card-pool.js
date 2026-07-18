@@ -528,7 +528,8 @@ var CardPool = (function () {
     if (fData.aiStartTime && fData.tierLabel && !fData.floorFatal) {
       var tierEl = document.createElement('div');
       tierEl.className = 'msg-tier-indicator';
-      tierEl.textContent = fData.tierLabel + ' start in ' + fData.aiStartTime;
+      var _bpEst = fData.aiBackpackEst || 0;
+      tierEl.textContent = fData.tierLabel + ' · ' + fData.aiStartTime + ' · ' + '\u2726' + (_bpEst || '?') + 'K';
       frag.appendChild(tierEl);
     }
 

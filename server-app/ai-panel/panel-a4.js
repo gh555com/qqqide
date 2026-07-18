@@ -920,6 +920,7 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
         clockTiming: ag._lastFloorTimingRecord || (ag._floorStartPerf ? { durationMs: Math.round(performance.now() - ag._floorStartPerf), networkMs: (ag._floorTiming && ag._floorTiming.networkMs) || 0, aiMs: (ag._floorTiming && ag._floorTiming.aiMs) || 0, otherMs: (ag._floorTiming && ag._floorTiming.otherMs) != null ? ag._floorTiming.otherMs : Math.max(0, (performance.now() - ag._floorStartPerf) - (((ag._floorTiming && ag._floorTiming.networkMs) || 0) + ((ag._floorTiming && ag._floorTiming.aiMs) || 0))), floorIndex: ag._currentFloorNum || 0 } : null),
         aiStartTime: ag._aiStartTime || '',
         tierLabel: ag._aiTierLabel || '',
+        aiBackpackEst: ag._aiBackpackEst || 0,
         images: ag._lastUserInput && ag._lastUserInput.images ? ag._lastUserInput.images.map(function (img) {
             return { id: img.id, fileName: img.fileName || '', dataUrl: img.dataUrl || '' };
         }) : [],

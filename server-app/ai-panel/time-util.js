@@ -6,5 +6,7 @@ function _fmtTime(d) {
     if (!d) d = new Date();
     else if (!(d instanceof Date)) d = new Date(d);
     var p = function (n) { return String(n).padStart(2, '0'); };
-    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    var off = -d.getTimezoneOffset();
+    var tz = 'UTC' + (off >= 0 ? '+' : '-') + p(Math.floor(Math.abs(off) / 60));
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()) + ' ' + tz;
 }

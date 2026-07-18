@@ -9,6 +9,8 @@
     id: 'kope-a',
     title: 'kope-a',
     type: 'process',
+    lifecycle: 'independent',
+    audio: { mode: 'independent' },
     process: {
       script: 'goods/kope-a/q3.py',
       runtime: 'python',

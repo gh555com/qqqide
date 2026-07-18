@@ -34,6 +34,15 @@
   var _D = window.qqqideDefaults || {};
   var SETTINGS_DEF = [
     {
+      key: 'audio.volume',
+      label: 'Goods 音量',
+      desc: '所有 goods 的音频音量（不影响 IDE 自带音效如升级/子弹）。点击刻度设定。',
+      type: 'slider-stepped',
+      tab: 'general',
+      defaultValue: '100',
+      stops: ['0', '25', '50', '75', '100']
+    },
+    {
       key: 'editor.undoMode',
       label: '编辑器撤销模式',
       desc: 'Ctrl+Z 在代码编辑器中撤销的粒度',
@@ -264,7 +273,29 @@
       html += '<div style="font-size:13px; font-weight:bold; color:' + text + '; margin-bottom:4px;">' + def.label + '</div>';
       html += '<div style="font-size:11px; color:' + textDim + '; margin-bottom:10px;">' + def.desc + '</div>';
 
-      if (def.type === 'bool') {
+      if (def.type === 'slider-stepped') {
+        var stops = def.stops || ['0', '25', '50', '75', '100'];
+        var curIdx = stops.indexOf(String(currentVal));
+        if (curIdx < 0) curIdx = stops.length - 1;
+        var pct = Math.round((curIdx / (stops.length - 1)) * 100);
+        html += '<div style="margin-bottom:4px;">';
+        html += '<div class="qqq-vol-slider" style="position:relative;height:32px;display:flex;align-items:center;user-select:none;" data-setting-key="' + def.key + '" data-stops="' + stops.join(',') + '">';
+        html += '<div style="position:absolute;left:0;right:0;height:4px;border-radius:2px;background:' + border + ';"></div>';
+        html += '<div style="position:absolute;left:0;height:4px;border-radius:2px;background:' + accent + ';width:' + pct + '%;"></div>';
+        for (var si = 0; si < stops.length; si++) {
+          var sp = Math.round((si / (stops.length - 1)) * 100);
+          var isActive = si <= curIdx;
+          html += '<div style="position:absolute;left:' + sp + '%;transform:translateX(-50%);width:14px;height:14px;border-radius:50%;border:2px solid ' + (isActive ? accent : border) + ';background:' + (isActive ? accent : bg) + ';z-index:1;"></div>';
+        }
+        html += '</div>';
+        html += '<div style="position:relative;height:18px;margin-top:2px;">';
+        for (var si2 = 0; si2 < stops.length; si2++) {
+          var sp2 = Math.round((si2 / (stops.length - 1)) * 100);
+          html += '<span style="position:absolute;left:' + sp2 + '%;transform:translateX(-50%);font-size:10px;color:' + (si2 === curIdx ? accent : textDim) + ';">' + stops[si2] + '%</span>';
+        }
+        html += '</div>';
+        html += '</div>';
+      } else if (def.type === 'bool') {
         // 开关切换
         var boolOn = (currentVal === true || currentVal === 'true');
         var toggleId = 'qqq-setting-' + def.key.replace(/\./g, '-');
@@ -365,6 +396,26 @@
         set(key, val);
         _renderPanel();
       });
+    }
+
+    // 绑定 stepped slider 点击
+    var sliderTracks = _$panel.querySelectorAll('[data-stops]');
+    for (var st = 0; st < sliderTracks.length; st++) {
+      (function (track) {
+        var key = track.getAttribute('data-setting-key');
+        var stopsStr = track.getAttribute('data-stops');
+        var stops = stopsStr.split(',');
+        track.addEventListener('click', function (e) {
+          var rect = track.getBoundingClientRect();
+          var x = e.clientX - rect.left;
+          var pct = x / rect.width;
+          var idx = Math.round(pct * (stops.length - 1));
+          if (idx < 0) idx = 0;
+          if (idx >= stops.length) idx = stops.length - 1;
+          set(key, stops[idx]);
+          _renderPanel();
+        });
+      })(sliderTracks[st]);
     }
 
     // 绑定 number 变更（debounce 500ms 后写入）

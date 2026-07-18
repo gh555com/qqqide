@@ -649,6 +649,7 @@ async function _restoreAgentFromStore(questId, ag) {
                         // ★ 恢复 aq1 指示器字段（跨面板迁移不丢 AI 启动时间）
                         if (_rhData.aiStartTime) ag._aiStartTime = _rhData.aiStartTime;
                         if (_rhData.tierLabel) ag._aiTierLabel = _rhData.tierLabel;
+                        if (_rhData.aiBackpackEst) ag._aiBackpackEst = _rhData.aiBackpackEst;
                         // ★ 恢复 _lastAutoSaveLen 防止空 houses 安全网误杀新楼层首存
                         ag._lastAutoSaveLen = (ag.conversation ? ag.conversation.length : 0);
                     }

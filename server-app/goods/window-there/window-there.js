@@ -9,6 +9,8 @@
     id: 'window-there',
     title: 'window there',
     type: 'process',
+    lifecycle: 'attached',
+    audio: { mode: 'ide' },
     process: {
       script: 'goods/window-there/q3.py',
       runtime: 'python',

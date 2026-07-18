@@ -593,7 +593,7 @@ function _estimateTokensFull() {
     if (toolCount > 0) _r("Tool Results × " + toolCount, toolTok, 0, "#dc322f");
     if (sysCount > 0) _r("System messages × " + sysCount, sysTok, 0, "#6c71c4");
     if (errCount > 0) _r("Error messages × " + errCount, errTok, 0, "#f85149");
-    _r("JSON overhead (" + msgCount + " msgs + 2 sys)", jsonOverheadTok, 0, "#586e75");
+    _r("JSON overhead (" + msgCount + " msgs + " + sysCount + " sys)", jsonOverheadTok, 0, "#586e75");
     if (toolsChars > 0) _r("Tools definition JSON", toolsTok, 0, "#b58900");
     _r("Body fields (stream, max_tokens, …)", bodyConstTok, 0, "#586e75");
     var displayTotal = _apiPrompt > 0 ? _apiPrompt : localTotal;
@@ -620,6 +620,16 @@ function renderCtxBreakdown() {
     var BX = 10000;
     var MAX_BLOCKS = 100;
     var html = '';
+    // ★ 标记每组最后一个缩进行（用于树形连线）
+    for (var i = 0; i < data.rows.length; i++) {
+        var r = data.rows[i];
+        r._isLastChild = false;
+        if (r.indent > 0 && i + 1 < data.rows.length) {
+            r._isLastChild = data.rows[i + 1].indent === 0;
+        } else if (r.indent > 0 && i + 1 >= data.rows.length) {
+            r._isLastChild = true;
+        }
+    }
     for (var i = 0; i < data.rows.length; i++) {
         var r = data.rows[i];
         if (r.tok <= 0) continue;
@@ -636,6 +646,11 @@ function renderCtxBreakdown() {
         var valStr = r.tok >= 1000 ? Math.round(r.tok / 1000) + 'k' : String(r.tok);
         var padLeft = (r.indent || 0) * 14 + 'px';
         var labelHtml = _isSum ? '<b>' + r.label + '</b>' : (_isFree ? '<span style="color:#859900">' + r.label + '</span>' : r.label);
+        // ★ 树形连线：缩进行加 ├ / └ 前缀
+        if (r.indent > 0) {
+            var treeChar = r._isLastChild ? '\u2514' : '\u251C';
+            labelHtml = '<span class="ctx-bd-tree">' + treeChar + '</span>' + labelHtml;
+        }
         html += '<div class="ctx-bd-row" style="padding-left:' + padLeft + '">' +
             bar +
             '<span class="ctx-bd-label" style="color:' + c + '">' + labelHtml + '</span>' +

@@ -299,9 +299,10 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       }
       _refreshGpBtn();
 
-      // capture script/runtime from schema item
+      // capture script/runtime/lifecycle from schema item
       const gpScript = s.gpScript || '';
       const gpRuntime = s.gpRuntime || 'python';
+      const gpLifecycle = s.gpLifecycle || 'attached';
 
       gpBtn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -311,7 +312,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         if (gpBtn.textContent === '停止') {
           br.gaeaProcess.stop(gpId).then(function () { _refreshGpBtn(); }).catch(function () { });
         } else {
-          br.gaeaProcess.start(gpId, gpScript, gpRuntime).then(function (r) {
+          br.gaeaProcess.start(gpId, gpScript, gpRuntime, gpLifecycle).then(function (r) {
             if (r && r.ok) {
               _refreshGpBtn();
             } else {

@@ -387,6 +387,16 @@ function injectLauncher(unpacked) {
   const launcherDst = path.join(unpacked, 'qqqide.exe');
   fs.cpSync(launcherSrc, launcherDst, { force: true });
   console.log('[pack] injected launcher -> qqqide.exe (' + fs.statSync(launcherSrc).size + 'B)');
+
+  // ★ Bootstrap Config — 本地缓存，启动器离线兜底
+  const cfgSrc = path.join(ROOT, 'launcher', 'launcher-config.json');
+  if (fs.existsSync(cfgSrc)) {
+    // 绿色包根目录（启动器优先读此缓存）
+    fs.cpSync(cfgSrc, path.join(unpacked, 'launcher-config.json'), { force: true });
+    // gh555.com/ 内（r 自解压后也在位）
+    fs.cpSync(cfgSrc, path.join(coreDir, 'launcher-config.json'), { force: true });
+    console.log('[pack] injected launcher-config.json');
+  }
 }
 
 // 3.7) prune unnecessary Electron baggage — slim the unpacked tree
