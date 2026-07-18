@@ -451,9 +451,13 @@
 
             if (role === 'user') {
                 _flushPending();
+                // ★ V15: _compressFloor → §facts 精简 Q 行
+                if (m._compressFloor) {
+                    var _cqText = content.replace(/\n+/g, ' ').trim();
+                    lines.push('Q: §facts ' + _cqText.slice(0, 120));
+                    continue;
+                }
                 // Q 文本 = 编辑框原文一字不差（剥离系统注入的 [File:] 块和 [CURRENT TIME:] 块）
-                // ★ V14 fix: 旧正则 /\[File: ...\]\n```[\s\S]*?```/ 在文件内容含 ``` 时
-                //   过早截断→后半内容泄露进 Q 行。改用 \n\n[File: 截断（注入块永远在末尾）。
                 var _fileIdx = content.search(/\n\n\[File: /);
                 var qText = _fileIdx >= 0 ? content.slice(0, _fileIdx) : content;
                 qText = qText.replace(/\n+/g, ' ').trim();
@@ -479,8 +483,10 @@
                 _flushPending();
                 if (content && content.trim()) {
                     var at = content.replace(/\s+/g, ' ').trim();
-                    // ★ V8 fix: 所有 fatal 楼层（含已恢复）标记 [ERR]，带时间戳
-                    if (m._error) {
+                    // ★ V15: _compressFloor → 精简 A（facts 在 fx 区，不进饼干）
+                    if (m._compressFloor) {
+                        lines.push('A: ' + at.slice(0, 200));
+                    } else if (m._error) {
                         var errPrefix = '[ERR]';
                         if (m._errorTime) errPrefix += ' [' + m._errorTime + ']';
                         lines.push(errPrefix + ' ' + at);
@@ -569,11 +575,22 @@
         }
         // ★ V14 fix: 老楼层在前、当前楼层在后 → biscuitText 天生升序
         floorMsgs = [];
+        // ★ V15: 收集 _compressFloor 楼层的 facts 用于 fx 注入
+        var _newFacts = [];
         // 更早的楼层：先收集（升序）
         var _olderFloorNums = Object.keys(_floorGroups).map(Number).filter(function(fn) { return fn < floorNum; }).sort(function(a,b){return a-b;});
         for (var _ofi = 0; _ofi < _olderFloorNums.length; _ofi++) {
             var _ofn = _olderFloorNums[_ofi];
             var _ofMsgs = _floorGroups[_ofn];
+            // ★ V15: 跳过 _compressFloor 楼层（不进饼干，facts 走 fx 区）
+            if (_ofMsgs.length > 0 && _ofMsgs[0]._compressFloor) {
+                for (var _ocmi = 0; _ocmi < _ofMsgs.length; _ocmi++) {
+                    if (_ofMsgs[_ocmi].role === 'assistant' && _ofMsgs[_ocmi].content) {
+                        _newFacts.push(_ofMsgs[_ocmi].content.trim());
+                    }
+                }
+                continue;
+            }
             var _hasActiveErrors = false;
             for (var _omi = 0; _omi < _ofMsgs.length; _omi++) {
                 if (_ofMsgs[_omi]._error && !_ofMsgs[_omi]._recovered) {
@@ -589,8 +606,17 @@
         }
         // 当前楼层消息（必定压缩）— 放在最后
         var _curMsgs = _floorGroups[floorNum] || [];
-        for (var _cmi = 0; _cmi < _curMsgs.length; _cmi++) {
-            floorMsgs.push(_curMsgs[_cmi]);
+        // ★ V15: 当前楼层若是 _compressFloor，提取 facts 后跳过
+        if (_curMsgs.length > 0 && _curMsgs[0]._compressFloor) {
+            for (var _ccmi = 0; _ccmi < _curMsgs.length; _ccmi++) {
+                if (_curMsgs[_ccmi].role === 'assistant' && _curMsgs[_ccmi].content) {
+                    _newFacts.push(_curMsgs[_ccmi].content.trim());
+                }
+            }
+        } else {
+            for (var _cmi = 0; _cmi < _curMsgs.length; _cmi++) {
+                floorMsgs.push(_curMsgs[_cmi]);
+            }
         }
         var nowTs = Math.floor(Date.now() / 1000);
 
@@ -734,6 +760,36 @@
                 }
             }
 
+            // ★ V15: fx 注入 — 将 _compressFloor 提取的 facts 注入 biscuit 之后
+            if (_newFacts.length > 0) {
+                var _fxText = '';
+                var _fxNow = new Date();
+                var _fxDt = _fxNow.getFullYear() + '-' + String(_fxNow.getMonth()+1).padStart(2,'0') + '-' + String(_fxNow.getDate()).padStart(2,'0') + ' ' + String(_fxNow.getHours()).padStart(2,'0') + ':' + String(_fxNow.getMinutes()).padStart(2,'0') + ':' + String(_fxNow.getSeconds()).padStart(2,'0') + ' UTC+8';
+                _fxText = '═══ FACTS ' + _fxDt + ' ═══\n' + _newFacts.join('\n');
+                // 找已有 fx 消息 → 原地追加；没有 → 在 biscuit 之后创建
+                var _fxFound = _findDynamicMsg(self.conversation, persistentCount, '_facts');
+                if (_fxFound) {
+                    _fxFound.msg.content = _fxFound.msg.content + '\n\n' + _fxText;
+                } else {
+                    // 在 biscuit 消息之后插入
+                    var _biscuitIdx2 = -1;
+                    for (var _bxi = persistentCount; _bxi < self.conversation.length; _bxi++) {
+                        if (self.conversation[_bxi]._biscuit) { _biscuitIdx2 = _bxi; break; }
+                    }
+                    self.conversation.splice(_biscuitIdx2 >= 0 ? _biscuitIdx2 + 1 : persistentCount, 0,
+                        { role: 'system', content: _fxText, _dynamic: true, _facts: true });
+                }
+                // 同步 ctx.facts
+                if (!self._ctx.facts) self._ctx.facts = [];
+                self._ctx.facts.push({ source: 'f3', extracted_at: Math.floor(Date.now()/1000), text: _newFacts.join('\n') });
+                // ★ 清理 compress floor 原始消息（facts 已提取到 fx，原消息不再需要）
+                for (var _cfi = self.conversation.length - 1; _cfi >= floorStart; _cfi--) {
+                    if (self.conversation[_cfi]._compressFloor) {
+                        self.conversation.splice(_cfi, 1);
+                    }
+                }
+            }
+
             // ── 10. 重置计费计数器 ──
             self._lastApiPromptTokens = 0;
             self._lastApiTotalTokens = 0;
@@ -744,7 +800,7 @@
             // ── 12. 更新 _ctx ──
             self._ctx.lastCompressedFloor = floorNum;
             self._ctx.narrative = 'biscuit:' + self._ctx.biscuitLines.length;
-            self._ctx.facts = [];
+            // ★ V15: 不重置 facts（fx 注入已更新 ctx.facts），仅在没有新 facts 时保持不变
 
             // ── 快照（压缩后） ──
             var afterTokens = self._estimateTotalTokens();

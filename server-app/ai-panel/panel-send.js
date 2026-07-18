@@ -3,7 +3,9 @@
 // sendMessage, input helpers, event handlers, window exports
 
 // ★ 管线入口：统一构建 SendIntent → _executeSend
+//   _execSendBusy 模块锁防重复发送
 async function sendMessage(content, opts) {
+    if (typeof _execSendBusy !== 'undefined' && _execSendBusy) return;
     if (content === undefined) {
         content = getInputText().trim();
         opts = { type: 'normal', images: null, tierIndex: selectedTier };
@@ -297,7 +299,7 @@ function _startRecovery(questId, agent, linkEl) {
     // 3. "继续任务"文字 → 光块（同一 <a> 元素，不删不隐）
     if (linkEl) {
         linkEl._qqqRecoveryOrigText = linkEl.textContent;
-        linkEl.textContent = '';
+        // ★ 保留文字不变：CSS 白字 + bounce 动画 = "白色光块左右移动"（清空文本反会零宽不可见）
         linkEl.className = 'msg-err-recovery-light';
         linkEl.style.cssText = '';
         linkEl._qqqRecoveryBusy = true;

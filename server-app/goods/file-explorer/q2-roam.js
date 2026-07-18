@@ -202,6 +202,56 @@ function applyFineScm(p) {
 	updateSCMButtons();
 }
 
+// ---- Binary detection (from q3, enhanced: no false-positive on .ts/.js/.py) ----
+var _KNOWN_BINARY_EXTS = {
+	'.png':1, '.jpg':1, '.jpeg':1, '.gif':1, '.bmp':1, '.webp':1, '.ico':1, '.svg':1, '.tif':1, '.tiff':1,
+	'.mp3':1, '.mp4':1, '.avi':1, '.mov':1, '.mkv':1, '.wmv':1, '.flv':1, '.webm':1, '.ogg':1, '.wav':1, '.flac':1, '.aac':1, '.m4a':1, '.wma':1, '.opus':1,
+	'.exe':1, '.dll':1, '.so':1, '.dylib':1, '.bin':1, '.sys':1, '.ocx':1, '.drv':1,
+	'.zip':1, '.tar':1, '.gz':1, '.bz2':1, '.7z':1, '.rar':1, '.xz':1, '.lz4':1, '.zst':1,
+	'.pdf':1, '.doc':1, '.docx':1, '.xls':1, '.xlsx':1, '.ppt':1, '.pptx':1,
+	'.psd':1, '.ai':1, '.ttf':1, '.otf':1, '.woff':1, '.woff2':1, '.eot':1,
+	'.db':1, '.sqlite':1, '.sq3':1, '.mdb':1,
+};
+// Known text extensions (whitelist, never binary)
+var _KNOWN_TEXT_EXTS = {
+	'.txt':1, '.md':1, '.js':1, '.mjs':1, '.cjs':1, '.ts':1, '.tsx':1, '.jsx':1, '.json':1, '.jsonc':1,
+	'.html':1, '.htm':1, '.css':1, '.scss':1, '.less':1, '.xml':1, '.svg':1, '.yml':1, '.yaml':1,
+	'.py':1, '.pyw':1, '.rs':1, '.go':1, '.c':1, '.h':1, '.cpp':1, '.hpp':1, '.cc':1, '.java':1,
+	'.rb':1, '.php':1, '.pl':1, '.pm':1, '.sh':1, '.bash':1, '.zsh':1, '.bat':1, '.cmd':1, '.ps1':1,
+	'.sql':1, '.r':1, '.lua':1, '.swift':1, '.kt':1, '.kts':1, '.dart':1, '.scala':1, '.clj':1,
+	'.toml':1, '.ini':1, '.cfg':1, '.conf':1, '.log':1, '.csv':1, '.tsv':1,
+	'.vue':1, '.svelte':1, '.astro':1, '.gitignore':1, '.dockerfile':1, '.env':1,
+};
+function isBinaryByName(name) {
+	if (!name) return false;
+	var n = name.toLowerCase();
+	var dot = n.lastIndexOf('.');
+	if (dot === -1) return false;
+	var ext = n.substring(dot);
+	if (_KNOWN_TEXT_EXTS[ext]) return false;
+	if (_KNOWN_BINARY_EXTS[ext]) return true;
+	return null;
+}
+// Content-based check: read first 512 bytes, look for null bytes
+async function isBinaryByContent(filePath) {
+	try { var d = await bridge.fs.read(filePath); if (!d) return false;
+		var n = Math.min(d.length, 512); for (var i = 0; i < n; i++) if (d.charCodeAt(i) === 0) return true;
+		return false;
+	} catch(e) { return false; }
+}
+// Combined: ext whitelist > ext blacklist > null-byte content check
+async function isProbablyBinary(entry) {
+	if (!entry || entry.isDir) return false;
+	var byName = isBinaryByName(entry.name);
+	if (byName !== null) return byName;
+	return await isBinaryByContent(entry.path);
+}
+
+// ---- Sound effects (from q3) ----
+function _playSfx(name) {
+	try { parent.postMessage({ type: 'qqq-sfx', name: name }, '*'); } catch(e) {}
+}
+
 // ---- Utility ----
 function pathJoin(a, b) {
 	if (!a) return b;
@@ -1019,7 +1069,181 @@ function reloadCurrentDir() {
 	}, 50);
 }
 
+// ---- Context menu actions (from q3, 100% ported) ----
+function hideAllContextMenus() {
+	var a = document.getElementById('itemContextMenu');
+	if (a) a.style.display = 'none';
+}
+function performCodeAction(item) {
+	if (!item) return;
+	if (item.name === '..') return;
+	if (item.type === 'folder') {
+		// Folder → navigate (same as q3: openFolderInNewWindow behavior simplified to navigate)
+		navigateTo(item.path);
+		_playSfx('enter');
+		return;
+	}
+	// ★ Binary guard: skip mp3/png/exe etc.
+	var bin = isBinaryByName(item.name);
+	if (bin === true) {
+		// Known binary → open with default program instead
+		bridge.shell.openPath(item.path).catch(function(){});
+		_playSfx('enter');
+		return;
+	}
+	// Text or unknown (unknown ext → trusted as text)
+	parent.postMessage({ type: 'qqq-file-open', path: item.path }, '*');
+	recordFileHistory(item.path);
+	_playSfx('enter');
+}
+function performOpenAction(item) {
+	if (!item) return;
+	if (item.name === '..') return;
+	if (item.type === 'folder') {
+		navigateTo(item.path);
+	} else if (item.path && /\.lnk$/i.test(item.path)) {
+		// .lnk shortcut: resolve and navigate if it points to a folder
+		var srcDir = currentPath;
+		resolveLnkTarget(item.path).then(function(target) {
+			if (target) { navigateTo(target); lnkJumpFromPath = srcDir; }
+			else { bridge.shell.openPath(item.path).catch(function(){}); }
+		});
+	} else {
+		// Open with system default program
+		bridge.shell.openPath(item.path).catch(function(){});
+		recordFileHistory(item.path);
+	}
+	_playSfx('enter');
+}
+function performDeleteAction(item) {
+	if (!item) return;
+	if (item.name === '..') return;
+	// ★ No confirmation dialog (from q3): just fade and delete
+	var el = findItemByPath(item.path);
+	if (el) { el.style.opacity = '0.5'; el.style.pointerEvents = 'none'; }
+	// ★ Multi-select delete support
+	var targets = selectedItems.length > 1
+		? selectedItems.filter(function(s) { return s.name !== '..'; })
+		: [item];
+	targets.forEach(function(t) {
+		var tel = findItemByPath(t.path);
+		if (tel) { tel.style.opacity = '0.5'; tel.style.pointerEvents = 'none'; }
+	});
+	Promise.all(targets.map(function(t) { return bridge.fs.remove(t.path).catch(function(){}); }))
+		.then(function() { if (currentPath) loadFileList(currentPath); });
+	cancelSelection();
+	_playSfx('delete');
+}
+function performEditAction(item) {
+	if (!item) return;
+	if (item.name === '..') return;
+	if (selectedItems.length > 1) return; // No rename in multi-select
+	startRename(item.path, item.name, item.type);
+	_playSfx('enter');
+}
+function performCopyPathAction() {
+	var paths = [];
+	if (selectedItems.length > 1) {
+		paths = selectedItems.filter(function(s) { return s.name !== '..'; }).map(function(s) { return s.path; });
+	} else if (selectedItem && selectedItem.name !== '..') {
+		paths = [selectedItem.path];
+	}
+	if (paths.length > 0) {
+		bridge.clipboard.writeText(paths.join('\n')).catch(function() {
+			if (navigator.clipboard) navigator.clipboard.writeText(paths.join('\n')).catch(function(){});
+		});
+	}
+	_playSfx('enter');
+}
+
 // ---- Context menu ----
+function hideAllContextMenus() {
+	var m = document.getElementById('itemContextMenu'); if (m) m.style.display = 'none';
+}
+
+// ===== Actions (from q3, 100% ported) =====
+function performCodeAction(item) {
+	if (!item) return;
+	if (item.type === 'file' && item.name !== '..') {
+		// Binary guard: skip known binary files
+		if (isBinaryByName(item.name) === true) {
+			_playSfx('error');
+			// Fall through to open with default program instead
+			performOpenAction(item);
+			return;
+		}
+		parent.postMessage({ type: 'qqq-file-open', path: item.path }, '*');
+		recordFileHistory(item.path);
+		_playSfx('enter');
+	} else {
+		// Folder → navigate
+		navigateTo(item.path);
+		_playSfx('enter');
+	}
+}
+function performOpenAction(item) {
+	if (!item) return;
+	if (item.type === 'folder') { navigateTo(item.path); _playSfx('enter'); return; }
+	if (item.path && /\.lnk$/i.test(item.path)) {
+		// .lnk 快捷方式
+		var srcDir = currentPath;
+		resolveLnkTarget(item.path).then(function(target) {
+			if (target) { navigateTo(target); lnkJumpFromPath = srcDir; }
+			else { bridge.shell.openPath(item.path).catch(function(){}); }
+		});
+	} else {
+		bridge.shell.openPath(item.path).catch(function() {
+			parent.postMessage({ type: 'qqq-file-open', path: item.path }, '*');
+		});
+	}
+	recordFileHistory(item.path);
+	_playSfx('enter');
+}
+function performDeleteAction(item) {
+	if (!item) return;
+	if (item.name === '..') return;
+	// Multi-select delete
+	var targets = selectedItems.length > 1
+		? selectedItems.filter(function(s) { return s.name !== '..'; })
+		: [item];
+	if (targets.length === 0) return;
+	// Fade items without confirmation (from q3)
+	targets.forEach(function(t) {
+		var el = findItemByPath(t.path);
+		if (el) { el.style.opacity = '0.5'; el.style.pointerEvents = 'none'; }
+	});
+	// Move to recycle bin (no confirmation dialog)
+	Promise.all(targets.map(function(t) { return bridge.fs.remove(t.path).catch(function(){}); }))
+		.then(function() { if (currentPath) loadFileList(currentPath); });
+	_playSfx('delete');
+	if (selectedItems.length > 1) { selectedItem = null; selectedItems = []; }
+	else selectedItem = null;
+}
+function performEditAction(item) {
+	if (!item) return;
+	if (item.name === '..') return;
+	startRename(item.path, item.name, item.type);
+	_playSfx('enter');
+}
+function performCopyPathAction() {
+	var paths = [];
+	// ★ 优先使用 selectedItems（键盘 z 键时 ctxTarget 可能为 stale）
+	if (selectedItems.length > 1) {
+		paths = selectedItems.filter(function(s) { return s.name !== '..'; }).map(function(s) { return s.path; });
+	} else if (selectedItem && selectedItem.name !== '..') {
+		paths = [selectedItem.path];
+	} else if (ctxTarget) {
+		// 从右键菜单触发且无选中项时兜底
+		paths = [ctxTarget];
+	}
+	if (paths.length > 0) {
+		bridge.clipboard.writeText(paths.join('\n')).catch(function() {
+			if (navigator.clipboard) navigator.clipboard.writeText(paths.join('\n')).catch(function(){});
+		});
+	}
+	_playSfx('enter');
+}
+
 var ctxMenu = document.getElementById('itemContextMenu');
 var ctxTarget = null;
 var ctxEntry = null;
@@ -1027,41 +1251,64 @@ var ctxEntry = null;
 function showContextMenu(x, y, path, entry) {
 	ctxTarget = path;
 	ctxEntry = entry;
-	ctxMenu.style.display = 'flex';
+	// ★ 从 q3 百分百移植：先设位置再显示，避免闪烁
+	//    光标在菜单左上角（left/top 对齐 clientX/clientY）
 	ctxMenu.style.left = x + 'px';
 	ctxMenu.style.top = y + 'px';
+	ctxMenu.style.display = 'flex';
 }
 
-document.addEventListener('click', function() { ctxMenu.style.display = 'none'; });
+document.addEventListener('click', function() { ctxMenu.style.display = 'none'; var e = document.getElementById('emptyContextMenu'); if (e) e.style.display = 'none'; });
+
+// ---- Empty context menu (right-click on empty area, from q3) ----
+var emptyCtxMenu = document.getElementById('emptyContextMenu');
+if (emptyCtxMenu) {
+	emptyCtxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
+		el.addEventListener('click', function() {
+			var act = el.dataset.action;
+			hideAllContextMenus();
+			if (act === 'newFile') { doCreateFile(); }
+			else if (act === 'newFolder') { doCreateFolder(); }
+			else if (act === 'openInExplorer') { bridge.shell.openPath(currentPath).catch(function(){}); }
+		});
+	});
+}
+
+// Show empty context menu on right-click on empty area of file list
+(function() {
+	var fl = document.getElementById('fileList');
+	if (!fl) return;
+	fl.addEventListener('contextmenu', function(e) {
+		var itemEl = e.target.closest('.file-item');
+		if (itemEl) return; // Let item handler deal with it
+		// Empty area right-click
+		e.preventDefault(); e.stopPropagation();
+		hideAllContextMenus();
+		var em = document.getElementById('emptyContextMenu');
+		if (!em) return;
+		em.style.left = e.clientX + 'px';
+		em.style.top = e.clientY + 'px';
+		em.style.display = 'flex';
+	});
+})();
 
 ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 	el.addEventListener('click', function() {
 		var action = el.dataset.action;
+		hideAllContextMenus();
 		if (!ctxTarget) return;
-		switch (action) {
-			case 'code':
-				parent.postMessage({ type: 'qqq-file-open', path: ctxTarget }, '*');
-				break;
-				case 'open':
-				if (ctxEntry && ctxEntry.isDir) navigateTo(ctxTarget);
-				else parent.postMessage({ type: 'qqq-file-open', path: ctxTarget }, '*');
-				break;
-			case 'delete':
-				if (confirm('Delete ' + baseName(ctxTarget) + '?')) {
-					bridge.fs.remove(ctxTarget).then(function() { loadFileList(currentPath); });
-				}
-				break;
-			case 'rename':
-				if (ctxEntry && ctxEntry.name === '..') return;
-				startRename(ctxTarget, baseName(ctxTarget), ctxEntry.isDir ? 'folder' : 'file');
-				break;
-			case 'copyPath':
-				bridge.clipboard.writeText(ctxTarget).catch(() => {
-					if (navigator.clipboard) navigator.clipboard.writeText(ctxTarget).catch(() => {});
-				});
-				break;
+		if (selectedItems.length > 1 && action !== 'copyPath' && action !== 'delete') {
+			// Multi-select: only copyPath and delete work; others use first item
 		}
-		ctxMenu.style.display = 'none';
+		var item = ctxEntry ? { path: ctxTarget, name: ctxEntry.name, type: ctxEntry.isDir ? 'folder' : 'file' } : { path: ctxTarget, name: baseName(ctxTarget), type: 'file' };
+		if (item.name === '..' && (action === 'rename' || action === 'delete')) return;
+		switch (action) {
+			case 'code': performCodeAction(item); break;
+			case 'open': performOpenAction(item); break;
+			case 'delete': performDeleteAction(item); break;
+			case 'rename': performEditAction(item); break;
+			case 'copyPath': performCopyPathAction(); break;
+		}
 	});
 });
 
@@ -1397,33 +1644,25 @@ async function updateDriveDisplay() {
 		var si = selectedItem;
 		if (k === 'q') {
 			e.preventDefault();
-			parent.postMessage({ type: 'qqq-file-open', path: si.path }, '*');
-			// ★ q=编辑：文件及父目录入 qq 区
-			recordFileHistory(si.path);
+			performCodeAction(si);
 		} else if (k === 'w') {
 			e.preventDefault();
-			if (si.type === 'folder') { navigateTo(si.path); }
-			else if (si.path && /\.lnk$/i.test(si.path)) {
-				// ★ .lnk 快捷方式：异步解析目标，若指向文件夹则在 Roam 内导航
-				var srcDir = currentPath;
-				resolveLnkTarget(si.path).then(function(target) {
-					if (target) {
-						// 先导航到目标，再设 lnkJumpFromPath（navigateTo 会清除它）
-						navigateTo(target);
-						lnkJumpFromPath = srcDir;
-					} else {
-						// 解析失败→按普通文件打开
-						parent.postMessage({ type: 'qqq-file-open', path: si.path }, '*');
-						recordFileHistory(si.path);
-					}
-				});
-			}
-			else { parent.postMessage({ type: 'qqq-file-open', path: si.path }, '*'); recordFileHistory(si.path); }
+			performOpenAction(si);
 		} else if (k === 'd') {
+			e.preventDefault();
+			performDeleteAction(si);
+		} else if (k === 'e' || k === 'f2') {
+			e.preventDefault();
+			if (selectedItems.length > 1) return;
+			performEditAction(si);
+		} else if (k === 'z') {
+			e.preventDefault();
+			performCopyPathAction();
+		} else if (e.key === 'Delete' && e.shiftKey) {
+			// Shift+Delete: permanent delete (no recycle bin)
 			e.preventDefault();
 			var targets = selectedItems.filter(function(s) { return s.name !== '..'; });
 			if (targets.length === 0) return;
-			if (!confirm('Delete ' + targets.length + ' item(s)?')) return;
 			targets.forEach(function(t) {
 				var el = findItemByPath(t.path);
 				if (el) { el.style.opacity = '0.5'; el.style.pointerEvents = 'none'; }
@@ -1431,20 +1670,7 @@ async function updateDriveDisplay() {
 			Promise.all(targets.map(function(t) { return bridge.fs.remove(t.path).catch(function(){}); }))
 				.then(function() { if (currentPath) loadFileList(currentPath); });
 			cancelSelection();
-		} else if (k === 'e') {
-			e.preventDefault();
-			if (selectedItems.length > 1) return;
-			if (si.name === '..') return;
-			startRename(si.path, si.name, si.type);
-		} else if (k === 'f2') {
-			e.preventDefault();
-			if (selectedItems.length > 1) return;
-			if (si.name === '..') return;
-			startRename(si.path, si.name, si.type);
-		} else if (k === 'z') {
-			e.preventDefault();
-			var paths = selectedItems.filter(function(s) { return s.name !== '..'; }).map(function(s) { return s.path; });
-			if (paths.length > 0) bridge.clipboard.writeText(paths.join('\n')).catch(function(){});
+			_playSfx('delete');
 		}
 	});
 })();

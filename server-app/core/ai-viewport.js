@@ -182,7 +182,12 @@
         e.preventDefault();
         var cur = _sortPrefByPath[dirPath] || 'n';
         if (cur === mode) return;
-        _sortPrefByPath[dirPath] = mode;
+        // ★ 只持久化非默认值：m 存，n 删（默认即 n，省存储）
+        if (mode === 'm') {
+          _sortPrefByPath[dirPath] = 'm';
+        } else {
+          delete _sortPrefByPath[dirPath];
+        }
         _saveSortPrefs();
         _dirCache.delete(dirPath + '|n');
         _dirCache.delete(dirPath + '|m');
@@ -410,6 +415,8 @@
         projects.push({ path: folderPath, name: basename(folderPath) });
         _bumpRecent(folderPath);
         _restoreFormationFromOnlyStore(folderPath);
+        // ★ 此时 projects[0] 已就位，加载排序偏好
+        _loadSortPrefs();
         saveProjects();
         render();
         _notifyChanged();

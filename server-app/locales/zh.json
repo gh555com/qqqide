@@ -500,7 +500,20 @@
             "toastCopied": "已复制",
             "toastNewQuest": "已创建新对话，切换到 AI 面板查看",
             "toastSent": "已发送（切换到 AI 面板查看）",
-            "toastFailed": "失败"
+            "toastFailed": "失败",
+            "compressByValue": "压缩背包按性价比",
+            "compressIdleOnly": "仅楼层空闲时可压缩",
+            "compressAgentNotFound": "未找到 Agent，请先打开对应 quest",
+            "compressSending": "AI 正在建楼中，请等待完成后再压缩",
+            "compressNoBiscuit": "未找到压缩饼干",
+            "compressAbsolutHover": "剔除绝对包裹盒（╔K...╚ 体部），保留头行和一切温柔包装盒",
+            "compressEditonlyHover": "在前者基础上剔除编辑之外滴一切包装盒：仅保留 Q/A 和 edit_file / write_file / create_file / delete_file / revert_file 头行",
+            "compressOnlyfactsHover": "在前两者基础上 再砍掉一半对话原文（但提取并保留其中 facts），是砍掉老滴那一半，最近滴一半原封不动滴保留。需要 AI 调用（计费）。",
+            "compressAbsolutOk": "绝对包装盒已剥离",
+            "compressEditonlyOk": "已精简为仅编辑包装盒",
+            "compressNoChange": "未找到可剥离内容，背包已是最简",
+            "compressFailed": "压缩失败",
+            "compressCostLink": "每一种压缩的代价是什么？"
         }
     }
 }

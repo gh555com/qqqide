@@ -148,6 +148,77 @@ body {
     color: var(--fg2); font-size: 13px; flex-direction: column; gap: 8px;
 }
 .empty-icon { font-size: 40px; opacity: 0.3; }
+
+/* ── 压缩工具栏 ── */
+.compress-toolbar {
+    display: flex; align-items: center; gap: 6px; padding: 5px 10px;
+    background: var(--bg); border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap;
+}
+.compress-toolbar .cmp-label { font-size: 12px; color: var(--fg2); margin-right: 4px; }
+.compress-toolbar button.cmp-btn {
+    padding: 4px 12px; font-size: 12px; border: 1px solid var(--border);
+    border-radius: 3px; background: var(--bg2); color: var(--fg); cursor: pointer; white-space: nowrap;
+    font-family: 'Cascadia Code','Fira Code','JetBrains Mono','Consolas',monospace;
+    font-weight: 600; letter-spacing: 0.3px;
+}
+.compress-toolbar button.cmp-btn:hover { background: var(--bg); border-color: var(--blue); }
+.compress-toolbar button.cmp-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.compress-toolbar .cmp-gt { color: var(--fg2); font-weight: 700; font-size: 14px; margin: 0 1px; }
+.compress-toolbar .cmp-cost-link {
+    font-size: 11px; color: var(--blue); text-decoration: underline;
+    margin-left: 12px; white-space: nowrap; cursor: pointer;
+}
+.compress-toolbar .cmp-cost-link:hover { color: var(--violet); }
+
+/* ── 压缩动画遮罩 ── */
+.cmp-anim-overlay {
+    position: fixed; inset: 0; z-index: 1000; display: none;
+    align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.55); flex-direction: column; gap: 16px;
+}
+.cmp-anim-overlay.show { display: flex; }
+.cmp-anim-card {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 20px 28px; min-width: 340px; box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+}
+.cmp-anim-title { font-size: 14px; font-weight: 700; color: var(--fg); margin-bottom: 14px; text-align: center; }
+.cmp-anim-bar-wrap { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.cmp-anim-label { font-size: 11px; color: var(--fg2); min-width: 42px; text-align: right; }
+.cmp-anim-bar-track {
+    flex: 1; height: 14px; background: var(--bg2); border-radius: 3px;
+    overflow: hidden; position: relative; border: 1px solid var(--border);
+}
+.cmp-anim-bar-fill {
+    height: 100%; border-radius: 2px; transition: width 0.8s cubic-bezier(0.22,0.61,0.36,1);
+    background: var(--blue);
+}
+.cmp-anim-bar-fill.after { background: var(--green); }
+.cmp-anim-stat {
+    font-size: 11px; color: var(--fg2); text-align: center; margin-top: 4px;
+}
+.cmp-anim-stat b { color: var(--green); font-size: 15px; }
+.cmp-anim-close {
+    margin-top: 10px; padding: 5px 20px; font-size: 12px; border: 1px solid var(--border);
+    border-radius: 4px; background: var(--bg2); color: var(--fg); cursor: pointer;
+}
+.cmp-anim-close:hover { background: var(--bg); }
+
+/* ── 自定义 hover tooltip ── */
+.cmp-tooltip {
+    position: fixed; z-index: 2000; pointer-events: none; opacity: 0;
+    transition: opacity 0.12s; max-width: 340px;
+    background: var(--base03); color: var(--bg); padding: 6px 10px;
+    border-radius: 4px; font-size: 12px; line-height: 1.45; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+}
+.cmp-tooltip.show { opacity: 1; }
+
+/* ── 按钮收益标签 ── */
+.cmp-benefit {
+    font-size: 10px; margin-left: 4px; font-weight: 400; letter-spacing: 0;
+    color: var(--green); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+.cmp-benefit.zero { color: var(--fg2); }
+.cmp-benefit.low { color: var(--yellow); }
 </style>
 </head>
 <body>
@@ -173,6 +244,18 @@ body {
     <button class="primary" id="btnNewQuest" disabled onclick="openNewQuest()">🚀 <span data-i18n="goods.conv.openNewQuest">选中格子 → 新对话</span></button>
 </div>
 
+<!-- ═══ 压缩工具栏 — 3 按钮体系 ═══ -->
+<div class="compress-toolbar" id="compress-toolbar">
+    <span class="cmp-label" data-i18n="goods.conv.compressByValue">压缩背包按性价比</span>
+    <button class="cmp-btn" id="btn-absolut" onclick="doCompress('absolut')" data-cmp-hover="goods.conv.compressAbsolutHover">absolut<span class="cmp-benefit" id="bf-absolut"></span></button>
+    <span class="cmp-gt">&gt;</span>
+    <button class="cmp-btn" id="btn-editonly" onclick="doCompress('editonly')" data-cmp-hover="goods.conv.compressEditonlyHover">edit only<span class="cmp-benefit" id="bf-editonly"></span></button>
+    <span class="cmp-gt">&gt;</span>
+    <button class="cmp-btn" id="btn-onlyfacts" onclick="doCompress('onlyfacts')" data-cmp-hover="goods.conv.compressOnlyfactsHover">only facts<span class="cmp-benefit" id="bf-onlyfacts"></span></button>
+    <span id="cmp-status" style="font-size:11px;color:var(--fg2);margin-left:auto;display:none"></span>
+    <a href="https://www.gh555.com/gaea/d/qqqide?lang=zh#docs/qqqide-2" target="_blank" class="cmp-cost-link" data-i18n="goods.conv.compressCostLink">每一种压缩的代价是什么？</a>
+</div>
+
 <div class="cells" id="cells"></div>
 
 <div class="bottombar">
@@ -181,6 +264,30 @@ body {
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- ═══ 压缩动画遮罩 ═══ -->
+<div class="cmp-anim-overlay" id="cmpAnimOverlay">
+    <div class="cmp-anim-card">
+        <div class="cmp-anim-title" id="cmpAnimTitle">🧹 压缩完成</div>
+        <div class="cmp-anim-bar-wrap">
+            <span class="cmp-anim-label">压缩前</span>
+            <div class="cmp-anim-bar-track"><div class="cmp-anim-bar-fill" id="cmpBarBefore" style="width:100%"></div></div>
+            <span style="font-size:11px;color:var(--fg2)" id="cmpBarBeforeLabel">100k</span>
+        </div>
+        <div class="cmp-anim-bar-wrap">
+            <span class="cmp-anim-label">压缩后</span>
+            <div class="cmp-anim-bar-track"><div class="cmp-anim-bar-fill after" id="cmpBarAfter" style="width:100%"></div></div>
+            <span style="font-size:11px;color:var(--fg2)" id="cmpBarAfterLabel">60k</span>
+        </div>
+        <div class="cmp-anim-stat">节省 <b id="cmpSavedPct">40%</b></div>
+        <div style="text-align:center;margin-top:10px">
+            <button class="cmp-anim-close" onclick="closeAnim()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- ═══ hover tooltip（自定义，绕过 iframe 限制） ═══ -->
+<div class="cmp-tooltip" id="cmpTooltip"></div>
 
 <script>
 'use strict';
@@ -603,6 +710,34 @@ window.addEventListener('message', function (e) {
         if (e.data.questId) { _questId = e.data.questId; if (e.data.panelId) _panelId = e.data.panelId; }
         refresh();
     }
+    // 压缩结果回调
+    if (e.data.type === 'qqq-compress-res') {
+        // only facts 中间状态：r 已替换，楼层建楼中
+        if (e.data.status === 'floor-starting') {
+            var _stEl = document.getElementById('cmp-status');
+            if (_stEl) { _stEl.style.display = 'inline'; _stEl.textContent = '⏳ AI 提取 facts 中…'; }
+            var _titleMap = { onlyfacts: '🧠 Facts 提取中…' };
+            showCompressAnimation(_titleMap[e.data.action] || '压缩中…', e.data.beforeChars, e.data.afterChars);
+            return;
+        }
+        clearTimeout(window._cmpTimeout);
+        var statusEl = document.getElementById('cmp-status');
+        if (statusEl) statusEl.style.display = 'none';
+        updateCompressBtns();
+
+        if (e.data.ok) {
+            var titleMap = { absolut: '🧹 绝对包装盒已剥离', editonly: '✂️ 已精简为仅编辑包装盒', onlyfacts: '🧠 Facts 已提取' };
+            var title = titleMap[e.data.action] || '✅ 压缩完成';
+            showCompressAnimation(title, e.data.beforeChars, e.data.afterChars);
+            // 动画后自动关闭
+            setTimeout(function () {
+                var overlay = document.getElementById('cmpAnimOverlay');
+                if (overlay && overlay.classList.contains('show')) closeAnim();
+            }, 2500);
+        } else {
+            toast(_i('goods.conv.compressFailed', '压缩失败') + (e.data.error ? ': ' + e.data.error : ''));
+        }
+    }
 });
 
 // 定时检查 agent 变化 + 工具定义就绪
@@ -622,7 +757,224 @@ setInterval(function () {
         if (hasTools) { _toolsReady = true; needsRebuild = true; }
     }
     if (needsRebuild) { _agent = ag; _cells = buildCells(_agent); render(); }
+    // 更新压缩按钮状态
+    updateCompressBtns();
 }, 2000);
+
+// ════════════════════════════════════════════════
+// 压缩 3 按钮体系 — absolut / edit only / only facts
+// ════════════════════════════════════════════════
+
+// ── 计算 3 按钮收益（减少的背包 chars）──
+function computeBenefits(ag) {
+    var result = { absolut: 0, editonly: 0, onlyfacts: 0 };
+    if (!ag) return result;
+    var conv = ag.conversation || [];
+    var biscuitText = '';
+    for (var i = 0; i < conv.length; i++) {
+        if (conv[i]._biscuit && conv[i].content) { biscuitText = conv[i].content; break; }
+    }
+    if (!biscuitText) return result;
+    var beforeChars = biscuitText.length;
+
+    // Step 1: absolut — 剥离 ╔K...╚ 体部
+    var afterAbsolut = biscuitText.replace(/\n╔K\n[\s\S]*?\n╚(?=\n|$)/g, '\n');
+    result.absolut = beforeChars - afterAbsolut.length;
+
+    // Step 2: edit only — absolut基础上仅保留 5 写工具头行 + Q/A/F/S
+    var lines = afterAbsolut.split('\n');
+    var filtered = [];
+    var WRITE_TOOLS_RE = /\[A → (edit_file|write_file|create_file|delete_file|revert_file)\]/;
+    for (var li = 0; li < lines.length; li++) {
+        var line = lines[li];
+        if (/^(Q:|A:|=== F|\[S\]|\s*$)/.test(line) || WRITE_TOOLS_RE.test(line)) filtered.push(line);
+    }
+    result.editonly = beforeChars - filtered.join('\n').length;
+
+    // Step 3: only facts — absolut+editonly → 按 === F 切半 → h原料大小即收益
+    var blocks = afterAbsolut.split(/\n(?==== F\d+ )/);
+    var _totalChars = 0, _blockChars = [];
+    for (var bi = 0; bi < blocks.length; bi++) { _blockChars.push(blocks[bi].length); _totalChars += blocks[bi].length; }
+    var _half = Math.floor(_totalChars / 2), _acc = 0, _splitIdx = 1;
+    for (var bi2 = 0; bi2 < blocks.length; bi2++) { _acc += _blockChars[bi2]; if (_acc >= _half) { _splitIdx = bi2; break; } }
+    var hChars = 0;
+    for (var bi3 = 0; bi3 < _splitIdx; bi3++) hChars += _blockChars[bi3];
+    result.onlyfacts = hChars;
+    return result;
+}
+
+function _fmtBenefit(chars) {
+    if (chars < 1000) return '';
+    if (chars >= 1000000) return (chars / 1000000).toFixed(1) + 'M';
+    return (chars / 1000).toFixed(0) + 'k';
+}
+
+// 更新压缩按钮 disabled 状态 + 收益标签（仅 idle 时可用）
+function updateCompressBtns() {
+    var ag = _agent || getAgent();
+    var idle = ag && ag._stopState !== 'sending';
+    var btns = document.querySelectorAll('.cmp-btn');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].disabled = !idle;
+    }
+    var statusEl = document.getElementById('cmp-status');
+    if (statusEl) {
+        if (!ag) { statusEl.style.display = 'inline'; statusEl.textContent = '未找到 Agent'; }
+        else if (!idle) { statusEl.style.display = 'inline'; statusEl.textContent = '⏳ AI 建楼中…'; }
+        else { statusEl.style.display = 'none'; }
+    }
+    // 更新收益标签
+    var bf = computeBenefits(ag);
+    var labels = { absolut: 'bf-absolut', editonly: 'bf-editonly', onlyfacts: 'bf-onlyfacts' };
+    for (var k in labels) {
+        var el = document.getElementById(labels[k]);
+        if (!el) continue;
+        var ch = bf[k] || 0;
+        el.textContent = ch > 0 ? (' -' + _fmtBenefit(ch)) : '';
+        el.className = 'cmp-benefit' + (ch < 1000 ? ' zero' : (ch < 32000 && k === 'onlyfacts' ? ' low' : ''));
+    }
+}
+
+// 执行压缩（委托 AI 面板）
+function doCompress(action) {
+    var ag = _agent || getAgent();
+    if (!ag) { toast(_i('goods.conv.compressAgentNotFound', '未找到 Agent')); return; }
+    if (ag._stopState === 'sending') { toast(_i('goods.conv.compressSending', 'AI 建楼中，请等待')); return; }
+
+    // 禁用按钮，显示状态
+    var btns = document.querySelectorAll('.cmp-btn');
+    for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+    var statusEl = document.getElementById('cmp-status');
+    if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '⏳ 压缩中…'; }
+
+    // 发送 postMessage 到 AI 面板
+    var aiFrame = _findAiFrame();
+    if (aiFrame && aiFrame.contentWindow) {
+        aiFrame.contentWindow.postMessage({
+            type: 'qqq-compress-req',
+            action: action,
+            questId: _questId,
+            panelId: _panelId
+        }, '*');
+    } else {
+        // 兜底：直接往父窗口发广播
+        window.parent.postMessage({
+            type: 'qqq-compress-req',
+            action: action,
+            questId: _questId,
+            panelId: _panelId
+        }, '*');
+    }
+
+    // 超时兜底（only facts 需建楼层，给更长时间）
+    clearTimeout(window._cmpTimeout);
+    var _timeoutMs = (action === 'onlyfacts') ? 180000 : 5000;
+    window._cmpTimeout = setTimeout(function () {
+        updateCompressBtns();
+        if (statusEl) statusEl.style.display = 'none';
+        toast(_i('goods.conv.compressFailed', '压缩超时，请重试'));
+    }, _timeoutMs);
+}
+
+// 查找 AI 面板 iframe
+function _findAiFrame() {
+    try {
+        var p = window.parent;
+        var aiFrameId = 'qqq-ai-iframe-p' + (_panelId || 1);
+        var f = p.document.getElementById(aiFrameId);
+        if (f) return f;
+        // 尝试所有面板
+        for (var pid = 0; pid <= 2; pid++) {
+            f = p.document.getElementById('qqq-ai-iframe-p' + pid);
+            if (f) return f;
+        }
+    } catch (_) {}
+    return null;
+}
+
+// 显示压缩动画
+function showCompressAnimation(title, beforeChars, afterChars) {
+    var pct = beforeChars > 0 ? Math.round((1 - afterChars / beforeChars) * 100) : 0;
+    var maxChars = beforeChars || 1;
+
+    // 标题
+    document.getElementById('cmpAnimTitle').textContent = title;
+
+    // 柱状条
+    var barBefore = document.getElementById('cmpBarBefore');
+    var barAfter = document.getElementById('cmpBarAfter');
+    barBefore.style.width = '100%';
+    barAfter.style.width = '0%';
+
+    document.getElementById('cmpBarBeforeLabel').textContent = fmtSize(beforeChars);
+    document.getElementById('cmpBarAfterLabel').textContent = fmtSize(afterChars);
+    document.getElementById('cmpSavedPct').textContent = pct + '%';
+
+    // 显示遮罩
+    var overlay = document.getElementById('cmpAnimOverlay');
+    overlay.classList.add('show');
+
+    // 动画：延迟一帧后收缩
+    requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+            var newPct = maxChars > 0 ? Math.round(afterChars / maxChars * 100) : 0;
+            barAfter.style.width = Math.max(newPct, 1) + '%';
+        });
+    });
+}
+
+function closeAnim() {
+    document.getElementById('cmpAnimOverlay').classList.remove('show');
+    refresh();
+}
+
+function fmtSize(chars) {
+    if (chars >= 1000000) return (chars / 1000000).toFixed(1) + 'M';
+    if (chars >= 1000) return (chars / 1000).toFixed(0) + 'k';
+    return String(chars);
+}
+
+// ═══ 自定义 hover tooltip ═══
+(function () {
+    var tip = document.getElementById('cmpTooltip');
+    if (!tip) return;
+    var _tipTimer = null;
+    var _tipTarget = null;
+
+    function showTip(e) {
+        var el = e.currentTarget;
+        var key = el.getAttribute('data-cmp-hover');
+        if (!key) return;
+        var text = _i(key, '');
+        if (!text) return;
+        _tipTarget = el;
+        clearTimeout(_tipTimer);
+        _tipTimer = setTimeout(function () {
+            tip.textContent = text;
+            tip.classList.add('show');
+            // 定位在按钮上方
+            var rect = el.getBoundingClientRect();
+            var tipW = tip.offsetWidth || 300;
+            var left = Math.max(4, rect.left + rect.width / 2 - tipW / 2);
+            var top = rect.top - tip.offsetHeight - 6;
+            if (top < 4) top = rect.bottom + 6;
+            tip.style.left = left + 'px';
+            tip.style.top = top + 'px';
+        }, 250);
+    }
+
+    function hideTip() {
+        _tipTarget = null;
+        clearTimeout(_tipTimer);
+        tip.classList.remove('show');
+    }
+
+    var btns = document.querySelectorAll('[data-cmp-hover]');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].addEventListener('mouseenter', showTip);
+        btns[i].addEventListener('mouseleave', hideTip);
+    }
+})();
 </script>
 </body>
 </html>
