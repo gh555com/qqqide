@@ -45,7 +45,7 @@ import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
-import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses } from './gaea-process';
+import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, GaeaLifecycle } from './gaea-process';
 import { startWqPing, stopWqPing } from './wq-ping';
 
 // ── 服务 ──
@@ -278,8 +278,8 @@ function registerAuthPersistIpc(): void {
 
 // ── Gaea Process IPC — 通用 gaea process-type goods 进程管理 ──
 function registerGaeaProcessIpc(): void {
-    ipcMain.handle('qqqide:gaea-process:start', async (_e, goodsId: string, scriptPath: string, runtime?: string) => {
-        return startGaeaProcess(portable.root, goodsId, scriptPath, runtime || 'python');
+    ipcMain.handle('qqqide:gaea-process:start', async (_e, goodsId: string, scriptPath: string, runtime?: string, lifecycle?: string) => {
+        return startGaeaProcess(portable.root, goodsId, scriptPath, runtime || 'python', (lifecycle as GaeaLifecycle) || 'attached');
     });
 
     ipcMain.handle('qqqide:gaea-process:stop', async (_e, goodsId: string) => {

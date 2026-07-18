@@ -88,11 +88,49 @@ const WIN_BUILTINS = new Set([
     'find', 'findstr', 'more', 'sort', 'start',
 ]);
 
-/** Normalize brief before dispatch: wrap Windows builtins with cmd /c */
+// Shell metacharacters that require shell interpretation (pipe, redirect, chain, background)
+const SHELL_META_RE = /[|&;<>]/;
+
+/** Normalize brief before dispatch.
+ *  ① Wrap commands with shell metacharacters (| & ; < >) in cmd /c (Win) or sh -c (Unix).
+ *     This ensures pipes/redirects/chains work regardless of spawn tier (ghrun or node).
+ *  ② Wrap Windows builtins (dir, type, etc.) with cmd /c. */
 function _normalizeBrief(brief: { cmd: string; args?: string[]; shell?: boolean }): void {
-    if (!IS_WIN) { return; }
     if (!brief.cmd) { return; }
-    if (WIN_BUILTINS.has(brief.cmd.toLowerCase())) {
+
+    var cmdLower = brief.cmd.toLowerCase();
+
+    // ① Detect shell metacharacters in cmd + args
+    var hasMeta = SHELL_META_RE.test(brief.cmd);
+    if (!hasMeta && brief.args) {
+        for (var i = 0; i < brief.args.length; i++) {
+            if (SHELL_META_RE.test(brief.args[i])) { hasMeta = true; break; }
+        }
+    }
+
+    if (hasMeta && cmdLower !== 'cmd' && cmdLower !== 'sh') {
+        // Reconstruct full command, quoting args with spaces
+        var fullCmd = brief.cmd;
+        if (brief.args && brief.args.length) {
+            var quoted = brief.args.map(function(a: string) {
+                if (/\s/.test(a)) return '"' + a.replace(/"/g, '\\"') + '"';
+                return a;
+            });
+            fullCmd += ' ' + quoted.join(' ');
+        }
+        if (IS_WIN) {
+            brief.cmd = 'cmd';
+            brief.args = ['/c', fullCmd];
+        } else {
+            brief.cmd = 'sh';
+            brief.args = ['-c', fullCmd];
+        }
+        brief.shell = false;
+        return;
+    }
+
+    // ② Windows builtins
+    if (IS_WIN && WIN_BUILTINS.has(cmdLower)) {
         brief.args = ['/c', brief.cmd, ...(brief.args || [])];
         brief.cmd = 'cmd';
         brief.shell = false;

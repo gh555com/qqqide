@@ -347,7 +347,7 @@ async function _executeSend(intent) {
                 if (!_prev || !_prev.classList.contains('msg-tier-indicator')) {
                     var tierEl = document.createElement('div');
                     tierEl.className = 'msg-tier-indicator';
-                    tierEl.textContent = agent._aiTierLabel + ' start in ' + agent._aiStartTime;
+                    tierEl.textContent = agent._aiTierLabel + ' · ' + agent._aiStartTime + ' · ' + '\u2726' + (agent._aiBackpackEst || '?') + 'K';
                     aiDiv.parentNode.insertBefore(tierEl, aiDiv);
                 }
             }
@@ -406,7 +406,7 @@ async function _executeSend(intent) {
                                 if (!_prev2 || !_prev2.classList.contains('msg-tier-indicator')) {
                                     var tierEl2 = document.createElement('div');
                                     tierEl2.className = 'msg-tier-indicator';
-                                    tierEl2.textContent = agent._aiTierLabel + ' start in ' + agent._aiStartTime;
+                                    tierEl2.textContent = agent._aiTierLabel + ' · ' + agent._aiStartTime + ' · ' + '\u2726' + (agent._aiBackpackEst || '?') + 'K';
                                     aiDiv.parentNode.insertBefore(tierEl2, aiDiv);
                                 }
                             }
@@ -510,7 +510,7 @@ async function _executeSend(intent) {
                                 if (!_prev2 || !_prev2.classList.contains('msg-tier-indicator')) {
                                     var tierEl2 = document.createElement('div');
                                     tierEl2.className = 'msg-tier-indicator';
-                                    tierEl2.textContent = agent._aiTierLabel + ' start in ' + agent._aiStartTime;
+                                    tierEl2.textContent = agent._aiTierLabel + ' · ' + agent._aiStartTime + ' · ' + '\u2726' + (agent._aiBackpackEst || '?') + 'K';
                                     aiDiv.parentNode.insertBefore(tierEl2, aiDiv);
                                 }
                             }

@@ -15,6 +15,7 @@
 | Topology | [topology.md](arch/topology.md) | Project architecture, directory structure, key pipelines |
 | Iron Laws | [iron_law.md](arch/iron_law.md) | Unbreakable hard constraints (§ format) |
 | Env & Deploy | [env_var.md](arch/env_var.md) | Environment variables, keys, servers, deploy flow |
+| Facts | [facts.md](arch/facts.md) | Immutable key facts: identity, repo, team, decisions |
 <!-- Add more rows as AI determines based on project complexity -->
 
 ## Not Applicable Subsystems
@@ -26,6 +27,7 @@
 - Architecture questions → topology.md
 - Violation risk → iron_law.md
 - Need secrets/servers/deploy → env_var.md
+- Need project identity/repo/team → facts.md
 
 ### Rule Reference
 ```

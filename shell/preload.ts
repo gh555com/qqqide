@@ -415,8 +415,9 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
     },
 
     // ---- gaeaProcess (通用 gaea process-type goods 进程管理) ----
+    // lifecycle: 'attached'=随主窗口生死 / 'independent'=独立程序
     gaeaProcess: {
-        start: (goodsId: string, scriptPath: string, runtime?: string) => ipcRenderer.invoke('qqqide:gaea-process:start', goodsId, scriptPath, runtime),
+        start: (goodsId: string, scriptPath: string, runtime?: string, lifecycle?: string) => ipcRenderer.invoke('qqqide:gaea-process:start', goodsId, scriptPath, runtime, lifecycle),
         stop: (goodsId: string) => ipcRenderer.invoke('qqqide:gaea-process:stop', goodsId),
         status: (goodsId: string) => ipcRenderer.invoke('qqqide:gaea-process:status', goodsId),
         getAutoStart: (goodsId: string) => ipcRenderer.invoke('qqqide:gaea-process:get-auto-start', goodsId),

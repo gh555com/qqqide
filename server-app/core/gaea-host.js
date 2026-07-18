@@ -11,6 +11,8 @@
 //     title: 'Rage',
 //     version: '1.0.0',
 //     protoVer: 2,   // optional, defaults to 1
+//     type: 'process',           // 'panel' (default) | 'process' (后台进程)
+//     lifecycle: 'attached',     // 'attached'=随主窗口生死(默认) | 'independent'=独立程序
 //     panel: { build(host, ctx) {} },           // A-zone main panel
 //     tabs: { 'roam': { title:'Roam', build(host,ctx){} } },  // X-zone gaea tabs
 //     services: { 'paste': { start(ctx){}, stop(){} } },       // background
@@ -305,6 +307,8 @@
 
     goods.set(id, def);
 
+    if (window.qqqAudio && def.audio) { window.qqqAudio.register(id, def); }
+
     if (!_activeId && !_pendingShow.length) { show(id); }
     if (_built) renderTabBar();
   }
@@ -335,6 +339,7 @@
 
       instances.delete(id);
     }
+    if (window.qqqAudio) { window.qqqAudio.unregister(id); }
     goods.delete(id);
 
     if (_activeId === id) {

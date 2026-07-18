@@ -6,8 +6,10 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 只写100%确定事实。未落地不写，落地立刻写。
   - 同一件事只存一处。过时直接删，不留注释/废弃标记。
 
-§1 四层不可逆（2026-07-17 新增 C 启动器层）
+§1 四层不可逆（2026-07-17 新增 C 启动器层，2026-07-18 Bootstrap Config）
   - C 启动器(launcher/qqqide.exe) = 100% 托管更新。跑在一切之前，所有文件解锁可删可换。
+    ★ Bootstrap Config: 唯一硬编码 URL → 下载 launcher-config.json → 一切行为配置驱动。
+    服务器改 JSON 即全量推送，用户永不需要重新下载绿色包。
     启动前检查 latest.txt → 下载 r → 删旧 gh555.com/ → 解压覆盖 → 100% 精确一致。
   - 壳(Electron 22, joker.exe) = 窗口+IPC+spawn ghrun。不做业务。
   - ghrun(Rust) = 进程管理+热更新+下载校验。OS单例。
@@ -20,6 +22,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 唯一真理: SYSTEM_MAX_TIMEOUT 只改 qz-spawn.ts 一处。
   - 进程组隔离: Win=CREATE_NEW_PROCESS_GROUP / Unix=process_group(0)。父死子必死。
   - execSync→execFile 修复 UI 冻结。空 cmd 保护。guardMs=timeout+10s。
+  - Shell元字符(|&;<>): _normalizeBrief 自动包裹 cmd /c(Win) / sh -c(Unix)，管道直通不再漏(2026-07-18)。
 
 §3 配色 — 唯一真理配色机器
   - 唯一入口: core/qqqide-theme.js。一切组件禁私自定义颜色。
@@ -33,10 +36,16 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - Worker: 基础走 qqqide-asset:// URL，语言走 blob+loader.js。
 
 §5 命名（永不可逆）
-  - 变量名禁含 "su§6 C 启动器 100% 托管更新 + 壳层冷更 + 载荷热更（2026-07-17）
-  - ★ C 启动器（第一道门）: qqqide.exe 跑在一切之前 → WinHTTP 下载 latest.txt
-    → 比对 gh555.com/.version → 版本不同 → 下载 r（7zCon.sfx+payload.7z）
-    → 删除旧 gh555.com/ → 解压 r -y → 写 .version → 启动 joker.exe
+  - 变量名禁含 "su"（如 resume、exposure）。JSON: floor_id 禁 turn_id/session_id/round。
+
+§6 C 启动器 100% 托管更新 + Bootstrap Config + 壳层冷更 + 载荷热更（2026-07-18）
+  - ★ C 启动器（第一道门）: qqqide.exe 跑在一切之前。
+    ★ Bootstrap Config: 唯一硬编码 URL → 下载 launcher-config.json
+      → host/path/timeout/redirect/retry 全部配置驱动。
+      配置缓存本地，服务器改 JSON 即全量推送。用户永不需要重下绿色包。
+    流程: 加载配置 → WinHTTP 下载 latest.txt → 比对 .version
+      → 版本不同 → 下载 r（7zCon.sfx+payload.7z）→ 删旧 gh555.com/
+      → 解压 r -y → 写 .version → 启动 joker.exe
     → 覆盖整个 gh555.com/（二进制/shell-out/engines/webapp/DLL），100% 精确
     → 失败兜底: 保留旧版继续启动
   - 壳层冷更（第二道门）: bootstrap.js 启动时检查 staging/shell-out-next/
@@ -44,10 +53,8 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 载荷热更: boot 完成 20s 后 backgroundCheckWebappUpdate → server-app.tar.gz
   - 按钮更新: update-ui.js 手动触发
   - 版本跟踪: gh555.com/.version（C 启动器）+ Data/shell-version + Data/webapp-version
-  - 服务器产物: Deploy → version.json + r（全量）+ shell-out.tar.gz + server-app.tar.gz
-  - latest.txt: 仅含版本号，CDN 边缘缓存友好bapp
-  - 服务器产物: Deploy→version.json + shell-out.tar.gz + server-app.tar.gz
-  - deploy.js 第4步从 version.ts 读 APP_VERSION 生成 version.json，cp 一份为 server-app.tar.gz
+  - 服务器产物: Deploy → version.json + r（全量）+ shell-out.tar.gz + server-app.tar.gz + launcher-config.json
+  - latest.txt: 仅含版本号，CDN 边缘缓存友好
 
 §7 环境 / §8 便携
   - dev端口8090。启动清除 ELECTRON_RUN_AS_NODE/VSCODE_* 环境变量。
@@ -280,12 +287,15 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 
 §42 E-Flow — 专家文档框架
   - 入口: panel-expert.js(四态机: none→pending→standard/custom)。
-  - q1首层100%触发，其余10%。防抖5min。仅中面板(panel=1)触发。
-  - 触发信号: inject('[E-FLOW trigger]', {_system:true}) — AI可见，用户不可见。
+  - ★ 自动引导(2026-07-18): 新项目(mode='none')首次启动→自动创建骨架文件
+    (index.md + arch/{topology,iron_law,env_var,facts}.md) + project.txt rule注册。
+    模式自动设为 standard。AI 后续自然填充骨架。
+  - q1首层100%触发(仅mode='none'且未引导时)，其余10%。防抖5min。仅中面板触发。
+  - 触发信号: inject('[E-FLOW trigger]', {_system:true})。
   - 协议全文存服务器壳(system-prompt.txt)，客户端只发一行触发词。
   - 持久化: onlyStore.qqq.expert.mode。已锁定模式永不回退。
-  - AUTO-DETECT: autoDetect扫描 project.txt rule条目→custom / expert/index.md→standard。
-    仅启动+楼层开始时扫描，AI不写only.sq3(§E-a 只写project.txt)。
+  - AUTO-DETECT: 启动时扫描 expert/index.md→standard / project.txt rule条目→custom。
+    自动引导优先(先建standard骨架，再检测custom)，custom不覆盖已有standard。
 
 §43-44 窗口缩放/项目资产
   - §43: 窗口UI锁死1.00 zoom。+/-/Ctrl+=只改editor fontSize(1-128)。按住=首tick ±1后跃10（18→28→38...），200ms定频防抖。

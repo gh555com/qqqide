@@ -20,8 +20,8 @@
       {
         label: '的梦gaea',
         sub: [
-          { label: 'kope-a', cmd: 'gaea.kopeA', hasGaeaProcess: 'kope-a', gpScript: 'goods/kope-a/q3.py', gpRuntime: 'python' },
-          { label: 'window there', cmd: 'gaea.windowThere', hasGaeaProcess: 'window-there', gpScript: 'goods/window-there/q3.py', gpRuntime: 'python' },
+          { label: 'kope-a', cmd: 'gaea.kopeA', hasGaeaProcess: 'kope-a', gpScript: 'goods/kope-a/q3.py', gpRuntime: 'python', gpLifecycle: 'independent' },
+          { label: 'window there', cmd: 'gaea.windowThere', hasGaeaProcess: 'window-there', gpScript: 'goods/window-there/q3.py', gpRuntime: 'python', gpLifecycle: 'attached' },
         ],
       },
     ],

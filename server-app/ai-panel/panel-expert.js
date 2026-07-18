@@ -23,7 +23,12 @@
 //       ├── topology.md        ★ MANDATORY — project architecture
 //       ├── iron_law.md        ★ MANDATORY — hard constraints
 //       ├── env_var.md         ★ MANDATORY — environment/deploy/keys
+//       ├── facts.md           ★ MANDATORY — immutable key facts (identity/repo/team)
 //       └── *.md               OPTIONAL — AI decides based on complexity
+//
+// ★ Auto-bootstrap (2026-07-18): on new projects (mode='none'), skeleton files
+//   are auto-created without asking the user. AI populates them as it works.
+//   This ensures every project has a baseline doc framework.
 // ============================================================================
 
 var ExpertFlow = (function () {
@@ -161,8 +166,11 @@ var ExpertFlow = (function () {
     }
 
     // mode === 'none': initial auto-detection at startup
-    var exists = await _checkStandardExists(projectRoot);
-    if (exists) {
+    // ★ Auto-bootstrap (2026-07-18): create skeleton expert framework for new projects
+    //   so every project has a baseline doc structure (including facts.md).
+    //   AI populates the skeleton files as it works on the project.
+    var bootstrapped = await _bootstrapStandardFramework(projectRoot);
+    if (bootstrapped) {
       _storeSetNow(KEY_MODE, MODE_STANDARD);
       return;
     }
@@ -171,6 +179,185 @@ var ExpertFlow = (function () {
     if (hasCustom) {
       _storeSetNow(KEY_MODE, MODE_CUSTOM);
     }
+  }
+
+  // ---- skeleton templates (minimal placeholders, AI populates later) ----
+  function _skeletonIndex(projectName, projectRoot) {
+    return '# Expert Index — ' + projectName + '\n'
+      + '> Thin lookup index. Points to arch/*.md files.\n'
+      + '> Injected into msg[0] via rule"..." in project.txt.\n'
+      + '> Keep it lean.\n'
+      + '\n'
+      + '## Project Identity\n'
+      + '- Name: ' + projectName + '\n'
+      + '- Type: {project_type}\n'
+      + '- Stack: {tech_stack}\n'
+      + '\n'
+      + '## Subsystem Map\n'
+      + '\n'
+      + '| Subsystem | File | Summary |\n'
+      + '|-----------|------|---------|\n'
+      + '| Topology | [topology.md](arch/topology.md) | Project architecture, directory structure |\n'
+      + '| Iron Laws | [iron_law.md](arch/iron_law.md) | Unbreakable hard constraints |\n'
+      + '| Env & Deploy | [env_var.md](arch/env_var.md) | Environment variables, keys, servers |\n'
+      + '| Facts | [facts.md](arch/facts.md) | Identity, repo, team, key decisions |\n'
+      + '\n'
+      + '## Quick Reference\n'
+      + '- Architecture → topology.md\n'
+      + '- Violation risk → iron_law.md\n'
+      + '- Secrets/servers/deploy → env_var.md\n'
+      + '- Project identity/repo/team → facts.md\n'
+      + '\n'
+      + '```\n'
+      + 'rule"' + projectRoot + '/qqq/alphal/expert/index.md"\n'
+      + '```\n';
+  }
+
+  function _skeletonTopology(projectName) {
+    return '# Topology — ' + projectName + ' Architecture\n'
+      + '> Condensed reference. AI-maintained. Update when architecture changes.\n'
+      + '\n'
+      + '## Architecture Overview\n'
+      + '<!-- Layer model, component diagram, data flow — AI fills in -->\n'
+      + '\n'
+      + '## Directory Structure\n'
+      + '<!-- Key directories and their roles -->\n'
+      + '\n'
+      + '## Key Pipelines\n'
+      + '<!-- Build, deploy, data flow pipelines -->\n'
+      + '\n'
+      + '## Persistence\n'
+      + '<!-- Storage layers, databases, file formats -->\n'
+      + '\n'
+      + '## Key Constants\n'
+      + '<!-- Timeouts, limits, thresholds that affect behavior -->\n';
+  }
+
+  function _skeletonIronLaw(projectName) {
+    return '# Iron Laws — ' + projectName + '\n'
+      + '> Unbreakable hard constraints. Violating any § = guaranteed rework.\n'
+      + '> One fact per line. No storytelling.\n'
+      + '\n'
+      + '## §0 Document Discipline\n'
+      + '- Minimal. Only conclusions. All docs <4000 tokens.\n'
+      + '- One fact = one place.\n'
+      + '\n'
+      + '## §1 Naming\n'
+      + '<!-- AI fills: naming conventions, forbidden patterns -->\n'
+      + '\n'
+      + '## §2 Architecture Layers\n'
+      + '<!-- AI fills: layer boundaries, responsibilities -->\n'
+      + '\n'
+      + '## §3 Build & Deploy\n'
+      + '<!-- AI fills: build system, deploy flow, must-not-do rules -->\n'
+      + '\n'
+      + '## §4 Persistence\n'
+      + '<!-- AI fills: data storage rules, atomicity requirements -->\n'
+      + '\n'
+      + '## §5 Version Lock\n'
+      + '<!-- AI fills: locked dependency versions and why -->\n';
+  }
+
+  function _skeletonEnvVar(projectName) {
+    return '# Environment Variables & Deployment — ' + projectName + '\n'
+      + '> Server access, API keys, deploy scripts.\n'
+      + '> ⚠️ May contain sensitive information.\n'
+      + '\n'
+      + '## Servers\n'
+      + '<!-- AI fills: IPs, roles, access methods -->\n'
+      + '\n'
+      + '## Deploy Scripts\n'
+      + '<!-- AI fills: scripts, locations, purposes -->\n'
+      + '\n'
+      + '## Ports\n'
+      + '<!-- AI fills: dev and production ports -->\n'
+      + '\n'
+      + '## Environment Variables\n'
+      + '<!-- AI fills: key .env variables and their purposes -->\n'
+      + '\n'
+      + '## Build Commands\n'
+      + '<!-- AI fills: build, test, deploy commands -->\n'
+      + '\n'
+      + '## Deploy Flow\n'
+      + '<!-- AI fills: step-by-step deploy pipeline -->\n';
+  }
+
+  function _skeletonFacts(projectName) {
+    return '# Facts — ' + projectName + '\n'
+      + '> Immutable key facts. One fact per line. AI-maintained.\n'
+      + '\n'
+      + '## Identity\n'
+      + '- Purpose: {project_purpose}\n'
+      + '- Primary Language: {primary_language}\n'
+      + '\n'
+      + '## Repository\n'
+      + '- URL: {repo_url}\n'
+      + '\n'
+      + '## Team & Access\n'
+      + '<!-- Key personnel, access methods -->\n'
+      + '\n'
+      + '## Key Decisions\n'
+      + '<!-- One-time architectural/technical decisions -->\n'
+      + '\n'
+      + '## External Dependencies\n'
+      + '<!-- APIs, services, critical libraries -->\n'
+      + '\n'
+      + '## Quick Notes\n'
+      + '<!-- Anything else important -->\n';
+  }
+
+  // ---- auto-bootstrap: create skeleton expert framework for new projects ----
+  async function _bootstrapStandardFramework(projectRoot) {
+    var bridge = (typeof window !== 'undefined' && window.parent && window.parent.qqqideBridge) ? window.parent.qqqideBridge : null;
+    if (!bridge || !bridge.fs) return false;
+
+    var root = _normRoot(projectRoot);
+    var expertDir = root + '/qqq/alphal/expert/';
+    var archDir = expertDir + 'arch/';
+    var projectName = root.split('/').pop() || 'unknown';
+
+    // Already bootstrapped? Check index.md existence
+    try {
+      var stat = await bridge.fs.stat(expertDir + 'index.md');
+      if (stat && !stat.isDir) return true;
+    } catch (_) { /* not yet */ }
+
+    // Create directories
+    try { await bridge.fs.mkdir(expertDir); } catch (_) { }
+    try { await bridge.fs.mkdir(archDir); } catch (_) { }
+
+    // Write skeleton files (best-effort, don't fail if one fails)
+    try { await bridge.fs.write(expertDir + 'index.md', _skeletonIndex(projectName, root)); } catch (_) { }
+    try { await bridge.fs.write(archDir + 'topology.md', _skeletonTopology(projectName)); } catch (_) { }
+    try { await bridge.fs.write(archDir + 'iron_law.md', _skeletonIronLaw(projectName)); } catch (_) { }
+    try { await bridge.fs.write(archDir + 'env_var.md', _skeletonEnvVar(projectName)); } catch (_) { }
+    try { await bridge.fs.write(archDir + 'facts.md', _skeletonFacts(projectName)); } catch (_) { }
+
+    // Register in project.txt so rule"..." loading picks up index.md
+    await _registerProjectRule(root, expertDir + 'index.md');
+
+    return true;
+  }
+
+  // ---- append rule"..." line to project.txt if not already present ----
+  async function _registerProjectRule(projectRoot, indexPath) {
+    var bridge = (typeof window !== 'undefined' && window.parent && window.parent.qqqideBridge) ? window.parent.qqqideBridge : null;
+    if (!bridge || !bridge.fs) return;
+
+    var rulePath = projectRoot + '/qqq/alphal/rule/project.txt';
+    var ruleLine = 'rule"' + indexPath.replace(/\\/g, '/') + '"';
+
+    try {
+      var existing = await bridge.fs.read(rulePath);
+      if (existing && existing.indexOf(ruleLine) !== -1) return; // already registered
+    } catch (_) { /* file doesn't exist yet */ }
+
+    // Ensure directory exists
+    var ruleDir = projectRoot + '/qqq/alphal/rule/';
+    try { await bridge.fs.mkdir(ruleDir); } catch (_) { }
+
+    var newContent = (existing ? existing.trim() + '\n' : '') + ruleLine + '\n';
+    try { await bridge.fs.write(rulePath, newContent); } catch (_) { }
   }
 
   async function _checkCustomDocs(projectRoot) {

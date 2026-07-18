@@ -24,7 +24,7 @@
     var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 2.5);
 
     // ═══ 绝对包装盒容量常量（融入饼干，阀值压缩时整盒移除）═══
-    var ABS_BODY_CAP = 16384;   // 绝对包装盒体部上限（16K chars）
+    var ABS_BODY_CAP = 4096;    // 绝对包装盒体部上限（4K chars），超则首尾各2K
     var ABS_HEAD_CAP = 80;      // 绝对包装盒头行上限
 
     // ═══ 绝对工具集合（5 个，╔K...╚ 包裹，阀值压缩时整盒移除）═══

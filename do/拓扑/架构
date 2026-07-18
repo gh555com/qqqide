@@ -4,12 +4,19 @@
 归一完成: 2026-07-07，qqqide→qqqide 全链路消灭，零旧兼容
 
 
-四层模型（2026-07-17 新增 C 启动器层）
+四层模型（2026-07-17 新增 C 启动器层，2026-07-18 Bootstrap Config）
 --------
 ┌──────────────────┌──────────────────────────────────────┐
 │ C 启动器 (launcher/qqqide.exe)        │
-│ Win32 原生 · ~38KB · 零外部依赖       │
+│ Win32 原生 · ~44KB · 零外部依赖       │
 │ 职责: 100% 托管更新 + 启动 joker.exe  │
+│ ★ Bootstrap Config: 唯一硬编码 URL    │
+│   → 下载 launcher-config.json        │
+│   → 一切行为由配置驱动（host/path/    │
+│     超时/重定向/重试）                │
+│   配置缓存本地，离线用缓存+默认值兜底 │
+│   改配置只需更新服务器 JSON，用户      │
+│   永不需要重新下载绿色包              │
 │ 流程: latest.txt → 下载 r → 删旧目录  │
 │       → 解压覆盖 → 100% 精确一致      │
 └──────────┬───────────────────────────┘
@@ -29,15 +36,20 @@
 │ ghrun.exe     — 进程管理(qz)（LSP守护已冻结）│
 │ 兜底: qz-spawn 两层 (ghrun→Node)      │
 │ 新增: WindoC 启动器 非阻塞 100% 托管更新（2026-07-17 v2）
+│ ★ Bootstrap Config（2026-07-18）: 唯一硬编码 URL
+│   → 下载 launcher-config.json → 一切行为由配置驱动
+│   配置缓存本地，服务器改 JSON 即全量推送，用户永不需要重下绿色包
 ---------------------------------------------------------------------
 · 永不阻塞用户。先起程序先用着，后台下载，重启时应用。
 · 启动流程:
-  ① 应用暂存更新（若 r.next+.version-next 存在）→ 删旧 gh555.com/→解压→写 .version
-  ② 立即启动 joker.exe（不检查服务器，不等下载）
-  ③ 后台线程: WinHTTP GET latest.txt→比对→下载 r.next→写 .version-next
-  ④ 下次启动→①检测暂存→自动应用→100% 精确一致
+  ① 加载配置（本地缓存→服务器→内置默认值）
+  ② 应用暂存更新（若 r.next+.version-next 存在）→ 删旧 gh555.com/→解压→写 .version
+  ③ 立即启动 joker.exe（不检查服务器，不等下载）
+  ④ 后台线程: 按配置 WinHTTP GET latest.txt→比对→下载 r.next→写 .version-next
+  ⑤ 下次启动→②检测暂存→自动应用→100% 精确一致
 · 覆盖范围: 整个 gh555.com/（二进制/shell-out/engines/webapp/DLL）
-· 失败兜底: 网络不通→跳过用本地版。下载中断→下次重试。断网可用。
+· 配置驱动字段: update_host/latest_path/r_path/use_https/follow_redirect/timeout_sec/retry/joker_exe
+· 失败兜底: 网络不通→跳过用本地版。配置拉不到→缓存+默认值兜底。
 
 壳层冷更 + 载荷热更（Electron 启动后）
 ---------------------------------------------------------------------
@@ -191,8 +203,14 @@ ContentGateway 唯一真理源（content-gateway.js，2026-07-11 重构）
 gaea goods 协议
 -----------------
 A 区宿主: core/gaea-host.js (完整 panel/tabs/services/commands/provides/uses)
-注册接口: window.qqqGaea.register({ id, title, ... })
-已注册: rage / wysiwyg / navigator / paste-image / file-explorer / search / git
+注册接口: window.qqqGaea.register({ id, title, type, lifecycle, ... })
+  · type: 'panel'(默认,A区面板) | 'process'(后台进程,经gaea-process.ts spawn)
+  · lifecycle: 'attached'(默认,随主窗口生死,主窗口关闭→taskkill /F /T杀整棵进程树)
+              | 'independent'(独立程序,主窗口关闭也自动清理,但可独立运行)
+  · audio: { mode: 'ide'(默认,跟随IDE音量滑块) | 'independent'(自有音量,不受滑块影响) }
+  · process-type goods: 脚本在 goods/<id>/ 自包含(.js+.py), u管线热更
+已注册 panel: rage / wysiwyg / navigator / paste-image / file-explorer / search / git
+已注册 process: kope-a(independent) / window-there(attached)
 
 搜索引擎 — ripgrep 单引擎
 ---------------------------------------------
@@ -247,7 +265,7 @@ LSP 已冻结 → 三级语法检查:
 目录骨架（源码）
 --------
 qqq-shell-v2/
-├── launcher/          C 启动器（launcher.c → qqqide.exe, ~38KB）
+├── launcher/          C 启动器（launcher.c → qqqide.exe, ~44KB）+ launcher-config.json
 ├── shell/             壳层TS（main.ts + component-checker + wq-ping + 13 子模块）
 ├── server-app/        载荷层(热更)
 │   ├── core/          IDE 平台
@@ -262,9 +280,10 @@ qqq-shell-v2/
 绿色包解压目录（2026-07-17 终版）
 --------
 qqqide-win-x64/
-├── qqqide.exe         C 启动器（唯一入口，双击即启动）
-├── r                  7zCon.sfx + payload.7z（首次运行自解压，更新时从CDN下载新r）
-└── gh555.com/         ★ 100% 托管目录（C 启动器管理，零手动操作）
+├── qqqide.exe              C 启动器（唯一入口，双击即启动）
+├── launcher-config.json    启动器配置缓存（本地兜底，服务器更新时自动覆盖）
+├── r                       7zCon.sfx + payload.7z（首次运行自解压，更新时从CDN下载新r）
+└── gh555.com/              ★ 100% 托管目录（C 启动器管理，零手动操作）
     ├── joker.exe      Electron 22.3.27 二进制
     ├── .version       本地版本号（C 启动器读写，与服务器 latest.txt 比对）
     ├── *.dll           Electron 依赖
@@ -395,8 +414,14 @@ q2 单行 + hover 展开
     └── alphal/
         ├── quest.sq3         AI 对话索引 SQLite（~200B/层）
         ├── only.sq3          项目资产 SQLite（ai.formation / layout / editor.tabs / editor.positions）
-        ├── rule/project.txt  E-Flow custom 规则
-        └── expert/           E-Flow standard 文档框架
+        ├── rule/project.txt  E-Flow custom 规则 + rule注册
+        └── expert/           E-Flow standard 框架(自动引导创建)
+            ├── index.md      薄索引→arch/*.md
+            └── arch/
+                ├── topology.md   架构
+                ├── iron_law.md   铁律
+                ├── env_var.md    环境/部署
+                └── facts.md      关键事实(身份/仓库/团队)
   qqq/quests/             AI 对话正文（FS）
     ├── _index.json       quest 索引（跨面板共享、30s宽限期）
     └── q{n}.{title}/
@@ -603,7 +628,7 @@ AI 面板核心机制
 · 📎 文件附件截断: 50KB 硬帽，超则保留首尾各 20KB
 · 引导注入: abort 当前 house → 确认回合(Flash/noTools) → AI 回复确认 → 继续工作
 · 排队信封: 最多 50 条，AI 回复完自动消费下一条，_debounceSaveQueue 500ms 合并写盘
-· E-Flow: q1首层楼100%触发，后续10%。四态机(none→pending→standard/custom)
+· E-Flow: 新项目自动引导(创建骨架文件)→standard模式。旧项目q1首层100%触发，后续10%。四态机+自动引导。
 · 项目锁: onlyStore.claimLock()（30s心跳/60s过期）
 · 楼层归档:
     all.json → 机器用（conversation[]+计费+快照），禁 reasoning_content
