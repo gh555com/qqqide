@@ -848,40 +848,8 @@ document.getElementById('ctx-snap').onclick = async function () {
         }
     }
 };
-// ═══ 阀值压缩 — V13 手动/自动阀门 ═══
-// V13: 阀值压缩剥离 ╔K...╚ 绝对包装盒体部，保留头行和温柔包装盒。
-// 手动触发：ctx-panel 的 🗜️ 阀值压缩 按钮。自动触发：建楼中饼干超阈值。
-var _ctxValveBtn = document.getElementById('ctx-valve');
-if (_ctxValveBtn) {
-    _ctxValveBtn.onclick = function () {
-        document.getElementById('ctx-panel').style.display = 'none';
-        var _ag = _activeAgent;
-        if (!_ag) {
-            var _iFn0 = typeof _i === 'function' ? _i : function (k, f) { return f; };
-            if (window.parent && window.parent.qqqideQoast) {
-                window.parent.qqqideQoast.show('⚠️ ' + _iFn0('ai.ctx.noAgent', 'Agent 不可用，请先打开对应 quest 楼层'), { type: 'error', duration: 4000 });
-            }
-            return;
-        }
-        if (typeof _ag._tryAutoValveCompress === 'function') {
-            var _did = _ag._tryAutoValveCompress(0);
-            // ★ 立即持久化 ctx.json，防止剥离结果因未保存而丢失
-            if (_did && typeof _writeCtxJson === 'function') {
-                // ★ V14 fix: _writeCtxJson 返回 Promise，try/catch 抓不到 rejection → 用 .catch() 处理
-                _writeCtxJson(questActiveId, _ag._ctx).catch(function(_) {});
-            }
-            if (typeof updateCtxBtn === 'function') updateCtxBtn();
-            var _iFn = typeof _i === 'function' ? _i : function (k, f) { return f; };
-            if (window.parent && window.parent.qqqideQoast) {
-                if (_did) {
-                    window.parent.qqqideQoast.show('🗜️ ' + _iFn('ai.ctx.valveOk', '绝对包装盒已剥离'), { type: 'success', duration: 3000 });
-                } else {
-                    window.parent.qqqideQoast.show('🗜️ ' + _iFn('ai.ctx.valveNone', '无绝对包装盒可剥离'), { type: 'info', duration: 2000 });
-                }
-            }
-        }
-    };
-}
+// ═══ 阀值压缩已迁至 goods/conv 上下文背包页面（3 按钮体系） ═══
+// 旧 ctx-valve 按钮已移除。自动阀值压缩仍保留在 agent-loop.js 建楼管线中。
 document.querySelector('#ctx-panel .ctx-panel-overlay').onclick = function () {
     document.getElementById('ctx-panel').style.display = 'none';
 };
@@ -892,6 +860,185 @@ document.addEventListener('keydown', function (e) {
             ctxPanel.style.display = 'none';
             e.stopPropagation();
         }
+    }
+});
+
+// ═══ goods/conv 压缩请求处理 — 3 按钮体系（absolut / edit only / only facts） ═══
+// conv-ui.html 通过 postMessage 委托 AI 面板执行本地压缩操作并持久化 ctx.json
+window.addEventListener('message', async function (e) {
+    if (!e.data || e.data.type !== 'qqq-compress-req') return;
+    var req = e.data;
+    var ag = null;
+    // 查找 agent（优先 req.questId，兜底 questActiveId）
+    var qid = req.questId || questActiveId;
+    var pool = window.parent && window.parent.__qqq_agentPool;
+    if (pool && qid) {
+        ag = pool[qid];
+        if (!ag) {
+            for (var k in pool) {
+                if (pool[k]._questId === qid || pool[k].questId === qid) { ag = pool[k]; break; }
+            }
+        }
+    }
+    if (!ag) {
+        e.source.postMessage({ type: 'qqq-compress-res', action: req.action, questId: qid, ok: false, error: 'Agent not found' }, '*');
+        return;
+    }
+    // 仅 idle 时可压缩
+    if (ag._stopState === 'sending') {
+        e.source.postMessage({ type: 'qqq-compress-res', action: req.action, questId: qid, ok: false, error: 'Agent is sending' }, '*');
+        return;
+    }
+
+    var conv = ag.conversation;
+    var beforeChars = 0, afterChars = 0;
+    var found = false;
+
+    for (var i = 0; i < conv.length; i++) {
+        var m = conv[i];
+        if (m._biscuit && m.content) {
+            beforeChars = m.content.length;
+            var text = m.content;
+
+            // Step 1: absolut — 剥离 ╔K...╚ 体部
+            if (req.action === 'absolut' || req.action === 'editonly' || req.action === 'onlyfacts') {
+                text = text.replace(/\n╔K\n[\s\S]*?\n╚(?=\n|$)/g, '\n');
+            }
+
+            // Step 2: edit only — 在前者基础上仅保留写工具头行
+            if (req.action === 'editonly' || req.action === 'onlyfacts') {
+                var lines = text.split('\n');
+                var filtered = [];
+                var WRITE_TOOLS_RE = /\[A → (edit_file|write_file|create_file|delete_file|revert_file)\]/;
+                for (var li = 0; li < lines.length; li++) {
+                    var line = lines[li];
+                    var keep = false;
+                    // Q: / A: / === F / [S] 行始终保留
+                    if (/^(Q:|A:|=== F|\[S\]|\s*$)/.test(line)) keep = true;
+                    // 写工具头行保留
+                    if (WRITE_TOOLS_RE.test(line)) keep = true;
+                    if (keep) filtered.push(line);
+                }
+                text = filtered.join('\n');
+            }
+
+            // Step 3: only facts — absolut+editonly → 切半 → r替换饼干 → h写子弹 → AI楼层提取facts
+            if (req.action === 'onlyfacts') {
+                // ★ 切半逻辑：按 === F 分界找中间楼层
+                var _blocks = text.split(/\n(?==== F\d+ )/);
+                if (_blocks.length < 2) {
+                    e.source.postMessage({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: '楼层数不足（需≥2）' }, '*');
+                    return;
+                }
+                var _totalChars = 0;
+                var _blockChars = [];
+                for (var _bi = 0; _bi < _blocks.length; _bi++) {
+                    var _bc = _blocks[_bi].length;
+                    _blockChars.push(_bc);
+                    _totalChars += _bc;
+                }
+                var _half = Math.floor(_totalChars / 2);
+                var _acc = 0;
+                var _splitIdx = 1;
+                for (var _bi2 = 0; _bi2 < _blocks.length; _bi2++) {
+                    _acc += _blockChars[_bi2];
+                    if (_acc >= _half) { _splitIdx = _bi2; break; }
+                }
+                if (_splitIdx < 1) _splitIdx = 1;
+                var _hText = _blocks.slice(0, _splitIdx).join('\n');
+                var _rText = _blocks.slice(_splitIdx).join('\n');
+                if (_hText.length < 32000) {
+                    e.source.postMessage({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: 'h原料 < 32K，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars }, '*');
+                    return;
+                }
+                // 写入子弹文件
+                var _bulletDir = '';
+                var _bulletPath = '';
+                try {
+                    var _root2 = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
+                    if (_root2) {
+                        _bulletDir = _root2.replace(/\\/g, '/') + '/qqq/bullet';
+                        var _ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15);
+                        _bulletPath = _bulletDir + '/bullet_' + _ts + '_' + (qid || 'q0') + '_fcts.txt';
+                        var _bridge2 = window.parent && window.parent.qqqideBridge;
+                        if (_bridge2 && _bridge2.fs) {
+                            try { await _bridge2.fs.mkdir(_bulletDir); } catch (_) { }
+                            await _bridge2.fs.write(_bulletPath, _hText);
+                        }
+                    }
+                } catch (_be) {
+                    e.source.postMessage({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: '子弹写入失败: ' + (_be.message || 'unknown') }, '*');
+                    return;
+                }
+                // 替换 biscuit 为 r，持久化
+                m.content = _rText;
+                afterChars = _rText.length;
+                found = true;
+                if (ag._ctx && typeof _parseBiscuitFromContent === 'function') {
+                    ag._ctx.biscuitLines = _parseBiscuitFromContent(_rText);
+                    ag._ctx.lastCompressedFloor = ag._ctx.totalFloors || ag._ctx.biscuitLines.length || 0;
+                    ag._ctx.narrative = 'biscuit:' + ag._ctx.biscuitLines.length;
+                }
+                if (typeof _writeCtxJson === 'function') {
+                    _writeCtxJson(qid, ag._ctx).catch(function () { });
+                }
+                // 通知 goods：r 已替换，compress 楼层开始
+                e.source.postMessage({
+                    type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: true,
+                    beforeChars: beforeChars, afterChars: afterChars, status: 'floor-starting'
+                }, '*');
+                // ★ 异步创建 compress 楼层
+                try {
+                    var _savedInput = typeof $input !== 'undefined' ? $input.value : '';
+                    var _bulletRef = '从以下对话历史提取关键事实列表（每条一行，以"- "开头，仅提取不编造）：\n\n📎"' + _bulletPath + '"';
+                    if (typeof _buildSendIntent === 'function' && typeof _executeSend === 'function') {
+                        var _intent = _buildSendIntent(qid, _bulletRef, { type: 'compress', compressFloor: true, tierIndex: 4 });
+                        await _executeSend(_intent);
+                    }
+                    if (typeof $input !== 'undefined') { $input.value = _savedInput; }
+                    e.source.postMessage({
+                        type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: true,
+                        beforeChars: beforeChars, afterChars: afterChars, status: 'done'
+                    }, '*');
+                } catch (_ce) {
+                    e.source.postMessage({
+                        type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false,
+                        error: 'Facts 提取失败: ' + (_ce.message || 'unknown'), beforeChars: beforeChars, afterChars: afterChars
+                    }, '*');
+                }
+                return;
+            }
+
+            // absolut / editonly: 直接应用结果
+            m.content = text;
+            afterChars = text.length;
+            found = true;
+
+            // 更新 ctx
+            if (ag._ctx && typeof _parseBiscuitFromContent === 'function') {
+                ag._ctx.biscuitLines = _parseBiscuitFromContent(text);
+                ag._ctx.lastCompressedFloor = ag._ctx.totalFloors || ag._ctx.biscuitLines.length || 0;
+                ag._ctx.narrative = 'biscuit:' + ag._ctx.biscuitLines.length;
+            }
+
+            // 持久化 ctx.json
+            if (typeof _writeCtxJson === 'function') {
+                _writeCtxJson(qid, ag._ctx).catch(function () { });
+            }
+            break;
+        }
+    }
+
+    if (req.action !== 'onlyfacts') {
+        e.source.postMessage({
+            type: 'qqq-compress-res',
+            action: req.action,
+            questId: qid,
+            ok: found,
+            beforeChars: beforeChars,
+            afterChars: afterChars,
+            error: found ? null : 'No biscuit message found'
+        }, '*');
     }
 });
 

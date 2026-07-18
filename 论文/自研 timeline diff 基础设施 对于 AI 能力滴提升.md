@@ -1,6 +1,6 @@
 # 自研 Timeline Diff 基础设施对 AI 能力的提升
 
-状态：已落地。2026-07-16 更新（235 级联架构）。
+状态：已落地。2026-07-18 更新（sha256 考古扩展至 search/diag 工具）。
 
 ---
 
@@ -37,11 +37,17 @@ read_file(sha256)   →  读任意历史版本的完整内容
 revert_file         →  一键回退 + L5 enhanced return (syntax + adjacent analysis)
 ```
 
+sha256 考古能力已从 read_file 扩展到 4 个工具：read_file / search_text / search_content / get_diagnostics。
+AI 不仅能在历史版本中读内容，还能搜索关键词、检查语法——全部基于同一个 blob_hash，零额外成本。
+
 | 工具 | 类别 | 作用 | 代价 |
 |------|------|------|------|
 | `timeline_versions` | READ | 列版本 + L2 heuristic tags + L3 syntax (opt-in) + L5 recommendation | 0 ge（纯本地） |
 | `diff_versions` | READ | unified diff + L3 syntax preamble | 0 ge（纯本地） |
 | `read_file(sha256)` | READ | 读历史版本完整内容 | 0 ge（纯本地） |
+| `search_text(sha256)` | READ | 在历史版本中正则搜索 | 0 ge（纯本地） |
+| `search_content(sha256)` | READ | 在历史版本中关键词搜索 | 0 ge（纯本地） |
+| `get_diagnostics(sha256)` | READ | 检查历史版本语法（L3 级联） | 0 ge（纯本地） |
 | `revert_file` | WRITE | 回退 + L5 enhanced return (syntax + adjacent analysis) | 触发 A4 钩子 |
 | 钩子 Q 返回值 | 自动 | 每次 write 后追加 `[sha256: xxx]` | 0 成本（管线副产物） |
 
@@ -79,7 +85,7 @@ Timeline 存储使用 SHA256 内容寻址 + gzip 压缩 + SQLite 索引 + WAL �
 - ❌ 不让 AI 直接读 timeline.wal / timeline.db
 - ❌ 不创建"请 AI 总结代码变更"之类的提示词
 
-只做一件事：把已经存在的 blob_hash 从内存搬到返回值里。AI 自己连接返回值里的 sha256 和 read_file 的 sha256 参数。
+只做一件事：把已经存在的 blob_hash 从内存搬到返回值里。AI 自己连接返回值里的 sha256 和 read_file / search_text / search_content / get_diagnostics 的 sha256 参数。
 
 ### 2.2 五工具实现
 
@@ -118,8 +124,7 @@ edit_file/write_file/create_file 返回值
 | `shell/ipc-timeline.ts` | versions/content/record IPC handlers | 已有 |
 | `shell/preload.ts` | read_file TS 类型加 sha256 | +1 |
 
-**提示词增量**：~80 个中文字符（四个工具的 description）。
-
+**提示词增量**：~120 个中文字符（七个工具的 sha256 参数描述）。
 ---
 
 ## 3. 与当今最能打的方案比较

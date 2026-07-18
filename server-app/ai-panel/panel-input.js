@@ -265,6 +265,8 @@ $input.addEventListener('keydown', function (e) {
         if (_switching) return;  // ★ quest 切换中 → 禁止一切操作
         if (_sending) return;
         if (_activeAgent && _activeAgent._compressing) return;
+        // ★ 发送锁：防连点回车重复发送
+        if (typeof _execSendBusy !== 'undefined' && _execSendBusy) return;
         if (streaming) { stopStream(); } else { sendMessage(); }
     }
 });
@@ -494,6 +496,7 @@ $input.addEventListener('keydown', function (e) {
 });
 
 $sendBtn.onclick = function () {
+    if (typeof _execSendBusy !== 'undefined' && _execSendBusy) return;
     if (_switching) return;
     if (_activeAgent && _activeAgent._compressing) return;
 

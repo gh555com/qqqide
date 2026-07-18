@@ -52,6 +52,10 @@
         _updateEditStatus(); _setEditSnapText('');
         var mr = document.getElementById('marker-right'); if (mr) mr.style.display = '';
         await _refreshVersions();
+        // ★ 退出编辑后右侧必须是当前磁盘文件（_refreshVersions → populateDropdowns 会用旧 _markedAfter 腐化 $selRight.value）
+        $selRight.value = 'last';
+        _refreshDropdownBtn($ddRightBtn, 'last', _options);
+        updateMarkers();
         if (_diffEditor) {
             try { _diffEditor.getModifiedEditor().updateOptions({ readOnly: true }); _diffEditor.getOriginalEditor().updateOptions({ readOnly: true }); } catch (_) { }
         }
@@ -155,7 +159,9 @@
             var st = await bridge.timeline.stat(FILE_PATH); if (st) _lastMtimeMs = st.mtimeMs;
             // 只重建左侧下拉，保持右侧不变（编辑模式下右侧隐藏）
             var curLeft = $selLeft.value;
+            var curRight = $selRight.value;
             populateDropdowns();
+            $selRight.value = curRight;
             var found = false;
             for (var oi = 0; oi < _options.length; oi++) {
                 if (_options[oi].value === curLeft || _options[oi]._blobHash === curLeft) {
@@ -189,7 +195,8 @@
             _versions = newVer || [];
             _lastContent = await bridge.timeline.readCurrent(FILE_PATH);
             var st = await bridge.timeline.stat(FILE_PATH); if (st) _lastMtimeMs = st.mtimeMs;
-            var curLeft = $selLeft.value; populateDropdowns();
+            var curLeft = $selLeft.value; var curRight = $selRight.value; populateDropdowns();
+            $selRight.value = curRight;
             var found = false;
             for (var oi = 0; oi < _options.length; oi++) {
                 if (_options[oi].value === curLeft || _options[oi]._blobHash === curLeft) {

@@ -80,7 +80,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 替代: 三级语法检查—L1自动 node--check(0ge)+L2 get_diagnostics(~50ge)+L3全仓(~200ge)。
 
 §12 qoast 唯一真理弹窗机 
-  - 通 知唯一真理: qoast。全仓代码/文档/注释/变量名/UI标签禁出现 "toast" 这 个单词。
+  - 通 知唯一真理: qoast。全仓代码/文档/注释/变量名/UI标签禁出现 "toast" 那个词，我最恨 toast 那个词：我们项目没有 toast， 只有唯一真理滴 qoast 
   - 唯一入口: core/qqqide-qoast.js。一切通 知走 qqqideQoast.show()。
   - API: show(message,{duration,type,action})。默认9s，0=不关。
   - AI面板在iframe内→走 window.parent.qqqideQoast。
@@ -159,6 +159,10 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 唯一入口: core/cooldown-guard.js。全自动: 所有button/[onclick]自动享有冷却。
   - 默认800ms，关闭/取消按钮400ms。data-no-cd跳过，data-cd="N"自定义。
   - 视觉: 白色高光蒙版+按钮左下4×4红点。键盘防穿透(capture phase)。
+  - ★ 互补: _execSendBusy JS 层同步锁（panel-pipeline.js 模块级）。CooldownGuard 防 UI 连点，
+    _execSendBusy 防 Enter 键连点触发的 async 竞态窗口（draft 晋升 await → 两 quest）。
+    三层防线: panel-input.js → panel-send.js sendMessage() → panel-pipeline.js _executeSend()。
+    锁在所有 await 之前同步设置，JS 单线程零竞态。所有路径 + finally 释放。
 
 §19 光标铁律 — 禁改光标外貌
   - CSS/JS任何时候任何元素不得修改 cursor。无例外。
@@ -321,11 +325,15 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 新增预计算字段: ai_html(优先_contentWrap.innerHTML)/question_clean/house_count/room_count。
   - 恢复时优先读 ai_html→innerHTML，零重新渲染。旧数据无字段时回退现场渲染。
 
-§46d sendMessage 管线 — 草稿最先原则（2026-06-29 v2）
+§46d sendMessage 管线 — 草稿最先原则 + _execSendBusy 同步锁（2026-07-18 加固）
   - 执行顺序必须: gate checks → 草稿升级 → null guard → invariant → setStopState。
   - 草稿处理（_isDraft true）必须在一切 agent 操作之前（_activeAgent 为 null 直到草稿升级完成）。
   - 草稿升级: questStore.create → _getOrCreateAgent → 改名落盘 → renderTabs → card 迁移。
   - 此后 _activeAgent 保证非 null，禁在之后放置 _isDraft 分支。旧 L155 块已删除。
+  - ★ _execSendBusy 同步锁（2026-07-18）：模块级 var，所有 await 之前同步设置。
+    防 draft 晋升 await 期间二次 Enter → questStore.create 竞态 → 重复 quest 目录。
+    三层防线: panel-input.js(Enter/Send按钮) → panel-send.js(sendMessage) → panel-pipeline.js(_executeSend闸门后)。
+    排队排水前释放锁（line 797），防 _triggerQueueSend 死锁。所有错误路径 + finally + headless 路径均释放。
 
 §46 开发基础设施 / §47 INFRA OPSEC / §48 AI 图片生成
   - §46: qide-shell.py 一站式(Q=build+dev-server+watch+electron)。

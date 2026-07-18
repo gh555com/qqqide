@@ -2,11 +2,14 @@
 // ═══ panel-pipeline.js ═══
 // sendMessage 管线：接受显式 content，零 $input 访问，零 saveQuestUIState 调用
 // SendIntent 替代 skipFloorCreation boolean 分叉
+// ★ 模块级同步发送锁：防同面板并发发送（核心：连点回车去重）
+var _execSendBusy = false;
 
 // ── SendIntent 工厂 ──
-// type: 'normal' | 'recovery'
+// type: 'normal' | 'recovery' | 'compress'
 //   normal: 正常发送，创建新楼层
 //   recovery: 恢复发送，封顶旧楼层后创建新楼层
+//   compress: facts 提取楼层（_compressFloor=true，不进饼干，tier 4，f3 标签）
 function _buildSendIntent(questId, content, opts) {
     opts = opts || {};
     return {
@@ -16,6 +19,7 @@ function _buildSendIntent(questId, content, opts) {
         tierIndex: opts.tierIndex != null ? opts.tierIndex : selectedTier,
         type: opts.type || 'normal',
         isRecovery: opts.isRecovery || false,
+        compressFloor: opts.compressFloor || false,
     };
 }
 
@@ -29,22 +33,29 @@ async function _executeSend(intent) {
     var sendType = intent.type;
     var isRecovery = intent.isRecovery;
 
+    // ★ 同步发送锁：防同面板并发发送（核心：连点回车 draft 晋升竟态→两个 quest）
+    if (_execSendBusy) return;
+
     // ── 闸门 ──
-    if (_activeAgent && _activeAgent._stopState === 'sending' && !isRecovery) return;
+    var _isCompress = (sendType === 'compress') || intent.compressFloor;
+    if (_activeAgent && _activeAgent._stopState === 'sending' && !isRecovery && !_isCompress) return;
     if (_activeAgent && _activeAgent._stopState === 'stopping') return;
     if (_activeAgent && _activeAgent._stopState === 'fatal' && !isRecovery) return;
     if (_activeAgent && _activeAgent._recoveryInProgress && sendType === 'normal') return;
     if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
 
+    // ★ 所有闸门已过 → 加锁
+    _execSendBusy = true;
+
     // ── Draft 晋升 ──
     if (_isDraft(questId)) {
         var _dText = content || '';
         var _dChips = getInputChipPaths ? getInputChipPaths() : [];
-        if (!_dText && _dChips.length === 0) return;
+        if (!_dText && _dChips.length === 0) { _execSendBusy = false; return; }
         try {
             var _dOldId = questId;
             var _dQid = await questStore.create('');
-            if (!_dQid) return;
+            if (!_dQid) { _execSendBusy = false; return; }
             questActiveId = _dQid;
             if (questUIStates[_dOldId] && typeof questUIStates[_dOldId].selectedTier === 'number') {
                 if (!questUIStates[questActiveId]) questUIStates[questActiveId] = {};
@@ -96,11 +107,12 @@ async function _executeSend(intent) {
         } catch (_dErr) {
             console.warn('[pipeline] draft creation failed:', _dErr && _dErr.message);
             addMessageEl('error', '创建 Quest 失败：' + ((_dErr && _dErr.message) || '未知错误'));
+            _execSendBusy = false;
             return;
         }
     }
 
-    if (!_activeAgent) return;
+    if (!_activeAgent) { _execSendBusy = false; return; }
     if (!_isDraft(questId) && parent && parent.__qqq_agentPool && parent.__qqq_agentPool[questId] !== _activeAgent) {
         console.warn('[pipeline] _activeAgent stale');
     }
@@ -126,6 +138,7 @@ async function _executeSend(intent) {
                 _broadcast('focus-request', qid, { targetPanel: _ssSyncOwner });
                 agent.setStopState('idle');
                 updateQueueBtn();
+                _execSendBusy = false;
                 return;
             }
             if (_ssSyncOwner === undefined) {
@@ -138,13 +151,14 @@ async function _executeSend(intent) {
 
     // ★ 内容验证（显式传入，不读 $input）
     var text = (content || '').trim();
-    if (!text && (!images || images.length === 0)) { agent.setStopState('idle'); updateQueueBtn(); return; }
-    if (streaming) { agent.setStopState('idle'); updateQueueBtn(); return; }
+    if (!text && (!images || images.length === 0)) { agent.setStopState('idle'); updateQueueBtn(); _execSendBusy = false; return; }
+    if (streaming) { agent.setStopState('idle'); updateQueueBtn(); _execSendBusy = false; return; }
 
     if (!_isLoggedIn()) {
         try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在菜单栏点击登录', { type: 'warning', duration: 6000 }); } catch (_) { }
         agent.setStopState('idle');
         updateQueueBtn();
+        _execSendBusy = false;
         return;
     }
 
@@ -196,7 +210,10 @@ async function _executeSend(intent) {
     // ── 用户气泡 ──
     var _deferUserBubble = agent && agent._deferRenderUntilHouse1;
     var userMsgEl;
-    if (_deferUserBubble) {
+    if (_isCompress) {
+        // ★ V15: compress 楼层不创建用户气泡（Q 是机器生成的子弹引用）
+        userMsgEl = null;
+    } else if (_deferUserBubble) {
         userMsgEl = null;
         agent._deferredUserEl = null;
         agent._deferredUserText = '继续';  // ★ B2: 恢复消息气泡只显示「继续」
@@ -227,6 +244,7 @@ async function _executeSend(intent) {
     var _images = pendingImages && pendingImages.length > 0 ? pendingImages.map(function (img) { return { id: img.id, base64: img.base64, dataUrl: img.dataUrl, fileName: img.fileName || '' }; }) : null;
 
     // ★ $input 清理：仅 normal 类型且当前活跃 quest 才清除（防队列/后台发送误清）
+    //   compress 类型不清理（机器生成的楼层，不影响用户编辑状态）
     if (sendType === 'normal' && qid === questActiveId) {
         $input.value = '';
         $input._resetUndo();
@@ -328,7 +346,12 @@ async function _executeSend(intent) {
     // ★ recovery: 流式状态已在 agent 上，直接复用
     agent._streamBuf = agent._streamBuf || '';
     agent._streamParas = agent._streamParas || [];
-    if (sendType !== 'recovery') {
+    // ★ V15: compress 楼层标记（az 区外观正常，GE 账单 type=f3）
+    if (_isCompress) {
+        agent._compressFloor = true;
+        agent._aiStartTime = _fmtTime(new Date());
+        agent._aiTierLabel = 'A' + (selectedTier || 4);
+    } else if (sendType !== 'recovery') {
         agent._aiStartTime = _fmtTime(new Date());
         agent._aiTierLabel = 'A' + (selectedTier || 6);
     }
@@ -389,10 +412,12 @@ async function _executeSend(intent) {
     // ── agent.send ──
     try {
         var token = getLoginToken();
+        // ★ V15: compress 楼层强制 tier 4（facts 提取）
+        var _actualTier = _isCompress ? TIER_LIST[4] : (selectedTier ? TIER_LIST[selectedTier] : null);
         await agent.send(userContent, {
             images: _images,
             token: token,
-            tier: selectedTier ? TIER_LIST[selectedTier] : null,
+            tier: _actualTier,
             onToken: function (chunk) {
                 if (agent._deferRenderUntilHouse1) {
                     agent._deferRenderUntilHouse1 = false;
@@ -764,11 +789,14 @@ async function _executeSend(intent) {
             agent._streaming = false;
             console.log('[pipeline] floor ended headless');
             if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
+            _execSendBusy = false;
             return;
         }
         if (agent) { agent._streaming = false; }
         if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
         _queueBusy = false;
+        // ★ 先释放发送锁，再触发排队排水（否则 _triggerQueueSend → sendMessage → _execSendBusy 仍为 true → 永久阻塞）
+        _execSendBusy = false;
         if (_queue && _queue.length > 0 && !_queuePaused && _activeAgent === agent) {
             _triggerQueueSend();
         }
