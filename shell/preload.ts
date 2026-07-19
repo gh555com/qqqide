@@ -421,7 +421,7 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
         stop: (goodsId: string) => ipcRenderer.invoke('qqqide:gaea-process:stop', goodsId),
         status: (goodsId: string) => ipcRenderer.invoke('qqqide:gaea-process:status', goodsId),
         getAutoStart: (goodsId: string) => ipcRenderer.invoke('qqqide:gaea-process:get-auto-start', goodsId),
-        setAutoStart: (goodsId: string, v: boolean) => ipcRenderer.invoke('qqqide:gaea-process:set-auto-start', goodsId, v),
+        setAutoStart: (goodsId: string, v: boolean, meta?: { scriptPath?: string; runtime?: string; lifecycle?: string; allowMultiple?: boolean }) => ipcRenderer.invoke('qqqide:gaea-process:set-auto-start', goodsId, v, meta),
         onStatusChanged: (cb: (goodsId: string, running: boolean, pid: number | null) => void) => {
             const handler = (_e: any, data: { goodsId: string; running: boolean; pid: number | null }) => cb(data.goodsId, data.running, data.pid);
             ipcRenderer.on('qqqide:gaea-process:status-changed', handler);

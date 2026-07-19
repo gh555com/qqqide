@@ -361,8 +361,12 @@ async function _executeSend(intent) {
     agent._streamingContent = null;
     agent._streaming = true;
     // ★ 背包重量估算（K tokens = chars / 2.7 / 1000）
+    // 完整对齐背包图解：guard + Z + biscuit + facts + 用户输入 + tools + body
     if (sendType !== 'recovery') {
         var _bpChars = 0;
+        // 1. 服务端甲壳（与 panel-quest-ui.js guardChars 同步）
+        _bpChars += 14964;
+        // 2. 客户端注入消息：Z（_persistent）+ biscuit + facts
         var _conv = agent.conversation || [];
         for (var _ci = 0; _ci < _conv.length; _ci++) {
             var _cm = _conv[_ci];
@@ -370,7 +374,17 @@ async function _executeSend(intent) {
                 _bpChars += (_cm.content || '').length;
             }
         }
+        // 3. 当前用户输入
         _bpChars += (text || '').length;
+        // 4. 工具定义 JSON（与背包图解一致）
+        try {
+            if (typeof getTools === 'function') {
+                var _tools = getTools();
+                if (_tools && _tools.length) _bpChars += JSON.stringify(_tools).length;
+            }
+        } catch (_) {}
+        // 5. body 常量字段 + JSON overhead（~250 chars，<0.1K）
+        _bpChars += 250;
         agent._aiBackpackEst = Math.round(_bpChars / 2.7 / 1000);
     }
     // ★ 即时同步按钮 UI：建楼开始 → 按钮变红 Stop（必须在 agent._streaming 之后）
