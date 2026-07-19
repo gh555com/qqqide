@@ -11,6 +11,7 @@
     type: 'process',
     lifecycle: 'independent',
     audio: { mode: 'independent' },
+    allowMultiple: false,
     process: {
       script: 'goods/kope-a/q3.py',
       runtime: 'python',

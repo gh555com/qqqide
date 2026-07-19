@@ -215,12 +215,22 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       actLab.style.cssText = 'flex:1 1 auto;';
       actRow.appendChild(actLab);
 
-      // ★ 同步检测登录 + 激活状态（per-user，非全局装机量）
+      // ★ 登录 + 激活状态检测（per-user，非全局装机量）
       (function (labelEl) {
-        var isLoggedIn = window.qqqLogin && window.qqqLogin.isLoggedIn();
-        if (isLoggedIn && window.qqqLogin.isPurchased()) {
+        var ql = window.qqqLogin;
+        var isLoggedIn = ql && ql.isLoggedIn();
+        if (!isLoggedIn) return;
+        // 同步快速路径：本地缓存已有 purchased
+        if (ql.isPurchased()) {
           labelEl.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
+          return;
         }
+        // 异步兜底：服务端确认（窗口生命周期只查一次），查到后更新标签
+        ql.checkPurchased().then(function(purchased) {
+          if (purchased) {
+            labelEl.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
+          }
+        });
       })(actLab);
 
       (function (rEl) {
@@ -238,6 +248,8 @@ function _shellOpenMenubarPopup(anchorEl, item) {
           var login = window.qqqLogin;
           login.checkPurchased().then(function(purchased) {
             if (purchased) {
+              // ★ 更新标签为"已激活"（可能之前显示"激活"）
+              actLab.textContent = (window._i && window._i('shell.menu.activated', '已激活')) || '已激活';
               if (bridge && bridge.shell && bridge.shell.openExternal) {
                 bridge.shell.openExternal('https://www.gh555.com/gaea/d/qqqide?lang=zh#profile');
               }
@@ -299,10 +311,11 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       }
       _refreshGpBtn();
 
-      // capture script/runtime/lifecycle from schema item
+      // capture script/runtime/lifecycle/allowMultiple from schema item
       const gpScript = s.gpScript || '';
       const gpRuntime = s.gpRuntime || 'python';
       const gpLifecycle = s.gpLifecycle || 'attached';
+      const gpAllowMultiple = s.gpAllowMultiple !== false; // default true
 
       gpBtn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -312,7 +325,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         if (gpBtn.textContent === '停止') {
           br.gaeaProcess.stop(gpId).then(function () { _refreshGpBtn(); }).catch(function () { });
         } else {
-          br.gaeaProcess.start(gpId, gpScript, gpRuntime, gpLifecycle).then(function (r) {
+          br.gaeaProcess.start(gpId, gpScript, gpRuntime, gpLifecycle, gpAllowMultiple).then(function (r) {
             if (r && r.ok) {
               _refreshGpBtn();
             } else {

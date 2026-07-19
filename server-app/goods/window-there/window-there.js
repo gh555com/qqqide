@@ -11,6 +11,7 @@
     type: 'process',
     lifecycle: 'attached',
     audio: { mode: 'ide' },
+    allowMultiple: false,
     process: {
       script: 'goods/window-there/q3.py',
       runtime: 'python',

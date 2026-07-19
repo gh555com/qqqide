@@ -21,6 +21,7 @@ import * as crypto from 'crypto';
 import * as https from 'https';
 import { safeStorage } from 'electron';
 import { APP_VERSION } from './version';
+import { getAuthPhone } from './auth-state';
 
 // ── 常量 ────────────────────────────────────────────────────────────────────
 const PING_API_HOST = 'cnk.gh555.com';
@@ -41,11 +42,14 @@ let _sessionStartedAt = Date.now();  // 本次进程启动时间
 let _stopped = false;
 let _retryDelayMs = RETRY_MIN_MS;
 let _timer: ReturnType<typeof setTimeout> | null = null;
+let _userDataPath = '';              // ★ portable.userData，启动时注入
 
 // ── 持久化路径 ──────────────────────────────────────────────────────────────
 function alphalDir(): string {
-    const root = path.dirname(process.execPath);
-    const dataDir = path.join(root, 'Data', 'alphal');
+    // ★ 优先用注入的 userData 路径（与 main.ts 一致），
+    //    兜底用 execPath 旁 Data/alphal（绿色包兼容）
+    const base = _userDataPath || path.join(path.dirname(process.execPath), 'Data');
+    const dataDir = path.join(base, 'alphal');
     try { fs.mkdirSync(dataDir, { recursive: true }); } catch (_) { }
     return dataDir;
 }
@@ -129,6 +133,11 @@ function authFilePath(): string {
 }
 
 function readDoerID(): string {
+    // ★ 第一优先：共享内存（由 main.ts IPC handler 更新，免 safeStorage）
+    const cached = getAuthPhone();
+    if (cached && /^\d{7,20}$/.test(cached)) return cached;
+
+    // ★ 第二优先：safeStorage 直接解密（兜底）
     try {
         if (!safeStorage.isEncryptionAvailable()) return '';
         const fp = authFilePath();
@@ -245,9 +254,11 @@ async function pingCycle() {
 
 // ── 公开 API ────────────────────────────────────────────────────────────────
 
-/** 启动统计上报机。调用一次，幂等。 */
-export function startWqPing(): void {
+/** 启动统计上报机。调用一次，幂等。
+ *  @param userDataPath  portable.userData（与 main.ts AUTH_FILE 同根） */
+export function startWqPing(userDataPath?: string): void {
     if (_deviceId) return;
+    if (userDataPath) _userDataPath = userDataPath;
 
     _deviceId = loadOrCreateDeviceId();
     _factoryVersion = loadOrCreateFactoryVersion();

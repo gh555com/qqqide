@@ -207,10 +207,15 @@ A 区宿主: core/gaea-host.js (完整 panel/tabs/services/commands/provides/use
   · type: 'panel'(默认,A区面板) | 'process'(后台进程,经gaea-process.ts spawn)
   · lifecycle: 'attached'(默认,随主窗口生死,主窗口关闭→taskkill /F /T杀整棵进程树)
               | 'independent'(独立程序,主窗口关闭也自动清理,但可独立运行)
-  · audio: { mode: 'ide'(默认,跟随IDE音量滑块) | 'independent'(自有音量,不受滑块影响) }
+  · audio: { mode: 'ide'(默认,走主路,受设置面板音量拉杆控制) | 'independent'(旁路,自有音量体系,不受主路拉杆影响) }
+  · allowMultiple: true(默认,允许多开) | false(禁止多开,跨窗口+脚本自保双重防多开)
+    - PID 文件: Data/alphal/goods/{goodsId}.pid (跨窗口单例检测)
+    - 启动前检查 PID 存活→存活则拒绝。启动后写 PID→退出时清理
+    - 自启动+allowMultiple=false→看门狗每5s检查,进程死亡自动重启(简单高可用)
+    - 脚本自保: goods/_singleton.py → Python 脚本导入即防多开
   · process-type goods: 脚本在 goods/<id>/ 自包含(.js+.py), u管线热更
 已注册 panel: rage / wysiwyg / navigator / paste-image / file-explorer / search / git
-已注册 process: kope-a(independent) / window-there(attached)
+已注册 process: kope-a(independent,allowMultiple=false) / window-there(attached,allowMultiple=false)
 
 搜索引擎 — ripgrep 单引擎
 ---------------------------------------------

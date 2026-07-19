@@ -1,5 +1,5 @@
 // ============================================================================
-// launcher.c — qqq IDE 原生启动器（Win32 API，零外部依赖）
+// launcher.c — qqqide 原生启动器（Win32 API，零外部依赖）
 //
 // ★ Bootstrap Config 架构（2026-07-18）
 //   唯一硬编码: CONFIG_URL → 下载 launcher-config.json → 一切行为由配置驱动
@@ -259,24 +259,35 @@ static void loadConfigFromBuf(const char *buf, int len, LauncherConfig *cfg) {
     }
 }
 
-// 尝试从本地缓存加载配置
+// 尝试从本地缓存加载配置（新位置优先，旧位置兼容）
 static int loadCachedConfig(const WCHAR *exeDir, LauncherConfig *cfg) {
     WCHAR cfgPath[MAX_PATH];
-    swprintf(cfgPath, MAX_PATH, L"%s\\launcher-config.json", exeDir);
     char buf[4096];
-    int len = readFileText(cfgPath, buf, sizeof(buf));
-    if (len <= 0) return 0;
-    loadConfigFromBuf(buf, len, cfg);
-    return 1;
+    int len;
+    // 1. 新位置: gh555.com\Data\launcher-config.json
+    swprintf(cfgPath, MAX_PATH, L"%s\\gh555.com\\Data\\launcher-config.json", exeDir);
+    len = readFileText(cfgPath, buf, sizeof(buf));
+    if (len > 0) { loadConfigFromBuf(buf, len, cfg); return 1; }
+    // 2. 旧位置兼容: 根目录 launcher-config.json
+    swprintf(cfgPath, MAX_PATH, L"%s\\launcher-config.json", exeDir);
+    len = readFileText(cfgPath, buf, sizeof(buf));
+    if (len > 0) { loadConfigFromBuf(buf, len, cfg); return 1; }
+    return 0;
 }
 
-// 保存配置到本地缓存
+// 保存配置到本地缓存（新位置 gh555.com\Data\）
 static void saveCachedConfig(const WCHAR *exeDir, const char *json, int len) {
     WCHAR cfgPath[MAX_PATH];
-    swprintf(cfgPath, MAX_PATH, L"%s\\launcher-config.json", exeDir);
+    swprintf(cfgPath, MAX_PATH, L"%s\\gh555.com\\Data\\launcher-config.json", exeDir);
+    // 确保父目录存在
+    WCHAR dir[MAX_PATH];
+    wcscpy(dir, cfgPath);
+    for (WCHAR *p = dir; *p; p++) {
+        if (*p == L'\\') { *p = L'\0'; CreateDirectoryW(dir, NULL); *p = L'\\'; }
+    }
     // 原子写：先写临时文件，再重命名
     WCHAR tmpPath[MAX_PATH];
-    swprintf(tmpPath, MAX_PATH, L"%s\\launcher-config.tmp", exeDir);
+    swprintf(tmpPath, MAX_PATH, L"%s\\gh555.com\\Data\\launcher-config.tmp", exeDir);
     HANDLE h = CreateFileW(tmpPath, GENERIC_WRITE, 0, NULL,
         CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
     if (h == INVALID_HANDLE_VALUE) return;
@@ -856,7 +867,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         HFONT hOld = (HFONT)SelectObject(hdc, hTitle);
         SetTextColor(hdc, COL_TITLE);
         RECT tr = {0, 50, WW, 100};
-        DrawTextW(hdc, L"qqq IDE", -1, &tr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(hdc, L"qqqide", -1, &tr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         SelectObject(hdc, hOld);
         DeleteObject(hTitle);
 
@@ -989,7 +1000,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
     HWND existing = FindWindowW(CLASS, NULL);
     if (existing) { SetForegroundWindow(existing); return 0; }
 
-    g_hwnd = CreateWindowExW(0, CLASS, L"qqq IDE",
+    g_hwnd = CreateWindowExW(0, CLASS, L"qqqide",
         WS_POPUP | WS_BORDER, 0, 0, WW, WH, NULL, NULL, hi, NULL);
     if (!g_hwnd) return 1;
     centerWindow(g_hwnd);

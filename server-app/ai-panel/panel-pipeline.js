@@ -357,6 +357,19 @@ async function _executeSend(intent) {
     }
     agent._streamingContent = null;
     agent._streaming = true;
+    // ★ 背包重量估算（K tokens = chars / 2.7 / 1000）
+    if (sendType !== 'recovery') {
+        var _bpChars = 0;
+        var _conv = agent.conversation || [];
+        for (var _ci = 0; _ci < _conv.length; _ci++) {
+            var _cm = _conv[_ci];
+            if (_cm._persistent || _cm._biscuit || _cm._facts) {
+                _bpChars += (_cm.content || '').length;
+            }
+        }
+        _bpChars += (text || '').length;
+        agent._aiBackpackEst = Math.round(_bpChars / 2.7 / 1000);
+    }
     // ★ 即时同步按钮 UI：建楼开始 → 按钮变红 Stop（必须在 agent._streaming 之后）
     setStreaming(true);
     if (sendType !== 'recovery') {

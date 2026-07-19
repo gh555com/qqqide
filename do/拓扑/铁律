@@ -37,6 +37,8 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
 
 §5 命名（永不可逆）
   - 变量名禁含 "su"（如 resume、exposure）。JSON: floor_id 禁 turn_id/session_id/round。
+  - ★ 产品级固定英文名（2026-07-19）: 上下文背包 → Context Backpack / 格子 → Grid。
+    一切场景（代码/文档/UI标签/对外介绍）以此两英文名为准。i18n 翻译基于此。
 
 §6 C 启动器 100% 托管更新 + Bootstrap Config + 壳层冷更 + 载荷热更（2026-07-18）
   - ★ C 启动器（第一道门）: qqqide.exe 跑在一切之前。
@@ -72,6 +74,9 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - A区宿主: core/gaea-host.js。一切 goods 经 window.qqqideGaea.register()。
   - 一个 goods 可提供: panel(A区)+tabs(X区)+services(后台)+commands。
   - 移除必须清理所有 panel/tabs/services。第一方用直接DOM，第三方用iframe隔离。
+  - ★ allowMultiple (2026-07-19): false=禁止多开。跨窗口PID文件+脚本自保双重防多开。
+    自启动+false→看门狗5s检测,进程死亡自动重启(简单高可用)。
+    开发者: Python脚本导入 goods/_singleton.py 调 check_and_register() 即完成自保。
 
 §11 LSP — 全部禁用
   - Monaco 内置诊断全禁(renderValidationDecorations:'off')，零红色波浪线/hover/补全。

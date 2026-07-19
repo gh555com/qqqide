@@ -388,14 +388,13 @@ function injectLauncher(unpacked) {
   fs.cpSync(launcherSrc, launcherDst, { force: true });
   console.log('[pack] injected launcher -> qqqide.exe (' + fs.statSync(launcherSrc).size + 'B)');
 
-  // ★ Bootstrap Config — 本地缓存，启动器离线兜底
+  // ★ Bootstrap Config — 隐藏在 gh555.com/Data/ 下，不污染根目录
   const cfgSrc = path.join(ROOT, 'launcher', 'launcher-config.json');
   if (fs.existsSync(cfgSrc)) {
-    // 绿色包根目录（启动器优先读此缓存）
-    fs.cpSync(cfgSrc, path.join(unpacked, 'launcher-config.json'), { force: true });
-    // gh555.com/ 内（r 自解压后也在位）
-    fs.cpSync(cfgSrc, path.join(coreDir, 'launcher-config.json'), { force: true });
-    console.log('[pack] injected launcher-config.json');
+    const dataDir = path.join(coreDir, 'Data');
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.cpSync(cfgSrc, path.join(dataDir, 'launcher-config.json'), { force: true });
+    console.log('[pack] injected launcher-config.json -> gh555.com/Data/');
   }
 }
 

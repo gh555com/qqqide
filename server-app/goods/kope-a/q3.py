@@ -2,6 +2,11 @@
 # -*- coding: utf-8 -*-
 import sys as _sys, os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # goods/ dir
+
+# (v5.2) 单例保护: allowMultiple=false → 防多开
+from _singleton import check_and_register as _check_singleton
+_check_singleton('kope-a')
 
 """
 v5.1.0
