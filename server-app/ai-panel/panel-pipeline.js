@@ -467,7 +467,17 @@ async function _executeSend(intent) {
                     agent._questErrorState[floorNum].bubbleText = _recBubbleText;
                     agent._deferredUserEl = null;
                     agent._deferredAiDiv = null;
-                    // ★ Path B: 不在此封顶 — onToken 只揭示，onDone 才 cap 原楼层
+                    // ★ Path B: house 1 到达 → 立即消除白块 + 底部链接行（重连已成功，不再需要）
+                    if (agent._recoveryLinkEl && agent._recoveryLinkEl.isConnected) {
+                        var _errBox2 = agent._recoveryLinkEl.parentElement;
+                        agent._recoveryLinkEl.remove();
+                        agent._recoveryLinkEl = null;
+                        if (_errBox2 && _errBox2.classList.contains('msg-quest-error')) {
+                            var _lastRow2 = _errBox2.querySelector('.qe-row:last-of-type');
+                            if (_lastRow2) _lastRow2.style.borderBottom = 'none';
+                        }
+                    }
+                    // ★ Path B: 不在此封顶 — onToken 只揭示，_finishRecovery(true) 独家 cap
                     if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent);
                     if (typeof _startAllTxtStream === 'function') _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, '', '');
                     if ($sendBtn) $sendBtn.disabled = false;
