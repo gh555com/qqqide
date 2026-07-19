@@ -300,16 +300,19 @@
     _$lvGlow.style.width = pct + '%';
   }
 
-  // ★ 升级音频
+  // ★ 升级音频 — 走主路音量 × 固定系数
   var _lvAudioRegular = null, _lvAudioMilestone = null;
   function _lvEnsureAudio() {
+    var mv = 1.0;
+    try { if (window.qqqAudio) { mv = window.qqqAudio.getMainVolume(); } } catch (_) { }
     if (!_lvAudioRegular) {
       _lvAudioRegular = new Audio('assets/lv-up.mp3');
-      _lvAudioRegular.volume = 0.55;
     }
+    _lvAudioRegular.volume = 0.55 * mv;
     if (!_lvAudioMilestone) {
-      _lvAudioMilestone = new Audio('assets/lv-up-milestone.mp3'); _lvAudioMilestone.volume = 0.65;
+      _lvAudioMilestone = new Audio('assets/lv-up-milestone.mp3');
     }
+    _lvAudioMilestone.volume = 0.65 * mv;
   }
 
   // 顶层 rAF 追赶（每间 house 独立调用）

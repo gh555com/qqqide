@@ -827,12 +827,12 @@
     };
 
     // ════════════════════════════════════════════════
-    // _compressContext — 保留（V11 不再使用，代码保留供将来 facts 格子用）
+    // _compressContext — 保留（V11 不再使用，代码保留供将来 facts grid 用）
     // ════════════════════════════════════════════════
     AgentLoop.prototype._compressContext = async function (reason) {
         // V11: 压缩已改为 per-floor 自动重组（_rebuildBackpack）。
         // 本函数保留但不再由系统自动调用。
-        // 将来用于：用户手动触发 → AI 驱动的 facts 格子。
+     // 将来用于：用户手动触发 → AI 驱动的 facts grid。
         var self = this;
         self.log('◆ _compressContext: deprecated in V11, use _rebuildBackpack instead');
         return {

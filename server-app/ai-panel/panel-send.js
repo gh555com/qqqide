@@ -623,6 +623,9 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
     // ★ 子弹音效 — 预掷骰子，qa必播 → 1/3 qx(0.4~0.8s后) → 1/2 qs(qa结束后0.4~1s)
     function _bulletPlaySound() {
         var ASSET = '../assets/bullet/';
+        // ★ 走主路音量
+        var vol = 1.0;
+        try { vol = parent.window.qqqAudio ? parent.window.qqqAudio.getMainVolume() : 1.0; } catch (_) { }
         var rollQx = Math.random() < 1 / 3;
         var rollQs = Math.random() < 0.5;
         var qxDelay = rollQx ? (400 + Math.random() * 400) : 0;
@@ -633,18 +636,18 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
             qxFile = ASSET + qxPool[Math.floor(Math.random() * 3)];
         }
         var qaFile = Math.random() < 0.5 ? ASSET + 'scout_fire-1.wav' : ASSET + 'g3sg1-fire-2.wav';
-        var qaStart = Date.now();
         var qaAudio = new Audio(qaFile);
+        qaAudio.volume = vol;
         qaAudio.play().catch(function () { });
         if (rollQx) {
             setTimeout(function () {
-                try { new Audio(qxFile).play().catch(function () { }); } catch (_) { }
+                try { var ax = new Audio(qxFile); ax.volume = vol; ax.play().catch(function () { }); } catch (_) { }
             }, qxDelay);
         }
         if (rollQs) {
             var onQaEnd = function () {
                 setTimeout(function () {
-                    try { new Audio(ASSET + 'p90_boltpull.wav').play().catch(function () { }); } catch (_) { }
+                    try { var as = new Audio(ASSET + 'p90_boltpull.wav'); as.volume = vol; as.play().catch(function () { }); } catch (_) { }
                 }, qsGap);
             };
             if (qaAudio.ended) { onQaEnd(); }

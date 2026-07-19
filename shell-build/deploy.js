@@ -117,7 +117,7 @@ const versionJson = JSON.stringify({
   shell: appVersion,
   webapp: appVersion,
   min_shell: '0.0.1',
-  _comment: 'qqq IDE version manifest — semver-based update decisions',
+  _comment: 'qqqide version manifest — semver-based update decisions',
 }, null, 2);
 const verPath = path.join(ROOT, '_version.json');
 fs.writeFileSync(verPath, versionJson, 'utf8');

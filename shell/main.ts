@@ -45,7 +45,8 @@ import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
-import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, GaeaLifecycle } from './gaea-process';
+import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, GaeaLifecycle } from './gaea-process';
+import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing } from './wq-ping';
 
 // ── 服务 ──
@@ -257,6 +258,9 @@ function registerAuthPersistIpc(): void {
             const dir = path.dirname(AUTH_FILE);
             if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
             fs.writeFileSync(AUTH_FILE, new Uint8Array(encrypted));
+            // update shared memory for wq-ping readDoerID
+            if (auth.phone) setAuthPhone(auth.phone);
+            if (auth.token) setAuthToken(auth.token);
             return true;
         } catch (e) { return false; }
     });
@@ -266,20 +270,28 @@ function registerAuthPersistIpc(): void {
         try {
             if (!fs.existsSync(AUTH_FILE)) return null;
             const encrypted = fs.readFileSync(AUTH_FILE);
-            return JSON.parse(safeStorage.decryptString(encrypted));
+            const auth = JSON.parse(safeStorage.decryptString(encrypted));
+            // update shared memory for wq-ping readDoerID
+            if (auth && auth.phone) setAuthPhone(auth.phone);
+            if (auth && auth.token) setAuthToken(auth.token);
+            return auth;
         } catch (e) { return null; }
     });
 
     ipcMain.handle('qqqide:auth:clear', async () => {
-        try { if (fs.existsSync(AUTH_FILE)) fs.unlinkSync(AUTH_FILE); return true; }
-        catch (e) { return false; }
+        try {
+            if (fs.existsSync(AUTH_FILE)) fs.unlinkSync(AUTH_FILE);
+            // clear shared memory
+            setAuthPhone(''); setAuthToken('');
+            return true;
+        } catch (e) { return false; }
     });
 }
 
 // ── Gaea Process IPC — 通用 gaea process-type goods 进程管理 ──
 function registerGaeaProcessIpc(): void {
-    ipcMain.handle('qqqide:gaea-process:start', async (_e, goodsId: string, scriptPath: string, runtime?: string, lifecycle?: string) => {
-        return startGaeaProcess(portable.root, goodsId, scriptPath, runtime || 'python', (lifecycle as GaeaLifecycle) || 'attached');
+    ipcMain.handle('qqqide:gaea-process:start', async (_e, goodsId: string, scriptPath: string, runtime?: string, lifecycle?: string, allowMultiple?: boolean) => {
+        return startGaeaProcess(portable.root, goodsId, scriptPath, runtime || 'python', (lifecycle as GaeaLifecycle) || 'attached', allowMultiple !== false);
     });
 
     ipcMain.handle('qqqide:gaea-process:stop', async (_e, goodsId: string) => {
@@ -337,18 +349,22 @@ app.whenReady().then(async () => {
     (async () => {
         try {
             const processGoods = [
-                { id: 'kope-a', script: 'goods/kope-a/q3.py', runtime: 'python' },
-                { id: 'window-there', script: 'goods/window-there/q3.py', runtime: 'python' },
+                { id: 'kope-a', script: 'goods/kope-a/q3.py', runtime: 'python', lifecycle: 'independent' as GaeaLifecycle, allowMultiple: false },
+                { id: 'window-there', script: 'goods/window-there/q3.py', runtime: 'python', lifecycle: 'attached' as GaeaLifecycle, allowMultiple: false },
             ];
             for (const g of processGoods) {
                 try {
                     const autoStart = await stateStore.get('qqqide', g.id + '.autoStart');
                     if (autoStart) {
-                        const result = startGaeaProcess(portable.root, g.id, g.script, g.runtime);
+                        const result = startGaeaProcess(portable.root, g.id, g.script, g.runtime, g.lifecycle, g.allowMultiple);
                         if (result.ok) {
-                            console.log('[' + g.id + '] auto-started pid=' + result.pid);
+                            console.log('[' + g.id + '] auto-started pid=' + result.pid + (result.alreadyRunning ? ' (already running)' : ''));
                         } else {
                             console.log('[' + g.id + '] auto-start failed:', result.error);
+                        }
+                        // ★ 单例 goods: 启动看门狗，进程死亡自动拉起
+                        if (!g.allowMultiple) {
+                            startGaeaWatchdog(portable.root, g.id, g.script, g.runtime, g.lifecycle);
                         }
                     }
                 } catch (e) { /* skip this goods */ }
@@ -452,7 +468,7 @@ app.whenReady().then(async () => {
                         }
                     }).catch((err: any) => {
                         console.warn('[restore] window loadURL failed:', err && err.message);
-                        try { newWin.close(); } catch (_) { }
+                    try { newWin.close(); } catch (_) { }
                     });
                     restored++;
                     // 短暂间隔防并发创建风暴
@@ -465,11 +481,25 @@ app.whenReady().then(async () => {
         }
     })();
 
-    // ★ 异步建语义索引（不阻塞启动）
-    indexService.init();
+    // Preload phone from auth.enc into shared memory (for wq-ping readDoerID)
+    // Avoids safeStorage(DPAPI) failures across install directory migration
+    (function preloadAuthPhone() {
+        try {
+            if (!safeStorage.isEncryptionAvailable()) return;
+            const authFile = path.join(portable.userData, 'alphal', 'auth.enc');
+            if (!fs.existsSync(authFile)) return;
+            const encrypted = fs.readFileSync(authFile);
+            const auth = JSON.parse(safeStorage.decryptString(encrypted));
+            if (auth && auth.phone) setAuthPhone(auth.phone);
+            if (auth && auth.token) setAuthToken(auth.token);
+        } catch (_) { /* safeStorage might fail across install migration */ }
+    })();
 
-    // ★ 统计上报机（不阻塞启动，首次 ping 30-120s 随机延迟）
-    startWqPing();;
+    // ★ ping reporter (non-blocking, first ping with 30-120s random delay)
+    startWqPing(portable.userData);
+
+    // ★ rebuild semantic search index (non-blocking)
+    indexService.init();
 
     // macOS: re-activate → recreate window
     app.on('activate', () => {

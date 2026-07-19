@@ -6,11 +6,16 @@
 
 import sys as _sys, os as _os
 _sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)))
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))  # goods/ dir
 
 import sys
 import time
 import threading
 import signal # (R22) 导入 signal
+
+# (R25) 单例保护: allowMultiple=false → 防多开
+from _singleton import check_and_register as _check_singleton
+_check_singleton('window-there')
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtGui import QFont
 from PyQt5.QtCore import QCoreApplication, QObject, pyqtSignal, QTimer # (R22) 导入 QTimer

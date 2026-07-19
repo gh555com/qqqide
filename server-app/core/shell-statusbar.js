@@ -25,7 +25,7 @@ function bootStatusbar(boot) {
       var now = Date.now();
       if (now - _onlLastFetch < 240000) return; // 4min 冷却
       _onlLastFetch = now;
-      fetch('https://direct-cn.gh555.com/api/goods/qqqide/online-total', { cache: 'no-cache' })
+      fetch('https://direct-cn.gh555.com/api/qqqide/online-total', { cache: 'no-cache' })
         .then(function (r) { if (!r.ok) return null; return r.json(); })
         .then(function (data) {
           if (data && data.ok && typeof data.total === 'number') {

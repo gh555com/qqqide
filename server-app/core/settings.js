@@ -34,15 +34,6 @@
   var _D = window.qqqideDefaults || {};
   var SETTINGS_DEF = [
     {
-      key: 'audio.volume',
-      label: 'Goods 音量',
-      desc: '所有 goods 的音频音量（不影响 IDE 自带音效如升级/子弹）。点击刻度设定。',
-      type: 'slider-stepped',
-      tab: 'general',
-      defaultValue: '100',
-      stops: ['0', '25', '50', '75', '100']
-    },
-    {
       key: 'editor.undoMode',
       label: '编辑器撤销模式',
       desc: 'Ctrl+Z 在代码编辑器中撤销的粒度',
@@ -80,6 +71,15 @@
       min: 100,
       max: 1000,
       unit: 'k'
+    },
+    {
+      key: 'audio.volume',
+      label: '音量',
+      desc: 'IDE 窗口及所有 goods 的音量（独立音量 goods 走旁路，不受此控制）。',
+      type: 'slider-stepped',
+      tab: 'general',
+      defaultValue: '100',
+      stops: ['0', '25', '50', '75', '100']
     },
     {
       key: 'timeline.trackRunCommand',
@@ -278,23 +278,18 @@
         var curIdx = stops.indexOf(String(currentVal));
         if (curIdx < 0) curIdx = stops.length - 1;
         var pct = Math.round((curIdx / (stops.length - 1)) * 100);
-        html += '<div style="margin-bottom:4px;">';
-        html += '<div class="qqq-vol-slider" style="position:relative;height:32px;display:flex;align-items:center;user-select:none;" data-setting-key="' + def.key + '" data-stops="' + stops.join(',') + '">';
+        // ★ 紧凑一行：左边标签 + 右边拉杆（无刻度数字）
+        html += '<div style="display:flex; align-items:center; gap:12px;">';
+        html += '<span style="font-size:12px; color:' + textDim + '; white-space:nowrap; min-width:32px;">' + stops[curIdx] + '%</span>';
+        html += '<div class="qqq-vol-slider" style="position:relative;flex:1;height:24px;display:flex;align-items:center;user-select:none;" data-setting-key="' + def.key + '" data-stops="' + stops.join(',') + '">';
         html += '<div style="position:absolute;left:0;right:0;height:4px;border-radius:2px;background:' + border + ';"></div>';
         html += '<div style="position:absolute;left:0;height:4px;border-radius:2px;background:' + accent + ';width:' + pct + '%;"></div>';
         for (var si = 0; si < stops.length; si++) {
           var sp = Math.round((si / (stops.length - 1)) * 100);
           var isActive = si <= curIdx;
-          html += '<div style="position:absolute;left:' + sp + '%;transform:translateX(-50%);width:14px;height:14px;border-radius:50%;border:2px solid ' + (isActive ? accent : border) + ';background:' + (isActive ? accent : bg) + ';z-index:1;"></div>';
+          html += '<div style="position:absolute;left:' + sp + '%;transform:translateX(-50%);width:12px;height:12px;border-radius:50%;border:2px solid ' + (isActive ? accent : border) + ';background:' + (isActive ? accent : bg) + ';z-index:1;"></div>';
         }
-        html += '</div>';
-        html += '<div style="position:relative;height:18px;margin-top:2px;">';
-        for (var si2 = 0; si2 < stops.length; si2++) {
-          var sp2 = Math.round((si2 / (stops.length - 1)) * 100);
-          html += '<span style="position:absolute;left:' + sp2 + '%;transform:translateX(-50%);font-size:10px;color:' + (si2 === curIdx ? accent : textDim) + ';">' + stops[si2] + '%</span>';
-        }
-        html += '</div>';
-        html += '</div>';
+        html += '</div></div>';
       } else if (def.type === 'bool') {
         // 开关切换
         var boolOn = (currentVal === true || currentVal === 'true');

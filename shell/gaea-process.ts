@@ -5,6 +5,17 @@
 // Lifecycle 双轨制:
 //   'attached'    — 生死 100% 随主窗口。主窗口关闭时强制 taskkill /F /T 清理整棵进程树。
 //   'independent' — 独立程序。可由主窗口启动/停止，主窗口退出时也自动清理。
+//
+// allowMultiple 单例约定 (2026-07-19):
+//   true (默认) — 允许多实例
+//   false        — 禁止多开。跨 qqqide 窗口 + 脚本自保双重防多开。
+//                   PID 文件: Data/alphal/goods/{goodsId}.pid
+//                   启动前检查 PID 存活 → 存活则拒绝启动
+//                   启动后写 PID 文件 → 退出时清理
+//
+// Watchdog 高可用 (2026-07-19):
+//   对 allowMultiple=false 且自启动开启的 goods，定期检查进程存活。
+//   进程死亡 → 自动重启。相当于简单高可用守护。
 // ============================================================================
 
 import { ChildProcess, spawn, execSync } from 'child_process';
@@ -19,9 +30,74 @@ interface ProcEntry {
     pid: number | null;
     scriptPath: string;
     lifecycle: GaeaLifecycle;
+    allowMultiple: boolean;
 }
 
 const _registry = new Map<string, ProcEntry>();
+const _watchdogs = new Map<string, NodeJS.Timeout>();
+
+// ═══════════════════════════════════════════════════════════════
+// PID 文件协议 — 跨窗口单例检测
+// ═══════════════════════════════════════════════════════════════
+
+function _pidFileDir(userData: string): string {
+    const dir = path.join(userData, 'alphal', 'goods');
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
+function _pidFilePath(userData: string, goodsId: string): string {
+    return path.join(_pidFileDir(userData), goodsId + '.pid');
+}
+
+function _isPidAlive(pid: number): boolean {
+    try {
+        if (process.platform === 'win32') {
+            const result = execSync(`tasklist /FI "PID eq ${pid}" /NH`, { windowsHide: true, timeout: 3000 });
+            return result.toString().includes(`${pid}`);
+        } else {
+            process.kill(pid, 0);
+            return true;
+        }
+    } catch {
+        return false;
+    }
+}
+
+function _checkExistingInstance(userData: string, goodsId: string): { running: boolean; pid?: number } {
+    const pidFile = _pidFilePath(userData, goodsId);
+    if (!fs.existsSync(pidFile)) return { running: false };
+
+    try {
+        const content = fs.readFileSync(pidFile, 'utf-8').trim();
+        const pid = parseInt(content.split('\n')[0], 10);
+        if (isNaN(pid)) return { running: false };
+
+        if (_isPidAlive(pid)) {
+            return { running: true, pid };
+        } else {
+            // Stale PID file — clean up
+            try { fs.unlinkSync(pidFile); } catch { /* ignore */ }
+            return { running: false };
+        }
+    } catch {
+        return { running: false };
+    }
+}
+
+function _writePidFile(userData: string, goodsId: string, pid: number): void {
+    try {
+        fs.writeFileSync(_pidFilePath(userData, goodsId), `${pid}\n${Date.now()}`, 'utf-8');
+    } catch { /* ignore */ }
+}
+
+function _removePidFile(userData: string, goodsId: string): void {
+    try { fs.unlinkSync(_pidFilePath(userData, goodsId)); } catch { /* ignore */ }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 脚本路径解析
+// ═══════════════════════════════════════════════════════════════
 
 function _resolveGoodsScript(portableRoot: string, scriptPath: string): string {
     // ① Data/webapp/ — packaged green pack, hot-updated via u pipeline
@@ -42,17 +118,40 @@ function _resolveGoodsScript(portableRoot: string, scriptPath: string): string {
     return p1;
 }
 
+// ═══════════════════════════════════════════════════════════════
+// 进程启动 / 停止
+// ═══════════════════════════════════════════════════════════════
+
 export function startGaeaProcess(
     portableRoot: string,
     goodsId: string,
     scriptPath: string,
     runtime: string = 'python',
-    lifecycle: GaeaLifecycle = 'attached'
-): { ok: boolean; pid?: number; error?: string } {
-    // If already running, return existing
-    const existing = _registry.get(goodsId);
-    if (existing && existing.proc && !existing.proc.killed) {
-        return { ok: true, pid: existing.pid || undefined };
+    lifecycle: GaeaLifecycle = 'attached',
+    allowMultiple: boolean = true
+): { ok: boolean; pid?: number; error?: string; alreadyRunning?: boolean } {
+    const userData = path.join(portableRoot, 'Data');
+
+    // ★ 单例检测: allowMultiple=false → 检查 PID 文件
+    if (!allowMultiple) {
+        const existing = _checkExistingInstance(userData, goodsId);
+        if (existing.running) {
+            console.log('[' + goodsId + '] already running pid=' + existing.pid + ' — skip');
+            // 记录到内存注册表（watchdog 需要）
+            if (!_registry.has(goodsId)) {
+                _registry.set(goodsId, {
+                    proc: null, pid: existing.pid || null,
+                    scriptPath, lifecycle, allowMultiple
+                });
+            }
+            return { ok: true, pid: existing.pid, alreadyRunning: true };
+        }
+    }
+
+    // If already running (in-memory), return existing
+    const existingMem = _registry.get(goodsId);
+    if (existingMem && existingMem.proc && !existingMem.proc.killed) {
+        return { ok: true, pid: existingMem.pid || undefined };
     }
 
     // Resolve runtime binary
@@ -61,7 +160,6 @@ export function startGaeaProcess(
         exe = getComponentBin(portableRoot, 'python');
         if (!exe) return { ok: false, error: 'Python 未安装。重启 IDE 后将自动下载。' };
     } else {
-        // Binary runtime — resolve from component system or PATH
         const binFromComponent = getComponentBin(portableRoot, runtime);
         if (binFromComponent) {
             exe = binFromComponent;
@@ -78,12 +176,16 @@ export function startGaeaProcess(
 
     try {
         const cwd = fullPath.substring(0, fullPath.lastIndexOf('\\'));
-
-        // attached: not detached — process tree tied to main window
-        // independent: detached — can outlive main window (but still cleaned on exit)
         const isDetached = (lifecycle === 'independent');
+        const pidFile = _pidFilePath(userData, goodsId);
 
-        const proc = spawn(exe, ['-u', fullPath], {
+        // ★ 传递 --pid-file 给脚本，脚本层面自保防多开
+        const args = ['-u', fullPath];
+        if (!allowMultiple) {
+            args.push('--pid-file', pidFile);
+        }
+
+        const proc = spawn(exe, args, {
             stdio: 'ignore',
             windowsHide: false,
             cwd: cwd,
@@ -91,18 +193,26 @@ export function startGaeaProcess(
             detached: isDetached,
         });
 
-        const entry: ProcEntry = { proc, pid: proc.pid || null, scriptPath: fullPath, lifecycle };
+        const entry: ProcEntry = { proc, pid: proc.pid || null, scriptPath: fullPath, lifecycle, allowMultiple };
         _registry.set(goodsId, entry);
 
-        console.log('[' + goodsId + '] spawned pid=' + entry.pid + ' lifecycle=' + lifecycle);
+        console.log('[' + goodsId + '] spawned pid=' + entry.pid + ' lifecycle=' + lifecycle +
+            (allowMultiple ? '' : ' [singleton]'));
+
+        // ★ 写 PID 文件（脚本也会写，双写保底）
+        if (!allowMultiple && entry.pid) {
+            _writePidFile(userData, goodsId, entry.pid);
+        }
 
         proc.on('exit', (code, signal) => {
             console.log('[' + goodsId + '] exited code=' + code + ' signal=' + signal);
+            if (!allowMultiple) _removePidFile(userData, goodsId);
             _registry.delete(goodsId);
         });
 
         proc.on('error', (err) => {
             console.error('[' + goodsId + '] proc error:', err);
+            if (!allowMultiple) _removePidFile(userData, goodsId);
             _registry.delete(goodsId);
         });
 
@@ -119,14 +229,11 @@ export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string 
         return { ok: true };
     }
     try {
-        // ★ Kill entire process tree (/T) — ensures no orphaned child processes
-        //    (e.g. miniaudio audio engine, subprocesses spawned by the goods script)
         if (process.platform === 'win32' && entry.pid) {
             try {
                 execSync(`taskkill /F /T /PID ${entry.pid}`, { windowsHide: true });
             } catch { /* already exited — that's fine */ }
         } else {
-            // Unix: kill process group
             try {
                 process.kill(-entry.pid!, 'SIGTERM');
             } catch {
@@ -153,8 +260,65 @@ export function getGaeaProcessPid(goodsId: string): number | null {
 
 export function cleanupAllGaeaProcesses(): void {
     console.log('[gaea-process] cleanupAll — ' + _registry.size + ' process(es)');
+    stopAllGaeaWatchdogs();
     _registry.forEach((entry, goodsId) => {
         console.log('[gaea-process] cleaning ' + goodsId + ' (pid=' + entry.pid + ', lifecycle=' + entry.lifecycle + ')');
         stopGaeaProcess(goodsId);
     });
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Watchdog 高可用 — 对 allowMultiple=false 且自启动的 goods
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * 启动看门狗：每 5s 检查进程是否存活，死亡则自动重启。
+ * 仅对 allowMultiple=false 的 goods 有意义（单例 + 高可用）。
+ */
+export function startGaeaWatchdog(
+    portableRoot: string,
+    goodsId: string,
+    scriptPath: string,
+    runtime: string = 'python',
+    lifecycle: GaeaLifecycle = 'attached'
+): void {
+    const userData = path.join(portableRoot, 'Data');
+
+    // 防重复
+    stopGaeaWatchdog(goodsId);
+
+    const timer = setInterval(() => {
+        const existing = _checkExistingInstance(userData, goodsId);
+        if (!existing.running) {
+            console.log('[watchdog:' + goodsId + '] process not running, restarting...');
+            _removePidFile(userData, goodsId);
+            _registry.delete(goodsId);
+            const result = startGaeaProcess(portableRoot, goodsId, scriptPath, runtime, lifecycle, false);
+            if (result.ok) {
+                console.log('[watchdog:' + goodsId + '] restarted pid=' + result.pid);
+            } else {
+                console.log('[watchdog:' + goodsId + '] restart failed:', result.error);
+            }
+        }
+    }, 5000);
+
+    _watchdogs.set(goodsId, timer);
+    console.log('[watchdog:' + goodsId + '] started');
+}
+
+export function stopGaeaWatchdog(goodsId: string): void {
+    const timer = _watchdogs.get(goodsId);
+    if (timer) {
+        clearInterval(timer);
+        _watchdogs.delete(goodsId);
+        console.log('[watchdog:' + goodsId + '] stopped');
+    }
+}
+
+export function stopAllGaeaWatchdogs(): void {
+    _watchdogs.forEach((timer, goodsId) => {
+        clearInterval(timer);
+        console.log('[watchdog:' + goodsId + '] stopped (cleanup)');
+    });
+    _watchdogs.clear();
 }

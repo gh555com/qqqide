@@ -379,7 +379,7 @@ var _ctxBreakdownTimer = null;
 var _ctxBreakdownVisible = false;
 
 // ★ _estimateTokensFull — 穷举每一个会进入 API body 的字节，逐字符计量，chars÷2.7 得 token 估值。
-// ★ API prompt_tokens 是服务端返回的精确 token 数（权威），本地 sum 用于审计 / 发现漏格子。
+// ★ API prompt_tokens 是服务端返回的精确 token 数（权威），本地 sum 用于审计 / 发现漏 Grid。
 // ★ 分类原则：按 API 看到的消息数组顺序 + 顶层 body 字段完整覆盖，零漏项。
 function _estimateTokensFull() {
     var _ag = _activeAgent;
@@ -586,10 +586,10 @@ function _estimateTokensFull() {
         if (aBiscuitCount > 0) _r("  A × " + aBiscuitCount, aBiscuitTok, 1, "#2aa198");
         if (gentleBiscuitCount > 0) _r("  Gentle × " + gentleBiscuitCount, gentleBiscuitTok, 1, "#b58900");
     }
-    if (deChars > 0) _r("DE 格子 × " + deEntryCount + " entries", deTok, 0, "#b58900");
+    if (deChars > 0) _r("DE Grid × " + deEntryCount + " entries", deTok, 0, "#b58900");
     if (userCount > 0) _r("User × " + userCount, userTok, 0, "#268bd2");
     if (aiCount > 0) _r("AI text × " + aiCount, aiTextTok, 0, "#2aa198");
-    if (aiToolCallsCount > 0) _r("  AI tool_calls × " + aiToolCallsCount, aiToolCallsTok, 1, "#d2991d");
+    if (aiToolCallsCount > 0) _r("AI tool_calls × " + aiToolCallsCount, aiToolCallsTok, 0, "#d2991d");
     if (toolCount > 0) _r("Tool Results × " + toolCount, toolTok, 0, "#dc322f");
     if (sysCount > 0) _r("System messages × " + sysCount, sysTok, 0, "#6c71c4");
     if (errCount > 0) _r("Error messages × " + errCount, errTok, 0, "#f85149");
