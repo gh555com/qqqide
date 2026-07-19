@@ -86,12 +86,34 @@
     '.iso', '.dmg', '.pdb', '.class', '.pyc', '.wasm',
   ]);
 
+  // 无扩展名文件 > 此阈值则视为二进制（防 98MB r.next 等启动器文件卡死编辑器）
+  var NOEXT_BINARY_SIZE = 10 * 1024 * 1024; // 10MB
+
   function isBinaryFile(filePath) {
     if (!filePath) return false;
     var lower = String(filePath).toLowerCase();
     var dot = lower.lastIndexOf(String.fromCharCode(46));
     if (dot < 0) return false;
     return BINARY_EXTS.has(lower.slice(dot));
+  }
+
+  // ★ 异步版：无扩展名文件通过 stat 大小判断是否为二进制
+  async function isBinaryFileAsync(filePath) {
+    if (!filePath) return false;
+    // 先用扩展名快速判断
+    var lower = String(filePath).toLowerCase();
+    var dot = lower.lastIndexOf(String.fromCharCode(46));
+    if (dot >= 0) return BINARY_EXTS.has(lower.slice(dot));
+    // 无扩展名 → stat 看大小
+    try {
+      if (bridge && bridge.fs && bridge.fs.stat) {
+        var st = await bridge.fs.stat(filePath);
+        if (st && typeof st.size === 'number' && st.size > NOEXT_BINARY_SIZE) {
+          return true;
+        }
+      }
+    } catch (_) { /* stat 失败放行 */ }
+    return false;
   }
 
   // ★ 大文件阈值：超过此大小先 plaintext 打开，延迟上色（#1 + #2）
@@ -286,6 +308,7 @@
       // ═══ LSP OFF: strip all smart features ═══
       minimap: { enabled: false },
       scrollBeyondLastLine: 20,
+      unusualLineTerminators: 'off',
       renderWhitespace: 'none',
       overviewRulerLanes: 3,
       overviewRulerBorder: false,
@@ -638,7 +661,8 @@
     if (!editor) { console.warn('[editor] not built yet'); return; }
     if (dirty && currentFile && !confirm('Unsaved changes will be lost. Continue?')) { return; }
     try {
-      if (isBinaryFile(file)) {
+      var isBin = await isBinaryFileAsync(file);
+      if (isBin) {
         if (window.qqqideQoast) window.qqqideQoast.show(String.fromCharCode(10060, 32, 20108, 36827, 21046, 25991, 20214, 65292, 26080, 27861, 22312, 32534, 36753, 22120, 20013, 25171, 24320), { duration: 4000 });
         return;
       }
@@ -853,7 +877,8 @@
       hookThemeSync(monaco);
       // configureMonacoTypescript(monaco); // LSP OFF
       var lang = langOf(filePath);
-      if (isBinaryFile(filePath)) {
+      var isBin = await isBinaryFileAsync(filePath);
+      if (isBin) {
         if (window.qqqideQoast) window.qqqideQoast.show(String.fromCharCode(10060, 32, 20108, 36827, 21046, 25991, 20214, 65292, 26080, 27861, 22312, 32534, 36753, 22120, 20013, 25171, 24320), { duration: 4000 });
         return null;
       }
@@ -1218,6 +1243,7 @@
     getEditorInstance() { return _editorRef; },
     refreshLiveContent,
     isBinaryFile,
+    isBinaryFileAsync,
     saveMinimapPref: _saveMinimapPref,
     // ★ Tab 切换优化：暂停/恢复 Monaco automaticLayout（避免隐藏编辑器做无意义 layout）
     suspendPaneLayout: function(filePath) {

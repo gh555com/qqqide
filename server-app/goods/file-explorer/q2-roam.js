@@ -873,13 +873,8 @@ function buildFileItem(entry, fullPath) {
 		selectFileItem(item, e.shiftKey);
 	});
 
-	// Double-click on file → open
-	item.addEventListener('dblclick', function(e) {
-		if (!entry.isDir) {
-			parent.postMessage({ type: 'qqq-file-open', path: fullPath }, '*');
-			recordFileHistory(fullPath);
-		}
-	});
+	// Double-click: no-op — match q3 original behavior
+	// Q/W keys are the only way to open files, with strictly separated responsibilities
 
 	// Context menu
 	item.addEventListener('contextmenu', function(e) {
@@ -1069,93 +1064,6 @@ function reloadCurrentDir() {
 	}, 50);
 }
 
-// ---- Context menu actions (from q3, 100% ported) ----
-function hideAllContextMenus() {
-	var a = document.getElementById('itemContextMenu');
-	if (a) a.style.display = 'none';
-}
-function performCodeAction(item) {
-	if (!item) return;
-	if (item.name === '..') return;
-	if (item.type === 'folder') {
-		// Folder → navigate (same as q3: openFolderInNewWindow behavior simplified to navigate)
-		navigateTo(item.path);
-		_playSfx('enter');
-		return;
-	}
-	// ★ Binary guard: skip mp3/png/exe etc.
-	var bin = isBinaryByName(item.name);
-	if (bin === true) {
-		// Known binary → open with default program instead
-		bridge.shell.openPath(item.path).catch(function(){});
-		_playSfx('enter');
-		return;
-	}
-	// Text or unknown (unknown ext → trusted as text)
-	parent.postMessage({ type: 'qqq-file-open', path: item.path }, '*');
-	recordFileHistory(item.path);
-	_playSfx('enter');
-}
-function performOpenAction(item) {
-	if (!item) return;
-	if (item.name === '..') return;
-	if (item.type === 'folder') {
-		navigateTo(item.path);
-	} else if (item.path && /\.lnk$/i.test(item.path)) {
-		// .lnk shortcut: resolve and navigate if it points to a folder
-		var srcDir = currentPath;
-		resolveLnkTarget(item.path).then(function(target) {
-			if (target) { navigateTo(target); lnkJumpFromPath = srcDir; }
-			else { bridge.shell.openPath(item.path).catch(function(){}); }
-		});
-	} else {
-		// Open with system default program
-		bridge.shell.openPath(item.path).catch(function(){});
-		recordFileHistory(item.path);
-	}
-	_playSfx('enter');
-}
-function performDeleteAction(item) {
-	if (!item) return;
-	if (item.name === '..') return;
-	// ★ No confirmation dialog (from q3): just fade and delete
-	var el = findItemByPath(item.path);
-	if (el) { el.style.opacity = '0.5'; el.style.pointerEvents = 'none'; }
-	// ★ Multi-select delete support
-	var targets = selectedItems.length > 1
-		? selectedItems.filter(function(s) { return s.name !== '..'; })
-		: [item];
-	targets.forEach(function(t) {
-		var tel = findItemByPath(t.path);
-		if (tel) { tel.style.opacity = '0.5'; tel.style.pointerEvents = 'none'; }
-	});
-	Promise.all(targets.map(function(t) { return bridge.fs.remove(t.path).catch(function(){}); }))
-		.then(function() { if (currentPath) loadFileList(currentPath); });
-	cancelSelection();
-	_playSfx('delete');
-}
-function performEditAction(item) {
-	if (!item) return;
-	if (item.name === '..') return;
-	if (selectedItems.length > 1) return; // No rename in multi-select
-	startRename(item.path, item.name, item.type);
-	_playSfx('enter');
-}
-function performCopyPathAction() {
-	var paths = [];
-	if (selectedItems.length > 1) {
-		paths = selectedItems.filter(function(s) { return s.name !== '..'; }).map(function(s) { return s.path; });
-	} else if (selectedItem && selectedItem.name !== '..') {
-		paths = [selectedItem.path];
-	}
-	if (paths.length > 0) {
-		bridge.clipboard.writeText(paths.join('\n')).catch(function() {
-			if (navigator.clipboard) navigator.clipboard.writeText(paths.join('\n')).catch(function(){});
-		});
-	}
-	_playSfx('enter');
-}
-
 // ---- Context menu ----
 function hideAllContextMenus() {
 	var m = document.getElementById('itemContextMenu'); if (m) m.style.display = 'none';
@@ -1164,37 +1072,37 @@ function hideAllContextMenus() {
 // ===== Actions (from q3, 100% ported) =====
 function performCodeAction(item) {
 	if (!item) return;
-	if (item.type === 'file' && item.name !== '..') {
-		// Binary guard: skip known binary files
-		if (isBinaryByName(item.name) === true) {
-			_playSfx('error');
-			// Fall through to open with default program instead
-			performOpenAction(item);
-			return;
-		}
-		parent.postMessage({ type: 'qqq-file-open', path: item.path }, '*');
-		recordFileHistory(item.path);
-		_playSfx('enter');
-	} else {
-		// Folder → navigate
+	if (item.name === '..') return;
+	if (item.type === 'folder') {
 		navigateTo(item.path);
 		_playSfx('enter');
+		return;
 	}
+	// Q 键唯一职责：在编辑器中打开文件（文本文件）
+	// 已知二进制文件 → 仅播放错误音效，不打开（不混入 W 键的职责）
+	if (isBinaryByName(item.name) === true) {
+		_playSfx('error');
+		return;
+	}
+	parent.postMessage({ type: 'qqq-file-open', path: item.path }, '*');
+	recordFileHistory(item.path);
+	_playSfx('enter');
 }
 function performOpenAction(item) {
 	if (!item) return;
+	if (item.name === '..') return;
 	if (item.type === 'folder') { navigateTo(item.path); _playSfx('enter'); return; }
 	if (item.path && /\.lnk$/i.test(item.path)) {
-		// .lnk 快捷方式
+		// .lnk 快捷方式：解析目标，是文件夹则导航，否则用系统默认打开
 		var srcDir = currentPath;
 		resolveLnkTarget(item.path).then(function(target) {
 			if (target) { navigateTo(target); lnkJumpFromPath = srcDir; }
 			else { bridge.shell.openPath(item.path).catch(function(){}); }
 		});
 	} else {
-		bridge.shell.openPath(item.path).catch(function() {
-			parent.postMessage({ type: 'qqq-file-open', path: item.path }, '*');
-		});
+		// W 键唯一职责：用操作系统默认程序打开文件
+		// 不 fallback 到编辑器（与 Q 键职责彻底分离）
+		bridge.shell.openPath(item.path).catch(function(){});
 	}
 	recordFileHistory(item.path);
 	_playSfx('enter');
@@ -1923,23 +1831,24 @@ function calculateAndAdjustScroll() {
 			var isRightBtn = _currentTarget.classList.contains('save-button') || _currentTarget.classList.contains('cancel-button')
 				|| (_currentTarget.classList.contains('scm-btn') && _currentTarget.closest('#sortByGroup'));
 
-			// 垂直定位：save/cancel 向上偏移
-			if (_currentTarget.classList.contains('save-button') || _currentTarget.classList.contains('cancel-button')) {
-				gt.style.top = (e.clientY - 44) + 'px';
-			} else {
-				gt.style.top = (e.clientY + 22) + 'px';
-			}
+// 垂直定位：save/cancel 向上偏移
+		var gx = e.clientX, gy = e.clientY;
+		if (_currentTarget.classList.contains('save-button') || _currentTarget.classList.contains('cancel-button')) {
+			gt.style.top = (gy - 44) + 'px';
+		} else {
+			gt.style.top = (gy + 22) + 'px';
+		}
 
-			var tw = gt.offsetWidth;
-			var leftPos;
-			if (isLeftBtn || isOpenBtn) {
-				leftPos = e.clientX - 11;
-			} else if (isRightBtn) {
-				leftPos = e.clientX - tw + 11;
-			} else {
-				// ★ qq item / recent item / 通用元素：居中，然后做边界保护
-				leftPos = e.clientX - tw / 2;
-			}
+		var tw = gt.offsetWidth;
+		var leftPos;
+		if (isLeftBtn || isOpenBtn) {
+			leftPos = gx - 11;
+		} else if (isRightBtn) {
+			leftPos = gx - tw + 11;
+		} else {
+			// ★ qq item / recent item / 通用元素：居中，然后做边界保护
+			leftPos = gx - tw / 2;
+		}
 
 			// 边界保护
 			if (leftPos + tw > pageW - padR) leftPos = pageW - tw - padR;

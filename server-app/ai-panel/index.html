@@ -174,9 +174,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:var(--t
 .msg-quest-error{color:var(--red);padding:8px 12px;font-size:12px;background:rgba(220,50,47,0.06);border:1px solid rgba(220,50,47,0.15);border-radius:6px;margin:6px 0;line-height:1.6;white-space:pre-wrap}
 .qe-row{padding:2px 0;border-bottom:1px solid rgba(220,50,47,0.08)}
 .msg-err-continue{text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;user-select:none}
-/* ── 致命失败恢复光块："继续任务"文字变成光块左右横跳 ── */
-@keyframes recovery-bounce{0%{transform:translateX(-6px);opacity:0.3}50%{transform:translateX(10px);opacity:1}100%{transform:translateX(-6px);opacity:0.3}}
-a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color:#ffffff;animation:recovery-bounce 0.5s ease-in-out infinite;text-decoration:none;cursor:default;user-select:none;margin-left:6px;vertical-align:-1px;pointer-events:none}
+/* ── 致命失败恢复光块："继续任务"文字消失 → 白光块左右横跳 ── */
+@keyframes recovery-bounce{0%{transform:translateX(-14px);opacity:0.25}50%{transform:translateX(14px);opacity:1}100%{transform:translateX(-14px);opacity:0.25}}
+a.msg-err-recovery-light{display:inline-block;width:20px;height:5px;background:#ffffff;border-radius:3px;box-shadow:0 0 8px rgba(255,255,255,0.7);animation:recovery-bounce 0.55s ease-in-out infinite;text-decoration:none;cursor:default;user-select:none;margin-left:6px;vertical-align:middle;pointer-events:none}
 .msg-status{font-size:11px;opacity:.6;padding:2px 0;font-style:italic}
 /* 楼层时钟 + 饼图（嵌在豆腐块内部底部，每个楼层私有） */
 .msg-ai-clock{display:flex;align-items:center;gap:8px;padding:8px 0 0;user-select:none}

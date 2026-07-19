@@ -35,6 +35,17 @@ interface ProcEntry {
 
 const _registry = new Map<string, ProcEntry>();
 const _watchdogs = new Map<string, NodeJS.Timeout>();
+const _statusListeners: Array<(goodsId: string, running: boolean, pid: number | null) => void> = [];
+
+export function onGaeaProcessStatusChange(cb: (goodsId: string, running: boolean, pid: number | null) => void): void {
+    _statusListeners.push(cb);
+}
+
+function _notifyStatus(goodsId: string, running: boolean, pid: number | null): void {
+    for (const cb of _statusListeners) {
+        try { cb(goodsId, running, pid); } catch { /* ignore */ }
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // PID 文件协议 — 跨窗口单例检测
@@ -204,16 +215,21 @@ export function startGaeaProcess(
             _writePidFile(userData, goodsId, entry.pid);
         }
 
+        // ★ 通知渲染层状态变更
+        _notifyStatus(goodsId, true, entry.pid);
+
         proc.on('exit', (code, signal) => {
             console.log('[' + goodsId + '] exited code=' + code + ' signal=' + signal);
             if (!allowMultiple) _removePidFile(userData, goodsId);
             _registry.delete(goodsId);
+            _notifyStatus(goodsId, false, null);
         });
 
         proc.on('error', (err) => {
             console.error('[' + goodsId + '] proc error:', err);
             if (!allowMultiple) _removePidFile(userData, goodsId);
             _registry.delete(goodsId);
+            _notifyStatus(goodsId, false, null);
         });
 
         return { ok: true, pid: entry.pid || undefined };
@@ -242,6 +258,7 @@ export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string 
         }
         _registry.delete(goodsId);
         console.log('[' + goodsId + '] stopped (lifecycle=' + (entry.lifecycle || 'attached') + ')');
+        _notifyStatus(goodsId, false, null);
         return { ok: true };
     } catch (e: any) {
         return { ok: false, error: '停止失败: ' + (e.message || e) };

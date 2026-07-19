@@ -20,30 +20,44 @@ function hookFileExplorerToTabs() {
         // Use Monaco editor to render file
         if (window.qqqEditor) {
           pane.style.cssText = 'position:relative; width:100%; height:100%;';
-          // Binary guard: prevent freeze on mp3/mp4/exe etc.
-          if (window.qqqEditor && window.qqqEditor.isBinaryFile && window.qqqEditor.isBinaryFile(filePath)) {
-            if (window.qqqideQoast) window.qqqideQoast.show('\u274C \u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u65E0\u6CD5\u5728\u7F16\u8F91\u5668\u4E2D\u6253\u5F00', { duration: 4000 });
-            return;
-          }
           // ★ 立现占位：显示文件名，避免空白闪烁
           var _fileName = filePath.split(/[\\/]/).pop() || filePath;
           var _placeholder = document.createElement('div');
           _placeholder.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx3);font:13px Tahoma,sans-serif;user-select:none;';
           _placeholder.textContent = _fileName;
           pane.appendChild(_placeholder);
-          // Read and display file
-          bridge.fs.read(filePath).then(function (content) {
-            // ★ rAF 让浏览器先渲一帧（占位符可见），再切 Monaco（避免 UI 冻住）
-            requestAnimationFrame(function () {
+
+          // Binary guard: async check (sync ext check + stat for extensionless files)
+          var _checkBin = Promise.resolve(false);
+          if (window.qqqEditor && window.qqqEditor.isBinaryFileAsync) {
+            _checkBin = window.qqqEditor.isBinaryFileAsync(filePath);
+          } else if (window.qqqEditor && window.qqqEditor.isBinaryFile) {
+            _checkBin = Promise.resolve(window.qqqEditor.isBinaryFile(filePath));
+          }
+
+          _checkBin.then(function (isBin) {
+            if (isBin) {
               pane.textContent = '';
-              var editorMount = document.createElement('div');
-              editorMount.style.cssText = 'position:absolute; inset:0 0 4px 0;';
-              pane.appendChild(editorMount);
-              var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
-              window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts);
+              var _msg = document.createElement('div');
+              _msg.style.cssText = 'display:flex;align-items:center;justify-content:center;height:100%;color:var(--tx3);font:13px Tahoma,sans-serif;user-select:none;';
+              _msg.textContent = '\u274C ' + _fileName + ' \u2014 \u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u65E0\u6CD5\u5728\u7F16\u8F91\u5668\u4E2D\u6253\u5F00';
+              pane.appendChild(_msg);
+              return;
+            }
+            // Read and display file
+            bridge.fs.read(filePath).then(function (content) {
+              // ★ rAF 让浏览器先渲一帧（占位符可见），再切 Monaco（避免 UI 冻住）
+              requestAnimationFrame(function () {
+                pane.textContent = '';
+                var editorMount = document.createElement('div');
+                editorMount.style.cssText = 'position:absolute; inset:0 0 4px 0;';
+                pane.appendChild(editorMount);
+                var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
+                window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts);
+              });
+            }).catch(function (err) {
+              pane.textContent = 'Error: ' + (err && err.message);
             });
-          }).catch(function (err) {
-            pane.textContent = 'Error: ' + (err && err.message);
           });
         }
       }
@@ -62,60 +76,70 @@ function hookFileExplorerToTabs() {
       pane.appendChild(editorMount);
       var _search = window._nextSearch; window._nextSearch = null;
       var _realSearch = (_search === '__FIND__') ? '' : _search;
-      // Binary guard: prevent freeze on mp3/mp4/exe etc..
-      if (window.qqqEditor && window.qqqEditor.isBinaryFile && window.qqqEditor.isBinaryFile(filePath)) {
-        if (window.qqqideQoast) window.qqqideQoast.show('\u274C \u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u65E0\u6CD5\u5728\u7F16\u8F91\u5668\u4E2D\u6253\u5F00', { duration: 4000 });
-        return;
+
+      // Binary guard: async check (sync ext check + stat for extensionless files)
+      var _checkBin2 = Promise.resolve(false);
+      if (window.qqqEditor && window.qqqEditor.isBinaryFileAsync) {
+        _checkBin2 = window.qqqEditor.isBinaryFileAsync(filePath);
+      } else if (window.qqqEditor && window.qqqEditor.isBinaryFile) {
+        _checkBin2 = Promise.resolve(window.qqqEditor.isBinaryFile(filePath));
       }
-      bridge.fs.read(filePath).then(function (content) {
-        var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
-        window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts).then(function (ed) {
-          if (_search && ed) {
-            setTimeout(function () {
-              try {
-                var fc = ed.getContribution('editor.contrib.findController');
-                if (fc && fc.start) {
-                  fc.start({
-                    forceRevealReplace: false,
-                    seedSearchStringFromSelection: 'none',
-                    seedSearchStringFromNonEmptySelection: false,
-                    seedSearchStringFromGlobalClipboard: false,
-                    shouldFocus: 2,
-                    shouldAnimate: true,
-                    updateSearchScope: false,
-                    loop: true
-                  });
-                  if (_realSearch) {
-                    fc.getState().change({ searchString: _realSearch }, false);
-                    setTimeout(function () {
+
+      _checkBin2.then(function (isBin) {
+        if (isBin) {
+          if (window.qqqideQoast) window.qqqideQoast.show('\u274C \u4E8C\u8FDB\u5236\u6587\u4EF6\uFF0C\u65E0\u6CD5\u5728\u7F16\u8F91\u5668\u4E2D\u6253\u5F00', { duration: 4000 });
+          return;
+        }
+        bridge.fs.read(filePath).then(function (content) {
+          var _paneOpts = window._nextPaneOpts || {}; window._nextPaneOpts = null;
+          window.qqqEditor.openInPane(editorMount, filePath, content, _paneOpts).then(function (ed) {
+            if (_search && ed) {
+              setTimeout(function () {
+                try {
+                  var fc = ed.getContribution('editor.contrib.findController');
+                  if (fc && fc.start) {
+                    fc.start({
+                      forceRevealReplace: false,
+                      seedSearchStringFromSelection: 'none',
+                      seedSearchStringFromNonEmptySelection: false,
+                      seedSearchStringFromGlobalClipboard: false,
+                      shouldFocus: 2,
+                      shouldAnimate: true,
+                      updateSearchScope: false,
+                      loop: true
+                    });
+                    if (_realSearch) {
                       fc.getState().change({ searchString: _realSearch }, false);
-                    }, 120);
-                  }
-                } else {
-                  ed.getAction('actions.find').run();
-                  if (_realSearch) {
-                    var domNode = ed.getDomNode();
-                    if (domNode) {
-                      var _att = 0;
-                      var _try = function () {
-                        var fi = domNode.querySelector('.find-widget input[type="text"]') || domNode.querySelector('.find-widget .monaco-inputbox input');
-                        if (fi) {
-                          var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-                          ns.call(fi, _realSearch);
-                          fi.dispatchEvent(new Event('input', { bubbles: true }));
-                        }
-                        if (++_att < 8) setTimeout(_try, 60);
-                      };
-                      setTimeout(_try, 60);
+                      setTimeout(function () {
+                        fc.getState().change({ searchString: _realSearch }, false);
+                      }, 120);
+                    }
+                  } else {
+                    ed.getAction('actions.find').run();
+                    if (_realSearch) {
+                      var domNode = ed.getDomNode();
+                      if (domNode) {
+                        var _att = 0;
+                        var _try = function () {
+                          var fi = domNode.querySelector('.find-widget input[type="text"]') || domNode.querySelector('.find-widget .monaco-inputbox input');
+                          if (fi) {
+                            var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+                            ns.call(fi, _realSearch);
+                            fi.dispatchEvent(new Event('input', { bubbles: true }));
+                          }
+                          if (++_att < 8) setTimeout(_try, 60);
+                        };
+                        setTimeout(_try, 60);
+                      }
                     }
                   }
-                }
-              } catch (_) { }
-            }, 250);
-          }
+                } catch (_) { }
+              }, 250);
+            }
+          });
+        }).catch(function (err) {
+          pane.textContent = 'Error: ' + (err && err.message);
         });
-      }).catch(function (err) {
-        pane.textContent = 'Error: ' + (err && err.message);
       });
     }
   });
@@ -131,13 +155,6 @@ function bootRpcForwarder() {
     if (!e.data) return;
 
     // Handle qqq-file-open from iframes (q2-roam, etc.)
-    if (e.data.type === 'qqq-file-open' && e.data.path) {
-      document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: e.data.path } }));
-      return;
-    }
-
-    // Handle qqq-file-open-right from iframes — opens file in right editor group
-    // Handle qqq-file-open from iframes (Roam new file, double-click, etc.)
     if (e.data.type === 'qqq-file-open' && e.data.path) {
       document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: e.data.path } }));
       return;

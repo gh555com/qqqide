@@ -12,6 +12,27 @@ var _shellMenuRecentHoverTimer = null; // 延迟关闭计时器（1s）
 var _shellMenuRecentLoading = false;   // 防并发 async 创建
 var _shellGlobalMouseDownBound = false; // 全局 mousedown 只注册一次
 
+// ★ Gaea process 状态变更事件驱动（非轮询）—— 更新当前弹出菜单中的按钮
+(function () {
+  var br = window.qqqideBridge;
+  if (br && br.gaeaProcess && br.gaeaProcess.onStatusChanged) {
+    br.gaeaProcess.onStatusChanged(function (goodsId, running, pid) {
+      if (!_shellActiveMenubarPopup) return;
+      var btn = _shellActiveMenubarPopup.querySelector('button[data-gp-id="' + goodsId + '"]');
+      if (!btn) return;
+      if (running) {
+        btn.textContent = '关停';
+        btn.style.background = 'var(--primary-color)';
+        btn.style.color = '#1e1e1e';
+      } else {
+        btn.textContent = '启动';
+        btn.style.background = 'var(--card-bg)';
+        btn.style.color = 'var(--text-primary)';
+      }
+    });
+  }
+})();
+
 // ★ 开新窗口 hover 下拉的关闭延迟（ms）— 光标离开 1s 后自动消失
 var RECENT_DROPDOWN_CLOSE_DELAY = 1000;
 
@@ -284,8 +305,9 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       gpLab.style.cssText = 'flex:0 0 auto; font-weight:600;';
       gpRow.appendChild(gpLab);
 
-      // 启动 / 停止按钮
+      // 启动 / 关停按钮
       const gpBtn = document.createElement('button');
+      gpBtn.setAttribute('data-gp-id', gpId);
       gpBtn.style.cssText =
         'padding:2px 10px; border:1px solid var(--border-color); border-radius:3px; ' +
         'background:var(--card-bg); color:var(--text-primary); font-size:11px; cursor:default; ' +
@@ -296,7 +318,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         if (br && br.gaeaProcess) {
           br.gaeaProcess.status(gpId).then(function (st) {
             if (st && st.running) {
-              gpBtn.textContent = '停止';
+              gpBtn.textContent = '关停';
               gpBtn.style.background = 'var(--primary-color)';
               gpBtn.style.color = '#1e1e1e';
             } else {
@@ -322,7 +344,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         e.preventDefault();
         var br = window.qqqideBridge;
         if (!br || !br.gaeaProcess) return;
-        if (gpBtn.textContent === '停止') {
+        if (gpBtn.textContent === '关停') {
           br.gaeaProcess.stop(gpId).then(function () { _refreshGpBtn(); }).catch(function () { });
         } else {
           br.gaeaProcess.start(gpId, gpScript, gpRuntime, gpLifecycle, gpAllowMultiple).then(function (r) {

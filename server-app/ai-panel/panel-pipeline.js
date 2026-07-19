@@ -166,6 +166,9 @@ async function _executeSend(intent) {
     var userContent = text;
     var chipPaths = getInputChipPaths ? getInputChipPaths() : [];
     var allPaths = chipPaths;
+    // ★ 去重：同一文件可多次注入编辑框（自然表达流），但文件内容只喂一次给 AI，不浪费上下文
+    var _seenChip = {};
+    allPaths = allPaths.filter(function (p) { if (_seenChip[p]) return false; _seenChip[p] = true; return true; });
     if (allPaths.length > 0) {
         var contentParts = [];
         for (var pi = 0; pi < allPaths.length; pi++) {
@@ -568,8 +571,7 @@ async function _executeSend(intent) {
                     agent._questErrorState[floorNum].bubbleText = _recBubbleText;
                     agent._deferredUserEl = null;
                     agent._deferredAiDiv = null;
-                    // ★ Path B: 全量内容已收到 → 封顶原楼层红框
-                    if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent);
+                    // ★ Path B: 封顶由 _finishRecovery(true) 独家负责（onDone 提前 cap 会导致 double-cap → fallback 误伤 recovery 楼层 → 空红框刀疤）
                     if (typeof startFloorTimer === 'function') startFloorTimer(aiDiv, agent);
                     if (typeof _startAllTxtStream === 'function') _startAllTxtStream(aiDiv, _allTxtPathLocal, agent, floorNum, '', '');
                     if ($sendBtn) $sendBtn.disabled = false;

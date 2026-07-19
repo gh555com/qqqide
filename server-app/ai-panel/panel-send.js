@@ -296,10 +296,10 @@ function _startRecovery(questId, agent, linkEl) {
     agent._deferRenderUntilHouse1 = true;
     agent._recoveryLinkEl = linkEl;
 
-    // 3. "继续任务"文字 → 光块（同一 <a> 元素，不删不隐）
+    // 3. "继续任务"文字 → 光块（清空文字，CSS width/height/background 让空元素可见）
     if (linkEl) {
         linkEl._qqqRecoveryOrigText = linkEl.textContent;
-        // ★ 保留文字不变：CSS 白字 + bounce 动画 = "白色光块左右移动"（清空文本反会零宽不可见）
+        linkEl.textContent = '';
         linkEl.className = 'msg-err-recovery-light';
         linkEl.style.cssText = '';
         linkEl._qqqRecoveryBusy = true;
@@ -459,8 +459,12 @@ $input.addEventListener('focus', function () {
 });
 
 function insertChipAtCursor(filePath, isDir, lineRange) {
-    // ★ 去重：同一文件路径已在编辑框中→跳过，不重复注入
-    if ($input.value.indexOf('"' + filePath + '"') !== -1) return;
+    // ★ L1 守卫：路径含分隔符 emoji 或弯引号→拒绝注入，防嵌套解析混乱
+    if (/[\ud83d\udcce\ud83d\udcc1\u201c\u201d]/.test(filePath)) {
+        try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('路径含不兼容字符，无法附加', { type: 'warning', duration: 4000 }); } catch (_) { }
+        return;
+    }
+    // ★ 准许多次注入同一文件（如先喂 L1-L20 再喂 L500-L520，自然对话中多次提及同一文件）
     if (typeof isDir !== 'boolean') {
         isDir = !filePath.match(/\.[a-zA-Z0-9]+$/);
     }
