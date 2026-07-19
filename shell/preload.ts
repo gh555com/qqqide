@@ -23,8 +23,8 @@ const QQQ = {
 onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; purchased?: boolean }) => void) => {
             const handler = (_e: any, data: { token: string; phone: string; country_iso2?: string; purchased?: boolean }) => { try { cb(data); } catch (err) { console.warn('[auth.onAuthPush]', err); } };
             ipcRenderer.on('qqqide-auth', handler);
-            return () => iipcRenderer.removeListener('qqqide-auth', handler);        },
-        // ★ 持久化（ssaveAuth: (auth: { token: string; phone: string; device_name?: string; country_iso2?: string; purchased?: boolean } | null) => ipcRenderer.invoke('qqqide:auth:save', auth),Renderer.invoke('qqqide:auth:save', auth),
+            return () => ipcRenderer.removeListener('qqqide-auth', handler);        },
+        saveAuth: (auth: { token: string; phone: string; device_name?: string; country_iso2?: string; purchased?: boolean } | null) => ipcRenderer.invoke('qqqide:auth:save', auth),
         loadAuth: () => ipcRenderer.invoke('qqqide:auth:load'),
         clearAuth: () => ipcRenderer.invoke('qqqide:auth:clear'),
     },
@@ -422,6 +422,11 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
         status: (goodsId: string) => ipcRenderer.invoke('qqqide:gaea-process:status', goodsId),
         getAutoStart: (goodsId: string) => ipcRenderer.invoke('qqqide:gaea-process:get-auto-start', goodsId),
         setAutoStart: (goodsId: string, v: boolean) => ipcRenderer.invoke('qqqide:gaea-process:set-auto-start', goodsId, v),
+        onStatusChanged: (cb: (goodsId: string, running: boolean, pid: number | null) => void) => {
+            const handler = (_e: any, data: { goodsId: string; running: boolean; pid: number | null }) => cb(data.goodsId, data.running, data.pid);
+            ipcRenderer.on('qqqide:gaea-process:status-changed', handler);
+            return () => ipcRenderer.removeListener('qqqide:gaea-process:status-changed', handler);
+        },
     },
 };
 

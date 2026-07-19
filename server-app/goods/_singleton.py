@@ -85,7 +85,10 @@ def check_and_register(goods_id):
         try:
             with open(pid_file, 'r') as f:
                 old_pid = int(f.read().strip().split('\n')[0])
-            if _is_pid_alive(old_pid):
+            # ★ 若 PID 是自己（gaea-process.ts 在 spawn 后已写 PID 文件），跳过检查
+            if old_pid == os.getpid():
+                pass  # 自己写的，覆盖即可
+            elif _is_pid_alive(old_pid):
                 print(f'[{goods_id}] Already running (PID {old_pid}), exiting.')
                 sys.exit(0)
             else:
