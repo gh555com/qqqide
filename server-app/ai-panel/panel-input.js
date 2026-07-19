@@ -189,12 +189,12 @@ function autoResizeInput() {
 }
 $input.addEventListener('input', autoResizeInput);
 // 兜底：程序改 value 时触发 autoResizeInput（发完消息清空/切 quest 恢复）
-(function(){
+(function () {
     var _desc = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
     if (_desc && _desc.set) {
         Object.defineProperty($input, 'value', {
-            get: function() { return _desc.get.call(this); },
-            set: function(v) {
+            get: function () { return _desc.get.call(this); },
+            set: function (v) {
                 _desc.set.call(this, v);
                 autoResizeInput();
             },
@@ -222,7 +222,7 @@ var _LIMIT_QOAST_COOLDOWN = 3000;
 function _i18nQ(key, fallback) {
     try {
         if (parent && parent._i) return parent._i(key, fallback);
-    } catch (_) {}
+    } catch (_) { }
     return fallback;
 }
 
@@ -245,7 +245,7 @@ function _limitQoast(reason) {
         if (parent && parent.window && parent.window.qqqideQoast) {
             parent.window.qqqideQoast.show(msg, { duration: 3500, type: 'warning' });
         }
-    } catch (_) {}
+    } catch (_) { }
 }
 
 // ═══ 硬上限键前拦截：已达上限且键入可打印字符→阻止（防字母先入再截）══
@@ -447,7 +447,7 @@ $input.addEventListener('contextmenu', function (e) {
     _addRow('Ctrl+C', function () {
         $input.focus();
         if ($input.selectionStart === $input.selectionEnd) $input.select();
-        try { document.execCommand('copy'); } catch (_) {}
+        try { document.execCommand('copy'); } catch (_) { }
     });
 
     _addRow('Ctrl+V', async function () {
@@ -466,10 +466,10 @@ $input.addEventListener('contextmenu', function (e) {
         var nd = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
         var cur = nd.get.call($input);
         var ss = $input.selectionStart || 0, se = $input.selectionEnd || 0;
-        var avail = INPUT_CAP_CHARS - cur.substring(0,ss).length - cur.substring(se).length;
+        var avail = INPUT_CAP_CHARS - cur.substring(0, ss).length - cur.substring(se).length;
         if (avail <= 0) { _limitQoast('paste-full'); return; }
         var ins = txt.length > avail ? txt.substring(0, avail) : txt;
-        nd.set.call($input, cur.substring(0,ss) + ins + cur.substring(se));
+        nd.set.call($input, cur.substring(0, ss) + ins + cur.substring(se));
         $input.setSelectionRange(ss + ins.length, ss + ins.length);
         autoResizeInput(); _updateInputProgress();
         if (txt.length > avail) _limitQoast('paste-truncated');
@@ -496,7 +496,6 @@ $input.addEventListener('keydown', function (e) {
 });
 
 $sendBtn.onclick = function () {
-    if (typeof _execSendBusy !== 'undefined' && _execSendBusy) return;
     if (_switching) return;
     if (_activeAgent && _activeAgent._compressing) return;
 
@@ -507,5 +506,9 @@ $sendBtn.onclick = function () {
 
     if (streaming) { stopStream(); }
     else if (_activeAgent && _activeAgent._stopState === 'sending') { return; }
-    else { sendMessage(); }
+    else {
+        // ★ _execSendBusy 只挡发送，不挡 Stop（防建楼中 Stop 按钮无反应）
+        if (typeof _execSendBusy !== 'undefined' && _execSendBusy) return;
+        sendMessage();
+    }
 };

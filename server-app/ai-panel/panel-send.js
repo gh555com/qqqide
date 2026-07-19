@@ -256,12 +256,15 @@ function _capRecoveryLink(agent, floorNum) {
 
     _st.capped = true;
 
-    // ★ DOM 层：找红框 DOM 移除链接 + 标记 capped
+    // ★ DOM 层：找红框 DOM 移除链接 + 标记 capped + 消最后分割线
     var _box = _ensureErrorBoxDOM(agent, _fn);
     if (_box) {
         if (_box._continueLink && _box._continueLink.isConnected) _box._continueLink.remove();
         _box._continueLink = null;
         _box._capped = true;
+        // ★ 消除最后一行的分隔线（capped 后底部不再有链接行，回收 Y 轴空间）
+        var _lastRow = _box.querySelector('.qe-row:last-of-type');
+        if (_lastRow) _lastRow.style.borderBottom = 'none';
     }
 
     if (agent._stateMeta) agent._stateMeta.recoveryLinkEl = null;
