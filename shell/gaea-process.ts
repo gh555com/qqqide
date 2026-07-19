@@ -16,6 +16,10 @@
 // Watchdog 高可用 (2026-07-19):
 //   对 allowMultiple=false 且自启动开启的 goods，定期检查进程存活。
 //   进程死亡 → 自动重启。相当于简单高可用守护。
+//
+// ★ 跨窗口状态检测 (2026-07-20):
+//   isGaeaProcessRunning 通过 PID 文件检测其他窗口启动的进程。
+//   _statusListeners 广播到所有 BrowserWindow（非仅 mainWindow）。
 // ============================================================================
 
 import { ChildProcess, spawn, execSync } from 'child_process';
@@ -36,6 +40,8 @@ interface ProcEntry {
 const _registry = new Map<string, ProcEntry>();
 const _watchdogs = new Map<string, NodeJS.Timeout>();
 const _statusListeners: Array<(goodsId: string, running: boolean, pid: number | null) => void> = [];
+let _userDataPath: string | null = null;
+const _goodsMeta = new Map<string, { allowMultiple: boolean }>();
 
 export function onGaeaProcessStatusChange(cb: (goodsId: string, running: boolean, pid: number | null) => void): void {
     _statusListeners.push(cb);
@@ -142,6 +148,8 @@ export function startGaeaProcess(
     allowMultiple: boolean = true
 ): { ok: boolean; pid?: number; error?: string; alreadyRunning?: boolean } {
     const userData = path.join(portableRoot, 'Data');
+    _userDataPath = userData;
+    _goodsMeta.set(goodsId, { allowMultiple });
 
     // ★ 单例检测: allowMultiple=false → 检查 PID 文件
     if (!allowMultiple) {
@@ -267,7 +275,14 @@ export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string 
 
 export function isGaeaProcessRunning(goodsId: string): boolean {
     const entry = _registry.get(goodsId);
-    return !!(entry && entry.proc && !entry.proc.killed);
+    if (entry && entry.proc && !entry.proc.killed) return true;
+    // ★ 跨窗口：通过 PID 文件检测其他窗口启动的进程
+    const meta = _goodsMeta.get(goodsId);
+    if (meta && !meta.allowMultiple && _userDataPath) {
+        const existing = _checkExistingInstance(_userDataPath, goodsId);
+        if (existing.running) return true;
+    }
+    return false;
 }
 
 export function getGaeaProcessPid(goodsId: string): number | null {

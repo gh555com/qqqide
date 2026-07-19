@@ -45,7 +45,7 @@ import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
-import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, onGaeaProcessStatusChange, GaeaLifecycle } from './gaea-process';
+import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, GaeaLifecycle } from './gaea-process';
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing } from './wq-ping';
 
@@ -292,6 +292,7 @@ function registerAuthPersistIpc(): void {
 /** 出厂默认自动启动映射（首次安装时生效，用户勾选后持久化覆盖） */
 const _PROCESS_GOODS_AUTOSTART_DEFAULTS: Record<string, boolean> = {
     'kope-a': true,
+    'window-there': true,
 };
 
 function registerGaeaProcessIpc(): void {
@@ -317,9 +318,25 @@ function registerGaeaProcessIpc(): void {
         } catch (e) { return false; }
     });
 
-    ipcMain.handle('qqqide:gaea-process:set-auto-start', async (_e, goodsId: string, v: boolean) => {
+    ipcMain.handle('qqqide:gaea-process:set-auto-start', async (_e, goodsId: string, v: boolean, meta?: { scriptPath?: string; runtime?: string; lifecycle?: string; allowMultiple?: boolean }) => {
         try {
             await stateStore.setNow('qqqide', goodsId + '.autoStart', v);
+            if (v && meta && meta.scriptPath) {
+                // ★ check ON + not running → start immediately + watchdog
+                const runtime = meta.runtime || 'python';
+                const lifecycle = (meta.lifecycle as GaeaLifecycle) || 'attached';
+                const allowMultiple = meta.allowMultiple !== false;
+                const result = startGaeaProcess(portable.root, goodsId, meta.scriptPath, runtime, lifecycle, allowMultiple);
+                if (result.ok) {
+                    console.log('[' + goodsId + '] auto-start (via checkbox) pid=' + result.pid + (result.alreadyRunning ? ' (already running)' : ''));
+                }
+                if (!allowMultiple) {
+                    startGaeaWatchdog(portable.root, goodsId, meta.scriptPath, runtime, lifecycle);
+                }
+            } else if (!v) {
+                // ★ check OFF → stop watchdog (leave process running, user controls manually)
+                stopGaeaWatchdog(goodsId);
+            }
             return true;
         } catch (e) { return false; }
     });
@@ -358,7 +375,7 @@ app.whenReady().then(async () => {
         try {
             const processGoods = [
                 { id: 'kope-a', script: 'goods/kope-a/q3.py', runtime: 'python', lifecycle: 'independent' as GaeaLifecycle, allowMultiple: false, defaultAutoStart: true },
-                { id: 'window-there', script: 'goods/window-there/q3.py', runtime: 'python', lifecycle: 'attached' as GaeaLifecycle, allowMultiple: false },
+                { id: 'window-there', script: 'goods/window-there/q3.py', runtime: 'python', lifecycle: 'attached' as GaeaLifecycle, allowMultiple: false, defaultAutoStart: true },
             ];
             for (const g of processGoods) {
                 try {
@@ -388,9 +405,11 @@ app.whenReady().then(async () => {
 
     // ★ Gaea process 状态变更 → 推送给渲染层（事件驱动，非轮询）
     onGaeaProcessStatusChange((goodsId, running, pid) => {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('qqqide:gaea-process:status-changed', { goodsId, running, pid });
-        }
+        BrowserWindow.getAllWindows().forEach(w => {
+            if (!w.isDestroyed()) {
+                w.webContents.send('qqqide:gaea-process:status-changed', { goodsId, running, pid });
+            }
+        });
     });
 
     // ★ 检查是否由 qqqide:// 协议启动（登录推送用）

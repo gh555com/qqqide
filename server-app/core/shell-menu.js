@@ -291,7 +291,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       continue;
     }
 
-    // ★ Gaea Process 行：通用渲染（标签 + 启动/停止按钮 + 自动启动勾选框）
+    // ★ Gaea Process 行 — 解耦设计：中间●=进程状态(可点击启停)，右边toggle=自启动开关
     if (s.hasGaeaProcess) {
       const gpId = s.hasGaeaProcess;
       const gpRow = document.createElement('div');
@@ -302,100 +302,172 @@ function _shellOpenMenubarPopup(anchorEl, item) {
 
       const gpLab = document.createElement('span');
       gpLab.textContent = (s.i18n && window._i) ? window._i(s.i18n, s.label) : (s.label || gpId);
-      gpLab.style.cssText = 'flex:0 0 auto; font-weight:600;';
+      gpLab.style.cssText = 'flex:1 1 auto; font-weight:600;';
       gpRow.appendChild(gpLab);
-
-      // 启动 / 关停按钮
-      const gpBtn = document.createElement('button');
-      gpBtn.setAttribute('data-gp-id', gpId);
-      gpBtn.style.cssText =
-        'padding:2px 10px; border:1px solid var(--border-color); border-radius:3px; ' +
-        'background:var(--card-bg); color:var(--text-primary); font-size:11px; cursor:default; ' +
-        'min-width:56px;';
-
-      function _refreshGpBtn() {
-        var br = window.qqqideBridge;
-        if (br && br.gaeaProcess) {
-          br.gaeaProcess.status(gpId).then(function (st) {
-            if (st && st.running) {
-              gpBtn.textContent = '关停';
-              gpBtn.style.background = 'var(--primary-color)';
-              gpBtn.style.color = '#1e1e1e';
-            } else {
-              gpBtn.textContent = '启动';
-              gpBtn.style.background = 'var(--card-bg)';
-              gpBtn.style.color = 'var(--text-primary)';
-            }
-          }).catch(function () {
-            gpBtn.textContent = '启动';
-          });
-        }
-      }
-      _refreshGpBtn();
 
       // capture script/runtime/lifecycle/allowMultiple from schema item
       const gpScript = s.gpScript || '';
       const gpRuntime = s.gpRuntime || 'python';
       const gpLifecycle = s.gpLifecycle || 'attached';
-      const gpAllowMultiple = s.gpAllowMultiple !== false; // default true
+      const gpAllowMultiple = s.gpAllowMultiple !== false;
 
-      gpBtn.addEventListener('click', function (e) {
-        e.stopPropagation();
-        e.preventDefault();
+      // ── 右边: 自启动 pill toggle ──
+      const gpToggle = document.createElement('div');
+      gpToggle.title = '自启动';
+      gpToggle.style.cssText =
+        'position:relative; width:44px; height:24px; border-radius:12px; ' +
+        'background:var(--border-color); transition:background 200ms; ' +
+        'flex-shrink:0; cursor:default;';
+      const gpKnob = document.createElement('div');
+      gpKnob.style.cssText =
+        'position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; ' +
+        'background:#fdf6e3; box-shadow:0 1px 3px rgba(0,0,0,0.25); transition:left 200ms;';
+      gpToggle.appendChild(gpKnob);
+
+      // ── 中间: 进程状态指示灯（独立按钮，可点击启停）──
+      const gpDot = document.createElement('span');
+      gpDot.title = '启停';
+      gpDot.style.cssText =
+        'width:7px; height:7px; border-radius:50%; flex-shrink:0; ' +
+        'background:var(--border-color); transition:background 200ms; ' +
+        'cursor:default;';
+
+      // ★ 两套独立状态
+      let _gpToggleReady = false;
+      let _gpToggleOn = false;    // 自启动开关状态
+      let _gpRunning = false;     // 进程实际运行状态
+      let _gpDotReady = false;
+
+      // ── UI 更新函数（解耦，互不干扰）──
+      function _setGpToggleUI(on) {
+        _gpToggleOn = on;
+        gpToggle.style.background = on ? '#859900' : 'var(--border-color)';
+        gpKnob.style.left = on ? '22px' : '2px';
+      }
+      function _setGpDotUI(running) {
+        _gpRunning = running;
+        gpDot.style.background = running ? '#859900' : 'var(--border-color)';
+      }
+
+      // ── 刷新自启动开关 ──
+      function _refreshGpToggle() {
         var br = window.qqqideBridge;
-        if (!br || !br.gaeaProcess) return;
-        if (gpBtn.textContent === '关停') {
-          br.gaeaProcess.stop(gpId).then(function () { _refreshGpBtn(); }).catch(function () { });
-        } else {
-          br.gaeaProcess.start(gpId, gpScript, gpRuntime, gpLifecycle, gpAllowMultiple).then(function (r) {
-            if (r && r.ok) {
-              _refreshGpBtn();
-            } else {
-              var errMsg = (r && r.error) || '启动失败';
-              if (br.dialog && br.dialog.message) {
-                br.dialog.message({ type: 'info', title: gpId, message: errMsg });
-              } else {
-                alert(gpId + ': ' + errMsg);
-              }
-            }
-          }).catch(function (e2) {
-            alert(gpId + ' 启动失败: ' + (e2 && e2.message || e2));
-          });
-        }
-      });
-      gpRow.appendChild(gpBtn);
+        if (!br || !br.gaeaProcess) { _gpToggleReady = true; return; }
+        br.gaeaProcess.getAutoStart(gpId).then(function (v) {
+          _setGpToggleUI(!!v);
+          _gpToggleReady = true;
+        }).catch(function () {
+          _setGpToggleUI(false);
+          _gpToggleReady = true;
+        });
+      }
 
-      // 自动启动勾选框
-      const gpCb = document.createElement('input');
-      gpCb.type = 'checkbox';
-      gpCb.style.cssText = 'margin:0 0 0 4px; cursor:default;';
-      let _gpCbReady = false;
+      // ── 刷新进程运行状态（poll + push 双轨）──
+      function _refreshGpDot() {
+        var br = window.qqqideBridge;
+        if (!br || !br.gaeaProcess) { _gpDotReady = true; return; }
+        br.gaeaProcess.status(gpId).then(function (r) {
+          _setGpDotUI(!!(r && r.running));
+          _gpDotReady = true;
+        }).catch(function () {
+          _gpDotReady = true;
+        });
+      }
+
+      // ── 启动时加载 ──
+      _refreshGpToggle();
+      _refreshGpDot();
+
+      // ── 5s poll 兜底（push 事件可能漏，poll 保证最终一致）──
+      var _gpPollTimer = setInterval(function () {
+        _refreshGpDot();
+      }, 5000);
+
+      // ── push 事件驱动：进程状态变更立即更新 ● ──
+      var _gpStatusUnsub = null;
       (function () {
         var br = window.qqqideBridge;
-        if (br && br.gaeaProcess) {
-          br.gaeaProcess.getAutoStart(gpId).then(function (v) {
-            gpCb.checked = !!v;
-            _gpCbReady = true;
-          }).catch(function () { gpCb.checked = false; _gpCbReady = true; });
+        if (br && br.gaeaProcess && br.gaeaProcess.onStatusChanged) {
+          _gpStatusUnsub = br.gaeaProcess.onStatusChanged(function (goodsId, running, pid) {
+            if (goodsId === gpId) _setGpDotUI(!!running);
+          });
         }
       })();
 
-      gpCb.addEventListener('change', function (e) {
+      // ── 右边 toggle 点击：切换自启动（不影响进程）──
+      gpToggle.addEventListener('click', function (e) {
         e.stopPropagation();
-        if (!_gpCbReady) return;
+        e.preventDefault();
+        if (!_gpToggleReady) return;
         var br = window.qqqideBridge;
-        if (br && br.gaeaProcess) {
-          br.gaeaProcess.setAutoStart(gpId, gpCb.checked).catch(function () { });
+        if (!br || !br.gaeaProcess) return;
+
+        var newOn = !_gpToggleOn;
+        var meta = { scriptPath: gpScript, runtime: gpRuntime, lifecycle: gpLifecycle, allowMultiple: gpAllowMultiple };
+
+        _setGpToggleUI(newOn);
+        _gpToggleReady = false;
+
+        br.gaeaProcess.setAutoStart(gpId, newOn, meta).then(function () {
+          _gpToggleReady = true;
+          br.gaeaProcess.getAutoStart(gpId).then(function (v) {
+            _setGpToggleUI(!!v);
+          }).catch(function () {});
+          // toggle ON 会启动进程+watchdog → 稍后 poll 会更新 ●
+          // toggle OFF 只停 watchdog → 进程继续跑，● 不变
+        }).catch(function () {
+          _setGpToggleUI(!newOn);
+          _gpToggleReady = true;
+        });
+      });
+
+      // ── 中间 ● 点击：手动启停进程（不影响自启动）──
+      gpDot.addEventListener('click', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (!_gpDotReady) return;
+        var br = window.qqqideBridge;
+        if (!br || !br.gaeaProcess) return;
+
+        _gpDotReady = false;
+        if (_gpRunning) {
+          // 运行中 → 停止
+          br.gaeaProcess.stop(gpId).then(function () {
+            _setGpDotUI(false);
+            _gpDotReady = true;
+          }).catch(function () {
+            _gpDotReady = true;
+            _refreshGpDot();
+          });
+        } else {
+          // 已停止 → 手动启动（一次性，不走 watchdog）
+          br.gaeaProcess.start(gpId, gpScript, gpRuntime, gpLifecycle, gpAllowMultiple).then(function (r) {
+            if (r && r.ok) _setGpDotUI(true);
+            _gpDotReady = true;
+          }).catch(function () {
+            _gpDotReady = true;
+            _refreshGpDot();
+          });
         }
       });
-      gpCb.addEventListener('click', function (e) { e.stopPropagation(); });
 
-      const gpAutoLab = document.createElement('span');
-      gpAutoLab.textContent = '自启';
-      gpAutoLab.style.cssText = 'font-size:11px; color:var(--text-muted);';
+      // ── popup 关闭时清理 poll timer ──
+      (function (timer, unsub) {
+        var origClose = _shellCloseMenubarPopup;
+        var _wrapped = false;
+        // 用 MutationObserver 监听 popup 是否被移除
+        var obs = new MutationObserver(function () {
+          if (!document.body.contains(gpRow)) {
+            if (timer) clearInterval(timer);
+            if (unsub && typeof unsub === 'function') unsub();
+            obs.disconnect();
+          }
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+      })(_gpPollTimer, _gpStatusUnsub);
 
-      gpRow.appendChild(gpCb);
-      gpRow.appendChild(gpAutoLab);
+      gpRow.appendChild(gpDot);
+      gpRow.appendChild(gpToggle);
 
       (function (rEl) {
         rEl.addEventListener('mouseenter', function () { rEl.style.background = 'var(--background-color)'; });

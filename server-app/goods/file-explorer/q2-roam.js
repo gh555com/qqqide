@@ -1069,6 +1069,16 @@ function hideAllContextMenus() {
 	var m = document.getElementById('itemContextMenu'); if (m) m.style.display = 'none';
 }
 
+// ★ Chrome 108 zoom→fixed 坐标空间归一。唯一真理入口，所有 fixed 定位必经此函数。
+// 原理: html{zoom:0.85} 下 clientX/Y 与 position:fixed 走不同坐标空间，此处除以 zoom 因子补偿。
+// 改 zoom 值只需改 CSS 一处，本函数自动跟随（getComputedStyle 实时读）。
+function _zoomFix(x, y) {
+	var z = getComputedStyle(document.documentElement).zoom;
+	if (z === '1' || z === '') return { left: x, top: y };
+	z = parseFloat(z);
+	return { left: x / z, top: y / z };
+}
+
 // ===== Actions (from q3, 100% ported) =====
 function performCodeAction(item) {
 	if (!item) return;
@@ -1161,8 +1171,9 @@ function showContextMenu(x, y, path, entry) {
 	ctxEntry = entry;
 	// ★ 从 q3 百分百移植：先设位置再显示，避免闪烁
 	//    光标在菜单左上角（left/top 对齐 clientX/clientY）
-	ctxMenu.style.left = x + 'px';
-	ctxMenu.style.top = y + 'px';
+	var p = _zoomFix(x, y);
+	ctxMenu.style.left = p.left + 'px';
+	ctxMenu.style.top = p.top + 'px';
 	ctxMenu.style.display = 'flex';
 }
 
@@ -1194,8 +1205,9 @@ if (emptyCtxMenu) {
 		hideAllContextMenus();
 		var em = document.getElementById('emptyContextMenu');
 		if (!em) return;
-		em.style.left = e.clientX + 'px';
-		em.style.top = e.clientY + 'px';
+		var ep = _zoomFix(e.clientX, e.clientY);
+		em.style.left = ep.left + 'px';
+		em.style.top = ep.top + 'px';
 		em.style.display = 'flex';
 	});
 })();
@@ -1832,7 +1844,7 @@ function calculateAndAdjustScroll() {
 				|| (_currentTarget.classList.contains('scm-btn') && _currentTarget.closest('#sortByGroup'));
 
 // 垂直定位：save/cancel 向上偏移
-		var gx = e.clientX, gy = e.clientY;
+		var gp = _zoomFix(e.clientX, e.clientY); var gx = gp.left, gy = gp.top;
 		if (_currentTarget.classList.contains('save-button') || _currentTarget.classList.contains('cancel-button')) {
 			gt.style.top = (gy - 44) + 'px';
 		} else {
@@ -1888,6 +1900,7 @@ function calculateAndAdjustScroll() {
 	}
 	function showPathTooltip(text, cx, cy) {
 		if (!text) { hidePathTooltip(); return; }
+		var tp = _zoomFix(cx, cy); cx = tp.left; cy = tp.top;
 		_ensurePathTooltip();
 		_ptEl.textContent = text;
 		var margin = 8, vw = window.innerWidth, vh = window.innerHeight;
