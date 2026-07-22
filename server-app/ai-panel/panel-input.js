@@ -275,6 +275,24 @@ if (window.qqqCharUndo) {
     window.qqqCharUndo.attach($input, { onChange: updateQueueBtn });
 }
 
+// ══ 换行按钮：在光标位置插入换行 ══
+var $newlineBtn = document.getElementById('newline-btn');
+if ($newlineBtn) {
+    $newlineBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (_switching) return;
+        var ta = $input;
+        var s = ta.selectionStart, end = ta.selectionEnd;
+        var v = ta.value;
+        ta.value = v.slice(0, s) + '\n' + v.slice(end);
+        // 光标移到换行符之后
+        ta.selectionStart = ta.selectionEnd = s + 1;
+        ta.focus();
+        // 触发布局更新（auto-resize）
+        ta.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+}
+
 // ══ 多图管理 ══
 var pendingImages = []; // [{id, base64, dataUrl}]
 var MAX_IMAGES = 20;
@@ -507,8 +525,8 @@ $sendBtn.onclick = function () {
     if (streaming) { stopStream(); }
     else if (_activeAgent && _activeAgent._stopState === 'sending') { return; }
     else {
-        // ★ _execSendBusy 只挡发送，不挡 Stop（防建楼中 Stop 按钮无反应）
-        if (typeof _execSendBusy !== 'undefined' && _execSendBusy) return;
+        // ★ _execSendBusy 仅挡同 agent 的并发 Send，不同 quest 互不阻塞
+        if (typeof _execSendBusy !== 'undefined' && _execSendBusy && _execSendBusyAgent === _activeAgent) return;
         sendMessage();
     }
 };

@@ -171,11 +171,17 @@ def handle_three_shift_presses():
     global g_platform
 
     if ui.layout_selector_window and not ui.layout_selector_window.is_closing:
-        print("R24: 检测到选择器已打开，正在关闭...")
+        print("R26: 检测到选择器已打开，正在关闭...")
         ui.layout_selector_window.close()
         QCoreApplication.processEvents()
 
-    print("R24: 主线程处理 3Shift 还原 (焦点窗口)...")
+    # (R26) 光标下窗口就是焦点窗口 → 用户可能在打字（如按 Shift 大写），跳过
+    cursor_info = g_platform.get_window_under_cursor()
+    if cursor_info and _is_cursor_on_focus_window(cursor_info):
+        print("R26: 3Shift 跳过 — 光标下窗口即焦点窗口，视为正常输入")
+        return
+
+    print("R26: 主线程处理 3Shift 还原 (焦点窗口)...")
     fg_handle = g_platform.get_foreground_window_handle()
     if not fg_handle:
         ui.show_custom_message("错误", "无法获取当前焦点窗口的句柄。")
@@ -200,6 +206,8 @@ def handle_three_shift_presses():
         ui.layout_selector_window.show()
         ui.layout_selector_window.activateWindow()
         ui.layout_selector_window.setFocus()
+        # (R26) 记录创建时间 — check_focus 3s 宽限期内不关闭
+        ui.layout_selector_window._created_at = time.time()
     else:
         ui.show_custom_message("未找到", f"没有找到与此类名及当前分辨率匹配的已存布局。\n\n类名: {window_info['class_name']}\n当前分辨率: {current_dw}x{current_dh}")
 
@@ -237,11 +245,13 @@ def handle_three_x_presses():
         ui.layout_selector_window.show()
         ui.layout_selector_window.activateWindow()
         ui.layout_selector_window.setFocus()
+        # (R26) 记录创建时间 — check_focus 3s 宽限期内不关闭
+        ui.layout_selector_window._created_at = time.time()
     else:
         ui.show_custom_message("未找到", f"没有找到与此类名及当前分辨率匹配的已存布局。\n\n类名: {window_info['class_name']}\n当前分辨率: {current_dw}x{current_dh}")
 
 
-# --- (R24) 主程序入口 ---
+# --- (R26) 主程序入口 ---
 def main():
     global g_platform, g_qt_aqq, g_signal_emitter
 

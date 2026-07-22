@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   kope-a A 区面板 — 剪切板历史卡片（百分百照抄 Q4 筛选框及以下）
+   配色：照抄 qqq-theme.js Solarized 唯一真理配色机器
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+    --base03: #002b36; --base02: #073642; --base01: #586e75; --base00: #657b83;
+    --base0: #839496; --base1: #93a1a1; --base2: #fdf6e3; --base3: #eee8d5;
+    --yellow: #b58900; --orange: #cb4b16; --red: #dc322f; --magenta: #d33682;
+    --violet: #6c71c4; --blue: #268bd2; --cyan: #2aa198; --green: #859900;
+    --primary-color: var(--yellow); --background-color: var(--base3);
+    --card-bg: var(--base2); --text-primary: #2a211c; --border-color: #d3c6aa;
+}
+[data-theme="dark"] {
+    --base03: #fdf6e3; --base02: #eee8d5; --base01: #93a1a1; --base00: #c8c4b8;
+    --base0: #a8a49c; --base1: #6a6660; --base2: #2a2a2a; --base3: #1e1e1e;
+    --yellow: #d4a017; --orange: #e07020; --red: #ff4444; --magenta: #c06080;
+    --violet: #a08060; --blue: #d4a017; --cyan: #5abfb5; --green: #8fbc5a;
+    --primary-color: var(--yellow); --background-color: #1e1e1e;
+    --card-bg: #2a2a2a; --text-primary: #d4d0c8; --border-color: #444;
+}
+html { zoom: 0.85; forced-color-adjust: none !important; }
+body {
+    margin: 0; padding: 0; font-family: Tahoma, sans-serif; font-size: 13px;
+    background: var(--background-color); color: var(--text-primary); overflow: hidden;
+    user-select: none; -webkit-user-select: none;
+}
+.main-wrapper { height: 100vh; width: 100%; position: relative; overflow: hidden; background: var(--background-color) !important; display: flex; flex-direction: column; }
+.main-content { flex: 1; display: flex; flex-direction: column; overflow-x: hidden; overflow-y: auto; padding: 0 4px; scrollbar-width: none; }
+.main-content::-webkit-scrollbar { display: none; }
+
+.history-container { flex: 1; min-height: 400px; position: relative; margin-bottom: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+/* Storm 金刃风暴动画 */
+.history-container.storm::after {
+    content: '';
+    position: absolute;
+    top: -150%; left: -150%; right: -150%; bottom: -150%;
+    pointer-events: none;
+    z-index: 1000;
+    background: linear-gradient(45deg,
+        transparent 35%,
+        rgba(181, 137, 0, 0.9) 38%,
+        rgba(255, 255, 255, 1) 40%,
+        rgba(181, 137, 0, 0.9) 42%,
+        transparent 45%,
+        rgba(181, 137, 0, 0.7) 47%,
+        rgba(255, 255, 255, 1) 50%,
+        rgba(181, 137, 0, 0.7) 53%,
+        transparent 55%,
+        rgba(181, 137, 0, 0.5) 57%,
+        rgba(255, 255, 255, 1) 60%,
+        rgba(181, 137, 0, 0.5) 63%,
+        transparent 65%
+    );
+    filter: blur(3px) brightness(2.5) contrast(1.5);
+    opacity: 0;
+    animation: hyper-storm 0.7s cubic-bezier(0.15, 0, 0.15, 1) forwards;
+}
+@keyframes hyper-storm {
+    0% { transform: translate(-40%, 40%) rotate(-10deg) scale(0.5); opacity: 0; }
+    15% { opacity: 1; transform: translate(-20%, 20%) rotate(0deg) scale(1.5) skewX(5deg); }
+    30% { transform: translate(-18%, 18%) scale(1.6) rotate(1deg); }
+    100% { transform: translate(40%, -40%) rotate(10deg) scale(3); opacity: 0; }
+}
+
+.history-list { flex: 1; overflow-x: hidden; overflow-y: auto; padding: 4px 0; scrollbar-width: none; overscroll-behavior: contain; }
+.history-list::-webkit-scrollbar { display: none; }
+.history-item { background: var(--base3); border: 1px solid var(--border-color); border-radius: 4px; padding: 8px; margin-bottom: 8px; transition: 0.2s; cursor: pointer; color: #8e8e8e; margin-right: 2px; position: relative; overflow: hidden; }
+.history-item:hover { border-color: var(--red); border-style: dashed; color: var(--text-primary); }
+.history-item.selected { color: #e67e22; }
+.history-item.pinned { background: var(--base2); color: var(--text-primary) !important; }
+
+/* 卡片内部扫光 */
+.history-item.executing::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -150%; width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent);
+    z-index: 10;
+    pointer-events: none;
+    animation: card-flash 0.4s ease-out forwards;
+}
+@keyframes card-flash {
+    0% { left: -150%; }
+    100% { left: 150%; }
+}
+
+.search-container .search-container { margin: 0; flex-shrink: 0; position: relative; }
+.search-input { width: 100%; background: var(--base2); border: 1px solid var(--border-color); border-radius: 4px; padding: 7.5px 10px; font-family: Tahoma, sans-serif; font-size: 13px; color: var(--text-primary); outline: none; transition: 0.2s; box-sizing: border-box; }lection { background: #FFD302; color: #000; }
+.search-input::placeholder { color: rgba(0,0,0,0.18); }
+[data-theme="dark"] .search-input::selection { background: #6a5a10; color: #f0e8d8; }
+[data-theme="dark"] .search-input::placeholder { color: rgba(255,255,255,0.2); }
+.search-input:focus { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color); }
+
+.item-info { display: none; }
+.item-time { font-size: 13px; color: var(--base2); }
+.item-size { font-size: 13px; color: var(--base2); font-family: Tahoma, sans-serif; }
+.item-preview {
+    font-size: 13px; font-family: Tahoma, sans-serif;
+    white-space: pre-wrap; word-break: break-all;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 6;
+    -webkit-box-orient: vertical;
+}
+
+/* 光标跟随 tooltip */
+#tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: rgb(35, 30, 0);
+    color: var(--base2);
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-family: Tahoma, sans-serif;
+    font-size: 13px;
+    z-index: 9999;
+    display: none;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.4);
+    white-space: nowrap;
+    border: 1px solid var(--primary-color);
+    transform: translateX(-50%);
+}
+[data-theme="dark"] #tooltip { background: #2a2520; color: #d4d0c8; }
+.item-actions { margin-top: 5px; display: flex; gap: 5px; }
+
+.action-mini-btn { padding: 2px 6px; font-size: 13px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--base3); cursor: pointer; color: var(--text-primary); font-family: Tahoma, sans-serif; line-height: 1.2; }
+.action-mini-btn:hover { background: var(--primary-color); color: #1e1e1e; }
+
+.scrollbar-outer { position: absolute; right: 0; top: 0; width: 6px; height: 100%; z-index: 1000; pointer-events: none; }
+.scrollbar-outer-thumb { position: absolute; right: -3px; width: 4px; background: var(--text-primary) !important; border-radius: 3px; opacity: 1; cursor: pointer; pointer-events: auto; forced-color-adjust: none !important; transition: width 0.1s ease, right 0.1s ease; }
+.scrollbar-outer-thumb:hover { width: 6px; right: -4px; }
+
+.scrollbar-inner { position: absolute; right: 0; top: 0; width: 6px; height: 100%; z-index: 10; pointer-events: none; }
+.scrollbar-inner-thumb { position: absolute; right: -3px; width: 4px; background: var(--red) !important; border-radius: 3px; opacity: 0.5; cursor: pointer; pointer-events: auto; forced-color-adjust: none !important; transition: width 0.1s ease, right 0.1s ease, opacity 0.1s ease; }
+.scrollbar-inner-thumb:hover { width: 6px; right: -4px; opacity: 1; }
+
+.empty-hint { text-align: center; padding: 20px; opacity: 0.5; }
+
+.history-dropdown {
+    display: none;
+    position: absolute;
+    border: 1px solid var(--primary-color);
+    background-color: var(--base2);
+    z-index: 1000;
+    width: 100%;
+    box-sizing: border-box;
+    max-height: 150px;
+    overflow-y: auto;
+    border-radius: 4px;
+}
+#searchHistoryDropdown {
+    top: calc(100% - 9px);
+    left: 0;
+}
+.history-dropdown-item {
+    padding: 6px 10px;
+    cursor: pointer;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+    font-family: Tahoma, sans-serif;
+    position: relative;
+}
+.history-dropdown-item:hover {
+    background-color: var(--primary-color);
+    color: var(--base2);
+}
+</style>
+</head>
+<body>
+<div class="main-wrapper">
+    <div class="main-content" id="mainContent">
+        <div class="search-container">
+            <input type="text" class="search-input" id="searchBox" placeholder="find" spellcheck="false"><span class="spacer-75"><span class="spacer-75"></span><span id="clipboard-stats"></span>
+            <div id="searchHistoryDropdown" class="history-dropdown"></div>
+        </div>
+        <div class="history-container" id="historyContainer">
+            <div class="history-list" id="historyList">
+                <div class="empty-hint">Clipboard history will appear here</div>
+            </div>
+            <div class="scrollbar-inner" id="innerScrollbar"><div class="scrollbar-inner-thumb" id="innerThumb"></div></div>
+        </div>
+    </div>
+    <div class="scrollbar-outer" id="outerScrollbar"><div class="scrollbar-outer-thumb" id="outerThumb"></div></div>
+    <div id="tooltip"></div>
+</div>
+<script>
+(function() {
+    'use strict';
+
+    // ── zoom 坐标归一（Chrome 108 fixed 定位 + zoom 坐标空间补偿）──
+    function _zoomFix(x, y) {
+        var z = getComputedStyle(document.documentElement).zoom;
+        if (z === '1' || z === '') return { left: x, top: y };
+        z = parseFloat(z);
+        return { left: x / z, top: y / z };
+    }
+
+    // ── 工具函数 ──
+    function addThousandSep(num) {
+        var s = String(Math.floor(num));
+        var parts = [];
+        for (var i = s.length; i > 0; i -= 3) {
+            parts.unshift(s.slice(Math.max(0, i - 3), i));
+        }
+        return parts.join(',');
+    }
+
+    function escapeHtml(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function md5Hex(str) {
+        // Simple hash for dedup (32-bit FNV-1a as fallback, adequate for clipboard dedup)
+        var h = 2166136261;
+        for (var i = 0; i < str.length; i++) {
+            h ^= str.charCodeAt(i);
+            h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);
+            h = h >>> 0;
+        }
+        return h.toString(16).padStart(8, '0');
+    }
+
+    function makePreview(content, maxLen) {
+        maxLen = maxLen || 200;
+        if (!content) return '';
+        var s = String(content).trim().replace(/\s+/g, ' ');
+        if (s.length > maxLen) s = s.slice(0, maxLen) + '...';
+        return s;
+    }
+
+    function formatTime(timestamp) {
+        var now = Date.now();
+        var t = Number(timestamp) || now;
+        var diff = now - t;
+        if (diff < 60000) return Math.floor(diff / 1000) + 's ago';
+        if (diff < 3600000) return Math.floor(diff / 60000) + 'm ago';
+        if (diff < 86400000) return Math.floor(diff / 3600000) + 'h ago';
+        if (diff < 604800000) return Math.floor(diff / 86400000) + 'd ago';
+        return new Date(t).toLocaleDateString();
+    }
+
+    function randomId() {
+        return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    }
+
+    // ── DOM 引用 ──
+    var el = {
+        historyContainer: document.getElementById('historyContainer'),
+        historyList: document.getElementById('historyList'),
+        tooltip: document.getElementById('tooltip'),
+        searchBox: document.getElementById('searchBox'),
+        mainContent: document.getElementById('mainContent'),
+        innerThumb: document.getElementById('innerThumb'),
+        outerThumb: document.getElementById('outerThumb'),
+        innerScrollbar: document.getElementById('innerScrollbar'),
+        outerScrollbar: document.getElementById('outerScrollbar'),
+        searchHistoryDropdown: document.getElementById('searchHistoryDropdown')
+    };
+
+    // ── 状态 ──
+    var clipHistory = [];       // { id, content, timestamp, preview, size, pinned, hash }
+    var hashMap = {};           // hash → index
+    var selectedId = '';
+    var currentLimit = 30;
+    var batchSize = 20;
+    var isLoadingMore = false;
+    var lastClipContent = '';
+
+    function getState() {
+        try { return parent.window.qqqState; } catch(e) { return null; }
+    }
+
+    var _stateNs = null;
+    function stateNs() {
+        if (_stateNs) return _stateNs;
+        var st = getState();
+        if (st) {
+            _stateNs = st.ns('qqq.clip', { v: 1, form: 'doc' });
+        }
+        return _stateNs;
+    }
+
+    // ── 持久化 ──
+    function persistHistory() {
+        var ns = stateNs();
+        if (!ns) return;
+        var payload = {
+            version: 4,
+            savedAt: Date.now(),
+            history: clipHistory.map(function(h) {
+                return { id: h.id, content: h.content, timestamp: h.timestamp,
+                         preview: h.preview, size: h.size, pinned: !!h.pinned,
+                         hash: h.hash };
+            })
+        };
+        ns.setNow('history', payload).catch(function(){});
+    }
+
+    function loadHistory() {
+        var ns = stateNs();
+        if (!ns) return;
+        ns.get('history').then(function(payload) {
+            if (payload && Array.isArray(payload.history) && payload.history.length > 0) {
+                clipHistory = [];
+                hashMap = {};
+                payload.history.slice().reverse().forEach(function(it) {
+                    if (!it.content) return;
+                    var h = {
+                        id: it.id || randomId(),
+                        content: it.content,
+                        timestamp: it.timestamp || Date.now(),
+                        preview: it.preview || makePreview(it.content),
+                        size: it.size || (it.content ? it.content.length : 0),
+                        pinned: !!it.pinned,
+                        hash: it.hash || md5Hex(it.content)
+                    };
+                    if (!hashMap[h.hash]) {
+                        clipHistory.push(h);
+                        hashMap[h.hash] = clipHistory.length - 1;
+                    }
+                });
+                renderList(clipHistory.slice(0, currentLimit), false);
+            }
+        }).catch(function(){});
+    }
+
+    // ── 渲染 ──
+    function renderList(history, triggerStorm) {
+        var newHistory = history || [];
+        if (triggerStorm) {
+            el.historyContainer.classList.remove('storm');
+            void el.historyContainer.offsetWidth;
+            el.historyContainer.classList.add('storm');
+        }
+
+        var prevScrollTop = el.historyList.scrollTop;
+        var wasLoadingMore = isLoadingMore;
+        isLoadingMore = false;
+
+        el.historyList.innerHTML = '';
+        el.tooltip.style.display = 'none';
+
+        if (newHistory.length === 0) {
+            el.historyList.innerHTML = '<div class="empty-hint">Clipboard history will appear here</div>';
+            selectedId = '';
+            setTimeout(updateAllScrollbars, 50);
+            return;
+        }
+
+        var frag = document.createDocumentFragment();
+        newHistory.forEach(function(item, idx) {
+            var div = document.createElement('div');
+            div.className = 'history-item';
+            if (item.id === selectedId) div.classList.add('selected');
+            if (item.pinned) div.classList.add('pinned');
+            div.dataset.id = item.id;
+            div.dataset.index = idx;
+
+            div.onmouseenter = function(e) {
+                el.tooltip.innerHTML = formatTime(item.timestamp);
+                el.tooltip.style.display = 'block';
+            };
+            div.onmousemove = function(e) {
+                var p = _zoomFix(e.clientX, e.clientY);
+                el.tooltip.style.left = p.left + 'px';
+                el.tooltip.style.top = (p.top + 22) + 'px';
+            };
+            div.onmouseleave = function() {
+                el.tooltip.style.display = 'none';
+            };
+
+            var prev = document.createElement('div');
+            prev.className = 'item-preview';
+            prev.textContent = item.preview;
+
+            var actions = document.createElement('div');
+            actions.className = 'item-actions';
+
+            var btnPin = document.createElement('button');
+            btnPin.className = 'action-mini-btn';
+            btnPin.dataset.action = 'pin';
+            btnPin.textContent = item.pinned ? '\uD83D\uDCCD' : '\uD83D\uDCCC';
+
+            var btnDel = document.createElement('button');
+            btnDel.className = 'action-mini-btn';
+            btnDel.dataset.action = 'delete';
+            btnDel.textContent = '\uD83D\uDDD1\uFE0F ' + addThousandSep(item.size || 0);
+
+            actions.appendChild(btnPin);
+            actions.appendChild(btnDel);
+            div.appendChild(prev);
+            div.appendChild(actions);
+            frag.appendChild(div);
+        });
+        el.historyList.appendChild(frag);
+
+        if (wasLoadingMore && prevScrollTop > 0) {
+            el.historyList.scrollTop = prevScrollTop;
+        }
+
+        if (selectedId) {
+            setSelectedById(selectedId);
+        } else {
+            var first = el.historyList.querySelector('.history-item');
+            if (first) setSelectedById(first.dataset.id);
+        }
+        setTimeout(updateAllScrollbars, 50);
+    }
+
+    function setSelectedById(id) {
+        selectedId = id;
+        var items = el.historyList.querySelectorAll('.history-item');
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            if (it.dataset.id === selectedId) {
+                it.classList.add('selected');
+            } else {
+                it.classList.remove('selected');
+            }
+        }
+    }
+
+    function getFilteredHistory(keyword) {
+        if (!keyword) return clipHistory;
+        var kws = keyword.toLowerCase().split(/\s+/).filter(Boolean);
+        return clipHistory.filter(function(h) {
+            return kws.every(function(kw) {
+                return h.preview.toLowerCase().indexOf(kw) !== -1 ||
+                       h.content.toLowerCase().indexOf(kw) !== -1;
+            });
+        });
+    }
+
+    // ── 操作 ──
+    function copyToClipboard(text) {
+        var bridge = getBridge();
+        if (bridge && bridge.clipboard && bridge.clipboard.writeText) {
+            bridge.clipboard.writeText(text).catch(function(){});
+        }
+    }
+
+    function togglePin(itemId) {
+        for (var i = 0; i < clipHistory.length; i++) {
+            if (clipHistory[i].id === itemId) {
+                clipHistory[i].pinned = !clipHistory[i].pinned;
+                break;
+            }
+        }
+        persistHistory();
+        applyFilter();
+    }
+
+    function deleteItem(itemId) {
+        for (var i = 0; i < clipHistory.length; i++) {
+            if (clipHistory[i].id === itemId) {
+                delete hashMap[clipHistory[i].hash];
+                clipHistory.splice(i, 1);
+                break;
+            }
+        }
+        persistHistory();
+        applyFilter();
+    }
+
+    function applyFilter() {
+        var kw = el.searchBox.value;
+        var filtered = getFilteredHistory(kw);
+        renderList(filtered.slice(0, currentLimit), false);
+    }
+
+    // ── 添加剪贴板条目 ──
+    function addToHistory(text) {
+        if (!text || !text.trim()) return;
+        var content = text.length > 100000 ? text.slice(0, 100000) : text;
+        if (content === lastClipContent) return;
+
+        var hash = md5Hex(content);
+        if (hashMap[hash] !== undefined) {
+            // 已存在 → 移到最前
+            var idx = hashMap[hash];
+            var item = clipHistory[idx];
+            item.timestamp = Date.now();
+            item.content = content;
+            item.preview = makePreview(content);
+            clipHistory.splice(idx, 1);
+            clipHistory.unshift(item);
+            // 重建 hashMap
+            rebuildHashMap();
+        } else {
+            var newItem = {
+                id: randomId(),
+                content: content,
+                timestamp: Date.now(),
+                preview: makePreview(content),
+                size: content.length,
+                pinned: false,
+                hash: hash
+            };
+            clipHistory.unshift(newItem);
+            if (clipHistory.length > 2000) {
+                var removed = clipHistory.pop();
+                delete hashMap[removed.hash];
+            }
+            rebuildHashMap();
+        }
+        lastClipContent = content;
+        persistHistory();
+        applyFilter();
+
+        // 触发风暴动画
+        el.historyContainer.classList.remove('storm');
+        void el.historyContainer.offsetWidth;
+        el.historyContainer.classList.add('storm');
+    }
+
+    function rebuildHashMap() {
+        hashMap = {};
+        for (var i = 0; i < clipHistory.length; i++) {
+            hashMap[clipHistory[i].hash] = i;
+        }
+    }
+
+    // ── 剪贴板轮询 ──
+    function pollClipboard() {
+        try {
+            var bridge = getBridge();
+            if (bridge && bridge.clipboard && bridge.clipboard.readText) {
+                bridge.clipboard.readText().then(function(text) {
+                    if (text && text !== lastClipContent) {
+                        addToHistory(text);
+                    }
+                }).catch(function(){});
+            } else if (navigator.clipboard && navigator.clipboard.readText) {
+                navigator.clipboard.readText().then(function(text) {
+                    if (text && text !== lastClipContent) {
+                        addToHistory(text);
+                    }
+                }).catch(function(){});
+            }
+        } catch(e) {}
+    }
+
+    // ── 事件处理 ──
+    el.historyList.addEventListener('click', function(e) {
+        var btn = e.target.closest('button[data-action]');
+        var item = e.target.closest('.history-item');
+        if (!item) return;
+        var id = item.dataset.id;
+
+        item.classList.remove('executing');
+        void item.offsetWidth;
+        item.classList.add('executing');
+
+        if (btn) {
+            var action = btn.dataset.action;
+            if (action === 'delete') deleteItem(id);
+            if (action === 'pin') togglePin(id);
+            e.stopPropagation();
+            return;
+        }
+        setSelectedById(id);
+        // 复制到剪贴板
+        for (var i = 0; i < clipHistory.length; i++) {
+            if (clipHistory[i].id === id) {
+                copyToClipboard(clipHistory[i].content);
+                break;
+            }
+        }
+    });
+
+    el.searchBox.addEventListener('input', function() {
+        el.historyList.scrollTop = 0;
+        el.tooltip.style.display = 'none';
+        currentLimit = 30;
+        applyFilter();
+    });
+
+    el.searchBox.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            el.searchBox.blur();
+        } else if (e.key === 'Escape') {
+            hideDropdown();
+        }
+    });
+
+    el.historyList.addEventListener('scroll', function() {
+        if (!isLoadingMore && el.historyList.scrollTop + el.historyList.clientHeight > el.historyList.scrollHeight - 100) {
+            var kw = el.searchBox.value;
+            var filtered = getFilteredHistory(kw);
+            if (filtered.length >= currentLimit) {
+                isLoadingMore = true;
+                currentLimit += batchSize;
+                renderList(filtered.slice(0, currentLimit), false);
+            }
+        }
+        updateAllScrollbars();
+    });
+
+    // 右键 → 打开文件浏览器
+    window.addEventListener('contextmenu', function(e) {
+        e.preventDefault();
+        try {
+            parent.postMessage({ type: 'qqq-command', cmd: 'workbench.view.explorer' }, '*');
+        } catch(ex) {}
+    });
+
+    // ── 下拉框 ──
+    function hideDropdown() {
+        if (el.searchHistoryDropdown) el.searchHistoryDropdown.style.display = 'none';
+    }
+
+    // ── 滚动条 ──
+    function setupScrollbar(container, scrollbar, thumb) {
+        function update() {
+            var ch = container.clientHeight, sh = container.scrollHeight, st = container.scrollTop;
+            if (sh > ch) {
+                scrollbar.style.display = 'block';
+                var th = Math.max(20, (ch / sh) * ch);
+                thumb.style.height = th + 'px';
+                thumb.style.top = (st / (sh - ch)) * (ch - th) + 'px';
+            } else { scrollbar.style.display = 'none'; }
+        }
+        container.addEventListener('scroll', update);
+        var isDragging = false, startY, startST;
+        thumb.onmousedown = function(e) {
+            isDragging = true; startY = e.clientY; startST = container.scrollTop;
+            document.onmousemove = function(e) {
+                if (!isDragging) return;
+                var dy = e.clientY - startY;
+                var ch = container.clientHeight, sh = container.scrollHeight, th = thumb.offsetHeight;
+                container.scrollTop = startST + (dy / (ch - th)) * (sh - ch);
+            };
+            document.onmouseup = function() { isDragging = false; document.onmousemove = null; };
+            e.preventDefault();
+        };
+        return update;
+    }
+    var upO = setupScrollbar(el.mainContent, el.outerScrollbar, el.outerThumb);
+    var upI = setupScrollbar(el.historyList, el.innerScrollbar, el.innerThumb);
+    function updateAllScrollbars() { upO(); upI(); }
+
+    // ── 消息监听 ──
+    window.addEventListener('message', function(e) {
+        var m = e.data;
+        if (!m) return;
+
+        // 主题同步
+        if (m.type === 'qqqide-theme-change') {
+            if (m.dark) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+            }
+            return;
+        }
+
+        // 父窗口推送新剪贴板条目
+        if (m.type === 'kope-a:newClip') {
+            if (m.text) addToHistory(m.text);
+            return;
+        }
+
+        // 父窗口请求刷新
+        if (m.type === 'kope-a:refresh') {
+            applyFilter();
+            return;
+        }
+    });
+
+    // ── 初始主题 ──
+    (function() {
+        try {
+            if (parent && parent.qqqideTheme) {
+                if (parent.qqqideTheme.isDark()) document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                var t = parent.document.documentElement.getAttribute('data-theme');
+                if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        } catch(e) {
+            parent.postMessage({ type: 'qqqide-theme-request' }, '*');
+        }
+    })();
+
+    // ── 启动 ──
+    loadHistory();
+    setInterval(pollClipboard, 800);
+    pollClipboard(); // 立即执行一次
+
+    window.addEventListener('focus', function() { pollClipboard(); });
+})();
+</script>
+</body>
+</html>

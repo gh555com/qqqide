@@ -344,9 +344,14 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         gpToggle.style.background = on ? '#859900' : 'var(--border-color)';
         gpKnob.style.left = on ? '22px' : '2px';
       }
-      function _setGpDotUI(running) {
-        _gpRunning = running;
-        gpDot.style.background = running ? '#859900' : 'var(--border-color)';
+      // state: true=绿色运行, false=灰色停止, 'yellow'=过渡中
+      function _setGpDotUI(state) {
+        if (state === 'yellow') {
+          gpDot.style.background = '#b58900';
+        } else {
+          _gpRunning = state;
+          gpDot.style.background = state ? '#859900' : 'var(--border-color)';
+        }
       }
 
       // ── 刷新自启动开关 ──
@@ -394,7 +399,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         }
       })();
 
-      // ── 右边 toggle 点击：切换自启动（不影响进程）──
+      // ── 右边 toggle 点击：纯自启动开关，不影响进程 ──
       gpToggle.addEventListener('click', function (e) {
         e.stopPropagation();
         e.preventDefault();
@@ -408,20 +413,28 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         _setGpToggleUI(newOn);
         _gpToggleReady = false;
 
+        // 超时兜底：10s 后强制恢复，防止 IPC 挂死导致 toggle 不可点
+        var _toggleTimeout = setTimeout(function () {
+          _gpToggleReady = true;
+          _refreshGpToggle();
+        }, 10000);
+
         br.gaeaProcess.setAutoStart(gpId, newOn, meta).then(function () {
+          clearTimeout(_toggleTimeout);
           _gpToggleReady = true;
           br.gaeaProcess.getAutoStart(gpId).then(function (v) {
             _setGpToggleUI(!!v);
           }).catch(function () {});
-          // toggle ON 会启动进程+watchdog → 稍后 poll 会更新 ●
-          // toggle OFF 只停 watchdog → 进程继续跑，● 不变
+          // toggle ON → 主进程启动+watchdog → poll/push 更新 ●
+          // toggle OFF → 主进程停watchdog → 进程继续跑，● 不变
         }).catch(function () {
+          clearTimeout(_toggleTimeout);
           _setGpToggleUI(!newOn);
           _gpToggleReady = true;
         });
       });
 
-      // ── 中间 ● 点击：手动启停进程（不影响自启动）──
+      // ── 中间 ● 点击：纯进程启停，不自作聪明联动 toggle ──
       gpDot.addEventListener('click', function (e) {
         e.stopPropagation();
         e.preventDefault();
@@ -430,23 +443,41 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         if (!br || !br.gaeaProcess) return;
 
         _gpDotReady = false;
+
         if (_gpRunning) {
-          // 运行中 → 停止
-          br.gaeaProcess.stop(gpId).then(function () {
-            _setGpDotUI(false);
-            _gpDotReady = true;
-          }).catch(function () {
+          // ── 运行中 → 停止：立即变黄 → IPC → 刷新真实状态 ──
+          _setGpDotUI('yellow');
+          var _stopTimeout = setTimeout(function () {
             _gpDotReady = true;
             _refreshGpDot();
+          }, 10000);
+
+          br.gaeaProcess.stop(gpId).then(function () {
+            clearTimeout(_stopTimeout);
+            _refreshGpDot();
+            _gpDotReady = true;
+            // 若自启动开着 → watchdog ≤5s 自动拉回 → push/poll 更新 ● 为绿
+          }).catch(function () {
+            clearTimeout(_stopTimeout);
+            _refreshGpDot();
+            _gpDotReady = true;
           });
         } else {
-          // 已停止 → 手动启动（一次性，不走 watchdog）
-          br.gaeaProcess.start(gpId, gpScript, gpRuntime, gpLifecycle, gpAllowMultiple).then(function (r) {
-            if (r && r.ok) _setGpDotUI(true);
-            _gpDotReady = true;
-          }).catch(function () {
+          // ── 已停止 → 启动：立即变黄 → IPC → 刷新真实状态 ──
+          _setGpDotUI('yellow');
+          var _startTimeout = setTimeout(function () {
             _gpDotReady = true;
             _refreshGpDot();
+          }, 10000);
+
+          br.gaeaProcess.start(gpId, gpScript, gpRuntime, gpLifecycle, gpAllowMultiple).then(function () {
+            clearTimeout(_startTimeout);
+            _refreshGpDot();
+            _gpDotReady = true;
+          }).catch(function () {
+            clearTimeout(_startTimeout);
+            _refreshGpDot();
+            _gpDotReady = true;
           });
         }
       });
@@ -609,6 +640,7 @@ window._shFlushProjectAssets = _flushProjectAssets;
 function _ensureGlobalMouseDown() {
   if (_shellGlobalMouseDownBound) return;
   _shellGlobalMouseDownBound = true;
+  // ★ capture 阶段：比 bubble 更早拦截，防 stopPropagation 阻断
   document.addEventListener('mousedown', function (e) {
     // 先检查最近文件夹下拉
     if (_shellMenuRecentDropdown) {
@@ -623,6 +655,10 @@ function _ensureGlobalMouseDown() {
       if (_shellActiveMenubarPopup._anchor === e.target) return;
       if (e.target.closest && e.target.closest('.qqq-menubar-label') === _shellActiveMenubarPopup._anchor) return;
     }
+    _shellCloseMenubarPopup();
+  }, true);
+  // ★ 点击 iframe 内区域 → 父窗口失焦 → 自动关闭菜单（iframe 内 mousedown 不冒泡到父 document）
+  window.addEventListener('blur', function () {
     _shellCloseMenubarPopup();
   });
 }

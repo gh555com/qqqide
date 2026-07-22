@@ -324,13 +324,13 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'generate_image',
-            description: 'Generate or edit images via AI. Text-to-image or image editing. Styles: 写实/插画/3d/二次元/水彩/国风/极简/电商/自然. 4K only for text-to-image; editing max 2K.',
+            description: '🔴 ONLY tool for image gen/editing. Generate or edit images via cloud AI. 🚫 NEVER write Python/PIL/opencv scripts for image tasks — this tool IS the only way. Styles: photorealistic/illustration/3D/anime/watercolor/chinese-trad/minimalist/e-commerce/nature. 4K only for text-to-image; editing max 2K.',
             parameters: {
                 type: 'object',
                 properties: {
                     prompt: { type: 'string', description: 'Image description (text-to-image) or editing instruction (image editing). Natural language, Chinese or English.' },
                     images: { type: 'array', items: { type: 'string' }, description: 'Reference image paths. Absolute or project-relative. For image editing: the image(s) to edit. Omit for pure text-to-image.' },
-                    style: { type: 'string', description: 'Style tag (text-to-image only): 写实(photorealistic)/插画(illustration)/3d(3D render)/二次元(anime)/水彩(watercolor)/国风(Chinese trad)/极简(minimalist)/电商(e-commerce product)/自然(nature photo)' },
+                    style: { type: 'string', description: 'Style tag (text-to-image only): photorealistic/illustration/3D/anime/watercolor/chinese-trad/minimalist/e-commerce/nature' },
                     size: { type: 'string', description: 'Image size: "1K"=1024*1024, "2K"=2048*2048 (default), "4K"=4096*4096, or custom "W*H". 4K only for text-to-image; image editing max 2K.' },
                     n: { type: 'number', description: 'Number of images to generate (1-4, default 1)' },
                     out_dir: { type: 'string', description: 'Output directory. Absolute or project-relative. Default: qqq/genera/' }
@@ -343,7 +343,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'analyze_image',
-            description: 'Analyze image: describe, locate objects (norm-1000 bbox), or answer questions. MIME validated (PNG/JPEG/GIF/WebP). Person identity already in vision context — only call for extra details.',
+            description: '🔴 ONLY tool for image analysis. Describe, locate objects (norm-1000 bbox), or answer questions. 🚫 NEVER write Python/PIL/opencv for image analysis — this is THE only way. MIME validated (PNG/JPEG/GIF/WebP). Person identity already in vision context — only call for extra details.',
             parameters: {
                 type: 'object',
                 properties: {
@@ -361,7 +361,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'remove_background',
-            description: 'Remove background → RGBA transparent PNG. Auto-routes standard/HD by image size.',
+            description: '🔴 ONLY tool for background removal. Remove background → RGBA transparent PNG. 🚫 NEVER write Python/PIL/opencv/oss2 for background removal — this is THE only way. Auto-routes standard/HD by image size.',
             parameters: {
                 type: 'object',
                 properties: {

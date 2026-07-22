@@ -16,6 +16,7 @@
   var _$lvLevel = null;
   var _balanceGe = null;
   var _balanceLastFetch = 0;
+  var _phoneDropdownCloser = null; // ★ 手机号下拉的全局 closer，用于 toggle 时清理
   var _balanceTimer = null;
   var _lvData = null;
   var _$ldrOverlay = null;
@@ -838,13 +839,23 @@
     if (!d) return;
     var rect = _$lvBar.getBoundingClientRect();
     var sh = (d.season_short || '?');
-    var m = sh.match(/^(\([^)]+\))\s+(.+)$/);
-    if (m) {
-      _$lvTip.innerHTML = '<span style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[1] + '</span> <b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[2] + ':</b><span style="color:#b58900;font-size:44px">' + (d.total_consumed_ge || '0') + '</span>';
-    } else {
-      _$lvTip.innerHTML = '<b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + sh + ':</b><span style="color:#b58900;font-size:44px">' + (d.total_consumed_ge || '0') + '</span>';
-    }
     var cx = e && e.clientX ? e.clientX : rect.left + rect.width / 2;
+
+    // ★ 第一行：赛季信息（格式: "2026_30W3:4.5574"）
+    var paid = d.total_consumed_ge || '0';
+    var free = d.total_free_ge || '0';
+    var paidAll = d.total_consumed_all_ge || paid; // 历史总付费
+    var m = sh.match(/^(\([^)]+\))\s+(.+)$/);
+    var line1 = '';
+    if (m) {
+      line1 = '<span style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[1] + '</span> <b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + m[2] + ':</b><span style="color:#b58900;font-size:44px">' + paid + '</span>';
+    } else {
+      line1 = '<b style="color:rgba(251,233,188,0.80);font-family:Consolas,monospace">' + sh + ':</b><span style="color:#b58900;font-size:44px">' + paid + '</span>';
+    }
+    // ★ 第二行：历史总付费 + 历史白嫖（居中大号，白嫖绿色）
+    var line2 = '<div style="margin-top:4px;text-align:center;"><span style="color:#b58900;font-size:28px;font-family:Consolas,monospace">' + paidAll + '</span> <span style="color:rgba(251,233,188,0.50);font-size:22px;font-family:Consolas,monospace">+</span> <span style="color:#859900;font-size:28px;font-family:Consolas,monospace">' + free + '</span></div>';
+
+    _$lvTip.innerHTML = line1 + line2;
     _$lvTip.style.left = (cx - _$lvTip.offsetWidth / 2) + 'px';
     _$lvTip.style.top = (rect.bottom + 4) + 'px';
     _$lvTip.style.display = '';
@@ -932,7 +943,15 @@
     _$phoneBtn.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
       var ex = document.querySelector('.qqq-phone-dropdown');
-      if (ex) { ex.remove(); return; }
+      if (ex) {
+        ex.remove();
+        // ★ 清理旧的 closer 监听器（toggle 关闭时）
+        if (_phoneDropdownCloser) {
+          document.removeEventListener('mousedown', _phoneDropdownCloser, true);
+          _phoneDropdownCloser = null;
+        }
+        return;
+      }
       var dd = document.createElement('div');
       dd.className = 'qqq-phone-dropdown';
       // 零空气：padding:0，border-radius 只右上角，虚线边框
@@ -945,7 +964,7 @@
       flow.style.cssText = 'display:block;height:32px;line-height:32px;padding:0 16px;cursor:pointer;font-size:13px;color:var(--text-primary);white-space:nowrap;text-decoration:none;';
       flow.addEventListener('mouseenter', function () { flow.style.background = 'var(--gold-hover-bg)'; });
       flow.addEventListener('mouseleave', function () { flow.style.background = ''; });
-      flow.addEventListener('click', function () { dd.remove(); });
+      flow.addEventListener('click', function () { _cleanupPhoneDD(); });
       dd.appendChild(flow);
       // 退出登录（零间隙，无分隔线）
       var logout = document.createElement('div');
@@ -953,19 +972,29 @@
       logout.style.cssText = 'display:block;height:32px;line-height:32px;padding:0 16px;cursor:pointer;font-size:13px;color:var(--red);white-space:nowrap;';
       logout.addEventListener('mouseenter', function () { logout.style.background = 'var(--gold-hover-bg)'; });
       logout.addEventListener('mouseleave', function () { logout.style.background = ''; });
-      logout.addEventListener('click', function (ev) { ev.stopPropagation(); dd.remove(); api.logout(); });
+      logout.addEventListener('click', function (ev) { ev.stopPropagation(); _cleanupPhoneDD(); api.logout(); });
       dd.appendChild(logout);
       _$phoneBtn.appendChild(dd);
-      // mousedown capture：点击外部立即关闭
+      // ★ 统一清理 phone dropdown（DOM + closer 监听器 + blur 监听器）
+      function _cleanupPhoneDD() {
+        if (_phoneDropdownCloser) {
+          document.removeEventListener('mousedown', _phoneDropdownCloser, true);
+          _phoneDropdownCloser = null;
+        }
+        window.removeEventListener('blur', _onBlurPhone);
+        if (dd && dd.parentNode) dd.remove();
+      }
+      // mousedown capture：点击外部立即关闭（click 在 mousedown→mouseup 之后，直接注册无竞态）
       var closer = function (ev2) {
         if (!dd.contains(ev2.target) && ev2.target !== _$phoneBtn) {
-          dd.remove();
-          document.removeEventListener('mousedown', closer, true);
+          _cleanupPhoneDD();
         }
       };
-      requestAnimationFrame(function () {
-        document.addEventListener('mousedown', closer, true);
-      });
+      _phoneDropdownCloser = closer;
+      document.addEventListener('mousedown', closer, true);
+      // ★ 点击 iframe 内区域 → 父窗口失焦 → 自动关闭下拉
+      function _onBlurPhone() { _cleanupPhoneDD(); }
+      window.addEventListener('blur', _onBlurPhone);
     });
 
     // ★ RULES 按钮 — 编辑全局/项目规则文件

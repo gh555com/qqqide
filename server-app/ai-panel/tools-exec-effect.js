@@ -422,7 +422,7 @@ async function executeGenerateImage(args) {
             return 'Image generation failed: no image URLs returned';
         }
 
-        _addEffectCost('generate_image', result.ge_cost || 0, result.billing_request_id || 0);
+        // ★ 计费延后到本地下载成功之后（防止生成成功但下载失败仍扣费）
 
         // 3. 并行下载图片到本地
         if (outDir) {
@@ -456,6 +456,9 @@ async function executeGenerateImage(args) {
         if (paths.length === 0) {
             return 'Image generation failed: could not download images (URLs may have expired)';
         }
+
+        // ★ 下载成功后才记录费用（防止服务端生成成功但本地下载失败仍扣费）
+        _addEffectCost('generate_image', result.ge_cost || 0, result.billing_request_id || 0);
 
         // ★ stat 每个下载成功的文件，写入全局缓存供 hover 显示文件大小
         if (!window.__qqqImgSizes) window.__qqqImgSizes = {};

@@ -3,9 +3,9 @@
 // sendMessage, input helpers, event handlers, window exports
 
 // ★ 管线入口：统一构建 SendIntent → _executeSend
-//   _execSendBusy 模块锁防重复发送
+//   _execSendBusyAgent 使不同 quest 各自独立，不互相阻塞
 async function sendMessage(content, opts) {
-    if (typeof _execSendBusy !== 'undefined' && _execSendBusy) return;
+    if (typeof _execSendBusy !== 'undefined' && _execSendBusy && _execSendBusyAgent === _activeAgent) return;
     if (content === undefined) {
         content = getInputText().trim();
         opts = { type: 'normal', images: null, tierIndex: selectedTier };

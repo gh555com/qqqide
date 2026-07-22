@@ -35,8 +35,12 @@
   let _hostEl = null;
   let _contentEl = null;
   let _tabBarEl = null;
+  let _switcherEl = null;
+  let _ghHealthEl = null;
   let _built = false;
   const _pendingShow = [];
+  // ★ A 区默认面板
+  var _defaultPanelId = 'kope-a';
 
   // ---- ctx factory ----
   function makeCtx(id) {
@@ -58,6 +62,11 @@
     _hostEl.innerHTML = '';
     _hostEl.style.cssText = 'height:100%; display:flex; flex-direction:column; overflow:hidden;';
 
+    // ★ A 区顶部 — 货物切换下拉
+    _switcherEl = document.createElement('div');
+    _switcherEl.className = 'gaea-zone-switcher';
+    _hostEl.appendChild(_switcherEl);
+
     // Tab bar moved to menu row 2 (qqq-goods-bar)
     _tabBarEl = document.getElementById('qqq-goods-bar');
 
@@ -66,7 +75,22 @@
     _contentEl.style.cssText = 'flex:1; overflow:hidden; position:relative;';
     _hostEl.appendChild(_contentEl);
 
+    // ★ GH Health 商标位 — A 区固定底部，独立于任何 goods
+    _ghHealthEl = document.createElement('div');
+    _ghHealthEl.className = 'gaea-gh-health';
+    _ghHealthEl.textContent = 'GH HEALTH';
+    _ghHealthEl.style.cssText = 'flex:0 0 auto; text-align:center; padding:9px 0; font-size:9px; opacity:0.5; cursor:pointer; font-family:Tahoma,sans-serif;';
+    _ghHealthEl.addEventListener('click', function () {
+      var br = window.qqqideBridge;
+      if (br && br.shell && br.shell.openExternal) {
+        br.shell.openExternal('https://www.gh555.com/gaea/d/qqqide');
+      }
+    });
+    _hostEl.appendChild(_ghHealthEl);
+
     _built = true;
+
+    _renderSwitcher();
 
     const pending = _pendingShow.splice(0);
     pending.forEach(id => show(id));
@@ -77,25 +101,30 @@
   }
 
   // ---- Tab bar (renders into menu row 2 toolbar) ----
+  // ★ 菜单行2 仅 Search / Git 按钮（均无 A 区面板，点不切换 A 区）
   function renderTabBar() {
     if (!_tabBarEl) return;
     _tabBarEl.innerHTML = '';
-    goods.forEach((def, id) => {
-      // ★ rage 不显示按钮（Roam 永远直接显示）
-      if (id === 'rage') return;
-      const btn = document.createElement('button');
+    var toolbarIds = ['search', 'git'];
+    for (var ti = 0; ti < toolbarIds.length; ti++) {
+      var id = toolbarIds[ti];
+      if (!goods.has(id)) continue;
+      var def = goods.get(id);
+      var btn = document.createElement('button');
       btn.className = 'gaea-tab-btn qqq-goods-btn';
       btn.textContent = def.title || id;
       btn.dataset.gaeaId = id;
       btn.title = def.title || id;
       btn.style.cssText =
         'height:22px; padding:0 10px; margin:0 1px; border:1px solid var(--border-color); border-radius:3px;' +
-        'background:' + (id === _activeId ? 'var(--primary-color)' : 'transparent') + ';' +
-        'color:' + (id === _activeId ? '#1e1e1e' : 'var(--text-primary)') + ';' +
+        'background:transparent;' +
+        'color:var(--text-primary);' +
         'transition: background 0.15s;';
-      btn.addEventListener('click', () => show(id));
+      (function (gid) {
+        btn.addEventListener('click', function () { open(gid); });
+      })(id);
       _tabBarEl.appendChild(btn);
-    });
+    }
   }
 
   // ---- Show ----
@@ -201,6 +230,7 @@
 
     _activeId = id;
     renderTabBar();
+    _renderSwitcher();
     _persistActive();
   }
 
@@ -273,11 +303,58 @@
       var db = window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
       if (!db) return;
       db.get('editor.aZoneActive').then(function (savedId) {
-        if (savedId && typeof savedId === 'string' && goods.has(savedId)) {
+        // 仅恢复拥有 panel 的 goods（纯 process 类 goods 不进入 A 区）
+        if (savedId && typeof savedId === 'string' && goods.has(savedId) && _hasPanel(savedId)) {
           show(savedId);
+        } else if (_defaultPanelId && goods.has(_defaultPanelId) && _hasPanel(_defaultPanelId)) {
+          // 回退到默认面板
+          show(_defaultPanelId);
         }
       }).catch(function () { });
     } catch (_) { }
+  }
+
+  // ★ 判断 goods 是否有 A 区面板能力
+  function _hasPanel(id) {
+    var def = goods.get(id);
+    if (!def) return false;
+    return !!(def.panel && (def.panel.url || def.panel.build || def.panel.render));
+  }
+
+  // ★ 列出所有有 A 区面板能力的 goods（供切换器使用）
+  function listPanelGoods() {
+    var result = [];
+    goods.forEach(function (def, id) {
+      if (_hasPanel(id)) result.push({ id: id, title: def.title || id });
+    });
+    return result;
+  }
+
+  // ★ 渲染 A 区顶部货物切换下拉
+  function _renderSwitcher() {
+    if (!_switcherEl) return;
+    _switcherEl.innerHTML = '';
+    var panelGoods = listPanelGoods();
+
+    var sel = document.createElement('select');
+    sel.style.cssText =
+      'width:100%; padding:4px 6px; font-size:12px; font-family:Tahoma,sans-serif;' +
+      'background:var(--card-bg); color:var(--text-primary); border:1px solid var(--border-color);' +
+      'border-radius:3px; outline:none; cursor:pointer; -webkit-appearance:menulist;';
+
+    for (var i = 0; i < panelGoods.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = panelGoods[i].id;
+      opt.textContent = panelGoods[i].title;
+      if (panelGoods[i].id === _activeId) opt.selected = true;
+      sel.appendChild(opt);
+    }
+
+    sel.addEventListener('change', function () {
+      show(sel.value);
+    });
+
+    _switcherEl.appendChild(sel);
   }
 
   // 监听 A 区活性恢复事件（tab-manager 完成 restore 后触发）
@@ -309,8 +386,14 @@
 
     if (window.qqqAudio && def.audio) { window.qqqAudio.register(id, def); }
 
-    if (!_activeId && !_pendingShow.length) { show(id); }
-    if (_built) renderTabBar();
+    // ★ 第一个注册的 panel goods → 自动展示。若默认面板后到 → 切换。
+    if (!_activeId && !_pendingShow.length) {
+      if (_hasPanel(id)) show(id);
+    } else if (_defaultPanelId === id && _hasPanel(id) && _activeId !== id) {
+      // 默认面板到达，且当前激活的不是默认面板 → 切换
+      show(id);
+    }
+    if (_built) { renderTabBar(); _renderSwitcher(); }
   }
 
   // ---- Remove (full teardown) ----
@@ -340,8 +423,6 @@
       instances.delete(id);
     }
     if (window.qqqAudio) { window.qqqAudio.unregister(id); }
-    goods.delete(id);
-
     if (_activeId === id) {
       _activeId = null;
       const first = goods.keys().next().value;
@@ -349,7 +430,10 @@
     }
 
     renderTabBar();
+    _renderSwitcher();
   }
+
+  // ---- Query ----}
 
   // ---- Query ----
   function list() { return Array.from(goods.values()); }
@@ -404,5 +488,5 @@
   });
 
   // ---- Expose ----
-  window.qqqGaea = { build, register, remove, show, open, list, active, get, next, prev, syncTheme };
+  window.qqqGaea = { build, register, remove, show, open, list, active, get, next, prev, syncTheme, listPanelGoods: listPanelGoods };
 })();

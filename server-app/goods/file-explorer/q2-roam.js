@@ -103,6 +103,7 @@ var bridge = {
 		mkdir: (p) => rpc('fs.mkdir', p),
 		remove: (p) => rpc('fs.remove', p),
 		rename: (o, n) => rpc('fs.rename', { __spread: true, args: [o, n] }),
+		stat: (p) => rpc('fs.stat', p),
 	},
 	clipboard: {
 		writeText: (s) => rpc('clipboard.writeText', s),
@@ -350,7 +351,7 @@ function navigateTo(p, opts) {
 	addressInput.value = p;
 	updateAddressDisplay(p);
 	loadFileList(p);
-	recordDirHistory(p);
+	// ★ 纯浏览不记录 qq 区——与 q3 一致：只有做实际操作（新建/删除/重命名/Q编辑/W系统打开）才进 qq 区
 	_historySave();
 }
 
@@ -370,7 +371,9 @@ function goUpOneLevel() {
 // ---- Windows .lnk 快捷方式解析（纯 JS，从 q3 移植）----
 // 规范: MS-SHLLINK (Shell Link Binary File Format)
 // 输入: base64 编码的 .lnk 文件内容
-// 输出: 目标路径或 null
+// 输出: { candidates: [...], ansiPath: '...' } — candidates 按优先级排序（Unicode 来源优先）
+// ★ 关键教训（q3 已验证）: 解析阶段不做存在性判断（浏览器无 fs.existsSync），
+//   交由 resolveLnkTarget 用 bridge.fs.stat 异步校验——与 q3 的 fs.existsSync 完全等价。
 function parseLnkTargetFromBase64(base64) {
 	try {
 		var raw = atob(base64);
@@ -397,7 +400,9 @@ function parseLnkTargetFromBase64(base64) {
 			offset += 2 + idListSize;
 		}
 
+		var candidates = [];
 		var ansiPath = null;
+
 		// 从 LinkInfo 提取路径
 		if (hasLinkInfo) {
 			if (offset + 28 <= buf.length) {
@@ -410,7 +415,7 @@ function parseLnkTargetFromBase64(base64) {
 				if (hasVolumeIDAndLocalBasePath && linkInfoSize >= 28) {
 					var localBasePathOffset = uint32LE(offset + 16);
 
-					// 先试 Unicode 路径（header size >= 0x24）
+					// ① Unicode 路径（header size >= 0x24）—— 最优先
 					if (linkInfoHeaderSize >= 0x24 && offset + 32 <= buf.length) {
 						var unicodeOffset = uint32LE(offset + 28);
 						if (unicodeOffset > 0 && unicodeOffset < linkInfoSize) {
@@ -420,12 +425,12 @@ function parseLnkTargetFromBase64(base64) {
 							if (uEnd > uStart) {
 								var utf16 = '';
 								for (var j = uStart; j < uEnd; j += 2) utf16 += String.fromCharCode(buf[j] | (buf[j+1]<<8));
-								if (utf16 && utf16.length > 2) return utf16;
+								if (utf16 && utf16.length > 2) candidates.push(utf16);
 							}
 						}
 					}
 
-					// 再试 ANSI 路径
+					// ② ANSI 路径（先收集，不立即返回——中文系统 GBK→Latin-1=乱码）
 					if (localBasePathOffset > 0 && localBasePathOffset < linkInfoSize) {
 						var aStart = linkInfoStart + localBasePathOffset;
 						var aEnd = aStart;
@@ -433,14 +438,17 @@ function parseLnkTargetFromBase64(base64) {
 						if (aEnd > aStart) {
 							ansiPath = '';
 							for (var k = aStart; k < aEnd; k++) ansiPath += String.fromCharCode(buf[k]);
-							if (ansiPath && ansiPath.length > 2) return ansiPath;
+							// 纯 ASCII 路径直接进 candidates（高优先级）
+							if (ansiPath && ansiPath.length > 2 && /^[A-Z]:\\.+/.test(ansiPath) && !/[^\x00-\x7F]/.test(ansiPath)) {
+								candidates.push(ansiPath);
+							}
 						}
 					}
 				}
 			}
 		}
 
-		// 兜底: 扫描整个文件找 Unicode 路径模式 "X:\"（[A-Z] 00 3A 00 5C 00）
+		// ③ 兜底: 扫描整个文件找 Unicode 路径模式 "X:\"（[A-Z] 00 3A 00 5C 00）
 		for (var s = 0; s < buf.length - 10; s++) {
 			var b0 = buf[s];
 			if (b0 >= 0x41 && b0 <= 0x5A && buf[s+1] === 0 &&
@@ -451,21 +459,43 @@ function parseLnkTargetFromBase64(base64) {
 				if (e > s + 4) {
 					var path16 = '';
 					for (var j = s; j < e; j += 2) path16 += String.fromCharCode(buf[j] | (buf[j+1]<<8));
-					if (path16 && path16.length > 3 && /^[A-Z]:\.+/.test(path16)) return path16;
+					if (path16 && path16.length > 3 && /^[A-Z]:\\.+/.test(path16)) candidates.push(path16);
 				}
 			}
 		}
 
-		return ansiPath;
+		return { candidates: candidates, ansiPath: ansiPath };
 	} catch(_) { return null; }
 }
 
 // 异步解析 .lnk 文件，返回目标路径或 null
+// ★ 与 q3 parseLnkTarget 完全等价：解析所有候选路径，用 bridge.fs.stat 逐个校验（= q3 的 fs.existsSync）
 async function resolveLnkTarget(lnkPath) {
 	try {
 		var b64 = await bridge.fs.readBase64(lnkPath);
 		if (!b64) return null;
-		return parseLnkTargetFromBase64(b64);
+		var result = parseLnkTargetFromBase64(b64);
+		if (!result) return null;
+
+		// q3 核心逻辑：fs.existsSync 逐候选校验（浏览器用 bridge.fs.stat 异步等价）
+		var cands = result.candidates || [];
+		for (var i = 0; i < cands.length; i++) {
+			try {
+				var st = await bridge.fs.stat(cands[i]);
+				if (st) return cands[i];
+			} catch(_) {}
+		}
+
+		// ANSI 路径（含中文会乱码→stat 返回 null→自然跳过）
+		if (result.ansiPath && result.ansiPath.length > 2) {
+			try {
+				var st2 = await bridge.fs.stat(result.ansiPath);
+				if (st2) return result.ansiPath;
+			} catch(_) {}
+		}
+
+		// 最后兜底：返回 ANSI 路径（即使不存在，与 q3 行为一致）
+		return result.ansiPath;
 	} catch(_) { return null; }
 }
 
@@ -1024,6 +1054,7 @@ function commitRename(itemEl, oldPath, itemType, newName) {
 	if (newName && newName !== oldName) {
 		var dir = oldPath.substring(0, oldPath.length - oldName.length);
 		bridge.fs.rename(oldPath, pathJoin(dir, newName)).then(function() {
+			recordDirHistory(currentPath);
 			if (currentPath) loadFileList(currentPath);
 		}).catch(function() {
 			cancelRename(itemEl, itemEl.dataset.originalContent);
@@ -1103,19 +1134,29 @@ function performOpenAction(item) {
 	if (item.name === '..') return;
 	if (item.type === 'folder') { navigateTo(item.path); _playSfx('enter'); return; }
 	if (item.path && /\.lnk$/i.test(item.path)) {
-		// .lnk 快捷方式：解析目标，是文件夹则导航，否则用系统默认打开
+		// .lnk 快捷方式：照抄 q3 逻辑——解析目标，是文件夹（且存在）则导航，否则交给系统
 		var srcDir = currentPath;
-		resolveLnkTarget(item.path).then(function(target) {
-			if (target) { navigateTo(target); lnkJumpFromPath = srcDir; }
-			else { bridge.shell.openPath(item.path).catch(function(){}); }
+		var lnkPath = item.path;
+		resolveLnkTarget(lnkPath).then(function(target) {
+			if (target) {
+				// q3 关键判断：目标必须存在且是文件夹才在 Roam 内导航
+				bridge.fs.stat(target).then(function(st) {
+					if (st && st.isDir) { navigateTo(target); lnkJumpFromPath = srcDir; }
+					else { bridge.shell.openPath(lnkPath).catch(function(){}); }
+				}).catch(function() { bridge.shell.openPath(lnkPath).catch(function(){}); });
+			} else {
+				bridge.shell.openPath(lnkPath).catch(function(){});
+			}
 		});
 	} else {
-		// W 键唯一职责：用操作系统默认程序打开文件
-		// 不 fallback 到编辑器（与 Q 键职责彻底分离）
-		bridge.shell.openPath(item.path).catch(function(){});
-	}
-	recordFileHistory(item.path);
-	_playSfx('enter');
+	// W 键唯一职责：用操作系统默认程序打开文件
+	// 不 fallback 到编辑器（与 Q 键职责彻底分离）
+	bridge.shell.openPath(item.path).catch(function(){});
+}
+// ★ q3 百分百移植：W 键只记录当前工作目录（parent dir），不记录文件本身
+// Q=编辑（recordFileHistory 记录文件+父目录），W=系统打开（recordDirHistory 仅记录父目录）
+recordDirHistory(currentPath);
+_playSfx('enter');
 }
 function performDeleteAction(item) {
 	if (!item) return;
@@ -1132,7 +1173,7 @@ function performDeleteAction(item) {
 	});
 	// Move to recycle bin (no confirmation dialog)
 	Promise.all(targets.map(function(t) { return bridge.fs.remove(t.path).catch(function(){}); }))
-		.then(function() { if (currentPath) loadFileList(currentPath); });
+		.then(function() { recordDirHistory(currentPath); if (currentPath) loadFileList(currentPath); });
 	_playSfx('delete');
 	if (selectedItems.length > 1) { selectedItem = null; selectedItems = []; }
 	else selectedItem = null;
@@ -1632,6 +1673,7 @@ function doCreateFile() {
 		filenameInput.value = '';
 		// Reset char-undo history
 		if (window.qqqCharUndo && window.qqqCharUndo.reset) window.qqqCharUndo.reset(filenameInput);
+		recordDirHistory(currentPath);
 		loadFileList(currentPath);
 		// Open in editor + focus
 		parent.postMessage({ type: 'qqq-file-open', path: fullPath }, '*');
@@ -1650,6 +1692,7 @@ function doCreateFolder() {
 	bridge.fs.mkdir(fullPath).then(function() {
 		filenameInput.value = '';
 		if (window.qqqCharUndo && window.qqqCharUndo.reset) window.qqqCharUndo.reset(filenameInput);
+		recordDirHistory(currentPath);
 		loadFileList(currentPath);
 	}).catch(function(err) {
 		alert('Failed to create folder: ' + (err.message || err));
@@ -1663,9 +1706,12 @@ filenameInput.addEventListener('keydown', function(e) {
 		doCreateFile();
 	}
 });
-
 document.getElementById('btnNewFile').addEventListener('click', doCreateFile);
 document.getElementById('btnNewFolder').addEventListener('click', doCreateFolder);
+document.getElementById('openFolderBtn').addEventListener('click', function() {
+	bridge.shell.openPath(currentPath).catch(function(){});
+	_playSfx('enter');
+});
 
 
 

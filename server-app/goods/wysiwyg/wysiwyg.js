@@ -122,17 +122,18 @@
     renderNow();
   }
 
-  // Register as gaea panel
+  // ★ WYSIWYG 不再注册 A 区面板（仅供命令调用，无 UI）
   if (window.qqqGaea) {
     window.qqqGaea.register({
       id: 'wysiwyg',
       title: 'WYSIWYG',
-      render: (h) => buildPanelInto(h),
+      version: '1.0.0',
+      protoVer: 2,
     });
   }
 
   Q.commands.register('wysiwyg.toggle', () => {
-    if (window.qqqGaea) { window.qqqGaea.show('wysiwyg'); }
+    // no-op: A 区不再切换
   });
   Q.commands.register('wysiwyg.refresh', () => { lastRendered = ''; renderNow(); });
 

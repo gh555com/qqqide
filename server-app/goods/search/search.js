@@ -24,10 +24,6 @@
             version: '1.0.0',
             protoVer: 2,
 
-            panel: {
-                build: function () { /* no A-zone panel */ }
-            },
-
             tabs: {
                 search: {
                     title: '🔍 Search',

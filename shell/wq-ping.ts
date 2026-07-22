@@ -24,7 +24,7 @@ import { APP_VERSION } from './version';
 import { getAuthPhone } from './auth-state';
 
 // ── 常量 ────────────────────────────────────────────────────────────────────
-const PING_API_HOST = 'cnk.gh555.com';
+const PING_API_HOST = 'direct-cn.gh555.com';
 const PING_API_PATH = '/api/wq/ping';
 const GOOD_SLG = 'qqqide';
 const DISTRIBUTION = 'gh555.com';    // 发行渠道（当前唯一，将来可扩展）

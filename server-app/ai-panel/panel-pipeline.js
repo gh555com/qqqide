@@ -2,8 +2,9 @@
 // ═══ panel-pipeline.js ═══
 // sendMessage 管线：接受显式 content，零 $input 访问，零 saveQuestUIState 调用
 // SendIntent 替代 skipFloorCreation boolean 分叉
-// ★ 模块级同步发送锁：防同面板并发发送（核心：连点回车去重）
+// ★ 模块级同步发送锁：防同 agent 并发发送（核心：连点回车去重）
 var _execSendBusy = false;
+var _execSendBusyAgent = null;  // ★ 记录哪个 agent 在忙，不同 quest 互不阻塞
 
 // ── SendIntent 工厂 ──
 // type: 'normal' | 'recovery' | 'compress'
@@ -33,8 +34,8 @@ async function _executeSend(intent) {
     var sendType = intent.type;
     var isRecovery = intent.isRecovery;
 
-    // ★ 同步发送锁：防同面板并发发送（核心：连点回车 draft 晋升竟态→两个 quest）
-    if (_execSendBusy) return;
+    // ★ 同步发送锁：仅同 agent 互斥，不同 quest/agent 各自独立
+    if (_execSendBusy && _execSendBusyAgent === _activeAgent) return;
 
     // ── 闸门 ──
     var _isCompress = (sendType === 'compress') || intent.compressFloor;
@@ -119,6 +120,7 @@ async function _executeSend(intent) {
 
     _activeAgent.setStopState('sending');
     var agent = _activeAgent;
+    _execSendBusyAgent = agent;  // ★ 记下忙的 agent，用于跨 quest 放行
     var qid = questId;
 
     // 清除残留标记
@@ -382,7 +384,7 @@ async function _executeSend(intent) {
                 var _tools = getTools();
                 if (_tools && _tools.length) _bpChars += JSON.stringify(_tools).length;
             }
-        } catch (_) {}
+        } catch (_) { }
         // 5. body 常量字段 + JSON overhead（~250 chars，<0.1K）
         _bpChars += 250;
         agent._aiBackpackEst = Math.round(_bpChars / 2.7 / 1000);
@@ -829,6 +831,7 @@ async function _executeSend(intent) {
             console.log('[pipeline] floor ended headless');
             if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
             _execSendBusy = false;
+            _execSendBusyAgent = null;
             return;
         }
         if (agent) { agent._streaming = false; }
@@ -836,6 +839,7 @@ async function _executeSend(intent) {
         _queueBusy = false;
         // ★ 先释放发送锁，再触发排队排水（否则 _triggerQueueSend → sendMessage → _execSendBusy 仍为 true → 永久阻塞）
         _execSendBusy = false;
+        _execSendBusyAgent = null;
         if (_queue && _queue.length > 0 && !_queuePaused && _activeAgent === agent) {
             _triggerQueueSend();
         }
