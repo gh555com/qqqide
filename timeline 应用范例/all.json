@@ -1,0 +1,418 @@
+{
+  "question": "而是没有任何 k ope a区  没有任何剪切板历史卡片   只有 find 框 而且一切外观都丢失了 ， 你直接回到 q83 第38楼 “═══ Floor 38 ═════   2026-07-21 23:38:36 UTC+08\n■ Q: 现在又回到  kope-a  滴 a 区 侧边， 那个外观上还有点问题：最上方滴筛选框 跟下方滴第一张卡片靠滴太近了有大概6px 都重叠了 ， 而且 现在最下方那个 GH Health 豆腐块没有贴合底部 而是跑到中间了， 干脆把那个 GH Health 豆腐块独立于任何滴 goods， 那不是某一个 goods 滴资产， 而是整个 a 区滴资产， 作为整个 a 区滴一个固定商标位 固定在底。 另一方面现在菜单行2 左边只保留 Search Git 按钮， 而且该两按钮 都没有 a 区， 故无论点哪一个按钮  a 区现在目前永远都是 k ope 不会切换到任何 更不会切换到空 ， 要切换 a 区 只能点 a 区顶端 你现在加一个下拉菜单那种 只能在那个下拉菜单里选不同滴 注册了 a 区滴 goods 才能切换 a 区，现在只有 kope 注册了 a 区， 就是没得换没得选 ， 将来可以考虑把 a 区滴显示跟 菜单行2 脱离开 ， 无论如何现在菜单行2 WYSWYG 和上下文背包那两按钮就 删除不要\n■ A: (no answer)\naz> [mod] gaea-host.js  +70 -14\naz> [mod] panel.html  +6 -23\naz> [mod] shell.css  +13\naz> [mod] wysiwyg.js  +4 -3\naz> [mod] service-worker.js  +1 -1\naz> Floor 38  House 77  Room 0 [all.txt: all.txt]\naz> FILE 5   ROW +94 -41” 回到那个时间节点   看你到底改崩了什吗  那个时候至少能正常显示 k ope 滴 a 区",
+  "ai_html": "<p>已回到 q83 Floor 38。五个文件全部还原到 2026-07-21 15:41~15:45 时刻：<br></p><div class=\"table-wrap\"><span class=\"table-view-btn\">▶ 展开</span><div class=\"table-inner\"><table><thead><tr><th>文件</th><th>版本</th><th>时间</th></tr></thead><tbody><tr><td><code>gaea-host.js</code></td><td>#25</td><td>15:43:04</td></tr><tr><td><code>shell.css</code></td><td>#22</td><td>15:42:33</td></tr><tr><td><code>wysiwyg.js</code></td><td>#2</td><td>15:45:05</td></tr><tr><td><code>service-worker.js</code></td><td>#190</td><td>15:45:22</td></tr><tr><td><code>kope-a/panel.html</code></td><td>#16</td><td>15:44:08</td></tr></tbody></table></div></div><br><strong>之后崩坏的嫌疑人</strong>（f38 之后到现在的变更）：<p></p><p></p><ul><li><code>panel.html</code> 最可疑 — f52（#21-25）有 <strong>+124/-40</strong> 巨量改动，f54（#26-29）又来回折腾</li><li><code>gaea-host.js</code> — 仅 #26 一次小改（+2/-1），影响不大</li><li><code>shell.css</code> / <code>wysiwyg.js</code> — f38 后零改动</li></ul><br>现在 Ctrl+R 刷新看看 kope-a 区是否恢复正常？如果正常了，问题就锁定在 f52/f54 对 panel.html 的那波大改上。<p></p>",
+  "house_count": 5,
+  "room_count": 12,
+  "floorFatal": false,
+  "exitReason": "",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "而是没有任何 k ope a区  没有任何剪切板历史卡片   只有 find 框 而且一切外观都丢失了 ， 你直接回到 q83 第38楼 “═══ Floor 38 ═════   2026-07-21 23:38:36 UTC+08\n■ Q: 现在又回到  kope-a  滴 a 区 侧边， 那个外观上还有点问题：最上方滴筛选框 跟下方滴第一张卡片靠滴太近了有大概6px 都重叠了 ， 而且 现在最下方那个 GH Health 豆腐块没有贴合底部 而是跑到中间了， 干脆把那个 GH Health 豆腐块独立于任何滴 goods， 那不是某一个 goods 滴资产， 而是整个 a 区滴资产， 作为整个 a 区滴一个固定商标位 固定在底。 另一方面现在菜单行2 左边只保留 Search Git 按钮， 而且该两按钮 都没有 a 区， 故无论点哪一个按钮  a 区现在目前永远都是 k ope 不会切换到任何 更不会切换到空 ， 要切换 a 区 只能点 a 区顶端 你现在加一个下拉菜单那种 只能在那个下拉菜单里选不同滴 注册了 a 区滴 goods 才能切换 a 区，现在只有 kope 注册了 a 区， 就是没得换没得选 ， 将来可以考虑把 a 区滴显示跟 菜单行2 脱离开 ， 无论如何现在菜单行2 WYSWYG 和上下文背包那两按钮就 删除不要\n■ A: (no answer)\naz> [mod] gaea-host.js  +70 -14\naz> [mod] panel.html  +6 -23\naz> [mod] shell.css  +13\naz> [mod] wysiwyg.js  +4 -3\naz> [mod] service-worker.js  +1 -1\naz> Floor 38  House 77  Room 0 [all.txt: all.txt]\naz> FILE 5   ROW +94 -41” 回到那个时间节点   看你到底改崩了什吗  那个时候至少能正常显示 k ope 滴 a 区\n\n═══ PASTED IMAGES (use these EXACT paths with remove_background/analyze_image) ═══\n图#1: E:/s/wol/py/qqq-shell-v2/qqq/quests/q83.我们滴绿色包 那个包是375版本滴 e__s_w_qqqide-win-x64_qqqide.exe 怎吗又不能自/f1.我们滴绿色包 那个包是375版本滴 e__s_w_qqqide-win-x64_qqqide.exe 怎吗又不能自/img_1.png\n═══ END IMAGES ═══\n\n━━━ VISION ANALYSIS RESULTS (already completed, DO NOT call analyze_image again) ━━━\n[图#1 视觉分析]:\n  image_overview: A screenshot of a software interface showing a search bar and a clipboard history area.\n  visible_text: \"qqq\", \"Search\", \"Git\", \"kope-a\", \"find\", \"Clipboard history will appear here\"\n  objects_and_layout: At the top, there are three buttons labeled \"qqq\", \"Search\", and \"Git\". Below them is a dropdown menu with \"kope-a\" selected. Underneath the dropdown is a text input field with \"find\" typed in. Below this field, a message states \"Clipboard history will appear here\". On the right side, there is a vertical scrollbar with letters from C to R visible.\n  person_identity: none\n  subject_isolation: partial\n  background_description: The background is a solid light beige color.\n  uncertainty: none\n━━━ END VISION RESULTS ━━━\n[person_identity field above identifies who is in the image. Use it.\n IF user asked for background removal: call remove_background ONCE using the PASTED IMAGES path. DO NOT write Python/image-processing code.]\n\n[CURRENT TIME: 2026-07-22 (Wednesday) 18:36:07 UTC+08 UTC+8]",
+      "_floor": 56
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_00_ySsdXM6iOF20Hh56D7Xe1311",
+          "type": "function",
+          "function": {
+            "name": "timeline_versions",
+            "arguments": "{\"path\": \"E:\\\\s\\\\wol\\\\py\\\\qqq-shell-v2\\\\server-app\\\\core\\\\gaea-host.js\"}"
+          }
+        },
+        {
+          "id": "call_01_CZ5A7mPcVBCmEOQ10k5x3081",
+          "type": "function",
+          "function": {
+            "name": "timeline_versions",
+            "arguments": "{\"path\": \"E:\\\\s\\\\wol\\\\py\\\\qqq-shell-v2\\\\server-app\\\\ai-panel\\\\panel.html\"}"
+          }
+        },
+        {
+          "id": "call_02_0EgFVNDdl5cYxMrYTAqA5056",
+          "type": "function",
+          "function": {
+            "name": "timeline_versions",
+            "arguments": "{\"path\": \"E:\\\\s\\\\wol\\\\py\\\\qqq-shell-v2\\\\server-app\\\\core\\\\shell.css\"}"
+          }
+        },
+        {
+          "id": "call_03_YyO1Z8sj6X9JELKsjlW26985",
+          "type": "function",
+          "function": {
+            "name": "timeline_versions",
+            "arguments": "{\"path\": \"E:\\\\s\\\\wol\\\\py\\\\qqq-shell-v2\\\\server-app\\\\goods\\\\wysiwyg\\\\wysiwyg.js\"}"
+          }
+        },
+        {
+          "id": "call_04_QZDjxPY5xvWX9zSOOBHK2670",
+          "type": "function",
+          "function": {
+            "name": "timeline_versions",
+            "arguments": "{\"path\": \"E:\\\\s\\\\wol\\\\py\\\\qqq-shell-v2\\\\server-app\\\\service-worker.js\"}"
+          }
+        }
+      ],
+      "_floor": 56
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_00_ySsdXM6iOF20Hh56D7Xe1311",
+      "content": "Timeline versions for: E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\core\\gaea-host.js\nProject root: E:/s/wol/py/qqq-shell-v2\n\n#\ttime\t+/-\tquality\tsrc\ttrace\tsha\n#1\t2026-07-08 05:54:57\t?/?\t⚠️ mid-edit\tq\ttrace=q16/f12/h9/r1\tsha=2f891ccc827c\n#2\t2026-07-08 05:54:57\t+29/?\t⚠️ mid-edit\tq\ttrace=q16/f12/h9/r1\tsha=dfe5ad3f1e31\n#3\t2026-07-08 05:55:05\t+10/-1\t⚠️ mid-edit\tq\ttrace=q16/f12/h10/r1\tsha=a7e826361839\n#4\t2026-07-08 05:55:11\t+1/-1\t🏁 final\tq\ttrace=q16/f12/h11/r1\tsha=3d5a5cd9a764\n#5\t2026-07-11 06:51:44\t+17/?\t🏁 final\tq\ttrace=q45/f16/h37/r1\tsha=503f36d2dbe6\n#6\t2026-07-14 08:49:16\t+9/-11\t⚠️ mid-edit\tq\ttrace=q59/f1/h16/r1\tsha=c421308e94b0\n#7\t2026-07-14 08:50:04\t+15/-12\t🏁 final\tq\ttrace=q59/f1/h22/r1\tsha=b2b339e0a2fa\n#8\t2026-07-14 10:39:34\t+10/-6\t⚠️ mid-edit\tq\ttrace=q59/f3/h34/r1\tsha=148cafd145a5\n#9\t2026-07-14 10:40:03\t+6/-5\t🏁 final\tq\ttrace=q59/f3/h40/r1\tsha=7d6cd9ce3c87\n#10\t2026-07-14 14:07:49\t+44/?\t⚠️ mid-edit\tq\ttrace=q58/f15/h27/r1\tsha=79d806e36929\n#11\t2026-07-14 14:08:03\t+1/-1\t🏁 final\tq\ttrace=q58/f15/h32/r1\tsha=bfa9c1cce2dd\n#12\t2026-07-18 03:15:51\t+2/?\t🏁 final\tq\ttrace=q85/f27/h31/r1\tsha=3326ee767711\n#13\t2026-07-18 03:51:55\t+2/?\t⚠️ mid-edit\tq\ttrace=q85/f32/h35/r1\tsha=4f32cdf0971f\n#14\t2026-07-18 03:51:59\t+1/?\t⚠️ mid-edit\tq\ttrace=q85/f32/h36/r1\tsha=333c41e91ad8\n#15\t2026-07-21 11:41:42\t+2/-2\t🏁 final\tq\ttrace=q83/f32/h16/r1\tsha=496963b65ac5\n#16\t2026-07-21 11:52:39\t+2/?\t⚠️ mid-edit\tq\ttrace=q83/f33/h30/r1\tsha=38ded6abee9d\n#17\t2026-07-21 11:52:53\t+21/-1\t⚠️ mid-edit\tq\ttrace=q83/f33/h33/r1\tsha=b4f9326504c9\n#18\t2026-07-21 11:53:01\t+7/-1\t⚠️ mid-edit\tq\ttrace=q83/f33/h35/r1\tsha=26443fcdff7c\n#19\t2026-07-21 11:53:21\t+1/-1\t🏁 final\tq\ttrace=q83/f33/h41/r1\tsha=1d1e48d33a95\n#20\t2026-07-21 15:41:11\t+3/-1\t⚠️ mid-edit\tq\ttrace=q83/f38/h14/r1\tsha=f4a9ec213307\n#21\t2026-07-21 15:41:23\t+20/?\t⚠️ mid-edit\tq\ttrace=q83/f38/h15/r1\tsha=28a45575d1a7\n#22\t2026-07-21 15:41:44\t+13/-8\t⚠️ mid-edit\tq\ttrace=q83/f38/h20/r1\tsha=d89cdb7beb96\n#23\t2026-07-21 15:41:50\t+1/?\t⚠️ mid-edit\tq\ttrace=q83/f38/h22/r1\tsha=975b9aa2cd5e\n#24\t2026-07-21 15:41:57\t+29/-2\t⚠️ mid-edit\tq\ttrace=q83/f38/h23/r1\tsha=63905be78363\n#25\t2026-07-21 15:43:04\t+4/-3\t🏁 final\tq\ttrace=q83/f38/h38/r1\tsha=1de2983a4ab1\n#26\t2026-07-22 04:34:29\t+2/-1\t🏁 final\tq\ttrace=q83/f46/h12/r2\tsha=3dcc994b4a59\n\nBest clean version: #26 (heuristic — use check_syntax=true for accuracy)\n16 version(s) with ⚠️ quality issues detected.\n\nUse diff_versions(path, from_seq, to_seq) to compare any two versions, or revert_file(path, file_seq) to restore.",
+      "_floor": 56
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_01_CZ5A7mPcVBCmEOQ10k5x3081",
+      "content": "No timeline versions found for: E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\ai-panel\\panel.html",
+      "_floor": 56
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_02_0EgFVNDdl5cYxMrYTAqA5056",
+      "content": "Timeline versions for: E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\core\\shell.css\nProject root: E:/s/wol/py/qqq-shell-v2\n\n#\ttime\t+/-\tquality\tsrc\ttrace\tsha\n#1\t2026-07-06 04:17:56\t?/?\t⚠️ mid-edit\tq\ttrace=q2/f2/h11/r1\tsha=8157121af7f2\n#2\t2026-07-06 04:17:56\t+8/?\t⚠️ mid-edit\tq\ttrace=q2/f2/h11/r1\tsha=f52a0b5d16a9\n#3\t2026-07-07 16:40:03\t+17/?\t🏁 final\tq\ttrace=q15/f10/h14/r1\tsha=a191cb3125af\n#4\t2026-07-15 05:57:31\t?/?\t⚠️ mid-edit\tq\ttrace=q64/f4/h25/r1\tsha=45d9b8a0ef4d\n#5\t2026-07-15 05:57:31\t+1/-1\t⚠️ mid-edit\tq\ttrace=q64/f4/h25/r1\tsha=28026793f4fe\n#6\t2026-07-15 13:05:27\t+33/?\t🏁 final\tq\ttrace=q72/f1/h13/r1\tsha=1007750bd0b6\n#7\t2026-07-15 14:06:08\t?/-33\t⚠️ mid-edit\tq\ttrace=q72/f2/h2/r3\tsha=28026793f4fe\n#8\t2026-07-15 14:07:04\t+6/?\t🏁 final\tq\ttrace=q72/f2/h17/r2\tsha=a649833f667b\n#9\t2026-07-15 14:20:35\t+34/?\t🏁 final\tq\ttrace=q72/f3/h10/r1\tsha=759c8e4c7854\n#10\t2026-07-15 15:33:23\t+18/-22\t⚠️ mid-edit\tq\ttrace=q72/f4/h24/r1\tsha=aa22d8555a84\n#11\t2026-07-15 15:33:26\t?/-6\t🏁 final\tq\ttrace=q72/f4/h25/r1\tsha=9c80343f1992\n#12\t2026-07-16 15:54:22\t?/-30\t\tq\t—\tsha=28026793f4fe\n#13\t2026-07-16 15:54:55\t+28/-2\t⚠️ mid-edit\tq\ttrace=q72/f7/h7/r1\tsha=d63bc966b591\n#14\t2026-07-16 15:55:29\t+1/?\t🏁 final\tq\ttrace=q72/f7/h14/r1\tsha=ead5caff7ac3\n#15\t2026-07-17 06:44:58\t?/?\t⚠️ mid-edit\tq\ttrace=q72/f15/h21/r1\tsha=7367bbfb07bf\n#16\t2026-07-17 06:44:58\t+38/-12\t🏁 final\tq\ttrace=q72/f15/h21/r1\tsha=919b3147758a\n#17\t2026-07-17 06:48:11\t+3/?\t🏁 final\tq\ttrace=q72/f16/h3/r1\tsha=ec08faee854c\n#18\t2026-07-17 07:08:47\t?/-3\t⚠️ mid-edit\tq\ttrace=q72/f17/h29/r1\tsha=919b3147758a\n#19\t2026-07-17 07:08:58\t+5/?\t🏁 final\tq\ttrace=q72/f17/h33/r1\tsha=951fc93a2a0f\n#20\t2026-07-17 07:28:37\t?/-4\t🏁 final\tq\ttrace=q72/f18/h4/r3\tsha=1d8bcfd6079e\n#21\t2026-07-17 15:48:57\t+20/-20\t🏁 final\tq\ttrace=q72/f21/h22/r1\tsha=f94eaca3c453\n#22\t2026-07-21 15:42:33\t+13/?\t🏁 final\tq\ttrace=q83/f38/h32/r1\tsha=9441be18b1ac\n\nBest clean version: #22 (heuristic — use check_syntax=true for accuracy)\n9 version(s) with ⚠️ quality issues detected.\n\nUse diff_versions(path, from_seq, to_seq) to compare any two versions, or revert_file(path, file_seq) to restore.",
+      "_floor": 56
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_03_YyO1Z8sj6X9JELKsjlW26985",
+      "content": "Timeline versions for: E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\goods\\wysiwyg\\wysiwyg.js\nProject root: E:/s/wol/py/qqq-shell-v2\n\n#\ttime\t+/-\tquality\tsrc\ttrace\tsha\n#1\t2026-07-21 15:45:05\t?/?\t⚠️ mid-edit\tq\ttrace=q83/f38/h66/r1\tsha=8b37571ad0cd\n#2\t2026-07-21 15:45:05\t+4/-3\t🏁 final\tq\ttrace=q83/f38/h66/r1\tsha=0a9d68d534fb\n\nBest clean version: #2 (heuristic — use check_syntax=true for accuracy)\n1 version(s) with ⚠️ quality issues detected.\n\nUse diff_versions(path, from_seq, to_seq) to compare any two versions, or revert_file(path, file_seq) to restore.",
+      "_floor": 56
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_04_QZDjxPY5xvWX9zSOOBHK2670",
+      "content": "Timeline versions for: E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\service-worker.js\nProject root: E:/s/wol/py/qqq-shell-v2\n\n#\ttime\t+/-\tquality\tsrc\ttrace\tsha\n#1\t2026-07-09 03:06:17\t?/?\t⚠️ mid-edit\tq\ttrace=q35/f1/h44/r1\tsha=4bc37dd61f55\n#2\t2026-07-09 03:06:17\t+1/-1\t⚠️ mid-edit\tq\ttrace=q35/f1/h44/r1\tsha=d7023a4e4018\n#3\t2026-07-09 05:13:22\t+1/-1\t⚠️ mid-edit\tq\ttrace=q35/f4/h18/r1\tsha=dfb63c42e523\n#4\t2026-07-09 06:02:15\t+1/-1\t⚠️ mid-edit\tq\ttrace=q35/f5/h9/r1\tsha=4bc37dd61f55\n#5\t2026-07-09 17:39:47\t+1/-1\t⚠️ mid-edit\tq\ttrace=q43/f9/h6/r1\tsha=d7023a4e4018\n#6\t2026-07-09 17:51:28\t+1/-1\t\tq\t—\tsha=dfb63c42e523\n#7\t2026-07-09 17:59:36\t+1/-1\t\tq\t—\tsha=e9609395c14a\n#8\t2026-07-09 18:03:29\t+1/-1\t\tq\t—\tsha=14181db5d369\n#9\t2026-07-09 18:06:54\t+1/-1\t⚠️ mid-edit\tq\ttrace=q43/f18/h9/r1\tsha=08cb1b68f8c6\n#10\t2026-07-10 04:47:59\t+1/-1\t⚠️ mid-edit\tq\ttrace=q43/f20/h5/r1\tsha=075609e25e98\n#11\t2026-07-10 04:56:28\t+1/-1\t⚠️ mid-edit\tq\ttrace=q42/f6/h4/r1\tsha=7937af3ef5c2\n#12\t2026-07-10 05:15:00\t+1/-1\t⚠️ mid-edit\tq\ttrace=q8/f22/h17/r1\tsha=142704572c5c\n#13\t2026-07-10 18:25:41\t+1/-1\t⚠️ mid-edit\tq\ttrace=q47/f5/h38/r1\tsha=9f80beaff0ec\n#14\t2026-07-11 04:21:39\t+1/-1\t⚠️ mid-edit\tq\ttrace=q47/f10/h5/r1\tsha=632ef5b2fb28\n#15\t2026-07-11 06:06:41\t+1/-1\t⚠️ mid-edit\tq\ttrace=q40/f5/h16/r1\tsha=5af3f163768c\n#16\t2026-07-11 06:42:11\t+1/-1\t⚠️ mid-edit\tq\ttrace=q48/f1/h26/r1\tsha=72beaf266f0a\n#17\t2026-07-11 06:55:00\t+1/-1\t⚠️ mid-edit\tq\ttrace=q45/f16/h65/r1\tsha=076e458f89b7\n#18\t2026-07-11 07:38:52\t+1/-1\t⚠️ mid-edit\tq\ttrace=q48/f6/h17/r1\tsha=b6e50c451651\n#19\t2026-07-11 08:02:10\t+1/-1\t⚠️ mid-edit\tq\ttrace=q48/f9/h6/r1\tsha=8508a9602d3c\n#20\t2026-07-11 08:12:21\t+1/-1\t⚠️ mid-edit\tq\ttrace=q48/f11/h6/r1\tsha=c14b98a8754a\n#21\t2026-07-11 08:48:40\t+1/-1\t⚠️ mid-edit\tq\ttrace=q47/f13/h6/r1\tsha=874feaca6ce6\n#22\t2026-07-11 09:48:50\t+1/-1\t⚠️ mid-edit\tq\ttrace=q40/f16/h18/r1\tsha=eb24525f0a4a\n#23\t2026-07-11 12:01:34\t+1/-1\t⚠️ mid-edit\tq\ttrace=q40/f19/h6/r1\tsha=c33f07aafb15\n#24\t2026-07-11 13:44:45\t+1/-1\t⚠️ mid-edit\tq\ttrace=q48/f18/h15/r1\tsha=6393f26d9e03\n#25\t2026-07-11 14:35:44\t+1/-1\t🏁 final\tq\ttrace=q40/f23/h26/r1\tsha=efa664285002\n#26\t2026-07-11 15:25:43\t+1/-1\t⚠️ mid-edit\tq\ttrace=q47/f15/h19/r1\tsha=7ad5739f050e\n#27\t2026-07-11 15:31:42\t+1/-1\t⚠️ mid-edit\tq\ttrace=q45/f17/h18/r1\tsha=75cddbff758a\n#28\t2026-07-12 06:59:58\t+1/-1\t⚠️ mid-edit\tq\ttrace=q55/f1/h11/r1\tsha=38d2953d1045\n#29\t2026-07-12 07:50:31\t+4/-1\t⚠️ mid-edit\tq\ttrace=q40/f26/h15/r1\tsha=45a0e768787f\n#30\t2026-07-12 07:56:40\t+1/-1\t⚠️ mid-edit\tq\ttrace=q40/f27/h4/r1\tsha=be114c50d3fb\n#31\t2026-07-12 08:03:35\t+1/-1\t⚠️ mid-edit\tq\ttrace=q40/f28/h14/r1\tsha=152486e4b65b\n#32\t2026-07-12 08:17:28\t+1/-1\t🏁 final\tq\ttrace=q40/f30/h3/r1\tsha=ae5ddd5369e1\n#33\t2026-07-12 08:27:22\t+1/-1\t🏁 final\tq\ttrace=q40/f31/h6/r1\tsha=5d085a1e7f87\n#34\t2026-07-12 08:36:20\t+1/-1\t⚠️ mid-edit\tq\ttrace=q40/f32/h4/r1\tsha=f961814bf19b\n#35\t2026-07-12 09:28:08\t+1/-1\t⚠️ mid-edit\tq\ttrace=q40/f43/h15/r1\tsha=f1cc10f5e53d\n#36\t2026-07-12 09:33:34\t+1/-1\t⚠️ mid-edit\tq\ttrace=q48/f25/h19/r1\tsha=8856af09702b\n#37\t2026-07-12 13:48:40\t+1/-1\t⚠️ mid-edit\tq\ttrace=q48/f28/h8/r1\tsha=5a9f0ad4faf3\n#38\t2026-07-12 15:07:09\t+1/-1\t⚠️ mid-edit\tq\ttrace=q48/f34/h5/r1\tsha=70121846c5fc\n#39\t2026-07-12 16:05:12\t?/?\t⚠️ mid-edit\tq\ttrace=q48/f38/h11/r1\tsha=5a9f0ad4faf3\n#40\t2026-07-12 16:05:12\t+1/-1\t⚠️ mid-edit\tq\ttrace=q48/f38/h11/r1\tsha=e81876d46682\n#41\t2026-07-13 06:08:16\t?/?\t⚠️ mid-edit\tq\ttrace=q56/f3/h49/r1\tsha=70121846c5fc\n#42\t2026-07-13 06:08:16\t+1/-1\t⚠️ mid-edit\tq\ttrace=q56/f3/h49/r1\tsha=e81876d46682\n#43\t2026-07-13 08:17:40\t+1/-1\t⚠️ mid-edit\tq\ttrace=q44/f3/h15/r1\tsha=6a14874b54bf\n#44\t2026-07-14 04:25:54\t+1/-1\t⚠️ mid-edit\tq\ttrace=q56/f6/h25/r1\tsha=ac46a8943512\n#45\t2026-07-14 04:43:26\t+1/-1\t⚠️ mid-edit\tq\ttrace=q56/f8/h45/r1\tsha=fc383cefdbfc\n#46\t2026-07-14 04:53:59\t+1/-1\t⚠️ mid-edit\tq\ttrace=q56/f10/h17/r1\tsha=4cec5c5a115a\n#47\t2026-07-14 05:33:31\t+1/-1\t⚠️ mid-edit\tq\ttrace=q56/f12/h59/r1\tsha=2e5afd5b2fcb\n#48\t2026-07-14 06:04:11\t+1/-1\t⚠️ mid-edit\tq\ttrace=q56/f13/h24/r1\tsha=d2161ccad722\n#49\t2026-07-14 07:45:53\t+1/-1\t⚠️ mid-edit\tq\ttrace=q44/f4/h11/r1\tsha=158dbe26a76d\n#50\t2026-07-14 07:52:38\t+1/-1\t⚠️ mid-edit\tq\ttrace=q58/f6/h48/r1\tsha=c9aab93a3289\n#51\t2026-07-14 08:51:35\t+1/-1\t\tq\t—\tsha=4c687ece0ef3\n#52\t2026-07-14 08:56:20\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f1/h74/r1\tsha=bab552fefc4a\n#53\t2026-07-14 09:13:51\t+1/-1\t⚠️ mid-edit\tq\ttrace=q58/f7/h29/r1\tsha=a4a88736ed1d\n#54\t2026-07-14 10:40:10\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f3/h43/r1\tsha=13281d0a050a\n#55\t2026-07-14 10:57:02\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f4/h9/r1\tsha=6edf7fd37590\n#56\t2026-07-14 11:35:53\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f6/h30/r1\tsha=837ddb15b4c4\n#57\t2026-07-14 12:10:54\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f7/h25/r1\tsha=296ceb56a5d7\n#58\t2026-07-14 12:14:08\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f8/h26/r1\tsha=658c069bb657\n#59\t2026-07-14 12:27:50\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f10/h13/r1\tsha=772254b207ae\n#60\t2026-07-14 12:29:52\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f11/h9/r1\tsha=efec45f9877f\n#61\t2026-07-14 12:42:17\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f13/h8/r1\tsha=76bd20a74ce4\n#62\t2026-07-14 12:55:52\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f14/h9/r1\tsha=732ad26e5801\n#63\t2026-07-14 13:08:01\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f15/h54/r1\tsha=1c13f4fd9ab1\n#64\t2026-07-14 13:12:33\t+1/-1\t⚠️ mid-edit\tq\ttrace=q60/f12/h11/r1\tsha=32ef80ef92cf\n#65\t2026-07-14 13:30:44\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f17/h43/r1\tsha=0b424a280109\n#66\t2026-07-14 13:42:44\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f18/h13/r1\tsha=564544f4b824\n#67\t2026-07-14 13:47:48\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f19/h25/r1\tsha=74f85d040ef5\n#68\t2026-07-14 13:52:40\t+1/-1\t⚠️ mid-edit\tq\ttrace=q58/f13/h11/r1\tsha=1055991e311c\n#69\t2026-07-14 14:02:51\t+1/-1\t⚠️ mid-edit\tq\ttrace=q59/f20/h42/r1\tsha=258def2ae1af\n#70\t2026-07-14 14:05:50\t+1/-1\t\tq\t—\tsha=81a87fdbc012\n#71\t2026-07-14 14:20:52\t+1/-1\t⚠️ mid-edit\tq\ttrace=q58/f17/h25/r1\tsha=b853895eb553\n#72\t2026-07-14 14:33:45\t+1/-1\t⚠️ mid-edit\tq\ttrace=q60/f15/h13/r1\tsha=205e50863bdf\n#73\t2026-07-14 14:34:46\t+1/-1\t⚠️ mid-edit\tq\ttrace=q58/f19/h6/r1\tsha=3f7e23a1ee6b\n#74\t2026-07-14 14:44:49\t+1/-1\t\tq\t—\tsha=4ca04a7a2bef\n#75\t2026-07-14 16:11:52\t?/?\t⚠️ mid-edit\tq\ttrace=q58/f24/h50/r1\tsha=8da386b12cd1\n#76\t2026-07-14 16:18:50\t?/?\t⚠️ mid-edit\tq\ttrace=q61/f1/h50/r1\tsha=c2d74939b452\n#77\t2026-07-14 16:18:50\t+1/-1\t⚠️ mid-edit\tq\ttrace=q61/f1/h50/r1\tsha=81b579282d5c\n#78\t2026-07-14 16:45:23\t+1/-1\t⚠️ mid-edit\tq\ttrace=q61/f2/h64/r1\tsha=32592a59a6e3\n#79\t2026-07-14 16:53:49\t+1/-1\t⚠️ mid-edit\tq\ttrace=q58/f28/h16/r1\tsha=6cd327fb7241\n#80\t2026-07-14 17:33:23\t?/?\t⚠️ mid-edit\tq\ttrace=q61/f4/h8/r1\tsha=7a0500e37920\n#81\t2026-07-14 17:33:23\t+1/-1\t⚠️ mid-edit\tq\ttrace=q61/f4/h8/r1\tsha=0750b732937d\n#82\t2026-07-15 02:43:56\t+1/-1\t\tq\t—\tsha=17a8180fc539\n#83\t2026-07-15 03:03:41\t+1/-1\t⚠️ mid-edit\tq\ttrace=q63/f1/h22/r1\tsha=f3d656145523\n#84\t2026-07-15 03:33:13\t+1/-1\t⚠️ mid-edit\tq\ttrace=q61/f5/h174/r1\tsha=66a2bc2e7729\n#85\t2026-07-15 05:21:00\t+1/-1\t⚠️ mid-edit\tq\ttrace=q44/f10/h7/r1\tsha=4f27dd9c6ea3\n#86\t2026-07-15 05:23:35\t+1/-1\t⚠️ mid-edit\tq\ttrace=q64/f2/h55/r1\tsha=a7f55ca5692f\n#87\t2026-07-15 05:37:15\t+1/-1\t⚠️ mid-edit\tq\ttrace=q44/f11/h6/r1\tsha=591c178111b3\n#88\t2026-07-15 05:48:49\t+1/-1\t⚠️ mid-edit\tq\ttrace=q64/f3/h49/r1\tsha=a15b1fcd1785\n#89\t2026-07-15 05:57:40\t+1/-1\t⚠️ mid-edit\tq\ttrace=q64/f4/h28/r1\tsha=086f92eb3790\n#90\t2026-07-15 06:07:10\t+1/-1\t⚠️ mid-edit\tq\ttrace=q64/f5/h13/r1\tsha=7a0d3728dba7\n#91\t2026-07-15 06:19:35\t+1/-1\t⚠️ mid-edit\tq\ttrace=q66/f1/h37/r1\tsha=7d9adcf508cb\n#92\t2026-07-15 06:20:33\t+1/-1\t⚠️ mid-edit\tq\ttrace=q67/f1/h8/r1\tsha=d01433caae9e\n#93\t2026-07-15 06:32:25\t+1/-1\t⚠️ mid-edit\tq\ttrace=q66/f2/h31/r1\tsha=5e812a1f277f\n#94\t2026-07-15 06:44:00\t+1/-1\t⚠️ mid-edit\tq\ttrace=q67/f2/h14/r1\tsha=36eb3b426e29\n#95\t2026-07-15 06:59:51\t+1/-1\t⚠️ mid-edit\tq\ttrace=q67/f3/h6/r1\tsha=53e07f269dd9\n#96\t2026-07-15 07:08:54\t+1/-1\t⚠️ mid-edit\tq\ttrace=q69/f1/h30/r1\tsha=40351520eab9\n#97\t2026-07-15 07:09:47\t+1/-1\t⚠️ mid-edit\tq\ttrace=q67/f4/h8/r1\tsha=f517fa46aec6\n#98\t2026-07-15 07:14:20\t+1/-1\t⚠️ mid-edit\tq\ttrace=q68/f2/h30/r1\tsha=47d46208efbe\n#99\t2026-07-15 07:18:38\t+1/-1\t⚠️ mid-edit\tq\ttrace=q69/f3/h10/r1\tsha=ba850ee1d23b\n#100\t2026-07-15 07:24:55\t+1/-1\t⚠️ mid-edit\tq\ttrace=q68/f4/h27/r1\tsha=574c57492942\n#101\t2026-07-15 07:51:58\t+1/-1\t⚠️ mid-edit\tq\ttrace=q65/f4/h19/r1\tsha=052d9f815035\n#102\t2026-07-15 07:56:14\t+1/-1\t⚠️ mid-edit\tq\ttrace=q68/f6/h51/r1\tsha=f59523c990e7\n#103\t2026-07-15 08:27:38\t+1/-1\t⚠️ mid-edit\tq\ttrace=q67/f5/h20/r1\tsha=4aaeddc2f1fe\n#104\t2026-07-15 08:57:53\t+1/-1\t🏁 final\tq\ttrace=q68/f9/h57/r1\tsha=9ef216c8b139\n#105\t2026-07-15 11:46:00\t+1/-1\t⚠️ mid-edit\tq\ttrace=q68/f10/h51/r1\tsha=feeb4a84f2d7\n#106\t2026-07-15 11:54:02\t+1/-1\t⚠️ mid-edit\tq\ttrace=q68/f11/h16/r1\tsha=4b95f244e38a\n#107\t2026-07-15 11:59:33\t+1/-1\t🏁 final\tq\ttrace=q68/f12/h12/r1\tsha=6c76226c17d7\n#108\t2026-07-15 12:56:32\t+1/-1\t⚠️ mid-edit\tq\ttrace=q71/f4/h30/r1\tsha=4d1e81a54d57\n#109\t2026-07-15 13:07:02\t+1/-1\t⚠️ mid-edit\tq\ttrace=q72/f1/h25/r1\tsha=c4a44363159a\n#110\t2026-07-15 13:17:12\t+1/-1\t⚠️ mid-edit\tq\ttrace=q71/f5/h21/r1\tsha=c4c5b1268a46\n#111\t2026-07-15 13:34:46\t+1/-1\t🏁 final\tq\ttrace=q71/f6/h40/r1\tsha=c73be4778578\n#112\t2026-07-15 13:51:20\t+1/-1\t🏁 final\tq\ttrace=q71/f10/h15/r1\tsha=50b7647a9ff5\n#113\t2026-07-15 14:07:04\t+1/-1\t\tq\t—\tsha=754e7000f42c\n#114\t2026-07-15 14:20:45\t+1/-1\t⚠️ mid-edit\tq\ttrace=q72/f3/h15/r1\tsha=f032bdddb23c\n#115\t2026-07-15 15:33:29\t+1/-1\t🏁 final\tq\ttrace=q72/f4/h26/r1\tsha=3fab3ce062b2\n#116\t2026-07-15 17:10:25\t+1/-1\t\tq\t—\tsha=531c68ec0fc8\n#117\t2026-07-15 17:34:23\t+1/-1\t⚠️ mid-edit\tq\ttrace=q71/f17/h39/r1\tsha=4e461aae736d\n#118\t2026-07-15 17:56:37\t+1/-1\t⚠️ mid-edit\tq\ttrace=q71/f19/h12/r1\tsha=3a9014051a1a\n#119\t2026-07-16 04:13:20\t+1/-1\t⚠️ mid-edit\tq\ttrace=q68/f15/h15/r1\tsha=93aaafcfc5ef\n#120\t2026-07-16 04:34:34\t+1/-1\t⚠️ mid-edit\tq\ttrace=q68/f17/h42/r1\tsha=c4fc07cbfb30\n#121\t2026-07-16 04:46:19\t+1/-1\t🏁 final\tq\ttrace=q68/f19/h32/r1\tsha=caaa3c1c41a5\n#122\t2026-07-16 04:54:02\t+1/-1\t⚠️ mid-edit\tq\ttrace=q75/f1/h57/r1\tsha=8c7fda0a9695\n#123\t2026-07-16 06:06:29\t+1/-1\t⚠️ mid-edit\tq\ttrace=q68/f22/h44/r1\tsha=cb6f89afd392\n#124\t2026-07-16 06:49:09\t+1/-1\t🏁 final\tq\ttrace=q68/f26/h38/r1\tsha=d4f29eb8ef01\n#125\t2026-07-16 07:05:14\t+1/-1\t⚠️ mid-edit\tq\ttrace=q68/f28/h29/r1\tsha=fff567bbf9b9\n#126\t2026-07-16 09:16:43\t+1/-1\t⚠️ mid-edit\tq\ttrace=q77/f1/h52/r1\tsha=c88e967c24d0\n#127\t2026-07-16 10:20:33\t+1/-1\t🏁 final\tq\ttrace=q68/f32/h50/r1\tsha=aa457ab605a0\n#128\t2026-07-16 12:36:29\t+1/-1\t⚠️ mid-edit\tq\ttrace=q78/f2/h14/r1\tsha=1d5745ec40f1\n#129\t2026-07-16 12:47:22\t+1/-1\t⚠️ mid-edit\tq\ttrace=q68/f33/h11/r1\tsha=c818960dc099\n#130\t2026-07-16 14:03:00\t+1/-1\t🏁 final\tq\ttrace=q68/f36/h18/r1\tsha=525006e2f287\n#131\t2026-07-16 14:15:36\t+1/-1\t🏁 final\tq\ttrace=q68/f37/h7/r1\tsha=27f4c2d7b435\n#132\t2026-07-16 14:49:23\t+1/-1\t🏁 final\tq\ttrace=q68/f41/h9/r1\tsha=34e51ed5ce2c\n#133\t2026-07-16 15:00:10\t+1/-1\t⚠️ mid-edit\tq\ttrace=q71/f21/h52/r1\tsha=8d562d1d0303\n#134\t2026-07-16 15:18:38\t?/?\t⚠️ mid-edit\tq\ttrace=q71/f22/h13/r1\tsha=938ff574edda\n#135\t2026-07-16 15:18:38\t+1/-1\t⚠️ mid-edit\tq\ttrace=q71/f22/h13/r1\tsha=4f737080b52f\n#136\t2026-07-16 15:30:43\t+1/-1\t🏁 final\tq\ttrace=q71/f24/h23/r1\tsha=b263506f0a7d\n#137\t2026-07-16 15:55:04\t+1/-1\t⚠️ mid-edit\tq\ttrace=q72/f7/h10/r1\tsha=91afa829a15c\n#138\t2026-07-16 15:58:53\t+1/-1\t⚠️ mid-edit\tq\ttrace=q80/f2/h35/r1\tsha=65ca9c6f589a\n#139\t2026-07-17 03:45:06\t?/?\t⚠️ mid-edit\tq\ttrace=q81/f1/h33/r1\tsha=453e894ed039\n#140\t2026-07-17 03:45:06\t+1/-1\t⚠️ mid-edit\tq\ttrace=q81/f1/h33/r1\tsha=c976307b875a\n#141\t2026-07-17 04:49:40\t?/?\t⚠️ mid-edit\tq\ttrace=q81/f7/h18/r2\tsha=9a3ac370f86d\n#142\t2026-07-17 04:49:41\t+1/-1\t🏁 final\tq\ttrace=q81/f7/h18/r2\tsha=8ec7006f5db4\n#143\t2026-07-17 04:58:43\t+1/-1\t⚠️ mid-edit\tq\ttrace=q72/f11/h15/r1\tsha=5f678842fe3f\n#144\t2026-07-17 05:08:17\t+1/-1\t🏁 final\tq\ttrace=q72/f13/h2/r2\tsha=026367eb16f5\n#145\t2026-07-17 05:15:39\t+1/-1\t🏁 final\tq\ttrace=q72/f14/h10/r1\tsha=8bca8dc59c4f\n#146\t2026-07-17 05:38:29\t+1/-1\t⚠️ mid-edit\tq\ttrace=q82/f2/h76/r1\tsha=640e43e5ed6e\n#147\t2026-07-17 06:45:17\t+1/-1\t🏁 final\tq\ttrace=q72/f15/h25/r1\tsha=25e8f5332c00\n#148\t2026-07-17 06:48:19\t+1/-1\t⚠️ mid-edit\tq\ttrace=q72/f16/h5/r1\tsha=b2657b7d27ac\n#149\t2026-07-17 07:02:22\t+1/-1\t⚠️ mid-edit\tq\ttrace=q63/f2/h15/r1\tsha=06fb4bfa3c21\n#150\t2026-07-17 07:09:07\t+1/-1\t⚠️ mid-edit\tq\ttrace=q72/f17/h38/r1\tsha=75993ea312c7\n#151\t2026-07-17 07:28:37\t+1/-1\t\tq\t—\tsha=cb538a95dc31\n#152\t2026-07-17 08:24:25\t+1/-1\t⚠️ mid-edit\tq\ttrace=q84/f2/h73/r1\tsha=eeaeda7e4b6d\n#153\t2026-07-17 09:08:55\t+1/-1\t⚠️ mid-edit\tq\ttrace=q85/f3/h113/r1\tsha=678a8db9c2d9\n#154\t2026-07-17 11:08:11\t+1/-1\t🏁 final\tq\ttrace=q81/f11/h13/r1\tsha=92e2ed559a39\n#155\t2026-07-17 12:00:41\t+1/-1\t🏁 final\tq\ttrace=q85/f5/h10/r1\tsha=7c69ccf274a9\n#156\t2026-07-17 15:45:00\t+1/-1\t🏁 final\tq\ttrace=q85/f22/h10/r2\tsha=f14dc3f49433\n#157\t2026-07-17 15:49:22\t+1/-1\t🏁 final\tq\ttrace=q72/f21/h29/r1\tsha=cb4cc29f434a\n#158\t2026-07-17 16:14:40\t+1/-1\t⚠️ mid-edit\tq\ttrace=q85/f25/h52/r1\tsha=e5d71946669d\n#159\t2026-07-17 16:28:04\t+1/-1\t🏁 final\tq\ttrace=q81/f16/h30/r1\tsha=5d85bf951e96\n#160\t2026-07-17 16:29:46\t+1/-1\t\tq\t—\tsha=cc520f7f3b5f\n#161\t2026-07-17 17:00:00\t+1/-1\t🏁 final\tq\ttrace=q81/f18/h34/r1\tsha=9016554aa13a\n#162\t2026-07-17 17:28:55\t+1/-1\t🏁 final\tq\ttrace=q81/f20/h11/r1\tsha=d39e98cfabe5\n#163\t2026-07-18 03:18:03\t+1/-1\t⚠️ mid-edit\tq\ttrace=q85/f28/h3/r1\tsha=c6c60d09b6e8\n#164\t2026-07-18 03:32:53\t+1/-1\t\tq\t—\tsha=844f5e2ae21c\n#165\t2026-07-18 03:50:08\t+1/-1\t🏁 final\tq\ttrace=q81/f25/h42/r1\tsha=942fcacc03af\n#166\t2026-07-18 04:21:36\t+1/-1\t⚠️ mid-edit\tq\ttrace=q85/f34/h7/r1\tsha=945998fde214\n#167\t2026-07-18 05:48:12\t+1/-1\t⚠️ mid-edit\tq\ttrace=q86/f2/h61/r1\tsha=ec5c3e5a2b3d\n#168\t2026-07-18 07:15:27\t+1/-1\t🏁 final\tq\ttrace=q81/f28/h30/r1\tsha=1248414b9a0b\n#169\t2026-07-18 08:48:03\t+1/-1\t⚠️ mid-edit\tq\ttrace=q81/f33/h63/r1\tsha=f03df9b4fba2\n#170\t2026-07-18 12:59:13\t+1/-1\t🏁 final\tq\ttrace=q81/f34/h33/r1\tsha=9bbd4aa0d36c\n#171\t2026-07-18 14:37:19\t+1/-1\t⚠️ mid-edit\tq\ttrace=q92/f1/h112/r1\tsha=9c2a878f8fdf\n#172\t2026-07-18 14:42:47\t+1/-1\t⚠️ mid-edit\tq\ttrace=q81/f38/h9/r1\tsha=6262cf840ba6\n#173\t2026-07-18 15:26:38\t+1/-1\t⚠️ mid-edit\tq\ttrace=q94/f2/h51/r1\tsha=6158a0f7a22d\n#174\t2026-07-19 03:44:46\t+1/-1\t\tq\t—\tsha=86cdce3cc34a\n#175\t2026-07-19 03:53:16\t+1/-1\t⚠️ mid-edit\tq\ttrace=q81/f40/h13/r1\tsha=1ac4b10132a2\n#176\t2026-07-19 04:00:39\t+1/-1\t\tq\t—\tsha=202bb1819422\n#177\t2026-07-19 04:04:57\t+1/-1\t🏁 final\tq\ttrace=q81/f42/h9/r1\tsha=c973601be56c\n#178\t2026-07-19 04:35:12\t+1/-1\t⚠️ mid-edit\tq\ttrace=q81/f43/h16/r1\tsha=dc7549e8d694\n#179\t2026-07-19 04:43:52\t+1/-1\t🏁 final\tq\ttrace=q83/f17/h43/r1\tsha=765c8af1ed3f\n#180\t2026-07-19 05:45:15\t+1/-1\t⚠️ mid-edit\tq\ttrace=q95/f2/h12/r2\tsha=d8fd9dcf85a6\n#181\t2026-07-19 06:31:57\t+1/-1\t\tq\t—\tsha=d89a696f6cbe\n#182\t2026-07-19 06:38:33\t+1/-1\t🏁 final\tq\ttrace=q95/f8/h4/r2\tsha=815c3e1daeac\n#183\t2026-07-19 16:30:09\t+1/-1\t🏁 final\tq\ttrace=q81/f44/h9/r1\tsha=5c2893619403\n#184\t2026-07-19 16:39:20\t+1/-1\t🏁 final\tq\ttrace=q83/f27/h53/r1\tsha=5ebeab94954a\n#185\t2026-07-19 17:20:40\t+1/-1\t⚠️ mid-edit\tq\ttrace=q81/f46/h79/r1\tsha=ea8076465a4e\n#186\t2026-07-19 17:21:02\t+1/-1\t⚠️ mid-edit\tq\ttrace=q81/f46/h84/r1\tsha=9a4a71055413\n#187\t2026-07-20 09:58:21\t+1/-1\t⚠️ mid-edit\tq\ttrace=q100/f1/h25/r1\tsha=c944d9fe40c9\n#188\t2026-07-21 11:54:34\t+1/-1\t🏁 final\tq\ttrace=q83/f33/h52/r1\tsha=dd66e33d8eee\n#189\t2026-07-21 14:49:29\t+1/-1\t\tq\t—\tsha=3b32fbab4818\n#190\t2026-07-21 15:45:22\t+1/-1\t🏁 final\tq\ttrace=q83/f38/h71/r1\tsha=5c133f0667e3\n#191\t2026-07-21 15:47:09\t+1/-1\t🏁 final\tq\ttrace=q100/f2/h6/r1\tsha=716711e23958\n#192\t2026-07-21 15:55:22\t+1/-1\t🏁 final\tq\ttrace=q83/f40/h61/r1\tsha=991f653db8ae\n#193\t2026-07-21 16:28:56\t+1/-1\t🏁 final\tq\ttrace=q83/f43/h15/r1\tsha=b9b0ff3c79c5\n#194\t2026-07-22 04:35:02\t+1/-1\t🏁 final\tq\ttrace=q83/f46/h19/r1\tsha=1e9d8b3acdf6\n#195\t2026-07-22 04:51:42\t+1/-1\t\tq\t—\tsha=214d3c7bb91e\n#196\t2026-07-22 07:16:46\t+1/-1\t🏁 final\tq\ttrace=q103/f1/h34/r1\tsha=615fabf87964\n#197\t2026-07-22 07:25:31\t+1/-1\t🏁 final\tq\ttrace=q103/f3/h15/r1\tsha=5c5db028caf2\n#198\t2026-07-22 10:26:10\t+1/-1\t🏁 final\tq\ttrace=q83/f55/h21/r1\tsha=1c0c39d22754\n\nBest clean version: #198 (heuristic — use check_syntax=true for accuracy)\n138 version(s) with ⚠️ quality issues detected.\n\nUse diff_versions(path, from_seq, to_seq) to compare any two versions, or revert_file(path, file_seq) to restore.",
+      "_floor": 56
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_00_n70YWLKvgwfvZgn9kKfR3803",
+          "type": "function",
+          "function": {
+            "name": "find_files",
+            "arguments": "{\"pattern\": \"panel.html\", \"path\": \"E:\\\\s\\\\wol\\\\py\\\\qqq-shell-v2\\\\server-app\"}"
+          }
+        },
+        {
+          "id": "call_01_FoeRW0bBGJUjs95Bdk4y6158",
+          "type": "function",
+          "function": {
+            "name": "revert_file",
+            "arguments": "{\"path\": \"E:\\\\s\\\\wol\\\\py\\\\qqq-shell-v2\\\\server-app\\\\core\\\\gaea-host.js\", \"file_seq\": 25}"
+          }
+        },
+        {
+          "id": "call_02_oMbBTQfuRMQnbr8achrv2221",
+          "type": "function",
+          "function": {
+            "name": "revert_file",
+            "arguments": "{\"path\": \"E:\\\\s\\\\wol\\\\py\\\\qqq-shell-v2\\\\server-app\\\\core\\\\shell.css\", \"file_seq\": 22}"
+          }
+        },
+        {
+          "id": "call_03_KKrB9D59HVxldvmHyHcX4246",
+          "type": "function",
+          "function": {
+            "name": "revert_file",
+            "arguments": "{\"path\": \"E:\\\\s\\\\wol\\\\py\\\\qqq-shell-v2\\\\server-app\\\\goods\\\\wysiwyg\\\\wysiwyg.js\", \"file_seq\": 2}"
+          }
+        },
+        {
+          "id": "call_04_3jpMCHI5qOVwte5IbRr36751",
+          "type": "function",
+          "function": {
+            "name": "revert_file",
+            "arguments": "{\"path\": \"E:\\\\s\\\\wol\\\\py\\\\qqq-shell-v2\\\\server-app\\\\service-worker.js\", \"file_seq\": 190}"
+          }
+        }
+      ],
+      "_floor": 56
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_00_n70YWLKvgwfvZgn9kKfR3803",
+      "content": "E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\goods\\kope-a\\panel.html",
+      "_floor": 56
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_01_FoeRW0bBGJUjs95Bdk4y6158",
+      "content": "Reverted E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\core\\gaea-host.js to version #25 (blob 1de2983a4ab1, 2026-07-21 15:43:04)\nLater versions: 1 total\nHint: A cleaner version exists — #26 [sha256: 1de2983a4ab1ddf6512bf1b87be16dda6d97f8216b65318111327cd278574d62]",
+      "_floor": 56
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_02_oMbBTQfuRMQnbr8achrv2221",
+      "content": "Reverted E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\core\\shell.css to version #22 (blob 9441be18b1ac, 2026-07-21 15:42:33)\n\n⚠️ FILE SIZE WARNING: This file now has 1632 lines (project limit: 1500). Suggest splitting into smaller modules. [sha256: 9441be18b1accea57dc7edcbad331c7d6ad5d496acbd07be61858f2e317a5756]",
+      "_floor": 56
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_03_KKrB9D59HVxldvmHyHcX4246",
+      "content": "Reverted E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\goods\\wysiwyg\\wysiwyg.js to version #2 (blob 0a9d68d534fb, 2026-07-21 15:45:05) [sha256: 0a9d68d534fb0b9c808a33ef68ada6c0dbf9a255c14251a6d2d53b7c828ea36f]",
+      "_floor": 56
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_04_3jpMCHI5qOVwte5IbRr36751",
+      "content": "Reverted E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\service-worker.js to version #190 (blob 5c133f0667e3, 2026-07-21 15:45:22)\nLater versions: 8 total\nHint: A cleaner version exists — #198 [sha256: 5c133f0667e390aab2e4a94ab4e3c07219fa4411e2c699449c055af102255ee7]",
+      "_floor": 56
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_00_8HrmHvVgqx6hLg5WxNDM8004",
+          "type": "function",
+          "function": {
+            "name": "timeline_versions",
+            "arguments": "{\"path\": \"E:\\\\s\\\\wol\\\\py\\\\qqq-shell-v2\\\\server-app\\\\goods\\\\kope-a\\\\panel.html\"}"
+          }
+        }
+      ],
+      "_floor": 56
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_00_8HrmHvVgqx6hLg5WxNDM8004",
+      "content": "Timeline versions for: E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\goods\\kope-a\\panel.html\nProject root: E:/s/wol/py/qqq-shell-v2\n\n#\ttime\t+/-\tquality\tsrc\ttrace\tsha\n#1\t2026-07-21 11:51:31\t?/?\t⚠️ mid-edit\tq\ttrace=q83/f33/h19/r1\tsha=e3b0c44298fc\n#2\t2026-07-21 11:51:31\t+711/?\t🏁 final\tq\ttrace=q83/f33/h19/r1\tsha=62ddc7597e51\n#3\t2026-07-21 14:49:16\t+21/-17\t⚠️ mid-edit\tq\ttrace=q83/f36/h4/r1\tsha=4607aa387147\n#4\t2026-07-21 14:49:57\t+4/-3\t⚠️ mid-edit\tq\ttrace=q83/f36/h8/r1\tsha=f7b589561f96\n#5\t2026-07-21 14:50:19\t+8/-6\t⚠️ mid-edit\tq\ttrace=q83/f36/h11/r1\tsha=1c9244ae3b9c\n#6\t2026-07-21 14:50:34\t+9/-16\t⚠️ mid-edit\tq\ttrace=q83/f36/h15/r1\tsha=62ddc7597e51\n#7\t2026-07-21 14:50:50\t+1/-1\t⚠️ mid-edit\tq\ttrace=q83/f36/h18/r1\tsha=1d9fe883e69c\n#8\t2026-07-21 14:50:55\t+2/-2\t⚠️ mid-edit\tq\ttrace=q83/f36/h19/r1\tsha=28b3dc39078c\n#9\t2026-07-21 14:50:59\t+2/-2\t⚠️ mid-edit\tq\ttrace=q83/f36/h20/r1\tsha=fd145bb98dee\n#10\t2026-07-21 14:51:03\t+8/?\t⚠️ mid-edit\tq\ttrace=q83/f36/h21/r1\tsha=93f31ad9995e\n#11\t2026-07-21 14:51:06\t+3/-2\t🏁 final\tq\ttrace=q83/f36/h22/r1\tsha=334f14ab3b3e\n#12\t2026-07-21 15:42:08\t+7/-21\t⚠️ mid-edit\tq\ttrace=q83/f38/h25/r1\tsha=403463f7337e\n#13\t2026-07-21 15:43:20\t?/-1\t⚠️ mid-edit\tq\ttrace=q83/f38/h43/r1\tsha=5283d7062ea9\n#14\t2026-07-21 15:43:34\t+2/-12\t⚠️ mid-edit\tq\ttrace=q83/f38/h48/r1\tsha=28b11fd44842\n#15\t2026-07-21 15:43:54\t+4/-1\t⚠️ mid-edit\tq\ttrace=q83/f38/h52/r1\tsha=ce970a8e902e\n#16\t2026-07-21 15:44:08\t+9/-4\t🏁 final\tq\ttrace=q83/f38/h55/r1\tsha=3a0da8689790\n#17\t2026-07-21 16:34:04\t+7/-6\t⚠️ mid-edit\tq\ttrace=q83/f44/h32/r1\tsha=d4f5afd09e8a\n#18\t2026-07-21 16:34:55\t+3/-2\t⚠️ mid-edit\tq\ttrace=q83/f44/h42/r1\tsha=f45b493a9ba0\n#19\t2026-07-21 16:35:13\t+3/-3\t🏁 final\tq\ttrace=q83/f44/h47/r1\tsha=343dadeee2fc\n#20\t2026-07-21 16:40:45\t+2/-1\t🏁 final\tq\ttrace=q83/f45/h20/r2\tsha=8030269cdf89\n#21\t2026-07-22 07:22:15\t+124/-40\t⚠️ mid-edit\tq\ttrace=q83/f52/h17/r1\tsha=370431b8bb2c\n#22\t2026-07-22 07:22:29\t+53/-13\t⚠️ mid-edit\tq\ttrace=q83/f52/h18/r1\tsha=4a3204a3dbb0\n#23\t2026-07-22 07:22:50\t?/-13\t⚠️ mid-edit\tq\ttrace=q83/f52/h23/r1\tsha=cb7c074435a1\n#24\t2026-07-22 07:23:01\t+3/-1\t⚠️ mid-edit\tq\ttrace=q83/f52/h25/r1\tsha=d3beadd3df78\n#25\t2026-07-22 07:23:29\t+16/-19\t🏁 final\tq\ttrace=q83/f52/h28/r1\tsha=a8b6082e6f0d\n#26\t2026-07-22 10:18:16\t+14/-23\t⚠️ mid-edit\tq\ttrace=q83/f54/h22/r1\tsha=4670896d81c7\n#27\t2026-07-22 10:18:36\t+23/-14\t⚠️ mid-edit\tq\ttrace=q83/f54/h26/r1\tsha=a8b6082e6f0d\n#28\t2026-07-22 10:18:52\t+7/-11\t⚠️ mid-edit\tq\ttrace=q83/f54/h28/r1\tsha=07babbf3af93\n#29\t2026-07-22 10:19:06\t+2/-3\t🏁 final\tq\ttrace=q83/f54/h31/r1\tsha=0b642b2d33b1\n#30\t2026-07-22 10:25:50\t+9/?\t🏁 final\tq\ttrace=q83/f55/h17/r1\tsha=c47a630b0f66\n\nBest clean version: #30 (heuristic — use check_syntax=true for accuracy)\n22 version(s) with ⚠️ quality issues detected.\n\nUse diff_versions(path, from_seq, to_seq) to compare any two versions, or revert_file(path, file_seq) to restore.",
+      "_floor": 56
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [
+        {
+          "id": "call_00_UtJCfff4FkG0rtYKTO935558",
+          "type": "function",
+          "function": {
+            "name": "revert_file",
+            "arguments": "{\"file_seq\": 16, \"path\": \"E:\\\\s\\\\wol\\\\py\\\\qqq-shell-v2\\\\server-app\\\\goods\\\\kope-a\\\\panel.html\"}"
+          }
+        }
+      ],
+      "_floor": 56
+    },
+    {
+      "role": "tool",
+      "tool_call_id": "call_00_UtJCfff4FkG0rtYKTO935558",
+      "content": "Reverted E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\goods\\kope-a\\panel.html to version #16 (blob 3a0da8689790, 2026-07-21 15:44:08)\nLater versions: 14 total — issues: #17 ⚠️ mid-edit, #18 ⚠️ mid-edit, #21 ⚠️ mid-edit, #22 ⚠️ mid-edit, #23 ⚠️ mid-edit, #24 ⚠️ mid-edit, #26 ⚠️ mid-edit, #27 ⚠️ mid-edit, #28 ⚠️ mid-edit\nHint: A cleaner version exists — #30 [sha256: 3a0da868979005dee0084ffc037ef07f5264142eb7cf35e818057d14534f1ca6] @q83f56h4r1",
+      "_floor": 56
+    },
+    {
+      "role": "assistant",
+      "content": "已回到 q83 Floor 38。五个文件全部还原到 2026-07-21 15:41~15:45 时刻：\n\n| 文件 | 版本 | 时间 |\n|------|------|------|\n| `gaea-host.js` | #25 | 15:43:04 |\n| `shell.css` | #22 | 15:42:33 |\n| `wysiwyg.js` | #2 | 15:45:05 |\n| `service-worker.js` | #190 | 15:45:22 |\n| `kope-a/panel.html` | #16 | 15:44:08 |\n\n**之后崩坏的嫌疑人**（f38 之后到现在的变更）：\n\n- `panel.html` 最可疑 — f52（#21-25）有 **+124/-40** 巨量改动，f54（#26-29）又来回折腾\n- `gaea-host.js` — 仅 #26 一次小改（+2/-1），影响不大\n- `shell.css` / `wysiwyg.js` — f38 后零改动\n\n现在 Ctrl+R 刷新看看 kope-a 区是否恢复正常？如果正常了，问题就锁定在 f52/f54 对 panel.html 的那波大改上。",
+      "_floor": 56
+    }
+  ],
+  "houses": [
+    {
+      "index": 1,
+      "type": "tools",
+      "ts": "2026-07-22T10:36:17.104Z",
+      "ms": 9193,
+      "wgeCost": 219,
+      "model": "deep",
+      "cacheHitRate": 98.69324473975637,
+      "usage": {
+        "prompt_tokens": 72240,
+        "completion_tokens": 623,
+        "cached_tokens": 71296,
+        "non_cached_tokens": 944
+      },
+      "billingSeq": 1549,
+      "billingRequestId": "t_1784716565933_sywsn0_R_1784716577065072700",
+      "tier": "6-Deep+Max",
+      "toolCount": 5
+    },
+    {
+      "index": 2,
+      "type": "tools",
+      "ts": "2026-07-22T10:36:33.005Z",
+      "ms": 15746,
+      "wgeCost": 880,
+      "model": "deep",
+      "cacheHitRate": 85.77148644510916,
+      "usage": {
+        "prompt_tokens": 84914,
+        "completion_tokens": 1096,
+        "cached_tokens": 72832,
+        "non_cached_tokens": 12082
+      },
+      "billingSeq": 1550,
+      "billingRequestId": "t_1784716565933_sywsn0_R_1784716592988394663",
+      "tier": "6-Deep+Max",
+      "toolCount": 5
+    },
+    {
+      "index": 3,
+      "type": "tools",
+      "ts": "2026-07-22T10:36:36.599Z",
+      "ms": 3244,
+      "wgeCost": 156,
+      "model": "deep",
+      "cacheHitRate": 98.07692307692307,
+      "usage": {
+        "prompt_tokens": 86528,
+        "completion_tokens": 127,
+        "cached_tokens": 84864,
+        "non_cached_tokens": 1664
+      },
+      "billingSeq": 1551,
+      "billingRequestId": "t_1784716565933_sywsn0_R_1784716596554158635",
+      "tier": "6-Deep+Max",
+      "toolCount": 1
+    },
+    {
+      "index": 4,
+      "type": "tools",
+      "ts": "2026-07-22T10:36:45.506Z",
+      "ms": 8781,
+      "wgeCost": 226,
+      "model": "deep",
+      "cacheHitRate": 97.94807844915543,
+      "usage": {
+        "prompt_tokens": 88210,
+        "completion_tokens": 356,
+        "cached_tokens": 86400,
+        "non_cached_tokens": 1810
+      },
+      "billingSeq": 1552,
+      "billingRequestId": "t_1784716565933_sywsn0_R_1784716605087008131",
+      "tier": "6-Deep+Max",
+      "toolCount": 1
+    },
+    {
+      "index": 5,
+      "type": "final",
+      "ts": "2026-07-22T10:36:53.047Z",
+      "ms": 7302,
+      "wgeCost": 187,
+      "model": "deep",
+      "cacheHitRate": 99.6103340315787,
+      "usage": {
+        "prompt_tokens": 88794,
+        "completion_tokens": 372,
+        "cached_tokens": 88448,
+        "non_cached_tokens": 346
+      },
+      "billingSeq": 1553,
+      "billingRequestId": "t_1784716565933_sywsn0_R_1784716613027429510",
+      "tier": "6-Deep+Max",
+      "toolCount": 0
+    }
+  ],
+  "costWge": 1685,
+  "floorFree": false,
+  "lastUserInput": {
+    "text": "而是没有任何 k ope a区  没有任何剪切板历史卡片   只有 find 框 而且一切外观都丢失了 ， 你直接回到 q83 第38楼 “═══ Floor 38 ═════   2026-07-21 23:38:36 UTC+08\n■ Q: 现在又回到  kope-a  滴 a 区 侧边， 那个外观上还有点问题：最上方滴筛选框 跟下方滴第一张卡片靠滴太近了有大概6px 都重叠了 ， 而且 现在最下方那个 GH Health 豆腐块没有贴合底部 而是跑到中间了， 干脆把那个 GH Health 豆腐块独立于任何滴 goods， 那不是某一个 goods 滴资产， 而是整个 a 区滴资产， 作为整个 a 区滴一个固定商标位 固定在底。 另一方面现在菜单行2 左边只保留 Search Git 按钮， 而且该两按钮 都没有 a 区， 故无论点哪一个按钮  a 区现在目前永远都是 k ope 不会切换到任何 更不会切换到空 ， 要切换 a 区 只能点 a 区顶端 你现在加一个下拉菜单那种 只能在那个下拉菜单里选不同滴 注册了 a 区滴 goods 才能切换 a 区，现在只有 kope 注册了 a 区， 就是没得换没得选 ， 将来可以考虑把 a 区滴显示跟 菜单行2 脱离开 ， 无论如何现在菜单行2 WYSWYG 和上下文背包那两按钮就 删除不要\n■ A: (no answer)\naz> [mod] gaea-host.js  +70 -14\naz> [mod] panel.html  +6 -23\naz> [mod] shell.css  +13\naz> [mod] wysiwyg.js  +4 -3\naz> [mod] service-worker.js  +1 -1\naz> Floor 38  House 77  Room 0 [all.txt: all.txt]\naz> FILE 5   ROW +94 -41” 回到那个时间节点   看你到底改崩了什吗  那个时候至少能正常显示 k ope 滴 a 区",
+    "vision": "\n\n━━━ VISION ANALYSIS RESULTS (already completed, DO NOT call analyze_image again) ━━━\n[图#1 视觉分析]:\n  image_overview: A screenshot of a software interface showing a search bar and a clipboard history area.\n  visible_text: \"qqq\", \"Search\", \"Git\", \"kope-a\", \"find\", \"Clipboard history will appear here\"\n  objects_and_layout: At the top, there are three buttons labeled \"qqq\", \"Search\", and \"Git\". Below them is a dropdown menu with \"kope-a\" selected. Underneath the dropdown is a text input field with \"find\" typed in. Below this field, a message states \"Clipboard history will appear here\". On the right side, there is a vertical scrollbar with letters from C to R visible.\n  person_identity: none\n  subject_isolation: partial\n  background_description: The background is a solid light beige color.\n  uncertainty: none\n━━━ END VISION RESULTS ━━━\n[person_identity field above identifies who is in the image. Use it.\n IF user asked for background removal: call remove_background ONCE using the PASTED IMAGES path. DO NOT write Python/image-processing code.]",
+    "images": [
+      {
+        "id": 1,
+        "base64": "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",
+        "dataUrl": "data:image/png;base64,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",
+        "fileName": "img_1.png"
+      }
+    ]
+  },
+  "allTxtPath": "E:/s/wol/py/qqq-shell-v2/qqq/quests/q83.绿色包自动更新/f56.而是没有任何 k ope a区 没有任何剪切板历史卡片 只有 find 框 而且一切外/all.txt",
+  "fileStats": {
+    "fileCount": 5,
+    "added": 59,
+    "deleted": 177
+  },
+  "clockTiming": {
+    "floorIndex": 56,
+    "durationMs": 47170,
+    "networkMs": 996.8999996185303,
+    "aiMs": 45163.50000190735,
+    "otherMs": 0,
+    "finishedAt": "2026-07-22T10:36:53.096Z"
+  },
+  "aiStartTime": "2026-07-22 18:36:05 UTC+08",
+  "tierLabel": "A6",
+  "aiBackpackEst": 63,
+  "images": [
+    {
+      "id": 1,
+      "fileName": "img_1.png",
+      "dataUrl": "data:image/png;base64,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"
+    }
+  ],
+  "_floorStartIdx": 3,
+  "_fDir": "E:/s/wol/py/qqq-shell-v2/qqq/quests/q83.绿色包自动更新/f56.而是没有任何 k ope a区 没有任何剪切板历史卡片 只有 find 框 而且一切外/",
+  "createdAt": 1784716613098,
+  "savedAt": 1784716613099,
+  "_streamingText": "",
+  "_streaming": false,
+  "_streamingBuf": "",
+  "_streamingSplitCursor": 0,
+  "_streamingCodeFenceOpen": false,
+  "a4Snapshots": [
+    {
+      "path": "E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\service-worker.js",
+      "op": "revert_file",
+      "added": 1,
+      "deleted": 1,
+      "ts": 1784716593189,
+      "count": 1,
+      "before_blob_hash": "1c0c39d22754ff4702c9c85d09c5e131ab688e6a92b5ba866167c2e2fa8be898",
+      "blob_hash": "5c133f0667e390aab2e4a94ab4e3c07219fa4411e2c699449c055af102255ee7"
+    },
+    {
+      "path": "E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\core\\gaea-host.js",
+      "op": "revert_file",
+      "added": 1,
+      "deleted": 2,
+      "ts": 1784716593234,
+      "count": 1,
+      "before_blob_hash": "3dcc994b4a597969bcf014f32d2d9720d44f0917201acc196b550f529f5653c4",
+      "blob_hash": "1de2983a4ab1ddf6512bf1b87be16dda6d97f8216b65318111327cd278574d62"
+    },
+    {
+      "path": "E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\core\\shell.css",
+      "op": "revert_file",
+      "added": 0,
+      "deleted": 0,
+      "ts": 1784716593284,
+      "count": 1,
+      "before_blob_hash": "9441be18b1accea57dc7edcbad331c7d6ad5d496acbd07be61858f2e317a5756",
+      "blob_hash": "9441be18b1accea57dc7edcbad331c7d6ad5d496acbd07be61858f2e317a5756"
+    },
+    {
+      "path": "E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\goods\\wysiwyg\\wysiwyg.js",
+      "op": "revert_file",
+      "added": 0,
+      "deleted": 0,
+      "ts": 1784716593333,
+      "count": 1,
+      "before_blob_hash": "0a9d68d534fb0b9c808a33ef68ada6c0dbf9a255c14251a6d2d53b7c828ea36f",
+      "blob_hash": "0a9d68d534fb0b9c808a33ef68ada6c0dbf9a255c14251a6d2d53b7c828ea36f"
+    },
+    {
+      "path": "E:\\s\\wol\\py\\qqq-shell-v2\\server-app\\goods\\kope-a\\panel.html",
+      "op": "revert_file",
+      "added": 57,
+      "deleted": 174,
+      "ts": 1784716605726,
+      "count": 1,
+      "before_blob_hash": "c47a630b0f66f7fc6c65aee61cea03213a23c5e6aee1e7f24b58a593b2cfd078",
+      "blob_hash": "3a0da868979005dee0084ffc037ef07f5264142eb7cf35e818057d14534f1ca6"
+    }
+  ],
+  "_serverFloorId": "t_1784716565933_sywsn0_R",
+  "passbyHouses": 1553,
+  "passbyWge": 420215,
+  "passbyTokens": 2412641,
+  "passbyTime": 1784716612200,
+  "passbyCity": "Shanghai"
+}

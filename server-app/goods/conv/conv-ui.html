@@ -377,12 +377,18 @@ function buildCells(ag) {
     try {
         var _toolsFn = null;
         var _topWin = window.top || window.parent;
-        // 先按 _panelId 找，找不到则遍历所有面板
-        for (var pid = _panelId; pid >= 0; pid--) {
-            var _aiIframe = _topWin.document.getElementById('qqq-ai-iframe-p' + pid);
-            if (_aiIframe && _aiIframe.contentWindow && typeof _aiIframe.contentWindow.getTools === 'function') {
-                _toolsFn = _aiIframe.contentWindow.getTools;
-                break;
+        // 通过 zone div → 内嵌 iframe 查找（zone 顺序：0=左翼,1=中,2=右翼）
+        var _zoneIds = ['qqq-wing-left', 'qqq-ai-zone', 'qqq-wing-right'];
+        var _startPid = (_panelId === 0) ? 0 : (_panelId === 2) ? 2 : 1;
+        for (var _zi = 0; _zi < _zoneIds.length; _zi++) {
+            var _pidTry = (_startPid - _zi + 3) % 3;
+            var _zone = _topWin.document.getElementById(_zoneIds[_pidTry]);
+            if (_zone) {
+                var _aif = _zone.querySelector('iframe');
+                if (_aif && _aif.contentWindow && typeof _aif.contentWindow.getTools === 'function') {
+                    _toolsFn = _aif.contentWindow.getTools;
+                    break;
+                }
             }
         }
         if (_toolsFn) {
@@ -622,10 +628,11 @@ function openNewQuest() {
         lines.push('');
     }
 
-    // 投递给 AI 面板 iframe
+    // 投递给 AI 面板 iframe（通过 zone div → 内嵌 iframe）
     try {
-        var aiFrameId = 'qqq-ai-iframe-p' + _panelId;
-        var aiFrame = window.parent.document.getElementById(aiFrameId);
+        var _zoneId2 = _panelId === 0 ? 'qqq-wing-left' : _panelId === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
+        var _zone2 = window.parent.document.getElementById(_zoneId2);
+        var aiFrame = _zone2 ? _zone2.querySelector('iframe') : null;
         if (aiFrame && aiFrame.contentWindow) {
             aiFrame.contentWindow.postMessage({
                 type: 'qqq-conv-new-quest',
@@ -872,21 +879,24 @@ function doCompress(action) {
     window._cmpTimeout = setTimeout(function () {
         updateCompressBtns();
         if (statusEl) statusEl.style.display = 'none';
-        toast(_i('goods.conv.compressFailed', '压缩超时，请重试'));
+        toast(_i('goods.conv.compressTimeout', '压缩超时，请重试'));
     }, _timeoutMs);
 }
 
-// 查找 AI 面板 iframe
+// 查找 AI 面板 iframe（通过 zone div → 内嵌 iframe）
 function _findAiFrame() {
     try {
         var p = window.parent;
-        var aiFrameId = 'qqq-ai-iframe-p' + (_panelId || 1);
-        var f = p.document.getElementById(aiFrameId);
-        if (f) return f;
-        // 尝试所有面板
-        for (var pid = 0; pid <= 2; pid++) {
-            f = p.document.getElementById('qqq-ai-iframe-p' + pid);
-            if (f) return f;
+        var zoneIds = ['qqq-wing-left', 'qqq-ai-zone', 'qqq-wing-right'];
+        // 先按面板 ID 匹配 zone
+        var pid = _panelId || 1;
+        var zoneId = pid === 0 ? 'qqq-wing-left' : pid === 2 ? 'qqq-wing-right' : 'qqq-ai-zone';
+        var zone = p.document.getElementById(zoneId);
+        if (zone) { var f = zone.querySelector('iframe'); if (f && f.contentWindow) return f; }
+        // 回退：遍历所有 zone
+        for (var i = 0; i < zoneIds.length; i++) {
+            zone = p.document.getElementById(zoneIds[i]);
+            if (zone) { f = zone.querySelector('iframe'); if (f && f.contentWindow) return f; }
         }
     } catch (_) {}
     return null;

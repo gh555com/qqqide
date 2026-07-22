@@ -94,10 +94,11 @@ qz spawn 管线 — 两层 + 四重防御
 
 AI 网关双线路 + 故障切换引擎
 ---------------------------------------------
-· 双线路（2026-06-29 更新）:
-  主: https://direct-cn.gh555.com (直连 CN 47.105.67.51, 中国 ~50ms, 绕过 Cloudflare 延迟)
-  备: https://cnk.gh555.com (Cloudflare CDN → CN nginx → WireGuard → US Go, 全球 DDoS 防护)
-· 旧 US 直连 direct.gh555.com:8444 已弃用 — US 防火墙仅允许 CN 通过 WireGuard 访问
+· 双线路（2026-07-22 更新）:
+  主: https://direct-cn.gh555.com (灰云直连 CN 47.105.67.51, ~50ms, 零延迟)
+  备: https://direct.gh555.com (橙云 CF CDN → US 23.254.248.119, Last-resort)
+· CN nginx `/api/v3/ai/*` → 127.0.0.1:8080 (2026-07-08 从 WG→US 切回本地)
+· CN 百分百独立处理全 AI（chat/vision/image/embedding/search）。图像生成 CN 本地全链路（DashScope→OSS→永久URL），CN .env 含 OSS 四变量（2026-07-22 补）
 · ★ 全路由覆盖（6 个 AI 端点，2026-06-26）
   chat / vision / vision stream / image-gen / image-gen stream / embedding / search
   所有端点经 AiGateway._URLS 双 URL 声明 + _postJsonWithFailover/_pollStream 自动切换
@@ -174,10 +175,10 @@ LV 赛季系统 + 免费预算引擎（2026-06-30，2026-07-03 客户端重构�
 · 排行榜: 左=历史总排行25名 / 右=上赛季排行25名
 · API: /api/qqq/lv /api/qqq/free-budget /api/qqq/leaderboard
 
-Nginx 备用线路铁律 (US 已隐身, 2026-06-29)
+Nginx 备用线路铁律 (2026-07-22 更新)
 ---------------------------------------------
-· direct.gh555.com:8444 已弃用 — US 防火墙阻止所有外部直连，仅 CN→US WireGuard 可达
-· CN nginx 443 接管 AI 代理: /api/v3/ai/* → http://10.0.0.1:8080 (WireGuard→US Go)
+· CN nginx 443: /api/v3/ai/* → http://127.0.0.1:8080 (CN dgs 本地, 2026-07-08 从 WG→US 切回)
+· US direct.gh555.com:443 (橙云 CF CDN→US nginx→US dgs) 仅 AI Last-resort 备线
 · port 8444 纯 HTTP/1.1（listen 8444 ssl; 禁 http2）— 保留用于内部 WireGuard 访问
 · 原因: Nginx HTTP/2 ↔ Go HTTP/1.1 SSE 存在协议转换 bug → ERR_HTTP2_PROTOCOL_ERROR
 · sites-enabled/ 只保留 gh555 一个文件（include * 会匹配 .bak）
@@ -211,8 +212,12 @@ A 区宿主: core/gaea-host.js (完整 panel/tabs/services/commands/provides/use
   · allowMultiple: true(默认,允许多开) | false(禁止多开,跨窗口+脚本自保双重防多开)
     - PID 文件: Data/alphal/goods/{goodsId}.pid (跨窗口单例检测)
     - 启动前检查 PID 存活→存活则拒绝。启动后写 PID→退出时清理
-    - 自启动+allowMultiple=false→看门狗每5s检查,进程死亡自动重启(简单高可用)
     - 脚本自保: goods/_singleton.py → Python 脚本导入即防多开
+  · ★ 双控解耦 (2026-07-20): gpDot(●)=进程状态指示+手动启停按钮, Toggle=自启动开关
+    - ● 颜色百分百反映进程存活(PID文件跨窗口检测+5s poll+push双轨)
+    - Toggle ON→启动进程+watchdog(5s检测,死自动重启); OFF→仅停watchdog,不杀进程
+    - ● 可独立点击: 绿→优雅退出, 灰→手动启动一次(不走watchdog)
+    - 合法状态: ●灰+Toggle灰 / ●绿+Toggle绿 / ●绿+Toggle灰(手动跑) / ●灰+Toggle绿(进程崩溃,watchdog恢复中)
   · process-type goods: 脚本在 goods/<id>/ 自包含(.js+.py), u管线热更
 已注册 panel: rage / wysiwyg / navigator / paste-image / file-explorer / search / git
 已注册 process: kope-a(independent,allowMultiple=false) / window-there(attached,allowMultiple=false)
@@ -353,7 +358,7 @@ Card Queue — 终极 AI 面板架构（2026-06 重构，2026-06-10 加固）
     A4 文件快照块 — 实时文件变更瀑布列表，点击开 diff
     A2 财宝块 — AI 挖掘的 treasures，无财宝时隐藏
 · aq 区 — 用户粉色气泡下方、AI 回复上方，垂直接缝指示层。元素命名 aq1 / aq2 / … 自上而下：
-    aq1 — AI 等级 + 启动时间指示器（如 "A6 start in 2026-06-30 14:05:08"）
+    aq1 — AI 等级 + 启动时间 + 背包重量（如 "A6 · 2026-07-19 12:30:12 UTC+08 · ✦183K"）
     aq2 — 预留
   - 建楼时: onToken 首 token 抵达 → 插入 aq1 → buffer chunk → rAF 延迟一帧渲染 → aq1 先上屏 (panel-send.js)
   - 重载时: _buildFloorDOM 从盘面 aiStartTime/tierLabel 渲染 aq1 (card-pool.js)
@@ -652,20 +657,21 @@ AI 悬浮预览层
 · 图片: transform translate+scale 统一缩放+拖拽。关闭: Esc/右键/背景。跨窗口广播关闭
 
 
-上下文压缩 — V13 本地机械筛 + ╔K...╚ 绝对包装盒（2026-07-16 DE 消除，阀值压缩落地，sha256 考古）
+上下文压缩 — V14 前缀缓存修复 + 三按钮压缩 + fx Grid（2026-07-19）
 ---------------------------------------------------------------------
-· ★ 触发: 每层楼封顶(onDone)→_rebuildBackpack()。建楼中不触发。旧阈值触发+手动压缩+AI压缩全部移除。
-· 机械筛（方案三）: 纯本地、纯确定性。消息→Q/A/工具摘要行。零网络，零费用。
-· 包装盒体系(20工具): 15温柔(可复现,摘要一行)+5绝对(run_command/generate_image/remove_background/analyze_image/get_vision_context,╔K...╚包裹,16K硬帽)。
-· sha256 考古: 读工具(args.sha256)→biscuit头行 @sha=xxx(12位)；写/落地工具(result [sha256:])→➜ sha=xxx。AI可随时用 sha256= 参数回读历史版本。
-· ★ DE 概念消除(V13): 不再有_deBlock消息/deEntries字段。绝对包装盒融入饼干。旧DE消息自动清除。阀值压缩时整盒移除(正则 ╔K[\s\S]*?\n╚\n)。
-· 压缩饼干(biscuit): 单条_biscuit消息，content尾部追加(零splice)。每层格式: === FN YYYY-MM-DD HH:MM:SS UTC+8 === → Q → 包装盒(头行+可选╔K...╚体) → A。
-· ★ ctx 持久化: per-quest ctx.json(原子tmp+rename)。ctx.json 损坏/丢失→D 路径(_rebuildBackpack 扫描 conversation)自愈。
-· 背包定序: Z → biscuit(1条msg,原地追加) → 当前楼层消息。仅splice-remove原始楼层消息。
-· 缓存: Z 100%命中 / biscuit前缀命中(仅最后一行新)。每层实际计费~2-4K tokens。
-· 阀值压缩: _tryAutoValveCompress(threshold)→剥离 ╔K...╚ 体部。手动(🗜️按钮,threshold=0强制)/自动(建楼中_lastApiPromptTokens>设定阈值)。阈值设定: 齿轮→设置→自动压缩阈值(100-1000k)。ctx-panel 三按钮: 📸快照 📋管理 🗜️阀值压缩。
-· 旧AI压缩(V3-V10)全删: 三专家并行/JSON提取/thinking吃预算/缓存毒化/回滚漏洞→~5ge测试费→结论: JSON+大输入=死路。
-· ★ 饼干自动剥离 [File: ...]```...``` 块：_buildCompressedBiscuit 正则全局匹配替换为空。子弹文件自然"用完即抛"。
+· ★ 触发: 每层楼封顶(onDone)→_rebuildBackpack()。建楼中不触发。
+· ★ V14 缓存修复: floorMsgs 升序构建→biscuitText 天生有序。step 9 智能追加(常见路径纯追加,零字节变更)→前缀缓存 ~85-90% 命中。仅旧楼层插入时重排(罕见)。
+· 机械筛: 纯本地确定性。消息→Q/A/工具摘要行。零网络零费用。
+· 包装盒: 15温柔(可复现,摘要一行)+5绝对(╔K...╚包裹,16K硬帽)。剥离正则 /\n╔K\n[\s\S]*?\n╚(?=\n|$)/g，前瞻不吞\n防相邻盒漏网。
+· sha256 考古: @sha=xxx / ➜ sha=xxx。12位hex。
+· 饼干: 单条_biscuit系统消息原地追加,对象永不变。每层: === FN timestamp UTC+8 === → Q → 包装盒 → A。
+· ★ 三按钮压缩(goods backpack页面): absolut(剥离 ╔K...╚ 体部,纯本地) / edit only(仅保留5写工具头行,纯本地) / only facts(前两步→切半→h<32K拒绝→建_compressFloor tier4→AI提取facts→注入fx Grid,自限收敛)。每按钮实时显示收益K数。idle-only守卫。
+· ★ fx Grid: _facts系统消息(biscuit之后)。多次only facts→═══ FACTS timestamp ═══块尾部追加。日常自动压缩不碰fx→缓存不受影响。
+· ★ _compressFloor: facts提取楼层,biscuit格式 Q: §facts F1-F22 (h=60K) / A: 成败摘要。GE账单type=f3。
+· 背包定序: Z → biscuit → fx → 当前楼层消息。
+· 持久化: ctx(biscuitLines/facts/narrative)存 ctx.json(原子tmp+rename)。ctx.json损坏→D路径自愈。
+· 旧AI压缩+DE概念全删。valve压缩按钮已从ctx-panel移除(迁移到goods backpack)。ctx-panel仅留📸快照+📋管理。
+· 饼干自动剥离 [File:]```...``` 块。子弹文件用完即抛。
 
 子弹按钮 — 粘贴板→磁盘→编辑框 📎（2026-07-14）
 ---------------------------------------------------------------------
@@ -730,15 +736,16 @@ all.json 写入系统（2026-06-29 共享 agentPool 重构 + wgeCost 命名归�
   EnvelopeStripper.finalize() 统一解析 XML invoke/自闭合 tag/ReAct 三种格式 → textToolCalls[] → _parseSSE 优先执行
 
 
-AI 网关 — CN 直连 + US 隐身 + 客户端代理 (2026-06-29 加固)
+AI 网关 — CN 本地 + US 备线 (2026-07-22 终态)
 --------------------------------------------------------------------
-线路: Client ──(主)──▶ direct-cn.gh555.com ──▶ CN nginx 443 ──▶ WireGuard ──▶ US Go:8080
-       └──(备)──▶ cnk.gh555.com ──▶ Cloudflare CDN ──▶ CN nginx ──▶ WireGuard ──▶ US Go:8080
+线路: Client ──(主)──▶ direct-cn.gh555.com (灰云) ──▶ CN nginx:443 ──▶ CN dgs:8080 (本地)
+       └──(备)──▶ direct.gh555.com (橙云) ──▶ CF CDN ──▶ US nginx:443 ──▶ US dgs:8080
 
 CN 服务器 (47.105.67.51, 阿里云 ECS):
-  nginx 443 (通配证书: cnk + direct-cn + *.gh555.com)
-  · /api/v3/ai/* → proxy_pass http://10.0.0.1:8080 (WireGuard → US Go)
+  nginx 443 (通配证书: cnk + direct-cn + gh555 + www)
+  · /api/v3/ai/* → proxy_pass http://127.0.0.1:8080 (CN dgs 本地, 2026-07-08 生效)
   · / (其他) → proxy_pass http://127.0.0.1:8080 (CN 本地 Go)
+  · CN 百分百独立处理全 AI（含图像生成 OSS 转存）
   Go dgs/server 8080 50MB | PostgreSQL 18 | Redis 7
   阿里云自带 5Gbps DDoS 基础防护（免费，已生效）
 

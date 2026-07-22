@@ -12,7 +12,7 @@ var _shSashW = 6;
 
 // ---- Layout state (persisted via StateStore, not localStorage) ----
 var _shLayoutState = {
-  aZoneW: 220,
+  aZoneW: 123,
   outputH: 200,
   outputVisible: false,
 };
@@ -34,7 +34,7 @@ function _shOnlyDb() {
 }
 
 async function loadState() {
-  // ★ 真理源: only.sq3（项目资产）。如 _workspaceRoot 未就绪，从 qgs 旧数据兜底一次。
+  // ★ 真理源: only.sq3（项目资产）
   var db = _shOnlyDb();
   if (db) {
     try {
@@ -46,19 +46,7 @@ async function loadState() {
       }
     } catch (_) { }
   }
-  // only.sq3 无数据 → 从 global.sq3 旧 layout_v2 迁移一次（过渡期）
-  var stillDefault = _shLayoutState.aZoneW === 220 && _shLayoutState.outputH === 200 && !_shLayoutState.outputVisible;
-  if (stillDefault && window.qqqideBridge && window.qqqideBridge.state && window.qqqideBridge.state.get) {
-    try {
-      var old = await window.qqqideBridge.state.get('qqqide', 'layout_v2');
-      if (old && typeof old === 'object') {
-        if (typeof old.aZoneW === 'number') _shLayoutState.aZoneW = old.aZoneW;
-        if (typeof old.outputH === 'number') _shLayoutState.outputH = old.outputH;
-        if (typeof old.outputVisible === 'boolean') _shLayoutState.outputVisible = old.outputVisible;
-      }
-    } catch (_) { }
-  }
-  _shLayoutState.aZoneW = Math.max(_shMin, _shLayoutState.aZoneW || 220);
+  _shLayoutState.aZoneW = Math.max(_shMin, _shLayoutState.aZoneW || 123);
   _shLayoutState.outputH = Math.max(_shMin, _shLayoutState.outputH || 200);
 }
 

@@ -429,6 +429,10 @@ class LayoutSelectorWindow(QWidget):
                 if self.focus_timer: self.focus_timer.stop()
                 return
 
+            # (R26) 创建后 3s 宽限期 — 给 Windows 足够时间转移焦点
+            if hasattr(self, '_created_at') and time.time() - self._created_at < 3.0:
+                return
+
             foreground_handle = g_platform_manager.get_foreground_window_handle()
             if not foreground_handle: return
 

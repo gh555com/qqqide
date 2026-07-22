@@ -236,6 +236,11 @@ body {
   justify-content: center;
 }
 
+#qqq-wc-max {
+  font-size: 18px;
+  line-height: 1;
+}
+
 .qqq-wc-btn:hover {
   background: rgba(128, 128, 128, 0.15);
 }
@@ -1616,4 +1621,17 @@ body {
   100% {
     transform: scale(1);
   }
+}
+
+/* ── A 区货物切换下拉 ── */
+.gaea-zone-switcher {
+  flex: 0 0 auto;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--background-color);
+}
+
+/* ── A 区 GH Health 固定商标位 ── */
+.gaea-gh-health:hover {
+  opacity: 0.8 !important;
 }

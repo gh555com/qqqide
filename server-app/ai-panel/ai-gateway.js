@@ -29,19 +29,19 @@
 
     var _URLS = {
         chatPrimary: 'https://direct-cn.gh555.com/api/v3/ai/chat',
-        chatFallback: 'https://direct.gh555.com/api/v3/ai/chat',
+        chatFallback: 'https://cnk.gh555.com/api/v3/ai/chat',
         visionPrimary: 'https://direct-cn.gh555.com/api/v3/ai/vision',
-        visionFallback: 'https://direct.gh555.com/api/v3/ai/vision',
+        visionFallback: 'https://cnk.gh555.com/api/v3/ai/vision',
         imageGenPrimary: 'https://direct-cn.gh555.com/api/v3/ai/generate-image',
-        imageGenFallback: 'https://direct.gh555.com/api/v3/ai/generate-image',
+        imageGenFallback: 'https://cnk.gh555.com/api/v3/ai/generate-image',
         embedPrimary: 'https://direct-cn.gh555.com/api/v3/ai/embedding',
-        embedFallback: 'https://direct.gh555.com/api/v3/ai/embedding',
+        embedFallback: 'https://cnk.gh555.com/api/v3/ai/embedding',
         searchPrimary: 'https://direct-cn.gh555.com/api/v3/search/web',
-        searchFallback: 'https://direct.gh555.com/api/v3/search/web',
+        searchFallback: 'https://cnk.gh555.com/api/v3/search/web',
         fetchPrimary: 'https://direct-cn.gh555.com/api/v3/fetch/webpage',
-        fetchFallback: 'https://direct.gh555.com/api/v3/fetch/webpage',
+        fetchFallback: 'https://cnk.gh555.com/api/v3/fetch/webpage',
         segmentPrimary: 'https://direct-cn.gh555.com/api/v3/ai/segment',
-        segmentFallback: 'https://direct.gh555.com/api/v3/ai/segment',
+        segmentFallback: 'https://cnk.gh555.com/api/v3/ai/segment',
     };
 
     var _DEFAULT_TIMEOUT = 30000;

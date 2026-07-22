@@ -204,11 +204,24 @@ export function startGaeaProcess(
             args.push('--pid-file', pidFile);
         }
 
+        // ★ Qt 防护: 显式指定插件路径 + 运行时 DLL 目录（防客户电脑缺 VC++ 运行时）
+        const pyEngineDir = path.dirname(exe);
+        const qtPluginDir = path.join(pyEngineDir, 'site-packages', 'PySide2', 'plugins');
+        const envExt: any = {
+            PYTHONUNBUFFERED: '1',
+            PYTHONIOENCODING: 'utf-8',
+            PYTHONPATH: cwd,
+            QT_PLUGIN_PATH: qtPluginDir,
+            QT_QPA_PLATFORM_PLUGIN_PATH: qtPluginDir,
+        };
+        // 把 python 引擎目录加入 PATH，确保 VC++ 运行时 DLL (msvcp140/vcruntime140) 可被 Qt 插件找到
+        envExt.PATH = pyEngineDir + path.delimiter + (process.env.PATH || '');
+
         const proc = spawn(exe, args, {
             stdio: 'ignore',
             windowsHide: false,
             cwd: cwd,
-            env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8', PYTHONPATH: cwd },
+            env: { ...process.env, ...envExt },
             detached: isDetached,
         });
 
@@ -248,29 +261,60 @@ export function startGaeaProcess(
 
 export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string } {
     const entry = _registry.get(goodsId);
-    if (!entry || !entry.proc || entry.proc.killed) {
-        _registry.delete(goodsId);
-        return { ok: true };
-    }
-    try {
-        if (process.platform === 'win32' && entry.pid) {
-            try {
-                execSync(`taskkill /F /T /PID ${entry.pid}`, { windowsHide: true });
-            } catch { /* already exited — that's fine */ }
-        } else {
-            try {
-                process.kill(-entry.pid!, 'SIGTERM');
-            } catch {
-                entry.proc.kill('SIGKILL');
+
+    // ★ 路径 A: 内存里有活跃 proc → 直接杀
+    if (entry && entry.proc && !entry.proc.killed) {
+        try {
+            if (process.platform === 'win32' && entry.pid) {
+                try {
+                    execSync(`taskkill /F /T /PID ${entry.pid}`, { windowsHide: true });
+                } catch { /* already exited — that's fine */ }
+            } else {
+                try {
+                    process.kill(-entry.pid!, 'SIGTERM');
+                } catch {
+                    entry.proc.kill('SIGKILL');
+                }
             }
+            _registry.delete(goodsId);
+            if (_userDataPath) _removePidFile(_userDataPath, goodsId);
+            console.log('[' + goodsId + '] stopped (lifecycle=' + (entry.lifecycle || 'attached') + ')');
+            _notifyStatus(goodsId, false, null);
+            return { ok: true };
+        } catch (e: any) {
+            return { ok: false, error: '停止失败: ' + (e.message || e) };
         }
-        _registry.delete(goodsId);
-        console.log('[' + goodsId + '] stopped (lifecycle=' + (entry.lifecycle || 'attached') + ')');
-        _notifyStatus(goodsId, false, null);
-        return { ok: true };
-    } catch (e: any) {
-        return { ok: false, error: '停止失败: ' + (e.message || e) };
     }
+
+    // ★ 路径 B: 内存里没有活跃 proc (IDE 重启后 proc:null, 或 entry 不存在)
+    //           回退到 PID 文件杀 — 否则 isGaeaProcessRunning 显示运行中但关不掉
+    _registry.delete(goodsId);
+    if (_userDataPath) {
+        const existing = _checkExistingInstance(_userDataPath, goodsId);
+        if (existing.running && existing.pid) {
+            try {
+                if (process.platform === 'win32') {
+                    execSync(`taskkill /F /T /PID ${existing.pid}`, { windowsHide: true });
+                } else {
+                    process.kill(existing.pid, 'SIGKILL');
+                }
+                _removePidFile(_userDataPath, goodsId);
+                console.log('[' + goodsId + '] stopped via PID file pid=' + existing.pid);
+                _notifyStatus(goodsId, false, null);
+                return { ok: true };
+            } catch (e: any) {
+                // PID 文件可能已过期 — 清理
+                _removePidFile(_userDataPath, goodsId);
+                _notifyStatus(goodsId, false, null);
+                return { ok: true };
+            }
+        } else {
+            // 进程不在运行 — 清理过期 PID 文件
+            _removePidFile(_userDataPath, goodsId);
+            _notifyStatus(goodsId, false, null);
+        }
+    }
+    return { ok: true };
 }
 
 export function isGaeaProcessRunning(goodsId: string): boolean {

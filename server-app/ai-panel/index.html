@@ -108,10 +108,11 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:var(--t
 .quest-drop-search::placeholder{color:var(--base01);opacity:.6}
 [data-theme="dark"] .quest-drop-search::placeholder{color:#7a7670}
 /* 下拉条目 */
-.quest-drop-item{padding:6px 12px;font-size:16px;color:var(--text-primary);white-space:normal;overflow:visible;cursor:default;line-height:1.45;margin-bottom:4px;display:flex;align-items:flex-start;position:relative}
+.quest-drop-item{padding:6px 12px;font-size:16px;color:var(--text-primary);white-space:normal;overflow:visible;cursor:default;line-height:1.45;margin-bottom:12px;display:flex;align-items:flex-start;position:relative}
 .quest-drop-item:last-child{margin-bottom:0}
 .quest-drop-line{overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow-wrap:anywhere;max-width:100%}
-.quest-drop-item:hover{background:var(--background-color);p[data-theme="dark"] .quest-drop-item:hover{background:#3f3830;padding-left:3px}ckground:#3f3830}
+.quest-drop-item:hover{background:var(--background-color)}
+[data-theme="dark"] .quest-drop-item:hover{background:#3f3830}
 .quest-drop-item.active{font-weight:700;color:var(--primary-color)}
 /* 下拉前缀 qN. — 加大两号 + 显著色 */
 .quest-drop-prefix{font-size:20px;color:#e8a030;position:relative}
@@ -174,9 +175,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:var(--t
 .msg-quest-error{color:var(--red);padding:8px 12px;font-size:12px;background:rgba(220,50,47,0.06);border:1px solid rgba(220,50,47,0.15);border-radius:6px;margin:6px 0;line-height:1.6;white-space:pre-wrap}
 .qe-row{padding:2px 0;border-bottom:1px solid rgba(220,50,47,0.08)}
 .msg-err-continue{text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;user-select:none}
-/* ── 致命失败恢复光块："继续任务"文字消失 → 白光块左右匀速横跳（无闪烁） ── */
-@keyframes recovery-bounce{0%{transform:translateX(-24px)}50%{transform:translateX(24px)}100%{transform:translateX(-24px)}}
-a.msg-err-recovery-light{display:inline-block;width:20px;height:5px;background:#ffffff;border-radius:3px;animation:recovery-bounce 0.6s ease-in-out infinite;text-decoration:none;cursor:default;user-select:none;margin-left:6px;vertical-align:middle;pointer-events:none}
+/* ── 致命失败恢复光块："继续任务"文字变成光块左右横跳 ── */
+@keyframes recovery-bounce{0%{transform:translateX(-6px);opacity:0.3}50%{transform:translateX(10px);opacity:1}100%{transform:translateX(-6px);opacity:0.3}}
+a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color:#ffffff;animation:recovery-bounce 0.5s ease-in-out infinite;text-decoration:none;cursor:default;user-select:none;margin-left:6px;vertical-align:-1px;pointer-events:none}
 .msg-status{font-size:11px;opacity:.6;padding:2px 0;font-style:italic}
 /* 楼层时钟 + 饼图（嵌在豆腐块内部底部，每个楼层私有） */
 .msg-ai-clock{display:flex;align-items:center;gap:8px;padding:8px 0 0;user-select:none}
@@ -279,6 +280,10 @@ a.msg-err-recovery-light{display:inline-block;width:20px;height:5px;background:#
 #input-row{display:flex;gap:0;overflow:hidden;margin:0 -8px 0 -8px}
 /* ── 开放厨房：输入框无边框，仅底边进度条 ── */
 #input-wrap{position:relative;flex:1;min-width:0}
+/* newline-btn: 右下角半透明浮动回车按钮，点击在光标处插入换行 */
+#newline-btn{position:absolute;right:4px;bottom:4px;width:28px;height:22px;border:1px solid var(--border-color);border-radius:4px;background:rgba(128,128,128,0.12);color:var(--text-primary);font-size:16px;font-weight:700;line-height:20px;text-align:center;cursor:pointer;opacity:0.35;transition:opacity 0.15s;z-index:10;user-select:none;padding:0;font-family:monospace}
+#newline-btn:hover{opacity:0.75;background:rgba(128,128,128,0.20)}
+#newline-btn:active{opacity:0.9;background:var(--base2)}
 #input{display:block;width:100%;background:var(--card-bg);color:var(--text-primary);border:none;border-radius:0;padding:5px 10px;font-size:13px;font-family:inherit;min-height:33px;max-height:333px;overflow-y:hidden;overflow-x:hidden;resize:none;outline:none;scrollbar-width:thin;scrollbar-color:var(--base01) transparent;line-height:1.5}#input::-webkit-scrollbar{width:3px}#input::-webkit-scrollbar-track{background:transparent;border:none}#input::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}#input::-webkit-scrollbar-button{display:none}#input::-webkit-scrollbar-corner{background:transparent}
 /* ── 输入进度条：悬浮在按钮行上方，从面板左边界延伸到子弹按钮 ── */
 #input-progress{height:0;overflow:visible;pointer-events:none;position:relative;margin-left:-8px;margin-right:-8px}
@@ -374,8 +379,8 @@ a.msg-err-recovery-light{display:inline-block;width:20px;height:5px;background:#
 .msg-long::-webkit-scrollbar{width:6px}
 .msg-long::-webkit-scrollbar-thumb{background:var(--base01);border-radius:3px}
 /* ── 滚动条标记叠层 + 刻度数字 —— 宽标尺左展，炫彩发光 ── */
-#scroll-mark-layer{position:absolute;right:0;top:12px;bottom:12px;width:16px;pointer-events:auto;z-index:22}
-#scroll-mark-layer .sml-mark{position:absolute;right:0;width:16px;height:3px;border-radius:2px;opacity:0.95;box-shadow:0 0 6px 2px currentColor,0 0 12px 4px currentColor;animation:sml-glow 1.8s ease-in-out infinite alternate}
+#scroll-mark-layer{position:absolute;right:-4px;top:12px;bottom:12px;width:16px;pointer-events:auto;z-index:22}
+#scroll-mark-layer .sml-mark{position:absolute;right:-4px;width:16px;height:3px;border-radius:2px;opacity:0.95;box-shadow:0 0 6px 2px currentColor,0 0 12px 4px currentColor;animation:sml-glow 1.8s ease-in-out infinite alternate}
 @keyframes sml-glow{0%{box-shadow:0 0 4px 1px currentColor,0 0 8px 2px currentColor}100%{box-shadow:0 0 10px 3px currentColor,0 0 18px 5px currentColor}}
 /* ── 键盘按键标记（1 / q / w / 2）—— 3x 放大，滚动才显现 ── */
 .scroll-key{position:fixed;width:42px;height:42px;font-family:monospace;font-size:24px;font-weight:700;text-align:center;line-height:42px;border-radius:9px;border:1px solid #b0aca8;background:linear-gradient(180deg,#faf8f5 0%,#e0dcd5 100%);color:#4a4642;box-shadow:0 1px 0 #c5bfb6,0 2px 4px rgba(0,0,0,0.18);pointer-events:none;z-index:99998;user-select:none;opacity:0;transition:opacity 0.2s ease}
@@ -604,6 +609,7 @@ var _orig={};
     <button id="send-btn">Send</button>
     <button id="ctx-btn">--</button>
   </div>
+  <button id="newline-btn" title="插入换行" data-no-cd>&#8629;</button>
 </div>
 <!-- ★ quest 切换全屏蒙板：阻绝一切鼠标操作 -->
 <div id="qqq-switch-overlay" style="display:none;position:fixed;inset:0;z-index:99999;cursor:default;background:rgba(0,0,0,0.03)"></div>

@@ -75,8 +75,11 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 一个 goods 可提供: panel(A区)+tabs(X区)+services(后台)+commands。
   - 移除必须清理所有 panel/tabs/services。第一方用直接DOM，第三方用iframe隔离。
   - ★ allowMultiple (2026-07-19): false=禁止多开。跨窗口PID文件+脚本自保双重防多开。
-    自启动+false→看门狗5s检测,进程死亡自动重启(简单高可用)。
     开发者: Python脚本导入 goods/_singleton.py 调 check_and_register() 即完成自保。
+  - ★ 双控解耦 (2026-07-20): gpDot(●)与Toggle完全独立。
+    ●=进程状态指示+手动启停(颜色百分百反映PID存活,5s poll+push双轨)。
+    Toggle=自启动开关(ON→启动+watchdog, OFF→仅停watchdog不杀进程)。
+    ●可独立点击启停进程。进程崩溃+watchdog存活→自动拉起(●短暂灰→绿)。
 
 §11 LSP — 全部禁用
   - Monaco 内置诊断全禁(renderValidationDecorations:'off')，零红色波浪线/hover/补全。
@@ -351,7 +354,7 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - CN(47.105.67.51): 公网入口，nginx 443 通配证书。阿里云自带 5Gbps DDoS 基础防护。
   - US(23.254.248.119): iptables 白名单，仅接受 CN(47.105.67.51)+WireGuard(10.0.0.0/24)+wg0接口。
     全世界其他 IP → DROP。重启自恢复 @reboot cron。
-  - AI 路由: CN nginx /api/v3/ai/* → WireGuard(10.0.0.1:8080) → US Go。非 AI 请求 CN 本地 Go 直接处理。
+  - AI 路由: CN nginx /api/v3/ai/* → 127.0.0.1:8080 (CN dgs 本地, 2026-07-08 生效)。非 AI 请求同路径。US 仅 direct.gh555.com 备线。
   - 客户端代理 HOST_MAP: cnk.gh555.com → 47.105.67.51:443，本地绕过 Cloudflare。
 
 §50 登录推送 — 禁轮询为主线 (2026-06-29)
@@ -403,17 +406,24 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
     无内嵌→py-broker 跳过(IDE 正常启动，下次启动自动装上)。永不 fallback 系统 Python。
   - 违者即返工。
 
-§56 上下文压缩 — 每层封顶自动重组（V13, 2026-07-16 DE 消除，╔K...╚ 融入饼干，阀值压缩，sha256 考古）
-  - 触发: 每层楼完结(onDone)→_rebuildBackpack()。建楼中不触发。阀值压缩在建楼中自动触发。
-  - 机械筛: 纯本地确定性转换(方案三)。消息→Q/A/工具摘要行。零网络，零费用。
-  - 包装盒: 15温柔(可复现工具,摘要一行)+5绝对(run_command/generate_image/remove_background/analyze_image/get_vision_context,╔K...╚包裹,16K硬帽)。
-  - sha256 考古: 读工具(args有sha256)→@sha=xxx；写/落地工具(result有[sha256:])→➜ sha=xxx。12位hex，零额外IO。
-  - 饼干: 单条_biscuit系统消息原地追加，对象永不变。仅content尾部增长→前缀缓存命中。每层格式: === FN YYYY-MM-DD HH:MM:SS UTC+8 === → Q → 包装盒 → A。
-  - ★ DE 概念消除(V13): 不再有_deBlock消息/deEntries字段。绝对包装盒融入饼干。旧DE消息自动清除。
-  - 阀值压缩: _tryAutoValveCompress(threshold)→剥离 ╔K...╚ 体部。手动(🗜️按钮,threshold=0强制)/自动(建楼中_lastApiPromptTokens>设定阈值)。阈值设定: 齿轮→设置→自动压缩阈值(100-1000k,默认600k)。
-  - 背包定序: Z→biscuit(1条msg)→当前楼层消息。禁splice biscuit(仅删原始楼层)。
-  - 持久化: ctx(biscuitLines/narrative等)存 per-quest ctx.json(原子tmp+rename)，不再写 quest.sq3。ctx.json 损坏→D 路径(_rebuildBackpack 扫描 conversation)自愈。
-  - 错误: 未恢复fatal楼层不进饼干(原始消息保留)。已恢复→[ERR] [HH:MM]格式进饼干。_errorTime持久化→重启精确恢复。
+§56 上下文压缩 — V14 前缀缓存修复 + 三按钮压缩 + fx Grid（2026-07-19）
+  - 触发: 每层楼完结(onDone)→_rebuildBackpack()。建楼中不触发。
+  - ★ V14 缓存修复: floorMsgs 升序构建→biscuitText 天生有序。step 9 智能追加(常见路径纯追加,零字节变更)→前缀缓存 ~85-90% 命中。仅旧楼层插入时重排(罕见)。
+  - 机械筛: 纯本地确定性转换。消息→Q/A/工具摘要行。零网络零费用。
+  - 包装盒: 15温柔(可复现,摘要一行)+5绝对(run_command/generate_image/remove_background/analyze_image/get_vision_context,╔K...╚包裹,16K硬帽)。
+  - ★ 剥离正则: /\n╔K\n[\s\S]*?\n╚(?=\n|$)/g。前瞻不吞共享\n,防相邻盒子9.5%漏网。
+  - sha256 考古: 读工具 @sha=xxx / 写工具 ➜ sha=xxx。12位hex,零额外IO。
+  - 饼干: 单条_biscuit系统消息原地追加,对象永不变。每层格式: === FN timestamp UTC+8 === → Q → 包装盒 → A。
+  - ★ 三按钮压缩(goods backpack页面,替代旧🗜️):
+    absolut: 剥离 ╔K...╚ 体部,保留头行。纯本地,瞬间完成。
+    edit only: absolut基础上仅保留5写工具头行(edit/write/create/delete/revert)。纯本地。
+    only facts: 前两步→按=== F切半→上半h原料<32K拒绝→下半替换饼干r→建_compressFloor(tier4)→AI提取facts→注入fx Grid。自限收敛(120K→60K→30K拒绝)。
+    每按钮实时显示收益K数(如"-89k")。idle-only守卫(建楼中disabled)。
+  - ★ fx Grid: _facts系统消息(biscuit之后、当前楼层之前)。多次only facts→多个═══ FACTS timestamp ═══块追加到同一fx消息content尾部。仅在only facts时变化,日常自动压缩不碰fx→缓存不受影响。
+  - ★ _compressFloor: facts提取楼层。biscuit格式: Q: §facts F1-F22 (h=60K) / A: 成功或失败摘要。GE账单type=f3。_rebuildBackpack检测_compressFloor→跳过(不进饼干),facts注入fx。
+  - 背包定序: Z→biscuit(1条msg)→fx(_facts msg)→当前楼层消息。
+  - 持久化: ctx(biscuitLines/facts/narrative等)存 ctx.json(原子tmp+rename)。ctx.json损坏→_rebuildBackpack扫描conversation自愈。
+  - 错误: 未恢复fatal不进饼干。已恢复→[ERR]格式。_errorTime持久化→重启精确恢复。
   - 违者即返工。
 
 §57 📎 附件分隔符 — 纵深防御，永无嵌套歧义（2026-07-14，2026-07-19 加固）
@@ -448,6 +458,13 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
   - 路由: 查 manifest→有 panel→show(A区) / 有 tabs→ensure+activate(X区) / 动态 tab(provides:'tab:xxx')→消费者自行 addGaeaTab。
   - 消费者: 统一调 qqqGaea.open(id)，不再硬编码 show()/addGaeaTab()。goods 改注册形态→消费者自动跟随。
   - 违者即返工。
+
+§62 Image Processing Iron Law — Cloud First, No Local Scripts (2026-07-22)
+  - 🚫 FORBIDDEN: Writing Python/PIL/opencv/Pillow/oss2 scripts for background removal, retouching, editing, watermark removal, color correction, cropping, compression, format conversion.
+  - ✅ REQUIRED: Use dedicated tools — remove_background (background removal) / generate_image (generation+editing) / analyze_image (recognition).
+  - Cloud fails → honestly tell user it's unavailable. NEVER fall back to local scripts.
+  - ONLY exception: user explicitly says "use Python" / "use a script to edit" / "write code to modify image" → then run_command + Python is allowed.
+  - This rule overrides all other behavioral rules. Violation = rework.
 
 §61 iframe 主题切换 — CSS 选择器优先原则（2026-07-15）
   - 管线: 父窗口 postMessage(theme-change) → iframe JS 监听→设/删 data-theme 属性→CSS [data-theme="dark"] 生效。
