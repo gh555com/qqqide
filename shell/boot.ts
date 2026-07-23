@@ -242,6 +242,21 @@ export async function checkAndDownloadShellUpdate(
 export const WEBAPP_PROTOCOL = 'qqqide-webapp';
 let _webappProtocolRegistered = false;
 
+/** Copy directory contents (not the dir itself) from src to dest, overwriting. */
+function _copyDirContentsSync(src: string, dest: string): void {
+    try { fs.mkdirSync(dest, { recursive: true }); } catch { }
+    const entries = fs.readdirSync(src, { withFileTypes: true });
+    for (const entry of entries) {
+        const srcPath = path.join(src, entry.name);
+        const destPath = path.join(dest, entry.name);
+        if (entry.isDirectory()) {
+            _copyDirContentsSync(srcPath, destPath);
+        } else {
+            fs.copyFileSync(srcPath, destPath);
+        }
+    }
+}
+
 /** Find or create local webapp/ at portableRoot/Data level. Returns dir path or null. */
 export function ensureLocalWebapp(portableRoot: string): string | null {
     const localDir = path.join(portableRoot, 'Data', 'webapp');
@@ -255,22 +270,44 @@ export function ensureLocalWebapp(portableRoot: string): string | null {
             try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
         } else {
             bootLog('webapp: staged update detected, swapping…');
+            let swapped = false;
             try {
                 const oldDir = localDir + '.old';
                 if (fs.existsSync(localDir)) { fs.renameSync(localDir, oldDir); }
                 fs.renameSync(stagingDir, localDir);
                 if (fs.existsSync(oldDir)) { fs.rmSync(oldDir, { recursive: true, force: true }); }
-                bootLog('webapp: staged update swapped → ' + localDir);
-            } catch (e: any) {
-                bootLog('webapp: swap failed — ' + (e.message || e));
+                swapped = true;
+                bootLog('webapp: swap OK (rename) → ' + localDir);
+            } catch (e1: any) {
+                bootLog('webapp: rename failed (' + (e1.message || e1) + '), trying copy fallback…');
                 try {
                     const oldDir = localDir + '.old';
                     if (fs.existsSync(oldDir) && !fs.existsSync(localDir)) {
                         fs.renameSync(oldDir, localDir);
-                        bootLog('webapp: rolled back .old → target');
+                    }
+                } catch (_) { }
+                try {
+                    _copyDirContentsSync(stagingDir, localDir);
+                    if (fs.existsSync(path.join(localDir, 'index.html'))) {
+                        swapped = true;
+                        bootLog('webapp: swap OK (copy-in-place) → ' + localDir);
+                    }
+                } catch (e2: any) {
+                    bootLog('webapp: copy-in-place failed — ' + (e2.message || e2));
+                }
+            }
+            if (swapped) {
+                const stagingVerPath = path.join(localDir, '.staging-version');
+                try {
+                    if (fs.existsSync(stagingVerPath)) {
+                        const v = fs.readFileSync(stagingVerPath, 'utf8').trim();
+                        if (v) { writeLocalWebappVersion(portableRoot, v); bootLog('webapp: version written → ' + v); }
+                        fs.unlinkSync(stagingVerPath);
                     }
                 } catch (_) { }
                 try { if (fs.existsSync(stagingDir)) fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (_) { }
+            } else {
+                bootLog('webapp: swap FAILED — staging preserved for next retry');
             }
         }
     }
@@ -442,8 +479,8 @@ async function backgroundCheckWebappUpdate(
         }
         try { fs.unlinkSync(tarPath); } catch { }
 
-        // 5) Write version marker
-        writeLocalWebappVersion(portableRoot, latestVersion);
+        // 5) Write version marker into staging (NOT webapp-version — that's written after swap succeeds)
+        try { fs.writeFileSync(path.join(stagingDir, '.staging-version'), latestVersion, 'utf8'); } catch { }
 
         // ★ 清理 loading-status（成功完成）
         try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }

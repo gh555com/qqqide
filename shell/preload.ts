@@ -27,6 +27,8 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
         saveAuth: (auth: { token: string; phone: string; device_name?: string; country_iso2?: string; purchased?: boolean } | null) => ipcRenderer.invoke('qqqide:auth:save', auth),
         loadAuth: () => ipcRenderer.invoke('qqqide:auth:load'),
         clearAuth: () => ipcRenderer.invoke('qqqide:auth:clear'),
+        // ★ 轻量：仅同步 phone 到主进程共享内存（不依赖 safeStorage）
+        setPhone: (phone: string) => ipcRenderer.invoke('qqqide:auth:set-phone', phone),
     },
 
     // ---- file system (proxied to engine subprocess) ----
@@ -228,7 +230,21 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
     // ---- search (高性能项目搜索引擎) ----
     search: {
         query: (opts: { query: string; searchPath: string; isRegex?: boolean; caseSensitive?: boolean; wholeWord?: boolean; includePattern?: string; excludePattern?: string; contextLines?: number; maxResults?: number; timeoutMs?: number; respectGitignore?: boolean }) => ipcRenderer.invoke('qqqide:search:query', opts),
-        replace: (opts: { replacements: Array<{ file: string; line: number; col: number; matchLen: number; replacement: string }> }) => ipcRenderer.invoke('qqqide:search:replace', opts),
+        replace: (opts: { replacements: Array<{ file: string; line: number; col: number; matchLen: number; replacement: string }>; searchPath?: string; onProgress?: (data: { current: number; total: number; file: string; replaced: number; errors: string[] }) => void }) => {
+            const { onProgress } = opts;
+            let handler: ((_e: any, data: any) => void) | null = null;
+            if (onProgress) {
+                handler = (_e: any, data: any) => { try { onProgress(data); } catch {} };
+                ipcRenderer.on('qqqide:search:replace:progress', handler);
+            }
+            return ipcRenderer.invoke('qqqide:search:replace', { replacements: opts.replacements, searchPath: opts.searchPath }).then((res: any) => {
+                if (handler) ipcRenderer.removeListener('qqqide:search:replace:progress', handler);
+                return res;
+            }).catch((err: any) => {
+                if (handler) ipcRenderer.removeListener('qqqide:search:replace:progress', handler);
+                throw err;
+            });
+        },
     },
 
     // ---- ai (one-shot AI calls for hover, inline completions, etc.) ----

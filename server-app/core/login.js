@@ -95,8 +95,11 @@
   function _persistAuthAsync() {
     if (!_authData) return;
     try {
-      if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.saveAuth) {
-        window.qqqideBridge.auth.saveAuth({ token: _authData.token, phone: _authData.phone, device_name: _authData.device_name, country_iso2: _authData.countryIso2 || '', purchased: !!_authData.purchased });
+      var br = window.qqqideBridge && window.qqqideBridge.auth;
+      if (br) {
+        // ★ 轻量：先同步 phone 到主进程共享内存（不依赖 safeStorage，保证 wq-ping 能读到）
+        if (br.setPhone && _authData.phone) br.setPhone(_authData.phone);
+        if (br.saveAuth) br.saveAuth({ token: _authData.token, phone: _authData.phone, device_name: _authData.device_name, country_iso2: _authData.countryIso2 || '', purchased: !!_authData.purchased });
       }
     } catch (e) { }
   }
@@ -112,6 +115,10 @@
           if (saved.country_iso2 && !_authData.countryIso2) _authData.countryIso2 = saved.country_iso2;
           // ★ 恢复 purchased 标志
           if (saved.purchased) _authData.purchased = true;
+          // ★ 轻量：同步 phone 到主进程共享内存（不依赖 safeStorage）
+          if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.setPhone) {
+            window.qqqideBridge.auth.setPhone(saved.phone);
+          }
           // ★ 立即显示 LV 区域 + 奖杯（零等待）
           _lvShow();
           return true;

@@ -299,10 +299,10 @@ function _startRecovery(questId, agent, linkEl) {
     agent._deferRenderUntilHouse1 = true;
     agent._recoveryLinkEl = linkEl;
 
-    // 3. "继续任务"文字 → 光块（清空文字，CSS width/height/background 让空元素可见）
+    // 3. "继续任务"文字 → █ 光块（█ 字符天生可视，CSS 只负责左右横跳）
     if (linkEl) {
         linkEl._qqqRecoveryOrigText = linkEl.textContent;
-        linkEl.textContent = '';
+        linkEl.textContent = '\u2588';
         linkEl.className = 'msg-err-recovery-light';
         linkEl.style.cssText = '';
         linkEl._qqqRecoveryBusy = true;

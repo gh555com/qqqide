@@ -55,6 +55,7 @@
       // 语义角色（一切组件只应引用这些）
       '--background-color': dark ? '#1e1e1e' : p.base3,
       '--card-bg': dark ? '#2a2a2a' : p.base2,
+      '--quest-tofu-bg': dark ? '#211f1c' : '#ebe3ca',  // 置顶卡片背景（暖米色，介于 base2/base3 之间）
       '--text-primary': dark ? '#dcd8d0' : '#656360',
       '--text-secondary': dark ? '#a8a49c' : p.base01,
       '--text-dim': dark ? '#6a6660' : p.base1,

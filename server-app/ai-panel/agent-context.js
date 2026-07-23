@@ -531,10 +531,12 @@
     // ════════════════════════════════════════════════
     // _findDynamicMsg — 在 conversation 中查找指定 tag 的动态消息
     // ════════════════════════════════════════════════
+    // ★ V15 fix: _persistent 消息（Z）不是 _dynamic，但不应该阻断搜索。
+    //   旧逻辑 break → Z 挡路 → _findDynamicMsg 返回 null → 创建重复 biscuit。
     function _findDynamicMsg(conv, startIdx, tag) {
         for (var i = startIdx; i < conv.length; i++) {
             if (conv[i][tag]) return { msg: conv[i], idx: i };
-            if (!conv[i]._dynamic) break;
+            if (!conv[i]._dynamic && !conv[i]._persistent) break;
         }
         return null;
     }
@@ -638,8 +640,12 @@
             for (var ri = persistentCount; ri < self.conversation.length; ri++) {
                 var rm = self.conversation[ri];
                 if (rm._biscuit && rm.content) {
-                    self._ctx.biscuitLines = _parseBiscuitFromContent(rm.content);
-                    break;
+                    // ★ V16 fix: 合并所有 biscuit（旧 _findDynamicMsg bug 可能产生多个孤儿 biscuit，
+                    //   每个都可能含有其他 biscuit 里没有的楼层。不 break——全部合并后再去重）
+                    var _bLines = _parseBiscuitFromContent(rm.content);
+                    for (var _bli = 0; _bli < _bLines.length; _bli++) {
+                        self._ctx.biscuitLines.push(_bLines[_bli]);
+                    }
                 }
                 if (rm._biscuitPrefix && rm.content) {
                     var parts = rm.content.split(/\n(?==== F\d+ )/);
@@ -742,6 +748,10 @@
                     biscuitFound.msg.content = _allSorted.map(function(l) { return l.text; }).join('\n\n');
                 }
             } else {
+                // ★ V15 fix: 先清除所有已有 biscuit（防 _findDynamicMsg 漏网导致的重复）
+                for (var _cci = self.conversation.length - 1; _cci >= persistentCount; _cci--) {
+                    if (self.conversation[_cci]._biscuit) self.conversation.splice(_cci, 1);
+                }
                 // ★ 首次创建 biscuit：优先用 ctx.biscuitLines（重启后 ctx 已从 ctx.json 恢复全量），
                 //    仅当 ctx 为空时才用 biscuitText（当前楼层的单层饼干）
                 var _biscuitSrc = (self._ctx.biscuitLines && self._ctx.biscuitLines.length > 0)
@@ -757,6 +767,41 @@
             for (var _dci = self.conversation.length - 1; _dci >= 0; _dci--) {
                 if (self.conversation[_dci]._deBlock) {
                     self.conversation.splice(_dci, 1);
+                }
+            }
+
+            // ★ V16 fix: 去重 biscuit/facts 消息 — 先合并孤儿内容再删除
+            //   旧 _findDynamicMsg bug 可能产生多个孤儿 biscuit，每个含不同楼层。
+            //   删孤儿之前必须把其独有的楼层合并到第一条 biscuit，否则永久丢数据。
+            var _firstBiscuitIdx = -1;
+            for (var _dci2 = persistentCount; _dci2 < self.conversation.length; _dci2++) {
+                if (self.conversation[_dci2]._biscuit) { _firstBiscuitIdx = _dci2; break; }
+            }
+            var _seenFacts = false;
+            for (var _dci2 = self.conversation.length - 1; _dci2 >= persistentCount; _dci2--) {
+                if (self.conversation[_dci2]._biscuit && _dci2 !== _firstBiscuitIdx) {
+                    // ★ 合并孤儿 biscuit 中独有的楼层到第一条 biscuit
+                    var _orphanLines = _parseBiscuitFromContent(self.conversation[_dci2].content);
+                    var _mainLines = _parseBiscuitFromContent(self.conversation[_firstBiscuitIdx].content);
+                    var _mainMap = {};
+                    for (var _mli = 0; _mli < _mainLines.length; _mli++) { _mainMap[_mainLines[_mli].n] = true; }
+                    var _merged = false;
+                    for (var _oli = 0; _oli < _orphanLines.length; _oli++) {
+                        if (!_mainMap[_orphanLines[_oli].n]) {
+                            _mainLines.push(_orphanLines[_oli]);
+                            _merged = true;
+                        }
+                    }
+                    if (_merged) {
+                        _mainLines.sort(function(a,b) { return a.n - b.n; });
+                        self.conversation[_firstBiscuitIdx].content = _mainLines.map(function(l) { return l.text; }).join('\n\n');
+                        self.log('◆ Backpack: rescued ' + _orphanLines.length + ' floors from orphan biscuit');
+                    }
+                    self.conversation.splice(_dci2, 1);
+                }
+                if (self.conversation[_dci2]._facts) {
+                    if (_seenFacts) { self.conversation.splice(_dci2, 1); }
+                    else { _seenFacts = true; }
                 }
             }
 

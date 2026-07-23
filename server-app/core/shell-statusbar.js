@@ -13,30 +13,124 @@ function bootStatusbar(boot) {
   var $freeBadge = document.getElementById('qqq-status-free-badge');
   if ($ver) $ver.textContent = 'v' + (boot.version || '?');
   if ($eng) $eng.textContent = 'engine: ' + (boot.engineAlive ? 'on' : 'off');
-  if ($onl) $onl.textContent = '\u25A0'; // 占位方块，等首次数据到达后覆盖
+	if ($onl) $onl.textContent = '0';
 
-  // ═══ 全球在线人数 — fetch 极轻轮询（30字节/5分钟，跨窗口稳定）═══
-  // 之前用 EventSource 但多窗口环境下第二个窗口起被 CORS 静默拦截
-  // 而 online-total 端点是纯公开 GET + CF Edge Cache，真零成本
-  (function () {
-    if (!$onl) return;
-    var _onlLastFetch = 0;
-    function fetchOnline() {
-      var now = Date.now();
-      if (now - _onlLastFetch < 240000) return; // 4min 冷却
-      _onlLastFetch = now;
-      fetch('https://direct-cn.gh555.com/api/qqqide/online-total', { cache: 'no-cache' })
-        .then(function (r) { if (!r.ok) return null; return r.json(); })
-        .then(function (data) {
-          if (data && data.ok && typeof data.total === 'number') {
-            $onl.textContent = data.total > 0 ? data.total.toLocaleString() : '0';
-          }
-        })
-        .catch(function () { /* 静默 */ });
-    }
-    fetchOnline();
-    setInterval(fetchOnline, 300000); // 5 分钟（对齐服务器刷新周期）
-  })();
+	// ═══ 全球在线人数 — fetch 极轻轮询（30字节/5分钟，跨窗口稳定）═══
+	(function () {
+		if (!$onl) return;
+		$onl.style.cursor = 'pointer';
+		$onl.title = '点击查看在线用户';
+
+		var _onlLastFetch = 0;
+		var _onlUsersOpen = false;
+		var _onlOverlay = null;
+		var _onlPanel = null;
+		var _onlFetching = false;
+
+		function fetchOnline() {
+			var now = Date.now();
+			if (now - _onlLastFetch < 240000) return;
+			_onlLastFetch = now;
+			fetch('https://direct-cn.gh555.com/api/qqqide/online-total', { cache: 'no-cache' })
+				.then(function (r) { if (!r.ok) return null; return r.json(); })
+				.then(function (data) {
+					if (data && data.ok && typeof data.total === 'number') {
+						$onl.textContent = data.total > 0 ? data.total.toLocaleString() : '0';
+					}
+				})
+				.catch(function () { /* 静默 */ });
+		}
+
+		// ═══ 点击弹出在线用户列表 ═══
+		function buildOnlineUsersPanel() {
+			var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+			var bg = isDark ? '#1e1e1e' : '#fdf6e3';
+			var border = isDark ? '#333' : '#d3c6aa';
+
+			_onlOverlay = document.createElement('div');
+			_onlOverlay.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.45);z-index:9998;';
+			_onlOverlay.addEventListener('click', function (e) { if (e.target === _onlOverlay) closeOnlineUsers(); });
+
+			_onlPanel = document.createElement('div');
+			_onlPanel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;max-width:94vw;max-height:80vh;overflow-y:auto;z-index:9999;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:' + bg + ';font-size:13px;';
+			_onlPanel.innerHTML =
+				'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid ' + border + ';position:sticky;top:0;background:' + bg + ';">' +
+				'<span style="font-weight:bold;">在线用户</span>' +
+				'<button id="qqq-onl-close" style="width:22px;height:22px;border:1px solid ' + border + ';border-radius:3px;background:transparent;color:inherit;font-size:13px;line-height:20px;text-align:center;">✕</button>' +
+				'</div>' +
+				'<div id="qqq-onl-body" style="padding:8px 12px;"></div>';
+			_onlOverlay.appendChild(_onlPanel);
+			document.body.appendChild(_onlOverlay);
+			document.getElementById('qqq-onl-close').addEventListener('click', closeOnlineUsers);
+		}
+
+		function closeOnlineUsers() {
+			_onlUsersOpen = false;
+			if (_onlOverlay) _onlOverlay.style.display = 'none';
+		}
+
+		function openOnlineUsers() {
+			if (!_onlOverlay) buildOnlineUsersPanel();
+			if (_onlUsersOpen) { closeOnlineUsers(); return; }
+			_onlUsersOpen = true;
+			_onlOverlay.style.display = '';
+			fetchOnlineUsers();
+		}
+
+		function fetchOnlineUsers() {
+			if (_onlFetching) return;
+			_onlFetching = true;
+			var $body = document.getElementById('qqq-onl-body');
+			if ($body) $body.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">加载中...</div>';
+
+			fetch('https://direct-cn.gh555.com/api/qqqide/online-users', { cache: 'no-cache' })
+				.then(function (r) { if (!r.ok) return null; return r.json(); })
+				.then(function (data) {
+					_onlFetching = false;
+					if (!data || !data.ok || !$body) return;
+					var users = data.users || [];
+					if (users.length === 0) {
+						$body.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">暂无在线用户</div>';
+						return;
+					}
+					var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+				var html = '<table style="width:100%;border-collapse:collapse;">';
+					html += '<thead><tr style="border-bottom:1px solid ' + (isDark ? '#333' : '#d3c6aa') + ';">';
+					html += '<th style="padding:6px 8px;text-align:left;">手机号</th>';
+					html += '<th style="padding:6px 8px;text-align:right;">最近在线</th>';
+					html += '<th style="padding:6px 8px;text-align:right;">最近连续在线</th>';
+					html += '<th style="padding:6px 8px;text-align:right;">总在线(h)</th>';
+					html += '</tr></thead><tbody>';
+					for (var i = 0; i < users.length; i++) {
+						var u = users[i];
+						var lastSeen = new Date(u.last_seen_at * 1000);
+						var mon = lastSeen.getMonth() + 1;
+						var day = ('0' + lastSeen.getDate()).slice(-2);
+						var timeStr = mon + '-' + day + ' ' + ('0' + lastSeen.getHours()).slice(-2) + ':' + ('0' + lastSeen.getMinutes()).slice(-2);
+						var contMin = Math.floor(u.continuous_seconds / 60);
+						var contStr = contMin >= 60 ? Math.floor(contMin / 60) + 'h ' + (contMin % 60) + 'm' : contMin + 'm';
+						html += '<tr style="border-bottom:1px solid ' + (isDark ? '#2a2a2a' : '#eee8d5') + ';">';
+						html += '<td style="padding:6px 8px;font-family:monospace;">' + u.phone + '</td>';
+						html += '<td style="padding:6px 8px;text-align:right;font-family:monospace;font-size:12px;">' + timeStr + '</td>';
+						html += '<td style="padding:6px 8px;text-align:right;font-family:monospace;">' + contStr + '</td>';
+						html += '<td style="padding:6px 8px;text-align:right;font-family:monospace;">' + u.total_hours + '</td>';
+						html += '</tr>';
+					}
+					html += '</tbody></table>';
+					$body.innerHTML = html;
+				})
+				.catch(function () {
+					_onlFetching = false;
+					var $body = document.getElementById('qqq-onl-body');
+					if ($body) $body.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">加载失败，请重试</div>';
+				});
+		}
+
+		$onl.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); openOnlineUsers(); });
+
+		fetchOnline();
+		setInterval(fetchOnline, 300000);
+	})();
 
   // ═══ 单调时钟锚点（变速齿轮免疫，三保险） ═══
   // 优先级：SSE(gh555.com) > Cloudflare trace > timeapi.io

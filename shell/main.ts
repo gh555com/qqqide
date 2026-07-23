@@ -253,6 +253,9 @@ function registerAuthPersistIpc(): void {
     const AUTH_FILE = path.join(portable.userData, 'alphal', 'auth.enc');
 
     ipcMain.handle('qqqide:auth:save', async (_e, auth: { token: string; phone: string; device_name?: string } | null) => {
+        // ★ 无条件更新共享内存（不依赖 safeStorage，保证 wq-ping 能读到 doer_id）
+        if (auth && auth.phone) setAuthPhone(auth.phone);
+        if (auth && auth.token) setAuthToken(auth.token);
         if (!auth || !auth.token || !safeStorage.isEncryptionAvailable()) return false;
         try {
             const encrypted = safeStorage.encryptString(JSON.stringify(auth));
@@ -277,6 +280,12 @@ function registerAuthPersistIpc(): void {
             if (auth && auth.token) setAuthToken(auth.token);
             return auth;
         } catch (e) { return null; }
+    });
+
+    // ★ 轻量级 IPC：仅设置共享内存电话号，不依赖 safeStorage
+    ipcMain.handle('qqqide:auth:set-phone', async (_e, phone: string) => {
+        if (phone && /^\d{7,20}$/.test(phone)) { setAuthPhone(phone); return true; }
+        return false;
     });
 
     ipcMain.handle('qqqide:auth:clear', async () => {

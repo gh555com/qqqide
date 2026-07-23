@@ -88,23 +88,28 @@ const WIN_BUILTINS = new Set([
     'find', 'findstr', 'more', 'sort', 'start',
 ]);
 
-// Shell metacharacters that require shell interpretation (pipe, redirect, chain, background)
+// Shell metacharacters for QUOTING args (full set).
+// & and ; are valid in URL query strings — we don't wrap in cmd/sh for these,
+// because cmd /c strips outer quotes and exposes & as command separator.
 const SHELL_META_RE = /[|&;<>]/;
+// Subset that requires shell interpretation (pipe, redirect).
+// Only | < > trigger wrapping in cmd /c or sh -c.
+const SHELL_WRAP_RE = /[|<>]/;
 
 /** Normalize brief before dispatch.
- *  ① Wrap commands with shell metacharacters (| & ; < >) in cmd /c (Win) or sh -c (Unix).
- *     This ensures pipes/redirects/chains work regardless of spawn tier (ghrun or node).
+ *  ① Wrap commands needing shell (| < >) in cmd /c (Win) or sh -c (Unix).
+ *     & and ; in args (URLs etc.) are passed directly — no shell wrapping.
  *  ② Wrap Windows builtins (dir, type, etc.) with cmd /c. */
 function _normalizeBrief(brief: { cmd: string; args?: string[]; shell?: boolean }): void {
     if (!brief.cmd) { return; }
 
     var cmdLower = brief.cmd.toLowerCase();
 
-    // ① Detect shell metacharacters in cmd + args
-    var hasMeta = SHELL_META_RE.test(brief.cmd);
+    // ① Only wrap for | < > (pipes/redirects). & ; in args pass through directly.
+    var hasMeta = SHELL_WRAP_RE.test(brief.cmd);
     if (!hasMeta && brief.args) {
         for (var i = 0; i < brief.args.length; i++) {
-            if (SHELL_META_RE.test(brief.args[i])) { hasMeta = true; break; }
+            if (SHELL_WRAP_RE.test(brief.args[i])) { hasMeta = true; break; }
         }
     }
 
@@ -119,9 +124,9 @@ function _normalizeBrief(brief: { cmd: string; args?: string[]; shell?: boolean 
             fullCmd += ' ' + quoted.join(' ');
         }
         if (IS_WIN) {
-            // cmd /c strips outer quotes added by process spawn (ghrun/nodeTier),
-            // exposing shell metacharacters (& | < >) even inside quoted args.
-            // Escape them with ^ (cmd's escape char) so they survive outer-quote stripping.
+            // cmd /c strips outer quotes added by process spawn,
+            // exposing metacharacters even inside quoted args.
+            // Escape with ^ (cmd's escape char) so they survive.
             fullCmd = fullCmd.replace(/\^/g, '^^').replace(/&/g, '^&').replace(/\|/g, '^|').replace(/</g, '^<').replace(/>/g, '^>');
             brief.cmd = 'cmd';
             brief.args = ['/c', fullCmd];

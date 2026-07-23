@@ -12,7 +12,7 @@
         return;
     }
 
-    const CHECK_INTERVAL = 4 * 60 * 60 * 1000; // 4 hours
+    const CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
     let btnEl = null;
 
     function getBtn() {
@@ -59,10 +59,14 @@
             }
         });
 
-        // Initial check
+         // Initial check
         await checkAndHighlight();
         // Periodic check
         setInterval(checkAndHighlight, CHECK_INTERVAL);
+        // Event-driven: re-check on visibility restore (user alt-tabs back)
+        document.addEventListener('visibilitychange', function () {
+            if (!document.hidden) { checkAndHighlight(); }
+        });
     }
 
     async function checkAndHighlight() {
