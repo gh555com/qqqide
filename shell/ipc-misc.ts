@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { app, ipcMain, BrowserWindow, clipboard, dialog, shell as electronShell } from 'electron';
+import { openUrl } from './browser-launcher';
 import * as path from 'path';
 import * as fs from 'fs';
 import { URL } from 'url';
@@ -45,7 +46,7 @@ export function registerMiscIpc(
         try { return await electronShell.openPath(p); } catch (e) { console.warn('[shell:openPath]', e); return ''; }
     });
     ipcMain.handle('qqqide:shell:openExternal', async (_e, url: string) => {
-        try { await electronShell.openExternal(url); } catch (e) { console.warn('[shell:openExternal]', e); }
+        openUrl(url);
     });
 
     // ---- drives / diskFree ----

@@ -136,7 +136,8 @@ if sys.platform == 'win32':
                 return False
 
             if last_error == ERROR_ALREADY_EXISTS:
-                show_message_callback("kqs 窗口布局", "程序已在运行。", "ok")
+                # ★ 静默退出：另一实例已运行（可能来自其他 IDE）
+                print("R20: 程序已在运行 (互斥锁冲突)，静默退出。")
                 self.release_mutex() # 释放刚创建的多余句柄
                 return False
 
@@ -416,7 +417,8 @@ elif sys.platform == 'linux':
                     self.lock_file.close()
                     self.lock_file = None
 
-                show_message_callback("kqs 窗口布局", "程序已在运行。", "ok")
+                # ★ 静默退出：另一实例已运行
+                print("R24: 程序已在运行 (文件锁冲突)，静默退出。")
                 return False
 
         def release_mutex(self):
@@ -668,7 +670,7 @@ elif sys.platform == 'linux':
                 screen = display.screen()
                 root = screen.root
 
-                # 获取输入焦点窗口
+                # 获取键入焦点窗口
                 focused_window = display.get_input_focus().focus
 
                 if focused_window == X.NONE:
@@ -862,7 +864,8 @@ elif sys.platform == 'darwin':
                     self.lock_file.close()
                     self.lock_file = None
 
-                show_message_callback("kqs 窗口布局", "程序已在运行。", "ok")
+                # ★ 静默退出：另一实例已运行
+                print("R24: 程序已在运行 (文件锁冲突)，静默退出。")
                 return False
 
         def release_mutex(self):

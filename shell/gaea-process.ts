@@ -42,6 +42,8 @@ const _watchdogs = new Map<string, NodeJS.Timeout>();
 const _statusListeners: Array<(goodsId: string, running: boolean, pid: number | null) => void> = [];
 let _userDataPath: string | null = null;
 const _goodsMeta = new Map<string, { allowMultiple: boolean }>();
+// ★ 单例冲突标记：进程因互斥锁冲突退出（exit code 100）→ 防止看门狗无限重启
+const _singletonConflicts = new Set<string>();
 
 export function onGaeaProcessStatusChange(cb: (goodsId: string, running: boolean, pid: number | null) => void): void {
     _statusListeners.push(cb);
@@ -151,6 +153,9 @@ export function startGaeaProcess(
     _userDataPath = userData;
     _goodsMeta.set(goodsId, { allowMultiple });
 
+    // ★ 用户主动重试 → 清除冲突标记
+    _singletonConflicts.delete(goodsId);
+
     // ★ 单例检测: allowMultiple=false → 检查 PID 文件
     if (!allowMultiple) {
         const existing = _checkExistingInstance(userData, goodsId);
@@ -241,7 +246,14 @@ export function startGaeaProcess(
 
         proc.on('exit', (code, signal) => {
             console.log('[' + goodsId + '] exited code=' + code + ' signal=' + signal);
-            if (!allowMultiple) _removePidFile(userData, goodsId);
+            if (!allowMultiple) {
+                _removePidFile(userData, goodsId);
+                // ★ exit code 100 = 互斥锁冲突（另一实例已运行，可能来自其他 IDE）
+                if (code === 100) {
+                    _singletonConflicts.add(goodsId);
+                    console.log('[' + goodsId + '] singleton conflict — watchdog blocked');
+                }
+            }
             _registry.delete(goodsId);
             _notifyStatus(goodsId, false, null);
         });
@@ -260,6 +272,8 @@ export function startGaeaProcess(
 }
 
 export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string } {
+    // ★ 用户主动停止 → 清除单例冲突标记
+    _singletonConflicts.delete(goodsId);
     const entry = _registry.get(goodsId);
 
     // ★ 路径 A: 内存里有活跃 proc → 直接杀
@@ -364,6 +378,10 @@ export function startGaeaWatchdog(
     stopGaeaWatchdog(goodsId);
 
     const timer = setInterval(() => {
+        // ★ 单例冲突：另一实例正在运行 → 不重启，等下次
+        if (_singletonConflicts.has(goodsId)) {
+            return;
+        }
         const existing = _checkExistingInstance(userData, goodsId);
         if (!existing.running) {
             console.log('[watchdog:' + goodsId + '] process not running, restarting...');

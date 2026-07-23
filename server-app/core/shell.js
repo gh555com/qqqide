@@ -69,6 +69,8 @@ function applyLayout() {
     aEl.style.flexBasis = _shLayoutState.aZoneW + 'px';
     aEl.style.width = _shLayoutState.aZoneW + 'px';
   }
+  // ★ 同步 CSS 变量，保持唯一真理源
+  document.documentElement.style.setProperty('--a-zone-w', (_shLayoutState.aZoneW || 123) + 'px');
   var oEl = document.getElementById('qqq-x-output');
   if (oEl) {
     oEl.style.flexBasis = _shLayoutState.outputH + 'px';
@@ -453,7 +455,7 @@ function bootSashes() {
     window.qqqideSash.bindV(aSash,
       [{
         getW: function () { return aEl.offsetWidth; },
-        setW: function (w) { _shLayoutState.aZoneW = w; aEl.style.flexBasis = w + 'px'; aEl.style.width = w + 'px'; },
+        setW: function (w) { _shLayoutState.aZoneW = w; aEl.style.flexBasis = w + 'px'; aEl.style.width = w + 'px'; document.documentElement.style.setProperty('--a-zone-w', w + 'px'); },
         min: _shMin,
       }],
       [{

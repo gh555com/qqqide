@@ -113,12 +113,16 @@ function _normalizeBrief(brief: { cmd: string; args?: string[]; shell?: boolean 
         var fullCmd = brief.cmd;
         if (brief.args && brief.args.length) {
             var quoted = brief.args.map(function(a: string) {
-                if (/\s/.test(a)) return '"' + a.replace(/"/g, '\\"') + '"';
+                if (/\s/.test(a) || SHELL_META_RE.test(a)) return '"' + a.replace(/"/g, '\\"') + '"';
                 return a;
             });
             fullCmd += ' ' + quoted.join(' ');
         }
         if (IS_WIN) {
+            // cmd /c strips outer quotes added by process spawn (ghrun/nodeTier),
+            // exposing shell metacharacters (& | < >) even inside quoted args.
+            // Escape them with ^ (cmd's escape char) so they survive outer-quote stripping.
+            fullCmd = fullCmd.replace(/\^/g, '^^').replace(/&/g, '^&').replace(/\|/g, '^|').replace(/</g, '^<').replace(/>/g, '^>');
             brief.cmd = 'cmd';
             brief.args = ['/c', fullCmd];
         } else {

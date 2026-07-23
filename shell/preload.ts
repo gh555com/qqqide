@@ -20,8 +20,8 @@ const QQQ = {
 
     // ---- auth push — 浏览器登录成功通过 qqqide:// 协议推 token（2026-06-29） ----
     auth: {
-onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; purchased?: boolean }) => void) => {
-            const handler = (_e: any, data: { token: string; phone: string; country_iso2?: string; purchased?: boolean }) => { try { cb(data); } catch (err) { console.warn('[auth.onAuthPush]', err); } };
+onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; purchased?: boolean; session_id?: string }) => void) => {
+            const handler = (_e: any, data: { token: string; phone: string; country_iso2?: string; purchased?: boolean; session_id?: string }) => { try { cb(data); } catch (err) { console.warn('[auth.onAuthPush]', err); } };
             ipcRenderer.on('qqqide-auth', handler);
             return () => ipcRenderer.removeListener('qqqide-auth', handler);        },
         saveAuth: (auth: { token: string; phone: string; device_name?: string; country_iso2?: string; purchased?: boolean } | null) => ipcRenderer.invoke('qqqide:auth:save', auth),

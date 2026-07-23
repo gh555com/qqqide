@@ -370,7 +370,7 @@ function goUpOneLevel() {
 
 // ---- Windows .lnk 快捷方式解析（纯 JS，从 q3 移植）----
 // 规范: MS-SHLLINK (Shell Link Binary File Format)
-// 输入: base64 编码的 .lnk 文件内容
+// 键入: base64 编码的 .lnk 文件内容
 // 输出: { candidates: [...], ansiPath: '...' } — candidates 按优先级排序（Unicode 来源优先）
 // ★ 关键教训（q3 已验证）: 解析阶段不做存在性判断（浏览器无 fs.existsSync），
 //   交由 resolveLnkTarget 用 bridge.fs.stat 异步校验——与 q3 的 fs.existsSync 完全等价。
@@ -587,7 +587,7 @@ function renderQqiqSection() {
 	fc.innerHTML = '<input type="text" class="qq-filter-input" id="qqFilterInput" placeholder="find" spellcheck="false"><div id="qqFilterHistoryDropdown" class="history-dropdown"></div>';
 	driveList.appendChild(fc);
 	// ★ 渲染全部条目（上限 QQ_IQ_MAX），超出 QQ_IQ_DISPLAY 的初始隐藏
-	//    筛选时由 applyqqiqFilter 在 DOM 内原地 show/hide，不重建输入框
+	//    筛选时由 applyqqiqFilter 在 DOM 内原地 show/hide，不重建键入框
 	var sec = document.createElement('div'); sec.className = 'qq-iq-section';
 	var total = Math.min(_qqiq.length, QQ_IQ_MAX);
 	for (var i = 0; i < total; i++) {
@@ -640,7 +640,7 @@ function buildQqiqItem(item) {
 	return el;
 }
 
-// ★ qq 筛选器：原地过滤 DOM（不重建，不破坏输入框焦点）；AND 多词模糊匹配
+// ★ qq 筛选器：原地过滤 DOM（不重建，不破坏键入框焦点）；AND 多词模糊匹配
 function applyqqiqFilter(keyword) {
 	var section = document.querySelector('.qq-iq-section');
 	if (!section) return;

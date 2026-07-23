@@ -22,14 +22,14 @@ process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
 import { applyPortablePaths, getAppRoot } from './portable-paths';
 const portable = applyPortablePaths();
 
-import { app, BrowserWindow, protocol, nativeTheme, safeStorage, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, protocol, nativeTheme, safeStorage, ipcMain, shell } from 'electron';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
 
 // ── 子模块 ──
 import { loadBootConfig, extractFlags, bootSequence, getWebappBaseUrl, BootMode, BootConfig } from './boot';
-import { APP_VERSION } from './version';
+import { APP_VERSION, checkForcedUpdate } from './version';
 import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap } from './window-manager';
 import { initAssetProtocol, hydrateAssetRootsFromState } from './asset-protocol';
 import { registerFsIpc } from './ipc-fs';
@@ -136,9 +136,10 @@ function handleAuthProtocolUrl(url: string): void {
             const phone = parsed.searchParams.get('phone');
             const countryISO2 = parsed.searchParams.get('country_iso2') || '';
             const purchased = parsed.searchParams.get('purchased') === '1';
+            const sessionId = parsed.searchParams.get('session') || '';
             if (token && mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('qqqide-auth', { token, phone: phone || '', country_iso2: countryISO2, purchased: purchased });
-                console.log('[protocol] auth token pushed to renderer, phone=' + (phone || '?') + ' cc=' + countryISO2);
+                mainWindow.webContents.send('qqqide-auth', { token, phone: phone || '', country_iso2: countryISO2, purchased: purchased, session_id: sessionId });
+                console.log('[protocol] auth token pushed to renderer, phone=' + (phone || '?') + ' cc=' + countryISO2 + ' sid=' + (sessionId ? sessionId.slice(0,8) : '-'));
             }
         }
     } catch (e) {
@@ -346,6 +347,46 @@ function registerGaeaProcessIpc(): void {
 app.whenReady().then(async () => {
     // ★ If another instance already holds the lock, quit immediately — don't create windows
     if (_shouldQuitEarly) {
+        app.quit();
+        return;
+    }
+
+    // ★ 强制更新检查 — 版本过低时弹窗要求重新下载绿色包（2026-07-23）
+    const forced = checkForcedUpdate();
+    if (forced.required) {
+        const DOWNLOAD_URL = 'https://gh555.com/qqqide/';
+        const result = dialog.showMessageBoxSync({
+            type: 'warning',
+            title: 'qqqide — 需要更新',
+            message: '您的 qqqide 版本过低，必须重新下载安装。',
+            detail: [
+                '当前版本: ' + forced.currentVersion,
+                '最低要求: ' + forced.minVersion,
+                '',
+                '由于架构升级，旧版本无法通过自动更新完成升级。',
+                '请前往下载页面获取最新绿色包。',
+                '',
+                '【安装方法】',
+                '① 关闭 IDE',
+                '② 下载最新绿色包（约 94MB）',
+                '③ 直接解压覆盖到原位置即可（推荐）',
+                '',
+                '【偏好保留】',
+                '项目数据（对话记录/设置）在项目文件夹的 qqq/ 目录下，',
+                '覆盖安装不会丢失。登录状态和应用偏好需要重新设置。',
+                '如需保留: 先备份 gh555.com\\Data\\alphal\\ 文件夹，',
+                '安装并首次运行后再复制回去。',
+                '',
+                '【干净安装】',
+                '删除旧的 qqqide-win-x64 文件夹 → 解压新绿色包即可。',
+            ].join('\n'),
+            buttons: ['前往下载', '退出'],
+            defaultId: 0,
+            cancelId: 1,
+        });
+        if (result === 0) {
+            shell.openExternal(DOWNLOAD_URL);
+        }
         app.quit();
         return;
     }

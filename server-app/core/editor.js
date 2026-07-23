@@ -509,7 +509,7 @@
     _addMinimapAction(ed, monaco, filePath);
   }
 
-  // ── 喂给 AI：编辑器右键 → 注入 📎"path" L15-L18 到焦点面板输入框 ──
+  // ── 喂给 AI：编辑器右键 → 注入 📎"path" L15-L18 到焦点面板键入框 ──
   var _feedToAiActions = typeof WeakMap !== 'undefined' ? new WeakMap() : new Map();
 
   function _addFeedToAiAction(ed, monaco, filePath) {

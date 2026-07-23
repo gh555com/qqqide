@@ -3,6 +3,7 @@
 // ============================================================================
 
 import { app, BrowserWindow, session, shell as electronShell } from 'electron';
+import { openUrl } from './browser-launcher';
 import * as path from 'path';
 import * as fs from 'fs';
 import { URL } from 'url';
@@ -302,7 +303,7 @@ export function registerExitHandlers(
     // Block new window attempts
     app.on('web-contents-created', (_e, contents) => {
         contents.setWindowOpenHandler(({ url }) => {
-            electronShell.openExternal(url);
+            openUrl(url);
             return { action: 'deny' };
         });
         contents.on('will-navigate', (e, url) => {
@@ -311,7 +312,7 @@ export function registerExitHandlers(
                 const allowed = new URL(bootConfig.url);
                 if (target.origin !== allowed.origin && !url.startsWith('file://')) {
                     e.preventDefault();
-                    electronShell.openExternal(url);
+                    openUrl(url);
                 }
             } catch { e.preventDefault(); }
         });

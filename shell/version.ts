@@ -14,7 +14,10 @@ import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 // ── 单一定义（唯一真理源）──────────────────────────────────────────────────
-export const APP_VERSION = '0.2.25';
+export const APP_VERSION = '0.2.35';
+
+/** ★ 强制更新最低版本。客户端版本低于此值 → 启动时弹窗要求重新下载绿色包。 */
+export const MIN_VERSION = '0.2.30';
 
 export interface Semver {
     major: number;
@@ -216,6 +219,26 @@ export async function fetchServerVersionInfo(baseUrl: string): Promise<VersionIn
 }
 
 /** fetchServerVersionInfo with fallback: try primary URL first, then fallback. */
+// ── 强制更新检查 ─────────────────────────────────────────────────────────
+
+export interface ForcedUpdateResult {
+    required: boolean;
+    currentVersion: string;
+    minVersion: string;
+}
+
+/** 检查当前版本是否低于强制更新阈值。返回 { required, currentVersion, minVersion }。 */
+export function checkForcedUpdate(): ForcedUpdateResult {
+    const cmp = compareSemver(APP_VERSION, MIN_VERSION);
+    return {
+        required: cmp !== null && cmp < 0,
+        currentVersion: APP_VERSION,
+        minVersion: MIN_VERSION,
+    };
+}
+
+// ── 服务器版本拉取 ───────────────────────────────────────────────────────
+
 export async function fetchServerVersionInfoWithFallback(
     primaryUrl: string,
     fallbackUrl: string

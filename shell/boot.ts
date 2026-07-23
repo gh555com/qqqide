@@ -42,10 +42,10 @@ function initBootLog(logsDir: string) {
 export const PRODUCTION_URL = 'https://gh555.com/qqqide/';
 
 /** ★ 热更新 CDN 路由 (CF Worker → 302 OSS/R2)。版本检查/下载走此 URL。 */
-export const UPDATE_BASE_URL = 'https://gh555.com/dl/qqqide-update/';
+export const UPDATE_BASE_URL = 'https://gh555.com/dl/qqqide-up/';
 
 /** ★ 热更新兜底 URL (OSS 上海直连，绕过 CF)。当主 URL 不可达时使用。 */
-export const UPDATE_FALLBACK_URL = 'https://gh555-shanghai.oss-cn-shanghai.aliyuncs.com/qqqide-update/';
+export const UPDATE_FALLBACK_URL = 'https://gh555-shanghai.oss-cn-shanghai.aliyuncs.com/qqqide-up/';
 
 // ----------------------------------------------------------------------------
 // Boot configuration
