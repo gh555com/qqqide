@@ -712,6 +712,12 @@
       try { _loginAbortCtrl.abort(); } catch (e) { }
       _loginAbortCtrl = null;
     }
+    // ★ 清除旧持久化 auth，打破 auth.enc 死循环（2026-07-23 修复：
+    // 旧 token 可能属于其他账号，留着会导致下次启动 _restoreAuth 恢复错号）
+    _clearAuthData();
+    try { if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.clearAuth) window.qqqideBridge.auth.clearAuth(); } catch(e) {}
+    _notifyStateChange();
+
     var myGen = ++_loginGen;        // 代际号，用于抑制过期 toast
     var ctrl = new AbortController();
     _loginAbortCtrl = ctrl;
@@ -726,7 +732,17 @@
       try {
         if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.onAuthPush) {
           _unsubPush = window.qqqideBridge.auth.onAuthPush(function (data) {
-            if (pushDone || !data || !data.token) return;
+            if (!data || !data.token) return;
+            // ★ session_id 校验（2026-07-23 修复）：push 若带 session_id 则必须匹配当前登录会话。
+            // 防止浏览器 Fast Path 用 localStorage 旧 token 推错账号。
+            // 不匹配的 push 静默丢弃（可能是旧登录的残留在网络延迟中抵达）。
+            if (data.session_id && data.session_id !== sessionId) {
+              console.warn('[login] push session mismatch, expected=' + sessionId.slice(0,8) + ' got=' + data.session_id.slice(0,8));
+              return;
+            }
+            // ★ 允许同 session 内覆盖（2026-07-23 修复）：不再用 pushDone 硬锁。
+            // 浏览器 Fast Path 可能先用旧 token 推错账号，用户手动纠正后
+            // 第二次 push 必须能覆盖第一次的错误数据。poll 同理可覆盖 push。
             pushDone = true;
             _setAuthData(data.token, data.phone || '', data.country_iso2 || '', data.purchased);
             _notifyStateChange();
@@ -742,19 +758,20 @@
 
       var startTime = Date.now(), pollCount = 0;
       while (Date.now() - startTime < POLL_TIMEOUT_MS) {
-        if (signal.aborted || pushDone) break;
+        if (signal.aborted) break;
         // ★ Abortable sleep：abort 时立即跳出
         await new Promise(function (r) {
           var t = setTimeout(r, POLL_INTERVAL_MS);
           var onAbort = function () { clearTimeout(t); r(); };
           signal.addEventListener('abort', onAbort, { once: true });
         });
-        if (signal.aborted || pushDone) break;
+        if (signal.aborted) break;
         pollCount++;
         try {
-          var resp = await _httpsGet('/gaea/qqqide/auth/poll?session=' + sessionId +
-            '&device_name=' + encodeURIComponent(deviceName));
+          var resp = await _httpsGet('/gaea/qqqide/auth/poll?session=' + sessionId);
           if (resp && resp.ok && resp.token) {
+            // ★ poll 永远可覆盖 push 数据（2026-07-23 修复）：poll 走服务端 session_id 精确匹配，
+            // 是权威真理源。即使 push 已设置数据，poll 返回不同 token 也必须覆盖。
             _setAuthData(resp.token, resp.phone || '', resp.country_iso2 || '', resp.purchased);
             _notifyStateChange();
             pushDone = true;

@@ -11,13 +11,13 @@ P0 — 烟囱测试
 ----------------------------
 1. Electron 启动无 boot-fallback；标题栏窗控三按钮工作。
 2. 左侧 Activity 栏点目录→文件→tab→Monaco 渲染。
-3. 输入 `/\ E:\s\wol\py\q3\res\q.png \\/` 独占一行→ViewZone 相框(180px)。
+3. 键入 `/\ E:\s\wol\py\q3\res\q.png \\/` 独占一行→ViewZone 相框(180px)。
 4. 同一 token 嵌入文字中间→16px 行内图标 ContentWidget。
 5. 截图 Ctrl+V 粘贴→自动落地+插 token。
 6. 同一张图再粘贴→hash 缓存命中→不重复写盘。
 7. Ctrl+\ → 分右组 (key-hook 统一调度)。
 8. Roam tab → 盘符 200ms 内出现 + 真实 free/total。
-9. AI 面板→输入+Enter→SSE 流式回包→楼层时钟饼图→引导按钮回字形→排队按钮吕字形。
+9. AI 面板→键入+Enter→SSE 流式回包→楼层时钟饼图→引导按钮回字形→排队按钮吕字形。
 10. CodeLens 含 http(s)视频URL→显示"下载"按钮。
 
 P1 — 价值最大补完 ✓ (全部完成)

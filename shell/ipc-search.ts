@@ -472,6 +472,7 @@ export function registerSearchIpc(): void {
     // ── qqqide:search:replace ──
     ipcMain.handle('qqqide:search:replace', async (_e, args: {
         replacements?: Array<{ file: string; line: number; col: number; matchLen: number; replacement: string }>;
+        searchPath?: string;
         files?: string[];
         find?: string;
         replace?: string;
@@ -481,6 +482,7 @@ export function registerSearchIpc(): void {
     }) => {
         // Per-match replacements (primary API)
         if (args.replacements && Array.isArray(args.replacements) && args.replacements.length > 0) {
+            const searchPath = args.searchPath || '';
             const byFile = new Map<string, Array<{ line: number; col: number; matchLen: number; replacement: string }>>();
             for (const r of args.replacements) {
                 if (!byFile.has(r.file)) byFile.set(r.file, []);
@@ -492,8 +494,10 @@ export function registerSearchIpc(): void {
 
             for (const [fpath, reps] of byFile) {
                 try {
+                    // Resolve relative paths against searchPath
+                    const absFp = path.isAbsolute(fpath) ? fpath : path.join(searchPath, fpath);
                     reps.sort((a, b) => b.line - a.line || b.col - a.col); // reverse: stable offsets
-                    const content = await fs.promises.readFile(fpath, 'utf8');
+                    const content = await fs.promises.readFile(absFp, 'utf8');
                     const lines = content.split('\n');
                     let changed = false;
 
@@ -509,7 +513,7 @@ export function registerSearchIpc(): void {
                     }
 
                     if (changed) {
-                        await fs.promises.writeFile(fpath, lines.join('\n'), 'utf8');
+                        await fs.promises.writeFile(absFp, lines.join('\n'), 'utf8');
                         filesChanged++;
                     }
                 } catch (e: any) {

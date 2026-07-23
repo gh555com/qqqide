@@ -159,7 +159,7 @@ def handle_w_confirm_presses():
 
     # (R24) 光标下窗口就是焦点窗口 → 用户可能在打字，跳过
     if _is_cursor_on_focus_window(window_info):
-        print("R24: 3W 跳过 — 光标下窗口即焦点窗口，视为正常输入")
+        print("R24: 3W 跳过 — 光标下窗口即焦点窗口，视为正常键入")
         return
 
     print("R24: 主线程处理 3W 保存...")
@@ -178,7 +178,7 @@ def handle_three_shift_presses():
     # (R26) 光标下窗口就是焦点窗口 → 用户可能在打字（如按 Shift 大写），跳过
     cursor_info = g_platform.get_window_under_cursor()
     if cursor_info and _is_cursor_on_focus_window(cursor_info):
-        print("R26: 3Shift 跳过 — 光标下窗口即焦点窗口，视为正常输入")
+        print("R26: 3Shift 跳过 — 光标下窗口即焦点窗口，视为正常键入")
         return
 
     print("R26: 主线程处理 3Shift 还原 (焦点窗口)...")
@@ -227,7 +227,7 @@ def handle_three_x_presses():
 
     # (R24) 光标下窗口就是焦点窗口 → 用户可能在打字，跳过
     if _is_cursor_on_focus_window(window_info):
-        print("R24: 3X 跳过 — 光标下窗口即焦点窗口，视为正常输入")
+        print("R24: 3X 跳过 — 光标下窗口即焦点窗口，视为正常键入")
         return
 
     print("R24: 主线程处理 3X 还原...")
@@ -290,7 +290,7 @@ def main():
     if not g_platform.create_mutex(config.aqq, ui.show_custom_message):
         print("R24: 单例检查失败 (程序已运行或创建互斥锁失败)，程序退出。")
         config.env_instance.cleanup()
-        sys.exit(0)
+        sys.exit(100)  # ★ exit code 100 = singleton conflict, don't restart
 
     # --- (R22) 修复 Ctrl+C 开始 ---
     signal.signal(signal.SIGINT, lambda sig, frame: QApplication.quit())

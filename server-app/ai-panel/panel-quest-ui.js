@@ -12,7 +12,7 @@ async function switchQuest(id) {
     if ($messages) $messages.classList.add('qqq-switching');
     // ★ 硬限制：没收到 house 1 不准切任务（防原 floor 中断出红字"未收到 AI 回复"）
     if (_activeAgent && _activeAgent._stopState === 'sending') {
-        var _noHouse1 = _activeAgent._deferRenderUntilHouse1 || (!_activeAgent._streamBuf || _activeAgent._streamBuf.length === 0);
+        var _noHouse1 = _activeAgent._deferRenderUntilHouse1 || (!_activeAgent._streamFullText || _activeAgent._streamFullText.length === 0);
         if (_noHouse1) {
             _switching = false;
             if (_overlay) _overlay.classList.remove('show');
@@ -1152,7 +1152,7 @@ function _triggerQueueSend() {
     var _q = _queue;
     if (!_q || _q.length === 0) { renderQueueStrip(); return; }
     var inputText = ($input.value || '').trim();
-    // ★ 输入框有文字时暂停队列，保护用户正在编辑的内容不被覆盖
+    // ★ 键入框有文字时暂停队列，保护用户正在编辑的内容不被覆盖
     if (inputText) {
         _queuePaused = true;
         renderQueueStrip();
@@ -1535,7 +1535,7 @@ $queueBtn.onclick = function () {
     });
     themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
-    // ★ 是否在编辑框内（输入法/编辑时 12qw 键不响应滚动 → 水箱粒子隐藏）
+    // ★ 是否在编辑框内（键入法/编辑时 12qw 键不响应滚动 → 水箱粒子隐藏）
     function _isEditingFocus() {
         var ae = document.activeElement;
         if (!ae) return false;

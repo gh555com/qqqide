@@ -363,7 +363,7 @@ async function _executeSend(intent) {
     agent._streamingContent = null;
     agent._streaming = true;
     // ★ 背包重量估算（K tokens = chars / 2.7 / 1000）
-    // 完整对齐背包图解：guard + Z + biscuit + facts + 用户输入 + tools + body
+    // 完整对齐背包图解：guard + Z + biscuit + facts + 用户键入 + tools + body
     if (sendType !== 'recovery') {
         var _bpChars = 0;
         // 1. 服务端甲壳（与 panel-quest-ui.js guardChars 同步）
@@ -376,7 +376,7 @@ async function _executeSend(intent) {
                 _bpChars += (_cm.content || '').length;
             }
         }
-        // 3. 当前用户输入
+        // 3. 当前用户键入
         _bpChars += (text || '').length;
         // 4. 工具定义 JSON（与背包图解一致）
         try {

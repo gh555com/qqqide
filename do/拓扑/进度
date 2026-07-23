@@ -57,7 +57,7 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 
 已完成 — 本轮 2026-06-29 (35) ~New quest~ 状态泄漏清除 + 红框跨楼层搜索
 ------
-· 根因1—草稿 UI 状态泄漏：sendMessage 草稿晋升后 saveQuestUIState(_dOldId) 保存了已发送的输入框文本/图片/tier
+· 根因1—草稿 UI 状态泄漏：sendMessage 草稿晋升后 saveQuestUIState(_dOldId) 保存了已发送的键入框文本/图片/tier
   → 下次 ~New quest~ restoreQuestUIState(_draftId) 还原 → 老内容复活（重启不掉，onlyStore 持久化）
 · 根因2—草稿 agent 池队列泄漏：_getOrCreateAgent 对草稿也建 agent 放 parent.__qqq_agentPool
   → switchQuest(_draftId) 重用池中 agent → 旧 _queue 数组残留 → 队列背包复活
@@ -497,7 +497,7 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 - §18 CooldownGuard 默认冷却值同步
 - content-visibility:auto 消息虚拟化：.msg 加 CSS 属性，屏外跳过渲染 → ★ 2026-07-08 已回退：与 qh 滚动条冲突导致 hover 闪烁
 - Quest IO 并行化：touch + save 改 Promise.all（不同 key 互不依赖）
-- AI 输入框滚动条：3px 高对比度无圆角
+- AI 键入框滚动条：3px 高对比度无圆角
 - shell.css: overflow:hidden 从 html,body 移至 .qqq-shell（释放 body 直系 fixed 不被裁切）
 - A|X sash 渐变背景匹配：消双线只剩 ::after 单分割线
 - 分组间 sash 收至 4px + 背景色匹配分组
@@ -530,7 +530,7 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 - only-store.js (新): 项目级偏好 SQLite 存储引擎 (qqq/alphal/only.sq3)
   · 内存缓存 + 自动批量刷盘管线：500ms 空闲 flush，3s 强制，beforeunload 同步
   · 零维护成本：新增偏好只需 onlyStore.set('key', val) 一行
-- 接入: ai.uiStates (输入草稿/图片/等级/滚动)、ai.activeQuestId、theme
+- 接入: ai.uiStates (键入草稿/图片/等级/滚动)、ai.activeQuestId、theme
 - 目录重构: qqq/quests/alphal/ → qqq/alphal/ (锁/数据库/规则/设备ID/发件箱合一)
 - 旧目录自动迁移: bindMainProject 检测并 rename
 
@@ -545,7 +545,7 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 
 已完成 — 本轮 2026-06-03 (3) quest 切换状态防丢全闭环
 ------
-- 流式中切 quest 丢输入: sendMessage 在清空 $input 前调用 saveQuestUIState
+- 流式中切 quest 丢键入: sendMessage 在清空 $input 前调用 saveQuestUIState
 - 流式中切 quest 丢 AI 半截回复: _extractPartialAiText(_fullText) 注入 conversation + _truncated 标记
 - abort 并发截断 conversation: saveQuestData 先 .slice() 生成独立副本
 - 渲染后段落 GC 致半截提取不全: _fullText 随 onToken 累加，永不 null
@@ -682,7 +682,7 @@ qqq-shell-v2 进度 — 只记录已落地的事实。未完成项仅作方向�
 
 已完成 — 本轮 2026-05-28 (6) 引导按钮 + 思考清理 + 按钮重构 + quest路径修正
 ------
-- 引导按钮: inject()→sendMessage(), 带[GUIDE]标记触发AI立即确认, 空输入默认"确认连接"
+- 引导按钮: inject()→sendMessage(), 带[GUIDE]标记触发AI立即确认, 空键入默认"确认连接"
 - SYSTEM_PROMPT 新增 GUIDE HANDLING: AI 收到[GUIDE]立即回"收到引导", 1-2句, 不用工具
 - 引导/排队按钮启用逻辑: disabled=val(流水中禁用), 非disabled=!val(空闲可用)
 - 排队按钮同样启用逻辑，后续接入

@@ -205,7 +205,7 @@ $input.addEventListener('input', autoResizeInput);
 // 窗口大小变化或主题切换可能导致行高变化，重新计算
 window.addEventListener('resize', function () { _inputLineHeight = 0; autoResizeInput(); });
 
-// ═══ 输入进度条 — 底部 2px 单线填色 #ff3d00 ═══
+// ═══ 键入进度条 — 底部 2px 单线填色 #ff3d00 ═══
 function _updateInputProgress() {
     var fill = document.getElementById('input-progress-fill');
     if (!fill) return;

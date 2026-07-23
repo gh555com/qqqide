@@ -257,7 +257,7 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 .msg-flow-compress-fail-hdr{display:flex;align-items:center;gap:4px;font-weight:700;color:#dc322f;font-size:13px}
 .msg-flow-compress-fail-body{font-size:13px;line-height:1.5;word-break:break-word;white-space:pre-wrap}
 .msg-status{font-size:10px;color:var(--base01);padding:4px 0;font-style:italic}
-/* ── 开放厨房输入区：右侧留16px给子弹按钮 ── */
+/* ── 开放厨房键入区：右侧留16px给子弹按钮 ── */
 #input-area{border-top:1px solid var(--border-color);padding:8px 24px 4px 8px;display:flex;flex-direction:column;gap:6px;background:var(--card-bg);position:relative}
 /* ── 子弹按钮：绝对定位，从顶拉到底，右贴边 ── */
 #bullet-btn{position:absolute;right:0;top:0;bottom:0;width:16px;border:none;border-left:1px solid var(--border-color);background:transparent;cursor:pointer;padding:0;margin:0;outline:none;overflow:hidden}#bullet-btn:hover{background:rgba(255,61,0,0.08)}#bullet-btn:active{background:rgba(255,61,0,0.15)}
@@ -278,14 +278,14 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 .msg-img-badge{position:absolute;top:4px;left:4px;background:rgba(0,0,0,0.75);color:#fff;font-size:10px;font-weight:bold;padding:2px 6px;border-radius:3px;user-select:none;z-index:1}
 .msg-img-badge:hover{background:var(--green)}
 #input-row{display:flex;gap:0;overflow:hidden;margin:0 -8px 0 -8px}
-/* ── 开放厨房：输入框无边框，仅底边进度条 ── */
+/* ── 开放厨房：键入框无边框，仅底边进度条 ── */
 #input-wrap{position:relative;flex:1;min-width:0}
-/* newline-btn: 右下角半透明浮动回车按钮，点击在光标处插入换行 */
-#newline-btn{position:absolute;right:4px;bottom:4px;width:28px;height:22px;border:1px solid var(--border-color);border-radius:4px;background:rgba(128,128,128,0.12);color:var(--text-primary);font-size:16px;font-weight:700;line-height:20px;text-align:center;cursor:pointer;opacity:0.35;transition:opacity 0.15s;z-index:10;user-select:none;padding:0;font-family:monospace}
+/* newline-btn: 悬浮于键入区右下角，ctx-btn 上方 */
+#newline-btn{position:absolute;right:20px;bottom:33px;z-index:10;width:24px;height:18px;border:1px solid var(--border-color);border-radius:4px;background:rgba(128,128,128,0.12);color:var(--text-primary);font-size:14px;font-weight:700;line-height:16px;text-align:center;cursor:pointer;opacity:0.35;transition:opacity 0.15s;user-select:none;padding:0;font-family:monospace}
 #newline-btn:hover{opacity:0.75;background:rgba(128,128,128,0.20)}
 #newline-btn:active{opacity:0.9;background:var(--base2)}
 #input{display:block;width:100%;background:var(--card-bg);color:var(--text-primary);border:none;border-radius:0;padding:5px 10px;font-size:13px;font-family:inherit;min-height:33px;max-height:333px;overflow-y:hidden;overflow-x:hidden;resize:none;outline:none;scrollbar-width:thin;scrollbar-color:var(--base01) transparent;line-height:1.5}#input::-webkit-scrollbar{width:3px}#input::-webkit-scrollbar-track{background:transparent;border:none}#input::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}#input::-webkit-scrollbar-button{display:none}#input::-webkit-scrollbar-corner{background:transparent}
-/* ── 输入进度条：悬浮在按钮行上方，从面板左边界延伸到子弹按钮 ── */
+/* ── 键入进度条：悬浮在按钮行上方，从面板左边界延伸到子弹按钮 ── */
 #input-progress{height:0;overflow:visible;pointer-events:none;position:relative;margin-left:-8px;margin-right:-8px}
 #input-progress-fill{position:absolute;top:3px;left:0;height:2px;width:0;background:#ff3d00;transition:width 0.12s ease;will-change:width}
 #input-limit-warn{display:none;background:var(--red);color:#fff;font-size:13px;font-weight:700;padding:8px 12px;border-radius:4px;text-align:center;animation:_warnPulse .6s infinite alternate}@keyframes _warnPulse{from{opacity:1}to{opacity:.7}}
@@ -390,7 +390,7 @@ a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color
 .scroll-key-q{top:38%}
 .scroll-key-w{top:58%}
 .scroll-key-bot{bottom:12%}
-/* ── 搜索栏（深色底+高对比+输入区占大头）── */
+/* ── 搜索栏（深色底+高对比+键入区占大头）── */
 #search-bar{display:none;position:sticky;top:0;z-index:100;background:#1b1b1b;border-bottom:1px solid #333;padding:6px 10px;align-items:center;gap:6px;margin-bottom:4px}
 [data-theme="dark"] #search-bar{background:#0c0c0c;border-bottom-color:#2a2a2a}
 #search-bar.show{display:flex}
@@ -592,6 +592,7 @@ var _orig={};
     </div>
   </div>
   <div id="input-progress"><div id="input-progress-fill"></div></div>
+  <button id="newline-btn" title="插入换行" data-no-cd>&#8629;</button>
   <div id="btn-row">
     <div class="tier-group">
       <button class="tier-btn tier-a" id="tier-a">A</button>
@@ -609,7 +610,6 @@ var _orig={};
     <button id="send-btn">Send</button>
     <button id="ctx-btn">--</button>
   </div>
-  <button id="newline-btn" title="插入换行" data-no-cd>&#8629;</button>
 </div>
 <!-- ★ quest 切换全屏蒙板：阻绝一切鼠标操作 -->
 <div id="qqq-switch-overlay" style="display:none;position:fixed;inset:0;z-index:99999;cursor:default;background:rgba(0,0,0,0.03)"></div>

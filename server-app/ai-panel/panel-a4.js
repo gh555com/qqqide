@@ -445,6 +445,9 @@ async function _a4RecordSnapshot(filePath, op, before, after, knownBeforeHash, a
         };
     }
 
+    // ★ 提前捕获 aiDiv 引用，防 await 后被 finally 置 null（panel-pipeline.js:826）
+    var _capturedAiDiv = ag._activeAiDiv;
+
     // ★ 钩子 Q：先持久化到 timeline（确保 blob_hash 已就位），再更新 UI
     await _a4PersistToTimeline(filePath, op, before, after, ag);
 
@@ -455,7 +458,8 @@ async function _a4RecordSnapshot(filePath, op, before, after, knownBeforeHash, a
     _a4PersistFileIndex();
 
     // Live update A4 UI（此时 snapEntry.beforeBlobHash/afterBlobHash 已就位）
-    _a4RenderLive(ag);
+    // ★ 用捕获的引用传入，绕过 ag._activeAiDiv 已被 finally 置 null 的问题
+    if (_capturedAiDiv) _a4RenderLive(ag, _capturedAiDiv);
 }
 
 // ═══ A4 DOM 创建 + 渲染 ═══
@@ -499,11 +503,19 @@ function _truncMiddle(text, maxLen) {
 }
 
 // ---- 渲染实时文件列表 ----
-function _a4RenderLive(ag) {
-    if (!ag || !ag._activeAiDiv) return;
-    var aiDiv = ag._activeAiDiv;
+function _a4RenderLive(ag, _aiDiv) {
+    if (!ag) return;
+    var aiDiv = _aiDiv || ag._activeAiDiv;
+    if (!aiDiv) return;
     var snaps = ag._a4Snapshots;
-    if (!snaps || Object.keys(snaps).length === 0) return;
+    if (!snaps || Object.keys(snaps).length === 0) {
+        // ★ 清理：如果之前渲染过 A4 块，藏掉防空白框残留
+        if (aiDiv._a4Block) {
+            aiDiv._a4Block.classList.remove('has-files');
+            aiDiv._a4Block.innerHTML = '';
+        }
+        return;
+    }
 
     var block = _initA4Block(aiDiv);
     block.innerHTML = '';

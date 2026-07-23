@@ -48,7 +48,8 @@
             "tools": "工具",
             "devTools": "开发者工具",
             "activate": "激活",
-            "activated": "已激活"
+            "activated": "已激活",
+            "evangelist": "指定导师"
         },
         "window": {
             "minimize": "最小化",

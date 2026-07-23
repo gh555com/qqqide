@@ -91,7 +91,7 @@
       '--tooltip-text': dark ? '#dcd8d0' : p.base2,
 
       // 布局（JS 可变）
-      '--a-zone-w': '220px',
+      '--a-zone-w': '123px',
       '--ai-zone-w': '389px',
       '--output-h': '200px',
       '--menu-row-h': '30px',

@@ -307,7 +307,7 @@ BRA.onclick=async function(){
   for(var i=0;i<_last.results.length;i++){var r=_last.results[i];re.lastIndex=0;var m;while((m=re.exec(r.text))!==null){reps.push({file:r.file,line:r.line,col:m.index+1,matchLen:m[0].length,replacement:_rx?r.text.slice(m.index,m.index+m[0].length).replace(re,rt):rt});if(m[0].length===0)break}}
   if(reps.length===0)return;
   STT.textContent='🔄 替换中... ('+reps.length+' 处)';
-  try{var res=await bri.search.replace({replacements:reps});STT.textContent='✅ 已替换 '+res.replaced+' 处';_add(1,rt);setTimeout(dos,500)}catch(e){STT.textContent='⚠️ 替换出错: '+(e.message||e)}
+  try{var res=await bri.search.replace({replacements:reps,searchPath:_scopePath});STT.textContent='✅ 已替换 '+res.replaced+' 处';_add(1,rt);setTimeout(dos,500)}catch(e){STT.textContent='⚠️ 替换出错: '+(e.message||e)}
 };
 (function ts(){try{var pt=window.parent.document.documentElement.getAttribute('data-theme');if(pt)document.documentElement.setAttribute('data-theme',pt)}catch(_){}})();
 window.addEventListener('message',function(e){

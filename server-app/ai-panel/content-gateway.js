@@ -13,7 +13,7 @@
     var CTX_TAIL_CHARS = 20000;   // 截断时保留结尾字符数
 
     // ═══ 编辑框硬上限 — 唯一真理 ═══
-    var EDITOR_CAP_CHARS = 16000;  // AI面板编辑框输入上限（字符数 = str.length）
+    var EDITOR_CAP_CHARS = 16000;  // AI面板编辑框键入上限（字符数 = str.length）
 
     // ═══ 二进制检测 ═══
     var MAX_BINARY_NULLS = 3;
