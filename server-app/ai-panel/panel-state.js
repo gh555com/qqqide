@@ -156,7 +156,12 @@ function _setBulletGold(on) {
 
 // 点击/按键 → 获得焦点，同时成为视口注入目标（设金色子弹）
 window.addEventListener('focus', function () { _setPanelFocus(true); _setBulletGold(true); });
-window.addEventListener('blur', function () { _setPanelFocus(false); /* 保持子弹金色，不解绑 */ });
+window.addEventListener('blur', function () { _setPanelFocus(false); /* 保持子弹金色，不解绑 */
+    // ★ 老代码技巧：窗口失焦时才 touch 当前 quest，避免点击卡片时立即弹顶
+    if (typeof questActiveId !== 'undefined' && questActiveId && typeof questStore !== 'undefined' && questStore) {
+        questStore.touch(questActiveId);
+    }
+});
 document.addEventListener('mousedown', function () { _setPanelFocus(true); _setBulletGold(true); });
 // ★ 主题切换 → 重绘子弹金色
 var _themeWatchObs = new MutationObserver(function(){if(_panelFocused)_setBulletGold(true);});

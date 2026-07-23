@@ -57,6 +57,21 @@ input,select{-webkit-user-select:text;user-select:text}
 .ml .ct .pq{color:var(--red)}.fg.closed .ml{display:none}
 .emp{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--tx3);gap:8px}
 .emp .ic{font-size:42px;opacity:.25}.emp .ht{font-size:13px}
+.mo{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center}
+.mo>div{background:var(--bg);border:1px solid var(--bd2);border-radius:6px;padding:16px 20px;max-width:640px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 4px 24px rgba(0,0,0,.25)}
+.mo h3{margin:0 0 10px;font-size:14px;color:var(--tx)}
+.mo .stt2{font-size:12px;color:var(--tx2);margin-bottom:8px}
+.mo .prv{font-size:11px;font-family:Consolas,monospace;max-height:200px;overflow-y:auto;border:1px solid var(--bd);border-radius:3px;padding:6px;margin-bottom:8px;background:var(--bg2);line-height:1.5;word-break:break-all}
+.mo .prv .f2{color:var(--blu)}.mo .prv .ln2{color:var(--tx3);margin:0 4px}
+.mo .prv .old{color:var(--red);text-decoration:line-through}.mo .prv .nw{color:var(--grn)}
+.mo .prv .arw{color:var(--tx3);margin:0 4px}
+.mo .btns{display:flex;justify-content:flex-end;gap:6px;margin-top:12px}
+.mo .prgo{height:6px;background:var(--bd);border-radius:3px;margin:8px 0;overflow:hidden}
+.mo .prgi{height:100%;background:var(--blu);border-radius:3px;transition:width .15s}
+.mo .prgt{font-size:11px;color:var(--tx2)}
+.mo .prgf{font-size:10px;color:var(--tx3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+.mo .errs{font-size:11px;color:var(--red);max-height:120px;overflow-y:auto;margin-top:6px}
+
 </style>
 </head>
 <body>
@@ -300,14 +315,63 @@ function dn(p){var n=p.replace(/\\/g,'/');var i=n.lastIndexOf('/');return i>0?n.
 function opn(fp,l,c){try{var abs=_scopePath?(_scopePath.replace(/[\\/]$/,'')+'/'+fp.replace(/^[\\/]+/,'').replace(/\\/g,'/')):fp;window.parent._nextPaneOpts={line:l,col:c,search:_lastQ};window.parent.document.dispatchEvent(new CustomEvent('qqq-file-open',{detail:{path:abs}}))}catch(e){console.error('[search] openFile failed:',e)}}
 BRA.onclick=async function(){
   if(!_last||!_last.results||_last.results.length===0)return;var rt=RP.value;
+  if(!rt){STT.textContent='⚠️ 请键入替换文本';return}
   if(!bri)bri=window.parent&&window.parent.qqqideBridge;if(!bri||!bri.search)return;
   var q2=_lastQ,p2=_rx?q2:q2.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');if(_ww)p2='\\b'+p2+'\\b';
-  var fl=_cs?'g':'gi',re;try{re=new RegExp(p2,fl)}catch(_){return}
-  var reps=[];
-  for(var i=0;i<_last.results.length;i++){var r=_last.results[i];re.lastIndex=0;var m;while((m=re.exec(r.text))!==null){reps.push({file:r.file,line:r.line,col:m.index+1,matchLen:m[0].length,replacement:_rx?r.text.slice(m.index,m.index+m[0].length).replace(re,rt):rt});if(m[0].length===0)break}}
-  if(reps.length===0)return;
-  STT.textContent='🔄 替换中... ('+reps.length+' 处)';
-  try{var res=await bri.search.replace({replacements:reps,searchPath:_scopePath});STT.textContent='✅ 已替换 '+res.replaced+' 处';_add(1,rt);setTimeout(dos,500)}catch(e){STT.textContent='⚠️ 替换出错: '+(e.message||e)}
+  var fl=_cs?'g':'gi',re;try{re=new RegExp(p2,fl)}catch(e){STT.textContent='⚠️ 无效正则';return}
+  var _trunc=_last.truncated;
+  var reps=[],fs2={};
+  for(var i=0;i<_last.results.length;i++){var r=_last.results[i];fs2[r.file]=true;
+    if(!_rx){var mt=r.matchText||'';reps.push({file:r.file,line:r.line,col:r.col||1,matchLen:r.matchLen||mt.length,matchText:mt,replacement:rt,oldText:mt})}
+    else{re.lastIndex=0;var found=null,m2;while((m2=re.exec(r.text))!==null){if(m2.index+1===r.col){found=m2;break}}if(found){reps.push({file:r.file,line:r.line,col:found.index+1,matchLen:found[0].length,matchText:found[0],replacement:found[0].replace(re,rt),oldText:found[0]})}else if(r.matchLen){var mt2=r.matchText||'';reps.push({file:r.file,line:r.line,col:r.col||1,matchLen:r.matchLen,matchText:mt2,replacement:_rx?mt2.replace(re,rt):rt,oldText:mt2})}}
+  }
+  if(reps.length===0){STT.textContent='⚠️ 无匹配项可替换';return}
+  var fc3=Object.keys(fs2).length,cm=document.getElementById('confirm-mo');
+  var smText='即将在 '+fc3+' 个文件中替换 '+reps.length+' 处匹配';
+  if(_trunc)smText+='<br>⚠️ 上次搜索被截断（仅返回前 '+_last.total+' 条），确认后将完整扫描所有匹配项';
+  document.getElementById('confirm-summary').innerHTML=smText;
+  var ph='';
+  for(var i2=0;i2<Math.min(reps.length,8);i2++){var r2=reps[i2],ot=r2.oldText||'',nt=rt;if(ot.length>60)ot=ot.slice(0,60)+'...';if(nt.length>60)nt=nt.slice(0,60)+'...';
+    ph+='<div><span class="f2">'+eh(r2.file.split('/').pop())+'</span><span class="ln2">:'+r2.line+'</span> <span class="old">'+eh(ot)+'</span><span class="arw">→</span><span class="nw">'+eh(nt)+'</span></div>'}
+  if(reps.length>8)ph+='<div style="color:var(--tx3)">... 及其他 '+(reps.length-8)+' 处</div>';
+  document.getElementById('confirm-preview').innerHTML=ph;cm.style.display='flex';
+  var ok=await new Promise(function(rs){
+    document.getElementById('confirm-ok').onclick=function(){rs(true)};
+    document.getElementById('confirm-cancel').onclick=function(){rs(false)};
+    cm.onclick=function(e){if(e.target===cm)rs(false)};
+    document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){rs(false);document.removeEventListener('keydown',esc)}})});
+  cm.style.display='none';if(!ok)return;
+  var pm=document.getElementById('progress-mo'),pbar=document.getElementById('prg-bar'),pt2=document.getElementById('prg-txt'),pf=document.getElementById('prg-file'),pe=document.getElementById('prg-errs');
+  pm.style.display='flex';pbar.style.width='0%';pt2.textContent='准备替换...';pf.textContent='';pe.innerHTML='';var lp=0;
+  try{
+    // If previous search was truncated, re-scan with high maxResults to get ALL matches
+    if(_trunc){
+      pt2.textContent='🔍 完整扫描所有匹配项...';
+      var fullR=await bri.search.query({query:_lastQ,searchPath:_scopePath,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,
+        includePattern:IC.value.trim()||undefined,excludePattern:EX.value.trim()||undefined,
+        contextLines:0,maxResults:100000,timeoutMs:120000,respectGitignore:CGI.checked});
+      if(fullR.error){pt2.textContent='⚠️ 完整扫描失败: '+fullR.error;return}
+      // Rebuild reps from full results (use ripgrep col/matchText directly)
+      reps=[];fs2={};
+      for(var i3=0;i3<fullR.results.length;i3++){var r3=fullR.results[i3];fs2[r3.file]=true;
+        if(!_rx){var mt3=r3.matchText||'';reps.push({file:r3.file,line:r3.line,col:r3.col||1,matchLen:r3.matchLen||mt3.length,matchText:mt3,replacement:rt,oldText:mt3})}
+        else{re.lastIndex=0;var found3=null,m4;while((m4=re.exec(r3.text))!==null){if(m4.index+1===r3.col){found3=m4;break}}if(found3){reps.push({file:r3.file,line:r3.line,col:found3.index+1,matchLen:found3[0].length,matchText:found3[0],replacement:found3[0].replace(re,rt),oldText:found3[0]})}else if(r3.matchLen){var mt4=r3.matchText||'';reps.push({file:r3.file,line:r3.line,col:r3.col||1,matchLen:r3.matchLen,matchText:mt4,replacement:_rx?mt4.replace(re,rt):rt,oldText:mt4})}}
+      }
+      if(reps.length===0){pt2.textContent='⚠️ 完整扫描后无匹配项（可能已被上次替换处理完）';setTimeout(function(){pm.style.display='none'},2500);return}
+    }
+    pt2.textContent='正在替换 '+reps.length+' 处匹配...';
+    var res=await bri.search.replace({replacements:reps,searchPath:_scopePath,onProgress:function(d){
+      var pct=d.total>0?Math.round(d.current/d.total*100):0;
+      if(pct>lp||(d.errors&&d.errors.length)){
+        pbar.style.width=pct+'%';pt2.textContent='已完成 '+d.current+'/'+d.total+' 文件, '+d.replaced+' 处替换';
+        pf.textContent=d.file||'';if(d.errors&&d.errors.length)pe.innerHTML=d.errors.map(function(e){return '<div>⚠️ '+eh(e)+'</div>'}).join('');
+        lp=pct}}
+    });
+    pbar.style.width='100%';var ec=res.errors?res.errors.length:0;
+    pt2.innerHTML='✅ 已完成: <b>'+res.replaced+'</b> 处替换, <b>'+res.files+'</b> 个文件'+(ec>0?', ⚠️ '+ec+' 个错误':'');
+    if(ec>0&&res.errors){pe.innerHTML=res.errors.map(function(e){return '<div>⚠️ '+eh(e)+'</div>'}).join('')}
+    _add(1,rt);setTimeout(function(){pm.style.display='none';setTimeout(dos,300)},2500)
+  }catch(e){pt2.textContent='⚠️ 替换出错: '+(e.message||e);pm.onclick=function(ev){if(ev.target===pm)pm.style.display='none'}}
 };
 (function ts(){try{var pt=window.parent.document.documentElement.getAttribute('data-theme');if(pt)document.documentElement.setAttribute('data-theme',pt)}catch(_){}})();
 window.addEventListener('message',function(e){
@@ -323,5 +387,8 @@ window.addEventListener('message',function(e){
 setTimeout(function(){try{var vp=window.parent&&window.parent.qqqideViewport;if(vp){var m=vp.getMainProject();if(m){if(!SP.value)SP.value=m.path;_prjRoot=m.path.replace(/\\/g,'/').replace(/\/$/,'');_ldHist()}}}catch(_){}},200);
 })();
 </script>
+<div class="mo" id="confirm-mo" style="display:none"><div><h3>确认替换</h3><div class="stt2" id="confirm-summary"></div><div class="prv" id="confirm-preview"></div><div class="btns"><button class="btn" id="confirm-cancel">取消</button><button class="btn pri" id="confirm-ok">确认替换</button></div></div></div>
+<div class="mo" id="progress-mo" style="display:none"><div><h3>正在替换...</h3><div class="prgo"><div class="prgi" id="prg-bar" style="width:0%"></div></div><div class="prgt" id="prg-txt"></div><div class="prgf" id="prg-file"></div><div class="errs" id="prg-errs"></div></div></div>
+
 </body>
 </html>

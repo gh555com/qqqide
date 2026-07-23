@@ -406,9 +406,13 @@ qqq-shell-v2 铁律 — 不可违反的硬约束。违反即返工。
     无内嵌→py-broker 跳过(IDE 正常启动，下次启动自动装上)。永不 fallback 系统 Python。
   - 违者即返工。
 
-§56 上下文压缩 — V14 前缀缓存修复 + 三按钮压缩 + fx Grid（2026-07-19）
-  - 触发: 每层楼完结(onDone)→_rebuildBackpack()。建楼中不触发。
-  - ★ V14 缓存修复: floorMsgs 升序构建→biscuitText 天生有序。step 9 智能追加(常见路径纯追加,零字节变更)→前缀缓存 ~85-90% 命中。仅旧楼层插入时重排(罕见)。
+§56 上下文压缩 — V16 biscuit 唯一性 + 三按钮压缩 + fx Grid（2026-07-23）
+  - 触发: 每层楼完结(onDone)→_rebuildBackpack()。建楼中  - ★ V14 缓存修复: floorMsgs 升序构建→biscuitText 天生有序。step 9 智能追加(常见路径纯追加,零字节变更)→前缀缓存 ~85-90% 命中。仅旧楼层插入时重排(罕见)。
+  - ★ V16 biscuit 唯一性 (2026-07-23): 永远只有一条 _biscuit 消息、一条 _facts 消息。
+    · _findDynamicMsg: !_dynamic && !_persistent（Z 不阻断搜索，根除孤儿 biscuit 产生）。
+    · step 3: 合并所有 biscuit 的楼层（移除 break;），不遗漏孤儿 biscuit 中数据。
+    · 去重铁律: 先合并孤儿内容再删除，禁止直接 splice。panel-floor.js 恢复路径同步执行。
+    · 违者→重复 biscuit → 背包格子混乱 → 楼层数据永久丢失（q83 F2-F84 已损）。(罕见)。
   - 机械筛: 纯本地确定性转换。消息→Q/A/工具摘要行。零网络零费用。
   - 包装盒: 15温柔(可复现,摘要一行)+5绝对(run_command/generate_image/remove_background/analyze_image/get_vision_context,╔K...╚包裹,16K硬帽)。
   - ★ 剥离正则: /\n╔K\n[\s\S]*?\n╚(?=\n|$)/g。前瞻不吞共享\n,防相邻盒子9.5%漏网。

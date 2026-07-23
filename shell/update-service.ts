@@ -143,8 +143,8 @@ export class UpdateService {
 
             try { fs.unlinkSync(tarPath); } catch { }
 
-            this._writeWebappVersion(latestVersion);
-            this._state.currentVersion = latestVersion;
+            // ★ Write version marker into staging (NOT webapp-version — that's written after swap at next boot)
+            try { fs.writeFileSync(path.join(stagingDir, '.staging-version'), latestVersion, 'utf8'); } catch { }
             this._state.lastApplied = latestVersion;
             this._saveState();
 

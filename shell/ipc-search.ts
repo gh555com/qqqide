@@ -27,6 +27,8 @@ interface SearchMatch {
     file: string;
     line: number;
     col: number;
+    matchLen?: number;
+    matchText?: string;
     text: string;
     before?: string[];
     after?: string[];
@@ -318,7 +320,7 @@ async function _rgFilenameSearch(
 
                     if (fnameMatcher(fname)) {
                         const absFp = path.join(searchPath, displayPath);
-                        matches.push({ file: displayPath, line: 1, col: 1, text: fname });
+                        matches.push({ file: displayPath, line: 1, col: 1, matchText: fname, text: fname });
                         // Quick stat
                         try {
                             const st = fs.statSync(absFp);
@@ -342,7 +344,7 @@ function _parseRgJson(
     contextLines: number,
     _searchPath: string,
 ): SearchResult {
-    const fileEntries = new Map<string, Array<{ type: 'match' | 'context'; line: number; col?: number; text: string }>>();
+    const fileEntries = new Map<string, Array<{ type: 'match' | 'context'; line: number; col?: number; matchLen?: number; matchText?: string; text: string }>>();
     const seenFiles = new Set<string>();
 
     for (const line of raw.split('\n')) {
@@ -366,11 +368,24 @@ function _parseRgJson(
                 const lineNum: number = obj.data.line_number || 0;
                 const text: string = (obj.data.lines && obj.data.lines.text) || '';
                 const submatch = obj.data.submatches && obj.data.submatches[0];
-                const col = submatch ? (submatch.start || 0) + 1 : 1;
-                const cleanText = text.replace(/\r?\n$/, '').slice(0, 300);
+                const matchText = (submatch && submatch.match && submatch.match.text) || '';
+                const cleanText = text.replace(/\r?\n$/, '');
+                // ripgrep returns byte offsets — convert to character offsets for JS slicing
+                let col = 1, matchLen = matchText.length;
+                if (submatch && cleanText && (submatch.start || 0) > 0) {
+                    const lineBuf = Buffer.from(cleanText, 'utf8');
+                    const byteStart: number = submatch.start || 0;
+                    if (byteStart < lineBuf.length) {
+                        col = lineBuf.slice(0, byteStart).toString('utf8').length + 1;
+                    } else if (matchText) {
+                        const ci = cleanText.indexOf(matchText);
+                        if (ci !== -1) col = ci + 1;
+                    }
+                }
+                const displayText = cleanText.slice(0, 300);
 
                 if (!fileEntries.has(displayPath)) fileEntries.set(displayPath, []);
-                fileEntries.get(displayPath)!.push({ type: 'match', file: displayPath, line: lineNum, col, text: cleanText });
+                fileEntries.get(displayPath)!.push({ type: 'match', file: displayPath, line: lineNum, col, matchText, matchLen, text: displayText });
             } else if (obj.type === 'context' && contextLines > 0) {
                 const lineNum: number = obj.data.line_number || 0;
                 const text: string = (obj.data.lines && obj.data.lines.text) || '';
@@ -391,10 +406,7 @@ function _parseRgJson(
         for (const m of matches) {
             if (results.length >= maxResults) break;
 
-            // Skip duplicate line in same file
-            if (results.some(r => r.file === filePath && r.line === m.line)) continue;
-
-            const match: SearchMatch = { file: filePath, line: m.line, col: m.col || 1, text: m.text };
+            const match: SearchMatch = { file: filePath, line: m.line, col: m.col || 1, matchLen: m.matchLen, matchText: m.matchText, text: m.text };
 
             if (contextLines > 0) {
                 const before = contexts.filter(c => c.line < m.line && m.line - c.line <= contextLines)
@@ -471,7 +483,7 @@ export function registerSearchIpc(): void {
 
     // ── qqqide:search:replace ──
     ipcMain.handle('qqqide:search:replace', async (_e, args: {
-        replacements?: Array<{ file: string; line: number; col: number; matchLen: number; replacement: string }>;
+        replacements?: Array<{ file: string; line: number; col: number; matchLen: number; replacement: string; matchText?: string }>;
         searchPath?: string;
         files?: string[];
         find?: string;
@@ -483,13 +495,14 @@ export function registerSearchIpc(): void {
         // Per-match replacements (primary API)
         if (args.replacements && Array.isArray(args.replacements) && args.replacements.length > 0) {
             const searchPath = args.searchPath || '';
-            const byFile = new Map<string, Array<{ line: number; col: number; matchLen: number; replacement: string }>>();
+            const byFile = new Map<string, Array<{ line: number; col: number; matchLen: number; replacement: string; matchText?: string }>>();
             for (const r of args.replacements) {
                 if (!byFile.has(r.file)) byFile.set(r.file, []);
                 byFile.get(r.file)!.push(r);
             }
 
-            let totalReplaced = 0, filesChanged = 0;
+            let totalReplaced = 0, filesChanged = 0, processed = 0;
+            const totalFiles = byFile.size;
             const errors: string[] = [];
 
             for (const [fpath, reps] of byFile) {
@@ -504,10 +517,26 @@ export function registerSearchIpc(): void {
                     for (const rep of reps) {
                         const li = rep.line - 1;
                         if (li < 0 || li >= lines.length) continue;
-                        const col0 = rep.col - 1;
                         const line = lines[li];
-                        if (col0 + rep.matchLen > line.length) continue;
-                        lines[li] = line.slice(0, col0) + rep.replacement + line.slice(col0 + rep.matchLen);
+                        const mt: string = rep.matchText || '';
+                        let idx = -1, len = rep.matchLen;
+                        // Use matchText to locate — robust against byte/char offset mismatch
+                        if (mt) {
+                            len = mt.length;
+                            // col is character offset from _parseRgJson (byte→char converted).
+                            // Use it as the search start to disambiguate same-line multiple matches.
+                            const startPos = Math.max(0, (rep.col || 1) - 1);
+                            idx = line.indexOf(mt, startPos);
+                            if (idx === -1) idx = line.indexOf(mt);
+                        }
+                        if (idx === -1) {
+                            // No matchText — fall back to col-based (char offsets from _parseRgJson)
+                            const col0 = rep.col - 1;
+                            if (col0 + rep.matchLen > line.length) continue;
+                            idx = col0;
+                        }
+                        if (idx + len > line.length) continue;
+                        lines[li] = line.slice(0, idx) + rep.replacement + line.slice(idx + len);
                         changed = true;
                         totalReplaced++;
                     }
@@ -518,6 +547,13 @@ export function registerSearchIpc(): void {
                     }
                 } catch (e: any) {
                     errors.push(fpath + ': ' + (e.message || e));
+                }
+                processed++;
+                if (_e.sender && !_e.sender.isDestroyed()) {
+                    _e.sender.send('qqqide:search:replace:progress', {
+                        current: processed, total: totalFiles, file: fpath,
+                        replaced: totalReplaced, errors: errors.slice(),
+                    });
                 }
             }
             return { replaced: totalReplaced, files: filesChanged, errors };

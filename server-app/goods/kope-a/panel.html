@@ -72,8 +72,7 @@ body {
 .history-item { background: var(--base3); border: 1px solid var(--border-color); border-radius: 4px; padding: 8px; margin-bottom: 8px; transition: 0.2s; cursor: pointer; color: #8e8e8e; margin-right: 2px; position: relative; overflow: hidden; }
 .history-item:hover { border-color: var(--red); border-style: dashed; color: var(--text-primary); }
 .history-item.selected { color: #e67e22; }
-.history-item.pinned { background: #fdf0c0 !important; color: #2a211c !important; border-left: 3px solid var(--yellow); }
-[data-theme="dark"] .history-item.pinned { background: #3d3520 !important; color: #f0e8d8 !important; border-left: 3px solid var(--yellow); }
+.history-item.pinned { background: var(--base2); color: var(--text-primary) !important; }
 
 /* 卡片内部扫光 */
 .history-item.executing::before {
@@ -134,12 +133,12 @@ body {
 .action-mini-btn:hover { background: var(--primary-color); color: #1e1e1e; }
 
 .scrollbar-outer { position: absolute; right: 0; top: 0; width: 7px; height: 100%; z-index: 1000; pointer-events: none; }
-.scrollbar-outer-thumb { position: absolute; right: -4px; width: 5px; background: var(--red) !important; border-radius: 3px; opacity: 0.6; cursor: pointer; pointer-events: auto; forced-color-adjust: none !important; transition: width 0.1s ease, right 0.1s ease; }
-.scrollbar-outer-thumb:hover { width: 7px; right: -5px; opacity: 1; }
+.scrollbar-outer-thumb { position: absolute; right: -8px; width: 6px; background: var(--red) !important; border-radius: 3px; opacity: 0.6; cursor: pointer; pointer-events: auto; forced-color-adjust: none !important; transition: width 0.1s ease, right 0.1s ease; }
+.scrollbar-outer-thumb:hover { width: 8px; right: -9px; opacity: 1; }
 
 .scrollbar-inner { position: absolute; right: 0; top: 0; width: 7px; height: 100%; z-index: 10; pointer-events: none; }
-.scrollbar-inner-thumb { position: absolute; right: -4px; width: 5px; background: var(--red) !important; border-radius: 3px; opacity: 0.5; cursor: pointer; pointer-events: auto; forced-color-adjust: none !important; transition: width 0.1s ease, right 0.1s ease, opacity 0.1s ease; }
-.scrollbar-inner-thumb:hover { width: 7px; right: -5px; opacity: 1; }
+.scrollbar-inner-thumb { position: absolute; right: -8px; width: 6px; background: var(--red) !important; border-radius: 3px; opacity: 0.5; cursor: pointer; pointer-events: auto; forced-color-adjust: none !important; transition: width 0.1s ease, right 0.1s ease, opacity 0.1s ease; }
+.scrollbar-inner-thumb:hover { width: 8px; right: -9px; opacity: 1; }
 
 .empty-hint { text-align: center; padding: 20px; opacity: 0.5; }
 
@@ -206,6 +205,10 @@ body {
     }
 
     // ── 工具函数 ──
+    function getBridge() {
+        try { return parent.window.qqqideBridge; } catch(e) { return null; }
+    }
+
     function addThousandSep(num) {
         var s = String(Math.floor(num));
         var parts = [];
@@ -272,6 +275,9 @@ body {
     var hashMap = {};           // hash → index
     var selectedId = '';
     var currentLimit = 30;
+    var isLoadingMore = false;
+    var batchSize = 30;
+    var lastClipContent = '';
 
 
     function getState() {
@@ -416,6 +422,7 @@ body {
     }
 
     function setSelectedById(id) {
+        if (!id) return;
         selectedId = id;
         var items = el.historyList.querySelectorAll('.history-item');
         for (var i = 0; i < items.length; i++) {
@@ -428,15 +435,29 @@ body {
         }
     }
 
-    function getFilteredHistory(keyword) {
-        if (!keyword) return clipHistory;
-        var kws = keyword.toLowerCase().split(/\s+/).filter(Boolean);
-        return clipHistory.filter(function(h) {
-            return kws.every(function(kw) {
-                return h.preview.toLowerCase().indexOf(kw) !== -1 ||
-                       h.content.toLowerCase().indexOf(kw) !== -1;
-            });
+    // ★ 排序：置顶优先，然后按时间倒序
+    function sortPinnedFirst(arr) {
+        return arr.sort(function(a, b) {
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+            return (b.timestamp || 0) - (a.timestamp || 0);
         });
+    }
+
+    function getFilteredHistory(keyword) {
+        var filtered;
+        if (!keyword) {
+            filtered = clipHistory.slice();
+        } else {
+            var kws = keyword.toLowerCase().split(/\s+/).filter(Boolean);
+            filtered = clipHistory.filter(function(h) {
+                return kws.every(function(kw) {
+                    return h.preview.toLowerCase().indexOf(kw) !== -1 ||
+                           h.content.toLowerCase().indexOf(kw) !== -1;
+                });
+            });
+        }
+        return sortPinnedFirst(filtered);
     }
 
     // ── 操作 ──
@@ -451,6 +472,17 @@ body {
         for (var i = 0; i < clipHistory.length; i++) {
             if (clipHistory[i].id === itemId) {
                 clipHistory[i].pinned = !clipHistory[i].pinned;
+                // ★ 置顶状态变更 → 重排到正确位置
+                var item = clipHistory[i];
+                clipHistory.splice(i, 1);
+                if (item.pinned) {
+                    clipHistory.unshift(item);
+                } else {
+                    var insertAt = 0;
+                    while (insertAt < clipHistory.length && clipHistory[insertAt].pinned) insertAt++;
+                    clipHistory.splice(insertAt, 0, item);
+                }
+                rebuildHashMap();
                 break;
             }
         }
@@ -491,10 +523,18 @@ body {
             item.content = content;
             item.preview = makePreview(content);
             clipHistory.splice(idx, 1);
-            clipHistory.unshift(item);
+            // ★ 置顶优先：已存在条目移到置顶组之后、非置顶组之前
+            if (item.pinned) {
+                clipHistory.unshift(item);
+            } else {
+                var insertAt = 0;
+                while (insertAt < clipHistory.length && clipHistory[insertAt].pinned) insertAt++;
+                clipHistory.splice(insertAt, 0, item);
+            }
             // 重建 hashMap
             rebuildHashMap();
         } else {
+            // ★ 新条目：放在置顶组之后
             var newItem = {
                 id: randomId(),
                 content: content,
@@ -504,7 +544,9 @@ body {
                 pinned: false,
                 hash: hash
             };
-            clipHistory.unshift(newItem);
+            var insertAt = 0;
+            while (insertAt < clipHistory.length && clipHistory[insertAt].pinned) insertAt++;
+            clipHistory.splice(insertAt, 0, newItem);
             if (clipHistory.length > 2000) {
                 var removed = clipHistory.pop();
                 delete hashMap[removed.hash];
@@ -528,6 +570,7 @@ body {
         }
     }
 
+    var _pendingClickId = null;
     // ── 剪贴板轮询 ──
     function pollClipboard() {
         try {
@@ -571,6 +614,9 @@ body {
         for (var i = 0; i < clipHistory.length; i++) {
             if (clipHistory[i].id === id) {
                 copyToClipboard(clipHistory[i].content);
+                // ★ 阻断 poll 重复添加，延迟排序到 blur
+                lastClipContent = clipHistory[i].content;
+                _pendingClickId = id;
                 break;
             }
         }
@@ -695,6 +741,29 @@ body {
     pollClipboard(); // 立即执行一次
 
     window.addEventListener('focus', function() { pollClipboard(); });
+    // ★ 失焦时统一更新排序（老代码技巧：点击不弹顶，失焦才弹）
+    window.addEventListener('blur', function() {
+        if (!_pendingClickId) return;
+        for (var i = 0; i < clipHistory.length; i++) {
+            if (clipHistory[i].id === _pendingClickId) {
+                var item = clipHistory[i];
+                item.timestamp = Date.now();
+                clipHistory.splice(i, 1);
+                if (item.pinned) {
+                    clipHistory.unshift(item);
+                } else {
+                    var insertAt = 0;
+                    while (insertAt < clipHistory.length && clipHistory[insertAt].pinned) insertAt++;
+                    clipHistory.splice(insertAt, 0, item);
+                }
+                rebuildHashMap();
+                break;
+            }
+        }
+        _pendingClickId = null;
+        persistHistory();
+        applyFilter();
+    });
 })();
 </script>
 </body>

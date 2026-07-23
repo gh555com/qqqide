@@ -718,22 +718,22 @@
     // ★ 自定义变形滚动条（滑轨锚定在外层，同步内层滚动）
     var sbOuter = document.createElement('div');
     sbOuter.className = 'qh-scroll-track';
-    sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:50;';
+    sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:50; pointer-events:none; background:var(--base2);';
     var sbThumb = document.createElement('div');
     sbThumb.className = 'qh-scroll-thumb';
     function _qhCol() {
-      var dk = document.documentElement.getAttribute('data-theme') === 'dark';
-      return { c: dk ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.6)' };
+      var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      return { c: isDark ? '#fff' : '#000' };
     }
     var _co = _qhCol();
-    sbThumb.style.cssText = 'position:absolute; right:10px; width:1px; min-height:24px; border-radius:0; ' +
-      'display:none; background:' + _co.c + '; cursor:pointer; ' +
-      'transition: width 0.1s ease, right 0.1s ease, background 0.1s ease;';
+    sbThumb.style.cssText = 'position:absolute; right:2px; width:3px; min-height:20px; border-radius:0; ' +
+      'display:none; background:' + _co.c + '; cursor:pointer; opacity:0.6; forced-color-adjust:none; pointer-events:auto; ' +
+      'transition: width 0.1s ease, right 0.1s ease, opacity 0.1s ease;';
     sbOuter.addEventListener('mouseenter', function () {
-      sbThumb.style.width = '11px'; sbThumb.style.right = '0px'; sbThumb.style.background = _qhCol().c;
+      sbThumb.style.width = '12px'; sbThumb.style.right = '0'; sbThumb.style.opacity = '1';
     });
     sbOuter.addEventListener('mouseleave', function () {
-      sbThumb.style.width = '1px'; sbThumb.style.right = '10px'; sbThumb.style.background = _qhCol().c;
+      sbThumb.style.width = '3px'; sbThumb.style.right = '2px'; sbThumb.style.opacity = '0.6';
     });
     function _syncSB() {
       var sh = inner.scrollHeight, ch = inner.clientHeight;

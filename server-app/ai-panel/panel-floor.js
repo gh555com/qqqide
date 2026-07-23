@@ -495,6 +495,36 @@ async function _restoreAgentFromStore(questId, ag) {
                 ag.conversation.splice(ag._persistentCount || 0, 0,
                     { role: 'system', content: _rebuildBiscuit, _dynamic: true, _biscuit: true });
             }
+            // ★ V16 fix: 去重 biscuit/facts — 先合并孤儿内容再删除
+            var _firstBIdx = -1;
+            for (var _ddi = (ag._persistentCount || 0); _ddi < ag.conversation.length; _ddi++) {
+                if (ag.conversation[_ddi]._biscuit) { _firstBIdx = _ddi; break; }
+            }
+            var _seenF2 = false;
+            for (var _ddi = ag.conversation.length - 1; _ddi >= (ag._persistentCount || 0); _ddi--) {
+                if (ag.conversation[_ddi]._biscuit && _ddi !== _firstBIdx) {
+                    var _orphanLines = _parseBiscuitFromContent(ag.conversation[_ddi].content);
+                    var _mainLines = _parseBiscuitFromContent(ag.conversation[_firstBIdx].content);
+                    var _mainMap = {};
+                    for (var _mli = 0; _mli < _mainLines.length; _mli++) { _mainMap[_mainLines[_mli].n] = true; }
+                    var _merged = false;
+                    for (var _oli = 0; _oli < _orphanLines.length; _oli++) {
+                        if (!_mainMap[_orphanLines[_oli].n]) {
+                            _mainLines.push(_orphanLines[_oli]);
+                            _merged = true;
+                        }
+                    }
+                    if (_merged) {
+                        _mainLines.sort(function(a,b) { return a.n - b.n; });
+                        ag.conversation[_firstBIdx].content = _mainLines.map(function(l) { return l.text; }).join('\n\n');
+                    }
+                    ag.conversation.splice(_ddi, 1);
+                }
+                if (ag.conversation[_ddi]._facts) {
+                    if (_seenF2) { ag.conversation.splice(_ddi, 1); }
+                    else { _seenF2 = true; }
+                }
+            }
         }
         // ★ 扫描所有 _error 消息重建分楼层错误日志（跳过已恢复的）
         for (var _eli = 0; _eli < ag.conversation.length; _eli++) {

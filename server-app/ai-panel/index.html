@@ -27,7 +27,7 @@ html{forced-color-adjust:none!important;width:100%}
 body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:var(--text-primary);background:var(--background-color);width:100%;height:100vh;display:grid;grid-template-columns:100%;grid-template-rows:auto 1fr auto;overflow-x:hidden}
 /* q2 quest 豆腐块 — 无边框贴合 q1 */
 #quest-bar{position:relative;margin:0;padding:0;border:none}
-.quest-tofu{display:flex;align-items:center;padding:11px 0 8px 8px;border:2px solid transparent;border-radius:0;font-size:22px;font-weight:700;white-space:nowrap;user-select:none;background:#ebe3ca;width:100%;cursor:default;box-sizing:border-box;position:relative}
+.quest-tofu{display:flex;align-items:center;padding:8px 0 8px 14px;border:2px solid transparent;border-radius:0;font-size:22px;font-weight:700;white-space:nowrap;user-select:none;background:#ebe3ca;width:100%;cursor:default;box-sizing:border-box;position:relative}
 [data-theme="dark"] .quest-tofu{background:#211f1c}
 .quest-tofu:hover{background:var(--background-color)}
 [data-theme="dark"] .quest-tofu:hover{background:#3f3830}
@@ -139,6 +139,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:var(--t
 [data-theme="dark"] .msg-user-copy{color:#b09090}
 [data-theme="dark"] .msg-user-copy:hover{background:rgba(255,255,255,0.08);color:#d0b0b0}
 [data-theme="dark"] .msg-user-copy.copied{color:#b8d68a}
+/* 用户气泡内粘贴图片约束 */
+.msg-user img{max-width:100%;height:auto;display:block;border-radius:4px}
+.msg-img-wrap{display:inline-block;position:relative;max-width:100%}
 /* AI 消息复制按钮（左侧 sticky，跟随滚动） */
 .msg-ai-copy{position:sticky;top:50%;transform:translateY(-50%);left:2px;margin-right:6px;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border-radius:3px;cursor:pointer;opacity:0;transition:opacity .15s;color:#7090a0;z-index:2}
 .msg-ai:hover .msg-ai-copy,.msg-ai-copy.copied{opacity:1}
@@ -175,9 +178,9 @@ body{font-family:system-ui,-apple-system,sans-serif;font-size:14px;color:var(--t
 .msg-quest-error{color:var(--red);padding:8px 12px;font-size:12px;background:rgba(220,50,47,0.06);border:1px solid rgba(220,50,47,0.15);border-radius:6px;margin:6px 0;line-height:1.6;white-space:pre-wrap}
 .qe-row{padding:2px 0;border-bottom:1px solid rgba(220,50,47,0.08)}
 .msg-err-continue{text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;user-select:none}
-/* ── 致命失败恢复光块："继续任务"文字变成光块左右横跳 ── */
-@keyframes recovery-bounce{0%{transform:translateX(-6px);opacity:0.3}50%{transform:translateX(10px);opacity:1}100%{transform:translateX(-6px);opacity:0.3}}
-a.msg-err-recovery-light{display:inline-block;font-size:20px;line-height:1;color:#ffffff;animation:recovery-bounce 0.5s ease-in-out infinite;text-decoration:none;cursor:default;user-select:none;margin-left:6px;vertical-align:-1px;pointer-events:none}
+/* ── 致命失败恢复光块：█ 字符天生可视，CSS 只管横跳 ── */
+@keyframes recovery-bounce{0%{transform:translateX(4px)}50%{transform:translateX(36px)}100%{transform:translateX(4px)}}
+a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animation:recovery-bounce 0.55s ease-in-out infinite;text-decoration:none;cursor:default;user-select:none;margin-left:6px;vertical-align:middle;pointer-events:none}
 .msg-status{font-size:11px;opacity:.6;padding:2px 0;font-style:italic}
 /* 楼层时钟 + 饼图（嵌在豆腐块内部底部，每个楼层私有） */
 .msg-ai-clock{display:flex;align-items:center;gap:8px;padding:8px 0 0;user-select:none}

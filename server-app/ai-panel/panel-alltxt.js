@@ -248,16 +248,18 @@ function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
     r3.className = 'msg-a1-r3-wrap';
     r3.style.cssText = 'display:flex;align-items:stretch;gap:8px;';
 
+    function _showA1Qoast() {
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('\u8be5\u529f\u80fd\u6b63\u5728\u5efa\u8bbe\u4e2d', { duration: 3000 }); } catch (_) { }
+    }
+
     var auditBtn = document.createElement('button');
     auditBtn.className = 'msg-a1-audit-btn';
     auditBtn.textContent = '\u5ba1\u8ba1';
-    auditBtn.title = '\u7b49\u540c\u4e8e\u5f53\u524d\u78c1\u76d8\u6ef4 all.txt \uff0c\u53ea\u662f\u5de5\u5177\u8c03\u7528\u6ef4\u8fd4\u56de\u4f1a\u88ab\u622a\u65ad\uff0c\u65b9\u4fbf\u67e5\u770b AI \u63a8\u7406\uff0c\u5982\u679c\u78c1\u76d8\u4e0a\u6ef4 all.txt \u4e22\u5931\u6216\u88ab\u7834\u574f\uff0c\u5ba1\u8ba1\u6587\u672c reasoning.txt \u4f1a\u7b49\u540c\u6ef4\u4e22\u5931\u6216\u7834\u574f';
+    auditBtn.onclick = function (e) { e.stopPropagation(); _showA1Qoast(); };
     var translateBtn = document.createElement('button');
     translateBtn.className = 'msg-a1-audit-btn';
     translateBtn.textContent = '\u7ffb\u8bd1';
-    translateBtn.title = 'AI \u7ffb\u8bd1 reasoning.txt \u81ea\u7136\u8bed\u8a00\u90e8\u5206\u5230\u76ee\u6807\u8bed\u8a00';
-    translateBtn.setAttribute('data-cd', '30000');
-    translateBtn.onclick = function (e) { e.stopPropagation(); _onTranslateClick(block); };
+    translateBtn.onclick = function (e) { e.stopPropagation(); _showA1Qoast(); };
 
     var langSelect = document.createElement('select');
     langSelect.className = 'msg-a1-lang-select';

@@ -657,11 +657,14 @@ AI 悬浮预览层
 · 图片: transform translate+scale 统一缩放+拖拽。关闭: Esc/右键/背景。跨窗口广播关闭
 
 
-上下文压缩 — V14 前缀缓存修复 + 三按钮压缩 + fx Grid（2026-07-19）
+上下文压缩 — V16 biscuit 唯一性 + 三按钮压缩 + fx Grid（2026-07-23）
 ---------------------------------------------------------------------
-· ★ 触发: 每层楼封顶(onDone)→_rebuildBackpack()。建楼中不触发。
-· ★ V14 缓存修复: floorMsgs 升序构建→biscuitText 天生有序。step 9 智能追加(常见路径纯追加,零字节变更)→前缀缓存 ~85-90% 命中。仅旧楼层插入时重排(罕见)。
-· 机械筛: 纯本地确定性。消息→Q/A/工具摘要行。零网络零费用。
+· ★ 触发: 每层楼封顶(onDone)→_rebuildBackpack()。建楼中· ★ V14 缓存修复: floorMsgs 升序构建→biscuitText 天生有序。step 9 智能追加(常见路径纯追加,零字节变更)→前缀缓存 ~85-90% 命中。仅旧楼层插入时重排(罕见)。
+· ★ V16 biscuit 唯一性 (2026-07-23): 永远只有一条 _biscuit、一条 _facts。
+  _findDynamicMsg: !_dynamic && !_persistent（Z 不阻断搜索）。
+  step 3: 合并所有 biscuit（移除 break;）。去重: 先合并孤儿内容再删除，禁止直接 splice。
+  panel-floor.js 恢复路径同 dedup。违者→重复 biscuit→楼层数据永久丢失。
+· 机械筛: 机械筛: 纯本地确定性。消息→Q/A/工具摘要行。零网络零费用。
 · 包装盒: 15温柔(可复现,摘要一行)+5绝对(╔K...╚包裹,16K硬帽)。剥离正则 /\n╔K\n[\s\S]*?\n╚(?=\n|$)/g，前瞻不吞\n防相邻盒漏网。
 · sha256 考古: @sha=xxx / ➜ sha=xxx。12位hex。
 · 饼干: 单条_biscuit系统消息原地追加,对象永不变。每层: === FN timestamp UTC+8 === → Q → 包装盒 → A。
