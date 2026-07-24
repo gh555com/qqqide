@@ -226,7 +226,10 @@ export async function checkAndDownloadShellUpdate(
 
         try { fs.unlinkSync(tarPath); } catch { }
 
-        writeLocalShellVersion(portableRoot, latestVersion);
+        // ★ 版本号写 .staging-version 进 staging 目录，swap 成功后才由 bootstrap 迁到 Data/shell-version
+        //   防 swap 失败后版本号谎报（与 webapp swap 同理）
+        const stagingVerFile = path.join(stagingDir, '.staging-version');
+        try { fs.writeFileSync(stagingVerFile, latestVersion, 'utf8'); } catch { }
 
         console.log('[shell-update] staged for next restart:', stagingDir);
         return true;
@@ -401,7 +404,6 @@ async function backgroundCheckWebappUpdate(
         try { fs.mkdirSync(dlDir, { recursive: true }); } catch { }
         const tarPath = path.join(dlDir, 'server-app.tar.gz');
 
-        writeBootStatus(portableRoot, '0|下载载荷更新…');
         // ★ 302 重定向跟随 + OSS 兜底（对齐 checkAndDownloadShellUpdate，否则 CF Worker 302 直接失败）
         const fallbackDlUrl = UPDATE_FALLBACK_URL + 'server-app.tar.gz';
         const dlOk = await new Promise<boolean>((resolve) => {
@@ -414,7 +416,7 @@ async function backgroundCheckWebappUpdate(
                     downloaded += chunk.length;
                     if (total > 0) {
                         var pct = Math.round(downloaded / total * 100);
-                        if (pct !== lastPct) { lastPct = pct; writeBootStatus(portableRoot, pct + '|下载载荷更新…'); }
+                        if (pct !== lastPct) { lastPct = pct; }
                     }
                 });
                 resp.pipe(fstream);
@@ -457,8 +459,6 @@ async function backgroundCheckWebappUpdate(
         });
         if (!dlOk) {
             bootLog('webapp-update: download failed');
-            // ★ 清理 loading-status 防止 C 启动器显示僵尸进度
-            try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
             return;
         }
 
@@ -474,7 +474,6 @@ async function backgroundCheckWebappUpdate(
             try { fs.rmSync(tarPath); } catch { }
             // ★ 清理半残 staging，防止下次启动 ensureLocalWebapp 误 swap 进去
             try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch { }
-            try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
             return;
         }
         try { fs.unlinkSync(tarPath); } catch { }
@@ -482,14 +481,9 @@ async function backgroundCheckWebappUpdate(
         // 5) Write version marker into staging (NOT webapp-version — that's written after swap succeeds)
         try { fs.writeFileSync(path.join(stagingDir, '.staging-version'), latestVersion, 'utf8'); } catch { }
 
-        // ★ 清理 loading-status（成功完成）
-        try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
-
         bootLog('webapp-update: staged for next restart — ' + stagingDir);
     } catch (e: any) {
         bootLog('webapp-update: error — ' + (e.message || e));
-        // ★ 异常也清理 loading-status
-        try { fs.unlinkSync(path.join(portableRoot, 'loading-status')); } catch (_) { }
     }
 }
 

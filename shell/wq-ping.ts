@@ -253,9 +253,12 @@ async function pingCycle() {
                 scheduleNext(PING_FALLBACK_SEC);
             }
         } else {
-            scheduleNext(PING_FALLBACK_SEC);
+            // ★ 网络错误/超时/JSON解析失败 → 指数退避重试，不用 12h 兜底
+            _timer = setTimeout(pingCycle, _retryDelayMs);
+            _retryDelayMs = Math.min(_retryDelayMs * 2, RETRY_MAX_MS);
         }
     } catch (_) {
+        // 理论上 sendPing 不抛异常（全部 resolve），保留此路径以防未来变更
         if (!_stopped) {
             _timer = setTimeout(pingCycle, _retryDelayMs);
             _retryDelayMs = Math.min(_retryDelayMs * 2, RETRY_MAX_MS);
@@ -279,6 +282,14 @@ export function startWqPing(userDataPath?: string): void {
 
     const jitter = PING_JITTER_MIN_MS + Math.random() * (PING_JITTER_MAX_MS - PING_JITTER_MIN_MS);
     _timer = setTimeout(pingCycle, jitter);
+}
+
+/** 登录成功后调用：重置退避 + 立即发 ping（带上 doer_id）。 */
+export function notifyAuthReady(): void {
+    if (_stopped || !_deviceId) return;
+    _retryDelayMs = RETRY_MIN_MS;
+    if (_timer) clearTimeout(_timer);
+    _timer = setTimeout(pingCycle, 2_000); // 2s 后发，给 setAuthPhone 留时间
 }
 
 /** 停止统计上报机。退出前持久化累计秒数。 */

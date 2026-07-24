@@ -1518,10 +1518,14 @@ $queueBtn.onclick = function () {
     });
     document.addEventListener('mouseup', function () { dragging = false; });
 
-    // 初始 + 内容变化
+    // 初始 + 内容变化 + 容器尺寸变化（编辑框增高/变窄→messages 缩/涨→重算）
     setTimeout(sync, 50);
     var obs = new MutationObserver(function () { setTimeout(sync, 30); });
     obs.observe(el, { childList: true, subtree: true });
+    if (typeof ResizeObserver !== 'undefined') {
+        var resizeObs = new ResizeObserver(function () { sync(); });
+        resizeObs.observe(el);
+    }
 
     // 主题切换 → 立即刷滑块色 + 滑轨底色 + 粒子色
     var themeObs = new MutationObserver(function () {
