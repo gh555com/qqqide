@@ -198,9 +198,10 @@ export class UpdateService {
 
             try { fs.unlinkSync(tarPath); } catch { }
 
-            const versionFile = path.join(this._appRoot, 'Data', 'shell-version');
+            // ★ 版本号写 .staging-version 进 staging 目录，swap 成功后才由 bootstrap 迁到 Data/shell-version
+            const stagingVerFile = path.join(stagingDir, '.staging-version');
             const shellVersion = this._state.lastVersion || this._shellVersion;
-            try { fs.writeFileSync(versionFile, shellVersion, 'utf8'); } catch { }
+            try { fs.writeFileSync(stagingVerFile, shellVersion, 'utf8'); } catch { }
 
             return { success: true, version: shellVersion };
         } catch (e: any) {

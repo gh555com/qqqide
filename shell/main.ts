@@ -47,7 +47,7 @@ import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
 import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, GaeaLifecycle } from './gaea-process';
 import { setAuthPhone, setAuthToken } from './auth-state';
-import { startWqPing, stopWqPing } from './wq-ping';
+import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
 
 // ── 服务 ──
 import { EngineHost } from './engines';
@@ -255,7 +255,7 @@ function registerAuthPersistIpc(): void {
 
     ipcMain.handle('qqqide:auth:save', async (_e, auth: { token: string; phone: string; device_name?: string } | null) => {
         // ★ 无条件更新共享内存（不依赖 safeStorage，保证 wq-ping 能读到 doer_id）
-        if (auth && auth.phone) setAuthPhone(auth.phone);
+        if (auth && auth.phone) { setAuthPhone(auth.phone); notifyAuthReady(); }
         if (auth && auth.token) setAuthToken(auth.token);
         // ★ 纯文本兜底：写 phone.txt（wq-ping 终极 fallback，不受 safeStorage/DPAPI 影响）
         if (auth && auth.phone) {
@@ -285,7 +285,7 @@ function registerAuthPersistIpc(): void {
             const encrypted = fs.readFileSync(AUTH_FILE);
             const auth = JSON.parse(safeStorage.decryptString(encrypted));
             // update shared memory for wq-ping readDoerID
-            if (auth && auth.phone) setAuthPhone(auth.phone);
+            if (auth && auth.phone) { setAuthPhone(auth.phone); notifyAuthReady(); }
             if (auth && auth.token) setAuthToken(auth.token);
             return auth;
         } catch (e) { return null; }
@@ -293,7 +293,7 @@ function registerAuthPersistIpc(): void {
 
     // ★ 轻量级 IPC：仅设置共享内存电话号，不依赖 safeStorage
     ipcMain.handle('qqqide:auth:set-phone', async (_e, phone: string) => {
-        if (phone && /^\d{7,20}$/.test(phone)) { setAuthPhone(phone); return true; }
+        if (phone && /^\d{7,20}$/.test(phone)) { setAuthPhone(phone); notifyAuthReady(); return true; }
         return false;
     });
 

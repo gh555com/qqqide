@@ -84,6 +84,25 @@ function applyPendingUpdate() {
 
         // Cleanup staging
         try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
+
+        // ★ 版本号迁移：shell-version 只在 swap 成功后才写（防谎报）
+        var stagingVerFile = path.join(appDir, '.staging-version');
+        if (fs.existsSync(stagingVerFile)) {
+            try {
+                var newVer = fs.readFileSync(stagingVerFile, 'utf8').trim();
+                if (newVer) {
+                    var verFile = path.join(rootDir, 'Data', 'shell-version');
+                    var dataDir = path.join(rootDir, 'Data');
+                    try { fs.mkdirSync(dataDir, { recursive: true }); } catch (e) {}
+                    fs.writeFileSync(verFile, newVer, 'utf8');
+                    bootstrapLog('bootstrap: shell-version → ' + newVer);
+                }
+                fs.unlinkSync(stagingVerFile);
+            } catch (e) {
+                bootstrapLog('bootstrap: staging-version migration failed: ' + (e.message || e));
+            }
+        }
+
         bootstrapLog('bootstrap: shell-out updated successfully');
 
         return true;

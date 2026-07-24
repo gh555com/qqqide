@@ -22,6 +22,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <process.h>
+#include <tlhelp32.h>
 
 // ── WinHTTP redirect (MinGW headers may not define) ──
 #ifndef WINHTTP_OPTION_REDIRECT_POLICY
@@ -45,6 +46,8 @@
 
 // ── 状态机 ──
 enum { PHASE_INIT, PHASE_LAUNCHING, PHASE_WAITING, PHASE_DONE, PHASE_ERROR };
+
+#define ERROR_CLOSE_TICKS 12
 
 // ═══════════════════════════════════════════════════════════════
 // ★ Bootstrap Config — 唯一硬编码 URL，其余一切由配置驱动
@@ -86,14 +89,15 @@ static int  g_phase   = PHASE_INIT;
 static int  g_err     = 0;
 static int  g_pct     = 0;
 static char g_status[128] = "";
-static char g_stage[128]  = "";
 
 static HWND    g_hwnd           = NULL;
 static HANDLE  g_hProcess       = NULL;
+static DWORD   g_jokerPid       = 0;
 static HANDLE  g_hUpdateThread  = NULL;
 static volatile LONG g_updateRunning = 0;
 static WCHAR   g_exeDir[MAX_PATH] = {0};
 static int     g_tickCount      = 0;
+static int     g_closeCountdown = 0;
 
 // ═══════════════════════════════════════════════════════════════
 // 工具函数
@@ -107,6 +111,28 @@ static void setStatus(const char *s, int isErr) {
     strncpy(g_status, s, sizeof(g_status) - 1);
     g_err = isErr;
     if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
+}
+
+// ── 通过 PID 查找 joker.exe 的主窗口 ──
+typedef struct { DWORD pid; HWND found; } FindWindowCtx;
+static BOOL CALLBACK findWindowByPid(HWND hwnd, LPARAM lParam) {
+    FindWindowCtx *ctx = (FindWindowCtx*)lParam;
+    DWORD wpid = 0;
+    GetWindowThreadProcessId(hwnd, &wpid);
+    if (wpid != ctx->pid) return TRUE;
+    if (!IsWindowVisible(hwnd)) return TRUE;
+    LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    if (!(style & WS_CAPTION) && !(style & WS_POPUP)) return TRUE;
+    RECT rc;
+    GetClientRect(hwnd, &rc);
+    if (rc.right < 200 || rc.bottom < 100) return TRUE;
+    ctx->found = hwnd;
+    return FALSE;
+}
+static HWND findJokerMainWindow(DWORD pid) {
+    FindWindowCtx ctx = { pid, NULL };
+    EnumWindows(findWindowByPid, (LPARAM)&ctx);
+    return ctx.found;
 }
 
 static void pumpMessages(void) {
@@ -843,6 +869,7 @@ static int launchCore(void) {
     }
     CloseHandle(pi.hThread);
     g_hProcess = pi.hProcess;
+    g_jokerPid = pi.dwProcessId;
     return 0;
 }
 
@@ -861,23 +888,18 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         DeleteObject(bg);
         SetBkMode(hdc, TRANSPARENT);
 
+        // ★ 只显示 qqqide 标题 + 进度条 + 百分比
         HFONT hTitle = CreateFontW(28, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
             DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
             PROOF_QUALITY, DEFAULT_PITCH, L"Segoe UI");
         HFONT hOld = (HFONT)SelectObject(hdc, hTitle);
         SetTextColor(hdc, COL_TITLE);
-        RECT tr = {0, 50, WW, 100};
+        RECT tr = {0, 55, WW, 105};
         DrawTextW(hdc, L"qqqide", -1, &tr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         SelectObject(hdc, hOld);
         DeleteObject(hTitle);
 
-        SetTextColor(hdc, g_err ? COL_ERR : COL_STATUS);
-        WCHAR wStage[128];
-        MultiByteToWideChar(CP_UTF8, 0, g_stage[0] ? g_stage : g_status, -1, wStage, 128);
-        RECT sr2 = {20, 130, WW - 20, 160};
-        DrawTextW(hdc, wStage, -1, &sr2, DT_CENTER | DT_VCENTER | DT_WORD_ELLIPSIS);
-
-        RECT barBg = {60, 170, WW - 60, 178};
+        RECT barBg = {60, 140, WW - 60, 148};
         HBRUSH hBarBg = CreateSolidBrush(COL_BAR_BG);
         FillRect(hdc, &barBg, hBarBg);
         DeleteObject(hBarBg);
@@ -894,7 +916,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         char pctText[16];
         snprintf(pctText, sizeof(pctText), "%d%%", g_pct);
         SetTextColor(hdc, COL_STATUS);
-        RECT pr = {60, 180, WW - 60, 200};
+        RECT pr = {60, 152, WW - 60, 172};
         WCHAR wPct[16];
         MultiByteToWideChar(CP_UTF8, 0, pctText, -1, wPct, 16);
         DrawTextW(hdc, wPct, -1, &pr, DT_CENTER | DT_VCENTER);
@@ -904,64 +926,107 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
 
     case WM_TIMER: {
         g_tickCount++;
-        // 检查 joker.exe 的 loading-status
-        WCHAR candidates[2][MAX_PATH];
-        {
-            WCHAR myDir[MAX_PATH];
-            GetModuleFileNameW(NULL, myDir, MAX_PATH);
-            WCHAR *slash = wcsrchr(myDir, L'\\');
-            if (slash) *slash = L'\0';
-            swprintf(candidates[0], MAX_PATH, L"%s\\gh555.com\\loading-status", myDir);
-            swprintf(candidates[1], MAX_PATH, L"%s\\loading-status", myDir);
-        }
-        int readOk = 0;
-        for (int ci = 0; ci < 2 && !readOk; ci++) {
-            char buf[256] = {0};
-            int rd = readFileText(candidates[ci], buf, sizeof(buf));
-            if (rd <= 0) continue;
-            if (strcmp(buf, "ready") == 0) {
-                g_phase = PHASE_DONE;
-                PostMessageW(hwnd, WM_CLOSE, 0, 0);
-                return 0;
-            }
-            char *pipe2 = strchr(buf, '|');
-            if (pipe2) {
-                *pipe2 = '\0';
-                g_pct = atoi(buf);
-                strncpy(g_stage, pipe2 + 1, sizeof(g_stage) - 1);
-                readOk = 1;
-            }
-        }
 
         switch (g_phase) {
         case PHASE_INIT:
-            if (g_tickCount >= 2) {
-                setStatus("launching…", 0);
-                g_stage[0] = '\0';
+            if (g_tickCount >= 1) {
+                g_pct = 0;
                 g_phase = PHASE_LAUNCHING;
-                launchCore();
+                if (launchCore() != 0) {
+                    g_phase = PHASE_ERROR;
+                    g_closeCountdown = ERROR_CLOSE_TICKS;
+                }
             }
             break;
+
         case PHASE_LAUNCHING:
             if (!g_hUpdateThread) {
                 g_hUpdateThread = (HANDLE)_beginthreadex(NULL, 0, backgroundUpdateProc, NULL, 0, NULL);
             }
-            if (g_tickCount >= 8) {
-                setStatus("connecting…", 0);
+            if (g_tickCount <= 20 && g_tickCount % 4 == 0 && g_pct < 60) {
+                g_pct += 8;
+            }
+            if (g_tickCount >= 6) {
                 g_phase = PHASE_WAITING;
             }
             break;
-        case PHASE_WAITING:
-            if (g_tickCount >= 480) {
-                setStatus("timeout", 1);
-                g_phase = PHASE_ERROR;
-            } else if (g_hProcess) {
-                DWORD ec = 0;
-                if (GetExitCodeProcess(g_hProcess, &ec) && ec != STILL_ACTIVE) {
-                    setStatus("exited", 1);
-                    g_phase = PHASE_ERROR;
+
+        case PHASE_WAITING: {
+            // ★ 核心：检测 joker.exe 的主窗口是否出现
+            // 方式1：通过 PID 查找 joker 的可见窗口
+            if (g_jokerPid != 0) {
+                HWND jwnd = findJokerMainWindow(g_jokerPid);
+                if (jwnd != NULL) {
+                    g_phase = PHASE_DONE;
+                    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                    return 0;
                 }
             }
+
+            // 方式2：loading-status 兜底（"ready" 信号）
+            {
+                WCHAR candidates[2][MAX_PATH];
+                WCHAR myDir[MAX_PATH];
+                GetModuleFileNameW(NULL, myDir, MAX_PATH);
+                WCHAR *slash = wcsrchr(myDir, L'\\');
+                if (slash) *slash = L'\0';
+                swprintf(candidates[0], MAX_PATH, L"%s\\gh555.com\\loading-status", myDir);
+                swprintf(candidates[1], MAX_PATH, L"%s\\loading-status", myDir);
+                for (int ci = 0; ci < 2; ci++) {
+                    char buf[256] = {0};
+                    int rd = readFileText(candidates[ci], buf, sizeof(buf));
+                    if (rd > 0 && strcmp(buf, "ready") == 0) {
+                        g_phase = PHASE_DONE;
+                        PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                        return 0;
+                    }
+                    if (rd > 0) {
+                        char *pipe2 = strchr(buf, '|');
+                        if (pipe2) {
+                            *pipe2 = '\0';
+                            int p = atoi(buf);
+                            if (p > g_pct && p <= 100) g_pct = p;
+                        }
+                    }
+                }
+            }
+
+            // 方式3：joker.exe 进程退出 → 关闭
+            if (g_hProcess) {
+                DWORD ec = 0;
+                if (GetExitCodeProcess(g_hProcess, &ec) && ec != STILL_ACTIVE) {
+                    g_phase = PHASE_ERROR;
+                    g_closeCountdown = ERROR_CLOSE_TICKS;
+                }
+            }
+
+            // 方式4：超时 30s → joker 还在跑就静默关闭
+            if (g_tickCount >= 120 && g_phase == PHASE_WAITING) {
+                if (g_hProcess) {
+                    DWORD ec = 0;
+                    if (GetExitCodeProcess(g_hProcess, &ec) && ec == STILL_ACTIVE) {
+                        g_phase = PHASE_DONE;
+                        PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                        return 0;
+                    }
+                }
+                g_phase = PHASE_ERROR;
+                g_closeCountdown = ERROR_CLOSE_TICKS;
+            }
+            break;
+        }
+
+        case PHASE_ERROR:
+            if (g_closeCountdown > 0) {
+                g_closeCountdown--;
+                if (g_closeCountdown == 0) {
+                    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                    return 0;
+                }
+            }
+            break;
+
+        case PHASE_DONE:
             break;
         }
         InvalidateRect(hwnd, NULL, TRUE);
@@ -997,8 +1062,25 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
     };
     if (!RegisterClassExW(&wc)) return 1;
 
+    // ★ 检测僵尸窗口：如果已有启动器窗口，强杀后重启
     HWND existing = FindWindowW(CLASS, NULL);
-    if (existing) { SetForegroundWindow(existing); return 0; }
+    if (existing) {
+        PostMessageW(existing, WM_CLOSE, 0, 0);
+        for (int i = 0; i < 20; i++) {
+            Sleep(100);
+            if (!IsWindow(existing)) break;
+        }
+        if (IsWindow(existing)) {
+            DWORD pid = 0;
+            GetWindowThreadProcessId(existing, &pid);
+            if (pid != GetCurrentProcessId()) {
+                HANDLE hp = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+                if (hp) { TerminateProcess(hp, 0); CloseHandle(hp); }
+            }
+            DestroyWindow(existing);
+        }
+        // 不 return — 继续正常启动
+    }
 
     g_hwnd = CreateWindowExW(0, CLASS, L"qqqide",
         WS_POPUP | WS_BORDER, 0, 0, WW, WH, NULL, NULL, hi, NULL);

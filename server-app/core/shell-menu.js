@@ -529,11 +529,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       evLab.textContent = (s.i18n && window._i) ? window._i(s.i18n, s.label) : (s.label || '');
       evRow.appendChild(evLab);
 
-      // ▶ 右侧箭头（表示有子菜单）
-      var evArrow = document.createElement('span');
-      evArrow.textContent = '\u25B6';
-      evArrow.style.cssText = 'font-size:9px; color:var(--base1); margin-left:8px;';
-      evRow.appendChild(evArrow);
+      // 无箭头 — 跟开新窗口一样 hover 弹出，无需视觉指示
 
       (function (rEl) {
         rEl.addEventListener('mouseenter', function () {
