@@ -110,6 +110,7 @@ async function _ripgrepSearch(
         '--with-filename',
         '--line-number',
         '--column',
+        '--only-matching',
         '--color', 'never',
         '--max-depth', String(SEARCH_MAX_DEPTH),
         '--max-filesize', String(SEARCH_MAX_FILE_MB) + 'M',
@@ -406,6 +407,9 @@ function _parseRgJson(
         for (const m of matches) {
             if (results.length >= maxResults) break;
 
+            // Skip duplicate line in same file
+            if (results.some(r => r.file === filePath && r.line === m.line)) continue;
+
             const match: SearchMatch = { file: filePath, line: m.line, col: m.col || 1, matchLen: m.matchLen, matchText: m.matchText, text: m.text };
 
             if (contextLines > 0) {
@@ -490,9 +494,56 @@ export function registerSearchIpc(): void {
         replace?: string;
         useRegex?: boolean;
         caseSensitive?: boolean;
-        wholeWord?: boolean;
-    }) => {
-        // Per-match replacements (primary API)
+      }) => {
+        // ★ Regex-based replacement (preferred: handles all matches per file in one pass)
+        if (args.find && args.files && args.files.length > 0) {
+            const { find, replace: replaceText = '', searchPath: sp = '', useRegex = false, caseSensitive = false, wholeWord = false } = args;
+            let pattern: string;
+            if (useRegex) {
+                pattern = find;
+            } else {
+                pattern = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            }
+            if (wholeWord) pattern = '\\b' + pattern + '\\b';
+            let flags = 'g';
+            if (!caseSensitive) flags += 'i';
+            let re: RegExp;
+            try { re = new RegExp(pattern, flags); } catch (e: any) {
+                return { replaced: 0, files: 0, errors: ['Invalid regex: ' + (e.message || e)] };
+            }
+
+            let totalReplaced = 0, filesChanged = 0, processed = 0;
+            const totalFiles = args.files.length;
+            const errors: string[] = [];
+
+            for (const fpath of args.files) {
+                const absFp = path.isAbsolute(fpath) ? fpath : path.join(sp, fpath);
+                try {
+                    const content = await fs.promises.readFile(absFp, 'utf8');
+                    const matches = content.match(re);
+                    if (!matches || matches.length === 0) { processed++; continue; }
+                    const newContent = content.replace(re, replaceText);
+                    // Preserve original line endings
+                    const hasCRLF = content.indexOf('\r\n') !== -1;
+                    const finalContent = hasCRLF ? newContent.replace(/\n/g, '\r\n') : newContent;
+                    await fs.promises.writeFile(absFp, finalContent, 'utf8');
+                    totalReplaced += matches.length;
+                    filesChanged++;
+                } catch (e: any) {
+                    errors.push(fpath + ': ' + (e.message || e));
+                }
+                processed++;
+                if (_e.sender && !_e.sender.isDestroyed()) {
+                    _e.sender.send('qqqide:search:replace:progress', {
+                        current: processed, total: totalFiles, file: fpath,
+                        replaced: totalReplaced, errors: errors.slice(),
+                    });
+                }
+            }
+            return { replaced: totalReplaced, files: filesChanged, errors };
+        }
+
+        // Per-match replacements (legacy fallback)
         if (args.replacements && Array.isArray(args.replacements) && args.replacements.length > 0) {
             const searchPath = args.searchPath || '';
             const byFile = new Map<string, Array<{ line: number; col: number; matchLen: number; replacement: string; matchText?: string }>>();
@@ -523,10 +574,8 @@ export function registerSearchIpc(): void {
                         // Use matchText to locate — robust against byte/char offset mismatch
                         if (mt) {
                             len = mt.length;
-                            // col is character offset from _parseRgJson (byte→char converted).
-                            // Use it as the search start to disambiguate same-line multiple matches.
-                            const startPos = Math.max(0, (rep.col || 1) - 1);
-                            idx = line.indexOf(mt, startPos);
+                            const approxCol = Math.max(0, (rep.col || 1) - 11);
+                            idx = line.indexOf(mt, approxCol);
                             if (idx === -1) idx = line.indexOf(mt);
                         }
                         if (idx === -1) {

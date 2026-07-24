@@ -283,8 +283,8 @@ var _RECOVERY_MAX_TOTAL_MS = 180000; // 总上限 3 分钟
 function _startRecovery(questId, agent, linkEl) {
     if (!questId || !agent || agent._stopState !== 'fatal') return;
 
-    // 1. ★ 记录原始 fatal 楼层号 + 预封顶所有更旧的红框
-    agent._recoveryOriginFloor = agent._currentFloorNum;
+    // 1. ★ 记录原始 fatal 楼层号（仅首次，不覆盖）+ 预封顶所有更旧的红框
+    if (!agent._recoveryOriginFloor) agent._recoveryOriginFloor = agent._currentFloorNum;
     if (agent._questErrorState) {
         for (var _fn in agent._questErrorState) {
             if (parseInt(_fn) < agent._recoveryOriginFloor && !agent._questErrorState[_fn].capped && typeof _capRecoveryLink === 'function') {

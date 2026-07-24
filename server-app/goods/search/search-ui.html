@@ -317,23 +317,35 @@ BRA.onclick=async function(){
   if(!_last||!_last.results||_last.results.length===0)return;var rt=RP.value;
   if(!rt){STT.textContent='⚠️ 请键入替换文本';return}
   if(!bri)bri=window.parent&&window.parent.qqqideBridge;if(!bri||!bri.search)return;
-  var q2=_lastQ,p2=_rx?q2:q2.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');if(_ww)p2='\\b'+p2+'\\b';
-  var fl=_cs?'g':'gi',re;try{re=new RegExp(p2,fl)}catch(e){STT.textContent='⚠️ 无效正则';return}
+
   var _trunc=_last.truncated;
-  var reps=[],fs2={};
-  for(var i=0;i<_last.results.length;i++){var r=_last.results[i];fs2[r.file]=true;
-    if(!_rx){var mt=r.matchText||'';reps.push({file:r.file,line:r.line,col:r.col||1,matchLen:r.matchLen||mt.length,matchText:mt,replacement:rt,oldText:mt})}
-    else{re.lastIndex=0;var found=null,m2;while((m2=re.exec(r.text))!==null){if(m2.index+1===r.col){found=m2;break}}if(found){reps.push({file:r.file,line:r.line,col:found.index+1,matchLen:found[0].length,matchText:found[0],replacement:found[0].replace(re,rt),oldText:found[0]})}else if(r.matchLen){var mt2=r.matchText||'';reps.push({file:r.file,line:r.line,col:r.col||1,matchLen:r.matchLen,matchText:mt2,replacement:_rx?mt2.replace(re,rt):rt,oldText:mt2})}}
+  // Collect unique files + total match count from current results
+  var allResults=_last.results,fileSet=new Set(),previewReps=[];
+  for(var i=0;i<allResults.length;i++){var r=allResults[i];fileSet.add(r.file);
+    if(previewReps.length<8)previewReps.push({file:r.file,line:r.line,matchText:r.matchText||'',oldText:r.matchText||''})}
+  var totalMatches=allResults.length;
+
+  // If truncated, re-scan to get complete file list
+  if(_trunc){
+    STT.textContent='🔍 完整扫描所有匹配文件...';
+    var fullR=await bri.search.query({query:_lastQ,searchPath:_scopePath,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,
+      includePattern:IC.value.trim()||undefined,excludePattern:EX.value.trim()||undefined,
+      contextLines:0,maxResults:100000,timeoutMs:120000,respectGitignore:CGI.checked});
+    if(fullR.error){STT.textContent='⚠️ 完整扫描失败: '+fullR.error;return}
+    allResults=fullR.results;fileSet.clear();totalMatches=allResults.length;previewReps=[];
+    for(var i3=0;i3<allResults.length;i3++){var r3=allResults[i3];fileSet.add(r3.file);
+      if(previewReps.length<8)previewReps.push({file:r3.file,line:r3.line,matchText:r3.matchText||'',oldText:r3.matchText||''})}
+    if(totalMatches===0){STT.textContent='⚠️ 完整扫描后无匹配项（可能已被上次替换处理完）';setTimeout(function(){STT.textContent='键入关键字开始搜索'},2500);return}
   }
-  if(reps.length===0){STT.textContent='⚠️ 无匹配项可替换';return}
-  var fc3=Object.keys(fs2).length,cm=document.getElementById('confirm-mo');
-  var smText='即将在 '+fc3+' 个文件中替换 '+reps.length+' 处匹配';
-  if(_trunc)smText+='<br>⚠️ 上次搜索被截断（仅返回前 '+_last.total+' 条），确认后将完整扫描所有匹配项';
+
+  var fc3=fileSet.size,cm=document.getElementById('confirm-mo');
+  var smText='即将在 '+fc3+' 个文件中替换 '+totalMatches+' 处匹配';
+  if(_trunc)smText+='<br>⚠️ 上次搜索被截断，已完整扫描全部匹配项';
   document.getElementById('confirm-summary').innerHTML=smText;
   var ph='';
-  for(var i2=0;i2<Math.min(reps.length,8);i2++){var r2=reps[i2],ot=r2.oldText||'',nt=rt;if(ot.length>60)ot=ot.slice(0,60)+'...';if(nt.length>60)nt=nt.slice(0,60)+'...';
-    ph+='<div><span class="f2">'+eh(r2.file.split('/').pop())+'</span><span class="ln2">:'+r2.line+'</span> <span class="old">'+eh(ot)+'</span><span class="arw">→</span><span class="nw">'+eh(nt)+'</span></div>'}
-  if(reps.length>8)ph+='<div style="color:var(--tx3)">... 及其他 '+(reps.length-8)+' 处</div>';
+  for(var i2=0;i2<Math.min(previewReps.length,8);i2++){var pv=previewReps[i2],ot=pv.oldText||'';if(ot.length>60)ot=ot.slice(0,60)+'...';var nt2=rt;if(nt2.length>60)nt2=nt2.slice(0,60)+'...';
+    ph+='<div><span class="f2">'+eh(pv.file.split('/').pop())+'</span><span class="ln2">:'+pv.line+'</span> <span class="old">'+eh(ot)+'</span><span class="arw">→</span><span class="nw">'+eh(nt2)+'</span></div>'}
+  if(previewReps.length<totalMatches)ph+='<div style="color:var(--tx3)">... 及其他 '+(totalMatches-Math.min(previewReps.length,8))+' 处</div>';
   document.getElementById('confirm-preview').innerHTML=ph;cm.style.display='flex';
   var ok=await new Promise(function(rs){
     document.getElementById('confirm-ok').onclick=function(){rs(true)};
@@ -341,26 +353,13 @@ BRA.onclick=async function(){
     cm.onclick=function(e){if(e.target===cm)rs(false)};
     document.addEventListener('keydown',function esc(e){if(e.key==='Escape'){rs(false);document.removeEventListener('keydown',esc)}})});
   cm.style.display='none';if(!ok)return;
+
   var pm=document.getElementById('progress-mo'),pbar=document.getElementById('prg-bar'),pt2=document.getElementById('prg-txt'),pf=document.getElementById('prg-file'),pe=document.getElementById('prg-errs');
   pm.style.display='flex';pbar.style.width='0%';pt2.textContent='准备替换...';pf.textContent='';pe.innerHTML='';var lp=0;
   try{
-    // If previous search was truncated, re-scan with high maxResults to get ALL matches
-    if(_trunc){
-      pt2.textContent='🔍 完整扫描所有匹配项...';
-      var fullR=await bri.search.query({query:_lastQ,searchPath:_scopePath,isRegex:_rx,caseSensitive:_cs,wholeWord:_ww,
-        includePattern:IC.value.trim()||undefined,excludePattern:EX.value.trim()||undefined,
-        contextLines:0,maxResults:100000,timeoutMs:120000,respectGitignore:CGI.checked});
-      if(fullR.error){pt2.textContent='⚠️ 完整扫描失败: '+fullR.error;return}
-      // Rebuild reps from full results (use ripgrep col/matchText directly)
-      reps=[];fs2={};
-      for(var i3=0;i3<fullR.results.length;i3++){var r3=fullR.results[i3];fs2[r3.file]=true;
-        if(!_rx){var mt3=r3.matchText||'';reps.push({file:r3.file,line:r3.line,col:r3.col||1,matchLen:r3.matchLen||mt3.length,matchText:mt3,replacement:rt,oldText:mt3})}
-        else{re.lastIndex=0;var found3=null,m4;while((m4=re.exec(r3.text))!==null){if(m4.index+1===r3.col){found3=m4;break}}if(found3){reps.push({file:r3.file,line:r3.line,col:found3.index+1,matchLen:found3[0].length,matchText:found3[0],replacement:found3[0].replace(re,rt),oldText:found3[0]})}else if(r3.matchLen){var mt4=r3.matchText||'';reps.push({file:r3.file,line:r3.line,col:r3.col||1,matchLen:r3.matchLen,matchText:mt4,replacement:_rx?mt4.replace(re,rt):rt,oldText:mt4})}}
-      }
-      if(reps.length===0){pt2.textContent='⚠️ 完整扫描后无匹配项（可能已被上次替换处理完）';setTimeout(function(){pm.style.display='none'},2500);return}
-    }
-    pt2.textContent='正在替换 '+reps.length+' 处匹配...';
-    var res=await bri.search.replace({replacements:reps,searchPath:_scopePath,onProgress:function(d){
+    var fileList=Array.from(fileSet);
+    pt2.textContent='正在替换 '+totalMatches+' 处匹配（'+fc3+' 个文件）...';
+    var res=await bri.search.replace({files:fileList,find:_lastQ,replace:rt,useRegex:_rx,caseSensitive:_cs,wholeWord:_ww,searchPath:_scopePath,onProgress:function(d){
       var pct=d.total>0?Math.round(d.current/d.total*100):0;
       if(pct>lp||(d.errors&&d.errors.length)){
         pbar.style.width=pct+'%';pt2.textContent='已完成 '+d.current+'/'+d.total+' 文件, '+d.replaced+' 处替换';

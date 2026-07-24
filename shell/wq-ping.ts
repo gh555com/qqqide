@@ -139,14 +139,25 @@ function readDoerID(): string {
 
     // ★ 第二优先：safeStorage 直接解密（兜底）
     try {
-        if (!safeStorage.isEncryptionAvailable()) return '';
-        const fp = authFilePath();
-        if (!fs.existsSync(fp)) return '';
-        const encrypted = fs.readFileSync(fp);
-        const auth = JSON.parse(safeStorage.decryptString(encrypted));
-        // phone_e164 格式: 8613812345678
-        if (auth && auth.phone && /^\d{7,20}$/.test(auth.phone)) return auth.phone;
+        if (safeStorage.isEncryptionAvailable()) {
+            const fp = authFilePath();
+            if (fs.existsSync(fp)) {
+                const encrypted = fs.readFileSync(fp);
+                const auth = JSON.parse(safeStorage.decryptString(encrypted));
+                if (auth && auth.phone && /^\d{7,20}$/.test(auth.phone)) return auth.phone;
+            }
+        }
     } catch (_) { }
+
+    // ★ 第三优先：纯文本 phone.txt 终极兜底（防 DPAPI 跨目录/跨用户失效）
+    try {
+        const phoneFile = path.join(alphalDir(), 'phone.txt');
+        if (fs.existsSync(phoneFile)) {
+            const phone = fs.readFileSync(phoneFile, 'utf8').trim();
+            if (phone && /^\d{7,20}$/.test(phone)) return phone;
+        }
+    } catch (_) { }
+
     return '';
 }
 

@@ -100,8 +100,8 @@ async function switchQuest(id) {
         // 原子写面板 resume JSON（bridge.fs.write → 主进程 tmp+rename，零踩踏）
         _persistPanelResume(id);
 
-        // ★ 延迟排序：不立即 touch —— 老代码技巧，等窗口失焦时才更新 lastActiveAt
-        //   questStore.touch(id) 已移至 window blur 事件（panel-state.js）
+        // ★ 重排序：记录 quest 最后点击时间，使最近活跃 quest 浮顶
+        questStore.touch(id);
 
         // ★ 声明所有权（仅父注册表；quest.sq3 不再参与）
         _parentClaimQuest(id);
