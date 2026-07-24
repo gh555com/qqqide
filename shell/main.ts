@@ -251,11 +251,20 @@ function registerAllIpc(): void {
 // ── Auth 持久化 IPCPC — safeStorage 加密存盘，重启自动恢复（2026-06-29） ──
 function registerAuthPersistIpc(): void {
     const AUTH_FILE = path.join(portable.userData, 'alphal', 'auth.enc');
+    const PHONE_FILE = path.join(portable.userData, 'alphal', 'phone.txt'); // ★ 纯文本兜底，防 safeStorage DPAPI 跨目录失效
 
     ipcMain.handle('qqqide:auth:save', async (_e, auth: { token: string; phone: string; device_name?: string } | null) => {
         // ★ 无条件更新共享内存（不依赖 safeStorage，保证 wq-ping 能读到 doer_id）
         if (auth && auth.phone) setAuthPhone(auth.phone);
         if (auth && auth.token) setAuthToken(auth.token);
+        // ★ 纯文本兜底：写 phone.txt（wq-ping 终极 fallback，不受 safeStorage/DPAPI 影响）
+        if (auth && auth.phone) {
+            try {
+                const dir = path.dirname(PHONE_FILE);
+                if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+                fs.writeFileSync(PHONE_FILE, auth.phone, 'utf8');
+            } catch (_) { }
+        }
         if (!auth || !auth.token || !safeStorage.isEncryptionAvailable()) return false;
         try {
             const encrypted = safeStorage.encryptString(JSON.stringify(auth));
@@ -569,14 +578,25 @@ app.whenReady().then(async () => {
     // Avoids safeStorage(DPAPI) failures across install directory migration
     (function preloadAuthPhone() {
         try {
-            if (!safeStorage.isEncryptionAvailable()) return;
-            const authFile = path.join(portable.userData, 'alphal', 'auth.enc');
-            if (!fs.existsSync(authFile)) return;
-            const encrypted = fs.readFileSync(authFile);
-            const auth = JSON.parse(safeStorage.decryptString(encrypted));
-            if (auth && auth.phone) setAuthPhone(auth.phone);
-            if (auth && auth.token) setAuthToken(auth.token);
+            // ★ 路径1：safeStorage 解密 auth.enc（主路径）
+            if (safeStorage.isEncryptionAvailable()) {
+                const authFile = path.join(portable.userData, 'alphal', 'auth.enc');
+                if (fs.existsSync(authFile)) {
+                    const encrypted = fs.readFileSync(authFile);
+                    const auth = JSON.parse(safeStorage.decryptString(encrypted));
+                    if (auth && auth.phone) { setAuthPhone(auth.phone); return; }
+                    if (auth && auth.token) setAuthToken(auth.token);
+                }
+            }
         } catch (_) { /* safeStorage might fail across install migration */ }
+        // ★ 路径2：纯文本 phone.txt 兜底（防 DPAPI 跨目录/跨用户失效）
+        try {
+            const phoneFile = path.join(portable.userData, 'alphal', 'phone.txt');
+            if (fs.existsSync(phoneFile)) {
+                const phone = fs.readFileSync(phoneFile, 'utf8').trim();
+                if (phone && /^\d{7,20}$/.test(phone)) setAuthPhone(phone);
+            }
+        } catch (_) { }
     })();
 
     // ★ ping reporter (non-blocking, first ping with 30-120s random delay)

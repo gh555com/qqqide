@@ -230,14 +230,23 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
     // ---- search (高性能项目搜索引擎) ----
     search: {
         query: (opts: { query: string; searchPath: string; isRegex?: boolean; caseSensitive?: boolean; wholeWord?: boolean; includePattern?: string; excludePattern?: string; contextLines?: number; maxResults?: number; timeoutMs?: number; respectGitignore?: boolean }) => ipcRenderer.invoke('qqqide:search:query', opts),
-        replace: (opts: { replacements: Array<{ file: string; line: number; col: number; matchLen: number; replacement: string }>; searchPath?: string; onProgress?: (data: { current: number; total: number; file: string; replaced: number; errors: string[] }) => void }) => {
+        replace: (opts: { replacements?: Array<{ file: string; line: number; col: number; matchLen: number; replacement: string }>; files?: string[]; find?: string; replace?: string; useRegex?: boolean; caseSensitive?: boolean; wholeWord?: boolean; searchPath?: string; onProgress?: (data: { current: number; total: number; file: string; replaced: number; errors: string[] }) => void }) => {
             const { onProgress } = opts;
             let handler: ((_e: any, data: any) => void) | null = null;
             if (onProgress) {
                 handler = (_e: any, data: any) => { try { onProgress(data); } catch {} };
                 ipcRenderer.on('qqqide:search:replace:progress', handler);
             }
-            return ipcRenderer.invoke('qqqide:search:replace', { replacements: opts.replacements, searchPath: opts.searchPath }).then((res: any) => {
+            const invokeArgs: any = {};
+            if (opts.files) invokeArgs.files = opts.files;
+            if (opts.find) invokeArgs.find = opts.find;
+            if (opts.replace) invokeArgs.replace = opts.replace;
+            if (opts.useRegex !== undefined) invokeArgs.useRegex = opts.useRegex;
+            if (opts.caseSensitive !== undefined) invokeArgs.caseSensitive = opts.caseSensitive;
+            if (opts.wholeWord !== undefined) invokeArgs.wholeWord = opts.wholeWord;
+            if (opts.searchPath) invokeArgs.searchPath = opts.searchPath;
+            if (opts.replacements) invokeArgs.replacements = opts.replacements;
+            return ipcRenderer.invoke('qqqide:search:replace', invokeArgs).then((res: any) => {
                 if (handler) ipcRenderer.removeListener('qqqide:search:replace:progress', handler);
                 return res;
             }).catch((err: any) => {
