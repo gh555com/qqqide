@@ -52,7 +52,7 @@ function bootStatusbar(boot) {
 			_onlOverlay.addEventListener('click', function (e) { if (e.target === _onlOverlay) closeOnlineUsers(); });
 
 			_onlPanel = document.createElement('div');
-			_onlPanel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:600px;max-width:94vw;max-height:80vh;overflow-y:auto;z-index:9999;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:' + bg + ';font-size:13px;';
+			_onlPanel.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:700px;max-width:94vw;max-height:80vh;overflow-y:auto;z-index:9999;border-radius:6px;box-shadow:0 8px 32px rgba(0,0,0,0.35);background:' + bg + ';font-size:13px;';
 			_onlPanel.innerHTML =
 				'<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid ' + border + ';position:sticky;top:0;background:' + bg + ';">' +
 				'<span style="font-weight:bold;">在线用户</span>' +
@@ -96,27 +96,34 @@ function bootStatusbar(boot) {
 					var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 				var html = '<table style="width:100%;border-collapse:collapse;">';
 					html += '<thead><tr style="border-bottom:1px solid ' + (isDark ? '#333' : '#d3c6aa') + ';">';
-					html += '<th style="padding:6px 8px;text-align:left;">手机号</th>';
-					html += '<th style="padding:6px 8px;text-align:right;">最近在线</th>';
-					html += '<th style="padding:6px 8px;text-align:right;">最近连续在线</th>';
-					html += '<th style="padding:6px 8px;text-align:right;">总在线(h)</th>';
-					html += '</tr></thead><tbody>';
-					for (var i = 0; i < users.length; i++) {
+					html += '<th style="padding:4px 6px;text-align:left;">手机号</th>';
+					html += '<th style="padding:4px 6px;text-align:right;">最近在线</th>';
+					html += '<th style="padding:4px 6px;text-align:right;">连续(m)</th>';
+					html += '<th style="padding:4px 6px;text-align:right;">版本</th>';
+					html += '<th style="padding:4px 6px;text-align:right;">累计(h)</th>';	html += '</tr></thead><tbody>';
+								for (var i = 0; i < users.length; i++) {
 						var u = users[i];
 						var lastSeen = new Date(u.last_seen_at * 1000);
-						var mon = lastSeen.getMonth() + 1;
+						var yr = lastSeen.getFullYear();
+						var mon = ('0' + (lastSeen.getMonth() + 1)).slice(-2);
 						var day = ('0' + lastSeen.getDate()).slice(-2);
-						var timeStr = mon + '-' + day + ' ' + ('0' + lastSeen.getHours()).slice(-2) + ':' + ('0' + lastSeen.getMinutes()).slice(-2);
-						var contMin = Math.floor(u.continuous_seconds / 60);
-						var contStr = contMin >= 60 ? Math.floor(contMin / 60) + 'h ' + (contMin % 60) + 'm' : contMin + 'm';
-						html += '<tr style="border-bottom:1px solid ' + (isDark ? '#2a2a2a' : '#eee8d5') + ';">';
-						html += '<td style="padding:6px 8px;font-family:monospace;">' + u.phone + '</td>';
-						html += '<td style="padding:6px 8px;text-align:right;font-family:monospace;font-size:12px;">' + timeStr + '</td>';
-						html += '<td style="padding:6px 8px;text-align:right;font-family:monospace;">' + contStr + '</td>';
-						html += '<td style="padding:6px 8px;text-align:right;font-family:monospace;">' + u.total_hours + '</td>';
-						html += '</tr>';
-					}
+						var timeStr = yr + '-' + mon + '-' + day + ' ' + ('0' + lastSeen.getHours()).slice(-2) + ':' + ('0' + lastSeen.getMinutes()).slice(-2);
+						var contM = typeof u.continuous_m === 'number' ? Math.round(u.continuous_m) : 0;
+						var contStr = contM + 'm';
+						var totalH = typeof u.total_m === 'number' ? Math.round(u.total_m / 60) : '-';
+						var totalStr = typeof totalH === 'number' ? totalH + 'h' : '-';
+						var ver = u.client_ver || '-';
+						var online = u.online === true;
+						var rowOpacity = online ? '' : 'opacity:0.5;';
+						html += '<tr style="border-bottom:1px solid ' + (isDark ? '#2a2a2a' : '#eee8d5') + ';' + rowOpacity + '">';
+						html += '<td style="padding:4px 6px;font-family:monospace;">' + u.phone + '</td>';
+						html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;font-size:12px;white-space:nowrap;">' + timeStr + '</td>';
+						html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + contStr + '</td>';
+						html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;font-size:11px;">' + ver + '</td>';
+						html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + totalStr + '</td>';
+						html += '</tr>';				}
 					html += '</tbody></table>';
+					// 不再显示脚注，列表直接展示最近100个用户
 					$body.innerHTML = html;
 				})
 				.catch(function () {

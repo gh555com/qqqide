@@ -44,6 +44,8 @@ let _userDataPath: string | null = null;
 const _goodsMeta = new Map<string, { allowMultiple: boolean }>();
 // ★ 单例冲突标记：进程因互斥锁冲突退出（exit code 100）→ 防止看门狗无限重启
 const _singletonConflicts = new Set<string>();
+// ★ 启动中锁：防并发 startGaeaProcess 竞态（两个调用同时通过 PID 文件检查）
+const _startingLocks = new Set<string>();
 
 export function onGaeaProcessStatusChange(cb: (goodsId: string, running: boolean, pid: number | null) => void): void {
     _statusListeners.push(cb);
@@ -156,6 +158,14 @@ export function startGaeaProcess(
     // ★ 用户主动重试 → 清除冲突标记
     _singletonConflicts.delete(goodsId);
 
+    // ★ 内存锁防并发竞态：同一 goodsId 同时只能有一个 start 调用
+    if (_startingLocks.has(goodsId)) {
+        console.log('[' + goodsId + '] start already in progress — skip');
+        return { ok: false, error: '启动进行中，请稍后重试' };
+    }
+    _startingLocks.add(goodsId);
+
+    try {
     // ★ 单例检测: allowMultiple=false → 检查 PID 文件
     if (!allowMultiple) {
         const existing = _checkExistingInstance(userData, goodsId);
@@ -269,6 +279,9 @@ export function startGaeaProcess(
     } catch (e: any) {
         return { ok: false, error: '启动失败: ' + (e.message || e) };
     }
+    } finally {
+        _startingLocks.delete(goodsId);
+    }
 }
 
 export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string } {
@@ -282,7 +295,7 @@ export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string 
             if (process.platform === 'win32' && entry.pid) {
                 try {
                     execSync(`taskkill /F /T /PID ${entry.pid}`, { windowsHide: true });
-                } catch { /* already exited — that's fine */ }
+                } catch { /* already exited */ }
             } else {
                 try {
                     process.kill(-entry.pid!, 'SIGTERM');
@@ -291,17 +304,13 @@ export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string 
                 }
             }
             _registry.delete(goodsId);
-            if (_userDataPath) _removePidFile(_userDataPath, goodsId);
-            console.log('[' + goodsId + '] stopped (lifecycle=' + (entry.lifecycle || 'attached') + ')');
-            _notifyStatus(goodsId, false, null);
-            return { ok: true };
+            console.log('[' + goodsId + '] path A killed pid=' + entry.pid);
         } catch (e: any) {
-            return { ok: false, error: '停止失败: ' + (e.message || e) };
+            console.warn('[' + goodsId + '] path A failed:', e.message);
         }
     }
 
-    // ★ 路径 B: 内存里没有活跃 proc (IDE 重启后 proc:null, 或 entry 不存在)
-    //           回退到 PID 文件杀 — 否则 isGaeaProcessRunning 显示运行中但关不掉
+    // ★ 路径 B: PID 文件杀 (即使路径 A 已执行也跑，防同一个 goodsId 有多个进程)
     _registry.delete(goodsId);
     if (_userDataPath) {
         const existing = _checkExistingInstance(_userDataPath, goodsId);
@@ -312,22 +321,39 @@ export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string 
                 } else {
                     process.kill(existing.pid, 'SIGKILL');
                 }
-                _removePidFile(_userDataPath, goodsId);
-                console.log('[' + goodsId + '] stopped via PID file pid=' + existing.pid);
-                _notifyStatus(goodsId, false, null);
-                return { ok: true };
-            } catch (e: any) {
-                // PID 文件可能已过期 — 清理
-                _removePidFile(_userDataPath, goodsId);
-                _notifyStatus(goodsId, false, null);
-                return { ok: true };
-            }
-        } else {
-            // 进程不在运行 — 清理过期 PID 文件
-            _removePidFile(_userDataPath, goodsId);
-            _notifyStatus(goodsId, false, null);
+                console.log('[' + goodsId + '] path B killed pid=' + existing.pid);
+            } catch { /* ignore */ }
         }
+        _removePidFile(_userDataPath, goodsId);
     }
+
+    // ★ 路径 C: 暴力扫描 — 无论前两路是否成功，都扫一遍全杀
+    if (process.platform === 'win32') {
+        try {
+            const wmicOut = execSync(
+                'wmic process where "name like \'%python%\'" get ProcessId,CommandLine /format:csv',
+                { windowsHide: true, timeout: 5000 }
+            ).toString();
+            let killed = 0;
+            for (const line of wmicOut.split('\n')) {
+                if (line.includes(goodsId + '/q3.py') || line.includes(goodsId + '\\q3.py')) {
+                    const pidMatch = line.match(/,(\d+)/);
+                    if (pidMatch) {
+                        try {
+                            execSync(`taskkill /F /PID ${pidMatch[1]}`, { windowsHide: true });
+                            killed++;
+                            console.log('[' + goodsId + '] path C killed pid=' + pidMatch[1]);
+                        } catch { /* ignore */ }
+                    }
+                }
+            }
+            if (killed > 0 || entry) {
+                console.log('[' + goodsId + '] brute-force: ' + killed + ' process(es) killed');
+            }
+        } catch { /* wmic not available */ }
+    }
+
+    _notifyStatus(goodsId, false, null);
     return { ok: true };
 }
 

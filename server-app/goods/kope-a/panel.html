@@ -223,7 +223,6 @@ body {
     }
 
     function md5Hex(str) {
-        // Simple hash for dedup (32-bit FNV-1a as fallback, adequate for clipboard dedup)
         var h = 2166136261;
         for (var i = 0; i < str.length; i++) {
             h ^= str.charCodeAt(i);
@@ -271,71 +270,266 @@ body {
     };
 
     // ── 状态 ──
-    var clipHistory = [];       // { id, content, timestamp, preview, size, pinned, hash }
-    var hashMap = {};           // hash → index
+    var clipHistory = [];
+    var hashMap = {};
     var selectedId = '';
     var currentLimit = 30;
     var isLoadingMore = false;
     var batchSize = 30;
-    var lastClipContent = '';
 
-
-    function getState() {
-        try { return parent.window.qqqState; } catch(e) { return null; }
-    }
-
-    var _stateNs = null;
-    function stateNs() {
-        if (_stateNs) return _stateNs;
-        var st = getState();
-        if (st) {
-            _stateNs = st.ns('qqq.clip', { v: 1, form: 'doc' });
+    // ── kope 数据源: 优先 IPC bridge (零网络), 回退 HTTP API ──
+    var _bridge = null;
+    try {
+        if (parent && parent.qqqideBridge && parent.qqqideBridge.kope) {
+            _bridge = parent.qqqideBridge.kope;
+            console.log('[kope-panel] bridge ready');
         }
-        return _stateNs;
+    } catch(e) {}
+
+    var _apiPort = null;
+    var _httpPort = null;
+    var _apiConnecting = false;
+    var _lastStats = null;
+    var _reconnectTimer = null;
+    var _reconnectDelayMs = 1000;
+    var _MAX_RECONNECT_MS = 30000;
+    var _eventSource = null;
+    var _pollTimer = null;
+    var _POLL_MS = 2000;
+    var _connectFailCount = 0;
+    var _showStartHint = false;
+
+    function startPolling() {
+        if (_pollTimer) return;
+        _pollTimer = setInterval(function() { pollApi(); }, _POLL_MS);
     }
 
-    // ── 持久化 ──
-    function persistHistory() {
-        var ns = stateNs();
-        if (!ns) return;
-        var payload = {
-            version: 4,
-            savedAt: Date.now(),
-            history: clipHistory.map(function(h) {
-                return { id: h.id, content: h.content, timestamp: h.timestamp,
-                         preview: h.preview, size: h.size, pinned: !!h.pinned,
-                         hash: h.hash };
-            })
-        };
-        ns.setNow('history', payload).catch(function(){});
+    function stopPolling() {
+        if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
     }
 
-    function loadHistory() {
-        var ns = stateNs();
-        if (!ns) return;
-        ns.get('history').then(function(payload) {
-            if (payload && Array.isArray(payload.history) && payload.history.length > 0) {
-                clipHistory = [];
-                hashMap = {};
-                payload.history.slice().reverse().forEach(function(it) {
-                    if (!it.content) return;
-                    var h = {
-                        id: it.id || randomId(),
-                        content: it.content,
-                        timestamp: it.timestamp || Date.now(),
-                        preview: it.preview || makePreview(it.content),
-                        size: it.size || (it.content ? it.content.length : 0),
-                        pinned: !!it.pinned,
-                        hash: it.hash || md5Hex(it.content)
-                    };
-                    if (!hashMap[h.hash]) {
-                        clipHistory.push(h);
-                        hashMap[h.hash] = clipHistory.length - 1;
-                    }
-                });
-                renderList(clipHistory.slice(0, currentLimit), false);
+    async function discoverApiPort() {
+        for (var port = 19820; port <= 19829; port++) {
+            try {
+                var ctrl = new AbortController();
+                var to = setTimeout(function() { ctrl.abort(); }, 1000);
+                var resp = await fetch('http://127.0.0.1:' + port + '/ping', { signal: ctrl.signal });
+                clearTimeout(to);
+                if (resp.ok) { var d = await resp.json(); if (d.ok) return port; }
+            } catch(e) {}
+        }
+        return null;
+    }
+
+    function scheduleReconnect() {
+        if (_reconnectTimer) return;
+        _reconnectTimer = setTimeout(function() {
+            _reconnectTimer = null;
+            connectApi().then(function() {
+                if (_apiPort) _reconnectDelayMs = 1000;
+            });
+        }, _reconnectDelayMs);
+        _reconnectDelayMs = Math.min(_reconnectDelayMs * 2, _MAX_RECONNECT_MS);
+    }
+
+    async function connectApi() {
+        if (_apiConnecting || _apiPort) return;
+        _apiConnecting = true;
+
+        // 优先尝试 IPC bridge（零网络，即时）
+        var bridgeOk = false;
+        if (_bridge) {
+            try {
+                var stats = await _bridge.getStats();
+                if (stats && typeof stats.total === 'number') {
+                    console.log('[kope-panel] bridge connected, items=' + stats.total);
+                    _apiPort = 'bridge';
+                    _reconnectDelayMs = 1000;
+                    _connectFailCount = 0;
+                    await loadFromBridge();
+                    bridgeOk = true;
+                }
+            } catch(e) { console.log('[kope-panel] bridge failed:', e); }
+        }
+
+        // 同时尝试 HTTP API（用于 SSE 推送 + bridge 不可用时回退）
+        var port = await discoverApiPort();
+        if (port) {
+            _httpPort = port;
+            if (!bridgeOk) {
+                _apiPort = port;
+                await loadFromApi();
             }
-        }).catch(function(){});
+            _reconnectDelayMs = 1000;
+            _connectFailCount = 0;
+            _showStartHint = false;
+            hideStartHint();
+            connectSSE();
+        } else if (!bridgeOk) {
+            _connectFailCount++;
+            if (_connectFailCount >= 3 && !_showStartHint) {
+                _showStartHint = true;
+                showStartHint();
+            }
+        }
+        _apiConnecting = false;
+    }
+
+    function showStartHint() {
+        var banner = el.historyList.querySelector('.kope-start-hint');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.className = 'kope-start-hint';
+            banner.style.cssText = 'text-align:center;padding:20px 16px;color:var(--text-secondary);font-size:13px;line-height:1.8;';
+            banner.innerHTML = '<div style="font-size:48px;margin-bottom:12px;opacity:0.6;">&#128264;</div>' +
+                '<div>kope-a &#26410;&#21551;&#21160;</div>' +
+                '<div style="font-size:12px;margin-top:6px;">&#35831;&#28857;&#20987;&#33756;&#21333;&#26639; kope-a &#30340; &#9679; &#25353;&#38062;&#21551;&#21160;&#21518;&#21488;&#36827;&#31243;</div>';
+            el.historyList.insertBefore(banner, el.historyList.firstChild);
+        }
+    }
+
+    function hideStartHint() {
+        var banner = el.historyList.querySelector('.kope-start-hint');
+        if (banner) banner.remove();
+    }
+
+    function connectSSE() {
+        var hp = _httpPort || _apiPort;
+        if (!hp || hp === 'bridge') return;
+        if (_eventSource) { _eventSource.close(); _eventSource = null; }
+        try {
+            var es = new EventSource('http://127.0.0.1:' + hp + '/events');
+            es.onmessage = function(e) {
+                if (e.data === 'change') { reloadFromApi(); }
+            };
+            es.onerror = function() {
+                es.close();
+                _eventSource = null;
+                _httpPort = null;
+                if (_apiPort !== 'bridge' || !_bridge) _apiPort = null;
+                scheduleReconnect();
+                startPolling();
+            };
+            _eventSource = es;
+            stopPolling();
+        } catch(e) {
+            _eventSource = null;
+        }
+    }
+
+    function _apiBase() {
+        if (_httpPort) return 'http://127.0.0.1:' + _httpPort;
+        if (_apiPort && _apiPort !== 'bridge') return 'http://127.0.0.1:' + _apiPort;
+        return null;
+    }
+
+    async function apiGet(path) {
+        var base = _apiBase();
+        if (!base) return null;
+        try {
+            var ctrl = new AbortController();
+            var to = setTimeout(function() { ctrl.abort(); }, 3000);
+            var resp = await fetch(base + path, { signal: ctrl.signal });
+            clearTimeout(to);
+            if (!resp.ok) return null;
+            return await resp.json();
+        } catch(e) { return null; }
+    }
+
+    async function apiPost(path, body) {
+        var base = _apiBase();
+        if (!base) return null;
+        try {
+            var ctrl = new AbortController();
+            var to = setTimeout(function() { ctrl.abort(); }, 3000);
+            var resp = await fetch(base + path, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body), signal: ctrl.signal
+            });
+            clearTimeout(to);
+            if (!resp.ok) return null;
+            return await resp.json();
+        } catch(e) { return null; }
+    }
+
+    async function loadFromBridge() {
+        if (!_bridge) return;
+        try {
+            var data = await _bridge.getHistory('', 50, 0);
+            if (!data || !data.items) return;
+            clipHistory = data.items.map(function(it) {
+                return {
+                    id: String(it.id),
+                    content: it.content,
+                    timestamp: new Date(it.updated_at || it.created_at).getTime(),
+                    preview: it.preview,
+                    size: it.size_bytes,
+                    pinned: !!it.pinned,
+                    hash: it.content_hash
+                };
+            });
+            rebuildHashMap();
+            applyFilter();
+        } catch(e) { console.log('[kope-panel] bridge load error:', e); }
+    }
+
+    async function loadFromApi() {
+        var data = await apiGet('/history?limit=50&offset=0');
+        if (!data || !data.items) return;
+        clipHistory = data.items.map(function(it) {
+            return {
+                id: String(it.id),
+                content: it.content,
+                timestamp: new Date(it.updated_at || it.created_at).getTime(),
+                preview: it.preview,
+                size: it.size_bytes,
+                pinned: !!it.pinned,
+                hash: it.content_hash
+            };
+        });
+        rebuildHashMap();
+        applyFilter();
+    }
+
+    async function reloadFromApi() {
+        var prevIds = {};
+        for (var i = 0; i < clipHistory.length; i++) { prevIds[clipHistory[i].id] = true; }
+        if (_apiPort === 'bridge') {
+            await loadFromBridge();
+        } else {
+            await loadFromApi();
+        }
+        // ★ 风暴检测: 扫描是否有新ID出现（支持置顶项排前面、新项在中间的情况）
+        var hasNew = false;
+        for (var j = 0; j < clipHistory.length; j++) {
+            if (!prevIds[clipHistory[j].id]) { hasNew = true; break; }
+        }
+        if (hasNew) {
+            el.historyContainer.classList.remove('storm');
+            void el.historyContainer.offsetWidth;
+            el.historyContainer.classList.add('storm');
+        }
+    }
+
+    // ── 通用的 toggle pin（bridge 或 API）──
+    async function togglePinBridge(id) {
+        if (_apiPort === 'bridge' && _bridge) {
+            var r = await _bridge.togglePin(parseInt(id));
+            if (r && r.ok) await loadFromBridge();
+        } else {
+            var r = await apiPost('/pin', { id: parseInt(id) });
+            if (r && r.ok) await loadFromApi();
+        }
+    }
+
+    async function deleteItemBridge(id) {
+        if (_apiPort === 'bridge' && _bridge) {
+            var r = await _bridge.deleteItem(parseInt(id));
+            if (r && r.ok) await loadFromBridge();
+        } else {
+            var r = await apiPost('/delete', { id: parseInt(id) });
+            if (r && r.ok) await loadFromApi();
+        }
     }
 
     // ── 渲染 ──
@@ -435,7 +629,6 @@ body {
         }
     }
 
-    // ★ 排序：置顶优先，然后按时间倒序
     function sortPinnedFirst(arr) {
         return arr.sort(function(a, b) {
             if (a.pinned && !b.pinned) return -1;
@@ -469,15 +662,14 @@ body {
     }
 
     function togglePin(itemId) {
+        // 乐观更新本地
         for (var i = 0; i < clipHistory.length; i++) {
             if (clipHistory[i].id === itemId) {
                 clipHistory[i].pinned = !clipHistory[i].pinned;
-                // ★ 置顶状态变更 → 重排到正确位置
                 var item = clipHistory[i];
                 clipHistory.splice(i, 1);
-                if (item.pinned) {
-                    clipHistory.unshift(item);
-                } else {
+                if (item.pinned) clipHistory.unshift(item);
+                else {
                     var insertAt = 0;
                     while (insertAt < clipHistory.length && clipHistory[insertAt].pinned) insertAt++;
                     clipHistory.splice(insertAt, 0, item);
@@ -486,8 +678,10 @@ body {
                 break;
             }
         }
-        persistHistory();
-        applyFilter();
+        // ★ 照抄 Q4: pin 也触发金刃风暴
+        applyFilterWithStorm();
+        // 服务端同步
+        togglePinBridge(itemId);
     }
 
     function deleteItem(itemId) {
@@ -498,8 +692,8 @@ body {
                 break;
             }
         }
-        persistHistory();
         applyFilter();
+        deleteItemBridge(itemId);
     }
 
     function applyFilter() {
@@ -508,59 +702,9 @@ body {
         renderList(filtered.slice(0, currentLimit), false);
     }
 
-    // ── 添加剪贴板条目 ──
     function addToHistory(text) {
-        if (!text || !text.trim()) return;
-        var content = text.length > 100000 ? text.slice(0, 100000) : text;
-        if (content === lastClipContent) return;
-
-        var hash = md5Hex(content);
-        if (hashMap[hash] !== undefined) {
-            // 已存在 → 移到最前
-            var idx = hashMap[hash];
-            var item = clipHistory[idx];
-            item.timestamp = Date.now();
-            item.content = content;
-            item.preview = makePreview(content);
-            clipHistory.splice(idx, 1);
-            // ★ 置顶优先：已存在条目移到置顶组之后、非置顶组之前
-            if (item.pinned) {
-                clipHistory.unshift(item);
-            } else {
-                var insertAt = 0;
-                while (insertAt < clipHistory.length && clipHistory[insertAt].pinned) insertAt++;
-                clipHistory.splice(insertAt, 0, item);
-            }
-            // 重建 hashMap
-            rebuildHashMap();
-        } else {
-            // ★ 新条目：放在置顶组之后
-            var newItem = {
-                id: randomId(),
-                content: content,
-                timestamp: Date.now(),
-                preview: makePreview(content),
-                size: content.length,
-                pinned: false,
-                hash: hash
-            };
-            var insertAt = 0;
-            while (insertAt < clipHistory.length && clipHistory[insertAt].pinned) insertAt++;
-            clipHistory.splice(insertAt, 0, newItem);
-            if (clipHistory.length > 2000) {
-                var removed = clipHistory.pop();
-                delete hashMap[removed.hash];
-            }
-            rebuildHashMap();
-        }
-        lastClipContent = content;
-        persistHistory();
-        applyFilter();
-
-        // 触发风暴动画
-        el.historyContainer.classList.remove('storm');
-        void el.historyContainer.offsetWidth;
-        el.historyContainer.classList.add('storm');
+        // Python kope_api 已通过剪贴板监控写入 DB
+        // 这里仅做标记，pollApi 会拉取最新数据
     }
 
     function rebuildHashMap() {
@@ -571,24 +715,40 @@ body {
     }
 
     var _pendingClickId = null;
-    // ── 剪贴板轮询 ──
-    function pollClipboard() {
-        try {
-            var bridge = getBridge();
-            if (bridge && bridge.clipboard && bridge.clipboard.readText) {
-                bridge.clipboard.readText().then(function(text) {
-                    if (text && text !== lastClipContent) {
-                        addToHistory(text);
-                    }
-                }).catch(function(){});
-            } else if (navigator.clipboard && navigator.clipboard.readText) {
-                navigator.clipboard.readText().then(function(text) {
-                    if (text && text !== lastClipContent) {
-                        addToHistory(text);
-                    }
-                }).catch(function(){});
-            }
-        } catch(e) {}
+    var _isFocused = document.hasFocus();
+    var _needsUpdate = false;
+    var _pendingReason = '';
+
+    function applyFilterWithStorm() {
+        var kw = el.searchBox.value;
+        var filtered = getFilteredHistory(kw);
+        renderList(filtered.slice(0, currentLimit), true);
+    }
+
+    async function pollApi() {
+        if (!_apiPort && !_httpPort) { scheduleReconnect(); return; }
+        var stats = null;
+        // 优先 HTTP API（SSE 在线时零开销），bridge 兜底
+        if (_httpPort) {
+            stats = await apiGet('/stats');
+        }
+        if (!stats && _apiPort === 'bridge' && _bridge) {
+            try { stats = await _bridge.getStats(); } catch(e) {}
+        }
+        if (!stats && _apiPort && _apiPort !== 'bridge') {
+            stats = await apiGet('/stats');
+        }
+        if (!stats) {
+            if (_apiPort === 'bridge') { _apiPort = null; }
+            _httpPort = null;
+            scheduleReconnect();
+            return;
+        }
+        _reconnectDelayMs = 1000;
+        if (!_lastStats || stats.max_updated_at !== _lastStats.max_updated_at || stats.total !== _lastStats.total) {
+            _lastStats = stats;
+            await reloadFromApi();
+        }
     }
 
     // ── 事件处理 ──
@@ -610,13 +770,24 @@ body {
             return;
         }
         setSelectedById(id);
-        // 复制到剪贴板
         for (var i = 0; i < clipHistory.length; i++) {
             if (clipHistory[i].id === id) {
                 copyToClipboard(clipHistory[i].content);
-                // ★ 阻断 poll 重复添加，延迟排序到 blur
-                lastClipContent = clipHistory[i].content;
+                // ★ 照抄 Q4: 重排到顶端（置顶卡片之后），聚焦时延迟到失焦再渲染
+                var clicked = clipHistory[i];
+                clipHistory.splice(i, 1);
+                var insertAt = 0;
+                while (insertAt < clipHistory.length && clipHistory[insertAt].pinned) insertAt++;
+                clipHistory.splice(insertAt, 0, clicked);
+                clicked.timestamp = Date.now();
+                rebuildHashMap();
                 _pendingClickId = id;
+                if (_isFocused) {
+                    _needsUpdate = true;
+                    _pendingReason = 'add';
+                } else {
+                    applyFilterWithStorm();
+                }
                 break;
             }
         }
@@ -650,7 +821,6 @@ body {
         updateAllScrollbars();
     });
 
-    // 右键 → 打开文件浏览器
     window.addEventListener('contextmenu', function(e) {
         e.preventDefault();
         try {
@@ -658,7 +828,6 @@ body {
         } catch(ex) {}
     });
 
-    // ── 下拉框 ──
     function hideDropdown() {
         if (el.searchHistoryDropdown) el.searchHistoryDropdown.style.display = 'none';
     }
@@ -693,12 +862,15 @@ body {
     var upI = setupScrollbar(el.historyList, el.innerScrollbar, el.innerThumb);
     function updateAllScrollbars() { upO(); upI(); }
 
+    // ── API 连接 + SSE 事件推送（SSE 在线时零轮询，bridge 模式 2s 轮询）──
+    connectApi();
+    startPolling();
+
     // ── 消息监听 ──
     window.addEventListener('message', function(e) {
         var m = e.data;
         if (!m) return;
 
-        // 主题同步
         if (m.type === 'qqqide-theme-change') {
             if (m.dark) {
                 document.documentElement.setAttribute('data-theme', 'dark');
@@ -708,15 +880,13 @@ body {
             return;
         }
 
-        // 父窗口推送新剪贴板条目
         if (m.type === 'kope-a:newClip') {
-            if (m.text) addToHistory(m.text);
+            reloadFromApi();
             return;
         }
 
-        // 父窗口请求刷新
         if (m.type === 'kope-a:refresh') {
-            applyFilter();
+            reloadFromApi();
             return;
         }
     });
@@ -735,34 +905,17 @@ body {
         }
     })();
 
-    // ── 启动 ──
-    loadHistory();
-    setInterval(pollClipboard, 800);
-    pollClipboard(); // 立即执行一次
-
-    window.addEventListener('focus', function() { pollClipboard(); });
-    // ★ 失焦时统一更新排序（老代码技巧：点击不弹顶，失焦才弹）
+    // ★ 照抄 Q4 L3412-3413: focus/blur 事件驱动重排延迟
+    window.addEventListener('focus', function() {
+        _isFocused = true;
+    });
     window.addEventListener('blur', function() {
-        if (!_pendingClickId) return;
-        for (var i = 0; i < clipHistory.length; i++) {
-            if (clipHistory[i].id === _pendingClickId) {
-                var item = clipHistory[i];
-                item.timestamp = Date.now();
-                clipHistory.splice(i, 1);
-                if (item.pinned) {
-                    clipHistory.unshift(item);
-                } else {
-                    var insertAt = 0;
-                    while (insertAt < clipHistory.length && clipHistory[insertAt].pinned) insertAt++;
-                    clipHistory.splice(insertAt, 0, item);
-                }
-                rebuildHashMap();
-                break;
-            }
-        }
+        _isFocused = false;
         _pendingClickId = null;
-        persistHistory();
-        applyFilter();
+        if (_needsUpdate) {
+            _needsUpdate = false;
+            applyFilterWithStorm();
+        }
     });
 })();
 </script>
