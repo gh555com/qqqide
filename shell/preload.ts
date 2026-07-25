@@ -453,6 +453,15 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
             return () => ipcRenderer.removeListener('qqqide:gaea-process:status-changed', handler);
         },
     },
+
+    // ---- kope (剪切板历史直接 IPC，替代 HTTP API) ----
+    kope: {
+        getHistory: (search: string, limit: number, offset: number) => ipcRenderer.invoke('qqqide:kope:getHistory', search, limit, offset),
+        addOrUpdate: (content: string) => ipcRenderer.invoke('qqqide:kope:addOrUpdate', content),
+        togglePin: (id: number) => ipcRenderer.invoke('qqqide:kope:togglePin', id),
+        deleteItem: (id: number) => ipcRenderer.invoke('qqqide:kope:deleteItem', id),
+        getStats: () => ipcRenderer.invoke('qqqide:kope:getStats'),
+    },
 };
 
 contextBridge.exposeInMainWorld('qqqideBridge', QQQ);

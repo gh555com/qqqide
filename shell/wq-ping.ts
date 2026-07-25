@@ -44,6 +44,18 @@ let _retryDelayMs = RETRY_MIN_MS;
 let _timer: ReturnType<typeof setTimeout> | null = null;
 let _userDataPath = '';              // ★ portable.userData，启动时注入
 
+// ── 磁盘日志（调试用，零依赖，原子 append）──────────────────────────────────
+let _logPath = '';
+function pingLog(msg: string): void {
+    if (!_logPath) {
+        const base = _userDataPath || path.join(path.dirname(process.execPath), 'Data');
+        _logPath = path.join(base, 'alphal', 'wq-ping.log');
+        try { fs.mkdirSync(path.dirname(_logPath), { recursive: true }); } catch (_) { }
+    }
+    const line = new Date().toISOString() + ' ' + msg + '\n';
+    try { fs.appendFileSync(_logPath, line); } catch (_) { }
+}
+
 // ── 持久化路径 ──────────────────────────────────────────────────────────────
 function alphalDir(): string {
     // ★ 优先用注入的 userData 路径（与 main.ts 一致），
@@ -191,6 +203,7 @@ function collectPingBody(): string {
 // ── 发送 ping ───────────────────────────────────────────────────────────────
 function sendPing(): Promise<{ ok: boolean; minNextPingAt?: number }> {
     return new Promise((resolve) => {
+        pingLog('sendPing START host=' + PING_API_HOST);
         const bodyStr = collectPingBody();
 
         const req = https.request({
@@ -219,8 +232,14 @@ function sendPing(): Promise<{ ok: boolean; minNextPingAt?: number }> {
             });
         });
 
-        req.on('error', () => resolve({ ok: false }));
-        req.on('timeout', () => { req.destroy(); resolve({ ok: false }); });
+        req.on('error', (e: Error) => {
+            pingLog('sendPing ERROR: ' + e.message);
+            resolve({ ok: false, error: e.message } as any);
+        });
+        req.on('timeout', () => {
+            pingLog('sendPing TIMEOUT');
+            req.destroy(); resolve({ ok: false, error: 'timeout' } as any);
+        });
 
         req.write(bodyStr);
         req.end();
@@ -238,7 +257,9 @@ async function pingCycle() {
     if (_stopped) return;
 
     try {
+        pingLog('sending doer=' + (readDoerID() || 'none') + ' dev=' + _deviceId.slice(0,8));
         const res = await sendPing();
+        pingLog('result ok=' + res.ok + ' err=' + ((res as any).error || ''));
         if (res.ok) {
             _retryDelayMs = RETRY_MIN_MS;
 
@@ -271,7 +292,8 @@ async function pingCycle() {
 /** 启动统计上报机。调用一次，幂等。
  *  @param userDataPath  portable.userData（与 main.ts AUTH_FILE 同根） */
 export function startWqPing(userDataPath?: string): void {
-    if (_deviceId) return;
+    pingLog('startWqPing CALLED userDataPath=' + (userDataPath || 'none') + ' _deviceId=' + (_deviceId || 'none'));
+    if (_deviceId) { pingLog('already started, skip'); return; }
     if (userDataPath) _userDataPath = userDataPath;
 
     _deviceId = loadOrCreateDeviceId();
@@ -280,12 +302,14 @@ export function startWqPing(userDataPath?: string): void {
     _sessionStartedAt = Date.now();
     _stopped = false;
 
+    pingLog('STARTED dev=' + _deviceId.slice(0,8) + ' ph=' + (readDoerID() || 'none'));
     const jitter = PING_JITTER_MIN_MS + Math.random() * (PING_JITTER_MAX_MS - PING_JITTER_MIN_MS);
     _timer = setTimeout(pingCycle, jitter);
 }
 
 /** 登录成功后调用：重置退避 + 立即发 ping（带上 doer_id）。 */
 export function notifyAuthReady(): void {
+    pingLog('notifyAuth dev=' + (_deviceId ? _deviceId.slice(0,8) : 'none') + ' stop=' + _stopped);
     if (_stopped || !_deviceId) return;
     _retryDelayMs = RETRY_MIN_MS;
     if (_timer) clearTimeout(_timer);

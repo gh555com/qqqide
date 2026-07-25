@@ -63,7 +63,6 @@ var QuestStore = (function () {
     function _bridge() {
         if (_qgs) return _qgs;
         if (!_rootDir) {
-            console.warn('[quest-store] bridge BLOCKED: no rootDir');
             return null;
         }
         var dbPath = _rootDir + '/qqq/alphal/quest.sq3';
@@ -1029,8 +1028,11 @@ var QuestStore = (function () {
             if (!fDir) return false;
             _floorDirCache = _floorDirCache || {};
             _floorDirCache[questId + '.' + floorNum] = fDir;
-            var fJsonPath = fDir + 'all.json';
-            await bf.write(fJsonPath, JSON.stringify(floorData, null, 2));
+            // ★ 原子写入: tmp → rename，防断电/崩溃导致 all.json 半写损坏（§33）
+            var dest = fDir + 'all.json';
+            var tmp = dest + '.tmp.' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+            await bf.write(tmp, JSON.stringify(floorData, null, 2));
+            await bf.rename(tmp, dest);
             return true;
         } catch (_e) {
             console.warn('[quest-store] _writeFloorFile FAIL:', _e && _e.message);

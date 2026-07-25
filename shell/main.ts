@@ -46,6 +46,7 @@ import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
 import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, GaeaLifecycle } from './gaea-process';
+import { registerKopeIpc } from './ipc-kope';
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
 
@@ -245,6 +246,7 @@ function registerAllIpc(): void {
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
     registerQzSpawnIpc(qzSpawn);
     registerGaeaProcessIpc();
+    registerKopeIpc();
     registerAuthPersistIpc();
 }
 
@@ -600,6 +602,11 @@ app.whenReady().then(async () => {
     })();
 
     // ★ ping reporter (non-blocking, first ping with 30-120s random delay)
+    try {
+        const bootLogPath = path.join(portable.userData, 'alphal', 'wq-ping.log');
+        fs.mkdirSync(path.dirname(bootLogPath), { recursive: true });
+        fs.appendFileSync(bootLogPath, new Date().toISOString() + ' [main.ts] calling startWqPing userData=' + portable.userData + '\n');
+    } catch (_) { }
     startWqPing(portable.userData);
 
     // ★ rebuild semantic search index (non-blocking)

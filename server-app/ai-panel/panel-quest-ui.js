@@ -11,8 +11,11 @@ async function switchQuest(id) {
     if (_overlay) _overlay.classList.add('show');
     if ($messages) $messages.classList.add('qqq-switching');
     // ★ 硬限制：没收到 house 1 不准切任务（防原 floor 中断出红字"未收到 AI 回复"）
-    if (_activeAgent && _activeAgent._stopState === 'sending') {
-        var _noHouse1 = _activeAgent._deferRenderUntilHouse1 || (!_activeAgent._streamFullText || _activeAgent._streamFullText.length === 0);
+    //   ★ agent pool 直取，不经 _activeAgent（_activeAgent 可能被异步换掉导致误判）
+    //   ★ _houseIndex 是 agent-loop 原生计数器：floor 始=0，每间 house 完成 +=1，永不清零
+    var _curAg = parent && parent.__qqq_agentPool && parent.__qqq_agentPool[questActiveId];
+    if (_curAg && _curAg._stopState === 'sending') {
+        var _noHouse1 = _curAg._deferRenderUntilHouse1 || (_curAg._houseIndex == null || _curAg._houseIndex <= 0);
         if (_noHouse1) {
             _switching = false;
             if (_overlay) _overlay.classList.remove('show');
@@ -282,6 +285,22 @@ async function _resolveQuestDirName(root, questId, numericId, title) {
 
 async function createNewQuest() {
     if (_switching) return;  // ★ quest 切换中
+    // ★ 硬限制：同 switchQuest，没收到 house 1 不准新建任务（防原 floor 中断）
+    if (!_isDraft(questActiveId)) {
+        var _curAg2 = parent && parent.__qqq_agentPool && parent.__qqq_agentPool[questActiveId];
+        if (_curAg2 && _curAg2._stopState === 'sending') {
+            var _noHouse12 = _curAg2._deferRenderUntilHouse1 || (_curAg2._houseIndex == null || _curAg2._houseIndex <= 0);
+            if (_noHouse12) {
+                try {
+                    if (parent && parent.qqqideQoast) parent.qqqideQoast.show(
+                        '当前任务 AI 尚未回复，请稍后再新建',
+                        { type: 'warning', duration: 4000 }
+                    );
+                } catch (_) { }
+                return;
+            }
+        }
+    }
     saveQuestUIState(questActiveId);
     // ★ 先保存再停流：stopStream() 会改变 _stopState，保存必须在此之前
     if (!_isDraft(questActiveId) && _activeAgent && _activeAgent._stopState === 'sending') await saveQuestData();

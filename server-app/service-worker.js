@@ -1,5 +1,5 @@
 // ============================================================================
-// service-worker.js
+// service-worker.js v235 — online-popup show last 100 users, YYYY-MM-DD, min/h units
 // PWA strategy:
 //   - index.html / navigation : network-first(2s), fallback cache, last-resort 503
 //   - core/* qoods/* assets   : stale-while-revalidate
@@ -8,7 +8,7 @@
 // Cache version bumps on each shell.css/js change.
 // ============================================================================
 
-const CACHE_NAME = 'qqq-shell-v224';
+const CACHE_NAME = 'qqq-shell-v234';
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -71,6 +71,10 @@ function isAssetScheme(url) {
   // Skip our custom electron-served scheme entirely.
   return url.protocol === 'qqqide-asset:' || url.protocol === 'devtools:' || url.protocol === 'chrome:' || url.protocol === 'file:';
 }
+function isLocalService(url) {
+  // Bypass localhost / 127.0.0.1 — these are local goods APIs (kope, etc.), not web assets.
+  return url.hostname === '127.0.0.1' || url.hostname === 'localhost' || url.hostname === '[::1]';
+}
 function timeout(ms) {
   return new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
 }
@@ -106,7 +110,14 @@ async function staleWhileRevalidate(req) {
     }
     return res;
   }).catch(() => cached);
-  return cached || fetched;
+  // Safety: if both cached and fetched are undefined, return a proper error Response.
+  // Prevents "an object that was not a Response was passed to respondWith()" when
+  // a cross-origin request fails and has no cache entry.
+  var result = cached || fetched;
+  if (!result || !(result instanceof Response)) {
+    return new Response('', { status: 502, statusText: 'Gateway Error' });
+  }
+  return result;
 }
 
 // ----------------------------------------------------------------------------
@@ -124,6 +135,8 @@ self.addEventListener('fetch', evt => {
   if (isHealth(url)) { return; }
   // ★ API 调用：不拦截（登录轮询、AI 网关等）
   if (url.pathname.indexOf('/api/') !== -1) { return; }
+  // ★ 本地服务：不拦截（goods 进程 API，如 kope-a:19820-19829）
+  if (isLocalService(url)) { return; }
 
   if (isHTML(req)) {
     evt.respondWith(networkFirst(req, 2500));

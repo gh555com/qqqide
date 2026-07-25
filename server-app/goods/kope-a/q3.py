@@ -125,6 +125,16 @@ except ImportError:
 
 # =============== 工具函数 ===============
 
+# === kope OS 级剪贴板历史存储 ===
+try:
+    import kope_store
+    import kope_api
+except ImportError as e:
+    print(f"[kope] 导入存储模块失败: {e}")
+    print("[kope] 将以无历史记录模式运行")
+    kope_store = None
+    kope_api = None
+
 def _get_path_size(path):
     try:
         if os.path.isfile(path):
@@ -251,6 +261,16 @@ class ClipboardMonitor(Qaqqlication):
         self.COLOR_SCHEME_MODE = COLOR_SCHEME_MODE
         self.current_color_mode = 0
         self.COOLDOWN_TIME_MS = COOLDOWN_TIME_MS
+
+        # kope API 服务
+        self._kope_server = None
+        self._kope_port = None
+        if kope_api:
+            try:
+                self._kope_server, self._kope_port = kope_api.start_server()
+            except Exception as e:
+                print(f"[kope] API 服务启动失败: {e}")
+
 
         # 音频引擎
         self.audio_engine = None
@@ -696,6 +716,13 @@ class ClipboardMonitor(Qaqqlication):
         统一弹窗逻辑。
         """
         try:
+            # ★ kope 存储: 文本类型写入 OS 级数据库
+            if kope_store and data.get("type") == "text" and data.get("full_text"):
+                try:
+                    kope_store.add_or_update(data["full_text"])
+                except Exception as e:
+                    print(f"[kope] 写入历史失败: {e}")
+
             if data.get("type") == "clear":
                 self.play_clear_sound()
             else:
@@ -751,6 +778,13 @@ class ClipboardMonitor(Qaqqlication):
         if popup in self.active_popups:
             self.active_popups.remove(popup)
 
+        # ★ 弹窗关闭后清理过期历史
+        if kope_store and not self.active_popups:
+            try:
+                kope_store.cleanup()
+            except Exception:
+                pass
+
         if hasattr(popup, "anim_group") and popup.anim_group is not None:
             if popup.anim_group.state() == QAbstractAnimation.Running:
                 popup.anim_group.stop()
@@ -774,6 +808,11 @@ class ClipboardMonitor(Qaqqlication):
         popup.deleteLater()
 
     def __del__(self):
+        if hasattr(self, "_kope_server") and self._kope_server is not None:
+            try:
+                kope_api.stop_server(self._kope_server)
+            except Exception as e:
+                print(f"[kope] 停止 API 服务错误: {e}")
         if hasattr(self, "audio_engine") and self.audio_engine is not None:
             try:
                 self.audio_engine.cleanup()

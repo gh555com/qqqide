@@ -537,6 +537,8 @@ function _shellOpenMenubarPopup(anchorEl, item) {
           if (_shellEvangelistSubTimer) clearTimeout(_shellEvangelistSubTimer);
           var popRect = pop.getBoundingClientRect();
           _showEvangelistSubDropdown(popRect.right, rEl.getBoundingClientRect().top);
+          // ★ hover 触发刷新导师信息 + 学生数
+          _fetchEvangelistMentor();
         });
         rEl.addEventListener('mouseleave', function () {
           rEl.style.background = '';
@@ -808,6 +810,9 @@ function _showEvangelistConfirmPopup(phone, parentOverlay) {
     }).then(function (r) { return r.json(); }).then(function (d) {
       if (d.ok) {
         window._evangelistMentorPhone = phone;
+        // ★ 立即刷新菜单标签 + 子菜单
+        _refreshEvangelistMenuLabel();
+        _refreshEvangelistSubDropdown();
         if (window.qqqideQoast) window.qqqideQoast.show('导师指定成功！', { type: 'success', duration: 5000 });
         cfOverlay.remove();
         if (parentOverlay) parentOverlay.remove();
@@ -941,22 +946,36 @@ function _showEvangelistSubDropdown(left, top) {
 
   var mentorPhone = window._evangelistMentorPhone || '';
   var studentCount = window._evangelistStudentCount || 0;
+  var mentorStudentCount = window._evangelistMentorStudentCount || 0;
 
-  // 行1：我滴导师
+  // 行1：我滴导师：xx (N) — 点击跳转导师风采页
   var r1 = document.createElement('div');
+  r1.className = 'qqq-ev-sub-line';
   r1.style.cssText =
     'padding:9px 16px; font-size:13px; color:var(--text-primary); white-space:nowrap; ' +
-    'cursor:' + (mentorPhone ? 'default' : 'pointer') + ';';
-  r1.textContent = '我滴导师：' + (mentorPhone || '无');
+    'cursor:' + (mentorPhone ? 'pointer' : 'pointer') + ';';
+  r1.textContent = '我滴导师：' + (mentorPhone || '无') +
+    (mentorPhone && mentorStudentCount > 0 ? ' (' + mentorStudentCount + ')' : '');
   if (!mentorPhone) {
     r1.style.color = '#b58900';
-    r1.addEventListener('click', function (e) {
-      e.stopPropagation();
-      _shellCloseMenubarPopup();
-      _closeEvangelistSubDropdown();
-      window._shHandleMenuCmd('evangelist.designate');
-    });
   }
+  r1.addEventListener('click', function (e) {
+    e.stopPropagation();
+    _shellCloseMenubarPopup();
+    _closeEvangelistSubDropdown();
+    if (mentorPhone) {
+      // 有导师 → 打开导师风采展示页
+      var url = 'https://www.gh555.com/gaea/d/qqqide?lang=zh#evangelist&mentor=' + mentorPhone;
+      if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.openExternal) {
+        window.qqqideBridge.shell.openExternal(url);
+      } else {
+        window.open(url, '_blank');
+      }
+    } else {
+      // 无导师 → 指定导师
+      window._shHandleMenuCmd('evangelist.designate');
+    }
+  });
   (function (el) {
     el.addEventListener('mouseenter', function () { el.style.background = 'var(--background-color)'; });
     el.addEventListener('mouseleave', function () { el.style.background = ''; });
@@ -968,11 +987,19 @@ function _showEvangelistSubDropdown(left, top) {
   sep.style.cssText = 'margin:4px 0; border-top:1px solid var(--border-color);';
   dd.appendChild(sep);
 
-  // 行2：我滴学生
+  // 行2：我滴学生 — 点击打开认领学生弹窗
   var r2 = document.createElement('div');
+  r2.className = 'qqq-ev-sub-line';
   r2.style.cssText =
-    'padding:9px 16px; font-size:13px; color:var(--text-secondary); white-space:nowrap; cursor:default;';
+    'padding:9px 16px; font-size:13px; color:var(--text-secondary); white-space:nowrap; ' +
+    'cursor:pointer;';
   r2.textContent = '我滴学生：' + studentCount + '人';
+  r2.addEventListener('click', function (e) {
+    e.stopPropagation();
+    _shellCloseMenubarPopup();
+    _closeEvangelistSubDropdown();
+    _showEvangelistClaimPopup();
+  });
   (function (el) {
     el.addEventListener('mouseenter', function () { el.style.background = 'var(--background-color)'; });
     el.addEventListener('mouseleave', function () { el.style.background = ''; });
@@ -1005,41 +1032,210 @@ function _closeEvangelistSubDropdown() {
   if (_shellEvangelistSubTimer) { clearTimeout(_shellEvangelistSubTimer); _shellEvangelistSubTimer = null; }
 }
 
-// ★ 拉取当前用户滴导师信息 + 学生数
+// ★ 认领学生弹窗（客户端内，等同于网站端「➕ 认领学生」）
+function _showEvangelistClaimPopup() {
+  var login = window.qqqLogin;
+  if (!login || !login.isLoggedIn()) {
+    if (login && login.login) { login.login(); }
+    if (window.qqqideQoast) window.qqqideQoast.show('请先登录后再认领学生', { type: 'warning', duration: 5000 });
+    return;
+  }
+  var ex = document.querySelector('.qqq-evangelist-claim-overlay');
+  if (ex) ex.remove();
+
+  var overlay = document.createElement('div');
+  overlay.className = 'qqq-evangelist-claim-overlay';
+  overlay.style.cssText = 'position:fixed;z-index:999999;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;';
+
+  var box = document.createElement('div');
+  box.style.cssText = 'background:var(--card-bg);border:1px solid var(--border-color);border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,0.25);padding:24px;min-width:360px;max-width:440px;';
+
+  var title = document.createElement('h3');
+  title.textContent = '➕ 认领学生';
+  title.style.cssText = 'margin:0 0 4px;font-size:16px;color:var(--text-primary);';
+  box.appendChild(title);
+
+  var hint = document.createElement('p');
+  hint.textContent = '填学生手机号和载入日期，只能试一次。';
+  hint.style.cssText = 'margin:0 0 16px;font-size:12px;color:var(--text-muted);';
+  box.appendChild(hint);
+
+  var lbl1 = document.createElement('label');
+  lbl1.textContent = '学生完整手机号';
+  lbl1.style.cssText = 'display:block;margin-bottom:4px;font-size:13px;color:var(--text-secondary);';
+  box.appendChild(lbl1);
+
+  var inputPhone = document.createElement('input');
+  inputPhone.type = 'text';
+  inputPhone.placeholder = '例如：8615812345678';
+  inputPhone.style.cssText = 'width:100%;box-sizing:border-box;padding:10px 12px;font-size:14px;border:1px solid var(--border-color);border-radius:4px;background:var(--background-color);color:var(--text-primary);outline:none;margin-bottom:14px;';
+  box.appendChild(inputPhone);
+
+  var lbl2 = document.createElement('label');
+  lbl2.textContent = '学生载入日期';
+  lbl2.style.cssText = 'display:block;margin-bottom:4px;font-size:13px;color:var(--text-secondary);';
+  box.appendChild(lbl2);
+
+  var inputDate = document.createElement('input');
+  inputDate.type = 'date';
+  inputDate.style.cssText = 'width:100%;box-sizing:border-box;padding:10px 12px;font-size:14px;border:1px solid var(--border-color);border-radius:4px;background:var(--background-color);color:var(--text-primary);outline:none;margin-bottom:20px;';
+  box.appendChild(inputDate);
+
+  var btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display:flex;gap:8px;justify-content:flex-end;';
+
+  var cancelBtn = document.createElement('button');
+  cancelBtn.textContent = '取消';
+  cancelBtn.style.cssText = 'padding:8px 20px;border:1px solid var(--border-color);border-radius:4px;background:transparent;color:var(--text-secondary);cursor:pointer;font-size:13px;';
+  cancelBtn.addEventListener('click', function () { overlay.remove(); });
+  btnRow.appendChild(cancelBtn);
+
+  var submitBtn = document.createElement('button');
+  submitBtn.textContent = '确认认领';
+  submitBtn.style.cssText = 'padding:8px 24px;border:none;border-radius:4px;background:#d4a04a;color:#fff;cursor:pointer;font-size:13px;font-weight:700;';
+  btnRow.appendChild(submitBtn);
+
+  function _doClaimSubmit() {
+    var phone = inputPhone.value.trim();
+    var dateVal = inputDate.value;
+    if (!phone) { if (window.qqqideQoast) window.qqqideQoast.show('请键入学生手机号', { type: 'warning', duration: 3000 }); return; }
+    if (!/^[0-9]{10,15}$/.test(phone)) { if (window.qqqideQoast) window.qqqideQoast.show('手机号格式不对', { type: 'warning', duration: 4000 }); return; }
+    if (!dateVal) { if (window.qqqideQoast) window.qqqideQoast.show('请选择载入日期', { type: 'warning', duration: 3000 }); return; }
+    var loginDate = dateVal.replace(/-/g, '');
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = '提交中...';
+    var token = login.getAuthToken();
+    fetch('https://www.gh555.com/api/evangelist/claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify({ student_phone: phone, login_date: loginDate })
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.ok) {
+        if (window.qqqideQoast) window.qqqideQoast.show('认领成功！', { type: 'success', duration: 5000 });
+        overlay.remove();
+        _fetchEvangelistMentor();
+      } else {
+        var msg = d.msg || d.code || '认领失败';
+        if (window.qqqideQoast) window.qqqideQoast.show(msg, { type: 'error', duration: 6000 });
+        submitBtn.disabled = false;
+        submitBtn.textContent = '确认认领';
+      }
+    }).catch(function () {
+      if (window.qqqideQoast) window.qqqideQoast.show('网络错误，请重试', { type: 'error', duration: 5000 });
+      submitBtn.disabled = false;
+      submitBtn.textContent = '确认认领';
+    });
+  }
+
+  submitBtn.addEventListener('click', _doClaimSubmit);
+  inputPhone.addEventListener('keydown', function (e) { if (e.key === 'Enter') _doClaimSubmit(); });
+  box.appendChild(btnRow);
+
+  overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) overlay.remove(); });
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  setTimeout(function () { inputPhone.focus(); }, 100);
+}
+
+// ★ 拉取当前用户滴导师信息 + 学生数（返回 Promise，完成后自动刷新 UI）
+// ★ 缓存到 global.sq3，重启兜底
 function _fetchEvangelistMentor() {
   var login = window.qqqLogin;
   if (!login || !login.isLoggedIn()) {
     window._evangelistMentorPhone = '';
     window._evangelistStudentCount = 0;
-    return;
+    window._evangelistMentorStudentCount = 0;
+    _refreshEvangelistSubDropdown();
+    _refreshEvangelistMenuLabel();
+    return Promise.resolve();
   }
   var token = login.getAuthToken();
-  if (!token) { window._evangelistMentorPhone = ''; window._evangelistStudentCount = 0; return; }
-  fetch('https://www.gh555.com/api/evangelist/my-mentor', {
+  if (!token) {
+    window._evangelistMentorPhone = '';
+    window._evangelistStudentCount = 0;
+    window._evangelistMentorStudentCount = 0;
+    _refreshEvangelistSubDropdown();
+    _refreshEvangelistMenuLabel();
+    return Promise.resolve();
+  }
+  return fetch('https://www.gh555.com/api/evangelist/my-mentor', {
     headers: { 'Authorization': 'Bearer ' + token }
   }).then(function (r) { return r.json(); }).then(function (d) {
     if (d && d.ok) {
       window._evangelistMentorPhone = d.has_mentor ? (d.mentor_phone || '') : '';
       window._evangelistStudentCount = d.student_count || 0;
+      window._evangelistMentorStudentCount = d.mentor_student_count || 0;
+      // ★ 缓存到 global.sq3 兜底
+      try {
+        var store = window.qgs && window.qgs('qqqide.evangelist');
+        if (store) {
+          store.set('mentorPhone', window._evangelistMentorPhone);
+          store.set('studentCount', window._evangelistStudentCount);
+          store.set('mentorStudentCount', window._evangelistMentorStudentCount);
+          store.set('cachedAt', Date.now());
+        }
+      } catch (_) { }
     } else {
       window._evangelistMentorPhone = '';
       window._evangelistStudentCount = 0;
+      window._evangelistMentorStudentCount = 0;
     }
+    _refreshEvangelistSubDropdown();
+    _refreshEvangelistMenuLabel();
   }).catch(function () {
-    window._evangelistMentorPhone = '';
-    window._evangelistStudentCount = 0;
+    // 网络失败保持旧值，不覆盖
   });
 }
 
-// ★ 更新菜单中"指定导师"标签（指定成功后调用）
-window._refreshEvangelistMenuLabel = function () {
+// ★ 从 global.sq3 缓存恢复（启动时兜底）
+function _loadEvangelistCache() {
+  try {
+    var store = window.qgs && window.qgs('qqqide.evangelist');
+    if (!store) return;
+    var mp = store.get('mentorPhone');
+    var sc = store.get('studentCount');
+    var msc = store.get('mentorStudentCount');
+    if (typeof mp === 'string') window._evangelistMentorPhone = mp;
+    if (typeof sc === 'number') window._evangelistStudentCount = sc;
+    if (typeof msc === 'number') window._evangelistMentorStudentCount = msc;
+  } catch (_) { }
+}
+
+// ★ 更新菜单中"导师"标签（指定/登录/fetch 后调用）
+function _refreshEvangelistMenuLabel() {
   var lab = document.querySelector('.qqq-evangelist-menu-label');
   if (!lab) return;
   var mentorPhone = window._evangelistMentorPhone;
   if (mentorPhone && mentorPhone.length > 0) {
     lab.textContent = '导师：' + mentorPhone;
+  } else {
+    lab.textContent = (window._i) ? window._i('shell.menu.evangelist', '导师') : '导师';
   }
-};
+}
+window._refreshEvangelistMenuLabel = _refreshEvangelistMenuLabel;
+
+// ★ 刷新导师子菜单内容（fetch 完成后调用，仅当子菜单可见时）
+function _refreshEvangelistSubDropdown() {
+  var dd = _shellEvangelistSubDropdown;
+  if (!dd) return;
+  var mentorPhone = window._evangelistMentorPhone || '';
+  var studentCount = window._evangelistStudentCount || 0;
+  var mentorStudentCount = window._evangelistMentorStudentCount || 0;
+  var lines = dd.querySelectorAll('.qqq-ev-sub-line');
+  if (lines.length >= 2) {
+    lines[0].textContent = '我滴导师：' + (mentorPhone || '无') +
+      (mentorPhone && mentorStudentCount > 0 ? ' (' + mentorStudentCount + ')' : '');
+    if (!mentorPhone) {
+      lines[0].style.color = '#b58900';
+      lines[0].style.cursor = 'pointer';
+    } else {
+      lines[0].style.color = 'var(--text-primary)';
+      lines[0].style.cursor = 'pointer';
+    }
+    lines[1].textContent = '我滴学生：' + studentCount + '人';
+  }
+}
 
 async function bootMenu() {
   var bridge = window.qqqideBridge;
@@ -1047,7 +1243,8 @@ async function bootMenu() {
   if (!schema) return;
   try { await bridge.menu.set(schema); } catch (e) { console.warn('[shell] menu.set failed', e); }
   _shellRenderMenubarLabels(schema);
-  // 异步拉取导师信息（不阻塞菜单渲染）
+  // ★ 先从缓存恢复（兜底），再异步拉取服务器最新数据
+  _loadEvangelistCache();
   _fetchEvangelistMentor();
   window.addEventListener('qqq-lang-change', function () { _shellRenderMenubarLabels(schema); });
   bridge.menu.onFired(function (cmd) {

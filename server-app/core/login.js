@@ -34,33 +34,11 @@
   var _loginGen = 0;            // 代际计数器：抑制过期 toast
 
   var _bootInfo = null;
-  var _flagCssReady = false;
-  var _flagCssPending = null;  // Promise | null
 
-  // ★ 预加载 flag-icons CSS（fetch→内联注入，绕过 CSP style-src）
-  // flag-icons CSS 使用相对 url(../flags/...)，内联后浏览器解析到 localhost。
-  // 此处重写为绝对 CDN URL，无论 dev/prod 都走 jsdelivr CDN。
-  function _loadFlagCss() {
-    if (_flagCssReady) return Promise.resolve(true);
-    if (_flagCssPending) return _flagCssPending;
-    var FLAG_BASE = 'https://cdn.jsdelivr.net/npm/flag-icons@7.2.3';
-    var FLAG_CSS_URL = FLAG_BASE + '/css/flag-icons.min.css';
-    _flagCssPending = fetch(FLAG_CSS_URL).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.text();
-    }).then(function (css) {
-      // ★ 重写所有相对路径 url(../ → 绝对 CDN 路径
-      css = css.replace(/url\(\.\.\//g, 'url(' + FLAG_BASE + '/');
-      var style = document.createElement('style');
-      style.textContent = css;
-      document.head.appendChild(style);
-      _flagCssReady = true;
-      return true;
-    }).catch(function () {
-      _flagCssReady = true;
-      return false;
-    });
-    return _flagCssPending;
+  function _renderCountryBadge(cc) {
+    if (!cc || cc.length !== 2) return '';
+    var upper = cc.toUpperCase();
+    return '<span style="display:inline-flex;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--text-dim,#888);background:var(--bg-tertiary,#333);padding:0 4px;border-radius:3px;line-height:16px;">' + upper + '</span>';
   }
 
   function _buildDeviceName() {
@@ -1077,15 +1055,12 @@
     if (_$phoneBtn) {
       if (isLoggedIn && phoneTail) {
         var cc = (_authData && _authData.countryIso2) ? _authData.countryIso2.toLowerCase() : '';
-        _$phoneBtn.textContent = phoneTail;
         _$phoneBtn.style.display = 'inline-flex';
-        _loadFlagCss().then(function (ok) {
-          if (ok && cc && _$phoneBtn) {
-            _$phoneBtn.innerHTML = '<span class="fi fi-' + cc + '" style="margin-right:5px;vertical-align:middle;"></span>' + phoneTail;
-          } else if (!cc && _$phoneBtn) {
-            _$phoneBtn.textContent = phoneTail;
-          }
-        });
+        if (cc) {
+          _$phoneBtn.innerHTML = _renderCountryBadge(cc) + '<span style="margin-left:4px;">' + phoneTail + '</span>';
+        } else {
+          _$phoneBtn.textContent = phoneTail;
+        }
       } else {
         _$phoneBtn.style.display = 'none';
       }
