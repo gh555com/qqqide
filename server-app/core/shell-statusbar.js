@@ -90,40 +90,49 @@ function bootStatusbar(boot) {
 					if (!data || !data.ok || !$body) return;
 					var users = data.users || [];
 					if (users.length === 0) {
-						$body.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">暂无在线用户</div>';
+						$body.innerHTML = '<div style="text-align:center;padding:20px;color:#888;">暂无用户</div>';
 						return;
 					}
-					var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-				var html = '<table style="width:100%;border-collapse:collapse;">';
-					html += '<thead><tr style="border-bottom:1px solid ' + (isDark ? '#333' : '#d3c6aa') + ';">';
-					html += '<th style="padding:4px 6px;text-align:left;">手机号</th>';
-					html += '<th style="padding:4px 6px;text-align:right;">最近在线</th>';
-					html += '<th style="padding:4px 6px;text-align:right;">连续(m)</th>';
-					html += '<th style="padding:4px 6px;text-align:right;">版本</th>';
-					html += '<th style="padding:4px 6px;text-align:right;">累计(h)</th>';	html += '</tr></thead><tbody>';
-								for (var i = 0; i < users.length; i++) {
-						var u = users[i];
-						var lastSeen = new Date(u.last_seen_at * 1000);
-						var yr = lastSeen.getFullYear();
-						var mon = ('0' + (lastSeen.getMonth() + 1)).slice(-2);
-						var day = ('0' + lastSeen.getDate()).slice(-2);
-						var timeStr = yr + '-' + mon + '-' + day + ' ' + ('0' + lastSeen.getHours()).slice(-2) + ':' + ('0' + lastSeen.getMinutes()).slice(-2);
-						var contM = typeof u.continuous_m === 'number' ? Math.round(u.continuous_m) : 0;
-						var contStr = contM + 'm';
-						var totalH = typeof u.total_m === 'number' ? Math.round(u.total_m / 60) : '-';
-						var totalStr = typeof totalH === 'number' ? totalH + 'h' : '-';
-						var ver = u.client_ver || '-';
-						var online = u.online === true;
-						var rowOpacity = online ? '' : 'opacity:0.5;';
-						html += '<tr style="border-bottom:1px solid ' + (isDark ? '#2a2a2a' : '#eee8d5') + ';' + rowOpacity + '">';
-						html += '<td style="padding:4px 6px;font-family:monospace;">' + u.phone + '</td>';
-						html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;font-size:12px;white-space:nowrap;">' + timeStr + '</td>';
-						html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + contStr + '</td>';
-						html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;font-size:11px;">' + ver + '</td>';
-						html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + totalStr + '</td>';
-						html += '</tr>';				}
-					html += '</tbody></table>';
-					// 不再显示脚注，列表直接展示最近100个用户
+					// ★ 统计在线人数，同步更新左下角（比 online-total 缓存更实时）
+				var onlineCount = 0;
+				for (var j = 0; j < users.length; j++) { if (users[j].online) onlineCount++; }
+				if ($onl) $onl.textContent = onlineCount > 0 ? onlineCount.toLocaleString() : '0';
+				var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+			var html = '<table style="width:100%;border-collapse:collapse;">';
+				html += '<thead><tr style="border-bottom:1px solid ' + (isDark ? '#333' : '#d3c6aa') + ';">';
+				html += '<th style="padding:4px 6px;text-align:left;">手机号</th>';
+				html += '<th style="padding:4px 6px;text-align:right;">day</th>';
+				html += '<th style="padding:4px 6px;text-align:right;">消耗</th>';
+				html += '<th style="padding:4px 6px;text-align:right;">最近在线</th>';
+				html += '<th style="padding:4px 6px;text-align:right;">连续(m)</th>';
+				html += '<th style="padding:4px 6px;text-align:right;">版本</th>';
+				html += '<th style="padding:4px 6px;text-align:right;">累计(h)</th>';	html += '</tr></thead><tbody>';
+						for (var i = 0; i < users.length; i++) {
+					var u = users[i];
+					var lastSeen = new Date(u.last_seen_at * 1000);
+					var yr = lastSeen.getFullYear();
+					var mon = ('0' + (lastSeen.getMonth() + 1)).slice(-2);
+					var day = ('0' + lastSeen.getDate()).slice(-2);
+					var timeStr = yr + '-' + mon + '-' + day + ' ' + ('0' + lastSeen.getHours()).slice(-2) + ':' + ('0' + lastSeen.getMinutes()).slice(-2);
+					var contM = typeof u.continuous_m === 'number' ? Math.round(u.continuous_m) : 0;
+					var contStr = contM + 'm';
+					var totalH = typeof u.total_m === 'number' ? Math.round(u.total_m / 60) : '-';
+					var totalStr = typeof totalH === 'number' ? totalH + 'h' : '-';
+					var ver = u.client_ver || '-';
+					var daysReg = typeof u.days_since_register === 'number' ? u.days_since_register : '-';
+					var paidGe = typeof u.total_consumed_ge === 'number' ? u.total_consumed_ge : 0;
+					var freeGe = typeof u.free_consumed_ge === 'number' ? u.free_consumed_ge : 0;
+					var geStr = paidGe + '+' + freeGe;
+					html += '<tr style="border-bottom:1px solid ' + (isDark ? '#2a2a2a' : '#eee8d5') + ';">';
+					html += '<td style="padding:4px 6px;font-family:monospace;">' + u.phone + '</td>';
+					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + daysReg + '</td>';
+					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + geStr + '</td>';
+					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;font-size:12px;white-space:nowrap;">' + timeStr + '</td>';
+					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + contStr + '</td>';
+					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;font-size:11px;">' + ver + '</td>';
+					html += '<td style="padding:4px 6px;text-align:right;font-family:monospace;">' + totalStr + '</td>';
+					html += '</tr>';				}
+				html += '</tbody></table>';
 					$body.innerHTML = html;
 				})
 				.catch(function () {

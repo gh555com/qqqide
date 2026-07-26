@@ -1,14 +1,13 @@
 // ============================================================================
-// service-worker.js v235 — online-popup show last 100 users, YYYY-MM-DD, min/h units
+// service-worker.js v236 — online-popup: +day +ge columns, no color diff, sync bottom-left
 // PWA strategy:
 //   - index.html / navigation : network-first(2s), fallback cache, last-resort 503
 //   - core/* qoods/* assets   : stale-while-revalidate
 //   - health                  : network-only (no cache)
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
-// ============================================================================
-
-const CACHE_NAME = 'qqq-shell-v234';
+// ========================================================================
+const CACHE_NAME = 'qqq-shell-v239';
 const PRECACHE_URLS = [
   './',
   './index.html',

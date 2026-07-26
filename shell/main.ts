@@ -46,7 +46,7 @@ import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
 import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, GaeaLifecycle } from './gaea-process';
-import { registerKopeIpc } from './ipc-kope';
+
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
 
@@ -246,7 +246,6 @@ function registerAllIpc(): void {
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
     registerQzSpawnIpc(qzSpawn);
     registerGaeaProcessIpc();
-    registerKopeIpc();
     registerAuthPersistIpc();
 }
 
@@ -436,7 +435,7 @@ app.whenReady().then(async () => {
         try {
             const processGoods = [
                 { id: 'kope-a', script: 'goods/kope-a/q3.py', runtime: 'python', lifecycle: 'independent' as GaeaLifecycle, allowMultiple: false, defaultAutoStart: true },
-                { id: 'window-there', script: 'goods/window-there/q3.py', runtime: 'python', lifecycle: 'attached' as GaeaLifecycle, allowMultiple: false, defaultAutoStart: true },
+                { id: 'window-there', script: 'goods/window-there/q3.py', runtime: 'python', lifecycle: 'attached' as GaeaLifecycle, allowMultiple: false, defaultAutoStart: false },
             ];
             for (const g of processGoods) {
                 try {
@@ -542,6 +541,8 @@ app.whenReady().then(async () => {
                     if (!w.mainFolder) continue;
                     const normalized = w.mainFolder.replace(/\\/g, '/').replace(/\/$/, '');
                     if (!normalized) continue;
+                    // ★ 路径不存在 → 跳过（项目可能已被删除或移动）
+                    if (!fs.existsSync(normalized)) { console.warn('[restore] skip missing project:', normalized); continue; }
                     // 已在其他窗口打开 → 跳过
                     if (_projectWindowMap.has(normalized)) continue;
 
@@ -563,11 +564,14 @@ app.whenReady().then(async () => {
                         }
                     }).catch((err: any) => {
                         console.warn('[restore] window loadURL failed:', err && err.message);
-                    try { newWin.close(); } catch (_) { }
+                        // ★ 清理地图条目，否则陈旧条目会阻止合法的后续还原
+                        _windowProjectMap.delete(newWin.id);
+                        _projectWindowMap.delete(normalized);
+                        try { newWin.close(); } catch (_) { }
                     });
                     restored++;
-                    // 短暂间隔防并发创建风暴
-                    await new Promise(r => setTimeout(r, 300));
+                    // ★ 间隔延长到 500ms，给前一个窗口的 kope-a/goods 进程足够启动时间
+                    await new Promise(r => setTimeout(r, 500));
                 }
                 if (restored > 0) console.log('[restore] ' + restored + ' additional window(s) restored');
             }
