@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // qqqide-qoast.js — 唯一真理 qoast 弹窗机器
 // 升级 qoast 能力只需改本文件一处。一切通知必须走这里，禁止私造弹窗。

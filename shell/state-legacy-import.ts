@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // state-legacy-import.ts
 // One-shot importer for well-known legacy files into StateStore.

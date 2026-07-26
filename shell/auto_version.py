@@ -1,3 +1,5 @@
+# Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 #!/usr/bin/env python3
 # ============================================================================
 # auto_version.py — 正常关闭 IDE 时自动递增 patch 版本号

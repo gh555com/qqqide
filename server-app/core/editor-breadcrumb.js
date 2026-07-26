@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // editor-breadcrumb.js — 极简面包屑（独立豆腐块）+ 悬浮按钮行
 //

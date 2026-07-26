@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // media-service.ts
 // ffmpeg-backed thumbnail / transcode / probe, driven by the qz subsystem

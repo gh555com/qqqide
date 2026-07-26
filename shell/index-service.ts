@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // index-service.ts — 项目语义索引引擎 (BM25 + 符号提取)
 //

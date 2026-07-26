@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // agent-context.js — 上下文压缩引擎（本地机械筛，零网络调用）
 // VER: COMPACT-V14-20260717 ← V14: 配对修复 + 智能截断命令，多工具行 per-file 配对

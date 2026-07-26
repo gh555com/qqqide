@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // update-service.ts — 双轨热更新统一入口（唯一真理源：PRODUCTION_URL + APP_VERSION）
 //

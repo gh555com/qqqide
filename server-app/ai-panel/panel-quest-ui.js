@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 'use strict';
 // \u2550\u2550\u2550 panel-quest-ui.js \u2550\u2550\u2550
 // Quest UI: switchQuest, CRUD, cost/balance, ctx button, guide button, queue system

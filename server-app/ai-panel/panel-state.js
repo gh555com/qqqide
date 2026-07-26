@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 'use strict';
 
 // GATEWAY_URL 由 system-prompt.js 全局声明（先于本文件加载），此处不再重复

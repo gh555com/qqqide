@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // component-checker.ts — 运行时组件管理器（唯一真理源: engines/manifest.json）
 // 启动时读 manifest → 检查 rank0 组件 → 缺了自动下载 → 服务器改 install_to 客户端自动重组目录

@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // esbuild.config.js - bundle shell/*.ts -> shell-out/*.js for electron main.
 // CommonJS output, target node16 (electron 22 ships node 16.17).

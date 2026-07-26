@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // agent-loop.js — 核心 Agentic 循环
 // 从 q3/ai/src/agent.js 移植，适配 Shell v2

@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // bootstrap.js — Pre-loader: checks for pending shell-out updates BEFORE
 // loading main.js. Runs on every app start, takes <5ms if no update pending.

@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 'use strict';
 
 // ── 排队按钮状态：有文字即可排队（不管 AI 是否在工作；fatal 态禁用）──

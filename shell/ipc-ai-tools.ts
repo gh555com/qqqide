@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // ipc-ai-tools.ts — AI 工具 IPC: search_text / find_files / list_files
 // ============================================================================

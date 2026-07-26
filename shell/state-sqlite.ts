@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // state-sqlite.ts — SQLite-backed 唯一真理持久化机器 (optimized)
 // Replaces state-store.ts (837 lines hand-rolled FS) with ~550 lines of SQLite.

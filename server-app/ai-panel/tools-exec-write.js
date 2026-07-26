@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // tools-exec-write.js — 文件写入工具执行器（edit / write / create / delete）
 // 从 tools.js 拆分而来。依赖 tools-defs.js 中的 helper 函数。

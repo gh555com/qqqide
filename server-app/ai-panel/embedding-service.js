@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // embedding-service.js — 文本向量化服务 (纯 JS)
 // 调用 AiGateway.embed() 统一包装器

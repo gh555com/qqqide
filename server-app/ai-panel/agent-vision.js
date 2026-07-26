@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // agent-vision.js — 视觉预分析（图像 → 文本 → 推理）
 // 从 agent-loop.js 拆分，为 AgentLoop.prototype 添加 _analyzeImages + _callVision 方法

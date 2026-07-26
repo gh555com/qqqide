@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 'use strict';
 
 // ═══ 楼层 txt 归档：单 all.txt，完整时间线（分隔线区分 USER/HOUSE/ROOM/ANSWER） ═══

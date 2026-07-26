@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // key-hook.js - Unified keyboard hook for QQQ shell (renderer side).
 //

@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // monaco-host.ts
 // Stub for the in-shell monaco editor instance pool (Day 3 deliverable).

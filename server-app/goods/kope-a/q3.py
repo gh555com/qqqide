@@ -1,3 +1,5 @@
+# Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 # q3.py (v5.1.0 - Two Strategy, No FastClear)
 # -*- coding: utf-8 -*-
 import sys as _sys, os as _os

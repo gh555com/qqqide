@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 'use strict';
 // \u2550\u2550\u2550 panel-send.js \u2550\u2550\u2550
 // sendMessage, input helpers, event handlers, window exports

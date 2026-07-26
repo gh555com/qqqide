@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // state-store.ts
 // "唯一真理持久化机器" — the ONE storage machine for qqq + all gaea goods.

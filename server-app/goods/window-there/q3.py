@@ -1,3 +1,5 @@
+# Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 # main_r21.py (R24 更新版)
 # (R24 新增): 光标下窗口=焦点窗口时跳过 3W/3X，防止误触发
 # (R23 修复): 设置 setQuitOnLastWindowClosed(False) 防止自动退出

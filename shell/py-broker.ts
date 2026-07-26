@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // py-broker.ts — Python broker 生命周期管理
 // 启动时 spawn py-broker.py 作为常驻子进程，stdin/stdout JSON 行协议通信。

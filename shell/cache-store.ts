@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // cache-store.ts
 // Two-tier portable cache rooted at $QQQIDE_QDIR/cache (or portable.cache):

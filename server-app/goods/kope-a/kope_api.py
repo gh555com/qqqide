@@ -1,3 +1,5 @@
+# Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 # kope_api.py — 本地 HTTP JSON API 服务
 # 嵌入 q3.py 进程，提供面板与 Python 端的数据桥梁
 # 监听 127.0.0.1:19820，仅本机可访问

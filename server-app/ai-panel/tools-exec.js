@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // tools-exec.js — 工具执行引擎（READ 类 + 调度中心）
 // 从 tools.js 拆分而来。WRITE 类见 tools-exec-write.js，EFFECT 类见 tools-exec-effect.js

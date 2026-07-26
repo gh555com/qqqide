@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // 禁掉 Electron 开发模式安全警告（webSecurity/allowRunningInsecureContent/CSP unsafe-eval）
 // 这些配置为项目必需（访问多源 HTTP/HTTPS、Monaco 动态执行），打包后不会显示
 process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true';
@@ -46,6 +48,7 @@ import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
 import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, GaeaLifecycle } from './gaea-process';
+import { registerKopeIpc } from './ipc-kope';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
@@ -246,6 +249,7 @@ function registerAllIpc(): void {
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
     registerQzSpawnIpc(qzSpawn);
     registerGaeaProcessIpc();
+    registerKopeIpc();
     registerAuthPersistIpc();
 }
 

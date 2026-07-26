@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // qoods/paste-image/paste-image.js
 // Listens for Ctrl+V (and `paste` events) on the document. If the clipboard

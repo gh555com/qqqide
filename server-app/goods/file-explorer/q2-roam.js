@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // q2-roam.js — Roam file explorer logic
 // Extracted from q2-roam.html to keep HTML under size limits.

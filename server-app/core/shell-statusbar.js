@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // shell-statusbar.js — 状态栏时钟 + 免费时段指示器（从 shell.js 拆分）
 // 依赖: window.qqqideBridge, window._i, window._sseTimeAnchor (AI 面板推送)

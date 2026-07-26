@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // tools-defs.js — AI 工具定义（TOOL_DEFINITIONS + TOOL_CATEGORY + 辅助函数）
 // 从 tools.js 拆分而来。工具执行逻辑见 tools-exec*.js

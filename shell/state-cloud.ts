@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // state-cloud.ts
 // Cloud sync submodule for StateStore. "完全手动" mode (老 qqq AQ 模式):

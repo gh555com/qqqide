@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 'use strict';
 // ═══ panel-registry.js ═══
 // 中央建楼状态机 — 跨面板唯一真理源

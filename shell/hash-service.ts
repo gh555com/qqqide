@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // hash-service.ts
 // File / buffer fingerprinting with mtime cache (h.js algorithm port).

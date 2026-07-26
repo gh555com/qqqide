@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // menu-schema.js - default native menu schema sent to shell on boot.
 // Keep MINIMAL. Most actions are surface DOM, native menu only for OS-level

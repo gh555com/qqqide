@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // ipc-git-diff.ts — Git Diff 窗口 IPC（独立 BrowserWindow, read-only Monaco side-by-side）
 // ============================================================================

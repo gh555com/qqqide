@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // qoods/navigator/navigator.js
 // Quick-jump file navigator. Press Ctrl+P to open, type to fuzzy-filter

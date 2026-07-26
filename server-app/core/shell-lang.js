@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // shell-lang.js — 语言切换器（从 shell.js 拆分）
 // 依赖: window.i18n, window._i

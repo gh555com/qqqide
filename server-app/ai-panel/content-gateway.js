@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // content-gateway.js — 内容安全网关 v2
 // 一切工具结果、附件内容、进上下文/落盘前必须过此门。

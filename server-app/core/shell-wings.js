@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // shell-wings.js — 红色灯泡：左右翼开关 + 窗口伸缩（从 shell.js 拆分）
 // 依赖: window.qqqideBridge, window.qqqidePanel, window.qqqideViewport

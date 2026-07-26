@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 var fs = require('fs');
 var c = fs.readFileSync('panel-registry.js', 'utf8');
 c = c.replace(

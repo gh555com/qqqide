@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 'use strict';
 // \u2550\u2550\u2550 panel-clock.js \u2550\u2550\u2550
 // Floor timer, pie chart, autoSave, quest dropdown, tofu, boot

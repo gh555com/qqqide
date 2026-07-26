@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // engines.ts
 // Spawns the existing Rust IO engine as a child process and exposes a JSON

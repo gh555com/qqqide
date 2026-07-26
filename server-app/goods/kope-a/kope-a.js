@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // goods/kope-a/kope-a.js — kope-a 剪贴板监控 + A 区历史卡片面板
 // type: process (后台 q3.py) + panel (A 区卡片面板)

@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // ipc-edit.ts — 编辑工具 IPC: edit_file / create_file / delete_file / write_file
 // 含 qwr 机器保护 (_sn / _qe)
