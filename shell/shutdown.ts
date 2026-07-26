@@ -110,10 +110,18 @@ export function saveAllOpenWindows(stateStore: StateStore, winProjectMap: Map<nu
         for (const win of BrowserWindow.getAllWindows()) {
             try {
                 if (win.isDestroyed()) continue;
-                const mainFolder = (winProjectMap.get(win.id) || '').replace(/\\/g, '/').replace(/\/$/, '');
+                const rawFolder = (winProjectMap.get(win.id) || '').replace(/\\/g, '/').replace(/\/$/, '');
+                // ★ 验证: 路径存在且有 qqq/ 子目录(真正的项目), 过滤空值/已删除/非项目
+                let mainFolder = '';
+                if (rawFolder && fs.existsSync(rawFolder) && fs.existsSync(rawFolder + '/qqq')) {
+                    mainFolder = rawFolder;
+                } else if (rawFolder) {
+                    console.warn('[shutdown] skip invalid project:', rawFolder);
+                }
+                if (!mainFolder) continue;
                 // ★ 去重：同主文件夹只保留第一个窗口
-                if (mainFolder && seen.has(mainFolder)) continue;
-                if (mainFolder) seen.add(mainFolder);
+                if (seen.has(mainFolder)) continue;
+                seen.add(mainFolder);
                 const bounds = win.getBounds();
                 const maximized = win.isMaximized();
                 windows.push({

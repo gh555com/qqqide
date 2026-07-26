@@ -1139,48 +1139,62 @@ function _showEvangelistClaimPopup() {
 }
 
 // ★ 拉取当前用户滴导师信息 + 学生数（返回 Promise，完成后自动刷新 UI）
-// ★ 缓存到 global.sq3，重启兜底
+// ★ 缓存到 global.sq3，重启兜底。学生数只增不减（monotonic）
 function _fetchEvangelistMentor() {
   var login = window.qqqLogin;
   if (!login || !login.isLoggedIn()) {
-    window._evangelistMentorPhone = '';
-    window._evangelistStudentCount = 0;
-    window._evangelistMentorStudentCount = 0;
+    // 未登录：不清空缓存值（可能是临时断线），仅刷新 UI
     _refreshEvangelistSubDropdown();
     _refreshEvangelistMenuLabel();
     return Promise.resolve();
   }
   var token = login.getAuthToken();
   if (!token) {
-    window._evangelistMentorPhone = '';
-    window._evangelistStudentCount = 0;
-    window._evangelistMentorStudentCount = 0;
     _refreshEvangelistSubDropdown();
     _refreshEvangelistMenuLabel();
     return Promise.resolve();
   }
+  // ★ 先从缓存读旧值作为兜底
+  var prevSC = window._evangelistStudentCount || 0;
+  var prevMSC = window._evangelistMentorStudentCount || 0;
+  try {
+    var cacheStore = window.qgs && window.qgs('qqqide.evangelist');
+    if (cacheStore) {
+      var csc = cacheStore.get('studentCount');
+      var cmsc = cacheStore.get('mentorStudentCount');
+      if (typeof csc === 'number' && csc > prevSC) prevSC = csc;
+      if (typeof cmsc === 'number' && cmsc > prevMSC) prevMSC = cmsc;
+    }
+  } catch (_) { }
+
   return fetch('https://www.gh555.com/api/evangelist/my-mentor', {
     headers: { 'Authorization': 'Bearer ' + token }
   }).then(function (r) { return r.json(); }).then(function (d) {
     if (d && d.ok) {
-      window._evangelistMentorPhone = d.has_mentor ? (d.mentor_phone || '') : '';
-      window._evangelistStudentCount = d.student_count || 0;
-      window._evangelistMentorStudentCount = d.mentor_student_count || 0;
+      var mentorPhone = d.has_mentor ? (d.mentor_phone || '') : '';
+      var studentCount = d.student_count || 0;
+      var mentorStudentCount = d.mentor_student_count || 0;
+
+      // ★ 单调递增：学生数只增不减，防止 API 临时故障返回 0 覆盖真实值
+      if (studentCount < prevSC) studentCount = prevSC;
+      if (mentorStudentCount < prevMSC) mentorStudentCount = prevMSC;
+
+      window._evangelistMentorPhone = mentorPhone;
+      window._evangelistStudentCount = studentCount;
+      window._evangelistMentorStudentCount = mentorStudentCount;
+
       // ★ 缓存到 global.sq3 兜底
       try {
         var store = window.qgs && window.qgs('qqqide.evangelist');
         if (store) {
-          store.set('mentorPhone', window._evangelistMentorPhone);
-          store.set('studentCount', window._evangelistStudentCount);
-          store.set('mentorStudentCount', window._evangelistMentorStudentCount);
+          store.set('mentorPhone', mentorPhone);
+          store.set('studentCount', studentCount);
+          store.set('mentorStudentCount', mentorStudentCount);
           store.set('cachedAt', Date.now());
         }
       } catch (_) { }
-    } else {
-      window._evangelistMentorPhone = '';
-      window._evangelistStudentCount = 0;
-      window._evangelistMentorStudentCount = 0;
     }
+    // API 返回 !ok → 保持旧值不变，不清零
     _refreshEvangelistSubDropdown();
     _refreshEvangelistMenuLabel();
   }).catch(function () {
