@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // goods/git/git.js — Git Goods Manifest
 // X 区 Git tab: 全功能 git 操作（不参与 A 区面板）

@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 /**
  * CooldownGuard 冷却护盾 — 唯一真理防抖机器
  *

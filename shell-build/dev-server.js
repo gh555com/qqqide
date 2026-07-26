@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // dev-server.js - local static server for server-app/
 //

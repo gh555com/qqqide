@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // ipc-bridge.js
 // Renderer-side wrapper around window.qqqideBridge.* exposed by preload.

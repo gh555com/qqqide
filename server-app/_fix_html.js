@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 var fs = require('fs');
 var p = 'e:/s/wol/py/qqq-shell-v2/server-app/index.html';
 var s = fs.readFileSync(p, 'utf8');

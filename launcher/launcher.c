@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // launcher.c — qqqide 原生启动器（Win32 API，零外部依赖）
 //

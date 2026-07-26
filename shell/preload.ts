@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // preload.ts
 // Bridges renderer (remote web app loaded from server) to main process via
@@ -452,6 +454,14 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
             ipcRenderer.on('qqqide:gaea-process:status-changed', handler);
             return () => ipcRenderer.removeListener('qqqide:gaea-process:status-changed', handler);
         },
+    },
+
+    // ---- kope (剪贴板历史, sql.js 直接读写 kope.sq3) ----
+    kope: {
+        getHistory: (limit?: number, offset?: number, keyword?: string) => ipcRenderer.invoke('qqqide:kope:getHistory', limit, offset, keyword),
+        getStats: () => ipcRenderer.invoke('qqqide:kope:getStats'),
+        togglePin: (id: number) => ipcRenderer.invoke('qqqide:kope:togglePin', id),
+        deleteItem: (id: number) => ipcRenderer.invoke('qqqide:kope:deleteItem', id),
     },
 
 

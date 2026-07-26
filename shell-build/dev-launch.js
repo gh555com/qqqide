@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // dev-launch.js - one-shot dev: build + dev-server + electron (--dev)
 //

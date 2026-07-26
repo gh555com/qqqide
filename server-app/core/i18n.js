@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 /**
  * i18n 国际化运行时 — qqq-shell-v2 唯一真理机器
  *

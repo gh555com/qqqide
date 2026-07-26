@@ -1,3 +1,5 @@
+# Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 # kope_store.py — 剪切板历史 OS 级 SQLite 存储
 # 唯一真理源: %LOCALAPPDATA%/kope-a/kope.sq3
 # 整台电脑所有 IDE 窗口 + 独立 Python 进程共享同一个数据库
@@ -11,9 +13,9 @@ import random
 import queue
 
 def _get_db_dir():
-    localappdata = os.environ.get('LOCALAPPDATA', '')
-    if not localappdata:
-        localappdata = os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
+    # ★ 不用 LOCALAPPDATA 环境变量 (Electron 便携模式会劫持到 <app>/Data/LocalAppData)
+    # 直接用 expanduser('~') 拿到真实 Windows 路径，保证所有窗口/进程共享同一个 kope.sq3
+    localappdata = os.path.join(os.path.expanduser('~'), 'AppData', 'Local')
     db_dir = os.path.join(localappdata, 'kope-a')
     os.makedirs(db_dir, exist_ok=True)
     return db_dir

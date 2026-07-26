@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 'use strict';
 // \u2550\u2550\u2550 panel-alltxt.js \u2550\u2550\u2550
 // Rules edit, stopStream, all.txt streaming, A1 block, audit, translate

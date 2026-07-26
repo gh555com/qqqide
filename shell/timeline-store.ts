@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // timeline-store.ts — 文件版本时间线存储（极简架构，2026-06-21）
 //

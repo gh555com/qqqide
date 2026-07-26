@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // gaea-process.ts — 通用 Gaea 进程管理器
 // 一切 gaea process-type goods 统一走此模块

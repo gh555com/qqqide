@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 'use strict';
 // ═══ panel-pipeline.js ═══
 // sendMessage 管线：接受显式 content，零 $input 访问，零 saveQuestUIState 调用

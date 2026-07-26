@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // goods/window-there/window-there.js — window there 窗口布局管理
 // process-type goods: 无 A 区面板，仅后台进程 + 菜单管理

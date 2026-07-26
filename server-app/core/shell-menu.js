@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // shell-menu.js — 菜单栏（从 shell.js 拆分）
 // 依赖: window.qqqideBridge, window.qqqDefaultMenuSchema, window._i

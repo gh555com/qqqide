@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // menu-builder.ts
 // Receives a JSON menu schema from the renderer, builds a native Electron Menu.

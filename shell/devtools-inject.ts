@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // devtools-inject.ts — DevTools Console 悬浮按钮（复制 / 另存为）
 //

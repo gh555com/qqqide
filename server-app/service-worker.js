@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // service-worker.js v236 — online-popup: +day +ge columns, no color diff, sync bottom-left
 // PWA strategy:
@@ -7,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v239';
+const CACHE_NAME = 'qqq-shell-v240';
 const PRECACHE_URLS = [
   './',
   './index.html',

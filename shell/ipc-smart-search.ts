@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // ipc-smart-search.ts — search_smart IPC handler
 // 语义搜索 + 正则搜索 + 符号搜索 三路并行合并

@@ -1,3 +1,5 @@
+# Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 #!/usr/bin/env python3
 """Convert Monaco ESM files to AMD define() format for Worker importScripts.
 

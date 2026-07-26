@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // node-broker.ts — DevTools 窗口改名，纯 Node.js（koffi → Win32 API）
 // 零子进程，零 Python 依赖。仅 Windows。

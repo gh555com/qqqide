@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 'use strict';
 // ═══ 唯一真理时间机器 — 一切时间格式化走这里 ═══
 // _fmtTime(d?) → "YYYY-MM-DD HH:MM:SS"（操作系统本地时间）

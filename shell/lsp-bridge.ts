@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // lsp-bridge.ts
 // LSP (Language Server Protocol) bridge — spawns language servers via qz-spawn

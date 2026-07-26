@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // shell-rpc.js — RPC 转发器 + 文件浏览器到 Tab 挂钩 + KeyHook 启动（从 shell.js 拆分）
 // 依赖: window.qqqideBridge, window.qqqTabs, window.qqqEditor, window.qqqideKeyHook

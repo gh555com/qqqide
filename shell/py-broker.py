@@ -1,3 +1,5 @@
+# Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 #!/usr/bin/env python3
 """py-broker.py — 跨平台窗口管理 broker for qqqide.
 常驻子进程。stdin 读 JSON 行命令，stdout 返回 JSON 行响应。

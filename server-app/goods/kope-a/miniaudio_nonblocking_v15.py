@@ -1,3 +1,5 @@
+# Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 # 文件名: miniaudio_nonblocking_v15.py
 #
 # v1.2 - 综合优化版

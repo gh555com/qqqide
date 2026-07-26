@@ -1,3 +1,5 @@
+# Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 # -*- coding: utf-8 -*-
 # _singleton.py — goods 单例保护工具
 # 用于 allowMultiple=false 的 goods，提供 PID 文件 + 文件锁双保险

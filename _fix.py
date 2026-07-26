@@ -1,3 +1,5 @@
+# Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 import codecs
 f=codecs.open('server-app/ai-panel/panel-quest-ui.js','r','utf-8')
 s=f.read()

@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // agent-envelope.js — 信封剥离 + UTF-8 安全截断
 // 从 agent-loop.js 拆分，供 AgentLoop 核心循环使用

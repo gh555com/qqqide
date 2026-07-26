@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // ipc-state-handlers.ts — 状态持久化 IPC 全家桶
 // 补回重构时从 main.ts 掉落的 state / state.project / state.cloud / qgf 处理器

@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // deploy.js - upload server-app/ to CN + R2 + OSS (双线热更新)
 //

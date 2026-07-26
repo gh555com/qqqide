@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 'use strict';
 
 // ═══ 滚动楼层指示器（豆腐块 + 探针）═══

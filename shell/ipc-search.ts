@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // ipc-search.ts — qqqide:search 搜索引擎 (ripgrep 专线)
 //

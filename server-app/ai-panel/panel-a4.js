@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // panel-a4.js — A4 文件快照块（每层楼私有，A2 与 A1 之间）
 //

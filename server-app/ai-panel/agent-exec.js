@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // agent-exec.js — 并行工具执行引擎 + 分层调度
 // 从 agent-loop.js 拆分，为 AgentLoop.prototype 添加工具执行相关方法

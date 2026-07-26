@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // qqq-paste.js — Paste-everything for Monaco (image / file / path / rich text)
 //

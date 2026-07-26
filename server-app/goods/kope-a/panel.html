@@ -1,4 +1,6 @@
 <!DOCTYPE html>
+
+<!-- Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved. -->
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -277,11 +279,10 @@ body {
     var isLoadingMore = false;
     var batchSize = 30;
 
-    // ── kope 数据源: 纯 HTTP API (kope_api.py, q3.py 内嵌) ──
-    var _apiPort = null;
-    var _httpPort = null;
+    // ── kope 数据源: IPC Bridge (主进程 sql.js) 为主，HTTP SSE 为实时推送 ──
+    var _bridge = getBridge() && getBridge().kope ? getBridge().kope : null;
+    var _apiPort = null;       // SSE 端口 (仅 EventSource 推送)
     var _apiConnecting = false;
-    var _lastStats = null;
     var _reconnectTimer = null;
     var _reconnectDelayMs = 1000;
     var _MAX_RECONNECT_MS = 30000;
@@ -289,7 +290,8 @@ body {
     var _pollTimer = null;
     var _POLL_MS = 2000;
     var _connectFailCount = 0;
-    var _showStartHint = false;
+    var _sseOnline = false;
+    var _offlineBanner = false;
 
     function startPolling() {
         if (_pollTimer) return;
@@ -324,115 +326,77 @@ body {
         }, _reconnectDelayMs);
     }
 
+    // ── API 连接 (仅 SSE 推送，数据走 bridge) ──
     async function connectApi() {
         if (_apiConnecting || _apiPort) return;
         _apiConnecting = true;
-        // ★ 每次尝试重置延迟，防止多窗口同时启动时延迟已翻倍
         _reconnectDelayMs = 1000;
-
         var port = await discoverApiPort();
         if (port) {
-            _httpPort = port;
             _apiPort = port;
-            await loadFromApi();
             _reconnectDelayMs = 1000;
             _connectFailCount = 0;
-            _showStartHint = false;
-            hideStartHint();
             connectSSE();
         } else {
-            _connectFailCount++;
-            if (_connectFailCount >= 3 && !_showStartHint) {
-                _showStartHint = true;
-                showStartHint();
+            _connectFailCount = Math.min(_connectFailCount + 1, 3);
+            if (_connectFailCount >= 3 && !_offlineBanner) {
+                _offlineBanner = true;
+                showOfflineBanner();
             }
-            // ★ 失败立即调度重试，不依赖 pollApi 2s 间隔
             scheduleReconnect();
         }
         _apiConnecting = false;
     }
 
-    function showStartHint() {
-        var banner = el.historyList.querySelector('.kope-start-hint');
-        if (!banner) {
-            banner = document.createElement('div');
-            banner.className = 'kope-start-hint';
-            banner.style.cssText = 'text-align:center;padding:20px 16px;color:var(--text-secondary);font-size:13px;line-height:1.8;';
-            banner.innerHTML = '<div style="font-size:48px;margin-bottom:12px;opacity:0.6;">&#128264;</div>' +
-                '<div>kope-a &#26410;&#21551;&#21160;</div>' +
-                '<div style="font-size:12px;margin-top:6px;">&#35831;&#28857;&#20987;&#33756;&#21333;&#26639; kope-a &#30340; &#9679; &#25353;&#38062;&#21551;&#21160;&#21518;&#21488;&#36827;&#31243;</div>';
-            el.historyList.insertBefore(banner, el.historyList.firstChild);
-        }
+    function showOfflineBanner() {
+        var existing = el.historyList.querySelector('.kope-offline-banner');
+        if (existing) return;
+        var banner = document.createElement('div');
+        banner.className = 'kope-offline-banner';
+        banner.style.cssText = 'text-align:center;padding:5px 10px;margin:3px 8px;color:var(--text-secondary);font-size:11px;background:var(--base2);border-radius:4px;opacity:0.8;cursor:default;';
+        banner.innerHTML = '&#128264; &#21098;&#36148;&#26495;&#30417;&#25511;&#24050;&#20572;&#27490; &middot; &#28857;&#20987; <b>&#9679;</b> &#21551;&#21160;';
+        el.historyList.insertBefore(banner, el.historyList.firstChild);
     }
 
-    function hideStartHint() {
-        var banner = el.historyList.querySelector('.kope-start-hint');
+    function hideOfflineBanner() {
+        var banner = el.historyList.querySelector('.kope-offline-banner');
         if (banner) banner.remove();
+        _offlineBanner = false;
     }
 
     function connectSSE() {
-        var hp = _httpPort || _apiPort;
-        if (!hp) return;
+        if (!_apiPort) return;
         if (_eventSource) { _eventSource.close(); _eventSource = null; }
         try {
-            var es = new EventSource('http://127.0.0.1:' + hp + '/events');
+            var es = new EventSource('http://127.0.0.1:' + _apiPort + '/events');
             es.onmessage = function(e) {
-                if (e.data === 'change') { reloadFromApi(); }
+                if (e.data === 'change') { reloadData(); }
             };
             es.onerror = function() {
                 es.close();
                 _eventSource = null;
-                _httpPort = null;
                 _apiPort = null;
+                _sseOnline = false;
                 scheduleReconnect();
                 startPolling();
             };
             _eventSource = es;
+            _sseOnline = true;
+            hideOfflineBanner();
             stopPolling();
         } catch(e) {
             _eventSource = null;
+            _sseOnline = false;
         }
     }
 
-    function _apiBase() {
-        if (_httpPort) return 'http://127.0.0.1:' + _httpPort;
-        if (_apiPort) return 'http://127.0.0.1:' + _apiPort;
-        return null;
-    }
-
-    async function apiGet(path) {
-        var base = _apiBase();
-        if (!base) return null;
-        try {
-            var ctrl = new AbortController();
-            var to = setTimeout(function() { ctrl.abort(); }, 3000);
-            var resp = await fetch(base + path, { signal: ctrl.signal });
-            clearTimeout(to);
-            if (!resp.ok) return null;
-            return await resp.json();
-        } catch(e) { return null; }
-    }
-
-    async function apiPost(path, body) {
-        var base = _apiBase();
-        if (!base) return null;
-        try {
-            var ctrl = new AbortController();
-            var to = setTimeout(function() { ctrl.abort(); }, 3000);
-            var resp = await fetch(base + path, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body), signal: ctrl.signal
-            });
-            clearTimeout(to);
-            if (!resp.ok) return null;
-            return await resp.json();
-        } catch(e) { return null; }
-    }
-
-    async function loadFromApi() {
-        var data = await apiGet('/history?limit=50&offset=0');
-        if (!data || !data.items) return;
-        clipHistory = data.items.map(function(it) {
+    // ── 数据加载 (IPC Bridge → kope.sq3, 始终可用) ──
+    async function loadData() {
+        if (!_bridge) { _bridge = getBridge() && getBridge().kope ? getBridge().kope : null; }
+        if (!_bridge) return;
+        var items = await _bridge.getHistory(2000, 0);
+        if (!items || !items.length) return;
+        clipHistory = items.map(function(it) {
             return {
                 id: String(it.id),
                 content: it.content,
@@ -447,11 +411,10 @@ body {
         applyFilter();
     }
 
-    async function reloadFromApi() {
+    async function reloadData() {
         var prevIds = {};
         for (var i = 0; i < clipHistory.length; i++) { prevIds[clipHistory[i].id] = true; }
-        await loadFromApi();
-        // ★ 风暴检测: 扫描是否有新ID出现（支持置顶项排前面、新项在中间的情况）
+        await loadData();
         var hasNew = false;
         for (var j = 0; j < clipHistory.length; j++) {
             if (!prevIds[clipHistory[j].id]) { hasNew = true; break; }
@@ -463,15 +426,18 @@ body {
         }
     }
 
-    // ── toggle pin / delete (纯 HTTP API) ──
     async function togglePinBridge(id) {
-        var r = await apiPost('/pin', { id: parseInt(id) });
-        if (r && r.ok) await loadFromApi();
+        if (!_bridge) { _bridge = getBridge() && getBridge().kope ? getBridge().kope : null; }
+        if (!_bridge) return;
+        await _bridge.togglePin(parseInt(id));
+        await loadData();
     }
 
     async function deleteItemBridge(id) {
-        var r = await apiPost('/delete', { id: parseInt(id) });
-        if (r && r.ok) await loadFromApi();
+        if (!_bridge) { _bridge = getBridge() && getBridge().kope ? getBridge().kope : null; }
+        if (!_bridge) return;
+        await _bridge.deleteItem(parseInt(id));
+        await loadData();
     }
 
     // ── 渲染 ──
@@ -668,23 +634,16 @@ body {
     }
 
     async function pollApi() {
-        if (!_apiPort && !_httpPort) {
-            // ★ 仅在未连接且未进行中时调度重连；connectApi 自己会处理失败重试
-            if (!_apiConnecting) scheduleReconnect();
-            return;
+        // SSE 在线时零轮询；SSE 断线时 bridge 低频轮询
+        if (_sseOnline) return;
+        if (!_bridge) { _bridge = getBridge() && getBridge().kope ? getBridge().kope : null; }
+        if (!_bridge) return;
+        var stats = await _bridge.getStats();
+        if (stats && stats.total !== clipHistory.length) {
+            await reloadData();
         }
-        var stats = await apiGet('/stats');
-        if (!stats) {
-            _httpPort = null;
-            _apiPort = null;
-            scheduleReconnect();
-            return;
-        }
-        _reconnectDelayMs = 1000;
-        if (!_lastStats || stats.max_updated_at !== _lastStats.max_updated_at || stats.total !== _lastStats.total) {
-            _lastStats = stats;
-            await reloadFromApi();
-        }
+        // 同时尝试重连 SSE
+        if (!_apiPort && !_apiConnecting) scheduleReconnect();
     }
 
     // ── 事件处理 ──
@@ -798,7 +757,8 @@ body {
     var upI = setupScrollbar(el.historyList, el.innerScrollbar, el.innerThumb);
     function updateAllScrollbars() { upO(); upI(); }
 
-    // ── API 连接 + SSE 事件推送（SSE 在线时零轮询，bridge 模式 2s 轮询）──
+    // ── 启动: bridge 先加载数据，再尝试 SSE 实时推送 ──
+    loadData();
     connectApi();
     startPolling();
 
@@ -817,12 +777,12 @@ body {
         }
 
         if (m.type === 'kope-a:newClip') {
-            reloadFromApi();
+            reloadData();
             return;
         }
 
         if (m.type === 'kope-a:refresh') {
-            reloadFromApi();
+            reloadData();
             return;
         }
     });

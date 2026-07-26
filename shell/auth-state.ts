@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // auth-state.ts — 主进程共享认证状态（避免 wq-ping 重复解密 auth.enc）
 //

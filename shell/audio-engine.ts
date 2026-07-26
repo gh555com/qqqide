@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // audio-engine.ts
 // Spawns engines/miniaudio_bridge.py as a child process and exposes JSON-line

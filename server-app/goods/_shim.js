@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // goods/_shim.js
 // Tiny vscode-API-subset compatibility layer so old qqq extensions can be

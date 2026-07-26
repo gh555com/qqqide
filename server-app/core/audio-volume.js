@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // core/audio-volume.js — 统一音频音量管理（主路/旁路双通路模型）
 //

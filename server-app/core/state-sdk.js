@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // state-sdk.js
 // Renderer-side sugar for bridge.state.* — auto-binds a namespace, so goods

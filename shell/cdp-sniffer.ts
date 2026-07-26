@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // cdp-sniffer.ts — CDP-based video URL sniffer for qqq-shell-v2
 //

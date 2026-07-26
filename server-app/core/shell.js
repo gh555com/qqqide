@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // shell.js — QQQ Shell v2 主引导（模块化拆分后保留核心编排逻辑）
 // 拆出: shell-lang.js / shell-menu.js / shell-wings.js / shell-overlay.js

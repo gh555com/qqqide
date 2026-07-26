@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // agent-gateway.js — 网关调用（双线路 + 重试 + 故障切换）
 // 从 agent-loop.js 拆分，为 AgentLoop.prototype 添加 _callGateway 方法

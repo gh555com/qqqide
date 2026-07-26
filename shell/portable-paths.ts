@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // portable-paths.ts
 // MUST be imported BEFORE any other electron module that touches paths.

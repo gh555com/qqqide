@@ -1,3 +1,5 @@
+# Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 with open('panel-floor.js', 'r', encoding='utf-8') as f:
     content = f.read()
 

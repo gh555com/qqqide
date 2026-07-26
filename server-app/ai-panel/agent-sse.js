@@ -1,3 +1,5 @@
+// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
+
 // ============================================================================
 // agent-sse.js — SSE 流解析 + 文本工具调用回生引擎 + 计费事件处理
 // 从 agent-loop.js 拆分，为 AgentLoop.prototype 添加 _parseSSE / _processBillingEvent 方法
