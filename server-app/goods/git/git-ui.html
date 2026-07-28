@@ -165,6 +165,7 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:14px;color:var(--text);ba
   <button id="btn-stash">贮藏</button>
   <span class="sep"></span>
   <button id="btn-clone">克隆</button>
+  <button id="btn-init" style="display:none;background:var(--green);color:#fff;font-weight:700;">初始化仓库</button>
 </div>
 
 <div class="content" id="main-content">
@@ -417,8 +418,25 @@ function _pickRepo(path) {
   document.getElementById('status-view').classList.remove('hidden');
   document.getElementById('branch-view').classList.add('hidden');
   document.getElementById('stash-view').classList.add('hidden');
-  _refreshGitStatus();
+  var isGit = s && s.isGit;
+  _updateToolbarForRepo(isGit);
+  if (isGit) {
+    _refreshGitStatus();
+  } else {
+    document.getElementById('branch-name').textContent = '';
+    document.getElementById('pulls-info').textContent = '';
+  }
   _buildRepoUI();
+}
+
+function _updateToolbarForRepo(isGit) {
+  var repoOnly = ['btn-refresh','btn-stage-all','btn-unstage-all','btn-pull','btn-push','btn-fetch','btn-log','btn-branch','btn-stash'];
+  for (var i = 0; i < repoOnly.length; i++) {
+    var el = document.getElementById(repoOnly[i]);
+    if (el) el.style.display = isGit ? '' : 'none';
+  }
+  var initBtn = document.getElementById('btn-init');
+  if (initBtn) initBtn.style.display = isGit ? 'none' : '';
 }
 
 function _buildRepoUI() {
@@ -1047,12 +1065,7 @@ async function _showStashes() {
   }
 }
 
-async function _applyStash(ref) { var r = await _gitCmd(['stash', 'apply', ref]); if (r.exitCode === 0) { _refreshGitStatus(); _showStashes(); } else _showProgress('应用失败'); }
-async function _popStash(ref) { var r = await _gitCmd(['stash', 'pop', ref]); if (r.exitCode === 0) { _refreshGitStatus(); _showStashes(); } else _showProgress('弹出失败'); }
-async function _dropStash(ref) { if (!confirm('丢弃 ' + ref + '？')) return; var r = await _gitCmd(['stash', 'drop', ref]); if (r.exitCode === 0) _showStashes(); else _showProgress('丢弃失败'); }
-
-// ═══ CLONE ═══
-document.getElementById('btn-clone').addEventListener('click', function() { document.getElementById('clone-dialog').style.display = ''; });
+async function _applyStash(ref) { var r = await _gitCmd(['stash', 'apply', ref]); if (r.exitCode === 0) { _refreshGitStatus(); _showStashes(); } else _showProgdocument.getElementById('btn-clone').addEventListener('click', function() { document.getElementById('clone-dialog').style.display = ''; });
 document.getElementById('clone-cancel').addEventListener('click', function() { document.getElementById('clone-dialog').style.display = 'none'; document.getElementById('clone-url').value = ''; document.getElementById('clone-dir').value = ''; });
 document.getElementById('clone-start').addEventListener('click', async function() {
   var url = document.getElementById('clone-url').value.trim(); if (!url) return;
@@ -1070,6 +1083,26 @@ document.getElementById('clone-start').addEventListener('click', async function(
     if (result.exitCode === 0) { _hideProgress(); _gitRoot = targetPath; document.getElementById('clone-url').value = ''; document.getElementById('clone-dir').value = ''; _refreshGitStatus(); }
     else { _showProgress('✕ 克隆失败: ' + (result.stderr || '').slice(0,200)); document.getElementById('progress').style.color = 'var(--red)'; }
   } catch(e) { _showProgress('✕ 克隆失败: ' + (e.message || '').slice(0,200)); document.getElementById('progress').style.color = 'var(--red)'; }
+});
+
+// ═══ INIT REPO ═══
+document.getElementById('btn-init').addEventListener('click', async function() {
+  if (!_gitRoot) return;
+  var rs = _repoStatusMap[_gitRoot];
+  if (rs && rs.isGit) return; // already a repo
+  _showProgress('初始化仓库...');
+  var r = await _gitCmd(['init'], { cwd: _gitRoot, timeout: 15000 });
+  if (r.exitCode === 0) {
+    _hideProgress();
+    await _scanRepoStatus(_gitRoot);
+    _updateToolbarForRepo(true);
+    _buildRepoUI();
+    _refreshGitStatus().then(function() { _showGitLog(); });
+    _startAutoRefresh();
+  } else {
+    _showProgress('✕ 初始化失败: ' + (r.stderr || r.stdout || '').slice(0, 200));
+    document.getElementById('progress').style.color = 'var(--red)'; }
+  }
 });
 
 // ═══ CONFLICT ═══
@@ -1107,7 +1140,12 @@ function _hideAllViews(showId) {
 // ═══ AUTO-REFRESH ═══
 function _startAutoRefresh() {
   if (_autoRefreshTimer) return;
-  _autoRefreshTimer = setInterval(function() { if (_gitRoot && _gitAvailable) { _refreshGitStatus(); _showGitLog(); } }, 15000);
+  _autoRefreshTimer = setInterval(function() {
+    if (!_gitRoot || !_gitAvailable) return;
+    var s = _repoStatusMap[_gitRoot];
+    if (!s || !s.isGit) return;
+    _refreshGitStatus(); _showGitLog();
+  }, 15000);
 }
 
 // ═══ INIT ═══
@@ -1138,9 +1176,19 @@ async function _detectAndBuild() {
   }
   await _detectAllRepos();
   _buildRepoUI();
-  _buildBranches(); // build branch filter on init (fire-and-forget)
-  if (_gitRoot) { _refreshGitStatus().then(function(){ _showGitLog(); }); _startAutoRefresh(); }
-  else { document.getElementById('branch-name').textContent = ''; }
+  _buildBranches();
+  if (_gitRoot) {
+    var s = _repoStatusMap[_gitRoot];
+    if (s && s.isGit) {
+      _updateToolbarForRepo(true);
+      _refreshGitStatus().then(function(){ _showGitLog(); });
+      _startAutoRefresh();
+    } else {
+      _updateToolbarForRepo(false);
+      document.getElementById('branch-name').textContent = '';
+      document.getElementById('pulls-info').textContent = '';
+    }
+  } else { document.getElementById('branch-name').textContent = ''; }
 }
 
 _init();
