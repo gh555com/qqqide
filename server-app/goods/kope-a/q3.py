@@ -119,7 +119,7 @@ _ASSETS_DIR = os.path.join(_SCRIPT_DIR, "assets")
 def _read_ide_volume():
     """从 IDE 设置读取音量。
     读取 qgs.simple('qqq.settings') 下 audio.volume 键。
-    默认 1.0 (100%)，用户可通过 IDE 齿轮→音量拉杆调整。
+    默认 0.25 (25%)，匹配 IDE 出厂默认。用户可通过 IDE 齿轮→音量拉杆调整。
     """
     try:
         # 环境变量优先（调试用）
@@ -140,12 +140,14 @@ def _read_ide_volume():
                 import sqlite3
                 conn = sqlite3.connect(db_path)
                 try:
-                    rows = conn.execute(
-                        "SELECT value FROM state WHERE ns='qqq.settings' AND key='audio.volume'"
-                    ).fetchall()
-                    if rows:
-                        vol = int(rows[0][0])
-                        return vol / 100.0
+                    # qgs.simple('qqq.settings') 为主 ns，qqqide 兜底
+                    for ns in ('qqq.settings', 'qqqide'):
+                        rows = conn.execute(
+                            "SELECT value FROM state WHERE ns=? AND key='audio.volume'", (ns,)
+                        ).fetchall()
+                        if rows:
+                            vol = int(rows[0][0])
+                            return vol / 100.0
                 except Exception:
                     pass
                 finally:
@@ -155,7 +157,7 @@ def _read_ide_volume():
                         pass
     except Exception:
         pass
-    return 1.0  # 默认 100%（水滴全音量，打枪由 volume_mult 砍半）
+    return 0.25  # 默认 25%，匹配 IDE 出厂默认
 
 # ==================== 音频引擎 ====================
 
@@ -1205,7 +1207,7 @@ class TransparentPopup(QWidget):
             self.lifecycle_timer.start(self.lifecycle_remaining)
 
     def toggle_sticky_mode(self):
-        self.monitor.play_z_sound()
+        self.monitor.play_q_sound()
         self.is_sticky = not self.is_sticky
         if self.is_sticky:
             self.activate_sticky_mode()
