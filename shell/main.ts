@@ -47,7 +47,7 @@ import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
-import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, GaeaLifecycle } from './gaea-process';
+import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart } from './gaea-process';
 import { registerKopeIpc } from './ipc-kope';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
@@ -251,6 +251,66 @@ function registerAllIpc(): void {
     registerGaeaProcessIpc();
     registerKopeIpc();
     registerAuthPersistIpc();
+    registerDesktopShortcutIpc();
+}
+
+// ── 桌面快捷方式 IPC — PowerShell COM 创建/删除 .lnk（2026-07-28 v2 修复路径） ──
+function registerDesktopShortcutIpc(): void {
+    ipcMain.handle('qqqide:desktop:sync-shortcut', async (_e, enabled: boolean) => {
+        if (process.platform !== 'win32') return { ok: true, skipped: true };
+        try {
+            const desktopDir = path.join(os.homedir(), 'Desktop');
+            const lnkPath = path.join(desktopDir, 'qqqide.lnk');
+
+            // ★ portable.root 在打包模式下 = gh555.com/，qqqide.exe 在上层
+            //    开发模式下 portable.root = 项目根，qqqide.exe 就在下面
+            let targetExe = path.join(portable.root, 'qqqide.exe');
+            let rootDir = portable.root;
+            if (!fs.existsSync(targetExe)) {
+                // 打包模式：往上找
+                rootDir = path.dirname(portable.root);
+                targetExe = path.join(rootDir, 'qqqide.exe');
+            }
+            if (!fs.existsSync(targetExe)) return { ok: true, skipped: true, reason: 'no-qqqide-exe' };
+
+            // ★ 图标：优先用 joker.exe,0（electron-builder 保证有图标）
+            //    开发模式 fallback → shell/icon.ico → targetExe 自身
+            let iconLocation = '';
+            const jokerExe = path.join(portable.root, 'joker.exe');
+            if (fs.existsSync(jokerExe)) {
+                iconLocation = jokerExe + ',0';
+            } else {
+                const icoPath = path.join(portable.root, 'shell', 'icon.ico');
+                if (fs.existsSync(icoPath)) {
+                    iconLocation = icoPath;
+                } else {
+                    iconLocation = targetExe + ',0';
+                }
+            }
+
+            if (enabled) {
+                // 创建/更新快捷方式
+                const psScript = [
+                    '$ws = New-Object -ComObject WScript.Shell;',
+                    '$s = $ws.CreateShortcut(\'' + lnkPath.replace(/\\/g, '\\\\') + '\');',
+                    '$s.TargetPath = \'' + targetExe.replace(/\\/g, '\\\\') + '\';',
+                    '$s.WorkingDirectory = \'' + rootDir.replace(/\\/g, '\\\\') + '\';',
+                    '$s.IconLocation = \'' + iconLocation.replace(/\\/g, '\\\\') + '\';',
+                    '$s.Save();'
+                ].join(' ');
+                require('child_process').execSync(
+                    'powershell -NoProfile -Command "' + psScript + '"',
+                    { timeout: 10000, windowsHide: true }
+                );
+                return { ok: true, action: 'created' };
+            } else {
+                // 关闭时不删除 — 用户可自行手动删除
+                return { ok: true, action: 'skipped' };
+            }
+        } catch (e: any) {
+            return { ok: false, error: e && e.message };
+        }
+    });
 }
 
 // ── Auth 持久化 IPCPC — safeStorage 加密存盘，重启自动恢复（2026-06-29） ──
@@ -316,10 +376,15 @@ function registerAuthPersistIpc(): void {
 /** 出厂默认自动启动映射（首次安装时生效，用户勾选后持久化覆盖） */
 const _PROCESS_GOODS_AUTOSTART_DEFAULTS: Record<string, boolean> = {
     'kope-a': true,
-    'window-there': true,
+    'window-there': false,
 };
 
 function registerGaeaProcessIpc(): void {
+    // ★ 初始化跨窗口状态检测基础
+    setGaeaUserDataPath(portable.userData);
+    registerGoodsMeta('kope-a', false);
+    registerGoodsMeta('window-there', false);
+
     ipcMain.handle('qqqide:gaea-process:start', async (_e, goodsId: string, scriptPath: string, runtime?: string, lifecycle?: string, allowMultiple?: boolean) => {
         return startGaeaProcess(portable.root, goodsId, scriptPath, runtime || 'python', (lifecycle as GaeaLifecycle) || 'attached', allowMultiple !== false);
     });
@@ -336,7 +401,10 @@ function registerGaeaProcessIpc(): void {
         try {
             const val = await stateStore.get('qqqide', goodsId + '.autoStart');
             if (val !== undefined && val !== null) return !!val;
-            // 未设置（出厂）→ 查询默认值
+            // 本地未设置 → 查询 OS 级状态（跨绿色包同步）
+            const osVal = getOsGaeaAutoStart(goodsId);
+            if (osVal !== null) return osVal;
+            // 都未设置 → 出厂默认值
             const def = _PROCESS_GOODS_AUTOSTART_DEFAULTS[goodsId];
             return def ?? false;
         } catch (e) { return false; }
@@ -345,6 +413,8 @@ function registerGaeaProcessIpc(): void {
     ipcMain.handle('qqqide:gaea-process:set-auto-start', async (_e, goodsId: string, v: boolean, meta?: { scriptPath?: string; runtime?: string; lifecycle?: string; allowMultiple?: boolean }) => {
         try {
             await stateStore.setNow('qqqide', goodsId + '.autoStart', v);
+            // ★ 同步到 OS 级状态文件（跨绿色包可见）
+            syncOsGaeaAutoStart(goodsId, v);
             if (v && meta && meta.scriptPath) {
                 // ★ check ON + not running → start immediately + watchdog
                 const runtime = meta.runtime || 'python';

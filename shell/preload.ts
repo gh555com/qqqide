@@ -147,6 +147,12 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
     shell: {
         openExternal: (url: string) => ipcRenderer.invoke('qqqide:shell:openExternal', url),
         openPath: (p: string) => ipcRenderer.invoke('qqqide:shell:openPath', p),
+        // ★ 浏览器启动兜底（2026-07-28）：主进程所有层失败后推 URL 给渲染层弹 qoast
+        onBrowserFallback: (cb: (url: string) => void) => {
+            const handler = (_e: any, data: { url: string }) => { try { cb(data.url); } catch (err) { console.warn('[shell.onBrowserFallback]', err); } };
+            ipcRenderer.on('qqqide:browser-fallback', handler);
+            return () => ipcRenderer.removeListener('qqqide:browser-fallback', handler);
+        },
     },
 
     // ---- 跨窗口同步 IPC（替代 BroadcastChannel，终极架构 §C）----
@@ -454,6 +460,11 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
             ipcRenderer.on('qqqide:gaea-process:status-changed', handler);
             return () => ipcRenderer.removeListener('qqqide:gaea-process:status-changed', handler);
         },
+    },
+
+    // ---- desktop shortcut (Windows: PowerShell COM 创建/删除 .lnk) ----
+    desktop: {
+        syncShortcut: (enabled: boolean) => ipcRenderer.invoke('qqqide:desktop:sync-shortcut', enabled),
     },
 
     // ---- kope (剪贴板历史, sql.js 直接读写 kope.sq3) ----

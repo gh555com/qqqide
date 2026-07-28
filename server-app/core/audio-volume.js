@@ -34,7 +34,7 @@
 
   /** 主路音量 — IDE 窗口 + goods 默认共用。设置面板拉杆控制。 */
   function getMainVolume() {
-    var raw = window.qqqSettings ? window.qqqSettings.get('audio.volume', '100') : '100';
+    var raw = window.qqqSettings ? window.qqqSettings.get('audio.volume', '25') : '25';
     return parseInt(raw, 10) / 100;
   }
 

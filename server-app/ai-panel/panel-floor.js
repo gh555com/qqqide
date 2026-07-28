@@ -480,7 +480,11 @@ async function _restoreAgentFromStore(questId, ag) {
             }
         }
 
-        // ★ BugFix #3 v2: _persistentCount 已在循环中处理，不再重置
+        // ★ V16 fix: 必须清零 _persistentCount，防二次恢复时 Z 被跳过
+        //   旧 BugFix #3 v2 删除了此重置 → 二次恢复 → _persistentCount 残留 1
+        //   → Z 被静默丢弃 → biscuit 被 _refreshRules 覆盖 → AI 失忆
+        ag._persistentCount = 0;
+        ag._rulesVersion = '';  // ★ 同样清零，强制下次 send 重新注入 rules
 
         // ★ 注入压缩饼干：V10 从 ctx.narrative 注入；V13 从 ctx.biscuitLines 重建消息
         if (_isV10Biscuit) {

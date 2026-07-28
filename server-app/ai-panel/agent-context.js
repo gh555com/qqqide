@@ -761,7 +761,13 @@
                     : biscuitText;
                 var _sortedLines = _parseBiscuitFromContent(_biscuitSrc);
                 var _sortedText = _sortedLines.map(function(l) { return l.text; }).join('\n\n');
-                self.conversation.splice(persistentCount, 0,
+                // ★ V16 fix: biscuit 必须在 Z 之后。若 persistentCount 为 0 但 [0] 实际是 Z，
+                //   用 1 代替 0 防止 biscuit 插到 Z 前面破坏前缀缓存。
+                var _insertIdx = persistentCount;
+                if (_insertIdx === 0 && self.conversation.length > 0 && self.conversation[0]._persistent) {
+                    _insertIdx = 1;
+                }
+                self.conversation.splice(_insertIdx, 0,
                     { role: 'system', content: _sortedText, _dynamic: true, _biscuit: true });
             }
 

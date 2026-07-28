@@ -1,5 +1,3 @@
-// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
-
 // ============================================================================
 // gaea-host.js — Gaea Goods Host (v2)
 //
@@ -37,7 +35,6 @@
   let _hostEl = null;
   let _contentEl = null;
   let _tabBarEl = null;
-  let _switcherEl = null;
   let _ghHealthEl = null;
   let _built = false;
   const _pendingShow = [];
@@ -64,10 +61,7 @@
     _hostEl.innerHTML = '';
     _hostEl.style.cssText = 'height:100%; display:flex; flex-direction:column; overflow:hidden;';
 
-    // ★ A 区顶部 — 货物切换下拉
-    _switcherEl = document.createElement('div');
-    _switcherEl.className = 'gaea-zone-switcher';
-    _hostEl.appendChild(_switcherEl);
+    // ★ A 区切换已移至菜单行2 "qqq" hover 下拉。此处不再渲染 <select>。
 
     // Tab bar moved to menu row 2 (qqq-goods-bar)
     _tabBarEl = document.getElementById('qqq-goods-bar');
@@ -92,7 +86,7 @@
 
     _built = true;
 
-    _renderSwitcher();
+    _renderBrandMenu();
 
     const pending = _pendingShow.splice(0);
     pending.forEach(id => show(id));
@@ -232,7 +226,7 @@
 
     _activeId = id;
     renderTabBar();
-    _renderSwitcher();
+    _renderBrandMenu();
     _persistActive();
   }
 
@@ -332,31 +326,97 @@
     return result;
   }
 
-  // ★ 渲染 A 区顶部货物切换下拉
-  function _renderSwitcher() {
-    if (!_switcherEl) return;
-    _switcherEl.innerHTML = '';
-    var panelGoods = listPanelGoods();
+  // ★ 菜单行2 "qqq" hover 下拉 — 现代化 A 区货物切换
+  var _brandMenuEl = null;
+  var _brandMenuHideTimer = null;
+  var _brandMenuReady = false;
 
-    var sel = document.createElement('select');
-    sel.style.cssText =
-      'width:100%; padding:4px 6px; font-size:12px; font-family:Tahoma,sans-serif;' +
-      'background:var(--card-bg); color:var(--text-primary); border:1px solid var(--border-color);' +
-      'border-radius:3px; outline:none; cursor:pointer; -webkit-appearance:menulist;';
+  function _renderBrandMenu() {
+    if (_brandMenuReady) return;
+    var brand = document.querySelector('.qqq-toolbar-brand');
+    if (!brand) return;
+    // ★ 零指示符、零延迟 — 像隐藏功能，hover 即弹出
+    brand.addEventListener('mouseenter', function () {
+      clearTimeout(_brandMenuHideTimer);
+      _showBrandDropdown();
+    });
+    brand.addEventListener('mouseleave', function () {
+      _brandMenuHideTimer = setTimeout(_hideBrandDropdown, 250);
+    });
+    _brandMenuReady = true;
+  }
+
+  function _showBrandDropdown() {
+    // 防重入：已显示则跳过
+    if (_brandMenuEl && _brandMenuEl.parentNode) return;
+    if (_brandMenuEl) { _brandMenuEl.remove(); _brandMenuEl = null; }
+
+    var brand = document.querySelector('.qqq-toolbar-brand');
+    if (!brand) return;
+
+    var panelGoods = listPanelGoods();
+    var readyIds = ['kope-a'];
+    panelGoods = panelGoods.filter(function (g) { return readyIds.indexOf(g.id) !== -1; });
+    if (panelGoods.length === 0) return;
+
+    var dd = document.createElement('div');
+    dd.className = 'qqq-brand-dropdown';
 
     for (var i = 0; i < panelGoods.length; i++) {
-      var opt = document.createElement('option');
-      opt.value = panelGoods[i].id;
-      opt.textContent = panelGoods[i].title;
-      if (panelGoods[i].id === _activeId) opt.selected = true;
-      sel.appendChild(opt);
+      var g = panelGoods[i];
+      var row = document.createElement('div');
+      row.className = 'qqq-brand-dd-item';
+      row.textContent = g.title;
+      row.dataset.gaeaId = g.id;
+      if (g.id === _activeId) row.classList.add('active');
+      row.addEventListener('click', function (e) {
+        e.stopPropagation();
+        show(this.dataset.gaeaId);
+        _hideBrandDropdown();
+      });
+      dd.appendChild(row);
     }
 
-    sel.addEventListener('change', function () {
-      show(sel.value);
+    dd.addEventListener('mouseenter', function () { clearTimeout(_brandMenuHideTimer); });
+    dd.addEventListener('mouseleave', function () { _brandMenuHideTimer = setTimeout(_hideBrandDropdown, 200); });
+
+    var brandRect = brand.getBoundingClientRect();
+    var toolbar = document.getElementById('qqq-toolbar');
+    if (toolbar) {
+      var toolbarRect = toolbar.getBoundingClientRect();
+      dd.style.position = 'fixed';
+      dd.style.top = toolbarRect.bottom + 'px';
+      dd.style.left = brandRect.left + 'px';
+    }
+
+    document.body.appendChild(dd);
+    _brandMenuEl = dd;
+
+    requestAnimationFrame(function () {
+      if (_brandMenuEl) _brandMenuEl.classList.add('open');
     });
 
-    _switcherEl.appendChild(sel);
+    setTimeout(function () {
+      document.addEventListener('click', _onDocClickForBrand, { once: true });
+    }, 50);
+  }
+
+  function _hideBrandDropdown() {
+    if (_brandMenuEl) {
+      _brandMenuEl.classList.remove('open');
+      var el = _brandMenuEl;
+      _brandMenuEl = null;
+      setTimeout(function () { if (el.parentNode) el.remove(); }, 180);
+    }
+  }
+
+  function _onDocClickForBrand(e) {
+    if (_brandMenuEl && !_brandMenuEl.contains(e.target)) {
+      var brand = document.querySelector('.qqq-toolbar-brand');
+      if (brand && !brand.contains(e.target)) {
+        _hideBrandDropdown();
+      }
+    }
   }
 
   // 监听 A 区活性恢复事件（tab-manager 完成 restore 后触发）
@@ -395,7 +455,7 @@
       // 默认面板到达，且当前激活的不是默认面板 → 切换
       show(id);
     }
-    if (_built) { renderTabBar(); _renderSwitcher(); }
+    if (_built) { renderTabBar(); _renderBrandMenu(); }
   }
 
   // ---- Remove (full teardown) ----
@@ -432,7 +492,7 @@
     }
 
     renderTabBar();
-    _renderSwitcher();
+    _renderBrandMenu();
   }
 
   // ---- Query ----}

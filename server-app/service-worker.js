@@ -9,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v240';
+const CACHE_NAME = 'qqq-shell-v275'; // DPI fix: ignore OS display scaling + isGaeaProcessRunning cross-pack
 const PRECACHE_URLS = [
   './',
   './index.html',

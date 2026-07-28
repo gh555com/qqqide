@@ -27,6 +27,7 @@
 import { ChildProcess, spawn, execSync } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { getComponentBin } from './component-checker';
 
 export type GaeaLifecycle = 'attached' | 'independent';
@@ -41,9 +42,20 @@ interface ProcEntry {
 
 const _registry = new Map<string, ProcEntry>();
 const _watchdogs = new Map<string, NodeJS.Timeout>();
+const _osHeartbeats = new Map<string, NodeJS.Timeout>();
 const _statusListeners: Array<(goodsId: string, running: boolean, pid: number | null) => void> = [];
 let _userDataPath: string | null = null;
+
+/** 设置用户数据目录（启动时由 main.ts 调用，确保跨窗口 PID 文件检测始终可用） */
+export function setGaeaUserDataPath(dir: string): void {
+    _userDataPath = dir;
+}
 const _goodsMeta = new Map<string, { allowMultiple: boolean }>();
+
+/** ★ 向 goods 元信息注册表中预填条目（启动时调用），确保跨窗口状态检测不受调用时序影响 */
+export function registerGoodsMeta(goodsId: string, allowMultiple: boolean): void {
+    _goodsMeta.set(goodsId, { allowMultiple });
+}
 // ★ 单例冲突标记：进程因互斥锁冲突退出（exit code 100）→ 防止看门狗无限重启
 const _singletonConflicts = new Set<string>();
 // ★ 启动中锁：防并发 startGaeaProcess 竞态（两个调用同时通过 PID 文件检查）
@@ -116,6 +128,104 @@ function _writePidFile(userData: string, goodsId: string, pid: number): void {
 
 function _removePidFile(userData: string, goodsId: string): void {
     try { fs.unlinkSync(_pidFilePath(userData, goodsId)); } catch { /* ignore */ }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OS 级状态文件 — 跨绿色包/跨窗口同步（2026-07-28）
+// 路径: C:\Users\{用户}\AppData\Local\{goodsId}\.gaea-state.json
+// 与 kope.sq3 / .singleton.lock 同目录，同一套 expanduser 约定
+// ═══════════════════════════════════════════════════════════════
+
+function _getOsStateDir(goodsId: string): string {
+    const dir = path.join(os.homedir(), 'AppData', 'Local', goodsId);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
+function _getOsStatePath(goodsId: string): string {
+    return path.join(_getOsStateDir(goodsId), '.gaea-state.json');
+}
+
+interface OsGaeaState {
+    pid: number;
+    autoStart: boolean;
+    ts: number;
+}
+
+function _readOsState(goodsId: string): OsGaeaState | null {
+    try {
+        const p = _getOsStatePath(goodsId);
+        if (!fs.existsSync(p)) return null;
+        const raw = fs.readFileSync(p, 'utf-8');
+        const data = JSON.parse(raw);
+        if (typeof data.pid === 'number' && typeof data.ts === 'number') {
+            return { pid: data.pid, autoStart: !!data.autoStart, ts: data.ts };
+        }
+        return null;
+    } catch { return null; }
+}
+
+function _writeOsState(goodsId: string, state: OsGaeaState): void {
+    try {
+        const dir = _getOsStateDir(goodsId);
+        const dest = path.join(dir, '.gaea-state.json');
+        const tmp = dest + '.tmp';
+        fs.writeFileSync(tmp, JSON.stringify(state), 'utf-8');
+        fs.renameSync(tmp, dest);
+    } catch { /* ignore */ }
+}
+
+function _clearOsState(goodsId: string): void {
+    try {
+        const p = _getOsStatePath(goodsId);
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+    } catch { /* ignore */ }
+}
+
+/** 同步 autoStart 到 OS 级状态文件（跨绿色包可见） */
+export function syncOsGaeaAutoStart(goodsId: string, autoStart: boolean): void {
+    const state = _readOsState(goodsId);
+    if (state) {
+        _writeOsState(goodsId, { ...state, autoStart });
+    }
+}
+
+/** 从 OS 级状态文件读取 autoStart（跨绿色包可见） */
+export function getOsGaeaAutoStart(goodsId: string): boolean | null {
+    const state = _readOsState(goodsId);
+    if (!state) return null;
+    return state.autoStart;
+}
+
+/** 检查 OS 级状态文件中记录的 PID 是否存活（跨绿色包检测） */
+function _checkOsState(goodsId: string): { running: boolean; pid?: number } {
+    const state = _readOsState(goodsId);
+    if (!state) return { running: false };
+    // 过期清理：超过 30s 未更新 → 视为僵尸
+    if (Date.now() - state.ts > 30000) {
+        _clearOsState(goodsId);
+        return { running: false };
+    }
+    if (_isPidAlive(state.pid)) {
+        return { running: true, pid: state.pid };
+    } else {
+        _clearOsState(goodsId);
+        return { running: false };
+    }
+}
+
+/** 启动 OS 级心跳：每 10s 刷新 ts，保活 */
+function _startOsHeartbeat(goodsId: string, pid: number, autoStart: boolean): NodeJS.Timeout {
+    _writeOsState(goodsId, { pid, autoStart, ts: Date.now() });
+    const timer = setInterval(() => {
+        const current = _readOsState(goodsId);
+        if (!current || current.pid !== pid) {
+            clearInterval(timer);
+            return;
+        }
+        _writeOsState(goodsId, { pid, autoStart: current.autoStart, ts: Date.now() });
+    }, 10000);
+    return timer;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -251,6 +361,9 @@ export function startGaeaProcess(
         // ★ 写 PID 文件（脚本也会写，双写保底）
         if (!allowMultiple && entry.pid) {
             _writePidFile(userData, goodsId, entry.pid);
+            // ★ OS 级状态文件 + 心跳（跨绿色包同步）
+            const autoStart = _readOsState(goodsId)?.autoStart ?? true;
+            _osHeartbeats.set(goodsId, _startOsHeartbeat(goodsId, entry.pid, autoStart));
         }
 
         // ★ 通知渲染层状态变更
@@ -259,20 +372,32 @@ export function startGaeaProcess(
         proc.on('exit', (code, signal) => {
             console.log('[' + goodsId + '] exited code=' + code + ' signal=' + signal);
             if (!allowMultiple) {
-                _removePidFile(userData, goodsId);
                 // ★ exit code 100 = 互斥锁冲突（另一实例已运行，可能来自其他 IDE）
+                //   pid 文件属于真实进程，不能删除
                 if (code === 100) {
                     _singletonConflicts.add(goodsId);
                     console.log('[' + goodsId + '] singleton conflict — watchdog blocked');
+                } else {
+                    // 正常退出 → 删除 PID 文件 + OS 级状态
+                    _removePidFile(userData, goodsId);
+                    _clearOsState(goodsId);
                 }
             }
+            // 停止 OS 级心跳
+            const hb = _osHeartbeats.get(goodsId);
+            if (hb) { clearInterval(hb); _osHeartbeats.delete(goodsId); }
             _registry.delete(goodsId);
             _notifyStatus(goodsId, false, null);
         });
 
         proc.on('error', (err) => {
             console.error('[' + goodsId + '] proc error:', err);
-            if (!allowMultiple) _removePidFile(userData, goodsId);
+            if (!allowMultiple) {
+                _removePidFile(userData, goodsId);
+                _clearOsState(goodsId);
+            }
+            const hb = _osHeartbeats.get(goodsId);
+            if (hb) { clearInterval(hb); _osHeartbeats.delete(goodsId); }
             _registry.delete(goodsId);
             _notifyStatus(goodsId, false, null);
         });
@@ -329,6 +454,11 @@ export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string 
         _removePidFile(_userDataPath, goodsId);
     }
 
+    // ★ 清理 OS 级状态文件
+    _clearOsState(goodsId);
+    const hb = _osHeartbeats.get(goodsId);
+    if (hb) { clearInterval(hb); _osHeartbeats.delete(goodsId); }
+
     // ★ 路径 C: 暴力扫描 — 无论前两路是否成功，都扫一遍全杀
     if (process.platform === 'win32') {
         try {
@@ -362,11 +492,16 @@ export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string 
 export function isGaeaProcessRunning(goodsId: string): boolean {
     const entry = _registry.get(goodsId);
     if (entry && entry.proc && !entry.proc.killed) return true;
-    // ★ 跨窗口：通过 PID 文件检测其他窗口启动的进程
+    // ★ 跨窗口（同绿色包）：通过 PID 文件检测其他窗口启动的进程
     const meta = _goodsMeta.get(goodsId);
     if (meta && !meta.allowMultiple && _userDataPath) {
         const existing = _checkExistingInstance(_userDataPath, goodsId);
         if (existing.running) return true;
+    }
+    // ★ 跨绿色包：通过 OS 级状态文件检测其他绿色包启动的进程
+    if (meta && !meta.allowMultiple) {
+        const osCheck = _checkOsState(goodsId);
+        if (osCheck.running) return true;
     }
     return false;
 }
@@ -379,6 +514,9 @@ export function getGaeaProcessPid(goodsId: string): number | null {
 export function cleanupAllGaeaProcesses(): void {
     console.log('[gaea-process] cleanupAll — ' + _registry.size + ' process(es)');
     stopAllGaeaWatchdogs();
+    // 停所有 OS 级心跳
+    _osHeartbeats.forEach((timer, goodsId) => { clearInterval(timer); _clearOsState(goodsId); });
+    _osHeartbeats.clear();
     _registry.forEach((entry, goodsId) => {
         console.log('[gaea-process] cleaning ' + goodsId + ' (pid=' + entry.pid + ', lifecycle=' + entry.lifecycle + ')');
         stopGaeaProcess(goodsId);
@@ -410,10 +548,13 @@ export function startGaeaWatchdog(
         if (_singletonConflicts.has(goodsId)) {
             return;
         }
+        // ★ 先检查 OS 级状态（跨绿色包），再检查本地 PID 文件
+        const osCheck = _checkOsState(goodsId);
         const existing = _checkExistingInstance(userData, goodsId);
-        if (!existing.running) {
+        if (!existing.running && !osCheck.running) {
             console.log('[watchdog:' + goodsId + '] process not running, restarting...');
             _removePidFile(userData, goodsId);
+            _clearOsState(goodsId);
             _registry.delete(goodsId);
             const result = startGaeaProcess(portableRoot, goodsId, scriptPath, runtime, lifecycle, false);
             if (result.ok) {

@@ -14,7 +14,7 @@
     version: '1.0.0',
     type: 'process',
     lifecycle: 'independent',
-    audio: { mode: 'independent' },
+    audio: { mode: 'ide' },
     allowMultiple: false,
 
     // 后台进程：Python 剪贴板监控

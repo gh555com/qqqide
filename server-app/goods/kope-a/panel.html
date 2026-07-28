@@ -1,6 +1,4 @@
 <!DOCTYPE html>
-
-<!-- Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved. -->
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -404,6 +402,7 @@ body {
                 preview: it.preview,
                 size: it.size_bytes,
                 pinned: !!it.pinned,
+                pinned_at: it.pinned_at || '',
                 hash: it.content_hash
             };
         });
@@ -541,6 +540,8 @@ body {
         return arr.sort(function(a, b) {
             if (a.pinned && !b.pinned) return -1;
             if (!a.pinned && b.pinned) return 1;
+            // Q4: pinned sort by pinned_at ASC (earliest pinned first)
+            if (a.pinned && b.pinned) return (a.pinned_at || '').localeCompare(b.pinned_at || '');
             return (b.timestamp || 0) - (a.timestamp || 0);
         });
     }
@@ -574,6 +575,12 @@ body {
         for (var i = 0; i < clipHistory.length; i++) {
             if (clipHistory[i].id === itemId) {
                 clipHistory[i].pinned = !clipHistory[i].pinned;
+                // Q4: record pinTimestamp on pin, clear on unpin
+                if (clipHistory[i].pinned) {
+                    clipHistory[i].pinned_at = new Date().toISOString().replace('T', ' ').substring(0, 19);
+                } else {
+                    clipHistory[i].pinned_at = '';
+                }
                 var item = clipHistory[i];
                 clipHistory.splice(i, 1);
                 if (item.pinned) clipHistory.unshift(item);
@@ -668,12 +675,14 @@ body {
         for (var i = 0; i < clipHistory.length; i++) {
             if (clipHistory[i].id === id) {
                 copyToClipboard(clipHistory[i].content);
-                // ★ 照抄 Q4: 重排到顶端（置顶卡片之后），聚焦时延迟到失焦再渲染
                 var clicked = clipHistory[i];
-                clipHistory.splice(i, 1);
-                var insertAt = 0;
-                while (insertAt < clipHistory.length && clipHistory[insertAt].pinned) insertAt++;
-                clipHistory.splice(insertAt, 0, clicked);
+                // Q4: pinned items keep position (order by pinned_at); non-pinned reorder to top
+                if (!clicked.pinned) {
+                    clipHistory.splice(i, 1);
+                    var insertAt = 0;
+                    while (insertAt < clipHistory.length && clipHistory[insertAt].pinned) insertAt++;
+                    clipHistory.splice(insertAt, 0, clicked);
+                }
                 clicked.timestamp = Date.now();
                 rebuildHashMap();
                 _pendingClickId = id;

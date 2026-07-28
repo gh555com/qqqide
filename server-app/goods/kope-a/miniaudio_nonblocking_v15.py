@@ -17,11 +17,16 @@ class NonBlockingAudioEngine:
     """
     非阻塞音频播放引擎，基于q2.py的v15逻辑和q1.py的多线程实现
     支持无延迟、多音效同步播放
+    v1.3 — 新增音量控制: master_volume (0.0-1.0) 控制总音量
     """
 
-    def __init__(self, asset_folder="assets"):
+    def __init__(self, asset_folder="assets", master_volume=0.25):
         print("非阻塞音频引擎 (NonBlockingAudioEngine) 正在初始化...")
         self.asset_folder = asset_folder
+        self.master_volume = float(master_volume)  # 总音量 0.0-1.0，默认 0.25 (25%)
+
+        # 分类音量乘数: main=水滴音效, q=打枪音效, z=清空音效
+        self._volume_mult = {'main': 1.0, 'q': 0.05, 'z': 1.0}
 
         # 音频格式设置 (从q2.py的v15逻辑)
         self.REQUESTED_FORMAT = miniaudio.SampleFormat.SIGNED16
@@ -42,7 +47,7 @@ class NonBlockingAudioEngine:
 
         # 加载所有音效文件
         self._load_sound_files()
-        print(f"非阻塞音频引擎初始化完毕，共加载 {len(self.main_sounds)} 个主音效，{len(self.q_sounds)} 个q音效，{len(self.z_sounds)} 个z音效")
+        print(f"非阻塞音频引擎初始化完毕，共加载 {len(self.main_sounds)} 个主音效，{len(self.q_sounds)} 个q音效，{len(self.z_sounds)} 个z音效，音量={self.master_volume:.0%}")
 
     # --- (取自 V2：更健壮的加载) ---
     def _load_sound_files(self):
@@ -110,116 +115,77 @@ class NonBlockingAudioEngine:
 
         return sound_list[new_index]
 
-    # --- (取自 V2：更健壮的播放) ---
-    def _play_sound_worker(self, file_path):
-        """
-        基于q2.py的v15逻辑的音频播放工作线程函数
-        这是实际执行音频播放的函数，会在单独的线程中运行
-        """
-        sound = None
+    # --- (v1.5: stream_file/stream_raw_pcm_memory + PlaybackDevice, 兼容 miniaudio 1.61) ---
+    def _play_sound_worker(self, file_path, volume=1.0):
+        """音频播放工作线程。vol>=0.999→stream_file 快速路径; 否则 decode→gain→stream_raw_pcm_memory。"""
         device = None
-        file_duration = 0.0
-
+        vol = max(0.0, min(1.0, float(volume)))
         try:
-            # 检查文件是否存在
             if not os.path.exists(file_path):
-                print(f"【!!】 音效文件不存在: {file_path}")
                 return
-
-            # 步骤 1/5: 获取文件信息
-            try:
-                file_info = miniaudio.get_file_info(file_path)
-                file_duration = file_info.duration
-                if file_duration <= 0:
-                    raise ValueError(f"无法获取文件时长或时长为 0: {file_path}")
-            except Exception as e:
-                print(f"【!!】 获取文件信息失败 {file_path}: {e}")
+            info = miniaudio.get_file_info(file_path)
+            if info.duration <= 0:
                 return
-
-            # 步骤 2/5: 尝试将文件作为 "流" 打开
-            try:
-                sound = miniaudio.stream_file(
-                    file_path,
-                    output_format=self.REQUESTED_FORMAT,
-                    nchannels=self.REQUESTED_CHANNELS,
-                    sample_rate=self.REQUESTED_RATE
-                )
-            except Exception as e:
-                print(f"【!!】 打开音频流失败 {file_path}: {e}")
-                return
-
-            # 步骤 3/5: 尝试初始化回放设备
-            try:
-                device = miniaudio.PlaybackDevice(
-                    output_format=self.REQUESTED_FORMAT,
-                    nchannels=self.REQUESTED_CHANNELS,
-                    sample_rate=self.REQUESTED_RATE
-                )
-            except Exception as e:
-                print(f"【!!】 初始化播放设备失败: {e}")
-                if sound:
-                    sound.close()
-                return
-
-            # 步骤 4/5: 启动设备
-            try:
-                device.start(sound)
-            except Exception as e:
-                print(f"【!!】 启动播放失败 {file_path}: {e}")
-                if sound:
-                    sound.close()
-                device.close()
-                return
-
-            # 步骤 5/5: 等待播放完成 (v15核心逻辑)
-            try:
-                wait_time = file_duration + 0.1  # 稍微增加一个小的缓冲区
-                time.sleep(wait_time)  # 阻塞当前线程，但不阻塞主线程
-            except Exception as e:
-                print(f"【!!】 等待播放完成时出错: {e}")
-
+            if vol >= 0.999:
+                stream = miniaudio.stream_file(file_path)
+                device = miniaudio.PlaybackDevice()
+            else:
+                decoded = miniaudio.decode_file(file_path)
+                samples = decoded.samples
+                for i in range(len(samples)):
+                    samples[i] = int(samples[i] * vol)
+                pcm_bytes = samples.tobytes()
+                sw = miniaudio.width_from_format(decoded.sample_format)
+                stream = miniaudio.stream_raw_pcm_memory(pcm_bytes,
+                    nchannels=decoded.nchannels, sample_width=sw, frames_to_read=1024)
+                device = miniaudio.PlaybackDevice(output_format=decoded.sample_format,
+                    nchannels=decoded.nchannels, sample_rate=decoded.sample_rate)
+            device.start(stream)
+            time.sleep(info.duration + 0.15)
         except Exception as e:
-            print(f"【!!】 音频播放失败: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"【!!】 音频播放失败 {file_path}: {e}")
         finally:
-            # 彻底关闭资源 (v15逻辑)
             if device:
-                try:
-                    device.stop()
-                except Exception:
-                    pass  # 忽略 stop 时的错误
-                device.close()
+                try: device.stop()
+                except Exception: pass
+                try: device.close()
+                except Exception: pass
+    # --- (v1.5 逻辑结束) ---
 
-            if sound:
-                sound.close()
-    # --- (V2 逻辑结束) ---
+    def set_volume(self, vol):
+        """设置总音量 0.0-1.0"""
+        self.master_volume = max(0.0, min(1.0, float(vol)))
+
+    def set_volume_mult(self, category, mult):
+        """设置分类音量乘数: 'main'/'q'/'z'"""
+        if category in self._volume_mult:
+            self._volume_mult[category] = max(0.0, min(1.0, float(mult)))
 
     def play_random_sound(self):
         """播放随机主音效"""
         sound = self._get_random_sound(self.main_sounds, self.last_played_main)
         if sound:
             self.last_played_main = self.main_sounds.index(sound)
-            self.executor.submit(self._play_sound_worker, sound)
+            self.executor.submit(self._play_sound_worker, sound, self.master_volume * self._volume_mult['main'])
 
     def play_q_sound(self):
-        """播放随机q系列音效"""
+        """播放随机q系列音效（打枪音效 — 音量减半后受总音量控制）"""
         sound = self._get_random_sound(self.q_sounds, self.last_played_q)
         if sound:
             self.last_played_q = self.q_sounds.index(sound)
-            self.executor.submit(self._play_sound_worker, sound)
+            self.executor.submit(self._play_sound_worker, sound, self.master_volume * self._volume_mult['q'])
 
     def play_z_sound(self):
         """播放随机z系列音效"""
         sound = self._get_random_sound(self.z_sounds, self.last_played_z)
         if sound:
             self.last_played_z = self.z_sounds.index(sound)
-            self.executor.submit(self._play_sound_worker, sound)
+            self.executor.submit(self._play_sound_worker, sound, self.master_volume * self._volume_mult['z'])
 
     def play_sound_file(self, file_path):
         """播放指定的音频文件"""
         if os.path.exists(file_path):
-            self.executor.submit(self._play_sound_worker, file_path)
+            self.executor.submit(self._play_sound_worker, file_path, self.master_volume)
 
     def play_sound_index(self, sound_type, index):
         """
@@ -227,15 +193,16 @@ class NonBlockingAudioEngine:
         sound_type: 'main', 'q', 'z'
         index: 音效索引（从1开始）
         """
+        vol = self.master_volume * self._volume_mult.get(sound_type, 1.0)
         if sound_type == 'main':
             if 1 <= index <= len(self.main_sounds):
-                self.executor.submit(self._play_sound_worker, self.main_sounds[index-1])
+                self.executor.submit(self._play_sound_worker, self.main_sounds[index-1], vol)
         elif sound_type == 'q':
             if 1 <= index <= len(self.q_sounds):
-                self.executor.submit(self._play_sound_worker, self.q_sounds[index-1])
+                self.executor.submit(self._play_sound_worker, self.q_sounds[index-1], vol)
         elif sound_type == 'z':
             if 1 <= index <= len(self.z_sounds):
-                self.executor.submit(self._play_sound_worker, self.z_sounds[index-1])
+                self.executor.submit(self._play_sound_worker, self.z_sounds[index-1], vol)
 
     # --- (取自 V1：正确的清理) ---
     def cleanup(self):

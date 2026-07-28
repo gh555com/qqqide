@@ -13,7 +13,7 @@
 //   ② 后台线程 → 按配置检查服务器 → 下载 r.next → 写 .version-next
 //   ③ 下次启动 → 检测暂存更新 → 删旧 gh555.com/ → 解压 → 100% 精确一致
 //
-// 编译：gcc -mwindows -O2 -s -o qqqide.exe launcher.c -lcomctl32 -lwinhttp
+// 编译：build.bat（一键：windres + gcc → qqqide.exe，带 shell/icon.ico 图标）
 // ============================================================================
 
 #define WIN32_LEAN_AND_MEAN
@@ -706,9 +706,26 @@ static int downloadAndExtractUpdate(const WCHAR *exeDir, const char *newVer) {
     if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
     WCHAR ghDir[MAX_PATH];
     swprintf(ghDir, MAX_PATH, L"%s\\gh555.com", exeDir);
+
+    // ★ 保存用户数据
+    WCHAR dataDir[MAX_PATH], backupDir[MAX_PATH];
+    swprintf(dataDir, MAX_PATH, L"%s\\Data", ghDir);
+    swprintf(backupDir, MAX_PATH, L"%s\\Data.backup", exeDir);
+    removeDir(backupDir);
+    int hasBackup = MoveFileW(dataDir, backupDir);
+
     removeDir(ghDir);
 
-    if (extractPayload(rPath, exeDir) != 0) return -1;
+    if (extractPayload(rPath, exeDir) != 0) {
+        if (hasBackup) MoveFileW(backupDir, dataDir);
+        return -1;
+    }
+
+    // ★ 恢复用户数据
+    if (hasBackup) {
+        removeDir(dataDir);
+        MoveFileW(backupDir, dataDir);
+    }
     writeLocalVersion(exeDir, newVer);
 
     g_pct = 100;
@@ -734,6 +751,14 @@ static int applyStagedUpdate(const WCHAR *exeDir) {
 
     WCHAR ghDir[MAX_PATH];
     swprintf(ghDir, MAX_PATH, L"%s\\gh555.com", exeDir);
+
+    // ★ 保存用户数据
+    WCHAR dataDir[MAX_PATH], backupDir[MAX_PATH];
+    swprintf(dataDir, MAX_PATH, L"%s\\Data", ghDir);
+    swprintf(backupDir, MAX_PATH, L"%s\\Data.backup", exeDir);
+    removeDir(backupDir);
+    int hasBackup = MoveFileW(dataDir, backupDir);
+
     removeDir(ghDir);
 
     // 用 r.next 解压
@@ -745,6 +770,7 @@ static int applyStagedUpdate(const WCHAR *exeDir) {
     PROCESS_INFORMATION pi = {0};
     if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
         CREATE_NO_WINDOW, NULL, exeDir, &si, &pi)) {
+        if (hasBackup) MoveFileW(backupDir, dataDir);
         DeleteFileW(rNext); DeleteFileW(vNext);
         return -1;
     }
@@ -762,14 +788,26 @@ static int applyStagedUpdate(const WCHAR *exeDir) {
         }
     }
     CloseHandle(pi.hProcess);
-    if (ec != 0) { DeleteFileW(rNext); DeleteFileW(vNext); return -1; }
+    if (ec != 0) {
+        if (hasBackup) MoveFileW(backupDir, dataDir);
+        DeleteFileW(rNext); DeleteFileW(vNext); return -1;
+    }
 
     // 验证
     WCHAR check[MAX_PATH];
     WCHAR wJoker[256];
     toWide(g_cfg.joker_exe, wJoker, 256);
     swprintf(check, MAX_PATH, L"%s\\%s", exeDir, wJoker);
-    if (!fileExistsW(check)) { DeleteFileW(rNext); DeleteFileW(vNext); return -1; }
+    if (!fileExistsW(check)) {
+        if (hasBackup) MoveFileW(backupDir, dataDir);
+        DeleteFileW(rNext); DeleteFileW(vNext); return -1;
+    }
+
+    // ★ 恢复用户数据
+    if (hasBackup) {
+        removeDir(dataDir);
+        MoveFileW(backupDir, dataDir);
+    }
 
     writeLocalVersion(exeDir, newVer);
     DeleteFileW(rNext);

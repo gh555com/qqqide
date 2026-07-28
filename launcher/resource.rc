@@ -1,0 +1,3 @@
+// Icon resource for qqqide.exe
+// Points to shell/icon.ico (same icon used by electron-builder for joker.exe)
+APP_ICON ICON "../shell/icon.ico"

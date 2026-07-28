@@ -285,7 +285,8 @@ function _initA1Block(aiDiv, allTxtPath, questId, floorNum) {
 
     block.appendChild(r1);
     block.appendChild(r2);
-    block.appendChild(r3);
+    // ★ r3 临时隐藏（审计/翻译/语言选择），功能完成后恢复下一行:
+    // block.appendChild(r3);
 
     var clockBlock = aiDiv._clockBlock;
     if (clockBlock) {

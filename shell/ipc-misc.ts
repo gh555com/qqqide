@@ -48,7 +48,7 @@ export function registerMiscIpc(
         try { return await electronShell.openPath(p); } catch (e) { console.warn('[shell:openPath]', e); return ''; }
     });
     ipcMain.handle('qqqide:shell:openExternal', async (_e, url: string) => {
-        openUrl(url);
+        openUrl(url, _e.sender);
     });
 
     // ---- drives / diskFree ----

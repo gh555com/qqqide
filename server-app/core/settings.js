@@ -77,11 +77,18 @@
     {
       key: 'audio.volume',
       label: '音量',
-      desc: 'IDE 窗口及所有 goods 的音量（独立音量 goods 走旁路，不受此控制）。',
+      desc: 'IDE 窗口及所有 goods 的音量（独立音量 goods 走旁路，不受此控制）。出厂默认 25%。',
       type: 'slider-stepped',
       tab: 'general',
-      defaultValue: '100',
+      defaultValue: _D['audio.volume'] || '25',
       stops: ['0', '25', '50', '75', '100']
+    },
+    {
+      key: 'desktop.shortcut',
+      label: '自动生成桌面图标',
+      type: 'bool',
+      tab: 'general',
+      defaultValue: _D['desktop.shortcut'] !== undefined ? String(_D['desktop.shortcut']) : 'true'
     },
     {
       key: 'timeline.trackRunCommand',
@@ -469,6 +476,14 @@
     }
   }
 
+  // ── 桌面快捷方式同步 ──
+  function _syncDesktopShortcut() {
+    if (window.qqqideBridge && window.qqqideBridge.desktop && window.qqqideBridge.desktop.syncShortcut) {
+      var enabled = get('desktop.shortcut', 'true');
+      window.qqqideBridge.desktop.syncShortcut(enabled === true || enabled === 'true');
+    }
+  }
+
   // ── 初始化 ──
   function init() {
     if (_initDone) return;
@@ -481,6 +496,9 @@
         _syncTheme();
       });
     }
+    // 桌面快捷方式：初始同步 + 变更监听
+    setTimeout(function () { _syncDesktopShortcut(); }, 2000);
+    onChange('desktop.shortcut', function () { _syncDesktopShortcut(); });
   }
 
   // 自动初始化（DOM 就绪后）

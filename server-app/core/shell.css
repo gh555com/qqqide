@@ -652,6 +652,10 @@ body {
   border-bottom: 1px solid var(--border-color);
   scrollbar-width: none;
 }
+/* Gaea group tab bar — allow Roam ::after overflow */
+.qqq-tab-group:first-child .qqq-tab-bar {
+  overflow: visible;
+}
 
 .qqq-tab-bar::-webkit-scrollbar {
   display: none;
@@ -687,6 +691,46 @@ body {
   color: var(--text-primary);
   border-bottom-color: var(--primary-color);
   background: var(--background-color);
+}
+
+/* Roam 永驻标签 — 窄宽金色文字，枪灰右竖线贯穿到底+2px */
+.qqq-tab-btn.qqq-tab-roam {
+  flex: 0 0 auto;
+  width: 58px;
+  min-width: 44px;
+  max-width: 68px;
+  padding: 3px 6px 0 6px;
+  justify-content: center;
+  font-weight: 700;
+  color: #b68200;
+  border-radius: 0;
+  position: relative;
+  overflow: visible;
+}
+.qqq-tab-btn.qqq-tab-roam::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  background: #888;
+  pointer-events: none;
+}
+.qqq-tab-btn.qqq-tab-roam:hover {
+  color: #b68200;
+}
+.qqq-tab-btn.qqq-tab-roam.qqq-tab-active {
+  border-bottom-color: #888;
+}
+[data-theme="dark"] .qqq-tab-btn.qqq-tab-roam::after {
+  background: #999;
+}
+[data-theme="dark"] .qqq-tab-btn.qqq-tab-roam:hover {
+  color: #b68200;
+}
+[data-theme="dark"] .qqq-tab-btn.qqq-tab-roam.qqq-tab-active {
+  border-bottom-color: #999;
 }
 
 .qqq-tab-close {
@@ -1628,12 +1672,45 @@ body {
   }
 }
 
-/* ── A 区货物切换下拉 ── */
-.gaea-zone-switcher {
-  flex: 0 0 auto;
-  padding: 4px 6px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--background-color);
+/* ── 品牌下拉 — hover 菜单行2 "qqq" ── */
+.qqq-brand-dropdown {
+  position: fixed;
+  z-index: 999999;
+  background: var(--card-bg, #fdf6e3);
+  border: 1px solid var(--border-color, #d6d6d6);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  min-width: 130px;
+  padding: 0;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.qqq-brand-dropdown.open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.qqq-brand-dd-item {
+  padding: 7px 12px;
+  cursor: default;
+  font-size: 13px;
+  font-family: Tahoma, sans-serif;
+  color: var(--text-primary, #586e75);
+  margin: 0;
+}
+.qqq-brand-dd-item:first-child {
+  border-radius: 6px 6px 0 0;
+}
+.qqq-brand-dd-item:last-child {
+  border-radius: 0 0 6px 6px;
+}
+.qqq-brand-dd-item:hover {
+  background: var(--hover-bg, rgba(0,0,0,0.06));
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: -1px 0;
 }
 
 /* ── A 区 GH Health 固定商标位 ── */

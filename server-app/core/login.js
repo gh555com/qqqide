@@ -215,6 +215,38 @@
     });
   }
 
+  // ★ 2026-07-28：浏览器启动兜底监听
+  // 主进程 browser-launcher.ts 所有层 fail 后通过 IPC 推送 URL，
+  // 渲染层用唯一真理 qoast 弹提醒 + 复制链接按钮。
+  var _browserFallbackUnsub = null;
+  function _setupBrowserFallback() {
+    try {
+      if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.onBrowserFallback) {
+        _browserFallbackUnsub = window.qqqideBridge.shell.onBrowserFallback(function (url) {
+          console.log('[login] browser fallback triggered, url=' + url.slice(0, 60));
+          if (window.qqqideQoast) {
+            window.qqqideQoast.show('浏览器可能未打开，请复制链接手动访问', {
+              duration: 0,
+              type: 'warning',
+              action: {
+                text: '复制链接',
+                callback: function () {
+                  try {
+                    if (window.qqqideBridge && window.qqqideBridge.clipboard) {
+                      window.qqqideBridge.clipboard.writeText(url);
+                    }
+                  } catch (e) {}
+                }
+              }
+            });
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[login] setupBrowserFallback failed:', e);
+    }
+  }
+
   async function _fetchLv() {
     if (!_authData || !_authData.token) return;
     try {
@@ -1076,6 +1108,7 @@
       if (_initDone) return;
       _initDone = true;
       _setupLvListener();     // ★ 注册 billing 事件 → LV 拉取监听
+      _setupBrowserFallback(); // ★ 2026-07-28：浏览器启动兜底监听 → 弹 qoast
       _injectLoginButton(); // ★ 无条件注入 DOM，不受 bootInfo/bridge 影响
       _ensureBootInfo().then(function () {
         _restoreAuth().then(function () { _notifyStateChange(); });
