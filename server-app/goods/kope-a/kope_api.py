@@ -1,8 +1,8 @@
 # Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
-# kope_api.py — 本地 HTTP JSON API 服务
-# 嵌入 q3.py 进程，提供面板与 Python 端的数据桥梁
-# 监听 127.0.0.1:19820，仅本机可访问
+# kope_api.py — SSE 实时推送服务 (仅推送，数据走 IPC Bridge)
+# 嵌入 q3.py 进程。监听 127.0.0.1:19820，仅本机可访问。
+# 终局架构: Bridge 管数据读写，SSE 仅推送 'change' 事件。
 
 import json
 import os
@@ -11,6 +11,7 @@ import threading
 import queue
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 
 import kope_store
 
@@ -18,8 +19,13 @@ DEFAULT_PORT = 19820
 MAX_PORT_TRIES = 10
 
 
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """多线程 HTTP 服务器 — 支持 N 个 SSE 连接 + N 个 API 调用并发"""
+    daemon_threads = True
+
+
 class KopeRequestHandler(BaseHTTPRequestHandler):
-    """轻量 JSON API handler，无外部依赖"""
+    """轻量 JSON API handler，仅推送端点"""
 
     def log_message(self, format, *args):
         pass
@@ -33,18 +39,8 @@ class KopeRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _read_body(self):
-        length = int(self.headers.get('Content-Length', 0))
-        if length > 5 * 1024 * 1024:
-            return None
-        body = self.rfile.read(length).decode('utf-8', errors='replace')
-        try:
-            return json.loads(body)
-        except json.JSONDecodeError:
-            return None
-
     def _handle_sse(self):
-        """SSE 端点 — 推送数据变更事件给 panel.html。"""
+        """SSE 端点 — 推送 'change' 事件给 panel.html。"""
         self.send_response(200)
         self.send_header('Content-Type', 'text/event-stream')
         self.send_header('Cache-Control', 'no-cache')
@@ -60,7 +56,6 @@ class KopeRequestHandler(BaseHTTPRequestHandler):
                     self.wfile.write(f"data: {msg}\n\n".encode('utf-8'))
                     self.wfile.flush()
                 except queue.Empty:
-                    # 15s 无事件 → 发送 keepalive 注释
                     self.wfile.write(b": keepalive\n\n")
                     self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
@@ -71,7 +66,7 @@ class KopeRequestHandler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
 
@@ -82,76 +77,12 @@ class KopeRequestHandler(BaseHTTPRequestHandler):
 
         if path == '/events':
             self._handle_sse()
-            return
-
         elif path == '/ping':
             self._send_json({'ok': True, 'version': '1.0.0'})
-
-        elif path == '/history':
-            search = qs.get('search', [''])[0]
-            limit = min(int(qs.get('limit', [30])[0]), 200)
-            offset = int(qs.get('offset', [0])[0])
-            items, total = kope_store.get_history(search=search, limit=limit, offset=offset)
-            kope_store.cleanup_if_needed()
-            self._send_json({'items': items, 'total': total, 'limit': limit, 'offset': offset})
-
         elif path == '/stats':
             stats = kope_store.get_stats()
             kope_store.cleanup_if_needed()
             self._send_json(stats)
-
-        elif path == '/item':
-            item_id = qs.get('id', [None])[0]
-            if not item_id:
-                self._send_json({'error': 'missing id'}, 400)
-                return
-            item = kope_store.get_item_by_id(int(item_id))
-            if item:
-                self._send_json({'item': item})
-            else:
-                self._send_json({'error': 'not found'}, 404)
-
-        else:
-            self._send_json({'error': 'not found'}, 404)
-
-    def do_POST(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path.rstrip('/')
-
-        if path == '/add':
-            data = self._read_body()
-            if not data or 'content' not in data:
-                self._send_json({'error': 'missing content'}, 400)
-                return
-            item = kope_store.add_or_update(
-                data['content'],
-                data.get('type', 'text')
-            )
-            if item:
-                kope_store.cleanup()
-                self._send_json({'item': item})
-            else:
-                self._send_json({'error': 'empty content'}, 400)
-
-        elif path == '/pin':
-            data = self._read_body()
-            if not data or 'id' not in data:
-                self._send_json({'error': 'missing id'}, 400)
-                return
-            item = kope_store.toggle_pin(data['id'])
-            if item:
-                self._send_json({'item': item})
-            else:
-                self._send_json({'error': 'not found'}, 404)
-
-        elif path == '/delete':
-            data = self._read_body()
-            if not data or 'id' not in data:
-                self._send_json({'error': 'missing id'}, 400)
-                return
-            ok = kope_store.delete_item(data['id'])
-            self._send_json({'ok': ok})
-
         else:
             self._send_json({'error': 'not found'}, 404)
 
@@ -168,7 +99,7 @@ def _find_free_port(start=DEFAULT_PORT):
 
 
 def start_server():
-    """启动 HTTP API 服务。返回 (server, port)。"""
+    """启动 SSE 推送服务。返回 (server, port)。"""
     kope_store.init_db()
 
     port = _find_free_port()
@@ -176,11 +107,10 @@ def start_server():
         print('[kope_api] 无法找到可用端口')
         return None, None
 
-    server = HTTPServer(('127.0.0.1', port), KopeRequestHandler)
+    server = ThreadedHTTPServer(('127.0.0.1', port), KopeRequestHandler)
     thread = threading.Thread(target=server.serve_forever, name='kope-api', daemon=True)
     thread.start()
 
-    # 写端口文件供 panel.html 读取
     port_file = kope_store.get_port_file_path()
     try:
         os.makedirs(os.path.dirname(port_file), exist_ok=True)
@@ -189,16 +119,16 @@ def start_server():
     except Exception as e:
         print(f'[kope_api] 写入端口文件失败: {e}')
 
-    print(f'[kope_api] API 服务已启动 http://127.0.0.1:{port}')
+    print(f'[kope_api] SSE 推送服务已启动 http://127.0.0.1:{port}')
     return server, port
 
 
 def stop_server(server):
-    """停止 API 服务。"""
+    """停止 SSE 推送服务。"""
     if server:
         try:
             server.shutdown()
             server.server_close()
-            print('[kope_api] API 服务已停止')
+            print('[kope_api] SSE 推送服务已停止')
         except Exception as e:
             print(f'[kope_api] 停止服务异常: {e}')

@@ -1,5 +1,3 @@
-# Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
-
 # q3.py (v5.1.0 - Two Strategy, No FastClear)
 # -*- coding: utf-8 -*-
 import sys as _sys, os as _os
@@ -114,6 +112,51 @@ WHITE_HIGHLIGHT = QColor(139, 69, 19, 191)
 
 Qaqqlication = QApplication
 
+# 脚本所在目录（用于解析 assets 路径）
+_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_ASSETS_DIR = os.path.join(_SCRIPT_DIR, "assets")
+
+def _read_ide_volume():
+    """从 IDE 设置读取音量。
+    读取 qgs.simple('qqq.settings') 下 audio.volume 键。
+    默认 1.0 (100%)，用户可通过 IDE 齿轮→音量拉杆调整。
+    """
+    try:
+        # 环境变量优先（调试用）
+        env_vol = os.environ.get('QQQ_AUDIO_VOLUME', '')
+        if env_vol:
+            return float(env_vol) / 100.0
+        # 搜索 global.sq3
+        candidates = []
+        p = _SCRIPT_DIR
+        for _ in range(6):
+            p = os.path.dirname(p)
+            db = os.path.join(p, 'Data', 'alphal', 'global.sq3')
+            if os.path.exists(db):
+                candidates.append(db)
+                break
+        for db_path in candidates:
+            if os.path.exists(db_path):
+                import sqlite3
+                conn = sqlite3.connect(db_path)
+                try:
+                    rows = conn.execute(
+                        "SELECT value FROM state WHERE ns='qqq.settings' AND key='audio.volume'"
+                    ).fetchall()
+                    if rows:
+                        vol = int(rows[0][0])
+                        return vol / 100.0
+                except Exception:
+                    pass
+                finally:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+    except Exception:
+        pass
+    return 1.0  # 默认 100%（水滴全音量，打枪由 volume_mult 砍半）
+
 # ==================== 音频引擎 ====================
 
 try:
@@ -125,8 +168,6 @@ except ImportError:
     print("=" * 60)
     sys.exit(1)
 
-# =============== 工具函数 ===============
-
 # === kope OS 级剪贴板历史存储 ===
 try:
     import kope_store
@@ -136,6 +177,8 @@ except ImportError as e:
     print("[kope] 将以无历史记录模式运行")
     kope_store = None
     kope_api = None
+
+# =============== 工具函数 ===============
 
 def _get_path_size(path):
     try:
@@ -273,12 +316,12 @@ class ClipboardMonitor(Qaqqlication):
             except Exception as e:
                 print(f"[kope] API 服务启动失败: {e}")
 
-
-        # 音频引擎
+        # 音频引擎（读取 IDE 音量设置）
         self.audio_engine = None
+        _vol = _read_ide_volume()
         try:
-            self.audio_engine = NonBlockingAudioEngine()
-            print("音频引擎初始化成功")
+            self.audio_engine = NonBlockingAudioEngine(asset_folder=_ASSETS_DIR, master_volume=_vol)
+            print(f"音频引擎初始化成功 (音量={_vol:.0%})")
         except Exception as e:
             print(f"音频引擎初始化失败: {e}")
             print("将以无音效模式运行")
@@ -1293,6 +1336,9 @@ if __name__ == "__main__":
         traceback.print_tb(exc_traceback)
 
     sys.excepthook = handle_exception
+
+    # ★ 忽略 OS 显示缩放：弹窗始终以固定像素渲染，不受 Windows 缩放比例影响
+    os.environ["QT_SCALE_FACTOR"] = "1"
 
     Qaqqlication.setAttribute(Qt.AA_EnableHighDpiScaling)
     Qaqqlication.setAttribute(Qt.AA_UseHighDpiPixmaps)

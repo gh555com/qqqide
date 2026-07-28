@@ -493,6 +493,7 @@
 
     // Non-closable tabs always at front (leftmost)
     var btn = createTabBtn(tab, gaeaGrp);
+    if (id === 'roam') btn.classList.add('qqq-tab-roam');
     var pane = createTabPane(tab);
 
     if (tab.closable === false) {

@@ -9,6 +9,9 @@
 // ============================================================================
 
 var _shellActiveMenubarPopup = null;
+var _shellMenubarPopupMode = null;  // null | 'click' | 'hover'
+var _shellMenubarHideTimer = null;  // hover close timer
+var HOVER_CLOSE_DELAY = 800;
 var _shellMenuRecentDropdown = null;   // "开新窗口" hover 的最近文件夹下拉
 var _shellMenuRecentHoverTimer = null; // 延迟关闭计时器（1s）
 var _shellMenuRecentLoading = false;   // 防并发 async 创建
@@ -44,6 +47,9 @@ var EVANGELIST_SUB_CLOSE_DELAY = 800; // 0.8s 关闭延迟
 var RECENT_DROPDOWN_CLOSE_DELAY = 1000;
 
 function _shellCloseMenubarPopup() {
+  clearTimeout(_shellMenubarHideTimer);
+  _shellMenubarHideTimer = null;
+  _shellMenubarPopupMode = null;
   if (_shellActiveMenubarPopup) { try { _shellActiveMenubarPopup.remove(); } catch (_) { } _shellActiveMenubarPopup = null; }
   _closeMenuRecentDropdown();
   _closeEvangelistSubDropdown();
@@ -391,6 +397,25 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       _refreshGpToggle();
       _refreshGpDot();
 
+      // ★ 出厂自启动兜底：若 Toggle ON 但进程未运行 → 自动拉活
+      // 初始两个请求都完成后再判定，避免竞态误判
+      var _gpBootCheckAttempts = 0;
+      var _gpBootCheckTimer = setInterval(function () {
+        _gpBootCheckAttempts++;
+        if (_gpToggleReady && _gpDotReady && _gpToggleOn && !_gpRunning) {
+          clearInterval(_gpBootCheckTimer);
+          var meta = { scriptPath: gpScript, runtime: gpRuntime, lifecycle: gpLifecycle, allowMultiple: gpAllowMultiple };
+          var br2 = window.qqqideBridge;
+          if (br2 && br2.gaeaProcess) {
+            br2.gaeaProcess.setAutoStart(gpId, true, meta).then(function () {
+              _refreshGpDot();
+            }).catch(function () {});
+          }
+        } else if (_gpRunning || _gpBootCheckAttempts >= 10) {
+          clearInterval(_gpBootCheckTimer);
+        }
+      }, 300);
+
       // ── 5s poll 兜底（push 事件可能漏，poll 保证最终一致）──
       var _gpPollTimer = setInterval(function () {
         _refreshGpDot();
@@ -614,6 +639,16 @@ function _shellOpenMenubarPopup(anchorEl, item) {
   }
   document.body.appendChild(pop);
   _shellActiveMenubarPopup = pop;
+
+  // ★ hover 模式：光标进出 popup 控制自动隐藏
+  pop.addEventListener('mouseenter', function () {
+    clearTimeout(_shellMenubarHideTimer);
+  });
+  pop.addEventListener('mouseleave', function () {
+    if (_shellMenubarPopupMode === 'hover') {
+      _shellMenubarHideTimer = setTimeout(_shellCloseMenubarPopup, HOVER_CLOSE_DELAY);
+    }
+  });
 }
 
 // handleMenuCmd — 菜单命令中枢，同时挂到 window 供 shell-rpc.js 的 keyHook 使用
@@ -917,17 +952,52 @@ function _shellRenderMenubarLabels(schema) {
       sp.addEventListener('mouseenter', function () { sp.style.background = 'rgba(128,128,128,0.10)'; });
       sp.addEventListener('mouseleave', function () { sp.style.background = ''; });
     })(span);
-    span.addEventListener('click', (function (anchorSpan, menuItem) {
-      return function (e) {
+
+    // ★ 的梦gaea：click 固定弹出 + hover 临时弹出
+    if (item.label === '的梦gaea') {
+      span.addEventListener('click', function (e) {
         e.stopPropagation();
-        if (_shellActiveMenubarPopup && _shellActiveMenubarPopup._anchor === anchorSpan) {
+        clearTimeout(_shellMenubarHideTimer);
+        if (_shellActiveMenubarPopup && _shellActiveMenubarPopup._anchor === span) {
           _shellCloseMenubarPopup();
         } else {
-          _shellOpenMenubarPopup(anchorSpan, menuItem);
-          if (_shellActiveMenubarPopup) _shellActiveMenubarPopup._anchor = anchorSpan;
+          if (_shellActiveMenubarPopup) _shellCloseMenubarPopup();
+          _shellOpenMenubarPopup(span, item);
+          if (_shellActiveMenubarPopup) {
+            _shellActiveMenubarPopup._anchor = span;
+            _shellMenubarPopupMode = 'click';
+          }
         }
-      };
-    })(span, item));
+      });
+      // ★ hover 弹出：光标进入即出，离开 0.8s 后自动消
+      span.addEventListener('mouseenter', function () {
+        clearTimeout(_shellMenubarHideTimer);
+        if (_shellActiveMenubarPopup && _shellActiveMenubarPopup._anchor === span) return;
+        if (_shellActiveMenubarPopup) _shellCloseMenubarPopup();
+        _shellOpenMenubarPopup(span, item);
+        if (_shellActiveMenubarPopup) {
+          _shellActiveMenubarPopup._anchor = span;
+          _shellMenubarPopupMode = 'hover';
+        }
+      });
+      span.addEventListener('mouseleave', function () {
+        if (_shellMenubarPopupMode === 'hover') {
+          _shellMenubarHideTimer = setTimeout(_shellCloseMenubarPopup, HOVER_CLOSE_DELAY);
+        }
+      });
+    } else {
+      span.addEventListener('click', (function (anchorSpan, menuItem) {
+        return function (e) {
+          e.stopPropagation();
+          if (_shellActiveMenubarPopup && _shellActiveMenubarPopup._anchor === anchorSpan) {
+            _shellCloseMenubarPopup();
+          } else {
+            _shellOpenMenubarPopup(anchorSpan, menuItem);
+            if (_shellActiveMenubarPopup) _shellActiveMenubarPopup._anchor = anchorSpan;
+          }
+        };
+      })(span, item));
+    }
     $bar.appendChild(span);
   }
 

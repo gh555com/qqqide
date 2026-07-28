@@ -7,5 +7,7 @@ window.qqqideDefaults = {
     'ai.defaultTier': 3,
     'ai.compressThreshold': 600,    // k tokens（×1000 = 实际 token 数）
     'editor.undoMode': 'char',
-    'timeline.trackRunCommand': false
+    'timeline.trackRunCommand': false,
+    'desktop.shortcut': true,
+    'audio.volume': '25'
 };

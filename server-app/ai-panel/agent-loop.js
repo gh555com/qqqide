@@ -467,11 +467,16 @@ var AgentLoop = (function () {
         // ═══ 持久化 rules 注入（版本追踪，永不压缩） ═══
         var rulesPrefix = await self._refreshRules();
         if (rulesPrefix) {
-            if (self._persistentCount > 0 && self.conversation.length > 0) {
+            // ★ V16 fix: 不再盲目覆盖 conversation[0]。
+            //   二次恢复时 _persistentCount 可能残留但 Z 不在 [0]→覆盖会毁掉 biscuit。
+            //   改为：检查 [0] 是否真的是 _persistent，否则走 unshift 安全路径。
+            var _zAtZero = self.conversation.length > 0 && self.conversation[0]._persistent;
+            if (_zAtZero) {
                 self.conversation[0] = { role: "user", content: rulesPrefix, _persistent: true };
-            } else if (self._persistentCount === 0) {
+            } else {
+                // [0] 不是 Z（可能是 biscuit 或空数组）→ 安全 unshift
                 self.conversation.unshift({ role: "user", content: rulesPrefix, _persistent: true });
-                self._persistentCount = 1;
+                self._persistentCount = 1;  // ★ 重新计数
             }
             self._log("[rules] persistent injected (" + rulesPrefix.length + " chars, v=" + self._rulesVersion.slice(0, 8) + ")");
         }
