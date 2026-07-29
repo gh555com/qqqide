@@ -521,6 +521,35 @@ export function cleanupAllGaeaProcesses(): void {
         console.log('[gaea-process] cleaning ' + goodsId + ' (pid=' + entry.pid + ', lifecycle=' + entry.lifecycle + ')');
         stopGaeaProcess(goodsId);
     });
+    // ★ 兜底：遍历所有已知 process-type goods，无论是否在 _registry 中，确保 path B/C 能杀到
+    const ALL_PROCESS_GOODS = ['kope-a', 'window-there'];
+    for (const gid of ALL_PROCESS_GOODS) {
+        if (!_registry.has(gid)) {
+            console.log('[gaea-process] cleanupAll brute-force: ' + gid);
+            try { stopGaeaProcess(gid); } catch { /* ignore */ }
+        }
+    }
+    // ★ 最终兜底：直接杀所有 kope-a/window-there 的 python 进程（防 detached 残留）
+    if (process.platform === 'win32') {
+        try {
+            const wmicOut = require('child_process').execSync(
+                'wmic process where "name like \'%python%\'" get ProcessId,CommandLine /format:csv',
+                { windowsHide: true, timeout: 5000 }
+            ).toString();
+            for (const line of wmicOut.split('\n')) {
+                const lower = line.toLowerCase();
+                if (lower.includes('kope-a') || lower.includes('window-there')) {
+                    const pidMatch = line.match(/,(\d+)/);
+                    if (pidMatch) {
+                        try {
+                            require('child_process').execSync(`taskkill /F /PID ${pidMatch[1]}`, { windowsHide: true });
+                            console.log('[gaea-process] cleanupAll final-kill pid=' + pidMatch[1] + ' (' + line.trim() + ')');
+                        } catch { /* ignore */ }
+                    }
+                }
+            }
+        } catch { /* wmic not available */ }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════

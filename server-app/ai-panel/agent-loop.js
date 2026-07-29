@@ -686,7 +686,8 @@ var AgentLoop = (function () {
                     onToken: onToken,
                     onReasoning: onReasoning,
                     onError: onError,
-                    tier: tier
+                    tier: tier,
+                    noTools: opts.noTools || false
                 });
 
                 if (!response) {

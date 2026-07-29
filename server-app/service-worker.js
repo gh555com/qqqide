@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// service-worker.js v236 — online-popup: +day +ge columns, no color diff, sync bottom-left
+// service-worker.js v237 — online-popup: +day +ge columns, no color diff, sync bottom-left
 // PWA strategy:
 //   - index.html / navigation : network-first(2s), fallback cache, last-resort 503
 //   - core/* qoods/* assets   : stale-while-revalidate
@@ -9,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v275'; // DPI fix: ignore OS display scaling + isGaeaProcessRunning cross-pack
+const CACHE_NAME = 'qqq-shell-v277'; // V17 _persistentCount conditional reset + _persistent dedup in all paths
 const PRECACHE_URLS = [
   './',
   './index.html',

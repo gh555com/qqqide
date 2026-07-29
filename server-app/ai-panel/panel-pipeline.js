@@ -23,6 +23,7 @@ function _buildSendIntent(questId, content, opts) {
         type: opts.type || 'normal',
         isRecovery: opts.isRecovery || false,
         compressFloor: opts.compressFloor || false,
+        noTools: opts.noTools || false,
     };
 }
 
@@ -218,8 +219,9 @@ async function _executeSend(intent) {
     var _deferUserBubble = agent && agent._deferRenderUntilHouse1;
     var userMsgEl;
     if (_isCompress) {
-        // ★ V15: compress 楼层不创建用户气泡（Q 是机器生成的子弹引用）
-        userMsgEl = null;
+        // ★ V15: compress 楼层显示「only facts」气泡
+        userMsgEl = addMessageEl('user', 'only facts');
+        if (userMsgEl) userMsgEl._floor = agent._ctx.totalFloors;
     } else if (_deferUserBubble) {
         userMsgEl = null;
         agent._deferredUserEl = null;
@@ -452,6 +454,7 @@ async function _executeSend(intent) {
             images: _images,
             token: token,
             tier: _actualTier,
+            noTools: intent.noTools || false,
             onToken: function (chunk) {
                 if (agent._deferRenderUntilHouse1) {
                     agent._deferRenderUntilHouse1 = false;
