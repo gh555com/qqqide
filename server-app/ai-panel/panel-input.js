@@ -472,16 +472,74 @@ $input.addEventListener('contextmenu', function (e) {
 
     _addRow('Ctrl+V', async function () {
         $input.focus();
-        var txt = '';
-        // ★ 走 IPC bridge（Electron 主进程 clipboard），绕过 iframe 权限限制
+        // ★ 先尝试读剪贴板图片（navigator.clipboard.read 支持 text+image）
+        var hasImage = false, imageFile = null, txt = '';
         try {
-            var b = _getBridge();
-            if (b && b.clipboard && b.clipboard.readText) {
-                txt = await b.clipboard.readText();
-            } else {
-                txt = await navigator.clipboard.readText();
+            var items = await navigator.clipboard.read();
+            for (var i = 0; i < items.length; i++) {
+                for (var t = 0; t < items[i].types.length; t++) {
+                    var mt = items[i].types[t];
+                    if (mt.indexOf('image/') === 0) {
+                        hasImage = true;
+                        imageFile = await items[i].getType(mt);
+                        break;
+                    }
+                    if (mt === 'text/plain') {
+                        try { txt = await (await items[i].getType('text/plain')).text(); } catch (_) {}
+                    }
+                }
+                if (hasImage) break;
             }
-        } catch (_) { return; }
+        } catch (_) {
+            // clipboard.read 失败 → 回退到纯文本
+            try {
+                var b = _getBridge();
+                if (b && b.clipboard && b.clipboard.readText) {
+                    txt = await b.clipboard.readText();
+                } else {
+                    txt = await navigator.clipboard.readText();
+                }
+            } catch (_2) { return; }
+        }
+
+        // 图片分支：复用原生 paste 处理器的图片逻辑
+        if (hasImage && imageFile) {
+            var reader = new FileReader();
+            reader.onload = function (ev) {
+                var dataUrl = ev.target.result;
+                if (imageFile.size > 2 * 1024 * 1024) {
+                    var img = new Image();
+                    img.onload = function () {
+                        var scale = img.width > 2048 ? 2048 / img.width : 1;
+                        var canvas = document.createElement('canvas');
+                        canvas.width = Math.round(img.width * scale);
+                        canvas.height = Math.round(img.height * scale);
+                        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                        addImage(canvas.toDataURL('image/jpeg', 0.85), canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+                    };
+                    img.src = dataUrl;
+                } else {
+                    addImage(dataUrl, dataUrl.split(',')[1]);
+                }
+            };
+            reader.readAsDataURL(imageFile);
+            // 如果同时有文本，也插入到编辑框
+            if (txt) {
+                var nd = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+                var cur = nd.get.call($input);
+                var ss = $input.selectionStart || 0, se = $input.selectionEnd || 0;
+                var avail = INPUT_CAP_CHARS - cur.substring(0, ss).length - cur.substring(se).length;
+                if (avail > 0) {
+                    var ins = txt.length > avail ? txt.substring(0, avail) : txt;
+                    nd.set.call($input, cur.substring(0, ss) + ins + cur.substring(se));
+                    $input.setSelectionRange(ss + ins.length, ss + ins.length);
+                    autoResizeInput(); _updateInputProgress();
+                }
+            }
+            return;
+        }
+
+        // 纯文本分支
         if (!txt) return;
         var nd = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
         var cur = nd.get.call($input);

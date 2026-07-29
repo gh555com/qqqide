@@ -44,7 +44,7 @@
 #define COL_DOT     RGB(0x85, 0x99, 0x00)
 #define COL_ERR     RGB(0xdc, 0x32, 0x2f)
 #define COL_BAR_BG  RGB(0xee, 0xe8, 0xd5)
-#define COL_BAR_FG  RGB(0x26, 0x8b, 0xd2)
+#define COL_BAR_FG  RGB(0xcb, 0x4b, 0x16)
 
 // ── 状态机 ──
 enum { PHASE_INIT, PHASE_LAUNCHING, PHASE_WAITING, PHASE_DONE, PHASE_ERROR };
@@ -91,12 +91,15 @@ static int  g_phase   = PHASE_INIT;
 static int  g_err     = 0;
 static int  g_pct     = 0;
 static char g_status[128] = "";
+static int  g_showStatusText = 0;
 
 static HWND    g_hwnd           = NULL;
 static HANDLE  g_hProcess       = NULL;
 static DWORD   g_jokerPid       = 0;
 static HANDLE  g_hUpdateThread  = NULL;
 static volatile LONG g_updateRunning = 0;
+static HANDLE  g_hApplyThread   = NULL;
+static volatile LONG g_applyRunning  = 0;
 static WCHAR   g_exeDir[MAX_PATH] = {0};
 static int     g_tickCount      = 0;
 static int     g_closeCountdown = 0;
@@ -684,6 +687,7 @@ static int extractPayload(const WCHAR *rPath, const WCHAR *exeDir) {
 }
 
 static int downloadAndExtractUpdate(const WCHAR *exeDir, const char *newVer) {
+    g_showStatusText = 1;
     setStatus("downloading update…", 0);
     g_pct = 0;
     if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
@@ -735,6 +739,52 @@ static int downloadAndExtractUpdate(const WCHAR *exeDir, const char *newVer) {
     return 0;
 }
 
+// ★ 快速交换：gh555.com-next → gh555.com（原子 rename，<1s）
+static int applySwapIfReady(const WCHAR *exeDir) {
+    WCHAR swapReady[MAX_PATH];
+    swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
+    if (!fileExistsW(swapReady)) return 0;
+
+    WCHAR ghDir[MAX_PATH], ghOld[MAX_PATH], ghNext[MAX_PATH];
+    swprintf(ghDir, MAX_PATH, L"%s\\gh555.com", exeDir);
+    swprintf(ghOld, MAX_PATH, L"%s\\gh555.com-old", exeDir);
+    swprintf(ghNext, MAX_PATH, L"%s\\gh555.com-next", exeDir);
+
+    if (!fileExistsW(ghNext)) { DeleteFileW(swapReady); return 0; }
+
+    // ★ 保存用户数据
+    WCHAR dataDir[MAX_PATH], backupDir[MAX_PATH];
+    swprintf(dataDir, MAX_PATH, L"%s\\Data", ghDir);
+    swprintf(backupDir, MAX_PATH, L"%s\\Data.backup", exeDir);
+    removeDir(backupDir);
+    int hasBackup = 0;
+    if (fileExistsW(dataDir)) {
+        hasBackup = (MoveFileW(dataDir, backupDir) != 0);
+    }
+
+    // 原子交换
+    removeDir(ghOld);
+    if (!MoveFileW(ghDir, ghOld)) {
+        if (hasBackup) MoveFileW(backupDir, dataDir);
+        return -1;
+    }
+    if (!MoveFileW(ghNext, ghDir)) {
+        MoveFileW(ghOld, ghDir);
+        if (hasBackup) MoveFileW(backupDir, dataDir);
+        return -1;
+    }
+
+    // ★ 恢复用户数据
+    if (hasBackup) {
+        removeDir(dataDir);
+        MoveFileW(backupDir, dataDir);
+    }
+
+    removeDir(ghOld);
+    DeleteFileW(swapReady);
+    return 1;
+}
+
 static int applyStagedUpdate(const WCHAR *exeDir) {
     WCHAR rNext[MAX_PATH], vNext[MAX_PATH];
     swprintf(rNext, MAX_PATH, L"%s\\r.next", exeDir);
@@ -745,7 +795,8 @@ static int applyStagedUpdate(const WCHAR *exeDir) {
     int rd = readFileText(vNext, newVer, sizeof(newVer));
     if (rd <= 0) { DeleteFileW(rNext); return 0; }
 
-    setStatus("applying update…", 0);
+    g_showStatusText = 1;
+    setStatus("Core update, ~3 min", 0);
     g_pct = 5;
     if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
 
@@ -817,6 +868,92 @@ static int applyStagedUpdate(const WCHAR *exeDir) {
     setStatus("update applied", 0);
     if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
     Sleep(200);
+    return 0;
+}
+
+// ★ 后台解压线程 — 将 r.next 解压到 gh555.com-next/（不阻塞用户使用 IDE）
+static unsigned __stdcall backgroundApplyUpdate(void *param) {
+    InterlockedExchange(&g_applyRunning, 1);
+    WCHAR *exeDir = (WCHAR *)param;
+
+    WCHAR rNext[MAX_PATH], vNext[MAX_PATH];
+    swprintf(rNext, MAX_PATH, L"%s\\r.next", exeDir);
+    swprintf(vNext, MAX_PATH, L"%s\\.version-next", exeDir);
+
+    if (!fileExistsW(rNext) || !fileExistsW(vNext)) {
+        InterlockedExchange(&g_applyRunning, 0);
+        return 0;
+    }
+
+    char newVer[64] = {0};
+    int rd = readFileText(vNext, newVer, sizeof(newVer));
+    if (rd <= 0) { DeleteFileW(rNext); DeleteFileW(vNext); InterlockedExchange(&g_applyRunning, 0); return 0; }
+
+    // 创建临时解压目录
+    WCHAR tmpDir[MAX_PATH], ghNext[MAX_PATH];
+    swprintf(tmpDir, MAX_PATH, L"%s\\_swap_tmp", exeDir);
+    swprintf(ghNext, MAX_PATH, L"%s\\gh555.com-next", exeDir);
+
+    removeDir(ghNext);
+    removeDir(tmpDir);
+    CreateDirectoryW(tmpDir, NULL);
+
+    // 解压 r.next → tmpDir
+    WCHAR cmdLine[1024];
+    swprintf(cmdLine, 1024, L"\"%s\" -y", rNext);
+    STARTUPINFOW si = { sizeof(si) };
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    PROCESS_INFORMATION pi = {0};
+    if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
+        CREATE_NO_WINDOW, NULL, tmpDir, &si, &pi)) {
+        removeDir(tmpDir);
+        InterlockedExchange(&g_applyRunning, 0);
+        return 0;
+    }
+    CloseHandle(pi.hThread);
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD ec = 0;
+    GetExitCodeProcess(pi.hProcess, &ec);
+    CloseHandle(pi.hProcess);
+
+    if (ec != 0) { removeDir(tmpDir); InterlockedExchange(&g_applyRunning, 0); return 0; }
+
+    // 移出解压出的 gh555.com → gh555.com-next
+    WCHAR extractedGh[MAX_PATH];
+    swprintf(extractedGh, MAX_PATH, L"%s\\gh555.com", tmpDir);
+    if (!fileExistsW(extractedGh)) {
+        removeDir(tmpDir);
+        InterlockedExchange(&g_applyRunning, 0);
+        return 0;
+    }
+
+    if (!MoveFileW(extractedGh, ghNext)) {
+        removeDir(tmpDir); removeDir(ghNext);
+        InterlockedExchange(&g_applyRunning, 0);
+        return 0;
+    }
+    removeDir(tmpDir);
+
+    // 写版本号
+    WCHAR vPath[MAX_PATH];
+    swprintf(vPath, MAX_PATH, L"%s\\.version", ghNext);
+    writeFileText(vPath, newVer);
+
+    // 写 .swap-ready → 下次启动原子交换
+    WCHAR swapReady[MAX_PATH];
+    swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
+    writeFileText(swapReady, newVer);
+
+    // 清理暂存文件
+    DeleteFileW(rNext);
+    DeleteFileW(vNext);
+
+    InterlockedExchange(&g_applyRunning, 0);
+
+    // 通知主线程：如果启动器已隐藏，可以关闭了
+    if (g_hwnd) PostMessageW(g_hwnd, WM_USER + 1, 0, 0);
+
     return 0;
 }
 
@@ -960,6 +1097,22 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         WCHAR wPct[16];
         MultiByteToWideChar(CP_UTF8, 0, pctText, -1, wPct, 16);
         DrawTextW(hdc, wPct, -1, &pr, DT_CENTER | DT_VCENTER);
+
+        // 状态文字 — 仅内核更新时显示（普通启动 g_showStatusText=0）
+        if (g_showStatusText && g_status[0]) {
+            HFONT hStatus = CreateFontW(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                PROOF_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+            HFONT hOld2 = (HFONT)SelectObject(hdc, hStatus);
+            SetTextColor(hdc, COL_STATUS);
+            RECT sr = {40, 115, WW - 40, 135};
+            WCHAR wStatus[128];
+            MultiByteToWideChar(CP_UTF8, 0, g_status, -1, wStatus, 128);
+            DrawTextW(hdc, wStatus, -1, &sr, DT_CENTER | DT_VCENTER);
+            SelectObject(hdc, hOld2);
+            DeleteObject(hStatus);
+        }
+
         EndPaint(hwnd, &ps);
         return 0;
     }
@@ -983,6 +1136,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
             if (!g_hUpdateThread) {
                 g_hUpdateThread = (HANDLE)_beginthreadex(NULL, 0, backgroundUpdateProc, NULL, 0, NULL);
             }
+            // ★ 后台解压 r.next → gh555.com-next/（不阻塞，用户已在 IDE 中工作）
+            if (!g_hApplyThread) {
+                WCHAR rNextPath[MAX_PATH];
+                swprintf(rNextPath, MAX_PATH, L"%s\\r.next", g_exeDir);
+                if (fileExistsW(rNextPath)) {
+                    g_hApplyThread = (HANDLE)_beginthreadex(NULL, 0, backgroundApplyUpdate, g_exeDir, 0, NULL);
+                }
+            }
             if (g_tickCount <= 20 && g_tickCount % 4 == 0 && g_pct < 60) {
                 g_pct += 8;
             }
@@ -993,18 +1154,25 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
 
         case PHASE_WAITING: {
             // ★ 核心：检测 joker.exe 的主窗口是否出现
+            int applyBusy = (InterlockedCompareExchange(&g_applyRunning, 0, 0) != 0);
+
             // 方式1：通过 PID 查找 joker 的可见窗口
             if (g_jokerPid != 0) {
                 HWND jwnd = findJokerMainWindow(g_jokerPid);
                 if (jwnd != NULL) {
-                    g_phase = PHASE_DONE;
-                    PostMessageW(hwnd, WM_CLOSE, 0, 0);
-                    return 0;
+                    if (applyBusy) {
+                        // 后台还在解压 → 隐藏窗口，进程继续跑
+                        ShowWindow(hwnd, SW_HIDE);
+                    } else {
+                        g_phase = PHASE_DONE;
+                        PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                        return 0;
+                    }
                 }
             }
 
             // 方式2：loading-status 兜底（"ready" 信号）
-            {
+            if (!applyBusy) {
                 WCHAR candidates[2][MAX_PATH];
                 WCHAR myDir[MAX_PATH];
                 GetModuleFileNameW(NULL, myDir, MAX_PATH);
@@ -1040,18 +1208,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
                 }
             }
 
-            // 方式4：超时 30s → joker 还在跑就静默关闭
+            // 方式4：超时 30s → joker 还在跑就静默关闭（仅当无后台任务时）
             if (g_tickCount >= 120 && g_phase == PHASE_WAITING) {
-                if (g_hProcess) {
-                    DWORD ec = 0;
-                    if (GetExitCodeProcess(g_hProcess, &ec) && ec == STILL_ACTIVE) {
-                        g_phase = PHASE_DONE;
-                        PostMessageW(hwnd, WM_CLOSE, 0, 0);
-                        return 0;
+                if (!applyBusy) {
+                    if (g_hProcess) {
+                        DWORD ec = 0;
+                        if (GetExitCodeProcess(g_hProcess, &ec) && ec == STILL_ACTIVE) {
+                            g_phase = PHASE_DONE;
+                            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                            return 0;
+                        }
                     }
+                    g_phase = PHASE_ERROR;
+                    g_closeCountdown = ERROR_CLOSE_TICKS;
                 }
-                g_phase = PHASE_ERROR;
-                g_closeCountdown = ERROR_CLOSE_TICKS;
             }
             break;
         }
@@ -1075,6 +1245,14 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
 
     case WM_LBUTTONDOWN:
         SendMessage(hwnd, WM_SYSCOMMAND, SC_MOVE | HTCAPTION, 0);
+        return 0;
+
+    case WM_USER + 1:
+        // ★ 后台解压完成 → 如果窗口已隐藏，关闭进程
+        if (!IsWindowVisible(hwnd)) {
+            g_phase = PHASE_DONE;
+            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+        }
         return 0;
 
     default:
@@ -1188,16 +1366,12 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
             }
         }
     } else {
-        // ── 已安装 → 应用暂存更新 + 清理残留 ──
+        // ── 已安装 → 快速交换（如果有 .swap-ready）+ 清理残留 ──
+        // ★ applySwapIfReady: 检测上次后台解压的 gh555.com-next，原子 rename（<1s）
+        applySwapIfReady(myDir);
+
         ShowWindow(g_hwnd, SW_SHOW);
         UpdateWindow(g_hwnd);
-
-        WCHAR rNextPath[MAX_PATH];
-        swprintf(rNextPath, MAX_PATH, L"%s\\r.next", myDir);
-        if (fileExistsW(rNextPath)) {
-            applyStagedUpdate(myDir);
-            g_pct = 0;
-        }
 
         // 清理残留 r
         WCHAR rPath[MAX_PATH];
@@ -1234,6 +1408,11 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
     }
 
     // 清理
+    if (g_hApplyThread) {
+        DWORD waitResult = WaitForSingleObject(g_hApplyThread, 120000);
+        if (waitResult == WAIT_TIMEOUT) TerminateThread(g_hApplyThread, 0);
+        CloseHandle(g_hApplyThread);
+    }
     if (g_hUpdateThread) {
         DWORD waitResult = WaitForSingleObject(g_hUpdateThread, 120000);
         if (waitResult == WAIT_TIMEOUT) TerminateThread(g_hUpdateThread, 0);

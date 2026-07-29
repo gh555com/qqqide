@@ -480,10 +480,10 @@ async function _restoreAgentFromStore(questId, ag) {
             }
         }
 
-        // ★ V16 fix: 必须清零 _persistentCount，防二次恢复时 Z 被跳过
-        //   旧 BugFix #3 v2 删除了此重置 → 二次恢复 → _persistentCount 残留 1
-        //   → Z 被静默丢弃 → biscuit 被 _refreshRules 覆盖 → AI 失忆
-        ag._persistentCount = 0;
+        // ★ V17 fix: 根据 conversation 实际状态设 _persistentCount，不盲目清零。
+        //   V16 的硬清零 → _persistentCount=0 但 Z 在 [0] → 再次 restore 时
+        //   !_persistentCount 为 true → 可能推入第二个 Z → goods 背包重复"Client rules"
+        ag._persistentCount = (ag.conversation.length > 0 && ag.conversation[0]._persistent) ? 1 : 0;
         ag._rulesVersion = '';  // ★ 同样清零，强制下次 send 重新注入 rules
 
         // ★ 注入压缩饼干：V10 从 ctx.narrative 注入；V13 从 ctx.biscuitLines 重建消息
@@ -529,6 +529,16 @@ async function _restoreAgentFromStore(questId, ag) {
                 if (ag.conversation[_ddi]._facts) {
                     if (_seenF2) { ag.conversation.splice(_ddi, 1); }
                     else { _seenF2 = true; }
+                }
+            }
+            // ★ V17 fix: 去重 _persistent 消息 — 永远只保留第一条
+            var _firstPIdx = -1;
+            for (var _dpi2 = 0; _dpi2 < ag.conversation.length; _dpi2++) {
+                if (ag.conversation[_dpi2]._persistent) { _firstPIdx = _dpi2; break; }
+            }
+            for (var _dpi2 = ag.conversation.length - 1; _dpi2 >= 0; _dpi2--) {
+                if (ag.conversation[_dpi2]._persistent && _dpi2 !== _firstPIdx) {
+                    ag.conversation.splice(_dpi2, 1);
                 }
             }
         }

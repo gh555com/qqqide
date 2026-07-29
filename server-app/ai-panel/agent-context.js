@@ -813,6 +813,18 @@
                 }
             }
 
+            // ★ V17 fix: 去重 _persistent 消息 — 同 biscuit/facts，永远只保留第一条
+            var _firstPersIdx = -1;
+            for (var _dpi = 0; _dpi < self.conversation.length; _dpi++) {
+                if (self.conversation[_dpi]._persistent) { _firstPersIdx = _dpi; break; }
+            }
+            for (var _dpi = self.conversation.length - 1; _dpi >= 0; _dpi--) {
+                if (self.conversation[_dpi]._persistent && _dpi !== _firstPersIdx) {
+                    self.conversation.splice(_dpi, 1);
+                    self.log('◆ Backpack: removed duplicate _persistent at index ' + _dpi);
+                }
+            }
+
             // ★ V15: fx 注入 — 将 _compressFloor 提取的 facts 注入 biscuit 之后
             if (_newFacts.length > 0) {
                 var _fxText = '';
@@ -824,12 +836,12 @@
                 if (_fxFound) {
                     _fxFound.msg.content = _fxFound.msg.content + '\n\n' + _fxText;
                 } else {
-                    // 在 biscuit 消息之后插入
+                    // 在 biscuit 消息之前插入（Z → fx → biscuit 定序）
                     var _biscuitIdx2 = -1;
                     for (var _bxi = persistentCount; _bxi < self.conversation.length; _bxi++) {
                         if (self.conversation[_bxi]._biscuit) { _biscuitIdx2 = _bxi; break; }
                     }
-                    self.conversation.splice(_biscuitIdx2 >= 0 ? _biscuitIdx2 + 1 : persistentCount, 0,
+                    self.conversation.splice(_biscuitIdx2 >= 0 ? _biscuitIdx2 : persistentCount, 0,
                         { role: 'system', content: _fxText, _dynamic: true, _facts: true });
                 }
                 // 同步 ctx.facts

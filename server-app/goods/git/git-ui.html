@@ -1065,7 +1065,8 @@ async function _showStashes() {
   }
 }
 
-async function _applyStash(ref) { var r = await _gitCmd(['stash', 'apply', ref]); if (r.exitCode === 0) { _refreshGitStatus(); _showStashes(); } else _showProgdocument.getElementById('btn-clone').addEventListener('click', function() { document.getElementById('clone-dialog').style.display = ''; });
+async function _applyStash(ref) { var r = await _gitCmd(['stash', 'apply', ref]); if (r.exitCode === 0) { _refreshGitStatus(); _showStashes(); } else _showProgress('✕ stash 应用失败: ' + (r.stderr || '').slice(0, 200)); }
+document.getElementById('btn-clone').addEventListener('click', function() { document.getElementById('clone-dialog').style.display = ''; });
 document.getElementById('clone-cancel').addEventListener('click', function() { document.getElementById('clone-dialog').style.display = 'none'; document.getElementById('clone-url').value = ''; document.getElementById('clone-dir').value = ''; });
 document.getElementById('clone-start').addEventListener('click', async function() {
   var url = document.getElementById('clone-url').value.trim(); if (!url) return;
@@ -1101,7 +1102,7 @@ document.getElementById('btn-init').addEventListener('click', async function() {
     _startAutoRefresh();
   } else {
     _showProgress('✕ 初始化失败: ' + (r.stderr || r.stdout || '').slice(0, 200));
-    document.getElementById('progress').style.color = 'var(--red)'; }
+    document.getElementById('progress').style.color = 'var(--red)';
   }
 });
 

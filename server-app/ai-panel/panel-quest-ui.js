@@ -1024,9 +1024,9 @@ window.addEventListener('message', async function (e) {
                     });
                     try {
                         var _savedInput = typeof $input !== 'undefined' ? $input.value : '';
-                        var _bulletRef = '从以下对话历史提取关键事实列表（每条一行，以"- "开头，仅提取不编造）：\n\n📎"' + _bulletPath + '"';
+                        var _bulletRef = '从以下对话历史提取关键事实列表（尽量提取30-40条，每条一行以"- "开头，仅提取不编造，直接回复不要调用任何工具）：\n\n📎"' + _bulletPath + '"';
                         if (typeof _buildSendIntent === 'function' && typeof _executeSend === 'function') {
-                            var _intent = _buildSendIntent(qid, _bulletRef, { type: 'compress', compressFloor: true, tierIndex: 4 });
+                            var _intent = _buildSendIntent(qid, _bulletRef, { type: 'compress', compressFloor: true, tierIndex: 4, noTools: true });
                             await _executeSend(_intent);
                         }
                         if (typeof $input !== 'undefined') { $input.value = _savedInput; }
