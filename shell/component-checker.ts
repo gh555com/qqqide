@@ -165,7 +165,10 @@ export function checkRank0Components(portableRoot: string): void {
     const versPath = path.join(engRoot, 'engines', '.versions.json');
     const versions = _readJson<VersionsFile>(versPath, {});
 
-    _checkAll(portableRoot, manifest, versions, versPath).catch(e => {
+    _checkAll(portableRoot, manifest, versions, versPath).then(() => {
+        // After rank0 check completes, verify integrity of bundled components
+        _verifyAllBundled(portableRoot, manifest, versions, versPath);
+    }).catch(e => {
         console.log('[components] rank0 check error:', e.message || e);
     });
 }
@@ -194,6 +197,91 @@ async function _checkAll(
         }
     }
     _writeJson(versPath, versions);
+}
+
+// ── 启动完整性校验 — 自愈能力为唯一真理（2026-07-30 §65）──
+
+interface VerifyResult { status: 'ok' | 'degraded' | 'broken'; detail: string; }
+
+/** 校验单个组件完整性。两级: ① self_heal(能自愈吗?) → ok/degraded ② smoke(能跑吗?) → broken */
+function _verifyComponent(portableRoot: string, name: string, def: ComponentDef): VerifyResult {
+    const bp = _binPath(portableRoot, def);
+    if (!bp || !fs.existsSync(bp)) return { status: 'broken', detail: 'binary missing' };
+
+    const verify = (def as any).verify;
+    const smokeArgs = verify?.smoke || def.verify_args;
+    if (!_cmdOk(bp, smokeArgs)) return { status: 'broken', detail: 'smoke test failed' };
+
+    // self_heal: 若定义了 → 必须通过。未定义 → smoke 即充分（单二进制组件）。
+    const selfHealArgs = verify?.self_heal;
+    if (selfHealArgs && !_cmdOk(bp, selfHealArgs)) {
+        return { status: 'degraded', detail: 'self-heal failed — binary runs but cannot self-repair' };
+    }
+    return { status: 'ok', detail: '' };
+}
+
+/** 启动时对全部 bundled 组件跑两级校验。degraded → 组件特定修复。broken → CDN 恢复。 */
+async function _verifyAllBundled(
+    portableRoot: string,
+    manifest: Manifest,
+    versions: VersionsFile,
+    versPath: string,
+): Promise<void> {
+    const pk = _platformKey();
+    for (const name of manifest.rank0) {
+        const def = manifest.components[name];
+        if (!def?.bundled) continue;
+
+        const r = _verifyComponent(portableRoot, name, def);
+        if (r.status === 'ok') continue;
+
+        console.log(`[components] ${name}: INTEGRITY ${r.status.toUpperCase()} — ${r.detail}`);
+
+        if (r.status === 'degraded') {
+            // 尝试组件特定修复（如 Python → _bootstrapPip）
+            const repaired = await _tryRepairDegraded(portableRoot, name, def);
+            if (repaired) {
+                console.log(`[components] ${name}: self-healed ✓`);
+                continue;
+            }
+            console.log(`[components] ${name}: repair failed, falling back to CDN recovery`);
+        }
+
+        // degraded 修复失败 或 broken → 清除版本记录 → 触发 CDN 灾备下载
+        delete versions[name];
+        const dlLog = _readJson<DownloadLog>(_dlLogPath(portableRoot), {});
+        if (dlLog[name]) dlLog[name].last_success = 0;
+        _writeJson(_dlLogPath(portableRoot), dlLog);
+
+        try {
+            await _ensureOne(portableRoot, name, def, pk, versions, manifest);
+            _writeJson(versPath, versions);
+            console.log(`[components] ${name}: CDN recovery ✓`);
+        } catch (e: any) {
+            console.log(`[components] ${name}: CDN recovery FAILED — ${e.message || e}`);
+        }
+    }
+}
+
+/** 组件特定修复 — 仅对 degraded 态（二进制能跑但自愈能力受损）。返回 true=修复成功。 */
+async function _tryRepairDegraded(portableRoot: string, name: string, def: ComponentDef): Promise<boolean> {
+    if (name === 'python') {
+        const bp = _binPath(portableRoot, def);
+        if (!bp) return false;
+        const targetDir = path.dirname(bp);
+        try {
+            await _bootstrapPip(targetDir);
+            // 重检 self_heal
+            const verify = (def as any).verify;
+            if (verify?.self_heal && _cmdOk(bp, verify.self_heal)) return true;
+        } catch { /* fall through */ }
+        // pip 修复失败 → 尝试 .pyd 补全
+        try { await _ensureCorePyds(targetDir); await _bootstrapPip(targetDir); } catch {}
+        const verify = (def as any).verify;
+        return !!(verify?.self_heal && _cmdOk(bp, verify.self_heal));
+    }
+    // 其他组件暂无特定修复逻辑
+    return false;
 }
 
 // ── 单个组件保证 ──
@@ -331,6 +419,14 @@ async function _downloadAndInstall(
     // Python 特殊处理
     if (name === 'python' && process.platform === 'win32') {
         _patchPythonPth(targetDir);
+        // 自动补全缺失的 .pyd 文件（从官方 embed 包提取）
+        _ensureCorePyds(targetDir).catch(e => {
+            console.log('[components] python pyd supplement: ' + (e.message || e));
+        });
+        // 自动引导 pip（若 CDN zip 未预装）
+        _bootstrapPip(targetDir).catch(e => {
+            console.log('[components] python pip bootstrap: ' + (e.message || e));
+        });
     }
 
     // 验证 — 用二进制路径直接调，不走 shell
@@ -362,6 +458,109 @@ function _patchPythonPth(dir: string): void {
         }
     } catch (e: any) {
         console.log('[components] python _pth patch warning: ' + (e.message || e));
+    }
+}
+
+// 自动补全缺失的 .pyd 文件（从官方 Python embed 包提取，解决 pip 依赖 pyexpat 等问题）
+const PYTHON_EMBED_URL = 'https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-amd64.zip';
+async function _ensureCorePyds(targetDir: string): Promise<void> {
+    // 快速检查：pyexpat.pyd 是 pip 运行的必要条件
+    if (fs.existsSync(path.join(targetDir, 'pyexpat.pyd'))) return;
+
+    console.log('[components] python: missing core .pyd files, supplementing from python.org...');
+    const https = require('https') as typeof import('https');
+    const dlDir = path.join(targetDir, '..', '_pyd_supplement');
+    const zipPath = path.join(dlDir, 'embed.zip');
+    try { fs.mkdirSync(dlDir, { recursive: true }); } catch {}
+
+    // 下载官方 embed zip
+    await new Promise<void>((resolve, reject) => {
+        const u = new URL(PYTHON_EMBED_URL);
+        const req = https.get({
+            hostname: u.hostname, port: 443, path: u.pathname,
+            timeout: 60000, headers: { 'User-Agent': 'Mozilla/5.0 (qqqide)' },
+        }, (res) => {
+            if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
+            const file = fs.createWriteStream(zipPath);
+            res.pipe(file);
+            file.on('finish', () => { file.close(); resolve(); });
+            file.on('error', (e: any) => reject(e));
+            res.on('error', (e: any) => reject(e));
+        });
+        req.on('error', (e: any) => reject(e));
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    });
+
+    // 用 Python 的 zipfile 模块提取 .pyd 文件
+    const pyBin = path.join(targetDir, 'python.exe');
+    const extractScript = `
+import zipfile, os
+z = zipfile.ZipFile(r'${zipPath.replace(/\\/g, '\\\\')}')
+present = set(os.listdir(r'${targetDir.replace(/\\/g, '\\\\')}'))
+missing = [n for n in z.namelist() if n.endswith(('.pyd', '.dll')) and n not in present]
+for n in missing:
+    z.extract(n, r'${targetDir.replace(/\\/g, '\\\\')}')
+    print('+', n)
+print('done:', len(missing))
+`.trim();
+    try {
+        const r = execSync(`"${pyBin}" -c "${extractScript.replace(/"/g, '\\"')}"`,
+            { encoding: 'utf8', timeout: 30000, windowsHide: true });
+        console.log('[components] python pyd supplement: ' + r.trim().split('\n').pop());
+    } catch (e: any) {
+        console.log('[components] python pyd supplement failed: ' + (e.message || e));
+    }
+
+    // 清理
+    try { fs.unlinkSync(zipPath); fs.rmdirSync(dlDir); } catch {}
+}
+
+// 自动引导 pip（若 CDN zip 未预装 pip）
+async function _bootstrapPip(targetDir: string): Promise<void> {
+    const pyBin = path.join(targetDir, 'python.exe');
+
+    // 先检查 pip 是否已可用
+    try {
+        execSync(`"${pyBin}" -m pip --version`, { encoding: 'utf8', timeout: 15000, windowsHide: true });
+        return; // pip 已存在
+    } catch { /* pip 未安装 */ }
+
+    console.log('[components] python: pip not found, bootstrapping...');
+
+    // 下载 get-pip.py
+    const getPipPath = path.join(targetDir, 'get-pip.py');
+    const https = require('https') as typeof import('https');
+    await new Promise<void>((resolve, reject) => {
+        const u = new URL('https://bootstrap.pypa.io/pip/3.8/get-pip.py');
+        const req = https.get({
+            hostname: u.hostname, port: 443, path: u.pathname,
+            timeout: 30000, headers: { 'User-Agent': 'Mozilla/5.0 (qqqide)' },
+        }, (res) => {
+            let data = '';
+            res.setEncoding('utf8');
+            res.on('data', (d: string) => { data += d; });
+            res.on('end', () => {
+                if (res.statusCode === 200 && data.length > 1000) {
+                    try { fs.writeFileSync(getPipPath, data, 'utf8'); resolve(); }
+                    catch (e: any) { reject(e); }
+                } else { reject(new Error('HTTP ' + res.statusCode)); }
+            });
+            res.on('error', (e: any) => reject(e));
+        });
+        req.on('error', (e: any) => reject(e));
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+    });
+
+    // 运行 get-pip.py
+    try {
+        execSync(`"${pyBin}" "${getPipPath}" --no-warn-script-location`,
+            { encoding: 'utf8', timeout: 120000, windowsHide: true });
+        console.log('[components] python pip bootstrapped ✓');
+    } catch (e: any) {
+        console.log('[components] python pip bootstrap failed: ' + (e.message || e));
+        // 失败不阻塞 — Python 仍可正常使用（只是没 pip）
+    } finally {
+        try { fs.unlinkSync(getPipPath); } catch {}
     }
 }
 

@@ -302,6 +302,9 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
     const allSockets: SimpleWebSocket[] = [];
     let _started = false;
 
+    // Safe logger: console.log → EPIPE when stdout is broken (no console window)
+    const _safeLog = (...args: any[]) => { try { console.log(...args); } catch {} };
+
     // DevTools Console 默认不显示的 source（intervention=性能建议, rendering=渲染, violation=违规, deprecation=弃用）
     const _NOISE_SOURCES = new Set(['intervention', 'rendering', 'violation', 'deprecation', 'recommendation']);
 
@@ -421,7 +424,7 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
                 ws.send(JSON.stringify({ id: 1, method: 'Console.enable', params: {} }));
                 // ★ Log 域 → 原始日志引擎消息 (含栈帧, 兜底)
                 ws.send(JSON.stringify({ id: 2, method: 'Log.enable', params: {} }));
-                console.log('[main] CDP Console+Log enabled for ' + label);
+                _safeLog('[main] CDP Console+Log enabled for ' + label);
             });
             ws.on('message', (data: string) => {
                 try {
@@ -434,12 +437,10 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
                 } catch {}
             });
             ws.on('error', (err: Error) => {
-                console.log('[main] CDP WS error (' + label + '):', err.message);
-                try { ws.close(); } catch {}
+                            _safeLog('[main] CDP WS error (' + label + '):', err.message);               try { ws.close(); } catch {}
             });
         } catch (e: any) {
-            console.log('[main] CDP connect failed (' + label + '):', e.message);
-        }
+                        _safeLog('[main] CDP connect failed (' + label + '):', e.message);    }
     };
 
     const _doCapture = async () => {
@@ -478,7 +479,7 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
                     _connectTarget(vi.webSocketDebuggerUrl, 'browser');
                 }
             } catch {}
-            console.log('[main] CDP capture started: ' + pageCount + ' page(s) + browser');
+            _safeLog('[main] CDP capture started: ' + pageCount + ' page(s) + browser');
             _started = true;
             // 不在此处 onActive — 等首条 CDP 数据到达才激活 (防中间空窗导致丢消息)
 
@@ -510,7 +511,7 @@ async function _setupCdpConsoleCapture(win: BrowserWindow): Promise<void> {
                 allSockets.length = 0;
             });
         } catch (err: any) {
-            console.log('[main] CDP capture init failed (retry in 2s):', err.message);
+            _safeLog('[main] CDP capture init failed (retry in 2s):', err.message);
             setTimeout(_doCapture, 2000);
         }
     };

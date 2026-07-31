@@ -14,7 +14,7 @@ import { ChildProcess, spawn } from 'child_process';
 import { BrowserWindow } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs';
-import { getComponentBin } from './component-checker';
+import { getComponentBin, getComponentDir } from './component-checker';
 import { isNodeBrokerAvailable, renameDevToolsViaNodeBroker } from './node-broker';
 
 let _proc: ChildProcess | null = null;
@@ -172,6 +172,58 @@ export function stopPyBroker(): void {
         try { if (_proc) _proc.kill(); } catch { /* ignore */ }
         _proc = null;
     }, 2000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// resolvePythonPath — 三级优先级找 Python 解释器
+//   1. 绿色包自带 (gh555.com/engines/python/python.exe) — 最优先，环境隔离
+//   2. Q 记录 (HKCU\Environment\QQQIDE_PYTHON_DIR) — C 启动器维护
+//   3. 系统 PATH (python / python3) — 最后兜底
+// ═══════════════════════════════════════════════════════════════
+
+export function resolvePythonPath(portableRoot: string): string | null {
+    // Level 1: 绿色包自带 Python
+    const own = getComponentBin(portableRoot, 'python');
+    if (own && fs.existsSync(own)) return own;
+
+    // Level 2: Q 记录（注册表，仅 Windows）
+    if (process.platform === 'win32') {
+        try {
+            const { execSync } = require('child_process');
+            const stdout = execSync(
+                'reg query HKCU\\Environment /v QQQIDE_PYTHON_DIR',
+                { encoding: 'utf8', windowsHide: true, timeout: 5000 }
+            );
+            const m = stdout.match(/REG_SZ\s+(.+)/);
+            if (m) {
+                const qDir = m[1].trim();
+                const qPy = path.join(qDir, 'python.exe');
+                if (fs.existsSync(qPy)) return qPy;
+            }
+        } catch { /* no Q record */ }
+    }
+
+    // Level 3: 系统 PATH
+    const candidates = process.platform === 'win32' ? ['python', 'python3'] : ['python3', 'python'];
+    for (const cmd of candidates) {
+        const dirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+        const exts = process.platform === 'win32'
+            ? (process.env.PATHEXT || '.EXE;.BAT;.CMD;.COM').split(';').filter(Boolean)
+            : [''];
+        for (const dir of dirs) {
+            for (const ext of exts) {
+                const p = path.join(dir, cmd + ext);
+                try { if (fs.statSync(p).isFile()) return p; } catch { /* skip */ }
+            }
+        }
+    }
+
+    return null;
+}
+
+/** 获取绿色包 Python 安装目录（用于 PATH 注入） */
+export function getPythonDir(portableRoot: string): string | null {
+    return getComponentDir(portableRoot, 'python');
 }
 
 export function isPyBrokerReady(): boolean {

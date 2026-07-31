@@ -18,6 +18,7 @@ const isWatch = process.argv.includes('--watch');
 const entries = [
   path.join(SRC, 'main.ts'),
   path.join(SRC, 'preload.ts'),
+  path.join(SRC, 'login-preload.ts'),
 ];
 
 const baseOpts = {

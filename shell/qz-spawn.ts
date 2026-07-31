@@ -1,5 +1,3 @@
-// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
-
 // ============================================================================
 // qz-spawn.ts
 // Unified spawn entry (qz subsystem).
@@ -22,6 +20,7 @@ import { spawn as cpSpawn, execSync, execFile, ChildProcess } from 'child_proces
 import * as path from 'path';
 import * as fs from 'fs';
 import { ipcMain } from 'electron';
+import { getPythonDir } from './py-broker';
 
 // Output safety-net cap: prevents huge stdout/stderr from inflating IPC payloads.
 // This is NOT the AI-facing limit — that lives in tools.js (OUTPUT_DEFAULT / OUTPUT_MAX).
@@ -115,7 +114,7 @@ function _normalizeBrief(brief: { cmd: string; args?: string[]; shell?: boolean 
         }
     }
 
-    if (hasMeta && cmdLower !== 'cmd' && cmdLower !== 'sh') {
+    if (hasMeta && cmdLower !== 'cmd' && cmdLower !== 'sh' && brief.shell !== false) {
         // Reconstruct full command, quoting args with spaces
         var fullCmd = brief.cmd;
         if (brief.args && brief.args.length) {
@@ -518,6 +517,16 @@ export class QzSpawn {
             };
         }
         _normalizeBrief(brief);
+
+        // ★ 绿色包 Python 注入 PATH：确保 python 命令优先使用绿色包自带解释器
+        const pyDir = getPythonDir(this.appRoot);
+        if (pyDir) {
+            const sep = process.platform === 'win32' ? ';' : ':';
+            const basePath = brief.env?.PATH || process.env.PATH || '';
+            if (!basePath.split(sep).includes(pyDir)) {
+                brief.env = { ...(brief.env || {}), PATH: pyDir + sep + basePath };
+            }
+        }
 
         // A1: enforce system max timeout — no command runs longer than 10 minutes
         if (brief.timeout == null || brief.timeout <= 0 || brief.timeout > SYSTEM_MAX_TIMEOUT) {

@@ -271,13 +271,14 @@ export function registerExitHandlers(
     let _ueInHandler = false;
     let _ueLastLogTs = 0;
     process.on('uncaughtException', (err) => {
+        // EPIPE/ECONNRESET: stdout broken (no console window). Suppress silently.
+        const _msg = (err && (err as any).message) || '';
+        if (_msg.indexOf('EPIPE') >= 0 || _msg.indexOf('broken pipe') >= 0 || _msg.indexOf('ECONNRESET') >= 0) {
+            return;
+        }
         if (_ueInHandler) return;
         _ueInHandler = true;
         try {
-            const _msg = (err && (err as any).message) || '';
-            if (_msg.indexOf('EPIPE') >= 0 || _msg.indexOf('broken pipe') >= 0 || _msg.indexOf('ECONNRESET') >= 0) {
-                return;
-            }
             if (err && err.message === 'Object has been destroyed') {
                 try { console.warn('[main] uncaughtException (Object destroyed) suppressed'); } catch (_) { }
                 return;

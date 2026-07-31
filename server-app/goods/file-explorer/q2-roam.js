@@ -106,9 +106,14 @@ var bridge = {
 		remove: (p) => rpc('fs.remove', p),
 		rename: (o, n) => rpc('fs.rename', { __spread: true, args: [o, n] }),
 		stat: (p) => rpc('fs.stat', p),
+		copyFile: (src, dest) => rpc('fs.copyFile', { __spread: true, args: [src, dest] }),
 	},
 	clipboard: {
 		writeText: (s) => rpc('clipboard.writeText', s),
+		probe: () => rpc('clipboard.probe'),
+		readFiles: () => rpc('clipboard.readFiles'),
+		writeFiles: (paths) => rpc('clipboard.writeFiles', paths),
+		readImage: () => rpc('clipboard.readImage'),
 	},
 	shell: {
 		openPath: (p) => rpc('shell.openPath', p),
@@ -1585,6 +1590,26 @@ async function updateDriveDisplay() {
 	document.addEventListener('keydown', function(e) {
 		if (isInputActive()) return;
 		var k = (e.key || '').toLowerCase();
+
+		// ★ M8.2: Ctrl+C → write CF_HDROP to clipboard (files, not just text paths)
+		if ((e.ctrlKey || e.metaKey) && k === 'c') {
+			var targets = selectedItems.length > 1
+				? selectedItems.filter(function(s) { return s.name !== '..'; })
+				: (selectedItem && selectedItem.name !== '..' ? [selectedItem] : []);
+			if (targets.length > 0) {
+				e.preventDefault();
+				var paths = targets.map(function(s) { return s.path; });
+				// ① CF_HDROP — primary: paste in Explorer / other apps
+				bridge.clipboard.writeFiles(paths).catch(function() {});
+				// ② Text paths — fallback: paste as text in editors
+				bridge.clipboard.writeText(paths.join('\n')).catch(function() {
+					if (navigator.clipboard) navigator.clipboard.writeText(paths.join('\n')).catch(function(){});
+				});
+				_playSfx('copy');
+				return;
+			}
+		}
+
 		if (e.ctrlKey || e.metaKey) return;
 		// ★ Backspace: 返回上层目录；若从 .lnk 跳转而来则回到来源目录
 		if (k === 'backspace') {
@@ -1994,6 +2019,67 @@ function calculateAndAdjustScroll() {
 	if (_sideEl) { _sideEl.addEventListener('mousemove', handlePathTooltipHover); _sideEl.addEventListener('mouseleave', hidePathTooltip); }
 	var _kyEl = document.getElementById('kyContent');
 	if (_kyEl) { _kyEl.addEventListener('mousemove', handlePathTooltipHover); _kyEl.addEventListener('mouseleave', hidePathTooltip); }
+
+	// ═══ Roam Paste Handler (M8) ═══
+	// Intercepts Ctrl+V in Roam, copies files to current directory
+	var _pasteHandlerAttached = false;
+	function _attachRoamPaste() {
+		if (_pasteHandlerAttached) return;
+		var target = document.body;
+		if (!target) return;
+		_pasteHandlerAttached = true;
+
+		target.addEventListener('paste', async function(e) {
+			// Only handle if we're in the main content area
+			if (!currentPath) return;
+
+			var probe;
+			try { probe = await bridge.clipboard.probe(); } catch(err) { return; }
+			if (!probe || !probe.hasFile) return;
+
+			e.preventDefault();
+			e.stopPropagation();
+
+			var files;
+			try { files = await bridge.clipboard.readFiles(); } catch(err) { return; }
+			if (!files || files.length === 0) return;
+
+			// Show simple progress indicator
+			var tip = document.getElementById('addressPasteTip');
+			if (tip) { tip.textContent = 'Pasting ' + files.length + ' files...'; tip.classList.add('show'); }
+
+			var sep = currentPath.indexOf('\\') >= 0 ? '\\' : '/';
+			var successCount = 0;
+			var failCount = 0;
+
+			for (var i = 0; i < files.length; i++) {
+				var src = files[i];
+				var name = src.replace(/\\/g, '/').split('/').pop();
+				var dest = currentPath + sep + name;
+				try {
+					await bridge.fs.copyFile(src, dest);
+					successCount++;
+					if (tip) tip.textContent = 'Pasting ' + (i + 1) + '/' + files.length + ': ' + name;
+				} catch(err) {
+					failCount++;
+				}
+			}
+
+			// Refresh file list
+			loadFileList(currentPath);
+
+			// Show result
+			if (tip) {
+				tip.textContent = successCount + ' copied' + (failCount > 0 ? ', ' + failCount + ' failed' : '');
+				setTimeout(function() { tip.classList.remove('show'); }, 3000);
+			}
+
+			_playSfx('copy');
+		}, true);
+	}
+
+	// Attach paste handler on load
+	_attachRoamPaste();
 
 })();
 

@@ -58,10 +58,11 @@ function _saveAgentFloor(ag, questId, force) {
 
 var _AUTOSAVE_INTERVAL = 5000;
 var _autoSaveRunning = false;
-// ★ 面板级持久定时器：仅主面板(panelId===1)执行，遍历共享 agentPool
-//   三面板共享 parent.__qqq_agentPool，单一 auto-save 避免三写一读
+// ★ 三面板均运行 auto-save，遍历共享 agentPool
+//   _saveAgentFloor 内置 stopState/_lastAutoSaveLen/_compressing 三重守卫：
+//   主面板正常时侧面板被 _lastAutoSaveLen 去重跳过（零额外写盘）
+//   主面板 crash → 侧面板自然接管（agent stopState 仍为 'sending'）
 function _ensureAutoSave() {
-    if (typeof _panelId !== 'undefined' && _panelId !== 1) return;  // ★ 仅主面板写盘
     if (_autoSaveRunning) return;
     _autoSaveRunning = true;
     _autoSaveTimer = setInterval(function () {

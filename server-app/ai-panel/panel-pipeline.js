@@ -24,6 +24,7 @@ function _buildSendIntent(questId, content, opts) {
         isRecovery: opts.isRecovery || false,
         compressFloor: opts.compressFloor || false,
         noTools: opts.noTools || false,
+        forceFloorNum: opts.forceFloorNum || 0,  // ★ 0-house 同层重试：跳过 nextFloorNum，复用旧楼层
     };
 }
 
@@ -36,6 +37,7 @@ async function _executeSend(intent) {
     var tierIndex = intent.tierIndex;
     var sendType = intent.type;
     var isRecovery = intent.isRecovery;
+    var forceFloorNum = intent.forceFloorNum || 0;  // ★ 0-house 同层重试：复用旧楼层号
 
     // ★ 同步发送锁：仅同 agent 互斥，不同 quest/agent 各自独立
     if (_execSendBusy && _execSendBusyAgent === _activeAgent) return;
@@ -271,9 +273,9 @@ async function _executeSend(intent) {
     var floorNum;
     var root2 = questStore.getProjectRoot();
     var qDirName2, fDirName2, _allTxtDirLocal, _allTxtPathLocal;
-    // ★ 统一：一律通过 nextFloorNum() 创建新楼层
-    floorNum = await questStore.nextFloorNum(qid);
-    if (root2 && floorNum > 0) {
+    // ★ 统一：一律通过 nextFloorNum() 创建新楼层（除非 forceFloorNum 同层重试）
+    floorNum = forceFloorNum || await questStore.nextFloorNum(qid);
+    if (!forceFloorNum && root2 && floorNum > 0) {
         var userQuestion = text || (userContent || '').split('\n')[0];
         var quests2 = await questStore.list();
         var qEntry = quests2.find(function (qx) { return qx.id === qid; });
@@ -302,10 +304,10 @@ async function _executeSend(intent) {
         }
     }
 
-    if (sendType !== 'recovery') {
-        var _floorStartIdx = agent.conversation.length;
-        agent._floorStartIdx = _floorStartIdx;
-    }
+    // ★ recovery 楼层也需要设 _floorStartIdx（修复重启后楼层数据全部丢失的严重 bug）
+    //   否则 recovery 楼层始终沿用旧值 0 → all.json 保存整个 conversation → 重启后重复拼接 → 数据损坏
+    var _floorStartIdx = agent.conversation.length;
+    agent._floorStartIdx = _floorStartIdx;
     // ★ 推进 passby 基线：新楼层开始时，将刚完成的上一楼层计入基线（仅楼层号变化时推进）
     var _oldFloorNum2 = agent._currentFloorNum;
     // ★ 自愈守卫：若 passbyBaseFloorNum 为 0 但有多层历史（元数据未初始化），
@@ -334,22 +336,21 @@ async function _executeSend(intent) {
     }
     if (!_allTxtPathLocal) _allTxtPathLocal = _allTxtDirLocal ? _allTxtDirLocal + 'all.txt' : '';
     agent._allTxtPath = _allTxtPathLocal;
-    if (sendType !== 'recovery') {
-        agent._floorMeta[floorNum] = {
-            floorStartIdx: agent._floorStartIdx,
-            allTxtPath: _allTxtPathLocal,
-            _fDir: _allTxtDirLocal,
-            createdAt: Date.now()
-        };
-        var _bridgeMk = window.parent && window.parent.qqqideBridge;
-        if (_bridgeMk && _allTxtDirLocal) { try { await _bridgeMk.fs.mkdir(_allTxtDirLocal); } catch (_) { } }
-    }
+    // ★ recovery 楼层也需要 _floorMeta（修复重启后 all.json 无法正确切片的问题）
+    agent._floorMeta[floorNum] = {
+        floorStartIdx: agent._floorStartIdx,
+        allTxtPath: _allTxtPathLocal,
+        _fDir: _allTxtDirLocal,
+        createdAt: Date.now()
+    };
+    var _bridgeMk = window.parent && window.parent.qqqideBridge;
+    if (_bridgeMk && _allTxtDirLocal) { try { await _bridgeMk.fs.mkdir(_allTxtDirLocal); } catch (_) { } }
 
     var aiDiv = cardPool.startBuildingFloor(qid, floorNum, _allTxtPathLocal);
     if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); return; }
     aiDiv._allTxtPath = _allTxtPathLocal;
     // ★ Path B: recovery 时楼层对用户不可见，house 1 到达时才揭示（防空楼闪出）
-    if (sendType === 'recovery') {
+    if (sendType === 'recovery' && !forceFloorNum) {
         aiDiv.style.display = 'none';
     }
     // ★ recovery: 流式状态已在 agent 上，直接复用

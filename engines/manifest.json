@@ -1,8 +1,15 @@
 {
   "_version": 4,
   "_note": "Component manifest — server-driven, client reads at every boot. rank0=auto-install, rank1=user-triggered. bundled=true means included in green zip (skip download). Changing install_to or srcs on server → clients restructure themselves, no new zip ever needed.",
-  "rank0": ["ripgrep", "python", "git"],
-  "rank1": ["ffmpeg", "yt-dlp"],
+  "rank0": [
+    "ripgrep",
+    "python",
+    "git"
+  ],
+  "rank1": [
+    "ffmpeg",
+    "yt-dlp"
+  ],
   "download_cooldown_ms": 300000,
   "components": {
     "ripgrep": {
@@ -10,27 +17,79 @@
       "install_to": "ripgrep",
       "bin_win": "rg.exe",
       "bin_unix": "rg",
-      "verify_args": ["--version"],
+      "verify_args": [
+        "--version"
+      ],
       "version": "14.1.1",
       "srcs": {
-        "win32-x64":    [{ "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-pc-windows-msvc.zip",  "kind": "zip" }],
-        "linux-x64":    [{ "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-unknown-linux-musl.tar.gz", "kind": "tar.gz" }],
-        "darwin-arm64": [{ "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-aarch64-apple-darwin.tar.gz", "kind": "tar.gz" }],
-        "darwin-x64":   [{ "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-apple-darwin.tar.gz", "kind": "tar.gz" }]
+        "win32-x64": [
+          {
+            "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-pc-windows-msvc.zip",
+            "kind": "zip"
+          }
+        ],
+        "linux-x64": [
+          {
+            "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-unknown-linux-musl.tar.gz",
+            "kind": "tar.gz"
+          }
+        ],
+        "darwin-arm64": [
+          {
+            "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-aarch64-apple-darwin.tar.gz",
+            "kind": "tar.gz"
+          }
+        ],
+        "darwin-x64": [
+          {
+            "url": "https://github.com/BurntSushi/ripgrep/releases/download/14.1.1/ripgrep-14.1.1-x86_64-apple-darwin.tar.gz",
+            "kind": "tar.gz"
+          }
+        ]
+      },
+      "verify": {
+        "_note": "Single binary — no self-healing needed. Smoke is sufficient.",
+        "smoke": [
+          "--version"
+        ]
       }
     },
     "python": {
-      "_note": "Windows embed (no installer). Three fallback URLs per platform: CDN → npm mirror → python.org.",
+      "bundled": true,
+      "_note": "100% self-contained in green pack. pip pre-installed. CDN only as last-resort recovery when files corrupted.",
       "install_to": "python",
       "bin_win": "python.exe",
       "bin_unix": "bin/python3",
-      "verify_args": ["-c", "print(1)"],
+      "verify_args": [
+        "-c",
+        "print(1)"
+      ],
       "version": "3.8.10",
       "srcs": {
         "win32-x64": [
-          { "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/GI5BAPXG6E63A.zip",  "kind": "zip" },
-          { "url": "https://registry.npmmirror.com/-/binary/python/3.8.10/python-3.8.10-embed-amd64.zip", "kind": "zip" },
-          { "url": "https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-amd64.zip", "kind": "zip" }
+          {
+            "url": "https://gh555.com/dl/qqqide-up/python.zip",
+            "kind": "zip"
+          },
+          {
+            "url": "https://registry.npmmirror.com/-/binary/python/3.8.10/python-3.8.10-embed-amd64.zip",
+            "kind": "zip"
+          },
+          {
+            "url": "https://www.python.org/ftp/python/3.8.10/python-3.8.10-embed-amd64.zip",
+            "kind": "zip"
+          }
+        ]
+      },
+      "verify": {
+        "_note": "Self-healing threshold = pip works. If pip OK → can recover any missing package (PySide2 etc). If pip broken → truly corrupted → CDN recovery.",
+        "self_heal": [
+          "-c",
+          "import pip, ssl; print('pip OK')"
+        ],
+        "smoke": [
+          "-c",
+          "print(1)"
         ]
       }
     },
@@ -38,26 +97,70 @@
       "install_to": "ffmpeg",
       "bin_win": "ffmpeg.exe",
       "bin_unix": "ffmpeg",
-      "verify_args": ["-version"],
+      "verify_args": [
+        "-version"
+      ],
       "version": "7.1",
       "srcs": {
-        "win32-x64":    [{ "url": "https://cdn.gh555.com/components/ffmpeg/7.1/win32-x64.zip",        "kind": "zip" }],
-        "linux-x64":    [{ "url": "https://cdn.gh555.com/components/ffmpeg/7.1/linux-x64.tar.gz",     "kind": "tar.gz" }],
-        "darwin-arm64": [{ "url": "https://cdn.gh555.com/components/ffmpeg/7.1/darwin-arm64.tar.gz",  "kind": "tar.gz" }],
-        "darwin-x64":   [{ "url": "https://cdn.gh555.com/components/ffmpeg/7.1/darwin-x64.tar.gz",    "kind": "tar.gz" }]
+        "win32-x64": [
+          {
+            "url": "https://cdn.gh555.com/components/ffmpeg/7.1/win32-x64.zip",
+            "kind": "zip"
+          }
+        ],
+        "linux-x64": [
+          {
+            "url": "https://cdn.gh555.com/components/ffmpeg/7.1/linux-x64.tar.gz",
+            "kind": "tar.gz"
+          }
+        ],
+        "darwin-arm64": [
+          {
+            "url": "https://cdn.gh555.com/components/ffmpeg/7.1/darwin-arm64.tar.gz",
+            "kind": "tar.gz"
+          }
+        ],
+        "darwin-x64": [
+          {
+            "url": "https://cdn.gh555.com/components/ffmpeg/7.1/darwin-x64.tar.gz",
+            "kind": "tar.gz"
+          }
+        ]
       }
     },
     "yt-dlp": {
       "install_to": "yt-dlp",
       "bin_win": "yt-dlp.exe",
       "bin_unix": "yt-dlp",
-      "verify_args": ["--version"],
+      "verify_args": [
+        "--version"
+      ],
       "version": "2025.05.01",
       "srcs": {
-        "win32-x64":    [{ "url": "https://cdn.gh555.com/components/yt-dlp/2025.05.01/yt-dlp.exe",   "kind": "binary" }],
-        "linux-x64":    [{ "url": "https://cdn.gh555.com/components/yt-dlp/2025.05.01/yt-dlp_linux", "kind": "binary" }],
-        "darwin-arm64": [{ "url": "https://cdn.gh555.com/components/yt-dlp/2025.05.01/yt-dlp_macos", "kind": "binary" }],
-        "darwin-x64":   [{ "url": "https://cdn.gh555.com/components/yt-dlp/2025.05.01/yt-dlp_macos", "kind": "binary" }]
+        "win32-x64": [
+          {
+            "url": "https://cdn.gh555.com/components/yt-dlp/2025.05.01/yt-dlp.exe",
+            "kind": "binary"
+          }
+        ],
+        "linux-x64": [
+          {
+            "url": "https://cdn.gh555.com/components/yt-dlp/2025.05.01/yt-dlp_linux",
+            "kind": "binary"
+          }
+        ],
+        "darwin-arm64": [
+          {
+            "url": "https://cdn.gh555.com/components/yt-dlp/2025.05.01/yt-dlp_macos",
+            "kind": "binary"
+          }
+        ],
+        "darwin-x64": [
+          {
+            "url": "https://cdn.gh555.com/components/yt-dlp/2025.05.01/yt-dlp_macos",
+            "kind": "binary"
+          }
+        ]
       }
     },
     "git": {
@@ -66,21 +169,44 @@
       "install_to": "git",
       "bin_win": "git.exe",
       "bin_unix": "git",
-      "verify_args": ["--version"],
+      "verify_args": [
+        "--version"
+      ],
       "version": "2.51.0",
       "srcs": {
         "win32-x64": [
-          { "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/FTQWMZALLX7CO.zip",  "kind": "zip" },
-          { "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/OJHH77X5FT6HW.zip",  "kind": "zip" }
+          {
+            "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/FTQWMZALLX7CO.zip",
+            "kind": "zip"
+          },
+          {
+            "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/OJHH77X5FT6HW.zip",
+            "kind": "zip"
+          }
         ],
         "linux-x64": [
-          { "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/WWJCJGF4LJWUS.gz",  "kind": "tar.gz" }
+          {
+            "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/WWJCJGF4LJWUS.gz",
+            "kind": "tar.gz"
+          }
         ],
         "darwin-arm64": [
-          { "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/MXAAZ7SOOPX32.gz", "kind": "tar.gz" }
+          {
+            "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/MXAAZ7SOOPX32.gz",
+            "kind": "tar.gz"
+          }
         ],
         "darwin-x64": [
-          { "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/MXAAZ7SOOPX32.gz", "kind": "tar.gz" }
+          {
+            "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/MXAAZ7SOOPX32.gz",
+            "kind": "tar.gz"
+          }
+        ]
+      },
+      "verify": {
+        "_note": "Single binary — no self-healing needed.",
+        "smoke": [
+          "--version"
         ]
       }
     }

@@ -8,6 +8,7 @@ import { app, ipcMain, BrowserWindow, clipboard, dialog, shell as electronShell 
 import { openUrl } from './browser-launcher';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as cp from 'child_process';
 import { URL } from 'url';
 import { BootConfig, getWebappBaseUrl } from './boot';
 import { addAssetRoot, _assetFileWorkspaceRoots, diskFreeBatch } from './asset-protocol';
@@ -37,11 +38,86 @@ export function registerMiscIpc(
     getMainWindow: () => any,
     bootConfig: BootConfig,
 ): void {
-    // ---- clipboard ----
+    // ═══ klipzap 中心剪贴板机 ═══
+    // probe — 零 spawn，纯 Electron 内置，sub-ms
+    ipcMain.handle('qqqide:clipboard:probe', async () => {
+        const fmts = clipboard.availableFormats();
+        const fmtSet = new Set(fmts.map((f: string) => f.toLowerCase()));
+        return {
+            hasText: fmtSet.has('text/plain') || fmtSet.has('text/utf8') || fmtSet.has('text'),
+            hasHtml: fmtSet.has('text/html'),
+            hasImage: fmtSet.has('image/png') || fmtSet.has('image/bmp') || fmtSet.has('image/jpeg') || fmtSet.has('image/tiff') || fmtSet.has('image/webp'),
+            hasFile: fmtSet.has('hdrop') || fmtSet.has('filenamew') || fmtSet.has('filename') || fmtSet.has('cf_hdrop'),
+            _rawFormats: fmts.slice(0, 20),
+        };
+    });
+
+    // readHtml
+    ipcMain.handle('qqqide:clipboard:readHtml', async () => {
+        try { return clipboard.readHTML(); } catch { return ''; }
+    });
+
+    // writeText / readText / readImage / hasImage
     ipcMain.handle('qqqide:clipboard:writeText', async (_e, s: string) => clipboard.writeText(String(s)));
     ipcMain.handle('qqqide:clipboard:readText', async () => clipboard.readText());
     ipcMain.handle('qqqide:clipboard:readImage', async () => { var img = clipboard.readImage(); return img.isEmpty() ? null : img.toDataURL(); });
     ipcMain.handle('qqqide:clipboard:hasImage', async () => !clipboard.readImage().isEmpty());
+
+    // readFiles — CF_HDROP via PowerShell (仅 Windows，低频路径)
+    ipcMain.handle('qqqide:clipboard:readFiles', async () => {
+        if (process.platform !== 'win32') return [];
+        try {
+            const psScript = `
+Add-Type -AssemblyName System.Windows.Forms
+$list = [System.Windows.Forms.Clipboard]::GetFileDropList()
+if ($list -and $list.Count -gt 0) {
+    foreach ($f in $list) { Write-Output $f }
+}
+`.trim();
+            const result = await new Promise<string>((resolve, reject) => {
+                cp.execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
+                    timeout: 5000,
+                    windowsHide: true,
+                }, (err, stdout) => {
+                    if (err) { reject(err); return; }
+                    resolve(stdout || '');
+                });
+            });
+            const lines = result.split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
+            return lines;
+        } catch (e) {
+            console.warn('[klipzap] readFiles failed:', e);
+            return [];
+        }
+    });
+
+    // writeFiles — CF_HDROP via PowerShell (仅 Windows)
+    ipcMain.handle('qqqide:clipboard:writeFiles', async (_e, paths: string[]) => {
+        if (process.platform !== 'win32') return false;
+        if (!paths || paths.length === 0) return false;
+        try {
+            const escapedPaths = paths.map(p => `$col.Add('${p.replace(/'/g, "''")}')`).join('\n');
+            const psScript = `
+Add-Type -AssemblyName System.Windows.Forms
+$col = New-Object System.Collections.Specialized.StringCollection
+${escapedPaths}
+[System.Windows.Forms.Clipboard]::SetFileDropList($col)
+`.trim();
+            await new Promise<void>((resolve, reject) => {
+                cp.execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', psScript], {
+                    timeout: 5000,
+                    windowsHide: true,
+                }, (err) => {
+                    if (err) { reject(err); return; }
+                    resolve();
+                });
+            });
+            return true;
+        } catch (e) {
+            console.warn('[klipzap] writeFiles failed:', e);
+            return false;
+        }
+    });
 
     // ---- shell (open file / URL) ----
     ipcMain.handle('qqqide:shell:openPath', async (_e, p: string) => {

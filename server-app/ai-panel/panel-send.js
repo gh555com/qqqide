@@ -318,7 +318,8 @@ function _startRecovery(questId, agent, linkEl) {
     _attemptRecoverySendNewFloor(questId, agent, linkEl);
 }
 
-// ★ 统一恢复：封顶旧楼层，创建新楼层（含错误历史 + 粉色气泡「继续」）
+// ★ 统一恢复：0-house → 同层重试；N-house → 封顶旧楼层 + 建新楼层
+//   0-house 重试上限 3 次，超限永久封顶红框
 async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
     var _totalElapsed = performance.now() - agent._recoveryStartPerf;
     if (_totalElapsed > _RECOVERY_MAX_TOTAL_MS) {
@@ -330,6 +331,15 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
         _finishRecovery(linkEl, agent, false);
         return;
     }
+
+    // ★ 分叉：0-house → 同层重试；N-house → 新楼层
+    var _is0House = !agent._houses || agent._houses.length === 0;
+    if (_is0House) {
+        await _retrySameFloor(questId, agent, linkEl);
+        return;
+    }
+
+    // ── N-house 路径（不变）：封顶旧楼层 + 建新楼层 ──
 
     // ★ 恢复消息：含错误历史让 AI 看到中断原因（含时间戳）
     var _recoveryText = '网络恢复重连。此前楼层中断记录：';
@@ -374,6 +384,90 @@ async function _attemptRecoverySendNewFloor(questId, agent, linkEl) {
         agent._inRecoverySend = false;
         agent._deferRenderUntilHouse1 = false;  // ★ V7 fix: 防极端异常路径残留
         $input.value = _savedInput;
+        if (typeof saveQuestUIState === 'function') saveQuestUIState(questId);
+    }
+}
+
+// ★ 0-house 同层重试（AI 从未启动过 → 同一楼层重发，不建新楼）
+//   上限 3 次，超限永久封顶红框不再显示"继续任务"
+async function _retrySameFloor(questId, agent, linkEl) {
+    var _originFloor = agent._recoveryOriginFloor || agent._currentFloorNum || 0;
+
+    // 1. 次数守卫
+    if (!agent._recoveryRetryCount) agent._recoveryRetryCount = 0;
+    if (agent._recoveryRetryCount >= 3) {
+        if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent, _originFloor);
+        _finishRecovery(linkEl, agent, false);
+        try {
+            if (parent && parent.qqqideQoast) parent.qqqideQoast.show(
+                '已重试 3 次仍未成功，可能是计费/配额耗尽或服务器故障，请稍后再试',
+                { type: 'error', duration: 5000 }
+            );
+        } catch (_) { }
+        return;
+    }
+    agent._recoveryRetryCount++;
+
+    // 2. 清旧错误日志（0-house 重试不垒行）
+    if (agent._questErrorState) delete agent._questErrorState[_originFloor];
+    if (agent._questErrorLogByFloor) delete agent._questErrorLogByFloor[_originFloor];
+    if (agent.conversation) {
+        for (var _ri = agent.conversation.length - 1; _ri >= 0; _ri--) {
+            if (agent.conversation[_ri]._error && agent.conversation[_ri]._floor === _originFloor) {
+                agent.conversation.splice(_ri, 1);
+            }
+        }
+    }
+
+    // 3. 取最新 linkEl（防 _renderAllErrorBoxes 重建红框后旧 linkEl 脱离 DOM）
+    var _box = typeof _ensureErrorBoxDOM === 'function' ? _ensureErrorBoxDOM(agent, _originFloor) : null;
+    if (_box && _box._continueLink && _box._continueLink.isConnected) {
+        linkEl = _box._continueLink;
+        agent._recoveryLinkEl = linkEl;
+    }
+
+    // 4. linkEl → █ 光块
+    if (linkEl && linkEl.isConnected) {
+        linkEl._qqqRecoveryOrigText = linkEl.textContent;
+        linkEl.textContent = '\u2588';
+        linkEl.className = 'msg-err-recovery-light';
+        linkEl.style.cssText = '';
+        linkEl._qqqRecoveryBusy = true;
+    }
+
+    // 5. 用原消息走 _executeSend（forceFloorNum 跳过 nextFloorNum，复用旧楼层 DOM）
+    var _userContent2 = agent._lastUserMsg || '';
+    if (!_userContent2) {
+        _finishRecovery(linkEl, agent, false);
+        return;
+    }
+
+    agent._isRecovery = true;
+    agent._inRecoverySend = false;
+    agent._recoveryInProgress = false;
+
+    var _savedInput2 = $input ? $input.value : '';
+
+    try {
+        var _intent = _buildSendIntent(questId, _userContent2, {
+            type: 'recovery',
+            isRecovery: true,
+            forceFloorNum: _originFloor,  // ★ 同层重试：跳过 nextFloorNum
+        });
+        await _executeSend(_intent);
+        if (agent._stopState === 'fatal') {
+            _finishRecovery(linkEl, agent, false);
+        } else {
+            _finishRecovery(linkEl, agent, true);
+        }
+    } catch (_e) {
+        agent.setStopState('fatal');
+        agent._floorFatal = true;
+        _finishRecovery(linkEl, agent, false);
+    } finally {
+        agent._inRecoverySend = false;
+        agent._deferRenderUntilHouse1 = false;
+        if ($input && _savedInput2 !== undefined) $input.value = _savedInput2;
         if (typeof saveQuestUIState === 'function') saveQuestUIState(questId);
     }
 }

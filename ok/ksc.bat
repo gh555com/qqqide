@@ -1,0 +1,21 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+          E:\r\sc32\sc.exe  -e  -S --max-fps 16 --video-bit-rate 2M --audio-bit-rate 128K --audio-codec=opus --audio-buffer=50 --max-size 1800 --render-driver direct3d
+
+

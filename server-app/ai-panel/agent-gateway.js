@@ -189,6 +189,13 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             _ttfbAccum += _ttfbMs;
             if (!resp.ok) {
                 var text = await resp.text();
+                // ★ 从 Go 服务器 JSON 响应体提取人类可读消息（计费/配额等）— 优先，所有错误处理共享
+                var _serverMsg = '';
+                try {
+                    var _json = JSON.parse(text || '{}');
+                    _serverMsg = _json.error || _json.message || '';
+                    if (_serverMsg && _serverMsg.length > 120) _serverMsg = _serverMsg.substring(0, 120) + '…';
+                } catch (_) { }
                 // ★ 429 时优先切换 key，再退避重试
                 if (resp.status === 429 && _keyRotations < MAX_KEY_ROTATIONS) {
                     if (_rotateKey()) {
@@ -230,15 +237,18 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     }
                     // 两把 key 都欠费
                     self._exitReason = 'http_' + resp.status;
-                    self._lastGatewayMessage = 'AI 服务暂时未可用，请稍后再试（所有 API key 已耗尽）';
+                    self._lastGatewayMessage = _serverMsg || 'AI 服务暂时未可用，请稍后再试（所有 API key 余额已耗尽）';
                     return null;
                 }
 
                 var friendly = resp.status === 401 ? '认证失败，请检查 Token'
-                    : resp.status === 402 ? 'ge 余额不足，请充值'
+                    : resp.status === 402 ? (_serverMsg || 'ge 余额不足，请充值')
                         : resp.status === 429 ? '请求过于频繁，请稍后再试'
-                            : ContentGateway.HttpError.isGatewayDown(resp.status) ? '服务器暂时未可达 (' + resp.status + ')'
-                                : 'Server error (' + resp.status + ')';
+                            : ContentGateway.HttpError.isGatewayDown(resp.status)
+                                ? (_serverMsg
+                                    ? _serverMsg + ' (' + resp.status + ')'
+                                    : '服务暂时不可用 (' + resp.status + ') — 可能是计费/配额耗尽或服务器过载')
+                                : (_serverMsg || 'Server error (' + resp.status + ')');
                 try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show(friendly, { type: resp.status === 429 ? 'warning' : 'error' }); } catch (_) { }
                 // ★ 502/503/504: 切线路（带防 ping-pong）
                 if (ContentGateway.HttpError.isGatewayDown(resp.status)) {
@@ -454,7 +464,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 self._log('  AI upstream 402 — both keys depleted');
                 clearTimeout(_fetchDeadline);
                 self._exitReason = 'http_402';
-                self._lastGatewayMessage = 'AI 服务暂时未可用，请稍后再试';
+                self._lastGatewayMessage = 'AI 服务暂时未可用，请稍后再试（所有 API key 余额已耗尽）';
                 return null;
             } else {
                 var _isHttp2Like = msg.indexOf("ERR_HTTP2") >= 0
@@ -523,10 +533,15 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             }
             // 无可切换线路 或 已达切换上限 → 交给上层处理
             if (!self._lastGatewayMessage) {
-                var _errDet = 'Network request failed. Retried ' + MAX_RETRIES + 'x + switched ' + MAX_LINE_SWITCHES + 'x lines. All recovery exhausted.';
-                if (msg) _errDet += ' Error: ' + msg + '.';
-                _errDet += ' Conversation preserved.';
-                self._lastGatewayMessage = _errDet;
+                // ★ 如果 _lastGatewayError 已设（SSE/上游错误），优先用原始错误消息，不套泛泛网络失败壳
+                if (self._lastGatewayError && msg && msg !== 'Failed to fetch' && msg.indexOf('Network request failed') < 0) {
+                    self._lastGatewayMessage = msg + '（已重试' + MAX_RETRIES + '次 + 切换' + MAX_LINE_SWITCHES + '条线路，对话已保存）';
+                } else {
+                    var _errDet = 'Network request failed. Retried ' + MAX_RETRIES + 'x + switched ' + MAX_LINE_SWITCHES + 'x lines. All recovery exhausted.';
+                    if (msg) _errDet += ' Error: ' + msg + '.';
+                    _errDet += ' Conversation preserved.';
+                    self._lastGatewayMessage = _errDet;
+                }
             }
             // ★ 通知兄弟面板：当前线路已死
             if (typeof _gwBroadcastDeadFallback === 'function' && GATEWAY_URL === GATEWAY_URL_FALLBACK) {
