@@ -23,17 +23,14 @@
   var _lvData = null;
   var _$ldrOverlay = null;
   var _$ldrPanel = null;
+  var _$loginOverlay = null;
+  var _$loginPanel = null;
+  var _loginEscHandler = null;
+  var _loginAuthUnsub = null;
 
   var API_BASE = 'https://direct-cn.gh555.com/api';
-  var LOGIN_URL = 'https://gh555.com/login';
-  var POLL_INTERVAL_MS = 3000;
-  var POLL_TIMEOUT_MS = 600000;
   var BALANCE_POLL_MS = 60000;
   var NO_DRAG = '-webkit-app-region:no-drag;';
-
-  // ── 登录并发控制 ──
-  var _loginAbortCtrl = null;   // AbortController：取消旧登录轮询
-  var _loginGen = 0;            // 代际计数器：抑制过期 toast
 
   var _bootInfo = null;
 
@@ -84,22 +81,31 @@
     } catch (e) { }
   }
 
+  // ★ 2026-07-31 T3：从中心大脑恢复登录态（主进程 safeStorage → 所有窗口秒级同步）
   async function _restoreAuth() {
     if (_authData && _authData.token) return true;
     try {
+      if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.getState) {
+        var state = await window.qqqideBridge.auth.getState();
+        if (state && state.loggedIn && state.phone) {
+          _authData = {
+            token: state.token || '', phone: state.phone, device_name: _buildDeviceName(), ts: Date.now(),
+            countryIso2: state.countryIso2 || '', purchased: state.purchased || false
+          };
+          _balanceGe = state.balanceGe;
+          _lvData = state.lvData;
+          _lvShow();
+          _updateGeLabel();
+          return true;
+        }
+      }
+      // 兜底：旧 loadAuth API
       if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.loadAuth) {
         var saved = await window.qqqideBridge.auth.loadAuth();
         if (saved && saved.token && saved.phone) {
           _authData = saved; _authData.ts = Date.now();
-          // ★ 从持久化恢复 countryIso2（存储 key 是 country_iso2，JS 用 camelCase）
           if (saved.country_iso2 && !_authData.countryIso2) _authData.countryIso2 = saved.country_iso2;
-          // ★ 恢复 purchased 标志
           if (saved.purchased) _authData.purchased = true;
-          // ★ 轻量：同步 phone 到主进程共享内存（不依赖 safeStorage）
-          if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.setPhone) {
-            window.qqqideBridge.auth.setPhone(saved.phone);
-          }
-          // ★ 立即显示 LV 区域 + 奖杯（零等待）
           _lvShow();
           return true;
         }
@@ -206,45 +212,19 @@
             _lvAnimate(lvFloor, lvPct);
           }
         }
-        // 服务器真理拉取
+        // ★ T3：转发 billing 到主进程中心大脑（中心大脑拉取服务器真理 + 广播所有窗口）
+        try {
+          if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.notifyBilling) {
+            window.qqqideBridge.auth.notifyBilling(costWge);
+          }
+        } catch (_) { }
+        // 本地拉取 LV（兼容旧版无中心大脑时）
         _fetchLv();
         if (isFree) {
           try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (_) { }
         }
       }
     });
-  }
-
-  // ★ 2026-07-28：浏览器启动兜底监听
-  // 主进程 browser-launcher.ts 所有层 fail 后通过 IPC 推送 URL，
-  // 渲染层用唯一真理 qoast 弹提醒 + 复制链接按钮。
-  var _browserFallbackUnsub = null;
-  function _setupBrowserFallback() {
-    try {
-      if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.onBrowserFallback) {
-        _browserFallbackUnsub = window.qqqideBridge.shell.onBrowserFallback(function (url) {
-          console.log('[login] browser fallback triggered, url=' + url.slice(0, 60));
-          if (window.qqqideQoast) {
-            window.qqqideQoast.show('浏览器可能未打开，请复制链接手动访问', {
-              duration: 0,
-              type: 'warning',
-              action: {
-                text: '复制链接',
-                callback: function () {
-                  try {
-                    if (window.qqqideBridge && window.qqqideBridge.clipboard) {
-                      window.qqqideBridge.clipboard.writeText(url);
-                    }
-                  } catch (e) {}
-                }
-              }
-            });
-          }
-        });
-      }
-    } catch (e) {
-      console.warn('[login] setupBrowserFallback failed:', e);
-    }
   }
 
   async function _fetchLv() {
@@ -723,91 +703,84 @@
     document.getElementById('qqq-ldr-close').addEventListener('click', _ldrClose);
   }
 
-  // ── 登录流程 ──
-  // ★ 二次点击取消旧登录、打开新浏览器、新 sessionID，不给用户任何卡死机会
+  // ── 登录流程（Plan C — 外部浏览器主通道 + OS协议回调 + 轮询兜底）──
+  // 流程：auth-brain 生成 session_id → shell.openExternal 打开浏览器
+  //      → 浏览器登录 → ide-finalize → qqqide://auth 回调 / 轮询
+  //      → 中心大脑收 token → 广播所有窗口
+  // ★ 2s 后若未登入 → 显示 qoast（含「复制登录链接」按钮）
   async function _doLogin() {
-    // ① 取消上一次登录（如果存在）：中断轮询 + 取消 push 监听
-    if (_loginAbortCtrl) {
-      try { _loginAbortCtrl.abort(); } catch (e) { }
-      _loginAbortCtrl = null;
+    _updateLoginButtonState(true);
+    var bridge = window.qqqideBridge && window.qqqideBridge.auth;
+    if (!bridge) {
+      console.warn('[login] auth bridge not available');
+      if (window.qqqideQoast) {
+        window.qqqideQoast.show('\u767B\u5F55\u529F\u80FD\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5', { duration: 5000, type: 'error' });
+      }
+      _updateLoginButtonState(false);
+      return null;
     }
-    // ★ 清除旧持久化 auth，打破 auth.enc 死循环（2026-07-23 修复：
-    // 旧 token 可能属于其他账号，留着会导致下次启动 _restoreAuth 恢复错号）
-    _clearAuthData();
-    try { if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.clearAuth) window.qqqideBridge.auth.clearAuth(); } catch(e) {}
-    _notifyStateChange();
 
-    var myGen = ++_loginGen;        // 代际号，用于抑制过期 toast
-    var ctrl = new AbortController();
-    _loginAbortCtrl = ctrl;
-    var signal = ctrl.signal;
-    var pushDone = false, _unsubPush = null;
-    try {
-      var sessionId = _generateSessionId();
-      var deviceName = _buildDeviceName();
-      var loginUrl = LOGIN_URL + '?from=ide&session=' + sessionId +
-        '&device_name=' + encodeURIComponent(deviceName) + '&goods=qqqide';
+    var _loginUrl = '';
+    var _qoast = null;
+    var _qoastTimer = null;
 
-      try {
-        if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.onAuthPush) {
-          _unsubPush = window.qqqideBridge.auth.onAuthPush(function (data) {
-            if (!data || !data.token) return;
-            // ★ session_id 校验（2026-07-23 修复）：push 若带 session_id 则必须匹配当前登录会话。
-            // 防止浏览器 Fast Path 用 localStorage 旧 token 推错账号。
-            // 不匹配的 push 静默丢弃（可能是旧登录的残留在网络延迟中抵达）。
-            if (data.session_id && data.session_id !== sessionId) {
-              console.warn('[login] push session mismatch, expected=' + sessionId.slice(0,8) + ' got=' + data.session_id.slice(0,8));
-              return;
+    // ★ 监听登录成功 → 关闭 qoast
+    var _authUnsub = bridge.onAuthChanged(function (snap) {
+      if (snap && snap.loggedIn) {
+        if (_qoast) { _qoast.dismiss(); _qoast = null; }
+        if (_qoastTimer) { clearTimeout(_qoastTimer); _qoastTimer = null; }
+        if (typeof _authUnsub === 'function') _authUnsub();
+      }
+    });
+
+    // ★ 辅助：显示复制链接 qoast（永久，含独有「复制登录链接」按钮）
+    function _ensureCopyQoast(msg) {
+      if (_qoast) return;
+      _qoast = window.qqqideQoast && window.qqqideQoast.show(
+        msg || '\u8BF7\u590D\u5236\u94FE\u63A5\u5728\u6D4F\u89C8\u5668\u4E2D\u5B8C\u6210\u767B\u5F55\uFF0C\u767B\u5F55\u6210\u529F\u540E\u81EA\u52A8\u8FD4\u56DE IDE',
+        {
+          duration: 0,
+          type: 'info',
+          action: {
+            label: '\u590D\u5236\u767B\u5F55\u94FE\u63A5',
+            onClick: function () {
+              if (window.qqqideBridge && window.qqqideBridge.clipboard) {
+                window.qqqideBridge.clipboard.writeText(_loginUrl);
+              }
+              window.qqqideQoast && window.qqqideQoast.show('\u94FE\u63A5\u5DF2\u590D\u5236\uFF0C\u8BF7\u7C98\u8D34\u5230\u6D4F\u89C8\u5668\u5730\u5740\u680F', { duration: 3000 });
             }
-            // ★ 允许同 session 内覆盖（2026-07-23 修复）：不再用 pushDone 硬锁。
-            // 浏览器 Fast Path 可能先用旧 token 推错账号，用户手动纠正后
-            // 第二次 push 必须能覆盖第一次的错误数据。poll 同理可覆盖 push。
-            pushDone = true;
-            _setAuthData(data.token, data.phone || '', data.country_iso2 || '', data.purchased);
-            _notifyStateChange();
-          });
-        }
-      } catch (e) { }
-
-      // ★ 每次点击都打开新浏览器（新 sessionID），绝不跳过
-      try { window.qqqideBridge.shell.openExternal(loginUrl); }
-      catch (e) { try { window.open(loginUrl, '_blank'); } catch (e2) { } }
-
-      _updateLoginButtonState(true);
-
-      var startTime = Date.now(), pollCount = 0;
-      while (Date.now() - startTime < POLL_TIMEOUT_MS) {
-        if (signal.aborted) break;
-        // ★ Abortable sleep：abort 时立即跳出
-        await new Promise(function (r) {
-          var t = setTimeout(r, POLL_INTERVAL_MS);
-          var onAbort = function () { clearTimeout(t); r(); };
-          signal.addEventListener('abort', onAbort, { once: true });
-        });
-        if (signal.aborted) break;
-        pollCount++;
-        try {
-          var resp = await _httpsGet('/gaea/qqqide/auth/poll?session=' + sessionId);
-          if (resp && resp.ok && resp.token) {
-            // ★ poll 永远可覆盖 push 数据（2026-07-23 修复）：poll 走服务端 session_id 精确匹配，
-            // 是权威真理源。即使 push 已设置数据，poll 返回不同 token 也必须覆盖。
-            _setAuthData(resp.token, resp.phone || '', resp.country_iso2 || '', resp.purchased);
-            _notifyStateChange();
-            pushDone = true;
-            break;
           }
-        } catch (e) {
-          if (signal.aborted) break;
-          if (pollCount % 10 === 0) console.warn('[login] poll #' + pollCount + ' error:', e.message);
+        }
+      );
+    }
+
+    // ★ 主通道: 外部浏览器（shell.openExternal → OS 协议回调 + 轮询双保险）
+    try {
+      console.log('[login] Plan C: external browser');
+      if (bridge.openLoginExternal) {
+        _loginUrl = await bridge.openLoginExternal() || '';
+        console.log('[login] openLoginExternal returned: ' + (_loginUrl ? _loginUrl.slice(0, 80) + '...' : 'EMPTY'));
+        // 2s 后若未登入 → 显示复制链接 qoast
+        _qoastTimer = setTimeout(function () {
+          if (!_authData || !_authData.token) {
+            _ensureCopyQoast('\u6D4F\u89C8\u5668\u5DF2\u6253\u5F00\uFF0C\u5982\u672A\u81EA\u52A8\u767B\u5F55\u8BF7\u590D\u5236\u94FE\u63A5');
+          }
+        }, 2000);
+      } else {
+        console.warn('[login] openLoginExternal bridge not available');
+        if (window.qqqideQoast) {
+          window.qqqideQoast.show('\u767B\u5F55\u529F\u80FD\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5', { duration: 5000, type: 'error' });
         }
       }
-      // ★ 被取消不算超时，返回标记让调用方跳过 toast
-      return pushDone ? { token: _authData.token, phone: _authData.phone } : (signal.aborted ? { _cancelled: true } : null);
+    } catch (e) {
+      console.warn('[login] external browser error:', e.message);
+      if (window.qqqideQoast) {
+        window.qqqideQoast.show('\u767B\u5F55\u7A97\u53E3\u65E0\u6CD5\u6253\u5F00\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5', { duration: 0, type: 'error' });
+      }
     } finally {
-      if (_unsubPush) { try { _unsubPush(); } catch (e) { } }
-      _loginAbortCtrl = null;
       _updateLoginButtonState(false);
     }
+    return null;
   }
 
   function _updateLoginButtonState(active) {
@@ -961,14 +934,7 @@
     _$loginBtn.style.cssText = NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;color:var(--text-secondary,#999);cursor:pointer;padding:1px 20px;font-size:13px;';
     _$loginBtn.addEventListener('click', function (e) {
       e.preventDefault();
-      var expectedGen = _loginGen + 1;  // 快照：本轮期望的代际号
-      _doLogin().then(function (result) {
-        // ★ 本代已过期（被新点击替代）→ 静默忽略，不弹 toast
-        if (_loginGen !== expectedGen) return;
-        // ★ 被取消 → 不弹 toast（新登录已接管）
-        if (result && result._cancelled) return;
-        if (!result && window.qqqideQoast) window.qqqideQoast.show('登录超时，请重试', { duration: 5000 });
-      }).catch(function (err) { console.error('[login] error:', err); });
+      _doLogin().catch(function (err) { console.error('[login] error:', err); });
     });
 
     // 手机号按钮
@@ -1102,13 +1068,59 @@
     _updateGeLabel();
   }
 
+  // ★ 2026-07-31 T3：订阅中心大脑认证变更 → 跨窗口秒级同步
+  var _authSyncUnsub = null;
+  function _setupAuthSync() {
+    try {
+      if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.onAuthChanged) {
+        _authSyncUnsub = window.qqqideBridge.auth.onAuthChanged(function (snap) {
+          if (!snap) return;
+          if (snap.loggedIn && snap.phone) {
+            // 中心大脑推送登录态 → 更新本地
+            if (!_authData || _authData.phone !== snap.phone) {
+              _authData = {
+                token: snap.token || '', phone: snap.phone, device_name: _buildDeviceName(), ts: Date.now(),
+                countryIso2: snap.countryIso2 || '', purchased: snap.purchased || false
+              };
+            } else {
+              if (snap.token) _authData.token = snap.token;
+              if (snap.countryIso2) _authData.countryIso2 = snap.countryIso2;
+              if (snap.purchased) _authData.purchased = true;
+            }
+            if (snap.balanceGe !== null && snap.balanceGe !== undefined) {
+              _balanceGe = snap.balanceGe;
+            }
+            if (snap.lvData) {
+              _lvData = snap.lvData;
+              var WL = 10 * 10000;
+              var servWge = (_lvData.level_floor || 0) * WL + ((_lvData.progress_pct || 0) / 100) * WL;
+              if (_lvAccWge === null || servWge > _lvAccWge || Date.now() - _lvLastBillingTs > 2000) {
+                _lvAccWge = servWge;
+              }
+              if (!_lvAnim) _lvDisplaySnap(_lvData.progress_pct || 0, _lvData.level_floor || 0);
+              if (_$lvLevel) _$lvLevel.textContent = 'Lv' + (_lvData.level_floor || 0);
+            }
+            _updateGeLabel();
+            if (_$lvBar) _$lvBar.style.display = 'inline-flex';
+          } else if (!snap.loggedIn) {
+            // 中心大脑推送登出态 → 清除本地
+            _clearAuthData();
+          }
+          _notifyStateChange();
+        });
+      }
+    } catch (e) {
+      console.warn('[login] setupAuthSync failed:', e);
+    }
+  }
+
   // ── 公开 API ──
   var api = {
     init: function () {
       if (_initDone) return;
       _initDone = true;
       _setupLvListener();     // ★ 注册 billing 事件 → LV 拉取监听
-      _setupBrowserFallback(); // ★ 2026-07-28：浏览器启动兜底监听 → 弹 qoast
+      _setupAuthSync();       // ★ 2026-07-31 T3：订阅中心大脑认证变更（跨窗口秒级同步）
       _injectLoginButton(); // ★ 无条件注入 DOM，不受 bootInfo/bridge 影响
       _ensureBootInfo().then(function () {
         _restoreAuth().then(function () { _notifyStateChange(); });
@@ -1148,11 +1160,13 @@
     getCountryIso2: function () { return (_authData && _authData.countryIso2) ? _authData.countryIso2 : ''; },
     getBalanceGe: function () { return _balanceGe; },
     getLvData: function () { return _lvData; },
-    login: function () { return _doLogin().then(function (r) { return (r && r._cancelled) ? null : r; }); },
+    login: function () { return _doLogin(); },
     logout: function () {
       _clearAuthData();
       _notifyStateChange();
-      try { if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.clearAuth) window.qqqideBridge.auth.clearAuth(); } catch (e) { }
+      // ★ T3：中心大脑退出登录 → 广播所有窗口
+      try { if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.logout) window.qqqideBridge.auth.logout(); }
+        catch (e) { if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.clearAuth) window.qqqideBridge.auth.clearAuth(); }
       if (window.qqqideQoast) window.qqqideQoast.show('已退出登录', { duration: 3000 });
     },
     onStateChange: function (fn) {

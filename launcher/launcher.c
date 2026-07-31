@@ -20,6 +20,7 @@
 #include <windows.h>
 #include <winhttp.h>
 #include <commctrl.h>
+#include <winreg.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -103,6 +104,30 @@ static volatile LONG g_applyRunning  = 0;
 static WCHAR   g_exeDir[MAX_PATH] = {0};
 static int     g_tickCount      = 0;
 static int     g_closeCountdown = 0;
+
+// ═══════════════════════════════════════════════════════════════
+// Q 记录 — 系统环境变量兜底 Python 路径（每次启动重写，仅维护一条）
+// ═══════════════════════════════════════════════════════════════
+
+static void writeQRecord(const WCHAR *exeDir) {
+    WCHAR pyDir[MAX_PATH];
+    swprintf(pyDir, MAX_PATH, L"%s\\gh555.com\\engines\\python", exeDir);
+
+    HKEY hkey;
+    LONG rc = RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_SET_VALUE, &hkey);
+    if (rc != ERROR_SUCCESS) {
+        rc = RegCreateKeyExW(HKEY_CURRENT_USER, L"Environment", 0, NULL,
+            REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, NULL, &hkey, NULL);
+        if (rc != ERROR_SUCCESS) return;
+    }
+    RegSetValueExW(hkey, L"QQQIDE_PYTHON_DIR", 0, REG_SZ,
+        (BYTE*)pyDir, (DWORD)((wcslen(pyDir) + 1) * sizeof(WCHAR)));
+    RegCloseKey(hkey);
+
+    // 广播变更，使 Explorer / 新 cmd 立即感知
+    SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0,
+        (LPARAM)L"Environment", SMTO_ABORTIFHUNG, 5000, NULL);
+}
 
 // ═══════════════════════════════════════════════════════════════
 // 工具函数
@@ -1280,25 +1305,36 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
     };
     if (!RegisterClassExW(&wc)) return 1;
 
-    // ★ 检测僵尸窗口：如果已有启动器窗口，强杀后重启
-    HWND existing = FindWindowW(CLASS, NULL);
-    if (existing) {
-        PostMessageW(existing, WM_CLOSE, 0, 0);
-        for (int i = 0; i < 20; i++) {
-            Sleep(100);
-            if (!IsWindow(existing)) break;
-        }
-        if (IsWindow(existing)) {
-            DWORD pid = 0;
-            GetWindowThreadProcessId(existing, &pid);
-            if (pid != GetCurrentProcessId()) {
-                HANDLE hp = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
-                if (hp) { TerminateProcess(hp, 0); CloseHandle(hp); }
+    // ★ 单实例 Mutex（OS 内核对象，100% 原子，零竞态窗口）
+    //   替代旧 FindWindowW 先行检测（旧方案存在窗口创建前的毫秒级竞态窗口）
+    //   流程：Mutex 原子检测 → 非首例则杀旧进程 → 重试 → 继续启动
+    HANDLE hMutex = CreateMutexW(NULL, TRUE, L"QqqIdeLauncher");
+    int firstInstance = (hMutex != NULL && GetLastError() != ERROR_ALREADY_EXISTS);
+
+    if (!firstInstance) {
+        if (hMutex) { CloseHandle(hMutex); hMutex = NULL; }
+        // 已有实例 → 找到旧窗口 → 强杀 → 重试 Mutex
+        HWND existing = FindWindowW(CLASS, NULL);
+        if (existing) {
+            PostMessageW(existing, WM_CLOSE, 0, 0);
+            for (int i = 0; i < 20; i++) {
+                Sleep(100);
+                if (!IsWindow(existing)) break;
             }
-            DestroyWindow(existing);
+            if (IsWindow(existing)) {
+                DWORD pid = 0;
+                GetWindowThreadProcessId(existing, &pid);
+                if (pid != GetCurrentProcessId()) {
+                    HANDLE hp = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+                    if (hp) { TerminateProcess(hp, 0); CloseHandle(hp); }
+                }
+                DestroyWindow(existing);
+            }
         }
-        // 不 return — 继续正常启动
+        // 重试 Mutex（旧进程已杀，应成功；若仍失败也不阻塞）
+        hMutex = CreateMutexW(NULL, TRUE, L"QqqIdeLauncher");
     }
+    // hMutex 随进程退出由 OS 自动释放，无需显式 CloseHandle
 
     g_hwnd = CreateWindowExW(0, CLASS, L"qqqide",
         WS_POPUP | WS_BORDER, 0, 0, WW, WH, NULL, NULL, hi, NULL);
@@ -1316,6 +1352,9 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
     //   注意：服务器拉取在这里做（启动前），因为需要 host/path 等配置。
     //   但网络失败不阻塞——缓存或默认值兜底。
     loadConfig(myDir);
+
+    // ★ Q 记录：写系统环境变量，兜底 Python 路径
+    writeQRecord(myDir);
 
     // ── 检查 joker.exe ──
     WCHAR jokerPath[MAX_PATH];

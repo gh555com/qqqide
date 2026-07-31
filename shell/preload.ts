@@ -20,16 +20,33 @@ const QQQ = {
         getBin: (name: string) => ipcRenderer.invoke('qqqide:components:getBin', name),
     },
 
-    // ---- auth push — 浏览器登录成功通过 qqqide:// 协议推 token（2026-06-29） ----
+    // ---- auth — 认证中心大脑（2026-07-31 T3） ----
     auth: {
-onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; purchased?: boolean; session_id?: string }) => void) => {
+        // ★ 外部浏览器登录（主通道 — shell.openExternal → OS 协议回调）
+        openLoginExternal: () => ipcRenderer.invoke('qqqide:auth:open-login-external'),
+        // ★ 内嵌窗口登录（兜底 — BrowserWindow）
+        openLoginWindow: () => ipcRenderer.invoke('qqqide:auth:open-login-window'),
+        // ★ 订阅认证状态变更（中心大脑广播 → 所有窗口秒级同步）
+        onAuthChanged: (cb: (snap: any) => void) => {
+            const handler = (_e: any, snap: any) => { try { cb(snap); } catch (err) { console.warn('[auth.onAuthChanged]', err); } };
+            ipcRenderer.on('qqqide:auth:changed', handler);
+            return () => ipcRenderer.removeListener('qqqide:auth:changed', handler);
+        },
+        // ★ 获取当前认证状态（新窗口打开时同步）
+        getState: () => ipcRenderer.invoke('qqqide:auth:get-state'),
+        // ★ 退出登录
+        logout: () => ipcRenderer.invoke('qqqide:auth:logout'),
+        // ★ billing 事件 → 刷新 LV
+        notifyBilling: (costWge: number) => ipcRenderer.send('qqqide:auth:billing', costWge),
+        // ── 以下为旧 API，保留兼容但标记废弃 ──
+        onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; purchased?: boolean; session_id?: string }) => void) => {
             const handler = (_e: any, data: { token: string; phone: string; country_iso2?: string; purchased?: boolean; session_id?: string }) => { try { cb(data); } catch (err) { console.warn('[auth.onAuthPush]', err); } };
             ipcRenderer.on('qqqide-auth', handler);
-            return () => ipcRenderer.removeListener('qqqide-auth', handler);        },
+            return () => ipcRenderer.removeListener('qqqide-auth', handler);
+        },
         saveAuth: (auth: { token: string; phone: string; device_name?: string; country_iso2?: string; purchased?: boolean } | null) => ipcRenderer.invoke('qqqide:auth:save', auth),
         loadAuth: () => ipcRenderer.invoke('qqqide:auth:load'),
         clearAuth: () => ipcRenderer.invoke('qqqide:auth:clear'),
-        // ★ 轻量：仅同步 phone 到主进程共享内存（不依赖 safeStorage）
         setPhone: (phone: string) => ipcRenderer.invoke('qqqide:auth:set-phone', phone),
     },
 
@@ -58,6 +75,24 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
         mkdir: (p: string) => ipcRenderer.invoke('qqqide:fs:mkdir', p),
         remove: (p: string) => ipcRenderer.invoke('qqqide:fs:remove', p),
         rename: (oldP: string, newP: string) => ipcRenderer.invoke('qqqide:fs:rename', oldP, newP),
+        // ★ 流式复制 + 进度回调。onProgress({copied,total})，返回 Promise<true>
+        copyFile: (src: string, dest: string, onProgress?: (p: { copied: number; total: number }) => void): Promise<boolean> => {
+            const streamId = 'cp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+            return new Promise((resolve, reject) => {
+                const handler = (_e: any, msg: { streamId: string; copied: number; total: number }) => {
+                    if (!msg || msg.streamId !== streamId) return;
+                    try { if (onProgress) onProgress({ copied: msg.copied, total: msg.total }); } catch { }
+                };
+                ipcRenderer.on('qqqide:fs:copy-progress', handler);
+                ipcRenderer.invoke('qqqide:fs:copyFile', src, dest, streamId).then((result: boolean) => {
+                    ipcRenderer.removeListener('qqqide:fs:copy-progress', handler);
+                    resolve(result);
+                }).catch((err: any) => {
+                    ipcRenderer.removeListener('qqqide:fs:copy-progress', handler);
+                    reject(err);
+                });
+            });
+        },
         drives: () => ipcRenderer.invoke('qqqide:fs:drives'),
         diskFree: (d: string[]) => ipcRenderer.invoke('qqqide:fs:diskFree', d),
     },
@@ -172,12 +207,16 @@ onAuthPush: (cb: (data: { token: string; phone: string; country_iso2?: string; p
         getTheme: () => ipcRenderer.invoke('qqqide:sync:get-theme'),
     },
 
-    // ---- clipboard ----
+    // ---- clipboard (klipzap) ----
     clipboard: {
+        probe: () => ipcRenderer.invoke('qqqide:clipboard:probe'),
         readText: () => ipcRenderer.invoke('qqqide:clipboard:readText'),
         writeText: (s: string) => ipcRenderer.invoke('qqqide:clipboard:writeText', s),
         readImage: () => ipcRenderer.invoke('qqqide:clipboard:readImage'),
         hasImage: () => ipcRenderer.invoke('qqqide:clipboard:hasImage'),
+        readHtml: () => ipcRenderer.invoke('qqqide:clipboard:readHtml'),
+        readFiles: () => ipcRenderer.invoke('qqqide:clipboard:readFiles'),
+        writeFiles: (paths: string[]) => ipcRenderer.invoke('qqqide:clipboard:writeFiles', paths),
     },
 
     // ---- ghrun (qz process manager) ----

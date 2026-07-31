@@ -139,6 +139,38 @@ export function registerFsIpc(): void {
         return true;
     });
 
+    // ★ copyFile — 流式复制 + 进度回调（通过 IPC event 通道）
+    //  渲染层调 bridge.fs.copyFile(src, dest, onProgress) → 主进程流式复制
+    ipcMain.handle('qqqide:fs:copyFile', async (e, src: string, dest: string, streamId?: string) => {
+        try {
+            await fs.promises.mkdir(path.dirname(dest), { recursive: true });
+            const stat = await fs.promises.stat(src);
+            const totalSize = stat.size;
+            const readStream = fs.createReadStream(src, { highWaterMark: 1024 * 1024 }); // 1MB chunks
+            const writeStream = fs.createWriteStream(dest);
+
+            if (streamId && totalSize > 0) {
+                let copied = 0;
+                readStream.on('data', (chunk: Buffer) => {
+                    copied += chunk.length;
+                    try {
+                        e.sender.send('qqqide:fs:copy-progress', { streamId, copied, total: totalSize });
+                    } catch { /* ignore */ }
+                });
+            }
+
+            return new Promise<boolean>((resolve, reject) => {
+                readStream.on('error', reject);
+                writeStream.on('error', reject);
+                writeStream.on('finish', () => resolve(true));
+                readStream.pipe(writeStream);
+            });
+        } catch (e: any) {
+            if (e.code === 'ENOENT') return false;
+            throw e;
+        }
+    });
+
     // ★ read_file — 主进程直接读，1 IPC，50MB 守卫 + qwr 快照
     //   可选 sha256：读 timeline 中该文件的历史版本
     ipcMain.handle('qqqide:ai:read_file', async (_e, args: { path: string; start_line?: number; end_line?: number; sha256?: string }) => {

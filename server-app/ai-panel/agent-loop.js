@@ -261,7 +261,7 @@ var AgentLoop = (function () {
         // 主因
         switch (this._exitReason) {
             case 'http_502': parts.push('服务器返回502(Bad Gateway)'); break;
-            case 'http_503': parts.push('服务器返回503(Service Unavailable)'); break;
+            case 'http_503': parts.push('服务器返回503(Service Unavailable) — 可能是上游计费/配额耗尽或服务器过载'); break;
             case 'http_504': parts.push('服务器返回504(Gateway Timeout)'); break;
             case 'http_429': parts.push('请求过于频繁(429限流)'); break;
             case 'http_400': parts.push('AI接口返回400(请求格式错误，可能是孤儿tool消息)'); break;

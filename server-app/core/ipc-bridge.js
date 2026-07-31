@@ -22,6 +22,10 @@
       exists: () => Promise.resolve(false),
       drives: () => Promise.resolve(['C:\\']),
       diskFree: () => Promise.resolve({}),
+      remove: () => Promise.resolve(true),
+      rename: () => Promise.resolve(true),
+      copyFile: () => Promise.resolve(true),
+      mkdir: () => Promise.resolve(true),
     },
     dialog: {
       open: () => Promise.resolve({ canceled: true, filePaths: [] }),
@@ -53,6 +57,16 @@
       stop: () => Promise.resolve(true),
       invoke: () => Promise.reject(new Error('not in shell')),
       isAlive: () => Promise.resolve(false),
+    },
+    clipboard: {
+      probe: () => Promise.resolve({ hasText: false, hasHtml: false, hasImage: false, hasFile: false, _rawFormats: [] }),
+      readText: () => Promise.resolve(''),
+      writeText: () => Promise.resolve(true),
+      readImage: () => Promise.resolve(null),
+      hasImage: () => Promise.resolve(false),
+      readHtml: () => Promise.resolve(''),
+      readFiles: () => Promise.resolve([]),
+      writeFiles: () => Promise.resolve(false),
     },
     shell: {
       openExternal: u => { window.open(u, '_blank'); },

@@ -9,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v277'; // V17 _persistentCount conditional reset + _persistent dedup in all paths
+const CACHE_NAME = 'qqq-shell-v283'; // v282 M8.2 + external change detect on focus
 const PRECACHE_URLS = [
   './',
   './index.html',

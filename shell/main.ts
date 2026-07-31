@@ -52,6 +52,7 @@ import { registerKopeIpc } from './ipc-kope';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
+import { initAuthBrain, registerAuthBrainIpc, registerAuthProtocol, getAuthBrain } from './auth-brain';
 
 // ── 服务 ──
 import { EngineHost } from './engines';
@@ -108,15 +109,22 @@ app.on('certificate-error', (event, _webContents, _url, _error, certificate, cal
     } else if (_url.includes('47.105.67.51')) {
         event.preventDefault();
         callback(true);
+    } else if (_url.includes('gh555.com')) {
+        // gh555.com / cnk.gh555.com — Cloudflare 证书，但也可能在 dev 环境
+        // 被 sp_tunnel 代理拦截导致 CN 不匹配，统一放行
+        event.preventDefault();
+        callback(true);
     } else {
         callback(false);
     }
 });
 
-// ── 自定义协议 qqqide:// — 浏览器登录成功 push token 回 IDE（2026-06-29） ──
+// ── 自定义协议 qqqide:// — 外部浏览器登录回调（2026-07-31 T6 主通道） ──
 app.on('second-instance', (_event, argv) => {
+    console.log('[protocol] second-instance fired, argv count=' + argv.length);
     const url = argv.find((a: string) => a.startsWith('qqqide://'));
-    if (url) handleAuthProtocolUrl(url);
+    console.log('[protocol] second-instance url=' + (url || 'NONE'));
+    if (url) handleLegacyAuthProtocolUrl(url);
     if (mainWindow) {
         if (mainWindow.isMinimized()) mainWindow.restore();
         mainWindow.focus();
@@ -125,26 +133,29 @@ app.on('second-instance', (_event, argv) => {
 
 app.on('open-url', (event, url) => {
     event.preventDefault();
-    handleAuthProtocolUrl(url);
+    console.log('[protocol] open-url fired, url=' + url);
+    handleLegacyAuthProtocolUrl(url);
 });
 
-// ── F12 已由 before-input-event 拦截（window-manager.ts），此处无额外逻辑。
-// DevTools 窗口标题改名：Electron 22 detached DevTools 不暴露 BrowserWindow 引用
-// → 尝试记录见 do/解决开发者控制台 复制按钮问题 §尝试10-12。
-
-function handleAuthProtocolUrl(url: string): void {
+function handleLegacyAuthProtocolUrl(url: string): void {
+    console.log('[protocol] handleLegacyAuthProtocolUrl: ' + url);
     try {
         const parsed = new URL(url);
         if (parsed.hostname === 'auth') {
             const token = parsed.searchParams.get('token');
-            const phone = parsed.searchParams.get('phone');
+            const phone = parsed.searchParams.get('phone') || '';
             const countryISO2 = parsed.searchParams.get('country_iso2') || '';
             const purchased = parsed.searchParams.get('purchased') === '1';
-            const sessionId = parsed.searchParams.get('session') || '';
-            if (token && mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('qqqide-auth', { token, phone: phone || '', country_iso2: countryISO2, purchased: purchased, session_id: sessionId });
-                console.log('[protocol] auth token pushed to renderer, phone=' + (phone || '?') + ' cc=' + countryISO2 + ' sid=' + (sessionId ? sessionId.slice(0,8) : '-'));
+            console.log('[protocol] parsed: token=' + (token ? token.slice(0, 8) + '...' : 'MISSING') + ' phone=' + phone.slice(-4));
+            if (token) {
+                authBrain.setAuth(token, phone, countryISO2, purchased);
+                setAuthPhone(phone);
+                setAuthToken(token);
+                notifyAuthReady();
+                console.log('[protocol] auth saved via legacy path, phone=' + phone.slice(-4));
             }
+        } else {
+            console.log('[protocol] hostname is not "auth": ' + parsed.hostname);
         }
     } catch (e) {
         console.warn('[protocol] bad auth url:', e);
@@ -153,7 +164,8 @@ function handleAuthProtocolUrl(url: string): void {
 
 function checkStartupAuthUrl(): void {
     const url = process.argv.find((a: string) => a.startsWith('qqqide://'));
-    if (url) handleAuthProtocolUrl(url);
+    console.log('[protocol] checkStartupAuthUrl: ' + (url || 'none'));
+    if (url) handleLegacyAuthProtocolUrl(url);
 }
 
 // ── 启动配置 + 标志 ──
@@ -178,6 +190,9 @@ const downloadService = new DownloadService(portable.cache);
 const updateService = new UpdateService(portable.root, APP_VERSION);
 const indexService = new IndexService(portable.root);
 
+// ── 认证中心大脑（2026-07-31 T3）──
+const authBrain = initAuthBrain(portable.userData, portable.root, APP_VERSION, isDevFlag);
+
 // ── 主窗口引用 ──
 let mainWindow: BrowserWindow | null = null;
 
@@ -190,6 +205,7 @@ function getLastBootMode(): BootMode { return lastBootMode; }
 protocol.registerSchemesAsPrivileged([
     { scheme: 'qqqide-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
     { scheme: 'qqqide-webapp', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true } },
+    { scheme: 'qqqide', privileges: { standard: true, secure: true, supportFetchAPI: true } },
 ]);
 
 // ── Shell state 注册 ──
@@ -250,7 +266,8 @@ function registerAllIpc(): void {
     registerQzSpawnIpc(qzSpawn);
     registerGaeaProcessIpc();
     registerKopeIpc();
-    registerAuthPersistIpc();
+    registerAuthProtocol(getAuthBrain());  // ★ qqqide:// 协议拦截（应用级，防 OS 截胡）
+    registerAuthBrainIpc(getAuthBrain());
     registerDesktopShortcutIpc();
 }
 
@@ -310,65 +327,6 @@ function registerDesktopShortcutIpc(): void {
         } catch (e: any) {
             return { ok: false, error: e && e.message };
         }
-    });
-}
-
-// ── Auth 持久化 IPCPC — safeStorage 加密存盘，重启自动恢复（2026-06-29） ──
-function registerAuthPersistIpc(): void {
-    const AUTH_FILE = path.join(portable.userData, 'alphal', 'auth.enc');
-    const PHONE_FILE = path.join(portable.userData, 'alphal', 'phone.txt'); // ★ 纯文本兜底，防 safeStorage DPAPI 跨目录失效
-
-    ipcMain.handle('qqqide:auth:save', async (_e, auth: { token: string; phone: string; device_name?: string } | null) => {
-        // ★ 无条件更新共享内存（不依赖 safeStorage，保证 wq-ping 能读到 doer_id）
-        if (auth && auth.phone) { setAuthPhone(auth.phone); notifyAuthReady(); }
-        if (auth && auth.token) setAuthToken(auth.token);
-        // ★ 纯文本兜底：写 phone.txt（wq-ping 终极 fallback，不受 safeStorage/DPAPI 影响）
-        if (auth && auth.phone) {
-            try {
-                const dir = path.dirname(PHONE_FILE);
-                if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-                fs.writeFileSync(PHONE_FILE, auth.phone, 'utf8');
-            } catch (_) { }
-        }
-        if (!auth || !auth.token || !safeStorage.isEncryptionAvailable()) return false;
-        try {
-            const encrypted = safeStorage.encryptString(JSON.stringify(auth));
-            const dir = path.dirname(AUTH_FILE);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(AUTH_FILE, new Uint8Array(encrypted));
-            // update shared memory for wq-ping readDoerID
-            if (auth.phone) setAuthPhone(auth.phone);
-            if (auth.token) setAuthToken(auth.token);
-            return true;
-        } catch (e) { return false; }
-    });
-
-    ipcMain.handle('qqqide:auth:load', async () => {
-        if (!safeStorage.isEncryptionAvailable()) return null;
-        try {
-            if (!fs.existsSync(AUTH_FILE)) return null;
-            const encrypted = fs.readFileSync(AUTH_FILE);
-            const auth = JSON.parse(safeStorage.decryptString(encrypted));
-            // update shared memory for wq-ping readDoerID
-            if (auth && auth.phone) { setAuthPhone(auth.phone); notifyAuthReady(); }
-            if (auth && auth.token) setAuthToken(auth.token);
-            return auth;
-        } catch (e) { return null; }
-    });
-
-    // ★ 轻量级 IPC：仅设置共享内存电话号，不依赖 safeStorage
-    ipcMain.handle('qqqide:auth:set-phone', async (_e, phone: string) => {
-        if (phone && /^\d{7,20}$/.test(phone)) { setAuthPhone(phone); notifyAuthReady(); return true; }
-        return false;
-    });
-
-    ipcMain.handle('qqqide:auth:clear', async () => {
-        try {
-            if (fs.existsSync(AUTH_FILE)) fs.unlinkSync(AUTH_FILE);
-            // clear shared memory
-            setAuthPhone(''); setAuthToken('');
-            return true;
-        } catch (e) { return false; }
     });
 }
 
@@ -654,30 +612,16 @@ app.whenReady().then(async () => {
         }
     })();
 
-    // Preload phone from auth.enc into shared memory (for wq-ping readDoerID)
-    // Avoids safeStorage(DPAPI) failures across install directory migration
-    (function preloadAuthPhone() {
-        try {
-            // ★ 路径1：safeStorage 解密 auth.enc（主路径）
-            if (safeStorage.isEncryptionAvailable()) {
-                const authFile = path.join(portable.userData, 'alphal', 'auth.enc');
-                if (fs.existsSync(authFile)) {
-                    const encrypted = fs.readFileSync(authFile);
-                    const auth = JSON.parse(safeStorage.decryptString(encrypted));
-                    if (auth && auth.phone) { setAuthPhone(auth.phone); return; }
-                    if (auth && auth.token) setAuthToken(auth.token);
-                }
-            }
-        } catch (_) { /* safeStorage might fail across install migration */ }
-        // ★ 路径2：纯文本 phone.txt 兜底（防 DPAPI 跨目录/跨用户失效）
-        try {
-            const phoneFile = path.join(portable.userData, 'alphal', 'phone.txt');
-            if (fs.existsSync(phoneFile)) {
-                const phone = fs.readFileSync(phoneFile, 'utf8').trim();
-                if (phone && /^\d{7,20}$/.test(phone)) setAuthPhone(phone);
-            }
-        } catch (_) { }
-    })();
+    // ★ 认证中心大脑恢复登录态（2026-07-31 T3）
+    // auth-brain.restore() 内建 safeStorage + phone.txt 双路径兜底
+    authBrain.restore().then((restored: boolean) => {
+        if (restored) {
+            // 同步到旧 auth-state（wq-ping 兼容）
+            setAuthPhone(authBrain.phone);
+            setAuthToken(authBrain.token);
+            notifyAuthReady();
+        }
+    });
 
     // ★ ping reporter (non-blocking, first ping with 30-120s random delay)
     try {
