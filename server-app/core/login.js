@@ -703,37 +703,55 @@
     document.getElementById('qqq-ldr-close').addEventListener('click', _ldrClose);
   }
 
-  // ── 登录流程（Plan C — 外部浏览器主通道 + OS协议回调 + 轮询兜底）──
-  // 流程：auth-brain 生成 session_id → shell.openExternal 打开浏览器
-  //      → 浏览器登录 → ide-finalize → qqqide://auth 回调 / 轮询
-  //      → 中心大脑收 token → 广播所有窗口
-  // ★ 2s 后若未登入 → 显示 qoast（含「复制登录链接」按钮）
+  // ── 登录流程（外部浏览器主通道 + OS协议回调 + 主进程轮询兜底）──
+  // ★ 2026-07-31 F34 简化：砍掉渲染层轮询（主进程 auth-brain 已有轮询），
+  //   砍掉 BrowserWindow 分支。唯二通道：OS 协议回调 + 主进程轮询。
+  var _loginActive = false;
+  var _loginCleanup = null;
+  var _loginUrl = '';
   async function _doLogin() {
+    if (_loginActive) {
+      console.log('[login] already active, re-opening browser');
+      if (window.qqqideBridge && window.qqqideBridge.shell && _loginUrl) {
+        window.qqqideBridge.shell.openExternal(_loginUrl);
+      }
+      return null;
+    }
+    _loginActive = true;
     _updateLoginButtonState(true);
+
     var bridge = window.qqqideBridge && window.qqqideBridge.auth;
     if (!bridge) {
       console.warn('[login] auth bridge not available');
-      if (window.qqqideQoast) {
-        window.qqqideQoast.show('\u767B\u5F55\u529F\u80FD\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5', { duration: 5000, type: 'error' });
-      }
+      _loginActive = false;
       _updateLoginButtonState(false);
       return null;
     }
 
-    var _loginUrl = '';
     var _qoast = null;
     var _qoastTimer = null;
+    var _loginTimeout = null;
 
-    // ★ 监听登录成功 → 关闭 qoast
+    function _finishLogin() {
+      _loginActive = false;
+      _loginCleanup = null;
+      _updateLoginButtonState(false);
+      if (_qoastTimer) { clearTimeout(_qoastTimer); _qoastTimer = null; }
+      if (_loginTimeout) { clearTimeout(_loginTimeout); _loginTimeout = null; }
+    }
+    _loginCleanup = _finishLogin;
+
+    // ★ 监听主进程广播 → 登录成功
     var _authUnsub = bridge.onAuthChanged(function (snap) {
       if (snap && snap.loggedIn) {
+        console.log('[login] auth changed → logged in');
         if (_qoast) { _qoast.dismiss(); _qoast = null; }
-        if (_qoastTimer) { clearTimeout(_qoastTimer); _qoastTimer = null; }
         if (typeof _authUnsub === 'function') _authUnsub();
+        _finishLogin();
       }
     });
 
-    // ★ 辅助：显示复制链接 qoast（永久，含独有「复制登录链接」按钮）
+    // ★ 显示复制链接 qoast（永久，含「复制登录链接」按钮）
     function _ensureCopyQoast(msg) {
       if (_qoast) return;
       _qoast = window.qqqideQoast && window.qqqideQoast.show(
@@ -754,31 +772,44 @@
       );
     }
 
-    // ★ 主通道: 外部浏览器（shell.openExternal → OS 协议回调 + 轮询双保险）
     try {
-      console.log('[login] Plan C: external browser');
+      console.log('[login] opening external browser...');
       if (bridge.openLoginExternal) {
         _loginUrl = await bridge.openLoginExternal() || '';
         console.log('[login] openLoginExternal returned: ' + (_loginUrl ? _loginUrl.slice(0, 80) + '...' : 'EMPTY'));
-        // 2s 后若未登入 → 显示复制链接 qoast
+
+        // 3s 后若未登入 → 显示复制链接 qoast
         _qoastTimer = setTimeout(function () {
           if (!_authData || !_authData.token) {
             _ensureCopyQoast('\u6D4F\u89C8\u5668\u5DF2\u6253\u5F00\uFF0C\u5982\u672A\u81EA\u52A8\u767B\u5F55\u8BF7\u590D\u5236\u94FE\u63A5');
           }
-        }, 2000);
+        }, 3000);
+
+        // 120s 总超时
+        _loginTimeout = setTimeout(function () {
+          console.warn('[login] 120s timeout');
+          if (!_authData || !_authData.token) {
+            if (_qoast) { _qoast.dismiss(); _qoast = null; }
+            if (window.qqqideQoast) {
+              window.qqqideQoast.show('\u767B\u5F55\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5\u540E\u91CD\u8BD5', { duration: 0, type: 'error' });
+            }
+          }
+          if (typeof _authUnsub === 'function') _authUnsub();
+          _finishLogin();
+        }, 120000);
+
       } else {
         console.warn('[login] openLoginExternal bridge not available');
-        if (window.qqqideQoast) {
-          window.qqqideQoast.show('\u767B\u5F55\u529F\u80FD\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5', { duration: 5000, type: 'error' });
-        }
+        if (window.qqqideQoast) window.qqqideQoast.show('\u767B\u5F55\u529F\u80FD\u6682\u65F6\u4E0D\u53EF\u7528\uFF0C\u8BF7\u91CD\u542F IDE', { duration: 0, type: 'error' });
+        _finishLogin();
       }
     } catch (e) {
-      console.warn('[login] external browser error:', e.message);
+      console.warn('[login] external browser error:', e && e.message);
       if (window.qqqideQoast) {
         window.qqqideQoast.show('\u767B\u5F55\u7A97\u53E3\u65E0\u6CD5\u6253\u5F00\uFF0C\u8BF7\u68C0\u67E5\u7F51\u7EDC\u8FDE\u63A5', { duration: 0, type: 'error' });
       }
-    } finally {
-      _updateLoginButtonState(false);
+      if (typeof _authUnsub === 'function') _authUnsub();
+      _finishLogin();
     }
     return null;
   }
@@ -803,9 +834,7 @@
     var phoneTail = loggedIn && _authData.phone ? _authData.phone.slice(-4) : '';
     _updateButtons(loggedIn, phoneTail);
     if (loggedIn) {
-      _lvShow();            // ★ 立即显示 LV 区域 + 奖杯
-      _startBalancePoll();
-      _fetchLv();  // ★ 异步拉服务器基准，填入真实数据
+      _lvShow();            // ★ 立即显示 LV 区域 + 奖杯（主进程广播已推送 balance+lvData）
       // 触发状态栏免费预算刷新
       try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (e) { }
       try {
@@ -1026,7 +1055,7 @@
         var projRoot = window._workspaceRoot;
         if (projRoot) {
           var projRootClean = projRoot.replace(/\\/g, '/').replace(/\/$/, '');
-          var projDir = projRootClean + '/qqq/alphal/rule';
+          var projDir = projRootClean + '/_qqq/alphal/rule';
           var projPath = projDir + '/project.txt';
           var projExists = await bridge.fs.exists(projPath);
           if (!projExists) {

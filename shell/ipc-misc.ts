@@ -21,6 +21,8 @@ import { injectDevToolsConsoleButtons } from './devtools-inject';
 import { renameDevToolsViaBroker, isPyBrokerReady } from './py-broker';
 import { _consoleBuffer } from './window-manager';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
+import { HashService } from './hash-service';
+import { CacheStore } from './cache-store';
 
 // ═══ 跨窗口脏文件快照（主进程内存，所有窗口共享） ═══
 const _dirtySnapshots = new Map<string, string>();  // normalizedPath → latest dirty content
@@ -37,7 +39,40 @@ export function registerMiscIpc(
     updateService: UpdateService,
     getMainWindow: () => any,
     bootConfig: BootConfig,
+    hashService: HashService,
+    cacheStore: CacheStore,
 ): void {
+    // ═══ hash:buffer — SHA256/xxh64 fingerprinting ═══
+    ipcMain.handle('qqqide:hash:buffer', async (_e, b64: string, mode?: 'fast' | 'strong' | 'both') => {
+        try {
+            const buf = Buffer.from(b64, 'base64');
+            return hashService.hashBuffer(buf, mode || 'fast');
+        } catch (e: any) {
+            console.warn('[hash:buffer] failed:', e && e.message);
+            return null;
+        }
+    });
+
+    // ═══ cache (KV + bucketed file cache rooted at portable.cache) ═══
+    ipcMain.handle('qqqide:cache:get', async (_e, key: string) => {
+        return await cacheStore.get(key);
+    });
+    ipcMain.handle('qqqide:cache:put', async (_e, key: string, value: any, opts?: any) => {
+        return await cacheStore.put(key, value, opts);
+    });
+    ipcMain.handle('qqqide:cache:has', async (_e, key: string) => {
+        return await cacheStore.has(key);
+    });
+    ipcMain.handle('qqqide:cache:delete', async (_e, key: string) => {
+        return await cacheStore.del(key);
+    });
+    ipcMain.handle('qqqide:cache:path', async (_e, key: string) => {
+        return await cacheStore.path(key);
+    });
+    ipcMain.handle('qqqide:cache:bucketPath', async (_e, sig: string, ext?: string) => {
+        return cacheStore.bucketPath(sig, ext);
+    });
+
     // ═══ klipzap 中心剪贴板机 ═══
     // probe — 零 spawn，纯 Electron 内置，sub-ms
     ipcMain.handle('qqqide:clipboard:probe', async () => {
@@ -255,7 +290,7 @@ ${escapedPaths}
                 _projectWindowMap.delete(normalized);
                 _windowProjectMap.delete(existingWinId);
             }
-            const lockPath = normalized + '/qqq/alphal/.lock';
+            const lockPath = normalized + '/_qqq/alphal/.lock';
             try {
                 const lockRaw = fs.readFileSync(lockPath, 'utf-8');
                 const lockData = JSON.parse(lockRaw);

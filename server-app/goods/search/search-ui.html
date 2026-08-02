@@ -119,7 +119,7 @@ function _initDB(){
   try{
     _prjRoot=_prjRoot.replace(/\\/g,'/').replace(/\/$/,'');
     if(!window.parent.qgs||!window.parent.qgs.project)return false;
-    _qdb=window.parent.qgs.project(_prjRoot+'/qqq/alphal/only.sq3','qqq.only',{v:1,form:'doc'});
+    _qdb=window.parent.qgs.project(_prjRoot+'/_qqq/alphal/only.sq3','qqq.only',{v:1,form:'doc'});
     return true;
   }catch(_){return false}
 }

@@ -953,38 +953,76 @@ function _shellRenderMenubarLabels(schema) {
       sp.addEventListener('mouseleave', function () { sp.style.background = ''; });
     })(span);
 
-    // ★ 的梦gaea：click 固定弹出 + hover 临时弹出
+    // ★ 的梦gaea：hover 弹出 goods 下拉（0.8s 延迟隐藏），单击切换弹出/收起，长按 800ms 打开外部浏览器
     if (item.label === '的梦gaea') {
-      span.addEventListener('click', function (e) {
-        e.stopPropagation();
-        clearTimeout(_shellMenubarHideTimer);
-        if (_shellActiveMenubarPopup && _shellActiveMenubarPopup._anchor === span) {
-          _shellCloseMenubarPopup();
-        } else {
-          if (_shellActiveMenubarPopup) _shellCloseMenubarPopup();
-          _shellOpenMenubarPopup(span, item);
-          if (_shellActiveMenubarPopup) {
-            _shellActiveMenubarPopup._anchor = span;
-            _shellMenubarPopupMode = 'click';
+      (function (anchorSpan, menuItem) {
+        var _gaeaPressTimer = null;   // 长按计时器
+        var _gaeaLongPressed = false; // 长按已触发标志（防 mouseup 误触发单击）
+
+        function _gaeaOpenExternal() {
+          var url = 'https://www.gh555.com/gaea?lang=zh';
+          if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.openExternal) {
+            window.qqqideBridge.shell.openExternal(url);
+          } else {
+            window.open(url, '_blank');
           }
         }
-      });
-      // ★ hover 弹出：光标进入即出，离开 0.8s 后自动消
-      span.addEventListener('mouseenter', function () {
-        clearTimeout(_shellMenubarHideTimer);
-        if (_shellActiveMenubarPopup && _shellActiveMenubarPopup._anchor === span) return;
-        if (_shellActiveMenubarPopup) _shellCloseMenubarPopup();
-        _shellOpenMenubarPopup(span, item);
-        if (_shellActiveMenubarPopup) {
-          _shellActiveMenubarPopup._anchor = span;
-          _shellMenubarPopupMode = 'hover';
+
+        // 单击 → 切换弹出/收起面板（click 模式，固定不自动隐藏）
+        function _gaeaTogglePopup() {
+          if (_shellActiveMenubarPopup && _shellActiveMenubarPopup._anchor === anchorSpan) {
+            _shellCloseMenubarPopup();
+          } else {
+            _shellOpenMenubarPopup(anchorSpan, menuItem);
+            if (_shellActiveMenubarPopup) {
+              _shellActiveMenubarPopup._anchor = anchorSpan;
+              _shellMenubarPopupMode = 'click';
+            }
+          }
         }
-      });
-      span.addEventListener('mouseleave', function () {
-        if (_shellMenubarPopupMode === 'hover') {
-          _shellMenubarHideTimer = setTimeout(_shellCloseMenubarPopup, HOVER_CLOSE_DELAY);
-        }
-      });
+
+        anchorSpan.addEventListener('mousedown', function () {
+          _gaeaLongPressed = false;
+          _gaeaPressTimer = setTimeout(function () {
+            _gaeaLongPressed = true;
+            _gaeaPressTimer = null;
+            _gaeaOpenExternal();
+          }, 800);
+        });
+        anchorSpan.addEventListener('mouseup', function () {
+          if (_gaeaPressTimer) {
+            clearTimeout(_gaeaPressTimer);
+            _gaeaPressTimer = null;
+            _gaeaTogglePopup();
+          }
+        });
+        // 长按后松手冒出的 click：吞掉，不执行任何动作
+        anchorSpan.addEventListener('click', function (e) {
+          e.stopPropagation();
+          if (_gaeaLongPressed) _gaeaLongPressed = false;
+        });
+        // hover → 弹出 goods 列表
+        anchorSpan.addEventListener('mouseenter', function () {
+          clearTimeout(_shellMenubarHideTimer);
+          if (_shellActiveMenubarPopup && _shellActiveMenubarPopup._anchor === anchorSpan) return;
+          if (_shellActiveMenubarPopup) _shellCloseMenubarPopup();
+          _shellOpenMenubarPopup(anchorSpan, menuItem);
+          if (_shellActiveMenubarPopup) {
+            _shellActiveMenubarPopup._anchor = anchorSpan;
+            _shellMenubarPopupMode = 'hover';
+          }
+        });
+        // 光标离开标签 → 清除长按计时器 + hover 模式 0.8s 延迟隐藏
+        anchorSpan.addEventListener('mouseleave', function () {
+          if (_gaeaPressTimer) {
+            clearTimeout(_gaeaPressTimer);
+            _gaeaPressTimer = null;
+          }
+          if (_shellMenubarPopupMode === 'hover') {
+            _shellMenubarHideTimer = setTimeout(_shellCloseMenubarPopup, HOVER_CLOSE_DELAY);
+          }
+        });
+      })(span, item);
     } else {
       span.addEventListener('click', (function (anchorSpan, menuItem) {
         return function (e) {

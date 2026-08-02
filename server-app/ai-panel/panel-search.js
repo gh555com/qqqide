@@ -276,7 +276,7 @@
     async function _resolveQuestDir() {
         var root = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
         if (!root || !questActiveId) return null;
-        var qd = root + '/qqq/quests/';
+        var qd = root + '/_qqq/quests/';
         try {
             var bf = (typeof bridge !== 'undefined' && bridge.fs) ? bridge.fs : (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.fs);
             if (!bf) return null;
@@ -312,7 +312,7 @@
     async function _doBigSearch(selText) {
         var root = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
         if (!root) return;
-        var scopePath = root.replace(/\\/g, '/') + '/qqq/';
+        var scopePath = root.replace(/\\/g, '/') + '/_qqq/';
         if (window.parent && window.parent.qqqideOpenSearch) {
             window.parent.qqqideOpenSearch(scopePath, true);
         }

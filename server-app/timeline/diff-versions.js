@@ -35,7 +35,7 @@
             // 加载项目级持久化偏好：仅差异模式（走 qgs 唯一真理入口，自动注册+缓存）
             try {
                 if (typeof qgs !== 'undefined' && PROJECT_ROOT) {
-                    var pref = await qgs.project(PROJECT_ROOT + '/qqq/alphal/only.sq3', 'qqq.timeline').get('diffOnly');
+                    var pref = await qgs.project(PROJECT_ROOT + '/_qqq/alphal/only.sq3', 'qqq.timeline').get('diffOnly');
                     if (typeof pref === 'boolean') _diffOnly = pref;
                 }
             } catch (_) { }

@@ -220,7 +220,7 @@ async function _ensureQuestDir(root, qName, fName) {
         var actualName = await _findQuestDirByPrefix(root, questId);
         if (actualName) qName = actualName;
     }
-    var qDir = root + '/qqq/quests/' + qName;
+    var qDir = root + '/_qqq/quests/' + qName;
     var fDir = qDir + '/' + fName + '/';
     var parts = fDir.replace(/\\/g, '/').split('/').filter(function (p) { return p; });
     var accum = '';
@@ -237,8 +237,7 @@ async function _ensureQuestDir(root, qName, fName) {
 //   避免静默返回 null → 上游误认为目录不存在 → 创建重复目录（§漏洞①）
 async function _findQuestDirByPrefix(root, questId) {
     var bridge = window.parent && window.parent.qqqideBridge;
-    if (!bridge || !bridge.fs) return null;
-    var questsDir = root + '/qqq/quests/';
+    if (!bridge || !bridge.fs) return null;    var questsDir = root + '/_qqq/quests/';;
     var lastErr = null;
     for (var attempt = 0; attempt < 3; attempt++) {
         try {
@@ -847,9 +846,9 @@ document.getElementById('ctx-snap').onclick = async function () {
             var _fqStripIdx = _fQuestion.search(/\n\n\[File: /);
             if (_fqStripIdx >= 0) _fQuestion = _fQuestion.slice(0, _fqStripIdx);
             var _fDirName = _makeName('f', _latestN, _fQuestion);
-            _targetDir = _root + '/qqq/quests/' + _qDirName + '/' + _fDirName + '/';
+            _targetDir = _root + '/_qqq/quests/' + _qDirName + '/' + _fDirName + '/';
         } else {
-            _targetDir = _root + '/qqq/quests/' + _qDirName + '/';
+            _targetDir = _root + '/_qqq/quests/' + _qDirName + '/';
         }
 
         // ── 构建快照内容 ──
@@ -994,7 +993,7 @@ window.addEventListener('message', async function (e) {
                     try {
                         var _root2 = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
                         if (_root2) {
-                            _bulletDir = _root2.replace(/\\/g, '/') + '/qqq/bullet';
+                            _bulletDir = _root2.replace(/\\/g, '/') + '/_qqq/bullet';
                             var _ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 15);
                             _bulletPath = _bulletDir + '/bullet_' + _ts + '_' + (qid || 'q0') + '_fcts.txt';
                             var _bridge2 = window.parent && window.parent.qqqideBridge;

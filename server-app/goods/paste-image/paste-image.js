@@ -60,6 +60,10 @@
   }
 
   async function handlePaste(evt) {
+    // ★ 如果新版 paste-router 已挂载，跳过此旧处理器（避免双重保存）
+    if (window.qqqPasteRouter && window.qqqPasteRouter.isActive && window.qqqPasteRouter.isActive()) {
+      return;
+    }
     const cd = evt.clipboardData || window.clipboardData;
     if (!cd) { return; }
     const items = cd.items || [];

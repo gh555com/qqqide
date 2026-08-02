@@ -15,11 +15,11 @@
 //
 // Framework modes:
 //   'none'     — no framework active (default)
-//   'standard' — AI maintains qqq/alphal/expert/ (qqqide standard framework)
+//   'standard' — AI maintains _qqq/alphal/expert/ (qqqide standard framework)
 //   'custom'   — AI follows user's own doc paths (from project.txt rule"..." entries)
 //
 // Standard framework structure:
-//   {projectRoot}/qqq/alphal/expert/
+//   {projectRoot}/_qqq/alphal/expert/
 //   ├── index.md              ★ MANDATORY — thin index pointing to arch/*
 //   └── arch/
 //       ├── topology.md        ★ MANDATORY — project architecture
@@ -63,7 +63,7 @@ var ExpertFlow = (function () {
   }
 
   function _standardDir(root) {
-    return _normRoot(root) + '/qqq/alphal/expert/';
+    return _normRoot(root) + '/_qqq/alphal/expert/';
   }
 
   function _storeGet(key, fallback) {
@@ -211,7 +211,7 @@ var ExpertFlow = (function () {
       + '- Project identity/repo/team → facts.md\n'
       + '\n'
       + '```\n'
-      + 'rule"' + projectRoot + '/qqq/alphal/expert/index.md"\n'
+      + 'rule"' + projectRoot + '/_qqq/alphal/expert/index.md"\n'
       + '```\n';
   }
 
@@ -314,7 +314,7 @@ var ExpertFlow = (function () {
     if (!bridge || !bridge.fs) return false;
 
     var root = _normRoot(projectRoot);
-    var expertDir = root + '/qqq/alphal/expert/';
+    var expertDir = root + '/_qqq/alphal/expert/';
     var archDir = expertDir + 'arch/';
     var projectName = root.split('/').pop() || 'unknown';
 
@@ -346,7 +346,7 @@ var ExpertFlow = (function () {
     var bridge = (typeof window !== 'undefined' && window.parent && window.parent.qqqideBridge) ? window.parent.qqqideBridge : null;
     if (!bridge || !bridge.fs) return;
 
-    var rulePath = projectRoot + '/qqq/alphal/rule/project.txt';
+    var rulePath = projectRoot + '/_qqq/alphal/rule/project.txt';
     var ruleLine = 'rule"' + indexPath.replace(/\\/g, '/') + '"';
 
     try {
@@ -355,7 +355,7 @@ var ExpertFlow = (function () {
     } catch (_) { /* file doesn't exist yet */ }
 
     // Ensure directory exists
-    var ruleDir = projectRoot + '/qqq/alphal/rule/';
+    var ruleDir = projectRoot + '/_qqq/alphal/rule/';
     try { await bridge.fs.mkdir(ruleDir); } catch (_) { }
 
     var newContent = (existing ? existing.trim() + '\n' : '') + ruleLine + '\n';
@@ -365,7 +365,7 @@ var ExpertFlow = (function () {
   async function _checkCustomDocs(projectRoot) {
     var bridge = (typeof window !== 'undefined' && window.parent && window.parent.qqqideBridge) ? window.parent.qqqideBridge : null;
     if (!bridge || !bridge.fs) return false;
-    var rulePath = _normRoot(projectRoot) + '/qqq/alphal/rule/project.txt';
+    var rulePath = _normRoot(projectRoot) + '/_qqq/alphal/rule/project.txt';
     try {
       var text = await bridge.fs.read(rulePath);
       if (text && text.trim()) {

@@ -332,7 +332,7 @@ async function _executeSend(intent) {
     if (!agent._floorMeta) agent._floorMeta = {};
     var _projectRoot = root2 || questStore.getProjectRoot();
     if (!_allTxtDirLocal && _projectRoot) {
-        _allTxtDirLocal = _projectRoot + '/qqq/quests/' + (typeof qDirName2 !== 'undefined' ? qDirName2 : '') + '/' + (typeof fDirName2 !== 'undefined' ? fDirName2 : '') + '/';
+        _allTxtDirLocal = _projectRoot + '/_qqq/quests/' + (typeof qDirName2 !== 'undefined' ? qDirName2 : '') + '/' + (typeof fDirName2 !== 'undefined' ? fDirName2 : '') + '/';
     }
     if (!_allTxtPathLocal) _allTxtPathLocal = _allTxtDirLocal ? _allTxtDirLocal + 'all.txt' : '';
     agent._allTxtPath = _allTxtPathLocal;

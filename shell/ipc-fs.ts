@@ -180,11 +180,11 @@ export function registerFsIpc(): void {
                 // 从文件路径向上找到项目根（有 qqq/timeline/blobs/ 的目录）
                 let root = path.dirname(args.path);
                 while (root && root !== path.dirname(root)) {
-                    if (fs.existsSync(path.join(root, 'qqq', 'timeline', 'blobs'))) break;
+                    if (fs.existsSync(path.join(root, '_qqq', 'timeline', 'blobs'))) break;
                     root = path.dirname(root);
                 }
                 if (!root || root === path.dirname(root)) {
-                    return 'Error: cannot find project root (no qqq/timeline/blobs/) from ' + args.path;
+                   return 'Error: cannot find project root (no _qqq/timeline/blobs/) from ' + args.path;;
                 }
                 const blobPath = _tlBlobPath(root, args.sha256);
                 if (!fs.existsSync(blobPath)) {

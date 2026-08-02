@@ -26,7 +26,7 @@
 //   3. blob 快速路径 — ≤4KB 不压缩(纯JSON)，>4KB 用 brotli(解压比gzip快3x)
 //   4. 空闲压缩 — log compact 异步执行，不阻塞 save
 //
-// 物理布局 (rootDir = 由调用方传入，如 project/qqq/qgf)：
+// 物理布局 (rootDir = 由调用方传入，如 project/_qqq/qgf)：
 //   ns/{ns}/{safeKey}.{json|bin|log}       ← payload
 //   locks/{ns}__{safeKey}.lock              ← 文件锁
 //   corrupt/                                ← 损坏隔离
@@ -194,7 +194,7 @@ export class Qgf extends EventEmitter {
     // ----- constructor --------------------------------------------------------
 
     /**
-     * @param rootDir  e.g. "/path/to/project/.qqq/qgf"
+    * @param rootDir  e.g. "/path/to/project/_qqq/qgf""
      */
     constructor(rootDir: string) {
         super();

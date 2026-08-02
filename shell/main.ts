@@ -40,6 +40,7 @@ import { registerAiToolsIpc } from './ipc-ai-tools';
 import { registerSearchIpc } from './ipc-search';
 import { registerEditIpc } from './ipc-edit';
 import { registerMiscIpc } from './ipc-misc';
+import { registerMediaIpc } from './ipc-media';
 import { registerTimelineIpc } from './ipc-timeline';
 import { registerGitDiffIpc } from './ipc-git-diff';
 import { registerSmartSearchIpc, IndexService } from './ipc-smart-search';
@@ -52,7 +53,7 @@ import { registerKopeIpc } from './ipc-kope';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
-import { initAuthBrain, registerAuthBrainIpc, registerAuthProtocol, getAuthBrain } from './auth-brain';
+import { initAuthBrain, registerAuthBrainIpc, getAuthBrain } from './auth-brain';
 
 // ── 服务 ──
 import { EngineHost } from './engines';
@@ -87,9 +88,11 @@ app.commandLine.appendSwitch('remote-debugging-port', '8315');
 // dev 模式必须传 app path（否则 Electron 启动默认 app→把 URL 当模块路径→炸）
 // prod 打包后 qqqide.exe 自带 app path，不需要
 if (app.isPackaged) {
-    app.setAsDefaultProtocolClient('qqqide');
+    const ok = app.setAsDefaultProtocolClient('qqqide');
+    console.log('[protocol] setAsDefaultProtocolClient (packaged) → ' + (ok ? 'OK' : 'FAILED'));
 } else {
-    app.setAsDefaultProtocolClient('qqqide', process.execPath, [app.getAppPath()]);
+    const ok = app.setAsDefaultProtocolClient('qqqide', process.execPath, [app.getAppPath()]);
+    console.log('[protocol] setAsDefaultProtocolClient (dev, execPath=' + process.execPath + ') → ' + (ok ? 'OK' : 'FAILED'));
 }
 const gotTheLock = app.requestSingleInstanceLock();
 let _shouldQuitEarly = false;
@@ -257,7 +260,8 @@ function registerAllIpc(): void {
     registerMiscIpc(
         portable.root, portable.cache, APP_VERSION, isDevFlag,
         lspBridge, downloadService, stateStore,
-        updateService, () => mainWindow, bootConfig  // lspBridge=null (LSP OFF)
+        updateService, () => mainWindow, bootConfig,  // lspBridge=null (LSP OFF)
+        hashService, cacheStore
     );
     registerTimelineIpc(portable.root, bootConfig);
     registerGitDiffIpc(portable.root, bootConfig);
@@ -266,7 +270,7 @@ function registerAllIpc(): void {
     registerQzSpawnIpc(qzSpawn);
     registerGaeaProcessIpc();
     registerKopeIpc();
-    registerAuthProtocol(getAuthBrain());  // ★ qqqide:// 协议拦截（应用级，防 OS 截胡）
+    registerMediaIpc(mediaService);
     registerAuthBrainIpc(getAuthBrain());
     registerDesktopShortcutIpc();
 }

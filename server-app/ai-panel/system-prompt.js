@@ -151,7 +151,7 @@ window.loadQqqideRules = async function () {
     } catch (e) { /* silent */ }
 };
 
-// project.txt — 项目规则，仅当前项目生效（{projectRoot}/qqq/alphal/rule/project.txt）
+// project.txt — 项目规则，仅当前项目生效（{projectRoot}/_qqq/alphal/rule/project.txt）
 window.qqqideProjectRulesContent = '';
 
 window.loadQqqideProjectRules = async function (projectRoot) {
@@ -159,7 +159,7 @@ window.loadQqqideProjectRules = async function (projectRoot) {
         if (!projectRoot) return;
         var bridge = parent.qqqideBridge;
         if (!bridge) return;
-        var projPath = projectRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/rule/project.txt';
+       var projPath = projectRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/rule/project.txt';;
 
         var _cachedRoot = window._qqqideProjectRulesRoot || '';
         if (projectRoot !== _cachedRoot) {

@@ -14,7 +14,9 @@ interface SrcEntry { url: string; kind: 'zip' | 'tar.gz' | 'binary'; }
 
 interface ComponentDef {
     bundled?: boolean;
+    bg_download?: boolean;
     install_to: string;
+    _platform_subdir?: boolean;
     bin_win?: string | null;
     bin_unix?: string | null;
     verify_args: string[];
@@ -110,8 +112,14 @@ function _binPath(portableRoot: string, def: ComponentDef): string | null {
     const br = _binRel(def);
     if (!br) return null;
     const engRoot = _enginesRoot(portableRoot);
-    const dir = def.install_to ? path.join(engRoot, 'engines', def.install_to) : path.join(engRoot, 'engines');
-    return path.join(dir, br);
+    const baseDir = def.install_to ? path.join(engRoot, 'engines', def.install_to) : path.join(engRoot, 'engines');
+    // Platform subdirectory (ffmpeg etc.)
+    if (def._platform_subdir) {
+        const platDir = path.join(baseDir, _platformKey());
+        const platBin = path.join(platDir, br);
+        if (fs.existsSync(platBin)) return platBin;
+    }
+    return path.join(baseDir, br);
 }
 
 // ── 下载冷却 ──
@@ -167,7 +175,10 @@ export function checkRank0Components(portableRoot: string): void {
 
     _checkAll(portableRoot, manifest, versions, versPath).then(() => {
         // After rank0 check completes, verify integrity of bundled components
-        _verifyAllBundled(portableRoot, manifest, versions, versPath);
+        return _verifyAllBundled(portableRoot, manifest, versions, versPath);
+    }).then(() => {
+        // After bundled verification, kick off background download of rank1 bg_download components
+        _checkRank1BgDownload(portableRoot, manifest, versions, versPath);
     }).catch(e => {
         console.log('[components] rank0 check error:', e.message || e);
     });
@@ -197,6 +208,47 @@ async function _checkAll(
         }
     }
     _writeJson(versPath, versions);
+}
+
+// ── Rank1 后台静默下载 — bg_download 组件在 IDE 跑时自动拉取，不阻塞启动 ──
+
+async function _checkRank1BgDownload(
+    portableRoot: string,
+    manifest: Manifest,
+    versions: VersionsFile,
+    versPath: string,
+): Promise<void> {
+    const pk = _platformKey();
+    for (const name of manifest.rank1) {
+        const def = manifest.components[name];
+        if (!def || !def.bg_download) continue;
+
+        // Already present and verified → skip
+        const bp = _binPath(portableRoot, def);
+        const verifyArgs = def.verify_args || ['--version'];
+        if (bp && fs.existsSync(bp) && _cmdOk(bp, verifyArgs)) {
+            // Update version record
+            const effectiveInstallTo = def._platform_subdir ? (def.install_to + '/' + pk) : def.install_to;
+            versions[name] = { version: def.version, install_to: effectiveInstallTo, verified_at: Date.now() };
+            _writeJson(versPath, versions);
+            continue;
+        }
+
+        // In cooldown → skip this boot
+        if (_isInCooldown(portableRoot, name, manifest)) {
+            console.log('[components] ' + name + ': bg_download in cooldown, skipping');
+            continue;
+        }
+
+        console.log('[components] ' + name + ': bg_download starting...');
+        try {
+            await _ensureOne(portableRoot, name, def, pk, versions, manifest);
+            _writeJson(versPath, versions);
+            console.log('[components] ' + name + ': bg_download complete ✓');
+        } catch (e: any) {
+            console.log('[components] ' + name + ': bg_download FAILED — ' + (e.message || e));
+        }
+    }
 }
 
 // ── 启动完整性校验 — 自愈能力为唯一真理（2026-07-30 §65）──
@@ -300,7 +352,10 @@ async function _ensureOne(
     if (!binRel) { console.log('[components] ' + name + ': no binary for this platform'); return; }
 
     const targetDir = def.install_to ? path.join(enginesDir, def.install_to) : enginesDir;
-    const binPath = path.join(targetDir, binRel);
+    // Platform subdirectory for multi-platform components (ffmpeg etc.)
+    const finalDir = def._platform_subdir ? path.join(targetDir, pk) : targetDir;
+    const effectiveInstallTo = def._platform_subdir ? (def.install_to + '/' + pk) : def.install_to;
+    const binPath = path.join(finalDir, binRel);
     const verifyArgs = def.verify_args || ['--version'];
 
     // ── ① 当前位置已安装且验证通过 → 检查版本升级 + 目录迁移 ──
@@ -310,28 +365,29 @@ async function _ensureOne(
         // 版本升级 → 删除旧版，触发重新下载
         if (old && old.version !== def.version) {
             console.log('[components] ' + name + ': version changed ' + old.version + ' → ' + def.version + ', reinstalling');
-            _safeRmDir(targetDir);
+            // For platform-subdir components, only wipe the platform-specific subdir
+            _safeRmDir(def._platform_subdir ? finalDir : targetDir);
             // fall through to download
-        } else if (old && old.install_to !== def.install_to) {
+        } else if (old && old.install_to !== effectiveInstallTo) {
             // 目录迁移
-            console.log('[components] ' + name + ': migrating from ' + old.install_to + ' → ' + def.install_to);
-            _migrateDir(enginesDir, old.install_to, def.install_to, name);
-            versions[name] = { version: def.version, install_to: def.install_to, verified_at: Date.now() };
+            console.log('[components] ' + name + ': migrating from ' + old.install_to + ' → ' + effectiveInstallTo);
+            _migrateDir(enginesDir, old.install_to, effectiveInstallTo, name);
+            versions[name] = { version: def.version, install_to: effectiveInstallTo, verified_at: Date.now() };
             return;
         } else {
-            versions[name] = { version: def.version, install_to: def.install_to, verified_at: Date.now() };
+            versions[name] = { version: def.version, install_to: effectiveInstallTo, verified_at: Date.now() };
             return;
         }
     }
 
     // ── ② 旧位置有有效安装 → 迁移到新位置 ──
     const oldRec = versions[name];
-    if (oldRec && oldRec.install_to !== def.install_to && oldRec.install_to) {
+    if (oldRec && oldRec.install_to !== effectiveInstallTo && oldRec.install_to) {
         const oldDir = path.join(enginesDir, oldRec.install_to);
         const oldBin = path.join(oldDir, binRel);
         if (fs.existsSync(oldBin) && _cmdOk(oldBin, verifyArgs)) {
-            _migrateDir(enginesDir, oldRec.install_to, def.install_to, name);
-            versions[name] = { version: def.version, install_to: def.install_to, verified_at: Date.now() };
+            _migrateDir(enginesDir, oldRec.install_to, effectiveInstallTo, name);
+            versions[name] = { version: def.version, install_to: effectiveInstallTo, verified_at: Date.now() };
             return;
         }
     }
@@ -353,7 +409,7 @@ async function _ensureOne(
     let ok = false;
     for (const src of srcs) {
         try {
-            await _downloadAndInstall(name, src, targetDir, binPath, verifyArgs, portableRoot);
+            await _downloadAndInstall(name, src, finalDir, binPath, verifyArgs, portableRoot);
             ok = true;
             break;
         } catch (e: any) {
@@ -363,7 +419,7 @@ async function _ensureOne(
 
     if (ok) {
         _recordDlSuccess(portableRoot, name);
-        versions[name] = { version: def.version, install_to: def.install_to, verified_at: Date.now() };
+        versions[name] = { version: def.version, install_to: effectiveInstallTo, verified_at: Date.now() };
         _writeJson(versPath, versions); // 立即持久化
     } else {
         _recordDlFail(portableRoot, name);

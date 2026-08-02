@@ -296,14 +296,14 @@ function _startPushLoop(wc: WebContents, dwc: WebContents, getText: () => string
         if (diag) {
           const d = JSON.parse(diag);
           try {
-            const outPath = path.join('E:/s/wol/py/qqq-shell-v2/qqq/logs', 'devtools-diag.json');
+            const outPath = path.join('E:/s/wol/py/qqq-shell-v2/_qqq/logs', 'devtools-diag.json');
             fs.mkdirSync(path.dirname(outPath), { recursive: true });
             fs.writeFileSync(outPath, JSON.stringify(d, null, 2), 'utf-8');
             const keys = ['MSG_STRUCTS','PANEL_INFO','NET_MSGS','CM_STATS','CM_RAW'];
             for (const k of keys) {
               try {
                 const v = await dwc.executeJavaScript('window.__QQQ_'+k+'&&JSON.stringify(window.__QQQ_'+k+')');
-                if (v) fs.writeFileSync(path.join('E:/s/wol/py/qqq-shell-v2/qqq/logs', 'devtools-'+k.toLowerCase().replace(/_/g,'-')+'.json'), v, 'utf-8');
+                if (v)fs.writeFileSync(path.join('E:/s/wol/py/qqq-shell-v2/_qqq/logs', 'devtools-'+k.toLowerCase().replace(/_/g,'-')+'.json'), v, 'utf-8');;
               } catch {}
             }
           } catch {}

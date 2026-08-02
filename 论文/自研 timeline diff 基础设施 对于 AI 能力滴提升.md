@@ -99,7 +99,7 @@ edit_file/write_file/create_file 返回值
 
 #### 工具 2：read_file(sha256)（ipc-fs.ts + tools-defs.js）
 
-主进程 handler 已支持 sha256 参数：从文件路径向上找项目根（有 qqq/timeline/blobs/ 的目录）→ 读 blob → gunzip → 返回。支持行范围分页。
+主进程 handler 已支持 sha256 参数：从文件路径向上找项目根（有 _qqq/timeline/blobs/ 的目录）→ 读 blob → gunzip → 返回。支持行范围分页。
 
 #### 工具 3：timeline_versions（tools-exec.js + ipc-timeline.ts）
 

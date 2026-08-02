@@ -299,7 +299,7 @@
     function _saveDiffOnlyPref(value) {
         try {
             if (typeof qgs !== 'undefined' && PROJECT_ROOT) {
-                qgs.project(PROJECT_ROOT + '/qqq/alphal/only.sq3', 'qqq.timeline').setNow('diffOnly', value);
+                qgs.project(PROJECT_ROOT + '/_qqq/alphal/only.sq3', 'qqq.timeline').setNow('diffOnly', value);
             }
         } catch (_) { }
     }

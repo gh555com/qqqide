@@ -125,15 +125,15 @@ async function _resolveProjectRoot(filePath) {
     var dir = filePath.replace(/\\/g, '/').replace(/\/[^\/]*$/, ''); // 父目录
     // 最多向上遍历 12 层
     for (var depth = 0; depth < 12 && dir && dir.length > 3; depth++) {
-        // 检查 {dir}/qqq/timeline（已初始化滴项目）
+        // 检查 {dir}/_qqq/timeline（已初始化滴项目）
         try {
-            var st = await bridge.fs.stat(dir + '/qqq/timeline');
+           var st = await bridge.fs.stat(dir + '/_qqq/timeline');;
             if (st && st.isDir) {
                 _projectRootCache[filePath] = dir;
                 return dir;
             }
         } catch (_) { }
-        // 检查 {dir}/.git（未初始化滴项目，后续会自动创建 qqq/timeline）
+      // 检查 {dir}/.git（未初始化滴项目，后续会自动创建 _qqq/timeline）e）
         try {
             var st2 = await bridge.fs.stat(dir + '/.git');
             if (st2 && st2.isDir) {
@@ -191,7 +191,7 @@ async function _a4PersistFileIndex() {
     for (var di = 0; di < dirtyRoots.length; di++) {
         var root = dirtyRoots[di];
         _fileIndexDirty[root] = false;
-        var indexPath = root + '/qqq/timeline/file-index.json';
+        var indexPath = root + '/_qqq/timeline/file-index.json';
         var files = _fileIndex[root] ? Object.keys(_fileIndex[root]) : [];
         try { await bridge.fs.write(indexPath, JSON.stringify(files)); } catch (_) { }
     }
@@ -207,7 +207,7 @@ function _a4ClearFileIndex() {
     var roots = Object.keys(_fileIndex);
     for (var ri = 0; ri < roots.length; ri++) {
         var root = roots[ri];
-        var indexPath = root + '/qqq/timeline/file-index.json';
+        var indexPath = root + '/_qqq/timeline/file-index.json';
         if (bridge && bridge.fs) bridge.fs.write(indexPath, '[]').catch(function () { });
     }
     _fileIndex = {};

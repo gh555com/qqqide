@@ -57,7 +57,9 @@ export function registerGoodsMeta(goodsId: string, allowMultiple: boolean): void
     _goodsMeta.set(goodsId, { allowMultiple });
 }
 // ★ 单例冲突标记：进程因互斥锁冲突退出（exit code 100）→ 防止看门狗无限重启
-const _singletonConflicts = new Set<string>();
+//    Map<goodsId, timestamp> — 30s 冷却期，期内禁止 spawn + 看门狗不重试
+const _singletonConflicts = new Map<string, number>();
+const SINGLETON_CONFLICT_COOLDOWN_MS = 30000;
 // ★ 启动中锁：防并发 startGaeaProcess 竞态（两个调用同时通过 PID 文件检查）
 const _startingLocks = new Set<string>();
 
@@ -201,17 +203,18 @@ export function getOsGaeaAutoStart(goodsId: string): boolean | null {
 function _checkOsState(goodsId: string): { running: boolean; pid?: number } {
     const state = _readOsState(goodsId);
     if (!state) return { running: false };
-    // 过期清理：超过 30s 未更新 → 视为僵尸
-    if (Date.now() - state.ts > 30000) {
-        _clearOsState(goodsId);
+    // ★ 过期不清理！超过 60s 未更新 → 仅返回 false，不删文件。
+    //    清理会导致心跳进程读到 null 而自杀，或让其他窗口误以为无实例而 spawn。
+    //    僵尸文件由心跳进程自己重写覆盖，或由 stopGaeaProcess 显式清理。
+    if (Date.now() - state.ts > 60000) {
         return { running: false };
     }
     if (_isPidAlive(state.pid)) {
         return { running: true, pid: state.pid };
-    } else {
-        _clearOsState(goodsId);
-        return { running: false };
     }
+    // ★ 不清理！PID 不存活但时间戳新鲜 → 可能是其他进程的短暂死 PID 污染
+    //    让心跳进程自己重写。清理会导致心跳进程读到 null 而自杀
+    return { running: false };
 }
 
 /** 启动 OS 级心跳：每 10s 刷新 ts，保活 */
@@ -219,8 +222,9 @@ function _startOsHeartbeat(goodsId: string, pid: number, autoStart: boolean): No
     _writeOsState(goodsId, { pid, autoStart, ts: Date.now() });
     const timer = setInterval(() => {
         const current = _readOsState(goodsId);
+        // ★ 状态文件丢失或被其他进程污染（PID 不匹配）→ 主动重写，不自杀
         if (!current || current.pid !== pid) {
-            clearInterval(timer);
+            _writeOsState(goodsId, { pid, autoStart, ts: Date.now() });
             return;
         }
         _writeOsState(goodsId, { pid, autoStart: current.autoStart, ts: Date.now() });
@@ -267,8 +271,15 @@ export function startGaeaProcess(
     _userDataPath = userData;
     _goodsMeta.set(goodsId, { allowMultiple });
 
-    // ★ 用户主动重试 → 清除冲突标记
+    // ★ 用户主动重试 → 清除冲突标记（无视冷却）
     _singletonConflicts.delete(goodsId);
+
+    // ★ 单例冲突冷却中 → 拒绝启动（防 0.1s 频闪，给另一实例的心跳时间恢复）
+    const conflictTs = _singletonConflicts.get(goodsId);
+    if (conflictTs && (Date.now() - conflictTs) < SINGLETON_CONFLICT_COOLDOWN_MS) {
+        console.log('[' + goodsId + '] singleton conflict cooldown active — skip spawn');
+        return { ok: false, error: '另一实例正在运行，请稍后再试' };
+    }
 
     // ★ 内存锁防并发竞态：同一 goodsId 同时只能有一个 start 调用
     if (_startingLocks.has(goodsId)) {
@@ -291,6 +302,19 @@ export function startGaeaProcess(
                 });
             }
             return { ok: true, pid: existing.pid, alreadyRunning: true };
+        }
+        // ★ 跨绿色包检测：OS 级状态文件（防 dev + 绿色包同时 spawn）
+        const osCheck = _checkOsState(goodsId);
+        if (osCheck.running) {
+            console.log('[' + goodsId + '] already running pid=' + osCheck.pid + ' (OS-state) — skip');
+            _singletonConflicts.set(goodsId, Date.now());
+            if (!_registry.has(goodsId)) {
+                _registry.set(goodsId, {
+                    proc: null, pid: osCheck.pid || null,
+                    scriptPath, lifecycle, allowMultiple
+                });
+            }
+            return { ok: true, pid: osCheck.pid, alreadyRunning: true };
         }
     }
 
@@ -375,8 +399,15 @@ export function startGaeaProcess(
                 // ★ exit code 100 = 互斥锁冲突（另一实例已运行，可能来自其他 IDE）
                 //   pid 文件属于真实进程，不能删除
                 if (code === 100) {
-                    _singletonConflicts.add(goodsId);
-                    console.log('[' + goodsId + '] singleton conflict — watchdog blocked');
+                    _singletonConflicts.set(goodsId, Date.now());
+                    // ★ 仅当 OS 状态文件中的 PID 匹配本死进程时才清理（防御性）。
+                    //    正常情况下本进程从未写入 OS 状态（心跳延迟 2s，exit 100 先到），
+                    //    清理会误删另一实例的心跳文件 → 跨绿色包检测失效 → 看门狗无限重试。
+                    const curState = _readOsState(goodsId);
+                    if (curState && curState.pid === entry.pid) {
+                        _clearOsState(goodsId);
+                    }
+                    console.log('[' + goodsId + '] singleton conflict — watchdog blocked (exit 100)');
                 } else {
                     // 正常退出 → 删除 PID 文件 + OS 级状态
                     _removePidFile(userData, goodsId);
@@ -573,13 +604,29 @@ export function startGaeaWatchdog(
     stopGaeaWatchdog(goodsId);
 
     const timer = setInterval(() => {
-        // ★ 单例冲突：另一实例正在运行 → 不重启，等下次
-        if (_singletonConflicts.has(goodsId)) {
+        // ★ 单例冲突冷却中 → 不重试（30s 冷却防频闪）
+        const conflictTs = _singletonConflicts.get(goodsId);
+        if (conflictTs && (Date.now() - conflictTs) < SINGLETON_CONFLICT_COOLDOWN_MS) {
             return;
+        }
+        // ★ 冷却过期 → 清除标记，允许下次尝试
+        if (conflictTs) {
+            _singletonConflicts.delete(goodsId);
         }
         // ★ 先检查 OS 级状态（跨绿色包），再检查本地 PID 文件
         const osCheck = _checkOsState(goodsId);
         const existing = _checkExistingInstance(userData, goodsId);
+        // ★ OS 级状态显示另一实例在运行 → 标记软冲突，不重启
+        if (osCheck.running) {
+            _singletonConflicts.set(goodsId, Date.now());
+            if (!_registry.has(goodsId)) {
+                _registry.set(goodsId, {
+                    proc: null, pid: osCheck.pid || null,
+                    scriptPath, lifecycle, allowMultiple: false
+                });
+            }
+            return;
+        }
         if (!existing.running && !osCheck.running) {
             console.log('[watchdog:' + goodsId + '] process not running, restarting...');
             _removePidFile(userData, goodsId);

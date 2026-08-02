@@ -505,31 +505,121 @@ function pruneNodeModules(unpacked) {
   }
 }
 
-// 3.9) prune cross-platform engine binaries — keep only target-platform ones
+// 3.9) prune engine binaries — keep only target-platform + bundled components
 function pruneEngines(unpacked) {
-  if (!target.startsWith('win-')) { return; }
   const appDir = appResourcesDir(unpacked);
   if (!appDir || !fs.existsSync(appDir)) { return; }
   const engDir = path.join(appDir, 'engines');
   if (!fs.existsSync(engDir)) { return; }
 
-  // non-Windows binaries to strip (ripgrep lives in engDir/ripgrep/)
-  const rgDir = path.join(engDir, 'ripgrep');
-  const nonWinRg = ['rg-linux-x64', 'rg-mac-x64', 'rg-mac-arm64'];
-  const nonWinRoot = ['q_linux_x64', 'q_mac_x64', 'q_mac_arm64', 'ghrun'];
-  let stripped = 0;
-  if (fs.existsSync(rgDir)) {
-    for (const f of nonWinRg) {
-      const fp = path.join(rgDir, f);
-      if (fs.existsSync(fp)) { stripped += fs.statSync(fp).size; fs.rmSync(fp); }
+  // Helper: recursive dir size (for logging)
+  function dirSize(d) {
+    let sz = 0;
+    try {
+      for (const f of fs.readdirSync(d)) {
+        const fp = path.join(d, f);
+        try { sz += fs.statSync(fp).isDirectory() ? dirSize(fp) : fs.statSync(fp).size; } catch {}
+      }
+    } catch {}
+    return sz;
+  }
+
+  // Platform key mapping: target → manifest platform key
+  const targetPk = target.startsWith('win-') ? 'win32-x64' :
+    target.startsWith('linux-') ? 'linux-x64' :
+    target.startsWith('mac-') && target.endsWith('arm64') ? 'darwin-arm64' :
+    target.startsWith('mac-') ? 'darwin-x64' : null;
+
+  // ── ① Read manifest to know bundled/non-bundled components ──
+  const manifestPath = path.join(engDir, 'manifest.json');
+  let manifest = null;
+  try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch {}
+
+  // ── ② Remove non-bundled component directories (e.g. ffprobe — rank1 bg_download) ──
+  if (manifest && manifest.components) {
+    for (const [name, def] of Object.entries(manifest.components)) {
+      if (def.bundled) continue;
+      const compDir = path.join(engDir, def.install_to || name);
+      if (fs.existsSync(compDir)) {
+        const sz = dirSize(compDir);
+        fs.rmSync(compDir, { recursive: true, force: true });
+        console.log('[pack] pruned non-bundled component: ' + name + ' (' + Math.round(sz / 1024 / 1024) + 'MB)');
+      }
+      // Also check platform-subdir layout
+      if (def._platform_subdir && def.install_to) {
+        const platCompDir = path.join(engDir, def.install_to);
+        if (fs.existsSync(platCompDir)) {
+          const sz = dirSize(platCompDir);
+          fs.rmSync(platCompDir, { recursive: true, force: true });
+          console.log('[pack] pruned non-bundled component: ' + name + ' (' + Math.round(sz / 1024 / 1024) + 'MB)');
+        }
+      }
     }
   }
-  for (const f of nonWinRoot) {
+
+  // ── ③ For bundled _platform_subdir components, keep only target platform ──
+  if (targetPk && manifest && manifest.components) {
+    for (const [name, def] of Object.entries(manifest.components)) {
+      if (!def.bundled || !def._platform_subdir) continue;
+      const compDir = path.join(engDir, def.install_to || name);
+      if (!fs.existsSync(compDir)) continue;
+      for (const sub of fs.readdirSync(compDir)) {
+        const subDir = path.join(compDir, sub);
+        try { if (!fs.statSync(subDir).isDirectory()) continue; } catch { continue; }
+        if (sub !== targetPk) {
+          const sz = dirSize(subDir);
+          fs.rmSync(subDir, { recursive: true, force: true });
+          console.log('[pack] pruned cross-platform ' + name + '/' + sub + ' (' + Math.round(sz / 1024 / 1024) + 'MB)');
+        }
+      }
+    }
+  }
+
+  // ── ④ Defense: remove ffprobe from ffmpeg dirs (shouldn't exist after split, but belt-and-suspenders) ──
+  const ffmpegDir = path.join(engDir, 'ffmpeg');
+  if (fs.existsSync(ffmpegDir)) {
+    const ffprobeNames = process.platform === 'win32' ? ['ffprobe.exe'] : ['ffprobe'];
+    for (const fn of ffprobeNames) {
+      function walkRm(d) {
+        try {
+          for (const f of fs.readdirSync(d)) {
+            const fp = path.join(d, f);
+            if (f === fn) { fs.rmSync(fp); console.log('[pack] pruned stray ffprobe from ffmpeg: ' + fp); continue; }
+            try { if (fs.statSync(fp).isDirectory()) walkRm(fp); } catch {}
+          }
+        } catch {}
+      }
+      walkRm(ffmpegDir);
+    }
+  }
+
+  // ── ⑤ Legacy: non-target-platform root engine binaries ──
+  const nonTgtRoot = [];
+  if (target.startsWith('win-')) { nonTgtRoot.push('q_linux_x64', 'q_mac_x64', 'q_mac_arm64', 'ghrun'); }
+  else if (target.startsWith('linux-')) { nonTgtRoot.push('q_win_x64.exe', 'q_mac_x64', 'q_mac_arm64', 'watchdog.exe'); }
+  else if (target.startsWith('mac-')) { nonTgtRoot.push('q_win_x64.exe', 'q_linux_x64', 'watchdog.exe', 'ghrun.exe'); }
+
+  // Cross-platform ripgrep
+  const rgDir = path.join(engDir, 'ripgrep');
+  const tgtPk2 = targetPk; // reuse
+  let stripped = 0;
+  if (fs.existsSync(rgDir)) {
+    const keepRg = tgtPk2 === 'win32-x64' ? 'rg.exe' : 'rg';
+    for (const f of fs.readdirSync(rgDir)) {
+      const fp = path.join(rgDir, f);
+      try { if (fs.statSync(fp).isDirectory()) continue; } catch { continue; }
+      if (f !== keepRg && !f.startsWith('.')) {
+        stripped += fs.statSync(fp).size;
+        fs.rmSync(fp);
+      }
+    }
+  }
+  for (const f of nonTgtRoot) {
     const fp = path.join(engDir, f);
     if (fs.existsSync(fp)) { stripped += fs.statSync(fp).size; fs.rmSync(fp); }
   }
   if (stripped > 0) {
-    console.log('[pack] pruned non-win engines (' + Math.round(stripped / 1024 / 1024) + 'MB)');
+    console.log('[pack] pruned non-target engines (' + Math.round(stripped / 1024 / 1024) + 'MB)');
   }
 }
 

@@ -117,7 +117,7 @@ async function _landToFloorDir(content, prefix, ownerAgent) {
         var qInfo = ownerAgent._questInfo || {};
         var qDir = qInfo.dirName || ('q' + (ownerAgent._questId || '').replace(/^q/i, ''));
         var fDirName = 'f' + floorNum;
-        fDir = root + '/qqq/quests/' + qDir + '/' + fDirName + '/';
+        fDir = root + '/_qqq/quests/' + qDir + '/' + fDirName + '/';
     }
 
     // Counter: stored on agent per-floor
@@ -1426,7 +1426,7 @@ async function _resolveTimelineRoot(filePath) {
     var dir = fp.replace(/\/[^\/]*$/, '');
     for (var depth = 0; depth < 12 && dir && dir.length > 3; depth++) {
         try {
-            var st = await bridge.fs.stat(dir + '/qqq/timeline');
+           var st = await bridge.fs.stat(dir + '/_qqq/timeline');;
             if (st && st.isDir) { __tlRootCache[fp] = dir; return dir; }
         } catch (_) { }
         try {

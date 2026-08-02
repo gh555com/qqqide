@@ -1,16 +1,22 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// auth-brain.ts — 主进程认证中心大脑（2026-07-31 Plan C 终版）
+// auth-brain.ts — 主进程认证中心大脑（2026-07-31 F34 简化版）
 //
 // 单例，主进程持有唯一真理。所有窗口通过 IPC 订阅变更。
 // safeStorage 读写 + 余额/LV 周期性拉取 + 登录管理。
+//
+// ★ F34 简化: 砍掉 BrowserWindow 内嵌登录（~150行死代码），
+//   砍掉 registerAuthProtocol（仅 BrowserWindow 有用）。
+//   登录唯一通道：外部浏览器（走 browser-launcher 健壮 fallback 链）
+//   + OS 协议回调 + 主进程轮询兜底。
 // ============================================================================
 
-import { safeStorage, BrowserWindow, ipcMain, protocol, session, shell } from 'electron';
+import { net, safeStorage, BrowserWindow, ipcMain, shell } from 'electron';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { openUrl } from './browser-launcher';
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { notifyAuthReady } from './wq-ping';
 
@@ -74,7 +80,6 @@ class AuthBrain {
     private balanceTimer: ReturnType<typeof setInterval> | null = null;
     private lvTimer: ReturnType<typeof setInterval> | null = null;
     private authFile: string;
-    private loginWindow: BrowserWindow | null = null;
     private _sessionId: string | null = null;
     private _sessionPollTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -117,9 +122,8 @@ class AuthBrain {
         };
         await this._persist();
         this._startPolling();
-        this._stopSessionPoll(); // ★ 登录成功 → 停止会话轮询
+        this._stopSessionPoll();
         this._broadcast('login');
-        // ★ 同步旧 auth-state（wq-ping 兼容）
         setAuthPhone(phone);
         setAuthToken(token);
         notifyAuthReady();
@@ -131,7 +135,6 @@ class AuthBrain {
         this.lvData = null;
         this._stopPolling();
         this._stopSessionPoll();
-        // ★ 同步旧 auth-state（wq-ping 兼容）
         setAuthPhone('');
         setAuthToken('');
         try { if (fs.existsSync(this.authFile)) fs.unlinkSync(this.authFile); } catch { /* ignore */ }
@@ -179,7 +182,9 @@ class AuthBrain {
         await this._fetchLv();
     }
 
-    // ═══ 登录 — Plan C 主通道：外部浏览器 + OS 协议回调 + 轮询兜底 ═══
+    // ═══ 登录 — 外部浏览器 + OS 协议回调 + 轮询兜底 ═══
+    // ★ 走 browser-launcher 健壮 fallback 链（ShellExecuteW → explorer → …），
+    //   根治 Win11 Edge Startup Boost 旧 bug。非裸 shell.openExternal。
 
     async openLoginExternal(): Promise<string> {
         const sessionId = this._genSessionId();
@@ -191,124 +196,17 @@ class AuthBrain {
         // ★ 启动轮询（3s 间隔，OS 协议回调到即停止）
         this._startSessionPoll();
 
-        // ★ 打开外部浏览器
-        await shell.openExternal(loginUrl);
+        // ★ 走 browser-launcher 完整 fallback 链
+        openUrl(loginUrl);
 
         return loginUrl;
-    }
-
-    // ═══ 登录窗口（BrowserWindow 兜底 — 仅当外部浏览器不可用时触发） ═══
-
-    async openLoginWindow(): Promise<void> {
-        // 如果已有登录窗口打开，聚焦之
-        if (this.loginWindow && !this.loginWindow.isDestroyed()) {
-            this.loginWindow.focus();
-            return;
-        }
-
-        // 如果已登录，先清除旧状态（确保全新登录）
-        await this.clearAuth();
-
-        const sessionId = this._genSessionId();
-        this._sessionId = sessionId;
-        const loginUrl = `${LOGIN_URL}?from=ide&session=${sessionId}&device_name=qqqide_Win_x64&goods=qqqide`;
-
-        // ★ 启动轮询（BrowserWindow 内 will-navigate 拦截为主，轮询为兜底）
-        this._startSessionPoll();
-
-        // ★ 使用持久化 session，cookie 跨重启保留
-        const partition = 'persist:qqq-login';
-
-        // ★ 清除旧登录 session cookie（防自动登录到旧账号）
-        try {
-            const loginSession = session.fromPartition(partition);
-            await loginSession.clearStorageData({ storages: ['cookies', 'localstorage'] });
-        } catch (e) { /* ignore — 首次打开时 session 可能尚未创建 */ }
-
-        this.loginWindow = new BrowserWindow({
-            width: 520,
-            height: 680,
-            resizable: false,
-            minimizable: false,
-            maximizable: false,
-            fullscreenable: false,
-            frame: false,
-            titleBarStyle: 'hidden',
-            title: 'qqqide — 登录',
-            autoHideMenuBar: true,
-            webPreferences: {
-                partition,
-                preload: path.join(__dirname, 'login-preload.js'),
-                contextIsolation: true,
-                nodeIntegration: false,
-                sandbox: false,
-            },
-        });
-
-        // ★ 三路拦截 qqqide:// 协议重定向（防 Electron 22 兼容性问题）
-        this.loginWindow.webContents.on('will-navigate', (_event, url) => {
-            if (url.startsWith('qqqide://auth')) {
-                _event.preventDefault();
-                this._handleAuthUrl(url);
-            }
-        });
-        this.loginWindow.webContents.on('will-redirect', (_event, url) => {
-            if (url.startsWith('qqqide://auth')) {
-                _event.preventDefault();
-                this._handleAuthUrl(url);
-            }
-        });
-
-        // ★ 登录窗口加载失败 → 关闭窗口
-        this.loginWindow.webContents.on('did-fail-load', (_event, code, desc, url) => {
-            console.warn('[auth-brain] login window load failed: code=' + code + ' desc=' + desc + ' url=' + url);
-            if (this.loginWindow && !this.loginWindow.isDestroyed()) {
-                this.loginWindow.close();
-            }
-            this.loginWindow = null;
-        });
-
-        // ★ 窗口关闭 → 清理引用
-        this.loginWindow.on('closed', () => {
-            this.loginWindow = null;
-        });
-
-        this.loginWindow.loadURL(loginUrl);
-    }
-
-    closeLoginWindow(): void {
-        if (this.loginWindow && !this.loginWindow.isDestroyed()) {
-            this.loginWindow.close();
-        }
-        this.loginWindow = null;
-    }
-
-    private _handleAuthUrl(url: string): void {
-        try {
-            const u = new URL(url);
-            const token = u.searchParams.get('token');
-            const phone = u.searchParams.get('phone') || '';
-            const countryISO2 = u.searchParams.get('country_iso2') || '';
-            const purchased = u.searchParams.get('purchased') === '1';
-
-            if (!token) {
-                console.warn('[auth-brain] login redirect missing token');
-                return;
-            }
-
-            console.log('[auth-brain] login complete, phone=' + phone.slice(-4) + ' cc=' + countryISO2);
-            this.setAuth(token, phone, countryISO2, purchased);
-            this.closeLoginWindow();
-        } catch (e) {
-            console.warn('[auth-brain] bad auth URL:', e);
-        }
     }
 
     private _genSessionId(): string {
         return crypto.randomBytes(16).toString('hex');
     }
 
-    // ═══ 会话轮询（Plan C — OS 协议回调失败时的兜底） ═══
+    // ═══ 会话轮询（OS 协议回调失败时的兜底） ═══
 
     private _startSessionPoll(): void {
         this._stopSessionPoll();
@@ -320,16 +218,20 @@ class AuthBrain {
                 return;
             }
             try {
-                const resp = await fetch(`${API_BASE}/gaea/qqq/auth/poll?session=${sid}`);
-                if (resp.ok) {
-                    const data = await resp.json();
-                    if (data?.ok && data.token) {
-                        console.log('[auth-brain] poll got token, phone=' + (data.phone || '').slice(-4));
-                        await this.setAuth(data.token, data.phone, data.country_iso2, data.purchased);
-                        this._stopSessionPoll();
-                    }
+                const resp = await net.fetch(`${API_BASE}/gaea/qqq/auth/poll?session=${sid}`);
+                if (!resp.ok) {
+                    console.warn('[auth-brain] poll HTTP ' + resp.status + ' for session=' + sid.slice(0, 8));
+                    return;
                 }
-            } catch { /* ignore */ }
+                const data = await resp.json();
+                if (data?.ok && data.token) {
+                    console.log('[auth-brain] poll got token, phone=' + (data.phone || '').slice(-4));
+                    await this.setAuth(data.token, data.phone, data.country_iso2, data.purchased);
+                    this._stopSessionPoll();
+                }
+            } catch (e: any) {
+                console.warn('[auth-brain] poll fetch error for session=' + sid.slice(0, 8) + ': ' + (e?.message || e));
+            }
         }, SESSION_POLL_MS);
     }
 
@@ -400,7 +302,7 @@ class AuthBrain {
     private async _fetchBalance(): Promise<void> {
         if (!this.authData?.token) return;
         try {
-            const resp = await fetch(API_BASE + '/wallet/balance', {
+            const resp = await net.fetch(API_BASE + '/wallet/balance', {
                 headers: { 'Authorization': 'Bearer ' + this.authData.token }
             });
             if (resp.ok) {
@@ -409,6 +311,8 @@ class AuthBrain {
                     this.balanceGe = data.balance;
                     this._broadcast('balance-fetch');
                 }
+            } else if (resp.status === 401 || resp.status === 403) {
+                this._stopPolling();
             }
         } catch { /* ignore */ }
     }
@@ -416,7 +320,7 @@ class AuthBrain {
     private async _fetchLv(): Promise<void> {
         if (!this.authData?.token) return;
         try {
-            const resp = await fetch(API_BASE + '/qqq/lv', {
+            const resp = await net.fetch(API_BASE + '/qqq/lv', {
                 headers: { 'Authorization': 'Bearer ' + this.authData.token }
             });
             if (resp.ok) {
@@ -439,57 +343,20 @@ class AuthBrain {
                     }
                     this._broadcast('lv-fetch');
                 }
+            } else if (resp.status === 401 || resp.status === 403) {
+                console.warn('[auth-brain] lv fetch returned ' + resp.status + ', auto-logout');
+                await this.clearAuth();
             }
         } catch { /* ignore */ }
     }
-}
 
-// ═══ qqqide:// 协议处理器（应用级 — 拦截所有窗口中的 qqqide:// 导航，防 OS 截胡） ═══
-
-let _authProtocolRegistered = false;
-
-export function registerAuthProtocol(brain: AuthBrain): void {
-    if (_authProtocolRegistered) return;
-    _authProtocolRegistered = true;
-
-    const _authHtml = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{background:#1e1e1e;color:#dcd8d0;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-family:sans-serif;}</style></head><body><p>\u767B\u5F55\u5B8C\u6210 \u2705 \u2014 \u6B64\u7A97\u53E3\u5373\u5C06\u5173\u95ED</p><script>setTimeout(function(){window.close()},500)</script></body></html>';
-
-    // ★ Electron 22: protocol.handle 不存在，使用 registerStringProtocol
-    protocol.registerStringProtocol('qqqide', (request, callback) => {
-        const url = request.url;
-        if (url.includes('auth') && url.includes('token')) {
-            try {
-                const u = new URL(url);
-                const token = u.searchParams.get('token');
-                const phone = u.searchParams.get('phone') || '';
-                const countryISO2 = u.searchParams.get('country_iso2') || '';
-                const purchased = u.searchParams.get('purchased') === '1';
-                if (token) {
-                    console.log('[auth-protocol] token received, phone=' + phone.slice(-4));
-                    brain.setAuth(token, phone, countryISO2, purchased);
-                    brain.closeLoginWindow();
-                }
-            } catch (e) {
-                console.warn('[auth-protocol] bad URL:', e);
-            }
-        }
-        callback({ data: _authHtml, mimeType: 'text/html; charset=utf-8' });
-    });
-
-    console.log('[auth-protocol] qqqide:// handler registered (app-level, registerStringProtocol)');
 }
 
 // ═══ IPC 注册 ═══
 
 export function registerAuthBrainIpc(brain: AuthBrain): void {
-    // ★ Plan C 主通道：外部浏览器登录（返回 loginUrl 供渲染层 qoast 复制链接使用）
     ipcMain.handle('qqqide:auth:open-login-external', async () => {
         return await brain.openLoginExternal();
-    });
-
-    // ★ BrowserWindow 兜底
-    ipcMain.handle('qqqide:auth:open-login-window', async () => {
-        await brain.openLoginWindow();
     });
 
     ipcMain.handle('qqqide:auth:logout', async () => {
@@ -504,7 +371,6 @@ export function registerAuthBrainIpc(brain: AuthBrain): void {
         brain.onBillingEvent(costWge);
     });
 
-    // 兼容旧 API（login.js 重构期间过渡用）
     ipcMain.handle('qqqide:auth:save', async (_e, auth: any) => {
         if (auth?.token && auth?.phone) {
             await brain.setAuth(auth.token, auth.phone, auth.country_iso2, auth.purchased);
@@ -526,7 +392,6 @@ export function registerAuthBrainIpc(brain: AuthBrain): void {
     });
 
     ipcMain.handle('qqqide:auth:set-phone', async (_e, phone: string) => {
-        // Plan C: phone 由中心大脑管理，此 API 废弃但保留兼容
         return true;
     });
 }

@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="zh-CN" style="height:100%;margin:0;">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Inbox</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Inbox — Solarized-native chat UI (远超 Steam)
+   ═══════════════════════════════════════════════════════════════════════ */
+:root {
+  --bg:             #f5f0e4;
+  --bg-sidebar:     #ede6d7;
+  --bg-chat:        #f5f0e4;
+  --bg-input:       #ffffff;
+  --text:           #586e75;
+  --text-dim:       #93a1a1;
+  --text-bright:    #002b36;
+  --border:         #d6ccb4;
+  --border-light:   #e4dcc8;
+  --accent:         #268bd2;
+  --accent-soft:    #dce8f5;
+  --accent-glow:    rgba(38,139,210,0.12);
+  --bubble-self:    linear-gradient(155deg,#dae6f2 0%,#e2ecf6 100%);
+  --bubble-other:   #ffffff;
+  --bubble-shadow:  0 1px 2px rgba(0,0,0,0.05);
+  --red:            #dc322f;
+  --green:          #859900;
+  --orange:         #cb4b16;
+  --scrollbar:      #d3cbb7;
+  --scrollbar-hov:  #b7a98a;
+  --avatar-self:    #268bd2;
+  --avatar-other:   #859900;
+}
+[data-theme="dark"] {
+  --bg:             #001a20;
+  --bg-sidebar:     #00212a;
+  --bg-chat:        #001a20;
+  --bg-input:       #00171c;
+  --text:           #839496;
+  --text-dim:        #586e75;
+  --text-bright:    #eee8d5;
+  --border:         #1a424a;
+  --border-light:   #153740;
+  --accent:         #268bd2;
+  --accent-soft:    #0a2a35;
+  --accent-glow:    rgba(38,139,210,0.18);
+  --bubble-self:    linear-gradient(155deg,#152f3a 0%,#1a3642 100%);
+  --bubble-other:   #073642;
+  --bubble-shadow:  0 1px 2px rgba(0,0,0,0.25);
+  --scrollbar:      #1a424a;
+  --scrollbar-hov:  #2a525a;
+}
+* { box-sizing:border-box;margin:0;padding:0; }
+html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;font-size:13px;color:var(--text);background:var(--bg);overflow:hidden; }
+
+#app { display:flex;height:100%; }
+
+/* ═══ SIDEBAR ═══ */
+#sidebar {
+  width:270px;flex-shrink:0;
+  display:flex;flex-direction:column;
+  background:var(--bg-sidebar);
+  border-right:1px solid var(--border);
+}
+#sidebar-header {
+  padding:14px 16px 10px;
+  font-size:16px;font-weight:700;
+  color:var(--text-bright);
+  letter-spacing:-0.3px;
+}
+#sidebar-search {
+  padding:0 12px 10px;
+}
+#sidebar-search input {
+  width:100%;padding:7px 12px 7px 32px;
+  border:1px solid var(--border);
+  border-radius:8px;font-size:12px;
+  background:var(--bg-input);color:var(--text);
+  outline:none;transition:border-color 0.15s;
+}
+#sidebar-search input:focus { border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow); }
+#sidebar-search-wrap { position:relative; }
+#sidebar-search-icon {
+  position:absolute;left:10px;top:50%;transform:translateY(-50%);
+  font-size:13px;color:var(--text-dim);pointer-events:none;
+}
+
+#conv-list { flex:1;overflow-y:auto;overflow-x:hidden;padding:0 8px; }
+.conv-item {
+  display:flex;align-items:center;gap:10px;
+  padding:10px 10px;margin:1px 0;
+  border-radius:10px;cursor:pointer;
+  transition:background 0.12s;
+  position:relative;
+}
+.conv-item:hover { background:var(--accent-glow); }
+.conv-item.active { background:var(--accent-soft); }
+
+.conv-avatar {
+  width:42px;height:42px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;font-weight:700;color:#fff;
+  letter-spacing:-0.5px;text-transform:uppercase;
+}
+.conv-body { flex:1;min-width:0;overflow:hidden; }
+.conv-name {
+  font-size:13px;font-weight:600;color:var(--text-bright);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.conv-preview {
+  font-size:11px;color:var(--text-dim);margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.conv-meta { display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex-shrink:0; }
+.conv-time { font-size:10px;color:var(--text-dim);white-space:nowrap; }
+.conv-badge {
+  min-width:18px;height:18px;padding:0 5px;
+  background:var(--red);color:#fff;
+  font-size:10px;font-weight:700;line-height:18px;text-align:center;
+  border-radius:9px;
+}
+
+#sidebar-footer { padding:8px 12px;border-top:1px solid var(--border); }
+#btn-new-msg {
+  width:100%;padding:8px;border:1px dashed var(--border);
+  border-radius:8px;background:transparent;color:var(--text-dim);
+  font-size:12px;cursor:pointer;transition:all 0.15s;
+}
+#btn-new-msg:hover { border-color:var(--accent);color:var(--accent);background:var(--accent-glow); }
+
+#connection-dot {
+  display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;
+  background:var(--green);vertical-align:middle;
+}
+#connection-dot.offline { background:var(--red); }
+#connection-label { font-size:10px;color:var(--text-dim);padding:6px 12px;display:block;text-align:center; }
+
+/* ═══ MAIN PANEL ═══ */
+#main { flex:1;display:flex;flex-direction:column;background:var(--bg-chat);min-width:0; }
+
+/* Empty state */
+#empty-state {
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:var(--text-dim);user-select:none;
+}
+#empty-icon { font-size:64px;margin-bottom:12px;opacity:0.5; }
+#empty-title { font-size:18px;font-weight:600;color:var(--text-bright);margin-bottom:6px; }
+#empty-sub { font-size:13px; }
+
+/* Chat header */
+#chat-header {
+  display:none;align-items:center;gap:10px;
+  padding:12px 16px;border-bottom:1px solid var(--border);
+  background:var(--bg-sidebar);
+}
+#chat-header-avatar {
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:700;color:#fff;
+}
+#chat-header-name { font-size:14px;font-weight:600;color:var(--text-bright); }
+#chat-header-status { font-size:11px;color:var(--text-dim);margin-top:1px; }
+#chat-header-online {
+  width:8px;height:8px;border-radius:50%;background:var(--green);
+  flex-shrink:0;margin-left:auto;
+}
+
+/* Messages */
+#msg-list { display:none;flex:1;overflow-y:auto;padding:16px 20px; }
+.msg-day-sep {
+  display:flex;align-items:center;gap:12px;
+  margin:18px 0 14px;
+  color:var(--text-dim);font-size:11px;font-weight:600;
+}
+.msg-day-sep::before,.msg-day-sep::after {
+  content:'';flex:1;height:1px;background:var(--border-light);
+}
+.msg-row {
+  display:flex;flex-direction:column;margin-bottom:6px;
+  animation:msgIn 0.2s ease-out;
+}
+@keyframes msgIn { from { opacity:0;transform:translateY(6px); } to { opacity:1;transform:translateY(0); } }
+.msg-row.self { align-items:flex-end; }
+.msg-row.other { align-items:flex-start; }
+.msg-row.self-grouped { margin-bottom:1px; }
+.msg-row.other-grouped { margin-bottom:1px; }
+
+.msg-bubble {
+  max-width:72%;padding:9px 13px;border-radius:14px;
+  font-size:13px;line-height:1.5;word-break:break-word;white-space:pre-wrap;
+  position:relative;
+}
+.msg-row.self .msg-bubble {
+  background:var(--bubble-self);
+  color:var(--text-bright);
+  border-bottom-right-radius:4px;
+  box-shadow:var(--bubble-shadow);
+}
+.msg-row.other .msg-bubble {
+  background:var(--bubble-other);
+  color:var(--text);
+  border-bottom-left-radius:4px;
+  box-shadow:var(--bubble-shadow);
+}
+.msg-row.self-grouped .msg-bubble { border-top-right-radius:4px; }
+.msg-row.other-grouped .msg-bubble { border-top-left-radius:4px; }
+
+.msg-time {
+  font-size:10px;color:var(--text-dim);margin-top:3px;
+  padding:0 4px;user-select:none;
+}
+
+/* Input area */
+#input-area {
+  display:none;padding:12px 16px;border-top:1px solid var(--border);
+  background:var(--bg-sidebar);
+}
+#input-row { display:flex;gap:8px;align-items:flex-end; }
+#input-row textarea {
+  flex:1;min-height:40px;max-height:120px;
+  padding:9px 14px;border:1px solid var(--border);
+  border-radius:20px;resize:none;font-size:13px;font-family:inherit;
+  background:var(--bg-input);color:var(--text);
+  outline:none;transition:border-color 0.15s;line-height:1.4;
+}
+#input-row textarea:focus { border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow); }
+#send-btn {
+  flex-shrink:0;width:40px;height:40px;border:none;border-radius:50%;
+  background:var(--accent);color:#fff;font-size:16px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:transform 0.1s,opacity 0.15s;
+}
+#send-btn:hover { opacity:0.88;transform:scale(1.04); }
+#send-btn:active { transform:scale(0.96); }
+#send-btn:disabled { opacity:0.35;cursor:default;transform:none; }
+
+/* New message bar */
+#new-dm-bar { padding:6px 12px;border-top:1px solid var(--border); }
+#new-dm-bar input {
+  width:100%;padding:6px 10px;border:1px solid var(--border);
+  border-radius:6px;font-size:11px;
+  background:var(--bg-input);color:var(--text);outline:none;
+}
+#new-dm-bar input:focus { border-color:var(--accent); }
+#new-dm-bar input::placeholder { color:var(--text-dim); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width:5px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--scrollbar);border-radius:3px; }
+::-webkit-scrollbar-thumb:hover { background:var(--scrollbar-hov); }
+
+/* Pulse animation for new messages */
+@keyframes badgePulse {
+  0% { transform:scale(1); }
+  50% { transform:scale(1.3); }
+  100% { transform:scale(1); }
+}
+.conv-badge.pulse { animation:badgePulse 0.3s ease-out; }
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- ═══ SIDEBAR ═══ -->
+  <div id="sidebar">
+    <div id="sidebar-header">Messages</div>
+    <div id="sidebar-search">
+      <div id="sidebar-search-wrap">
+        <span id="sidebar-search-icon">🔍</span>
+        <input type="text" id="search-input" placeholder="搜索联系人..." autocomplete="off">
+      </div>
+    </div>
+    <div id="conv-list"></div>
+    <div id="new-dm-bar">
+      <input type="text" id="new-peer-input" placeholder="输入手机号开始新对话…" maxlength="20" autocomplete="off">
+    </div>
+    <div id="sidebar-footer">
+      <button id="btn-new-msg">+ 新建消息</button>
+    </div>
+    <span id="connection-label"><span id="connection-dot"></span><span id="connection-text">连接中…</span></span>
+  </div>
+
+  <!-- ═══ MAIN PANEL ═══ -->
+  <div id="main">
+    <div id="empty-state">
+      <div id="empty-icon">💬</div>
+      <div id="empty-title">选择一条对话</div>
+      <div id="empty-sub">从左侧选择一个联系人，或搜索手机号开始新对话</div>
+    </div>
+    <div id="chat-header">
+      <div id="chat-header-avatar"></div>
+      <div>
+        <div id="chat-header-name"></div>
+        <div id="chat-header-status">离线</div>
+      </div>
+      <div id="chat-header-online" style="display:none" title="在线"></div>
+    </div>
+    <div id="msg-list"></div>
+    <div id="input-area">
+      <div id="input-row">
+        <textarea id="msg-input" placeholder="输入消息… (Enter 发送，Shift+Enter 换行)" maxlength="2000" rows="1"></textarea>
+        <button id="send-btn" title="发送 (Enter)">▶</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ═══ STATE ═══
+  var _token = '';
+  var _doerID = '';
+  var _doerName = '';
+  var _ws = null;
+  var _wsReconnectTimer = null;
+  var _convMap = {};       // peerID → {unread,lastMsg,lastTime,peerName}
+  var _activePeer = null;
+  var _msgCache = {};      // peerID → [{id,sender_id,content,created_at}]
+  var _searchFilter = '';
+  var _avatarColors = ['#268bd2','#859900','#cb4b16','#dc322f','#6c71c4','#d33682','#2aa198','#b58900'];
+
+  var $convList   = document.getElementById('conv-list');
+  var $chatHeader = document.getElementById('chat-header');
+  var $chatHdrName= document.getElementById('chat-header-name');
+  var $chatHdrStat= document.getElementById('chat-header-status');
+  var $chatHdrAv  = document.getElementById('chat-header-avatar');
+  var $chatHdrOn  = document.getElementById('chat-header-online');
+  var $msgList    = document.getElementById('msg-list');
+  var $inputArea  = document.getElementById('input-area');
+  var $msgInput   = document.getElementById('msg-input');
+  var $sendBtn    = document.getElementById('send-btn');
+  var $emptyState = document.getElementById('empty-state');
+  var $connDot    = document.getElementById('connection-dot');
+  var $connText   = document.getElementById('connection-text');
+  var $searchInput= document.getElementById('search-input');
+  var $newPeerIn  = document.getElementById('new-peer-input');
+  var $btnNewMsg  = document.getElementById('btn-new-msg');
+
+  // ═══ THEME ═══
+  function syncTheme() {
+    try {
+      var d = parent.document.documentElement;
+      var theme = d.getAttribute('data-theme');
+      if (theme) document.documentElement.setAttribute('data-theme', theme);
+    } catch(_) {}
+  }
+  syncTheme();
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'theme-change') {
+      document.documentElement.setAttribute('data-theme', e.data.theme);
+    }
+  });
+
+  // ═══ INIT ═══
+  init();
+  function init() {
+    getAuth(function(tok, did, name) {
+      if (!tok) { setConnStatus(false, '未登录'); return; }
+      _token = tok;
+      _doerID = did;
+      _doerName = name || did;
+      if (!_doerID) { setConnStatus(false, '登录信息异常'); return; }
+      connectWS();
+      loadConversations();
+    });
+  }
+
+  function getAuth(cb) {
+    try {
+      var L = parent.window.qqqLogin;
+      if (L) {
+        var tok = L.getAuthToken();
+        if (tok) {
+          try {
+            var parts = tok.split('.');
+            if (parts.length === 3) {
+              var payload = JSON.parse(atob(parts[1]));
+              cb(tok, payload.uid || payload.doer_id || '', payload.phone || '');
+              return;
+            }
+          } catch(_) {}
+          cb(tok, '', '');
+          return;
+        }
+      }
+    } catch(_) {}
+    // Fallback: try grandparent (AI panel nesting)
+    try {
+      var L2 = parent.parent.window.qqqLogin;
+      if (L2) {
+        var tok2 = L2.getAuthToken();
+        if (tok2) {
+          try {
+            var p2 = tok2.split('.');
+            var pl = JSON.parse(atob(p2[1]));
+               cb(tok2, pl.uid || pl.doer_id || '', pl.phone || '');          return;
+          } catch(_) {}
+          cb(tok2, '', '');
+          return;
+        }
+      }
+    } catch(_) {}
+    cb('', '', '');
+  }
+
+  // ═══ WS ═══
+  function connectWS() {
+    if (!_doerID) return;
+    if (_wsReconnectTimer) { clearTimeout(_wsReconnectTimer); _wsReconnectTimer = null; }
+
+    var wsUrl = 'wss://cnk.gh555.com/ws?token=' + encodeURIComponent(_token);
+    _ws = new WebSocket(wsUrl);
+    setConnStatus(false, '连接中…');
+
+    _ws.onopen = function() {
+      setConnStatus(true, '已连接');
+      _ws.send(JSON.stringify({type:'sub',ch:'inbox:'+_doerID}));
+    };
+
+    _ws.onmessage = function(e) {
+      try {
+        var msg = JSON.parse(e.data);
+        if (msg.type === 'dm_msg' && msg.data) {
+          handlePush(msg.data);
+        } else if (msg.type === 'ok' && msg.ref === 'sub') {
+          setConnStatus(true, '收件箱已就绪');
+        }
+      } catch(_) {}
+    };
+
+    _ws.onclose = function() {
+      setConnStatus(false, '断开 · 5s 重连');
+      _wsReconnectTimer = setTimeout(connectWS, 5000);
+    };
+
+    _ws.onerror = function() { /* onclose fires next */ };
+  }
+
+  function setConnStatus(ok, text) {
+    $connDot.className = ok ? '' : 'offline';
+    $connText.textContent = text;
+  }
+
+  // ═══ PUSH HANDLER ═══
+  function handlePush(dm) {
+    var peerID = dm.sender_id === _doerID ? dm.recipient_id : dm.sender_id;
+
+    // Init conversation
+    if (!_convMap[peerID]) {
+      _convMap[peerID] = {unread:0,lastMsg:'',lastTime:'',peerName:''};
+    }
+    var cv = _convMap[peerID];
+    cv.lastMsg = dm.content;
+    cv.lastTime = dm.created_at;
+
+    if (dm.sender_id === _doerID) {
+      cv.peerName = cv.peerName || dm.recipient_id;
+    } else {
+      cv.peerName = dm.sender_name || dm.sender_id;
+      if (_activePeer !== peerID) {
+        cv.unread = (cv.unread||0) + 1;
+      }
+    }
+
+    // Cache
+    if (!_msgCache[peerID]) _msgCache[peerID] = [];
+    _msgCache[peerID].push(dm);
+
+    renderConvList();
+
+    if (_activePeer === peerID) {
+      appendBubble(dm);
+      scrollBottom();
+      if (dm.sender_id !== _doerID) {
+        // Tell parent to reset unread badge
+        try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
+      }
+    }
+  }
+
+  // ═══ REST ═══
+  function loadConversations() {
+    if (!_token) return;
+    fetch('https://cnk.gh555.com/api/dm/conversations', {
+      headers:{'Authorization':'Bearer '+_token}
+    }).then(function(r){return r.json();}).then(function(d){
+      if (d.conversations) {
+        d.conversations.forEach(function(cv){
+          _convMap[cv.peer_id] = {
+            unread: cv.unread_count||0,
+            lastMsg: cv.last_msg||'',
+            lastTime: cv.last_time||'',
+            peerName: cv.peer_name||cv.peer_id
+          };
+        });
+        renderConvList();
+        // Notify parent to reset badge after initial load
+        try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
+      }
+    }).catch(function(){});
+  }
+
+  function loadMessages(peerID) {
+    fetch('https://cnk.gh555.com/api/dm/messages?peer='+encodeURIComponent(peerID)+'&limit=99', {
+      headers:{'Authorization':'Bearer '+_token}
+    }).then(function(r){return r.json();}).then(function(d){
+      if (d.messages) {
+        _msgCache[peerID] = d.messages.reverse();
+        renderMessages(peerID);
+      }
+    }).catch(function(){});
+  }
+
+  // ═══ RENDER ═══
+  function renderConvList() {
+    var peers = Object.keys(_convMap).sort(function(a,b){
+      return (_convMap[b].lastTime||'') > (_convMap[a].lastTime||'') ? 1 : -1;
+    });
+    var filter = _searchFilter.trim().toLowerCase();
+
+    var html = '';
+    peers.forEach(function(pid){
+      var cv = _convMap[pid];
+      var name = cv.peerName || pid;
+      if (filter && name.toLowerCase().indexOf(filter) === -1 && pid.indexOf(filter) === -1) return;
+
+      var cls = _activePeer === pid ? ' active' : '';
+      var badge = cv.unread > 0 ? '<span class="conv-badge">'+(cv.unread>99?'99+':cv.unread)+'</span>' : '';
+      var avatarLetter = (name[0]||'?').toUpperCase();
+      var avatarColor = _avatarColors[hashCode(pid) % _avatarColors.length];
+
+      html += '<div class="conv-item'+cls+'" data-peer="'+escHtml(pid)+'">';
+      html += '<div class="conv-avatar" style="background:'+avatarColor+'">'+avatarLetter+'</div>';
+      html += '<div class="conv-body"><div class="conv-name">'+escHtml(name)+'</div>';
+      html += '<div class="conv-preview">'+escHtml(trunc(cv.lastMsg,40))+'</div></div>';
+      html += '<div class="conv-meta"><div class="conv-time">'+fmtBrief(cv.lastTime)+'</div>'+badge+'</div>';
+      html += '</div>';
+    });
+
+    $convList.innerHTML = html || '<div style="padding:20px;text-align:center;color:var(--text-dim);font-size:12px;">暂无对话</div>';
+
+    // Bind clicks
+    $convList.querySelectorAll('.conv-item').forEach(function(el){
+      el.addEventListener('click',function(){ openChat(el.dataset.peer); });
+    });
+  }
+
+  function renderMessages(peerID) {
+    $msgList.innerHTML = '';
+    var msgs = _msgCache[peerID] || [];
+    if (msgs.length === 0) {
+      $msgList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">暂无消息，发送第一条吧</div>';
+      return;
+    }
+
+    var lastDay = '';
+    var lastSender = '';
+    var lastTime = 0;
+
+    msgs.forEach(function(m, i){
+      var d = new Date(m.created_at);
+      var dayKey = d.toDateString();
+      if (dayKey !== lastDay) {
+        var daySep = document.createElement('div');
+        daySep.className = 'msg-day-sep';
+        daySep.textContent = fmtDay(d);
+        $msgList.appendChild(daySep);
+        lastDay = dayKey;
+        lastSender = '';
+      }
+
+      var isSelf = m.sender_id === _doerID;
+      var row = document.createElement('div');
+      var mTime = d.getTime();
+
+      // Group consecutive messages from same sender within 3 minutes
+      var grouped = (m.sender_id === lastSender && (mTime - lastTime) < 180000);
+      row.className = 'msg-row ' + (isSelf ? 'self' : 'other') + (grouped ? (isSelf?' self-grouped':' other-grouped') : '');
+      row.innerHTML = '<div class="msg-bubble">'+escHtml(m.content)+'</div>' +
+        (grouped ? '' : '<div class="msg-time">'+fmtTime(d)+'</div>');
+      $msgList.appendChild(row);
+
+      lastSender = m.sender_id;
+      lastTime = mTime;
+    });
+
+    scrollBottom();
+  }
+
+  function appendBubble(m) {
+    var msgs = _msgCache[_activePeer] || [];
+    var prev = msgs.length > 1 ? msgs[msgs.length-2] : null;
+    var isSelf = m.sender_id === _doerID;
+    var d = new Date(m.created_at);
+    var mTime = d.getTime();
+    var grouped = prev && prev.sender_id === m.sender_id && (mTime - new Date(prev.created_at).getTime()) < 180000;
+
+    var row = document.createElement('div');
+    row.className = 'msg-row '+(isSelf?'self':'other')+(grouped?(isSelf?' self-grouped':' other-grouped'):'');
+    row.innerHTML = '<div class="msg-bubble">'+escHtml(m.content)+'</div>' +
+      (grouped?'':'<div class="msg-time">'+fmtTime(d)+'</div>');
+    $msgList.appendChild(row);
+  }
+
+  // ═══ ACTIONS ═══
+  function openChat(peerID) {
+    _activePeer = peerID;
+    _searchFilter = '';
+    $searchInput.value = '';
+
+    $emptyState.style.display = 'none';
+    $chatHeader.style.display = 'flex';
+    $msgList.style.display = 'block';
+    $inputArea.style.display = 'block';
+
+    var cv = _convMap[peerID] || {};
+    var name = cv    $chatHdrStat.textContent = '离线';
+    $chatHdrStat.textContent = cv.peerName ? '在线' : '离线';
+    $chatHdrAv.textContent = (name[0]||'?').toUpperCase();
+    $chatHdrAv.style.background = _avatarColors[hashCode(peerID) % _avatarColors.length];
+    $chatHdrOn.style.display = cv.peerName ? 'block' : 'none';
+
+    // Reset unread
+    cv.unread = 0;
+    try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
+
+    if (!_msgCache[peerID] || _msgCache[peerID].length === 0) {
+      loadMessages(peerID);
+    } else {
+      renderMessages(peerID);
+    }
+    renderConvList();
+    setTimeout(function(){ $msgInput.focus(); },100);
+  }
+
+  function sendMessage() {
+    var text = $msgInput.value.trim();
+    if (!text || !_activePeer) return;
+
+    $sendBtn.disabled = true;
+    $msgInput.value = '';
+    autoResize();
+
+    fetch('https://cnk.gh555.com/api/dm/send', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
+      body:JSON.stringify({to:_activePeer,content:text})
+    }).then(function(r){return r.json();}).then(function(d){
+      if (d.ok && d.msg) {
+        if (!_msgCache[_activePeer]) _msgCache[_activePeer] = [];
+        _msgCache[_activePeer].push(d.msg);
+        appendBubble(d.msg);
+        scrollBottom();
+      } else {
+        $msgInput.value = text; // restore on failure
+      }
+    }).catch(function(){
+      $msgInput.value = text;
+    }).finally(function(){
+      $sendBtn.disabled = false;
+      $msgInput.focus();
+    });
+  }
+
+  // ═══ EVENTS ═══
+  $sendBtn.addEventListener('click', sendMessage);
+  $msgInput.addEventListener('keydown', function(e){
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    // Auto-resize
+    setTimeout(autoResize, 0);
+  });
+  $msgInput.addEventListener('input', autoResize);
+  function autoResize() {
+    $msgInput.style.height = 'auto';
+    $msgInput.style.height = Math.min($msgInput.scrollHeight, 120) + 'px';
+  }
+
+  $searchInput.addEventListener('input', function(){
+    _searchFilter = $searchInput.value;
+    renderConvList();
+  });
+
+  $newPeerIn.addEventListener('keydown', funct      var phone = $newPeerIn.value.trim().replace(/[^0-9+]/g,'');
+      // 中国手机号自动加 +86 前缀
+      if (/^1[3-9]\d{9}$/.test(phone)) { phone = '+86' + phone; }
+      if (phone && phone !== _doerID) {    if (phone && phone !== _doerID) {
+        if (!_convMap[phone]) {
+          _convMap[phone] = {unread:0,lastMsg:'',lastTime:'',peerName:phone};
+        }
+        openChat(phone);
+        $newPeerIn.value = '';
+      }
+    }
+  });
+
+  $btnNewMsg.addEventListener('click', function(){
+    $newPeerIn.focus();
+  });
+
+  // ═══ UTILS ═══
+  function scrollBottom() {
+    $msgList.scrollTop = $msgList.scrollHeight;
+  }
+
+  function fmtTime(d) {
+    var p = function(n){return n<10?'0'+n:''+n;};
+    return p(d.getHours())+':'+p(d.getMinutes());
+  }
+
+  function fmtDay(d) {
+    var now = new Date();
+    var today = now.toDateString();
+    var yday = new Date(now.getFullYear(),now.getMonth(),now.getDate()-1).toDateString();
+    var dd = d.toDateString();
+    if (dd === today) return '今天';
+    if (dd === yday) return '昨天';
+    return (d.getMonth()+1)+'月'+d.getDate()+'日';
+  }
+
+  function fmtBrief(iso) {
+    if (!iso) return '';
+    var d = new Date(iso);
+    var now = new Date();
+    if (d.toDateString() === now.toDateString()) return fmtTime(d);
+    return (d.getMonth()+1)+'/'+d.getDate();
+  }
+
+  function trunc(s, n) {
+    if (!s) return '';
+    return s.length > n ? s.slice(0,n)+'…' : s;
+  }
+
+  function escHtml(s) {
+    if (!s) return '';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function hashCode(s) {
+    var h = 0, i;
+    for (i=0;i<s.length;i++) { h=((h<<5)-h)+s.charCodeAt(i); h|=0; }
+    return Math.abs(h);
+  }
+})();
+</script>
+</body>
+</html>

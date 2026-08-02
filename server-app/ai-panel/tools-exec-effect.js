@@ -374,7 +374,7 @@ async function executeGenerateImage(args) {
     if (!args.out_dir) {
         try {
             if (typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
-                args.out_dir = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/genera';
+                args.out_dir = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/genera';
             }
         } catch (_) { }
     }
@@ -807,7 +807,7 @@ async function executeRemoveBackground(args) {
         var outDir = '';
         try {
             if (typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
-                outDir = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/genera';
+                outDir = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/genera';
             }
         } catch (_) { }
         if (outDir) {

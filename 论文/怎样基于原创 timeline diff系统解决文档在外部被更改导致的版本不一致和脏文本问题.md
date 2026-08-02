@@ -30,7 +30,7 @@
 
 ## 3. 第一层：Timeline Diff — 永不丢失数据的安全网
 
-我们的底层设施是自建的 timeline 版本系统（文件位于 `qqq/timeline/`）：
+我们的底层设施是自建的 timeline 版本系统（文件位于 `_qqq/timeline/`）：
 
 ```
 存储: blobs/{sha256}.gz  (内容不可变，SHA256 行尾归一化去重)

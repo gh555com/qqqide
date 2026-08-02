@@ -5,7 +5,7 @@
 //
 // 铁律：
 //   1. 整个项目的全部偏好/状态/快照，必须经由此机器。零散落 localStorage/内存。
-//   2. 一个 project 一个 only.sq3，放在 qqq/alphal/only.sq3。
+//   2. 一个 project 一个 only.sq3，放在 _qqq/alphal/only.sq3。
 //   3. 性能至上：读走内存缓存（零 I/O），写自动合并批量刷盘。
 //   4. 无需维护关键事件表：任何 set() 调用自动触发延迟刷盘管线。
 //   5. 防崩溃：beforeunload 同步刷盘 + 定时器兜底（最多丢 ~2 秒状态）。
@@ -49,7 +49,7 @@ var onlyStore = (function () {
     if (!_rootDir) return null;
     try {
       if (window.parent && window.parent.qgs && typeof window.parent.qgs.project === 'function') {
-        _qgs = window.parent.qgs.project(_rootDir + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+        _qgs = window.parent.qgs.project(_rootDir + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
         // [silent] bridge OK
         return _qgs;
       }
@@ -239,8 +239,7 @@ var onlyStore = (function () {
   }
 
   async function claimLock() {
-    if (!_rootDir) return { ok: false, error: 'no rootDir' };
-    _lockPath = _rootDir + '/qqq/alphal/.lock';
+    if (!_rootDir) return { ok: false, error: 'no rootDir' };    _lockPath = _rootDir + '/_qqq/alphal/.lock';;
     var fsb = _fsBridge();
     if (!fsb) return { ok: false, error: 'no bridge' };
     try {

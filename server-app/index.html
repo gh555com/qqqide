@@ -62,15 +62,6 @@ var _orig={};
 <script src="core/char-undo.js"></script>
 <script src="core/i18n.js"></script>
 <script src="core/qqqide-qoast.js"></script>
-<script src="core/klipzap.js"></script>
-<script src="core/wq-stats.js"></script>
-<script src="core/transaction-manager.js"></script>
-<script src="core/batch-ops.js"></script>
-<script src="core/progress-service.js"></script>
-<script src="core/anchor-map.js"></script>
-<script src="core/paste-router.js"></script>
-<script src="core/thumbnail-cache.js"></script>
-<script src="core/content-widget.js"></script>
 <style>
 #qqq-brand-banner{position:fixed;top:0;left:50%;transform:translate(-50%,calc(-100% - 40px));transition:transform .5s cubic-bezier(.4,0,.2,1);z-index:99999;background:var(--bg-primary,#1a1a1a);border:1px solid var(--border-color,#333);border-top:none;border-radius:0 0 12px 12px;padding:18px 32px;text-align:center;min-width:320px;box-shadow:0 4px 24px rgba(0,0,0,.4);pointer-events:none}
 #qqq-brand-banner.show{transform:translate(-50%,0)}
@@ -159,6 +150,8 @@ var _orig={};
           <span class="qqq-gw-dot" id="qqq-gw-dot-2" data-panel="2" title="右面板 · 等待连接">●</span>
         </span>
         <span class="qqq-spacer"></span>
+        <span class="qqq-status-item" id="qqq-status-build" style="font-family:Consolas,monospace;font-size:11px;cursor:pointer;" title="构建戳记">stamp: --</span>
+        <span class="qqq-status-item" id="qqq-status-wq" style="font-family:Consolas,monospace;font-size:11px;cursor:pointer;" title="wq 前摇统计">wq: --</span>
         <span class="qqq-status-item" id="qqq-status-clock"></span>
          <span class="qqq-status-item qqq-status-free" id="qqq-status-free" style="display:none">
           <span class="qqq-free-budget-bar" id="qqq-status-free-budget" style="display:none;align-items:center;gap:3px;margin-right:4px;">
@@ -195,15 +188,26 @@ var _orig={};
 <script src="core/key-hook.js"></script>
 <!-- ts-service: custom TypeScript language service (bypasses broken Monaco TS worker) -->
 <script src="core/ts-service.js"></script>
+<!-- Build stamp machine -->
+<script src="core/build-stamp.js"></script>
+<!-- WYSIWYG core: klipzap → anchor-map → content-widget → paste-router pipeline -->
+<script src="core/klipzap.js"></script>
+<script src="core/wq-stats.js"></script>
+<script src="core/transaction-manager.js"></script>
+<script src="core/batch-ops.js"></script>
+<script src="core/progress-service.js"></script>
+<script src="core/thumbnail-cache.js"></script>
+<script src="core/frame-renderer.js"></script>
+<script src="core/anchor-map.js"></script>
+<script src="core/content-widget.js"></script>
+<script src="core/qqq-viewzone.js"></script>
+<script src="core/paste-router.js"></script>
 <script src="core/editor-breadcrumb.js"></script>
 <script src="core/editor.js"></script>
-<script src="goods/rage/services/codelens.js"></script>
-<script src="goods/rage/services/decoration.js"></script>
-<script src="goods/rage/services/paste.js"></script>
-<script src="goods/rage/services/viewzone.js"></script>
-<script src="goods/rage/services/video.js"></script>
+
 <script src="core/ai-viewport.js?v=2"></script>
-<script src="goods/paste-image/paste-image.js"></script>
+<!-- paste-image goods 已删除（2026-08-02）：paste-router + anchor-map + ViewZone 管线完全替代 -->
+
 <script src="goods/navigator/navigator.js"></script>
 <script src="goods/wysiwyg/wysiwyg.js"></script>
 <script src="goods/rage/rage.js"></script>
@@ -212,6 +216,7 @@ var _orig={};
 <script src="goods/conv/conv.js"></script>
 <script src="goods/kope-a/kope-a.js"></script>
 <script src="goods/window-there/window-there.js"></script>
+<script src="goods/dm/dm.js"></script>
 <script src="core/update-ui.js"></script>
 <script src="core/shell-lang.js"></script>
 <script src="core/shell-menu.js"></script>
@@ -222,7 +227,7 @@ var _orig={};
 <script src="core/shell.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js?v=226').catch(() => {});
+    navigator.serviceWorker.register('./service-worker.js?v=315').catch(() => {});
   }
 </script>
 
