@@ -273,7 +273,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     </div>
     <div id="conv-list"></div>
     <div id="new-dm-bar">
-      <input type="text" id="new-peer-input" placeholder="输入手机号开始新对话…" maxlength="20" autocomplete="off">
+      <input type="text" id="new-peer-input" placeholder="键入手机号开始新对话…" maxlength="20" autocomplete="off">
     </div>
     <div id="sidebar-footer">
       <button id="btn-new-msg">+ 新建消息</button>
@@ -299,7 +299,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     <div id="msg-list"></div>
     <div id="input-area">
       <div id="input-row">
-        <textarea id="msg-input" placeholder="输入消息… (Enter 发送，Shift+Enter 换行)" maxlength="2000" rows="1"></textarea>
+        <textarea id="msg-input" placeholder="键入消息… (Enter 发送，Shift+Enter 换行)" maxlength="2000" rows="1"></textarea>
         <button id="send-btn" title="发送 (Enter)">▶</button>
       </div>
     </div>
@@ -396,7 +396,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           try {
             var p2 = tok2.split('.');
             var pl = JSON.parse(atob(p2[1]));
-               cb(tok2, pl.uid || pl.doer_id || '', pl.phone || '');          return;
+          cb(tok2, pl.uid || pl.doer_id || '', pl.phone || '');
+          return;
           } catch(_) {}
           cb(tok2, '', '');
           return;
@@ -412,15 +413,15 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     if (_wsReconnectTimer) { clearTimeout(_wsReconnectTimer); _wsReconnectTimer = null; }
 
     var wsUrl = 'wss://cnk.gh555.com/ws?token=' + encodeURIComponent(_token);
-    _ws = new WebSocket(wsUrl);
+    var ws = _ws = new WebSocket(wsUrl);
     setConnStatus(false, '连接中…');
 
-    _ws.onopen = function() {
+    ws.onopen = function() {
       setConnStatus(true, '已连接');
-      _ws.send(JSON.stringify({type:'sub',ch:'inbox:'+_doerID}));
+      ws.send(JSON.stringify({type:'sub',ch:'inbox:'+_doerID}));
     };
 
-    _ws.onmessage = function(e) {
+    ws.onmessage = function(e) {
       try {
         var msg = JSON.parse(e.data);
         if (msg.type === 'dm_msg' && msg.data) {
@@ -431,12 +432,12 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       } catch(_) {}
     };
 
-    _ws.onclose = function() {
+    ws.onclose = function() {
       setConnStatus(false, '断开 · 5s 重连');
       _wsReconnectTimer = setTimeout(connectWS, 5000);
     };
 
-    _ws.onerror = function() { /* onclose fires next */ };
+    ws.onerror = function() { /* onclose fires next */ };
   }
 
   function setConnStatus(ok, text) {
@@ -617,11 +618,11 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     $inputArea.style.display = 'block';
 
     var cv = _convMap[peerID] || {};
-    var name = cv    $chatHdrStat.textContent = '离线';
-    $chatHdrStat.textContent = cv.peerName ? '在线' : '离线';
+    var name = cv.peerName || peerID;
+    $chatHdrStat.textContent = '离线';
     $chatHdrAv.textContent = (name[0]||'?').toUpperCase();
     $chatHdrAv.style.background = _avatarColors[hashCode(peerID) % _avatarColors.length];
-    $chatHdrOn.style.display = cv.peerName ? 'block' : 'none';
+    $chatHdrOn.style.display = 'none';
 
     // Reset unread
     cv.unread = 0;
@@ -683,10 +684,12 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     renderConvList();
   });
 
-  $newPeerIn.addEventListener('keydown', funct      var phone = $newPeerIn.value.trim().replace(/[^0-9+]/g,'');
+  $newPeerIn.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') {
+      var phone = $newPeerIn.value.trim().replace(/[^0-9+]/g,'');
       // 中国手机号自动加 +86 前缀
       if (/^1[3-9]\d{9}$/.test(phone)) { phone = '+86' + phone; }
-      if (phone && phone !== _doerID) {    if (phone && phone !== _doerID) {
+      if (phone && phone !== _doerID) {
         if (!_convMap[phone]) {
           _convMap[phone] = {unread:0,lastMsg:'',lastTime:'',peerName:phone};
         }

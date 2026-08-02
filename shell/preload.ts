@@ -182,6 +182,7 @@ const QQQ = {
     shell: {
         openExternal: (url: string) => ipcRenderer.invoke('qqqide:shell:openExternal', url),
         openPath: (p: string) => ipcRenderer.invoke('qqqide:shell:openPath', p),
+        hardRefresh: () => ipcRenderer.invoke('qqqide:shell:hardRefresh'),
         // ★ 浏览器启动兜底（2026-07-28）：主进程所有层失败后推 URL 给渲染层弹 qoast
         onBrowserFallback: (cb: (url: string) => void) => {
             const handler = (_e: any, data: { url: string }) => { try { cb(data.url); } catch (err) { console.warn('[shell.onBrowserFallback]', err); } };

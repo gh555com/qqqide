@@ -98,6 +98,16 @@
       return null;
     }
 
+    // ★ 2026-08-02 fix: Monaco Uri.parse('E:/path') treats 'E' as scheme, not drive letter.
+    //   fsPath returns \path\without\drive → missing E: causes ERR_FILE_NOT_FOUND on thumbnail load.
+    //   Detect: path starts with \ or / and no : in first 3 chars → prepend workspace drive letter.
+    if (curFile && curFile.indexOf(':') < 0 && window._workspaceRoot) {
+      var wsDrive = window._workspaceRoot.slice(0, Math.max(0, window._workspaceRoot.indexOf(':') + 1));
+      if (wsDrive && wsDrive.indexOf(':') >= 0) {
+        curFile = wsDrive + curFile.replace(/^\/+/, '');
+      }
+    }
+
     var hasBS = curFile.indexOf('\\') >= 0;
     var sep = hasBS ? '\\' : '/';
     var dir = curFile.slice(0, curFile.lastIndexOf(sep));

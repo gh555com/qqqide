@@ -9,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v316'; // v316 Inbox UI fixes + pulse animation
+const CACHE_NAME = 'qqq-shell-v322'; // v322: fix dm-ui.html nested onclose/onerror + corrupted */ syntax error
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -26,7 +26,7 @@ const PRECACHE_URLS = [
   './core/editor.js',
   './core/editor-breadcrumb.js',
   // WYSIWYG paste pipeline (v306)
-  './core/build-stamp.js',
+  './core/__stamp.js',
   './core/klipzap.js',
   './core/wq-stats.js',
   './core/anchor-map.js',

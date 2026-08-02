@@ -230,6 +230,12 @@ ${escapedPaths}
         return ok;
     });
 
+    // ---- hard refresh (Ctrl+Shift+R equivalent) ——
+    ipcMain.handle('qqqide:shell:hardRefresh', (e) => {
+        const wc = e.sender;
+        if (wc && !wc.isDestroyed()) { wc.reloadIgnoringCache(); }
+    });
+
     // ---- app quit (退出全部窗口) — 菜单退出，跳过关闭确认 ——
     ipcMain.handle('qqqide:app:quitAll', async () => {
         // ★ 给所有窗口打旁路标签，跳过 close 事件确认框

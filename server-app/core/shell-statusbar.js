@@ -17,6 +17,20 @@ function bootStatusbar(boot) {
   if ($eng) $eng.textContent = 'engine: ' + (boot.engineAlive ? 'on' : 'off');
 	if ($onl) $onl.textContent = '0';
 
+  // ★ 硬刷新按钮 — 菜单行2，等价 Ctrl+Shift+R
+  var $rf = document.getElementById('qqq-refresh-btn');
+ 	if ($rf) {
+		$rf.addEventListener('click', function () {
+			if (bridge && bridge.shell && bridge.shell.hardRefresh) {
+				bridge.shell.hardRefresh();
+			} else {
+				// Fallback: clear caches then reload (hardRefresh IPC not available = shell not recompiled yet)
+				if (window.caches) { window.caches.keys().then(function(ks){ return Promise.all(ks.map(function(k){ return window.caches.delete(k); })); }).catch(function(){}); }
+				location.reload();
+			}
+		});
+	}
+
 	// ═══ 全球在线人数 — fetch 极轻轮询（30字节/5分钟，跨窗口稳定）═══
 	(function () {
 		if (!$onl) return;

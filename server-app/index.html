@@ -4,7 +4,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline' data:; script-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline' 'unsafe-eval'; style-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline'; img-src 'self' qqqide-asset: qqqide-webapp: data: blob: file:; font-src 'self' qqqide-asset: qqqide-webapp: data:; connect-src 'self' qqqide-asset: qqqide-webapp: http: https:; worker-src 'self' qqqide-asset: qqqide-webapp: blob:; frame-src 'self' qqqide-asset: qqqide-webapp: http: https: data:">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline' data:; script-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline' 'unsafe-eval'; style-src 'self' qqqide-asset: qqqide-webapp: 'unsafe-inline'; img-src 'self' qqqide-asset: qqqide-webapp: data: blob: file:; font-src 'self' qqqide-asset: qqqide-webapp: data:; connect-src 'self' qqqide-asset: qqqide-webapp: http: https: wss:; worker-src 'self' qqqide-asset: qqqide-webapp: blob:; frame-src 'self' qqqide-asset: qqqide-webapp: http: https: data:">
 <title>qqqide</title>
 <!-- ★ console 全量捕获：head第一脚本 → window.top.__qqq_console_lines -->
 <script>
@@ -111,6 +111,7 @@ var _orig={};
           <span class="qqq-goods-bar" id="qqq-goods-bar"></span>
           <span class="qqq-spacer"></span>
           <button class="qqq-update-btn" id="qqq-update-btn" data-i18n-title="shell.update.check" title="检查更新" style="display:none">&#x21BB;</button>
+          <button class="qqq-refresh-btn" id="qqq-refresh-btn" title="硬刷新 (绕过缓存)">&#x27F3;</button>
         </div>
         <span class="qqq-bulb" id="qqq-bulbs">
           <span class="qqq-bulb-dot" id="qqq-bulb-1" title="左 AI 面板"></span>
@@ -188,8 +189,32 @@ var _orig={};
 <script src="core/key-hook.js"></script>
 <!-- ts-service: custom TypeScript language service (bypasses broken Monaco TS worker) -->
 <script src="core/ts-service.js"></script>
-<!-- Build stamp machine -->
-<script src="core/build-stamp.js"></script>
+<!-- ★ 双通道戳记机器 — __stamp.js 走SW缓存(可能陈旧) + _BUILD_STAMP.json 走直连(永远最新) → 比对=100%确定 -->
+<script src="core/__stamp.js"></script>
+<script>
+(function(){
+  var $el = document.getElementById('qqq-status-build');
+  if (!$el) return;
+  var diskId = (window.__QQQ_BUILD_ID || '????');
+  fetch('/qqqide/qqq/_BUILD_STAMP.json?_=' + Date.now(), {cache:'no-cache'})
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(data){
+      if (!data) { $el.textContent = '\u274c 无'; $el.style.color = '#dc322f'; return; }
+      if (data.buildId === window.__QQQ_BUILD_ID) {
+        $el.textContent = '\u2705 ' + data.buildId.slice(0,8);
+        $el.style.color = ''; $el.style.fontWeight = '';
+      } else {
+        $el.textContent = '\u26a0\ufe0f ' + data.buildId.slice(0,8) + '\u2260' + diskId.slice(0,6);
+        $el.style.color = '#dc322f'; $el.style.fontWeight = 'bold';
+        $el.title = 'SW\u7f13\u5b58\u4e86\u65e7\u4ee3\u7801\uff01\u78c1\u76d8=' + data.buildId + ' \u6d4f\u89c8\u5668=' + diskId;
+      }
+    })
+    .catch(function(){
+      $el.textContent = '\u274c fetch失败';
+      $el.style.color = '#dc322f';
+    });
+})();
+</script>
 <!-- WYSIWYG core: klipzap → anchor-map → content-widget → paste-router pipeline -->
 <script src="core/klipzap.js"></script>
 <script src="core/wq-stats.js"></script>
@@ -227,7 +252,7 @@ var _orig={};
 <script src="core/shell.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js?v=315').catch(() => {});
+    navigator.serviceWorker.register('./service-worker.js?v=322').catch(() => {});
   }
 </script>
 

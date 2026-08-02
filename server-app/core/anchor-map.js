@@ -62,7 +62,7 @@
     var cf = null;
     try {
       var edModel = _editor && _editor.getModel && _editor.getModel();
-      if (edModel && edModel.uri && edModel.uri.scheme === 'file') {
+      if (edModel && edModel.uri) {
         cf = edModel.uri.fsPath || edModel.uri.path;
       }
     } catch (e) { /* */ }
@@ -72,6 +72,13 @@
           cf = window.qqqEditor.currentFile();
         }
       } catch (e) { /* */ }
+    }
+    // ★ 2026-08-02 fix: ensure drive letter on Windows (Monaco Uri.parse('E:/path') treats 'E' as scheme)
+    if (cf && cf.indexOf(':') < 0 && window._workspaceRoot) {
+      var _wsDrive2 = window._workspaceRoot.slice(0, Math.max(0, window._workspaceRoot.indexOf(':') + 1));
+      if (_wsDrive2 && _wsDrive2.indexOf(':') >= 0) {
+        cf = _wsDrive2 + cf.replace(/^\/+/, '');
+      }
     }
     if (cf) {
       var sep = cf.indexOf('\\') >= 0 ? '\\' : '/';
