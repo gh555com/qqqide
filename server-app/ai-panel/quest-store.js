@@ -67,7 +67,7 @@ var QuestStore = (function () {
         if (!_rootDir) {
             return null;
         }
-        var dbPath = _rootDir + '/qqq/alphal/quest.sq3';
+        var dbPath = _rootDir + '/_qqq/alphal/quest.sq3';
         // 主窗口 parent.qgs 暴露 project() 工厂
         if (window.parent && window.parent.qgs && typeof window.parent.qgs.project === 'function') {
             _qgs = window.parent.qgs.project(dbPath, NS, { v: 2, form: 'doc' });
@@ -345,7 +345,7 @@ var QuestStore = (function () {
                 // 扫描磁盘 → diskList（按 ID 分组，检测重复）
                 var diskById = {};   // qId → [{ name, title, numericId }]
                 try {
-                    var list = await _safeList(_rootDir + '/qqq/quests');
+                    var list = await _safeList(_rootDir + '/_qqq/quests');
                     for (var i = 0; i < list.length; i++) {
                         if (!list[i].isDir) continue;
                         var m = list[i].name.match(/^q(\d+)\.(.+)$/);
@@ -494,7 +494,7 @@ var QuestStore = (function () {
                 // 扫描磁盘，按 ID 分组
                 var diskById = {};
                 try {
-                    var list = await _safeList(_rootDir + '/qqq/quests');
+                    var list = await _safeList(_rootDir + '/_qqq/quests');
                     for (var i = 0; i < list.length; i++) {
                         if (!list[i].isDir) continue;
                         var m = list[i].name.match(/^q(\d+)\.(.+)$/);
@@ -538,8 +538,8 @@ var QuestStore = (function () {
                         var newId = 'q' + curCounter;
                         var oldName = entries[zi].name;
                         var newName = newId + '.' + entries[zi].title;
-                        var oldPath = _rootDir + '/qqq/quests/' + oldName;
-                        var newPath = _rootDir + '/qqq/quests/' + newName;
+                        var oldPath = _rootDir + '/_qqq/quests/' + oldName;
+                        var newPath = _rootDir + '/_qqq/quests/' + newName;
 
                         try {
                             await bf.rename(oldPath, newPath);
@@ -577,7 +577,7 @@ var QuestStore = (function () {
                 // 重新扫描（quest 目录可能已改名）
                 var allDiskDirs = {};
                 try {
-                    var list2 = await _safeList(_rootDir + '/qqq/quests');
+                    var list2 = await _safeList(_rootDir + '/_qqq/quests');
                     for (var li = 0; li < list2.length; li++) {
                         if (list2[li].isDir) {
                             var m2 = list2[li].name.match(/^q(\d+)\./);
@@ -591,7 +591,7 @@ var QuestStore = (function () {
                     var flDirName = flQe.dirName || allDiskDirs[flQe.id];
                     if (!flDirName) continue;
 
-                    var flQDirPath = _rootDir + '/qqq/quests/' + flDirName;
+                    var flQDirPath = _rootDir + '/_qqq/quests/' + flDirName;
                     var floorByName = {};
                     try {
                         var flList = await bf.list(flQDirPath);
@@ -715,7 +715,7 @@ var QuestStore = (function () {
             var diskDup = false;
             if (bf && _rootDir) {
                 try {
-                    var diskList = await _safeList(_rootDir + '/qqq/quests');
+                    var diskList = await _safeList(_rootDir + '/_qqq/quests');
                     for (var ddi = 0; ddi < diskList.length; ddi++) {
                         if (diskList[ddi].isDir && diskList[ddi].name.indexOf(id + '.') === 0) {
                             diskDup = true;
@@ -803,7 +803,7 @@ var QuestStore = (function () {
                 var bf = _bridgeFs();
                 if (bf) {
                     try {
-                        var qDirPath = _rootDir + '/qqq/quests/' + qDirName;
+                        var qDirPath = _rootDir + '/_qqq/quests/' + qDirName;
                         await bf.remove(qDirPath);
                     } catch (_) { /* remove 可能不支持递归，忽略 */ }
                 }
@@ -904,7 +904,7 @@ var QuestStore = (function () {
     // ═══════════════════════════════════════════════════════════
 
     var _questDirCache = {};   // questId → 目录名 (e.g. "q1.标题")
-    var _floorDirCache = {};   // questId+'\x00'+floorNum → 完整路径 (e.g. "qqq/quests/q1.新标题/f3.新问题/")
+    var _floorDirCache = {}; //   questId+'\x00'+floorNum → 完整路径 (e.g. "_qqq/quests/q1.新标题/f3.新问题/")
     var _questDirListLock = {};  // qDirName → Promise (防同目录并发 list——loadAllFloors Promise.all 触发)
 
     function _invalidatePathCache(questId) {
@@ -928,7 +928,7 @@ var QuestStore = (function () {
         var bf = _bridgeFs();
         if (!bf) return null;
         try {
-            var list = await _safeList(_rootDir + '/qqq/quests');
+            var list = await _safeList(_rootDir + '/_qqq/quests');
             for (var i = 0; i < list.length; i++) {
                 if (list[i].isDir && list[i].name.indexOf(questId + '.') === 0) {
                     _questDirCache[questId] = list[i].name;
@@ -949,7 +949,7 @@ var QuestStore = (function () {
         if (!qDirName) return null;
         var bf = _bridgeFs();
         if (!bf) return null;
-        var qDirPath = _rootDir + '/qqq/quests/' + qDirName;
+        var qDirPath = _rootDir + '/_qqq/quests/' + qDirName;
 
         // ★ 同 quest 目录的并发 list 合并为一个（防 loadAllFloors Promise.all 触发 N 次）
         var _listProm = _questDirListLock[qDirName];
@@ -1142,7 +1142,7 @@ var QuestStore = (function () {
     QuestStore.prototype.resolveQuestDir = async function (questId) {
         var qDirName = await _resolveQuestDirName(questId);
         if (!qDirName) return null;
-        return _rootDir + '/qqq/quests/' + qDirName + '/';
+        return _rootDir + '/_qqq/quests/' + qDirName + '/';
     };
 
     // ★ 从已加载的 all.json 数据重建 sq3 quest 元数据（备份还原 / 改名编号后自愈）
@@ -1195,7 +1195,7 @@ var QuestStore = (function () {
                 var bf2 = _bridgeFs();
                 if (bf2) {
                     try {
-                        var _fsEntries = await bf2.list(_rootDir + '/qqq/quests/' + qDirName2);
+                        var _fsEntries = await bf2.list(_rootDir + '/_qqq/quests/' + qDirName2);
                         var _sq3Set = {};
                         for (var _si = 0; _si < floorList.length; _si++) { _sq3Set[floorList[_si].n] = true; }
                         var _added = false;
@@ -1269,7 +1269,7 @@ var QuestStore = (function () {
             console.warn('[quest-store] rebuildIndexFromFiles: no bridge');
             return;
         }
-        var questsDir = _rootDir + '/qqq/quests';
+        var questsDir = _rootDir + '/_qqq/quests';
         var questList = null;
         try {
             questList = await _bfs.list(questsDir);
@@ -1409,7 +1409,7 @@ var QuestStore = (function () {
             var bf = _bridgeFs();
             if (!bf || !_rootDir) return result;
 
-            var questsDir = _rootDir + '/qqq/quests/';
+            var questsDir = _rootDir + '/_qqq/quests/';
             var idx = _idx();
             if (!idx || !idx.length) return result;
 

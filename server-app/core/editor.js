@@ -22,62 +22,33 @@
   // Monaco built-in TS/JS/CSS/HTML/JSON workers are disabled in loadMonaco() below.
   // External LSP servers (pyright/gopls/rust-analyzer/clangd) — bridge code removed.
 
-  // ---- q1 三件套 + viewzone attach (legacy): hook all four modules onto one editor.
-  // Each module's attach() is idempotent and safe to call multiple times
-  // (codelens provider de-duped, paste/decoration/viewzone per-editor).
-  function attachQ1(ed, currentFileFn) {
-    if (!ed) return;
-    const _done = {}; // avoid re-attach
-    const tryAttach = (mod, name) => {
-      if (_done[name]) return true;
-      if (!mod || typeof mod.attach !== 'function') return false;
-      try {
-        mod.attach(ed, currentFileFn ? { currentFile: currentFileFn, getCurrentFile: currentFileFn } : undefined);
-        _done[name] = true;
-        return true;
-      } catch (e) {
-        console.warn('[editor] q1.' + name + ' attach failed:', e && e.message);
-        return false;
-      }
-    };
-    let attempts = 0;
-    const tick = () => {
-      const okCL = tryAttach(window.qqqCodeLens, 'codelens');
-      const okDC = tryAttach(window.qqqDecoration, 'decoration');
-      const okPA = tryAttach(window.qqqPaste, 'paste');
-      const okVZ = tryAttach(window.qqqViewZone, 'viewzone');
-      if (okCL && okDC && okPA && okVZ) return;
-      if (++attempts > 30) {
-        console.warn('[editor] q1 attach: gave up after ' + attempts + ' tries; cl=' + okCL + ' dc=' + okDC + ' pa=' + okPA + ' vz=' + okVZ);
-        return;
-      }
-      setTimeout(tick, 200);
-    };
-    tick();
-  }
-
-  // ---- q1 v2: 新架构 attach（anchor-map + paste-router + content-widget）----
+  // ---- q1 v2: 新架构 attach（anchor-map + paste-router + viewzone）----
   // Replaces legacy CodeLens string-translation with position-map + event-driven system.
   // Tries once with retries; gracefully degrades if modules not loaded.
+  // ★ qqqViewZone 替代 qqqContentWidget：ViewZone 实现空气行（不消费行号）
   function attachQ1v2(ed, monaco) {
     if (!ed || !monaco) return;
     var attempts = 0;
     var maxAttempts = 15;
     var tick = function () {
       attempts++;
-      var okAM = false, okPR = false, okCW = false;
+      var okAM = false, okPR = false, okVZ = false;
       if (window.qqqAnchorMap && window.qqqAnchorMap.attach) {
         try { window.qqqAnchorMap.attach(ed, monaco); okAM = true; } catch (e) { /* */ }
       }
       if (window.qqqPasteRouter && window.qqqPasteRouter.attach) {
         try { window.qqqPasteRouter.attach(ed, monaco); okPR = true; } catch (e) { /* */ }
       }
-      if (window.qqqContentWidget && window.qqqContentWidget.attach) {
-        try { window.qqqContentWidget.attach(ed, monaco); okCW = true; } catch (e) { /* */ }
+      // ★ 优先 qqqViewZone（ViewZone 空气行）→ 回退 qqqContentWidget
+      if (window.qqqViewZone && window.qqqViewZone.attach) {
+        try { window.qqqViewZone.attach(ed, monaco); okVZ = true; } catch (e) { /* */ }
       }
-      if (okAM || okPR || okCW) {
+      if (!okVZ && window.qqqContentWidget && window.qqqContentWidget.attach) {
+        try { window.qqqContentWidget.attach(ed, monaco); okVZ = true; } catch (e) { /* */ }
+      }
+      if (okAM || okPR || okVZ) {
         // At least one attached successfully
-        if (okAM && okPR && okCW) return; // All done
+        if (okAM && okPR && okVZ) return; // All done
       }
       if (attempts >= maxAttempts) return;
       setTimeout(tick, 300);
@@ -470,7 +441,7 @@
     }
     if (_minimapStore) return _minimapStore;
     if (!window.qgs || !window.qgs.project) return null;
-    _minimapStore = window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+    _minimapStore = window.qgs.project(root + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
     return _minimapStore;
   }
 
@@ -632,9 +603,7 @@
           });
         }
       });
-      // q1 三件套 attach (no-op if module not yet loaded; will retry)
-      attachQ1(ed);
-      // q1 v2: new architecture (anchor-map + paste-router + content-widget)
+      // q1 v2: anchor-map + paste-router + content-widget
       attachQ1v2(ed, monaco);
       // Wire LSP diagnostics and hover — LSP OFF
       // wireLspDiagnostics(); // LSP OFF
@@ -1128,12 +1097,8 @@
         }
       });
 
-      // q1 三件套 attach for this pane editor
-      attachQ1(ed, () => filePath);
-      // q1 v2: new architecture
+      // q1 v2: anchor-map + paste-router + content-widget
       attachQ1v2(ed, monaco);
-
-      // track pane editor for live refresh (chat.txt etc.)
       _paneEditors[filePath] = ed;
       _paneFiles[host] = filePath;
       // ★ 记录 mtime，用于聚焦时检测外部修改

@@ -41,6 +41,14 @@
   // ★ A 区默认面板
   var _defaultPanelId = 'kope-a';
 
+  // ── Inbox badge state (gaea-host 直管 WS，独立于 iframe 生命周期) ──
+  var _inboxUnread = 0;
+  var _inboxWs = null;
+  var _inboxDoerID = '';
+  var _inboxReconnectTimer = null;
+  var _inboxBadgeEl = null;
+  var _inboxBtnEl = null;
+
   // ---- ctx factory ----
   function makeCtx(id) {
     return {
@@ -87,6 +95,7 @@
     _built = true;
 
     _renderBrandMenu();
+    _initInboxWS();
 
     const pending = _pendingShow.splice(0);
     pending.forEach(id => show(id));
@@ -120,6 +129,11 @@
         btn.addEventListener('click', function () { open(gid); });
       })(id);
       _tabBarEl.appendChild(btn);
+    }
+
+    // Inbox 按钮 — 带未读徽章
+    if (goods.has('inbox')) {
+      _renderInboxButton();
     }
   }
 
@@ -287,7 +301,7 @@
     try {
       var root = window._workspaceRoot || _folderFromUrl();
       if (!root || !_activeId || !window.qgs || typeof window.qgs.project !== 'function') return;
-      var db = window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+      var db = window.qgs.project(root + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
       if (db) db.set('editor.aZoneActive', _activeId).catch(function () { });
     } catch (_) { }
   }
@@ -296,7 +310,7 @@
     try {
       var root = window._workspaceRoot || _folderFromUrl();
       if (!root || !window.qgs || typeof window.qgs.project !== 'function') return;
-      var db = window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+      var db = window.qgs.project(root + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
       if (!db) return;
       db.get('editor.aZoneActive').then(function (savedId) {
         // 仅恢复拥有 panel 的 goods（纯 process 类 goods 不进入 A 区）
@@ -324,6 +338,131 @@
       if (_hasPanel(id)) result.push({ id: id, title: def.title || id });
     });
     return result;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Inbox — 工具栏按钮 + WS 未读徽章 (gaea-host 直管，独立于 iframe)
+  // ═══════════════════════════════════════════════════════════════════
+
+  function _renderInboxButton() {
+    if (!_tabBarEl) return;
+    // 去重：已存在则仅更新徽章
+    if (_inboxBtnEl && _inboxBtnEl.parentNode === _tabBarEl) {
+      _updateInboxBadge();
+      return;
+    }
+
+    var btn = document.createElement('button');
+    btn.className = 'gaea-tab-btn qqq-inbox-btn';
+    btn.textContent = 'Inbox';
+    btn.title = 'Inbox';
+    btn.style.cssText =
+      'height:22px; padding:0 10px; margin:0 1px; border:1px solid var(--border-color); border-radius:3px;' +
+      'background:transparent; color:var(--text-primary); font-size:12px; cursor:pointer;' +
+      'transition: background 0.15s; position:relative;';
+    btn.addEventListener('click', function () {
+      _inboxUnread = 0;
+      _updateInboxBadge();
+      open('inbox');
+    });
+
+    // Badge element
+    var badge = document.createElement('span');
+    badge.className = 'qqq-inbox-badge';
+    badge.id = 'qqq-inbox-badge';
+    badge.textContent = '';
+    badge.style.cssText =
+      'display:none; position:absolute; top:-7px; right:-9px; min-width:17px; height:17px;' +
+      'padding:0 5px; background:#dc322f; color:#fff; font-size:10px; font-weight:700;' +
+      'line-height:17px; text-align:center; border-radius:9px; pointer-events:none;' +
+      'box-shadow:0 1px 3px rgba(0,0,0,0.2);';
+    btn.appendChild(badge);
+
+    _tabBarEl.appendChild(btn);
+    _inboxBtnEl = btn;
+    _inboxBadgeEl = badge;
+    _updateInboxBadge();
+  }
+
+  function _updateInboxBadge() {
+    if (!_inboxBadgeEl) return;
+    if (_inboxUnread > 0) {
+      _inboxBadgeEl.style.display = '';
+      _inboxBadgeEl.textContent = _inboxUnread > 99 ? '99+' : String(_inboxUnread);
+      // Pulse animation
+      _inboxBadgeEl.style.animation = 'none';
+      void _inboxBadgeEl.offsetWidth;
+      _inboxBadgeEl.style.animation = 'qqqInboxPulse 0.3s ease-out';
+    } else {
+      _inboxBadgeEl.style.display = 'none';
+      _inboxBadgeEl.textContent = '';
+    }
+  }
+
+  function resetInboxUnread() {
+    _inboxUnread = 0;
+    _updateInboxBadge();
+  }
+
+  function _initInboxWS() {
+    if (!goods.has('inbox')) return;
+    if (_inboxWs && _inboxWs.readyState === WebSocket.OPEN) return;
+
+    function tryConnect() {
+      var token = '';
+      try {
+        if (window.qqqLogin && window.qqqLogin.getAuthToken) {
+          token = window.qqqLogin.getAuthToken();
+        }
+      } catch (_) {}
+      if (!token) {
+        // Not logged in yet — retry in 5s
+        _inboxReconnectTimer = setTimeout(tryConnect, 5000);
+        return;
+      }
+
+      // Parse doerID from JWT
+      var did = '';
+      try {
+        var parts = token.split('.');
+        if (parts.length === 3) {
+          var payload = JSON.parse(atob(parts[1]));
+          did = payload.doer_id || payload.DoerID || '';
+        }
+      } catch (_) {}
+      if (!did) { _inboxReconnectTimer = setTimeout(tryConnect, 5000); return; }
+      _inboxDoerID = did;
+
+      var wsUrl = 'wss://cnk.gh555.com/ws?token=' + encodeURIComponent(token);
+      _inboxWs = new WebSocket(wsUrl);
+
+      _inboxWs.onopen = function () {
+        _inboxWs.send(JSON.stringify({ type: 'sub', ch: 'inbox:' + _inboxDoerID }));
+      };
+
+      _inboxWs.onmessage = function (e) {
+        try {
+          var msg = JSON.parse(e.data);
+          if (msg.type === 'dm_msg' && msg.data) {
+            var dm = msg.data;
+            // Only count messages from others (not self-sent)
+            if (dm.sender_id !== _inboxDoerID) {
+              _inboxUnread++;
+              _updateInboxBadge();
+            }
+          }
+        } catch (_) {}
+      };
+
+      _inboxWs.onclose = function () {
+        _inboxWs = null;
+        _inboxReconnectTimer = setTimeout(tryConnect, 5000);
+      };
+
+      _inboxWs.onerror = function () { /* onclose follows */ };
+    }
+
+    tryConnect();
   }
 
   // ★ 菜单行2 "qqq" hover 下拉 — 现代化 A 区货物切换
@@ -456,6 +595,8 @@
       show(id);
     }
     if (_built) { renderTabBar(); _renderBrandMenu(); }
+    // inbox goods → 启动 badge WS（无论 _built 与否）
+    if (id === 'inbox') { _initInboxWS(); }
   }
 
   // ---- Remove (full teardown) ----
@@ -550,5 +691,5 @@
   });
 
   // ---- Expose ----
-  window.qqqGaea = { build, register, remove, show, open, list, active, get, next, prev, syncTheme, listPanelGoods: listPanelGoods };
+  window.qqqGaea = { build, register, remove, show, open, list, active, get, next, prev, syncTheme, listPanelGoods: listPanelGoods, resetInboxUnread: resetInboxUnread };
 })();

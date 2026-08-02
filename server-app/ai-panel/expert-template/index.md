@@ -31,5 +31,5 @@
 
 ### Rule Reference
 ```
-rule"{project_root}/qqq/alphal/expert/index.md"
+rule"{project_root}/_qqq/alphal/expert/index.md"
 ```

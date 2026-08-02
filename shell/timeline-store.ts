@@ -3,7 +3,7 @@
 // ============================================================================
 // timeline-store.ts — 文件版本时间线存储（极简架构，2026-06-21）
 //
-// 存储: {projectRoot}/qqq/timeline/
+// 存储: {projectRoot}/_qqq/timeline/
 //   blobs/{sha256[:2]}/{sha256}.gz    — 内容（未可变，SHA256 寻址，永不删除）
 //   timeline.db                         — SQLite 索引（全量快照，每 100 条快照压缩一次）
 //   timeline.db.bak                     — 索引备份（压缩后同步更新，损坏时自动恢复）
@@ -39,7 +39,7 @@ const WAL_MAX_LINES = 100;
 const _tlWalCounts: Map<string, number> = new Map();  // .wal 当前行数（用于阈值判断）
 
 export function _tlDir(projectRoot: string): string {
-    return path.join(projectRoot, 'qqq', 'timeline');
+    return path.join(projectRoot, '_qqq', 'timeline');
 }
 
 export function _tlBlobPath(projectRoot: string, sha256: string): string {

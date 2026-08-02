@@ -407,7 +407,7 @@ function _logRenderEvent(eventType, questId, floorNum, detail) {
         // 写到一个固定文件，方便查找
         var root = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
         if (root) {
-            var logPath = root.replace(/\\/g, '/') + '/qqq/new_log/render-log.jsonl';
+            var logPath = root.replace(/\\/g, '/') + '/_qqq/new_log/render-log.jsonl';
             bridge.fs.append(logPath, line).catch(function () { });
         }
     } catch (_) { /* 静默降级 */ }

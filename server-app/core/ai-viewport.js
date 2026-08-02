@@ -118,7 +118,7 @@
     var mainProj = projects[0];
     if (!mainProj || !mainProj.path) return null;
     if (!window.qgs || typeof window.qgs.project !== 'function') return null;
-    var onlyPath = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/only.sq3';
+    var onlyPath = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/only.sq3';
     return window.qgs.project(onlyPath, 'qqq.only', { v: 1, form: 'doc' });
   }
 
@@ -368,7 +368,7 @@
   // 异步校验主文件夹锁：若该项目已被其他窗口锁定，从视口移除
   // 仅在 ?folder= 新窗口场景使用，作为主进程锁检查的兜底
   function _verifyFolderLock(folderPath) {
-    var lockPath = folderPath.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/.lock';
+    var lockPath = folderPath.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/.lock';
     // 延迟 2s 再检查，避开本窗口 bindMainProject 的锁写入
     setTimeout(function () {
       bridge.fs.stat(lockPath).then(function (statInfo) {
@@ -472,7 +472,7 @@
     if (!mainProj || !mainProj.path) return;
     try {
       if (!window.qgs || typeof window.qgs.project !== 'function') return;
-      var onlyPath = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/only.sq3';
+      var onlyPath = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/only.sq3';
       var auxPaths = [];
       for (var i = 1; i < projects.length; i++) {
         auxPaths.push(projects[i].path);
@@ -486,7 +486,7 @@
   function _restoreFormationFromOnlyStore(mainFolderPath) {
     try {
       if (!window.qgs || typeof window.qgs.project !== 'function') return;
-      var onlyPath = mainFolderPath.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/only.sq3';
+      var onlyPath = mainFolderPath.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/only.sq3';
       var onlyDb = window.qgs.project(onlyPath, 'qqq.only', { v: 1, form: 'doc' });
       if (!onlyDb) return;
       onlyDb.get('ai.formation').then(function (auxPaths) {
@@ -538,7 +538,7 @@
       // 阵营 → only.sq3
       var mainProj = projects[0];
       if (mainProj && mainProj.path && window.qgs && typeof window.qgs.project === 'function') {
-        var onlyPath = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/only.sq3';
+        var onlyPath = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/only.sq3';
         var auxPaths = [];
         for (var i = 1; i < projects.length; i++) { auxPaths.push(projects[i].path); }
         var onlyDb = window.qgs.project(onlyPath, 'qqq.only', { v: 1, form: 'doc' });
@@ -1480,7 +1480,7 @@
 
   // 空视口添加主文件夹前的锁预检
   function _verifyFolderLockBeforeAdd(folderPath, name) {
-    var lockPath = folderPath.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/alphal/.lock';
+    var lockPath = folderPath.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/.lock';
     bridge.fs.stat(lockPath).then(function (statInfo) {
       if (!statInfo) { _doAddProject(folderPath, name); return; }
       return bridge.fs.read(lockPath).then(function (raw) {

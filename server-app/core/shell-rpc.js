@@ -301,12 +301,12 @@ function bootRpcForwarder() {
         } else if (method === 'store.getLocal') {
           var _root = window._workspaceRoot;
           if (!_root) throw new Error('_workspaceRoot not ready');
-          var _onlyDb = window.qgs.project(_root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+          var _onlyDb = window.qgs.project(_root + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
           result = await _onlyDb.get(params);
         } else if (method === 'store.setLocal') {
           var _root2 = window._workspaceRoot;
           if (!_root2) throw new Error('_workspaceRoot not ready');
-          var _onlyDb2 = window.qgs.project(_root2 + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+          var _onlyDb2 = window.qgs.project(_root2 + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
           var _setArg2 = params; // { key, value }
           await _onlyDb2.set(_setArg2.key, _setArg2.value);
           result = true;

@@ -189,7 +189,7 @@
             } catch (_) { }
         }
         if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
-        return window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+        return window.qgs.project(root + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
     }
 
     function _persistSearchTabs() {

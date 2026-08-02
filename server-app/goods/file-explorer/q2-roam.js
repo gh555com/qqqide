@@ -1743,9 +1743,14 @@ document.getElementById('openFolderBtn').addEventListener('click', function() {
 
 
 // ---- Responsive layout (buttons retreat when window narrows) ----
-var MIN_ADDRESS_RW = 340;  // below: hide sortBy + filter + filesOnTop
-var MIN_SZ_RW = 200;       // below: hide szMode group
-var MIN_FOOTER_W = 240;   // below: hide new-file button → narrow
+// Cascade priority (low to high): filter - filesOnTop - sortBy - szMode - open.
+// Address bar inner has highest priority, never hidden.
+var MIN_FILTER_RW = 500;
+var MIN_FILESTOP_RW = 440;
+var MIN_SORT_RW = 380;
+var MIN_SZ_RW = 300;
+var MIN_OPEN_RW = 220;
+var MIN_FOOTER_W = 240;  // hide new-file button → narrow
 var MIN_FOOTER_EXTREME = 170; // below: hide new-folder button → extreme
 
 function checkAndApplyResponsive() {
@@ -1775,11 +1780,12 @@ function checkAndApplyResponsive() {
 		var filesOnTopBtn = document.getElementById('filesOnTopBtn');
 		var openBtn = document.getElementById('openFolderBtn');
 
-		if (sortByGroup) sortByGroup.style.display = (rw < MIN_ADDRESS_RW) ? 'none' : '';
-		if (filesOnTopBtn) filesOnTopBtn.style.display = (rw < MIN_ADDRESS_RW) ? 'none' : '';
-		if (filterWrapper) filterWrapper.style.display = (rw < MIN_ADDRESS_RW) ? 'none' : '';
-		if (openBtn) openBtn.style.display = (rw < MIN_ADDRESS_RW) ? 'none' : '';
+		// Cascade: hide lower-priority items first, address bar (flex:1) gets space
+		if (filterWrapper) filterWrapper.style.display = (rw < MIN_FILTER_RW) ? 'none' : '';
+		if (filesOnTopBtn) filesOnTopBtn.style.display = (rw < MIN_FILESTOP_RW) ? 'none' : '';
+		if (sortByGroup) sortByGroup.style.display = (rw < MIN_SORT_RW) ? 'none' : '';
 		if (szModeGroup) szModeGroup.style.display = (rw < MIN_SZ_RW) ? 'none' : '';
+		if (openBtn) openBtn.style.display = (rw < MIN_OPEN_RW) ? 'none' : '';
 	}
 
 	// Recent section: hide when height too small
@@ -1857,12 +1863,40 @@ function calculateAndAdjustScroll() {
 	checkAndApplyResponsive();
 
 	// ---- KeyHook iframe adapter (unified Roam shortcut routing) ----
-	// Attach as scope='iframe:roam' so window-side dispatcher matches Q/W/Space/1/2/Tab
-	try {
-		if (parent && parent.qqqideKeyHookAdapter && parent.qqqideKeyHookAdapter.attach) {
-			parent.qqqideKeyHookAdapter.attach({ scope: 'iframe:roam', swallow: true });
-		}
-	} catch(e) { console.warn('[q2-roam] keyhook adapter attach failed:', e); }
+	// ★ 修复：必须在 iframe 内部监听 keydown，而非父窗口 document。
+	//   父窗口的 document.activeElement 是 <iframe>，永远不识别 iframe 内的 input。
+	//   结果：Ctrl+V 等编辑操作被 swallow 吃掉，Roam 一切编辑框无法粘贴。
+	//   现在直接在 iframe 的 document 上捕获，editing 判断基于真实的 activeElement。
+	(function() {
+		var scope = 'iframe:roam';
+		document.addEventListener('keydown', function(e) {
+			// 构建加速器字符串（与 key-hook.js canonAccel 一致）
+			var parts = [];
+			if (e.ctrlKey || e.metaKey) parts.push('Ctrl');
+			if (e.shiftKey) parts.push('Shift');
+			if (e.altKey) parts.push('Alt');
+			var key = e.key;
+			if (!key) return;
+			if (key.length === 1) { key = key.toUpperCase(); }
+			else if (key === ' ') { key = 'Space'; }
+			if (key === 'Control' || key === 'Shift' || key === 'Alt' || key === 'Meta') return;
+			parts.push(key);
+			var accel = parts.join('+');
+
+			// 转发给父窗口 key-hook dispatching（处理 Q/W/Space/1/2 等快捷键）
+			try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: scope }, '*'); } catch(_) {}
+
+		// ★ 仅当不在编辑框内时吞掉事件，防止快捷键触发默认行为
+		//   但是：Ctrl/Meta 组合键绝不吞——它们是标准剪贴板操作（Ctrl+C/V/X/A/Z 等）
+		var el = document.activeElement;
+		var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
+		var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
+		var isModKey = e.ctrlKey || e.metaKey;
+		// ★ 仅 preventDefault 防浏览器默认行为（Space 滚屏/Backspace 回退），
+		//   绝不 stopPropagation——Roam 内部键盘处理器在 bubble 阶段，必须收到事件
+		if (!editing && !isModKey) { e.preventDefault(); }
+		}, true);
+	})();
 
 	// ---- Listen for parent → iframe cmd dispatch ----
 	window.addEventListener('message', function(e) {
@@ -2021,7 +2055,9 @@ function calculateAndAdjustScroll() {
 	if (_kyEl) { _kyEl.addEventListener('mousemove', handlePathTooltipHover); _kyEl.addEventListener('mouseleave', hidePathTooltip); }
 
 	// ═══ Roam Paste Handler (M8) ═══
-	// Intercepts Ctrl+V in Roam, copies files to current directory
+	// Intercepts Ctrl+V in Roam, copies files to current directory.
+	// ★ Key: preventDefault() must be synchronous (before first await) otherwise
+	//    the browser's default paste fires before our async probe completes.
 	var _pasteHandlerAttached = false;
 	function _attachRoamPaste() {
 		if (_pasteHandlerAttached) return;
@@ -2029,53 +2065,150 @@ function calculateAndAdjustScroll() {
 		if (!target) return;
 		_pasteHandlerAttached = true;
 
-		target.addEventListener('paste', async function(e) {
-			// Only handle if we're in the main content area
+		// Capture-phase paste: sync preventDefault, then async probe+copy
+		target.addEventListener('paste', function(e) {
 			if (!currentPath) return;
 
-			var probe;
-			try { probe = await bridge.clipboard.probe(); } catch(err) { return; }
-			if (!probe || !probe.hasFile) return;
-
-			e.preventDefault();
-			e.stopPropagation();
-
-			var files;
-			try { files = await bridge.clipboard.readFiles(); } catch(err) { return; }
-			if (!files || files.length === 0) return;
-
-			// Show simple progress indicator
-			var tip = document.getElementById('addressPasteTip');
-			if (tip) { tip.textContent = 'Pasting ' + files.length + ' files...'; tip.classList.add('show'); }
-
-			var sep = currentPath.indexOf('\\') >= 0 ? '\\' : '/';
-			var successCount = 0;
-			var failCount = 0;
-
-			for (var i = 0; i < files.length; i++) {
-				var src = files[i];
-				var name = src.replace(/\\/g, '/').split('/').pop();
-				var dest = currentPath + sep + name;
-				try {
-					await bridge.fs.copyFile(src, dest);
-					successCount++;
-					if (tip) tip.textContent = 'Pasting ' + (i + 1) + '/' + files.length + ': ' + name;
-				} catch(err) {
-					failCount++;
+			var evtClip = e.clipboardData;
+			var hasFileItem = false;
+			if (evtClip && evtClip.items) {
+				for (var i = 0; i < evtClip.items.length; i++) {
+					if (evtClip.items[i].kind === 'file') { hasFileItem = true; break; }
 				}
 			}
 
-			// Refresh file list
-			loadFileList(currentPath);
+			// ★ 如果正在编辑框内且没有文件项：让文本粘贴正常走，不做拦截
+			var el = document.activeElement;
+			var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
+			var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
+			if (editing && !hasFileItem) return;
 
-			// Show result
-			if (tip) {
-				tip.textContent = successCount + ' copied' + (failCount > 0 ? ', ' + failCount + ' failed' : '');
-				setTimeout(function() { tip.classList.remove('show'); }, 3000);
+			// ★ Sync block: prevent default immediately, then spawn async work
+			e.preventDefault();
+			e.stopPropagation();
+
+			// Fast path: DOM clipboardData already shows file items → skip async probe
+			if (hasFileItem) {
+				_pasteFilesFromEvent(evtClip);
+				return;
 			}
 
-			_playSfx('copy');
+			// Slow path: async probe for CF_HDROP (PowerShell-spawned files from Explorer)
+			_asyncProbeAndPaste();
 		}, true);
+
+		// ★ Also listen on window for when body doesn't have focus
+		window.addEventListener('paste', function(e) {
+			if (!currentPath) return;
+			// Only handle if body handler didn't already catch it
+			if (e.target && e.target !== document.body && !document.body.contains(e.target)) return;
+		}, true);
+	}
+
+	async function _pasteFilesFromEvent(evtClip) {
+		var files = [];
+		if (evtClip && evtClip.items) {
+			for (var i = 0; i < evtClip.items.length; i++) {
+				var it = evtClip.items[i];
+				if (it.kind === 'file') {
+					var f = it.getAsFile();
+					if (f) files.push(f);
+				}
+			}
+		}
+		if (files.length === 0) return;
+		await _copyFilesToCurrentDir(files);
+	}
+
+	async function _asyncProbeAndPaste() {
+		var probe;
+		try { probe = await bridge.clipboard.probe(); } catch(err) { return; }
+		if (!probe || !probe.hasFile) return;
+
+		var filePaths;
+		try { filePaths = await bridge.clipboard.readFiles(); } catch(err) { return; }
+		if (!filePaths || filePaths.length === 0) return;
+
+		await _copyPathsToCurrentDir(filePaths);
+	}
+
+	async function _copyPathsToCurrentDir(paths) {
+		var tip = document.getElementById('addressPasteTip');
+		if (tip) { tip.textContent = 'Pasting ' + paths.length + ' files...'; tip.classList.add('show'); }
+
+		var sep = currentPath.indexOf('\\') >= 0 ? '\\' : '/';
+		var successCount = 0;
+		var failCount = 0;
+
+		for (var i = 0; i < paths.length; i++) {
+			var src = paths[i];
+			var name = src.replace(/\\/g, '/').split('/').pop();
+			var dest = currentPath + sep + name;
+			try {
+				await bridge.fs.copyFile(src, dest);
+				successCount++;
+				if (tip) tip.textContent = 'Pasting ' + (i + 1) + '/' + paths.length + ': ' + name;
+			} catch(err) {
+				failCount++;
+			}
+		}
+
+		loadFileList(currentPath);
+
+		if (tip) {
+			tip.textContent = successCount + ' copied' + (failCount > 0 ? ', ' + failCount + ' failed' : '');
+			setTimeout(function() { tip.classList.remove('show'); }, 3000);
+		}
+
+		_playSfx('copy');
+	}
+
+	async function _copyFilesToCurrentDir(files) {
+		var tip = document.getElementById('addressPasteTip');
+		if (tip) { tip.textContent = 'Pasting ' + files.length + ' files...'; tip.classList.add('show'); }
+
+		var sep = currentPath.indexOf('\\') >= 0 ? '\\' : '/';
+		var successCount = 0;
+		var failCount = 0;
+
+		for (var i = 0; i < files.length; i++) {
+			var f = files[i];
+			var dest = currentPath + sep + (f.name || ('paste_' + i));
+			try {
+				// For DOM File objects, read as ArrayBuffer and write via bridge
+				var ab = await new Promise(function(resolve, reject) {
+					var reader = new FileReader();
+					reader.onload = function() { resolve(reader.result); };
+					reader.onerror = reject;
+					reader.readAsArrayBuffer(f);
+				});
+				var bytes = new Uint8Array(ab);
+				var bin = '';
+				for (var j = 0; j < bytes.length; j += 0x8000) {
+					bin += String.fromCharCode.apply(null, bytes.subarray(j, j + 0x8000));
+				}
+				var b64 = btoa(bin);
+				if (bridge.fs.writeBase64) {
+					await bridge.fs.writeBase64(dest, b64);
+				} else {
+					await bridge.fs.write(dest, b64);
+				}
+				successCount++;
+				if (tip) tip.textContent = 'Pasting ' + (i + 1) + '/' + files.length + ': ' + f.name;
+			} catch(err) {
+				console.warn('[roam] paste file failed:', f.name, err);
+				failCount++;
+			}
+		}
+
+		loadFileList(currentPath);
+
+		if (tip) {
+			tip.textContent = successCount + ' copied' + (failCount > 0 ? ', ' + failCount + ' failed' : '');
+			setTimeout(function() { tip.classList.remove('show'); }, 3000);
+		}
+
+		_playSfx('copy');
 	}
 
 	// Attach paste handler on load

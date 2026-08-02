@@ -178,6 +178,24 @@ body {
   opacity: 0.85;
 }
 
+/* ── Inbox 按钮 (菜单行2 git 右边) ── */
+.qqq-inbox-btn {
+  -webkit-app-region: no-drag;
+  font-family: -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+.qqq-inbox-btn:hover {
+  background: var(--background-color) !important;
+  opacity: 0.85;
+}
+
+/* Inbox 未读徽章脉冲 */
+@keyframes qqqInboxPulse {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+
 /* 外嵌面板灯泡 */
 .qqq-bulb {
   display: inline-flex;
@@ -1446,36 +1464,9 @@ body {
 /* ============================================================================
    q1 ViewZone 相框 + ContentWidget 图标�?(qqq-viewzone.js)
    ============================================================================ */
-.qqq-vz-frame {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--base2);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  margin: 6px 10px;
-  padding: 4px;
-  overflow: hidden;
+.qqq-vz-media {
+  display: inline-block;
   box-sizing: border-box;
-}
-
-.qqq-vz-frame img,
-.qqq-vz-frame video {
-  max-width: 100%;
-  max-height: 100%;
-  display: block;
-  border-radius: 4px;
-}
-
-.qqq-vz-frame audio {
-  width: 100%;
-  display: block;
-}
-
-.qqq-vz-frame .qqq-vz-fail {
-  padding: 12px;
-  font: 12px ui-monospace, Consolas, monospace;
-  color: var(--text-secondary);
 }
 
 /* 图标�?(ContentWidget inline icon) */
@@ -1716,4 +1707,11 @@ body {
 /* ── A 区 GH Health 固定商标位 ── */
 .gaea-gh-health:hover {
   opacity: 0.8 !important;
+}
+
+/* ── Inbox 按钮未读徽章脉冲动画 ── */
+@keyframes qqqInboxPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.35); }
+  100% { transform: scale(1); }
 }

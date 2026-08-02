@@ -46,7 +46,7 @@ export function _qgc(): () => void {
     _co = prev.then(() => p);
     // 等待所有写完成
     const waitWrites = Promise.all(Array.from(_qw.values()));
-    _ac = waitWrites.then(() => { });
+    _ac = waitWrites.then(() => p);
     return () => {
         // 等上一个命令完成
         prev.then(() => resolve());

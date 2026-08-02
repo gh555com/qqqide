@@ -35,7 +35,7 @@ async function generateFloorTxt(ag, questId) {
         var _uiFallback = ag._lastUserInput;
         var _uiTextFallback = (_uiFallback && _uiFallback.text) ? _uiFallback.text.replace(/\n/g, ' ').trim() : '';
         var fDirName = _makeName('f', floorNum, _uiTextFallback || '');
-        dir = root + '/qqq/quests/' + qDirName + '/' + fDirName + '/';
+        dir = root + '/_qqq/quests/' + qDirName + '/' + fDirName + '/';
     }
     try {
         if (!(window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.fs)) return;
@@ -221,7 +221,7 @@ async function _appendToSearchQuest(questId, floorNum) {
 
         // ★ 解析 quest 目录路径（V8 修复：磁盘扫描为主，allTxtPath 为备）
         //   旧逻辑 allTxtPath 优先 → quest 改名后路径过期 → 写到旧目录/重造旧目录
-        var questsDir = root.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/quests/';
+        var questsDir = root.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/quests/';
         var questDir = '';
         var questDirSource = '';
 
@@ -359,7 +359,7 @@ async function _rebuildSearchQuest(questId) {
         if (!allFloors || allFloors.length === 0) return;
 
         // 用磁盘扫描找 quest 目录（最可靠）
-        var questsDir = root.replace(/\\/g, '/').replace(/\/$/, '') + '/qqq/quests/';
+        var questsDir = root.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/quests/';
         var questDir = '';
         try {
             var entries = await bridge.fs.list(questsDir);

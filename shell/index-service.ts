@@ -3,7 +3,7 @@
 // ============================================================================
 // index-service.ts — 项目语义索引引擎 (BM25 + 符号提取)
 //
-// 存储: {projectRoot}/qqq/index/
+// 存储: {projectRoot}/_qqq/index/
 //   manifest.json   — 文件清单 + mtime (用于增量更新)
 //   bm25.json       — BM25 倒排索引 (term → {file → count})
 //   symbols.json    — 符号表 (file → {functions, classes, imports})

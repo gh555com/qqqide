@@ -41,7 +41,7 @@ var AgentLoop = (function () {
         this.abortController = null;
         this._log = opts.log || function () { };
         this.log = this._log;          // alias for context engine
-        // ★ 文件日志：写入 qqq/new_log/ 目录（持久化诊断，不依赖 Console）
+        // ★ 文件日志：写入 _qqq/new_log/ 目录（持久化诊断，不依赖 Console）
         this._fileLogBuffer = [];
         this._fileLogTimer = null;
         var _self = this;
@@ -67,7 +67,7 @@ var AgentLoop = (function () {
                 var today = new Date().toISOString().slice(0, 10);
                 var root = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
                 if (!root) return;
-                var logDir = root.replace(/\\/g, '/') + '/qqq/new_log';
+                var logDir = root.replace(/\\/g, '/') + '/_qqq/new_log';
                 var logPath = logDir + '/agent-' + today + '.log';
                 var bridge = window.parent && window.parent.qqqideBridge;
                 if (bridge && bridge.fs) {
@@ -1380,7 +1380,7 @@ AgentLoop.prototype._dumpConversation = function (tag, extra) {
     var today = new Date().toISOString().slice(0, 10);
     var root = (typeof questStore !== "undefined" && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
     if (!root) return;
-    var logDir = root.replace(/\\/g, "/") + "/qqq/new_log";
+    var logDir = root.replace(/\\/g, "/") + "/_qqq/new_log";
     var fname = tag + "-f" + self._ctx.totalFloors + "-h" + self._houseIndex + ".json";
     var logPath = logDir + "/" + fname;
 

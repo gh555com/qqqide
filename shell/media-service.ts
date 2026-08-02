@@ -69,6 +69,14 @@ export class MediaService {
     // binary resolution
     // -------------------------------------------------------------------------
 
+    private _platformKey(): string {
+        const p = process.platform;
+        const a = process.arch === 'x64' ? 'x64' : 'arm64';
+        if (p === 'win32') return 'win32-x64';
+        if (p === 'darwin') return a === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+        return 'linux-x64';
+    }
+
     private resolveBin(name: 'ffmpeg' | 'ffprobe'): string | null {
         const ext = process.platform === 'win32' ? '.exe' : '';
         const envKey = name === 'ffmpeg' ? 'QQQ_FFMPEG' : 'QQQ_FFPROBE';
@@ -76,8 +84,16 @@ export class MediaService {
         if (overrideEnv && fs.existsSync(overrideEnv)) { return overrideEnv; }
         const qdir = process.env.QQQIDE_QDIR;
         const tries: string[] = [];
-        if (qdir) { tries.push(path.join(qdir, 'components', 'ffmpeg', name + ext)); }
-        tries.push(path.join(this.appRoot, 'engines', 'ffmpeg', name + ext));
+        if (qdir) { tries.push(path.join(qdir, 'components', name, name + ext)); }
+        // Platform-specific subdirectory: engines/{name}/{platform}/{name}.exe
+        // ffprobe split from ffmpeg (rank1 bg_download) — resides in engines/ffprobe/
+        tries.push(path.join(this.appRoot, 'engines', name, this._platformKey(), name + ext));
+        // Legacy: ffprobe used to live in engines/ffmpeg/ (pre-split)
+        if (name === 'ffprobe') {
+            tries.push(path.join(this.appRoot, 'engines', 'ffmpeg', this._platformKey(), name + ext));
+            tries.push(path.join(this.appRoot, 'engines', 'ffmpeg', name + ext));
+        }
+        // Flat layout (legacy)
         tries.push(path.join(this.appRoot, 'engines', name + ext));
         for (const p of tries) {
             try { if (fs.existsSync(p)) { return p; } } catch { /* skip */ }

@@ -353,8 +353,8 @@
 
   // ---- project — project-level SQLite (quest.sq3, per-project persistence) ----
   //
-  //   const state = project('/path/qqq/quests/quest.sq3', 'my-ns');
-  //   const state = project('/path/qqq/quests/quest.sq3', 'my-ns', { form:'log' });
+//   const state = project('/path/_qqq/quests/quest.sq3', 'my-ns');
+//   const state = project('/path/_qqq/quests/quest.sq3', 'my-ns', { form:'log' });
   //
   //   await state.set('key', value);
   //   const v = await state.get('key');

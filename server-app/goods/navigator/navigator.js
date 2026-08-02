@@ -28,7 +28,7 @@
   function _onlyDb() {
     var root = window._workspaceRoot || _navFolderFromUrl();
     if (!root || !window.qgs || typeof window.qgs.project !== 'function') return null;
-    return window.qgs.project(root + '/qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
+    return window.qgs.project(root + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
   }
 
   // 异步初始化：从 only.sq3 加载缓存

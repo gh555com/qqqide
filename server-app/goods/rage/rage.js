@@ -3,10 +3,10 @@
 // ============================================================================
 // goods/rage/rage.js — Rage Goods Manifest
 //
-// Rage = 整个 q3 移植集合。包含:
+// Rage = q3 移植集合。包含:
 //   - A 区面板: 剪切板历史 + 船长卡片 (q4)
 //   - X 区 tab: Roam 资源管理器 (q2)
-//   - 后台服务: paste / codelens / decoration / viewzone / video
+//   - 后台服务已迁移至 core/ (paste-router / anchor-map / content-widget / frame-renderer)
 // ============================================================================
 (function () {
   'use strict';
@@ -48,69 +48,8 @@
         },
       },
 
-      // ---- 后台服务: Monaco 增强 ----
-      services: {
-        paste: {
-          start: function (ctx) {
-            if (window.qqqRagePaste && window.qqqRagePaste.start) {
-              window.qqqRagePaste.start(ctx);
-            }
-          },
-          stop: function () {
-            if (window.qqqRagePaste && window.qqqRagePaste.stop) {
-              window.qqqRagePaste.stop();
-            }
-          },
-        },
-        codelens: {
-          start: function (ctx) {
-            if (window.qqqRageCodelens && window.qqqRageCodelens.start) {
-              window.qqqRageCodelens.start(ctx);
-            }
-          },
-          stop: function () {
-            if (window.qqqRageCodelens && window.qqqRageCodelens.stop) {
-              window.qqqRageCodelens.stop();
-            }
-          },
-        },
-        decoration: {
-          start: function (ctx) {
-            if (window.qqqRageDecoration && window.qqqRageDecoration.start) {
-              window.qqqRageDecoration.start(ctx);
-            }
-          },
-          stop: function () {
-            if (window.qqqRageDecoration && window.qqqRageDecoration.stop) {
-              window.qqqRageDecoration.stop();
-            }
-          },
-        },
-        viewzone: {
-          start: function (ctx) {
-            if (window.qqqRageViewzone && window.qqqRageViewzone.start) {
-              window.qqqRageViewzone.start(ctx);
-            }
-          },
-          stop: function () {
-            if (window.qqqRageViewzone && window.qqqRageViewzone.stop) {
-              window.qqqRageViewzone.stop();
-            }
-          },
-        },
-        video: {
-          start: function (ctx) {
-            if (window.qqqRageVideo && window.qqqRageVideo.start) {
-              window.qqqRageVideo.start(ctx);
-            }
-          },
-          stop: function () {
-            if (window.qqqRageVideo && window.qqqRageVideo.stop) {
-              window.qqqRageVideo.stop();
-            }
-          },
-        },
-      },
+      // 后台服务已全量迁移至 core/ (paste-router / anchor-map / content-widget / frame-renderer)
+      services: {},
 
       // ---- 全局命令 ----
       commands: [

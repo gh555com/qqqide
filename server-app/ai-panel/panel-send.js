@@ -716,7 +716,7 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
 }
 
 // ═══ 子弹按钮 — 粘贴板→磁盘文件→编辑框 📎 注入 ═══
-// 子弹文件目录: {project}/qqq/bullet/  上限 20MB FIFO 轮转
+// 子弹文件目录: {project}/_qqq/bullet/  上限 20MB FIFO 轮转
 // 文件名: bullet_{本地时间戳}_{questId}_f{floorNum}.txt
 // 写入后自动 insertChipAtCursor → 走已有附件管线 → ContentGateway 截断 → 饼干自动剥离
 (function () {
@@ -918,7 +918,7 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
         var floorNum = 0;
         try { if (typeof _activeAgent !== 'undefined' && _activeAgent && _activeAgent._currentFloorNum) floorNum = _activeAgent._currentFloorNum; } catch (_) { }
         var filename = 'bullet_' + ts + '_' + qid + '_f' + floorNum + '.txt';
-        var bulletDir = root + '/qqq/bullet';
+       var bulletDir = root + '/_qqq/bullet';;
         var filePath = bulletDir + '/' + filename;
 
         // 5. Bridge

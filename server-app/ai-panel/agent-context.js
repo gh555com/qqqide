@@ -20,7 +20,7 @@
 ; (function () {
     'use strict';
 
-    var COMPACT_VERSION = 'COMPACT-V13-20260716';
+    var COMPACT_VERSION = 'COMPACT-V16-20260723';
 
     // ═══ 常量 ═══
     var CHAR_PER_TOKEN_EST = (typeof ContentGateway !== 'undefined' ? ContentGateway.CHAR_PER_TOKEN : 2.5);
@@ -157,7 +157,7 @@
     // ═══ 快照工具 ═══
     function _snapshotLog(self, label, data) {
         try {
-            var _logPath = ((typeof parent !== 'undefined' && parent.__qqq_workspaceRoot) || '') + '/qqq/logs';
+            var _logPath = ((typeof parent !== 'undefined' && parent.__qqq_workspaceRoot) || '') + '/_qqq/logs';
             var _entry = JSON.stringify({
                 ts: new Date().toISOString(),
                 version: COMPACT_VERSION,

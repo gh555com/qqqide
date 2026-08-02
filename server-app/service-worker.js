@@ -9,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v283'; // v282 M8.2 + external change detect on focus
+const CACHE_NAME = 'qqq-shell-v316'; // v316 Inbox UI fixes + pulse animation
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -25,6 +25,19 @@ const PRECACHE_URLS = [
   './core/menu-schema.js',
   './core/editor.js',
   './core/editor-breadcrumb.js',
+  // WYSIWYG paste pipeline (v306)
+  './core/build-stamp.js',
+  './core/klipzap.js',
+  './core/wq-stats.js',
+  './core/anchor-map.js',
+  './core/frame-renderer.js',
+  './core/thumbnail-cache.js',
+  './core/content-widget.js',
+  './core/qqq-viewzone.js',
+  './core/paste-router.js',
+  './core/transaction-manager.js',
+  './core/batch-ops.js',
+  './core/progress-service.js',
   './goods/file-explorer/file-explorer.js',
   './goods/git/git-diff-window.html',
   './goods/git/git-ui.html',
@@ -101,24 +114,22 @@ async function networkFirst(req, ms) {
   }
 }
 
-// stale-while-revalidate for static.
+// ★ Network-first with cache fallback (2026-08-02 fix).
+//   旧逻辑 cached || fetched 导致永远返回缓存->开发时改磁盘文件不生效。
+//   新: 优先网络->成功后更新缓存; 网络失败->回退缓存(ignoreSearch 去 _v 参数)。
 async function staleWhileRevalidate(req) {
   const cache = await caches.open(CACHE_NAME);
-  const cached = await cache.match(req);
-  const fetched = fetch(req).then(res => {
+  try {
+    const res = await fetch(req);
     if (res && res.ok) {
       try { cache.put(req, res.clone()); } catch (_) { }
     }
     return res;
-  }).catch(() => cached);
-  // Safety: if both cached and fetched are undefined, return a proper error Response.
-  // Prevents "an object that was not a Response was passed to respondWith()" when
-  // a cross-origin request fails and has no cache entry.
-  var result = cached || fetched;
-  if (!result || !(result instanceof Response)) {
+  } catch (_) {
+    const cached = await cache.match(req, { ignoreSearch: true });
+    if (cached) return cached;
     return new Response('', { status: 502, statusText: 'Gateway Error' });
   }
-  return result;
 }
 
 // ----------------------------------------------------------------------------
@@ -136,6 +147,8 @@ self.addEventListener('fetch', evt => {
   if (isHealth(url)) { return; }
   // ★ API 调用：不拦截（登录轮询、AI 网关等）
   if (url.pathname.indexOf('/api/') !== -1) { return; }
+  // ★ 构建戳记：永不缓存（百分百稳妥机器）
+  if (url.pathname.indexOf('_BUILD_STAMP.json') !== -1) { return; }
   // ★ 本地服务：不拦截（goods 进程 API，如 kope-a:19820-19829）
   if (isLocalService(url)) { return; }
 

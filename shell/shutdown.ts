@@ -115,7 +115,7 @@ export function saveAllOpenWindows(stateStore: StateStore, winProjectMap: Map<nu
                 const rawFolder = (winProjectMap.get(win.id) || '').replace(/\\/g, '/').replace(/\/$/, '');
                 // ★ 验证: 路径存在且有 qqq/ 子目录(真正的项目), 过滤空值/已删除/非项目
                 let mainFolder = '';
-                if (rawFolder && fs.existsSync(rawFolder) && fs.existsSync(rawFolder + '/qqq')) {
+                if (rawFolder && fs.existsSync(rawFolder) && fs.existsSync(rawFolder + '/_qqq')) {
                     mainFolder = rawFolder;
                 } else if (rawFolder) {
                     console.warn('[shutdown] skip invalid project:', rawFolder);
@@ -248,7 +248,7 @@ export function registerExitHandlers(
 
         // ⑤ clean project lock files — prevent "already open" on next launch
         for (const [winId, projectRoot] of _windowProjectMap) {
-            try { fs.unlinkSync(projectRoot + '/qqq/alphal/.lock'); } catch (_) { }
+            try { fs.unlinkSync(projectRoot + '/_qqq/alphal/.lock'); } catch (_) { }
         }
 
         // ⑥ auto-increment version for next boot cache-busting

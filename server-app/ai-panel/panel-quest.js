@@ -153,7 +153,7 @@ async function _cleanStaleAllJsonTmp(root) {
     try {
         var bridge = _getBridge();
         if (!bridge || !bridge.fs) return;
-        var questsDir = root + '/qqq/quests';
+        var questsDir = root + '/_qqq/quests';
         var stat = await bridge.fs.stat(questsDir);
         if (!stat) return;
         var deleted = 0;
@@ -194,6 +194,10 @@ async function _initWorkspace(root) {
     try { parent._workspaceRoot = root; } catch (_) { }
     if (parent && parent.qqqideBridge && parent.qqqideBridge.sync) {
         try { parent.qqqideBridge.sync.setProjectPath(root); } catch (_) { }
+    }
+    // ★ 注册为资产根，允许 qqqide-asset://file/ 协议访问（粘贴缩略图等）
+    if (parent && parent.qqqideBridge && parent.qqqideBridge.assetRoots) {
+        try { parent.qqqideBridge.assetRoots.add(root).catch(function () { }); } catch (_) { }
     }
 
     // ★ 只有中面板（panelId=1）申请项目锁；左右翼共享
@@ -251,8 +255,8 @@ async function _initWorkspace(root) {
     try {
         var bridge = _getBridge();
         if (bridge) {
-            var oldAlphal = root + '/qqq/quests/alphal';
-            var newAlphal = root + '/qqq/alphal';
+            var oldAlphal = root + '/_qqq/quests/alphal';
+            var newAlphal = root + '/_qqq/alphal';
             var oldStat = await bridge.fs.stat(oldAlphal);
             var newStat = await bridge.fs.stat(newAlphal);
             if (oldStat && !newStat) {
@@ -665,7 +669,7 @@ async function _persistPanelResume(questId) {
     if (!root) return;
     var bridge = _getBridge();
     if (!bridge || !bridge.fs) return;
-    var path = root + '/qqq/alphal/' + _panelResumeKey();
+    var path = root + '/_qqq/alphal/' + _panelResumeKey();
     try {
         await bridge.fs.write(path, JSON.stringify({ activeQuestId: questId, updatedAt: Date.now() }));
     } catch (_) { }
@@ -675,7 +679,7 @@ async function _readPanelResume() {
     if (!root) return null;
     var bridge = _getBridge();
     if (!bridge || !bridge.fs) return null;
-    var path = root + '/qqq/alphal/' + _panelResumeKey();
+    var path = root + '/_qqq/alphal/' + _panelResumeKey();
     try {
         var raw = await bridge.fs.read(path);
         if (!raw || typeof raw !== 'string') return null;
