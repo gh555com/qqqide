@@ -9,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v322'; // v322: fix dm-ui.html nested onclose/onerror + corrupted */ syntax error
+const CACHE_NAME = 'qqq-shell-v324'; // v324: phone→doerID resolution, online status check, dm_online/offline broadcast
 const PRECACHE_URLS = [
   './',
   './index.html',

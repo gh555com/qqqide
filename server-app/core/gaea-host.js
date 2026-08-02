@@ -427,7 +427,7 @@
         var parts = token.split('.');
         if (parts.length === 3) {
           var payload = JSON.parse(atob(parts[1]));
-          did = payload.uid || payload.doer_id || '';
+          did = (payload.uid || payload.doer_id || '').replace(/^\+/,'');
         }
       } catch (_) {}
       if (!did) { _inboxReconnectTimer = setTimeout(tryConnect, 5000); return; }
