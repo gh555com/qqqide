@@ -611,6 +611,10 @@
       // 编辑器销毁时清理 char-undo + 小地图 action + 喂 AI action + 跟踪列表
       ed.onDidDispose(function () {
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
+        // ★ 2026-08-02: 清理 ViewZone/AnchorMap/PasteRouter — 防 tab 关闭后 _attached 残留
+        if (window.qqqViewZone && window.qqqViewZone.dispose) { try { window.qqqViewZone.dispose(); } catch (_) {} }
+        if (window.qqqAnchorMap && window.qqqAnchorMap.dispose) { try { window.qqqAnchorMap.dispose(); } catch (_) {} }
+        if (window.qqqPasteRouter && window.qqqPasteRouter.dispose) { try { window.qqqPasteRouter.dispose(); } catch (_) {} }
         var ma = _minimapActions.get(ed);
         if (ma) { try { ma.disposable.dispose(); } catch (_) { } _minimapActions.delete(ed); }
         var fa = _feedToAiActions.get(ed);
@@ -1109,6 +1113,10 @@
         delete _openedMtime[filePath];
         delete _paneDirtyMap[filePath];
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
+        // ★ 2026-08-02: 清理 ViewZone/AnchorMap/PasteRouter — 防 tab 关闭后 _attached 残留
+        if (window.qqqViewZone && window.qqqViewZone.dispose) { try { window.qqqViewZone.dispose(); } catch (_) {} }
+        if (window.qqqAnchorMap && window.qqqAnchorMap.dispose) { try { window.qqqAnchorMap.dispose(); } catch (_) {} }
+        if (window.qqqPasteRouter && window.qqqPasteRouter.dispose) { try { window.qqqPasteRouter.dispose(); } catch (_) {} }
         var ma = _minimapActions.get(ed);
         if (ma) { try { ma.disposable.dispose(); } catch (_) { } _minimapActions.delete(ed); }
         var fa = _feedToAiActions.get(ed);

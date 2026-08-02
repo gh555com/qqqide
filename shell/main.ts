@@ -56,7 +56,7 @@ import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
 import { initAuthBrain, registerAuthBrainIpc, getAuthBrain } from './auth-brain';
 
 // ── 服务 ──
-import { EngineHost } from './engines';
+
 import { AudioEngine } from './audio-engine';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 import { MonacoHost } from './monaco-host';
@@ -176,7 +176,7 @@ const bootConfig: BootConfig = loadBootConfig(portable.root);
 const { isOffline: isOfflineFlag, isDev: isDevFlag } = extractFlags();
 
 // ── 单例服务 ──
-const engineHost = new EngineHost(portable.root);
+
 const audioEngine = new AudioEngine(portable.root);
 const monacoHost = new MonacoHost();
 const qzSpawn = new QzSpawn(portable.root);
@@ -253,7 +253,7 @@ function registerAllIpc(): void {
     registerBootIpc(
         portable.root, portable.userData, portable.cache, portable.logs,
         APP_VERSION, bootConfig,
-        () => engineHost.isAlive(),
+        () => false, // engineHost removed (2026-08-02), q_win_x64 dormant
         () => lastBootMode,
         () => mainWindow
     );
@@ -519,7 +519,7 @@ app.whenReady().then(async () => {
                 if (!w.isDestroyed() && w !== mainWindow) { try { w.destroy(); } catch { /* ignore */ } }
             });
         } catch { /* ignore */ }
-        try { engineHost.stop(); } catch { /* ignore */ }
+        
         try { audioEngine.stop(); } catch { /* ignore */ }
         try { cleanupAllGaeaProcesses(); } catch { /* ignore */ }
         try { stopWqPing(); } catch { /* ignore */ }

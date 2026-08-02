@@ -218,11 +218,6 @@ export function registerExitHandlers(
             cleanupAllGaeaProcesses();
         } catch { /* ignore */ }
 
-        // ② stop engine
-        try {
-            const { EngineHost } = require('./engines');
-            // engineHost is handled in main.ts
-        } catch { /* ignore */ }
 
         // ② flush state (SQLite + qgf FS)
         try { _flushStateSync('before-quit'); } catch { /* ignore */ }

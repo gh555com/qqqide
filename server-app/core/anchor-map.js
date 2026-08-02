@@ -310,8 +310,22 @@
   function attach(editor, monaco) {
     if (!editor || !monaco) return;
 
+    // ★ 2026-08-02 fix: 清理旧 disposables（如果 attach 到新 editor 而旧 editor 已 dispose，
+    //   旧 listener 泄漏且可能触发 disposed model 错误）
+    _disposeOld();
+
     _editor = editor;
     _monaco = monaco;
+
+    // ★ 自动 detach：editor 被 dispose 时清理
+    try {
+      var dd = editor.onDidDispose(function () {
+        _disposeOld();
+        _editor = null;
+        _monaco = null;
+      });
+      _disposables.push(dd);
+    } catch (e) { /* ignore */ }
 
     // Initial full scan
     _fullScan();
@@ -330,6 +344,13 @@
       });
       _disposables.push(d2);
     }
+  }
+
+  function _disposeOld() {
+    for (var i = 0; i < _disposables.length; i++) {
+      try { _disposables[i].dispose(); } catch (e) { /* ignore */ }
+    }
+    _disposables = [];
   }
 
   function dispose() {

@@ -595,9 +595,9 @@ function pruneEngines(unpacked) {
 
   // ── ⑤ Legacy: non-target-platform root engine binaries ──
   const nonTgtRoot = [];
-  if (target.startsWith('win-')) { nonTgtRoot.push('q_linux_x64', 'q_mac_x64', 'q_mac_arm64', 'ghrun'); }
-  else if (target.startsWith('linux-')) { nonTgtRoot.push('q_win_x64.exe', 'q_mac_x64', 'q_mac_arm64', 'watchdog.exe'); }
-  else if (target.startsWith('mac-')) { nonTgtRoot.push('q_win_x64.exe', 'q_linux_x64', 'watchdog.exe', 'ghrun.exe'); }
+  if (target.startsWith('win-')) { nonTgtRoot.push('ghrun'); }
+  else if (target.startsWith('linux-')) { nonTgtRoot.push('watchdog.exe'); }
+  else if (target.startsWith('mac-')) { nonTgtRoot.push('watchdog.exe', 'ghrun.exe'); }
 
   // Cross-platform ripgrep
   const rgDir = path.join(engDir, 'ripgrep');

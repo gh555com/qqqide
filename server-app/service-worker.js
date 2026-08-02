@@ -9,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v324'; // v324: phone→doerID resolution, online status check, dm_online/offline broadcast
+const CACHE_NAME = 'qqq-shell-v326'; // v326: fix ViewZone _attached stale after tab close → reopen no images; anchor-map re-attach cleanup; editor.js onDidDispose calls viewzone/anchor-map/paste-router dispose
 const PRECACHE_URLS = [
   './',
   './index.html',
