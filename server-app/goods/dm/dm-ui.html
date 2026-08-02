@@ -273,7 +273,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     </div>
     <div id="conv-list"></div>
     <div id="new-dm-bar">
-      <input type="text" id="new-peer-input" placeholder="键入手机号开始新对话…" maxlength="20" autocomplete="off">
+      <input type="text" id="new-peer-input" placeholder="输入完整手机号 例:8615802858204" maxlength="20" autocomplete="off">
     </div>
     <div id="sidebar-footer">
       <button id="btn-new-msg">+ 新建消息</button>
@@ -378,7 +378,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
             var parts = tok.split('.');
             if (parts.length === 3) {
               var payload = JSON.parse(atob(parts[1]));
-              cb(tok, payload.uid || payload.doer_id || '', payload.phone || '');
+              var did = (payload.uid || payload.doer_id || '').replace(/^\+/,'');
+              cb(tok, did, payload.phone || '');
               return;
             }
           } catch(_) {}
@@ -396,7 +397,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           try {
             var p2 = tok2.split('.');
             var pl = JSON.parse(atob(p2[1]));
-          cb(tok2, pl.uid || pl.doer_id || '', pl.phone || '');
+          var did2 = (pl.uid || pl.doer_id || '').replace(/^\+/,'');
+          cb(tok2, did2, pl.phone || '');
           return;
           } catch(_) {}
           cb(tok2, '', '');
@@ -428,6 +430,18 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           handlePush(msg.data);
         } else if (msg.type === 'ok' && msg.ref === 'sub') {
           setConnStatus(true, '收件箱已就绪');
+        } else if (msg.type === 'dm_online' && msg.data) {
+          // 对方上线通知
+          if (msg.data.peer_id === _activePeer) {
+            $chatHdrStat.textContent = '在线';
+            $chatHdrOn.style.display = '';
+          }
+        } else if (msg.type === 'dm_offline' && msg.data) {
+          // 对方下线通知
+          if (msg.data.peer_id === _activePeer) {
+            $chatHdrStat.textContent = '离线';
+            $chatHdrOn.style.display = 'none';
+          }
         }
       } catch(_) {}
     };
@@ -463,6 +477,10 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       cv.peerName = dm.sender_name || dm.sender_id;
       if (_activePeer !== peerID) {
         cv.unread = (cv.unread||0) + 1;
+      } else {
+        // 当前对话收到对方消息 → 对方在线
+        $chatHdrStat.textContent = '在线';
+        $chatHdrOn.style.display = '';
       }
     }
 
@@ -619,10 +637,13 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
     var cv = _convMap[peerID] || {};
     var name = cv.peerName || peerID;
-    $chatHdrStat.textContent = '离线';
+    $chatHdrStat.textContent = '检查中…';
     $chatHdrAv.textContent = (name[0]||'?').toUpperCase();
     $chatHdrAv.style.background = _avatarColors[hashCode(peerID) % _avatarColors.length];
     $chatHdrOn.style.display = 'none';
+
+    // 查在线状态
+    checkOnline(peerID);
 
     // Reset unread
     cv.unread = 0;
@@ -651,19 +672,72 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       body:JSON.stringify({to:_activePeer,content:text})
     }).then(function(r){return r.json();}).then(function(d){
       if (d.ok && d.msg) {
+        // 更新 _activePeer 为服务器解析后的 doer ID（手机号→doerID）
+        var resolvedID = d.peer_resolved || d.msg.recipient_id;
+        if (resolvedID && resolvedID !== _activePeer) {
+          // 迁移 _convMap 和 _msgCache 到新 key
+          if (_convMap[_activePeer] && !_convMap[resolvedID]) {
+            _convMap[resolvedID] = _convMap[_activePeer];
+            delete _convMap[_activePeer];
+          }
+          if (_msgCache[_activePeer] && !_msgCache[resolvedID]) {
+            _msgCache[resolvedID] = _msgCache[_activePeer];
+            delete _msgCache[_activePeer];
+          }
+          _activePeer = resolvedID;
+          // 更新 header 显示名
+          var cv = _convMap[resolvedID] || {};
+          var name = cv.peerName || d.msg.sender_name || resolvedID;
+          $chatHdrName.textContent = name;
+        }
         if (!_msgCache[_activePeer]) _msgCache[_activePeer] = [];
         _msgCache[_activePeer].push(d.msg);
         appendBubble(d.msg);
         scrollBottom();
       } else {
-        $msgInput.value = text; // restore on failure
+        $msgInput.value = text;
+        // Flash input border red on error
+        $msgInput.style.borderColor = '#dc322f';
+        setTimeout(function(){ $msgInput.style.borderColor = ''; }, 1500);
+        var tip = d.tip || d.code || '发送失败';
+        $msgInput.placeholder = tip;
+        setTimeout(function(){ $msgInput.placeholder = '输入消息… (Enter 发送，Shift+Enter 换行)'; }, 3000);
       }
     }).catch(function(){
       $msgInput.value = text;
+      $msgInput.style.borderColor = '#dc322f';
+      setTimeout(function(){ $msgInput.style.borderColor = ''; }, 1500);
     }).finally(function(){
       $sendBtn.disabled = false;
       $msgInput.focus();
     });
+  }
+
+  function checkOnline(peerID) {
+    if (!_token || !peerID) return;
+    fetch('https://cnk.gh555.com/api/dm/online?peer='+encodeURIComponent(peerID), {
+      headers:{'Authorization':'Bearer '+_token}
+    }).then(function(r){return r.json();}).then(function(d){
+      if (d.online) {
+        $chatHdrStat.textContent = '在线';
+        $chatHdrOn.style.display = '';
+      } else {
+        $chatHdrStat.textContent = '离线';
+        $chatHdrOn.style.display = 'none';
+      }
+      // 如果返回了 resolved peer ID，更新本地
+      if (d.peer && d.peer !== peerID) {
+        if (_convMap[peerID] && !_convMap[d.peer]) {
+          _convMap[d.peer] = _convMap[peerID];
+          delete _convMap[peerID];
+        }
+        if (_msgCache[peerID] && !_msgCache[d.peer]) {
+          _msgCache[d.peer] = _msgCache[peerID];
+          delete _msgCache[peerID];
+        }
+        if (_activePeer === peerID) _activePeer = d.peer;
+      }
+    }).catch(function(){});
   }
 
   // ═══ EVENTS ═══
@@ -686,9 +760,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
   $newPeerIn.addEventListener('keydown', function(e){
     if (e.key === 'Enter') {
-      var phone = $newPeerIn.value.trim().replace(/[^0-9+]/g,'');
-      // 中国手机号自动加 +86 前缀
-      if (/^1[3-9]\d{9}$/.test(phone)) { phone = '+86' + phone; }
+      // 纯数字，不含 +，用户自己打完整国际号码
+      var phone = $newPeerIn.value.trim().replace(/[^0-9]/g,'');
       if (phone && phone !== _doerID) {
         if (!_convMap[phone]) {
           _convMap[phone] = {unread:0,lastMsg:'',lastTime:'',peerName:phone};
