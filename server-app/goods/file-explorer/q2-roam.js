@@ -1628,6 +1628,12 @@ async function updateDriveDisplay() {
 			return;
 		}
 		if (k === 'escape') { cancelSelection(); return; }
+		// ★ Space key: s request — get sizes for selected items (or all items if none selected)
+		if (k === ' ') {
+			e.preventDefault();
+			_doSRequest();
+			return;
+		}
 		if (!selectedItem) return;
 		var si = selectedItem;
 		if (k === 'q') {
@@ -1662,6 +1668,67 @@ async function updateDriveDisplay() {
 		}
 	});
 })();
+
+// ---- Space key s request: recursive size calculation (from q3) ----
+var _sRequestVersion = 0;
+
+async function _calcDirSizeRecursive(dir) {
+	var total = 0;
+	try {
+		var entries = await bridge.fs.list(dir);
+		for (var i = 0; i < entries.length; i++) {
+			var e = entries[i];
+			var fp = pathJoin(dir, e.name);
+			if (e.isDir) { total += await _calcDirSizeRecursive(fp); }
+			else { total += (e.size || 0); }
+		}
+	} catch(ex) { /* skip */ }
+	return total;
+}
+
+async function _calcAndUpdateSize(item, version) {
+	var size = 0;
+	try {
+		if (item.type === 'folder') { size = await _calcDirSizeRecursive(item.path); }
+		else { var st = await bridge.fs.stat(item.path); size = (st && st.size) || 0; }
+	} catch(ex) { size = 0; }
+	if (version !== _sRequestVersion) return;
+	var info = formatFileSizeEx(size);
+	sessionSizeCache[item.path] = info;
+	var el = findItemByPath(item.path);
+	if (el) {
+		var szArea = el.querySelector('.sz-area');
+		if (szArea) {
+			if (info.gbPart) szArea.innerHTML = '<span style="color:' + SZ_GB_COLOR + '">' + info.gbPart + '</span>' + info.restPart + ' ';
+			else szArea.textContent = info.text + ' ';
+		}
+	}
+}
+
+function _doSRequest() {
+	var thisVersion = ++_sRequestVersion;
+	var itemsToRequest = [];
+	if (selectedItems.length > 0) {
+		itemsToRequest = selectedItems.filter(function(s) { return s.name !== '..'; });
+	} else {
+		var allFileItems = document.querySelectorAll('#fileList .file-item');
+		allFileItems.forEach(function(el) {
+			if (el.dataset.name === '..') return;
+			itemsToRequest.push({ path: el.dataset.path, type: el.dataset.type, name: el.dataset.name });
+		});
+	}
+	if (itemsToRequest.length === 0) return;
+	// Show loading indicator
+	itemsToRequest.forEach(function(item) {
+		var el = findItemByPath(item.path);
+		if (el) {
+			var szArea = el.querySelector('.sz-area');
+			if (szArea) szArea.textContent = '\u2022';
+		}
+	});
+	// Fire all concurrently; each result renders independently when ready
+	itemsToRequest.forEach(function(item) { _calcAndUpdateSize(item, thisVersion); });
+}
 
 // ---- New file / New folder ----
 var filenameInput = document.getElementById('filenameInput');

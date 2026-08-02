@@ -427,17 +427,17 @@
         var parts = token.split('.');
         if (parts.length === 3) {
           var payload = JSON.parse(atob(parts[1]));
-          did = payload.doer_id || payload.DoerID || '';
+          did = payload.uid || payload.doer_id || '';
         }
       } catch (_) {}
       if (!did) { _inboxReconnectTimer = setTimeout(tryConnect, 5000); return; }
       _inboxDoerID = did;
 
       var wsUrl = 'wss://cnk.gh555.com/ws?token=' + encodeURIComponent(token);
-      _inboxWs = new WebSocket(wsUrl);
+      var ws = _inboxWs = new WebSocket(wsUrl);
 
-      _inboxWs.onopen = function () {
-        _inboxWs.send(JSON.stringify({ type: 'sub', ch: 'inbox:' + _inboxDoerID }));
+      ws.onopen = function () {
+        ws.send(JSON.stringify({ type: 'sub', ch: 'inbox:' + _inboxDoerID }));
       };
 
       _inboxWs.onmessage = function (e) {
