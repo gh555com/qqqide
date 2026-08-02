@@ -309,13 +309,29 @@
   // ═══ Attach / Detach ═══
 
   function attach(editor, monaco) {
-    if (_attached) return;
     if (!editor || !monaco) return;
+
+    // ★ 2026-08-02 fix: 若已 attach 到旧 editor（tab 关闭但 dispose 未被调），
+    //   先清理旧状态再绑定新 editor。旧 _attached 守卫导致重开文件后 ViewZone 永不渲染。
+    if (_attached) {
+      _doCleanup();
+    }
 
     _editor = editor;
     _monaco = monaco;
     anchorMap = window.qqqAnchorMap;
     frameRenderer = window.qqqFrameRenderer;
+
+    // ★ 自动 detach：editor 被 dispose 时清理
+    try {
+      var dd = editor.onDidDispose(function () {
+        _doCleanup();
+        _attached = false;
+        _editor = null;
+        _monaco = null;
+      });
+      _disposables.push(dd);
+    } catch (e) { /* ignore */ }
 
     // 空格键监听
     var domNode = editor.getDomNode && editor.getDomNode();
@@ -336,18 +352,22 @@
     _attached = true;
   }
 
-  function dispose() {
+  // ★ 内部清理（不设 _attached = false，由调用方决定）
+  function _doCleanup() {
     if (_syncTimer) clearTimeout(_syncTimer);
 
-    // 移除所有 ViewZone
-    if (_editor) {
+    // 移除所有 ViewZone — 仅在 editor 未被 dispose 时调用
+    if (_editor && typeof _editor.changeViewZones === 'function') {
       try {
-        _editor.changeViewZones(function (accessor) {
-          var keys = Object.keys(_zoneMeta);
-          for (var i = 0; i < keys.length; i++) {
-            accessor.removeZone(_zoneMeta[keys[i]].zoneId);
-          }
-        });
+        var model = _editor.getModel && _editor.getModel();
+        if (model && !model.isDisposed()) {
+          _editor.changeViewZones(function (accessor) {
+            var keys = Object.keys(_zoneMeta);
+            for (var i = 0; i < keys.length; i++) {
+              accessor.removeZone(_zoneMeta[keys[i]].zoneId);
+            }
+          });
+        }
       } catch (e) { /* ignore */ }
     }
     _zoneMeta = {};
@@ -365,7 +385,10 @@
       try { _disposables[j].dispose(); } catch (e) { /* ignore */ }
     }
     _disposables = [];
+  }
 
+  function dispose() {
+    _doCleanup();
     _editor = null;
     _monaco = null;
     _attached = false;

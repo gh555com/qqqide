@@ -125,25 +125,20 @@
   }
 
   // ═══ 状态栏注入 ═══
-  // 在 qqq-status-row 中创建 qqq-status-wq 元素，显示前摇统计
+  // ★ index.html 已预置 <span id="qqq-status-wq">wq: --</span>。
+  //   直接找到它更新，不创建新元素（否则出现两个同 ID 元素）。
   function injectStatusBar() {
     if (_$el) return; // 已注入
 
-    var row = document.querySelector('.qqq-status-row');
-    if (!row) {
-      // 状态栏还没渲染，等 500ms 重试
+    _$el = document.getElementById('qqq-status-wq');
+    if (!_$el) {
+      // HTML 里没有预置元素（异常），等 500ms 重试
       setTimeout(injectStatusBar, 500);
       return;
     }
 
-    // 在时钟元素前插入
-    var $clk = document.getElementById('qqq-status-clock');
-    _$el = document.createElement('span');
-    _$el.className = 'qqq-status-item';
-    _$el.id = 'qqq-status-wq';
     _$el.style.cssText = 'font-family:Consolas,monospace;font-size:11px;cursor:pointer;';
     _$el.title = 'wq 前摇统计：粘贴探针执行时间\n点击重置';
-    _$el.textContent = 'wq: --';
 
     _$el.addEventListener('click', function () {
       reset();
@@ -151,12 +146,6 @@
         window.qqqideQoast.show('wq stats reset', { duration: 1500 });
       }
     });
-
-    if ($clk) {
-      row.insertBefore(_$el, $clk);
-    } else {
-      row.appendChild(_$el);
-    }
 
     _updateDom();
   }

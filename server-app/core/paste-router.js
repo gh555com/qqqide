@@ -375,16 +375,23 @@
   }
 
   // ★ Auto-whitelist for qqqide-asset://file/ protocol
+  //   不硬检查 scheme — 文件可能由 qqqide-asset://file/ 等 scheme 打开。
   function _addAssetWhitelist(editor) {
     if (!bridge || !bridge.assetRoots || !bridge.assetRoots.add) return;
+    // ── 当前文件目录 + 其 _qqqvault/ ──
     var cf = null;
     try {
       var edModel2 = editor && editor.getModel && editor.getModel();
-      if (edModel2 && edModel2.uri && edModel2.uri.scheme === 'file') {
+      if (edModel2 && edModel2.uri) {
         cf = edModel2.uri.fsPath || edModel2.uri.path;
       }
     } catch (e) { /* */ }
     if (cf) {
+      // 补盘符（Monaco Uri.parse 可能吞掉 Windows 盘符）
+      if (cf.indexOf(':') < 0 && window._workspaceRoot) {
+        var wsDrive2 = window._workspaceRoot.slice(0, Math.max(0, window._workspaceRoot.indexOf(':') + 1));
+        if (wsDrive2 && wsDrive2.indexOf(':') >= 0) cf = wsDrive2 + cf.replace(/^\/+/, '');
+      }
       var sep2 = cf.indexOf('\\') >= 0 ? '\\' : '/';
       var cfDir = cf.slice(0, cf.lastIndexOf(sep2));
       if (cfDir) {
@@ -392,7 +399,7 @@
         bridge.assetRoots.add(cfDir + sep2 + '_qqqvault').catch(function () {});
       }
     }
-    // 兜底：workspace root 的 _qqqvault 也要加白名单
+    // ── 兜底：workspace root + 其 _qqqvault/ ──
     if (window._workspaceRoot) {
       bridge.assetRoots.add(window._workspaceRoot).catch(function () {});
       var ws2 = window._workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');

@@ -79,10 +79,8 @@ function shutdown(code) {
             }
         } catch (_) {}
     }
-    // ★ 额外清扫残留引擎进程（q_win_x64.exe / ghrun.exe）
+    // ★ 额外清扫残留引擎进程（ghrun.exe）
     if (process.platform === 'win32') {
-        try { cp.execSync('taskkill /F /IM q_win_x64.exe /T 2>nul', { timeout: 3000 }); } catch (_) {}
-        try { cp.execSync('taskkill /F /IM q_win_arm64.exe /T 2>nul', { timeout: 3000 }); } catch (_) {}
         try { cp.execSync('taskkill /F /IM ghrun.exe /T 2>nul', { timeout: 3000 }); } catch (_) {}
     }
     setTimeout(() => process.exit(code), 800);

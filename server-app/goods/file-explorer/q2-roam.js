@@ -155,6 +155,13 @@ var _cmdHistory = { address: [], fileFilter: [], qqFilter: [] };
 var _lineSpacing = -2;
 var FINE_SCM_MAX = 500;
 var sessionSizeCache = {};
+var _sizeCacheSaveTimer = null;
+function _sizeCacheSaveDebounced() {
+	if (_sizeCacheSaveTimer) clearTimeout(_sizeCacheSaveTimer);
+	_sizeCacheSaveTimer = setTimeout(function() {
+		_roamSet('roam.sizeCache', sessionSizeCache);
+	}, 2000);
+}
 
 // ---- Persistence helpers ----
 function _normPath(p) { return (p || '').toLowerCase().replace(/\//g, '\\').replace(/[\\]+$/, ''); }
@@ -931,6 +938,21 @@ function cancelSelection() {
 	selectedItem = null;
 	lastSelectedItem = null;
 }
+function selectAllFiles() {
+	cancelSelection();
+	var all = document.querySelectorAll('#fileList .file-item');
+	selectedItems = [];
+	for (var i = 0; i < all.length; i++) {
+		var el = all[i];
+		if (el.dataset.name === '..') continue;
+		el.classList.add('selected');
+		selectedItems.push({ type: el.dataset.type, path: el.dataset.path, name: el.dataset.name });
+	}
+	if (selectedItems.length > 0) {
+		selectedItem = selectedItems[0];
+		lastSelectedItem = findItemByPath(selectedItem.path);
+	}
+}
 function selectFileItem(fileItem, shiftKey) {
 	if (!fileItem) return;
 	var type = fileItem.dataset.type, path = fileItem.dataset.path, name = fileItem.dataset.name;
@@ -1234,10 +1256,11 @@ if (emptyCtxMenu) {
 		el.addEventListener('click', function() {
 			var act = el.dataset.action;
 			hideAllContextMenus();
-			if (act === 'newFile') { doCreateFile(); }
-			else if (act === 'newFolder') { doCreateFolder(); }
-			else if (act === 'openInExplorer') { bridge.shell.openPath(currentPath).catch(function(){}); }
-		});
+		if (act === 'newFile') { doCreateFile(); }
+		else if (act === 'newFolder') { doCreateFolder(); }
+		else if (act === 'openInExplorer') { bridge.shell.openPath(currentPath).catch(function(){}); }
+		else if (act === 'paste') { _asyncProbeAndPaste(); }
+	});
 	});
 }
 
@@ -1257,6 +1280,26 @@ if (emptyCtxMenu) {
 		em.style.left = ep.left + 'px';
 		em.style.top = ep.top + 'px';
 		em.style.display = 'flex';
+	});
+
+	// ---- Drag & drop paste (M8.3) ----
+	fl.addEventListener('dragover', function(e) {
+		e.preventDefault();
+		e.stopPropagation();
+	});
+	fl.addEventListener('drop', function(e) {
+		e.preventDefault();
+		e.stopPropagation();
+		if (!currentPath) return;
+		var dt = e.dataTransfer;
+		if (!dt || !dt.files || dt.files.length === 0) return;
+		var paths = [];
+		for (var i = 0; i < dt.files.length; i++) {
+			if (dt.files[i].path) paths.push(dt.files[i].path);
+		}
+		if (paths.length > 0) {
+			_copyPathsToCurrentDir(paths);
+		}
 	});
 })();
 
@@ -1610,6 +1653,13 @@ async function updateDriveDisplay() {
 			}
 		}
 
+		// Ctrl+A: Select all files
+		if ((e.ctrlKey || e.metaKey) && k === 'a') {
+			e.preventDefault();
+			selectAllFiles();
+			return;
+		}
+
 		if (e.ctrlKey || e.metaKey) return;
 		// ★ Backspace: 返回上层目录；若从 .lnk 跳转而来则回到来源目录
 		if (k === 'backspace') {
@@ -1695,6 +1745,7 @@ async function _calcAndUpdateSize(item, version) {
 	if (version !== _sRequestVersion) return;
 	var info = formatFileSizeEx(size);
 	sessionSizeCache[item.path] = info;
+	_sizeCacheSaveDebounced();
 	var el = findItemByPath(item.path);
 	if (el) {
 		var szArea = el.querySelector('.sz-area');
@@ -1896,6 +1947,8 @@ function calculateAndAdjustScroll() {
 	var q = await _roamGet('roam.qqiq'); if (Array.isArray(q)) _qqiq = q;
 	var p = await _roamGet('roam.pinnedDirs'); if (Array.isArray(p)) _pinnedDirs = p;
 	var h = await _roamGet('roam.cmdHistory'); if (h && typeof h === 'object') _cmdHistory = h;
+	var sc = await _roamGet('roam.sizeCache');
+	if (sc && typeof sc === 'object') sessionSizeCache = sc;
 	var prefs = await _roamGet('roam.prefs');
 	if (prefs && typeof prefs === 'object') {
 		if (typeof prefs.lineSpacing === 'number') _lineSpacing = prefs.lineSpacing;
