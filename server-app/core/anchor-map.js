@@ -73,6 +73,19 @@
         }
       } catch (e) { /* */ }
     }
+    // ★ 终极回退：从 editor 实例或 host DOM 上读取 _qqqFilePath（openInPane 写入）
+    if (!cf && _editor) {
+      try { cf = _editor._qqqFilePath; } catch (e) { /* */ }
+      if (!cf) {
+        try {
+          var _domNode = _editor.getDomNode && _editor.getDomNode();
+          if (_domNode) {
+            var _host = _domNode.closest && _domNode.closest('.qqq-tab-pane');
+            if (_host && _host._qqqFilePath) cf = _host._qqqFilePath;
+          }
+        } catch (e) { /* */ }
+      }
+    }
     // ★ 2026-08-02 fix: ensure drive letter on Windows (Monaco Uri.parse('E:/path') treats 'E' as scheme)
     if (cf && cf.indexOf(':') < 0 && window._workspaceRoot) {
       var _wsDrive2 = window._workspaceRoot.slice(0, Math.max(0, window._workspaceRoot.indexOf(':') + 1));
@@ -358,6 +371,7 @@
       try { _disposables[i].dispose(); } catch (e) { /* ignore */ }
     }
     _disposables = [];
+    _listeners = [];
     _anchorMap = {};
     _editor = null;
     _monaco = null;

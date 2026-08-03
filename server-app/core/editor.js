@@ -22,34 +22,28 @@
   // Monaco built-in TS/JS/CSS/HTML/JSON workers are disabled in loadMonaco() below.
   // External LSP servers (pyright/gopls/rust-analyzer/clangd) — bridge code removed.
 
-  // ---- q1 v2: 新架构 attach（anchor-map + paste-router + viewzone）----
-  // Replaces legacy CodeLens string-translation with position-map + event-driven system.
-  // Tries once with retries; gracefully degrades if modules not loaded.
-  // ★ qqqViewZone 替代 qqqContentWidget：ViewZone 实现空气行（不消费行号）
-  function attachQ1v2(ed, monaco) {
+  // ---- q1 v3: 中心视口管线（viewport-machine）----
+  // ★ 替代旧 attachQ1v2 重试模式。所有编辑器生命周期事件走 ViewportMachine.transition(),
+  //   消除"大脑分裂"（多个代码路径各自调用 attach/dispose → 多面板丢图+not a child 崩溃）。
+  //   加载等待: 若 ViewportMachine 尚未注入，最多重试 15 次 (4.5s)。
+  function attachQ1v3(ed, monaco, filePath) {
     if (!ed || !monaco) return;
     var attempts = 0;
     var maxAttempts = 15;
     var tick = function () {
       attempts++;
-      var okAM = false, okPR = false, okVZ = false;
-      if (window.qqqAnchorMap && window.qqqAnchorMap.attach) {
-        try { window.qqqAnchorMap.attach(ed, monaco); okAM = true; } catch (e) { /* */ }
+      var ok = false;
+      if (window.qqqViewportMachine && window.qqqViewportMachine.transition) {
+        try {
+          window.qqqViewportMachine.transition('created', ed, filePath);
+          ok = true;
+        } catch (e) { /* ignore */ }
       }
+      // Paste-router: document-level listener, only needs one attach (has _attached guard)
       if (window.qqqPasteRouter && window.qqqPasteRouter.attach) {
-        try { window.qqqPasteRouter.attach(ed, monaco); okPR = true; } catch (e) { /* */ }
+        try { window.qqqPasteRouter.attach(ed, monaco); } catch (e) { /* ignore */ }
       }
-      // ★ 优先 qqqViewZone（ViewZone 空气行）→ 回退 qqqContentWidget
-      if (window.qqqViewZone && window.qqqViewZone.attach) {
-        try { window.qqqViewZone.attach(ed, monaco); okVZ = true; } catch (e) { /* */ }
-      }
-      if (!okVZ && window.qqqContentWidget && window.qqqContentWidget.attach) {
-        try { window.qqqContentWidget.attach(ed, monaco); okVZ = true; } catch (e) { /* */ }
-      }
-      if (okAM || okPR || okVZ) {
-        // At least one attached successfully
-        if (okAM && okPR && okVZ) return; // All done
-      }
+      if (ok) return;
       if (attempts >= maxAttempts) return;
       setTimeout(tick, 300);
     };
@@ -567,6 +561,7 @@
       }, _makeEditorBaseOptions()));
       _monacoRef = monaco;
       _editorRef = ed;
+      ed._isRefreshing = true;
       // 唯一真理逐字回退机器：按设置决定是否挂载
       _applyUndoMode(ed, monaco);
       // 行号右侧空气墙点击 → 光标跳到第一列
@@ -587,6 +582,7 @@
       // Ctrl+S
       ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => save());
       ed.onDidChangeModelContent(function (e) {
+        if (ed._isRefreshing) return;
         dirty = true; updateTitle();
         if (currentFile) {
           document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: currentFile, dirty: true } }));
@@ -603,18 +599,19 @@
           });
         }
       });
-      // q1 v2: anchor-map + paste-router + content-widget
-      attachQ1v2(ed, monaco);
+      // q1 v3: 中心视口管线
+      attachQ1v3(ed, monaco, null);
+      ed._isRefreshing = false;
       // Wire LSP diagnostics and hover — LSP OFF
       // wireLspDiagnostics(); // LSP OFF
       // wireLspHover(); // LSP OFF
-      // 编辑器销毁时清理 char-undo + 小地图 action + 喂 AI action + 跟踪列表
+      // 编辑器销毁时清理（中心管线 disposed + char-undo + actions）
       ed.onDidDispose(function () {
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
-        // ★ 2026-08-02: 清理 ViewZone/AnchorMap/PasteRouter — 防 tab 关闭后 _attached 残留
-        if (window.qqqViewZone && window.qqqViewZone.dispose) { try { window.qqqViewZone.dispose(); } catch (_) {} }
-        if (window.qqqAnchorMap && window.qqqAnchorMap.dispose) { try { window.qqqAnchorMap.dispose(); } catch (_) {} }
-        if (window.qqqPasteRouter && window.qqqPasteRouter.dispose) { try { window.qqqPasteRouter.dispose(); } catch (_) {} }
+        // ★ 中心管线 disposed（仅做簿记清理，不再调 changeViewZones）
+        if (window.qqqViewportMachine && window.qqqViewportMachine.transition) {
+          try { window.qqqViewportMachine.transition('disposed', ed); } catch (_) {}
+        }
         var ma = _minimapActions.get(ed);
         if (ma) { try { ma.disposable.dispose(); } catch (_) { } _minimapActions.delete(ed); }
         var fa = _feedToAiActions.get(ed);
@@ -673,9 +670,17 @@
         return;
       }
       const text = await bridge.fs.read(file);
+      if (_editorRef) _editorRef._isRefreshing = true;
       currentFile = file;
       editor.setValue(text, langOf(file));
+      // ★ 中心管线：更新主编辑器 filePath，触发锚点重扫
+      if (window.qqqViewportMachine && window.qqqViewportMachine.transition && _editorRef) {
+        try { window.qqqViewportMachine.transition('created', _editorRef, file); } catch (_) {}
+      }
+      if (_editorRef) _editorRef._isRefreshing = false;
       dirty = false;
+      // ★ 同步清除 tab 脏标记（setValue 可能已触发 dirty:true 事件，强制复位）
+      document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: file, dirty: false } }));
       lspLang = null; // LSP OFF
       updateTitle();
       _applyMinimapPref(_editorRef, _monacoRef, file);
@@ -698,6 +703,8 @@
       dirty = false; updateTitle();
       _maybeRecordTimeline(currentFile, v);
       _removeDirty(currentFile);
+      // ★ 同步清除 tab 脏标记（与 _markClean 对齐）
+      document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: currentFile, dirty: false } }));
       // ★ 更新 mtime
       try { var _stSave = await bridge.fs.stat(currentFile); if (_stSave) _openedMtime[currentFile] = { mtimeMs: _stSave.mtimeMs, size: _stSave.size }; } catch (_) {}
       return true;
@@ -897,7 +904,15 @@
 
       // Use plain file path as URI so Monaco's TS worker can resolve it.
       var plainPath = filePath.replace(/\\/g, '/');
-      var fileUri = monaco.Uri.parse(plainPath);
+      // ★ 用 Uri.file() 或稳健 fallback，设 file:// scheme 防盘符被当 URI scheme 吞掉
+      var fileUri;
+      if (typeof monaco.Uri.file === 'function') {
+        fileUri = monaco.Uri.file(plainPath);
+      } else {
+        // fallback: 手动构造 file:/// URI（盘符冒号需编码为 %3A）
+        var encodedPath = plainPath.replace(/^([A-Za-z]):/, '/$1%3A');
+        fileUri = monaco.Uri.parse('file://' + encodedPath);
+      }
       var contentStr = content == null ? '' : String(content);
 
       // ★ #1 大文件：先用 plaintext 创建 model（跳过 tokenizer，秒开）
@@ -921,9 +936,16 @@
         rulers: [],
       }, _makeEditorBaseOptions()));
 
+      // ★ 初始化阶段屏蔽 onDidChangeModelContent — 防 model 复用
+      //   applyEdits 或后续 setup 触发 _markDirty → 打开即带星号。
+      ed._isRefreshing = true;
+
       // Set as primary editor if first one
       if (!_monacoRef) _monacoRef = monaco;
       if (!_editorRef) _editorRef = ed;
+      // ★ 标记文件路径（供 anchor-map 等子系统使用 — URI 在 Windows 上可能丢盘符）
+      try { ed._qqqFilePath = filePath; } catch (_) {}
+      try { host._qqqFilePath = filePath; } catch (_) {}
       // 唯一真理逐字回退机器：按设置决定是否挂载
       _applyUndoMode(ed, monaco);
       // 防滚动条贴底：Monaco 内部 scrollable 底部留 1px
@@ -1030,6 +1052,7 @@
         document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: d } }));
       }
 
+      // ★ 初始化完成，解除 _isRefreshing 屏蔽（此后编辑正常触发 dirty）
       ed.onDidChangeModelContent(function () {
         if (!ed._isRefreshing) {
           _markDirty();
@@ -1101,10 +1124,11 @@
         }
       });
 
-      // q1 v2: anchor-map + paste-router + content-widget
-      attachQ1v2(ed, monaco);
+      // q1 v2: anchor-map + p      // q1 v3: 中心视口管线
+      attachQ1v3(ed, monaco, filePath);
+      // ★ 初始化完成，解除 _isRefreshing 屏蔽（在 attachQ1v3 之后，防止 viewport 管线触发 model 变更事件导致误报 dirty）
+      ed._isRefreshing = false;
       _paneEditors[filePath] = ed;
-      _paneFiles[host] = filePath;
       // ★ 记录 mtime，用于聚焦时检测外部修改
       try { var _stPane = await bridge.fs.stat(filePath); if (_stPane) _openedMtime[filePath] = { mtimeMs: _stPane.mtimeMs, size: _stPane.size }; } catch (_) {}
       ed.onDidDispose(function () {
@@ -1113,10 +1137,10 @@
         delete _openedMtime[filePath];
         delete _paneDirtyMap[filePath];
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
-        // ★ 2026-08-02: 清理 ViewZone/AnchorMap/PasteRouter — 防 tab 关闭后 _attached 残留
-        if (window.qqqViewZone && window.qqqViewZone.dispose) { try { window.qqqViewZone.dispose(); } catch (_) {} }
-        if (window.qqqAnchorMap && window.qqqAnchorMap.dispose) { try { window.qqqAnchorMap.dispose(); } catch (_) {} }
-        if (window.qqqPasteRouter && window.qqqPasteRouter.dispose) { try { window.qqqPasteRouter.dispose(); } catch (_) {} }
+        // ★ 中心管线 disposed（仅做簿记清理）
+        if (window.qqqViewportMachine && window.qqqViewportMachine.transition) {
+          try { window.qqqViewportMachine.transition('disposed', ed); } catch (_) {}
+        }
         var ma = _minimapActions.get(ed);
         if (ma) { try { ma.disposable.dispose(); } catch (_) { } _minimapActions.delete(ed); }
         var fa = _feedToAiActions.get(ed);
@@ -1208,7 +1232,9 @@
           if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
           m.applyEdits([{ range: m.getFullModelRange(), text: String(dirtyContent), forceMoveMarkers: true }]);
           ed._isRefreshing = false;
-          document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: false } }));
+          // ★ 不 dispatch dirty:false — 跨窗口脏快照的内容未落盘，
+          //    dispatch false 会让标签星号消失但文件实际未保存（大脑分裂）。
+          //    让 _markDirty 自然触发（下次用户操作或 onDidChangeModelContent）。
           return;
         }
       }
@@ -1306,7 +1332,12 @@
     // ★ Tab 切换优化：暂停/恢复 Monaco automaticLayout（避免隐藏编辑器做无意义 layout）
     suspendPaneLayout: function(filePath) {
       var ed = _paneEditors[filePath];
-      if (ed) { try { ed.updateOptions({ automaticLayout: false }); } catch (_) {} }
+      if (ed) {
+        try { ed.updateOptions({ automaticLayout: false }); } catch (_) {}
+        if (window.qqqViewportMachine && window.qqqViewportMachine.transition) {
+          try { window.qqqViewportMachine.transition('hidden', ed, filePath); } catch (_) {}
+        }
+      }
     },
     resumePaneLayout: function(filePath) {
       var ed = _paneEditors[filePath];
@@ -1317,20 +1348,24 @@
         } catch (_) {}
         // ★ Tab 激活时：从主进程拉取脏快照，确保多窗口编辑一致
         _checkDirtyAndRefreshPane(filePath, ed);
+        // ★ Tab 切换后通过中心管线恢复视口（不再手动调三个单例 attach）
+        if (window.qqqViewportMachine && window.qqqViewportMachine.transition) {
+          try { window.qqqViewportMachine.transition('focused', ed, filePath); } catch (_) {}
+        }
       }
     },
     // ★ 安全销毁面板编辑器（异步调用，避免大文件 dispose 阻塞 UI）
     disposePaneEditor: function(filePath) {
       var ed = _paneEditors[filePath];
       if (!ed) return;
-      // suspend layout before dispose（已 suspend，二次保险）
+      // ★ 中心管线 closing：在 editor dispose 前清理 ViewZone/ContentWidget（editor 尚存活）
+      if (window.qqqViewportMachine && window.qqqViewportMachine.transition) {
+        try { window.qqqViewportMachine.transition('closing', ed, filePath); } catch (_) {}
+      }
       try { ed.updateOptions({ automaticLayout: false }); } catch (_) {}
-      // get model reference before disposal
       var model = null;
       try { model = ed.getModel(); } catch (_) {}
-      // dispose editor（触发 onDidDispose → 清理 _paneEditors/_paneFiles/allMonacoEditors）
       try { ed.dispose(); } catch (_) {}
-      // dispose model if no other editor references it
       if (model && !model.isDisposed()) {
         try { model.dispose(); } catch (_) {}
       }

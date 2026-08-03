@@ -500,6 +500,8 @@ const QQQ = {
             ipcRenderer.on('qqqide:gaea-process:status-changed', handler);
             return () => ipcRenderer.removeListener('qqqide:gaea-process:status-changed', handler);
         },
+        getSettings: (goodsId: string) => ipcRenderer.invoke('qqqide:gaea-process:get-settings', goodsId),
+        setSetting: (goodsId: string, key: string, value: any) => ipcRenderer.invoke('qqqide:gaea-process:set-setting', goodsId, key, value),
     },
 
     // ---- desktop shortcut (Windows: PowerShell COM 创建/删除 .lnk) ----
@@ -513,6 +515,18 @@ const QQQ = {
         getStats: () => ipcRenderer.invoke('qqqide:kope:getStats'),
         togglePin: (id: number) => ipcRenderer.invoke('qqqide:kope:togglePin', id),
         deleteItem: (id: number) => ipcRenderer.invoke('qqqide:kope:deleteItem', id),
+    },
+
+    // ---- roam (文件资源管理器 OS 级持久化, sql.js → roam.sq3) ----
+    roam: {
+        get: (key: string) => ipcRenderer.invoke('qqqide:roam:get', key),
+        set: (key: string, value: any) => ipcRenderer.invoke('qqqide:roam:set', key, value),
+        getAll: () => ipcRenderer.invoke('qqqide:roam:getAll'),
+        onChanged: (cb: (msg: { key: string; value: any }) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[roam.onChanged]', err); } };
+            ipcRenderer.on('qqqide:roam:changed', handler);
+            return () => ipcRenderer.removeListener('qqqide:roam:changed', handler);
+        },
     },
 
 

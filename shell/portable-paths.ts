@@ -87,7 +87,9 @@ export function applyPortablePaths(): { root: string; userData: string; cache: s
     app.commandLine.appendSwitch('disable-features',
         'DefaultBrowser,MediaRouter,OptimizationHints,' +
         'PreloadMediaEngagementData,SafeBrowsing,TranslateUI,' +
-        'InterestFeedContentSuggestions,PrivacySandboxSettings4');
+        'InterestFeedContentSuggestions,PrivacySandboxSettings4,' +
+        'SpellcheckService,PrintPreview,AutofillServerCommunication,PasswordManager,' +
+        'IdleDetection,WebOTP,WebPayments');
 
     // explicitly disable features that may write registry / appdata
     app.commandLine.appendSwitch('no-default-browser-check');
@@ -97,6 +99,7 @@ export function applyPortablePaths(): { root: string; userData: string; cache: s
     app.commandLine.appendSwitch('disable-sync');
     app.commandLine.appendSwitch('metrics-recording-only');
     app.commandLine.appendSwitch('disable-default-apps');
+    app.commandLine.appendSwitch('disable-speech-api');
 
     // ★ 禁用崩溃报告磁盘写入
     try {

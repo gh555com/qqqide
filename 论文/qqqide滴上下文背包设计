@@ -1,8 +1,6 @@
 # qqqide 上下文背包 — 最终形态
 
-<!-- Canonical source: docs/qqqide.md -->
-
-状态：V16 已落地。2026-07-23 定稿。
+状态：V17 已落地。2026-08-02 定稿。
 
 ---
 
@@ -24,7 +22,7 @@
 
 ---
 
-## 2. 架构推演 — V10 → V11 → V12 → V13 → V14 → V15 → V16
+## 2. 架构推演 — V10 → V11 → V12 → V13 → V14 → V15 → V16 → V17
 
 ### V10 · AI 语义压缩（已废弃）
 
@@ -37,6 +35,26 @@
 - **回滚漏洞**：压缩失败时无法精确恢复到压缩前状态。
 
 **结论**：AI 不适合做确定性压缩。压缩必须是**纯本地、纯确定性的机械过程**。
+
+---
+
+### V11-V16 · 机械筛 → 双包装盒 → 三按钮 → biscuit 唯一性
+
+V11 到 V16 的演进迭代解决了压缩的**效率问题**：机械筛（V11）→ 原地追加缓存修复（V12）→ DE 消除+双包装盒（V13）→ 重排修复（V14）→ 三按钮+fx Grid（V15）→ biscuit 唯一性强制（V16）。每一步解决一个具体的技术瓶颈，累计将每层计费从 ~38K 降到 ~200-500 tokens，缓存命中率从 0% 提升到 ~90%。
+
+### V17 · 二次恢复防线（2026-08-02）
+
+**发现的 bug**：q127 的 AI 回复「我没有之前对话的上下文——每次新对话是独立的」。根因是 `_restoreAgentFromStore` 在二次恢复时未重置 `_persistentCount` → Z 消息被静默丢弃 → `_refreshRules` 把 biscuit 覆盖成了新的 Z → conversation 只剩 [Z, user_msg]，零历史上下文。
+
+**影响范围**：用户切走 quest 再切回 → agent 经历二次 restore → 触发。单次 restore（首次加载）不受影响。每层楼第一个 house 缓存命中率暴跌至 10-25%（正常 ~90%），prompt tokens 异常波动（172K→147K 不增反降）。
+
+**V17 四道防线**：
+1. `_persistentCount` 条件设值（`conversation[0]._persistent ? 1 : 0`），非盲目清零
+2. `_refreshRules` 注入 Z 前检查 `conversation[0]._persistent`，否则 unshift 而非覆盖
+3. `_rebuildBackpack` biscuit 插入时检测 Z 在 [0]，用 index 1
+4. `_persistent` 去重：`_rebuildBackpack` + `panel-floor.js` 双路径强制执行
+
+三道防线各自独立生效——任意一道被回滚，其余仍能兜底。
 
 ---
 
@@ -253,6 +271,7 @@ vs ChatGPT 方案:   全量重算，无前缀缓存优化
 | **全文检索** | 仅标题 | 无 | 无 | conv-ui.html 全文检索历史 |
 | **跨会话引用** | 不支持 | Projects 手动 | 不支持 | sha256 跨楼层精确引用 |
 | **压缩费用** | N/A | N/A | N/A | **零**（纯本地 CPU） |
+| **二次恢复安全** | N/A | N/A | N/A | V17 四道防线防上下文丢失 |
 
 **核心差异**：
 
@@ -322,10 +341,10 @@ qqqide 上下文背包是这三个权利的技术实现。
 | V12 | 2026-07 中 | 原地追加，零 splice | ~2-4K | ~90% |
 | V13 | 2026-07-16 | DE 消除 + 双包装盒 + 阀值压缩 + sha256 | ~200-500 | ~90% |
 | V14 | 2026-07-17 | floorMsgs 升序修复重排→缓存全断 bug | ~200-500 | ~90% |
-| V15 | 2026-07-19 | 三按钮压缩(absolut/edit only/only facts) + fx Grid + _compressFloor | ~200-500 | ~90% |
-| V16 | 2026-07-23 | biscuit 唯一性强制(去重→先合并再删) + _findDynamicMsg 修复(Z 阻断) | ~200-500 | ~90% |
+| V15 | 2026-07-19 | 三按钮压缩(absolut/edit only/only facts) + fx Grid + _compressFloor | ~200-500 | ~| V16 | 2026-07-23 | biscuit 唯一性强制(去重→先合并再删) + _findDynamicMsg 修复(Z 阻断) | ~200-500 | ~90% |
+| V17 | 2026-08-02 | 二次恢复防线：_persistentCount 条件设值 + _refreshRules Z注入安全检测 + biscuit插入位置保护 + _persistent双路径去重 | ~200-500 | ~90% |
 
-## 附录 B · 关键文件
+## 附录 B · 关键文件· 关键文件
 
 | 文件 | 职责 |
 |------|------|

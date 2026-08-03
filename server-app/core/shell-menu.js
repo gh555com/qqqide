@@ -530,8 +530,25 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         obs.observe(document.body, { childList: true, subtree: true });
       })(_gpPollTimer, _gpStatusUnsub);
 
+      // ── 齿轮按钮：点击打开 goods 设置 ──
+      var gpGear = document.createElement('span');
+      gpGear.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" style="display:block;fill:none;stroke:#000;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="12" r="7"/><path d="M12 5v-2.5M12 19v2.5M5 12h-2.5M19 12h2.5M7.05 7.05l-1.77-1.77M16.95 16.95l1.77 1.77M7.05 16.95l-1.77 1.77M16.95 7.05l1.77-1.77"/></svg>';
+      gpGear.title = '设置';
+      gpGear.style.cssText =
+        'display:inline-flex; align-items:center; justify-content:center; ' +
+        'flex-shrink:0; cursor:default; ' +
+        'color:var(--text-muted); opacity:0.7; transition:opacity 150ms;';
+      gpGear.addEventListener('mouseenter', function () { gpGear.style.opacity = '1'; });
+      gpGear.addEventListener('mouseleave', function () { gpGear.style.opacity = '0.7'; });
+      gpGear.addEventListener('click', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        _showGoodsSettings(gpId);
+      });
+
       gpRow.appendChild(gpDot);
       gpRow.appendChild(gpToggle);
+      gpRow.appendChild(gpGear);
 
       (function (rEl) {
         rEl.addEventListener('mouseenter', function () { rEl.style.background = 'var(--background-color)'; });
@@ -1359,6 +1376,157 @@ function _refreshEvangelistSubDropdown() {
     }
     lines[1].textContent = '我滴学生：' + studentCount + '人';
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Goods 设置弹出窗口
+// ═══════════════════════════════════════════════════════════════
+
+var _goodsSettingsModal = null;
+
+function _closeGoodsSettings() {
+  if (_goodsSettingsModal) {
+    try { _goodsSettingsModal.remove(); } catch (_) { }
+    _goodsSettingsModal = null;
+  }
+}
+
+function _showGoodsSettings(goodsId) {
+  _closeGoodsSettings();
+
+  var bridge = window.qqqideBridge;
+
+  var overlay = document.createElement('div');
+  overlay.className = 'qqq-goods-settings-overlay';
+  overlay.style.cssText =
+    'position:fixed; z-index:200000; inset:0; ' +
+    'background:rgba(0,0,0,0.35); ' +
+    'display:flex; align-items:center; justify-content:center;';
+
+  var modal = document.createElement('div');
+  modal.className = 'qqq-goods-settings-modal';
+  modal.style.cssText =
+    'background:var(--card-bg); border:1px solid var(--border-color); ' +
+    'border-radius:8px; padding:24px 28px; min-width:360px; max-width:480px; ' +
+    'box-shadow:0 8px 32px rgba(0,0,0,0.28); ' +
+    'color:var(--text-primary); font-size:13px; line-height:1.6;';
+
+  // ── 标题行 ──
+  var titleRow = document.createElement('div');
+  titleRow.style.cssText =
+    'display:flex; align-items:center; margin-bottom:16px; gap:8px;';
+
+  var titleText = document.createElement('span');
+  titleText.textContent = (goodsId === 'kope-a') ? 'kope-a 设置' : 'window there 设置';
+  titleText.style.cssText = 'font-weight:700; font-size:15px; flex:1;';
+  titleRow.appendChild(titleText);
+
+  var closeBtn = document.createElement('span');
+  closeBtn.textContent = '\u2715';  // ✕
+  closeBtn.style.cssText =
+    'cursor:default; font-size:16px; color:var(--text-muted); opacity:0.6; ' +
+    'padding:2px 6px; border-radius:3px;';
+  closeBtn.addEventListener('mouseenter', function () { closeBtn.style.opacity = '1'; closeBtn.style.background = 'var(--background-color)'; });
+  closeBtn.addEventListener('mouseleave', function () { closeBtn.style.opacity = '0.6'; closeBtn.style.background = ''; });
+  closeBtn.addEventListener('click', function (e) { e.stopPropagation(); _closeGoodsSettings(); });
+  titleRow.appendChild(closeBtn);
+  modal.appendChild(titleRow);
+
+  // ── 介绍文字 ──
+  var intro = document.createElement('div');
+  intro.style.cssText =
+    'color:var(--text-muted); font-size:12px; line-height:1.6; margin-bottom:20px; ' +
+    'padding:12px; background:var(--background-color); border-radius:6px;';
+  if (goodsId === 'kope-a') {
+    intro.textContent = '用右下角滴卡片，或者一个音效提示你已经复制成功，点击右下角卡片滴下半区域可以让该卡片进入或退出编辑模式。';
+  } else {
+    intro.textContent = '记录和还原窗口滴位置和尺寸。记录：1、确保当前要记录滴那个窗口在屏幕上显示但没有获得焦点，简单讲就是不要让要记录滴窗口是焦点窗口。2、光标到达该窗口范围内。3、按3下 w 键。还原：1、同样确保要还原滴那个窗口在屏幕上显示但没有获得焦点。2、同样光标进入该窗口范围。3、按3下 x 键。';
+  }
+  modal.appendChild(intro);
+
+  // ── kope-a 专属设置：是否弹出卡片 ──
+  if (goodsId === 'kope-a') {
+    var settingRow = document.createElement('div');
+    settingRow.style.cssText =
+      'display:flex; align-items:center; padding:10px 0; gap:12px; ' +
+      'border-top:1px solid var(--border-color);';
+
+    var settingLabel = document.createElement('span');
+    settingLabel.textContent = '启用卡片';
+    settingLabel.style.cssText = 'flex:1; font-weight:600;';
+    settingRow.appendChild(settingLabel);
+
+    // ── toggle switch for showCard ──
+    var cardToggle = document.createElement('div');
+    cardToggle.title = '是否弹出卡片';
+    cardToggle.style.cssText =
+      'position:relative; width:44px; height:24px; border-radius:12px; ' +
+      'background:var(--border-color); transition:background 200ms; ' +
+      'flex-shrink:0; cursor:default;';
+    var cardKnob = document.createElement('div');
+    cardKnob.style.cssText =
+      'position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%; ' +
+      'background:#fdf6e3; box-shadow:0 1px 3px rgba(0,0,0,0.25); transition:left 200ms;';
+    cardToggle.appendChild(cardKnob);
+
+    var _cardToggleReady = true;
+    function _setCardToggleUI(on) {
+      cardToggle.style.background = on ? '#859900' : 'var(--border-color)';
+      cardKnob.style.left = on ? '22px' : '2px';
+    }
+
+    // 加载当前设置
+    if (bridge && bridge.gaeaProcess && bridge.gaeaProcess.getSettings) {
+      bridge.gaeaProcess.getSettings(goodsId).then(function (s) {
+        var showCard = s && s.showCard !== undefined ? s.showCard : true;
+        _setCardToggleUI(showCard);
+      }).catch(function () {
+        _setCardToggleUI(true);
+      });
+    } else {
+      _setCardToggleUI(true);
+    }
+
+    cardToggle.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!_cardToggleReady) return;
+      _cardToggleReady = false;
+
+      var currentOn = cardToggle.style.background === 'rgb(133, 153, 0)' || cardToggle.style.background === '#859900';
+      var newOn = !currentOn;
+      _setCardToggleUI(newOn);
+
+      if (bridge && bridge.gaeaProcess && bridge.gaeaProcess.setSetting) {
+        bridge.gaeaProcess.setSetting(goodsId, 'showCard', newOn).then(function () {
+          _cardToggleReady = true;
+        }).catch(function () {
+          _setCardToggleUI(!newOn);
+          _cardToggleReady = true;
+        });
+      } else {
+        _cardToggleReady = true;
+      }
+    });
+
+    settingRow.appendChild(cardToggle);
+    modal.appendChild(settingRow);
+  }
+
+  overlay.appendChild(modal);
+
+  // 点击背景关闭
+  overlay.addEventListener('click', function (e) {
+    if (e.target === overlay) _closeGoodsSettings();
+  });
+
+  // ESC 关闭
+  function _onEsc(e) {
+    if (e.key === 'Escape') { _closeGoodsSettings(); document.removeEventListener('keydown', _onEsc); }
+  }
+  document.addEventListener('keydown', _onEsc);
+
+  document.body.appendChild(overlay);
+  _goodsSettingsModal = overlay;
 }
 
 async function bootMenu() {

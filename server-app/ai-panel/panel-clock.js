@@ -324,8 +324,8 @@ function startFloorTimer(aiDiv, ag, resume) {
         aiDiv._clockCost._floorNum = null;
         aiDiv._clockCost._passby = null;
     }
-    var _pieShown = false;
-    var _lastN = 0, _lastD = 0, _lastT = 0;
+    ag._xPieShown = false;
+    ag._xLastN = 0; ag._xLastD = 0; ag._xLastT = 0;
     var _ag = ag;
     // ★ 防御：先清除可能残存的旧 timer（防止重复 start 产生僵尸）
     if (ag._floorTimerId) { clearInterval(ag._floorTimerId); ag._floorTimerId = null; }
@@ -347,13 +347,13 @@ function startFloorTimer(aiDiv, ag, resume) {
         var n = (at && at.networkMs) || 0;
         var d = (at && at.aiMs) || 0;
         var t = (at && at.otherMs) || 0;
-        if (!_pieShown && (n > 0 || d > 0 || t > 0)) { _pieShown = true; canvas.style.visibility = 'visible'; }
-        if (!_pieShown) return;
+        if (!_ag._xPieShown && (n > 0 || d > 0 || t > 0)) { _ag._xPieShown = true; canvas.style.visibility = 'visible'; }
+        if (!_ag._xPieShown) return;
         var state = 'ai';
-        if (t > _lastT) state = 'tool';
-        else if (d > _lastD) state = 'ai';
-        else if (n > _lastN) state = 'network';
-        _lastN = n; _lastD = d; _lastT = t;
+        if (t > _ag._xLastT) state = 'tool';
+        else if (d > _ag._xLastD) state = 'ai';
+        else if (n > _ag._xLastN) state = 'network';
+        _ag._xLastN = n; _ag._xLastD = d; _ag._xLastT = t;
         aiDiv._clockBlock.className = 'msg-ai-clock clock-' + state;
         drawPie(canvas, { networkMs: n, aiMs: d, otherMs: t, totalMs: elapsed });
     }, 1000);
@@ -611,6 +611,43 @@ function _tickCometClocks() {
     // ★ 定时器不再自动停止。由 _maybeStopCometClockTimer 基于建楼状态显式管理。
     //    旧自动停止逻辑：无可显示时钟→停定时器，但时钟可能因 DOM 未挂载而暂时不可见，
     //    导致定时器永久死亡（_ensureCometClockTicking 的 gate 已过，无人重启）。
+
+    // ★ A2 fix: 跨面板时钟/饼图渲染（2026-08-03）
+    //   数据源：共享 agent._floorStartPerf + agent._floorTiming。
+    //   各面板独立 renderLoop 读同一 agent，消解 timerID 不可跨 iframe 传递。
+    for (var j = 0; j < clocks.length; j++) {
+        var cj = clocks[j];
+        var qj = cj.getAttribute('data-qid');
+        if (!qj || !pool || !pool[qj]) continue;
+        var bj = localBQ[qj] || (reg && reg[qj] && reg[qj].stopState === 'sending');
+        if (!bj) continue;
+        var aj = pool[qj];
+        var aid = aj._activeAiDiv;
+        if (!aid || !aid._clockBlock || !aid._clockBlock.isConnected) continue;
+        var fela = now - aj._floorStartPerf;
+        var fts = Math.floor(fela / 1000);
+        if (aid._clockMin) aid._clockMin.textContent = Math.floor(fts / 60) + 'm';
+        if (aid._clockSec) aid._clockSec.textContent = ':' + (fts % 60 < 10 ? '0' : '') + (fts % 60) + 's';
+        var at2 = aj._floorTiming;
+        var n2 = (at2 && at2.networkMs) || 0;
+        var d2 = (at2 && at2.aiMs) || 0;
+        var t2 = (at2 && at2.otherMs) || 0;
+        if (!aj._xPieShown && (n2 > 0 || d2 > 0 || t2 > 0)) {
+            aj._xPieShown = true;
+            if (aid._clockCanvas) aid._clockCanvas.style.visibility = 'visible';
+        }
+        if (!aj._xPieShown) continue;
+        var xn = aj._xLastN || 0; var xd = aj._xLastD || 0; var xt = aj._xLastT || 0;
+        var st2 = 'ai';
+        if (t2 > xt) st2 = 'tool';
+        else if (d2 > xd) st2 = 'ai';
+        else if (n2 > xn) st2 = 'network';
+        aj._xLastN = n2; aj._xLastD = d2; aj._xLastT = t2;
+        if (aid._clockBlock) aid._clockBlock.className = 'msg-ai-clock clock-' + st2;
+        if (typeof drawPie === 'function' && aid._clockCanvas) {
+            drawPie(aid._clockCanvas, { networkMs: n2, aiMs: d2, otherMs: t2, totalMs: fela });
+        }
+    }
 }
 
 function _ensureCometClockTicking() {

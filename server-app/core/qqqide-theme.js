@@ -106,9 +106,17 @@
   }
 
   // ==========================================================================
-  // §3 Monaco Editor 主题定义 — 照抄 VS Code solarized-light/dark tokenColors
+  // §3 Monaco Editor 主题定义 — 唯一真理渲染中心机器
+  //
+  // ★ 体系：inherit=true（继承 base 主题全部 token 规则）→ 仅为需 Solarized
+  //   配色的 token 设覆盖规则。★ Monaco base 主题（vs/vs-dark）不含 markup
+  //   token 规则 → 我们的 markup 规则需自备 foreground + fontStyle。
+  //
+  // ★ 铁律：所有 Monaco token 渲染规则在此一处定义，禁止散落。
+  //   新增语言 token 规则也必须加在这里。
   // ==========================================================================
   const MONACO_LIGHT_RULES = [
+    // -- 默认 + 编程语言 token (Solarized Light) --
     { token: '', foreground: '5c7060', background: 'FDF6E3' },
     { token: 'comment', foreground: '95958a', fontStyle: 'italic' },
     { token: 'string', foreground: '2a9a78' },
@@ -128,9 +136,28 @@
     { token: 'support.type', foreground: '859900' },
     { token: 'support', foreground: '839080' },
     { token: 'invalid', foreground: 'DC322F' },
+    // -- Markdown / markup token（前缀匹配，fontStyle 自给自足） --
+    { token: 'markup.italic', foreground: '5c7060', fontStyle: 'italic' },
+    { token: 'markup.bold', foreground: '5c7060', fontStyle: 'bold' },
+    { token: 'markup.heading', foreground: '3a5040', fontStyle: 'bold' },
+    { token: 'markup.quote', foreground: '7a8070', fontStyle: 'italic' },
+    { token: 'markup.raw', foreground: 'c83070' },
+    { token: 'markup.underline', foreground: '4078a0', fontStyle: 'underline' },
+    { token: 'markup.list', foreground: '5c7060' },
+    { token: 'markup.changed', foreground: 'B58900' },
+    { token: 'markup.inserted', foreground: '859900' },
+    { token: 'markup.deleted', foreground: 'DC322F' },
+    // -- Diff token --
+    { token: 'diff.header', foreground: '58685e' },
+    { token: 'diff.range', foreground: 'CB4B16' },
+    // -- HTML/XML token --
+    { token: 'metatag', foreground: '58685e' },
+    { token: 'attribute.value', foreground: '2a9a78' },
+    { token: 'delimiter', foreground: '839080' },
   ];
 
   const MONACO_DARK_RULES = [
+    // -- 默认 + 编程语言 token (Solarized Dark) --
     { token: '', foreground: 'dcd8d0', background: '1e1e1e' },
     { token: 'comment', foreground: '6a6660', fontStyle: 'italic' },
     { token: 'string', foreground: '8fbc5a' },
@@ -150,6 +177,24 @@
     { token: 'support.type', foreground: '8fbc5a' },
     { token: 'support', foreground: 'a8a49c' },
     { token: 'invalid', foreground: 'ff4444' },
+    // -- Markdown / markup token（前缀匹配，fontStyle 自给自足） --
+    { token: 'markup.italic', foreground: 'dcd8d0', fontStyle: 'italic' },
+    { token: 'markup.bold', foreground: 'dcd8d0', fontStyle: 'bold' },
+    { token: 'markup.heading', foreground: 'e8e4d8', fontStyle: 'bold' },
+    { token: 'markup.quote', foreground: '98948c', fontStyle: 'italic' },
+    { token: 'markup.raw', foreground: 'b85872' },
+    { token: 'markup.underline', foreground: 'd4a017', fontStyle: 'underline' },
+    { token: 'markup.list', foreground: 'dcd8d0' },
+    { token: 'markup.changed', foreground: 'd4a017' },
+    { token: 'markup.inserted', foreground: '8fbc5a' },
+    { token: 'markup.deleted', foreground: 'ff4444' },
+    // -- Diff token --
+    { token: 'diff.header', foreground: 'c8c4b8' },
+    { token: 'diff.range', foreground: 'e07020' },
+    // -- HTML/XML token --
+    { token: 'metatag', foreground: 'c8c4b8' },
+    { token: 'attribute.value', foreground: '8fbc5a' },
+    { token: 'delimiter', foreground: 'a8a49c' },
   ];
 
   // ==========================================================================
@@ -305,7 +350,7 @@
     try {
       monaco.editor.defineTheme('solarized-light', {
         base: 'vs',
-        inherit: false,
+        inherit: true,
         colors: {
           'editor.background': '#FDF6E3',
           'editor.foreground': '#5c7060',
@@ -334,7 +379,7 @@
 
       monaco.editor.defineTheme('solarized-dark', {
         base: 'vs-dark',
-        inherit: false,
+        inherit: true,
         colors: {
           'editor.background': '#1e1e1e',
           'editor.foreground': '#dcd8d0',

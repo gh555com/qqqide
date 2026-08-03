@@ -89,13 +89,10 @@ function _pidFilePath(userData: string, goodsId: string): string {
 
 function _isPidAlive(pid: number): boolean {
     try {
-        if (process.platform === 'win32') {
-            const result = execSync(`tasklist /FI "PID eq ${pid}" /NH`, { windowsHide: true, timeout: 3000 });
-            return result.toString().includes(`${pid}`);
-        } else {
-            process.kill(pid, 0);
-            return true;
-        }
+        // ★ process.kill(pid, 0) 跨平台有效：Windows 上底层调 OpenProcess+GetExitCodeProcess，
+        //    不依赖 tasklist /FI 语法（部分 Windows 语言/版本下 tasklist /FI 不可用）
+        process.kill(pid, 0);
+        return true;
     } catch {
         return false;
     }
@@ -230,6 +227,48 @@ function _startOsHeartbeat(goodsId: string, pid: number, autoStart: boolean): No
         _writeOsState(goodsId, { pid, autoStart: current.autoStart, ts: Date.now() });
     }, 10000);
     return timer;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OS 级 Goods 设置持久化（跨绿色包）
+// 路径: C:\Users\{用户}\AppData\Local\{goodsId}\.gaea-settings.json
+// ═══════════════════════════════════════════════════════════════
+
+function _getOsSettingsPath(goodsId: string): string {
+    return path.join(_getOsStateDir(goodsId), '.gaea-settings.json');
+}
+
+export function getGoodsSetting(goodsId: string, key: string): any {
+    try {
+        const p = _getOsSettingsPath(goodsId);
+        if (!fs.existsSync(p)) return undefined;
+        const raw = fs.readFileSync(p, 'utf-8');
+        const data = JSON.parse(raw);
+        return data[key];
+    } catch { return undefined; }
+}
+
+export function setGoodsSetting(goodsId: string, key: string, value: any): void {
+    try {
+        const p = _getOsSettingsPath(goodsId);
+        const dir = _getOsStateDir(goodsId);
+        let data: any = {};
+        if (fs.existsSync(p)) {
+            try { data = JSON.parse(fs.readFileSync(p, 'utf-8')); } catch { /* use empty */ }
+        }
+        data[key] = value;
+        const tmp = p + '.tmp';
+        fs.writeFileSync(tmp, JSON.stringify(data), 'utf-8');
+        fs.renameSync(tmp, p);
+    } catch { /* ignore */ }
+}
+
+export function getAllGoodsSettings(goodsId: string): Record<string, any> {
+    try {
+        const p = _getOsSettingsPath(goodsId);
+        if (!fs.existsSync(p)) return {};
+        return JSON.parse(fs.readFileSync(p, 'utf-8'));
+    } catch { return {}; }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -534,12 +573,48 @@ export function isGaeaProcessRunning(goodsId: string): boolean {
         const osCheck = _checkOsState(goodsId);
         if (osCheck.running) return true;
     }
+    // ★ 终极兜底：wmic 扫全量 Python 进程（OS 级状态文件缺失/过期时的最后防线）
+    if (meta && !meta.allowMultiple && process.platform === 'win32') {
+        try {
+            const wmicOut = execSync(
+                'wmic process where "name like \'%python%\'" get ProcessId,CommandLine /format:csv',
+                { windowsHide: true, timeout: 5000 }
+            ).toString();
+            for (const line of wmicOut.split('\n')) {
+                if (line.includes(goodsId + '/q3.py') || line.includes(goodsId + '\\q3.py')) {
+                    const pidMatch = line.match(/,(\d+)/);
+                    if (pidMatch && _isPidAlive(parseInt(pidMatch[1], 10))) {
+                        return true;
+                    }
+                }
+            }
+        } catch { /* wmic not available */ }
+    }
     return false;
 }
 
 export function getGaeaProcessPid(goodsId: string): number | null {
     const entry = _registry.get(goodsId);
-    return entry ? entry.pid : null;
+    if (entry && entry.pid) return entry.pid;
+    // ★ 从 OS 级状态文件获取 PID（跨绿色包）
+    const osState = _readOsState(goodsId);
+    if (osState && _isPidAlive(osState.pid)) return osState.pid;
+    // ★ wmic 兜底
+    if (process.platform === 'win32') {
+        try {
+            const wmicOut = execSync(
+                'wmic process where "name like \'%python%\'" get ProcessId,CommandLine /format:csv',
+                { windowsHide: true, timeout: 5000 }
+            ).toString();
+            for (const line of wmicOut.split('\n')) {
+                if (line.includes(goodsId + '/q3.py') || line.includes(goodsId + '\\q3.py')) {
+                    const pidMatch = line.match(/,(\d+)/);
+                    if (pidMatch) return parseInt(pidMatch[1], 10);
+                }
+            }
+        } catch { /* ignore */ }
+    }
+    return null;
 }
 
 export function cleanupAllGaeaProcesses(): void {

@@ -490,13 +490,17 @@ async function _restoreAgentFromStore(questId, ag) {
         if (_isV10Biscuit) {
             ag.conversation.unshift({ role: 'system', content: _restoredNarrative, _compressed: true, _dynamic: true });
         }
-        // ★ V13 恢复：biscuit 消息从 ctx.biscuitLines 重建注入（DE 概念已消除）
+        // ★ V18 fix: biscuit 消息始终从 ctx.biscuitLines 重建（ctx.json 为权威真理源）。
+        //   旧逻辑仅在无 conversation biscuit 时注入 → 压缩按钮修改 ctx.biscuitLines 后
+        //   重启时 all.json 里的旧 biscuit（未压缩）先被恢复 → _hasBiscuitMsg=true
+        //   → ctx.biscuitLines（已压缩）被忽略 → 压缩丢失。
+        //   现在：ctx.biscuitLines 存在时，先删光 conversation 中所有 biscuit，再用 ctx 重建。
         if (_isV12Biscuit) {
-            var _hasBiscuitMsg = false;
-            for (var _scmi = 0; _scmi < ag.conversation.length; _scmi++) {
-                if (ag.conversation[_scmi]._biscuit) _hasBiscuitMsg = true;
-            }
-            if (!_hasBiscuitMsg && ag._ctx.biscuitLines && ag._ctx.biscuitLines.length > 0) {
+            if (ag._ctx.biscuitLines && ag._ctx.biscuitLines.length > 0) {
+                // 删除所有旧 biscuit 消息（可能来自 all.json 的过期快照）
+                for (var _scmi = ag.conversation.length - 1; _scmi >= 0; _scmi--) {
+                    if (ag.conversation[_scmi]._biscuit) ag.conversation.splice(_scmi, 1);
+                }
                 var _rebuildBiscuit = ag._ctx.biscuitLines.map(function (l) { return l.text; }).join('\n\n');
                 ag.conversation.splice(ag._persistentCount || 0, 0,
                     { role: 'system', content: _rebuildBiscuit, _dynamic: true, _biscuit: true });

@@ -558,8 +558,8 @@ $input.addEventListener('focus', function () {
 });
 
 function insertChipAtCursor(filePath, isDir, lineRange) {
-    // ★ L1 守卫：路径含分隔符 emoji 或弯引号→拒绝注入，防嵌套解析混乱
-    if (/[\ud83d\udcce\ud83d\udcc1\u201c\u201d]/.test(filePath)) {
+    // ★ L1 守卫：仅拒绝 ASCII 直双引号 " (U+0022)，NTFS 禁用此字符 → 分隔符与路径零碰撞
+    if (filePath.indexOf('"') !== -1) {
         try { if (parent && parent.qqqideQoast) parent.qqqideQoast.show('路径含不兼容字符，无法附加', { type: 'warning', duration: 4000 }); } catch (_) { }
         return;
     }
@@ -992,6 +992,8 @@ window._restoreGuideBlocksToContentWrap = _restoreGuideBlocksToContentWrap;
 //     主进程 500ms 后 process.exit(0) 可能截断 JSON 写入，导致 all.json 半截。
 //     改为 e.preventDefault() 挡住窗口销毁，等 save 完成或 2 秒超时才放行。
 window.addEventListener('beforeunload', function (e) {
+    // 用户点击「重置窗口」→ 旁路标签，不拦截
+    if (window.__qqq_reloading) return;
     var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     var _qid = (typeof questActiveId !== 'undefined') ? questActiveId : null;
     if (!_ag || !_qid) return;

@@ -1017,6 +1017,11 @@ window.addEventListener('message', async function (e) {
                     if (typeof _writeCtxJson === 'function') {
                         _writeCtxJson(qid, ag._ctx).catch(function () { });
                     }
+                    // ★ 立即刷新 ctx-btn（r 已替换背包变小）
+                    ag._lastApiPromptTokens = 0;
+                    ag._lastApiTotalTokens = 0;
+                    ag._lastApiCompletionTokens = 0;
+                    if (typeof updateCtxBtn === 'function') updateCtxBtn();
                     _respond({
                         type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: true,
                         beforeChars: beforeChars, afterChars: afterChars, status: 'floor-starting'
@@ -1056,6 +1061,11 @@ window.addEventListener('message', async function (e) {
                 if (typeof _writeCtxJson === 'function') {
                     _writeCtxJson(qid, ag._ctx).catch(function () { });
                 }
+                // ★ 立即刷新 ctx-btn（背包已变小）
+                ag._lastApiPromptTokens = 0;
+                ag._lastApiTotalTokens = 0;
+                ag._lastApiCompletionTokens = 0;
+                if (typeof updateCtxBtn === 'function') updateCtxBtn();
                 break;
             }
         }

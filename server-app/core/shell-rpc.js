@@ -341,6 +341,18 @@ function bootRpcForwarder() {
       }
     }
   });
+
+  // ★ Roam 跨窗口同步: 主进程 roam-changed → 转发到所有 iframe
+  if (bridge.roam && bridge.roam.onChanged) {
+    bridge.roam.onChanged(function(msg) {
+      var iframes = document.querySelectorAll('iframe');
+      for (var i = 0; i < iframes.length; i++) {
+        try {
+          iframes[i].contentWindow.postMessage({ type: 'qqqide-roam-changed', key: msg.key, value: msg.value }, '*');
+        } catch (_) { /* iframe 跨域或已销毁 */ }
+      }
+    });
+  }
 }
 
 // ---- KeyHookService bootstrap ----

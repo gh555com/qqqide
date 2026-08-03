@@ -534,6 +534,22 @@ export class QzSpawn {
             brief.timeout = SYSTEM_MAX_TIMEOUT;
         }
 
+        // ★ 短命令快速通道：timeout≤30s 且无 shell 元字符 → 跳过 ghrun spawn 开销 (省 50-200ms)
+        //   AI 高频命令 (echo/dir/cat/findstr/type) 几乎全走此路径。
+        //   Job Object 内存硬限制在此不关键——短命令 5s 首检 + 15s 续检足够覆盖。
+        const _isShort = (brief.timeout || 0) <= 30_000 && brief.timeout > 0;
+        if (_isShort) {
+            var _hasMeta = SHELL_META_RE.test(brief.cmd);
+            if (!_hasMeta && brief.args) {
+                for (var _i = 0; _i < brief.args.length; _i++) {
+                    if (SHELL_META_RE.test(brief.args[_i])) { _hasMeta = true; break; }
+                }
+            }
+            if (!_hasMeta) {
+                return _capOutput(await nodeTier(brief, this.appRoot));
+            }
+        }
+
         // Tier 1: ghrun (Rust, full anti-hang: deadline + stall + tree-kill + process group isolation)
         const ghrun = resolveGhrunBin(this.appRoot);
         if (ghrun) {

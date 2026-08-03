@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// service-worker.js v237 — online-popup: +day +ge columns, no color diff, sync bottom-left
+// service-worker.js v329 — goods gear btn + settings modal; kope/window-there factory OFF; showCard OS-level setting
 // PWA strategy:
 //   - index.html / navigation : network-first(2s), fallback cache, last-resort 503
 //   - core/* qoods/* assets   : stale-while-revalidate
@@ -9,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v326'; // v326: fix ViewZone _attached stale after tab close → reopen no images; anchor-map re-attach cleanup; editor.js onDidDispose calls viewzone/anchor-map/paste-router dispose
+const CACHE_NAME = 'qqq-shell-v342'; // v342: gear SVG refined — bigger center r7, shorter teeth, pure black
 const PRECACHE_URLS = [
   './',
   './index.html',

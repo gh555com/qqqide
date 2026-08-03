@@ -240,19 +240,20 @@
     }
   }
 
-  function setTabDirty(filePath, dirty) {
+  // ★ 唯一真理中心机器：一切 tab dirty/preview 状态变更必须走此函数。
+  //   patch 可含 {dirty, preview}，只更新传入的字段。
+  //   穷举一切路径：setTabDirty / replaceFileInTab / openFileIn{Left,Right}Group 预览复用。
+  function _setTabState(filePath, patch) {
+    // 更新 tab 对象
     for (const grp of groups) {
       if (grp.type !== 'file') continue;
       for (const t of grp.tabs) {
         if (t.filePath !== filePath) continue;
-        t.dirty = dirty;
-        // First edit → pin the preview tab (exits preview mode)
-        if (dirty && t.preview) {
-          t.preview = false;
-        }
+        if ('dirty' in patch) t.dirty = patch.dirty;
+        if ('preview' in patch) t.preview = patch.preview;
       }
     }
-    // Update title display
+    // 刷新所有匹配 tab 的按钮标题（同一文件可跨分组打开）
     for (const grp of groups) {
       if (grp.type !== 'file') continue;
       for (const t of grp.tabs) {
@@ -260,6 +261,13 @@
         updateTabBtnTitle(t);
       }
     }
+  }
+
+  function setTabDirty(filePath, dirty) {
+    var patch = { dirty: dirty };
+    // First edit → pin the preview tab (exits preview mode)
+    if (dirty) patch.preview = false;
+    _setTabState(filePath, patch);
   }
 
   // ---- Context menu for file tabs ----
@@ -543,8 +551,8 @@
     tab.dirty = false;
     tab.preview = true;
 
-    // Refresh button title (italic for preview) + dataset for context menu
-    updateTabBtnTitle(tab);
+    // ★ 中心机器：统一设置 tab 状态并刷新标题
+    _setTabState(filePath, { dirty: false, preview: true });
     const btn = grp.barEl.querySelector(`[data-tab-id="${tab.id}"]`);
     if (btn) btn.dataset.filePath = filePath;
 
@@ -662,7 +670,7 @@
       previewTab.title = fileName;
       previewTab.dirty = false;
       previewTab.preview = true;
-      updateTabBtnTitle(previewTab);
+      _setTabState(filePath, { dirty: false, preview: true });
       const btn = targetGrp.barEl.querySelector(`[data-tab-id="${previewTab.id}"]`);
       if (btn) btn.dataset.filePath = filePath;
       activateTab(targetGrp, previewTab.id);
@@ -812,7 +820,7 @@
       previewTab.title = fileName;
       previewTab.dirty = false;
       previewTab.preview = true;
-      updateTabBtnTitle(previewTab);
+      _setTabState(filePath, { dirty: false, preview: true });
       const btn = targetGrp.barEl.querySelector(`[data-tab-id="${previewTab.id}"]`);
       if (btn) btn.dataset.filePath = filePath;
       activateTab(targetGrp, previewTab.id);

@@ -1,6 +1,4 @@
 <!DOCTYPE html>
-
-<!-- Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved. -->
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
@@ -9,13 +7,16 @@
 <style>
 :root {
     --bg: #fdf6e3; --bg2: #eee8d5; --fg: #586e75; --fg2: #839496;
-    --border: #d3cbb7; --blue: #268bd2; --cyan: #2aa198; --green: #859900;
-    --yellow: #b58900; --orange: #cb4b16; --red: #dc322f; --magenta: #d33682;
+    --border: #d3cbb7;     --blue: #268bd2; --cyan: #2aa198; --green: #859900;
+    --yellow: #b58900; --orange: #d4870a; --red: #dc322f; --magenta: #d33682;
     --violet: #6c71c4; --base03: #002b36; --base02: #073642;
 }
 [data-theme="dark"], .dark {
-    --bg: #002b36; --bg2: #073642; --fg: #839496; --fg2: #586e75;
-    --border: #1a4a54; --base03: #fdf6e3;
+    --bg: #1e1e1e; --bg2: #2a2a2a; --fg: #bbb; --fg2: #777;
+    --border: #2a2a2a; --base03: #eee;
+    --blue: #c9a030; --cyan: #5a9a70; --green: #7a9a40;
+    --yellow: #c9a030; --orange: #d49830; --red: #e04040;
+    --magenta: #a06070; --violet: #8a7a60;
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -48,14 +49,14 @@ body {
     border-radius: 3px; background: var(--bg2); color: var(--fg); cursor: pointer; white-space: nowrap;
 }
 .toolbar button:hover { background: var(--bg); }
-.toolbar button.primary { background: var(--blue); color: #fff; border-color: var(--blue); }
+.toolbar button.primary { background: var(--green); color: #fff; border-color: var(--green); }
 .toolbar button.primary:disabled { opacity: 0.4; cursor: not-allowed; }
 .toolbar .sep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
 .toolbar input {
     padding: 4px 8px; font-size: 12px; border: 1px solid var(--border);
     border-radius: 3px; background: var(--bg); color: var(--fg); outline: none; width: 180px;
 }
-.toolbar input:focus { border-color: var(--blue); }
+.toolbar input:focus { border-color: var(--orange); }
 
 /* ── 格子列表 ── */
 .cells {
@@ -74,7 +75,7 @@ body {
 
 /* ── 卡片 ── */
 .cell { border-bottom: 1px solid var(--border); transition: background 0.1s; }
-.cell.selected { background: rgba(38,139,210,0.08); }
+.cell.selected { background: rgba(255,255,255,0.04); }
 .cell-header {
     display: flex; align-items: center; gap: 8px; padding: 5px 10px;
     cursor: pointer; min-height: 34px;
@@ -85,9 +86,9 @@ body {
     display: flex; align-items: center; justify-content: center; flex-shrink: 0;
     cursor: pointer; font-size: 10px; color: transparent; transition: all 0.15s;
 }
-.cell-check.checked { background: var(--blue); border-color: var(--blue); color: #fff; }
+.cell-check.checked { background: var(--green); border-color: var(--green); color: #fff; }
 .cell-role { font-weight: 700; font-size: 12px; min-width: 70px; flex-shrink: 0; }
-.cell-role.user { color: var(--blue); }
+.cell-role.user { color: var(--orange); }
 .cell-role.assistant { color: var(--cyan); }
 .cell-role.tool { color: var(--red); }
 .cell-role.system { color: var(--violet); }
@@ -158,19 +159,19 @@ body {
 }
 .compress-toolbar .cmp-label { font-size: 12px; color: var(--fg2); margin-right: 4px; }
 .compress-toolbar button.cmp-btn {
-    padding: 4px 12px; font-size: 12px; border: 1px solid var(--border);
+    padding: 4px 5px; font-size: 12px; border: 1px solid var(--border);
     border-radius: 3px; background: var(--bg2); color: var(--fg); cursor: pointer; white-space: nowrap;
     font-family: 'Cascadia Code','Fira Code','JetBrains Mono','Consolas',monospace;
-    font-weight: 600; letter-spacing: 0.3px;
+    font-weight: 600; letter-spacing: -0.1px;
 }
-.compress-toolbar button.cmp-btn:hover { background: var(--bg); border-color: var(--blue); }
+.compress-toolbar button.cmp-btn:hover { background: var(--bg); border-color: var(--orange); }
 .compress-toolbar button.cmp-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .compress-toolbar .cmp-gt { color: var(--fg2); font-weight: 700; font-size: 14px; margin: 0 1px; }
 .compress-toolbar .cmp-cost-link {
-    font-size: 11px; color: var(--blue); text-decoration: underline;
+    font-size: 11px; color: var(--orange); text-decoration: underline;
     margin-left: 12px; white-space: nowrap; cursor: pointer;
 }
-.compress-toolbar .cmp-cost-link:hover { color: var(--violet); }
+.compress-toolbar .cmp-cost-link:hover { color: var(--yellow); }
 
 /* ── 压缩动画遮罩 ── */
 .cmp-anim-overlay {
@@ -191,14 +192,14 @@ body {
     overflow: hidden; position: relative; border: 1px solid var(--border);
 }
 .cmp-anim-bar-fill {
-    height: 100%; border-radius: 2px; transition: width 0.8s cubic-bezier(0.22,0.61,0.36,1);
-    background: var(--blue);
+    height: 100%; border-radius: 2px; transition: width 0.8s cubic-bezier(0.22,0.61,0.36,1), background-color 0.8s cubic-bezier(0.22,0.61,0.36,1);
+    background: var(--red);
 }
-.cmp-anim-bar-fill.after { background: var(--green); }
+/* .cmp-anim-bar-fill.after bg set dynamically via JS */
 .cmp-anim-stat {
     font-size: 11px; color: var(--fg2); text-align: center; margin-top: 4px;
 }
-.cmp-anim-stat b { color: var(--green); font-size: 15px; }
+.cmp-anim-stat b { font-size: 15px; }
 .cmp-anim-close {
     margin-top: 10px; padding: 5px 20px; font-size: 12px; border: 1px solid var(--border);
     border-radius: 4px; background: var(--bg2); color: var(--fg); cursor: pointer;
@@ -216,15 +217,15 @@ body {
 
 /* ── 按钮收益标签 ── */
 .cmp-benefit {
-    font-size: 10px; margin-left: 4px; font-weight: 400; letter-spacing: 0;
-    color: var(--green); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    font-size: 20px; font-weight: 400; margin: 0; padding: 0; line-height: 1;
+    vertical-align: middle; letter-spacing: -0.5px;
+    color: #c0392b;
+    font-family: inherit;
 }
-.cmp-benefit.zero { color: var(--fg2); }
-.cmp-benefit.low { color: var(--yellow); }
+.cmp-benefit.zero { color: var(--fg2); font-size: 16px; }
+.cmp-benefit.low { color: var(--yellow); font-size: 18px; }
 </style>
 </head>
-<body>
-
 <div class="topbar" id="topbar">
     <span class="topbar-title">📋 <span data-i18n="goods.conv.title">上下文背包</span> <span id="quest-label"></span></span>
     <span class="topbar-stat" id="stat-cells"><span data-i18n="goods.conv.cells">格子</span>: <b>0</b></span>
@@ -268,8 +269,8 @@ body {
 <div class="toast" id="toast"></div>
 
 <!-- ═══ 压缩动画遮罩 ═══ -->
-<div class="cmp-anim-overlay" id="cmpAnimOverlay">
-    <div class="cmp-anim-card">
+<div class="cmp-anim-overlay" id="cmpAnimOverlay" onclick="closeAnim()">
+    <div class="cmp-anim-card" onclick="event.stopPropagation()">
         <div class="cmp-anim-title" id="cmpAnimTitle">🧹 压缩完成</div>
         <div class="cmp-anim-bar-wrap">
             <span class="cmp-anim-label">压缩前</span>
@@ -281,7 +282,7 @@ body {
             <div class="cmp-anim-bar-track"><div class="cmp-anim-bar-fill after" id="cmpBarAfter" style="width:100%"></div></div>
             <span style="font-size:11px;color:var(--fg2)" id="cmpBarAfterLabel">60k</span>
         </div>
-        <div class="cmp-anim-stat">节省 <b id="cmpSavedPct">40%</b></div>
+        <div class="cmp-anim-stat">重量减小至 <b id="cmpSavedPct">100%</b></div>
         <div style="text-align:center;margin-top:10px">
             <button class="cmp-anim-close" onclick="closeAnim()">关闭</button>
         </div>
@@ -330,7 +331,7 @@ function syncTheme() {
         if (theme) document.documentElement.setAttribute('data-theme', theme);
         else document.documentElement.removeAttribute('data-theme');
         var styles = getComputedStyle(p.document.documentElement);
-        var vars = ['--bg','--bg2','--fg','--fg2','--border','--blue','--cyan','--green','--yellow','--orange','--red','--violet','--magenta','--base03'];
+        var vars = ['--fg','--fg2','--green','--yellow','--orange','--red','--violet','--magenta','--base03'];
         var root = document.documentElement.style;
         for (var i = 0; i < vars.length; i++) {
             var v = vars[i]; var val = styles.getPropertyValue(v).trim();
@@ -738,11 +739,11 @@ window.addEventListener('message', function (e) {
             var titleMap = { absolut: '🧹 绝对包装盒已剥离', editonly: '✂️ 已精简为仅编辑包装盒', onlyfacts: '🧠 Facts 已提取' };
             var title = titleMap[e.data.action] || '✅ 压缩完成';
             showCompressAnimation(title, e.data.beforeChars, e.data.afterChars);
-            // 动画后自动关闭
+            // 动画后自动关闭（动画0.8s + 停留2s = 2.8s，取3s）
             setTimeout(function () {
                 var overlay = document.getElementById('cmpAnimOverlay');
                 if (overlay && overlay.classList.contains('show')) closeAnim();
-            }, 2500);
+            }, 3000);
         } else {
             toast(_i('goods.conv.compressFailed', '压缩失败') + (e.data.error ? ': ' + e.data.error : ''));
         }
@@ -906,36 +907,54 @@ function _findAiFrame() {
 
 // 显示压缩动画
 function showCompressAnimation(title, beforeChars, afterChars) {
-    var pct = beforeChars > 0 ? Math.round((1 - afterChars / beforeChars) * 100) : 0;
     var maxChars = beforeChars || 1;
+    var targetPct = maxChars > 0 ? Math.round(afterChars / maxChars * 100) : 0;
+
+    // 读取主题色
+    var style = getComputedStyle(document.documentElement);
+    var colorRed = style.getPropertyValue('--red').trim() || '#c0392b';
+    var colorGreen = style.getPropertyValue('--green').trim() || '#27ae60';
 
     // 标题
     document.getElementById('cmpAnimTitle').textContent = title;
 
-    // 柱状条
+    // 柱状条：before 始终红色（重负担），after 初始红色
     var barBefore = document.getElementById('cmpBarBefore');
     var barAfter = document.getElementById('cmpBarAfter');
     barBefore.style.width = '100%';
-    barAfter.style.width = '0%';
+    barBefore.style.backgroundColor = colorRed;
+    barAfter.style.width = '100%';
+    barAfter.style.backgroundColor = colorRed;
 
     document.getElementById('cmpBarBeforeLabel').textContent = fmtSize(beforeChars);
     document.getElementById('cmpBarAfterLabel').textContent = fmtSize(afterChars);
-    document.getElementById('cmpSavedPct').textContent = pct + '%';
+
+    // 百分比：动画从 100% 滚动到 targetPct
+    var pctEl = document.getElementById('cmpSavedPct');
+    _animatePct(pctEl, 100, targetPct, 750);
 
     // 显示遮罩
     var overlay = document.getElementById('cmpAnimOverlay');
     overlay.classList.add('show');
 
-    // 动画：延迟一帧后收缩
+    // 3 秒后自动关闭
+    clearTimeout(window._cmpAnimTimer);
+    window._cmpAnimTimer = setTimeout(closeAnim, 3000);
+
+    // 动画：延迟一帧后从右往左收缩 + 颜色从红渐变到绿
     requestAnimationFrame(function () {
         requestAnimationFrame(function () {
-            var newPct = maxChars > 0 ? Math.round(afterChars / maxChars * 100) : 0;
-            barAfter.style.width = Math.max(newPct, 1) + '%';
+            var newPct = Math.max(targetPct, 1);
+            barAfter.style.width = newPct + '%';
+            // 颜色插值：压缩越多（targetPct 越小）→ 越绿
+            var t = targetPct / 100;
+            barAfter.style.backgroundColor = _interpolateColor(colorGreen, colorRed, t);
         });
     });
 }
 
 function closeAnim() {
+    clearTimeout(window._cmpAnimTimer);
     document.getElementById('cmpAnimOverlay').classList.remove('show');
     refresh();
 }
@@ -944,6 +963,31 @@ function fmtSize(chars) {
     if (chars >= 1000000) return (chars / 1000000).toFixed(1) + 'M';
     if (chars >= 1000) return (chars / 1000).toFixed(0) + 'k';
     return String(chars);
+}
+
+// 数字滚动动画：从 fromPct 滚动到 toPct
+function _animatePct(el, fromPct, toPct, duration) {
+    if (fromPct === toPct) { el.textContent = toPct + '%'; return; }
+    var start = performance.now();
+    function step(now) {
+        var elapsed = now - start;
+        var t = Math.min(elapsed / duration, 1);
+        var eased = 1 - Math.pow(1 - t, 3); // ease-out
+        var current = Math.round(fromPct + (toPct - fromPct) * eased);
+        el.textContent = current + '%';
+        if (t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+}
+
+// 颜色线性插值 c1→c2，t∈[0,1]
+function _interpolateColor(c1, c2, t) {
+    var r1 = parseInt(c1.slice(1,3), 16), g1 = parseInt(c1.slice(3,5), 16), b1 = parseInt(c1.slice(5,7), 16);
+    var r2 = parseInt(c2.slice(1,3), 16), g2 = parseInt(c2.slice(3,5), 16), b2 = parseInt(c2.slice(5,7), 16);
+    var r = Math.round(r1 + (r2 - r1) * t);
+    var g = Math.round(g1 + (g2 - g1) * t);
+    var b = Math.round(b1 + (b2 - b1) * t);
+    return '#' + ((1 << 24) | (r << 16) | (g << 8) | b).toString(16).slice(1);
 }
 
 // ═══ 自定义 hover tooltip ═══
