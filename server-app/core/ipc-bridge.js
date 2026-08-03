@@ -92,6 +92,12 @@
       retry: () => { location.reload(); return Promise.resolve(true); },
       probe: () => Promise.resolve(true),
     },
+    roam: {
+      get: () => Promise.resolve(null),
+      set: () => Promise.resolve(true),
+      getAll: () => Promise.resolve({}),
+      onChanged: () => () => {},
+    },
   };
 
   // ★ Trick: preload exposeInMainWorld 的 key 是 'qqqideBridge'，

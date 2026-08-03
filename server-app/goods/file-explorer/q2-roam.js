@@ -61,36 +61,82 @@ window.addEventListener('message', function(e) {
       if (e.data.dark) document.documentElement.setAttribute('data-theme', 'dark');
       else document.documentElement.removeAttribute('data-theme');
     }
+    // ★ Roam 跨窗口同步: 其他窗口改了 OS 级数据 → 重载对应 key
+    if (e.data && e.data.type === 'qqqide-roam-changed') {
+      _onRoamChanged(e.data.key, e.data.value);
+    }
 });
 
-// ★ 直连 parent.qgs.simple('roam') — 绕过 postMessage RPC，零超时零丢包
-//   与 shell-rpc.js 的 store.* RPC handler 读写同一 global.sq3 namespace
-var _roamDbDirect = null;
-function _roamDb() {
-	if (_roamDbDirect) return _roamDbDirect;
+// ★ OS 级持久化: 优先 parent.qqqideBridge.roam (OS 级 roam.sq3, 跨窗口唯一真理)
+//   降级: parent.qgs.simple('roam') (旧 per-green-pack, 迁移用)
+//   兜底: bridge.store RPC
+var _roamOsBridge = null;
+function _roamOs() {
+	if (_roamOsBridge) return _roamOsBridge;
 	try {
-		if (parent && parent.qgs && parent.qgs.simple) {
-			_roamDbDirect = parent.qgs.simple('roam');
-			return _roamDbDirect;
+		if (parent && parent.qqqideBridge && parent.qqqideBridge.roam) {
+			_roamOsBridge = parent.qqqideBridge.roam;
+			return _roamOsBridge;
 		}
 	} catch(e) {}
 	return null;
 }
+var _roamOldDb = null;
+function _roamOld() {
+	if (_roamOldDb) return _roamOldDb;
+	try {
+		if (parent && parent.qgs && parent.qgs.simple) {
+			_roamOldDb = parent.qgs.simple('roam');
+			return _roamOldDb;
+		}
+	} catch(e) {}
+	return null;
+}
+var _roamMigrated = false;
+async function _roamMigrateIfNeeded() {
+	if (_roamMigrated) return;
+	_roamMigrated = true;
+	var os = _roamOs();
+	var old = _roamOld();
+	if (!os || !old) return;
+	try {
+		// 检查 OS 级是否已有数据
+		var existing = await os.getAll();
+		if (existing && Object.keys(existing).length > 0) return; // 已有数据，不覆盖
+		// 从旧 per-green-pack 迁移
+		var oldKeys = ['roam.fineScm','roam.qqiq','roam.pinnedDirs','roam.cmdHistory','roam.sizeCache','roam.prefs','roam.lastVisitedDir','roam.sidebarWidth'];
+		for (var i = 0; i < oldKeys.length; i++) {
+			try {
+				var val = await old.get(oldKeys[i]);
+				if (val !== null && val !== undefined) {
+					await os.set(oldKeys[i], val);
+				}
+			} catch(e) { /* skip */ }
+		}
+		console.log('[roam] migrated from per-green-pack → OS-level roam.sq3');
+	} catch(e) { console.warn('[roam] migration skipped:', e); }
+}
 async function _roamGet(key) {
-	var db = _roamDb();
-	if (db) {
-		try { return await db.get(key); } catch(e) { console.warn('[roam] direct get failed:', key, e); }
+	// OS 级优先
+	var os = _roamOs();
+	if (os) {
+		try { return await os.get(key); } catch(e) { console.warn('[roam] OS get failed:', key, e); }
 	}
-	// 降级到 RPC
+	// 降级: 旧 per-green-pack
+	var old = _roamOld();
+	if (old) {
+		try { return await old.get(key); } catch(e) { console.warn('[roam] old get failed:', key, e); }
+	}
+	// 兜底: RPC
 	try { return await bridge.store.get(key); } catch(e) { return null; }
 }
 function _roamSet(key, value) {
-	var db = _roamDb();
-	if (db) {
-		db.set(key, value).catch(function(e) { console.warn('[roam] direct set failed:', key, e); });
+	var os = _roamOs();
+	if (os) {
+		os.set(key, value).catch(function(e) { console.warn('[roam] OS set failed:', key, e); });
 		return;
 	}
-	// 降级到 RPC
+	// 降级: RPC
 	bridge.store.set(key, value);
 }
 
@@ -123,6 +169,11 @@ var bridge = {
 		set: (k, v) => rpc('store.set', { key: k, value: v }),
 		getLocal: (k) => rpc('store.getLocal', k),
 		setLocal: (k, v) => rpc('store.setLocal', { key: k, value: v }),
+	},
+	roam: {
+		get: (k) => rpc('roam.get', k),
+		set: (k, v) => rpc('roam.set', { __spread: true, args: [k, v] }),
+		getAll: () => rpc('roam.getAll'),
 	}
 };
 
@@ -184,7 +235,29 @@ function _qqiqSave() { _roamSet('roam.qqiq', _qqiq); }
 function _pinnedSave() { _roamSet('roam.pinnedDirs', _pinnedDirs); }
 function _historySave() { _roamSet('roam.lastVisitedDir', currentPath); }
 function _cmdHistorySave() { _roamSet('roam.cmdHistory', _cmdHistory); }
-function _sidebarSave() { bridge.store.setLocal('roam.sidebarWidth', sidebarW); }
+function _sidebarSave() { _roamSet('roam.sidebarWidth', sidebarW); }
+// ★ 跨窗口同步: 其他窗口改了 OS 级数据 → 重载对应 key
+function _onRoamChanged(key, value) {
+	if (value === undefined || value === null) return;
+	switch (key) {
+		case 'roam.fineScm': if (typeof value === 'object') _fineScm = value; break;
+		case 'roam.qqiq': if (Array.isArray(value)) { _qqiq = value; renderQqiqSection(); } break;
+		case 'roam.pinnedDirs': if (Array.isArray(value)) _pinnedDirs = value; break;
+		case 'roam.cmdHistory': if (value && typeof value === 'object') _cmdHistory = value; break;
+		case 'roam.sizeCache': if (value && typeof value === 'object') sessionSizeCache = value; break;
+		case 'roam.prefs':
+			if (value && typeof value === 'object') {
+				if (typeof value.lineSpacing === 'number') _lineSpacing = value.lineSpacing;
+				if (value.globalSzMode) _globalSzMode = value.globalSzMode;
+				if (value.globalSortBy) _globalSortBy = value.globalSortBy;
+			}
+			break;
+		case 'roam.lastVisitedDir': if (typeof value === 'string') {} break;
+		case 'roam.sidebarWidth':
+			if (typeof value === 'number' && value > 50 && value < 500) { sidebarW = value; applySidebarWidth(); }
+			break;
+	}
+}
 function applySidebarWidth() {
 	var sb = document.getElementById('sidebar');
 	var rz = document.getElementById('sidebarResizer');
@@ -1018,6 +1091,8 @@ function startRename(itemPath, itemName, itemType) {
 	nameArea.innerHTML = '';
 	nameArea.appendChild(input);
 	input.focus();
+	// Prevent click from bubbling to file item (which would navigate into folder)
+	input.addEventListener('click', function(e) { e.stopPropagation(); });
 
 	// Init char-undo for Ctrl+Z
 	if (window.qqqCharUndo && window.qqqCharUndo.attach) {
@@ -1942,7 +2017,10 @@ function calculateAndAdjustScroll() {
 
 // ---- Boot ----
 (async function boot() {
-	// ★ 直连 parent.qgs 读取持久化数据（绕过 RPC，零超时零丢包）
+	// ★ 首次启动: 从旧 per-green-pack 迁移到 OS 级 roam.sq3
+	await _roamMigrateIfNeeded();
+
+	// ★ 读取持久化数据（OS 级 roam.sq3, 跨窗口唯一真理）
 	var f = await _roamGet('roam.fineScm'); if (f && typeof f === 'object') _fineScm = f;
 	var q = await _roamGet('roam.qqiq'); if (Array.isArray(q)) _qqiq = q;
 	var p = await _roamGet('roam.pinnedDirs'); if (Array.isArray(p)) _pinnedDirs = p;
@@ -1956,7 +2034,7 @@ function calculateAndAdjustScroll() {
 		if (prefs.globalSortBy) _globalSortBy = prefs.globalSortBy;
 	}
 	try {
-		var sw = await bridge.store.getLocal('roam.sidebarWidth');
+		var sw = await _roamGet('roam.sidebarWidth');
 		if (typeof sw === 'number' && sw > 50 && sw < 500) { sidebarW = sw; applySidebarWidth(); }
 	} catch(e) {}
 

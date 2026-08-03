@@ -159,6 +159,25 @@ def _read_ide_volume():
         pass
     return 0.25  # 默认 25%，匹配 IDE 出厂默认
 
+
+def _read_show_card_setting():
+    """读取 OS 级 goods 设置：是否弹出卡片。
+    路径: %LOCALAPPDATA%/kope-a/.gaea-settings.json
+    默认 True（弹出卡片）。
+    """
+    try:
+        import json
+        settings_path = os.path.join(
+            os.path.expanduser('~'), 'AppData', 'Local', 'kope-a', '.gaea-settings.json'
+        )
+        if os.path.exists(settings_path):
+            with open(settings_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                return data.get('showCard', True)
+    except Exception:
+        pass
+    return True  # 默认弹出卡片
+
 # ==================== 音频引擎 ====================
 
 try:
@@ -774,6 +793,11 @@ class ClipboardMonitor(Qaqqlication):
                 self.play_clear_sound()
             else:
                 self.play_random_sound()
+
+            # ★ 用户设置：不弹出卡片 → 仅音效，零弹窗
+            if not _read_show_card_setting():
+                self.set_cooldown()
+                return
 
             # 如果有粘住的弹窗，就不再新增
             sticky_popups = [p for p in self.active_popups if p.is_sticky]

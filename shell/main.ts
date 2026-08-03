@@ -48,8 +48,9 @@ import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
-import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart } from './gaea-process';
+import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart, getGoodsSetting, setGoodsSetting, getAllGoodsSettings } from './gaea-process';
 import { registerKopeIpc } from './ipc-kope';
+import { registerRoamIpc } from './ipc-roam';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
@@ -268,8 +269,8 @@ function registerAllIpc(): void {
     registerSmartSearchIpc(indexService);
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
     registerQzSpawnIpc(qzSpawn);
-    registerGaeaProcessIpc();
     registerKopeIpc();
+    registerRoamIpc();
     registerMediaIpc(mediaService);
     registerAuthBrainIpc(getAuthBrain());
     registerDesktopShortcutIpc();
@@ -337,8 +338,8 @@ function registerDesktopShortcutIpc(): void {
 // ── Gaea Process IPC — 通用 gaea process-type goods 进程管理 ──
 /** 出厂默认自动启动映射（首次安装时生效，用户勾选后持久化覆盖） */
 const _PROCESS_GOODS_AUTOSTART_DEFAULTS: Record<string, boolean> = {
-    'kope-a': true,
-    'window-there': false,
+    'kope-a': false,       // ★ 出厂关闭
+    'window-there': false,  // 出厂关闭
 };
 
 function registerGaeaProcessIpc(): void {
@@ -395,6 +396,16 @@ function registerGaeaProcessIpc(): void {
             }
             return true;
         } catch (e) { return false; }
+    });
+
+    // ★ Goods 设置（OS 级持久化，跨绿色包）
+    ipcMain.handle('qqqide:gaea-process:get-settings', async (_e, goodsId: string) => {
+        return getAllGoodsSettings(goodsId);
+    });
+
+    ipcMain.handle('qqqide:gaea-process:set-setting', async (_e, goodsId: string, key: string, value: any) => {
+        setGoodsSetting(goodsId, key, value);
+        return true;
     });
 }
 

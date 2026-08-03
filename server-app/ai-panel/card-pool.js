@@ -138,8 +138,15 @@ var CardPool = (function () {
       card.dom.parentNode.removeChild(card.dom);
     }
 
+    // 清理 MutationObserver（防内存泄漏）
+    if (card._contentWrap && card._contentWrap._imgObserver) {
+      card._contentWrap._imgObserver.disconnect();
+      card._contentWrap._imgObserver = null;
+    }
+
     // 清理
     card.dom = null;
+    card._contentWrap = null;
     card.floorDOM = {};
     card._floorMetaMap = {};
     card.floors = [];

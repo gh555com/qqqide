@@ -273,7 +273,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     </div>
     <div id="conv-list"></div>
     <div id="new-dm-bar">
-      <input type="text" id="new-peer-input" placeholder="输入完整手机号 例:8615802858204" maxlength="20" autocomplete="off">
+      <input type="text" id="new-peer-input" placeholder="键入完整手机号 例:8615802858204" maxlength="20" autocomplete="off">
     </div>
     <div id="sidebar-footer">
       <button id="btn-new-msg">+ 新建消息</button>
@@ -701,7 +701,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         setTimeout(function(){ $msgInput.style.borderColor = ''; }, 1500);
         var tip = d.tip || d.code || '发送失败';
         $msgInput.placeholder = tip;
-        setTimeout(function(){ $msgInput.placeholder = '输入消息… (Enter 发送，Shift+Enter 换行)'; }, 3000);
+        setTimeout(function(){ $msgInput.placeholder = '键入消息… (Enter 发送，Shift+Enter 换行)'; }, 3000);
       }
     }).catch(function(){
       $msgInput.value = text;

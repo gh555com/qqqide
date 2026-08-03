@@ -127,6 +127,7 @@ export function createWindow(
             nodeIntegration: false,
             sandbox: false,
             webSecurity: false,
+            spellcheck: false,
             additionalArguments: [
                 `--qqqide-root=${portableRoot}`,
                 `--qqqide-version=${appVersion}`,

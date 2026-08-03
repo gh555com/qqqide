@@ -37,7 +37,9 @@
   function _renderCountryBadge(cc) {
     if (!cc || cc.length !== 2) return '';
     var upper = cc.toUpperCase();
-    return '<span style="display:inline-flex;align-items:center;gap:2px;font-size:11px;font-weight:600;color:var(--text-dim,#888);background:var(--bg-tertiary,#333);padding:0 4px;border-radius:3px;line-height:16px;">' + upper + '</span>';
+    // ★ 国旗 emoji：Unicode regional indicator  A=U+1F1E6
+    var flag = String.fromCodePoint(0x1F1E6 + (upper.charCodeAt(0) - 65), 0x1F1E6 + (upper.charCodeAt(1) - 65));
+    return '<span style="display:inline-flex;align-items:center;gap:2px;font-size:14px;line-height:16px;" title="' + upper + '">' + flag + '</span>';
   }
 
   function _buildDeviceName() {
@@ -988,14 +990,19 @@
       // 零空气：padding:0，border-radius 只右上角，虚线边框
       dd.style.cssText = 'position:absolute;top:calc(100% + 2px);right:0;background:var(--background-color);border:2px dashed var(--border-color);border-radius:0 8px 6px 6px;box-shadow:0 6px 20px rgba(0,0,0,0.15);z-index:99999;min-width:120px;padding:0;overflow:hidden;';
       // ge 流水
-      var flow = document.createElement('a');
+      var flow = document.createElement('div');
       flow.textContent = 'ge 流水';
-      flow.href = 'https://gh555.com/viewer/geflow';
-      flow.target = '_blank';
       flow.style.cssText = 'display:block;height:32px;line-height:32px;padding:0 16px;cursor:pointer;font-size:13px;color:var(--text-primary);white-space:nowrap;text-decoration:none;';
       flow.addEventListener('mouseenter', function () { flow.style.background = 'var(--gold-hover-bg)'; });
       flow.addEventListener('mouseleave', function () { flow.style.background = ''; });
-      flow.addEventListener('click', function () { _cleanupPhoneDD(); });
+      flow.addEventListener('click', function () {
+        _cleanupPhoneDD();
+        try {
+          if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.openExternal) {
+            window.qqqideBridge.shell.openExternal('https://gh555.com/viewer/geflow');
+          }
+        } catch (_) { }
+      });
       dd.appendChild(flow);
       // 退出登录（零间隙，无分隔线）
       var logout = document.createElement('div');

@@ -251,7 +251,10 @@
     var html = '';
     // 标题行
     html += '<div style="padding:16px 20px; border-bottom:1px solid ' + border + '; display:flex; align-items:center; justify-content:space-between;">';
+    html += '<div style="display:flex; align-items:center; gap:12px;">';
     html += '<span style="font-size:15px; font-weight:bold; color:' + text + ';">设置</span>';
+    html += '<button id="qqq-settings-restart" style="padding:3px 10px; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:11px; cursor:default; white-space:nowrap;">重置窗口</button>';
+    html += '</div>';
     html += '<button id="qqq-settings-close" style="width:24px; height:24px; border:1px solid ' + border + '; border-radius:3px; background:transparent; color:' + textDim + '; font-size:14px; line-height:22px; text-align:center;">✕</button>';
     html += '</div>';
 
@@ -365,6 +368,31 @@
     var $close = document.getElementById('qqq-settings-close');
     if ($close) {
       $close.addEventListener('click', close);
+    }
+
+    // 绑定重置窗口按钮（等价 Ctrl+Shift+R）
+    var $restart = document.getElementById('qqq-settings-restart');
+    if ($restart) {
+      $restart.addEventListener('click', function () {
+        $restart.textContent = '重置中...';
+        $restart.style.opacity = '0.6';
+        $restart.style.pointerEvents = 'none';
+
+        // ★ 设旁路标签 → beforeunload 检测到此标签跳过 e.preventDefault()
+        window.__qqq_reloading = true;
+        var b2 = window.qqqideBridge;
+        if (b2 && b2.shell && b2.shell.hardRefresh) {
+          b2.shell.hardRefresh();
+        } else {
+          location.reload();
+        }
+        // 兜底：如果 800ms 后还在，强刷
+        setTimeout(function () {
+          if (!window.__qqq_reloading) return;
+          window.__qqq_reloading = true;
+          location.reload();
+        }, 800);
+      });
     }
 
     // ★ 绑定标签页切换

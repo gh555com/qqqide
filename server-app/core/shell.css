@@ -1704,6 +1704,22 @@ body {
   margin: -1px 0;
 }
 
+/* ── Goods 设置弹窗 ── */
+.qqq-goods-settings-overlay {
+  animation: qqqGoodsSettingsFadeIn 150ms ease;
+}
+@keyframes qqqGoodsSettingsFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.qqq-goods-settings-modal {
+  animation: qqqGoodsSettingsSlideIn 200ms ease;
+}
+@keyframes qqqGoodsSettingsSlideIn {
+  from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 /* ── A 区 GH Health 固定商标位 ── */
 .gaea-gh-health:hover {
   opacity: 0.8 !important;
