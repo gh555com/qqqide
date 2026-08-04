@@ -15,5 +15,5 @@ jobs:
       - name: Push to kkn1n/qqq-IDE
         run: |
           git remote add mirror https://x-access-token:${{ secrets.QQQ_TOKEN }}@github.com/kkn1n/qqq-IDE.git
-          git push mirror --all
-          git push mirror --tags
+          git push mirror --all --force
+          git push mirror --tags --force
