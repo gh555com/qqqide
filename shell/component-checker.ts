@@ -7,6 +7,7 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import { spawnSync, execSync } from 'child_process';
 
 // ── 类型 ──
@@ -400,7 +401,12 @@ async function _ensureOne(
 
     // ── ④ 下载 ──
     console.log('[components] ' + name + ': not found, downloading...');
-    const srcs = (def.srcs[pk] || []) as SrcEntry[];
+    let srcs = (def.srcs[pk] || []) as SrcEntry[];
+    // Win7/8 (6.1/6.2/6.3): git ≥2.47 已放弃 Win7/8 → 用 Win7 兼容版 2.46.0
+    if (name === 'git' && process.platform === 'win32' && /^6\.[123]\./.test(os.release())) {
+        const w7 = (def as any).win7_srcs?.[pk] as SrcEntry[] | undefined;
+        if (w7 && w7.length) srcs = w7;
+    }
     if (srcs.length === 0) {
         console.log('[components] ' + name + ': no sources for platform ' + pk);
         return;
@@ -460,7 +466,7 @@ async function _downloadAndInstall(
     } else if (src.kind === 'zip') {
         if (process.platform === 'win32') {
             execSync(
-                `powershell -NoProfile -Command "Expand-Archive -Path '${dlFile}' -DestinationPath '${targetDir}' -Force"`,
+                `powershell -NoProfile -Command "try { Expand-Archive -Path '${dlFile}' -DestinationPath '${targetDir}' -Force } catch { Add-Type -AssemblyName System.IO.Compression.FileSystem; try { [System.IO.Compression.ZipFile]::ExtractToDirectory('${dlFile}','${targetDir}') } catch { $sh=New-Object -ComObject Shell.Application; $z=$sh.NameSpace('${dlFile}'); $d=$sh.NameSpace('${targetDir}'); $n=$z.Items().Count; $d.CopyHere($z.Items(), 16); $t0=Get-Date; while(((Get-Date)-$t0).TotalSeconds -lt 90){ if($d.Items().Count -ge $n){ Start-Sleep -Milliseconds 500; break }; Start-Sleep -Milliseconds 500 } } }"`,
                 { windowsHide: true, timeout: 120000 }
             );
         } else {

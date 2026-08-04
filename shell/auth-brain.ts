@@ -64,7 +64,9 @@ export function initAuthBrain(userDataPath: string, portableRoot: string, appVer
 // ═══ 常量 ═══
 
 const AUTH_FILE = 'auth.enc';
-const API_BASE = 'https://direct-cn.gh555.com/api';
+// ★ F40: 统一走 gh555.com 主域（与登录页同域）——客户能打开登录页就能拉余额/LV。
+//   direct-cn 灰云域名在部分客户网络（运营商污染/DNS 问题）不通，导致余额/LV 永远拉不到。
+const API_BASE = 'https://gh555.com/api';
 const LOGIN_URL = 'https://gh555.com/login';
 const BALANCE_INTERVAL = 60_000;
 const LV_INTERVAL = 60_000;
@@ -207,9 +209,15 @@ class AuthBrain {
     }
 
     // ═══ 会话轮询（OS 协议回调失败时的兜底） ═══
+    // ★ F39 修复: _stopSessionPoll() 会清空 _sessionId → _startSessionPoll 直接 return →
+    //   轮询从未启动（F25 引入，n ginx 日志 auth/poll 请求数为 0）。
+    //   此处只清旧 timer，保留 _sessionId。
 
     private _startSessionPoll(): void {
-        this._stopSessionPoll();
+        if (this._sessionPollTimer) {
+            clearInterval(this._sessionPollTimer);
+            this._sessionPollTimer = null;
+        }
         if (!this._sessionId) return;
         const sid = this._sessionId;
         this._sessionPollTimer = setInterval(async () => {
@@ -218,7 +226,9 @@ class AuthBrain {
                 return;
             }
             try {
-                const resp = await net.fetch(`${API_BASE}/gaea/qqq/auth/poll?session=${sid}`);
+                // ★ F39: 与登录页同域（https://gh555.com/api）——客户能打开登录页就能 poll，
+                //   不再依赖 direct-cn 灰云域名（客户网络环境可能直连不通）。
+                const resp = await net.fetch(`https://gh555.com/api/gaea/qqq/auth/poll?session=${sid}`);
                 if (!resp.ok) {
                     console.warn('[auth-brain] poll HTTP ' + resp.status + ' for session=' + sid.slice(0, 8));
                     return;

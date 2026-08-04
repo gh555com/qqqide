@@ -172,14 +172,13 @@
 	var q = await _roamGet('roam.qqiq'); if (Array.isArray(q)) _qqiq = q;
 	var p = await _roamGet('roam.pinnedDirs'); if (Array.isArray(p)) _pinnedDirs = p;
 	var h = await _roamGet('roam.cmdHistory'); if (h && typeof h === 'object') _cmdHistory = h;
-	var sc = await _roamGet('roam.sizeCache');
-	if (sc && typeof sc === 'object') sessionSizeCache = sc;
 	var prefs = await _roamGet('roam.prefs');
 	if (prefs && typeof prefs === 'object') {
 		if (typeof prefs.lineSpacing === 'number') _lineSpacing = prefs.lineSpacing;
 		if (prefs.globalSzMode) _globalSzMode = prefs.globalSzMode;
 		if (prefs.globalSortBy) _globalSortBy = prefs.globalSortBy;
 	}
+	_applyLineSpacing();
 	try {
 		var sw = await _roamGet('roam.sidebarWidth');
 		if (typeof sw === 'number' && sw > 50 && sw < 500) { sidebarW = sw; applySidebarWidth(); }

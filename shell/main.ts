@@ -282,8 +282,11 @@ function registerDesktopShortcutIpc(): void {
     ipcMain.handle('qqqide:desktop:sync-shortcut', async (_e, enabled: boolean) => {
         if (process.platform !== 'win32') return { ok: true, skipped: true };
         try {
-            const desktopDir = path.join(os.homedir(), 'Desktop');
-            const lnkPath = path.join(desktopDir, 'qqqide.lnk');
+            // ★ 双位置：桌面 + 开始菜单（Win11 无桌面图标用户走开始菜单）
+            const lnkPaths = [
+                path.join(os.homedir(), 'Desktop', 'qqqide.lnk'),
+                path.join(os.homedir(), 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'qqqide.lnk')
+            ];
 
             // ★ portable.root 在打包模式下 = gh555.com/，qqqide.exe 在上层
             //    开发模式下 portable.root = 项目根，qqqide.exe 就在下面
@@ -312,21 +315,27 @@ function registerDesktopShortcutIpc(): void {
             }
 
             if (enabled) {
-                // 创建/更新快捷方式
+                // 创建/更新快捷方式（桌面 + 开始菜单 Programs 根 = Win11「所有应用」最显著层）
                 // ★ PS 单引号字符串内反斜杠为字面量 → 直接用单斜杠路径，禁止双写（双斜杠会写进 .lnk 的 WorkDir）
                 //   唯一需要转义的是单引号（路径含 ' 时 → '' 为 PS 转义）
                 const psQ = (s: string) => s.replace(/'/g, "''");
-                const psScript = [
-                    '$ws = New-Object -ComObject WScript.Shell;',
-                    '$s = $ws.CreateShortcut(\'' + psQ(lnkPath) + '\');',
-                    '$s.TargetPath = \'' + psQ(targetExe) + '\';',
-                    '$s.WorkingDirectory = \'' + psQ(rootDir) + '\';',
-                    '$s.IconLocation = \'' + psQ(iconLocation) + '\';',
-                    '$s.Save();'
-                ].join(' ');
+                const parts = [
+                    '$ws = New-Object -ComObject WScript.Shell;'
+                ];
+                for (const lnkPath of lnkPaths) {
+                    // 父目录不存在则跳过（如无桌面目录的改造型 Win11）
+                    if (!fs.existsSync(path.dirname(lnkPath))) continue;
+                    parts.push(
+                        '$s = $ws.CreateShortcut(\'' + psQ(lnkPath) + '\');',
+                        '$s.TargetPath = \'' + psQ(targetExe) + '\';',
+                        '$s.WorkingDirectory = \'' + psQ(rootDir) + '\';',
+                        '$s.IconLocation = \'' + psQ(iconLocation) + '\';',
+                        '$s.Save();'
+                    );
+                }
                 require('child_process').execSync(
-                    'powershell -NoProfile -Command "' + psScript + '"',
-                    { timeout: 10000, windowsHide: true }
+                    'powershell -NoProfile -Command "' + parts.join(' ') + '"',
+                    { timeout: 15000, windowsHide: true }
                 );
                 return { ok: true, action: 'created' };
             } else {

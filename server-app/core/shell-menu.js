@@ -342,7 +342,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       const gpDot = document.createElement('span');
       gpDot.title = '启停';
       gpDot.style.cssText =
-        'width:16px; height:16px; border-radius:50%; flex-shrink:0; ' +
+        'width:16px; height:16px; clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%); flex-shrink:0; ' +
         'background:var(--border-color); transition:background 200ms; ' +
         'cursor:default;';
 

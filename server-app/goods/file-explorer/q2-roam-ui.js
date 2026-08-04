@@ -445,8 +445,7 @@ async function _calcAndUpdateSize(item, version) {
 	} catch(ex) { size = 0; }
 	if (version !== _sRequestVersion) return;
 	var info = formatFileSizeEx(size);
-	sessionSizeCache[item.path] = info;
-	_sizeCacheSaveDebounced();
+	sessionSizeCache[item.path] = info; // 仅会话内缓存 (q3 对齐, 不落盘)
 	var el = findItemByPath(item.path);
 	if (el) {
 		var szArea = el.querySelector('.sz-area');
