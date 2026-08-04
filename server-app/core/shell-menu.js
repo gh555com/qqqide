@@ -342,7 +342,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       const gpDot = document.createElement('span');
       gpDot.title = '启停';
       gpDot.style.cssText =
-        'width:7px; height:7px; border-radius:50%; flex-shrink:0; ' +
+        'width:16px; height:16px; border-radius:50%; flex-shrink:0; ' +
         'background:var(--border-color); transition:background 200ms; ' +
         'cursor:default;';
 
@@ -530,26 +530,9 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         obs.observe(document.body, { childList: true, subtree: true });
       })(_gpPollTimer, _gpStatusUnsub);
 
-      // ── 齿轮按钮：点击打开 goods 设置 ──
-      var gpGear = document.createElement('span');
-      gpGear.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" style="display:block;fill:none;stroke:#000;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><circle cx="12" cy="12" r="7"/><path d="M12 5v-2.5M12 19v2.5M5 12h-2.5M19 12h2.5M7.05 7.05l-1.77-1.77M16.95 16.95l1.77 1.77M7.05 16.95l-1.77 1.77M16.95 7.05l1.77-1.77"/></svg>';
-      gpGear.title = '设置';
-      gpGear.style.cssText =
-        'display:inline-flex; align-items:center; justify-content:center; ' +
-        'flex-shrink:0; cursor:default; ' +
-        'color:var(--text-muted); opacity:0.7; transition:opacity 150ms;';
-      gpGear.addEventListener('mouseenter', function () { gpGear.style.opacity = '1'; });
-      gpGear.addEventListener('mouseleave', function () { gpGear.style.opacity = '0.7'; });
-      gpGear.addEventListener('click', function (e) {
-        e.stopPropagation();
-        e.preventDefault();
-        _showGoodsSettings(gpId);
-      });
-
       gpRow.appendChild(gpDot);
       gpRow.appendChild(gpToggle);
-      gpRow.appendChild(gpGear);
-
+      
       (function (rEl) {
         rEl.addEventListener('mouseenter', function () { rEl.style.background = 'var(--background-color)'; });
         rEl.addEventListener('mouseleave', function () { rEl.style.background = ''; });

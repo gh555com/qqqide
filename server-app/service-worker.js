@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// service-worker.js v331 — goods gear btn + settings modal; kope/window-there factory OFF; showCard OS-level setting
+// service-worker.js v331 — gear removed (row-click opens settings); gpDot 16px; kope/window-there factory OFF
 // PWA strategy:
 //   - index.html / navigation : network-first(2s), fallback cache, last-resort 503
 //   - core/* qoods/* assets   : stale-while-revalidate
@@ -9,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v347'; // v346: settings desc → 背包 token 超此值 → 自动剥离绝对包装盒（做absolut 压缩）
+const CACHE_NAME = 'qqq-shell-v348'; // v346: settings desc → 背包 token 超此值 → 自动剥离绝对包装盒（做absolut 压缩）
 const PRECACHE_URLS = [
   './',
   './index.html',

@@ -269,6 +269,7 @@ function registerAllIpc(): void {
     registerSmartSearchIpc(indexService);
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
     registerQzSpawnIpc(qzSpawn);
+    registerGaeaProcessIpc();
     registerKopeIpc();
     registerRoamIpc();
     registerMediaIpc(mediaService);
@@ -312,12 +313,15 @@ function registerDesktopShortcutIpc(): void {
 
             if (enabled) {
                 // 创建/更新快捷方式
+                // ★ PS 单引号字符串内反斜杠为字面量 → 直接用单斜杠路径，禁止双写（双斜杠会写进 .lnk 的 WorkDir）
+                //   唯一需要转义的是单引号（路径含 ' 时 → '' 为 PS 转义）
+                const psQ = (s: string) => s.replace(/'/g, "''");
                 const psScript = [
                     '$ws = New-Object -ComObject WScript.Shell;',
-                    '$s = $ws.CreateShortcut(\'' + lnkPath.replace(/\\/g, '\\\\') + '\');',
-                    '$s.TargetPath = \'' + targetExe.replace(/\\/g, '\\\\') + '\';',
-                    '$s.WorkingDirectory = \'' + rootDir.replace(/\\/g, '\\\\') + '\';',
-                    '$s.IconLocation = \'' + iconLocation.replace(/\\/g, '\\\\') + '\';',
+                    '$s = $ws.CreateShortcut(\'' + psQ(lnkPath) + '\');',
+                    '$s.TargetPath = \'' + psQ(targetExe) + '\';',
+                    '$s.WorkingDirectory = \'' + psQ(rootDir) + '\';',
+                    '$s.IconLocation = \'' + psQ(iconLocation) + '\';',
                     '$s.Save();'
                 ].join(' ');
                 require('child_process').execSync(
@@ -338,8 +342,8 @@ function registerDesktopShortcutIpc(): void {
 // ── Gaea Process IPC — 通用 gaea process-type goods 进程管理 ──
 /** 出厂默认自动启动映射（首次安装时生效，用户勾选后持久化覆盖） */
 const _PROCESS_GOODS_AUTOSTART_DEFAULTS: Record<string, boolean> = {
-    'kope-a': false,       // ★ 出厂关闭
-    'window-there': false,  // 出厂关闭
+    'kope-a': true,        // ★ 出厂开启（剪贴板历史常驻，与启动循环 defaultAutoStart 对齐）
+    'window-there': false, // 出厂关闭
 };
 
 function registerGaeaProcessIpc(): void {
@@ -362,11 +366,11 @@ function registerGaeaProcessIpc(): void {
 
     ipcMain.handle('qqqide:gaea-process:get-auto-start', async (_e, goodsId: string) => {
         try {
-            const val = await stateStore.get('qqqide', goodsId + '.autoStart');
-            if (val !== undefined && val !== null) return !!val;
-            // 本地未设置 → 查询 OS 级状态（跨绿色包同步）
+            // ★ OS 级状态为唯一真理（跨绿色包/跨窗口同步），本地 DB 仅作降级
             const osVal = getOsGaeaAutoStart(goodsId);
             if (osVal !== null) return osVal;
+            const val = await stateStore.get('qqqide', goodsId + '.autoStart');
+            if (val !== undefined && val !== null) return !!val;
             // 都未设置 → 出厂默认值
             const def = _PROCESS_GOODS_AUTOSTART_DEFAULTS[goodsId];
             return def ?? false;
@@ -486,7 +490,11 @@ app.whenReady().then(async () => {
             ];
             for (const g of processGoods) {
                 try {
-                    const autoStart = await stateStore.get('qqqide', g.id + '.autoStart');
+                    // ★ 启动决策同 get-auto-start 优先级：OS 级状态 → 本地 DB → 出厂默认
+                    const osVal = getOsGaeaAutoStart(g.id);
+                    let autoStart: boolean | null = null;
+                    if (osVal !== null) autoStart = osVal;
+                    else autoStart = await stateStore.get('qqqide', g.id + '.autoStart');
                     if (autoStart ?? g.defaultAutoStart) {
                         const result = startGaeaProcess(portable.root, g.id, g.script, g.runtime, g.lifecycle, g.allowMultiple);
                         if (result.ok) {
