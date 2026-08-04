@@ -438,6 +438,7 @@ function navigateTo(p, opts) {
 	applyFineScm(p);
 	addressInput.value = p;
 	updateAddressDisplay(p);
+	var abi = document.getElementById('addressBarInner'); if (abi) abi.setAttribute('data-tooltip', p || '');
 	loadFileList(p);
 	// ★ 纯浏览不记录 qq 区——与 q3 一致：只有做实际操作（新建/删除/重命名/Q编辑/W系统打开）才进 qq 区
 	_historySave();

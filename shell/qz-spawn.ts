@@ -529,25 +529,22 @@ export class QzSpawn {
             }
         }
 
+        // ★ 快速通道：无 shell 元字符 → 直走 nodeTier，省 ghrun spawn 开销 (50-200ms)
+        //   AI 高频命令 (echo/dir/cat/findstr/type) 几乎全走此路径。
+        //   不 gating timeout——绝大多数命令默认 timeout=null，cap 后已是 2h。
+        var _hasMeta = SHELL_META_RE.test(brief.cmd);
+        if (!_hasMeta && brief.args) {
+            for (var _i = 0; _i < brief.args.length; _i++) {
+                if (SHELL_META_RE.test(brief.args[_i])) { _hasMeta = true; break; }
+            }
+        }
+        if (!_hasMeta) {
+            return _capOutput(await nodeTier(brief, this.appRoot));
+        }
+
         // A1: enforce system max timeout — no command runs longer than 10 minutes
         if (brief.timeout == null || brief.timeout <= 0 || brief.timeout > SYSTEM_MAX_TIMEOUT) {
             brief.timeout = SYSTEM_MAX_TIMEOUT;
-        }
-
-        // ★ 短命令快速通道：timeout≤30s 且无 shell 元字符 → 跳过 ghrun spawn 开销 (省 50-200ms)
-        //   AI 高频命令 (echo/dir/cat/findstr/type) 几乎全走此路径。
-        //   Job Object 内存硬限制在此不关键——短命令 5s 首检 + 15s 续检足够覆盖。
-        const _isShort = (brief.timeout || 0) <= 30_000 && brief.timeout > 0;
-        if (_isShort) {
-            var _hasMeta = SHELL_META_RE.test(brief.cmd);
-            if (!_hasMeta && brief.args) {
-                for (var _i = 0; _i < brief.args.length; _i++) {
-                    if (SHELL_META_RE.test(brief.args[_i])) { _hasMeta = true; break; }
-                }
-            }
-            if (!_hasMeta) {
-                return _capOutput(await nodeTier(brief, this.appRoot));
-            }
         }
 
         // Tier 1: ghrun (Rust, full anti-hang: deadline + stall + tree-kill + process group isolation)

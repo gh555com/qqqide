@@ -410,6 +410,38 @@ function injectLauncher(unpacked) {
   }
 }
 
+// 3.6b) inject VC runtime (app-local deployment) — assets/runtimes/win32-x64 → engines/vc_runtime/win32-x64
+function injectVcRuntime(unpacked) {
+  if (!target.startsWith('win-')) return;
+  const src = path.join(ROOT, 'assets', 'runtimes', 'win32-x64');
+  if (!fs.existsSync(src)) { console.warn('[pack] assets/runtimes/win32-x64 not found, skipping vc_runtime'); return; }
+  const appDir = appResourcesDir(unpacked);
+  if (!appDir || !fs.existsSync(appDir)) return;
+  const dst = path.join(appDir, 'engines', 'vc_runtime', 'win32-x64');
+  fs.mkdirSync(dst, { recursive: true });
+  let n = 0;
+  for (const f of fs.readdirSync(src)) {
+    if (!/\.dll$/i.test(f)) continue;
+    fs.copyFileSync(path.join(src, f), path.join(dst, f));
+    n++;
+  }
+  console.log('[pack] injected vc_runtime (' + n + ' DLLs, app-local deployment)');
+}
+
+// 3.6c) build vc_runtime CDN zip (disaster recovery source for component download)
+function buildVcRuntimeZip() {
+  if (!target.startsWith('win-')) return;
+  const src = path.join(ROOT, 'assets', 'runtimes', 'win32-x64');
+  if (!fs.existsSync(src)) return;
+  const sz7 = find7z();
+  if (!sz7) return;
+  const out = path.join(path.join(ROOT, 'dist-pack'), 'vc_runtime-win32-x64.zip');
+  if (fs.existsSync(out)) fs.rmSync(out);
+  const r = cp.spawnSync(sz7, ['a', '-tzip', '-mx=9', '-mmt=on', out, '.'], { stdio: 'inherit', cwd: src });
+  if (r.status !== 0) throw new Error('vc_runtime zip failed');
+  console.log('[pack] vc_runtime zip:', path.basename(out), '(' + Math.round(fs.statSync(out).size / 1024 / 1024 * 10) / 10 + 'MB)');
+}
+
 // 3.7) prune unnecessary Electron baggage — slim the unpacked tree
 function pruneElectron(unpacked) {
   if (!target.startsWith('win-')) { return; }
@@ -933,6 +965,7 @@ function packSfx(unpacked) {
   }
   compileLauncher();
   injectLauncher(unpacked);
+  injectVcRuntime(unpacked);
   pruneElectron(unpacked);
   pruneNodeModules(unpacked);
   pruneEngines(unpacked);
@@ -944,6 +977,7 @@ function packSfx(unpacked) {
   } else {
     packDir(unpacked, doFlat);
   }
+  buildVcRuntimeZip();
   // ★ 删掉解压目录，避免和源代码混淆
   fs.rmSync(unpacked, { recursive: true, force: true });
   console.log('[pack] cleaned staging:', unpacked);

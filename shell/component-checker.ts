@@ -16,6 +16,7 @@ interface SrcEntry { url: string; kind: 'zip' | 'tar.gz' | 'binary'; }
 interface ComponentDef {
     bundled?: boolean;
     bg_download?: boolean;
+    kind?: string;            // 'files' = 纯文件组件（无二进制，如 vc_runtime）
     install_to: string;
     _platform_subdir?: boolean;
     bin_win?: string | null;
@@ -23,6 +24,7 @@ interface ComponentDef {
     verify_args: string[];
     version: string;
     srcs: Record<string, SrcEntry[]>;
+    files?: string[];         // kind='files' 时校验的文件清单
 }
 
 interface Manifest {
@@ -123,6 +125,23 @@ function _binPath(portableRoot: string, def: ComponentDef): string | null {
     return path.join(baseDir, br);
 }
 
+// kind='files' 纯文件组件：目录 + 清单校验
+function _componentDir(portableRoot: string, def: ComponentDef): string | null {
+    const engRoot = _enginesRoot(portableRoot);
+    const baseDir = def.install_to ? path.join(engRoot, 'engines', def.install_to) : path.join(engRoot, 'engines');
+    if (def._platform_subdir) return path.join(baseDir, _platformKey());
+    return baseDir;
+}
+
+function _filesOk(dir: string, def: ComponentDef): boolean {
+    if (!dir || !fs.existsSync(dir)) return false;
+    const files = def.files || [];
+    for (const f of files) {
+        if (!fs.existsSync(path.join(dir, f))) return false;
+    }
+    return true;
+}
+
 // ── 下载冷却 ──
 
 function _dlLogPath(portableRoot: string): string {
@@ -197,8 +216,10 @@ async function _checkAll(
         if (!def) { console.log('[components] ' + name + ': not in manifest'); continue; }
         // bundled: 绿色包自带。若本地不存在 → fall through 到下载逻辑（旧客户端升级场景）
         if (def.bundled) {
-            const bp = _binPath(portableRoot, def);
-            if (bp && fs.existsSync(bp)) continue;
+            const ok = def.kind === 'files'
+                ? _filesOk(_componentDir(portableRoot, def) || '', def)
+                : ((_binPath(portableRoot, def) || '') !== '' && fs.existsSync(_binPath(portableRoot, def)!));
+            if (ok) continue;
             console.log('[components] ' + name + ': bundled but missing on disk, downloading...');
         }
 
@@ -235,12 +256,6 @@ async function _checkRank1BgDownload(
             continue;
         }
 
-        // In cooldown → skip this boot
-        if (_isInCooldown(portableRoot, name, manifest)) {
-            console.log('[components] ' + name + ': bg_download in cooldown, skipping');
-            continue;
-        }
-
         console.log('[components] ' + name + ': bg_download starting...');
         try {
             await _ensureOne(portableRoot, name, def, pk, versions, manifest);
@@ -258,6 +273,11 @@ interface VerifyResult { status: 'ok' | 'degraded' | 'broken'; detail: string; }
 
 /** 校验单个组件完整性。两级: ① self_heal(能自愈吗?) → ok/degraded ② smoke(能跑吗?) → broken */
 function _verifyComponent(portableRoot: string, name: string, def: ComponentDef): VerifyResult {
+    if (def.kind === 'files') {
+        const dir = _componentDir(portableRoot, def);
+        if (!dir || !_filesOk(dir, def)) return { status: 'broken', detail: 'files missing' };
+        return { status: 'ok', detail: '' };
+    }
     const bp = _binPath(portableRoot, def);
     if (!bp || !fs.existsSync(bp)) return { status: 'broken', detail: 'binary missing' };
 
@@ -349,8 +369,19 @@ async function _ensureOne(
 ): Promise<void> {
     const engRoot = _enginesRoot(portableRoot);
     const enginesDir = path.join(engRoot, 'engines');
+    const isFiles = def.kind === 'files';
     const binRel = _binRel(def);
-    if (!binRel) { console.log('[components] ' + name + ': no binary for this platform'); return; }
+    if (!binRel && !isFiles) { console.log('[components] ' + name + ': no binary for this platform'); return; }
+
+    const targetDir = def.install_to ? path.join(enginesDir, def.install_to) : enginesDir;
+    // Platform subdirectory for multi-platform components (ffmpeg etc.)
+    const finalDir = def._platform_subdir ? path.join(targetDir, pk) : targetDir;
+    const effectiveInstallTo = def._platform_subdir ? (def.install_to + '/' + pk) : def.install_to;
+    const binPath = isFiles ? path.join(finalDir, '__files__') : path.join(finalDir, binRel);
+    const verifyArgs = def.verify_args || ['--version'];
+
+    // ── ① 当前位置已安装且验证通过 → 检查版本升级 + 目录迁移 ──
+    if (isFiles ? _filesOk(finalDir, def) : (fs.existsSync(binPath) && _cmdOk(binPath, verifyArgs))) {
 
     const targetDir = def.install_to ? path.join(enginesDir, def.install_to) : enginesDir;
     // Platform subdirectory for multi-platform components (ffmpeg etc.)
@@ -477,6 +508,24 @@ async function _downloadAndInstall(
     }
 
     try { fs.unlinkSync(dlFile); } catch {}
+
+    // 验证 — 用二进制路径直接调，不走 shell
+    if ((def as any).kind === 'files') {
+        if (!_filesOk(targetDir, def)) throw new Error('Files missing after extract: ' + targetDir);
+    } else {
+        if (!fs.existsSync(binPath)) {
+            const found = _findBinParent(targetDir, path.basename(binPath));
+            if (found) {
+                _flattenDir(found, targetDir);
+            }
+        }
+
+        if (!fs.existsSync(binPath)) throw new Error('Binary not found after extract: ' + binPath);
+        if (!_cmdOk(binPath, verifyArgs)) throw new Error('Verification failed');
+    }
+
+    console.log('[components] ' + name + ': installed ✓');
+}
 
     // Python 特殊处理
     if (name === 'python' && process.platform === 'win32') {
