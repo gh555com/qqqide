@@ -102,7 +102,6 @@ async function loadDrives() {
 			btn.className = 'nav-item';
 			btn.id = 'drive-' + letter + '-btn';
 			btn.textContent = letter + ':\\ ';
-			btn.title = d;
 			btn.addEventListener('click', function() { navigateTo(d); });
 			driveList.appendChild(btn);
 		})(_driveList[i]);
@@ -126,7 +125,6 @@ async function loadDrives() {
 	recycleBtn.className = 'nav-item';
 	recycleBtn.id = 'drive-RECYCLE-btn';
 	recycleBtn.textContent = 'Recycle Bin';
-	recycleBtn.title = 'Recycle Bin';
 	driveList.appendChild(recycleBtn);
 
 	// Fetch disk free info
@@ -138,6 +136,8 @@ async function loadDrives() {
 }
 
 async function updateDriveDisplay() {
+	// ★ 仅可见时轮询（对齐 q3 isDiskFreePollingAllowed）
+	if (document.visibilityState !== 'visible') return;
 	try {
 		var info = await rpc('fs.diskFree', _driveList);
 		for (var i = 0; i < _driveList.length; i++) {
@@ -145,29 +145,30 @@ async function updateDriveDisplay() {
 			var btn = document.getElementById('drive-' + letter + '-btn');
 			if (!btn) continue;
 			var data = info[letter];
-			if (!data) { btn.textContent = letter + ':\\ '; continue; }
-			var freeGB = (data.free / (1024*1024*1024)).toFixed(1);
-			var totalGB = (data.total / (1024*1024*1024)).toFixed(1);
-			var pct = data.total > 0 ? (data.free / data.total) : 1;
-			btn.textContent = letter + ':\\ ' + freeGB + ' GB';
-			// Red warning if free < 1% or < 2GB
-			if (pct < 0.01 || data.free < 2*1024*1024*1024) {
-				btn.style.color = 'var(--red)';
-			} else {
-				btn.style.color = '';
-			}
+			if (!data) { btn.textContent = letter + ':\  '; continue; }
+			var freeBytes = data.free || 0;
+			var totalBytes = data.total || 0;
+			var freeGB = freeBytes / (1024*1024*1024);
+			// ★ 红色预警: <1% 或 <2GB（对齐 q3 DISK_FREE_WARNING）
+			var isLow = (totalBytes > 0 && freeBytes / totalBytes < 0.01) || (freeBytes < 2147483648);
+			// ★ q3 原版: 正常整数, 红色才显示两位小数, 无 'GB' 后缀, 两个空格
+			var gbText = isLow ? freeGB.toFixed(2) : Math.floor(freeGB).toString();
+			btn.textContent = letter + ':\  ' + gbText;
+			btn.style.color = isLow ? 'rgb(248,48,0)' : '';
 		}
-		// Desktop used
+		// Desktop used (GB, 对齐 q3)
 		var deskBtn = document.getElementById('drive-DESKTOP-btn');
 		if (deskBtn && info['DESKTOP']) {
-			var usedMB = (info['DESKTOP'].used / (1024*1024)).toFixed(0);
-			deskBtn.textContent = 'Desktop  ' + usedMB + ' MB';
+			var usedGB = (info['DESKTOP'].used || 0) / (1024*1024*1024);
+			var dgbText = usedGB < 0.01 ? '0' : (usedGB >= 1 ? Math.floor(usedGB).toString() : usedGB.toFixed(2));
+			deskBtn.textContent = 'Desktop ' + dgbText;
 		}
-		// Recycle Bin
+		// Recycle Bin (GB, 对齐 q3)
 		var recycleBtn = document.getElementById('drive-RECYCLE-btn');
 		if (recycleBtn && info['RECYCLE'] && info['RECYCLE'].used > 0) {
-			var rMB = (info['RECYCLE'].used / (1024*1024)).toFixed(0);
-			recycleBtn.textContent = 'Recycle Bin  ' + rMB + ' MB';
+			var rGB = (info['RECYCLE'].used || 0) / (1024*1024*1024);
+			var rgbText = rGB < 0.01 ? '0' : (rGB >= 1 ? Math.floor(rGB).toString() : rGB.toFixed(2));
+			recycleBtn.textContent = 'Recycle Bin ' + rgbText;
 		}
 	} catch(e) { console.warn('[q2-roam] updateDriveDisplay:', e); }
 }

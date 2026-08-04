@@ -133,7 +133,12 @@ static int     g_closeCountdown = 0;
 
 static void writeQRecord(const WCHAR *exeDir) {
     WCHAR pyDir[MAX_PATH];
-    swprintf(pyDir, MAX_PATH, L"%s\\gh555.com\\engines\\python", exeDir);
+    // 打包模式: gh555.com\resources\app\engines\python
+    swprintf(pyDir, MAX_PATH, L"%s\\gh555.com\\resources\\app\\engines\\python", exeDir);
+    // dev 模式(无 gh555.com): 项目根 engines\python
+    if (GetFileAttributesW(pyDir) == INVALID_FILE_ATTRIBUTES) {
+        swprintf(pyDir, MAX_PATH, L"%s\\engines\\python", exeDir);
+    }
 
     HKEY hkey;
     LONG rc = RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_SET_VALUE, &hkey);
@@ -1067,12 +1072,37 @@ static void centerWindow(HWND hwnd) {
     SetWindowPos(hwnd, NULL, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
 }
 
+// ★ VC 运行库 app-local 部署 — 把 vc_runtime 目录注入 PATH
+//   Win7 SP1 无 KB2999226 / 缺 VC 运行库的机器 → joker/python/git 等子进程从此目录解析 DLL
+static void injectRuntimePath(const WCHAR *exeDir) {
+    WCHAR vcDir[MAX_PATH];
+    swprintf(vcDir, MAX_PATH, L"%s\\gh555.com\\resources\\app\\engines\\vc_runtime\\win32-x64", exeDir);
+    if (GetFileAttributesW(vcDir) == INVALID_FILE_ATTRIBUTES) {
+        // dev 模式(无 gh555.com): 项目根 engines\vc_runtime\win32-x64
+        swprintf(vcDir, MAX_PATH, L"%s\\engines\\vc_runtime\\win32-x64", exeDir);
+    }
+    if (GetFileAttributesW(vcDir) == INVALID_FILE_ATTRIBUTES) return;
+
+    WCHAR newPath[32768];
+    DWORD n = GetEnvironmentVariableW(L"PATH", newPath, 32768);
+    WCHAR full[32768];
+    if (n > 0 && n < 32768) {
+        swprintf(full, 32768, L"%s;%s", vcDir, newPath);
+    } else {
+        wcscpy(full, vcDir);
+    }
+    SetEnvironmentVariableW(L"PATH", full);
+}
+
 static int launchCore(void) {
     WCHAR exePath[MAX_PATH], exeDir[MAX_PATH];
     GetModuleFileNameW(NULL, exePath, MAX_PATH);
     wcscpy(exeDir, exePath);
     WCHAR *p = wcsrchr(exeDir, L'\\');
     if (p) *p = L'\0';
+
+    // ★ 注入 VC 运行库目录到 PATH（joker.exe 及其所有子进程可见）
+    injectRuntimePath(exeDir);
 
     WCHAR corePath[MAX_PATH];
     WCHAR wJoker[256];

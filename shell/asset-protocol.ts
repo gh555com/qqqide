@@ -184,8 +184,14 @@ function resolveKpBridge(portableRoot: string): { script: string; python: string
 
 function diskFreeNodeFallback(drives: string[]): Record<string, DiskFreeEntry> {
     const result: Record<string, DiskFreeEntry> = {};
+    const isWin = process.platform === 'win32';
     for (const d of drives || []) {
         try {
+            if (isWin) {
+                // Windows: statfsSync not available, use a simple PowerShell fallback
+                // (kp_bridge should be the primary path; this is last-resort)
+                continue;
+            }
             const stats = (fs as any).statfsSync(d);
             const bsize = stats.bsize as number;
             const letter = (d.charAt(0) || 'X').toUpperCase();
@@ -226,10 +232,14 @@ async function diskFreeViaKpBridge(portableRoot: string, drives: string[]): Prom
         proc.on('close', () => {
             try {
                 const result = JSON.parse(stdout);
-                resolve(result || null);
+                if (result && result.ok && result.data) {
+                    resolve(result.data);
+                } else {
+                    resolve(null);
+                }
             } catch { resolve(null); }
         });
-        const input = JSON.stringify(drives || []);
+        const input = JSON.stringify({ action: 'disk_free_batch', drives: drives || [] });
         try {
             proc.stdin!.write(input);
             proc.stdin!.end();
