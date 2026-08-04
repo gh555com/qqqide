@@ -9,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v342'; // v342: gear SVG refined — bigger center r7, shorter teeth, pure black
+const CACHE_NAME = 'qqq-shell-v344'; // v344: persist _lastApiPromptTokens to quest.sq3 after compression → ctx-btn survives restart — guaranteed ctx.json persistence + fallback _parseBiscuitFromContent
 const PRECACHE_URLS = [
   './',
   './index.html',
