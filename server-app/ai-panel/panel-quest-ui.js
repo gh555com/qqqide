@@ -984,8 +984,8 @@ window.addEventListener('message', async function (e) {
                     if (_splitIdx < 1) _splitIdx = 1;
                     var _hText = _blocks.slice(0, _splitIdx).join('\n');
                     var _rText = _blocks.slice(_splitIdx).join('\n');
-                    if (_hText.length < 32000) {
-                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: 'h原料 < 32K，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
+                    if (Math.round(_hText.length / 2.7) < 12000) {
+                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: 'h原料 < 12K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
                         return;
                     }
                     var _bulletDir = '';

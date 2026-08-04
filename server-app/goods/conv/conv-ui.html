@@ -775,7 +775,11 @@ setInterval(function () {
 // 压缩 3 按钮体系 — absolut / edit only / only facts
 // ════════════════════════════════════════════════
 
-// ── 计算 3 按钮收益（减少的背包 chars）──
+// ★ 与 content-gateway.js CHAR_PER_TOKEN=2.7 对齐
+var CHAR_PER_TOKEN = 2.7;
+function _charsToTokens(chars) { return Math.round(chars / CHAR_PER_TOKEN); }
+
+// ── 计算 3 按钮收益（减少的背包 tokens）──
 function computeBenefits(ag) {
     var result = { absolut: 0, editonly: 0, onlyfacts: 0 };
     if (!ag) return result;
@@ -789,7 +793,7 @@ function computeBenefits(ag) {
 
     // Step 1: absolut — 剥离 ╔K...╚ 体部
     var afterAbsolut = biscuitText.replace(/\n╔K\n[\s\S]*?\n╚(?=\n|$)/g, '\n');
-    result.absolut = beforeChars - afterAbsolut.length;
+    result.absolut = _charsToTokens(beforeChars - afterAbsolut.length);
 
     // Step 2: edit only — absolut基础上仅保留 5 写工具头行 + Q/A/F/S
     var lines = afterAbsolut.split('\n');
@@ -799,9 +803,9 @@ function computeBenefits(ag) {
         var line = lines[li];
         if (/^(Q:|A:|=== F|\[S\]|\s*$)/.test(line) || WRITE_TOOLS_RE.test(line)) filtered.push(line);
     }
-    result.editonly = beforeChars - filtered.join('\n').length;
+    result.editonly = _charsToTokens(beforeChars - filtered.join('\n').length);
 
-    // Step 3: only facts — absolut+editonly → 按 === F 切半 → h原料大小即收益
+    // Step 3: only facts — absolut+editonly → 按 === F 切半 → h原料 token 数即收益
     var blocks = afterAbsolut.split(/\n(?==== F\d+ )/);
     var _totalChars = 0, _blockChars = [];
     for (var bi = 0; bi < blocks.length; bi++) { _blockChars.push(blocks[bi].length); _totalChars += blocks[bi].length; }
@@ -809,14 +813,14 @@ function computeBenefits(ag) {
     for (var bi2 = 0; bi2 < blocks.length; bi2++) { _acc += _blockChars[bi2]; if (_acc >= _half) { _splitIdx = bi2; break; } }
     var hChars = 0;
     for (var bi3 = 0; bi3 < _splitIdx; bi3++) hChars += _blockChars[bi3];
-    result.onlyfacts = hChars;
+    result.onlyfacts = _charsToTokens(hChars);
     return result;
 }
 
-function _fmtBenefit(chars) {
-    if (chars < 1000) return '';
-    if (chars >= 1000000) return (chars / 1000000).toFixed(1) + 'M';
-    return (chars / 1000).toFixed(0) + 'k';
+function _fmtBenefit(tokens) {
+    if (tokens < 300) return '';
+    if (tokens >= 1000000) return (tokens / 1000000).toFixed(1) + 'M';
+    return (tokens / 1000).toFixed(0) + 'k';
 }
 
 // 更新压缩按钮 disabled 状态 + 收益标签（仅 idle 时可用）
@@ -841,7 +845,7 @@ function updateCompressBtns() {
         if (!el) continue;
         var ch = bf[k] || 0;
         el.textContent = ch > 0 ? (' -' + _fmtBenefit(ch)) : '';
-        el.className = 'cmp-benefit' + (ch < 1000 ? ' zero' : (ch < 32000 && k === 'onlyfacts' ? ' low' : ''));
+        el.className = 'cmp-benefit' + (ch < 300 ? ' zero' : (ch < 12000 && k === 'onlyfacts' ? ' low' : ''));
     }
 }
 
@@ -905,8 +909,10 @@ function _findAiFrame() {
     return null;
 }
 
-// 显示压缩动画
+// 显示压缩动画（beforeChars/afterChars 为 chars，内部转 tokens 显示）
 function showCompressAnimation(title, beforeChars, afterChars) {
+    var beforeTokens = _charsToTokens(beforeChars || 0);
+    var afterTokens = _charsToTokens(afterChars || 0);
     var maxChars = beforeChars || 1;
     var targetPct = maxChars > 0 ? Math.round(afterChars / maxChars * 100) : 0;
 
@@ -926,8 +932,8 @@ function showCompressAnimation(title, beforeChars, afterChars) {
     barAfter.style.width = '100%';
     barAfter.style.backgroundColor = colorRed;
 
-    document.getElementById('cmpBarBeforeLabel').textContent = fmtSize(beforeChars);
-    document.getElementById('cmpBarAfterLabel').textContent = fmtSize(afterChars);
+    document.getElementById('cmpBarBeforeLabel').textContent = fmtSize(beforeTokens);
+    document.getElementById('cmpBarAfterLabel').textContent = fmtSize(afterTokens);
 
     // 百分比：动画从 100% 滚动到 targetPct
     var pctEl = document.getElementById('cmpSavedPct');
@@ -959,10 +965,10 @@ function closeAnim() {
     refresh();
 }
 
-function fmtSize(chars) {
-    if (chars >= 1000000) return (chars / 1000000).toFixed(1) + 'M';
-    if (chars >= 1000) return (chars / 1000).toFixed(0) + 'k';
-    return String(chars);
+function fmtSize(tokens) {
+    if (tokens >= 1000000) return (tokens / 1000000).toFixed(1) + 'M';
+    if (tokens >= 1000) return (tokens / 1000).toFixed(0) + 'k';
+    return String(tokens);
 }
 
 // 数字滚动动画：从 fromPct 滚动到 toPct
