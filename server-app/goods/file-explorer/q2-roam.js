@@ -107,7 +107,7 @@ async function _roamMigrateIfNeeded() {
 		var existing = await os.getAll();
 		if (existing && Object.keys(existing).length > 0) return; // 已有数据，不覆盖
 		// 从旧 per-green-pack 迁移
-		var oldKeys = ['roam.fineScm','roam.qqiq','roam.pinnedDirs','roam.cmdHistory','roam.sizeCache','roam.prefs','roam.lastVisitedDir','roam.sidebarWidth'];
+		var oldKeys = ['roam.fineScm','roam.qqiq','roam.pinnedDirs','roam.cmdHistory','roam.prefs','roam.lastVisitedDir','roam.sidebarWidth'];
 		for (var i = 0; i < oldKeys.length; i++) {
 			try {
 				var val = await old.get(oldKeys[i]);
@@ -208,14 +208,9 @@ var _fineScm = {};         // { normalizedPath: {szMode,sortBy,filesOnTop,ts} }
 var _cmdHistory = { address: [], fileFilter: [], qqFilter: [] };
 var _lineSpacing = -2;
 var FINE_SCM_MAX = 500;
-var sessionSizeCache = {};
-var _sizeCacheSaveTimer = null;
-function _sizeCacheSaveDebounced() {
-	if (_sizeCacheSaveTimer) clearTimeout(_sizeCacheSaveTimer);
-	_sizeCacheSaveTimer = setTimeout(function() {
-		_roamSet('roam.sizeCache', sessionSizeCache);
-	}, 2000);
-}
+var sessionSizeCache = {};   // ★ 仅会话内: Space 强制尺寸, 切目录/切 SCM 模式即清空 (q3 对齐, 不持久化)
+var _lastRenderedDir = null;  // 上次渲染目录 — 用于强制尺寸失效判定
+var _lastRenderSzMode = null; // 上次渲染 SCM 模式 — 用于强制尺寸失效判定
 
 // ---- Persistence helpers ----
 function _normPath(p) { return (p || '').toLowerCase().replace(/\//g, '\\').replace(/[\\]+$/, ''); }
@@ -234,6 +229,9 @@ function _prefsSave() {
 		lineSpacing: _lineSpacing, globalSzMode: _globalSzMode, globalSortBy: _globalSortBy
 	});
 }
+function _applyLineSpacing() {
+	try { document.documentElement.style.setProperty('--roam-ls', _lineSpacing + 'px'); } catch(e) {}
+}
 function _qqiqSave() { _roamSet('roam.qqiq', _qqiq); }
 function _pinnedSave() { _roamSet('roam.pinnedDirs', _pinnedDirs); }
 function _historySave() { _roamSet('roam.lastVisitedDir', currentPath); }
@@ -247,13 +245,13 @@ function _onRoamChanged(key, value) {
 		case 'roam.qqiq': if (Array.isArray(value)) { _qqiq = value; renderQqiqSection(); } break;
 		case 'roam.pinnedDirs': if (Array.isArray(value)) _pinnedDirs = value; break;
 		case 'roam.cmdHistory': if (value && typeof value === 'object') _cmdHistory = value; break;
-		case 'roam.sizeCache': if (value && typeof value === 'object') sessionSizeCache = value; break;
 		case 'roam.prefs':
 			if (value && typeof value === 'object') {
 				if (typeof value.lineSpacing === 'number') _lineSpacing = value.lineSpacing;
 				if (value.globalSzMode) _globalSzMode = value.globalSzMode;
 				if (value.globalSortBy) _globalSortBy = value.globalSortBy;
 			}
+			_applyLineSpacing();
 			break;
 		case 'roam.lastVisitedDir': if (typeof value === 'string') {} break;
 		case 'roam.sidebarWidth':
@@ -892,6 +890,13 @@ function naturalCompare(a, b) {
 
 // ---- Load file list ----
 async function loadFileList(p) {
+	// ★ q3 对齐: Space 强制尺寸仅会话内有效 — 切换目录或 SCM 模式 → 立即丢失强制
+	if (p !== _lastRenderedDir || szMode !== _lastRenderSzMode) {
+		sessionSizeCache = {};
+		_sRequestVersion++; // 取消在途 sRequest, 防旧结果回填新渲染
+	}
+	_lastRenderedDir = p;
+	_lastRenderSzMode = szMode;
 	var fileList = document.getElementById('fileList');
 	fileList.innerHTML = '';
 	var frag = document.createDocumentFragment(); // ★ 2026-08-04: 批量插入一次 layout
@@ -975,7 +980,7 @@ function buildFileItem(entry, fullPath) {
 		nameArea2.className = 'file-name-area';
 		var icon2 = document.createElement('span');
 		icon2.className = 'file-icon';
-		icon2.textContent = '📄';
+		icon2.textContent = '🗈';
 		nameArea2.appendChild(icon2);
 		var nameSpan = document.createElement('span');
 		nameSpan.textContent = ' ' + entry.name;

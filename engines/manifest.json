@@ -1,5 +1,5 @@
 {
-  "_version": 4,
+  "_version": 5,
   "_note": "Component manifest — server-driven, client reads at every boot. rank0=auto-install, rank1=user-triggered. bundled=true means included in green zip (skip download). Changing install_to or srcs on server → clients restructure themselves, no new zip ever needed.",
   "rank0": [
     "ripgrep",
@@ -255,6 +255,15 @@
           {
             "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/MXAAZ7SOOPX32.gz",
             "kind": "tar.gz"
+          }
+        ]
+      },
+      "win7_srcs": {
+        "_note": "Win7/8 (6.1/6.2/6.3): git 2.47+ 已放弃 Win7/8 支持，客户端自动降级 2.46.0 MinGit",
+        "win32-x64": [
+          {
+            "url": "https://github.com/git-for-windows/git/releases/download/v2.46.0.windows.1/MinGit-2.46.0-64-bit.zip",
+            "kind": "zip"
           }
         ]
       },

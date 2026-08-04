@@ -9,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v348'; // v346: settings desc → 背包 token 超此值 → 自动剥离绝对包装盒（做absolut 压缩）
+const CACHE_NAME = 'qqq-shell-v351'; // v351: settings 快捷方式标题+无desc渲染；开始菜单双位置快捷方式
 const PRECACHE_URLS = [
   './',
   './index.html',

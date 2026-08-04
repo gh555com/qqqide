@@ -50,7 +50,7 @@ function _startMemGuard(pid: number, killFn: () => void, limit: number): { stop:
     const memCmd = isWin
         ? {
             bin: 'powershell', args: ['-NoProfile', '-Command',
-                `$sum=0; Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId=${pid} OR ParentProcessId=${pid}' -ErrorAction SilentlyContinue | ForEach-Object { $sum+=$_.WorkingSetSize }; $sum`]
+                `$sum=0; Get-WmiObject -Class Win32_Process -Filter 'ProcessId=${pid} OR ParentProcessId=${pid}' -ErrorAction SilentlyContinue | ForEach-Object { $sum+=$_.WorkingSetSize }; $sum`]
         }
         : {
             bin: 'sh', args: ['-c',

@@ -85,7 +85,7 @@
     },
     {
       key: 'desktop.shortcut',
-      label: '自动生成桌面图标',
+      label: '自动生成快捷方式',
       type: 'bool',
       tab: 'general',
       defaultValue: _D['desktop.shortcut'] !== undefined ? String(_D['desktop.shortcut']) : 'true'
@@ -283,7 +283,8 @@
       var currentVal = get(def.key, def.defaultValue);
       html += '<div class="qqq-setting-item" style="margin-bottom:16px; padding:12px; border:1px solid ' + border + '; border-radius:4px; background:' + bg2 + ';">';
       html += '<div style="font-size:13px; font-weight:bold; color:' + text + '; margin-bottom:4px;">' + def.label + '</div>';
-      html += '<div style="font-size:11px; color:' + textDim + '; margin-bottom:10px;">' + def.desc + '</div>';
+      // ★ 无 desc 项不渲染描述行（防 undefined）
+      if (def.desc) html += '<div style="font-size:11px; color:' + textDim + '; margin-bottom:10px;">' + def.desc + '</div>';
 
       if (def.type === 'slider-stepped') {
         var stops = def.stops || ['0', '25', '50', '75', '100'];

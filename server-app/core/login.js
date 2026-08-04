@@ -28,7 +28,9 @@
   var _loginEscHandler = null;
   var _loginAuthUnsub = null;
 
-  var API_BASE = 'https://direct-cn.gh555.com/api';
+  // ★ F40: 与主进程统一走 gh555.com 主域——部分客户网络对 direct-cn 灰云域名不通（502），
+  //   余额/LV 拉取与登录页同域，能打开登录页就能拉到余额。
+  var API_BASE = 'https://gh555.com/api';
   var BALANCE_POLL_MS = 60000;
   var NO_DRAG = '-webkit-app-region:no-drag;';
 
@@ -837,6 +839,11 @@
     _updateButtons(loggedIn, phoneTail);
     if (loggedIn) {
       _lvShow();            // ★ 立即显示 LV 区域 + 奖杯（主进程广播已推送 balance+lvData）
+      // ★ F42: 恢复渲染层余额/LV 拉取——主进程 net.fetch 走 Electron 主进程网络栈，
+      //   与页面网络栈不同（代理/证书环境差异），部分环境拉取失败且被静默吞掉 → 余额不显示。
+      //   渲染层 fetch 与登录页同栈，双通道兜底，查询接口不扣费。
+      _startBalancePoll();
+      _fetchLv();
       // 触发状态栏免费预算刷新
       try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (e) { }
       try {

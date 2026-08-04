@@ -71,8 +71,11 @@
 
 .qqq-tab-btn.qqq-tab-active {
   color: var(--text-primary);
-  border-bottom-color: var(--primary-color);
+  border-bottom-color: #888;
   background: var(--background-color);
+}
+[data-theme="dark"] .qqq-tab-btn.qqq-tab-active {
+  border-bottom-color: #999;
 }
 
 /* Roam 永驻标签 — 窄宽金色文字，枪灰右竖线贯穿到底+2px */

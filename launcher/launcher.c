@@ -34,6 +34,28 @@
 #define WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS  1
 #endif
 
+// ── WinHTTP TLS 1.2 — Win7 默认仅 TLS 1.0，现代 CDN 要求 1.2+ ──
+#ifndef WINHTTP_OPTION_SECURE_PROTOCOLS
+#define WINHTTP_OPTION_SECURE_PROTOCOLS 84
+#endif
+#ifndef WINHTTP_FLAG_SECURE_PROTOCOL_TLS1
+#define WINHTTP_FLAG_SECURE_PROTOCOL_TLS1  0x00000080
+#endif
+#ifndef WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_1
+#define WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_1 0x00000200
+#endif
+#ifndef WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2
+#define WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 0x00000800
+#endif
+
+// 启用 TLS 1.0/1.1/1.2（Win7 需 KB3140245 才完整支持 1.2；低版本系统忽略不支持的协议标志）
+static void enableTls12(HINTERNET hRequest) {
+    DWORD protos = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1 |
+                   WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_1 |
+                   WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
+    WinHttpSetOption(hRequest, WINHTTP_OPTION_SECURE_PROTOCOLS, &protos, sizeof(protos));
+}
+
 // ── 窗口常量 ──
 #define WW 420
 #define WH 240
@@ -369,6 +391,7 @@ static int fetchConfigFromServer(char *buf, int bufSize) {
         WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
         WINHTTP_FLAG_SECURE);
     if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return 0; }
+    enableTls12(hRequest);
 
     DWORD timeout = 15000;
     WinHttpSetOption(hRequest, WINHTTP_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
@@ -465,6 +488,8 @@ static int downloadToString(const char *host, const char *path,
         useHttps ? WINHTTP_FLAG_SECURE : 0);
     if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return -1; }
 
+    enableTls12(hRequest);
+
     DWORD timeout = (DWORD)(g_cfg.timeout_sec * 1000);
     WinHttpSetOption(hRequest, WINHTTP_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
     WinHttpSetOption(hRequest, WINHTTP_OPTION_RECEIVE_TIMEOUT, &timeout, sizeof(timeout));
@@ -526,6 +551,8 @@ static int downloadFile(const char *host, const char *path,
         WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
         useHttps ? WINHTTP_FLAG_SECURE : 0);
     if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return -1; }
+
+    enableTls12(hRequest);
 
     DWORD timeout = 60000; // 文件下载固定 60s
     WinHttpSetOption(hRequest, WINHTTP_OPTION_CONNECT_TIMEOUT, &timeout, sizeof(timeout));
