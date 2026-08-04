@@ -378,20 +378,17 @@
         $restart.style.opacity = '0.6';
         $restart.style.pointerEvents = 'none';
 
-        // ★ 设旁路标签 → beforeunload 检测到此标签跳过 e.preventDefault()
+        // ★ 设旁路标签：主窗口 + 所有 iframe → beforeunload 全线放行
         window.__qqq_reloading = true;
-        var b2 = window.qqqideBridge;
-        if (b2 && b2.shell && b2.shell.hardRefresh) {
-          b2.shell.hardRefresh();
-        } else {
-          location.reload();
+        var iframes = document.querySelectorAll('iframe');
+        for (var fi = 0; fi < iframes.length; fi++) {
+          try { iframes[fi].contentWindow.__qqq_reloading = true; } catch (_) {}
         }
-        // 兜底：如果 800ms 后还在，强刷
-        setTimeout(function () {
-          if (!window.__qqq_reloading) return;
-          window.__qqq_reloading = true;
-          location.reload();
-        }, 800);
+        // 直接走 location.reload()——不经过 IPC，减少故障点
+        location.reload();
+        // 兜底：800ms/2s 后还在 → 再试
+        setTimeout(function () { location.reload(); }, 800);
+        setTimeout(function () { location.reload(); }, 2000);
       });
     }
 

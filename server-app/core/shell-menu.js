@@ -553,6 +553,7 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       (function (rEl) {
         rEl.addEventListener('mouseenter', function () { rEl.style.background = 'var(--background-color)'; });
         rEl.addEventListener('mouseleave', function () { rEl.style.background = ''; });
+        rEl.addEventListener('click', function () { _showGoodsSettings(gpId); });
       })(gpRow);
 
       pop.appendChild(gpRow);

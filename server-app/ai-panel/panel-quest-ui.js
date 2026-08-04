@@ -1022,6 +1022,10 @@ window.addEventListener('message', async function (e) {
                     ag._lastApiTotalTokens = 0;
                     ag._lastApiCompletionTokens = 0;
                     if (typeof updateCtxBtn === 'function') updateCtxBtn();
+                    // ★ 持久化 token 元数据到 quest.sq3（防重启恢复旧值→ctx-btn 显示僵尸数字）
+                    if (typeof questStore !== 'undefined' && questStore.save) {
+                        questStore.save(qid, { lastApiPromptTokens: 0, lastApiTotalTokens: 0, lastApiCompletionTokens: 0 }).catch(function () { });
+                    }
                     _respond({
                         type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: true,
                         beforeChars: beforeChars, afterChars: afterChars, status: 'floor-starting'
@@ -1052,20 +1056,42 @@ window.addEventListener('message', async function (e) {
                 afterChars = text.length;
                 found = true;
 
-                if (ag._ctx && typeof _parseBiscuitFromContent === 'function') {
+                // ★ V19: 持久化 ctx.json — 始终执行，不依赖 ag._ctx 预初始化
+                //   旧代码有两条隐蔽失败路径：① ag._ctx 为 null → 跳过 ② _writeCtxJson 静默 return false
+                if (!ag._ctx) ag._ctx = {};
+                // 优先用 _parseBiscuitFromContent，不可用时手动构建
+                if (typeof _parseBiscuitFromContent === 'function') {
                     ag._ctx.biscuitLines = _parseBiscuitFromContent(text);
-                    ag._ctx.lastCompressedFloor = ag._ctx.totalFloors || ag._ctx.biscuitLines.length || 0;
-                    ag._ctx.narrative = 'biscuit:' + ag._ctx.biscuitLines.length;
+                } else {
+                    // 兜底：按 === F 分段手动构建 biscuitLines
+                    var _manualParts = text.split(/\n(?==== F\d+ )/);
+                    var _manualLines = [];
+                    for (var _mpi = 0; _mpi < _manualParts.length; _mpi++) {
+                        var _mpt = _manualParts[_mpi].trim();
+                        if (!_mpt) continue;
+                        var _mfm = _mpt.match(/^=== F(\d+)/);
+                        if (_mfm) _manualLines.push({ n: parseInt(_mfm[1], 10), text: _mpt });
+                    }
+                    _manualLines.sort(function(a,b) { return a.n - b.n; });
+                    ag._ctx.biscuitLines = _manualLines;
                 }
+                ag._ctx.lastCompressedFloor = ag._ctx.totalFloors || ag._ctx.biscuitLines.length || 0;
+                ag._ctx.narrative = 'biscuit:' + (ag._ctx.biscuitLines.length || 0);
+                ag._ctx.totalFloors = ag._ctx.totalFloors || ag._ctx.biscuitLines.length || 0;
 
+                // ★ 持久化：await 确保落盘，不火后不理
                 if (typeof _writeCtxJson === 'function') {
-                    _writeCtxJson(qid, ag._ctx).catch(function () { });
+                    try { await _writeCtxJson(qid, ag._ctx); } catch (_) { }
                 }
                 // ★ 立即刷新 ctx-btn（背包已变小）
                 ag._lastApiPromptTokens = 0;
                 ag._lastApiTotalTokens = 0;
                 ag._lastApiCompletionTokens = 0;
                 if (typeof updateCtxBtn === 'function') updateCtxBtn();
+                // ★ 持久化 token 元数据到 quest.sq3（防重启恢复旧值→ctx-btn 显示僵尸数字）
+                if (typeof questStore !== 'undefined' && questStore.save) {
+                    questStore.save(qid, { lastApiPromptTokens: 0, lastApiTotalTokens: 0, lastApiCompletionTokens: 0 }).catch(function () { });
+                }
                 break;
             }
         }

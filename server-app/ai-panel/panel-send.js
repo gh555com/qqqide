@@ -993,7 +993,11 @@ window._restoreGuideBlocksToContentWrap = _restoreGuideBlocksToContentWrap;
 //     改为 e.preventDefault() 挡住窗口销毁，等 save 完成或 2 秒超时才放行。
 window.addEventListener('beforeunload', function (e) {
     // 用户点击「重置窗口」→ 旁路标签，不拦截
-    if (window.__qqq_reloading) return;
+    // ★ iframe 内 window !== parent.window，必须也查 parent
+    var _rl = window.__qqq_reloading;
+    try { if (!_rl && window.parent && window.parent !== window) _rl = window.parent.__qqq_reloading; } catch (_) {}
+    try { if (!_rl && window.top && window.top !== window) _rl = window.top.__qqq_reloading; } catch (_) {}
+    if (_rl) return;
     var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     var _qid = (typeof questActiveId !== 'undefined') ? questActiveId : null;
     if (!_ag || !_qid) return;
