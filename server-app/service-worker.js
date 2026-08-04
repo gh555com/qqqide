@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// service-worker.js v329 — goods gear btn + settings modal; kope/window-there factory OFF; showCard OS-level setting
+// service-worker.js v331 — goods gear btn + settings modal; kope/window-there factory OFF; showCard OS-level setting
 // PWA strategy:
 //   - index.html / navigation : network-first(2s), fallback cache, last-resort 503
 //   - core/* qoods/* assets   : stale-while-revalidate
@@ -9,11 +9,13 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v344'; // v344: persist _lastApiPromptTokens to quest.sq3 after compression → ctx-btn survives restart — guaranteed ctx.json persistence + fallback _parseBiscuitFromContent
+const CACHE_NAME = 'qqq-shell-v347'; // v346: settings desc → 背包 token 超此值 → 自动剥离绝对包装盒（做absolut 压缩）
 const PRECACHE_URLS = [
   './',
   './index.html',
-  './core/shell.css',
+  './core/shell-base.css',
+  './core/shell-main.css',
+  './core/shell-widgets.css',
   './core/shell.js',
   './core/shell-lang.js',
   './core/shell-menu.js',

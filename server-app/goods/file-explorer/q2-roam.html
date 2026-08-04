@@ -114,7 +114,7 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .scroll-hint { position: absolute; right: 2px; font-size: 9px; color: var(--text-dim); pointer-events: none; user-select: none; z-index: 1001; }
 .scroll-hint-top { top: 2px; }
 .scroll-hint-bottom { bottom: 2px; }
-.file-item { padding: 0; border-radius: 0; display: flex; align-items: center; margin: 0; min-height: 20px; line-height: 1.2; cursor: pointer; position: relative; overflow: hidden; }
+.file-item { padding: 0; border-radius: 0; display: flex; align-items: center; margin: 0; min-height: 20px; line-height: 1.2; cursor: pointer; position: relative; overflow: hidden; contain: layout style paint; }
 .file-item.js-hover { background-color: var(--bg-highlight) !important; }
 .file-item.selected { background-color: var(--selection-bg) !important; color: var(--selection-text); }
 .file-item.selected .sz-area, .file-item.selected .file-select-area, .file-item.selected .folder-name-area, .file-item.selected .file-name-area { background-color: transparent !important; color: var(--selection-text); }
@@ -235,4 +235,6 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 <div id="globalTooltip" class="dropdown-item-tooltip"></div>
 <div id="pathTooltip" class="path-tooltip"></div>
 <script src="q2-roam.js"></script>
+<script src="q2-roam-ui.js"></script>
+<script src="q2-roam-boot.js"></script>
 </body>

@@ -1,0 +1,816 @@
+/* ============================================================================
+   shell-main.css — Tab groups + editor + breadcrumb + context menu + AI viewport dropdown
+   Split from shell.css (2026-08-04). Load order: base -> main -> widgets.
+   ============================================================================ */
+/* ============================================================================
+   Tab Group
+   ============================================================================ */
+.qqq-tab-group {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: var(--panel-min);
+  background: var(--background-color);
+}
+
+.qqq-tab-group:first-child {
+  border-left: none;
+}
+
+.qqq-tab-group+.qqq-sash-v+.qqq-tab-group,
+.qqq-tab-group:not(:first-child) {
+  border-left: none;
+}
+
+/* Tab bar */
+.qqq-tab-bar {
+  flex: 0 0 auto;
+  min-height: var(--tab-bar-h);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  overflow: hidden;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border-color);
+  scrollbar-width: none;
+}
+/* Gaea group tab bar — allow Roam ::after overflow */
+.qqq-tab-group:first-child .qqq-tab-bar {
+  overflow: visible;
+}
+
+.qqq-tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Tab button */
+.qqq-tab-btn {
+  flex: 1 1 110px;
+  min-width: 70px;
+  max-width: 160px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 0 0 10px;
+  height: var(--tab-bar-h);
+  font-size: 13px;
+  color: var(--base01);
+  border: none;
+  background: transparent;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 80ms, color 80ms;
+}
+
+.qqq-tab-btn:hover {
+  background: var(--background-color);
+  color: var(--text-primary);
+}
+
+.qqq-tab-btn.qqq-tab-active {
+  color: var(--text-primary);
+  border-bottom-color: var(--primary-color);
+  background: var(--background-color);
+}
+
+/* Roam 永驻标签 — 窄宽金色文字，枪灰右竖线贯穿到底+2px */
+.qqq-tab-btn.qqq-tab-roam {
+  flex: 0 0 auto;
+  width: 58px;
+  min-width: 44px;
+  max-width: 68px;
+  padding: 3px 6px 0 6px;
+  justify-content: center;
+  font-weight: 700;
+  color: #b68200;
+  border-radius: 0;
+  position: relative;
+  overflow: visible;
+}
+.qqq-tab-btn.qqq-tab-roam::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: -2px;
+  width: 4px;
+  background: #888;
+  pointer-events: none;
+}
+.qqq-tab-btn.qqq-tab-roam:hover {
+  color: #b68200;
+}
+.qqq-tab-btn.qqq-tab-roam.qqq-tab-active {
+  border-bottom-color: #888;
+}
+[data-theme="dark"] .qqq-tab-btn.qqq-tab-roam::after {
+  background: #999;
+}
+[data-theme="dark"] .qqq-tab-btn.qqq-tab-roam:hover {
+  color: #b68200;
+}
+[data-theme="dark"] .qqq-tab-btn.qqq-tab-roam.qqq-tab-active {
+  border-bottom-color: #999;
+}
+
+.qqq-tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  max-width: 24px;
+  border: none;
+  background: transparent;
+  color: var(--base1);
+  font-size: 16px;
+  border-radius: 0;
+  flex-shrink: 0;
+  margin-left: auto;
+  margin-right: 0;
+  padding: 0;
+}
+
+.qqq-tab-close:hover {
+  background: rgba(128, 128, 128, 0.25);
+  color: var(--red);
+}
+
+.qqq-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Tab content */
+.qqq-tab-content {
+  flex: 1 1 auto;
+  overflow: hidden;
+  position: relative;
+  min-height: 0;
+  height: 100%;
+  background: var(--background-color);
+}
+
+/* Monaco overview ruler �?消空气墙：禁 overview ruler，scrollbar 贴合右边�?*/
+.monaco-editor .overviewRuler {
+  /* 保留标注条，去掉竖线/背景色差 */
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+}
+
+/* overview ruler 内的 canvas 也不要边�?*/
+.monaco-editor .overviewRuler canvas {
+  border: none !important;
+  outline: none !important;
+}
+
+/* ── 光标：禁用平滑动画，纯闪�?── */
+.monaco-editor .cursor {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* 分组�?sash �?4px 宽，背景色匹配分组，::after 居中做唯一分割�?*/
+.qqq-sash-v[data-sash="tab-group"] {
+  flex: 0 0 4px;
+  width: 4px;
+  background: var(--background-color);
+  position: relative;
+  z-index: 5;
+}
+
+.qqq-sash-v[data-sash="tab-group"]::after {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.qqq-sash-v[data-sash="tab-group"]:hover {
+  background: var(--sash-bg-hover);
+}
+
+/* A|X sash �?左右色匹�?A �?X 区背景，消双线只�?::after */
+.qqq-sash-v[data-sash="a-right"] {
+  background: linear-gradient(to right,
+      var(--card-bg) 0px, var(--card-bg) 2px,
+      var(--background-color) 2px, var(--background-color) 100%);
+}
+
+.qqq-sash-v[data-sash="a-right"]:hover {
+  background: var(--sash-bg-hover);
+}
+
+.qqq-tab-pane {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  display: none;
+  contain: layout style;
+}
+
+.qqq-tab-pane.qqq-tab-pane-active {
+  display: block;
+}
+
+/* ============================================================================
+   Editor Breadcrumb Bar �?独立豆腐块（flex item，占真实高度�?   ============================================================================ */
+[data-qqq-editor-breadcrumb] {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 2px 16px; /* 按钮 absolute 悬浮，不预留额外空间 */
+  outline: none;
+  font-size: 12px;
+  font-family: ui-monospace, Consolas, Menlo, monospace;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border-bottom: 1px solid var(--border-color);
+  border-left: 3px solid #888;
+  white-space: normal;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+  min-height: 18px;
+  /* 可选中/复制，不可编�?*/
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+/* 面包屑复制按钮 — hover 时在右侧浮现，垂直居中 */
+.qqq-breadcrumb-copy-btn {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  transform: translateY(-50%);
+  z-index: 5;
+  display: none;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 22px;
+  border: 1px solid var(--border-color);
+  border-radius: 3px;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+[data-qqq-editor-breadcrumb]:hover .qqq-breadcrumb-copy-btn {
+  display: block;
+}
+
+.qqq-breadcrumb-copy-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--yellow);
+}
+
+[data-qqq-editor-breadcrumb]::selection,
+[data-qqq-editor-breadcrumb] ::selection {
+  background: #ffd301;
+  color: #000;
+}
+
+[data-theme="dark"] [data-qqq-editor-breadcrumb] {
+  border-left-color: #999;
+}
+
+/* Monaco 容器 */
+[data-qqq-editor-monaco] {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ============================================================================
+   Monaco 右键菜单 — Solarized 配色 + 边缘躲避
+   Monaco 0.34.1 用 .context-view 容器（非新版 .monaco-menu-container）
+   ============================================================================ */
+/* 外层容器 — 去默认白底，Solarized 阴影 */
+.context-view {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.22) !important;
+  border-radius: 6px !important;
+}
+[data-theme="dark"] .context-view {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.55) !important;
+}
+
+/* 菜单本体 — Solarized 背景 */
+.context-view .monaco-menu {
+  background: var(--card-bg) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 6px !important;
+}
+
+/* action bar — 背景透明 */
+.context-view .monaco-menu .monaco-action-bar {
+  background: transparent !important;
+}
+
+/* 菜单项 */
+.context-view .monaco-menu .action-item {
+  color: var(--text-primary) !important;
+  background: transparent !important;
+}
+
+.context-view .monaco-menu .action-label {
+  color: var(--text-primary) !important;
+}
+
+/* 分隔线 */
+.context-view .monaco-menu .action-item.menu-separator {
+  border-bottom-color: var(--border-color) !important;
+}
+
+/* 快捷键提示 */
+.context-view .monaco-menu .keybinding {
+  color: var(--text-secondary) !important;
+}
+
+/* 禁用项 */
+.context-view .monaco-menu .action-item.disabled .action-label {
+  color: var(--base1) !important;
+  opacity: 0.5;
+}
+
+/* ★ 悬浮/聚焦 — Solarized 金色替代 Monaco 默认蓝色 */
+.context-view .monaco-menu .action-item.focused {
+  background: #ffd301 !important;
+  color: #000 !important;
+}
+.context-view .monaco-menu .action-item.focused .action-label {
+  color: #000 !important;
+}
+.context-view .monaco-menu .action-item.focused .keybinding {
+  color: #555 !important;
+}
+
+/* 暗色主题 — 深金 */
+[data-theme="dark"] .context-view .monaco-menu .action-item.focused {
+  background: #b58900 !important;
+  color: #002b36 !important;
+}
+[data-theme="dark"] .context-view .monaco-menu .action-item.focused .action-label {
+  color: #002b36 !important;
+}
+[data-theme="dark"] .context-view .monaco-menu .action-item.focused .keybinding {
+  color: #073642 !important;
+}
+
+/* 悬浮按钮行（absolute �?Monaco 容器右下角，零重排） */
+[data-qqq-editor-float-btns] {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  z-index: 100;
+  display: flex;
+  gap: 4px;
+}
+
+.qqq-editor-float-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+  opacity: 0.70;
+  transition: opacity 0.15s;
+  line-height: 1;
+  padding: 0;
+}
+
+.qqq-editor-float-btn:hover {
+  opacity: 1;
+}
+
+/* ============================================================================
+   Status Area (bottom)
+   ============================================================================ */
+.qqq-status-area {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.qqq-status-row {
+  flex: 0 0 var(--status-row-h);
+  display: flex;
+  align-items: center;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  padding: 0 12px;
+  font-size: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.qqq-status-item {
+  margin-right: 16px;
+}
+
+/* ── 免费时段指示器（状态栏内） ── */
+.qqq-status-free {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 11px;
+  white-space: nowrap;
+  margin-right: 16px;
+}
+
+.qqq-free-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .3px;
+  transition: all .2s;
+}
+
+.qqq-free-badge.qqq-free-on {
+  background: #0a0;
+  color: #fff;
+  border: 1.5px solid #0f0;
+  box-shadow: 0 0 8px #0f0, 0 0 18px #0f0;
+  animation: qqqFreePulse .8s ease-in-out infinite alternate, qqqFreeRainbow 2s linear infinite;
+}
+
+.qqq-free-badge.qqq-free-ending {
+  background: #e8a030;
+  color: #000;
+  border: 1.5px solid #ff0;
+  box-shadow: 0 0 12px #e8a030, 0 0 24px #e8a030;
+  animation: qqqFreePulse .3s ease-in-out infinite alternate;
+}
+
+.qqq-free-badge.qqq-free-soon {
+  background: #555;
+  color: #ccc;
+  border: 1px solid #777;
+  box-shadow: 0 0 4px #666;
+  animation: qqqFreePulse 2s ease-in-out infinite alternate;
+}
+
+@keyframes qqqFreePulse {
+  from {
+    transform: scale(1);
+  }
+
+  to {
+    transform: scale(1.06);
+  }
+}
+
+@keyframes qqqFreeRainbow {
+  0% {
+    border-color: #0f0;
+    box-shadow: 0 0 8px #0f0, 0 0 18px #0f0;
+  }
+
+  25% {
+    border-color: #ff0;
+    box-shadow: 0 0 8px #ff0, 0 0 18px #ff0;
+  }
+
+  50% {
+    border-color: #0ff;
+    box-shadow: 0 0 8px #0ff, 0 0 18px #0ff;
+  }
+
+  75% {
+    border-color: #f0f;
+    box-shadow: 0 0 8px #f0f, 0 0 18px #f0f;
+  }
+
+  100% {
+    border-color: #0f0;
+    box-shadow: 0 0 8px #0f0, 0 0 18px #0f0;
+  }
+}
+
+/* ============================================================================
+   Resize Grip (bottom-right)
+   ============================================================================ */
+.qqq-resize-grip {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  z-index: 999;
+  -webkit-app-region: no-drag;
+  background: linear-gradient(135deg, transparent 50%, var(--base1) 50%);
+  opacity: 0.5;
+  transition: opacity 120ms;
+}
+
+.qqq-resize-grip:hover {
+  opacity: 1;
+}
+
+/* ============================================================================
+   AI Viewport (titlebar row-1) - preserved from old layout
+   ============================================================================ */
+.aiv-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: auto;
+  min-height: 28px;
+  padding: 2px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: wrap;
+  -webkit-app-region: no-drag;
+  scrollbar-width: none;
+}
+
+.aiv-container::-webkit-scrollbar {
+  display: none;
+}
+
+.aiv-block {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 24px;
+  padding: 1px 8px;
+  border-radius: 0;
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-bottom: 1px;
+  transition: border-color 100ms, background 100ms;
+}
+
+.aiv-block-empty {
+  border: 1px dashed var(--base1);
+  color: var(--base1);
+}
+
+.aiv-block-empty:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.aiv-block-filled {
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  background: var(--background-color);
+}
+
+.aiv-block-filled:hover {
+  border-color: var(--primary-color);
+}
+
+.aiv-block-active {
+  border-color: var(--primary-color) !important;
+  border-style: dashed !important;
+  background: var(--card-bg);
+}
+
+.aiv-block-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.aiv-git-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 15px;
+  border-radius: 8px;
+  background: #dc322f;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 0 4px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin: 0 2px;
+}
+
+.aiv-block-plus {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.aiv-block-rm {
+  font-size: 14px;
+  font-weight: 700;
+  margin-left: 4px;
+  color: var(--base1);
+  line-height: 1;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.aiv-block-rm:hover {
+  color: var(--red);
+  background: rgba(220, 50, 47, 0.1);
+}
+
+/* ── AI 视口下拉/子菜单共享样�?── */
+.aiv-dropdown,
+.aiv-submenu,
+.aiv-recent-dropdown {
+  background: #e7e4c2 !important;
+  border: 1px solid #c8c8c0 !important;
+  padding: 4px 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+/* 内层滚动容器：百分百消除原生滚动条，仅显�?qh 自定义滑�?*/
+.aiv-scroll-inner {
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE/Edge */
+}
+
+.aiv-scroll-inner::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+[data-theme="dark"] .aiv-dropdown,
+[data-theme="dark"] .aiv-submenu,
+[data-theme="dark"] .aiv-recent-dropdown {
+  background: #1e211e !important;
+  border-color: var(--border-color) !important;
+}
+
+/* ── hover 高亮：文�?文件夹统一，文字纯�?�?/纯白(�?，更显眼 ── */
+.aiv-dd-row:hover,
+.aiv-recent-row:hover {
+  background: rgba(0, 0, 0, 0.12) !important;
+  color: #000 !important;
+}
+
+[data-theme="dark"] .aiv-dd-row:hover,
+[data-theme="dark"] .aiv-recent-row:hover {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #fff !important;
+}
+
+/* ── 面包屑：�?hover 更深的高亮背景，文字色与 hover 一�?── */
+.aiv-breadcrumb {
+  background: rgba(0, 0, 0, 0.20) !important;
+  color: #000 !important;
+}
+
+[data-theme="dark"] .aiv-breadcrumb {
+  background: rgba(255, 255, 255, 0.24) !important;
+  color: #fff !important;
+}
+
+/* ============================================================================
+   A Zone: gaea panel cards (q4-style)
+   ============================================================================ */
+.gaea-panel-header {
+  flex: 0 0 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--background-color);
+  font-size: 12px;
+}
+
+.gaea-panel-title {
+  font-weight: 600;
+  color: var(--primary-color);
+}
+
+.gaea-panel-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  padding: 4px 0;
+}
+
+.gaea-panel-body::-webkit-scrollbar {
+  display: none;
+}
+
+.gaea-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  color: var(--text-primary);
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-color);
+  transition: background 80ms;
+  flex-wrap: wrap;
+}
+
+.gaea-card:hover {
+  background: var(--background-color);
+}
+
+.gaea-card-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.gaea-card-text {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gaea-card-label {
+  white-space: nowrap;
+}
+
+.gaea-card-hint {
+  font-size: 10px;
+  color: var(--base1);
+  white-space: nowrap;
+}
+
+.gaea-card-stats {
+  font-size: 10px;
+  color: var(--base1);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.gaea-card-input-wrap {
+  flex-basis: 100%;
+  display: flex;
+  gap: 4px;
+  margin-top: 4px;
+  padding-left: 28px;
+}
+
+.gaea-card-input {
+  flex: 1 1 auto;
+  padding: 3px 6px;
+  background: var(--background-color);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  font-size: 11px;
+  outline: none;
+}
+
+.gaea-card-input:focus {
+  border-color: var(--primary-color);
+}
+
+.gaea-card-go {
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 2px;
+  font-size: 11px;
+}
+
+.gaea-card-go:hover {
+  background: var(--background-color);
+}
+
+.gaea-search-wrap {
+  flex: 0 0 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border-top: 1px solid var(--border-color);
+  background: var(--background-color);
+}
+
+.gaea-search-input {
+  width: 100%;
+  padding: 4px 6px;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 2px;
+  font-size: 11px;
+  outline: none;
+}
+
+.gaea-search-input:focus {
+  border-color: var(--primary-color);
+}

@@ -65,8 +65,8 @@
     },
     {
       key: 'ai.compressThreshold',
-      label: '自动压缩阈值',
-      desc: '上下文 token 数超过此值自动触发压缩。单位 k（千 tokens），接收范围 100-1000',
+      label: '上下文背包自动 absolut 压缩',
+      desc: '背包 token 超此值 → 自动剥离绝对包装盒（做absolut 压缩）',
       type: 'number',
       tab: 'general',
       defaultValue: String(_D['ai.compressThreshold'] || 600),

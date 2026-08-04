@@ -1,0 +1,284 @@
+/* ============================================================================
+   shell-widgets.css — ContentWidget icons + hover expand + find-widget + gateway dots + brand dropdown + goods modal
+   Split from shell.css (2026-08-04). Load order: base -> main -> widgets.
+   ============================================================================ */
+/* ============================================================================
+   Drag overlay (blocks pointer events during sash drag)
+   ============================================================================ */
+.qqq-drag-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: transparent;
+}
+
+/* ============================================================================
+   q1 ViewZone 相框 + ContentWidget 图标�?(qqq-viewzone.js)
+   ============================================================================ */
+.qqq-vz-media {
+  display: inline-block;
+  box-sizing: border-box;
+}
+
+/* 图标�?(ContentWidget inline icon) */
+.qqq-icon-frame {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  vertical-align: middle;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  font: 11px ui-monospace, Consolas, monospace;
+  line-height: 16px;
+  pointer-events: none;
+  max-width: 280px;
+}
+
+.qqq-icon-frame img {
+  width: 16px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 2px;
+  flex: 0 0 16px;
+}
+
+.qqq-icon-frame .qqq-icon-name {
+  color: var(--text-secondary);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 0 1 auto;
+}
+
+/* �?悬浮展开�?�代码块/表格渲染 �?�?AI 面板外观一�?*/
+.qqq-overlay-table-wrapper .msg-ai pre {
+  background: var(--card-bg);
+  color: var(--text-primary);
+  padding: 8px 10px;
+  border-radius: 4px;
+  overflow-x: hidden;
+  margin: 6px 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid var(--border-color);
+}
+
+.qqq-overlay-table-wrapper .msg-ai code {
+  background: var(--card-bg);
+  color: var(--text-primary);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: .9em;
+  border: 1px solid var(--border-color);
+  word-break: break-all;
+  overflow-wrap: break-word;
+}
+
+.qqq-overlay-table-wrapper .msg-ai pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  border: none;
+}
+
+.qqq-overlay-table-wrapper .msg-ai ul,
+.qqq-overlay-table-wrapper .msg-ai ol {
+  margin: 4px 0 4px 20px;
+  padding: 0;
+}
+
+.qqq-overlay-table-wrapper .msg-ai li {
+  margin: 2px 0;
+}
+
+/* ══�?Monaco find-widget 搜索框配色覆写（仅改搜索框控件，不动 editor 正文区） ══�?*/
+
+/* 搜索框整体容�?�?跟随 solarized 主题 */
+.monaco-editor .find-widget {
+  background-color: var(--card-bg) !important;
+  border-color: var(--border-color) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+}
+
+
+/* 键入框背�?文字 */
+.monaco-editor .find-widget .monaco-inputbox {
+  background-color: var(--background-color) !important;
+  border-color: var(--border-color) !important;
+}
+
+.monaco-editor .find-widget .monaco-inputbox input {
+  background-color: var(--background-color) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 选中文字背景�?�?金色（不要蓝色）�?核弹级覆�?*/
+.monaco-editor .find-widget .monaco-inputbox input::selection {
+  background-color: #ffd301 !important;
+  background: #ffd301 !important;
+  color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
+}
+
+.monaco-editor .find-widget input::selection,
+.monaco-editor .find-widget textarea::selection,
+.monaco-editor .find-widget *::selection {
+  background-color: #ffd301 !important;
+  background: #ffd301 !important;
+  color: #000 !important;
+  -webkit-text-fill-color: #000 !important;
+}
+
+/* 焦点边框 �?Solarized yellow（替代默认蓝色） */
+.monaco-editor .find-widget .monaco-inputbox.synthetic-focus,
+.monaco-editor .find-widget .monaco-inputbox.focused,
+.monaco-editor .find-widget .monaco-inputbox:focus-within {
+  border-color: var(--yellow) !important;
+  box-shadow: 0 0 0 1px var(--yellow) !important;
+}
+
+.monaco-editor .find-widget .monaco-inputbox input:focus-visible,
+.monaco-editor .find-widget .monaco-inputbox input:focus {
+  outline: none !important;
+  outline-color: var(--yellow) !important;
+}
+
+/* 匹配计数文字 */
+.monaco-editor .find-widget .matchesCount {
+  color: var(--text-secondary) !important;
+}
+
+/* 按钮配色 */
+.monaco-editor .find-widget .button {
+  color: var(--text-primary) !important;
+}
+
+.monaco-editor .find-widget .button:hover {
+  background-color: var(--gold-accent) !important;
+}
+
+.monaco-editor .find-widget .button.checked {
+  border-color: var(--yellow) !important;
+}
+
+/* ── 网关线路状态指示点（状态栏�?L/C/R 三点�?── */
+.qqq-gw-dots {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  margin: 0 10px;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.qqq-gw-dot {
+  color: #555;
+  opacity: 0.5;
+  transition: color .3s, opacity .3s, transform .2s;
+  cursor: default;
+  user-select: none;
+}
+
+.qqq-gw-dot.primary {
+  color: #859900;
+  opacity: 1;
+  text-shadow: 0 0 4px #85990066;
+}
+
+.qqq-gw-dot.fallback {
+  color: #e07020;
+  opacity: 1;
+  text-shadow: 0 0 4px #e0702066;
+}
+
+.qqq-gw-dot.pulse {
+  animation: qqqGwPulse .3s ease-out;
+}
+
+@keyframes qqqGwPulse {
+  0% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(2.5);
+  }
+
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* ── 品牌下拉 — hover 菜单行2 "qqq" ── */
+.qqq-brand-dropdown {
+  position: fixed;
+  z-index: 999999;
+  background: var(--card-bg, #fdf6e3);
+  border: 1px solid var(--border-color, #d6d6d6);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  min-width: 130px;
+  padding: 0;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.qqq-brand-dropdown.open {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+.qqq-brand-dd-item {
+  padding: 7px 12px;
+  cursor: default;
+  font-size: 13px;
+  font-family: Tahoma, sans-serif;
+  color: var(--text-primary, #586e75);
+  margin: 0;
+}
+.qqq-brand-dd-item:first-child {
+  border-radius: 6px 6px 0 0;
+}
+.qqq-brand-dd-item:last-child {
+  border-radius: 0 0 6px 6px;
+}
+.qqq-brand-dd-item:hover {
+  background: var(--hover-bg, rgba(0,0,0,0.06));
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: -1px 0;
+}
+
+/* ── Goods 设置弹窗 ── */
+.qqq-goods-settings-overlay {
+  animation: qqqGoodsSettingsFadeIn 150ms ease;
+}
+@keyframes qqqGoodsSettingsFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.qqq-goods-settings-modal {
+  animation: qqqGoodsSettingsSlideIn 200ms ease;
+}
+@keyframes qqqGoodsSettingsSlideIn {
+  from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* ── A 区 GH Health 固定商标位 ── */
+.gaea-gh-health:hover {
+  opacity: 0.8 !important;
+}
+
+/* ── Inbox 按钮未读徽章脉冲动画 ── */
+@keyframes qqqInboxPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
