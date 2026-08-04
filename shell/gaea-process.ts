@@ -88,6 +88,8 @@ function _pidFilePath(userData: string, goodsId: string): string {
 }
 
 function _isPidAlive(pid: number): boolean {
+    // ★ pid<=0 直接判死（占位状态 pid=0 时 process.kill(0,0) 行为未定义）
+    if (!pid || pid <= 0) return false;
     try {
         // ★ process.kill(pid, 0) 跨平台有效：Windows 上底层调 OpenProcess+GetExitCodeProcess，
         //    不依赖 tasklist /FI 语法（部分 Windows 语言/版本下 tasklist /FI 不可用）
@@ -183,10 +185,9 @@ function _clearOsState(goodsId: string): void {
 
 /** 同步 autoStart 到 OS 级状态文件（跨绿色包可见） */
 export function syncOsGaeaAutoStart(goodsId: string, autoStart: boolean): void {
+    // ★ 状态不存在也创建（pid=0 占位），保证 toggle 切换跨绿色包立即可见
     const state = _readOsState(goodsId);
-    if (state) {
-        _writeOsState(goodsId, { ...state, autoStart });
-    }
+    _writeOsState(goodsId, { pid: state ? state.pid : 0, autoStart, ts: Date.now() });
 }
 
 /** 从 OS 级状态文件读取 autoStart（跨绿色包可见） */
