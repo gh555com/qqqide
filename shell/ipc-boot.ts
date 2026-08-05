@@ -15,7 +15,6 @@ export function registerBootIpc(
     portableLogs: string,
     appVersion: string,
     bootConfig: BootConfig,
-    getEngineAlive: () => boolean,
     getLastBootMode: () => BootMode,
     getMainWindow: () => BrowserWindow | null,
 ): void {
@@ -36,7 +35,6 @@ export function registerBootIpc(
         logsDir: portableLogs,
         cwd: process.cwd(),
         homedir: require('os').homedir(),
-        engineAlive: getEngineAlive(),
         bootMode: getLastBootMode(),
     }));
 

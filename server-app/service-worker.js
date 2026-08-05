@@ -9,7 +9,7 @@
 //   - qqqide-asset://*           : passthrough (electron handles it)
 // Cache version bumps on each shell.css/js change.
 // ========================================================================
-const CACHE_NAME = 'qqq-shell-v351'; // v351: settings 快捷方式标题+无desc渲染；开始菜单双位置快捷方式
+const CACHE_NAME = 'qqq-shell-v357'; // v357: onlyfacts 楼层名/标签/开局重量/动画单次
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -22,6 +22,7 @@ const PRECACHE_URLS = [
   './core/shell-wings.js',
   './core/shell-overlay.js',
   './core/shell-statusbar.js',
+  './core/shell-activities.js',
   './core/shell-rpc.js',
   './core/ipc-bridge.js',
   './core/menu-schema.js',

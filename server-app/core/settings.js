@@ -254,6 +254,8 @@
     html += '<div style="display:flex; align-items:center; gap:12px;">';
     html += '<span style="font-size:15px; font-weight:bold; color:' + text + ';">设置</span>';
     html += '<button id="qqq-settings-restart" style="padding:3px 10px; border:1px solid ' + accent + '; border-radius:3px; background:transparent; color:' + accent + '; font-size:11px; cursor:default; white-space:nowrap;">重置窗口</button>';
+    // ★ 构建戳（与重置窗口成对）：SW缓存旧代码 → 红色⚠️ → 按「重置窗口」
+    html += '<span id="qqq-status-build" style="font-family:Consolas,monospace;font-size:11px;color:' + textDim + ';">stamp: --</span>';
     html += '</div>';
     html += '<button id="qqq-settings-close" style="width:24px; height:24px; border:1px solid ' + border + '; border-radius:3px; background:transparent; color:' + textDim + '; font-size:14px; line-height:22px; text-align:center;">✕</button>';
     html += '</div>';
@@ -470,6 +472,9 @@
         }, 500);
       });
     }
+
+    // 构建戳刷新（渲染到标题行·重置窗口右侧，与重置按钮成对）
+    if (window.__qqqBuildStampRefresh) window.__qqqBuildStampRefresh();
   }
 
   // ── 打开/关闭 ──

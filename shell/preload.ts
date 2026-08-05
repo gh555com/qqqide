@@ -164,11 +164,6 @@ const QQQ = {
         dispose: (id: number) => ipcRenderer.invoke('qqqide:monaco:dispose', id),
     },
 
-    // ---- generic engine RPC (Rust/Python/Node subprocesses) ----
-    engine: {
-        invoke: (method: string, params?: any) => ipcRenderer.invoke('qqqide:engine:invoke', method, params),
-        isAlive: () => ipcRenderer.invoke('qqqide:engine:isAlive'),
-    },
 
     // ---- audio (will route to miniaudio_v16.py) ----
     audio: {
@@ -182,6 +177,7 @@ const QQQ = {
     shell: {
         openExternal: (url: string) => ipcRenderer.invoke('qqqide:shell:openExternal', url),
         openPath: (p: string) => ipcRenderer.invoke('qqqide:shell:openPath', p),
+        openTerminal: (p: string, termType: string) => ipcRenderer.invoke('qqqide:shell:openTerminal', p, termType),
         hardRefresh: () => ipcRenderer.invoke('qqqide:shell:hardRefresh'),
         // ★ 浏览器启动兜底（2026-07-28）：主进程所有层失败后推 URL 给渲染层弹 qoast
         onBrowserFallback: (cb: (url: string) => void) => {

@@ -254,7 +254,6 @@ function registerAllIpc(): void {
     registerBootIpc(
         portable.root, portable.userData, portable.cache, portable.logs,
         APP_VERSION, bootConfig,
-        () => false, // engineHost removed (2026-08-02), q_win_x64 dormant
         () => lastBootMode,
         () => mainWindow
     );

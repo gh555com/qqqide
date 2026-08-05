@@ -984,6 +984,20 @@ window.addEventListener('message', async function (e) {
                     if (_splitIdx < 1) _splitIdx = 1;
                     var _hText = _blocks.slice(0, _splitIdx).join('\n');
                     var _rText = _blocks.slice(_splitIdx).join('\n');
+                    // ★ 捕获压缩前背包重量（aq 开局显示用）：guard + Z/biscuit/facts(压缩前) + 提示词 + tools + body
+                    var _preBackpackK = 0;
+                    try {
+                        var _bpChars0 = 14964;
+                        var _convPre = ag.conversation || [];
+                        for (var _cpi = 0; _cpi < _convPre.length; _cpi++) {
+                            var _cmpPre = _convPre[_cpi];
+                            if (_cmpPre._persistent || _cmpPre._biscuit || _cmpPre._facts) _bpChars0 += (_cmpPre.content || '').length;
+                        }
+                        _bpChars0 += 200; // 提示词（含 📎 引用）长度估算
+                        try { if (window.parent && typeof window.parent.getTools === 'function') { var _tp2 = window.parent.getTools(); if (_tp2 && _tp2.length) _bpChars0 += JSON.stringify(_tp2).length; } } catch (_) {}
+                        _bpChars0 += 250;
+                        _preBackpackK = Math.round(_bpChars0 / 2.7 / 1000);
+                    } catch (_) {}
                     if (Math.round(_hText.length / 2.7) < 12000) {
                         _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: 'h原料 < 12K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
                         return;
@@ -1021,9 +1035,7 @@ window.addEventListener('message', async function (e) {
                     ag._lastApiPromptTokens = 0;
                     ag._lastApiTotalTokens = 0;
                     ag._lastApiCompletionTokens = 0;
-                    if (typeof updateCtxBtn === 'function') updateCtxBtn();
-                    // ★ 持久化 token 元数据到 quest.sq3（防重启恢复旧值→ctx-btn 显示僵尸数字）
-                    if (typeof questStore !== 'undefined' && questStore.save) {
+                                    var _intent = _buildSendIntent(qid, _bulletRef, { type: 'compress', compressFloor: true, tierIndex: 4, noTools: true, backpackEstK: _preBackpackK });              if (typeof questStore !== 'undefined' && questStore.save) {
                         questStore.save(qid, { lastApiPromptTokens: 0, lastApiTotalTokens: 0, lastApiCompletionTokens: 0 }).catch(function () { });
                     }
                     _respond({

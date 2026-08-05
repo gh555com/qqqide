@@ -130,7 +130,7 @@ function sha256Hex(buf: Buffer | string): string {
 /** Atomic write: writes tmp file then renames over target. Windows-safe. */
 async function atomicWrite(absPath: string, data: Buffer | string): Promise<void> {
     const dir = path.dirname(absPath);
-    await fs.promises.mkdir(dir, { recursive: true });
+    try { await fs.promises.mkdir(dir, { recursive: true }); } catch { /* ignore — dir may already exist (e.g. drive root) */ }
     const tmp = absPath + '.tmp.' + process.pid + '.' + Math.random().toString(36).slice(2, 8);
     const buf = Buffer.isBuffer(data) ? data : Buffer.from(data, 'utf8');
     await fs.promises.writeFile(tmp, buf as any);

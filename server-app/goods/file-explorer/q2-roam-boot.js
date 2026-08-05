@@ -333,22 +333,14 @@
 	})();
 
 	// ---- path-tooltip（白底黑字，文件夹/盘符/最近项超长截断时使用）----
-	var _ptEl = null, _ptVisible = false;
+	var _ptEl = null, _ptVisible = false, _lastPathTooltipTs = 0;
 	function _ensurePathTooltip() {
 		if (_ptEl) return;
 		_ptEl = document.getElementById('pathTooltip');
 		if (!_ptEl) { _ptEl = document.createElement('div'); _ptEl.className = 'path-tooltip'; _ptEl.style.display = 'none'; document.body.appendChild(_ptEl); }
 	}
 	function hidePathTooltip() { if (_ptEl) _ptEl.style.display = 'none'; _ptVisible = false; }
-	function _isEllipsis(el) {
-		if (!el) return false;
-		if (el.scrollWidth > el.clientWidth + 1) return true;
-		try {
-			var r = document.createRange(); r.selectNodeContents(el);
-			var cs = getComputedStyle(el);
-			return r.getBoundingClientRect().width > el.clientWidth - parseFloat(cs.paddingLeft||0) - parseFloat(cs.paddingRight||0) + 1;
-		} catch(_) { return false; }
-	}
+	function _isEllipsis(el) { return el && el.scrollWidth > el.clientWidth + 1; } // 2026-08-05 去慢路径(Range+getComputedStyle强制layout)
 	function showPathTooltip(text, cx, cy) {
 		if (!text) { hidePathTooltip(); return; }
 		var tp = _zoomFix(cx, cy); cx = tp.left; cy = tp.top;
@@ -371,6 +363,7 @@
 		if (rect.bottom > vh - 4) _ptEl.style.top = Math.max(4, vh - rect.height - 4) + 'px';
 	}
 	function handlePathTooltipHover(e) {
+		var _now = Date.now(); if (_now - _lastPathTooltipTs < 50) return; _lastPathTooltipTs = _now; // 50ms throttle
 		var t = e.target; if (!t || !t.closest) return;
 		// 盘符按钮
 		var ni = t.closest('.nav-item');

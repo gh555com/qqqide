@@ -162,6 +162,48 @@ ${escapedPaths}
         openUrl(url, _e.sender);
     });
 
+    // ★ Roam 空白区右键 → 在当前目录打开管理员终端 (CMD / PowerShell)
+    // 与 q3 openAdminTerminal 百分百一致
+    ipcMain.handle('qqqide:shell:openTerminal', async (_e, p: string, termType: string) => {
+        const absPath = path.resolve(p);
+        const safePath = absPath.replace(/'/g, "''");
+        if (process.platform === 'win32') {
+            if (termType === 'cmd') {
+                const psScript = `Start-Process cmd.exe -ArgumentList '/k','cd /d """${safePath}"""' -Verb RunAs`;
+                cp.spawn('powershell.exe', ['-NoProfile', '-Command', psScript], { windowsHide: true, shell: false });
+            } else {
+                const psScript = `Start-Process powershell.exe -ArgumentList '-NoExit','-Command',"Set-Location -LiteralPath '${safePath}'" -Verb RunAs`;
+                cp.spawn('powershell.exe', ['-NoProfile', '-Command', psScript], { windowsHide: true, shell: false });
+            }
+        } else if (process.platform === 'darwin') {
+            const escapedPath = absPath.replace(/'/g, "'\\''");
+            const script = `tell application "Terminal" to do script "cd '${escapedPath}' && sudo -s"`;
+            cp.spawn('osascript', ['-e', script], { detached: true }).unref();
+        } else {
+            const escapedPath = absPath.replace(/'/g, "'\"'\"'");
+            const cdCmd = `cd '${escapedPath}'`;
+            const terminals = [
+                { cmd: 'gnome-terminal', args: ['--working-directory=' + absPath] },
+                { cmd: 'konsole', args: ['--workdir', absPath] },
+                { cmd: 'xfce4-terminal', args: ['--working-directory=' + absPath] },
+                { cmd: 'x-terminal-emulator', args: [] },
+            ];
+            var spawned = false;
+            for (var _i = 0; _i < terminals.length; _i++) {
+                var t = terminals[_i];
+                try {
+                    cp.spawn(t.cmd, t.args, { cwd: absPath, detached: true }).unref();
+                    spawned = true;
+                    break;
+                } catch (_e2) { /* try next */ }
+            }
+            if (!spawned) {
+                cp.spawn('xterm', ['-e', 'bash -c "' + cdCmd + '; exec bash"'], { cwd: absPath, detached: true }).unref();
+            }
+        }
+        return true;
+    });
+
     // ---- drives / diskFree ----
     ipcMain.handle('qqqide:fs:drives', async () => {
         const drives: string[] = [];

@@ -386,6 +386,17 @@ async function updateDriveDisplay() {
 			_doSRequest();
 			return;
 		}
+		// ★ 空白区快捷：a → CMD 在当前目录 / x → PowerShell 在当前目录（与 q3 一致）
+		if (k === 'a') {
+			e.preventDefault();
+			bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){});
+			return;
+		}
+		if (k === 'x') {
+			e.preventDefault();
+			bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){});
+			return;
+		}
 		if (!selectedItem) return;
 		var si = selectedItem;
 		if (k === 'q') {

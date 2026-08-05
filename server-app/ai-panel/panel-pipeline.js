@@ -24,6 +24,7 @@ function _buildSendIntent(questId, content, opts) {
         isRecovery: opts.isRecovery || false,
         compressFloor: opts.compressFloor || false,
         noTools: opts.noTools || false,
+        backpackEstK: opts.backpackEstK || 0,  // ★ compress 楼层：操作开局背包重量（点击时已捕获）
         forceFloorNum: opts.forceFloorNum || 0,  // ★ 0-house 同层重试：跳过 nextFloorNum，复用旧楼层
     };
 }
@@ -276,7 +277,7 @@ async function _executeSend(intent) {
     // ★ 统一：一律通过 nextFloorNum() 创建新楼层（除非 forceFloorNum 同层重试）
     floorNum = forceFloorNum || await questStore.nextFloorNum(qid);
     if (!forceFloorNum && root2 && floorNum > 0) {
-        var userQuestion = text || (userContent || '').split('\n')[0];
+        var userQuestion = _isCompress ? 'only facts' : (text || (userContent || '').split('\n')[0]);
         var quests2 = await questStore.list();
         var qEntry = quests2.find(function (qx) { return qx.id === qid; });
         var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : '';
@@ -360,7 +361,8 @@ async function _executeSend(intent) {
     if (_isCompress) {
         agent._compressFloor = true;
         agent._aiStartTime = _fmtTime(new Date());
-        agent._aiTierLabel = 'A' + (selectedTier || 4);
+        // ★ 压缩楼层强制 tier 4：标签用 intent.tierIndex，而非 selectedTier（否则显示 A6）
+        agent._aiTierLabel = 'A' + (tierIndex || 4);
     } else if (sendType !== 'recovery') {
         agent._aiStartTime = _fmtTime(new Date());
         agent._aiTierLabel = 'A' + (selectedTier || 6);
@@ -392,7 +394,8 @@ async function _executeSend(intent) {
         } catch (_) { }
         // 5. body 常量字段 + JSON overhead（~250 chars，<0.1K）
         _bpChars += 250;
-        agent._aiBackpackEst = Math.round(_bpChars / 2.7 / 1000);
+        // ★ compress 楼层：aq 显示操作开局重量（only facts 点击瞬间捕获，压缩前），非压缩后的 r 重量
+        agent._aiBackpackEst = intent.backpackEstK || Math.round(_bpChars / 2.7 / 1000);
     }
     // ★ 即时同步按钮 UI：建楼开始 → 按钮变红 Stop（必须在 agent._streaming 之后）
     setStreaming(true);

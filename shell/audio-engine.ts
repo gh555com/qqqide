@@ -3,7 +3,7 @@
 // ============================================================================
 // audio-engine.ts
 // Spawns engines/miniaudio_bridge.py as a child process and exposes JSON-line
-// stdio RPC matching the same protocol as engines.ts (action-based).
+// stdio RPC (action-based: {"_id", "action", ...params}).
 // Lazy-started: only spawns when first qqq:audio:* IPC arrives.
 // ============================================================================
 
