@@ -354,30 +354,40 @@ function baseName(p) {
 }
 var SZ_GB_THRESHOLD = 1000000000;
 var SZ_GB_COLOR = 'rgb(248,48,0)';
+// 2026-08-05 性能: 格式化缓存(纯函数,同输入必同输出). Cap 800 entries 防泄漏
+var _fmtCacheSz = {}, _fmtCacheDate = {}, _fmtCacheCount = 0;
 function addThousandSep(num) {
 	var s = String(Math.floor(num)), parts = [];
 	for (var i = s.length; i > 0; i -= 3) parts.unshift(s.slice(Math.max(0, i - 3), i));
 	return parts.join(',');
 }
 function formatFileSizeEx(bytes) {
+	if (_fmtCacheSz[bytes]) return _fmtCacheSz[bytes];
 	var formatted = addThousandSep(bytes);
+	var result;
 	if (bytes >= SZ_GB_THRESHOLD) {
 		var parts = formatted.split(',');
 		if (parts.length >= 4) {
 			var gbParts = parts.slice(0, parts.length - 3);
 			var restParts = parts.slice(parts.length - 3);
-			return { text: formatted, gbPart: gbParts.join(','), restPart: ',' + restParts.join(',') };
-		}
-	}
-	return { text: formatted, gbPart: '', restPart: '' };
+			result = { text: formatted, gbPart: gbParts.join(','), restPart: ',' + restParts.join(',') };
+		} else { result = { text: formatted, gbPart: '', restPart: '' }; }
+	} else { result = { text: formatted, gbPart: '', restPart: '' }; }
+	_fmtCacheSz[bytes] = result;
+	if (++_fmtCacheCount > 800) { _fmtCacheSz = {}; _fmtCacheDate = {}; _fmtCacheCount = 0; }
+	return result;
 }
 function formatDateTime(date) {
 	if (!date) return '';
+	if (_fmtCacheDate[date]) return _fmtCacheDate[date];
 	var d = new Date(date);
 	if (isNaN(d.getTime())) return '';
 	var y = d.getFullYear(), mo = String(d.getMonth() + 1).padStart(2, '0'), da = String(d.getDate()).padStart(2, '0');
 	var h = String(d.getHours()).padStart(2, '0'), mi = String(d.getMinutes()).padStart(2, '0');
-	return y + '.' + mo + '.' + da + ' ' + h + ':' + mi;
+	var result = y + '.' + mo + '.' + da + ' ' + h + ':' + mi;
+	_fmtCacheDate[date] = result;
+	if (++_fmtCacheCount > 800) { _fmtCacheSz = {}; _fmtCacheDate = {}; _fmtCacheCount = 0; }
+	return result;
 }
 function getSzContent(entry) {
 	if (szMode === 'nothing') return '';
@@ -944,6 +954,12 @@ async function loadFileList(p) {
 	}
 }
 
+// 2026-08-05 性能: 预建 template, cloneNode 替代 createElement 链 (N×5 DOM API→N×1)
+var _folderTpl = document.createElement('template');
+_folderTpl.innerHTML = '<div class="sz-area"></div><div class="file-select-area"><span class="file-icon">📁</span></div><div class="folder-name-area"></div>';
+var _fileTpl = document.createElement('template');
+_fileTpl.innerHTML = '<div class="sz-area"></div><div class="file-name-area"><span class="file-icon">🗈</span><span></span></div>';
+
 function buildFileItem(entry, fullPath) {
 	var item = document.createElement('div');
 	item.className = 'file-item';
@@ -951,43 +967,25 @@ function buildFileItem(entry, fullPath) {
 	item.dataset.type = entry.isDir ? 'folder' : 'file';
 	item.dataset.name = entry.name;
 
-	// sz area (size/date) — HTML mode for red GB
-	var sz = document.createElement('div');
-	sz.className = 'sz-area';
+	var clone = document.importNode(entry.isDir ? _folderTpl.content : _fileTpl.content, true);
+
+	// sz area — HTML mode for red GB
+	var sz = clone.querySelector('.sz-area');
 	var szHtml = getSzContent(entry);
 	if (szHtml) sz.innerHTML = szHtml;
-	// Check cache
 	if (sessionSizeCache[fullPath] && szMode !== 'nothing') {
 		var c = sessionSizeCache[fullPath];
 		if (c.gbPart) sz.innerHTML = '<span style="color:' + SZ_GB_COLOR + '">' + c.gbPart + '</span>' + c.restPart + ' ';
 		else sz.textContent = c.text;
 	}
-	item.appendChild(sz);
 
 	if (entry.isDir) {
-		var selectArea = document.createElement('div');
-		selectArea.className = 'file-select-area';
-		var icon = document.createElement('span');
-		icon.className = 'file-icon';
-		icon.textContent = '📁';
-		selectArea.appendChild(icon);
-		item.appendChild(selectArea);
-		var nameArea = document.createElement('div');
-		nameArea.className = 'folder-name-area';
-		nameArea.textContent = entry.name;
-		item.appendChild(nameArea);
+		clone.querySelector('.folder-name-area').textContent = entry.name;
 	} else {
-		var nameArea2 = document.createElement('div');
-		nameArea2.className = 'file-name-area';
-		var icon2 = document.createElement('span');
-		icon2.className = 'file-icon';
-		icon2.textContent = '🗈';
-		nameArea2.appendChild(icon2);
-		var nameSpan = document.createElement('span');
-		nameSpan.textContent = ' ' + entry.name;
-		nameArea2.appendChild(nameSpan);
-		item.appendChild(nameArea2);
+		clone.querySelector('.file-name-area > span:last-child').textContent = ' ' + entry.name;
 	}
+
+	item.appendChild(clone);
 
 	// ★ 2026-08-04 性能修复：不再每项绑定 click/contextmenu（大目录 N×2 监听），
 	//   改为容器级事件委托（见 buildFileItem 之后 _fileListEl 委托绑定）
@@ -1346,10 +1344,8 @@ if (emptyCtxMenu) {
 		el.addEventListener('click', function() {
 			var act = el.dataset.action;
 			hideAllContextMenus();
-		if (act === 'newFile') { doCreateFile(); }
-		else if (act === 'newFolder') { doCreateFolder(); }
-		else if (act === 'openInExplorer') { bridge.shell.openPath(currentPath).catch(function(){}); }
-		else if (act === 'paste') { _asyncProbeAndPaste(); }
+		if (act === 'openAdminCmd') { bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){}); }
+		else if (act === 'openAdminPowershell') { bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){}); }
 	});
 	});
 }

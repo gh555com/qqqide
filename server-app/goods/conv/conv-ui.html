@@ -159,7 +159,7 @@ body {
 }
 .compress-toolbar .cmp-label { font-size: 12px; color: var(--fg2); margin-right: 4px; }
 .compress-toolbar button.cmp-btn {
-    padding: 4px 5px; font-size: 12px; border: 1px solid var(--border);
+    padding: 4px 3px; font-size: 12px; border: 1px solid var(--border);
     border-radius: 3px; background: var(--bg2); color: var(--fg); cursor: pointer; white-space: nowrap;
     font-family: 'Cascadia Code','Fira Code','JetBrains Mono','Consolas',monospace;
     font-weight: 600; letter-spacing: -0.1px;
@@ -217,7 +217,7 @@ body {
 
 /* ── 按钮收益标签 ── */
 .cmp-benefit {
-    font-size: 20px; font-weight: 400; margin: 0; padding: 0; line-height: 1;
+    font-size: 20px; font-weight: 400; margin: 0 0 0 -3px; padding: 0; line-height: 1;
     vertical-align: middle; letter-spacing: -0.5px;
     color: #c0392b;
     font-family: inherit;
@@ -736,14 +736,20 @@ window.addEventListener('message', function (e) {
         updateCompressBtns();
 
         if (e.data.ok) {
-            var titleMap = { absolut: '🧹 绝对包装盒已剥离', editonly: '✂️ 已精简为仅编辑包装盒', onlyfacts: '🧠 Facts 已提取' };
-            var title = titleMap[e.data.action] || '✅ 压缩完成';
-            showCompressAnimation(title, e.data.beforeChars, e.data.afterChars);
-            // 动画后自动关闭（动画0.8s + 停留2s = 2.8s，取3s）
-            setTimeout(function () {
-                var overlay = document.getElementById('cmpAnimOverlay');
-                if (overlay && overlay.classList.contains('show')) closeAnim();
-            }, 3000);
+            if (e.data.action === 'onlyfacts') {
+                // ★ only facts：压缩动画已在 floor-starting 播放过一次（压缩瞬间已发生），
+                //   完成时不再重复播放，仅 toast 提示结果
+                toast(_i('goods.conv.compressOnlyfactsOk', '✅ Facts 已提取'));
+            } else {
+                var titleMap = { absolut: '🧹 绝对包装盒已剥离', editonly: '✂️ 已精简为仅编辑包装盒' };
+                var title = titleMap[e.data.action] || '✅ 压缩完成';
+                showCompressAnimation(title, e.data.beforeChars, e.data.afterChars);
+                // 动画后自动关闭（动画0.8s + 停留2s = 2.8s，取3s）
+                setTimeout(function () {
+                    var overlay = document.getElementById('cmpAnimOverlay');
+                    if (overlay && overlay.classList.contains('show')) closeAnim();
+                }, 3000);
+            }
         } else {
             toast(_i('goods.conv.compressFailed', '压缩失败') + (e.data.error ? ': ' + e.data.error : ''));
         }

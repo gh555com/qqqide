@@ -544,10 +544,11 @@ async function main() {
   // Boot info
   var boot;
   try { boot = await bridge.boot.getInfo(); }
-  catch (e) { boot = { version: '?', engineAlive: false, platform: 'browser', arch: 'na' }; }
+  catch (e) { boot = { version: '?', platform: 'browser', arch: 'na' }; }
   // Expose boot info for iframes (q2-roam, etc.)
   window.qqqBootInfo = boot;
   bootStatusbar(boot);
+  bootActivities(boot);
   fillBootInfo(boot);
 
   // Resize grip

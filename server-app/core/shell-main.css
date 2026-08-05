@@ -418,6 +418,103 @@
   margin-right: 16px;
 }
 
+/* ── 活动豆腐块（清爽从2026 + 50ge 大礼） ── */
+.qqq-act-widget {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 8px;
+  margin-right: 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-tertiary, rgba(128, 128, 128, 0.08));
+  white-space: nowrap;
+  user-select: none;
+  -webkit-app-region: no-drag;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.qqq-act-widget:hover {
+  border-color: #268bd2;
+  box-shadow: 0 0 6px rgba(38, 139, 210, .35);
+}
+
+.qqq-act-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.qqq-act-icon {
+  font-size: 12px;
+}
+
+.qqq-act-track {
+  display: inline-block;
+  width: 64px;
+  height: 7px;
+  background: var(--bg-tertiary, #333);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.qqq-act-fill {
+  display: block;
+  height: 100%;
+  width: 0%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #268bd2, #2aa198);
+  transition: width .6s;
+}
+
+.qqq-act-widget.qqq-act-cool .qqq-act-fill {
+  background: linear-gradient(90deg, #2aa198, #859900);
+}
+
+.qqq-act-widget.qqq-act-ge50 .qqq-act-fill {
+  background: linear-gradient(90deg, #6c71c4, #b58900);
+}
+
+/* 进度条充满 → 满格高亮 */
+.qqq-act-widget.qqq-act-done {
+  border-color: #859900;
+  box-shadow: 0 0 8px rgba(133, 153, 0, .5);
+}
+
+.qqq-act-widget.qqq-act-done .qqq-act-fill {
+  background: linear-gradient(90deg, #859900, #b58900);
+}
+
+.qqq-act-widget.qqq-act-ge50.qqq-act-done .qqq-act-fill {
+  background: linear-gradient(90deg, #d33682, #cb4b16);
+}
+
+.qqq-act-num {
+  font-size: 10px;
+  font-family: ui-monospace, Consolas, monospace;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 自定义即时 hover 文字框（零延迟，跟随豆腐块） */
+.qqq-act-tip {
+  position: fixed;
+  z-index: 99999;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(0, 0, 0, .85);
+  border: 1px solid #555;
+  border-radius: 4px;
+  pointer-events: none;
+  white-space: nowrap;
+  display: none;
+}
+
 /* ── 免费时段指示器（状态栏内） ── */
 .qqq-status-free {
   display: inline-flex;

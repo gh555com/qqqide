@@ -48,10 +48,6 @@
       save: () => Promise.resolve(true),
       dispose: () => Promise.resolve(true),
     },
-    engine: {
-      invoke: () => Promise.reject(new Error('not in shell')),
-      isAlive: () => Promise.resolve(false),
-    },
     audio: {
       play: () => Promise.resolve(true),
       stop: () => Promise.resolve(true),
@@ -86,7 +82,6 @@
         userData: '',
         cacheDir: '',
         logsDir: '',
-        engineAlive: false,
         bootMode: 'live',
       }),
       retry: () => { location.reload(); return Promise.resolve(true); },

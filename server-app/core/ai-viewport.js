@@ -113,6 +113,9 @@
   // ★ 每目录排序偏好：'n'=文件名倒序(默认), 'm'=修改时间倒序
   var _sortPrefByPath = {};
   var SORT_PREFS_KEY = 'ai.viewport.sortPrefs';
+  // ★ 树展开快照 + 滚动位置（项目级持久化，非仅会话）
+  var TREE_SNAPS_KEY = 'ai.viewport.treeSnapshots';
+  var SCROLL_POS_KEY = 'ai.viewport.scrollPositions';
 
   function _getOnlyDb() {
     var mainProj = projects[0];
@@ -133,7 +136,33 @@
   function _saveSortPrefs() {
     var db = _getOnlyDb();
     if (!db) return;
-    db.set(SORT_PREFS_KEY, _sortPrefByPath).catch(function () { });
+    // ★ setNow 而非 set：确保 Ctrl+R 热重载前已刷盘
+    if (db.setNow) db.setNow(SORT_PREFS_KEY, _sortPrefByPath).catch(function () { });
+    else db.set(SORT_PREFS_KEY, _sortPrefByPath).catch(function () { });
+  }
+
+  // ★ 树展开快照 + 滚动位置：项目级持久化到 only.sq3
+  function _loadViewportState() {
+    var db = _getOnlyDb();
+    if (!db) return;
+    db.get(TREE_SNAPS_KEY).then(function (data) {
+      if (data && typeof data === 'object') { _treeSnapshots = data; }
+    }).catch(function () { });
+    db.get(SCROLL_POS_KEY).then(function (data) {
+      if (data && typeof data === 'object') { _scrollPosByPath = data; }
+    }).catch(function () { });
+  }
+
+  function _saveViewportState() {
+    var db = _getOnlyDb();
+    if (!db) return;
+    if (db.setNow) {
+      db.setNow(TREE_SNAPS_KEY, _treeSnapshots).catch(function () { });
+      db.setNow(SCROLL_POS_KEY, _scrollPosByPath).catch(function () { });
+    } else {
+      db.set(TREE_SNAPS_KEY, _treeSnapshots).catch(function () { });
+      db.set(SCROLL_POS_KEY, _scrollPosByPath).catch(function () { });
+    }
   }
 
   // ★ 筛选框：模糊匹配+空格AND，筛选时清除子列表。右边 N/M 排序按钮。
@@ -402,7 +431,11 @@
     if (projects.length === 0 || !projects[0].path) return;
     try {
       var s = _qgsNs();
-      if (s) s.set('last_main_folder', projects[0].path).catch(function () { });
+      // ★ setNow 确保 Ctrl+R 前已刷盘（非 debounced set）
+      if (s) {
+        if (s.setNow) s.setNow('last_main_folder', projects[0].path).catch(function () { });
+        else s.set('last_main_folder', projects[0].path).catch(function () { });
+      }
     } catch (_) { }
   }
 
@@ -417,8 +450,9 @@
         projects.push({ path: folderPath, name: basename(folderPath) });
         _bumpRecent(folderPath);
         _restoreFormationFromOnlyStore(folderPath);
-        // ★ 此时 projects[0] 已就位，加载排序偏好
+        // ★ 此时 projects[0] 已就位，加载排序偏好 + 视口状态
         _loadSortPrefs();
+        _loadViewportState();
         saveProjects();
         render();
         _notifyChanged();
@@ -527,7 +561,7 @@
     _saveFormationToOnlyStore();
     _persistLastMainFolder();
   }
-  // beforeunload：阵营 + recent + 上次主文件夹同步刷盘
+  // beforeunload：阵营 + recent + 排序偏好 + 视口状态 + 上次主文件夹同步刷盘
   window.addEventListener('beforeunload', function () {
     try {
       if (_recentFolders.length > 0) {
@@ -535,23 +569,29 @@
         if (s) s.setNow(RECENT_KEY, _recentFolders).catch(function () { });
       }
       _persistLastMainFolder();
-      // 阵营 → only.sq3
+      // 阵营 + 排序偏好 + 视口状态 → only.sq3
       var mainProj = projects[0];
       if (mainProj && mainProj.path && window.qgs && typeof window.qgs.project === 'function') {
         var onlyPath = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/only.sq3';
-        var auxPaths = [];
-        for (var i = 1; i < projects.length; i++) { auxPaths.push(projects[i].path); }
         var onlyDb = window.qgs.project(onlyPath, 'qqq.only', { v: 1, form: 'doc' });
-        if (onlyDb && onlyDb.setNow) onlyDb.setNow('ai.formation', auxPaths);
+        if (onlyDb && onlyDb.setNow) {
+          var auxPaths = [];
+          for (var i = 1; i < projects.length; i++) { auxPaths.push(projects[i].path); }
+          onlyDb.setNow('ai.formation', auxPaths);
+          onlyDb.setNow(SORT_PREFS_KEY, _sortPrefByPath);
+          onlyDb.setNow(TREE_SNAPS_KEY, _treeSnapshots);
+          onlyDb.setNow(SCROLL_POS_KEY, _scrollPosByPath);
+        }
       }
     } catch (_) { }
   });
   // ---- close active dropdown: save snapshot then destroy ----
   function closeDropdown() {
-    // ★ 关闭前快照：将当前展开路径链存入 _treeSnapshots
+    // ★ 关闭前快照：将当前展开路径链存入 _treeSnapshots → 持久化
     if (activeDropdown && activeDropdown._projectRoot) {
       if (activeDropdown._expandedChain && activeDropdown._expandedChain.length > 0) {
         _treeSnapshots[activeDropdown._projectRoot] = activeDropdown._expandedChain.slice();
+        _saveViewportState();
       }
     }
     cancelHover();
@@ -1527,6 +1567,7 @@
     _loadRecents();
     loadProjects();
     _loadSortPrefs();
+    _loadViewportState();
     render();
     // ★ 关闭下拉：左键点击列表外任何位置（窗口内+窗口外）
     function _isOutsideDropdown(target) {

@@ -145,14 +145,24 @@ var _orig={};
       <div class="qqq-status-row">
         <span class="qqq-status-item" id="qqq-status-version">v0.0.3</span>
         <span class="qqq-status-item" id="qqq-status-online"></span>
-        <span class="qqq-status-item" id="qqq-status-engine">engine ?</span>
+
         <span class="qqq-gw-dots" id="qqq-gw-dots">
           <span class="qqq-gw-dot" id="qqq-gw-dot-0" data-panel="0" title="左面板 · 等待连接">●</span>
           <span class="qqq-gw-dot" id="qqq-gw-dot-1" data-panel="1" title="中面板 · 等待连接">●</span>
           <span class="qqq-gw-dot" id="qqq-gw-dot-2" data-panel="2" title="右面板 · 等待连接">●</span>
         </span>
+        <!-- ★ 双活动豆腐块（清爽从2026 + 总消费50ge）→ core/shell-activities.js -->
+        <span class="qqq-act-widget qqq-act-cool" id="qqq-act-cool" title="">
+          <span class="qqq-act-head"><span class="qqq-act-icon">🧊</span><span class="qqq-act-name" data-i18n="act.cool.name">清爽从2026</span></span>
+          <span class="qqq-act-track"><span class="qqq-act-fill" id="qqq-act-cool-fill"></span></span>
+          <span class="qqq-act-num" id="qqq-act-cool-num">0/10</span>
+        </span>
+        <span class="qqq-act-widget qqq-act-ge50" id="qqq-act-ge50">
+          <span class="qqq-act-head"><span class="qqq-act-icon">🎁</span><span class="qqq-act-name" data-i18n="act.ge50.name">50ge 大礼</span></span>
+          <span class="qqq-act-track"><span class="qqq-act-fill" id="qqq-act-ge50-fill"></span></span>
+          <span class="qqq-act-num" id="qqq-act-ge50-num">0/50</span>
+        </span>
         <span class="qqq-spacer"></span>
-        <span class="qqq-status-item" id="qqq-status-build" style="font-family:Consolas,monospace;font-size:11px;cursor:pointer;" title="构建戳记">stamp: --</span>
         <span class="qqq-status-item" id="qqq-status-wq" style="font-family:Consolas,monospace;font-size:11px;cursor:pointer;" title="wq 前摇统计">wq: --</span>
         <span class="qqq-status-item" id="qqq-status-clock"></span>
          <span class="qqq-status-item qqq-status-free" id="qqq-status-free" style="display:none">
@@ -193,32 +203,46 @@ var _orig={};
 <!-- ★ 双通道戳记机器 — __stamp.js 走SW缓存(可能陈旧) + _BUILD_STAMP.json 走直连(永远最新) → 比对=100%确定 -->
 <script src="core/__stamp.js"></script>
 <script>
+// ★ 构建戳双通道比对机器 — SW缓存ID(__stamp.js) vs 磁盘(_BUILD_STAMP.json)
+//   渲染到 #qqq-status-build（设置面板·重置窗口右侧）：旧缓存 → 按「重置窗口」
+//   设置面板每次渲染时由 settings.js 调用 __qqqBuildStampRefresh()
 (function(){
-  var $el = document.getElementById('qqq-status-build');
-  if (!$el) return;
-  var diskId = (window.__QQQ_BUILD_ID || '????');
-  fetch('/qqqide/qqq/_BUILD_STAMP.json?_=' + Date.now(), {cache:'no-cache'})
-    .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(data){
-      if (!data) { $el.textContent = '\u274c 无'; $el.style.color = '#dc322f'; return; }
-      if (data.buildId === window.__QQQ_BUILD_ID) {
-        $el.textContent = '\u2705 ' + data.buildId.slice(0,8);
-        $el.style.color = ''; $el.style.fontWeight = '';
-      } else {
-        $el.textContent = '\u26a0\ufe0f ' + data.buildId.slice(0,8) + '\u2260' + diskId.slice(0,6);
-        $el.style.color = '#dc322f'; $el.style.fontWeight = 'bold';
-        $el.title = 'SW\u7f13\u5b58\u4e86\u65e7\u4ee3\u7801\uff01\u78c1\u76d8=' + data.buildId + ' \u6d4f\u89c8\u5668=' + diskId;
-      }
-    })
-    .catch(function(){
-      $el.textContent = '\u274c fetch失败';
-      $el.style.color = '#dc322f';
-    });
+  var _last = null; // 上次渲染结果缓存，面板重开秒显不闪
+  function _renderTo($el, res) {
+    if (!$el) return;
+    $el.textContent = res.text;
+    $el.style.color = res.color || '';
+    $el.style.fontWeight = res.bold ? 'bold' : '';
+    $el.title = res.title;
+  }
+  function _apply(res) {
+    _last = res;
+    var els = document.querySelectorAll('#qqq-status-build');
+    for (var i = 0; i < els.length; i++) _renderTo(els[i], res);
+  }
+  function _refresh() {
+    var diskId = (window.__QQQ_BUILD_ID || '????');
+    fetch('/qqqide/qqq/_BUILD_STAMP.json?_=' + Date.now(), {cache:'no-cache'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data){
+        if (!data) {
+          _apply({text: '\u274c 无', color: '#dc322f', title: '构建戳读取失败'});
+        } else if (data.buildId === window.__QQQ_BUILD_ID) {
+          _apply({text: '\u2705 ' + data.buildId.slice(0,8), title: '最新代码 \u2705 buildId=' + data.buildId});
+        } else {
+          _apply({text: '\u26a0\ufe0f ' + data.buildId.slice(0,8) + '\u2260' + diskId.slice(0,6), color: '#dc322f', bold: true, title: 'SW\u7f13\u5b58\u4e86\u65e7\u4ee3\u7801\uff01\u78c1\u76d8=' + data.buildId + ' \u6d4f\u89c8\u5668=' + diskId});
+        }
+      })
+      .catch(function(){
+        _apply({text: '\u274c fetch失败', color: '#dc322f', title: '构建戳 fetch 失败'});
+      });
+  }
+  window.__qqqBuildStampRefresh = function(){
+    if (_last) _apply(_last); // 有缓存先同步渲染，防面板重开闪 'stamp: --'
+    _refresh();
+  };
 })();
 </script>
-<!-- WYSIWYG core: klipzap → anchor-map → content-widget → paste-router pipeline -->
-<script src="core/klipzap.js"></script>
-<script src="core/wq-stats.js"></script>
 <script src="core/transaction-manager.js"></script>
 <script src="core/batch-ops.js"></script>
 <script src="core/progress-service.js"></script>
@@ -250,6 +274,7 @@ var _orig={};
 <script src="core/shell-wings.js"></script>
 <script src="core/shell-overlay.js"></script>
 <script src="core/shell-statusbar.js"></script>
+<script src="core/shell-activities.js"></script>
 <script src="core/shell-rpc.js"></script>
 <script src="core/shell.js"></script>
 <script>

@@ -16,7 +16,7 @@ const READ_FILE_MAX = 50 * 1024 * 1024; // 50MB guard
  *  进程崩溃 mid-write 时只有 tmp 损坏，目标文件始终完好。 */
 async function _atomicWrite(absPath: string, data: Buffer): Promise<void> {
     const dir = path.dirname(absPath);
-    await fs.promises.mkdir(dir, { recursive: true });
+    try { await fs.promises.mkdir(dir, { recursive: true }); } catch { /* ignore — dir may already exist (e.g. drive root D:\) */ }
     const tmp = absPath + '.tmp.' + process.pid + '.' + Math.random().toString(36).slice(2, 8);
     await fs.promises.writeFile(tmp, data as any);
     try {

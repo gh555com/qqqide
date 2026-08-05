@@ -479,6 +479,40 @@
         "snapNoNew": "未生成新快照，可能内容未变或冷却中",
         "snapFailed": "打快照失败"
     },
+    "act": {
+        "cool": {
+            "name": "清爽从2026",
+            "tip": "清爽从2026",
+            "popSub": "总消费满 10 ge 领 10 元红包",
+            "loginDesc": "登录后查看消费进度，进度条充满即可领 10 元红包",
+            "p1": "进度条充满 = 总消费达到 <b>10 ge</b>（实扣 + 白嫖都算）！<br>即便全部白嫖，只要进度条充满，现在就可以加 QQ 群 <b>524906522</b> 领 <b>10 元红包</b>。",
+            "p2Title": "恭喜！进度条已充满",
+            "p2": "你的总消费已达 <b>10 ge</b>（含白嫖）！<br>现在就可以加 QQ 群 <b>524906522</b> 领 <b>10 元红包</b>。",
+            "copyGroup": "加 QQ 群 524906522 领 10 元红包",
+            "copyGroup2": "复制群号 524906522 去加群",
+            "copied": "QQ 群号 524906522 已复制，去 QQ 搜索加群"
+        },
+        "ge50": {
+            "name": "50ge 大礼",
+            "tip": "总消费满 50 ge · 领 50 元话费或 50 ge",
+            "popSub": "实扣 + 白嫖合计达到 50 ge 即可领取",
+            "loginDesc": "登录后查看任务进度，满 50 ge 即可领取",
+            "task1": "下载并登录 qqqide",
+            "task2": "总消费达到 50 ge（实扣 + 白嫖合计）",
+            "task3": "充值 {yuan} 元",
+            "taskLocked": "完成上方任务后解锁",
+            "claimPhone": "获取 50 元话费",
+            "claimGe": "立即获取 50 ge",
+            "claimed": "已领取",
+            "loginBtn": "登录",
+            "phoneModalTitle": "50 元话费",
+            "phoneModalDesc": "话费将在 2 个工作日内自动到账，请保持手机号 {phone} 畅通。",
+            "geModalTitle": "50 ge 立即到账",
+            "geModalDesc": "50 ge 已发放到你的账户，立即到账！",
+            "already": "你已领取过该奖励",
+            "err": "领取失败，请稍后重试"
+        }
+    },
     "goods": {
         "conv": {
             "title": "上下文背包",
@@ -514,6 +548,7 @@
             "compressOnlyfactsHover": "在前两者基础上 再砍掉一半对话原文（但提取并保留其中 facts），是砍掉老滴那一半，最近滴一半原封不动滴保留。需要 AI 调用（计费）。",
             "compressAbsolutOk": "绝对包装盒已剥离",
             "compressEditonlyOk": "已精简为仅编辑包装盒",
+            "compressOnlyfactsOk": "✅ Facts 已提取，已注入 fx 记忆区",
             "compressNoChange": "未找到可剥离内容，背包已是最简",
             "compressFailed": "压缩失败",
             "compressTimeout": "压缩超时，请重试",

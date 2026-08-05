@@ -66,7 +66,8 @@ var onlyStore = (function () {
       // 首次启动时 _cache 为空，后续 set 会填充。
       var keys = ['theme', 'ai.activeQuest', 'ai.activeFloor', 'ai.tier', 'ai.inputDraft',
         'ai.pendingImages', 'ai.queue', 'ai.scrollTop', 'editor.tabs', 'editor.activeTab',
-        'viewport.splitPositions', 'window.geometry'];
+        'viewport.splitPositions', 'window.geometry',
+        'ai.viewport.sortPrefs', 'ai.viewport.treeSnapshots', 'ai.viewport.scrollPositions'];
       for (var i = 0; i < keys.length; i++) {
         try {
           var v = await b.get(keys[i]);

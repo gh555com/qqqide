@@ -9,12 +9,10 @@ function bootStatusbar(boot) {
   var bridge = window.qqqideBridge;
   var $ver = document.getElementById('qqq-status-version');
   var $onl = document.getElementById('qqq-status-online');
-  var $eng = document.getElementById('qqq-status-engine');
   var $clk = document.getElementById('qqq-status-clock');
   var $freeInd = document.getElementById('qqq-status-free');
   var $freeBadge = document.getElementById('qqq-status-free-badge');
   if ($ver) $ver.textContent = 'v' + (boot.version || '?');
-  if ($eng) $eng.textContent = 'engine: ' + (boot.engineAlive ? 'on' : 'off');
 	if ($onl) $onl.textContent = '0';
 
   // ★ 硬刷新按钮 — 菜单行2，等价 Ctrl+Shift+R
