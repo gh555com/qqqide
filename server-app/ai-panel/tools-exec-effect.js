@@ -370,14 +370,25 @@ async function executeGenerateImage(args) {
     var prompt = args.prompt || '';
     if (!prompt.trim()) return 'Error: prompt is required';
 
-    // 自动补全 out_dir（直接读 _workspaceRoot，不依赖跨 iframe）
-    if (!args.out_dir) {
-        try {
-            if (typeof _workspaceRoot !== 'undefined' && _workspaceRoot) {
-                args.out_dir = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/genera';
+    // 归一化 out_dir（直接读 _workspaceRoot，不依赖跨 iframe）
+    try {
+        if (typeof _workspaceRoot === 'undefined' || !_workspaceRoot) {
+            args.out_dir = '';
+        } else {
+            var _root = _workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');
+            var _od = args.out_dir ? String(args.out_dir).trim().replace(/["']/g, '').replace(/\\/g, '/').replace(/\/+$/, '') : '';
+            var _odNorm = _od.replace(/^\.{1,2}\//, '');
+            // 旧家目录 qqq/genera（相对或绝对结尾）→ 重定向 _qqq/genera
+            if (!_od || /(^|\/)qqq\/genera$/i.test(_odNorm)) {
+                args.out_dir = _root + '/_qqq/genera';
+            } else if (!/^[a-zA-Z]:\//.test(_od) && !/^\//.test(_od)) {
+                // 其它相对路径 → 解析到项目根
+                args.out_dir = _root + '/' + _od;
+            } else {
+                args.out_dir = _od;
             }
-        } catch (_) { }
-    }
+        }
+    } catch (_) { }
 
     var token = _getAuthToken();
     if (!token) return 'Error: no auth token — try restarting the chat or logging in again';

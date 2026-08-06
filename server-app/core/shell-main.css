@@ -448,8 +448,9 @@
   gap: 6px;
   padding: 3px 9px 3px 8px;
   margin-right: 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid #268bd2;
   border-radius: 6px;
+  box-shadow: 0 0 6px rgba(38, 139, 210, .28);
   background: var(--bg-tertiary, rgba(128, 128, 128, 0.08));
   white-space: nowrap;
   user-select: none;
@@ -457,9 +458,20 @@
   transition: border-color .15s, box-shadow .15s;
 }
 
+/* 三豆腐块外边框统一：同宽度 1px · 同圆角 6px · 同强度发光（常态微光 + hover 增强，仅颜色微差） */
+.qqq-act-widget.qqq-act-vibe {
+  border-color: #2aa198;
+  box-shadow: 0 0 6px rgba(42, 161, 152, .28);
+}
+
 .qqq-act-widget:hover {
   border-color: #268bd2;
-  box-shadow: 0 0 6px rgba(38, 139, 210, .35);
+  box-shadow: 0 0 8px rgba(38, 139, 210, .45);
+}
+
+.qqq-act-widget.qqq-act-vibe:hover {
+  border-color: #2aa198;
+  box-shadow: 0 0 8px rgba(42, 161, 152, .45);
 }
 
 .qqq-act-head {
@@ -505,12 +517,6 @@
   background: linear-gradient(90deg, #268bd2, #2aa198);
 }
 
-/* 免费中 → 钻石发光态 */
-.qqq-act-widget.qqq-act-vibe.qqq-act-vibe-on {
-  border-color: #2aa198;
-  box-shadow: 0 0 8px rgba(42, 161, 152, .5);
-}
-
 /* 进度条充满 → 满格高亮 */
 .qqq-act-widget.qqq-act-done {
   border-color: #859900;
@@ -530,6 +536,11 @@
   font-family: ui-monospace, Consolas, monospace;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
+}
+
+/* vibe 倒计时前缀文字（「剩/距下次」）— 与赞助商文字同外观：常规 UI 字体 + 11px + 次级色 */
+.qqq-act-vibe .qqq-act-txt {
+  font-family: inherit;
 }
 
 /* 自定义即时 hover 文字框（零延迟，跟随豆腐块） */

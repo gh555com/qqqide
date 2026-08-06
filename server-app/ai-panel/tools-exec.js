@@ -902,7 +902,7 @@ async function executeTimelineVersions(args) {
 
     var root = await _resolveTimelineRoot(_p);
     if (!root) {
-        return 'Error: could not resolve project root for "' + _p + '". No qqq/timeline or .git found in parent directories.';
+        return 'Error: could not resolve project root for "' + _p + '". No _qqq/timeline or .git found in parent directories.';
     }
 
     try {
@@ -1411,8 +1411,7 @@ function _computeApproxDiff(a, b) {
     }
     return lines;
 }
-
-// ═══ 辅助：从文件路径向上解析项目根目录（找 qqq/timeline 或 .git） ═══
+// ═══ 辅助：从文件路径向上解析项目根目录（找 _qqq/timeline 或 .git） ════
 var __tlRootCache = {};
 async function _resolveTimelineRoot(filePath) {
     if (!filePath) {

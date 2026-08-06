@@ -335,6 +335,7 @@ class NonBlockingAudioEngine:
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
 
         self._cleaned = False
+        self._power_suspended = False  # ★ 系统电源挂起标志 (重试循环等待唤醒)
         self._active_tokens = set()
         self._tokens_lock = threading.Lock()
 
@@ -1190,6 +1191,9 @@ class NonBlockingAudioEngine:
                                 if token.stopped:
                                     return
                                 retry_n += 1
+                                # ★ 电源挂起期间不尝试重建设备 (device 创建可能挂死)
+                                while self._power_suspended and not token.stopped:
+                                    time.sleep(0.5)
                                 try:
                                     stream = self._pcm_loop_stream(pcm, token, xfade_frames=xfade_frames)
                                     stream.send(None)
@@ -1259,6 +1263,9 @@ class NonBlockingAudioEngine:
                                 return
                             # 尝试创建设备验证是否恢复
                             retry_n += 1
+                            # ★ 电源挂起期间不尝试重建设备 (device 创建可能挂死)
+                            while self._power_suspended and not token.stopped:
+                                time.sleep(0.5)
                             try:
                                 test_dev = self.PlaybackDevice(output_format=self.REQUESTED_FORMAT, nchannels=self.REQUESTED_CHANNELS, sample_rate=self.REQUESTED_RATE)
                                 test_dev.close()
@@ -2383,6 +2390,14 @@ class NonBlockingAudioEngine:
             except queue.Full:
                 pass
 
+    def on_power_suspend(self):
+        """系统休眠: 置挂起标志 — 各播放循环的恢复重试将等待唤醒而非挂死创建设备"""
+        self._power_suspended = True
+
+    def on_power_resume(self):
+        """系统唤醒: 清除标志 — 重试循环自动继续重建设备"""
+        self._power_suspended = False
+
     def stop_all(self):
         with self._tokens_lock:
             for t in list(self._active_tokens):
@@ -2418,6 +2433,16 @@ def az(file_path: str, loop_times: int, final_fade_seconds: float, trim_silence:
 # =========================
 _SENTINEL = object()
 
+
+def _close_device_async(dev):
+    def _do():
+        try: dev.stop()
+        except Exception: pass
+        try: dev.close()
+        except Exception: pass
+    threading.Thread(target=_do, daemon=True).start()
+
+
 class UltraFastConcurrentSFX:
     """★ Rewritten to use a SINGLE persistent PlaybackDevice with mixing.
     Old design created a new PlaybackDevice per sound → device handle exhaustion
@@ -2447,9 +2472,12 @@ class UltraFastConcurrentSFX:
         self._voices = []  # list of {"pcm": bytes, "offset": int, "length": int}
         self._device = None
         self._device_lock = threading.Lock()
+        self._last_cb_ts = 0.0          # ★ 设备回调心跳 (watchdog 判死依据)
+        self._power_suspended = False   # ★ 系统电源挂起标志
 
         self._dispatch_thread = threading.Thread(target=self._dispatch_loop, name="sfx-dispatch", daemon=True)
         self._dispatch_thread.start()
+        self._start_watchdog()
 
     def play(self, path: str, volume: float = 1.0):
         if not path:
@@ -2484,7 +2512,9 @@ class UltraFastConcurrentSFX:
                 return self._cache[path]
         try:
             decoded = miniaudio.decode_file(path, output_format=self.sample_format, nchannels=self.nchannels, sample_rate=self.sample_rate)
-            pcm = decoded.samples
+            # ★ SIGNED16 解码产物是 array.array('h') 而非 bytes: array.len=元素数=字节数/2
+            #   → 字节偏移切片错位(超帧 MiniaudioError) / array+bytes TypeError — 统一转 bytes
+            pcm = bytes(decoded.samples)
             dur = 0.0
             if getattr(decoded, "sample_rate", 0) and getattr(decoded, "num_frames", 0):
                 dur = decoded.num_frames / decoded.sample_rate
@@ -2519,39 +2549,104 @@ class UltraFastConcurrentSFX:
 
     def _ensure_device(self):
         with self._device_lock:
-            if self._device is not None:
+            if self._power_suspended:
                 return
+            if self._device is not None:
+                # ★ 心跳守卫: 设备回调停止 >3s → 判死, 强制重建 (老版 bug: 非None直接return → 永久哑巴)
+                if self._last_cb_ts > 0 and (time.monotonic() - self._last_cb_ts) > 3.0:
+                    dev = self._device
+                    self._device = None
+                    self._last_cb_ts = 0.0
+                    if dev:
+                        _close_device_async(dev)
+                else:
+                    return
             try:
+                # ★ buffersize_msec=40: miniaudio 默认 200ms 环形缓冲 → 一切声音慢半拍
                 self._device = miniaudio.PlaybackDevice(
                     output_format=self.sample_format,
                     nchannels=self.nchannels,
                     sample_rate=self.sample_rate,
+                    buffersize_msec=40,
                 )
                 gen = self._mix_generator()
                 next(gen)  # ★ Prime: miniaudio calls .send(framecount), generator must yield first
+                self._last_cb_ts = time.monotonic()
                 self._device.start(gen)
             except Exception:
                 self._device = None
 
+    def _start_watchdog(self):
+        """★ 回调心跳看门狗: 每秒巡检, 设备回调停止 >3s → 判死销毁 + 有声音立即重建"""
+        if getattr(self, "_watchdog_started", False):
+            return
+        self._watchdog_started = True
+
+        def _watch():
+            while self._running.is_set():
+                time.sleep(1.0)
+                if self._power_suspended:
+                    continue
+                dev = None
+                with self._device_lock:
+                    if self._device is not None and self._last_cb_ts > 0 and (time.monotonic() - self._last_cb_ts) > 3.0:
+                        dev = self._device
+                        self._device = None
+                        self._last_cb_ts = 0.0
+                if dev:
+                    _close_device_async(dev)
+                    with self._voices_lock:
+                        pending = [v for v in self._voices if v["offset"] < v["length"]]
+                    if pending:
+                        self._ensure_device()  # 有声音在播 → 立即重建续播
+
+        threading.Thread(target=_watch, name="sfx-watchdog", daemon=True).start()
+
+    def on_power_suspend(self):
+        """系统休眠/挂起: 主动销毁设备, 防止回调线程被 WASAPI 挂死"""
+        self._power_suspended = True
+        with self._device_lock:
+            dev = self._device
+            self._device = None
+            self._last_cb_ts = 0.0
+        if dev:
+            _close_device_async(dev)
+
+    def on_power_resume(self):
+        """系统唤醒: 允许重建设备; 有声音在播 → 立即续播"""
+        self._power_suspended = False
+        with self._voices_lock:
+            pending = [v for v in self._voices if v["offset"] < v["length"]]
+        if pending:
+            self._ensure_device()
+
     def _mix_generator(self):
-        """★ Single generator that mixes all active voices into one output stream."""
+        """★ Single generator that mixes all active voices into one output stream.
+        miniaudio calls gen.send(framecount) per callback — MUST yield exactly
+        framecount frames per response, or the output gets chopped into segments
+        (old bug: fixed 10ms chunks vs 200ms callback requests → 声音撕裂成段).
+        """
         import array
         bytes_per_sample = 2  # SIGNED16
         frame_size = bytes_per_sample * self.nchannels
-        # Yield small chunks (~10ms) for low latency
-        chunk_frames = self.sample_rate // 100
-        chunk_bytes = chunk_frames * frame_size
         silence_frames = 0
         max_silence = self.sample_rate * 2  # 2s of silence → stop device to save resources
 
+        # 首帧: 被 _ensure_device 的 next(gen) prime 消耗；之后每次 send(framecount)
+        framecount = (yield None)
         while self._running.is_set():
+            self._last_cb_ts = time.monotonic()  # ★ 心跳: 证明回调线程活着
+            if framecount is None:
+                framecount = self.sample_rate // 100  # fallback ~10ms
+            chunk_bytes = framecount * frame_size
+
             with self._voices_lock:
                 active = [v for v in self._voices if v["offset"] < v["length"]]
                 # Remove finished voices
                 self._voices = active
 
             if not active:
-                silence_frames += chunk_frames
+                silence_frames += framecount
                 if silence_frames >= max_silence:
                     # ★ No voices for 2s → stop device to release handle
                     with self._device_lock:
@@ -2561,13 +2656,30 @@ class UltraFastConcurrentSFX:
                             self._device = None
                             threading.Thread(target=lambda d: (d.close()), args=(dev,), daemon=True).start()
                     return  # exit generator
-                # Yield silence
-                yield bytes(chunk_bytes)
+                # Yield exactly framecount frames of silence, wait for next request
+                framecount = (yield bytes(chunk_bytes))
                 continue
 
             silence_frames = 0
-            # Mix voices
-            mixed = array.array('h', [0] * (chunk_frames * self.nchannels))
+            # ★ 单声部 + 音量1.0 快速路径: 免逐样本混音 (最常见场景, 混音 CPU 降 ~90%)
+            if len(active) == 1:
+                v = active[0]
+                if abs(v.get("volume", 1.0) - 1.0) < 1e-9:
+                    pcm = v["pcm"]
+                    start = v["offset"]
+                    end = min(start + chunk_bytes, v["length"])
+                    v["offset"] = end
+                    chunk = pcm[start:end]
+                    if not isinstance(chunk, bytes):
+                        chunk = bytes(chunk)
+                    if len(chunk) < chunk_bytes:
+                        chunk += b"\x00" * (chunk_bytes - len(chunk))
+                    if len(chunk) > chunk_bytes:
+                        chunk = chunk[:chunk_bytes]
+                    framecount = (yield chunk)
+                    continue
+            # Mix voices — exactly framecount frames
+            mixed = array.array('h', [0] * (framecount * self.nchannels))
             for v in active:
                 pcm = v["pcm"]
                 start = v["offset"]
@@ -2587,7 +2699,7 @@ class UltraFastConcurrentSFX:
                     elif s < -32768: s = -32768
                     mixed[i] = s
 
-            yield mixed.tobytes()
+            framecount = (yield mixed.tobytes())
         # Generator exit
         return
 
@@ -2758,10 +2870,120 @@ if sys.platform == 'win32':
                 except Exception: pass
                 self._wndproc_ref = None
 
+    WM_POWERBROADCAST = 0x0218
+    PBT_APMSUSPEND = 0x0004
+    PBT_APMRESUMECRITICAL = 0x0006
+    PBT_APMRESUMESUSPEND = 0x0007
+    PBT_APMRESUMEAUTOMATIC = 0x0012
+
+    class PowerEventWatcher:
+        """★ Windows 电源事件监听 (Win32 消息泵, 隐藏顶层窗口):
+        休眠/显示器关闭 → on_suspend (主动撤退音频设备, 防回调线程被 WASAPI 挂死)
+        唤醒         → on_resume (允许重建设备, 自动续播)
+        根治老版 bug: 休眠后音频核心永久死翘翘, 只能重启 IDE。
+        注意: 必须用隐藏顶层窗口(NULL parent)而非 HWND_MESSAGE —
+        HWND_BROADCAST 只投递给顶层窗口, message-only 窗口收不到 WM_POWERBROADCAST。
+        """
+        def __init__(self, on_suspend=None, on_resume=None):
+            self._on_suspend = on_suspend
+            self._on_resume = on_resume
+            self._msg_thread = None
+            self._hwnd = None
+            self._wndproc_ref = None
+            self._cls_name = f"DGS_PWR_{id(self):x}"
+            self._lock = threading.Lock()
+            self._ready = threading.Event()
+            self._started_ok = False
+
+        @property
+        def alive(self):
+            return self._msg_thread is not None and self._msg_thread.is_alive()
+
+        def start(self):
+            with self._lock:
+                if self.alive:
+                    return
+                self._ready.clear()
+                self._started_ok = False
+                self._msg_thread = threading.Thread(target=self._pump, name="pwr-pump", daemon=True)
+                self._msg_thread.start()
+                if not self._ready.wait(timeout=3.0) or not self._started_ok:
+                    raise RuntimeError("PowerEventWatcher start failed")
+
+        def stop(self):
+            with self._lock:
+                if not self.alive:
+                    return
+                if self._hwnd:
+                    user32.PostMessageW(self._hwnd, WM_CLOSE, 0, 0)
+                self._msg_thread.join(timeout=3.0)
+                self._msg_thread = None
+
+        def _wndproc(self, hwnd, msg, wp, lp):
+            if msg == WM_POWERBROADCAST:
+                ev = int(wp) & 0xFFFF
+                try:
+                    if ev in (PBT_APMSUSPEND, PBT_APMRESUMECRITICAL):
+                        if self._on_suspend:
+                            self._on_suspend()
+                    elif ev in (PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND):
+                        if self._on_resume:
+                            self._on_resume()
+                except Exception:
+                    pass
+                return 1  # BROADCAST_QUERY_ALLOWED
+            if msg == WM_CLOSE:
+                user32.PostQuitMessage(0)
+                return 0
+            return user32.DefWindowProcW(hwnd, msg, wp, lp)
+
+        def _pump(self):
+            self._wndproc_ref = WNDPROC_T(self._wndproc)
+            hinst = kernel32.GetModuleHandleW(None)
+
+            wc = WNDCLASSEXW()
+            wc.cbSize = ctypes.sizeof(WNDCLASSEXW)
+            wc.lpfnWndProc = ctypes.cast(self._wndproc_ref, ctypes.c_void_p).value
+            wc.hInstance = hinst
+            wc.lpszClassName = self._cls_name
+            user32.RegisterClassExW(ctypes.byref(wc))
+
+            try:
+                # NULL parent = 顶层隐藏窗口 (零尺寸, 无 WS_VISIBLE) — 必须能收广播消息
+                self._hwnd = user32.CreateWindowExW(0, self._cls_name, None, 0, 0, 0, 0, 0, None, None, hinst, None)
+                if not self._hwnd:
+                    self._ready.set()
+                    return
+                self._started_ok = True
+                self._ready.set()
+
+                msg = wt.MSG()
+                while True:
+                    ret = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
+                    if ret <= 0:
+                        break
+                    user32.TranslateMessage(ctypes.byref(msg))
+                    user32.DispatchMessageW(ctypes.byref(msg))
+            finally:
+                if self._hwnd:
+                    try: user32.DestroyWindow(self._hwnd)
+                    except Exception: pass
+                    self._hwnd = None
+                try: user32.UnregisterClassW(self._cls_name, hinst)
+                except Exception: pass
+                self._wndproc_ref = None
+
 else:
     # ★ Linux / macOS: no-op stub (clipboard monitoring handled by Shell bridge / xclip)
     class ClipboardWatcher:
         def __init__(self, callback, debounce_ms=0): pass
+        @property
+        def alive(self): return False
+        def start(self): pass
+        def stop(self): pass
+
+    class PowerEventWatcher:
+        def __init__(self, on_suspend=None, on_resume=None): pass
         @property
         def alive(self): return False
         def start(self): pass
@@ -2803,6 +3025,16 @@ class AudioHub:
         self.clipboard_watcher = None
         self._clipboard_sounds = []
         self._clipboard_lock = threading.Lock()
+        self._power_suspended = False
+        # ★ 电源事件监听 (Windows): 休眠前主动撤退设备, 唤醒后自动重建 — 根治老版休眠死翘翘
+        self._power_watcher = None
+        if sys.platform == 'win32':
+            try:
+                w = PowerEventWatcher(on_suspend=self._on_power_suspend, on_resume=self._on_power_resume)
+                w.start()
+                self._power_watcher = w
+            except Exception:
+                self._power_watcher = None
 
     def az(self, file_path: str, loop_times: int, final_fade_seconds: float, trim_silence: bool = True):
         return self.music.az(file_path, loop_times, final_fade_seconds, trim_silence)
@@ -2866,7 +3098,36 @@ class AudioHub:
             if self.clipboard_watcher:
                 self.clipboard_watcher.stop()
 
+    def _on_power_suspend(self):
+        self._power_suspended = True
+        try:
+            if self.sfx:
+                self.sfx.on_power_suspend()
+        except Exception:
+            pass
+        try:
+            self.music.on_power_suspend()
+        except Exception:
+            pass
+
+    def _on_power_resume(self):
+        self._power_suspended = False
+        try:
+            if self.sfx:
+                self.sfx.on_power_resume()
+        except Exception:
+            pass
+        try:
+            self.music.on_power_resume()
+        except Exception:
+            pass
+
     def close(self):
+        try:
+            if self._power_watcher is not None:
+                self._power_watcher.stop()
+        except Exception:
+            pass
         try:
             self.stop_clipboard()
         except Exception:

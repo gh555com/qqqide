@@ -5,7 +5,7 @@
 //
 // 真理层级：
 //   ① all.json（楼层目录文件）— 唯一真理源，包含 conversation/houses 全量
-//      写路径: qqq/quests/q{n}.*/f{n}.*/all.json   via  bridge.fs.write（底层 _atomicWrite）
+//      写路径: _qqq/quests/q{n}.*/f{n}.*/all.json   via  bridge.fs.write（底层 _atomicWrite）
 //      路径由 ID 前缀解析（startsWith），标题任意改不影响读写
 //      文件名恒定 all.json，楼层编号仅在目录名中 → 目录改名时无需同步改文件
 //   ② quest.sq3（SQLite）— 轻量索引 + quest 元数据，不存 conversation
@@ -32,7 +32,7 @@
 //
 // 存储结构:
 //   Filesystem (真理源):
-//     qqq/quests/q{n}.{title}/f{n}.{question}/
+//    _qqq/quests/q{n}.{title}/f{n}.{question}//
 //       all.json            ← 楼层全量（conversation + houses）★ 文件名恒定
 //       img_*.png           ← 图片
 //       all.txt             ← 纯导出快照，绝不回读

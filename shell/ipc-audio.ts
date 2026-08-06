@@ -78,4 +78,28 @@ export function registerAudioIpc(engine: AudioEngine, appRoot: string): void {
     });
 
     ipcMain.handle('qqqide:audio:isAlive', () => engine.isAlive());
+
+    ipcMain.handle('qqqide:audio:prime', async (_e, files: any) => {
+        try {
+            const list = Array.isArray(files) ? files : [];
+            const abs = list.map((f: any) => resolveSfxPath(appRoot, String(f || ''))).filter(Boolean);
+            if (abs.length === 0) { return { ok: false, error: 'empty_paths' }; }
+            return await engine.invoke('prime_sfx', { paths: abs }, 10000);
+        } catch (err: any) {
+            return { ok: false, error: String((err && err.message) || err) };
+        }
+    });
+
+    // ★ 预热 yz 音效解码缓存 — 首响零延迟 (性能优化, 启动 3s 后静默执行)
+    setTimeout(() => {
+        try {
+            const wd = resolveWebappDir(appRoot);
+            if (!wd) { return; }
+            const yzDir = path.join(wd, 'assets', 'yz');
+            if (!fs.existsSync(yzDir)) { return; }
+            const files = fs.readdirSync(yzDir).filter(f => /\.mp3$/i.test(f));
+            if (files.length === 0) { return; }
+            engine.invoke('prime_sfx', { paths: files.map(f => path.join(yzDir, f)) }, 10000).catch(() => { /* ignore */ });
+        } catch { /* ignore */ }
+    }, 3000);
 }

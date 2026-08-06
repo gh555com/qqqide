@@ -218,14 +218,41 @@ async function _initWorkspace(root) {
     if (_panelId === 1) {
         var lockResult = await onlyStore.claimLock();
         if (!lockResult.ok) {
+            // ★ 多窗口锁等待重试（F-2026-08-06）：另一窗口持有锁时不再立即放弃。
+            //   旧行为直接 return → questStore 未绑定 → AI 面板全空白，且重启无效
+            //   （旧窗口心跳每 30s 刷新锁 → 新窗口永远抢不到 → 永久空白死胡同）。
+            //   现在：每 3s 重试一次（最长 60s），旧窗口关闭后自动接管。
+            var _lockWaitMsg = null;
+            var _rootName = root.split(/[\\/]/).filter(Boolean).pop() || root;
+            for (var _lkTry = 0; _lkTry < 20; _lkTry++) {
+                if (!_lockWaitMsg) {
+                    try { _lockWaitMsg = addMessageEl('error', '\u23f3 项目「' + _rootName + '」已被另一窗口打开，等待其关闭后自动接管…'); } catch (_) { }
+                }
+                await new Promise(function (r) { setTimeout(r, 3000); });
+                lockResult = await onlyStore.claimLock();
+                if (lockResult.ok) {
+                    try { if (_lockWaitMsg) _lockWaitMsg.textContent = '\u2705 已接管项目「' + _rootName + '」'; } catch (_) { }
+                    break;
+                }
+            }
+        }
+        if (!lockResult.ok) {
             console.warn('[workspace] BLOCKED: project locked (age=' + (lockResult.age / 1000).toFixed(1) + 's)');
-            addMessageEl('error', '\u26a0\ufe0f 该项目已被另一个 QQQ 窗口打开，无法重复绑定。');
+            addMessageEl('error', '\u26a0\ufe0f 项目锁冲突（另一窗口正在使用）。本面板进入后台等待，旧窗口关闭后自动恢复，无需重启。');
             if (window.parent) {
                 try { window.parent.postMessage({ type: 'qqq-ai-viewport-remove-project', path: root }, '*'); } catch (_) { }
             }
             onlyStore.init(null);
             _workspaceRoot = null;
             try { parent._workspaceRoot = null; } catch (_) { }
+            // ★ 后台重试：锁释放后自动重新绑定（15s 间隔，最长 50 分钟），消灭「重启也空白」死胡同
+            var _bgLockRetry = 0;
+            var _bgLockTimer = setInterval(function () {
+                _bgLockRetry++;
+                if (_bgLockRetry > 200) { clearInterval(_bgLockTimer); return; }
+                if (_workspaceRoot) { clearInterval(_bgLockTimer); return; }
+                bindMainProject();
+            }, 15000);
             return;
         }
         // 向主进程注册窗口↔项目映射（仅中面板）

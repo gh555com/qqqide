@@ -557,33 +557,45 @@ function bootActivities(boot) {
     return { rem: rem, bud: bud, valid: isFinite(rem) && rem >= 0, bonus: bonus };
   }
 
+  // 前缀文字（「剩」/「距下次」）— 与赞助商同外观：普通字体 11px 次级色（仅数字保持等宽）
+  function vibeTxtNode(text) {
+    var s = document.createElement('span');
+    s.className = 'qqq-act-txt';
+    s.textContent = text + ' ';
+    return s;
+  }
+
   function renderVibe() {
     if (!$vibe || !$vibeNum) return;
     var st = vibeState(vibeUtcNow());
     var b = vibeBudget();
 
-    if (st.free) {
-      if (b.valid) {
-        $vibeNum.textContent = '💎' + fmt(b.rem) + '/' + fmt(b.bud);
-        if ($vibeFill) $vibeFill.style.width = Math.max(0, Math.min(100, b.bud > 0 ? b.rem / b.bud * 100 : 100)) + '%';
+    // ★ 统一：免费中「剩」+ 倒计时，非免费「距下次」+ 倒计时（不再需要点开弹窗才看到剩余时间）
+    //   进度条 = 免费中余额剩余比例（余额未拉到则满格）/ 非免费 0%
+    var prefix = st.free ? t('act.vibe.shortFree', '剩') : t('act.vibe.shortNext', '距下次');
+    $vibeNum.textContent = '';
+    $vibeNum.appendChild(vibeTxtNode(prefix));
+    $vibeNum.appendChild(document.createTextNode(fmtHMS(st.remaining)));
+    if ($vibeFill) {
+      if (st.free && b.valid) {
+        $vibeFill.style.width = Math.max(0, Math.min(100, b.bud > 0 ? b.rem / b.bud * 100 : 100)) + '%';
+      } else if (st.free) {
+        $vibeFill.style.width = '100%';
       } else {
-        $vibeNum.textContent = fmtHMS(st.remaining);
-        if ($vibeFill) $vibeFill.style.width = '100%';
+        $vibeFill.style.width = '0%';
       }
-      $vibe.classList.add('qqq-act-vibe-on');
-    } else {
-      $vibeNum.textContent = t('act.vibe.shortNext', '距下次') + ' ' + fmtHMS(st.remaining);
-      if ($vibeFill) $vibeFill.style.width = '0%';
-      $vibe.classList.remove('qqq-act-vibe-on');
     }
 
     // 弹窗内倒计时实时刷新（若打开）
+    // ★ 免费中 → 不显示「距离下次免费」（与「免费将结束」自相矛盾），改为状态提示
     var $end = document.getElementById('qqq-vibe-end');
     var $next = document.getElementById('qqq-vibe-next');
     if ($end) $end.textContent = st.free
       ? tp('act.vibe.popFreeNow', { time: fmtHMS(st.remaining) }, '🟢 免费中 · 免费将结束 ' + fmtHMS(st.remaining))
       : t('act.vibe.popNotInWindow', '当前不在免费时段');
-    if ($next) $next.textContent = tp('act.vibe.popNext', { time: fmtHMS(st.remaining) }, '⏳ 距离下次免费 ' + fmtHMS(st.remaining));
+    if ($next) $next.textContent = st.free
+      ? t('act.vibe.popInWindow', '🟢 正在免费时段 · 随机免费余额已开启')
+      : tp('act.vibe.popNext', { time: fmtHMS(st.remaining) }, '⏳ 距离下次免费 ' + fmtHMS(st.remaining));
   }
 
   function vibeTipText() {
@@ -608,7 +620,7 @@ function bootActivities(boot) {
       budgetHtml =
         '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-vibe-fill" style="width:' + pct + '%"></span></div>' +
         '<div class="qqq-act-bignum">💎 ' + fmt(b.rem) + ' / ' + fmt(b.bud) + ' ge' +
-        (b.bonus > 0 ? ' <span style="font-size:11px;color:#b58900;">' + tp('act.vibe.popBonus', { v: fmt(b.bonus) }, '季节加成 +' + fmt(b.bonus) + ' ge') + '</span>' : '') +
+        (b.bonus > 0 ? ' <span style="font-size:14px;font-weight:700;color:#e0b400;">' + tp('act.vibe.popBonus', { v: fmt(b.bonus) }, '季节加成 +' + fmt(b.bonus) + ' ge') + '</span>' : '') +
         '</div>';
     } else if (st.free) {
       // 免费中但余额尚未拉到（请求中/失败）→ 加载态，不误报未登录
@@ -628,7 +640,9 @@ function bootActivities(boot) {
         ? tp('act.vibe.popFreeNow', { time: fmtHMS(st.remaining) }, '🟢 免费中 · 免费将结束 ' + fmtHMS(st.remaining))
         : t('act.vibe.popNotInWindow', '当前不在免费时段')) +
       '</span><br>' +
-      '<span id="qqq-vibe-next">' + tp('act.vibe.popNext', { time: fmtHMS(st.remaining) }, '⏳ 距离下次免费 ' + fmtHMS(st.remaining)) + '</span><br>' +
+      '<span id="qqq-vibe-next">' + (st.free
+        ? t('act.vibe.popInWindow', '🟢 正在免费时段 · 随机免费余额已开启')
+        : tp('act.vibe.popNext', { time: fmtHMS(st.remaining) }, '⏳ 距离下次免费 ' + fmtHMS(st.remaining))) + '</span><br>' +
       t('act.vibe.popWindow', '📅 免费时段：周日全天 + 每日 01:00-03:00 / 13:00-15:00（UTC）') +
       '</p>';
 
