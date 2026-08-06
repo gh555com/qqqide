@@ -68,7 +68,8 @@ def handle(msg):
         return {"ok": True}
     if action == "play_sfx":
         path = msg.get("path") or ""
-        HUB.play_sfx(path)
+        volume = float(msg.get("volume") or 1.0)
+        HUB.play_sfx(path, volume)
         return {"ok": True}
     if action == "stop_all":
         try:

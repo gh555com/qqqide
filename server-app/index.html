@@ -143,37 +143,35 @@ var _orig={};
     <!-- Status -->
     <div class="qqq-status-area">
       <div class="qqq-status-row">
+        <!-- ★ 赞助商（状态区最左）→ 点击打开官网 zhijiaip.com -->
+        <span class="qqq-status-sponsor" id="qqq-status-sponsor" data-i18n="act.sponsor" title="http://www.zhijiaip.com" style="cursor:pointer;">赞助商：成都知佳知识产权代理有限公司</span>
         <span class="qqq-status-item" id="qqq-status-version">v0.0.3</span>
         <span class="qqq-status-item" id="qqq-status-online"></span>
-
         <span class="qqq-gw-dots" id="qqq-gw-dots">
           <span class="qqq-gw-dot" id="qqq-gw-dot-0" data-panel="0" title="左面板 · 等待连接">●</span>
           <span class="qqq-gw-dot" id="qqq-gw-dot-1" data-panel="1" title="中面板 · 等待连接">●</span>
           <span class="qqq-gw-dot" id="qqq-gw-dot-2" data-panel="2" title="右面板 · 等待连接">●</span>
         </span>
-        <!-- ★ 双活动豆腐块（清爽从2026 + 总消费50ge）→ core/shell-activities.js -->
+        <span class="qqq-spacer"></span>
+        <!-- ★ 三活动豆腐块（清爽从2026 + 原料与基本权利 + 2026,我,vibe coding）→ core/shell-activities.js -->
         <span class="qqq-act-widget qqq-act-cool" id="qqq-act-cool" title="">
           <span class="qqq-act-head"><span class="qqq-act-icon">🧊</span><span class="qqq-act-name" data-i18n="act.cool.name">清爽从2026</span></span>
           <span class="qqq-act-track"><span class="qqq-act-fill" id="qqq-act-cool-fill"></span></span>
           <span class="qqq-act-num" id="qqq-act-cool-num">0/10</span>
         </span>
         <span class="qqq-act-widget qqq-act-ge50" id="qqq-act-ge50">
-          <span class="qqq-act-head"><span class="qqq-act-icon">🎁</span><span class="qqq-act-name" data-i18n="act.ge50.name">50ge 大礼</span></span>
+          <span class="qqq-act-head"><span class="qqq-act-icon">🎁</span><span class="qqq-act-name" data-i18n="act.ge50.name">原料与基本权利</span></span>
           <span class="qqq-act-track"><span class="qqq-act-fill" id="qqq-act-ge50-fill"></span></span>
           <span class="qqq-act-num" id="qqq-act-ge50-num">0/50</span>
         </span>
-        <span class="qqq-spacer"></span>
+        <span class="qqq-act-widget qqq-act-vibe" id="qqq-act-vibe">
+          <span class="qqq-act-head"><span class="qqq-act-icon">💎</span><span class="qqq-act-name" data-i18n="act.vibe.name">2026, 我, vibe coding</span></span>
+          <span class="qqq-act-track"><span class="qqq-act-fill" id="qqq-act-vibe-fill"></span></span>
+          <span class="qqq-act-num" id="qqq-act-vibe-num">--:--:--</span>
+        </span>
         <span class="qqq-status-item" id="qqq-status-wq" style="font-family:Consolas,monospace;font-size:11px;cursor:pointer;" title="wq 前摇统计">wq: --</span>
         <span class="qqq-status-item" id="qqq-status-clock"></span>
-         <span class="qqq-status-item qqq-status-free" id="qqq-status-free" style="display:none">
-          <span class="qqq-free-budget-bar" id="qqq-status-free-budget" style="display:none;align-items:center;gap:3px;margin-right:4px;">
-            <span class="qqq-free-budget-track" style="display:inline-block;width:50px;height:6px;background:var(--bg-tertiary,#333);border-radius:3px;overflow:hidden;">
-              <span class="qqq-free-budget-fill" id="qqq-status-free-budget-fill" style="display:block;height:100%;width:100%;background:linear-gradient(90deg,#268bd2,#2aa198);border-radius:3px;transition:width .5s;"></span>
-            </span>
-            <span class="qqq-free-budget-label" id="qqq-status-free-budget-label" style="font-size:11px;color:var(--text-primary);white-space:nowrap;"></span>
-          </span>
-          <span class="qqq-free-badge" id="qqq-status-free-badge"></span>
-        </span>     </div>
+      </div>
     </div>
 
     <!-- Resize grip -->
@@ -243,6 +241,9 @@ var _orig={};
   };
 })();
 </script>
+<!-- WYSIWYG core: klipzap → anchor-map → content-widget → paste-router pipeline（F73 曾被误删，此处为唯一加载点） -->
+<script src="core/klipzap.js"></script>
+<script src="core/wq-stats.js"></script>
 <script src="core/transaction-manager.js"></script>
 <script src="core/batch-ops.js"></script>
 <script src="core/progress-service.js"></script>
@@ -307,6 +308,14 @@ var _orig={};
   window.__qqq_getQuestOwner = function(questId) {
     if (!questId || typeof questId !== 'string') return undefined;
     return window.__qqq_questOwners[questId];
+  };
+  // ★ 原子申领：仅当 quest 无人持有时申领成功，返回 true；已被持有返回 false
+  //   消灭「check-then-claim」竞态窗口 —— check 时无人，claim 时已被抢
+  window.__qqq_tryClaimQuest = function(questId, panelId) {
+    if (!questId || typeof questId !== 'string') return false;
+    if (questId in window.__qqq_questOwners) return false;
+    window.__qqq_questOwners[questId] = panelId;
+    return true;
   };
   // questId → 是否正在建楼（跨面板共享，引用计数零竞态）
   window.__qqq_runningQuests = {};

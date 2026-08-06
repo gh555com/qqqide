@@ -13,8 +13,9 @@ ctxMenu.querySelectorAll('.context-menu-item').forEach(function(el) {
 			// Multi-select: only copyPath and delete work; others use first item
 		}
 		var item = ctxEntry ? { path: ctxTarget, name: ctxEntry.name, type: ctxEntry.isDir ? 'folder' : 'file' } : { path: ctxTarget, name: baseName(ctxTarget), type: 'file' };
-		if (item.name === '..' && (action === 'rename' || action === 'delete')) return;
+		if (item.name === '..' && (action === 'rename' || action === 'delete' || action === 'ai')) return;
 		switch (action) {
+			case 'ai': _feedCurrentToAi(); break;
 			case 'code': performCodeAction(item); break;
 			case 'open': performOpenAction(item); break;
 			case 'delete': performDeleteAction(item); break;
@@ -120,11 +121,14 @@ async function loadDrives() {
 	});
 	driveList.appendChild(deskBtn);
 
-	// Recycle Bin entry
+	// Recycle Bin entry (点击 → 打开系统回收站，与 q3 openRecycleBin 一致)
 	var recycleBtn = document.createElement('button');
 	recycleBtn.className = 'nav-item';
 	recycleBtn.id = 'drive-RECYCLE-btn';
 	recycleBtn.textContent = 'Recycle Bin';
+	recycleBtn.addEventListener('click', function() {
+		bridge.shell.openRecycleBin().catch(function(){});
+	});
 	driveList.appendChild(recycleBtn);
 
 	// Fetch disk free info
@@ -386,15 +390,22 @@ async function updateDriveDisplay() {
 			_doSRequest();
 			return;
 		}
-		// ★ 空白区快捷：a → CMD 在当前目录 / x → PowerShell 在当前目录（与 q3 一致）
+		// ★ 空白区快捷：a → 喂给焦点 AI 面板 / c → CMD / x → PowerShell（a 让位给 AI，CMD 改为 c）
 		if (k === 'a') {
 			e.preventDefault();
+			_feedCurrentToAi();
+			return;
+		}
+		if (k === 'c') {
+			e.preventDefault();
 			bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){});
+			_playSfx('terminal');
 			return;
 		}
 		if (k === 'x') {
 			e.preventDefault();
 			bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){});
+			_playSfx('terminal');
 			return;
 		}
 		if (!selectedItem) return;
@@ -427,7 +438,7 @@ async function updateDriveDisplay() {
 			Promise.all(targets.map(function(t) { return bridge.fs.remove(t.path).catch(function(){}); }))
 				.then(function() { if (currentPath) loadFileList(currentPath); });
 			cancelSelection();
-			_playSfx('delete');
+			_playSfx('purge');
 		}
 	});
 })();

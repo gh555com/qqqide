@@ -98,6 +98,11 @@ function _parentGetQuestOwner(questId) {
     try { if (parent && parent.__qqq_getQuestOwner) return parent.__qqq_getQuestOwner(questId); } catch (_) { }
     return undefined;
 }
+// ★ 原子申领：仅当 quest 无人持有时成功。消灭 check-then-claim 竞态窗口
+function _parentTryClaimQuest(questId) {
+    try { if (parent && parent.__qqq_tryClaimQuest) return parent.__qqq_tryClaimQuest(questId, _panelId); } catch (_) { }
+    return false;
+}
 // ★ 中心机器：读取所有正在建楼的 questId 列表（跨面板共享，只读）
 
 // ★ 全局默认 AI 等级：settings.js → qqqideDefaults → 兜底 3
@@ -185,6 +190,11 @@ window.addEventListener('message', function (e) {
 async function _handleConvNewQuest(data) {
     var ctx = data.context || '';
     if (!ctx) return;
+    // ★ 登录闸门：未登录禁建 quest（与发送管线同规则）
+    if (typeof _isLoggedIn === 'function' && !_isLoggedIn()) {
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在菜单栏点击登录', { type: 'warning', duration: 6000 }); } catch (_) { }
+        return;
+    }
     // defer: questStore / switchQuest 定义在 panel-quest.js / panel-quest-ui.js，
     // 本文件加载更早，postMessage 事件触发时它们已就绪
     var qs = window.questStore;

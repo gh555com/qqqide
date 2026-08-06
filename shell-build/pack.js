@@ -385,16 +385,6 @@ function injectLauncher(unpacked) {
   fs.writeFileSync(versionFile, APP_VERSION, 'utf8');
   console.log('[pack] wrote .version =', APP_VERSION);
 
-  // ★ legacy compat: slave.exe stub — 旧启动器硬编码找 gh555.com/slave.exe
-  //   旧绿色包 + 新载荷 = 找不到 slave.exe → 卡死。stub 转发到 joker.exe 即恢复。
-  const slaveSrc = path.join(ROOT, 'launcher', 'slave.exe');
-  if (fs.existsSync(slaveSrc)) {
-    fs.cpSync(slaveSrc, path.join(coreDir, 'slave.exe'), { force: true });
-    console.log('[pack] injected slave.exe legacy stub -> gh555.com/ (' + fs.statSync(slaveSrc).size + 'B)');
-  } else {
-    console.warn('[pack] launcher/slave.exe not found, skipping legacy stub');
-  }
-
   // ── 复制 C 启动器为根 qqqide.exe ──
   const launcherDst = path.join(unpacked, 'qqqide.exe');
   fs.cpSync(launcherSrc, launcherDst, { force: true });
@@ -789,19 +779,7 @@ function compileLauncher() {
     console.warn('[pack] rcedit or icon.ico not found, skipping icon');
   }
 
-  // ★ legacy compat stub: slave.exe（旧启动器硬编码 gh555.com/slave.exe）
-  const slaveSrc = path.join(ROOT, 'launcher', 'slave.c');
-  const slaveExe = path.join(ROOT, 'launcher', 'slave.exe');
-  if (fs.existsSync(slaveSrc) && gcc) {
-    console.log('[pack] compiling slave.exe legacy stub...');
-    const r3 = cp.spawnSync(gcc, ['-mwindows', '-municode', '-O2', '-s', '-o', slaveExe, slaveSrc],
-      { stdio: 'inherit' });
-    if (r3.status !== 0) throw new Error('gcc slave compile failed');
-    if (fs.existsSync(rcedit) && fs.existsSync(icon)) {
-      cp.spawnSync(rcedit, [slaveExe, '--set-icon', icon], { stdio: 'inherit' });
-    }
-    console.log('[pack] slave.exe compiled:', slaveExe, '(' + fs.statSync(slaveExe).size + 'B)');
-  }
+
 }
 
 function packDir(unpacked, flatOnly) {

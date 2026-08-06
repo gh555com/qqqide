@@ -2451,11 +2451,11 @@ class UltraFastConcurrentSFX:
         self._dispatch_thread = threading.Thread(target=self._dispatch_loop, name="sfx-dispatch", daemon=True)
         self._dispatch_thread.start()
 
-    def play(self, path: str):
+    def play(self, path: str, volume: float = 1.0):
         if not path:
             return
         try:
-            self._submit_q.put_nowait(path)
+            self._submit_q.put_nowait((path, float(volume) if volume is not None else 1.0))
         except queue.Full:
             pass
 
@@ -2500,14 +2500,15 @@ class UltraFastConcurrentSFX:
             item = self._submit_q.get()
             if item is _SENTINEL:
                 break
-            self._add_voice(item)
+            path, vol = item if isinstance(item, tuple) else (item, 1.0)
+            self._add_voice(path, vol)
 
-    def _add_voice(self, path):
+    def _add_voice(self, path, volume=1.0):
         cached = self._decode_cache(path)
         if not cached:
             return
         pcm_bytes, duration = cached
-        voice = {"pcm": pcm_bytes, "offset": 0, "length": len(pcm_bytes)}
+        voice = {"pcm": pcm_bytes, "offset": 0, "length": len(pcm_bytes), "volume": max(0.0, min(1.0, float(volume)))}
         with self._voices_lock:
             # ★ Limit concurrent voices to prevent memory bloat
             if len(self._voices) >= self._max_voices:
@@ -2526,7 +2527,9 @@ class UltraFastConcurrentSFX:
                     nchannels=self.nchannels,
                     sample_rate=self.sample_rate,
                 )
-                self._device.start(self._mix_generator())
+                gen = self._mix_generator()
+                next(gen)  # ★ Prime: miniaudio calls .send(framecount), generator must yield first
+                self._device.start(gen)
             except Exception:
                 self._device = None
 
@@ -2576,8 +2579,9 @@ class UltraFastConcurrentSFX:
                 num_samples = len(voice_chunk) // bytes_per_sample
                 voice_arr = array.array('h')
                 voice_arr.frombytes(voice_chunk if isinstance(voice_chunk, bytes) else bytes(voice_chunk))
+                vvol = v.get("volume", 1.0)
                 for i in range(min(num_samples, len(mixed))):
-                    s = mixed[i] + voice_arr[i]
+                    s = mixed[i] + int(voice_arr[i] * vvol)
                     # Clamp to int16 range
                     if s > 32767: s = 32767
                     elif s < -32768: s = -32768
@@ -2811,11 +2815,11 @@ class AudioHub:
             return
         self.sfx.prime(paths)
 
-    def play_sfx(self, path: str):
+    def play_sfx(self, path: str, volume: float = 1.0):
         if self.sfx_use_music_engine:
             self.music.play_sound_file(path, play_range=None, fade_out_seconds=0.0, loop=False, trim_silence=False, loop_crossfade_ms=0.0)
             return
-        self.sfx.play(path)
+        self.sfx.play(path, volume)
 
     def on(self, event_name: str, fn):
         self.bus.on(event_name, fn)

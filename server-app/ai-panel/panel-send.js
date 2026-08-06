@@ -739,22 +739,20 @@ function _restoreGuideBlocksToContentWrap(contentWrap, conv, floorNum) {
             qxFile = ASSET + qxPool[Math.floor(Math.random() * 3)];
         }
         var qaFile = Math.random() < 0.5 ? ASSET + 'scout_fire-1.wav' : ASSET + 'g3sg1-fire-2.wav';
-        var qaAudio = new Audio(qaFile);
-        qaAudio.volume = vol;
-        qaAudio.play().catch(function () { });
-        if (rollQx) {
-            setTimeout(function () {
-                try { var ax = new Audio(qxFile); ax.volume = vol; ax.play().catch(function () { }); } catch (_) { }
-            }, qxDelay);
-        }
-        if (rollQs) {
-            var onQaEnd = function () {
+        // ★ 统一音频机器（主进程 AudioEngine）— 无 ended 事件，qs 用固定延迟（qa 为短枪声，~700ms 足够播完）
+        var _bridge = parent.window && parent.window.qqqideBridge;
+        if (_bridge && _bridge.audio) {
+            _bridge.audio.play(qaFile, { volume: vol }).catch(function () { });
+            if (rollQx) {
                 setTimeout(function () {
-                    try { var as = new Audio(ASSET + 'p90_boltpull.wav'); as.volume = vol; as.play().catch(function () { }); } catch (_) { }
-                }, qsGap);
-            };
-            if (qaAudio.ended) { onQaEnd(); }
-            else { qaAudio.addEventListener('ended', onQaEnd, { once: true }); }
+                    _bridge.audio.play(qxFile, { volume: vol }).catch(function () { });
+                }, qxDelay);
+            }
+            if (rollQs) {
+                setTimeout(function () {
+                    _bridge.audio.play(ASSET + 'p90_boltpull.wav', { volume: vol }).catch(function () { });
+                }, 700 + qsGap);
+            }
         }
     }
 

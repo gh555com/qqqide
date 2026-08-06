@@ -59,6 +59,7 @@ import { initAuthBrain, registerAuthBrainIpc, getAuthBrain } from './auth-brain'
 // ── 服务 ──
 
 import { AudioEngine } from './audio-engine';
+import { registerAudioIpc } from './ipc-audio';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 import { MonacoHost } from './monaco-host';
 import { QzSpawn, registerQzSpawnIpc } from './qz-spawn';
@@ -267,6 +268,7 @@ function registerAllIpc(): void {
     registerGitDiffIpc(portable.root, bootConfig);
     registerSmartSearchIpc(indexService);
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
+    registerAudioIpc(audioEngine, portable.root);
     registerQzSpawnIpc(qzSpawn);
     registerGaeaProcessIpc();
     registerKopeIpc();

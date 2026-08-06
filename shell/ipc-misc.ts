@@ -164,6 +164,23 @@ ${escapedPaths}
 
     // ★ Roam 空白区右键 → 在当前目录打开管理员终端 (CMD / PowerShell)
     // 与 q3 openAdminTerminal 百分百一致
+    // ★ Roam 盘符区 Recycle Bin 点击 → 打开系统回收站（与 q3 openRecycleBin 一致）
+    ipcMain.handle('qqqide:shell:openRecycleBin', async () => {
+        try {
+            if (process.platform === 'win32') {
+                cp.spawn('explorer.exe', ['shell:RecycleBinFolder'], { windowsHide: true });
+            } else if (process.platform === 'darwin') {
+                cp.spawn('open', [path.join(require('os').homedir(), '.Trash')], { detached: true }).unref();
+            } else {
+                const trashPath = path.join(require('os').homedir(), '.local/share/Trash');
+                if (fs.existsSync(trashPath)) {
+                    cp.spawn('xdg-open', [trashPath], { detached: true }).unref();
+                }
+            }
+        } catch (e) { console.warn('[shell:openRecycleBin]', e); }
+        return true;
+    });
+
     ipcMain.handle('qqqide:shell:openTerminal', async (_e, p: string, termType: string) => {
         const absPath = path.resolve(p);
         const safePath = absPath.replace(/'/g, "''");

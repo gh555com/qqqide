@@ -6,6 +6,34 @@
 //        window._shHandleMenuCmd (shell-menu.js)
 // ============================================================================
 
+// ── Roam SFX 统一音频机器入口 ──
+// 语义映射表（老版 q3 yz 音效）: enter→a2.mp3 · delete→4.mp3 · purge→rou1.mp3
+// pin→a1.mp3 · unpin→kj2.mp3 · terminal→zs861.mp3 · copy/error→轻音效
+// 300ms 去重窗口（照搬老版 global.js，防多窗口操作音效叠炸）
+var _roamSfxLast = {};
+var _ROAM_SFX_MAP = {
+  'enter': 'a2.mp3',
+  'delete': '4.mp3',
+  'purge': 'rou1.mp3',
+  'pin': 'a1.mp3',
+  'unpin': 'kj2.mp3',
+  'terminal': 'zs861.mp3',
+  'copy': 'a2.mp3',
+  'error': 'a2.mp3'
+};
+function _playRoamSfx(name) {
+  if (!name || !window.qqqideBridge || !window.qqqideBridge.audio) return;
+  var now = Date.now();
+  var key = 'sfx_' + name;
+  var last = _roamSfxLast[key] || 0;
+  if (now - last < 300) return; // 去重窗口
+  _roamSfxLast[key] = now;
+  var file = _ROAM_SFX_MAP[name] || 'a2.mp3';
+  try {
+    window.qqqideBridge.audio.play('yz:' + file).catch(function () { });
+  } catch (_) { }
+}
+
 // ---- Editor integration: open file from file explorer ----
 function hookFileExplorerToTabs() {
   var bridge = window.qqqideBridge;
@@ -178,6 +206,12 @@ function bootRpcForwarder() {
     // Handle qqq-command from iframes (q4-sidebar, etc.)
     if (e.data.type === 'qqq-command' && e.data.cmd) {
       document.dispatchEvent(new CustomEvent('qqq-command', { detail: { cmd: e.data.cmd, url: e.data.url } }));
+      return;
+    }
+
+    // ★ Handle qqq-sfx from Roam iframe — 统一音频机器入口（300ms 去重）
+    if (e.data.type === 'qqq-sfx' && e.data.name) {
+      _playRoamSfx(String(e.data.name));
       return;
     }
 

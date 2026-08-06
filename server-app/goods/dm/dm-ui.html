@@ -523,6 +523,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   }
 
   function loadMessages(peerID) {
+    if (!_token) return;
     fetch('https://cnk.gh555.com/api/dm/messages?peer='+encodeURIComponent(peerID)+'&limit=99', {
       headers:{'Authorization':'Bearer '+_token}
     }).then(function(r){return r.json();}).then(function(d){
@@ -660,7 +661,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
   function sendMessage() {
     var text = $msgInput.value.trim();
-    if (!text || !_activePeer) return;
+    if (!text || !_activePeer || !_token) return;
 
     $sendBtn.disabled = true;
     $msgInput.value = '';

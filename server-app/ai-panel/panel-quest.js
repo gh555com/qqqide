@@ -530,28 +530,43 @@ async function initQuests() {
     if (quests.length === 0) {
         questActiveId = _draftId;
     } else {
-        // ★ 面板 resume JSON → quest.sq3 global → first quest（三级降级，三面板统一路径）
+        // ★ 面板 resume → (仅中面板) global active → first quest
+        //   翼板跳过 global active，避免启动时三面板抢同一 quest
         var _fromResume = await _readPanelResume();
         if (_fromResume && quests.find(function (s) { return s.id === _fromResume; })) {
             questActiveId = _fromResume;
-        } else {
+        } else if (_panelId === 1) {
+            // 仅中面板：降级到 global active → first quest
             questActiveId = await questStore.getActiveId();
             if (!questActiveId || !quests.find(function (s) { return s.id === questActiveId; })) {
                 questActiveId = quests.length > 0 ? quests[0].id : _draftId;
             }
+        } else {
+            // 翼板：无 resume → 直接草稿，不抢中面板的 quest
+            questActiveId = _draftId;
         }
     }
 
     if (questActiveId && !_isDraft(questActiveId)) {
-        // ★ 同步去重：在加载数据前检查父注册表，避免白加载后再卸载
+        // ★ 原子申领：check+claim 合为一步，消灭「check时无人→claim时已被抢」竞态
         var _initSyncOwner = _parentGetQuestOwner(questActiveId);
-        if (_initSyncOwner !== undefined && _initSyncOwner !== _panelId) {
+        if (_initSyncOwner === _panelId) {
+            // 本面板已持有（Ctrl+R 重载场景）→ 直接继续
+        } else if (_initSyncOwner !== undefined) {
             // 已被其他面板持有 → 自动打开那个翼板 + 跳回草稿
             if (_initSyncOwner === 0 || _initSyncOwner === 2) {
                 try { parent.postMessage({ type: 'qqq-open-wing', panel: _initSyncOwner }, '*'); } catch (_) { }
             }
             questActiveId = _draftId;
+        } else if (!_parentTryClaimQuest(questActiveId)) {
+            // 与另一面板同时竞争 → 败方跳回草稿
+            var _raceOwner = _parentGetQuestOwner(questActiveId);
+            if (_raceOwner === 0 || _raceOwner === 2) {
+                try { parent.postMessage({ type: 'qqq-open-wing', panel: _raceOwner }, '*'); } catch (_) { }
+            }
+            questActiveId = _draftId;
         }
+        // else: tryClaim 成功 → 本面板已原子持有，继续加载
     }
 
     if (questActiveId && !_isDraft(questActiveId)) {

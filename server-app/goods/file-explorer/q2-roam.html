@@ -121,11 +121,11 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .file-item.selected:hover { background-color: var(--selection-bg) !important; }
 .sz-area { width: var(--sz-area-width); height: 100%; min-height: 20px; font-style: normal; font-size: 12px; color: var(--text-dim); text-align: right; padding: 3px 0 0 0; line-height: 1.2; flex-shrink: 0; white-space: pre; cursor: pointer; z-index: 10; position: relative; display: inline-block; }
 .file-select-area { display: flex; align-items: center; padding: 2px 4px 2px 8px; cursor: pointer; flex-shrink: 0; height: 100%; }
-.folder-name-area { flex: 1; padding: 2px 8px 2px 4px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 100%; }
+.folder-name-area { flex: 1; padding: 2px 8px 2px -2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 100%; }
 .file-name-area { flex: 1; padding: 2px 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 100%; }
 .file-icon { margin-right: 0; font-size: 16px; font-family: "Segoe UI Symbol", "Symbola", "Noto Sans Symbols", Tahoma, sans-serif; font-variant-emoji: text; position: relative; left: -6px; }
 .file-item[data-type="file"] .file-icon { position: relative; top: -1px; }
-.file-item[data-type="file"] .file-name-area > span:not(.file-icon) { padding-left: 5px; }
+.file-item[data-type="file"] .file-name-area > span:not(.file-icon) { padding-left: 2px; }
 .footer { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px; background-color: var(--bg-color); border-top: 1px solid var(--border-strong); display: flex; justify-content: space-between; align-items: center; z-index: 10; box-shadow: 0 -2px 5px rgba(0,0,0,0.05); gap: 10px; }
 .filename-input-container { flex: 1; margin-right: 10px; position: relative; }
 .filename-input { width: 100%; padding: 5px 5px 5px 6px; border: 1px solid var(--border-strong); border-radius: 3px; background-color: var(--bg-color); color: var(--text-primary); font-family: Tahoma; font-size: 13px; }
@@ -222,14 +222,13 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 	</div>
 </div>
 <div id="itemContextMenu" class="context-menu">
+	<div class="context-menu-item" data-action="ai"><span>AI</span><span class="context-menu-shortcut">= "a"</span></div>
 	<div class="context-menu-item" data-action="code"><span>code</span><span class="context-menu-shortcut">= "q"</span></div>
 	<div class="context-menu-item" data-action="open"><span>open</span><span class="context-menu-shortcut">= "w"</span></div>
 	<div class="context-menu-item" data-action="delete"><span>delete</span><span class="context-menu-shortcut">= "d"</span></div>
 	<div class="context-menu-item" data-action="rename"><span>rename</span><span class="context-menu-shortcut">= "e"</span></div>
 	<div class="context-menu-item" data-action="copyPath"><span>copy path</span><span class="context-menu-shortcut">= "z"</span></div>
-</div>
-<div id="emptyContextMenu" class="context-menu">
-	<div class="context-menu-item" data-action="openAdminCmd"><span>CMD</span><span class="context-menu-shortcut">= "a"</span></div>
+	<div class="context-menu-item" data-action="openAdminCmd"><span>CMD</span><span class="context-menu-shortcut">= "c"</span></div>
 	<div class="context-menu-item" data-action="openAdminPowershell"><span>PowerShell</span><span class="context-menu-shortcut">= "x"</span></div>
 </div>
 <div id="globalTooltip" class="dropdown-item-tooltip"></div>
