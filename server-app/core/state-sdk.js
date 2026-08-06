@@ -234,7 +234,7 @@
     return ns(nsName, { v: 1, form: form, cloud: cloud });
   }
 
-  // ---- qgf — FS 原子读写真理机 (per-project .qqq/qgf/) -----------------
+  // ---- qgf — FS 原子读写真理机 (per-project _qqq/qgf/) -----------------
   //
   //   const state = qgf('/path/to/project', 'my-ns');
   //   const state = qgf('/path/to/project', 'my-ns', { form:'blob' });

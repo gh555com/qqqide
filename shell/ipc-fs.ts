@@ -177,7 +177,7 @@ export function registerFsIpc(): void {
         try {
             // ── sha256 路径：读 timeline blob ──
             if (args.sha256) {
-                // 从文件路径向上找到项目根（有 qqq/timeline/blobs/ 的目录）
+                // 从文件路径向上找到项目根（有 _qqq/timeline/blobs/ 的目录）
                 let root = path.dirname(args.path);
                 while (root && root !== path.dirname(root)) {
                     if (fs.existsSync(path.join(root, '_qqq', 'timeline', 'blobs'))) break;

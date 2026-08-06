@@ -166,6 +166,9 @@ var bridge = {
 	},
 	shell: {
 		openPath: (p) => rpc('shell.openPath', p),
+		openTerminal: (p, t) => rpc('shell.openTerminal', { __spread: true, args: [p, t] }),
+		openRecycleBin: () => rpc('shell.openRecycleBin'),
+		openExternal: (url) => rpc('shell.openExternal', url),
 	},
 	store: {
 		get: (k) => rpc('store.get', k),

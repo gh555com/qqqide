@@ -78,7 +78,8 @@ export class AudioEngine {
             });
             proc.on('exit', code => {
                 this.alive = false;
-                console.warn('[audio] python exited code=' + code);
+                // 正常退出(0)或主动 kill(null)不告警 — 仅异常退出才提示
+                if (code !== 0 && code !== null) { console.warn('[audio] python exited code=' + code); }
                 for (const { reject, timer } of this.pending.values()) {
                     clearTimeout(timer);
                     reject(new Error('audio_engine_exited'));
@@ -153,10 +154,14 @@ export class AudioEngine {
     isAlive(): boolean { return this.alive; }
 
     stop(): void {
-        if (this.proc) {
-            try { this.proc.kill(); } catch { /* ignore */ }
-            this.proc = null;
-            this.alive = false;
-        }
+        const p = this.proc;
+        if (!p) { this.alive = false; return; }
+        this.alive = false;
+        // ★ 优雅退出: 先发 exit 让 python 关音频设备再自退(消除退出时 CFFI 回调报错),
+        //   800ms 未退则强杀兜底。unref 保证不阻塞应用退出。
+        try { this.rawCall('exit', {}, 800).catch(() => { /* ignore */ }); } catch { /* ignore */ }
+        const t = setTimeout(() => { try { p.kill(); } catch { /* ignore */ } }, 800);
+        if (typeof (t as any).unref === 'function') { (t as any).unref(); }
+        this.proc = null;
     }
 }

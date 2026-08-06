@@ -9,8 +9,10 @@
 #
 # Actions:
 #   ping                                   -> {status: "alive"}
+#   exit                                   -> {ok: true} (优雅退出: 关设备后自退)
 #   play_music   {path, loop?, fade?}      -> {ok: true}
-#   play_sfx     {path}                    -> {ok: true}
+#   play_sfx     {path, volume?}           -> {ok: true}
+#   prime_sfx    {paths: [...]}            -> {ok: true}
 #   stop_all                               -> {ok: true}
 #   stop_music                             -> {ok: true}
 #   stop_clipboard                         -> {ok: true}
@@ -49,10 +51,24 @@ def init_hub(asset_folder="assets"):
         return False
 
 
+def shutdown_hub():
+    """Close audio devices cleanly (avoids CFFI callback noise on exit)."""
+    global HUB
+    if HUB is None:
+        return
+    try:
+        HUB.close()
+    except Exception:
+        pass
+    HUB = None
+
+
 def handle(msg):
     action = msg.get("action") or ""
     if action == "ping":
         return {"status": "alive"}
+    if action == "exit":
+        return {"ok": True, "__exit__": True}
     # init hub on first non-ping request
     if HUB is None:
         ok = init_hub(msg.get("asset_folder") or "assets")
@@ -70,6 +86,13 @@ def handle(msg):
         path = msg.get("path") or ""
         volume = float(msg.get("volume") or 1.0)
         HUB.play_sfx(path, volume)
+        return {"ok": True}
+    if action == "prime_sfx":
+        paths = msg.get("paths") or []
+        if isinstance(paths, str):
+            paths = [paths]
+        paths = [p for p in paths if isinstance(p, str) and p]
+        HUB.prime_sfx(paths)
         return {"ok": True}
     if action == "stop_all":
         try:
@@ -122,6 +145,10 @@ def main():
         if rid is not None:
             res["_id"] = rid
         write(res)
+        # ★ 优雅退出: 回复已发出, 关闭音频设备后自退, 避免退出时 CFFI 回调报错
+        if res.get("__exit__"):
+            shutdown_hub()
+            return
 
 
 if __name__ == "__main__":

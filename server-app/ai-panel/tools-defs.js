@@ -335,7 +335,7 @@ var TOOL_DEFINITIONS = [
                     style: { type: 'string', description: 'Style tag (text-to-image only): photorealistic/illustration/3D/anime/watercolor/chinese-trad/minimalist/e-commerce/nature' },
                     size: { type: 'string', description: 'Image size: "1K"=1024*1024, "2K"=2048*2048 (default), "4K"=4096*4096, or custom "W*H". 4K only for text-to-image; image editing max 2K.' },
                     n: { type: 'number', description: 'Number of images to generate (1-4, default 1)' },
-                    out_dir: { type: 'string', description: 'Output directory. Absolute or project-relative. Default: qqq/genera/' }
+                    out_dir: { type: 'string', description: 'Output directory. Absolute or project-relative. Default: {project_root}/_qqq/genera/ — omit this param unless you need a custom location' }
                 },
                 required: ['prompt']
             }
@@ -392,7 +392,7 @@ var TOOL_DEFINITIONS = [
         type: 'function',
         function: {
             name: 'timeline_versions',
-            description: 'List all tracked versions of a file from the project timeline (qqq/timeline). Returns file_seq, blob_hash, timestamp, +/-lines, source, trace (quest/floor/house/room), and quality tags for each version. Uses 235 cascade: L2 heuristic tags (🏁 final / ⚠️ mid-edit) always shown; L3 syntax check (✅ clean / ⚠️ error) on-demand via check_syntax=true; L5 best-clean-version recommendation in footer. Ordered oldest→newest. Filter by floor_num to scope to one floor.',
+            description: 'List all tracked versions of a file from the project timeline (_qqq/timeline). Returns file_seq, blob_hash, timestamp, +/-lines, source, trace (quest/floor/house/room), and quality tags for each version. Uses 235 cascade: L2 heuristic tags (🏁 final / ⚠️ mid-edit) always shown; L3 syntax check (✅ clean / ⚠️ error) on-demand via check_syntax=true; L5 best-clean-version recommendation in footer. Ordered oldest→newest. Filter by floor_num to scope to one floor.',
             parameters: {
                 type: 'object',
                 properties: {

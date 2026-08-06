@@ -18,9 +18,9 @@ import signal # (R22) 导入 signal
 # (R25) 单例保护: allowMultiple=false → 防多开
 from _singleton import check_and_register as _check_singleton
 _check_singleton('window-there')
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtGui import QFont
-from PyQt5.QtCore import QCoreApplication, QObject, pyqtSignal, QTimer # (R22) 导入 QTimer
+from PySide2.QtWidgets import QApplication
+from PySide2.QtGui import QFont
+from PySide2.QtCore import QCoreApplication, QObject, Signal, QTimer # (R22) 导入 QTimer
 
 # (R20) 导入重构后的模块
 import ge_2_env as config
@@ -51,9 +51,9 @@ stop_listener_flag = threading.Event()
 
 # --- (R21) 线程安全信号发射器 ---
 class KeySignalEmitter(QObject):
-    w_key_triggered = pyqtSignal()
-    x_key_triggered = pyqtSignal()
-    shift_key_triggered = pyqtSignal()
+    w_key_triggered = Signal()
+    x_key_triggered = Signal()
+    shift_key_triggered = Signal()
 
 g_signal_emitter = None
 

@@ -185,9 +185,11 @@ function _clearOsState(goodsId: string): void {
 
 /** 同步 autoStart 到 OS 级状态文件（跨绿色包可见） */
 export function syncOsGaeaAutoStart(goodsId: string, autoStart: boolean): void {
-    // ★ 状态不存在也创建（pid=0 占位），保证 toggle 切换跨绿色包立即可见
-    const state = _readOsState(goodsId);
-    _writeOsState(goodsId, { pid: state ? state.pid : 0, autoStart, ts: Date.now() });
+    // ★ 状态不存在也创建，保证 toggle 切换跨绿色包立即可见
+    // ★ 本进程在跑 → 写真实 PID（防 pid=0 占位导致远端短暂灰 ≤10s，F22 边界项）
+    const entry = _registry.get(goodsId);
+    const pid = (entry && entry.pid) ? entry.pid : (state ? state.pid : 0);
+    _writeOsState(goodsId, { pid, autoStart, ts: Date.now() });
 }
 
 /** 从 OS 级状态文件读取 autoStart（跨绿色包可见） */
@@ -228,6 +230,111 @@ function _startOsHeartbeat(goodsId: string, pid: number, autoStart: boolean): No
         _writeOsState(goodsId, { pid, autoStart: current.autoStart, ts: Date.now() });
     }, 10000);
     return timer;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// OS 级状态文件监听 — 跨 IDE 实例外观秒同步（2026-08-06）
+// 原理: fs.watch 监听 C:\Users\{用户}\AppData\Local\{goodsId}\ 目录
+//       远端实例启停 → 状态文件增删/重写 → 本实例立即重新评估 →
+//       运行态变化才 _notifyStatus 推送（心跳重写值比对去重，零噪音）
+//       本实例对远端实例永远是观察者：不 spawn、不干预生命周期
+// ═══════════════════════════════════════════════════════════════
+
+const _osWatchers = new Map<string, fs.FSWatcher>();
+const _lastOsRunning = new Map<string, { running: boolean; pid: number | null }>();
+const _osEvalTimers = new Map<string, NodeJS.Timeout>();
+// ★ watcher 自愈（2026-08-06 F22）: error → 指数退避重建；30s 兜底 poll 防静默死亡
+const _osWatchRetry = new Map<string, { timer: NodeJS.Timeout; backoff: number }>();
+const _osWatchPoll = new Map<string, NodeJS.Timeout>();
+
+function _evaluateOsState(goodsId: string): void {
+    const cur = _checkOsState(goodsId);
+    const running = cur.running;
+    const pid = cur.pid ?? null;
+    const prev = _lastOsRunning.get(goodsId);
+    // ★ 值比对去重：心跳每 10s 重写文件，但运行态没变 → 不推送
+    if (prev && prev.running === running && prev.pid === pid) return;
+    _lastOsRunning.set(goodsId, { running, pid });
+    if (running) {
+        // 远端实例在跑 → 注册表登记（proc=null 占位），绝不 spawn
+        if (!_registry.has(goodsId)) {
+            _registry.set(goodsId, { proc: null, pid, scriptPath: '', lifecycle: 'independent', allowMultiple: false });
+        }
+        _notifyStatus(goodsId, true, pid);
+    } else {
+        const entry = _registry.get(goodsId);
+        // ★ 本地进程存活 → 状态文件只是瞬时空窗（远端清理/心跳间隙），不误报
+        if (entry && entry.proc && !entry.proc.killed) return;
+        // 远端已停 → 清理 proc=null 占位（本地真实进程由 exit handler 管）
+        if (entry && !entry.proc) _registry.delete(goodsId);
+        _notifyStatus(goodsId, false, null);
+    }
+}
+
+function _debouncedEvalOsState(goodsId: string): void {
+    const t = _osEvalTimers.get(goodsId);
+    if (t) clearTimeout(t);
+    _osEvalTimers.set(goodsId, setTimeout(() => {
+        _osEvalTimers.delete(goodsId);
+        _evaluateOsState(goodsId);
+    }, 200));
+}
+
+/** 启动 OS 级状态文件监听（app 就绪时对全部单例 goods 调用） */
+export function startOsStateWatch(goodsId: string): void {
+    // ★ 30s 兜底 poll 总是启动：watcher 静默死亡（目录被删/句柄失效且无 error 事件）
+    //    也有界收敛；_evaluateOsState 值比对去重，零推送噪音（F22 决定）
+    if (!_osWatchPoll.has(goodsId)) {
+        const poll = setInterval(() => _evaluateOsState(goodsId), 30000);
+        _osWatchPoll.set(goodsId, poll);
+    }
+    if (_osWatchers.has(goodsId)) return;
+    try {
+        const dir = _getOsStateDir(goodsId); // 确保目录存在
+        const watcher = fs.watch(dir, (_evt, filename) => {
+            // ★ 有事件 = watcher 活着 → 取消挂起的重建退避
+            const retry = _osWatchRetry.get(goodsId);
+            if (retry) { clearTimeout(retry.timer); _osWatchRetry.delete(goodsId); }
+            const name = filename ? String(filename) : '';
+            if (name === '.gaea-state.json' || name === '.gaea-state.json.tmp') {
+                _debouncedEvalOsState(goodsId);
+            }
+        });
+        // ★ error（目录被删等）→ 关闭 → 指数退避重建 1s→2s→…→30s cap
+        watcher.on('error', () => {
+            console.warn('[gaea-process] os-state watch error, rebuild: ' + goodsId);
+            _closeOsStateWatch(goodsId);
+            const cur = _osWatchRetry.get(goodsId);
+            const delay = cur ? Math.min(cur.backoff * 2, 30000) : 1000;
+            const timer = setTimeout(() => {
+                _osWatchRetry.delete(goodsId);
+                startOsStateWatch(goodsId);
+            }, delay);
+            _osWatchRetry.set(goodsId, { timer, backoff: delay });
+        });
+        _osWatchers.set(goodsId, watcher);
+        console.log('[gaea-process] os-state watch started: ' + goodsId);
+    } catch (e: any) {
+        console.warn('[gaea-process] os-state watch failed: ' + goodsId + ' — ' + (e.message || e) + ' (30s poll fallback active)');
+    }
+    // 初始评估：远端已在跑 → 立即绿（不等 poll）
+    _evaluateOsState(goodsId);
+}
+
+function _closeOsStateWatch(goodsId: string): void {
+    const w = _osWatchers.get(goodsId);
+    if (w) { try { w.close(); } catch { /* ignore */ } _osWatchers.delete(goodsId); }
+    const t = _osEvalTimers.get(goodsId);
+    if (t) { clearTimeout(t); _osEvalTimers.delete(goodsId); }
+}
+
+/** 完全停止监听（清理时用）：watcher + 重建退避 + 兜底 poll 全停 */
+function _stopOsStateWatch(goodsId: string): void {
+    _closeOsStateWatch(goodsId);
+    const r = _osWatchRetry.get(goodsId);
+    if (r) { clearTimeout(r.timer); _osWatchRetry.delete(goodsId); }
+    const p = _osWatchPoll.get(goodsId);
+    if (p) { clearInterval(p); _osWatchPoll.delete(goodsId); }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -296,6 +403,54 @@ function _resolveGoodsScript(portableRoot: string, scriptPath: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// 进程枚举兜底链 — wmic → PowerShell Get-WmiObject（2026-08-06 F22）
+// wmic: Win7–Win11 23H2 自带；Win11 24H2+ 已移除 → 降级 PS。
+// Get-WmiObject 是 PS 2.0 核心 cmdlet（Win7 出厂可用，铁律 §十四 基线）。
+// 仅暴力兜底路径使用（低频），返回 [{pid, cmdline}]，全失败返回 []。
+// ═══════════════════════════════════════════════════════════════
+function _enumPythonProcs(): Array<{ pid: number; cmdline: string }> {
+    const attempts: Array<{ run: () => string; parse: (line: string) => { pid: number; cmdline: string } | null }> = [
+        {
+            // ① wmic /format:csv — 实测列序 Node,CommandLine,ProcessId（PID 在行尾）
+            run: () => execSync(
+                'wmic process where "name like \'%python%\'" get ProcessId,CommandLine /format:csv',
+                { windowsHide: true, timeout: 5000 }
+            ).toString('utf8'),
+            parse: (line) => {
+                const m = line.match(/^[^,]*,(.*),(\d+)\s*$/);
+                if (!m) return null;
+                const pid = parseInt(m[2], 10);
+                return (pid > 0 && m[1].trim()) ? { pid, cmdline: m[1].trim() } : null;
+            },
+        },
+        {
+            // ② PowerShell Get-WmiObject（PS 2.0 兼容）— 输出 "PID,cmdline"
+            run: () => execSync(
+                'powershell -NoProfile -Command "Get-WmiObject Win32_Process -Filter \\"Name like \'%python%\'\\" | ForEach-Object { $_.ProcessId.ToString() + \',\' + $_.CommandLine }"',
+                { windowsHide: true, timeout: 5000 }
+            ).toString('utf8'),
+            parse: (line) => {
+                const m = line.match(/^(\d+),(.+)$/);
+                if (!m) return null;
+                const pid = parseInt(m[1], 10);
+                return (pid > 0 && m[2].trim()) ? { pid, cmdline: m[2].trim() } : null;
+            },
+        },
+    ];
+    for (const a of attempts) {
+        const out: Array<{ pid: number; cmdline: string }> = [];
+        try {
+            for (const line of a.run().split(/\r?\n/)) {
+                const parsed = a.parse(line);
+                if (parsed) out.push(parsed);
+            }
+            if (out.length > 0) return out; // 该级拿到进程 → 不再降级
+        } catch { /* try next */ }
+    }
+    return [];
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 进程启动 / 停止
 // ═══════════════════════════════════════════════════════════════
 
@@ -343,17 +498,19 @@ export function startGaeaProcess(
             }
             return { ok: true, pid: existing.pid, alreadyRunning: true };
         }
-        // ★ 跨绿色包检测：OS 级状态文件（防 dev + 绿色包同时 spawn）
+        // ★ 跨绿色包检测：OS 级状态文件（C 盘锁，防 dev + 绿色包同时 spawn）
         const osCheck = _checkOsState(goodsId);
         if (osCheck.running) {
-            console.log('[' + goodsId + '] already running pid=' + osCheck.pid + ' (OS-state) — skip');
-            _singletonConflicts.set(goodsId, Date.now());
+            console.log('[' + goodsId + '] already running pid=' + osCheck.pid + ' (OS-state) — skip spawn, sync status');
             if (!_registry.has(goodsId)) {
                 _registry.set(goodsId, {
                     proc: null, pid: osCheck.pid || null,
                     scriptPath, lifecycle, allowMultiple
                 });
             }
+            // ★ 秒同步：立即推送运行态（不等 5s poll）
+            _lastOsRunning.set(goodsId, { running: true, pid: osCheck.pid ?? null });
+            _notifyStatus(goodsId, true, osCheck.pid);
             return { ok: true, pid: osCheck.pid, alreadyRunning: true };
         }
     }
@@ -448,6 +605,8 @@ export function startGaeaProcess(
                         _clearOsState(goodsId);
                     }
                     console.log('[' + goodsId + '] singleton conflict — watchdog blocked (exit 100)');
+                    // ★ 立即重新评估远端运行态（exit 100 = 远端占锁在跑 → 外观直接绿）
+                    _evaluateOsState(goodsId);
                 } else {
                     // 正常退出 → 删除 PID 文件 + OS 级状态
                     _removePidFile(userData, goodsId);
@@ -532,28 +691,19 @@ export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string 
 
     // ★ 路径 C: 暴力扫描 — 无论前两路是否成功，都扫一遍全杀
     if (process.platform === 'win32') {
-        try {
-            const wmicOut = execSync(
-                'wmic process where "name like \'%python%\'" get ProcessId,CommandLine /format:csv',
-                { windowsHide: true, timeout: 5000 }
-            ).toString();
-            let killed = 0;
-            for (const line of wmicOut.split('\n')) {
-                if (line.includes(goodsId + '/q3.py') || line.includes(goodsId + '\\q3.py')) {
-                    const pidMatch = line.match(/,(\d+)/);
-                    if (pidMatch) {
-                        try {
-                            execSync(`taskkill /F /PID ${pidMatch[1]}`, { windowsHide: true });
-                            killed++;
-                            console.log('[' + goodsId + '] path C killed pid=' + pidMatch[1]);
-                        } catch { /* ignore */ }
-                    }
-                }
+        let killed = 0;
+        for (const p of _enumPythonProcs()) {
+            if (p.cmdline.includes(goodsId + '/q3.py') || p.cmdline.includes(goodsId + '\\q3.py')) {
+                try {
+                    execSync(`taskkill /F /PID ${p.pid}`, { windowsHide: true });
+                    killed++;
+                    console.log('[' + goodsId + '] path C killed pid=' + p.pid);
+                } catch { /* ignore */ }
             }
-            if (killed > 0 || entry) {
-                console.log('[' + goodsId + '] brute-force: ' + killed + ' process(es) killed');
-            }
-        } catch { /* wmic not available */ }
+        }
+        if (killed > 0 || entry) {
+            console.log('[' + goodsId + '] brute-force: ' + killed + ' process(es) killed');
+        }
     }
 
     _notifyStatus(goodsId, false, null);
@@ -574,22 +724,14 @@ export function isGaeaProcessRunning(goodsId: string): boolean {
         const osCheck = _checkOsState(goodsId);
         if (osCheck.running) return true;
     }
-    // ★ 终极兜底：wmic 扫全量 Python 进程（OS 级状态文件缺失/过期时的最后防线）
+    // ★ 终极兜底：扫全量 Python 进程（OS 级状态文件缺失/过期时的最后防线）
     if (meta && !meta.allowMultiple && process.platform === 'win32') {
-        try {
-            const wmicOut = execSync(
-                'wmic process where "name like \'%python%\'" get ProcessId,CommandLine /format:csv',
-                { windowsHide: true, timeout: 5000 }
-            ).toString();
-            for (const line of wmicOut.split('\n')) {
-                if (line.includes(goodsId + '/q3.py') || line.includes(goodsId + '\\q3.py')) {
-                    const pidMatch = line.match(/,(\d+)/);
-                    if (pidMatch && _isPidAlive(parseInt(pidMatch[1], 10))) {
-                        return true;
-                    }
-                }
+        for (const p of _enumPythonProcs()) {
+            if ((p.cmdline.includes(goodsId + '/q3.py') || p.cmdline.includes(goodsId + '\\q3.py'))
+                && _isPidAlive(p.pid)) {
+                return true;
             }
-        } catch { /* wmic not available */ }
+        }
     }
     return false;
 }
@@ -600,20 +742,13 @@ export function getGaeaProcessPid(goodsId: string): number | null {
     // ★ 从 OS 级状态文件获取 PID（跨绿色包）
     const osState = _readOsState(goodsId);
     if (osState && _isPidAlive(osState.pid)) return osState.pid;
-    // ★ wmic 兜底
+    // ★ 进程枚举兜底（wmic → PS 双级链）
     if (process.platform === 'win32') {
-        try {
-            const wmicOut = execSync(
-                'wmic process where "name like \'%python%\'" get ProcessId,CommandLine /format:csv',
-                { windowsHide: true, timeout: 5000 }
-            ).toString();
-            for (const line of wmicOut.split('\n')) {
-                if (line.includes(goodsId + '/q3.py') || line.includes(goodsId + '\\q3.py')) {
-                    const pidMatch = line.match(/,(\d+)/);
-                    if (pidMatch) return parseInt(pidMatch[1], 10);
-                }
+        for (const p of _enumPythonProcs()) {
+            if (p.cmdline.includes(goodsId + '/q3.py') || p.cmdline.includes(goodsId + '\\q3.py')) {
+                return p.pid;
             }
-        } catch { /* ignore */ }
+        }
     }
     return null;
 }
@@ -621,41 +756,48 @@ export function getGaeaProcessPid(goodsId: string): number | null {
 export function cleanupAllGaeaProcesses(): void {
     console.log('[gaea-process] cleanupAll — ' + _registry.size + ' process(es)');
     stopAllGaeaWatchdogs();
-    // 停所有 OS 级心跳
+    // 停所有 OS 级心跳 + 状态文件监听
     _osHeartbeats.forEach((timer, goodsId) => { clearInterval(timer); _clearOsState(goodsId); });
     _osHeartbeats.clear();
+    _osWatchers.forEach((_w, goodsId) => _stopOsStateWatch(goodsId));
     _registry.forEach((entry, goodsId) => {
-        console.log('[gaea-process] cleaning ' + goodsId + ' (pid=' + entry.pid + ', lifecycle=' + entry.lifecycle + ')');
-        stopGaeaProcess(goodsId);
+        // ★ 跨绿色包：远端实例（proc=null）不属于本 IDE，退出时禁止连带杀死
+        if (entry.proc) {
+            console.log('[gaea-process] cleaning ' + goodsId + ' (pid=' + entry.pid + ', lifecycle=' + entry.lifecycle + ')');
+            stopGaeaProcess(goodsId);
+        } else {
+            console.log('[gaea-process] cleanup skip remote-owned: ' + goodsId + ' pid=' + entry.pid);
+            _registry.delete(goodsId);
+        }
     });
     // ★ 兜底：遍历所有已知 process-type goods，无论是否在 _registry 中，确保 path B/C 能杀到
+    //    （远端实例在跑 → 跳过，跨绿色包共存）
     const ALL_PROCESS_GOODS = ['kope-a', 'window-there'];
     for (const gid of ALL_PROCESS_GOODS) {
         if (!_registry.has(gid)) {
+            // ★ 远端实例在跑 → 跳过，跨绿色包共存
+            if (_checkOsState(gid).running) {
+                console.log('[gaea-process] cleanupAll skip remote-owned: ' + gid);
+                continue;
+            }
             console.log('[gaea-process] cleanupAll brute-force: ' + gid);
             try { stopGaeaProcess(gid); } catch { /* ignore */ }
         }
     }
     // ★ 最终兜底：直接杀所有 kope-a/window-there 的 python 进程（防 detached 残留）
     if (process.platform === 'win32') {
-        try {
-            const wmicOut = require('child_process').execSync(
-                'wmic process where "name like \'%python%\'" get ProcessId,CommandLine /format:csv',
-                { windowsHide: true, timeout: 5000 }
-            ).toString();
-            for (const line of wmicOut.split('\n')) {
-                const lower = line.toLowerCase();
-                if (lower.includes('kope-a') || lower.includes('window-there')) {
-                    const pidMatch = line.match(/,(\d+)/);
-                    if (pidMatch) {
-                        try {
-                            require('child_process').execSync(`taskkill /F /PID ${pidMatch[1]}`, { windowsHide: true });
-                            console.log('[gaea-process] cleanupAll final-kill pid=' + pidMatch[1] + ' (' + line.trim() + ')');
-                        } catch { /* ignore */ }
-                    }
-                }
+        for (const p of _enumPythonProcs()) {
+            const lower = p.cmdline.toLowerCase();
+            if (lower.includes('kope-a') || lower.includes('window-there')) {
+                // ★ 远端实例在跑 → 不杀（跨绿色包共存）
+                const gid = lower.includes('kope-a') ? 'kope-a' : 'window-there';
+                if (_checkOsState(gid).running) continue;
+                try {
+                    execSync(`taskkill /F /PID ${p.pid}`, { windowsHide: true });
+                    console.log('[gaea-process] cleanupAll final-kill pid=' + p.pid + ' (' + p.cmdline.trim() + ')');
+                } catch { /* ignore */ }
             }
-        } catch { /* wmic not available */ }
+        }
     }
 }
 
@@ -692,15 +834,9 @@ export function startGaeaWatchdog(
         // ★ 先检查 OS 级状态（跨绿色包），再检查本地 PID 文件
         const osCheck = _checkOsState(goodsId);
         const existing = _checkExistingInstance(userData, goodsId);
-        // ★ OS 级状态显示另一实例在运行 → 标记软冲突，不重启
+        // ★ OS 级状态显示另一实例在运行 → 不重启，仅同步外观
         if (osCheck.running) {
-            _singletonConflicts.set(goodsId, Date.now());
-            if (!_registry.has(goodsId)) {
-                _registry.set(goodsId, {
-                    proc: null, pid: osCheck.pid || null,
-                    scriptPath, lifecycle, allowMultiple: false
-                });
-            }
+            _evaluateOsState(goodsId); // 值比对去重，秒级推送 ●
             return;
         }
         if (!existing.running && !osCheck.running) {

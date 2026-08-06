@@ -99,9 +99,12 @@ async function switchQuest(id) {
                 _card2._floorMetaMap = {};
             }
         }
-        await cardPool.switchTo(id);
-
+        // ★ 必须先设 questActiveId 再 switchTo：switchTo 内二次守卫用 questActiveId 检测
+        //   卸载竞态（questActiveId !== questId 则保持隐藏）；若仍为旧 quest 会被误判
+        //   → card 永不 display:block → 面板空白（仅发消息时 startBuildingFloor 强制显示）
         questActiveId = id;
+
+        await cardPool.switchTo(id);
         // 原子写面板 resume JSON（bridge.fs.write → 主进程 tmp+rename，零踩踏）
         _persistPanelResume(id);
 

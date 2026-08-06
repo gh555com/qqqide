@@ -101,15 +101,15 @@ class env:
                 self.qt_aqq = qt_aqq
                 self.qt_aqq_instance = qt_aqq
             else:
-                from PyQt5.QtWidgets import QApplication
+                from PySide2.QtWidgets import QApplication
                 self.qt_aqq = QApplication.instance() or QApplication(sys.argv)
                 self.qt_aqq_instance = self.qt_aqq
 
             # 初始化信号发射器
-            from PyQt5.QtCore import QObject, pyqtSignal
+            from PySide2.QtCore import QObject, Signal
             class KeySignalEmitter(QObject):
-                w_key_triggered = pyqtSignal()
-                x_key_triggered = pyqtSignal()
+                w_key_triggered = Signal()
+                x_key_triggered = Signal()
 
             self.signal_emitter = KeySignalEmitter()
 
@@ -157,7 +157,7 @@ class env:
             if self.qt_aqq:
                 print("env: 处理Qt应用退出...")
                 try:
-                    from PyQt5.QtCore import QCoreApplication
+                    from PySide2.QtCore import QCoreApplication
                     QCoreApplication.processEvents()
                 except Exception as e:
                     self.error_handler.log_error(e, "QCoreApplication.processEvents")

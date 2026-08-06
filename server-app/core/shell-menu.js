@@ -190,7 +190,13 @@ function _openWindowFromRecent(folderPath) {
   _flushProjectAssets();
   if (bridge && bridge.window && bridge.window.new) {
     bridge.window.new(folderPath).then(function (r) {
-      if (r && !r.ok) { console.warn('[shell-menu] newWindow failed:', r); }
+      if (r && !r.ok) {
+        console.warn('[shell-menu] newWindow failed:', r);
+        // ★ 锁拦截必须可见（F-2026-08-06）：静默失败会诱导用户手动添加错项目 → 主文件夹错乱
+        if (r.locked && window.qqqideQoast) {
+          window.qqqideQoast.show('⚠️ 该项目已在另一个窗口打开，请直接使用该窗口，或关闭它后再开', { duration: 6000, type: 'warn' });
+        }
+      }
     }).catch(function (e) {
       console.error('[shell-menu] newWindow error:', e);
     });

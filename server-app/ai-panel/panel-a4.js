@@ -108,7 +108,7 @@ function _a4IsNoiseFile(filePath) {
     return false;
 }
 
-// ═══ 文件路径 → 归属项目根目录（终极架构：向上找 qqq/timeline/ 或 .git/） ═══
+// ═══ 文件路径 → 归属项目根目录（终极架构：向上找 _qqq/timeline/ 或 .git/） ═══
 var _projectRootCache = {}; // {filePath: projectRoot}
 
 async function _resolveProjectRoot(filePath) {

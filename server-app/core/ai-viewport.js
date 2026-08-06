@@ -406,18 +406,25 @@
           try {
             var data = JSON.parse(raw);
             var age = Date.now() - (data.atime || 0);
-            // 锁有效且年龄 > 3s（避免误判本窗口刚写入的锁）→ 从视口移除
-            if (age > 3000 && age < 60000) {
-              console.warn('[ai-viewport] stale lock detected for ' + folderPath + ' (age=' + (age / 1000).toFixed(1) + 's), removing from viewport');
+            // 锁有效且年龄 > 8s（避开本窗口中面板 claimLock 写入 + iframe 初始化耗时，
+            //   3s 阈值下初始化慢 → 把自己的锁误判为「来自另一窗口」→ 误报警告）→ 辅文件夹移除；主文件夹仅警告
+            if (age > 8000 && age < 60000) {
               var idx = -1;
               for (var i = 0; i < projects.length; i++) {
                 if (projects[i].path === folderPath) { idx = i; break; }
               }
-              if (idx >= 0) {
+              if (idx > 0) {
+                console.warn('[ai-viewport] stale lock detected for ' + folderPath + ' (age=' + (age / 1000).toFixed(1) + 's), removing from viewport');
                 projects.splice(idx, 1);
                 saveProjects();
                 render();
                 _notifyChanged();
+              } else if (idx === 0) {
+                // ★ 主文件夹永不因锁检查移除：移除即 AI 面板绑定错乱 + quest 全空（F-2026-08-06）
+                console.warn('[ai-viewport] MAIN project lock conflict for ' + folderPath + ' (age=' + (age / 1000).toFixed(1) + 's), keeping as main');
+                if (window.qqqideQoast) {
+                  window.qqqideQoast.show('⚠️ 主文件夹「' + basename(folderPath) + '」锁文件来自另一窗口，已保留', { duration: 6000, type: 'warn' });
+                }
               }
             }
           } catch (_) { }
@@ -426,8 +433,17 @@
     }, 2000);
   }
 
+  // ★ URL 显式指定主文件夹（?restore=1&folder=X / ?fresh=1&folder=X）→ 不参与全局恢复点竞争
+  function _urlSpecifiesMain() {
+    try { return window.location.search.indexOf('folder=') !== -1; } catch (_) { return false; }
+  }
+
   // ★ 持久化"上次主文件夹"到 global.sq3（供空白启动恢复）
+  //   资格：仅空白启动窗口（无 folder= 参数）写入（F-2026-08-06 时序防护）：
+  //   restore/fresh 窗口写入会与旧窗口互相覆盖全局恢复点，多窗口下最后写入者赢
+  //   → 空白启动恢复到错误主文件夹（本次主从错乱 bug 的直接原因之一）
   function _persistLastMainFolder() {
+    if (_urlSpecifiesMain()) return;
     if (projects.length === 0 || !projects[0].path) return;
     try {
       var s = _qgsNs();
@@ -1607,12 +1623,15 @@
       for (var i = 0; i < projects.length; i++) {
         if (projects[i].path === p) { idx = i; break; }
       }
-      if (idx >= 0) {
+      if (idx > 0) {
         console.warn('[ai-viewport] lock conflict: removing project ' + p);
         projects.splice(idx, 1);
         saveProjects();
         render();
         _notifyChanged();
+      } else if (idx === 0) {
+        // ★ 主文件夹不可因锁冲突移除（F-2026-08-06）：移除即 AI 面板绑定错乱 + quest 全空
+        console.warn('[ai-viewport] lock conflict on MAIN project ' + p + ', keeping');
       }
     }
   });

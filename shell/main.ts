@@ -48,7 +48,7 @@ import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker } from './py-broker';
-import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart, getGoodsSetting, setGoodsSetting, getAllGoodsSettings } from './gaea-process';
+import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart, getGoodsSetting, setGoodsSetting, getAllGoodsSettings, startOsStateWatch } from './gaea-process';
 import { registerKopeIpc } from './ipc-kope';
 import { registerRoamIpc } from './ipc-roam';
 
@@ -361,6 +361,9 @@ function registerGaeaProcessIpc(): void {
     setGaeaUserDataPath(portable.userData);
     registerGoodsMeta('kope-a', false);
     registerGoodsMeta('window-there', false);
+    // ★ OS 级状态文件监听：跨 IDE 实例启停 → 外观秒同步（2026-08-06）
+    startOsStateWatch('kope-a');
+    startOsStateWatch('window-there');
 
     ipcMain.handle('qqqide:gaea-process:start', async (_e, goodsId: string, scriptPath: string, runtime?: string, lifecycle?: string, allowMultiple?: boolean) => {
         return startGaeaProcess(portable.root, goodsId, scriptPath, runtime || 'python', (lifecycle as GaeaLifecycle) || 'attached', allowMultiple !== false);
@@ -557,6 +560,9 @@ app.whenReady().then(async () => {
 
     // Register IPC (after window exists)
     registerAllIpc();
+
+    // ★ 音频引擎预启动 — 消灭首响延迟（懒启动 Python ~200ms 是慢半拍的第一层）
+    audioEngine.ensure().catch(() => { /* 组件缺失时静默 */ });
 
     // Register exit handlers
     registerExitHandlers(portable.root, portable.logs, stateStore, bootConfig, _qgfInstances);

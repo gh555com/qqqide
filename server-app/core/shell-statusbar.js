@@ -17,7 +17,7 @@ function bootStatusbar(boot) {
 	var $sponsor = document.getElementById('qqq-status-sponsor');
 	if ($sponsor) {
 		$sponsor.addEventListener('click', function () {
-			var url = 'http://www.zhijiaip.com';
+			var url = 'http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1';
 			if (bridge && bridge.shell && bridge.shell.openExternal) {
 				bridge.shell.openExternal(url);
 			} else {

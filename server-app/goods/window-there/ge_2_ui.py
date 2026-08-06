@@ -3,16 +3,16 @@
 # ui.py (R22 更新版)
 import sys
 import time
-from PyQt5.QtWidgets import (
+from PySide2.QtWidgets import (
     QApplication, QDialog, QWidget, QScrollArea, QVBoxLayout, QHBoxLayout,
     QGridLayout, QFrame, QPushButton, QDesktopWidget, QLabel,
     QGraphicsDropShadowEffect, QSizePolicy
 )
-from PyQt5.QtGui import (
+from PySide2.QtGui import (
     QFont, QPainter, QColor, QBrush, QPen, QMouseEvent, QKeyEvent, QCloseEvent
 )
-from PyQt5.QtCore import (
-    Qt, QRect, QSize, pyqtSignal, QEvent, QPoint, QTimer
+from PySide2.QtCore import (
+    Qt, QRect, QSize, Signal, QEvent, QPoint, QTimer
 )
 
 # --- (R22) 修复 2: 导入 config 模块以解决 NameError ---
@@ -200,8 +200,8 @@ def show_custom_message(title, message, buttons="ok"):
     return result == QDialog.Accepted
 
 class LayoutPreviewPanel(QFrame):
-    clicked = pyqtSignal(dict)
-    delete_requested = pyqtSignal(dict)
+    clicked = Signal(dict)
+    delete_requested = Signal(dict)
 
     def __init__(self, layout_info, parent=None):
         super().__init__(parent)

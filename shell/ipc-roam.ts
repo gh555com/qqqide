@@ -29,14 +29,38 @@ let _db: any = null;
 let _initPromise: Promise<void> | null = null;
 let _lastDiskMtime = 0;
 
+// ★ 损坏自愈 (2026-08-06 F20 事故: C盘 ENOSPC → roam.sq3 0字节 → OS get failed 刷屏)
+//   三级恢复链: 主文件 → .prev(上一完好版) → 重建全新 DB，绝不带着损坏库继续跑
+function _loadOrRecreate(dbPath: string, table: string): any {
+    const tryLoad = (p: string): any | null => {
+        if (!fs.existsSync(p)) return null;
+        try {
+            const db = new _SQL.Database(fs.readFileSync(p));
+            const r = db.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, [table]);
+            if (r.length && r[0].values.length) return db;
+            db.close();
+        } catch { /* fall through */ }
+        return null;
+    };
+    const db = tryLoad(dbPath);
+    if (db) return db;
+    // ★ .prev 回退 (2026-08-06 F26): 主文件损坏 → 上一完好版自动顶上
+    const prev = tryLoad(dbPath + '.prev');
+    if (prev) {
+        console.warn('[roam] db corrupt, restoring from .prev');
+        return prev;
+    }
+    console.warn('[roam] db corrupt, recreating');
+    return new _SQL.Database(null);
+}
+
 async function _ensureDb(): Promise<void> {
     if (_db) return;
     if (_initPromise) { await _initPromise; return; }
     _initPromise = (async () => {
         _SQL = await initSqlJs();
         const dbPath = getDbPath();
-        const buf = fs.existsSync(dbPath) ? fs.readFileSync(dbPath) : null;
-        _db = new _SQL.Database(buf);
+        _db = _loadOrRecreate(dbPath, 'roam_state');
         _db.run('PRAGMA journal_mode=WAL');
         _db.run(`CREATE TABLE IF NOT EXISTS roam_state (
             key TEXT PRIMARY KEY,
@@ -49,13 +73,52 @@ async function _ensureDb(): Promise<void> {
     await _initPromise;
 }
 
+function _memoryRows(): number {
+    try {
+        const r = _db.exec('SELECT COUNT(*) FROM roam_state');
+        return r.length && r[0].values.length ? r[0].values[0][0] : 0;
+    } catch { return 0; }
+}
+
+function _countRowsFromDisk(dbPath: string): number {
+    try {
+        const db = new _SQL.Database(fs.readFileSync(dbPath));
+        const r = db.exec('SELECT COUNT(*) FROM roam_state');
+        db.close();
+        return r.length && r[0].values.length ? r[0].values[0][0] : 0;
+    } catch { return -1; }
+}
+
 function _saveDb(): void {
     if (!_db) return;
     const dbPath = getDbPath();
-    const data = _db.export();
-    const buf = Buffer.from(data);
-    fs.writeFileSync(dbPath, buf);
-    _lastDiskMtime = fs.statSync(dbPath).mtimeMs;
+    try {
+        // ★ 外部修改守卫 (2026-08-06 F26): 迁移/其他实例改过磁盘且行数更多 → 以磁盘为准，不覆盖
+        if (_lastDiskMtime > 0 && fs.existsSync(dbPath)) {
+            const mtime = fs.statSync(dbPath).mtimeMs;
+            if (mtime > _lastDiskMtime) {
+                const diskRows = _countRowsFromDisk(dbPath);
+                if (diskRows > _memoryRows()) {
+                    console.warn('[roam] external db change detected, adopting disk (rows ' + diskRows + ')');
+                    _reloadIfChanged();
+                    return;
+                }
+            }
+        }
+        // ★ 写前保留上一完好版 (.prev) — 任何损坏可回退 (2026-08-06 F26)
+        if (fs.existsSync(dbPath)) {
+            fs.copyFileSync(dbPath, dbPath + '.prev');
+        }
+        const data = _db.export();
+        const tmp = dbPath + '.tmp';
+        fs.writeFileSync(tmp, Buffer.from(data));
+        fs.renameSync(tmp, dbPath);   // ★ 原子替换（铁律 8.2）— ENOSPC/断电不再截断主库
+        _lastDiskMtime = fs.statSync(dbPath).mtimeMs;
+    } catch (e: any) {
+        // 磁盘满/占用 → 保留内存态，不破坏磁盘文件
+        console.warn('[roam] db save failed:', e.message);
+        try { if (fs.existsSync(dbPath + '.tmp')) fs.unlinkSync(dbPath + '.tmp'); } catch { /* ignore */ }
+    }
 }
 
 function _reloadIfChanged(): void {
@@ -63,11 +126,20 @@ function _reloadIfChanged(): void {
     if (!fs.existsSync(dbPath)) return;
     const mtime = fs.statSync(dbPath).mtimeMs;
     if (mtime <= _lastDiskMtime) return;
-    const buf = fs.readFileSync(dbPath);
-    if (_db) _db.close();
-    _db = new _SQL.Database(buf);
-    _db.run('PRAGMA journal_mode=WAL');
-    _lastDiskMtime = mtime;
+    try {
+        const buf = fs.readFileSync(dbPath);
+        if (_db) _db.close();
+        _db = new _SQL.Database(buf);
+        _db.run('PRAGMA journal_mode=WAL');
+        _lastDiskMtime = mtime;
+    } catch (e: any) {
+        console.warn('[roam] reload failed, restoring:', e.message);
+        if (_db) { try { _db.close(); } catch { /* ignore */ } }
+        // ★ 损坏恢复链 (2026-08-06 F26 补漏): 主文件 → .prev → 重建，绝不直接空库
+        _db = _loadOrRecreate(dbPath, 'roam_state');
+        _db.run('PRAGMA journal_mode=WAL');
+        _lastDiskMtime = 0; // 强制下次 _saveDb 重新评估外部修改
+    }
 }
 
 // ── KV 操作 ──
