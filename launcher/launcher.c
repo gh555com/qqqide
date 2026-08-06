@@ -67,7 +67,7 @@ static void enableTls12(HINTERNET hRequest) {
 #define COL_DOT     RGB(0x85, 0x99, 0x00)
 #define COL_ERR     RGB(0xdc, 0x32, 0x2f)
 #define COL_BAR_BG  RGB(0xee, 0xe8, 0xd5)
-#define COL_BAR_FG  RGB(0xcb, 0x4b, 0x16)
+#define COL_BAR_FG  RGB(0xe6, 0x9f, 0x00)  // 橙黄（原 0xcb4b16 偏红）
 
 // ── 状态机 ──
 enum { PHASE_INIT, PHASE_LAUNCHING, PHASE_WAITING, PHASE_DONE, PHASE_ERROR };
@@ -114,7 +114,7 @@ static int  g_phase   = PHASE_INIT;
 static int  g_err     = 0;
 static int  g_pct     = 0;
 static char g_status[128] = "";
-static int  g_showStatusText = 0;
+
 
 static HWND    g_hwnd           = NULL;
 static HANDLE  g_hProcess       = NULL;
@@ -190,6 +190,43 @@ static HWND findJokerMainWindow(DWORD pid) {
     FindWindowCtx ctx = { pid, NULL };
     EnumWindows(findWindowByPid, (LPARAM)&ctx);
     return ctx.found;
+}
+
+// ── 进程名检测（用于交换守卫：joker 在跑绝不动 gh555.com 目录）──
+static int isProcessRunning(const WCHAR *name) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return 0;
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(pe);
+    int found = 0;
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            if (_wcsicmp(pe.szExeFile, name) == 0) { found = 1; break; }
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
+    return found;
+}
+
+// ── 把已运行的 joker 主窗口带到前台（单实例兜底，防双开）──
+static void bringJokerToFront(const WCHAR *name) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return;
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(pe);
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            if (_wcsicmp(pe.szExeFile, name) == 0) {
+                HWND w = findJokerMainWindow(pe.th32ProcessID);
+                if (w) {
+                    ShowWindow(w, SW_RESTORE);
+                    SetForegroundWindow(w);
+                    break;
+                }
+            }
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
 }
 
 static void pumpMessages(void) {
@@ -743,60 +780,10 @@ static int extractPayload(const WCHAR *rPath, const WCHAR *exeDir) {
     return 0;
 }
 
-static int downloadAndExtractUpdate(const WCHAR *exeDir, const char *newVer) {
-    g_showStatusText = 1;
-    setStatus("downloading update…", 0);
-    g_pct = 0;
-    if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
-
-    WCHAR rPath[MAX_PATH];
-    swprintf(rPath, MAX_PATH, L"%s\\r", exeDir);
-    DeleteFileW(rPath);
-
-    int result = downloadFile(g_cfg.update_host, g_cfg.r_path, rPath, g_cfg.use_https);
-    if (result != 0 && g_cfg.use_https) {
-        DeleteFileW(rPath);
-        setStatus("retry HTTP…", 0);
-        if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
-        result = downloadFile(g_cfg.update_host, g_cfg.r_path, rPath, 0);
-    }
-    if (result != 0) { setStatus("download failed", 1); DeleteFileW(rPath); return -1; }
-
-    setStatus("cleaning old version…", 0);
-    g_pct = 95;
-    if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
-    WCHAR ghDir[MAX_PATH];
-    swprintf(ghDir, MAX_PATH, L"%s\\gh555.com", exeDir);
-
-    // ★ 保存用户数据
-    WCHAR dataDir[MAX_PATH], backupDir[MAX_PATH];
-    swprintf(dataDir, MAX_PATH, L"%s\\Data", ghDir);
-    swprintf(backupDir, MAX_PATH, L"%s\\Data.backup", exeDir);
-    removeDir(backupDir);
-    int hasBackup = MoveFileW(dataDir, backupDir);
-
-    removeDir(ghDir);
-
-    if (extractPayload(rPath, exeDir) != 0) {
-        if (hasBackup) MoveFileW(backupDir, dataDir);
-        return -1;
-    }
-
-    // ★ 恢复用户数据
-    if (hasBackup) {
-        removeDir(dataDir);
-        MoveFileW(backupDir, dataDir);
-    }
-    writeLocalVersion(exeDir, newVer);
-
-    g_pct = 100;
-    setStatus("update complete", 0);
-    if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
-    Sleep(300);
-    return 0;
-}
 
 // ★ 快速交换：gh555.com-next → gh555.com（原子 rename，<1s）
+// ★★ 铁律（2026-08-06）: joker 还在跑 → 绝不交换，保留 .swap-ready 等下次启动。
+//    前台进程不可被更新杀灭；交换只在用户完全退出后、下次启动时发生。
 static int applySwapIfReady(const WCHAR *exeDir) {
     WCHAR swapReady[MAX_PATH];
     swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
@@ -807,7 +794,34 @@ static int applySwapIfReady(const WCHAR *exeDir) {
     swprintf(ghOld, MAX_PATH, L"%s\\gh555.com-old", exeDir);
     swprintf(ghNext, MAX_PATH, L"%s\\gh555.com-next", exeDir);
 
+    // ★ 崩溃恢复（2026-08-06）: 上次交换中途失败 → gh555.com 缺失但 -old/Data.backup 残留
+    //   先还原，杜绝「找不到 gh555.com」类故障。
+    {
+        WCHAR dataDir[MAX_PATH], backupDir[MAX_PATH];
+        swprintf(dataDir, MAX_PATH, L"%s\\Data", ghDir);
+        swprintf(backupDir, MAX_PATH, L"%s\\Data.backup", exeDir);
+        if (!fileExistsW(ghDir) && fileExistsW(ghOld)) {
+            MoveFileW(ghOld, ghDir);
+        }
+        if (!fileExistsW(dataDir) && fileExistsW(backupDir)) {
+            MoveFileW(backupDir, dataDir);
+        }
+    }
     if (!fileExistsW(ghNext)) { DeleteFileW(swapReady); return 0; }
+
+    // ★ 守卫 1: joker 正在运行（含旧实例残党）→ 放弃本次交换，等用户退出后下次启动
+    if (isProcessRunning(L"joker.exe")) return 0;
+
+    // ★ 守卫 2: next 完整性最小校验（joker + .version + resources/app）→ 残缺版绝不交换
+    {
+        WCHAR chk[MAX_PATH];
+        swprintf(chk, MAX_PATH, L"%s\\joker.exe", ghNext);
+        if (!fileExistsW(chk)) { DeleteFileW(swapReady); return 0; }
+        swprintf(chk, MAX_PATH, L"%s\\.version", ghNext);
+        if (!fileExistsW(chk)) { DeleteFileW(swapReady); return 0; }
+        swprintf(chk, MAX_PATH, L"%s\\resources\\app", ghNext);
+        if (!fileExistsW(chk)) { DeleteFileW(swapReady); return 0; }
+    }
 
     // ★ 保存用户数据
     WCHAR dataDir[MAX_PATH], backupDir[MAX_PATH];
@@ -837,96 +851,33 @@ static int applySwapIfReady(const WCHAR *exeDir) {
         MoveFileW(backupDir, dataDir);
     }
 
+    // ★ 自更新: gh555.com/launcher-next.exe → 根 qqqide.exe（三明治替换）
+    //   运行中 exe 可 rename 不可 overwrite → 先改名旧→复制新→下次启动自动用新版
+    {
+        WCHAR newLauncher[MAX_PATH], oldLauncher[MAX_PATH], rootLauncher[MAX_PATH];
+        swprintf(newLauncher, MAX_PATH, L"%s\\launcher-next.exe", ghDir);
+        swprintf(oldLauncher, MAX_PATH, L"%s\\qqqide.old.exe", exeDir);
+        swprintf(rootLauncher, MAX_PATH, L"%s\\qqqide.exe", exeDir);
+        if (fileExistsW(newLauncher)) {
+            DeleteFileW(oldLauncher);
+            if (MoveFileW(rootLauncher, oldLauncher)) {
+                if (CopyFileW(newLauncher, rootLauncher, FALSE)) {
+                    // 复制成功 → 清理旧版
+                    DeleteFileW(oldLauncher);
+                } else {
+                    // 复制失败 → 恢复旧启动器，绝不丢失入口
+                    MoveFileW(oldLauncher, rootLauncher);
+                }
+            }
+            DeleteFileW(newLauncher);
+        }
+    }
+
     removeDir(ghOld);
     DeleteFileW(swapReady);
     return 1;
 }
 
-static int applyStagedUpdate(const WCHAR *exeDir) {
-    WCHAR rNext[MAX_PATH], vNext[MAX_PATH];
-    swprintf(rNext, MAX_PATH, L"%s\\r.next", exeDir);
-    swprintf(vNext, MAX_PATH, L"%s\\.version-next", exeDir);
-    if (!fileExistsW(rNext) || !fileExistsW(vNext)) return 0;
-
-    char newVer[64] = {0};
-    int rd = readFileText(vNext, newVer, sizeof(newVer));
-    if (rd <= 0) { DeleteFileW(rNext); return 0; }
-
-    g_showStatusText = 1;
-    setStatus("Core update, ~3 min", 0);
-    g_pct = 5;
-    if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
-
-    WCHAR ghDir[MAX_PATH];
-    swprintf(ghDir, MAX_PATH, L"%s\\gh555.com", exeDir);
-
-    // ★ 保存用户数据
-    WCHAR dataDir[MAX_PATH], backupDir[MAX_PATH];
-    swprintf(dataDir, MAX_PATH, L"%s\\Data", ghDir);
-    swprintf(backupDir, MAX_PATH, L"%s\\Data.backup", exeDir);
-    removeDir(backupDir);
-    int hasBackup = MoveFileW(dataDir, backupDir);
-
-    removeDir(ghDir);
-
-    // 用 r.next 解压
-    WCHAR cmdLine[1024];
-    swprintf(cmdLine, 1024, L"\"%s\" -y", rNext);
-    STARTUPINFOW si = { sizeof(si) };
-    si.dwFlags = STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE;
-    PROCESS_INFORMATION pi = {0};
-    if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
-        CREATE_NO_WINDOW, NULL, exeDir, &si, &pi)) {
-        if (hasBackup) MoveFileW(backupDir, dataDir);
-        DeleteFileW(rNext); DeleteFileW(vNext);
-        return -1;
-    }
-    CloseHandle(pi.hThread);
-    DWORD ec = STILL_ACTIVE;
-    int ticks = 0;
-    while (ec == STILL_ACTIVE) {
-        Sleep(250);
-        if (GetExitCodeProcess(pi.hProcess, &ec) && ec == STILL_ACTIVE) {
-            ticks++;
-            if (ticks < 36 && ticks % 4 == 0 && g_pct < 95) {
-                g_pct += 10;
-                if (g_hwnd) InvalidateRect(g_hwnd, NULL, TRUE);
-            }
-        }
-    }
-    CloseHandle(pi.hProcess);
-    if (ec != 0) {
-        if (hasBackup) MoveFileW(backupDir, dataDir);
-        DeleteFileW(rNext); DeleteFileW(vNext); return -1;
-    }
-
-    // 验证
-    WCHAR check[MAX_PATH];
-    WCHAR wJoker[256];
-    toWide(g_cfg.joker_exe, wJoker, 256);
-    swprintf(check, MAX_PATH, L"%s\\%s", exeDir, wJoker);
-    if (!fileExistsW(check)) {
-        if (hasBackup) MoveFileW(backupDir, dataDir);
-        DeleteFileW(rNext); DeleteFileW(vNext); return -1;
-    }
-
-    // ★ 恢复用户数据
-    if (hasBackup) {
-        removeDir(dataDir);
-        MoveFileW(backupDir, dataDir);
-    }
-
-    writeLocalVersion(exeDir, newVer);
-    DeleteFileW(rNext);
-    DeleteFileW(vNext);
-
-    g_pct = 100;
-    setStatus("update applied", 0);
-    if (g_hwnd) { InvalidateRect(g_hwnd, NULL, TRUE); UpdateWindow(g_hwnd); }
-    Sleep(200);
-    return 0;
-}
 
 // ★ 后台解压线程 — 将 r.next 解压到 gh555.com-next/（不阻塞用户使用 IDE）
 static unsigned __stdcall backgroundApplyUpdate(void *param) {
@@ -946,10 +897,40 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
     int rd = readFileText(vNext, newVer, sizeof(newVer));
     if (rd <= 0) { DeleteFileW(rNext); DeleteFileW(vNext); InterlockedExchange(&g_applyRunning, 0); return 0; }
 
+    // ★ 交换已完成（live 已是目标版本）→ 清理残留暂存，不再重复解压
+    {
+        char liveVer[64] = {0};
+        if (readLocalVersion(exeDir, liveVer, sizeof(liveVer)) > 0 &&
+            strcmp(liveVer, newVer) == 0) {
+            DeleteFileW(rNext); DeleteFileW(vNext);
+            InterlockedExchange(&g_applyRunning, 0);
+            return 0;
+        }
+    }
+
     // 创建临时解压目录
     WCHAR tmpDir[MAX_PATH], ghNext[MAX_PATH];
+
     swprintf(tmpDir, MAX_PATH, L"%s\\_swap_tmp", exeDir);
     swprintf(ghNext, MAX_PATH, L"%s\\gh555.com-next", exeDir);
+
+    // ★ 幂等守卫（2026-08-06）: gh555.com-next 已存在且版本匹配 → 补写 .swap-ready 即结束
+    //   禁止每次启动重复解压 120MB（交换推迟期间每启动全量重做 = 严重 bug）
+    {
+        WCHAR nextVerPath[MAX_PATH];
+        swprintf(nextVerPath, MAX_PATH, L"%s\\.version", ghNext);
+        char nextVer[64] = {0};
+        if (fileExistsW(ghNext) &&
+            readFileText(nextVerPath, nextVer, sizeof(nextVer)) > 0 &&
+            strcmp(nextVer, newVer) == 0) {
+            WCHAR swapReady[MAX_PATH];
+            swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
+            writeFileText(swapReady, newVer);
+            DeleteFileW(rNext); DeleteFileW(vNext);
+            InterlockedExchange(&g_applyRunning, 0);
+            return 0;
+        }
+    }
 
     removeDir(ghNext);
     removeDir(tmpDir);
@@ -990,6 +971,17 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
         InterlockedExchange(&g_applyRunning, 0);
         return 0;
     }
+
+    // ★ 自更新: r 载荷根目录含新 qqqide.exe → 移入 gh555.com-next/ 供 swap 时替换
+    {
+        WCHAR newLauncherSrc[MAX_PATH], newLauncherDst[MAX_PATH];
+        swprintf(newLauncherSrc, MAX_PATH, L"%s\\qqqide.exe", tmpDir);
+        swprintf(newLauncherDst, MAX_PATH, L"%s\\launcher-next.exe", ghNext);
+        if (fileExistsW(newLauncherSrc)) {
+            CopyFileW(newLauncherSrc, newLauncherDst, FALSE);
+        }
+    }
+
     removeDir(tmpDir);
 
     // 写版本号
@@ -1038,6 +1030,20 @@ static unsigned __stdcall backgroundUpdateProc(void *param) {
         InterlockedExchange(&g_updateRunning, 0); return 0;
     }
 
+    // ★ 幂等守卫（2026-08-06）: swap-ready 已就绪 + gh555.com-next 已是目标版本
+    //   → 暂存完成，仅等用户退出后交换。禁止每启动重复下载 120MB r.next。
+    {
+        WCHAR swPath[MAX_PATH], nextVerPath[MAX_PATH];
+        swprintf(swPath, MAX_PATH, L"%s\\.swap-ready", g_exeDir);
+        swprintf(nextVerPath, MAX_PATH, L"%s\\gh555.com-next\\.version", g_exeDir);
+        char swVer[64] = {0}, nextVer[64] = {0};
+        if (readFileText(swPath, swVer, sizeof(swVer)) > 0 &&
+            strcmp(swVer, serverVer) == 0 &&
+            readFileText(nextVerPath, nextVer, sizeof(nextVer)) > 0 &&
+            strcmp(nextVer, serverVer) == 0) {
+            InterlockedExchange(&g_updateRunning, 0); return 0;
+        }
+    }
     // 下载到暂存
     WCHAR rNext[MAX_PATH];
     swprintf(rNext, MAX_PATH, L"%s\\r.next", g_exeDir);
@@ -1180,21 +1186,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         MultiByteToWideChar(CP_UTF8, 0, pctText, -1, wPct, 16);
         DrawTextW(hdc, wPct, -1, &pr, DT_CENTER | DT_VCENTER);
 
-        // 状态文字 — 仅内核更新时显示（普通启动 g_showStatusText=0）
-        if (g_showStatusText && g_status[0]) {
-            HFONT hStatus = CreateFontW(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                PROOF_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-            HFONT hOld2 = (HFONT)SelectObject(hdc, hStatus);
-            SetTextColor(hdc, COL_STATUS);
-            RECT sr = {40, 115, WW - 40, 135};
-            WCHAR wStatus[128];
-            MultiByteToWideChar(CP_UTF8, 0, g_status, -1, wStatus, 128);
-            DrawTextW(hdc, wStatus, -1, &sr, DT_CENTER | DT_VCENTER);
-            SelectObject(hdc, hOld2);
-            DeleteObject(hStatus);
-        }
-
+        // 2026-08-06: 状态文字已移除 — 启动窗只显示 标题 + 进度条 + 百分比
         EndPaint(hwnd, &ps);
         return 0;
     }
@@ -1388,8 +1380,15 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
                 DestroyWindow(existing);
             }
         }
-        // 重试 Mutex（旧进程已杀，应成功；若仍失败也不阻塞）
+        // 重试 Mutex（旧 launcher 进程可能已销毁窗口但仍在清理中）
         hMutex = CreateMutexW(NULL, TRUE, L"QqqIdeLauncher");
+        if (hMutex && GetLastError() == ERROR_ALREADY_EXISTS) {
+            // ★ 旧实例还活着（通常正等后台解压线程退出）→ 绝不双开：
+            //   把已运行的 joker 窗口带到前台，本实例直接退出。
+            if (hMutex) { CloseHandle(hMutex); hMutex = NULL; }
+            bringJokerToFront(L"joker.exe");
+            return 0;
+        }
     }
     // hMutex 随进程退出由 OS 自动释放，无需显式 CloseHandle
 
@@ -1404,6 +1403,15 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
     WCHAR *s = wcsrchr(myDir, L'\\');
     if (s) *s = L'\0';
     wcscpy(g_exeDir, myDir);
+
+    // ★ 启动器自更新善后（2026-08-06）: 清理上次三明治替换残留的 .old.exe
+    {
+        WCHAR oldPath[MAX_PATH];
+        swprintf(oldPath, MAX_PATH, L"%s\\qqqide.old.exe", myDir);
+        if (fileExistsW(oldPath)) {
+            DeleteFileW(oldPath);
+        }
+    }
 
     // ★ 加载配置（缓存 → 服务器 → 默认值）
     //   注意：服务器拉取在这里做（启动前），因为需要 host/path 等配置。

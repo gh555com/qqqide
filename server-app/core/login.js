@@ -304,26 +304,22 @@
     _$lvGlow.style.width = pct + '%';
   }
 
-  // ★ 升级音频 — 走主路音量 × 固定系数
-  var _lvAudioRegular = null, _lvAudioMilestone = null;
-  function _lvEnsureAudio() {
+  // ★ 升级音频 — 统一音频机器（主进程 AudioEngine），音量经主路拉杆 × 固定系数
+  function _lvPlay(isM) {
     var mv = 1.0;
     try { if (window.qqqAudio) { mv = window.qqqAudio.getMainVolume(); } } catch (_) { }
-    if (!_lvAudioRegular) {
-      _lvAudioRegular = new Audio('assets/lv-up.mp3');
+    var file = isM ? 'assets/lv-up-milestone.mp3' : 'assets/lv-up.mp3';
+    var vol = (isM ? 0.65 : 0.55) * mv;
+    if (window.qqqideBridge && window.qqqideBridge.audio) {
+      window.qqqideBridge.audio.play(file, { volume: vol }).catch(function () { });
     }
-    _lvAudioRegular.volume = 0.55 * mv;
-    if (!_lvAudioMilestone) {
-      _lvAudioMilestone = new Audio('assets/lv-up-milestone.mp3');
-    }
-    _lvAudioMilestone.volume = 0.65 * mv;
   }
 
   // 顶层 rAF 追赶（每间 house 独立调用）
   function _lvChaseSolid(targetPct, isLevelUp, lvFloor) {
     if (!_$lvSolid) return;
     // 升级时额外音频
-    if (isLevelUp) { _lvEnsureAudio(); var isM = (lvFloor > 0 && lvFloor % 10 === 0); var aud = isM ? _lvAudioMilestone : _lvAudioRegular; if (aud) { aud.currentTime = 0; aud.play().catch(function () { }); } }
+    if (isLevelUp) { _lvPlay(lvFloor > 0 && lvFloor % 10 === 0); }
     var gen = ++_lvChaseGen;
     var now = performance.now();
     var baseDuration = isLevelUp ? 500 : 10000;

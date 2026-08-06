@@ -50,6 +50,11 @@ async function _executeSend(intent) {
     if (_activeAgent && _activeAgent._stopState === 'fatal' && !isRecovery) return;
     if (_activeAgent && _activeAgent._recoveryInProgress && sendType === 'normal') return;
     if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
+    // ★ 登录闸门：必须早于 draft 晋升，未登录禁止建 quest（防未登录建楼）
+    if (!_isLoggedIn()) {
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在菜单栏点击登录', { type: 'warning', duration: 6000 }); } catch (_e2) { }
+        return;
+    }
 
     // ★ 所有闸门已过 → 加锁
     _execSendBusy = true;
@@ -161,14 +166,6 @@ async function _executeSend(intent) {
     var text = (content || '').trim();
     if (!text && (!images || images.length === 0)) { agent.setStopState('idle'); updateQueueBtn(); _execSendBusy = false; return; }
     if (streaming) { agent.setStopState('idle'); updateQueueBtn(); _execSendBusy = false; return; }
-
-    if (!_isLoggedIn()) {
-        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在菜单栏点击登录', { type: 'warning', duration: 6000 }); } catch (_) { }
-        agent.setStopState('idle');
-        updateQueueBtn();
-        _execSendBusy = false;
-        return;
-    }
 
     // ── 构建 userContent（含附件） ──
     var userContent = text;

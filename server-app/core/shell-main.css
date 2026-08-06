@@ -418,7 +418,30 @@
   margin-right: 16px;
 }
 
-/* ── 活动豆腐块（清爽从2026 + 50ge 大礼） ── */
+/* ── 赞助商文字（状态栏左下角，纯文字素雅款） ── */
+.qqq-status-sponsor {
+  margin-right: 16px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  user-select: none;
+  -webkit-app-region: no-drag;
+  transition: color .15s;
+}
+
+.qqq-status-sponsor:hover {
+  color: #d79921;
+}
+
+/* ── 窄窗口退避：状态区恒一行，宽度变窄逐级隐藏非核心区块（shell-statusbar.js 加类） ── */
+.qqq-status-area.qqq-dense-1 .qqq-status-sponsor { display: none; }
+.qqq-status-area.qqq-dense-2 .qqq-act-name { display: none; }
+.qqq-status-area.qqq-dense-3 #qqq-status-wq,
+.qqq-status-area.qqq-dense-3 #qqq-status-version { display: none; }
+.qqq-status-area.qqq-dense-4 #qqq-status-online,
+.qqq-status-area.qqq-dense-4 .qqq-gw-dots { display: none; }
+
+/* ── 活动豆腐块（清爽从2026 + 原料与基本权利） ── */
 .qqq-act-widget {
   display: inline-flex;
   align-items: center;
@@ -478,6 +501,16 @@
   background: linear-gradient(90deg, #6c71c4, #b58900);
 }
 
+.qqq-act-widget.qqq-act-vibe .qqq-act-fill {
+  background: linear-gradient(90deg, #268bd2, #2aa198);
+}
+
+/* 免费中 → 钻石发光态 */
+.qqq-act-widget.qqq-act-vibe.qqq-act-vibe-on {
+  border-color: #2aa198;
+  box-shadow: 0 0 8px rgba(42, 161, 152, .5);
+}
+
 /* 进度条充满 → 满格高亮 */
 .qqq-act-widget.qqq-act-done {
   border-color: #859900;
@@ -493,7 +526,7 @@
 }
 
 .qqq-act-num {
-  font-size: 10px;
+  font-size: 11px;
   font-family: ui-monospace, Consolas, monospace;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
@@ -515,86 +548,7 @@
   display: none;
 }
 
-/* ── 免费时段指示器（状态栏内） ── */
-.qqq-status-free {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-weight: 700;
-  font-size: 11px;
-  white-space: nowrap;
-  margin-right: 16px;
-}
 
-.qqq-free-badge {
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-family: ui-monospace, 'Cascadia Code', Consolas, monospace;
-  font-variant-numeric: tabular-nums;
-  letter-spacing: .3px;
-  transition: all .2s;
-}
-
-.qqq-free-badge.qqq-free-on {
-  background: #0a0;
-  color: #fff;
-  border: 1.5px solid #0f0;
-  box-shadow: 0 0 8px #0f0, 0 0 18px #0f0;
-  animation: qqqFreePulse .8s ease-in-out infinite alternate, qqqFreeRainbow 2s linear infinite;
-}
-
-.qqq-free-badge.qqq-free-ending {
-  background: #e8a030;
-  color: #000;
-  border: 1.5px solid #ff0;
-  box-shadow: 0 0 12px #e8a030, 0 0 24px #e8a030;
-  animation: qqqFreePulse .3s ease-in-out infinite alternate;
-}
-
-.qqq-free-badge.qqq-free-soon {
-  background: #555;
-  color: #ccc;
-  border: 1px solid #777;
-  box-shadow: 0 0 4px #666;
-  animation: qqqFreePulse 2s ease-in-out infinite alternate;
-}
-
-@keyframes qqqFreePulse {
-  from {
-    transform: scale(1);
-  }
-
-  to {
-    transform: scale(1.06);
-  }
-}
-
-@keyframes qqqFreeRainbow {
-  0% {
-    border-color: #0f0;
-    box-shadow: 0 0 8px #0f0, 0 0 18px #0f0;
-  }
-
-  25% {
-    border-color: #ff0;
-    box-shadow: 0 0 8px #ff0, 0 0 18px #ff0;
-  }
-
-  50% {
-    border-color: #0ff;
-    box-shadow: 0 0 8px #0ff, 0 0 18px #0ff;
-  }
-
-  75% {
-    border-color: #f0f;
-    box-shadow: 0 0 8px #f0f, 0 0 18px #f0f;
-  }
-
-  100% {
-    border-color: #0f0;
-    box-shadow: 0 0 8px #0f0, 0 0 18px #0f0;
-  }
-}
 
 /* ============================================================================
    Resize Grip (bottom-right)

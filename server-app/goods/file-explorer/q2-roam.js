@@ -1327,12 +1327,55 @@ var ctxEntry = null;
 function showContextMenu(x, y, path, entry) {
 	ctxTarget = path;
 	ctxEntry = entry;
+	// ★ AI 项标签 = 当前焦点面板（父窗口 __qqq_aiTarget: 0左/1中/2右）
+	//    左: ←AI · 中: AI · 右: AI→ — 让用户清楚喂给哪一个面板
+	_updateAiMenuItem();
 	// ★ 从 q3 百分百移植：先设位置再显示，避免闪烁
 	//    光标在菜单左上角（left/top 对齐 clientX/clientY）
 	var p = _zoomFix(x, y);
 	ctxMenu.style.left = p.left + 'px';
 	ctxMenu.style.top = p.top + 'px';
 	ctxMenu.style.display = 'flex';
+}
+
+function _getAiTargetPanel() {
+	try {
+		if (window.parent && typeof window.parent.__qqq_aiTarget === 'number') {
+			return window.parent.__qqq_aiTarget;
+		}
+	} catch (_) { }
+	return 1; // 默认中面板
+}
+
+function _updateAiMenuItem() {
+	var item = ctxMenu.querySelector('[data-action="ai"]');
+	if (!item) return;
+	var t = _getAiTargetPanel();
+	var label = t === 0 ? '←AI' : t === 2 ? 'AI→' : 'AI';
+	var sp = item.querySelector('span');
+	if (sp) sp.textContent = label;
+}
+
+function _feedCurrentToAi() {
+	// 优先选中项，无选中项时退回 ctxTarget（右键目标）
+	var p = null, isDir = false;
+	if (selectedItem && selectedItem.name !== '..') {
+		p = selectedItem.path;
+		isDir = selectedItem.type === 'folder';
+	} else if (ctxTarget) {
+		p = ctxTarget;
+		isDir = ctxEntry ? !!ctxEntry.isDir : false;
+	}
+	if (!p) return;
+	// ★ 唯一真理喂 AI 管线: ai-viewport.js window.__qqq_aiFeedFile (路由到焦点面板)
+	try {
+		if (window.parent && typeof window.parent.__qqq_aiFeedFile === 'function') {
+			window.parent.__qqq_aiFeedFile(p, isDir, null);
+		} else if (window.parent) {
+			window.parent.postMessage({ type: 'qqq-ai-attach', path: p, isDir: isDir }, '*');
+		}
+	} catch (_) { }
+	_playSfx('enter');
 }
 
 document.addEventListener('click', function() { ctxMenu.style.display = 'none'; var e = document.getElementById('emptyContextMenu'); if (e) e.style.display = 'none'; });
@@ -1344,8 +1387,8 @@ if (emptyCtxMenu) {
 		el.addEventListener('click', function() {
 			var act = el.dataset.action;
 			hideAllContextMenus();
-		if (act === 'openAdminCmd') { bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){}); }
-		else if (act === 'openAdminPowershell') { bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){}); }
+		if (act === 'openAdminCmd') { bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){}); _playSfx('terminal'); }
+		else if (act === 'openAdminPowershell') { bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){}); _playSfx('terminal'); }
 	});
 	});
 }

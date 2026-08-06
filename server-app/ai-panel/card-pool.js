@@ -187,9 +187,26 @@ var CardPool = (function () {
     }
     // [silent] already loaded, skip
 
+    // ★ 二次守卫：_loadCardData 是异步的，期间 _unloadQuest 可能已通过
+    //   _handleSyncMessage 把 questActiveId 切回 draft 并隐藏了本 card。
+    //   若此 card 对应的 quest 已非活跃 quest，不再显示，避免「显示 quest 内容
+    //   但 q2 豆腐块显示 ~New quest~」的僵尸态。
+    if (typeof questActiveId !== 'undefined' && questActiveId !== questId) {
+      // quest 已被卸载 → 保持隐藏，不覆盖 _activeId
+      return card;
+    }
+
     // 显示目标 card
     card.dom.style.display = 'block';
     this._activeId = questId;
+
+    // ★ 三次守卫：display='block' 之后再次检查（_unloadQuest 可能在 display 与
+    //   此行之间执行，属于极端窄窗但非零概率）
+    if (typeof questActiveId !== 'undefined' && questActiveId !== questId) {
+      card.dom.style.display = 'none';
+      this._activeId = (this._activeId === questId) ? null : this._activeId;
+      return card;
+    }
 
     // 恢复滚动位置
     var container = card.dom.parentNode;

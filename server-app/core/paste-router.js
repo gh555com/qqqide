@@ -265,6 +265,8 @@
     if (!targetEd) return;  // not in any Monaco editor → pass through
 
     // ★ 第 1 步：真·同步探针（sub-ms，零 IPC）
+    // 守卫：启动早期 klipzap 可能尚未加载 → 透传给 Monaco 原生处理
+    if (!klipzap) return;
     var t0 = performance.now();
     var pr = klipzap.probe(e);
     var wqTime = performance.now() - t0;

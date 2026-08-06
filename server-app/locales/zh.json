@@ -118,12 +118,7 @@
             "copyPath": "复制路径"
         },
         "dev": "开发模式",
-        "gaeaHostLoading": "gaea host 加载中...",
-        "free": {
-            "active": "💎 免费中",
-            "ending": "🎈免费将结束",
-            "soonPrefix": "🤍距离下次免费"
-        }
+        "gaeaHostLoading": "gaea host 加载中..."
     },
     "editor": {
         "copyPath": "复制路径",
@@ -480,6 +475,7 @@
         "snapFailed": "打快照失败"
     },
     "act": {
+        "sponsor": "赞助商：成都知佳知识产权代理有限公司",
         "cool": {
             "name": "清爽从2026",
             "tip": "清爽从2026",
@@ -493,8 +489,10 @@
             "copied": "QQ 群号 524906522 已复制，去 QQ 搜索加群"
         },
         "ge50": {
-            "name": "50ge 大礼",
-            "tip": "总消费满 50 ge · 领 50 元话费或 50 ge",
+            "name": "原料与基本权利",
+            "tip": "总消费满 50 ge · 50 元话费 / 50 ge 二选一",
+            "eitherOr": "二选一",
+            "alreadyOther": "二选一：你已领取另一项奖励",
             "popSub": "实扣 + 白嫖合计达到 50 ge 即可领取",
             "loginDesc": "登录后查看任务进度，满 50 ge 即可领取",
             "task1": "下载并登录 qqqide",
@@ -511,6 +509,21 @@
             "geModalDesc": "50 ge 已发放到你的账户，立即到账！",
             "already": "你已领取过该奖励",
             "err": "领取失败，请稍后重试"
+        },
+        "vibe": {
+            "name": "2026, 我, vibe coding",
+            "tipFree": "💎 免费中 · 免费将结束 {time} · 余额 {ge} ge",
+            "tipNext": "🤍 距离下次免费 {time}",
+            "shortNext": "距下次",
+            "popSub": "循环免费窗口",
+            "popFreeNow": "🟢 免费中 · 免费将结束 {time}",
+            "popNext": "⏳ 距离下次免费 {time}",
+            "popNotInWindow": "当前不在免费时段",
+            "popWindow": "📅 免费时段：周日全天 + 每日 01:00-03:00 / 13:00-15:00（UTC）",
+            "popBonus": "季节加成 +{v} ge",
+            "popLogin": "登录后查看随机捞到滴免费余额",
+            "popLoading": "随机免费余额加载中…",
+            "popNoBudget": "随机免费余额在免费时段内发放"
         }
     },
     "goods": {
