@@ -34,3 +34,8 @@ once_cell = "1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# ★ Linux musl 全静态零依赖: vendored openssl（openssl-src 自编译，静态链接）
+#   使 x86_64-unknown-linux-musl 产物不依赖系统 openssl/glibc（CI 需装 musl-tools）
+[target.'cfg(target_env = "musl")'.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
