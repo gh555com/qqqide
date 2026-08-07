@@ -1,4 +1,4 @@
-// main.rs — ghrun: qqq IDE component manager & gaea goods installer
+// main.rs — ghrun: qqqide component manager & gaea goods installer
 //
 // Protocol: all output is JSON lines to stdout.
 //   {"event":"start","component":"ffmpeg","version":"7.1"}
@@ -29,7 +29,7 @@ use ctx::Ctx;
 // ---------------------------------------------------------------------------
 
 #[derive(Parser)]
-#[command(name = "ghrun", version, about = "qqq IDE component manager")]
+#[command(name = "ghrun", version, about = "qqqide component manager")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
