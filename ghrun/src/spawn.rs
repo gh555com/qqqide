@@ -223,10 +223,6 @@ pub fn run() -> Result<(), String> {
     }
     cmd.stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped());cmd);
-    cmd.args(&brief.args)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     if let Some(ref cwd) = brief.cwd {
         if !std::path::Path::new(cwd).is_dir() {
