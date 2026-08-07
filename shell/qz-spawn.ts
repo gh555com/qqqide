@@ -115,8 +115,18 @@ function _normalizeBrief(brief: { cmd: string; args?: string[]; shell?: boolean 
         }
     }
 
-    if (hasMeta && cmdLower !== 'cmd' && cmdLower !== 'sh' && brief.shell !== false) {
-        // Reconstruct full command, quoting args with spaces
+    // cmd/c 开头的命令（AI 显式 cmd /c "..."）不再包装——整串交给 shell:true
+    // 单层引号执行（Node 拼装 cmd.exe /d /s /c "整串"），再包装会嵌套 cmd /c 崩坏
+    var isSelfCmd = cmdLower === 'cmd' || cmdLower === 'cmd.exe' || /^cmd(\.exe)?\s+\/c(\s|$)/.test(cmdLower);
+         if (hasMeta && !isSelfCmd && cmdLower !== 'sh' && brief.shell !== false) {
+        if (IS_WIN) {
+            // ★ Windows: 不再 cmd /c 包装 + ^ 转义（F79 实证：引号模式下 ^ 转义失效、
+            //   新 cmd 实例继承 spawn cwd → cd /d 失效 + 相对路径落错目录）。
+            //   整串 + shell:true → ghrun shell 通道（v0.2.0）→ cmd.exe /d /s /c "整串"
+            //   单层引号 → cd 生效 + Job Object 内核级内存保护同时拿到。
+            return;
+        }
+        // POSIX: sh -c 包装（argv 直传，无引号剥离问题）
         var fullCmd = brief.cmd;
         if (brief.args && brief.args.length) {
             var quoted = brief.args.map(function(a: string) {
@@ -125,17 +135,8 @@ function _normalizeBrief(brief: { cmd: string; args?: string[]; shell?: boolean 
             });
             fullCmd += ' ' + quoted.join(' ');
         }
-        if (IS_WIN) {
-            // cmd /c strips outer quotes added by process spawn,
-            // exposing metacharacters even inside quoted args.
-            // Escape with ^ (cmd's escape char) so they survive.
-            fullCmd = fullCmd.replace(/\^/g, '^^').replace(/&/g, '^&').replace(/\|/g, '^|').replace(/</g, '^<').replace(/>/g, '^>');
-            brief.cmd = 'cmd';
-            brief.args = ['/c', fullCmd];
-        } else {
-            brief.cmd = 'sh';
-            brief.args = ['-c', fullCmd];
-        }
+        brief.cmd = 'sh';
+        brief.args = ['-c', fullCmd];
         brief.shell = false;
         return;
     }
@@ -224,11 +225,16 @@ function resolveGhrunBin(appRoot?: string): string | null {
         const p = path.join(qdir, 'ghrun' + ext);
         if (fs.existsSync(p)) { _ghrunBinCache = p; return p; }
     }
-    // also probe engines/ghrun.exe under app root
+    // also probe engines/ghrun.exe under app root (both layouts:
+    // dev 项目根 engines/ 与绿色包 resources/app/engines/)
     if (appRoot) {
         const ext = process.platform === 'win32' ? '.exe' : '';
-        const p = path.join(appRoot, 'engines', 'ghrun' + ext);
-        if (fs.existsSync(p)) { _ghrunBinCache = p; return p; }
+        for (const p of [
+            path.join(appRoot, 'engines', 'ghrun' + ext),
+            path.join(appRoot, 'resources', 'app', 'engines', 'ghrun' + ext),
+        ]) {
+            if (fs.existsSync(p)) { _ghrunBinCache = p; return p; }
+        }
     }
     _ghrunBinCache = null;
     return null;
@@ -387,6 +393,9 @@ function ghrunTier(brief: SpawnBrief, appRoot: string, ghrunBin: string): Promis
             stallMs: brief.stallMs || 0,
             memLimitMb: Math.floor(MEM_LIMIT_BYTES / (1024 * 1024)),  // B2: native Job Object hint (honored when ghrun supports it)
             captureOutput: brief.captureOutput !== false,
+            // ★ shell 通道 (ghrun v0.2.0): 整串命令交给 ghrun 走 cmd.exe /d /s /c
+            //   → cd 正确 + Job Object 内核级内存保护同时拿到（F80 取舍闭环）
+            shell: brief.shell === true,
         });
 
         let proc: ChildProcess;
@@ -541,6 +550,15 @@ export class QzSpawn {
         if (!_hasMeta) {
             return _capOutput(await nodeTier(brief, this.appRoot));
         }
+
+        // ★ shell:true = 整串命令（Windows cmd 解析）→ 走 ghrun shell 通道
+        //   （ghrun v0.2.0: raw_arg 原样拼接 cmd.exe /d /s /c "<整串>"，
+        //    /s 剥最外层引号 → cd 正确 + Job Object 内核级内存保护同时拿到）
+        if (brief.shell === true) {
+            return _capOutput(await nodeTier(brief, this.appRoot));
+        }
+
+        // A1: enforce system max timeout
 
         // A1: enforce system max timeout — no command runs longer than 10 minutes
         if (brief.timeout == null || brief.timeout <= 0 || brief.timeout > SYSTEM_MAX_TIMEOUT) {

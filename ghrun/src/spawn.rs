@@ -118,6 +118,8 @@ struct SpawnBrief {
     stall_ms: u64,
     #[serde(default, rename = "memLimitMb")]
     mem_limit_mb: u64, // 0 = no limit; >0 = assign child to a Windows Job Object with this RSS cap
+    #[serde(default)]
+    shell: bool, // true = cmd is a full OS command line (Windows: cmd.exe /d /s /c; POSIX: /bin/sh -c)
 }
 
 fn default_true() -> bool {
@@ -189,13 +191,39 @@ pub fn run() -> Result<(), String> {
     let brief: SpawnBrief = serde_json::from_str(line.trim())
         .map_err(|e| format!("bad spawn brief JSON: {}", e))?;
 
-    if brief.cmd.is_empty() {
-        emit(-1, String::new(), "empty cmd".into(), "spawn-error");
-        return Ok(());
+      // ── 2. build command ──
+    // ★ shell channel (v0.2.0): brief.shell=true → cmd 是整串 OS 命令行，走系统 shell。
+    //   Windows: cmd.exe /d /s /c "<整串>" — raw_arg 原样拼接（禁 MSVCRT 引号转义，
+    //   否则内部引号被转成 \" 后 cmd 当字面字符处理，命令崩坏）。
+    //   外层强制包引号: /s 标志剥最外层一对引号，内部引号原样保留 →
+    //   与 Node shell:true 行为一致（cd /d 生效 / 含空格路径安全 / 嵌套引号安全）。
+    //   POSIX:   /bin/sh -c "<整串>"（argv 直传，无引号剥离问题）。
+    //   Job Object / setrlimit 照常生效 → 整串命令同样享受内核级内存保护。
+    let mut cmd;
+    #[cfg(windows)]
+    {
+        if brief.shell {
+            let wrapped = format!("\"{}\"", brief.cmd);
+            cmd = Command::new("cmd.exe");
+            cmd.raw_arg("/d").raw_arg("/s").raw_arg("/c").raw_arg(&wrapped);
+        } else {
+            cmd = Command::new(&brief.cmd);
+            cmd.args(&brief.args);
+        }
     }
-
-    // ── 2. build command ──
-    let mut cmd = Command::new(&brief.cmd);
+    #[cfg(not(windows))]
+    {
+        if brief.shell {
+            cmd = Command::new("/bin/sh");
+            cmd.arg("-c").arg(&brief.cmd);
+        } else {
+            cmd = Command::new(&brief.cmd);
+            cmd.args(&brief.args);
+        }
+    }
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());cmd);
     cmd.args(&brief.args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
