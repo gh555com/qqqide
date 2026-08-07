@@ -4,7 +4,8 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'ghrun/**'      # 推送到 ghrun/ 自动编译（2026-08-07 v0.2.0 shell 通道）
+      - 'ghrun/**'          # 推送到 ghrun/ 自动编译（v0.2.0 shell 通道）
+      - '.github/workflows/build-ghrun2.yml'   # workflow 自身改动也触发
 
 permissions:
   contents: read
@@ -18,26 +19,41 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # ★ Windows: GNU toolchain → 静态链接 libgcc/libstdc++/winpthread，
+          #   仅依赖系统 UCRT（Win10/11 内置；Win7 由绿色包 vc_runtime 49 DLL app-local 覆盖）
+          #   → 零 VC 运行库依赖，任何 Windows 裸跑（与本地 qide-shell 一键编译产物等价，PE 导入表实测纯系统 DLL）
           - os: windows-2022
             name: win-x64
-            target: x86_64-pc-windows-msvc
+            target: x86_64-pc-windows-gnu
             ghrun_ext: .exe
             watchdog_ext: .exe
 
+          # ★ Linux: musl 全静态（含 vendored openssl）→ 真零依赖，不随 glibc 版本漂移
           - os: ubuntu-22.04
             name: linux-x64
-            target: x86_64-unknown-linux-gnu
+            target: x86_64-unknown-linux-musl
             ghrun_ext: ""
             watchdog_ext: ""
 
+          # ★ macOS: 系统库自带 → 零依赖；arm64 + x64 双平台
           - os: macos-14
             name: mac-arm64
             target: aarch64-apple-darwin
             ghrun_ext: ""
             watchdog_ext: ""
 
+          - os: macos-14
+            name: mac-x64
+            target: x86_64-apple-darwin
+            ghrun_ext: ""
+            watchdog_ext: ""
+
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install musl toolchain (Linux zero-dep)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -47,6 +63,7 @@ jobs:
         run: |
           cd ghrun
           rustup target add ${{ matrix.target }}
+          if [ "${{ matrix.target }}" = "x86_64-unknown-linux-musl" ]; then export CC=musl-gcc; fi
           cargo build --release --target ${{ matrix.target }}
           echo "=== build complete ==="
           ls -lh target/${{ matrix.target }}/release/
