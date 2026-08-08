@@ -212,8 +212,13 @@ function bootActivities(boot) {
       '.qqq-act-bigfill{display:block;height:100%;border-radius:9px;' +
       'background:linear-gradient(90deg,#2aa198,#859900,#2aa198);background-size:200% 100%;animation:qqqActShimmer 2.4s linear infinite;' +
       'transition:width .8s;forced-color-adjust:none;}' +
+      // 弹窗进度条配色与状态区豆腐块一一对应（2026-08-08）: 清爽=蓝 / 原料=紫黄 / vibe=绿黄
+      '.qqq-act-bigfill.qqq-act-cool-fill{background:linear-gradient(90deg,#268bd2,#2aa198,#268bd2);background-size:200% 100%;}' +
+      '.qqq-act-bigfill.qqq-act-ge50-fill{background:linear-gradient(90deg,#6c71c4,#b58900,#6c71c4);background-size:200% 100%;}' +
+      '.qqq-act-bigfill.qqq-act-vibe-fill{background:linear-gradient(90deg,#2aa198,#859900,#2aa198);background-size:200% 100%;}' +
       '.qqq-act-bigfill.qqq-act-full{background:linear-gradient(90deg,#859900,#b58900,#859900);background-size:200% 100%;animation:qqqActShimmer 1.2s linear infinite;}' +
-      '.qqq-act-bigfill.qqq-act-vibe-fill{background:linear-gradient(90deg,#268bd2,#2aa198);background-size:200% 100%;}' +
+      '.qqq-act-bigfill.qqq-act-cool-fill.qqq-act-full{background:linear-gradient(90deg,#268bd2,#2aa198,#268bd2);animation:qqqActShimmer 1.2s linear infinite;}' +
+      '.qqq-act-bigfill.qqq-act-ge50-fill.qqq-act-full{background:linear-gradient(90deg,#d33682,#cb4b16,#d33682);animation:qqqActShimmer 1.2s linear infinite;}' +
       '.qqq-act-bignum{text-align:center;font-size:15px;font-weight:700;color:#34d399;font-family:Consolas,monospace;}' +
       '.qqq-act-desc{margin:14px 0 18px;text-align:center;font-size:14px;line-height:1.9;color:#c8c8d8;}' +
       '.qqq-act-desc b{color:#34d399;}' +
@@ -328,7 +333,7 @@ function bootActivities(boot) {
         '<div class="qqq-act-celebrate">🧊</div>' +
         '<h2>' + t('act.cool.name', '清爽从2026') + '</h2>' +
         '<p class="qqq-act-sub">' + t('act.cool.popSub', '总消费满 10 ge 领 10 元红包') + '</p>' +
-        '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill" style="width:' + pct + '%"></span></div>' +
+        '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-cool-fill" style="width:' + pct + '%"></span></div>' +
         '<div class="qqq-act-bignum">' + fmt(total) + ' / ' + target + ' ge</div>' +
         '<p class="qqq-act-desc">' +
         t('act.cool.p1', '进度条充满 = 总消费达到 <b>10 ge</b>（实扣 + 白嫖都算）！<br>即便全部白嫖，只要进度条充满，现在就可以加 QQ 群 <b>524906522</b> 领 <b>10 元红包</b>。') +
@@ -340,7 +345,7 @@ function bootActivities(boot) {
         '<div class="qqq-act-celebrate">🎉</div>' +
         '<h2>' + t('act.cool.p2Title', '恭喜！进度条已充满') + '</h2>' +
         '<p class="qqq-act-sub">' + t('act.cool.popSub', '总消费满 10 ge 领 10 元红包') + '</p>' +
-        '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-full" style="width:100%"></span></div>' +
+        '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-cool-fill qqq-act-full" style="width:100%"></span></div>' +
         '<div class="qqq-act-bignum">' + fmt(total) + ' / ' + target + ' ge ✓</div>' +
         '<p class="qqq-act-desc">' +
         t('act.cool.p2', '你的总消费已达 <b>10 ge</b>（含白嫖）！<br>现在就可以加 QQ 群 <b>524906522</b> 领 <b>10 元红包</b>。') +
@@ -485,7 +490,7 @@ function bootActivities(boot) {
       '<div class="qqq-act-celebrate">🎁</div>' +
       '<h2>' + t('act.ge50.name', '原料与基本权利') + '</h2>' +
       '<p class="qqq-act-sub">' + t('act.ge50.popSub', '实扣 + 白嫖合计达到 50 ge 即可领取') + '</p>' +
-      '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill' + (total >= target ? ' qqq-act-full' : '') + '" style="width:' + pct + '%"></span></div>' +
+      '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-ge50-fill' + (total >= target ? ' qqq-act-full' : '') + '" style="width:' + pct + '%"></span></div>' +
       '<div class="qqq-act-bignum">' + fmt(total) + ' / ' + target + ' ge</div>' +
       '<ul class="qqq-act-tasks">' + tasks + '</ul>' +
       claims;
@@ -687,7 +692,7 @@ function bootActivities(boot) {
   // 登录状态变化 → 立即刷新
   try {
     if (window.qqqLogin && window.qqqLogin.onStateChange) {
-      window.qqqLogin.onStateChange(function () { fetchStatus(true); fetchVibeBudget(); });
+      window.qqqLogin.onStateChange(function () { fetchStatus(true); setTimeout(function () { fetchVibeBudget(); }, 200); });
     }
   } catch (e) { }
 

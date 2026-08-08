@@ -695,13 +695,17 @@
         try {
             // ── 5. 机械筛：当前楼层 → 饼干行 ──
             var biscuitText = _buildCompressedBiscuit(floorMsgs);
-            if (!biscuitText || biscuitText.length < 20) {
+            // ★ V21: compress 楼层（floorMsgs 空）→ 跳过 biscuit 更新，不生成占位行
+            //   （旧逻辑生成 "Q: (压缩失败，内容过短)" 占位污染 biscuit，q147 f96 事故）
+            var _skipBiscuit = (floorMsgs.length === 0);
+            if (!_skipBiscuit && (!biscuitText || biscuitText.length < 20)) {
                 var _now2 = new Date();
                 var _dt2 = _now2.getFullYear() + '-' + String(_now2.getMonth()+1).padStart(2,'0') + '-' + String(_now2.getDate()).padStart(2,'0') + ' ' + String(_now2.getHours()).padStart(2,'0') + ':' + String(_now2.getMinutes()).padStart(2,'0') + ':' + String(_now2.getSeconds()).padStart(2,'0') + ' UTC+8';
                 biscuitText = '=== F' + floorNum + '  ' + _dt2 + ' ===\nQ: (压缩失败，内容过短)';
             }
 
             // ── 6. 更新内存状态（V13: 无 DE，仅 biscuitLines）──
+            if (!_skipBiscuit) {
             if (!self._ctx.biscuitLines) self._ctx.biscuitLines = [];
             var _newLines = _parseBiscuitFromContent(biscuitText);
             var _existMap = {};
@@ -717,6 +721,7 @@
                 }
             }
             self._ctx.biscuitLines.sort(function(a, b) { return a.n - b.n; });
+            }
 
             // ── 7. ★ 删已压缩的楼层消息（精确匹配，保留未压缩的 fatal 楼层） ──
             //    V2 fix: floorMsgs 可能不连续（跳过了有活跃错误的楼层），逐条删除
@@ -730,6 +735,7 @@
             }
 
             // ── 9. ★ 找已有 biscuit 消息 → 原地追加 content ──
+            if (!_skipBiscuit) {
             var biscuitFound = _findDynamicMsg(self.conversation, persistentCount, '_biscuit');
             if (biscuitFound) {
                 // ★ V14 fix: 判断新楼层是否全在已有之后 → 纯追加 vs 合并重排
@@ -769,6 +775,7 @@
                 }
                 self.conversation.splice(_insertIdx, 0,
                     { role: 'system', content: _sortedText, _dynamic: true, _biscuit: true });
+            }
             }
 
             // ★ V13: 清除旧 DE 消息（DE 概念已消除）──
@@ -847,11 +854,11 @@
                 // 同步 ctx.facts
                 if (!self._ctx.facts) self._ctx.facts = [];
                 self._ctx.facts.push({ source: 'f3', extracted_at: Math.floor(Date.now()/1000), text: _newFacts.join('\n') });
-                // ★ 清理 compress floor 原始消息（facts 已提取到 fx，原消息不再需要）
-                for (var _cfi = self.conversation.length - 1; _cfi >= floorStart; _cfi--) {
-                    if (self.conversation[_cfi]._compressFloor) {
-                        self.conversation.splice(_cfi, 1);
-                    }
+                // ★ V21: 清理 compress floor 全部原始消息（assistant/tool 无 _compressFloor 标记，
+                //   按标记删会残留 → 残留被下一楼层 rebuild 压缩进 biscuit（q147 f96 A 全文 2407 事故）。
+                //   floorStart 之后即当前 compress 楼层，无条件截断。
+                if (self.conversation.length > floorStart) {
+                    self.conversation.length = floorStart;
                 }
             }
 

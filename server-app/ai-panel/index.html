@@ -686,5 +686,20 @@ if (!window.parent.__qqq_agentPool) window.parent.__qqq_agentPool = {};
 <script src="panel-pipeline.js"></script>
 <script src="panel-send.js"></script>
 <script src="panel-health.js"></script>
+<!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 Roam（F75，F99 补：AI 面板是 iframe，父窗口收不到内部按键） -->
+<script>
+(function () {
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'F2' && e.key !== 'Tab') return;
+    var el = document.activeElement;
+    var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
+    var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
+    if (editing) return;
+    var accel = e.key === 'F2' ? 'F2' : 'Tab';
+    try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: 'window' }, '*'); } catch (_) {}
+    e.preventDefault();
+  }, true);
+})();
+</script>
 </body>
 </html>

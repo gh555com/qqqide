@@ -989,6 +989,11 @@ window._restoreGuideBlocksToContentWrap = _restoreGuideBlocksToContentWrap;
 //   ⚠ 不用 fire-and-forget：之前 _saveAgentQuestData 是 async，不 await 的话
 //     主进程 500ms 后 process.exit(0) 可能截断 JSON 写入，导致 all.json 半截。
 //     改为 e.preventDefault() 挡住窗口销毁，等 save 完成或 2 秒超时才放行。
+//   ★ 一次性拦截（F7 修复）：保存完成后的 window.close() 重试会再次触发 beforeunload →
+//     无限拦截循环 → 窗口永不可关（回车后弹窗消失但窗口卡死、再点 X 无反应）。
+//     因此只挡第一次；保存完成（_buSaveDone）后后续 unload 直接放行。
+var _buBlocked = false;   // 第一次拦截已发生
+var _buSaveDone = false;  // 保存已完成（_finish 或 2s 超时）→ 后续 unload 放行
 window.addEventListener('beforeunload', function (e) {
     // 用户点击「重置窗口」→ 旁路标签，不拦截
     // ★ iframe 内 window !== parent.window，必须也查 parent
@@ -999,6 +1004,14 @@ window.addEventListener('beforeunload', function (e) {
     var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     var _qid = (typeof questActiveId !== 'undefined') ? questActiveId : null;
     if (!_ag || !_qid) return;
+    // ★ 二次及以后 unload：保存已完成 → 放行；保存中 → 继续挡（_finish 会带完成标记重试）
+    if (_buBlocked) {
+        if (_buSaveDone) return;
+        e.preventDefault();
+        e.returnValue = '';
+        return;
+    }
+    _buBlocked = true;
     // 压缩中 → 标记异常供下次启动修复
     if (_ag._compressing && _ag._ctx) {
         _ag._uncleanShutdown = true;
@@ -1011,10 +1024,13 @@ window.addEventListener('beforeunload', function (e) {
     var _finish = function () {
         if (_closed) return;
         _closed = true;
+        _buSaveDone = true;
         try { window.close(); } catch (_) { }
     };
     if (typeof _saveAgentQuestData === 'function') {
-        _saveAgentQuestData(_qid, _ag, _ag._currentFloorNum || 0).then(_finish).catch(_finish);
+        try {
+            _saveAgentQuestData(_qid, _ag, _ag._currentFloorNum || 0).then(_finish).catch(_finish);
+        } catch (_) { _finish(); }
     } else {
         _finish();
     }

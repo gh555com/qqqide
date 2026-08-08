@@ -523,7 +523,7 @@ function _estimateTokensFull() {
     var ABS_TOOL_NAMES = ['run_command', 'generate_image', 'remove_background', 'analyze_image', 'get_vision_context'];
     if (biscuitText) {
         // 按楼层分割
-        var floorParts = biscuitText.split(/\n(?=== F\d+ )/);
+        var floorParts = biscuitText.split(/\n(?==== F\d+ )/);
         for (var fi = 0; fi < floorParts.length; fi++) {
             var fp = floorParts[fi];
             // Q 段: 'Q: ' 到下一个 '\n[A →' 或 '\n╔K' 或 '\nA: ' 或 floor 尾
@@ -1001,8 +1001,10 @@ window.addEventListener('message', async function (e) {
                         _bpChars0 += 250;
                         _preBackpackK = Math.round(_bpChars0 / 2.7 / 1000);
                     } catch (_) {}
-                    if (Math.round(_hText.length / 2.7) < 12000) {
-                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: 'h原料 < 12K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
+                    // ★ V21: onlyfacts 守卫恢复 32K tokens（F89 曾按 chars÷2.7 换算成 12K，用户明确要求 32K 边界）
+                    //   收益 < 32K tokens 的压缩不值得调一次 tier-4 AI（q147 f97 事故：第二次 h 仅 16K tokens 仍放行）
+                    if (Math.round(_hText.length / 2.7) < 32000) {
+                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: 'h原料 < 32K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
                         return;
                     }
                     var _bulletDir = '';

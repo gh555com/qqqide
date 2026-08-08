@@ -10,6 +10,7 @@ import * as fs from 'fs';
 import * as http from 'http';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
 import { renameDevToolsViaBroker } from './py-broker';
+import { claimSquad, releaseSquad } from './squad-manager';
 import { SimpleWebSocket } from './cdp-sniffer';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
@@ -135,6 +136,9 @@ export function createWindow(
         },
     });
 
+    // ★ 窗口编队认领: 创建即按序认领最近空闲槽位 (1 2 q w a s z x), 无空闲=null (>8窗口)
+    claimSquad(win);
+
     // ★ console-message 始终运行 — 捕获全量消息 (CDP 不再阻塞, 仅作补充)
     const _cmHandler = (
         _e: any, _level: number, message: string, _line: number, _sourceId: string
@@ -165,19 +169,43 @@ export function createWindow(
             return; // 菜单退出已设旁路，直接放行
         }
         e.preventDefault();
+        // ★ 武装键盘：确认框弹出期间 Enter=确认 / Escape=取消
+        (win as any).__qqqConfirmArmed = true;
         // 通知 renderer 弹出确认框（renderer 样式同设置面板）
         if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
             try { win.webContents.send('qqqide:confirm-close'); } catch (_) { }
         }
     });
 
+    // ★ 确认框键盘输入（Enter=确认退出 / Escape=取消）— before-input-event 在浏览器进程捕获，
+    //   焦点在左中右面板 iframe 内（document keydown 收不到）也能 100% 响应
+    win.webContents.on('before-input-event', (event: any, input: any) => {
+        if (!(win as any).__qqqConfirmArmed) { return; }
+        if (input.type !== 'keyDown' && input.type !== 'rawKeyDown') { return; }
+        if (input.isComposing) { return; } // IME 组词回车不触发
+        if (input.key === 'Enter') {
+            event.preventDefault();
+            (win as any).__qqqConfirmArmed = false;
+            bypassCloseConfirm(win);
+            try { win.close(); } catch { /* ignore */ }
+        } else if (input.key === 'Escape') {
+            event.preventDefault();
+            try { win.webContents.send('qqqide:confirm-close-dismiss'); } catch { /* ignore */ }
+        }
+    });
+
     win.on('closed', () => {
+        (win as any).__qqqConfirmArmed = false;
         try { if (_boundsSaveTimer) { clearTimeout(_boundsSaveTimer); _boundsSaveTimer = null; } } catch (_) { }
+        // ★ 窗口关闭 → 编队槽位回到空闲
+        try { releaseSquad(win.id); } catch (_) { }
         try {
             const ownedProject = _windowProjectMap.get(win.id);
             if (ownedProject) {
                 _windowProjectMap.delete(win.id);
                 _projectWindowMap.delete(ownedProject);
+                // ★ 同步删除项目锁文件 → 关闭后立即重开同文件夹不被 60s 锁拦截
+                try { fs.unlinkSync(ownedProject + '/_qqq/alphal/.lock'); } catch (_) { }
             }
         } catch (_) { }
     });

@@ -34,7 +34,7 @@
     },
     window: {
       minimize: () => { }, maximize: () => { }, unmaximize: () => { },
-      close: () => window.close(), closeConfirmed: () => { window.close(); }, onCloseConfirm: () => () => {},
+      close: () => window.close(), closeConfirmed: () => { window.close(); }, closeConfirmDismissed: () => { }, onCloseConfirm: () => () => {}, onCloseConfirmDismiss: () => () => {},
       isMaximized: () => Promise.resolve(false),
       setTitle: s => { document.title = s; },
     },

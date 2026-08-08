@@ -64,6 +64,33 @@ function persistState() {
   } catch (_) { }
 }
 
+// ★ F100 兜底直连：F2/Tab 非编辑态 → 激活 Roam tab + 聚焦 iframe
+// 不依赖 key-bindings.json / key-hook 配置链，独立注册 capture 监听（双保险）。
+function bootRoamKeyFallback() {
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'F2' && e.key !== 'Tab') return;
+    var el = document.activeElement;
+    var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
+    var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
+    var p = el;
+    while (p) {
+      if (p.classList && (p.classList.contains('monaco-editor') || p.classList.contains('inputarea'))) { editing = true; break; }
+      p = p.parentElement;
+    }
+    if (editing) return; // 编辑态不抢键
+    console.log('[shell] roam-key fallback:', e.key);
+    var grp = window.qqqTabs && window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : null;
+    if (grp) {
+      var rt = grp.tabs.find(function (t) { return t.gaeaId === 'roam'; });
+      if (rt && window.qqqTabs.activateTab) window.qqqTabs.activateTab(grp, rt.id);
+    }
+    var it = document.querySelector('iframe[src*="q2-roam"]');
+    if (it && it.contentWindow) { try { it.contentWindow.focus(); } catch (_e) { } }
+    e.preventDefault();
+    e.stopPropagation();
+  }, true);
+}
+
 // ---- CSS variable helpers ----
 function applyLayout() {
   var aEl = document.getElementById('qqq-a-zone');
@@ -226,6 +253,13 @@ function hideCloseConfirm(force) {
     _closeConfirmOverlay = null;
   }
   document.removeEventListener('keydown', _onCloseConfirmKey);
+  // ★ 通知主进程解除键盘武装（Enter 不再等于关闭）— 仅非 force 路径（force 后窗口即将关闭）
+  if (!force) {
+    var _bw = _shBridge;
+    if (_bw && _bw.window && _bw.window.closeConfirmDismissed) {
+      try { _bw.window.closeConfirmDismissed(); } catch (_) { }
+    }
+  }
 }
 
 function _onCloseConfirmKey(e) {
@@ -248,6 +282,10 @@ function bootWindowControls() {
   // ★ 监听主进程的关闭确认请求（Alt+F4 / 点击 X → main 发 IPC）
   if (bridge.window && bridge.window.onCloseConfirm) {
     bridge.window.onCloseConfirm(showCloseConfirm);
+  }
+  // ★ 主进程 Esc（webContents 级捕获，焦点在 iframe 内也生效）→ 隐藏确认框
+  if (bridge.window && bridge.window.onCloseConfirmDismiss) {
+    bridge.window.onCloseConfirmDismiss(function () { hideCloseConfirm(); });
   }
 }
 
@@ -559,6 +597,11 @@ async function main() {
 
   // KeyHook (loads bindings + globalShortcut + window/iframe dispatchers)
   await bootKeyHook();
+
+  // ★ F100 兜底直连：F2/Tab 非编辑态 → 激活 Roam tab + 聚焦 iframe
+  //    与 key-hook 配置链双保险：key-hook 成功则 stopPropagation 已拦（不重复），
+  //    key-hook 任何一环失败（fetch/init/when）则由本监听兜底，保证功能永不静默失效
+  bootRoamKeyFallback();
 
   // Expose layout API for sash persistence
   window.qqqLayout = {

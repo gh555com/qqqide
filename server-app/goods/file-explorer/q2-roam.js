@@ -1240,11 +1240,54 @@ function _zoomFix(x, y) {
 }
 
 // ===== Actions (from q3, 100% ported) =====
+
+// ★ Q 键（文件夹）：开新 qqqide 窗口，以 folder 为主文件夹进入其工作空间
+// 主进程 qqqide:window:new 自带锁检查（同项目已在其他窗口 → focus 旧窗并提示）
+function _openQqqideWindowForFolder(folderPath) {
+	try {
+		var pb = parent && parent.qqqideBridge;
+		if (!pb || !pb.window || !pb.window.new) {
+			// 兜底：无主窗口 bridge（不应发生）→ 系统资源管理器打开
+			bridge.shell.openPath(folderPath).catch(function(){});
+			return;
+		}
+		// 写入最近文件夹（与菜单 "开新窗口" 下拉共享同一 key）
+		try {
+			pb.state.get('qqqide', 'recent_folders').then(function(data) {
+				var list = (data && Array.isArray(data)) ? data.slice(0, 20) : [];
+				var name = folderPath;
+				try {
+					var parts = folderPath.replace(/\\/g, '/').split('/').filter(Boolean);
+					name = parts[parts.length - 1] || folderPath;
+				} catch (_) {}
+				list = list.filter(function(f) { return f.path !== folderPath; });
+				list.unshift({ path: folderPath, name: name, atime: Date.now() });
+				if (list.length > 20) list.length = 20;
+				pb.state.set('qqqide', 'recent_folders', list).catch(function(){});
+			}).catch(function(){});
+		} catch (_) {}
+		pb.window.new(folderPath).then(function(r) {
+			if (r && !r.ok && r.locked) {
+				try {
+					if (parent && parent.qqqideQoast) {
+						parent.qqqideQoast.show('⚠️ 该项目已在另一个窗口打开，请直接使用该窗口，或关闭它后再开', { duration: 6000, type: 'warn' });
+					}
+				} catch (_) {}
+			}
+		}).catch(function(e) { console.error('[roam] window.new failed:', e); });
+	} catch (e) {
+		console.error('[roam] open window error:', e);
+		bridge.shell.openPath(folderPath).catch(function(){});
+	}
+}
+
 function performCodeAction(item) {
 	if (!item) return;
 	if (item.name === '..') return;
 	if (item.type === 'folder') {
-		navigateTo(item.path);
+		// Q 键唯一职责（文件夹）：开新 qqqide 窗口，以该文件夹为主文件夹
+		// ?restore=1&folder= → ai-viewport restore 模式自动恢复该工作空间（含辅文件夹阵营）
+		_openQqqideWindowForFolder(item.path);
 		_playSfx('enter');
 		return;
 	}
@@ -1261,7 +1304,12 @@ function performCodeAction(item) {
 function performOpenAction(item) {
 	if (!item) return;
 	if (item.name === '..') return;
-	if (item.type === 'folder') { navigateTo(item.path); _playSfx('enter'); return; }
+	if (item.type === 'folder') {
+		// W 键唯一职责（文件夹）：在系统资源管理器打开
+		bridge.shell.openPath(item.path).catch(function(){});
+		_playSfx('enter');
+		return;
+	}
 	if (item.path && /\.lnk$/i.test(item.path)) {
 		// .lnk 快捷方式：照抄 q3 逻辑——解析目标，是文件夹（且存在）则导航，否则交给系统
 		var srcDir = currentPath;

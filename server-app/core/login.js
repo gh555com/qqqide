@@ -888,10 +888,14 @@
       // ★ F42: 恢复渲染层余额/LV 拉取——主进程 net.fetch 走 Electron 主进程网络栈，
       //   与页面网络栈不同（代理/证书环境差异），部分环境拉取失败且被静默吞掉 → 余额不显示。
       //   渲染层 fetch 与登录页同栈，双通道兜底，查询接口不扣费。
+      // ★ 错峰调用：CF Free 套餐对瞬时并发请求敏感（≥3 并发触发 429），
+      //   间隔 200ms 发送避免被当作请求爆发。
       _startBalancePoll();
-      _fetchLv();
+      setTimeout(function () { _fetchLv(); }, 200);
       // 触发状态栏免费预算刷新
-      try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (e) { }
+      setTimeout(function () {
+        try { if (typeof fetchFreeBudget === 'function') fetchFreeBudget(); } catch (e) { }
+      }, 400);
       try {
         if (window.qqqideBridge && window.qqqideBridge.cloud && window.qqqideBridge.cloud.setAuth) {
           window.qqqideBridge.cloud.setAuth({ phone: _authData.phone, token: _authData.token, device_name: _authData.device_name });
@@ -1228,7 +1232,7 @@
       if (!self.isLoggedIn()) return Promise.resolve(false);
       return fetch('https://www.gh555.com/api/me/goods', {
         headers: { 'Authorization': 'Bearer ' + self.getAuthToken() }
-      }).then(function(r) { return r.json(); }).then(function(d) {
+      }).then(function (r) { return r.json(); }).then(function (d) {
         self._purchasedServerChecked = true;
         if (d.ok && Array.isArray(d.goods)) {
           for (var i = 0; i < d.goods.length; i++) {
@@ -1239,7 +1243,7 @@
           }
         }
         return self.isPurchased();
-      }).catch(function() {
+      }).catch(function () {
         self._purchasedServerChecked = true;
         return self.isPurchased();
       });
@@ -1256,7 +1260,7 @@
       _notifyStateChange();
       // ★ T3：中心大脑退出登录 → 广播所有窗口
       try { if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.logout) window.qqqideBridge.auth.logout(); }
-        catch (e) { if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.clearAuth) window.qqqideBridge.auth.clearAuth(); }
+      catch (e) { if (window.qqqideBridge && window.qqqideBridge.auth && window.qqqideBridge.auth.clearAuth) window.qqqideBridge.auth.clearAuth(); }
       if (window.qqqideQoast) window.qqqideQoast.show('已退出登录', { duration: 3000 });
     },
     onStateChange: function (fn) {

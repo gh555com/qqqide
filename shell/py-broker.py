@@ -3,6 +3,11 @@
 #!/usr/bin/env python3
 """py-broker.py — 跨平台窗口管理 broker for qqqide.
 常驻子进程。stdin 读 JSON 行命令，stdout 返回 JSON 行响应。
+职责:
+  1. DevTools 窗口改名 (Win: ctypes / Mac: osascript / Linux: wmctrl)
+  2. ★ 窗口编队热键 (Win, pynput 全局钩子): Space + {1,2,q,w,a,s,z,x} 召回编队窗口
+     Truth: %LOCALAPPDATA%/qqqide/squads.json (Electron 主进程唯一写入者, 本进程只读)
+     → 召回结果以 {type:"event", event:"summon"} 主动上报主进程 (播放音效反馈)
 日志: 写入 {appRoot}/Data/Logs/_py_broker.log
 """
 import sys
@@ -10,6 +15,8 @@ import json
 import os
 import platform
 import traceback
+import threading
+import time
 from datetime import datetime
 
 OS = platform.system()
@@ -142,6 +149,219 @@ def _linux_rename_devtools(new_title: str) -> dict:
         return {"ok": False, "error": str(e)}
 
 
+# =============================================================================
+#  ★ 窗口编队热键 (pynput) — Space + {1,2,q,w,a,s,z,x} 召回编队窗口
+#   Truth: %LOCALAPPDATA%/qqqide/squads.json (Electron 主进程唯一写入者, 本进程只读)
+# =============================================================================
+_SQUAD_ORDER = ["1", "2", "q", "w", "a", "s", "z", "x"]
+_SQUAD_CHARS = set(_SQUAD_ORDER)
+_HOTKEY_LISTENER = None
+_HOTKEY_PRESSED_KEYS = {}  # {normalized_key_str: press_timestamp_ms}
+_HOTKEY_LOCK = threading.Lock()
+_HOTKEY_ENABLED = True
+_HOTKEY_LAST_TRIGGER = 0
+_HOTKEY_DEBOUNCE_MS = 400
+_HOTKEY_KEY_TTL_MS = 600  # 超过此时间的按键视为陈旧（漏掉的 release）
+
+try:
+    from pynput import keyboard as pynput_keyboard
+    _HAS_PYNPUT = True
+except Exception:
+    _HAS_PYNPUT = False
+
+
+def _squad_registry_path():
+    if OS != "Windows":
+        return ""
+    # 主进程真理源: os.homedir()/AppData/Local/qqqide/squads.json (squad-manager.ts registryPath)
+    # ★ env LOCALAPPDATA 可能被 C 启动器便携层重定向 → 仅作候选，USERPROFILE 路径优先探测存在性
+    candidates = []
+    up = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    candidates.append(os.path.join(up, "AppData", "Local", "qqqide", "squads.json"))
+    la = os.environ.get("LOCALAPPDATA")
+    if la:
+        candidates.append(os.path.join(la, "qqqide", "squads.json"))
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return candidates[0] if candidates else ""
+
+
+def _load_squad_registry():
+    p = _squad_registry_path()
+    if not p or not os.path.exists(p):
+        return None
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _normalize_key(key):
+    """归一化 pynput 按键（Windows 下 press/release 可能产生不同对象）"""
+    try:
+        if hasattr(key, 'name') and key.name:
+            return "special:" + key.name
+        if hasattr(key, 'char') and key.char:
+            return "char:" + key.char.lower()
+        if hasattr(key, 'vk') and key.vk is not None:
+            if key.vk == 32:
+                return "special:space"
+            return "vk:" + str(key.vk)
+    except Exception:
+        pass
+    return "raw:" + repr(key)
+
+
+def _activate_window(hwnd):
+    """还原最小化 + 绕过前台锁置前 + 聚焦"""
+    import ctypes
+    user32 = ctypes.windll.user32
+    if not user32.IsWindow(hwnd):
+        return
+    user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+    user32.keybd_event(0x12, 0, 0, 0)  # Alt down (bypass foreground lock)
+    user32.SetForegroundWindow(hwnd)
+    user32.keybd_event(0x12, 0, 2, 0)  # Alt up
+    user32.BringWindowToTop(hwnd)
+
+
+def _is_window_alive(hwnd, pid):
+    """hwnd 存活 + 归属 pid 校验（防句柄复用）"""
+    import ctypes
+    try:
+        user32 = ctypes.windll.user32
+        if not user32.IsWindow(hwnd):
+            return False
+        cur = ctypes.c_ulong()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(cur))
+        return cur.value == pid
+    except Exception:
+        return False
+
+
+def _find_hwnd_by_title(title, pid):
+    """hwnd 失效时按 OS 标题 EnumWindows 找回（含 pid 校验）"""
+    import ctypes
+    from ctypes import wintypes
+    try:
+        user32 = ctypes.windll.user32
+        found = []
+
+        @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        def _cb(hwnd, _lp):
+            buf = ctypes.create_unicode_buffer(512)
+            user32.GetWindowTextW(hwnd, buf, 512)
+            if buf.value == title:
+                cur = ctypes.c_ulong()
+                user32.GetWindowThreadProcessId(hwnd, ctypes.byref(cur))
+                if cur.value == pid:
+                    found.append(hwnd)
+                    return False
+            return True
+
+        user32.EnumWindows(_cb, 0)
+        return found[0] if found else 0
+    except Exception:
+        return 0
+
+
+def _squad_summon(slot):
+    """召回 slot 对应编队窗口 → {ok, folder, already}"""
+    if OS != "Windows":
+        return {"ok": False}
+    reg = _load_squad_registry()
+    if not reg:
+        return {"ok": False}
+    slots = reg.get("slots") or {}
+    entry = slots.get(slot)
+    if not entry:
+        return {"ok": False}
+    pid = int(entry.get("pid") or 0)
+    folder = str(entry.get("folder") or "")
+    title = str(entry.get("title") or "")
+    try:
+        hwnd = int(entry.get("hwnd") or 0)
+    except Exception:
+        hwnd = 0
+    if hwnd and not _is_window_alive(hwnd, pid):
+        hwnd = 0
+    if not hwnd and title:
+        hwnd = _find_hwnd_by_title(title, pid)
+    if not hwnd:
+        _log(f"[Squad] summon {slot} miss (window gone) folder={folder}")
+        return {"ok": False, "folder": folder}
+    import ctypes
+    user32 = ctypes.windll.user32
+    if user32.GetForegroundWindow() == hwnd:
+        return {"ok": False, "folder": folder, "already": True}
+    _activate_window(hwnd)
+    _log(f"[Squad] summon {slot} hwnd={hwnd} folder={folder}")
+    return {"ok": True, "folder": folder, "title": title}
+
+
+def _hotkey_on_press(key):
+    """全局按键回调 — 归一化 + TTL 防幽灵触发 + 防抖"""
+    global _HOTKEY_PRESSED_KEYS, _HOTKEY_LAST_TRIGGER
+    if not _HOTKEY_ENABLED or not _HAS_PYNPUT:
+        return
+    now = time.time() * 1000
+    norm = _normalize_key(key)
+    with _HOTKEY_LOCK:
+        _HOTKEY_PRESSED_KEYS[norm] = now
+        stale_cutoff = now - _HOTKEY_KEY_TTL_MS
+        for k in [k for k, ts in _HOTKEY_PRESSED_KEYS.items() if ts < stale_cutoff]:
+            del _HOTKEY_PRESSED_KEYS[k]
+        space_ts = _HOTKEY_PRESSED_KEYS.get("special:space")
+        if not space_ts:
+            return
+        for ch in _SQUAD_CHARS:
+            ch_ts = _HOTKEY_PRESSED_KEYS.get("char:" + ch)
+            if not ch_ts:
+                continue
+            if abs(space_ts - ch_ts) > _HOTKEY_KEY_TTL_MS:
+                continue
+            if now - _HOTKEY_LAST_TRIGGER < _HOTKEY_DEBOUNCE_MS:
+                return
+            _HOTKEY_LAST_TRIGGER = now
+            _HOTKEY_PRESSED_KEYS.pop("special:space", None)
+            _HOTKEY_PRESSED_KEYS.pop("char:" + ch, None)
+            r = _squad_summon(ch)
+            try:
+                sys.stdout.write(json.dumps({"type": "event", "event": "summon", "squad": ch, "ok": r.get("ok", False), "folder": r.get("folder", "")}, ensure_ascii=False) + "\n")
+                sys.stdout.flush()
+            except Exception:
+                pass
+            return
+
+
+def _hotkey_on_release(key):
+    if not _HAS_PYNPUT:
+        return
+    norm = _normalize_key(key)
+    with _HOTKEY_LOCK:
+        _HOTKEY_PRESSED_KEYS.pop(norm, None)
+
+
+def _start_hotkey_listener():
+    global _HOTKEY_LISTENER
+    if not _HAS_PYNPUT:
+        _log("[Squad] pynput not available, hotkeys disabled")
+        return {"status": "error", "error": "pynput not installed"}
+    if _HOTKEY_LISTENER is not None:
+        return {"status": "already_running"}
+    try:
+        _HOTKEY_LISTENER = pynput_keyboard.Listener(on_press=_hotkey_on_press, on_release=_hotkey_on_release)
+        _HOTKEY_LISTENER.daemon = True  # 不阻塞进程退出
+        _HOTKEY_LISTENER.start()
+        _log("[Squad] hotkey listener started (Space+1/2/q/w/a/s/z/x)")
+        return {"status": "started"}
+    except Exception as e:
+        _log(f"[Squad] hotkey listener failed: {e}")
+        return {"status": "error", "error": str(e)}
+
+
 def main():
     global LOG_FILE
 
@@ -170,6 +390,13 @@ def main():
     sys.stdout.write(json.dumps({"type": "ready", "platform": OS}, ensure_ascii=False) + "\n")
     sys.stdout.flush()
     _log("sent ready signal")
+
+    # ★ 编队热键监听（Windows, 常驻 pynput 全局钩子）
+    if OS == "Windows":
+        try:
+            _start_hotkey_listener()
+        except Exception as e:
+            _log(f"[Squad] hotkey start failed: {e}")
 
     for line in sys.stdin:
         line = line.strip()
