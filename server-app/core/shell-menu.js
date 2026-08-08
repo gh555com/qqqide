@@ -726,6 +726,21 @@ window._shHandleMenuCmd = function handleMenuCmd(cmd) {
     return;
   }
   if (cmd === 'window.activateRoam') {
+    // ① Activate Roam tab in X-zone gaea group
+    var gaeaGrp = window.qqqTabs && window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : null;
+    if (gaeaGrp) {
+      var roamTab = gaeaGrp.tabs.find(function (t) { return t.gaeaId === 'roam'; });
+      if (roamTab) {
+        gaeaGrp.tabs.forEach(function (t) {
+          if (t.btnEl) t.btnEl.classList.toggle('active', t === roamTab);
+          if (t.paneEl) t.paneEl.classList.toggle('active', t === roamTab);
+        });
+        gaeaGrp.activeTabId = roamTab.id;
+        // Fire onActivate callback (same as activateTab)
+        if (roamTab.onActivate) roamTab.onActivate(roamTab);
+      }
+    }
+    // ② Focus the iframe so Roam receives keyboard input
     var it = document.querySelector('iframe[src*="q2-roam"]');
     if (it && it.contentWindow) { try { it.contentWindow.focus(); } catch (e) { } }
     return;

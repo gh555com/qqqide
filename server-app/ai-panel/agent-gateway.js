@@ -165,8 +165,12 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
             var _fetchStart = performance.now();
             // ★ 经 AiGateway 统一执行 fetch（模型映射 + 线路选择 + auth）
             var resp;
+            // ★ 硬超时守卫：Promise.race 保证 await 必定 resolve
+            //   Chromium 108 HTTP/2 死连接上 AbortController.abort() 不生效 → fetch 永久挂死
+            //   此 race 是唯一不依赖 abort 的逃生通道（abort 只作辅助信号，不依赖它生效）
+            var _chatFetchPromise;
             if (typeof AiGateway !== 'undefined' && AiGateway.chatFetch) {
-                resp = await AiGateway.chatFetch(body, {
+                _chatFetchPromise = AiGateway.chatFetch(body, {
                     token: _currentToken,
                     signal: self.abortController.signal,
                     tier: parseInt(tier.label) || 6,
@@ -175,7 +179,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 });
             } else {
                 // 兜底：AiGateway 未加载（不应发生）
-                resp = await fetch(GATEWAY_URL, {
+                _chatFetchPromise = fetch(GATEWAY_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -185,7 +189,27 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     body: JSON.stringify(body),
                     signal: self.abortController.signal
                 });
-            } var _ttfbMs = performance.now() - _fetchStart;
+            }
+            var _hardDeadlineMs = (typeof ContentGateway !== 'undefined' ? ContentGateway.HARD_FETCH_DEADLINE_MS : 220000);  // ★ 唯一真理源 220s，主备统一
+            var _hardDeadlinePromise = new Promise(function (resolve) {
+                setTimeout(function () {
+                    resolve({ _hardDeadline: true, _msg: 'HARD_DEADLINE' });
+                }, _hardDeadlineMs);
+            });
+            resp = await Promise.race([_chatFetchPromise, _hardDeadlinePromise]);
+            if (resp && resp._hardDeadline) {
+                // ★ HTTP/2 死连接：abort 已尝试（_fetchDeadline 触发过）但 Chromium 108 不响应
+                //   唯一逃生：Promise.race 硬超时 → 返回 null → agent loop 自然结束楼层
+                var _hangMsg = '⏰ HARD fetch deadline ' + (_hardDeadlineMs / 1000) + 's — HTTP/2 connection hung, abort unresponsive (Chromium 108) — force exit';
+                self._log(_hangMsg);
+                if (typeof self._writeFileLog === 'function') self._writeFileLog(_hangMsg);
+                self._lastGatewayError = -1;  // ★ -1 跳过 SSE 重试（HTTP/2 死连接重试无意义）
+                self._lastGatewayMessage = '连接超时（HTTP/2 死连接，已自动恢复。对话完整保留，可继续）';
+                self._exitReason = 'deadline';
+                clearTimeout(_fetchDeadline);
+                return null;
+            }
+            var _ttfbMs = performance.now() - _fetchStart;
             _ttfbAccum += _ttfbMs;
             if (!resp.ok) {
                 var text = await resp.text();

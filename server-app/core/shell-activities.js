@@ -25,6 +25,21 @@ function bootActivities(boot) {
 
   // F40: 与登录页同域（能打开登录页就能拉到数据）
   var API_BASE = 'https://gh555.com/api';
+  // ★ 2026-08-07: 双线路 failover — 5xx/网络错误时降级 direct-cn 国内直连
+  var API_BASE_FALLBACK = 'https://direct-cn.gh555.com/api';
+  async function _apiFetch(path, opts) {
+    var urls = [API_BASE, API_BASE_FALLBACK];
+    var lastErr = null;
+    for (var i = 0; i < urls.length; i++) {
+      try {
+        var resp = await fetch(urls[i] + path, opts);
+        if (resp.status < 500) return resp;
+        lastErr = 'HTTP ' + resp.status;
+      } catch (e) { lastErr = e.message; }
+    }
+    if (lastErr) console.warn('[activities] _apiFetch all lines failed:', path, lastErr);
+    return null;
+  }
   var POLL_MS = 60000;
   var QQ_GROUP = '524906522';
 
@@ -43,6 +58,7 @@ function bootActivities(boot) {
   var $vibe = document.getElementById('qqq-act-vibe');
   var $vibeFill = document.getElementById('qqq-act-vibe-fill');
   var $vibeNum = document.getElementById('qqq-act-vibe-num');
+  var $vibePrefix = null; // 「剩/距下次」前缀 — 独立于等宽数字，与赞助商文字同外观
   if (!$cool || !$ge50) return;
 
   // ── 工具 ──────────────────────────────────────────────────────────────────
@@ -116,7 +132,7 @@ function bootActivities(boot) {
     var token = authToken();
     if (!token) { _data = null; render(); return; }
     _fetching = true;
-    fetch(API_BASE + '/qqqide/activity', {
+    _apiFetch('/qqqide/activity', {
       headers: { 'Authorization': 'Bearer ' + token },
       cache: 'no-cache'
     })
@@ -183,26 +199,26 @@ function bootActivities(boot) {
       '.qqq-act-modal{position:relative;width:520px;max-width:94vw;max-height:86vh;overflow-y:auto;border-radius:16px;' +
       'background:linear-gradient(165deg,#0d1a12 0%,#0d0d1a 55%,#10131f 100%);color:#e6e6e6;' +
       'border:1.5px solid rgba(52,211,153,.35);box-shadow:0 0 34px rgba(52,211,153,.22),0 10px 40px rgba(0,0,0,.5);' +
-      'animation:qqqActPop .28s cubic-bezier(.34,1.56,.64,1);padding:26px 28px 24px;}' +
+      'animation:qqqActPop .28s cubic-bezier(.34,1.56,.64,1);padding:26px 28px 24px;forced-color-adjust:none;}' +
       '.qqq-act-modal.qqq-act-ge50-modal{background:linear-gradient(165deg,#141b2e 0%,#0d0d1a 60%,#1a1024 100%);' +
-      'border-color:rgba(108,113,196,.4);box-shadow:0 0 34px rgba(108,113,196,.25),0 10px 40px rgba(0,0,0,.5);}' +
+      'border-color:rgba(108,113,196,.4);box-shadow:0 0 34px rgba(108,113,196,.25),0 10px 40px rgba(0,0,0,.5);forced-color-adjust:none;}' +
       '.qqq-act-close{position:absolute;top:10px;right:12px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.18);' +
       'background:rgba(255,255,255,.08);color:#ddd;font-size:15px;line-height:26px;text-align:center;}' +
       '.qqq-act-close:hover{background:rgba(52,211,153,.25);border-color:#34d399;}' +
       '.qqq-act-modal h2{margin:2px 0 2px;font-size:26px;font-weight:900;text-align:center;' +
       'background:linear-gradient(135deg,#34d399,#06b6d4);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}' +
       '.qqq-act-modal .qqq-act-sub{margin:0 0 14px;text-align:center;font-size:13px;color:#9aa0b5;}' +
-      '.qqq-act-bigbar{margin:14px 0 6px;height:16px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden;position:relative;}' +
+      '.qqq-act-bigbar{margin:14px 0 6px;height:16px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden;position:relative;forced-color-adjust:none;}' +
       '.qqq-act-bigfill{display:block;height:100%;border-radius:9px;' +
       'background:linear-gradient(90deg,#2aa198,#859900,#2aa198);background-size:200% 100%;animation:qqqActShimmer 2.4s linear infinite;' +
-      'transition:width .8s;}' +
+      'transition:width .8s;forced-color-adjust:none;}' +
       '.qqq-act-bigfill.qqq-act-full{background:linear-gradient(90deg,#859900,#b58900,#859900);background-size:200% 100%;animation:qqqActShimmer 1.2s linear infinite;}' +
       '.qqq-act-bigfill.qqq-act-vibe-fill{background:linear-gradient(90deg,#268bd2,#2aa198);background-size:200% 100%;}' +
       '.qqq-act-bignum{text-align:center;font-size:15px;font-weight:700;color:#34d399;font-family:Consolas,monospace;}' +
       '.qqq-act-desc{margin:14px 0 18px;text-align:center;font-size:14px;line-height:1.9;color:#c8c8d8;}' +
       '.qqq-act-desc b{color:#34d399;}' +
       '.qqq-act-cta{display:block;width:100%;padding:12px 0;border:none;border-radius:10px;font-size:16px;font-weight:800;' +
-      'background:linear-gradient(90deg,#059669,#0d9488);color:#fff;box-shadow:0 4px 18px rgba(5,150,105,.4);}' +
+      'background:linear-gradient(90deg,#059669,#0d9488);color:#fff;box-shadow:0 4px 18px rgba(5,150,105,.4);forced-color-adjust:none;}' +
       '.qqq-act-cta:hover{filter:brightness(1.12);}' +
       '.qqq-act-cta.qqq-act-ghost{background:rgba(255,255,255,.1);color:#cfd3e6;box-shadow:none;font-weight:600;font-size:13px;margin-top:10px;}' +
       '.qqq-act-celebrate{text-align:center;font-size:52px;animation:qqqActFloat 2s ease-in-out infinite;}' +
@@ -218,14 +234,14 @@ function bootActivities(boot) {
       '.qqq-act-or{text-align:center;font-size:12px;font-weight:700;color:#b58900;margin:4px 0 6px;}' +
       '.qqq-act-claims{display:flex;gap:10px;margin-top:0;}' +
       '.qqq-act-claim{flex:1;padding:11px 6px;border:none;border-radius:10px;font-size:13.5px;font-weight:800;color:#fff;' +
-      'background:linear-gradient(90deg,#6c71c4,#b58900);box-shadow:0 4px 14px rgba(108,113,196,.3);}' +
-      '.qqq-act-claim.qqq-act-claim-phone{background:linear-gradient(90deg,#268bd2,#2aa198);box-shadow:0 4px 14px rgba(38,139,210,.3);}' +
+      'background:linear-gradient(90deg,#6c71c4,#b58900);box-shadow:0 4px 14px rgba(108,113,196,.3);forced-color-adjust:none;}' +
+      '.qqq-act-claim.qqq-act-claim-phone{background:linear-gradient(90deg,#268bd2,#2aa198);box-shadow:0 4px 14px rgba(38,139,210,.3);forced-color-adjust:none;}' +
       '.qqq-act-claim:disabled{filter:grayscale(1);opacity:.55;box-shadow:none;}' +
       '.qqq-act-claim:hover:not(:disabled){filter:brightness(1.1);}' +
       '.qqq-act-lockhint{text-align:center;font-size:12px;color:#7a8098;margin-top:8px;}' +
       '.qqq-act-modal2{position:relative;width:420px;max-width:90vw;border-radius:14px;padding:26px 26px 22px;text-align:center;' +
       'background:linear-gradient(165deg,#10131f,#0d0d1a);color:#e6e6e6;border:1.5px solid rgba(52,211,153,.4);' +
-      'box-shadow:0 0 30px rgba(52,211,153,.2);animation:qqqActPop .25s cubic-bezier(.34,1.56,.64,1);}' +
+      'box-shadow:0 0 30px rgba(52,211,153,.2);animation:qqqActPop .25s cubic-bezier(.34,1.56,.64,1);forced-color-adjust:none;}' +
       '.qqq-act-modal2 h3{margin:0 0 8px;font-size:19px;color:#34d399;}' +
       '.qqq-act-modal2 p{margin:0 0 18px;font-size:13.5px;line-height:1.8;color:#c8c8d8;word-break:break-all;}' +
       '.qqq-act-modal2 button{padding:9px 34px;border:none;border-radius:9px;font-size:14px;font-weight:700;color:#fff;' +
@@ -341,7 +357,7 @@ function bootActivities(boot) {
     if (!g || !g.claimable || g.claimed_ge50) return;
     var token = authToken();
     if (!token) { openLogin(); return; }
-    fetch(API_BASE + '/qqqide/activity/claim-ge50', {
+    _apiFetch('/qqqide/activity/claim-ge50', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + token }
     })
@@ -376,7 +392,7 @@ function bootActivities(boot) {
     if (!g || !g.claimable || g.claimed_phone50) return;
     var token = authToken();
     if (!token) { openLogin(); return; }
-    fetch(API_BASE + '/qqqide/activity/claim-phone50', {
+    _apiFetch('/qqqide/activity/claim-phone50', {
       method: 'POST',
       headers: { 'Authorization': 'Bearer ' + token }
     })
@@ -557,14 +573,6 @@ function bootActivities(boot) {
     return { rem: rem, bud: bud, valid: isFinite(rem) && rem >= 0, bonus: bonus };
   }
 
-  // 前缀文字（「剩」/「距下次」）— 与赞助商同外观：普通字体 11px 次级色（仅数字保持等宽）
-  function vibeTxtNode(text) {
-    var s = document.createElement('span');
-    s.className = 'qqq-act-txt';
-    s.textContent = text + ' ';
-    return s;
-  }
-
   function renderVibe() {
     if (!$vibe || !$vibeNum) return;
     var st = vibeState(vibeUtcNow());
@@ -573,9 +581,14 @@ function bootActivities(boot) {
     // ★ 统一：免费中「剩」+ 倒计时，非免费「距下次」+ 倒计时（不再需要点开弹窗才看到剩余时间）
     //   进度条 = 免费中余额剩余比例（余额未拉到则满格）/ 非免费 0%
     var prefix = st.free ? t('act.vibe.shortFree', '剩') : t('act.vibe.shortNext', '距下次');
-    $vibeNum.textContent = '';
-    $vibeNum.appendChild(vibeTxtNode(prefix));
-    $vibeNum.appendChild(document.createTextNode(fmtHMS(st.remaining)));
+    // 前缀插在等宽数字之前（widget 直接子节点）→ 继承 body 默认 UI 字体，与赞助商文字 100% 同外观；数字保持等宽
+    if (!$vibePrefix) {
+      $vibePrefix = document.createElement('span');
+      $vibePrefix.className = 'qqq-act-txt';
+      $vibe.insertBefore($vibePrefix, $vibeNum);
+    }
+    $vibePrefix.textContent = prefix + ' ';
+    $vibeNum.textContent = fmtHMS(st.remaining);
     if ($vibeFill) {
       if (st.free && b.valid) {
         $vibeFill.style.width = Math.max(0, Math.min(100, b.bud > 0 ? b.rem / b.bud * 100 : 100)) + '%';

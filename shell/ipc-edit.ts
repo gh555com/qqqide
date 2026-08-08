@@ -1,5 +1,3 @@
-// Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
-
 // ============================================================================
 // ipc-edit.ts — 编辑工具 IPC: edit_file / create_file / delete_file / write_file
 // 含 qwr 机器保护 (_sn / _qe)
@@ -22,6 +20,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as vm from 'vm';
 import { _sn, _qe, aiNormalizeWhitespace, aiNormalizeCRLF } from './ipc-state';
+import { boundaryNewlineGuard, checkStructureText } from './edit-guard';
 
 // ── 空白匹配 span 测量 ──────────────────────────────────────────────────────
 // 在归一化匹配成功后，用原始 find 文本的归一化版本，在原始内容中从 start 向后
@@ -37,6 +36,74 @@ function measureMatchSpan(orig: string, start: number, findText: string,
     }
     // 兜底：如果归一化后永远不等（理论上不可能），fallback 到这里
     return findText.length;
+}
+
+// ── 重新搜索（Pass 2 失配兜底，2026-08-07）──────────────────────────────────
+// 前序编辑改变内容后，用同一匹配阶梯对当前内容重新定位 find。
+function _refindCurrent(content: string, ed: { find: string }): { start: number; span: number; matchLevel: number } | null {
+    // L1 exact
+    let idx = content.indexOf(ed.find);
+    if (idx !== -1) return { start: idx, span: ed.find.length, matchLevel: 1 };
+    // L1b CRLF
+    const findNorm = aiNormalizeCRLF(ed.find);
+    let contentNorm = aiNormalizeCRLF(content);
+    let ni = contentNorm.indexOf(findNorm);
+    if (ni !== -1) {
+        let oi = 0, ci = 0;
+        while (ci < ni && oi < content.length) {
+            if (content[oi] === '\r' && content[oi + 1] === '\n') { oi += 2; ci++; }
+            else if (content[oi] === '\r') { oi++; ci++; }
+            else { oi++; ci++; }
+        }
+        return { start: oi, span: measureMatchSpan(content, oi, ed.find, aiNormalizeCRLF), matchLevel: 2 };
+    }
+    // L1c escaped \n
+    if (ed.find.indexOf('\n') !== -1) {
+        const escaped = ed.find.replace(/\n/g, '\\n');
+        idx = content.indexOf(escaped);
+        if (idx !== -1) return { start: idx, span: escaped.length, matchLevel: 1 };
+    }
+    // L2 whitespace
+    const nf = aiNormalizeWhitespace(ed.find);
+    contentNorm = aiNormalizeWhitespace(content);
+    ni = contentNorm.indexOf(nf);
+    if (ni !== -1) {
+        let oi = 0, ci = 0;
+        while (ci < ni && oi < content.length) {
+            const c = content[oi];
+            if (c === ' ' || c === '\t' || c === '\r' || c === '\n') {
+                const ncChar = contentNorm[ci];
+                if (ncChar === ' ' || ncChar === '\n') { oi++; ci++; }
+                else oi++;
+            } else { oi++; ci++; }
+        }
+        return { start: oi, span: measureMatchSpan(content, oi, ed.find, aiNormalizeWhitespace), matchLevel: 3 };
+    }
+    // L3 line-level
+    const fl = ed.find.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+    if (fl.length >= 2) {
+        const cl2 = content.split('\n');
+        for (let li = 0; li <= cl2.length - fl.length; li++) {
+            let ok = true;
+            for (let lj = 0; lj < fl.length; lj++) {
+                if (cl2[li + lj].trim() !== fl[lj]) { ok = false; break; }
+            }
+            if (ok) {
+                const s = cl2.slice(0, li).join('\n').length + (li > 0 ? 1 : 0);
+                const sp = cl2.slice(0, li + fl.length).join('\n').length - s;
+                return { start: s, span: sp, matchLevel: 4 };
+            }
+        }
+    }
+    // L5 raw bytes
+    const findBuf = Buffer.from(ed.find, 'utf8');
+    const contentBuf = Buffer.from(content, 'utf8');
+    const bufIdx = contentBuf.indexOf(findBuf);
+    if (bufIdx !== -1) {
+        const s = contentBuf.subarray(0, bufIdx).toString('utf8').length;
+        return { start: s, span: ed.find.length, matchLevel: 5 };
+    }
+    return null;
 }
 
 // ── 自动语法门（§59，2026-07-14 落地）────────────────────────
@@ -86,6 +153,24 @@ function checkSyntaxSync(filePath: string, originalContent: string | null, match
                 try { fs.unlinkSync(filePath); } catch (_) {}
             }
             return 'Error: your edit produced invalid JSON — ' + msg + '. File reverted unchanged. Check bracket/brace balance in your replace text.';
+        }
+    } else if (ext === '.css' || ext === '.html' || ext === '.htm') {
+        // ★ 结构门（2026-08-07）: CSS 花括号平衡 / HTML button 平衡+嵌套 + 重复 id
+        // 补 JS/JSON 语法门覆盖不到的粘连事故（F35 CSS 规则粘连 / F73 HTML 按钮嵌套）
+        try {
+            const structContent = fs.readFileSync(filePath, 'utf8');
+            const structErr = checkStructureText(ext, structContent);
+            if (structErr) {
+                if (originalContent !== null) {
+                    try { fs.writeFileSync(filePath, originalContent); } catch (_) {}
+                } else {
+                    try { fs.unlinkSync(filePath); } catch (_) {}
+                }
+                let hint = matchCtx ? ' (' + matchCtx + ')' : '';
+                return 'Error: your edit produced invalid structure — ' + structErr + ' File reverted unchanged.' + hint;
+            }
+        } catch (structCheckErr: any) {
+            return 'Error checking file structure: ' + (structCheckErr.message || String(structCheckErr));
         }
     }
 
@@ -266,7 +351,12 @@ export function registerEditIpc(): void {
                 }
 
                 // Pass 2: apply edits (保持提交顺序，AI 依赖顺序语义)
+                // ★ 位置漂移校正（2026-08-07）: Pass 1 在原文上算出的偏移，会被前面
+                //   编辑的长度变化破坏 → posDelta 平移 + 命中校验 + 失配时对当前
+                //   内容重新搜索。根治多段批量编辑错位粘连（F17/F35/F73/F77 机制）。
                 const editLines: string[] = [];
+                const guardNotes: string[] = [];
+                let posDelta = 0;
                 for (let pi = 0; pi < matchPlan.length; pi++) {
                     const plan = matchPlan[pi];
                     const ed = plan.edit;
@@ -281,14 +371,37 @@ export function registerEditIpc(): void {
                             pos = idx2 + 1;
                         }
                         content = content.split(ed.find).join(ed.replace);
+                        posDelta += (ed.replace.length - ed.find.length) * count;
                         results.push(`#${pi + 1}: all (${count}x, L${plan.match.matchLevel}, lines ${allLines.join(',')})`);
                         editLines.push(`#${pi + 1}: lines ${allLines.join(',')} (${count}x replace_all)`);
                         totalApplied += count;
                     } else {
-                        const preContent = content.slice(0, plan.match.start);
+                        // 1) 累积漂移平移原始偏移
+                        let start = plan.match.start + posDelta;
+                        let span = plan.match.end - plan.match.start;
+                        // 2) 命中校验：当前内容该区段是否仍等于 find（精确或归一化）
+                        const seg = content.slice(start, start + span);
+                        const normSeg = aiNormalizeWhitespace(aiNormalizeCRLF(seg));
+                        const normFind = aiNormalizeWhitespace(aiNormalizeCRLF(ed.find));
+                        if (seg !== ed.find && normSeg !== normFind) {
+                            // 3) 失配 → 对当前内容重新搜索，不再用过期偏移
+                            const ref = _refindCurrent(content, ed);
+                            if (ref === null) {
+                                return `Error: edit #${plan.index + 1} match failed after earlier edits shifted the file — text not found in current content. Re-read the file and retry.`;
+                            }
+                            start = ref.start;
+                            span = ref.span;
+                            plan.match.matchLevel = ref.matchLevel;
+                        }
+                        const preContent = content.slice(0, start);
                         const lineNum = (preContent.match(/\n/g) || []).length + 1;
-                        content = content.slice(0, plan.match.start) + ed.replace + content.slice(plan.match.end);
-                        results.push(`L${plan.match.matchLevel} @L${lineNum}`);
+                        // ★ 边界换行守卫（2026-08-07）: find 首尾带 \n 而 replace 丢掉了 →
+                        // 自动补回，防邻接行粘连
+                        const grd = boundaryNewlineGuard(ed.find, ed.replace);
+                        if (grd.notes.length) guardNotes.push(...grd.notes);
+                        content = content.slice(0, start) + grd.replace + content.slice(start + span);
+                        posDelta += grd.replace.length - span;
+                        results.push(`L${plan.match.matchLevel} @L${lineNum}${grd.notes.length ? ' [' + grd.notes.join('; ') + ']' : ''}`);
                         editLines.push(`#${pi + 1}: L${lineNum} (L${plan.match.matchLevel})`);
                         totalApplied++;
                     }
@@ -320,7 +433,8 @@ export function registerEditIpc(): void {
                 const matchInfo = results.some(r => r.indexOf('L2') !== -1 || r.indexOf('L3') !== -1 || r.indexOf('L4') !== -1 || r.indexOf('L5') !== -1)
                     ? ' (whitespace-tolerant match used)' : '';
                 const lineInfo = editLines.length > 0 ? ' [' + editLines.join(', ') + ']' : '';
-                return `\u2713 ${totalApplied} edit(s) applied to ${args.path.split(/[\\/]/).pop()}${lineInfo}${matchInfo}${multiWarn}`;
+                const guardNote = guardNotes.length ? ' [boundary-guard: ' + guardNotes.join('; ') + ']' : '';
+                return `\u2713 ${totalApplied} edit(s) applied to ${args.path.split(/[\\/]/).pop()}${lineInfo}${matchInfo}${guardNote}${multiWarn}`;
             } catch (err: any) {
                 return 'Error editing file: ' + (err.message || err);
             }

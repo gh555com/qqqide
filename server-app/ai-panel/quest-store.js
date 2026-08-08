@@ -1205,6 +1205,19 @@ var QuestStore = (function () {
                                 if (_fm) {
                                     var _fn = parseInt(_fm[1], 10);
                                     if (!_sq3Set[_fn]) {
+                                        // ★ 2026-08-07: 无 all.json 的孤儿目录不收录（如 f66 只残留 all.txt）
+                                        //   否则每次扫描重新发现 → 永久警告循环（sq3 条目已被清理后仍被 FS 扫描捞回）
+                                        try {
+                                            var _cand = await bf2.list(_rootDir + '/_qqq/quests/' + qDirName2 + '/' + _fsEntries[_ei].name);
+                                            var _hasAll = false;
+                                            for (var _ci = 0; _ci < _cand.length; _ci++) {
+                                                if (_cand[_ci].name === 'all.json') { _hasAll = true; break; }
+                                            }
+                                            if (!_hasAll) {
+                                                console.log('[quest-store] loadAllFloors: skip orphan floor.' + questId + '.' + _fn + ' (no all.json)');
+                                                continue;
+                                            }
+                                        } catch (_) { continue; }
                                         floorList.push({ n: _fn });
                                         _sq3Set[_fn] = true;
                                         _added = true;

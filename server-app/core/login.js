@@ -31,17 +31,62 @@
   // ★ F40: 与主进程统一走 gh555.com 主域——部分客户网络对 direct-cn 灰云域名不通（502），
   //   余额/LV 拉取与登录页同域，能打开登录页就能拉到余额。
   var API_BASE = 'https://gh555.com/api';
+  // ★ 2026-08-07: 双线路 failover — CF Worker(gh555.com 橙云) 跨境回源间歇 503 时自动降级
+  //   direct-cn 国内直连; 仅 5xx/网络错误触发, 4xx 鉴权响应原样返回 (F40 主域保证不破坏)
+  var API_BASE_FALLBACK = 'https://direct-cn.gh555.com/api';
+  async function _apiFetch(path, opts) {
+    var urls = [API_BASE, API_BASE_FALLBACK];
+    var lastErr = null;
+    for (var i = 0; i < urls.length; i++) {
+      try {
+        var resp = await fetch(urls[i] + path, opts);
+        if (resp.status < 500) return resp;
+        lastErr = 'HTTP ' + resp.status;
+      } catch (e) { lastErr = e.message; }
+    }
+    if (lastErr) console.warn('[login] _apiFetch all lines failed:', path, lastErr);
+    return null;
+  }
   var BALANCE_POLL_MS = 60000;
   var NO_DRAG = '-webkit-app-region:no-drag;';
 
   var _bootInfo = null;
 
+  // ★ 国旗：本地 PNG（assets/flags/{cc}.png，照 gh555.com CDN 国旗路径本地化）
+  // Windows Chromium 不渲染旗帜 emoji（显示成 CN 字母）→ 一律用图片
+  function _flagImg(cc) {
+    if (!cc || cc.length !== 2) return '';
+    var c = cc.toLowerCase();
+    return '<img src="assets/flags/' + c + '.png" width="20" height="15" ' +
+      'style="vertical-align:middle;border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,0.1);object-fit:cover;" ' +
+      'alt="" title="' + cc.toUpperCase() + '" onerror="this.remove()">';
+  }
+  // emoji → iso2 反解（剥离 FE0F 变体符/ZWJ/键帽等零宽修饰符后再反解）
+  function _emojiToIso2(emoji) {
+    if (!emoji) return '';
+    var pts = [];
+    for (var i = 0; i < emoji.length;) {
+      var cp = emoji.codePointAt(i);
+      if (cp !== 0xFE0F && cp !== 0x200D && cp !== 0x20E3) pts.push(cp);
+      i += cp > 0xFFFF ? 2 : 1;
+    }
+    if (pts.length < 2) return '';
+    var a = pts[0], b = pts[1];
+    if (a >= 0x1F1E6 && a <= 0x1F1FF && b >= 0x1F1E6 && b <= 0x1F1FF) {
+      return String.fromCharCode(a - 0x1F1E6 + 65, b - 0x1F1E6 + 65);
+    }
+    return '';
+  }
+  // ★ 排行榜 flag 归一：emoji 或 iso2 → 一律本地国旗图；无法识别 → 空（绝不原样渲染 emoji 文本）
+  function _leaderboardFlag(flag) {
+    var iso = _emojiToIso2(flag);
+    if (!iso && flag && /^[a-zA-Z]{2}$/.test(flag)) iso = flag.toUpperCase();
+    return iso ? _flagImg(iso) : '';
+  }
   function _renderCountryBadge(cc) {
     if (!cc || cc.length !== 2) return '';
     var upper = cc.toUpperCase();
-    // ★ 国旗 emoji：Unicode regional indicator  A=U+1F1E6
-    var flag = String.fromCodePoint(0x1F1E6 + (upper.charCodeAt(0) - 65), 0x1F1E6 + (upper.charCodeAt(1) - 65));
-    return '<span style="display:inline-flex;align-items:center;gap:2px;font-size:14px;line-height:16px;" title="' + upper + '">' + flag + '</span>';
+    return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:14px;line-height:16px;" title="' + upper + '">' + _flagImg(upper) + '</span>';
   }
 
   function _buildDeviceName() {
@@ -138,7 +183,8 @@
   }
 
   async function _httpsGet(urlPath) {
-    var resp = await fetch(API_BASE + urlPath, { method: 'GET', headers: { 'Accept': 'application/json' } });
+    var resp = await _apiFetch(urlPath, { method: 'GET', headers: { 'Accept': 'application/json' } });
+    if (!resp) throw new Error('HTTP all lines failed');
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
     return resp.json();
   }
@@ -170,10 +216,10 @@
     if (!force && now - _balanceLastFetch < BALANCE_POLL_MS) return;
     _balanceLastFetch = now;
     try {
-      var resp = await fetch(API_BASE + '/wallet/balance', {
+      var resp = await _apiFetch('/wallet/balance', {
         headers: { 'Authorization': 'Bearer ' + _authData.token }
       });
-      if (!resp.ok) return;
+      if (!resp || !resp.ok) return;
       var data = await resp.json();
       if (data && data.ok && typeof data.balance !== 'undefined') {
         _balanceGe = data.balance;
@@ -185,7 +231,9 @@
   function _updateGeLabel() {
     if (!_$geLabel) return;
     if (_balanceGe !== null && _balanceGe !== undefined) {
-      _$geLabel.textContent = Math.round(_balanceGe) + ' ge';
+      // ★ 2026-08-07: 余额数字用传统暗金色 #b58900（Solarized 黄），ge 后缀保持原色
+      // ★ 2026-08-07 F5: 数字放大 1px（12→13px），ge 后缀保持 12px
+      _$geLabel.innerHTML = '<span style="color:#b58900;font-size:13px;">' + Math.round(_balanceGe) + '</span> ge';
       _$geLabel.style.display = '';
     } else {
       _$geLabel.style.display = 'none';
@@ -234,9 +282,10 @@
   async function _fetchLv() {
     if (!_authData || !_authData.token) return;
     try {
-      var resp = await fetch(API_BASE + '/qqq/lv', {
+      var resp = await _apiFetch('/qqq/lv', {
         headers: { 'Authorization': 'Bearer ' + _authData.token }
       });
+      if (!resp) return;
       var data = await resp.json();
       if (data && data.ok) {
         _lvData = data;
@@ -493,7 +542,8 @@
       var e = list[i];
       var lvNum = parseFloat(e.level_str);
       var lvDisplay = isNaN(lvNum) ? e.level_str : (lvNum * 10).toFixed(4);
-      s += LDR_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', e.flag).replace('{phone}', e.phone)
+      var fl = _leaderboardFlag(e.flag);
+      s += LDR_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', fl).replace('{phone}', e.phone)
         .replace('{lv}', lvDisplay);
     }
     return s;
@@ -510,8 +560,8 @@
     var s = '';
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
-      var ge = typeof e.freebie_ge === 'number' ? e.freebie_ge.toFixed(1) : '0.0';
-      s += LDR_FREEBIE_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', e.flag).replace('{phone}', e.phone)
+      var fl = _leaderboardFlag(e.flag);
+      s += LDR_FREEBIE_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', fl).replace('{phone}', e.phone)
         .replace('{ge}', ge);
     }
     return s;
@@ -534,10 +584,10 @@
     var $right = document.getElementById('qqq-ldr-right');
     var seasonId = _getCurrentSeasonId();
 
-    fetch(API_BASE + '/qqq/leaderboard', {
+    _apiFetch('/qqq/leaderboard', {
       headers: { 'Authorization': 'Bearer ' + token }
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      if (d.ok) {
+    }).then(function (r) { return r ? r.json() : null; }).then(function (d) {
+      if (d && d.ok) {
         _ldrCache = {
           freebie: { data: d.freebie, seasonId: seasonId, ts: Date.now() },
           all_time: { data: d.all_time, seasonId: seasonId, ts: Date.now() },
@@ -1096,7 +1146,7 @@
         var cc = (_authData && _authData.countryIso2) ? _authData.countryIso2.toLowerCase() : '';
         _$phoneBtn.style.display = 'inline-flex';
         if (cc) {
-          _$phoneBtn.innerHTML = _renderCountryBadge(cc) + '<span style="margin-left:4px;">' + phoneTail + '</span>';
+          _$phoneBtn.innerHTML = _renderCountryBadge(cc) + '<span style="margin-left:4px;position:relative;top:1px;">' + phoneTail + '</span>';
         } else {
           _$phoneBtn.textContent = phoneTail;
         }
@@ -1117,9 +1167,10 @@
           if (snap.loggedIn && snap.phone) {
             // 中心大脑推送登录态 → 更新本地
             if (!_authData || _authData.phone !== snap.phone) {
+              // ★ 国旗竞态根治：重建时 countryIso2 仅在 snap 非空时覆盖，空推送不得清空已知国旗
               _authData = {
                 token: snap.token || '', phone: snap.phone, device_name: _buildDeviceName(), ts: Date.now(),
-                countryIso2: snap.countryIso2 || '', purchased: snap.purchased || false
+                countryIso2: snap.countryIso2 || (_authData && _authData.countryIso2) || '', purchased: snap.purchased || false
               };
             } else {
               if (snap.token) _authData.token = snap.token;

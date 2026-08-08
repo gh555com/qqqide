@@ -555,8 +555,18 @@
       if (e.target === _tierOverlay) _closeTierPopup();
     });
     _tierPanel = document.createElement('div');
+    _tierPanel.className = 'tier-popup-panel';
     _tierOverlay.appendChild(_tierPanel);
     document.body.appendChild(_tierOverlay);
+    // 自定义现代化无轨滚动块（窄 5px、轨道透明）+ 文字可选中复制（全局 user-select:none 需显式覆盖）
+    var _tierStyle = document.createElement('style');
+    _tierStyle.textContent = '.tier-popup-panel{user-select:text;-webkit-user-select:text;}' +
+      '.tier-popup-panel::-webkit-scrollbar{width:5px;height:5px;}' +
+      '.tier-popup-panel::-webkit-scrollbar-track{background:transparent;}' +
+      '.tier-popup-panel::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.35);border-radius:3px;}' +
+      '.tier-popup-panel::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,0.55);}' +
+      '.tier-popup-panel::-webkit-scrollbar-corner{background:transparent;}';
+    document.head.appendChild(_tierStyle);
   }
 
   window.openTierPopup = function() {
@@ -592,7 +602,7 @@
     var red = isDark ? '#ff4444' : '#dc322f';
 
     var _w = _tierExpanded ? '1040px' : '520px';
-    _tierPanel.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:' + _w + '; max-width:92vw; max-height:82vh; overflow-y:auto; z-index:9999; padding:0; border-radius:6px; box-shadow:0 8px 32px rgba(0,0,0,0.35); background:' + bg + ';';
+    _tierPanel.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); width:' + _w + '; max-width:92vw; max-height:82vh; overflow-y:auto; z-index:9999; padding:0; border-radius:6px; box-shadow:0 8px 32px rgba(0,0,0,0.35); background:' + bg + '; user-select:text; -webkit-user-select:text;';
 
     var html = '';
     // 标题行

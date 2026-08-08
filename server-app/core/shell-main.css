@@ -427,10 +427,21 @@
   user-select: none;
   -webkit-app-region: no-drag;
   transition: color .15s;
+  /* Windows 高对比度下也保持素雅次级色外观（不被强制调色） */
+  forced-color-adjust: none;
 }
 
-.qqq-status-sponsor:hover {
+/* 赞助商名称超链接 — 常态外观与「赞助商：」完全一致（继承同色），hover 变橙黄，永不下划线不显蓝 */
+.qqq-sponsor-link {
+  color: inherit;
+  text-decoration: none;
+  transition: color .15s;
+  forced-color-adjust: none;
+}
+
+.qqq-sponsor-link:hover {
   color: #d79921;
+  text-decoration: none;
 }
 
 /* ── 窄窗口退避：状态区恒一行，宽度变窄逐级隐藏非核心区块（shell-statusbar.js 加类） ── */
@@ -441,39 +452,52 @@
 .qqq-status-area.qqq-dense-4 #qqq-status-online,
 .qqq-status-area.qqq-dense-4 .qqq-gw-dots { display: none; }
 
-/* ── 活动豆腐块（清爽从2026 + 原料与基本权利） ── */
+/* ── 活动豆腐块（清爽从2026 + 原料与基本权利 + 2026,我,vibe coding） ── */
 .qqq-act-widget {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 3px 9px 3px 8px;
   margin-right: 10px;
-  border: 1px solid #268bd2;
+  border: 1px solid #3f96d8;
   border-radius: 6px;
-  box-shadow: 0 0 6px rgba(38, 139, 210, .28);
+  box-shadow: 0 0 6px rgba(63, 150, 216, .28);
   background: var(--bg-tertiary, rgba(128, 128, 128, 0.08));
   white-space: nowrap;
   user-select: none;
   -webkit-app-region: no-drag;
   transition: border-color .15s, box-shadow .15s;
+  /* Windows 高对比度/强制色彩下保留各活动专属边框色与发光 */
+  forced-color-adjust: none;
 }
 
-/* 三豆腐块外边框统一：同宽度 1px · 同圆角 6px · 同强度发光（常态微光 + hover 增强，仅颜色微差） */
+/*/* 三豆腐块外边框统一：同宽度 1px · 同圆角 6px · 同强度发光（常态微光 + hover 增强，仅颜色微差）
+   清爽蓝 #3f96d8（略淡）/ 原料淡红 #d98a86 / vibe 绿 #859900（清爽当年的满格绿，现归 vibe） */
 .qqq-act-widget.qqq-act-vibe {
-  border-color: #2aa198;
-  box-shadow: 0 0 6px rgba(42, 161, 152, .28);
+  border-color: #859900;
+  box-shadow: 0 0 6px rgba(133, 153, 0, .28);
+}
+
+/* 原料与基本权利 — 淡红边框，与另两活动颜色区分 */
+.qqq-act-widget.qqq-act-ge50 {
+  border-color: #d98a86;
+  box-shadow: 0 0 6px rgba(217, 138, 134, .28);
+}
+
+.qqq-act-widget.qqq-act-ge50:hover {
+  border-color: #d98a86;
+  box-shadow: 0 0 8px rgba(217, 138, 134, .45);
 }
 
 .qqq-act-widget:hover {
-  border-color: #268bd2;
-  box-shadow: 0 0 8px rgba(38, 139, 210, .45);
+  border-color: #3f96d8;
+  box-shadow: 0 0 8px rgba(63, 150, 216, .45);
 }
 
 .qqq-act-widget.qqq-act-vibe:hover {
-  border-color: #2aa198;
-  box-shadow: 0 0 8px rgba(42, 161, 152, .45);
+  border-color: #859900;
+  box-shadow: 0 0 8px rgba(133, 153, 0, .45);
 }
-
 .qqq-act-head {
   display: inline-flex;
   align-items: center;
@@ -494,6 +518,7 @@
   background: var(--bg-tertiary, #333);
   border-radius: 4px;
   overflow: hidden;
+  forced-color-adjust: none;
 }
 
 .qqq-act-fill {
@@ -503,6 +528,8 @@
   border-radius: 4px;
   background: linear-gradient(90deg, #268bd2, #2aa198);
   transition: width .6s;
+  /* 高对比度下保留渐变进度条（Windows 强制色彩会把 background-image 抹掉） */
+  forced-color-adjust: none;
 }
 
 .qqq-act-widget.qqq-act-cool .qqq-act-fill {
@@ -517,9 +544,8 @@
   background: linear-gradient(90deg, #268bd2, #2aa198);
 }
 
-/* 进度条充满 → 满格高亮 */
+/* 进度条充满 → 满格高亮（外边框颜色保持各活动专属色，仅增强发光） */
 .qqq-act-widget.qqq-act-done {
-  border-color: #859900;
   box-shadow: 0 0 8px rgba(133, 153, 0, .5);
 }
 
@@ -531,6 +557,14 @@
   background: linear-gradient(90deg, #d33682, #cb4b16);
 }
 
+/* vibe 倒计时前缀文字（「剩/距下次」）— 与赞助商文字 100% 同外观：
+   无 font-family（继承 body 默认 UI 字体，不落父级等宽）+ 11px + 次级色（赞助商同款） */
+.qqq-act-txt {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
 .qqq-act-num {
   font-size: 11px;
   font-family: ui-monospace, Consolas, monospace;
@@ -538,7 +572,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* vibe 倒计时前缀文字（「剩/距下次」）— 与赞助商文字同外观：常规 UI 字体 + 11px + 次级色 */
+/* vibe 前缀继承 body 默认 UI 字体（不落等宽），与赞助商文字同外观 */
 .qqq-act-vibe .qqq-act-txt {
   font-family: inherit;
 }
@@ -557,6 +591,7 @@
   pointer-events: none;
   white-space: nowrap;
   display: none;
+  forced-color-adjust: none;
 }
 
 

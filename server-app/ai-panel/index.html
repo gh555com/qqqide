@@ -285,8 +285,8 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 #input-row{display:flex;gap:0;overflow:hidden;margin:0 -8px 0 -8px}
 /* ── 开放厨房：键入框无边框，仅底边进度条 ── */
 #input-wrap{position:relative;flex:1;min-width:0}
-/* newline-btn: 悬浮于键入区右下角，ctx-btn 上方 */
-#newline-btn{position:absolute;right:20px;bottom:33px;z-index:10;width:24px;height:18px;border:1px solid var(--border-color);border-radius:4px;background:rgba(128,128,128,0.12);color:var(--text-primary);font-size:14px;font-weight:700;line-height:16px;text-align:center;cursor:pointer;opacity:0.35;transition:opacity 0.15s;user-select:none;padding:0;font-family:monospace}
+/* newline-btn: 编辑框外右上角（子弹按钮上方，贴近编辑框顶边） */
+#newline-btn{position:absolute;right:18px;top:-20px;z-index:10;width:24px;height:18px;border:1px solid var(--border-color);border-radius:4px;background:rgba(128,128,128,0.12);color:var(--text-primary);font-size:14px;font-weight:700;line-height:16px;text-align:center;cursor:pointer;opacity:0.35;transition:opacity 0.15s;user-select:none;padding:0;font-family:monospace}
 #newline-btn:hover{opacity:0.75;background:rgba(128,128,128,0.20)}
 #newline-btn:active{opacity:0.9;background:var(--base2)}
 #input{display:block;width:100%;background:var(--card-bg);color:var(--text-primary);border:none;border-radius:0;padding:5px 10px;font-size:13px;font-family:inherit;min-height:33px;max-height:333px;overflow-y:hidden;overflow-x:hidden;resize:none;outline:none;scrollbar-width:thin;scrollbar-color:var(--base01) transparent;line-height:1.5}#input::-webkit-scrollbar{width:3px}#input::-webkit-scrollbar-track{background:transparent;border:none}#input::-webkit-scrollbar-thumb{background:var(--base01);border-radius:0}#input::-webkit-scrollbar-button{display:none}#input::-webkit-scrollbar-corner{background:transparent}

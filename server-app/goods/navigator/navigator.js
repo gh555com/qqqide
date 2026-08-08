@@ -4,7 +4,9 @@
 // qoods/navigator/navigator.js
 // Quick-jump file navigator. Press Ctrl+P to open, type to fuzzy-filter
 // recent files, Enter to open in editor.
-// Recent list persisted to only.sq3 (项目资产，随项目迁移).
+// Recent list persisted to OS 级 ai.sq3 (2026-08-07 F3): key=文件绝对路径
+//   → 偏好属于文件本身，跨主文件夹/跨绿色包/跨窗口一致。
+//   旧数据在 only.sq3 (项目级) → 首次启动自动迁移。
 // ============================================================================
 
 (function () {
@@ -31,13 +33,46 @@
     return window.qgs.project(root + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
   }
 
-  // 异步初始化：从 only.sq3 加载缓存
-  (async function _initRecent() {
-    var db = _onlyDb();
-    if (!db) return;
+  var RECENT_KEY = 'navigator.recent';
+
+  // ★ OS 级持久化桥 (ai.sq3) — 主通道
+  function _osBridge() {
     try {
-      var v = await db.get('navigator.recent');
-      if (Array.isArray(v)) _recentCache = v;
+      var b = window.qqqideBridge && window.qqqideBridge.aiState;
+      if (b && typeof b.get === 'function') return b;
+    } catch (_) { }
+    return null;
+  }
+
+  // 异步初始化：OS 级 ai.sq3 为主，旧 only.sq3 数据自动迁移
+  (async function _initRecent() {
+    var os = _osBridge();
+    if (os) {
+      try {
+        var v = await os.get(RECENT_KEY);
+        if (Array.isArray(v)) { _recentCache = v; _recentLoaded = true; return; }
+      } catch (_) { }
+      // ★ 迁移：OS 无数据 → 读旧 only.sq3 → 写入 OS → 删旧 key
+      var db = _onlyDb();
+      if (db) {
+        try {
+          var old = await db.get(RECENT_KEY);
+          if (Array.isArray(old) && old.length) {
+            _recentCache = old;
+            os.set(RECENT_KEY, old).catch(function () { });
+            if (db.del) { try { await db.del(RECENT_KEY); } catch (_) { } }
+          }
+        } catch (_) { }
+      }
+      _recentLoaded = true;
+      return;
+    }
+    // 降级：无 OS 桥（浏览器 dev）→ 旧 only.sq3
+    var db = _onlyDb();
+    if (!db) { _recentLoaded = true; return; }
+    try {
+      var v2 = await db.get(RECENT_KEY);
+      if (Array.isArray(v2)) _recentCache = v2;
     } catch (_) { }
     _recentLoaded = true;
   })();
@@ -46,9 +81,21 @@
 
   function _saveRecent(list) {
     _recentCache = list;
+    var os = _osBridge();
+    if (os) { os.set(RECENT_KEY, list).catch(function () { }); return; }
     var db = _onlyDb();
-    if (db) db.set('navigator.recent', list).catch(function () { });
+    if (db) db.set(RECENT_KEY, list).catch(function () { });
   }
+
+  // ★ 跨窗口同步: 其他窗口写入 OS ai.sq3 → 广播 → 本窗口缓存跟随
+  (function _syncRecent() {
+    var b = _osBridge();
+    if (b && b.onChanged) {
+      b.onChanged(function (msg) {
+        if (msg && msg.key === RECENT_KEY && Array.isArray(msg.value)) _recentCache = msg.value;
+      });
+    }
+  })();
 
   function pushRecent(p) {
     if (!p) return;

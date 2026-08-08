@@ -18,6 +18,7 @@ __pycache__/
 
 # Rust 编译产物
 ghrun/target/
+ghrun/.cargo/
 
 # Electron 构建缓存
 shell-build/_cache/
