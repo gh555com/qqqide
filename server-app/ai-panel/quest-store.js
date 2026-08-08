@@ -272,6 +272,10 @@ var QuestStore = (function () {
                 //   _syncIndexFromFs 只对 "新发现" 的 quest 更新 counter，
                 //   若所有 quest 均在索引中则跳过 → counter 可能长期偏低而不被发现
                 _healCounterFromIndex();
+                // ★ 根因修复（2026-08-08）：floor_counter 启动对账
+                //   计数器仅作建议值，磁盘是最终仲裁者 — 每 quest 扫盘取最大楼层号，
+                //   counter < max+1 时提升（q147 事故：counter 与磁盘脱节 → 分配已存在编号）
+                await _healFloorCounters();
             } catch (e) {
                 console.warn('[quest-store] _ensureIndex failed:', e && e.message);
                 if (!_idx()) _setIdx([]);
@@ -303,6 +307,36 @@ var QuestStore = (function () {
             }
         } catch (e) {
             console.warn('[quest-store] _healIndex seed failed:', e && e.message);
+        }
+    }
+
+    // ★ 根因修复（2026-08-08）：floor_counter 启动对账（仅主面板，一次扫盘）
+    //   磁盘最大楼层号 + 1 为下限；防计数器长期脱节（repair 改名 / 手动复制 quest 目录）
+    async function _healFloorCounters() {
+        var b = _bridge();
+        if (!b || !_rootDir || !_isMainPanel) return;
+        var bf = _bridgeFs();
+        if (!bf) return;
+        var idx = _idx() || [];
+        for (var i = 0; i < idx.length; i++) {
+            var e = idx[i];
+            try {
+                var qDirName = _questDirCache[e.id] || await _resolveQuestDirName(e.id);
+                if (!qDirName) continue;
+                var entries = await _safeList(_rootDir + '/_qqq/quests/' + qDirName);
+                var maxN = 0;
+                for (var j = 0; j < entries.length; j++) {
+                    var m = entries[j].name.match(/^f(\d+)\./);
+                    if (m) { var n = parseInt(m[1], 10); if (n > maxN) maxN = n; }
+                }
+                if (maxN <= 0) continue;
+                var key = 'floor_counter.' + e.id;
+                var cur = await b.get(key);
+                if (typeof cur === 'number' && maxN + 1 > cur) {
+                    await b.setNow(key, maxN + 1);
+                    console.log('[quest-store] _healFloorCounters: ' + key + ' ' + (cur || 0) + ' → ' + (maxN + 1));
+                }
+            } catch (_) { }
         }
     }
 
@@ -648,6 +682,35 @@ var QuestStore = (function () {
 
                 if (floorFixed > 0) console.log('[quest-store] repairDuplicateIds: floorFixed=' + floorFixed + ' floorFailed=' + floorFailed);
 
+                // ★ 同步 floor_counter：楼层改名后计数器可能低于磁盘最大编号
+                //   （q147 事故根因链：repair 改名 f97→f98 后 counter 停在 97 → 下次建楼又分配 97 → 碰撞）
+                //   改完立即把 counter 提升到 max(磁盘最大号)+1，从源头消除下一次碰撞。
+                var _fcKeys = Object.keys(questsWithFloorFix);
+                var _fcBridge = _bridge();
+                for (var _fci = 0; _fci < _fcKeys.length; _fci++) {
+                    var _fcQid = _fcKeys[_fci];
+                    try {
+                        var _fcDirName = await _resolveQuestDirName(_fcQid);
+                        if (!_fcDirName) continue;
+                        var _fcList = await _safeList(_rootDir + '/_qqq/quests/' + _fcDirName);
+                        var _fcMax = 0;
+                        for (var _fei = 0; _fei < _fcList.length; _fei++) {
+                            var _fem = _fcList[_fei].name.match(/^f(\d+)\./);
+                            if (_fem) {
+                                var _fnv = parseInt(_fem[1], 10);
+                                if (_fnv > _fcMax) _fcMax = _fnv;
+                            }
+                        }
+                        if (_fcMax > 0) {
+                            var _fcCur = (await _fcBridge.get('floor_counter.' + _fcQid)) || 0;
+                            if (typeof _fcCur === 'number' && _fcMax + 1 > _fcCur) {
+                                await _fcBridge.setNow('floor_counter.' + _fcQid, _fcMax + 1);
+                                console.log('[quest-store] repairDuplicateIds: floor_counter.' + _fcQid + ' synced ' + _fcCur + ' → ' + (_fcMax + 1));
+                            }
+                        }
+                    } catch (_) { }
+                }
+
                 // ★ 清空楼层修过的 quest 的 sq3 数据（旧 floor 编号已失效 → 下次 loadAllFloors 自动重建）
                 var sq3Cleaned = 0;
                 var b2 = _bridge();
@@ -969,6 +1032,17 @@ var QuestStore = (function () {
                             var fk = questId + '\x00' + fm[1];
                             if (!_floorDirCache[fk]) {
                                 _floorDirCache[fk] = qDirPath + '/' + list[i].name + '/';
+                            } else {
+                                // ★ 同号多目录（历史碰撞残留）→ 保留 mtime 最新者，读路径不读旧数据
+                                var _dupPath = qDirPath + '/' + list[i].name + '/';
+                                try {
+                                    var _stOld = await bf.stat(_floorDirCache[fk]);
+                                    var _stNew = await bf.stat(_dupPath);
+                                    if (_stNew && (!_stOld || (_stNew.mtime || 0) > (_stOld.mtime || 0))) {
+                                        _floorDirCache[fk] = _dupPath;
+                                    }
+                                } catch (_) { }
+                                console.warn('[quest-store] _resolveFloorDir: DUPLICATE floor dir f' + fm[1] + ' in ' + qDirName + ' — kept newest mtime');
                             }
                         }
                     }
@@ -1026,10 +1100,19 @@ var QuestStore = (function () {
         try {
             var bf = _bridgeFs();
             if (!bf) return false;
-            var fDir = await _resolveFloorDir(questId, floorNum);
+            // ★ 精确路径优先：本楼层创建者记录的 _fDir（防同号多目录历史残留时模糊匹配写错位置）
+            var fDir = null;
+            if (floorData && typeof floorData._fDir === 'string' && floorData._fDir) {
+                var _baseDir = floorData._fDir.replace(/\\/g, '/');
+                if (new RegExp('(^|/)f' + floorNum + '\\.').test(_baseDir)) fDir = _baseDir;
+            }
+            if (!fDir) fDir = await _resolveFloorDir(questId, floorNum);
             if (!fDir) return false;
             _floorDirCache = _floorDirCache || {};
+            // ★ 双键写入：写入路径与 _resolveFloorDir 读取路径同键（\x00），
+            //   写完即缓存 → 后续读回同一目录（防同号双目录时读回旧目录）
             _floorDirCache[questId + '.' + floorNum] = fDir;
+            _floorDirCache[questId + '\x00' + floorNum] = fDir;
             // ★ 原子写入: tmp → rename，防断电/崩溃导致 all.json 半写损坏（§33）
             var dest = fDir + 'all.json';
             var tmp = dest + '.tmp.' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
@@ -1055,11 +1138,41 @@ var QuestStore = (function () {
         } catch (_) { /* best-effort */ }
     }
 
-    // 分配下一个 floor 号（原子自增，每 quest 独立计数器）
+    // 分配下一个 floor 号（原子自增 + 磁盘去重验证，零碰撞）
+    // ★ 根因修复（2026-08-08 q147 f97/f98 事故）：
+    //   旧实现裸 atomicIncr — 计数器与磁盘脱节（repairDuplicateIds 改名不更新 counter /
+    //   loadAllFloors 对账不 heal / sq3 重建不种子 floor_counter）→ 分配已存在编号
+    //   → 同号双目录 → _resolveFloorDir 模糊匹配写错位置 → json/txt 分家 → 面板无响应。
+    //   新实现：自增后验证磁盘 f{n}. 前缀空闲，冲突则继续自增（计数器自动追上磁盘）。
+    //   磁盘 = 编号最终仲裁者；sq3 计数器只是建议值，永不产生重复目录。
     QuestStore.prototype.nextFloorNum = async function (questId) {
         var b = _bridge();
         if (!b) throw new Error('quest-store: no bridge');
-        return await b.atomicIncr('floor_counter.' + questId);
+        var bf = _bridgeFs();
+        var qDirName = null;
+        var MAX_ALLOC = 1000;
+        for (var _alloc = 0; _alloc < MAX_ALLOC; _alloc++) {
+            var n = await b.atomicIncr('floor_counter.' + questId);
+            if (!bf || !_rootDir) return n;  // 无 fs 环境（dev fallback）→ 信任计数器
+            if (!qDirName) {
+                qDirName = await _resolveQuestDirName(questId);
+                if (!qDirName) return n;  // quest 目录尚未创建（首次建楼前）→ 无碰撞可能
+            }
+            var _qDirPath = _rootDir + '/_qqq/quests/' + qDirName;
+            var _collision = false;
+            try {
+                var entries = await _safeList(_qDirPath);
+                for (var ei = 0; ei < entries.length; ei++) {
+                    if (entries[ei].isDir && entries[ei].name.indexOf('f' + n + '.') === 0) {
+                        _collision = true;
+                        console.warn('[quest-store] nextFloorNum: collision f' + n + ' already on disk (' + entries[ei].name + ') — counter behind disk, skipping');
+                        break;
+                    }
+                }
+            } catch (_) { return n; }  // list 失败 → 无法验证 → 信任计数器（原行为兜底）
+            if (!_collision) return n;
+        }
+        throw new Error('nextFloorNum: cannot allocate free floor number for ' + questId + ' after ' + MAX_ALLOC + ' attempts');
     };
 
     // 保存楼层 — all.json 真理源 + sq3 轻量索引

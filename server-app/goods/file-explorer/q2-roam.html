@@ -50,16 +50,16 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .sidebar-resizer:hover { background-color: var(--base1); width: calc(var(--sidebar-resizer-width) * 1.5); }
 .sidebar-resizer.active { background-color: var(--base00); width: calc(var(--sidebar-resizer-width) * 1.5); }
 
-.nav-item { appearance: none; -webkit-appearance: none; padding: 8px 10px; border: none; background: none; width: 100%; text-align: left; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; display: block; font-family: Tahoma; font-size: 13px; }
+.nav-item { appearance: none; -webkit-appearance: none; padding: 8px 4px;   /* 左移 6px 贴边 */ border: none; background: none; width: 100%; text-align: left; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; display: block; font-family: Tahoma; font-size: 13px; }
 .nav-item:hover { background-color: var(--bg-highlight); }
 .nav-item.active { background-color: var(--base1); color: var(--base3); }
 .qq-iq-section { padding: 0; margin: 0; border: none; overflow-y: scroll; flex: 1; min-height: 0; scrollbar-width: none; }
-.qq-item { padding: 3px 10px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; width: 100%; box-sizing: border-box; display: flex; align-items: center; }
+.qq-item { padding: 3px 4px;    /* 左移 6px 贴边 */ color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; width: 100%; box-sizing: border-box; display: flex; align-items: center; }
 .qq-item .qq-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .qq-dir { padding: 0; position: relative; }
-.qq-dir .qq-text { padding: 3px 10px; transition: background-color 0.1s; }
+.qq-dir .qq-text { padding: 3px 4px;    /* 左移 6px 贴边 */ transition: background-color 0.1s; }
 .qq-dir .qq-text:hover { background-color: var(--bg-highlight); }
-.qq-file { padding-left: 18px; }
+.qq-file { padding-left: 12px; }   /* 左移 6px（保持与 qq-dir 相对缩进 8px） */
 .qq-file:hover { background-color: var(--bg-highlight); }
 .qq-dir .pin-icon { flex-shrink: 0; padding: 3px 10px; cursor: pointer; transition: background-color 0.15s; color: var(--icon-subtle); display: flex; align-items: center; }
 .qq-dir .pin-icon:hover { background-color: var(--gold-accent-bg); }
@@ -223,7 +223,7 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 </div>
 <div id="itemContextMenu" class="context-menu">
 	<div class="context-menu-item" data-action="ai"><span>AI</span><span class="context-menu-shortcut">= "a"</span></div>
-	<div class="context-menu-item" data-action="code"><span>code</span><span class="context-menu-shortcut">= "q"</span></div>
+	<div class="context-menu-item" data-action="code"><span>open in qqqide</span><span class="context-menu-shortcut">= "q"</span></div>
 	<div class="context-menu-item" data-action="open"><span>open</span><span class="context-menu-shortcut">= "w"</span></div>
 	<div class="context-menu-item" data-action="delete"><span>delete</span><span class="context-menu-shortcut">= "d"</span></div>
 	<div class="context-menu-item" data-action="rename"><span>rename</span><span class="context-menu-shortcut">= "e"</span></div>

@@ -726,23 +726,22 @@ window._shHandleMenuCmd = function handleMenuCmd(cmd) {
     return;
   }
   if (cmd === 'window.activateRoam') {
-    // ① Activate Roam tab in X-zone gaea group
+    // F100 诊断：加 console 可见 + qoast 反馈，确认 handler 是否被调用
+    console.log('[shell-menu] activateRoam fired');
     var gaeaGrp = window.qqqTabs && window.qqqTabs.getGaeaGroup ? window.qqqTabs.getGaeaGroup() : null;
+    console.log('[shell-menu] gaeaGrp:', !!gaeaGrp);
     if (gaeaGrp) {
       var roamTab = gaeaGrp.tabs.find(function (t) { return t.gaeaId === 'roam'; });
-      if (roamTab) {
-        gaeaGrp.tabs.forEach(function (t) {
-          if (t.btnEl) t.btnEl.classList.toggle('active', t === roamTab);
-          if (t.paneEl) t.paneEl.classList.toggle('active', t === roamTab);
-        });
-        gaeaGrp.activeTabId = roamTab.id;
-        // Fire onActivate callback (same as activateTab)
-        if (roamTab.onActivate) roamTab.onActivate(roamTab);
+      console.log('[shell-menu] roamTab:', !!roamTab, 'activeTabId:', gaeaGrp.activeTabId, 'tabs:', gaeaGrp.tabs.length);
+      if (roamTab && window.qqqTabs.activateTab) {
+        window.qqqTabs.activateTab(gaeaGrp, roamTab.id);
+        console.log('[shell-menu] activateTab called for roam tab', roamTab.id);
       }
     }
-    // ② Focus the iframe so Roam receives keyboard input
     var it = document.querySelector('iframe[src*="q2-roam"]');
+    console.log('[shell-menu] roam iframe:', !!it);
     if (it && it.contentWindow) { try { it.contentWindow.focus(); } catch (e) { } }
+    if (window.qqqideQoast) window.qqqideQoast.show('Roam activated', { type: 'info', duration: 2000 });
     return;
   }
   if (cmd === 'roam.openInIde' || cmd === 'roam.openMedia' ||

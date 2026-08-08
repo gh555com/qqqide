@@ -186,6 +186,11 @@
           // All workers: use workerMain.js.
           window.MonacoEnvironment = {
             getWorker: function (workerId, label) {
+              // LSP OFF（铁律 §5.1）：诊断/补全/悬浮全禁 → TS/JS 语言服务 worker 零职责。
+              // stub 返回 → 杜绝 tsMode 对 file:///e%3A 百分号编码 URI 解析失败噪音（F4 根治）
+              if (label === 'typescript' || label === 'javascript') {
+                return { postMessage: function () {}, terminate: function () {}, addEventListener: function () {} };
+              }
               var workerUrl = 'qqqide-asset://monaco/vs/base/worker/workerMain.js';
               // [silent] monaco-worker
               return new Worker(workerUrl);
@@ -1325,6 +1330,12 @@
     insertAtCursor(text) { if (editor && editor.insertAtCursor) { editor.insertAtCursor(text); } },
     getMonaco() { return _monacoRef; },
     getEditorInstance() { return _editorRef; },
+    // ★ 按文件路径取编辑器实例（搜索跳转/位置还原用）：面板编辑器优先，主编辑器兜底
+    getEditorForFile(filePath) {
+      var ed = _paneEditors[filePath];
+      if (!ed && _editorRef && currentFile === filePath) ed = _editorRef;
+      return ed || null;
+    },
     refreshLiveContent,
     isBinaryFile,
     isBinaryFileAsync,

@@ -532,8 +532,12 @@
   forced-color-adjust: none;
 }
 
+/* 进度条与边框同色系（2026-08-08 清爽/vibe 进度条配色互换）:
+   清爽 蓝边框 → 蓝渐变 #268bd2→#2aa198
+   vibe 绿边框 → 绿黄渐变 #2aa198→#859900
+   原料 紫黄渐变 #6c71c4→#b58900 不变 */
 .qqq-act-widget.qqq-act-cool .qqq-act-fill {
-  background: linear-gradient(90deg, #2aa198, #859900);
+  background: linear-gradient(90deg, #268bd2, #2aa198);
 }
 
 .qqq-act-widget.qqq-act-ge50 .qqq-act-fill {
@@ -541,7 +545,7 @@
 }
 
 .qqq-act-widget.qqq-act-vibe .qqq-act-fill {
-  background: linear-gradient(90deg, #268bd2, #2aa198);
+  background: linear-gradient(90deg, #2aa198, #859900);
 }
 
 /* 进度条充满 → 满格高亮（外边框颜色保持各活动专属色，仅增强发光） */
@@ -549,7 +553,8 @@
   box-shadow: 0 0 8px rgba(133, 153, 0, .5);
 }
 
-.qqq-act-widget.qqq-act-done .qqq-act-fill {
+/* 满格渐变归 vibe（绿黄高亮），清爽满格保持蓝渐变（同正常态，靠发光+✓区分） */
+.qqq-act-widget.qqq-act-vibe.qqq-act-done .qqq-act-fill {
   background: linear-gradient(90deg, #859900, #b58900);
 }
 

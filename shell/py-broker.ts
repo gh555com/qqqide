@@ -19,6 +19,12 @@ import { isNodeBrokerAvailable, renameDevToolsViaNodeBroker } from './node-broke
 
 let _proc: ChildProcess | null = null;
 let _pending: Map<number, { resolve: (r: any) => void; reject: (e: any) => void; timer: NodeJS.Timeout }> = new Map();
+let _eventHandler: ((ev: any) => void) | null = null;
+
+/** 注册 py-broker 主动事件回调（如编队热键召唤 summon） */
+export function setPyBrokerEventHandler(fn: ((ev: any) => void) | null): void {
+    _eventHandler = fn;
+}
 let _nextId = 1;
 let _ready = false;
 let _readyError: string | null = null;
@@ -71,6 +77,8 @@ export function startPyBroker(portableRoot: string): void {
                     _ready = true;
                     _readyError = null;
                     console.log('[py-broker] ready, platform=' + msg.platform);
+                } else if (msg.type === 'event') {
+                    try { if (_eventHandler) { _eventHandler(msg); } } catch { /* ignore */ }
                 } else if (msg.id && _pending.has(msg.id)) {
                     const p = _pending.get(msg.id)!;
                     clearTimeout(p.timer);

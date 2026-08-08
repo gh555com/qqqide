@@ -753,7 +753,9 @@
       var line = _paneOpts.line, col = _paneOpts.col || 1, search = _paneOpts.search || '';
       window._nextPaneOpts = null;
       setTimeout(function () {
-        var ed = window.qqqEditor && window.qqqEditor.getEditorInstance();
+        // ★ 取目标文件对应的编辑器（面板编辑器优先）——getEditorInstance 只返回全局首个编辑器，
+        //   文件已打开时会对错误的编辑器 setPosition → 跳转失效（用户需关闭标签重开才生效）
+        var ed = window.qqqEditor && (window.qqqEditor.getEditorForFile ? window.qqqEditor.getEditorForFile(filePath) : window.qqqEditor.getEditorInstance());
         if (!ed || !ed.getModel) return;
         var model = ed.getModel();
         if (!model) return;

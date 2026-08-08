@@ -103,3 +103,12 @@ export function registerAudioIpc(engine: AudioEngine, appRoot: string): void {
         } catch { /* ignore */ }
     }, 3000);
 }
+
+/** 主进程直呼音效（编队召唤成功反馈等）— 与 qqqide:audio:play 同一路径解析 */
+export function playSfxFile(engine: AudioEngine, appRoot: string, file: string, volume = 1.0): void {
+    try {
+        const abs = resolveSfxPath(appRoot, String(file || ''));
+        if (!abs) { return; }
+        engine.invoke('play_sfx', { path: abs, volume }, 5000).catch(() => { /* ignore */ });
+    } catch { /* ignore */ }
+}

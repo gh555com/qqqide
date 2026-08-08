@@ -118,7 +118,9 @@ const QQQ = {
         unmaximize: () => ipcRenderer.invoke('qqqide:window:unmaximize'),
         close: () => ipcRenderer.invoke('qqqide:window:close'),
         closeConfirmed: () => ipcRenderer.invoke('qqqide:window:close-confirmed'),
+        closeConfirmDismissed: () => ipcRenderer.invoke('qqqide:window:close-confirm-dismissed'),
         onCloseConfirm: (cb: () => void) => { const h = () => { try { cb(); } catch (_) {} }; ipcRenderer.on('qqqide:confirm-close', h); return () => ipcRenderer.removeListener('qqqide:confirm-close', h); },
+        onCloseConfirmDismiss: (cb: () => void) => { const h = () => { try { cb(); } catch (_) {} }; ipcRenderer.on('qqqide:confirm-close-dismiss', h); return () => ipcRenderer.removeListener('qqqide:confirm-close-dismiss', h); },
         isMaximized: () => ipcRenderer.invoke('qqqide:window:isMaximized'),
         setTitle: (s: string) => ipcRenderer.invoke('qqqide:window:setTitle', s),
         toggleDevTools: () => ipcRenderer.invoke('qqqide:window:toggleDevTools'),
@@ -536,6 +538,17 @@ const QQQ = {
             const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[roam.onChanged]', err); } };
             ipcRenderer.on('qqqide:roam:changed', handler);
             return () => ipcRenderer.removeListener('qqqide:roam:changed', handler);
+        },
+    },
+
+    // ---- squad (窗口编队, OS 级 %LOCALAPPDATA%/qqqide/squads.json) ----
+    squad: {
+        get: () => ipcRenderer.invoke('qqqide:squad:get'),
+        set: (slot: string) => ipcRenderer.invoke('qqqide:squad:set', slot),
+        onChanged: (cb: () => void) => {
+            const handler = () => { try { cb(); } catch (err) { console.warn('[squad.onChanged]', err); } };
+            ipcRenderer.on('qqqide:squad:changed', handler);
+            return () => ipcRenderer.removeListener('qqqide:squad:changed', handler);
         },
     },
 

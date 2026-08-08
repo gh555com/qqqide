@@ -47,7 +47,7 @@ import { registerSmartSearchIpc, IndexService } from './ipc-smart-search';
 import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
 import { checkRank0Components } from './component-checker';
-import { startPyBroker, stopPyBroker } from './py-broker';
+import { startPyBroker, stopPyBroker, setPyBrokerEventHandler } from './py-broker';
 import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart, getGoodsSetting, setGoodsSetting, getAllGoodsSettings, startOsStateWatch } from './gaea-process';
 import { registerKopeIpc } from './ipc-kope';
 import { registerRoamIpc } from './ipc-roam';
@@ -60,7 +60,8 @@ import { initAuthBrain, registerAuthBrainIpc, getAuthBrain } from './auth-brain'
 // ── 服务 ──
 
 import { AudioEngine } from './audio-engine';
-import { registerAudioIpc } from './ipc-audio';
+import { registerAudioIpc, playSfxFile } from './ipc-audio';
+import { registerSquadIpc } from './ipc-squads';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 import { MonacoHost } from './monaco-host';
 import { QzSpawn, registerQzSpawnIpc } from './qz-spawn';
@@ -277,6 +278,7 @@ function registerAllIpc(): void {
     registerMediaIpc(mediaService);
     registerAuthBrainIpc(getAuthBrain());
     registerDesktopShortcutIpc();
+    registerSquadIpc();
 }
 
 // ── 桌面快捷方式 IPC — PowerShell COM 创建/删除 .lnk（2026-07-28 v2 修复路径） ──
@@ -495,6 +497,15 @@ app.whenReady().then(async () => {
     // ★ Python broker: 仅当已安装时启动（未安装则下次启动自动下载后再启）
     startPyBroker(portable.root);
 
+    // ★ 编队热键事件（py-broker 常驻 pynput 监听 Space+key）→ 召回成功播放 kj3 音效
+    setPyBrokerEventHandler((ev: any) => {
+        if (!ev || ev.event !== 'summon') { return; }
+        try { console.log('[squad] summon', ev.squad, ev.ok ? 'OK' : 'miss', ev.folder || ''); } catch { /* ignore */ }
+        if (ev.ok) {
+            try { playSfxFile(audioEngine, portable.root, 'yz:kj3.mp3'); } catch (e) {}
+        }
+    });
+
     // ★ Gaea process auto-start: 遍历所有注册的 process-type goods
     (async () => {
         try {
@@ -544,19 +555,16 @@ app.whenReady().then(async () => {
     // ★ 检查是否由 qqqide:// 协议启动（登录推送用）
     checkStartupAuthUrl();
 
-    // Main window closed → stop engine + destroy child windows
+    // ★ 主窗口关闭：不再连带销毁其他项目窗口（多窗口相互独立，2026-08-08 修复全窗关闭事故）
+    //   音频/gaea/ping 清理仅在最后一个窗口关闭时执行（window-all-closed → quit 同刻）
     mainWindow.on('closed', () => {
-        try {
-            const all = BrowserWindow.getAllWindows();
-            all.forEach(w => {
-                if (!w.isDestroyed() && w !== mainWindow) { try { w.destroy(); } catch { /* ignore */ } }
-            });
-        } catch { /* ignore */ }
-        
-        try { audioEngine.stop(); } catch { /* ignore */ }
-        try { cleanupAllGaeaProcesses(); } catch { /* ignore */ }
-        try { stopWqPing(); } catch { /* ignore */ }
         mainWindow = null;
+        const alive = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed());
+        if (alive.length === 0) {
+            try { audioEngine.stop(); } catch { /* ignore */ }
+            try { cleanupAllGaeaProcesses(); } catch { /* ignore */ }
+            try { stopWqPing(); } catch { /* ignore */ }
+        }
     });
 
     // Register IPC (after window exists)

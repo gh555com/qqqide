@@ -850,8 +850,8 @@ function updateCompressBtns() {
         var el = document.getElementById(labels[k]);
         if (!el) continue;
         var ch = bf[k] || 0;
-        el.textContent = ch > 0 ? (' -' + _fmtBenefit(ch)) : '';
-        el.className = 'cmp-benefit' + (ch < 300 ? ' zero' : (ch < 12000 && k === 'onlyfacts' ? ' low' : ''));
+        el.textContent = ch > 0 ? ('-' + _fmtBenefit(ch)) : '';
+        el.className = 'cmp-benefit' + (ch < 300 ? ' zero' : (ch < 32000 && k === 'onlyfacts' ? ' low' : ''));
     }
 }
 

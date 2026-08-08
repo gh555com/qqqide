@@ -20,6 +20,7 @@ import { UpdateService } from './update-service';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
 import { renameDevToolsViaBroker, isPyBrokerReady } from './py-broker';
 import { _consoleBuffer } from './window-manager';
+import { refreshWindowEntry } from './squad-manager';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 import { HashService } from './hash-service';
 import { CacheStore } from './cache-store';
@@ -314,19 +315,29 @@ ${escapedPaths}
         if (win && !win.isDestroyed()) { win.close(); }
     });
     // ★ 关闭确认回调：renderer 弹窗确认后调用，绕过 close 事件
-    // ★ win.destroy() 只销毁当前窗口，不影响其他项目窗口（每个 BrowserWindow 独立）
+    // ★ close() 而非 destroy()：触发 renderer beforeunload → 面板/视口/草稿持久化刷盘
+    //   （destroy() 跳过 beforeunload → 持久化 100% 丢失；bypass 标记让 close 直接放行，只关本窗口）
     ipcMain.handle('qqqide:window:close-confirmed', (e) => {
         const win = BrowserWindow.fromWebContents(e.sender);
         if (win && !win.isDestroyed()) {
+            (win as any).__qqqConfirmArmed = false;
             bypassCloseConfirm(win);
-            win.destroy();
+            win.close();
         }
     });
+
+    // ★ 确认框取消/遮罩点击/Esc 实际隐藏后 → 解除键盘武装（防后续 Enter 误关）
+    ipcMain.handle('qqqide:window:close-confirm-dismissed', (e) => {
+        const win = BrowserWindow.fromWebContents(e.sender);
+        if (win) { (win as any).__qqqConfirmArmed = false; }
+    });
     ipcMain.handle('qqqide:window:isMaximized', (e) => BrowserWindow.fromWebContents(e.sender)?.isMaximized() ?? false);
+    // ★ 标题唯一权威 = squad-manager: 自动加编队前缀 x■（无编队窗口纯文件夹名）
     ipcMain.handle('qqqide:window:setTitle', (e, s: string) => {
         const win = BrowserWindow.fromWebContents(e.sender);
         if (!win) return;
-        win.setTitle(String(s));
+        const folder = _windowProjectMap.get(win.id) || '';
+        refreshWindowEntry(win, folder, String(s));
     });
     ipcMain.handle('qqqide:window:toggleDevTools', (e) => {
         const win = BrowserWindow.fromWebContents(e.sender);

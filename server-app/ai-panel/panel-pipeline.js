@@ -360,9 +360,15 @@ async function _executeSend(intent) {
         agent._aiStartTime = _fmtTime(new Date());
         // ★ 压缩楼层强制 tier 4：标签用 intent.tierIndex，而非 selectedTier（否则显示 A6）
         agent._aiTierLabel = 'A' + (tierIndex || 4);
-    } else if (sendType !== 'recovery') {
-        agent._aiStartTime = _fmtTime(new Date());
-        agent._aiTierLabel = 'A' + (selectedTier || 6);
+    } else {
+        // ★ V21: 防 compress 标志泄漏到后续正常楼层
+        //   （q147 事故：f97 only facts 后 agent._compressFloor 未重置 → f98 起所有楼层被误标
+        //    _compressFloor → 全部跳过饼干 + 楼层回答被当作 facts 提取进 fx）
+        agent._compressFloor = false;
+        if (sendType !== 'recovery') {
+            agent._aiStartTime = _fmtTime(new Date());
+            agent._aiTierLabel = 'A' + (selectedTier || 6);
+        }
     }
     agent._streamingContent = null;
     agent._streaming = true;
