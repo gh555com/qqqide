@@ -150,7 +150,7 @@
       "verify_args": [
         "-version"
       ],
-      "version": "4.0.2",
+      "version": "2026.08.07",
       "srcs": {
         "win32-x64": [
           {
@@ -191,29 +191,29 @@
       "verify_args": [
         "--version"
       ],
-      "version": "2025.05.01",
+      "version": "2026.07.04",
       "srcs": {
         "win32-x64": [
           {
-            "url": "https://cdn.gh555.com/components/yt-dlp/2025.05.01/yt-dlp.exe",
+            "url": "https://cdn.gh555.com/components/yt-dlp/2026.07.04/yt-dlp.exe",
             "kind": "binary"
           }
         ],
         "linux-x64": [
           {
-            "url": "https://cdn.gh555.com/components/yt-dlp/2025.05.01/yt-dlp_linux",
+            "url": "https://cdn.gh555.com/components/yt-dlp/2026.07.04/yt-dlp_linux",
             "kind": "binary"
           }
         ],
         "darwin-arm64": [
           {
-            "url": "https://cdn.gh555.com/components/yt-dlp/2025.05.01/yt-dlp_macos",
+            "url": "https://cdn.gh555.com/components/yt-dlp/2026.07.04/yt-dlp_macos",
             "kind": "binary"
           }
         ],
         "darwin-x64": [
           {
-            "url": "https://cdn.gh555.com/components/yt-dlp/2025.05.01/yt-dlp_macos",
+            "url": "https://cdn.gh555.com/components/yt-dlp/2026.07.04/yt-dlp_macos",
             "kind": "binary"
           }
         ]

@@ -113,9 +113,18 @@
   // ★ 每目录排序偏好：'n'=文件名倒序(默认), 'm'=修改时间倒序
   var _sortPrefByPath = {};
   var SORT_PREFS_KEY = 'ai.viewport.sortPrefs';
-  // ★ 树展开快照 + 滚动位置（项目级持久化，非仅会话）
+  // ★ 树展开快照（项目级，key=主文件夹自身路径 → 树的宿主=项目，跟项目走）
   var TREE_SNAPS_KEY = 'ai.viewport.treeSnapshots';
+  // ★ 滚动位置（OS 级，key=任意目录绝对路径 → 偏好属于目录本身）
   var SCROLL_POS_KEY = 'ai.viewport.scrollPositions';
+
+  // ★ OS 级持久化桥 (2026-08-07 F3): %LOCALAPPDATA%/qqqide/ai.sq3
+  //   语义: key=目录/文件绝对路径 → 偏好属于目录，跨主文件夹/跨绿色包/跨窗口一致
+  function _osBridge() {
+    var b = bridge.aiState;
+    if (!b || typeof b.get !== 'function') return null;
+    return b;
+  }
 
   function _getOnlyDb() {
     var mainProj = projects[0];
@@ -126,6 +135,17 @@
   }
 
   function _loadSortPrefs() {
+    var os = _osBridge();
+    if (os) {
+      // ★ OS 级主通道
+      os.get(SORT_PREFS_KEY).then(function (data) {
+        if (data && typeof data === 'object') { _sortPrefByPath = data; return; }
+        // ★ 迁移：OS 无数据 → 读旧 only.sq3 → 写入 OS → 删旧 key
+        _migrateFromOnlyDb(SORT_PREFS_KEY, function (v) { _sortPrefByPath = v; });
+      }).catch(function () { });
+      return;
+    }
+    // 降级: 旧项目级通道（无 OS 桥环境）
     var db = _getOnlyDb();
     if (!db) return;
     db.get(SORT_PREFS_KEY).then(function (data) {
@@ -133,7 +153,24 @@
     }).catch(function () { });
   }
 
+  // ★ 一次性迁移：旧 only.sq3 → OS 级 ai.sq3，成功后删除旧 key
+  function _migrateFromOnlyDb(key, apply) {
+    var db = _getOnlyDb();
+    if (!db) return;
+    db.get(key).then(function (data) {
+      if (!data || typeof data !== 'object' || !Object.keys(data).length) return;
+      apply(data);
+      var os = _osBridge();
+      if (os) {
+        os.set(key, data).catch(function () { });
+        if (db.del) { db.del(key).catch(function () { }); }
+      }
+    }).catch(function () { });
+  }
+
   function _saveSortPrefs() {
+    var os = _osBridge();
+    if (os) { os.set(SORT_PREFS_KEY, _sortPrefByPath).catch(function () { }); return; }
     var db = _getOnlyDb();
     if (!db) return;
     // ★ setNow 而非 set：确保 Ctrl+R 热重载前已刷盘
@@ -141,28 +178,50 @@
     else db.set(SORT_PREFS_KEY, _sortPrefByPath).catch(function () { });
   }
 
-  // ★ 树展开快照 + 滚动位置：项目级持久化到 only.sq3
+  // ★ 树展开快照：项目级持久化到 only.sq3（key=主文件夹自身路径 → 跟项目走正确）
   function _loadViewportState() {
     var db = _getOnlyDb();
     if (!db) return;
     db.get(TREE_SNAPS_KEY).then(function (data) {
       if (data && typeof data === 'object') { _treeSnapshots = data; }
     }).catch(function () { });
-    db.get(SCROLL_POS_KEY).then(function (data) {
-      if (data && typeof data === 'object') { _scrollPosByPath = data; }
-    }).catch(function () { });
+    // ★ 滚动位置: OS 级读取（原项目级 key 不再读）
+    var os = _osBridge();
+    if (os) {
+      os.get(SCROLL_POS_KEY).then(function (data) {
+        if (data && typeof data === 'object') { _scrollPosByPath = data; return; }
+        // ★ 迁移：旧 only.sq3 → OS
+        _migrateFromOnlyDb(SCROLL_POS_KEY, function (v) { _scrollPosByPath = v; });
+      }).catch(function () { });
+    }
   }
 
   function _saveViewportState() {
     var db = _getOnlyDb();
-    if (!db) return;
-    if (db.setNow) {
-      db.setNow(TREE_SNAPS_KEY, _treeSnapshots).catch(function () { });
-      db.setNow(SCROLL_POS_KEY, _scrollPosByPath).catch(function () { });
-    } else {
-      db.set(TREE_SNAPS_KEY, _treeSnapshots).catch(function () { });
-      db.set(SCROLL_POS_KEY, _scrollPosByPath).catch(function () { });
+    if (db) {
+      if (db.setNow) {
+        db.setNow(TREE_SNAPS_KEY, _treeSnapshots).catch(function () { });
+      } else {
+        db.set(TREE_SNAPS_KEY, _treeSnapshots).catch(function () { });
+      }
     }
+    // ★ 滚动位置: OS 级写入
+    var os = _osBridge();
+    if (os) { os.set(SCROLL_POS_KEY, _scrollPosByPath).catch(function () { }); }
+  }
+
+  // ★ 滚动位置防抖落盘：滚动中高频触发，关闭下拉/beforeunload 兜底全量刷
+  var _scrollPersistTimer = null;
+  function _scheduleScrollPersist() {
+    if (_scrollPersistTimer) return;
+    _scrollPersistTimer = setTimeout(function () {
+      _scrollPersistTimer = null;
+      _saveScrollPosOnly();
+    }, 800);
+  }
+  function _saveScrollPosOnly() {
+    var os = _osBridge();
+    if (os) { os.set(SCROLL_POS_KEY, _scrollPosByPath).catch(function () { }); }
   }
 
   // ★ 筛选框：模糊匹配+空格AND，筛选时清除子列表。右边 N/M 排序按钮。
@@ -585,7 +644,7 @@
         if (s) s.setNow(RECENT_KEY, _recentFolders).catch(function () { });
       }
       _persistLastMainFolder();
-      // 阵营 + 排序偏好 + 视口状态 → only.sq3
+      // 阵营 + 树展开快照 → only.sq3（项目资产）
       var mainProj = projects[0];
       if (mainProj && mainProj.path && window.qgs && typeof window.qgs.project === 'function') {
         var onlyPath = mainProj.path.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/only.sq3';
@@ -594,10 +653,14 @@
           var auxPaths = [];
           for (var i = 1; i < projects.length; i++) { auxPaths.push(projects[i].path); }
           onlyDb.setNow('ai.formation', auxPaths);
-          onlyDb.setNow(SORT_PREFS_KEY, _sortPrefByPath);
           onlyDb.setNow(TREE_SNAPS_KEY, _treeSnapshots);
-          onlyDb.setNow(SCROLL_POS_KEY, _scrollPosByPath);
         }
+      }
+      // 排序偏好 + 滚动位置 → OS 级 ai.sq3（key=目录绝对路径，跨项目一致）
+      var os = _osBridge();
+      if (os) {
+        os.set(SORT_PREFS_KEY, _sortPrefByPath).catch(function () { });
+        os.set(SCROLL_POS_KEY, _scrollPosByPath).catch(function () { });
       }
     } catch (_) { }
   });
@@ -806,6 +869,7 @@
     inner.addEventListener('scroll', function () {
       _syncSB();
       if (inner._dirPath) { _scrollPosByPath[inner._dirPath] = inner.scrollTop; }
+      _scheduleScrollPersist();
     });
     sbOuter.addEventListener('mousedown', function (e) {
       if (e.target === sbThumb || e.button !== 0) return;
@@ -944,6 +1008,7 @@
       // ★ 标记行属性，供快照还原匹配
       row.dataset.name = ent.name;
       row.dataset.isDir = ent.isDir ? 'true' : 'false';
+      row._dirFullPath = pathJoin(dirPath, ent.name);  // ★ 全路径标记，供快照还原精确匹配
       const icon = document.createElement('span');
       icon.textContent = fileIconFor(ent.name, ent.isDir);
       icon.style.cssText = 'margin-right:6px; font-size:11px;';
@@ -1027,8 +1092,11 @@
       var foundRow = null;
       for (var ri3 = 0; ri3 < rows3.length; ri3++) {
         if (rows3[ri3].dataset.isDir === 'true') {
-          // 先精确匹配完整相对路径，再降级匹配 basename
+          // 先精确匹配完整相对路径（含父级路径，防同名目录串号），再降级匹配 basename
           var matchName = targetName;
+          var fullRel = pathJoin(dirPath, targetName).replace(/\\/g, '/');
+          var rowFull = (rows3[ri3]._dirFullPath || pathJoin(dirPath, rows3[ri3].dataset.name)).replace(/\\/g, '/');
+          if (rowFull === fullRel) { foundRow = rows3[ri3]; break; }
           if (rows3[ri3].dataset.name === matchName) { foundRow = rows3[ri3]; break; }
         }
       }
@@ -1602,6 +1670,18 @@
     //    此处不再 monkey-patch，保持单一真理源
     window.qqqideViewport.closeDropdown = closeDropdown;
 
+    // ★ 跨窗口同步 (2026-08-07 F3): 其他窗口写入 OS ai.sq3 → 广播 → 本窗口内存态跟随
+    if (bridge.aiState && bridge.aiState.onChanged) {
+      bridge.aiState.onChanged(function (msg) {
+        if (!msg || msg.deleted) return;
+        if (msg.key === SORT_PREFS_KEY && typeof msg.value === 'object') {
+          _sortPrefByPath = msg.value;
+        } else if (msg.key === SCROLL_POS_KEY && typeof msg.value === 'object') {
+          _scrollPosByPath = msg.value;
+        }
+      });
+    }
+
     // ★ Git badge 轮询
     _startGitBadgePolling();
     // Escape 键关闭（任何情况下都可操作）
@@ -1647,6 +1727,8 @@
   function clearSnapshots() {
     _lastHoveredSubdirByPath = {};
     _scrollPosByPath = {};
+    var os = _osBridge();
+    if (os) { os.set(SCROLL_POS_KEY, _scrollPosByPath).catch(function () { }); }
   }
   window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject, closeDropdown, clearSnapshots };
 })();

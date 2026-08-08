@@ -1001,7 +1001,15 @@ var _fileListEl = document.getElementById('fileList');
 if (_fileListEl) {
 	_fileListEl.addEventListener('click', function(e) {
 		var itemEl = e.target.closest('.file-item');
-		if (!itemEl) return;
+		if (!itemEl) {
+			// ★ 点击空白取消选中（q3 对齐）：若正在重命名先取消，再清空选中态
+			var _prevSel = document.querySelectorAll('#fileList .file-item.selected');
+			for (var _i = 0; _i < _prevSel.length; _i++) {
+				if (_prevSel[_i].querySelector('.rename-input')) cancelRename(_prevSel[_i]);
+			}
+			cancelSelection();
+			return;
+		}
 		if (itemEl.dataset.name === '..') { navigateTo(itemEl.dataset.path); return; }
 		var isSzClick = e.target.classList.contains('sz-area');
 		if (itemEl.dataset.type === 'folder' && !isSzClick) {
@@ -1218,6 +1226,7 @@ function reloadCurrentDir() {
 // ---- Context menu ----
 function hideAllContextMenus() {
 	var m = document.getElementById('itemContextMenu'); if (m) m.style.display = 'none';
+	var e = document.getElementById('emptyContextMenu'); if (e) e.style.display = 'none';
 }
 
 // ★ Chrome 108 zoom→fixed 坐标空间归一。唯一真理入口，所有 fixed 定位必经此函数。
@@ -1390,9 +1399,9 @@ if (emptyCtxMenu) {
 		el.addEventListener('click', function() {
 			var act = el.dataset.action;
 			hideAllContextMenus();
-		if (act === 'openAdminCmd') { bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){}); _playSfx('terminal'); }
-		else if (act === 'openAdminPowershell') { bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){}); _playSfx('terminal'); }
-	});
+			if (act === 'openAdminCmd') { bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){}); _playSfx('terminal'); }
+			else if (act === 'openAdminPowershell') { bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){}); _playSfx('terminal'); }
+		});
 	});
 }
 

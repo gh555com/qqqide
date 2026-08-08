@@ -224,7 +224,7 @@ async function _checkAll(
         }
 
         try {
-            await _ensureOne(portableRoot, name, def, pk, versions, manifest);
+            await _ensureOne(portableRoot, name, def, pk, versions, manifest, versPath);
         } catch (e: any) {
             console.log('[components] ' + name + ': FAILED — ' + (e.message || e));
         }
@@ -258,9 +258,15 @@ async function _checkRank1BgDownload(
 
         console.log('[components] ' + name + ': bg_download starting...');
         try {
-            await _ensureOne(portableRoot, name, def, pk, versions, manifest);
+            await _ensureOne(portableRoot, name, def, pk, versions, manifest, versPath);
             _writeJson(versPath, versions);
-            console.log('[components] ' + name + ': bg_download complete ✓');
+            // 重新验证 — 防止假成功（_ensureOne 内部冷却跳过/下载失败会被吞掉）
+            const bp2 = _binPath(portableRoot, def);
+            if (bp2 && fs.existsSync(bp2) && _cmdOk(bp2, verifyArgs)) {
+                console.log('[components] ' + name + ': bg_download complete ✓');
+            } else {
+                console.log('[components] ' + name + ': bg_download FAILED — binary still missing');
+            }
         } catch (e: any) {
             console.log('[components] ' + name + ': bg_download FAILED — ' + (e.message || e));
         }
@@ -320,16 +326,22 @@ async function _verifyAllBundled(
             console.log(`[components] ${name}: repair failed, falling back to CDN recovery`);
         }
 
-        // degraded 修复失败 或 broken → 清除版本记录 → 触发 CDN 灾备下载
+        // degraded 修复失败 或 broken → 清除版本记录 + 冷却记录 → 触发 CDN 灾备下载（broken 恢复不受冷却限制）
         delete versions[name];
         const dlLog = _readJson<DownloadLog>(_dlLogPath(portableRoot), {});
-        if (dlLog[name]) dlLog[name].last_success = 0;
+        if (dlLog[name]) { dlLog[name].last_success = 0; dlLog[name].last_fail = 0; }
         _writeJson(_dlLogPath(portableRoot), dlLog);
 
         try {
-            await _ensureOne(portableRoot, name, def, pk, versions, manifest);
+            await _ensureOne(portableRoot, name, def, pk, versions, manifest, versPath);
             _writeJson(versPath, versions);
-            console.log(`[components] ${name}: CDN recovery ✓`);
+            // 重新验证 — 防止假成功（_ensureOne 内部冷却跳过/下载失败会被吞掉）
+            const r2 = _verifyComponent(portableRoot, name, def);
+            if (r2.status === 'ok') {
+                console.log(`[components] ${name}: CDN recovery ✓`);
+            } else {
+                console.log(`[components] ${name}: CDN recovery FAILED — ${r2.detail}`);
+            }
         } catch (e: any) {
             console.log(`[components] ${name}: CDN recovery FAILED — ${e.message || e}`);
         }
@@ -366,6 +378,7 @@ async function _ensureOne(
     pk: string,
     versions: VersionsFile,
     manifest: Manifest,
+    versPath: string,
 ): Promise<void> {
     const engRoot = _enginesRoot(portableRoot);
     const enginesDir = path.join(engRoot, 'engines');
@@ -382,16 +395,6 @@ async function _ensureOne(
 
     // ── ① 当前位置已安装且验证通过 → 检查版本升级 + 目录迁移 ──
     if (isFiles ? _filesOk(finalDir, def) : (fs.existsSync(binPath) && _cmdOk(binPath, verifyArgs))) {
-
-    const targetDir = def.install_to ? path.join(enginesDir, def.install_to) : enginesDir;
-    // Platform subdirectory for multi-platform components (ffmpeg etc.)
-    const finalDir = def._platform_subdir ? path.join(targetDir, pk) : targetDir;
-    const effectiveInstallTo = def._platform_subdir ? (def.install_to + '/' + pk) : def.install_to;
-    const binPath = path.join(finalDir, binRel);
-    const verifyArgs = def.verify_args || ['--version'];
-
-    // ── ① 当前位置已安装且验证通过 → 检查版本升级 + 目录迁移 ──
-    if (fs.existsSync(binPath) && _cmdOk(binPath, verifyArgs)) {
         const old = versions[name];
 
         // 版本升级 → 删除旧版，触发重新下载
@@ -446,7 +449,7 @@ async function _ensureOne(
     let ok = false;
     for (const src of srcs) {
         try {
-            await _downloadAndInstall(name, src, finalDir, binPath, verifyArgs, portableRoot);
+            await _downloadAndInstall(name, def, src, finalDir, binPath, verifyArgs, portableRoot);
             ok = true;
             break;
         } catch (e: any) {
@@ -468,6 +471,7 @@ async function _ensureOne(
 
 async function _downloadAndInstall(
     name: string,
+    def: ComponentDef,
     src: SrcEntry,
     targetDir: string,
     binPath: string,
@@ -509,25 +513,7 @@ async function _downloadAndInstall(
 
     try { fs.unlinkSync(dlFile); } catch {}
 
-    // 验证 — 用二进制路径直接调，不走 shell
-    if ((def as any).kind === 'files') {
-        if (!_filesOk(targetDir, def)) throw new Error('Files missing after extract: ' + targetDir);
-    } else {
-        if (!fs.existsSync(binPath)) {
-            const found = _findBinParent(targetDir, path.basename(binPath));
-            if (found) {
-                _flattenDir(found, targetDir);
-            }
-        }
-
-        if (!fs.existsSync(binPath)) throw new Error('Binary not found after extract: ' + binPath);
-        if (!_cmdOk(binPath, verifyArgs)) throw new Error('Verification failed');
-    }
-
-    console.log('[components] ' + name + ': installed ✓');
-}
-
-    // Python 特殊处理
+    // Python 特殊处理（解压后、验证前）
     if (name === 'python' && process.platform === 'win32') {
         _patchPythonPth(targetDir);
         // 自动补全缺失的 .pyd 文件（从官方 embed 包提取）
@@ -541,15 +527,19 @@ async function _downloadAndInstall(
     }
 
     // 验证 — 用二进制路径直接调，不走 shell
-    if (!fs.existsSync(binPath)) {
-        const found = _findBinParent(targetDir, path.basename(binPath));
-        if (found) {
-            _flattenDir(found, targetDir);
+    if (def.kind === 'files') {
+        if (!_filesOk(targetDir, def)) throw new Error('Files missing after extract: ' + targetDir);
+    } else {
+        if (!fs.existsSync(binPath)) {
+            const found = _findBinParent(targetDir, path.basename(binPath));
+            if (found) {
+                _flattenDir(found, targetDir);
+            }
         }
-    }
 
-    if (!fs.existsSync(binPath)) throw new Error('Binary not found after extract: ' + binPath);
-    if (!_cmdOk(binPath, verifyArgs)) throw new Error('Verification failed');
+        if (!fs.existsSync(binPath)) throw new Error('Binary not found after extract: ' + binPath);
+        if (!_cmdOk(binPath, verifyArgs)) throw new Error('Verification failed');
+    }
 
     console.log('[components] ' + name + ': installed ✓');
 }

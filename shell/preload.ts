@@ -514,6 +514,19 @@ const QQQ = {
         deleteItem: (id: number) => ipcRenderer.invoke('qqqide:kope:deleteItem', id),
     },
 
+    // ---- aiState (AI 视口 OS 级持久化, sql.js → %LOCALAPPDATA%/qqqide/ai.sq3) ----
+    aiState: {
+        get: (key: string) => ipcRenderer.invoke('qqqide:ai-state:get', key),
+        set: (key: string, value: any) => ipcRenderer.invoke('qqqide:ai-state:set', key, value),
+        del: (key: string) => ipcRenderer.invoke('qqqide:ai-state:del', key),
+        getAll: () => ipcRenderer.invoke('qqqide:ai-state:getAll'),
+        onChanged: (cb: (msg: { key: string; value: any; deleted?: boolean }) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[aiState.onChanged]', err); } };
+            ipcRenderer.on('qqqide:ai-state:changed', handler);
+            return () => ipcRenderer.removeListener('qqqide:ai-state:changed', handler);
+        },
+    },
+
     // ---- roam (文件资源管理器 OS 级持久化, sql.js → roam.sq3) ----
     roam: {
         get: (key: string) => ipcRenderer.invoke('qqqide:roam:get', key),

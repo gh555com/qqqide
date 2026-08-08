@@ -39,6 +39,12 @@
     },
     {
       "id": "window.activateRoam",
+      "accel": "F2",
+      "scope": "window",
+      "when": "noEditing"
+    },
+    {
+      "id": "window.activateRoam",
       "accel": "Space+Q",
       "scope": "global"
     },

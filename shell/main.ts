@@ -51,6 +51,7 @@ import { startPyBroker, stopPyBroker } from './py-broker';
 import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart, getGoodsSetting, setGoodsSetting, getAllGoodsSettings, startOsStateWatch } from './gaea-process';
 import { registerKopeIpc } from './ipc-kope';
 import { registerRoamIpc } from './ipc-roam';
+import { registerAiStateIpc } from './ipc-ai-state';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
@@ -270,9 +271,9 @@ function registerAllIpc(): void {
     registerStateHandlersIpc(stateStore, stateCloud, _projectStateStores, _qgfInstances, () => mainWindow);
     registerAudioIpc(audioEngine, portable.root);
     registerQzSpawnIpc(qzSpawn);
-    registerGaeaProcessIpc();
-    registerKopeIpc();
     registerRoamIpc();
+    registerAiStateIpc();
+    registerKopeIpc();
     registerMediaIpc(mediaService);
     registerAuthBrainIpc(getAuthBrain());
     registerDesktopShortcutIpc();

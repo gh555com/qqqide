@@ -581,7 +581,8 @@ async function doCreateFile() {
 		if (window.qqqCharUndo && window.qqqCharUndo.reset) window.qqqCharUndo.reset(filenameInput);
 		recordDirHistory(currentPath);
 		loadFileList(currentPath);
-		// Open in editor + focus
+		// Open in editor + focus (q3: after create, focus jumps to editor, NOT stay in input)
+		filenameInput.blur();
 		parent.postMessage({ type: 'qqq-file-open', path: fullPath }, '*');
 	}).catch(function(err) {
 		_roamToast('Failed to create file: ' + (err.message || err));
@@ -614,12 +615,18 @@ filenameInput.addEventListener('keydown', function(e) {
 		doCreateFile();
 	}
 });
-document.getElementById('btnNewFile').addEventListener('click', doCreateFile);
-document.getElementById('btnNewFolder').addEventListener('click', doCreateFolder);
-document.getElementById('openFolderBtn').addEventListener('click', function() {
+var _btnNewFile = document.getElementById('btnNewFile');
+var _btnNewFolder = document.getElementById('btnNewFolder');
+var _openFolderBtn = document.getElementById('openFolderBtn');
+if (_btnNewFile) _btnNewFile.addEventListener('click', doCreateFile);
+else console.error('[q2-roam] btnNewFile missing — HTML 结构损坏');
+if (_btnNewFolder) _btnNewFolder.addEventListener('click', doCreateFolder);
+else console.error('[q2-roam] btnNewFolder missing — HTML 结构损坏');
+if (_openFolderBtn) _openFolderBtn.addEventListener('click', function() {
 	bridge.shell.openPath(currentPath).catch(function(){});
 	_playSfx('enter');
 });
+else console.error('[q2-roam] openFolderBtn missing — HTML 结构损坏');
 
 
 

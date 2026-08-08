@@ -67,7 +67,9 @@ var onlyStore = (function () {
       var keys = ['theme', 'ai.activeQuest', 'ai.activeFloor', 'ai.tier', 'ai.inputDraft',
         'ai.pendingImages', 'ai.queue', 'ai.scrollTop', 'editor.tabs', 'editor.activeTab',
         'viewport.splitPositions', 'window.geometry',
-        'ai.viewport.sortPrefs', 'ai.viewport.treeSnapshots', 'ai.viewport.scrollPositions'];
+        // ★ 2026-08-07 F3: sortPrefs/scrollPositions 已迁 OS 级 ai.sq3（key=目录绝对路径），
+        //   仅 treeSnapshots 仍为项目资产（key=主文件夹自身路径）
+        'ai.viewport.treeSnapshots'];
       for (var i = 0; i < keys.length; i++) {
         try {
           var v = await b.get(keys[i]);

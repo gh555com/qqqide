@@ -237,6 +237,7 @@ async function _initWorkspace(root) {
             }
         }
         if (!lockResult.ok) {
+            parent.__qqq_lockState = 'blocked';
             console.warn('[workspace] BLOCKED: project locked (age=' + (lockResult.age / 1000).toFixed(1) + 's)');
             addMessageEl('error', '\u26a0\ufe0f 项目锁冲突（另一窗口正在使用）。本面板进入后台等待，旧窗口关闭后自动恢复，无需重启。');
             if (window.parent) {
@@ -255,6 +256,7 @@ async function _initWorkspace(root) {
             }, 15000);
             return;
         }
+        parent.__qqq_lockState = 'ok';
         // 向主进程注册窗口↔项目映射（仅中面板）
         if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.window) {
             try { window.parent.qqqideBridge.window.claimProject(root).catch(function () { }); } catch (_) { }
@@ -262,6 +264,20 @@ async function _initWorkspace(root) {
         // ★ 项目绑定后立即改 DevTools 标题（特别是 fresh 窗口后来加主文件夹的场景）
         if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.devtools) {
             try { window.parent.qqqideBridge.devtools.rename(root).catch(function () { }); } catch (_) { }
+        }
+    } else {
+        // ★ 侧面板：必须等中面板锁决定，禁止绕过——中面板被锁定时侧面板也停止（防多窗口并发写入）
+        for (var _wl = 0; _wl < 300; _wl++) {
+            if (parent.__qqq_lockState === 'ok') break;
+            if (parent.__qqq_lockState === 'blocked') {
+                // ★ 被锁定——等待中面板 _bgLockTimer 恢复（15s×200 次，同中面板参数）
+                for (var _rw = 0; _rw < 200; _rw++) {
+                    await new Promise(function (r) { setTimeout(r, 15000); });
+                    if (parent.__qqq_lockState === 'ok') break;
+                }
+                break;
+            }
+            await new Promise(function (r) { setTimeout(r, 200); });
         }
     }
 
@@ -862,6 +878,20 @@ async function _saveAgentQuestData(questId, ag, floorNum, opts) {
             };
         }
 
+        // ★ 防御：floor > 1 时 _floorStartIdx 不能为 0（否则 all.json 保存整段 conversation → 重启后重复拼接）
+        if (floorNum > 1 && meta.floorStartIdx <= 0) {
+            console.warn('[save] _floorStartIdx=0 for floor ' + floorNum + ' — auto-healing from conversation _floor tags');
+            // 从 conversation 中扫描本楼层第一条消息作为 startIdx
+            for (var _hi = 0; _hi < ag.conversation.length; _hi++) {
+                if (ag.conversation[_hi]._floor === floorNum) {
+                    meta.floorStartIdx = _hi;
+                    console.warn('[save] _floorStartIdx healed to ' + _hi + ' for floor ' + floorNum);
+                    break;
+                }
+            }
+            // 未找到（本楼层无 conversation 消息）→ 沿用 0 保底（空 floor 不损坏数据）
+        }
+
         // ★ 统一 payload 构建（使用该楼层自己的 startIdx，非 ag._floorStartIdx 可能已变化）
         var floorPayload = (typeof window._a4BuildCompleteFloorPayload === 'function')
             ? window._a4BuildCompleteFloorPayload(ag, floorNum, opts)
@@ -925,13 +955,8 @@ async function _saveAgentQuestData(questId, ag, floorNum, opts) {
         queue: ag._queue || [],
         rulesVersion: ag._rulesVersion || '',
         persistentCount: ag._persistentCount || 0,
-        currentFloorNum: ag._currentFloorNum || 0,
-        // ★ passby 基线持久化：从 agent 内存值计算（restore 已用 all.json 自愈，此处仅打快照）
-        //   注意：passbyBase = 当前楼层之前所有已完成楼层之和。
-        //   _passbyWge - floorCostWge = passbyBaseWge（恒等变换），不再做无效运算。
-        passbyBaseHouses: Math.max(0, _passbyHouses - (ag._houses ? ag._houses.length : 0)),
-        passbyBaseWge: Math.max(0, _passbyWge - (ag._floorCostWge || 0)),
-        passbyBaseTokens: 0
+        currentFloorNum: ag._currentFloorNum || 0
+        // ★ passbyBase 不持久化：重启时从 all.json 重算（panel-floor.js L609-634），持久化冗余
     };
     await questStore.touch(questId);
     await questStore.save(questId, metaPayload);

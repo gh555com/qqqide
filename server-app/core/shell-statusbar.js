@@ -13,10 +13,11 @@ function bootStatusbar(boot) {
   if ($ver) $ver.textContent = 'v' + (boot.version || '?');
 	if ($onl) $onl.textContent = '0';
 
-	// ═══ 赞助商（状态栏左下角）— 点击打开官网 zhijiaip.com ═══
-	var $sponsor = document.getElementById('qqq-status-sponsor');
-	if ($sponsor) {
-		$sponsor.addEventListener('click', function () {
+	// ═══ 赞助商（状态栏左下角）— 仅公司名带超链接，前缀「赞助商：」不带 ═══
+	var $sponsorLink = document.getElementById('qqq-sponsor-link');
+	if ($sponsorLink) {
+		$sponsorLink.addEventListener('click', function (e) {
+			e.preventDefault();
 			var url = 'http://www.zhijiaip.com/por.jsp?id=1&_jcp=5_1';
 			if (bridge && bridge.shell && bridge.shell.openExternal) {
 				bridge.shell.openExternal(url);

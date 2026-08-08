@@ -27,14 +27,14 @@
 	--base0: #a8a49c; --base1: #6a6660; --base2: #2a2a2a; --base3: #1e1e1e;
 	--yellow: #d4a017; --orange: #e07020; --red: #ff4444; --magenta: #c06080;
 	--violet: #a08060; --blue: #d4a017; --cyan: #5abfb5; --green: #8fbc5a;
-	--bg-color: #1e1e1e; --bg-highlight: #2a2a2a;
+	--bg-color: #1e1e1e; --bg-highlight: #3a3a3a;
 	--text-primary: #d4d0c8; --text-secondary: #a8a49c; --text-dim: #6a6660;
 	--border-color: #333333; --border-strong: #555555;
 	--selection-bg: #5a3a2a; --selection-text: #f0e8d8;
 	--button-primary: #d4a017; --button-text: #1e1e1e; --icon-subtle: #5a5650;
 	--gold-accent: #5a4d2a; --gold-accent-hover: #6a5a30; --gold-accent-bg: #4a3d20;
-	--gold-hover-bg: #3a3520; --tooltip-bg: #2a2520; --tooltip-text: #d4d0c8;
-	--pin-hover-bg: #3a3a3a;
+	--gold-hover-bg: #4a4530; --tooltip-bg: #2a2520; --tooltip-text: #d4d0c8;
+	--pin-hover-bg: #454545;
 }
 html { zoom: 0.85; overflow: hidden; }
 * { box-sizing: border-box; forced-color-adjust: none; scrollbar-width: none; }
@@ -144,7 +144,7 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .history-dropdown-item { padding: 4px 8px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
 .history-dropdown-item:hover { background-color: var(--bg-highlight); }
 .path-tooltip { display: none; position: fixed; z-index: 99999; background-color: #eee8d5; color: #7a7874; border: 1px solid #a8a6a2; border-radius: 3px; padding: 4px 8px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18); pointer-events: none; }
-[data-theme="dark"] .path-tooltip { background-color: #2a2a2a; color: #c8c4b8; border-color: #555555; }
+[data-theme="dark"] .path-tooltip { background-color: #4a4540; color: #eee8d5; border-color: #6a6660; }
 .dropdown-item-tooltip { position: fixed; pointer-events: none; background: var(--tooltip-bg); color: var(--tooltip-text); padding: 4px 10px; border-radius: 4px; font-family: Tahoma, sans-serif; font-size: 13px; z-index: 99999; display: none; box-shadow: 0 1px 2px rgba(0,0,0,0.4); white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border-strong); max-width: calc(100vw - 20px); }
 .qq-filter-container { padding: 2px 4px; position: relative; }
 .qq-filter-input { width: 100%; padding: 1px 4px; border: 1px solid var(--border-strong); border-radius: 3px; background-color: var(--bg-color); color: var(--text-primary); font-family: Tahoma; font-size: 13px; box-sizing: border-box; outline: none; transition: border-color 0.2s; }
@@ -211,10 +211,10 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 				<input type="text" id="filenameInput" class="filename-input">
 			</div>
 			<div style="display: flex; gap: 15px;">
-				<button class="button save-button" id="btnNewFile">
+				<button class="button save-button" id="btnNewFile" data-tooltip="New file">
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/></svg>
 				</button>
-				<button class="button cancel-button" id="btnNewFolder">
+				<button class="button cancel-button" id="btnNewFolder" data-tooltip="New folder">
 					<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M10,4H4C2.89,4 2,4.89 2,6V20A2,2 0 0,0 4,22H20A2,2 0 0,0 22,20V8L16,2H10M13,9V3.5L18.5,9H13Z"/></svg>
 				</button>
 			</div>
@@ -228,6 +228,8 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 	<div class="context-menu-item" data-action="delete"><span>delete</span><span class="context-menu-shortcut">= "d"</span></div>
 	<div class="context-menu-item" data-action="rename"><span>rename</span><span class="context-menu-shortcut">= "e"</span></div>
 	<div class="context-menu-item" data-action="copyPath"><span>copy path</span><span class="context-menu-shortcut">= "z"</span></div>
+</div>
+<div id="emptyContextMenu" class="context-menu">
 	<div class="context-menu-item" data-action="openAdminCmd"><span>CMD</span><span class="context-menu-shortcut">= "c"</span></div>
 	<div class="context-menu-item" data-action="openAdminPowershell"><span>PowerShell</span><span class="context-menu-shortcut">= "x"</span></div>
 </div>

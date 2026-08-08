@@ -1,15 +1,15 @@
 <p align="center">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/FPXKHX4NKOZJ6.gif" width="100%" alt="qqq IDE by GH Health">
+  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/FPXKHX4NKOZJ6.gif" width="100%" alt="qqqide by GH Health">
   © 2005 <a href="https://www.gh555.com">gh555.com</a> All Rights Reserved.
 </p>
 
-# qqq IDE: Paste Everything into VS Code / Code-OSS / VSCodium (Project started in October 2025)
+# qqqide: Paste Everything into VS Code / Code-OSS / VSCodium (Project started in October 2025)
 
 **Download:** <a href="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/ELI4U5GG2NB7K.vsix">v16.5.2 · 2026-05-20</a>
 
 **Make everything pasteable. Orchestrate ideas. Turn the IDE into an operating system.**
 
-qqq IDE lets you paste images, screenshots, files, folders, HTML pages, videos, and media directly into **VS Code / Code-OSS / VSCodium** — with **WYSIWYG preview**.
+qqqide lets you paste images, screenshots, files, folders, HTML pages, videos, and media directly into **VS Code / Code-OSS / VSCodium** — with **WYSIWYG preview**.
 
 qqq turns VS Code, Cursor, Antigravity, Code-OSS, and VSCodium into an all-media paste-friendly notebook and creative workspace.
 
@@ -18,7 +18,7 @@ qqq turns VS Code, Cursor, Antigravity, Code-OSS, and VSCodium into an all-media
 - Project discussion and roadmap: https://github.com/gh555com/qqq/discussions/6
 - Official download: https://www.gh555.com/qqq
 - Source code: https://github.com/gh555com/qqq
-- qqq IDE Development Progress since 2026.05.16: https://github.com/gh555com/qqq/discussions/7
+- qqqide Development Progress since 2026.05.16: https://github.com/gh555com/qqq/discussions/7
 
 Original **name**: qqq [![GitHub stars](https://img.shields.io/github/stars/gh555com/qqq?style=social)](https://github.com/gh555com/qqq)
 
@@ -26,11 +26,11 @@ Original **name**: qqq [![GitHub stars](https://img.shields.io/github/stars/gh55
 
 ![](https://gh555.com/px?g=qqq&s=gh555.qqq.readme)
 
-## Why qqq IDE
+## Why qqqide
 
 You should not need to open a separate note-taking application just to collect screenshots, images, files, folders, videos, HTML pages, and creative materials.
 
-With qqq IDE, your editor becomes an all-media workspace.
+With qqqide, your editor becomes an all-media workspace.
 
 VS Code / Code-OSS / VSCodium can become a paste-friendly notebook for developers, creators, writers, AI users, and anyone who organizes ideas inside an IDE.
 
@@ -40,7 +40,7 @@ The core workflow is simple:
 
 ## ✦q✦ Ctrl+V: Paste Everything, Anywhere in Any Document
 
-qqq IDE extends paste beyond plain text.
+qqqide extends paste beyond plain text.
 
 You can paste screenshots, image files, folders, videos, HTML pages, documents, and media resources directly into the editor.
 
@@ -49,23 +49,23 @@ This works in plain text files, custom file extensions, and even files with no e
 ### Paste screenshots directly into VS Code / Code-OSS / VSCodium
 
 <p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/YBZ5FHDRYKQF2.gif" width="100%" alt="Paste screenshots directly into VS Code with qqq IDE">
+  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/YBZ5FHDRYKQF2.gif" width="100%" alt="Paste screenshots directly into VS Code with qqqide">
 </p>
 
-qqq IDE lets you paste screenshots directly into any document, including `.txt`, `.1`, custom file extensions, or files with no extension, and preview them with WYSIWYG rendering.
+qqqide lets you paste screenshots directly into any document, including `.txt`, `.1`, custom file extensions, or files with no extension, and preview them with WYSIWYG rendering.
 
 ### Paste image files directly into VS Code / Code-OSS / VSCodium
 
 <p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/6QEDZULVO33JW.gif" width="100%" alt="Paste image files directly into VS Code with qqq IDE">
+  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/6QEDZULVO33JW.gif" width="100%" alt="Paste image files directly into VS Code with qqqide">
 </p>
 
-qqq IDE lets you paste image files directly into the editor and preview them in place.
+qqqide lets you paste image files directly into the editor and preview them in place.
 
 ### Paste any file, folder, video, PSD, MP3, EXE, or media resource
 
 <p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/E2ULPGMCYGGFE.gif" width="100%" alt="Paste files folders videos PSD MP3 and media directly into VS Code with qqq IDE">
+  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/E2ULPGMCYGGFE.gif" width="100%" alt="Paste files folders videos PSD MP3 and media directly into VS Code with qqqide">
 </p>
 
 Via qqq, you can paste `txt`, `exe`, `psd`, `mp3`, folders, `mp4` videos, and many other file types directly into VS Code / Code-OSS / VSCodium with WYSIWYG preview.
@@ -95,7 +95,7 @@ Invoke Roam with:
 ### Roam file explorer for fast directory navigation
 
 <p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/75T3DXC3XWJB4.gif" width="100%" alt="Roam file explorer for VS Code and qqq IDE">
+  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/75T3DXC3XWJB4.gif" width="100%" alt="Roam file explorer for VS Code and qqqide">
 </p>
 
 **Roam**, from qqq, is a file explorer designed for fast navigation, recent locations, keyboard-first workflows, and access to directories outside the current project folder.
@@ -129,7 +129,7 @@ Invoke Roam with:
 ### Select folders and mixed resources in Roam
 
 <p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/5EM6FHVNR4KG2.gif" width="100%" alt="Select folders and mixed files in Roam file explorer with qqq IDE">
+  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/5EM6FHVNR4KG2.gif" width="100%" alt="Select folders and mixed files in Roam file explorer with qqqide">
 </p>
 
 With Roam, you can select folders, files, or a mixed set of files and folders to copy, delete, or calculate size in bulk.
@@ -137,7 +137,7 @@ With Roam, you can select folders, files, or a mixed set of files and folders to
 ### Most visited folders stay close to you
 
 <p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/O4H43QFLJ6WHY.gif" width="100%" alt="Most visited folders in Roam file explorer for qqq IDE">
+  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/O4H43QFLJ6WHY.gif" width="100%" alt="Most visited folders in Roam file explorer for qqqide">
 </p>
 
 Roam keeps frequently visited locations close, so you can move between projects, documents, music, videos, games, and media folders faster.
@@ -145,7 +145,7 @@ Roam keeps frequently visited locations close, so you can move between projects,
 ### Roam keyboard shortcuts
 
 <p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/XMTOYSWJPSJYU.gif" width="80%" alt="Roam file explorer keyboard shortcuts in qqq IDE">
+  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/XMTOYSWJPSJYU.gif" width="80%" alt="Roam file explorer keyboard shortcuts in qqqide">
 </p>
 
 Useful Roam shortcuts:
@@ -162,14 +162,14 @@ Useful Roam shortcuts:
 
 ### Paste HTML directly into VS Code / Code-OSS / VSCodium
 
-qqq IDE supports sniffing & pasting HTML(Rich Text) into the editor.
+qqqide supports sniffing & pasting HTML(Rich Text) into the editor.
 
 Compatibility is best with Chromium-based browsers.
 
 If you copy from some browsers, such as Edge in certain modes, only plain text may be displayed.
 
 <p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/ICFESEED7ARZM.gif" width="100%" alt="Paste HTML pages directly into VS Code with qqq IDE">
+  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/ICFESEED7ARZM.gif" width="100%" alt="Paste HTML pages directly into VS Code with qqqide">
 </p>
 
 Test URL:
@@ -186,7 +186,7 @@ Test objectives:
 4. Repeated operations should save identical resources only once.
 5. Identical images and videos should be deduplicated by fingerprinting.
 
-### Export DOC and DOCX from qqq IDE
+### Export DOC and DOCX from qqqide
 
 qqq supports document export.
 
@@ -212,7 +212,7 @@ ZIP export is useful for packaging notes, media resources, documents, images, HT
 ### Paste streaming videos into VS Code / Code-OSS / VSCodium
 
 <p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/W5EEPDRQEO4LO.gif" width="100%" alt="Paste streaming videos into VS Code with qqq IDE">
+  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/W5EEPDRQEO4LO.gif" width="100%" alt="Paste streaming videos into VS Code with qqqide">
 </p>
 
 qqq supports workflows for pasting and organizing streaming video resources inside the editor.
@@ -245,7 +245,7 @@ One package works for everything.
 
 qqq supports multiple UI languages: zh、zh-tw、en、ja、de、ko、ru、ar、es、fr、pt-BR
 <p align="left">
-  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/2JTYBVFI3CWBS.png" alt="Switch qqq IDE language settings in VS Code">
+  <img src="https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/2JTYBVFI3CWBS.png" alt="Switch qqqide language settings in VS Code">
 </p>
 
 ## About qqq Resource Footprint

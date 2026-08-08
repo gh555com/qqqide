@@ -228,9 +228,11 @@ function _i18nQ(key, fallback) {
     return fallback;
 }
 
-function _limitQoast(reason) {
+function _limitQoast(reason, args) {
     var now = Date.now();
-    if (reason !== 'paste-truncated' && reason !== 'paste-full') {
+    // 图片类提示豁免 3s 防抖：可与字符上限提示连续出现（不同原因不互相吞）
+    if (reason !== 'paste-truncated' && reason !== 'paste-full'
+        && reason !== 'image-cap' && reason !== 'image-size') {
         if (now - _lastLimitQoastTs < _LIMIT_QOAST_COOLDOWN) return;
     }
     _lastLimitQoastTs = now;
@@ -239,9 +241,18 @@ function _limitQoast(reason) {
         msg = _i18nQ('ai.inputLimitQoastFull', '已达编辑框字符上限，无法继续粘贴');
     } else if (reason === 'paste-truncated') {
         msg = _i18nQ('ai.inputLimitQoastTruncated', '已达编辑框字符上限，多余内容已截断');
+    } else if (reason === 'image-cap') {
+        msg = _i18nQ('ai.inputLimitQoastImageCap', '图片已达上限（{0} 张），多余图片未粘贴');
+    } else if (reason === 'image-size') {
+        msg = _i18nQ('ai.inputLimitQoastImageSize', '有 {0} 张图片超出单张大小上限，已跳过');
     } else {
         msg = _i18nQ('ai.inputLimitQoastCap', '已达编辑框字符上限（约 {0}K 字符，非文件字节）');
         msg = msg.replace('{0}', (INPUT_CAP_CHARS / 1000).toFixed(1));
+    }
+    if (args && args.length) {
+        msg = msg.replace(/\{(\d+)\}/g, function (m, idx) {
+            return (args[idx] != null) ? String(args[idx]) : m;
+        });
     }
     try {
         if (parent && parent.window && parent.window.qqqideQoast) {
@@ -299,6 +310,89 @@ if ($newlineBtn) {
 var pendingImages = []; // [{id, base64, dataUrl}]
 var MAX_IMAGES = 20;
 
+// ══ 多图粘贴三重硬帽（2026-08-07 多图粘贴架构）══
+var MAX_SINGLE_IMAGE_BYTES = 30 * 1024 * 1024; // 单张硬帽：FileReader 全量读入内存，防卡死/OOM
+var MAX_IMG_EDGE = 4096;                       // 像素保护边：<2MB 但像素爆炸图（纯色大 PNG）→ canvas 崩溃点
+var COMPRESS_EDGE = 2048;                      // >2MB 压缩目标最长边（原行为：2048 宽）
+var _pasteChain = Promise.resolve();           // 粘贴串行队列：防快速连按 Ctrl+V 并发乱序
+
+// 粘贴队列入口：所有异步粘贴路径（Ctrl+V / 右键菜单）串行执行
+function _enqueuePaste(fn) {
+    _pasteChain = _pasteChain.then(fn, fn);
+    return _pasteChain;
+}
+
+function _readAsDataURL(blob) {
+    return new Promise(function (resolve, reject) {
+        var r = new FileReader();
+        r.onload = function () { resolve(r.result); };
+        r.onerror = function () { reject(r.error || new Error('read failed')); };
+        r.readAsDataURL(blob);
+    });
+}
+
+function _loadImage(src) {
+    return new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.onload = function () { resolve(img); };
+        img.onerror = function () { reject(new Error('img decode failed')); };
+        img.src = src;
+    });
+}
+
+// 单张图片处理：30MB 硬帽 → 解码 → 像素保护/2MB 压缩 → 入条
+// 返回 {added:true} 或 {skipped:'size'}；解码失败直接 throw（外层隔离）
+async function _processImageFile(blob) {
+    if (blob.size > MAX_SINGLE_IMAGE_BYTES) return { skipped: 'size' };
+    var dataUrl = await _readAsDataURL(blob);
+    var img = await _loadImage(dataUrl);
+    var w = img.naturalWidth || 0;
+    var h = img.naturalHeight || 0;
+    var needCompress = blob.size > 2 * 1024 * 1024;
+    var edge = COMPRESS_EDGE;
+    // 像素保护：文件小但像素爆炸（纯色大图 PNG）→ 防 canvas 崩溃
+    if (!needCompress && (w > MAX_IMG_EDGE || h > MAX_IMG_EDGE)) {
+        needCompress = true;
+        edge = MAX_IMG_EDGE;
+    }
+    if (needCompress && w > 0 && h > 0) {
+        // 按最长边等比缩放（修复原 bug：>2MB 竖长图只缩宽不缩高）
+        var scale = Math.min(1, edge / w, edge / h);
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(w * scale));
+        canvas.height = Math.max(1, Math.round(h * scale));
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        var out = canvas.toDataURL('image/jpeg', 0.85);
+        addImage(out, out.split(',')[1]);
+    } else {
+        // SVG 等无 intrinsic size 或无需压缩 → 原样入条
+        addImage(dataUrl, dataUrl.split(',')[1]);
+    }
+    return { added: true };
+}
+
+// 批量粘贴图片：槽位上限裁剪 + 逐张串行保序 + 失败隔离 + 汇总提示
+async function _pasteImages(imageFiles) {
+    if (!imageFiles || imageFiles.length === 0) return;
+    var slot = MAX_IMAGES - pendingImages.length;
+    var toProcess = imageFiles;
+    if (slot <= 0) {
+        _limitQoast('image-cap', [MAX_IMAGES]);
+        return;
+    } else if (imageFiles.length > slot) {
+        toProcess = imageFiles.slice(0, slot);
+        _limitQoast('image-cap', [MAX_IMAGES]);
+    }
+    var skip = 0;
+    for (var k = 0; k < toProcess.length; k++) {
+        try {
+            var r = await _processImageFile(toProcess[k]);
+            if (!r || !r.added) skip++;
+        } catch (_e) { skip++; }
+    }
+    if (skip > 0) _limitQoast('image-size', [skip]);
+}
+
 function addImage(dataUrl, base64) {
     if (pendingImages.length >= MAX_IMAGES) return;
     var id = pendingImages.length + 1;
@@ -355,16 +449,14 @@ if (typeof ContentGateway !== 'undefined' && typeof ContentGateway.EDITOR_CAP_CH
     INPUT_CAP_CHARS = ContentGateway.EDITOR_CAP_CHARS;
 }
 
-// 粘贴图片（> 2MB 自动压缩至 2048px 宽）/ 纯文本粘贴
+// 粘贴图片（多图全量收集 + 串行保序 + 三重硬帽）/ 纯文本粘贴
 $input.addEventListener('paste', function (e) {
     // ★ 铁律：任何粘贴一律先阻止原生行为，再由我们手动插入
     e.preventDefault();
 
+    // ★ 同步收集剪贴板（clipboardData 仅事件回调内有效，必须同步读）
     var plainText = '';
-    var hasImage = false;
-    var imageFile = null;
-
-    // 读取剪贴板（try-catch 全包裹，任何异常都安全退出）
+    var imageFiles = [];
     try {
         var cd = e.clipboardData || (e.originalEvent && e.originalEvent.clipboardData);
         if (!cd) return;
@@ -372,68 +464,52 @@ $input.addEventListener('paste', function (e) {
         var items = cd.items;
         if (items) {
             for (var i = 0; i < items.length; i++) {
-                if (items[i].type.indexOf('image/') === 0) {
-                    hasImage = true;
-                    imageFile = items[i].getAsFile();
-                    break;
+                var it = items[i];
+                if (it.kind === 'file' && it.type && it.type.indexOf('image/') === 0) {
+                    var f = it.getAsFile();
+                    if (f) imageFiles.push(f);
                 }
             }
         }
     } catch (_) { return; }
 
-    // 图片分支
-    if (hasImage && imageFile) {
-        var reader = new FileReader();
-        reader.onload = function (ev) {
-            var dataUrl = ev.target.result;
-            if (imageFile.size > 2 * 1024 * 1024) {
-                var img = new Image();
-                img.onload = function () {
-                    var scale = img.width > 2048 ? 2048 / img.width : 1;
-                    var canvas = document.createElement('canvas');
-                    canvas.width = Math.round(img.width * scale);
-                    canvas.height = Math.round(img.height * scale);
-                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                    addImage(canvas.toDataURL('image/jpeg', 0.85), canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
-                };
-                img.src = dataUrl;
-            } else {
-                addImage(dataUrl, dataUrl.split(',')[1]);
-            }
-        };
-        reader.readAsDataURL(imageFile);
-        return;
-    }
+    // ★ 串行队列：快速连按 Ctrl+V 时逐次处理，防并发乱序/超限
+    _enqueuePaste(async function () {
+        // 图片分支：串行处理保序，三重硬帽（30MB / 4096px / 20张槽位）
+        if (imageFiles.length > 0) {
+            await _pasteImages(imageFiles);
+        }
 
-    // 纯文本分支：硬上限保护
-    if (!plainText) return;
+        // 纯文本分支：硬上限保护
+        if (!plainText) return;
 
-    // ★ 直接用原生 getter 读当前值（绕过自定义属性，绝对可靠）
-    var nativeGet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').get;
-    var nativeSet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
-    var cur = nativeGet.call($input);
-    var selStart = $input.selectionStart || 0;
-    var selEnd = $input.selectionEnd || 0;
-    var before = cur.substring(0, selStart);
-    var after = cur.substring(selEnd);
-    var available = INPUT_CAP_CHARS - before.length - after.length;
+        // ★ 直接用原生 getter 读当前值（绕过自定义属性，绝对可靠）
+        var nativeGet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').get;
+        var nativeSet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+        var cur = nativeGet.call($input);
+        var selStart = $input.selectionStart || 0;
+        var selEnd = $input.selectionEnd || 0;
+        var before = cur.substring(0, selStart);
+        var after = cur.substring(selEnd);
+        var available = INPUT_CAP_CHARS - before.length - after.length;
 
-    if (available <= 0) {
-        _limitQoast('paste-full');
-        return;
-    }
+        if (available <= 0) {
+            _limitQoast('paste-full');
+            return;
+        }
 
-    var wasTruncated = plainText.length > available;
-    var insertText = wasTruncated ? plainText.substring(0, available) : plainText;
-    var newVal = before + insertText + after;
+        var wasTruncated = plainText.length > available;
+        var insertText = wasTruncated ? plainText.substring(0, available) : plainText;
+        var newVal = before + insertText + after;
 
-    // ★ 用原生 setter 直设值，然后手动触发 resize + progress
-    nativeSet.call($input, newVal);
-    $input.setSelectionRange(selStart + insertText.length, selStart + insertText.length);
-    autoResizeInput();
-    _updateInputProgress();
+        // ★ 用原生 setter 直设值，然后手动触发 resize + progress
+        nativeSet.call($input, newVal);
+        $input.setSelectionRange(selStart + insertText.length, selStart + insertText.length);
+        autoResizeInput();
+        _updateInputProgress();
 
-    if (wasTruncated) _limitQoast('paste-truncated');
+        if (wasTruncated) _limitQoast('paste-truncated');
+    });
 });
 
 // ═══ 右键菜单：Copy / Paste（无障碍，替代 Ctrl+C/Ctrl+V）══
@@ -470,25 +546,24 @@ $input.addEventListener('contextmenu', function (e) {
         try { document.execCommand('copy'); } catch (_) { }
     });
 
-    _addRow('Ctrl+V', async function () {
+    _addRow('Ctrl+V', function () {
         $input.focus();
+        // ★ 串行队列：与 Ctrl+V 共用同一队列，防并发乱序
+        _enqueuePaste(async function () {
         // ★ 先尝试读剪贴板图片（navigator.clipboard.read 支持 text+image）
-        var hasImage = false, imageFile = null, txt = '';
+        var imageBlobs = [], txt = '';
         try {
             var items = await navigator.clipboard.read();
             for (var i = 0; i < items.length; i++) {
                 for (var t = 0; t < items[i].types.length; t++) {
                     var mt = items[i].types[t];
                     if (mt.indexOf('image/') === 0) {
-                        hasImage = true;
-                        imageFile = await items[i].getType(mt);
-                        break;
-                    }
-                    if (mt === 'text/plain') {
+                        // 全量收集（不再 break），保剪贴板顺序
+                        try { imageBlobs.push(await items[i].getType(mt)); } catch (_) {}
+                    } else if (mt === 'text/plain') {
                         try { txt = await (await items[i].getType('text/plain')).text(); } catch (_) {}
                     }
                 }
-                if (hasImage) break;
             }
         } catch (_) {
             // clipboard.read 失败 → 回退到纯文本
@@ -502,55 +577,24 @@ $input.addEventListener('contextmenu', function (e) {
             } catch (_2) { return; }
         }
 
-        // 图片分支：复用原生 paste 处理器的图片逻辑
-        if (hasImage && imageFile) {
-            var reader = new FileReader();
-            reader.onload = function (ev) {
-                var dataUrl = ev.target.result;
-                if (imageFile.size > 2 * 1024 * 1024) {
-                    var img = new Image();
-                    img.onload = function () {
-                        var scale = img.width > 2048 ? 2048 / img.width : 1;
-                        var canvas = document.createElement('canvas');
-                        canvas.width = Math.round(img.width * scale);
-                        canvas.height = Math.round(img.height * scale);
-                        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-                        addImage(canvas.toDataURL('image/jpeg', 0.85), canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
-                    };
-                    img.src = dataUrl;
-                } else {
-                    addImage(dataUrl, dataUrl.split(',')[1]);
-                }
-            };
-            reader.readAsDataURL(imageFile);
-            // 如果同时有文本，也插入到编辑框
-            if (txt) {
-                var nd = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-                var cur = nd.get.call($input);
-                var ss = $input.selectionStart || 0, se = $input.selectionEnd || 0;
-                var avail = INPUT_CAP_CHARS - cur.substring(0, ss).length - cur.substring(se).length;
-                if (avail > 0) {
-                    var ins = txt.length > avail ? txt.substring(0, avail) : txt;
-                    nd.set.call($input, cur.substring(0, ss) + ins + cur.substring(se));
-                    $input.setSelectionRange(ss + ins.length, ss + ins.length);
-                    autoResizeInput(); _updateInputProgress();
-                }
-            }
-            return;
+        // 图片分支：复用 _pasteImages（串行保序 + 三重硬帽）
+        if (imageBlobs.length > 0) {
+            await _pasteImages(imageBlobs);
         }
 
-        // 纯文本分支
+        // 纯文本分支（图片+文本共存时，图片先入条，文本走此分支插入一次）
         if (!txt) return;
-        var nd = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
-        var cur = nd.get.call($input);
-        var ss = $input.selectionStart || 0, se = $input.selectionEnd || 0;
-        var avail = INPUT_CAP_CHARS - cur.substring(0, ss).length - cur.substring(se).length;
-        if (avail <= 0) { _limitQoast('paste-full'); return; }
-        var ins = txt.length > avail ? txt.substring(0, avail) : txt;
-        nd.set.call($input, cur.substring(0, ss) + ins + cur.substring(se));
-        $input.setSelectionRange(ss + ins.length, ss + ins.length);
+        var nd2 = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value');
+        var cur2 = nd2.get.call($input);
+        var ss2 = $input.selectionStart || 0, se2 = $input.selectionEnd || 0;
+        var avail2 = INPUT_CAP_CHARS - cur2.substring(0, ss2).length - cur2.substring(se2).length;
+        if (avail2 <= 0) { _limitQoast('paste-full'); return; }
+        var ins2 = txt.length > avail2 ? txt.substring(0, avail2) : txt;
+        nd2.set.call($input, cur2.substring(0, ss2) + ins2 + cur2.substring(se2));
+        $input.setSelectionRange(ss2 + ins2.length, ss2 + ins2.length);
         autoResizeInput(); _updateInputProgress();
-        if (txt.length > avail) _limitQoast('paste-truncated');
+        if (txt.length > avail2) _limitQoast('paste-truncated');
+        });
     });
 
     // 测宽高 → 避开屏幕边缘

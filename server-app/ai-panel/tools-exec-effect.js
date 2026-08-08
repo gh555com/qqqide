@@ -246,35 +246,45 @@ async function executeRunCommand(args) {
                 shell: false
             });
         } else {
-            // Normal (non-SSH) mode: parse command into cmd + args for proper spawn
+            // Normal (non-SSH) mode
             var cmd = args.command || '';
-            var cmdArgs = [];
-            var useShell = false;
-            if (cmd.includes(' ')) {
-                // Split respecting quotes
-                var parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [cmd];
-                cmd = parts[0];
-                cmdArgs = parts.slice(1).map(function (s) {
-                    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
-                        return s.slice(1, -1);
-                    }
-                    return s;
-                });
-            }
-            // On Windows, built-in commands (dir/type/echo etc.) are wrapped
-            // transparently by qz-spawn.ts; here we just detect platform for shell mode.
             var isWin = (typeof navigator !== 'undefined' && /Win/.test(navigator.platform || ''))
                 || (typeof process !== 'undefined' && process.platform === 'win32');
-            if (isWin) useShell = true;
-
-            result = await bridge.qz.spawn({
-                cmd: cmd,
-                args: cmdArgs,
-                cwd: args.cwd || '',
-                timeout: 0,
-                stallMs: 900000,
-                shell: useShell
-            });
+            if (isWin) {
+                // ★ Windows: 整串交给 cmd 解析（不拆 cmd/args）。
+                //   拆分 + shell:true 会让 Node 二次拼装 → 嵌套 cmd /c → cd /d 失效、
+                //   相对路径落盘基于 spawn cwd（绿色包根）→ 文件污染（F79 事故）。
+                //   整串 + shell:true → cmd.exe /d /s /c "整串" 单层引号 → cd 生效。
+                result = await bridge.qz.spawn({
+                    cmd: cmd,
+                    args: [],
+                    cwd: args.cwd || '',
+                    timeout: 0,
+                    stallMs: 900000,
+                    shell: true
+                });
+            } else {
+                // POSIX: parse command into cmd + args for proper spawn (shell:false)
+                var cmdArgs = [];
+                if (cmd.includes(' ')) {
+                    var parts = cmd.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [cmd];
+                    cmd = parts[0];
+                    cmdArgs = parts.slice(1).map(function (s) {
+                        if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+                            return s.slice(1, -1);
+                        }
+                        return s;
+                    });
+                }
+                result = await bridge.qz.spawn({
+                    cmd: cmd,
+                    args: cmdArgs,
+                    cwd: args.cwd || '',
+                    timeout: 0,
+                    stallMs: 900000,
+                    shell: false
+                });
+            }
         }
 
         // ★ 钩子 Q（_a4WrappedExecuteTool）统一处理 run_command 的扫描+记录
