@@ -430,6 +430,13 @@ async function _restoreAgentFromStore(questId, ag) {
     //    agent 持有最新 conversation / _houses / cost / timing，比磁盘数据更权威。
     //    switchQuest 切回时只 rebind _activeAiDiv，不重建 agent 内部状态。
     if (ag._stopState === 'sending' || ag._recoveryInProgress) return;
+    // ★ 恢复路径 per-floor 标志清零（2026-08-08 F10）：V21 ④ 只清发送路径，
+    //   恢复路径残留 _compressFloor → 后续楼层被误标 compress → 完结截断 conversation
+    //   （q169 f10/f12/f14 conv=0 事故链之一）。_floorSealed 恢复为空（新会话可写）。
+    ag._compressFloor = false;
+    ag._isRecovery = false;
+    ag._floorCompletedCleanly = false;
+    ag._floorSealed = {};
     try {
         var data = await questStore.load(questId);
         var allFloors = await questStore.loadAllFloors(questId);

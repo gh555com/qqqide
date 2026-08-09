@@ -12,6 +12,42 @@ import { _tlBlobPath, _gunzipSync } from './timeline-store';
 
 const READ_FILE_MAX = 50 * 1024 * 1024; // 50MB guard
 
+// ★ agent 日志轮转：_qqq/new_log/agent-*.log 只保留 30 天（每日最多清一次）
+let _agentLogRotateDay = '';
+
+// ★ new_log JSONL 大小轮转：_qqq/new_log/*.jsonl 单文件 ≤2MB，超限滚为 .1（覆盖旧），总量 ≤4MB
+async function _rotateJsonlBySize(p: string): Promise<void> {
+    const dir = path.dirname(p);
+    if (!p.endsWith('.jsonl') || !dir.endsWith(path.join('_qqq', 'new_log'))) return;
+    try {
+        const st = await fs.promises.stat(p);
+        if (st.size < 2 * 1024 * 1024) return;
+        const bak = p + '.1';
+        try { await fs.promises.unlink(bak); } catch { /* 无旧备份 */ }
+        await fs.promises.rename(p, bak);
+    } catch (e: any) {
+        if (e && e.code !== 'ENOENT') { /* 忽略 */ }
+    }
+}
+async function _rotateAgentLogs(p: string): Promise<void> {
+    const today = new Date().toISOString().slice(0, 10);
+    if (_agentLogRotateDay === today) return;
+    const dir = path.dirname(p);
+    if (!path.basename(p).startsWith('agent-') || !dir.endsWith(path.join('_qqq', 'new_log'))) return;
+    _agentLogRotateDay = today;
+    try {
+        const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+        const names = await fs.promises.readdir(dir);
+        for (const n of names) {
+            if (!n.startsWith('agent-') || !n.endsWith('.log')) continue;
+            try {
+                const st = await fs.promises.stat(path.join(dir, n));
+                if (st.mtimeMs < cutoff) await fs.promises.unlink(path.join(dir, n));
+            } catch { /* 单文件失败不影响 */ }
+        }
+    } catch { /* 目录不存在/不可读 → 跳过 */ }
+}
+
 /** ★ 原子写入：tmp + rename，与 qgf.ts atomicWrite 同模式。
  *  进程崩溃 mid-write 时只有 tmp 损坏，目标文件始终完好。 */
 async function _atomicWrite(absPath: string, data: Buffer): Promise<void> {
@@ -74,12 +110,16 @@ export function registerFsIpc(): void {
 
     ipcMain.handle('qqqide:fs:append', async (_e, p: string, content: string) => {
         try { await fs.promises.mkdir(path.dirname(p), { recursive: true }); } catch { /* ignore */ }
+        // new_log JSONL 大小轮转：超 2MB 先滚 .1 再写（总量 ≤4MB）
+        await _rotateJsonlBySize(p);
         await fs.promises.appendFile(p, content, 'utf8');
+        // agent-*.log 顺带轮转（30 天保留，每日一次，零开销）
+        _rotateAgentLogs(p).catch(function () { /* ignore */ });
         return true;
     });
 
     ipcMain.handle('qqqide:fs:list', async (_e, p: string, callerStack?: string) => {
-        console.log('[fs:list]', p);
+        // 高频调用（扫盘/索引/建楼），不打印正常路径日志，仅 FAILED 时告警
         const MAX = 3000;
         try {
             const names = await fs.promises.readdir(p, { withFileTypes: true });

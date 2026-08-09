@@ -349,31 +349,8 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 self._sseError = null;
             }
             self._consecutiveFetchErrors = 0;  // ★ 整个 fetch+SSE 周期成功后才清零
-            // ★ Token 校准：对比本地估算和 API 精确值，自动修正 CHAR_PER_TOKEN
-            if (_result && _result._usage && _result._usage.prompt_tokens > 0 && typeof ContentGateway !== 'undefined') {
-                var _estChars = 0;
-                for (var _ei = 0; _ei < apiMessages.length; _ei++) {
-                    var _em = apiMessages[_ei];
-                    if (!_em) continue;
-                    try {
-                        if (typeof _em.content === 'string') _estChars += _em.content.length;
-                        if (_em.tool_calls) _estChars += JSON.stringify(_em.tool_calls).length;
-                    } catch (_) { }
-                }
-                if (_estChars > 0) {
-                    var _estTokens = _estChars / ContentGateway.CHAR_PER_TOKEN;
-                    var _actTokens = _result._usage.prompt_tokens;
-                    if (_actTokens > 0 && _estTokens > 0) {
-                        var _ratio = _estTokens / _actTokens;
-                        // ★ 校准仅处理 0.1x ~ 10x 偏差（超过此范围说明 apiMessages 与完整 conversation 不一致，跳过）
-                        if (_ratio > 0.10 && _ratio < 10 && Math.abs(_ratio - 1) > 0.20) {
-                            var _newCPT = ContentGateway.CHAR_PER_TOKEN / _ratio;
-                            // ★ 硬围栏：CPT 永远在 1.0 ~ 5.0 之间
-                            ContentGateway.CHAR_PER_TOKEN = Math.max(1.0, Math.min(5.0, Math.round(_newCPT * 100) / 100));
-                        }
-                    }
-                }
-            }
+            // （CHAR_PER_TOKEN 为恒定估算系数，禁运行时校准 — 铁律附录表2）
+
             // ★ 兜底：尝试主线路成功 → 正式切回
             if (_gwTryingPrimary && typeof _gwSwitch === 'function') {
                 _gwSwitch(false);  // 切回主线路 + qoast 提示

@@ -273,7 +273,7 @@ function addUserMessageEl(content) {
     _appendToCard(div);
     _markLongMsg(div, 'user', displayContent);
     scrollToBottom(true);
-    // ★ 临时诊断：记录用户气泡上屏
+    // ★ 诊断：记录用户气泡上屏（render-log.jsonl，2MB 双代轮转）
     if (typeof _logRenderEvent === 'function') {
         _logRenderEvent('user_bubble', questActiveId, div._floor || 0, content);
     }
@@ -378,11 +378,11 @@ function setStreaming(val) {
     }
 }
 
-// ★★★ 临时诊断日志：记录每次 AI 面板渲染事件到磁盘 ★★★
-// 写入 qqq/new_log/render-log.jsonl，每行一个 JSON 事件
-// 用后即删：问题确诊后删除此函数及所有调用点
+// ★★★ 渲染事件日志：写入 _qqq/new_log/render-log.jsonl，每行一个 JSON 事件
+// 主进程 append 侧 2MB 双代轮转（总量 ≤4MB）；window.__qqq_file_log=false 可关闭
 function _logRenderEvent(eventType, questId, floorNum, detail) {
     try {
+        if (typeof window !== "undefined" && window.__qqq_file_log === false) return;
         var bridge = window.parent && window.parent.qqqideBridge;
         if (!bridge || !bridge.fs) return;
         var ts = new Date().toISOString();
@@ -404,7 +404,6 @@ function _logRenderEvent(eventType, questId, floorNum, detail) {
             preview: preview,
             extra: detail && detail.extra || ''
         }) + '\n';
-        // 写到一个固定文件，方便查找
         var root = (typeof questStore !== 'undefined' && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
         if (root) {
             var logPath = root.replace(/\\/g, '/') + '/_qqq/new_log/render-log.jsonl';
@@ -412,3 +411,4 @@ function _logRenderEvent(eventType, questId, floorNum, detail) {
         }
     } catch (_) { /* 静默降级 */ }
 }
+

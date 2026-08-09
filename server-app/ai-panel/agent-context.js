@@ -857,7 +857,10 @@
                 // ★ V21: 清理 compress floor 全部原始消息（assistant/tool 无 _compressFloor 标记，
                 //   按标记删会残留 → 残留被下一楼层 rebuild 压缩进 biscuit（q147 f96 A 全文 2407 事故）。
                 //   floorStart 之后即当前 compress 楼层，无条件截断。
-                if (self.conversation.length > floorStart) {
+                // ★ 收紧（2026-08-08 F10）：仅当前楼层本身是 compress 才截断 —— _newFacts 可能来自
+                //   更早楼层的 compress 消息，误截断正常楼层 → conversation 清空 → all.json conv=0
+                //   （q169 f10/f12/f14 事故链之一）。
+                if (_curMsgs.length > 0 && _curMsgs[0]._compressFloor && self.conversation.length > floorStart) {
                     self.conversation.length = floorStart;
                 }
             }

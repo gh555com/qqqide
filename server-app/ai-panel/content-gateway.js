@@ -39,7 +39,7 @@
         return 600000;
     })();
     var MAX_TOKENS_SAFETY = 10000;
-    var CHAR_PER_TOKEN = 2.7;
+    var CHAR_PER_TOKEN = 2.5;   // ★ 字符→token 估算系数 — 唯一真理源（AI iframe 内 agent-context / panel-pipeline / panel-quest-ui 均引用此值）。恒定常量，禁止任何运行时校准/改写（铁律附录表2）
     var COMPACT_MAX_TOKENS = 65536;
     var ARCHIVE_MAX_CHARS = 1000000;
     var COMPACT_DEBUG = true;

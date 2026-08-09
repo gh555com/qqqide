@@ -23,6 +23,12 @@ const https = require('https');
 const ROOT = path.resolve(__dirname, '..');
 const ELECTRON_VERSION = '22.3.27';
 
+// ★ Electron 二进制下载镜像：GitHub 直连在国内不稳定（EOF 中断），
+// 统一走 npmmirror（@electron/get 拼接为 .../v22.3.27/electron-v22.3.27-<plat>-<arch>.zip，该路径存在）。
+if (!process.env.ELECTRON_MIRROR) {
+  process.env.ELECTRON_MIRROR = 'https://npmmirror.com/mirrors/electron/';
+}
+
 // Read APP_VERSION from shell/version.ts (single source of truth)
 const versionTs = fs.readFileSync(path.join(ROOT, 'shell', 'version.ts'), 'utf8');
 const vm = versionTs.match(/export const APP_VERSION\s*=\s*'(\d+\.\d+\.\d+)'/);
@@ -242,12 +248,12 @@ async function fetchElectronPrebuilt() {
     console.log('[pack] using cached', local);
     return local;
   }
-  // try multiple mirrors (github first, then china mirrors)
+  // try multiple mirrors (npmmirror first — GitHub 直连 EOF 不稳定，仅兜底)
   const mirrors = [
-    `https://github.com/electron/electron/releases/download/v${ELECTRON_VERSION}/${fname}`,
     `https://npmmirror.com/mirrors/electron/${ELECTRON_VERSION}/${fname}`,
     `https://registry.npmmirror.com/-/binary/electron/${ELECTRON_VERSION}/${fname}`,
     `https://cdn.npmmirror.com/binaries/electron/${ELECTRON_VERSION}/${fname}`,
+    `https://github.com/electron/electron/releases/download/v${ELECTRON_VERSION}/${fname}`,
   ];
   let lastErr = null;
   for (const url of mirrors) {

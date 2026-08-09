@@ -192,7 +192,7 @@ body {
     overflow: hidden; position: relative; border: 1px solid var(--border);
 }
 .cmp-anim-bar-fill {
-    height: 100%; border-radius: 2px; transition: width 0.8s cubic-bezier(0.22,0.61,0.36,1), background-color 0.8s cubic-bezier(0.22,0.61,0.36,1);
+    height: 100%; border-radius: 2px; transition: width 1.6s cubic-bezier(0.22,0.61,0.36,1), background-color 1.6s cubic-bezier(0.22,0.61,0.36,1);
     background: var(--red);
 }
 /* .cmp-anim-bar-fill.after bg set dynamically via JS */
@@ -217,7 +217,7 @@ body {
 
 /* ── 按钮收益标签 ── */
 .cmp-benefit {
-    font-size: 20px; font-weight: 400; margin: 0 0 0 -3px; padding: 0; line-height: 1;
+    font-size: 20px; font-weight: 400; margin: 0 0 0 3px; padding: 0; line-height: 1;
     vertical-align: middle; letter-spacing: -0.5px;
     color: #c0392b;
     font-family: inherit;
@@ -744,11 +744,11 @@ window.addEventListener('message', function (e) {
                 var titleMap = { absolut: '🧹 绝对包装盒已剥离', editonly: '✂️ 已精简为仅编辑包装盒' };
                 var title = titleMap[e.data.action] || '✅ 压缩完成';
                 showCompressAnimation(title, e.data.beforeChars, e.data.afterChars);
-                // 动画后自动关闭（动画0.8s + 停留2s = 2.8s，取3s）
+                // 动画后自动关闭（动画1.6s + 停留4.4s = 6s，取6s）
                 setTimeout(function () {
                     var overlay = document.getElementById('cmpAnimOverlay');
                     if (overlay && overlay.classList.contains('show')) closeAnim();
-                }, 3000);
+                }, 6000);
             }
         } else {
             toast(_i('goods.conv.compressFailed', '压缩失败') + (e.data.error ? ': ' + e.data.error : ''));
@@ -781,8 +781,8 @@ setInterval(function () {
 // 压缩 3 按钮体系 — absolut / edit only / only facts
 // ════════════════════════════════════════════════
 
-// ★ 与 content-gateway.js CHAR_PER_TOKEN=2.7 对齐
-var CHAR_PER_TOKEN = 2.7;
+// ★ 与 content-gateway.js CHAR_PER_TOKEN=2.5 对齐（唯一真理源；goods 跨 iframe 无法直接引用，手动同步）
+var CHAR_PER_TOKEN = 2.5;
 function _charsToTokens(chars) { return Math.round(chars / CHAR_PER_TOKEN); }
 
 // ── 计算 3 按钮收益（减少的背包 tokens）──
@@ -943,15 +943,15 @@ function showCompressAnimation(title, beforeChars, afterChars) {
 
     // 百分比：动画从 100% 滚动到 targetPct
     var pctEl = document.getElementById('cmpSavedPct');
-    _animatePct(pctEl, 100, targetPct, 750);
+    _animatePct(pctEl, 100, targetPct, 1500);
 
     // 显示遮罩
     var overlay = document.getElementById('cmpAnimOverlay');
     overlay.classList.add('show');
 
-    // 3 秒后自动关闭
+    // 6 秒后自动关闭（动画 1.6s + 定格 4.4s）
     clearTimeout(window._cmpAnimTimer);
-    window._cmpAnimTimer = setTimeout(closeAnim, 3000);
+    window._cmpAnimTimer = setTimeout(closeAnim, 6000);
 
     // 动画：延迟一帧后从右往左收缩 + 颜色从红渐变到绿
     requestAnimationFrame(function () {

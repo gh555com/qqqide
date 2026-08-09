@@ -144,11 +144,14 @@
 					bin += String.fromCharCode.apply(null, bytes.subarray(j, j + 0x8000));
 				}
 				var b64 = btoa(bin);
-				if (bridge.fs.writeBase64) {
-					await bridge.fs.writeBase64(dest, b64);
-				} else {
-					await bridge.fs.write(dest, b64);
+				// ★ 2026-08-08 F106: 二进制必须走 writeBase64（主进程 base64 解码）。
+				//   禁止降级到 fs.write —— base64 字符串会被当 UTF-8 文本写入 → 文件损坏。
+				if (!bridge.fs.writeBase64) {
+					console.error('[roam] paste: bridge.fs.writeBase64 missing — binary write would corrupt file, skipping', f.name);
+					failCount++;
+					continue;
 				}
+				await bridge.fs.writeBase64(dest, b64);
 				successCount++;
 				if (tip) tip.textContent = 'Pasting ' + (i + 1) + '/' + files.length + ': ' + f.name;
 			} catch(err) {

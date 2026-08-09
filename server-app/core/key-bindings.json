@@ -44,11 +44,6 @@
       "when": "noEditing"
     },
     {
-      "id": "window.activateRoam",
-      "accel": "Space+Q",
-      "scope": "global"
-    },
-    {
       "id": "roam.openInIde",
       "accel": "Q",
       "scope": "iframe:roam",

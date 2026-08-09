@@ -400,18 +400,31 @@ async function bindMainProject() {
         var root = null;
         if (!window.parent || !window.parent.qqqideViewport) { _bindLock = null; return; }
 
-        // ★ 轮询等待主项目就绪（最多 12 次 × 500ms = 6s）
+        // ★ 轮询等待主项目就绪（最多 16 次 × 500ms = 8s）
         //   解决翼板 iframe 加载时序早于父窗口异步项目加载的竞态问题
-        //   旧架构依赖 qqq-ai-viewport-changed postMessage 重试，
-        //   但 postMessage 可能在翼板脚本注册监听器之前发出导致消息丢失
-        for (var _bpRetry = 0; _bpRetry < 12; _bpRetry++) {
+        //   ★ 2026-08-08（q44/q147 跨项目串号）: 追加稳定性判定 —
+        //     视口主项目在启动期可能跳变（OS 级上次主文件夹 vs 本窗口 folder=/formation 恢复），
+        //     连续 2 次采样一致才绑定 → 面板不会绑到启动期的临时主项目
+        var _lastMain = null;
+        var _stable = 0;
+        for (var _bpRetry = 0; _bpRetry < 16; _bpRetry++) {
             var main = window.parent.qqqideViewport.getMainProject();
             if (main && main.path) {
-                root = main.path.replace(/\\/g, '/').replace(/\/$/, '');
-                break;
+                var _p = main.path.replace(/\\/g, '/').replace(/\/$/, '');
+                if (_p === _lastMain) {
+                    _stable++;
+                    if (_stable >= 2) { root = _p; break; }
+                } else {
+                    _lastMain = _p;
+                    _stable = 1;
+                }
+            } else {
+                _lastMain = null;
+                _stable = 0;
             }
-            if (_bpRetry < 11) await new Promise(function (r) { setTimeout(r, 500); });
+            if (_bpRetry < 15) await new Promise(function (r) { setTimeout(r, 500); });
         }
+        if (!root && _lastMain) root = _lastMain;  // 兜底：视口始终未稳定 → 用最后一次采样
 
         if (!root) {
             // [silent] bindMainProject: no main project after retries, wait for viewport-changed message
@@ -425,6 +438,18 @@ async function bindMainProject() {
 
     return _bindLock;
 }
+
+// ★ 绑定兜底（2026-08-08）：boot 8s 轮询拿不到主项目（viewport OS 恢复慢 / 面板早于视口就绪 /
+//   postMessage 在 listener 注册前发出丢失）→ 转 3s 慢轮询（最长 10 分钟），
+//   主项目一旦就绪立即绑定 → 根治「空白窗口手动添加主文件夹后三面板仍全空」
+(function () {
+    var _bfN = 0;
+    var _bfT = setInterval(function () {
+        if (_workspaceRoot) { clearInterval(_bfT); return; }
+        if (++_bfN > 200) { clearInterval(_bfT); return; }
+        bindMainProject();
+    }, 3000);
+})();
 
 // 窗口关闭时刷盘 + 释放所有权（翼板关闭=iframe隐藏，不触发 beforeunload）
 //   应用真正退出 → 释放所有 quest 所有权，防重启后僵尸状态阻塞
@@ -445,6 +470,19 @@ window.addEventListener('beforeunload', function () {
 // 监听视口变化：主文件夹改变时重新绑定
 window.addEventListener('message', function (e) {
     if (e.data && e.data.type === 'qqq-ai-viewport-changed') {
+        // ★ 2026-08-08: 已绑定但主文件夹被用户更换（空白窗口重建 / 恢复错路径后修正）
+        //   → 先保存 UI 状态再重载面板重新绑定，根治「绑错项目后全空且永不恢复」
+        var _newMain = null;
+        if (e.data.projects && e.data.projects.length > 0 && e.data.projects[0].path) {
+            _newMain = e.data.projects[0].path.replace(/\\/g, '/').replace(/\/$/, '');
+        }
+        if (_workspaceRoot && _newMain && _newMain !== _workspaceRoot) {
+            try { saveQuestUIState(questActiveId); } catch (_) { }
+            try { if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) { onlyStore.flush(); } } catch (_) { }
+            console.warn('[workspace] main folder changed: ' + _workspaceRoot + ' -> ' + _newMain + ' — reloading panel to rebind');
+            try { window.location.reload(); } catch (_) { }
+            return;
+        }
         bindMainProject();
     }
     // 主题变更由父窗口 qqqide-theme.js 统一持久化到 only.sq3
@@ -865,6 +903,9 @@ async function _readCtxJson(questId) {
 async function _saveAgentQuestData(questId, ag, floorNum, opts) {
     if (!questId || !ag) return;
     if (!floorNum) floorNum = ag._currentFloorNum;
+    // ★ 完结密封守卫（2026-08-08 F10 根因）：已完结楼层禁止再次写盘
+    //   （压缩后 conversation 已截短，重复保存 slice 出空 → conv=0 覆盖完整保存）
+    if (floorNum > 0 && ag._floorSealed && ag._floorSealed[floorNum]) return;
 
     // ═══ 1) 如果楼层号有效且有元数据 → 保存楼层 payload ═══
     if (floorNum && floorNum > 0) {

@@ -14,6 +14,7 @@ import { StateStore } from './state-sqlite';
 import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
 import { _windowProjectMap } from './window-manager';
+import { crashNetMarkCleanQuit } from './crash-net';
 
 // ── 自动版本递增 ──────────────────────────────────────────────────────────
 const AUTO_VERSION_TOGGLE_OFF = 'auto-version-off';
@@ -253,6 +254,9 @@ export function registerExitHandlers(
         //    will-quit 不适用于此（app.exit 会跳过 will-quit），改用双写锁保险。
         try { _flushStateSync('exit'); } catch { /* ignore */ }
         try { _flushQgfSync('exit'); } catch { /* ignore */ }
+
+        // ★ 天罗地网: 正常退出标记 — app.exit 跳过 will-quit, 必须在此处显式标记
+        try { crashNetMarkCleanQuit(); } catch { /* ignore */ }
 
         app.exit(0);
         setTimeout(() => { process.exit(0); }, 500);

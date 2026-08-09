@@ -13,6 +13,7 @@
   var _stateListeners = [];
   var _$loginBtn = null;
   var _$phoneBtn = null;
+  var _badgeRenderedPhone = null; // ★ 国旗已渲染的账号（phone），同账号永不重渲染
   var _$geLabel = null;
   var _$lvBar = null;
   var _$lvLevel = null;
@@ -54,12 +55,17 @@
 
   // ★ 国旗：本地 PNG（assets/flags/{cc}.png，照 gh555.com CDN 国旗路径本地化）
   // Windows Chromium 不渲染旗帜 emoji（显示成 CN 字母）→ 一律用图片
-  function _flagImg(cc) {
+  function _flagImg(cc, retry) {
     if (!cc || cc.length !== 2) return '';
     var c = cc.toLowerCase();
+    // ★ 重试模式（登录区徽章专用）：首次加载失败 1.2s 后带缓存戳重试一次，仍失败才移除
+    //   防 SW 缓存竞态导致国旗一次性永久消失（徽章冻结后不再重渲染）
+    var onerr = retry
+      ? 'var t=this;if(!t.dataset.r){t.dataset.r="1";setTimeout(function(){t.src="assets/flags/' + c + '.png?r="+Date.now();},1200);}else{t.remove();}'
+      : 'this.remove()';
     return '<img src="assets/flags/' + c + '.png" width="20" height="15" ' +
       'style="vertical-align:middle;border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,0.1);object-fit:cover;" ' +
-      'alt="" title="' + cc.toUpperCase() + '" onerror="this.remove()">';
+      'alt="" title="' + cc.toUpperCase() + '" onerror="' + onerr + '">';
   }
   // emoji → iso2 反解（剥离 FE0F 变体符/ZWJ/键帽等零宽修饰符后再反解）
   function _emojiToIso2(emoji) {
@@ -86,7 +92,7 @@
   function _renderCountryBadge(cc) {
     if (!cc || cc.length !== 2) return '';
     var upper = cc.toUpperCase();
-    return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:14px;line-height:16px;" title="' + upper + '">' + _flagImg(upper) + '</span>';
+    return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:14px;line-height:16px;" title="' + upper + '">' + _flagImg(upper, true) + '</span>';
   }
 
   function _buildDeviceName() {
@@ -561,8 +567,9 @@
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
       var fl = _leaderboardFlag(e.flag);
+      var geAmt = (e.freebie_ge != null) ? Math.round(e.freebie_ge) : '';
       s += LDR_FREEBIE_ROW_HTML.replace('{rank}', e.rank).replace('{flag}', fl).replace('{phone}', e.phone)
-        .replace('{ge}', ge);
+        .replace('{ge}', geAmt);
     }
     return s;
   }
@@ -1150,11 +1157,19 @@
         var cc = (_authData && _authData.countryIso2) ? _authData.countryIso2.toLowerCase() : '';
         _$phoneBtn.style.display = 'inline-flex';
         if (cc) {
-          _$phoneBtn.innerHTML = _renderCountryBadge(cc) + '<span style="margin-left:4px;position:relative;top:1px;">' + phoneTail + '</span>';
+          // ★ 国旗永久化：账号（phone）未切换 → 绝不重写 innerHTML（重写 = img 重建 = 闪烁根源）
+          //   中心大脑每次推送/余额轮询都会走到这里，此前每次重建图片 → 偶发闪烁
+          var p = (_authData && _authData.phone) ? _authData.phone : '';
+          if (_badgeRenderedPhone !== p) {
+            _badgeRenderedPhone = p;
+            _$phoneBtn.innerHTML = _renderCountryBadge(cc) + '<span style="margin-left:4px;position:relative;top:1px;">' + phoneTail + '</span>';
+          }
         } else {
+          _badgeRenderedPhone = null;
           _$phoneBtn.textContent = phoneTail;
         }
       } else {
+        _badgeRenderedPhone = null;
         _$phoneBtn.style.display = 'none';
       }
     }

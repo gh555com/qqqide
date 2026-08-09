@@ -275,7 +275,7 @@ var QuestStore = (function () {
                 // ★ 根因修复（2026-08-08）：floor_counter 启动对账
                 //   计数器仅作建议值，磁盘是最终仲裁者 — 每 quest 扫盘取最大楼层号，
                 //   counter < max+1 时提升（q147 事故：counter 与磁盘脱节 → 分配已存在编号）
-                await _healFloorCounters();
+                await _healFloorCounters(this);
             } catch (e) {
                 console.warn('[quest-store] _ensureIndex failed:', e && e.message);
                 if (!_idx()) _setIdx([]);
@@ -312,12 +312,15 @@ var QuestStore = (function () {
 
     // ★ 根因修复（2026-08-08）：floor_counter 启动对账（仅主面板，一次扫盘）
     //   磁盘最大楼层号 + 1 为下限；防计数器长期脱节（repair 改名 / 手动复制 quest 目录）
-    async function _healFloorCounters() {
+    //   顺带检测 floor 同号多目录 → 触发 repairDuplicateIds 收敛脏数据（断链修复：
+    //   此前仅 quest 级重复才触发 repair，floor 级重复永远残留）
+    async function _healFloorCounters(store) {
         var b = _bridge();
         if (!b || !_rootDir || !_isMainPanel) return;
         var bf = _bridgeFs();
         if (!bf) return;
         var idx = _idx() || [];
+        var _floorDupQuestIds = [];
         for (var i = 0; i < idx.length; i++) {
             var e = idx[i];
             try {
@@ -325,18 +328,33 @@ var QuestStore = (function () {
                 if (!qDirName) continue;
                 var entries = await _safeList(_rootDir + '/_qqq/quests/' + qDirName);
                 var maxN = 0;
+                var _seenNums = {};
                 for (var j = 0; j < entries.length; j++) {
                     var m = entries[j].name.match(/^f(\d+)\./);
-                    if (m) { var n = parseInt(m[1], 10); if (n > maxN) maxN = n; }
+                    if (m) {
+                        var n = parseInt(m[1], 10);
+                        if (n > maxN) maxN = n;
+                        if (_seenNums[n] && _floorDupQuestIds.indexOf(e.id) < 0) _floorDupQuestIds.push(e.id);
+                        _seenNums[n] = true;
+                    }
                 }
                 if (maxN <= 0) continue;
                 var key = 'floor_counter.' + e.id;
                 var cur = await b.get(key);
-                if (typeof cur === 'number' && maxN + 1 > cur) {
+                if (typeof cur !== 'number' || isNaN(cur)) cur = 0;  // ★ 键缺失也 seed（sq3 重建/清理竞态后 counter 丢失 → 首号撞磁盘）
+                if (maxN + 1 > cur) {
                     await b.setNow(key, maxN + 1);
                     console.log('[quest-store] _healFloorCounters: ' + key + ' ' + (cur || 0) + ' → ' + (maxN + 1));
                 }
             } catch (_) { }
+        }
+        // ★ floor 同号多目录（历史碰撞残留）→ 触发 repair 改名合并（读路径有 all.json 优先兜底，
+        //   但重复目录应被收敛，而非永远残留占号）
+        if (_floorDupQuestIds.length && store) {
+            console.warn('[quest-store] _healFloorCounters: floor dup in ' + _floorDupQuestIds.join(', ') + ' — triggering repairDuplicateIds');
+            setTimeout(function () {
+                store.repairDuplicateIds().catch(function (_e) { console.warn('[quest-store] floor-dup auto-repair failed:', _e && _e.message); });
+            }, 2000);
         }
     }
 
@@ -642,21 +660,33 @@ var QuestStore = (function () {
                     } catch (_) { continue; }
 
                     var flNums = Object.keys(floorByName);
+                    // ★ 跨重复组共享递增状态（2026-08-08 F14 修复）：
+                    //   旧逻辑在每个重复组内重新从磁盘最大号算 → 多组重复全部映射到同一新号
+                    //   （q81 f97/f98 → 全 f101；q147 f96/f97/f98/f99 → 全 f109 → 新重复目录事故）。
+                    //   现在：questMaxFn 先扫全组找最大号，之后每次改名递增，跨组永不撞。
+                    var questMaxFn = 0;
+                    for (var flni = 0; flni < flNums.length; flni++) {
+                        var fn = parseInt(flNums[flni]);
+                        if (fn > questMaxFn) questMaxFn = fn;
+                    }
                     for (var flni = 0; flni < flNums.length; flni++) {
                         var fn = parseInt(flNums[flni]);
                         var fEntries = floorByName[fn];
                         if (fEntries.length <= 1) continue;
 
                         console.warn('[quest-store] repairDuplicateIds: floor dup in ' + flQe.id + ' f' + fn + ' (' + fEntries.length + ' duplicates)');
-                        // 保留第一个，其余重命名到更高编号
-                        var keepF = fEntries[0];
-                        // 找到该 quest 的最大 floor 编号
-                        var maxFn = fn;
-                        for (var mki = 0; mki < flNums.length; mki++) {
-                            var mk = parseInt(flNums[mki]);
-                            if (mk > maxFn) maxFn = mk;
+                        // ★ 保留有 all.json 的目录（与 _resolveFloorDir 读路径同规则）：
+                        //   否则可能保留孤儿（只有 all.txt）→ 真数据被改名 → sq3 重建后 f{n} 读空 → 索引循环
+                        var keepF = null;
+                        for (var fki = 0; fki < fEntries.length; fki++) {
+                            var _keepHasJson = await _dirHasAllJson(bf, flQDirPath + '/' + fEntries[fki] + '/');
+                            if (_keepHasJson) { keepF = fEntries[fki]; break; }
                         }
-                        for (var fzi = 1; fzi < fEntries.length; fzi++) {
+                        if (!keepF) keepF = fEntries[0];  // 全孤儿 → 保留第一个（不删数据，占新号继续存活）
+                        // ★ 从跨组共享状态取号（不再每组建独立 maxFn）
+                        var maxFn = Math.max(questMaxFn, fn);
+                        for (var fzi = 0; fzi < fEntries.length; fzi++) {
+                            if (fEntries[fzi] === keepF) continue;  // ★ 跳过保留目录
                             maxFn++;
                             var oldFName = fEntries[fzi];
                             // 提取原标题（f{n}.{title}）
@@ -671,6 +701,7 @@ var QuestStore = (function () {
                                 _invalidatePathCache(flQe.id);
                                 floorFixed++;
                                 questsWithFloorFix[flQe.id] = true;  // ★ 标记需清 sq3
+                                questMaxFn = maxFn;  // ★ 跨组共享：本次分配的新号成为后续分配的下界（F14）
                                 console.log('[quest-store] repairDuplicateIds: floor renamed ' + oldFName + ' → ' + newFName + ' (quest=' + flQe.id + ')');
                             } catch (e) {
                                 floorFailed++;
@@ -760,6 +791,7 @@ var QuestStore = (function () {
         //   若 counter 偏低（sq3 损坏/手动操作），可能分配已存在的编号 → 必须先验
         var maxRetries = 5;
         var numericId, id, now;
+        var _idAllocated = false;
         for (var retry = 0; retry < maxRetries; retry++) {
             numericId = await b.atomicIncr('quest_id_counter');
             id = 'q' + numericId;
@@ -788,8 +820,10 @@ var QuestStore = (function () {
                     }
                 } catch (_) { /* disk check failed → proceed anyway (worse case: _findQuestDirByPrefix catches it later) */ }
             }
-            if (!diskDup) break;  // ★ 干净 ID，退出循环
+            if (!diskDup) { _idAllocated = true; break; }  // ★ 干净 ID，退出循环
         }
+        // ★ 与 nextFloorNum 同策略：拿不到干净 ID 就抛错，绝不用冲突 ID 建 quest
+        if (!_idAllocated) throw new Error('quest-store: cannot allocate free quest id after ' + maxRetries + ' attempts');
 
         now = Date.now();
         var entry = {
@@ -1002,6 +1036,17 @@ var QuestStore = (function () {
         return null;
     }
 
+    // ★ 判断目录是否存在 all.json（孤儿目录判定：只残留 all.txt 的目录不参与楼层解析）
+    async function _dirHasAllJson(bf, dirPath) {
+        try {
+            var entries = await bf.list(dirPath);
+            for (var i = 0; i < entries.length; i++) {
+                if (entries[i].name === 'all.json') return true;
+            }
+        } catch (_) { }
+        return false;
+    }
+
     // 解析 floor 目录完整路径: list("q{n}.*/") → startsWith("f{n}.")
     // ★ 2026-06-24 加固：loadAllFloors Promise.all 并发时，同 quest 目录只 list 一次。
     //   首次 list 时预热全部 floor 缓存，后续调用 100% 缓存命中零 IO。
@@ -1025,24 +1070,38 @@ var QuestStore = (function () {
             try {
                 var list = await bf.list(qDirPath);
                 // ★ 预热全部 floor 目录缓存（一次 list 覆盖所有楼层）
+                // ★ 2026-08-08 洪泛根治（q147 每次启动刷屏 100+ 条 DUPLICATE）:
+                //   ① 告警仅限本次扫描内真实重复（缓存被写路径/前次扫描预置 ≠ 磁盘重复）→ 假阳性消除
+                //   ② 同号多目录选择: 有 all.json 者优先，同为有/无再比 mtime 最新
+                //      （孤儿目录 f99.1 只残留 all.txt 曾因 mtime 最新胜出 → 每次启动读失败 → 无限重建循环）
+                var _seenNums = {};   // 本次扫描已见编号 → 同列表第二个同号 = 真实重复
                 for (var i = 0; i < list.length; i++) {
                     if (list[i].isDir) {
                         var fm = list[i].name.match(/^f(\d+)\./);
                         if (fm) {
                             var fk = questId + '\x00' + fm[1];
-                            if (!_floorDirCache[fk]) {
-                                _floorDirCache[fk] = qDirPath + '/' + list[i].name + '/';
-                            } else {
-                                // ★ 同号多目录（历史碰撞残留）→ 保留 mtime 最新者，读路径不读旧数据
-                                var _dupPath = qDirPath + '/' + list[i].name + '/';
-                                try {
-                                    var _stOld = await bf.stat(_floorDirCache[fk]);
-                                    var _stNew = await bf.stat(_dupPath);
-                                    if (_stNew && (!_stOld || (_stNew.mtime || 0) > (_stOld.mtime || 0))) {
-                                        _floorDirCache[fk] = _dupPath;
-                                    }
-                                } catch (_) { }
-                                console.warn('[quest-store] _resolveFloorDir: DUPLICATE floor dir f' + fm[1] + ' in ' + qDirName + ' — kept newest mtime');
+                            var _realDup = !!_seenNums[fm[1]];
+                            _seenNums[fm[1]] = true;
+                            var _dupPath = qDirPath + '/' + list[i].name + '/';
+                            var _cand = _floorDirCache[fk];
+                            if (!_cand) {
+                                _floorDirCache[fk] = _dupPath;
+                                continue;
+                            }
+                            // ★ 同号多目录（历史碰撞残留 / 孤儿目录）→ 有 all.json 者优先，再比 mtime 最新
+                            var _hasAllOld = false, _hasAllNew = false, _takeNew = false;
+                            try {
+                                _hasAllNew = await _dirHasAllJson(bf, _dupPath);
+                                _hasAllOld = await _dirHasAllJson(bf, _cand);
+                                var _stOld = await bf.stat(_cand);
+                                var _stNew = await bf.stat(_dupPath);
+                                if (_hasAllNew && !_hasAllOld) _takeNew = true;
+                                else if (_hasAllOld && !_hasAllNew) _takeNew = false;
+                                else if (_stNew && (!_stOld || (_stNew.mtimeMs || 0) > (_stOld.mtimeMs || 0))) _takeNew = true;  // ★ mtimeMs（原 mtime 字段不存在 → 永假死逻辑）
+                            } catch (_) { }
+                            if (_takeNew) _floorDirCache[fk] = _dupPath;
+                            if (_realDup) {
+                                console.warn('[quest-store] _resolveFloorDir: DUPLICATE floor dir f' + fm[1] + ' in ' + qDirName + ' — kept ' + (_hasAllNew && !_hasAllOld ? 'all.json dir' : 'newest mtime') + ' (real dup on disk)');
                             }
                         }
                     }
@@ -1059,21 +1118,29 @@ var QuestStore = (function () {
     }
 
     // ★ 读取 all.json（真理源）
-    async function _readFloorFile(questId, floorNum) {
-        if (!_rootDir) { console.warn('[quest-store] _readFloorFile FAIL: no _rootDir for ' + questId + '.' + floorNum); return null; }
+    //   quiet=true（loadAllFloors 批量路径）→ 失败静默，由调用方汇总打印一次
+    async function _readFloorFile(questId, floorNum, quiet) {
+        if (!_rootDir) { if (!quiet) console.warn('[quest-store] _readFloorFile FAIL: no _rootDir for ' + questId + '.' + floorNum); return null; }
         try {
             var bf = _bridgeFs();
-            if (!bf) { console.warn('[quest-store] _readFloorFile FAIL: no bridgeFs for ' + questId + '.' + floorNum); return null; }
+            if (!bf) { if (!quiet) console.warn('[quest-store] _readFloorFile FAIL: no bridgeFs for ' + questId + '.' + floorNum); return null; }
             var fDir = await _resolveFloorDir(questId, floorNum);
-            if (!fDir) { console.warn('[quest-store] _readFloorFile FAIL: _resolveFloorDir null for ' + questId + '.' + floorNum + ' (dir missing or cache miss)'); return null; }
+            if (!fDir) { if (!quiet) console.warn('[quest-store] _readFloorFile FAIL: _resolveFloorDir null for ' + questId + '.' + floorNum + ' (dir missing or cache miss)'); return null; }
             var raw = await bf.read(fDir + 'all.json');
-            if (!raw) { console.warn('[quest-store] _readFloorFile FAIL: bf.read null for ' + questId + '.' + floorNum + ' path=' + fDir + 'all.json'); return null; }
-            if (typeof raw !== 'string') { console.warn('[quest-store] _readFloorFile FAIL: raw not string for ' + questId + '.' + floorNum + ' type=' + typeof raw); return null; }
+            if (!raw) { if (!quiet) console.warn('[quest-store] _readFloorFile FAIL: bf.read null for ' + questId + '.' + floorNum + ' path=' + fDir + 'all.json'); return null; }
+            if (typeof raw !== 'string') { if (!quiet) console.warn('[quest-store] _readFloorFile FAIL: raw not string for ' + questId + '.' + floorNum + ' type=' + typeof raw); return null; }
             return JSON.parse(raw);
         } catch (_e) {
-            console.warn('[quest-store] _readFloorFile FAIL: exception for ' + questId + '.' + floorNum + ' — ' + (_e && _e.message));
+            if (!quiet) console.warn('[quest-store] _readFloorFile FAIL: exception for ' + questId + '.' + floorNum + ' — ' + (_e && _e.message));
             return null;
         }
+    }
+
+    // ★ 楼层号列表汇总打印（降噪：N 条逐行日志 → 1 行，前 12 个 + 总数）
+    function _fmtNums(arr) {
+        if (!arr || !arr.length) return '';
+        var head = arr.slice(0, 12).join(',');
+        return arr.length > 12 ? head + ' …(+' + (arr.length - 12) + ')' : head;
     }
 
     // ★ 写入 all.json（真理源）— 串行锁防 auto-save/onDone 并发 → tmp→rename 竞态残留
@@ -1082,15 +1149,14 @@ var QuestStore = (function () {
         if (!_rootDir) return false;
         var key = questId + '.' + floorNum;
         // 串行化：同一楼层的 auto-save + onDone 未可能同时写，杜绝双 tmp 残留
+        // _doWriteFloorFile 全路径 catch 永不 reject → 单参数 then 即可
         var chain = (_floorWriteLocks[key] || Promise.resolve()).then(function () {
-            return _doWriteFloorFile(questId, floorNum, floorData);
-        }, function () {
             return _doWriteFloorFile(questId, floorNum, floorData);
         });
         _floorWriteLocks[key] = chain;
         // 写完后异步清扫，不阻塞返回
         chain.then(function () {
-            var fDir = _floorDirCache && _floorDirCache[key];
+            var fDir = _floorDirCache && _floorDirCache[questId + '\x00' + floorNum];
             if (fDir) _cleanTmpInDir(fDir, _bridgeFs());
         }).catch(function () { });
         return chain;
@@ -1103,21 +1169,30 @@ var QuestStore = (function () {
             // ★ 精确路径优先：本楼层创建者记录的 _fDir（防同号多目录历史残留时模糊匹配写错位置）
             var fDir = null;
             if (floorData && typeof floorData._fDir === 'string' && floorData._fDir) {
-                var _baseDir = floorData._fDir.replace(/\\/g, '/');
-                if (new RegExp('(^|/)f' + floorNum + '\\.').test(_baseDir)) fDir = _baseDir;
+                var _baseDir = floorData._fDir.replace(/\\/g, '/').replace(/\/$/, '') + '/';
+                // ★ 跨项目写保护（2026-08-08）：_fDir 必须位于当前项目 quests 根下，
+                //   否则回退 _resolveFloorDir — 防面板启动竞态绑错项目时把楼层写进别的项目
+                var _qRoot = _rootDir + '/_qqq/quests/';
+                if (_baseDir.indexOf(_qRoot) === 0 && new RegExp('(^|/)f' + floorNum + '\\.').test(_baseDir)) fDir = _baseDir;
             }
             if (!fDir) fDir = await _resolveFloorDir(questId, floorNum);
             if (!fDir) return false;
             _floorDirCache = _floorDirCache || {};
-            // ★ 双键写入：写入路径与 _resolveFloorDir 读取路径同键（\x00），
-            //   写完即缓存 → 后续读回同一目录（防同号双目录时读回旧目录）
-            _floorDirCache[questId + '.' + floorNum] = fDir;
+            // ★ 写入即缓存（键 = _resolveFloorDir 同键 \x00）→ 后续读回同一目录（防同号双目录时读回旧目录）
             _floorDirCache[questId + '\x00' + floorNum] = fDir;
             // ★ 原子写入: tmp → rename，防断电/崩溃导致 all.json 半写损坏（§33）
             var dest = fDir + 'all.json';
             var tmp = dest + '.tmp.' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-            await bf.write(tmp, JSON.stringify(floorData, null, 2));
-            await bf.rename(tmp, dest);
+            var _payloadStr = JSON.stringify(floorData, null, 2);
+            await bf.write(tmp, _payloadStr);
+            try {
+                await bf.rename(tmp, dest);
+            } catch (_renErr) {
+                // ★ 铁律 8.2 降级：rename 失败（目标被占用/杀软/跨卷）→ 复制替换，绝不丢数据
+                //   bf.write 底层即原子写（tmp+rename），直接覆盖 dest 兜底
+                console.warn('[quest-store] rename FAIL (q=' + questId + ' f=' + floorNum + '), fallback copy: ' + (_renErr && _renErr.message));
+                await bf.write(dest, _payloadStr);
+            }
             return true;
         } catch (_e) {
             console.warn('[quest-store] _writeFloorFile FAIL:', _e && _e.message);
@@ -1131,8 +1206,9 @@ var QuestStore = (function () {
             var entries = await bf.list(fDir);
             if (!entries || !entries.length) return;
             for (var i = 0; i < entries.length; i++) {
-                if (entries[i].indexOf('all.json.tmp.') === 0) {
-                    try { await bf.remove(fDir + '/' + entries[i]); } catch (_) { }
+                // ★ bf.list 返回 {name,isDir,...} 对象数组（原对对象调 indexOf → TypeError → 清扫从未生效）
+                if (entries[i] && entries[i].name && entries[i].name.indexOf('all.json.tmp.') === 0) {
+                    try { await bf.remove(fDir + '/' + entries[i].name); } catch (_) { }
                 }
             }
         } catch (_) { /* best-effort */ }
@@ -1151,6 +1227,30 @@ var QuestStore = (function () {
         var bf = _bridgeFs();
         var qDirName = null;
         var MAX_ALLOC = 1000;
+
+        // ★ 运行时自愈（2026-08-08）：counter 键缺失（sq3 重建/清理竞态、新 quest）→
+        //   先按磁盘最大楼层号 seed，再原子自增 → 首号永不撞已有目录（heal 只在启动跑，管不到运行时新建）
+        var _ck = 'floor_counter.' + questId;
+        try {
+            var _pre = await b.get(_ck);
+            if (typeof _pre !== 'number' || isNaN(_pre) || _pre < 0) {
+                var _seedMax = 0;
+                var _qdn0 = await _resolveQuestDirName(questId);
+                if (bf && _rootDir && _qdn0) {
+                    try {
+                        var _seedEntries = await _safeList(_rootDir + '/_qqq/quests/' + _qdn0);
+                        for (var _sei = 0; _sei < _seedEntries.length; _sei++) {
+                            var _sem = _seedEntries[_sei].name.match(/^f(\d+)\./);
+                            if (_sem) {
+                                var _sen = parseInt(_sem[1], 10);
+                                if (_sen > _seedMax) _seedMax = _sen;
+                            }
+                        }
+                    } catch (_) { }
+                }
+                await b.setNow(_ck, _seedMax);
+            }
+        } catch (_) { }
         for (var _alloc = 0; _alloc < MAX_ALLOC; _alloc++) {
             var n = await b.atomicIncr('floor_counter.' + questId);
             if (!bf || !_rootDir) return n;  // 无 fs 环境（dev fallback）→ 信任计数器
@@ -1178,6 +1278,9 @@ var QuestStore = (function () {
     // 保存楼层 — all.json 真理源 + sq3 轻量索引
     QuestStore.prototype.saveFloor = async function (questId, floorNum, floorData) {
         floorData.savedAt = Date.now();
+
+        // ★ 天罗地网: 保存上报 (throttled — 死前最后在保存哪层)
+        try { if (window.__crashNet) window.__crashNet.throttled('save', 2000, { kind: 'save', q: questId, f: floorNum }); } catch (_) { }
 
         // 1) ★ 写 all.json（真理源）— 串行锁防 auto-save/onDone 并发 tmp→rename 竞态
         await _writeFloorFile(questId, floorNum, floorData);
@@ -1241,8 +1344,8 @@ var QuestStore = (function () {
     };
 
     // 加载单层楼 — 全部来自 all.json（唯一真理源）
-    QuestStore.prototype.loadFloor = async function (questId, floorNum) {
-        return await _readFloorFile(questId, floorNum);
+    QuestStore.prototype.loadFloor = async function (questId, floorNum, quiet) {
+        return await _readFloorFile(questId, floorNum, quiet);
     };
 
     // ★ 动态解析 floor 目录完整路径（防 _fDir 过期导致图片 404）
@@ -1312,6 +1415,8 @@ var QuestStore = (function () {
                         var _sq3Set = {};
                         for (var _si = 0; _si < floorList.length; _si++) { _sq3Set[floorList[_si].n] = true; }
                         var _added = false;
+                        // ★ 降噪（2026-08-08）：孤儿/新发现楼层逐行打印 → 各汇总 1 行
+                        var _orphanNums = [], _discoveredNums = [];
                         for (var _ei = 0; _ei < _fsEntries.length; _ei++) {
                             if (_fsEntries[_ei].isDir) {
                                 var _fm = _fsEntries[_ei].name.match(/^f(\d+)\./);
@@ -1326,18 +1431,21 @@ var QuestStore = (function () {
                                             for (var _ci = 0; _ci < _cand.length; _ci++) {
                                                 if (_cand[_ci].name === 'all.json') { _hasAll = true; break; }
                                             }
-                                            if (!_hasAll) {
-                                                console.log('[quest-store] loadAllFloors: skip orphan floor.' + questId + '.' + _fn + ' (no all.json)');
-                                                continue;
-                                            }
+                                            if (!_hasAll) { _orphanNums.push(_fn); continue; }
                                         } catch (_) { continue; }
                                         floorList.push({ n: _fn });
                                         _sq3Set[_fn] = true;
+                                        _discoveredNums.push(_fn);
                                         _added = true;
-                                        console.log('[quest-store] loadAllFloors: discovered unindexed floor.' + questId + '.' + _fn + ' from filesystem');
                                     }
                                 }
                             }
+                        }
+                        if (_orphanNums.length) {
+                            console.log('[quest-store] loadAllFloors: skip ' + _orphanNums.length + ' orphan floor dir(s) (no all.json) in q' + questId + ': ' + _fmtNums(_orphanNums));
+                        }
+                        if (_discoveredNums.length) {
+                            console.log('[quest-store] loadAllFloors: discovered ' + _discoveredNums.length + ' unindexed floor(s) from filesystem (q' + questId + '): ' + _fmtNums(_discoveredNums));
                         }
                         if (_added) {
                             floorList.sort(function (a, b) { return a.n - b.n; });
@@ -1353,7 +1461,7 @@ var QuestStore = (function () {
         // ★ 并行加载所有楼层（N 层 = 1 个 await，而非 N 个串行排队）
         var self = this;
         var results = await Promise.all(floorList.map(function (f) {
-            return self.loadFloor(questId, f.n).then(function (data) {
+            return self.loadFloor(questId, f.n, true).then(function (data) {
                 return { floorNum: f.n, data: data };
             }).catch(function () {
                 return { floorNum: f.n, data: null };
@@ -1367,8 +1475,37 @@ var QuestStore = (function () {
                 floors.push(results[i]);
             } else {
                 missingFloorNums.push(results[i].floorNum);
-                console.warn('[quest-store] loadAllFloors: floor.' + questId + '.' + results[i].floorNum + ' listed but data missing');
             }
+        }
+
+        // ★ repair 并发竞态自愈（2026-08-08）：repairDuplicateIds 改名瞬间（f110→f114 等）
+        //   loadAllFloors 并行读旧路径 → 瞬时 FAIL。等 repair 完成后清缓存重试一次，
+        //   避免 70+ 条 FAIL + 两次 _rebuildQuestMeta（27 层 → 106 层）的噪音风暴。
+        if (missingFloorNums.length && _repairLock) {
+            try { await _repairLock; } catch (_) { }
+            var _retryList = [];
+            for (var ri = 0; ri < missingFloorNums.length; ri++) {
+                delete _floorDirCache[questId + '\x00' + missingFloorNums[ri]];
+                _retryList.push({ floorNum: missingFloorNums[ri] });
+            }
+            var _retryResults = await Promise.all(_retryList.map(function (f) {
+                return self.loadFloor(questId, f.floorNum, true).then(function (data) {
+                    return { floorNum: f.floorNum, data: data };
+                }).catch(function () {
+                    return { floorNum: f.floorNum, data: null };
+                });
+            }));
+            var _stillMissing = [];
+            for (var ri2 = 0; ri2 < _retryResults.length; ri2++) {
+                if (_retryResults[ri2].data) floors.push(_retryResults[ri2]);
+                else _stillMissing.push(_retryResults[ri2].floorNum);
+            }
+            missingFloorNums = _stillMissing;
+        }
+
+        // ★ 汇总打印（降噪：N 条逐行 warn → 1 行）
+        if (missingFloorNums.length) {
+            console.warn('[quest-store] loadAllFloors: ' + missingFloorNums.length + ' floor(s) listed but data missing in q' + questId + ': ' + _fmtNums(missingFloorNums) + ' — sq3 entries cleaned');
         }
 
         // ★ 清理失败的楼层 sq3 条目 + 重建 quest 元数据（仅包含成功加载的楼层）

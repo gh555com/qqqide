@@ -16,6 +16,9 @@ function _saveAgentFloor(ag, questId, force) {
     if (!ag || !ag._currentFloorNum || ag._currentFloorNum <= 0) return;
     if (typeof questStore === 'undefined' || !questStore || !questStore.saveFloor) return;
     var floorNum = ag._currentFloorNum;
+    // ★ 完结密封守卫（2026-08-08 F10 根因）：已完结楼层禁止 auto-save 覆盖
+    //   （压缩后 slice 出空 conversation → conv=0 覆盖完整保存 → 楼层"只剩气泡"）
+    if (ag._floorSealed && ag._floorSealed[floorNum]) return;
 
     // ★ 安全网：_houses 为空且非新楼层时跳过，防重启后覆盖已有数据
     //   _lastAutoSaveLen === 0 仅在新楼层初始化时设置（panel-send.js），是唯一准入空 houses 的路径

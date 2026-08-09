@@ -387,6 +387,18 @@ function bootRpcForwarder() {
       }
     });
   }
+
+  // ★ 自动感知外部变化 (q3 autoWatchChanges 移植, 默认开): 主进程 fs.watch → 转发到所有 iframe
+  if (bridge.roam && bridge.roam.onFsChanged) {
+    bridge.roam.onFsChanged(function() {
+      var iframes = document.querySelectorAll('iframe');
+      for (var i = 0; i < iframes.length; i++) {
+        try {
+          iframes[i].contentWindow.postMessage({ type: 'qqqide-roam-fs-changed' }, '*');
+        } catch (_) { /* iframe 跨域或已销毁 */ }
+      }
+    });
+  }
 }
 
 // ---- KeyHookService bootstrap ----
@@ -402,7 +414,11 @@ async function bootKeyHook() {
   try {
     var res = await fetch('core/key-bindings.json', { cache: 'no-store' });
     bindings = await res.json();
-    if (!Array.isArray(bindings)) bindings = [];
+    // ★ F100 根因修复：key-bindings.json 是 {version, bindings[]} 对象格式，
+    //    key-hook init() 内部读 bindings.bindings —— 旧代码把对象清成空数组 → 零绑定注册
+    //    → F2/Tab 永远无反应（F75/F99 修的 handler 从未被触发过）。保持对象格式直传。
+    if (Array.isArray(bindings)) bindings = { bindings: bindings }; // 兼容纯数组旧格式
+    if (!bindings || !Array.isArray(bindings.bindings)) bindings = { bindings: [] };
   } catch (e) {
     console.warn('[keyhook] failed to load key-bindings.json:', e && e.message);
   }

@@ -641,3 +641,53 @@ body {
 .qqq-sash-h.qqq-sash-saturated::after {
   display: none;
 }
+
+/* ── 内嵌弹窗统一滚动条 — 100% 等同 a 窗口（.tier-popup-panel，settings.js 基准）──
+   覆盖: 设置窗口/排行榜/在线用户/活动弹窗/AI悬浮预览/开新窗口下拉/语言下拉 */
+.qqq-settings-panel::-webkit-scrollbar,
+.qqq-ldr-panel::-webkit-scrollbar,
+.qqq-onl-panel::-webkit-scrollbar,
+.qqq-act-modal::-webkit-scrollbar,
+.qqq-menubar-recent-dropdown::-webkit-scrollbar,
+.qqq-lang-popup::-webkit-scrollbar,
+#qqqide-overlay-content::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.qqq-settings-panel::-webkit-scrollbar-track,
+.qqq-ldr-panel::-webkit-scrollbar-track,
+.qqq-onl-panel::-webkit-scrollbar-track,
+.qqq-act-modal::-webkit-scrollbar-track,
+.qqq-menubar-recent-dropdown::-webkit-scrollbar-track,
+.qqq-lang-popup::-webkit-scrollbar-track,
+#qqqide-overlay-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+.qqq-settings-panel::-webkit-scrollbar-thumb,
+.qqq-ldr-panel::-webkit-scrollbar-thumb,
+.qqq-onl-panel::-webkit-scrollbar-thumb,
+.qqq-act-modal::-webkit-scrollbar-thumb,
+.qqq-menubar-recent-dropdown::-webkit-scrollbar-thumb,
+.qqq-lang-popup::-webkit-scrollbar-thumb,
+#qqqide-overlay-content::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.35);
+  border-radius: 3px;
+}
+.qqq-settings-panel::-webkit-scrollbar-thumb:hover,
+.qqq-ldr-panel::-webkit-scrollbar-thumb:hover,
+.qqq-onl-panel::-webkit-scrollbar-thumb:hover,
+.qqq-act-modal::-webkit-scrollbar-thumb:hover,
+.qqq-menubar-recent-dropdown::-webkit-scrollbar-thumb:hover,
+.qqq-lang-popup::-webkit-scrollbar-thumb:hover,
+#qqqide-overlay-content::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.55);
+}
+.qqq-settings-panel::-webkit-scrollbar-corner,
+.qqq-ldr-panel::-webkit-scrollbar-corner,
+.qqq-onl-panel::-webkit-scrollbar-corner,
+.qqq-act-modal::-webkit-scrollbar-corner,
+.qqq-menubar-recent-dropdown::-webkit-scrollbar-corner,
+.qqq-lang-popup::-webkit-scrollbar-corner,
+#qqqide-overlay-content::-webkit-scrollbar-corner {
+  background: transparent;
+}

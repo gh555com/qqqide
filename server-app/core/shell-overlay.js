@@ -28,13 +28,14 @@ function bootAiOverlay() {
     'display:none; position:absolute; inset:0; z-index:99999; ' +
     'background:rgba(0,0,0,0.88);';
 
-  // ── 主题化滚动条（注:style）──
+  // ── 主题化滚动条（注:style）— 100% 等同 a 窗口（.tier-popup-panel）风格 ──
   var _scrollStyle = document.createElement('style');
   _scrollStyle.textContent =
-    '#qqqide-overlay-content ::-webkit-scrollbar{width:8px;height:8px}' +
-    '#qqqide-overlay-content ::-webkit-scrollbar-track{background:rgba(255,255,255,0.05)}' +
-    '#qqqide-overlay-content ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.2);border-radius:4px}' +
-    '#qqqide-overlay-content ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.35)}' +
+    '#qqqide-overlay-content ::-webkit-scrollbar{width:5px;height:5px}' +
+    '#qqqide-overlay-content ::-webkit-scrollbar-track{background:transparent}' +
+    '#qqqide-overlay-content ::-webkit-scrollbar-thumb{background:rgba(128,128,128,0.35);border-radius:3px}' +
+    '#qqqide-overlay-content ::-webkit-scrollbar-thumb:hover{background:rgba(128,128,128,0.55)}' +
+    '#qqqide-overlay-content ::-webkit-scrollbar-corner{background:transparent}' +
     '#qqqide-overlay-content>div::-webkit-scrollbar{display:none}';
   document.head.appendChild(_scrollStyle);
 

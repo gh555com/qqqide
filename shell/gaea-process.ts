@@ -187,6 +187,7 @@ function _clearOsState(goodsId: string): void {
 export function syncOsGaeaAutoStart(goodsId: string, autoStart: boolean): void {
     // ★ 状态不存在也创建，保证 toggle 切换跨绿色包立即可见
     // ★ 本进程在跑 → 写真实 PID（防 pid=0 占位导致远端短暂灰 ≤10s，F22 边界项）
+    const state = _readOsState(goodsId);
     const entry = _registry.get(goodsId);
     const pid = (entry && entry.pid) ? entry.pid : (state ? state.pid : 0);
     _writeOsState(goodsId, { pid, autoStart, ts: Date.now() });

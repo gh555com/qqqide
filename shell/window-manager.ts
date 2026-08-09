@@ -12,6 +12,7 @@ import { injectDevToolsConsoleButtons } from './devtools-inject';
 import { renameDevToolsViaBroker } from './py-broker';
 import { claimSquad, releaseSquad } from './squad-manager';
 import { SimpleWebSocket } from './cdp-sniffer';
+import { crashNetLog, crashNetSnapshot } from './crash-net';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
 import { StateStore } from './state-sqlite';
@@ -187,11 +188,47 @@ export function createWindow(
             event.preventDefault();
             (win as any).__qqqConfirmArmed = false;
             bypassCloseConfirm(win);
+            // ★ 立即隐藏确认框（force 越过 1s 防抖）：确认退出永不防抖，窗口马上开始关闭
+            try { win.webContents.send('qqqide:confirm-close-dismiss', true); } catch { /* ignore */ }
             try { win.close(); } catch { /* ignore */ }
         } else if (input.key === 'Escape') {
             event.preventDefault();
             try { win.webContents.send('qqqide:confirm-close-dismiss'); } catch { /* ignore */ }
         }
+    });
+
+    // ★ 渲染进程崩溃监控 + 自动恢复 (2026-08-08 F13):
+    //   崩溃(含 V8 OOM) → 记录 reason + exitCode 到 Data/alphal/render-crash.log → 防抖 3s 自动 reload
+    //   窗口不消失; 下次崩溃即可凭 reason 实锤根因 ('oom' = V8 堆耗尽)
+    const _crashLogPath = path.join(portableRoot, 'Data', 'alphal', 'render-crash.log');
+    win.webContents.on('render-process-gone', (_e, details) => {
+        const reason = (details && details.reason) || 'unknown';
+        try {
+            fs.mkdirSync(path.dirname(_crashLogPath), { recursive: true });
+            fs.appendFileSync(_crashLogPath,
+                new Date().toISOString() + ' reason=' + reason +
+                ' exitCode=' + ((details && details.exitCode) || 0) +
+                ' win=' + win.id + '\n');
+        } catch (_) { /* ignore */ }
+        try { console.error('[window-manager] render-process-gone reason=' + reason + ' win=' + win.id); } catch (_) { }
+        // ★ 天罗地网: 崩溃事件 + 全量快照 (主进程此刻仍存活, 必须立即落盘)
+        try { crashNetLog({ kind: 'render-gone', winId: win.id, reason, exitCode: (details && details.exitCode) || 0 }); } catch (_) { }
+        try { crashNetSnapshot('render-gone'); } catch (_) { }
+        if (reason === 'clean-exit') { return; } // 正常关闭路径, 不恢复
+        // 自动恢复: 崩溃/被杀/OOM → reload 保留窗口 (防抖 3s, 防崩溃循环风暴)
+        const now = Date.now();
+        const lastAt = (win as any).__qqqCrashReloadAt || 0;
+        if (now - lastAt > 3000) {
+            (win as any).__qqqCrashReloadAt = now;
+            setTimeout(() => {
+                try { if (!win.isDestroyed() && !win.webContents.isDestroyed()) { win.webContents.reload(); } } catch (_) { }
+            }, 300);
+        }
+    });
+
+    // 渲染进程卡死(JS 长任务/GC 停顿) — 只记录, 不杀(杀会丢未落盘数据)
+    win.webContents.on('unresponsive', () => {
+        try { console.error('[window-manager] renderer unresponsive win=' + win.id); } catch (_) { }
     });
 
     win.on('closed', () => {
