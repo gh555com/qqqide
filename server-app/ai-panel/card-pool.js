@@ -585,7 +585,7 @@ var CardPool = (function () {
       flowHtml = _buildConversationFlowHtml(conv, fData);
     }
     aiEl._contentWrap.innerHTML = flowHtml;
-    // ★ 临时诊断：记录 card-pool 从 all.json 重建渲染
+    // ★ 诊断：记录 card 重建渲染（render-log.jsonl，2MB 双代轮转）
     if (typeof _logRenderEvent === 'function') {
       _logRenderEvent('card_rebuild', card.id, fNum, flowHtml || '');
     }

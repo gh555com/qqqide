@@ -365,6 +365,14 @@ var AgentLoop = (function () {
         var onToolCall = opts.onToolCall || function () { };
         var onToolResult = opts.onToolResult || function () { };
         var onDone = opts.onDone || function () { };
+        // ★ 天罗地网: 楼层完结上报 (包装 onDone, 覆盖全部 6 个完结路径)
+        var _cnOnDone = onDone;
+        onDone = function (content, timing) {
+            try {
+                if (window.__crashNet) window.__crashNet.log({ kind: 'floor-done', q: self._questId || '', f: self._ctx.totalFloors, h: self._houseIndex });
+            } catch (_) { }
+            return _cnOnDone.call(this, content, timing);
+        };
         var onError = opts.onError || function () { };
         var onCost = opts.onCost || function () { };
         var onGuideAckDone = opts.onGuideAckDone || function () { };
@@ -491,7 +499,15 @@ var AgentLoop = (function () {
 
         // ★ 恢复模式：不增 totalFloors（恢复追加到同一死胡同楼层，非新楼层）
         var _isRecoveryMsg = self._isRecovery;
-        if (!_isRecoveryMsg) { self._ctx.totalFloors++; }
+        // ★ 统一编号真理源（2026-08-08 F10 根因）：_currentFloorNum = pipeline 分配的目录号
+        //   （nextFloorNum / forceFloorNum）。totalFloors 强制同步目录号 —— 旧逻辑 recovery
+        //   不增 totalFloors → userMsg._floor 比目录号小 1 → biscuit 编号错乱（F9 对 f10 目录）
+        //   → 用户看到楼层"消失"（q169 f9/f11/f13 事故）。
+        if (typeof self._currentFloorNum === 'number' && self._currentFloorNum > 0) {
+            self._ctx.totalFloors = self._currentFloorNum;
+        } else if (!_isRecoveryMsg) {
+            self._ctx.totalFloors++;
+        }
         var userMsg = { role: 'user', content: finalContent, _floor: self._ctx.totalFloors };
         // ★ 恢复模式：用户消息标 _system:true，AI 知道这是系统代发而非用户手打
         if (_isRecoveryMsg) { userMsg._system = true; self._isRecovery = false; }
@@ -536,6 +552,8 @@ var AgentLoop = (function () {
 
         try {
             while (maxIterations-- > 0 && !self._sendTerminated && self._stopState === 'sending') {
+                // ★ 天罗地网: 每 house 上报 (throttled — 死前最后在跑哪一层/house)
+                try { if (window.__crashNet) window.__crashNet.throttled('house', 1500, { kind: 'house', q: self._questId || '', f: self._ctx.totalFloors, h: self._houseIndex, state: self._stopState }); } catch (_) { }
                 // ═══ 引导确认回合：不中断楼层，立即让 AI 回复确认 ═══
                 if (self._guidePending && self._guideMessage) {
                     self._guidePending = false;
@@ -919,7 +937,7 @@ var AgentLoop = (function () {
                     }
                     // ★ 断言：推入的 tool 结果数应等于 assistant.tool_calls 数
                     var _expectedCount = response.tool_calls ? response.tool_calls.length : 0;
-                    // ★ 诊断埋点：记录 push 详情
+                    // ★ 诊断快照：toolpush（目录 4MB FIFO 轮转）
                     if (typeof self._dumpConversation === "function") {
                         var _tcSummary = (response.tool_calls || []).map(function (tc) { return { id: tc.id, name: tc.function.name }; });
                         var _resSummary = (_execResult && _execResult.allResults) ? _execResult.allResults.map(function (r) { return { id: r.call.id, name: r.call.function ? r.call.function.name : "?", contentLen: r.content ? r.content.length : 0 }; }) : [];
@@ -1386,11 +1404,10 @@ function _snapshotMessages(messages, prevSnapshot) {
     };
 }
 
-// ═══ 诊断日志：conversation 快照（黑箱暴破） ═══
+// ═══ 诊断日志：conversation 快照（toolpush 目录 4MB FIFO 轮转，超限删最旧） ═══
 AgentLoop.prototype._dumpConversation = function (tag, extra) {
     if (typeof window !== "undefined" && window.__qqq_file_log === false) return;
     var self = this;
-    var today = new Date().toISOString().slice(0, 10);
     var root = (typeof questStore !== "undefined" && questStore.getProjectRoot) ? questStore.getProjectRoot() : null;
     if (!root) return;
     var logDir = root.replace(/\\/g, "/") + "/_qqq/new_log";
@@ -1422,9 +1439,21 @@ AgentLoop.prototype._dumpConversation = function (tag, extra) {
 
     try {
         var bridge = window.parent && window.parent.qqqideBridge;
-        if (bridge && bridge.fs && bridge.fs.write) {
-            bridge.fs.write(logPath, JSON.stringify(payload, null, 2)).catch(function () { });
-        }
+        if (!bridge || !bridge.fs || !bridge.fs.write) return;
+        bridge.fs.write(logPath, JSON.stringify(payload, null, 2)).catch(function () { });
+        // ★ 目录 FIFO 轮转：toolpush-* 总量 > 4MB → 删最旧至 ≤3MB
+        bridge.fs.list(logDir).then(function (entries) {
+            var files = (entries || []).filter(function (e) { return !e.isDir && e.name.indexOf("toolpush-") === 0; });
+            var total = 0;
+            for (var i = 0; i < files.length; i++) total += (files[i].size || 0);
+            if (total > 4 * 1024 * 1024) {
+                files.sort(function (a, b) { return (a.mtimeMs || 0) - (b.mtimeMs || 0); });
+                for (var j = 0; j < files.length && total > 3 * 1024 * 1024; j++) {
+                    total -= (files[j].size || 0);
+                    bridge.fs.remove(logDir + "/" + files[j].name).catch(function () { });
+                }
+            }
+        }).catch(function () { });
     } catch (_) { }
 };
 

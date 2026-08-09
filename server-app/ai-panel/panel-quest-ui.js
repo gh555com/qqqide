@@ -417,7 +417,7 @@ var _ctxBreakdownData = null;
 var _ctxBreakdownTimer = null;
 var _ctxBreakdownVisible = false;
 
-// ★ _estimateTokensFull — 穷举每一个会进入 API body 的字节，逐字符计量，chars÷2.7 得 token 估值。
+// ★ _estimateTokensFull — 穷举每一个会进入 API body 的字节，逐字符计量，chars÷2.5 得 token 估值（系数唯一真理源 ContentGateway.CHAR_PER_TOKEN）。
 // ★ API prompt_tokens 是服务端返回的精确 token 数（权威），本地 sum 用于审计 / 发现漏 Grid。
 // ★ 分类原则：按 API 看到的消息数组顺序 + 顶层 body 字段完整覆盖，零漏项。
 function _estimateTokensFull() {
@@ -444,7 +444,7 @@ function _estimateTokensFull() {
         return _estCache.val;
     }
 
-    var CPT = 2.7;
+    var CPT = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN) ? ContentGateway.CHAR_PER_TOKEN : 2.5;   // 系数唯一真理源 content-gateway.js
     var CTX_MAX = (typeof ContentGateway !== "undefined" && ContentGateway.CTX_MAX_TOKENS) ? ContentGateway.CTX_MAX_TOKENS : 1048565;
     function _tk(chars) { return Math.round(chars / CPT); }
 
@@ -999,11 +999,11 @@ window.addEventListener('message', async function (e) {
                         _bpChars0 += 200; // 提示词（含 📎 引用）长度估算
                         try { if (window.parent && typeof window.parent.getTools === 'function') { var _tp2 = window.parent.getTools(); if (_tp2 && _tp2.length) _bpChars0 += JSON.stringify(_tp2).length; } } catch (_) {}
                         _bpChars0 += 250;
-                        _preBackpackK = Math.round(_bpChars0 / 2.7 / 1000);
+                        _preBackpackK = Math.round(_bpChars0 / CPT / 1000);
                     } catch (_) {}
-                    // ★ V21: onlyfacts 守卫恢复 32K tokens（F89 曾按 chars÷2.7 换算成 12K，用户明确要求 32K 边界）
+                    // ★ V21: onlyfacts 守卫恢复 32K tokens（F89 曾按 chars÷2.5 换算成 12K，用户明确要求 32K 边界）
                     //   收益 < 32K tokens 的压缩不值得调一次 tier-4 AI（q147 f97 事故：第二次 h 仅 16K tokens 仍放行）
-                    if (Math.round(_hText.length / 2.7) < 32000) {
+                    if (Math.round(_hText.length / CPT) < 32000) {
                         _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: 'h原料 < 32K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
                         return;
                     }
@@ -1549,8 +1549,9 @@ $queueBtn.onclick = function () {
         thumb.style.width = '2px'; thumb.style.right = '9px';
         thumb.style.background = _qhColors().c;
     }
+    var _thumbDragging = false;   // ★ F107: 拖拽期间保持粗态，光标移出滑轨 x 范围也不收缩
     wrapper.addEventListener('mouseenter', _expandThumb);
-    wrapper.addEventListener('mouseleave', _shrinkThumb);
+    wrapper.addEventListener('mouseleave', function () { if (!_thumbDragging) _shrinkThumb(); });
 
     // 同步
     function sync() {
@@ -1579,6 +1580,7 @@ $queueBtn.onclick = function () {
     thumb.addEventListener('mousedown', function (e) {
         if (e.button !== 0) return;
         dragging = true; dragY = e.clientY; dragS = el.scrollTop;
+        _thumbDragging = true; _expandThumb();   // ★ F107: 抓住即粗，左键松开前永不变细
         e.preventDefault(); e.stopPropagation();
     });
     document.addEventListener('mousemove', function (e) {
@@ -1589,7 +1591,13 @@ $queueBtn.onclick = function () {
         var ratio = (e.clientY - dragY) / (ch - thumbH);
         el.scrollTop = Math.max(0, Math.min(sh - ch, dragS + ratio * (sh - ch)));
     });
-    document.addEventListener('mouseup', function () { dragging = false; });
+    document.addEventListener('mouseup', function (e) {
+        if (!dragging) return;
+        dragging = false; _thumbDragging = false;
+        // 松开：光标仍落在滑轨上 → 保持粗态（:hover 等价）；已离开 → 收缩
+        var at = (e && e.clientX != null) ? document.elementFromPoint(e.clientX, e.clientY) : null;
+        if (at && wrapper.contains(at)) _expandThumb(); else _shrinkThumb();
+    });
 
     // 初始 + 内容变化 + 容器尺寸变化（编辑框增高/变窄→messages 缩/涨→重算）
     setTimeout(sync, 50);

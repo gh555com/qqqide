@@ -402,6 +402,7 @@
   var MAX_RECENT = 20;
   var _recentFolders = []; // [{path, name, atime}]
   var _recentsReady = null; // Promise — resolve 后 _recentFolders 才是真实数据
+  var _recentsLoaded = false; // load 完成标记（失败也置 true）→ 防空数组在 load 完成前覆盖 OS recentFolders
 
   function _qgsNs() {
     if (window.qgs && typeof window.qgs.ns === 'function') {
@@ -411,6 +412,7 @@
   }
 
   function _loadRecents() {
+    _recentsLoaded = false;
     _recentsReady = new Promise(function (resolve) {
       try {
         var s = _qgsNs();
@@ -430,7 +432,7 @@
           }).catch(function () { resolve(); });
         } else { resolve(); }
       } catch (_) { resolve(); }
-    });
+    }).then(function () { _recentsLoaded = true; });
   }
 
   function _saveRecents() {
@@ -497,12 +499,196 @@
     try { return window.location.search.indexOf('folder=') !== -1; } catch (_) { return false; }
   }
 
+  // ★ fresh=1 空白新窗口同样不参与全局恢复点竞争（铁律 8.3：restore/fresh 窗口不写 last_main_folder）
+  //   修复（2026-08-08）：?fresh=1 无 folder= 时 _urlSpecifiesMain() 为 false → 原守卫漏放行
+  function _isFreshWindow() {
+    try { return window.location.search.indexOf('fresh=1') !== -1; } catch (_) { return false; }
+  }
+
+  // ═══ OS 级工作空间唯一真理源（2026-08-08 定案: 独立 ws.sq3）═══
+  //   语义: 主文件夹 + 出战阵营 = 工作空间记忆，存 %LOCALAPPDATA%/qqqide/ws.sq3
+  //   （kope/roam/ai 同款：OS 级独立单库，跨绿色包/跨 dev/跨窗口一致，异常退出不丢）
+  //   ★ 独立库意义: 彻底删除工作空间记忆 = 删 ws.sq3，不污染 ai.sq3 的
+  //     sortPrefs/scrollPositions/recent 等其他记忆块
+  //   key 设计: lastMainFolder 单值 + formation.{mainPath} 每主文件夹一条阵营
+  //   → 不同主文件夹阵营天然隔离，无互相覆盖竞态；同主文件夹仅一窗口（项目锁）→ 无并发写
+  //   恢复优先级: 启动目录 global.sq3（last_main_folder）→ OS ws.sq3 兜底 + 回写 global.sq3
+  var WS_LAST_KEY = 'lastMainFolder';
+  var WS_FORM_PREFIX = 'formation.';
+  var WS_RECENT_KEY = 'recentFolders';  // 最近打开过的主文件夹列表（OS 兜底，本地 recent_folders 丢失时拉回）
+
+  // ★ 工作空间 OS 桥（独立 ws.sq3；老壳层无 wsState 桥 → null，降级本地链，不写回 ai.sq3）
+  function _wsBridge() {
+    if (!bridge || !bridge.wsState || typeof bridge.wsState.get !== 'function') return null;
+    return bridge.wsState;
+  }
+
+  function _normPath(p) {
+    return (p || '').replace(/\\/g, '/').replace(/\/$/, '');
+  }
+
+  // ★ 路径存在性校验（恢复记忆前验证，防死路径 → 面板永久空白轮询；网络盘暂时不可达 → 跳过本次恢复）
+  function _pathExists(p) {
+    if (!bridge || !bridge.fs || typeof bridge.fs.stat !== 'function') return Promise.resolve(true);
+    return bridge.fs.stat(p).then(function (st) { return !!st; }).catch(function () { return false; });
+  }
+
+  // 写 OS：lastMainFolder + 本主文件夹的阵营（ipc-ws-state set = 立即 tmp+rename 原子落盘）
+  //   lastMainFolder 仅空白启动窗口写（与 _persistLastMainFolder 同规则，防 restore/fresh 窗口覆盖全局恢复点）；
+  //   formation 按 mainPath 隔离，任何窗口写自己的阵营，无竞争
+  function _saveWorkspaceToOs() {
+    var ws = _wsBridge();
+    if (!ws) return;
+    if (projects.length === 0 || !projects[0].path) return;
+    var mainFolder = _normPath(projects[0].path);
+    // lastMainFolder 仅空白启动窗口写（铁律 8.3）；restore 窗口 URL 必带 folder= 已挡，
+    //   fresh=1 无 folder 时 _urlSpecifiesMain() 为 false → 显式补 fresh 判定（2026-08-08）
+    if (!_urlSpecifiesMain() && !_isFreshWindow()) {
+      ws.set(WS_LAST_KEY, mainFolder).catch(function () { });
+    }
+    var auxs = [];
+    for (var _wi = 1; _wi < projects.length; _wi++) {
+      var _ap = _normPath(projects[_wi].path);
+      if (_ap) auxs.push(_ap);
+    }
+    ws.set(WS_FORM_PREFIX + mainFolder, auxs).catch(function () { });
+    // ★ recentFolders OS 兜底（recent = "打开过"记录，任何窗口都同步；等 load 完成防空数组覆盖磁盘）
+    var ready = _recentsReady || Promise.resolve();
+    ready.then(function () {
+      if (!_recentsLoaded || _recentFolders.length === 0) return;
+      ws.set(WS_RECENT_KEY, _recentFolders.slice(0, MAX_RECENT)).catch(function () { });
+    });
+  }
+
+  // 恢复收尾（统一路径）: 排序偏好 + 视口状态 + 落盘（回写 local global.sq3 + 刷新 OS）+ 渲染
+  function _finishRestore() {
+    _loadSortPrefs();
+    _loadViewportState();
+    saveProjects();
+    render();
+    _notifyChanged();
+    _restoreRecentsFromOs();
+  }
+
+  // ★ recent_folders OS 兜底（2026-08-08）: 本地 recent 为空（global.sq3 丢失/全新包）→ 从 ws.sq3 拉回并回写本地
+  //   统一收尾点 _finishRestore 调用 → 本地链/OS 链/旧链全部恢复路径自动覆盖
+  function _restoreRecentsFromOs() {
+    var ws = _wsBridge();
+    if (!ws) return;
+    var ready = _recentsReady || Promise.resolve();
+    ready.then(function () {
+      if (!_recentsLoaded || _recentFolders.length > 0) return; // 本地已有 → 不覆盖
+      ws.get(WS_RECENT_KEY).then(function (list) {
+        if (!list || !Array.isArray(list) || list.length === 0) return;
+        var seen = {};
+        var clean = [];
+        for (var i = 0; i < list.length && clean.length < MAX_RECENT; i++) {
+          var p = _normPath(list[i].path || '');
+          if (!p || seen[p]) continue;
+          seen[p] = true;
+          clean.push({ path: p, name: basename(p) || list[i].name || '', atime: list[i].atime || Date.now() });
+        }
+        if (clean.length === 0) return;
+        _recentFolders = clean;
+        _saveRecents(); // 回写本地 global.sq3（下次启动本地优先）
+      }).catch(function () { });
+    });
+  }
+
+  // 恢复：OS ws.sq3 兜底（main + formation 一起）；saveProjects → _persistLastMainFolder 自动回写本地 global.sq3
+  function _restoreWorkspaceFromOs() {
+    var ws = _wsBridge();
+    if (!ws) {
+      _restoreLastMainFolder();
+      return;
+    }
+    ws.get(WS_LAST_KEY).then(function (mainFolder) {
+      if (!mainFolder || typeof mainFolder !== 'string') {
+        // ★ OS 无记忆 → global.sq3 旧链恢复
+        _restoreLastMainFolder();
+        return;
+      }
+      mainFolder = _normPath(mainFolder);
+      // ★ 死路径校验: OS 记忆指向已删除目录 → 本地链再试（同样校验），防恢复死项目永久空白
+      _pathExists(mainFolder).then(function (exists) {
+        if (!exists) { _restoreLastMainFolder(); return; }
+        if (!projects.some(function (p) { return p.path === mainFolder; })) {
+          projects.push({ path: mainFolder, name: basename(mainFolder) });
+          _bumpRecent(mainFolder);
+        }
+        // 阵营恢复（OS 优先，only.sq3 兜底）
+        ws.get(WS_FORM_PREFIX + mainFolder).then(function (auxs) {
+          if (auxs && Array.isArray(auxs)) {
+            for (var _fi = 0; _fi < auxs.length; _fi++) {
+              var _fp = _normPath(auxs[_fi]);
+              if (!_fp || projects.some(function (p) { return p.path === _fp; })) continue;
+              projects.push({ path: _fp, name: basename(_fp) });
+            }
+          } else {
+            _restoreFormationFromOnlyStore(mainFolder);
+          }
+          _finishRestore();
+        }).catch(function () {
+          _restoreFormationFromOnlyStore(mainFolder);
+          _finishRestore();
+        });
+      });
+    }).catch(function () { _restoreLastMainFolder(); });
+  }
+
+  // ★ 空白启动恢复链（2026-08-08 定案）:
+  //   ① 启动目录 global.sq3（last_main_folder）有记忆 → 本地优先直接用
+  //      （本地记忆 = 本包/本目录曾用过的真实历史，多绿色包互不串）
+  //   ② 本地无记忆 → OS ws.sq3 兜底（跨包/目录迁移恢复）→ saveProjects 自动回写本地 global.sq3
+  function _restoreWorkspaceLocalFirst() {
+    var s = _qgsNs();
+    var tryLocal = function () {
+      if (!s || typeof s.get !== 'function') return Promise.resolve(false);
+      return s.get('last_main_folder').then(function (folderPath) {
+        if (!folderPath || typeof folderPath !== 'string') return false;
+        folderPath = _normPath(folderPath);
+        // ★ 死路径校验: 本地记忆指向已删除目录 → 跳过（交给 OS 链/空白自愈），防恢复死项目永久空白
+        return _pathExists(folderPath).then(function (exists) {
+          if (!exists) return false;
+          if (!projects.some(function (p) { return p.path === folderPath; })) {
+            projects.push({ path: folderPath, name: basename(folderPath) });
+            _bumpRecent(folderPath);
+          }
+          // 阵营: OS ws.sq3 → only.sq3 兜底
+          var ws = _wsBridge();
+          var done = function () { _finishRestore(); };
+          if (!ws) { _restoreFormationFromOnlyStore(folderPath); done(); return true; }
+          ws.get(WS_FORM_PREFIX + folderPath).then(function (auxs) {
+            if (auxs && Array.isArray(auxs)) {
+              for (var _fi = 0; _fi < auxs.length; _fi++) {
+                var _fp = _normPath(auxs[_fi]);
+                if (!_fp || projects.some(function (p) { return p.path === _fp; })) continue;
+                projects.push({ path: _fp, name: basename(_fp) });
+              }
+            } else {
+              _restoreFormationFromOnlyStore(folderPath);
+            }
+            done();
+          }).catch(function () {
+            _restoreFormationFromOnlyStore(folderPath);
+            done();
+          });
+          return true;
+        });
+      }).catch(function () { return false; });
+    };
+    tryLocal().then(function (usedLocal) {
+      if (!usedLocal) _restoreWorkspaceFromOs();
+    });
+  }
+
   // ★ 持久化"上次主文件夹"到 global.sq3（供空白启动恢复）
   //   资格：仅空白启动窗口（无 folder= 参数）写入（F-2026-08-06 时序防护）：
   //   restore/fresh 窗口写入会与旧窗口互相覆盖全局恢复点，多窗口下最后写入者赢
   //   → 空白启动恢复到错误主文件夹（本次主从错乱 bug 的直接原因之一）
   function _persistLastMainFolder() {
-    if (_urlSpecifiesMain()) return;
+    // ★ fresh=1 空白新窗口同样不写全局恢复点（铁律 8.3，2026-08-08 补漏）
+    if (_urlSpecifiesMain() || _isFreshWindow()) return;
     if (projects.length === 0 || !projects[0].path) return;
     try {
       var s = _qgsNs();
@@ -520,17 +706,22 @@
       if (!s) return;
       s.get('last_main_folder').then(function (folderPath) {
         if (!folderPath || typeof folderPath !== 'string') return;
-        folderPath = folderPath.replace(/\\/g, '/').replace(/\/$/, '');
-        if (projects.some(function (p) { return p.path === folderPath; })) return;
-        projects.push({ path: folderPath, name: basename(folderPath) });
-        _bumpRecent(folderPath);
-        _restoreFormationFromOnlyStore(folderPath);
-        // ★ 此时 projects[0] 已就位，加载排序偏好 + 视口状态
-        _loadSortPrefs();
-        _loadViewportState();
-        saveProjects();
-        render();
-        _notifyChanged();
+        folderPath = _normPath(folderPath);
+        // ★ 死路径校验: 本地记忆指向已删除目录 → 空白窗口（用户手动添加自愈），防面板永久空转
+        _pathExists(folderPath).then(function (exists) {
+          if (!exists) return;
+          if (projects.some(function (p) { return p.path === folderPath; })) return;
+          projects.push({ path: folderPath, name: basename(folderPath) });
+          _bumpRecent(folderPath);
+          _restoreFormationFromOnlyStore(folderPath);
+          // ★ 此时 projects[0] 已就位，加载排序偏好 + 视口状态
+          _loadSortPrefs();
+          _loadViewportState();
+          saveProjects();
+          render();
+          _notifyChanged();
+          _restoreRecentsFromOs();
+        });
       }).catch(function () { });
     } catch (_) { }
   }
@@ -571,8 +762,8 @@
       _notifyChanged();
       return;
     }
-    // ★ 空白启动：从 global.sq3 恢复上次主文件夹
-    _restoreLastMainFolder();
+    // ★ 空白启动：启动目录 global.sq3 优先 → OS ws.sq3 兑底回写（本地优先，跨包不串）
+    _restoreWorkspaceLocalFirst();
   }
 
   // ★ 出战阵营持久化：写入主项目的 only.sq3（项目级资产，随目录迁移）
@@ -635,6 +826,8 @@
     _dedupProjects();
     _saveFormationToOnlyStore();
     _persistLastMainFolder();
+    // ★ OS 级工作空间唯一真理（异常退出不丢）
+    _saveWorkspaceToOs();
   }
   // beforeunload：阵营 + recent + 排序偏好 + 视口状态 + 上次主文件夹同步刷盘
   window.addEventListener('beforeunload', function () {
@@ -662,6 +855,8 @@
         os.set(SORT_PREFS_KEY, _sortPrefByPath).catch(function () { });
         os.set(SCROLL_POS_KEY, _scrollPosByPath).catch(function () { });
       }
+      // ★ OS 级工作空间唯一真理（beforeunload 同步刷盘）
+      _saveWorkspaceToOs();
     } catch (_) { }
   });
   // ---- close active dropdown: save snapshot then destroy ----
@@ -850,10 +1045,12 @@
     sbThumb.style.cssText = 'position:absolute; right:2px; width:3px; min-height:20px; border-radius:0; ' +
       'display:none; background:' + _co.c + '; cursor:pointer; opacity:0.6; forced-color-adjust:none; pointer-events:auto; ' +
       'transition: width 0.1s ease, right 0.1s ease, opacity 0.1s ease;';
+    var _sbDragging = false;   // ★ F107: 拖拽期间保持粗态，光标移出滑轨 x 范围也不收缩
     sbOuter.addEventListener('mouseenter', function () {
       sbThumb.style.width = '12px'; sbThumb.style.right = '0'; sbThumb.style.opacity = '1';
     });
     sbOuter.addEventListener('mouseleave', function () {
+      if (_sbDragging) return;
       sbThumb.style.width = '3px'; sbThumb.style.right = '2px'; sbThumb.style.opacity = '0.6';
     });
     function _syncSB() {
@@ -883,6 +1080,8 @@
     sbThumb.addEventListener('mousedown', function (e) {
       if (e.button !== 0) return;
       _dr = true; _dsY = e.clientY; _dsS = inner.scrollTop;
+      _sbDragging = true;   // ★ F107: 抓住即粗
+      sbThumb.style.width = '12px'; sbThumb.style.right = '0'; sbThumb.style.opacity = '1';
       e.preventDefault(); e.stopPropagation();
     });
     document.addEventListener('mousemove', function (e) {
@@ -893,7 +1092,17 @@
       var ratio = (e.clientY - _dsY) / (ch - thumbH);
       inner.scrollTop = Math.max(0, Math.min(sh - ch, _dsS + ratio * (sh - ch)));
     });
-    document.addEventListener('mouseup', function () { _dr = false; });
+    document.addEventListener('mouseup', function (e) {
+      if (!_dr) return;
+      _dr = false; _sbDragging = false;
+      // 松开：光标仍落在滑轨上 → 保持粗态；已离开 → 收缩
+      var at = (e && e.clientX != null) ? document.elementFromPoint(e.clientX, e.clientY) : null;
+      if (at && sbOuter.contains(at)) {
+        sbThumb.style.width = '12px'; sbThumb.style.right = '0'; sbThumb.style.opacity = '1';
+      } else {
+        sbThumb.style.width = '3px'; sbThumb.style.right = '2px'; sbThumb.style.opacity = '0.6';
+      }
+    });
     setTimeout(_syncSB, 50);
     // 仅监听直接子节点变更（行平铺无嵌套），subtree:false 省去递归遍历开销
     var _sbObs = new MutationObserver(function () { setTimeout(_syncSB, 30); });

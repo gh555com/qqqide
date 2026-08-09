@@ -150,6 +150,10 @@ def main():
             shutdown_hub()
             return
 
+    # ★ stdin EOF (宿主退出/崩溃, 未收到 exit 命令): 关闭音频设备后自然退出
+    #   兜底优雅关闭 — 防孤儿进程 + 防退出时 CFFI 回调报错
+    shutdown_hub()
+
 
 if __name__ == "__main__":
     main()

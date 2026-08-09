@@ -1,6 +1,46 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 'use strict';
+// ═══ 天罗地网渲染层埋点（2026-08-08 F14）═══
+// 崩溃/强杀前最后动作 → 主进程 crash-net（fire-and-forget，零业务影响）
+(function () {
+    var _last = {};
+    function _bridge() {
+        try {
+            var b = window.qqqideBridge;
+            if (!b && window.parent) b = window.parent.qqqideBridge;
+            return b;
+        } catch (_) { return null; }
+    }
+    function _log(evt) {
+        try {
+            var b = _bridge();
+            if (b && b.crashNet && b.crashNet.log) b.crashNet.log(evt);
+        } catch (_) { }
+    }
+    window.__crashNet = {
+        log: _log,
+        throttled: function (key, ms, evt) {
+            var now = Date.now();
+            if (_last[key] && now - _last[key] < (ms || 2000)) return;
+            _last[key] = now;
+            _log(evt);
+        }
+    };
+    // 渲染层未捕获异常/拒绝 → 立即上报（渲染进程崩溃前最后一行错误）
+    window.addEventListener('error', function (e) {
+        try {
+            _log({ kind: 'render-error', msg: String(e.message || '').slice(0, 300), src: ((e.filename || '').split('/').pop() || '') + ':' + (e.lineno || 0) });
+        } catch (_) { }
+    }, true);
+    window.addEventListener('unhandledrejection', function (e) {
+        try {
+            var r = e && e.reason;
+            _log({ kind: 'render-reject', msg: String((r && (r.message || r)) || r).slice(0, 300) });
+        } catch (_) { }
+    });
+})();
+
 // ═══ panel-pipeline.js ═══
 // sendMessage 管线：接受显式 content，零 $input 访问，零 saveQuestUIState 调用
 // SendIntent 替代 skipFloorCreation boolean 分叉
@@ -58,6 +98,9 @@ async function _executeSend(intent) {
 
     // ★ 所有闸门已过 → 加锁
     _execSendBusy = true;
+
+    // ★ 天罗地网: 发送开始（死前最后动作链起点）
+    try { if (window.__crashNet) window.__crashNet.log({ kind: 'send', q: questId, state: 'sending', type: sendType, detail: isRecovery ? 'recovery' : (_isCompress ? 'compress' : 'normal') }); } catch (_e3) { }
 
     // ── Draft 晋升 ──
     if (_isDraft(questId)) {
@@ -372,8 +415,10 @@ async function _executeSend(intent) {
     }
     agent._streamingContent = null;
     agent._streaming = true;
-    // ★ 背包重量估算（K tokens = chars / 2.7 / 1000）
+    // ★ 背包重量估算（K tokens = chars / 2.5 / 1000）
     // 完整对齐背包图解：guard + Z + biscuit + facts + 用户键入 + tools + body
+    // ★ 字符→token 估算系数 — 唯一真理源 ContentGateway.CHAR_PER_TOKEN（content-gateway.js）
+    var _CPT = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN) ? ContentGateway.CHAR_PER_TOKEN : 2.5;
     if (sendType !== 'recovery') {
         var _bpChars = 0;
         // 1. 服务端甲壳（与 panel-quest-ui.js guardChars 同步）
@@ -398,7 +443,7 @@ async function _executeSend(intent) {
         // 5. body 常量字段 + JSON overhead（~250 chars，<0.1K）
         _bpChars += 250;
         // ★ compress 楼层：aq 显示操作开局重量（only facts 点击瞬间捕获，压缩前），非压缩后的 r 重量
-        agent._aiBackpackEst = intent.backpackEstK || Math.round(_bpChars / 2.7 / 1000);
+        agent._aiBackpackEst = intent.backpackEstK || Math.round(_bpChars / _CPT / 1000);
     }
     // ★ 即时同步按钮 UI：建楼开始 → 按钮变红 Stop（必须在 agent._streaming 之后）
     setStreaming(true);
@@ -806,6 +851,12 @@ async function _executeSend(intent) {
             if (typeof agent._rebuildBackpack === 'function') {
                 try { await agent._rebuildBackpack(); } catch (_) { /* 压缩失败不阻断楼层完结 */ }
             }
+            // ★ 完结密封（2026-08-08 F10 根因）：压缩后 conversation 已截短（仅 Z+biscuit），
+            //   任何后续保存（双发送 finally 交错 / auto-save 并发）都会 slice 出空 conversation
+            //   覆盖完整保存 → 磁盘 conv=0 → 楼层"只剩气泡"（q169 f10/f12/f14 事故）。
+            //   密封后禁止再写该楼层 all.json（ctx.json 照常）。
+            if (!agent._floorSealed) agent._floorSealed = {};
+            agent._floorSealed[agent._currentFloorNum] = true;
             // ★ ctx 已迁至 ctx.json（B 方案）。D 路径兜底：ctx.json 损坏时 _rebuildBackpack 自愈。
             if (typeof _writeCtxJson === 'function') {
                 try { await _writeCtxJson(qid, agent._ctx); } catch (_) { }

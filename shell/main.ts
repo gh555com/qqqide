@@ -46,12 +46,14 @@ import { registerGitDiffIpc } from './ipc-git-diff';
 import { registerSmartSearchIpc, IndexService } from './ipc-smart-search';
 import { registerStateHandlersIpc } from './ipc-state-handlers';
 import { hardenSession, registerExitHandlers } from './shutdown';
+import { crashNetInit } from './crash-net';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker, setPyBrokerEventHandler } from './py-broker';
 import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart, getGoodsSetting, setGoodsSetting, getAllGoodsSettings, startOsStateWatch } from './gaea-process';
 import { registerKopeIpc } from './ipc-kope';
 import { registerRoamIpc } from './ipc-roam';
 import { registerAiStateIpc } from './ipc-ai-state';
+import { registerWsStateIpc } from './ipc-ws-state';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
@@ -182,6 +184,9 @@ const { isOffline: isOfflineFlag, isDev: isDevFlag } = extractFlags();
 // ── 单例服务 ──
 
 const audioEngine = new AudioEngine(portable.root);
+// ★ 退出兜底: 最后一个窗口不一定是第一个窗口(mainWindow closed 路径可能永不触发)
+//   before-quit 统一兜底停音频引擎 — 幂等(已停则 no-op), 覆盖全部退出路径
+app.on('before-quit', () => { try { audioEngine.stop(); } catch { /* ignore */ } });
 const monacoHost = new MonacoHost();
 const qzSpawn = new QzSpawn(portable.root);
 // const lspBridge = new LspBridge(portable.root); // LSP OFF — 2026-06-23
@@ -274,7 +279,9 @@ function registerAllIpc(): void {
     registerQzSpawnIpc(qzSpawn);
     registerRoamIpc();
     registerAiStateIpc();
+    registerWsStateIpc();
     registerKopeIpc();
+    registerGaeaProcessIpc();
     registerMediaIpc(mediaService);
     registerAuthBrainIpc(getAuthBrain());
     registerDesktopShortcutIpc();
@@ -431,6 +438,9 @@ function registerGaeaProcessIpc(): void {
 
 // ── App 就绪 ── 就绪 ──
 app.whenReady().then(async () => {
+    // ★ 天罗地网: 必须在任何窗口/服务之前初始化 — 崩溃记录网络 (2026-08-08 F14)
+    try { crashNetInit(portable.userData); } catch (e) { try { console.warn('[crash-net] init failed:', e); } catch (_) { } }
+
     // ★ If another instance already holds the lock, quit immediately — don't create windows
     if (_shouldQuitEarly) {
         app.quit();

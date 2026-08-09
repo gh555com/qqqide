@@ -284,8 +284,10 @@ function bootWindowControls() {
     bridge.window.onCloseConfirm(showCloseConfirm);
   }
   // ★ 主进程 Esc（webContents 级捕获，焦点在 iframe 内也生效）→ 隐藏确认框
+  //   force=true（主进程 Enter 确认路径发出）→ 越过 1s 防抖立即隐藏；
+  //   Esc 路径 force=false → 1s 防抖照常生效（弹窗至少存在 1 秒）
   if (bridge.window && bridge.window.onCloseConfirmDismiss) {
-    bridge.window.onCloseConfirmDismiss(function () { hideCloseConfirm(); });
+    bridge.window.onCloseConfirmDismiss(function (force) { hideCloseConfirm(!!force); });
   }
 }
 

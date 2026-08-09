@@ -985,16 +985,16 @@ window._showPieTooltip = _showPieTooltip;
 window._hidePieTooltip = _hidePieTooltip;
 window._restoreGuideBlocksToContentWrap = _restoreGuideBlocksToContentWrap;
 
-// ═══ 崩溃防护：窗口关闭前阻塞等待楼层数据写盘完成 ═══
-//   ⚠ 不用 fire-and-forget：之前 _saveAgentQuestData 是 async，不 await 的话
-//     主进程 500ms 后 process.exit(0) 可能截断 JSON 写入，导致 all.json 半截。
-//     改为 e.preventDefault() 挡住窗口销毁，等 save 完成或 2 秒超时才放行。
-//   ★ 一次性拦截（F7 修复）：保存完成后的 window.close() 重试会再次触发 beforeunload →
-//     无限拦截循环 → 窗口永不可关（回车后弹窗消失但窗口卡死、再点 X 无反应）。
-//     因此只挡第一次；保存完成（_buSaveDone）后后续 unload 直接放行。
-var _buBlocked = false;   // 第一次拦截已发生
-var _buSaveDone = false;  // 保存已完成（_finish 或 2s 超时）→ 后续 unload 放行
-window.addEventListener('beforeunload', function (e) {
+// ═══ 关闭刷盘：beforeunload 同步尽力保存，不拦截关闭（2026-08-08 F13 定案）═══
+//   ★ 拦截-重试收敛已废除：三面板 beforeunload 全拦截 + hidden iframe（visibilityState=hidden）
+//     的 setTimeout 被 Chromium 节流到 ~1/min → _finish 的 2s 超时兜底失效 → 收敛死锁：
+//     回车后窗口 60s 才关/看起来永不关（F11 实测症状），60s 后自动关被误认为闪退。
+//   ★ 现改为：不 preventDefault（窗口确认后立即关闭），保存走 fire-and-forget IPC ——
+//     请求一旦到达主进程，渲染进程销毁不影响主进程完成写盘；all.json 另有 auto-save
+//     500ms 持续刷盘（最后一笔最多丢 500ms 流式预览，重启自磁盘恢复，零损坏）。
+//     其余面板 beforeunload 同步刷盘照常（only-store/ai-viewport/panel-quest/panel-clock）。
+//   ★ F7/F10 的 _buBlocked/_buSaveDone/_finish/closeConfirmed 重试闭环整体删除。
+window.addEventListener('beforeunload', function () {
     // 用户点击「重置窗口」→ 旁路标签，不拦截
     // ★ iframe 内 window !== parent.window，必须也查 parent
     var _rl = window.__qqq_reloading;
@@ -1004,35 +1004,13 @@ window.addEventListener('beforeunload', function (e) {
     var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     var _qid = (typeof questActiveId !== 'undefined') ? questActiveId : null;
     if (!_ag || !_qid) return;
-    // ★ 二次及以后 unload：保存已完成 → 放行；保存中 → 继续挡（_finish 会带完成标记重试）
-    if (_buBlocked) {
-        if (_buSaveDone) return;
-        e.preventDefault();
-        e.returnValue = '';
-        return;
-    }
-    _buBlocked = true;
     // 压缩中 → 标记异常供下次启动修复
     if (_ag._compressing && _ag._ctx) {
         _ag._uncleanShutdown = true;
         try { console.warn('[beforeunload] agent was compressing — marked unclean'); } catch (_) { }
     }
-    // 阻挡窗口销毁直到保存完成（或超时）
-    e.preventDefault();
-    e.returnValue = '';  // Chrome 要求
-    var _closed = false;
-    var _finish = function () {
-        if (_closed) return;
-        _closed = true;
-        _buSaveDone = true;
-        try { window.close(); } catch (_) { }
-    };
+    // 尽力保存：fire-and-forget，不拦截关闭
     if (typeof _saveAgentQuestData === 'function') {
-        try {
-            _saveAgentQuestData(_qid, _ag, _ag._currentFloorNum || 0).then(_finish).catch(_finish);
-        } catch (_) { _finish(); }
-    } else {
-        _finish();
+        try { _saveAgentQuestData(_qid, _ag, _ag._currentFloorNum || 0).catch(function () { }); } catch (_) { }
     }
-    setTimeout(_finish, 2000);
 });

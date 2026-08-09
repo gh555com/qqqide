@@ -238,6 +238,7 @@ async function updateDriveDisplay() {
 	var dragging = false, startY, startST;
 	thumb.onmousedown = function(e) {
 		dragging = true; startY = e.clientY; startST = container.scrollTop;
+		thumb.classList.add('drag-active');   // ★ F107: 拖拽期间保持粗态，光标移出滑轨 x 范围也不收缩（CSS .drag-active 与 :hover 同级）
 		e.preventDefault(); e.stopPropagation();
 		document.onmousemove = function(e) {
 			if (!dragging) return;
@@ -247,7 +248,10 @@ async function updateDriveDisplay() {
 			var sh = container.scrollHeight, ch = container.clientHeight;
 			container.scrollTop = startST + (dy / (barH - th)) * (sh - ch);
 		};
-		document.onmouseup = function() { dragging = false; document.onmousemove = null; };
+		document.onmouseup = function() {
+			dragging = false; document.onmousemove = null;
+			thumb.classList.remove('drag-active');   // 松开：若光标仍在滑轨内由 :hover 保持粗态，否则收缩
+		};
 	};
 
 	// Click track: left=page, Shift+left or right=jump

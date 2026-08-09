@@ -120,7 +120,7 @@ const QQQ = {
         closeConfirmed: () => ipcRenderer.invoke('qqqide:window:close-confirmed'),
         closeConfirmDismissed: () => ipcRenderer.invoke('qqqide:window:close-confirm-dismissed'),
         onCloseConfirm: (cb: () => void) => { const h = () => { try { cb(); } catch (_) {} }; ipcRenderer.on('qqqide:confirm-close', h); return () => ipcRenderer.removeListener('qqqide:confirm-close', h); },
-        onCloseConfirmDismiss: (cb: () => void) => { const h = () => { try { cb(); } catch (_) {} }; ipcRenderer.on('qqqide:confirm-close-dismiss', h); return () => ipcRenderer.removeListener('qqqide:confirm-close-dismiss', h); },
+        onCloseConfirmDismiss: (cb: (force?: boolean) => void) => { const h = (_e: unknown, force?: boolean) => { try { cb(!!force); } catch (_) {} }; ipcRenderer.on('qqqide:confirm-close-dismiss', h); return () => ipcRenderer.removeListener('qqqide:confirm-close-dismiss', h); },
         isMaximized: () => ipcRenderer.invoke('qqqide:window:isMaximized'),
         setTitle: (s: string) => ipcRenderer.invoke('qqqide:window:setTitle', s),
         toggleDevTools: () => ipcRenderer.invoke('qqqide:window:toggleDevTools'),
@@ -516,6 +516,20 @@ const QQQ = {
         deleteItem: (id: number) => ipcRenderer.invoke('qqqide:kope:deleteItem', id),
     },
 
+    // ---- wsState (工作空间记忆 OS 级持久化, sql.js → %LOCALAPPDATA%/qqqide/ws.sq3) ----
+    //   独立库: 删除工作空间记忆只动 ws.sq3, 不污染 ai.sq3 的 sortPrefs/recent 等记忆块
+    wsState: {
+        get: (key: string) => ipcRenderer.invoke('qqqide:ws-state:get', key),
+        set: (key: string, value: any) => ipcRenderer.invoke('qqqide:ws-state:set', key, value),
+        del: (key: string) => ipcRenderer.invoke('qqqide:ws-state:del', key),
+        getAll: () => ipcRenderer.invoke('qqqide:ws-state:getAll'),
+        onChanged: (cb: (msg: { key: string; value: any; deleted?: boolean }) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[wsState.onChanged]', err); } };
+            ipcRenderer.on('qqqide:ws-state:changed', handler);
+            return () => ipcRenderer.removeListener('qqqide:ws-state:changed', handler);
+        },
+    },
+
     // ---- aiState (AI 视口 OS 级持久化, sql.js → %LOCALAPPDATA%/qqqide/ai.sq3) ----
     aiState: {
         get: (key: string) => ipcRenderer.invoke('qqqide:ai-state:get', key),
@@ -539,6 +553,19 @@ const QQQ = {
             ipcRenderer.on('qqqide:roam:changed', handler);
             return () => ipcRenderer.removeListener('qqqide:roam:changed', handler);
         },
+        // 自动感知外部变化 (q3 autoWatchChanges 移植, 默认开): 主进程 fs.watch 当前目录
+        watchDir: (dir: string) => ipcRenderer.invoke('qqqide:roam:watch', dir),
+        watchMark: () => ipcRenderer.invoke('qqqide:roam:watch-mark'),
+        onFsChanged: (cb: () => void) => {
+            const handler = (_e: any) => { try { cb(); } catch (err) { console.warn('[roam.onFsChanged]', err); } };
+            ipcRenderer.on('qqqide:roam:fs-changed', handler);
+            return () => ipcRenderer.removeListener('qqqide:roam:fs-changed', handler);
+        },
+    },
+
+    // ---- crashNet (天罗地网事件上报, fire-and-forget — 渲染层崩溃/主进程强杀前最后动作) ----
+    crashNet: {
+        log: (evt: any) => { try { ipcRenderer.send('qqqide:crashnet:event', evt); } catch (_) { } },
     },
 
     // ---- squad (窗口编队, OS 级 %LOCALAPPDATA%/qqqide/squads.json) ----

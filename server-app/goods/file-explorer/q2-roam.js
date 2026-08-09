@@ -68,6 +68,10 @@ window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'qqqide-roam-changed') {
       _onRoamChanged(e.data.key, e.data.value);
     }
+    // ★ 自动感知外部变化 (q3 autoWatchChanges 移植, 默认开): 主进程检测到外部文件变化 → 刷新当前目录
+    if (e.data && e.data.type === 'qqqide-roam-fs-changed') {
+      reloadCurrentDir();
+    }
 });
 
 // ★ OS 级持久化: 优先 parent.qqqideBridge.roam (OS 级 roam.sq3, 跨窗口唯一真理)
@@ -151,6 +155,10 @@ var bridge = {
 		read: (p) => rpc('fs.read', p),
 		readBase64: (p) => rpc('fs.readBase64', p),
 		write: (p, c) => rpc('fs.write', { __spread: true, args: [p, c] }),
+		// ★ 2026-08-08 F106: writeBase64 必须走独立 IPC（qqqide:fs:writeBase64 主进程 base64 解码二进制写入）。
+		//   曾缺失 → _copyFilesToCurrentDir 降级到 fs.write → base64 字符串被当 UTF-8 文本写入 →
+		//   Roam 粘贴出的所有二进制文件（zip/png/mp3）内容全为 base64 文本 → 一律打不开。
+		writeBase64: (p, b64) => rpc('fs.writeBase64', { __spread: true, args: [p, b64] }),
 		mkdir: (p) => rpc('fs.mkdir', p),
 		remove: (p) => rpc('fs.remove', p),
 		rename: (o, n) => rpc('fs.rename', { __spread: true, args: [o, n] }),
@@ -447,6 +455,9 @@ function navigateTo(p, opts) {
 	opts = opts || {};
 	// ★ 正常导航时清除 lnkJumpFromPath（lnk 跳转在调用后重新设置）
 	if (!opts.keepLnkJump) lnkJumpFromPath = null;
+	// ★ 自动感知 (q3 autoWatchChanges 移植, 默认开): 主进程 fs.watch 当前目录, 外部变化自动刷新
+	//   fire-and-forget — RPC 失败静默降级为不自动感知, 不阻塞导航
+	rpc('roam.watchDir', p).catch(function(){});
 	currentPath = p;
 	applyFineScm(p);
 	addressInput.value = p;
@@ -904,6 +915,8 @@ function naturalCompare(a, b) {
 
 // ---- Load file list ----
 async function loadFileList(p) {
+	// ★ 重置主进程 watcher 冷却 — 自身操作/刚刷新后 6s 内 watcher 事件忽略, 防双刷 (q3 markWatcherRefreshTime 同语义)
+	rpc('roam.watchMark').catch(function(){});
 	// ★ q3 对齐: Space 强制尺寸仅会话内有效 — 切换目录或 SCM 模式 → 立即丢失强制
 	if (p !== _lastRenderedDir || szMode !== _lastRenderSzMode) {
 		sessionSizeCache = {};
