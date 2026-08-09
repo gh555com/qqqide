@@ -19,6 +19,15 @@ const path = require('path');
 const fs = require('fs');
 const cp = require('child_process');
 const https = require('https');
+const os = require('os');
+
+// ★ 打包进程内剥离代理环境变量：Electron 二进制统一走国内 npmmirror 直连，
+// 环境代理（如 127.0.0.1:10808）若未运行 → electron-builder 下载 proxyconnect 被拒（2026-08-09 F17 事故）。
+for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY',
+                  'http_proxy', 'https_proxy', 'all_proxy',
+                  'HTTP_PROXYQ', 'HTTPS_PROXYQ']) {
+  delete process.env[k];
+}
 
 const ROOT = path.resolve(__dirname, '..');
 const ELECTRON_VERSION = '22.3.27';
@@ -79,18 +88,6 @@ function tryRun(cmd, args, opts = {}) {
   console.log('>', cmd, args.join(' '));
   const r = cp.spawnSync(cmd, args, { stdio: 'inherit', cwd: ROOT, shell: true, ...opts });
   return r.status === 0;
-}
-
-// 1) verify engine binary
-function ensureEngineBinary() {
-  const [plat, arch] = target.split('-');
-  const ext = plat === 'win' ? '.exe' : '';
-  const bin = path.join(ROOT, 'engines', `q_${plat}_${arch}${ext}`);
-  if (!fs.existsSync(bin)) {
-    console.warn('[pack] WARNING: engine binary missing:', bin);
-  } else {
-    console.log('[pack] engine ok:', bin);
-  }
 }
 
 // 2) electron-builder dir build
@@ -239,14 +236,34 @@ function downloadFile(url, dest) {
   });
 }
 
-async function fetchElectronPrebuilt() {
-  const cacheDir = path.join(ROOT, 'shell-build', '_cache');
-  fs.mkdirSync(cacheDir, { recursive: true });
+// ★ Electron 发行版缓存目录 — 与 @electron/get 同款（%LOCALAPPDATA%/electron/Cache），
+// electron-builder 装配时直接命中，manualAssemble/repair 也读同一缓存，零重复下载。
+function electronCacheDir() {
+  const local = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+  return path.join(local, 'electron', 'Cache');
+}
+
+// ★ 本机 npm 安装的 Electron 发行版（node_modules/electron/dist）→ electron-builder
+// 直接用 electronDist 装配 → 打包零下载零网络。仅当目标平台与本机发行版一致时可用。
+function localElectronDist() {
+  if (process.platform !== 'win32' || baseTarget !== 'win-x64') { return null; }
+  const dist = path.join(ROOT, 'node_modules', 'electron', 'dist');
+  if (fs.existsSync(path.join(dist, 'electron.exe')) &&
+      fs.existsSync(path.join(dist, 'version')) &&
+      fs.existsSync(path.join(dist, 'resources', 'default_app.asar'))) {
+    return dist;
+  }
+  return null;
+}
+
+// ★ 预热 @electron/get 缓存：缓存缺失时从国内镜像直连下载（进程内已剥离代理）。
+async function warmElectronCache() {
   const fname = `electron-v${ELECTRON_VERSION}-${cfg.ebPlat}.zip`;
-  const local = path.join(cacheDir, fname);
-  if (fs.existsSync(local) && fs.statSync(local).size > 1024 * 1024) {
-    console.log('[pack] using cached', local);
-    return local;
+  const dest = path.join(electronCacheDir(), fname);
+  fs.mkdirSync(electronCacheDir(), { recursive: true });
+  if (fs.existsSync(dest) && fs.statSync(dest).size > 1024 * 1024) {
+    console.log('[pack] electron cache hit:', dest);
+    return dest;
   }
   // try multiple mirrors (npmmirror first — GitHub 直连 EOF 不稳定，仅兜底)
   const mirrors = [
@@ -258,15 +275,21 @@ async function fetchElectronPrebuilt() {
   let lastErr = null;
   for (const url of mirrors) {
     try {
-      await downloadFile(url, local);
-      return local;
+      await downloadFile(url, dest);
+      console.log('[pack] electron cache warmed:', dest);
+      return dest;
     } catch (err) {
       console.warn('[pack] mirror failed:', url, '->', err.message);
       lastErr = err;
-      try { fs.unlinkSync(local); } catch (_) { }
+      try { fs.unlinkSync(dest); } catch (_) { }
     }
   }
   throw lastErr || new Error('all mirrors failed');
+}
+
+async function fetchElectronPrebuilt() {
+  const local = await warmElectronCache();
+  return local;
 }
 
 function unzipTo(zipPath, dest) {
@@ -700,6 +723,56 @@ function pruneShellOut(unpacked) {
   }
 }
 
+// 3.11b) prune python slim — PySide2 QML/unused Qt modules + q3-era leftover packages (zero imports in active code)
+function prunePythonSlim(unpacked) {
+  const appDir = appResourcesDir(unpacked);
+  if (!appDir || !fs.existsSync(appDir)) { return; }
+  const spDir = path.join(appDir, 'engines', 'python', 'site-packages');
+  if (!fs.existsSync(spDir)) { return; }
+  const p2Dir = path.join(spDir, 'PySide2');
+  let saved = 0;
+  // Slim Qt modules safe to remove — verified 2026-08-09: this PySide2 build's
+  // QtCore load chain REQUIRES Qt5Qml/Qt5Quick/Qt5Quick3D core + Network/OpenGL/PrintSupport
+  // (pyside2.abi3.dll delay-loads them); the 9 below are proven unneeded (binary-search verified).
+  const p2Slim = ['Qt5Quick3DUtils.dll', 'Qt5QuickControls2.dll', 'Qt5QuickParticles.dll',
+                  'Qt5QuickShapes.dll', 'Qt5QuickTemplates2.dll', 'Qt5QuickTest.dll',
+                  'Qt5QuickWidgets.dll', 'Qt5Xml.dll', 'opengl32sw.dll'];
+  if (fs.existsSync(p2Dir)) {
+    for (const f of fs.readdirSync(p2Dir)) {
+      const fp = path.join(p2Dir, f);
+      try { if (fs.statSync(fp).isDirectory()) continue; } catch { continue; }
+      const hit = p2Slim.some(function (pre) {
+        return f === pre || (pre.endsWith('.dll') ? f === pre : f.startsWith(pre));
+      });
+      if (hit) { saved += fs.statSync(fp).size; fs.rmSync(fp); }
+    }
+  }
+  // q3-era leftover packages (paramiko/capstone/cryptography/nacl/minidump/bcrypt/msgpack)
+  const pkgPre = ['paramiko', 'capstone', 'cryptography', 'pynacl', 'minidump', 'bcrypt', 'msgpack'];
+  for (const f of fs.readdirSync(spDir)) {
+    const fp = path.join(spDir, f);
+    let isDir = false;
+    try { isDir = fs.statSync(fp).isDirectory(); } catch { continue; }
+    if (pkgPre.some(function (pre) { return f === pre || f.startsWith(pre + '-'); })) {
+      saved += dirSizeFn(fp, isDir);
+      fs.rmSync(fp, { recursive: true, force: true });
+    } else if (isDir && f === '__pycache__') {
+      saved += dirSizeFn(fp, true);
+      fs.rmSync(fp, { recursive: true, force: true });
+    }
+  }
+  if (saved > 0) {
+    console.log('[pack] pruned python slim (QML/unused Qt + leftover pkgs + pycache) (' + Math.round(saved / 1024 / 1024) + 'MB)');
+  }
+}
+
+function dirSizeFn(p, isDir) {
+  if (!isDir) { try { return fs.statSync(p).size; } catch { return 0; } }
+  let sz = 0;
+  try { for (const f of fs.readdirSync(p)) { sz += dirSizeFn(path.join(p, f), fs.statSync(path.join(p, f)).isDirectory()); } } catch {}
+  return sz;
+}
+
 // 3.12) clean runtime-generated directories from unpacked tree (should not be in zip)
 function cleanRuntimeDirs(unpacked) {
   // Old flat structure (for cleanup of existing trees)
@@ -923,7 +996,6 @@ function packSfx(unpacked) {
 }
 
 (async () => {
-  ensureEngineBinary();
   // mac builds on non-mac hosts must use manual assembly (electron-builder refuses)
   const isCrossMac = baseTarget.startsWith('mac-') && process.platform !== 'darwin';
   // SFX only for win locals
@@ -935,7 +1007,18 @@ function packSfx(unpacked) {
     // electron-builder needs baseTarget (not -sfx variant)
     const ebPlat = TARGET_MAP[baseTarget].plat;
     const ebArch = TARGET_MAP[baseTarget].arch;
-    run('npx', ['electron-builder', ebPlat, ebArch, '--dir', '--config.compression=store']);
+    const ebArgs = ['electron-builder', ebPlat, ebArch, '--dir', '--config.compression=store'];
+    const localDist = localElectronDist();
+    if (localDist) {
+      // ★ 零下载主路径：直接用本地 node_modules/electron/dist 装配
+      ebArgs.push('--config.electronDist=' + localDist);
+      ebArgs.push('--config.electronVersion=' + ELECTRON_VERSION);
+      console.log('[pack] using local electron dist (zero download):', localDist);
+    } else {
+      // 交叉/平台不匹配：先预热 @electron/get 缓存 → electron-builder 命中缓存零网络
+      await warmElectronCache();
+    }
+    run('npx', ebArgs);
     unpacked = findUnpackedDir();
     if (!unpacked) {
       console.error('[pack] electron-builder produced no unpacked dir, aborting');
@@ -955,6 +1038,7 @@ function packSfx(unpacked) {
   pruneEngines(unpacked);
   pruneServerApp(unpacked);
   pruneShellOut(unpacked);
+  prunePythonSlim(unpacked);
   cleanRuntimeDirs(unpacked);
   if (isSfx) {
     packSfx(unpacked);
