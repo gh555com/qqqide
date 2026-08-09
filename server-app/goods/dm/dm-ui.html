@@ -273,7 +273,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     </div>
     <div id="conv-list"></div>
     <div id="new-dm-bar">
-      <input type="text" id="new-peer-input" placeholder="键入完整手机号 例:8615802858204" maxlength="20" autocomplete="off">
+      <input type="text" id="new-peer-input" placeholder="键入完整手机号（带国家码），如正版关怀：8615802858204" maxlength="20" autocomplete="off">
     </div>
     <div id="sidebar-footer">
       <button id="btn-new-msg">+ 新建消息</button>
@@ -353,6 +353,24 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       document.documentElement.setAttribute('data-theme', e.data.theme);
     }
   });
+
+  // ═══ FLAG — 照抄登录区国旗机制（本地 assets/flags/{cc}.png，一次拿到永久使用）═══
+  // 国旗由服务器随国家码（country_iso2）下发，账号不变国旗永不变 → 零更新逻辑
+  // iframe 位于 /qqqide/goods/dm/ → 国旗根 = location.pathname 截取 /goods/ 前缀
+  var _flagBase = (function(){
+    try {
+      var p = location.pathname || '';
+      var idx = p.indexOf('/goods/');
+      return (idx > 0 ? p.slice(0, idx) : '') + '/assets/flags/';
+    } catch(_) { return 'assets/flags/'; }
+  })();
+  function flagImg(cc) {
+    if (!cc || cc.length !== 2) return '';
+    var c = cc.toLowerCase();
+    return '<img src="'+_flagBase+c+'.png" width="18" height="13" loading="lazy" ' +
+      'style="vertical-align:-2px;border-radius:2px;box-shadow:0 1px 2px rgba(0,0,0,0.1);object-fit:cover;" ' +
+      'alt="" title="'+cc.toUpperCase()+'" onerror="this.style.display=\'none\'">';
+  }
 
   // ═══ INIT ═══
   init();
@@ -462,21 +480,27 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   // ═══ PUSH HANDLER ═══
   function handlePush(dm) {
     var peerID = dm.sender_id === _doerID ? dm.recipient_id : dm.sender_id;
+    // id 去重：REST 响应与 WS 回显（发送方）可能携带同一条消息
+    var dup = cacheHas(peerID, dm.id);
 
     // Init conversation
     if (!_convMap[peerID]) {
-      _convMap[peerID] = {unread:0,lastMsg:'',lastTime:'',peerName:''};
+      _convMap[peerID] = {unread:0,lastMsg:'',lastTime:'',peerName:'',phone:'',country:''};
     }
     var cv = _convMap[peerID];
     cv.lastMsg = dm.content;
     cv.lastTime = dm.created_at;
 
+    // 联系人手机号/国旗回填（推送携带双方信息 → 首次建联即带国旗）
+    if (!cv.phone) cv.phone = dm.sender_id === _doerID ? (dm.recipient_phone||'') : (dm.sender_phone||'');
+    if (!cv.country) cv.country = dm.sender_id === _doerID ? (dm.recipient_country||'') : (dm.sender_country||'');
+
     if (dm.sender_id === _doerID) {
-      cv.peerName = cv.peerName || dm.recipient_id;
+      cv.peerName = cv.peerName || dm.recipient_phone || dm.recipient_id;
     } else {
-      cv.peerName = dm.sender_name || dm.sender_id;
+      cv.peerName = dm.sender_name || dm.sender_phone || dm.sender_id;
       if (_activePeer !== peerID) {
-        cv.unread = (cv.unread||0) + 1;
+        if (!dup) cv.unread = (cv.unread||0) + 1;
       } else {
         // 当前对话收到对方消息 → 对方在线
         $chatHdrStat.textContent = '在线';
@@ -484,13 +508,13 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       }
     }
 
-    // Cache
+    // Cache（去重后写入）
     if (!_msgCache[peerID]) _msgCache[peerID] = [];
-    _msgCache[peerID].push(dm);
+    if (!dup) _msgCache[peerID].push(dm);
 
     renderConvList();
 
-    if (_activePeer === peerID) {
+    if (_activePeer === peerID && !dup) {
       appendBubble(dm);
       scrollBottom();
       if (dm.sender_id !== _doerID) {
@@ -508,11 +532,14 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     }).then(function(r){return r.json();}).then(function(d){
       if (d.conversations) {
         d.conversations.forEach(function(cv){
+          // ★ 永久联系人：服务器 PG 为唯一真理源，重启 IDE 后此列表原样恢复
           _convMap[cv.peer_id] = {
             unread: cv.unread_count||0,
             lastMsg: cv.last_msg||'',
             lastTime: cv.last_time||'',
-            peerName: cv.peer_name||cv.peer_id
+            peerName: cv.peer_name||cv.peer_phone||cv.peer_id,
+            phone: cv.peer_phone||'',
+            country: cv.peer_country||''   // ISO2 → 国旗
           };
         });
         renderConvList();
@@ -528,7 +555,37 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       headers:{'Authorization':'Bearer '+_token}
     }).then(function(r){return r.json();}).then(function(d){
       if (d.messages) {
+        // 服务器已解析 peer 为 doer ID → 迁移 key（手机号→doerID，联系人归一）
+        if (d.peer && d.peer !== peerID) {
+          if (_convMap[peerID] && !_convMap[d.peer]) {
+            _convMap[d.peer] = _convMap[peerID];
+            delete _convMap[peerID];
+          }
+          if (_msgCache[peerID] && !_msgCache[d.peer]) {
+            _msgCache[d.peer] = _msgCache[peerID];
+            delete _msgCache[peerID];
+          }
+          if (_activePeer === peerID) _activePeer = d.peer;
+          peerID = d.peer;
+        }
         _msgCache[peerID] = d.messages.reverse();
+        // 联系人回填：历史消息携带双方手机号/国家码 → 建立联系人+国旗
+        d.messages.forEach(function(m){
+          var isPeerSide = m.sender_id !== _doerID;
+          var c = _convMap[isPeerSide ? m.sender_id : m.recipient_id];
+          if (!c) return;
+          var ph = isPeerSide ? (m.sender_phone||'') : (m.recipient_phone||'');
+          var cc = isPeerSide ? (m.sender_country||'') : (m.recipient_country||'');
+          if (ph && !c.phone) c.phone = ph;
+          if (cc && !c.country) c.country = cc;
+          if (!c.peerName) c.peerName = ph || (isPeerSide ? (m.sender_name||m.sender_id) : m.recipient_id);
+        });
+        renderConvList();
+        // 联系人回填后刷新头部国旗/名字（曾用手机号打开 → 现在有国家码了）
+        if (_activePeer === peerID) {
+          var cvH = _convMap[peerID] || {};
+          $chatHdrName.innerHTML = flagImg(cvH.country) + (cvH.country?' ':'') + escHtml(cvH.peerName || cvH.phone || peerID);
+        }
         renderMessages(peerID);
       }
     }).catch(function(){});
@@ -544,17 +601,18 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     var html = '';
     peers.forEach(function(pid){
       var cv = _convMap[pid];
-      var name = cv.peerName || pid;
+      var name = cv.peerName || cv.phone || pid;
       if (filter && name.toLowerCase().indexOf(filter) === -1 && pid.indexOf(filter) === -1) return;
 
       var cls = _activePeer === pid ? ' active' : '';
       var badge = cv.unread > 0 ? '<span class="conv-badge">'+(cv.unread>99?'99+':cv.unread)+'</span>' : '';
       var avatarLetter = (name[0]||'?').toUpperCase();
       var avatarColor = _avatarColors[hashCode(pid) % _avatarColors.length];
+      var flag = flagImg(cv.country);  // 已建立联系的联系人 → 国家码国旗（照抄登录区）
 
       html += '<div class="conv-item'+cls+'" data-peer="'+escHtml(pid)+'">';
       html += '<div class="conv-avatar" style="background:'+avatarColor+'">'+avatarLetter+'</div>';
-      html += '<div class="conv-body"><div class="conv-name">'+escHtml(name)+'</div>';
+      html += '<div class="conv-body"><div class="conv-name">'+(flag?flag+' ':'')+escHtml(name)+'</div>';
       html += '<div class="conv-preview">'+escHtml(trunc(cv.lastMsg,40))+'</div></div>';
       html += '<div class="conv-meta"><div class="conv-time">'+fmtBrief(cv.lastTime)+'</div>'+badge+'</div>';
       html += '</div>';
@@ -637,8 +695,10 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     $inputArea.style.display = 'block';
 
     var cv = _convMap[peerID] || {};
-    var name = cv.peerName || peerID;
+    var name = cv.peerName || cv.phone || peerID;
     $chatHdrStat.textContent = '检查中…';
+    // ★ 头部显示名+国旗（此前缺失：从会话列表打开从不渲染名字）
+    $chatHdrName.innerHTML = flagImg(cv.country) + (cv.country?' ':'') + escHtml(name);
     $chatHdrAv.textContent = (name[0]||'?').toUpperCase();
     $chatHdrAv.style.background = _avatarColors[hashCode(peerID) % _avatarColors.length];
     $chatHdrOn.style.display = 'none';
@@ -686,15 +746,22 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
             delete _msgCache[_activePeer];
           }
           _activePeer = resolvedID;
-          // 更新 header 显示名
-          var cv = _convMap[resolvedID] || {};
-          var name = cv.peerName || d.msg.sender_name || resolvedID;
-          $chatHdrName.textContent = name;
         }
+        // 发送成功即建立联系人：回填手机号/国旗（服务器随响应下发，一次拿到永久使用）
+        var cvS = _convMap[_activePeer] || {};
+        if (d.msg.recipient_phone && !cvS.phone) cvS.phone = d.msg.recipient_phone;
+        if (d.msg.recipient_country && !cvS.country) cvS.country = d.msg.recipient_country;
+        if (!cvS.peerName) cvS.peerName = cvS.phone || d.msg.recipient_id;
+        // 刷新 header 显示名（国旗 + 名字）
+        var nameS = cvS.peerName || d.msg.recipient_phone || _activePeer;
+        $chatHdrName.innerHTML = flagImg(cvS.country) + (cvS.country?' ':'') + escHtml(nameS);
         if (!_msgCache[_activePeer]) _msgCache[_activePeer] = [];
-        _msgCache[_activePeer].push(d.msg);
-        appendBubble(d.msg);
-        scrollBottom();
+        // id 去重：WS 回显可能已先到达（服务器推送给发送方）
+        if (!cacheHas(_activePeer, d.msg.id)) {
+          _msgCache[_activePeer].push(d.msg);
+          appendBubble(d.msg);
+          scrollBottom();
+        }
       } else {
         $msgInput.value = text;
         // Flash input border red on error
@@ -778,6 +845,15 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   });
 
   // ═══ UTILS ═══
+  function cacheHas(peerID, id) {
+    var arr = _msgCache[peerID];
+    if (!arr) return false;
+    for (var i=0;i<arr.length;i++) {
+      if (arr[i].id === id) return true;
+    }
+    return false;
+  }
+
   function scrollBottom() {
     $msgList.scrollTop = $msgList.scrollHeight;
   }
@@ -820,6 +896,21 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     for (i=0;i<s.length;i++) { h=((h<<5)-h)+s.charCodeAt(i); h|=0; }
     return Math.abs(h);
   }
+})();
+</script>
+<!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 Roam（同 ai-panel 模式：iframe 内按键不冒泡父窗口，必须显式 postMessage） -->
+<script>
+(function () {
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'F2' && e.key !== 'Tab') return;
+    var el = document.activeElement;
+    var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
+    var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
+    if (editing) return;
+    var accel = e.key === 'F2' ? 'F2' : 'Tab';
+    try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: 'window' }, '*'); } catch (_) {}
+    e.preventDefault();
+  }, true);
 })();
 </script>
 </body>

@@ -265,6 +265,22 @@ function _getAll(): Record<string, any> {
     return result;
 }
 
+// ── 主进程直连访问器（window-manager/shutdown 用, 不走 IPC）──
+export async function wsStateGetKey(key: string): Promise<any> {
+    await _ensureDb();
+    return _get(key);
+}
+
+export async function wsStateSetKey(key: string, value: any): Promise<void> {
+    await _ensureDb();
+    _set(key, value);
+}
+
+export async function wsStateDelKey(key: string): Promise<void> {
+    await _ensureDb();
+    _del(key);
+}
+
 // ── IPC 注册 ──
 export function registerWsStateIpc(): void {
     ipcMain.handle('qqqide:ws-state:get', async (_e, key: string) => {

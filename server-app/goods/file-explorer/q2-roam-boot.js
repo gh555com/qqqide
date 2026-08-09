@@ -253,6 +253,13 @@
 		document.dispatchEvent(new CustomEvent('qqq-roam-cmd', { detail: { cmd: cmd } }));
 	});
 
+	// ★ zoom 单位换算（2026-08-09）：html { zoom:0.85 } 下 innerWidth/clientX 报物理 px，而 fixed 定位/maxWidth/offsetWidth 用 CSS px（F113 实测 Electron22: zoom 生效但 clientX=物理注入值、innerWidth 不变）→ 物理/CSS 必须统一，否则右边界保护失效 + maxWidth 退避错 17.6%
+	function _ttZoom() {
+		var z = 1;
+		try { var cz = getComputedStyle(document.documentElement).zoom; if (cz && cz !== '' && cz !== '1') z = parseFloat(cz) || 1; } catch (e) {}
+		return z;
+	}
+
 	// ---- 全局自定义 tooltip（从 q3 百分百移植）----
 	(function bootGlobalTooltip() {
 		var gt = document.getElementById('globalTooltip');
@@ -260,16 +267,16 @@
 		var _currentTarget = null;
 
 		// mouseenter → 显示 tooltip（data-tooltip）
-		document.addEventListener('mouseenter', function(e) {
+				document.addEventListener('mouseenter', function(e) {
 			var t = e.target;
 			if (!t || !t.closest) return;
 			var target = t.closest('[data-tooltip]');
-			if (!target) { _currentTarget = null; gt.style.display = 'none'; return; }
+			if (!target) return;   // ★ q3 语义：未命中不隐藏（mouseleave 负责隐藏），防按钮间隙移动闪烁
 			_currentTarget = target;
 			var text = target.getAttribute('data-tooltip');
 			if (!text) { gt.style.display = 'none'; return; }
 
-			var pageW = window.innerWidth;
+			var pageW = window.innerWidth / _ttZoom();   // ★ CSS px（zoom 下 innerWidth 报物理值）
 			gt.style.whiteSpace = 'pre-wrap';
 			gt.style.maxWidth = (pageW - 20) + 'px';
 
@@ -285,8 +292,8 @@
 		document.addEventListener('mousemove', function(e) {
 			if (gt.style.display !== 'block' || !_currentTarget) return;
 
-			var pageW = window.innerWidth;
-			var vh = window.innerHeight;
+			var pageW = window.innerWidth / _ttZoom();   // ★ CSS px 统一（边界保护/maxWidth 与 fixed 定位同单位）
+			var vh = window.innerHeight / _ttZoom();
 			var padL = 10, padR = 0;
 			gt.style.whiteSpace = 'pre-wrap';
 			gt.style.maxWidth = (pageW - padL - padR) + 'px';
@@ -349,7 +356,7 @@
 		var tp = _zoomFix(cx, cy); cx = tp.left; cy = tp.top;
 		_ensurePathTooltip();
 		_ptEl.textContent = text;
-		var margin = 8, vw = window.innerWidth, vh = window.innerHeight;
+		var margin = 8, vw = window.innerWidth / _ttZoom(), vh = window.innerHeight / _ttZoom();   // ★ CSS px 统一（同 globalTooltip）
 		_ptEl.style.whiteSpace = 'nowrap'; _ptEl.style.maxWidth = 'none'; _ptEl.style.display = 'block'; _ptVisible = true;
 		var nw = _ptEl.scrollWidth, maxW = vw - 20;
 		if (nw > maxW) {

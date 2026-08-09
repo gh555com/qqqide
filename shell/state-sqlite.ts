@@ -86,6 +86,8 @@ export class StateStore extends EventEmitter {
 
     // debounce timers (key = ns\u0000key)
     private _debouncers: Map<string, NodeJS.Timeout> = new Map();
+    // ★ pending 写入值 (key = ns\u0000key) — flush/flushSync/setNow 时重放, 绝不丢弃 (2026-08-09 修复)
+    private _pendingWrites: Map<string, { ns: string; key: string; sc: NsSchema; value: any }> = new Map();
     // dirty tracking for stats
     private _dirtySet: Set<string> = new Set();
     // ★ batched DB export (avoids per-key db.export() → one export per ~50ms window)
@@ -603,14 +605,9 @@ export class StateStore extends EventEmitter {
         if (sc.form === 'log' && !Array.isArray(value)) {
             throw new Error(`state.setNow on log form requires an array; ns=${ns} key=${key}`);
         }
-        // ★ Flush ALL pending debounced writes first (from other keys), then write this key
+        // ★ 先重放全部 pending debounced 写入（其他 key），再写本 key（2026-08-09 修复: 旧实现直接丢弃）
         // This ensures atomic: one export includes all pending writes + this setNow write
-        const ids = Array.from(this._debouncers.keys());
-        for (const id of ids) {
-            const t = this._debouncers.get(id);
-            if (t) { clearTimeout(t); this._debouncers.delete(id); }
-            this._dirtySet.delete(id);
-        }
+        this._flushPendingWrites();
         this._writeKey(ns, key, sc, value);
         this._dirtySet.delete(ns + '\x00' + key);
         // ★ setNow = immediate export, but async to not block event loop
@@ -643,6 +640,7 @@ export class StateStore extends EventEmitter {
             const t = this._debouncers.get(id);
             if (t) { clearTimeout(t); this._debouncers.delete(id); }
             this._dirtySet.delete(id);
+            this._pendingWrites.delete(id); // ★ pending 一并清除
             this._memCache.delete(id); // ★ clear cache
 
             const info = this._stmtRun('DELETE FROM state WHERE ns=? AND key=?', [ns, key]);
@@ -675,6 +673,8 @@ export class StateStore extends EventEmitter {
     private _markDirty(ns: string, key: string, sc: NsSchema, value: any): void {
         const id = ns + '\x00' + key;
         this._dirtySet.add(id);
+        // ★ 保存 pending 值 — flush/flushSync/setNow 可重放（2026-08-09 修复: 旧实现只存 timer，值在闭包，flush 时丢）
+        this._pendingWrites.set(id, { ns, key, sc, value });
 
         // Cancel existing debounce
         const existing = this._debouncers.get(id);
@@ -684,10 +684,24 @@ export class StateStore extends EventEmitter {
         this._debouncers.set(id, setTimeout(() => {
             this._debouncers.delete(id);
             this._dirtySet.delete(id);
+            this._pendingWrites.delete(id);
             try { this._writeKey(ns, key, sc, value); } catch (e) {
                 console.warn('[state-sqlite] debounced write error', ns, key, e);
             }
         }, debounceMs));
+    }
+
+    /** ★ 重放全部 pending debounced 写入（取消 timer 并立即落库，防 flush/退出丢数据，2026-08-09） */
+    private _flushPendingWrites(): void {
+        for (const [id, pw] of this._pendingWrites) {
+            const t = this._debouncers.get(id);
+            if (t) { clearTimeout(t); this._debouncers.delete(id); }
+            this._dirtySet.delete(id);
+            this._pendingWrites.delete(id);
+            try { this._writeKey(pw.ns, pw.key, pw.sc, pw.value); } catch (e) {
+                console.warn('[state-sqlite] pending write replay error', pw.ns, pw.key, e);
+            }
+        }
     }
 
     private _writeKey(ns: string, key: string, sc: NsSchema, value: any): void {
@@ -814,24 +828,16 @@ export class StateStore extends EventEmitter {
 
     async flush(): Promise<void> {
         if (!this._readyOk || !this._db) return;
-        // ★ Fire all pending debounced writes first, then export
-        const ids = Array.from(this._debouncers.keys());
-        for (const id of ids) {
-            const t = this._debouncers.get(id);
-            if (t) { clearTimeout(t); this._debouncers.delete(id); }
-            this._dirtySet.delete(id);
-        }
+        // ★ 先重放全部 pending debounced 写入，再导出（2026-08-09 修复: 旧实现取消 timer 即丢值）
+        this._flushPendingWrites();
         await this._doSaveDb();
     }
 
     /** Synchronous flush for crash/shutdown. */
     flushSync(): void {
         if (!this._readyOk || !this._db) return;
-        // ★ Flush all pending debounced writes synchronously
-        for (const [id, t] of this._debouncers) {
-            clearTimeout(t);
-            this._debouncers.delete(id);
-        }
+        // ★ 先重放全部 pending debounced 写入，再同步导出（2026-08-09 修复）
+        this._flushPendingWrites();
         this._dirtySet.clear();
         this._memCache.clear();
         this._doSaveDbSync();
@@ -842,6 +848,7 @@ export class StateStore extends EventEmitter {
         const t = this._debouncers.get(id);
         if (t) { clearTimeout(t); this._debouncers.delete(id); }
         this._dirtySet.delete(id);
+        this._pendingWrites.delete(id);
         this._memCache.delete(id);
         await this._doSaveDb();
     }

@@ -538,15 +538,20 @@ function _estimateTokensFull() {
             // A 段: 最后一个 '\nA: ' 到 floor 尾
             var aIdx = fp.lastIndexOf('\nA: ');
             if (aIdx >= 0) { aBiscuitCount++; aBiscuitChars += fp.length - aIdx; }
-            // 工具行: [A → xxx]
-            var toolRe = /\[A \u2192 (\w+(?:\+\w+)*)\]([^\n]*)/g;
+            // 工具行: [A → xxx]（可含 + 合并行，拆分后按绝对工具归属）
+            var toolRe = /\[A \u2192 ([a-zA-Z0-9_]+(?:\+[a-zA-Z0-9_]+)*)\]([^\n]*)/g;
             var tm;
             while ((tm = toolRe.exec(fp)) !== null) {
-                var toolName = tm[1];
+                var toolNames = tm[1].split('+');
+                var absName = null;
+                for (var ti = 0; ti < toolNames.length; ti++) {
+                    if (ABS_TOOL_NAMES.indexOf(toolNames[ti]) >= 0) { absName = toolNames[ti]; break; }
+                }
                 var afterPos = tm.index + tm[0].length;
-                var after80 = fp.slice(afterPos, afterPos + 80);
-                var isAbs = after80.indexOf('\u2554K') >= 0;
-                if (isAbs) {
+                // ★ 160 窗口：头行 ABS_HEAD_CAP=80，80 窗口在长头行边界漏判 ╔K
+                var after160 = fp.slice(afterPos, afterPos + 160);
+                var isAbs = after160.indexOf('\u2554K') >= 0;
+                if (isAbs && absName) {
                     var boxStart = fp.indexOf('\u2554K', afterPos);
                     if (boxStart >= 0) {
                         var boxEnd = fp.indexOf('\n\u255a', boxStart);
@@ -554,11 +559,11 @@ function _estimateTokensFull() {
                             var bodyStart = boxStart + 2;
                             if (fp.charAt(bodyStart) === '\n') bodyStart++;
                             var bodyLen = boxEnd - bodyStart;
-                            if (!absToolCounts[toolName]) { absToolCounts[toolName] = 0; absToolSizes[toolName] = 0; }
-                            absToolCounts[toolName]++; absToolSizes[toolName] += bodyLen;
+                            if (!absToolCounts[absName]) { absToolCounts[absName] = 0; absToolSizes[absName] = 0; }
+                            absToolCounts[absName]++; absToolSizes[absName] += bodyLen;
                         }
                     }
-                } else {
+                } else if (!isAbs) {
                     gentleBiscuitCount++;
                     var lineEnd = fp.indexOf('\n', afterPos);
                     if (lineEnd === -1) lineEnd = fp.length;

@@ -443,11 +443,36 @@
       var fileUrl = 'file:///' + filePath.replace(/\\/g, '/').replace(/^([A-Za-z]):/, '$1:');
       imgEl.src = fileUrl;
       imgEl.onerror = function () {
-        _loadViaThumbCache(filePath, imgEl);
+        // ★ F121 加固: 文件名 `_` 变体容错 — 旧格式 token（paste_20260809_110322hg4vt.png）
+        //   引用新格式文件（paste_20260809_110322_hg4vt.png）→ 404 破图。exists 校验后切换，零误伤。
+        _tryFileNameVariant(filePath, imgEl);
       };
       return;
     }
     _loadViaThumbCache(filePath, imgEl);
+  }
+
+  // ★ F121: 文件名 `_` 变体容错 — 双向尝试（去最后一个 `_` / 6位数字+5位随机间补 `_`）
+  function _tryFileNameVariant(filePath, imgEl) {
+    var variants = [];
+    var a = filePath.replace(/_([^_\\/]*)$/, '$1');  // 去最后 `_`（旧格式）
+    if (a !== filePath) variants.push(a);
+    var b = filePath.replace(/(\d{6})([a-z0-9]{5})(\.\w+)$/, '$1_$2$3');  // 补 `_`（新格式）
+    if (b !== filePath && variants.indexOf(b) < 0) variants.push(b);
+    var next = function (i) {
+      if (i >= variants.length) { _loadViaThumbCache(filePath, imgEl); return; }
+      var alt = variants[i];
+      if (!bridge || !bridge.fs || !bridge.fs.exists) { _loadViaThumbCache(filePath, imgEl); return; }
+      bridge.fs.exists(alt).then(function (ok) {
+        if (ok && imgEl) {
+          var altUrl = 'file:///' + alt.replace(/\\/g, '/').replace(/^([A-Za-z]):/, '$1:');
+          imgEl.src = altUrl;
+        } else {
+          next(i + 1);
+        }
+      }).catch(function () { next(i + 1); });
+    };
+    next(0);
   }
 
   function _loadViaThumbCache(filePath, imgEl) {

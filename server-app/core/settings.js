@@ -66,7 +66,7 @@
     {
       key: 'ai.compressThreshold',
       label: '上下文背包自动 absolut 压缩',
-      desc: '背包 token 超此值 → 自动剥离绝对包装盒（做absolut 压缩）',
+      desc: 'absolut 可回收收益超此值 → 自动剥离绝对包装盒（做absolut 压缩）',
       type: 'number',
       tab: 'general',
       defaultValue: String(_D['ai.compressThreshold'] || 600),

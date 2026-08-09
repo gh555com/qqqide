@@ -104,6 +104,11 @@ var CardPool = (function () {
     }
     var card = new Card(questId);
     card._initDOM();
+    // ★ F121 加固: _container 缺失（面板 DOM 未就绪即建 Card）→ body 兜底挂载，绝不崩
+    if (!this._container) {
+      console.error('[card-pool] _container missing — CardPool constructed before #messages ready, falling back to body');
+      this._container = document.body;
+    }
     this._container.appendChild(card.dom);
     this._cards[questId] = card;
     this._lru.push(questId);
@@ -544,9 +549,9 @@ var CardPool = (function () {
           wrap.appendChild(badge);
           imgRow.appendChild(wrap);
         }
-        userEl.appendChild(imgRow);
+        if (userEl) userEl.appendChild(imgRow);
       }
-      frag.appendChild(userEl);
+      if (userEl) frag.appendChild(userEl);
     }
 
     // ①b AI 等级 + 启动时间指示器（用户消息与 AI 回复之间）

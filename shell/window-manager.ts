@@ -16,6 +16,7 @@ import { crashNetLog, crashNetSnapshot } from './crash-net';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
 import { StateStore } from './state-sqlite';
+import { wsStateGetKey, wsStateSetKey } from './ipc-ws-state';
 import { extractFlags } from './boot';
 
 // ── 控制台全量 buffer（所有窗口共用，供 DevTools 复制/另存为按钮） ──
@@ -56,9 +57,12 @@ export function updateWingMinSize(win: BrowserWindow, leftOpen: boolean, rightOp
 }
 
 // ---- Window bounds ----
+/** 恢复链: 绿色包级 global.sq3 → OS 级 ws.sq3 → 默认（2026-08-09: ws.sq3 OS 兜底, 删包不丢） */
 export async function restoreWindowBounds(win: BrowserWindow, stateStore: StateStore): Promise<void> {
     try {
-        const v = await stateStore.get('qqqide', 'window_bounds');
+        let v: any = null;
+        try { v = await stateStore.get('qqqide', 'window_bounds'); } catch { /* ignore */ }
+        if (!v) { try { v = await wsStateGetKey('windowBounds'); } catch { /* ignore */ } }
         if (!v) { return; }
         if (v.maximized) {
             win.maximize();
@@ -97,6 +101,38 @@ export function registerGlobalKey(accel: string, id: string, mainWindow: Browser
 // ---- Window↔Project maps (for project lock) ----
 export const _windowProjectMap = new Map<number, string>();
 export const _projectWindowMap = new Map<string, number>();
+
+/** ★ 关闭时立即保存剩余窗口列表（X 关闭路径, 2026-08-09）:
+ *  剩余窗口活着 → 列表=剩余; 最后一个窗口关闭 → 列表=自身（退出后还原）;
+ *  双写 global.sq3 open_windows + OS 级 ws.sq3 openWindows */
+function _saveOpenWindowsNow(closingWin: BrowserWindow, stateStore: StateStore): void {
+    try {
+        const live = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed() && w.id !== closingWin.id);
+        const list: any[] = [];
+        const seen = new Set<string>();
+        const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/$/, '');
+        const pushWin = (w: BrowserWindow) => {
+            try {
+                const folder = _windowProjectMap.get(w.id);
+                if (!folder) return;
+                const n = norm(folder);
+                if (!n || seen.has(n)) return;
+                seen.add(n);
+                const b = w.getBounds();
+                list.push({
+                    mainFolder: n,
+                    bounds: { x: b.x, y: b.y, w: b.width, h: b.height, maximized: w.isMaximized() }
+                });
+            } catch { /* ignore */ }
+        };
+        for (const w of live) pushWin(w);
+        if (live.length === 0) pushWin(closingWin); // 最后一个窗口 → 包含自身快照
+        if (list.length > 0) {
+            stateStore.setNow('qqqide', 'open_windows', list).catch(() => { });
+            wsStateSetKey('openWindows', list).catch(() => { });
+        }
+    } catch { /* ignore */ }
+}
 
 // ★ 关闭确认旁路：菜单退出时设置，跳过 Alt+F4 确认框
 export function bypassCloseConfirm(win: BrowserWindow): void {
@@ -167,6 +203,15 @@ export function createWindow(
     // ★ 关闭确认：Alt+F4 / 右上角 X → 通知 renderer 弹自定义确认框；菜单退出 → 跳过
     win.on('close', (e) => {
         if ((win as any).__qqqCloseBypass) {
+            // ★ 窗口即将销毁（X 关闭/确认退出路径）— 立即捕获最终 bounds + 窗口列表（2026-08-09 修复:
+            //   旧实现依赖 before-quit saveAllOpenWindows, 但 X 关闭时窗口已销毁 → open_windows 永不保存）
+            try {
+                const b = win.getBounds();
+                const obj = { x: b.x, y: b.y, w: b.width, h: b.height, maximized: win.isMaximized() };
+                stateStore.setNow('qqqide', 'window_bounds', obj).catch(() => { });
+                wsStateSetKey('windowBounds', obj).catch(() => { });
+                _saveOpenWindowsNow(win, stateStore);
+            } catch { /* ignore */ }
             return; // 菜单退出已设旁路，直接放行
         }
         e.preventDefault();
@@ -258,13 +303,16 @@ export function createWindow(
 
     // Persist window bounds on resize/move (debounced 500ms)
     let _boundsSaveTimer: NodeJS.Timeout | null = null;
+    // ★ 双写: 绿色包级 global.sq3 + OS 级 ws.sq3（删包/换包后 OS 兜底回写）
+    const persistBounds = (b: Electron.Rectangle, maximized: boolean) => {
+        const obj = { x: b.x, y: b.y, w: b.width, h: b.height, maximized };
+        stateStore.set('qqqide', 'window_bounds', obj).catch(() => { });
+        wsStateSetKey('windowBounds', obj).catch(() => { });
+    };
     const saveBounds = () => {
         try {
             if (win.isDestroyed() || win.isMinimized() || win.isMaximized()) { return; }
-            const b = win.getBounds();
-            stateStore.set('qqqide', 'window_bounds', {
-                x: b.x, y: b.y, w: b.width, h: b.height, maximized: false
-            }).catch(() => { });
+            persistBounds(win.getBounds(), false);
         } catch { /* ignore */ }
     };
     const debouncedSaveBounds = () => {
@@ -274,7 +322,10 @@ export function createWindow(
     win.on('resize', debouncedSaveBounds);
     win.on('move', debouncedSaveBounds);
     win.on('maximize', () => {
-        try { stateStore.set('qqqide', 'window_bounds', { maximized: true }).catch(() => { }); } catch { /* ignore */ }
+        try {
+            stateStore.set('qqqide', 'window_bounds', { maximized: true }).catch(() => { });
+            wsStateSetKey('windowBounds', { maximized: true }).catch(() => { });
+        } catch { /* ignore */ }
     });
     win.on('unmaximize', () => { try { saveBounds(); } catch { /* ignore */ } });
 
