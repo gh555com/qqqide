@@ -914,6 +914,14 @@ function naturalCompare(a, b) {
 }
 
 // ---- Load file list ----
+var _lastRenderSig = '';
+// ★ 2026-08-09 防幻影闪烁: diff 签名 key — 只含可见字段(name+type+sz 动态列), 后台写文件不触发重建
+function _szSigKey(e) {
+	if (szMode === 'size') return String(e.size || 0);
+	if (szMode === 'mtime') return String(e.mtimeMs || 0);
+	if (szMode === 'ctime') return String(e.ctimeMs || 0);
+	return '';
+}
 async function loadFileList(p) {
 	// ★ 重置主进程 watcher 冷却 — 自身操作/刚刷新后 6s 内 watcher 事件忽略, 防双刷 (q3 markWatcherRefreshTime 同语义)
 	rpc('roam.watchMark').catch(function(){});
@@ -922,15 +930,10 @@ async function loadFileList(p) {
 		sessionSizeCache = {};
 		_sRequestVersion++; // 取消在途 sRequest, 防旧结果回填新渲染
 	}
-	_lastRenderedDir = p;
-	_lastRenderSzMode = szMode;
 	var fileList = document.getElementById('fileList');
-	fileList.innerHTML = '';
-	var frag = document.createDocumentFragment(); // ★ 2026-08-04: 批量插入一次 layout
-	selectedItems = [];
-	selectedItem = null;
-	lastSelectedItem = null;
+	if (!fileList) return;
 	try {
+		var frag = document.createDocumentFragment();
 		// ★ Parent directory ".." entry
 		var isRoot = false;
 		if (p.includes('\\')) { isRoot = /^[A-Za-z]:\\$/.test(p); }
@@ -961,10 +964,24 @@ async function loadFileList(p) {
 			default: return naturalCompare(String(a.name), String(b.name));
 			}
 		});
+		// ★ 2026-08-09 防幻影闪烁: 先构建 + diff 签名 → 无变化零重建零闪烁;
+		//   有变化才原子换入 (replaceChildren 单帧换入, 无 innerHTML='' 空白帧)
+		var sigParts = [];
+		if (!isRoot) sigParts.push('..|d|');
 		for (var i = 0; i < entries.length; i++) {
-			frag.appendChild(buildFileItem(entries[i], pathJoin(p, entries[i].name)));
+			var ent = entries[i];
+			frag.appendChild(buildFileItem(ent, pathJoin(p, ent.name)));
+			sigParts.push(ent.name + '|' + (ent.isDir ? 'd' : 'f') + '|' + _szSigKey(ent));
 		}
-		fileList.appendChild(frag); // ★ 一次性插入，单次 layout
+		var sig = sigParts.join('\n');
+		if (p === _lastRenderedDir && szMode === _lastRenderSzMode && sig === _lastRenderSig) return; // ★ 无变化 → 跳过重建
+		_lastRenderedDir = p;
+		_lastRenderSzMode = szMode;
+		_lastRenderSig = sig;
+		selectedItems = [];
+		selectedItem = null;
+		lastSelectedItem = null;
+		fileList.replaceChildren(frag); // ★ 原子换入，单次 layout，无空白帧
 	} catch(err) {
 		fileList.innerHTML = '<div style="padding:20px;color:var(--red);">' + escHtml(String(err)) + '</div>';
 	}
@@ -1430,24 +1447,28 @@ function _updateAiMenuItem() {
 }
 
 function _feedCurrentToAi() {
-	// 优先选中项，无选中项时退回 ctxTarget（右键目标）
-	var p = null, isDir = false;
-	if (selectedItem && selectedItem.name !== '..') {
-		p = selectedItem.path;
-		isDir = selectedItem.type === 'folder';
+	// ★ 多选：全部喂给 AI（按选中顺序，排除 '..'）；单选/右键兜底保持原逻辑
+	var list = null;
+	if (selectedItems.length > 1) {
+		list = selectedItems.filter(function (s) { return s.name !== '..'; });
+	} else if (selectedItem && selectedItem.name !== '..') {
+		list = [{ path: selectedItem.path, isDir: selectedItem.type === 'folder' }];
 	} else if (ctxTarget) {
-		p = ctxTarget;
-		isDir = ctxEntry ? !!ctxEntry.isDir : false;
+		list = [{ path: ctxTarget, isDir: ctxEntry ? !!ctxEntry.isDir : false }];
 	}
-	if (!p) return;
-	// ★ 唯一真理喂 AI 管线: ai-viewport.js window.__qqq_aiFeedFile (路由到焦点面板)
-	try {
-		if (window.parent && typeof window.parent.__qqq_aiFeedFile === 'function') {
-			window.parent.__qqq_aiFeedFile(p, isDir, null);
-		} else if (window.parent) {
-			window.parent.postMessage({ type: 'qqq-ai-attach', path: p, isDir: isDir }, '*');
-		}
-	} catch (_) { }
+	if (!list || list.length === 0) return;
+	for (var i = 0; i < list.length; i++) {
+		var p = list[i].path;
+		var isDir = !!list[i].isDir;
+		// ★ 唯一真理喂 AI 管线: ai-viewport.js window.__qqq_aiFeedFile (路由到焦点面板)
+		try {
+			if (window.parent && typeof window.parent.__qqq_aiFeedFile === 'function') {
+				window.parent.__qqq_aiFeedFile(p, isDir, null);
+			} else if (window.parent) {
+				window.parent.postMessage({ type: 'qqq-ai-attach', path: p, isDir: isDir }, '*');
+			}
+		} catch (_) { }
+	}
 	_playSfx('enter');
 }
 

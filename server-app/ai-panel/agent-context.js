@@ -942,6 +942,22 @@
     };
 
     // ════════════════════════════════════════════════
+    // _estimateAbsolutBenefit — 估算 absolut 可回收收益（biscuit 内 ╔K 体部总量，tokens）
+    //   V23: 自动阀值压缩的触发依据 = 按钮一上的数字，而非背包总尺寸
+    // ════════════════════════════════════════════════
+    AgentLoop.prototype._estimateAbsolutBenefit = function () {
+        var self = this;
+        for (var i = 0; i < self.conversation.length; i++) {
+            var m = self.conversation[i];
+            if (m._biscuit && m.content) {
+                var stripped = self._stripAbsoluteBoxes(m.content);
+                return Math.round((m.content.length - stripped.length) / CHAR_PER_TOKEN_EST);
+            }
+        }
+        return 0;
+    };
+
+    // ════════════════════════════════════════════════
     // _tryAutoValveCompress — 自动/手动阀值压缩入口
     //   threshold=0 → 强制剥离（手动触发），否则仅当 _lastApiPromptTokens > threshold 时剥离
     //   找 biscuit 消息 → 剥离 ╔K...╚ 体部 → 更新 ctx.biscuitLines

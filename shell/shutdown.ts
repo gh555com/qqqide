@@ -14,6 +14,7 @@ import { StateStore } from './state-sqlite';
 import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
 import { _windowProjectMap } from './window-manager';
+import { wsStateSetKey } from './ipc-ws-state';
 import { crashNetMarkCleanQuit } from './crash-net';
 
 // ── 自动版本递增 ──────────────────────────────────────────────────────────
@@ -106,13 +107,20 @@ function autoIncrementVersion(portableRoot: string): void {
 }
 
 // ── 保存所有打开窗口（退出前调用，供下次启动多窗口还原）──
+// ★ 2026-08-09 修复: X 关闭路径下窗口已全部销毁 → 本函数空转, open_windows 永不保存。
+//   现语义: 仅菜单退出等窗口仍存活路径在此保存; X 关闭路径由 window-manager 的
+//   _saveOpenWindowsNow（close 事件内捕获）负责。双写 global.sq3 + OS 级 ws.sq3。
 export function saveAllOpenWindows(stateStore: StateStore, winProjectMap: Map<number, string>): void {
     try {
+        const live = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed());
+        if (live.length === 0) {
+            // X 关闭路径: 已在各窗口 close 事件里保存过, 这里保持旧值即可
+            return;
+        }
         const seen = new Set<string>();
         const windows: any[] = [];
-        for (const win of BrowserWindow.getAllWindows()) {
+        for (const win of live) {
             try {
-                if (win.isDestroyed()) continue;
                 const rawFolder = (winProjectMap.get(win.id) || '').replace(/\\/g, '/').replace(/\/$/, '');
                 // ★ 验证: 路径存在且有 qqq/ 子目录(真正的项目), 过滤空值/已删除/非项目
                 let mainFolder = '';
@@ -142,6 +150,8 @@ export function saveAllOpenWindows(stateStore: StateStore, winProjectMap: Map<nu
         }
         if (windows.length > 0) {
             stateStore.setNow('qqqide', 'open_windows', windows);
+            // ★ OS 级兜底（删包/换包后回写）
+            try { wsStateSetKey('openWindows', windows); } catch { /* ignore */ }
             console.log('[shutdown] saved ' + windows.length + ' open window(s) for next-startup restore');
         }
     } catch (e) {

@@ -1044,5 +1044,20 @@ function _interpolateColor(c1, c2, t) {
     }
 })();
 </script>
+<!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 Roam（同 ai-panel 模式：iframe 内按键不冒泡父窗口，必须显式 postMessage） -->
+<script>
+(function () {
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'F2' && e.key !== 'Tab') return;
+    var el = document.activeElement;
+    var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
+    var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
+    if (editing) return;
+    var accel = e.key === 'F2' ? 'F2' : 'Tab';
+    try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: 'window' }, '*'); } catch (_) {}
+    e.preventDefault();
+  }, true);
+})();
+</script>
 </body>
 </html>

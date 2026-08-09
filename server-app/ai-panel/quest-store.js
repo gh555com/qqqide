@@ -338,7 +338,23 @@ var QuestStore = (function () {
                         _seenNums[n] = true;
                     }
                 }
-                if (maxN <= 0) continue;
+                if (maxN <= 0) {
+                    // ★ 空 quest 壳自愈（2026-08-09）：有目录但零 f{n} 楼层目录且 mtime 超 30 分钟 → 归档 .trash
+                    //   来源：草稿晋升 mkdir 后崩溃/强杀（楼层目录都未建成）/ 空壳楼层全部归档后的二次收敛
+                    //   30 分钟阈值：建楼中楼层目录必已存在（mkdir 先于发送），零 f 目录 ≠ 活跃建楼
+                    try {
+                        var _stQz = await bf.stat(_rootDir + '/_qqq/quests/' + qDirName);
+                        if (_stQz && _stQz.mtimeMs && (Date.now() - _stQz.mtimeMs) > 30 * 60 * 1000) {
+                            var _trashQBase = _rootDir + '/_qqq/quests/.trash/';
+                            await bf.mkdir(_trashQBase);
+                            try {
+                                await bf.rename(_rootDir + '/_qqq/quests/' + qDirName, _trashQBase + qDirName);
+                                console.log('[quest-store] _healFloorCounters: archived empty quest dir ' + qDirName + ' to .trash');
+                            } catch (_eQr) { }
+                        }
+                    } catch (_eQz) { }
+                    continue;
+                }
                 var key = 'floor_counter.' + e.id;
                 var cur = await b.get(key);
                 if (typeof cur !== 'number' || isNaN(cur)) cur = 0;  // ★ 键缺失也 seed（sq3 重建/清理竞态后 counter 丢失 → 首号撞磁盘）
@@ -426,8 +442,17 @@ var QuestStore = (function () {
                     }
                     // ★ 加固（2026-06-25）：检测到碰撞 → 立即自动修复，不再仅打日志
                     //   延迟 2s 执行（fire-and-forget），不阻塞启动流程
-                    var _store = this;
-                    setTimeout(function () { _store.repairDuplicateIds().catch(function (_e) { console.warn('[quest-store] auto-repair failed:', _e && _e.message); }); }, 2000);
+                    // ★ 调度去重（2026-08-09）：boot 期多面板/多调用点会重复检测同一碰撞 →
+                    //   只调度一次，其余跳过（否则每次启动刷一串 fixed=0 的重复修复日志）
+                    var _repairScheduled = false;
+                    try { _repairScheduled = !!(parent && parent.__qqq_repairScheduled); } catch (_) { }
+                    if (!_repairScheduled) {
+                        try { if (parent) parent.__qqq_repairScheduled = true; } catch (_) { }
+                        var _store = this;
+                        setTimeout(function () { _store.repairDuplicateIds().catch(function (_e) { console.warn('[quest-store] auto-repair failed:', _e && _e.message); }); }, 2000);
+                    } else {
+                        console.log('[quest-store] duplicate repair already scheduled, skip');
+                    }
                 }
 
                 // 索引 → idxMap（id → entry）
@@ -471,7 +496,7 @@ var QuestStore = (function () {
                     }
                 }
 
-                // ★ 更新已有条目的 dirName + 同步缓存（防同编号多目录 prefix scan 误匹配）
+                // ★ 更新已有条目的 dirName + title + 同步缓存（防同编号多目录 prefix scan 误匹配）
                 var _dirNamesUpdated = false;
                 for (var ui = 0; ui < idx.length; ui++) {
                     var ue = idx[ui];
@@ -481,6 +506,13 @@ var QuestStore = (function () {
                         if (ue.dirName !== diskName) {
                             if (ue.dirName) { console.log('[quest-store] _syncIndexFromFs: dirName updated for ' + ue.id + ' "' + ue.dirName + '" → "' + diskName + '"'); }
                             ue.dirName = diskName;
+                            _dirNamesUpdated = true;
+                        }
+                        // ★ 磁盘 title 真理（2026-08-09 根因修复）：非用户重命名（pendingRename）时
+                        //   title 与磁盘对齐。防 stale title（repair/备份还原残留）驱动 lazyRenameScan
+                        //   把磁盘目录名改回去 → 与 repairDuplicateIds 互搏、每次启动 churn（q168/q171 事故实锤）
+                        if (!ue.pendingRename && ue.title !== diskById[ue.id][0].title) {
+                            ue.title = diskById[ue.id][0].title;
                             _dirNamesUpdated = true;
                         }
                         // ★ 缓存必须与索引一致（否则 _resolveQuestDirName prefix scan 可能返回错误目录）
@@ -537,6 +569,15 @@ var QuestStore = (function () {
         if (_repairLock) { console.warn('[quest-store] repairDuplicateIds: already running'); return _repairLock; }
         _repairLock = (async () => {
             try {
+                // ★ 跨实例互斥（2026-08-09 根因修复）：三面板各持独立 questStore，per-instance 锁
+                //   防不住并发改名。与 lazyRenameScan 共用 parent 级 __qqq_dirRenameLock，
+                //   杜绝 repair 与 lazyRename 互搏（q168/q171 事故：一个改走、一个改回，每次启动 churn）
+                var _pl = null; try { _pl = parent; } catch (_) { }
+                if (_pl && _pl.__qqq_dirRenameLock) {
+                    console.warn('[quest-store] repairDuplicateIds: rename lock held, skip (other scan running)');
+                    return;
+                }
+                try { if (_pl) _pl.__qqq_dirRenameLock = true; } catch (_) { }
                 if (!_rootDir) { console.warn('[quest-store] repairDuplicateIds: no project root'); return; }
                 var bf = _bridgeFs();
                 if (!bf) { console.warn('[quest-store] repairDuplicateIds: no bridgeFs'); return; }
@@ -571,16 +612,27 @@ var QuestStore = (function () {
 
                     console.warn('[quest-store] repairDuplicateIds: fixing ' + did + ' (' + entries.length + ' duplicates)');
 
-                    // 查找 index 中已有该 ID 的条目 → 保留其 dirName
-                    var keepName = null;
+                    // 查找 index 中已有该 ID 的条目 → 其 dirName 仅作平局偏好
+                    var idxPref = null;
                     for (var ei = 0; ei < idx.length; ei++) {
                         if (idx[ei].id === did && idx[ei].dirName) {
-                            keepName = idx[ei].dirName;
+                            idxPref = idx[ei].dirName;
                             break;
                         }
                     }
-                    // 若 index 无 dirName，保留磁盘上第一个
-                    if (!keepName) keepName = entries[0].name;
+                    // ★ 有数据者优先（2026-08-09 根因修复）：保留 all.json 楼层最多的目录，
+                    //   与 floor 级 repair 同规则。旧逻辑保留 idx.dirName → 可能保留空壳、
+                    //   把真数据目录改名到新 ID（q168 事故：真数据被改名 q172、空壳留 q168 →
+                    //   运行中会话继续写空壳 → f28 写盘失败残留 tmp）
+                    var keepName = null, bestCount = -1;
+                    for (var bi = 0; bi < entries.length; bi++) {
+                        var _cnt = 0;
+                        try { _cnt = await _questDirDataCount(bf, _rootDir + '/_qqq/quests/' + entries[bi].name + '/'); } catch (_) { }
+                        if (_cnt > bestCount) { bestCount = _cnt; keepName = entries[bi].name; }
+                        else if (_cnt === bestCount && entries[bi].name === idxPref) { keepName = entries[bi].name; }
+                    }
+                    // 全空壳 → 退回 idx 偏好 / 第一个（不删数据，占新号继续存活）
+                    if (!keepName) keepName = idxPref || entries[0].name;
 
                     for (var zi = 0; zi < entries.length; zi++) {
                         if (entries[zi].name === keepName) continue;  // 跳过保留的
@@ -612,6 +664,19 @@ var QuestStore = (function () {
                         } catch (e) {
                             failed++;
                             console.error('[quest-store] repairDuplicateIds: FAIL rename ' + oldName + ' → ' + newName + ': ' + (e && e.message));
+                        }
+                    }
+
+                    // ★ 保留目录与索引对齐（2026-08-09 根因修复）：idx.dirName/title 必须指向
+                    //   真实保留目录，否则 _resolveQuestDirName / 后续 sync 会把空壳当真理
+                    //   （q168 事故第二环节：保留目录名与 sq3 记录脱节 → 会话写进空壳）
+                    for (var _ki = 0; _ki < idx.length; _ki++) {
+                        if (idx[_ki].id === did) {
+                            var _keptTitle = keepName.replace(/^q\d+\./, '');
+                            if (!idx[_ki].pendingRename) idx[_ki].title = _keptTitle;
+                            idx[_ki].dirName = keepName;
+                            _questDirCache[did] = keepName;
+                            break;
                         }
                     }
                 }
@@ -764,6 +829,7 @@ var QuestStore = (function () {
                 return { fixed: fixed, failed: failed, floorFixed: floorFixed, floorFailed: floorFailed };
             } finally {
                 _repairLock = null;
+                try { if (parent) { parent.__qqq_dirRenameLock = false; parent.__qqq_repairScheduled = false; } } catch (_) { }
             }
         })();
         return _repairLock;
@@ -864,6 +930,9 @@ var QuestStore = (function () {
         }
         if (entry) {
             entry.title = title;
+            // ★ 用户显式重命名（2026-08-09）：打 pendingRename 标记 —— lazyRenameScan 仅对带标记的
+            //   quest 执行磁盘改名；其余一切情况磁盘目录名为唯一真理（防 stale title 驱动改名 churn）
+            entry.pendingRename = true;
             if (typeof numericId === 'number') entry.numericId = numericId;
             await _saveIndex();
             // ★ 标题变了 → 目录名变了 → 失效路径缓存，下次走 list 重新解析
@@ -1045,6 +1114,21 @@ var QuestStore = (function () {
             }
         } catch (_) { }
         return false;
+    }
+
+    // ★ quest 目录有效数据楼层数（2026-08-09）：统计含 all.json 的 f{n}.* 子目录数
+    //   —— quest 级 repair 的「有数据者优先」保留判定依据（与 floor 级同规则）
+    async function _questDirDataCount(bf, dirPath) {
+        var n = 0;
+        try {
+            var list = await bf.list(dirPath);
+            for (var i = 0; i < list.length; i++) {
+                if (list[i].isDir && /^f\d+\./.test(list[i].name)) {
+                    if (await _dirHasAllJson(bf, dirPath + list[i].name + '/')) n++;
+                }
+            }
+        } catch (_) { }
+        return n;
     }
 
     // 解析 floor 目录完整路径: list("q{n}.*/") → startsWith("f{n}.")
@@ -1416,7 +1500,7 @@ var QuestStore = (function () {
                         for (var _si = 0; _si < floorList.length; _si++) { _sq3Set[floorList[_si].n] = true; }
                         var _added = false;
                         // ★ 降噪（2026-08-08）：孤儿/新发现楼层逐行打印 → 各汇总 1 行
-                        var _orphanNums = [], _discoveredNums = [];
+                        var _orphanNums = [], _trashedNums = [], _discoveredNums = [];
                         for (var _ei = 0; _ei < _fsEntries.length; _ei++) {
                             if (_fsEntries[_ei].isDir) {
                                 var _fm = _fsEntries[_ei].name.match(/^f(\d+)\./);
@@ -1431,7 +1515,32 @@ var QuestStore = (function () {
                                             for (var _ci = 0; _ci < _cand.length; _ci++) {
                                                 if (_cand[_ci].name === 'all.json') { _hasAll = true; break; }
                                             }
-                                            if (!_hasAll) { _orphanNums.push(_fn); continue; }
+                                            if (!_hasAll) {
+                                                // ★ 空壳自愈（2026-08-09）：无 all.json 且目录 mtime 超 30 分钟 → 移入 .trash 归档
+                                                //   根治"空目录永久残留"——此前只 skip 不清理，用户永远看到乱目录
+                                                //   30 分钟阈值防误删正在建楼的楼层（mkdir 后 all.json 未落盘的窗口期）
+                                                //   ★ 2026-08-09 加固：仅归档"真空壳"（空目录 / 仅 all.json.tmp.* 残留）；
+                                                //     含 all.txt / snapshot_*.json / img_*.png 等数据文件的目录只跳过不归档（快照/母本不可误伤）
+                                                var _hasDataFile = false;
+                                                for (var _ci2 = 0; _ci2 < _cand.length; _ci2++) {
+                                                    if (!_cand[_ci2].isDir && _cand[_ci2].name.indexOf('all.json.tmp.') !== 0) { _hasDataFile = true; break; }
+                                                }
+                                                if (!_hasDataFile) {
+                                                    try {
+                                                        var _stOrph = await bf2.stat(_rootDir + '/_qqq/quests/' + qDirName2 + '/' + _fsEntries[_ei].name);
+                                                        var _orphAgeMs = Date.now() - ((_stOrph && _stOrph.mtimeMs) ? _stOrph.mtimeMs : 0);
+                                                        if (_orphAgeMs > 30 * 60 * 1000) {
+                                                            var _trashBase = _rootDir + '/_qqq/quests/.trash/' + qDirName2;
+                                                            await bf2.mkdir(_trashBase);
+                                                            try {
+                                                                await bf2.rename(_rootDir + '/_qqq/quests/' + qDirName2 + '/' + _fsEntries[_ei].name, _trashBase + '/' + _fsEntries[_ei].name);
+                                                                _trashedNums.push(_fn);
+                                                            } catch (_e2) { }
+                                                        }
+                                                    } catch (_e3) { }
+                                                }
+                                                _orphanNums.push(_fn); continue;
+                                            }
                                         } catch (_) { continue; }
                                         floorList.push({ n: _fn });
                                         _sq3Set[_fn] = true;
@@ -1440,6 +1549,9 @@ var QuestStore = (function () {
                                     }
                                 }
                             }
+                        }
+                        if (_trashedNums.length) {
+                            console.log('[quest-store] loadAllFloors: archived ' + _trashedNums.length + ' stale empty floor dir(s) to .trash (q' + questId + '): ' + _fmtNums(_trashedNums));
                         }
                         if (_orphanNums.length) {
                             console.log('[quest-store] loadAllFloors: skip ' + _orphanNums.length + ' orphan floor dir(s) (no all.json) in q' + questId + ': ' + _fmtNums(_orphanNums));
@@ -1664,9 +1776,11 @@ var QuestStore = (function () {
         try {
             if (parent && parent.__qqq_renameScanDone) return result;
             if (parent && parent.__qqq_renameScanInProgress) return result;
+            // ★ 跨实例互斥（2026-08-09）：repairDuplicateIds 在跑时绝不改名（共用 parent 级锁）
+            if (parent && parent.__qqq_dirRenameLock) return result;
         } catch (_) { return result; }
 
-        try { if (parent) parent.__qqq_renameScanInProgress = true; } catch (_) { }
+        try { if (parent) { parent.__qqq_renameScanInProgress = true; parent.__qqq_dirRenameLock = true; } } catch (_) { }
 
         try {
             var bf = _bridgeFs();
@@ -1719,6 +1833,11 @@ var QuestStore = (function () {
                     continue;
                 }
 
+                // ★ 仅用户显式重命名（pendingRename）才改磁盘名（2026-08-09 根因修复）：
+                //   磁盘目录名其余情况一律为唯一真理 —— 防 stale title（repair/备份还原残留）
+                //   驱动改名 → 与 repairDuplicateIds 互搏（q168/q171 事故：改走又改回，每次启动 churn）
+                if (!e.pendingRename) continue;
+
                 if (matches.length === 1) currentName = matches[0];
                 if (!currentName) { result.skipped++; continue; }
 
@@ -1738,9 +1857,11 @@ var QuestStore = (function () {
                 try {
                     await bf.rename(questsDir + currentName, questsDir + expectedName);
                     console.log('[quest-store] lazyRenameScan: renamed', currentName, '→', expectedName);
-                    // ★ 同步缓存
+                    // ★ 同步缓存 + 清除 pendingRename + 持久化（原实现仅改内存，sq3 dirName 一直 stale）
                     _questDirCache[e.id] = expectedName;
                     if (e.dirName) e.dirName = expectedName;
+                    e.pendingRename = false;
+                    await _saveIndex();
                     result.fixed++;
                 } catch (err) {
                     console.warn('[quest-store] lazyRenameScan: FAIL rename', currentName, '→', expectedName, (err && err.message) || err);
@@ -1753,6 +1874,7 @@ var QuestStore = (function () {
                     parent.__qqq_renameScanInProgress = false;
                     parent.__qqq_renameScanDone = true;
                     parent.__qqq_renameScanResult = result;
+                    parent.__qqq_dirRenameLock = false;
                 }
             } catch (_) { }
         }

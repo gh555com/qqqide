@@ -49,11 +49,11 @@ import { hardenSession, registerExitHandlers } from './shutdown';
 import { crashNetInit } from './crash-net';
 import { checkRank0Components } from './component-checker';
 import { startPyBroker, stopPyBroker, setPyBrokerEventHandler } from './py-broker';
-import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart, getGoodsSetting, setGoodsSetting, getAllGoodsSettings, startOsStateWatch } from './gaea-process';
+import { startGaeaProcess, stopGaeaProcess, isGaeaProcessRunning, getGaeaProcessPid, cleanupAllGaeaProcesses, startGaeaWatchdog, stopGaeaWatchdog, onGaeaProcessStatusChange, setGaeaUserDataPath, registerGoodsMeta, GaeaLifecycle, syncOsGaeaAutoStart, getOsGaeaAutoStart, getOsGaeaFullState, getGoodsSetting, setGoodsSetting, getAllGoodsSettings, startOsStateWatch } from './gaea-process';
 import { registerKopeIpc } from './ipc-kope';
 import { registerRoamIpc } from './ipc-roam';
 import { registerAiStateIpc } from './ipc-ai-state';
-import { registerWsStateIpc } from './ipc-ws-state';
+import { registerWsStateIpc, wsStateGetKey } from './ipc-ws-state';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
@@ -530,7 +530,10 @@ app.whenReady().then(async () => {
                     let autoStart: boolean | null = null;
                     if (osVal !== null) autoStart = osVal;
                     else autoStart = await stateStore.get('qqqide', g.id + '.autoStart');
-                    if (autoStart ?? g.defaultAutoStart) {
+                    // ★ 会话恢复（2026-08-09）: 上次退出时该 goods 正在运行（attached）→ 本次启动恢复运行
+                    const osFull = getOsGaeaFullState(g.id);
+                    const runningAtExit = !!(osFull && osFull.runningAtExit);
+                    if ((autoStart ?? g.defaultAutoStart) || runningAtExit) {
                         const result = startGaeaProcess(portable.root, g.id, g.script, g.runtime, g.lifecycle, g.allowMultiple);
                         if (result.ok) {
                             console.log('[' + g.id + '] auto-started pid=' + result.pid + (result.alreadyRunning ? ' (already running)' : ''));
@@ -588,9 +591,17 @@ app.whenReady().then(async () => {
 
     // Boot
     // ★ 多窗口还原 — 第一步：确保主窗口加载正确的项目文件夹
+    //   恢复链: 绿色包级 global.sq3 → OS 级 ws.sq3（2026-08-09 删包/换包后 OS 兜底）
+    const readOpenWindows = async (): Promise<any[]> => {
+        try {
+            let v: any = await stateStore.get('qqqide', 'open_windows');
+            if (!v) { try { v = await wsStateGetKey('openWindows'); } catch { /* ignore */ } }
+            return (v && Array.isArray(v)) ? v : [];
+        } catch { return []; }
+    };
     try {
-        const openWindows = await stateStore.get('qqqide', 'open_windows');
-        if (openWindows && Array.isArray(openWindows) && openWindows.length > 0) {
+        const openWindows = await readOpenWindows();
+        if (openWindows && openWindows.length > 0) {
             const w0 = openWindows[0];
             if (w0 && w0.mainFolder) {
                 const n0 = w0.mainFolder.replace(/\\/g, '/').replace(/\/$/, '');
@@ -613,8 +624,8 @@ app.whenReady().then(async () => {
     // ★ 多窗口还原：读取上次退出保存的窗口列表，还原额外窗口
     (async () => {
         try {
-            const openWindows = await stateStore.get('qqqide', 'open_windows');
-            if (openWindows && Array.isArray(openWindows) && openWindows.length > 1) {
+            const openWindows = await readOpenWindows();
+            if (openWindows && openWindows.length > 1) {
                 // ★ 预注册主窗口项目（open_windows[0]），防后续还原重复创建
                 const w0 = openWindows[0];
                 if (w0 && w0.mainFolder) {

@@ -295,7 +295,9 @@ function _appendToCard(el, optQuestId) {
             return;
         }
     }
-    $messages.appendChild(el);
+    // ★ F121 加固: $messages 兜底路径也可能缺失（面板早期/竞态）→ 显式报错不静默崩
+    if ($messages) $messages.appendChild(el);
+    else console.error('[panel-render] _appendToCard: $messages missing, message dropped');
 }
 
 function addMessageEl(role, content, optQuestId) {

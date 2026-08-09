@@ -66,7 +66,7 @@ var onlyStore = (function () {
       // 首次启动时 _cache 为空，后续 set 会填充。
       var keys = ['theme', 'ai.activeQuest', 'ai.activeFloor', 'ai.tier', 'ai.inputDraft',
         'ai.pendingImages', 'ai.queue', 'ai.scrollTop', 'editor.tabs', 'editor.activeTab',
-        'viewport.splitPositions', 'window.geometry',
+        'viewport.splitPositions',
         // ★ 2026-08-07 F3: sortPrefs/scrollPositions 已迁 OS 级 ai.sq3（key=目录绝对路径），
         //   仅 treeSnapshots 仍为项目资产（key=主文件夹自身路径）
         'ai.viewport.treeSnapshots'];

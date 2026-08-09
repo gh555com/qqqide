@@ -459,9 +459,9 @@
   gap: 6px;
   padding: 3px 9px 3px 8px;
   margin-right: 10px;
-  border: 1px solid #3f96d8;
+  border: 1px solid #859900;
   border-radius: 6px;
-  box-shadow: 0 0 6px rgba(63, 150, 216, .28);
+  box-shadow: 0 0 6px rgba(133, 153, 0, .28);
   background: var(--bg-tertiary, rgba(128, 128, 128, 0.08));
   white-space: nowrap;
   user-select: none;
@@ -472,13 +472,13 @@
 }
 
 /*/* 三豆腐块外边框统一：同宽度 1px · 同圆角 6px · 同强度发光（常态微光 + hover 增强，仅颜色微差）
-   清爽蓝 #3f96d8（略淡）/ 原料淡红 #d98a86 / vibe 绿 #859900（清爽当年的满格绿，现归 vibe） */
+   清爽绿 #859900 / 原料淡红 #d98a86 / vibe 蓝 #3f96d8（2026-08-09 清爽↔vibe 互换；2026-08-09 原料橙→淡红定案） */
 .qqq-act-widget.qqq-act-vibe {
-  border-color: #859900;
-  box-shadow: 0 0 6px rgba(133, 153, 0, .28);
+  border-color: #3f96d8;
+  box-shadow: 0 0 6px rgba(63, 150, 216, .28);
 }
 
-/* 原料与基本权利 — 淡红边框，与另两活动颜色区分 */
+/* 原料与基本权利 — 淡红边框 #d98a86（与网站徽章同色，2026-08-09 定案） */
 .qqq-act-widget.qqq-act-ge50 {
   border-color: #d98a86;
   box-shadow: 0 0 6px rgba(217, 138, 134, .28);
@@ -490,13 +490,13 @@
 }
 
 .qqq-act-widget:hover {
-  border-color: #3f96d8;
-  box-shadow: 0 0 8px rgba(63, 150, 216, .45);
+  border-color: #859900;
+  box-shadow: 0 0 8px rgba(133, 153, 0, .45);
 }
 
 .qqq-act-widget.qqq-act-vibe:hover {
-  border-color: #859900;
-  box-shadow: 0 0 8px rgba(133, 153, 0, .45);
+  border-color: #3f96d8;
+  box-shadow: 0 0 8px rgba(63, 150, 216, .45);
 }
 .qqq-act-head {
   display: inline-flex;
@@ -521,45 +521,59 @@
   forced-color-adjust: none;
 }
 
+/* 暗色主题进度槽用浅色区分（黑背景上的黑槽不可见，2026-08-09） */
+[data-theme="dark"] .qqq-act-track {
+  background: rgba(255, 255, 255, .18);
+}
+
 .qqq-act-fill {
   display: block;
   height: 100%;
   width: 0%;
   border-radius: 4px;
-  background: linear-gradient(90deg, #268bd2, #2aa198);
+  background: linear-gradient(90deg, #2aa198, #859900);
   transition: width .6s;
   /* 高对比度下保留渐变进度条（Windows 强制色彩会把 background-image 抹掉） */
   forced-color-adjust: none;
 }
 
-/* 进度条与边框同色系（2026-08-08 清爽/vibe 进度条配色互换）:
-   清爽 蓝边框 → 蓝渐变 #268bd2→#2aa198
-   vibe 绿边框 → 绿黄渐变 #2aa198→#859900
-   原料 紫黄渐变 #6c71c4→#b58900 不变 */
+/* 进度条与边框同色系（2026-08-09 清爽↔vibe 互换；原料 2026-08-09 橙金→纯色淡红 #d98a86 无渐变）:
+   清爽 绿边框 → 绿黄渐变 #2aa198→#859900
+   vibe 蓝边框 → 蓝渐变 #268bd2→#2aa198
+   原料 淡红边框 → 纯色淡红 #d98a86（无渐变） */
 .qqq-act-widget.qqq-act-cool .qqq-act-fill {
-  background: linear-gradient(90deg, #268bd2, #2aa198);
-}
-
-.qqq-act-widget.qqq-act-ge50 .qqq-act-fill {
-  background: linear-gradient(90deg, #6c71c4, #b58900);
-}
-
-.qqq-act-widget.qqq-act-vibe .qqq-act-fill {
   background: linear-gradient(90deg, #2aa198, #859900);
 }
 
-/* 进度条充满 → 满格高亮（外边框颜色保持各活动专属色，仅增强发光） */
+.qqq-act-widget.qqq-act-ge50 .qqq-act-fill {
+  /* 进度条大色块显粉 → 偏红 #d9645c（外边框保持 #d98a86，2026-08-09） */
+  background: #d9645c;
+}
+
+.qqq-act-widget.qqq-act-vibe .qqq-act-fill {
+  background: linear-gradient(90deg, #268bd2, #2aa198);
+}
+
+/* 进度条充满 → 满格高亮（外边框颜色保持各活动专属色，仅增强发光，2026-08-09 随互换各归其色） */
 .qqq-act-widget.qqq-act-done {
   box-shadow: 0 0 8px rgba(133, 153, 0, .5);
 }
 
-/* 满格渐变归 vibe（绿黄高亮），清爽满格保持蓝渐变（同正常态，靠发光+✓区分） */
-.qqq-act-widget.qqq-act-vibe.qqq-act-done .qqq-act-fill {
+.qqq-act-widget.qqq-act-vibe.qqq-act-done {
+  box-shadow: 0 0 8px rgba(63, 150, 216, .5);
+}
+
+.qqq-act-widget.qqq-act-ge50.qqq-act-done {
+  box-shadow: 0 0 8px rgba(217, 138, 134, .5);
+}
+
+/* 满格渐变归清爽（绿黄高亮），vibe 满格保持蓝渐变（同正常态，靠发光+✓区分） */
+.qqq-act-widget.qqq-act-cool.qqq-act-done .qqq-act-fill {
   background: linear-gradient(90deg, #859900, #b58900);
 }
 
 .qqq-act-widget.qqq-act-ge50.qqq-act-done .qqq-act-fill {
-  background: linear-gradient(90deg, #d33682, #cb4b16);
+  background: #d9645c;
 }
 
 /* vibe 倒计时前缀文字（「剩/距下次」）— 与赞助商文字 100% 同外观：

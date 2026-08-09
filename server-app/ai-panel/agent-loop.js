@@ -666,19 +666,20 @@ var AgentLoop = (function () {
                     continue;
                 }
 
-                // V13: 阀值压缩 — 建楼中饼干超阈值自动剥离 ╔K...╚ 绝对包装盒体部
-                //   零网络零费用，纯本地正则操作。保留头行，仅移除体部。
-                var _apiTokens = self._lastApiPromptTokens || 0;
-                if (_apiTokens === 0) { _apiTokens = self._estimateTotalTokens(); }
-                var _threshold = 600000;
+                // V23: 阀值压缩 — 检查 absolut 可回收收益（biscuit 内 ╔K 体部总量，tokens），超阈值才剥离
+                //   触发依据 = 按钮一上的数字，而非背包总尺寸。零网络零费用，纯本地正则操作。
+                var _threshold = 100000; // 默认 100K tokens
                 try {
                     if (typeof parent !== 'undefined' && parent.window && parent.window.qqqSettings && parent.window.qqqSettings.get) {
                         var _k = parseInt(parent.window.qqqSettings.get('ai.compressThreshold'), 10);
                         if (!isNaN(_k) && _k >= 100 && _k <= 1000) _threshold = _k * 1000;
                     }
                 } catch (_) { }
-                if (_apiTokens > 0 && _apiTokens > _threshold && typeof self._tryAutoValveCompress === 'function') {
-                    self._tryAutoValveCompress(_threshold);
+                if (typeof self._estimateAbsolutBenefit === 'function') {
+                    var _absTokens = self._estimateAbsolutBenefit();
+                    if (_absTokens > 0 && _absTokens > _threshold && typeof self._tryAutoValveCompress === 'function') {
+                        self._tryAutoValveCompress(_threshold);
+                    }
                 }
 
                 self._houseIndex++;

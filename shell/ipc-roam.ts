@@ -192,6 +192,7 @@ interface RoamDirWatch {
     watcher: fs.FSWatcher | null;
     lastRefresh: number;
     pendingTimer: NodeJS.Timeout | null;
+    burstTimer: NodeJS.Timeout | null;   // ★ 2026-08-09: Windows 事件突发合并 (一次操作连发 rename+change+rename → 一次广播)
 }
 const _roamWatches = new Map<string, RoamDirWatch>();  // dir → watch 状态 (多窗口同目录共享一个 watcher + 冷却)
 const _roamWinDirs = new Map<number, string>();         // webContents id → dir
@@ -216,8 +217,13 @@ function _smartRefresh(dir: string): void {
     if (!st) return;
     const now = Date.now();
     if (now - st.lastRefresh < WATCH_COOLDOWN_MS) return;  // 冷却期内忽略
-    st.lastRefresh = now;
-    _broadcastFsChanged(dir);
+    // ★ 2026-08-09 突发合并: Windows 一次真实变更常连发多个事件(rename+change 对、重复事件) → 250ms 尾随合并为一次广播
+    if (st.burstTimer) clearTimeout(st.burstTimer);
+    st.burstTimer = setTimeout(() => {
+        st.burstTimer = null;
+        st.lastRefresh = Date.now();  // 冷却从实际广播时刻起算 (q3 语义: cooldown 从 refresh 起)
+        _broadcastFsChanged(dir);
+    }, 250);
 }
 
 function _forceRefresh(dir: string): void {
@@ -238,7 +244,7 @@ function _scheduleDownloadCompleteRefresh(dir: string): void {
 }
 
 function _createWatch(dir: string): void {
-    const st: RoamDirWatch = { watcher: null, lastRefresh: 0, pendingTimer: null };
+    const st: RoamDirWatch = { watcher: null, lastRefresh: 0, pendingTimer: null, burstTimer: null };
     _roamWatches.set(dir, st);
     try {
         st.watcher = fs.watch(dir, { persistent: false }, (eventType, filename) => {
@@ -268,6 +274,7 @@ function _disposeWatch(dir: string): void {
     const st = _roamWatches.get(dir);
     if (!st) return;
     if (st.pendingTimer) { clearTimeout(st.pendingTimer); st.pendingTimer = null; }
+    if (st.burstTimer) { clearTimeout(st.burstTimer); st.burstTimer = null; }
     if (st.watcher) { try { st.watcher.close(); } catch { /* ignore */ } st.watcher = null; }
     let stillUsed = false;
     _roamWinDirs.forEach(d => { if (d === dir) stillUsed = true; });

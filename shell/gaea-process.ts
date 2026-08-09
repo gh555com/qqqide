@@ -150,6 +150,8 @@ function _getOsStatePath(goodsId: string): string {
 interface OsGaeaState {
     pid: number;
     autoStart: boolean;
+    /** 上次 IDE 退出时该 goods 是否在运行（attached 会话恢复用, 2026-08-09） */
+    runningAtExit?: boolean;
     ts: number;
 }
 
@@ -160,10 +162,37 @@ function _readOsState(goodsId: string): OsGaeaState | null {
         const raw = fs.readFileSync(p, 'utf-8');
         const data = JSON.parse(raw);
         if (typeof data.pid === 'number' && typeof data.ts === 'number') {
-            return { pid: data.pid, autoStart: !!data.autoStart, ts: data.ts };
+            return { pid: data.pid, autoStart: !!data.autoStart, runningAtExit: !!data.runningAtExit, ts: data.ts };
         }
         return null;
     } catch { return null; }
+}
+
+/** 读完整 OS 状态（含 runningAtExit, 启动循环会话恢复用） */
+export function getOsGaeaFullState(goodsId: string): OsGaeaState | null {
+    return _readOsState(goodsId);
+}
+
+/** ★ 出厂默认自动启动（.gaea-state.json 缺失时心跳兜底用, 2026-08-09: 旧 `?? true` 导致手动启动 window-there 被记成 autoStart） */
+const _GOODS_DEFAULT_AUTOSTART: Record<string, boolean> = {
+    'kope-a': true,
+    'window-there': false,
+};
+function _goodsDefaultAutoStart(goodsId: string): boolean {
+    return _GOODS_DEFAULT_AUTOSTART[goodsId] ?? false;
+}
+
+/** ★ 记忆重写（2026-08-09）: 进程退出/停止时不再删除状态文件, 保留 autoStart + runningAtExit 记忆 */
+function _rewriteOsState(goodsId: string, patch: Partial<OsGaeaState>): void {
+    try {
+        const cur = _readOsState(goodsId);
+        _writeOsState(goodsId, {
+            pid: typeof patch.pid === 'number' ? patch.pid : (cur ? cur.pid : 0),
+            autoStart: typeof patch.autoStart === 'boolean' ? patch.autoStart : (cur ? cur.autoStart : _goodsDefaultAutoStart(goodsId)),
+            runningAtExit: typeof patch.runningAtExit === 'boolean' ? patch.runningAtExit : (cur ? !!cur.runningAtExit : false),
+            ts: Date.now(),
+        });
+    } catch { /* ignore */ }
 }
 
 function _writeOsState(goodsId: string, state: OsGaeaState): void {
@@ -176,21 +205,17 @@ function _writeOsState(goodsId: string, state: OsGaeaState): void {
     } catch { /* ignore */ }
 }
 
-function _clearOsState(goodsId: string): void {
-    try {
-        const p = _getOsStatePath(goodsId);
-        if (fs.existsSync(p)) fs.unlinkSync(p);
-    } catch { /* ignore */ }
-}
+
 
 /** 同步 autoStart 到 OS 级状态文件（跨绿色包可见） */
 export function syncOsGaeaAutoStart(goodsId: string, autoStart: boolean): void {
     // ★ 状态不存在也创建，保证 toggle 切换跨绿色包立即可见
     // ★ 本进程在跑 → 写真实 PID（防 pid=0 占位导致远端短暂灰 ≤10s，F22 边界项）
+    // ★ 2026-08-09: 保留 runningAtExit 记忆（不因 toggle 而丢）
     const state = _readOsState(goodsId);
     const entry = _registry.get(goodsId);
     const pid = (entry && entry.pid) ? entry.pid : (state ? state.pid : 0);
-    _writeOsState(goodsId, { pid, autoStart, ts: Date.now() });
+    _writeOsState(goodsId, { pid, autoStart, runningAtExit: state ? !!state.runningAtExit : false, ts: Date.now() });
 }
 
 /** 从 OS 级状态文件读取 autoStart（跨绿色包可见） */
@@ -220,15 +245,15 @@ function _checkOsState(goodsId: string): { running: boolean; pid?: number } {
 
 /** 启动 OS 级心跳：每 10s 刷新 ts，保活 */
 function _startOsHeartbeat(goodsId: string, pid: number, autoStart: boolean): NodeJS.Timeout {
-    _writeOsState(goodsId, { pid, autoStart, ts: Date.now() });
+    _writeOsState(goodsId, { pid, autoStart, runningAtExit: false, ts: Date.now() });
     const timer = setInterval(() => {
         const current = _readOsState(goodsId);
         // ★ 状态文件丢失或被其他进程污染（PID 不匹配）→ 主动重写，不自杀
         if (!current || current.pid !== pid) {
-            _writeOsState(goodsId, { pid, autoStart, ts: Date.now() });
+            _writeOsState(goodsId, { pid, autoStart, runningAtExit: false, ts: Date.now() });
             return;
         }
-        _writeOsState(goodsId, { pid, autoStart: current.autoStart, ts: Date.now() });
+        _writeOsState(goodsId, { pid, autoStart: current.autoStart, runningAtExit: !!current.runningAtExit, ts: Date.now() });
     }, 10000);
     return timer;
 }
@@ -584,7 +609,8 @@ export function startGaeaProcess(
         if (!allowMultiple && entry.pid) {
             _writePidFile(userData, goodsId, entry.pid);
             // ★ OS 级状态文件 + 心跳（跨绿色包同步）
-            const autoStart = _readOsState(goodsId)?.autoStart ?? true;
+            // ★ 2026-08-09: 缺失时按出厂默认（旧 `?? true` 会让手动启动的 window-there 被记成 autoStart=true）
+            const autoStart = _readOsState(goodsId)?.autoStart ?? _goodsDefaultAutoStart(goodsId);
             _osHeartbeats.set(goodsId, _startOsHeartbeat(goodsId, entry.pid, autoStart));
         }
 
@@ -601,17 +627,18 @@ export function startGaeaProcess(
                     // ★ 仅当 OS 状态文件中的 PID 匹配本死进程时才清理（防御性）。
                     //    正常情况下本进程从未写入 OS 状态（心跳延迟 2s，exit 100 先到），
                     //    清理会误删另一实例的心跳文件 → 跨绿色包检测失效 → 看门狗无限重试。
+                    //    (2026-08-09: 改为记忆重写而非删除, 不丢 autoStart)
                     const curState = _readOsState(goodsId);
                     if (curState && curState.pid === entry.pid) {
-                        _clearOsState(goodsId);
+                        _rewriteOsState(goodsId, { pid: 0 });
                     }
                     console.log('[' + goodsId + '] singleton conflict — watchdog blocked (exit 100)');
                     // ★ 立即重新评估远端运行态（exit 100 = 远端占锁在跑 → 外观直接绿）
                     _evaluateOsState(goodsId);
                 } else {
-                    // 正常退出 → 删除 PID 文件 + OS 级状态
+                    // 正常退出 → 删除 PID 文件; OS 级状态改为记忆重写（保留 autoStart/runningAtExit, 2026-08-09）
                     _removePidFile(userData, goodsId);
-                    _clearOsState(goodsId);
+                    _rewriteOsState(goodsId, { pid: 0 });
                 }
             }
             // 停止 OS 级心跳
@@ -625,7 +652,7 @@ export function startGaeaProcess(
             console.error('[' + goodsId + '] proc error:', err);
             if (!allowMultiple) {
                 _removePidFile(userData, goodsId);
-                _clearOsState(goodsId);
+                _rewriteOsState(goodsId, { pid: 0 });
             }
             const hb = _osHeartbeats.get(goodsId);
             if (hb) { clearInterval(hb); _osHeartbeats.delete(goodsId); }
@@ -642,7 +669,7 @@ export function startGaeaProcess(
     }
 }
 
-export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string } {
+export function stopGaeaProcess(goodsId: string, rememberExitState = true): { ok: boolean; error?: string } {
     // ★ 用户主动停止 → 清除单例冲突标记
     _singletonConflicts.delete(goodsId);
     const entry = _registry.get(goodsId);
@@ -685,8 +712,11 @@ export function stopGaeaProcess(goodsId: string): { ok: boolean; error?: string 
         _removePidFile(_userDataPath, goodsId);
     }
 
-    // ★ 清理 OS 级状态文件
-    _clearOsState(goodsId);
+    // ★ 状态文件记忆重写（2026-08-09）: 用户主动停止 → runningAtExit=false（下次启动不恢复）
+    //   IDE 退出清理（rememberExitState=false）→ 不动文件（cleanup 已写好 runningAtExit=true）
+    if (rememberExitState) {
+        _rewriteOsState(goodsId, { pid: 0, runningAtExit: false });
+    }
     const hb = _osHeartbeats.get(goodsId);
     if (hb) { clearInterval(hb); _osHeartbeats.delete(goodsId); }
 
@@ -758,14 +788,23 @@ export function cleanupAllGaeaProcesses(): void {
     console.log('[gaea-process] cleanupAll — ' + _registry.size + ' process(es)');
     stopAllGaeaWatchdogs();
     // 停所有 OS 级心跳 + 状态文件监听
-    _osHeartbeats.forEach((timer, goodsId) => { clearInterval(timer); _clearOsState(goodsId); });
+    _osHeartbeats.forEach((timer, goodsId) => {
+        clearInterval(timer);
+        // ★ 2026-08-09 会话恢复记忆: attached 且本进程存活 → runningAtExit=true（下次启动恢复运行）;
+        //   independent（detached 仍存活）→ 文件原样保留（pid 有效, 其他实例仍可追踪）
+        const entry = _registry.get(goodsId);
+        if (entry && entry.proc && !entry.proc.killed && entry.lifecycle === 'attached') {
+            _rewriteOsState(goodsId, { pid: 0, runningAtExit: true });
+        }
+    });
     _osHeartbeats.clear();
     _osWatchers.forEach((_w, goodsId) => _stopOsStateWatch(goodsId));
     _registry.forEach((entry, goodsId) => {
         // ★ 跨绿色包：远端实例（proc=null）不属于本 IDE，退出时禁止连带杀死
         if (entry.proc) {
             console.log('[gaea-process] cleaning ' + goodsId + ' (pid=' + entry.pid + ', lifecycle=' + entry.lifecycle + ')');
-            stopGaeaProcess(goodsId);
+            // ★ rememberExitState=false: 状态记忆已由上方心跳循环写好, stop 不再覆盖
+            stopGaeaProcess(goodsId, false);
         } else {
             console.log('[gaea-process] cleanup skip remote-owned: ' + goodsId + ' pid=' + entry.pid);
             _registry.delete(goodsId);
@@ -782,7 +821,9 @@ export function cleanupAllGaeaProcesses(): void {
                 continue;
             }
             console.log('[gaea-process] cleanupAll brute-force: ' + gid);
-            try { stopGaeaProcess(gid); } catch { /* ignore */ }
+            // ★ 未注册但仍在跑的 attached goods → 记会话恢复（2026-08-09）
+            if (gid === 'window-there') _rewriteOsState(gid, { pid: 0, runningAtExit: true });
+            try { stopGaeaProcess(gid, false); } catch { /* ignore */ }
         }
     }
     // ★ 最终兜底：直接杀所有 kope-a/window-there 的 python 进程（防 detached 残留）
@@ -843,7 +884,7 @@ export function startGaeaWatchdog(
         if (!existing.running && !osCheck.running) {
             console.log('[watchdog:' + goodsId + '] process not running, restarting...');
             _removePidFile(userData, goodsId);
-            _clearOsState(goodsId);
+            _rewriteOsState(goodsId, { pid: 0 }); // ★ 保留 autoStart 记忆 (2026-08-09)
             _registry.delete(goodsId);
             const result = startGaeaProcess(portableRoot, goodsId, scriptPath, runtime, lifecycle, false);
             if (result.ok) {

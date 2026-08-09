@@ -58,6 +58,7 @@ function bootActivities(boot) {
   var $vibe = document.getElementById('qqq-act-vibe');
   var $vibeFill = document.getElementById('qqq-act-vibe-fill');
   var $vibeNum = document.getElementById('qqq-act-vibe-num');
+  var $vibeName = null;    // 「2026, 我, vibe coding」名称 — 免费窗口内替换为「剩余/预算」数字
   var $vibePrefix = null; // 「剩/距下次」前缀 — 独立于等宽数字，与赞助商文字同外观
   if (!$cool || !$ge50) return;
 
@@ -97,6 +98,13 @@ function bootActivities(boot) {
     var n = parseFloat(v);
     if (isNaN(n)) return '0';
     return (Math.round(n * 100) / 100).toString();
+  }
+
+  // 1 位小数四舍五入（vibe 豆腐块免费窗口内数字）
+  function fmt1(v) {
+    var n = parseFloat(v);
+    if (isNaN(n)) return '0';
+    return (Math.round(n * 10) / 10).toString();
   }
 
   function copyText(text) {
@@ -201,24 +209,30 @@ function bootActivities(boot) {
       'border:1.5px solid rgba(52,211,153,.35);box-shadow:0 0 34px rgba(52,211,153,.22),0 10px 40px rgba(0,0,0,.5);' +
       'animation:qqqActPop .28s cubic-bezier(.34,1.56,.64,1);padding:26px 28px 24px;forced-color-adjust:none;}' +
       '.qqq-act-modal.qqq-act-ge50-modal{background:linear-gradient(165deg,#141b2e 0%,#0d0d1a 60%,#1a1024 100%);' +
-      'border-color:rgba(108,113,196,.4);box-shadow:0 0 34px rgba(108,113,196,.25),0 10px 40px rgba(0,0,0,.5);forced-color-adjust:none;}' +
+      'border-color:rgba(217,100,92,.4);box-shadow:0 0 34px rgba(217,100,92,.25),0 10px 40px rgba(0,0,0,.5);forced-color-adjust:none;}' +
+      // 原料弹窗全窗淡红主题（2026-08-09 定案）：标题/数字/高亮/关闭/CTA 全部归位淡红 #d9645c，消灭绿色残留
+      '.qqq-act-modal.qqq-act-ge50-modal h2{background:linear-gradient(135deg,#d9645c,#e28c85);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}' +
+      '.qqq-act-modal.qqq-act-ge50-modal .qqq-act-bignum{color:#d9645c;}' +
+      '.qqq-act-modal.qqq-act-ge50-modal .qqq-act-desc b{color:#e28c85;}' +
+      '.qqq-act-modal.qqq-act-ge50-modal .qqq-act-close:hover{background:rgba(217,100,92,.25);border-color:#d9645c;}' +
+      '.qqq-act-modal.qqq-act-ge50-modal .qqq-act-cta{background:linear-gradient(90deg,#d9645c,#c9554e);box-shadow:0 4px 18px rgba(217,100,92,.4);}' +
       '.qqq-act-close{position:absolute;top:10px;right:12px;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.18);' +
       'background:rgba(255,255,255,.08);color:#ddd;font-size:15px;line-height:26px;text-align:center;}' +
       '.qqq-act-close:hover{background:rgba(52,211,153,.25);border-color:#34d399;}' +
       '.qqq-act-modal h2{margin:2px 0 2px;font-size:26px;font-weight:900;text-align:center;' +
       'background:linear-gradient(135deg,#34d399,#06b6d4);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}' +
       '.qqq-act-modal .qqq-act-sub{margin:0 0 14px;text-align:center;font-size:13px;color:#9aa0b5;}' +
-      '.qqq-act-bigbar{margin:14px 0 6px;height:16px;border-radius:9px;background:rgba(255,255,255,.08);overflow:hidden;position:relative;forced-color-adjust:none;}' +
+      '.qqq-act-bigbar{margin:14px 0 6px;height:16px;border-radius:9px;background:rgba(255,255,255,.2);overflow:hidden;position:relative;forced-color-adjust:none;}' +
       '.qqq-act-bigfill{display:block;height:100%;border-radius:9px;' +
       'background:linear-gradient(90deg,#2aa198,#859900,#2aa198);background-size:200% 100%;animation:qqqActShimmer 2.4s linear infinite;' +
       'transition:width .8s;forced-color-adjust:none;}' +
-      // 弹窗进度条配色与状态区豆腐块一一对应（2026-08-08）: 清爽=蓝 / 原料=紫黄 / vibe=绿黄
-      '.qqq-act-bigfill.qqq-act-cool-fill{background:linear-gradient(90deg,#268bd2,#2aa198,#268bd2);background-size:200% 100%;}' +
-      '.qqq-act-bigfill.qqq-act-ge50-fill{background:linear-gradient(90deg,#6c71c4,#b58900,#6c71c4);background-size:200% 100%;}' +
-      '.qqq-act-bigfill.qqq-act-vibe-fill{background:linear-gradient(90deg,#2aa198,#859900,#2aa198);background-size:200% 100%;}' +
+      // 弹窗进度条配色与状态区豆腐块一一对应（2026-08-09 清爽↔vibe 互换；原料 2026-08-09 橙金→纯色淡红 #d9645c 无渐变）: 清爽=绿黄 / 原料=淡红纯色 / vibe=蓝
+      '.qqq-act-bigfill.qqq-act-cool-fill{background:linear-gradient(90deg,#2aa198,#859900,#2aa198);background-size:200% 100%;}' +
+      '.qqq-act-bigfill.qqq-act-ge50-fill{background:#d9645c;}' +
+      '.qqq-act-bigfill.qqq-act-vibe-fill{background:linear-gradient(90deg,#268bd2,#2aa198,#268bd2);background-size:200% 100%;}' +
       '.qqq-act-bigfill.qqq-act-full{background:linear-gradient(90deg,#859900,#b58900,#859900);background-size:200% 100%;animation:qqqActShimmer 1.2s linear infinite;}' +
-      '.qqq-act-bigfill.qqq-act-cool-fill.qqq-act-full{background:linear-gradient(90deg,#268bd2,#2aa198,#268bd2);animation:qqqActShimmer 1.2s linear infinite;}' +
-      '.qqq-act-bigfill.qqq-act-ge50-fill.qqq-act-full{background:linear-gradient(90deg,#d33682,#cb4b16,#d33682);animation:qqqActShimmer 1.2s linear infinite;}' +
+      '.qqq-act-bigfill.qqq-act-cool-fill.qqq-act-full{background:linear-gradient(90deg,#859900,#b58900,#859900);animation:qqqActShimmer 1.2s linear infinite;}' +
+      '.qqq-act-bigfill.qqq-act-ge50-fill.qqq-act-full{background:#d9645c;}' +
       '.qqq-act-bignum{text-align:center;font-size:15px;font-weight:700;color:#34d399;font-family:Consolas,monospace;}' +
       '.qqq-act-desc{margin:14px 0 18px;text-align:center;font-size:14px;line-height:1.9;color:#c8c8d8;}' +
       '.qqq-act-desc b{color:#34d399;}' +
@@ -239,7 +253,7 @@ function bootActivities(boot) {
       '.qqq-act-or{text-align:center;font-size:12px;font-weight:700;color:#b58900;margin:4px 0 6px;}' +
       '.qqq-act-claims{display:flex;gap:10px;margin-top:0;}' +
       '.qqq-act-claim{flex:1;padding:11px 6px;border:none;border-radius:10px;font-size:13.5px;font-weight:800;color:#fff;' +
-      'background:linear-gradient(90deg,#6c71c4,#b58900);box-shadow:0 4px 14px rgba(108,113,196,.3);forced-color-adjust:none;}' +
+      'background:#d9645c;box-shadow:0 4px 14px rgba(217,100,92,.3);forced-color-adjust:none;}' +
       '.qqq-act-claim.qqq-act-claim-phone{background:linear-gradient(90deg,#268bd2,#2aa198);box-shadow:0 4px 14px rgba(38,139,210,.3);forced-color-adjust:none;}' +
       '.qqq-act-claim:disabled{filter:grayscale(1);opacity:.55;box-shadow:none;}' +
       '.qqq-act-claim:hover:not(:disabled){filter:brightness(1.1);}' +
@@ -582,6 +596,15 @@ function bootActivities(boot) {
     if (!$vibe || !$vibeNum) return;
     var st = vibeState(vibeUtcNow());
     var b = vibeBudget();
+
+    // ★ 免费窗口内：豆腐块名称「2026, 我, vibe coding」替换为「剩余/预算」数字（如 1.3 / 4.1，1 位小数）
+    //   非免费 / 未登录 / 余额未拉到 → 显示回活动名
+    if (!$vibeName) $vibeName = $vibe.querySelector('.qqq-act-name');
+    if ($vibeName) {
+      $vibeName.textContent = (st.free && b.valid)
+        ? fmt1(b.rem) + ' / ' + fmt1(b.bud)
+        : t('act.vibe.name', '2026, 我, vibe coding');
+    }
 
     // ★ 统一：免费中「剩」+ 倒计时，非免费「距下次」+ 倒计时（不再需要点开弹窗才看到剩余时间）
     //   进度条 = 免费中余额剩余比例（余额未拉到则满格）/ 非免费 0%
