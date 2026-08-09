@@ -14,7 +14,22 @@ export function registerSquadIpc(): void {
     ipcMain.handle('qqqide:squad:get', (e) => {
         const win = BrowserWindow.fromWebContents(e.sender);
         if (!win) { return { ok: false, reason: 'no_window' }; }
-        return { ok: true, state: getSquadState(win.id) };
+        const state = getSquadState(win.id);
+        // ★ 中列兜底: 条目 title/folder 为空（窗口刚创建/渲染层未刷新 setTitle）→ 读实时窗口标题
+        for (const k of state.order) {
+            const s = state.slots[k];
+            if (!s) { continue; }
+            if (!s.title || !s.folder) {
+                try {
+                    const w = BrowserWindow.fromId(s.winId);
+                    if (w && !w.isDestroyed()) {
+                        if (!s.title) { s.title = w.getTitle(); }
+                        if (!s.folder) { s.folder = _windowProjectMap.get(s.winId) || ''; }
+                    }
+                } catch { /* ignore */ }
+            }
+        }
+        return { ok: true, state };
     });
 
     ipcMain.handle('qqqide:squad:set', (e, target: string) => {

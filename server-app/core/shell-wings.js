@@ -17,7 +17,11 @@ function bootBulbs() {
   var d2 = document.getElementById('qqq-bulb-2');
   if (!d1 || !d2) return;
 
-  // ★ 灯泡持久化 → only.sq3（项目资产）
+  // ★ 灯泡持久化 → OS 级窗口记忆（2026-08-09 升层）:
+  //   双写 global.sq3 wings_bulbs（主进程 wing:state IPC 同步）+ ws.sq3 windowWings（本文件直写）
+  //   旧 only.sq3 wings.bulbs 仅作一次性迁移源（读到 → 写 OS → 删旧 key）
+  //   原因: 翼开关是窗口偏好（与窗口尺寸同性质），存项目级换主文件夹即丢 → 关闭前翼开重启后翼关，
+  //   窗口 bounds 仍含翼宽 → 中间区被拉伸（"窗口尺寸被改"）。
   function _wingsFolderFromUrl() {
     var m = window.location.search.match(/[?&]folder=([^&]+)/);
     if (m) {
@@ -33,20 +37,51 @@ function bootBulbs() {
     return window.qgs.project(root + '/_qqq/alphal/only.sq3', 'qqq.only', { v: 1, form: 'doc' });
   }
   function _persistBulbs() {
+    // OS 唯一真理（ws.sq3）; 旧 only.sq3 key 收敛删除
+    try {
+      if (bridge && bridge.wsState && bridge.wsState.set) {
+        bridge.wsState.set('windowWings', { left: _shellBulbState.left, right: _shellBulbState.right }).catch(function () { });
+      }
+    } catch (_) { }
     var db = _onlyDb();
-    if (db) db.set('wings.bulbs', { left: _shellBulbState.left, right: _shellBulbState.right }).catch(function () { });
+    if (db) db.del('wings.bulbs').catch(function () { });
   }
-  function _restoreBulbs() {
+  function _applyRestoredState(left, right) {
+    if (typeof left === 'boolean') _shellBulbState.left = left;
+    if (typeof right === 'boolean') _shellBulbState.right = right;
+    if (_shellBulbState.left) d1.classList.add('on'); else d1.classList.remove('on');
+    if (_shellBulbState.right) d2.classList.add('on'); else d2.classList.remove('on');
+    _applyWings();
+    try { if (bridge && bridge.window && bridge.window.setWingState) bridge.window.setWingState(_shellBulbState.left, _shellBulbState.right); } catch (_) { }
+  }
+  // ① 主进程推送（ready-to-show + did-finish-load 双点，含 Ctrl+R 重载后重推）
+  try {
+    if (bridge && bridge.window && bridge.window.onWingRestore) {
+      bridge.window.onWingRestore(function (w) { if (w) _applyRestoredState(w.left, w.right); });
+    }
+  } catch (_) { }
+  // ② OS 级拉取兜底（独立于项目工作空间，无需等 _workspaceRoot）
+  try {
+    if (bridge && bridge.wsState && bridge.wsState.get) {
+      bridge.wsState.get('windowWings').then(function (v) {
+        if (v && typeof v === 'object') _applyRestoredState(v.left, v.right);
+      }).catch(function () { });
+    }
+  } catch (_) { }
+  // ③ 旧 only.sq3 一次性迁移（读到 → 写 OS → 删旧 key）
+  function _restoreLegacyBulbs() {
     var db = _onlyDb();
     if (!db) return;
     db.get('wings.bulbs').then(function (v) {
-      if (v && typeof v === 'object') {
-        if (typeof v.left === 'boolean') _shellBulbState.left = v.left;
-        if (typeof v.right === 'boolean') _shellBulbState.right = v.right;
-        if (_shellBulbState.left) d1.classList.add('on'); else d1.classList.remove('on');
-        if (_shellBulbState.right) d2.classList.add('on'); else d2.classList.remove('on');
-        _applyWings();
-        try { if (bridge && bridge.window && bridge.window.setWingState) bridge.window.setWingState(_shellBulbState.left, _shellBulbState.right); } catch (_) { }
+      if (v && typeof v === 'object' && (typeof v.left === 'boolean' || typeof v.right === 'boolean')) {
+        _applyRestoredState(v.left, v.right);
+        try {
+          if (bridge && bridge.wsState && bridge.wsState.set) {
+            bridge.wsState.set('windowWings', { left: _shellBulbState.left, right: _shellBulbState.right })
+              .then(function () { db.del('wings.bulbs').catch(function () { }); })
+              .catch(function () { });
+          }
+        } catch (_) { }
       }
     }).catch(function () { });
   }
@@ -58,7 +93,7 @@ function bootBulbs() {
     if (typeof window._workspaceRoot === 'string' && window._workspaceRoot) {
       _bulbsRestored = true;
       if (_bulbsWatchTimer) { clearInterval(_bulbsWatchTimer); _bulbsWatchTimer = null; }
-      _restoreBulbs();
+      _restoreLegacyBulbs();
       return;
     }
     if (!_bulbsWatchTimer) _bulbsWatchTimer = setInterval(function () {
@@ -66,7 +101,7 @@ function bootBulbs() {
         clearInterval(_bulbsWatchTimer);
         _bulbsWatchTimer = null;
         _bulbsRestored = true;
-        _restoreBulbs();
+        _restoreLegacyBulbs();
       }
     }, 300);
   })();
@@ -195,10 +230,6 @@ function bootBulbs() {
   // 预初始化左右翼 iframe（width:0 容器内静默加载）
   _preinitWings();
 
-  // ★ 启动时同步翼状态到主进程，确保最小窗口尺寸正确
-  try {
-    if (bridge && bridge.window && bridge.window.setWingState) {
-      bridge.window.setWingState(_shellBulbState.left, _shellBulbState.right);
-    }
-  } catch (e) { console.warn('[wings] init setWingState error:', e); }
+  // ★ 启动时翼状态由主进程 restoreWindowBounds 统一推送（含最小尺寸），此处不 init ——
+  //   避免默认 {false,false} 先于真实恢复写入 OS 记忆（覆盖已保存的翼开状态）
 }

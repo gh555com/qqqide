@@ -118,6 +118,24 @@
   border-bottom-color: #999;
 }
 
+/* Roam 标签召回提示 — hover 瞬间弹出大字号 tooltip（2026-08-09） */
+.qqq-roam-tip {
+  position: fixed;
+  z-index: 99999;
+  padding: 8px 16px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  background: var(--tooltip-bg);
+  color: var(--tooltip-text);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+  pointer-events: none;
+  white-space: nowrap;
+  display: none;
+}
+
 .qqq-tab-close {
   display: inline-flex;
   align-items: center;

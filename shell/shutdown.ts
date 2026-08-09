@@ -13,7 +13,7 @@ import { BootConfig } from './boot';
 import { StateStore } from './state-sqlite';
 import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
-import { _windowProjectMap } from './window-manager';
+import { _windowProjectMap, getWindowWingState } from './window-manager';
 import { wsStateSetKey } from './ipc-ws-state';
 import { crashNetMarkCleanQuit } from './crash-net';
 
@@ -135,13 +135,16 @@ export function saveAllOpenWindows(stateStore: StateStore, winProjectMap: Map<nu
                 seen.add(mainFolder);
                 const bounds = win.getBounds();
                 const maximized = win.isMaximized();
+                // ★ 每窗口翼状态一并保存（多窗口还原时各自恢复翼）
+                const wings = getWindowWingState(win);
                 windows.push({
                     mainFolder,
                     bounds: {
                         x: bounds.x, y: bounds.y,
                         w: bounds.width, h: bounds.height,
                         maximized: maximized
-                    }
+                    },
+                    wings
                 });
             } catch (e) {
                 // 窗口可能在 isDestroyed() 和 getBounds() 之间被销毁

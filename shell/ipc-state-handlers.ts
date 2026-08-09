@@ -5,6 +5,7 @@
 // 补回重构时从 main.ts 掉落的 state / state.project / state.cloud / qgf 处理器
 // ============================================================================
 
+import * as path from 'path';
 import { ipcMain } from 'electron';
 import { StateStore, NsSchema } from './state-sqlite';
 import { StateCloud } from './state-cloud';
@@ -63,6 +64,11 @@ export function registerStateHandlersIpc(
     // ═══════════════════════════════════════════════════════════════
 
     function _getProjectStateStore(dbPath: string): StateStore {
+        // ★ dbPath 归一化：同一物理文件只允许一个 StateStore 实例（2026-08-09 F3）
+        //   根因: 各 renderer 传入路径形态不同（大小写/反斜杠/尾斜杠变体）→ Map key 不同
+        //   → 两个实例各自整库 export + tmp+rename → 后写者覆盖先写者全部数据（搜索历史丢干净）
+        dbPath = path.normalize(dbPath).replace(/\\/g, '/');
+        if (process.platform === 'win32') dbPath = dbPath.toLowerCase();
         let inst = projectStateStores.get(dbPath);
         if (!inst) {
             inst = new StateStore('', dbPath); // userDataDir unused when dbPath provided

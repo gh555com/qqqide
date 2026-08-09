@@ -129,6 +129,11 @@ const QQQ = {
         releaseProject: (projectRoot: string) => ipcRenderer.invoke('qqqide:window:releaseProject', projectRoot),
         adjustBounds: (deltaLeft: number, deltaRight: number) => ipcRenderer.invoke('qqqide:window:adjust-bounds', deltaLeft, deltaRight),
         setWingState: (leftOpen: boolean, rightOpen: boolean) => ipcRenderer.invoke('qqqide:wing:state', leftOpen, rightOpen),
+        onWingRestore: (cb: (w: { left: boolean; right: boolean }) => void) => {
+            const h = (_e: unknown, w: any) => { try { cb({ left: !!w.left, right: !!w.right }); } catch (_) {} };
+            ipcRenderer.on('qqqide:wing:restore', h);
+            return () => ipcRenderer.removeListener('qqqide:wing:restore', h);
+        },
     },
 
     // ---- devtools bridge (renderer → main process) ----
@@ -527,6 +532,21 @@ const QQQ = {
             const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[wsState.onChanged]', err); } };
             ipcRenderer.on('qqqide:ws-state:changed', handler);
             return () => ipcRenderer.removeListener('qqqide:ws-state:changed', handler);
+        },
+    },
+
+    // ---- searchState (goods search 搜索记忆 OS 级持久化, sql.js → %LOCALAPPDATA%/qqqide/search.sq3) ----
+    //   2026-08-09 F6: 用户技能偏好(搜索词/替换/范围/仅限/排除) OS 级单一真理源, 逐 key LWW 合并防多窗口大脑分裂
+    searchState: {
+        get: (key: string) => ipcRenderer.invoke('qqqide:search-state:get', key),
+        set: (key: string, value: any) => ipcRenderer.invoke('qqqide:search-state:set', key, value),
+        setNow: (key: string, value: any) => ipcRenderer.invoke('qqqide:search-state:setNow', key, value),
+        del: (key: string) => ipcRenderer.invoke('qqqide:search-state:del', key),
+        getAll: () => ipcRenderer.invoke('qqqide:search-state:getAll'),
+        onChanged: (cb: (msg: { key: string; value: any; deleted?: boolean }) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[searchState.onChanged]', err); } };
+            ipcRenderer.on('qqqide:search-state:changed', handler);
+            return () => ipcRenderer.removeListener('qqqide:search-state:changed', handler);
         },
     },
 

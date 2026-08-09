@@ -31,6 +31,8 @@
   --scrollbar-hov:  #b7a98a;
   --avatar-self:    #268bd2;
   --avatar-other:   #859900;
+  --gold:           #b58900;   /* Solarized yellow — 传统暗金 */
+  --gold-deep:      #8a6d1a;
 }
 [data-theme="dark"] {
   --bg:             #001a20;
@@ -50,6 +52,8 @@
   --bubble-shadow:  0 1px 2px rgba(0,0,0,0.25);
   --scrollbar:      #1a424a;
   --scrollbar-hov:  #2a525a;
+  --gold:           #b58900;
+  --gold-deep:      #8a6d1a;
 }
 * { box-sizing:border-box;margin:0;padding:0; }
 html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC",sans-serif;font-size:13px;color:var(--text);background:var(--bg);overflow:hidden; }
@@ -97,11 +101,9 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 .conv-item:hover { background:var(--accent-glow); }
 .conv-item.active { background:var(--accent-soft); }
 
-.conv-avatar {
-  width:42px;height:42px;border-radius:50%;flex-shrink:0;
+.conv-flag {
+  width:28px;flex-shrink:0;
   display:flex;align-items:center;justify-content:center;
-  font-size:17px;font-weight:700;color:#fff;
-  letter-spacing:-0.5px;text-transform:uppercase;
 }
 .conv-body { flex:1;min-width:0;overflow:hidden; }
 .conv-name {
@@ -128,6 +130,12 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   font-size:12px;cursor:pointer;transition:all 0.15s;
 }
 #btn-new-msg:hover { border-color:var(--accent);color:var(--accent);background:var(--accent-glow); }
+#btn-new-group {
+  width:100%;padding:8px;margin-top:6px;border:1px dashed var(--border);
+  border-radius:8px;background:transparent;color:var(--text-dim);
+  font-size:12px;cursor:pointer;transition:all 0.15s;
+}
+#btn-new-group:hover { border-color:var(--gold);color:var(--gold);background:rgba(181,137,0,0.10); }
 
 #connection-dot {
   display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;
@@ -135,6 +143,14 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 }
 #connection-dot.offline { background:var(--red); }
 #connection-label { font-size:10px;color:var(--text-dim);padding:6px 12px;display:block;text-align:center; }
+
+/* ═══ SPLITTER — 左右比例拖动 ═══ */
+#splitter {
+  width:6px;flex-shrink:0;cursor:col-resize;
+  position:relative;z-index:5;background:transparent;
+  transition:background 0.15s;
+}
+#splitter:hover,#splitter.dragging { background:rgba(181,137,0,0.3); }
 
 /* ═══ MAIN PANEL ═══ */
 #main { flex:1;display:flex;flex-direction:column;background:var(--bg-chat);min-width:0; }
@@ -154,11 +170,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   padding:12px 16px;border-bottom:1px solid var(--border);
   background:var(--bg-sidebar);
 }
-#chat-header-avatar {
-  width:36px;height:36px;border-radius:50%;flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;
-  font-size:15px;font-weight:700;color:#fff;
-}
+
 #chat-header-name { font-size:14px;font-weight:600;color:var(--text-bright); }
 #chat-header-status { font-size:11px;color:var(--text-dim);margin-top:1px; }
 #chat-header-online {
@@ -227,8 +239,10 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 #input-row textarea:focus { border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow); }
 #send-btn {
   flex-shrink:0;width:40px;height:40px;border:none;border-radius:50%;
-  background:var(--accent);color:#fff;font-size:16px;cursor:pointer;
+  background:linear-gradient(155deg,var(--gold) 0%,var(--gold-deep) 100%);
+  color:#fff;font-size:16px;cursor:pointer;
   display:flex;align-items:center;justify-content:center;
+  box-shadow:0 1px 3px rgba(0,0,0,0.25);
   transition:transform 0.1s,opacity 0.15s;
 }
 #send-btn:hover { opacity:0.88;transform:scale(1.04); }
@@ -258,6 +272,87 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   100% { transform:scale(1); }
 }
 .conv-badge.pulse { animation:badgePulse 0.3s ease-out; }
+
+/* 已读回执（仅私聊自己消息，QQ 风格） */
+.msg-read {
+  font-size:10px;color:var(--text-dim);margin-top:3px;
+  padding:0 4px;user-select:none;
+}
+
+/* Group message sender name (群消息显示发送者) */
+.msg-sender {
+  font-size:10px;color:var(--text-dim);
+  margin:0 0 2px 4px;max-width:72%;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* 群聊头部成员入口 */
+#chat-header-status { cursor:pointer; }
+#chat-header-status:hover { text-decoration:underline; }
+
+/* ─── Modal（新建群 / 群成员管理）─── */
+.modal-mask {
+  position:fixed;inset:0;background:rgba(0,0,0,0.42);z-index:99;
+  display:flex;align-items:center;justify-content:center;
+}
+.modal {
+  width:340px;max-height:82vh;
+  background:var(--bg);border:1px solid var(--border);border-radius:12px;
+  box-shadow:0 8px 30px rgba(0,0,0,0.3);
+  display:flex;flex-direction:column;overflow:hidden;
+}
+.modal-title {
+  padding:13px 16px;font-weight:700;font-size:14px;color:var(--text-bright);
+  border-bottom:1px solid var(--border-light);
+}
+.modal-body { padding:14px 16px;overflow-y:auto;flex:1; }
+.modal-actions {
+  padding:12px 16px;border-top:1px solid var(--border-light);
+  display:flex;justify-content:flex-end;gap:8px;
+}
+.modal-btn {
+  padding:6px 16px;border:1px solid var(--border);border-radius:8px;
+  background:transparent;color:var(--text);cursor:pointer;font-size:12px;
+  transition:opacity 0.12s;
+}
+.modal-btn:hover { opacity:0.85; }
+.modal-btn.primary {
+  background:linear-gradient(155deg,var(--gold),var(--gold-deep));
+  border-color:transparent;color:#fff;font-weight:600;
+}
+.modal-btn.danger { border-color:var(--red);color:var(--red); }
+.form-row { margin-bottom:10px; }
+.form-row label {
+  display:block;font-size:11px;color:var(--text-dim);margin-bottom:4px;
+}
+.form-row input,.form-row textarea {
+  width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:6px;
+  background:var(--bg-input);color:var(--text);font-size:12px;outline:none;
+}
+.form-row input:focus,.form-row textarea:focus { border-color:var(--gold); }
+.form-row textarea { height:56px;resize:none; }
+.form-tip { font-size:10px;color:var(--text-dim);margin:-4px 0 8px; }
+.gm-item {
+  display:flex;align-items:center;gap:8px;
+  padding:6px 4px;font-size:12px;border-bottom:1px solid var(--border-light);
+}
+.gm-item:last-child { border-bottom:none; }
+.gm-owner {
+  color:var(--gold);font-size:10px;border:1px solid var(--gold);
+  border-radius:4px;padding:0 4px;margin-left:auto;flex-shrink:0;
+}
+.gm-name { color:var(--text-bright);font-weight:600; }
+.gm-phone { color:var(--text-dim);font-size:11px; }
+
+/* Load earlier messages (cursor pagination) */
+.msg-load-more { text-align:center;padding:2px 0 10px; }
+.msg-load-more button {
+  padding:5px 16px;border:1px solid var(--gold);border-radius:14px;
+  background:transparent;color:var(--gold);font-size:11px;cursor:pointer;
+  transition:all 0.15s;
+}
+.msg-load-more button:hover { background:rgba(181,137,0,0.12); }
+.msg-load-more button:disabled { opacity:0.5;cursor:default; }
 </style>
 </head>
 <body>
@@ -277,9 +372,25 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     </div>
     <div id="sidebar-footer">
       <button id="btn-new-msg">+ 新建消息</button>
+      <button id="btn-new-group">+ 新建群</button>
     </div>
     <span id="connection-label"><span id="connection-dot"></span><span id="connection-text">连接中…</span></span>
   </div>
+
+  <!-- 弹窗（新建群 / 群成员管理） -->
+  <div id="modal-mask" class="modal-mask" style="display:none">
+    <div class="modal">
+      <div class="modal-title" id="modal-title"></div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-actions">
+        <button id="modal-cancel" class="modal-btn">取消</button>
+        <button id="modal-ok" class="modal-btn primary">确定</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 分割线：可拖动调整左右比例 -->
+  <div id="splitter" title="拖动调整左右比例"></div>
 
   <!-- ═══ MAIN PANEL ═══ -->
   <div id="main">
@@ -289,7 +400,6 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       <div id="empty-sub">从左侧选择一个联系人，或搜索手机号开始新对话</div>
     </div>
     <div id="chat-header">
-      <div id="chat-header-avatar"></div>
       <div>
         <div id="chat-header-name"></div>
         <div id="chat-header-status">离线</div>
@@ -316,17 +426,21 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   var _doerName = '';
   var _ws = null;
   var _wsReconnectTimer = null;
+  var _wsReconnectDelay = 0;   // 指数退避基数（0/5s/10s/20s/30s…），连上即清零
   var _convMap = {};       // peerID → {unread,lastMsg,lastTime,peerName}
   var _activePeer = null;
   var _msgCache = {};      // peerID → [{id,sender_id,content,created_at}]
   var _searchFilter = '';
-  var _avatarColors = ['#268bd2','#859900','#cb4b16','#dc322f','#6c71c4','#d33682','#2aa198','#b58900'];
+  var _bgMode = false;       // 节能模式：窗口不可见 → 断 WS，60s REST 轮询仅未读数
+  var _bgPollTimer = null;
+  var _loadingMore = false;      // 历史分页加载中（防重复点击）
+  var _noMoreOld = {};           // peerID → 已翻到最早，不再显示「加载更早」
 
   var $convList   = document.getElementById('conv-list');
   var $chatHeader = document.getElementById('chat-header');
   var $chatHdrName= document.getElementById('chat-header-name');
   var $chatHdrStat= document.getElementById('chat-header-status');
-  var $chatHdrAv  = document.getElementById('chat-header-avatar');
+
   var $chatHdrOn  = document.getElementById('chat-header-online');
   var $msgList    = document.getElementById('msg-list');
   var $inputArea  = document.getElementById('input-area');
@@ -338,6 +452,114 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   var $searchInput= document.getElementById('search-input');
   var $newPeerIn  = document.getElementById('new-peer-input');
   var $btnNewMsg  = document.getElementById('btn-new-msg');
+  var $btnNewGroup= document.getElementById('btn-new-group');
+  var $modalMask  = document.getElementById('modal-mask');
+  var $modalTitle = document.getElementById('modal-title');
+  var $modalBody  = document.getElementById('modal-body');
+  var $modalOk    = document.getElementById('modal-ok');
+  var $modalCancel= document.getElementById('modal-cancel');
+
+  // 群会话 key = 'g' + gid（与私聊 doerID/手机号天然不冲突）
+  function gkey(gid) { return 'g' + gid; }
+  function isGroupKey(key) { return key && key.charAt(0) === 'g' && /^g\d+$/.test(key); }
+
+  // ═══ SPLITTER — 左右比例拖动（160-640px 钳制，宽度持久化 localStorage）═══
+  var $sidebar = document.getElementById('sidebar');
+  var $splitter = document.getElementById('splitter');
+  function applySidebarW(w) {
+    w = Math.max(160, Math.min(640, w));
+    $sidebar.style.width = w + 'px';
+  }
+  try {
+    var savedW = parseInt(localStorage.getItem('dm.sidebarW') || '', 10);
+    if (savedW) applySidebarW(savedW);
+  } catch(_) {}
+  $splitter.addEventListener('mousedown', function(e) {
+    e.preventDefault();
+    $splitter.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    var startX = e.clientX;
+    var startW = $sidebar.getBoundingClientRect().width;
+    function onMove(ev) { applySidebarW(startW + (ev.clientX - startX)); }
+    function onUp() {
+      $splitter.classList.remove('dragging');
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      try { localStorage.setItem('dm.sidebarW', String(Math.round($sidebar.getBoundingClientRect().width))); } catch(_) {}
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
+
+  // ═══ LOCAL CACHE — 会话/消息本地缓存（localStorage 防抖落盘）═══
+  // 设计: 服务器 PG 为唯一真理源，本地仅作「秒开 + 离线可读 + 历史分页累积」加速层
+  //   · 启动: 缓存先渲染 → loadConversations/loadMessages 增量合并修正（服务器权威覆盖未读数）
+  //   · 历史: 服务器 ?before=<id> 游标分页（handler 已支持），本地按 id 合并去重
+  //   · 容量: 单会话 300 条 / 全会话 3000 条，超限按最后活跃裁剪（localStorage 5MB 安全余量）
+  var _CACHE_KEY = 'dm.cache.v1';
+  var _CACHE_MAX_PER_CONV = 300;
+  var _CACHE_MAX_TOTAL = 3000;
+  var _cacheTimer = null;
+
+  function _mergeMsgs(a, b) {
+    var byId = {};
+    (a||[]).forEach(function(m){ if (m && m.id) byId[m.id] = m; });
+    (b||[]).forEach(function(m){ if (m && m.id) byId[m.id] = m; });
+    return Object.keys(byId).map(function(id){ return byId[id]; })
+      .sort(function(x,y){ return x.id - y.id; });
+  }
+
+  function _cacheSaveSoon() {
+    if (_cacheTimer) clearTimeout(_cacheTimer);
+    _cacheTimer = setTimeout(_cacheSave, 600);
+  }
+
+  function _cacheSave() {
+    _cacheTimer = null;
+    try {
+      var msgs = {}, convs = {}, total = 0;
+      Object.keys(_msgCache).forEach(function(pid){
+        var arr = _msgCache[pid];
+        if (!Array.isArray(arr) || !arr.length) return;
+        msgs[pid] = arr.slice(-_CACHE_MAX_PER_CONV);   // 单会话只保最近 N 条
+        total += msgs[pid].length;
+      });
+      // 全局超限 → 按最后活跃裁剪最不活跃会话
+      if (total > _CACHE_MAX_TOTAL) {
+        var order = Object.keys(msgs).sort(function(x,y){
+          var tx = msgs[x][msgs[x].length-1].created_at || '';
+          var ty = msgs[y][msgs[y].length-1].created_at || '';
+          return tx < ty ? -1 : 1;
+        });
+        while (total > _CACHE_MAX_TOTAL && order.length > 1) {
+          var victim = order.shift();
+          total -= msgs[victim].length;
+          delete msgs[victim];
+        }
+      }
+      Object.keys(_convMap).forEach(function(pid){
+        var c = _convMap[pid] || {};
+        convs[pid] = {kind:c.kind||'dm', gid:c.gid||0, gname:c.gname||'', memberCnt:c.memberCnt||0,
+                      lastSender:c.lastSender||'', unread:c.unread||0, lastMsg:c.lastMsg||'',
+                      lastTime:c.lastTime||'', peerName:c.peerName||'', phone:c.phone||'', country:c.country||''};
+      });
+      localStorage.setItem(_CACHE_KEY, JSON.stringify({convs:convs, msgs:msgs, savedAt:Date.now()}));
+    } catch(_) {}   // 超限/不可用 → 放弃缓存，绝不阻塞运行
+  }
+
+  function _cacheLoad() {
+    try {
+      var raw = localStorage.getItem(_CACHE_KEY);
+      if (!raw) return;
+      var d = JSON.parse(raw);
+      if (!d || !d.convs) return;
+      _convMap = d.convs || {};
+      _msgCache = d.msgs || {};
+    } catch(_) {}
+  }
 
   // ═══ THEME ═══
   function syncTheme() {
@@ -372,6 +594,20 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       'alt="" title="'+cc.toUpperCase()+'" onerror="this.style.display=\'none\'">';
   }
 
+  // ═══ WS 心跳（应用层 keepalive：防 CF/中间设备静默断开，5s 无响应则主动重连）═══
+  var _beatTimer = null;
+  var _beatMiss = 0;
+  function startBeat() {
+    stopBeat();
+    _beatTimer = setInterval(function(){
+      if (!_ws || _ws.readyState !== 1) return;
+      try { _ws.send(JSON.stringify({type:'ping'})); _beatMiss = 0; } catch(_) {}
+    }, 30000);
+  }
+  function stopBeat() {
+    if (_beatTimer) { clearInterval(_beatTimer); _beatTimer = null; }
+  }
+
   // ═══ INIT ═══
   init();
   function init() {
@@ -381,8 +617,15 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       _doerID = did;
       _doerName = name || did;
       if (!_doerID) { setConnStatus(false, '登录信息异常'); return; }
+      _cacheLoad();   // 本地缓存秒开（离线也能看历史，服务器随后增量修正）
+      if (Object.keys(_convMap).length) {
+        renderConvList();
+        setConnStatus(false, '缓存模式 · 同步中…');
+      }
       connectWS();
       loadConversations();
+      loadGroups();
+      bindVisibility();
     });
   }
 
@@ -431,14 +674,18 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   function connectWS() {
     if (!_doerID) return;
     if (_wsReconnectTimer) { clearTimeout(_wsReconnectTimer); _wsReconnectTimer = null; }
+    // ★ 断线重连指数退避（30s 上限）：服务器重启时 5s 固定重连风暴打满 502 → 永远连不上
+    _wsReconnectDelay = Math.min((_wsReconnectDelay || 0) + 5000, 30000);
 
     var wsUrl = 'wss://cnk.gh555.com/ws?token=' + encodeURIComponent(_token);
     var ws = _ws = new WebSocket(wsUrl);
     setConnStatus(false, '连接中…');
 
     ws.onopen = function() {
+      _wsReconnectDelay = 0;  // 连上即重置退避
       setConnStatus(true, '已连接');
       ws.send(JSON.stringify({type:'sub',ch:'inbox:'+_doerID}));
+      startBeat();
     };
 
     ws.onmessage = function(e) {
@@ -446,6 +693,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         var msg = JSON.parse(e.data);
         if (msg.type === 'dm_msg' && msg.data) {
           handlePush(msg.data);
+        } else if (msg.type === 'group_msg' && msg.data) {
+          handleGroupPush(msg.data);
         } else if (msg.type === 'ok' && msg.ref === 'sub') {
           setConnStatus(true, '收件箱已就绪');
         } else if (msg.type === 'dm_online' && msg.data) {
@@ -465,8 +714,10 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     };
 
     ws.onclose = function() {
-      setConnStatus(false, '断开 · 5s 重连');
-      _wsReconnectTimer = setTimeout(connectWS, 5000);
+      stopBeat();
+      if (_bgMode) { setConnStatus(false, '节能 · 后台仅未读数'); return; }  // 节能不重连
+      setConnStatus(false, '断开 · ' + Math.round(_wsReconnectDelay/1000) + 's 重连');
+      _wsReconnectTimer = setTimeout(connectWS, _wsReconnectDelay);
     };
 
     ws.onerror = function() { /* onclose fires next */ };
@@ -475,6 +726,86 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   function setConnStatus(ok, text) {
     $connDot.className = ok ? '' : 'offline';
     $connText.textContent = text;
+  }
+
+  // ═══ 节能模式（窗口不可见 → 断 WS 长连接，60s REST 轮询只维护未读数）═══
+  // 开销对比: 常驻 WS = 服务器长连接 + 30s 心跳; 后台轮询 = 服务器零驻留 + 60s 一次 ~1KB HTTP
+  function isHidden() {
+    try { if (document.hidden) return true; } catch(_) {}
+    try { if (parent.document && parent.document.hidden) return true; } catch(_) {}
+    return false;
+  }
+  function enterBg() {
+    if (_bgMode) return;
+    _bgMode = true;
+    stopBeat();
+    if (_wsReconnectTimer) { clearTimeout(_wsReconnectTimer); _wsReconnectTimer = null; }
+    if (_ws) { try { _ws.onclose = null; _ws.close(); } catch(_) {} _ws = null; }
+    setConnStatus(false, '节能 · 后台仅未读数');
+    startBgPoll();
+  }
+  function exitBg() {
+    if (!_bgMode) return;
+    _bgMode = false;
+    stopBgPoll();
+    _wsReconnectDelay = 0;   // 前台恢复 → 重连退避归零
+    connectWS();             // 恢复实时推送
+    loadConversations();     // 补后台错过的会话
+    if (_activePeer) {
+      checkOnline(_activePeer);
+      loadMessages(_activePeer);  // 后台期间到达的消息正文
+    }
+  }
+  function startBgPoll() {
+    stopBgPoll();
+    bgPoll();
+    _bgPollTimer = setInterval(bgPoll, 60000);
+  }
+  function stopBgPoll() {
+    if (_bgPollTimer) { clearInterval(_bgPollTimer); _bgPollTimer = null; }
+  }
+  function bgPoll() {
+    if (!_token) return;
+    fetch('https://cnk.gh555.com/api/dm/conversations', {
+      headers:{'Authorization':'Bearer '+_token}
+    }).then(function(r){return r.json();}).then(function(d){
+      if (!d.conversations) return;
+      d.conversations.forEach(function(cv){
+        var c = _convMap[cv.peer_id];
+        if (!c) { c = _convMap[cv.peer_id] = {unread:0,lastMsg:'',lastTime:'',peerName:'',phone:'',country:''}; }
+        c.unread = cv.unread_count || 0;
+        if (cv.last_msg) c.lastMsg = cv.last_msg;
+        if (cv.last_time) c.lastTime = cv.last_time;
+        if (cv.peer_name) c.peerName = cv.peer_name;
+        if (cv.peer_phone) c.phone = cv.peer_phone;
+        if (cv.peer_country) c.country = cv.peer_country;
+      });
+      // 窗口级徽章由 gaea-host 自己的 WS/轮询管理；此处免 DOM 渲染（不可见无意义）
+      _cacheSaveSoon();   // 后台轮询拿到的未读数/预览也入缓存 → 重启后启动即准
+    }).catch(function(){});
+    // 群未读同样轮询（仅数据，不渲染）
+    fetch('https://cnk.gh555.com/api/group/list', {
+      headers:{'Authorization':'Bearer '+_token}
+    }).then(function(r){return r.json();}).then(function(d){
+      if (d.groups) {
+        d.groups.forEach(function(g){
+          var key = gkey(g.gid);
+          var c = _convMap[key];
+          if (!c) { c = _convMap[key] = {kind:'group', gid:g.gid, gname:g.gname||'群', memberCnt:g.member_cnt||0, unread:0, lastMsg:'', lastTime:''}; }
+          c.unread = g.unread_count || 0;
+          if (g.last_msg) c.lastMsg = g.last_msg;
+          if (g.last_time) c.lastTime = g.last_time;
+          if (g.last_sender) c.lastSender = g.last_sender;
+        });
+        _cacheSaveSoon();
+      }
+    }).catch(function(){});
+  }
+  function bindVisibility() {
+    function onVis() { if (isHidden()) enterBg(); else exitBg(); }
+    document.addEventListener('visibilitychange', onVis);
+    try { parent.document.addEventListener('visibilitychange', onVis); } catch(_) {}
+    onVis();  // 初始状态直接判定：启动即最小化 → 立即节能
   }
 
   // ═══ PUSH HANDLER ═══
@@ -522,6 +853,66 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
       }
     }
+    _cacheSaveSoon();
+  }
+
+  // ═══ 群会话 REST ═══
+  function loadGroups() {
+    if (!_token) return;
+    fetch('https://cnk.gh555.com/api/group/list', {
+      headers:{'Authorization':'Bearer '+_token}
+    }).then(function(r){return r.json();}).then(function(d){
+      if (d.groups) {
+        d.groups.forEach(function(g){
+          var key = gkey(g.gid);
+          var c = _convMap[key] || {kind:'group', gid:g.gid};
+          c.kind = 'group';
+          c.gid = g.gid;
+          c.gname = g.gname || c.gname || '群';
+          c.memberCnt = g.member_cnt || 0;
+          c.unread = g.unread_count || 0;
+          if (g.last_msg) c.lastMsg = g.last_msg;
+          if (g.last_time) c.lastTime = g.last_time;
+          if (g.last_sender) c.lastSender = g.last_sender;
+          _convMap[key] = c;
+        });
+        renderConvList();
+        _cacheSaveSoon();
+      }
+    }).catch(function(){});
+  }
+
+  // ═══ 群消息推送（WS group_msg → inbox 频道）═══
+  function handleGroupPush(d) {
+    var key = gkey(d.gid);
+    var dup = cacheHas(key, d.id);
+
+    if (!_convMap[key]) {
+      _convMap[key] = {kind:'group', gid:d.gid, gname:d.gname||'群', unread:0, lastMsg:'', lastTime:'', memberCnt:0};
+    }
+    var cv = _convMap[key];
+    cv.lastMsg = d.content;
+    cv.lastTime = d.created_at;
+    if (d.sender_name) cv.lastSender = d.sender_name;
+    if (d.gname && !cv.gname) cv.gname = d.gname;
+
+    var isSelf = d.sender_id === _doerID;
+    if (!isSelf && _activePeer !== key && !dup) {
+      cv.unread = (cv.unread||0) + 1;
+    }
+
+    if (!_msgCache[key]) _msgCache[key] = [];
+    if (!dup) _msgCache[key].push(d);
+
+    renderConvList();
+    if (_activePeer === key && !dup) {
+      appendBubble(d);
+      scrollBottom();
+      if (!isSelf) {
+        try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
+      }
+    }
+    _cacheSaveSoon();
   }
 
   // ═══ REST ═══
@@ -543,6 +934,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           };
         });
         renderConvList();
+        _cacheSaveSoon();
         // Notify parent to reset badge after initial load
         try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
       }
@@ -568,7 +960,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           if (_activePeer === peerID) _activePeer = d.peer;
           peerID = d.peer;
         }
-        _msgCache[peerID] = d.messages.reverse();
+        _msgCache[peerID] = _mergeMsgs(_msgCache[peerID] || [], d.messages);   // 服务器最新段 + 本地更早分页历史，按 id 合并去重
         // 联系人回填：历史消息携带双方手机号/国家码 → 建立联系人+国旗
         d.messages.forEach(function(m){
           var isPeerSide = m.sender_id !== _doerID;
@@ -587,8 +979,70 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           $chatHdrName.innerHTML = flagImg(cvH.country) + (cvH.country?' ':'') + escHtml(cvH.peerName || cvH.phone || peerID);
         }
         renderMessages(peerID);
+        _cacheSaveSoon();
+      } else if (_activePeer === peerID && (!_msgCache[peerID] || !_msgCache[peerID].length)) {
+        // HTTP 400：收件人不存在等 → 明确提示（原静默无反馈）；已有缓存视图则不覆盖（离线可继续读历史）
+        $msgList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">无法加载对话：' + escHtml(d.tip || d.code || '收件人不存在，请检查号码') + '</div>';
       }
-    }).catch(function(){});
+    }).catch(function(){
+      // 已有缓存视图时不覆盖（断网继续读历史），仅无缓存时提示错误
+      if (_activePeer === peerID && (!_msgCache[peerID] || !_msgCache[peerID].length)) {
+        $msgList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">网络错误，无法加载对话</div>';
+      }
+    });
+  }
+
+  // ═══ 群消息历史（?gid=&before= 游标，同私聊分页逻辑）═══
+  function loadGroupMessages(peerID) {
+    if (!_token) return;
+    var cv = _convMap[peerID] || {};
+    fetch('https://cnk.gh555.com/api/group/messages?gid='+cv.gid+'&limit=99', {
+      headers:{'Authorization':'Bearer '+_token}
+    }).then(function(r){return r.json();}).then(function(d){
+      if (d.messages) {
+        _msgCache[peerID] = _mergeMsgs(_msgCache[peerID] || [], d.messages);
+        renderMessages(peerID);
+        _cacheSaveSoon();
+      } else if (!_msgCache[peerID] || !_msgCache[peerID].length) {
+        $msgList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">无法加载群聊：' + escHtml(d.tip || d.code || '非群成员或群不存在') + '</div>';
+      }
+    }).catch(function(){
+      if (!_msgCache[peerID] || !_msgCache[peerID].length) {
+        $msgList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">网络错误，无法加载群聊</div>';
+      }
+    });
+  }
+
+  // ═══ 历史分页 — 加载更早消息（?before=<最老id> 游标，本地前插合并）═══
+  function loadMoreMessages(peerID) {
+    if (_loadingMore || !_token) return;
+    var cv = _convMap[peerID] || {};
+    var isG = cv.kind === 'group';
+    var msgs = _msgCache[peerID] || [];
+    var oldest = msgs.length ? msgs[0].id : 0;
+    if (oldest <= 1) { _noMoreOld[peerID] = true; return; }
+    _loadingMore = true;
+    var btn = document.getElementById('btn-load-more');
+    if (btn) { btn.disabled = true; btn.textContent = '加载中…'; }
+    var url = isG
+      ? 'https://cnk.gh555.com/api/group/messages?gid=' + cv.gid + '&before=' + oldest + '&limit=99'
+      : 'https://cnk.gh555.com/api/dm/messages?peer='+encodeURIComponent(peerID)+'&before='+oldest+'&limit=99';
+    fetch(url, {
+      headers:{'Authorization':'Bearer '+_token}
+    }).then(function(r){return r.json();}).then(function(d){
+      if (d.messages && d.messages.length) {
+        _msgCache[peerID] = _mergeMsgs(msgs, d.messages);
+        if (d.messages.length < 99) _noMoreOld[peerID] = true;   // 不满一页 = 已到底
+        renderMessages(peerID);
+        _cacheSaveSoon();
+      } else {
+        _noMoreOld[peerID] = true;   // 没有更早（id 空洞）→ 按钮消失
+        renderMessages(peerID);
+      }
+    }).catch(function(){
+      var b = document.getElementById('btn-load-more');
+      if (b) { b.disabled = false; b.textContent = '加载更早消息'; }
+    }).finally(function(){ _loadingMore = false; });
   }
 
   // ═══ RENDER ═══
@@ -601,19 +1055,20 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     var html = '';
     peers.forEach(function(pid){
       var cv = _convMap[pid];
-      var name = cv.peerName || cv.phone || pid;
+      var isG = cv.kind === 'group';
+      var name = isG ? (cv.gname || '群') : (cv.peerName || cv.phone || pid);
       if (filter && name.toLowerCase().indexOf(filter) === -1 && pid.indexOf(filter) === -1) return;
 
       var cls = _activePeer === pid ? ' active' : '';
       var badge = cv.unread > 0 ? '<span class="conv-badge">'+(cv.unread>99?'99+':cv.unread)+'</span>' : '';
-      var avatarLetter = (name[0]||'?').toUpperCase();
-      var avatarColor = _avatarColors[hashCode(pid) % _avatarColors.length];
-      var flag = flagImg(cv.country);  // 已建立联系的联系人 → 国家码国旗（照抄登录区）
+      // 群 → 👥 图标；私聊 → 国家码国旗（照抄登录区）
+      var icon = isG ? '<span style="font-size:16px">👥</span>' : flagImg(cv.country);
+      var preview = isG && cv.lastSender ? cv.lastSender + '：' + trunc(cv.lastMsg,28) : trunc(cv.lastMsg,40);
 
       html += '<div class="conv-item'+cls+'" data-peer="'+escHtml(pid)+'">';
-      html += '<div class="conv-avatar" style="background:'+avatarColor+'">'+avatarLetter+'</div>';
-      html += '<div class="conv-body"><div class="conv-name">'+(flag?flag+' ':'')+escHtml(name)+'</div>';
-      html += '<div class="conv-preview">'+escHtml(trunc(cv.lastMsg,40))+'</div></div>';
+      html += '<div class="conv-flag">'+(icon||'')+'</div>';
+      html += '<div class="conv-body"><div class="conv-name">'+(icon?icon+' ':'')+escHtml(name)+'</div>';
+      html += '<div class="conv-preview">'+escHtml(preview)+'</div></div>';
       html += '<div class="conv-meta"><div class="conv-time">'+fmtBrief(cv.lastTime)+'</div>'+badge+'</div>';
       html += '</div>';
     });
@@ -632,6 +1087,16 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     if (msgs.length === 0) {
       $msgList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">暂无消息，发送第一条吧</div>';
       return;
+    }
+
+    // 顶部「加载更早消息」（游标分页入口：本地最老 id > 1 且未翻到底）
+    var oldestId = msgs[0].id;
+    if (oldestId > 1 && !_noMoreOld[peerID]) {
+      var moreWrap = document.createElement('div');
+      moreWrap.className = 'msg-load-more';
+      moreWrap.innerHTML = '<button id="btn-load-more"' + (_loadingMore ? ' disabled' : '') + '>' + (_loadingMore ? '加载中…' : '加载更早消息') + '</button>';
+      $msgList.appendChild(moreWrap);
+      moreWrap.querySelector('button').addEventListener('click', function(){ loadMoreMessages(peerID); });
     }
 
     var lastDay = '';
@@ -654,11 +1119,15 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       var row = document.createElement('div');
       var mTime = d.getTime();
 
-      // Group consecutive messages from same sender within 3 minutes
-      var grouped = (m.sender_id === lastSender && (mTime - lastTime) < 180000);
+      // 群聊：对方消息每条显示发送者名且不分组（多人对话可读性优先）
+      var isG = (_convMap[peerID]||{}).kind === 'group';
+      var grouped = !isG && (m.sender_id === lastSender && (mTime - lastTime) < 180000);
       row.className = 'msg-row ' + (isSelf ? 'self' : 'other') + (grouped ? (isSelf?' self-grouped':' other-grouped') : '');
-      row.innerHTML = '<div class="msg-bubble">'+escHtml(m.content)+'</div>' +
-        (grouped ? '' : '<div class="msg-time">'+fmtTime(d)+'</div>');
+      var senderHtml = (isG && !isSelf) ? '<div class="msg-sender">'+escHtml(m.sender_name || m.sender_phone || m.sender_id)+'</div>' : '';
+      // 已读回执（仅私聊自己的消息）：read_at 由对方拉取会话时服务端标记
+      var readHtml = (!isG && isSelf) ? '<span class="msg-read">'+(m.read_at?'已读':'未读')+'</span>' : '';
+      row.innerHTML = senderHtml + '<div class="msg-bubble">'+escHtml(m.content)+'</div>' +
+        (grouped ? '' : '<div class="msg-time">'+fmtTime(d)+'</div>'+readHtml);
       $msgList.appendChild(row);
 
       lastSender = m.sender_id;
@@ -674,12 +1143,15 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     var isSelf = m.sender_id === _doerID;
     var d = new Date(m.created_at);
     var mTime = d.getTime();
-    var grouped = prev && prev.sender_id === m.sender_id && (mTime - new Date(prev.created_at).getTime()) < 180000;
+    var isG = (_convMap[_activePeer]||{}).kind === 'group';
+    var grouped = !isG && prev && prev.sender_id === m.sender_id && (mTime - new Date(prev.created_at).getTime()) < 180000;
 
     var row = document.createElement('div');
     row.className = 'msg-row '+(isSelf?'self':'other')+(grouped?(isSelf?' self-grouped':' other-grouped'):'');
-    row.innerHTML = '<div class="msg-bubble">'+escHtml(m.content)+'</div>' +
-      (grouped?'':'<div class="msg-time">'+fmtTime(d)+'</div>');
+    var senderHtml = (isG && !isSelf) ? '<div class="msg-sender">'+escHtml(m.sender_name || m.sender_phone || m.sender_id)+'</div>' : '';
+    var readHtml = (!isG && isSelf) ? '<span class="msg-read">'+(m.read_at?'已读':'未读')+'</span>' : '';
+    row.innerHTML = senderHtml + '<div class="msg-bubble">'+escHtml(m.content)+'</div>' +
+      (grouped?'':'<div class="msg-time">'+fmtTime(d)+'</div>'+readHtml);
     $msgList.appendChild(row);
   }
 
@@ -695,25 +1167,35 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     $inputArea.style.display = 'block';
 
     var cv = _convMap[peerID] || {};
-    var name = cv.peerName || cv.phone || peerID;
-    $chatHdrStat.textContent = '检查中…';
-    // ★ 头部显示名+国旗（此前缺失：从会话列表打开从不渲染名字）
-    $chatHdrName.innerHTML = flagImg(cv.country) + (cv.country?' ':'') + escHtml(name);
-    $chatHdrAv.textContent = (name[0]||'?').toUpperCase();
-    $chatHdrAv.style.background = _avatarColors[hashCode(peerID) % _avatarColors.length];
+    var isG = cv.kind === 'group';
     $chatHdrOn.style.display = 'none';
 
-    // 查在线状态
-    checkOnline(peerID);
+    if (isG) {
+      // 群：👥 群名 · N 人（成员数可点 → 成员管理弹窗）
+      $chatHdrName.innerHTML = '<span style="font-size:15px">👥</span> ' + escHtml(cv.gname || '群');
+      $chatHdrStat.textContent = (cv.memberCnt ? cv.memberCnt + ' 人' : '') + ' · 成员';
+      $chatHdrStat.title = '查看群成员';
+    } else {
+      // ★ 头部显示名+国旗（不显示数字头像圆，国旗+号码即身份）
+      var name = cv.peerName || cv.phone || peerID;
+      $chatHdrStat.textContent = '检查中…';
+      $chatHdrStat.title = '';
+      $chatHdrName.innerHTML = flagImg(cv.country) + (cv.country?' ':'') + escHtml(name);
+      // 查在线状态
+      checkOnline(peerID);
+    }
 
     // Reset unread
     cv.unread = 0;
     try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
 
-    if (!_msgCache[peerID] || _msgCache[peerID].length === 0) {
-      loadMessages(peerID);
+    if (isG) {
+      loadGroupMessages(peerID);
+    } else if (Array.isArray(_msgCache[peerID]) && _msgCache[peerID].length > 0) {
+      renderMessages(peerID);   // 缓存秒开（弱网/离线也能读）
+      loadMessages(peerID);     // 后台拉最新段增量合并修正
     } else {
-      renderMessages(peerID);
+      loadMessages(peerID);
     }
     renderConvList();
     setTimeout(function(){ $msgInput.focus(); },100);
@@ -722,6 +1204,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   function sendMessage() {
     var text = $msgInput.value.trim();
     if (!text || !_activePeer || !_token) return;
+    var cv = _convMap[_activePeer] || {};
+    if (cv.kind === 'group') { sendGroupMessage(text, cv); return; }
 
     $sendBtn.disabled = true;
     $msgInput.value = '';
@@ -762,9 +1246,49 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           appendBubble(d.msg);
           scrollBottom();
         }
+        _cacheSaveSoon();
       } else {
         $msgInput.value = text;
         // Flash input border red on error
+        $msgInput.style.borderColor = '#dc322f';
+        setTimeout(function(){ $msgInput.style.borderColor = ''; }, 1500);
+        var tip = d.tip || d.code || '发送失败';
+        $msgInput.placeholder = tip;
+        setTimeout(function(){ $msgInput.placeholder = '键入消息… (Enter 发送，Shift+Enter 换行)'; }, 3000);
+      }
+    }).catch(function(){
+      $msgInput.value = text;
+      $msgInput.style.borderColor = '#dc322f';
+      setTimeout(function(){ $msgInput.style.borderColor = ''; }, 1500);
+    }).finally(function(){
+      $sendBtn.disabled = false;
+      $msgInput.focus();
+    });
+  }
+
+  // ═══ 群消息发送（POST /api/group/send，WS 回显同 id 去重）═══
+  function sendGroupMessage(text, cv) {
+    $sendBtn.disabled = true;
+    $msgInput.value = '';
+    autoResize();
+
+    fetch('https://cnk.gh555.com/api/group/send', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
+      body:JSON.stringify({gid:cv.gid, content:text})
+    }).then(function(r){return r.json();}).then(function(d){
+      if (d.ok && d.msg) {
+        var key = gkey(d.msg.gid);
+        if (!_msgCache[key]) _msgCache[key] = [];
+        // id 去重：WS 回显可能已先到达
+        if (!cacheHas(key, d.msg.id)) {
+          _msgCache[key].push(d.msg);
+          appendBubble(d.msg);
+          scrollBottom();
+        }
+        _cacheSaveSoon();
+      } else {
+        $msgInput.value = text;
         $msgInput.style.borderColor = '#dc322f';
         setTimeout(function(){ $msgInput.style.borderColor = ''; }, 1500);
         var tip = d.tip || d.code || '发送失败';
@@ -805,7 +1329,13 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         }
         if (_activePeer === peerID) _activePeer = d.peer;
       }
-    }).catch(function(){});
+    }).catch(function(){
+      // 查询失败（网络/号码不存在）→ 不卡在「检查中…」
+      if (_activePeer === peerID) {
+        $chatHdrStat.textContent = '离线';
+        $chatHdrOn.style.display = 'none';
+      }
+    });
   }
 
   // ═══ EVENTS ═══
@@ -826,23 +1356,167 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     renderConvList();
   });
 
-  $newPeerIn.addEventListener('keydown', function(e){
-    if (e.key === 'Enter') {
-      // 纯数字，不含 +，用户自己打完整国际号码
-      var phone = $newPeerIn.value.trim().replace(/[^0-9]/g,'');
-      if (phone && phone !== _doerID) {
-        if (!_convMap[phone]) {
-          _convMap[phone] = {unread:0,lastMsg:'',lastTime:'',peerName:phone};
-        }
-        openChat(phone);
-        $newPeerIn.value = '';
-      }
+  // ★ 新建对话唯一入口：输入框 Enter 与「新建消息」按钮共用（F 修复：按钮原来只 focus 不新建）
+  function startNewChat() {
+    var raw = $newPeerIn.value.trim();
+    if (!raw) { $newPeerIn.focus(); return; }
+    var phone = raw.replace(/[^0-9]/g,'');
+    if (phone.length < 7 || phone.length > 20) {
+      flashPeerError('号码格式不对：完整手机号（带国家码），如 8615802858204');
+      return;
     }
+    if (phone === _doerID) {
+      flashPeerError('不能给自己发消息');
+      return;
+    }
+    if (!_convMap[phone]) {
+      _convMap[phone] = {unread:0,lastMsg:'',lastTime:'',peerName:phone};
+    }
+    openChat(phone);
+    $newPeerIn.value = '';
+  }
+  function flashPeerError(tip) {
+    $newPeerIn.style.borderColor = '#dc322f';
+    var old = $newPeerIn.placeholder;
+    $newPeerIn.placeholder = tip;
+    setTimeout(function(){
+      $newPeerIn.style.borderColor = '';
+      $newPeerIn.placeholder = old;
+    }, 3000);
+  }
+  $newPeerIn.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') { e.preventDefault(); startNewChat(); }
   });
 
   $btnNewMsg.addEventListener('click', function(){
-    $newPeerIn.focus();
+    startNewChat();
   });
+
+  // ═══ 通用弹窗 ═══
+  var _modalOnOk = null;
+  function openModal(title, bodyHTML, okText, onOk) {
+    $modalTitle.textContent = title;
+    $modalBody.innerHTML = bodyHTML;
+    $modalOk.textContent = okText || '确定';
+    $modalOk.style.display = '';
+    _modalOnOk = onOk || null;
+    $modalMask.style.display = 'flex';
+  }
+  function closeModal() {
+    $modalMask.style.display = 'none';
+    _modalOnOk = null;
+  }
+  $modalCancel.addEventListener('click', closeModal);
+  $modalOk.addEventListener('click', function(){
+    if (_modalOnOk) _modalOnOk();
+  });
+  $modalMask.addEventListener('click', function(e){
+    if (e.target === $modalMask) closeModal();
+  });
+
+  // ═══ 新建群 ═══
+  $btnNewGroup.addEventListener('click', function(){
+    openModal('新建群',
+      '<div class="form-row"><label>群名</label><input id="g-name" maxlength="100" placeholder="群名，如：开发小分队" autocomplete="off"></div>' +
+      '<div class="form-row"><label>成员手机号（逗号分隔，可留空先建群）</label>' +
+      '<textarea id="g-members" placeholder="8619232854249, 8615802858204"></textarea></div>' +
+      '<div class="form-tip">仅限已注册用户，非注册号码自动跳过</div>',
+      '创建', function(){
+        var name = document.getElementById('g-name').value.trim();
+        if (!name) {
+          document.getElementById('g-name').style.borderColor = '#dc322f';
+          setTimeout(function(){ var el = document.getElementById('g-name'); if (el) el.style.borderColor = ''; }, 1500);
+          return;
+        }
+        fetch('https://cnk.gh555.com/api/group/create', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
+          body:JSON.stringify({name:name})
+        }).then(function(r){return r.json();}).then(function(d){
+          if (!d.ok || !d.gid) {
+            $modalTitle.textContent = '创建失败：' + (d.tip || d.code || '未知错误');
+            return;
+          }
+          var gid = d.gid;
+          var members = document.getElementById('g-members').value.split(/[,，\s]+/).filter(Boolean);
+          var doAdd = function() {
+            // 进入群聊
+            _convMap[gkey(gid)] = {kind:'group', gid:gid, gname:name, unread:0, lastMsg:'', lastTime:'', memberCnt:0};
+            closeModal();
+            loadGroups();
+            openChat(gkey(gid));
+          };
+          if (members.length) {
+            fetch('https://cnk.gh555.com/api/group/add', {
+              method:'POST',
+              headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
+              body:JSON.stringify({gid:gid, members:members})
+            }).then(function(r){return r.json();}).then(function(addD){
+              if (!addD.ok && addD.code === 'group_full') {
+                $modalTitle.textContent = '创建失败：' + (addD.tip || '群成员超限');
+                return;
+              }
+              doAdd();
+            }).catch(doAdd);
+          } else {
+            doAdd();
+          }
+        }).catch(function(){
+          $modalTitle.textContent = '创建失败：网络错误';
+        });
+      });
+  });
+
+  // ═══ 群成员管理（头部「N 人 · 成员」点击）═══
+  $chatHdrStat.addEventListener('click', function(){
+    var cv = _convMap[_activePeer] || {};
+    if (cv.kind !== 'group' || !cv.gid) return;
+    renderGroupMembers();
+  });
+
+  function renderGroupMembers() {
+    var cv = _convMap[_activePeer] || {};
+    openModal(cv.gname + ' · 成员',
+      '<div id="gm-list" style="max-height:240px;overflow-y:auto;margin-bottom:10px;">加载中…</div>' +
+      '<div class="form-row"><label>添加成员（手机号逗号分隔）</label>' +
+      '<input id="gm-add-input" placeholder="8619232854249, 8615802858204" autocomplete="off"></div>',
+      '添加', function(){
+        var raw = document.getElementById('gm-add-input').value;
+        var members = raw.split(/[,，\s]+/).filter(Boolean);
+        if (!members.length) return;
+        fetch('https://cnk.gh555.com/api/group/add', {
+          method:'POST',
+          headers:{'Content-Type':'application/json','Authorization':'Bearer '+_token},
+          body:JSON.stringify({gid:cv.gid, members:members})
+        }).then(function(r){return r.json();}).then(function(d){
+          if (d.ok) {
+            renderGroupMembers();   // 刷新成员列表
+            loadGroups();           // 刷新成员数
+          } else {
+            $modalTitle.textContent = '添加失败：' + (d.tip || d.code || '未知错误');
+          }
+        }).catch(function(){
+          $modalTitle.textContent = '添加失败：网络错误';
+        });
+      });
+
+    fetch('https://cnk.gh555.com/api/group/members?gid=' + cv.gid, {
+      headers:{'Authorization':'Bearer '+_token}
+    }).then(function(r){return r.json();}).then(function(d){
+      var list = document.getElementById('gm-list');
+      if (!list) return;
+      if (!d.members) { list.textContent = '加载失败：' + (d.tip || d.code || '未知错误'); return; }
+      list.innerHTML = d.members.map(function(m){
+        var flag = flagImg(m.country);
+        return '<div class="gm-item">' + flag + ' <span class="gm-name">' + escHtml(m.name || m.phone || m.doer_id) + '</span>' +
+          '<span class="gm-phone">' + escHtml(m.phone || '') + '</span>' +
+          (m.is_owner ? '<span class="gm-owner">群主</span>' : '') + '</div>';
+      }).join('') || '<div style="color:var(--text-dim);font-size:12px;">暂无成员</div>';
+    }).catch(function(){
+      var list = document.getElementById('gm-list');
+      if (list) list.textContent = '加载失败：网络错误';
+    });
+  }
 
   // ═══ UTILS ═══
   function cacheHas(peerID, id) {
@@ -891,11 +1565,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  function hashCode(s) {
-    var h = 0, i;
-    for (i=0;i<s.length;i++) { h=((h<<5)-h)+s.charCodeAt(i); h|=0; }
-    return Math.abs(h);
-  }
+
 })();
 </script>
 <!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 Roam（同 ai-panel 模式：iframe 内按键不冒泡父窗口，必须显式 postMessage） -->
