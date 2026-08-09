@@ -31,7 +31,7 @@
 
     _btn = document.createElement('button');
     _btn.className = 'qqq-squad-btn';
-    _btn.style.cssText = _NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;cursor:pointer;padding:1px 8px;font-size:12px;margin-right:6px;position:relative;font-variant-numeric:tabular-nums;white-space:nowrap;';
+    _btn.style.cssText = _NO_DRAG + 'border:1px solid var(--border-color,#444);border-radius:4px;background:transparent;cursor:pointer;padding:0 10px;height:24px;font-size:16px;margin-right:6px;position:relative;font-variant-numeric:tabular-nums;white-space:nowrap;';
     _btn.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); _toggle(); });
     $lv.parentNode.insertBefore(_btn, $lv);
 
@@ -66,7 +66,7 @@
     if (!_state) { _refresh(); return; }
     _dd = document.createElement('div');
     _dd.className = 'qqq-squad-dropdown';
-    _dd.style.cssText = 'position:absolute;top:calc(100% + 2px);left:0;background:var(--background-color);border:2px dashed var(--border-color);border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,0.15);z-index:99999;min-width:180px;padding:4px 0;';
+    _dd.style.cssText = 'position:absolute;top:calc(100% + 2px);left:0;background:var(--background-color);border:2px dashed var(--border-color);border-radius:0 0 8px 8px;box-shadow:0 6px 20px rgba(0,0,0,0.15);z-index:99999;min-width:180px;max-width:320px;padding:4px 0;';
     _renderDd();
     _btn.appendChild(_dd);
     setTimeout(function () {
@@ -87,11 +87,19 @@
         var row = document.createElement('div');
         row.style.cssText = 'display:flex;align-items:center;gap:8px;height:28px;line-height:28px;padding:0 12px;font-size:12px;white-space:nowrap;';
         var tag = document.createElement('span');
-        tag.textContent = slot + '\u25A0';
-        tag.style.cssText = 'font-weight:bold;width:22px;text-align:center;flex-shrink:0;color:' + (current ? '#b58900' : (entry ? '#dc322f' : '#859900')) + ';';
+        tag.textContent = slot;
+        tag.style.cssText = 'font-weight:bold;width:20px;text-align:center;flex-shrink:0;font-size:13px;color:' + (current ? '#b58900' : (entry ? '#dc322f' : '#859900')) + ';';
         var label = document.createElement('span');
-        label.style.cssText = 'flex:1;overflow:hidden;text-overflow:ellipsis;color:var(--text-primary,#e8e8e8);';
-        label.textContent = entry ? (entry.title || entry.folder || ('窗口#' + entry.winId)) : '空闲';
+        label.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--text-primary,#e8e8e8);';
+        // 中列: 带编队前缀（x■ + 标题/文件夹名/窗口#N 兜底）
+        var labelText = '空闲';
+        if (entry) {
+          var t = String(entry.title || '').replace(/^[1-2qwaszx]\u25A0/, '');
+          var f = String(entry.folder || '').replace(/\\/g, '/').replace(/\/+$/, '');
+          var name = t || (f ? (f.split('/').pop() || f) : ('窗口#' + entry.winId));
+          labelText = slot + '\u25A0' + name;
+        }
+        label.textContent = labelText;
         var curTag = document.createElement('span');
         if (current) {
           curTag.textContent = '当前';

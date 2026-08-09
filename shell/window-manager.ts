@@ -10,7 +10,7 @@ import * as fs from 'fs';
 import * as http from 'http';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
 import { renameDevToolsViaBroker } from './py-broker';
-import { claimSquad, releaseSquad } from './squad-manager';
+import { claimSquad, releaseSquad, broadcastSquadState } from './squad-manager';
 import { SimpleWebSocket } from './cdp-sniffer';
 import { crashNetLog, crashNetSnapshot } from './crash-net';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
@@ -56,10 +56,56 @@ export function updateWingMinSize(win: BrowserWindow, leftOpen: boolean, rightOp
     win.setMinimumSize(CENTER_MIN_W + wingW, CENTER_MIN_H);
 }
 
+// ---- Wing open/closed state — 窗口记忆, 与 bounds 同链双写 (2026-08-09) ----
+// ★ 翼开关状态从项目级 only.sq3 升入窗口记忆: 双写 global.sq3 wings_bulbs + OS 级 ws.sq3 windowWings
+//   与 windowBounds 同一恢复链 → 重启后翼状态与窗口尺寸必然一致（旧 only.sq3 由 renderer 一次性迁移）
+const _windowWingMap = new Map<number, { left: boolean; right: boolean }>();
+
+export function setWindowWingState(win: BrowserWindow, leftOpen: boolean, rightOpen: boolean, stateStore?: StateStore): void {
+    if (!win || win.isDestroyed()) return;
+    const w = { left: !!leftOpen, right: !!rightOpen };
+    _windowWingMap.set(win.id, w);
+    updateWingMinSize(win, w.left, w.right);
+    try {
+        if (stateStore) stateStore.set('qqqide', 'wings_bulbs', w).catch(() => { });
+        wsStateSetKey('windowWings', w).catch(() => { });
+    } catch { /* ignore */ }
+}
+
+async function _readWingsFor(win: BrowserWindow, stateStore: StateStore): Promise<{ left: boolean; right: boolean }> {
+    // 多窗口还原时每窗口覆盖值优先（openWindows 条目自带 wings）
+    const ov = (win as any).__qqqRestoreWings;
+    if (ov && typeof ov === 'object') return { left: !!ov.left, right: !!ov.right };
+    try {
+        let v: any = null;
+        try { v = await stateStore.get('qqqide', 'wings_bulbs'); } catch { /* ignore */ }
+        if (!v) { try { v = await wsStateGetKey('windowWings'); } catch { /* ignore */ } }
+        if (v && typeof v === 'object') return { left: !!v.left, right: !!v.right };
+    } catch { /* ignore */ }
+    return { left: false, right: false };
+}
+
+export function getWindowWingState(win: BrowserWindow): { left: boolean; right: boolean } {
+    return _windowWingMap.get(win.id) || { left: false, right: false };
+}
+
+function _pushWingsTo(win: BrowserWindow, w: { left: boolean; right: boolean }): void {
+    if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
+    try { win.webContents.send('qqqide:wing:restore', w); } catch { /* ignore */ }
+}
+
 // ---- Window bounds ----
-/** 恢复链: 绿色包级 global.sq3 → OS 级 ws.sq3 → 默认（2026-08-09: ws.sq3 OS 兜底, 删包不丢） */
+/** 恢复链: 绿色包级 global.sq3 → OS 级 ws.sq3 → 默认（2026-08-09: ws.sq3 OS 兜底, 删包不丢）
+ *  ★ 2026-08-09: 翼状态与 bounds 同源同链恢复——先恢复翼（openWindows 每窗口覆盖 → global wings_bulbs → ws windowWings），
+ *    再恢复 bounds；翼开而 bounds 不含翼宽（旧数据）→ 宽度钳到最小合理值，防中间区拉伸。*/
 export async function restoreWindowBounds(win: BrowserWindow, stateStore: StateStore): Promise<void> {
     try {
+        // ① 翼状态先恢复（map + 最小尺寸 + 推送 renderer，bounds 恢复后 CSS 即时就位）
+        const wings = await _readWingsFor(win, stateStore);
+        _windowWingMap.set(win.id, wings);
+        updateWingMinSize(win, wings.left, wings.right);
+        _pushWingsTo(win, wings);
+
         let v: any = null;
         try { v = await stateStore.get('qqqide', 'window_bounds'); } catch { /* ignore */ }
         if (!v) { try { v = await wsStateGetKey('windowBounds'); } catch { /* ignore */ } }
@@ -69,13 +115,16 @@ export async function restoreWindowBounds(win: BrowserWindow, stateStore: StateS
             return;
         }
         if (typeof v.w === 'number' && typeof v.h === 'number' && v.w > 0 && v.h > 0) {
+            let w = v.w;
+            const wingW = (wings.left ? WING_WIDTH : 0) + (wings.right ? WING_WIDTH : 0);
+            if (wingW > 0 && w < CENTER_MIN_W + wingW) w = CENTER_MIN_W + wingW;
             const displays = screen.getAllDisplays();
             const anyOverlap = displays.some(d => {
                 const dx = d.bounds.x, dy = d.bounds.y, dw = d.bounds.width, dh = d.bounds.height;
-                return (v.x < dx + dw && v.x + v.w > dx && v.y < dy + dh && v.y + v.h > dy);
+                return (v.x < dx + dw && v.x + w > dx && v.y < dy + dh && v.y + v.h > dy);
             });
             if (anyOverlap) {
-                win.setBounds({ x: v.x || 0, y: v.y || 0, width: v.w, height: v.h });
+                win.setBounds({ x: v.x || 0, y: v.y || 0, width: w, height: v.h });
             }
         }
     } catch (e) { /* ignore */ }
@@ -121,7 +170,8 @@ function _saveOpenWindowsNow(closingWin: BrowserWindow, stateStore: StateStore):
                 const b = w.getBounds();
                 list.push({
                     mainFolder: n,
-                    bounds: { x: b.x, y: b.y, w: b.width, h: b.height, maximized: w.isMaximized() }
+                    bounds: { x: b.x, y: b.y, w: b.width, h: b.height, maximized: w.isMaximized() },
+                    wings: _windowWingMap.get(w.id) || { left: false, right: false }
                 });
             } catch { /* ignore */ }
         };
@@ -175,6 +225,8 @@ export function createWindow(
 
     // ★ 窗口编队认领: 创建即按序认领最近空闲槽位 (1 2 q w a s z x), 无空闲=null (>8窗口)
     claimSquad(win);
+    // ★ 新窗口认领 → 广播（他窗下拉/按钮秒同步）
+    broadcastSquadState();
 
     // ★ console-message 始终运行 — 捕获全量消息 (CDP 不再阻塞, 仅作补充)
     const _cmHandler = (
@@ -210,6 +262,10 @@ export function createWindow(
                 const obj = { x: b.x, y: b.y, w: b.width, h: b.height, maximized: win.isMaximized() };
                 stateStore.setNow('qqqide', 'window_bounds', obj).catch(() => { });
                 wsStateSetKey('windowBounds', obj).catch(() => { });
+                // ★ 翼状态与 bounds 同步落盘（最后关闭瞬间的真实翼状态）
+                const wings = _windowWingMap.get(win.id) || { left: false, right: false };
+                stateStore.setNow('qqqide', 'wings_bulbs', wings).catch(() => { });
+                wsStateSetKey('windowWings', wings).catch(() => { });
                 _saveOpenWindowsNow(win, stateStore);
             } catch { /* ignore */ }
             return; // 菜单退出已设旁路，直接放行
@@ -279,8 +335,9 @@ export function createWindow(
     win.on('closed', () => {
         (win as any).__qqqConfirmArmed = false;
         try { if (_boundsSaveTimer) { clearTimeout(_boundsSaveTimer); _boundsSaveTimer = null; } } catch (_) { }
-        // ★ 窗口关闭 → 编队槽位回到空闲
+        // ★ 窗口关闭 → 编队槽位回到空闲 + 广播（他窗秒同步）
         try { releaseSquad(win.id); } catch (_) { }
+        try { broadcastSquadState(); } catch (_) { }
         try {
             const ownedProject = _windowProjectMap.get(win.id);
             if (ownedProject) {
@@ -339,6 +396,8 @@ export function createWindow(
     // Lock window UI at 1.0 (no zoom — editor font size handles text scaling)
     win.webContents.on('did-finish-load', () => {
         win.webContents.setZoomFactor(1.0);
+        // ★ 翼状态重推（Ctrl+R 热重载后 renderer 需重新应用；主进程 map 仍在）
+        _pushWingsTo(win, _windowWingMap.get(win.id) || { left: false, right: false });
     });
 
     // Ctrl/Cmd + (+/-/0) editor font size shortcuts

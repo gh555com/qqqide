@@ -501,7 +501,29 @@
 
     // Non-closable tabs always at front (leftmost)
     var btn = createTabBtn(tab, gaeaGrp);
-    if (id === 'roam') btn.classList.add('qqq-tab-roam');
+    if (id === 'roam') {
+      btn.classList.add('qqq-tab-roam');
+      // ★ Roam 标签召回提示（2026-08-09）: hover 瞬间弹出大字号 tooltip
+      var _roamTip = null;
+      function _showRoamTip() {
+        if (!_roamTip) {
+          _roamTip = document.createElement('div');
+          _roamTip.className = 'qqq-roam-tip';
+          _roamTip.textContent = '按 Tab 或 F2 键召回我';
+          document.body.appendChild(_roamTip);
+        }
+        var r = btn.getBoundingClientRect();
+        _roamTip.style.display = 'block';
+        _roamTip.style.left = Math.max(4, Math.min(r.left, window.innerWidth - _roamTip.offsetWidth - 4)) + 'px';
+        var below = r.bottom + 8;
+        _roamTip.style.top = (below + _roamTip.offsetHeight > window.innerHeight - 4 && r.top - _roamTip.offsetHeight - 8 > 0)
+          ? (r.top - _roamTip.offsetHeight - 8) + 'px'
+          : below + 'px';
+      }
+      function _hideRoamTip() { if (_roamTip) _roamTip.style.display = 'none'; }
+      btn.addEventListener('mouseenter', _showRoamTip);
+      btn.addEventListener('mouseleave', _hideRoamTip);
+    }
     var pane = createTabPane(tab);
 
     if (tab.closable === false) {

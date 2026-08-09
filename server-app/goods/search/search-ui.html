@@ -102,26 +102,13 @@ var _openFid=null,_sel=-1;
 var _hist=[[],[],[],[],[]];
 var HMAX=200;
 var SHOWMAX=15;
-var _prjRoot=null,_qdb=null,_dbLoading=false,_dbLoaded=false;
+var _prjRoot=null,_dbLoading=false,_dbLoaded=false,_migrated=false;
 
 function _histKey(fid){return 'srch.h'+fid}
+// ★ 2026-08-09 F6: 搜索记忆 OS 级单一真理源 %LOCALAPPDATA%/qqqide/search.sq3
+//   不再依赖主项目/only.sq3（主项目未就绪历史也能读写）
 function _initDB(){
-  if(_qdb)return true;
-  if(_dbLoading)return false;
-  if(!_prjRoot){
-    try{
-      var vp=window.parent&&window.parent.qqqideViewport;
-      if(vp){var m=vp.getMainProject();if(m&&m.path)_prjRoot=m.path;}
-    }catch(_){}
-  }
-  if(!_prjRoot&&SP&&SP.value.trim())_prjRoot=SP.value.trim();
-  if(!_prjRoot)return false;
-  try{
-    _prjRoot=_prjRoot.replace(/\\/g,'/').replace(/\/$/,'');
-    if(!window.parent.qgs||!window.parent.qgs.project)return false;
-    _qdb=window.parent.qgs.project(_prjRoot+'/_qqq/alphal/only.sq3','qqq.only',{v:1,form:'doc'});
-    return true;
-  }catch(_){return false}
+  return !!(bri&&bri.searchState);
 }
 async function _ldHist(){
   if(_dbLoaded)return;
@@ -129,18 +116,64 @@ async function _ldHist(){
   _dbLoading=true;
   for(var i=0;i<5;i++){
     try{
-      var v=await _qdb.get(_histKey(i));
+      var v=await bri.searchState.get(_histKey(i));
       if(Array.isArray(v))_hist[i]=v;
       else if(typeof v==='string'){try{var p=JSON.parse(v);if(Array.isArray(p))_hist[i]=p}catch(_){}}
     }catch(_){}
   }
   _dbLoaded=true;_dbLoading=false;
-  // Seed factory default for exclude field (fid=4)
+  // Seed factory defaults (in-memory only, never persisted)
+  // fid=4 exclude: factory default always on top
   var defEx='.git/, *.log, *.json';if(_hist[4].indexOf(defEx)===-1)_hist[4].unshift(defEx);
+  // fid=3 include: factory default 'search_quest.txt' always on top (quest index files)
+  var defIn='search_quest.txt';if(_hist[3].indexOf(defIn)===-1)_hist[3].unshift(defIn);
+  _migrateFromOnly();
 }
+// ★ 一次性迁移 only.sq3 → OS search.sq3（2026-08-09 F6）: 逐 key 幂等（OS 已有该 key 跳过，
+//   迁移一半崩溃不丢剩余）; 迁后删 only.sq3 旧 key 保持项目库纯净
+async function _migrateFromOnly(){
+  if(_migrated)return;
+  if(!_prjRoot)return;
+  _migrated=true;
+  try{
+    if(!window.parent.qgs||!window.parent.qgs.project)return;
+    var oldDb=window.parent.qgs.project(_prjRoot+'/_qqq/alphal/only.sq3','qqq.only',{v:1,form:'doc'});
+    var moved=0;
+    for(var i=0;i<5;i++){
+      var k=_histKey(i);
+      try{
+        var osV=await bri.searchState.get(k);
+        if(Array.isArray(osV)&&osV.length)continue;
+        var v=await oldDb.get(k);
+        if(Array.isArray(v)&&v.length){await bri.searchState.setNow(k,v);await oldDb.del(k);moved++;}
+      }catch(_){}
+    }
+    if(moved)console.log('[search] migrated '+moved+' key(s) only.sq3 → OS search.sq3');
+  }catch(_){}
+}
+var _svRetry={};
 function _svHist(fid){
-  if(!_qdb){_initDB();if(!_qdb)return}
-  try{_qdb.setNow(_histKey(fid),_hist[fid]).catch(function(){})}catch(_){}
+  if(!_initDB()){_retrySv(fid);return}
+  try{bri.searchState.setNow(_histKey(fid),_hist[fid]).catch(function(){_retrySv(fid)})}catch(_){_retrySv(fid)}
+}
+// ★ 写盘失败重试（2026-08-09）：瞬时失败时静默丢 → 排队重试最多 12 次
+function _retrySv(fid){
+  if((_svRetry[fid]||0)>=12)return;
+  _svRetry[fid]=(_svRetry[fid]||0)+1;
+  setTimeout(function(){_svRetry[fid]--;if(_initDB()){try{bri.searchState.setNow(_histKey(fid),_hist[fid]).catch(function(){_retrySv(fid)})}catch(_){_retrySv(fid)}}else{_retrySv(fid)}},1500);
+}
+// ★ 跨窗口/跨绿色包秒级同步（2026-08-09）: 别的窗口写了历史 → 本窗口内存刷新（多窗口大脑不分裂）
+if(bri&&bri.searchState&&bri.searchState.onChanged){
+  bri.searchState.onChanged(function(msg){
+    if(!msg||!msg.key||msg.key.indexOf('srch.h')!==0)return;
+    var fid=parseInt(msg.key.slice(6),10);
+    if(isNaN(fid)||fid<0||fid>4)return;
+    if(_openFid===fid)return;  // 正在展开编辑中的框不打断
+    bri.searchState.get(msg.key).then(function(v){
+      if(Array.isArray(v))_hist[fid]=v;
+      else if(typeof v==='string'){try{var p=JSON.parse(v);if(Array.isArray(p))_hist[fid]=p}catch(_){}}
+    }).catch(function(){});
+  });
 }
 _ldHist();
 function _add(fid,v){
@@ -160,11 +193,18 @@ function _show(fid){
   if(!_dbLoaded){_ldHist()}
   var inp=INPS[fid],qv=(inp.value||'').trim();
   var vals=_hist[fid].slice();
-  // Exclude field (fid=4): always ensure factory default is visible on top
+  // Factory defaults always visible on top (in-memory only)
+  // fid=4 exclude: .git/, *.log, *.json
   if(fid===4){
     var defEx='.git/, *.log, *.json';
     vals=vals.filter(function(x){return x!==defEx});
     vals.unshift(defEx);
+  }
+  // fid=3 include: search_quest.txt
+  if(fid===3){
+    var defIn='search_quest.txt';
+    vals=vals.filter(function(x){return x!==defIn});
+    vals.unshift(defIn);
   }
   if(qv){vals=vals.filter(function(x){return _fuzzyMatch(x,qv)})}else{vals=vals.slice(0,SHOWMAX)}
   if(!vals||!vals.length)return;
@@ -385,7 +425,9 @@ window.addEventListener('message',function(e){
     if(Q.value)trg();Q.focus()
   }
 });
-setTimeout(function(){try{var vp=window.parent&&window.parent.qqqideViewport;if(vp){var m=vp.getMainProject();if(m){if(!SP.value)SP.value=m.path;_prjRoot=m.path.replace(/\\/g,'/').replace(/\/$/,'');_ldHist()}}}catch(_){}},200);
+// ★ F6: 历史加载不再等主项目就绪（OS 库零依赖）; _prjRoot 仅用于 SP 默认值 + only.sq3 迁移
+setTimeout(function(){try{var vp=window.parent&&window.parent.qqqideViewport;if(vp){var m=vp.getMainProject();if(m){if(!SP.value)SP.value=m.path;_prjRoot=m.path.replace(/\\/g,'/').replace(/\/$/,'')}}}catch(_){}
+_ldHist();},200);
 })();
 </script>
 <div class="mo" id="confirm-mo" style="display:none"><div><h3>确认替换</h3><div class="stt2" id="confirm-summary"></div><div class="prv" id="confirm-preview"></div><div class="btns"><button class="btn" id="confirm-cancel">取消</button><button class="btn pri" id="confirm-ok">确认替换</button></div></div></div>

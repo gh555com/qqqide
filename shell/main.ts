@@ -54,6 +54,7 @@ import { registerKopeIpc } from './ipc-kope';
 import { registerRoamIpc } from './ipc-roam';
 import { registerAiStateIpc } from './ipc-ai-state';
 import { registerWsStateIpc, wsStateGetKey } from './ipc-ws-state';
+import { registerSearchStateIpc } from './ipc-search-state';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
@@ -280,6 +281,7 @@ function registerAllIpc(): void {
     registerRoamIpc();
     registerAiStateIpc();
     registerWsStateIpc();
+    registerSearchStateIpc();
     registerKopeIpc();
     registerGaeaProcessIpc();
     registerMediaIpc(mediaService);
@@ -648,6 +650,8 @@ app.whenReady().then(async () => {
                     if (_projectWindowMap.has(normalized)) continue;
 
                     const newWin = createWindow(portable.root, portable.cache, APP_VERSION, lspBridge, downloadService, stateStore);
+                    // ★ 每窗口翼状态覆盖值 → restoreWindowBounds 优先采纳（多窗口各自还原自己的翼）
+                    (newWin as any).__qqqRestoreWings = w.wings || null;
                     _windowProjectMap.set(newWin.id, normalized);
                     _projectWindowMap.set(normalized, newWin.id);
 

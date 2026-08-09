@@ -46,6 +46,10 @@
   var _inboxWs = null;
   var _inboxDoerID = '';
   var _inboxReconnectTimer = null;
+  var _inboxReconnectDelay = 0;   // 指数退避（5s×2 封顶 30s），连上清零
+  var _inboxHidden = false;       // 主窗口不可见 → 节能（断 WS + 60s 轮询求和）
+  var _inboxBgPollTimer = null;
+  var _inboxVisBound = false;
   var _inboxBadgeEl = null;
   var _inboxBtnEl = null;
 
@@ -404,8 +408,68 @@
     _updateInboxBadge();
   }
 
+  // ★ 节能：主窗口不可见 → 断 WS 长连接，60s REST 轮询只求和未读数（零长连接驻留）
+  function _inboxIsHidden() {
+    try { if (document.hidden) return true; } catch (_) {}
+    return false;
+  }
+  function _inboxEnterBg() {
+    if (_inboxHidden) return;
+    _inboxHidden = true;
+    if (_inboxReconnectTimer) { clearTimeout(_inboxReconnectTimer); _inboxReconnectTimer = null; }
+    if (_inboxWs) { try { _inboxWs.onclose = null; _inboxWs.close(); } catch (_) {} _inboxWs = null; }
+    _inboxStartBgPoll();
+  }
+  function _inboxExitBg() {
+    if (!_inboxHidden) return;
+    _inboxHidden = false;
+    _inboxStopBgPoll();
+    _initInboxWS();
+  }
+  function _inboxStartBgPoll() {
+    _inboxStopBgPoll();
+    _inboxBgPoll();
+    _inboxBgPollTimer = setInterval(_inboxBgPoll, 60000);
+  }
+  function _inboxStopBgPoll() {
+    if (_inboxBgPollTimer) { clearInterval(_inboxBgPollTimer); _inboxBgPollTimer = null; }
+  }
+  function _inboxBgPoll() {
+    var token = '';
+    try { if (window.qqqLogin && window.qqqLogin.getAuthToken) token = window.qqqLogin.getAuthToken(); } catch (_) {}
+    if (!token) return;
+    fetch('https://cnk.gh555.com/api/dm/conversations', { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.conversations) return;
+        var sum = 0;
+        d.conversations.forEach(function (cv) { sum += (cv.unread_count || 0); });
+        _inboxUnread = sum;
+        _updateInboxBadge();
+      })
+      .catch(function () {});
+    // 群未读（q150 F16）：与私聊同通道求和
+    fetch('https://cnk.gh555.com/api/group/list', { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.groups) return;
+        var sum = 0;
+        d.groups.forEach(function (g) { sum += (g.unread_count || 0); });
+        _inboxUnread = sum;
+        _updateInboxBadge();
+      })
+      .catch(function () {});
+  }
+
   function _initInboxWS() {
     if (!goods.has('inbox')) return;
+    if (!_inboxVisBound) {
+      _inboxVisBound = true;
+      document.addEventListener('visibilitychange', function () {
+        if (_inboxIsHidden()) _inboxEnterBg(); else _inboxExitBg();
+      });
+      if (_inboxIsHidden()) { _inboxEnterBg(); return; }  // 启动即最小化 → 直接节能
+    }
     if (_inboxWs && _inboxWs.readyState === WebSocket.OPEN) return;
 
     function tryConnect() {
@@ -437,6 +501,7 @@
       var ws = _inboxWs = new WebSocket(wsUrl);
 
       ws.onopen = function () {
+        _inboxReconnectDelay = 0;
         ws.send(JSON.stringify({ type: 'sub', ch: 'inbox:' + _inboxDoerID }));
       };
 
@@ -450,13 +515,21 @@
               _inboxUnread++;
               _updateInboxBadge();
             }
+          } else if (msg.type === 'group_msg' && msg.data) {
+            // 群消息（q150 F16）：非自己发的计入徽章
+            if (msg.data.sender_id !== _inboxDoerID) {
+              _inboxUnread++;
+              _updateInboxBadge();
+            }
           }
         } catch (_) {}
       };
 
       _inboxWs.onclose = function () {
         _inboxWs = null;
-        _inboxReconnectTimer = setTimeout(tryConnect, 5000);
+        if (_inboxHidden) return;  // 节能模式不重连（REST 轮询接管未读数）
+        _inboxReconnectDelay = Math.min((_inboxReconnectDelay || 0) + 5000, 30000);
+        _inboxReconnectTimer = setTimeout(tryConnect, _inboxReconnectDelay);
       };
 
       _inboxWs.onerror = function () { /* onclose follows */ };

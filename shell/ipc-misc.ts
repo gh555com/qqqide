@@ -12,7 +12,7 @@ import * as cp from 'child_process';
 import { URL } from 'url';
 import { BootConfig, getWebappBaseUrl } from './boot';
 import { addAssetRoot, _assetFileWorkspaceRoots, diskFreeBatch } from './asset-protocol';
-import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm, updateWingMinSize } from './window-manager';
+import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, saveEditorFontSize, setEditorFontSize, broadcastEditorFontSize, bypassCloseConfirm, updateWingMinSize, setWindowWingState } from './window-manager';
 import { StateStore } from './state-sqlite';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
@@ -484,7 +484,8 @@ ${escapedPaths}
     // ---- wing state: renderer tells main process which wings are open → update min size ----
     ipcMain.handle('qqqide:wing:state', async (e, leftOpen: boolean, rightOpen: boolean) => {
         const win = BrowserWindow.fromWebContents(e.sender);
-        updateWingMinSize(win, leftOpen, rightOpen);
+        // ★ 2026-08-09: 同步持久化翼状态（双写 global.sq3 wings_bulbs + ws.sq3 windowWings）
+        setWindowWingState(win, leftOpen, rightOpen, stateStore);
     });
 
     // ---- editor font size (was zoom — now controls text size, not window scale) ----

@@ -93,6 +93,12 @@ export class StateStore extends EventEmitter {
     // ★ batched DB export (avoids per-key db.export() → one export per ~50ms window)
     private _saveDbPending = false;
     private _saveDbTimer: NodeJS.Timeout | null = null;
+    // ★ 项目级库磁盘合并签名（2026-08-09 F3: 防跨进程/跨实例整库互踩）
+    //   仅 dbPath 构造的 project store 启用（global 单实例无竞争）
+    private _enableDiskMerge = false;
+    private _mergeSig = '';
+    // ★ .prev 轮换备份（2026-08-09 F3: 损坏恢复链 主 → .prev → .bak → 空库）
+    private _prevEnabled = false;
     // ★ in-memory read cache (avoids append() re-reading from DB each time)
     private _memCache: Map<string, any> = new Map();
     // ★ 全局数据库标记：用于阻止 quest 相关 namespace 误写入全局 global.sq3
@@ -119,6 +125,10 @@ export class StateStore extends EventEmitter {
             this.dbPath = dbPath;
             this.outboxDir = path.join(dbDir, 'outbox');
             this._isGlobal = false;
+            // ★ 项目级库（only.sq3/quest.sq3）启用磁盘合并 + .prev 轮换：
+            //   多窗口/多实例（dev+绿色包同跑）并发写同一文件时防整库覆盖丢失
+            this._enableDiskMerge = true;
+            this._prevEnabled = true;
         } else {
             // Global: db in userData/alphal/ (global.sq3 + backups/outbox)
             const alphalDir = path.join(userDataDir, 'alphal');
@@ -154,14 +164,14 @@ export class StateStore extends EventEmitter {
                     // Quarantine corrupt DB
                     const bak = this.dbPath + '.corrupt.' + Date.now();
                     try { fs.renameSync(this.dbPath, bak); } catch { /* ignore */ }
-                    // ★ 优先尝试从最近的 .bak 恢复，没有才建空库
-                    if (!this._tryRestoreFromBak()) {
+                    // ★ 恢复链：.prev（轮换备份）→ .bak（旧格式）→ 空库（2026-08-09 F3）
+                    if (!this._tryRestoreBackup()) {
                         this._db = new this._SQL.Database();
                     }
                 }
             } else {
-                // ★ 文件不存在 → 尝试 .bak 恢复（可能是上次腐败隔离后还没来得及写新数据）
-                if (!this._tryRestoreFromBak()) {
+                // ★ 文件不存在 → 尝试 .prev/.bak 恢复（可能是上次腐败隔离后还没来得及写新数据）
+                if (!this._tryRestoreBackup()) {
                     this._db = new this._SQL.Database();
                 }
             }
@@ -356,14 +366,16 @@ export class StateStore extends EventEmitter {
         }
     }
 
-    /** ★ 运行时腐败隔离： rename 坏库 → 创建空库 → 重建 schema → 标记脏数据全部重写 */
+    /** ★ 运行时腐败隔离： rename 坏库 → .prev 恢复或空库 → 重建 schema → 标记脏数据全部重写 */
     private _quarantineAndRebuild(): void {
         try {
             // 1. 隔离坏库
             const bak = this.dbPath + '.corrupt.' + Date.now();
             try { fs.renameSync(this.dbPath, bak); } catch { /* ignore */ }
-            // 2. 创建新库
-            this._db = new this._SQL.Database();
+            // 2. 优先从 .prev/.bak 恢复（2026-08-09 F3：防隔离即全丢），失败才建空库
+            if (!this._tryRestoreBackup()) {
+                this._db = new this._SQL.Database();
+            }
             // 3. 重建 schema（从 registry 恢复所有 namespace）
             this._initSchema();
             // 4. 清除缓存 + 标记所有脏 key（触发下次 save 全部重写）
@@ -393,12 +405,23 @@ export class StateStore extends EventEmitter {
         }
     }
 
-    /** ★ 尝试从最近的 .bak 文件恢复数据库。成功返回 true。 */
-    private _tryRestoreFromBak(): boolean {
+    /** ★ 恢复链：.prev（最新轮换备份）→ .bak.{ts}（旧格式）→ 失败。成功返回 true。 */
+    private _tryRestoreBackup(): boolean {
         try {
             const dir = path.dirname(this.dbPath);
             const base = path.basename(this.dbPath);
-            // 找最近的 .bak 文件
+            // 1. .prev 轮换备份（每次落盘前 copy，最新完好版）
+            const prevPath = path.join(dir, base + '.prev');
+            if (fs.existsSync(prevPath)) {
+                try {
+                    const buf = fs.readFileSync(prevPath);
+                    this._db = new this._SQL.Database(buf);
+                    this._db.exec('SELECT 1'); // 验证可读
+                    console.warn('[state-sqlite] ⚠ restored from .prev: ' + prevPath);
+                    return true;
+                } catch { /* .prev 也坏 → 继续 */ }
+            }
+            // 2. 旧格式 .bak.{ts}（历史遗留）
             const bakFiles = fs.readdirSync(dir)
                 .filter((f: string) => f.startsWith(base + '.bak.'))
                 .sort()
@@ -417,7 +440,7 @@ export class StateStore extends EventEmitter {
                 }
             }
         } catch {
-            // 目录不存在或无 bak 文件
+            // 目录不存在或无备份文件
         }
         return false;
     }
@@ -745,6 +768,12 @@ export class StateStore extends EventEmitter {
         if (!this._readyOk || !this._db) return;
         this._saveDbPending = false;
         if (this._saveDbTimer) { clearTimeout(this._saveDbTimer); this._saveDbTimer = null; }
+        // ★ 先重放 debounce 中的 pending 写入 → 内存 DB 即全量（2026-08-09）
+        this._flushPendingWrites();
+        // ★ 写前磁盘合并（仅项目级库）：另一实例已落盘的 key 补入内存，防整库互踩
+        this._mergeDiskIntoMemory();
+        // ★ 写前 .prev 轮换（仅项目级库）：保留上一完好版，损坏可回退
+        if (this._prevEnabled) { try { await fs.promises.copyFile(this.dbPath, this.dbPath + '.prev'); } catch { /* ignore */ } }
         const tmp = this.dbPath + '.tmp.' + Date.now();
         try {
             const data = this._db.export();
@@ -756,7 +785,6 @@ export class StateStore extends EventEmitter {
             const buf = Buffer.from(data);
             // 确保父目录存在（兜底：构造函数中已创建，但可能被外部删除）
             try { fs.mkdirSync(path.dirname(this.dbPath), { recursive: true }); } catch { /* ignore */ }
-            // ★ sq3 降级为轻量索引后不再需要 .bak 备份（数据真理源在 f{n}.json）
             await fs.promises.writeFile(tmp, buf as any);
             // 原子 rename，含重试（Windows 上可能因瞬时文件锁失败）
             await this._atomicRename(tmp, this.dbPath);
@@ -792,6 +820,11 @@ export class StateStore extends EventEmitter {
         if (!this._readyOk || !this._db) return;
         this._saveDbPending = false;
         if (this._saveDbTimer) { clearTimeout(this._saveDbTimer); this._saveDbTimer = null; }
+        // ★ 先重放 debounce 中的 pending 写入 → 内存 DB 即全量（2026-08-09）
+        this._flushPendingWrites();
+        // ★ 写前磁盘合并 + .prev 轮换（仅项目级库）
+        this._mergeDiskIntoMemory();
+        if (this._prevEnabled) { try { fs.copyFileSync(this.dbPath, this.dbPath + '.prev'); } catch { /* ignore */ } }
         const tmp = this.dbPath + '.tmp.' + Date.now();
         try {
             const data = this._db.export();
@@ -802,7 +835,6 @@ export class StateStore extends EventEmitter {
             }
             const buf = Buffer.from(data);
             try { fs.mkdirSync(path.dirname(this.dbPath), { recursive: true }); } catch { /* ignore */ }
-            // ★ sq3 降级为轻量索引后不再需要 .bak 备份（数据真理源在 f{n}.json）
             fs.writeFileSync(tmp, buf as any);
             // 原子 rename（绝不先删后改，防崩溃丢数据）
             try {
@@ -822,6 +854,39 @@ export class StateStore extends EventEmitter {
         } finally {
             try { fs.unlinkSync(tmp); } catch { /* ignore */ }
         }
+    }
+
+    // ★ 写前磁盘合并（2026-08-09 F3）：另一实例/窗口已落盘的 key 补入内存 DB。
+    //   只补缺（内存已有 → 跳过，LWW 保留本实例更新），绝不覆盖本实例数据。
+    //   签名不变（mtime+size）则跳过，正常单实例场景零开销。
+    private _mergeDiskIntoMemory(): void {
+        if (!this._enableDiskMerge || !this._readyOk || !this._db) return;
+        try {
+            if (!fs.existsSync(this.dbPath)) return;
+            const st = fs.statSync(this.dbPath);
+            const sig = st.mtimeMs + ':' + st.size;
+            if (sig === this._mergeSig) return;
+            const buf = fs.readFileSync(this.dbPath);
+            if (!buf || !buf.length) return;
+            const disk = new this._SQL.Database(buf);
+            try {
+                disk.exec('SELECT 1'); // 验证磁盘文件可读
+                const stmt = disk.prepare('SELECT ns, key, value, meta FROM state');
+                try {
+                    while (stmt.step()) {
+                        const row = stmt.getAsObject();
+                        const exists = this._stmtGet('SELECT 1 FROM state WHERE ns=? AND key=?', [row.ns, row.key]);
+                        if (!exists) {
+                            this._db.run(
+                                'INSERT OR REPLACE INTO state (ns, key, value, meta, updated_at) VALUES (?,?,?,?,?)',
+                                [row.ns, row.key, row.value, row.meta, Date.now()]
+                            );
+                        }
+                    }
+                } finally { stmt.free(); }
+                this._mergeSig = sig;
+            } finally { disk.close(); }
+        } catch { /* 磁盘损坏/不可读 → 跳过合并，保持现状 */ }
     }
 
     // ----- flush --------------------------------------------------------------
