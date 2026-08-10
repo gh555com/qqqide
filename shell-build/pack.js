@@ -90,9 +90,18 @@ function tryRun(cmd, args, opts = {}) {
   return r.status === 0;
 }
 
-// 2) electron-builder dir build
-function builderDir() {
-  run('npx', ['electron-builder', cfg.plat, cfg.arch, '--dir', '--config.compression=store']);
+// ★ electron-builder 工具缓存钉定（2026-08-10）：C 启动器便携层把 LOCALAPPDATA
+// 重定向到绿色包 Data → app-builder 去绿色包缓存找 winCodeSign 缺失 → GitHub
+// 直连超时 → 打包失败。钉定 ELECTRON_BUILDER_CACHE 到项目 Data（预置完整
+// winCodeSign-2.6.0，rcedit 改图标/版本信息必需）→ 零下载确定性；mirror 兜底 npmmirror。
+function ebEnv() {
+  const cacheDir = path.join(ROOT, 'Data', 'LocalAppData', 'electron-builder', 'Cache');
+  try { fs.mkdirSync(cacheDir, { recursive: true }); } catch (_) { }
+  return {
+    ...process.env,
+    ELECTRON_BUILDER_CACHE: cacheDir,
+    ELECTRON_BUILDER_BINARIES_MIRROR: 'https://npmmirror.com/mirrors/electron-builder-binaries/',
+  };
 }
 
 // Manual pure-prebuilt path: skip electron-builder entirely and assemble from
@@ -370,6 +379,18 @@ async function repairUnpacked(unpacked) {
 // 3.5) inject root-level config files into unpacked // 3.6) inject native launcher (win only) — moves all Electron runtime to core/, places C splash as qqqide.exe
 function injectLauncher(unpacked) {
   if (!target.startsWith('win-')) { return; }
+
+  // ★ 运行时状态文件禁入 r（2026-08-10）: engines/.versions.json + .downloads.json 是
+  //   开发机组件安装状态（含 verified_at），打进 r 会与 versions.json 清单错配。
+  //   新 r 组件版本由清单唯一决定，component-checker 首启全量重建（bundled 跳过下载）。
+  const _engRuntime = path.join(appResourcesDir(unpacked) || '', 'engines');
+  for (const _f of ['.versions.json', '.downloads.json']) {
+    const _fp = path.join(_engRuntime, _f);
+    if (fs.existsSync(_fp)) {
+      fs.rmSync(_fp, { force: true });
+      console.log('[pack] pruned runtime state: engines/' + _f);
+    }
+  }
   const launcherSrc = path.join(ROOT, 'launcher', 'qqqide.exe');
   if (!fs.existsSync(launcherSrc)) {
     console.warn('[pack] launcher binary not found, skipping:', launcherSrc);
@@ -409,10 +430,18 @@ function injectLauncher(unpacked) {
   }
   console.log('[pack] moved Electron runtime -> gh555.com/');
 
-  // ★ 写入 .version → C 启动器 hot-update 版本比对唯一真理源
-  const versionFile = path.join(coreDir, '.version');
-  fs.writeFileSync(versionFile, APP_VERSION, 'utf8');
-  console.log('[pack] wrote .version =', APP_VERSION);
+  // ★ 唯一版本权威 = versions.json（2026-08-10 重构）
+  //   版本 = 精确组件矩阵：id(清单编号) + launcher + shell + webapp + rank 快照。
+  //   任何组件版本变更（含降级）只能通过发新 r（新 versions.json）完成。
+  const versions = buildVersionsJson();
+  const manifestJson = JSON.stringify(versions);
+  fs.writeFileSync(path.join(coreDir, 'versions.json'), manifestJson, 'utf8');
+  console.log('[pack] wrote versions.json =', manifestJson);
+
+  // ★ 过渡兼容（2026-08-10 至客户端全量 ≥ 本版本）: 旧启动器残缺判定要求 next/.version 存在，
+  //   新 r 必须双写 .version（旧启动器可交换）→ 新启动器不再读它。全量铺开后删除此行。
+  fs.writeFileSync(path.join(coreDir, '.version'), APP_VERSION, 'utf8');
+  console.log('[pack] wrote .version (transition compat) =', APP_VERSION);
 
   // ── 复制 C 启动器为根 qqqide.exe ──
   const launcherDst = path.join(unpacked, 'qqqide.exe');
@@ -427,6 +456,157 @@ function injectLauncher(unpacked) {
     fs.cpSync(cfgSrc, path.join(dataDir, 'launcher-config.json'), { force: true });
     console.log('[pack] injected launcher-config.json -> gh555.com/Data/');
   }
+
+  // ★ 本地单元状态预注入 r（gh555.com/Data/units.json）: 全新安装首启即有本地状态
+  //   → 第一次更新即可走增量（不必先全量 r 建立状态）。Data 不参与任何单元，随交换保留。
+  //   必须在此注入（打包 payload 之前）—— buildUnits 在 r 组装之后才执行，届时已太迟。
+  try {
+    const luPath = path.join(coreDir, 'Data', 'units.json');
+    fs.mkdirSync(path.dirname(luPath), { recursive: true });
+    const lu = { id: APP_VERSION, units: {
+      launcher: versions.launcher,
+      core: ELECTRON_VERSION,
+      app: versions.shell,
+      'shell-out': versions.shell,
+      webapp: versions.webapp,
+    } };
+    fs.writeFileSync(luPath, JSON.stringify(lu));
+    console.log('[pack] injected Data/units.json (fresh-install unit state)');
+  } catch (e) {
+    console.warn('[pack] Data/units.json inject failed:', e.message);
+  }
+
+  // ★ factory_version — 出厂版本唯一注入点（wq-ping 读 userData/alphal/factory_version）
+  //   保险库 = gh555.com/Data（交换守卫自动备份恢复）；升级时新包 Data 被用户 Data 覆盖
+  //   → 已装用户保留首装版本（符合"首次上报后永不改"），全新安装拿到本包版本。
+  //   2026-08-10：以 versions.json 的 id 为准（与左下角/启动器同一权威）。
+  try {
+    const fvDir = path.join(coreDir, 'Data', 'alphal');
+    fs.mkdirSync(fvDir, { recursive: true });
+    fs.writeFileSync(path.join(fvDir, 'factory_version'), APP_VERSION, 'utf8');
+    console.log('[pack] injected factory_version =', APP_VERSION, '-> gh555.com/Data/alphal/');
+  } catch (e) {
+    console.warn('[pack] factory_version inject failed:', e.message);
+  }
+}
+
+// ★ 唯一版本权威数据（2026-08-10）: versions.json 与单元清单共用同一对象，保证逐字一致
+function buildVersionsJson() {
+  let launcherVersion = 'unknown';
+  try {
+    const lc = fs.readFileSync(path.join(ROOT, 'launcher', 'launcher.c'), 'utf8');
+    const lm = lc.match(/#define LAUNCHER_VERSION\s+"(\S+)"/);
+    if (lm) launcherVersion = lm[1];
+  } catch { }
+  const rankSnapshot = {};
+  try {
+    const man = JSON.parse(fs.readFileSync(path.join(ROOT, 'engines', 'manifest.json'), 'utf8'));
+    if (man && man.components) {
+      for (const [name, def] of Object.entries(man.components)) {
+        if (def && typeof def.version === 'string') rankSnapshot[name] = def.version;
+      }
+    }
+  } catch { }
+  return {
+    id: APP_VERSION,
+    launcher: launcherVersion,
+    shell: APP_VERSION,
+    webapp: APP_VERSION,
+    rank: rankSnapshot,
+  };
+}
+
+function copyTreeExcluding(src, dst, excludes) {
+  // excludes 支持多段路径（'resources/app'）→ 精确匹配相对路径，父目录递归、命中段整枝跳过
+  const ex = (excludes || []).map(p => p.split('/').filter(Boolean).join('/'));
+  function walk(s, d, rel) {
+    fs.mkdirSync(d, { recursive: true });
+    for (const ent of fs.readdirSync(s, { withFileTypes: true })) {
+      const r = rel ? rel + '/' + ent.name : ent.name;
+      if (ex.includes(r)) continue;
+      const sp = path.join(s, ent.name);
+      const dp = path.join(d, ent.name);
+      if (ent.isDirectory()) walk(sp, dp, r);
+      else fs.copyFileSync(sp, dp);
+    }
+  }
+  walk(src, dst, '');
+}
+
+// ★ 单元增量传输产物（2026-08-10 B 方案）
+//   哲学: 增量 = 纯传输优化，正确性零责任；版本权威仍是 versions.json（F33）。
+//   单元 = 架构层目录（launcher/core/app/shell-out/webapp 固定 5 个），单元数不随
+//   项目复杂度增长——新文件自动落入 core（gh555.com 根补集）或 app（resources/app 补集）。
+//   engines/* 不参与增量（component-checker 独立按 manifest 管理，防覆盖组件升级）。
+//   每个单元 = 7zCon.sfx + 7z（与 r 同机制），路径相对 gh555.com 根，解压进 gh555.com-next。
+//   产物: dist-pack/qqqide-up/units.json + dist-pack/qqqide-up/u/{id}/*.7z（版本不可变，CDN 可缓存）
+function buildUnits(unpacked, rFile) {
+  if (!target.startsWith('win-')) return;
+  const sz7 = find7z();
+  if (!sz7) return;
+  const sfx = path.join(path.dirname(sz7), '7zCon.sfx');
+  if (!fs.existsSync(sfx)) throw new Error('7zCon.sfx not found');
+
+  const distRoot = path.join(ROOT, 'dist-pack');
+  const upRoot = path.join(distRoot, 'qqqide-up');
+  const unitDir = path.join(upRoot, 'u', APP_VERSION);
+  const stageRoot = path.join(upRoot, '_stage');
+  if (fs.existsSync(upRoot)) fs.rmSync(upRoot, { recursive: true, force: true });
+  fs.mkdirSync(unitDir, { recursive: true });
+
+  const coreDir = path.join(unpacked, 'gh555.com');
+  const appDir = path.join(coreDir, 'resources', 'app');
+  const versions = buildVersionsJson();
+
+  const units = [
+    { name: 'launcher', rel: 'launcher-next.exe', version: versions.launcher,
+      src: path.join(ROOT, 'launcher', 'qqqide.exe'), single: true, exclude: [] },
+    { name: 'core', rel: '', version: ELECTRON_VERSION,
+      src: coreDir, single: false, exclude: ['Data', 'versions.json', '.version', 'launcher-next.exe', 'resources/app'] },
+    { name: 'app', rel: 'resources/app', version: versions.shell,
+      src: appDir, single: false, exclude: ['shell-out', 'server-app', 'webapp', 'engines'] },
+    { name: 'shell-out', rel: 'resources/app/shell-out', version: versions.shell,
+      src: path.join(appDir, 'shell-out'), single: false, exclude: [] },
+    { name: 'webapp', rel: 'resources/app/server-app', version: versions.webapp,
+      src: path.join(appDir, 'server-app'), single: false, exclude: [] },
+  ];
+
+  const manifestUnits = [];
+  for (const u of units) {
+    if (!fs.existsSync(u.src)) {
+      console.warn('[pack] unit source missing, skipping:', u.name, u.src);
+      continue;
+    }
+    const stage = path.join(stageRoot, u.name);
+    const dstRoot = u.rel ? path.join(stage, ...u.rel.split('/').filter(Boolean)) : stage;
+    if (u.single) {
+      fs.mkdirSync(path.dirname(dstRoot), { recursive: true });
+      fs.copyFileSync(u.src, dstRoot);
+    } else {
+      copyTreeExcluding(u.src, dstRoot, u.exclude);
+    }
+    const arc = path.join(unitDir, u.name + '.7z');
+    const r = cp.spawnSync(sz7, ['a', '-t7z', '-mx=9', '-md=64m', '-mmt=on', arc, '.'],
+      { stdio: 'inherit', cwd: stage });
+    if (r.status !== 0) throw new Error('unit 7z failed: ' + u.name);
+    const sfxBlob = arc + '.sfx';
+    cp.spawnSync('cmd', ['/c', 'copy', '/b', sfx, '+', arc, sfxBlob], { stdio: 'inherit' });
+    fs.rmSync(arc);
+    fs.renameSync(sfxBlob, arc);
+    manifestUnits.push({
+      name: u.name, rel: u.rel, version: u.version,
+      bytes: fs.statSync(arc).size,
+      file: `u/${APP_VERSION}/${u.name}.7z`,
+    });
+    console.log('[pack] unit:', u.name, '(' + (u.rel || '(root)') + ')',
+      Math.round(fs.statSync(arc).size / 1024), 'KB');
+  }
+  fs.rmSync(stageRoot, { recursive: true, force: true });
+
+  const manifest = { id: APP_VERSION, r_bytes: fs.statSync(rFile).size, versions, units: manifestUnits };
+  fs.writeFileSync(path.join(upRoot, 'units.json'), JSON.stringify(manifest));
+
+  console.log('[pack] units manifest:', manifest.id, manifestUnits.length, 'units, r_bytes =', manifest.r_bytes);
 }
 
 // 3.6b) inject VC runtime (app-local deployment) — assets/runtimes/win32-x64 → engines/vc_runtime/win32-x64
@@ -733,10 +913,12 @@ function prunePythonSlim(unpacked) {
   let saved = 0;
   // Slim Qt modules safe to remove — verified 2026-08-09: this PySide2 build's
   // QtCore load chain REQUIRES Qt5Qml/Qt5Quick/Qt5Quick3D core + Network/OpenGL/PrintSupport
-  // (pyside2.abi3.dll delay-loads them); the 9 below are proven unneeded (binary-search verified).
+  // (pyside2.abi3.dll delay-loads them); the 8 below are proven unneeded (binary-search verified).
+  // ★ Qt5Xml.dll kept (2026-08-09): QtXml.pyd ships in the package — deleting the DLL would
+  //   make `import PySide2.QtXml` fail with DLL load failed. Keep pair for zero import breakage.
   const p2Slim = ['Qt5Quick3DUtils.dll', 'Qt5QuickControls2.dll', 'Qt5QuickParticles.dll',
                   'Qt5QuickShapes.dll', 'Qt5QuickTemplates2.dll', 'Qt5QuickTest.dll',
-                  'Qt5QuickWidgets.dll', 'Qt5Xml.dll', 'opengl32sw.dll'];
+                  'Qt5QuickWidgets.dll', 'opengl32sw.dll'];
   if (fs.existsSync(p2Dir)) {
     for (const f of fs.readdirSync(p2Dir)) {
       const fp = path.join(p2Dir, f);
@@ -775,6 +957,19 @@ function dirSizeFn(p, isDir) {
 
 // 3.12) clean runtime-generated directories from unpacked tree (should not be in zip)
 function cleanRuntimeDirs(unpacked) {
+  // ★ 根级泄漏根治（2026-08-09）: dev 模式把便携 userData 写到 node_modules/electron/dist/Data
+  //   + debug.log → electron-builder 原样复制进 unpacked 根 → 曾随包泄漏（device_id/wq-ping.log 等）。
+  //   整个删除；gh555.com/Data（launcher-config.json）是合法位置，不在根级，不受影响。
+  const rootData = path.join(unpacked, 'Data');
+  if (fs.existsSync(rootData)) {
+    fs.rmSync(rootData, { recursive: true, force: true });
+    console.log('[pack] cleaned root runtime dir: Data/ (dev-mode leakage)');
+  }
+  const dbgLog = path.join(unpacked, 'debug.log');
+  if (fs.existsSync(dbgLog)) {
+    fs.rmSync(dbgLog);
+    console.log('[pack] cleaned root debug.log (dev-mode leakage)');
+  }
   // Old flat structure (for cleanup of existing trees)
   const oldFlat = ['cache', 'crashDumps', 'temp', 'logs'];
   // New nested: all under Data/
@@ -922,6 +1117,9 @@ print('[pack] python zip done:', out)
   fs.writeFileSync(latestTxt, APP_VERSION, 'utf8');
   console.log('[pack] kept r + latest.txt for launcher update');
 
+  // ★ 单元增量产物（B 方案传输层）
+  buildUnits(unpacked, rFile);
+
   // Stage: qqqide.exe + r
   const stageDir = path.join(distRoot, '_stage');
   if (fs.existsSync(stageDir)) fs.rmSync(stageDir, { recursive: true, force: true });
@@ -979,6 +1177,9 @@ function packSfx(unpacked) {
   fs.writeFileSync(latestTxt, APP_VERSION, 'utf8');
   console.log('[pack] kept r + latest.txt for launcher update');
 
+  // ★ 单元增量产物（B 方案传输层）
+  buildUnits(unpacked, rFile);
+
   // stage: qqqide.exe + r → zip → rename to .exe
   const stage = path.join(distRoot, '_sfx');
   if (fs.existsSync(stage)) fs.rmSync(stage, { recursive: true, force: true });
@@ -1018,7 +1219,7 @@ function packSfx(unpacked) {
       // 交叉/平台不匹配：先预热 @electron/get 缓存 → electron-builder 命中缓存零网络
       await warmElectronCache();
     }
-    run('npx', ebArgs);
+    run('npx', ebArgs, { env: ebEnv() });
     unpacked = findUnpackedDir();
     if (!unpacked) {
       console.error('[pack] electron-builder produced no unpacked dir, aborting');

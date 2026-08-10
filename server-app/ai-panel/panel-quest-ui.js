@@ -240,7 +240,8 @@ async function _ensureQuestDir(root, qName, fName) {
 //   避免静默返回 null → 上游误认为目录不存在 → 创建重复目录（§漏洞①）
 async function _findQuestDirByPrefix(root, questId) {
     var bridge = window.parent && window.parent.qqqideBridge;
-    if (!bridge || !bridge.fs) return null;    var questsDir = root + '/_qqq/quests/';;
+    if (!bridge || !bridge.fs) return null;
+    var questsDir = root + '/_qqq/quests/';;
     var lastErr = null;
     for (var attempt = 0; attempt < 3; attempt++) {
         try {
@@ -450,8 +451,8 @@ function _estimateTokensFull() {
 
     // ═══ 第一部分：messages 数组 ═══
 
-    // ── 1. 服务端甲壳 ──
-    var guardChars = 14964;
+    // ── 1. 服务端甲壳（动态：core/guard-meta.js 唯一入口，出厂快照兑底）──
+    var guardChars = (typeof QQQGuardMeta !== 'undefined' && QQQGuardMeta.chars) ? QQQGuardMeta.chars() : 21691;
     var guardTok = _tk(guardChars);
 
     // ── 2. msg[0] — 客户端 persistent 系统消息 ──
@@ -995,7 +996,7 @@ window.addEventListener('message', async function (e) {
                     // ★ 捕获压缩前背包重量（aq 开局显示用）：guard + Z/biscuit/facts(压缩前) + 提示词 + tools + body
                     var _preBackpackK = 0;
                     try {
-                        var _bpChars0 = 14964;
+                        var _bpChars0 = (typeof QQQGuardMeta !== 'undefined' && QQQGuardMeta.chars) ? QQQGuardMeta.chars() : 21691;
                         var _convPre = ag.conversation || [];
                         for (var _cpi = 0; _cpi < _convPre.length; _cpi++) {
                             var _cmpPre = _convPre[_cpi];
@@ -1045,7 +1046,7 @@ window.addEventListener('message', async function (e) {
                     ag._lastApiPromptTokens = 0;
                     ag._lastApiTotalTokens = 0;
                     ag._lastApiCompletionTokens = 0;
-                                    var _intent = _buildSendIntent(qid, _bulletRef, { type: 'compress', compressFloor: true, tierIndex: 4, noTools: true, backpackEstK: _preBackpackK });              if (typeof questStore !== 'undefined' && questStore.save) {
+                    if (typeof questStore !== 'undefined' && questStore.save) {
                         questStore.save(qid, { lastApiPromptTokens: 0, lastApiTotalTokens: 0, lastApiCompletionTokens: 0 }).catch(function () { });
                     }
                     _respond({
@@ -1054,9 +1055,21 @@ window.addEventListener('message', async function (e) {
                     });
                     try {
                         var _savedInput = typeof $input !== 'undefined' ? $input.value : '';
-                        var _bulletRef = '从以下对话历史提取关键事实列表（尽量提取30-40条，每条一行以"- "开头，仅提取不编造，直接回复不要调用任何工具）：\n\n📎"' + _bulletPath + '"';
+                        var _bulletRef = 'Extract a list of key project facts from the conversation history below (aim for 30-40 facts, one per line starting with "- ", extract facts only — do not invent anything, reply directly without calling any tool):\n\n📎"' + _bulletPath + '"';
+                        // ★ 2026-08-10 增量提取：已有 fx 清单 → 覆盖为增量提示词，只提取新增/变化
+                        //   （q147 F96/F97 实锤：原料块零重叠但事实必然重复——A 行跨楼层复用 + AI 无 fx 视野）
+                        var _fxRef = '';
+                        try {
+                            var _convFx = ag.conversation || [];
+                            for (var _fxi2 = 0; _fxi2 < _convFx.length; _fxi2++) {
+                                if (_convFx[_fxi2]._facts && _convFx[_fxi2].content) { _fxRef = _convFx[_fxi2].content; break; }
+                            }
+                        } catch (_) {}
+                        if (_fxRef) {
+                            _bulletRef = 'You are a project fact archivist.\x0a\x0a[EXISTING FACT LIST] (extracted in previous sessions; may contain historical duplicates — trust the content over the list):\x0a' + _fxRef + '\x0a\x0a[NEW CONVERSATION HISTORY] (source material to extract from):\x0a📎"' + _bulletPath + '"\x0a\x0aTask: Based on the EXISTING FACT LIST, extract ONLY facts that are NEW or CHANGED in the NEW CONVERSATION HISTORY.\x0a- One fact per line, starting with "- ", extract facts only — do not invent anything\x0a- NEVER repeat a fact that already exists in the list\x0a- If there are no new or changed facts, reply exactly "No new facts"\x0a- Reply directly without calling any tool';
+                        }
                         if (typeof _buildSendIntent === 'function' && typeof _executeSend === 'function') {
-                            var _intent = _buildSendIntent(qid, _bulletRef, { type: 'compress', compressFloor: true, tierIndex: 4, noTools: true });
+                            var _intent = _buildSendIntent(qid, _bulletRef, { type: 'compress', compressFloor: true, tierIndex: 4, noTools: true, backpackEstK: _preBackpackK });
                             await _executeSend(_intent);
                         }
                         if (typeof $input !== 'undefined') { $input.value = _savedInput; }

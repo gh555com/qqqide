@@ -4,6 +4,8 @@
 // py-broker.ts — Python broker 生命周期管理
 // 启动时 spawn py-broker.py 作为常驻子进程，stdin/stdout JSON 行协议通信。
 // 用途：跨平台窗口标题改名（Win: ctypes / Mac: osascript / Linux: wmctrl）
+// ★ 监督者模式（2026-08-10）: 常驻监听服务（pynput 全局热键）零触发入口，
+//   必须主动监督 — exit/error/ready 超时 自动拉起，指数退避 2s→30s，成功就绪即归零。
 // Python 路径唯一真理源: engines/manifest.json → getComponentBin('python')
 //
 // ★ node-broker 优先：如果 koffi 可用（Windows），先走 node-broker 零子进程路径。
@@ -30,13 +32,42 @@ let _ready = false;
 let _readyError: string | null = null;
 let _buf = '';
 
-export function startPyBroker(portableRoot: string): void {
-    if (_proc) return;
+// ── 监督者状态（2026-08-10）──────────────────────────
+let _portableRoot: string | null = null;
+let _shuttingDown = false;
+let _restartTimer: NodeJS.Timeout | null = null;
+let _restartDelay = 2000;          // 指数退避起点 2s
+let _readyTimer: NodeJS.Timeout | null = null;  // ready 握手看门狗
+const RESTART_MAX_DELAY = 30000;   // 退避上限 30s
+const READY_TIMEOUT_MS = 15000;    // spawn 后 15s 未 ready 视为僵尸，杀后重启
+// ──────────────────────────────────────────────────
 
-    const pyExe = getComponentBin(portableRoot, 'python');
+export function startPyBroker(portableRoot: string): void {
+    _portableRoot = portableRoot;
+    if (_proc) return;
+    if (_restartTimer) { clearTimeout(_restartTimer); _restartTimer = null; }
+    _spawn();
+}
+
+/** 监督者：exit/error/ready 超时后按指数退避自动拉起 */
+function _scheduleRestart(reason: string): void {
+    if (_shuttingDown || _restartTimer) return;
+    console.log('[py-broker] supervisor: auto-restart in ' + _restartDelay + 'ms (' + reason + ')');
+    _restartTimer = setTimeout(() => {
+        _restartTimer = null;
+        _spawn();
+    }, _restartDelay);
+    _restartDelay = Math.min(_restartDelay * 2, RESTART_MAX_DELAY);
+}
+
+function _spawn(): void {
+    if (_shuttingDown || _proc || !_portableRoot) return;
+
+    const pyExe = getComponentBin(_portableRoot, 'python');
     if (!pyExe) {
-        console.log('[py-broker] Python not installed. DevTools rename disabled. ' +
-            'Python will auto-install as rank0 component on next boot.');
+        console.log('[py-broker] Python not installed yet, retry scheduled (rank0 auto-install)');
+        _readyError = 'python not installed';
+        _scheduleRestart('python-not-installed');
         return;
     }
 
@@ -51,7 +82,7 @@ export function startPyBroker(portableRoot: string): void {
     }
 
     try {
-        const logFile = path.join(portableRoot, 'Data', 'Logs', '_py_broker.log');
+        const logFile = path.join(_portableRoot, 'Data', 'Logs', '_py_broker.log');
         _proc = spawn(pyExe, ['-u', scriptPath, '--log-file', logFile], {
             stdio: ['pipe', 'pipe', 'pipe'],
             env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' },
@@ -60,8 +91,16 @@ export function startPyBroker(portableRoot: string): void {
     } catch (e: any) {
         console.log('[py-broker] FATAL: spawn failed:', e.message || e);
         _readyError = 'spawn failed: ' + (e.message || e);
+        _proc = null;
+        _scheduleRestart('spawn-failed');
         return;
     }
+
+    // ready 握手看门狗：spawn 成功但 15s 不报 ready → 僵尸进程，杀后由 exit 路径重启
+    _readyTimer = setTimeout(() => {
+        console.log('[py-broker] supervisor: ready-timeout (' + READY_TIMEOUT_MS + 'ms), killing stale process');
+        try { if (_proc) _proc.kill(); } catch { /* ignore */ }
+    }, READY_TIMEOUT_MS);
 
     console.log('[py-broker] spawned pid=' + _proc.pid);
 
@@ -76,6 +115,8 @@ export function startPyBroker(portableRoot: string): void {
                 if (msg.type === 'ready') {
                     _ready = true;
                     _readyError = null;
+                    _restartDelay = 2000; // 自愈成功，退避归零
+                    if (_readyTimer) { clearTimeout(_readyTimer); _readyTimer = null; }
                     console.log('[py-broker] ready, platform=' + msg.platform);
                 } else if (msg.type === 'event') {
                     try { if (_eventHandler) { _eventHandler(msg); } } catch { /* ignore */ }
@@ -96,18 +137,23 @@ export function startPyBroker(portableRoot: string): void {
     _proc.on('error', (e: Error) => {
         console.log('[py-broker] process error:', e.message || e);
         _readyError = 'process error: ' + (e.message || e);
+        if (_readyTimer) { clearTimeout(_readyTimer); _readyTimer = null; }
+        _proc = null;
+        _scheduleRestart('process-error');
     });
 
     _proc.on('exit', (code, signal) => {
         console.log('[py-broker] exited code=' + code + ' signal=' + signal);
         _ready = false;
         _readyError = 'exited code=' + code;
+        if (_readyTimer) { clearTimeout(_readyTimer); _readyTimer = null; }
         _proc = null;
         for (const [id, p] of _pending) {
             clearTimeout(p.timer);
             p.reject(new Error('py-broker exited'));
         }
         _pending.clear();
+        _scheduleRestart('exit');
     });
 }
 
@@ -172,6 +218,9 @@ export async function renameDevToolsViaBroker(mainWin: BrowserWindow, projName: 
 }
 
 export function stopPyBroker(): void {
+    _shuttingDown = true; // 显式停止（退出 IDE）→ 永不重启
+    if (_restartTimer) { clearTimeout(_restartTimer); _restartTimer = null; }
+    if (_readyTimer) { clearTimeout(_readyTimer); _readyTimer = null; }
     if (!_proc) return;
     try {
         _proc.stdin!.write(JSON.stringify({ action: 'exit', id: 0 }) + '\n');

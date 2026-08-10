@@ -359,6 +359,14 @@ function getAgent() {
     } catch (e) { return null; }
 }
 
+// ── 服务端甲壳字符数（动态：主窗口 core/guard-meta.js 唯一入口；出厂快照兑底）──
+function _guardChars() {
+    var g = (typeof window !== 'undefined' && window.QQQGuardMeta) ? window.QQQGuardMeta
+        : (window.parent && window.parent.QQQGuardMeta) ? window.parent.QQQGuardMeta : null;
+    if (g && g.chars) { try { return g.chars(); } catch (_) { } }
+    return 21691;
+}
+
 // ── 构建格子（零遗漏）──
 function buildCells(ag) {
     var cells = [];
@@ -367,11 +375,12 @@ function buildCells(ag) {
     var ctx = ag._ctx || null;
 
     // ═══ 服务端甲壳 ═══
+    var _gc = _guardChars();
     cells.push({
         id: 'guard', type: 'guard', role: 'guard',
         label: 'Server Guard', group: '注入',
-        content: '[服务端 Go 注入到 messages[0] 之前，客户端不可见]\n[文件: gaea/guard/system-prompt.txt，14964 字符]',
-        chars: 14964
+        content: '[服务端 Go 注入到 messages[0] 之前，客户端不可见]\n[文件: gaea/guard/system-prompt.txt，' + _gc + ' 字符]',
+        chars: _gc
     });
 
     // ═══ 工具定义 ═══
@@ -450,6 +459,9 @@ function buildCells(ag) {
             if (m._biscuit) {
                 group = '压缩上下文';
                 label = '压缩饼干 (biscuit)';
+            } else if (m._facts) {
+                group = '压缩上下文';
+                label = '压缩 · 事实 (fx)';
             } else {
                 group = m._dynamic ? '压缩上下文' : '系统消息';
                 label = 'System #' + (i + 1) + (m._dynamic ? ' (动态)' : '');
@@ -463,7 +475,18 @@ function buildCells(ag) {
         });
     }
 
-    // ═══ V12 压缩摘要 ═══
+    // ═══ V12 压缩摘要（顺序对齐背包容序：fx → biscuit）═══
+    if (ctx && ctx.facts && ctx.facts.length) {
+        var ft = '';
+        for (var fi = 0; fi < ctx.facts.length; fi++) {
+            ft += (fi > 0 ? '\n' : '') + ctx.facts[fi];
+        }
+        cells.push({
+            id: 'comp-facts', type: 'system', role: 'system',
+            label: '压缩 · 事实 × ' + ctx.facts.length, group: '压缩上下文',
+            content: ft, chars: ft.length
+        });
+    }
     if (ctx) {
         if (ctx.biscuitLines && ctx.biscuitLines.length > 0) {
             var blSummary = ctx.biscuitLines.length + ' floors compressed, ';
@@ -479,17 +502,6 @@ function buildCells(ag) {
             });
         }
         // ★ V13: DE 概念消除，不再显示 DE 格子
-    }
-    if (ctx && ctx.facts && ctx.facts.length) {
-        var ft = '';
-        for (var fi = 0; fi < ctx.facts.length; fi++) {
-            ft += (fi > 0 ? '\n' : '') + ctx.facts[fi];
-        }
-        cells.push({
-            id: 'comp-facts', type: 'system', role: 'system',
-            label: '压缩 · 事实 × ' + ctx.facts.length, group: '压缩上下文',
-            content: ft, chars: ft.length
-        });
     }
 
     return cells;

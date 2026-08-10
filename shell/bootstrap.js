@@ -1,26 +1,17 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// bootstrap.js — Pre-loader: checks for pending shell-out updates BEFORE
-// loading main.js. Runs on every app start, takes <5ms if no update pending.
+// bootstrap.js — 壳层唯一入口（预加载器）
 //
-// This is PLAIN JS to ensure require('./main.js') is a DYNAMIC call to a
-// separate file — essential for hot-update: main.js must be independently
-// replaceable without re-bundling bootstrap.
-//
-// Flow:
-//   1. Check if cache/staging/shell-out-next/ exists
-//   2. If yes → atomic swap with shell-out/ → log → proceed
-//   3. If no  → proceed directly
-//   4. Always: require('./main.js') to run the real app
+// ★ 2026-08-10 重构：壳层冷更通道（staging/shell-out-next swap）已整体删除。
+//   壳层更新 100% 随 r 整包原子交换（C 启动器托管），版本 = versions.json 清单编号。
+//   本文件职责仅剩：动态 require('./main.js') + 加载失败兜底弹窗。
 // ============================================================================
 
 'use strict';
 
 var fs = require('fs');
 var path = require('path');
-
-var BOOTSTRAP_VERSION = '1.0.0';
 
 function bootstrapLog(msg) {
     try {
@@ -34,97 +25,8 @@ function bootstrapLog(msg) {
     }
 }
 
-function applyPendingUpdate() {
-    try {
-        var appDir = __dirname; // shell-out/
-        var rootDir = path.dirname(process.execPath);
-
-        // Staging lives under Data/Cache/
-        var stagingDir = path.join(rootDir, 'Data', 'Cache', 'staging', 'shell-out-next');
-
-        if (!fs.existsSync(stagingDir)) {
-            return false;
-        }
-
-        // Verify staging contains at least main.js (sanity check)
-        var stagingMain = path.join(stagingDir, 'main.js');
-        if (!fs.existsSync(stagingMain)) {
-            bootstrapLog('bootstrap: staging missing main.js, clearing');
-            fs.rmSync(stagingDir, { recursive: true, force: true });
-            return false;
-        }
-
-        bootstrapLog('bootstrap: applying pending shell-out update...');
-
-        // Backup current shell-out
-        var backupDir = path.join(rootDir, 'Data', 'Cache', 'staging', 'shell-out-old');
-        try { fs.rmSync(backupDir, { recursive: true, force: true }); } catch (e) {}
-        try {
-            fs.cpSync(appDir, backupDir, { recursive: true });
-            bootstrapLog('bootstrap: backed up current shell-out');
-        } catch (e) {
-            bootstrapLog('bootstrap: backup failed: ' + (e.message || e));
-            // Continue anyway — staging is verified
-        }
-
-        // Atomic swap: clear appDir, copy staging in
-        var entries = fs.readdirSync(appDir);
-        for (var i = 0; i < entries.length; i++) {
-            var entry = entries[i];
-            if (entry === 'bootstrap.js') continue; // don't delete ourselves
-            var p = path.join(appDir, entry);
-            try { fs.rmSync(p, { recursive: true, force: true }); } catch (e) {}
-        }
-
-        var stagingEntries = fs.readdirSync(stagingDir);
-        for (var j = 0; j < stagingEntries.length; j++) {
-            var entry2 = stagingEntries[j];
-            var src = path.join(stagingDir, entry2);
-            var dst = path.join(appDir, entry2);
-            try { fs.cpSync(src, dst, { recursive: true }); } catch (e) {}
-        }
-
-        // Cleanup staging
-        try { fs.rmSync(stagingDir, { recursive: true, force: true }); } catch (e) {}
-
-        // ★ 版本号迁移：shell-version 只在 swap 成功后才写（防谎报）
-        var stagingVerFile = path.join(appDir, '.staging-version');
-        if (fs.existsSync(stagingVerFile)) {
-            try {
-                var newVer = fs.readFileSync(stagingVerFile, 'utf8').trim();
-                if (newVer) {
-                    var verFile = path.join(rootDir, 'Data', 'shell-version');
-                    var dataDir = path.join(rootDir, 'Data');
-                    try { fs.mkdirSync(dataDir, { recursive: true }); } catch (e) {}
-                    fs.writeFileSync(verFile, newVer, 'utf8');
-                    bootstrapLog('bootstrap: shell-version → ' + newVer);
-                }
-                fs.unlinkSync(stagingVerFile);
-            } catch (e) {
-                bootstrapLog('bootstrap: staging-version migration failed: ' + (e.message || e));
-            }
-        }
-
-        bootstrapLog('bootstrap: shell-out updated successfully');
-
-        return true;
-    } catch (e) {
-        bootstrapLog('bootstrap: update failed: ' + (e.message || e));
-        return false;
-    }
-}
-
-// ---- Entry ----
 (function main() {
-    bootstrapLog('bootstrap v' + BOOTSTRAP_VERSION + ' starting');
-    var updated = applyPendingUpdate();
-    if (updated) {
-        bootstrapLog('bootstrap: update applied, loading main.js');
-    } else {
-        bootstrapLog('bootstrap: no pending update, loading main.js directly');
-    }
-
-    // Load the real main process entry
+    bootstrapLog('bootstrap starting');
     try {
         require('./main.js');
     } catch (e) {

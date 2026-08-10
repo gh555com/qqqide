@@ -260,6 +260,8 @@ var _orig={};
 <script src="core/viewport-machine.js"></script>
 <script src="core/editor-breadcrumb.js"></script>
 <script src="core/editor.js"></script>
+<!-- 服务端甲壳元信息（背包估算动态源，goods iframe 经 parent 读取） -->
+<script src="core/guard-meta.js"></script>
 
 <script src="core/ai-viewport.js?v=2"></script>
 <!-- paste-image goods 已删除（2026-08-02）：paste-router + anchor-map + ViewZone 管线完全替代 -->
@@ -269,11 +271,11 @@ var _orig={};
 <script src="goods/rage/rage.js"></script>
 <script src="goods/search/search.js"></script>
 <script src="goods/git/git.js"></script>
+<script src="goods/kmd/kmd.js"></script>
 <script src="goods/conv/conv.js"></script>
 <script src="goods/kope-a/kope-a.js"></script>
 <script src="goods/window-there/window-there.js"></script>
 <script src="goods/dm/dm.js"></script>
-<script src="core/update-ui.js"></script>
 <script src="core/shell-lang.js"></script>
 <script src="core/shell-menu.js"></script>
 <script src="core/shell-wings.js"></script>
@@ -284,7 +286,7 @@ var _orig={};
 <script src="core/shell.js"></script>
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./service-worker.js?v=331').catch(() => {});
+    navigator.serviceWorker.register('./service-worker.js?v=333').catch(() => {});
   }
 </script>
 

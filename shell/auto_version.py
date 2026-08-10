@@ -11,8 +11,7 @@
 #   1. shell/version.ts       (源码)
 #   2. shell-out/main.js      (编译产物)
 #   3. package.json           (版本字段)
-#   4. Data/shell-version     (运行时版本标记)
-#   5. Data/webapp-version    (运行时版本标记)
+# ★ 2026-08-10 重构: Data/shell-version / Data/webapp-version 已废弃（版本唯一权威 = versions.json）
 #
 # 用法:
 #   python shell/auto_version.py <项目根目录>
@@ -141,16 +140,8 @@ def main():
         print("[auto_version] 未成功更新任何文件", file=sys.stderr)
         sys.exit(1)
 
-    # ── 更新运行时版本标记 (Data/shell-version, Data/webapp-version) ──
-    data_dir = root / "Data"
-    try:
-        data_dir.mkdir(parents=True, exist_ok=True)
-        (data_dir / "shell-version").write_text(new_ver, encoding='utf-8')
-        (data_dir / "webapp-version").write_text(new_ver, encoding='utf-8')
-        print(f"[auto_version] Data/shell-version → {new_ver}")
-        print(f"[auto_version] Data/webapp-version → {new_ver}")
-    except Exception as e:
-        print(f"[auto_version] 写入版本标记失败: {e}", file=sys.stderr)
+    # ★ 2026-08-10 重构: Data/shell-version / Data/webapp-version 已废弃
+    #   （版本唯一权威 = r 内 gh555.com/versions.json，由 pack.js 生成）
 
     print(f"[auto_version] 完成: {old_ver} → {new_ver}")
 

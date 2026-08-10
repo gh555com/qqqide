@@ -278,9 +278,41 @@ $input.addEventListener('keydown', function (e) {
         if (_switching) return;  // ★ quest 切换中 → 禁止一切操作
         if (_sending) return;
         if (_activeAgent && _activeAgent._compressing) return;
-        // ★ 发送锁：防连点回车重复发送
-        if (typeof _execSendBusy !== 'undefined' && _execSendBusy) return;
-        if (streaming) { stopStream(); } else { sendMessage(); }
+        // ★ 窗口级发送锁（三面板共享 agent → 锁必须跨面板原子，防两翼并发发送 → q182 三层楼事故）
+        if (typeof _sendBusyIsHeld === 'function' && _sendBusyIsHeld()) return;
+        // streaming 时 Enter = 停止生成（不发送、不置锁，避免锁泄漏）
+        if (streaming) { stopStream(); return; }
+        // 登录闸门（acquire 之前，避免锁泄漏）
+        if (!_isLoggedIn()) {
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在菜单栏点击登录', { type: 'warning', duration: 6000 }); } catch (_e2) { }
+            return;
+        }
+        // ★ 同步原子置锁（任何 await 之前）：先锁后反馈——极端竞态（两翼同微秒）下
+        //   acquire 失败的翼不会清空编辑框（内容不丢），只有赢家才有反馈副作用
+        if (typeof _sendBusyAcquire === 'function' && !_sendBusyAcquire()) return;
+        // ★ 立即反馈（2026-08-10）：同步插入用户气泡 + 清空编辑框（零 IPC 等待）
+        //   旧行为：draft 晋升（create/rename/mkdir 多条慢 IPC）后才清空编辑框 →
+        //   用户感知"按了回车没反应"（5-15 秒）→ 窗口内重复按 Enter → 并发发送 → 多层楼
+        var _txtNow = $input.value;
+        if (_txtNow && _txtNow.trim()) {
+            try {
+                var _bubble = addMessageEl('user', _txtNow);
+                if (_bubble) {
+                    window.__qqq_userBubbleEl = _bubble;
+                    if (typeof scrollToBottom === 'function') scrollToBottom(true);
+                }
+            } catch (_fb) {
+                // 渲染异常（如绑定中 cardPool 未就绪）→ 恢复编辑框 + 释放锁，内容零丢失
+                $input.value = _txtNow;
+                if (typeof _sendBusyRelease === 'function') _sendBusyRelease();
+                return;
+            }
+            $input.value = '';
+            if ($input._resetUndo) $input._resetUndo();
+            if (typeof autoResizeInput === 'function') autoResizeInput();
+            if (typeof updateQueueBtn === 'function') updateQueueBtn();
+        }
+        sendMessage(_txtNow);
     }
 });
 // ══ 字符级 Undo/Redo（唯一真理逐字回退机器接管）══
@@ -629,8 +661,8 @@ $sendBtn.onclick = function () {
     if (streaming) { stopStream(); }
     else if (_activeAgent && _activeAgent._stopState === 'sending') { return; }
     else {
-        // ★ _execSendBusy 仅挡同 agent 的并发 Send，不同 quest 互不阻塞
-        if (typeof _execSendBusy !== 'undefined' && _execSendBusy && _execSendBusyAgent === _activeAgent) return;
+        // ★ 窗口级发送锁：一次只允许一个发送（防两翼并发发送共享 agent）
+        if (typeof _sendBusyIsHeld === 'function' && _sendBusyIsHeld()) return;
         sendMessage();
     }
 };

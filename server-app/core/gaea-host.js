@@ -114,7 +114,7 @@
   function renderTabBar() {
     if (!_tabBarEl) return;
     _tabBarEl.innerHTML = '';
-    var toolbarIds = ['search', 'git'];
+    var toolbarIds = ['search', 'git', 'kmd'];
     for (var ti = 0; ti < toolbarIds.length; ti++) {
       var id = toolbarIds[ti];
       if (!goods.has(id)) continue;

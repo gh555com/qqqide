@@ -160,21 +160,23 @@ async function _cleanStaleAllJsonTmp(root) {
         // 两级扫描：q{n} → f{n}（all.json.tmp.* 只在叶子目录）
         var qEntries = await bridge.fs.list(questsDir);
         if (!qEntries || !qEntries.length) return;
+        // ★ 2026-08-10: bridge.fs.list 返回 {name,isDir,...} 对象数组 — 旧实现对对象调 indexOf
+        //   → TypeError → catch → 清扫从未运行（q172/f34 9 个 all.json.tmp 残留的源头之一）
         for (var qi = 0; qi < qEntries.length; qi++) {
-            var qName = qEntries[qi];
-            if (qName.indexOf('q') !== 0) continue;
+            var qName = (qEntries[qi] && qEntries[qi].name != null) ? qEntries[qi].name : qEntries[qi];
+            if (typeof qName !== 'string' || qName.indexOf('q') !== 0) continue;
             var qDir = questsDir + '/' + qName;
             var fEntries = await bridge.fs.list(qDir);
             if (!fEntries || !fEntries.length) continue;
             for (var fi = 0; fi < fEntries.length; fi++) {
-                var fName = fEntries[fi];
-                if (fName.indexOf('f') !== 0) continue;
+                var fName = (fEntries[fi] && fEntries[fi].name != null) ? fEntries[fi].name : fEntries[fi];
+                if (typeof fName !== 'string' || fName.indexOf('f') !== 0) continue;
                 var fDir = qDir + '/' + fName;
                 var allEntries = await bridge.fs.list(fDir);
                 if (!allEntries || !allEntries.length) continue;
                 for (var ai = 0; ai < allEntries.length; ai++) {
-                    var aName = allEntries[ai];
-                    if (aName.indexOf('all.json.tmp.') === 0) {
+                    var aName = (allEntries[ai] && allEntries[ai].name != null) ? allEntries[ai].name : allEntries[ai];
+                    if (typeof aName === 'string' && aName.indexOf('all.json.tmp.') === 0) {
                         try { await bridge.fs.remove(fDir + '/' + aName); deleted++; } catch (_) { }
                     }
                 }
@@ -218,45 +220,51 @@ async function _initWorkspace(root) {
     if (_panelId === 1) {
         var lockResult = await onlyStore.claimLock();
         if (!lockResult.ok) {
-            // ★ 多窗口锁等待重试（F-2026-08-06）：另一窗口持有锁时不再立即放弃。
-            //   旧行为直接 return → questStore 未绑定 → AI 面板全空白，且重启无效
-            //   （旧窗口心跳每 30s 刷新锁 → 新窗口永远抢不到 → 永久空白死胡同）。
-            //   现在：每 3s 重试一次（最长 60s），旧窗口关闭后自动接管。
-            var _lockWaitMsg = null;
-            var _rootName = root.split(/[\\/]/).filter(Boolean).pop() || root;
-            for (var _lkTry = 0; _lkTry < 20; _lkTry++) {
-                if (!_lockWaitMsg) {
-                    try { _lockWaitMsg = addMessageEl('error', '\u23f3 项目「' + _rootName + '」已被另一窗口打开，等待其关闭后自动接管…'); } catch (_) { }
-                }
-                await new Promise(function (r) { setTimeout(r, 3000); });
-                lockResult = await onlyStore.claimLock();
-                if (lockResult.ok) {
-                    try { if (_lockWaitMsg) _lockWaitMsg.textContent = '\u2705 已接管项目「' + _rootName + '」'; } catch (_) { }
-                    break;
-                }
-            }
-        }
-        if (!lockResult.ok) {
+            // ★ 项目锁硬拒绝（2026-08-10 冠军架构 F20 落地）：主进程原子 wx 仲裁失败
+            //   = 项目已被另一 IDE 实例/窗口占用。CP 悲观锁语义：拿不到就拒，绝不共存。
+            //   旧实现 3s×20 等待接管 + 15s×200 后台重试已整体删除——静默共存正是
+            //   dev+绿色包双开同一项目 → 双写 quest.sq3/only.sq3/all.json 数据损坏的温床。
             parent.__qqq_lockState = 'blocked';
-            console.warn('[workspace] BLOCKED: project locked (age=' + (lockResult.age / 1000).toFixed(1) + 's)');
-            addMessageEl('error', '\u26a0\ufe0f 项目锁冲突（另一窗口正在使用）。本面板进入后台等待，旧窗口关闭后自动恢复，无需重启。');
+            var _holderInfo = '';
+            if (lockResult.holder && lockResult.holder.pid) {
+                _holderInfo = '（占用方 pid=' + lockResult.holder.pid + '，instance ' + String(lockResult.holder.instanceId || '').slice(0, 8) + '…）';
+            }
+            console.warn('[workspace] BLOCKED: project locked' + _holderInfo);
+            addMessageEl('error', '⛔ 项目已被另一窗口占用，本窗口未绑定。请关闭占用窗口后重新打开本窗口，或在本窗口视口手动添加其他项目。' + _holderInfo);
             if (window.parent) {
                 try { window.parent.postMessage({ type: 'qqq-ai-viewport-remove-project', path: root }, '*'); } catch (_) { }
             }
             onlyStore.init(null);
             _workspaceRoot = null;
             try { parent._workspaceRoot = null; } catch (_) { }
-            // ★ 后台重试：锁释放后自动重新绑定（15s 间隔，最长 50 分钟），消灭「重启也空白」死胡同
-            var _bgLockRetry = 0;
-            var _bgLockTimer = setInterval(function () {
-                _bgLockRetry++;
-                if (_bgLockRetry > 200) { clearInterval(_bgLockTimer); return; }
-                if (_workspaceRoot) { clearInterval(_bgLockTimer); return; }
-                bindMainProject();
-            }, 15000);
             return;
         }
         parent.__qqq_lockState = 'ok';
+        // ★ 锁丢失兜底（2026-08-10）：主进程 watcher 发现锁被外部删除/替换 → 重新仲裁
+        //   成功 → 主进程心跳自动恢复；失败 → 硬拒绝（与初始绑定同语义，绝不静默共存）
+        try {
+            var _pqBridge = window.parent && window.parent.qqqideBridge;
+            if (_pqBridge && _pqBridge.projectLock && _pqBridge.projectLock.onLockLost) {
+                _pqBridge.projectLock.onLockLost(function (msg) {
+                    if (_panelId !== 1) return;
+                    if (!_workspaceRoot) return;
+                    if (msg && msg.folder && msg.folder !== _workspaceRoot) return;
+                    console.warn('[workspace] lock-lost event, re-arbitrating: ' + _workspaceRoot);
+                    onlyStore.claimLock().then(function (res) {
+                        if (res && res.ok) {
+                            console.warn('[workspace] lock re-acquired after lock-lost');
+                        } else {
+                            console.warn('[workspace] lock-lost: re-claim rejected');
+                            parent.__qqq_lockState = 'blocked';
+                            try { addMessageEl('error', '⛔ 项目锁已丢失且无法重新获取（另一窗口已占用），本窗口停止绑定。'); } catch (_) { }
+                            onlyStore.init(null);
+                            _workspaceRoot = null;
+                            try { parent._workspaceRoot = null; } catch (_) { }
+                        }
+                    }).catch(function () { });
+                });
+            }
+        } catch (_) { }
         // 向主进程注册窗口↔项目映射（仅中面板）
         if (window.parent && window.parent.qqqideBridge && window.parent.qqqideBridge.window) {
             try { window.parent.qqqideBridge.window.claimProject(root).catch(function () { }); } catch (_) { }
@@ -270,14 +278,25 @@ async function _initWorkspace(root) {
         for (var _wl = 0; _wl < 300; _wl++) {
             if (parent.__qqq_lockState === 'ok') break;
             if (parent.__qqq_lockState === 'blocked') {
-                // ★ 被锁定——等待中面板 _bgLockTimer 恢复（15s×200 次，同中面板参数）
-                for (var _rw = 0; _rw < 200; _rw++) {
-                    await new Promise(function (r) { setTimeout(r, 15000); });
-                    if (parent.__qqq_lockState === 'ok') break;
-                }
+                // ★ 中面板硬拒绝（2026-08-10）→ 侧面板同步停止等待（旧 15s×200 后台恢复已删除）
+                console.warn('[workspace] side panel: main panel blocked, abort binding');
                 break;
             }
             await new Promise(function (r) { setTimeout(r, 200); });
+        }
+        // ★ 2026-08-10 修复：中面板 blocked 或 60s 超时未决 → 侧面板必须中止绑定并清理
+        //   （旧代码 break 后继续 setProjectRoot → 僚机绕过项目锁绑定项目 → 跨窗口双写
+        //    q182 三层楼事故实锤：中面板 blocked 而翼板照常聊天写楼层）
+        if (parent.__qqq_lockState !== 'ok') {
+            _lockBlocked = true;
+            console.warn('[workspace] side panel: lock not acquired (' + (parent.__qqq_lockState || 'timeout') + '), abort binding');
+            if (window.parent) {
+                try { window.parent.postMessage({ type: 'qqq-ai-viewport-remove-project', path: root }, '*'); } catch (_) { }
+            }
+            onlyStore.init(null);
+            _workspaceRoot = null;
+            try { parent._workspaceRoot = null; } catch (_) { }
+            return;
         }
     }
 
@@ -385,9 +404,13 @@ async function _initWorkspace(root) {
 
 // ★ bindMainProject 并发锁：防 boot IIFE 与 postMessage 回调同时进入
 var _bindLock = null;
+// ★ 锁硬拒绝标记（2026-08-10）：中面板被项目锁拒绝 → 侧面板中止绑定后不再每 3s 重试
+var _lockBlocked = false;
 
 // 入口：绑定主文件夹（仅首次，终身一次）
 async function bindMainProject() {
+    // 锁拒绝后不再重试（直到手动添加新项目）
+    if (_lockBlocked) return;
     // 已绑定 → 跳过（同窗口未可切换主文件夹）
     if (_workspaceRoot) return;
     // 并发锁：另一调用正在进行中 → 等它完成
@@ -446,6 +469,7 @@ async function bindMainProject() {
     var _bfN = 0;
     var _bfT = setInterval(function () {
         if (_workspaceRoot) { clearInterval(_bfT); return; }
+        if (_lockBlocked) { clearInterval(_bfT); return; }
         if (++_bfN > 200) { clearInterval(_bfT); return; }
         bindMainProject();
     }, 3000);
@@ -743,9 +767,11 @@ async function initQuests() {
 window.addEventListener('beforeunload', function () {
     if (window._lazyRenameShutdownTriggered) return;
     window._lazyRenameShutdownTriggered = true;
-    try {
-        if (parent && parent.__qqq_renameScanDone) return;  // 启动时已扫过
-    } catch (_) { }
+    // ★ 2026-08-10: 关闭时也执行扫描（会话中改名 → 关闭即落盘，不必等下次启动）。
+    //   旧逻辑：启动扫描已置 __qqq_renameScanDone → 关闭扫描从未运行 → 改名要等下次启动才生效。
+    //   先复位标记再触发；lazyRenameScan 内部 _renameScanInProgress / 目录锁防重入，
+    //   改失败（窗口即将销毁/文件占用）→ 跳过，下次启动再扫（懒改语义）。
+    try { if (parent) parent.__qqq_renameScanDone = false; } catch (_) { }
     if (_panelId === 1 && typeof questStore !== 'undefined' && questStore.hasProjectRoot && questStore.hasProjectRoot()) {
         questStore.lazyRenameScan().then(function (scanResult) {
             if (scanResult && scanResult.fixed > 0) {

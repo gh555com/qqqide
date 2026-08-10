@@ -93,7 +93,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 #conv-list { flex:1;overflow-y:auto;overflow-x:hidden;padding:0 8px; }
 .conv-item {
   display:flex;align-items:center;gap:10px;
-  padding:10px 10px;margin:1px 0;
+  padding:10px 4px;margin:1px 0;
   border-radius:10px;cursor:pointer;
   transition:background 0.12s;
   position:relative;
@@ -101,10 +101,6 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 .conv-item:hover { background:var(--accent-glow); }
 .conv-item.active { background:var(--accent-soft); }
 
-.conv-flag {
-  width:28px;flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;
-}
 .conv-body { flex:1;min-width:0;overflow:hidden; }
 .conv-name {
   font-size:13px;font-weight:600;color:var(--text-bright);
@@ -146,11 +142,10 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
 
 /* ═══ SPLITTER — 左右比例拖动 ═══ */
 #splitter {
-  width:6px;flex-shrink:0;cursor:col-resize;
+  width:6px;flex-shrink:0;
   position:relative;z-index:5;background:transparent;
-  transition:background 0.15s;
 }
-#splitter:hover,#splitter.dragging { background:rgba(181,137,0,0.3); }
+#splitter.dragging { background:rgba(181,137,0,0.3); }
 
 /* ═══ MAIN PANEL ═══ */
 #main { flex:1;display:flex;flex-direction:column;background:var(--bg-chat);min-width:0; }
@@ -416,6 +411,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   </div>
 </div>
 
+<script src="../core/char-undo.js"></script>
 <script>
 (function () {
   'use strict';
@@ -459,6 +455,11 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   var $modalOk    = document.getElementById('modal-ok');
   var $modalCancel= document.getElementById('modal-cancel');
 
+  // ═══ 逐字回退（唯一真理机器接管 Ctrl+Z/Y，AI 面板同款）═══
+  if (window.qqqCharUndo && typeof window.qqqCharUndo.attach === 'function') {
+    window.qqqCharUndo.attach($msgInput);
+  }
+
   // 群会话 key = 'g' + gid（与私聊 doerID/手机号天然不冲突）
   function gkey(gid) { return 'g' + gid; }
   function isGroupKey(key) { return key && key.charAt(0) === 'g' && /^g\d+$/.test(key); }
@@ -477,14 +478,12 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   $splitter.addEventListener('mousedown', function(e) {
     e.preventDefault();
     $splitter.classList.add('dragging');
-    document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
     var startX = e.clientX;
     var startW = $sidebar.getBoundingClientRect().width;
     function onMove(ev) { applySidebarW(startW + (ev.clientX - startX)); }
     function onUp() {
       $splitter.classList.remove('dragging');
-      document.body.style.cursor = '';
       document.body.style.userSelect = '';
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
@@ -982,12 +981,12 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         _cacheSaveSoon();
       } else if (_activePeer === peerID && (!_msgCache[peerID] || !_msgCache[peerID].length)) {
         // HTTP 400：收件人不存在等 → 明确提示（原静默无反馈）；已有缓存视图则不覆盖（离线可继续读历史）
-        $msgList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">无法加载对话：' + escHtml(d.tip || d.code || '收件人不存在，请检查号码') + '</div>';
+        $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">无法加载对话：' + escHtml(d.tip || d.code || '收件人不存在，请检查号码') + '</div>';
       }
     }).catch(function(){
       // 已有缓存视图时不覆盖（断网继续读历史），仅无缓存时提示错误
       if (_activePeer === peerID && (!_msgCache[peerID] || !_msgCache[peerID].length)) {
-        $msgList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">网络错误，无法加载对话</div>';
+        $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">网络错误，无法加载对话</div>';
       }
     });
   }
@@ -1004,11 +1003,11 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         renderMessages(peerID);
         _cacheSaveSoon();
       } else if (!_msgCache[peerID] || !_msgCache[peerID].length) {
-        $msgList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">无法加载群聊：' + escHtml(d.tip || d.code || '非群成员或群不存在') + '</div>';
+        $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">无法加载群聊：' + escHtml(d.tip || d.code || '非群成员或群不存在') + '</div>';
       }
     }).catch(function(){
       if (!_msgCache[peerID] || !_msgCache[peerID].length) {
-        $msgList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">网络错误，无法加载群聊</div>';
+        $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">网络错误，无法加载群聊</div>';
       }
     });
   }
@@ -1066,7 +1065,6 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       var preview = isG && cv.lastSender ? cv.lastSender + '：' + trunc(cv.lastMsg,28) : trunc(cv.lastMsg,40);
 
       html += '<div class="conv-item'+cls+'" data-peer="'+escHtml(pid)+'">';
-      html += '<div class="conv-flag">'+(icon||'')+'</div>';
       html += '<div class="conv-body"><div class="conv-name">'+(icon?icon+' ':'')+escHtml(name)+'</div>';
       html += '<div class="conv-preview">'+escHtml(preview)+'</div></div>';
       html += '<div class="conv-meta"><div class="conv-time">'+fmtBrief(cv.lastTime)+'</div>'+badge+'</div>';
@@ -1085,7 +1083,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     $msgList.innerHTML = '';
     var msgs = _msgCache[peerID] || [];
     if (msgs.length === 0) {
-      $msgList.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-dim);">暂无消息，发送第一条吧</div>';
+      $msgList.innerHTML = '<div data-empty-hint style="text-align:center;padding:40px;color:var(--text-dim);">暂无消息，发送第一条吧</div>';
       return;
     }
 
@@ -1138,6 +1136,9 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
   }
 
   function appendBubble(m) {
+    // 空态/错误占位 → 新消息到达即移除（防「暂无消息」压在已发消息上方）
+    var hintEl = $msgList.querySelector('[data-empty-hint]');
+    if (hintEl) hintEl.remove();
     var msgs = _msgCache[_activePeer] || [];
     var prev = msgs.length > 1 ? msgs[msgs.length-2] : null;
     var isSelf = m.sender_id === _doerID;
@@ -1246,6 +1247,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           appendBubble(d.msg);
           scrollBottom();
         }
+        // 发送成功 → 重置逐字回退历史（已发送文本不可再回退）
+        if (window.qqqCharUndo) window.qqqCharUndo.reset($msgInput);
         _cacheSaveSoon();
       } else {
         $msgInput.value = text;
@@ -1286,6 +1289,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           appendBubble(d.msg);
           scrollBottom();
         }
+        if (window.qqqCharUndo) window.qqqCharUndo.reset($msgInput);
         _cacheSaveSoon();
       } else {
         $msgInput.value = text;

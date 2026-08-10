@@ -412,10 +412,12 @@ const QQQ = {
         openDiffWindow: (args: { filePath: string; beforeBlobHash?: string; afterBlobHash?: string; projectRoot: string }) => ipcRenderer.invoke('qqqide:open-diff-window', args),
         // 用户在 diff 窗口内切换文件时更新主进程映射
         setPath: (newPath: string) => ipcRenderer.send('qqqide:diff:set-path', newPath),
-        // op 按钮：在 X 区 editor 打开文件
+        // op 按钮：在 X 区 editor 打开文件（= Roam Q 键）
         openInEditor: (filePath: string) => ipcRenderer.send('qqqide:timeline:open-in-editor', filePath),
         // op 按钮：喂给 AI
         feedToAi: (filePath: string) => ipcRenderer.send('qqqide:timeline:feed-to-ai', filePath),
+        // op 下拉：读取焦点面板方向（0左/1中/2右），用于动态标签 ←喂给 AI/喂给 AI/喂给 AI→
+        getAiTarget: () => ipcRenderer.invoke('qqqide:timeline:get-ai-target'),
         // 监听主进程推送的 diff 更新（复用已有窗口时触发）
         onDiffUpdate: (cb: (data: { beforeBlobHash?: string; afterBlobHash?: string }) => void) => {
             const handler = (_e: any, data: any) => { try { cb(data); } catch (err) { console.warn('[timeline.onDiffUpdate]', err); } };
@@ -586,6 +588,41 @@ const QQQ = {
     // ---- crashNet (天罗地网事件上报, fire-and-forget — 渲染层崩溃/主进程强杀前最后动作) ----
     crashNet: {
         log: (evt: any) => { try { ipcRenderer.send('qqqide:crashnet:event', evt); } catch (_) { } },
+    },
+
+    // ---- projectLock (项目锁 CP 硬互斥, 主进程原子仲裁 2026-08-10) ----
+    projectLock: {
+        claim: (folder: string) => ipcRenderer.invoke('qqqide:project:claim', folder),
+        release: (folder?: string) => ipcRenderer.invoke('qqqide:project:release', folder),
+        query: (folder: string) => ipcRenderer.invoke('qqqide:project:query', folder),
+        onLockLost: (cb: (msg: { folder: string; winId: number }) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[projectLock.onLockLost]', err); } };
+            ipcRenderer.on('qqqide:project:lock-lost', handler);
+            return () => ipcRenderer.removeListener('qqqide:project:lock-lost', handler);
+        },
+    },
+
+    // ---- kmd (goods 终端, v1 行模式 — 输出流式推送, 输入走 write) ----
+    kmd: {
+        spawn: (id: string, shellType: string, cwd: string) => ipcRenderer.invoke('qqqide:kmd:spawn', { id, shellType, cwd }),
+        write: (id: string, text: string) => ipcRenderer.invoke('qqqide:kmd:write', id, text),
+        kill: (id: string, opts?: any) => ipcRenderer.invoke('qqqide:kmd:kill', id, opts),
+        list: () => ipcRenderer.invoke('qqqide:kmd:list'),
+        onOutput: (cb: (msg: { id: string; stream: string; data: string }) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[kmd.onOutput]', err); } };
+            ipcRenderer.on('qqqide:kmd:output', handler);
+            return () => ipcRenderer.removeListener('qqqide:kmd:output', handler);
+        },
+        onExit: (cb: (msg: { id: string; code: number }) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[kmd.onExit]', err); } };
+            ipcRenderer.on('qqqide:kmd:exit', handler);
+            return () => ipcRenderer.removeListener('qqqide:kmd:exit', handler);
+        },
+        onRestarted: (cb: (msg: { id: string }) => void) => {
+            const handler = (_e: any, msg: any) => { try { cb(msg); } catch (err) { console.warn('[kmd.onRestarted]', err); } };
+            ipcRenderer.on('qqqide:kmd:restarted', handler);
+            return () => ipcRenderer.removeListener('qqqide:kmd:restarted', handler);
+        },
     },
 
     // ---- squad (窗口编队, OS 级 %LOCALAPPDATA%/qqqide/squads.json) ----

@@ -344,8 +344,59 @@ def _hotkey_on_release(key):
         _HOTKEY_PRESSED_KEYS.pop(norm, None)
 
 
+# ★ 跨进程互斥（2026-08-10 F15 缺口1）: 热键 = OS 直达的全局监听，dev + 绿色包同跑时
+#   两个 pynput 钩子会双重触发召回（双激活 + 双音效）。每用户会话仅一个 broker
+#   持有监听权（CreateMutexW Local\ 命名空间）: 先启动者监听，后启动者静默降级
+#   为纯改名服务（stdin 职责保留）；持有者退出（mutex 自动释放）→ 让位者 5s 内
+#   自动接管监听（_hotkey_guard_loop 自愈，监督者模式同款哲学）。
+_HOTKEY_MUTEX_HANDLE = None
+_HOTKEY_MUTEX_ACQUIRED = False
+_HOTKEY_LISTENING = False
+# 测试/会话隔离可经环境变量覆盖（零配置原则: 生产默认硬编码）
+_MUTEX_NAME = os.environ.get("QQQIDE_SQUAD_MUTEX") or "Local\\QqqIdeSquadHotkey"
+
+
+def _try_acquire_hotkey_mutex():
+    """CreateMutexW(Local\\QqqIdeSquadHotkey) — 抢到返回 True，被占返回 False"""
+    global _HOTKEY_MUTEX_HANDLE, _HOTKEY_MUTEX_ACQUIRED
+    if OS != "Windows":
+        return True
+    import ctypes
+    ERROR_ALREADY_EXISTS = 183
+    try:
+        handle = ctypes.windll.kernel32.CreateMutexW(None, False, _MUTEX_NAME)
+        if not handle:
+            _log("[Squad] CreateMutexW failed, hotkeys disabled")
+            return False
+        if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+            ctypes.windll.kernel32.CloseHandle(handle)
+            _log("[Squad] hotkey mutex held by another instance -> rename-only mode")
+            return False
+        _HOTKEY_MUTEX_HANDLE = handle
+        _HOTKEY_MUTEX_ACQUIRED = True
+        return True
+    except Exception as e:
+        _log(f"[Squad] mutex exception: {e}")
+        return False
+
+
+def _hotkey_guard_loop():
+    """让位者自愈: 持有者退出后 mutex 自动释放 → 5s 轮询抢回并接管监听"""
+    global _HOTKEY_MUTEX_ACQUIRED
+    while True:
+        time.sleep(5)
+        if _HOTKEY_MUTEX_ACQUIRED or not _HAS_PYNPUT:
+            continue
+        if _try_acquire_hotkey_mutex():
+            _log("[Squad] mutex acquired after holder exit, taking over listener")
+            try:
+                _start_hotkey_listener()
+            except Exception as e:
+                _log(f"[Squad] takeover listener start failed: {e}")
+
+
 def _start_hotkey_listener():
-    global _HOTKEY_LISTENER
+    global _HOTKEY_LISTENER, _HOTKEY_LISTENING
     if not _HAS_PYNPUT:
         _log("[Squad] pynput not available, hotkeys disabled")
         return {"status": "error", "error": "pynput not installed"}
@@ -355,6 +406,7 @@ def _start_hotkey_listener():
         _HOTKEY_LISTENER = pynput_keyboard.Listener(on_press=_hotkey_on_press, on_release=_hotkey_on_release)
         _HOTKEY_LISTENER.daemon = True  # 不阻塞进程退出
         _HOTKEY_LISTENER.start()
+        _HOTKEY_LISTENING = True
         _log("[Squad] hotkey listener started (Space+1/2/q/w/a/s/z/x)")
         return {"status": "started"}
     except Exception as e:
@@ -386,17 +438,22 @@ def main():
     _log("START")
     _log(f"OS={OS} python={sys.version} pid={os.getpid()}")
 
-    # 就绪信号
-    sys.stdout.write(json.dumps({"type": "ready", "platform": OS}, ensure_ascii=False) + "\n")
+    # ★ 编队热键抢锁 + 监听（先于就绪信号 — ready.hotkeys 必须反映真实监听状态）
+    if OS == "Windows":
+        _try_acquire_hotkey_mutex()
+        if _HOTKEY_MUTEX_ACQUIRED:
+            try:
+                _start_hotkey_listener()
+            except Exception as e:
+                _log(f"[Squad] hotkey start failed: {e}")
+        else:
+            _log("[Squad] rename-only mode (no hotkey listener)")
+            threading.Thread(target=_hotkey_guard_loop, daemon=True).start()
+
+    # 就绪信号（hotkeys: 本实例是否实际持有全局热键监听, false=互斥让位已降级改名服务）
+    sys.stdout.write(json.dumps({"type": "ready", "platform": OS, "hotkeys": _HOTKEY_LISTENING}, ensure_ascii=False) + "\n")
     sys.stdout.flush()
     _log("sent ready signal")
-
-    # ★ 编队热键监听（Windows, 常驻 pynput 全局钩子）
-    if OS == "Windows":
-        try:
-            _start_hotkey_listener()
-        except Exception as e:
-            _log(f"[Squad] hotkey start failed: {e}")
 
     for line in sys.stdin:
         line = line.strip()
