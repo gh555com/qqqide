@@ -44,9 +44,36 @@
 // ═══ panel-pipeline.js ═══
 // sendMessage 管线：接受显式 content，零 $input 访问，零 saveQuestUIState 调用
 // SendIntent 替代 skipFloorCreation boolean 分叉
-// ★ 模块级同步发送锁：防同 agent 并发发送（核心：连点回车去重）
+// ★ 窗口级发送锁（2026-08-10 根治跨面板并发发送 q182 三层楼事故）：
+//   三面板独立 iframe 共享 parent.__qqq_agentPool（同一 agent 对象）——iframe 级锁管不住
+//   另一翼的 Enter（各自 JS 上下文独立）→ 锁提升到父窗口共享层，任何面板发送前原子检查+置位
 var _execSendBusy = false;
-var _execSendBusyAgent = null;  // ★ 记录哪个 agent 在忙，不同 quest 互不阻塞
+var _execSendBusyAgent = null;
+// ★ 本面板发送 token：同翼重入放行（handler 先 acquire → _executeSend 再 acquire 不误判），他翼拒绝
+var _mySendToken = '_w' + (typeof _panelId !== 'undefined' ? _panelId : 1) + '_' + Math.random().toString(36).slice(2, 8);
+function _sendBusyIsHeld() {
+    try { return !!(parent && parent.__qqq_sendBusy); } catch (_) { return false; }
+}
+// ★ 他翼持有检查：内部入口（sendMessage/_executeSend）用——同翼重入（handler 已 acquire）放行，他翼并发挡
+function _sendBusyHeldByOther() {
+    try {
+        if (!parent || !parent.__qqq_sendBusy) return false;
+        return parent.__qqq_sendBusy.token !== _mySendToken;
+    } catch (_) { return false; }
+}
+function _sendBusyAcquire() {
+    try {
+        if (parent && parent.__qqq_sendBusy) {
+            // 持有者是自己（同翼重入）→ 放行；他翼 → 拒绝
+            return parent.__qqq_sendBusy.token === _mySendToken;
+        }
+        if (parent) parent.__qqq_sendBusy = { ts: Date.now(), token: _mySendToken };
+        return true;
+    } catch (_) { return true; }
+}
+function _sendBusyRelease() {
+    try { if (parent) parent.__qqq_sendBusy = null; } catch (_) { }
+}
 
 // ── SendIntent 工厂 ──
 // type: 'normal' | 'recovery' | 'compress'
@@ -80,8 +107,8 @@ async function _executeSend(intent) {
     var isRecovery = intent.isRecovery;
     var forceFloorNum = intent.forceFloorNum || 0;  // ★ 0-house 同层重试：复用旧楼层号
 
-    // ★ 同步发送锁：仅同 agent 互斥，不同 quest/agent 各自独立
-    if (_execSendBusy && _execSendBusyAgent === _activeAgent) return;
+    // ★ 窗口级发送锁：他翼持有才挡（同翼 handler 已 acquire → 重入放行）
+    if (_sendBusyHeldByOther()) return;
 
     // ── 闸门 ──
     var _isCompress = (sendType === 'compress') || intent.compressFloor;
@@ -96,8 +123,8 @@ async function _executeSend(intent) {
         return;
     }
 
-    // ★ 所有闸门已过 → 加锁
-    _execSendBusy = true;
+    // ★ 所有闸门已过 → 加锁（窗口级原子）；竞态失败（他翼已持锁）→ 放弃本次发送
+    if (!_sendBusyAcquire()) return;
 
     // ★ 天罗地网: 发送开始（死前最后动作链起点）
     try { if (window.__crashNet) window.__crashNet.log({ kind: 'send', q: questId, state: 'sending', type: sendType, detail: isRecovery ? 'recovery' : (_isCompress ? 'compress' : 'normal') }); } catch (_e3) { }
@@ -106,11 +133,11 @@ async function _executeSend(intent) {
     if (_isDraft(questId)) {
         var _dText = content || '';
         var _dChips = getInputChipPaths ? getInputChipPaths() : [];
-        if (!_dText && _dChips.length === 0) { _execSendBusy = false; return; }
+        if (!_dText && _dChips.length === 0) { _sendBusyRelease(); return; }
         try {
             var _dOldId = questId;
             var _dQid = await questStore.create('');
-            if (!_dQid) { _execSendBusy = false; return; }
+            if (!_dQid) { _sendBusyRelease(); return; }
             questActiveId = _dQid;
             if (questUIStates[_dOldId] && typeof questUIStates[_dOldId].selectedTier === 'number') {
                 if (!questUIStates[questActiveId]) questUIStates[questActiveId] = {};
@@ -162,19 +189,18 @@ async function _executeSend(intent) {
         } catch (_dErr) {
             console.warn('[pipeline] draft creation failed:', _dErr && _dErr.message);
             addMessageEl('error', '创建 Quest 失败：' + ((_dErr && _dErr.message) || '未知错误'));
-            _execSendBusy = false;
+            _sendBusyRelease();
             return;
         }
     }
 
-    if (!_activeAgent) { _execSendBusy = false; return; }
+    if (!_activeAgent) { _sendBusyRelease(); return; }
     if (!_isDraft(questId) && parent && parent.__qqq_agentPool && parent.__qqq_agentPool[questId] !== _activeAgent) {
         console.warn('[pipeline] _activeAgent stale');
     }
 
     _activeAgent.setStopState('sending');
     var agent = _activeAgent;
-    _execSendBusyAgent = agent;  // ★ 记下忙的 agent，用于跨 quest 放行
     var qid = questId;
 
     // 清除残留标记
@@ -194,7 +220,7 @@ async function _executeSend(intent) {
                 _broadcast('focus-request', qid, { targetPanel: _ssSyncOwner });
                 agent.setStopState('idle');
                 updateQueueBtn();
-                _execSendBusy = false;
+                _sendBusyRelease();
                 return;
             }
             if (_ssSyncOwner === undefined) {
@@ -207,8 +233,8 @@ async function _executeSend(intent) {
 
     // ★ 内容验证（显式传入，不读 $input）
     var text = (content || '').trim();
-    if (!text && (!images || images.length === 0)) { agent.setStopState('idle'); updateQueueBtn(); _execSendBusy = false; return; }
-    if (streaming) { agent.setStopState('idle'); updateQueueBtn(); _execSendBusy = false; return; }
+    if (!text && (!images || images.length === 0)) { agent.setStopState('idle'); updateQueueBtn(); _sendBusyRelease(); return; }
+    if (streaming) { agent.setStopState('idle'); updateQueueBtn(); _sendBusyRelease(); return; }
 
     // ── 构建 userContent（含附件） ──
     var userContent = text;
@@ -270,7 +296,14 @@ async function _executeSend(intent) {
         agent._deferredUserEl = null;
         agent._deferredUserText = '继续';  // ★ B2: 恢复消息气泡只显示「继续」
     } else {
-        userMsgEl = addMessageEl('user', text);
+        // ★ 2026-08-10: Enter 已同步插入气泡（立即反馈）→ 复用不重复插入
+        if (window.__qqq_userBubbleEl && window.__qqq_userBubbleEl.isConnected) {
+            userMsgEl = window.__qqq_userBubbleEl;
+            window.__qqq_userBubbleEl = null;
+        } else {
+            window.__qqq_userBubbleEl = null;
+            userMsgEl = addMessageEl('user', text);
+        }
         if (userMsgEl) userMsgEl._floor = agent._ctx.totalFloors;
     }
     if (pendingImages && pendingImages.length > 0 && userMsgEl) {
@@ -421,8 +454,8 @@ async function _executeSend(intent) {
     var _CPT = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN) ? ContentGateway.CHAR_PER_TOKEN : 2.5;
     if (sendType !== 'recovery') {
         var _bpChars = 0;
-        // 1. 服务端甲壳（与 panel-quest-ui.js guardChars 同步）
-        _bpChars += 14964;
+        // 1. 服务端甲壳（动态：core/guard-meta.js 唯一入口，服务端 /api/v3/ai/guard-meta）
+        _bpChars += (typeof QQQGuardMeta !== 'undefined' && QQQGuardMeta.chars) ? QQQGuardMeta.chars() : 21691;
         // 2. 客户端注入消息：Z（_persistent）+ biscuit + facts
         var _conv = agent.conversation || [];
         for (var _ci = 0; _ci < _conv.length; _ci++) {
@@ -893,16 +926,14 @@ async function _executeSend(intent) {
             agent._streaming = false;
             console.log('[pipeline] floor ended headless');
             if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
-            _execSendBusy = false;
-            _execSendBusyAgent = null;
+            _sendBusyRelease();
             return;
         }
         if (agent) { agent._streaming = false; }
         if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
         _queueBusy = false;
-        // ★ 先释放发送锁，再触发排队排水（否则 _triggerQueueSend → sendMessage → _execSendBusy 仍为 true → 永久阻塞）
-        _execSendBusy = false;
-        _execSendBusyAgent = null;
+        // ★ 先释放发送锁，再触发排队排水（否则 _triggerQueueSend → sendMessage → 锁仍为 true → 永久阻塞）
+        _sendBusyRelease();
         if (_queue && _queue.length > 0 && !_queuePaused && _activeAgent === agent) {
             _triggerQueueSend();
         }

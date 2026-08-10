@@ -11,6 +11,7 @@ import * as http from 'http';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
 import { renameDevToolsViaBroker } from './py-broker';
 import { claimSquad, releaseSquad, broadcastSquadState } from './squad-manager';
+import { releaseProject } from './project-lock';
 import { SimpleWebSocket } from './cdp-sniffer';
 import { crashNetLog, crashNetSnapshot } from './crash-net';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
@@ -343,8 +344,8 @@ export function createWindow(
             if (ownedProject) {
                 _windowProjectMap.delete(win.id);
                 _projectWindowMap.delete(ownedProject);
-                // ★ 同步删除项目锁文件 → 关闭后立即重开同文件夹不被 60s 锁拦截
-                try { fs.unlinkSync(ownedProject + '/_qqq/alphal/.lock'); } catch (_) { }
+                // ★ 释放项目锁（校验 instanceId+winId，绝不误删他人锁）→ 关闭后立即重开同文件夹零拦截
+                try { releaseProject(win.id); } catch (_) { }
             }
         } catch (_) { }
     });

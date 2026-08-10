@@ -340,6 +340,15 @@
     function _showOpDropdown() {
         _opVisible = true;
         $opDropdown.style.display = '';
+        // ★ 动态标签：读取焦点面板方向（Roam 右键菜单传统 ←喂给 AI/喂给 AI/喂给 AI→）
+        try {
+            if (bridge && bridge.timeline && bridge.timeline.getAiTarget) {
+                bridge.timeline.getAiTarget().then(function (t) {
+                    var lbl = document.getElementById('op-feed-label');
+                    if (lbl) lbl.textContent = t === 0 ? '←喂给 AI' : t === 2 ? '喂给 AI→' : '喂给 AI';
+                }).catch(function () { });
+            }
+        } catch (_) { }
     }
     function _hideOpDropdown() {
         _opVisible = false;

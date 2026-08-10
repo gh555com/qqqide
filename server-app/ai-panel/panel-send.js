@@ -7,14 +7,20 @@
 // ★ 管线入口：统一构建 SendIntent → _executeSend
 //   _execSendBusyAgent 使不同 quest 各自独立，不互相阻塞
 async function sendMessage(content, opts) {
-    if (typeof _execSendBusy !== 'undefined' && _execSendBusy && _execSendBusyAgent === _activeAgent) return;
+    // ★ 窗口级发送锁：他翼持有才挡（同翼 handler 已 acquire → 重入放行，防自己挡自己）
+    if (typeof _sendBusyHeldByOther === 'function' && _sendBusyHeldByOther()) return;
     if (content === undefined) {
         content = getInputText().trim();
         opts = { type: 'normal', images: null, tierIndex: selectedTier };
     }
     opts = opts || {};
     var intent = _buildSendIntent(questActiveId, content, opts);
-    return _executeSend(intent);
+    return _executeSend(intent).catch(function (err) {
+        // ★ 兜底：_executeSend 任何未捕获异常 → 释放窗口锁（防锁泄漏 → 三翼全部禁发）
+        if (typeof _sendBusyRelease === 'function') _sendBusyRelease();
+        console.warn('[pipeline] send failed:', err && err.message);
+        throw err;
+    });
 }
 function _continueQueue() {
     var _qs = document.getElementById('queue-sending-status');

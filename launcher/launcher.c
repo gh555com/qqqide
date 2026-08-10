@@ -60,6 +60,11 @@ static void enableTls12(HINTERNET hRequest) {
 #define WW 420
 #define WH 240
 
+// ── 启动器自身版本（2026-08-10 重构: 版本 = versions.json 清单编号）──
+//   pack.js 读取此常量写入 versions.json 的 launcher 字段（精确矩阵的一员）。
+//   启动器版本变更只能随 r 分发（launcher-next.exe 三明治替换）。
+#define LAUNCHER_VERSION "20260810.4"
+
 // ── 颜色（Solarized Light） ──
 #define COL_BG      RGB(0xfd, 0xf6, 0xe3)
 #define COL_TITLE   RGB(0x07, 0x36, 0x42)
@@ -85,6 +90,8 @@ typedef struct {
     char update_host[128];
     char latest_path[256];
     char r_path[256];
+    char units_path[256];
+    int  units_enabled;
     int  use_https;
     int  follow_redirect;
     int  timeout_sec;
@@ -98,6 +105,8 @@ static const LauncherConfig DEFAULT_CFG = {
     "gh555.com",
     "/dl/qqqide-up/latest.txt",
     "/dl/qqqide-up/r",
+    "/dl/qqqide-up/units.json",
+    1,  // units_enabled — 单元增量传输（B 方案），失败自动回退全量 r
     1,  // use_https
     1,  // follow_redirect
     30, // timeout_sec
@@ -237,6 +246,19 @@ static void pumpMessages(void) {
     }
 }
 
+// 原始读取（保留换行，供 JSON 解析；readFileText 会截断到首行）
+static int readFileRaw(const WCHAR *path, char *buf, int bufSize) {
+    HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ,
+        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    DWORD rd = 0;
+    ReadFile(h, buf, bufSize - 1, &rd, NULL);
+    CloseHandle(h);
+    if (rd == 0) return 0;
+    buf[rd] = '\0';
+    return (int)rd;
+}
+
 static int readFileText(const WCHAR *path, char *buf, int bufSize) {
     HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ,
         NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -261,18 +283,30 @@ static void writeFileText(const WCHAR *path, const char *text) {
     CloseHandle(h);
 }
 
-static int readLocalVersion(const WCHAR *exeDir, char *verBuf, int bufSize) {
-    WCHAR vPath[MAX_PATH];
-    swprintf(vPath, MAX_PATH, L"%s\\gh555.com\\.version", exeDir);
-    return readFileText(vPath, verBuf, bufSize);
+// ★ 唯一版本权威（2026-08-10 重构）：versions.json 的 "id" 字段 = 清单编号。
+//   版本 = 精确组件矩阵（launcher/shell/webapp/rank），随 r 冻结分发，任何组件升降级
+//   只能换 r。旧 .version 文件已废弃（过渡期仅由 pack.js 为旧启动器双写）。
+static int parseJsonString(const char **p, char *out, int outSize); // 前置声明（定义在后）
+
+// 从任意路径的 versions.json 提取 "id" 字段（live 与 next 共用）
+static int readManifestIdFile(const WCHAR *vPath, char *verBuf, int bufSize) {
+    char json[4096];
+    int len = readFileRaw(vPath, json, sizeof(json));
+    if (len <= 0) return 0;
+    const char *p = strstr(json, "\"id\"");
+    if (!p) return 0;
+    p += 4;                       // 跳过 "id"
+    while (*p && *p != ':') p++;  // 到冒号
+    if (*p != ':') return 0;
+    p++;
+    if (!parseJsonString(&p, verBuf, bufSize)) return 0;
+    return (int)strlen(verBuf) > 0;
 }
 
-static void writeLocalVersion(const WCHAR *exeDir, const char *ver) {
-    WCHAR ghDir[MAX_PATH], vPath[MAX_PATH];
-    swprintf(ghDir, MAX_PATH, L"%s\\gh555.com", exeDir);
-    CreateDirectoryW(ghDir, NULL);
-    swprintf(vPath, MAX_PATH, L"%s\\gh555.com\\.version", exeDir);
-    writeFileText(vPath, ver);
+static int readLocalVersion(const WCHAR *exeDir, char *verBuf, int bufSize) {
+    WCHAR vPath[MAX_PATH];
+    swprintf(vPath, MAX_PATH, L"%s\\gh555.com\\versions.json", exeDir);
+    return readManifestIdFile(vPath, verBuf, bufSize);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -342,6 +376,10 @@ static int parseConfig(const char *json, LauncherConfig *cfg) {
             skipWhitespace(&p); parseJsonString(&p, cfg->latest_path, sizeof(cfg->latest_path));
         } else if (strcmp(key, "r_path") == 0) {
             skipWhitespace(&p); parseJsonString(&p, cfg->r_path, sizeof(cfg->r_path));
+        } else if (strcmp(key, "units_path") == 0) {
+            skipWhitespace(&p); parseJsonString(&p, cfg->units_path, sizeof(cfg->units_path));
+        } else if (strcmp(key, "units_enabled") == 0) {
+            parseJsonBool(&p, &cfg->units_enabled);
         } else if (strcmp(key, "use_https") == 0) {
             parseJsonBool(&p, &cfg->use_https);
         } else if (strcmp(key, "follow_redirect") == 0) {
@@ -661,32 +699,22 @@ static int downloadFile(const char *host, const char *path,
 // 更新逻辑（参数全部来自 g_cfg）
 // ═══════════════════════════════════════════════════════════════
 
-// 检查服务器更新 → 1=需更新, 0=已最新, -1=失败
-static int checkForUpdate(const WCHAR *exeDir, char *serverVer, int svSize) {
-    char serverBuf[64] = {0};
-    int len = downloadToString(g_cfg.update_host, g_cfg.latest_path,
-        serverBuf, sizeof(serverBuf), g_cfg.use_https);
-    if (len <= 0) {
-        // HTTP 兜底（配置可能关了 https）
-        if (g_cfg.use_https) {
-            len = downloadToString(g_cfg.update_host, g_cfg.latest_path,
-                serverBuf, sizeof(serverBuf), 0);
-        }
+// ★ 语义版本比较（2026-08-09 防反向升级修复）: 按数字段比较 "0.2.335" vs "0.2.332"
+//   返回 1=a>b, 0=a==b, -1=a<b；非数字字符按 0 计；任一侧空 → 相等（保守，防降级）
+static int compareVersion(const char *a, const char *b) {
+    if (!a || !b) return 0;
+    while (*a || *b) {
+        long na = 0, nb = 0;
+        while (*a && *a != '.') { if (*a >= '0' && *a <= '9') na = na * 10 + (*a - '0'); a++; }
+        while (*b && *b != '.') { if (*b >= '0' && *b <= '9') nb = nb * 10 + (*b - '0'); b++; }
+        if (na != nb) return na > nb ? 1 : -1;
+        if (*a) a++;
+        if (*b) b++;
     }
-    if (len <= 0) return -1;
-
-    char *nl = strchr(serverBuf, '\n'); if (nl) *nl = '\0';
-    nl = strchr(serverBuf, '\r'); if (nl) *nl = '\0';
-    while (len > 0 && (serverBuf[len-1] == ' ' || serverBuf[len-1] == '\t')) serverBuf[--len] = '\0';
-    if (len == 0) return -1;
-    strncpy(serverVer, serverBuf, svSize - 1);
-
-    char localVer[64] = {0};
-    int localLen = readLocalVersion(exeDir, localVer, sizeof(localVer));
-    if (localLen == 0) return 1;
-    if (strcmp(localVer, serverVer) != 0) return 1;
     return 0;
 }
+
+
 
 // ═══════════════════════════════════════════════════════════════
 // 解压 / 目录操作
@@ -812,12 +840,13 @@ static int applySwapIfReady(const WCHAR *exeDir) {
     // ★ 守卫 1: joker 正在运行（含旧实例残党）→ 放弃本次交换，等用户退出后下次启动
     if (isProcessRunning(L"joker.exe")) return 0;
 
-    // ★ 守卫 2: next 完整性最小校验（joker + .version + resources/app）→ 残缺版绝不交换
+    // ★ 守卫 2: next 完整性最小校验（joker + versions.json + resources/app）→ 残缺版绝不交换
+    //   versions.json = 唯一版本权威（清单编号 + 组件精确矩阵），缺失即判残缺。
     {
         WCHAR chk[MAX_PATH];
         swprintf(chk, MAX_PATH, L"%s\\joker.exe", ghNext);
         if (!fileExistsW(chk)) { DeleteFileW(swapReady); return 0; }
-        swprintf(chk, MAX_PATH, L"%s\\.version", ghNext);
+        swprintf(chk, MAX_PATH, L"%s\\versions.json", ghNext);
         if (!fileExistsW(chk)) { DeleteFileW(swapReady); return 0; }
         swprintf(chk, MAX_PATH, L"%s\\resources\\app", ghNext);
         if (!fileExistsW(chk)) { DeleteFileW(swapReady); return 0; }
@@ -879,6 +908,66 @@ static int applySwapIfReady(const WCHAR *exeDir) {
 }
 
 
+// ★ 根目录自清洁（2026-08-10）: 包根只留 LICENSE / qqqide.exe / gh555.com
+//   删除启动器自己产生的一切临时产物，包根永不累积垃圾。
+//   - 保留: LICENSE / qqqide.exe / gh555.com
+//   - 挂起更新保留: .swap-ready + gh555.com-next（joker 还在跑→交换被推迟，绝不能丢）
+//   - 删除: r / r.next / .version-next / debug.log / 旧根位置 launcher-config.json /
+//           loading-status / gh555.com-old / qqqide.old.exe / 无挂起标记的 gh555.com-next
+//   - 旧根 Data（历史泄漏残留）由 migrateLegacyRootData 救援 alphal 后整树删除
+//   - 未知文件一律不动（防误删用户自放文件）
+static void cleanupRootJunk(const WCHAR *exeDir) {
+    WCHAR p[MAX_PATH];
+    static const WCHAR *plainFiles[] = {
+        L"r", L"r.next", L".version-next", L"debug.log",
+        L"launcher-config.json", L"loading-status", L"qqqide.old.exe"
+    };
+    for (int i = 0; i < (int)(sizeof(plainFiles) / sizeof(plainFiles[0])); i++) {
+        swprintf(p, MAX_PATH, L"%s\\%s", exeDir, plainFiles[i]);
+        if (fileExistsW(p)) DeleteFileW(p);
+    }
+    // 交换失败/崩溃残留目录
+    swprintf(p, MAX_PATH, L"%s\\gh555.com-old", exeDir);
+    if (fileExistsW(p)) removeDir(p);
+    // 单元增量暂存（下载中断残留，启动即清）
+    swprintf(p, MAX_PATH, L"%s\\u.next", exeDir);
+    if (fileExistsW(p)) removeDir(p);
+    // 挂起更新: .swap-ready 仍在 → 交换被推迟（joker 在跑）→ 保留 next 等下次交换
+    swprintf(p, MAX_PATH, L"%s\\.swap-ready", exeDir);
+    if (!fileExistsW(p)) {
+        swprintf(p, MAX_PATH, L"%s\\gh555.com-next", exeDir);
+        if (fileExistsW(p)) removeDir(p);
+    }
+}
+
+// ★ 旧根 Data 迁移（2026-08-10）: 根目录 Data 是旧包泄漏残留（dev 数据被 electron-builder
+//   拷入发行包，F27 已堵源头）。程序级保险库 = gh555.com/Data（运行时 userData + 交换守卫
+//   自动备份恢复）。一次性救援 + 清除: 保险库缺 alphal 且旧目录有 → 搬入（幂等，目标已存在
+//   则旧副本视为泄漏拷贝作废）；救援完成后整树删除根 Data。此后包根只剩 LICENSE / qqqide.exe / gh555.com。
+static void migrateLegacyRootData(const WCHAR *exeDir) {
+    WCHAR legacy[MAX_PATH], vault[MAX_PATH], srcA[MAX_PATH], dstA[MAX_PATH];
+    int alphalDone = 0;
+
+    swprintf(legacy, MAX_PATH, L"%s\\Data", exeDir);
+    if (!fileExistsW(legacy)) return;           // 无残留 → 无事可做
+
+    swprintf(vault, MAX_PATH, L"%s\\gh555.com\\Data", exeDir);
+    swprintf(srcA, MAX_PATH, L"%s\\alphal", legacy);
+    swprintf(dstA, MAX_PATH, L"%s\\alphal", vault);
+
+    if (!fileExistsW(srcA)) {
+        alphalDone = 1;                          // 旧目录本来就没有账号数据
+    } else if (fileExistsW(dstA)) {
+        alphalDone = 1;                          // 保险库已有账号数据（目标胜出）
+    } else if (MoveFileW(srcA, dstA)) {
+        alphalDone = 1;                          // 救援成功（同盘原子改名）
+    }
+    // MoveFileW 失败（被占用等）→ 保留旧目录，下次启动重试，绝不丢数据
+
+    if (alphalDone) removeDir(legacy);
+}
+
+
 // ★ 后台解压线程 — 将 r.next 解压到 gh555.com-next/（不阻塞用户使用 IDE）
 static unsigned __stdcall backgroundApplyUpdate(void *param) {
     InterlockedExchange(&g_applyRunning, 1);
@@ -916,12 +1005,13 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
 
     // ★ 幂等守卫（2026-08-06）: gh555.com-next 已存在且版本匹配 → 补写 .swap-ready 即结束
     //   禁止每次启动重复解压 120MB（交换推迟期间每启动全量重做 = 严重 bug）
+    //   版本读取 = next/versions.json 的 id（唯一权威，2026-08-10）
     {
         WCHAR nextVerPath[MAX_PATH];
-        swprintf(nextVerPath, MAX_PATH, L"%s\\.version", ghNext);
+        swprintf(nextVerPath, MAX_PATH, L"%s\\versions.json", ghNext);
         char nextVer[64] = {0};
         if (fileExistsW(ghNext) &&
-            readFileText(nextVerPath, nextVer, sizeof(nextVer)) > 0 &&
+            readManifestIdFile(nextVerPath, nextVer, sizeof(nextVer)) > 0 &&
             strcmp(nextVer, newVer) == 0) {
             WCHAR swapReady[MAX_PATH];
             swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
@@ -984,10 +1074,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
 
     removeDir(tmpDir);
 
-    // 写版本号
-    WCHAR vPath[MAX_PATH];
-    swprintf(vPath, MAX_PATH, L"%s\\.version", ghNext);
-    writeFileText(vPath, newVer);
+    // ★ 版本号不再写：versions.json 已随 r 冻结在 gh555.com 内（唯一权威，2026-08-10）
 
     // 写 .swap-ready → 下次启动原子交换
     WCHAR swapReady[MAX_PATH];
@@ -1004,6 +1091,404 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
     if (g_hwnd) PostMessageW(g_hwnd, WM_USER + 1, 0, 0);
 
     return 0;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ★ 单元增量更新（2026-08-10 B 方案落地）
+//   哲学: 增量 = 纯传输层优化，正确性零责任。
+//   ① 版本权威不变 = versions.json 清单编号（F33 重构），任何异常 → 全量 r 兜底
+//   ② 单元 = 架构层目录（launcher/core/app/shell-out/webapp 固定 5 个），
+//      单元数不随项目复杂度增长（新文件自动落入 core/app 补集）
+//   ③ engines/* 不参与增量（component-checker 已按 manifest 独立增量管理，
+//      防启动器覆盖组件升级导致静默回退）
+//   ④ 增量字节数 >= 全量 r → 直接全量（带宽不劣化）
+//   ⑤ 本地状态 = gh555.com/Data/units.json（随交换 Data 备份恢复，天然幂等）
+// ═══════════════════════════════════════════════════════════════
+
+#define MAX_UNITS 12
+
+typedef struct {
+    char name[48];
+    char rel[256];
+    char version[64];
+    long bytes;
+    char file[128];
+} UnitDef;
+
+typedef struct {
+    char id[64];
+    long r_bytes;
+    char versions_raw[2048];   // "versions" 键的原始 JSON（逐字写 next/versions.json）
+    int n_units;
+    UnitDef units[MAX_UNITS];
+} UnitsManifest;
+
+// 抓取 "versions" 键的原始 JSON 值（含花括号）
+static int captureRawJsonObject(const char **p, char *out, int outSize) {
+    skipWhitespace(p);
+    if (**p != '{') return 0;
+    int depth = 0;
+    int i = 0;
+    while (**p && i < outSize - 1) {
+        char c = **p;
+        out[i++] = c;
+        if (c == '{') depth++;
+        else if (c == '}') {
+            depth--;
+            if (depth == 0) { (*p)++; out[i] = '\0'; return 1; }
+        }
+        (*p)++;
+    }
+    out[i] = '\0';
+    return 0;
+}
+
+// 跳过任意 JSON 值（未知 key 容错，向前兼容）
+static void skipJsonValue(const char **p) {
+    skipWhitespace(p);
+    if (**p == '"') { char dummy[128]; parseJsonString(p, dummy, sizeof(dummy)); }
+    else if (**p == '{') { int d = 1; (*p)++; while (**p && d > 0) { if (**p == '{') d++; if (**p == '}') d--; (*p)++; } }
+    else if (**p == '[') { int d = 1; (*p)++; while (**p && d > 0) { if (**p == '[') d++; if (**p == ']') d--; (*p)++; } }
+    else if (**p == 't' || **p == 'f') { int v; parseJsonBool(p, &v); }
+    else { while (**p && **p != ',' && **p != '}' && **p != ']') (*p)++; }
+}
+
+// 解析一个单元对象 {"name":..,"rel":..,"version":..,"bytes":..,"file":..}
+static int parseUnitObject(const char **p, UnitDef *u) {
+    skipWhitespace(p);
+    if (**p != '{') return 0;
+    (*p)++;
+    memset(u, 0, sizeof(*u));
+    while (1) {
+        skipWhitespace(p);
+        if (**p == '}') { (*p)++; break; }
+        if (**p == ',') { (*p)++; continue; }
+        if (**p == '\0') return 0;
+        char key[48];
+        if (!parseJsonString(p, key, sizeof(key))) return 0;
+        skipWhitespace(p);
+        if (**p != ':') return 0;
+        (*p)++;
+        if (strcmp(key, "name") == 0) { skipWhitespace(p); parseJsonString(p, u->name, sizeof(u->name)); }
+        else if (strcmp(key, "rel") == 0) { skipWhitespace(p); parseJsonString(p, u->rel, sizeof(u->rel)); }
+        else if (strcmp(key, "version") == 0) { skipWhitespace(p); parseJsonString(p, u->version, sizeof(u->version)); }
+        else if (strcmp(key, "bytes") == 0) { skipWhitespace(p); char *end = NULL; u->bytes = strtol(*p, &end, 10); if (end) *p = end; }
+        else if (strcmp(key, "file") == 0) { skipWhitespace(p); parseJsonString(p, u->file, sizeof(u->file)); }
+        else { skipJsonValue(p); }
+    }
+    return 1;
+}
+
+// 解析远端单元清单 units.json
+static int parseUnitsManifest(const char *json, UnitsManifest *m) {
+    const char *p = json;
+    skipWhitespace(&p);
+    if (*p != '{') return 0;
+    p++;
+    memset(m, 0, sizeof(*m));
+    while (1) {
+        skipWhitespace(&p);
+        if (*p == '}') { p++; break; }
+        if (*p == ',') { p++; continue; }
+        if (*p == '\0') break;
+        char key[64];
+        if (!parseJsonString(&p, key, sizeof(key))) return 0;
+        skipWhitespace(&p);
+        if (*p != ':') return 0;
+        p++;
+        if (strcmp(key, "id") == 0) { skipWhitespace(&p); parseJsonString(&p, m->id, sizeof(m->id)); }
+        else if (strcmp(key, "r_bytes") == 0) { skipWhitespace(&p); char *end = NULL; m->r_bytes = strtol(p, &end, 10); if (end) p = end; }
+        else if (strcmp(key, "versions") == 0) { captureRawJsonObject(&p, m->versions_raw, sizeof(m->versions_raw)); }
+        else if (strcmp(key, "units") == 0) {
+            skipWhitespace(&p);
+            if (*p == '[') {
+                p++;
+                while (m->n_units < MAX_UNITS) {
+                    skipWhitespace(&p);
+                    if (*p == ']') { p++; break; }
+                    if (*p == ',') { p++; continue; }
+                    if (!parseUnitObject(&p, &m->units[m->n_units])) break;
+                    m->n_units++;
+                }
+            }
+        }
+        else { skipJsonValue(&p); }
+    }
+    return m->n_units > 0 && m->id[0] != '\0';
+}
+
+// 解析本地单元状态 gh555.com/Data/units.json（复用 UnitsManifest，仅 id + name/version 有意义）
+static int parseLocalUnitsState(const char *json, UnitsManifest *ls) {
+    const char *p = json;
+    skipWhitespace(&p);
+    if (*p != '{') return 0;
+    p++;
+    memset(ls, 0, sizeof(*ls));
+    while (1) {
+        skipWhitespace(&p);
+        if (*p == '}') { p++; break; }
+        if (*p == ',') { p++; continue; }
+        if (*p == '\0') break;
+        char key[64];
+        if (!parseJsonString(&p, key, sizeof(key))) return 0;
+        skipWhitespace(&p);
+        if (*p != ':') return 0;
+        p++;
+        if (strcmp(key, "id") == 0) { skipWhitespace(&p); parseJsonString(&p, ls->id, sizeof(ls->id)); }
+        else if (strcmp(key, "units") == 0) {
+            skipWhitespace(&p);
+            if (*p == '{') {
+                p++;
+                while (ls->n_units < MAX_UNITS) {
+                    skipWhitespace(&p);
+                    if (*p == '}') { p++; break; }
+                    if (*p == ',') { p++; continue; }
+                    char uname[48];
+                    if (!parseJsonString(&p, uname, sizeof(uname))) break;
+                    skipWhitespace(&p);
+                    if (*p != ':') break;
+                    p++;
+                    skipWhitespace(&p);
+                    char uver[64];
+                    if (!parseJsonString(&p, uver, sizeof(uver))) break;
+                    strncpy(ls->units[ls->n_units].name, uname, sizeof(ls->units[0].name) - 1);
+                    strncpy(ls->units[ls->n_units].version, uver, sizeof(ls->units[0].version) - 1);
+                    ls->n_units++;
+                }
+            }
+        }
+        else { skipJsonValue(&p); }
+    }
+    return ls->n_units > 0 || ls->id[0] != '\0';
+}
+
+// 生成本地单元状态 JSON
+static void buildLocalUnitsJson(char *buf, int bufSize, const UnitsManifest *m) {
+    int n = 0;
+    n += snprintf(buf + n, bufSize - n, "{\"id\":\"%s\",\"units\":{", m->id);
+    for (int i = 0; i < m->n_units; i++) {
+        n += snprintf(buf + n, bufSize - n, "\"%s\":\"%s\",", m->units[i].name, m->units[i].version);
+    }
+    if (n > 2 && buf[n - 1] == ',') { buf[n - 1] = '}'; buf[n] = '\0'; }
+    n = (int)strlen(buf);
+    n += snprintf(buf + n, bufSize - n, "}");
+}
+
+// 判断 rel 是否命中跳过清单（'|' 分隔的多段路径，'\\' 分隔段）
+static int relSkipped(const WCHAR *rel, const WCHAR *skipList) {
+    if (!skipList || !skipList[0]) return 0;
+    const WCHAR *start = skipList;
+    while (*start) {
+        const WCHAR *end = wcschr(start, L'|');
+        size_t len = end ? (size_t)(end - start) : wcslen(start);
+        if (wcslen(rel) == len && wcsncmp(rel, start, len) == 0) return 1;
+        if (!end) break;
+        start = end + 1;
+    }
+    return 0;
+}
+
+// ★ 合并树: 把解压产物 src 合并进 dst（next 目标路径）
+//   文件用 MoveFileEx(REPLACE_EXISTING) → 仅替换目录项，硬链接共享 inode 的 live 零损伤
+//   失败回退: 删目录项 + 物理复制（同样安全，绝不原地写硬链接）
+static int mergeTreeW(const WCHAR *src, const WCHAR *dst) {
+    DWORD attr = GetFileAttributesW(src);
+    if (attr == INVALID_FILE_ATTRIBUTES) return -1;
+    if (!(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+        // 单文件单元（launcher-next.exe）
+        WCHAR parent[MAX_PATH];
+        wcscpy(parent, dst);
+        WCHAR *slash = wcsrchr(parent, L'\\');
+        if (slash) { *slash = L'\0'; CreateDirectoryW(parent, NULL); }
+        if (MoveFileExW(src, dst, MOVEFILE_REPLACE_EXISTING)) return 0;
+        DeleteFileW(dst);
+        return CopyFileW(src, dst, FALSE) ? 0 : -1;
+    }
+    WCHAR searchPath[MAX_PATH];
+    swprintf(searchPath, MAX_PATH, L"%s\\*", src);
+    WIN32_FIND_DATAW fd;
+    HANDLE hFind = FindFirstFileW(searchPath, &fd);
+    if (hFind == INVALID_HANDLE_VALUE) return -1;
+    CreateDirectoryW(dst, NULL);
+    int rc = 0;
+    do {
+        if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
+        WCHAR s[MAX_PATH], d[MAX_PATH];
+        swprintf(s, MAX_PATH, L"%s\\%s", src, fd.cFileName);
+        swprintf(d, MAX_PATH, L"%s\\%s", dst, fd.cFileName);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            if (mergeTreeW(s, d) != 0) { rc = -1; break; }
+        } else {
+            if (MoveFileExW(s, d, MOVEFILE_REPLACE_EXISTING)) continue;
+            DeleteFileW(d);
+            if (!CopyFileW(s, d, FALSE)) { rc = -1; break; }
+            DeleteFileW(s);
+        }
+    } while (FindNextFileW(hFind, &fd));
+    FindClose(hFind);
+    return rc;
+}
+
+// ★ 硬链接克隆目录树（NTFS 同卷零拷贝秒级；失败回退物理复制）
+//   skipList: '|' 分隔的相对路径（如 "Data|versions.json|.version"）
+static int cloneTreeW(const WCHAR *src, const WCHAR *dst, const WCHAR *rel, const WCHAR *skipList) {
+    WCHAR searchPath[MAX_PATH];
+    swprintf(searchPath, MAX_PATH, L"%s\\*", src);
+    WIN32_FIND_DATAW fd;
+    HANDLE hFind = FindFirstFileW(searchPath, &fd);
+    if (hFind == INVALID_HANDLE_VALUE) return -1;
+    CreateDirectoryW(dst, NULL);
+    int rc = 0;
+    do {
+        if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
+        WCHAR childRel[MAX_PATH];
+        if (rel[0]) swprintf(childRel, MAX_PATH, L"%s\\%s", rel, fd.cFileName);
+        else wcscpy(childRel, fd.cFileName);
+        if (relSkipped(childRel, skipList)) continue;
+        WCHAR s[MAX_PATH], d[MAX_PATH];
+        swprintf(s, MAX_PATH, L"%s\\%s", src, fd.cFileName);
+        swprintf(d, MAX_PATH, L"%s\\%s", dst, fd.cFileName);
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            if (cloneTreeW(s, d, childRel, skipList) != 0) { rc = -1; break; }
+        } else {
+            if (!CreateHardLinkW(d, s, NULL) && !CopyFileW(s, d, FALSE)) { rc = -1; break; }
+        }
+    } while (FindNextFileW(hFind, &fd));
+    FindClose(hFind);
+    return rc;
+}
+
+// 计算需要下载的单元（本地缺失或版本不一致）；返回需要数
+static int collectNeededUnits(const UnitsManifest *m, const UnitsManifest *ls, int *needed, int maxNeeded, long *neededBytes) {
+    int n = 0;
+    long total = 0;
+    for (int i = 0; i < m->n_units && n < maxNeeded; i++) {
+        int have = 0;
+        for (int j = 0; j < ls->n_units; j++) {
+            if (strcmp(ls->units[j].name, m->units[i].name) == 0) {
+                if (strcmp(ls->units[j].version, m->units[i].version) == 0) have = 1;
+                break;
+            }
+        }
+        if (!have) { needed[n++] = i; total += m->units[i].bytes; }
+    }
+    *neededBytes = total;
+    return n;
+}
+
+// ★ 单元增量装配: 返回 1=成功(swap-ready 已写) / 0=失败 → 调用方走全量 r 兜底
+static int tryIncrementalUpdate(const WCHAR *exeDir, const char *serverVer) {
+    char json[8192];
+    int len = downloadToString(g_cfg.update_host, g_cfg.units_path, json, sizeof(json), g_cfg.use_https);
+    if (len <= 0 && g_cfg.use_https) {
+        len = downloadToString(g_cfg.update_host, g_cfg.units_path, json, sizeof(json), 0);
+    }
+    if (len <= 0) return 0;
+
+    UnitsManifest m;
+    if (!parseUnitsManifest(json, &m)) return 0;
+    if (m.id[0] == '\0' || strcmp(m.id, serverVer) != 0) return 0;   // 清单必须与 latest.txt 一致
+    if (m.versions_raw[0] == '\0') return 0;
+
+    // 本地单元状态缺失（旧包）→ 全量兜底
+    WCHAR lsPath[MAX_PATH];
+    swprintf(lsPath, MAX_PATH, L"%s\\gh555.com\\Data\\units.json", exeDir);
+    char lsRaw[4096];
+    if (readFileRaw(lsPath, lsRaw, sizeof(lsRaw)) <= 0) return 0;
+    UnitsManifest ls;
+    if (!parseLocalUnitsState(lsRaw, &ls)) return 0;
+    if (strcmp(ls.id, m.id) == 0) return 0;                          // 已是目标版本（幂等兜底）
+
+    int needed[MAX_UNITS];
+    long neededBytes = 0;
+    int nNeed = collectNeededUnits(&m, &ls, needed, MAX_UNITS, &neededBytes);
+    if (nNeed == 0) return 0;                                        // 无变化 → 异常态 → 全量兜底
+    if (m.r_bytes > 0 && neededBytes >= m.r_bytes) return 0;         // 增量不小于全量 → 全量
+
+    // ── 装配 gh555.com-next: ① 硬链接克隆 live（同卷零拷贝，秒级） ② 覆盖变化单元 ──
+    //   next 必须是完整 gh555.com（swap 门同全量 r），未变化单元从 live 克隆；
+    //   变化单元删除克隆旧路径（断链安全）后解压新内容 → 结果 = 完整新矩阵。
+    WCHAR uDir[MAX_PATH], ghNext[MAX_PATH], liveCore[MAX_PATH];
+    swprintf(uDir, MAX_PATH, L"%s\\u.next", exeDir);
+    swprintf(ghNext, MAX_PATH, L"%s\\gh555.com-next", exeDir);
+    swprintf(liveCore, MAX_PATH, L"%s\\gh555.com", exeDir);
+    removeDir(uDir);
+    CreateDirectoryW(uDir, NULL);
+    removeDir(ghNext);
+
+    int ok = 1;
+    // ① 全量硬链接克隆（Data/versions.json/.version 不克隆，由本函数重写）
+    if (cloneTreeW(liveCore, ghNext, L"", L"Data|versions.json|.version") != 0) ok = 0;
+    for (int i = 0; i < nNeed && ok; i++) {
+        UnitDef *u = &m.units[needed[i]];
+        WCHAR dest[MAX_PATH], outDir[MAX_PATH];
+        swprintf(dest, MAX_PATH, L"%s\\%s.7z", uDir, u->name);
+        swprintf(outDir, MAX_PATH, L"%s\\out", uDir);
+        DeleteFileW(dest);
+        removeDir(outDir);
+
+        char cdnPath[512];
+        snprintf(cdnPath, sizeof(cdnPath), "/dl/qqqide-up/%s", u->file);
+        int rc = downloadFile(g_cfg.update_host, cdnPath, dest, g_cfg.use_https);
+        if (rc != 0 && g_cfg.use_https) {
+            DeleteFileW(dest);
+            rc = downloadFile(g_cfg.update_host, cdnPath, dest, 0);
+        }
+        if (rc != 0) { ok = 0; break; }
+
+        // ② 解压到临时目录（绝不对 next 内硬链接文件原地写——共享 inode 会污染 live）
+        CreateDirectoryW(outDir, NULL);
+        WCHAR cmdLine[1024];
+        swprintf(cmdLine, 1024, L"\"%s\" -y", dest);
+        STARTUPINFOW si = { sizeof(si) };
+        si.dwFlags = STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        PROCESS_INFORMATION pi = {0};
+        if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
+            CREATE_NO_WINDOW, NULL, outDir, &si, &pi)) { ok = 0; break; }
+        CloseHandle(pi.hThread);
+        WaitForSingleObject(pi.hProcess, INFINITE);
+        DWORD ec = 0;
+        GetExitCodeProcess(pi.hProcess, &ec);
+        CloseHandle(pi.hProcess);
+        if (ec != 0) { ok = 0; break; }                              // 7z CRC 校验失败 → 丢弃
+
+        // ③ 合并入 next 根（单元档案内路径 = 相对 gh555.com 根，自描述无需 rel）
+        //    REPLACE 目录项 → 断链安全，live 零损伤
+        if (mergeTreeW(outDir, ghNext) != 0) { ok = 0; break; }
+        removeDir(outDir);
+        DeleteFileW(dest);
+    }
+
+    if (!ok) { removeDir(ghNext); removeDir(uDir); return 0; }       // 任一失败 → 丢弃暂存 → 全量兜底
+
+    // ── 元数据落盘（先于 gate：版本权威逐字 = 全量 r 的 versions.json） ──
+    WCHAR vPath[MAX_PATH], dotVPath[MAX_PATH], dataDir[MAX_PATH], luPath[MAX_PATH], swPath[MAX_PATH];
+    swprintf(vPath, MAX_PATH, L"%s\\versions.json", ghNext);
+    writeFileText(vPath, m.versions_raw);
+    swprintf(dotVPath, MAX_PATH, L"%s\\.version", ghNext);
+    writeFileText(dotVPath, m.id);
+    swprintf(dataDir, MAX_PATH, L"%s\\Data", ghNext);
+    CreateDirectoryW(dataDir, NULL);
+    swprintf(luPath, MAX_PATH, L"%s\\Data\\units.json", ghNext);
+    { char lbuf[4096]; buildLocalUnitsJson(lbuf, sizeof(lbuf), &m); writeFileText(luPath, lbuf); }
+
+    // ── gate 校验（与全量 r 交换同一门） ──
+    {
+        WCHAR chk[MAX_PATH];
+        swprintf(chk, MAX_PATH, L"%s\\joker.exe", ghNext);
+        if (!fileExistsW(chk)) { removeDir(ghNext); removeDir(uDir); return 0; }
+        swprintf(chk, MAX_PATH, L"%s\\resources\\app", ghNext);
+        if (!fileExistsW(chk)) { removeDir(ghNext); removeDir(uDir); return 0; }
+        swprintf(chk, MAX_PATH, L"%s\\versions.json", ghNext);
+        if (!fileExistsW(chk)) { removeDir(ghNext); removeDir(uDir); return 0; }
+    }
+
+    swprintf(swPath, MAX_PATH, L"%s\\.swap-ready", exeDir);
+    writeFileText(swPath, m.id);
+
+    removeDir(uDir);
+    return 1;
 }
 
 // ── 后台更新线程 ──
@@ -1026,7 +1511,8 @@ static unsigned __stdcall backgroundUpdateProc(void *param) {
 
     char localVer[64] = {0};
     int localLen = readLocalVersion(g_exeDir, localVer, sizeof(localVer));
-    if (localLen > 0 && strcmp(localVer, serverVer) == 0) {
+    // ★ 仅服务器版本严格更高才升级（旧实现 "版本不等即下载" → 反向降级）
+    if (localLen > 0 && compareVersion(serverVer, localVer) <= 0) {
         InterlockedExchange(&g_updateRunning, 0); return 0;
     }
 
@@ -1035,13 +1521,22 @@ static unsigned __stdcall backgroundUpdateProc(void *param) {
     {
         WCHAR swPath[MAX_PATH], nextVerPath[MAX_PATH];
         swprintf(swPath, MAX_PATH, L"%s\\.swap-ready", g_exeDir);
-        swprintf(nextVerPath, MAX_PATH, L"%s\\gh555.com-next\\.version", g_exeDir);
+        swprintf(nextVerPath, MAX_PATH, L"%s\\gh555.com-next\\versions.json", g_exeDir);
         char swVer[64] = {0}, nextVer[64] = {0};
         if (readFileText(swPath, swVer, sizeof(swVer)) > 0 &&
             strcmp(swVer, serverVer) == 0 &&
-            readFileText(nextVerPath, nextVer, sizeof(nextVer)) > 0 &&
+            readManifestIdFile(nextVerPath, nextVer, sizeof(nextVer)) > 0 &&
             strcmp(nextVer, serverVer) == 0) {
             InterlockedExchange(&g_updateRunning, 0); return 0;
+        }
+    }
+    // ★ 单元增量优先（2026-08-10 B 方案）: 只下载版本变化的架构单元
+    //   （launcher/core/app/shell-out/webapp），任何异常自动回退全量 r。
+    //   engines/* 不参与（component-checker 独立按 manifest 增量管理）。
+    if (g_cfg.units_enabled && g_cfg.units_path[0] != '\0') {
+        if (tryIncrementalUpdate(g_exeDir, serverVer) == 1) {
+            InterlockedExchange(&g_updateRunning, 0);
+            return 0;
         }
     }
     // 下载到暂存
@@ -1489,6 +1984,12 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
         }
         if (fileExistsW(rPath)) MoveFileExW(rPath, NULL, MOVEFILE_DELAY_UNTIL_REBOOT);
     }
+
+    // ★ 根目录自清洁: 删除启动器自身一切临时产物（r/r.next/版本残留/调试日志/旧配置）
+    cleanupRootJunk(myDir);
+
+    // ★ 旧根 Data 迁移: 泄漏残留 → 救援 alphal 入保险库（gh555.com/Data）后整树删除
+    migrateLegacyRootData(myDir);
 
     // 清除上次残留的 loading-status
     {

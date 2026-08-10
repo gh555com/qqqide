@@ -6,6 +6,7 @@
 
 import { ipcMain, BrowserWindow } from 'electron';
 import { BootConfig, BootMode, healthCheck, loadStaticFallback, loadRemoteWithCacheGuard, isBootCompleted } from './boot';
+import { readManifestId } from './version';
 import { getComponentBin } from './component-checker';
 
 export function registerBootIpc(
@@ -26,7 +27,8 @@ export function registerBootIpc(
 
     ipcMain.handle('qqqide:boot:info', () => ({
         url: bootConfig.url,
-        version: appVersion,
+        // ★ 2026-08-10: 显示版本 = 清单编号（versions.json id），非 APP_VERSION
+        version: readManifestId(portableRoot) || appVersion,
         platform: process.platform,
         arch: process.arch,
         appRoot: portableRoot,

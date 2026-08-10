@@ -16,11 +16,11 @@ import { _windowProjectMap, _projectWindowMap, createWindow, editorFontSize, sav
 import { StateStore } from './state-sqlite';
 // import { LspBridge } from './lsp-bridge'; // LSP OFF — 2026-06-23
 import { DownloadService } from './download-service';
-import { UpdateService } from './update-service';
 import { injectDevToolsConsoleButtons } from './devtools-inject';
 import { renameDevToolsViaBroker, isPyBrokerReady } from './py-broker';
 import { _consoleBuffer } from './window-manager';
 import { refreshWindowEntry } from './squad-manager';
+import { claimProject } from './project-lock';
 import { applyMenuSchema, MenuSchema } from './menu-builder';
 import { HashService } from './hash-service';
 import { CacheStore } from './cache-store';
@@ -37,7 +37,6 @@ export function registerMiscIpc(
     lspBridge: any,
     downloadService: DownloadService,
     stateStore: StateStore,
-    updateService: UpdateService,
     getMainWindow: () => any,
     bootConfig: BootConfig,
     hashService: HashService,
@@ -366,21 +365,18 @@ ${escapedPaths}
                 _projectWindowMap.delete(normalized);
                 _windowProjectMap.delete(existingWinId);
             }
-            const lockPath = normalized + '/_qqq/alphal/.lock';
-            try {
-                const lockRaw = fs.readFileSync(lockPath, 'utf-8');
-                const lockData = JSON.parse(lockRaw);
-                const age = Date.now() - (lockData.atime || 0);
-                if (age < 60000) {
-                    return { ok: false, locked: true, existingWindowId: null };
-                }
-                try { fs.unlinkSync(lockPath); } catch (_) { }
-            } catch (_) { }
         }
         const newWin = createWindow(portableRoot, portableCache, appVersion, lspBridge, downloadService, stateStore);
         // 绑定主文件夹
         if (folderPath && typeof folderPath === 'string') {
             const normalized = folderPath.replace(/\\/g, '/').replace(/\/$/, '');
+            // ★ 项目锁仲裁（2026-08-10 冠军架构）：主进程原子 wx 仲裁取代旧磁盘读-改-写检查
+            const claimRes = claimProject(newWin.id, normalized);
+            if (!claimRes.ok) {
+                console.warn('[window:new] project locked:', normalized, 'reason=' + claimRes.reason);
+                try { newWin.destroy(); } catch (_) { }
+                return { ok: false, locked: true, existingWindowId: null, reason: claimRes.reason, holder: claimRes.holder || null };
+            }
             _windowProjectMap.set(newWin.id, normalized);
             _projectWindowMap.set(normalized, newWin.id);
         }
@@ -513,10 +509,8 @@ ${escapedPaths}
     });
 
     // ---- update ----
-    ipcMain.handle('qqqide:update:check', async () => updateService.check());
-    ipcMain.handle('qqqide:update:apply', async () => updateService.apply());
-    ipcMain.handle('qqqide:update:state', async () => updateService.getState());
-    ipcMain.handle('qqqide:update:upgrade-shell', async () => updateService.upgradeShell());
+    // ★ 2026-08-10 重构：热更通道整体删除（版本 = versions.json 清单编号，更新只随 r 整包交换）。
+    //   qqqide:update:* IPC 已全部移除。
 
     // ═══ 编辑器脏快照 — 跨窗口共享（Layer 2: IDE 领域内视觉一致） ═══
     ipcMain.handle('qqqide:dirty:set', (_e, filePath: string, content: string) => {

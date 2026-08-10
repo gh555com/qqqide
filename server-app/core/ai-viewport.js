@@ -455,42 +455,35 @@
     }).catch(function () { });
   }
 
-  // 异步校验主文件夹锁：若该项目已被其他窗口锁定，从视口移除
-  // 仅在 ?folder= 新窗口场景使用，作为主进程锁检查的兜底
+  // 异步校验主文件夹锁：若该项目已被其他实例/窗口锁定，从视口移除
+  // 仅在 ?folder= 新窗口场景使用，作为主进程 claimProject 仲裁的兜底（2026-08-10 改 query）
   function _verifyFolderLock(folderPath) {
-    var lockPath = folderPath.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/.lock';
-    // 延迟 2s 再检查，避开本窗口 bindMainProject 的锁写入
+    // 延迟 2s 再检查（主进程仲裁先行，渲染层只做展示层兜底）
     setTimeout(function () {
-      bridge.fs.stat(lockPath).then(function (statInfo) {
-        if (!statInfo) return; // 锁文件不存在，安全
-        return bridge.fs.read(lockPath).then(function (raw) {
-          try {
-            var data = JSON.parse(raw);
-            var age = Date.now() - (data.atime || 0);
-            // 锁有效且年龄 > 8s（避开本窗口中面板 claimLock 写入 + iframe 初始化耗时，
-            //   3s 阈值下初始化慢 → 把自己的锁误判为「来自另一窗口」→ 误报警告）→ 辅文件夹移除；主文件夹仅警告
-            if (age > 8000 && age < 60000) {
-              var idx = -1;
-              for (var i = 0; i < projects.length; i++) {
-                if (projects[i].path === folderPath) { idx = i; break; }
-              }
-              if (idx > 0) {
-                console.warn('[ai-viewport] stale lock detected for ' + folderPath + ' (age=' + (age / 1000).toFixed(1) + 's), removing from viewport');
-                projects.splice(idx, 1);
-                saveProjects();
-                render();
-                _notifyChanged();
-              } else if (idx === 0) {
-                // ★ 主文件夹永不因锁检查移除：移除即 AI 面板绑定错乱 + quest 全空（F-2026-08-06）
-                console.warn('[ai-viewport] MAIN project lock conflict for ' + folderPath + ' (age=' + (age / 1000).toFixed(1) + 's), keeping as main');
-                if (window.qqqideQoast) {
-                  window.qqqideQoast.show('⚠️ 主文件夹「' + basename(folderPath) + '」锁文件来自另一窗口，已保留', { duration: 6000, type: 'warn' });
-                }
-              }
-            }
-          } catch (_) { }
-        });
-      }).catch(function () { /* 锁文件不存在 */ });
+      var pl = bridge && bridge.projectLock;
+      if (!pl) return;
+      pl.query(folderPath).then(function (res) {
+        if (!res || !res.locked) return; // 无锁/僵尸/本实例无锁 → 安全
+        if (res.self) return; // 本实例自己的锁（主进程仲裁已持有）→ 跳过，避免自误判
+        var idx = -1;
+        for (var i = 0; i < projects.length; i++) {
+          if (projects[i].path === folderPath) { idx = i; break; }
+        }
+        if (idx > 0) {
+          console.warn('[ai-viewport] locked by another instance for ' + folderPath + ' (pid=' + (res.holder && res.holder.pid) + '), removing from viewport');
+          projects.splice(idx, 1);
+          saveProjects();
+          render();
+          _notifyChanged();
+        } else if (idx === 0) {
+          // ★ 主文件夹永不因锁检查移除：移除即 AI 面板绑定错乱 + quest 全空（F-2026-08-06）
+          //   视口保留展示，面板绑定由主进程硬拒绝（另一实例占用时面板显示错误而非空白）
+          console.warn('[ai-viewport] MAIN project locked by another instance: ' + folderPath + ' (pid=' + (res.holder && res.holder.pid) + '), keeping as main');
+          if (window.qqqideQoast) {
+            window.qqqideQoast.show('⚠️ 项目「' + basename(folderPath) + '」已被另一 IDE 实例占用（pid=' + (res.holder && res.holder.pid) + '）', { duration: 6000, type: 'warn' });
+          }
+        }
+      }).catch(function () { /* 查询失败不阻断 */ });
     }, 2000);
   }
 
@@ -1811,27 +1804,21 @@
     _notifyChanged();
   }
 
-  // 空视口添加主文件夹前的锁预检
+  // 空视口添加主文件夹前的锁预检（2026-08-10 改 query：主进程原子仲裁先行，此处仅预检展示层）
   function _verifyFolderLockBeforeAdd(folderPath, name) {
-    var lockPath = folderPath.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/.lock';
-    bridge.fs.stat(lockPath).then(function (statInfo) {
-      if (!statInfo) { _doAddProject(folderPath, name); return; }
-      return bridge.fs.read(lockPath).then(function (raw) {
-        try {
-          var data = JSON.parse(raw);
-          var age = Date.now() - (data.atime || 0);
-          if (age < 60000) {
-            // 锁有效 → 拒绝添加
-            console.warn('[ai-viewport] lock pre-check failed for ' + folderPath + ' (age=' + (age / 1000).toFixed(1) + 's)');
-            if (window.qqqideQoast) {
-              window.qqqideQoast.show('⚠️ 该项目已在另一个 QQQ 窗口中作为主文件夹打开', { duration: 6000, type: 'warn' });
-            }
-            return;
-          }
-          // 僵尸锁 → 允许添加
-          _doAddProject(folderPath, name);
-        } catch (_) { _doAddProject(folderPath, name); }
-      });
+    var pl = bridge && bridge.projectLock;
+    if (!pl) { _doAddProject(folderPath, name); return; }
+    pl.query(folderPath).then(function (res) {
+      if (res && res.locked && !res.self) {
+        // 其他实例活锁 → 拒绝添加
+        console.warn('[ai-viewport] lock pre-check failed for ' + folderPath + ' (pid=' + (res.holder && res.holder.pid) + ')');
+        if (window.qqqideQoast) {
+          window.qqqideQoast.show('⚠️ 该项目已在另一个窗口作为主文件夹打开', { duration: 6000, type: 'warn' });
+        }
+        return;
+      }
+      // 无锁 / 僵尸锁 / 本实例自己的锁 → 允许添加（最终仲裁 = 面板 claimProject）
+      _doAddProject(folderPath, name);
     }).catch(function () { _doAddProject(folderPath, name); });
   }
 

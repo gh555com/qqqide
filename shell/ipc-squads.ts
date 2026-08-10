@@ -7,10 +7,13 @@
 // ============================================================================
 
 import { BrowserWindow, ipcMain } from 'electron';
-import { broadcastSquadState, getSquadState, setSquad } from './squad-manager';
+import { broadcastSquadState, getSquadState, setSquad, startSquadWatcher } from './squad-manager';
 import { _windowProjectMap } from './window-manager';
 
 export function registerSquadIpc(): void {
+    // ★ 跨实例中心大脑：fs.watch 监听 squads.json（gaea-process 状态文件同款模式），
+    //   dev+绿色包同跑时任何一方写盘 → 所有实例秒同步 + 败者自动重认领（幂等，只启一次）
+    startSquadWatcher();
     ipcMain.handle('qqqide:squad:get', (e) => {
         const win = BrowserWindow.fromWebContents(e.sender);
         if (!win) { return { ok: false, reason: 'no_window' }; }

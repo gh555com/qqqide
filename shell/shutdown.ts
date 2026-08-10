@@ -14,6 +14,7 @@ import { StateStore } from './state-sqlite';
 import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
 import { _windowProjectMap, getWindowWingState } from './window-manager';
+import { releaseProject } from './project-lock';
 import { wsStateSetKey } from './ipc-ws-state';
 import { crashNetMarkCleanQuit } from './crash-net';
 
@@ -93,12 +94,8 @@ function autoIncrementVersion(portableRoot: string): void {
             console.log('[auto-version] package.json updated');
         }
 
-        // ── 更新运行时版本标记 ──
-        const dataDir = path.join(portableRoot, 'Data');
-        try { fs.mkdirSync(dataDir, { recursive: true }); } catch { /* ignore */ }
-        fs.writeFileSync(path.join(dataDir, 'shell-version'), newVer, 'utf8');
-        fs.writeFileSync(path.join(dataDir, 'webapp-version'), newVer, 'utf8');
-        console.log('[auto-version] Data/shell-version + webapp-version → ' + newVer);
+        // ★ 2026-08-10 重构: Data/shell-version / webapp-version 已废弃
+        //   （版本唯一权威 = gh555.com/versions.json，由 pack.js 生成）
 
         console.log('[auto-version] done: ' + oldVer + ' → ' + newVer);
     } catch (err: any) {
@@ -232,6 +229,12 @@ export function registerExitHandlers(
             cleanupAllGaeaProcesses();
         } catch { /* ignore */ }
 
+        // ①c cleanup kmd terminal sessions（杀全部会话进程树，防孤儿）
+        try {
+            const { killAllKmdSessions } = require('./ipc-kmd');
+            killAllKmdSessions();
+        } catch { /* ignore */ }
+
 
         // ② flush state (SQLite + qgf FS)
         try { _flushStateSync('before-quit'); } catch { /* ignore */ }
@@ -255,9 +258,9 @@ export function registerExitHandlers(
         // ④ save open windows for next-startup multi-window restore
         try { saveAllOpenWindows(stateStore, _windowProjectMap); } catch { /* ignore */ }
 
-        // ⑤ clean project lock files — prevent "already open" on next launch
-        for (const [winId, projectRoot] of _windowProjectMap) {
-            try { fs.unlinkSync(projectRoot + '/_qqq/alphal/.lock'); } catch (_) { }
+        // ⑤ clean project lock files — 校验 instanceId+winId 释放（绝不误删他人实例的锁）
+        for (const [winId] of _windowProjectMap) {
+            try { releaseProject(winId); } catch (_) { }
         }
 
         // ⑥ auto-increment version for next boot cache-busting

@@ -7,8 +7,8 @@
 <title>Timeline Diff</title>
 <style>
 /* ═══ 配色与 qqqide-theme.js 同约定：:root=light, [data-theme="dark"]=dark ═══ */
-:root{--bg:#fdf6e3;--card:#eee8d5;--text:#073642;--border:#d3cbb7;--green:#859900;--red:#dc322f;--yellow:#b58900;--accent:#cb4b16;--base01:#97978a;--base2:#eee8d5;--base3:#fdf6e3;--hover-bg:rgba(0,0,0,0.035);--sel-bg:rgba(0,0,0,0.07);--shimmer:rgba(255,255,255,0.70)}
-[data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--accent:#b58900;--base01:#97978a;--base2:#2a2a2a;--base3:#1e1e1e;--hover-bg:rgba(255,255,255,0.05);--sel-bg:rgba(255,255,255,0.10);--shimmer:rgba(255,255,255,0.30)}
+:root{--bg:#fdf6e3;--card:#eee8d5;--text:#073642;--border:#d3cbb7;--green:#859900;--red:#dc322f;--yellow:#b58900;--accent:#cb4b16;--base01:#97978a;--base2:#eee8d5;--base3:#fdf6e3;--hover-bg:#e2dbc4;--sel-bg:rgba(0,0,0,0.07);--shimmer:rgba(255,255,255,0.70)}
+[data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--accent:#b58900;--base01:#97978a;--base2:#2a2a2a;--base3:#1e1e1e;--hover-bg:#3a3a3a;--sel-bg:rgba(255,255,255,0.10);--shimmer:rgba(255,255,255,0.30)}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Tahoma,system-ui,-apple-system,sans-serif;font-size:13px;color:var(--text);background:var(--bg);height:100vh;overflow:hidden;display:flex;flex-direction:column}
 ::-webkit-scrollbar{width:4px;height:4px}
@@ -136,8 +136,8 @@ input::selection, textarea::selection{background:#ffd301;color:#000}
   <div style="position:relative;flex-shrink:0;display:flex;align-items:center;-webkit-app-region:no-drag">
     <button class="win-btn op-btn" id="btn-op" title="操作">op</button>
     <div class="op-dropdown" id="op-dropdown" style="display:none">
-      <div class="op-item" data-action="open">打开文件</div>
-      <div class="op-item" data-action="feed">喂给 AI</div>
+      <div class="op-item" data-action="open">open in qqqide</div>
+      <div class="op-item" data-action="feed"><span id="op-feed-label">喂给 AI</span></div>
     </div>
   </div>
   <div id="drag-handle" data-i18n-title="timeline.dragHandle" title="拖拽移动窗口">

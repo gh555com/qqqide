@@ -1,6 +1,6 @@
 {
   "name": "qqqide",
-  "version": "0.2.335",
+  "version": "0.2.346",
   "description": "qqq IDE — portable AI-powered IDE. Win7+ compatible, zero C-drive write.",
   "private": true,
   "main": "shell-out/bootstrap.js",
@@ -22,9 +22,7 @@
     "pack:linux-arm64": "npm run build && node shell-build/pack.js --target=linux-arm64",
     "pack:mac-x64": "npm run build && node shell-build/pack.js --target=mac-x64",
     "pack:mac-arm64": "npm run build && node shell-build/pack.js --target=mac-arm64",
-    "pack:all": "npm run pack:win-x64 && npm run pack:win-arm64 && npm run pack:linux-x64 && npm run pack:linux-arm64 && npm run pack:mac-x64 && npm run pack:mac-arm64",
-    "deploy": "node shell-build/deploy.js",
-    "deploy:dry": "node shell-build/deploy.js --dry-run"
+    "pack:all": "npm run pack:win-x64 && npm run pack:win-arm64 && npm run pack:linux-x64 && npm run pack:linux-arm64 && npm run pack:mac-x64 && npm run pack:mac-arm64"
   },
   "dependencies": {
     "monaco-editor": "0.34.1",

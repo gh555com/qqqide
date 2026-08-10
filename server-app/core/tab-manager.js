@@ -584,6 +584,9 @@
     if (opts && opts.onRender) {
       try { opts.onRender(tab.paneEl, tab); }
       catch (e) { if (tab.paneEl) tab.paneEl.textContent = 'render error: ' + (e && e.message); }
+    } else {
+      // ★ 无 onRender → 广播渲染事件（与 openFileInRightGroup 同语义，pane 已清空）
+      document.dispatchEvent(new CustomEvent('qqq-file-open-in-pane', { detail: { path: filePath, pane: tab.paneEl } }));
     }
 
     persistOpenTabs();
@@ -645,6 +648,9 @@
     if (opts && opts.onRender) {
       try { opts.onRender(pane, tab); }
       catch (e) { pane.textContent = 'render error: ' + (e && e.message); }
+    } else {
+      // ★ 无 onRender → 广播渲染事件（shell-rpc 监听 → 读文件 → Monaco 挂载）
+      document.dispatchEvent(new CustomEvent('qqq-file-open-in-pane', { detail: { path: filePath, pane: pane } }));
     }
 
     return tab;

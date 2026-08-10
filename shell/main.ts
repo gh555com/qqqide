@@ -33,6 +33,7 @@ import * as fs from 'fs';
 import { loadBootConfig, extractFlags, bootSequence, getWebappBaseUrl, BootMode, BootConfig } from './boot';
 import { APP_VERSION, checkForcedUpdate } from './version';
 import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap } from './window-manager';
+import { claimProject, registerProjectLockIpc } from './project-lock';
 import { initAssetProtocol, hydrateAssetRootsFromState } from './asset-protocol';
 import { registerFsIpc } from './ipc-fs';
 import { registerBootIpc } from './ipc-boot';
@@ -55,6 +56,7 @@ import { registerRoamIpc } from './ipc-roam';
 import { registerAiStateIpc } from './ipc-ai-state';
 import { registerWsStateIpc, wsStateGetKey } from './ipc-ws-state';
 import { registerSearchStateIpc } from './ipc-search-state';
+import { registerKmdIpc } from './ipc-kmd';
 
 import { setAuthPhone, setAuthToken } from './auth-state';
 import { startWqPing, stopWqPing, notifyAuthReady } from './wq-ping';
@@ -76,7 +78,8 @@ import { StateStore } from './state-sqlite';
 import { StateCloud } from './state-cloud';
 import { Qgf } from './qgf';
 import { DownloadService } from './download-service';
-import { UpdateService } from './update-service';
+
+
 
 // ── Chromium flags (必须在 app.whenReady() 前) ──
 // ★ 原 disableHardwareAcceleration() 注释于 2026-06-25
@@ -200,7 +203,8 @@ const stateCloud = new StateCloud(stateStore);
 const _qgfInstances = new Map<string, Qgf>();
 const _projectStateStores = new Map<string, StateStore>();
 const downloadService = new DownloadService(portable.cache);
-const updateService = new UpdateService(portable.root, APP_VERSION);
+
+
 const indexService = new IndexService(portable.root);
 
 // ── 认证中心大脑（2026-07-31 T3）──
@@ -269,7 +273,7 @@ function registerAllIpc(): void {
     registerMiscIpc(
         portable.root, portable.cache, APP_VERSION, isDevFlag,
         lspBridge, downloadService, stateStore,
-        updateService, () => mainWindow, bootConfig,  // lspBridge=null (LSP OFF)
+        () => mainWindow, bootConfig,  // lspBridge=null (LSP OFF)
         hashService, cacheStore
     );
     registerTimelineIpc(portable.root, bootConfig);
@@ -283,11 +287,13 @@ function registerAllIpc(): void {
     registerWsStateIpc();
     registerSearchStateIpc();
     registerKopeIpc();
+    registerKmdIpc(portable.root);
     registerGaeaProcessIpc();
     registerMediaIpc(mediaService);
     registerAuthBrainIpc(getAuthBrain());
     registerDesktopShortcutIpc();
     registerSquadIpc();
+    registerProjectLockIpc();
 }
 
 // ── 桌面快捷方式 IPC — PowerShell COM 创建/删除 .lnk（2026-07-28 v2 修复路径） ──
@@ -608,12 +614,19 @@ app.whenReady().then(async () => {
             if (w0 && w0.mainFolder) {
                 const n0 = w0.mainFolder.replace(/\\/g, '/').replace(/\/$/, '');
                 if (n0) {
-                    // ★ 注入主窗口 URL — 必须在 loadURL 之前
-                    const sep = bootConfig.url.includes('?') ? '&' : '?';
-                    bootConfig.url = bootConfig.url + sep + 'restore=1&folder=' + encodeURIComponent(n0);
-                    // ★ 预注册，防止 restore 阶段重复创建
-                    _windowProjectMap.set(mainWindow.id, n0);
-                    _projectWindowMap.set(n0, mainWindow.id);
+                    // ★ 项目锁仲裁（2026-08-10 冠军架构）：恢复前 claim，被其他实例占用 →
+                    //   不注入 folder（空白窗口），绝不复现 dev+绿色包双开同一项目
+                    const claimRes = claimProject(mainWindow.id, n0);
+                    if (claimRes.ok) {
+                        // ★ 注入主窗口 URL — 必须在 loadURL 之前
+                        const sep = bootConfig.url.includes('?') ? '&' : '?';
+                        bootConfig.url = bootConfig.url + sep + 'restore=1&folder=' + encodeURIComponent(n0);
+                        // ★ 预注册，防止 restore 阶段重复创建
+                        _windowProjectMap.set(mainWindow.id, n0);
+                        _projectWindowMap.set(n0, mainWindow.id);
+                    } else {
+                        console.warn('[restore] main project locked by another instance, opening blank window:', n0, 'reason=' + claimRes.reason);
+                    }
                 }
             }
         }
@@ -650,6 +663,13 @@ app.whenReady().then(async () => {
                     if (_projectWindowMap.has(normalized)) continue;
 
                     const newWin = createWindow(portable.root, portable.cache, APP_VERSION, lspBridge, downloadService, stateStore);
+                    // ★ 项目锁仲裁：被其他实例占用 → 不还原该窗口（destroy 未加载窗口，零副作用）
+                    const claimRes = claimProject(newWin.id, normalized);
+                    if (!claimRes.ok) {
+                        console.warn('[restore] skip window, project locked by another instance:', normalized, 'reason=' + claimRes.reason);
+                        try { newWin.destroy(); } catch (_) { }
+                        continue;
+                    }
                     // ★ 每窗口翼状态覆盖值 → restoreWindowBounds 优先采纳（多窗口各自还原自己的翼）
                     (newWin as any).__qqqRestoreWings = w.wings || null;
                     _windowProjectMap.set(newWin.id, normalized);

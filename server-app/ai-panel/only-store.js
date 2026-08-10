@@ -227,11 +227,12 @@ var onlyStore = (function () {
 
   function isInited() { return _initDone; }
 
-  // ═══ 项目文件锁 ═══
-  var _lockPath = null;
-  var _lockTimer = null;
-  var LOCK_STALE_MS = 60000;
-  var LOCK_HEARTBEAT_MS = 30000;
+  // ═══ 项目文件锁（2026-08-10 冠军架构：主进程 CP 硬互斥仲裁，本模块仅转发）═══
+  //   旧实现：渲染层直读写磁盘锁 + 30s 心跳 → stat-read-write 非原子 + 崩溃锁真空
+  //   （60s 陈旧窗口期）→ dev+绿色包同跑双绑同一项目（F20 事故实锤）。
+  //   新实现：bridge.projectLock.claim → 主进程原子 wx 创建 + 10s 心跳 + watcher 兜底；
+  //   锁格式 {instanceId,pid,hwnd,winId,folder,bootAt,atime} 活体注册表，跨实例硬拒绝。
+  var _lockHeld = false;
 
   function _fsBridge() {
     try {
@@ -242,58 +243,28 @@ var onlyStore = (function () {
   }
 
   async function claimLock() {
-    if (!_rootDir) return { ok: false, error: 'no rootDir' };    _lockPath = _rootDir + '/_qqq/alphal/.lock';;
+    if (!_rootDir) return { ok: false, error: 'no rootDir' };
     var fsb = _fsBridge();
-    if (!fsb) return { ok: false, error: 'no bridge' };
+    if (!fsb || !fsb.projectLock) return { ok: false, error: 'no bridge' };
     try {
-      var statInfo = await fsb.fs.stat(_lockPath);
-      if (statInfo) {
-        var raw = await fsb.fs.read(_lockPath);
-        var data = JSON.parse(raw);
-        var age = Date.now() - (data.atime || 0);
-        if (age < LOCK_STALE_MS) {
-          return { ok: false, error: 'locked', age: age };
-        }
-        // 僵尸锁，清除
-        try { await fsb.fs.remove(_lockPath); } catch (_) { }
-      }
-    } catch (_) { /* 锁不存在 */ }
-    // 写入新锁
-    try {
-      await fsb.fs.write(_lockPath, JSON.stringify({ pid: 0, atime: Date.now() }));
-      // 启动心跳
-      if (_lockTimer) clearInterval(_lockTimer);
-      _lockTimer = setInterval(async function () {
-        try { await fsb.fs.write(_lockPath, JSON.stringify({ pid: 0, atime: Date.now() })); } catch (_) { }
-      }, LOCK_HEARTBEAT_MS);
-      // [silent] lock claimed
-      return { ok: true };
-    } catch (_) {
-      return { ok: false, error: 'write failed' };
-    }
+      var res = await fsb.projectLock.claim(_rootDir);
+      if (res && res.ok) { _lockHeld = true; return { ok: true }; }
+      return { ok: false, error: (res && res.reason) || 'locked', holder: (res && res.holder) || null };
+    } catch (_) { return { ok: false, error: 'ipc failed' }; }
   }
 
   async function releaseLock() {
-    if (_lockTimer) { clearInterval(_lockTimer); _lockTimer = null; }
-    if (_lockPath) {
-      var fsb = _fsBridge();
-      if (fsb) {
-        try { await fsb.fs.remove(_lockPath); } catch (_) { }
-      }
-      // [silent] lock released
-      _lockPath = null;
+    if (!_lockHeld) return;
+    _lockHeld = false;
+    var fsb = _fsBridge();
+    if (fsb && fsb.projectLock) {
+      try { await fsb.projectLock.release(_rootDir); } catch (_) { }
     }
   }
 
-  // 注册关闭时释放锁
+  // 注册关闭时释放锁（主进程 closed 事件同样兜底，双保险）
   if (typeof window !== 'undefined') {
-    window.addEventListener('beforeunload', function () {
-      if (_lockTimer) clearInterval(_lockTimer);
-      if (_lockPath) {
-        var fsb = _fsBridge();
-        if (fsb) { try { fsb.fs.remove(_lockPath); } catch (_) { } }
-      }
-    });
+    window.addEventListener('beforeunload', function () { releaseLock(); });
   }
 
   return {

@@ -553,6 +553,16 @@ async function _restoreAgentFromStore(questId, ag) {
                 }
             }
         }
+
+        // ★ 2026-08-10: 重启后从 ctx.facts 重建 fx 消息（Z 后、biscuit 前，与 _rebuildBackpack 定序一致）
+        //   修复：fx 为 _dynamic 消息，all.json 快照不含 → 重启后事实上下文从对话消失（仅剩 UI 格）
+        if (_ctxData.facts && _ctxData.facts.length) {
+            for (var _rfi = ag.conversation.length - 1; _rfi >= 0; _rfi--) {
+                if (ag.conversation[_rfi]._facts) ag.conversation.splice(_rfi, 1);
+            }
+            ag.conversation.splice(ag._persistentCount || 0, 0,
+                { role: 'system', content: _ctxData.facts.join('\n\n'), _dynamic: true, _facts: true });
+        }
         // ★ 扫描所有 _error 消息重建分楼层错误日志（跳过已恢复的）
         for (var _eli = 0; _eli < ag.conversation.length; _eli++) {
             var _em = ag.conversation[_eli];

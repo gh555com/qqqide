@@ -350,6 +350,28 @@ var QuestStore = (function () {
                             try {
                                 await bf.rename(_rootDir + '/_qqq/quests/' + qDirName, _trashQBase + qDirName);
                                 console.log('[quest-store] _healFloorCounters: archived empty quest dir ' + qDirName + ' to .trash');
+                                // ★ 2026-08-10: 归档后立即从索引移除（防幽灵 quest：UI 仍显示空白 q177 →
+                                //   发消息 → _ensureQuestDir 重建同名目录 → 空壳复活，旧数据永久困在 .trash）
+                                try {
+                                    var _archIdx = _idx() || [];
+                                    for (var _axi = 0; _axi < _archIdx.length; _axi++) {
+                                        if (_archIdx[_axi].id === e.id) {
+                                            _archIdx.splice(_axi, 1);
+                                            break;
+                                        }
+                                    }
+                                    var _archQ = await b.get(QUEST_NS + '.' + e.id);
+                                    if (_archQ && _archQ.floors) {
+                                        for (var _axfi = 0; _axfi < _archQ.floors.length; _axfi++) {
+                                            await b.del(FLOOR_NS + '.' + e.id + '.' + _archQ.floors[_axfi].n);
+                                        }
+                                    }
+                                    await b.del(QUEST_NS + '.' + e.id);
+                                    _invalidatePathCache(e.id);
+                                    await _saveIndex();
+                                    if (store) _notify(store, 'quest-deleted', e.id);
+                                } catch (_eAx) { }
+                                i--;  // ★ 索引已 splice 当前项 → 回退游标防跳项
                             } catch (_eQr) { }
                         }
                     } catch (_eQz) { }
@@ -1228,16 +1250,29 @@ var QuestStore = (function () {
     }
 
     // ★ 写入 all.json（真理源）— 串行锁防 auto-save/onDone 并发 → tmp→rename 竞态残留
-    var _floorWriteLocks = {};
+    var _floorWriteLocks = {};  // 本实例兜底锁（parent 不可用时降级）
+    // ★ 2026-08-10: 跨实例写锁 — 三面板 auto-save 遍历共享 agentPool（建楼 agent stopState='sending'
+    //   三面板均可见）→ 同楼层 3 路并发 _doWriteFloorFile → 双 tmp + rename EPERM → tmp 残留（q172/f34 9 个实锤）。
+    //   锁提升到 parent 级（同窗口三 iframe 共享同一 map），同一楼层写入真串行。
+    function _floorWriteLockMap() {
+        try {
+            if (parent && !parent.__qqq_floorWriteLocks) parent.__qqq_floorWriteLocks = {};
+            if (parent && parent.__qqq_floorWriteLocks) return parent.__qqq_floorWriteLocks;
+        } catch (_) { }
+        return _floorWriteLocks;
+    }
     async function _writeFloorFile(questId, floorNum, floorData) {
         if (!_rootDir) return false;
         var key = questId + '.' + floorNum;
-        // 串行化：同一楼层的 auto-save + onDone 未可能同时写，杜绝双 tmp 残留
+        var locks = _floorWriteLockMap();
+        // 串行化：同一楼层的 auto-save + onDone + 三面板 auto-save 并发 → 同一链排队，杜绝双 tmp 残留
         // _doWriteFloorFile 全路径 catch 永不 reject → 单参数 then 即可
-        var chain = (_floorWriteLocks[key] || Promise.resolve()).then(function () {
+        var chain = (locks[key] || Promise.resolve()).then(function () {
             return _doWriteFloorFile(questId, floorNum, floorData);
         });
-        _floorWriteLocks[key] = chain;
+        locks[key] = chain;
+        // 完成后释放槽位（防长链堆积；已有新调用链入时不删）
+        chain.then(function () { if (locks[key] === chain) delete locks[key]; }).catch(function () { });
         // 写完后异步清扫，不阻塞返回
         chain.then(function () {
             var fDir = _floorDirCache && _floorDirCache[questId + '\x00' + floorNum];
@@ -1257,7 +1292,18 @@ var QuestStore = (function () {
                 // ★ 跨项目写保护（2026-08-08）：_fDir 必须位于当前项目 quests 根下，
                 //   否则回退 _resolveFloorDir — 防面板启动竞态绑错项目时把楼层写进别的项目
                 var _qRoot = _rootDir + '/_qqq/quests/';
-                if (_baseDir.indexOf(_qRoot) === 0 && new RegExp('(^|/)f' + floorNum + '\\.').test(_baseDir)) fDir = _baseDir;
+                if (_baseDir.indexOf(_qRoot) === 0 && new RegExp('(^|/)f' + floorNum + '\\.').test(_baseDir)) {
+                    // ★ 2026-08-10: quest 目录段校验 — lazyRenameScan 改目录名后 all.json 内嵌 _fDir
+                    //   仍指向旧目录名 → 若直写，ipc write 自动 mkdir 重建幽灵目录 → 改名战争复发（q174 事故）。
+                    //   仅当 _fDir 的 quest 目录段 == 当前磁盘目录名时信任，否则回退动态解析。
+                    var _curQDir = await _resolveQuestDirName(questId);
+                    var _qSeg = _baseDir.slice(_qRoot.length).split('/')[0] || '';
+                    if (_curQDir && _qSeg === _curQDir) {
+                        fDir = _baseDir;
+                    } else {
+                        console.warn('[quest-store] _doWriteFloorFile: stale _fDir (q=' + questId + ' f=' + floorNum + ') "' + _qSeg + '" → resolve current "' + (_curQDir || '?') + '"');
+                    }
+                }
             }
             if (!fDir) fDir = await _resolveFloorDir(questId, floorNum);
             if (!fDir) return false;
@@ -1268,14 +1314,25 @@ var QuestStore = (function () {
             var dest = fDir + 'all.json';
             var tmp = dest + '.tmp.' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
             var _payloadStr = JSON.stringify(floorData, null, 2);
-            await bf.write(tmp, _payloadStr);
+            try {
+                await bf.write(tmp, _payloadStr);
+            } catch (_wErr) {
+                // ★ 2026-08-10: 首写失败也清 tmp（残留黑洞之一）
+                try { await bf.remove(tmp); } catch (_) { }
+                throw _wErr;
+            }
             try {
                 await bf.rename(tmp, dest);
             } catch (_renErr) {
                 // ★ 铁律 8.2 降级：rename 失败（目标被占用/杀软/跨卷）→ 复制替换，绝不丢数据
                 //   bf.write 底层即原子写（tmp+rename），直接覆盖 dest 兜底
                 console.warn('[quest-store] rename FAIL (q=' + questId + ' f=' + floorNum + '), fallback copy: ' + (_renErr && _renErr.message));
-                await bf.write(dest, _payloadStr);
+                try {
+                    await bf.write(dest, _payloadStr);
+                } finally {
+                    // ★ 2026-08-10: 清理本次遗留 tmp（旧实现 rename 失败后 tmp 永留 → f34 9 个残留的根因）
+                    try { await bf.remove(tmp); } catch (_) { }
+                }
             }
             return true;
         } catch (_e) {
@@ -1370,11 +1427,14 @@ var QuestStore = (function () {
         await _writeFloorFile(questId, floorNum, floorData);
 
         // 2) 解析当前路径写入 sq3 轻量索引（quest 元数据 + 快速查找）
-        var _fDir = floorData._fDir || '';
-        if (!_fDir) {
+        // ★ 2026-08-10: 始终动态解析 — 改名后 all.json 内嵌 _fDir 过期 → sq3 索引必须同步磁盘真理
+        //   （防幽灵目录引用残留；_doWriteFloorFile 已缓存正确路径 → 常规路径零额外 IO）
+        var _fDir = '';
+        try {
             var resolved = await _resolveFloorDir(questId, floorNum);
             if (resolved) _fDir = resolved;
-        }
+        } catch (_) { }
+        if (!_fDir) _fDir = floorData._fDir || '';
         // ★ 索引条目存 dirName（精确匹配，防同编号多目录）
         var idx = _idx();
         if (_fDir && idx) {
@@ -1858,6 +1918,8 @@ var QuestStore = (function () {
                     await bf.rename(questsDir + currentName, questsDir + expectedName);
                     console.log('[quest-store] lazyRenameScan: renamed', currentName, '→', expectedName);
                     // ★ 同步缓存 + 清除 pendingRename + 持久化（原实现仅改内存，sq3 dirName 一直 stale）
+                    // ★ 2026-08-10: 先失效楼层路径缓存（旧路径含旧 quest 目录名 → 不失效则读写仍命中旧目录 → 幽灵目录重建），再写新缓存
+                    _invalidatePathCache(e.id);
                     _questDirCache[e.id] = expectedName;
                     if (e.dirName) e.dirName = expectedName;
                     e.pendingRename = false;

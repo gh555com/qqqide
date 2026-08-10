@@ -339,23 +339,54 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         return { ok: true, windowId: diffWin.id };
     });
 
-    // ═══ op 按钮：在 X 区 editor 打开文件 ═══
+    // ★ 宿主窗口定位：diff 窗口创建时带 parent（A4 所在窗口）→ getParentWindow 100% 可靠
+    //   （旧 getAllWindows()[0] 在多窗口场景可能取到非主窗口 → executeJavaScript 静默失败 → “点击没用”）
+    function _hostWindow(e: Electron.IpcMainEvent): BrowserWindow | null {
+        // ① parent 链（diff 窗口创建时 parent=A4 所在窗口）→ 100% 精确
+        const sender = BrowserWindow.fromWebContents(e.sender);
+        if (sender && !sender.isDestroyed()) {
+            const parent = sender.getParentWindow();
+            if (parent && !parent.isDestroyed()) return parent;
+        }
+        // ② 兜底：找第一个 /qqqide/ 主页（排除 diff-window 自身与 DevTools）
+        const wins = BrowserWindow.getAllWindows();
+        const main = wins.find((w) => {
+            if (w.isDestroyed()) return false;
+            const url = w.webContents.getURL() || '';
+            return url.indexOf('/qqqide/') !== -1 && url.indexOf('diff-window') === -1;
+        });
+        return main || wins.find((w) => !w.isDestroyed()) || null;
+    }
+
+    // ═══ op 按钮：在 X 区 editor 打开文件（= Roam Q 键 open in qqqide）═══
     ipcMain.on('qqqide:timeline:open-in-editor', (_e, filePath: string) => {
         if (!filePath) return;
-        const mw = BrowserWindow.getAllWindows()[0];
-        if (!mw || mw.isDestroyed()) return;
+        const mw = _hostWindow(_e);
+        if (!mw) return;
         mw.webContents.executeJavaScript(
             `(function(){ if(window.qqqTabs&&window.qqqTabs.openFile) window.qqqTabs.openFile(${JSON.stringify(filePath)}); })()`
-        ).catch(() => {});
+        ).catch((err: any) => console.warn('[timeline:open-in-editor]', err && err.message));
     });
 
-    // ═══ op 按钮：喂给 AI ═══
+    // ═══ op 按钮：喂给 AI（路由到焦点面板）═══
     ipcMain.on('qqqide:timeline:feed-to-ai', (_e, filePath: string) => {
         if (!filePath) return;
-        const mw = BrowserWindow.getAllWindows()[0];
-        if (!mw || mw.isDestroyed()) return;
+        const mw = _hostWindow(_e);
+        if (!mw) return;
         mw.webContents.executeJavaScript(
             `(function(){ if(window.__qqq_aiFeedFile) window.__qqq_aiFeedFile(${JSON.stringify(filePath)},false,null); })()`
-        ).catch(() => {});
+        ).catch((err: any) => console.warn('[timeline:feed-to-ai]', err && err.message));
+    });
+
+    // ═══ op 下拉：读取焦点面板方向（0左/1中/2右），diff 窗口据此显示 ←喂给 AI/喂给 AI/喂给 AI→ ═══
+    ipcMain.handle('qqqide:timeline:get-ai-target', async (e) => {
+        const mw = _hostWindow(e);
+        if (!mw) return 1;
+        try {
+            const v = await mw.webContents.executeJavaScript(
+                `(function(){ return (typeof window.__qqq_aiTarget === 'number') ? window.__qqq_aiTarget : 1; })()`
+            );
+            return (v === 0 || v === 2) ? v : 1;
+        } catch (_) { return 1; }
     });
 }
