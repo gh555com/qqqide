@@ -208,6 +208,7 @@
         "inputLimitQoastTruncated": "已达编辑框字符上限，多余内容已截断",
         "inputLimitQoastImageCap": "图片已达上限（{0} 张），多余图片未粘贴",
         "inputLimitQoastImageSize": "有 {0} 张图片超出单张大小上限，已跳过",
+        "inputSendBusy": "AI 正在处理中，请稍候…",
         "embedImage": "嵌入",
         "level": {
             "a": "保守",

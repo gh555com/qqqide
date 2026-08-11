@@ -155,7 +155,7 @@ var AgentLoop = (function () {
         this._lastFetchError = '';       // 最后一次 fetch 错误消息
         this._lastSseError = '';         // 最后一次 SSE 服务端错误
         this._lastGatewayMessage = '';   // ★ 延迟报错消息（_callGateway 设，agent loop 读）
-        this._abortSource = '';          // 'stream_watchdog'|'fetch_deadline'|'user_kill'|'guide'|''
+        this._abortSource = '';          // 'stream_watchdog'|'content_watchdog'|'fetch_deadline'|'user_kill'|'guide'|''
         // ★ 记账埋点：完整 billing 追踪（per-house 粒度）
         this._lastBilling = null;        // { wgeCost, model, usage: {prompt_tokens,completion_tokens,cached_tokens,non_cached_tokens}, freeWindow, requestId }
         this._billingSeq = 0;            // 全局 billing 事件序号（跨 floor 递增）
@@ -602,7 +602,7 @@ var AgentLoop = (function () {
                             .replace(/\n{3,}/g, '\n\n')
                             .trim();
                         if (!_cleanAck || _cleanAck.length < 3) _cleanAck = 'Guide received';
-                        self.conversation.push({ role: 'assistant', content: _cleanAck, _guideAck: true, _guideText: _guideText, _floor: self._ctx.totalFloors });
+                        self.conversation.push({ role: 'assistant', content: _cleanAck, _guideAck: true, _guideText: _guideText, _floor: self._ctx.totalFloors, reasoning_content: _ackResp.reasoning_content || undefined });
                         // 归档
                         var _billG = self._lastBilling; self._lastBilling = null;
                         self._houses.push({ index: 'G' + (self._houseIndex || 0), type: 'guide_ack', tools: [], ms: Date.now() - _ackStart, reasoning: _ackResp.reasoning_content || '', answer: _ackResp.content, ts: new Date().toISOString(), wgeCost: _billG ? _billG.wgeCost : 0, model: _billG ? _billG.model : '', cacheHitRate: _billG ? _billG.cacheHitRate : -1, usage: _billG ? _billG.usage : null, billingSeq: _billG ? _billG.seq : 0, billingRequestId: _billG ? _billG.requestId : '', tier: self._lastTier ? self._lastTier.label : '' });
@@ -798,7 +798,7 @@ var AgentLoop = (function () {
                     // ★ 引导在最终回复流式期间到达 → 暂存回复，先处理引导确认，再重新获取最终回复
                     if (self._guidePending && self._guideMessage) {
                         self._log('⚠ final response arrived but guide pending — deferring');
-                        var _deferredMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors };
+                        var _deferredMsg = { role: 'assistant', content: response.content, _floor: self._ctx.totalFloors, reasoning_content: response.reasoning_content || undefined };
                         self._deferredFinalMsg = _deferredMsg;
                         maxIterations++;  // 不消耗迭代配额
                         continue;
@@ -811,7 +811,7 @@ var AgentLoop = (function () {
                         self._houses.push({ index: self._houseIndex, type: self._compressFloor ? 'f3' : 'final', tools: [], ts: new Date().toISOString(), ms: Date.now() - _hStart, reasoning: response.reasoning_content || '', answer: response.content || '', wgeCost: _bill ? _bill.wgeCost : 0, model: _bill ? _bill.model : '', cacheHitRate: _bill ? _bill.cacheHitRate : -1, usage: _bill ? _bill.usage : null, billingSeq: _bill ? _bill.seq : 0, billingRequestId: _bill ? _bill.requestId : '', cacheDiag: _cd || undefined });
                         var _truncContent = self._streamingContent || response.content;
                         self._streamingContent = null;
-                        self.conversation.push({ role: 'assistant', content: _truncContent, _truncated: true, _floor: self._ctx.totalFloors });
+                        self.conversation.push({ role: 'assistant', content: _truncContent, _truncated: true, _floor: self._ctx.totalFloors, reasoning_content: response.reasoning_content || undefined });
                         var _costGe = self._floorCostWge / 10000;
                         self.totalCostGe += _costGe;
                         self._lastCostDisplay = _costGe < 0.001 ? '<0.001' : _costGe.toFixed(4);
@@ -830,7 +830,7 @@ var AgentLoop = (function () {
                     // ★ P10/P11 根治：优先用 API 完整返回（权威），流式累积为备
                     var _finalContent = response.content || self._streamingContent;
                     self._streamingContent = null;
-                    var assistantMsg = { role: 'assistant', content: _finalContent, _floor: self._ctx.totalFloors };
+                    var assistantMsg = { role: 'assistant', content: _finalContent, _floor: self._ctx.totalFloors, reasoning_content: response.reasoning_content || undefined };
                     var _lastConv = self.conversation[self.conversation.length - 1];
                     if (_lastConv && _lastConv._truncated && _lastConv._floor === self._ctx.totalFloors) {
                         self.conversation[self.conversation.length - 1] = assistantMsg;
@@ -903,11 +903,20 @@ var AgentLoop = (function () {
                             _aiDiv5._clockCost.style.color = '';
                         }
                     }
+                    // ★ 2026-08-11: 文本工具回生（格式 E）的提示注入 content；原生 tool_calls 时 content = 正文
+                    //   （assistant 消息带 tool_calls 时 content 应含正文，空串仅被部分上游容忍）
+                    //   空 tool_calls 数组部分上游会拒收 → 无工具时不带 tool_calls 字段
+                    // ★ 2026-08-11: thinking 模式必须原样回传 reasoning_content（q178 f29 http_400 事故：
+                    //   F26 给 assistantToolMsg 加 content 后触发上游校验——有 content 的 assistant 消息
+                    //   缺 reasoning_content → 400 "The reasoning_content in the thinking mode must be
+                    //   passed back to the API."。agent-gateway 净化已删除，此处必须挂载）
+                    var _tcArray = (response.tool_calls && response.tool_calls.length > 0) ? response.tool_calls : null;
                     var assistantToolMsg = {
-                        role: 'assistant', content: '',
-                        tool_calls: response.tool_calls,
-                        _floor: self._ctx.totalFloors
+                        role: 'assistant', content: response.content || '',
+                        _floor: self._ctx.totalFloors,
+                        reasoning_content: response.reasoning_content || undefined
                     };
+                    if (_tcArray) assistantToolMsg.tool_calls = _tcArray;
 
                     // 通知 UI 有工具调用（不等工具执行完，实时反馈）
                     for (var tc = 0; tc < response.tool_calls.length; tc++) {
@@ -1002,7 +1011,7 @@ var AgentLoop = (function () {
                     // ★ 优先用 API 完整返回（权威），流式累积为备
                     var _finalContent2 = finalResp.content || self._streamingContent;
                     self._streamingContent = null;
-                    self.conversation.push({ role: 'assistant', content: _finalContent2, _floor: self._ctx.totalFloors });
+                    self.conversation.push({ role: 'assistant', content: _finalContent2, _floor: self._ctx.totalFloors, reasoning_content: finalResp.reasoning_content || undefined });
                     var finalCostGe = self._floorCostWge / 10000;
                     self.totalCostGe += finalCostGe;
                     self._lastCostDisplay = finalCostGe < 0.001 ? '<0.001' : finalCostGe.toFixed(4);

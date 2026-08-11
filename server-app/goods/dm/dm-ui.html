@@ -696,19 +696,9 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
           handleGroupPush(msg.data);
         } else if (msg.type === 'ok' && msg.ref === 'sub') {
           setConnStatus(true, '收件箱已就绪');
-        } else if (msg.type === 'dm_online' && msg.data) {
-          // 对方上线通知
-          if (msg.data.peer_id === _activePeer) {
-            $chatHdrStat.textContent = '在线';
-            $chatHdrOn.style.display = '';
-          }
-        } else if (msg.type === 'dm_offline' && msg.data) {
-          // 对方下线通知
-          if (msg.data.peer_id === _activePeer) {
-            $chatHdrStat.textContent = '离线';
-            $chatHdrOn.style.display = 'none';
-          }
-        }
+ 		}
+		// 在线状态唯一真理 = 服务端 wq.doer_state 最近1h ping（随 conversations 批量下发）
+		// WS 不再携带任何在线/离线事件
       } catch(_) {}
     };
 
@@ -749,9 +739,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     stopBgPoll();
     _wsReconnectDelay = 0;   // 前台恢复 → 重连退避归零
     connectWS();             // 恢复实时推送
-    loadConversations();     // 补后台错过的会话
+    loadConversations();     // 补后台错过的会话（含在线状态，回来时自动刷新头部）
     if (_activePeer) {
-      checkOnline(_activePeer);
       loadMessages(_activePeer);  // 后台期间到达的消息正文
     }
   }
@@ -778,6 +767,8 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
         if (cv.peer_name) c.peerName = cv.peer_name;
         if (cv.peer_phone) c.phone = cv.peer_phone;
         if (cv.peer_country) c.country = cv.peer_country;
+        if (typeof cv.online !== 'undefined') c.online = !!cv.online;
+        if (cv.last_seen_at) c.lastSeenAt = cv.last_seen_at;
       });
       // 窗口级徽章由 gaea-host 自己的 WS/轮询管理；此处免 DOM 渲染（不可见无意义）
       _cacheSaveSoon();   // 后台轮询拿到的未读数/预览也入缓存 → 重启后启动即准
@@ -829,13 +820,14 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
       cv.peerName = cv.peerName || dm.recipient_phone || dm.recipient_id;
     } else {
       cv.peerName = dm.sender_name || dm.sender_phone || dm.sender_id;
-      if (_activePeer !== peerID) {
+ 	      if (_activePeer !== peerID) {
         if (!dup) cv.unread = (cv.unread||0) + 1;
-      } else {
-        // 当前对话收到对方消息 → 对方在线
-        $chatHdrStat.textContent = '在线';
-        $chatHdrOn.style.display = '';
-      }
+ 	      } else {
+			      // 对方刚发消息 = 必然在线（唯一真理 1h 窗口内的最新证明，零查询）
+			      cv.online = true;
+			      cv.lastSeenAt = Math.floor(Date.now()/1000);
+			      renderPeerStatus(_activePeer);
+		      }
     }
 
     // Cache（去重后写入）
@@ -929,11 +921,15 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
             lastTime: cv.last_time||'',
             peerName: cv.peer_name||cv.peer_phone||cv.peer_id,
             phone: cv.peer_phone||'',
-            country: cv.peer_country||''   // ISO2 → 国旗
+            country: cv.peer_country||'',  // ISO2 → 国旗
+            online: !!cv.online,           // 唯一真理：wq.doer_state 最近1h ping
+            lastSeenAt: cv.last_seen_at||0 // 离线时显示「最近在线」
           };
         });
         renderConvList();
         _cacheSaveSoon();
+        // 会话数据（含在线状态）已更新 → 刷新当前打开对话的头部状态
+        if (_activePeer && !isGroupKey(_activePeer)) renderPeerStatus(_activePeer);
         // Notify parent to reset badge after initial load
         try { if (parent.qqqGaea && parent.qqqGaea.resetInboxUnread) parent.qqqGaea.resetInboxUnread(); } catch(_) {}
       }
@@ -1179,11 +1175,10 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     } else {
       // ★ 头部显示名+国旗（不显示数字头像圆，国旗+号码即身份）
       var name = cv.peerName || cv.phone || peerID;
-      $chatHdrStat.textContent = '检查中…';
       $chatHdrStat.title = '';
       $chatHdrName.innerHTML = flagImg(cv.country) + (cv.country?' ':'') + escHtml(name);
-      // 查在线状态
-      checkOnline(peerID);
+      // 在线状态 = 会话列表随附数据（服务端批量下发，零独立查询）
+      renderPeerStatus(peerID);
     }
 
     // Reset unread
@@ -1309,38 +1304,27 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     });
   }
 
-  function checkOnline(peerID) {
-    if (!_token || !peerID) return;
-    fetch('https://cnk.gh555.com/api/dm/online?peer='+encodeURIComponent(peerID), {
-      headers:{'Authorization':'Bearer '+_token}
-    }).then(function(r){return r.json();}).then(function(d){
-      if (d.online) {
-        $chatHdrStat.textContent = '在线';
-        $chatHdrOn.style.display = '';
-      } else {
-        $chatHdrStat.textContent = '离线';
-        $chatHdrOn.style.display = 'none';
-      }
-      // 如果返回了 resolved peer ID，更新本地
-      if (d.peer && d.peer !== peerID) {
-        if (_convMap[peerID] && !_convMap[d.peer]) {
-          _convMap[d.peer] = _convMap[peerID];
-          delete _convMap[peerID];
-        }
-        if (_msgCache[peerID] && !_msgCache[d.peer]) {
-          _msgCache[d.peer] = _msgCache[peerID];
-          delete _msgCache[peerID];
-        }
-        if (_activePeer === peerID) _activePeer = d.peer;
-      }
-    }).catch(function(){
-      // 查询失败（网络/号码不存在）→ 不卡在「检查中…」
-      if (_activePeer === peerID) {
-        $chatHdrStat.textContent = '离线';
-        $chatHdrOn.style.display = 'none';
-      }
-    });
-  }
+	  // ═══ 在线状态渲染（唯一真理 = 服务端随 conversations 批量下发的 wq.doer_state 最近1h ping）═══
+	  // 在线 → 「在线」；离线且有 ping 记录 → 「最近在线 YYYY-MM-DD HH:MM」（右下角在线列表同一列数据）；无记录 → 「离线」
+	  function renderPeerStatus(peerID) {
+	    var cv = _convMap[peerID] || {};
+	    if (cv.online) {
+	      $chatHdrStat.textContent = '在线';
+	      $chatHdrOn.style.display = '';
+	      return;
+	    }
+	    $chatHdrOn.style.display = 'none';
+	    if (cv.lastSeenAt > 0) {
+	      var ls = new Date(cv.lastSeenAt * 1000);
+	      var mon = ('0' + (ls.getMonth() + 1)).slice(-2);
+	      var day = ('0' + ls.getDate()).slice(-2);
+	      var hh = ('0' + ls.getHours()).slice(-2);
+	      var mi = ('0' + ls.getMinutes()).slice(-2);
+	      $chatHdrStat.textContent = '最近在线 ' + ls.getFullYear() + '-' + mon + '-' + day + ' ' + hh + ':' + mi;
+	    } else {
+	      $chatHdrStat.textContent = '离线';
+	    }
+	  }
 
   // ═══ EVENTS ═══
   $sendBtn.addEventListener('click', sendMessage);

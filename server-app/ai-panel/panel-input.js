@@ -245,6 +245,8 @@ function _limitQoast(reason, args) {
         msg = _i18nQ('ai.inputLimitQoastImageCap', '图片已达上限（{0} 张），多余图片未粘贴');
     } else if (reason === 'image-size') {
         msg = _i18nQ('ai.inputLimitQoastImageSize', '有 {0} 张图片超出单张大小上限，已跳过');
+    } else if (reason === 'send-busy') {
+        msg = _i18nQ('ai.inputSendBusy', 'AI 正在处理中，请稍候…');
     } else {
         msg = _i18nQ('ai.inputLimitQoastCap', '已达编辑框字符上限（约 {0}K 字符，非文件字节）');
         msg = msg.replace('{0}', (INPUT_CAP_CHARS / 1000).toFixed(1));
@@ -278,18 +280,22 @@ $input.addEventListener('keydown', function (e) {
         if (_switching) return;  // ★ quest 切换中 → 禁止一切操作
         if (_sending) return;
         if (_activeAgent && _activeAgent._compressing) return;
-        // ★ 窗口级发送锁（三面板共享 agent → 锁必须跨面板原子，防两翼并发发送 → q182 三层楼事故）
-        if (typeof _sendBusyIsHeld === 'function' && _sendBusyIsHeld()) return;
-        // streaming 时 Enter = 停止生成（不发送、不置锁，避免锁泄漏）
+        // ★ 发送活跃检查（同 quest 任何面板链在执行/本面板草稿晋升中 → 拒；不同 quest 三翼并发 → 三通开工）
+        //   链串行结构上不可能并发（2026-08-11 重构替代锁表），此检查仅给用户即时反馈
+        if (typeof _sendActive === 'function' && _sendActive(questActiveId)) {
+            _limitQoast('send-busy');  // ★ 2026-08-11: 拦截 → 节流提示（防"按回车没反应"被误解为卡死）
+            return;
+        }
+        // streaming 时 Enter = 停止生成（不发送）
         if (streaming) { stopStream(); return; }
-        // 登录闸门（acquire 之前，避免锁泄漏）
+        // 登录闸门
         if (!_isLoggedIn()) {
             try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('请先在菜单栏点击登录', { type: 'warning', duration: 6000 }); } catch (_e2) { }
             return;
         }
-        // ★ 同步原子置锁（任何 await 之前）：先锁后反馈——极端竞态（两翼同微秒）下
-        //   acquire 失败的翼不会清空编辑框（内容不丢），只有赢家才有反馈副作用
-        if (typeof _sendBusyAcquire === 'function' && !_sendBusyAcquire()) return;
+        // ★ 立即反馈前置：发送意图经 sendMessage → _enqueueSend 入链（同步段完成，任何 await 之前）
+        //   竞态语义：同 quest 忙时 _sendActive 已拦（编辑框内容保留零丢失）；
+        //   通过后链追加原子 → 本意图必被执行，无双发可能
         // ★ 立即反馈（2026-08-10）：同步插入用户气泡 + 清空编辑框（零 IPC 等待）
         //   旧行为：draft 晋升（create/rename/mkdir 多条慢 IPC）后才清空编辑框 →
         //   用户感知"按了回车没反应"（5-15 秒）→ 窗口内重复按 Enter → 并发发送 → 多层楼
@@ -302,9 +308,8 @@ $input.addEventListener('keydown', function (e) {
                     if (typeof scrollToBottom === 'function') scrollToBottom(true);
                 }
             } catch (_fb) {
-                // 渲染异常（如绑定中 cardPool 未就绪）→ 恢复编辑框 + 释放锁，内容零丢失
+                // 渲染异常（如绑定中 cardPool 未就绪）→ 恢复编辑框，内容零丢失（链无需释放，无锁）
                 $input.value = _txtNow;
-                if (typeof _sendBusyRelease === 'function') _sendBusyRelease();
                 return;
             }
             $input.value = '';
@@ -661,8 +666,11 @@ $sendBtn.onclick = function () {
     if (streaming) { stopStream(); }
     else if (_activeAgent && _activeAgent._stopState === 'sending') { return; }
     else {
-        // ★ 窗口级发送锁：一次只允许一个发送（防两翼并发发送共享 agent）
-        if (typeof _sendBusyIsHeld === 'function' && _sendBusyIsHeld()) return;
+        // ★ 发送活跃检查：同 quest 忙 → 拒（内容保留编辑框）；不同 quest 三翼并发不受阻
+        if (typeof _sendActive === 'function' && _sendActive(questActiveId)) {
+            _limitQoast('send-busy');  // ★ 2026-08-11: 拦截 → 节流提示
+            return;
+        }
         sendMessage();
     }
 };

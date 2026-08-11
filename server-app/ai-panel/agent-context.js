@@ -194,6 +194,9 @@
         var tokens = 10;
         var content = msg.content;
         if (typeof content === 'string') tokens += content.length / CHAR_PER_TOKEN_EST;
+        // ★ 2026-08-11: reasoning_content 原样回传后实际请求体包含思维链 → 估算必须计入
+        //   （否则背包重量/压缩阈值低估 → aq 图解与真实请求偏差）
+        if (typeof msg.reasoning_content === 'string') tokens += msg.reasoning_content.length / CHAR_PER_TOKEN_EST;
         if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
             try { tokens += JSON.stringify(msg.tool_calls).length / CHAR_PER_TOKEN_EST; } catch (_) { }
         }
