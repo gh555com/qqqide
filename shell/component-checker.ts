@@ -11,7 +11,7 @@ import * as os from 'os';
 import { spawnSync, execSync } from 'child_process';
 
 // ── 类型 ──
-interface SrcEntry { url: string; kind: 'zip' | 'tar.gz' | 'binary'; }
+interface SrcEntry { url: string; kind: 'zip' | 'tar.gz' | 'binary' | 'sfx7z'; }
 
 interface ComponentDef {
     bundled?: boolean;
@@ -25,6 +25,7 @@ interface ComponentDef {
     version: string;
     srcs: Record<string, SrcEntry[]>;
     files?: string[];         // kind='files' 时校验的文件清单
+    prune?: string[];         // 解压后删除的相对路径清单（零能力项，如文档）
 }
 
 interface Manifest {
@@ -479,11 +480,11 @@ async function _downloadAndInstall(
     portableRoot: string,
 ): Promise<void> {
     const dlDir = path.join(portableRoot, 'Data');
-    const ext = src.kind === 'tar.gz' ? '.tar.gz' : '.zip';
+    const ext = src.kind === 'tar.gz' ? '.tar.gz' : (src.kind === 'sfx7z' ? '.7z.exe' : '.zip');
     const dlFile = path.join(dlDir, '_dl_' + name + ext);
 
     console.log('[components] ' + name + ': downloading ' + src.url.slice(0, 80) + ' ...');
-    await _download(src.url, dlFile, 120000);
+    await _download(src.url, dlFile, src.kind === 'sfx7z' ? 300000 : 120000);
 
     const size = fs.statSync(dlFile).size;
     if (size < 512) throw new Error('Download too small: ' + size + ' bytes');
@@ -509,9 +510,23 @@ async function _downloadAndInstall(
         }
     } else if (src.kind === 'tar.gz') {
         execSync(`tar -xzf "${dlFile}" -C "${targetDir}" --strip-components=1`, { timeout: 120000 });
+    } else if (src.kind === 'sfx7z') {
+        // 7-Zip SFX 自解压制品（Git for Windows PortableGit 官方 .7z.exe）: -y 静默 + -o 目标目录。
+        // execSync 等待 GUI 子系统进程退出（cmd 不等待，Node spawnSync 会），退出码非 0 即抛错。
+        execSync(`"${dlFile}" -y -o"${targetDir}"`, { windowsHide: true, timeout: 300000 });
     }
 
     try { fs.unlinkSync(dlFile); } catch {}
+
+    // manifest prune 清单（2026-08-11 git portable）: 解压后删除零能力项（文档等），磁盘税从 408MB → ~387MB
+    const pruneList = (def as any).prune as string[] | undefined;
+    if (pruneList && pruneList.length) {
+        for (const rel of pruneList) {
+            const p = path.join(targetDir, rel);
+            _safeRmDir(p);
+            console.log('[components] ' + name + ': pruned ' + rel);
+        }
+    }
 
     // Python 特殊处理（解压后、验证前）
     if (name === 'python' && process.platform === 'win32') {

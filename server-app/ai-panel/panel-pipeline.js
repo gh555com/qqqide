@@ -44,36 +44,121 @@
 // ═══ panel-pipeline.js ═══
 // sendMessage 管线：接受显式 content，零 $input 访问，零 saveQuestUIState 调用
 // SendIntent 替代 skipFloorCreation boolean 分叉
-// ★ 窗口级发送锁（2026-08-10 根治跨面板并发发送 q182 三层楼事故）：
-//   三面板独立 iframe 共享 parent.__qqq_agentPool（同一 agent 对象）——iframe 级锁管不住
-//   另一翼的 Enter（各自 JS 上下文独立）→ 锁提升到父窗口共享层，任何面板发送前原子检查+置位
-var _execSendBusy = false;
-var _execSendBusyAgent = null;
-// ★ 本面板发送 token：同翼重入放行（handler 先 acquire → _executeSend 再 acquire 不误判），他翼拒绝
-var _mySendToken = '_w' + (typeof _panelId !== 'undefined' ? _panelId : 1) + '_' + Math.random().toString(36).slice(2, 8);
-function _sendBusyIsHeld() {
-    try { return !!(parent && parent.__qqq_sendBusy); } catch (_) { return false; }
+// ★ per-quest 串行执行器（2026-08-11 大动脉重构，替代锁表——q182 三层楼 / q184 f1+f3 双发 /
+//   f28 编号蒸发 同一根因第三次发作后定案）:
+//   旧锁表（__qqq_sendBusyMap + acquire/release/migrate + 看门狗）是「运行时拦截」模型——
+//   每条路径必须正确 acquire/release，漏一个窗口就并发（q184 实锤：questActiveId 赋值与
+//   migrate 之间跨 await setActiveId 的窗口，Enter 双发）。补丁每次堵一个窗口，
+//   测试全绿仍被新窗口穿透——锁模型数学上无法穷尽。
+//   新模型 = 「结构串行」：每 quest 的 agent 持有独立 Promise 链（agent._sendChain），
+//   所有发送意图经 _enqueueSend 追加到链尾 —— JS 单线程下链追加原子，同 quest
+//   结构上不可能并发（零锁窗口）；不同 quest 完全并行（每 quest 独立 agent/SSE）→
+//   左中右三通开工 + N 任务并存核心传统保留。
+//   草稿晋升窗口（_draft_p{panel} → 真 questId）由面板级 promoting 标志覆盖：
+//   _markPromoting 同步置位（create 之前）→ _setPromotingTarget 锁定目标 → migrate 后清除。
+//   删除：锁表五函数 + 发送状态看门狗（链 finally 复位 _chainBusy，结构上无泄漏，无需清锁）。
+function _sendLockKey(questId) {
+    return questId || ('_draft_p' + (typeof _panelId !== 'undefined' ? _panelId : 1));
 }
-// ★ 他翼持有检查：内部入口（sendMessage/_executeSend）用——同翼重入（handler 已 acquire）放行，他翼并发挡
-function _sendBusyHeldByOther() {
+// ★ 发送活跃检查（用户交互入口用：Enter / 发送按钮）
+//   同 quest 任何面板链在执行 → 活跃；本面板草稿晋升窗口 → 活跃（防 questActiveId
+//   已变但链未迁移的窗口双发）。返回 true → 拒绝本次发送（内容保留编辑框，零丢失）。
+function _sendActive(questId) {
     try {
-        if (!parent || !parent.__qqq_sendBusy) return false;
-        return parent.__qqq_sendBusy.token !== _mySendToken;
+        if (!parent) return false;
+        var _pool = parent.__qqq_agentPool;
+        if (_pool) {
+            var _ag = _pool[_sendLockKey(questId)];
+            if (_ag && _ag._chainBusy) return true;
+        }
+        var _pi = parent.__qqq_panelPromoting && parent.__qqq_panelPromoting[typeof _panelId !== 'undefined' ? _panelId : 1];
+        if (_pi) {
+            // true = create 未返回（目标未知，面板级拦截）；string = 目标 quest，仅拦同 quest
+            if (_pi === true || _pi === questId) return true;
+        }
+        return false;
     } catch (_) { return false; }
 }
-function _sendBusyAcquire() {
+// ★ 串行执行器：意图追加到 quest 链尾。同 quest 排队执行（排队信封语义，永不丢消息），
+//   不同 quest 完全并行。链尾 .then 复位 _chainBusy（含异常路径，结构上无泄漏）。
+function _enqueueSend(questId, intent) {
+    var _k = _sendLockKey(questId);
+    var _pool = parent && parent.__qqq_agentPool;
+    if (!_pool) { if (!parent) return Promise.resolve(null); _pool = parent.__qqq_agentPool = {}; }
+    var _ag = _pool[_k];
+    if (!_ag) { _ag = _pool[_k] = { _chainBusy: false, _sendChain: null }; }
+    var _run = function () {
+        _ag._chainBusy = true;
+        return _executeSend(intent).catch(function (err) {
+            console.warn('[pipeline] send failed:', err && err.message);
+        }).then(function (result) {
+            // ★ 链对象可能已迁移（草稿晋升 _sendChainMigrate）→ 复位当前持有链的对象，
+            //   否则新键 _chainBusy 永久 true（发送永久显示忙碌）。闭包 _ag 是旧对象，
+            //   必须按链引用遍历归属（池内 quest 数十个，发送完成时一次 O(n) 零压力）。
+            var _poolC = parent && parent.__qqq_agentPool;
+            if (_poolC) {
+                for (var _kc in _poolC) {
+                    var _ac = _poolC[_kc];
+                    if (_ac && (_ac._sendChain === _ag._sendChain || _ac === _ag)) _ac._chainBusy = false;
+                }
+            }
+            _ag._chainBusy = false;
+            return result;
+        });
+    };
+    if (!_ag._sendChain) _ag._sendChain = Promise.resolve();
+    _ag._sendChain = _ag._sendChain.then(_run, _run);
+    return _ag._sendChain;
+}
+// ★ 草稿晋升链迁移（_draft_pN → 新 questId）：对象整体搬移到新键（同步零窗口）。
+//   链执行器闭包捕获的 _ag 就是该对象 → 复位 _chainBusy 自然生效（旧版复制链引用到新对象
+//   会断复位链：migrate 置旧 _sendChain=null 后复位遍历读不到 → 新键永久忙碌）；
+//   晋升代码 _getOrCreateAgent(newId) 复用同键对象 → 迁移对象即 quest agent 本体。
+function _sendChainMigrate(oldQuestId, newQuestId) {
     try {
-        if (parent && parent.__qqq_sendBusy) {
-            // 持有者是自己（同翼重入）→ 放行；他翼 → 拒绝
-            return parent.__qqq_sendBusy.token === _mySendToken;
+        if (!parent || !parent.__qqq_agentPool) return;
+        var _ok = _sendLockKey(oldQuestId);
+        var _nk = _sendLockKey(newQuestId);
+        if (_ok === _nk) return;
+        var _old = parent.__qqq_agentPool[_ok];
+        if (!_old) return;
+        if (_old._sendChain || _old._chainBusy) {
+            if (!parent.__qqq_agentPool[_nk]) {
+                parent.__qqq_agentPool[_nk] = _old;
+            } else {
+                // 新键已有对象（理论极少）→ 合并链与标志
+                var _new = parent.__qqq_agentPool[_nk];
+                _new._chainBusy = _new._chainBusy || _old._chainBusy;
+                if (_old._sendChain) _new._sendChain = _old._sendChain;
+            }
         }
-        if (parent) parent.__qqq_sendBusy = { ts: Date.now(), token: _mySendToken };
-        return true;
-    } catch (_) { return true; }
+        delete parent.__qqq_agentPool[_ok];
+    } catch (_) { }
 }
-function _sendBusyRelease() {
-    try { if (parent) parent.__qqq_sendBusy = null; } catch (_) { }
+// ★ 面板级草稿晋升标志（覆盖 create → migrate 窗口，防双发；migrate 后立即清除）
+function _markPromoting() {
+    try {
+        if (!parent) return;
+        if (!parent.__qqq_panelPromoting) parent.__qqq_panelPromoting = {};
+        parent.__qqq_panelPromoting[typeof _panelId !== 'undefined' ? _panelId : 1] = true;
+    } catch (_) { }
 }
+function _setPromotingTarget(questId) {
+    try {
+        if (parent && parent.__qqq_panelPromoting) {
+            parent.__qqq_panelPromoting[typeof _panelId !== 'undefined' ? _panelId : 1] = questId;
+        }
+    } catch (_) { }
+}
+function _clearPromoting() {
+    try {
+        if (parent && parent.__qqq_panelPromoting) {
+            delete parent.__qqq_panelPromoting[typeof _panelId !== 'undefined' ? _panelId : 1];
+        }
+    } catch (_) { }
+}
+
+
 
 // ── SendIntent 工厂 ──
 // type: 'normal' | 'recovery' | 'compress'
@@ -107,14 +192,20 @@ async function _executeSend(intent) {
     var isRecovery = intent.isRecovery;
     var forceFloorNum = intent.forceFloorNum || 0;  // ★ 0-house 同层重试：复用旧楼层号
 
-    // ★ 窗口级发送锁：他翼持有才挡（同翼 handler 已 acquire → 重入放行）
-    if (_sendBusyHeldByOther()) return;
+    // ★ 链串行已保证同 quest 单流（_enqueueSend），此处无需锁
+    // ★ 捕获链键基线：草稿晋升后迁移到新键（_sendChainMigrate）
+    var _lockQid = questId;
 
     // ── 闸门 ──
     var _isCompress = (sendType === 'compress') || intent.compressFloor;
     if (_activeAgent && _activeAgent._stopState === 'sending' && !isRecovery && !_isCompress) return;
     if (_activeAgent && _activeAgent._stopState === 'stopping') return;
-    if (_activeAgent && _activeAgent._stopState === 'fatal' && !isRecovery) return;
+    if (_activeAgent && _activeAgent._stopState === 'fatal' && !isRecovery) {
+        // ★ 2026-08-11: fatal 拦截必须显式提示（q184 事故：红框未渲染时用户不知有恢复入口，
+        //   Enter 静默吞 → "发任何消息都没反应"）。红框正常时此提示仅作指引
+        try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('该任务已中断，请点击楼层红框「继续任务」恢复', { type: 'warning', duration: 6000 }); } catch (_e2) { }
+        return;
+    }
     if (_activeAgent && _activeAgent._recoveryInProgress && sendType === 'normal') return;
     if (!_hasMainProject()) { _triggerSelectMainProject(); return; }
     // ★ 登录闸门：必须早于 draft 晋升，未登录禁止建 quest（防未登录建楼）
@@ -123,21 +214,24 @@ async function _executeSend(intent) {
         return;
     }
 
-    // ★ 所有闸门已过 → 加锁（窗口级原子）；竞态失败（他翼已持锁）→ 放弃本次发送
-    if (!_sendBusyAcquire()) return;
+    // ★ 所有闸门已过 → 链执行器已置 _chainBusy（_enqueueSend），直接进入发送
 
     // ★ 天罗地网: 发送开始（死前最后动作链起点）
     try { if (window.__crashNet) window.__crashNet.log({ kind: 'send', q: questId, state: 'sending', type: sendType, detail: isRecovery ? 'recovery' : (_isCompress ? 'compress' : 'normal') }); } catch (_e3) { }
 
     // ── Draft 晋升 ──
+    // ★ 晋升窗口同步置位 promoting（任何 await 之前）：questActiveId 赋值与链迁移之间
+    //   若发生他 Enter（q184 双发根因窗口），_sendActive 据此拦截
     if (_isDraft(questId)) {
+        _markPromoting();
         var _dText = content || '';
         var _dChips = getInputChipPaths ? getInputChipPaths() : [];
-        if (!_dText && _dChips.length === 0) { _sendBusyRelease(); return; }
+        if (!_dText && _dChips.length === 0) { _clearPromoting(); return; }
         try {
             var _dOldId = questId;
             var _dQid = await questStore.create('');
-            if (!_dQid) { _sendBusyRelease(); return; }
+            if (!_dQid) { _clearPromoting(); return; }
+            _setPromotingTarget(_dQid);  // ★ create 已返回：锁定目标（此后仅拦同 quest）
             questActiveId = _dQid;
             if (questUIStates[_dOldId] && typeof questUIStates[_dOldId].selectedTier === 'number') {
                 if (!questUIStates[questActiveId]) questUIStates[questActiveId] = {};
@@ -150,6 +244,10 @@ async function _executeSend(intent) {
             _parentClaimQuest(questActiveId);
             _broadcast('owner-claimed', questActiveId);
             questId = questActiveId;
+            // ★ 草稿晋升 → 链键迁移（_draft_pN → 新 questId，同步零窗口）→ 清除 promoting
+            _sendChainMigrate(_lockQid, questId);
+            _clearPromoting();
+            _lockQid = questId;
             var _dFirst = _dText;
             var _dRoot = questStore.getProjectRoot();
             if (_dRoot) {
@@ -189,12 +287,12 @@ async function _executeSend(intent) {
         } catch (_dErr) {
             console.warn('[pipeline] draft creation failed:', _dErr && _dErr.message);
             addMessageEl('error', '创建 Quest 失败：' + ((_dErr && _dErr.message) || '未知错误'));
-            _sendBusyRelease();
+            _clearPromoting();
             return;
         }
     }
 
-    if (!_activeAgent) { _sendBusyRelease(); return; }
+    if (!_activeAgent) { _clearPromoting(); return; }
     if (!_isDraft(questId) && parent && parent.__qqq_agentPool && parent.__qqq_agentPool[questId] !== _activeAgent) {
         console.warn('[pipeline] _activeAgent stale');
     }
@@ -220,7 +318,6 @@ async function _executeSend(intent) {
                 _broadcast('focus-request', qid, { targetPanel: _ssSyncOwner });
                 agent.setStopState('idle');
                 updateQueueBtn();
-                _sendBusyRelease();
                 return;
             }
             if (_ssSyncOwner === undefined) {
@@ -233,8 +330,8 @@ async function _executeSend(intent) {
 
     // ★ 内容验证（显式传入，不读 $input）
     var text = (content || '').trim();
-    if (!text && (!images || images.length === 0)) { agent.setStopState('idle'); updateQueueBtn(); _sendBusyRelease(); return; }
-    if (streaming) { agent.setStopState('idle'); updateQueueBtn(); _sendBusyRelease(); return; }
+    if (!text && (!images || images.length === 0)) { agent.setStopState('idle'); updateQueueBtn(); return; }
+    if (streaming) { agent.setStopState('idle'); updateQueueBtn(); return; }
 
     // ── 构建 userContent（含附件） ──
     var userContent = text;
@@ -344,8 +441,11 @@ async function _executeSend(intent) {
     }
 
     // ── 楼层分配 ── (recovery 和 normal 都走新楼层)
+    // ★ 2026-08-11: 分配-物化窗口整体 try 包裹（f28 事故：nextFloorNum 已分配但 quest 目录解析/
+    //   mkdir 抛错 → 楼层号永久蒸发 + 发送静默死亡（用户只见气泡不见任何错误）→ 显式报错）
     var floorNum;
     var root2 = questStore.getProjectRoot();
+    try {
     var qDirName2, fDirName2, _allTxtDirLocal, _allTxtPathLocal;
     // ★ 统一：一律通过 nextFloorNum() 创建新楼层（除非 forceFloorNum 同层重试）
     floorNum = forceFloorNum || await questStore.nextFloorNum(qid);
@@ -421,7 +521,19 @@ async function _executeSend(intent) {
     if (_bridgeMk && _allTxtDirLocal) { try { await _bridgeMk.fs.mkdir(_allTxtDirLocal); } catch (_) { } }
 
     var aiDiv = cardPool.startBuildingFloor(qid, floorNum, _allTxtPathLocal);
-    if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); return; }
+    if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); return; }  // ★ 链 finally 自动复位 _chainBusy
+    } catch (_allocErr) {
+        // ★ 2026-08-11: 楼层物化失败（f28 类事故）→ 不静默：释放锁 + 显式 qoast
+        console.warn('[pipeline] floor allocation failed:', _allocErr && _allocErr.message);
+        try { agent.setStopState('idle'); } catch (_) { }
+        try { updateQueueBtn(); } catch (_) { }
+        try {
+            if (window.parent && window.parent.qqqideQoast) {
+                window.parent.qqqideQoast.show('发送失败（楼层创建异常）：' + ((_allocErr && _allocErr.message) || '未知错误') + '——内容已保留在编辑框，请重试', { type: 'error', duration: 6000 });
+            }
+        } catch (_) { }
+        return;
+    }
     aiDiv._allTxtPath = _allTxtPathLocal;
     // ★ Path B: recovery 时楼层对用户不可见，house 1 到达时才揭示（防空楼闪出）
     if (sendType === 'recovery' && !forceFloorNum) {
@@ -531,6 +643,41 @@ async function _executeSend(intent) {
     } catch (_) { }
 
     // ── agent.send ──
+    // ★ 发送停滞看门狗（2026-08-11，q184 20 分钟强拉断事故修案）：不是总时长上限——
+    //   长任务（60 houses / 深度思考 / 压缩）总时长远超 20 分钟是常态，正在干活绝不能拉断。
+    //   仅在「20 分钟零进展」时终止（网关重试风暴 / IPC 挂死 / SSE 静默），防三面板永久禁发；
+    //   进展信号 = 内容 token（onToken）+ house 完结（onCost，每 house 必触发）+ 工具开始（onToolCall）
+    var _sendCapTimer = null;
+    var _capAbort = function () {
+        try {
+            if (!agent || agent._floorCompletedCleanly) return;
+            agent._sendTerminated = true;
+            agent._floorFatal = true;
+            agent._streaming = false;
+            try { if (agent._stopCtrl) agent._stopCtrl.abort(); } catch (_) { }
+            try { agent.setStopState('fatal'); } catch (_) { }
+            // ★ q184 绿色时钟静止修复：置空前先复位时钟 DOM（旧代码直接置空 → finally
+            //   的 if(agent._activeAiDiv) 不成立 → 时钟永停在最后一帧绿色 20m:08s）
+            if (agent._activeAiDiv) {
+                var _capDiv = agent._activeAiDiv;
+                if (_capDiv._clockBlock) _capDiv._clockBlock.className = 'msg-ai-clock';
+                if (_capDiv._clockMin) _capDiv._clockMin.textContent = '';
+                if (_capDiv._clockSec) _capDiv._clockSec.textContent = '';
+                if (typeof _xPieShown !== 'undefined') agent._xPieShown = false;
+                _capDiv._renderScheduled = false;
+                agent._activeAiDiv = null;
+            }
+            if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('发送停滞（>20 分钟无进展）已自动终止，可重新发送', { type: 'warning', duration: 6000 }); } catch (_) { }
+        } catch (_) { }
+    };
+    var _touchCap = function () {
+        if (_sendCapTimer) { clearTimeout(_sendCapTimer); _sendCapTimer = null; }
+        if (agent && !agent._floorCompletedCleanly && !agent._sendTerminated) {
+            _sendCapTimer = setTimeout(_capAbort, 20 * 60 * 1000);
+        }
+    };
+    _touchCap();
     try {
         var token = getLoginToken();
         // ★ V15: compress 楼层强制 tier 4（facts 提取）
@@ -540,7 +687,10 @@ async function _executeSend(intent) {
             token: token,
             tier: _actualTier,
             noTools: intent.noTools || false,
+            onCost: function () { _touchCap(); },
+            onToolCall: function () { _touchCap(); },
             onToken: function (chunk) {
+                _touchCap();
                 if (agent._deferRenderUntilHouse1) {
                     agent._deferRenderUntilHouse1 = false;
                     // ★ Path B: 揭示之前隐藏的楼层（仅在 house 1 到达时展示）
@@ -875,6 +1025,7 @@ async function _executeSend(intent) {
             if ($queueBtn) $queueBtn.disabled = true;
         }
     } finally {
+        if (_sendCapTimer) { clearTimeout(_sendCapTimer); _sendCapTimer = null; }
         if (agent && qid && agent._floorCompletedCleanly) {
             try { await _saveAgentQuestData(qid, agent, agent._currentFloorNum); } catch (_) { }
             // ★ V12: 楼层完结 → 自动重组背包（原地追加饼干 + DE，零 splice，前缀缓存命中）
@@ -926,14 +1077,12 @@ async function _executeSend(intent) {
             agent._streaming = false;
             console.log('[pipeline] floor ended headless');
             if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
-            _sendBusyRelease();
             return;
         }
         if (agent) { agent._streaming = false; }
         if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
         _queueBusy = false;
-        // ★ 先释放发送锁，再触发排队排水（否则 _triggerQueueSend → sendMessage → 锁仍为 true → 永久阻塞）
-        _sendBusyRelease();
+        // ★ 链执行器 .then 已复位 _chainBusy，排水 sendMessage → _enqueueSend 追加链尾串行执行
         if (_queue && _queue.length > 0 && !_queuePaused && _activeAgent === agent) {
             _triggerQueueSend();
         }

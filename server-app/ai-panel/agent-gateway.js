@@ -77,13 +77,10 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
         apiMessages.splice(insertIdx, 0, { role: 'system', content: dynamicCtx, _dynamic: true });
     }
 
-    // ★ 净化：strip reasoning_content（AI 思维链），不发给 API（非标准字段，白浪费带宽）
-    for (var _si = 0; _si < apiMessages.length; _si++) {
-        var _sm = apiMessages[_si];
-        if (_sm && _sm.reasoning_content !== undefined) {
-            delete _sm.reasoning_content;
-        }
-    }
+    // ★ 2026-08-11: reasoning_content 必须原样回传（q178 f29 http_400 事故：thinking 模式上游
+    //   校验 assistant 消息缺 reasoning_content → 400 invalid_request_error）。旧「净化」删除——
+    //   agent-loop 现在把 reasoning_content 挂到 assistant 消息上，此处再 strip 会自毁修复。
+    //   带宽成本：thinking 档的思维链会重复传输，这是 API 规范要求的正确性代价。
 
     // ★ 时间上下文已嵌在用户消息末尾（agent-loop.js send()），不在网关重复注入
 
@@ -374,6 +371,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 // ★ 非引导中断 = 看门狗/超时/网络问题
                 // 设置探针：区分 abort 来源
                 if (self._abortSource === 'stream_watchdog') self._exitReason = 'watchdog_stream';
+                else if (self._abortSource === 'content_watchdog') self._exitReason = 'watchdog_content';
                 else if (self._abortSource === 'fetch_deadline') self._exitReason = 'deadline';
                 else self._exitReason = 'unknown';
 

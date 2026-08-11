@@ -495,7 +495,12 @@ async function _restoreAgentFromStore(questId, ag) {
 
         // ★ 注入压缩饼干：V10 从 ctx.narrative 注入；V13 从 ctx.biscuitLines 重建消息
         if (_isV10Biscuit) {
-            ag.conversation.unshift({ role: 'system', content: _restoredNarrative, _compressed: true, _dynamic: true });
+            // ★ 2026-08-11: 补 _biscuit 标记——旧格式 narrative 即压缩饼干内容，与 V12 重建消息同标记
+            //   （否则 aq 图解落 sysCount、goods 显示 System #N (动态)，两 UI 大脑分裂）
+            // ★ 2026-08-11 v2: unshift → splice(persistentCount)——unshift 把饼干插到 Z 之前，
+            //   fx 重建再 splice(persistentCount) → 终态 [biscuit, fx, Z] 违反定序 Z → fx → biscuit；
+            //   与 V12 路径同构（铁律 10.1）
+            ag.conversation.splice(ag._persistentCount || 0, 0, { role: 'system', content: _restoredNarrative, _compressed: true, _dynamic: true, _biscuit: true });
         }
         // ★ V18 fix: biscuit 消息始终从 ctx.biscuitLines 重建（ctx.json 为权威真理源）。
         //   旧逻辑仅在无 conversation biscuit 时注入 → 压缩按钮修改 ctx.biscuitLines 后
@@ -768,6 +773,18 @@ async function _restoreAgentFromStore(questId, ag) {
                 // ★ 确保 currentFloorNum 指向 fatal 楼层（metadata 可能为 0）
                 if (!ag._currentFloorNum || ag._currentFloorNum < _lastFloor.floorNum) {
                     ag._currentFloorNum = _lastFloor.floorNum;
+                }
+                // ★ 2026-08-11: exitReason 空（abort 等路径未写）且楼层无 error log → 合成一条。
+                //   否则 _questErrorLogByFloor 空 → _renderAllErrorBoxes 空 log continue → 红框
+                //   +「继续任务」链接不渲染 → 用户无恢复入口，Enter 又被 fatal 闸门静默吞
+                //   （q184 实锤：f3 fatal exitReason='' 零 _error 消息 → 重启后发任何消息无反应）。
+                //   与 B3 段（无 house 1 合成）同款兜底，先于此处的 V14 同步段执行
+                if (!ag._questErrorLogByFloor[_lastFloor.floorNum] || ag._questErrorLogByFloor[_lastFloor.floorNum].length === 0) {
+                    if (!ag._questErrorLogByFloor[_lastFloor.floorNum]) ag._questErrorLogByFloor[_lastFloor.floorNum] = [];
+                    ag._questErrorLogByFloor[_lastFloor.floorNum].push({
+                        time: '',
+                        reason: _lfData.exitReason || '任务中断（楼层异常结束）'
+                    });
                 }
             }
         }

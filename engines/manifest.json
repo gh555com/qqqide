@@ -220,24 +220,28 @@
       }
     },
     "git": {
-      "_note": "Git (bundled=true → 绿色包自带。旧客户端自动降级到 MinGit 下载，功能一致但无 bash)。Windows ~28MB, Linux ~12MB, macOS ~15MB。",
+      "_note": "Git (bundled=true → 绿色包自带, Git for Windows Portable 完整版, 2026-08-11 B 方案)。cmd/git.exe 包装器独立可用 (git goods 消费); bin/bash.exe = kmd Git Bash (自带 MSYS2 运行时 + ssh/scp/coreutils/perl 全套); 解压 ~408MB, 客户端按 prune 清单裁剪文档 (~21MB)。Win7/8 自动降级 2.46.0 Portable (win7_srcs)。Linux ~12MB, macOS ~15MB 维持 MinGit 形态。",
       "bundled": true,
       "install_to": "git",
-      "bin_win": "git.exe",
+      "bin_win": "cmd/git.exe",
       "bin_unix": "git",
       "verify_args": [
         "--version"
       ],
-      "version": "2.51.0",
+      "version": "2.51.0-portable",
+      "prune": [
+        "mingw64/share/doc",
+        "usr/share/gtk-doc"
+      ],
       "srcs": {
         "win32-x64": [
           {
-            "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/FTQWMZALLX7CO.zip",
-            "kind": "zip"
+            "url": "https://gh555.com/dl/qqqide-up/PortableGit-2.51.0-64-bit.7z.exe",
+            "kind": "sfx7z"
           },
           {
-            "url": "https://cdn.gh555.com/u/01KK1SAAR5B53SJXGNVQWP5EB6/OJHH77X5FT6HW.zip",
-            "kind": "zip"
+            "url": "https://github.com/git-for-windows/git/releases/download/v2.51.0.windows.1/PortableGit-2.51.0-64-bit.7z.exe",
+            "kind": "sfx7z"
           }
         ],
         "linux-x64": [
@@ -260,11 +264,15 @@
         ]
       },
       "win7_srcs": {
-        "_note": "Win7/8 (6.1/6.2/6.3): git 2.47+ 已放弃 Win7/8 支持，客户端自动降级 2.46.0 MinGit",
+        "_note": "Win7/8 (6.1/6.2/6.3): git 2.47+ 已放弃 Win7/8 支持，客户端自动降级 2.46.0 Portable",
         "win32-x64": [
           {
-            "url": "https://github.com/git-for-windows/git/releases/download/v2.46.0.windows.1/MinGit-2.46.0-64-bit.zip",
-            "kind": "zip"
+            "url": "https://gh555.com/dl/qqqide-up/PortableGit-2.46.0-64-bit.7z.exe",
+            "kind": "sfx7z"
+          },
+          {
+            "url": "https://github.com/git-for-windows/git/releases/download/v2.46.0.windows.1/PortableGit-2.46.0-64-bit.7z.exe",
+            "kind": "sfx7z"
           }
         ]
       },

@@ -7,20 +7,16 @@
 // ★ 管线入口：统一构建 SendIntent → _executeSend
 //   _execSendBusyAgent 使不同 quest 各自独立，不互相阻塞
 async function sendMessage(content, opts) {
-    // ★ 窗口级发送锁：他翼持有才挡（同翼 handler 已 acquire → 重入放行，防自己挡自己）
-    if (typeof _sendBusyHeldByOther === 'function' && _sendBusyHeldByOther()) return;
+    // ★ per-quest 串行执行器（2026-08-11 重构）：内部入口直接入链（排队语义，永不丢消息），
+    //   同 quest 串行执行（链追加原子 → 零并发窗口），不同 quest 并行（三通开工保留）；
+    //   用户交互入口（Enter/发送按钮）的忙检查在 panel-input.js _sendActive（内容保留编辑框）
     if (content === undefined) {
         content = getInputText().trim();
         opts = { type: 'normal', images: null, tierIndex: selectedTier };
     }
     opts = opts || {};
     var intent = _buildSendIntent(questActiveId, content, opts);
-    return _executeSend(intent).catch(function (err) {
-        // ★ 兜底：_executeSend 任何未捕获异常 → 释放窗口锁（防锁泄漏 → 三翼全部禁发）
-        if (typeof _sendBusyRelease === 'function') _sendBusyRelease();
-        console.warn('[pipeline] send failed:', err && err.message);
-        throw err;
-    });
+    return _enqueueSend(questActiveId, intent);
 }
 function _continueQueue() {
     var _qs = document.getElementById('queue-sending-status');

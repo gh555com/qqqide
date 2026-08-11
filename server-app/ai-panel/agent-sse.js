@@ -71,7 +71,7 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
     var _finishReason = '';
     var _sseError = null;  // ★ 服务端 SSE 错误事件（提升到外层避免被 JSON catch 吞掉）
 
-    // ★ 流级别看门狗：180s 无数据 → 连接已死，主动 abort
+    // ★ 流级别看门狗：180s 无任何数据（含心跳）→ 连接已死，主动 abort
     //   深度推理可能 120s+ 无 token，180s 防误杀
     //   output_watchdog 已移除 — AI 推理不限时，信任模型自行收敛
     var _streamWatchdog = null;
@@ -84,6 +84,24 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
             self._log('⏰ stream watchdog ' + (STREAM_WATCHDOG_MS / 1000) + 's — no data, aborting dead connection');
             if (_ctrl) _ctrl.abort();
         }, STREAM_WATCHDOG_MS);
+    }
+    // ★ 内容级看门狗（2026-08-11 q184 15min 空白事故）：首 token 后流式输出间隔 >45s
+    //   （含心跳——服务器心跳会重置流级看门狗但无内容）→ 上游挂起，主动 abort 走恢复链
+    //   （agent-gateway: 同 URL 退避重试 3 次 → 切线路）。模型流式输出间隔正常 <10s，45s 防误杀。
+    //   推理期（首 token 前）不启动——由流级 180s 覆盖深度推理长思考。
+    var _contentWatchdog = null;
+    var _contentSeen = false;
+    var CONTENT_WATCHDOG_MS = 45000;
+    function _resetContentWatchdog() {
+        _contentSeen = true;
+        if (_contentWatchdog) clearTimeout(_contentWatchdog);
+        var _ctrlC = self.abortController;
+        _contentWatchdog = setTimeout(function () {
+            self._abortSource = 'content_watchdog';
+            self._log('⏰ content watchdog ' + (CONTENT_WATCHDOG_MS / 1000) + 's — no content delta (heartbeat only), aborting stalled stream');
+            if (typeof self._writeFileLog === 'function') self._writeFileLog('⏰ content watchdog ' + (CONTENT_WATCHDOG_MS / 1000) + 's — stalled stream aborted');
+            if (_ctrlC) _ctrlC.abort();
+        }, CONTENT_WATCHDOG_MS);
     }
     _resetStreamWatchdog();
 
@@ -149,11 +167,14 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
             if (delta.reasoning_content) {
                 reasoningContent += delta.reasoning_content;
                 onReasoning(delta.reasoning_content);
+                _resetContentWatchdog();  // ★ 内容级：思维链也算产出
             }
             if (delta.content) {
                 stripper.push(delta.content);
+                _resetContentWatchdog();  // ★ 内容级：文本产出重置
             }
             if (delta.tool_calls) {
+                _resetContentWatchdog();  // ★ 内容级：工具调用流也算产出
                 for (var ti = 0; ti < delta.tool_calls.length; ti++) {
                     var tc = delta.tool_calls[ti];
                     if (tc.index !== undefined) {
@@ -176,6 +197,7 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
     var _sseErrorMessage = _sseError ? (_sseError.message || '') : '';
 
     clearTimeout(_streamWatchdog);
+    if (_contentWatchdog) { clearTimeout(_contentWatchdog); _contentWatchdog = null; }
 
     // ★ 服务端 SSE 错误 → 向上抛出（不再被 JSON catch 吞掉）
     if (_sseError) {
@@ -293,10 +315,68 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
             }
         }
 
+        // ── 格式 E: [A → tool_name] args…（客户端显示格式被模型模仿输出）──
+        //    长上下文（biscuit 满屏 [A → …] 显示行）下 fast 模型偶发以纯文本模仿工具调用格式
+        //    （q178 f23/f27 事故实锤：服务端只收到 1 个请求，模型回复 = 文本工具行 + 幻觉结果）。
+        //    该格式参数非结构化 → 仅对可安全重建参数的只读工具自动执行；
+        //    其余（edit/run_command/生成类）记录未执行，注入 follow-up 提示模型用原生 tool_calls 重做。
+        var _dispRe = /^\[A\s*(?:→|->|➜|»)\s*([a-z][\w.-]*)\]\s*([^\n]*)$/gim;
+        var _dispM;
+        while ((_dispM = _dispRe.exec(_rawFallback)) !== null) {
+            var _dispName = _dispM[1];
+            var _dispRest = (_dispM[2] || '').trim();
+            var _dispArgs = null;
+            var _dispUnrecoverable = true;
+            if (_dispName === 'read_file') {
+                // [path] [L:start-end/total] [Nc]
+                var _rfRange = _dispRest.match(/L:?(\d+)\s*-\s*(\d+)(?:\/\d+)?/i);
+                var _rfPath = _dispRest.replace(/L:?\d+\s*-\s*\d+(\/\d+)?/i, '').replace(/\s+\d+c\s*$/i, '').trim().replace(/^["']|["']$/g, '');
+                if (_rfPath) {
+                    _dispArgs = { path: _rfPath };
+                    if (_rfRange) {
+                        _dispArgs.start_line = parseInt(_rfRange[1], 10);
+                        _dispArgs.end_line = parseInt(_rfRange[2], 10);
+                    }
+                    _dispUnrecoverable = false;
+                }
+            } else if (_dispName === 'search_text' || _dispName === 'search_content' || _dispName === 'search_smart') {
+                var _sq = _dispRest.replace(/\s+\d+\s*hits\s*$/i, '').trim().replace(/^["']|["']$/g, '');
+                if (_sq) { _dispArgs = { query: _sq }; _dispUnrecoverable = false; }
+            } else if (_dispName === 'list_files') {
+                var _lp = _dispRest.replace(/\s+\d+\s*items?\s*$/i, '').trim().replace(/^["']|["']$/g, '');
+                if (_lp) { _dispArgs = { path: _lp }; _dispUnrecoverable = false; }
+            } else if (_dispName === 'find_files') {
+                var _fp = _dispRest.replace(/\s+\d+\s*items?\s*$/i, '').trim().replace(/^["']|["']$/g, '');
+                if (_fp) { _dispArgs = { pattern: _fp }; _dispUnrecoverable = false; }
+            } else if (_dispName === 'get_diagnostics') {
+                var _dp = _dispRest.trim().replace(/^["']|["']$/g, '');
+                if (_dp) { _dispArgs = { path: _dp }; _dispUnrecoverable = false; }
+            } else if (_dispName === 'fetch_webpage') {
+                var _up = _dispRest.trim().replace(/^["']|["']$/g, '');
+                if (/^https?:\/\//i.test(_up)) { _dispArgs = { url: _up }; _dispUnrecoverable = false; }
+            } else if (_dispName === 'search_web') {
+                var _wq = _dispRest.trim().replace(/^["']|["']$/g, '');
+                if (_wq) { _dispArgs = { query: _wq }; _dispUnrecoverable = false; }
+            }
+            _fbBlocks.push({ name: _dispName, args: _dispArgs, _unrecoverable: _dispUnrecoverable });
+        }
+        // 格式 E 显示行从内容剥离（防原文展示；真实执行走 tool_calls 渲染）
+        if (_dispM) {
+            finalized.cleanContent = (finalized.cleanContent || '')
+                .replace(/^\[A\s*(?:→|->|➜|»)\s*[a-z][\w.-]*\][^\n]*\n?/gim, '')
+                .replace(/\x0a{3,}/g, '\x0a\x0a').trim();
+        }
+
         if (_fbBlocks.length > 0) {
             finalized.textToolCalls = [];
+            var _skipNames = [];
+            var _skipReasons = [];
             for (var _fbi = 0; _fbi < _fbBlocks.length; _fbi++) {
                 var _fbb = _fbBlocks[_fbi];
+                if (_fbb._unrecoverable || !_fbb.args) {
+                    _skipNames.push(_fbb.name || '?');
+                    continue;
+                }
                 var _fbCallId = 'fb_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
                 finalized.textToolCalls.push({
                     id: _fbCallId,
@@ -304,7 +384,6 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
                     function: { name: _fbb.name, arguments: JSON.stringify(_fbb.args) }
                 });
             }
-            self._log('🔄 fallback textToolCalls: parsed ' + _fbBlocks.length + ' tool(s) from raw content');
             // 从 cleanContent 剥离已解析的文本工具调用块（防止显示给用户）
             finalized.cleanContent = (finalized.cleanContent || '')
                 .replace(/<function_calls>[\s\S]*?<\/function_calls>/gi, '')
@@ -312,6 +391,19 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
                 .replace(/<invoke\s[^>]*?\bname\s*=\s*["'][^"']+["'][^>]*>[\s\S]*?<\/invoke>/gi, '')
                 .replace(/<tool_call[\s>][^>]*>[\s\S]*?<\/tool_call>/gi, '')
                 .replace(/\x0a{3,}/g, '\x0a\x0a').trim();
+            // ★ 格式 E 未执行的工具 → 注入说明，模型下一 house 会看到并重做（原生 tool_calls 或直接回答）
+            if (_skipNames.length > 0) {
+                var _skipNote = '[System: 检测到上一条回复把工具调用写成了文本（[A → …] 显示格式）而非原生 tool_calls。以下工具因参数无法安全重建而未执行: ' + _skipNames.join(', ') + '。请用原生 tool_calls 重新执行这些工具，或直接给出最终答案。]';
+                finalized.cleanContent = ((finalized.cleanContent || '') + '\n\n' + _skipNote).trim();
+                _skipReasons.push(_skipNames.length + ' unrecoverable');
+            }
+            if (finalized.textToolCalls.length > 0) {
+                self._log('🔄 fallback textToolCalls: parsed ' + finalized.textToolCalls.length + ' tool(s) from raw content' + (_skipReasons.length ? (' (' + _skipReasons.join(', ') + ')') : ''));
+            } else {
+                // 0 个可恢复工具 → 不空转（空 tool_calls 数组部分上游拒收；每次重试都计费）→
+                // 直接 message 完结，内容已含提示，用户可见原因可手动重发
+                self._log('⚠ fallback textToolCalls: 0 recoverable (' + _skipReasons.join(', ') + ') — finalizing as message with note');
+            }
         }
     }
 

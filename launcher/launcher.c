@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <process.h>
 #include <tlhelp32.h>
+#include <stdarg.h>
 
 // ── WinHTTP redirect (MinGW headers may not define) ──
 #ifndef WINHTTP_OPTION_REDIRECT_POLICY
@@ -281,6 +282,92 @@ static void writeFileText(const WCHAR *path, const char *text) {
     DWORD wr = 0;
     WriteFile(h, text, (DWORD)strlen(text), &wr, NULL);
     CloseHandle(h);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ★ 交换/更新日志（2026-08-10）: gh555.com/Data/launcher-swap.log
+//   记录交换/解压/下载/增量装配每一步（含 GetLastError）——
+//   「卡版本/更新无反应」时一眼定位根因（F44 事故：交换失败无任何痕迹）。
+//   - 日志在用户 Data 内 → 随交换备份恢复、跨更新保留
+//   - 上限 256KB 超限重置（保留最新）；日志失败静默，绝不阻塞更新主流程
+//   - 交换中途 Data 路径漂移（→Data.backup）→ 落盘按可达性探测：
+//     gh555.com\Data → Data.backup → 包根（gh555.com-old\Data 不写，会被删除丢日志）
+// ═══════════════════════════════════════════════════════════════
+#define SWAP_LOG_MAX (256 * 1024)
+
+static int swapLogWriteTo(const WCHAR *path, const char *line) {
+    // 超限重置（保留最新日志）
+    HANDLE hq = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+        NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hq != INVALID_HANDLE_VALUE) {
+        LARGE_INTEGER sz;
+        if (GetFileSizeEx(hq, &sz) && sz.QuadPart > SWAP_LOG_MAX) {
+            CloseHandle(hq);
+            DeleteFileW(path);
+        } else {
+            CloseHandle(hq);
+        }
+    }
+    HANDLE h = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
+        NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) return 0;
+    DWORD wr = 0;
+    WriteFile(h, line, (DWORD)strlen(line), &wr, NULL);
+    CloseHandle(h);
+    return 1;
+}
+
+// 落盘：gh555.com\Data → Data.backup → 包根，逐路径尝试（包根恒可写）
+static void swapLogPersist(const WCHAR *exeDir, const char *line) {
+    WCHAR paths[3][MAX_PATH];
+    swprintf(paths[0], MAX_PATH, L"%s\\gh555.com\\Data\\launcher-swap.log", exeDir);
+    swprintf(paths[1], MAX_PATH, L"%s\\Data.backup\\launcher-swap.log", exeDir);
+    swprintf(paths[2], MAX_PATH, L"%s\\launcher-swap.log", exeDir);
+    for (int i = 0; i < 3; i++) {
+        WCHAR dir[MAX_PATH];
+        wcsncpy(dir, paths[i], MAX_PATH - 1); dir[MAX_PATH - 1] = L'\0';
+        WCHAR *slash = wcsrchr(dir, L'\\');
+        if (slash) { *slash = L'\0'; CreateDirectoryW(dir, NULL); }
+        if (swapLogWriteTo(paths[i], line)) return;
+    }
+}
+
+static void swapLogLine(char *line, int lineSize, const char *fmt, va_list ap) {
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    int off = snprintf(line, lineSize, "[%04d-%02d-%02dT%02d:%02d:%02d] ",
+        st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    if (off < 0 || off >= lineSize) off = 0;
+    vsnprintf(line + off, lineSize - off, fmt, ap);
+    int n = (int)strlen(line);
+    if (n > 0 && line[n - 1] != '\n' && n < lineSize - 1) { line[n] = '\n'; line[n + 1] = '\0'; }
+}
+
+// 直接落盘（后台线程：下载/解压/增量装配）
+static void swapLogNow(const WCHAR *exeDir, const char *fmt, ...) {
+    char line[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    swapLogLine(line, sizeof(line), fmt, ap);
+    va_end(ap);
+    swapLogPersist(exeDir, line);
+}
+
+// 内存累积（applySwapIfReady：交换中途 Data 路径漂移，函数尾统一落盘保证日志完整）
+static void swapLogAppend(char *buf, int bufSize, const char *fmt, ...) {
+    int len = (int)strlen(buf);
+    if (len >= bufSize - 512) return;
+    char line[512];
+    va_list ap;
+    va_start(ap, fmt);
+    swapLogLine(line, sizeof(line), fmt, ap);
+    va_end(ap);
+    strncat(buf, line, bufSize - strlen(buf) - 1);
+}
+
+static void swapLogFlush(const WCHAR *exeDir, const char *buf) {
+    if (!buf || !buf[0]) return;
+    swapLogPersist(exeDir, buf);
 }
 
 // ★ 唯一版本权威（2026-08-10 重构）：versions.json 的 "id" 字段 = 清单编号。
@@ -813,9 +900,17 @@ static int extractPayload(const WCHAR *rPath, const WCHAR *exeDir) {
 // ★★ 铁律（2026-08-06）: joker 还在跑 → 绝不交换，保留 .swap-ready 等下次启动。
 //    前台进程不可被更新杀灭；交换只在用户完全退出后、下次启动时发生。
 static int applySwapIfReady(const WCHAR *exeDir) {
+    char logBuf[4096] = {0};
     WCHAR swapReady[MAX_PATH];
     swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
     if (!fileExistsW(swapReady)) return 0;
+
+    // 记录待交换版本（.swap-ready 内容 = 目标清单编号）与 live 版本
+    char pendVer[64] = {0}, liveVer[64] = {0};
+    readFileText(swapReady, pendVer, sizeof(pendVer));
+    readLocalVersion(exeDir, liveVer, sizeof(liveVer));
+    swapLogAppend(logBuf, sizeof(logBuf), "swap begin: pending=%s live=%s",
+        pendVer[0] ? pendVer : "?", liveVer[0] ? liveVer : "?");
 
     WCHAR ghDir[MAX_PATH], ghOld[MAX_PATH], ghNext[MAX_PATH];
     swprintf(ghDir, MAX_PATH, L"%s\\gh555.com", exeDir);
@@ -829,27 +924,53 @@ static int applySwapIfReady(const WCHAR *exeDir) {
         swprintf(dataDir, MAX_PATH, L"%s\\Data", ghDir);
         swprintf(backupDir, MAX_PATH, L"%s\\Data.backup", exeDir);
         if (!fileExistsW(ghDir) && fileExistsW(ghOld)) {
-            MoveFileW(ghOld, ghDir);
+            if (!MoveFileW(ghOld, ghDir))
+                swapLogAppend(logBuf, sizeof(logBuf), "crash-recover: move gh555.com-old FAIL err=%lu", GetLastError());
         }
         if (!fileExistsW(dataDir) && fileExistsW(backupDir)) {
-            MoveFileW(backupDir, dataDir);
+            if (!MoveFileW(backupDir, dataDir))
+                swapLogAppend(logBuf, sizeof(logBuf), "crash-recover: move Data.backup FAIL err=%lu", GetLastError());
         }
     }
-    if (!fileExistsW(ghNext)) { DeleteFileW(swapReady); return 0; }
+    if (!fileExistsW(ghNext)) {
+        swapLogAppend(logBuf, sizeof(logBuf), "swap abort: gh555.com-next missing (swap-ready cleared)");
+        DeleteFileW(swapReady);
+        swapLogFlush(exeDir, logBuf);
+        return 0;
+    }
 
     // ★ 守卫 1: joker 正在运行（含旧实例残党）→ 放弃本次交换，等用户退出后下次启动
-    if (isProcessRunning(L"joker.exe")) return 0;
+    if (isProcessRunning(L"joker.exe")) {
+        swapLogAppend(logBuf, sizeof(logBuf), "swap deferred: joker.exe running");
+        swapLogFlush(exeDir, logBuf);
+        return 0;
+    }
 
     // ★ 守卫 2: next 完整性最小校验（joker + versions.json + resources/app）→ 残缺版绝不交换
     //   versions.json = 唯一版本权威（清单编号 + 组件精确矩阵），缺失即判残缺。
     {
         WCHAR chk[MAX_PATH];
         swprintf(chk, MAX_PATH, L"%s\\joker.exe", ghNext);
-        if (!fileExistsW(chk)) { DeleteFileW(swapReady); return 0; }
+        if (!fileExistsW(chk)) {
+            swapLogAppend(logBuf, sizeof(logBuf), "swap abort: next incomplete (missing joker.exe)");
+            DeleteFileW(swapReady);
+            swapLogFlush(exeDir, logBuf);
+            return 0;
+        }
         swprintf(chk, MAX_PATH, L"%s\\versions.json", ghNext);
-        if (!fileExistsW(chk)) { DeleteFileW(swapReady); return 0; }
+        if (!fileExistsW(chk)) {
+            swapLogAppend(logBuf, sizeof(logBuf), "swap abort: next incomplete (missing versions.json)");
+            DeleteFileW(swapReady);
+            swapLogFlush(exeDir, logBuf);
+            return 0;
+        }
         swprintf(chk, MAX_PATH, L"%s\\resources\\app", ghNext);
-        if (!fileExistsW(chk)) { DeleteFileW(swapReady); return 0; }
+        if (!fileExistsW(chk)) {
+            swapLogAppend(logBuf, sizeof(logBuf), "swap abort: next incomplete (missing resources\\app)");
+            DeleteFileW(swapReady);
+            swapLogFlush(exeDir, logBuf);
+            return 0;
+        }
     }
 
     // ★ 保存用户数据
@@ -860,24 +981,38 @@ static int applySwapIfReady(const WCHAR *exeDir) {
     int hasBackup = 0;
     if (fileExistsW(dataDir)) {
         hasBackup = (MoveFileW(dataDir, backupDir) != 0);
+        if (!hasBackup) {
+            // ★ 数据备份失败（AV/占用锁）→ 中止交换，绝不拿用户数据冒险
+            //   （旧实现继续交换 → 新包 Data 覆盖用户账号数据 → 登出+偏好全丢）
+            swapLogAppend(logBuf, sizeof(logBuf), "swap FAIL: backup user Data err=%lu (aborted, retry next boot)", GetLastError());
+            swapLogFlush(exeDir, logBuf);
+            return -1;
+        }
     }
 
     // 原子交换
     removeDir(ghOld);
     if (!MoveFileW(ghDir, ghOld)) {
+        swapLogAppend(logBuf, sizeof(logBuf), "swap FAIL: move gh555.com -> gh555.com-old err=%lu", GetLastError());
         if (hasBackup) MoveFileW(backupDir, dataDir);
+        swapLogFlush(exeDir, logBuf);
         return -1;
     }
     if (!MoveFileW(ghNext, ghDir)) {
+        swapLogAppend(logBuf, sizeof(logBuf), "swap FAIL: move gh555.com-next -> gh555.com err=%lu", GetLastError());
         MoveFileW(ghOld, ghDir);
         if (hasBackup) MoveFileW(backupDir, dataDir);
+        swapLogFlush(exeDir, logBuf);
         return -1;
     }
 
     // ★ 恢复用户数据
     if (hasBackup) {
         removeDir(dataDir);
-        MoveFileW(backupDir, dataDir);
+        if (!MoveFileW(backupDir, dataDir)) {
+            // 数据仍在 Data.backup → 下次启动崩溃恢复段自动还原
+            swapLogAppend(logBuf, sizeof(logBuf), "swap WARN: restore user Data FAIL err=%lu (data safe in Data.backup)", GetLastError());
+        }
     }
 
     // ★ 自更新: gh555.com/launcher-next.exe → 根 qqqide.exe（三明治替换）
@@ -895,8 +1030,11 @@ static int applySwapIfReady(const WCHAR *exeDir) {
                     DeleteFileW(oldLauncher);
                 } else {
                     // 复制失败 → 恢复旧启动器，绝不丢失入口
+                    swapLogAppend(logBuf, sizeof(logBuf), "launcher swap FAIL: copy launcher-next err=%lu (rolled back)", GetLastError());
                     MoveFileW(oldLauncher, rootLauncher);
                 }
+            } else {
+                swapLogAppend(logBuf, sizeof(logBuf), "launcher swap FAIL: move root qqqide.exe err=%lu", GetLastError());
             }
             DeleteFileW(newLauncher);
         }
@@ -904,6 +1042,9 @@ static int applySwapIfReady(const WCHAR *exeDir) {
 
     removeDir(ghOld);
     DeleteFileW(swapReady);
+    swapLogAppend(logBuf, sizeof(logBuf), "swap OK: %s -> %s",
+        liveVer[0] ? liveVer : "?", pendVer[0] ? pendVer : "?");
+    swapLogFlush(exeDir, logBuf);
     return 1;
 }
 
@@ -984,7 +1125,10 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
 
     char newVer[64] = {0};
     int rd = readFileText(vNext, newVer, sizeof(newVer));
-    if (rd <= 0) { DeleteFileW(rNext); DeleteFileW(vNext); InterlockedExchange(&g_applyRunning, 0); return 0; }
+    if (rd <= 0) {
+        swapLogNow(exeDir, "extract abort: .version-next unreadable");
+        DeleteFileW(rNext); DeleteFileW(vNext); InterlockedExchange(&g_applyRunning, 0); return 0;
+    }
 
     // ★ 交换已完成（live 已是目标版本）→ 清理残留暂存，不再重复解压
     {
@@ -1013,6 +1157,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
         if (fileExistsW(ghNext) &&
             readManifestIdFile(nextVerPath, nextVer, sizeof(nextVer)) > 0 &&
             strcmp(nextVer, newVer) == 0) {
+            swapLogNow(exeDir, "extract skip: next already %s (idempotent, no re-extract)", newVer);
             WCHAR swapReady[MAX_PATH];
             swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
             writeFileText(swapReady, newVer);
@@ -1035,6 +1180,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
     PROCESS_INFORMATION pi = {0};
     if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
         CREATE_NO_WINDOW, NULL, tmpDir, &si, &pi)) {
+        swapLogNow(exeDir, "extract FAIL: spawn 7z err=%lu", GetLastError());
         removeDir(tmpDir);
         InterlockedExchange(&g_applyRunning, 0);
         return 0;
@@ -1045,18 +1191,23 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
     GetExitCodeProcess(pi.hProcess, &ec);
     CloseHandle(pi.hProcess);
 
-    if (ec != 0) { removeDir(tmpDir); InterlockedExchange(&g_applyRunning, 0); return 0; }
+    if (ec != 0) {
+        swapLogNow(exeDir, "extract FAIL: 7z exit=%lu (corrupt r.next)", ec);
+        removeDir(tmpDir); InterlockedExchange(&g_applyRunning, 0); return 0;
+    }
 
     // 移出解压出的 gh555.com → gh555.com-next
     WCHAR extractedGh[MAX_PATH];
     swprintf(extractedGh, MAX_PATH, L"%s\\gh555.com", tmpDir);
     if (!fileExistsW(extractedGh)) {
+        swapLogNow(exeDir, "extract FAIL: payload has no gh555.com (bad r.next)");
         removeDir(tmpDir);
         InterlockedExchange(&g_applyRunning, 0);
         return 0;
     }
 
     if (!MoveFileW(extractedGh, ghNext)) {
+        swapLogNow(exeDir, "extract FAIL: move to gh555.com-next err=%lu", GetLastError());
         removeDir(tmpDir); removeDir(ghNext);
         InterlockedExchange(&g_applyRunning, 0);
         return 0;
@@ -1080,6 +1231,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
     WCHAR swapReady[MAX_PATH];
     swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
     writeFileText(swapReady, newVer);
+    swapLogNow(exeDir, "extract OK: %s staged (swap-ready written)", newVer);
 
     // 清理暂存文件
     DeleteFileW(rNext);
@@ -1378,32 +1530,57 @@ static int collectNeededUnits(const UnitsManifest *m, const UnitsManifest *ls, i
 
 // ★ 单元增量装配: 返回 1=成功(swap-ready 已写) / 0=失败 → 调用方走全量 r 兜底
 static int tryIncrementalUpdate(const WCHAR *exeDir, const char *serverVer) {
+    char liveVer[64] = {0};
+    readLocalVersion(exeDir, liveVer, sizeof(liveVer));
+    swapLogNow(exeDir, "incremental: begin %s -> %s", liveVer[0] ? liveVer : "?", serverVer);
+
     char json[8192];
     int len = downloadToString(g_cfg.update_host, g_cfg.units_path, json, sizeof(json), g_cfg.use_https);
     if (len <= 0 && g_cfg.use_https) {
         len = downloadToString(g_cfg.update_host, g_cfg.units_path, json, sizeof(json), 0);
     }
-    if (len <= 0) return 0;
+    if (len <= 0) {
+        swapLogNow(exeDir, "incremental abort: units.json fetch FAIL (fallback full r)");
+        return 0;
+    }
 
     UnitsManifest m;
-    if (!parseUnitsManifest(json, &m)) return 0;
-    if (m.id[0] == '\0' || strcmp(m.id, serverVer) != 0) return 0;   // 清单必须与 latest.txt 一致
+    if (!parseUnitsManifest(json, &m)) {
+        swapLogNow(exeDir, "incremental abort: units manifest parse FAIL (fallback full r)");
+        return 0;
+    }
+    if (m.id[0] == '\0' || strcmp(m.id, serverVer) != 0) {
+        swapLogNow(exeDir, "incremental abort: manifest id %s != latest %s (fallback full r)", m.id[0] ? m.id : "?", serverVer);
+        return 0;
+    }
     if (m.versions_raw[0] == '\0') return 0;
 
     // 本地单元状态缺失（旧包）→ 全量兜底
     WCHAR lsPath[MAX_PATH];
     swprintf(lsPath, MAX_PATH, L"%s\\gh555.com\\Data\\units.json", exeDir);
     char lsRaw[4096];
-    if (readFileRaw(lsPath, lsRaw, sizeof(lsRaw)) <= 0) return 0;
+    if (readFileRaw(lsPath, lsRaw, sizeof(lsRaw)) <= 0) {
+        swapLogNow(exeDir, "incremental abort: no local unit state (legacy pack, fallback full r)");
+        return 0;
+    }
     UnitsManifest ls;
-    if (!parseLocalUnitsState(lsRaw, &ls)) return 0;
+    if (!parseLocalUnitsState(lsRaw, &ls)) {
+        swapLogNow(exeDir, "incremental abort: local units.json parse FAIL (fallback full r)");
+        return 0;
+    }
     if (strcmp(ls.id, m.id) == 0) return 0;                          // 已是目标版本（幂等兜底）
 
     int needed[MAX_UNITS];
     long neededBytes = 0;
     int nNeed = collectNeededUnits(&m, &ls, needed, MAX_UNITS, &neededBytes);
-    if (nNeed == 0) return 0;                                        // 无变化 → 异常态 → 全量兜底
-    if (m.r_bytes > 0 && neededBytes >= m.r_bytes) return 0;         // 增量不小于全量 → 全量
+    if (nNeed == 0) {
+        swapLogNow(exeDir, "incremental abort: no unit changes (fallback full r)");
+        return 0;
+    }
+    if (m.r_bytes > 0 && neededBytes >= m.r_bytes) {
+        swapLogNow(exeDir, "incremental abort: delta %ld >= full %ld (fallback full r)", neededBytes, m.r_bytes);
+        return 0;
+    }
 
     // ── 装配 gh555.com-next: ① 硬链接克隆 live（同卷零拷贝，秒级） ② 覆盖变化单元 ──
     //   next 必须是完整 gh555.com（swap 门同全量 r），未变化单元从 live 克隆；
@@ -1434,7 +1611,10 @@ static int tryIncrementalUpdate(const WCHAR *exeDir, const char *serverVer) {
             DeleteFileW(dest);
             rc = downloadFile(g_cfg.update_host, cdnPath, dest, 0);
         }
-        if (rc != 0) { ok = 0; break; }
+        if (rc != 0) {
+            swapLogNow(exeDir, "incremental FAIL: download unit %s (fallback full r)", u->name);
+            ok = 0; break;
+        }
 
         // ② 解压到临时目录（绝不对 next 内硬链接文件原地写——共享 inode 会污染 live）
         CreateDirectoryW(outDir, NULL);
@@ -1445,13 +1625,19 @@ static int tryIncrementalUpdate(const WCHAR *exeDir, const char *serverVer) {
         si.wShowWindow = SW_HIDE;
         PROCESS_INFORMATION pi = {0};
         if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
-            CREATE_NO_WINDOW, NULL, outDir, &si, &pi)) { ok = 0; break; }
+            CREATE_NO_WINDOW, NULL, outDir, &si, &pi)) {
+            swapLogNow(exeDir, "incremental FAIL: spawn 7z for unit %s err=%lu (fallback full r)", u->name, GetLastError());
+            ok = 0; break;
+        }
         CloseHandle(pi.hThread);
         WaitForSingleObject(pi.hProcess, INFINITE);
         DWORD ec = 0;
         GetExitCodeProcess(pi.hProcess, &ec);
         CloseHandle(pi.hProcess);
-        if (ec != 0) { ok = 0; break; }                              // 7z CRC 校验失败 → 丢弃
+        if (ec != 0) {
+            swapLogNow(exeDir, "incremental FAIL: 7z exit=%lu for unit %s (CRC, fallback full r)", ec, u->name);
+            ok = 0; break;                                           // 7z CRC 校验失败 → 丢弃
+        }
 
         // ③ 合并入 next 根（单元档案内路径 = 相对 gh555.com 根，自描述无需 rel）
         //    REPLACE 目录项 → 断链安全，live 零损伤
@@ -1460,7 +1646,10 @@ static int tryIncrementalUpdate(const WCHAR *exeDir, const char *serverVer) {
         DeleteFileW(dest);
     }
 
-    if (!ok) { removeDir(ghNext); removeDir(uDir); return 0; }       // 任一失败 → 丢弃暂存 → 全量兜底
+    if (!ok) {
+        swapLogNow(exeDir, "incremental FAIL: assemble aborted (fallback full r)");
+        removeDir(ghNext); removeDir(uDir); return 0;                // 任一失败 → 丢弃暂存 → 全量兜底
+    }
 
     // ── 元数据落盘（先于 gate：版本权威逐字 = 全量 r 的 versions.json） ──
     WCHAR vPath[MAX_PATH], dotVPath[MAX_PATH], dataDir[MAX_PATH], luPath[MAX_PATH], swPath[MAX_PATH];
@@ -1488,6 +1677,8 @@ static int tryIncrementalUpdate(const WCHAR *exeDir, const char *serverVer) {
     writeFileText(swPath, m.id);
 
     removeDir(uDir);
+    swapLogNow(exeDir, "incremental OK: %s -> %s (%d units, %ld bytes)",
+        liveVer[0] ? liveVer : "?", m.id, nNeed, neededBytes);
     return 1;
 }
 
@@ -1502,7 +1693,10 @@ static unsigned __stdcall backgroundUpdateProc(void *param) {
         len = downloadToString(g_cfg.update_host, g_cfg.latest_path,
             serverVer, sizeof(serverVer), 0);
     }
-    if (len <= 0) { InterlockedExchange(&g_updateRunning, 0); return 0; }
+    if (len <= 0) {
+        swapLogNow(g_exeDir, "update: fetch latest.txt FAIL (len=%d)", len);
+        InterlockedExchange(&g_updateRunning, 0); return 0;
+    }
 
     char *nl = strchr(serverVer, '\n'); if (nl) *nl = '\0';
     nl = strchr(serverVer, '\r'); if (nl) *nl = '\0';
@@ -1549,12 +1743,16 @@ static unsigned __stdcall backgroundUpdateProc(void *param) {
         DeleteFileW(rNext);
         result = downloadFile(g_cfg.update_host, g_cfg.r_path, rNext, 0);
     }
-    if (result != 0) { DeleteFileW(rNext); InterlockedExchange(&g_updateRunning, 0); return 0; }
+    if (result != 0) {
+        swapLogNow(g_exeDir, "update: download r FAIL (err=%d, fallback next boot)", result);
+        DeleteFileW(rNext); InterlockedExchange(&g_updateRunning, 0); return 0;
+    }
 
     // 写 .version-next
     WCHAR vNext[MAX_PATH];
     swprintf(vNext, MAX_PATH, L"%s\\.version-next", g_exeDir);
     writeFileText(vNext, serverVer);
+    swapLogNow(g_exeDir, "update: r.next downloaded OK (%s), extract on next boot", serverVer);
 
     InterlockedExchange(&g_updateRunning, 0);
     return 0;

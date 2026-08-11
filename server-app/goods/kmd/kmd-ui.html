@@ -15,10 +15,22 @@ html,body{height:100%}
 body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;color:var(--text);background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
 /* 工具栏 */
 #bar{display:flex;gap:4px;padding:3px 8px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;align-items:center;flex-wrap:nowrap}
-#bar select,#bar button{font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);cursor:pointer;font-family:inherit}
+#bar button{font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);font-family:inherit}
 #bar button:hover{background:var(--border)}
 #bar .sep{width:1px;height:16px;background:var(--border);margin:0 4px}
+/* 自绘 shell 下拉 — solar 配色（原生 select 弹出层走 OS 渲染，白底蓝条不可控） */
+#shell-pick{position:relative;display:flex;align-items:center;gap:5px;font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:3px;background:var(--bg);color:var(--text);font-family:inherit;user-select:none}
+#shell-pick .caret{color:var(--dim);font-size:9px}
+#shell-menu{position:absolute;top:calc(100% + 3px);left:0;min-width:100%;background:var(--bg);border:1px solid var(--border);border-radius:3px;box-shadow:0 3px 10px rgba(0,0,0,.35);z-index:100;padding:2px 0}
+#shell-menu.hidden{display:none}
+#shell-menu .item{padding:4px 14px;white-space:nowrap;color:var(--text)}
+#shell-menu .item:hover{background:var(--card)}
+#shell-menu .item.active{color:var(--accent);font-weight:700}
+#shell-menu .item + .item{border-top:1px solid var(--border)}
 #status{font-size:10px;color:var(--dim);flex:1;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl}
+/* 自定义即时 tooltip（零延迟弹出；native title 有延迟且样式不可控 → 弃用，登录 LV 同款模式） */
+#kmd-tip{position:fixed;z-index:99999;max-width:430px;padding:6px 10px;font-size:11px;line-height:1.55;color:var(--text);background:var(--card);border:1px solid var(--border);border-radius:4px;box-shadow:0 3px 12px rgba(0,0,0,.35);pointer-events:none;white-space:pre-line;display:none}
+#kmd-tip b{color:var(--accent)}
 /* 输出区 — 日志式渲染器（无 VT 网格） */
 #out{flex:1;overflow-y:auto;padding:6px 8px;line-height:1.45;white-space:pre-wrap;word-break:break-all;user-select:text}
 .line{min-height:1.45em;white-space:pre-wrap;word-break:break-all}
@@ -37,12 +49,16 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 </head>
 <body>
 <div id="bar">
-  <select id="shell" title="会话 shell 类型">
-    <option value="cmd">cmd</option>
-    <option value="powershell">PowerShell</option>
-    <option value="gitbash">Git Bash</option>
-  </select>
-  <button id="btn-kill" title="终止当前进程（杀进程树，会话原地重启）">⏹ 终止</button>
+  <!-- 自绘 shell 下拉（原生 select 弹出层走 OS 渲染白底蓝条，颜色不可控 → 弃用） -->
+  <div id="shell-pick" title="会话 shell 类型">
+    <span id="shell-label">cmd</span><span class="caret">▾</span>
+    <div id="shell-menu" class="menu hidden">
+      <div class="item" data-shell="cmd">cmd</div>
+      <div class="item" data-shell="powershell">PowerShell</div>
+      <div class="item" data-shell="gitbash">Git Bash</div>
+    </div>
+  </div>
+  <button id="btn-kill">⏹ 终止</button>
   <button id="btn-clear" title="清空输出区（Ctrl+L）">⌧ 清屏</button>
   <span class="sep"></span>
   <span id="status">准备中…</span>
@@ -65,7 +81,9 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     var inputEl = document.getElementById('input');
     var promptEl = document.getElementById('prompt');
     var statusEl = document.getElementById('status');
-    var shellSel = document.getElementById('shell');
+    var shellPick = document.getElementById('shell-pick');
+    var shellMenu = document.getElementById('shell-menu');
+    var shellLabel = document.getElementById('shell-label');
 
     var history = [];
     var histIdx = -1;
@@ -95,8 +113,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             sessionId = d.sessionId;
             cwd = d.cwd || '';
             shellType = d.shellType || 'cmd';
-            shellSel.value = shellType;
-            promptEl.textContent = shellType === 'gitbash' ? '❯' : (shellType === 'powershell' ? 'PS>' : 'C>');
+            setShellUI(shellType);
             start();
         } else if (d.type === 'kmd:out') {
             appendOut(d.stream, d.data);
@@ -368,20 +385,26 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         }
     }
 
-    // ── 工具栏 ──
-    shellSel.addEventListener('change', function () {
-        // 切换 shell 类型 = 重启会话（仅当已 init）
-        if (!sessionId) return;
-        shellType = shellSel.value;
-        promptEl.textContent = shellType === 'gitbash' ? '❯' : (shellType === 'powershell' ? 'PS>' : 'C>');
+    // ── 工具栏：自绘 shell 下拉（solar 配色） ──
+    function setShellUI(t) {
+        shellType = t;
+        shellLabel.textContent = t === 'powershell' ? 'PowerShell' : (t === 'gitbash' ? 'Git Bash' : 'cmd');
+        promptEl.textContent = t === 'gitbash' ? '❯' : (t === 'powershell' ? 'PS>' : 'C>');
+        var items = shellMenu.querySelectorAll('.item');
+        for (var i = 0; i < items.length; i++) items[i].classList.toggle('active', items[i].dataset.shell === t);
+    }
+
+    function switchShell(t) {
+        if (t === shellType || !sessionId) return;
+        setShellUI(t);
         if (bridge && bridge.kmd) {
             bridge.kmd.kill(sessionId, { restart: false }).then(function () {
-                return bridge.kmd.spawn(sessionId, shellType, cwd);
+                return bridge.kmd.spawn(sessionId, t, cwd);
             }).then(function (r) {
                 if (r && r.ok) {
                     running = true;
-                    statusEl.textContent = '运行中 · ' + shellType;
-                    appendLine('dim', '── 已切换 ' + shellType + ' ──');
+                    statusEl.textContent = '运行中 · ' + t;
+                    appendLine('dim', '── 已切换 ' + t + ' ──');
                 } else {
                     appendLine('err', '[切换失败] ' + ((r && r.error) || 'unknown'));
                 }
@@ -389,13 +412,62 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
                 appendLine('err', '[切换异常] ' + String(err && err.message || err));
             });
         }
+    }
+
+    shellPick.addEventListener('click', function (e) {
+        if (e.target.closest('#shell-menu')) return;
+        shellMenu.classList.toggle('hidden');
+    });
+    shellMenu.addEventListener('click', function (e) {
+        var item = e.target && e.target.closest ? e.target.closest('.item') : null;
+        if (!item) return;
+        shellMenu.classList.add('hidden');
+        switchShell(item.dataset.shell);
+    });
+    document.addEventListener('click', function (e) {
+        if (!shellPick.contains(e.target)) shellMenu.classList.add('hidden');
+    });
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') shellMenu.classList.add('hidden');
     });
 
-    document.getElementById('btn-kill').addEventListener('click', function () {
-        if (bridge && bridge.kmd && sessionId) {
-            bridge.kmd.kill(sessionId, { restart: true }).catch(function () { });
+    // ── 终止按钮：强杀进程树 + 原地重启；会话已死时点击 = 重启 ──
+    var killBtn = document.getElementById('btn-kill');
+    killBtn.addEventListener('click', function () {
+        if (!bridge || !bridge.kmd || !sessionId) return;
+        if (!running) {
+            bridge.kmd.spawn(sessionId, shellType, cwd).then(function (r) {
+                if (r && r.ok) {
+                    running = true;
+                    statusEl.textContent = '运行中 · ' + shellType;
+                } else {
+                    appendLine('err', '[会话启动失败] ' + ((r && r.error) || 'unknown'));
+                }
+            }).catch(function () { });
+            return;
         }
+        bridge.kmd.kill(sessionId, { restart: true }).catch(function () { });
     });
+
+    // ── 终止按钮自定义即时 tooltip（零延迟弹出，solar 配色） ──
+    var tipEl = document.createElement('div');
+    tipEl.id = 'kmd-tip';
+    tipEl.innerHTML = '⏹ 强杀当前会话的整个进程树（taskkill /F /T，含全部子进程），然后<b>原地重启</b>一个同 shell 同目录的新会话（清屏 + 打一行「会话已原地重启」）。\n适用场景：命令卡死 / 失控（死循环、无响应程序）。\n与 Ctrl+C 的区别：Ctrl+C 只是发中断字节，行模式下 shell 可能直接忽略；⏹ 是内核级强杀，一定有效。';
+    document.body.appendChild(tipEl);
+    function kmdTipShow() {
+        var r = killBtn.getBoundingClientRect();
+        var left = r.left;
+        var top = r.bottom + 4;
+        if (left + tipEl.offsetWidth > window.innerWidth - 4) left = Math.max(4, window.innerWidth - tipEl.offsetWidth - 4);
+        if (top + tipEl.offsetHeight > window.innerHeight - 4) top = Math.max(4, r.top - tipEl.offsetHeight - 4);
+        tipEl.style.left = left + 'px';
+        tipEl.style.top = top + 'px';
+        tipEl.style.display = 'block';
+    }
+    function kmdTipHide() { tipEl.style.display = 'none'; }
+    killBtn.addEventListener('mouseenter', kmdTipShow);
+    killBtn.addEventListener('mousemove', kmdTipShow);
+    killBtn.addEventListener('mouseleave', kmdTipHide);
 
     document.getElementById('btn-clear').addEventListener('click', function () {
         clearOut();

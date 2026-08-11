@@ -441,7 +441,14 @@ function _estimateTokensFull() {
             var _bc = conv[_bi].content; _biscuitHashNow = _bc.slice(0, 40) + '|' + _bc.slice(-40); break;
         }
     }
-    if (typeof _estCache !== 'undefined' && _estCache && _estCache.convLen === conv.length && _estCache.ctxHash === _ctxHashNow && _estCache.apiVer === _apiVerNow && _estCache.msg0Hash === _msg0HashNow && _estCache.biscuitHash === _biscuitHashNow && _estCache.val > 0) {
+    // ★ 快速 fx 内容指纹（首尾各 40 字符）：fx 增量追加不改 convLen，必须入缓存 key 防 stale 命中
+    var _factsHashNow = '';
+    for (var _fxi = 0; _fxi < conv.length; _fxi++) {
+        if (conv[_fxi]._facts && typeof conv[_fxi].content === 'string') {
+            var _fxc = conv[_fxi].content; _factsHashNow = _fxc.slice(0, 40) + '|' + _fxc.slice(-40); break;
+        }
+    }
+    if (typeof _estCache !== 'undefined' && _estCache && _estCache.convLen === conv.length && _estCache.ctxHash === _ctxHashNow && _estCache.apiVer === _apiVerNow && _estCache.msg0Hash === _msg0HashNow && _estCache.biscuitHash === _biscuitHashNow && _estCache.factsHash === _factsHashNow && _estCache.val > 0) {
         return _estCache.val;
     }
 
@@ -480,6 +487,7 @@ function _estimateTokensFull() {
     var aiCount = 0, aiContentChars = 0;
     var aiToolCallsCount = 0, aiToolCallsChars = 0;
     var toolCount = 0, toolChars = 0;
+    var factsCount = 0, factsChars = 0;   // ★ 2026-08-11: fx 独立统计（与 goods 管理页「压缩 · 事实 (fx)」一致）
     var sysCount = 0, sysChars = 0;
     var errCount = 0, errChars = 0;
     for (var i = 0; i < conv.length; i++) {
@@ -487,6 +495,7 @@ function _estimateTokensFull() {
         if (!m || m._persistent) continue;
         var cn = typeof m.content === "string" ? m.content.length : 0;
         if (m._biscuit) { biscuitChars += cn; biscuitText = m.content || ''; }
+        else if (m._facts) { factsCount++; factsChars += cn; }   // ★ 2026-08-11: fx 独立统计
         // ★ V13: _deBlock 已消除，DE 融入 biscuit
         else if (m.role === "user") { userCount++; userChars += cn; }
         else if (m.role === "assistant") {
@@ -507,12 +516,15 @@ function _estimateTokensFull() {
     }
 
     // ── 5. JSON 结构开销 ──
-    var msgCount = userCount + aiCount + aiToolCallsCount + toolCount + sysCount + errCount;
+    // ★ 2026-08-11: msgCount 含 fx/biscuit（fx/biscuit 是 system 角色消息，确实进入 API body，
+    //   且下方 jsonOverheadChars 已为它们各 +31——显示 N 必须与计算口径一致）
+    var msgCount = userCount + aiCount + aiToolCallsCount + toolCount + sysCount + errCount + factsCount + (biscuitChars > 0 ? 1 : 0);
     var jsonOverheadChars = msgCount * 31;
     jsonOverheadChars += toolCount * 27;
     jsonOverheadChars += aiToolCallsCount * 16;
     jsonOverheadChars += 62;
     if (biscuitChars > 0) jsonOverheadChars += 31;
+    if (factsChars > 0) jsonOverheadChars += 31;
     if (deChars > 0) jsonOverheadChars += 31;
     var jsonOverheadTok = _tk(jsonOverheadChars);
 
@@ -595,6 +607,7 @@ function _estimateTokensFull() {
 
     // ═══ 求和 ═══
     var biscuitTok = _tk(biscuitChars);
+    var factsTok = _tk(factsChars);   // ★ 2026-08-11: fx 独立 token 统计
     var deTok = _tk(deChars);
     var userTok = _tk(userChars);
     var aiTextTok = _tk(aiContentChars);
@@ -602,7 +615,7 @@ function _estimateTokensFull() {
     var toolTok = _tk(toolChars);
     var sysTok = _tk(sysChars);
     var errTok = _tk(errChars);
-    var localTotal = guardTok + msg0Tok + biscuitTok + deTok + userTok + aiTextTok + aiToolCallsTok + toolTok + sysTok + errTok + jsonOverheadTok + toolsTok + bodyConstTok;
+    var localTotal = guardTok + msg0Tok + factsTok + biscuitTok + deTok + userTok + aiTextTok + aiToolCallsTok + toolTok + sysTok + errTok + jsonOverheadTok + toolsTok + bodyConstTok;
 
     // ═══ 构建行 ═══
     var rows = [];
@@ -610,6 +623,8 @@ function _estimateTokensFull() {
         rows.push({ label: label, tok: tok, indent: indent || 0, color: color || "#839496" });
     }
     _r("Server guard", guardTok, 0, "#6c71c4");
+    // ★ 2026-08-11: Tools definition 移到 guard 之后——对齐 goods 管理页注入组（guard → toolsdef）
+    if (toolsChars > 0) _r("Tools definition JSON", toolsTok, 0, "#b58900");
     if (msg0TotalChars > 0) {
         _r("Client rules & docs", msg0Tok, 0, "#268bd2");
         if (visionChars > 0) _r("  Vision Context", _tk(visionChars), 1, "#859900");
@@ -617,6 +632,8 @@ function _estimateTokensFull() {
         if (projectRulesChars > 0) _r("  Project Rules", _tk(projectRulesChars), 1, "#b58900");
         if (reminderChars > 0) _r("  Reminder", _tk(reminderChars), 1, "#cb4b16");
     }
+    // ★ 2026-08-11: fx 行插在 Client rules 之下、压缩饼干之上（背包容序 Z → fx → biscuit，与 goods 管理页一致）
+    if (factsChars > 0) _r("压缩 · 事实 (fx) × " + factsCount, factsTok, 0, "#d33682");
     if (biscuitChars > 0) {
         _r("压缩饼干 × " + biscuitFloorCount + " floors", biscuitTok, 0, "#859900");
         // ★ 绝对包装盒子统计（仅统计有数据的工具）
@@ -636,10 +653,10 @@ function _estimateTokensFull() {
     if (aiCount > 0) _r("AI text × " + aiCount, aiTextTok, 0, "#2aa198");
     if (aiToolCallsCount > 0) _r("AI tool_calls × " + aiToolCallsCount, aiToolCallsTok, 0, "#d2991d");
     if (toolCount > 0) _r("Tool Results × " + toolCount, toolTok, 0, "#dc322f");
+    // ★ 2026-08-11: fx/biscuit 已独立统计，裸 system 消息创建点为零 → 本行理论永不显示（防御保留）
     if (sysCount > 0) _r("System messages × " + sysCount, sysTok, 0, "#6c71c4");
     if (errCount > 0) _r("Error messages × " + errCount, errTok, 0, "#f85149");
-    _r("JSON overhead (" + msgCount + " msgs + " + sysCount + " sys)", jsonOverheadTok, 0, "#586e75");
-    if (toolsChars > 0) _r("Tools definition JSON", toolsTok, 0, "#b58900");
+    _r("JSON overhead (" + msgCount + " msgs)", jsonOverheadTok, 0, "#586e75");
     _r("Body fields (stream, max_tokens, …)", bodyConstTok, 0, "#586e75");
     var displayTotal = _apiPrompt > 0 ? _apiPrompt : localTotal;
     _r("Local sum", localTotal, 0, "#c9d1d9");
@@ -648,7 +665,7 @@ function _estimateTokensFull() {
     _r("Free", _free, 0, "#859900");
 
     _ctxBreakdownData = { rows: rows, displayTotal: displayTotal, apiPrompt: _apiPrompt, localTotal: localTotal, accCompletion: _apiCompletion };
-    _estCache = { val: displayTotal, convLen: conv.length, ctxHash: _ctxHashNow, apiVer: _apiVerNow, msg0Hash: _msg0HashNow, biscuitHash: _biscuitHashNow };
+    _estCache = { val: displayTotal, convLen: conv.length, ctxHash: _ctxHashNow, apiVer: _apiVerNow, msg0Hash: _msg0HashNow, biscuitHash: _biscuitHashNow, factsHash: _factsHashNow };
     if (localTotal === 0) console.warn("[ctx-est] total=0 convLen=" + conv.length + " guard=" + guardChars + " msg0=" + msg0TotalChars + " biscuit=" + biscuitChars + " de=" + deChars + " user=" + userChars + " aiTxt=" + aiContentChars + " aiTC=" + aiToolCallsChars + " tool=" + toolChars + " sys=" + sysChars + " err=" + errChars + " jOver=" + jsonOverheadChars + " tools=" + toolsChars);
     return displayTotal;
 }

@@ -21,6 +21,7 @@ import { ipcMain, WebContents } from 'electron';
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as iconv from 'iconv-lite';
 
 const MAX_SESSIONS = 16; // 会话上限，防进程泄漏
@@ -53,13 +54,23 @@ function _push(wc: WebContents, channel: string, payload: any): void {
 function _resolveShell(shellType: string, appRoot: string): { cmd: string; args: string[]; env: NodeJS.ProcessEnv } | null {
     const env: NodeJS.ProcessEnv = { ...process.env };
     if (shellType === 'gitbash') {
-        // ① engines/git 组件内 bash（MinGit 精简版可能缺 MSYS2 运行时 → probe 验证）
+        // ① 自带组件：git = Git for Windows Portable（2026-08-11 B 方案）→ bin/bash.exe
+        //    登录 shell（--login）加载 /etc/profile 构建 MSYS PATH；MSYSTEM=MINGW64 选中 64 位运行时；
+        //    CHERE_INVOKING=1 保持 spawn cwd（登录 shell 默认回 HOME）
         try {
             const gitDir = path.join(appRoot, 'engines', 'git');
-            const bash = path.join(gitDir, 'bash.exe');
+            const bash = path.join(gitDir, 'bin', 'bash.exe');
             if (fs.existsSync(bash)) {
-                env.PATH = gitDir + path.delimiter + (env.PATH || '');
-                return { cmd: bash, args: ['--norc', '-i'], env };
+                env.MSYSTEM = 'MINGW64';
+                env.CHERE_INVOKING = '1';
+                if (!env.HOME) env.HOME = os.homedir();
+                env.PATH = [
+                    path.join(gitDir, 'usr', 'bin'),
+                    path.join(gitDir, 'mingw64', 'bin'),
+                    path.join(gitDir, 'bin'),
+                    env.PATH || '',
+                ].join(path.delimiter);
+                return { cmd: bash, args: ['--login', '-i'], env };
             }
         } catch { /* ignore */ }
         // ② 系统 Git for Windows（PATH 或注册表探测）
@@ -173,11 +184,17 @@ function _spawnOne(opts: KmdSpawnOpts, appRoot: string, owner: WebContents): Kmd
     });
     proc.on('error', (err) => {
         s.alive = false;
+        // 身份校验（2026-08-11 重启竞态根治）：kill+restart 后旧进程的 exit/error 事件
+        // 到达时 map 里已是新会话 → 必须忽略，否则删掉新会话 + 推假"已退出"
+        if (sessions.get(s.id) !== s) return;
         _push(s.owner, 'qqqide:kmd:exit', { id: s.id, code: -1, error: String(err && err.message || err) });
         sessions.delete(s.id);
     });
     proc.on('exit', (code) => {
         s.alive = false;
+        // 身份校验（2026-08-11 重启竞态根治）：同上——旧会话被 taskkill 杀后 exit(code=1)
+        // 异步到达，若此时 map 中已是新会话 → 忽略（截图"进程已退出(code=1)+会话未就绪"根因）
+        if (sessions.get(s.id) !== s) return;
         _push(s.owner, 'qqqide:kmd:exit', { id: s.id, code });
         sessions.delete(s.id);
     });
@@ -193,12 +210,12 @@ export function registerKmdIpc(appRoot: string): void {
         if (!id || sessions.has(id)) return { ok: false, error: 'bad_id' };
         if (sessions.size >= MAX_SESSIONS) return { ok: false, error: 'session_limit' };
         const cwd = String(o.cwd || process.env.USERPROFILE || '');
-        // gitbash 先 probe：MinGit 精简 bash 可能缺 MSYS2 运行时
+        // gitbash 先 probe：自带组件损坏（如解压中断）时给出明确报错而非黑屏
         if (shellType === 'gitbash') {
             const probeRes = _resolveShell('gitbash', appRoot);
-            if (!probeRes) return { ok: false, error: 'no_bash_found: 未找到可用的 Git Bash（建议安装 Git for Windows 或等待 kmd v1.1 自带组件）' };
+            if (!probeRes) return { ok: false, error: 'no_bash_found: 未找到可用的 Git Bash（git 组件缺失，重启 IDE 自动修复）' };
             const ok = await _probeBash(probeRes.cmd);
-            if (!ok) return { ok: false, error: 'bash_broken: 检测到 bash 但无法运行（MinGit 精简版缺 MSYS2 运行时），请安装完整 Git for Windows' };
+            if (!ok) return { ok: false, error: 'bash_broken: 检测到 bash 但无法运行（git 组件异常，重启 IDE 自动修复）' };
         }
         const s = _spawnOne({ id, shellType, cwd }, appRoot, e.sender);
         if (!s) return { ok: false, error: 'spawn_failed' };
@@ -232,6 +249,9 @@ export function registerKmdIpc(appRoot: string): void {
             if (ns) {
                 sessions.set(sid, ns);
                 _push(owner, 'qqqide:kmd:restarted', { id: sid });
+            } else {
+                // 重启失败（如 gitbash 无可用 bash）→ 如实上报，UI 显示原因而非静默
+                _push(owner, 'qqqide:kmd:exit', { id: sid, code: -1, error: 'restart_failed: ' + shellType + ' 不可用' });
             }
         }
         return { ok: true };
