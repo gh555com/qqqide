@@ -543,7 +543,19 @@ function copyTreeExcluding(src, dst, excludes) {
 function buildUnits(unpacked, rFile) {
   if (!target.startsWith('win-')) return;
   const sz7 = find7z();
-  if (!sz7) return;
+  if (!sz7) {
+    // ★ 2026-08-11 早退清陈旧清单: find7z 失败静默返回时，旧 units.json (id≠当前版)
+    //   残留 dist-pack/qqqide-up → 后续 q.py 发布读到旧清单但 u/{旧id}/ 已被重建清掉
+    //   → 上传 WinError 3 半程 FATAL (0.2.360 发布事故)。清掉后 q.py 自动跳过增量。
+    try {
+      const staleU = path.join(ROOT, 'dist-pack', 'qqqide-up', 'units.json');
+      if (fs.existsSync(staleU)) {
+        const m = JSON.parse(fs.readFileSync(staleU, 'utf8'));
+        if (m.id !== APP_VERSION) fs.rmSync(staleU, { force: true });
+      }
+    } catch (_) { }
+    return;
+  }
   const sfx = path.join(path.dirname(sz7), '7zCon.sfx');
   if (!fs.existsSync(sfx)) throw new Error('7zCon.sfx not found');
 
@@ -775,6 +787,25 @@ function pruneEngines(unpacked) {
   const manifestPath = path.join(engDir, 'manifest.json');
   let manifest = null;
   try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch {}
+
+  // ── ①b Integrity gate: bundled min_size_mb assertion (git=250MB portable, win targets).
+  //    防半成品组件被打进绿色包 → 客户端首启 bundled 检查骗不过 → 闪 SFX 解压窗口 + 重下重装循环 (F19 事故实锤)。
+  //    linux/mac 目标 git 为 MinGit 形态 (~12-15MB)，min_size_mb 仅对 win 生效。
+  if (manifest && manifest.components && target.startsWith('win-')) {
+    for (const [name, def] of Object.entries(manifest.components)) {
+      if (!def.bundled || !def.min_size_mb) continue;
+      const compDir = path.join(engDir, def.install_to || name);
+      if (!fs.existsSync(compDir)) {
+        throw new Error('[pack] FATAL: bundled component ' + name + ' missing at ' + compDir + ' — refusing to pack broken green zip');
+      }
+      const sz = dirSize(compDir);
+      const minMB = def.min_size_mb;
+      if (sz < minMB * 1024 * 1024) {
+        throw new Error('[pack] FATAL: bundled component ' + name + ' incomplete: ' + Math.round(sz / 1048576) + 'MB < min_size_mb=' + minMB + 'MB — restore full component before packing (F19: semi-broken git in zip → client boot loops with SFX window)');
+      }
+      console.log('[pack] integrity OK: ' + name + ' ' + Math.round(sz / 1048576) + 'MB >= ' + minMB + 'MB');
+    }
+  }
 
   // ── ② Remove non-bundled component directories (e.g. ffprobe — rank1 bg_download) ──
   if (manifest && manifest.components) {

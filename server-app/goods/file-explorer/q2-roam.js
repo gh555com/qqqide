@@ -365,7 +365,7 @@ function baseName(p) {
 }
 var SZ_GB_THRESHOLD = 1000000000;
 var SZ_GB_COLOR = 'rgb(248,48,0)';
-// 2026-08-05 性能: 格式化缓存(纯函数,同输入必同输出). Cap 800 entries 防泄漏
+// 2026-08-05 性能: 格式化缓存(纯函数,同键入必同输出). Cap 800 entries 防泄漏
 var _fmtCacheSz = {}, _fmtCacheDate = {}, _fmtCacheCount = 0;
 function addThousandSep(num) {
 	var s = String(Math.floor(num)), parts = [];
@@ -1472,6 +1472,25 @@ function _feedCurrentToAi() {
 	_playSfx('enter');
 }
 
+// ★ 空区专用：把当前文件夹喂给焦点 AI 面板（无选中项时 a 键/右键第一行）
+function _feedFolderToAi() {
+	if (!currentPath) return;
+	try {
+		if (window.parent && typeof window.parent.__qqq_aiFeedFile === 'function') {
+			window.parent.__qqq_aiFeedFile(currentPath, true, null);
+		} else if (window.parent) {
+			window.parent.postMessage({ type: 'qqq-ai-attach', path: currentPath, isDir: true }, '*');
+		}
+	} catch (_) { }
+	_playSfx('enter');
+}
+
+// ★ 空区专用：打开 kmd 终端并定位到当前文件夹
+function _openKmdAt(p) {
+	try { window.parent.postMessage({ type: 'qqq-roam-open-kmd', path: p }, '*'); } catch (_) { }
+	_playSfx('terminal');
+}
+
 document.addEventListener('click', function() { ctxMenu.style.display = 'none'; var e = document.getElementById('emptyContextMenu'); if (e) e.style.display = 'none'; });
 
 // ---- Empty context menu (right-click on empty area, from q3) ----
@@ -1481,7 +1500,9 @@ if (emptyCtxMenu) {
 		el.addEventListener('click', function() {
 			var act = el.dataset.action;
 			hideAllContextMenus();
-			if (act === 'openAdminCmd') { bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){}); _playSfx('terminal'); }
+			if (act === 'feedFolderToAi') { _feedFolderToAi(); }
+			else if (act === 'openKmd') { _openKmdAt(currentPath); }
+			else if (act === 'openAdminCmd') { bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){}); _playSfx('terminal'); }
 			else if (act === 'openAdminPowershell') { bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){}); _playSfx('terminal'); }
 		});
 	});
@@ -1499,6 +1520,12 @@ if (emptyCtxMenu) {
 		hideAllContextMenus();
 		var em = document.getElementById('emptyContextMenu');
 		if (!em) return;
+		// ★ 第一行「喂给 AI」按焦点面板方向带左右箭头（同选中项 AI 菜单传统）
+		var aiItem = em.querySelector('[data-action="feedFolderToAi"] span');
+		if (aiItem) {
+			var tt = _getAiTargetPanel();
+			aiItem.textContent = tt === 0 ? '←喂给 AI' : tt === 2 ? '喂给 AI→' : '喂给 AI';
+		}
 		var ep = _zoomFix(e.clientX, e.clientY);
 		em.style.left = ep.left + 'px';
 		em.style.top = ep.top + 'px';

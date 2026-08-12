@@ -364,13 +364,19 @@ function _shellOpenMenubarPopup(anchorEl, item) {
         gpToggle.style.background = on ? '#859900' : 'var(--border-color)';
         gpKnob.style.left = on ? '22px' : '2px';
       }
-      // state: true=绿色运行, false=灰色停止, 'yellow'=过渡中
+      // state: true=运行(马卡龙万花筒), false=灰色停止, 'yellow'=过渡中
       function _setGpDotUI(state) {
         if (state === 'yellow') {
           gpDot.style.background = '#b58900';
+          gpDot.classList.remove('gp-dot-kaleido');
         } else {
           _gpRunning = state;
-          gpDot.style.background = state ? '#859900' : 'var(--border-color)';
+          if (state) {
+            gpDot.classList.add('gp-dot-kaleido');
+          } else {
+            gpDot.style.background = 'var(--border-color)';
+            gpDot.classList.remove('gp-dot-kaleido');
+          }
         }
       }
 

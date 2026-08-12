@@ -502,6 +502,8 @@
             "task1": "下载并登录 qqqide",
             "task2": "总消费达到 50 ge（实扣 + 白嫖合计）",
             "task3": "充值 {yuan} 元",
+    "task3Go": "去充值 →",
+    "task3GoTitle": "点击去充值",
             "taskLocked": "完成上方任务后解锁",
             "claimPhone": "获取 50 元话费",
             "claimGe": "立即获取 50 ge",

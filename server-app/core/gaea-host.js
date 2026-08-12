@@ -257,6 +257,12 @@
     if (!goods.has(id)) return false;
     var def = goods.get(id);
 
+    // ★ opener 路由（2026-08-12, kmd 例外：X 区 file 分组 custom tab，非 gaea 分组）
+    //   goods 声明 opener 函数 → 完全接管打开行为，优先于 panel/tabs 路由
+    if (typeof def.opener === 'function') {
+      try { return def.opener(makeCtx(id)); } catch (e) { return false; }
+    }
+
     // ① Panel 路由（A 区）
     if (def.panel && (def.panel.build || def.panel.url || def.panel.render)) {
       show(id);

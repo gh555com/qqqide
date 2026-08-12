@@ -219,7 +219,8 @@ async function _checkAll(
         if (def.bundled) {
             const ok = def.kind === 'files'
                 ? _filesOk(_componentDir(portableRoot, def) || '', def)
-                : ((_binPath(portableRoot, def) || '') !== '' && fs.existsSync(_binPath(portableRoot, def)!));
+                : ((_binPath(portableRoot, def) || '') !== '' && fs.existsSync(_binPath(portableRoot, def)!)
+                    && (!(def as any).min_size_mb || _dirSizeMB(_componentDir(portableRoot, def) || '') >= (def as any).min_size_mb));
             if (ok) continue;
             console.log('[components] ' + name + ': bundled but missing on disk, downloading...');
         }
@@ -395,7 +396,8 @@ async function _ensureOne(
     const verifyArgs = def.verify_args || ['--version'];
 
     // ── ① 当前位置已安装且验证通过 → 检查版本升级 + 目录迁移 ──
-    if (isFiles ? _filesOk(finalDir, def) : (fs.existsSync(binPath) && _cmdOk(binPath, verifyArgs))) {
+    if (isFiles ? _filesOk(finalDir, def) : (fs.existsSync(binPath) && _cmdOk(binPath, verifyArgs)
+        && (!(def as any).min_size_mb || _dirSizeMB(finalDir) >= (def as any).min_size_mb))) {
         const old = versions[name];
 
         // 版本升级 → 删除旧版，触发重新下载
@@ -493,6 +495,7 @@ async function _downloadAndInstall(
     // 清空目标目录（全新安装）
     _safeRmDir(targetDir);
     fs.mkdirSync(targetDir, { recursive: true });
+    try {
 
     // 解压
     if (src.kind === 'binary') {
@@ -513,7 +516,7 @@ async function _downloadAndInstall(
     } else if (src.kind === 'sfx7z') {
         // 7-Zip SFX 自解压制品（Git for Windows PortableGit 官方 .7z.exe）: -y 静默 + -o 目标目录。
         // execSync 等待 GUI 子系统进程退出（cmd 不等待，Node spawnSync 会），退出码非 0 即抛错。
-        execSync(`"${dlFile}" -y -o"${targetDir}"`, { windowsHide: true, timeout: 300000 });
+        execSync(`"${dlFile}" -y -o"${targetDir}"`, { windowsHide: true, timeout: 300000, maxBuffer: 16 * 1024 * 1024 });
     }
 
     try { fs.unlinkSync(dlFile); } catch {}
@@ -526,6 +529,12 @@ async function _downloadAndInstall(
             _safeRmDir(p);
             console.log('[components] ' + name + ': pruned ' + rel);
         }
+    }
+
+    // min_size_mb 完整性断言（2026-08-11 防半成品: SFX 解压被锁/中断残留残缺目录 → 骗过 bundled 检查 → 每启动重下重装循环 + 闪 SFX 窗口）
+    const minMB = (def as any).min_size_mb as number | undefined;
+    if (minMB && _dirSizeMB(targetDir) < minMB) {
+        throw new Error('Extract incomplete: ' + _dirSizeMB(targetDir).toFixed(0) + 'MB < required ' + minMB + 'MB');
     }
 
     // Python 特殊处理（解压后、验证前）
@@ -554,6 +563,12 @@ async function _downloadAndInstall(
 
         if (!fs.existsSync(binPath)) throw new Error('Binary not found after extract: ' + binPath);
         if (!_cmdOk(binPath, verifyArgs)) throw new Error('Verification failed');
+    }
+
+    } catch (e) {
+        // 已动安装目录（旧安装已删）→ 清残留半成品，防下轮骗过 bundled 检查；网络失败发生在 _safeRmDir 之前，旧安装完好不受影响
+        _safeRmDir(targetDir);
+        throw e;
     }
 
     console.log('[components] ' + name + ': installed ✓');
@@ -730,6 +745,21 @@ function _migrateDir(enginesDir: string, oldSub: string, newSub: string, name: s
     } catch (e: any) {
         console.log('[components] ' + name + ': migration failed: ' + (e.message || e));
     }
+}
+
+function _dirSizeMB(dir: string): number {
+    let total = 0;
+    try {
+        const walk = (d: string) => {
+            for (const f of fs.readdirSync(d)) {
+                const p = path.join(d, f);
+                const st = fs.statSync(p);
+                if (st.isDirectory()) walk(p); else total += st.size;
+            }
+        };
+        walk(dir);
+    } catch { }
+    return total / 1024 / 1024;
 }
 
 function _safeRmDir(dir: string): void {

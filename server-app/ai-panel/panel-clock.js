@@ -359,6 +359,13 @@ function startFloorTimer(aiDiv, ag, resume) {
         _ag._xLastN = n; _ag._xLastD = d; _ag._xLastT = t;
         aiDiv._clockBlock.className = 'msg-ai-clock clock-' + state;
         drawPie(canvas, { networkMs: n, aiMs: d, otherMs: t, totalMs: elapsed });
+        // 2026-08-12: clock color warning on silence (no progress = no token/tool/cost, not tool execution)
+        // ★ 工具执行期间 _toolExecActive=true → 跳过 silence 检查（长工具如 git_fetch/pack 是正常进展，非停滞）
+        if (!_ag._toolExecActive) {
+            var _silenceS = _ag._lastProgressPerf ? (performance.now() - _ag._lastProgressPerf) / 1000 : 0;
+            if (_silenceS > 300) aiDiv._clockBlock.classList.add('clock-stall');
+            else if (_silenceS > 120) aiDiv._clockBlock.classList.add('clock-slow');
+        }
     }, 1000);
 }
 

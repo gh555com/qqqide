@@ -1344,7 +1344,7 @@ html,body { height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",
     renderConvList();
   });
 
-  // ★ 新建对话唯一入口：输入框 Enter 与「新建消息」按钮共用（F 修复：按钮原来只 focus 不新建）
+  // ★ 新建对话唯一入口：键入框 Enter 与「新建消息」按钮共用（F 修复：按钮原来只 focus 不新建）
   function startNewChat() {
     var raw = $newPeerIn.value.trim();
     if (!raw) { $newPeerIn.focus(); return; }

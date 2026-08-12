@@ -250,6 +250,9 @@ function bootActivities(boot) {
       '.qqq-act-task.qqq-act-task-done{border-color:rgba(133,153,0,.45);}' +
       '.qqq-act-task.qqq-act-task-done .qqq-act-check{border-color:#859900;background:#859900;color:#0d0d0d;}' +
       '.qqq-act-task.qqq-act-task-locked{opacity:.55;}' +
+      '.qqq-act-task.qqq-act-task-recharge{transition:background .15s,border-color .15s;}' +
+      '.qqq-act-task.qqq-act-task-recharge:hover{background:rgba(217,100,92,.14);border-color:#d9645c;}' +
+      '.qqq-act-task .qqq-act-task-go{margin-left:auto;font-size:12px;font-weight:800;color:#d9645c;white-space:nowrap;}' +
       '.qqq-act-or{text-align:center;font-size:12px;font-weight:700;color:#b58900;margin:4px 0 6px;}' +
       '.qqq-act-claims{display:flex;gap:10px;margin-top:0;}' +
       '.qqq-act-claim{flex:1;padding:11px 6px;border:none;border-radius:10px;font-size:13.5px;font-weight:800;color:#fff;' +
@@ -478,11 +481,14 @@ function bootActivities(boot) {
       '</li>';
 
     // ★ 第三行：充值门槛（服务器配置 >0 才显示；当前 0 = 隐藏，直接到领取行）
+    // 未充值 → 整行可点击，直达网站充值卡片（gh555.com/viewer/geflow?recharge=N，自动弹赞助卡+预选金额）
     if (reqYuan > 0) {
       tasks +=
-        '<li class="qqq-act-task ' + (rechargeOk ? 'qqq-act-task-done' : 'qqq-act-task-locked') + '">' +
+        '<li id="qqq-act-task-recharge" class="qqq-act-task ' + (rechargeOk ? 'qqq-act-task-done' : 'qqq-act-task-locked qqq-act-task-recharge') + '" ' +
+        (rechargeOk ? '' : 'title="' + t('act.ge50.task3GoTitle', '点击去充值') + '"') + '>' +
         '<span class="qqq-act-check">' + (rechargeOk ? '✓' : '') + '</span>' +
         tp('act.ge50.task3', { yuan: reqYuan }, '充值 ' + reqYuan + ' 元') +
+        (rechargeOk ? '' : '<span class="qqq-act-task-go">' + t('act.ge50.task3Go', '去充值 →') + '</span>') +
         '</li>';
     }
 
@@ -514,6 +520,18 @@ function bootActivities(boot) {
     var $ge = _overlay.querySelector('#qqq-act-claim-ge');
     if ($ph) $ph.addEventListener('click', claimPhone50);
     if ($ge) $ge.addEventListener('click', claimGe50);
+    // ★ 充值门槛行点击 → 网站充值卡片直达（自动弹赞助卡 + 预选 ¥{reqYuan}，广告页豁免）
+    var $task3 = _overlay.querySelector('#qqq-act-task-recharge');
+    if ($task3 && !rechargeOk) {
+      $task3.addEventListener('click', function () {
+        var url = 'https://gh555.com/viewer/geflow?lang=zh&recharge=' + reqYuan;
+        if (window.qqqideBridge && window.qqqideBridge.shell && window.qqqideBridge.shell.openExternal) {
+          window.qqqideBridge.shell.openExternal(url);
+        } else {
+          window.open(url, '_blank');
+        }
+      });
+    }
   }
 
   // ── ③ 2026, 我, vibe coding（循环免费窗口豆腐块） ──────────────────────

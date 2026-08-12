@@ -370,7 +370,7 @@ function registerDesktopShortcutIpc(): void {
 // ── Gaea Process IPC — 通用 gaea process-type goods 进程管理 ──
 /** 出厂默认自动启动映射（首次安装时生效，用户勾选后持久化覆盖） */
 const _PROCESS_GOODS_AUTOSTART_DEFAULTS: Record<string, boolean> = {
-    'kope-a': true,        // ★ 出厂开启（剪贴板历史常驻，与启动循环 defaultAutoStart 对齐）
+    'kope-a': false,       // 出厂关闭（2026-08-12: 与 window-there 对齐，全部默认关闭）
     'window-there': false, // 出厂关闭
 };
 
@@ -528,7 +528,7 @@ app.whenReady().then(async () => {
     (async () => {
         try {
             const processGoods = [
-                { id: 'kope-a', script: 'goods/kope-a/q3.py', runtime: 'python', lifecycle: 'independent' as GaeaLifecycle, allowMultiple: false, defaultAutoStart: true },
+                { id: 'kope-a', script: 'goods/kope-a/q3.py', runtime: 'python', lifecycle: 'independent' as GaeaLifecycle, allowMultiple: false, defaultAutoStart: false },
                 { id: 'window-there', script: 'goods/window-there/q3.py', runtime: 'python', lifecycle: 'attached' as GaeaLifecycle, allowMultiple: false, defaultAutoStart: false },
             ];
             for (const g of processGoods) {

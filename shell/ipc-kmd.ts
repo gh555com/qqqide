@@ -5,13 +5,13 @@
 //
 // 分裂架构（2026-08-10 定案）：
 //   · 输出 = 日志式渲染器：主进程管道流式推送（无 PTY、无 VT 网格）
-//   · 输入 = iframe 内原生 input 控件 → 点击任意位置移动光标 = 零成本招牌能力
+//   · 键入 = iframe 内原生 input 控件 → 点击任意位置移动光标 = 零成本招牌能力
 //
 // 行模式边界（设计内行为，非 bug）：
 //   · 本地 TUI（vim/top/htop）不可用 —— 无 PTY，程序检测到非 tty
-//   · 交互式行编辑（readline/PSReadLine）不生效 —— 由 UI 输入行接管
+//   · 交互式行编辑（readline/PSReadLine）不生效 —— 由 UI 键入行接管
 //   · Win7 全兼容 —— 零额外依赖（无 ConPTY 依赖）
-//   · 远端 TUI 可部分绕过：ssh -t 强制远端 pty + 输入行 raw 透传（v2）
+//   · 远端 TUI 可部分绕过：ssh -t 强制远端 pty + 键入行 raw 透传（v2）
 //
 // 编码：cmd/powershell 管道输出 = OEM 码页（中文系统 GBK）→ TextDecoder('gbk')
 //       gitbash 输出 UTF-8 → TextDecoder('utf-8')
@@ -91,8 +91,9 @@ function _resolveShell(shellType: string, appRoot: string): { cmd: string; args:
         // 管道输出统一 OEM 码页(GBK)，UI 层 GBK 解码
         return { cmd: 'powershell.exe', args: ['-NoProfile', '-NoLogo', '-NoExit'], env };
     }
-    // cmd — ComSpec 为系统真理
-    return { cmd: process.env.ComSpec || 'cmd.exe', args: ['/d', '/q'], env };
+    // cmd — ComSpec 为系统真理。/d 禁 AutoRun；★ 不带 /q（2026-08-12 修复：/q 关闭回显
+    // → 用户发的命令在输出区消失，只看到返回。去掉后 cmd 原生回显提示符+命令，与真终端一致）
+    return { cmd: process.env.ComSpec || 'cmd.exe', args: ['/d'], env };
 }
 
 // bash probe：MinGit 精简版可能缺 MSYS2 运行时（0xC0000135 DLL not found）→ 启动前验证
