@@ -282,3 +282,21 @@
   50% { transform: scale(1.35); }
   100% { transform: scale(1); }
 }
+
+/* ── goods 进程指示灯: 运行态马卡龙万花筒（黄/灰态不受影响）── */
+@property --gp-kaleido-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+.gp-dot-kaleido {
+  background: repeating-conic-gradient(
+    from var(--gp-kaleido-angle),
+    #f8bbd0 0deg 60deg, #d1c4e9 60deg 120deg, #b3e5fc 120deg 180deg,
+    #c8e6c9 180deg 240deg, #fff9c4 240deg 300deg, #ffe0b2 300deg 360deg
+  ) !important;
+  animation: gpKaleidoSpin 8s linear infinite;
+}
+@keyframes gpKaleidoSpin {
+  to { --gp-kaleido-angle: 360deg; }
+}

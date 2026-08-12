@@ -2,7 +2,7 @@
 
 <!-- Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved. -->
 <!-- goods/kmd/kmd-ui.html — Kmd 终端 UI（v1 行模式，分裂架构） -->
-<!-- 招牌能力：输入行 = 原生 input → 点击任意位置移动光标（零成本） -->
+<!-- 招牌能力：键入行 = 原生 input → 点击任意位置移动光标（零成本） -->
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -12,7 +12,7 @@
 [data-theme="dark"]{--bg:#1e1e1e;--text:#dcd8d0;--border:#333;--card:#2a2a2a;--accent:#8fbc5a;--err:#ff4444;--dim:#6a6660;--prompt:#60a0d0}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%}
-body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;color:var(--text);background:var(--bg);display:flex;flex-direction:column;overflow:hidden}
+body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;color:var(--text);background:var(--bg);display:flex;flex-direction:column;overflow:hidden;user-select:text;-webkit-user-select:text}
 /* 工具栏 */
 #bar{display:flex;gap:4px;padding:3px 8px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;align-items:center;flex-wrap:nowrap}
 #bar button{font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);font-family:inherit}
@@ -38,7 +38,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 .line.err{color:var(--err)}
 .line.dim{color:var(--dim)}
 .line.wrap:hover{background:var(--border)}
-/* 输入行 — 真编辑器控件：点击任意位置移动光标（招牌能力） */
+/* 键入行 — 真编辑器控件：点击任意位置移动光标（招牌能力） */
 #line-wrap{display:flex;align-items:center;border-top:1px solid var(--border);background:var(--card);padding:4px 8px;gap:6px;flex-shrink:0}
 #prompt{color:var(--accent);font-weight:700;white-space:nowrap;user-select:none;font-size:13px}
 #input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-family:inherit;font-size:13px;caret-color:var(--accent);padding:2px 0;min-width:0}
@@ -67,7 +67,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 <div id="line-wrap">
   <span id="prompt">❯</span>
   <input id="input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-         placeholder="输入命令回车执行 · 点击输入行任意位置移动光标 · ↑↓ 历史">
+         placeholder="键入命令回车执行 · 点击键入行任意位置移动光标 · ↑↓ 历史">
 </div>
 <script>
 (function () {
@@ -126,6 +126,24 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             appendLine('dim', '── 会话已原地重启 ──');
             running = true;
             statusEl.textContent = '运行中 · ' + shellType;
+        } else if (d.type === 'kmd:cd') {
+            // Roam 空区 x 键/右键：原地切目录（kill + 重 spawn，同 shell 切换模式）
+            cwd = d.cwd || cwd;
+            if (bridge && bridge.kmd && sessionId) {
+                bridge.kmd.kill(sessionId, { restart: false }).then(function () {
+                    return bridge.kmd.spawn(sessionId, shellType, cwd);
+                }).then(function (r) {
+                    if (r && r.ok) {
+                        running = true;
+                        statusEl.textContent = '运行中 · ' + shellType + ' · ' + cwd;
+                        appendLine('dim', '── 已切换目录 ' + cwd + ' ──');
+                    } else {
+                        appendLine('err', '[切换目录失败] ' + ((r && r.error) || 'unknown'));
+                    }
+                }).catch(function (err) {
+                    appendLine('err', '[切换目录异常] ' + String(err && err.message || err));
+                });
+            }
         }
     });
 
@@ -139,7 +157,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             return;
         }
         appendLine('dim', 'Kmd · 行模式终端 · ' + shellType + (cwd ? ' · ' + cwd : ''));
-        appendLine('dim', '输入行是原生编辑器控件 → 点击任意位置即可移动光标');
+        appendLine('dim', '键入行是原生编辑器控件 → 点击任意位置即可移动光标');
         bridge.kmd.spawn(sessionId, shellType, cwd).then(function (r) {
             if (r && r.ok) {
                 running = true;
@@ -307,7 +325,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         autoScroll = (outEl.scrollTop + outEl.clientHeight >= outEl.scrollHeight - 8);
     });
 
-    // ── 输出行点击 → 填入输入行（快捷召回，只填不执行） ──
+    // ── 输出行点击 → 填入键入行（快捷召回，只填不执行） ──
     // 优先 data-cmd（UI 回显行）；否则启发式提取 cmd/PS 自带回显行中的命令
     outEl.addEventListener('click', function (e) {
         var ln = e.target && e.target.closest ? e.target.closest('.line') : null;
@@ -331,7 +349,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         } catch (_) { }
     }
 
-    // ── 输入行（真编辑器控件：点击定位光标为浏览器原生能力） ──
+    // ── 键入行（真编辑器控件：点击定位光标为浏览器原生能力） ──
     inputEl.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -366,7 +384,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         }
     });
 
-    // 点击输出区任意处 → 焦点回到输入行
+    // 点击输出区任意处 → 焦点回到键入行
     outEl.addEventListener('mousedown', function () {
         setTimeout(function () { inputEl.focus(); }, 0);
     });
@@ -376,7 +394,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             appendLine('err', '[会话未就绪]');
             return;
         }
-        // 回显策略：cmd/PS 自带提示符回显（输出区已有）；gitbash 不回显 → UI 补（带 data-cmd 召回）
+        // 回显策略：cmd（2026-08-12 去 /q 后原生回显）+ PS 自带提示符回显；gitbash 不回显 → UI 补（带 data-cmd 召回）
         if (shellType === 'gitbash') appendLine('self', '❯ ' + v, v);
         if (bridge && bridge.kmd) {
             bridge.kmd.write(sessionId, v + '\n').catch(function (err) {
@@ -476,6 +494,22 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 
     // 首次聚焦
     inputEl.focus();
+})();
+</script>
+<!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 Roam（同 ai-panel/conv-ui 模式：iframe 内按键不冒泡父窗口）
+     编辑态 = 焦点在 #input（终端键入框，Tab/F2 保留终端语义）；输出区/工具栏/空白处 → 召回 Roam -->
+<script>
+(function () {
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'F2' && e.key !== 'Tab') return;
+    var el = document.activeElement;
+    var tag = el && el.tagName ? el.tagName.toUpperCase() : '';
+    var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
+    if (editing) return;
+    var accel = e.key === 'F2' ? 'F2' : 'Tab';
+    try { parent.postMessage({ type: 'qqq-key', accel: accel, scope: 'window' }, '*'); } catch (_) {}
+    e.preventDefault();
+  }, true);
 })();
 </script>
 </body>

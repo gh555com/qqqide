@@ -459,7 +459,7 @@ function _estimateTokensFull() {
     // ═══ 第一部分：messages 数组 ═══
 
     // ── 1. 服务端甲壳（动态：core/guard-meta.js 唯一入口，出厂快照兑底）──
-    var guardChars = (typeof QQQGuardMeta !== 'undefined' && QQQGuardMeta.chars) ? QQQGuardMeta.chars() : 21691;
+    var guardChars = (typeof QQQGuardMeta !== 'undefined' && QQQGuardMeta.chars) ? QQQGuardMeta.chars() : 21354;
     var guardTok = _tk(guardChars);
 
     // ── 2. msg[0] — 客户端 persistent 系统消息 ──
@@ -499,12 +499,14 @@ function _estimateTokensFull() {
         // ★ V13: _deBlock 已消除，DE 融入 biscuit
         else if (m.role === "user") { userCount++; userChars += cn; }
         else if (m.role === "assistant") {
-            if (m.tool_calls) {
+            // ★ 2026-08-12: 互斥分类——tool_calls 消息 content 非空（2026-08-11 起带正文）时
+            //   旧逻辑会同时计入 AI tool_calls 与 AI text（else 挂在 _error 上未排除 tool_calls）→ 双计
+            if (m._error) { errCount++; errChars += cn; }
+            else if (m.tool_calls) {
                 aiToolCallsCount++;
                 try { aiToolCallsChars += JSON.stringify(m.tool_calls).length; } catch (_) { }
             }
-            if (m._error) { errCount++; errChars += cn; }
-            else { if (cn > 0) { aiCount++; aiContentChars += cn; } }
+            else if (cn > 0) { aiCount++; aiContentChars += cn; }
         }
         else if (m.role === "tool") {
             toolCount++;
@@ -783,6 +785,14 @@ if (_bdPanel) {
     });
 }
 
+// ★★ 帮助按钮 — 跳转上下文背包文档（无 hover 提示，仅点击，URL 去 lang 参数支持 13 语言）
+var _ctxHelpBtn = document.getElementById('ctx-help');
+if (_ctxHelpBtn) {
+    _ctxHelpBtn.onclick = function () {
+        window.open('https://www.gh555.com/gaea/d/qqqide#docs/doc-20260809-104155', '_blank');
+    };
+}
+
 // ★★ 管理按钮 — 打开上下文背包 X 区 gaea 标签（每 quest 独立标签）
 var _ctxManageBtn = document.getElementById('ctx-manage');
 if (_ctxManageBtn) {
@@ -1013,7 +1023,7 @@ window.addEventListener('message', async function (e) {
                     // ★ 捕获压缩前背包重量（aq 开局显示用）：guard + Z/biscuit/facts(压缩前) + 提示词 + tools + body
                     var _preBackpackK = 0;
                     try {
-                        var _bpChars0 = (typeof QQQGuardMeta !== 'undefined' && QQQGuardMeta.chars) ? QQQGuardMeta.chars() : 21691;
+                        var _bpChars0 = (typeof QQQGuardMeta !== 'undefined' && QQQGuardMeta.chars) ? QQQGuardMeta.chars() : 21354;
                         var _convPre = ag.conversation || [];
                         for (var _cpi = 0; _cpi < _convPre.length; _cpi++) {
                             var _cmpPre = _convPre[_cpi];

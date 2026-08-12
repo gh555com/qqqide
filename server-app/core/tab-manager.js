@@ -874,6 +874,44 @@
     return tab;
   }
 
+  // ---- Public: open custom tab in file group (kmd terminal etc.) ----
+  // ★ 2026-08-12: kmd 例外——X 区中间/右侧 editor 分组（非 gaea 分组）。
+  //   单例语义（customId 已打开 → 激活返回）；内容由 renderFn 渲染（iframe/任意 DOM）；
+  //   无 filePath → 不触发 Monaco 挂载、不进 editor.tabs 持久化（_collectAllTabs 只收 filePath）、
+  //   无右键菜单；tab 关闭走常规 closeTabById（pane.remove + onClose）。
+  function openFileCustomTab(customId, title, renderFn, opts) {
+    opts = opts || {};
+    // 单例：任何 file 分组已打开同 customId → 激活
+    for (const grp of groups) {
+      if (grp.type !== 'file') continue;
+      const existing = grp.tabs.find(t => t.customId === customId);
+      if (existing) {
+        activateTab(grp, existing.id);
+        return existing;
+      }
+    }
+    // 找或建第一个 file 分组
+    let fileGrp = groups.find(g => g.type === 'file');
+    if (!fileGrp) fileGrp = addGroup('file');
+    if (!fileGrp) return null;
+
+    const tabId = _nextTabId++;
+    const tab = { id: tabId, customId: customId, title: title, closable: true, onActivate: null, onClose: null, custom: true, preview: false, dirty: false };
+    const btn = createTabBtn(tab, fileGrp);
+    fileGrp.barEl.appendChild(btn);
+    const pane = createTabPane(tab);
+    fileGrp.contentEl.appendChild(pane);
+    tab.paneEl = pane;
+    fileGrp.tabs.push(tab);
+    activateTab(fileGrp, tabId);
+
+    if (renderFn) {
+      try { renderFn(pane, tab); }
+      catch (e) { pane.textContent = 'render error: ' + (e && e.message); }
+    }
+    return tab;
+  }
+
   // ---- Public: close tab ----
   function closeTab(groupIdx, tabId) {
     const grp = groups[groupIdx];
@@ -1101,6 +1139,7 @@
     openFile,
     openFileInRightGroup,
     openFileInLeftGroup,
+    openFileCustomTab,
     splitRight,
     closeTab,
     activateTab,

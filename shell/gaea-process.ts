@@ -175,7 +175,7 @@ export function getOsGaeaFullState(goodsId: string): OsGaeaState | null {
 
 /** ★ 出厂默认自动启动（.gaea-state.json 缺失时心跳兜底用, 2026-08-09: 旧 `?? true` 导致手动启动 window-there 被记成 autoStart） */
 const _GOODS_DEFAULT_AUTOSTART: Record<string, boolean> = {
-    'kope-a': true,
+    'kope-a': false,
     'window-there': false,
 };
 function _goodsDefaultAutoStart(goodsId: string): boolean {

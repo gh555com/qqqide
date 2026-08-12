@@ -155,6 +155,8 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
         //   用户 Stop → _stopCtrl.abort() → 级联 → _retryCtrl.abort() → fetch 立即断
         self.abortController = new AbortController();
         self._stopCtrl.signal.addEventListener('abort', function () {
+            // ★ Chromium 108: abortController.abort() 对 HTTP/2 死连接无效 → reader.cancel() 本地逃生
+            try { if (self._sseReader) self._sseReader.cancel('user_stop'); } catch (_) { }
             try { self.abortController.abort(); } catch (_) { }
         }, { once: true });
         self._abortSource = '';  // ★ 重置探针
@@ -187,7 +189,7 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                     signal: self.abortController.signal
                 });
             }
-            var _hardDeadlineMs = (typeof ContentGateway !== 'undefined' ? ContentGateway.HARD_FETCH_DEADLINE_MS : 220000);  // ★ 唯一真理源 220s，主备统一
+            var _hardDeadlineMs = (typeof ContentGateway !== 'undefined' && typeof ContentGateway.HARD_FETCH_DEADLINE_MS === 'number') ? ContentGateway.HARD_FETCH_DEADLINE_MS : 220000;  // ★ 唯一真理源 220s，主备统一（防 ContentGateway 未热更时字段缺失）
             var _hardDeadlinePromise = new Promise(function (resolve) {
                 setTimeout(function () {
                     resolve({ _hardDeadline: true, _msg: 'HARD_DEADLINE' });

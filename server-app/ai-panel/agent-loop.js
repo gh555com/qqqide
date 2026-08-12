@@ -187,7 +187,11 @@ var AgentLoop = (function () {
             'sending': ['streaming', 'stopping', 'fatal', 'idle', 'done'],
             'streaming': ['done', 'fatal'],
             'stopping': ['idle', 'fatal'],
-            'fatal': ['sending'],
+            // ★ 2026-08-11: fatal → idle 合法化——守卫失败路径（所有权冲突/空内容/streaming）
+            //   在 fatal 残留时置 idle 是「用户放弃恢复直接重新开始」的合理语义（红框状态独立持久），
+            //   旧表只允许 fatal→sending → 每次触发都打 unexpected 警告噪音；发送入口无 fatal 闸门
+            //   （F33 重构已移除），新发送天然覆盖 fatal 态，idle 化无风险
+            'fatal': ['sending', 'idle'],
             'done': ['idle']
         };
         var allowed = (valid[this._stopState] || []);
@@ -728,6 +732,22 @@ var AgentLoop = (function () {
                     // 自动修复：弹掉最后一组 assistant+tool，重试（分类真理源：ContentGateway.HttpError.isAutoRepairable）
                     if (ContentGateway.HttpError.isAutoRepairable(self._lastGatewayError) && !opts._repairAttempted) {
                         self._lastGatewayError = 0;
+                        // ★ 2026-08-11: 先全量净化孤儿 tool（400 "tool must be a response..." 根治）
+                        //   旧逻辑只弹「最后 assistant(tool_calls) 及其后」——孤儿在开头/中间时
+                        //   弹不掉 → house2 重试仍 400 → fatal（q1 f17 客户事故 + q181 f14 实锤）
+                        var _repairedOrphans = 0;
+                        if (typeof self._repairOrphanedToolCalls === 'function') {
+                            _repairedOrphans = self._repairOrphanedToolCalls() || 0;
+                        }
+                        if (_repairedOrphans > 0) {
+                            opts._repairAttempted = true;
+                            maxIterations++;
+                            self._floorOnErrorCalled = false;
+                            self._lastGatewayMessage = '';
+                            opts._netRetryCount = 0;
+                            continue;
+                        }
+                        // 兜底：无孤儿时弹最后一组（历史逻辑）
                         // ★ 找到最后一个 assistant(tool_calls)，截断其后所有消息
                         var conv2 = self.conversation;
                         for (var _rr = conv2.length - 1; _rr >= 0; _rr--) {

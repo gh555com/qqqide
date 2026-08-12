@@ -799,6 +799,13 @@ function _a4BuildCompleteFloorPayload(ag, floorNum, opts) {
 
     var fullConv = ag.conversation ? ag.conversation.slice() : [];
     var floorConv = fullConv.slice(floorStartIdx);
+    // ★ 2026-08-11: 孤儿 tool 剥离（落盘防线）——slice 起点前的配对 assistant 不落盘，
+    //   开头 tool 必为孤儿（fatal 楼层残留 → 恢复楼层 conv[0]=孤儿 tool → 重启 restore
+    //   → 发送 400 "tool must be a response to a preceding message with 'tool_calls'"，
+    //   q1 f17 客户事故 + q181 f14/f17 本地样本实锤）
+    while (floorConv.length > 0 && floorConv[0] && floorConv[0].role === 'tool') {
+        floorConv.shift();
+    }
 
     // ★ 持久化净化：_lines/reasoning/tools/toolResults 是运行时数据不入库
     //   reasoning 已由 Compressed Summary 覆盖，不再需要保留

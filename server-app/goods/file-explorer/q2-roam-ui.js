@@ -394,19 +394,24 @@ async function updateDriveDisplay() {
 			_doSRequest();
 			return;
 		}
-		// ★ 空白区快捷：a → 喂给焦点 AI 面板 / c → CMD / x → PowerShell（a 让位给 AI，CMD 改为 c）
+		// ★ 空白区快捷：a → 喂给焦点 AI 面板（有选中=选中项 / 无选中=当前文件夹）/ x → kmd 终端 / m → CMD / p → PowerShell
 		if (k === 'a') {
 			e.preventDefault();
-			_feedCurrentToAi();
+			if (selectedItem) _feedCurrentToAi(); else _feedFolderToAi();
 			return;
 		}
-		if (k === 'c') {
+		if (k === 'x') {
+			e.preventDefault();
+			_openKmdAt(currentPath);
+			return;
+		}
+		if (k === 'm') {
 			e.preventDefault();
 			bridge.shell.openTerminal(currentPath, 'cmd').catch(function(){});
 			_playSfx('terminal');
 			return;
 		}
-		if (k === 'x') {
+		if (k === 'p') {
 			e.preventDefault();
 			bridge.shell.openTerminal(currentPath, 'powershell').catch(function(){});
 			_playSfx('terminal');

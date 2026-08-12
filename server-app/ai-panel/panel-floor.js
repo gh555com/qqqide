@@ -493,6 +493,13 @@ async function _restoreAgentFromStore(questId, ag) {
         ag._persistentCount = (ag.conversation.length > 0 && ag.conversation[0]._persistent) ? 1 : 0;
         ag._rulesVersion = '';  // ★ 同样清零，强制下次 send 重新注入 rules
 
+        // ★ 2026-08-11: 拼接净化——历史楼层残留孤儿 tool（配对 assistant 在各自 slice 外）
+        //   → 恢复基线带孤儿 → 发送 400（q1 f17 客户事故 + q181 f14/f17 样本实锤）
+        //   复用发送前预检同一函数（agent-exec.js），_floor 等标记不动，仅删无配对 tool
+        if (typeof ag._repairOrphanedToolCalls === 'function') {
+            try { ag._repairOrphanedToolCalls(); } catch (_) { }
+        }
+
         // ★ 注入压缩饼干：V10 从 ctx.narrative 注入；V13 从 ctx.biscuitLines 重建消息
         if (_isV10Biscuit) {
             // ★ 2026-08-11: 补 _biscuit 标记——旧格式 narrative 即压缩饼干内容，与 V12 重建消息同标记

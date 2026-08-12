@@ -446,82 +446,82 @@ async function _executeSend(intent) {
     var floorNum;
     var root2 = questStore.getProjectRoot();
     try {
-    var qDirName2, fDirName2, _allTxtDirLocal, _allTxtPathLocal;
-    // ★ 统一：一律通过 nextFloorNum() 创建新楼层（除非 forceFloorNum 同层重试）
-    floorNum = forceFloorNum || await questStore.nextFloorNum(qid);
-    if (!forceFloorNum && root2 && floorNum > 0) {
-        var userQuestion = _isCompress ? 'only facts' : (text || (userContent || '').split('\n')[0]);
-        var quests2 = await questStore.list();
-        var qEntry = quests2.find(function (qx) { return qx.id === qid; });
-        var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : '';
-        var qNumericId = (qEntry && qEntry.numericId) ? qEntry.numericId : parseInt(qid.replace('q', ''), 10) || 0;
-        qDirName2 = await _resolveQuestDirName(root2, qid, qNumericId, qTitle2);
-        fDirName2 = _makeName('f', floorNum, userQuestion);
-        var _ensured = await _ensureQuestDir(root2, qDirName2, fDirName2);
-        if (_ensured && _ensured.fDir && _images && _images.length > 0) {
-            var _bridge2 = window.parent && window.parent.qqqideBridge;
-            if (_bridge2 && _bridge2.fs) {
-                for (var _imi = 0; _imi < _images.length; _imi++) {
-                    var _pimg = _images[_imi];
-                    var _fileName = 'img_' + _pimg.id + '.png';
-                    try {
-                        if (typeof _bridge2.fs.writeBase64 === 'function') {
-                            await _bridge2.fs.writeBase64(_ensured.fDir + _fileName, _pimg.base64);
-                        } else {
-                            var _b64Only = _pimg.base64 || _pimg.dataUrl.split(',')[1] || '';
-                            await _bridge2.fs.writeBase64(_ensured.fDir + _fileName, _b64Only);
-                        }
-                        _pimg.fileName = _fileName;
-                    } catch (_imgSaveErr) { console.warn('[img-save] failed:', _imgSaveErr); }
+        var qDirName2, fDirName2, _allTxtDirLocal, _allTxtPathLocal;
+        // ★ 统一：一律通过 nextFloorNum() 创建新楼层（除非 forceFloorNum 同层重试）
+        floorNum = forceFloorNum || await questStore.nextFloorNum(qid);
+        if (!forceFloorNum && root2 && floorNum > 0) {
+            var userQuestion = _isCompress ? 'only facts' : (text || (userContent || '').split('\n')[0]);
+            var quests2 = await questStore.list();
+            var qEntry = quests2.find(function (qx) { return qx.id === qid; });
+            var qTitle2 = (qEntry && qEntry.title && qEntry.title !== 'New Chat') ? qEntry.title : '';
+            var qNumericId = (qEntry && qEntry.numericId) ? qEntry.numericId : parseInt(qid.replace('q', ''), 10) || 0;
+            qDirName2 = await _resolveQuestDirName(root2, qid, qNumericId, qTitle2);
+            fDirName2 = _makeName('f', floorNum, userQuestion);
+            var _ensured = await _ensureQuestDir(root2, qDirName2, fDirName2);
+            if (_ensured && _ensured.fDir && _images && _images.length > 0) {
+                var _bridge2 = window.parent && window.parent.qqqideBridge;
+                if (_bridge2 && _bridge2.fs) {
+                    for (var _imi = 0; _imi < _images.length; _imi++) {
+                        var _pimg = _images[_imi];
+                        var _fileName = 'img_' + _pimg.id + '.png';
+                        try {
+                            if (typeof _bridge2.fs.writeBase64 === 'function') {
+                                await _bridge2.fs.writeBase64(_ensured.fDir + _fileName, _pimg.base64);
+                            } else {
+                                var _b64Only = _pimg.base64 || _pimg.dataUrl.split(',')[1] || '';
+                                await _bridge2.fs.writeBase64(_ensured.fDir + _fileName, _b64Only);
+                            }
+                            _pimg.fileName = _fileName;
+                        } catch (_imgSaveErr) { console.warn('[img-save] failed:', _imgSaveErr); }
+                    }
                 }
             }
         }
-    }
 
-    // ★ recovery 楼层也需要设 _floorStartIdx（修复重启后楼层数据全部丢失的严重 bug）
-    //   否则 recovery 楼层始终沿用旧值 0 → all.json 保存整个 conversation → 重启后重复拼接 → 数据损坏
-    var _floorStartIdx = agent.conversation.length;
-    agent._floorStartIdx = _floorStartIdx;
-    // ★ 推进 passby 基线：新楼层开始时，将刚完成的上一楼层计入基线（仅楼层号变化时推进）
-    var _oldFloorNum2 = agent._currentFloorNum;
-    // ★ 自愈守卫：若 passbyBaseFloorNum 为 0 但有多层历史（元数据未初始化），
-    //   说明上次启动时 quest 元数据未保存，基线处于出厂状态。此时不能信任
-    //   _passbyBaseWge（可能为 0），直接从 _oldFloorNum2 推断：上楼层 passby
-    //   已冻结在 all.json 中，push 应增量加当前 houses/costWge。
-    //   但若 _passbyBaseFloorNum === 0 且 _oldFloorNum2 > 1，说明基线从未初始化，
-    //   此时 _passbyBaseWge 可能为 0，增量加是对的（0+上楼层=上楼层）。
-    //   真正的问题是：基线为 0 时 _oldFloorNum2 也为 0（元数据缺失），已被
-    //   _restoreAgentFromStore 兜底修复。此处仅做安全网。
-    if (sendType !== 'recovery' && _oldFloorNum2 && _oldFloorNum2 !== floorNum) {
-        agent._passbyBaseHouses = (agent._passbyBaseHouses || 0) + (agent._houses ? agent._houses.length : 0);
-        agent._passbyBaseWge = (agent._passbyBaseWge || 0) + (agent._floorCostWge || 0);
-        agent._passbyBaseTokens = (agent._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(agent) : 0);
-        agent._passbyBaseFloorNum = _oldFloorNum2;
-    }
-    agent._currentFloorNum = floorNum;
-    agent._houses = [];
-    agent._a4Snapshots = {};
-    agent._lastAutoSaveLen = 0;
-    agent._lastFloorTimingRecord = null;
-    if (!agent._floorMeta) agent._floorMeta = {};
-    var _projectRoot = root2 || questStore.getProjectRoot();
-    if (!_allTxtDirLocal && _projectRoot) {
-        _allTxtDirLocal = _projectRoot + '/_qqq/quests/' + (typeof qDirName2 !== 'undefined' ? qDirName2 : '') + '/' + (typeof fDirName2 !== 'undefined' ? fDirName2 : '') + '/';
-    }
-    if (!_allTxtPathLocal) _allTxtPathLocal = _allTxtDirLocal ? _allTxtDirLocal + 'all.txt' : '';
-    agent._allTxtPath = _allTxtPathLocal;
-    // ★ recovery 楼层也需要 _floorMeta（修复重启后 all.json 无法正确切片的问题）
-    agent._floorMeta[floorNum] = {
-        floorStartIdx: agent._floorStartIdx,
-        allTxtPath: _allTxtPathLocal,
-        _fDir: _allTxtDirLocal,
-        createdAt: Date.now()
-    };
-    var _bridgeMk = window.parent && window.parent.qqqideBridge;
-    if (_bridgeMk && _allTxtDirLocal) { try { await _bridgeMk.fs.mkdir(_allTxtDirLocal); } catch (_) { } }
+        // ★ recovery 楼层也需要设 _floorStartIdx（修复重启后楼层数据全部丢失的严重 bug）
+        //   否则 recovery 楼层始终沿用旧值 0 → all.json 保存整个 conversation → 重启后重复拼接 → 数据损坏
+        var _floorStartIdx = agent.conversation.length;
+        agent._floorStartIdx = _floorStartIdx;
+        // ★ 推进 passby 基线：新楼层开始时，将刚完成的上一楼层计入基线（仅楼层号变化时推进）
+        var _oldFloorNum2 = agent._currentFloorNum;
+        // ★ 自愈守卫：若 passbyBaseFloorNum 为 0 但有多层历史（元数据未初始化），
+        //   说明上次启动时 quest 元数据未保存，基线处于出厂状态。此时不能信任
+        //   _passbyBaseWge（可能为 0），直接从 _oldFloorNum2 推断：上楼层 passby
+        //   已冻结在 all.json 中，push 应增量加当前 houses/costWge。
+        //   但若 _passbyBaseFloorNum === 0 且 _oldFloorNum2 > 1，说明基线从未初始化，
+        //   此时 _passbyBaseWge 可能为 0，增量加是对的（0+上楼层=上楼层）。
+        //   真正的问题是：基线为 0 时 _oldFloorNum2 也为 0（元数据缺失），已被
+        //   _restoreAgentFromStore 兜底修复。此处仅做安全网。
+        if (sendType !== 'recovery' && _oldFloorNum2 && _oldFloorNum2 !== floorNum) {
+            agent._passbyBaseHouses = (agent._passbyBaseHouses || 0) + (agent._houses ? agent._houses.length : 0);
+            agent._passbyBaseWge = (agent._passbyBaseWge || 0) + (agent._floorCostWge || 0);
+            agent._passbyBaseTokens = (agent._passbyBaseTokens || 0) + (typeof _computeFloorTokens === 'function' ? _computeFloorTokens(agent) : 0);
+            agent._passbyBaseFloorNum = _oldFloorNum2;
+        }
+        agent._currentFloorNum = floorNum;
+        agent._houses = [];
+        agent._a4Snapshots = {};
+        agent._lastAutoSaveLen = 0;
+        agent._lastFloorTimingRecord = null;
+        if (!agent._floorMeta) agent._floorMeta = {};
+        var _projectRoot = root2 || questStore.getProjectRoot();
+        if (!_allTxtDirLocal && _projectRoot) {
+            _allTxtDirLocal = _projectRoot + '/_qqq/quests/' + (typeof qDirName2 !== 'undefined' ? qDirName2 : '') + '/' + (typeof fDirName2 !== 'undefined' ? fDirName2 : '') + '/';
+        }
+        if (!_allTxtPathLocal) _allTxtPathLocal = _allTxtDirLocal ? _allTxtDirLocal + 'all.txt' : '';
+        agent._allTxtPath = _allTxtPathLocal;
+        // ★ recovery 楼层也需要 _floorMeta（修复重启后 all.json 无法正确切片的问题）
+        agent._floorMeta[floorNum] = {
+            floorStartIdx: agent._floorStartIdx,
+            allTxtPath: _allTxtPathLocal,
+            _fDir: _allTxtDirLocal,
+            createdAt: Date.now()
+        };
+        var _bridgeMk = window.parent && window.parent.qqqideBridge;
+        if (_bridgeMk && _allTxtDirLocal) { try { await _bridgeMk.fs.mkdir(_allTxtDirLocal); } catch (_) { } }
 
-    var aiDiv = cardPool.startBuildingFloor(qid, floorNum, _allTxtPathLocal);
-    if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); return; }  // ★ 链 finally 自动复位 _chainBusy
+        var aiDiv = cardPool.startBuildingFloor(qid, floorNum, _allTxtPathLocal);
+        if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); return; }  // ★ 链 finally 自动复位 _chainBusy
     } catch (_allocErr) {
         // ★ 2026-08-11: 楼层物化失败（f28 类事故）→ 不静默：释放锁 + 显式 qoast
         console.warn('[pipeline] floor allocation failed:', _allocErr && _allocErr.message);
@@ -567,7 +567,7 @@ async function _executeSend(intent) {
     if (sendType !== 'recovery') {
         var _bpChars = 0;
         // 1. 服务端甲壳（动态：core/guard-meta.js 唯一入口，服务端 /api/v3/ai/guard-meta）
-        _bpChars += (typeof QQQGuardMeta !== 'undefined' && QQQGuardMeta.chars) ? QQQGuardMeta.chars() : 21691;
+        _bpChars += (typeof QQQGuardMeta !== 'undefined' && QQQGuardMeta.chars) ? QQQGuardMeta.chars() : 21354;
         // 2. 客户端注入消息：Z（_persistent）+ biscuit + facts
         var _conv = agent.conversation || [];
         for (var _ci = 0; _ci < _conv.length; _ci++) {
@@ -651,24 +651,62 @@ async function _executeSend(intent) {
     var _capAbort = function () {
         try {
             if (!agent || agent._floorCompletedCleanly) return;
+            // ★ 工具执行中 = 真实进展（上传/长命令无 onToken/onCost 信号，不能误判停滞）：
+            //   续命一次（累计 ~40min 工具窗口上限，防工具死循环永不拉断）；
+            //   挂死工具由 ghrun 15min 失速看门狗先杀（< 20min），活工具（上传 116MB）永不拉断
+            if (agent._toolExecActive && !agent._toolCapRenewed) {
+                agent._toolCapRenewed = true;
+                _touchCap();
+                return;
+            }
             agent._sendTerminated = true;
             agent._floorFatal = true;
             agent._streaming = false;
             try { if (agent._stopCtrl) agent._stopCtrl.abort(); } catch (_) { }
             try { agent.setStopState('fatal'); } catch (_) { }
-            // ★ q184 绿色时钟静止修复：置空前先复位时钟 DOM（旧代码直接置空 → finally
-            //   的 if(agent._activeAiDiv) 不成立 → 时钟永停在最后一帧绿色 20m:08s）
+            // ★ 踹锁：_stopCtrl.abort() 对 HTTP/2 死连接无效（Chromium 108），agent.send() 永不返回
+            //   → 链 .then 永不触发 → _chainBusy 永久 true。此处直接复位，不依赖链闭环。
+            //   同时毙掉 _sendChain（旧链卡死 → 新发排到后面也永不执行 → 必须换新链）。
+            try {
+                var _poolC2 = parent && parent.__qqq_agentPool;
+                if (_poolC2) {
+                    var _capKey = _sendLockKey(qid);
+                    var _capAg = _poolC2[_capKey];
+                    if (_capAg) { _capAg._chainBusy = false; _capAg._sendChain = Promise.resolve(); }
+                }
+            } catch (_) { }
+            // ★ 绿色时钟根治（2026-08-12，q181 f21 事故）：手动 className 复位是一次性的——
+            //   startFloorTimer 的 setInterval 每秒把时间填回 + 改回 clock-ai 绿色（永动机）。
+            //   必须调 stopFloorTimer（clearInterval + 黑色时钟 + 饼图定格 + timing 记录）
+            try { if (typeof stopFloorTimer === 'function') stopFloorTimer(null, agent); } catch (_) { }
             if (agent._activeAiDiv) {
                 var _capDiv = agent._activeAiDiv;
-                if (_capDiv._clockBlock) _capDiv._clockBlock.className = 'msg-ai-clock';
-                if (_capDiv._clockMin) _capDiv._clockMin.textContent = '';
-                if (_capDiv._clockSec) _capDiv._clockSec.textContent = '';
-                if (typeof _xPieShown !== 'undefined') agent._xPieShown = false;
                 _capDiv._renderScheduled = false;
                 agent._activeAiDiv = null;
             }
+            // ★ 合成 error log → 红框 +「继续任务」链接（abort 路径不写任何 error → 红框永不渲染，
+            //   用户只见 qoast 提示却无红框可点，q181 f21 三连事故之一）
+            try {
+                var _capErrFloor = agent._recoveryOriginFloor || agent._currentFloorNum;
+                var _capNow = new Date();
+                var _capTs = _capNow.getHours().toString().padStart(2, '0') + ':' + _capNow.getMinutes().toString().padStart(2, '0');
+                var _capReason = '发送停滞（>20 分钟无进展）已自动终止';
+                if (!agent._questErrorLogByFloor) agent._questErrorLogByFloor = {};
+                if (!agent._questErrorLogByFloor[_capErrFloor]) agent._questErrorLogByFloor[_capErrFloor] = [];
+                if (agent._questErrorLogByFloor[_capErrFloor].length === 0) {
+                    agent._questErrorLogByFloor[_capErrFloor].push({ time: _capTs, reason: _capReason });
+                }
+                if (!agent._questErrorState) agent._questErrorState = {};
+                if (!agent._questErrorState[_capErrFloor]) agent._questErrorState[_capErrFloor] = { log: [], capped: false, bubbleText: null };
+                if (agent._questErrorState[_capErrFloor].log.length === 0) {
+                    agent._questErrorState[_capErrFloor].log.push({ time: _capTs, reason: _capReason });
+                }
+                // ★ 闭环：_error 消息入 conversation（重启后磁盘重建红框，与 onError 同款）
+                agent.conversation.push({ role: 'assistant', content: _capReason, _error: true, _floor: agent._currentFloorNum, _errorTime: _capTs });
+                if (typeof _renderQuestErrorBox === 'function') _renderQuestErrorBox(agent, null, _capErrFloor);
+            } catch (_) { }
             if (qid && typeof _unregisterBuilding === 'function') _unregisterBuilding(qid);
-            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('发送停滞（>20 分钟无进展）已自动终止，可重新发送', { type: 'warning', duration: 6000 }); } catch (_) { }
+            try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('发送停滞（>20 分钟无进展）已自动终止，可点击楼层红框「继续任务」恢复', { type: 'warning', duration: 6000 }); } catch (_) { }
         } catch (_) { }
     };
     var _touchCap = function () {
@@ -676,6 +714,7 @@ async function _executeSend(intent) {
         if (agent && !agent._floorCompletedCleanly && !agent._sendTerminated) {
             _sendCapTimer = setTimeout(_capAbort, 20 * 60 * 1000);
         }
+        if (agent) agent._lastProgressPerf = performance.now();  // clock color: last progress timestamp
     };
     _touchCap();
     try {

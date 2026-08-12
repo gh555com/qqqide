@@ -27,6 +27,11 @@ AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assis
     self._log('  ║ parallel engine: ' + prepared.length + ' tools → ' + layers.length + ' layer(s)');
 
     var allResults = [];
+    // ★ 工具执行活跃标志（2026-08-12，q181 f21 事故）：工具执行期间无 onToken/onCost 信号，
+    //   长工具（上传 116MB / 长命令）会被 20 分钟零进展看门狗误判为停滞拉断。
+    //   执行期间保持 true → 停滞看门狗续命；挂死工具由 ghrun 15min 失速看门狗兜底杀（< 20min）
+    self._toolExecActive = true;
+    try {
     for (var li = 0; li < layers.length; li++) {
         // ★ Stop 守卫：用户点停止后立即中断工具执行
         if (self._stopCtrl.signal.aborted) {
@@ -155,10 +160,58 @@ AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assis
         }
         self._effectCostStore = null;
     }
+    } finally {
+        self._toolExecActive = false;
+    }
     return { allResults: allResults, assistantMsg: assistantMsg };
-};
+};    // ---- 孤儿 tool 修复：发送前双向扫描（2026-08-11 恢复实现） ----
+    // 铁律 6.3 承诺的预检防线：实现曾在历史重构中被删除，仅剩 agent-gateway.js 死调用
+    // （typeof 检查恒 false → 预检从未生效）。
+    // 事故链（2026-08-11 客户实锤 + q181 f14/f17 本地样本）：
+    //   fatal 楼层最后一条 = tool 结果 → 恢复发送 slice(floorStartIdx) 开头即孤儿 tool
+    //   （配对 assistant 在 slice 外）→ 落盘 → 重启 restore 拼接 → 发送 400
+    //   "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"
+    // 语义：tool 消息必须跟随含其 tool_call_id 的 assistant(tool_calls)；无配对者直接删除
+    //   （结果已无法被上游消费，保留必 400）。assistant(tool_calls) 无结果 = API 合法，不动。
+    AgentLoop.prototype._repairOrphanedToolCalls = function () {
+        var conv = this.conversation;
+        if (!conv || conv.length === 0) {
+            this._lastRepairLen = 0;
+            this._lastRepairHadWork = false;
+            return 0;
+        }
+        var pending = {};
+        var removed = 0;
+        for (var i = 0; i < conv.length; i++) {
+            var m = conv[i];
+            if (!m || typeof m !== 'object') { conv.splice(i, 1); i--; removed++; continue; }
+            if (m.role === 'assistant' && m.tool_calls && m.tool_calls.length > 0) {
+                pending = {};
+                for (var j = 0; j < m.tool_calls.length; j++) {
+                    var tc = m.tool_calls[j];
+                    if (tc && tc.id) pending[tc.id] = true;
+                }
+            } else if (m.role === 'tool') {
+                var tid = m.tool_call_id;
+                if (!tid || !pending[tid]) {
+                    conv.splice(i, 1);
+                    i--;
+                    removed++;
+                }
+            }
+        }
+        this._lastRepairLen = conv.length;
+        this._lastRepairHadWork = removed > 0;
+        if (removed > 0) {
+            this._log('🧹 orphan tool repair: removed ' + removed + ' tool message(s) without matching assistant.tool_calls');
+            if (typeof this._writeFileLog === 'function') {
+                this._writeFileLog('🧹 orphan tool repair: removed ' + removed + ' tool message(s) without matching assistant.tool_calls');
+            }
+        }
+        return removed;
+    };
 
-// ---- 执行分层：将工具调用按文件冲突分组 ----
+    // ---- 执行分层：将工具调用按文件冲突分组 ----
 AgentLoop.prototype._buildExecutionLayers = function (calls) {
     var layers = [];
     for (var i = 0; i < calls.length; i++) {

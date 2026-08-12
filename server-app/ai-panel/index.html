@@ -192,6 +192,10 @@ a.msg-err-recovery-light{display:inline-block;font-size:18px;color:#fff;animatio
 .msg-ai-clock.clock-ai .clock{color:#859900!important}
 .msg-ai-clock.clock-tool .clock{color:#e6b800!important}
 .msg-ai-clock.clock-network .clock{color:#cb4b16!important}
+/* 无进展警告：时钟变色（2min 黄 → 5min 红闪烁） */
+.msg-ai-clock.clock-slow .clock{color:#b58900!important}
+.msg-ai-clock.clock-stall .clock{color:#dc322f!important;animation:clock-pulse 1s ease-in-out infinite}
+@keyframes clock-pulse{0%,100%{opacity:1}50%{opacity:.4}}
 .msg-ai-clock .clock-min{font-size:48px}
 .msg-ai-clock .clock-sec{font-size:24px}
 .msg-ai-clock canvas{width:42px;height:42px;border-radius:50%;flex-shrink:0}
@@ -623,12 +627,13 @@ var _orig={};
   <div class="ctx-panel-overlay"></div>
   <div class="ctx-panel-box">
     <div class="ctx-panel-body">
-      <p><strong>上下文压缩 — V16 机械筛 + 三按钮 + fx Grid</strong></p>
+      <p><strong>上下文压缩 — V22 机械筛 + 三按钮 + fx Grid</strong></p>
       <p>每层楼自动重组背包：本地机械筛（零网络、零费用）→ 压缩饼干（Q + 包装盒 + A），前缀缓存命中 ~90%。</p>
       <p>三按钮手动压缩（背包页面）：absolut（剥离终端输出）/ edit only（仅保留写工具）/ only facts（AI 提取关键事实→注入 fx Grid）。</p>
-      <p>饼干逐层追加不重写，背包轻量永不膨胀。f1/f2/f3 三级 facts 独立于饼干，缓存不受影响。</p>
+      <p>饼干逐层追加不重写，背包轻量永不膨胀。fx 事实（唯一一条、增量追加）独立于饼干，日常压缩不触碰。</p>
     </div>
     <div class="ctx-panel-actions">
+      <button id="ctx-help" style="display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:22px;margin-right:auto;position:relative;vertical-align:middle;font-size:13px;font-weight:bold;border:1px solid var(--border-color,#555);border-radius:3px;padding:0 6px;pointer-events:auto;top:-1px;background:transparent;color:var(--text-primary);line-height:1;">?</button>
       <button id="ctx-snap">📸 快照</button>
       <button id="ctx-manage">📋 管理</button>
 

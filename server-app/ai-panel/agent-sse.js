@@ -61,6 +61,7 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
     var self = this;
     var streamStart = performance.now();
     var reader = body.getReader();
+    self._sseReader = reader;  // 2026-08-12: expose to _stopCtrl abort cascade (Chromium 108 dead conn bypass)
     var decoder = new TextDecoder();
     var buffer = '';
     var reasoningContent = '';
@@ -71,18 +72,20 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
     var _finishReason = '';
     var _sseError = null;  // ★ 服务端 SSE 错误事件（提升到外层避免被 JSON catch 吞掉）
 
-    // ★ 流级别看门狗：180s 无任何数据（含心跳）→ 连接已死，主动 abort
+    // ★ 流级别看门狗：180s 无任何数据（含心跳）→ 连接已死，主动 cancel reader
     //   深度推理可能 120s+ 无 token，180s 防误杀
     //   output_watchdog 已移除 — AI 推理不限时，信任模型自行收敛
+    //   ★ 2026-08-12: Chromium 108 HTTP/2 死连接上 abortController.abort() 不生效 →
+    //     改用 reader.cancel()（本地 reader 操作，不依赖网络层），abort 作辅助
     var _streamWatchdog = null;
     var STREAM_WATCHDOG_MS = (typeof ContentGateway !== 'undefined' ? ContentGateway.STREAM_WATCHDOG_MS : 180000);  // ★ 唯一真理在 ContentGateway
     function _resetStreamWatchdog() {
         if (_streamWatchdog) clearTimeout(_streamWatchdog);
-        var _ctrl = self.abortController;  // ★ 捕获当前 AbortController，防 retry 替换后旧 timer 误杀新请求
         _streamWatchdog = setTimeout(function () {
             self._abortSource = 'stream_watchdog';
-            self._log('⏰ stream watchdog ' + (STREAM_WATCHDOG_MS / 1000) + 's — no data, aborting dead connection');
-            if (_ctrl) _ctrl.abort();
+            self._log('⏰ stream watchdog ' + (STREAM_WATCHDOG_MS / 1000) + 's — no data, canceling dead reader');
+            try { reader.cancel('stream_watchdog'); } catch (_) { }
+            try { if (self.abortController) self.abortController.abort(); } catch (_) { }  // 辅助：非 Chromium 108 场景
         }, STREAM_WATCHDOG_MS);
     }
     // ★ 内容级看门狗（2026-08-11 q184 15min 空白事故）：首 token 后流式输出间隔 >45s
@@ -91,16 +94,16 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
     //   推理期（首 token 前）不启动——由流级 180s 覆盖深度推理长思考。
     var _contentWatchdog = null;
     var _contentSeen = false;
-    var CONTENT_WATCHDOG_MS = 45000;
+    var CONTENT_WATCHDOG_MS = 90000;
     function _resetContentWatchdog() {
         _contentSeen = true;
         if (_contentWatchdog) clearTimeout(_contentWatchdog);
-        var _ctrlC = self.abortController;
         _contentWatchdog = setTimeout(function () {
             self._abortSource = 'content_watchdog';
-            self._log('⏰ content watchdog ' + (CONTENT_WATCHDOG_MS / 1000) + 's — no content delta (heartbeat only), aborting stalled stream');
-            if (typeof self._writeFileLog === 'function') self._writeFileLog('⏰ content watchdog ' + (CONTENT_WATCHDOG_MS / 1000) + 's — stalled stream aborted');
-            if (_ctrlC) _ctrlC.abort();
+            self._log('⏰ content watchdog ' + (CONTENT_WATCHDOG_MS / 1000) + 's — no content delta (heartbeat only), canceling stalled reader');
+            if (typeof self._writeFileLog === 'function') self._writeFileLog('⏰ content watchdog ' + (CONTENT_WATCHDOG_MS / 1000) + 's — stalled stream canceled');
+            try { reader.cancel('content_watchdog'); } catch (_) { }
+            try { if (self.abortController) self.abortController.abort(); } catch (_) { }
         }, CONTENT_WATCHDOG_MS);
     }
     _resetStreamWatchdog();
@@ -196,6 +199,7 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
     var _sseErrorCode = _sseError ? (_sseError.code || 0) : 0;
     var _sseErrorMessage = _sseError ? (_sseError.message || '') : '';
 
+    self._sseReader = null;
     clearTimeout(_streamWatchdog);
     if (_contentWatchdog) { clearTimeout(_contentWatchdog); _contentWatchdog = null; }
 
