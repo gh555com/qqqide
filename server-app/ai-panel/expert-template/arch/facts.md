@@ -7,7 +7,7 @@
 - Primary Language: {primary_language}
 
 ## Repository
-<!-- Git repos, package registries, URLs -->
+<!-- git repos, package registries, URLs -->
 - URL: {repo_url}
 
 ## Team & Access

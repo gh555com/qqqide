@@ -4,7 +4,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>Git Diff</title>
+<title>git diff</title>
 <style>
 :root{--bg:#fdf6e3;--card:#eee8d5;--text:#073642;--border:#d3cbb7;--green:#859900;--red:#dc322f;--yellow:#b58900;--base01:#97978a;--base2:#eee8d5}
 [data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--base01:#97978a;--base2:#2a2a2a}
@@ -60,7 +60,7 @@ body{font-family:Tahoma,system-ui,sans-serif;font-size:13px;color:var(--text);ba
   </div>
 </div>
 
-<div id="diff-container"><div id="empty-state">正在读取 Git 数据…</div></div>
+<div id="diff-container"><div id="empty-state">正在读取 git 数据…</div></div>
 
 <button id="btn-diff-only">仅差异</button>
 <button id="big-close">✕</button>
@@ -109,7 +109,7 @@ function _lm(){return new Promise(function(resolve){if(_ml&&window.monaco){resol
 
 (async function(){
 if(!_br||!_br.qz){_msg.textContent='Bridge not ready\n\nPlease restart IDE';return;}
-try{_msg.textContent='Reading Git data\u2026';await _rgr();var b='',a='';try{b=await _bf()||'';}catch(e){}try{a=await _af()||'';}catch(e){}
+try{_msg.textContent='Reading git data\u2026';await _rgr();var b='',a='';try{b=await _bf()||'';}catch(e){}try{a=await _af()||'';}catch(e){}
 if(!b&&!a){_msg.textContent='No diff\n\n'+_fn+(_mode!=='commit'?'\n(file may not be tracked)':'');return;}
 _msg.textContent='Loading Monaco\u2026';await _lm();if(!window.monaco){return;}
 _msg.style.display='none';var dk=document.documentElement.getAttribute('data-theme')==='dark',th=dk?'solarized-dark':'solarized-light',lg=_l(_fn);

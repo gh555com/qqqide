@@ -2,7 +2,7 @@
 
 // ============================================================================
 // qoods/wysiwyg/wysiwyg.js
-// Lightweight markdown WYSIWYG preview that renders alongside the active
+// Lightweight markdown wysiwyg preview that renders alongside the active
 // editor. Registers `qqq.wysiwyg.toggle` and a gaea panel.
 // Pure renderer, no external deps. Solarized light styling.
 // ============================================================================
@@ -101,7 +101,7 @@
     bar.style.cssText = 'flex:0 0 24px; padding:0 8px; display:flex; align-items:center; gap:8px;' +
       'border-bottom:1px solid var(--border-color); background:var(--background-color);' +
       'font-size:11px; color:var(--text-primary);';
-    bar.textContent = 'WYSIWYG · auto preview';
+    bar.textContent = 'wysiwyg · auto preview';
     preview = document.createElement('div');
     preview.style.cssText = 'flex:1 1 auto; overflow:auto; padding:14px 16px;' +
       'background:var(--background-color); color:var(--text-primary); line-height:1.6; font-size:14px;' +
@@ -124,11 +124,11 @@
     renderNow();
   }
 
-  // ★ WYSIWYG 不再注册 A 区面板（仅供命令调用，无 UI）
+  // ★ wysiwyg 不再注册 A 区面板（仅供命令调用，无 UI）
   if (window.qqqGaea) {
     window.qqqGaea.register({
       id: 'wysiwyg',
-      title: 'WYSIWYG',
+      title: 'wysiwyg',
       version: '1.0.0',
       protoVer: 2,
     });

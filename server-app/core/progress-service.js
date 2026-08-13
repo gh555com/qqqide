@@ -5,7 +5,7 @@
 //
 // 职责:
 //   · qoast 风格底部进度弹出（不阻塞操作）
-//   · 双消费者: Roam 粘贴 + 编辑器粘贴 + 音频下载
+//   · 双消费者: roam 粘贴 + 编辑器粘贴 + 音频下载
 //   · 取消 → TransactionManager.rollback()
 //
 // API:

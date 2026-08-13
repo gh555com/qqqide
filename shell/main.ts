@@ -410,9 +410,10 @@ function registerGaeaProcessIpc(): void {
 
     ipcMain.handle('qqqide:gaea-process:set-auto-start', async (_e, goodsId: string, v: boolean, meta?: { scriptPath?: string; runtime?: string; lifecycle?: string; allowMultiple?: boolean }) => {
         try {
-            await stateStore.setNow('qqqide', goodsId + '.autoStart', v);
-            // ★ 同步到 OS 级状态文件（跨绿色包可见）
+            // ★ 最终意图写入顺序（F118）: OS 级状态文件（同步 fs，永不失败）先写，
+            //   本地 DB 仅降级兜底（DB 失败绝不阻断意图落盘）
             syncOsGaeaAutoStart(goodsId, v);
+            try { await stateStore.setNow('qqqide', goodsId + '.autoStart', v); } catch (e) { /* 降级可用 */ }
             if (v && meta && meta.scriptPath) {
                 // ★ check ON + not running → start immediately + watchdog
                 const runtime = meta.runtime || 'python';
@@ -538,18 +539,21 @@ app.whenReady().then(async () => {
                     let autoStart: boolean | null = null;
                     if (osVal !== null) autoStart = osVal;
                     else autoStart = await stateStore.get('qqqide', g.id + '.autoStart');
+                    // ★ 最终意图 = autoStart（OS 级，任一窗口最后一次人工操作）
+                    const intent = autoStart ?? g.defaultAutoStart;
                     // ★ 会话恢复（2026-08-09）: 上次退出时该 goods 正在运行（attached）→ 本次启动恢复运行
                     const osFull = getOsGaeaFullState(g.id);
                     const runningAtExit = !!(osFull && osFull.runningAtExit);
-                    if ((autoStart ?? g.defaultAutoStart) || runningAtExit) {
+                    if (intent || runningAtExit) {
                         const result = startGaeaProcess(portable.root, g.id, g.script, g.runtime, g.lifecycle, g.allowMultiple);
                         if (result.ok) {
                             console.log('[' + g.id + '] auto-started pid=' + result.pid + (result.alreadyRunning ? ' (already running)' : ''));
                         } else {
                             console.log('[' + g.id + '] auto-start failed:', result.error);
                         }
-                        // ★ 单例 goods: 启动看门狗，进程死亡自动拉起
-                        if (!g.allowMultiple) {
+                        // ★ 看门狗只服从最终意图(autoStart=true)（F118）:
+                        //   runningAtExit 会话恢复不武装看门狗 → 否则 toggle 灰 + ● 停止后仍被拉起
+                        if (!g.allowMultiple && intent) {
                             startGaeaWatchdog(portable.root, g.id, g.script, g.runtime, g.lifecycle);
                         }
                     }

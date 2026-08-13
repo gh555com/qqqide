@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// qqq-viewzone.js — ViewZone-based WYSIWYG media frame rendering
+// qqq-viewzone.js — ViewZone-based wysiwyg media frame rendering
 //
 // ★ 解决 "空气行" 问题：
 //   ContentWidget BELOW 虽然不消费行号，但 Monaco 的 layout 会把它跟模型行

@@ -345,10 +345,12 @@ function _shellOpenMenubarPopup(anchorEl, item) {
       gpToggle.appendChild(gpKnob);
 
       // ── 中间: 进程状态指示灯（独立按钮，可点击启停）──
+      // 描边: a版=box-shadow inset 0.5px 亚像素细线(当前); 想回 q 版改回 border:1px solid #000
       const gpDot = document.createElement('span');
       gpDot.title = '启停';
+      gpDot.className = 'gp-dot';
       gpDot.style.cssText =
-        'width:16px; height:16px; clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%); flex-shrink:0; ' +
+        'width:10px; height:10px; transform:rotate(45deg); box-shadow:inset 0 0 0 0.5px #000; flex-shrink:0; ' +
         'background:var(--border-color); transition:background 200ms; ' +
         'cursor:default;';
 
@@ -747,7 +749,7 @@ window._shHandleMenuCmd = function handleMenuCmd(cmd) {
     var it = document.querySelector('iframe[src*="q2-roam"]');
     console.log('[shell-menu] roam iframe:', !!it);
     if (it && it.contentWindow) { try { it.contentWindow.focus(); } catch (e) { } }
-    if (window.qqqideQoast) window.qqqideQoast.show('Roam activated', { type: 'info', duration: 2000 });
+    if (window.qqqideQoast) window.qqqideQoast.show('roam activated', { type: 'info', duration: 2000 });
     return;
   }
   if (cmd === 'roam.openInIde' || cmd === 'roam.openMedia' ||

@@ -1,18 +1,18 @@
 <!DOCTYPE html>
 
 <!-- Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved. -->
-<!-- goods/kmd/kmd-ui.html — Kmd 终端 UI（v1 行模式，分裂架构） -->
+<!-- goods/kmd/kmd-ui.html — kmd 终端 UI（v1 行模式，分裂架构） -->
 <!-- 招牌能力：键入行 = 原生 input → 点击任意位置移动光标（零成本） -->
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>Kmd</title>
+<title>kmd</title>
 <style>
-:root{--bg:#fdf6e3;--text:#595754;--border:#d3c6aa;--card:#eee8d5;--accent:#859900;--err:#dc322f;--dim:#93a1a1;--prompt:#268bd2}
-[data-theme="dark"]{--bg:#1e1e1e;--text:#dcd8d0;--border:#333;--card:#2a2a2a;--accent:#8fbc5a;--err:#ff4444;--dim:#6a6660;--prompt:#60a0d0}
+:root{--bg:#fdf6e3;--text:#595754;--border:#d3c6aa;--card:#eee8d5;--accent:#859900;--err:#dc322f;--dim:#93a1a1;--prompt:#268bd2;--ph:#586e75}
+[data-theme="dark"]{--bg:#1e1e1e;--text:#dcd8d0;--border:#333;--card:#2a2a2a;--accent:#8fbc5a;--err:#ff4444;--dim:#6a6660;--prompt:#60a0d0;--ph:#7a7670}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%}
-body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;color:var(--text);background:var(--bg);display:flex;flex-direction:column;overflow:hidden;user-select:text;-webkit-user-select:text}
+body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;color:var(--text);background:var(--bg);display:flex;flex-direction:column;overflow:hidden;user-select:text;-webkit-user-select:text;position:relative}
 /* 工具栏 */
 #bar{display:flex;gap:4px;padding:3px 8px;border-bottom:1px solid var(--border);background:var(--card);flex-shrink:0;align-items:center;flex-wrap:nowrap}
 #bar button{font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);font-family:inherit}
@@ -31,19 +31,40 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 /* 自定义即时 tooltip（零延迟弹出；native title 有延迟且样式不可控 → 弃用，登录 LV 同款模式） */
 #kmd-tip{position:fixed;z-index:99999;max-width:430px;padding:6px 10px;font-size:11px;line-height:1.55;color:var(--text);background:var(--card);border:1px solid var(--border);border-radius:4px;box-shadow:0 3px 12px rgba(0,0,0,.35);pointer-events:none;white-space:pre-line;display:none}
 #kmd-tip b{color:var(--accent)}
-/* 输出区 — 日志式渲染器（无 VT 网格）
-   ★ 2026-08-13: contenteditable="plaintext-only" 只读编辑器化——点击任意位置出闪烁光标（原生）、
-     Shift+左键选区、任意拖选复制；键盘拦截禁编辑（仅放行导航/选区/Ctrl+A/Ctrl+C） */
-#out{flex:1;overflow-y:auto;padding:6px 8px;line-height:1.45;white-space:pre-wrap;word-break:break-all;user-select:text;outline:none}
+/* 输出区 — 纯文本日志式渲染器（2026-08-13：行内 SGR 彩色 span 整体放弃，每行单一文本节点——
+   选中/复制/检索零干扰；ANSI 序列剥离；颜色降级为行级 class）
+   ★ contenteditable="plaintext-only" 只读编辑器化——点击任意位置出闪烁光标（原生）、
+     Shift+左键选区、任意拖选复制；键盘拦截禁编辑（仅放行导航/选区/Ctrl+A/Ctrl+C）
+   ★ .wrap hover 背景 = 命令召回行暗示（gitbash ❯ 回显行带 data-cmd），点击 ❯ 箭头填入键入行
+   ★ 双击 = 原生扩选单词 → selectionchange → 全局匹配高亮（editor 同款） */
+#out{flex:1;overflow-y:auto;padding:6px 8px;line-height:1.45;white-space:pre-wrap;word-break:break-all;user-select:text;outline:none;caret-color:var(--accent)}
 .line{min-height:1.45em;white-space:pre-wrap;word-break:break-all}
 .line.self{color:var(--prompt)}
 .line.err{color:var(--err)}
 .line.dim{color:var(--dim)}
 .line.wrap:hover{background:var(--border)}
-/* 键入行 — 真编辑器控件：点击任意位置移动光标（招牌能力） */
-#line-wrap{display:flex;align-items:center;border-top:1px solid var(--border);background:var(--card);padding:4px 8px;gap:6px;flex-shrink:0}
-#prompt{color:var(--accent);font-weight:700;white-space:nowrap;user-select:none;font-size:13px}
-#input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-family:inherit;font-size:13px;caret-color:var(--accent);padding:2px 0;min-width:0}
+.self-arrow{padding:0 2px}
+/* 键入行 — 真编辑器控件：点击任意位置移动光标（招牌能力）
+   ★ 2026-08-13: input → textarea（默认 3 行高 / 最大 8 行高 / 自动换行，长命令多行显示）
+   行高 1.45 与输出区一致：min-height=3行, max-height=8行（calc 固定，JS autoResize 读取 clamp） */
+#line-wrap{display:flex;align-items:flex-start;border-top:1px solid var(--border);background:var(--card);padding:4px 8px;gap:6px;flex-shrink:0}
+#prompt{color:var(--accent);font-weight:700;white-space:nowrap;user-select:none;font-size:13px;line-height:1.45;margin-top:3px}
+#input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-family:inherit;font-size:13px;line-height:1.45;caret-color:var(--accent);padding:2px 0;min-width:0;resize:none;overflow-y:hidden;min-height:calc(1.45em * 3 + 4px);max-height:calc(1.45em * 8 + 4px)}
+/* placeholder — 对齐 AI 聊天编辑框语义（solarized base01 + 半透明，弱于正文、可见于背景） */
+#input::placeholder{color:var(--ph);opacity:.5}
+[data-theme="dark"] #input::placeholder{opacity:.7}
+/* 选区颜色 — 对齐 X 区 editor（solarized 官方 editor.selectionBackground）：light #d6d6d6 / dark #274642 */
+::selection{background:#d6d6d6;color:#073642}
+[data-theme="dark"]::selection{background:#274642;color:#fdf6e3}
+/* Ctrl+F 查找条 — solar 配色浮动条（editor find widget 同款语义） */
+#find-bar{position:absolute;top:36px;right:8px;display:flex;align-items:center;gap:4px;padding:4px 6px;background:var(--card);border:1px solid var(--border);border-radius:4px;box-shadow:0 3px 12px rgba(0,0,0,.35);z-index:200;font-size:11px}
+#find-bar.hidden{display:none}
+#find-input{width:150px;background:var(--bg);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:inherit;font-size:11px;padding:2px 6px;outline:none}
+#find-input:focus{border-color:var(--accent)}
+#find-count{color:var(--dim);min-width:36px;text-align:center;font-size:10px}
+#find-bar button{font-size:11px;padding:1px 6px;border:1px solid var(--border);border-radius:3px;background:transparent;color:var(--text);font-family:inherit}
+#find-bar button:hover{background:var(--border)}
+#find-aa.active{color:var(--accent);border-color:var(--accent);font-weight:700}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
@@ -66,10 +87,18 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
   <span id="status">准备中…</span>
 </div>
 <div id="out" contenteditable="plaintext-only" spellcheck="false"></div>
+<div id="find-bar" class="hidden">
+  <input id="find-input" placeholder="查找（Enter 下一个 / Shift+Enter 上一个）" spellcheck="false">
+  <span id="find-count"></span>
+  <button id="find-aa" title="区分大小写">Aa</button>
+  <button id="find-prev" title="上一个（Shift+Enter）">↑</button>
+  <button id="find-next" title="下一个（Enter）">↓</button>
+  <button id="find-close" title="关闭（Esc）">✕</button>
+</div>
 <div id="line-wrap">
   <span id="prompt">❯</span>
-  <input id="input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-         placeholder="键入命令回车执行 · 点击键入行任意位置移动光标 · ↑↓ 历史">
+  <textarea id="input" rows="3" wrap="soft" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+         placeholder="键入命令回车执行 · 点击键入行任意位置移动光标 · ↑↓ 历史"></textarea>
 </div>
 <script>
 (function () {
@@ -96,6 +125,8 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     var running = false;
     var outBuf = ''; // 未完成行缓冲
     var curLine = null; // 流式行封行标记（null = 下一段无 \n 输出开新行）
+    var gbPrompt = 0;   // gitbash：OSC 标题（\x1b]0;）出现 = 提示符块开始 → 丢弃直到 $ 行（2026-08-13 提示符三行噪音根治）
+    var escPending = false; // cleanAnsi：未闭合 OSC 序列跨 chunk 状态
 
     // ── 主题（父窗口同步） ──
     try {
@@ -105,6 +136,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     window.addEventListener('message', function (e) {
         if (e.data && e.data.type === 'qqqide-theme-change') {
             document.documentElement.setAttribute('data-theme', e.data.dark ? 'dark' : 'light');
+            applyHlTheme();
         }
     });
 
@@ -130,7 +162,8 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             running = true;
             statusEl.textContent = '运行中 · ' + shellType;
         } else if (d.type === 'kmd:cd') {
-            // Roam 空区 x 键/右键：原地切目录（kill + 重 spawn，同 shell 切换模式）
+            // roam 空区 x 键/右键：原地切目录（kill + 重 spawn，同 shell 切换模式）
+            gbPrompt = 0;
             cwd = d.cwd || cwd;
             if (bridge && bridge.kmd && sessionId) {
                 bridge.kmd.kill(sessionId, { restart: false }).then(function () {
@@ -154,12 +187,13 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 
     // ── 会话启动 ──
     function start() {
+        gbPrompt = 0;
         if (!bridge || !bridge.kmd) {
             appendLine('err', '[错误] 无法访问主进程桥（bridge.kmd 不存在）');
             statusEl.textContent = '无桥';
             return;
         }
-        appendLine('dim', 'Kmd · 行模式终端 · ' + shellType + (cwd ? ' · ' + cwd : ''));
+        appendLine('dim', 'kmd · 行模式终端 · ' + shellType + (cwd ? ' · ' + cwd : ''));
         appendLine('dim', '键入行是原生编辑器控件 → 点击任意位置即可移动光标');
         bridge.kmd.spawn(sessionId, shellType, cwd).then(function (r) {
             if (r && r.ok) {
@@ -175,59 +209,46 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         });
     }
 
-    // ── 输出渲染（SGR 16 色子集 + 256 色近似） ──
-    var SGR_FG = { 30: '#595754', 31: '#dc322f', 32: '#859900', 33: '#b58900', 34: '#268bd2', 35: '#d33682', 36: '#2aa198', 37: '#eee8d5', 39: '' };
-    var SGR_FGB = { 90: '#a8a6a2', 91: '#ff5a4e', 92: '#b3cc33', 93: '#e0b800', 94: '#5aa7d8', 95: '#f070c0', 96: '#4fc4bc', 97: '#ffffff' };
-    var SGR_BG = { 40: '#002b36', 41: '#dc322f', 42: '#859900', 43: '#b58900', 44: '#268bd2', 45: '#d33682', 46: '#2aa198', 47: '#eee8d5', 49: '' };
-    var SGR_BGB = { 100: '#586e75', 101: '#a0503f', 102: '#7a8a3a', 103: '#8a7a2a', 104: '#3a6a8a', 105: '#8a3a6a', 106: '#3a7a6a', 107: '#fdf6e3' };
-
-    function esc(s) {
-        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // ── 输出渲染（2026-08-13 纯文本化） ──
+    // 行内 SGR 彩色 span 结构整体放弃 → 每行单一文本节点：
+    // ① 选中/拖选/复制零干扰（::selection solar 色直接生效，无需跨 span 拼选区）
+    // ② Ctrl+F 检索 = 每行一个文本节点，indexOf 映射简单可靠（跨行匹配自动切分）
+    // ③ ANSI 序列（CSI/OSC/单 ESC）全部剥离，不残留乱码控制符
+    // 颜色语义降级为行级 class：.err(红) / .self(蓝 ❯) / .dim(灰)
+    function stripAnsi(text) {
+        return String(text)
+            .replace(/\x1b\][^\x07]*\x07/g, '')     // OSC（bash 设标题等）
+            .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '') // CSI（SGR/光标控制等）
+            .replace(/\x1b[()][0-9A-B]/g, '')       // 字符集选择
+            .replace(/\x1b[=>]/g, '')               // 模式设置
+            .replace(/\x1b./g, '');                 // 其余单字符 ESC 序列
     }
 
-    // 解析 \x1b[...m 序列 → [{t, style}] 段数组；其他 CSI 序列直接剥离
-    // ── 流式渲染器（终端行模型） ──
-    // 无 \n 的输出 → 追加到最后一个流式行（提示符+命令拼接成一行，模拟真实终端）
-    // \n → 封行；\r → 覆盖当前行（进度条场景）
-    var curStyle = { color: '', bg: '', bold: false }; // SGR 状态跨 chunk 保持
-
-    function applySGR(codesStr) {
-        var codes = codesStr ? codesStr.split(';').map(Number) : [0];
-        for (var i = 0; i < codes.length; i++) {
-            var c = codes[i];
-            if (c === 0) curStyle = { color: '', bg: '', bold: false };
-            else if (c === 1) curStyle.bold = true;
-            else if (c === 22) curStyle.bold = false;
-            else if (c >= 30 && c <= 37) curStyle.color = SGR_FG[c] || '';
-            else if (c >= 90 && c <= 97) curStyle.color = SGR_FGB[c] || '';
-            else if (c >= 40 && c <= 47) curStyle.bg = SGR_BG[c] || '';
-            else if (c >= 100 && c <= 107) curStyle.bg = SGR_BGB[c] || '';
-            else if (c === 38 || c === 48) { // 256/truecolor：跳过参数
-                if (codes[i + 1] === 5) i += 2;
-                else if (codes[i + 1] === 2) i += 4;
-            }
+    // cleanAnsi：逐 chunk 剥离 ANSI，OSC 序列跨 chunk 未闭合时状态保持（bash 提示符标题可能被管道切碎）
+    function cleanAnsi(data) {
+        var s = String(data);
+        if (escPending) {
+            var te = s.search(/\x07|\x1b\\/);
+            if (te === -1) return '';
+            s = s.slice(te + (s.charCodeAt(te) === 0x1b ? 2 : 1));
+            escPending = false;
         }
+        var out = '', rest = s;
+        while (rest.length) {
+            var i = rest.indexOf('\x1b]');
+            if (i === -1) { out += rest; break; }
+            out += rest.slice(0, i);
+            var tail = rest.slice(i + 2);
+            var t2 = tail.search(/\x07|\x1b\\/);
+            if (t2 === -1) { escPending = true; break; }
+            rest = tail.slice(t2 + (tail.charCodeAt(t2) === 0x1b ? 2 : 1));
+        }
+        return stripAnsi(out);
     }
 
-    function styledSpan(text, style) {
-        if (!text) return '';
-        var st = '';
-        if (style.bold) st += 'font-weight:bold;';
-        if (style.color) st += 'color:' + style.color + ';';
-        if (style.bg) st += 'background:' + style.bg + ';';
-        return st ? '<span style="' + st + '">' + esc(text) + '</span>' : esc(text);
-    }
-
-    // 解析片段并渲染到 el（维护 curStyle 跨片段状态）
+    // 解析片段并渲染到 el（纯文本追加，零 span）
     function segInto(el, text) {
-        var re = /\x1b\[([0-9;]*)m/g;
-        var last = 0, m;
-        while ((m = re.exec(text))) {
-            if (m.index > last) el.insertAdjacentHTML('beforeend', styledSpan(text.slice(last, m.index), curStyle));
-            last = m.index + m[0].length;
-            applySGR(m[1]);
-        }
-        if (last < text.length) el.insertAdjacentHTML('beforeend', styledSpan(text.slice(last), curStyle));
+        if (text) el.appendChild(document.createTextNode(text));
     }
 
     // gitbash 行过滤（2026-08-13）：bash 无 TTY 交互模式把提示符/回显/警告全写 stderr →
@@ -240,7 +261,13 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         if (!t) return false;
         if (t.indexOf('cannot set terminal process group') !== -1) return true;
         if (t.indexOf('no job control in this shell') !== -1) return true;
-        if (t === lastSentCmd) return true;
+        if (t === lastSentCmd) { if (gbPrompt) gbPrompt = 0; return true; }
+        // ★ 提示符块（2026-08-13）：MSYS bash 默认 PS1 恒以 OSC 标题 \x1b]0; 前导（appendOut 检测置位），
+        //   随后是彩色 PS1 行 + $ 行——全部丢弃只留 UI 蓝色 ❯ 行（每回车一行，提示符噪音归零）
+        if (gbPrompt) {
+            if (/^(\([^)]*\)\s*)?[#$]$/.test(t)) gbPrompt = 0;
+            return true;
+        }
         return false;
     }
 
@@ -275,7 +302,11 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 
     // 流式输出入口：\n 封行、\r 覆盖、无 \n 追加当前行
     function appendOut(stream, data) {
-        outBuf += String(data || '');
+        var raw = String(data || '');
+        // gitbash err 流出现 OSC 标题 = 提示符块开始（MSYS bash 每次提示前必写窗口标题）
+        if (shellType === 'gitbash' && stream === 'err' && raw.indexOf('\x1b]') !== -1) gbPrompt = 1;
+        raw = cleanAnsi(raw);
+        outBuf += raw;
         while (true) {
             var idx = outBuf.indexOf('\n');
             if (idx === -1) break;
@@ -313,19 +344,15 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         curLine = null;
         var el = document.createElement('div');
         el.className = 'line ui' + (kind === 'err' ? ' err' : kind === 'dim' ? ' dim' : kind === 'self' ? ' self' : '') + (dataCmd ? ' wrap' : '');
-        if (dataCmd) el.dataset.cmd = dataCmd;
-        var saved = curStyle;
-        curStyle = { color: '', bg: '', bold: false };
-        var html = '';
-        var re = /\x1b\[([0-9;]*)m/g;
-        var last = 0, m;
-        while ((m = re.exec(String(text)))) {
-            if (m.index > last) html += styledSpan(String(text).slice(last, m.index), curStyle);
-            last = m.index + m[0].length;
+        if (dataCmd) {
+            // ❯ 箭头独立 span（点击召回目标）——双击/拖选让位原生选区，召回不再劫持文本
+            var arrow = document.createElement('span');
+            arrow.className = 'self-arrow';
+            arrow.dataset.cmd = dataCmd;
+            arrow.textContent = '❯ ';
+            el.appendChild(arrow);
         }
-        if (last < String(text).length) html += styledSpan(String(text).slice(last), curStyle);
-        curStyle = saved;
-        el.innerHTML = html || '&nbsp;';
+        el.appendChild(document.createTextNode(stripAnsi(text)));
         outEl.appendChild(el);
         lineCount++;
         trimLines();
@@ -337,6 +364,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         lineCount = 0;
         outBuf = '';
         curLine = null;
+        if (hasHighlightAPI()) CSS.highlights.delete('kmd-sel-hits');
     }
 
     // 滚动暂停跟随（用户上滚看历史 → 停止自动滚动）
@@ -345,22 +373,16 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     });
 
     // ── 输出区 = 只读编辑器（contenteditable plaintext-only） ──
-    // 单击 → 浏览器原生放光标（闪烁）+ 拖选/Shift 选区/复制；
-    // 双击 → 命令召回（旧单击召回与放光标冲突，2026-08-13 改双击，只填不执行）
-    outEl.addEventListener('dblclick', function (e) {
-        e.preventDefault(); // 拦原生双击选词
-        var ln = e.target && e.target.closest ? e.target.closest('.line') : null;
-        if (!ln) return;
-        var cmd = ln.dataset ? ln.dataset.cmd : null;
-        if (!cmd) {
-            var m = /^.*[>❯]\s?(.+)$/.exec(ln.textContent || '');
-            if (m) cmd = m[1];
-        }
-        if (cmd) {
-            inputEl.value = cmd;
-            inputEl.focus();
-            setCaretEnd();
-        }
+    // 单击 → 浏览器原生放光标（闪烁）+ 拖选/Shift 选区/复制；双击 → 原生扩选单词
+    //   （selectionchange → 全局匹配高亮，editor 同款）
+    // 命令召回：点击 ❯ 箭头（.self-arrow）→ 填入键入行（只填不执行；旧双击召回让位选词）
+    outEl.addEventListener('click', function (e) {
+        var ar = e.target && e.target.closest ? e.target.closest('.self-arrow') : null;
+        if (!ar || !ar.dataset || !ar.dataset.cmd) return;
+        inputEl.value = ar.dataset.cmd;
+        autoResize();
+        inputEl.focus();
+        setCaretEnd();
     });
 
     // 键盘只读拦截：放行导航（方向/Home/End/PageUp/PageDown，含 Shift 选区）、Ctrl+A/Ctrl+C；
@@ -401,11 +423,22 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     }
 
     // ── 键入行（真编辑器控件：点击定位光标为浏览器原生能力） ──
+    // textarea 高度自适应：内容 1→8 行自动增高，超 8 行滚动；提交/历史填充/清空后重置
+    function autoResize() {
+        inputEl.style.height = 'auto';
+        var h = inputEl.scrollHeight;
+        var maxH = parseFloat(getComputedStyle(inputEl).maxHeight) || 200;
+        inputEl.style.height = Math.min(h, maxH) + 'px';
+        inputEl.style.overflowY = h > maxH ? 'auto' : 'hidden';
+    }
+    inputEl.addEventListener('input', autoResize);
+
     inputEl.addEventListener('keydown', function (e) {
         if (e.key === 'Enter') {
             e.preventDefault();
             var v = inputEl.value;
             inputEl.value = '';
+            autoResize();
             if (v.trim()) {
                 history.push(v);
                 histIdx = history.length;
@@ -416,6 +449,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
                 e.preventDefault();
                 histIdx = Math.max(0, histIdx - 1);
                 inputEl.value = history[histIdx] || '';
+                autoResize();
                 setCaretEnd();
             }
         } else if (e.key === 'ArrowDown') {
@@ -423,6 +457,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
                 e.preventDefault();
                 histIdx = Math.min(history.length, histIdx + 1);
                 inputEl.value = histIdx >= history.length ? '' : (history[histIdx] || '');
+                autoResize();
                 setCaretEnd();
             }
         } else if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
@@ -444,7 +479,8 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         // → UI 蓝色 ❯ 行（带 data-cmd 召回）+ bash 回显去重（shouldSkipGitBashLine 按 lastSentCmd 丢弃）
         if (shellType === 'gitbash') {
             lastSentCmd = v.trim();
-            appendLine('self', '❯ ' + v, v);
+            gbPrompt = 0;
+            appendLine('self', v, v); // ❯ 由 .self-arrow span 渲染（点击召回）
         }
         if (bridge && bridge.kmd) {
             bridge.kmd.write(sessionId, v + '\n').catch(function (err) {
@@ -464,6 +500,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 
     function switchShell(t) {
         if (t === shellType || !sessionId) return;
+        gbPrompt = 0;
         setShellUI(t);
         if (bridge && bridge.kmd) {
             bridge.kmd.kill(sessionId, { restart: false }).then(function () {
@@ -542,12 +579,211 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         inputEl.focus();
     });
 
+    // ── Ctrl+F 全文检索高亮（editor 那一套：全文匹配高亮 + 导航 + 选区自动填入） ──
+    // 实现: CSS Custom Highlight API（Chromium 105+，Electron 22=108 原生）——不改 DOM，contenteditable 安全；
+    // 高亮颜色由 JS 注入 <style>（::highlight 内不依赖 var()/属性前缀，主题切换 100% 可控）
+    var findOpen = false, findQuery = '', findRanges = [], findIdx = 0, findRecomputeTimer = null;
+    var caseSensitive = false;
+    var findBar = document.getElementById('find-bar');
+    var findInput = document.getElementById('find-input');
+    var findCount = document.getElementById('find-count');
+    var findAa = document.getElementById('find-aa');
+    var hlStyle = document.createElement('style');
+    hlStyle.id = 'kmd-hl-style';
+    document.head.appendChild(hlStyle);
+
+    function applyHlTheme() {
+        var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        hlStyle.textContent = dark
+            ? '::highlight(kmd-find-all){background:#4a4412;color:#fdf6e3}::highlight(kmd-find-cur){background:#b58900;color:#1e1e1e}::highlight(kmd-sel-hits){background:#35412b}'
+            : '::highlight(kmd-find-all){background:#ffe792;color:#073642}::highlight(kmd-find-cur){background:#b58900;color:#fdf6e3}::highlight(kmd-sel-hits){background:#e2e8b5}';
+    }
+    applyHlTheme();
+
+    function hasHighlightAPI() { return !!(window.CSS && CSS.highlights && window.Highlight); }
+
+    function setHighlights(ranges, curRange) {
+        if (!hasHighlightAPI()) return;
+        CSS.highlights.delete('kmd-find-all');
+        CSS.highlights.delete('kmd-find-cur');
+        if (!ranges || !ranges.length) return;
+        var hl = new Highlight();
+        for (var i = 0; i < ranges.length; i++) hl.add(ranges[i]);
+        CSS.highlights.set('kmd-find-all', hl);
+        if (curRange) {
+            var hc = new Highlight();
+            hc.add(curRange);
+            CSS.highlights.set('kmd-find-cur', hc);
+        }
+    }
+
+    // 全文 indexOf → 映射回文本节点 Range 数组（跨 SGR span 匹配自动切分，行内彩色 span 安全）
+    function findAllRanges(q, cs) {
+        if (!q) return []; // ★ 空查询守卫：indexOf('', pos) 恒返回 pos → 死循环（2026-08-13 回归测试暴露）
+        var nodes = [], walker = document.createTreeWalker(outEl, NodeFilter.SHOW_TEXT);
+        var n, total = '', starts = [];
+        while ((n = walker.nextNode())) {
+            if (!n.nodeValue) continue;
+            nodes.push(n); // ★ 2026-08-13 F39 漏写实锤：节点从未收集 → 检索恒空（Ctrl+F 外壳根因）
+            starts.push(total.length);
+            total += n.nodeValue;
+            total += '\n'; // ★ 行分隔符：DOM 文本拼接不含换行，跨行查询（含 \n）必须能匹配（2026-08-13 纯文本化配套）
+        }
+        if (!total) return [];
+        var cs2 = (cs === undefined) ? caseSensitive : cs; // 选区高亮 = 精确大小写（editor 同款语义）
+        var hay = cs2 ? total : total.toLowerCase();
+        var needle = cs2 ? q : q.toLowerCase();
+        var out = [], pos = 0, nodeIdx = 0, ql = needle.length;
+        while (nodeIdx < nodes.length && (pos = hay.indexOf(needle, pos)) !== -1) {
+            var end = pos + ql, p = pos;
+            while (p < end) {
+                while (nodeIdx < nodes.length - 1 && starts[nodeIdx + 1] <= p) nodeIdx++;
+                var nodeEnd = starts[nodeIdx] + nodes[nodeIdx].nodeValue.length;
+                if (p >= nodeEnd) { nodeIdx++; continue; } // 命中行分隔符 → 推进下一节点（防零长段死循环）
+                var segEnd = Math.min(end, nodeEnd);
+                var startOff = Math.max(0, p - starts[nodeIdx]); // 分隔符吞并：p 落在合成分隔符位 → 段起点归零（负偏移会毁 Range）
+                var r = document.createRange();
+                r.setStart(nodes[nodeIdx], startOff);
+                r.setEnd(nodes[nodeIdx], segEnd - starts[nodeIdx]);
+                out.push(r);
+                p = segEnd;
+            }
+            pos = end;
+        }
+        return out;
+    }
+
+    function updateFind(resetIdx, doScroll) {
+        findQuery = findInput.value;
+        findRanges = findQuery ? findAllRanges(findQuery) : [];
+        if (resetIdx || findIdx >= findRanges.length) findIdx = findRanges.length ? 0 : 0;
+        setHighlights(findRanges, findRanges.length ? findRanges[findIdx] : null);
+        findCount.textContent = findRanges.length ? (findIdx + 1) + '/' + findRanges.length : '0/0';
+        if (doScroll && findRanges.length) scrollToRange(findRanges[findIdx]);
+    }
+
+    function scrollToRange(r) {
+        var rect;
+        try { rect = r.getBoundingClientRect(); } catch (_) { return; }
+        if (!rect || (!rect.width && !rect.height)) return;
+        var or = outEl.getBoundingClientRect();
+        if (rect.top < or.top || rect.bottom > or.bottom) {
+            outEl.scrollTop += (rect.top - or.top) - outEl.clientHeight / 2;
+        }
+    }
+
+    function openFind(prefill) {
+        findOpen = true;
+        findBar.classList.remove('hidden');
+        if (prefill) {
+            var t = '';
+            try {
+                var sel = window.getSelection();
+                if (sel && sel.rangeCount) t = sel.toString().trim();
+                if (!t && sel && sel.anchorNode && sel.anchorNode.nodeType === 3) {
+                    var v = sel.anchorNode.nodeValue || '', o = sel.anchorOffset;
+                    var bm = /[\w\u4e00-\u9fa5./\-_]+$/.exec(v.slice(0, o));
+                    var am = /^[\w\u4e00-\u9fa5./\-_]+/.exec(v.slice(o));
+                    t = (bm ? bm[0] : '') + (am ? am[0] : '');
+                }
+            } catch (_) { }
+            if (!t) {
+                var s = inputEl.selectionStart, en = inputEl.selectionEnd;
+                if (s != null && en != null && en > s) t = inputEl.value.slice(s, en).trim();
+            }
+            findInput.value = t;
+        }
+        findInput.focus();
+        try { findInput.select(); } catch (_) { }
+        updateFind(true, true);
+    }
+
+    function closeFind() {
+        findOpen = false;
+        findBar.classList.add('hidden');
+        setHighlights(null, null);
+        findInput.value = '';
+        findCount.textContent = '';
+        inputEl.focus();
+    }
+
+    function findStep(delta) {
+        if (!findOpen || !findRanges.length) return;
+        findIdx = (findIdx + delta + findRanges.length) % findRanges.length;
+        setHighlights(findRanges, findRanges[findIdx]);
+        findCount.textContent = (findIdx + 1) + '/' + findRanges.length;
+        scrollToRange(findRanges[findIdx]);
+    }
+
+    findInput.addEventListener('input', function () { updateFind(true, true); });
+    findInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); findStep(e.shiftKey ? -1 : 1); }
+        else if (e.key === 'Escape') { e.preventDefault(); closeFind(); }
+    });
+    document.getElementById('find-next').addEventListener('click', function () { findStep(1); });
+    document.getElementById('find-prev').addEventListener('click', function () { findStep(-1); });
+    document.getElementById('find-close').addEventListener('click', closeFind);
+    findAa.addEventListener('click', function () {
+        caseSensitive = !caseSensitive;
+        findAa.classList.toggle('active', caseSensitive);
+        updateFind(true, true);
+    });
+
+    // 全局 Ctrl+F / F3（capture 阶段拦截——焦点在输出区/键入行/任意处均生效，阻止 Electron 原生 find bar）
+    document.addEventListener('keydown', function (e) {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+            e.preventDefault();
+            e.stopPropagation();
+            openFind(true);
+        } else if (e.key === 'F3') {
+            if (findOpen) { e.preventDefault(); findStep(e.shiftKey ? -1 : 1); }
+        }
+    }, true);
+
+    // 输出流式追加/清屏 → 防抖 120ms 重算（保 idx 不跳动；不主动滚动，让位输出流）
+    var findObserver = new MutationObserver(function () {
+        if (findRecomputeTimer) clearTimeout(findRecomputeTimer);
+        findRecomputeTimer = setTimeout(function () {
+            findRecomputeTimer = null;
+            if (findOpen) updateFind(false, false);
+            if (selHlRanges.length) updateSelHl(); // 流式追加后选区高亮坐标已失效 → 重算
+        }, 120);
+    });
+    findObserver.observe(outEl, { childList: true, subtree: true, characterData: true });
+
+    // ── 选区全局匹配高亮（editor 同款：框选/双击单词 → 全文同串高亮） ──
+    // 独立 Highlight 集 kmd-sel-hits，与 Ctrl+F 的 kmd-find-* 互不干扰；精确大小写匹配
+    var selHlRanges = [], selHlTimer = null;
+    function updateSelHl() {
+        if (!hasHighlightAPI()) return;
+        var txt = '';
+        try {
+            var sel = window.getSelection();
+            if (sel && sel.rangeCount && !sel.isCollapsed) {
+                var r = sel.getRangeAt(0);
+                if (outEl.contains(r.commonAncestorContainer)) txt = sel.toString();
+            }
+        } catch (_) { }
+        txt = txt.trim();
+        selHlRanges = (txt && txt.length <= 500) ? findAllRanges(txt, true) : [];
+        CSS.highlights.delete('kmd-sel-hits');
+        if (selHlRanges.length) {
+            var hl = new Highlight();
+            for (var i = 0; i < selHlRanges.length; i++) hl.add(selHlRanges[i]);
+            CSS.highlights.set('kmd-sel-hits', hl);
+        }
+    }
+    document.addEventListener('selectionchange', function () {
+        if (selHlTimer) clearTimeout(selHlTimer);
+        selHlTimer = setTimeout(updateSelHl, 250); // 拖选防抖；双击扩选（原生）→ 同一路径
+    });
+
     // 首次聚焦
     inputEl.focus();
 })();
 </script>
-<!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 Roam（同 ai-panel/conv-ui 模式：iframe 内按键不冒泡父窗口）
-     编辑态 = 焦点在 #input（终端键入框，Tab/F2 保留终端语义）；输出区/工具栏/空白处 → 召回 Roam -->
+<!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 roam（同 ai-panel/conv-ui 模式：iframe 内按键不冒泡父窗口）
+     编辑态 = 焦点在 #input（终端键入框，Tab/F2 保留终端语义）；输出区/工具栏/空白处 → 召回 roam -->
 <script>
 (function () {
   document.addEventListener('keydown', function (e) {

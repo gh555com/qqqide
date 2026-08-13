@@ -25,92 +25,9 @@
   let projects = []; // [{path, name}]
   let container = null;
   let activeDropdown = null; // currently visible dropdown element
-
-// ★ 豆腐块色系系统（2026-08-13）：豆腐块进入 AI 视口时随机指定一次色系，
-//   窗口生命周期内永久绑定（内存 Map）；相邻豆腐块色系互不相同；
-//   每个展开层级在同一色系内随机取色，同样在进入视口时一次性算好固定。
-var AIV_SCHEMES = [
-  { name: 'rose',   family: ['#fdf4f5', '#fbe8eb', '#f8d9de', '#f4c5cd', '#eeaab6'] },
-  { name: 'peach',  family: ['#fef7f0', '#fdead8', '#fbdcba', '#f7c797', '#f0ab73'] },
-  { name: 'butter', family: ['#fefbe9', '#fdf5c4', '#faeb9a', '#f5de72', '#eccb50'] },
-  { name: 'mint',   family: ['#f1faf3', '#dff4e5', '#caead5', '#afddbf', '#90cc9f'] },
-  { name: 'sky',    family: ['#f1f8fd', '#deeff9', '#c8e3f5', '#abd3ed', '#89bde1'] },
-  { name: 'lilac',  family: ['#f9f5fd', '#efe5f8', '#e1d1f1', '#d0b9e7', '#ba9dd9'] }
-];
-var _tileSchemes = new Map(); // path → { schemeIdx, levels: [[c0..c4] ×5] }
-
-function _shuffleArr(arr) {
-  var a = arr.slice();
-  for (var i = a.length - 1; i > 0; i--) {
-    var j = Math.floor(Math.random() * (i + 1));
-    var t = a[i]; a[i] = a[j]; a[j] = t;
-  }
-  return a;
-}
-
-function _buildLevels(schemeIdx) {
-  var levels = [];
-  for (var L = 0; L < 5; L++) {
-    var fam = _shuffleArr(AIV_SCHEMES[schemeIdx].family).slice(0, 4);
-    fam.push(fam[0]); // 渐变首尾同色平滑回环
-    levels.push(fam);
-  }
-  return levels;
-}
-
-function _pickSchemeIdx(excludeIdx) {
-  var pool = [];
-  for (var k = 0; k < AIV_SCHEMES.length; k++) if (k !== excludeIdx) pool.push(k);
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-// 顺序分配：每个豆腐块避开左邻色系 → 相邻必不同；已绑定块保持不动；
-// 结构变化（移除块）后相邻撞色 → 仅重掷后块一次
-function _assignTileSchemes() {
-  var keep = {};
-  for (var i = 0; i < projects.length; i++) keep[projects[i].path] = true;
-  _tileSchemes.forEach(function (v, k) { if (!keep[k]) _tileSchemes.delete(k); });
-  for (var m = 0; m < projects.length; m++) {
-    var p = projects[m];
-    if (_tileSchemes.has(p.path)) continue;
-    var leftIdx = (m > 0 && _tileSchemes.has(projects[m - 1].path)) ? _tileSchemes.get(projects[m - 1].path).schemeIdx : -1;
-    var idx = leftIdx < 0 ? Math.floor(Math.random() * AIV_SCHEMES.length) : _pickSchemeIdx(leftIdx);
-    _tileSchemes.set(p.path, { schemeIdx: idx, levels: _buildLevels(idx) });
-  }
-  for (var j = 1; j < projects.length; j++) {
-    var cur = _tileSchemes.get(projects[j].path);
-    var pre = _tileSchemes.get(projects[j - 1].path);
-    if (cur && pre && cur.schemeIdx === pre.schemeIdx) {
-      var nIdx = _pickSchemeIdx(pre.schemeIdx);
-      _tileSchemes.set(projects[j].path, { schemeIdx: nIdx, levels: _buildLevels(nIdx) });
-    }
-  }
-}
-
-function _applySchemeColors(el, colors) {
-  el.style.setProperty('--aiv-c0', colors[0]);
-  el.style.setProperty('--aiv-c1', colors[1]);
-  el.style.setProperty('--aiv-c2', colors[2]);
-  el.style.setProperty('--aiv-c3', colors[3]);
-  el.style.setProperty('--aiv-c4', colors[4]);
-}
-
-function _schemeFor(path) {
-  var s = _tileSchemes.get(path);
-  if (s) return s;
-  var idx = Math.floor(Math.random() * AIV_SCHEMES.length);
-  s = { schemeIdx: idx, levels: _buildLevels(idx) };
-  _tileSchemes.set(path, s);
-  return s;
-}
-
-// recent 下拉等非豆腐块场景：每次展开随机一套
-function _randomFreshLevel() {
-  return _buildLevels(Math.floor(Math.random() * AIV_SCHEMES.length))[0];
-}
   let activeSubmenus = [];   // all open submenu elements
 
-  // ── Git 未提交计数 badge ──
+  // ── git 未提交计数 badge ──
   var _gitBadgeCache = {};       // path → { count, error }
   var _gitBadgeEls = {};         // path → badge DOM element (direct reference)
   var _gitBadgeTimer = null;
@@ -1093,7 +1010,7 @@ function _randomFreshLevel() {
     _feedToAiPanel(filePath, isDir, null);
   }
 
-  // ---- 滚动容器包装：外层不滚 + 自定义变形滚动条（照抄 q3 Roam）----
+  // ---- 滚动容器包装：外层不滚 + 自定义变形滚动条（照抄 q3 roam）----
   function _wrapScrollContainer(outer, depth) {
     // 外层禁止滚动（覆盖 CSS !important）
     outer.style.setProperty('overflow-y', 'hidden', 'important');
@@ -1115,7 +1032,7 @@ function _randomFreshLevel() {
     // ★ 自定义变形滚动条（滑轨锚定在外层，同步内层滚动）
     var sbOuter = document.createElement('div');
     sbOuter.className = 'qh-scroll-track';
-    sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:50; pointer-events:none; background:rgba(0,0,0,0.08);';
+    sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:50; pointer-events:none; background:var(--base2);';
     var sbThumb = document.createElement('div');
     sbThumb.className = 'qh-scroll-thumb';
     function _qhCol() {
@@ -1231,9 +1148,7 @@ function _randomFreshLevel() {
     const rect = blockEl.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return;
     const dd = document.createElement('div');
-    dd.className = 'aiv-dropdown aiv-scheme';
-    dd._scheme = _schemeFor(project.path);
-    _applySchemeColors(dd, dd._scheme.levels[0]);
+    dd.className = 'aiv-dropdown';
     dd._depth = 1;
     const topPx = rect.bottom;
     dd.style.cssText =
@@ -1559,13 +1474,7 @@ function _randomFreshLevel() {
   function openSubmenu(rowEl, dirPath, depth, projectRoot) {
     if (!rowEl.isConnected) return null;
     const sub = document.createElement('div');
-    // 子菜单继承根下拉的色系（同树同色系，层级内随机取色，进入视口时已固定）
-    sub.className = 'aiv-submenu aiv-scheme';
-    if (activeDropdown && activeDropdown._scheme) {
-      _applySchemeColors(sub, activeDropdown._scheme.levels[Math.min((depth || 1) - 1, activeDropdown._scheme.levels.length - 1)]);
-    } else {
-      _applySchemeColors(sub, _randomFreshLevel());
-    }
+    sub.className = 'aiv-submenu';
     sub._depth = depth || 1;
     const rect = rowEl.getBoundingClientRect();
     const rootTop = activeDropdown ? activeDropdown.getBoundingClientRect().top : rect.top;
@@ -1592,10 +1501,12 @@ function _randomFreshLevel() {
       }
     }
     sub._direction = goRight;
-    // 背景色交替：右跳主色，左跳辅色（仅暗色主题保留方向区分；亮色主题走马卡龙流线背景）
+    // 背景色按层级两色交错：第1层=黄(f0e9a0, dropdown CSS)，子菜单 depth 偶数=e7e4c2 / 奇数=f0e9a0；暗主题保持方向成对
     var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     if (isDark) {
       sub.style.setProperty('background', goRight ? '#1e211e' : '#232a23', 'important');
+    } else {
+      sub.style.setProperty('background', ((depth || 1) % 2 === 0) ? '#e7e4c2' : '#f0e9a0', 'important');
     }
     // 定位：右跳贴父容器右边缘，左跳用 CSS right 贴父容器左边缘（消除 estW≠实际宽度造成的空隙）
     if (goRight) {
@@ -1648,7 +1559,6 @@ function _randomFreshLevel() {
     if (!container) return;
     container.innerHTML = '';
     _dedupProjects(); // ★ 兜底：渲染前强制去重，防异步竞态导入重复项目
-    _assignTileSchemes(); // ★ 豆腐块色系：进入视口时随机一次，窗口生命周期内绑定
 
     // each existing project → solid block
     projects.forEach((proj, idx) => {
@@ -1695,7 +1605,7 @@ function _randomFreshLevel() {
     block.appendChild(icon);
     block.appendChild(name);
 
-    // Git uncommitted badge
+    // git uncommitted badge
     var badge = document.createElement('span');
     badge.className = 'aiv-git-badge';
     badge.style.display = 'none';
@@ -1782,7 +1692,6 @@ function _randomFreshLevel() {
 
     var dd = document.createElement('div');
     dd.className = 'aiv-dropdown aiv-recent-dropdown';
-    _applySchemeColors(dd, _randomFreshLevel());
     dd.style.cssText =
       'position:fixed; z-index:99999; ' +
       'left:' + rect.left + 'px; top:' + topPx + 'px; ' +
@@ -1978,7 +1887,7 @@ function _randomFreshLevel() {
       });
     }
 
-    // ★ Git badge 轮询
+    // ★ git badge 轮询
     _startGitBadgePolling();
     // Escape 键关闭（任何情况下都可操作）
     document.addEventListener('keydown', function (e) {

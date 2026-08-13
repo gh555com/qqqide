@@ -210,11 +210,13 @@ function _writeOsState(goodsId: string, state: OsGaeaState): void {
 /** 同步 autoStart 到 OS 级状态文件（跨绿色包可见） */
 export function syncOsGaeaAutoStart(goodsId: string, autoStart: boolean): void {
     // ★ 状态不存在也创建，保证 toggle 切换跨绿色包立即可见
-    // ★ 本进程在跑 → 写真实 PID（防 pid=0 占位导致远端短暂灰 ≤10s，F22 边界项）
+    // ★ 只写真实存活的 PID：注册表占位 PID 可能已死，写死 PID 会让远端检测误判（F118 修复）
     // ★ 2026-08-09: 保留 runningAtExit 记忆（不因 toggle 而丢）
     const state = _readOsState(goodsId);
     const entry = _registry.get(goodsId);
-    const pid = (entry && entry.pid) ? entry.pid : (state ? state.pid : 0);
+    let pid = 0;
+    if (entry && entry.pid && _isPidAlive(entry.pid)) pid = entry.pid;
+    else if (state && _isPidAlive(state.pid)) pid = state.pid;
     _writeOsState(goodsId, { pid, autoStart, runningAtExit: state ? !!state.runningAtExit : false, ts: Date.now() });
 }
 
@@ -245,12 +247,26 @@ function _checkOsState(goodsId: string): { running: boolean; pid?: number } {
 
 /** 启动 OS 级心跳：每 10s 刷新 ts，保活 */
 function _startOsHeartbeat(goodsId: string, pid: number, autoStart: boolean): NodeJS.Timeout {
-    _writeOsState(goodsId, { pid, autoStart, runningAtExit: false, ts: Date.now() });
+    // ★ 最终意图铁律：心跳永远不覆写盘上 autoStart（唯一例外：文件完全不存在时用闭包值）
+    //   （旧代码 PID 不匹配分支用内存闭包旧值重写 → 多窗口时把用户刚设的 true 打成 false，F118）
+    const cur0 = _readOsState(goodsId);
+    _writeOsState(goodsId, {
+        pid,
+        autoStart: cur0 ? cur0.autoStart : autoStart,
+        runningAtExit: cur0 ? !!cur0.runningAtExit : false,
+        ts: Date.now(),
+    });
     const timer = setInterval(() => {
         const current = _readOsState(goodsId);
         // ★ 状态文件丢失或被其他进程污染（PID 不匹配）→ 主动重写，不自杀
+        //   重写也必须保留盘上 autoStart（最终意图），禁止用闭包旧值覆写
         if (!current || current.pid !== pid) {
-            _writeOsState(goodsId, { pid, autoStart, runningAtExit: false, ts: Date.now() });
+            _writeOsState(goodsId, {
+                pid,
+                autoStart: current ? current.autoStart : autoStart,
+                runningAtExit: current ? !!current.runningAtExit : false,
+                ts: Date.now(),
+            });
             return;
         }
         _writeOsState(goodsId, { pid, autoStart: current.autoStart, runningAtExit: !!current.runningAtExit, ts: Date.now() });
@@ -672,6 +688,11 @@ export function startGaeaProcess(
 export function stopGaeaProcess(goodsId: string, rememberExitState = true): { ok: boolean; error?: string } {
     // ★ 用户主动停止 → 清除单例冲突标记
     _singletonConflicts.delete(goodsId);
+    // ★ 最终意图为关（autoStart=false）→ 本地看门狗立即卸下，停止后不再被拉起
+    //   （跨窗口残留看门狗 ≤5s 自行自卸，见 startGaeaWatchdog 最终意图门）
+    if (getOsGaeaAutoStart(goodsId) === false) {
+        stopGaeaWatchdog(goodsId);
+    }
     const entry = _registry.get(goodsId);
 
     // ★ 路径 A: 内存里有活跃 proc → 直接杀
@@ -821,8 +842,13 @@ export function cleanupAllGaeaProcesses(): void {
                 continue;
             }
             console.log('[gaea-process] cleanupAll brute-force: ' + gid);
-            // ★ 未注册但仍在跑的 attached goods → 记会话恢复（2026-08-09）
-            if (gid === 'window-there') _rewriteOsState(gid, { pid: 0, runningAtExit: true });
+            // ★ 会话恢复标记仅在进程真实运行中时写入（F118）:
+            //   已手动停止/从未启动 → 绝不标记，否则下次启动又把进程拉回来
+            const osState = _readOsState(gid);
+            const wasRunning = !!(osState && osState.pid > 0 && _isPidAlive(osState.pid));
+            if (gid === 'window-there' && wasRunning) {
+                _rewriteOsState(gid, { pid: 0, runningAtExit: true });
+            }
             try { stopGaeaProcess(gid, false); } catch { /* ignore */ }
         }
     }
@@ -864,6 +890,14 @@ export function startGaeaWatchdog(
     stopGaeaWatchdog(goodsId);
 
     const timer = setInterval(() => {
+        // ★ 最终意图门（F118）: 任一窗口最后一次人工操作把 autoStart 设为 false
+        //   → 本看门狗立即自卸，绝不违逆用户意图反复拉活（旧代码：● 永远关不掉）
+        const osAuto = getOsGaeaAutoStart(goodsId);
+        if (osAuto === false) {
+            console.log('[watchdog:' + goodsId + '] final intent autoStart=false — self-disarm');
+            stopGaeaWatchdog(goodsId);
+            return;
+        }
         // ★ 单例冲突冷却中 → 不重试（30s 冷却防频闪）
         const conflictTs = _singletonConflicts.get(goodsId);
         if (conflictTs && (Date.now() - conflictTs) < SINGLETON_CONFLICT_COOLDOWN_MS) {

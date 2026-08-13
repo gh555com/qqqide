@@ -340,7 +340,7 @@ function removeFromIndex(idx: Bm25Index, filePath: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// BM25 Search
+// BM25 search
 // ---------------------------------------------------------------------------
 
 function bm25Idf(idx: Bm25Index, term: string): number {
@@ -417,7 +417,7 @@ function bm25Search(idx: Bm25Index, query: string, topK: number): SearchResult[]
 }
 
 // ---------------------------------------------------------------------------
-// Symbol Search
+// Symbol search
 // ---------------------------------------------------------------------------
 
 function symbolSearch(symbols: SymbolTable, query: string, topK: number): SearchResult[] {

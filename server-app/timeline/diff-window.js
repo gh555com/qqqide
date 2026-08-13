@@ -340,7 +340,7 @@
     function _showOpDropdown() {
         _opVisible = true;
         $opDropdown.style.display = '';
-        // ★ 动态标签：读取焦点面板方向（Roam 右键菜单传统 ←喂给 AI/喂给 AI/喂给 AI→）
+        // ★ 动态标签：读取焦点面板方向（roam 右键菜单传统 ←喂给 AI/喂给 AI/喂给 AI→）
         try {
             if (bridge && bridge.timeline && bridge.timeline.getAiTarget) {
                 bridge.timeline.getAiTarget().then(function (t) {

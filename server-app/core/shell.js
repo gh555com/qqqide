@@ -64,7 +64,7 @@ function persistState() {
   } catch (_) { }
 }
 
-// ★ F100 兜底直连：F2/Tab 非编辑态 → 激活 Roam tab + 聚焦 iframe
+// ★ F100 兜底直连：F2/Tab 非编辑态 → 激活 roam tab + 聚焦 iframe
 // 不依赖 key-bindings.json / key-hook 配置链，独立注册 capture 监听（双保险）。
 function bootRoamKeyFallback() {
   document.addEventListener('keydown', function (e) {
@@ -435,7 +435,7 @@ function bootTabManager() {
   var xUpper = document.getElementById('qqq-x-upper');
   if (!xUpper || !window.qqqTabs) return;
   window.qqqTabs.init(xUpper);
-  // Roam tab is now provided by rage goods (via gaea-host tabs protocol).
+  // roam tab is now provided by rage goods (via gaea-host tabs protocol).
 }
 
 // ---- AI Zone ----
@@ -600,7 +600,7 @@ async function main() {
   // KeyHook (loads bindings + globalShortcut + window/iframe dispatchers)
   await bootKeyHook();
 
-  // ★ F100 兜底直连：F2/Tab 非编辑态 → 激活 Roam tab + 聚焦 iframe
+  // ★ F100 兜底直连：F2/Tab 非编辑态 → 激活 roam tab + 聚焦 iframe
   //    与 key-hook 配置链双保险：key-hook 成功则 stopPropagation 已拦（不重复），
   //    key-hook 任何一环失败（fetch/init/when）则由本监听兜底，保证功能永不静默失效
   bootRoamKeyFallback();

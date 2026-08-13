@@ -261,7 +261,9 @@ function bootAiOverlay() {
 
   overlay.appendChild(contentEl);
   overlay.appendChild(toolbar);
-  // ★ 挂到 #qqq-main，遮罩仅覆盖中间区域，左右翼不受影响
+  // ★ 挂到 #qqq-main + inset:0 → 悬浮城 = 菜单行 + 中区（含中AI面板）+ 状态栏；
+  //    左右翼是 #qqq-main 的兄弟节点（shell-wings _applyWings 通过 main 的 left/right 让位）
+  //    → 天然不覆盖翼板，100% 等同历史悬浮城区域
   var _mainEl = document.getElementById('qqq-main');
   (_mainEl || document.body).appendChild(overlay);
 
@@ -429,7 +431,7 @@ function bootAiOverlay() {
       var img = new Image();
       img.onload = function () {
         var nw = img.naturalWidth, nh = img.naturalHeight;
-        // 内容区可用空间：overlay 填充 #qqq-main，扣除工具栏 64px + 内边距 32px×2
+        // 内容区可用空间：overlay = 悬浮城（菜单+中区含中AI+状态栏，不含左右翼），扣除工具栏 64px + 内边距 32px×2
         var availW = Math.max(200, (overlay.clientWidth || window.innerWidth) - 64);
         var availH = Math.max(150, (overlay.clientHeight || window.innerHeight) - 64 - 64);
         // 理想：2x 放大；上限：不超过可用空间
@@ -499,9 +501,14 @@ function bootAiOverlay() {
         zoomScale = 1.0;
         _dragX = 0; _dragY = 0;
 
-        // 内容区可用空间：overlay 尺寸未必可用（display=none），回退到 window 尺寸
-        var _availW = Math.max(200, (overlay.clientWidth || window.innerWidth) - 64);
-        var _availH = Math.max(150, (overlay.clientHeight || window.innerHeight) - 64 - 64);
+        // ★ 先让 overlay 布局生效再测可用空间：display:none 时 clientWidth=0，
+        //   旧代码回退 window.innerWidth = 全窗口宽（含左右翼）→ clipBox 按错误宽度
+        //   创建 → fitZoom 偏大 → 自动放大两级后超出真实悬浮城边界（小分辨率+翼开必现）
+        //   overlay 挂 #qqq-main → clientWidth 即悬浮城宽（菜单+中区含中AI+状态栏，不含左右翼）
+        overlay.style.visibility = 'hidden';
+        overlay.style.display = 'block';
+        var _availW = Math.max(200, overlay.clientWidth - 64);
+        var _availH = Math.max(150, overlay.clientHeight - 64 - 64);
 
         var clipBox = document.createElement('div');
         clipBox.style.cssText =
@@ -545,9 +552,6 @@ function bootAiOverlay() {
 
         clipBox.appendChild(wrapper);
         contentEl.appendChild(clipBox);
-
-        overlay.style.visibility = 'hidden';
-        overlay.style.display = 'block';
 
         var tables2 = wrapper.querySelectorAll('table');
         for (var t2i = 0; t2i < tables2.length; t2i++) {
