@@ -31,8 +31,10 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 /* 自定义即时 tooltip（零延迟弹出；native title 有延迟且样式不可控 → 弃用，登录 LV 同款模式） */
 #kmd-tip{position:fixed;z-index:99999;max-width:430px;padding:6px 10px;font-size:11px;line-height:1.55;color:var(--text);background:var(--card);border:1px solid var(--border);border-radius:4px;box-shadow:0 3px 12px rgba(0,0,0,.35);pointer-events:none;white-space:pre-line;display:none}
 #kmd-tip b{color:var(--accent)}
-/* 输出区 — 日志式渲染器（无 VT 网格） */
-#out{flex:1;overflow-y:auto;padding:6px 8px;line-height:1.45;white-space:pre-wrap;word-break:break-all;user-select:text}
+/* 输出区 — 日志式渲染器（无 VT 网格）
+   ★ 2026-08-13: contenteditable="plaintext-only" 只读编辑器化——点击任意位置出闪烁光标（原生）、
+     Shift+左键选区、任意拖选复制；键盘拦截禁编辑（仅放行导航/选区/Ctrl+A/Ctrl+C） */
+#out{flex:1;overflow-y:auto;padding:6px 8px;line-height:1.45;white-space:pre-wrap;word-break:break-all;user-select:text;outline:none}
 .line{min-height:1.45em;white-space:pre-wrap;word-break:break-all}
 .line.self{color:var(--prompt)}
 .line.err{color:var(--err)}
@@ -63,7 +65,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
   <span class="sep"></span>
   <span id="status">准备中…</span>
 </div>
-<div id="out"></div>
+<div id="out" contenteditable="plaintext-only" spellcheck="false"></div>
 <div id="line-wrap">
   <span id="prompt">❯</span>
   <input id="input" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
@@ -87,6 +89,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 
     var history = [];
     var histIdx = -1;
+    var lastSentCmd = ''; // gitbash：bash 自身回显匹配（UI 已有 ❯ 蓝色行 → 丢弃重复回显）
     var lineCount = 0;
     var MAX_LINES = 5000; // DOM 行上限，超出删最老（防内存膨胀）
     var autoScroll = true;
@@ -227,13 +230,28 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         if (last < text.length) el.insertAdjacentHTML('beforeend', styledSpan(text.slice(last), curStyle));
     }
 
+    // gitbash 行过滤（2026-08-13）：bash 无 TTY 交互模式把提示符/回显/警告全写 stderr →
+    // ① 启动警告两行（cannot set terminal process group / no job control）纯噪音，每次启动必出 → 丢弃
+    // ② bash 自身回显（=== lastSentCmd）与 UI 蓝色 ❯ 行重复 → 丢弃
+    // cmd/powershell 的 stderr 是真报错 → 不参与过滤
+    function shouldSkipGitBashLine(stream, line) {
+        if (shellType !== 'gitbash' || stream !== 'err') return false;
+        var t = String(line).trim();
+        if (!t) return false;
+        if (t.indexOf('cannot set terminal process group') !== -1) return true;
+        if (t.indexOf('no job control in this shell') !== -1) return true;
+        if (t === lastSentCmd) return true;
+        return false;
+    }
+
     // 当前流式行：curLine 标记非空且仍在 DOM → 复用；否则新建（封行后开新行）
+    // ★ gitbash 的 err 流 = 提示符/回显/警告（非报错）→ 不加红色，防满屏红（cmd/PS 的 stderr 是真报错，保留红）
     function curLineEl(stream) {
         if (curLine && curLine.classList && curLine.classList.contains('stream') && curLine.parentNode === outEl) {
             return curLine;
         }
         var el = document.createElement('div');
-        el.className = 'line stream' + (stream === 'err' ? ' err' : '');
+        el.className = 'line stream' + (stream === 'err' && shellType !== 'gitbash' ? ' err' : '');
         outEl.appendChild(el);
         lineCount++;
         trimLines();
@@ -263,12 +281,13 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             if (idx === -1) break;
             var line = outBuf.slice(0, idx);
             outBuf = outBuf.slice(idx + 1);
-            renderStreamLine(stream, line);
+            if (!shouldSkipGitBashLine(stream, line)) renderStreamLine(stream, line);
             curLine = null; // 封行
         }
         if (outBuf) {
-            renderStreamLine(stream, outBuf);
+            var rest = outBuf;
             outBuf = '';
+            if (!shouldSkipGitBashLine(stream, rest)) renderStreamLine(stream, rest);
         }
         scrollToBottom();
     }
@@ -325,9 +344,11 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         autoScroll = (outEl.scrollTop + outEl.clientHeight >= outEl.scrollHeight - 8);
     });
 
-    // ── 输出行点击 → 填入键入行（快捷召回，只填不执行） ──
-    // 优先 data-cmd（UI 回显行）；否则启发式提取 cmd/PS 自带回显行中的命令
-    outEl.addEventListener('click', function (e) {
+    // ── 输出区 = 只读编辑器（contenteditable plaintext-only） ──
+    // 单击 → 浏览器原生放光标（闪烁）+ 拖选/Shift 选区/复制；
+    // 双击 → 命令召回（旧单击召回与放光标冲突，2026-08-13 改双击，只填不执行）
+    outEl.addEventListener('dblclick', function (e) {
+        e.preventDefault(); // 拦原生双击选词
         var ln = e.target && e.target.closest ? e.target.closest('.line') : null;
         if (!ln) return;
         var cmd = ln.dataset ? ln.dataset.cmd : null;
@@ -341,6 +362,36 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             setCaretEnd();
         }
     });
+
+    // 键盘只读拦截：放行导航（方向/Home/End/PageUp/PageDown，含 Shift 选区）、Ctrl+A/Ctrl+C；
+    // 禁编辑（字符/退格/删除/粘贴/剪切）；IME 组合中只拦不转移焦点
+    outEl.addEventListener('keydown', function (e) {
+        if (e.isComposing || e.keyCode === 229) { e.preventDefault(); return; }
+        var k = e.key;
+        var nav = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'];
+        if (nav.indexOf(k) !== -1) return; // 光标移动 / Shift 选区 / Ctrl+Shift 按词选区
+        if (e.ctrlKey || e.metaKey) {
+            var kk = k.toLowerCase();
+            if (kk === 'a' || kk === 'c') return; // 全选 / 复制
+            e.preventDefault(); // Ctrl+V/X 等禁
+            return;
+        }
+        if (k === 'Tab' || k === 'Enter') { e.preventDefault(); inputEl.focus(); return; }
+        if (k.length === 1 && !e.altKey) {
+            // 可打印字符 → 注入键入行并聚焦（用户打字自动回到输入框，首字符不丢）
+            e.preventDefault();
+            inputEl.focus();
+            var v = inputEl.value;
+            var s = inputEl.selectionStart != null ? inputEl.selectionStart : v.length;
+            var en = inputEl.selectionEnd != null ? inputEl.selectionEnd : v.length;
+            inputEl.value = v.slice(0, s) + k + v.slice(en);
+            try { inputEl.setSelectionRange(s + 1, s + 1); } catch (_) { }
+            return;
+        }
+        e.preventDefault(); // Backspace/Delete/其余修饰键全拦
+    });
+    outEl.addEventListener('paste', function (e) { e.preventDefault(); });
+    outEl.addEventListener('drop', function (e) { e.preventDefault(); });
 
     function setCaretEnd() {
         try {
@@ -384,18 +435,17 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         }
     });
 
-    // 点击输出区任意处 → 焦点回到键入行
-    outEl.addEventListener('mousedown', function () {
-        setTimeout(function () { inputEl.focus(); }, 0);
-    });
-
     function exec(v) {
         if (!sessionId || !running) {
             appendLine('err', '[会话未就绪]');
             return;
         }
-        // 回显策略：cmd（2026-08-12 去 /q 后原生回显）+ PS 自带提示符回显；gitbash 不回显 → UI 补（带 data-cmd 召回）
-        if (shellType === 'gitbash') appendLine('self', '❯ ' + v, v);
+        // 回显策略：cmd（2026-08-12 去 /q 后原生回显）+ PS 自带提示符回显；gitbash 自身会回显（stderr）
+        // → UI 蓝色 ❯ 行（带 data-cmd 召回）+ bash 回显去重（shouldSkipGitBashLine 按 lastSentCmd 丢弃）
+        if (shellType === 'gitbash') {
+            lastSentCmd = v.trim();
+            appendLine('self', '❯ ' + v, v);
+        }
         if (bridge && bridge.kmd) {
             bridge.kmd.write(sessionId, v + '\n').catch(function (err) {
                 appendLine('err', '[写入失败] ' + String(err && err.message || err));

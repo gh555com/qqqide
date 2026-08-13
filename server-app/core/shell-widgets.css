@@ -292,10 +292,10 @@
 .gp-dot-kaleido {
   background: repeating-conic-gradient(
     from var(--gp-kaleido-angle),
-    #f8bbd0 0deg 60deg, #d1c4e9 60deg 120deg, #b3e5fc 120deg 180deg,
-    #c8e6c9 180deg 240deg, #fff9c4 240deg 300deg, #ffe0b2 300deg 360deg
+    #ffd9de 0deg 60deg, #ffe4c7 60deg 120deg, #fff2b5 120deg 180deg,
+    #ffd8c4 180deg 240deg, #f9cfe2 240deg 300deg, #ead6f2 300deg 360deg
   ) !important;
-  animation: gpKaleidoSpin 8s linear infinite;
+  animation: gpKaleidoSpin 1.2s linear infinite;
 }
 @keyframes gpKaleidoSpin {
   to { --gp-kaleido-angle: 360deg; }

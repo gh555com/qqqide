@@ -360,7 +360,7 @@ function bootActivities(boot) {
       // ★ 阶段二：已满 → 庆祝
       html =
         '<div class="qqq-act-celebrate">🎉</div>' +
-        '<h2>' + t('act.cool.p2Title', '恭喜！进度条已充满') + '</h2>' +
+        '<h2>' + t('act.cool.p2Title', '恭喜！充能已满') + '</h2>' +
         '<p class="qqq-act-sub">' + t('act.cool.popSub', '总消费满 10 ge 领 10 元红包') + '</p>' +
         '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-cool-fill qqq-act-full" style="width:100%"></span></div>' +
         '<div class="qqq-act-bignum">' + fmt(total) + ' / ' + target + ' ge ✓</div>' +

@@ -14,7 +14,7 @@ import { StateStore } from './state-sqlite';
 import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
 import { _windowProjectMap, getWindowWingState } from './window-manager';
-import { releaseProject } from './project-lock';
+import { releaseAllProjectLocks } from './project-lock';
 import { wsStateSetKey } from './ipc-ws-state';
 import { crashNetMarkCleanQuit } from './crash-net';
 
@@ -259,9 +259,9 @@ export function registerExitHandlers(
         try { saveAllOpenWindows(stateStore, _windowProjectMap); } catch { /* ignore */ }
 
         // ⑤ clean project lock files — 校验 instanceId+winId 释放（绝不误删他人实例的锁）
-        for (const [winId] of _windowProjectMap) {
-            try { releaseProject(winId); } catch (_) { }
-        }
+        //   ★ 2026-08-13 幽灵锁事故：map 遍历会漏掉 _windowProjectMap 未注册的残留条目
+        //   → 改遍历 _held 全量释放（closed 漏跑场景退出时兜底清干净）
+        try { releaseAllProjectLocks(); } catch (_) { }
 
         // ⑥ auto-increment version for next boot cache-busting
         try { autoIncrementVersion(portableRoot); } catch { /* ignore */ }

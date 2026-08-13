@@ -137,6 +137,14 @@ function _startHeartbeat(winId: number, folder: string): void {
     _stopHeartbeat(winId);
     const lp = _lockPath(folder);
     const timer = setInterval(() => {
+        // ★ 窗口已销毁自检（2026-08-13 幽灵锁事故根因之二）：窗口关闭但 release 漏跑
+        //   （_windowProjectMap 未注册时序竞态）→ 旧实现心跳永续写 atime → 锁永不回收，
+        //   其他窗口永远报「被占用」。窗口没了 → 锁是自己的 → 自清（10s 内自愈）。
+        if (_nativeHwnd(winId) === 0) {
+            _onLostLock(winId, folder);
+            try { fs.unlinkSync(lp); } catch { }
+            return;
+        }
         const cur = _readLock(lp);
         if (!_isMine(cur, winId)) { _onLostLock(winId, folder); return; }
         const next: LockHolder = { ...(cur as LockHolder), atime: Date.now() };
@@ -205,6 +213,19 @@ export function claimProject(winId: number, folderRaw: string): { ok: boolean; r
         } catch { return { ok: false, reason: 'race-lost', holder: null }; }
     }
     if (cur.instanceId === INSTANCE_ID) {
+        // ★ 同实例残留锁回收（2026-08-13 幽灵锁事故根因之一）：_held 无该 winId 活条目
+        //   = 窗口已销毁但 release 漏跑（claim 成功 → window.claimProject 未达 → closed
+        //   有条件释放被跳过）→ 心跳已停（或已自清）。focus 死窗口只会无限拒绝，
+        //   必须 unlink + 重抢（并发清除者唯一 wx 赢家）。
+        const holderEntry = _held.get(cur.winId);
+        if (!holderEntry || holderEntry.folder !== folder) {
+            try { fs.unlinkSync(lp); } catch { }
+            try {
+                fs.writeFileSync(lp, JSON.stringify(entry), { flag: 'wx' });
+                _startHeartbeat(winId, folder);
+                return { ok: true };
+            } catch { return { ok: false, reason: 'race-lost', holder: null }; }
+        }
         _focusWindow(cur.winId);
         return { ok: false, reason: 'same-instance-other-window', holder: cur };
     }
@@ -237,6 +258,13 @@ export function releaseProject(winId: number, folderRaw?: string): void {
         const cur = _readLock(lp);
         if (_isMine(cur, winId)) fs.unlinkSync(lp);
     } catch { }
+}
+
+// ── 全量释放（退出路径兜底：closed 漏跑 / _windowProjectMap 未注册的幽灵条目也清） ──
+export function releaseAllProjectLocks(): void {
+    for (const winId of Array.from(_held.keys())) {
+        releaseProject(winId);
+    }
 }
 
 // ── 查询（渲染层预检/兜底用；self = 是否本实例持有的锁） ──

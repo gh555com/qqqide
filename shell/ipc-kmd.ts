@@ -50,6 +50,14 @@ function _push(wc: WebContents, channel: string, payload: any): void {
     try { wc.send(channel, payload); } catch { /* ignore */ }
 }
 
+// ── engines 根目录解析（2026-08-13 打包模式修复）：与 component-checker._enginesRoot 同款双路径 ──
+//    开发模式 root=项目根 → engines 直接在 root/engines
+//    打包模式 root=gh555.com → engines 在 root/resources/app/engines
+function _enginesRoot(appRoot: string): string {
+    const resApp = path.join(appRoot, 'resources', 'app');
+    return fs.existsSync(path.join(resApp, 'engines')) ? resApp : appRoot;
+}
+
 // ── Shell 解析（自给自足：git 组件内 bash 优先，系统 Git 兑底） ──
 function _resolveShell(shellType: string, appRoot: string): { cmd: string; args: string[]; env: NodeJS.ProcessEnv } | null {
     const env: NodeJS.ProcessEnv = { ...process.env };
@@ -58,7 +66,7 @@ function _resolveShell(shellType: string, appRoot: string): { cmd: string; args:
         //    登录 shell（--login）加载 /etc/profile 构建 MSYS PATH；MSYSTEM=MINGW64 选中 64 位运行时；
         //    CHERE_INVOKING=1 保持 spawn cwd（登录 shell 默认回 HOME）
         try {
-            const gitDir = path.join(appRoot, 'engines', 'git');
+            const gitDir = path.join(_enginesRoot(appRoot), 'engines', 'git');
             const bash = path.join(gitDir, 'bin', 'bash.exe');
             if (fs.existsSync(bash)) {
                 env.MSYSTEM = 'MINGW64';

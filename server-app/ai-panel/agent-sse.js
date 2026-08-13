@@ -88,24 +88,6 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
             try { if (self.abortController) self.abortController.abort(); } catch (_) { }  // 辅助：非 Chromium 108 场景
         }, STREAM_WATCHDOG_MS);
     }
-    // ★ 内容级看门狗（2026-08-11 q184 15min 空白事故）：首 token 后流式输出间隔 >45s
-    //   （含心跳——服务器心跳会重置流级看门狗但无内容）→ 上游挂起，主动 abort 走恢复链
-    //   （agent-gateway: 同 URL 退避重试 3 次 → 切线路）。模型流式输出间隔正常 <10s，45s 防误杀。
-    //   推理期（首 token 前）不启动——由流级 180s 覆盖深度推理长思考。
-    var _contentWatchdog = null;
-    var _contentSeen = false;
-    var CONTENT_WATCHDOG_MS = 90000;
-    function _resetContentWatchdog() {
-        _contentSeen = true;
-        if (_contentWatchdog) clearTimeout(_contentWatchdog);
-        _contentWatchdog = setTimeout(function () {
-            self._abortSource = 'content_watchdog';
-            self._log('⏰ content watchdog ' + (CONTENT_WATCHDOG_MS / 1000) + 's — no content delta (heartbeat only), canceling stalled reader');
-            if (typeof self._writeFileLog === 'function') self._writeFileLog('⏰ content watchdog ' + (CONTENT_WATCHDOG_MS / 1000) + 's — stalled stream canceled');
-            try { reader.cancel('content_watchdog'); } catch (_) { }
-            try { if (self.abortController) self.abortController.abort(); } catch (_) { }
-        }, CONTENT_WATCHDOG_MS);
-    }
     _resetStreamWatchdog();
 
     while (true) {
@@ -170,14 +152,11 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
             if (delta.reasoning_content) {
                 reasoningContent += delta.reasoning_content;
                 onReasoning(delta.reasoning_content);
-                _resetContentWatchdog();  // ★ 内容级：思维链也算产出
             }
             if (delta.content) {
                 stripper.push(delta.content);
-                _resetContentWatchdog();  // ★ 内容级：文本产出重置
             }
             if (delta.tool_calls) {
-                _resetContentWatchdog();  // ★ 内容级：工具调用流也算产出
                 for (var ti = 0; ti < delta.tool_calls.length; ti++) {
                     var tc = delta.tool_calls[ti];
                     if (tc.index !== undefined) {
@@ -201,7 +180,6 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
 
     self._sseReader = null;
     clearTimeout(_streamWatchdog);
-    if (_contentWatchdog) { clearTimeout(_contentWatchdog); _contentWatchdog = null; }
 
     // ★ 服务端 SSE 错误 → 向上抛出（不再被 JSON catch 吞掉）
     if (_sseError) {
