@@ -155,7 +155,7 @@ var AgentLoop = (function () {
         this._lastFetchError = '';       // 最后一次 fetch 错误消息
         this._lastSseError = '';         // 最后一次 SSE 服务端错误
         this._lastGatewayMessage = '';   // ★ 延迟报错消息（_callGateway 设，agent loop 读）
-        this._abortSource = '';          // 'stream_watchdog'|'content_watchdog'|'fetch_deadline'|'user_kill'|'guide'|''
+        this._abortSource = '';          // 'stream_watchdog'|'fetch_deadline'|'user_kill'|'guide'|''
         // ★ 记账埋点：完整 billing 追踪（per-house 粒度）
         this._lastBilling = null;        // { wgeCost, model, usage: {prompt_tokens,completion_tokens,cached_tokens,non_cached_tokens}, freeWindow, requestId }
         this._billingSeq = 0;            // 全局 billing 事件序号（跨 floor 递增）
@@ -794,7 +794,7 @@ var AgentLoop = (function () {
                         var _dropPct = Math.round((1 - response._usage.prompt_tokens / _prevPrompt) * 100);
                         var _dropK = Math.round((_prevPrompt - response._usage.prompt_tokens) / 1000);
                         var _cLen = self.conversation.length;
-                        var _cRoles = self.conversation.map(function(m) { return m.role + (m._biscuit ? ':bisc' : '') + (m._facts ? ':fcts' : '') + (m._floor ? ':f' + m._floor : '') + (m._dynamic ? ':dyn' : '') + (m._error ? ':err' : ''); }).join(',');
+                        var _cRoles = self.conversation.map(function (m) { return m.role + (m._biscuit ? ':bisc' : '') + (m._facts ? ':fcts' : '') + (m._floor ? ':f' + m._floor : '') + (m._dynamic ? ':dyn' : '') + (m._error ? ':err' : ''); }).join(',');
                         self._lastApiPromptTokens = response._usage.prompt_tokens;
                         if (typeof self._writeFileLog === 'function') {
                             self._writeFileLog('  🔴 PROMPT DROP ' + _dropPct + '% (' + _dropK + 'K) | prev=' + _prevPrompt + ' now=' + response._usage.prompt_tokens + ' | convLen=' + _cLen + ' | roles=' + _cRoles.slice(0, 500));

@@ -25,6 +25,89 @@
   let projects = []; // [{path, name}]
   let container = null;
   let activeDropdown = null; // currently visible dropdown element
+
+// ★ 豆腐块色系系统（2026-08-13）：豆腐块进入 AI 视口时随机指定一次色系，
+//   窗口生命周期内永久绑定（内存 Map）；相邻豆腐块色系互不相同；
+//   每个展开层级在同一色系内随机取色，同样在进入视口时一次性算好固定。
+var AIV_SCHEMES = [
+  { name: 'rose',   family: ['#fdf4f5', '#fbe8eb', '#f8d9de', '#f4c5cd', '#eeaab6'] },
+  { name: 'peach',  family: ['#fef7f0', '#fdead8', '#fbdcba', '#f7c797', '#f0ab73'] },
+  { name: 'butter', family: ['#fefbe9', '#fdf5c4', '#faeb9a', '#f5de72', '#eccb50'] },
+  { name: 'mint',   family: ['#f1faf3', '#dff4e5', '#caead5', '#afddbf', '#90cc9f'] },
+  { name: 'sky',    family: ['#f1f8fd', '#deeff9', '#c8e3f5', '#abd3ed', '#89bde1'] },
+  { name: 'lilac',  family: ['#f9f5fd', '#efe5f8', '#e1d1f1', '#d0b9e7', '#ba9dd9'] }
+];
+var _tileSchemes = new Map(); // path → { schemeIdx, levels: [[c0..c4] ×5] }
+
+function _shuffleArr(arr) {
+  var a = arr.slice();
+  for (var i = a.length - 1; i > 0; i--) {
+    var j = Math.floor(Math.random() * (i + 1));
+    var t = a[i]; a[i] = a[j]; a[j] = t;
+  }
+  return a;
+}
+
+function _buildLevels(schemeIdx) {
+  var levels = [];
+  for (var L = 0; L < 5; L++) {
+    var fam = _shuffleArr(AIV_SCHEMES[schemeIdx].family).slice(0, 4);
+    fam.push(fam[0]); // 渐变首尾同色平滑回环
+    levels.push(fam);
+  }
+  return levels;
+}
+
+function _pickSchemeIdx(excludeIdx) {
+  var pool = [];
+  for (var k = 0; k < AIV_SCHEMES.length; k++) if (k !== excludeIdx) pool.push(k);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// 顺序分配：每个豆腐块避开左邻色系 → 相邻必不同；已绑定块保持不动；
+// 结构变化（移除块）后相邻撞色 → 仅重掷后块一次
+function _assignTileSchemes() {
+  var keep = {};
+  for (var i = 0; i < projects.length; i++) keep[projects[i].path] = true;
+  _tileSchemes.forEach(function (v, k) { if (!keep[k]) _tileSchemes.delete(k); });
+  for (var m = 0; m < projects.length; m++) {
+    var p = projects[m];
+    if (_tileSchemes.has(p.path)) continue;
+    var leftIdx = (m > 0 && _tileSchemes.has(projects[m - 1].path)) ? _tileSchemes.get(projects[m - 1].path).schemeIdx : -1;
+    var idx = leftIdx < 0 ? Math.floor(Math.random() * AIV_SCHEMES.length) : _pickSchemeIdx(leftIdx);
+    _tileSchemes.set(p.path, { schemeIdx: idx, levels: _buildLevels(idx) });
+  }
+  for (var j = 1; j < projects.length; j++) {
+    var cur = _tileSchemes.get(projects[j].path);
+    var pre = _tileSchemes.get(projects[j - 1].path);
+    if (cur && pre && cur.schemeIdx === pre.schemeIdx) {
+      var nIdx = _pickSchemeIdx(pre.schemeIdx);
+      _tileSchemes.set(projects[j].path, { schemeIdx: nIdx, levels: _buildLevels(nIdx) });
+    }
+  }
+}
+
+function _applySchemeColors(el, colors) {
+  el.style.setProperty('--aiv-c0', colors[0]);
+  el.style.setProperty('--aiv-c1', colors[1]);
+  el.style.setProperty('--aiv-c2', colors[2]);
+  el.style.setProperty('--aiv-c3', colors[3]);
+  el.style.setProperty('--aiv-c4', colors[4]);
+}
+
+function _schemeFor(path) {
+  var s = _tileSchemes.get(path);
+  if (s) return s;
+  var idx = Math.floor(Math.random() * AIV_SCHEMES.length);
+  s = { schemeIdx: idx, levels: _buildLevels(idx) };
+  _tileSchemes.set(path, s);
+  return s;
+}
+
+// recent 下拉等非豆腐块场景：每次展开随机一套
+function _randomFreshLevel() {
+  return _buildLevels(Math.floor(Math.random() * AIV_SCHEMES.length))[0];
+}
   let activeSubmenus = [];   // all open submenu elements
 
   // ── Git 未提交计数 badge ──
@@ -476,12 +559,10 @@
           render();
           _notifyChanged();
         } else if (idx === 0) {
-          // ★ 主文件夹永不因锁检查移除：移除即 AI 面板绑定错乱 + quest 全空（F-2026-08-06）
-          //   视口保留展示，面板绑定由主进程硬拒绝（另一实例占用时面板显示错误而非空白）
-          console.warn('[ai-viewport] MAIN project locked by another instance: ' + folderPath + ' (pid=' + (res.holder && res.holder.pid) + '), keeping as main');
-          if (window.qqqideQoast) {
-            window.qqqideQoast.show('⚠️ 项目「' + basename(folderPath) + '」已被另一 IDE 实例占用（pid=' + (res.holder && res.holder.pid) + '）', { duration: 6000, type: 'warn' });
-          }
+          // ★ 主文件夹被占用 → 清空整个视口（2026-08-13 定案，替代旧「保留+警告」）：
+          //   旧行为留下残血窗口——视口带整套成员但面板永不绑定，边界漏洞黑洞。
+          //   清空 = 干净新窗口，用户手动添加其他项目即可重新开始。
+          clearAllProjects(folderPath);
         }
       }).catch(function () { /* 查询失败不阻断 */ });
     }, 2000);
@@ -561,6 +642,11 @@
     render();
     _notifyChanged();
     _restoreRecentsFromOs();
+    // ★ 空白启动恢复后锁自检（2026-08-13 定案）：主文件夹被另一窗口/实例占用
+    //   → 清空整个视口得干净新窗口（杜绝残血窗口）。面板 claim 失败兜底见 panel-quest。
+    if (projects.length > 0 && projects[0].path) {
+      _verifyFolderLock(projects[0].path);
+    }
   }
 
   // ★ recent_folders OS 兜底（2026-08-08）: 本地 recent 为空（global.sq3 丢失/全新包）→ 从 ws.sq3 拉回并回写本地
@@ -714,6 +800,8 @@
           render();
           _notifyChanged();
           _restoreRecentsFromOs();
+          // ★ 降级链同样锁自检（2026-08-13）：主文件夹被占用 → 清空视口
+          _verifyFolderLock(folderPath);
         });
       }).catch(function () { });
     } catch (_) { }
@@ -1027,7 +1115,7 @@
     // ★ 自定义变形滚动条（滑轨锚定在外层，同步内层滚动）
     var sbOuter = document.createElement('div');
     sbOuter.className = 'qh-scroll-track';
-    sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:50; pointer-events:none; background:var(--base2);';
+    sbOuter.style.cssText = 'position:absolute; right:0; top:0; bottom:0; width:12px; z-index:50; pointer-events:none; background:rgba(0,0,0,0.08);';
     var sbThumb = document.createElement('div');
     sbThumb.className = 'qh-scroll-thumb';
     function _qhCol() {
@@ -1143,7 +1231,9 @@
     const rect = blockEl.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return;
     const dd = document.createElement('div');
-    dd.className = 'aiv-dropdown';
+    dd.className = 'aiv-dropdown aiv-scheme';
+    dd._scheme = _schemeFor(project.path);
+    _applySchemeColors(dd, dd._scheme.levels[0]);
     dd._depth = 1;
     const topPx = rect.bottom;
     dd.style.cssText =
@@ -1469,7 +1559,13 @@
   function openSubmenu(rowEl, dirPath, depth, projectRoot) {
     if (!rowEl.isConnected) return null;
     const sub = document.createElement('div');
-    sub.className = 'aiv-submenu';
+    // 子菜单继承根下拉的色系（同树同色系，层级内随机取色，进入视口时已固定）
+    sub.className = 'aiv-submenu aiv-scheme';
+    if (activeDropdown && activeDropdown._scheme) {
+      _applySchemeColors(sub, activeDropdown._scheme.levels[Math.min((depth || 1) - 1, activeDropdown._scheme.levels.length - 1)]);
+    } else {
+      _applySchemeColors(sub, _randomFreshLevel());
+    }
     sub._depth = depth || 1;
     const rect = rowEl.getBoundingClientRect();
     const rootTop = activeDropdown ? activeDropdown.getBoundingClientRect().top : rect.top;
@@ -1496,9 +1592,11 @@
       }
     }
     sub._direction = goRight;
-    // 背景色交替：右跳主色，左跳辅色（亮/暗主题各自成对），区分展开方向
+    // 背景色交替：右跳主色，左跳辅色（仅暗色主题保留方向区分；亮色主题走马卡龙流线背景）
     var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    sub.style.setProperty('background', goRight ? (isDark ? '#1e211e' : '#e7e4c2') : (isDark ? '#232a23' : '#ede4cf'), 'important');
+    if (isDark) {
+      sub.style.setProperty('background', goRight ? '#1e211e' : '#232a23', 'important');
+    }
     // 定位：右跳贴父容器右边缘，左跳用 CSS right 贴父容器左边缘（消除 estW≠实际宽度造成的空隙）
     if (goRight) {
       var leftX = parentEdge.right + gap;
@@ -1550,6 +1648,7 @@
     if (!container) return;
     container.innerHTML = '';
     _dedupProjects(); // ★ 兜底：渲染前强制去重，防异步竞态导入重复项目
+    _assignTileSchemes(); // ★ 豆腐块色系：进入视口时随机一次，窗口生命周期内绑定
 
     // each existing project → solid block
     projects.forEach((proj, idx) => {
@@ -1683,6 +1782,7 @@
 
     var dd = document.createElement('div');
     dd.className = 'aiv-dropdown aiv-recent-dropdown';
+    _applySchemeColors(dd, _randomFreshLevel());
     dd.style.cssText =
       'position:fixed; z-index:99999; ' +
       'left:' + rect.left + 'px; top:' + topPx + 'px; ' +
@@ -1891,8 +1991,42 @@
 
   }
 
-  // 监听 AI 面板发来的锁冲突通知：从视口移除被锁的项目
+  // ★ 锁冲突全清（2026-08-13 定案）：主文件夹被占用 → 清空整个视口（干净新窗口）。
+  //   幂等：projects 已空直接返回。同时清除恢复源（global last_main_folder + OS
+  //   lastMainFolder/formation），防下次启动又恢复同一被锁项目 → 无限残血。
+  //   only.sq3 ai.formation 不动（项目资产，占用方窗口仍在用，其保存 LWW 收敛）。
+  function clearAllProjects(blockedPath) {
+    if (projects.length === 0) return false;
+    var blocked = blockedPath || (projects[0] && projects[0].path) || '';
+    console.warn('[ai-viewport] lock conflict on MAIN project, clearing entire viewport: ' + blocked);
+    projects = [];
+    closeDropdown();
+    // 清除恢复源（防下次启动又恢复被锁项目）
+    try {
+      var s = _qgsNs();
+      if (s && s.del) { s.del('last_main_folder').catch(function () { }); }
+    } catch (_) { }
+    var ws = _wsBridge();
+    if (ws) {
+      if (blocked) { ws.del(WS_FORM_PREFIX + _normPath(blocked)).catch(function () { }); }
+      ws.del(WS_LAST_KEY).catch(function () { });
+    }
+    saveProjects(); // projects 空 → 空守卫不写 only.sq3/lastMainFolder，只收敛
+    render();
+    _notifyChanged();
+    if (window.qqqideQoast) {
+      window.qqqideQoast.show('⚠️ 主文件夹已被另一窗口占用，AI 视口已清空为干净窗口', { duration: 6000, type: 'warn' });
+    }
+    return true;
+  }
+
+  // 监听 AI 面板发来的锁冲突通知：从视口移除被锁的项目 / 清空整个视口
   window.addEventListener('message', function (e) {
+    if (e.data && e.data.type === 'qqq-ai-viewport-clear-all') {
+      // ★ 面板 claim 失败/锁丢失重仲裁失败兜底 → 清空整个视口（幂等）
+      clearAllProjects(e.data.path);
+      return;
+    }
     if (e.data && e.data.type === 'qqq-ai-viewport-remove-project' && e.data.path) {
       var p = e.data.path;
       var idx = -1;
@@ -1926,5 +2060,5 @@
     var os = _osBridge();
     if (os) { os.set(SCROLL_POS_KEY, _scrollPosByPath).catch(function () { }); }
   }
-  window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject, closeDropdown, clearSnapshots };
+  window.qqqideViewport = { build, addProject, removeProject, getProjects, getMainProject, closeDropdown, clearSnapshots, clearAllProjects };
 })();

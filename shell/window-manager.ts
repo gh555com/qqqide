@@ -336,6 +336,11 @@ export function createWindow(
     win.on('closed', () => {
         (win as any).__qqqConfirmArmed = false;
         try { if (_boundsSaveTimer) { clearTimeout(_boundsSaveTimer); _boundsSaveTimer = null; } } catch (_) { }
+        // ★ 无条件释放项目锁（2026-08-13 幽灵锁事故根因之一）：projectLock.claim（only-store）
+        //   与 window.claimProject（注册 _windowProjectMap）是两条独立 IPC——时序竞态下
+        //   claim 已成功但 map 未注册 → 旧逻辑条件释放被跳过 → _held 残留 + 心跳永续
+        //   → 幽灵锁（绿色包误报 pid=9424=自己 实锤）。releaseProject 内部 _held 无条目时安全 return。
+        try { releaseProject(win.id); } catch (_) { }
         // ★ 窗口关闭 → 编队槽位回到空闲 + 广播（他窗秒同步）
         try { releaseSquad(win.id); } catch (_) { }
         try { broadcastSquadState(); } catch (_) { }
@@ -344,8 +349,6 @@ export function createWindow(
             if (ownedProject) {
                 _windowProjectMap.delete(win.id);
                 _projectWindowMap.delete(ownedProject);
-                // ★ 释放项目锁（校验 instanceId+winId，绝不误删他人锁）→ 关闭后立即重开同文件夹零拦截
-                try { releaseProject(win.id); } catch (_) { }
             }
         } catch (_) { }
     });

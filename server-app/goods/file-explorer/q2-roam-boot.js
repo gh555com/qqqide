@@ -43,13 +43,15 @@
 			e.preventDefault();
 			e.stopPropagation();
 
-			// Fast path: DOM clipboardData already shows file items → skip async probe
+			// ★ 2026-08-13: 统一走 CF_HDROP 完整路径（readFiles-first）——
+			//   支持 文件夹+文件 混合复制（主进程 copyFile 目录感知递归复制），
+			//   DOM File 无完整路径且读不了文件夹，仅作兜底。
 			if (hasFileItem) {
 				_pasteFilesFromEvent(evtClip);
 				return;
 			}
 
-			// Slow path: async probe for CF_HDROP (PowerShell-spawned files from Explorer)
+			// No DOM file items: async probe for CF_HDROP (PowerShell-spawned files from Explorer)
 			_asyncProbeAndPaste();
 		}, true);
 
@@ -62,6 +64,16 @@
 	}
 
 	async function _pasteFilesFromEvent(evtClip) {
+		// ★ 2026-08-13: CF_HDROP 完整路径优先（支持文件夹递归复制 + 原生流式，统一引擎）。
+		//   DOM File 读不了文件夹（readAsArrayBuffer 失败）且无完整路径 → 仅兜底纯文件场景。
+		var paths = null;
+		try { paths = await bridge.clipboard.readFiles(); } catch (err) { paths = null; }
+		if (paths && paths.length > 0) {
+			await _copyPathsToCurrentDir(paths);
+			return;
+		}
+
+		// DOM File 兜底（无 CF_HDROP 场景：拖拽等）—— 仅文件
 		var files = [];
 		if (evtClip && evtClip.items) {
 			for (var i = 0; i < evtClip.items.length; i++) {
@@ -96,18 +108,26 @@
 		var successCount = 0;
 		var failCount = 0;
 
-		for (var i = 0; i < paths.length; i++) {
-			var src = paths[i];
-			var name = src.replace(/\\/g, '/').split('/').pop();
-			var dest = currentPath + sep + name;
-			try {
-				await bridge.fs.copyFile(src, dest);
-				successCount++;
-				if (tip) tip.textContent = 'Pasting ' + (i + 1) + '/' + paths.length + ': ' + name;
-			} catch(err) {
-				failCount++;
+		// ★ 2026-08-13: 并发复制（4 路）—— 多文件+文件夹混合一次粘贴不串行等待
+		var CONC = 4, qi = 0, done = 0;
+		async function _pasteWorker() {
+			while (true) {
+				var i = qi++;
+				if (i >= paths.length) return;
+				var src = paths[i];
+				var name = src.replace(/\\/g, '/').split('/').pop();
+				var dest = currentPath + sep + name;
+				try {
+					await bridge.fs.copyFile(src, dest);
+					successCount++;
+				} catch(err) {
+					failCount++;
+				}
+				done++;
+				if (tip) tip.textContent = 'Pasting ' + done + '/' + paths.length + ': ' + name;
 			}
 		}
+		await Promise.all(Array.from({ length: Math.min(CONC, paths.length || 1) }, function() { return _pasteWorker(); }));
 
 		loadFileList(currentPath);
 

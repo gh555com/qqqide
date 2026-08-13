@@ -181,11 +181,19 @@ export function registerFsIpc(): void {
 
     // ★ copyFile — 流式复制 + 进度回调（通过 IPC event 通道）
     //  渲染层调 bridge.fs.copyFile(src, dest, onProgress) → 主进程流式复制
+    //  ★ 2026-08-13 目录感知升级：src 为目录 → 递归复制（8 路并发 + 字节级进度）
+    //     Roam 粘贴文件夹 / 编辑框所见即所得粘贴文件夹 统一走此引擎（单一入口）
     ipcMain.handle('qqqide:fs:copyFile', async (e, src: string, dest: string, streamId?: string) => {
         try {
+            const st = await fs.promises.stat(src);
+            if (st.isDirectory()) {
+                // ── 目录：递归复制（合并语义，逐文件覆盖，同 robocopy /E）──
+                await fs.promises.mkdir(dest, { recursive: true });
+                return await _copyDirRecursive(e, src, dest, streamId);
+            }
+            // ── 文件：原流式路径 ──
             await fs.promises.mkdir(path.dirname(dest), { recursive: true });
-            const stat = await fs.promises.stat(src);
-            const totalSize = stat.size;
+            const totalSize = st.size;
             const readStream = fs.createReadStream(src, { highWaterMark: 1024 * 1024 }); // 1MB chunks
             const writeStream = fs.createWriteStream(dest);
 
@@ -210,6 +218,62 @@ export function registerFsIpc(): void {
             throw e;
         }
     });
+
+    // ★ 目录递归复制（2026-08-13）：readdir 收集全量文件清单 → 8 路并发流式复制
+    //   合并语义：目标已存在目录 → 逐文件覆盖；字节级进度经 streamId 事件上报
+    async function _copyDirRecursive(e: any, src: string, dest: string, streamId?: string): Promise<boolean> {
+        // ① 收集文件清单（相对路径）+ 总字节
+        const files: string[] = [];
+        let totalBytes = 0;
+        const walk = async (dir: string): Promise<void> => {
+            let entries;
+            try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }
+            for (const ent of entries) {
+                const full = path.join(dir, ent.name);
+                if (ent.isDirectory()) {
+                    await walk(full);
+                } else if (ent.isFile()) {
+                    const fst = await fs.promises.stat(full).catch(() => null);
+                    if (!fst) continue;
+                    files.push(full);
+                    totalBytes += fst.size;
+                }
+            }
+        };
+        await walk(src);
+
+        // ② 8 路并发复制
+        const CONC = 8;
+        let idx = 0;
+        let copiedBytes = 0;
+        const report = () => {
+            if (streamId && totalBytes > 0) {
+                try { e.sender.send('qqqide:fs:copy-progress', { streamId, copied: copiedBytes, total: totalBytes }); } catch { /* ignore */ }
+            }
+        };
+        const worker = async (): Promise<void> => {
+            while (true) {
+                const i = idx++;
+                if (i >= files.length) return;
+                const f = files[i];
+                const rel = path.relative(src, f);
+                const out = path.join(dest, rel);
+                await fs.promises.mkdir(path.dirname(out), { recursive: true });
+                await new Promise<void>((resolve, reject) => {
+                    const rs = fs.createReadStream(f, { highWaterMark: 1024 * 1024 });
+                    const ws = fs.createWriteStream(out);
+                    rs.on('data', (chunk: Buffer) => { copiedBytes += chunk.length; report(); });
+                    rs.on('error', reject);
+                    ws.on('error', reject);
+                    ws.on('finish', () => resolve());
+                    rs.pipe(ws);
+                });
+            }
+        };
+        await Promise.all(Array.from({ length: Math.min(CONC, files.length || 1) }, () => worker()));
+        report();
+        return true;
+    }
 
     // ★ read_file — 主进程直接读，1 IPC，50MB 守卫 + qwr 快照
     //   可选 sha256：读 timeline 中该文件的历史版本

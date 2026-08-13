@@ -373,7 +373,6 @@ AgentLoop.prototype._callGateway = async function (messages, opts) {
                 // ★ 非引导中断 = 看门狗/超时/网络问题
                 // 设置探针：区分 abort 来源
                 if (self._abortSource === 'stream_watchdog') self._exitReason = 'watchdog_stream';
-                else if (self._abortSource === 'content_watchdog') self._exitReason = 'watchdog_content';
                 else if (self._abortSource === 'fetch_deadline') self._exitReason = 'deadline';
                 else self._exitReason = 'unknown';
 

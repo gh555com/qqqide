@@ -311,8 +311,50 @@
       return;
     }
 
-    // ★ 第 6 步：文件粘贴（DOM API 只能拿到文件名，无完整路径）
+    // ★ 第 6 步：文件/文件夹粘贴
+    //   2026-08-13 升级: CF_HDROP 完整路径优先 → 文件夹递归复制 + 原生流式，与 Roam 共用
+    //   同一主进程引擎（qqqide:fs:copyFile 目录感知）；文件夹复制进 _qqqvault/ 后插锚点
+    //   （所见即所得：锚点带真实 path，可打开/渲染）。DOM-only（无 CF_HDROP）降级插文件名锚点。
     if (pr.hasFile && pr.fileList.length > 0) {
+      var fullPaths = [];
+      if (bridge && bridge.clipboard && bridge.clipboard.readFiles) {
+        try { fullPaths = await bridge.clipboard.readFiles(); } catch (_) { fullPaths = []; }
+      }
+      if (fullPaths.length > 0) {
+        var pdir = _getPasteDir(e);
+        if (pdir) {
+          try { if (bridge && bridge.fs && bridge.fs.mkdir) await bridge.fs.mkdir(pdir); } catch (_) {}
+          var psep = pdir.indexOf('\\') >= 0 ? '\\' : '/';
+          var seenP = {};
+          var copiedOk = 0, copiedFail = 0;
+          for (var n = 0; n < fullPaths.length; n++) {
+            var fp = fullPaths[n];
+            var fnP = fp.replace(/\\/g, '/').split('/').pop() || 'file';
+            if (seenP[fnP]) continue;
+            seenP[fnP] = true;
+            var dstP = pdir + psep + fnP;
+            try {
+              if (!bridge || !bridge.fs || !bridge.fs.copyFile) throw new Error('fs.copyFile missing');
+              await bridge.fs.copyFile(fp, dstP);
+              copiedOk++;
+              // 注册资产根目录（缩略图/打开可用）
+              if (bridge && bridge.assetRoots && bridge.assetRoots.add) {
+                bridge.assetRoots.add(pdir).catch(function () {});
+              }
+              _insertTokenAtCursor(_makeAnchorToken('', fnP), { path: dstP, sha256: '', fileName: fnP }, targetEd);
+            } catch (err) {
+              copiedFail++;
+              console.warn('[paste-router] 复制失败:', fp, err && err.message);
+            }
+          }
+          if (copiedFail > 0 && window.qqqideQoast) {
+            window.qqqideQoast.show('粘贴: ' + copiedOk + ' 成功, ' + copiedFail + ' 失败', { duration: 4000 });
+          }
+          return;
+        }
+        // 无编辑文件（_getPasteDir null）→ 降级插文件名锚点
+      }
+      // DOM-only 兜底（无 CF_HDROP：浏览器拖拽等）→ 仅文件名锚点
       var seen = {};
       for (var m = 0; m < pr.fileList.length; m++) {
         var df = pr.fileList[m];

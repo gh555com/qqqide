@@ -763,11 +763,19 @@
 .aiv-dropdown,
 .aiv-submenu,
 .aiv-recent-dropdown {
-  background: #e7e4c2 !important;
+  background: linear-gradient(120deg, var(--aiv-c0, #fdf4f5), var(--aiv-c1, #fbe8eb), var(--aiv-c2, #f8d9de), var(--aiv-c3, #f4c5cd), var(--aiv-c0, #fdf4f5)) !important;
+  background-size: 300% 300% !important;
+  animation: aivMacaronFlow 9s ease-in-out infinite alternate;
   border: 1px solid #c8c8c0 !important;
   padding: 4px 0 !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
+}
+
+
+@keyframes aivMacaronFlow {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
 }
 
 /* 内层滚动容器：百分百消除原生滚动条，仅显�?qh 自定义滑�?*/
@@ -789,6 +797,7 @@
 [data-theme="dark"] .aiv-recent-dropdown {
   background: #1e211e !important;
   border-color: var(--border-color) !important;
+  animation: none !important;
 }
 
 /* ── hover 高亮：文�?文件夹统一，文字纯�?�?/纯白(�?，更显眼 ── */

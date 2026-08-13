@@ -230,9 +230,10 @@ async function _initWorkspace(root) {
                 _holderInfo = '（占用方 pid=' + lockResult.holder.pid + '，instance ' + String(lockResult.holder.instanceId || '').slice(0, 8) + '…）';
             }
             console.warn('[workspace] BLOCKED: project locked' + _holderInfo);
-            addMessageEl('error', '⛔ 项目已被另一窗口占用，本窗口未绑定。请关闭占用窗口后重新打开本窗口，或在本窗口视口手动添加其他项目。' + _holderInfo);
+            // ★ 2026-08-13 定案：主文件夹被占用 → 清空整个 AI 视口（干净新窗口），
+            //   杜绝残血窗口（旧 remove-project 对主文件夹 idx===0 无效 → 视口残留整套成员）。
             if (window.parent) {
-                try { window.parent.postMessage({ type: 'qqq-ai-viewport-remove-project', path: root }, '*'); } catch (_) { }
+                try { window.parent.postMessage({ type: 'qqq-ai-viewport-clear-all', path: root }, '*'); } catch (_) { }
             }
             onlyStore.init(null);
             _workspaceRoot = null;
@@ -260,6 +261,10 @@ async function _initWorkspace(root) {
                             onlyStore.init(null);
                             _workspaceRoot = null;
                             try { parent._workspaceRoot = null; } catch (_) { }
+                            // ★ 2026-08-13：锁丢失且无法重获 = 主文件夹已被占用 → 清空视口（幂等）
+                            if (window.parent) {
+                                try { window.parent.postMessage({ type: 'qqq-ai-viewport-clear-all', path: root }, '*'); } catch (_) { }
+                            }
                         }
                     }).catch(function () { });
                 });
@@ -290,8 +295,9 @@ async function _initWorkspace(root) {
         if (parent.__qqq_lockState !== 'ok') {
             _lockBlocked = true;
             console.warn('[workspace] side panel: lock not acquired (' + (parent.__qqq_lockState || 'timeout') + '), abort binding');
+            // ★ 2026-08-13：侧面板 abort 也通知清空（幂等；覆盖中面板 iframe 加载失败等极端时序）
             if (window.parent) {
-                try { window.parent.postMessage({ type: 'qqq-ai-viewport-remove-project', path: root }, '*'); } catch (_) { }
+                try { window.parent.postMessage({ type: 'qqq-ai-viewport-clear-all', path: root }, '*'); } catch (_) { }
             }
             onlyStore.init(null);
             _workspaceRoot = null;
@@ -494,12 +500,23 @@ window.addEventListener('beforeunload', function () {
 // 监听视口变化：主文件夹改变时重新绑定
 window.addEventListener('message', function (e) {
     if (e.data && e.data.type === 'qqq-ai-viewport-changed') {
-        // ★ 2026-08-08: 已绑定但主文件夹被用户更换（空白窗口重建 / 恢复错路径后修正）
-        //   → 先保存 UI 状态再重载面板重新绑定，根治「绑错项目后全空且永不恢复」
+        // ★ 2026-08-13：主文件夹被占用清空视口 / 用户移除后 → 已绑定面板必须解除绑定
+        //   （reload 后未绑定，等待用户添加新项目）——否则面板仍绑旧项目而视口已空 → 不一致
         var _newMain = null;
         if (e.data.projects && e.data.projects.length > 0 && e.data.projects[0].path) {
             _newMain = e.data.projects[0].path.replace(/\\/g, '/').replace(/\/$/, '');
         }
+        if (_workspaceRoot && !_newMain) {
+            try { saveQuestUIState(questActiveId); } catch (_) { }
+            try { if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) { onlyStore.flush(); } } catch (_) { }
+            console.warn('[workspace] main folder cleared from viewport — reloading panel to unbind');
+            try { window.location.reload(); } catch (_) { }
+            return;
+        }
+        // ★ 2026-08-13：视口变化 = 用户操作（手动添加/更换）→ 复位锁拒绝标记，允许重新绑定。
+        //   旧实现 _lockBlocked 永不复位 → 残血窗口手动添加新项目后面板永不绑定。
+        //   若新项目仍被占用 → _initWorkspace 再次 blocked → 再清空，闭环收敛。
+        if (_lockBlocked) _lockBlocked = false;
         if (_workspaceRoot && _newMain && _newMain !== _workspaceRoot) {
             try { saveQuestUIState(questActiveId); } catch (_) { }
             try { if (typeof onlyStore !== 'undefined' && onlyStore.isInited()) { onlyStore.flush(); } } catch (_) { }
