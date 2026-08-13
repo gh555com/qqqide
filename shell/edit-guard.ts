@@ -1,6 +1,6 @@
 // edit-guard.ts — 编辑防粘连守卫（纯函数，ipc-edit.ts 唯一调用方）
 // 2026-08-07: 根治 HTML/代码围栏边界行粘连（F17 main.ts / F35 shell.css /
-//   F73 Roam HTML / F77 main.ts 四起事故，症状: 元素 id 丢失→getElementById
+//   F73 roam HTML / F77 main.ts 四起事故，症状: 元素 id 丢失→getElementById
 //   null→静默瘫痪或窗口起不来）。
 //   ① boundaryNewlineGuard: 保留匹配区首尾换行 — 替换文本不再意外吞掉行边界
 //   ② checkStructureText:   CSS 花括号平衡 / HTML button 平衡+嵌套 + 重复 id

@@ -4,7 +4,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>Search</title>
+<title>search</title>
 <style>
 :root{--bg:#fdf6e3;--bg2:#fbe9bc;--tx:#7a7874;--tx2:#97978a;--tx3:#a8a6a2;--bd:#eee8d5;--bd2:#a8a6a2;--yel:#b58900;--ora:#cb4b16;--red:#dc322f;--blu:#e8a030;--grn:#859900;--inp-bg:#fdf6e3;--inp-bd:#c9c0aa}
 [data-theme="dark"]{--bg:#1e1e1e;--bg2:#2a2a2a;--tx:#dcd8d0;--tx2:#a8a49c;--tx3:#6a6660;--bd:#333;--bd2:#555;--inp-bg:#282828;--inp-bd:#555}
@@ -433,7 +433,7 @@ _ldHist();},200);
 <div class="mo" id="confirm-mo" style="display:none"><div><h3>确认替换</h3><div class="stt2" id="confirm-summary"></div><div class="prv" id="confirm-preview"></div><div class="btns"><button class="btn" id="confirm-cancel">取消</button><button class="btn pri" id="confirm-ok">确认替换</button></div></div></div>
 <div class="mo" id="progress-mo" style="display:none"><div><h3>正在替换...</h3><div class="prgo"><div class="prgi" id="prg-bar" style="width:0%"></div></div><div class="prgt" id="prg-txt"></div><div class="prgf" id="prg-file"></div><div class="errs" id="prg-errs"></div></div></div>
 
-<!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 Roam（同 ai-panel 模式：iframe 内按键不冒泡父窗口，必须显式 postMessage） -->
+<!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 roam（同 ai-panel 模式：iframe 内按键不冒泡父窗口，必须显式 postMessage） -->
 <script>
 (function () {
   document.addEventListener('keydown', function (e) {

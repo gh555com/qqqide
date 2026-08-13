@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// goods/search/search.js — qqqide Search Goods Manifest
+// goods/search/search.js — qqqide search goods manifest
 //
 // 高性能项目搜索器。注册为 gaea goods，在 X 区 gaea 标签组打开搜索面板。
 // 支持多实例：每个文件夹可打开独立搜索标签，标签名 🔍 + 文件夹名。
@@ -22,13 +22,13 @@
     function registerSearch() {
         window.qqqGaea.register({
             id: 'search',
-            title: 'Search',
+            title: 'search',
             version: '1.0.0',
             protoVer: 2,
 
             tabs: {
                 search: {
-                    title: '🔍 Search',
+                    title: '🔍 search',
                     closable: true,
                     build: function (pane) {
                         pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
@@ -63,7 +63,7 @@
             var idx = p.lastIndexOf('/');
             folderName = idx >= 0 ? p.slice(idx + 1) : p;
         }
-        var tabTitle = folderName ? '🔍 ' + folderName : '🔍 Search';
+        var tabTitle = folderName ? '🔍 ' + folderName : '🔍 search';
 
         var tab = null;
         if (newWindow) {
@@ -150,7 +150,7 @@
                 var shortQuery = query.length > 40 ? query.slice(0, 40) + '...' : query;
                 tabTitle = '🔍 ' + folderName + ': ' + shortQuery;
             } else {
-                tabTitle = folderName ? '🔍 ' + folderName : '🔍 Search';
+                tabTitle = folderName ? '🔍 ' + folderName : '🔍 search';
             }
             // Find which pane contains this iframe and rename its tab
             var srcWindow = e.source;

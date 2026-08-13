@@ -6,7 +6,7 @@
 //        window._shHandleMenuCmd (shell-menu.js)
 // ============================================================================
 
-// ── Roam SFX 统一音频机器入口 ──
+// ── roam SFX 统一音频机器入口 ──
 // 语义映射表（老版 q3 yz 音效）: enter→a2.mp3 · delete→4.mp3 · purge→rou1.mp3
 // pin→a1.mp3 · unpin→kj2.mp3 · terminal→zs861.mp3 · copy/error→轻音效
 // 300ms 去重窗口（照搬老版 global.js，防多窗口操作音效叠炸）
@@ -209,7 +209,7 @@ function bootRpcForwarder() {
       return;
     }
 
-    // ★ Handle qqq-sfx from Roam iframe — 统一音频机器入口（300ms 去重）
+    // ★ Handle qqq-sfx from roam iframe — 统一音频机器入口（300ms 去重）
     if (e.data.type === 'qqq-sfx' && e.data.name) {
       _playRoamSfx(String(e.data.name));
       return;
@@ -376,7 +376,7 @@ function bootRpcForwarder() {
     }
   });
 
-  // ★ Roam 跨窗口同步: 主进程 roam-changed → 转发到所有 iframe
+  // ★ roam 跨窗口同步: 主进程 roam-changed → 转发到所有 iframe
   if (bridge.roam && bridge.roam.onChanged) {
     bridge.roam.onChanged(function(msg) {
       var iframes = document.querySelectorAll('iframe');

@@ -312,7 +312,7 @@
     }
 
     // ★ 第 6 步：文件/文件夹粘贴
-    //   2026-08-13 升级: CF_HDROP 完整路径优先 → 文件夹递归复制 + 原生流式，与 Roam 共用
+    //   2026-08-13 升级: CF_HDROP 完整路径优先 → 文件夹递归复制 + 原生流式，与 roam 共用
     //   同一主进程引擎（qqqide:fs:copyFile 目录感知）；文件夹复制进 _qqqvault/ 后插锚点
     //   （所见即所得：锚点带真实 path，可打开/渲染）。DOM-only（无 CF_HDROP）降级插文件名锚点。
     if (pr.hasFile && pr.fileList.length > 0) {

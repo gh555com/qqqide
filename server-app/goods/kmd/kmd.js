@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// goods/kmd/kmd.js — Kmd Goods Manifest（v1 行模式终端）
+// goods/kmd/kmd.js — kmd goods manifest（v1 行模式终端）
 // ★ 2026-08-12: kmd 例外——X 区 file 分组 custom tab（中间/右侧 editor 分组），
 //   不再进 gaea 分组。打开入口 = qqqGaea.open('kmd') → def.opener →
 //   qqqTabs.openFileCustomTab('kmd', ...)（单例，tab 外观与普通文件一致）。
@@ -13,7 +13,7 @@
 //   iframe → parent: {type:'kmd:ready'} / {type:'kmd:exec', text} / {type:'kmd:kill', restart}
 //   parent → iframe: {type:'kmd:init', sessionId, cwd, shellType} / {type:'kmd:out', stream, data}
 //                     {type:'kmd:exit', code} / {type:'kmd:restarted'} / {type:'kmd:cd', cwd}
-// Roam 空区 x 键 / 右键 kmd → parent 收到 {type:'qqq-roam-open-kmd', path} → 打开 kmd 并定位到该目录
+// roam 空区 x 键 / 右键 kmd → parent 收到 {type:'qqq-roam-open-kmd', path} → 打开 kmd 并定位到该目录
 // ============================================================================
 (function () {
     'use strict';
@@ -30,9 +30,9 @@
     function registerKmd() {
         var bridge = window.qqqideBridge;
         var iframes = {}; // sessionId → iframe.contentWindow
-        var _pendingKmdCwd = null; // Roam 空区 x 键/右键指定的一次性启动目录
+        var _pendingKmdCwd = null; // roam 空区 x 键/右键指定的一次性启动目录
 
-        // ── Roam 空区「kmd」→ 打开 kmd 并定位到指定目录（未打开：pending 由 build 消费；已打开：kmd:cd 原地切目录） ──
+        // ── roam 空区「kmd」→ 打开 kmd 并定位到指定目录（未打开：pending 由 build 消费；已打开：kmd:cd 原地切目录） ──
         window.addEventListener('message', function (e) {
             var d = e.data;
             if (!d || d.type !== 'qqq-roam-open-kmd') return;
@@ -72,7 +72,7 @@
         // ── 打开 kmd：X 区 file 分组 custom tab（中间/右侧 editor 分组，外观同普通文件标签） ──
         function openKmdTab() {
             if (!window.qqqTabs || !window.qqqTabs.openFileCustomTab) return false;
-            window.qqqTabs.openFileCustomTab('kmd', '⌨ Kmd', function (pane) {
+            window.qqqTabs.openFileCustomTab('kmd', '⌨ kmd', function (pane) {
                 pane.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;';
                 var iframe = document.createElement('iframe');
                 iframe.src = '/qqqide/goods/kmd/kmd-ui.html';
@@ -82,7 +82,7 @@
 
                 var sid = 'kmd-' + Date.now() + '-' + Math.floor(Math.random() * 1e6);
                 // 工作空间根：主窗口直接读；AI 面板 iframe 设置的是 parent（同窗口）
-                // ★ Roam 空区指定目录优先（一次性消费，工具栏打开仍回工作空间根）
+                // ★ roam 空区指定目录优先（一次性消费，工具栏打开仍回工作空间根）
                 var root = _pendingKmdCwd || window._workspaceRoot || '';
                 _pendingKmdCwd = null;
                 if (!root && window.parent && window.parent._workspaceRoot) root = window.parent._workspaceRoot;
@@ -129,7 +129,7 @@
 
         window.qqqGaea.register({
             id: 'kmd',
-            title: 'Kmd',
+            title: 'kmd',
             version: '1.0.0',
             protoVer: 2,
 

@@ -1,5 +1,5 @@
 // ============================================================================
-// ipc-roam.ts — Roam 资源管理器 OS 级持久化 (sql.js → roam.sq3, 唯一读写者)
+// ipc-roam.ts — roam 资源管理器 OS 级持久化 (sql.js → roam.sq3, 唯一读写者)
 //
 // 架构:
 //   q2-roam.html → bridge.roam.* → 此模块 (sql.js) → %LOCALAPPDATA%/qqqide/roam.sq3
@@ -300,7 +300,7 @@ function _watchMark(winId: number): void {
     const dir = _roamWinDirs.get(winId);
     if (!dir) return;
     const st = _roamWatches.get(dir);
-    if (st) st.lastRefresh = Date.now();  // Roam 手动刷新后 6s 内 watcher 事件忽略 → 自身操作不双刷
+    if (st) st.lastRefresh = Date.now();  // roam 手动刷新后 6s 内 watcher 事件忽略 → 自身操作不双刷
 }
 
 // ── IPC 注册 ──

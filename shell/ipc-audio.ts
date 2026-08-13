@@ -6,7 +6,7 @@
 // (miniaudio_v16.py AudioHub via engines/miniaudio_bridge.py).
 //
 // Path resolution for play():
-//   - "yz:<name>"        → <webapp>/assets/yz/<name>   (Roam sfx semantic)
+//   - "yz:<name>"        → <webapp>/assets/yz/<name>   (roam sfx semantic)
 //   - "assets/<rel>"     → <webapp>/<file>             (payload static assets)
 //   - absolute path      → used as-is
 // ============================================================================

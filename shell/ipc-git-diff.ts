@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// ipc-git-diff.ts — Git Diff 窗口 IPC（独立 BrowserWindow, read-only Monaco side-by-side）
+// ipc-git-diff.ts — git diff 窗口 IPC（独立 BrowserWindow, read-only Monaco side-by-side）
 // ============================================================================
 
 import { ipcMain, BrowserWindow } from 'electron';
@@ -16,7 +16,7 @@ const _gitDiffWindows: Map<string, BrowserWindow> = new Map();
 
 export function registerGitDiffIpc(portableRoot: string, bootConfig: BootConfig): void {
 
-    // ═══ Git: open diff window ═══
+    // ═══ git: open diff window ═══
     ipcMain.handle('qqqide:git:open-diff', async (e, args: { filePath: string; projectRoot: string; commitHash?: string; mode?: string; staged?: boolean }) => {
         const { filePath, projectRoot, commitHash, mode, staged } = args;
         const winKey = filePath.replace(/\\/g, '/') + '|' + (commitHash || 'working');
@@ -69,7 +69,7 @@ export function registerGitDiffIpc(portableRoot: string, bootConfig: BootConfig)
             minWidth: 800,
             minHeight: 600,
             frame: false,
-            title: 'Git Diff — ' + (filePath.split(/[\\/]/).pop() || filePath),
+            title: 'git diff — ' + (filePath.split(/[\\/]/).pop() || filePath),
             backgroundColor: '#1e1e1e',
             parent: mainWin || undefined,
             modal: false,

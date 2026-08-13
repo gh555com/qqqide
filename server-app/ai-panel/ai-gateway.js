@@ -461,7 +461,7 @@
         },
 
         // ──────────────────────────────────────────────
-        // Web Search
+        // web search
         // ──────────────────────────────────────────────
         searchWeb: async function (query, opts) {
             opts = opts || {};

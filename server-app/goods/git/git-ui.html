@@ -4,7 +4,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>Git</title>
+<title>git</title>
 <style>
 :root{--bg:#fdf6e3;--card:#eee8d5;--text:#595754;--border:#d3c6aa;--green:#859900;--red:#dc322f;--yellow:#b58900;--blue:#4078a0;--cyan:#2a9a78;--orange:#cb4b16;--base01:#777;--base1:#a8a6a2;--base2:#eee8d2;--base3:#fdf6e3;--added:rgba(133,153,0,0.08);--deleted:rgba(220,50,47,0.08)}
 [data-theme="dark"]{--bg:#1e1e1e;--card:#2a2a2a;--text:#dcd8d0;--border:#333;--green:#8fbc5a;--red:#ff4444;--yellow:#d4a017;--blue:#60a0d0;--cyan:#5ab890;--orange:#e07020;--base01:#97978a;--base1:#6a6660;--base2:#2a2a2a;--base3:#1e1e1e;--added:rgba(143,188,90,0.1);--deleted:rgba(255,68,68,0.1)}
@@ -283,7 +283,7 @@ function _escAttr(s) {
   return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// ═══ GIT BINARY RESOLUTION ═══
+// ═══ git binary resolution ═══
 var _gitExePath = '';
 var _gitExeResolved = false;
 
@@ -311,7 +311,7 @@ async function _initGitExe() {
   _gitExePath = 'git'; return _gitExePath;
 }
 
-// ═══ CORE GIT SPAWN ═══
+// ═══ core git spawn ═══
 async function _gitCmd(args, opts) {
   opts = opts || {};
   if (!bridge || !bridge.qz) return { stdout: '', stderr: 'No bridge', exitCode: 1 };
@@ -329,7 +329,7 @@ async function _gitCmd(args, opts) {
   }
 }
 
-// ═══ GIT STATE ═══
+// ═══ git state ═══
 var _gitRoot = '';
 var _gitAvailable = null;
 var _gitProgressEl = null;
@@ -352,7 +352,7 @@ function _hideProgress() {
   if (el) el.style.display = 'none';
 }
 
-// ═══ GIT AVAILABILITY ═══
+// ═══ git availability ═══
 async function _checkGitAvailable() {
   if (_gitAvailable !== null) return _gitAvailable;
   await _initGitExe();
@@ -794,7 +794,7 @@ function _refreshLogDebounced() {
   });
 }
 
-// ═══ GIT LOG WITH CANVAS GRAPH ═══
+// ═══ git log with canvas graph ═══
 document.getElementById('btn-log').addEventListener('click', function() { _showGitLog(); var el = document.getElementById('graph-wrap'); if (el) el.scrollIntoView({behavior:'smooth',block:'start'}); });
 
 var _commitData = [], _commitGraph = [], _expandedCommit = null;
@@ -1194,7 +1194,7 @@ async function _detectAndBuild() {
 
 _init();
 </script>
-<!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 Roam（同 ai-panel 模式：iframe 内按键不冒泡父窗口，必须显式 postMessage） -->
+<!-- ★ F2/Tab 非编辑态转发父窗口 → 激活 roam（同 ai-panel 模式：iframe 内按键不冒泡父窗口，必须显式 postMessage） -->
 <script>
 (function () {
   document.addEventListener('keydown', function (e) {

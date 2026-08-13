@@ -10,8 +10,8 @@
 	await _roamMigrateIfNeeded();
 
 
-	// ═══ Roam Paste Handler (M8) ═══
-	// Intercepts Ctrl+V in Roam, copies files to current directory.
+	// ═══ roam paste handler (M8) ═══
+	// Intercepts Ctrl+V in roam, copies files to current directory.
 	// ★ Key: preventDefault() must be synchronous (before first await) otherwise
 	//    the browser's default paste fires before our async probe completes.
 	var _pasteHandlerAttached = false;
@@ -229,10 +229,10 @@
 	// ---- Initial responsive check ----
 	checkAndApplyResponsive();
 
-	// ---- KeyHook iframe adapter (unified Roam shortcut routing) ----
+	// ---- KeyHook iframe adapter (unified roam shortcut routing) ----
 	// ★ 修复：必须在 iframe 内部监听 keydown，而非父窗口 document。
 	//   父窗口的 document.activeElement 是 <iframe>，永远不识别 iframe 内的 input。
-	//   结果：Ctrl+V 等编辑操作被 swallow 吃掉，Roam 一切编辑框无法粘贴。
+	//   结果：Ctrl+V 等编辑操作被 swallow 吃掉，roam 一切编辑框无法粘贴。
 	//   现在直接在 iframe 的 document 上捕获，editing 判断基于真实的 activeElement。
 	(function() {
 		var scope = 'iframe:roam';
@@ -260,7 +260,7 @@
 		var editing = el && (el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA');
 		var isModKey = e.ctrlKey || e.metaKey;
 		// ★ 仅 preventDefault 防浏览器默认行为（Space 滚屏/Backspace 回退），
-		//   绝不 stopPropagation——Roam 内部键盘处理器在 bubble 阶段，必须收到事件
+		//   绝不 stopPropagation——roam 内部键盘处理器在 bubble 阶段，必须收到事件
 		if (!editing && !isModKey) { e.preventDefault(); }
 		}, true);
 	})();

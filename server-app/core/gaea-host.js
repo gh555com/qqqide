@@ -1,5 +1,5 @@
 // ============================================================================
-// gaea-host.js — Gaea Goods Host (v2)
+// gaea-host.js — gaea goods host (v2)
 //
 // A-Zone host that manages pluggable goods.
 //
@@ -8,13 +8,13 @@
 //
 //   window.qqqGaea.register({
 //     id: 'rage',
-//     title: 'Rage',
+//     title: 'rage',
 //     version: '1.0.0',
 //     protoVer: 2,   // optional, defaults to 1
 //     type: 'process',           // 'panel' (default) | 'process' (后台进程)
 //     lifecycle: 'attached',     // 'attached'=随主窗口生死(默认) | 'independent'=独立程序
 //     panel: { build(host, ctx) {} },           // A-zone main panel
-//     tabs: { 'roam': { title:'Roam', build(host,ctx){} } },  // X-zone gaea tabs
+//     tabs: { 'roam': { title:'roam', build(host,ctx){} } },  // X-zone gaea tabs
 //     services: { 'paste': { start(ctx){}, stop(){} } },       // background
 //     commands: ['rage.exportDoc'],
 //     provides: ['audio'],                      // cross-goods exports (reserved)
@@ -41,7 +41,7 @@
   // ★ A 区默认面板
   var _defaultPanelId = 'kope-a';
 
-  // ── Inbox badge state (gaea-host 直管 WS，独立于 iframe 生命周期) ──
+  // ── inbox badge state (gaea-host 直管 WS，独立于 iframe 生命周期) ──
   var _inboxUnread = 0;
   var _inboxWs = null;
   var _inboxDoerID = '';
@@ -103,14 +103,14 @@
 
     const pending = _pendingShow.splice(0);
     pending.forEach(id => show(id));
-    // ★ 确保 Roam tab 在 gaea 分组中存在（rage 已完成注册）
+    // ★ 确保 roam tab 在 gaea 分组中存在（rage 已完成注册）
     if (window.qqqTabs && window.qqqTabs.ensureRoamTab) {
       window.qqqTabs.ensureRoamTab();
     }
   }
 
   // ---- Tab bar (renders into menu row 2 toolbar) ----
-  // ★ 菜单行2 仅 Search / Git 按钮（均无 A 区面板，点不切换 A 区）
+  // ★ 菜单行2 仅 search / git 按钮（均无 A 区面板，点不切换 A 区）
   function renderTabBar() {
     if (!_tabBarEl) return;
     _tabBarEl.innerHTML = '';
@@ -135,7 +135,7 @@
       _tabBarEl.appendChild(btn);
     }
 
-    // Inbox 按钮 — 带未读徽章
+    // inbox 按钮 — 带未读徽章
     if (goods.has('inbox')) {
       _renderInboxButton();
     }
@@ -351,7 +351,7 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════
-  // Inbox — 工具栏按钮 + WS 未读徽章 (gaea-host 直管，独立于 iframe)
+  // inbox — 工具栏按钮 + WS 未读徽章 (gaea-host 直管，独立于 iframe)
   // ═══════════════════════════════════════════════════════════════════
 
   function _renderInboxButton() {
@@ -364,8 +364,8 @@
 
     var btn = document.createElement('button');
     btn.className = 'gaea-tab-btn qqq-inbox-btn';
-    btn.textContent = 'Inbox';
-    btn.title = 'Inbox';
+    btn.textContent = 'inbox';
+    btn.title = 'inbox';
     btn.style.cssText =
       'height:22px; padding:0 10px; margin:0 1px; border:1px solid var(--border-color); border-radius:3px;' +
       'background:transparent; color:var(--text-primary); font-size:12px; cursor:pointer;' +
@@ -753,7 +753,7 @@
     const cmd = e.detail && e.detail.cmd;
     if (!cmd) return;
 
-    // qqq.q2 → activate Roam tab in X zone
+    // qqq.q2 → activate roam tab in X zone
     if (cmd === 'qqq.q2' && window.qqqTabs) {
       const gaeaGrp = window.qqqTabs.getGaeaGroup();
       if (gaeaGrp) {

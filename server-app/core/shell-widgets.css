@@ -276,7 +276,7 @@
   opacity: 0.8 !important;
 }
 
-/* ── Inbox 按钮未读徽章脉冲动画 ── */
+/* ── inbox 按钮未读徽章脉冲动画 ── */
 @keyframes qqqInboxPulse {
   0% { transform: scale(1); }
   50% { transform: scale(1.35); }
@@ -289,11 +289,13 @@
   initial-value: 0deg;
   inherits: false;
 }
+/* 菱形描边：clip-path 会裁剪同元素 filter 输出（drop-shadow 永不可见的根因），改用 rotate(45deg) 正方形 + border —— border 随元素旋转天然形成菱形描边 */
+/* 1px 纯黑描边，黑白主题统一（用户定案 2026-08-13） */
 .gp-dot-kaleido {
   background: repeating-conic-gradient(
     from var(--gp-kaleido-angle),
-    #ffd9de 0deg 60deg, #ffe4c7 60deg 120deg, #fff2b5 120deg 180deg,
-    #ffd8c4 180deg 240deg, #f9cfe2 240deg 300deg, #ead6f2 300deg 360deg
+    #ff8ba0 0deg 60deg, #ffc46b 60deg 120deg, #ffe98a 120deg 180deg,
+    #8fe8b8 180deg 240deg, #8cc9ff 240deg 300deg, #d3a6ff 300deg 360deg
   ) !important;
   animation: gpKaleidoSpin 1.2s linear infinite;
 }

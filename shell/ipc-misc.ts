@@ -162,9 +162,9 @@ ${escapedPaths}
         openUrl(url, _e.sender);
     });
 
-    // ★ Roam 空白区右键 → 在当前目录打开管理员终端 (CMD / PowerShell)
+    // ★ roam 空白区右键 → 在当前目录打开管理员终端 (CMD / PowerShell)
     // 与 q3 openAdminTerminal 百分百一致
-    // ★ Roam 盘符区 Recycle Bin 点击 → 打开系统回收站（与 q3 openRecycleBin 一致）
+    // ★ roam 盘符区 Recycle Bin 点击 → 打开系统回收站（与 q3 openRecycleBin 一致）
     ipcMain.handle('qqqide:shell:openRecycleBin', async () => {
         try {
             if (process.platform === 'win32') {

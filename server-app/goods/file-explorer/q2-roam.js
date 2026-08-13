@@ -5,7 +5,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// q2-roam.js — Roam file explorer logic
+// q2-roam.js — roam file explorer logic
 // Extracted from q2-roam.html to keep HTML under size limits.
 // ============================================================================
 
@@ -36,7 +36,7 @@
 	document.documentElement.style.setProperty('--selection-text', selected.text);
 })();
 
-// ---- Main Roam logic ----
+// ---- main roam logic ----
 'use strict';
 
 // ---- RPC helper: call parent bridge methods via postMessage ----
@@ -64,7 +64,7 @@ window.addEventListener('message', function(e) {
       if (e.data.dark) document.documentElement.setAttribute('data-theme', 'dark');
       else document.documentElement.removeAttribute('data-theme');
     }
-    // ★ Roam 跨窗口同步: 其他窗口改了 OS 级数据 → 重载对应 key
+    // ★ roam 跨窗口同步: 其他窗口改了 OS 级数据 → 重载对应 key
     if (e.data && e.data.type === 'qqqide-roam-changed') {
       _onRoamChanged(e.data.key, e.data.value);
     }
@@ -157,7 +157,7 @@ var bridge = {
 		write: (p, c) => rpc('fs.write', { __spread: true, args: [p, c] }),
 		// ★ 2026-08-08 F106: writeBase64 必须走独立 IPC（qqqide:fs:writeBase64 主进程 base64 解码二进制写入）。
 		//   曾缺失 → _copyFilesToCurrentDir 降级到 fs.write → base64 字符串被当 UTF-8 文本写入 →
-		//   Roam 粘贴出的所有二进制文件（zip/png/mp3）内容全为 base64 文本 → 一律打不开。
+		//   roam 粘贴出的所有二进制文件（zip/png/mp3）内容全为 base64 文本 → 一律打不开。
 		writeBase64: (p, b64) => rpc('fs.writeBase64', { __spread: true, args: [p, b64] }),
 		mkdir: (p) => rpc('fs.mkdir', p),
 		remove: (p) => rpc('fs.remove', p),
@@ -1346,7 +1346,7 @@ function performOpenAction(item) {
 		var lnkPath = item.path;
 		resolveLnkTarget(lnkPath).then(function(target) {
 			if (target) {
-				// q3 关键判断：目标必须存在且是文件夹才在 Roam 内导航
+				// q3 关键判断：目标必须存在且是文件夹才在 roam 内导航
 				bridge.fs.stat(target).then(function(st) {
 					if (st && st.isDir) { navigateTo(target); lnkJumpFromPath = srcDir; }
 					else { bridge.shell.openPath(lnkPath).catch(function(){}); }

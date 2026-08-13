@@ -4,7 +4,7 @@
 // tab-manager.js - QQQ Shell v2 tab group manager
 //
 // Up to 3 tab groups in X-upper area:
-//   Group 0 (gaea): always visible, hosts Roam / git / search tabs
+//   Group 0 (gaea): always visible, hosts roam / git / search tabs
 //   Group 1 (file): appears when a file is opened, disappears when empty
 //   Group 2 (file): appears on split-right, disappears when empty
 //
@@ -503,7 +503,7 @@
     var btn = createTabBtn(tab, gaeaGrp);
     if (id === 'roam') {
       btn.classList.add('qqq-tab-roam');
-      // ★ Roam 标签召回提示（2026-08-09）: hover 瞬间弹出大字号 tooltip
+      // ★ roam 标签召回提示（2026-08-09）: hover 瞬间弹出大字号 tooltip
       var _roamTip = null;
       function _showRoamTip() {
         if (!_roamTip) {
@@ -1047,9 +1047,9 @@
     _doRestore();
   }
 
-  // ★ Roam 硬创建函数：零依赖 goods/gaea-host，零异步
+  // ★ roam 硬创建函数：零依赖 goods/gaea-host，零异步
   function _createRoamTabHard() {
-    addGaeaTab('roam', 'Roam', function (pane) {
+    addGaeaTab('roam', 'roam', function (pane) {
       pane.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
       var iframe = document.createElement('iframe');
       iframe.src = '/qqqide/goods/file-explorer/q2-roam.html';
@@ -1078,12 +1078,12 @@
     }
     window.addEventListener('resize', _onGroupResize);
     addGroup('gaea');
-    // ★ Roam 永远是 gaea 分组的第一个标签，在所有持久化/异步逻辑之前同步创建
+    // ★ roam 永远是 gaea 分组的第一个标签，在所有持久化/异步逻辑之前同步创建
     _createRoamTabHard();
     setTimeout(function () { restoreOpenTabs(); }, 100);
   }
 
-  // ---- closeTabById override: re-create Roam if closed + persist ----
+  // ---- closeTabById override: re-create roam if closed + persist ----
   var _closeTabByIdHook = closeTabById;
   closeTabById = function (grp, tabId) {
     _closeTabByIdHook(grp, tabId);

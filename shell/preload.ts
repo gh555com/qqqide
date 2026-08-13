@@ -412,7 +412,7 @@ const QQQ = {
         openDiffWindow: (args: { filePath: string; beforeBlobHash?: string; afterBlobHash?: string; projectRoot: string }) => ipcRenderer.invoke('qqqide:open-diff-window', args),
         // 用户在 diff 窗口内切换文件时更新主进程映射
         setPath: (newPath: string) => ipcRenderer.send('qqqide:diff:set-path', newPath),
-        // op 按钮：在 X 区 editor 打开文件（= Roam Q 键）
+        // op 按钮：在 X 区 editor 打开文件（= roam Q 键）
         openInEditor: (filePath: string) => ipcRenderer.send('qqqide:timeline:open-in-editor', filePath),
         // op 按钮：喂给 AI
         feedToAi: (filePath: string) => ipcRenderer.send('qqqide:timeline:feed-to-ai', filePath),

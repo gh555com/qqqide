@@ -358,7 +358,7 @@ export function registerTimelineIpc(portableRoot: string, bootConfig: BootConfig
         return main || wins.find((w) => !w.isDestroyed()) || null;
     }
 
-    // ═══ op 按钮：在 X 区 editor 打开文件（= Roam Q 键 open in qqqide）═══
+    // ═══ op 按钮：在 X 区 editor 打开文件（= roam Q 键 open in qqqide）═══
     ipcMain.on('qqqide:timeline:open-in-editor', (_e, filePath: string) => {
         if (!filePath) return;
         const mw = _hostWindow(_e);

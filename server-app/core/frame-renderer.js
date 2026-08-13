@@ -1,7 +1,7 @@
 // Copyright (C) 2025-2026 Sichuan Dream Technology Co., Ltd. All Rights Reserved.
 
 // ============================================================================
-// frame-renderer.js — WYSIWYG frame + icon-frame rendering engine
+// frame-renderer.js — wysiwyg frame + icon-frame rendering engine
 // Ported from q3 q1.js core algorithms, using real DOM (Monaco ContentWidget).
 // Old q3 used CSS background-image layering due to VS Code decoration limits;
 // new architecture builds real DOM — easier to debug, interactive, supports loading states.

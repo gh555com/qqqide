@@ -182,7 +182,7 @@ export function registerFsIpc(): void {
     // ★ copyFile — 流式复制 + 进度回调（通过 IPC event 通道）
     //  渲染层调 bridge.fs.copyFile(src, dest, onProgress) → 主进程流式复制
     //  ★ 2026-08-13 目录感知升级：src 为目录 → 递归复制（8 路并发 + 字节级进度）
-    //     Roam 粘贴文件夹 / 编辑框所见即所得粘贴文件夹 统一走此引擎（单一入口）
+    //     roam 粘贴文件夹 / 编辑框所见即所得粘贴文件夹 统一走此引擎（单一入口）
     ipcMain.handle('qqqide:fs:copyFile', async (e, src: string, dest: string, streamId?: string) => {
         try {
             const st = await fs.promises.stat(src);
