@@ -127,7 +127,7 @@
     // ★ 暂停旧活跃编辑器 layout（避免 display:none 时 Monaco 做无意义 layout）
     var oldTab = grp.tabs.find(function (t) { return t.id === grp.activeTabId; });
     if (oldTab && oldTab.filePath && window.qqqEditor && window.qqqEditor.suspendPaneLayout) {
-      window.qqqEditor.suspendPaneLayout(oldTab.filePath);
+      window.qqqEditor.suspendPaneLayout(oldTab.filePath, oldTab.paneEl);
     }
 
     grp.activeTabId = tabId;
@@ -144,8 +144,9 @@
     var newTab = grp.tabs.find(function (t) { return t.id === tabId; });
     if (newTab && newTab.filePath && window.qqqEditor && window.qqqEditor.resumePaneLayout) {
       var _fp = newTab.filePath;
+      var _pe = newTab.paneEl;
       requestAnimationFrame(function () {
-        window.qqqEditor.resumePaneLayout(_fp);
+        window.qqqEditor.resumePaneLayout(_fp, _pe);
       });
     }
 
@@ -161,27 +162,23 @@
 
     // ★ 关闭前暂停旧编辑器 layout（避免 pane.remove 触发 0×0 尺寸的昂贵 layout）
     if (tab.filePath && window.qqqEditor && window.qqqEditor.suspendPaneLayout) {
-      window.qqqEditor.suspendPaneLayout(tab.filePath);
+      window.qqqEditor.suspendPaneLayout(tab.filePath, tab.paneEl);
     }
 
     // remove tab button（轻量，无 DOM 依赖问题）
     const btn = grp.barEl.querySelector(`[data-tab-id="${tabId}"]`);
     if (btn) btn.remove();
 
-    // ★ 延迟销毁编辑器 + 移除 pane DOM（放到下一个宏任务，避免同步阻塞 UI）
-    //   MUST 先 dispose 编辑器再移除 pane：Monaco 内部 _detachModel 需要 DOM 父子关系完整，
-    //   否则 removeChild 报 "not a child of this node"
+    // ★ 同步销毁编辑器 + 移除 pane DOM（2026-08-15 改同步——根治 not-a-child 崩溃）：
+    //   ① MUST 先 dispose 编辑器再移除 pane：Monaco 内部 _detachModel 需要 DOM 父子关系完整
+    //   ② 旧 setTimeout(0) 异步方案有竞态——关最后一个文件 tab 时 removeGroup 同步删整个 group DOM，
+    //      宏任务再跑 dispose → 编辑器在已脱离文档的树上销毁 → Monaco view 内部 unguarded removeChild 抛
+    //      "The node to be removed is not a child of this node"（2026-08-15 客户日志实锤）
     const pane = grp.contentEl.querySelector(`.qqq-tab-pane[data-tab-id="${tabId}"]`);
     if (tab.filePath && window.qqqEditor && window.qqqEditor.disposePaneEditor) {
-      var _fp = tab.filePath;
-      var _pane2 = pane;
-      setTimeout(function () {
-        window.qqqEditor.disposePaneEditor(_fp);
-        if (_pane2 && _pane2.parentNode) _pane2.remove();
-      }, 0);
-    } else if (pane) {
-      pane.remove();
+      window.qqqEditor.disposePaneEditor(tab.filePath, pane);
     }
+    if (pane && pane.parentNode) pane.remove();
 
     // fire cleanup
     if (tab.onClose) tab.onClose(tab);
@@ -564,17 +561,27 @@
   function replaceFileInTab(grp, tab, filePath, opts) {
     const fileName = filePath.split(/[/\\]/).pop() || filePath;
 
+    // ★ 先销毁旧编辑器再清空 pane——innerHTML='' 直接杀 DOM 会让 Monaco widget 变孤儿
+    //   （JS 存活 + DOM 全毁），其 model 稍后被 dispose 时 onWillDispose → setModel(null) →
+    //   view 内部 unguarded removeChild → "not a child" 崩溃（2026-08-15 实锤）
+    var _oldPath = tab.filePath;
+    if (_oldPath && _oldPath !== filePath && tab.paneEl &&
+        window.qqqEditor && window.qqqEditor.disposePaneEditor) {
+      try { window.qqqEditor.disposePaneEditor(_oldPath, tab.paneEl); } catch (_) {}
+    }
     // Clean old pane content
     if (tab.paneEl) { tab.paneEl.innerHTML = ''; }
 
     // Update tab identity
     tab.filePath = filePath;
     tab.title = fileName;
-    tab.dirty = false;
+    // ★ dirty 从编辑器真理读：_paneDirtyMap 残留 true（同文件另一格编辑器未保存）时
+    //   新预览 tab 必须如实显示星号，不能硬编码 false（旧实现 → 编辑时 _markDirty 不触发 → 星号永不出现）
+    tab.dirty = !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath));
     tab.preview = true;
 
     // ★ 中心机器：统一设置 tab 状态并刷新标题
-    _setTabState(filePath, { dirty: false, preview: true });
+    _setTabState(filePath, { dirty: tab.dirty, preview: true });
     const btn = grp.barEl.querySelector(`[data-tab-id="${tab.id}"]`);
     if (btn) btn.dataset.filePath = filePath;
 
@@ -693,12 +700,19 @@
     // Preview mode: reuse existing preview tab
     const previewTab = targetGrp.tabs.find(t => t.preview);
     if (previewTab) {
+      // ★ 先销毁旧编辑器再清空 pane（防孤儿 widget → not-a-child，同 replaceFileInTab）
+      var _oldPathR = previewTab.filePath;
+      if (_oldPathR && _oldPathR !== filePath && previewTab.paneEl &&
+          window.qqqEditor && window.qqqEditor.disposePaneEditor) {
+        try { window.qqqEditor.disposePaneEditor(_oldPathR, previewTab.paneEl); } catch (_) {}
+      }
       if (previewTab.paneEl) previewTab.paneEl.innerHTML = '';
       previewTab.filePath = filePath;
       previewTab.title = fileName;
-      previewTab.dirty = false;
+      // ★ dirty 从编辑器真理读（同 replaceFileInTab）
+      previewTab.dirty = !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath));
       previewTab.preview = true;
-      _setTabState(filePath, { dirty: false, preview: true });
+      _setTabState(filePath, { dirty: previewTab.dirty, preview: true });
       const btn = targetGrp.barEl.querySelector(`[data-tab-id="${previewTab.id}"]`);
       if (btn) btn.dataset.filePath = filePath;
       activateTab(targetGrp, previewTab.id);
@@ -845,12 +859,19 @@
     // Preview mode: reuse existing preview tab
     const previewTab = targetGrp.tabs.find(t => t.preview);
     if (previewTab) {
+      // ★ 先销毁旧编辑器再清空 pane（防孤儿 widget → not-a-child，同 replaceFileInTab）
+      var _oldPathL = previewTab.filePath;
+      if (_oldPathL && _oldPathL !== filePath && previewTab.paneEl &&
+          window.qqqEditor && window.qqqEditor.disposePaneEditor) {
+        try { window.qqqEditor.disposePaneEditor(_oldPathL, previewTab.paneEl); } catch (_) {}
+      }
       if (previewTab.paneEl) previewTab.paneEl.innerHTML = '';
       previewTab.filePath = filePath;
       previewTab.title = fileName;
-      previewTab.dirty = false;
+      // ★ dirty 从编辑器真理读（同 replaceFileInTab）
+      previewTab.dirty = !!(window.qqqEditor && window.qqqEditor.isPathDirty && window.qqqEditor.isPathDirty(filePath));
       previewTab.preview = true;
-      _setTabState(filePath, { dirty: false, preview: true });
+      _setTabState(filePath, { dirty: previewTab.dirty, preview: true });
       const btn = targetGrp.barEl.querySelector(`[data-tab-id="${previewTab.id}"]`);
       if (btn) btn.dataset.filePath = filePath;
       activateTab(targetGrp, previewTab.id);

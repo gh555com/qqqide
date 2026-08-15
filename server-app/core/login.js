@@ -1120,7 +1120,7 @@
         var globalPath = appRootClean + '/Data/global.txt';
         var globalExists = await bridge.fs.exists(globalPath);
         if (!globalExists) {
-          await bridge.fs.write(globalPath, '# qqq AI Global Rules\n# Write rules here that apply to ALL projects.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) \u2014 AI remembers them from conversation history.\n');
+          await bridge.fs.write(globalPath, '# qqq AI Global Rules\n# Write rules here that apply to ALL projects.\n# They will be injected at the start of every new conversation.\n# Rules are only sent once (first turn) \u2014 AI remembers them from conversation history.\n# rule"..." works here too \u2014 rule"D:\\path\\to\\doc.md" auto-loads that file (files only, no folders).\n# Want AI to know a folder? Just write its path in plain text \u2014 AI will explore it on demand.\n');
         }
         document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: globalPath } }));
         var projRoot = window._workspaceRoot;
@@ -1131,7 +1131,7 @@
           var projExists = await bridge.fs.exists(projPath);
           if (!projExists) {
             try { await bridge.fs.mkdir(projDir, { recursive: true }); } catch (_) { }
-            await bridge.fs.write(projPath, '# You may optionally add must-read files below.\n# Format: rule"<path>" \u2014 <path> is an absolute file path (files only, directories not supported).\n# Total lines across all added items combined are preferably under ~2000.\n# You can clearly see the space they occupy in the context backpack. Loading on demand is better than carrying too much weight from the start.\n# You can add core architecture, iron rules, skill documents or indexes, for example:\n# rule"D:\\your\\project\\docs\\rules.md"\n# For the latest changes, see: https://www.gh555.com/gaea/d/qqqide#docs\n# Once you are comfortable using this, you may delete the instruction paragraph up to this point.\n');
+            await bridge.fs.write(projPath, '# You may optionally add must-read files below.\n# Format: rule"<path>" \u2014 <path> is an absolute file path (files only, directories not supported).\n# Want AI to know a folder? Just write its path in plain text \u2014 AI will explore it on demand.\n# Total lines across all added items combined are preferably under ~2000.\n# You can clearly see the space they occupy in the context backpack. Loading on demand is better than carrying too much weight from the start.\n# You can add core architecture, iron rules, skill documents or indexes, for example:\n# rule"D:\\your\\project\\docs\\rules.md"\n# For the latest changes, see: https://www.gh555.com/gaea/d/qqqide#docs\n# Once you are comfortable using this, you may delete the instruction paragraph up to this point.\n');
           }
           if (window.qqqTabs && window.qqqTabs.openFileInRightGroup) {
             window.qqqTabs.openFileInRightGroup(projPath);

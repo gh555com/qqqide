@@ -422,6 +422,8 @@ AgentLoop.prototype._parseSSE = async function (body, onToken, onReasoning) {
         if (typeof self._writeFileLog === 'function') self._writeFileLog(_msg);
         // ★ 设 _lastGatewayError=400，触发 agent-loop auto-repair：弹掉最后一组 assistant+tool 减轻上下文后重试
         self._lastGatewayError = 400;
+        // ★ 2026-08-14 q145 f5：同时写 _lastGatewayMessage —— 修复耗尽后最终报错不再退化为泛化 "Unexpected response"
+        self._lastGatewayMessage = _msg;
         // ★ 用 API 返回的真实 token 数更新计数器，供压缩守护准确判断（不用客户端估算值）
         self._lastApiPromptTokens = _usage.prompt_tokens;
         self._lastApiTotalTokens = _usage.total_tokens || (_usage.prompt_tokens + (_usage.completion_tokens || 0));

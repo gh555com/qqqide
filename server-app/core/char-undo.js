@@ -249,8 +249,8 @@
     // 监听内容变更 → 记录快照
     var onChangeDisposable = editor.onDidChangeModelContent(function () {
       if (state.prog) { state.prog = false; return; }
-      // 检查 _isRefreshing 标志（refreshLiveContent 设置）
-      if (editor._isRefreshing) return;
+      // 检查 _isRefreshing / 全局刷新锁（refreshLiveContent / 外部修改重载 / 跨窗口脏快照）
+      if (editor._isRefreshing || editor._globalRefreshLock || window.__qqqGlobalRefreshLock) return;
 
       var v = '';
       try { v = editor.getValue() || ''; } catch (e) { return; }

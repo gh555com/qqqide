@@ -1355,26 +1355,29 @@ var QuestStore = (function () {
         } catch (_) { /* best-effort */ }
     }
 
-    // 分配下一个 floor 号（原子自增 + 磁盘去重验证，零碰撞）
-    // ★ 根因修复（2026-08-08 q147 f97/f98 事故）：
-    //   旧实现裸 atomicIncr — 计数器与磁盘脱节（repairDuplicateIds 改名不更新 counter /
-    //   loadAllFloors 对账不 heal / sq3 重建不种子 floor_counter）→ 分配已存在编号
-    //   → 同号双目录 → _resolveFloorDir 模糊匹配写错位置 → json/txt 分家 → 面板无响应。
-    //   新实现：自增后验证磁盘 f{n}. 前缀空闲，冲突则继续自增（计数器自动追上磁盘）。
-    //   磁盘 = 编号最终仲裁者；sq3 计数器只是建议值，永不产生重复目录。
+    // 探测下一个 floor 号（2026-08-14 起只读探号，零写入）
+    // ★ 根因修复（2026-08-08 q147 f97/f98 事故）：磁盘去重验证——自增后验证磁盘 f{n}. 前缀空闲，
+    //   冲突则继续往上找（计数器自动追上磁盘）。磁盘 = 编号最终仲裁者；sq3 计数器只是建议值。
+    // ★ 2026-08-14 只读化（gaea q145 f2/f4 蒸发事故）：旧实现 atomicIncr 先扣号 → 目录物化
+    //   （_ensureQuestDir/_findQuestDirByPrefix 3 次 I/O 失败抛错）→ catch 报错但号已蒸发。
+    //   现「先 mkdir 成功再 commitFloorNum 落号」：探号零写入，物化失败 counter 不前进，
+    //   下次发送重用同号。per-quest 串行执行器（2026-08-11）已保证同 quest 分配单流，
+    //   跨实例由项目锁 CP 硬互斥保证同一项目单实例绑定——只读探号无并发丢失风险。
     QuestStore.prototype.nextFloorNum = async function (questId) {
         var b = _bridge();
         if (!b) throw new Error('quest-store: no bridge');
         var bf = _bridgeFs();
-        var qDirName = null;
         var MAX_ALLOC = 1000;
 
         // ★ 运行时自愈（2026-08-08）：counter 键缺失（sq3 重建/清理竞态、新 quest）→
-        //   先按磁盘最大楼层号 seed，再原子自增 → 首号永不撞已有目录（heal 只在启动跑，管不到运行时新建）
+        //   先按磁盘最大楼层号 seed → 首号永不撞已有目录（heal 只在启动跑，管不到运行时新建）
         var _ck = 'floor_counter.' + questId;
+        var _base = 0;
         try {
             var _pre = await b.get(_ck);
-            if (typeof _pre !== 'number' || isNaN(_pre) || _pre < 0) {
+            if (typeof _pre === 'number' && !isNaN(_pre) && _pre >= 0) {
+                _base = _pre;
+            } else {
                 var _seedMax = 0;
                 var _qdn0 = await _resolveQuestDirName(questId);
                 if (bf && _rootDir && _qdn0) {
@@ -1390,16 +1393,15 @@ var QuestStore = (function () {
                     } catch (_) { }
                 }
                 await b.setNow(_ck, _seedMax);
+                _base = _seedMax;
             }
         } catch (_) { }
+        if (!bf || !_rootDir) return _base + 1;  // 无 fs 环境（dev fallback）→ 信任计数器
+        var qDirName = await _resolveQuestDirName(questId);
+        if (!qDirName) return _base + 1;  // quest 目录尚未创建（首次建楼前）→ 无碰撞可能
+        var _qDirPath = _rootDir + '/_qqq/quests/' + qDirName;
         for (var _alloc = 0; _alloc < MAX_ALLOC; _alloc++) {
-            var n = await b.atomicIncr('floor_counter.' + questId);
-            if (!bf || !_rootDir) return n;  // 无 fs 环境（dev fallback）→ 信任计数器
-            if (!qDirName) {
-                qDirName = await _resolveQuestDirName(questId);
-                if (!qDirName) return n;  // quest 目录尚未创建（首次建楼前）→ 无碰撞可能
-            }
-            var _qDirPath = _rootDir + '/_qqq/quests/' + qDirName;
+            var n = _base + 1 + _alloc;
             var _collision = false;
             try {
                 var entries = await _safeList(_qDirPath);
@@ -1414,6 +1416,21 @@ var QuestStore = (function () {
             if (!_collision) return n;
         }
         throw new Error('nextFloorNum: cannot allocate free floor number for ' + questId + ' after ' + MAX_ALLOC + ' attempts');
+    };
+
+    // ★ 2026-08-14: 落号 —— 楼层目录物化成功后调用（先 mkdir 后落号，防号蒸发，gaea q145 f2/f4）。
+    //   单调前进（max 语义）：commit 失败/重复调用 → counter 只增不减，永不回退。
+    QuestStore.prototype.commitFloorNum = async function (questId, n) {
+        if (!(n > 0)) return;
+        var b = _bridge();
+        if (!b) return;
+        var _ck = 'floor_counter.' + questId;
+        try {
+            var _cur = await b.get(_ck);
+            if (typeof _cur !== 'number' || isNaN(_cur) || _cur < n) {
+                await b.setNow(_ck, n);
+            }
+        } catch (_) { }
     };
 
     // 保存楼层 — all.json 真理源 + sq3 轻量索引

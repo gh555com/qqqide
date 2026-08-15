@@ -496,6 +496,8 @@ app.whenReady().then(async () => {
         return;
     }
 
+
+
     // Force light theme
     nativeTheme.themeSource = 'light';
 

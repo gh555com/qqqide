@@ -539,11 +539,16 @@ function getInputText() {
 function getInputPlainText() {
     return $input.value;
 }
-function getInputChipPaths() {
+// ★ 2026-08-14 F12 q1 附件静默丢失事故：Enter 立即反馈（08-10）已同步清空 $input，
+//   管线阶段再读 $input.value 恒空 → 附件零注入，AI 只收到原始 📎"path" 文本。
+//   chips 必须从「发送捕获文本」解析：getInputChipPaths(sourceText)，缺省才回退 $input.value。
+//   同时正则加固：旧 [\ud83d\udcce\ud83d\udcc1] 无 /u 匹配的是孤立代理半元，现精确匹配整对 emoji。
+function getInputChipPaths(sourceText) {
+    var src = (sourceText !== undefined && sourceText !== null) ? sourceText : $input.value;
     var paths = [];
-    var re = /[\ud83d\udcce\ud83d\udcc1]"([^"]+)"/g;
+    var re = /(?:\ud83d\udcce|\ud83d\udcc1)"([^"]+)"/g;
     var m;
-    while ((m = re.exec($input.value)) !== null) {
+    while ((m = re.exec(src)) !== null) {
         paths.push(m[1]);
     }
     return paths;

@@ -8,8 +8,8 @@
 <meta charset="UTF-8">
 <title>kmd</title>
 <style>
-:root{--bg:#fdf6e3;--text:#595754;--border:#d3c6aa;--card:#eee8d5;--accent:#859900;--err:#dc322f;--dim:#93a1a1;--prompt:#268bd2;--ph:#586e75}
-[data-theme="dark"]{--bg:#1e1e1e;--text:#dcd8d0;--border:#333;--card:#2a2a2a;--accent:#8fbc5a;--err:#ff4444;--dim:#6a6660;--prompt:#60a0d0;--ph:#7a7670}
+:root{--bg:#fdf6e3;--text:#595754;--border:#d3c6aa;--card:#eee8d5;--accent:#859900;--err:#dc322f;--dim:#93a1a1;--prompt:#268bd2;--ph:#b58900}
+[data-theme="dark"]{--bg:#1e1e1e;--text:#dcd8d0;--border:#333;--card:#2a2a2a;--accent:#8fbc5a;--err:#ff4444;--dim:#6a6660;--prompt:#60a0d0;--ph:#c9a227}
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{height:100%}
 body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;color:var(--text);background:var(--bg);display:flex;flex-direction:column;overflow:hidden;user-select:text;-webkit-user-select:text;position:relative}
@@ -42,6 +42,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 .line.self{color:var(--prompt)}
 .line.err{color:var(--err)}
 .line.dim{color:var(--dim)}
+.line .gbpath{color:var(--dim)} /* gitbash 路径抬头 — 命令回显行内的当前目录（dim 灰，命令本体保持蓝） */
 .line.wrap:hover{background:var(--border)}
 .self-arrow{padding:0 2px}
 /* 键入行 — 真编辑器控件：点击任意位置移动光标（招牌能力）
@@ -50,7 +51,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
 #line-wrap{display:flex;align-items:flex-start;border-top:1px solid var(--border);background:var(--card);padding:4px 8px;gap:6px;flex-shrink:0}
 #prompt{color:var(--accent);font-weight:700;white-space:nowrap;user-select:none;font-size:13px;line-height:1.45;margin-top:3px}
 #input{flex:1;background:transparent;border:none;outline:none;color:var(--text);font-family:inherit;font-size:13px;line-height:1.45;caret-color:var(--accent);padding:2px 0;min-width:0;resize:none;overflow-y:hidden;min-height:calc(1.45em * 3 + 4px);max-height:calc(1.45em * 8 + 4px)}
-/* placeholder — 对齐 AI 聊天编辑框语义（solarized base01 + 半透明，弱于正文、可见于背景） */
+/* placeholder — 淡黄色（solarized yellow 系：亮 #b58900 / 暗 #c9a227，经 opacity 呈淡黄，弱于正文可见于背景） */
 #input::placeholder{color:var(--ph);opacity:.5}
 [data-theme="dark"] #input::placeholder{opacity:.7}
 /* 选区颜色 — 对齐 X 区 editor（solarized 官方 editor.selectionBackground）：light #d6d6d6 / dark #274642 */
@@ -127,6 +128,8 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     var curLine = null; // 流式行封行标记（null = 下一段无 \n 输出开新行）
     var gbPrompt = 0;   // gitbash：OSC 标题（\x1b]0;）出现 = 提示符块开始 → 丢弃直到 $ 行（2026-08-13 提示符三行噪音根治）
     var escPending = false; // cleanAnsi：未闭合 OSC 序列跨 chunk 状态
+    var gbCwd = '';     // gitbash 当前目录（从 OSC 标题 \x1b]0;MINGW64:/path\x07 提取——2026-08-15 提示符块丢弃后路径抬头回归）
+    var gbOscBuf = '', gbOscPending = false; // OSC 标题跨 chunk 切碎状态（与 escPending 同款，但工作在 cleanAnsi 之前）
 
     // ── 主题（父窗口同步） ──
     try {
@@ -148,6 +151,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             sessionId = d.sessionId;
             cwd = d.cwd || '';
             shellType = d.shellType || 'cmd';
+            gbCwd = winToMsys(cwd); // 会话初始目录 → gitbash 路径抬头（OSC 首到后自动校正）
             setShellUI(shellType);
             start();
         } else if (d.type === 'kmd:out') {
@@ -165,6 +169,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             // roam 空区 x 键/右键：原地切目录（kill + 重 spawn，同 shell 切换模式）
             gbPrompt = 0;
             cwd = d.cwd || cwd;
+            gbCwd = winToMsys(cwd);
             if (bridge && bridge.kmd && sessionId) {
                 bridge.kmd.kill(sessionId, { restart: false }).then(function () {
                     return bridge.kmd.spawn(sessionId, shellType, cwd);
@@ -182,6 +187,45 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             }
         }
     });
+
+    // ── gitbash 路径抬头 ──
+    // Windows 路径 → MSYS 风格（E:\s\wol\py\qqq-shell-v2 → /e/s/wol/py/qqq-shell-v2）
+    function winToMsys(p) {
+        if (!p) return '';
+        p = String(p).replace(/\\/g, '/');
+        var m = /^([A-Za-z]):(\/.*)$/.exec(p);
+        return m ? '/' + m[1].toLowerCase() + m[2] : p;
+    }
+
+    // 从原始字节流提取 OSC 0 标题（bash 每次提示符前必写 \x1b]0;MINGW64:/path\x07）→ 更新 gbCwd。
+    // 必须在 cleanAnsi 之前调用（cleanAnsi 会把 OSC 内容剥掉，路径就丢了）；跨 chunk 切碎用 gbOscBuf 续接。
+    function extractOscTitle(raw) {
+        var s = String(raw || '');
+        if (gbOscPending) { s = gbOscBuf + s; gbOscBuf = ''; gbOscPending = false; }
+        var i = 0;
+        while (i < s.length) {
+            var j = s.indexOf('\x1b', i);
+            if (j === -1) break;
+            if (s.charCodeAt(j + 1) === 93 /* ] */) {
+                var t = s.indexOf('\x07', j + 2);
+                var te = s.indexOf('\x1b\\', j + 2);
+                var end = -1;
+                if (t !== -1 && (te === -1 || t < te)) end = t;
+                else if (te !== -1) end = te + 1;
+                if (end === -1) { gbOscBuf = s.slice(j); gbOscPending = true; break; }
+                var body = s.slice(j + 2, end).replace(/\x1b\\$/, '');
+                if (body.charAt(0) === '0' && body.charAt(1) === ';') {
+                    var title = body.slice(2);
+                    var m = /^[A-Za-z0-9_]+:(.+)$/.exec(title); // MINGW64:/path → /path
+                    var path = m ? m[1] : title;
+                    if (/^[\/~]/.test(path)) gbCwd = path; // 仅接受 MSYS 路径形态，防其他程序设标题污染
+                }
+                i = end + 1;
+            } else {
+                i = j + 1;
+            }
+        }
+    }
 
     parent.postMessage({ type: 'kmd:ready' }, '*');
 
@@ -304,7 +348,10 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     function appendOut(stream, data) {
         var raw = String(data || '');
         // gitbash err 流出现 OSC 标题 = 提示符块开始（MSYS bash 每次提示前必写窗口标题）
-        if (shellType === 'gitbash' && stream === 'err' && raw.indexOf('\x1b]') !== -1) gbPrompt = 1;
+        if (shellType === 'gitbash' && stream === 'err' && raw.indexOf('\x1b]') !== -1) {
+            gbPrompt = 1;
+            extractOscTitle(raw); // ★ 2026-08-15 路径抬头回归：cleanAnsi 之前拦截 OSC 标题 → 提取当前目录（gbCwd）
+        }
         raw = cleanAnsi(raw);
         outBuf += raw;
         while (true) {
@@ -340,7 +387,8 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     }
 
     // UI 自身消息行（非流式）：封掉流式行后新建
-    function appendLine(kind, text, dataCmd) {
+    // gpath（可选）= gitbash 路径抬头：渲染为 dim 灰 span 置于命令前（❯ [路径] 命令，cmd/PS 提示符同款形态）
+    function appendLine(kind, text, dataCmd, gpath) {
         curLine = null;
         var el = document.createElement('div');
         el.className = 'line ui' + (kind === 'err' ? ' err' : kind === 'dim' ? ' dim' : kind === 'self' ? ' self' : '') + (dataCmd ? ' wrap' : '');
@@ -351,6 +399,12 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
             arrow.dataset.cmd = dataCmd;
             arrow.textContent = '❯ ';
             el.appendChild(arrow);
+        }
+        if (gpath) {
+            var ps = document.createElement('span');
+            ps.className = 'gbpath';
+            ps.textContent = gpath + ' ';
+            el.appendChild(ps);
         }
         el.appendChild(document.createTextNode(stripAnsi(text)));
         outEl.appendChild(el);
@@ -477,10 +531,11 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
         }
         // 回显策略：cmd（2026-08-12 去 /q 后原生回显）+ PS 自带提示符回显；gitbash 自身会回显（stderr）
         // → UI 蓝色 ❯ 行（带 data-cmd 召回）+ bash 回显去重（shouldSkipGitBashLine 按 lastSentCmd 丢弃）
+        // ★ 2026-08-15：gitbash 回显行带路径抬头（gbCwd，dim 灰）——❯ /e/s/wol/py/qqq-shell-v2 命令，cd 后 OSC 自动更新
         if (shellType === 'gitbash') {
             lastSentCmd = v.trim();
             gbPrompt = 0;
-            appendLine('self', v, v); // ❯ 由 .self-arrow span 渲染（点击召回）
+            appendLine('self', v, v, gbCwd || winToMsys(cwd));
         }
         if (bridge && bridge.kmd) {
             bridge.kmd.write(sessionId, v + '\n').catch(function (err) {
@@ -501,6 +556,7 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
     function switchShell(t) {
         if (t === shellType || !sessionId) return;
         gbPrompt = 0;
+        if (t === 'gitbash') gbCwd = winToMsys(cwd); // 切到 gitbash 先给初始路径抬头，OSC 首到后校正
         setShellUI(t);
         if (bridge && bridge.kmd) {
             bridge.kmd.kill(sessionId, { restart: false }).then(function () {
@@ -510,6 +566,10 @@ body{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:13px;co
                     running = true;
                     statusEl.textContent = '运行中 · ' + t;
                     appendLine('dim', '── 已切换 ' + t + ' ──');
+                 if (t === 'gitbash') {
+                    var p = gbCwd || winToMsys(cwd);
+                    if (p) appendLine('dim', ' ❯ ' + p);
+                }
                 } else {
                     appendLine('err', '[切换失败] ' + ((r && r.error) || 'unknown'));
                 }

@@ -224,8 +224,9 @@ async function _ensureQuestDir(root, qName, fName) {
         if (actualName) qName = actualName;
     }
     var qDir = root + '/_qqq/quests/' + qName;
-    var fDir = qDir + '/' + fName + '/';
-    var parts = fDir.replace(/\\/g, '/').split('/').filter(function (p) { return p; });
+    // ★ 2026-08-14: fName 可空（草稿晋升只建 q 目录，不预建楼层目录——gaea q145 f1 空壳根治）
+    var fDir = fName ? qDir + '/' + fName + '/' : '';
+    var parts = (fDir || qDir).replace(/\\/g, '/').split('/').filter(function (p) { return p; });
     var accum = '';
     for (var pi = 0; pi < parts.length; pi++) {
         accum += (accum ? '/' : '') + parts[pi];

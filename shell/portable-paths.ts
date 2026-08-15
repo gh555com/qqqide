@@ -43,14 +43,13 @@ export function applyPortablePaths(): { root: string; userData: string; cache: s
     // 重设环境变量后，当前进程 + 所有子进程的临时文件全进便携目录。
     process.env.TMP = temp;
     process.env.TEMP = temp;
-    if (process.platform === 'win32') {
-        // Windows 有些组件读 LOCALAPPDATA，也劫持掉
-        process.env.LOCALAPPDATA = path.join(userData, 'LocalAppData');
-    }
+    // ★ 2026-08-14: LOCALAPPDATA 劫持已移除（客户事故）——GPU 驱动/shell 读此 env
+    //   把着色器缓存写进 Data\LocalAppData、Data\LocalLow → explorer 握句柄 →
+    //   退出后安装目录删不掉。真实 %LOCALAPPDATA% 由 OS 状态层显式使用
+    //   （os.homedir()/AppData/Local 推导，squads/ai.sq3/ws.sq3 等，不依赖此 env）。
 
     // ensure directories exist
-    for (const d of [userData, cache, temp, logs, crashDumps,
-        path.join(userData, 'LocalAppData')]) {
+    for (const d of [userData, cache, temp, logs, crashDumps]) {
         try { fs.mkdirSync(d, { recursive: true }); } catch { /* ignore */ }
     }
 
@@ -111,7 +110,13 @@ export function applyPortablePaths(): { root: string; userData: string; cache: s
 
     // ★ 后台清理超过 24h 的临时文件（不阻塞启动）
     setImmediate(() => cleanupStaleTemp(temp, 24 * 60 * 60 * 1000));
-    setImmediate(() => cleanupStaleTemp(path.join(userData, 'LocalAppData'), 24 * 60 * 60 * 1000));
+    // ★ 历史残留整树清除（2026-08-14）: LOCALAPPDATA 劫持时代的缓存垃圾
+    //   （Intel ShaderCache / shell 图标缓存），被 explorer 占用则下次启动再试。
+    setImmediate(() => {
+        for (const junk of [path.join(userData, 'LocalAppData'), path.join(userData, 'LocalLow')]) {
+            try { fs.rmSync(junk, { recursive: true, force: true }); } catch { /* 占用，下次再清 */ }
+        }
+    });
 
     return { root, userData, cache, logs };
 }

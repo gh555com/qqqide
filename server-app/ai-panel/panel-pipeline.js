@@ -225,7 +225,7 @@ async function _executeSend(intent) {
     if (_isDraft(questId)) {
         _markPromoting();
         var _dText = content || '';
-        var _dChips = getInputChipPaths ? getInputChipPaths() : [];
+        var _dChips = getInputChipPaths ? getInputChipPaths(_dText) : [];  // ★ 2026-08-14: 从捕获文本解析，$input 已被 Enter 立即反馈清空
         if (!_dText && _dChips.length === 0) { _clearPromoting(); return; }
         try {
             var _dOldId = questId;
@@ -248,17 +248,19 @@ async function _executeSend(intent) {
             _sendChainMigrate(_lockQid, questId);
             _clearPromoting();
             _lockQid = questId;
-            var _dFirst = _dText;
-            var _dRoot = questStore.getProjectRoot();
-            if (_dRoot) {
-                var _dQNum = parseInt(questId.slice(1)) || 1;
-                var _dQName = _makeName('q', _dQNum, _dFirst);
-                var _dFName = _makeName('f', 1, _dFirst);
-                var _dDot = _dQName.indexOf('.');
-                var _dTitle = _dDot >= 0 ? _dQName.slice(_dDot + 1) : ('Quest ' + _dQNum);
-                await questStore.rename(questId, _dTitle, _dQNum);
-                await _ensureQuestDir(_dRoot, _dQName, _dFName);
-            }
+                var _dFirst = _dText;
+                var _dRoot = questStore.getProjectRoot();
+                if (_dRoot) {
+                    var _dQNum = parseInt(questId.slice(1)) || 1;
+                    var _dQName = _makeName('q', _dQNum, _dFirst);
+                    var _dDot = _dQName.indexOf('.');
+                    var _dTitle = _dDot >= 0 ? _dQName.slice(_dDot + 1) : ('Quest ' + _dQNum);
+                    await questStore.rename(questId, _dTitle, _dQNum);
+                    // ★ 2026-08-14: 删除 f1 空壳预创建（gaea q145 f1 事故：每个草稿晋升 quest 永远带空 f1
+                    //   目录——硬编码 _makeName('f',1) + _ensureQuestDir 预建，真正的发送走 nextFloorNum
+                    //   从 f2 起）。楼层目录统一由发送路径「先 mkdir 成功再落号」创建，首楼层号与目录同步。
+                    await _ensureQuestDir(_dRoot, _dQName, null);
+                }
             await renderTabs();
             if (cardPool && _isDraft(cardPool._activeId)) {
                 var _dCdOld = cardPool._activeId;
@@ -335,7 +337,7 @@ async function _executeSend(intent) {
 
     // ── 构建 userContent（含附件） ──
     var userContent = text;
-    var chipPaths = getInputChipPaths ? getInputChipPaths() : [];
+    var chipPaths = getInputChipPaths ? getInputChipPaths(text) : [];  // ★ 2026-08-14: 从捕获文本解析，$input 已被 Enter 立即反馈清空
     var allPaths = chipPaths;
     // ★ 去重：同一文件可多次注入编辑框（自然表达流），但文件内容只喂一次给 AI，不浪费上下文
     var _seenChip = {};
@@ -349,7 +351,7 @@ async function _executeSend(intent) {
                 if (!_bridgeChip) { contentParts.push('[Attached: ' + p + ']\n(bridge unavailable)'); continue; }
                 var isDir = false;
                 var statInfo = null;
-                try { statInfo = await _bridgeChip.fs.stat(p); if (statInfo && statInfo.isDir) isDir = true; } catch (e) { continue; }
+                try { statInfo = await _bridgeChip.fs.stat(p); if (statInfo && statInfo.isDir) isDir = true; } catch (e) { contentParts.push('[Attached: ' + p + ']\n(stat error: ' + (e && e.message || e) + ')'); continue; }
                 if (isDir) {
                     try {
                         var entries = await _bridgeChip.fs.list(p);
@@ -458,6 +460,10 @@ async function _executeSend(intent) {
             qDirName2 = await _resolveQuestDirName(root2, qid, qNumericId, qTitle2);
             fDirName2 = _makeName('f', floorNum, userQuestion);
             var _ensured = await _ensureQuestDir(root2, qDirName2, fDirName2);
+            // ★ 2026-08-14: 目录物化成功后才落号（旧顺序 atomicIncr 先扣号 → 物化抛错 → 号永久蒸发，
+            //   gaea q145 f2/f4 事故；探号零写入，失败 counter 不前进，下次发送重用同号）。
+            //   commit 失败（sq3 写异常）→ 下次探号磁盘碰撞跳过，永不产生重复目录。
+            try { await questStore.commitFloorNum(qid, floorNum); } catch (_) { }
             if (_ensured && _ensured.fDir && _images && _images.length > 0) {
                 var _bridge2 = window.parent && window.parent.qqqideBridge;
                 if (_bridge2 && _bridge2.fs) {
@@ -523,13 +529,40 @@ async function _executeSend(intent) {
         var aiDiv = cardPool.startBuildingFloor(qid, floorNum, _allTxtPathLocal);
         if (!aiDiv) { agent.setStopState('idle'); updateQueueBtn(); return; }  // ★ 链 finally 自动复位 _chainBusy
     } catch (_allocErr) {
-        // ★ 2026-08-11: 楼层物化失败（f28 类事故）→ 不静默：释放锁 + 显式 qoast
+        // ★ 2026-08-11: 楼层物化失败（f28 类事故）→ 不静默：显式 qoast
+        // ★ 2026-08-14 三补（gaea q145 f2/f4 事故）：① 号不再蒸发（探号零写入，未落号）；
+        //   ② stack 落盘 agent 日志（控制台日志窗口关闭即丢 → 复现钉死真抛点）；
+        //   ③ 内容诚实恢复——Enter 立即反馈已清空编辑框，旧文案「内容已保留在编辑框」是假的。
         console.warn('[pipeline] floor allocation failed:', _allocErr && _allocErr.message);
+        try {
+            if (agent && typeof agent._writeFileLog === 'function') {
+                agent._writeFileLog('[alloc-fail] q=' + qid + ' floor=' + floorNum + ' err=' + String((_allocErr && (_allocErr.stack || _allocErr.message)) || _allocErr).slice(0, 2000));
+            }
+        } catch (_) { }
         try { agent.setStopState('idle'); } catch (_) { }
         try { updateQueueBtn(); } catch (_) { }
+        var _lostText = intent.content || '';
+        var _qoastTail = '';
+        if (_lostText) {
+            try {
+                if (typeof $input !== 'undefined' && $input && $input.value === '') {
+                    // 编辑框空 → 恢复原文（用户无新输入，零覆盖风险）
+                    $input.value = _lostText;
+                    if (typeof autoResizeInput === 'function') autoResizeInput();
+                    if (typeof updateQueueBtn === 'function') updateQueueBtn();
+                    _qoastTail = '——内容已恢复到编辑框，请重试';
+                } else {
+                    // 编辑框非空（用户已输入新内容）→ 不覆盖，error 气泡保留原文
+                    try {
+                        addMessageEl('error', '发送失败（楼层创建异常）：' + ((_allocErr && _allocErr.message) || '未知错误') + '。以下内容未发出：\n' + _lostText);
+                    } catch (_) { }
+                    _qoastTail = '——未发出的内容已显示在上方消息区';
+                }
+            } catch (_) { }
+        }
         try {
             if (window.parent && window.parent.qqqideQoast) {
-                window.parent.qqqideQoast.show('发送失败（楼层创建异常）：' + ((_allocErr && _allocErr.message) || '未知错误') + '——内容已保留在编辑框，请重试', { type: 'error', duration: 6000 });
+                window.parent.qqqideQoast.show('发送失败（楼层创建异常）：' + ((_allocErr && _allocErr.message) || '未知错误') + _qoastTail, { type: 'error', duration: 6000 });
             }
         } catch (_) { }
         return;
