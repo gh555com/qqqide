@@ -117,7 +117,10 @@ AgentLoop.prototype._executeToolCallsParallel = async function (toolCalls, assis
                 }
                 // ★ 统一内容门：上下文+落盘同一函数
                 //   read_file 显式指定行号范围 → bypassCap，信任 AI 意图
-                var _bypass = item.name === 'read_file' && item.args && item.args.start_line && item.args.end_line;
+                //   ★ 2026-08-14 q145 f5 事故：read_file(start=1,end=105) 读单行 minified JSON（1.33M 字符含 base64）
+                //     信任意图裸注入 → 上下文 1.18M tokens → 上游静默拒绝（usage-only 空流）→ 楼层 fatal。
+                //     bypass 加 200K 字符硬顶：超限回落标准 50K 门，保意图设计同时杜绝单条结果撑爆上下文。
+                var _bypass = item.name === 'read_file' && item.args && item.args.start_line && item.args.end_line && resultStr.length <= 200000;
                 var gated = (typeof ContentGateway !== 'undefined' && ContentGateway.gate)
                     ? ContentGateway.gate(resultStr, { bypassCap: _bypass })
                     : resultStr;

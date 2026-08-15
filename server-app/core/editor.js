@@ -587,7 +587,7 @@
       // Ctrl+S
       ed.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => save());
       ed.onDidChangeModelContent(function (e) {
-        if (ed._isRefreshing) return;
+        if (ed._isRefreshing || _globalRefreshLock) return;
         dirty = true; updateTitle();
         if (currentFile) {
           document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: currentFile, dirty: true } }));
@@ -752,6 +752,11 @@
    let _jumpLineStyleInjected = false;
   var _openedMtime = {};    // filePath → {mtimeMs, size} — track when we last loaded/saved
   var _paneDirtyMap = {};   // filePath → boolean — per-pane dirty state
+  // ★ 全局刷新锁：任何程序化 applyEdits（外部修改重载/跨窗口脏快照/live refresh）期间置位，
+  //   屏蔽所有编辑器（含共享 model 的另一编辑器）的 dirty 误报——
+  //   只屏蔽发起者 ed._isRefreshing 会漏掉同 model 的另一 listener（split view 打开即脏的根因）
+  var _globalRefreshLock = false;
+  var _modelRefs = {};      // model.id → 引用计数（split view 共享 model，归零才 dispose）
 
   // ── 括号匹配 — 自实现，零 LSP 依赖 ──
   var _bracketStyleInjected = false;
@@ -928,11 +933,13 @@
       if (!model) {
         model = monaco.editor.createModel(contentStr, initialLang, fileUri);
       } else {
-        // Reuse existing model: update language + content
-        monaco.editor.setModelLanguage(model, initialLang);
-        // ★ 首次加载跳过撤销记录（避免撤销栈存500KB冗余副本）
-        model.applyEdits([{ range: model.getFullModelRange(), text: contentStr, forceMoveMarkers: true }]);
+        // ★ 复用已有 model：只同步语言，绝不重写内容——
+        //   同一文件 split view 共享 model，覆盖内容会销毁另一编辑器未保存的编辑 + 误触发 dirty
+        if (model.getLanguageId() !== initialLang) { monaco.editor.setModelLanguage(model, initialLang); }
       }
+      // ★ model 引用计数：同一 model 被多编辑器共享（split view），
+      //   最后一个编辑器 dispose 时才真正 dispose model（防提前销毁共享 model）
+      try { _modelRefs[model.id] = (_modelRefs[model.id] || 0) + 1; } catch (_) {}
 
       const ed = monaco.editor.create(host, Object.assign({
         model: model,
@@ -951,6 +958,9 @@
       // ★ 标记文件路径（供 anchor-map 等子系统使用 — URI 在 Windows 上可能丢盘符）
       try { ed._qqqFilePath = filePath; } catch (_) {}
       try { host._qqqFilePath = filePath; } catch (_) {}
+      // ★ pane 绑定编辑器实例：tab 关闭/预览复用按 pane 精确找到本格编辑器（split view 同路径多编辑器）
+      try { host._qqqEd = ed; } catch (_) {}
+      try { host.setAttribute('data-editor-mount', '1'); } catch (_) {}
       // 唯一真理逐字回退机器：按设置决定是否挂载
       _applyUndoMode(ed, monaco);
       // 防滚动条贴底：Monaco 内部 scrollable 底部留 1px
@@ -1044,14 +1054,16 @@
       }
 
       // ---- Dirty state tracking per pane ----
-      let _paneDirty = false;
-      _paneDirtyMap[filePath] = false;
+      // ★ dirty 以路径为真理（共享 model 下多编辑器同一份内容），弃 per-editor 闭包——
+      //   旧闭包在「ed1 保存 → ed2 继续编辑」时不触发事件 → 星号永久丢失
+      //   仅在无状态时初始化为 false（已 dirty 的共享路径不被再次打开清零）
+      if (_paneDirtyMap[filePath] === undefined) { _paneDirtyMap[filePath] = false; }
 
       function _markDirty() {
-        if (!_paneDirty) { _paneDirty = true; _paneDirtyMap[filePath] = true; _dispatchDirty(true); }
+        if (!_paneDirtyMap[filePath]) { _paneDirtyMap[filePath] = true; _dispatchDirty(true); }
       }
       function _markClean() {
-        if (_paneDirty) { _paneDirty = false; _paneDirtyMap[filePath] = false; _dispatchDirty(false); }
+        if (_paneDirtyMap[filePath]) { _paneDirtyMap[filePath] = false; _dispatchDirty(false); }
       }
       function _dispatchDirty(d) {
         document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: d } }));
@@ -1059,7 +1071,7 @@
 
       // ★ 初始化完成，解除 _isRefreshing 屏蔽（此后编辑正常触发 dirty）
       ed.onDidChangeModelContent(function () {
-        if (!ed._isRefreshing) {
+        if (!ed._isRefreshing && !_globalRefreshLock) {
           _markDirty();
           _pushDirtyDebounced(filePath, ed.getValue());
         }
@@ -1097,7 +1109,7 @@
 
       // ---- Auto-save on editor blur ----
       ed.onDidBlurEditorWidget(async function () {
-        if (_paneDirty && filePath && !(opts && opts.readOnly)) {
+        if (_paneDirtyMap[filePath] && filePath && !(opts && opts.readOnly)) {
           try {
             var content = ed.getValue();
             await _captureExternalBefore(filePath);
@@ -1109,6 +1121,11 @@
             try { var _stBlur = await bridge.fs.stat(filePath); if (_stBlur) _openedMtime[filePath] = { mtimeMs: _stBlur.mtimeMs, size: _stBlur.size }; } catch (_) {}
           } catch (err) {
             console.error('[editor] auto-save failed:', filePath, err && err.message);
+            // ★ 保存失败必须可见：否则脏 tab 星号永久残留，用户误以为文件已保存（正体+星号之谜）
+            if (window.qqqideQoast) {
+              var _fnBlur = String(filePath).split(/[\\/]/).pop() || filePath;
+              window.qqqideQoast.show(_fnBlur + ' \u4FDD\u5B58\u5931\u8D25\uFF1A' + ((err && err.message) || err) + ' \uFF08\u5185\u5BB9\u4FDD\u7559\u5728\u7F16\u8F91\u5668\uFF0C\u53EF\u7528 Ctrl+S \u91CD\u8BD5\uFF09', { duration: 6000, type: 'warn' });
+            }
           }
         }
       });
@@ -1126,6 +1143,10 @@
           try { var _stCtrlS = await bridge.fs.stat(filePath); if (_stCtrlS) _openedMtime[filePath] = { mtimeMs: _stCtrlS.mtimeMs, size: _stCtrlS.size }; } catch (_) {}
         } catch (e) {
           console.error('[editor] save failed:', e);
+          if (window.qqqideQoast) {
+            var _fnCs = String(filePath).split(/[\\/]/).pop() || filePath;
+            window.qqqideQoast.show(_fnCs + ' \u4FDD\u5B58\u5931\u8D25\uFF1A' + ((e && e.message) || e), { duration: 6000, type: 'warn' });
+          }
         }
       });
 
@@ -1137,10 +1158,22 @@
       // ★ 记录 mtime，用于聚焦时检测外部修改
       try { var _stPane = await bridge.fs.stat(filePath); if (_stPane) _openedMtime[filePath] = { mtimeMs: _stPane.mtimeMs, size: _stPane.size }; } catch (_) {}
       ed.onDidDispose(function () {
-        delete _paneEditors[filePath];
+        // ★ split view：同路径另一编辑器仍存活 → 保留共享 dirty/mtime 状态（防保存后星号残留）
+        var _stillOpen = !!(_paneEditors[filePath] && _paneEditors[filePath] !== ed);
+        // ★ 条件删除：只删自己的槽位——旧实现无条件 delete，ed1 dispose 会把
+        //   同路径存活 ed2 的引用一起删掉（后续 getEditorForFile/resumePaneLayout 全部失效）
+        if (_paneEditors[filePath] === ed) delete _paneEditors[filePath];
         delete _paneFiles[host];
-        delete _openedMtime[filePath];
-        delete _paneDirtyMap[filePath];
+        if (!_stillOpen) delete _openedMtime[filePath];
+        if (!_stillOpen) delete _paneDirtyMap[filePath];
+        // ★ model 引用计数归零 → 真正 dispose（防提前销毁 split view 共享 model）
+        try {
+          if (model && !model.isDisposed()) {
+            var _refs = (_modelRefs[model.id] || 1) - 1;
+            if (_refs <= 0) { delete _modelRefs[model.id]; model.dispose(); }
+            else { _modelRefs[model.id] = _refs; }
+          }
+        } catch (_) {}
         if (window.qqqCharUndo) window.qqqCharUndo.detach(ed);
         // ★ 中心管线 disposed（仅做簿记清理）
         if (window.qqqViewportMachine && window.qqqViewportMachine.transition) {
@@ -1187,13 +1220,15 @@
     if (!ed) return false;
     try {
       ed._isRefreshing = true;
+      _globalRefreshLock = true; window.__qqqGlobalRefreshLock = true;
       if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
       // ★ 实时刷新跳过撤销记录（避免每次刷新堆 500KB 到撤销栈）
       var _rfModel = ed.getModel();
-      if (_rfModel && !_rfModel.isDisposed()) {
-        _rfModel.applyEdits([{ range: _rfModel.getFullModelRange(), text: content == null ? '' : String(content), forceMoveMarkers: true }]);
-      }
-      ed._isRefreshing = false;
+      try {
+        if (_rfModel && !_rfModel.isDisposed()) {
+          _rfModel.applyEdits([{ range: _rfModel.getFullModelRange(), text: content == null ? '' : String(content), forceMoveMarkers: true }]);
+        }
+      } finally { ed._isRefreshing = false; _globalRefreshLock = false; window.__qqqGlobalRefreshLock = false; }
       return true;
     } catch (e) {
       console.warn('[editor] refreshLiveContent failed:', e && e.message);
@@ -1234,9 +1269,11 @@
           var cur = ed.getValue();
           if (cur === dirtyContent) return;
           ed._isRefreshing = true;
+          _globalRefreshLock = true; window.__qqqGlobalRefreshLock = true;
           if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
-          m.applyEdits([{ range: m.getFullModelRange(), text: String(dirtyContent), forceMoveMarkers: true }]);
-          ed._isRefreshing = false;
+          try {
+            m.applyEdits([{ range: m.getFullModelRange(), text: String(dirtyContent), forceMoveMarkers: true }]);
+          } finally { ed._isRefreshing = false; _globalRefreshLock = false; window.__qqqGlobalRefreshLock = false; }
           // ★ 不 dispatch dirty:false — 跨窗口脏快照的内容未落盘，
           //    dispatch false 会让标签星号消失但文件实际未保存（大脑分裂）。
           //    让 _markDirty 自然触发（下次用户操作或 onDidChangeModelContent）。
@@ -1258,9 +1295,11 @@
         var m2 = ed.getModel();
         if (!m2 || m2.isDisposed()) return;
         ed._isRefreshing = true;
+        _globalRefreshLock = true;
         if (window.qqqCharUndo) window.qqqCharUndo.suppressOnce(ed);
-        m2.applyEdits([{ range: m2.getFullModelRange(), text: String(diskContent), forceMoveMarkers: true }]);
-        ed._isRefreshing = false;
+        try {
+          m2.applyEdits([{ range: m2.getFullModelRange(), text: String(diskContent), forceMoveMarkers: true }]);
+        } finally { ed._isRefreshing = false; _globalRefreshLock = false; window.__qqqGlobalRefreshLock = false; }
         _openedMtime[filePath] = { mtimeMs: st.mtimeMs, size: st.size };
       } else {
         // 编辑器脏 → 捕获外部版本到 timeline + 通知用户
@@ -1319,6 +1358,19 @@
     } catch (_) {}
   }
 
+  // ★ pane 精确取编辑器：paneEl 内挂载实例优先（split view 同路径多编辑器），路径兜底
+  function _edForPane(filePath, paneEl) {
+    var ed = null;
+    if (paneEl && paneEl.querySelector) {
+      try {
+        var _mount = paneEl.querySelector('[data-editor-mount]');
+        if (_mount && _mount._qqqEd) ed = _mount._qqqEd;
+      } catch (_) {}
+    }
+    if (!ed) ed = _paneEditors[filePath];
+    return ed || null;
+  }
+
   window.qqqEditor = {
     build,
     open,
@@ -1326,6 +1378,8 @@
     openInPane,
     getValue() { return editor ? editor.getValue() : ''; },
     isDirty() { return dirty; },
+    // ★ 路径级脏查询（tab-manager 预览复用/状态同步用，唯一真理 = _paneDirtyMap）
+    isPathDirty: function (filePath) { return !!_paneDirtyMap[filePath]; },
     currentFile() { return currentFile; },
     insertAtCursor(text) { if (editor && editor.insertAtCursor) { editor.insertAtCursor(text); } },
     getMonaco() { return _monacoRef; },
@@ -1341,8 +1395,8 @@
     isBinaryFileAsync,
     saveMinimapPref: _saveMinimapPref,
     // ★ Tab 切换优化：暂停/恢复 Monaco automaticLayout（避免隐藏编辑器做无意义 layout）
-    suspendPaneLayout: function(filePath) {
-      var ed = _paneEditors[filePath];
+    suspendPaneLayout: function(filePath, paneEl) {
+      var ed = _edForPane(filePath, paneEl);
       if (ed) {
         try { ed.updateOptions({ automaticLayout: false }); } catch (_) {}
         if (window.qqqViewportMachine && window.qqqViewportMachine.transition) {
@@ -1350,8 +1404,8 @@
         }
       }
     },
-    resumePaneLayout: function(filePath) {
-      var ed = _paneEditors[filePath];
+    resumePaneLayout: function(filePath, paneEl) {
+      var ed = _edForPane(filePath, paneEl);
       if (ed) {
         try {
           ed.layout();
@@ -1365,21 +1419,18 @@
         }
       }
     },
-    // ★ 安全销毁面板编辑器（异步调用，避免大文件 dispose 阻塞 UI）
-    disposePaneEditor: function(filePath) {
-      var ed = _paneEditors[filePath];
+    // ★ 安全销毁面板编辑器（同步；调用方必须先让 pane DOM 保持完整，dispose 后再移除 pane）
+    //   filePath 定位 + paneEl 精确匹配：split view 同路径多编辑器时只销毁本格（pane 内挂载的实例）
+    disposePaneEditor: function(filePath, paneEl) {
+      var ed = _edForPane(filePath, paneEl);
       if (!ed) return;
       // ★ 中心管线 closing：在 editor dispose 前清理 ViewZone/ContentWidget（editor 尚存活）
       if (window.qqqViewportMachine && window.qqqViewportMachine.transition) {
         try { window.qqqViewportMachine.transition('closing', ed, filePath); } catch (_) {}
       }
       try { ed.updateOptions({ automaticLayout: false }); } catch (_) {}
-      var model = null;
-      try { model = ed.getModel(); } catch (_) {}
       try { ed.dispose(); } catch (_) {}
-      if (model && !model.isDisposed()) {
-        try { model.dispose(); } catch (_) {}
-      }
+      // ★ model 不在此 dispose——由 onDidDispose 引用计数归零时销毁（防 split view 共享 model 被提前销毁）
     },
     // ★ 窗口快照：获取所有打开 editor 的光标位置
     getAllEditorPositions() {

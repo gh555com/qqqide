@@ -64,7 +64,7 @@ static void enableTls12(HINTERNET hRequest) {
 // ── 启动器自身版本（2026-08-10 重构: 版本 = versions.json 清单编号）──
 //   pack.js 读取此常量写入 versions.json 的 launcher 字段（精确矩阵的一员）。
 //   启动器版本变更只能随 r 分发（launcher-next.exe 三明治替换）。
-#define LAUNCHER_VERSION "20260810.4"
+#define LAUNCHER_VERSION "20260814.3"
 
 // ── 颜色（Solarized Light） ──
 #define COL_BG      RGB(0xfd, 0xf6, 0xe3)
@@ -133,6 +133,7 @@ static HANDLE  g_hUpdateThread  = NULL;
 static volatile LONG g_updateRunning = 0;
 static HANDLE  g_hApplyThread   = NULL;
 static volatile LONG g_applyRunning  = 0;
+static int     g_applyLaunches  = 0;
 static WCHAR   g_exeDir[MAX_PATH] = {0};
 static int     g_tickCount      = 0;
 static int     g_closeCountdown = 0;
@@ -149,6 +150,9 @@ static void writeQRecord(const WCHAR *exeDir) {
     if (GetFileAttributesW(pyDir) == INVALID_FILE_ATTRIBUTES) {
         swprintf(pyDir, MAX_PATH, L"%s\\engines\\python", exeDir);
     }
+
+    // ★ 同步本进程环境（joker/python 子进程继承）——父 shell 传入的陈旧值不污染进程树
+    SetEnvironmentVariableW(L"QQQIDE_PYTHON_DIR", pyDir);
 
     HKEY hkey;
     LONG rc = RegOpenKeyExW(HKEY_CURRENT_USER, L"Environment", 0, KEY_SET_VALUE, &hkey);
@@ -896,9 +900,182 @@ static int extractPayload(const WCHAR *rPath, const WCHAR *exeDir) {
 }
 
 
+// ★ 启动器自替换（三明治）: gh555.com/launcher-next.exe → 根 qqqide.exe
+//   运行中 exe 可 rename 不可 overwrite → 先改名旧 → 复制新 → 下次启动用新版。
+//   失败（AV 锁等）→ 保留 launcher-next.exe，每次启动重试直到成功
+//   （防启动器与载荷永久版本分裂）；next 与现运行 exe 内容相同 → 跳过并清理。
+static int filesEqualW(const WCHAR *a, const WCHAR *b) {
+    HANDLE ha = CreateFileW(a, GENERIC_READ, FILE_SHARE_READ, NULL,
+        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (ha == INVALID_HANDLE_VALUE) return 0;
+    HANDLE hb = CreateFileW(b, GENERIC_READ, FILE_SHARE_READ, NULL,
+        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hb == INVALID_HANDLE_VALUE) { CloseHandle(ha); return 0; }
+    LARGE_INTEGER sa, sb;
+    int same = 0;
+    if (GetFileSizeEx(ha, &sa) && GetFileSizeEx(hb, &sb) && sa.QuadPart == sb.QuadPart) {
+        char bufa[65536], bufb[65536];
+        same = 1;
+        for (;;) {
+            DWORD ra = 0, rb = 0;
+            BOOL oka = ReadFile(ha, bufa, sizeof(bufa), &ra, NULL);
+            BOOL okb = ReadFile(hb, bufb, sizeof(bufb), &rb, NULL);
+            if (!oka || !okb || ra != rb || (ra > 0 && memcmp(bufa, bufb, ra) != 0)) { same = 0; break; }
+            if (ra == 0) break;
+        }
+    }
+    CloseHandle(ha); CloseHandle(hb);
+    return same;
+}
+
+static void tryLauncherSelfReplace(const WCHAR *exeDir) {
+    WCHAR newLauncher[MAX_PATH], oldLauncher[MAX_PATH], rootLauncher[MAX_PATH];
+    swprintf(newLauncher, MAX_PATH, L"%s\\gh555.com\\launcher-next.exe", exeDir);
+    if (!fileExistsW(newLauncher)) return;
+    swprintf(oldLauncher, MAX_PATH, L"%s\\qqqide.old.exe", exeDir);
+    swprintf(rootLauncher, MAX_PATH, L"%s\\qqqide.exe", exeDir);
+    if (filesEqualW(newLauncher, rootLauncher)) {
+        DeleteFileW(newLauncher);   // 已是同版启动器 → 无需替换
+        return;
+    }
+    DeleteFileW(oldLauncher);
+    if (MoveFileW(rootLauncher, oldLauncher)) {
+        if (CopyFileW(newLauncher, rootLauncher, FALSE)) {
+            DeleteFileW(oldLauncher);
+            DeleteFileW(newLauncher);
+        } else {
+            // 复制失败 → 恢复旧启动器，绝不丢失入口；next 保留，下次启动重试
+            MoveFileW(oldLauncher, rootLauncher);
+        }
+    }
+    // MoveFileW 失败（AV 锁运行中 exe）→ 保留 newLauncher，下次启动重试
+}
+
+// ★ 交换前清场（2026-08-14）: 枚举全系统进程，可执行文件路径位于本包内（exeDir\ 前缀）
+//   的一律 TerminateProcess——py-broker / goods / ghrun 崩溃残留的 cwd 或映像句柄会锁死
+//   gh555.com 目录 → 交换 rename 必失败。路径前缀精确判定，绝不误杀他包/系统进程。
+static void killStalePackProcesses(const WCHAR *exeDir) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return;
+    DWORD selfPid = GetCurrentProcessId();
+    size_t dirLen = wcslen(exeDir);
+    int killed = 0;
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(pe);
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            if (pe.th32ProcessID == 0 || pe.th32ProcessID == selfPid) continue;
+            HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
+            if (!h) continue;
+            WCHAR imgPath[MAX_PATH];
+            DWORD sz = MAX_PATH;
+            if (QueryFullProcessImageNameW(h, 0, imgPath, &sz) &&
+                dirLen > 0 && _wcsnicmp(imgPath, exeDir, dirLen) == 0 &&
+                imgPath[dirLen] == L'\\') {
+                TerminateProcess(h, 0);
+                WaitForSingleObject(h, 2000);
+                killed++;
+            }
+            CloseHandle(h);
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
+    if (killed > 0) Sleep(800);   // 等全部映像/目录句柄释放
+}
+
+// ★ 轮换旧槽（2026-08-14）: gh555.com-old 被占用删不掉 → 下次交换改用 -1/-2/-3 槽。
+//   旧垃圾永不阻塞后续升级（客户 332 卡升级同源事故）。cleanup 每启动清全部槽。
+static void oldSlotPath(const WCHAR *exeDir, int idx, WCHAR *out, int cap) {
+    if (idx == 0) swprintf(out, cap, L"%s\\gh555.com-old", exeDir);
+    else swprintf(out, cap, L"%s\\gh555.com-old-%d", exeDir, idx);
+}
+static int findFreeOldSlot(const WCHAR *exeDir, WCHAR *out, int cap) {
+    for (int i = 0; i < 100; i++) {
+        WCHAR cand[MAX_PATH];
+        oldSlotPath(exeDir, i, cand, MAX_PATH);
+        if (!fileExistsW(cand)) { swprintf(out, cap, L"%s", cand); return 1; }
+    }
+    return 0;
+}
+
+// ★ 终极兜底（2026-08-14）: rename 被 AV/残留占用锁死 → 注册 PendingFileRenameOperations，
+//   smss 在下次重启、任何用户进程运行前执行 rename——唯一在任何占用下都能成功的机制。
+//   顺序对调亦安全（崩溃恢复+版本校验收敛，最坏多一次启动）。非管理员写 HKLM 失败 →
+//   返回 0，保留 .swap-ready 每次启动重试（占用多为瞬时锁，重试通常成功）。
+static int registerSwapPendingReboot(const WCHAR *ghDir, const WCHAR *ghOld, const WCHAR *ghNext) {
+    DWORD flags = MOVEFILE_REPLACE_EXISTING | MOVEFILE_DELAY_UNTIL_REBOOT;
+    if (!MoveFileExW(ghDir, ghOld, flags)) return 0;
+    if (!MoveFileExW(ghNext, ghDir, flags)) return 0;
+    return 1;
+}
+
+// ★ 旧槽 Data 救援（2026-08-14）: pending 执行后 / 异常中断后，用户 Data 可能躺在 old 槽里。
+//   两步搬回（先移出出厂 Data 再改名，rename 到非空目录必失败）；任一步失败保留现场
+//   下次启动重试；含 Data 的槽永不删除（数据零丢失）。
+static int tryRestoreDataFromOldSlots(const WCHAR *exeDir, const WCHAR *ghDir, char *logBuf, int bufSize) {
+    int done = 1;
+    for (int i = 0; i < 100; i++) {
+        WCHAR slot[MAX_PATH], slotData[MAX_PATH], dataDir[MAX_PATH], dataNew[MAX_PATH];
+        oldSlotPath(exeDir, i, slot, MAX_PATH);
+        if (!fileExistsW(slot)) continue;
+        swprintf(slotData, MAX_PATH, L"%s\\Data", slot);
+        if (!fileExistsW(slotData)) { removeDir(slot); continue; }
+        swprintf(dataDir, MAX_PATH, L"%s\\Data", ghDir);
+        swprintf(dataNew, MAX_PATH, L"%s\\Data.new", ghDir);
+        if (fileExistsW(dataNew)) {
+            // 上次搬回中断: Data.new 已就位 → 继续推进
+            if (fileExistsW(dataDir) && !removeDir(dataDir)) { done = 0; continue; }
+            if (!MoveFileW(dataNew, dataDir)) { done = 0; continue; }
+            removeDir(slot);
+            swapLogAppend(logBuf, bufSize, "data rescue: old-slot-%d Data -> gh555.com/Data", i);
+            continue;
+        }
+        if (fileExistsW(dataDir)) {
+            if (!MoveFileW(slotData, dataNew)) { done = 0; continue; }
+            if (!removeDir(dataDir)) { done = 0; continue; }   // Data.new 保留，下次继续
+            if (!MoveFileW(dataNew, dataDir)) { done = 0; continue; }
+            removeDir(slot);
+            swapLogAppend(logBuf, bufSize, "data rescue: old-slot-%d Data -> gh555.com/Data", i);
+        } else {
+            if (!MoveFileW(slotData, dataDir)) { done = 0; continue; }
+            removeDir(slot);
+            swapLogAppend(logBuf, bufSize, "data rescue: old-slot-%d Data -> gh555.com/Data", i);
+        }
+    }
+    return done;
+}
+
 // ★ 快速交换：gh555.com-next → gh555.com（原子 rename，<1s）
 // ★★ 铁律（2026-08-06）: joker 还在跑 → 绝不交换，保留 .swap-ready 等下次启动。
 //    前台进程不可被更新杀灭；交换只在用户完全退出后、下次启动时发生。
+// ★ 升级失败计数（2026-08-14）: 连续解压失败 ≥3 次 → 写 gh555.com/update-failed.txt
+//   （壳层启动读此文件弹窗暴露，杜绝「无限静默循环」——客户 40 次循环实锤）。
+//   任何成功（extract OK / swap OK / 幂等跳过）→ 清零。
+static void applyFailMark(const WCHAR *exeDir) {
+    WCHAR fPath[MAX_PATH];
+    swprintf(fPath, MAX_PATH, L"%s\\.apply-fails", exeDir);
+    char buf[32] = {0};
+    int n = 0;
+    if (readFileText(fPath, buf, sizeof(buf)) > 0) n = atoi(buf);
+    n++;
+    char nb[32];
+    snprintf(nb, sizeof(nb), "%d", n);
+    writeFileText(fPath, nb);
+    if (n >= 3) {
+        WCHAR markPath[MAX_PATH];
+        swprintf(markPath, MAX_PATH, L"%s\\gh555.com\\update-failed.txt", exeDir);
+        writeFileText(markPath, nb);
+    }
+}
+
+static void applyFailClear(const WCHAR *exeDir) {
+    WCHAR fPath[MAX_PATH], markPath[MAX_PATH];
+    swprintf(fPath, MAX_PATH, L"%s\\.apply-fails", exeDir);
+    swprintf(markPath, MAX_PATH, L"%s\\gh555.com\\update-failed.txt", exeDir);
+    DeleteFileW(fPath);
+    DeleteFileW(markPath);
+}
+
 static int applySwapIfReady(const WCHAR *exeDir) {
     char logBuf[4096] = {0};
     WCHAR swapReady[MAX_PATH];
@@ -912,20 +1089,37 @@ static int applySwapIfReady(const WCHAR *exeDir) {
     swapLogAppend(logBuf, sizeof(logBuf), "swap begin: pending=%s live=%s",
         pendVer[0] ? pendVer : "?", liveVer[0] ? liveVer : "?");
 
-    WCHAR ghDir[MAX_PATH], ghOld[MAX_PATH], ghNext[MAX_PATH];
+    WCHAR ghDir[MAX_PATH], ghOldSlot[MAX_PATH], ghNext[MAX_PATH];
     swprintf(ghDir, MAX_PATH, L"%s\\gh555.com", exeDir);
-    swprintf(ghOld, MAX_PATH, L"%s\\gh555.com-old", exeDir);
     swprintf(ghNext, MAX_PATH, L"%s\\gh555.com-next", exeDir);
+    ghOldSlot[0] = L'\0';
 
-    // ★ 崩溃恢复（2026-08-06）: 上次交换中途失败 → gh555.com 缺失但 -old/Data.backup 残留
-    //   先还原，杜绝「找不到 gh555.com」类故障。
+    // ★ 崩溃恢复（2026-08-06）: 上次交换中途失败 → gh555.com 缺失但 old 槽/Data.backup 残留
+    //   先还原，杜绝「找不到 gh555.com」类故障。含 Data 的槽优先还原。
     {
         WCHAR dataDir[MAX_PATH], backupDir[MAX_PATH];
         swprintf(dataDir, MAX_PATH, L"%s\\Data", ghDir);
         swprintf(backupDir, MAX_PATH, L"%s\\Data.backup", exeDir);
-        if (!fileExistsW(ghDir) && fileExistsW(ghOld)) {
-            if (!MoveFileW(ghOld, ghDir))
-                swapLogAppend(logBuf, sizeof(logBuf), "crash-recover: move gh555.com-old FAIL err=%lu", GetLastError());
+        if (!fileExistsW(ghDir)) {
+            WCHAR restoreSlot[MAX_PATH];
+            restoreSlot[0] = L'\0';
+            for (int pass = 0; pass < 2 && !restoreSlot[0]; pass++) {
+                for (int i = 0; i < 100; i++) {
+                    WCHAR slot[MAX_PATH], slotData[MAX_PATH];
+                    oldSlotPath(exeDir, i, slot, MAX_PATH);
+                    if (!fileExistsW(slot)) continue;
+                    if (pass == 0) {
+                        swprintf(slotData, MAX_PATH, L"%s\\Data", slot);
+                        if (!fileExistsW(slotData)) continue;
+                    }
+                    swprintf(restoreSlot, MAX_PATH, L"%s", slot);
+                    break;
+                }
+            }
+            if (restoreSlot[0]) {
+                if (!MoveFileW(restoreSlot, ghDir))
+                    swapLogAppend(logBuf, sizeof(logBuf), "crash-recover: restore old-slot FAIL err=%lu", GetLastError());
+            }
         }
         if (!fileExistsW(dataDir) && fileExistsW(backupDir)) {
             if (!MoveFileW(backupDir, dataDir))
@@ -933,6 +1127,10 @@ static int applySwapIfReady(const WCHAR *exeDir) {
         }
     }
     if (!fileExistsW(ghNext)) {
+        // ★ pending 重启兜底完成检测（2026-08-14）: 交换已在重启时由 smss 执行完毕
+        //   → live 已是目标版本，用户 Data 还躺在 old 槽里 → 搬回并收尾。
+        //   其余半执行/未执行场景同样先救 Data（数据零丢失），再清标记。
+        tryRestoreDataFromOldSlots(exeDir, ghDir, logBuf, sizeof(logBuf));
         swapLogAppend(logBuf, sizeof(logBuf), "swap abort: gh555.com-next missing (swap-ready cleared)");
         DeleteFileW(swapReady);
         swapLogFlush(exeDir, logBuf);
@@ -945,6 +1143,10 @@ static int applySwapIfReady(const WCHAR *exeDir) {
         swapLogFlush(exeDir, logBuf);
         return 0;
     }
+
+    // ★ 守卫 1b（2026-08-14）: 交换前精准杀光本包内残留进程（py-broker/goods/ghrun 崩溃残党
+    //   的 cwd/映像句柄锁死目录 → rename 必失败）。只杀 exe 位于本包内的进程，零误伤。
+    killStalePackProcesses(exeDir);
 
     // ★ 守卫 2: next 完整性最小校验（joker + versions.json + resources/app）→ 残缺版绝不交换
     //   versions.json = 唯一版本权威（清单编号 + 组件精确矩阵），缺失即判残缺。
@@ -973,6 +1175,24 @@ static int applySwapIfReady(const WCHAR *exeDir) {
         }
     }
 
+    // ★ 防降级守卫（2026-08-14）: next 版本不严格高于 live → 放弃交换并清暂存。
+    //   场景: 手动删 joker → 首次安装重建 live 到更新版 → 旧 .swap-ready+next 残留
+    //   → 无此守卫会交换回旧版（反向降级）。
+    {
+        char nextVer[64] = {0};
+        WCHAR nextVPath[MAX_PATH];
+        swprintf(nextVPath, MAX_PATH, L"%s\\versions.json", ghNext);
+        if (readManifestIdFile(nextVPath, nextVer, sizeof(nextVer)) > 0 &&
+            liveVer[0] != '\0' && compareVersion(nextVer, liveVer) <= 0) {
+            swapLogAppend(logBuf, sizeof(logBuf), "swap abort: next %s not newer than live %s (no downgrade)", nextVer, liveVer);
+            DeleteFileW(swapReady);
+            removeDir(ghNext);
+            applyFailClear(exeDir);
+            swapLogFlush(exeDir, logBuf);
+            return 0;
+        }
+    }
+
     // ★ 保存用户数据
     WCHAR dataDir[MAX_PATH], backupDir[MAX_PATH];
     swprintf(dataDir, MAX_PATH, L"%s\\Data", ghDir);
@@ -990,17 +1210,31 @@ static int applySwapIfReady(const WCHAR *exeDir) {
         }
     }
 
-    // 原子交换
-    removeDir(ghOld);
-    if (!MoveFileW(ghDir, ghOld)) {
-        swapLogAppend(logBuf, sizeof(logBuf), "swap FAIL: move gh555.com -> gh555.com-old err=%lu", GetLastError());
+    // 原子交换（轮换槽: 旧槽被锁删不掉 → 用 -1/-2 新槽，旧垃圾永不阻塞升级）
+    if (!findFreeOldSlot(exeDir, ghOldSlot, MAX_PATH)) {
+        swapLogAppend(logBuf, sizeof(logBuf), "swap FAIL: no free old-slot");
         if (hasBackup) MoveFileW(backupDir, dataDir);
+        swapLogFlush(exeDir, logBuf);
+        return -1;
+    }
+    removeDir(ghOldSlot);
+    if (!MoveFileW(ghDir, ghOldSlot)) {
+        swapLogAppend(logBuf, sizeof(logBuf), "swap FAIL: move gh555.com -> old-slot err=%lu", GetLastError());
+        if (hasBackup) MoveFileW(backupDir, dataDir);   // 尽力还原，失败下次崩溃恢复救
+        // ★ 终极兜底: 注册重启时交换（smss 在任何占用者运行前执行，百分百无占用环境）。
+        //   注册成功 → 保留 .swap-ready，重启后 pending 完成检测搬回 Data 收尾。
+        if (registerSwapPendingReboot(ghDir, ghOldSlot, ghNext)) {
+            swapLogAppend(logBuf, sizeof(logBuf), "swap deferred to reboot: pending rename registered");
+            swapLogFlush(exeDir, logBuf);
+            return 0;
+        }
+        swapLogAppend(logBuf, sizeof(logBuf), "swap FAIL: pending rename register err=%lu (retry next boot)", GetLastError());
         swapLogFlush(exeDir, logBuf);
         return -1;
     }
     if (!MoveFileW(ghNext, ghDir)) {
         swapLogAppend(logBuf, sizeof(logBuf), "swap FAIL: move gh555.com-next -> gh555.com err=%lu", GetLastError());
-        MoveFileW(ghOld, ghDir);
+        MoveFileW(ghOldSlot, ghDir);
         if (hasBackup) MoveFileW(backupDir, dataDir);
         swapLogFlush(exeDir, logBuf);
         return -1;
@@ -1016,35 +1250,16 @@ static int applySwapIfReady(const WCHAR *exeDir) {
     }
 
     // ★ 自更新: gh555.com/launcher-next.exe → 根 qqqide.exe（三明治替换）
-    //   运行中 exe 可 rename 不可 overwrite → 先改名旧→复制新→下次启动自动用新版
-    {
-        WCHAR newLauncher[MAX_PATH], oldLauncher[MAX_PATH], rootLauncher[MAX_PATH];
-        swprintf(newLauncher, MAX_PATH, L"%s\\launcher-next.exe", ghDir);
-        swprintf(oldLauncher, MAX_PATH, L"%s\\qqqide.old.exe", exeDir);
-        swprintf(rootLauncher, MAX_PATH, L"%s\\qqqide.exe", exeDir);
-        if (fileExistsW(newLauncher)) {
-            DeleteFileW(oldLauncher);
-            if (MoveFileW(rootLauncher, oldLauncher)) {
-                if (CopyFileW(newLauncher, rootLauncher, FALSE)) {
-                    // 复制成功 → 清理旧版
-                    DeleteFileW(oldLauncher);
-                } else {
-                    // 复制失败 → 恢复旧启动器，绝不丢失入口
-                    swapLogAppend(logBuf, sizeof(logBuf), "launcher swap FAIL: copy launcher-next err=%lu (rolled back)", GetLastError());
-                    MoveFileW(oldLauncher, rootLauncher);
-                }
-            } else {
-                swapLogAppend(logBuf, sizeof(logBuf), "launcher swap FAIL: move root qqqide.exe err=%lu", GetLastError());
-            }
-            DeleteFileW(newLauncher);
-        }
-    }
+    //   失败保留 next，每次启动重试（防启动器永久分裂）
+    tryLauncherSelfReplace(exeDir);
 
-    removeDir(ghOld);
+    // 旧槽删除失败只留垃圾（每启动重试），不影响本次升级——已由轮换槽机制兜底
+    removeDir(ghOldSlot);
     DeleteFileW(swapReady);
     swapLogAppend(logBuf, sizeof(logBuf), "swap OK: %s -> %s",
         liveVer[0] ? liveVer : "?", pendVer[0] ? pendVer : "?");
     swapLogFlush(exeDir, logBuf);
+    applyFailClear(exeDir);
     return 1;
 }
 
@@ -1067,11 +1282,21 @@ static void cleanupRootJunk(const WCHAR *exeDir) {
         swprintf(p, MAX_PATH, L"%s\\%s", exeDir, plainFiles[i]);
         if (fileExistsW(p)) DeleteFileW(p);
     }
-    // 交换失败/崩溃残留目录
-    swprintf(p, MAX_PATH, L"%s\\gh555.com-old", exeDir);
-    if (fileExistsW(p)) removeDir(p);
+    // 交换失败/崩溃残留目录（轮换槽系列，2026-08-14）:
+    //   含 Data 的槽永不删（用户数据安全，由 applySwapIfReady 搬回后收尾）
+    for (int i = 0; i < 100; i++) {
+        oldSlotPath(exeDir, i, p, MAX_PATH);
+        if (!fileExistsW(p)) continue;
+        WCHAR slotData[MAX_PATH];
+        swprintf(slotData, MAX_PATH, L"%s\\Data", p);
+        if (fileExistsW(slotData)) continue;
+        removeDir(p);
+    }
     // 单元增量暂存（下载中断残留，启动即清）
     swprintf(p, MAX_PATH, L"%s\\u.next", exeDir);
+    if (fileExistsW(p)) removeDir(p);
+    // 全量解压暂存（解压中途被杀残留，启动即清）
+    swprintf(p, MAX_PATH, L"%s\\_swap_tmp", exeDir);
     if (fileExistsW(p)) removeDir(p);
     // 挂起更新: .swap-ready 仍在 → 交换被推迟（joker 在跑）→ 保留 next 等下次交换
     swprintf(p, MAX_PATH, L"%s\\.swap-ready", exeDir);
@@ -1127,6 +1352,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
     int rd = readFileText(vNext, newVer, sizeof(newVer));
     if (rd <= 0) {
         swapLogNow(exeDir, "extract abort: .version-next unreadable");
+        applyFailMark(exeDir);
         DeleteFileW(rNext); DeleteFileW(vNext); InterlockedExchange(&g_applyRunning, 0); return 0;
     }
 
@@ -1135,6 +1361,8 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
         char liveVer[64] = {0};
         if (readLocalVersion(exeDir, liveVer, sizeof(liveVer)) > 0 &&
             strcmp(liveVer, newVer) == 0) {
+            swapLogNow(exeDir, "extract skip: live already %s (stale r.next cleaned)", liveVer);
+            applyFailClear(exeDir);
             DeleteFileW(rNext); DeleteFileW(vNext);
             InterlockedExchange(&g_applyRunning, 0);
             return 0;
@@ -1161,6 +1389,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
             WCHAR swapReady[MAX_PATH];
             swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
             writeFileText(swapReady, newVer);
+            applyFailClear(exeDir);
             DeleteFileW(rNext); DeleteFileW(vNext);
             InterlockedExchange(&g_applyRunning, 0);
             return 0;
@@ -1181,6 +1410,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
     if (!CreateProcessW(NULL, cmdLine, NULL, NULL, FALSE,
         CREATE_NO_WINDOW, NULL, tmpDir, &si, &pi)) {
         swapLogNow(exeDir, "extract FAIL: spawn 7z err=%lu", GetLastError());
+        applyFailMark(exeDir);
         removeDir(tmpDir);
         InterlockedExchange(&g_applyRunning, 0);
         return 0;
@@ -1193,6 +1423,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
 
     if (ec != 0) {
         swapLogNow(exeDir, "extract FAIL: 7z exit=%lu (corrupt r.next)", ec);
+        applyFailMark(exeDir);
         removeDir(tmpDir); InterlockedExchange(&g_applyRunning, 0); return 0;
     }
 
@@ -1201,6 +1432,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
     swprintf(extractedGh, MAX_PATH, L"%s\\gh555.com", tmpDir);
     if (!fileExistsW(extractedGh)) {
         swapLogNow(exeDir, "extract FAIL: payload has no gh555.com (bad r.next)");
+        applyFailMark(exeDir);
         removeDir(tmpDir);
         InterlockedExchange(&g_applyRunning, 0);
         return 0;
@@ -1208,6 +1440,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
 
     if (!MoveFileW(extractedGh, ghNext)) {
         swapLogNow(exeDir, "extract FAIL: move to gh555.com-next err=%lu", GetLastError());
+        applyFailMark(exeDir);
         removeDir(tmpDir); removeDir(ghNext);
         InterlockedExchange(&g_applyRunning, 0);
         return 0;
@@ -1232,6 +1465,7 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
     swprintf(swapReady, MAX_PATH, L"%s\\.swap-ready", exeDir);
     writeFileText(swapReady, newVer);
     swapLogNow(exeDir, "extract OK: %s staged (swap-ready written)", newVer);
+    applyFailClear(exeDir);
 
     // 清理暂存文件
     DeleteFileW(rNext);
@@ -1243,6 +1477,28 @@ static unsigned __stdcall backgroundApplyUpdate(void *param) {
     if (g_hwnd) PostMessageW(g_hwnd, WM_USER + 1, 0, 0);
 
     return 0;
+}
+
+// ★ 解压线程调度（2026-08-14）: 下载完 r.next+.version-next 即在本会话解压
+//   → 全量升级从 3 次启动压到 2 次（与增量路径一致）。每会话最多 2 次（防解压失败洪泛），
+//   失败（r.next 残留）下次启动重试。
+static void maybeStartApplyThread(void) {
+    if (g_applyLaunches >= 2) return;
+    if (InterlockedCompareExchange(&g_applyRunning, 0, 0) != 0) return;  // 上一线程仍在跑
+    if (g_hApplyThread) {
+        if (WaitForSingleObject(g_hApplyThread, 0) == WAIT_OBJECT_0) {
+            CloseHandle(g_hApplyThread); g_hApplyThread = NULL;
+        } else {
+            return;
+        }
+    }
+    WCHAR rNextPath[MAX_PATH], vNextPath[MAX_PATH];
+    swprintf(rNextPath, MAX_PATH, L"%s\\r.next", g_exeDir);
+    swprintf(vNextPath, MAX_PATH, L"%s\\.version-next", g_exeDir);
+    if (fileExistsW(rNextPath) && fileExistsW(vNextPath)) {
+        g_applyLaunches++;
+        g_hApplyThread = (HANDLE)_beginthreadex(NULL, 0, backgroundApplyUpdate, g_exeDir, 0, NULL);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1736,6 +1992,22 @@ static unsigned __stdcall backgroundUpdateProc(void *param) {
     // 下载到暂存
     WCHAR rNext[MAX_PATH];
     swprintf(rNext, MAX_PATH, L"%s\\r.next", g_exeDir);
+
+    // ★ 下载去重（2026-08-14）: r.next 已在盘且 .version-next 已是目标版本
+    //   → 跳过重复下载，留给解压线程重试（解压持续失败时每启动重下 159MB = 纯带宽浪费，
+    //   客户 40 次循环同款）。服务器出新版 → serverVer 变化 → 守卫自然放行重下。
+    {
+        WCHAR vnPath[MAX_PATH];
+        swprintf(vnPath, MAX_PATH, L"%s\\.version-next", g_exeDir);
+        char vnVer[64] = {0};
+        if (fileExistsW(rNext) && readFileText(vnPath, vnVer, sizeof(vnVer)) > 0 &&
+            strcmp(vnVer, serverVer) == 0) {
+            swapLogNow(g_exeDir, "update: skip re-download r (%s staged, retry extract)", serverVer);
+            InterlockedExchange(&g_updateRunning, 0);
+            return 0;
+        }
+    }
+
     DeleteFileW(rNext);
 
     int result = downloadFile(g_cfg.update_host, g_cfg.r_path, rNext, g_cfg.use_https);
@@ -1752,7 +2024,7 @@ static unsigned __stdcall backgroundUpdateProc(void *param) {
     WCHAR vNext[MAX_PATH];
     swprintf(vNext, MAX_PATH, L"%s\\.version-next", g_exeDir);
     writeFileText(vNext, serverVer);
-    swapLogNow(g_exeDir, "update: r.next downloaded OK (%s), extract on next boot", serverVer);
+    swapLogNow(g_exeDir, "update: r.next downloaded OK (%s), extracting in-session", serverVer);
 
     InterlockedExchange(&g_updateRunning, 0);
     return 0;
@@ -1879,6 +2151,15 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         MultiByteToWideChar(CP_UTF8, 0, pctText, -1, wPct, 16);
         DrawTextW(hdc, wPct, -1, &pr, DT_CENTER | DT_VCENTER);
 
+        // ★ 升级连续失败 ≥3 次 → 红色错误行（2026-08-14，客户 40 次静默死循环实锤）
+        if (g_err && g_status[0]) {
+            WCHAR wErr[200];
+            MultiByteToWideChar(CP_UTF8, 0, g_status, -1, wErr, 200);
+            SetTextColor(hdc, RGB(0xdc, 0x32, 0x2f));
+            RECT er = {16, 178, WW - 16, 204};
+            DrawTextW(hdc, wErr, -1, &er, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        }
+
         // 2026-08-06: 状态文字已移除 — 启动窗只显示 标题 + 进度条 + 百分比
         EndPaint(hwnd, &ps);
         return 0;
@@ -1890,6 +2171,20 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         switch (g_phase) {
         case PHASE_INIT:
             if (g_tickCount >= 1) {
+                // ★ 升级连续失败暴露（2026-08-14）: .apply-fails ≥3 → 启动窗红色错误行
+                {
+                    WCHAR fPath[MAX_PATH];
+                    GetModuleFileNameW(NULL, fPath, MAX_PATH);
+                    WCHAR *fs = wcsrchr(fPath, L'\\');
+                    if (fs) *fs = L'\0';
+                    WCHAR fFull[MAX_PATH];
+                    swprintf(fFull, MAX_PATH, L"%s\\.apply-fails", fPath);
+                    char fbuf[32] = {0};
+                    if (readFileText(fFull, fbuf, sizeof(fbuf)) > 0 && atoi(fbuf) >= 3) {
+                        snprintf(g_status, sizeof(g_status), "auto-update failed %s times, retry after reboot", fbuf);
+                        g_err = 1;
+                    }
+                }
                 g_pct = 0;
                 g_phase = PHASE_LAUNCHING;
                 if (launchCore() != 0) {
@@ -1904,13 +2199,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
                 g_hUpdateThread = (HANDLE)_beginthreadex(NULL, 0, backgroundUpdateProc, NULL, 0, NULL);
             }
             // ★ 后台解压 r.next → gh555.com-next/（不阻塞，用户已在 IDE 中工作）
-            if (!g_hApplyThread) {
-                WCHAR rNextPath[MAX_PATH];
-                swprintf(rNextPath, MAX_PATH, L"%s\\r.next", g_exeDir);
-                if (fileExistsW(rNextPath)) {
-                    g_hApplyThread = (HANDLE)_beginthreadex(NULL, 0, backgroundApplyUpdate, g_exeDir, 0, NULL);
-                }
-            }
+            maybeStartApplyThread();
             if (g_tickCount <= 20 && g_tickCount % 4 == 0 && g_pct < 60) {
                 g_pct += 8;
             }
@@ -1922,6 +2211,10 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM w, LPARAM l) {
         case PHASE_WAITING: {
             // ★ 核心：检测 joker.exe 的主窗口是否出现
             int applyBusy = (InterlockedCompareExchange(&g_applyRunning, 0, 0) != 0);
+
+            // ★ 下载完成即解压（2026-08-14）: 后台下载完 r.next+.version-next → 本会话立即解压
+            //   → 全量升级 2 次启动完成（下载+解压同会话，仅交换等下次启动）
+            maybeStartApplyThread();
 
             // 方式1：通过 PID 查找 joker 的可见窗口
             if (g_jokerPid != 0) {
@@ -2164,6 +2457,8 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
         }
     } else {
         // ── 已安装 → 快速交换（如果有 .swap-ready）+ 清理残留 ──
+        // ★ 上次三明治替换失败的补救（失败时 next 保留，此处重试）
+        tryLauncherSelfReplace(myDir);
         // ★ applySwapIfReady: 检测上次后台解压的 gh555.com-next，原子 rename（<1s）
         applySwapIfReady(myDir);
 
@@ -2188,6 +2483,11 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int nShow) {
 
     // ★ 旧根 Data 迁移: 泄漏残留 → 救援 alphal 入保险库（gh555.com/Data）后整树删除
     migrateLegacyRootData(myDir);
+
+    // ★ 首次运行解压完成后重写 Q 记录（2026-08-14 客户事故）:
+    //   首次启动 gh555.com 尚不存在 → 上面那次写入误落 dev 兜底路径
+    //   （注册表残留 "…\engines\python" 不存在的路径）。此时布局已就绪，重写为真值。
+    writeQRecord(myDir);
 
     // 清除上次残留的 loading-status
     {

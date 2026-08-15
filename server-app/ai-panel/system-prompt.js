@@ -134,7 +134,31 @@ if (typeof module !== 'undefined' && module.exports) {
 // 规则注入 — 两套规则，首轮合并注入一次，后续不重复消耗 token
 // ============================================================================
 
-// global.txt — 全局规则，所有 IDE 窗口共享（{appRoot}/Data/global.txt）
+// ★ 通用：解析规则文本中的 rule"..." 引用，返回预加载块（global/project 共用，2026-08-15 统一）
+window._injectRuleRefs = async function (rawText, bridge) {
+    var _injected = [];
+    var _seen = {};
+    var _cleanLines = rawText.split('\n').filter(function (l) { return !/^\s*#/.test(l); }).join('\n');
+    var _re = /rule"((?:[A-Za-z]:[\\\/]|\/)[^"]+)"/g;
+    var _m;
+    while ((_m = _re.exec(_cleanLines)) !== null) {
+        var _fp = _m[1];
+        if (!_fp || _seen[_fp]) continue;
+        _seen[_fp] = true;
+        try {
+            var _st = await bridge.fs.stat(_fp).catch(function () { return null; });
+            if (!_st || _st.isDir) continue;
+            var _fc = await bridge.fs.read(_fp);
+            if (_fc && _fc.length > 50) {
+                _injected.push('\n═══ AUTO-LOADED: ' + _fp + ' ═══\n' + _fc.replace(/\r\n/g, '\n'));
+            }
+        } catch (_) { }
+    }
+    if (_injected.length === 0) return '';
+    return '\n\n[PRE-LOADED FILES — The following files are referenced in rules and have been automatically loaded into context. Their content is already here — do NOT call read_file on them.]\n\n' + _injected.join('\n\n---\n\n');
+};
+
+// global.txt — 全局规则，所有 IDE 窗口共享（{appRoot}/Data/global.txt），与 project.txt 同权支持 rule"..."（2026-08-15）
 window.qqqideRulesContent = '';
 
 window.loadQqqideRules = async function () {
@@ -146,6 +170,8 @@ window.loadQqqideRules = async function () {
             var text = await bridge.fs.read(rulesPath);
             if (text && text.trim()) {
                 window.qqqideRulesContent = '[GLOBAL RULES — Permanent rules set by the user. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END GLOBAL RULES]';
+                var _pre = await window._injectRuleRefs(text, bridge);
+                if (_pre) window.qqqideRulesContent += _pre;
             }
         }
     } catch (e) { /* silent */ }
@@ -159,7 +185,7 @@ window.loadQqqideProjectRules = async function (projectRoot) {
         if (!projectRoot) return;
         var bridge = parent.qqqideBridge;
         if (!bridge) return;
-       var projPath = projectRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/rule/project.txt';;
+       var projPath = projectRoot.replace(/\\/g, '/').replace(/\/$/, '') + '/_qqq/alphal/rule/project.txt';
 
         var _cachedRoot = window._qqqideProjectRulesRoot || '';
         if (projectRoot !== _cachedRoot) {
@@ -180,31 +206,8 @@ window.loadQqqideProjectRules = async function (projectRoot) {
         if (text && text.trim()) {
             window.qqqideProjectRulesContent = '[PROJECT RULES — Rules specific to this project. You only see this message once at the start of the conversation. Remember and follow these rules in every interaction about this project. Do NOT re-state or re-explain them unless asked.]\n\n' + text.trim() + '\n\n[END PROJECT RULES]';
 
-            var _raw = text.trim();
-            var _cleanLines = _raw.split('\n').filter(function (l) { return !/^\s*#/.test(l); }).join('\n');
-            var _seen = {};
-            var _injected = [];
-            var _re = /rule"((?:[A-Za-z]:[\\\/]|\/)[^"]+)"/g;
-            var _m;
-
-            while ((_m = _re.exec(_cleanLines)) !== null) {
-                var _fp = _m[1];
-                if (!_fp || _seen[_fp]) continue;
-                _seen[_fp] = true;
-                try {
-                    var _st = await bridge.fs.stat(_fp).catch(function () { return null; });
-                    if (!_st) continue;
-                    if (!_st.isDir) {
-                        var _fc = await bridge.fs.read(_fp);
-                        if (_fc && _fc.length > 50) {
-                            _injected.push('\n═══ AUTO-LOADED: ' + _fp + ' ═══\n' + _fc.replace(/\r\n/g, '\n'));
-                        }
-                    }
-                } catch (_) { }
-            }
-            if (_injected.length > 0) {
-                window.qqqideProjectRulesContent += '\n\n[PRE-LOADED FILES — The following files are referenced in project rules and have been automatically loaded into context. Their content is already here — do NOT call read_file on them.]\n\n' + _injected.join('\n\n---\n\n');
-            }
+            var _pre = await window._injectRuleRefs(text, bridge);
+            if (_pre) window.qqqideProjectRulesContent += _pre;
         }
     } catch (e) { /* silent */ }
 };

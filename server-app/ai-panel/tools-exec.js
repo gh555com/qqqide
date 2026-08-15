@@ -629,6 +629,13 @@ async function executeListFiles(args) {
     }
 
     try {
+        // ★ 2026-08-14: 路径是文件时显式标注——旧行为对文件返回单条裸名（无 / 后缀），
+        //   与空目录输出混淆，AI 曾把文件误判为目录（F12 q1 事故）
+        var _stL = null;
+        try { if (bridge.fs && bridge.fs.stat) _stL = await bridge.fs.stat(args.path); } catch (_eL) { }
+        if (_stL && !_stL.isDir) {
+            return '(file) ' + args.path + (_stL.size != null ? '  (' + _stL.size + ' bytes)' : '');
+        }
         if (args.recursive) {
             // * 优先走主进程 (1 IPC, 消除 renderer IPC 洪水)
             if (bridge.ai && bridge.ai.list_files) {
@@ -656,6 +663,7 @@ async function executeListFiles(args) {
             return entries.join('\n');
         } else {
             var items = await bridge.fs.list(args.path);
+            if (!items || items.length === 0) return '(empty directory)';
             return items.map(function (i) { return i.name + (i.isDir ? '/' : ''); }).join('\n');
         }
     } catch (err) {
