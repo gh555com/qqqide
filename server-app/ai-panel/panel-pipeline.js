@@ -196,6 +196,17 @@ async function _executeSend(intent) {
     // ★ 捕获链键基线：草稿晋升后迁移到新键（_sendChainMigrate）
     var _lockQid = questId;
 
+    // ★ 2026-08-17 F51: 目标 agent 解析——机器触发路径（only facts 压缩楼层）的目标 quest
+    //   可能不是面板当前活跃 quest（用户可能在别的 quest 建楼时点背包页 only facts）。
+    //   旧代码全程用 _activeAgent → ① streaming 闸门被活跃 quest 的流式状态误拦
+    //   （q154 事故实锤：子弹已写、饼干已砍半、楼层未建、toast 假成功）② compress 标志
+    //   会串号到活跃 agent（V21 泄漏重演）。正常用户发送路径 pool[questId] === _activeAgent，
+    //   行为零变化。
+    try {
+        var _poolTgt = window.parent && window.parent.__qqq_agentPool;
+        if (_poolTgt && _poolTgt[questId]) _activeAgent = _poolTgt[questId];
+    } catch (_) { }
+
     // ── 闸门 ──
     var _isCompress = (sendType === 'compress') || intent.compressFloor;
     if (_activeAgent && _activeAgent._stopState === 'sending' && !isRecovery && !_isCompress) return;
@@ -315,13 +326,17 @@ async function _executeSend(intent) {
     if (qid) {
         try {
             var _ssSyncOwner = _parentGetQuestOwner(qid);
-            if (_ssSyncOwner !== undefined && _ssSyncOwner !== _panelId) {
-                _setPanelFocus(false);
-                _broadcast('focus-request', qid, { targetPanel: _ssSyncOwner });
-                agent.setStopState('idle');
-                updateQueueBtn();
-                return;
+        if (_ssSyncOwner !== undefined && _ssSyncOwner !== _panelId) {
+            // ★ 2026-08-17 F51: compress（only facts）被所有权拦截时显式提示，不静默
+            if (_isCompress) {
+                try { if (window.parent && window.parent.qqqideQoast) window.parent.qqqideQoast.show('only facts：该任务正在其他面板处理，请切换到对应面板或稍后再试', { type: 'warning', duration: 5000 }); } catch (_e8) { }
             }
+            _setPanelFocus(false);
+            _broadcast('focus-request', qid, { targetPanel: _ssSyncOwner });
+            agent.setStopState('idle');
+            updateQueueBtn();
+            return;
+        }
             if (_ssSyncOwner === undefined) {
                 _parentClaimQuest(qid);
                 _broadcast('owner-claimed', qid);
@@ -333,7 +348,9 @@ async function _executeSend(intent) {
     // ★ 内容验证（显式传入，不读 $input）
     var text = (content || '').trim();
     if (!text && (!images || images.length === 0)) { agent.setStopState('idle'); updateQueueBtn(); return; }
-    if (streaming) { agent.setStopState('idle'); updateQueueBtn(); return; }
+    // ★ 2026-08-17 F51: compress 楼层不受面板 streaming 拦截（目标 agent 已由上方解析，
+    //   streaming proxy = 目标 agent 的 _streaming；双保险豁免机器触发的压缩楼层）
+    if (streaming && !_isCompress) { agent.setStopState('idle'); updateQueueBtn(); return; }
 
     // ── 构建 userContent（含附件） ──
     var userContent = text;
@@ -800,7 +817,9 @@ async function _executeSend(intent) {
                         var _errBox2 = agent._recoveryLinkEl.parentElement;
                         agent._recoveryLinkEl.remove();
                         agent._recoveryLinkEl = null;
+                        agent._stateMeta.recoveryLinkEl = null;  // ★ 2026-08-17: 同步清真理源防断引用
                         if (_errBox2 && _errBox2.classList.contains('msg-quest-error')) {
+                            _errBox2._continueLink = null;  // ★ 2026-08-17: 清 box 缓存防重建死链接
                             var _lastRow2 = _errBox2.querySelector('.qe-row:last-of-type');
                             if (_lastRow2) _lastRow2.style.borderBottom = 'none';
                         }
@@ -879,6 +898,7 @@ async function _executeSend(intent) {
             onDone: async function (content, timing) {
                 if (agent._deferRenderUntilHouse1) {
                     agent._deferRenderUntilHouse1 = false;
+                    agent._stateMeta.deferRenderUntilHouse1 = false;  // ★ 2026-08-17: 同步 _stateMeta
                     // ★ Path B: 揭示之前隐藏的楼层（仅在 house 1 到达时展示）
                     if (aiDiv && aiDiv.style.display === 'none') {
                         aiDiv.style.display = '';
@@ -1025,6 +1045,7 @@ async function _executeSend(intent) {
                             agent._deferredUserEl = null;
                             agent._deferredAiDiv = null;
                             agent._deferRenderUntilHouse1 = false;
+                            agent._stateMeta.deferRenderUntilHouse1 = false;  // ★ 2026-08-17: 同步 _stateMeta 真理源
                         }
                         _renderQuestErrorBox(agent, null, agent._recoveryOriginFloor || agent._currentFloorNum);
                         var _errTxtPath = aiDiv && aiDiv._allTxtPath;

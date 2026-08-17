@@ -823,15 +823,16 @@ function computeBenefits(ag) {
     }
     result.editonly = _charsToTokens(beforeChars - filtered.join('\n').length);
 
-    // Step 3: only facts — absolut+editonly → 按 === F 切半 → h原料 token 数即收益
-    var blocks = afterAbsolut.split(/\n(?==== F\d+ )/);
+    // Step 3: only facts — 收益 = 原始 biscuit − editonly 过滤后切半的后半段（与执行端 panel-quest-ui.js 同口径）
+    //   ★ 2026-08-17: 旧口径 hChars(afterAbsolut 切半) 与执行端 editonly 过滤后不一致 → q154 显示 -33k 实际 29.6K 拒绝
+    var blocks = filtered.join('\n').split(/\n(?==== F\d+ )/);
     var _totalChars = 0, _blockChars = [];
     for (var bi = 0; bi < blocks.length; bi++) { _blockChars.push(blocks[bi].length); _totalChars += blocks[bi].length; }
     var _half = Math.floor(_totalChars / 2), _acc = 0, _splitIdx = 1;
     for (var bi2 = 0; bi2 < blocks.length; bi2++) { _acc += _blockChars[bi2]; if (_acc >= _half) { _splitIdx = bi2; break; } }
-    var hChars = 0;
-    for (var bi3 = 0; bi3 < _splitIdx; bi3++) hChars += _blockChars[bi3];
-    result.onlyfacts = _charsToTokens(hChars);
+    var _rChars = 0;
+    for (var bi3 = _splitIdx; bi3 < blocks.length; bi3++) _rChars += _blockChars[bi3];
+    result.onlyfacts = _charsToTokens(beforeChars - _rChars);
     return result;
 }
 

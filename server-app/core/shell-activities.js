@@ -222,6 +222,7 @@ function bootActivities(boot) {
       '.qqq-act-modal h2{margin:2px 0 2px;font-size:26px;font-weight:900;text-align:center;' +
       'background:linear-gradient(135deg,#34d399,#06b6d4);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}' +
       '.qqq-act-modal .qqq-act-sub{margin:0 0 14px;text-align:center;font-size:13px;color:#9aa0b5;}' +
+      '.qqq-act-modal .qqq-act-csub{margin:0 0 6px;text-align:center;font-size:15px;font-weight:700;color:#34d399;}' +
       '.qqq-act-bigbar{margin:14px 0 6px;height:16px;border-radius:9px;background:rgba(255,255,255,.2);overflow:hidden;position:relative;forced-color-adjust:none;}' +
       '.qqq-act-bigfill{display:block;height:100%;border-radius:9px;' +
       'background:linear-gradient(90deg,#2aa198,#859900,#2aa198);background-size:200% 100%;animation:qqqActShimmer 2.4s linear infinite;' +
@@ -361,6 +362,7 @@ function bootActivities(boot) {
       html =
         '<div class="qqq-act-celebrate">🎉</div>' +
         '<h2>' + t('act.cool.p2Title', '恭喜！充能已满') + '</h2>' +
+        '<p class="qqq-act-csub">' + t('act.cool.p2Subtitle', '从2026开始，用更清爽 滴 ide') + '</p>' +
         '<p class="qqq-act-sub">' + t('act.cool.popSub', '总消费满 10 ge 领 10 元红包') + '</p>' +
         '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-cool-fill qqq-act-full" style="width:100%"></span></div>' +
         '<div class="qqq-act-bignum">' + fmt(total) + ' / ' + target + ' ge ✓</div>' +
@@ -497,11 +499,11 @@ function bootActivities(boot) {
       '<div class="qqq-act-claims">' +
       '<button class="qqq-act-claim qqq-act-claim-phone" id="qqq-act-claim-phone" ' +
       (claimable && !claimedPhone ? '' : 'disabled') + '>' +
-      (phone ? phone + '<br>' : '') + (claimedPhone ? t('act.ge50.claimed', '已领取') : t('act.ge50.claimPhone', '获取 50 元话费')) +
+      (phone ? phone + '<br>' : '') + (claimedPhone ? t('act.ge50.claimPhoneClaimed', '50 元话费 · 已领取') : t('act.ge50.claimPhone', '额外再领取 50 元话费')) +
       '</button>' +
       '<button class="qqq-act-claim" id="qqq-act-claim-ge" ' +
       (claimable && !claimedGe ? '' : 'disabled') + '>' +
-      (claimedGe ? t('act.ge50.claimed', '已领取') : t('act.ge50.claimGe', '立即获取 50 ge')) +
+      (claimedGe ? t('act.ge50.claimGeClaimed', '50 ge · 已领取') : t('act.ge50.claimGe', '额外再领取 50 ge')) +
       '</button>' +
       '</div>' +
       (claimable ? '' : '<div class="qqq-act-lockhint">' + t('act.ge50.taskLocked', '完成上方任务后解锁') + '</div>');
@@ -509,6 +511,7 @@ function bootActivities(boot) {
     var html =
       '<div class="qqq-act-celebrate">🎁</div>' +
       '<h2>' + t('act.ge50.name', '原料与基本权利') + '</h2>' +
+      '<p class="qqq-act-csub">' + t('act.ge50.subtitle', '你滴上下文资产现在归你') + '</p>' +
       '<p class="qqq-act-sub">' + t('act.ge50.popSub', '实扣 + 白嫖合计达到 50 ge 即可领取') + '</p>' +
       '<div class="qqq-act-bigbar"><span class="qqq-act-bigfill qqq-act-ge50-fill' + (total >= target ? ' qqq-act-full' : '') + '" style="width:' + pct + '%"></span></div>' +
       '<div class="qqq-act-bignum">' + fmt(total) + ' / ' + target + ' ge</div>' +

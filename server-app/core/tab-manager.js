@@ -31,6 +31,7 @@
   let _groupRatios = null;    // null=flex equal; {ratios:[0.3,0.7]} for proportional restore on resize
   let _resizeTimer = null;
   var _pinnedPaths = {};    // ★ 文档级 pin 真理（2026-08-16）：filePath → true = 已编辑过 → 正体（全分组一致）；未编辑 → 斜体预览
+  var _deletedPaths = {};    // ★ 文件已删除缓存（2026-08-17）：filePath → true = 磁盘文件已删除，tab 显示灰色+删除线
 
   // ---- DOM builders ----
   function createGroupEl(type) {
@@ -123,6 +124,45 @@
     return pane;
   }
 
+  // ---- Tab deleted state (file removed from disk) ----
+  function _setTabDeleted(filePath, deleted) {
+    _deletedPaths[filePath] = !!deleted;
+    // Update all tabs with this filePath
+    for (const grp of groups) {
+      if (grp.type !== 'file') continue;
+      for (const t of grp.tabs) {
+        if (t.filePath !== filePath) continue;
+        t.deleted = !!deleted;
+      }
+    }
+    // Refresh all matching tab buttons
+    for (const grp of groups) {
+      if (grp.type !== 'file') continue;
+      for (const t of grp.tabs) {
+        if (t.filePath !== filePath) continue;
+        updateTabBtnTitle(t);
+      }
+    }
+  }
+
+  async function _checkFileDeleted(filePath) {
+    if (!filePath || !window.bridge || !window.bridge.fs || !window.bridge.fs.stat) return;
+    try {
+      var st = await window.bridge.fs.stat(filePath);
+      var exists = !!(st && st.isFile);
+      // Read current deleted state from any tab with this filePath
+      var currentDeleted = false;
+      for (const grp of groups) {
+        if (grp.type !== 'file') continue;
+        const t = grp.tabs.find(function(t2) { return t2.filePath === filePath; });
+        if (t) { currentDeleted = !!t.deleted; break; }
+      }
+      if (!exists !== !currentDeleted) {
+        _setTabDeleted(filePath, !exists);
+      }
+    } catch (_) { /* stat error (network issue) — don't change state */ }
+  }
+
   // ---- Activate tab ----
   function activateTab(grp, tabId) {
     // ★ 暂停旧活跃编辑器 layout（避免 display:none 时 Monaco 做无意义 layout）
@@ -153,6 +193,11 @@
 
     // fire callback
     if (newTab && newTab.onActivate) newTab.onActivate(newTab);
+
+    // ★ 2026-08-17: 激活后异步检查文件是否存在
+    if (newTab && newTab.filePath) {
+      _checkFileDeleted(newTab.filePath);
+    }
   }
 
   // ---- Close tab ----
@@ -234,6 +279,8 @@
         const baseName = t.filePath.split(/[/\\]/).pop() || t.title;
         nameSpan.textContent = t.dirty ? '* ' + baseName : baseName;
         nameSpan.style.fontStyle = t.preview ? 'italic' : 'normal';
+        // ★ 2026-08-17: 文件已删除状态——灰色+删除线（CSS class，.qqq-tab-deleted）
+        btn.classList.toggle('qqq-tab-deleted', !!t.deleted);
       }
     }
   }
@@ -1046,6 +1093,8 @@
             // ★ 重建文档级 pin 真理（持久化 preview=false = 已编辑过 → 正体，跨分组一致）
             if (!item.preview) _pinnedPaths[item.path] = true;
             document.dispatchEvent(new CustomEvent('qqq-file-open', { detail: { path: item.path, groupIdx: item.groupIdx } }));
+            // ★ 2026-08-17: 恢复后检查文件是否存在（已删除的文件显示灰色+删除线）
+            setTimeout(function(fp) { _checkFileDeleted(fp); }, 500, item.path);
           }
         }
         setTimeout(function () { window.qqqPendingEditorPositions = null; }, 4000);
@@ -1182,6 +1231,7 @@
     getGaeaGroup,
     renameGaeaTab,
     setTabDirty,
+    setTabDeleted: _setTabDeleted,
     persistOpenTabs,
     flushOpenTabs: function () { if (_persistTimer) { clearTimeout(_persistTimer); _doPersistOpenTabs(); } },
   };
