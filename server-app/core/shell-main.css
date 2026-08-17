@@ -770,6 +770,11 @@
   overflow-x: hidden !important;
 }
 
+/* ★ 最近文件夹下拉永无滚动条 (2026-08-16): 视界即上限, 窗口越高见越多, 看不到即选不到 */
+.aiv-recent-dropdown {
+  overflow-y: hidden !important;
+}
+
 /* 内层滚动容器：百分百消除原生滚动条，仅显�?qh 自定义滑�?*/
 .aiv-scroll-inner {
   scrollbar-width: none;

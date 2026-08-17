@@ -1256,7 +1256,7 @@ var AgentLoop = (function () {
             lines.push('  H' + i + ': type=' + (h.type || '?') +
                 ' wgeCost=' + wge + ' (=' + ge.toFixed(4) + ' ge)' +
                 ' model=' + (h.model || '?') +
-                ' cacheHit=' + (h.cacheHitRate >= 0 ? h.cacheHitRate.toFixed(1) + '%' : '?') +
+                ' cacheHit=' + (h.cacheHitRate >= 0 ? h.cacheHitRate.toFixed(1) + '%' : '-') +
                 ' billingSeq=' + (h.billingSeq || 0) +
                 ' requestId=' + (h.billingRequestId || '') +
                 usageStr);

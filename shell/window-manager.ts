@@ -152,36 +152,157 @@ export function registerGlobalKey(accel: string, id: string, mainWindow: Browser
 export const _windowProjectMap = new Map<number, string>();
 export const _projectWindowMap = new Map<string, number>();
 
-/** ★ 关闭时立即保存剩余窗口列表（X 关闭路径, 2026-08-09）:
- *  剩余窗口活着 → 列表=剩余; 最后一个窗口关闭 → 列表=自身（退出后还原）;
- *  双写 global.sq3 open_windows + OS 级 ws.sq3 openWindows */
+// ============================================================================
+// ★ 窗口打开/关闭顺序记录 (2026-08-16 客户 bug 根治: 无法识别窗口关闭顺序)
+//   数据模型 (双写 global.sq3 + OS 级 ws.sq3):
+//     openWindows / open_windows        — 当前存活窗口快照 (打开序; 每次开窗/关窗即时落盘,
+//                                          崩溃/被杀兜底 = 最近一次快照; 恢复集唯一权威)
+//     windowOpenLog / window_open_log   — 打开序日志 (有界 FIFO, 审计用)
+//     windowCloseLog / window_close_log — 关闭序日志 (mode='x' 单窗 / 'quitAll' 整组批次,
+//                                          批次携带完整成员列表, 有界 FIFO)
+//   核心语义:
+//     ① 单窗 X 关闭 → 快照收缩为「剩余存活窗」; 最后一个 → 含自身快照
+//        (重启只回到最后留存的那一个窗口; 之前关闭的窗口只留在 recents hover 列表)
+//     ② 菜单退出 (quitAll) → 整组快照在 quitAll 瞬间写死, 后续 close 事件绝不收缩
+//        (重启打开整组窗口, 两两间隔 500ms 防竞争态)
+//     ③ 半销毁窗口 (_closingWinIds) 绝不入快照 — 快速连关时已关窗口绝不复活
+// ============================================================================
+const _WINDOW_LOG_MAX = 50;
+const _windowOpenedAt = new Map<number, number>();          // winId → 打开时间戳
+const _windowOpenLog: Array<{ mainFolder: string; openedAt: number }> = [];
+const _windowCloseLog: Array<{ mainFolder: string; closedAt: number; mode: 'x' | 'quitAll'; batchId?: string; members?: any[] }> = [];
+const _windowOpenLogged = new Map<number, string>();        // winId → folder (打开日志幂等)
+const _closingWinIds = new Set<number>();                   // close 已放行、closed 未到 (半销毁)
+let _quitAllBatch: { batchId: string; at: number; members: any[] } | null = null;
+
+function _normFolder(p: string): string {
+    return (p || '').replace(/\\/g, '/').replace(/\/$/, '');
+}
+
+function _persistOpenWindows(list: any[], stateStore: StateStore): void {
+    try {
+        stateStore.setNow('qqqide', 'open_windows', list).catch(() => { });
+        wsStateSetKey('openWindows', list).catch(() => { });
+    } catch { /* ignore */ }
+}
+
+function _persistWindowLogs(stateStore: StateStore): void {
+    try {
+        stateStore.setNow('qqqide', 'window_open_log', _windowOpenLog.slice()).catch(() => { });
+        stateStore.setNow('qqqide', 'window_close_log', _windowCloseLog.slice()).catch(() => { });
+        wsStateSetKey('windowOpenLog', _windowOpenLog.slice()).catch(() => { });
+        wsStateSetKey('windowCloseLog', _windowCloseLog.slice()).catch(() => { });
+    } catch { /* ignore */ }
+}
+
+function _snapshotOf(win: BrowserWindow, folder: string): any | null {
+    try {
+        const n = _normFolder(folder);
+        if (!n) return null;
+        const b = win.getBounds();
+        return {
+            mainFolder: n,
+            bounds: { x: b.x, y: b.y, w: b.width, h: b.height, maximized: win.isMaximized() },
+            wings: _windowWingMap.get(win.id) || { left: false, right: false },
+            openedAt: _windowOpenedAt.get(win.id) || Date.now(),
+        };
+    } catch { return null; }
+}
+
+/** 存活窗口快照 (打开序 = _windowProjectMap 插入序; 半销毁/已销毁窗口绝不含) */
+function _snapshotOpenWindows(excludeWinId?: number): any[] {
+    const list: any[] = [];
+    const seen = new Set<string>();
+    for (const [winId, folder] of _windowProjectMap) {
+        if (winId === excludeWinId) continue;
+        if (_closingWinIds.has(winId)) continue;
+        const win = BrowserWindow.fromId(winId);
+        if (!win || win.isDestroyed()) continue;
+        const snap = _snapshotOf(win, folder);
+        if (!snap || seen.has(snap.mainFolder)) continue;
+        seen.add(snap.mainFolder);
+        list.push(snap);
+    }
+    return list;
+}
+
+export function snapshotOpenWindows(): any[] {
+    return _snapshotOpenWindows();
+}
+
+/** ★ 窗口项目注册时记录打开序 + 刷新存活快照 (崩溃兜底: 快照永远最新) */
+export function recordWindowOpen(winId: number, folder: string, stateStore: StateStore): void {
+    try {
+        const n = _normFolder(folder);
+        if (!n) return;
+        if (_windowOpenLogged.get(winId) === n) return;  // 幂等: 同窗同项目只记一次
+        _windowOpenLogged.set(winId, n);
+        _windowOpenedAt.set(winId, Date.now());
+        _windowOpenLog.push({ mainFolder: n, openedAt: _windowOpenedAt.get(winId)! });
+        if (_windowOpenLog.length > _WINDOW_LOG_MAX) _windowOpenLog.shift();
+        _persistWindowLogs(stateStore);
+        const list = _snapshotOpenWindows();
+        if (list.length > 0) _persistOpenWindows(list, stateStore);
+    } catch (e: any) { console.warn('[window-manager] recordWindowOpen failed:', e && e.message); }
+}
+
+/** ★ 菜单退出整组关闭: quitAll 瞬间捕获全组快照写死, 防 close 事件逐步收缩 (2026-08-16) */
+export function beginQuitAllBatch(stateStore: StateStore): void {
+    try {
+        if (_quitAllBatch) return;  // 幂等
+        const members: any[] = [];
+        for (const [winId, folder] of _windowProjectMap) {
+            if (_closingWinIds.has(winId)) continue;
+            const win = BrowserWindow.fromId(winId);
+            if (!win || win.isDestroyed()) continue;
+            const snap = _snapshotOf(win, folder);
+            if (!snap) continue;
+            snap.winId = winId;
+            members.push(snap);
+        }
+        if (members.length === 0) return;
+        _quitAllBatch = { batchId: Date.now() + '-' + Math.random().toString(36).slice(2, 8), at: Date.now(), members };
+        // ★ 整组快照即时落盘 (不等 before-quit — 退出路径千变万化, 这里先写死)
+        const list = members.map((m: any) => ({ mainFolder: m.mainFolder, bounds: m.bounds, wings: m.wings, openedAt: m.openedAt }));
+        _persistOpenWindows(list, stateStore);
+        // 关闭序日志: 整组批次 (成员列表随记录, 关闭顺序一目了然)
+        _windowCloseLog.push({ mainFolder: '', closedAt: Date.now(), mode: 'quitAll', batchId: _quitAllBatch.batchId, members: list });
+        if (_windowCloseLog.length > _WINDOW_LOG_MAX) _windowCloseLog.shift();
+        _persistWindowLogs(stateStore);
+        console.log('[window-manager] quitAll batch captured: ' + members.length + ' window(s)');
+    } catch (e: any) { console.warn('[window-manager] beginQuitAllBatch failed:', e && e.message); }
+}
+
+/** ★ 关闭时立即保存剩余窗口列表 (2026-08-09 初版 / 2026-08-16 关闭序重构):
+ *  剩余窗口活着 → 列表=剩余(打开序); 最后一个窗口关闭 → 列表=自身（退出后还原）;
+ *  菜单退出批次 → 保留整组快照绝不收缩; 双写 global.sq3 open_windows + OS 级 ws.sq3 openWindows */
 function _saveOpenWindowsNow(closingWin: BrowserWindow, stateStore: StateStore): void {
     try {
-        const live = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed() && w.id !== closingWin.id);
-        const list: any[] = [];
-        const seen = new Set<string>();
-        const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/$/, '');
-        const pushWin = (w: BrowserWindow) => {
-            try {
-                const folder = _windowProjectMap.get(w.id);
-                if (!folder) return;
-                const n = norm(folder);
-                if (!n || seen.has(n)) return;
-                seen.add(n);
-                const b = w.getBounds();
-                list.push({
-                    mainFolder: n,
-                    bounds: { x: b.x, y: b.y, w: b.width, h: b.height, maximized: w.isMaximized() },
-                    wings: _windowWingMap.get(w.id) || { left: false, right: false }
-                });
-            } catch { /* ignore */ }
-        };
-        for (const w of live) pushWin(w);
-        if (live.length === 0) pushWin(closingWin); // 最后一个窗口 → 包含自身快照
-        if (list.length > 0) {
-            stateStore.setNow('qqqide', 'open_windows', list).catch(() => { });
-            wsStateSetKey('openWindows', list).catch(() => { });
+        _closingWinIds.add(closingWin.id);
+        // ★ 菜单退出批次: 整组快照保留 (批次成员逐窗 close 事件全部写同一完整列表, 幂等)
+        if (_quitAllBatch && _quitAllBatch.members.some((m: any) => m.winId === closingWin.id)) {
+            const list = _quitAllBatch.members
+                .filter((m: any) => m.mainFolder)
+                .map((m: any) => ({ mainFolder: m.mainFolder, bounds: m.bounds, wings: m.wings, openedAt: m.openedAt }));
+            if (list.length > 0) _persistOpenWindows(list, stateStore);
+            return; // 批次关闭不记单窗日志 (批记录已含完整成员列表)
         }
+        // ★ 单窗 X 关闭: 存活快照 = 打开序 - 本窗 - 半销毁窗
+        let list = _snapshotOpenWindows(closingWin.id);
+        const self = _snapshotOf(closingWin, _windowProjectMap.get(closingWin.id) || '');
+        if (list.length === 0 && self) list.push(self); // 最后一个窗口 → 含自身快照
+        // 关闭序日志 (仅记录带项目的窗口)
+        const folder = _windowProjectMap.get(closingWin.id);
+        if (folder) {
+            const n = _normFolder(folder);
+            if (n) {
+                _windowCloseLog.push({ mainFolder: n, closedAt: Date.now(), mode: 'x' });
+                if (_windowCloseLog.length > _WINDOW_LOG_MAX) _windowCloseLog.shift();
+                _persistWindowLogs(stateStore);
+            }
+        }
+        // ★ 空列表也写 (清陈旧恢复集 — 最后一个窗口无项目时, 绝不复活旧窗口)
+        _persistOpenWindows(list, stateStore);
     } catch { /* ignore */ }
 }
 
@@ -335,6 +456,16 @@ export function createWindow(
 
     win.on('closed', () => {
         (win as any).__qqqConfirmArmed = false;
+        // ★ 半销毁标记清除 (2026-08-16): 窗口彻底销毁, 不再污染存活快照
+        _closingWinIds.delete(win.id);
+        if (_quitAllBatch) {
+            // 批次成员全部销毁 → 批次状态清空 (进程即将退出, 防陈旧状态污染)
+            const alive = _quitAllBatch.members.some((m: any) => {
+                const w = BrowserWindow.fromId(m.winId);
+                return w && !w.isDestroyed() && !_closingWinIds.has(m.winId);
+            });
+            if (!alive) _quitAllBatch = null;
+        }
         try { if (_boundsSaveTimer) { clearTimeout(_boundsSaveTimer); _boundsSaveTimer = null; } } catch (_) { }
         // ★ 无条件释放项目锁（2026-08-13 幽灵锁事故根因之一）：projectLock.claim（only-store）
         //   与 window.claimProject（注册 _windowProjectMap）是两条独立 IPC——时序竞态下

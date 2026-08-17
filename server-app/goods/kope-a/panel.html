@@ -352,8 +352,8 @@ body {
         var banner = document.createElement('div');
         banner.className = 'kope-offline-banner';
         banner.style.cssText = 'text-align:center;padding:5px 10px;margin:3px 8px;color:var(--text-secondary);font-size:11px;background:var(--base2);border-radius:4px;opacity:0.8;cursor:default;';
-        banner.innerHTML = '&#128264; &#21098;&#36148;&#26495;&#30417;&#25511;&#24050;&#20572;&#27490; &middot; &#28857;&#20987; <b>&#9679;</b> &#21551;&#21160;';
-        el.historyList.insertBefore(banner, el.historyList.firstChild);
+        banner.textContent = '当前面板：kope-a 未启动';
+        el.historyContainer.insertBefore(banner, el.historyList);
     }
 
     function hideOfflineBanner() {
@@ -456,7 +456,9 @@ body {
         el.tooltip.style.display = 'none';
 
         if (newHistory.length === 0) {
-            el.historyList.innerHTML = '<div class="empty-hint">Clipboard history will appear here</div>';
+            if (!_offlineBanner) {
+                el.historyList.innerHTML = '<div class="empty-hint">Clipboard history will appear here</div>';
+            }
             selectedId = '';
             setTimeout(updateAllScrollbars, 50);
             return;

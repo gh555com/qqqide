@@ -998,7 +998,8 @@ window.addEventListener('message', async function (e) {
                 }
 
                 // Step 3: only facts
-                if (req.action === 'onlyfacts') {
+                    if (req.action === 'onlyfacts') {
+                    var _CPT_loc = (typeof ContentGateway !== 'undefined' && ContentGateway.CHAR_PER_TOKEN) ? ContentGateway.CHAR_PER_TOKEN : 2.5;
                     var _blocks = text.split(/\n(?==== F\d+ )/);
                     if (_blocks.length < 2) {
                         _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: '楼层数不足（需≥2）' });
@@ -1033,11 +1034,11 @@ window.addEventListener('message', async function (e) {
                         _bpChars0 += 200; // 提示词（含 📎 引用）长度估算
                         try { if (window.parent && typeof window.parent.getTools === 'function') { var _tp2 = window.parent.getTools(); if (_tp2 && _tp2.length) _bpChars0 += JSON.stringify(_tp2).length; } } catch (_) {}
                         _bpChars0 += 250;
-                        _preBackpackK = Math.round(_bpChars0 / CPT / 1000);
+                        _preBackpackK = Math.round(_bpChars0 / _CPT_loc / 1000);
                     } catch (_) {}
                     // ★ V21: onlyfacts 守卫恢复 32K tokens（F89 曾按 chars÷2.5 换算成 12K，用户明确要求 32K 边界）
                     //   收益 < 32K tokens 的压缩不值得调一次 tier-4 AI（q147 f97 事故：第二次 h 仅 16K tokens 仍放行）
-                    if (Math.round(_hText.length / CPT) < 32000) {
+                    if (Math.round(_hText.length / _CPT_loc) < 32000) {
                         _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: 'h原料 < 32K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
                         return;
                     }
@@ -1343,7 +1344,10 @@ function renderQueueStrip() {
     for (var i = 0; i < _queue.length; i++) {
         (function (q, idx) {
             var images = q.images || q.pendingImages || [];
-            var preview = q.text.slice(0, 80) + (q.text.length > 80 ? '...' : '');
+            // ★ 2026-08-16: 纯图片背包预览占位（图片本身有 📷N 徽章，文本为空时不再空白）
+            var preview = q.text
+                ? (q.text.slice(0, 80) + (q.text.length > 80 ? '...' : ''))
+                : _i('ai.queue.imageOnly', '（仅图片）');
             var tierLabel = (typeof q.selectedTier === 'number') ? ('A' + q.selectedTier) : '';
 
             var card = document.createElement('div');
@@ -1481,7 +1485,8 @@ $queueBtn.onclick = function () {
         return;
     }
     var text = getInputText().trim();
-    if (!text) return;
+    // ★ 2026-08-16: 纯图片也可排队（sendMessage 允许纯图片发送，与发送语义对齐）
+    if (!text && pendingImages.length === 0) return;
     // ★ 背包：冻结当前全部键入状态
     var backpack = {
         id: 'bk_' + Date.now(),

@@ -397,9 +397,9 @@
     }
   }
 
-  // ---- recent folders (global, max 20, qgs persisted) ----
+  // ---- recent folders (global + OS ws.sq3 双写, 上限 100, 永久记忆 2026-08-16) ----
   var RECENT_KEY = 'recent_folders';
-  var MAX_RECENT = 20;
+  var MAX_RECENT = 100;
   var _recentFolders = []; // [{path, name, atime}]
   var _recentsReady = null; // Promise — resolve 后 _recentFolders 才是真实数据
   var _recentsLoaded = false; // load 完成标记（失败也置 true）→ 防空数组在 load 完成前覆盖 OS recentFolders
@@ -439,6 +439,11 @@
     try {
       var s = _qgsNs();
       if (s) s.set(RECENT_KEY, _recentFolders).catch(function () { });
+      // ★ OS 级双写 (2026-08-16): 与 ws.sq3 同步 — 任意启动目录添加过的目录永久留存
+      var ws = _wsBridge();
+      if (ws && _recentsLoaded) {
+        ws.set(WS_RECENT_KEY, _recentFolders.slice(0, MAX_RECENT)).catch(function () { });
+      }
     } catch (_) { }
   }
 
@@ -566,27 +571,43 @@
     }
   }
 
-  // ★ recent_folders OS 兜底（2026-08-08）: 本地 recent 为空（global.sq3 丢失/全新包）→ 从 ws.sq3 拉回并回写本地
-  //   统一收尾点 _finishRestore 调用 → 本地链/OS 链/旧链全部恢复路径自动覆盖
+  // ★ recent_folders OS 并集合并（2026-08-16 整改）: 任意启动目录点击 + 添加过的目录永久记录
+  //   local(global.sq3) ∪ OS(ws.sq3), 同路径 atime 取新, 按 atime 降序, cap MAX_RECENT
+  //   合并后双写回 local + OS → 跨启动目录/跨包零丢失记忆; 统一收尾点 _finishRestore 调用
   function _restoreRecentsFromOs() {
     var ws = _wsBridge();
     if (!ws) return;
     var ready = _recentsReady || Promise.resolve();
     ready.then(function () {
-      if (!_recentsLoaded || _recentFolders.length > 0) return; // 本地已有 → 不覆盖
+      if (!_recentsLoaded) return;
       ws.get(WS_RECENT_KEY).then(function (list) {
-        if (!list || !Array.isArray(list) || list.length === 0) return;
-        var seen = {};
-        var clean = [];
-        for (var i = 0; i < list.length && clean.length < MAX_RECENT; i++) {
-          var p = _normPath(list[i].path || '');
-          if (!p || seen[p]) continue;
-          seen[p] = true;
-          clean.push({ path: p, name: basename(p) || list[i].name || '', atime: list[i].atime || Date.now() });
+        var osList = (list && Array.isArray(list)) ? list : [];
+        var map = {};
+        function put(p, name, atime) {
+          p = _normPath(p || '');
+          if (!p) return;
+          atime = atime || 0;
+          var ex = map[p];
+          if (!ex) { map[p] = { path: p, name: name || basename(p) || '', atime: atime }; }
+          else if (atime >= ex.atime) { ex.atime = atime; if (name) ex.name = name; }
+          else if (!ex.name && name) { ex.name = name; }
         }
-        if (clean.length === 0) return;
-        _recentFolders = clean;
-        _saveRecents(); // 回写本地 global.sq3（下次启动本地优先）
+        _recentFolders.forEach(function (f) { put(f.path, f.name, f.atime); });
+        for (var i = 0; i < osList.length; i++) put(osList[i].path, osList[i].name, osList[i].atime);
+        var merged = Object.keys(map).map(function (k) { return map[k]; });
+        merged.sort(function (a, b) { return (b.atime || 0) - (a.atime || 0); });
+        if (merged.length > MAX_RECENT) merged.length = MAX_RECENT;
+        // 内容相同且 OS 已有数据 → 跳过写盘; OS 为空 → 回写建立 OS 真理
+        var same = merged.length === _recentFolders.length;
+        if (same) {
+          for (var j = 0; j < merged.length; j++) {
+            if (merged[j].path !== _recentFolders[j].path) { same = false; break; }
+          }
+        }
+        if (!same || osList.length === 0) {
+          _recentFolders = merged;
+          _saveRecents(); // 回写本地 global.sq3 + OS ws.sq3
+        }
       }).catch(function () { });
     });
   }
@@ -1501,12 +1522,12 @@
       }
     }
     sub._direction = goRight;
-    // 背景色按层级两色交错：第1层=黄(f0e9a0, dropdown CSS)，子菜单 depth 偶数=e7e4c2 / 奇数=f0e9a0；暗主题保持方向成对
+    // 所有层级统一用黄色 f0e9a0；暗主题方向成对
     var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     if (isDark) {
       sub.style.setProperty('background', goRight ? '#1e211e' : '#232a23', 'important');
     } else {
-      sub.style.setProperty('background', ((depth || 1) % 2 === 0) ? '#e7e4c2' : '#f0e9a0', 'important');
+      sub.style.setProperty('background', '#f0e9a0', 'important');
     }
     // 定位：右跳贴父容器右边缘，左跳用 CSS right 贴父容器左边缘（消除 estW≠实际宽度造成的空隙）
     if (goRight) {

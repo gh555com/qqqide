@@ -194,7 +194,7 @@ function _buildBillingTable(houses, passby) {
         var wge = h.wgeCost || 0;
         // 缓存命中率 / tokens / 查账凭据：effect 类型无 LLM 概念，统一 —
         var isEffect = h.type === 'effect';
-        var cacheHit = isEffect ? '-' : (h.cacheHitRate >= 0 ? h.cacheHitRate.toFixed(1) + '%' : '?');
+        var cacheHit = isEffect ? '-' : (h.cacheHitRate >= 0 ? h.cacheHitRate.toFixed(1) + '%' : '-');
         var usage = h.usage;
         var promptTokens, completionTokens, totalTokens;
         if (isEffect) {

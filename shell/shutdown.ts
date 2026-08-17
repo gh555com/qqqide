@@ -13,7 +13,7 @@ import { BootConfig } from './boot';
 import { StateStore } from './state-sqlite';
 import { Qgf } from './qgf';
 import { _timelineDbs, _tlFlushNow } from './timeline-store';
-import { _windowProjectMap, getWindowWingState } from './window-manager';
+import { _windowProjectMap, snapshotOpenWindows } from './window-manager';
 import { releaseAllProjectLocks } from './project-lock';
 import { wsStateSetKey } from './ipc-ws-state';
 import { crashNetMarkCleanQuit } from './crash-net';
@@ -109,45 +109,14 @@ function autoIncrementVersion(portableRoot: string): void {
 //   _saveOpenWindowsNow（close 事件内捕获）负责。双写 global.sq3 + OS 级 ws.sq3。
 export function saveAllOpenWindows(stateStore: StateStore, winProjectMap: Map<number, string>): void {
     try {
+        void winProjectMap; // 快照实现已收敛到 window-manager (2026-08-16)
         const live = BrowserWindow.getAllWindows().filter(w => !w.isDestroyed());
         if (live.length === 0) {
             // X 关闭路径: 已在各窗口 close 事件里保存过, 这里保持旧值即可
             return;
         }
-        const seen = new Set<string>();
-        const windows: any[] = [];
-        for (const win of live) {
-            try {
-                const rawFolder = (winProjectMap.get(win.id) || '').replace(/\\/g, '/').replace(/\/$/, '');
-                // ★ 验证: 路径存在且有 qqq/ 子目录(真正的项目), 过滤空值/已删除/非项目
-                let mainFolder = '';
-                if (rawFolder && fs.existsSync(rawFolder) && fs.existsSync(rawFolder + '/_qqq')) {
-                    mainFolder = rawFolder;
-                } else if (rawFolder) {
-                    console.warn('[shutdown] skip invalid project:', rawFolder);
-                }
-                if (!mainFolder) continue;
-                // ★ 去重：同主文件夹只保留第一个窗口
-                if (seen.has(mainFolder)) continue;
-                seen.add(mainFolder);
-                const bounds = win.getBounds();
-                const maximized = win.isMaximized();
-                // ★ 每窗口翼状态一并保存（多窗口还原时各自恢复翼）
-                const wings = getWindowWingState(win);
-                windows.push({
-                    mainFolder,
-                    bounds: {
-                        x: bounds.x, y: bounds.y,
-                        w: bounds.width, h: bounds.height,
-                        maximized: maximized
-                    },
-                    wings
-                });
-            } catch (e) {
-                // 窗口可能在 isDestroyed() 和 getBounds() 之间被销毁
-                try { console.warn('[shutdown] skip window (destroyed mid-save):', (e as Error).message); } catch (_) { }
-            }
-        }
+        // ★ 打开序快照 (与 close 路径同源实现, 半销毁窗口零污染, 2026-08-16)
+        const windows = snapshotOpenWindows();
         if (windows.length > 0) {
             stateStore.setNow('qqqide', 'open_windows', windows);
             // ★ OS 级兜底（删包/换包后回写）

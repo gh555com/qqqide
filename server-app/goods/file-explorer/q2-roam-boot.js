@@ -414,6 +414,15 @@
 			_isEllipsis(rsp || ri) ? showPathTooltip(rsp ? rsp.textContent.trim() : ri.textContent.trim(), e.clientX, e.clientY) : hidePathTooltip();
 			return;
 		}
+		// ★ 主资源列表区（q3 Area 4 补漏 2026-08-16）：文件/文件夹名被省略号截断 → 显示完整路径
+		var fi = t.closest('.file-item');
+		if (fi) {
+			var nameArea = fi.querySelector('.folder-name-area, .file-name-area');
+			if (nameArea && _isEllipsis(nameArea)) {
+				showPathTooltip(fi.getAttribute('data-path') || fi.getAttribute('data-name') || '', e.clientX, e.clientY);
+			} else if (_ptVisible) { hidePathTooltip(); }
+			return;
+		}
 		hidePathTooltip();
 	}
 	var _sideEl = document.querySelector('.sidebar');

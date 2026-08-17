@@ -43,6 +43,13 @@ function hookFileExplorerToTabs() {
     var filePath = e.detail && e.detail.path;
     if (!filePath) return;
 
+    // ★ 恢复右侧分组（2026-08-16）：旧实现忽略 groupIdx → 重启后右侧组文件全挤进左侧组
+    //   （"两分组莫名变一分组"持久化根因）；groupIdx≥2 = 右侧分组，重建右侧组并打开
+    if ((e.detail && e.detail.groupIdx || 0) >= 2 && window.qqqTabs.openFileInRightGroup) {
+      window.qqqTabs.openFileInRightGroup(filePath);
+      return;
+    }
+
     // Open in tab manager
     var tab = window.qqqTabs.openFile(filePath, {
       preview: e.detail.preview,

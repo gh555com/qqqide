@@ -380,9 +380,12 @@ var QuestStore = (function () {
                 var key = 'floor_counter.' + e.id;
                 var cur = await b.get(key);
                 if (typeof cur !== 'number' || isNaN(cur)) cur = 0;  // ★ 键缺失也 seed（sq3 重建/清理竞态后 counter 丢失 → 首号撞磁盘）
-                if (maxN + 1 > cur) {
-                    await b.setNow(key, maxN + 1);
-                    console.log('[quest-store] _healFloorCounters: ' + key + ' ' + (cur || 0) + ' → ' + (maxN + 1));
+                // ★ 2026-08-16: 语义统一为「已分配最大号」（与 commitFloorNum/nextFloorNum seed 一致）。
+                //   旧实现写 maxN+1（下一个号语义）→ nextFloorNum 再 +1 → 每次 heal 后下一次发送跳号
+                //   （q197 事故：f1 后 heal → 第二条消息变 f3，f2 蒸发；f3 后 heal → 第三条变 f5，f4 蒸发）
+                if (maxN > cur) {
+                    await b.setNow(key, maxN);
+                    console.log('[quest-store] _healFloorCounters: ' + key + ' ' + (cur || 0) + ' → ' + maxN);
                 }
             } catch (_) { }
         }
@@ -821,9 +824,10 @@ var QuestStore = (function () {
                         }
                         if (_fcMax > 0) {
                             var _fcCur = (await _fcBridge.get('floor_counter.' + _fcQid)) || 0;
-                            if (typeof _fcCur === 'number' && _fcMax + 1 > _fcCur) {
-                                await _fcBridge.setNow('floor_counter.' + _fcQid, _fcMax + 1);
-                                console.log('[quest-store] repairDuplicateIds: floor_counter.' + _fcQid + ' synced ' + _fcCur + ' → ' + (_fcMax + 1));
+                            // ★ 2026-08-16: 同 _healFloorCounters 语义统一（已分配最大号，防跳号）
+                            if (typeof _fcCur === 'number' && _fcMax > _fcCur) {
+                                await _fcBridge.setNow('floor_counter.' + _fcQid, _fcMax);
+                                console.log('[quest-store] repairDuplicateIds: floor_counter.' + _fcQid + ' synced ' + _fcCur + ' → ' + _fcMax);
                             }
                         }
                     } catch (_) { }
@@ -1400,6 +1404,23 @@ var QuestStore = (function () {
         var qDirName = await _resolveQuestDirName(questId);
         if (!qDirName) return _base + 1;  // quest 目录尚未创建（首次建楼前）→ 无碰撞可能
         var _qDirPath = _rootDir + '/_qqq/quests/' + qDirName;
+        // ★ 2026-08-16: counter 与磁盘脱节自愈——counter 语义 = 已分配最大号，
+        //   历史 heal/repair 曾写 maxN+1（下一个号语义）→ nextFloorNum 再 +1 → 每次 heal 后跳号
+        //   （q197 事故：f1 后 heal → 第二条消息变 f3；f3 后 heal → 第三条变 f5，f2/f4 蒸发）。
+        //   探号前扫磁盘真实最大号，counter 偏高一律回落（只降不升）——结构上杜绝跳号，
+        //   旧坏数据（如 q197 counter=6 而磁盘 max=5）无需人工修库，下次发送自动归位。
+        var _diskMaxN = 0;
+        try {
+            var _de = await _safeList(_qDirPath);
+            for (var _di = 0; _di < _de.length; _di++) {
+                var _dm = _de[_di].name.match(/^f(\d+)\./);
+                if (_dm) _diskMaxN = Math.max(_diskMaxN, parseInt(_dm[1], 10));
+            }
+        } catch (_) { }
+        if (_diskMaxN > 0 && _base > _diskMaxN) {
+            console.warn('[quest-store] nextFloorNum: counter ' + _base + ' > disk max f' + _diskMaxN + ' — falling back (stale maxN+1 bug, q197 f2/f4)');
+            _base = _diskMaxN;
+        }
         for (var _alloc = 0; _alloc < MAX_ALLOC; _alloc++) {
             var n = _base + 1 + _alloc;
             var _collision = false;

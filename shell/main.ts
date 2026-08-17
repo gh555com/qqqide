@@ -32,7 +32,7 @@ import * as fs from 'fs';
 // ── 子模块 ──
 import { loadBootConfig, extractFlags, bootSequence, getWebappBaseUrl, BootMode, BootConfig } from './boot';
 import { APP_VERSION, checkForcedUpdate } from './version';
-import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap } from './window-manager';
+import { editorFontSize, createWindow, _windowProjectMap, _projectWindowMap, recordWindowOpen } from './window-manager';
 import { claimProject, registerProjectLockIpc } from './project-lock';
 import { initAssetProtocol, hydrateAssetRootsFromState } from './asset-protocol';
 import { registerFsIpc } from './ipc-fs';
@@ -606,6 +606,8 @@ app.whenReady().then(async () => {
     // Boot
     // ★ 多窗口还原 — 第一步：确保主窗口加载正确的项目文件夹
     //   恢复链: 绿色包级 global.sq3 → OS 级 ws.sq3（2026-08-09 删包/换包后 OS 兜底）
+    // ★ 组还原两两间隔 (2026-08-16): 菜单退出整组还原时窗口错峰打开, 防竞争态
+    const RESTORE_WINDOW_GAP_MS = 500;
     const readOpenWindows = async (): Promise<any[]> => {
         try {
             let v: any = await stateStore.get('qqqide', 'open_windows');
@@ -613,6 +615,9 @@ app.whenReady().then(async () => {
             return (v && Array.isArray(v)) ? v : [];
         } catch { return []; }
     };
+    // ★ 主窗口实际恢复到的文件夹 (2026-08-16): claim 失败时保持 null,
+    //   后续多窗口还原据此判断是否预注册 open_windows[0]（claim 失败 → 交给还原循环尝试额外窗口）
+    let _mainRestoreFolder: string | null = null;
     try {
         const openWindows = await readOpenWindows();
         if (openWindows && openWindows.length > 0) {
@@ -630,6 +635,9 @@ app.whenReady().then(async () => {
                         // ★ 预注册，防止 restore 阶段重复创建
                         _windowProjectMap.set(mainWindow.id, n0);
                         _projectWindowMap.set(n0, mainWindow.id);
+                        // ★ 打开序记录 (2026-08-16): 主窗口恢复即入打开序日志 + 刷新存活快照
+                        _mainRestoreFolder = n0;
+                        recordWindowOpen(mainWindow.id, n0, stateStore);
                     } else {
                         console.warn('[restore] main project locked by another instance, opening blank window:', n0, 'reason=' + claimRes.reason);
                     }
@@ -647,11 +655,14 @@ app.whenReady().then(async () => {
         try {
             const openWindows = await readOpenWindows();
             if (openWindows && openWindows.length > 1) {
-                // ★ 预注册主窗口项目（open_windows[0]），防后续还原重复创建
+                // ★ 预注册主窗口项目（open_windows[0]），防后续还原重复创建；
+                //   仅当主窗口真的拿到了该文件夹（_mainRestoreFolder 非空）才预注册 —
+                //   否则让还原循环尝试在额外窗口恢复（2026-08-16: 旧代码无条件注册 →
+                //   claim 失败时该文件夹被 map 占据 → 永失恢复）
                 const w0 = openWindows[0];
                 if (w0 && w0.mainFolder) {
                     var n0 = w0.mainFolder.replace(/\\/g, '/').replace(/\/$/, '');
-                    if (n0) {
+                    if (n0 && _mainRestoreFolder === n0) {
                         _windowProjectMap.set(mainWindow.id, n0);
                         _projectWindowMap.set(n0, mainWindow.id);
                     }
@@ -680,6 +691,8 @@ app.whenReady().then(async () => {
                     (newWin as any).__qqqRestoreWings = w.wings || null;
                     _windowProjectMap.set(newWin.id, normalized);
                     _projectWindowMap.set(normalized, newWin.id);
+                    // ★ 打开序记录 (2026-08-16)
+                    recordWindowOpen(newWin.id, normalized, stateStore);
 
                     const baseUrl = getWebappBaseUrl(portable.root, bootConfig, isDevFlag);
                     const url = baseUrl + '?restore=1&folder=' + encodeURIComponent(normalized);
@@ -701,8 +714,9 @@ app.whenReady().then(async () => {
                         try { newWin.close(); } catch (_) { }
                     });
                     restored++;
-                    // ★ 间隔延长到 500ms，给前一个窗口的 kope-a/goods 进程足够启动时间
-                    await new Promise(r => setTimeout(r, 500));
+                    // ★ 组还原两两间隔 (2026-08-16 定案 500ms): 给前一个窗口的 kope-a/goods 进程
+                    //   足够启动时间 + 项目锁/阵营绑定错峰, 防多窗同时初始化竞争态
+                    await new Promise(r => setTimeout(r, RESTORE_WINDOW_GAP_MS));
                 }
                 if (restored > 0) console.log('[restore] ' + restored + ' additional window(s) restored');
             }

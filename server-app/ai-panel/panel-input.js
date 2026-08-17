@@ -2,12 +2,15 @@
 
 'use strict';
 
-// ── 排队按钮状态：有文字即可排队（不管 AI 是否在工作；fatal 态禁用）──
+// ── 排队按钮状态：有文字或图片即可排队（fatal 态禁用）──
+// ★ 2026-08-16 闭环重构：刷新收敛于两个统一出口（autoResizeInput = value 变更出口 / renderImageStrip = 图片增删出口），
+//   打字/粘贴文本/粘贴图片/删图/undo/redo/切 quest 恢复/发送清空/换行按钮全部自动覆盖，零漏网。
 function updateQueueBtn() {
     var _ag = (typeof _activeAgent !== 'undefined') ? _activeAgent : null;
     if (_ag && _ag._stopState === 'fatal') { $queueBtn.disabled = true; return; }
     var hasText = $input.value.trim().length > 0;
-    $queueBtn.disabled = !hasText;
+    var hasImages = (typeof pendingImages !== 'undefined') && pendingImages.length > 0;
+    $queueBtn.disabled = !(hasText || hasImages);
 }
 
 // ── 无主文件夹时直接弹文件夹选择 ──
@@ -168,6 +171,7 @@ function autoResizeInput() {
         el.style.height = '';
         el.style.overflowY = 'hidden';
         _updateInputProgress();
+        updateQueueBtn();
         return;
     }
     el.rows = 1;
@@ -182,11 +186,13 @@ function autoResizeInput() {
         el.style.overflowY = 'hidden';
     }
     _updateInputProgress();
+    updateQueueBtn();
     // 安全网：原生 setter 直设，防绕过 paste 处理器的异常路径
     if (el.value.length > INPUT_CAP_CHARS) {
         var _ns = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
         _ns.call(el, el.value.substring(0, INPUT_CAP_CHARS));
         _updateInputProgress();
+        updateQueueBtn();
     }
 }
 $input.addEventListener('input', autoResizeInput);
@@ -448,6 +454,7 @@ function renderImageStrip() {
     strip.innerHTML = '';
     if (pendingImages.length === 0) {
         strip.style.display = 'none';
+        updateQueueBtn();
         return;
     }
     strip.style.display = 'flex';
@@ -477,6 +484,7 @@ function renderImageStrip() {
         wrap.appendChild(embed);
         strip.appendChild(wrap);
     });
+    updateQueueBtn();
 }
 
 // ═══ 编辑框硬上限（字符数 = str.length；唯一真理源 content-gateway.js EDITOR_CAP_CHARS）══

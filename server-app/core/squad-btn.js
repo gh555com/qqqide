@@ -51,12 +51,21 @@
 
   function _render() {
     var sq = _state && _state.squad;
+    var none = !!(_state && _state.none);
     if (!_btn) return;
-    _btn.textContent = sq ? sq : '\u25A0';  // 1/8按钮: 只显示编队字符, 不带 ■
-    _btn.style.color = sq ? 'var(--text-primary,#e8e8e8)' : 'var(--text-secondary,#777)';
-    _btn.title = sq
-      ? ('编队 ' + sq + ' — 空格+' + sq + ' 召回（点击更换编队）')
-      : '无编队（不可召回）— 点击选择分组';
+    if (sq) {
+      _btn.textContent = sq;  // 编队字符
+      _btn.style.color = 'var(--text-primary,#e8e8e8)';
+      _btn.title = '编队 ' + sq + ' — 空格+' + sq + ' 召回（点击更换编队）';
+    } else if (none) {
+      _btn.textContent = '\u2014';  // none 态: 长横（与下拉 none 行左列同符）
+      _btn.style.color = 'var(--text-secondary,#777)';
+      _btn.title = '编队 none（不可召回）— 点击选择分组';
+    } else {
+      _btn.textContent = '\u25A0';  // >8 窗口: 无可用槽位
+      _btn.style.color = 'var(--text-secondary,#777)';
+      _btn.title = '无可用编队（窗口超过 8 个，不可召回）— 点击选择分组';
+    }
     if (_dd) _renderDd();
   }
 
@@ -149,7 +158,7 @@
         row.addEventListener('click', function (ev) { ev.stopPropagation(); _pick('none'); });
       }
       _dd.appendChild(row);
-    })(!_state.squad);
+    })(_state.none === true);
   }
 
   function _pick(slot) {

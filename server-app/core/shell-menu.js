@@ -89,6 +89,23 @@ function _flushProjectAssets() {
   } catch (_) { }
 }
 
+// ★ 统一读取最近文件夹列表 (2026-08-16): 本启动目录 global.sq3 优先, 空 → OS ws.sq3 兑底
+//   (与 ai-viewport 同源同 key → 成员永远一致; OS = 跨启动目录永久记忆)
+function _loadMenuRecentFolders() {
+  var bridge = window.qqqideBridge;
+  if (!bridge || !bridge.state) return Promise.resolve([]);
+  return bridge.state.get('qqqide', 'recent_folders').then(function (data) {
+    var list = (data && Array.isArray(data)) ? data : [];
+    if (list.length > 0) return list;
+    if (bridge.wsState && typeof bridge.wsState.get === 'function') {
+      return bridge.wsState.get('recentFolders').then(function (osList) {
+        return (osList && Array.isArray(osList)) ? osList : [];
+      }).catch(function () { return []; });
+    }
+    return [];
+  }).catch(function () { return []; });
+}
+
 // ---- hover "开新窗口" 行 → 右侧展开最近文件夹列表 ----
 function _showMenuRecentDropdown(leftPx, topPx) {
   // ★ 已渲染 → 锁死，禁止重排重绘
@@ -105,8 +122,8 @@ function _showMenuRecentDropdown(leftPx, topPx) {
   var capturedTop = topPx;
   var capturedLeft = leftPx;
 
-  bridge.state.get('qqqide', 'recent_folders').then(function (data) {
-    var folders = (data && Array.isArray(data)) ? data.slice(0, 20) : [];
+  _loadMenuRecentFolders().then(function (folders) {
+    folders = folders.slice(0, 100);
     // 去重：同 path 只保留最靠前的一条（数据已按 atime 排序，直接去重即可）
     var seen = {};
     folders = folders.filter(function (f) {
@@ -120,18 +137,20 @@ function _showMenuRecentDropdown(leftPx, topPx) {
     var dd = document.createElement('div');
     dd.className = 'qqq-menubar-recent-dropdown';
     var maxH = Math.max(200, window.innerHeight - capturedTop - 8);
+    // ★ 永无滚动条 (2026-08-16): 视界即上限, 窗口越高见越多, 看不到即选不到
     dd.style.cssText =
       'position:fixed; z-index:100000; ' +
       'left:' + capturedLeft + 'px; top:' + capturedTop + 'px; ' +
-      'min-width:280px; max-width:420px; max-height:' + maxH + 'px; ' +
-      'overflow-y:auto; ' +
+      'min-width:280px; max-width:420px; height:' + maxH + 'px; ' +
+      'overflow:hidden; ' +
       'background:var(--card-bg); border:1px solid var(--border-color); ' +
       'border-radius:3px; box-shadow:0 4px 16px rgba(0,0,0,.18); padding:0;';
 
     folders.forEach(function (f) {
       var row = document.createElement('div');
+      // ★ q 列表行高收 2px (2026-08-16): 仅 q 列表 14px→12px, a 列表不动
       row.style.cssText =
-        'padding:14px 12px; margin:0; line-height:1.3; font-size:13px; color:var(--text-primary); ' +
+        'padding:12px 12px; margin:0; line-height:1.3; font-size:13px; color:var(--text-primary); ' +
         'display:flex; align-items:center; gap:6px; white-space:nowrap; cursor:default;';
 
       var icon = document.createElement('span');
@@ -213,11 +232,15 @@ function _bumpMenuRecent(folderPath) {
     name = parts[parts.length - 1] || folderPath;
   } catch (_) { name = folderPath; }
   bridge.state.get('qqqide', 'recent_folders').then(function (data) {
-    var list = (data && Array.isArray(data)) ? data.slice(0, 20) : [];
+    var list = (data && Array.isArray(data)) ? data.slice(0, 100) : [];
     list = list.filter(function (f) { return f.path !== folderPath; });
     list.unshift({ path: folderPath, name: name, atime: Date.now() });
-    if (list.length > 20) list.length = 20;
+    if (list.length > 100) list.length = 100;
     bridge.state.set('qqqide', 'recent_folders', list).catch(function () { });
+    // ★ OS 双写 (2026-08-16): 与 ai-viewport 同款, 跨启动目录共享记忆
+    if (bridge.wsState && typeof bridge.wsState.set === 'function') {
+      bridge.wsState.set('recentFolders', list).catch(function () { });
+    }
   }).catch(function () { });
 }
 
