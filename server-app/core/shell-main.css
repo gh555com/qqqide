@@ -118,6 +118,15 @@
   border-bottom-color: #999;
 }
 
+/* ★ 2026-08-17: 文件已删除标签 — 灰色 + 删除线 */
+.qqq-tab-btn.qqq-tab-deleted .qqq-tab-name {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+.qqq-tab-btn.qqq-tab-deleted.qqq-tab-active .qqq-tab-name {
+  opacity: 0.7;
+}
+
 /* roam 标签召回提示 — hover 瞬间弹出大字号 tooltip（2026-08-09） */
 .qqq-roam-tip {
   position: fixed;

@@ -1022,6 +1022,8 @@ window.addEventListener('message', async function (e) {
                     if (_splitIdx < 1) _splitIdx = 1;
                     var _hText = _blocks.slice(0, _splitIdx).join('\n');
                     var _rText = _blocks.slice(_splitIdx).join('\n');
+                    // ★ 2026-08-17 F51: 砍半前保存原饼干（建楼被拦截时恢复，防内存/磁盘分叉）
+                    var _origBiscuit = m.content;
                     // ★ 捕获压缩前背包重量（aq 开局显示用）：guard + Z/biscuit/facts(压缩前) + 提示词 + tools + body
                     var _preBackpackK = 0;
                     try {
@@ -1038,8 +1040,10 @@ window.addEventListener('message', async function (e) {
                     } catch (_) {}
                     // ★ V21: onlyfacts 守卫恢复 32K tokens（F89 曾按 chars÷2.5 换算成 12K，用户明确要求 32K 边界）
                     //   收益 < 32K tokens 的压缩不值得调一次 tier-4 AI（q147 f97 事故：第二次 h 仅 16K tokens 仍放行）
-                    if (Math.round(_hText.length / _CPT_loc) < 32000) {
-                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: 'h原料 < 32K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
+                    // ★ 2026-08-17 口径修正：守卫 = 实际收益（原始 biscuit − editonly 过滤后切半的后半段），
+                    //   旧口径 _hText（过滤后前半段）与估算端 afterAbsolut 切半不一致——q154 显示 -33k 实际 29.6K 拒绝
+                    if (Math.round((beforeChars - _rText.length) / _CPT_loc) < 32000) {
+                        _respond({ type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false, error: '压缩收益 < 32K tokens，无需提取 facts', beforeChars: beforeChars, afterChars: beforeChars });
                         return;
                     }
                     var _bulletDir = '';
@@ -1063,6 +1067,8 @@ window.addEventListener('message', async function (e) {
                     m.content = _rText;
                     afterChars = _rText.length;
                     found = true;
+                    // ★ 2026-08-17 F51: ctx 空指针保护（_writeCtxJson 内部 ctx.lastCompressedFloor 对 null 抛 TypeError 被吞 → 磁盘永不更新）
+                    if (!ag._ctx) ag._ctx = {};
                     if (ag._ctx && typeof _parseBiscuitFromContent === 'function') {
                         ag._ctx.biscuitLines = _parseBiscuitFromContent(_rText);
                         ag._ctx.lastCompressedFloor = ag._ctx.totalFloors || ag._ctx.biscuitLines.length || 0;
@@ -1099,7 +1105,28 @@ window.addEventListener('message', async function (e) {
                         }
                         if (typeof _buildSendIntent === 'function' && typeof _executeSend === 'function') {
                             var _intent = _buildSendIntent(qid, _bulletRef, { type: 'compress', compressFloor: true, tierIndex: 4, noTools: true, backpackEstK: _preBackpackK });
+                            var _floorBefore = ag._currentFloorNum || 0;
                             await _executeSend(_intent);
+                            var _floorAfter = ag._currentFloorNum || 0;
+                            if (_floorAfter <= _floorBefore) {
+                                // ★ 2026-08-17 F51: 建楼未真正开始（闸门拦截）→ 恢复饼干原样 + 落盘 + 显式报错
+                                //   （q154 事故实锤：子弹已写、饼干已砍半、楼层未建、toast 假成功）
+                                m.content = _origBiscuit;
+                                if (ag._ctx && typeof _parseBiscuitFromContent === 'function') {
+                                    ag._ctx.biscuitLines = _parseBiscuitFromContent(_origBiscuit);
+                                    ag._ctx.lastCompressedFloor = ag._ctx.totalFloors || ag._ctx.biscuitLines.length || 0;
+                                    ag._ctx.narrative = 'biscuit:' + ag._ctx.biscuitLines.length;
+                                }
+                                if (typeof _writeCtxJson === 'function') {
+                                    _writeCtxJson(qid, ag._ctx).catch(function () { });
+                                }
+                                _respond({
+                                    type: 'qqq-compress-res', action: 'onlyfacts', questId: qid, ok: false,
+                                    error: '发送被拦截（当前有其他建楼任务或状态不允许），饼干已恢复，请稍后再试',
+                                    beforeChars: beforeChars, afterChars: beforeChars
+                                });
+                                return;
+                            }
                         }
                         if (typeof $input !== 'undefined') { $input.value = _savedInput; }
                         _respond({

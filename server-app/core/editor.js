@@ -710,6 +710,10 @@
       _removeDirty(currentFile);
       // ★ 同步清除 tab 脏标记（与 _markClean 对齐）
       document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: currentFile, dirty: false } }));
+      // ★ 2026-08-17: 保存成功（写盘）→ 文件肯定存在，清除已删除状态
+      if (window.qqqTabs && window.qqqTabs.setTabDeleted) {
+        window.qqqTabs.setTabDeleted(currentFile, false);
+      }
       // ★ 更新 mtime
       try { var _stSave = await bridge.fs.stat(currentFile); if (_stSave) _openedMtime[currentFile] = { mtimeMs: _stSave.mtimeMs, size: _stSave.size }; } catch (_) {}
       return true;
@@ -1119,6 +1123,8 @@
             _markClean();
             _xHookRecord(filePath, content, 'editx');
             _removeDirty(filePath);
+            // ★ 2026-08-17: 保存成功 → 清除已删除标记
+            if (window.qqqTabs && window.qqqTabs.setTabDeleted) { window.qqqTabs.setTabDeleted(filePath, false); }
             // ★ 更新 mtime
             try { var _stBlur = await bridge.fs.stat(filePath); if (_stBlur) _openedMtime[filePath] = { mtimeMs: _stBlur.mtimeMs, size: _stBlur.size }; } catch (_) {}
           } catch (err) {
@@ -1141,6 +1147,8 @@
           _markClean();
           _xHookRecord(filePath, val, 'editx');
           _removeDirty(filePath);
+          // ★ 2026-08-17: 保存成功 → 清除已删除标记
+          if (window.qqqTabs && window.qqqTabs.setTabDeleted) { window.qqqTabs.setTabDeleted(filePath, false); }
           // ★ 更新 mtime
           try { var _stCtrlS = await bridge.fs.stat(filePath); if (_stCtrlS) _openedMtime[filePath] = { mtimeMs: _stCtrlS.mtimeMs, size: _stCtrlS.size }; } catch (_) {}
         } catch (e) {
@@ -1208,6 +1216,8 @@
             await bridge.fs.write(filePath, ta.value);
             _fbDirty = false;
             document.dispatchEvent(new CustomEvent('qqq-tab-dirty', { detail: { path: filePath, dirty: false } }));
+            // ★ 2026-08-17: 保存成功 → 清除已删除标记
+            if (window.qqqTabs && window.qqqTabs.setTabDeleted) { window.qqqTabs.setTabDeleted(filePath, false); }
           } catch (err) { /* ignore */ }
         }
       });
@@ -1282,10 +1292,21 @@
           return;
         }
       }
-      // 无脏快照 → stat 检测外部修改
+      // 无脏快照 → stat 检测外部修改 / 文件已删除
       if (!bridge.fs || !bridge.fs.stat) return;
       var st = await bridge.fs.stat(filePath);
-      if (!st || !st.isFile) return;
+      if (!st || !st.isFile) {
+        // ★ 2026-08-17: 文件已被删除 → tab 显示灰色+删除线
+        if (window.qqqTabs && window.qqqTabs.setTabDeleted) {
+          window.qqqTabs.setTabDeleted(filePath, true);
+        }
+        delete _openedMtime[filePath];
+        return;
+      }
+      // 文件存在 → 清除已删除标记
+      if (window.qqqTabs && window.qqqTabs.setTabDeleted) {
+        window.qqqTabs.setTabDeleted(filePath, false);
+      }
       var prev = _openedMtime[filePath];
       if (!prev || (prev.mtimeMs === st.mtimeMs && prev.size === st.size)) return;
       // 外部修改了！

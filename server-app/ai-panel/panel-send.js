@@ -76,9 +76,11 @@ function _renderAllErrorBoxes(agent) {
         // ★ 同步 state 到 DOM 标记
         _box._capped = !!_st.capped;
 
-        // ★ 全量重建行（清空 → 从 state.log 重建）
+        // ★ 全量重建行（保留链接元素，仅清 qe-row → 从 state.log 重建）
+        //   2026-08-17 修复：_box.innerHTML='' 会销毁链接元素 → _finishRecovery 的 linkEl 脱离 DOM → 恢复跳过
         var _link = _box._continueLink;
-        _box.innerHTML = '';
+        var _oldRows = _box.querySelectorAll('.qe-row');
+        for (var _ori = 0; _ori < _oldRows.length; _ori++) { _oldRows[_ori].remove(); }
         _box._renderedCount = 0;
 
         for (var _li = 0; _li < _st.log.length; _li++) {
@@ -111,15 +113,34 @@ function _renderAllErrorBoxes(agent) {
             continue;
         }
 
-        // ★ 创建「继续任务」链接
+        // ★ 创建/恢复「继续任务」链接
+        //   2026-08-17: 恢复进行中（_stateMeta.deferRenderUntilHouse1）时保留光块不动，
+        //   避免 _renderAllErrorBoxes（切 quest/刷新）把 █ 光块误复位为文字链接
         var _existingLink = _box._continueLink;
-        if (!_existingLink || !_existingLink.isConnected) {
+        if (agent._stateMeta.deferRenderUntilHouse1) {
+            // ★ 恢复进行中：只允许 █ 光块存在。
+            //   2026-08-17 补丁：光块若被 onToken 移除/换面板重建丢失 → 补建光块，
+            //   绝不重建「继续任务」链接（此时 _stopState=sending，点击 → _startRecovery 早退
+            //   → _qqqRecoveryBusy 永锁 true → 蓝色死方块）
+            if (!_existingLink || !_existingLink.isConnected || _existingLink.className !== 'msg-err-recovery-light') {
+                if (_existingLink && _existingLink.isConnected) _existingLink.remove();
+                _existingLink = document.createElement('a');
+                _existingLink.href = '#';
+                _existingLink.className = 'msg-err-recovery-light';
+                _existingLink._qqqQuestId = questActiveId;
+                _existingLink._qqqAgent = agent;
+                _existingLink._qqqRecoveryBusy = true;
+                _existingLink.textContent = '\u2588';
+                _box.appendChild(_existingLink);
+            }
+        } else if (!_existingLink || !_existingLink.isConnected) {
             _existingLink = document.createElement('a');
             _existingLink.href = '#';
             _existingLink.className = 'msg-err-continue';
             _existingLink.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
             _existingLink._qqqQuestId = questActiveId;
             _existingLink._qqqAgent = agent;
+            _existingLink._qqqRecoveryBusy = false;  // ★ 2026-08-17: 显式初始化为 false
             _existingLink.onclick = function (e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -127,9 +148,16 @@ function _renderAllErrorBoxes(agent) {
                 this._qqqRecoveryBusy = true;
                 _startRecovery(this._qqqQuestId, this._qqqAgent, this);
             };
+            _existingLink.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
+            if (!_existingLink.isConnected) _box.appendChild(_existingLink);
+        } else {
+            // ★ 2026-08-17: 复用已有链接时确保可点击（防上次恢复残留 _qqqRecoveryBusy=true + class 状态）
+            _existingLink._qqqRecoveryBusy = false;
+            _existingLink.className = 'msg-err-continue';
+            _existingLink.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
+            _existingLink._qqqRecoveryOrigText = '';
+            _existingLink.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
         }
-        _existingLink.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
-        if (!_existingLink.isConnected) _box.appendChild(_existingLink);
         _box._continueLink = _existingLink;
     }
 
@@ -209,27 +237,38 @@ function _renderQuestErrorBox(agent, aiDiv, floorNum) {
     var _link2 = _box._continueLink;
     if (!_link2 || !_link2.isConnected) {
         _link2 = _box.querySelector('.msg-err-continue');
-        if (!_link2) {
+        // ★ 2026-08-17: 也搜恢复中的光块（_renderAllErrorBoxes 可能已销毁旧链接）
+        if (!_link2 || !_link2.isConnected) _link2 = _box.querySelector('.msg-err-recovery-light');
+        if (!_link2 || !_link2.isConnected) {
             _link2 = document.createElement('a');
             _link2.href = '#';
             _link2.className = 'msg-err-continue';
             _link2.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
             _link2._qqqQuestId = questActiveId;
             _link2._qqqAgent = agent;
+            _link2._qqqRecoveryBusy = false;  // ★ 2026-08-17: 显式初始化
             _link2.onclick = function (e) {
                 e.preventDefault(); e.stopPropagation();
                 if (this._qqqRecoveryBusy) return;
                 this._qqqRecoveryBusy = true;
                 _startRecovery(this._qqqQuestId, this._qqqAgent, this);
             };
+        } else {
+            // ★ 2026-08-17 修复：搜索找到的链接必须重置状态——_startRecovery 可能留下 _qqqRecoveryBusy=true 和 msg-err-recovery-light class
+            _link2.className = 'msg-err-continue';
+            _link2.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
+            _link2._qqqRecoveryBusy = false;
+            _link2._qqqRecoveryOrigText = '';
         }
         _link2.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
         if (!_link2.isConnected) _box.appendChild(_link2);
         _box._continueLink = _link2;
     } else if (!agent._stateMeta.deferRenderUntilHouse1) {
-        _link2.style.display = '';
+        // ★ 2026-08-17: 恢复失败回滚后必须完整复位（_startRecovery 曾 style.cssText='' 清掉蓝链样式）
+        _link2.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
         _link2.className = 'msg-err-continue';
         _link2._qqqRecoveryBusy = false;
+        _link2._qqqRecoveryOrigText = '';
         _link2.textContent = (typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务';
     }
 }
@@ -285,7 +324,12 @@ var _RECOVERY_COOLDOWN_MS = 20000;   // 面板级防抖（恢复中不可再点�
 var _RECOVERY_MAX_TOTAL_MS = 180000; // 总上限 3 分钟
 
 function _startRecovery(questId, agent, linkEl) {
-    if (!questId || !agent || agent._stopState !== 'fatal') return;
+    if (!questId || !agent || agent._stopState !== 'fatal') {
+        // ★ 2026-08-17: 早退必须复位 busy——card-pool 委托/onclick 已先置 _qqqRecoveryBusy=true，
+        //   不复位则链接永久死锁（蓝色死方块）
+        if (linkEl) { linkEl._qqqRecoveryBusy = false; }
+        return;
+    }
 
     // 1. ★ 记录原始 fatal 楼层号（仅首次，不覆盖）+ 预封顶所有更旧的红框
     if (!agent._recoveryOriginFloor) agent._recoveryOriginFloor = agent._currentFloorNum;
@@ -297,11 +341,14 @@ function _startRecovery(questId, agent, linkEl) {
         }
     }
 
-    // 2. 标记恢复中
+    // 2. 标记恢复中（同步 _stateMeta 真理源，防 _renderAllErrorBoxes/_renderQuestErrorBox 误读）
     agent._recoveryInProgress = true;
+    agent._stateMeta.recoveryInProgress = true;
     agent._recoveryStartPerf = performance.now();
     agent._deferRenderUntilHouse1 = true;
+    agent._stateMeta.deferRenderUntilHouse1 = true;
     agent._recoveryLinkEl = linkEl;
+    agent._stateMeta.recoveryLinkEl = linkEl;
 
     // 3. "继续任务"文字 → █ 光块（█ 字符天生可视，CSS 只负责左右横跳）
     if (linkEl) {
@@ -476,8 +523,10 @@ async function _retrySameFloor(questId, agent, linkEl) {
 
 function _finishRecovery(linkEl, agent, succeeded) {
     agent._recoveryInProgress = false;
+    agent._stateMeta.recoveryInProgress = false;
     agent._recoveryStartPerf = 0;
     agent._deferRenderUntilHouse1 = false;
+    agent._stateMeta.deferRenderUntilHouse1 = false;
 
     if (succeeded) {
         // ★ V1 fix: 保存原始 fatal 楼层号，清除 _error 消息防重启假复活
@@ -499,16 +548,45 @@ function _finishRecovery(linkEl, agent, succeeded) {
         if (typeof _capRecoveryLink === 'function') _capRecoveryLink(agent, _originFloor);
     } else {
         // ★ 失败：恢复链接为可点击（同一红框垒行后用户可重试）
-        if (linkEl && linkEl.isConnected) {
-            linkEl._qqqRecoveryDone = false;
-            linkEl.textContent = linkEl._qqqRecoveryOrigText ||
+        // ★ 2026-08-17 修复：_renderAllErrorBoxes 的 innerHTML='' 会销毁 linkEl，
+        //   isConnected=false 时从 DOM 重新查找当前链接元素恢复
+        var _restoreEl = linkEl;
+        if (!_restoreEl || !_restoreEl.isConnected) {
+            // linkEl 已被 _renderAllErrorBoxes 重建红框时销毁 → 从 DOM 找回
+            var _originFloor2 = agent._recoveryOriginFloor || agent._currentFloorNum;
+            if (_originFloor2 && typeof _ensureErrorBoxDOM === 'function') {
+                var _box2 = _ensureErrorBoxDOM(agent, _originFloor2);
+                if (_box2 && _box2._continueLink && _box2._continueLink.isConnected) {
+                    _restoreEl = _box2._continueLink;
+                }
+            }
+            // 兜底：全局搜 msg-err-recovery-light 或 msg-err-continue（刚被 _renderAllErrorBoxes 重建后可能残留）
+            if (!_restoreEl || !_restoreEl.isConnected) {
+                var _allRecovery = document.querySelectorAll('.msg-err-recovery-light, .msg-err-continue');
+                for (var _ari = 0; _ari < _allRecovery.length; _ari++) {
+                    if (_allRecovery[_ari].isConnected && _allRecovery[_ari]._qqqQuestId) { _restoreEl = _allRecovery[_ari]; break; }
+                }
+            }
+        }
+        if (_restoreEl && _restoreEl.isConnected) {
+            _restoreEl._qqqRecoveryDone = false;
+            _restoreEl.textContent = _restoreEl._qqqRecoveryOrigText ||
                 ((typeof _i === 'function') ? _i('ai.error.continueTask', '继续任务') : '继续任务');
-            linkEl.className = 'msg-err-continue';
-            linkEl.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
-            linkEl._qqqRecoveryBusy = false;
-            linkEl._qqqRecoveryOrigText = '';
+            _restoreEl.className = 'msg-err-continue';
+            _restoreEl.style.cssText = 'text-decoration:underline;cursor:pointer;color:var(--accent-color,#4a9eff);margin-left:4px;';
+            _restoreEl._qqqRecoveryBusy = false;
+            _restoreEl._qqqRecoveryOrigText = '';
+            // ★ 同步更新 box 缓存（防 _renderAllErrorBoxes 下次用旧引用）
+            if (typeof _ensureErrorBoxDOM === 'function') {
+                var _originFloor3 = agent._recoveryOriginFloor || agent._currentFloorNum;
+                if (_originFloor3) {
+                    var _box3 = _ensureErrorBoxDOM(agent, _originFloor3);
+                    if (_box3) _box3._continueLink = _restoreEl;
+                }
+            }
         }
         agent._recoveryLinkEl = null;
+        agent._stateMeta.recoveryLinkEl = null;  // ★ 2026-08-17: 同步清真理源
         // ★ 永不锁按钮
     }
 }
